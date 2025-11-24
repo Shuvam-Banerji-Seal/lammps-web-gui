@@ -31,16 +31,17 @@ const App: React.FC = () => {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const response = await fetch('http://127.0.0.1:5000/api/data');
-        const data = await response.json();
-        handleVisualize(data.data);
+        const response = await fetch('/c60.data');
+        const text = await response.text();
+        handleVisualize(text);
       } catch (error) {
         setError("Failed to fetch initial data.");
       }
     };
+
     fetchInitialData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
 
   const handleVisualize = (text: string) => {
     try {

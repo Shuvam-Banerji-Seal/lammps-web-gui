@@ -1,0 +1,5 @@
+{
+  "name": "Molecule3D",
+  "description": "A high-performance 3D molecular structure visualizer for .data files using React Three Fiber.",
+  "requestFramePermissions": []
+}

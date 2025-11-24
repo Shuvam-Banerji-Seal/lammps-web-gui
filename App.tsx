@@ -27,11 +27,10 @@ const App: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'data' | 'settings'>('data');
 
-  // Load example on mount
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const response = await fetch('/c60.data');
+        const response = await fetch(`${import.meta.env.BASE_URL}c60.data`);
         const text = await response.text();
         handleVisualize(text);
       } catch (error) {
@@ -41,6 +40,7 @@ const App: React.FC = () => {
 
     fetchInitialData();
   }, []);
+
 
 
   const handleVisualize = (text: string) => {

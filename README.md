@@ -2,7 +2,7 @@
 
 A web-based viewer for visualizing LAMMPS (Large-scale Atomic/Molecular Massively Parallel Simulator) data files in 3D.
 
-![LAMMPS Webview Screenshot](https://raw.githubusercontent.com/shuvam-bhattacharya/lammps_webview/main/public/screenshot.png)
+![LAMMPS Webview Screenshot](https://raw.githubusercontent.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/main/public/screenshot.png)
 
 ## Features
 
@@ -34,8 +34,8 @@ To run this project locally, you will need to set up both the frontend and backe
 **1. Clone the repository:**
 
 ```bash
-git clone https://github.com/shuvam-bhattacharya/lammps_webview.git
-cd lammps_webview
+git clone https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer.git
+cd lammps_data_web_viewer
 ```
 
 **2. Set up the Frontend:**

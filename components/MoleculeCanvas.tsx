@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, ContactShadows, Environment } from '@react-three/drei';
 import { MoleculeData, VisualizationConfig } from '../types';
-import AtomMesh from './AtomMesh';
+import InstancedAtomMesh from './InstancedAtomMesh';
 import BondMesh from './BondMesh';
 import * as THREE from 'three';
 
@@ -28,17 +28,30 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({ data, autoRotate, confi
     return new THREE.Vector3(-center.x, -center.y, -center.z);
   }, [center]);
 
+  // Calculate camera distance based on molecule size
+  const cameraDistance = useMemo(() => {
+    const dx = data.max.x - data.min.x;
+    const dy = data.max.y - data.min.y;
+    const dz = data.max.z - data.min.z;
+    const maxSpan = Math.max(dx, dy, dz, 10);
+    return maxSpan * 1.5;
+  }, [data]);
+
+  // Show bonds based on config (hide in space-fill mode by default)
+  const shouldShowBonds = config.showBonds && config.visualizationMode !== 'space-fill';
+
   return (
     <Canvas
       shadows
-      camera={{ position: [0, 0, 20], fov: 40 }}
+      camera={{ position: [0, 0, cameraDistance], fov: 40 }}
       dpr={[1, 2]}
       className="w-full h-full"
+      gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
     >
       {/* Dynamic Background Color */}
       <color attach="background" args={[config.backgroundColor]} />
       
-      {/* Environment lighting - Use studio for realistic/plastic, maybe simpler for toon but studio works well */}
+      {/* Environment lighting */}
       <Environment preset="studio" />
 
       {/* Lighting Setup */}
@@ -55,11 +68,10 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({ data, autoRotate, confi
       <pointLight position={[-10, -10, -10]} intensity={0.5} color="#ffffff" />
 
       <group position={groupPosition}>
-        {atoms.map((atom) => (
-          <AtomMesh key={`atom-${atom.id}`} atom={atom} config={config} />
-        ))}
+        {/* Use instanced rendering for atoms */}
+        <InstancedAtomMesh atoms={atoms} config={config} />
 
-        {config.showBonds && bonds.map((bond) => {
+        {shouldShowBonds && bonds.map((bond) => {
           const atom1 = atomMap.get(bond.atom1Id);
           const atom2 = atomMap.get(bond.atom2Id);
           

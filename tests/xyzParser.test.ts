@@ -39,7 +39,6 @@ describe('XYZ Parser', () => {
 
   it('should compute center correctly', () => {
     const result = parseXYZFile(SAMPLE_XYZ);
-    expect(result.center.x).toBeCloseTo((0.0 + 0.96 + (-0.24)) / 2 + (0.0 + (-0.24)) / 2 ? result.center.x : result.center.x);
     // Center = (min+max)/2
     expect(result.center.x).toBeCloseTo((-0.24 + 0.96) / 2);
   });

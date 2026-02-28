@@ -44,13 +44,18 @@ export enum ParseSection {
 
 export type MaterialType = 'realistic' | 'plastic' | 'toon';
 
+export type VisualizationMode = 'ball-and-stick' | 'space-fill' | 'wireframe';
+
+export type FileFormat = 'lammps' | 'xyz' | 'pdb';
+
 export interface VisualizationConfig {
   atomScale: number;
   bondScale: number;
   materialType: MaterialType;
   backgroundColor: string;
   showBonds: boolean;
-  customColors: Record<number, string>; // Map Atom Type ID -> Hex Color
+  customColors: Record<number, string>;
+  visualizationMode: VisualizationMode;
 }
 
 // Fix for React Three Fiber intrinsic elements in TypeScript
@@ -60,6 +65,7 @@ declare global {
   namespace JSX {
     interface IntrinsicElements {
       mesh: any;
+      instancedMesh: any;
       group: any;
       ambientLight: any;
       directionalLight: any;

@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or usage help
+    url: https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/discussions
+    url_alt: ""
+    about: Ask how to load a file or use a feature — please don't open issues for questions.
+  - name: Security vulnerability
+    url: https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/security/advisories/new
+    about: Report vulnerabilities privately via GitHub security advisories.

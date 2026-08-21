@@ -1,0 +1,29 @@
+version: 2
+updates:
+  # npm dependencies — weekly, grouped minor/patch to reduce PR noise
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    reviewers:
+      - "Shuvam-Banerji-Seal"
+    labels:
+      - "dependencies"
+    ignore:
+      # three.js minor bumps can change rendering behavior; review majors deliberately
+      - dependency-name: "three"
+        update-types: ["version-update:semver-minor"]
+
+  # GitHub Actions — weekly
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "ci"

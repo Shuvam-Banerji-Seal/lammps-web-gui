@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local agent workspace (never commit)
+.rigor-trash/
+plans/
+.playwright-mcp/
+m3d-smoke-*.png

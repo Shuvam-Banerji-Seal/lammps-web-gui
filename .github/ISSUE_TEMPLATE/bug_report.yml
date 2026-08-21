@@ -1,0 +1,48 @@
+name: 🐛 Bug report
+description: Something renders wrong, crashes, or parses incorrectly.
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! For parsing problems,
+        please include the **smallest snippet of the file** that reproduces it.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us what you expected to happen.
+      placeholder: The simulation box renders as a cube but my cell is triclinic…
+    validations:
+      required: true
+  - type: dropdown
+    id: format
+    attributes:
+      label: File format
+      options:
+        - LAMMPS (.data/.lmp)
+        - XYZ
+        - PDB
+        - CIF
+        - Not format-specific
+    validations:
+      required: true
+  - type: textarea
+    id: repro-snippet
+    attributes:
+      label: Minimal reproducing snippet
+      description: Trim your structure file down to the few lines that fail.
+      render: text
+  - type: input
+    id: browser
+    attributes:
+      label: Browser & OS
+      placeholder: Firefox 141 on Ubuntu 24.04 / Chrome on Android 15
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors
+      description: Open DevTools (F12) → Console, paste any red output here.
+      render: shell

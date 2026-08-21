@@ -1,11 +1,61 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import MoleculeCanvas from './components/MoleculeCanvas';
 import { parseFile, detectFileFormat } from './services/fileParser';
-import { MoleculeData, VisualizationConfig, VisualizationMode, FileFormat } from './types';
-import { ATOM_COLORS, DEFAULT_ATOM_COLOR, ELEMENT_DATA } from './constants';
-import { Upload, RotateCw, Play, Pause, AlertCircle, Info, Settings, Eye, EyeOff, Palette, Box, Sun, Moon, Menu, X, Camera, Atom } from 'lucide-react';
+import {
+  MoleculeData, VisualizationConfig, VisualizationMode, FileFormat,
+  LightingPreset, CameraPreset,
+} from './types';
+import { DEFAULT_ATOM_COLOR, ELEMENT_DATA, ATOM_COLORS } from './constants';
+import { emitCameraCommand } from './services/cameraBus';
+import { useKeyboardShortcuts, SHORTCUT_CATALOG } from './hooks/useKeyboardShortcuts';
+import {
+  Upload, RotateCw, AlertCircle, Info, Settings, Eye, EyeOff, Palette, Box,
+  Sun, Moon, Menu, X, Camera, Atom, Keyboard, Layers, Lightbulb,
+  Grid3x3, Maximize2, Play, Pause, ZoomIn, ZoomOut, FileText, HelpCircle,
+} from 'lucide-react';
+
+/** GitHub mark as inline SVG — lucide 1.x removed brand icons. */
+const GithubIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+  </svg>
+);
 
 type Theme = 'light' | 'dark';
+type Tab = 'data' | 'view' | 'scene' | 'elements';
+
+const VIZ_MODES: { value: VisualizationMode; label: string; desc: string; key: string }[] = [
+  { value: 'ball-and-stick', label: 'Ball & Stick', desc: 'Classic molecular view', key: '1' },
+  { value: 'space-fill', label: 'Space Fill', desc: 'Van der Waals radii', key: '2' },
+  { value: 'wireframe', label: 'Wireframe', desc: 'Small point atoms', key: '3' },
+  { value: 'licorice', label: 'Licorice', desc: 'Bond-centric sticks', key: '4' },
+];
+
+const MATERIALS: { value: VisualizationConfig['materialType']; label: string }[] = [
+  { value: 'realistic', label: 'Realistic' },
+  { value: 'plastic', label: 'Plastic' },
+  { value: 'metallic', label: 'Metallic' },
+  { value: 'toon', label: 'Toon' },
+];
+
+const LIGHTING_PRESETS: LightingPreset[] = ['studio', 'lab', 'outdoor', 'space', 'soft'];
+
+const CAMERA_VIEWS: { preset: CameraPreset; label: string }[] = [
+  { preset: 'iso', label: 'Iso' },
+  { preset: 'front', label: 'Front' },
+  { preset: 'back', label: 'Back' },
+  { preset: 'left', label: 'Left' },
+  { preset: 'right', label: 'Right' },
+  { preset: 'top', label: 'Top' },
+  { preset: 'bottom', label: 'Bottom' },
+];
+
+const EXAMPLES: { file: string; format: FileFormat; label: string }[] = [
+  { file: 'c60.data', format: 'lammps', label: 'C60 · LAMMPS' },
+  { file: 'examples/benzene.pdb', format: 'pdb', label: 'Benzene · PDB' },
+  { file: 'examples/nacl.cif', format: 'cif', label: 'NaCl · CIF' },
+  { file: 'examples/water.xyz', format: 'xyz', label: 'Water · XYZ' },
+];
 
 const App: React.FC = () => {
   const [inputText, setInputText] = useState<string>('');
@@ -16,7 +66,13 @@ const App: React.FC = () => {
   const [isMobile, setIsMobile] = useState(false);
   const [theme, setTheme] = useState<Theme>('dark');
   const [fileFormat, setFileFormat] = useState<FileFormat>('lammps');
-  
+  const [activeTab, setActiveTab] = useState<Tab>('data');
+  const [showHelp, setShowHelp] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Type ids the user manually recolored — survive re-parsing. */
+  const userEditedTypes = useRef<Set<number>>(new Set());
+
   const [vizConfig, setVizConfig] = useState<VisualizationConfig>({
     atomScale: 1.0,
     bondScale: 1.0,
@@ -25,11 +81,15 @@ const App: React.FC = () => {
     showBonds: true,
     customColors: {},
     visualizationMode: 'ball-and-stick',
+    lightingPreset: 'studio',
+    showBox: false,
+    showAxes: false,
+    showLabels: false,
+    shadowsEnabled: true,
+    autoRotateSpeed: 0.5,
+    fov: 40,
   });
 
-  const [activeTab, setActiveTab] = useState<'data' | 'settings'>('data');
-
-  // Responsive detection
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768;
@@ -41,430 +101,577 @@ const App: React.FC = () => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Load initial data
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
         const response = await fetch(`${import.meta.env.BASE_URL}c60.data`);
+        if (!response.ok) throw new Error(String(response.status));
         const text = await response.text();
         handleVisualize(text, 'lammps');
       } catch {
-        setError("Failed to fetch initial data.");
+        setError('Failed to load the built-in C60 example.');
       }
     };
     fetchInitialData();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleVisualize = useCallback((text: string, format?: FileFormat) => {
     try {
       setError(null);
-      const data = parseFile(text, format);
-      if (data.atoms.length === 0) {
-        throw new Error("No atoms found in data. Check the format.");
-      }
-      
+      const data = parseFile(text, format ?? detectFileFormat('pasted.txt'));
+      if (data.atoms.length === 0) throw new Error('No atoms found in data. Check the format.');
+
+      // Color assignment: user-edited colors survive; others get CPK by element symbol.
       const newCustomColors: Record<number, string> = {};
-      Object.values(data.atomTypes).forEach(info => {
-        let defaultColor = DEFAULT_ATOM_COLOR;
-        const elementMeta = ELEMENT_DATA.find(e => e.symbol === info.element);
-        if (elementMeta && ATOM_COLORS[elementMeta.number]) {
-          defaultColor = ATOM_COLORS[elementMeta.number];
-        } else if (ATOM_COLORS[info.id]) {
-          defaultColor = ATOM_COLORS[info.id];
+      for (const info of Object.values(data.atomTypes)) {
+        const edited = userEditedTypes.current.has(info.id);
+        if (edited && vizConfig.customColors[info.id]) {
+          newCustomColors[info.id] = vizConfig.customColors[info.id];
+          continue;
         }
-        newCustomColors[info.id] = defaultColor;
-      });
+        const meta = ELEMENT_DATA.find(e => e.symbol === info.element);
+        newCustomColors[info.id] = meta
+          ? ATOM_COLORS[meta.number] ?? DEFAULT_ATOM_COLOR
+          : DEFAULT_ATOM_COLOR;
+      }
 
       setVizConfig(prev => ({ ...prev, customColors: newCustomColors }));
       setMoleculeData(data);
       setInputText(text);
       if (isMobile) setIsSidebarOpen(false);
-    } catch (e: any) {
-      setError(e.message || "Failed to parse data file.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to parse data file.');
       setMoleculeData(null);
     }
-  }, [isMobile]);
+  }, [isMobile, vizConfig.customColors]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const detectedFormat = detectFileFormat(file.name);
-      setFileFormat(detectedFormat);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const content = e.target?.result as string;
-        setInputText(content);
-        handleVisualize(content, detectedFormat);
-      };
-      reader.readAsText(file);
-    }
-  };
-
-  const handleLoadExample = async () => {
+  const loadExample = useCallback(async (file: string, format: FileFormat) => {
     try {
-      const response = await fetch(`${import.meta.env.BASE_URL}c60.data`);
+      const response = await fetch(`${import.meta.env.BASE_URL}${file}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const text = await response.text();
-      setFileFormat('lammps');
-      handleVisualize(text, 'lammps');
+      setFileFormat(format);
+      handleVisualize(text, format);
     } catch {
-      setError("Failed to fetch example data.");
+      setError(`Failed to fetch example: ${file}`);
     }
-  };
+  }, [handleVisualize]);
 
-  const updateConfig = (key: keyof VisualizationConfig, value: any) => {
+  const handleFileUpload = useCallback((file: File) => {
+    const detectedFormat = detectFileFormat(file.name);
+    setFileFormat(detectedFormat);
+    const reader = new FileReader();
+    reader.onload = e => {
+      const content = (e.target?.result as string) ?? '';
+      setInputText(content);
+      handleVisualize(content, detectedFormat);
+    };
+    reader.readAsText(file);
+  }, [handleVisualize]);
+
+  // Drag & drop anywhere on the window
+  useEffect(() => {
+    const onDragOver = (e: DragEvent) => { e.preventDefault(); setDragActive(true); };
+    const onDragLeave = (e: DragEvent) => {
+      if (e.relatedTarget === null) setDragActive(false);
+    };
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      setDragActive(false);
+      const file = e.dataTransfer?.files?.[0];
+      if (file) handleFileUpload(file);
+    };
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('dragleave', onDragLeave);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('dragleave', onDragLeave);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, [handleFileUpload]);
+
+  const updateConfig = (key: keyof VisualizationConfig, value: unknown) => {
     setVizConfig(prev => ({ ...prev, [key]: value }));
   };
 
   const updateCustomColor = (typeId: number, color: string) => {
+    userEditedTypes.current.add(typeId);
     setVizConfig(prev => ({
       ...prev,
-      customColors: { ...prev.customColors, [typeId]: color }
+      customColors: { ...prev.customColors, [typeId]: color },
     }));
   };
 
-  const toggleTheme = () => {
+  const toggleTheme = useCallback(() => {
     setTheme(currentTheme => {
-      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-      updateConfig('backgroundColor', newTheme === 'dark' ? '#151515' : '#ffffff');
-      return newTheme;
+      const next = currentTheme === 'dark' ? 'light' : 'dark';
+      updateConfig('backgroundColor', next === 'dark' ? '#151515' : '#f4f5f7');
+      return next;
     });
-  };
+  }, []);
 
-  const themeClasses = {
-    dark: {
-      bg: 'bg-black',
-      text: 'text-gray-100',
-      sidebar: 'bg-gray-950 border-gray-800',
-      tabActive: 'text-blue-400 border-b-2 border-blue-400 bg-gray-900/50',
-      tabInactive: 'text-gray-400 hover:text-white hover:bg-gray-900',
-      card: 'bg-gray-900 border-gray-800',
-      input: 'bg-gray-900 border-gray-700 text-gray-300 focus:ring-blue-500',
-      button: 'bg-gray-800 hover:bg-gray-700',
-      textMuted: 'text-gray-400',
-      textHeader: 'text-gray-300',
-      statsCard: 'bg-gray-800',
-    },
-    light: {
-      bg: 'bg-gray-100',
-      text: 'text-gray-800',
-      sidebar: 'bg-white border-gray-200',
-      tabActive: 'text-blue-600 border-b-2 border-blue-600 bg-gray-100',
-      tabInactive: 'text-gray-500 hover:text-black hover:bg-gray-200',
-      card: 'bg-white border-gray-200',
-      input: 'bg-white border-gray-300 text-gray-800 focus:ring-blue-500',
-      button: 'bg-gray-200 hover:bg-gray-300',
-      textMuted: 'text-gray-500',
-      textHeader: 'text-gray-700',
-      statsCard: 'bg-gray-200',
+  const doScreenshot = useCallback(() => {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) return;
+    try {
+      const link = document.createElement('a');
+      link.download = `molecule3d-${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch {
+      setError('Screenshot failed — canvas not ready.');
     }
-  };
+  }, []);
 
-  const ct = themeClasses[theme];
+  const cycleLighting = useCallback(() => {
+    setVizConfig(prev => {
+      const idx = LIGHTING_PRESETS.indexOf(prev.lightingPreset);
+      return { ...prev, lightingPreset: LIGHTING_PRESETS[(idx + 1) % LIGHTING_PRESETS.length] };
+    });
+  }, []);
 
-  const vizModes: { value: VisualizationMode; label: string; desc: string }[] = [
-    { value: 'ball-and-stick', label: 'Ball & Stick', desc: 'Classic molecular view' },
-    { value: 'space-fill', label: 'Space Fill', desc: 'Van der Waals radii' },
-    { value: 'wireframe', label: 'Wireframe', desc: 'Minimal bond view' },
+  useKeyboardShortcuts({
+    onToggleRotate: () => setAutoRotate(v => !v),
+    onFit: () => emitCameraCommand({ type: 'fit' }),
+    onViewPreset: preset => emitCameraCommand({ type: 'preset', preset }),
+    onZoom: delta => emitCameraCommand({ type: 'zoom', delta }),
+    onOrbit: (dx, dy) => emitCameraCommand({ type: 'orbit', dx, dy }),
+    onVisualizationMode: idx =>
+      updateConfig('visualizationMode', VIZ_MODES[idx].value),
+    onToggleBonds: () => setVizConfig(p => ({ ...p, showBonds: !p.showBonds })),
+    onToggleBox: () => setVizConfig(p => ({ ...p, showBox: !p.showBox })),
+    onToggleLabels: () => setVizConfig(p => ({ ...p, showLabels: !p.showLabels })),
+    onCycleLighting: cycleLighting,
+    onToggleTheme: toggleTheme,
+    onToggleSidebar: () => setIsSidebarOpen(v => !v),
+    onScreenshot: doScreenshot,
+    onHelp: () => setShowHelp(v => !v),
+    onEscape: () => {
+      setShowHelp(false);
+      if (isMobile) setIsSidebarOpen(false);
+    },
+  });
+
+  // ---- theme tokens (flat, no gradients) ----
+  const ct = theme === 'dark'
+    ? {
+        bg: 'bg-[#101214]', text: 'text-gray-100',
+        sidebar: 'bg-[#16191d] border-gray-800',
+        header: 'text-gray-200',
+        muted: 'text-gray-400',
+        card: 'bg-[#1d2126] border-gray-800',
+        input: 'bg-[#12151a] border-gray-700 text-gray-200 placeholder:text-gray-600 focus:border-blue-500',
+        button: 'bg-[#23282f] hover:bg-[#2b313a] border border-gray-700/60',
+        chip: 'bg-[#1d2126] border border-gray-700/60',
+        accent: 'bg-blue-600 hover:bg-blue-500 text-white',
+        go: 'bg-emerald-600 hover:bg-emerald-500 text-white',
+        active: 'bg-blue-600/15 border-blue-500 text-blue-300',
+        divider: 'border-gray-800',
+        stat: 'bg-[#1d2126]',
+      }
+    : {
+        bg: 'bg-[#eef0f3]', text: 'text-gray-900',
+        sidebar: 'bg-white border-gray-200',
+        header: 'text-gray-900',
+        muted: 'text-gray-500',
+        card: 'bg-white border-gray-200',
+        input: 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-blue-500',
+        button: 'bg-gray-100 hover:bg-gray-200 border border-gray-200',
+        chip: 'bg-gray-50 border border-gray-200',
+        accent: 'bg-blue-600 hover:bg-blue-500 text-white',
+        go: 'bg-emerald-600 hover:bg-emerald-500 text-white',
+        active: 'bg-blue-50 border-blue-500 text-blue-700',
+        divider: 'border-gray-200',
+        stat: 'bg-gray-100',
+      };
+
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'data', label: 'Data', icon: <FileText size={14} /> },
+    { id: 'view', label: 'View', icon: <Atom size={14} /> },
+    { id: 'scene', label: 'Scene', icon: <Lightbulb size={14} /> },
+    { id: 'elements', label: 'Elements', icon: <Palette size={14} /> },
   ];
 
+  const atomTypeList = moleculeData ? Object.values(moleculeData.atomTypes) : [];
+
   return (
-    <div className={`flex h-screen w-screen font-sans ${ct.bg} ${ct.text}`}>
-      
-      {/* Mobile overlay backdrop */}
+    <div className={`flex h-screen w-screen font-sans overflow-hidden ${ct.bg} ${ct.text}`}>
+      {/* Mobile backdrop */}
       {isMobile && isSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-20"
-          onClick={() => setIsSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/50 z-20" onClick={() => setIsSidebarOpen(false)} />
+      )}
+
+      {/* Drag overlay */}
+      {dragActive && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-blue-950/40 border-4 border-dashed border-blue-500">
+          <div className="px-6 py-4 rounded-xl bg-[#16191d] text-gray-100 text-sm font-medium shadow-2xl">
+            Drop a structure file to visualize (.data .xyz .pdb .cif)
+          </div>
+        </div>
       )}
 
       {/* Sidebar */}
-      <div className={`
-        flex flex-col border-r transition-all duration-300 ease-in-out z-30
-        ${isMobile ? 'fixed inset-y-0 left-0 w-80 max-w-[85vw]' : 'w-96'}
+      <aside className={`
+        flex flex-col border-r transition-transform duration-300 ease-in-out z-30
+        ${isMobile ? 'fixed inset-y-0 left-0 w-80 max-w-[85vw]' : 'w-96 shrink-0'}
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         ${ct.sidebar}
       `}>
-        
         {/* Header */}
-        <div className={`p-4 border-b flex items-center justify-between ${ct.sidebar}`}>
-          <div className="flex items-center gap-2">
-            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Molecule3D" className="w-8 h-8" />
+        <div className={`flex items-center justify-between px-4 h-14 border-b ${ct.divider}`}>
+          <div className="flex items-center gap-2.5">
+            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Molecule3D logo" className="w-8 h-8" />
             <div>
-              <h1 className="text-lg font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Molecule3D</h1>
+              <h1 className="text-base font-bold tracking-tight">Molecule3D</h1>
+              <p className={`text-[10px] leading-none ${ct.muted}`}>Molecular Structure Viewer</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-gray-500">v2.0</span>
+          <div className="flex items-center gap-1.5">
+            <a
+              href="https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer"
+              target="_blank" rel="noopener noreferrer"
+              className={`p-2 rounded-lg ${ct.button}`}
+              title="GitHub repository"
+            >
+              <GithubIcon size={16} />
+            </a>
             {isMobile && (
-              <button onClick={() => setIsSidebarOpen(false)} className={`p-1 rounded ${ct.button}`}>
-                <X size={18} />
+              <button onClick={() => setIsSidebarOpen(false)} className={`p-2 rounded-lg ${ct.button}`} title="Close sidebar">
+                <X size={16} />
               </button>
             )}
           </div>
         </div>
 
-        {/* Tab Switcher */}
-        <div className={`flex border-b ${ct.sidebar}`}>
-          <button 
-            onClick={() => setActiveTab('data')}
-            className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'data' ? ct.tabActive : ct.tabInactive}`}
-          >
-            Data Source
-          </button>
-          <button 
-            onClick={() => setActiveTab('settings')}
-            className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'settings' ? ct.tabActive : ct.tabInactive}`}
-          >
-            Appearance
-          </button>
-        </div>
+        {/* Tabs */}
+        <nav className={`grid grid-cols-4 border-b ${ct.divider}`} aria-label="Sidebar sections">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors ${
+                activeTab === tab.id
+                  ? `${ct.active} border-b-2`
+                  : `${ct.muted} hover:${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </nav>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
-          
-          {activeTab === 'data' ? (
+          {/* ============================== DATA TAB */}
+          {activeTab === 'data' && (
             <>
-              {/* Format Guide */}
-              <div className={`rounded-lg p-3 text-xs border ${ct.card} ${ct.textMuted}`}>
-                <div className="flex items-center gap-2 mb-2 text-blue-500 font-semibold">
-                  <Info size={14} /> 
-                  <span>Supported Formats</span>
+              <section className={`rounded-lg p-3 text-xs border ${ct.card} ${ct.muted}`}>
+                <div className="flex items-center gap-2 mb-2 font-semibold text-blue-400">
+                  <Info size={14} /> Supported formats
                 </div>
-                <div className="space-y-1">
-                  <div><span className="font-medium text-blue-400">.data/.lmp</span> — LAMMPS data files</div>
-                  <div><span className="font-medium text-green-400">.xyz</span> — XYZ molecular files</div>
-                  <div><span className="font-medium text-purple-400">.pdb</span> — Protein Data Bank files</div>
-                </div>
-              </div>
+                <ul className="space-y-1">
+                  <li><span className="font-semibold text-blue-400">.data / .lmp</span> — LAMMPS (atomic·charge·molecular·full)</li>
+                  <li><span className="font-semibold text-emerald-400">.xyz</span> — XYZ trajectories (first frame)</li>
+                  <li><span className="font-semibold text-purple-400">.pdb</span> — Protein Data Bank (+CONECT, CRYST1)</li>
+                  <li><span className="font-semibold text-orange-400">.cif</span> — Crystallographic Information Framework</li>
+                </ul>
+              </section>
 
-              {/* File Operations */}
-              <div className="space-y-2">
-                <label className={`text-xs font-medium ${ct.textHeader}`}>File Operations</label>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={handleLoadExample}
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded text-xs font-medium transition-colors ${ct.button}`}
-                  >
-                    <RotateCw size={12} /> Load C60
-                  </button>
-                  <label className="flex-1 cursor-pointer flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white text-xs font-medium transition-colors">
-                    <Upload size={12} /> Upload File
-                    <input type="file" onChange={handleFileUpload} className="hidden" accept=".data,.txt,.lmp,.lammps,.xyz,.pdb,.ent" />
-                  </label>
-                </div>
-                
-                {/* Format selector */}
-                <div className="flex gap-1">
-                  {(['lammps', 'xyz', 'pdb'] as FileFormat[]).map(fmt => (
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Load structure</h3>
+                <label className={`flex cursor-pointer items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${ct.accent}`}>
+                  <Upload size={14} /> Upload file
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".data,.lmp,.lammps,.xyz,.pdb,.ent,.cif,.mmcif,.txt"
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (f) handleFileUpload(f);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {EXAMPLES.map(ex => (
                     <button
-                      key={fmt}
-                      onClick={() => setFileFormat(fmt)}
-                      className={`flex-1 py-1.5 text-[10px] uppercase font-bold rounded transition-all ${
-                        fileFormat === fmt
-                          ? 'bg-blue-600 text-white'
-                          : `${ct.button} ${ct.textMuted}`
-                      }`}
+                      key={ex.file}
+                      onClick={() => loadExample(ex.file, ex.format)}
+                      className={`px-2 py-2 rounded-lg text-[11px] font-medium transition-colors ${ct.button}`}
+                      title={`Load ${ex.label} example`}
                     >
-                      {fmt}
+                      {ex.label}
                     </button>
                   ))}
                 </div>
+              </section>
 
-                <textarea 
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder="# Paste molecular data here..."
-                  className={`w-full h-48 border rounded p-3 text-xs font-mono resize-y ${ct.input}`}
-                  spellCheck={false}
-                />
-                <button 
-                  onClick={() => handleVisualize(inputText, fileFormat)}
-                  className="w-full py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-bold text-white transition-colors shadow-lg shadow-green-900/20"
-                >
-                  Visualize Data
-                </button>
-              </div>
-
-              {/* Statistics */}
-              {moleculeData && (
-                <div className="space-y-2 pt-3 border-t border-gray-800">
-                  <h3 className={`text-xs font-semibold ${ct.textHeader}`}>Statistics</h3>
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className={`p-2 rounded text-center ${ct.statsCard}`}>
-                      <div className={`text-[10px] ${ct.textMuted}`}>Atoms</div>
-                      <div className="font-mono font-bold">{moleculeData.atoms.length}</div>
-                    </div>
-                    <div className={`p-2 rounded text-center ${ct.statsCard}`}>
-                      <div className={`text-[10px] ${ct.textMuted}`}>Bonds</div>
-                      <div className="font-mono font-bold">{moleculeData.bonds.length}</div>
-                    </div>
-                    <div className={`p-2 rounded text-center ${ct.statsCard}`}>
-                      <div className={`text-[10px] ${ct.textMuted}`}>Types</div>
-                      <div className="font-mono font-bold">{Object.keys(moleculeData.atomTypes).length}</div>
-                    </div>
+              <section className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className={`text-xs font-semibold ${ct.header}`}>Paste data</h3>
+                  <div className="flex gap-1">
+                    {( ['lammps', 'xyz', 'pdb', 'cif'] as FileFormat[]).map(fmt => (
+                      <button
+                        key={fmt}
+                        onClick={() => setFileFormat(fmt)}
+                        className={`px-2 py-1 rounded text-[10px] uppercase font-bold transition-colors ${
+                          fileFormat === fmt ? ct.accent : ct.chip + ' ' + ct.muted
+                        }`}
+                        title={`Parse pasted text as ${fmt.toUpperCase()}`}
+                      >
+                        {fmt === 'lammps' ? 'lmp' : fmt}
+                      </button>
+                    ))}
                   </div>
                 </div>
+                <textarea
+                  value={inputText}
+                  onChange={e => setInputText(e.target.value)}
+                  placeholder="# Paste LAMMPS / XYZ / PDB / CIF content here…"
+                  className={`w-full h-44 border rounded-lg p-3 text-xs font-mono resize-y focus:outline-none ${ct.input}`}
+                  spellCheck={false}
+                />
+                <button
+                  onClick={() => handleVisualize(inputText, fileFormat)}
+                  className={`w-full py-2.5 rounded-lg text-sm font-bold transition-colors ${ct.go}`}
+                >
+                  Visualize
+                </button>
+              </section>
+
+              {moleculeData && (
+                <section className="space-y-2 pt-1">
+                  <h3 className={`text-xs font-semibold ${ct.header}`}>Statistics</h3>
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    {[
+                      { label: 'Atoms', value: moleculeData.atoms.length },
+                      { label: 'Bonds', value: moleculeData.bonds.length },
+                      { label: 'Types', value: atomTypeList.length },
+                      { label: 'Box', value: moleculeData.box ? 'Yes' : '—' },
+                    ].map(s => (
+                      <div key={s.label} className={`p-2 rounded-lg ${ct.stat}`}>
+                        <div className={`text-[10px] ${ct.muted}`}>{s.label}</div>
+                        <div className="text-sm font-mono font-bold">{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
               )}
 
               {error && (
-                <div className="p-3 bg-red-900/30 border border-red-800 rounded text-red-200 text-xs flex gap-2 items-start">
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex gap-2 items-start" role="alert">
                   <AlertCircle size={14} className="shrink-0 mt-0.5" />
                   <span>{error}</span>
                 </div>
               )}
             </>
-          ) : (
-            <div className="space-y-6">
-              {/* Theme Toggle */}
-              <div className="space-y-2">
-                <div className={`flex items-center gap-2 text-xs font-semibold border-b pb-2 ${ct.textHeader} ${ct.sidebar}`}>
-                  <Palette size={14} /> Theme
-                </div>
-                <button
-                  onClick={toggleTheme}
-                  className={`w-full flex items-center justify-center gap-2 py-2 rounded text-xs font-medium transition-colors ${ct.button}`}
-                >
-                  {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
-                  Switch to {theme === 'dark' ? 'Light' : 'Dark'} Mode
-                </button>
-              </div>
+          )}
 
-              {/* Visualization Mode */}
-              <div className="space-y-2">
-                <div className={`flex items-center gap-2 text-xs font-semibold border-b pb-2 ${ct.textHeader} ${ct.sidebar}`}>
-                  <Atom size={14} /> Visualization Mode
-                </div>
-                <div className="space-y-1.5">
-                  {vizModes.map(mode => (
+          {/* ============================== VIEW TAB */}
+          {activeTab === 'view' && (
+            <>
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Representation</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {VIZ_MODES.map(mode => (
                     <button
                       key={mode.value}
                       onClick={() => updateConfig('visualizationMode', mode.value)}
-                      className={`w-full text-left p-2 rounded border text-xs transition-all ${
-                        vizConfig.visualizationMode === mode.value
-                          ? 'bg-blue-600/20 border-blue-500 text-blue-300'
-                          : `${ct.button} border-transparent`
+                      className={`text-left p-2.5 rounded-lg border text-xs transition-colors ${
+                        vizConfig.visualizationMode === mode.value ? ct.active : ct.button
                       }`}
                     >
-                      <div className="font-medium">{mode.label}</div>
-                      <div className={`text-[10px] ${ct.textMuted}`}>{mode.desc}</div>
+                      <div className="font-semibold">{mode.label}</div>
+                      <div className={`text-[10px] mt-0.5 ${ct.muted}`}>{mode.desc}</div>
+                      <kbd className={`inline-block mt-1 px-1 rounded text-[9px] ${ct.chip}`}>{mode.key}</kbd>
                     </button>
                   ))}
                 </div>
-              </div>
+              </section>
 
-              {/* Render Style */}
-              <div className="space-y-2">
-                <div className={`flex items-center gap-2 text-xs font-semibold border-b pb-2 ${ct.textHeader} ${ct.sidebar}`}>
-                  <Settings size={14} /> Material
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {['realistic', 'plastic', 'toon'].map((type) => (
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Material</h3>
+                <div className="grid grid-cols-4 gap-2">
+                  {MATERIALS.map(m => (
                     <button
-                      key={type}
-                      onClick={() => updateConfig('materialType', type)}
-                      className={`py-2 px-1 text-xs capitalize rounded border transition-all ${
-                        vizConfig.materialType === type 
-                          ? 'bg-blue-600 border-blue-500 text-white' 
-                          : `${ct.button} border-gray-700`
+                      key={m.value}
+                      onClick={() => updateConfig('materialType', m.value)}
+                      className={`py-2 text-[11px] font-medium rounded-lg border capitalize transition-colors ${
+                        vizConfig.materialType === m.value ? ct.active : ct.button
                       }`}
                     >
-                      {type}
+                      {m.label}
                     </button>
                   ))}
                 </div>
-              </div>
+              </section>
 
-              {/* Scaling */}
-              <div className="space-y-3">
-                <div className={`flex items-center gap-2 text-xs font-semibold border-b pb-2 ${ct.textHeader} ${ct.sidebar}`}>
-                  <Box size={14} /> Geometry Scale
-                </div>
-                
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[10px] text-gray-400">
-                    <span>Atom Size</span>
-                    <span>{(vizConfig.atomScale * 100).toFixed(0)}%</span>
+              <section className="space-y-3">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Geometry</h3>
+                {([
+                  { label: 'Atom size', key: 'atomScale' as const },
+                  { label: 'Bond thickness', key: 'bondScale' as const },
+                ]).map(sl => (
+                  <div key={sl.key} className="space-y-1">
+                    <div className={`flex justify-between text-[11px] ${ct.muted}`}>
+                      <span>{sl.label}</span>
+                      <span className="font-mono">{(vizConfig[sl.key] * 100).toFixed(0)}%</span>
+                    </div>
+                    <input
+                      type="range" min="0.1" max="3" step="0.05"
+                      value={vizConfig[sl.key]}
+                      onChange={e => updateConfig(sl.key, parseFloat(e.target.value))}
+                      className="w-full accent-blue-500"
+                    />
                   </div>
-                  <input 
-                    type="range" min="0.1" max="3.0" step="0.1"
-                    value={vizConfig.atomScale}
-                    onChange={(e) => updateConfig('atomScale', parseFloat(e.target.value))}
-                    className={`w-full h-2 rounded-lg appearance-none cursor-pointer accent-blue-500 ${ct.button}`}
-                  />
-                </div>
+                ))}
+              </section>
 
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[10px] text-gray-400">
-                    <span>Bond Thickness</span>
-                    <span>{(vizConfig.bondScale * 100).toFixed(0)}%</span>
-                  </div>
-                  <input 
-                    type="range" min="0.1" max="3.0" step="0.1"
-                    value={vizConfig.bondScale}
-                    onChange={(e) => updateConfig('bondScale', parseFloat(e.target.value))}
-                    className={`w-full h-2 rounded-lg appearance-none cursor-pointer accent-blue-500 ${ct.button}`}
-                  />
-                </div>
-              </div>
-              
-              {/* Atom Colors */}
-              <div className="space-y-2">
-                <div className={`flex items-center gap-2 text-xs font-semibold border-b pb-2 ${ct.textHeader} ${ct.sidebar}`}>
-                  <Palette size={14} /> Atom Colors
-                </div>
-                
-                {moleculeData && Object.values(moleculeData.atomTypes).length > 0 ? (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                    {Object.values(moleculeData.atomTypes).map((typeInfo) => (
-                      <div key={typeInfo.id} className={`flex items-center justify-between p-2 rounded border ${ct.statsCard} border-gray-700`}>
-                        <div className="flex items-center gap-2">
-                          <div className="relative w-7 h-7 rounded-full overflow-hidden border border-gray-600">
-                            <input 
-                              type="color" 
-                              value={vizConfig.customColors[typeInfo.id] || DEFAULT_ATOM_COLOR}
-                              onChange={(e) => updateCustomColor(typeInfo.id, e.target.value)}
-                              className="absolute -top-2 -left-2 w-12 h-12 cursor-pointer p-0 border-0"
-                            />
-                          </div>
-                          <div>
-                            <div className={`text-[11px] font-bold ${ct.textHeader}`}>{typeInfo.label}</div>
-                            <div className={`text-[9px] ${ct.textMuted}`}>
-                              {typeInfo.element !== 'X' ? `${typeInfo.element} · Mass: ${typeInfo.mass.toFixed(2)}` : `ID: ${typeInfo.id}`}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="bg-gray-700 px-2 py-0.5 rounded text-[10px] font-mono text-gray-300">
-                          {typeInfo.count}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className={`text-xs italic ${ct.textMuted}`}>Load data to customize atom colors.</div>
-                )}
-              </div>
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Visibility</h3>
+                {([
+                  { key: 'showBonds' as const, label: 'Bonds', hint: 'B' },
+                  { key: 'showLabels' as const, label: `Element labels${moleculeData && moleculeData.atoms.length > 400 ? ' (≤400 atoms)' : ''}`, hint: 'L' },
+                ]).map(row => (
+                  <button
+                    key={row.key}
+                    onClick={() => updateConfig(row.key, !vizConfig[row.key])}
+                    className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors ${ct.button}`}
+                  >
+                    <span>{row.label} <kbd className={`ml-1 px-1 rounded text-[9px] ${ct.chip}`}>{row.hint}</kbd></span>
+                    {vizConfig[row.key]
+                      ? <Eye size={14} className="text-emerald-400" />
+                      : <EyeOff size={14} className={ct.muted} />}
+                  </button>
+                ))}
+              </section>
+            </>
+          )}
 
-              {/* Visibility */}
-              <div className="space-y-2">
-                <div className={`flex items-center gap-2 text-xs font-semibold border-b pb-2 ${ct.textHeader} ${ct.sidebar}`}>
-                  <Eye size={14} /> Visibility
+          {/* ============================== SCENE TAB */}
+          {activeTab === 'scene' && (
+            <>
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Lighting</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {LIGHTING_PRESETS.map(p => (
+                    <button
+                      key={p}
+                      onClick={() => updateConfig('lightingPreset', p)}
+                      className={`py-2 text-[11px] font-medium rounded-lg border capitalize transition-colors ${
+                        vizConfig.lightingPreset === p ? ct.active : ct.button
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
                 </div>
-                <button 
-                  onClick={() => updateConfig('showBonds', !vizConfig.showBonds)}
-                  className={`flex items-center justify-between w-full p-2 rounded text-xs transition-colors ${ct.button}`}
+                <p className={`text-[10px] ${ct.muted}`}>
+                  Shortcut <kbd className={`px-1 rounded text-[9px] ${ct.chip}`}>G</kbd> cycles presets.
+                </p>
+              </section>
+
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Camera views</h3>
+                <div className="grid grid-cols-4 gap-2">
+                  {CAMERA_VIEWS.map(v => (
+                    <button
+                      key={v.preset}
+                      onClick={() => emitCameraCommand({ type: 'preset', preset: v.preset })}
+                      className={`py-2 text-[11px] font-medium rounded-lg border transition-colors ${ct.button}`}
+                      title={`View from ${v.label.toLowerCase()}`}
+                    >
+                      {v.label}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => emitCameraCommand({ type: 'fit' })}
+                    className={`py-2 text-[11px] font-medium rounded-lg border flex items-center justify-center gap-1 transition-colors ${ct.button}`}
+                    title="Fit to scene (R)"
+                  >
+                    <Maximize2 size={12} /> Fit
+                  </button>
+                </div>
+              </section>
+
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Simulation box & axes</h3>
+                <button
+                  onClick={() => updateConfig('showBox', !vizConfig.showBox)}
+                  disabled={!moleculeData?.box}
+                  className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors disabled:opacity-40 ${ct.button}`}
+                  title="X"
                 >
-                  <span>Show Bonds</span>
-                  {vizConfig.showBonds ? <Eye size={14} className="text-green-400"/> : <EyeOff size={14} className="text-gray-500"/>}
+                  <span className="flex items-center gap-2"><Grid3x3 size={14} /> Show simulation box <kbd className={`px-1 rounded text-[9px] ${ct.chip}`}>X</kbd></span>
+                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.showBox ? 'bg-blue-600' : 'bg-gray-600'}`}>
+                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.showBox ? 'left-4' : 'left-0.5'}`} />
+                  </span>
                 </button>
-              </div>
+                <button
+                  onClick={() => updateConfig('showAxes', !vizConfig.showAxes)}
+                  className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors ${ct.button}`}
+                >
+                  <span className="flex items-center gap-2"><Grid3x3 size={14} /> Show XYZ axes</span>
+                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.showAxes ? 'bg-blue-600' : 'bg-gray-600'}`}>
+                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.showAxes ? 'left-4' : 'left-0.5'}`} />
+                  </span>
+                </button>
+                {!moleculeData?.box && (
+                  <p className={`text-[10px] ${ct.muted}`}>This structure has no cell information (load a LAMMPS/PDB-CRYST1/CIF file).</p>
+                )}
+              </section>
 
-              {/* Background */}
-              <div className="space-y-2">
-                <div className={`flex items-center gap-2 text-xs font-semibold border-b pb-2 ${ct.textHeader} ${ct.sidebar}`}>
-                  <Box size={14} /> Background
+              <section className="space-y-3">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Motion & optics</h3>
+                <div className="space-y-1">
+                  <div className={`flex justify-between text-[11px] ${ct.muted}`}>
+                    <span>Auto-rotate speed</span><span className="font-mono">{vizConfig.autoRotateSpeed.toFixed(1)}</span>
+                  </div>
+                  <input
+                    type="range" min="0.1" max="6" step="0.1"
+                    value={vizConfig.autoRotateSpeed}
+                    onChange={e => updateConfig('autoRotateSpeed', parseFloat(e.target.value))}
+                    className="w-full accent-blue-500"
+                  />
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                  {['#151515', '#000000', '#1a202c', '#ffffff', '#e2e8f0'].map((color) => (
+                <div className="space-y-1">
+                  <div className={`flex justify-between text-[11px] ${ct.muted}`}>
+                    <span>Field of view</span><span className="font-mono">{vizConfig.fov.toFixed(0)}°</span>
+                  </div>
+                  <input
+                    type="range" min="15" max="90" step="1"
+                    value={vizConfig.fov}
+                    onChange={e => updateConfig('fov', parseInt(e.target.value, 10))}
+                    className="w-full accent-blue-500"
+                  />
+                </div>
+                <button
+                  onClick={() => updateConfig('shadowsEnabled', !vizConfig.shadowsEnabled)}
+                  className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors ${ct.button}`}
+                >
+                  <span>Shadows (≤8k atoms)</span>
+                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.shadowsEnabled ? 'bg-blue-600' : 'bg-gray-600'}`}>
+                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.shadowsEnabled ? 'left-4' : 'left-0.5'}`} />
+                  </span>
+                </button>
+              </section>
+
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Appearance</h3>
+                <button
+                  onClick={toggleTheme}
+                  className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-xs font-medium transition-colors ${ct.button}`}
+                >
+                  {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+                  Switch to {theme === 'dark' ? 'light' : 'dark'} mode <kbd className={`px-1 rounded text-[9px] ${ct.chip}`}>T</kbd>
+                </button>
+                <div className="flex gap-2 flex-wrap pt-1">
+                  {(theme === 'dark'
+                    ? ['#151515', '#000000', '#10141c', '#1a1e26']
+                    : ['#f4f5f7', '#ffffff', '#eef2f7', '#e8ecef']
+                  ).map(color => (
                     <button
                       key={color}
                       onClick={() => updateConfig('backgroundColor', color)}
@@ -475,99 +682,251 @@ const App: React.FC = () => {
                       title={color}
                     />
                   ))}
-                  <div className="relative w-7 h-7 rounded-full overflow-hidden border-2 border-gray-600">
-                    <input 
-                      type="color" 
+                  <label className={`relative w-7 h-7 rounded-full overflow-hidden border-2 ${ct.chip} cursor-pointer`}>
+                    <input
+                      type="color"
                       value={vizConfig.backgroundColor}
-                      onChange={(e) => updateConfig('backgroundColor', e.target.value)}
+                      onChange={e => updateConfig('backgroundColor', e.target.value)}
                       className="absolute -top-2 -left-2 w-12 h-12 cursor-pointer p-0 border-0"
+                      title="Custom background"
                     />
-                  </div>
+                  </label>
                 </div>
-              </div>
-            </div>
+              </section>
+            </>
+          )}
+
+          {/* ============================== ELEMENTS TAB */}
+          {activeTab === 'elements' && (
+            <>
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Element types in structure</h3>
+                {atomTypeList.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {atomTypeList.map(typeInfo => {
+                      const meta = ELEMENT_DATA.find(el => el.symbol === typeInfo.element);
+                      return (
+                        <div key={typeInfo.id} className={`flex items-center justify-between p-2.5 rounded-lg border ${ct.card}`}>
+                          <div className="flex items-center gap-2.5">
+                            <div className="relative w-8 h-8 rounded-full overflow-hidden border border-gray-600 shrink-0">
+                              <input
+                                type="color"
+                                value={vizConfig.customColors[typeInfo.id] || DEFAULT_ATOM_COLOR}
+                                onChange={e => updateCustomColor(typeInfo.id, e.target.value)}
+                                className="absolute -top-2 -left-2 w-14 h-14 cursor-pointer p-0 border-0"
+                                title={`Pick color for type ${typeInfo.id}`}
+                              />
+                            </div>
+                            <div>
+                              <div className="text-[11px] font-bold">
+                                {meta ? `${meta.name} (${meta.symbol})` : typeInfo.label}
+                              </div>
+                              <div className={`text-[9px] ${ct.muted}`}>
+                                {meta
+                                  ? `Z=${meta.number} · ${meta.mass.toFixed(2)} u`
+                                  : `ID ${typeInfo.id}${typeInfo.mass ? ` · ${typeInfo.mass.toFixed(2)} u` : ''}`}
+                              </div>
+                            </div>
+                          </div>
+                          <div className={`px-2 py-0.5 rounded text-[10px] font-mono ${ct.chip}`}>
+                            ×{typeInfo.count}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className={`text-xs italic ${ct.muted}`}>Load a structure to edit its element colors.</p>
+                )}
+              </section>
+
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>CPK/Jmol reference</h3>
+                <p className={`text-[10px] ${ct.muted}`}>
+                  All 118 elements carry standard CPK/Jmol colors and are resolved by symbol from any
+                  supported format — LAMMPS mass tables, XYZ symbols, PDB element columns and CIF type symbols.
+                </p>
+              </section>
+            </>
           )}
         </div>
 
         {/* Footer */}
-        <div className={`p-3 border-t text-[10px] flex flex-col items-center text-center ${ct.sidebar} ${ct.textMuted}`}>
-          <span>Created by <span className="text-gray-300 font-medium">Shuvam Banerji Seal</span></span>
-          <a href="https://shuvam-banerji-seal.github.io/" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-400 mt-0.5">
-            shuvam-banerji-seal.github.io
-          </a>
-        </div>
-      </div>
+        <footer className={`px-3 py-2.5 border-t text-[10px] text-center flex items-center justify-between ${ct.divider}`}>
+          <span className={ct.muted}>
+            Created by <span className="font-medium">Shuvam Banerji Seal</span>
+          </span>
+          <button
+            onClick={() => setShowHelp(true)}
+            className={`flex items-center gap-1 px-2 py-1 rounded ${ct.button}`}
+            title="Keyboard shortcuts (H)"
+          >
+            <Keyboard size={12} /> Shortcuts
+          </button>
+        </footer>
+      </aside>
 
-      {/* Main Canvas Area */}
-      <div className={`flex-1 relative ${ct.bg}`}>
-        {/* Top controls bar */}
-        <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between pointer-events-none">
-          <div className="pointer-events-auto">
+      {/* ============================ MAIN CANVAS AREA */}
+      <main className={`flex-1 relative min-w-0 ${ct.bg}`}>
+        {/* Top-left controls */}
+        <div className="absolute top-3 left-3 right-3 z-10 flex items-start justify-between pointer-events-none">
+          <div className="pointer-events-auto flex gap-2">
             {!isSidebarOpen && (
-              <button 
+              <button
                 onClick={() => setIsSidebarOpen(true)}
-                className={`p-2 rounded-lg shadow-lg transition-colors ${
-                  theme === 'dark' ? 'bg-gray-800/90 hover:bg-gray-700 text-white' : 'bg-white/90 hover:bg-gray-100 text-gray-800'
-                } backdrop-blur`}
-                title="Open sidebar"
+                className={`p-2.5 rounded-lg shadow-lg backdrop-blur ${ct.sidebar}`}
+                title="Open sidebar (O)"
               >
-                <Menu size={20} />
+                <Menu size={18} />
               </button>
+            )}
+            {moleculeData && (
+              <div className={`px-3 py-2 rounded-lg shadow-lg text-[11px] font-mono hidden sm:block backdrop-blur ${ct.card}`}>
+                {moleculeData.atoms.length.toLocaleString()} atoms
+                {moleculeData.bonds.length > 0 && ` · ${moleculeData.bonds.length.toLocaleString()} bonds`}
+                {moleculeData.box && ' · cell'}
+              </div>
             )}
           </div>
           <div className="pointer-events-auto flex gap-2">
-            {isSidebarOpen && !isMobile && (
-              <button 
-                onClick={() => setIsSidebarOpen(false)}
-                className={`p-2 rounded-lg shadow-lg transition-colors ${
-                  theme === 'dark' ? 'bg-gray-800/90 hover:bg-gray-700 text-white' : 'bg-white/90 hover:bg-gray-100 text-gray-800'
-                } backdrop-blur`}
-                title="Hide sidebar"
-              >
-                <X size={20} />
-              </button>
-            )}
+            <button
+              onClick={() => emitCameraCommand({ type: 'zoom', delta: 1 })}
+              className={`p-2.5 rounded-lg shadow-lg backdrop-blur ${ct.sidebar}`}
+              title="Zoom in (+)"
+            >
+              <ZoomIn size={18} />
+            </button>
+            <button
+              onClick={() => emitCameraCommand({ type: 'zoom', delta: -1 })}
+              className={`p-2.5 rounded-lg shadow-lg backdrop-blur ${ct.sidebar}`}
+              title="Zoom out (−)"
+            >
+              <ZoomOut size={18} />
+            </button>
+            <button
+              onClick={() => setShowHelp(true)}
+              className={`p-2.5 rounded-lg shadow-lg backdrop-blur ${ct.sidebar}`}
+              title="Keyboard shortcuts (H)"
+            >
+              <HelpCircle size={18} />
+            </button>
           </div>
         </div>
 
-        {/* Bottom controls */}
-        <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex gap-3 px-5 py-2.5 rounded-full border shadow-2xl backdrop-blur ${
-          theme === 'dark' ? 'bg-gray-900/80 border-gray-700/50' : 'bg-white/80 border-gray-200'
+        {/* Bottom toolbar */}
+        <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 px-2 py-1.5 rounded-full border shadow-2xl backdrop-blur ${
+          theme === 'dark' ? 'bg-[#16191d]/90 border-gray-700/50' : 'bg-white/90 border-gray-200'
         }`}>
-          <button 
-            onClick={() => setAutoRotate(!autoRotate)}
-            className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${autoRotate ? 'text-blue-400' : `${ct.textMuted} hover:text-blue-300`}`}
+          <button
+            onClick={() => setAutoRotate(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium transition-colors ${
+              autoRotate ? 'text-blue-400' : `${ct.muted}`
+            }`}
+            title="Auto-rotate (Space)"
           >
             {autoRotate ? <Pause size={16} /> : <Play size={16} />}
-            <span className="hidden sm:inline">Auto-Rotate</span>
+            <span className="hidden sm:inline">Rotate</span>
           </button>
-          <div className={`w-px ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
           <button
-            onClick={() => {
-              const canvas = document.querySelector('canvas');
-              if (canvas) {
-                const link = document.createElement('a');
-                link.download = 'molecule3d-screenshot.png';
-                link.href = canvas.toDataURL('image/png');
-                link.click();
-              }
-            }}
-            className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${ct.textMuted} hover:text-blue-300`}
+            onClick={() => emitCameraCommand({ type: 'fit' })}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium ${ct.muted}`}
+            title="Fit view (R)"
+          >
+            <Maximize2 size={16} />
+            <span className="hidden sm:inline">Fit</span>
+          </button>
+          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+          <button
+            onClick={() => updateConfig('showBox', !vizConfig.showBox)}
+            disabled={!moleculeData?.box}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium disabled:opacity-30 ${
+              vizConfig.showBox ? 'text-blue-400' : ct.muted
+            }`}
+            title="Simulation box (X)"
+          >
+            <Box size={16} />
+            <span className="hidden sm:inline">Box</span>
+          </button>
+          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+          <button
+            onClick={() => updateConfig('showLabels', !vizConfig.showLabels)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium ${
+              vizConfig.showLabels ? 'text-blue-400' : ct.muted
+            }`}
+            title="Element labels (L)"
+          >
+            <Layers size={16} />
+            <span className="hidden sm:inline">Labels</span>
+          </button>
+          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+          <button
+            onClick={doScreenshot}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium ${ct.muted}`}
+            title="Screenshot (S)"
           >
             <Camera size={16} />
-            <span className="hidden sm:inline">Screenshot</span>
+            <span className="hidden sm:inline">Shot</span>
           </button>
         </div>
+
+        {/* Hint for first-time users */}
+        {moleculeData && (
+          <div className={`absolute bottom-20 sm:bottom-16 left-1/2 -translate-x-1/2 z-[5] text-[10px] px-3 py-1 rounded-full ${ct.muted}`}>
+            Press <kbd className={`px-1 rounded ${ct.chip}`}>H</kbd> for keyboard shortcuts · drag & drop files anywhere
+          </div>
+        )}
 
         {moleculeData ? (
           <MoleculeCanvas data={moleculeData} autoRotate={autoRotate} config={vizConfig} />
         ) : (
-          <div className={`w-full h-full flex flex-col items-center justify-center ${ct.textMuted}`}>
-            <div className="w-16 h-16 border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin mb-4"></div>
-            <p>Waiting for data...</p>
+          <div className={`w-full h-full flex flex-col items-center justify-center ${ct.muted}`}>
+            <div className="w-14 h-14 border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin mb-4" />
+            <p>Waiting for structure data…</p>
           </div>
         )}
-      </div>
+      </main>
+
+      {/* ============================ HELP OVERLAY */}
+      {showHelp && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setShowHelp(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Keyboard shortcuts"
+        >
+          <div
+            className={`max-w-lg w-full rounded-2xl border shadow-2xl p-6 space-y-4 max-h-[85vh] overflow-y-auto ${ct.card}`}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold flex items-center gap-2">
+                <Keyboard size={18} /> Keyboard shortcuts
+              </h2>
+              <button onClick={() => setShowHelp(false)} className={`p-1.5 rounded-lg ${ct.button}`}>
+                <X size={16} />
+              </button>
+            </div>
+            <ul className="divide-y divide-transparent">
+              {SHORTCUT_CATALOG.map(sc => (
+                <li key={sc.keys} className="flex items-center justify-between py-1.5 text-xs">
+                  <kbd className={`px-2 py-1 rounded-md font-mono text-[11px] ${ct.chip}`}>{sc.keys}</kbd>
+                  <span className={`${ct.muted} text-right`}>{sc.action}</span>
+                </li>
+              ))}
+            </ul>
+            <p className={`text-[10px] ${ct.muted} flex items-center gap-1.5`}>
+              <Settings size={11} /> Shortcuts are ignored while typing in the paste box.
+            </p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => { setShowHelp(false); doScreenshot(); }} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${ct.accent}`}>
+                <RotateCw size={12} className="inline mr-1" /> Take screenshot now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

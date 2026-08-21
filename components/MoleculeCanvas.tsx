@@ -1,11 +1,14 @@
-
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, ContactShadows, Environment } from '@react-three/drei';
-import { MoleculeData, VisualizationConfig } from '../types';
-import InstancedAtomMesh from './InstancedAtomMesh';
-import BondMesh from './BondMesh';
 import * as THREE from 'three';
+import { MoleculeData, VisualizationConfig, Atom } from '../types';
+import { ELEMENT_DATA } from '../constants';
+import InstancedAtomMesh from './InstancedAtomMesh';
+import InstancedBondMesh from './InstancedBondMesh';
+import SimulationBox from './SimulationBox';
+import LightingRig from './LightingRig';
+import CameraRig from './CameraRig';
+import AtomLabels from './AtomLabels';
 
 interface MoleculeCanvasProps {
   data: MoleculeData;
@@ -13,86 +16,167 @@ interface MoleculeCanvasProps {
   config: VisualizationConfig;
 }
 
-const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({ data, autoRotate, config }) => {
-  const { atoms, bonds, center } = data;
+interface HoverInfo {
+  atom: Atom;
+  x: number;
+  y: number;
+}
 
-  // Create a map for fast atom lookup by ID when building bonds
+/**
+ * Scene sizing: prefers the simulation box extent when present (periodic
+ * systems often have atoms clustered away from box walls).
+ */
+const sceneExtent = (data: MoleculeData): { radius: number; center: THREE.Vector3 } => {
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
+  const consider = (x: number, y: number, z: number) => {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+  };
+
+  if (data.box) {
+    // include tilted corners
+    const lx = data.box.xhi - data.box.xlo;
+    const ly = data.box.yhi - data.box.ylo;
+    const lz = data.box.zhi - data.box.zlo;
+    const xy = data.box.xy ?? 0, xz = data.box.xz ?? 0, yz = data.box.yz ?? 0;
+    for (let i = 0; i < 2; i++)
+      for (let j = 0; j < 2; j++)
+        for (let k = 0; k < 2; k++) {
+          consider(
+            data.box.xlo + i * lx + j * xy + k * xz,
+            data.box.ylo + j * ly + k * yz,
+            data.box.zlo + k * lz
+          );
+        }
+  }
+  for (const a of data.atoms) consider(a.x, a.y, a.z);
+
+  if (!Number.isFinite(minX)) {
+    return { radius: 10, center: new THREE.Vector3() };
+  }
+
+  const size = new THREE.Vector3(maxX - minX, maxY - minY, maxZ - minZ);
+  const center = new THREE.Vector3((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
+  return { radius: Math.max(size.length() / 2, 5), center };
+};
+
+const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({ data, autoRotate, config }) => {
+  const [hover, setHover] = useState<HoverInfo | null>(null);
+
+  const { atoms, bonds } = data;
+
   const atomMap = useMemo(() => {
-    const map = new Map<number, typeof atoms[0]>();
+    const map = new Map<number, Atom>();
     atoms.forEach(atom => map.set(atom.id, atom));
     return map;
   }, [atoms]);
 
-  // Center the scene
-  const groupPosition = useMemo(() => {
-    return new THREE.Vector3(-center.x, -center.y, -center.z);
-  }, [center]);
+  // Center the molecule group at the origin so camera math is trivial.
+  const groupPosition = useMemo(
+    () => new THREE.Vector3(-data.center.x, -data.center.y, -data.center.z),
+    [data.center]
+  );
 
-  // Calculate camera distance based on molecule size
-  const cameraDistance = useMemo(() => {
-    const dx = data.max.x - data.min.x;
-    const dy = data.max.y - data.min.y;
-    const dz = data.max.z - data.min.z;
-    const maxSpan = Math.max(dx, dy, dz, 10);
-    return maxSpan * 1.5;
-  }, [data]);
+  const { radius: boundingRadius } = useMemo(() => sceneExtent(data), [data]);
 
-  // Show bonds based on config (hide in space-fill mode by default)
-  const shouldShowBonds = config.showBonds && config.visualizationMode !== 'space-fill';
+  // Periodic-image guard: drop explicit bonds that span nearly the whole cell.
+  const maxBondLength = useMemo(() => {
+    if (!data.box) return 8;
+    const lx = data.box.xhi - data.box.xlo;
+    const ly = data.box.yhi - data.box.ylo;
+    const lz = data.box.zhi - data.box.zlo;
+    return Math.max(lx, ly, lz) * 0.9;
+  }, [data.box]);
+
+  // Adaptive device pixel ratio — huge systems render below native res.
+  const dpr: [number, number] = useMemo(() => {
+    if (atoms.length > 20000) return [0.75, 1.25];
+    if (atoms.length > 5000) return [1, 1.5];
+    return [1, 2];
+  }, [atoms.length]);
+
+  const shadowsEnabled = config.shadowsEnabled && atoms.length <= 8000;
+
+  const shouldShowBonds =
+    config.showBonds &&
+    config.visualizationMode !== 'space-fill' &&
+    bonds.length > 0;
+
+  const handleHover = useCallback(
+    (atom: Atom | null, screenX: number, screenY: number) => {
+      setHover(atom ? { atom, x: screenX, y: screenY } : null);
+    },
+    []
+  );
+
+  const hoverMeta = hover
+    ? ELEMENT_DATA.find(e => e.number === hover.atom.type)
+    : undefined;
 
   return (
-    <Canvas
-      shadows
-      camera={{ position: [0, 0, cameraDistance], fov: 40 }}
-      dpr={[1, 2]}
-      className="w-full h-full"
-      gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
-    >
-      {/* Dynamic Background Color */}
-      <color attach="background" args={[config.backgroundColor]} />
-      
-      {/* Environment lighting */}
-      <Environment preset="studio" />
+    <>
+      <Canvas
+        shadows={shadowsEnabled}
+        camera={{ position: [boundingRadius, boundingRadius * 0.8, boundingRadius], fov: config.fov }}
+        dpr={dpr}
+        className="w-full h-full outline-none"
+        gl={{
+          antialias: atoms.length <= 20000,
+          alpha: false,
+          powerPreference: 'high-performance',
+          stencil: false,
+          preserveDrawingBuffer: true, // reliable canvas.toDataURL screenshots
+        }}
+      >
+        <color attach="background" args={[config.backgroundColor]} />
 
-      {/* Lighting Setup */}
-      <ambientLight intensity={0.6} />
-      <directionalLight 
-        position={[10, 10, 10]} 
-        intensity={config.materialType === 'toon' ? 1.0 : 1.5} 
-        castShadow 
-        shadow-bias={-0.0001}
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
-      />
-      <spotLight position={[-10, 0, -10]} intensity={1.5} angle={0.5} penumbra={1} color="#4040ff" />
-      <pointLight position={[-10, -10, -10]} intensity={0.5} color="#ffffff" />
+        <LightingRig preset={config.lightingPreset} shadows={shadowsEnabled} />
 
-      <group position={groupPosition}>
-        {/* Use instanced rendering for atoms */}
-        <InstancedAtomMesh atoms={atoms} config={config} />
+        <group position={groupPosition}>
+          {config.showAxes && <axesHelper args={[boundingRadius * 1.2]} />}
+          <InstancedAtomMesh atoms={atoms} config={config} onHover={handleHover} />
+          {shouldShowBonds && (
+            <InstancedBondMesh
+              bonds={bonds}
+              atomMap={atomMap}
+              config={config}
+              maxBondLength={maxBondLength}
+            />
+          )}
+          {config.showBox && data.box && (
+            <SimulationBox box={data.box} showFaces={false} />
+          )}
+          <AtomLabels atoms={atoms} config={config} />
+        </group>
 
-        {shouldShowBonds && bonds.map((bond) => {
-          const atom1 = atomMap.get(bond.atom1Id);
-          const atom2 = atomMap.get(bond.atom2Id);
-          
-          if (atom1 && atom2) {
-            return <BondMesh key={`bond-${bond.id}`} startAtom={atom1} endAtom={atom2} config={config} />;
-          }
-          return null;
-        })}
-      </group>
+        <CameraRig
+          boundingRadius={boundingRadius}
+          autoRotate={autoRotate}
+          autoRotateSpeed={config.autoRotateSpeed}
+          fov={config.fov}
+        />
+      </Canvas>
 
-      <ContactShadows 
-        opacity={0.4} 
-        scale={50} 
-        blur={2} 
-        far={10} 
-        resolution={512} 
-        color="#000000" 
-      />
-      
-      <OrbitControls autoRotate={autoRotate} autoRotateSpeed={0.5} makeDefault />
-    </Canvas>
+      {/* Hover tooltip — DOM overlay, no in-scene text cost */}
+      {hover && (
+        <div
+          className="pointer-events-none fixed z-50 px-3 py-2 rounded-lg border border-gray-600/60 bg-gray-900/95 text-gray-100 text-xs shadow-xl"
+          style={{ left: hover.x + 14, top: hover.y + 14 }}
+          role="status"
+        >
+          <div className="font-bold">
+            {hoverMeta ? `${hoverMeta.name} (${hoverMeta.symbol})` : `Type ${hover.atom.type}`}
+          </div>
+          <div className="opacity-70 font-mono">
+            #{hover.atom.id} · Z={hover.atom.type} · {hover.atom.charge !== 0 ? `q=${hover.atom.charge.toFixed(2)} · ` : ''}
+            {`(${hover.atom.x.toFixed(2)}, ${hover.atom.y.toFixed(2)}, ${hover.atom.z.toFixed(2)})`}
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

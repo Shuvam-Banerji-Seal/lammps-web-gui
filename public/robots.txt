@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://shuvam-banerji-seal.github.io/lammps_data_web_viewer/sitemap.xml

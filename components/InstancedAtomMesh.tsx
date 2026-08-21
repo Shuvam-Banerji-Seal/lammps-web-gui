@@ -1,98 +1,110 @@
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useMemo, useEffect, useState } from 'react';
 import * as THREE from 'three';
+import { ThreeEvent } from '@react-three/fiber';
 import { Atom, VisualizationConfig } from '../types';
-import { ATOM_COLORS, DEFAULT_ATOM_COLOR, ELEMENT_RADII, ELEMENT_DATA } from '../constants';
+import { DEFAULT_ATOM_COLOR, ELEMENT_RADII, ELEMENT_DATA } from '../constants';
 
 interface InstancedAtomMeshProps {
   atoms: Atom[];
   config: VisualizationConfig;
+  onHover?: (atom: Atom | null, screenX: number, screenY: number) => void;
 }
 
 /**
- * Optimized instanced rendering for atoms. Uses THREE.InstancedMesh
- * for dramatically better performance with large datasets.
+ * Optimized instanced rendering for atoms — one draw call regardless of
+ * system size. Sphere tessellation adapts to system size:
+ *   <=1k atoms -> 32 segs | <=10k -> 20 | >10k -> 12
  */
-const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config }) => {
+const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, onHover }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const tempObject = useMemo(() => new THREE.Object3D(), []);
-  const tempColor = useMemo(() => new THREE.Color(), []);
+  const [hoverId, setHoverId] = useState<number | null>(null);
 
-  // Group atoms by color to batch materials
   const geometry = useMemo(() => {
-    const baseSegments = atoms.length > 500 ? 16 : 32;
-    return new THREE.SphereGeometry(1, baseSegments, baseSegments);
+    const baseSegments =
+      atoms.length > 10000 ? 12 : atoms.length > 1000 ? 20 : 32;
+    return new THREE.SphereGeometry(1, baseSegments, Math.max(8, baseSegments / 2));
   }, [atoms.length]);
 
-  // Compute scale for each atom based on visualization mode
   const getAtomRadius = (atom: Atom): number => {
     if (config.visualizationMode === 'space-fill') {
-      // Use van der Waals radius
-      const elem = ELEMENT_DATA.find(e => e.number === atom.type);
-      const atomicNum = elem?.number ?? atom.type;
-      const vdwRadius = ELEMENT_RADII[atomicNum] ?? 1.7;
+      // van der Waals radius scaled down slightly so molecules stay readable
+      const vdwRadius = ELEMENT_RADII[atom.type] ?? 1.7;
       return vdwRadius * config.atomScale * 0.5;
     }
     if (config.visualizationMode === 'wireframe') {
-      return 0.2 * config.atomScale;
+      return 0.16 * config.atomScale;
+    }
+    if (config.visualizationMode === 'licorice') {
+      return 0.14 * config.atomScale;
     }
     // ball-and-stick
     return 0.45 * config.atomScale;
   };
 
-  const getAtomColor = (atom: Atom): string => {
-    return config.customColors[atom.type] || ATOM_COLORS[atom.type] || DEFAULT_ATOM_COLOR;
-  };
-
   useEffect(() => {
-    if (!meshRef.current) return;
-
     const mesh = meshRef.current;
+    if (!mesh) return;
+
+    const dummy = new THREE.Object3D();
+    const color = new THREE.Color();
 
     for (let i = 0; i < atoms.length; i++) {
       const atom = atoms[i];
-      const radius = getAtomRadius(atom);
+      dummy.position.set(atom.x, atom.y, atom.z);
+      dummy.scale.setScalar(getAtomRadius(atom));
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
 
-      tempObject.position.set(atom.x, atom.y, atom.z);
-      tempObject.scale.setScalar(radius);
-      tempObject.updateMatrix();
-      mesh.setMatrixAt(i, tempObject.matrix);
-
-      tempColor.set(getAtomColor(atom));
-      mesh.setColorAt(i, tempColor);
+      color.set(config.customColors[atom.type] || DEFAULT_ATOM_COLOR);
+      mesh.setColorAt(i, color);
     }
-
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [atoms, config]);
+  }, [atoms, config]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!onHover) return;
+    e.stopPropagation();
+    const idx = e.instanceId;
+    if (idx !== undefined && idx !== hoverId) {
+      setHoverId(idx);
+    }
+    onHover(idx !== undefined ? atoms[idx] : null, e.nativeEvent.clientX, e.nativeEvent.clientY);
+  };
+
+  const handlePointerOut = () => {
+    setHoverId(null);
+    onHover?.(null, 0, 0);
+  };
 
   if (atoms.length === 0) return null;
 
   return (
-    <instancedMesh ref={meshRef} args={[geometry, undefined, atoms.length]} castShadow receiveShadow>
+    <instancedMesh
+      key={atoms.length}
+      ref={meshRef}
+      args={[geometry, undefined, atoms.length]}
+      castShadow={config.shadowsEnabled}
+      receiveShadow={config.shadowsEnabled}
+      onPointerMove={handlePointerMove}
+      onPointerOut={handlePointerOut}
+    >
       {config.materialType === 'realistic' && (
         <meshPhysicalMaterial
-          vertexColors
           roughness={0.15}
-          metalness={0.2}
+          metalness={0.05}
           clearcoat={1.0}
-          clearcoatRoughness={0.1}
-          reflectivity={1.0}
-          envMapIntensity={1.5}
+          clearcoatRoughness={0.15}
+          envMapIntensity={1.1}
         />
       )}
       {config.materialType === 'plastic' && (
-        <meshStandardMaterial
-          vertexColors
-          roughness={0.4}
-          metalness={0.0}
-          envMapIntensity={0.8}
-        />
+        <meshStandardMaterial roughness={0.4} metalness={0.0} envMapIntensity={0.7} />
       )}
-      {config.materialType === 'toon' && (
-        <meshToonMaterial
-          vertexColors
-        />
+      {config.materialType === 'metallic' && (
+        <meshStandardMaterial roughness={0.22} metalness={0.9} envMapIntensity={1.3} />
       )}
+      {config.materialType === 'toon' && <meshToonMaterial />}
     </instancedMesh>
   );
 };

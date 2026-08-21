@@ -1,0 +1,23 @@
+HEADER    MOLECULE GEOMETRY DEMO                  22-AUG-26   NONE
+TITLE     BENZENE (D6H) — COMPUTED IDEAL GEOMETRY FOR M3D DEMO
+REMARK    C-C = 1.397 A, C-H = 1.084 A, PLANAR HEXAGON
+ATOM      1  C1  BEN A   1       1.397   0.000   0.000  1.00  0.00           C
+ATOM      2  C2  BEN A   1       0.699   1.210   0.000  1.00  0.00           C
+ATOM      3  C3  BEN A   1      -0.699   1.210   0.000  1.00  0.00           C
+ATOM      4  C4  BEN A   1      -1.397   0.000   0.000  1.00  0.00           C
+ATOM      5  C5  BEN A   1      -0.699  -1.210   0.000  1.00  0.00           C
+ATOM      6  C6  BEN A   1       0.699  -1.210   0.000  1.00  0.00           C
+ATOM      7  H1  BEN A   1       2.481   0.000   0.000  1.00  0.00           H
+ATOM      8  H2  BEN A   1       1.241   2.148   0.000  1.00  0.00           H
+ATOM      9  H3  BEN A   1      -1.241   2.148   0.000  1.00  0.00           H
+ATOM     10  H4  BEN A   1      -2.481   0.000   0.000  1.00  0.00           H
+ATOM     11  H5  BEN A   1      -1.241  -2.148   0.000  1.00  0.00           H
+ATOM     12  H6  BEN A   1       1.241  -2.148   0.000  1.00  0.00           H
+TER      13      BEN A   1
+CONECT    1    2    7
+CONECT    2    3    8
+CONECT    3    4    9
+CONECT    4    5   10
+CONECT    5    6   11
+CONECT    6    1   12
+END

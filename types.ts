@@ -18,9 +18,17 @@ export interface Bond {
 export interface AtomTypeInfo {
   id: number;
   mass: number;
-  element: string; // e.g., "C", "H", or "Type 1"
+  element: string; // e.g., "C", "H", or "X" if unknown
   label: string;   // Display name
   count: number;
+}
+
+/** Simulation box boundaries. Tilt factors present for triclinic cells. */
+export interface BoxBounds {
+  xlo: number; xhi: number;
+  ylo: number; yhi: number;
+  zlo: number; zhi: number;
+  xy?: number; xz?: number; yz?: number;
 }
 
 export interface MoleculeData {
@@ -30,6 +38,8 @@ export interface MoleculeData {
   min: { x: number; y: number; z: number };
   max: { x: number; y: number; z: number };
   center: { x: number; y: number; z: number };
+  /** Simulation box parsed from LAMMPS box bounds / PDB CRYST1 / CIF cell. Optional for backward compat. */
+  box?: BoxBounds;
 }
 
 export enum ParseSection {
@@ -42,11 +52,15 @@ export enum ParseSection {
   IMPROPERS
 }
 
-export type MaterialType = 'realistic' | 'plastic' | 'toon';
+export type MaterialType = 'realistic' | 'plastic' | 'toon' | 'metallic';
 
-export type VisualizationMode = 'ball-and-stick' | 'space-fill' | 'wireframe';
+export type VisualizationMode = 'ball-and-stick' | 'space-fill' | 'wireframe' | 'licorice';
 
-export type FileFormat = 'lammps' | 'xyz' | 'pdb';
+export type FileFormat = 'lammps' | 'xyz' | 'pdb' | 'cif';
+
+export type LightingPreset = 'studio' | 'lab' | 'outdoor' | 'space' | 'soft';
+
+export type CameraPreset = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso';
 
 export interface VisualizationConfig {
   atomScale: number;
@@ -56,26 +70,11 @@ export interface VisualizationConfig {
   showBonds: boolean;
   customColors: Record<number, string>;
   visualizationMode: VisualizationMode;
-}
-
-// Fix for React Three Fiber intrinsic elements in TypeScript
-// These elements are provided by @react-three/fiber but may not be recognized
-// by TypeScript's JSX.IntrinsicElements interface in all environments.
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      mesh: any;
-      instancedMesh: any;
-      group: any;
-      ambientLight: any;
-      directionalLight: any;
-      spotLight: any;
-      pointLight: any;
-      meshPhysicalMaterial: any;
-      meshStandardMaterial: any;
-      meshToonMaterial: any;
-      cylinderGeometry: any;
-      color: any;
-    }
-  }
+  lightingPreset: LightingPreset;
+  showBox: boolean;
+  showAxes: boolean;
+  showLabels: boolean;
+  shadowsEnabled: boolean;
+  autoRotateSpeed: number;
+  fov: number;
 }

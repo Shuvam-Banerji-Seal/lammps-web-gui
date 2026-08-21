@@ -53,11 +53,146 @@ describe('LAMMPS Data Parser', () => {
     });
   });
 
-  it('should compute bounding box and center', () => {
+  it('should compute bounding box and center (box center preferred when box present)', () => {
     const result = parseDataFile(SAMPLE_LAMMPS_DATA);
     expect(result.min).toEqual({ x: 0, y: 0, z: 0 });
     expect(result.max).toEqual({ x: 1, y: 1, z: 1 });
-    expect(result.center).toEqual({ x: 0.5, y: 0.5, z: 0.5 });
+    // Box is [-5,5]^3 -> box center (0,0,0) wins over atom-bounds center (0.5,0.5,0.5)
+    expect(result.center).toEqual({ x: 0, y: 0, z: 0 });
+    expect(result.box).toEqual({ xlo: -5, xhi: 5, ylo: -5, yhi: 5, zlo: -5, zhi: 5 });
+  });
+
+  it('should fall back to atom-bounds center when no box bounds exist', () => {
+    const data = `# no box
+2 atoms
+
+Masses
+
+1 12.011 # C
+
+Atoms # full
+
+1 1 1 0.0 0.0 0.0 0.0
+2 1 1 0.0 2.0 4.0 6.0
+`;
+    const result = parseDataFile(data);
+    expect(result.box).toBeUndefined();
+    expect(result.center).toEqual({ x: 1, y: 2, z: 3 });
+  });
+
+  it('should parse triclinic tilt factors', () => {
+    const data = `# triclinic
+2 atoms
+
+-5.0 5.0 xlo xhi
+-5.0 5.0 ylo yhi
+-5.0 5.0 zlo zhi
+0.0 1.0 0.5 xy xz yz
+
+Masses
+
+1 12.011 # C
+
+Atoms # full
+
+1 1 1 0.0 0.0 0.0 0.0
+2 1 1 0.0 1.0 1.0 1.0
+`;
+    const result = parseDataFile(data);
+    expect(result.box).toBeDefined();
+    expect(result.box!.xy).toBe(0.0);
+    expect(result.box!.xz).toBe(1.0);
+    expect(result.box!.yz).toBe(0.5);
+  });
+
+  it('should support atomic style (id type x y z)', () => {
+    const data = `# atomic style
+2 atoms
+
+Masses
+
+1 12.011 # C
+
+Atoms # atomic
+
+1 1 1.0 2.0 3.0
+2 1 -1.0 -2.0 -3.0
+`;
+    const result = parseDataFile(data);
+    expect(result.atoms).toHaveLength(2);
+    expect(result.atoms[0]).toMatchObject({ id: 1, type: 1, x: 1.0, y: 2.0, z: 3.0 });
+    expect(result.atoms[1]).toMatchObject({ id: 2, type: 1, x: -1.0, y: -2.0, z: -3.0 });
+  });
+
+  it('should support charge style (id type q x y z)', () => {
+    const data = `# charge style
+2 atoms
+
+Masses
+
+1 15.999 # O
+
+Atoms # charge
+
+1 1 -0.8 1.0 0.0 0.0
+2 1 0.4 2.0 1.0 1.0
+`;
+    const result = parseDataFile(data);
+    expect(result.atoms).toHaveLength(2);
+    expect(result.atoms[0]).toMatchObject({ id: 1, type: 1, charge: -0.8, x: 1.0 });
+    expect(result.atoms[1]).toMatchObject({ id: 2, type: 1, charge: 0.4 });
+  });
+
+  it('should support molecular style (id mol type x y z)', () => {
+    const data = `# molecular style
+3 atoms
+
+Masses
+
+1 12.011 # C
+
+Atoms # molecular
+
+1 1 1 0.0 0.0 0.0
+2 1 1 1.5 0.0 0.0
+3 2 1 0.0 1.5 0.0
+`;
+    const result = parseDataFile(data);
+    expect(result.atoms).toHaveLength(3);
+    expect(result.atoms[2]).toMatchObject({ id: 3, molId: 2, type: 1, x: 0.0, y: 1.5, z: 0.0 });
+  });
+
+  it('should auto-detect style per row when header lacks a style comment', () => {
+    const data = `# no style comment
+2 atoms
+
+Masses
+
+1 12.011 # C
+
+Atoms
+
+1 1 6 0.0 1.0 2.0 3.0
+`;
+    const result = parseDataFile(data);
+    expect(result.atoms).toHaveLength(1);
+    expect(result.atoms[0]).toMatchObject({ id: 1, molId: 1, type: 6, x: 1.0, y: 2.0, z: 3.0 });
+  });
+
+  it('should resolve element from full element-name comments', () => {
+    const data = `# name comment
+1 atoms
+
+Masses
+
+1 26.982 # Aluminium
+
+Atoms # full
+
+1 1 1 0.0 0.0 0.0 0.0
+`;
+    const result = parseDataFile(data);
+    expect(result.atomTypes[1].element).toBe('Al');
   });
 
   it('should identify atom types from masses', () => {

@@ -366,3 +366,61 @@ export const ELEMENT_DATA: { mass: number; symbol: string; name: string; number:
   { mass: 294.0,   symbol: 'Ts', name: 'Tennessine',    number: 117 },
   { mass: 294.0,   symbol: 'Og', name: 'Oganesson',     number: 118 },
 ];
+
+/**
+ * Covalent radii in Angstroms (Cordero et al., Dalton Trans., 2008).
+ * Used for chemistry-aware bond inference from coordinates alone
+ * (XYZ / CIF / bond-less LAMMPS files). Values for Z > 96 are estimates.
+ * [HIGH-CONF: standard published reference table]
+ */
+export const COVALENT_RADII: Record<number, number> = {
+  1: 0.31,   2: 0.28,   3: 1.28,   4: 0.96,   5: 0.84,
+  6: 0.76,   7: 0.71,   8: 0.66,   9: 0.57,   10: 0.58,
+  11: 1.66,  12: 1.41,  13: 1.21,  14: 1.11,  15: 1.07,
+  16: 1.05,  17: 1.02,  18: 1.06,  19: 2.03,  20: 1.76,
+  21: 1.70,  22: 1.60,  23: 1.53,  24: 1.39,  25: 1.39,
+  26: 1.32,  27: 1.26,  28: 1.24,  29: 1.32,  30: 1.22,
+  31: 1.22,  32: 1.20,  33: 1.19,  34: 1.20,  35: 1.20,
+  36: 1.16,  37: 2.20,  38: 1.95,  39: 1.90,  40: 1.75,
+  41: 1.64,  42: 1.54,  43: 1.47,  44: 1.46,  45: 1.42,
+  46: 1.39,  47: 1.45,  48: 1.44,  49: 1.42,  50: 1.39,
+  51: 1.39,  52: 1.38,  53: 1.39,  54: 1.40,  55: 2.44,
+  56: 2.15,  57: 2.07,  58: 2.04,  59: 2.03,  60: 2.01,
+  61: 1.99,  62: 1.98,  63: 1.98,  64: 1.96,  65: 1.94,
+  66: 1.92,  67: 1.92,  68: 1.89,  69: 1.90,  70: 1.87,
+  71: 1.87,  72: 1.75,  73: 1.70,  74: 1.62,  75: 1.51,
+  76: 1.44,  77: 1.41,  78: 1.36,  79: 1.36,  80: 1.32,
+  81: 1.45,  82: 1.46,  83: 1.48,  84: 1.40,  85: 1.50,
+  86: 1.50,  87: 2.60,  88: 2.21,  89: 2.15,  90: 2.06,
+  91: 2.00,  92: 1.96,  93: 1.90,  94: 1.87,  95: 1.80,
+  96: 1.69,
+  // Z > 96: no measured covalent radii — conservative estimates
+  ...Object.fromEntries(
+    Array.from({ length: 22 }, (_, i) => [97 + i, Math.max(1.5, 1.68 - i * 0.008)])
+  ),
+};
+
+/** Default covalent radius for unknown atomic numbers (Å). */
+export const DEFAULT_COVALENT_RADIUS = 1.5;
+
+/** Symbol (normalized) -> atomic number lookup built once at module load. */
+export const SYMBOL_TO_NUMBER: Readonly<Record<string, number>> = Object.freeze(
+  Object.fromEntries(ELEMENT_DATA.map(e => [e.symbol.toUpperCase(), e.number]))
+);
+
+/** Atomic number -> CPK/Jmol color hex string (same data as ATOM_COLORS). */
+export const ATOM_COLORS_BY_SYMBOL: Readonly<Record<string, string>> = Object.freeze(
+  Object.fromEntries(
+    ELEMENT_DATA.map(e => [e.symbol, ATOM_COLORS[e.number] ?? DEFAULT_ATOM_COLOR])
+  )
+);
+
+/**
+ * Resolve an element symbol token (any casing, e.g. "c", "C", "CL", "Cl")
+ * to its atomic number, or undefined if not a known element symbol.
+ */
+export const getAtomicNumberFromSymbol = (raw: string): number | undefined => {
+  if (!raw) return undefined;
+  const normalized = raw.trim().toUpperCase();
+  return SYMBOL_TO_NUMBER[normalized];
+};

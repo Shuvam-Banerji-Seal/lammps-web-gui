@@ -16,6 +16,14 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
 
 ---
 
+## 📸 Screenshots
+
+| Desktop | Simulation box (NaCl, CIF) |
+|---|---|
+| ![Desktop](docs/screenshots/app-desktop.png) | ![Box](docs/screenshots/simulation-box.png) |
+| **Keyboard shortcuts overlay** | **Mobile** |
+| ![Shortcuts](docs/screenshots/shortcuts-overlay.png) | ![Mobile](docs/screenshots/app-mobile.png) |
+
 ## ✨ Features
 
 - 🧊 **True 3D rendering** — depth-correct perspective view of atoms, bonds and the simulation cell, powered by three.js / React Three Fiber.

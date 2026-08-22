@@ -1,6 +1,6 @@
 {
   "name": "molecule3d",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
   "description": "High-performance 3D molecular structure visualizer for LAMMPS, XYZ, PDB and CIF files",
@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "audit": "npm audit --audit-level=high"
+    "audit": "npm audit --audit-level=high",
+    "check:size": "node scripts/check-bundle-size.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",

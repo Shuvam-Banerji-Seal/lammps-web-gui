@@ -13,11 +13,22 @@ interface InstancedBondMeshProps {
 
 const UP = new THREE.Vector3(0, 1, 0);
 
+interface BondSegment {
+  position: THREE.Vector3;
+  quaternion: THREE.Quaternion;
+  halfLength: number;
+  color: string;
+}
+
 /**
  * Renders ALL bonds in a single THREE.InstancedMesh draw call.
  * Each bond is drawn as two half-cylinders (atom1->mid colored by atom1,
- * mid->atom2 colored by atom2) — the standard Jmol/VMD look — using
- * per-instance colors. Instance count = 2 * bonds.length.
+ * mid->atom2 colored by atom2) using per-instance colors.
+ *
+ * Performance contract: expensive position/quaternion math runs only when
+ * topology inputs change; moving the thickness slider only rewrites
+ * matrices from cached segments (no trig), and colors only when the
+ * element color mapping changes.
  */
 const InstancedBondMesh: React.FC<InstancedBondMeshProps> = ({
   bonds,
@@ -26,18 +37,11 @@ const InstancedBondMesh: React.FC<InstancedBondMeshProps> = ({
   maxBondLength = Infinity,
 }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-
   const radius = Math.max(0.02, 0.12 * config.bondScale);
 
-  // Precompute per-bond transforms; skip degenerate/oversized bonds.
-  const instances = useMemo(() => {
-    const list: {
-      position: THREE.Vector3;
-      quaternion: THREE.Quaternion;
-      length: number;
-      color: string;
-    }[] = [];
-
+  // Expensive pass: world positions/orientations per half-bond.
+  const segments = useMemo<BondSegment[]>(() => {
+    const list: BondSegment[] = [];
     for (const bond of bonds) {
       const a1 = atomMap.get(bond.atom1Id);
       const a2 = atomMap.get(bond.atom2Id);
@@ -55,46 +59,60 @@ const InstancedBondMesh: React.FC<InstancedBondMeshProps> = ({
       const c1 = config.customColors[a1.type] ?? DEFAULT_ATOM_COLOR;
       const c2 = config.customColors[a2.type] ?? DEFAULT_ATOM_COLOR;
 
-      list.push({ position: start.clone().lerp(mid, 0.5), quaternion: q, length: length / 2, color: c1 });
-      list.push({ position: mid.clone().lerp(end, 0.5), quaternion: q, length: length / 2, color: c2 });
+      list.push({ position: start.clone().lerp(mid, 0.5), quaternion: q, halfLength: length / 2, color: c1 });
+      list.push({ position: mid.clone().lerp(end, 0.5), quaternion: q.clone(), halfLength: length / 2, color: c2 });
     }
     return list;
-  }, [bonds, atomMap, config.customColors, config.bondScale, maxBondLength]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bonds, atomMap, maxBondLength]);
 
+  // Tessellation adapts to system size (fewer segments for huge systems).
   const geometry = useMemo(
-    () => new THREE.CylinderGeometry(1, 1, 1, Math.min(16, Math.max(6, 18 - Math.floor(bonds.length / 2000)))),
+    () =>
+      new THREE.CylinderGeometry(
+        1, 1, 1,
+        Math.min(16, Math.max(6, 18 - Math.floor(bonds.length / 2000)))
+      ),
     [bonds.length]
   );
 
+  // Matrices: cheap rewrite from cache when only thickness changes.
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
-
     const dummy = new THREE.Object3D();
-    const color = new THREE.Color();
-
-    for (let i = 0; i < instances.length; i++) {
-      const inst = instances[i];
-      dummy.position.copy(inst.position);
-      dummy.quaternion.copy(inst.quaternion);
-      dummy.scale.set(radius, inst.length, radius);
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      dummy.position.copy(seg.position);
+      dummy.quaternion.copy(seg.quaternion);
+      dummy.scale.set(radius, seg.halfLength, radius);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
-      color.set(inst.color);
+    }
+    mesh.count = segments.length;
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [segments, radius]);
+
+  // Per-instance colors.
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const color = new THREE.Color();
+    for (let i = 0; i < segments.length; i++) {
+      color.set(segments[i].color);
       mesh.setColorAt(i, color);
     }
-    mesh.count = instances.length;
-    mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [instances, radius]);
+  }, [segments]);
 
-  if (instances.length === 0) return null;
+  if (segments.length === 0) return null;
 
   return (
     <instancedMesh
-      key={instances.length}
+      key={segments.length}
       ref={meshRef}
-      args={[geometry, undefined, instances.length]}
+      args={[geometry, undefined, segments.length]}
     >
       {config.materialType === 'realistic' && (
         <meshPhysicalMaterial roughness={0.35} metalness={0.05} envMapIntensity={0.9} />

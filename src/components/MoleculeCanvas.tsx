@@ -1,9 +1,11 @@
 import React, { useMemo, useState, useCallback, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
+import { PerformanceMonitor } from '@react-three/drei';
 import * as THREE from 'three';
 import { MoleculeData, VisualizationConfig, Atom } from '../types';
 import { ELEMENT_DATA } from '../constants';
 import { measureSelection, MeasurementResult } from '../services/measure';
+import { registerActiveGL } from '../services/glRegistry';
 import InstancedAtomMesh from './InstancedAtomMesh';
 import InstancedBondMesh from './InstancedBondMesh';
 import SimulationBox from './SimulationBox';
@@ -19,6 +21,8 @@ interface MoleculeCanvasProps {
   /** Atom ids picked by the measurement tool. */
   selectedIds?: number[];
   onSelectAtom?: (id: number) => void;
+  /** Video recording: keep frames flowing even when idle. */
+  forceContinuousRender?: boolean;
 }
 
 interface HoverInfo {
@@ -74,8 +78,11 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
   config,
   selectedIds = [],
   onSelectAtom,
+  forceContinuousRender = false,
 }) => {
   const [hover, setHover] = useState<HoverInfo | null>(null);
+  // Adaptive quality: PerformanceMonitor lowers this when FPS dips (P6).
+  const [perfFactor, setPerfFactor] = useState(1);
 
   const { atoms, bonds } = data;
 
@@ -102,12 +109,21 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
     return Math.max(lx, ly, lz) * 0.9;
   }, [data.box]);
 
-  // Adaptive device pixel ratio — huge systems render below native res.
+  // Adaptive device pixel ratio — huge systems render below native res,
+  // and PerformanceMonitor can degrade further on weak GPUs (P6).
   const dpr: [number, number] = useMemo(() => {
     if (atoms.length > 20000) return [0.75, 1.25];
     if (atoms.length > 5000) return [1, 1.5];
     return [1, 2];
   }, [atoms.length]);
+
+  const effectiveDpr: [number, number] = useMemo(
+    () => [
+      Math.max(0.5, dpr[0] * perfFactor),
+      Math.max(0.5, dpr[1] * perfFactor),
+    ],
+    [dpr, perfFactor]
+  );
 
   const shadowsEnabled = config.shadowsEnabled && atoms.length <= 8000;
 
@@ -153,19 +169,27 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
       <Canvas
         shadows={shadowsEnabled}
         camera={{ position: [boundingRadius, boundingRadius * 0.8, boundingRadius], fov: config.fov }}
-        dpr={dpr}
+        dpr={effectiveDpr}
         className="w-full h-full outline-none"
         // Demand mode = zero idle GPU/CPU burn; OrbitControls' onChange
         // invalidates during interaction and damping settles naturally.
-        frameloop={autoRotate ? 'always' : 'demand'}
+        // Recording forces continuous frames so captured video has motion.
+        frameloop={autoRotate || forceContinuousRender ? 'always' : 'demand'}
+        onCreated={({ gl, scene, camera }) => registerActiveGL({ gl, scene, camera })}
         gl={{
           antialias: atoms.length <= 20000,
           alpha: false,
           powerPreference: 'high-performance',
           stencil: false,
-          preserveDrawingBuffer: true, // reliable canvas.toDataURL screenshots
+          // NOTE: preserveDrawingBuffer intentionally OFF — screenshots use
+          // an explicit render-before-capture via the GL registry instead.
         }}
       >
+        <PerformanceMonitor
+          onDecline={() => setPerfFactor(0.6)}
+          onIncline={() => setPerfFactor(1)}
+          flipflops={3}
+        />
         <color attach="background" args={[config.backgroundColor]} />
 
         <LightingRig preset={config.lightingPreset} shadows={shadowsEnabled} />

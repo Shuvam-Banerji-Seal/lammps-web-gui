@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ATOM_COLORS, DEFAULT_ATOM_COLOR, ELEMENT_DATA, ELEMENT_RADII } from '../constants';
+import { ATOM_COLORS, DEFAULT_ATOM_COLOR, ELEMENT_DATA, ELEMENT_RADII } from '../src/constants';
 
 describe('Constants - Periodic Table', () => {
   it('should have colors for all 118 elements', () => {

@@ -3,8 +3,8 @@ import {
   encodeViewState,
   decodeViewState,
   viewStateFromSearch,
-} from '../services/viewState';
-import { VisualizationConfig } from '../types';
+} from '../src/services/viewState';
+import { VisualizationConfig } from '../src/types';
 
 const baseConfig: VisualizationConfig = {
   atomScale: 1.25,

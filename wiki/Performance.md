@@ -38,3 +38,19 @@ canvas keeps `preserveDrawingBuffer`.
 Lighting is pure three.js lights (no HDR environment files), labels use
 canvas-drawn textures (no webfonts), styling ships in the bundle (no Tailwind
 CDN). First paint depends only on this repo's own static assets.
+
+## v2.2 additions
+
+| Mechanism | Effect |
+|---|---|
+| Web Worker parsing | File text is parsed off the main thread — the UI stays interactive while 100k-atom files process. Falls back to synchronous parsing when Workers are unavailable. |
+| Split matrix/color effects | Instance matrices rewrite only when positions or radius inputs change; toggling materials/labels/lighting costs zero per-atom work. |
+| `computeBoundingSphere()` | Both instanced meshes derive true bounds from instance placements, so frustum culling stays correct when zoomed in. |
+| FPS-adaptive DPR (PerformanceMonitor) | Sustained frame drops lower the device-pixel-ratio ceiling by up to 40%, recovering automatically. |
+| Hover picking guard | Per-move raycasting switches off beyond 50,000 atoms; orbit/zoom remain unaffected. |
+| No `preserveDrawingBuffer` | Screenshots force an explicit render before capture instead of keeping the drawing buffer alive every frame. |
+
+## Bundle budget
+
+CI fails if gzipped JS exceeds **420 KB total** or any single chunk exceeds
+**300 KB** (`scripts/check-bundle-size.mjs`). Current usage: ~326 KB total.

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { distance, angleDeg, dihedralDeg, measureSelection } from '../services/measure';
-import { Atom } from '../types';
+import { distance, angleDeg, dihedralDeg, measureSelection } from '../src/services/measure';
+import { Atom } from '../src/types';
 
 const at = (id: number, x: number, y: number, z: number): Atom =>
   ({ id, molId: 1, type: 1, charge: 0, x, y, z });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parsePDBFile } from '../services/pdbParser';
+import { parsePDBFile } from '../src/services/pdbParser';
 
 const SAMPLE_PDB = `HEADER    TEST
 ATOM      1  N   ALA A   1       1.000   2.000   3.000  1.00  0.00           N

@@ -5,7 +5,7 @@ import {
   fractionalToCartesian,
   elementFromTypeSymbol,
   elementFromLabel,
-} from '../services/cifParser';
+} from '../src/services/cifParser';
 
 const SIMPLE_CIF = `data_simple
 _cell_length_a 4.05

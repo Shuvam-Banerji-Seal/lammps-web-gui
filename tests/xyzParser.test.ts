@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseXYZFile } from '../services/xyzParser';
+import { parseXYZFile } from '../src/services/xyzParser';
 
 const SAMPLE_XYZ = `3
 Water molecule

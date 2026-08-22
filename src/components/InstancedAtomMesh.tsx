@@ -2,7 +2,8 @@ import React, { useRef, useMemo, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { ThreeEvent } from '@react-three/fiber';
 import { Atom, VisualizationConfig } from '../types';
-import { DEFAULT_ATOM_COLOR, ELEMENT_RADII, ELEMENT_DATA } from '../constants';
+import { DEFAULT_ATOM_COLOR } from '../constants';
+import { atomDisplayRadius } from '../services/atomStyle';
 
 interface InstancedAtomMeshProps {
   atoms: Atom[];
@@ -12,57 +13,77 @@ interface InstancedAtomMeshProps {
   onSelectAtom?: (id: number) => void;
 }
 
+/** Above this size, per-move raycasting is disabled to keep the UI fluid. */
+export const PICKING_MAX_ATOMS = 50_000;
+
 /**
  * Optimized instanced rendering for atoms — one draw call regardless of
  * system size. Sphere tessellation adapts to system size:
  *   <=1k atoms -> 32 segs | <=10k -> 20 | >10k -> 12
+ *
+ * Performance contract:
+ *  - Matrices rewrite ONLY when positions or radius-affecting fields change.
+ *    Toggling labels/lighting/materials costs zero matrix work.
+ *  - Colors rewrite ONLY when the color mapping changes.
+ *  - Bounding sphere is recomputed after writes so frustum culling stays
+ *    correct (three.js cannot infer instance extents from a unit sphere).
  */
 const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, onHover, onSelectAtom }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const [hoverId, setHoverId] = useState<number | null>(null);
 
+  // Narrow dependency keys — object identity of `config` must NOT trigger O(n) work.
+  const radiusKey = `${config.visualizationMode}|${config.atomScale}`;
+  const colorKey = useMemo(
+    () =>
+      Object.keys(config.customColors)
+        .sort((a, b) => Number(a) - Number(b))
+        .map(k => `${k}:${config.customColors[Number(k)]}`)
+        .join(';'),
+    [config.customColors]
+  );
+
   const geometry = useMemo(() => {
+    // Tessellation tiers: visual quality is indistinguishable at these
+    // densities, while triangle count drops ~4x per tier.
     const baseSegments =
-      atoms.length > 10000 ? 12 : atoms.length > 1000 ? 20 : 32;
-    return new THREE.SphereGeometry(1, baseSegments, Math.max(8, baseSegments / 2));
+      atoms.length > 30000 ? 8 : atoms.length > 10000 ? 12 : atoms.length > 1000 ? 20 : 32;
+    return new THREE.SphereGeometry(1, baseSegments, Math.max(6, Math.round(baseSegments / 2)));
   }, [atoms.length]);
 
-  const getAtomRadius = (atom: Atom): number => {
-    if (config.visualizationMode === 'space-fill') {
-      // van der Waals radius scaled down slightly so molecules stay readable
-      const vdwRadius = ELEMENT_RADII[atom.type] ?? 1.7;
-      return vdwRadius * config.atomScale * 0.5;
-    }
-    if (config.visualizationMode === 'wireframe') {
-      return 0.16 * config.atomScale;
-    }
-    if (config.visualizationMode === 'licorice') {
-      return 0.14 * config.atomScale;
-    }
-    // ball-and-stick
-    return 0.45 * config.atomScale;
-  };
-
+  // --- Matrices: positions + radius inputs only ---
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
 
     const dummy = new THREE.Object3D();
-    const color = new THREE.Color();
-
     for (let i = 0; i < atoms.length; i++) {
       const atom = atoms[i];
       dummy.position.set(atom.x, atom.y, atom.z);
-      dummy.scale.setScalar(getAtomRadius(atom));
+      dummy.scale.setScalar(atomDisplayRadius(atom, config));
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
-
-      color.set(config.customColors[atom.type] || DEFAULT_ATOM_COLOR);
-      mesh.setColorAt(i, color);
     }
     mesh.instanceMatrix.needsUpdate = true;
+    // Correct frustum culling: derive bounds from actual instance placements.
+    mesh.computeBoundingSphere();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [atoms, radiusKey]);
+
+  // --- Colors: only when the mapping changes ---
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const color = new THREE.Color();
+    for (let i = 0; i < atoms.length; i++) {
+      color.set(config.customColors[atoms[i].type] || DEFAULT_ATOM_COLOR);
+      mesh.setColorAt(i, color);
+    }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [atoms, config]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [atoms, colorKey]);
+
+  const pickingEnabled = atoms.length <= PICKING_MAX_ATOMS && !!(onHover || onSelectAtom);
 
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
     if (!onHover) return;
@@ -89,6 +110,14 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
 
   if (atoms.length === 0) return null;
 
+  const pointerProps = pickingEnabled
+    ? {
+        onPointerMove: handlePointerMove,
+        onPointerOut: handlePointerOut,
+        onClick: handleClick,
+      }
+    : {};
+
   return (
     <instancedMesh
       key={atoms.length}
@@ -96,9 +125,7 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
       args={[geometry, undefined, atoms.length]}
       castShadow={config.shadowsEnabled}
       receiveShadow={config.shadowsEnabled}
-      onPointerMove={handlePointerMove}
-      onPointerOut={handlePointerOut}
-      onClick={handleClick}
+      {...pointerProps}
     >
       {config.materialType === 'realistic' && (
         <meshPhysicalMaterial

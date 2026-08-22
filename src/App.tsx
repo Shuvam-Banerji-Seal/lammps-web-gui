@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import MoleculeCanvas from './components/MoleculeCanvas';
 import { parseFile, detectFileFormat } from './services/fileParser';
+import { parseInWorker } from './services/parserClient';
 import {
   MoleculeData, VisualizationConfig, VisualizationMode, FileFormat,
   LightingPreset, CameraPreset,
@@ -10,11 +11,13 @@ import { emitCameraCommand } from './services/cameraBus';
 import { useKeyboardShortcuts, SHORTCUT_CATALOG } from './hooks/useKeyboardShortcuts';
 import { encodeViewState, viewStateFromSearch } from './services/viewState';
 import { measureSelection, measurementGlyph, MeasurementResult } from './services/measure';
+import { startCanvasRecording, RecordingHandle } from './services/recorder';
+import { captureActiveCanvas } from './services/glRegistry';
 import {
   Upload, RotateCw, AlertCircle, Info, Settings, Eye, EyeOff, Palette, Box,
   Sun, Moon, Menu, X, Camera, Atom, Keyboard, Layers, Lightbulb,
   Grid3x3, Maximize2, Play, Pause, ZoomIn, ZoomOut, FileText, HelpCircle,
-  Link2, Check, ChevronLeft, ChevronRight, Ruler,
+  Link2, Check, ChevronLeft, ChevronRight, Ruler, Circle, Loader2,
 } from 'lucide-react';
 
 /** GitHub mark as inline SVG — lucide 1.x removed brand icons. */
@@ -59,6 +62,8 @@ const EXAMPLES: { file: string; format: FileFormat; label: string }[] = [
   { file: 'examples/nacl.cif', format: 'cif', label: 'NaCl · CIF' },
   { file: 'examples/water.xyz', format: 'xyz', label: 'Water · XYZ' },
   { file: 'examples/water-traj.xyz', format: 'xyz', label: 'Trajectory · XYZ' },
+  { file: 'examples/stress-12k.xyz', format: 'xyz', label: 'Stress 12k · XYZ' },
+  { file: 'examples/stress-60k.xyz', format: 'xyz', label: 'Stress 60k · XYZ' },
 ];
 
 const prefersLightScheme = (): boolean =>
@@ -119,6 +124,26 @@ const App: React.FC = () => {
 
   // Share-link feedback
   const [linkCopied, setLinkCopied] = useState(false);
+
+  // Video recording (P8)
+  const recorderRef = useRef<RecordingHandle | null>(null);
+  const autoRotateBeforeRecording = useRef(true);
+  const [isRecording, setIsRecording] = useState(false);
+  const [savingVideo, setSavingVideo] = useState(false);
+  const [recordingMs, setRecordingMs] = useState(0);
+
+  // Resizable desktop sidebar (P9)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    try {
+      const stored = Number(localStorage.getItem('m3d.sidebarWidth'));
+      return Number.isFinite(stored) && stored >= 280 && stored <= 560 ? stored : 384;
+    } catch {
+      return 384;
+    }
+  });
+  const sidebarWidthRef = useRef(sidebarWidth);
+  sidebarWidthRef.current = sidebarWidth;
+  const resizingRef = useRef(false);
 
   // New structure → reset transient view state (P4/P5)
   useEffect(() => {
@@ -195,35 +220,56 @@ const App: React.FC = () => {
     fetchInitialData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleVisualize = useCallback((text: string, format?: FileFormat) => {
-    try {
-      setError(null);
-      const data = parseFile(text, format ?? detectFileFormat('pasted.txt'));
-      if (data.atoms.length === 0) throw new Error('No atoms found in data. Check the format.');
+  const [isParsing, setIsParsing] = useState(false);
 
-      // Color assignment: user-edited colors survive; others get CPK by element symbol.
-      const newCustomColors: Record<number, string> = {};
-      for (const info of Object.values(data.atomTypes)) {
-        const edited = userEditedTypes.current.has(info.id);
-        if (edited && vizConfig.customColors[info.id]) {
-          newCustomColors[info.id] = vizConfig.customColors[info.id];
-          continue;
-        }
-        const meta = ELEMENT_DATA.find(e => e.symbol === info.element);
-        newCustomColors[info.id] = meta
-          ? ATOM_COLORS[meta.number] ?? DEFAULT_ATOM_COLOR
-          : DEFAULT_ATOM_COLOR;
+  const applyParsed = useCallback((data: MoleculeData) => {
+    if (data.atoms.length === 0) throw new Error('No atoms found in data. Check the format.');
+
+    // Color assignment: user-edited colors survive; others get CPK by element symbol.
+    const newCustomColors: Record<number, string> = {};
+    for (const info of Object.values(data.atomTypes)) {
+      const edited = userEditedTypes.current.has(info.id);
+      if (edited && vizConfig.customColors[info.id]) {
+        newCustomColors[info.id] = vizConfig.customColors[info.id];
+        continue;
       }
-
-      setVizConfig(prev => ({ ...prev, customColors: newCustomColors }));
-      setMoleculeData(data);
-      setInputText(text);
-      if (isMobile) setIsSidebarOpen(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to parse data file.');
-      setMoleculeData(null);
+      const meta = ELEMENT_DATA.find(e => e.symbol === info.element);
+      newCustomColors[info.id] = meta
+        ? ATOM_COLORS[meta.number] ?? DEFAULT_ATOM_COLOR
+        : DEFAULT_ATOM_COLOR;
     }
+
+    setVizConfig(prev => ({ ...prev, customColors: newCustomColors }));
+    setMoleculeData(data);
+    setError(null);
+    // Very large systems render one static frame instead of spinning —
+    // continuous rotation on huge instanced scenes wastes GPU and can
+    // saturate low-end/software renderers. Users can re-enable rotation.
+    if (data.atoms.length > 20000) setAutoRotate(false);
+    if (isMobile) setIsSidebarOpen(false);
   }, [isMobile, vizConfig.customColors]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Parse via Web Worker when available (keeps huge files from freezing the
+   * UI); falls back to synchronous parsing otherwise.
+   */
+  const handleVisualize = useCallback((text: string, format?: FileFormat) => {
+    setError(null);
+    setIsParsing(true);
+    const fmt = format ?? detectFileFormat('pasted.txt');
+    parseInWorker(text, fmt)
+      .catch(err => {
+        if (!(err instanceof Error && /no-worker|worker-crashed/.test(err.message))) throw err;
+        return parseFile(text, fmt); // synchronous fallback
+      })
+      .then(applyParsed)
+      .then(() => setInputText(text))
+      .catch(e => {
+        setError(e instanceof Error ? e.message : 'Failed to parse data file.');
+        setMoleculeData(null);
+      })
+      .finally(() => setIsParsing(false));
+  }, [applyParsed]);
 
   const loadExample = useCallback(async (file: string, format: FileFormat) => {
     try {
@@ -292,17 +338,87 @@ const App: React.FC = () => {
   }, []);
 
   const doScreenshot = useCallback(() => {
-    const canvas = document.querySelector('canvas');
-    if (!canvas) return;
+    // Explicit render-before-capture (no preserveDrawingBuffer tax).
+    const dataUrl = captureActiveCanvas();
+    if (!dataUrl) {
+      setError('Screenshot failed — canvas not ready.');
+      return;
+    }
     try {
       const link = document.createElement('a');
       link.download = `molecule3d-${Date.now()}.png`;
-      link.href = canvas.toDataURL('image/png');
+      link.href = dataUrl;
       link.click();
     } catch {
       setError('Screenshot failed — canvas not ready.');
     }
   }, []);
+
+  // --- Video recording (P8) ---
+  const startRecording = useCallback(() => {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) {
+      setError('No canvas to record yet.');
+      return;
+    }
+    try {
+      autoRotateBeforeRecording.current = autoRotate;
+      setAutoRotate(true); // guarantee motion in the captured video
+      recorderRef.current = startCanvasRecording(canvas as HTMLCanvasElement, { fps: 60 });
+      setRecordingMs(0);
+      setIsRecording(true);
+    } catch (e) {
+      setAutoRotate(autoRotateBeforeRecording.current);
+      setError(e instanceof Error ? e.message : 'Recording failed to start.');
+    }
+  }, [autoRotate]);
+
+  const stopRecording = useCallback(async () => {
+    const rec = recorderRef.current;
+    if (!rec) return;
+    recorderRef.current = null;
+    setIsRecording(false);
+    setSavingVideo(true);
+    try {
+      const result = await rec.stop();
+      const url = URL.createObjectURL(result.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `molecule3d-${new Date().toISOString().replace(/[:.]/g, '-')}.${result.ext}`;
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save recording.');
+    } finally {
+      setSavingVideo(false);
+      setAutoRotate(autoRotateBeforeRecording.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isRecording) return;
+    const id = window.setInterval(() => setRecordingMs(ms => ms + 250), 250);
+    return () => window.clearInterval(id);
+  }, [isRecording]);
+
+  // --- Desktop sidebar resize (P9) ---
+  const startSidebarResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const moveSidebarResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizingRef.current) return;
+    setSidebarWidth(Math.min(560, Math.max(280, Math.round(e.clientX))));
+  };
+  const endSidebarResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizingRef.current) return;
+    resizingRef.current = false;
+    try {
+      localStorage.setItem('m3d.sidebarWidth', String(sidebarWidthRef.current));
+    } catch { /* storage unavailable — non-fatal */ }
+    e.currentTarget.releasePointerCapture(e.pointerId);
+  };
 
   const cycleLighting = useCallback(() => {
     setVizConfig(prev => {
@@ -417,12 +533,26 @@ const App: React.FC = () => {
       )}
 
       {/* Sidebar */}
-      <aside className={`
-        flex flex-col border-r transition-transform duration-300 ease-in-out z-30
-        ${isMobile ? 'fixed inset-y-0 left-0 w-80 max-w-[85vw]' : 'w-96 shrink-0'}
+      <aside
+        className={`
+        relative flex flex-col border-r transition-[transform] duration-300 ease-in-out z-30
+        ${isMobile ? 'fixed inset-y-0 left-0 w-80 max-w-[85vw]' : 'shrink-0'}
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         ${ct.sidebar}
-      `}>
+      `}
+        style={!isMobile ? { width: sidebarWidth } : undefined}
+      >
+        {/* Desktop resize handle (P9) */}
+        {!isMobile && isSidebarOpen && (
+          <div
+            onPointerDown={startSidebarResize}
+            onPointerMove={moveSidebarResize}
+            onPointerUp={endSidebarResize}
+            className="absolute top-0 right-[-3px] h-full w-1.5 cursor-col-resize z-40 hover:bg-blue-500/40 transition-colors touch-none"
+            title="Drag to resize sidebar"
+            aria-label="Resize sidebar"
+          />
+        )}
         {/* Header */}
         <div className={`flex items-center justify-between px-4 h-14 border-b ${ct.divider}`}>
           <div className="flex items-center gap-2.5">
@@ -898,6 +1028,13 @@ const App: React.FC = () => {
                 {moleculeData.atoms.length.toLocaleString()} atoms
                 {moleculeData.bonds.length > 0 && ` · ${moleculeData.bonds.length.toLocaleString()} bonds`}
                 {moleculeData.box && ' · cell'}
+                {frameCount > 1 && ` · ${frameCount} frames`}
+              </div>
+            )}
+            {isParsing && (
+              <div className={`flex items-center gap-1.5 px-3 py-2 rounded-lg shadow-lg text-[11px] backdrop-blur ${ct.card}`} role="status">
+                <Loader2 size={13} className="animate-spin text-blue-400" />
+                Parsing structure…
               </div>
             )}
           </div>
@@ -971,6 +1108,31 @@ const App: React.FC = () => {
           >
             <Layers size={16} />
             <span className="hidden sm:inline">Labels</span>
+          </button>
+          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+          <button
+            onClick={() => (isRecording ? stopRecording() : startRecording())}
+            disabled={savingVideo}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium transition-colors ${
+              isRecording ? 'text-red-400' : savingVideo ? 'opacity-50' : ct.muted
+            }`}
+            title={isRecording ? 'Stop recording & save video' : 'Record high-quality video (MP4 where supported)'}
+          >
+            {isRecording ? (
+              <>
+                <span className="w-3 h-3 rounded-sm bg-red-500 animate-pulse" />
+                <span className="font-mono tabular-nums hidden sm:inline">
+                  {String(Math.floor(recordingMs / 60000)).padStart(2, '0')}:
+                  {String(Math.floor((recordingMs % 60000) / 1000)).padStart(2, '0')}
+                </span>
+                <span className="sm:hidden">Stop</span>
+              </>
+            ) : (
+              <>
+                <Circle size={13} className="text-red-400" fill="currentColor" />
+                <span className="hidden sm:inline">{savingVideo ? 'Saving…' : 'Rec'}</span>
+              </>
+            )}
           </button>
           <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
           <button
@@ -1072,6 +1234,7 @@ const App: React.FC = () => {
             config={vizConfig}
             selectedIds={selectedIds}
             onSelectAtom={toggleSelectAtom}
+            forceContinuousRender={isRecording || savingVideo}
           />
         ) : (
           <div className={`w-full h-full flex flex-col items-center justify-center ${ct.muted}`}>

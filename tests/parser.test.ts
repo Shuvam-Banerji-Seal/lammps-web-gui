@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDataFile } from '../services/parser';
+import { parseDataFile } from '../src/services/parser';
 
 const SAMPLE_LAMMPS_DATA = `# Test molecule
 4 atoms

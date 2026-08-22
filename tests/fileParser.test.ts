@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectFileFormat, detectFormatFromContent, parseFile } from '../services/fileParser';
+import { detectFileFormat, detectFormatFromContent, parseFile } from '../src/services/fileParser';
 
 describe('File Format Detection', () => {
   describe('detectFileFormat (by extension)', () => {

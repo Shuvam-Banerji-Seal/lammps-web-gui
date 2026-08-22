@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { inferBonds } from '../services/bondInference';
-import { Atom } from '../types';
+import { inferBonds } from '../src/services/bondInference';
+import { Atom } from '../src/types';
 
 const mkAtom = (id: number, type: number, x: number, y: number, z: number): Atom =>
   ({ id, molId: 1, type, charge: 0, x, y, z });

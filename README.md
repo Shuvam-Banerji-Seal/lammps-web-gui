@@ -38,11 +38,13 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
   | Protein Data Bank | `.pdb` `.ent` | `CONECT` bonds, `CRYST1` unit cell |
   | CIF | `.cif` `.mmcif` | fractional ↔ Cartesian conversion, triclinic cells as true parallelepipeds |
 - 🎨 **All 118 elements** resolved by symbol from *any* format and colored with standard **CPK/Jmol** palettes; per-type recoloring in the sidebar.
-- ⚡ **Large-system performance** — atoms *and* bonds render as single instanced draw calls; bond inference uses an O(n) spatial hash grid; adaptive device-pixel-ratio and tessellation scale with system size.
+- ⚡ **Large-system performance** — atoms *and* bonds render as single instanced draw calls; bond inference uses an O(n) spatial hash grid; adaptive device-pixel-ratio and tessellation scale with system size; FPS-adaptive quality degradation; parsing runs in a Web Worker so the UI never freezes.
+- 🎬 **High-quality video export** — one-click recording of the live canvas at up to 60 fps and ~24 Mbps, saved as MP4 (H.264) where the browser supports it, WebM (VP9/VP8) otherwise.
 - 💡 **Five lighting rigs** (studio · lab · outdoor · space · soft) plus four materials (realistic · plastic · metallic · toon).
 - 📦 **Simulation box display** for LAMMPS bounds, PDB `CRYST1` and CIF cells — triclinic cells render correctly, never faked as cubes.
 - ⌨️ **Full keyboard control** with an in-app shortcut overlay (`H`).
 - 🖱️ **Drag & drop** files anywhere on the page; hover any atom for element details.
+- ↔️ **Resizable sidebar** — drag its edge to any width between 280–560 px; the choice persists.
 - 🌓 Dark / light themes, mobile-friendly layout, PNG screenshots.
 
 ## 🚀 Quick start
@@ -101,30 +103,45 @@ npm run build      # production build → dist/
 Project layout:
 
 ```
-├── components/          # React Three Fiber scene + UI components
-│   ├── MoleculeCanvas.tsx     # Canvas, adaptive DPR, hover picking
-│   ├── InstancedAtomMesh.tsx  # one draw call for all atoms
-│   ├── InstancedBondMesh.tsx  # one draw call for all bonds (half-bond coloring)
-│   ├── SimulationBox.tsx      # box/triclinic cell wireframe
-│   ├── LightingRig.tsx        # five lighting presets
-│   ├── CameraRig.tsx          # fit/preset/zoom/orbit command handling
-│   └── AtomLabels.tsx         # canvas-texture element badges
-├── services/            # parsers & geometry logic (pure functions, fully tested)
-│   ├── parser.ts              # LAMMPS (4 atom styles + box + tilts)
-│   ├── xyzParser.ts           # XYZ
-│   ├── pdbParser.ts           # PDB (+CONECT, CRYST1)
-│   ├── cifParser.ts           # CIF (fractional coords, triclinic)
-│   └── bondInference.ts       # O(n) spatial-hash covalent bonding
-├── hooks/useKeyboardShortcuts.ts
-├── constants.ts         # CPK colors + covalent radii for all 118 elements
-└── .github/workflows/   # CI (typecheck·test·audit·build) + Pages deploy
+├── src/                     # application source
+│   ├── main.tsx                   # entry point
+│   ├── App.tsx                    # shell, sidebar, toolbars, shortcuts wiring
+│   ├── styles.css                 # Tailwind v4 entry + base styles
+│   ├── constants.ts               # CPK colors + covalent radii (118 elements)
+│   ├── types.ts
+│   ├── components/          # React Three Fiber scene components
+│   │   ├── MoleculeCanvas.tsx     # Canvas, adaptive DPR, hover picking
+│   │   ├── InstancedAtomMesh.tsx  # one draw call for all atoms
+│   │   ├── InstancedBondMesh.tsx  # one draw call for all bonds (half-bond coloring)
+│   │   ├── SimulationBox.tsx      # box/triclinic cell wireframe
+│   │   ├── LightingRig.tsx        # five lighting presets
+│   │   ├── CameraRig.tsx          # fit/preset/zoom/orbit command handling
+│   │   ├── AtomLabels.tsx         # canvas-texture element badges
+│   │   └── MeasurementOverlay.tsx # selection rings + measurement visuals
+│   ├── services/            # parsers & geometry logic (pure functions, fully tested)
+│   │   ├── parser.ts              # LAMMPS (4 atom styles + box + tilts)
+│   │   ├── xyzParser.ts           # XYZ incl. multi-frame trajectories
+│   │   ├── pdbParser.ts           # PDB (+CONECT, CRYST1)
+│   │   ├── cifParser.ts           # CIF (fractional coords, triclinic)
+│   │   ├── bondInference.ts       # O(n) spatial-hash covalent bonding
+│   │   ├── measure.ts             # distance / angle / dihedral math
+│   │   └── viewState.ts           # shareable ?s= view encoding
+│   ├── hooks/useKeyboardShortcuts.ts
+│   └── workers/parser.worker.ts   # off-main-thread parsing
+├── tests/                   # vitest suites (parsers, chemistry, view state)
+├── public/                  # static assets + example structures
+├── docs/screenshots/
+├── scripts/                 # wiki publisher, size budget check
+├── server/                  # optional legacy Flask backend (not used by Pages)
+├── wiki/                    # versioned GitHub wiki source
+└── .github/workflows/       # CI (typecheck·test·audit·build) + Pages deploy
 ```
 
 ## 📦 Deployment
 
 Every push to `main` runs CI (typecheck → tests → `npm audit` → build) and deploys
 the static build to GitHub Pages via GitHub Actions. No backend is required —
-the optional Flask server (`server.py`) is legacy and not used by the deployed site.
+the optional Flask server (`server/server.py`) is legacy and not used by the deployed site.
 
 ## 🔍 Search indexing
 

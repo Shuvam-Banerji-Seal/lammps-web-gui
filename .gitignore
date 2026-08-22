@@ -27,4 +27,4 @@ dist-ssr
 .rigor-trash/
 plans/
 .playwright-mcp/
-m3d-smoke-*.png
+m3d-*.png

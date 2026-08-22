@@ -27,6 +27,9 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
 ## ✨ Features
 
 - 🧊 **True 3D rendering** — depth-correct perspective view of atoms, bonds and the simulation cell, powered by three.js / React Three Fiber.
+- 📐 **Measurement tools** — click 2–4 atoms for live distance / angle / dihedral readouts with on-canvas overlays.
+- 🎞️ **Trajectory playback** — multi-frame XYZ files get a scrubber with play/pause and 2–30 fps speeds (`P`, `,`, `.`).
+- 🔗 **Shareable views** — the Share button copies a URL that restores your exact visualization settings.
 - 📁 **Four structure formats**
   | Format | Extensions | Highlights |
   |---|---|---|
@@ -64,6 +67,10 @@ Your files never leave your machine — parsing happens locally in the browser.
 | `B` | Toggle bonds |
 | `X` | Toggle simulation box |
 | `L` | Toggle element labels (≤400 atoms) |
+| Click atoms | Measure distance → angle → dihedral (pick 2–4) |
+| `C` | Clear measurement selection |
+| `,` / `.` | Previous / next trajectory frame |
+| `P` | Play / pause trajectory playback |
 | `G` | Cycle lighting preset |
 | `T` | Toggle dark / light theme |
 | `O` | Toggle sidebar |

@@ -1,76 +1,101 @@
-import { Atom, Bond, MoleculeData, AtomTypeInfo } from '../types';
+import { Atom, Bond, MoleculeData, AtomTypeInfo, TrajectoryFrame } from '../types';
 import { ELEMENT_DATA, getAtomicNumberFromSymbol } from '../constants';
 import { inferBonds } from './bondInference';
 
 /**
- * Parses XYZ file format.
+ * Parses XYZ file format — including multi-frame trajectories.
  *
  *   Line 1: Number of atoms
  *   Line 2: Comment line
  *   Lines 3+: ElementSymbol X Y Z [extra columns ignored]
  *
- * ExtendedXYZ extras after the coordinates are tolerated. Multi-trajectory
- * files (repeated frame blocks): only the FIRST frame is visualized.
+ * Every frame block is captured; the FIRST frame defines `atoms`, `bonds`
+ * (topology assumed stable across frames — standard for MD output) and the
+ * element->type mapping, so colors stay consistent during playback.
+ * min/max/center span ALL frames so the camera framing never jumps.
  *
- * Bonds are inferred with an O(n) spatial-hash pass using covalent radii
- * (Cordero 2008) — replaces the historical O(n^2) fixed-threshold scan.
+ * Bonds are inferred with an O(n) spatial-hash pass using covalent radii.
  */
 export const parseXYZFile = (data: string): MoleculeData => {
   const lines = data.split('\n');
-  const atoms: Atom[] = [];
-
   if (lines.length < 3) {
     throw new Error('Invalid XYZ file: too few lines');
   }
 
-  const numAtoms = parseInt(lines[0].trim(), 10);
-  if (!Number.isInteger(numAtoms) || numAtoms <= 0) {
-    throw new Error('Invalid XYZ file: first line must be atom count');
-  }
+  // Symbol token -> type id, shared across frames for stable coloring.
+  const elementTypeMap: Record<string, number> = {};
+  let nextSyntheticTypeId = 1000;
 
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
-  // element token -> type id (atomic number when known)
-  const elementTypeMap: Record<string, number> = {};
-  let nextSyntheticTypeId = 1000; // above real atomic numbers
+  const frames: TrajectoryFrame[] = [];
+  let cursor = 0;
 
-  for (let i = 2; i < lines.length && atoms.length < numAtoms; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
+  while (cursor < lines.length) {
+    // skip blank separators between frames
+    while (cursor < lines.length && !lines[cursor].trim()) cursor++;
+    if (cursor >= lines.length) break;
 
-    const tokens = line.split(/\s+/);
-    if (tokens.length < 4) continue;
-
-    const rawSymbol = tokens[0];
-    const x = parseFloat(tokens[1]);
-    const y = parseFloat(tokens[2]);
-    const z = parseFloat(tokens[3]);
-    if (![x, y, z].every(Number.isFinite)) continue;
-
-    // Normalize casing for lookup ("c" -> "C", "cl" -> "CL" matches map key)
-    const atomicNumber = getAtomicNumberFromSymbol(rawSymbol);
-    const lookupKey = rawSymbol.trim().toUpperCase();
-    if (!(lookupKey in elementTypeMap)) {
-      elementTypeMap[lookupKey] =
-        atomicNumber !== undefined ? atomicNumber : nextSyntheticTypeId++;
+    const numAtoms = parseInt(lines[cursor].trim(), 10);
+    if (!Number.isInteger(numAtoms) || numAtoms <= 0) {
+      if (frames.length === 0) {
+        throw new Error('Invalid XYZ file: first line must be atom count');
+      }
+      break; // trailing junk after valid frames — stop gracefully
     }
-    const type = elementTypeMap[lookupKey];
+    cursor++;
 
-    atoms.push({ id: atoms.length + 1, molId: 1, type, charge: 0, x, y, z });
+    const comment = cursor < lines.length ? lines[cursor].trim() : undefined;
+    cursor++;
 
-    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-    minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+    const atoms: Atom[] = [];
+    while (atoms.length < numAtoms && cursor < lines.length) {
+      const line = lines[cursor++].trim();
+      if (!line) continue;
+      const tokens = line.split(/\s+/);
+      if (tokens.length < 4) continue;
+      const x = parseFloat(tokens[1]);
+      const y = parseFloat(tokens[2]);
+      const z = parseFloat(tokens[3]);
+      if (![x, y, z].every(Number.isFinite)) continue;
+
+      const atomicNumber = getAtomicNumberFromSymbol(tokens[0]);
+      const lookupKey = tokens[0].trim().toUpperCase();
+      if (!(lookupKey in elementTypeMap)) {
+        elementTypeMap[lookupKey] =
+          atomicNumber !== undefined ? atomicNumber : nextSyntheticTypeId++;
+      }
+
+      atoms.push({
+        id: atoms.length + 1,
+        molId: 1,
+        type: elementTypeMap[lookupKey],
+        charge: 0,
+        x, y, z,
+      });
+
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+      minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+    }
+
+    if (atoms.length < numAtoms) {
+      if (frames.length === 0) {
+        throw new Error(
+          `Invalid XYZ file: expected ${numAtoms} atoms but found ${atoms.length}`
+        );
+      }
+      break; // truncated trailing frame — drop it silently
+    }
+
+    frames.push({ comment: comment || undefined, atoms });
   }
 
-  if (atoms.length < numAtoms) {
-    throw new Error(
-      `Invalid XYZ file: expected ${numAtoms} atoms but found ${atoms.length}`
-    );
-  }
+  const firstFrame = frames[0];
+  const atoms = firstFrame.atoms;
 
-  // --- Type metadata ---
+  // --- Type metadata from the reference frame ---
   const atomTypes: Record<number, AtomTypeInfo> = {};
   const usedTypes = Array.from(new Set(atoms.map(a => a.type)));
 
@@ -87,7 +112,7 @@ export const parseXYZFile = (data: string): MoleculeData => {
     };
   }
 
-  // --- Bonds via spatial hash (covalent radii) ---
+  // --- Bonds from the reference frame's topology ---
   const bonds: Bond[] = inferBonds(atoms);
 
   const safeCenter = atoms.length > 0
@@ -101,5 +126,6 @@ export const parseXYZFile = (data: string): MoleculeData => {
     min: { x: minX, y: minY, z: minZ },
     max: { x: maxX, y: maxY, z: maxZ },
     center: safeCenter,
+    ...(frames.length > 1 ? { frames } : {}),
   };
 };

@@ -40,6 +40,14 @@ export interface MoleculeData {
   center: { x: number; y: number; z: number };
   /** Simulation box parsed from LAMMPS box bounds / PDB CRYST1 / CIF cell. Optional for backward compat. */
   box?: BoxBounds;
+  /** All frames of a trajectory (XYZ). Absent/length-1 for static structures. */
+  frames?: TrajectoryFrame[];
+}
+
+/** One frame of a multi-frame (trajectory) structure. */
+export interface TrajectoryFrame {
+  comment?: string;
+  atoms: Atom[];
 }
 
 export enum ParseSection {

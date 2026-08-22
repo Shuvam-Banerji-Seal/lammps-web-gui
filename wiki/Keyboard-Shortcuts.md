@@ -23,3 +23,12 @@ Press `H` inside the app to see this list at any time.
 Mouse/touch: orbit = drag · zoom = wheel / pinch · hover an atom for details.
 
 Shortcuts are ignored while you're typing in the paste-data box.
+
+## Measurement & trajectory
+
+| Key | Action |
+|---|---|
+| Click atoms | Measure distance (2) → angle (3) → dihedral (4); click again to deselect |
+| `C` | Clear measurement selection |
+| `,` / `.` | Previous / next trajectory frame |
+| `P` | Play / pause trajectory playback |

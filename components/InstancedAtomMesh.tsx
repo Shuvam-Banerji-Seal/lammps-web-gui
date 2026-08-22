@@ -8,6 +8,8 @@ interface InstancedAtomMeshProps {
   atoms: Atom[];
   config: VisualizationConfig;
   onHover?: (atom: Atom | null, screenX: number, screenY: number) => void;
+  /** Fired on genuine clicks (not orbit drags) for the measurement tool. */
+  onSelectAtom?: (id: number) => void;
 }
 
 /**
@@ -15,7 +17,7 @@ interface InstancedAtomMeshProps {
  * system size. Sphere tessellation adapts to system size:
  *   <=1k atoms -> 32 segs | <=10k -> 20 | >10k -> 12
  */
-const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, onHover }) => {
+const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, onHover, onSelectAtom }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const [hoverId, setHoverId] = useState<number | null>(null);
 
@@ -77,6 +79,14 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
     onHover?.(null, 0, 0);
   };
 
+  const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    if (!onSelectAtom) return;
+    if (e.delta > 5) return; // orbit drag, not a click
+    e.stopPropagation();
+    const idx = e.instanceId;
+    if (idx !== undefined) onSelectAtom(atoms[idx].id);
+  };
+
   if (atoms.length === 0) return null;
 
   return (
@@ -88,6 +98,7 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
       receiveShadow={config.shadowsEnabled}
       onPointerMove={handlePointerMove}
       onPointerOut={handlePointerOut}
+      onClick={handleClick}
     >
       {config.materialType === 'realistic' && (
         <meshPhysicalMaterial

@@ -1,19 +1,24 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';
 import { MoleculeData, VisualizationConfig, Atom } from '../types';
 import { ELEMENT_DATA } from '../constants';
+import { measureSelection, MeasurementResult } from '../services/measure';
 import InstancedAtomMesh from './InstancedAtomMesh';
 import InstancedBondMesh from './InstancedBondMesh';
 import SimulationBox from './SimulationBox';
 import LightingRig from './LightingRig';
 import CameraRig from './CameraRig';
 import AtomLabels from './AtomLabels';
+import MeasurementOverlay from './MeasurementOverlay';
 
 interface MoleculeCanvasProps {
   data: MoleculeData;
   autoRotate: boolean;
   config: VisualizationConfig;
+  /** Atom ids picked by the measurement tool. */
+  selectedIds?: number[];
+  onSelectAtom?: (id: number) => void;
 }
 
 interface HoverInfo {
@@ -63,7 +68,13 @@ const sceneExtent = (data: MoleculeData): { radius: number; center: THREE.Vector
   return { radius: Math.max(size.length() / 2, 5), center };
 };
 
-const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({ data, autoRotate, config }) => {
+const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
+  data,
+  autoRotate,
+  config,
+  selectedIds = [],
+  onSelectAtom,
+}) => {
   const [hover, setHover] = useState<HoverInfo | null>(null);
 
   const { atoms, bonds } = data;
@@ -105,9 +116,20 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({ data, autoRotate, confi
     config.visualizationMode !== 'space-fill' &&
     bonds.length > 0;
 
+  // Hover updates: immediate on atom change, position refresh throttled to
+  // ~12 Hz. Returning the previous state object when unchanged lets React
+  // bail out of re-renders entirely — critical for frameloop="demand".
+  const lastHoverRefresh = useRef(0);
   const handleHover = useCallback(
     (atom: Atom | null, screenX: number, screenY: number) => {
-      setHover(atom ? { atom, x: screenX, y: screenY } : null);
+      setHover(prev => {
+        const changed = (prev === null) !== (atom === null) ||
+          (prev !== null && atom !== null && prev.atom.id !== atom.id);
+        const now = performance.now();
+        if (!changed && now - lastHoverRefresh.current < 80) return prev;
+        lastHoverRefresh.current = now;
+        return atom ? { atom, x: screenX, y: screenY } : null;
+      });
     },
     []
   );
@@ -116,6 +138,16 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({ data, autoRotate, confi
     ? ELEMENT_DATA.find(e => e.number === hover.atom.type)
     : undefined;
 
+  const selectedAtoms = useMemo(
+    () => selectedIds.map(id => atomMap.get(id)).filter((a): a is Atom => !!a),
+    [selectedIds, atomMap]
+  );
+
+  const measurement: MeasurementResult | null = useMemo(
+    () => measureSelection(selectedAtoms),
+    [selectedAtoms]
+  );
+
   return (
     <>
       <Canvas
@@ -123,6 +155,9 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({ data, autoRotate, confi
         camera={{ position: [boundingRadius, boundingRadius * 0.8, boundingRadius], fov: config.fov }}
         dpr={dpr}
         className="w-full h-full outline-none"
+        // Demand mode = zero idle GPU/CPU burn; OrbitControls' onChange
+        // invalidates during interaction and damping settles naturally.
+        frameloop={autoRotate ? 'always' : 'demand'}
         gl={{
           antialias: atoms.length <= 20000,
           alpha: false,
@@ -137,7 +172,12 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({ data, autoRotate, confi
 
         <group position={groupPosition}>
           {config.showAxes && <axesHelper args={[boundingRadius * 1.2]} />}
-          <InstancedAtomMesh atoms={atoms} config={config} onHover={handleHover} />
+          <InstancedAtomMesh
+            atoms={atoms}
+            config={config}
+            onHover={handleHover}
+            onSelectAtom={onSelectAtom}
+          />
           {shouldShowBonds && (
             <InstancedBondMesh
               bonds={bonds}
@@ -150,6 +190,7 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({ data, autoRotate, confi
             <SimulationBox box={data.box} showFaces={false} />
           )}
           <AtomLabels atoms={atoms} config={config} />
+          <MeasurementOverlay selected={selectedAtoms} config={config} result={measurement} />
         </group>
 
         <CameraRig

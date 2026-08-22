@@ -16,6 +16,12 @@ export interface ShortcutActionMap {
   onScreenshot: () => void;
   onHelp: () => void;
   onEscape: () => void;
+  /** Optional: measurement tool */
+  onClearSelection?: () => void;
+  /** Optional: trajectory playback */
+  onPrevFrame?: () => void;
+  onNextFrame?: () => void;
+  onToggleTrajectoryPlay?: () => void;
 }
 
 const isTypingTarget = (target: EventTarget | null): boolean => {
@@ -118,6 +124,20 @@ export const useKeyboardShortcuts = (actions: ShortcutActionMap): void => {
         case 'Escape':
           a.onEscape();
           break;
+        case 'c':
+        case 'C':
+          a.onClearSelection?.();
+          break;
+        case ',':
+          a.onPrevFrame?.();
+          break;
+        case '.':
+          a.onNextFrame?.();
+          break;
+        case 'p':
+        case 'P':
+          a.onToggleTrajectoryPlay?.();
+          break;
         default:
           break;
       }
@@ -139,10 +159,14 @@ export const SHORTCUT_CATALOG: { keys: string; action: string }[] = [
   { keys: 'B', action: 'Toggle bonds' },
   { keys: 'X', action: 'Toggle simulation box' },
   { keys: 'L', action: 'Toggle element labels (≤400 atoms)' },
+  { keys: 'Click atoms', action: 'Measure distance → angle → dihedral (pick 2–4)' },
+  { keys: 'C', action: 'Clear measurement selection' },
+  { keys: ', / .', action: 'Previous / next trajectory frame' },
+  { keys: 'P', action: 'Play / pause trajectory playback' },
   { keys: 'G', action: 'Cycle lighting preset' },
   { keys: 'T', action: 'Toggle dark / light theme' },
   { keys: 'O', action: 'Toggle sidebar' },
   { keys: 'S', action: 'Save PNG screenshot' },
   { keys: 'H or ?', action: 'Show this help' },
-  { keys: 'Esc', action: 'Close panels / overlays' },
+  { keys: 'Esc', action: 'Close panels / overlays · clear selection' },
 ];

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import MoleculeCanvas from './components/MoleculeCanvas';
 import { parseFile, detectFileFormat } from './services/fileParser';
 import {
@@ -8,10 +8,13 @@ import {
 import { DEFAULT_ATOM_COLOR, ELEMENT_DATA, ATOM_COLORS } from './constants';
 import { emitCameraCommand } from './services/cameraBus';
 import { useKeyboardShortcuts, SHORTCUT_CATALOG } from './hooks/useKeyboardShortcuts';
+import { encodeViewState, viewStateFromSearch } from './services/viewState';
+import { measureSelection, measurementGlyph, MeasurementResult } from './services/measure';
 import {
   Upload, RotateCw, AlertCircle, Info, Settings, Eye, EyeOff, Palette, Box,
   Sun, Moon, Menu, X, Camera, Atom, Keyboard, Layers, Lightbulb,
   Grid3x3, Maximize2, Play, Pause, ZoomIn, ZoomOut, FileText, HelpCircle,
+  Link2, Check, ChevronLeft, ChevronRight, Ruler,
 } from 'lucide-react';
 
 /** GitHub mark as inline SVG — lucide 1.x removed brand icons. */
@@ -55,7 +58,30 @@ const EXAMPLES: { file: string; format: FileFormat; label: string }[] = [
   { file: 'examples/benzene.pdb', format: 'pdb', label: 'Benzene · PDB' },
   { file: 'examples/nacl.cif', format: 'cif', label: 'NaCl · CIF' },
   { file: 'examples/water.xyz', format: 'xyz', label: 'Water · XYZ' },
+  { file: 'examples/water-traj.xyz', format: 'xyz', label: 'Trajectory · XYZ' },
 ];
+
+const prefersLightScheme = (): boolean =>
+  typeof window !== 'undefined' &&
+  !!window.matchMedia?.('(prefers-color-scheme: light)').matches;
+
+/** Base defaults, optionally overridden by a shared-view ?s= token (P3). */
+const initialConfig = (): VisualizationConfig => ({
+  atomScale: 1.0,
+  bondScale: 1.0,
+  materialType: 'realistic',
+  backgroundColor: prefersLightScheme() ? '#f4f5f7' : '#151515',
+  showBonds: true,
+  customColors: {},
+  visualizationMode: 'ball-and-stick',
+  lightingPreset: 'studio',
+  showBox: false,
+  showAxes: false,
+  showLabels: false,
+  shadowsEnabled: true,
+  autoRotateSpeed: 0.5,
+  fov: 40,
+});
 
 const App: React.FC = () => {
   const [inputText, setInputText] = useState<string>('');
@@ -64,7 +90,8 @@ const App: React.FC = () => {
   const [autoRotate, setAutoRotate] = useState<boolean>(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
-  const [theme, setTheme] = useState<Theme>('dark');
+  // Respect the OS color scheme on first visit (P2)
+  const [theme, setTheme] = useState<Theme>(() => (prefersLightScheme() ? 'light' : 'dark'));
   const [fileFormat, setFileFormat] = useState<FileFormat>('lammps');
   const [activeTab, setActiveTab] = useState<Tab>('data');
   const [showHelp, setShowHelp] = useState(false);
@@ -73,22 +100,75 @@ const App: React.FC = () => {
   /** Type ids the user manually recolored — survive re-parsing. */
   const userEditedTypes = useRef<Set<number>>(new Set());
 
-  const [vizConfig, setVizConfig] = useState<VisualizationConfig>({
-    atomScale: 1.0,
-    bondScale: 1.0,
-    materialType: 'realistic',
-    backgroundColor: '#151515',
-    showBonds: true,
-    customColors: {},
-    visualizationMode: 'ball-and-stick',
-    lightingPreset: 'studio',
-    showBox: false,
-    showAxes: false,
-    showLabels: false,
-    shadowsEnabled: true,
-    autoRotateSpeed: 0.5,
-    fov: 40,
-  });
+  // Shared view state (P3): ?s=<token> overrides defaults before first paint.
+  const [vizConfig, setVizConfig] = useState<VisualizationConfig>(() => ({
+    ...initialConfig(),
+    ...(typeof window !== 'undefined'
+      ? viewStateFromSearch(window.location.search) ?? {}
+      : {}),
+  }));
+
+  // Measurement tool (P4)
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+
+  // Trajectory playback (P5)
+  const frameCount = moleculeData?.frames?.length ?? 1;
+  const [frameIdx, setFrameIdx] = useState(0);
+  const [trajPlaying, setTrajPlaying] = useState(false);
+  const [trajFps, setTrajFps] = useState(10);
+
+  // Share-link feedback
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  // New structure → reset transient view state (P4/P5)
+  useEffect(() => {
+    setSelectedIds([]);
+    setFrameIdx(0);
+    setTrajPlaying(false);
+  }, [moleculeData]);
+
+  // Trajectory playback clock (P5)
+  useEffect(() => {
+    if (!trajPlaying || frameCount <= 1) return;
+    const id = window.setInterval(
+      () => setFrameIdx(i => (i + 1) % frameCount),
+      Math.max(16, Math.round(1000 / trajFps))
+    );
+    return () => window.clearInterval(id);
+  }, [trajPlaying, trajFps, frameCount]);
+
+  // Shareable URL sync (P3): debounced replaceState, never reloads.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const id = window.setTimeout(() => {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set('s', encodeViewState(vizConfig));
+        window.history.replaceState(null, '', url.toString());
+      } catch {
+        /* history unavailable (sandboxed iframe etc.) — non-fatal */
+      }
+    }, 300);
+    return () => window.clearTimeout(id);
+  }, [vizConfig]);
+
+  const toggleSelectAtom = useCallback((id: number) => {
+    setSelectedIds(prev =>
+      prev.includes(id)
+        ? prev.filter(x => x !== id)
+        : [...prev, id].slice(-4) // keep the last four picks
+    );
+  }, []);
+
+  const copyShareLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 1600);
+    } catch {
+      setError('Clipboard unavailable — copy the address bar URL instead.');
+    }
+  }, []);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -249,8 +329,13 @@ const App: React.FC = () => {
     onHelp: () => setShowHelp(v => !v),
     onEscape: () => {
       setShowHelp(false);
+      setSelectedIds([]);
       if (isMobile) setIsSidebarOpen(false);
     },
+    onClearSelection: () => setSelectedIds([]),
+    onPrevFrame: () => setFrameIdx(i => (i - 1 + frameCount) % frameCount),
+    onNextFrame: () => setFrameIdx(i => (i + 1) % frameCount),
+    onToggleTrajectoryPlay: () => { if (frameCount > 1) setTrajPlaying(v => !v); },
   });
 
   // ---- theme tokens (flat, no gradients) ----
@@ -294,6 +379,26 @@ const App: React.FC = () => {
   ];
 
   const atomTypeList = moleculeData ? Object.values(moleculeData.atomTypes) : [];
+
+  // Active frame for trajectory playback (P5): swaps atoms, keeps topology.
+  const activeData: MoleculeData | null = useMemo(() => {
+    if (!moleculeData || !moleculeData.frames || frameCount <= 1) return moleculeData;
+    const frame = moleculeData.frames[Math.min(frameIdx, frameCount - 1)];
+    return frame ? { ...moleculeData, atoms: frame.atoms } : moleculeData;
+  }, [moleculeData, frameIdx, frameCount]);
+
+  const measurement: MeasurementResult | null = useMemo(() => {
+    if (!activeData) return null;
+    const picked = selectedIds
+      .map(id => activeData.atoms.find(a => a.id === id))
+      .filter((a): a is NonNullable<typeof a> => !!a);
+    return measureSelection(picked);
+  }, [activeData, selectedIds]);
+
+  const measurementHint = useMemo(() => {
+    if (!selectedIds.length) return 'Click 2–4 atoms to measure';
+    return `${selectedIds.length} picked — ${4 - selectedIds.length > 0 ? `pick ${4 - selectedIds.length} more` : 'measurement ready'}`;
+  }, [selectedIds]);
 
   return (
     <div className={`flex h-screen w-screen font-sans overflow-hidden ${ct.bg} ${ct.text}`}>
@@ -757,6 +862,14 @@ const App: React.FC = () => {
             Created by <span className="font-medium">Shuvam Banerji Seal</span>
           </span>
           <button
+            onClick={copyShareLink}
+            className={`flex items-center gap-1 px-2 py-1 rounded ${linkCopied ? 'text-emerald-400' : ct.button}`}
+            title="Copy a link that restores this exact view"
+          >
+            {linkCopied ? <Check size={12} /> : <Link2 size={12} />}
+            {linkCopied ? 'Copied' : 'Share'}
+          </button>
+          <button
             onClick={() => setShowHelp(true)}
             className={`flex items-center gap-1 px-2 py-1 rounded ${ct.button}`}
             title="Keyboard shortcuts (H)"
@@ -870,15 +983,96 @@ const App: React.FC = () => {
           </button>
         </div>
 
+        {/* Trajectory playback bar (P5) */}
+        {frameCount > 1 && (
+          <div className={`absolute bottom-20 sm:bottom-16 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full border shadow-2xl backdrop-blur ${
+            theme === 'dark' ? 'bg-[#16191d]/90 border-gray-700/50' : 'bg-white/90 border-gray-200'
+          }`}>
+            <button
+              onClick={() => setFrameIdx(i => (i - 1 + frameCount) % frameCount)}
+              className={`p-1.5 rounded-full ${ct.button}`}
+              title="Previous frame (,)"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button
+              onClick={() => setTrajPlaying(v => !v)}
+              className={`p-1.5 rounded-full ${trajPlaying ? 'text-blue-400' : ct.muted}`}
+              title="Play / pause trajectory (P)"
+            >
+              {trajPlaying ? <Pause size={14} /> : <Play size={14} />}
+            </button>
+            <button
+              onClick={() => setFrameIdx(i => (i + 1) % frameCount)}
+              className={`p-1.5 rounded-full ${ct.button}`}
+              title="Next frame (.)"
+            >
+              <ChevronRight size={14} />
+            </button>
+            <input
+              type="range"
+              min="0"
+              max={frameCount - 1}
+              value={Math.min(frameIdx, frameCount - 1)}
+              onChange={e => { setTrajPlaying(false); setFrameIdx(parseInt(e.target.value, 10)); }}
+              className="w-32 sm:w-48 accent-blue-500"
+              aria-label="Trajectory frame"
+            />
+            <span className={`text-[10px] font-mono tabular-nums ${ct.muted}`}>
+              {Math.min(frameIdx, frameCount - 1) + 1}/{frameCount}
+            </span>
+            <select
+              value={trajFps}
+              onChange={e => setTrajFps(parseInt(e.target.value, 10))}
+              className={`text-[10px] rounded border bg-transparent ${ct.input} py-0.5`}
+              title="Playback speed"
+            >
+              {[2, 5, 10, 30].map(f => <option key={f} value={f}>{f} fps</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* Measurement panel (P4) */}
+        {selectedIds.length > 0 && activeData && (
+          <div className={`absolute top-16 left-3 z-10 px-3 py-2.5 rounded-xl border shadow-xl backdrop-blur text-xs space-y-1.5 ${
+            theme === 'dark' ? 'bg-[#16191d]/90 border-gray-700/50' : 'bg-white/90 border-gray-200'
+          }`} role="status">
+            <div className="flex items-center gap-1.5 font-semibold">
+              <Ruler size={13} className="text-sky-400" /> Measurement
+            </div>
+            {measurement ? (
+              <div className="font-mono text-sm">
+                <span className={ct.muted}>{measurementGlyph(measurement.kind)} = </span>
+                <span className="text-sky-400 font-bold">{measurement.label}</span>
+              </div>
+            ) : (
+              <div className={ct.muted}>{measurementHint}</div>
+            )}
+            <button
+              onClick={() => setSelectedIds([])}
+              className={`w-full py-1 rounded-lg text-[11px] font-medium ${ct.button}`}
+              title="Clear selection (C)"
+            >
+              Clear selection
+            </button>
+          </div>
+        )}
+
         {/* Hint for first-time users */}
-        {moleculeData && (
+        {moleculeData && frameCount <= 1 && selectedIds.length === 0 && (
           <div className={`absolute bottom-20 sm:bottom-16 left-1/2 -translate-x-1/2 z-[5] text-[10px] px-3 py-1 rounded-full ${ct.muted}`}>
             Press <kbd className={`px-1 rounded ${ct.chip}`}>H</kbd> for keyboard shortcuts · drag & drop files anywhere
           </div>
         )}
 
-        {moleculeData ? (
-          <MoleculeCanvas data={moleculeData} autoRotate={autoRotate} config={vizConfig} />
+        {activeData ? (
+          <MoleculeCanvas
+            data={activeData}
+            autoRotate={autoRotate}
+            config={vizConfig}
+            selectedIds={selectedIds}
+            onSelectAtom={toggleSelectAtom}
+          />
         ) : (
           <div className={`w-full h-full flex flex-col items-center justify-center ${ct.muted}`}>
             <div className="w-14 h-14 border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin mb-4" />

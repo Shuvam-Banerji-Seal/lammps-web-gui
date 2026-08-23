@@ -32,12 +32,13 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
 
 ## ✨ Features
 
-- 🧪 **LAMMPS Workbench** — three integrated modules: a visual **Script Builder** (flowchart pipeline of 140 curated commands), a **Compiler Helper** (package/accelerator presets → ready-to-run CMake build scripts) and the 3D **Structure Viewer**.
+- 🧪 **LAMMPS Workbench** — three integrated modules: a visual **Script Builder** (flowchart pipeline of 171 curated commands — the complete general-command surface), a **Compiler Helper** (package/accelerator presets → ready-to-run CMake build scripts) and the 3D **Structure Viewer**.
 - 💾 **Everything persists** — your script pipeline, compiler options, active module and light/dark theme survive module switches *and* page reloads (local-only, nothing uploaded).
-- 🧩 **Editable flowchart** — drag cards to reorder, click any **connect** pill to insert a command at that exact spot, disable or remove the next step; up/down chevrons still there. Prefer raw text? **Edit script** switches to a hand-editing mode that emits your text verbatim.
+- 🧩 **Editable flowchart** — grab any card and drop it between two others (it locks into place with a live insertion indicator), pan by dragging the background, zoom with the mouse wheel (35–250%), click any **connect** pill to insert a command at that exact spot. Prefer raw text? **Edit script** switches to a hand-editing mode that emits your text verbatim.
+- 📥 **Import existing scripts** — load any `in.*` LAMMPS input and the flowchart builds itself: commands are matched back to editable parameter forms (user-chosen fix/dump/compute IDs handled), unknown lines are preserved verbatim as raw steps — nothing is lost.
 - ↩️ **Undo / redo** — every builder action is undoable (`Ctrl+Z` / `Ctrl+Shift+Z`), including template loads; duplicate any step with its parameters; `Delete` removes the selected step.
 - 📋 **Starter templates** — one-click pipelines for LJ fluid NVT, EAM metal relax+NPT, ReaxFF chemistry, granular pouring and NEMD shear — all generate warning-free scripts.
-- 📚 **140-command library** — setup, system, interactions, output and run-control commands with per-parameter editors and links to the official docs; style enumerations verified against docs.lammps.org.
+- 📚 **171-command library** — every general LAMMPS command (verified against docs.lammps.org) plus free-form any-style `fix`/`dump`/`compute` escape hatches covering the ~900 style surface — setup, system, interactions, output and run-control commands with per-parameter editors and links to the official docs; style enumerations verified against docs.lammps.org.
 - 🔍 **CMake flag inspector** — the Compiler Helper lists *every* `-D` flag as an expandable chip set; click any flag to read what it does and where to change it.
 - 🌰 **Warm light/dark themes** — a coffee-and-sage dark palette (no blue tint, no gradients) and a warm-paper light theme, switchable app-wide.
 - 🧊 **True 3D rendering** — depth-correct perspective view of atoms, bonds and the simulation cell, powered by three.js / React Three Fiber.
@@ -99,7 +100,7 @@ Your files never leave your machine — parsing happens locally in the browser.
 - [React 19](https://react.dev/) + TypeScript
 - [three.js](https://threejs.org/) via [@react-three/fiber](https://docs.pmnd.rs/react-three-fiber) & [@react-three/drei](https://github.com/pmndrs/drei)
 - [Vite 8](https://vite.dev/) + [Tailwind CSS 4](https://tailwindcss.com/)
-- [Vitest](https://vitest.dev/) — 143 parser/chemistry/catalog unit tests
+- [Vitest](https://vitest.dev/) — 151 parser/chemistry/catalog/import unit tests
 - Zero runtime third-party requests: fonts, colors, lighting — all local.
 
 ## 💻 Development
@@ -136,7 +137,8 @@ Project layout:
 │   │   └── workbench/             # Script Builder · Compiler Helper · Viewer shell
 │   ├── lammps/              # workbench logic (pure, fully tested)
 │   │   ├── templates.ts           # one-click starter pipelines
-│   │   ├── catalog.ts             # 140-command declarative library
+│   │   └── scriptParser.ts        # import in.* scripts → flowchart steps
+│   │   ├── catalog.ts             # 171-command declarative library
 │   │   ├── generator.ts           # model → in.lammps (+ manual-edit mode)
 │   │   ├── compiler.ts            # packages/presets → CMake script + flag docs
 │   │   └── exporter.ts            # data-file writer + download helper

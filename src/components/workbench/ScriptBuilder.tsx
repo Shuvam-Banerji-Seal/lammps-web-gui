@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   ALL_COMMANDS,
   COMMAND_BY_ID,
@@ -10,15 +10,17 @@ import {
   ParamDef,
 } from '../../lammps/catalog';
 import { generateScript, deriveFlowchart, FlowGraph } from '../../lammps/generator';
+import { parseScript, ImportResult } from '../../lammps/scriptParser';
 import { downloadTextFile } from '../../lammps/exporter';
 import { SCRIPT_TEMPLATES, buildTemplate } from '../../lammps/templates';
 import { useUndoableState } from '../../hooks/useUndoableState';
 import { browserStore, loadJson, saveJson } from '../../services/persistence';
 import { getThemeTokens, ThemeTokens, Theme } from '../../theme';
 import {
-  Plus, Trash2, Copy, Download, Eye, EyeOff,
+  Plus, Trash2, Copy, Download, Eye, EyeOff, Upload,
   FileCode2, Workflow, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, Search,
-  Atom as AtomIcon, PencilLine, X, GripVertical, Link2, Undo2, Redo2, LayoutTemplate,
+  Atom as AtomIcon, PencilLine, X, GripVertical, Link2, Undo2, Redo2,
+  LayoutTemplate, ZoomIn, ZoomOut, Maximize2, FileInput,
 } from 'lucide-react';
 
 interface ScriptBuilderProps {
@@ -55,9 +57,16 @@ const reviveModel = (raw: unknown): ScriptModel | null => {
   };
 };
 
-const DEFAULT_MODEL: ScriptModel = { title: 'My LAMMPS Simulation', steps: [] };
-
 const MODEL_KEY = 'm3d.scriptModel.v1';
+const DEFAULT_MODEL: ScriptModel = { title: 'My LAMMPS Simulation', steps: [] };
+const ZOOM_MIN = 0.35;
+const ZOOM_MAX = 2.5;
+
+interface Transform {
+  x: number;
+  y: number;
+  k: number;
+}
 
 const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) => {
   const ct = getThemeTokens(theme);
@@ -76,34 +85,24 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   const [search, setSearch] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // Persist the model whenever it changes (history itself is in-memory).
-  React.useEffect(() => {
-    saveJson(browserStore(), MODEL_KEY, model);
-  }, [model]);
+  // Script import (in.* → flowchart)
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importStats, setImportStats] = useState<ImportResult['stats'] | null>(null);
 
-  // Undo/redo + Delete-selected keyboard layer (builder-local; the manual
-  // textarea keeps native undo because typing targets are skipped).
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
-      if ((mod && e.shiftKey && e.key.toLowerCase() === 'z') || (mod && e.key.toLowerCase() === 'y')) { e.preventDefault(); redo(); return; }
-      if (!mod && (e.key === 'Delete') && selectedUid) { e.preventDefault(); removeStepRef.current(selectedUid); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, selectedUid]);
-
-  // Drag-to-reorder state (HTML5 DnD)
-  const [dragUid, setDragUid] = useState<string | null>(null);
+  // Pointer drag-to-reorder (grab a card, drop between two others)
+  const [drag, setDrag] = useState<{ uid: string; label: string; x: number; y: number } | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
+  const nodeRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const dragState = useRef<{ uid: string; startX: number; startY: number; active: boolean } | null>(null);
 
-  // Connection-editing menu: which edge (insertion index) is open
+  // Flowchart canvas pan/zoom
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [viewTf, setViewTf] = useState<Transform>({ x: 0, y: 0, k: 1 });
+  const panRef = useRef<{ startX: number; startY: number; ox: number; oy: number } | null>(null);
+  const [panning, setPanning] = useState(false);
+
+  // Connection-editing menu + insert-at-edge picker
   const [edgeMenuIndex, setEdgeMenuIndex] = useState<number | null>(null);
-
-  // Insert-command picker: insertion index it will place into
   const [insertAt, setInsertAt] = useState<number | null>(null);
   const [insertSearch, setInsertSearch] = useState('');
 
@@ -114,9 +113,28 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   /** The text currently shown/copied/downloaded. */
   const activeText = isManual ? (model.manualText ?? '') : generated.text;
 
-  // ---- model mutations -------------------------------------------------
-  const removeStepRef = useRef<(uid: string) => void>(() => {});
+  // Persist the model whenever it changes (history itself is in-memory).
+  useEffect(() => {
+    saveJson(browserStore(), MODEL_KEY, model);
+  }, [model]);
 
+  // Undo/redo + Delete-selected keyboard layer (builder-local; the manual
+  // textarea keeps native undo because typing targets are skipped).
+  const removeStepRef = useRef<(uid: string) => void>(() => {});
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+      if ((mod && e.shiftKey && e.key.toLowerCase() === 'z') || (mod && e.key.toLowerCase() === 'y')) { e.preventDefault(); redo(); return; }
+      if (!mod && e.key === 'Delete' && selectedUid) { e.preventDefault(); removeStepRef.current(selectedUid); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo, selectedUid]);
+
+  // ---- model mutations -------------------------------------------------
   const insertStepAt = useCallback((defId: string, index: number) => {
     const def = COMMAND_BY_ID[defId];
     if (!def) return;
@@ -173,24 +191,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   }, [setModel]);
   removeStepRef.current = removeStep;
 
-  /** Duplicate a step (same command + params) right below it. */
-  const duplicateStep = useCallback((uid: string) => {
-    setModel(prev => {
-      const idx = prev.steps.findIndex(s => s.uid === uid);
-      if (idx < 0) return prev;
-      const src = prev.steps[idx];
-      const clone: ScriptStep = {
-        ...src,
-        uid: newUid(),
-        params: { ...src.params },
-        note: src.note,
-      };
-      const steps = [...prev.steps];
-      steps.splice(idx + 1, 0, clone);
-      return { ...prev, steps };
-    });
-  }, [setModel]);
-
+  /** Chevron move: swap with the neighbour. */
   const moveStep = useCallback((uid: string, dir: -1 | 1) => {
     setModel(prev => {
       const steps = [...prev.steps];
@@ -211,10 +212,37 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
       const clamped = Math.max(0, Math.min(toIndex, steps.length));
       if (clamped === from || clamped === from + 1) return prev;
       const [dragged] = steps.splice(from, 1);
-      const insertAt2 = clamped > from ? clamped - 1 : clamped;
-      steps.splice(insertAt2, 0, dragged);
+      const at = clamped > from ? clamped - 1 : clamped;
+      steps.splice(at, 0, dragged);
       return { ...prev, steps };
     });
+  }, [setModel]);
+
+  /** Duplicate a step (same command + params) right below it. */
+  const duplicateStep = useCallback((uid: string) => {
+    setModel(prev => {
+      const idx = prev.steps.findIndex(s => s.uid === uid);
+      if (idx < 0) return prev;
+      const src = prev.steps[idx];
+      const clone: ScriptStep = { ...src, uid: newUid(), params: { ...src.params } };
+      const steps = [...prev.steps];
+      steps.splice(idx + 1, 0, clone);
+      return { ...prev, steps };
+    });
+  }, [setModel]);
+
+  // ---- script import ----------------------------------------------------
+  const handleImportFile = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const text = (e.target?.result as string) ?? '';
+      const result = parseScript(text, file.name.replace(/\.[^.]+$/, ''));
+      setModel(result.model);
+      setImportStats(result.stats);
+      setSelectedUid(null);
+      setView('flow');
+    };
+    reader.readAsText(file);
   }, [setModel]);
 
   // ---- manual script editing -------------------------------------------
@@ -279,26 +307,102 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     return map;
   }, [filteredCommands]);
 
-  // ---- drag handlers ----------------------------------------------------
-  const handleDrop = useCallback((targetIndex: number) => {
-    if (dragUid) moveStepToIndex(dragUid, targetIndex);
-    setDragUid(null);
-    setOverIndex(null);
-  }, [dragUid, moveStepToIndex]);
+  // ---- pointer drag-to-reorder ------------------------------------------
+  const computeInsertIndex = useCallback((clientY: number): number => {
+    let idx = 0;
+    for (const s of model.steps) {
+      const el = nodeRefs.current.get(s.uid);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (clientY > r.top + r.height / 2) idx++;
+    }
+    return idx;
+  }, [model.steps]);
 
-  const dropProps = (index: number) => ({
-    onDragOver: (e: React.DragEvent) => {
+  const cardPointerDown = useCallback((uid: string) => (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.stopPropagation(); // keep the canvas pan handler out of card drags
+    dragState.current = { uid, startX: e.clientX, startY: e.clientY, active: false };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }, []);
+
+  const cardPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const st = dragState.current;
+    if (!st) return;
+    if (!st.active) {
+      if (Math.hypot(e.clientX - st.startX, e.clientY - st.startY) < 6) return;
+      st.active = true;
+      const step = model.steps.find(s => s.uid === st.uid);
+      setDrag({
+        uid: st.uid,
+        label: COMMAND_BY_ID[step?.defId ?? '']?.command ?? step?.defId ?? '',
+        x: e.clientX, y: e.clientY,
+      });
+    }
+    setDrag(d => (d ? { ...d, x: e.clientX, y: e.clientY } : d));
+    setOverIndex(computeInsertIndex(e.clientY));
+  }, [model.steps, computeInsertIndex]);
+
+  const cardPointerUp = useCallback(() => {
+    const st = dragState.current;
+    dragState.current = null;
+    if (st?.active && overIndex !== null) {
+      moveStepToIndex(st.uid, overIndex);
+    }
+    setDrag(null);
+    setOverIndex(null);
+  }, [overIndex, moveStepToIndex]);
+
+  // ---- flowchart canvas pan/zoom ----------------------------------------
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      setOverIndex(index);
-    },
-    onDragLeave: () => setOverIndex(prev => (prev === index ? null : prev)),
-    onDrop: (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      handleDrop(index);
-    },
-  });
+      const rect = el.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      setViewTf(t => {
+        const factor = Math.exp(-e.deltaY * 0.0015);
+        const k = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, t.k * factor));
+        const f = k / t.k;
+        return { k, x: cx - (cx - t.x) * f, y: cy - (cy - t.y) * f };
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [view]);
+
+  const bgPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 && e.button !== 1) return;
+    panRef.current = { startX: e.clientX, startY: e.clientY, ox: viewTf.x, oy: viewTf.y };
+    setPanning(true);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }, [viewTf]);
+
+  const bgPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const p = panRef.current;
+    if (!p) return;
+    setViewTf(t => ({ ...t, x: p.ox + (e.clientX - p.startX), y: p.oy + (e.clientY - p.startY) }));
+  }, []);
+
+  const bgPointerUp = useCallback(() => {
+    panRef.current = null;
+    setPanning(false);
+  }, []);
+
+  const zoomBy = useCallback((factor: number) => {
+    const el = canvasRef.current;
+    const cx = (el?.clientWidth ?? 800) / 2;
+    const cy = (el?.clientHeight ?? 600) / 2;
+    setViewTf(t => {
+      const k = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, t.k * factor));
+      const f = k / t.k;
+      return { k, x: cx - (cx - t.x) * f, y: cy - (cy - t.y) * f };
+    });
+  }, []);
+
+  const resetView = useCallback(() => setViewTf({ x: 0, y: 0, k: 1 }), []);
 
   return (
     <div className="flex h-full min-h-0">
@@ -351,7 +455,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
       <div className={`flex min-w-0 flex-1 flex-col ${ct.bg}`}>
         {/* Toolbar */}
         <div className={`flex h-10 shrink-0 items-center justify-between border-b px-3 ${ct.divider}`}>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             {!paletteOpen && (
               <button onClick={() => setPaletteOpen(true)} className={`p-1 rounded ${ct.muted} ${ct.hoverSurface}`} title="Open palette">
                 <ChevronRight size={16} />
@@ -361,12 +465,13 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               value={model.title}
               onChange={e => setModel(prev => ({ ...prev, title: e.target.value }))}
               className={`w-32 min-w-0 flex-shrink rounded bg-transparent px-1.5 py-0.5 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-[#7fa66b] sm:w-40 ${ct.headerText}`}
+              aria-label="Script title"
             />
             <span className={`hidden whitespace-nowrap text-[10px] md:block ${ct.muted}`}>
               {isManual ? 'manual' : `${model.steps.length} steps · ${generated.emitted.length} lines`}
             </span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1.5">
             <button
               onClick={undo}
               disabled={!canUndo}
@@ -427,6 +532,25 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               )}
             </div>
             <button
+              onClick={() => importInputRef.current?.click()}
+              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+              title="Import a LAMMPS input script — builds the flowchart"
+            >
+              <FileInput size={13} />
+              <span className="hidden lg:inline">Import</span>
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".in,.lammps,.lmp,.txt,.script,.mod"
+              className="hidden"
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (f) handleImportFile(f);
+                e.target.value = '';
+              }}
+            />
+            <button
               onClick={() => setView(v => v === 'flow' ? 'script' : 'flow')}
               className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
                 view === 'flow' ? ct.active : `${ct.muted} ${ct.hoverSurface}`
@@ -439,7 +563,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             {isManual ? (
               <button
                 onClick={exitManualMode}
-                className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium ${ct.warnAction}"
+                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium ${ct.warnAction}`}
                 title="Discard manual edits and regenerate from your steps"
               >
                 <X size={13} />
@@ -476,16 +600,30 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
                 title="Open 3D structure viewer"
               >
-                <AtomIcon size={13} /> Viewer
+                <AtomIcon size={13} />
+                <span className="hidden 2xl:inline">Viewer</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Manual-mode notice */}
+        {/* Import / manual notices */}
+        {importStats && (
+          <div className={`flex shrink-0 items-center justify-between border-b px-3 py-1.5 text-[11px] ${ct.card}`}>
+            <span className={ct.text}>
+              <FileInput size={11} className="mr-1 inline" />
+              Imported {importStats.total} statements — {importStats.recognized} recognized
+              {importStats.raw > 0 && `, ${importStats.raw} kept as verbatim raw lines`}
+              .
+            </span>
+            <button onClick={() => setImportStats(null)} className={`rounded p-0.5 ${ct.muted}`} title="Dismiss">
+              <X size={12} />
+            </button>
+          </div>
+        )}
         {isManual && (
           <div className={`shrink-0 border-b px-3 py-1.5 text-[11px] ${ct.warn}`}>
-            ✎ Manual mode — this text is emitted verbatim. Your builder steps are kept safe below the flowchart; press “Exit manual” to regenerate.
+            ✎ Manual mode — this text is emitted verbatim. Your builder steps are kept safe; press “Exit manual” to regenerate.
           </div>
         )}
         {!isManual && generated.warnings.length > 0 && (
@@ -494,53 +632,117 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
           </div>
         )}
 
-        {/* Flowchart or Script view */}
-        <div className="min-h-0 flex-1 overflow-auto">
-          {view === 'flow' ? (
-            <FlowchartView
-              ct={ct}
-              flow={flow}
-              steps={model.steps}
-              selectedUid={selectedUid}
-              dragUid={dragUid}
-              overIndex={overIndex}
-              edgeMenuIndex={edgeMenuIndex}
-              onSelect={setSelectedUid}
-              onToggle={(uid) => updateStep(uid, { enabled: !model.steps.find(s => s.uid === uid)?.enabled })}
-              onRemove={removeStep}
-              onDuplicate={duplicateStep}
-              onMove={moveStep}
-              onDragStart={(uid) => setDragUid(uid)}
-              onDragEnd={() => { setDragUid(null); setOverIndex(null); }}
-              onDropAt={handleDrop}
-              onEdgeClick={(i) => setEdgeMenuIndex(prev => (prev === i ? null : i))}
-              onEdgeInsertHere={(i) => { setEdgeMenuIndex(null); setInsertAt(i); }}
-              onEdgeDisableNext={(i) => {
-                const s = model.steps[i];
-                if (s) updateStep(s.uid, { enabled: !s.enabled });
-                setEdgeMenuIndex(null);
-              }}
-              onEdgeRemoveNext={(i) => {
-                const s = model.steps[i];
-                if (s) removeStep(s.uid);
-                setEdgeMenuIndex(null);
-              }}
-              onCloseEdgeMenu={() => setEdgeMenuIndex(null)}
-            />
-          ) : isManual ? (
-            <textarea
-              value={model.manualText ?? ''}
-              onChange={e => setManualText(e.target.value)}
-              spellCheck={false}
-              className={`h-full min-h-full w-full resize-none p-4 text-[11px] leading-relaxed font-mono focus:outline-none ${ct.bg} ${ct.text}`}
-              aria-label="Manual LAMMPS script editor"
-            />
-          ) : (
+        {/* Flowchart canvas (pan + zoom) or Script view */}
+        {view === 'flow' ? (
+          <div
+            ref={canvasRef}
+            onPointerDown={bgPointerDown}
+            onPointerMove={bgPointerMove}
+            onPointerUp={bgPointerUp}
+            onPointerCancel={bgPointerUp}
+            className={`relative min-h-0 flex-1 overflow-hidden ${panning ? 'cursor-grabbing' : ''}`}
+            style={{ touchAction: 'none' }}
+          >
+            <div
+              className="absolute left-0 top-0 origin-top-left"
+              style={{ transform: `translate(${viewTf.x}px, ${viewTf.y}px) scale(${viewTf.k})` }}
+            >
+              <div style={{ width: 640 }}>
+                <FlowchartView
+                  ct={ct}
+                  flow={flow}
+                  steps={model.steps}
+                  selectedUid={selectedUid}
+                  dragUid={drag?.uid ?? null}
+                  overIndex={overIndex}
+                  edgeMenuIndex={edgeMenuIndex}
+                  onSelect={setSelectedUid}
+                  onToggle={(uid) => updateStep(uid, { enabled: !model.steps.find(s => s.uid === uid)?.enabled })}
+                  onRemove={removeStep}
+                  onDuplicate={duplicateStep}
+                  onMove={moveStep}
+                  onCardPointerDown={cardPointerDown}
+                  onCardPointerMove={cardPointerMove}
+                  onCardPointerUp={cardPointerUp}
+                  registerNodeRef={(uid, el) => {
+                    if (el) nodeRefs.current.set(uid, el);
+                    else nodeRefs.current.delete(uid);
+                  }}
+                  onEdgeClick={(i) => setEdgeMenuIndex(prev => (prev === i ? null : i))}
+                  onEdgeInsertHere={(i) => { setEdgeMenuIndex(null); setInsertAt(i); }}
+                  onEdgeDisableNext={(i) => {
+                    const s = model.steps[i];
+                    if (s) updateStep(s.uid, { enabled: !s.enabled });
+                    setEdgeMenuIndex(null);
+                  }}
+                  onEdgeRemoveNext={(i) => {
+                    const s = model.steps[i];
+                    if (s) removeStep(s.uid);
+                    setEdgeMenuIndex(null);
+                  }}
+                  onCloseEdgeMenu={() => setEdgeMenuIndex(null)}
+                />
+              </div>
+            </div>
+
+            {/* Zoom controls */}
+            <div
+              className={`absolute bottom-3 right-3 z-20 flex items-center gap-1 rounded-full border px-1.5 py-1 shadow-lg ${ct.card}`}
+              onPointerDown={e => e.stopPropagation()}
+              onWheel={e => e.stopPropagation()}
+            >
+              <button
+                onClick={() => zoomBy(1 / 1.2)}
+                className={`rounded-full p-1.5 ${ct.muted} ${ct.hoverSurface}`}
+                title="Zoom out (mouse wheel)"
+                aria-label="Zoom out"
+              >
+                <ZoomOut size={14} />
+              </button>
+              <button
+                onClick={resetView}
+                className={`rounded-full px-2 py-1 text-[10px] font-mono tabular-nums ${ct.muted} ${ct.hoverSurface}`}
+                title="Reset view"
+              >
+                {Math.round(viewTf.k * 100)}%
+              </button>
+              <button
+                onClick={() => zoomBy(1.2)}
+                className={`rounded-full p-1.5 ${ct.muted} ${ct.hoverSurface}`}
+                title="Zoom in (mouse wheel)"
+                aria-label="Zoom in"
+              >
+                <ZoomIn size={14} />
+              </button>
+              <div className={`mx-0.5 h-4 w-px ${ct.divider.split(' ')[0]}`} />
+              <button
+                onClick={resetView}
+                className={`rounded-full p-1.5 ${ct.muted} ${ct.hoverSurface}`}
+                title="Fit / reset pan & zoom"
+                aria-label="Reset view"
+              >
+                <Maximize2 size={14} />
+              </button>
+            </div>
+            <p className={`pointer-events-none absolute bottom-3 left-3 text-[10px] ${ct.muted}`}>
+              wheel = zoom · drag background = pan · grab cards to reorder
+            </p>
+          </div>
+        ) : isManual ? (
+          <textarea
+            value={model.manualText ?? ''}
+            onChange={e => setManualText(e.target.value)}
+            spellCheck={false}
+            className={`h-full min-h-full w-full resize-none p-4 text-[11px] leading-relaxed font-mono focus:outline-none ${ct.bg} ${ct.text}`}
+            aria-label="Manual LAMMPS script editor"
+          />
+        ) : (
+          <div className="min-h-0 flex-1 overflow-auto">
             <pre className={`p-4 text-[11px] leading-relaxed font-mono whitespace-pre-wrap ${ct.muted}`}>
               {generated.text}
             </pre>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Right: step editor */}
@@ -564,6 +766,17 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
           </div>
         )}
       </div>
+
+      {/* Floating drag ghost */}
+      {drag && (
+        <div
+          className={`pointer-events-none fixed z-[60] rounded-lg border px-3 py-1.5 text-xs font-bold shadow-2xl ${ct.active}`}
+          style={{ left: drag.x + 12, top: drag.y + 10 }}
+        >
+          <GripVertical size={11} className="mr-1 inline opacity-60" />
+          {drag.label}
+        </div>
+      )}
 
       {/* Insert-at-edge command picker */}
       {insertAt !== null && (
@@ -633,9 +846,10 @@ interface FlowchartViewProps {
   onRemove: (uid: string) => void;
   onDuplicate: (uid: string) => void;
   onMove: (uid: string, dir: -1 | 1) => void;
-  onDragStart: (uid: string) => void;
-  onDragEnd: () => void;
-  onDropAt: (index: number) => void;
+  onCardPointerDown: (uid: string) => (e: React.PointerEvent<HTMLDivElement>) => void;
+  onCardPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onCardPointerUp: () => void;
+  registerNodeRef: (uid: string, el: HTMLDivElement | null) => void;
   onEdgeClick: (index: number) => void;
   onEdgeInsertHere: (index: number) => void;
   onEdgeDisableNext: (index: number) => void;
@@ -643,36 +857,31 @@ interface FlowchartViewProps {
   onCloseEdgeMenu: () => void;
 }
 
+const DropLine: React.FC<{ ct: ThemeTokens; active: boolean }> = ({ ct, active }) =>
+  active ? (
+    <div className="my-1 flex items-center" data-drop-active>
+      <div className="h-1 w-full rounded-full bg-[#7fa66b] shadow-[0_0_8px_rgba(127,166,107,0.7)]" />
+    </div>
+  ) : null;
+
 const FlowchartView: React.FC<FlowchartViewProps> = ({
   ct, flow, steps, selectedUid, dragUid, overIndex, edgeMenuIndex,
   onSelect, onToggle, onRemove, onDuplicate, onMove,
-  onDragStart, onDragEnd, onDropAt,
+  onCardPointerDown, onCardPointerMove, onCardPointerUp, registerNodeRef,
   onEdgeClick, onEdgeInsertHere, onEdgeDisableNext, onEdgeRemoveNext, onCloseEdgeMenu,
 }) => {
-  if (flow.nodes.length === 0) {
-    return (
-      <div className={`flex h-full items-center justify-center text-sm ${ct.muted}`}>
-        <div className="text-center">
-          <Workflow size={32} className="mx-auto mb-3 opacity-40" />
-          <p>Empty pipeline — add commands from the palette on the left.</p>
-        </div>
-      </div>
-    );
-  }
+  const shortLabel = (s: ScriptStep): string => COMMAND_BY_ID[s.defId]?.command ?? s.defId;
 
   const edgeRow = (i: number) => {
-    const isActive = overIndex === i && dragUid !== null;
     const menuOpen = edgeMenuIndex === i;
     return (
-      <div key={`edge-${i}`} className="relative flex flex-col items-center" {...dropPropsFor(i)}>
-        {/* connector line */}
-        <div className={`h-3 w-px ${isActive ? 'w-1 bg-[#7fa66b]' : ct.edgeLine}`} />
-        {/* connection pill */}
+      <div key={`edge-${i}`} className="relative flex flex-col items-center">
+        <div className={`h-3 w-px bg-[#453a2b]`} />
         <button
           onClick={(e) => { e.stopPropagation(); onEdgeClick(i); }}
           title="Edit this connection — insert or rewire steps here"
-          className={`group flex h-5 items-center gap-1 rounded-full border px-2 text-[9px] font-medium transition-colors ${
-            menuOpen || isActive
+          className={`flex h-5 items-center gap-1 rounded-full border px-2 text-[9px] font-medium transition-colors ${
+            menuOpen
               ? ct.edgeActive
               : ct.edgePill
           }`}
@@ -681,9 +890,8 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
           <Link2 size={10} />
           connect
         </button>
-        <div className={`h-3 w-px ${isActive ? 'w-1 bg-[#7fa66b]' : ct.edgeLine}`} />
+        <div className={`h-3 w-px bg-[#453a2b]`} />
 
-        {/* connection action menu */}
         {menuOpen && (
           <div
             className={`absolute left-1/2 top-full z-30 w-56 -translate-x-1/2 rounded-lg border p-1.5 shadow-2xl ${ct.card}`}
@@ -714,26 +922,23 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
     );
   };
 
-  const dropPropsFor = (index: number) => ({
-    onDragOver: (e: React.DragEvent) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-    },
-    onDrop: (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      onDropAt(index);
-    },
-  });
-
-  const shortLabel = (s: ScriptStep): string => COMMAND_BY_ID[s.defId]?.command ?? s.defId;
+  if (flow.nodes.length === 0) {
+    return (
+      <div className={`flex h-full items-center justify-center text-sm ${ct.muted}`}>
+        <div className="text-center">
+          <Workflow size={32} className="mx-auto mb-3 opacity-40" />
+          <p>Empty pipeline — add commands, import a script, or pick a template.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col items-center gap-0 p-6">
-      {/* Start node */}
+    <div className={`flex flex-col items-center gap-0 p-6 ${dragUid ? 'select-none' : ''}`}>
+      {/* START */}
       <div className="flex items-center gap-2 text-[10px] text-[#a3937f]">
-        <div className={`h-px w-8 ${ct.edgeLine}`} />
-        <span className="rounded-full px-3 py-0.5 ${ct.startBadge}">
+        <div className={`h-px w-8 ${ct.edgeLine.replace('bg-', 'bg-')}`} />
+        <span className={`rounded-full px-3 py-0.5 ${ct.startBadge}`}>
           START
         </span>
       </div>
@@ -745,21 +950,23 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
         const isDragging = dragUid === node.uid;
         return (
           <React.Fragment key={node.uid}>
+            <DropLine ct={ct} active={dragUid !== null && overIndex === i} />
             <div
-              draggable
-              onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart(node.uid); }}
-              onDragEnd={onDragEnd}
-              {...dropPropsFor(i)}
+              ref={el => registerNodeRef(node.uid, el)}
+              onPointerDown={onCardPointerDown(node.uid)}
+              onPointerMove={onCardPointerMove}
+              onPointerUp={onCardPointerUp}
+              onPointerCancel={onCardPointerUp}
               onClick={() => onSelect(node.uid)}
-              className={`group relative w-full max-w-md cursor-grab rounded-xl border p-3 transition-all active:cursor-grabbing ${
+              style={{ touchAction: 'none' }}
+              className={`group relative w-full cursor-grab rounded-xl border p-3 transition-shadow active:cursor-grabbing ${
                 isSel
-                  ? ct.active + ' ring-1 ring-[#7fa66b]/40'
+                  ? `${ct.active} ring-1 ring-[#7fa66b]/40`
                   : node.enabled
                     ? ct.nodeCard
-                    : ct.nodeDisabled + ' opacity-50'
+                    : `${ct.nodeDisabled} opacity-50`
               } ${isDragging ? 'opacity-30' : ''}`}
             >
-              {/* Section badge + controls */}
               <div className="mb-1 flex items-center justify-between">
                 <span className={`text-[9px] uppercase tracking-wide ${ct.muted}`}>
                   <GripVertical size={9} className="mr-1 inline opacity-50" />
@@ -789,7 +996,7 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onDuplicate(node.uid); }}
-                    className={`rounded p-0.5 ${ct.muted} hover:text-[#ede5d8]`}
+                    className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
                     title="Duplicate step"
                   >
                     <Copy size={12} />
@@ -803,27 +1010,27 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
                   </button>
                 </div>
               </div>
-              {/* Command + params */}
               <div className="flex items-center gap-2">
-                <code className="text-xs font-bold ${ct.accentCode}">{node.label}</code>
+                <code className={`text-xs font-bold ${ct.accentCode}`}>{node.label}</code>
               </div>
               {node.sublabel && (
                 <div className={`mt-0.5 truncate text-[10px] font-mono ${ct.muted}`}>{node.sublabel}</div>
               )}
             </div>
-            {edgeRow(i + 1)}
+            {i === flow.nodes.length - 1 && <DropLine ct={ct} active={dragUid !== null && overIndex === flow.nodes.length} />}
+            {i < flow.nodes.length - 1 && edgeRow(i + 1)}
           </React.Fragment>
         );
       })}
 
       <div className="flex items-center gap-2 text-[10px] text-[#a3937f]">
         <div className={`h-px w-8 ${ct.edgeLine}`} />
-        <span className="rounded-full px-3 py-0.5 ${ct.endBadge}">
+        <span className={`rounded-full px-3 py-0.5 ${ct.endBadge}`}>
           END
         </span>
       </div>
       <p className={`mt-3 text-center text-[10px] ${ct.muted}`}>
-        Drag cards to reorder · click any <span className={ct.accentText}>connect</span> pill to insert or edit at that spot.
+        Grab a card and drop it between two others — it locks into place · click any <span className={ct.accentText}>connect</span> pill to insert there.
       </p>
     </div>
   );
@@ -882,7 +1089,6 @@ const StepEditor: React.FC<StepEditorProps> = ({
         </a>
       )}
 
-      {/* Comment / note */}
       <div className="space-y-1">
         <label className={`text-[10px] font-semibold ${ct.muted}`}>Comment (optional)</label>
         <input
@@ -893,26 +1099,32 @@ const StepEditor: React.FC<StepEditorProps> = ({
         />
       </div>
 
-      {/* Parameters */}
       <div className="space-y-3">
         {def.params.map(pd => (
           <ParamControl key={pd.key} ct={ct} def={pd} value={step.params[pd.key] ?? ''} onChange={v => onUpdateParam(pd.key, v)} />
         ))}
       </div>
 
-      {/* Toggle + remove */}
-      <div className={`flex items-center gap-2 border-t pt-3 ${ct.divider}`}>
+      <div className={`flex flex-wrap items-center gap-2 border-t pt-3 ${ct.divider}`}>
         <button
           onClick={onToggle}
           className={`flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
-            step.enabled ? ct.enabledBtn : ct.disabledBtn}`}
+            step.enabled ? ct.enabledBtn : ct.disabledBtn
+          }`}
         >
           {step.enabled ? <Eye size={13} /> : <EyeOff size={13} />}
           {step.enabled ? 'Enabled' : 'Disabled'}
         </button>
         <button
+          onClick={onDuplicate}
+          className={`flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium ${ct.muted} ${ct.hoverSurface}`}
+          title="Duplicate this step with its parameters"
+        >
+          <Copy size={13} /> Duplicate
+        </button>
+        <button
           onClick={onRemove}
-          className="flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium ${ct.removeBtn}"
+          className={`flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium ${ct.removeBtn}`}
         >
           <Trash2 size={13} /> Remove
         </button>
@@ -932,6 +1144,7 @@ const ParamControl: React.FC<{ ct: ThemeTokens; def: ParamDef; value: string; on
   );
 
   if (def.type === 'enum' && def.options) {
+    const known = def.options.some(o => o.value === value);
     return (
       <div className="space-y-1">
         {label}
@@ -940,6 +1153,7 @@ const ParamControl: React.FC<{ ct: ThemeTokens; def: ParamDef; value: string; on
           onChange={e => onChange(e.target.value)}
           className={`w-full rounded border px-2 py-1.5 text-xs focus:border-[#7fa66b] focus:outline-none ${ct.input}`}
         >
+          {!known && value !== '' && <option value={value}>{value} (imported)</option>}
           {def.options.map(o => (
             <option key={o.value} value={o.value}>{o.label ?? o.value}</option>
           ))}

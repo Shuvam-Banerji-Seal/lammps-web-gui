@@ -9,7 +9,7 @@ import { generateScript } from '../src/lammps/generator';
 
 describe('LAMMPS command catalog integrity', () => {
   it('has grown to full-library coverage (>= 100 commands)', () => {
-    expect(ALL_COMMANDS.length).toBeGreaterThanOrEqual(100);
+    expect(ALL_COMMANDS.length).toBeGreaterThanOrEqual(165);
   });
 
   it('command ids are unique', () => {

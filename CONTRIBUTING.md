@@ -12,8 +12,8 @@ By participating you agree to abide by our
 ## Development setup
 
 ```bash
-git clone https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer.git
-cd lammps_data_web_viewer
+git clone https://github.com/Shuvam-Banerji-Seal/molecule3d.git
+cd molecule3d
 npm install        # Node >= 20, npm >= 10 recommended
 npm run dev        # dev server at http://localhost:5173
 npm test           # vitest suite (parsers, constants)

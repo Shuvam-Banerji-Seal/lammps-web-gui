@@ -3,8 +3,8 @@
 **Molecule3D** is a free, open-source, GPU-accelerated 3D molecular structure
 viewer that runs entirely in your browser.
 
-▶ **Live app**: https://shuvam-banerji-seal.github.io/lammps_data_web_viewer/
-💻 **Source**: https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer
+▶ **Live app**: https://shuvam-banerji-seal.github.io/molecule3d/
+💻 **Source**: https://github.com/Shuvam-Banerji-Seal/molecule3d
 
 ## Supported formats
 
@@ -39,4 +39,4 @@ viewer that runs entirely in your browser.
 
 ## Contributing
 
-PRs welcome — see [CONTRIBUTING](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/blob/main/CONTRIBUTING.md).
+PRs welcome — see [CONTRIBUTING](https://github.com/Shuvam-Banerji-Seal/molecule3d/blob/main/CONTRIBUTING.md).

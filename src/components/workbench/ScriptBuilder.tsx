@@ -360,10 +360,9 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             <input
               value={model.title}
               onChange={e => setModel(prev => ({ ...prev, title: e.target.value }))}
-              className={`bg-transparent text-sm font-medium rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#7fa66b] ${ct.headerText}`}
-              aria-label="Script title"
+              className={`w-32 min-w-0 flex-shrink rounded bg-transparent px-1.5 py-0.5 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-[#7fa66b] sm:w-40 ${ct.headerText}`}
             />
-            <span className={`text-[10px] ${ct.muted}`}>
+            <span className={`hidden whitespace-nowrap text-[10px] md:block ${ct.muted}`}>
               {isManual ? 'manual' : `${model.steps.length} steps · ${generated.emitted.length} lines`}
             </span>
           </div>
@@ -392,7 +391,8 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
                 title="Start from a ready-made pipeline"
               >
-                <LayoutTemplate size={13} /> Templates
+                <LayoutTemplate size={13} />
+                <span className="hidden md:inline">Templates</span>
               </button>
               {templatesOpen && (
                 <div
@@ -442,7 +442,8 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium ${ct.warnAction}"
                 title="Discard manual edits and regenerate from your steps"
               >
-                <X size={13} /> Exit manual
+                <X size={13} />
+                <span className="hidden 2xl:inline">Exit manual</span>
               </button>
             ) : (
               <button
@@ -450,7 +451,8 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
                 title="Edit the generated script by hand"
               >
-                <PencilLine size={13} /> Edit script
+                <PencilLine size={13} />
+                <span className="hidden 2xl:inline">Edit script</span>
               </button>
             )}
             <button
@@ -458,14 +460,15 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
               title="Copy script to clipboard"
             >
-              {copied ? <span className={ct.accentText}>✓ Copied</span> : <><Copy size={13} /> Copy</>}
+              {copied ? <span className={ct.accentText}>✓ Copied</span> : <><Copy size={13} /><span className="hidden lg:inline">Copy</span></>}
             </button>
             <button
               onClick={() => downloadTextFile('in.lammps', activeText)}
               className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
               title="Download in.lammps"
             >
-              <Download size={13} /> Download
+              <Download size={13} />
+              <span className="hidden 2xl:inline">Download</span>
             </button>
             {onOpenViewer && (
               <button

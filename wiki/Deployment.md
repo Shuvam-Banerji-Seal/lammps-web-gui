@@ -16,7 +16,7 @@ three.js are left for deliberate review) plus weekly Actions updates.
 ## GitHub Pages configuration
 
 - Source: **GitHub Actions** (`actions/deploy-pages@v4`)
-- Base path: `/lammps_data_web_viewer/` — set in `vite.config.ts` when
+- Base path: `/molecule3d/` — set in `vite.config.ts` when
   `NODE_ENV=production`; all asset URLs use `import.meta.env.BASE_URL`
 
 ## Publishing the wiki (one-time)
@@ -27,7 +27,7 @@ GitHub requires the wiki to be initialized once through the web UI:
 2. Then publish the versioned pages:
 
 ```bash
-git clone https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer.wiki.git wiki-repo
+git clone https://github.com/Shuvam-Banerji-Seal/molecule3d.wiki.git wiki-repo
 cp wiki/*.md wiki-repo/
 cd wiki-repo && git add . && git commit -m "docs: sync wiki" && git push
 ```

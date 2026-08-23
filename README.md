@@ -6,9 +6,9 @@
 
 Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and explore them in real-time 3D — no install, no upload, no account.
 
-[![Live Demo](https://img.shields.io/badge/▶_Live_Demo-shuvam--banerji--seal.github.io-blue?style=for-the-badge)](https://shuvam-banerji-seal.github.io/lammps_data_web_viewer/)
-[![CI](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/actions/workflows/ci.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/actions/workflows/ci.yml)
-[![Deploy](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/actions/workflows/deploy.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/actions/workflows/deploy.yml)
+[![Live Demo](https://img.shields.io/badge/▶_Live_Demo-shuvam--banerji--seal.github.io-blue?style=for-the-badge)](https://shuvam-banerji-seal.github.io/molecule3d/)
+[![CI](https://github.com/Shuvam-Banerji-Seal/molecule3d/actions/workflows/ci.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/molecule3d/actions/workflows/ci.yml)
+[![Deploy](https://github.com/Shuvam-Banerji-Seal/molecule3d/actions/workflows/deploy.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/molecule3d/actions/workflows/deploy.yml)
 [![Tests](https://img.shields.io/badge/tests-143%20passing-brightgreen)](#development)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -18,11 +18,17 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
 
 ## 📸 Screenshots
 
-| Desktop | Simulation box (NaCl, CIF) |
+| Script Builder — editable flowchart | Structure Viewer — C60 |
 |---|---|
-| ![Desktop](docs/screenshots/app-desktop.png) | ![Box](docs/screenshots/simulation-box.png) |
-| **Keyboard shortcuts overlay** | **Mobile** |
-| ![Shortcuts](docs/screenshots/shortcuts-overlay.png) | ![Mobile](docs/screenshots/app-mobile.png) |
+| ![Script Builder](docs/screenshots/app-desktop.png) | ![Viewer](docs/screenshots/viewer-c60.png) |
+| **Compiler Helper — click-to-inspect flags** | **Dump trajectory playback** |
+| ![Compiler](docs/screenshots/compiler-flags.png) | ![Dump playback](docs/screenshots/viewer-dump-playback.png) |
+| **Simulation box (NaCl, CIF)** | **Starter templates** |
+| ![Box](docs/screenshots/simulation-box.png) | ![Templates](docs/screenshots/templates-menu.png) |
+| **Warm light theme** | **Keyboard shortcuts overlay** |
+| ![Light](docs/screenshots/app-light.png) | ![Shortcuts](docs/screenshots/shortcuts-overlay.png) |
+| **Mobile** | |
+| ![Mobile](docs/screenshots/app-mobile.png) | |
 
 ## ✨ Features
 
@@ -57,7 +63,7 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
 
 ## 🚀 Quick start
 
-Open the [live demo](https://shuvam-banerji-seal.github.io/lammps_data_web_viewer/) and:
+Open the [live demo](https://shuvam-banerji-seal.github.io/molecule3d/) and:
 
 1. Drag a `.data` / `.xyz` / `.pdb` / `.cif` file onto the page, or
 2. Try the bundled examples (C60 fullerene, benzene, rocksalt NaCl, water cluster).
@@ -99,8 +105,8 @@ Your files never leave your machine — parsing happens locally in the browser.
 ## 💻 Development
 
 ```bash
-git clone https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer.git
-cd lammps_data_web_viewer
+git clone https://github.com/Shuvam-Banerji-Seal/molecule3d.git
+cd molecule3d
 npm install        # Node >= 20
 npm run dev        # http://localhost:5173
 npm test           # vitest suite
@@ -175,8 +181,8 @@ PRs welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) and our
 [private advisories](SECURITY.md) — please don't open public issues for them.
 
 The project wiki has deeper documentation:
-[format guides](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/wiki),
-[performance notes](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/wiki/Performance)
+[format guides](https://github.com/Shuvam-Banerji-Seal/molecule3d/wiki),
+[performance notes](https://github.com/Shuvam-Banerji-Seal/molecule3d/wiki/Performance)
 and more.
 
 ## 📄 License

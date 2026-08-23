@@ -113,8 +113,8 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
   const chipClass = (d: FlagDetail) =>
     `cursor-pointer rounded px-1.5 py-0.5 text-[9px] transition-colors ${
       selectedDetail?.flag === d.flag
-        ? 'bg-[#31402a] text-[#c4ddb2] ring-1 ring-[#7fa66b]'
-        : 'bg-[#342b1d]/60 text-[#a9cba0] hover:bg-[#342b1d] hover:text-[#c4ddb2]'
+        ? ct.accentSoft
+        : ct.chipIdle
     }`;
 
   return (
@@ -133,7 +133,7 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
                   key={os}
                   onClick={() => update('os', os)}
                   className={`py-2 text-xs font-medium rounded-lg border capitalize transition-colors ${
-                    opts.os === os ? ct.active : `${ct.muted} hover:bg-[#342b1d]/60`
+                    opts.os === os ? ct.active : `${ct.muted} ${ct.hoverSurface}`
                   }`}
                 >
                   {os === 'linux' ? '🐧 Linux (bash)' : '🪟 Windows (PS)'}
@@ -147,11 +147,11 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
             <h3 className={`flex items-center gap-1.5 text-xs font-semibold ${ct.headerText}`}>
               <Package size={13} /> Package preset
             </h3>
-            <div className="space-y-1.5 grid grid-cols-1">
+            <div className="grid grid-cols-1 gap-1.5">
               <button
                 onClick={() => update('presetId', '')}
                 className={`text-left p-2 rounded-lg border text-xs transition-colors ${
-                  opts.presetId === '' ? ct.active : `${ct.muted} border-[#453a2b] hover:bg-[#342b1d]/60`
+                  opts.presetId === '' ? ct.active : `${ct.muted} ${ct.borderStrong} ${ct.hoverSurface}`
                 }`}
               >
                 <span className="font-medium">Manual selection</span>
@@ -162,7 +162,7 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
                   key={p.id}
                   onClick={() => update('presetId', p.id)}
                   className={`text-left p-2 rounded-lg border text-xs transition-colors ${
-                    opts.presetId === p.id ? ct.active : `${ct.muted} border-[#453a2b] hover:bg-[#342b1d]/60`
+                    opts.presetId === p.id ? ct.active : `${ct.muted} ${ct.borderStrong} ${ct.hoverSurface}`
                   }`}
                 >
                   <span className="font-medium">{p.label}</span>
@@ -183,7 +183,7 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
                   key={acc.id}
                   onClick={() => update('accelerator', acc.id)}
                   className={`flex w-full items-center justify-between p-2 rounded-lg border text-xs transition-colors ${
-                    opts.accelerator === acc.id ? ct.active : `${ct.muted} border-[#453a2b] hover:bg-[#342b1d]/60`
+                    opts.accelerator === acc.id ? ct.active : `${ct.muted} ${ct.borderStrong} ${ct.hoverSurface}`
                   }`}
                 >
                   <span className="flex items-center gap-1.5">
@@ -212,12 +212,12 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
                     <div key={cat} className="space-y-1">
                       <div className={`text-[10px] font-semibold uppercase ${ct.muted}`}>{CATEGORY_LABELS[cat]}</div>
                       {pkgs.map(pkg => (
-                        <label key={pkg.name} className={`flex cursor-pointer items-start gap-2 rounded p-1 hover:bg-[#342b1d]/40`}>
+                        <label key={pkg.name} className={`flex cursor-pointer items-start gap-2 rounded p-1 ${ct.hoverSurface}`}>
                           <input
                             type="checkbox"
                             checked={opts.manualPackages.includes(pkg.name)}
                             onChange={() => togglePackage(pkg.name)}
-                            className="mt-0.5 accent-[#7fa66b]"
+                            className={theme === 'dark' ? "mt-0.5 accent-[#7fa66b]" : "mt-0.5 accent-[#4e7a41]"}
                           />
                           <div>
                             <span className={`font-mono text-[11px] ${ct.text}`}>{pkg.name}</span>
@@ -244,7 +244,7 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
                   onClick={() => update('withMpi', !opts.withMpi)}
                   role="switch"
                   aria-checked={opts.withMpi}
-                  className={`relative h-5 w-9 rounded-full transition-colors ${opts.withMpi ? 'bg-[#567a46]' : 'bg-[#453a2b]'}`}
+                  className={`relative h-5 w-9 rounded-full transition-colors ${opts.withMpi ? ct.toggleOn : ct.toggleOff}`}
                 >
                   <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${opts.withMpi ? 'left-4' : 'left-0.5'}`} />
                 </button>
@@ -302,13 +302,13 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
           <div className="flex items-center gap-1.5">
             <button
               onClick={copyScript}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} hover:text-[#ede5d8] hover:bg-[#342b1d]/60`}
+              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
             >
-              {copied ? <span className="text-[#9dc487]">✓ Copied</span> : <><Copy size={13} /> Copy</>}
+              {copied ? <span className={ct.accentText}>✓ Copied</span> : <><Copy size={13} /> Copy</>}
             </button>
             <button
               onClick={() => downloadTextFile(opts.os === 'linux' ? 'build-lammps.sh' : 'build-lammps.ps1', result.text)}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} hover:text-[#ede5d8] hover:bg-[#342b1d]/60`}
+              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
             >
               <Download size={13} /> Download
             </button>
@@ -331,7 +331,7 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
             {result.flagDetails.length > COLLAPSED_CHIPS && (
               <button
                 onClick={() => setShowAllFlags(v => !v)}
-                className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${ct.chip} ${ct.muted} hover:text-[#c4ddb2]`}
+                className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${ct.chip} ${ct.muted} ${ct.hoverSurface}`}
                 title={showAllFlags ? 'Collapse the flag list' : 'Show every flag that will be added'}
               >
                 {showAllFlags ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
@@ -363,13 +363,13 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
               >
                 <X size={12} />
               </button>
-              <code className="block break-all font-mono text-[11px] font-bold text-[#c4ddb2]">
+              <code className={`block break-all font-mono text-[11px] font-bold ${ct.accentCode}`}>
                 {selectedDetail.flag}
               </code>
               <p className={`mt-1.5 leading-relaxed ${ct.text}`}>{selectedDetail.description}</p>
               <p className={`mt-1.5 flex items-center gap-1 text-[10px] ${ct.muted}`}>
                 <Info size={10} />
-                <span className="rounded bg-[#342b1d]/60 px-1 py-0.5 uppercase">{GROUP_LABELS[selectedDetail.group]}</span>
+                <span className={`rounded px-1 py-0.5 uppercase ${ct.chipIdle}`}>{GROUP_LABELS[selectedDetail.group]}</span>
                 change under “{selectedDetail.source}”
               </p>
             </div>

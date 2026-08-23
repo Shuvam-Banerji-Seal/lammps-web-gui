@@ -74,7 +74,7 @@ const App: React.FC = () => {
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                   module === m.id
                     ? ct.active
-                    : `${ct.muted} hover:bg-[#342b1d]/60 hover:text-[#ede5d8] border border-transparent`
+                    : `${ct.muted} ${ct.hoverSurface} border border-transparent`
                 }`}
               >
                 {m.icon}

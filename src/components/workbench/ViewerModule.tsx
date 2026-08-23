@@ -170,6 +170,21 @@ const ViewerModule: React.FC<{
     setTrajPlaying(false);
   }, [moleculeData]);
 
+  // Theme flips: keep the canvas default background coherent when the user
+  // has NOT customized it (custom colors and share-link values are untouched).
+  const lastThemeRef = useRef(theme);
+  useEffect(() => {
+    if (lastThemeRef.current === theme) return;
+    const defaultFor = (t: UITheme) => (t === 'dark' ? '#151515' : '#f4f5f7');
+    const prevDefault = defaultFor(lastThemeRef.current);
+    lastThemeRef.current = theme;
+    setVizConfig(prev =>
+      prev.backgroundColor === prevDefault
+        ? { ...prev, backgroundColor: defaultFor(theme) }
+        : prev
+    );
+  }, [theme]);
+
   // Trajectory playback clock (P5)
   useEffect(() => {
     if (!trajPlaying || frameCount <= 1) return;
@@ -587,14 +602,14 @@ const ViewerModule: React.FC<{
           {activeTab === 'data' && (
             <>
               <section className={`rounded-lg p-3 text-xs border ${ct.card} ${ct.muted}`}>
-                <div className="flex items-center gap-2 mb-2 font-semibold text-[#9dc487]">
+                <div className={`flex items-center gap-2 mb-2 font-semibold ${ct.accentText}`}>
                   <Info size={14} /> Supported formats
                 </div>
                 <ul className="space-y-1">
-                  <li><span className="font-semibold text-[#9dc487]">.data / .lmp</span> — LAMMPS (atomic·charge·molecular·full)</li>
-                  <li><span className="font-semibold text-[#e4b877]">.xyz</span> — XYZ trajectories (first frame)</li>
-                  <li><span className="font-semibold text-[#c9a9d4]">.pdb</span> — Protein Data Bank (+CONECT, CRYST1)</li>
-                  <li><span className="font-semibold text-[#cf8b76]">.cif</span> — Crystallographic Information Framework</li>
+                  <li><span className={`font-semibold ${ct.accentText}`}>.data / .lmp</span> — LAMMPS (atomic·charge·molecular·full)</li>
+                  <li><span className={`font-semibold ${theme === 'dark' ? 'text-[#e4b877]' : 'text-[#7a5716]'}`}>.xyz</span> — XYZ trajectories (first frame)</li>
+                  <li><span className={`font-semibold ${theme === 'dark' ? "text-[#c9a9d4]" : "text-[#7d5a8c]"}`}>.pdb</span> — Protein Data Bank (+CONECT, CRYST1)</li>
+                  <li><span className={`font-semibold ${theme === 'dark' ? "text-[#cf8b76]" : "text-[#a4502f]"}`}>.cif</span> — Crystallographic Information Framework</li>
                 </ul>
               </section>
 
@@ -681,7 +696,7 @@ const ViewerModule: React.FC<{
               )}
 
               {error && (
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex gap-2 items-start" role="alert">
+                <div className="p-3 rounded-lg ${ct.errorBox} text-xs flex gap-2 items-start" role="alert">
                   <AlertCircle size={14} className="shrink-0 mt-0.5" />
                   <span>{error}</span>
                 </div>
@@ -743,7 +758,7 @@ const ViewerModule: React.FC<{
                       type="range" min="0.1" max="3" step="0.05"
                       value={vizConfig[sl.key]}
                       onChange={e => updateConfig(sl.key, parseFloat(e.target.value))}
-                      className="w-full accent-[#7fa66b]"
+                      className={`w-full ${theme === 'dark' ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
                     />
                   </div>
                 ))}
@@ -762,7 +777,7 @@ const ViewerModule: React.FC<{
                   >
                     <span>{row.label} <kbd className={`ml-1 px-1 rounded text-[9px] ${ct.chip}`}>{row.hint}</kbd></span>
                     {vizConfig[row.key]
-                      ? <Eye size={14} className="text-[#9dc487]" />
+                      ? <Eye size={14} className={ct.accentText} />
                       : <EyeOff size={14} className={ct.muted} />}
                   </button>
                 ))}
@@ -825,7 +840,7 @@ const ViewerModule: React.FC<{
                   title="X"
                 >
                   <span className="flex items-center gap-2"><Grid3x3 size={14} /> Show simulation box <kbd className={`px-1 rounded text-[9px] ${ct.chip}`}>X</kbd></span>
-                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.showBox ? 'bg-[#567a46]' : 'bg-[#453a2b]'}`}>
+                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.showBox ? ct.toggleOn : ct.toggleOff}`}>
                     <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.showBox ? 'left-4' : 'left-0.5'}`} />
                   </span>
                 </button>
@@ -834,7 +849,7 @@ const ViewerModule: React.FC<{
                   className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors ${ct.button}`}
                 >
                   <span className="flex items-center gap-2"><Grid3x3 size={14} /> Show XYZ axes</span>
-                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.showAxes ? 'bg-[#567a46]' : 'bg-[#453a2b]'}`}>
+                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.showAxes ? ct.toggleOn : ct.toggleOff}`}>
                     <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.showAxes ? 'left-4' : 'left-0.5'}`} />
                   </span>
                 </button>
@@ -853,7 +868,7 @@ const ViewerModule: React.FC<{
                     type="range" min="0.1" max="6" step="0.1"
                     value={vizConfig.autoRotateSpeed}
                     onChange={e => updateConfig('autoRotateSpeed', parseFloat(e.target.value))}
-                    className="w-full accent-[#7fa66b]"
+                    className={`w-full ${theme === 'dark' ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
                   />
                 </div>
                 <div className="space-y-1">
@@ -864,7 +879,7 @@ const ViewerModule: React.FC<{
                     type="range" min="15" max="90" step="1"
                     value={vizConfig.fov}
                     onChange={e => updateConfig('fov', parseInt(e.target.value, 10))}
-                    className="w-full accent-[#7fa66b]"
+                    className={`w-full ${theme === 'dark' ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
                   />
                 </div>
                 <button
@@ -872,7 +887,7 @@ const ViewerModule: React.FC<{
                   className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors ${ct.button}`}
                 >
                   <span>Shadows (≤8k atoms)</span>
-                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.shadowsEnabled ? 'bg-[#567a46]' : 'bg-[#453a2b]'}`}>
+                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.shadowsEnabled ? ct.toggleOn : ct.toggleOff}`}>
                     <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.shadowsEnabled ? 'left-4' : 'left-0.5'}`} />
                   </span>
                 </button>
@@ -896,7 +911,7 @@ const ViewerModule: React.FC<{
                       key={color}
                       onClick={() => updateConfig('backgroundColor', color)}
                       className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
-                        vizConfig.backgroundColor === color ? 'border-[#7fa66b] scale-110' : 'border-transparent'
+                        vizConfig.backgroundColor === color ? (theme === 'dark' ? 'border-[#7fa66b] scale-110' : 'border-[#4e7a41] scale-110') : 'border-transparent'
                       }`}
                       style={{ backgroundColor: color }}
                       title={color}
@@ -978,7 +993,7 @@ const ViewerModule: React.FC<{
           </span>
           <button
             onClick={copyShareLink}
-            className={`flex items-center gap-1 px-2 py-1 rounded ${linkCopied ? 'text-[#9dc487]' : ct.button}`}
+            className={`flex items-center gap-1 px-2 py-1 rounded ${linkCopied ? ct.accentText : ct.button}`}
             title="Copy a link that restores this exact view"
           >
             {linkCopied ? <Check size={12} /> : <Link2 size={12} />}
@@ -1018,7 +1033,7 @@ const ViewerModule: React.FC<{
             )}
             {isParsing && (
               <div className={`flex items-center gap-1.5 px-3 py-2 rounded-lg shadow-lg text-[11px] backdrop-blur ${ct.card}`} role="status">
-                <Loader2 size={13} className="animate-spin text-[#9dc487]" />
+                <Loader2 size={13} className={`animate-spin ${ct.accentText}`} />
                 Parsing structure…
               </div>
             )}
@@ -1055,7 +1070,7 @@ const ViewerModule: React.FC<{
           <button
             onClick={() => setAutoRotate(v => !v)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium transition-colors ${
-              autoRotate ? 'text-[#9dc487]' : `${ct.muted}`
+              autoRotate ? ct.accentText : `${ct.muted}`
             }`}
             title="Auto-rotate (Space)"
           >
@@ -1076,7 +1091,7 @@ const ViewerModule: React.FC<{
             onClick={() => updateConfig('showBox', !vizConfig.showBox)}
             disabled={!moleculeData?.box}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium disabled:opacity-30 ${
-              vizConfig.showBox ? 'text-[#9dc487]' : ct.muted
+              vizConfig.showBox ? ct.accentText : ct.muted
             }`}
             title="Simulation box (X)"
           >
@@ -1087,7 +1102,7 @@ const ViewerModule: React.FC<{
           <button
             onClick={() => updateConfig('showLabels', !vizConfig.showLabels)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium ${
-              vizConfig.showLabels ? 'text-[#9dc487]' : ct.muted
+              vizConfig.showLabels ? ct.accentText : ct.muted
             }`}
             title="Element labels (L)"
           >
@@ -1144,7 +1159,7 @@ const ViewerModule: React.FC<{
             </button>
             <button
               onClick={() => setTrajPlaying(v => !v)}
-              className={`p-1.5 rounded-full ${trajPlaying ? 'text-[#9dc487]' : ct.muted}`}
+              className={`p-1.5 rounded-full ${trajPlaying ? ct.accentText : ct.muted}`}
               title="Play / pause trajectory (P)"
             >
               {trajPlaying ? <Pause size={14} /> : <Play size={14} />}
@@ -1162,7 +1177,7 @@ const ViewerModule: React.FC<{
               max={frameCount - 1}
               value={Math.min(frameIdx, frameCount - 1)}
               onChange={e => { setTrajPlaying(false); setFrameIdx(parseInt(e.target.value, 10)); }}
-              className="w-32 sm:w-48 accent-[#7fa66b]"
+              className={`w-32 sm:w-48 ${theme === 'dark' ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
               aria-label="Trajectory frame"
             />
             <span className={`text-[10px] font-mono tabular-nums ${ct.muted}`}>
@@ -1185,12 +1200,12 @@ const ViewerModule: React.FC<{
             theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
           }`} role="status">
             <div className="flex items-center gap-1.5 font-semibold">
-              <Ruler size={13} className="text-[#9dc487]" /> Measurement
+              <Ruler size={13} className={ct.accentText} /> Measurement
             </div>
             {measurement ? (
               <div className="font-mono text-sm">
                 <span className={ct.muted}>{measurementGlyph(measurement.kind)} = </span>
-                <span className="text-[#9dc487] font-bold">{measurement.label}</span>
+                <span className={`${ct.accentText} font-bold`}>{measurement.label}</span>
               </div>
             ) : (
               <div className={ct.muted}>{measurementHint}</div>
@@ -1223,7 +1238,7 @@ const ViewerModule: React.FC<{
           />
         ) : (
           <div className={`w-full h-full flex flex-col items-center justify-center ${ct.muted}`}>
-            <div className="w-14 h-14 border-4 border-[#453a2b] border-t-[#7fa66b] rounded-full animate-spin mb-4" />
+            <div className="w-14 h-14 border-4 rounded-full animate-spin mb-4 ${ct.loader}" />
             <p>Waiting for structure data…</p>
           </div>
         )}

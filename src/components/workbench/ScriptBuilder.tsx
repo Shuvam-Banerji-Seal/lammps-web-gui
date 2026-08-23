@@ -255,7 +255,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
       <div className={`flex flex-col border-r transition-all ${ct.panel} ${paletteOpen ? 'w-64' : 'w-0 overflow-hidden'}`}>
         <div className={`flex items-center justify-between px-3 py-2 border-b ${ct.divider}`}>
           <span className={`text-xs font-semibold ${ct.headerText}`}>Commands</span>
-          <button onClick={() => setPaletteOpen(false)} className={`p-1 rounded ${ct.muted} hover:text-[#ede5d8]`}>
+          <button onClick={() => setPaletteOpen(false)} className={`p-1 rounded ${ct.muted} ${ct.hoverSurface}`}>
             <ChevronLeft size={14} />
           </button>
         </div>
@@ -284,7 +284,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                     key={cmd.id}
                     onClick={() => addStep(cmd.id)}
                     title={cmd.doc ?? cmd.label}
-                    className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[11px] transition-colors ${ct.muted} hover:bg-[#342b1d]/60 hover:text-[#ede5d8]`}
+                    className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[11px] transition-colors ${ct.muted} ${ct.hoverSurface}`}
                   >
                     <Plus size={11} className="shrink-0 opacity-50" />
                     <span className="truncate">{cmd.label}</span>
@@ -302,7 +302,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
         <div className={`flex h-10 shrink-0 items-center justify-between border-b px-3 ${ct.divider}`}>
           <div className="flex items-center gap-2">
             {!paletteOpen && (
-              <button onClick={() => setPaletteOpen(true)} className={`p-1 rounded ${ct.muted} hover:text-[#ede5d8]`} title="Open palette">
+              <button onClick={() => setPaletteOpen(true)} className={`p-1 rounded ${ct.muted} ${ct.hoverSurface}`} title="Open palette">
                 <ChevronRight size={16} />
               </button>
             )}
@@ -320,7 +320,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             <button
               onClick={() => setView(v => v === 'flow' ? 'script' : 'flow')}
               className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
-                view === 'flow' ? ct.active : `${ct.muted} hover:text-[#ede5d8] hover:bg-[#342b1d]/60`
+                view === 'flow' ? ct.active : `${ct.muted} ${ct.hoverSurface}`
               }`}
               title="Toggle view"
             >
@@ -330,7 +330,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             {isManual ? (
               <button
                 onClick={exitManualMode}
-                className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-[#e4b877] bg-[#332612]/60 hover:bg-[#332612]"
+                className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium ${ct.warnAction}"
                 title="Discard manual edits and regenerate from your steps"
               >
                 <X size={13} /> Exit manual
@@ -338,7 +338,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             ) : (
               <button
                 onClick={enterManualMode}
-                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} hover:text-[#ede5d8] hover:bg-[#342b1d]/60`}
+                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
                 title="Edit the generated script by hand"
               >
                 <PencilLine size={13} /> Edit script
@@ -346,14 +346,14 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             )}
             <button
               onClick={copyScript}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} hover:text-[#ede5d8] hover:bg-[#342b1d]/60`}
+              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
               title="Copy script to clipboard"
             >
-              {copied ? <span className="text-[#9dc487]">✓ Copied</span> : <><Copy size={13} /> Copy</>}
+              {copied ? <span className={ct.accentText}>✓ Copied</span> : <><Copy size={13} /> Copy</>}
             </button>
             <button
               onClick={() => downloadTextFile('in.lammps', activeText)}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} hover:text-[#ede5d8] hover:bg-[#342b1d]/60`}
+              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
               title="Download in.lammps"
             >
               <Download size={13} /> Download
@@ -361,7 +361,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             {onOpenViewer && (
               <button
                 onClick={onOpenViewer}
-                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} hover:text-[#ede5d8] hover:bg-[#342b1d]/60`}
+                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
                 title="Open 3D structure viewer"
               >
                 <AtomIcon size={13} /> Viewer
@@ -483,7 +483,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                   key={cmd.id}
                   onClick={() => { insertStepAt(cmd.id, insertAt ?? model.steps.length); setInsertAt(null); setInsertSearch(''); }}
                   title={cmd.doc ?? cmd.label}
-                  className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[11px] transition-colors ${ct.muted} hover:bg-[#342b1d]/60 hover:text-[#ede5d8]`}
+                  className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[11px] transition-colors ${ct.muted} ${ct.hoverSurface}`}
                 >
                   <span className="truncate">{cmd.label}</span>
                   <span className={`ml-2 shrink-0 rounded px-1 py-0.5 text-[9px] uppercase opacity-70 ${ct.chip}`}>
@@ -551,22 +551,22 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
     return (
       <div key={`edge-${i}`} className="relative flex flex-col items-center" {...dropPropsFor(i)}>
         {/* connector line */}
-        <div className={`h-3 w-px ${isActive ? 'w-1 bg-[#7fa66b]' : 'bg-[#453a2b]'}`} />
+        <div className={`h-3 w-px ${isActive ? 'w-1 bg-[#7fa66b]' : ct.edgeLine}`} />
         {/* connection pill */}
         <button
           onClick={(e) => { e.stopPropagation(); onEdgeClick(i); }}
           title="Edit this connection — insert or rewire steps here"
           className={`group flex h-5 items-center gap-1 rounded-full border px-2 text-[9px] font-medium transition-colors ${
             menuOpen || isActive
-              ? 'border-[#7fa66b] bg-[#31402a] text-[#c4ddb2]'
-              : 'border-[#3f3526] bg-[#241e16] text-[#a3937f] hover:border-[#7fa66b] hover:text-[#c4ddb2]'
+              ? ct.edgeActive
+              : ct.edgePill
           }`}
           aria-label={`Connection ${i + 1} actions`}
         >
           <Link2 size={10} />
           connect
         </button>
-        <div className={`h-3 w-px ${isActive ? 'w-1 bg-[#7fa66b]' : 'bg-[#453a2b]'}`} />
+        <div className={`h-3 w-px ${isActive ? 'w-1 bg-[#7fa66b]' : ct.edgeLine}`} />
 
         {/* connection action menu */}
         {menuOpen && (
@@ -575,20 +575,21 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
             onClick={e => e.stopPropagation()}
           >
             <p className={`px-2 pb-1 pt-0.5 text-[9px] uppercase tracking-wide ${ct.muted}`}>Edit pipeline here</p>
-            <MenuItem icon={<Plus size={12} />} label="Add command at this point…" onClick={() => onEdgeInsertHere(i)} />
+            <MenuItem ct={ct} icon={<Plus size={12} />} label="Add command at this point…" onClick={() => onEdgeInsertHere(i)} />
             {steps[i] && (
               <>
                 <MenuItem
+                  ct={ct}
                   icon={steps[i].enabled ? <EyeOff size={12} /> : <Eye size={12} />}
                   label={steps[i].enabled ? `Disable “${shortLabel(steps[i])}”` : `Enable “${shortLabel(steps[i])}”`}
                   onClick={() => onEdgeDisableNext(i)}
                 />
-                <MenuItem icon={<Trash2 size={12} />} danger label={`Remove “${shortLabel(steps[i])}”`} onClick={() => onEdgeRemoveNext(i)} />
+                <MenuItem ct={ct} icon={<Trash2 size={12} />} danger label={`Remove “${shortLabel(steps[i])}”`} onClick={() => onEdgeRemoveNext(i)} />
               </>
             )}
             <button
               onClick={onCloseEdgeMenu}
-              className={`mt-0.5 w-full rounded px-2 py-1 text-left text-[10px] ${ct.muted} hover:bg-[#342b1d]/60`}
+              className={`mt-0.5 w-full rounded px-2 py-1 text-left text-[10px] ${ct.muted} ${ct.hoverSurface}`}
             >
               Close
             </button>
@@ -616,8 +617,8 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
     <div className="flex flex-col items-center gap-0 p-6">
       {/* Start node */}
       <div className="flex items-center gap-2 text-[10px] text-[#a3937f]">
-        <div className="h-px w-8 bg-[#453a2b]" />
-        <span className="rounded-full border border-[#47693b]/60 bg-[#22301c]/40 px-3 py-0.5 text-[#9dc487]">
+        <div className={`h-px w-8 ${ct.edgeLine}`} />
+        <span className="rounded-full px-3 py-0.5 ${ct.startBadge}">
           START
         </span>
       </div>
@@ -637,10 +638,10 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
               onClick={() => onSelect(node.uid)}
               className={`group relative w-full max-w-md cursor-grab rounded-xl border p-3 transition-all active:cursor-grabbing ${
                 isSel
-                  ? 'border-[#7fa66b] bg-[#31402a]/40 ring-1 ring-[#7fa66b]/40'
+                  ? ct.active + ' ring-1 ring-[#7fa66b]/40'
                   : node.enabled
-                    ? 'border-[#3f3526] bg-[#1e1913]/60 hover:border-[#659054]'
-                    : 'border-[#332a1f] bg-[#1e1913]/20 opacity-50'
+                    ? ct.nodeCard
+                    : ct.nodeDisabled + ' opacity-50'
               } ${isDragging ? 'opacity-30' : ''}`}
             >
               {/* Section badge + controls */}
@@ -652,28 +653,28 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
                 <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                   <button
                     onClick={(e) => { e.stopPropagation(); onMove(node.uid, -1); }}
-                    className={`rounded p-0.5 ${ct.muted} hover:text-[#ede5d8]`}
+                    className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
                     title="Move up"
                   >
                     <ChevronUp size={12} />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onMove(node.uid, 1); }}
-                    className={`rounded p-0.5 ${ct.muted} hover:text-[#ede5d8]`}
+                    className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
                     title="Move down"
                   >
                     <ChevronDown size={12} />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onToggle(node.uid); }}
-                    className={`rounded p-0.5 ${ct.muted} hover:text-[#ede5d8]`}
+                    className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
                     title={node.enabled ? 'Disable' : 'Enable'}
                   >
                     {node.enabled ? <Eye size={12} /> : <EyeOff size={12} />}
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onRemove(node.uid); }}
-                    className={`rounded p-0.5 text-[#cf8b76]/70 hover:text-[#cf8b76]`}
+                    className={`rounded p-0.5 ${ct.dangerItem}`}
                     title="Remove"
                   >
                     <Trash2 size={12} />
@@ -682,7 +683,7 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
               </div>
               {/* Command + params */}
               <div className="flex items-center gap-2">
-                <code className="text-xs font-bold text-[#a9cba0]">{node.label}</code>
+                <code className="text-xs font-bold ${ct.accentCode}">{node.label}</code>
               </div>
               {node.sublabel && (
                 <div className={`mt-0.5 truncate text-[10px] font-mono ${ct.muted}`}>{node.sublabel}</div>
@@ -694,25 +695,25 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
       })}
 
       <div className="flex items-center gap-2 text-[10px] text-[#a3937f]">
-        <div className="h-px w-8 bg-[#453a2b]" />
-        <span className="rounded-full border border-[#6b5124]/60 bg-[#332612]/40 px-3 py-0.5 text-[#e4b877]">
+        <div className={`h-px w-8 ${ct.edgeLine}`} />
+        <span className="rounded-full px-3 py-0.5 ${ct.endBadge}">
           END
         </span>
       </div>
       <p className={`mt-3 text-center text-[10px] ${ct.muted}`}>
-        Drag cards to reorder · click any <span className="text-[#c4ddb2]">connect</span> pill to insert or edit at that spot.
+        Drag cards to reorder · click any <span className={ct.accentText}>connect</span> pill to insert or edit at that spot.
       </p>
     </div>
   );
 };
 
-const MenuItem: React.FC<{ icon: React.ReactNode; label: string; onClick: () => void; danger?: boolean }> = ({
-  icon, label, onClick, danger,
+const MenuItem: React.FC<{ ct: ThemeTokens; icon: React.ReactNode; label: string; onClick: () => void; danger?: boolean }> = ({
+  ct, icon, label, onClick, danger,
 }) => (
   <button
     onClick={onClick}
     className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] transition-colors ${
-      danger ? 'text-[#cf8b76] hover:bg-[#3a241c]/60' : 'text-[#ece4d6] hover:bg-[#342b1d]/60'
+      danger ? ct.dangerItem : `${ct.text} ${ct.hoverSurface}`
     }`}
   >
     {icon} {label}
@@ -743,17 +744,17 @@ const StepEditor: React.FC<StepEditorProps> = ({
       <div className="flex items-center justify-between">
         <h3 className={`text-sm font-bold ${ct.headerText}`}>{def.label}</h3>
         <div className="flex items-center gap-1">
-          <button onClick={onMoveUp} className={`rounded p-1 ${ct.muted} hover:text-[#ede5d8]`} title="Move up">
+          <button onClick={onMoveUp} className={`rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Move up">
             <ChevronUp size={14} />
           </button>
-          <button onClick={onMoveDown} className={`rounded p-1 ${ct.muted} hover:text-[#ede5d8]`} title="Move down">
+          <button onClick={onMoveDown} className={`rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Move down">
             <ChevronDown size={14} />
           </button>
         </div>
       </div>
 
       {def.doc && (
-        <a href={def.doc} target="_blank" rel="noopener noreferrer" className="block text-[10px] text-[#9dc487] hover:underline">
+        <a href={def.doc} target="_blank" rel="noopener noreferrer" className={`block text-[10px] ${ct.accentText} hover:underline`}>
           📖 LAMMPS docs ↗
         </a>
       )}
@@ -781,15 +782,14 @@ const StepEditor: React.FC<StepEditorProps> = ({
         <button
           onClick={onToggle}
           className={`flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
-            step.enabled ? 'text-[#9dc487]' : ct.muted
-          } bg-[#342b1d]/60 hover:bg-[#342b1d]`}
+            step.enabled ? ct.enabledBtn : ct.disabledBtn}`}
         >
           {step.enabled ? <Eye size={13} /> : <EyeOff size={13} />}
           {step.enabled ? 'Enabled' : 'Disabled'}
         </button>
         <button
           onClick={onRemove}
-          className="flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium text-[#cf8b76] hover:bg-[#3a241c]/40"
+          className="flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium ${ct.removeBtn}"
         >
           <Trash2 size={13} /> Remove
         </button>
@@ -833,7 +833,7 @@ const ParamControl: React.FC<{ ct: ThemeTokens; def: ParamDef; value: string; on
           onClick={() => onChange(value === 'yes' ? 'no' : 'yes')}
           role="switch"
           aria-checked={value === 'yes'}
-          className={`relative h-5 w-9 rounded-full transition-colors ${value === 'yes' ? 'bg-[#567a46]' : 'bg-[#453a2b]'}`}
+          className={`relative h-5 w-9 rounded-full transition-colors ${value === 'yes' ? ct.toggleOn : ct.toggleOff}`}
         >
           <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${value === 'yes' ? 'left-4' : 'left-0.5'}`} />
         </button>

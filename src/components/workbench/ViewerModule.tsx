@@ -1,0 +1,1291 @@
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import MoleculeCanvas from '../../components/MoleculeCanvas';
+import { parseFile, detectFileFormat } from '../../services/fileParser';
+import { parseInWorker } from '../../services/parserClient';
+import {
+  MoleculeData, VisualizationConfig, VisualizationMode, FileFormat,
+  LightingPreset, CameraPreset,
+} from '../../types';
+import { DEFAULT_ATOM_COLOR, ELEMENT_DATA, ATOM_COLORS } from '../../constants';
+import { emitCameraCommand } from '../../services/cameraBus';
+import { useKeyboardShortcuts, SHORTCUT_CATALOG } from '../../hooks/useKeyboardShortcuts';
+import { encodeViewState, viewStateFromSearch } from '../../services/viewState';
+import { measureSelection, measurementGlyph, MeasurementResult } from '../../services/measure';
+import { startCanvasRecording, RecordingHandle } from '../../services/recorder';
+import { captureActiveCanvas } from '../../services/glRegistry';
+import {
+  Upload, RotateCw, AlertCircle, Info, Settings, Eye, EyeOff, Palette, Box,
+  Sun, Moon, Menu, X, Camera, Atom, Keyboard, Layers, Lightbulb,
+  Grid3x3, Maximize2, Play, Pause, ZoomIn, ZoomOut, FileText, HelpCircle,
+  Link2, Check, ChevronLeft, ChevronRight, Ruler, Circle, Loader2,
+} from 'lucide-react';
+
+/** GitHub mark as inline SVG — lucide 1.x removed brand icons. */
+const GithubIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+  </svg>
+);
+
+type Theme = 'light' | 'dark';
+type Tab = 'data' | 'view' | 'scene' | 'elements';
+
+const VIZ_MODES: { value: VisualizationMode; label: string; desc: string; key: string }[] = [
+  { value: 'ball-and-stick', label: 'Ball & Stick', desc: 'Classic molecular view', key: '1' },
+  { value: 'space-fill', label: 'Space Fill', desc: 'Van der Waals radii', key: '2' },
+  { value: 'wireframe', label: 'Wireframe', desc: 'Small point atoms', key: '3' },
+  { value: 'licorice', label: 'Licorice', desc: 'Bond-centric sticks', key: '4' },
+];
+
+const MATERIALS: { value: VisualizationConfig['materialType']; label: string }[] = [
+  { value: 'realistic', label: 'Realistic' },
+  { value: 'plastic', label: 'Plastic' },
+  { value: 'metallic', label: 'Metallic' },
+  { value: 'toon', label: 'Toon' },
+];
+
+const LIGHTING_PRESETS: LightingPreset[] = ['studio', 'lab', 'outdoor', 'space', 'soft'];
+
+const CAMERA_VIEWS: { preset: CameraPreset; label: string }[] = [
+  { preset: 'iso', label: 'Iso' },
+  { preset: 'front', label: 'Front' },
+  { preset: 'back', label: 'Back' },
+  { preset: 'left', label: 'Left' },
+  { preset: 'right', label: 'Right' },
+  { preset: 'top', label: 'Top' },
+  { preset: 'bottom', label: 'Bottom' },
+];
+
+const EXAMPLES: { file: string; format: FileFormat; label: string }[] = [
+  { file: 'c60.data', format: 'lammps', label: 'C60 · LAMMPS' },
+  { file: 'examples/benzene.pdb', format: 'pdb', label: 'Benzene · PDB' },
+  { file: 'examples/nacl.cif', format: 'cif', label: 'NaCl · CIF' },
+  { file: 'examples/water.xyz', format: 'xyz', label: 'Water · XYZ' },
+  { file: 'examples/water-traj.xyz', format: 'xyz', label: 'Trajectory · XYZ' },
+  { file: 'examples/stress-12k.xyz', format: 'xyz', label: 'Stress 12k · XYZ' },
+  { file: 'examples/stress-60k.xyz', format: 'xyz', label: 'Stress 60k · XYZ' },
+];
+
+const prefersLightScheme = (): boolean =>
+  typeof window !== 'undefined' &&
+  !!window.matchMedia?.('(prefers-color-scheme: light)').matches;
+
+/** Base defaults, optionally overridden by a shared-view ?s= token (P3). */
+const initialConfig = (): VisualizationConfig => ({
+  atomScale: 1.0,
+  bondScale: 1.0,
+  materialType: 'realistic',
+  backgroundColor: prefersLightScheme() ? '#f4f5f7' : '#151515',
+  showBonds: true,
+  customColors: {},
+  visualizationMode: 'ball-and-stick',
+  lightingPreset: 'studio',
+  showBox: false,
+  showAxes: false,
+  showLabels: false,
+  shadowsEnabled: true,
+  autoRotateSpeed: 0.5,
+  fov: 40,
+});
+
+const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
+  const [inputText, setInputText] = useState<string>('');
+  const [moleculeData, setMoleculeData] = useState<MoleculeData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [autoRotate, setAutoRotate] = useState<boolean>(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+  // Respect the OS color scheme on first visit (P2)
+  const [theme, setTheme] = useState<Theme>(() => (prefersLightScheme() ? 'light' : 'dark'));
+  const [fileFormat, setFileFormat] = useState<FileFormat>('lammps');
+  const [activeTab, setActiveTab] = useState<Tab>('data');
+  const [showHelp, setShowHelp] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Type ids the user manually recolored — survive re-parsing. */
+  const userEditedTypes = useRef<Set<number>>(new Set());
+
+  // Shared view state (P3): ?s=<token> overrides defaults before first paint.
+  const [vizConfig, setVizConfig] = useState<VisualizationConfig>(() => ({
+    ...initialConfig(),
+    ...(typeof window !== 'undefined'
+      ? viewStateFromSearch(window.location.search) ?? {}
+      : {}),
+  }));
+
+  // Measurement tool (P4)
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+
+  // Trajectory playback (P5)
+  const frameCount = moleculeData?.frames?.length ?? 1;
+  const [frameIdx, setFrameIdx] = useState(0);
+  const [trajPlaying, setTrajPlaying] = useState(false);
+  const [trajFps, setTrajFps] = useState(10);
+
+  // Share-link feedback
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  // Video recording (P8)
+  const recorderRef = useRef<RecordingHandle | null>(null);
+  const autoRotateBeforeRecording = useRef(true);
+  const [isRecording, setIsRecording] = useState(false);
+  const [savingVideo, setSavingVideo] = useState(false);
+  const [recordingMs, setRecordingMs] = useState(0);
+
+  // Resizable desktop sidebar (P9)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    try {
+      const stored = Number(localStorage.getItem('m3d.sidebarWidth'));
+      return Number.isFinite(stored) && stored >= 280 && stored <= 560 ? stored : 384;
+    } catch {
+      return 384;
+    }
+  });
+  const sidebarWidthRef = useRef(sidebarWidth);
+  sidebarWidthRef.current = sidebarWidth;
+  const resizingRef = useRef(false);
+
+  // New structure → reset transient view state (P4/P5)
+  useEffect(() => {
+    setSelectedIds([]);
+    setFrameIdx(0);
+    setTrajPlaying(false);
+  }, [moleculeData]);
+
+  // Trajectory playback clock (P5)
+  useEffect(() => {
+    if (!trajPlaying || frameCount <= 1) return;
+    const id = window.setInterval(
+      () => setFrameIdx(i => (i + 1) % frameCount),
+      Math.max(16, Math.round(1000 / trajFps))
+    );
+    return () => window.clearInterval(id);
+  }, [trajPlaying, trajFps, frameCount]);
+
+  // Shareable URL sync (P3): debounced replaceState, never reloads.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const id = window.setTimeout(() => {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set('s', encodeViewState(vizConfig));
+        window.history.replaceState(null, '', url.toString());
+      } catch {
+        /* history unavailable (sandboxed iframe etc.) — non-fatal */
+      }
+    }, 300);
+    return () => window.clearTimeout(id);
+  }, [vizConfig]);
+
+  const toggleSelectAtom = useCallback((id: number) => {
+    setSelectedIds(prev =>
+      prev.includes(id)
+        ? prev.filter(x => x !== id)
+        : [...prev, id].slice(-4) // keep the last four picks
+    );
+  }, []);
+
+  const copyShareLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 1600);
+    } catch {
+      setError('Clipboard unavailable — copy the address bar URL instead.');
+    }
+  }, []);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setIsSidebarOpen(false);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.BASE_URL}c60.data`);
+        if (!response.ok) throw new Error(String(response.status));
+        const text = await response.text();
+        handleVisualize(text, 'lammps');
+      } catch {
+        setError('Failed to load the built-in C60 example.');
+      }
+    };
+    fetchInitialData();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [isParsing, setIsParsing] = useState(false);
+
+  const applyParsed = useCallback((data: MoleculeData) => {
+    if (data.atoms.length === 0) throw new Error('No atoms found in data. Check the format.');
+
+    // Color assignment: user-edited colors survive; others get CPK by element symbol.
+    const newCustomColors: Record<number, string> = {};
+    for (const info of Object.values(data.atomTypes)) {
+      const edited = userEditedTypes.current.has(info.id);
+      if (edited && vizConfig.customColors[info.id]) {
+        newCustomColors[info.id] = vizConfig.customColors[info.id];
+        continue;
+      }
+      const meta = ELEMENT_DATA.find(e => e.symbol === info.element);
+      newCustomColors[info.id] = meta
+        ? ATOM_COLORS[meta.number] ?? DEFAULT_ATOM_COLOR
+        : DEFAULT_ATOM_COLOR;
+    }
+
+    setVizConfig(prev => ({ ...prev, customColors: newCustomColors }));
+    setMoleculeData(data);
+    setError(null);
+    // Very large systems render one static frame instead of spinning —
+    // continuous rotation on huge instanced scenes wastes GPU and can
+    // saturate low-end/software renderers. Users can re-enable rotation.
+    if (data.atoms.length > 20000) setAutoRotate(false);
+    if (isMobile) setIsSidebarOpen(false);
+  }, [isMobile, vizConfig.customColors]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Parse via Web Worker when available (keeps huge files from freezing the
+   * UI); falls back to synchronous parsing otherwise.
+   */
+  const handleVisualize = useCallback((text: string, format?: FileFormat) => {
+    setError(null);
+    setIsParsing(true);
+    const fmt = format ?? detectFileFormat('pasted.txt');
+    parseInWorker(text, fmt)
+      .catch(err => {
+        if (!(err instanceof Error && /no-worker|worker-crashed/.test(err.message))) throw err;
+        return parseFile(text, fmt); // synchronous fallback
+      })
+      .then(applyParsed)
+      .then(() => setInputText(text))
+      .catch(e => {
+        setError(e instanceof Error ? e.message : 'Failed to parse data file.');
+        setMoleculeData(null);
+      })
+      .finally(() => setIsParsing(false));
+  }, [applyParsed]);
+
+  const loadExample = useCallback(async (file: string, format: FileFormat) => {
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}${file}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      setFileFormat(format);
+      handleVisualize(text, format);
+    } catch {
+      setError(`Failed to fetch example: ${file}`);
+    }
+  }, [handleVisualize]);
+
+  const handleFileUpload = useCallback((file: File) => {
+    const detectedFormat = detectFileFormat(file.name);
+    setFileFormat(detectedFormat);
+    const reader = new FileReader();
+    reader.onload = e => {
+      const content = (e.target?.result as string) ?? '';
+      setInputText(content);
+      handleVisualize(content, detectedFormat);
+    };
+    reader.readAsText(file);
+  }, [handleVisualize]);
+
+  // Drag & drop anywhere on the window
+  useEffect(() => {
+    const onDragOver = (e: DragEvent) => { e.preventDefault(); setDragActive(true); };
+    const onDragLeave = (e: DragEvent) => {
+      if (e.relatedTarget === null) setDragActive(false);
+    };
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      setDragActive(false);
+      const file = e.dataTransfer?.files?.[0];
+      if (file) handleFileUpload(file);
+    };
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('dragleave', onDragLeave);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('dragleave', onDragLeave);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, [handleFileUpload]);
+
+  const updateConfig = (key: keyof VisualizationConfig, value: unknown) => {
+    setVizConfig(prev => ({ ...prev, [key]: value }));
+  };
+
+  const updateCustomColor = (typeId: number, color: string) => {
+    userEditedTypes.current.add(typeId);
+    setVizConfig(prev => ({
+      ...prev,
+      customColors: { ...prev.customColors, [typeId]: color },
+    }));
+  };
+
+  const toggleTheme = useCallback(() => {
+    setTheme(currentTheme => {
+      const next = currentTheme === 'dark' ? 'light' : 'dark';
+      updateConfig('backgroundColor', next === 'dark' ? '#151515' : '#f4f5f7');
+      return next;
+    });
+  }, []);
+
+  const doScreenshot = useCallback(() => {
+    // Explicit render-before-capture (no preserveDrawingBuffer tax).
+    const dataUrl = captureActiveCanvas();
+    if (!dataUrl) {
+      setError('Screenshot failed — canvas not ready.');
+      return;
+    }
+    try {
+      const link = document.createElement('a');
+      link.download = `molecule3d-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch {
+      setError('Screenshot failed — canvas not ready.');
+    }
+  }, []);
+
+  // --- Video recording (P8) ---
+  const startRecording = useCallback(() => {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) {
+      setError('No canvas to record yet.');
+      return;
+    }
+    try {
+      autoRotateBeforeRecording.current = autoRotate;
+      setAutoRotate(true); // guarantee motion in the captured video
+      recorderRef.current = startCanvasRecording(canvas as HTMLCanvasElement, { fps: 60 });
+      setRecordingMs(0);
+      setIsRecording(true);
+    } catch (e) {
+      setAutoRotate(autoRotateBeforeRecording.current);
+      setError(e instanceof Error ? e.message : 'Recording failed to start.');
+    }
+  }, [autoRotate]);
+
+  const stopRecording = useCallback(async () => {
+    const rec = recorderRef.current;
+    if (!rec) return;
+    recorderRef.current = null;
+    setIsRecording(false);
+    setSavingVideo(true);
+    try {
+      const result = await rec.stop();
+      const url = URL.createObjectURL(result.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `molecule3d-${new Date().toISOString().replace(/[:.]/g, '-')}.${result.ext}`;
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save recording.');
+    } finally {
+      setSavingVideo(false);
+      setAutoRotate(autoRotateBeforeRecording.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isRecording) return;
+    const id = window.setInterval(() => setRecordingMs(ms => ms + 250), 250);
+    return () => window.clearInterval(id);
+  }, [isRecording]);
+
+  // --- Desktop sidebar resize (P9) ---
+  const startSidebarResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const moveSidebarResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizingRef.current) return;
+    setSidebarWidth(Math.min(560, Math.max(280, Math.round(e.clientX))));
+  };
+  const endSidebarResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizingRef.current) return;
+    resizingRef.current = false;
+    try {
+      localStorage.setItem('m3d.sidebarWidth', String(sidebarWidthRef.current));
+    } catch { /* storage unavailable — non-fatal */ }
+    e.currentTarget.releasePointerCapture(e.pointerId);
+  };
+
+  const cycleLighting = useCallback(() => {
+    setVizConfig(prev => {
+      const idx = LIGHTING_PRESETS.indexOf(prev.lightingPreset);
+      return { ...prev, lightingPreset: LIGHTING_PRESETS[(idx + 1) % LIGHTING_PRESETS.length] };
+    });
+  }, []);
+
+  useKeyboardShortcuts({
+    onToggleRotate: () => setAutoRotate(v => !v),
+    onFit: () => emitCameraCommand({ type: 'fit' }),
+    onViewPreset: preset => emitCameraCommand({ type: 'preset', preset }),
+    onZoom: delta => emitCameraCommand({ type: 'zoom', delta }),
+    onOrbit: (dx, dy) => emitCameraCommand({ type: 'orbit', dx, dy }),
+    onVisualizationMode: idx =>
+      updateConfig('visualizationMode', VIZ_MODES[idx].value),
+    onToggleBonds: () => setVizConfig(p => ({ ...p, showBonds: !p.showBonds })),
+    onToggleBox: () => setVizConfig(p => ({ ...p, showBox: !p.showBox })),
+    onToggleLabels: () => setVizConfig(p => ({ ...p, showLabels: !p.showLabels })),
+    onCycleLighting: cycleLighting,
+    onToggleTheme: toggleTheme,
+    onToggleSidebar: () => setIsSidebarOpen(v => !v),
+    onScreenshot: doScreenshot,
+    onHelp: () => setShowHelp(v => !v),
+    onEscape: () => {
+      setShowHelp(false);
+      setSelectedIds([]);
+      if (isMobile) setIsSidebarOpen(false);
+    },
+    onClearSelection: () => setSelectedIds([]),
+    onPrevFrame: () => setFrameIdx(i => (i - 1 + frameCount) % frameCount),
+    onNextFrame: () => setFrameIdx(i => (i + 1) % frameCount),
+    onToggleTrajectoryPlay: () => { if (frameCount > 1) setTrajPlaying(v => !v); },
+  });
+
+  // ---- theme tokens (flat, no gradients) ----
+  const ct = theme === 'dark'
+    ? {
+        bg: 'bg-[#101214]', text: 'text-gray-100',
+        sidebar: 'bg-[#16191d] border-gray-800',
+        header: 'text-gray-200',
+        muted: 'text-gray-400',
+        card: 'bg-[#1d2126] border-gray-800',
+        input: 'bg-[#12151a] border-gray-700 text-gray-200 placeholder:text-gray-600 focus:border-blue-500',
+        button: 'bg-[#23282f] hover:bg-[#2b313a] border border-gray-700/60',
+        chip: 'bg-[#1d2126] border border-gray-700/60',
+        accent: 'bg-blue-600 hover:bg-blue-500 text-white',
+        go: 'bg-emerald-600 hover:bg-emerald-500 text-white',
+        active: 'bg-blue-600/15 border-blue-500 text-blue-300',
+        divider: 'border-gray-800',
+        stat: 'bg-[#1d2126]',
+      }
+    : {
+        bg: 'bg-[#eef0f3]', text: 'text-gray-900',
+        sidebar: 'bg-white border-gray-200',
+        header: 'text-gray-900',
+        muted: 'text-gray-500',
+        card: 'bg-white border-gray-200',
+        input: 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-blue-500',
+        button: 'bg-gray-100 hover:bg-gray-200 border border-gray-200',
+        chip: 'bg-gray-50 border border-gray-200',
+        accent: 'bg-blue-600 hover:bg-blue-500 text-white',
+        go: 'bg-emerald-600 hover:bg-emerald-500 text-white',
+        active: 'bg-blue-50 border-blue-500 text-blue-700',
+        divider: 'border-gray-200',
+        stat: 'bg-gray-100',
+      };
+
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'data', label: 'Data', icon: <FileText size={14} /> },
+    { id: 'view', label: 'View', icon: <Atom size={14} /> },
+    { id: 'scene', label: 'Scene', icon: <Lightbulb size={14} /> },
+    { id: 'elements', label: 'Elements', icon: <Palette size={14} /> },
+  ];
+
+  const atomTypeList = moleculeData ? Object.values(moleculeData.atomTypes) : [];
+
+  // Active frame for trajectory playback (P5): swaps atoms, keeps topology.
+  const activeData: MoleculeData | null = useMemo(() => {
+    if (!moleculeData || !moleculeData.frames || frameCount <= 1) return moleculeData;
+    const frame = moleculeData.frames[Math.min(frameIdx, frameCount - 1)];
+    return frame ? { ...moleculeData, atoms: frame.atoms } : moleculeData;
+  }, [moleculeData, frameIdx, frameCount]);
+
+  const measurement: MeasurementResult | null = useMemo(() => {
+    if (!activeData) return null;
+    const picked = selectedIds
+      .map(id => activeData.atoms.find(a => a.id === id))
+      .filter((a): a is NonNullable<typeof a> => !!a);
+    return measureSelection(picked);
+  }, [activeData, selectedIds]);
+
+  const measurementHint = useMemo(() => {
+    if (!selectedIds.length) return 'Click 2–4 atoms to measure';
+    return `${selectedIds.length} picked — ${4 - selectedIds.length > 0 ? `pick ${4 - selectedIds.length} more` : 'measurement ready'}`;
+  }, [selectedIds]);
+
+  return (
+    <div className={`flex h-screen w-screen font-sans overflow-hidden ${ct.bg} ${ct.text}`}>
+      {/* Mobile backdrop */}
+      {isMobile && isSidebarOpen && (
+        <div className="fixed inset-0 bg-black/50 z-20" onClick={() => setIsSidebarOpen(false)} />
+      )}
+
+      {/* Drag overlay */}
+      {dragActive && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-blue-950/40 border-4 border-dashed border-blue-500">
+          <div className="px-6 py-4 rounded-xl bg-[#16191d] text-gray-100 text-sm font-medium shadow-2xl">
+            Drop a structure file to visualize (.data .xyz .pdb .cif)
+          </div>
+        </div>
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`
+        relative flex flex-col border-r transition-[transform] duration-300 ease-in-out z-30
+        ${isMobile ? 'fixed inset-y-0 left-0 w-80 max-w-[85vw]' : 'shrink-0'}
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        ${ct.sidebar}
+      `}
+        style={!isMobile ? { width: sidebarWidth } : undefined}
+      >
+        {/* Desktop resize handle (P9) */}
+        {!isMobile && isSidebarOpen && (
+          <div
+            onPointerDown={startSidebarResize}
+            onPointerMove={moveSidebarResize}
+            onPointerUp={endSidebarResize}
+            className="absolute top-0 right-[-3px] h-full w-1.5 cursor-col-resize z-40 hover:bg-blue-500/40 transition-colors touch-none"
+            title="Drag to resize sidebar"
+            aria-label="Resize sidebar"
+          />
+        )}
+        {/* Header */}
+        <div className={`flex items-center justify-between px-4 h-14 border-b ${ct.divider}`}>
+          <div className="flex items-center gap-2.5">
+            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Molecule3D logo" className="w-8 h-8" />
+            <div>
+              <h1 className="text-base font-bold tracking-tight">Molecule3D</h1>
+              <p className={`text-[10px] leading-none ${ct.muted}`}>Molecular Structure Viewer</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <a
+              href="https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer"
+              target="_blank" rel="noopener noreferrer"
+              className={`p-2 rounded-lg ${ct.button}`}
+              title="GitHub repository"
+            >
+              <GithubIcon size={16} />
+            </a>
+            {isMobile && (
+              <button onClick={() => setIsSidebarOpen(false)} className={`p-2 rounded-lg ${ct.button}`} title="Close sidebar">
+                <X size={16} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <nav className={`grid grid-cols-4 border-b ${ct.divider}`} aria-label="Sidebar sections">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors ${
+                activeTab === tab.id
+                  ? `${ct.active} border-b-2`
+                  : `${ct.muted} hover:${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          {/* ============================== DATA TAB */}
+          {activeTab === 'data' && (
+            <>
+              <section className={`rounded-lg p-3 text-xs border ${ct.card} ${ct.muted}`}>
+                <div className="flex items-center gap-2 mb-2 font-semibold text-blue-400">
+                  <Info size={14} /> Supported formats
+                </div>
+                <ul className="space-y-1">
+                  <li><span className="font-semibold text-blue-400">.data / .lmp</span> — LAMMPS (atomic·charge·molecular·full)</li>
+                  <li><span className="font-semibold text-emerald-400">.xyz</span> — XYZ trajectories (first frame)</li>
+                  <li><span className="font-semibold text-purple-400">.pdb</span> — Protein Data Bank (+CONECT, CRYST1)</li>
+                  <li><span className="font-semibold text-orange-400">.cif</span> — Crystallographic Information Framework</li>
+                </ul>
+              </section>
+
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Load structure</h3>
+                <label className={`flex cursor-pointer items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${ct.accent}`}>
+                  <Upload size={14} /> Upload file
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".data,.lmp,.lammps,.xyz,.pdb,.ent,.cif,.mmcif,.txt"
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (f) handleFileUpload(f);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {EXAMPLES.map(ex => (
+                    <button
+                      key={ex.file}
+                      onClick={() => loadExample(ex.file, ex.format)}
+                      className={`px-2 py-2 rounded-lg text-[11px] font-medium transition-colors ${ct.button}`}
+                      title={`Load ${ex.label} example`}
+                    >
+                      {ex.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className={`text-xs font-semibold ${ct.header}`}>Paste data</h3>
+                  <div className="flex gap-1">
+                    {( ['lammps', 'xyz', 'pdb', 'cif'] as FileFormat[]).map(fmt => (
+                      <button
+                        key={fmt}
+                        onClick={() => setFileFormat(fmt)}
+                        className={`px-2 py-1 rounded text-[10px] uppercase font-bold transition-colors ${
+                          fileFormat === fmt ? ct.accent : ct.chip + ' ' + ct.muted
+                        }`}
+                        title={`Parse pasted text as ${fmt.toUpperCase()}`}
+                      >
+                        {fmt === 'lammps' ? 'lmp' : fmt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <textarea
+                  value={inputText}
+                  onChange={e => setInputText(e.target.value)}
+                  placeholder="# Paste LAMMPS / XYZ / PDB / CIF content here…"
+                  className={`w-full h-44 border rounded-lg p-3 text-xs font-mono resize-y focus:outline-none ${ct.input}`}
+                  spellCheck={false}
+                />
+                <button
+                  onClick={() => handleVisualize(inputText, fileFormat)}
+                  className={`w-full py-2.5 rounded-lg text-sm font-bold transition-colors ${ct.go}`}
+                >
+                  Visualize
+                </button>
+              </section>
+
+              {moleculeData && (
+                <section className="space-y-2 pt-1">
+                  <h3 className={`text-xs font-semibold ${ct.header}`}>Statistics</h3>
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    {[
+                      { label: 'Atoms', value: moleculeData.atoms.length },
+                      { label: 'Bonds', value: moleculeData.bonds.length },
+                      { label: 'Types', value: atomTypeList.length },
+                      { label: 'Box', value: moleculeData.box ? 'Yes' : '—' },
+                    ].map(s => (
+                      <div key={s.label} className={`p-2 rounded-lg ${ct.stat}`}>
+                        <div className={`text-[10px] ${ct.muted}`}>{s.label}</div>
+                        <div className="text-sm font-mono font-bold">{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {error && (
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex gap-2 items-start" role="alert">
+                  <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                  <span>{error}</span>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ============================== VIEW TAB */}
+          {activeTab === 'view' && (
+            <>
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Representation</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {VIZ_MODES.map(mode => (
+                    <button
+                      key={mode.value}
+                      onClick={() => updateConfig('visualizationMode', mode.value)}
+                      className={`text-left p-2.5 rounded-lg border text-xs transition-colors ${
+                        vizConfig.visualizationMode === mode.value ? ct.active : ct.button
+                      }`}
+                    >
+                      <div className="font-semibold">{mode.label}</div>
+                      <div className={`text-[10px] mt-0.5 ${ct.muted}`}>{mode.desc}</div>
+                      <kbd className={`inline-block mt-1 px-1 rounded text-[9px] ${ct.chip}`}>{mode.key}</kbd>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Material</h3>
+                <div className="grid grid-cols-4 gap-2">
+                  {MATERIALS.map(m => (
+                    <button
+                      key={m.value}
+                      onClick={() => updateConfig('materialType', m.value)}
+                      className={`py-2 text-[11px] font-medium rounded-lg border capitalize transition-colors ${
+                        vizConfig.materialType === m.value ? ct.active : ct.button
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Geometry</h3>
+                {([
+                  { label: 'Atom size', key: 'atomScale' as const },
+                  { label: 'Bond thickness', key: 'bondScale' as const },
+                ]).map(sl => (
+                  <div key={sl.key} className="space-y-1">
+                    <div className={`flex justify-between text-[11px] ${ct.muted}`}>
+                      <span>{sl.label}</span>
+                      <span className="font-mono">{(vizConfig[sl.key] * 100).toFixed(0)}%</span>
+                    </div>
+                    <input
+                      type="range" min="0.1" max="3" step="0.05"
+                      value={vizConfig[sl.key]}
+                      onChange={e => updateConfig(sl.key, parseFloat(e.target.value))}
+                      className="w-full accent-blue-500"
+                    />
+                  </div>
+                ))}
+              </section>
+
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Visibility</h3>
+                {([
+                  { key: 'showBonds' as const, label: 'Bonds', hint: 'B' },
+                  { key: 'showLabels' as const, label: `Element labels${moleculeData && moleculeData.atoms.length > 400 ? ' (≤400 atoms)' : ''}`, hint: 'L' },
+                ]).map(row => (
+                  <button
+                    key={row.key}
+                    onClick={() => updateConfig(row.key, !vizConfig[row.key])}
+                    className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors ${ct.button}`}
+                  >
+                    <span>{row.label} <kbd className={`ml-1 px-1 rounded text-[9px] ${ct.chip}`}>{row.hint}</kbd></span>
+                    {vizConfig[row.key]
+                      ? <Eye size={14} className="text-emerald-400" />
+                      : <EyeOff size={14} className={ct.muted} />}
+                  </button>
+                ))}
+              </section>
+            </>
+          )}
+
+          {/* ============================== SCENE TAB */}
+          {activeTab === 'scene' && (
+            <>
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Lighting</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {LIGHTING_PRESETS.map(p => (
+                    <button
+                      key={p}
+                      onClick={() => updateConfig('lightingPreset', p)}
+                      className={`py-2 text-[11px] font-medium rounded-lg border capitalize transition-colors ${
+                        vizConfig.lightingPreset === p ? ct.active : ct.button
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+                <p className={`text-[10px] ${ct.muted}`}>
+                  Shortcut <kbd className={`px-1 rounded text-[9px] ${ct.chip}`}>G</kbd> cycles presets.
+                </p>
+              </section>
+
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Camera views</h3>
+                <div className="grid grid-cols-4 gap-2">
+                  {CAMERA_VIEWS.map(v => (
+                    <button
+                      key={v.preset}
+                      onClick={() => emitCameraCommand({ type: 'preset', preset: v.preset })}
+                      className={`py-2 text-[11px] font-medium rounded-lg border transition-colors ${ct.button}`}
+                      title={`View from ${v.label.toLowerCase()}`}
+                    >
+                      {v.label}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => emitCameraCommand({ type: 'fit' })}
+                    className={`py-2 text-[11px] font-medium rounded-lg border flex items-center justify-center gap-1 transition-colors ${ct.button}`}
+                    title="Fit to scene (R)"
+                  >
+                    <Maximize2 size={12} /> Fit
+                  </button>
+                </div>
+              </section>
+
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Simulation box & axes</h3>
+                <button
+                  onClick={() => updateConfig('showBox', !vizConfig.showBox)}
+                  disabled={!moleculeData?.box}
+                  className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors disabled:opacity-40 ${ct.button}`}
+                  title="X"
+                >
+                  <span className="flex items-center gap-2"><Grid3x3 size={14} /> Show simulation box <kbd className={`px-1 rounded text-[9px] ${ct.chip}`}>X</kbd></span>
+                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.showBox ? 'bg-blue-600' : 'bg-gray-600'}`}>
+                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.showBox ? 'left-4' : 'left-0.5'}`} />
+                  </span>
+                </button>
+                <button
+                  onClick={() => updateConfig('showAxes', !vizConfig.showAxes)}
+                  className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors ${ct.button}`}
+                >
+                  <span className="flex items-center gap-2"><Grid3x3 size={14} /> Show XYZ axes</span>
+                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.showAxes ? 'bg-blue-600' : 'bg-gray-600'}`}>
+                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.showAxes ? 'left-4' : 'left-0.5'}`} />
+                  </span>
+                </button>
+                {!moleculeData?.box && (
+                  <p className={`text-[10px] ${ct.muted}`}>This structure has no cell information (load a LAMMPS/PDB-CRYST1/CIF file).</p>
+                )}
+              </section>
+
+              <section className="space-y-3">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Motion & optics</h3>
+                <div className="space-y-1">
+                  <div className={`flex justify-between text-[11px] ${ct.muted}`}>
+                    <span>Auto-rotate speed</span><span className="font-mono">{vizConfig.autoRotateSpeed.toFixed(1)}</span>
+                  </div>
+                  <input
+                    type="range" min="0.1" max="6" step="0.1"
+                    value={vizConfig.autoRotateSpeed}
+                    onChange={e => updateConfig('autoRotateSpeed', parseFloat(e.target.value))}
+                    className="w-full accent-blue-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <div className={`flex justify-between text-[11px] ${ct.muted}`}>
+                    <span>Field of view</span><span className="font-mono">{vizConfig.fov.toFixed(0)}°</span>
+                  </div>
+                  <input
+                    type="range" min="15" max="90" step="1"
+                    value={vizConfig.fov}
+                    onChange={e => updateConfig('fov', parseInt(e.target.value, 10))}
+                    className="w-full accent-blue-500"
+                  />
+                </div>
+                <button
+                  onClick={() => updateConfig('shadowsEnabled', !vizConfig.shadowsEnabled)}
+                  className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors ${ct.button}`}
+                >
+                  <span>Shadows (≤8k atoms)</span>
+                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.shadowsEnabled ? 'bg-blue-600' : 'bg-gray-600'}`}>
+                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.shadowsEnabled ? 'left-4' : 'left-0.5'}`} />
+                  </span>
+                </button>
+              </section>
+
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Appearance</h3>
+                <button
+                  onClick={toggleTheme}
+                  className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-xs font-medium transition-colors ${ct.button}`}
+                >
+                  {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+                  Switch to {theme === 'dark' ? 'light' : 'dark'} mode <kbd className={`px-1 rounded text-[9px] ${ct.chip}`}>T</kbd>
+                </button>
+                <div className="flex gap-2 flex-wrap pt-1">
+                  {(theme === 'dark'
+                    ? ['#151515', '#000000', '#10141c', '#1a1e26']
+                    : ['#f4f5f7', '#ffffff', '#eef2f7', '#e8ecef']
+                  ).map(color => (
+                    <button
+                      key={color}
+                      onClick={() => updateConfig('backgroundColor', color)}
+                      className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
+                        vizConfig.backgroundColor === color ? 'border-blue-500 scale-110' : 'border-transparent'
+                      }`}
+                      style={{ backgroundColor: color }}
+                      title={color}
+                    />
+                  ))}
+                  <label className={`relative w-7 h-7 rounded-full overflow-hidden border-2 ${ct.chip} cursor-pointer`}>
+                    <input
+                      type="color"
+                      value={vizConfig.backgroundColor}
+                      onChange={e => updateConfig('backgroundColor', e.target.value)}
+                      className="absolute -top-2 -left-2 w-12 h-12 cursor-pointer p-0 border-0"
+                      title="Custom background"
+                    />
+                  </label>
+                </div>
+              </section>
+            </>
+          )}
+
+          {/* ============================== ELEMENTS TAB */}
+          {activeTab === 'elements' && (
+            <>
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>Element types in structure</h3>
+                {atomTypeList.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {atomTypeList.map(typeInfo => {
+                      const meta = ELEMENT_DATA.find(el => el.symbol === typeInfo.element);
+                      return (
+                        <div key={typeInfo.id} className={`flex items-center justify-between p-2.5 rounded-lg border ${ct.card}`}>
+                          <div className="flex items-center gap-2.5">
+                            <div className="relative w-8 h-8 rounded-full overflow-hidden border border-gray-600 shrink-0">
+                              <input
+                                type="color"
+                                value={vizConfig.customColors[typeInfo.id] || DEFAULT_ATOM_COLOR}
+                                onChange={e => updateCustomColor(typeInfo.id, e.target.value)}
+                                className="absolute -top-2 -left-2 w-14 h-14 cursor-pointer p-0 border-0"
+                                title={`Pick color for type ${typeInfo.id}`}
+                              />
+                            </div>
+                            <div>
+                              <div className="text-[11px] font-bold">
+                                {meta ? `${meta.name} (${meta.symbol})` : typeInfo.label}
+                              </div>
+                              <div className={`text-[9px] ${ct.muted}`}>
+                                {meta
+                                  ? `Z=${meta.number} · ${meta.mass.toFixed(2)} u`
+                                  : `ID ${typeInfo.id}${typeInfo.mass ? ` · ${typeInfo.mass.toFixed(2)} u` : ''}`}
+                              </div>
+                            </div>
+                          </div>
+                          <div className={`px-2 py-0.5 rounded text-[10px] font-mono ${ct.chip}`}>
+                            ×{typeInfo.count}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className={`text-xs italic ${ct.muted}`}>Load a structure to edit its element colors.</p>
+                )}
+              </section>
+
+              <section className="space-y-2">
+                <h3 className={`text-xs font-semibold ${ct.header}`}>CPK/Jmol reference</h3>
+                <p className={`text-[10px] ${ct.muted}`}>
+                  All 118 elements carry standard CPK/Jmol colors and are resolved by symbol from any
+                  supported format — LAMMPS mass tables, XYZ symbols, PDB element columns and CIF type symbols.
+                </p>
+              </section>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <footer className={`px-3 py-2.5 border-t text-[10px] text-center flex items-center justify-between ${ct.divider}`}>
+          <span className={ct.muted}>
+            Created by <span className="font-medium">Shuvam Banerji Seal</span>
+          </span>
+          <button
+            onClick={copyShareLink}
+            className={`flex items-center gap-1 px-2 py-1 rounded ${linkCopied ? 'text-emerald-400' : ct.button}`}
+            title="Copy a link that restores this exact view"
+          >
+            {linkCopied ? <Check size={12} /> : <Link2 size={12} />}
+            {linkCopied ? 'Copied' : 'Share'}
+          </button>
+          <button
+            onClick={() => setShowHelp(true)}
+            className={`flex items-center gap-1 px-2 py-1 rounded ${ct.button}`}
+            title="Keyboard shortcuts (H)"
+          >
+            <Keyboard size={12} /> Shortcuts
+          </button>
+        </footer>
+      </aside>
+
+      {/* ============================ MAIN CANVAS AREA */}
+      <main className={`flex-1 relative min-w-0 ${ct.bg}`}>
+        {/* Top-left controls */}
+        <div className="absolute top-3 left-3 right-3 z-10 flex items-start justify-between pointer-events-none">
+          <div className="pointer-events-auto flex gap-2">
+            {!isSidebarOpen && (
+              <button
+                onClick={() => setIsSidebarOpen(true)}
+                className={`p-2.5 rounded-lg shadow-lg backdrop-blur ${ct.sidebar}`}
+                title="Open sidebar (O)"
+              >
+                <Menu size={18} />
+              </button>
+            )}
+            {moleculeData && (
+              <div className={`px-3 py-2 rounded-lg shadow-lg text-[11px] font-mono hidden sm:block backdrop-blur ${ct.card}`}>
+                {moleculeData.atoms.length.toLocaleString()} atoms
+                {moleculeData.bonds.length > 0 && ` · ${moleculeData.bonds.length.toLocaleString()} bonds`}
+                {moleculeData.box && ' · cell'}
+                {frameCount > 1 && ` · ${frameCount} frames`}
+              </div>
+            )}
+            {isParsing && (
+              <div className={`flex items-center gap-1.5 px-3 py-2 rounded-lg shadow-lg text-[11px] backdrop-blur ${ct.card}`} role="status">
+                <Loader2 size={13} className="animate-spin text-blue-400" />
+                Parsing structure…
+              </div>
+            )}
+          </div>
+          <div className="pointer-events-auto flex gap-2">
+            <button
+              onClick={() => emitCameraCommand({ type: 'zoom', delta: 1 })}
+              className={`p-2.5 rounded-lg shadow-lg backdrop-blur ${ct.sidebar}`}
+              title="Zoom in (+)"
+            >
+              <ZoomIn size={18} />
+            </button>
+            <button
+              onClick={() => emitCameraCommand({ type: 'zoom', delta: -1 })}
+              className={`p-2.5 rounded-lg shadow-lg backdrop-blur ${ct.sidebar}`}
+              title="Zoom out (−)"
+            >
+              <ZoomOut size={18} />
+            </button>
+            <button
+              onClick={() => setShowHelp(true)}
+              className={`p-2.5 rounded-lg shadow-lg backdrop-blur ${ct.sidebar}`}
+              title="Keyboard shortcuts (H)"
+            >
+              <HelpCircle size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Bottom toolbar */}
+        <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 px-2 py-1.5 rounded-full border shadow-2xl backdrop-blur ${
+          theme === 'dark' ? 'bg-[#16191d]/90 border-gray-700/50' : 'bg-white/90 border-gray-200'
+        }`}>
+          <button
+            onClick={() => setAutoRotate(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium transition-colors ${
+              autoRotate ? 'text-blue-400' : `${ct.muted}`
+            }`}
+            title="Auto-rotate (Space)"
+          >
+            {autoRotate ? <Pause size={16} /> : <Play size={16} />}
+            <span className="hidden sm:inline">Rotate</span>
+          </button>
+          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+          <button
+            onClick={() => emitCameraCommand({ type: 'fit' })}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium ${ct.muted}`}
+            title="Fit view (R)"
+          >
+            <Maximize2 size={16} />
+            <span className="hidden sm:inline">Fit</span>
+          </button>
+          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+          <button
+            onClick={() => updateConfig('showBox', !vizConfig.showBox)}
+            disabled={!moleculeData?.box}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium disabled:opacity-30 ${
+              vizConfig.showBox ? 'text-blue-400' : ct.muted
+            }`}
+            title="Simulation box (X)"
+          >
+            <Box size={16} />
+            <span className="hidden sm:inline">Box</span>
+          </button>
+          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+          <button
+            onClick={() => updateConfig('showLabels', !vizConfig.showLabels)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium ${
+              vizConfig.showLabels ? 'text-blue-400' : ct.muted
+            }`}
+            title="Element labels (L)"
+          >
+            <Layers size={16} />
+            <span className="hidden sm:inline">Labels</span>
+          </button>
+          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+          <button
+            onClick={() => (isRecording ? stopRecording() : startRecording())}
+            disabled={savingVideo}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium transition-colors ${
+              isRecording ? 'text-red-400' : savingVideo ? 'opacity-50' : ct.muted
+            }`}
+            title={isRecording ? 'Stop recording & save video' : 'Record high-quality video (MP4 where supported)'}
+          >
+            {isRecording ? (
+              <>
+                <span className="w-3 h-3 rounded-sm bg-red-500 animate-pulse" />
+                <span className="font-mono tabular-nums hidden sm:inline">
+                  {String(Math.floor(recordingMs / 60000)).padStart(2, '0')}:
+                  {String(Math.floor((recordingMs % 60000) / 1000)).padStart(2, '0')}
+                </span>
+                <span className="sm:hidden">Stop</span>
+              </>
+            ) : (
+              <>
+                <Circle size={13} className="text-red-400" fill="currentColor" />
+                <span className="hidden sm:inline">{savingVideo ? 'Saving…' : 'Rec'}</span>
+              </>
+            )}
+          </button>
+          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+          <button
+            onClick={doScreenshot}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium ${ct.muted}`}
+            title="Screenshot (S)"
+          >
+            <Camera size={16} />
+            <span className="hidden sm:inline">Shot</span>
+          </button>
+        </div>
+
+        {/* Trajectory playback bar (P5) */}
+        {frameCount > 1 && (
+          <div className={`absolute bottom-20 sm:bottom-16 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full border shadow-2xl backdrop-blur ${
+            theme === 'dark' ? 'bg-[#16191d]/90 border-gray-700/50' : 'bg-white/90 border-gray-200'
+          }`}>
+            <button
+              onClick={() => setFrameIdx(i => (i - 1 + frameCount) % frameCount)}
+              className={`p-1.5 rounded-full ${ct.button}`}
+              title="Previous frame (,)"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button
+              onClick={() => setTrajPlaying(v => !v)}
+              className={`p-1.5 rounded-full ${trajPlaying ? 'text-blue-400' : ct.muted}`}
+              title="Play / pause trajectory (P)"
+            >
+              {trajPlaying ? <Pause size={14} /> : <Play size={14} />}
+            </button>
+            <button
+              onClick={() => setFrameIdx(i => (i + 1) % frameCount)}
+              className={`p-1.5 rounded-full ${ct.button}`}
+              title="Next frame (.)"
+            >
+              <ChevronRight size={14} />
+            </button>
+            <input
+              type="range"
+              min="0"
+              max={frameCount - 1}
+              value={Math.min(frameIdx, frameCount - 1)}
+              onChange={e => { setTrajPlaying(false); setFrameIdx(parseInt(e.target.value, 10)); }}
+              className="w-32 sm:w-48 accent-blue-500"
+              aria-label="Trajectory frame"
+            />
+            <span className={`text-[10px] font-mono tabular-nums ${ct.muted}`}>
+              {Math.min(frameIdx, frameCount - 1) + 1}/{frameCount}
+            </span>
+            <select
+              value={trajFps}
+              onChange={e => setTrajFps(parseInt(e.target.value, 10))}
+              className={`text-[10px] rounded border bg-transparent ${ct.input} py-0.5`}
+              title="Playback speed"
+            >
+              {[2, 5, 10, 30].map(f => <option key={f} value={f}>{f} fps</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* Measurement panel (P4) */}
+        {selectedIds.length > 0 && activeData && (
+          <div className={`absolute top-16 left-3 z-10 px-3 py-2.5 rounded-xl border shadow-xl backdrop-blur text-xs space-y-1.5 ${
+            theme === 'dark' ? 'bg-[#16191d]/90 border-gray-700/50' : 'bg-white/90 border-gray-200'
+          }`} role="status">
+            <div className="flex items-center gap-1.5 font-semibold">
+              <Ruler size={13} className="text-sky-400" /> Measurement
+            </div>
+            {measurement ? (
+              <div className="font-mono text-sm">
+                <span className={ct.muted}>{measurementGlyph(measurement.kind)} = </span>
+                <span className="text-sky-400 font-bold">{measurement.label}</span>
+              </div>
+            ) : (
+              <div className={ct.muted}>{measurementHint}</div>
+            )}
+            <button
+              onClick={() => setSelectedIds([])}
+              className={`w-full py-1 rounded-lg text-[11px] font-medium ${ct.button}`}
+              title="Clear selection (C)"
+            >
+              Clear selection
+            </button>
+          </div>
+        )}
+
+        {/* Hint for first-time users */}
+        {moleculeData && frameCount <= 1 && selectedIds.length === 0 && (
+          <div className={`absolute bottom-20 sm:bottom-16 left-1/2 -translate-x-1/2 z-[5] text-[10px] px-3 py-1 rounded-full ${ct.muted}`}>
+            Press <kbd className={`px-1 rounded ${ct.chip}`}>H</kbd> for keyboard shortcuts · drag & drop files anywhere
+          </div>
+        )}
+
+        {activeData ? (
+          <MoleculeCanvas
+            data={activeData}
+            autoRotate={autoRotate}
+            config={vizConfig}
+            selectedIds={selectedIds}
+            onSelectAtom={toggleSelectAtom}
+            forceContinuousRender={isRecording || savingVideo}
+          />
+        ) : (
+          <div className={`w-full h-full flex flex-col items-center justify-center ${ct.muted}`}>
+            <div className="w-14 h-14 border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin mb-4" />
+            <p>Waiting for structure data…</p>
+          </div>
+        )}
+      </main>
+
+      {/* ============================ HELP OVERLAY */}
+      {showHelp && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setShowHelp(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Keyboard shortcuts"
+        >
+          <div
+            className={`max-w-lg w-full rounded-2xl border shadow-2xl p-6 space-y-4 max-h-[85vh] overflow-y-auto ${ct.card}`}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold flex items-center gap-2">
+                <Keyboard size={18} /> Keyboard shortcuts
+              </h2>
+              <button onClick={() => setShowHelp(false)} className={`p-1.5 rounded-lg ${ct.button}`}>
+                <X size={16} />
+              </button>
+            </div>
+            <ul className="divide-y divide-transparent">
+              {SHORTCUT_CATALOG.map(sc => (
+                <li key={sc.keys} className="flex items-center justify-between py-1.5 text-xs">
+                  <kbd className={`px-2 py-1 rounded-md font-mono text-[11px] ${ct.chip}`}>{sc.keys}</kbd>
+                  <span className={`${ct.muted} text-right`}>{sc.action}</span>
+                </li>
+              ))}
+            </ul>
+            <p className={`text-[10px] ${ct.muted} flex items-center gap-1.5`}>
+              <Settings size={11} /> Shortcuts are ignored while typing in the paste box.
+            </p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => { setShowHelp(false); doScreenshot(); }} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${ct.accent}`}>
+                <RotateCw size={12} className="inline mr-1" /> Take screenshot now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ViewerModule;

@@ -3,6 +3,7 @@ import { parseDataFile } from './parser';
 import { parseXYZFile } from './xyzParser';
 import { parsePDBFile } from './pdbParser';
 import { parseCIFFile } from './cifParser';
+import { parseDumpFile } from './dumpParser';
 
 /**
  * Detects file format from filename extension.
@@ -18,6 +19,9 @@ export const detectFileFormat = (filename: string): FileFormat => {
     case 'cif':
     case 'mmcif':
       return 'cif';
+    case 'lammpstrj':
+    case 'dump':
+      return 'lammpsdump';
     case 'data':
     case 'lammps':
     case 'lmp':
@@ -59,6 +63,11 @@ export const detectFormatFromContent = (content: string): FileFormat => {
     }
   }
 
+  // LAMMPS dump: ITEM: blocks
+  for (const line of lines.slice(0, 20)) {
+    if (/^ITEM:\s+TIMESTEP/.test(line.trim())) return 'lammpsdump';
+  }
+
   // LAMMPS: header keywords
   for (const line of lines.slice(0, 40)) {
     if (/\b(atoms|bonds|atom types|bond types|xlo xhi|Atoms\s*#)\b/i.test(line)) {
@@ -82,6 +91,8 @@ export const parseFile = (content: string, format?: FileFormat): MoleculeData =>
       return parsePDBFile(content);
     case 'cif':
       return parseCIFFile(content);
+    case 'lammpsdump':
+      return parseDumpFile(content);
     case 'lammps':
     default:
       return parseDataFile(content);

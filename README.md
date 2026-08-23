@@ -9,7 +9,7 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
 [![Live Demo](https://img.shields.io/badge/▶_Live_Demo-shuvam--banerji--seal.github.io-blue?style=for-the-badge)](https://shuvam-banerji-seal.github.io/lammps_data_web_viewer/)
 [![CI](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/actions/workflows/ci.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/actions/workflows/ci.yml)
 [![Deploy](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/actions/workflows/deploy.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/actions/workflows/deploy.yml)
-[![Tests](https://img.shields.io/badge/tests-123%20passing-brightgreen)](#development)
+[![Tests](https://img.shields.io/badge/tests-143%20passing-brightgreen)](#development)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 </div>
@@ -29,12 +29,14 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
 - 🧪 **LAMMPS Workbench** — three integrated modules: a visual **Script Builder** (flowchart pipeline of 140 curated commands), a **Compiler Helper** (package/accelerator presets → ready-to-run CMake build scripts) and the 3D **Structure Viewer**.
 - 💾 **Everything persists** — your script pipeline, compiler options, active module and light/dark theme survive module switches *and* page reloads (local-only, nothing uploaded).
 - 🧩 **Editable flowchart** — drag cards to reorder, click any **connect** pill to insert a command at that exact spot, disable or remove the next step; up/down chevrons still there. Prefer raw text? **Edit script** switches to a hand-editing mode that emits your text verbatim.
+- ↩️ **Undo / redo** — every builder action is undoable (`Ctrl+Z` / `Ctrl+Shift+Z`), including template loads; duplicate any step with its parameters; `Delete` removes the selected step.
+- 📋 **Starter templates** — one-click pipelines for LJ fluid NVT, EAM metal relax+NPT, ReaxFF chemistry, granular pouring and NEMD shear — all generate warning-free scripts.
 - 📚 **140-command library** — setup, system, interactions, output and run-control commands with per-parameter editors and links to the official docs; style enumerations verified against docs.lammps.org.
 - 🔍 **CMake flag inspector** — the Compiler Helper lists *every* `-D` flag as an expandable chip set; click any flag to read what it does and where to change it.
 - 🌰 **Warm light/dark themes** — a coffee-and-sage dark palette (no blue tint, no gradients) and a warm-paper light theme, switchable app-wide.
 - 🧊 **True 3D rendering** — depth-correct perspective view of atoms, bonds and the simulation cell, powered by three.js / React Three Fiber.
 - 📐 **Measurement tools** — click 2–4 atoms for live distance / angle / dihedral readouts with on-canvas overlays.
-- 🎞️ **Trajectory playback** — multi-frame XYZ files get a scrubber with play/pause and 2–30 fps speeds (`P`, `,`, `.`).
+- 🎞️ **Trajectory playback** — multi-frame XYZ **and LAMMPS dump** files get a scrubber with play/pause and 2–30 fps speeds (`P`, `,`, `.`).
 - 🔗 **Shareable views** — the Share button copies a URL that restores your exact visualization settings.
 - 📁 **Four structure formats**
   | Format | Extensions | Highlights |
@@ -91,7 +93,7 @@ Your files never leave your machine — parsing happens locally in the browser.
 - [React 19](https://react.dev/) + TypeScript
 - [three.js](https://threejs.org/) via [@react-three/fiber](https://docs.pmnd.rs/react-three-fiber) & [@react-three/drei](https://github.com/pmndrs/drei)
 - [Vite 8](https://vite.dev/) + [Tailwind CSS 4](https://tailwindcss.com/)
-- [Vitest](https://vitest.dev/) — 123 parser/chemistry/catalog unit tests
+- [Vitest](https://vitest.dev/) — 143 parser/chemistry/catalog unit tests
 - Zero runtime third-party requests: fonts, colors, lighting — all local.
 
 ## 💻 Development
@@ -127,6 +129,7 @@ Project layout:
 │   │   ├── MeasurementOverlay.tsx # selection rings + measurement visuals
 │   │   └── workbench/             # Script Builder · Compiler Helper · Viewer shell
 │   ├── lammps/              # workbench logic (pure, fully tested)
+│   │   ├── templates.ts           # one-click starter pipelines
 │   │   ├── catalog.ts             # 140-command declarative library
 │   │   ├── generator.ts           # model → in.lammps (+ manual-edit mode)
 │   │   ├── compiler.ts            # packages/presets → CMake script + flag docs
@@ -136,6 +139,7 @@ Project layout:
 │   │   ├── xyzParser.ts           # XYZ incl. multi-frame trajectories
 │   │   ├── pdbParser.ts           # PDB (+CONECT, CRYST1)
 │   │   ├── cifParser.ts           # CIF (fractional coords, triclinic)
+│   │   ├── dumpParser.ts          # LAMMPS dump trajectories (.lammpstrj)
 │   │   ├── bondInference.ts       # O(n) spatial-hash covalent bonding
 │   │   ├── measure.ts             # distance / angle / dihedral math
 │   │   ├── persistence.ts         # safe JSON localStorage layer

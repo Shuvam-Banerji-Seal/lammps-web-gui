@@ -63,6 +63,7 @@ const EXAMPLES: { file: string; format: FileFormat; label: string }[] = [
   { file: 'examples/nacl.cif', format: 'cif', label: 'NaCl · CIF' },
   { file: 'examples/water.xyz', format: 'xyz', label: 'Water · XYZ' },
   { file: 'examples/water-traj.xyz', format: 'xyz', label: 'Trajectory · XYZ' },
+  { file: 'examples/water-dump.lammpstrj', format: 'lammpsdump', label: 'Trajectory · Dump' },
   { file: 'examples/stress-12k.xyz', format: 'xyz', label: 'Stress 12k · XYZ' },
   { file: 'examples/stress-60k.xyz', format: 'xyz', label: 'Stress 60k · XYZ' },
 ];
@@ -608,6 +609,7 @@ const ViewerModule: React.FC<{
                 <ul className="space-y-1">
                   <li><span className={`font-semibold ${ct.accentText}`}>.data / .lmp</span> — LAMMPS (atomic·charge·molecular·full)</li>
                   <li><span className={`font-semibold ${theme === 'dark' ? 'text-[#e4b877]' : 'text-[#7a5716]'}`}>.xyz</span> — XYZ trajectories (first frame)</li>
+                  <li><span className={`font-semibold ${theme === 'dark' ? 'text-[#e4b877]' : 'text-[#7a5716]'}`}>.lammpstrj / .dump</span> — LAMMPS dump trajectories (playback)</li>
                   <li><span className={`font-semibold ${theme === 'dark' ? "text-[#c9a9d4]" : "text-[#7d5a8c]"}`}>.pdb</span> — Protein Data Bank (+CONECT, CRYST1)</li>
                   <li><span className={`font-semibold ${theme === 'dark' ? "text-[#cf8b76]" : "text-[#a4502f]"}`}>.cif</span> — Crystallographic Information Framework</li>
                 </ul>
@@ -621,7 +623,7 @@ const ViewerModule: React.FC<{
                     ref={fileInputRef}
                     type="file"
                     className="hidden"
-                    accept=".data,.lmp,.lammps,.xyz,.pdb,.ent,.cif,.mmcif,.txt"
+                    accept=".data,.lmp,.lammps,.xyz,.pdb,.ent,.cif,.mmcif,.lammpstrj,.dump,.txt"
                     onChange={e => {
                       const f = e.target.files?.[0];
                       if (f) handleFileUpload(f);
@@ -647,16 +649,16 @@ const ViewerModule: React.FC<{
                 <div className="flex items-center justify-between">
                   <h3 className={`text-xs font-semibold ${ct.header}`}>Paste data</h3>
                   <div className="flex gap-1">
-                    {( ['lammps', 'xyz', 'pdb', 'cif'] as FileFormat[]).map(fmt => (
+                    {( ['lammps', 'xyz', 'pdb', 'cif', 'lammpsdump'] as FileFormat[]).map(fmt => (
                       <button
                         key={fmt}
                         onClick={() => setFileFormat(fmt)}
                         className={`px-2 py-1 rounded text-[10px] uppercase font-bold transition-colors ${
                           fileFormat === fmt ? ct.accent : ct.chip + ' ' + ct.muted
                         }`}
-                        title={`Parse pasted text as ${fmt.toUpperCase()}`}
+                        title={`Parse pasted text as ${fmt === 'lammpsdump' ? 'LAMMPS dump' : fmt.toUpperCase()}`}
                       >
-                        {fmt === 'lammps' ? 'lmp' : fmt}
+                        {fmt === 'lammps' ? 'lmp' : fmt === 'lammpsdump' ? 'dump' : fmt}
                       </button>
                     ))}
                   </div>

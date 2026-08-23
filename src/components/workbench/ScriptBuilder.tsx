@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   ALL_COMMANDS,
   COMMAND_BY_ID,
@@ -11,12 +11,14 @@ import {
 } from '../../lammps/catalog';
 import { generateScript, deriveFlowchart, FlowGraph } from '../../lammps/generator';
 import { downloadTextFile } from '../../lammps/exporter';
-import { usePersistentState } from '../../hooks/usePersistentState';
+import { SCRIPT_TEMPLATES, buildTemplate } from '../../lammps/templates';
+import { useUndoableState } from '../../hooks/useUndoableState';
+import { browserStore, loadJson, saveJson } from '../../services/persistence';
 import { getThemeTokens, ThemeTokens, Theme } from '../../theme';
 import {
   Plus, Trash2, Copy, Download, Eye, EyeOff,
   FileCode2, Workflow, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, Search,
-  Atom as AtomIcon, PencilLine, X, GripVertical, Link2,
+  Atom as AtomIcon, PencilLine, X, GripVertical, Link2, Undo2, Redo2, LayoutTemplate,
 } from 'lucide-react';
 
 interface ScriptBuilderProps {
@@ -55,16 +57,44 @@ const reviveModel = (raw: unknown): ScriptModel | null => {
 
 const DEFAULT_MODEL: ScriptModel = { title: 'My LAMMPS Simulation', steps: [] };
 
+const MODEL_KEY = 'm3d.scriptModel.v1';
+
 const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) => {
   const ct = getThemeTokens(theme);
-  const [model, setModel] = usePersistentState<ScriptModel>(
-    'm3d.scriptModel.v1', DEFAULT_MODEL, reviveModel,
-  );
+  // Undoable model; the plain value persists to localStorage for durability.
+  const [model, setModel, undo, redo, canUndo, canRedo] = (() => {
+    const api = useUndoableState<ScriptModel>(() => {
+      const stored = loadJson<ScriptModel>(browserStore(), MODEL_KEY, reviveModel);
+      return stored ?? DEFAULT_MODEL;
+    });
+    return [api.value, api.set, api.undo, api.redo, api.canUndo, api.canRedo] as const;
+  })();
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(true);
   const [view, setView] = useState<'flow' | 'script'>('flow');
   const [search, setSearch] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Persist the model whenever it changes (history itself is in-memory).
+  React.useEffect(() => {
+    saveJson(browserStore(), MODEL_KEY, model);
+  }, [model]);
+
+  // Undo/redo + Delete-selected keyboard layer (builder-local; the manual
+  // textarea keeps native undo because typing targets are skipped).
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+      if ((mod && e.shiftKey && e.key.toLowerCase() === 'z') || (mod && e.key.toLowerCase() === 'y')) { e.preventDefault(); redo(); return; }
+      if (!mod && (e.key === 'Delete') && selectedUid) { e.preventDefault(); removeStepRef.current(selectedUid); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo, selectedUid]);
 
   // Drag-to-reorder state (HTML5 DnD)
   const [dragUid, setDragUid] = useState<string | null>(null);
@@ -85,6 +115,8 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   const activeText = isManual ? (model.manualText ?? '') : generated.text;
 
   // ---- model mutations -------------------------------------------------
+  const removeStepRef = useRef<(uid: string) => void>(() => {});
+
   const insertStepAt = useCallback((defId: string, index: number) => {
     const def = COMMAND_BY_ID[defId];
     if (!def) return;
@@ -138,6 +170,25 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   const removeStep = useCallback((uid: string) => {
     setModel(prev => ({ ...prev, steps: prev.steps.filter(s => s.uid !== uid) }));
     setSelectedUid(prev => (prev === uid ? null : prev));
+  }, [setModel]);
+  removeStepRef.current = removeStep;
+
+  /** Duplicate a step (same command + params) right below it. */
+  const duplicateStep = useCallback((uid: string) => {
+    setModel(prev => {
+      const idx = prev.steps.findIndex(s => s.uid === uid);
+      if (idx < 0) return prev;
+      const src = prev.steps[idx];
+      const clone: ScriptStep = {
+        ...src,
+        uid: newUid(),
+        params: { ...src.params },
+        note: src.note,
+      };
+      const steps = [...prev.steps];
+      steps.splice(idx + 1, 0, clone);
+      return { ...prev, steps };
+    });
   }, [setModel]);
 
   const moveStep = useCallback((uid: string, dir: -1 | 1) => {
@@ -318,6 +369,64 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
           </div>
           <div className="flex items-center gap-1.5">
             <button
+              onClick={undo}
+              disabled={!canUndo}
+              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+              title="Undo (Ctrl+Z)"
+              aria-label="Undo"
+            >
+              <Undo2 size={13} />
+            </button>
+            <button
+              onClick={redo}
+              disabled={!canRedo}
+              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+              title="Redo (Ctrl+Shift+Z)"
+              aria-label="Redo"
+            >
+              <Redo2 size={13} />
+            </button>
+            <div className="relative">
+              <button
+                onClick={() => setTemplatesOpen(v => !v)}
+                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+                title="Start from a ready-made pipeline"
+              >
+                <LayoutTemplate size={13} /> Templates
+              </button>
+              {templatesOpen && (
+                <div
+                  className={`absolute right-0 top-full z-40 mt-1 w-72 rounded-lg border p-1.5 shadow-2xl ${ct.card}`}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <p className={`px-2 pb-1 pt-0.5 text-[9px] uppercase tracking-wide ${ct.muted}`}>
+                    Starter pipelines (replaces the current steps — undo works)
+                  </p>
+                  {SCRIPT_TEMPLATES.map(tpl => (
+                    <button
+                      key={tpl.id}
+                      onClick={() => {
+                        setModel(buildTemplate(tpl));
+                        setSelectedUid(null);
+                        setTemplatesOpen(false);
+                      }}
+                      className={`flex w-full flex-col rounded px-2 py-1.5 text-left transition-colors ${ct.hoverSurface}`}
+                      title={tpl.description}
+                    >
+                      <span className="text-[11px] font-semibold">{tpl.label}</span>
+                      <span className={`text-[10px] ${ct.muted}`}>{tpl.description}</span>
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setTemplatesOpen(false)}
+                    className={`mt-0.5 w-full rounded px-2 py-1 text-left text-[10px] ${ct.muted} ${ct.hoverSurface}`}
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+            </div>
+            <button
               onClick={() => setView(v => v === 'flow' ? 'script' : 'flow')}
               className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
                 view === 'flow' ? ct.active : `${ct.muted} ${ct.hoverSurface}`
@@ -396,6 +505,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               onSelect={setSelectedUid}
               onToggle={(uid) => updateStep(uid, { enabled: !model.steps.find(s => s.uid === uid)?.enabled })}
               onRemove={removeStep}
+              onDuplicate={duplicateStep}
               onMove={moveStep}
               onDragStart={(uid) => setDragUid(uid)}
               onDragEnd={() => { setDragUid(null); setOverIndex(null); }}
@@ -440,6 +550,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             onUpdateParam={(k, v) => updateParam(selectedStep.uid, k, v)}
             onUpdateNote={(note) => updateStep(selectedStep.uid, { note })}
             onToggle={() => updateStep(selectedStep.uid, { enabled: !selectedStep.enabled })}
+            onDuplicate={() => duplicateStep(selectedStep.uid)}
             onRemove={() => removeStep(selectedStep.uid)}
             onMoveUp={() => moveStep(selectedStep.uid, -1)}
             onMoveDown={() => moveStep(selectedStep.uid, 1)}
@@ -517,6 +628,7 @@ interface FlowchartViewProps {
   onSelect: (uid: string) => void;
   onToggle: (uid: string) => void;
   onRemove: (uid: string) => void;
+  onDuplicate: (uid: string) => void;
   onMove: (uid: string, dir: -1 | 1) => void;
   onDragStart: (uid: string) => void;
   onDragEnd: () => void;
@@ -530,7 +642,7 @@ interface FlowchartViewProps {
 
 const FlowchartView: React.FC<FlowchartViewProps> = ({
   ct, flow, steps, selectedUid, dragUid, overIndex, edgeMenuIndex,
-  onSelect, onToggle, onRemove, onMove,
+  onSelect, onToggle, onRemove, onDuplicate, onMove,
   onDragStart, onDragEnd, onDropAt,
   onEdgeClick, onEdgeInsertHere, onEdgeDisableNext, onEdgeRemoveNext, onCloseEdgeMenu,
 }) => {
@@ -673,6 +785,13 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
                     {node.enabled ? <Eye size={12} /> : <EyeOff size={12} />}
                   </button>
                   <button
+                    onClick={(e) => { e.stopPropagation(); onDuplicate(node.uid); }}
+                    className={`rounded p-0.5 ${ct.muted} hover:text-[#ede5d8]`}
+                    title="Duplicate step"
+                  >
+                    <Copy size={12} />
+                  </button>
+                  <button
                     onClick={(e) => { e.stopPropagation(); onRemove(node.uid); }}
                     className={`rounded p-0.5 ${ct.dangerItem}`}
                     title="Remove"
@@ -731,13 +850,14 @@ interface StepEditorProps {
   onUpdateParam: (key: string, value: string) => void;
   onUpdateNote: (note?: string) => void;
   onToggle: () => void;
+  onDuplicate: () => void;
   onRemove: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
 }
 
 const StepEditor: React.FC<StepEditorProps> = ({
-  ct, step, def, onUpdateParam, onUpdateNote, onToggle, onRemove, onMoveUp, onMoveDown,
+  ct, step, def, onUpdateParam, onUpdateNote, onToggle, onDuplicate, onRemove, onMoveUp, onMoveDown,
 }) => {
   return (
     <div className="space-y-4 p-4">

@@ -64,7 +64,7 @@ export type MaterialType = 'realistic' | 'plastic' | 'toon' | 'metallic';
 
 export type VisualizationMode = 'ball-and-stick' | 'space-fill' | 'wireframe' | 'licorice';
 
-export type FileFormat = 'lammps' | 'xyz' | 'pdb' | 'cif';
+export type FileFormat = 'lammps' | 'xyz' | 'pdb' | 'cif' | 'lammpsdump';
 
 export type LightingPreset = 'studio' | 'lab' | 'outdoor' | 'space' | 'soft';
 

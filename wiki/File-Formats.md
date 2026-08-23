@@ -45,6 +45,22 @@ Bonds are inferred automatically using an O(n) spatial hash over Cordero
 covalent radii (tolerance ×1.2) — H₂ at 0.74 Å bonds, non-bonded contacts at
 3 Å don't. Extended-XYZ extra columns are tolerated.
 
+## LAMMPS dump trajectories (`.lammpstrj`, `.dump`)
+
+Native `ITEM:`-block dump format from `dump custom` / `dump atom`. Every frame
+is captured and the built-in scrubber plays them back (`P` play/pause, `,`/`.`
+step). Handled per docs.lammps.org (git 4Jul2026):
+
+- **Boxes** — orthogonal (`BOX BOUNDS pp pp pp`) as-is; restricted triclinic
+  (`BOX BOUNDS xy xz yz …`) converted from the bounding box to the true cell
+  (`xlo = xlo_bound − MIN(0, xy, xz, xy+xz)` per Howto triclinic) and rendered
+  as true parallelepipeds.
+- **Coordinates** — prefers `x y z`, falls back to unwrapped `xu yu zu`, then
+  de-scales fractional `xs ys zs` in the triclinic vector basis.
+- **Columns** — arbitrary `ITEM: ATOMS` layouts; `element` resolves CPK colors
+  directly, otherwise type-as-atomic-number; `q` and `mol` honored.
+- **Bonds** — inferred on the first frame (dumps carry no topology).
+
 ## PDB (`.pdb`, `.ent`)
 
 - `ATOM` / `HETATM` coordinates

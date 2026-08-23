@@ -13,6 +13,7 @@ import { encodeViewState, viewStateFromSearch } from '../../services/viewState';
 import { measureSelection, measurementGlyph, MeasurementResult } from '../../services/measure';
 import { startCanvasRecording, RecordingHandle } from '../../services/recorder';
 import { captureActiveCanvas } from '../../services/glRegistry';
+import { getThemeTokens, initialTheme, Theme as UITheme } from '../../theme';
 import {
   Upload, RotateCw, AlertCircle, Info, Settings, Eye, EyeOff, Palette, Box,
   Sun, Moon, Menu, X, Camera, Atom, Keyboard, Layers, Lightbulb,
@@ -88,15 +89,32 @@ const initialConfig = (): VisualizationConfig => ({
   fov: 40,
 });
 
-const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
+const ViewerModule: React.FC<{
+  embedded?: boolean;
+  /** Owned by App when mounted in the workbench; standalone otherwise. */
+  theme?: UITheme;
+  onToggleTheme?: () => void;
+}> = ({ embedded = false, theme: themeProp, onToggleTheme }) => {
   const [inputText, setInputText] = useState<string>('');
   const [moleculeData, setMoleculeData] = useState<MoleculeData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [autoRotate, setAutoRotate] = useState<boolean>(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
-  // Respect the OS color scheme on first visit (P2)
-  const [theme, setTheme] = useState<Theme>(() => (prefersLightScheme() ? 'light' : 'dark'));
+  // Theme: controlled by App when provided, else local (standalone/embedded).
+  const [localTheme, setLocalTheme] = useState<UITheme>(initialTheme);
+  const theme: UITheme = themeProp ?? localTheme;
+  const toggleTheme = useCallback(() => {
+    if (themeProp !== undefined && onToggleTheme) {
+      onToggleTheme();
+      return;
+    }
+    setLocalTheme(currentTheme => {
+      const next = currentTheme === 'dark' ? 'light' : 'dark';
+      updateConfig('backgroundColor', next === 'dark' ? '#151515' : '#f4f5f7');
+      return next;
+    });
+  }, [themeProp, onToggleTheme]);
   const [fileFormat, setFileFormat] = useState<FileFormat>('lammps');
   const [activeTab, setActiveTab] = useState<Tab>('data');
   const [showHelp, setShowHelp] = useState(false);
@@ -329,14 +347,6 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
     }));
   };
 
-  const toggleTheme = useCallback(() => {
-    setTheme(currentTheme => {
-      const next = currentTheme === 'dark' ? 'light' : 'dark';
-      updateConfig('backgroundColor', next === 'dark' ? '#151515' : '#f4f5f7');
-      return next;
-    });
-  }, []);
-
   const doScreenshot = useCallback(() => {
     // Explicit render-before-capture (no preserveDrawingBuffer tax).
     const dataUrl = captureActiveCanvas();
@@ -454,38 +464,13 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
     onToggleTrajectoryPlay: () => { if (frameCount > 1) setTrajPlaying(v => !v); },
   });
 
-  // ---- theme tokens (flat, no gradients) ----
-  const ct = theme === 'dark'
-    ? {
-        bg: 'bg-[#101214]', text: 'text-gray-100',
-        sidebar: 'bg-[#16191d] border-gray-800',
-        header: 'text-gray-200',
-        muted: 'text-gray-400',
-        card: 'bg-[#1d2126] border-gray-800',
-        input: 'bg-[#12151a] border-gray-700 text-gray-200 placeholder:text-gray-600 focus:border-blue-500',
-        button: 'bg-[#23282f] hover:bg-[#2b313a] border border-gray-700/60',
-        chip: 'bg-[#1d2126] border border-gray-700/60',
-        accent: 'bg-blue-600 hover:bg-blue-500 text-white',
-        go: 'bg-emerald-600 hover:bg-emerald-500 text-white',
-        active: 'bg-blue-600/15 border-blue-500 text-blue-300',
-        divider: 'border-gray-800',
-        stat: 'bg-[#1d2126]',
-      }
-    : {
-        bg: 'bg-[#eef0f3]', text: 'text-gray-900',
-        sidebar: 'bg-white border-gray-200',
-        header: 'text-gray-900',
-        muted: 'text-gray-500',
-        card: 'bg-white border-gray-200',
-        input: 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-blue-500',
-        button: 'bg-gray-100 hover:bg-gray-200 border border-gray-200',
-        chip: 'bg-gray-50 border border-gray-200',
-        accent: 'bg-blue-600 hover:bg-blue-500 text-white',
-        go: 'bg-emerald-600 hover:bg-emerald-500 text-white',
-        active: 'bg-blue-50 border-blue-500 text-blue-700',
-        divider: 'border-gray-200',
-        stat: 'bg-gray-100',
-      };
+  // ---- theme tokens (shared warm coffee-green palette, flat, no gradients) ----
+  const shared = getThemeTokens(theme);
+  const ct = {
+    ...shared,
+    sidebar: shared.panel,
+    header: shared.headerText,
+  };
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'data', label: 'Data', icon: <FileText size={14} /> },
@@ -525,8 +510,8 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
 
       {/* Drag overlay */}
       {dragActive && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-blue-950/40 border-4 border-dashed border-blue-500">
-          <div className="px-6 py-4 rounded-xl bg-[#16191d] text-gray-100 text-sm font-medium shadow-2xl">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#22301c]/60 border-4 border-dashed border-[#7fa66b]">
+          <div className="px-6 py-4 rounded-xl bg-[#1e1913] text-[#ede5d8] text-sm font-medium shadow-2xl">
             Drop a structure file to visualize (.data .xyz .pdb .cif)
           </div>
         </div>
@@ -548,7 +533,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
             onPointerDown={startSidebarResize}
             onPointerMove={moveSidebarResize}
             onPointerUp={endSidebarResize}
-            className="absolute top-0 right-[-3px] h-full w-1.5 cursor-col-resize z-40 hover:bg-blue-500/40 transition-colors touch-none"
+            className="absolute top-0 right-[-3px] h-full w-1.5 cursor-col-resize z-40 hover:bg-[#7fa66b]/40 transition-colors touch-none"
             title="Drag to resize sidebar"
             aria-label="Resize sidebar"
           />
@@ -602,14 +587,14 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
           {activeTab === 'data' && (
             <>
               <section className={`rounded-lg p-3 text-xs border ${ct.card} ${ct.muted}`}>
-                <div className="flex items-center gap-2 mb-2 font-semibold text-blue-400">
+                <div className="flex items-center gap-2 mb-2 font-semibold text-[#9dc487]">
                   <Info size={14} /> Supported formats
                 </div>
                 <ul className="space-y-1">
-                  <li><span className="font-semibold text-blue-400">.data / .lmp</span> — LAMMPS (atomic·charge·molecular·full)</li>
-                  <li><span className="font-semibold text-emerald-400">.xyz</span> — XYZ trajectories (first frame)</li>
-                  <li><span className="font-semibold text-purple-400">.pdb</span> — Protein Data Bank (+CONECT, CRYST1)</li>
-                  <li><span className="font-semibold text-orange-400">.cif</span> — Crystallographic Information Framework</li>
+                  <li><span className="font-semibold text-[#9dc487]">.data / .lmp</span> — LAMMPS (atomic·charge·molecular·full)</li>
+                  <li><span className="font-semibold text-[#e4b877]">.xyz</span> — XYZ trajectories (first frame)</li>
+                  <li><span className="font-semibold text-[#c9a9d4]">.pdb</span> — Protein Data Bank (+CONECT, CRYST1)</li>
+                  <li><span className="font-semibold text-[#cf8b76]">.cif</span> — Crystallographic Information Framework</li>
                 </ul>
               </section>
 
@@ -758,7 +743,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
                       type="range" min="0.1" max="3" step="0.05"
                       value={vizConfig[sl.key]}
                       onChange={e => updateConfig(sl.key, parseFloat(e.target.value))}
-                      className="w-full accent-blue-500"
+                      className="w-full accent-[#7fa66b]"
                     />
                   </div>
                 ))}
@@ -777,7 +762,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
                   >
                     <span>{row.label} <kbd className={`ml-1 px-1 rounded text-[9px] ${ct.chip}`}>{row.hint}</kbd></span>
                     {vizConfig[row.key]
-                      ? <Eye size={14} className="text-emerald-400" />
+                      ? <Eye size={14} className="text-[#9dc487]" />
                       : <EyeOff size={14} className={ct.muted} />}
                   </button>
                 ))}
@@ -840,7 +825,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
                   title="X"
                 >
                   <span className="flex items-center gap-2"><Grid3x3 size={14} /> Show simulation box <kbd className={`px-1 rounded text-[9px] ${ct.chip}`}>X</kbd></span>
-                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.showBox ? 'bg-blue-600' : 'bg-gray-600'}`}>
+                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.showBox ? 'bg-[#567a46]' : 'bg-[#453a2b]'}`}>
                     <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.showBox ? 'left-4' : 'left-0.5'}`} />
                   </span>
                 </button>
@@ -849,7 +834,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
                   className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors ${ct.button}`}
                 >
                   <span className="flex items-center gap-2"><Grid3x3 size={14} /> Show XYZ axes</span>
-                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.showAxes ? 'bg-blue-600' : 'bg-gray-600'}`}>
+                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.showAxes ? 'bg-[#567a46]' : 'bg-[#453a2b]'}`}>
                     <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.showAxes ? 'left-4' : 'left-0.5'}`} />
                   </span>
                 </button>
@@ -868,7 +853,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
                     type="range" min="0.1" max="6" step="0.1"
                     value={vizConfig.autoRotateSpeed}
                     onChange={e => updateConfig('autoRotateSpeed', parseFloat(e.target.value))}
-                    className="w-full accent-blue-500"
+                    className="w-full accent-[#7fa66b]"
                   />
                 </div>
                 <div className="space-y-1">
@@ -879,7 +864,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
                     type="range" min="15" max="90" step="1"
                     value={vizConfig.fov}
                     onChange={e => updateConfig('fov', parseInt(e.target.value, 10))}
-                    className="w-full accent-blue-500"
+                    className="w-full accent-[#7fa66b]"
                   />
                 </div>
                 <button
@@ -887,7 +872,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
                   className={`flex items-center justify-between w-full p-2.5 rounded-lg text-xs transition-colors ${ct.button}`}
                 >
                   <span>Shadows (≤8k atoms)</span>
-                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.shadowsEnabled ? 'bg-blue-600' : 'bg-gray-600'}`}>
+                  <span className={`w-8 h-4 rounded-full relative transition-colors ${vizConfig.shadowsEnabled ? 'bg-[#567a46]' : 'bg-[#453a2b]'}`}>
                     <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${vizConfig.shadowsEnabled ? 'left-4' : 'left-0.5'}`} />
                   </span>
                 </button>
@@ -911,7 +896,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
                       key={color}
                       onClick={() => updateConfig('backgroundColor', color)}
                       className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
-                        vizConfig.backgroundColor === color ? 'border-blue-500 scale-110' : 'border-transparent'
+                        vizConfig.backgroundColor === color ? 'border-[#7fa66b] scale-110' : 'border-transparent'
                       }`}
                       style={{ backgroundColor: color }}
                       title={color}
@@ -993,7 +978,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
           </span>
           <button
             onClick={copyShareLink}
-            className={`flex items-center gap-1 px-2 py-1 rounded ${linkCopied ? 'text-emerald-400' : ct.button}`}
+            className={`flex items-center gap-1 px-2 py-1 rounded ${linkCopied ? 'text-[#9dc487]' : ct.button}`}
             title="Copy a link that restores this exact view"
           >
             {linkCopied ? <Check size={12} /> : <Link2 size={12} />}
@@ -1033,7 +1018,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
             )}
             {isParsing && (
               <div className={`flex items-center gap-1.5 px-3 py-2 rounded-lg shadow-lg text-[11px] backdrop-blur ${ct.card}`} role="status">
-                <Loader2 size={13} className="animate-spin text-blue-400" />
+                <Loader2 size={13} className="animate-spin text-[#9dc487]" />
                 Parsing structure…
               </div>
             )}
@@ -1065,12 +1050,12 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
 
         {/* Bottom toolbar */}
         <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 px-2 py-1.5 rounded-full border shadow-2xl backdrop-blur ${
-          theme === 'dark' ? 'bg-[#16191d]/90 border-gray-700/50' : 'bg-white/90 border-gray-200'
+          theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
         }`}>
           <button
             onClick={() => setAutoRotate(v => !v)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium transition-colors ${
-              autoRotate ? 'text-blue-400' : `${ct.muted}`
+              autoRotate ? 'text-[#9dc487]' : `${ct.muted}`
             }`}
             title="Auto-rotate (Space)"
           >
@@ -1091,7 +1076,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
             onClick={() => updateConfig('showBox', !vizConfig.showBox)}
             disabled={!moleculeData?.box}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium disabled:opacity-30 ${
-              vizConfig.showBox ? 'text-blue-400' : ct.muted
+              vizConfig.showBox ? 'text-[#9dc487]' : ct.muted
             }`}
             title="Simulation box (X)"
           >
@@ -1102,7 +1087,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
           <button
             onClick={() => updateConfig('showLabels', !vizConfig.showLabels)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium ${
-              vizConfig.showLabels ? 'text-blue-400' : ct.muted
+              vizConfig.showLabels ? 'text-[#9dc487]' : ct.muted
             }`}
             title="Element labels (L)"
           >
@@ -1148,7 +1133,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
         {/* Trajectory playback bar (P5) */}
         {frameCount > 1 && (
           <div className={`absolute bottom-20 sm:bottom-16 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full border shadow-2xl backdrop-blur ${
-            theme === 'dark' ? 'bg-[#16191d]/90 border-gray-700/50' : 'bg-white/90 border-gray-200'
+            theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
           }`}>
             <button
               onClick={() => setFrameIdx(i => (i - 1 + frameCount) % frameCount)}
@@ -1159,7 +1144,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
             </button>
             <button
               onClick={() => setTrajPlaying(v => !v)}
-              className={`p-1.5 rounded-full ${trajPlaying ? 'text-blue-400' : ct.muted}`}
+              className={`p-1.5 rounded-full ${trajPlaying ? 'text-[#9dc487]' : ct.muted}`}
               title="Play / pause trajectory (P)"
             >
               {trajPlaying ? <Pause size={14} /> : <Play size={14} />}
@@ -1177,7 +1162,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
               max={frameCount - 1}
               value={Math.min(frameIdx, frameCount - 1)}
               onChange={e => { setTrajPlaying(false); setFrameIdx(parseInt(e.target.value, 10)); }}
-              className="w-32 sm:w-48 accent-blue-500"
+              className="w-32 sm:w-48 accent-[#7fa66b]"
               aria-label="Trajectory frame"
             />
             <span className={`text-[10px] font-mono tabular-nums ${ct.muted}`}>
@@ -1197,15 +1182,15 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
         {/* Measurement panel (P4) */}
         {selectedIds.length > 0 && activeData && (
           <div className={`absolute top-16 left-3 z-10 px-3 py-2.5 rounded-xl border shadow-xl backdrop-blur text-xs space-y-1.5 ${
-            theme === 'dark' ? 'bg-[#16191d]/90 border-gray-700/50' : 'bg-white/90 border-gray-200'
+            theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
           }`} role="status">
             <div className="flex items-center gap-1.5 font-semibold">
-              <Ruler size={13} className="text-sky-400" /> Measurement
+              <Ruler size={13} className="text-[#9dc487]" /> Measurement
             </div>
             {measurement ? (
               <div className="font-mono text-sm">
                 <span className={ct.muted}>{measurementGlyph(measurement.kind)} = </span>
-                <span className="text-sky-400 font-bold">{measurement.label}</span>
+                <span className="text-[#9dc487] font-bold">{measurement.label}</span>
               </div>
             ) : (
               <div className={ct.muted}>{measurementHint}</div>
@@ -1238,7 +1223,7 @@ const ViewerModule: React.FC<{ embedded?: boolean }> = ({ embedded = false }) =>
           />
         ) : (
           <div className={`w-full h-full flex flex-col items-center justify-center ${ct.muted}`}>
-            <div className="w-14 h-14 border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin mb-4" />
+            <div className="w-14 h-14 border-4 border-[#453a2b] border-t-[#7fa66b] rounded-full animate-spin mb-4" />
             <p>Waiting for structure data…</p>
           </div>
         )}

@@ -60,7 +60,7 @@ const App: React.FC = () => {
             <FlaskConical size={18} className="text-[#9dc487]" />
             <span className="text-sm font-bold tracking-tight">LAMMPS Workbench</span>
             <span className={`rounded px-1.5 py-0.5 text-[9px] ${ct.chip} ${ct.muted}`}>
-              by Molecule3D
+              by Shuvam Banerji Seal
             </span>
           </div>
         </div>

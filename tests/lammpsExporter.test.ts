@@ -24,7 +24,7 @@ const sample: MoleculeData = {
 describe('LAMMPS data-file exporter', () => {
   it('emits header counts, box, masses, Atoms and Bonds sections', () => {
     const text = toLammpsDataFile(sample, { title: 'water test' });
-    expect(text).toContain('water test (written by Molecule3D)');
+    expect(text).toContain('water test (written by Molecule3D — Shuvam Banerji Seal)');
     expect(text).toContain('3 atoms');
     expect(text).toContain('1 bonds');
     expect(text).toContain('2 atom types');

@@ -25,7 +25,8 @@ export const toLammpsDataFile = (
   const hasBonds = data.bonds.length > 0;
 
   const lines: string[] = [];
-  lines.push(opts.title ? `${opts.title} (written by Molecule3D)` : 'LAMMPS data file (written by Molecule3D)');
+  const signature = 'written by Molecule3D — Shuvam Banerji Seal';
+  lines.push(opts.title ? `${opts.title} (${signature})` : `LAMMPS data file (${signature})`);
   lines.push('');
   lines.push(`${data.atoms.length} atoms`);
   if (hasBonds) lines.push(`${data.bonds.length} bonds`);

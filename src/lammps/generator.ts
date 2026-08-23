@@ -22,6 +22,8 @@ const isFilled = (v: string | undefined): boolean =>
  * Render the script for a model.
  *
  * Rules:
+ * - MANUAL OVERRIDE: when model.manualText is set to non-empty text, it is
+ *   emitted verbatim and the step list is bypassed (a warning says so).
  * - Steps are grouped by section in canonical order; within a section the
  *   user's order is preserved.
  * - Disabled steps are skipped SILENTLY (the flowchart shows them dashed);
@@ -30,6 +32,17 @@ const isFilled = (v: string | undefined): boolean =>
  * - A header comment block documents title, generator, and section banners.
  */
 export const generateScript = (model: ScriptModel): GeneratedScript => {
+  if (model.manualText !== undefined && model.manualText.trim() !== '') {
+    return {
+      text: model.manualText,
+      emitted: [],
+      warnings: [
+        'Manual edit mode — the builder step list is bypassed. ' +
+          'Exit manual editing to regenerate from your steps.',
+      ],
+    };
+  }
+
   const warnings: string[] = [];
   const emitted: { uid: string; line: string }[] = [];
   const chunks: string[] = [];
@@ -102,6 +115,32 @@ const REQUIRED: Record<string, string[]> = {
   'create_box': ['ntypes', 'region'],
   'region_block': ['id'],
   'region_sphere': ['id'],
+  'region_cylinder': ['id'],
+  'region_prism': ['id'],
+  'create_bonds': ['args'],
+  'change_box': ['args'],
+  'read_dump': ['file', 'fields'],
+  'molecule_cmd': ['file'],
+  'pair_style_hybrid': ['substyles'],
+  'pair_write': ['args'],
+  'write_dump': ['fields'],
+  'fix_ave_time': ['values'],
+  'fix_ave_histo': ['values'],
+  'fix_print_out': ['text'],
+  'compute_reduce': ['input'],
+  'fix_move': ['args'],
+  'fix_modify_cmd': ['fixid'],
+  'compute_modify': ['compid'],
+  'unfix_cmd': ['fixid'],
+  'undump_cmd': ['dumpid'],
+  'uncompute_cmd': ['compid'],
+  'variable_atom': ['name', 'expr'],
+  'if_cmd': ['condition', 'thenBlock'],
+  'label_cmd': ['id'],
+  'jump_cmd': ['file'],
+  'next_cmd': ['vars'],
+  'include_cmd': ['file'],
+  'shell_cmd': ['cmd'],
 };
 
 const isRequired = (defId: string, key: string): boolean =>

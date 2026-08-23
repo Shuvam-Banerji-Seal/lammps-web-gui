@@ -293,8 +293,113 @@ export interface CompilerScript {
   text: string;
   /** cmake -D flag list (for display). */
   flags: string[];
+  /**
+   * Structured view of `flags` with human-readable descriptions and the
+   * UI group each flag came from — powers the click-to-inspect chip list.
+   */
+  flagDetails: FlagDetail[];
   warnings: string[];
 }
+
+export type FlagGroup = 'package' | 'accelerator' | 'option' | 'build' | 'mpi';
+
+export interface FlagDetail {
+  flag: string;
+  description: string;
+  group: FlagGroup;
+  /** Where in the UI this flag can be changed. */
+  source: string;
+}
+
+const FLAG_DESCRIPTIONS: Record<string, { description: string; source: string }> = {
+  '-D BUILD_MPI=no': {
+    description: 'Compile without MPI support: produces a serial lmp binary that runs on one process.',
+    source: 'MPI toggle',
+  },
+  '-D CUDPP_OPT=yes': {
+    description: 'Build the bundled CUDPP library used by the GPU package for faster neighbor sorting on NVIDIA GPUs.',
+    source: 'Accelerator backend',
+  },
+};
+
+const kokkosArchHint = (flag: string): string =>
+  `Selects the Kokkos GPU architecture to compile for (${flag.replace('-D Kokkos_ARCH_', '').replace('=yes', '')}). ` +
+  'Set it to match your hardware, e.g. VOLTA70, AMPERE80, VEGA90A, MI300.';
+
+const describeFlag = (
+  flag: string,
+  packages: Map<string, LmpPackage>,
+  accelerators: Map<string, Accelerator>,
+  buildOptions: Map<string, BuildOption>
+): { description: string; group: FlagGroup; source: string } => {
+  if (flag.startsWith('-D PKG_')) {
+    const name = flag.slice('-D PKG_'.length).replace(/=.*$/, '');
+    const pkg = packages.get(name);
+    return {
+      description: pkg
+        ? `${pkg.description}${pkg.heavy ? ' Requires external libraries or a special toolchain.' : ''}`
+        : 'Optional LAMMPS package compiled into the binary.',
+      group: 'package',
+      source: 'Package preset / manual selection',
+    };
+  }
+  if (FLAG_DESCRIPTIONS[flag]) {
+    const known = FLAG_DESCRIPTIONS[flag];
+    const acc = accelerators.get('gpu-cuda');
+    return {
+      ...known,
+      group: flag === '-D BUILD_MPI=no' ? 'mpi' : 'accelerator',
+      ...(flag.startsWith('-D CUDPP') && acc?.notes ? {} : {}),
+      source: known.source,
+    };
+  }
+  if (flag.startsWith('-D Kokkos_ARCH_')) {
+    return {
+      description: kokkosArchHint(flag),
+      group: 'accelerator',
+      source: 'Accelerator backend',
+    };
+  }
+  if (flag.startsWith('-D Kokkos_ENABLE_')) {
+    const backend = flag.replace('-D Kokkos_ENABLE_', '').replace('=yes', '');
+    return {
+      description: `Enables the ${backend} backend of the bundled Kokkos runtime so pair styles run on that device.`,
+      group: 'accelerator',
+      source: 'Accelerator backend',
+    };
+  }
+  if (flag === '-D CMAKE_CXX_STANDARD=17') {
+    return {
+      description: 'Pins the C++ standard to 17 — the minimum required by modern LAMMPS and its Kokkos dependency.',
+      group: 'accelerator',
+      source: 'Accelerator backend',
+    };
+  }
+  if (flag.startsWith('-D CMAKE_BUILD_TYPE=')) {
+    return {
+      description:
+        'Compiler optimization level: Release = fully optimized (-O3), RelWithDebInfo = optimized + debug symbols, Debug = unoptimized with assertions.',
+      group: 'build',
+      source: 'Build type selector',
+    };
+  }
+  // Remaining -D <KEY>=<value> entries come from BUILD_OPTIONS.
+  const key = flag.replace(/^-\s*/, '').replace(/^-\D\s*/, '').split('=')[0].trim();
+  const optKey = flag.match(/-D ([A-Z0-9_]+)=/)?.[1] ?? '';
+  const bo = buildOptions.get(optKey || key);
+  if (bo) {
+    return {
+      description: `${bo.help ?? bo.label} (default: ${bo.default}).`,
+      group: 'option',
+      source: 'Build options',
+    };
+  }
+  return {
+    description: 'CMake configure flag for this LAMMPS build.',
+    group: 'build',
+    source: 'Generated configuration',
+  };
+};
 
 const resolvePackages = (opts: CompilerOptions): string[] => {
   const preset = PRESETS.find(p => p.id === opts.presetId);
@@ -312,28 +417,50 @@ const resolvePackages = (opts: CompilerOptions): string[] => {
 export const generateBuildScript = (opts: CompilerOptions): CompilerScript => {
   const warnings: string[] = [];
   const flags: string[] = [];
+  const flagDetails: FlagDetail[] = [];
 
   const packages = resolvePackages(opts);
-  for (const pkg of packages) flags.push(`-D PKG_${pkg}=yes`);
+  const pkgMap = new Map(LMP_PACKAGES.map(p => [p.name, p]));
+  const accMap = new Map(ACCELERATORS.map(a => [a.id, a]));
+  const optMap = new Map(BUILD_OPTIONS.map(o => [o.key, o]));
+
+  for (const pkg of packages) {
+    const flag = `-D PKG_${pkg}=yes`;
+    flags.push(flag);
+    const d = describeFlag(flag, pkgMap, accMap, optMap);
+    flagDetails.push({ flag, ...d });
+  }
 
   const acc = ACCELERATORS.find(a => a.id === opts.accelerator);
-  for (const f of acc?.extraFlags ?? []) flags.push(f);
+  for (const f of acc?.extraFlags ?? []) {
+    flags.push(f);
+    const d = describeFlag(f, pkgMap, accMap, optMap);
+    flagDetails.push({ flag: f, ...d });
+  }
   if (acc?.notes) warnings.push(`${acc.label}: ${acc.notes}`);
 
   if (!opts.withMpi) {
-    flags.push('-D BUILD_MPI=no');
+    const flag = '-D BUILD_MPI=no';
+    flags.push(flag);
+    const d = describeFlag(flag, pkgMap, accMap, optMap);
+    flagDetails.push({ flag, ...d });
     warnings.push('MPI disabled — serial build (fine for single-workstation runs).');
   }
 
   for (const bo of BUILD_OPTIONS) {
     const v = opts.options[bo.key] ?? bo.default;
     if (v !== bo.default) {
-      flags.push(bo.values.includes('yes') && bo.values.includes('no')
-        ? `-D ${bo.key}=${v}`
-        : `-D ${bo.key}=${v}`);
+      const flag = `-D ${bo.key}=${v}`;
+      flags.push(flag);
+      const d = describeFlag(flag, pkgMap, accMap, optMap);
+      flagDetails.push({ flag, ...d });
     }
   }
   flags.push(`-D CMAKE_BUILD_TYPE=${opts.buildType}`);
+  flagDetails.push({
+    flag: `-D CMAKE_BUILD_TYPE=${opts.buildType}`,
+    ...describeFlag('-D CMAKE_BUILD_TYPE=x', pkgMap, accMap, optMap),
+  });
 
   const cloneCmd = `git clone --depth 1 --branch ${opts.branch} ${opts.repoUrl} lammps`;
   const cmakeBase = ['cmake', '../cmake', ...flags].join(' \\\n    ');
@@ -364,7 +491,7 @@ sudo cmake --install .        # installs lmp + library (optional)
 # --- sanity check ---
 lmp -h | head -n 30
 `;
-    return { text, flags, warnings };
+    return { text, flags, flagDetails, warnings };
   }
 
   // Windows: PowerShell
@@ -395,5 +522,5 @@ cmake --build . --config ${opts.buildType} --parallel ${opts.jobs}
 # binary: .\\bin\\lmp.exe (copy DLLs next to it as needed)
 .\\bin\\lmp.exe -h | Select-Object -First 30
 `;
-  return { text, flags, warnings };
+  return { text, flags, flagDetails, warnings };
 };

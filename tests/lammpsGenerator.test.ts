@@ -112,4 +112,20 @@ describe('LAMMPS script generator', () => {
     expect(g.start).toBe(true);
     expect(g.end).toBe(true);
   });
+
+  it('manual override emits text verbatim and warns', () => {
+    const raw = '# my hand-written script\nunits real\nrun 5';
+    const out = generateScript({ title: 'T', steps: [step('units')], manualText: raw });
+    expect(out.text).toBe(raw);
+    expect(out.emitted).toHaveLength(0);
+    expect(out.warnings.join(' ')).toMatch(/manual edit mode/i);
+  });
+
+  it('empty-string manual override falls back to the builder', () => {
+    const m = model([step('units', { style: 'metal' })]);
+    m.manualText = '   ';
+    const out = generateScript(m);
+    expect(out.text).toContain('units metal');
+    expect(out.warnings).toHaveLength(0);
+  });
 });

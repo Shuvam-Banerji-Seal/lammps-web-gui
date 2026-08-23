@@ -98,4 +98,34 @@ describe('LAMMPS compiler helper', () => {
     expect(vendors).toContain('amd');
     expect(vendors).toContain('intel');
   });
+
+  it('flagDetails mirror flags 1:1 with non-empty descriptions and valid groups', () => {
+    const out = generateBuildScript({
+      ...DEFAULT_COMPILER_OPTIONS,
+      presetId: 'most',
+      accelerator: 'kokkos-cuda',
+      withMpi: false,
+      options: { ...DEFAULT_COMPILER_OPTIONS.options, FFT: 'MKL' },
+    });
+    expect(out.flagDetails.map(d => d.flag)).toEqual(out.flags);
+    const groups = ['package', 'accelerator', 'option', 'build', 'mpi'];
+    for (const d of out.flagDetails) {
+      expect(d.description.trim().length, d.flag).toBeGreaterThan(5);
+      expect(groups, d.flag).toContain(d.group);
+      expect(d.source.trim().length, d.flag).toBeGreaterThan(0);
+    }
+    const byFlag = new Map(out.flagDetails.map(d => [d.flag, d]));
+    expect(byFlag.get('-D PKG_KSPACE=yes')?.description).toMatch(/long-range|Coulomb/i);
+    expect(byFlag.get('-D Kokkos_ENABLE_CUDA=yes')?.group).toBe('accelerator');
+    expect(byFlag.get('-D BUILD_MPI=no')?.group).toBe('mpi');
+    expect(byFlag.get('-D FFT=MKL')?.group).toBe('option');
+    expect(byFlag.get('-D CMAKE_BUILD_TYPE=Release')?.description).toMatch(/optimiz/i);
+  });
+
+  it('package descriptions surface from the catalog', () => {
+    const out = generateBuildScript({ ...DEFAULT_COMPILER_OPTIONS, presetId: 'minimal' });
+    const kspace = out.flagDetails.find(d => d.flag === '-D PKG_KSPACE=yes');
+    expect(kspace?.description).toMatch(/PPPM|Ewald|long-range/i);
+    expect(kspace?.source).toMatch(/preset/i);
+  });
 });

@@ -24,6 +24,11 @@ viewer that runs entirely in your browser.
 
 ## Highlights
 
+- **LAMMPS Workbench** — Script Builder (editable flowchart, 140-command library,
+  manual script mode), Compiler Helper (presets → CMake scripts with a
+  click-to-inspect flag list) and the 3D viewer, with state that persists
+  across module switches and reloads
+- Warm light/dark themes across the whole app (coffee-and-sage dark)
 - All 118 elements with CPK/Jmol colors, resolved by symbol from any format
 - Simulation box rendering including triclinic tilt
 - One-draw-call instanced atoms *and* bonds; O(n) bond inference

@@ -9,7 +9,7 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
 [![Live Demo](https://img.shields.io/badge/▶_Live_Demo-shuvam--banerji--seal.github.io-blue?style=for-the-badge)](https://shuvam-banerji-seal.github.io/lammps_data_web_viewer/)
 [![CI](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/actions/workflows/ci.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/actions/workflows/ci.yml)
 [![Deploy](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/actions/workflows/deploy.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps_data_web_viewer/actions/workflows/deploy.yml)
-[![Tests](https://img.shields.io/badge/tests-67%20passing-brightgreen)](#development)
+[![Tests](https://img.shields.io/badge/tests-123%20passing-brightgreen)](#development)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 </div>
@@ -26,6 +26,12 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
 
 ## ✨ Features
 
+- 🧪 **LAMMPS Workbench** — three integrated modules: a visual **Script Builder** (flowchart pipeline of 140 curated commands), a **Compiler Helper** (package/accelerator presets → ready-to-run CMake build scripts) and the 3D **Structure Viewer**.
+- 💾 **Everything persists** — your script pipeline, compiler options, active module and light/dark theme survive module switches *and* page reloads (local-only, nothing uploaded).
+- 🧩 **Editable flowchart** — drag cards to reorder, click any **connect** pill to insert a command at that exact spot, disable or remove the next step; up/down chevrons still there. Prefer raw text? **Edit script** switches to a hand-editing mode that emits your text verbatim.
+- 📚 **140-command library** — setup, system, interactions, output and run-control commands with per-parameter editors and links to the official docs; style enumerations verified against docs.lammps.org.
+- 🔍 **CMake flag inspector** — the Compiler Helper lists *every* `-D` flag as an expandable chip set; click any flag to read what it does and where to change it.
+- 🌰 **Warm light/dark themes** — a coffee-and-sage dark palette (no blue tint, no gradients) and a warm-paper light theme, switchable app-wide.
 - 🧊 **True 3D rendering** — depth-correct perspective view of atoms, bonds and the simulation cell, powered by three.js / React Three Fiber.
 - 📐 **Measurement tools** — click 2–4 atoms for live distance / angle / dihedral readouts with on-canvas overlays.
 - 🎞️ **Trajectory playback** — multi-frame XYZ files get a scrubber with play/pause and 2–30 fps speeds (`P`, `,`, `.`).
@@ -85,7 +91,7 @@ Your files never leave your machine — parsing happens locally in the browser.
 - [React 19](https://react.dev/) + TypeScript
 - [three.js](https://threejs.org/) via [@react-three/fiber](https://docs.pmnd.rs/react-three-fiber) & [@react-three/drei](https://github.com/pmndrs/drei)
 - [Vite 8](https://vite.dev/) + [Tailwind CSS 4](https://tailwindcss.com/)
-- [Vitest](https://vitest.dev/) — 67 parser/chemistry unit tests
+- [Vitest](https://vitest.dev/) — 123 parser/chemistry/catalog unit tests
 - Zero runtime third-party requests: fonts, colors, lighting — all local.
 
 ## 💻 Development
@@ -105,7 +111,8 @@ Project layout:
 ```
 ├── src/                     # application source
 │   ├── main.tsx                   # entry point
-│   ├── App.tsx                    # shell, sidebar, toolbars, shortcuts wiring
+│   ├── App.tsx                    # workbench shell, module switcher, global theme
+│   ├── theme.ts                   # shared warm coffee-green light/dark tokens
 │   ├── styles.css                 # Tailwind v4 entry + base styles
 │   ├── constants.ts               # CPK colors + covalent radii (118 elements)
 │   ├── types.ts
@@ -117,7 +124,13 @@ Project layout:
 │   │   ├── LightingRig.tsx        # five lighting presets
 │   │   ├── CameraRig.tsx          # fit/preset/zoom/orbit command handling
 │   │   ├── AtomLabels.tsx         # canvas-texture element badges
-│   │   └── MeasurementOverlay.tsx # selection rings + measurement visuals
+│   │   ├── MeasurementOverlay.tsx # selection rings + measurement visuals
+│   │   └── workbench/             # Script Builder · Compiler Helper · Viewer shell
+│   ├── lammps/              # workbench logic (pure, fully tested)
+│   │   ├── catalog.ts             # 140-command declarative library
+│   │   ├── generator.ts           # model → in.lammps (+ manual-edit mode)
+│   │   ├── compiler.ts            # packages/presets → CMake script + flag docs
+│   │   └── exporter.ts            # data-file writer + download helper
 │   ├── services/            # parsers & geometry logic (pure functions, fully tested)
 │   │   ├── parser.ts              # LAMMPS (4 atom styles + box + tilts)
 │   │   ├── xyzParser.ts           # XYZ incl. multi-frame trajectories
@@ -125,10 +138,11 @@ Project layout:
 │   │   ├── cifParser.ts           # CIF (fractional coords, triclinic)
 │   │   ├── bondInference.ts       # O(n) spatial-hash covalent bonding
 │   │   ├── measure.ts             # distance / angle / dihedral math
+│   │   ├── persistence.ts         # safe JSON localStorage layer
 │   │   └── viewState.ts           # shareable ?s= view encoding
-│   ├── hooks/useKeyboardShortcuts.ts
+│   ├── hooks/               # useKeyboardShortcuts · usePersistentState
 │   └── workers/parser.worker.ts   # off-main-thread parsing
-├── tests/                   # vitest suites (parsers, chemistry, view state)
+├── tests/                   # vitest suites (parsers, chemistry, catalog, persistence)
 ├── public/                  # static assets + example structures
 ├── docs/screenshots/
 ├── scripts/                 # wiki publisher, size budget check

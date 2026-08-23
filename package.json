@@ -1,5 +1,5 @@
 {
-  "name": "molecule3d",
+  "name": "lammps-web-gui",
   "version": "3.1.0",
   "private": true,
   "type": "module",

@@ -2,14 +2,14 @@
   "name": "Molecule3D — Molecular Structure Viewer",
   "short_name": "Molecule3D",
   "description": "3D molecular structure viewer for LAMMPS, XYZ, PDB and CIF files",
-  "start_url": "/molecule3d/",
-  "scope": "/molecule3d/",
+  "start_url": "/lammps-web-gui/",
+  "scope": "/lammps-web-gui/",
   "display": "standalone",
   "background_color": "#16130f",
   "theme_color": "#16130f",
   "icons": [
     {
-      "src": "/molecule3d/logo.svg",
+      "src": "/lammps-web-gui/logo.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

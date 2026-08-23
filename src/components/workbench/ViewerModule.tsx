@@ -565,7 +565,7 @@ const ViewerModule: React.FC<{
           </div>
           <div className="flex items-center gap-1.5">
             <a
-              href="https://github.com/Shuvam-Banerji-Seal/molecule3d"
+              href="https://github.com/Shuvam-Banerji-Seal/lammps-web-gui"
               target="_blank" rel="noopener noreferrer"
               className={`p-2 rounded-lg ${ct.button}`}
               title="GitHub repository"

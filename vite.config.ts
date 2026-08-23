@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: process.env.NODE_ENV === 'production'
-    ? '/molecule3d/'   // GitHub Pages project path
+    ? '/lammps-web-gui/'   // GitHub Pages project path
     : '/',                         // local dev
   build: {
     outDir: 'dist',

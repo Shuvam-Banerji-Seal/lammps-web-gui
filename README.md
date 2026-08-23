@@ -6,9 +6,9 @@
 
 Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and explore them in real-time 3D — no install, no upload, no account.
 
-[![Live Demo](https://img.shields.io/badge/▶_Live_Demo-shuvam--banerji--seal.github.io-blue?style=for-the-badge)](https://shuvam-banerji-seal.github.io/molecule3d/)
-[![CI](https://github.com/Shuvam-Banerji-Seal/molecule3d/actions/workflows/ci.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/molecule3d/actions/workflows/ci.yml)
-[![Deploy](https://github.com/Shuvam-Banerji-Seal/molecule3d/actions/workflows/deploy.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/molecule3d/actions/workflows/deploy.yml)
+[![Live Demo](https://img.shields.io/badge/▶_Live_Demo-shuvam--banerji--seal.github.io-blue?style=for-the-badge)](https://shuvam-banerji-seal.github.io/lammps-web-gui/)
+[![CI](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/ci.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/ci.yml)
+[![Deploy](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/deploy.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/deploy.yml)
 [![Tests](https://img.shields.io/badge/tests-143%20passing-brightgreen)](#development)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -63,7 +63,7 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
 
 ## 🚀 Quick start
 
-Open the [live demo](https://shuvam-banerji-seal.github.io/molecule3d/) and:
+Open the [live demo](https://shuvam-banerji-seal.github.io/lammps-web-gui/) and:
 
 1. Drag a `.data` / `.xyz` / `.pdb` / `.cif` file onto the page, or
 2. Try the bundled examples (C60 fullerene, benzene, rocksalt NaCl, water cluster).
@@ -105,8 +105,8 @@ Your files never leave your machine — parsing happens locally in the browser.
 ## 💻 Development
 
 ```bash
-git clone https://github.com/Shuvam-Banerji-Seal/molecule3d.git
-cd molecule3d
+git clone https://github.com/Shuvam-Banerji-Seal/lammps-web-gui.git
+cd lammps-web-gui
 npm install        # Node >= 20
 npm run dev        # http://localhost:5173
 npm test           # vitest suite
@@ -181,8 +181,8 @@ PRs welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) and our
 [private advisories](SECURITY.md) — please don't open public issues for them.
 
 The project wiki has deeper documentation:
-[format guides](https://github.com/Shuvam-Banerji-Seal/molecule3d/wiki),
-[performance notes](https://github.com/Shuvam-Banerji-Seal/molecule3d/wiki/Performance)
+[format guides](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/wiki),
+[performance notes](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/wiki/Performance)
 and more.
 
 ## 📄 License

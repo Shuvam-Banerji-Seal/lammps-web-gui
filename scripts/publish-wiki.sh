@@ -4,7 +4,7 @@
 #   repo -> Wiki tab -> Create the first page -> save
 set -euo pipefail
 
-REPO="Shuvam-Banerji-Seal/molecule3d"
+REPO="Shuvam-Banerji-Seal/lammps-web-gui"
 SRC="$(cd "$(dirname "$0")/.." && pwd)/wiki"
 WORK="$(mktemp -d)"
 

@@ -32,13 +32,15 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
 
 ## ✨ Features
 
-- 🧪 **LAMMPS Workbench** — three integrated modules: a visual **Script Builder** (flowchart pipeline of 171 curated commands — the complete general-command surface), a **Compiler Helper** (package/accelerator presets → ready-to-run CMake build scripts) and the 3D **Structure Viewer**.
+- 🧪 **LAMMPS Workbench** — three integrated modules: a visual **Script Builder** (flowchart pipeline of 186 curated commands — the complete general-command surface, locked by a coverage test against docs.lammps.org), a **Compiler Helper** (package/accelerator presets → ready-to-run CMake build scripts) and the 3D **Structure Viewer**.
 - 💾 **Everything persists** — your script pipeline, compiler options, active module and light/dark theme survive module switches *and* page reloads (local-only, nothing uploaded).
 - 🧩 **Editable flowchart** — grab any card and drop it between two others (it locks into place with a live insertion indicator), pan by dragging the background, zoom with the mouse wheel (35–250%), click any **connect** pill to insert a command at that exact spot. Prefer raw text? **Edit script** switches to a hand-editing mode that emits your text verbatim.
 - 📥 **Import existing scripts** — load any `in.*` LAMMPS input and the flowchart builds itself: commands are matched back to editable parameter forms (user-chosen fix/dump/compute IDs handled), unknown lines are preserved verbatim as raw steps — nothing is lost.
+- 🖼️ **Presentable flowchart export** — one click downloads the pipeline as a crisp **SVG** or 2× **PNG** (themed, titled, dated) for papers, slides and READMEs.
+- 🏗️ **Compiler Helper with the full flag surface** — 27 CMake build options (FFT/Kokkos-FFT/heFFTe, OpenMP, GPU back end/precision/arch, Kokkos precision, JPEG/PNG/FFMPEG, exceptions, rpath…) each with a click-to-read description sourced from the build docs.
 - ↩️ **Undo / redo** — every builder action is undoable (`Ctrl+Z` / `Ctrl+Shift+Z`), including template loads; duplicate any step with its parameters; `Delete` removes the selected step.
 - 📋 **Starter templates** — one-click pipelines for LJ fluid NVT, EAM metal relax+NPT, ReaxFF chemistry, granular pouring and NEMD shear — all generate warning-free scripts.
-- 📚 **171-command library** — every general LAMMPS command (verified against docs.lammps.org) plus free-form any-style `fix`/`dump`/`compute` escape hatches covering the ~900 style surface — setup, system, interactions, output and run-control commands with per-parameter editors and links to the official docs; style enumerations verified against docs.lammps.org.
+- 📚 **186-command library** — every general LAMMPS command (locked by a coverage test against docs.lammps.org), rich editors for the popular fix/compute styles, and free-form any-style `fix`/`dump`/`compute` escape hatches covering the ~900 style surface — setup, system, interactions, output and run-control commands with per-parameter editors and links to the official docs; style enumerations verified against docs.lammps.org.
 - 🔍 **CMake flag inspector** — the Compiler Helper lists *every* `-D` flag as an expandable chip set; click any flag to read what it does and where to change it.
 - 🌰 **Warm light/dark themes** — a coffee-and-sage dark palette (no blue tint, no gradients) and a warm-paper light theme, switchable app-wide.
 - 🧊 **True 3D rendering** — depth-correct perspective view of atoms, bonds and the simulation cell, powered by three.js / React Three Fiber.
@@ -100,7 +102,7 @@ Your files never leave your machine — parsing happens locally in the browser.
 - [React 19](https://react.dev/) + TypeScript
 - [three.js](https://threejs.org/) via [@react-three/fiber](https://docs.pmnd.rs/react-three-fiber) & [@react-three/drei](https://github.com/pmndrs/drei)
 - [Vite 8](https://vite.dev/) + [Tailwind CSS 4](https://tailwindcss.com/)
-- [Vitest](https://vitest.dev/) — 151 parser/chemistry/catalog/import unit tests
+- [Vitest](https://vitest.dev/) — 158 parser/chemistry/catalog/import/coverage unit tests
 - Zero runtime third-party requests: fonts, colors, lighting — all local.
 
 ## 💻 Development
@@ -137,7 +139,8 @@ Project layout:
 │   │   └── workbench/             # Script Builder · Compiler Helper · Viewer shell
 │   ├── lammps/              # workbench logic (pure, fully tested)
 │   │   ├── templates.ts           # one-click starter pipelines
-│   │   └── scriptParser.ts        # import in.* scripts → flowchart steps
+│   │   ├── scriptParser.ts        # import in.* scripts → flowchart steps
+│   ├── flowchartSvg.ts            # presentable SVG/PNG flowchart export
 │   │   ├── catalog.ts             # 171-command declarative library
 │   │   ├── generator.ts           # model → in.lammps (+ manual-edit mode)
 │   │   ├── compiler.ts            # packages/presets → CMake script + flag docs

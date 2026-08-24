@@ -13,6 +13,7 @@ import { generateScript, deriveFlowchart, FlowGraph } from '../../lammps/generat
 import { parseScript, ImportResult } from '../../lammps/scriptParser';
 import { downloadTextFile } from '../../lammps/exporter';
 import { SCRIPT_TEMPLATES, buildTemplate } from '../../lammps/templates';
+import { downloadFlowchart } from '../../lammps/flowchartSvg';
 import { useUndoableState } from '../../hooks/useUndoableState';
 import { browserStore, loadJson, saveJson } from '../../services/persistence';
 import { getThemeTokens, ThemeTokens, Theme } from '../../theme';
@@ -20,7 +21,7 @@ import {
   Plus, Trash2, Copy, Download, Eye, EyeOff, Upload,
   FileCode2, Workflow, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, Search,
   Atom as AtomIcon, PencilLine, X, GripVertical, Link2, Undo2, Redo2,
-  LayoutTemplate, ZoomIn, ZoomOut, Maximize2, FileInput,
+  LayoutTemplate, ZoomIn, ZoomOut, Maximize2, FileInput, ImageDown, FileImage,
 } from 'lucide-react';
 
 interface ScriptBuilderProps {
@@ -88,6 +89,18 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   // Script import (in.* → flowchart)
   const importInputRef = useRef<HTMLInputElement>(null);
   const [importStats, setImportStats] = useState<ImportResult['stats'] | null>(null);
+  const [exporting, setExporting] = useState<'svg' | 'png' | null>(null);
+
+  const exportFlowchart = useCallback(async (format: 'svg' | 'png') => {
+    setExporting(format);
+    try {
+      await downloadFlowchart(model, format, { theme });
+    } catch {
+      /* download failed — non-fatal */
+    } finally {
+      setExporting(null);
+    }
+  }, [model, theme]);
 
   // Pointer drag-to-reorder (grab a card, drop between two others)
   const [drag, setDrag] = useState<{ uid: string; label: string; x: number; y: number } | null>(null);
@@ -550,6 +563,28 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 e.target.value = '';
               }}
             />
+            {view === 'flow' && !isManual && (
+              <>
+                <button
+                  onClick={() => exportFlowchart('svg')}
+                  disabled={exporting !== null || model.steps.length === 0}
+                  className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+                  title="Export the flowchart as a presentable SVG"
+                >
+                  <FileImage size={13} />
+                  <span className="hidden xl:inline">SVG</span>
+                </button>
+                <button
+                  onClick={() => exportFlowchart('png')}
+                  disabled={exporting !== null || model.steps.length === 0}
+                  className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+                  title="Export the flowchart as a 2x PNG image"
+                >
+                  <ImageDown size={13} />
+                  <span className="hidden xl:inline">PNG</span>
+                </button>
+              </>
+            )}
             <button
               onClick={() => setView(v => v === 'flow' ? 'script' : 'flow')}
               className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${

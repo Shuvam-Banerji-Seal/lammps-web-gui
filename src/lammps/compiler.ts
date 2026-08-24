@@ -148,8 +148,8 @@ export const ACCELERATORS: Accelerator[] = [
     label: 'NVIDIA GPU — GPU package (CUDA)',
     vendor: 'nvidia',
     packages: ['GPU'],
-    extraFlags: ['-D CUDPP_OPT=yes'],
-    notes: 'Requires CUDA toolkit; pair styles get /gpu suffix at runtime.',
+    extraFlags: [],
+    notes: 'Requires CUDA toolkit; pair styles get /gpu suffix at runtime. Set GPU_API=cuda + GPU_ARCH for your card (Build options).',
   },
   {
     id: 'kokkos-cuda',
@@ -197,15 +197,38 @@ export interface BuildOption {
 }
 
 export const BUILD_OPTIONS: BuildOption[] = [
-  { key: 'FFT', label: 'FFT library', values: ['FFTW3', 'MKL', 'NVPL', 'KISS'], default: 'FFTW3', help: 'Used by KSPACE (pppm). KISS is bundled.' },
-  { key: 'FFT_SINGLE', label: 'Single-precision FFT', values: ['yes', 'no'], default: 'no' },
-  { key: 'WITH_GZIP', label: 'gzip I/O support', values: ['yes', 'no'], default: 'yes' },
-  { key: 'WITH_CURL', label: 'geturl download support', values: ['yes', 'no'], default: 'yes' },
-  { key: 'LAMMPS_SIZES', label: 'Integer sizes', values: ['smallbig', 'bigbig'], default: 'smallbig', help: 'bigbig for >2B atom IDs' },
-  { key: 'LAMMPS_MEMALIGN', label: 'Memory alignment', values: ['0', '8', '16', '32', '64'], default: '64' },
-  { key: 'DOWNLOAD_POTENTIALS', label: 'Download large potentials', values: ['yes', 'off'], default: 'yes' },
+  // --- basics (docs.lammps.org/Build_basics.html) ---
+  { key: 'BUILD_OMP', label: 'OpenMP threading', values: ['yes', 'no'], default: 'yes', help: 'Core + OPENMP/INTEL/KOKKOS packages; set OMP_NUM_THREADS at runtime.' },
+  { key: 'BUILD_SHARED_LIBS', label: 'Shared library (liblammps.so)', values: ['yes', 'no'], default: 'no' },
   { key: 'BUILD_TOOLS', label: 'Build auxiliary tools', values: ['yes', 'no'], default: 'yes' },
   { key: 'BUILD_LAMMPS_GUI', label: 'Build LAMMPS GUI', values: ['yes', 'no'], default: 'no' },
+  { key: 'BUILD_WHAM', label: 'Build WHAM (with GUI)', values: ['yes', 'no'], default: 'yes' },
+  { key: 'LAMMPS_INSTALL_RPATH', label: 'Embed runtime library path', values: ['no', 'yes'], default: 'no', help: 'Handy for installs outside system paths.' },
+  // --- FFT (docs.lammps.org/Build_settings.html) ---
+  { key: 'FFT', label: 'FFT library', values: ['FFTW3', 'MKL', 'NVPL', 'KISS'], default: 'FFTW3', help: 'Used by KSPACE (pppm). KISS is bundled.' },
+  { key: 'FFT_KOKKOS', label: 'FFT library (Kokkos)', values: ['KISS', 'FFTW3', 'MKL', 'NVPL', 'CUFFT', 'HIPFFT', 'MKL_GPU'], default: 'KISS', help: 'Applies when Kokkos styles run; must match the back end (CUFFT for CUDA).' },
+  { key: 'FFT_SINGLE', label: 'Single-precision FFT', values: ['yes', 'no'], default: 'no', help: 'Trades a little accuracy for less memory/communication.' },
+  { key: 'FFT_PACK', label: 'FFT data packing', values: ['array', 'pointer', 'memcpy'], default: 'array' },
+  { key: 'FFT_USE_HEFFTE', label: 'Use heFFTe FFT', values: ['yes', 'no'], default: 'no', help: 'Highly optimized MPI FFT communication layer.' },
+  { key: 'FFT_HEFFTE_BACKEND', label: 'heFFTe back end', values: ['', 'FFTW', 'MKL'], default: '', help: "Empty = stock back end (testing only)." },
+  // --- I/O & sizes ---
+  { key: 'WITH_GZIP', label: 'gzip I/O support', values: ['yes', 'no'], default: 'yes' },
+  { key: 'WITH_CURL', label: 'geturl download support', values: ['yes', 'no'], default: 'yes' },
+  { key: 'WITH_JPEG', label: 'JPEG output (dump image)', values: ['yes', 'no'], default: 'yes', help: 'GRAPHICS package.' },
+  { key: 'WITH_PNG', label: 'PNG output (dump image)', values: ['yes', 'no'], default: 'yes', help: 'GRAPHICS package.' },
+  { key: 'WITH_FFMPEG', label: 'dump movie support', values: ['yes', 'no'], default: 'yes', help: 'GRAPHICS package; needs ffmpeg at runtime.' },
+  { key: 'LAMMPS_SIZES', label: 'Integer sizes', values: ['smallbig', 'bigbig'], default: 'smallbig', help: 'bigbig for >2B atom IDs / image flags.' },
+  { key: 'LAMMPS_MEMALIGN', label: 'Memory alignment', values: ['0', '8', '16', '32', '64'], default: '64' },
+  { key: 'LAMMPS_EXCEPTIONS', label: 'C++ exception handling', values: ['yes', 'no'], default: 'no', help: 'For library use — errors throw instead of aborting.' },
+  { key: 'LAMMPS_LONGLONG_TO_LONG', label: 'long long → long workaround', values: ['yes', 'no'], default: 'no' },
+  { key: 'DOWNLOAD_POTENTIALS', label: 'Download large potentials', values: ['yes', 'off'], default: 'yes' },
+  // --- accelerator tuning (docs.lammps.org/Build_extras.html) ---
+  { key: 'GPU_API', label: 'GPU back end', values: ['opencl', 'cuda', 'hip'], default: 'opencl', help: 'GPU package only.' },
+  { key: 'GPU_PREC', label: 'GPU precision', values: ['mixed', 'double', 'single'], default: 'mixed', help: 'GPU package only. mixed = most of the speed, forces in double.' },
+  { key: 'GPU_ARCH', label: 'GPU architecture', values: ['', 'sm_75', 'sm_80', 'sm_86', 'sm_89', 'sm_90', 'gfx906', 'gfx1030', 'gfx1100', 'spirv'], default: '', help: 'GPU package only. Empty = multiarch (slower builds).' },
+  { key: 'KOKKOS_PREC', label: 'Kokkos precision', values: ['double', 'mixed', 'single'], default: 'double', help: 'KOKKOS package only. mixed = FP64 accumulation, FP32 elsewhere.' },
+  { key: 'Kokkos_ENABLE_DEBUG', label: 'Kokkos debug checks', values: ['no', 'yes'], default: 'no', help: 'KOKKOS package only. Big performance cost — development only.' },
+  { key: 'Kokkos_ENABLE_CUDA_UVM', label: 'Kokkos CUDA UVM', values: ['no', 'yes'], default: 'no', help: 'KOKKOS package only. Lets RAM supplement GPU memory (slower).' },
 ];
 
 export interface NamedPreset {

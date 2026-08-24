@@ -167,7 +167,7 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
   return (
     <>
       <Canvas
-        shadows={shadowsEnabled}
+        shadows={shadowsEnabled ? 'percentage' : false}
         camera={{ position: [boundingRadius, boundingRadius * 0.8, boundingRadius], fov: config.fov }}
         dpr={effectiveDpr}
         className="w-full h-full outline-none"

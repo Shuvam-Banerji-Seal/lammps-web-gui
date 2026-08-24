@@ -120,6 +120,9 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   const [insertSearch, setInsertSearch] = useState('');
 
   const isManual = model.manualText !== undefined;
+  const manualBaseRef = useRef<string>('');
+  const manualStale =
+    isManual && JSON.stringify(model.steps) !== manualBaseRef.current;
 
   const generated = useMemo(() => generateScript(model), [model]);
   const flow = useMemo(() => deriveFlowchart(model), [model]);
@@ -260,10 +263,13 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 
   // ---- manual script editing -------------------------------------------
   const enterManualMode = useCallback(() => {
-    setModel(prev => ({
-      ...prev,
-      manualText: prev.manualText ?? generateScript({ ...prev }).text,
-    }));
+    setModel(prev => {
+      manualBaseRef.current = JSON.stringify(prev.steps);
+      return {
+        ...prev,
+        manualText: prev.manualText ?? generateScript({ ...prev }).text,
+      };
+    });
     setView('script');
   }, [setModel]);
 
@@ -588,12 +594,13 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             <button
               onClick={() => setView(v => v === 'flow' ? 'script' : 'flow')}
               className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
-                view === 'flow' ? ct.active : `${ct.muted} ${ct.hoverSurface}`
+                view === 'script' ? ct.active : `${ct.muted} ${ct.hoverSurface}`
               }`}
-              title="Toggle view"
+              title={view === 'flow' ? 'View the generated script' : 'Back to the flowchart'}
             >
-              {view === 'flow' ? <Workflow size={13} /> : <FileCode2 size={13} />}
-              {view === 'flow' ? 'Flowchart' : 'Script'}
+              {view === 'flow' ? <FileCode2 size={13} /> : <Workflow size={13} />}
+              {view === 'flow' ? 'Script' : 'Flowchart'}
+              {isManual && <span className="h-1.5 w-1.5 rounded-full bg-[#d9a05b]" title="Manual override active" />}
             </button>
             {isManual ? (
               <button
@@ -606,12 +613,12 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               </button>
             ) : (
               <button
-                onClick={enterManualMode}
+                onClick={() => { enterManualMode(); setView('script'); }}
                 className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
-                title="Edit the generated script by hand"
+                title="Override the generated script with hand-edited text"
               >
                 <PencilLine size={13} />
-                <span className="hidden 2xl:inline">Edit script</span>
+                <span className="hidden 2xl:inline">Override</span>
               </button>
             )}
             <button
@@ -657,8 +664,30 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
           </div>
         )}
         {isManual && (
-          <div className={`shrink-0 border-b px-3 py-1.5 text-[11px] ${ct.warn}`}>
-            ✎ Manual mode — this text is emitted verbatim. Your builder steps are kept safe; press “Exit manual” to regenerate.
+          <div className={`flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-3 py-1.5 text-[11px] ${ct.warn}`}>
+            <span>
+              ✎ Manual override — this text is emitted verbatim; builder changes do
+              <b> not </b>update it.
+            </span>
+            <button
+              onClick={exitManualMode}
+              className={`rounded px-2 py-0.5 font-semibold ${ct.button}`}
+              title="Discard the manual text and follow the builder steps again"
+            >
+              Discard & follow builder
+            </button>
+          </div>
+        )}
+        {manualStale && (
+          <div className={`flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-3 py-1.5 text-[11px] ${ct.warn}`}>
+            <span>⚠ Builder steps changed since your manual edit — the script text is stale.</span>
+            <button
+              onClick={exitManualMode}
+              className={`rounded px-2 py-0.5 font-semibold ${ct.button}`}
+              title="Discard the manual text and regenerate from the current steps"
+            >
+              Regenerate from steps
+            </button>
           </div>
         )}
         {!isManual && generated.warnings.length > 0 && (
@@ -773,7 +802,13 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
           />
         ) : (
           <div className="min-h-0 flex-1 overflow-auto">
-            <pre className={`p-4 text-[11px] leading-relaxed font-mono whitespace-pre-wrap ${ct.muted}`}>
+            <p className={`sticky top-0 z-10 px-4 py-1.5 text-[10px] ${ct.muted} ${ct.bg}`}>
+              Auto-generated from your steps — edits in the flowchart update this live.{' '}
+              <button onClick={enterManualMode} className={`font-semibold ${ct.accentText} hover:underline`}>
+                Override by hand
+              </button>
+            </p>
+            <pre className={`px-4 pb-4 text-[11px] leading-relaxed font-mono whitespace-pre-wrap ${ct.text}`}>
               {generated.text}
             </pre>
           </div>

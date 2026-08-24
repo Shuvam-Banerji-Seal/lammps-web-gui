@@ -204,7 +204,7 @@ export const SETUP_COMMANDS: CommandDef[] = [
     params: [
       str('args', 'Keywords', '', 'every N · delay N · check yes/no/N · exclude group A B · page N · one N'),
     ],
-    build: v => [line('neigh_modify', v.args)],
+    build: v => (v.args.trim() ? [line('neigh_modify', v.args)] : []),
   },
   {
     id: 'timestep',
@@ -282,7 +282,7 @@ export const SETUP_COMMANDS: CommandDef[] = [
     params: [
       str('args', 'Keywords', '', 'e.g. cutoff 9.0 · vel yes · exclude group A B'),
     ],
-    build: v => [line('comm_modify', v.args)],
+    build: v => (v.args.trim() ? [line('comm_modify', v.args)] : []),
   },
   {
     id: 'atom_modify',
@@ -294,7 +294,7 @@ export const SETUP_COMMANDS: CommandDef[] = [
     params: [
       str('args', 'Keywords', '', 'e.g. map array · sort 1000 0.0 · first mobile'),
     ],
-    build: v => [line('atom_modify', v.args)],
+    build: v => (v.args.trim() ? [line('atom_modify', v.args)] : []),
   },
   {
     id: 'dielectric',
@@ -333,7 +333,7 @@ export const SETUP_COMMANDS: CommandDef[] = [
     params: [
       str('args', 'Arguments', '1.1 shift xy z 10 1.05', 'thresh shift dims iter weight…'),
     ],
-    build: v => [line('balance', v.args)],
+    build: v => (v.args.trim() ? [line('balance', v.args)] : []),
   },
   {
     id: 'run_style',
@@ -578,7 +578,7 @@ export const SYSTEM_COMMANDS: CommandDef[] = [
     category: 'Topology edits',
     doc: 'https://docs.lammps.org/create_bonds.html',
     params: [str('args', 'Style + args', '', 'see docs: all · inter · intra · one · type …')],
-    build: v => [line('create_bonds', v.args)],
+    build: v => (v.args.trim() ? [line('create_bonds', v.args)] : []),
   },
   {
     id: 'delete_atoms',
@@ -641,7 +641,7 @@ export const SYSTEM_COMMANDS: CommandDef[] = [
     params: [
       str('args', 'Arguments', 'all x final -5 5 remap units box', 'see docs for full grammar'),
     ],
-    build: v => [line('change_box', v.args)],
+    build: v => (v.args.trim() ? [line('change_box', v.args)] : []),
   },
   {
     id: 'reset_atoms',
@@ -653,7 +653,7 @@ export const SYSTEM_COMMANDS: CommandDef[] = [
     params: [
       str('args', 'Arguments', 'ID sort id', 'e.g. ID sort id · ID mol sort id group …'),
     ],
-    build: v => [line('reset_atoms', v.args)],
+    build: v => (v.args.trim() ? [line('reset_atoms', v.args)] : []),
   },
   {
     id: 'molecule_cmd',
@@ -731,6 +731,20 @@ export const SYSTEM_COMMANDS: CommandDef[] = [
     build: v => [
       line('velocity', v.group, 'ramp', v.vdim, v.vlo, v.vhi, v.axis, v.clo, v.chi, v.extra),
     ],
+  },
+  {
+    id: 'velocity_scale',
+    command: 'velocity',
+    label: 'velocity scale — rescale to T',
+    section: 'system',
+    category: 'Velocities',
+    doc: 'https://docs.lammps.org/velocity.html',
+    params: [
+      str('group', 'Group', 'all'),
+      num('temp', 'Temperature (T)', '300.0'),
+      str('extra', 'Extra keywords', '', 'e.g. temp myTemp · units box'),
+    ],
+    build: v => [line('velocity', v.group, 'scale', v.temp, v.extra)],
   },
   {
     id: 'velocity_zero',
@@ -824,16 +838,9 @@ export const INTERACTION_COMMANDS: CommandDef[] = [
     category: 'Pair styles',
     doc: 'https://docs.lammps.org/pair_modify.html',
     params: [
-      en('mix', 'Mixing rule', ['', 'geometric', 'arithmetic', 'sixthpower'], ''),
-      flag('tail', 'tail corrections (tail yes)'),
+      str('args', 'Keywords', 'mix arithmetic', 'mix geometric/arithmetic/sixthpower · tail yes · shift …'),
     ],
-    build: v => {
-      const kws = [
-        v.mix ? line('mix', v.mix) : '',
-        v.tail === 'yes' ? 'tail yes' : '',
-      ].filter(Boolean);
-      return kws.length > 0 ? [line('pair_modify', ...kws)] : [];
-    },
+    build: v => (v.args.trim() ? [line('pair_modify', v.args)] : []),
   },
   {
     id: 'kspace_style',
@@ -942,7 +949,7 @@ export const INTERACTION_COMMANDS: CommandDef[] = [
     params: [
       str('args', 'Keywords', '', 'e.g. mesh 24 24 24 · order 5 · gewald …'),
     ],
-    build: v => [line('kspace_modify', v.args)],
+    build: v => (v.args.trim() ? [line('kspace_modify', v.args)] : []),
   },
   ...(['bond', 'angle', 'dihedral', 'improper'] as const).flatMap((kind): CommandDef[] => [
     {
@@ -1029,9 +1036,10 @@ export const OUTPUT_COMMANDS: CommandDef[] = [
     doc: 'https://docs.lammps.org/dump_modify.html',
     params: [
       str('dumpid', 'Dump ID', 'traj'),
-      en('sort', 'Sort by id', ['id', 'no'], 'id'),
+      en('sort', 'Sort by id', ['', 'id', 'no'], '', 'empty = off (LAMMPS default)'),
+      str('extra', 'Keywords', '', 'e.g. element O H · colname … · every N'),
     ],
-    build: v => [line('dump_modify', v.dumpid, v.sort && line('sort', v.sort))],
+    build: v => [line('dump_modify', v.dumpid, v.sort ? line('sort', v.sort) : '', v.extra)],
   },
   {
     id: 'restart_out',
@@ -1077,7 +1085,7 @@ export const OUTPUT_COMMANDS: CommandDef[] = [
     params: [
       str('args', 'Keywords', '', 'e.g. lost warn · norm yes · flush yes · temp myTemp'),
     ],
-    build: v => [line('thermo_modify', v.args)],
+    build: v => (v.args.trim() ? [line('thermo_modify', v.args)] : []),
   },
   {
     id: 'dump_xyz',
@@ -1674,10 +1682,10 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       str('id', 'Fix ID', 'shake'),
       str('group', 'Group', 'water'),
       num('tol', 'Tolerance', '1.0e-4'),
-      str('bonds', 'bonds keyword', 'b 1'),
-      str('angles', 'angles keyword', 'a 1'),
+      num('iter', 'Max SHAKE iterations', '20'),
+      str('args', 'Constraints + keywords', 'b 1 a 1', 'b N · a N · t N · e N · mol · minlen …'),
     ],
-    build: v => [line('fix', v.id, v.group, 'shake', v.tol, v.bonds, v.angles)],
+    build: v => [line('fix', v.id, v.group, 'shake', v.tol, v.iter, v.args)],
   },
   {
     id: 'fix_rigid',
@@ -1738,10 +1746,9 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       str('id', 'Fix ID', 'drift'),
       str('group', 'Group', 'all'),
       num('n', 'Every N steps', '100'),
-      flag('linear', 'zero linear momentum'),
-      flag('angular', 'zero angular momentum'),
+      str('args', 'Keywords', '', 'linear 1 1 1 · angular · one · reverse'),
     ],
-    build: v => [line('fix', v.id, v.group, 'momentum', v.n, v.linear === 'yes' ? 'linear 1 1 1' : '', v.angular === 'yes' ? 'angular 1 1 1' : '')],
+    build: v => [line('fix', v.id, v.group, 'momentum', v.n, v.args)],
   },
   {
     id: 'fix_recenter',
@@ -2286,7 +2293,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Minimization',
     doc: 'https://docs.lammps.org/min_modify.html',
     params: [str('args', 'Keywords', '', 'e.g. dmax 0.1 · line quadratic')],
-    build: v => [line('min_modify', v.args)],
+    build: v => (v.args.trim() ? [line('min_modify', v.args)] : []),
   },
   {
     id: 'unfix_cmd',
@@ -2503,14 +2510,10 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       num('nevery', 'Nevery', '100'),
       num('nrepeat', 'Nrepeat', '5'),
       num('nfreq', 'Nfreq', '1000'),
-      num('p', 'Correlation length P', '20'),
-      num('m', 'Number of correlation windows M', '5'),
-      str('values', 'Inputs', 'c_thermo_temp', 'c_/f_/v_ inputs'),
-      str('file', 'Output file', 'corr.txt'),
-      str('extra', 'Keywords', '', 'e.g. ave running · type auto/upper'),
+      str('args', 'Values + keywords', 'c_thermo_temp type auto file corr.txt', 'c_/f_/v_ inputs · type auto · file F · ave running'),
     ],
     build: v => [line('fix', v.id, v.group, 'ave/correlate', v.nevery, v.nrepeat,
-      v.nfreq, v.p, v.m, v.values, v.file && line('file', v.file), v.extra)],
+      v.nfreq, v.args)],
   },
   {
     id: 'fix_qeq_reaxff',

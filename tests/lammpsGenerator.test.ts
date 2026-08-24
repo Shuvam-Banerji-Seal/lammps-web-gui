@@ -96,7 +96,7 @@ describe('LAMMPS script generator', () => {
   });
 
   it('renders optional-only commands as no-ops without warnings', () => {
-    const out = generateScript(model([step('pair_modify')]));
+    const out = generateScript(model([step('min_modify')]));
     expect(out.emitted).toHaveLength(0);
     expect(out.warnings).toHaveLength(0);
   });

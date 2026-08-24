@@ -6,7 +6,11 @@ import {
   SECTION_ORDER,
   ScriptModel,
   ScriptStep,
+  ScriptTab,
+  ScriptWorkspace,
   defaultParams,
+  emptyScriptModel,
+  newTabId,
   ParamDef,
 } from '../../lammps/catalog';
 import { generateScript, deriveFlowchart, FlowGraph } from '../../lammps/generator';
@@ -55,11 +59,47 @@ const reviveModel = (raw: unknown): ScriptModel | null => {
     title: typeof r.title === 'string' ? r.title : 'My LAMMPS Simulation',
     steps,
     manualText: typeof r.manualText === 'string' ? r.manualText : undefined,
+    manualBase: typeof r.manualBase === 'string' ? r.manualBase : undefined,
   };
 };
 
-const MODEL_KEY = 'm3d.scriptModel.v1';
-const DEFAULT_MODEL: ScriptModel = { title: 'My LAMMPS Simulation', steps: [] };
+const WORKSPACE_KEY = 'm3d.scriptTabs.v1';
+const LEGACY_MODEL_KEY = 'm3d.scriptModel.v1';
+
+const DEFAULT_MODEL: ScriptModel = emptyScriptModel('My LAMMPS Simulation');
+
+/** Revive the multi-tab workspace; migrate the legacy single-model key. */
+const reviveWorkspace = (raw: unknown): ScriptWorkspace | null => {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Partial<ScriptWorkspace>;
+  if (!Array.isArray(r.tabs) || r.tabs.length === 0) return null;
+  const tabs: ScriptTab[] = [];
+  for (const t of r.tabs) {
+    if (!t || typeof t !== 'object') continue;
+    const rec = t as Partial<ScriptTab>;
+    const model = reviveModel(rec.model);
+    if (!model) continue;
+    tabs.push({ id: typeof rec.id === 'string' ? rec.id : newTabId(), model });
+  }
+  if (tabs.length === 0) return null;
+  const activeId =
+    typeof r.activeId === 'string' && tabs.some(t => t.id === r.activeId)
+      ? r.activeId
+      : tabs[0].id;
+  return { tabs, activeId };
+};
+
+const loadWorkspace = (): ScriptWorkspace => {
+  const stored = reviveWorkspace(loadJson(browserStore(), WORKSPACE_KEY));
+  if (stored) return stored;
+  // Migrate the pre-tabs single model so nobody loses work on upgrade.
+  const legacy = reviveModel(loadJson(browserStore(), LEGACY_MODEL_KEY));
+  const first: ScriptTab = {
+    id: newTabId(),
+    model: legacy ?? { title: 'My LAMMPS Simulation', steps: [] },
+  };
+  return { tabs: [first], activeId: first.id };
+};
 const ZOOM_MIN = 0.35;
 const ZOOM_MAX = 2.5;
 
@@ -71,17 +111,69 @@ interface Transform {
 
 const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) => {
   const ct = getThemeTokens(theme);
-  // Undoable model; the plain value persists to localStorage for durability.
-  const [model, setModel, undo, redo, canUndo, canRedo] = (() => {
-    const api = useUndoableState<ScriptModel>(() => {
-      const stored = loadJson<ScriptModel>(browserStore(), MODEL_KEY, reviveModel);
-      return stored ?? DEFAULT_MODEL;
-    });
-    return [api.value, api.set, api.undo, api.redo, api.canUndo, api.canRedo] as const;
+  // Undoable WORKSPACE (multi-tab); persists to localStorage for durability.
+  const [workspace, setWorkspace, replaceWorkspace, undo, redo, canUndo, canRedo] = (() => {
+    const api = useUndoableState<ScriptWorkspace>(loadWorkspace);
+    return [api.value, api.set, api.replace, api.undo, api.redo, api.canUndo, api.canRedo] as const;
   })();
+
+  const activeTab: ScriptTab =
+    workspace.tabs.find(t => t.id === workspace.activeId) ?? workspace.tabs[0];
+  const model = activeTab.model;
+
+  /** Update the ACTIVE tab's model (pushes undo history). */
+  const setModel = useCallback(
+    (next: ScriptModel | ((prev: ScriptModel) => ScriptModel)) => {
+      setWorkspace(ws => ({
+        ...ws,
+        tabs: ws.tabs.map(t =>
+          t.id === ws.activeId
+            ? { ...t, model: typeof next === 'function' ? next(t.model) : next }
+            : t
+        ),
+      }));
+    },
+    [setWorkspace],
+  );
+
+  /** Switch tabs WITHOUT pushing undo history. */
+  const switchTab = useCallback(
+    (id: string) => replaceWorkspace(ws => ({ ...ws, activeId: id })),
+    [replaceWorkspace],
+  );
+
+  const addTab = useCallback(() => {
+    const tab: ScriptTab = { id: newTabId(), model: emptyScriptModel(`Untitled ${workspace.tabs.length + 1}`) };
+    setWorkspace(ws => ({ tabs: [...ws.tabs, tab], activeId: tab.id }));
+  }, [setWorkspace, workspace.tabs.length]);
+
+  const closeTab = useCallback(
+    (id: string) => {
+      setWorkspace(ws => {
+        const idx = ws.tabs.findIndex(t => t.id === id);
+        if (idx < 0) return ws;
+        const tabs = ws.tabs.filter(t => t.id !== id);
+        if (tabs.length === 0) {
+          const fresh: ScriptTab = { id: newTabId(), model: emptyScriptModel('Untitled') };
+          return { tabs: [fresh], activeId: fresh.id };
+        }
+        const activeId = id === ws.activeId ? tabs[Math.min(idx, tabs.length - 1)].id : ws.activeId;
+        return { tabs, activeId };
+      });
+    },
+    [setWorkspace],
+  );
+
+  /** Clear the ACTIVE flowchart (undoable). */
+  const clearActive = useCallback(() => {
+    setModel(prev => ({ ...prev, steps: [], manualText: undefined, manualBase: undefined }));
+    setSelectedUid(null);
+    setImportStats(null);
+  }, [setModel]);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
-  const [paletteOpen, setPaletteOpen] = useState(true);
+  const [paletteOpen, setPaletteOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
   const [view, setView] = useState<'flow' | 'script'>('flow');
   const [search, setSearch] = useState('');
   const [copied, setCopied] = useState(false);
@@ -119,20 +211,34 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   const [insertAt, setInsertAt] = useState<number | null>(null);
   const [insertSearch, setInsertSearch] = useState('');
 
+  // Mobile: palette/editor become overlay drawers
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+  const [editorOpenMobile, setEditorOpenMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+  // Close the mobile editor drawer whenever no step is selected
+  useEffect(() => {
+    if (!selectedUid) setEditorOpenMobile(false);
+  }, [selectedUid]);
+
   const isManual = model.manualText !== undefined;
-  const manualBaseRef = useRef<string>('');
   const manualStale =
-    isManual && JSON.stringify(model.steps) !== manualBaseRef.current;
+    isManual && model.manualBase !== undefined && JSON.stringify(model.steps) !== model.manualBase;
 
   const generated = useMemo(() => generateScript(model), [model]);
   const flow = useMemo(() => deriveFlowchart(model), [model]);
   /** The text currently shown/copied/downloaded. */
   const activeText = isManual ? (model.manualText ?? '') : generated.text;
 
-  // Persist the model whenever it changes (history itself is in-memory).
+  // Persist the workspace whenever it changes (history itself is in-memory).
   useEffect(() => {
-    saveJson(browserStore(), MODEL_KEY, model);
-  }, [model]);
+    saveJson(browserStore(), WORKSPACE_KEY, workspace);
+  }, [workspace]);
 
   // Undo/redo + Delete-selected keyboard layer (builder-local; the manual
   // textarea keeps native undo because typing targets are skipped).
@@ -263,20 +369,19 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 
   // ---- manual script editing -------------------------------------------
   const enterManualMode = useCallback(() => {
-    setModel(prev => {
-      manualBaseRef.current = JSON.stringify(prev.steps);
-      return {
-        ...prev,
-        manualText: prev.manualText ?? generateScript({ ...prev }).text,
-      };
-    });
+    setModel(prev => ({
+      ...prev,
+      manualBase: JSON.stringify(prev.steps),
+      manualText: prev.manualText ?? generateScript({ ...prev }).text,
+    }));
     setView('script');
   }, [setModel]);
 
   const exitManualMode = useCallback(() => {
     setModel(prev => {
-      const { manualText: _drop, ...rest } = prev;
+      const { manualText: _drop, manualBase: _base, ...rest } = prev;
       void _drop;
+      void _base;
       return rest;
     });
   }, [setModel]);
@@ -425,13 +530,24 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 
   return (
     <div className="flex h-full min-h-0">
-      {/* Left: palette */}
-      <div className={`flex flex-col border-r transition-all ${ct.panel} ${paletteOpen ? 'w-64' : 'w-0 overflow-hidden'}`}>
+      {/* Left: palette (overlay drawer on mobile) */}
+      <div
+        className={`flex-col border-r transition-all ${ct.panel} ${
+          isMobile
+            ? `fixed inset-y-0 left-0 z-40 flex w-72 ${paletteOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`
+            : `${paletteOpen ? 'flex w-64' : 'hidden w-0 overflow-hidden'}`
+        }`}
+      >
         <div className={`flex items-center justify-between px-3 py-2 border-b ${ct.divider}`}>
           <span className={`text-xs font-semibold ${ct.headerText}`}>Commands</span>
           <button onClick={() => setPaletteOpen(false)} className={`p-1 rounded ${ct.muted} ${ct.hoverSurface}`}>
             <ChevronLeft size={14} />
           </button>
+          {isMobile && (
+            <button onClick={() => setPaletteOpen(false)} className={`rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Close">
+              <X size={14} />
+            </button>
+          )}
         </div>
         <div className={`px-3 py-2 border-b ${ct.divider}`}>
           <div className="flex items-center gap-1.5">
@@ -470,10 +586,60 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
         </div>
       </div>
 
-      {/* Center: pipeline + step editor */}
+      {/* Center: tabs + pipeline + step editor */}
       <div className={`flex min-w-0 flex-1 flex-col ${ct.bg}`}>
-        {/* Toolbar */}
-        <div className={`flex h-10 shrink-0 items-center justify-between border-b px-3 ${ct.divider}`}>
+        {/* Tab strip */}
+        <div className={`flex h-9 shrink-0 items-center gap-1 border-b px-2 ${ct.divider}`}>
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+            {workspace.tabs.map(tab => {
+              const active = tab.id === workspace.activeId;
+              return (
+                <div
+                  key={tab.id}
+                  onClick={() => switchTab(tab.id)}
+                  className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-t-lg border-b-2 px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                    active ? ct.active : `${ct.muted} border-transparent ${ct.hoverSurface}`
+                  }`}
+                  title={tab.model.title || 'Untitled'}
+                >
+                  <FileCode2 size={11} className="shrink-0 opacity-60" />
+                  <span className="max-w-[110px] truncate">{tab.model.title || 'Untitled'}</span>
+                  <span className={`text-[9px] tabular-nums opacity-50`}>{tab.model.steps.length}</span>
+                  <button
+                    onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
+                    className={`rounded p-0.5 opacity-0 transition-opacity hover:text-[#cf8b76] group-hover:opacity-100 ${
+                      active ? 'opacity-70' : ''
+                    }`}
+                    title="Close this flowchart (Ctrl+Z restores)"
+                    aria-label={`Close ${tab.model.title || 'tab'}`}
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              );
+            })}
+            <button
+              onClick={addTab}
+              className={`shrink-0 rounded p-1.5 ${ct.muted} ${ct.hoverSurface}`}
+              title="New flowchart tab"
+              aria-label="New flowchart tab"
+            >
+              <Plus size={13} />
+            </button>
+          </div>
+          <button
+            onClick={clearActive}
+            disabled={model.steps.length === 0}
+            className={`flex shrink-0 items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+            title="Clear this flowchart (Ctrl+Z restores it)"
+          >
+            <Trash2 size={12} />
+            <span className="hidden sm:inline">Clear</span>
+          </button>
+        </div>
+
+        {/* Toolbar (wraps on narrow screens) */}
+        <div className={`flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b px-3 py-1 ${ct.divider}`}>
           <div className="flex min-w-0 items-center gap-2">
             {!paletteOpen && (
               <button onClick={() => setPaletteOpen(true)} className={`p-1 rounded ${ct.muted} ${ct.hoverSurface}`} title="Open palette">
@@ -578,7 +744,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                   title="Export the flowchart as a presentable SVG"
                 >
                   <FileImage size={13} />
-                  <span className="hidden xl:inline">SVG</span>
+                  <span className="hidden md:inline">SVG</span>
                 </button>
                 <button
                   onClick={() => exportFlowchart('png')}
@@ -587,7 +753,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                   title="Export the flowchart as a 2x PNG image"
                 >
                   <ImageDown size={13} />
-                  <span className="hidden xl:inline">PNG</span>
+                  <span className="hidden md:inline">PNG</span>
                 </button>
               </>
             )}
@@ -720,7 +886,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                   dragUid={drag?.uid ?? null}
                   overIndex={overIndex}
                   edgeMenuIndex={edgeMenuIndex}
-                  onSelect={setSelectedUid}
+                  onSelect={(uid) => { setSelectedUid(uid); if (isMobile) setEditorOpenMobile(true); }}
                   onToggle={(uid) => updateStep(uid, { enabled: !model.steps.find(s => s.uid === uid)?.enabled })}
                   onRemove={removeStep}
                   onDuplicate={duplicateStep}
@@ -815,8 +981,28 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
         )}
       </div>
 
-      {/* Right: step editor */}
-      <div className={`w-80 shrink-0 overflow-y-auto border-l ${ct.panel}`}>
+      {/* Right: step editor (overlay drawer on mobile) */}
+      <div
+        className={`overflow-y-auto border-l ${ct.panel} ${
+          isMobile
+            ? `fixed inset-y-0 right-0 z-40 w-80 max-w-[85vw] shadow-2xl transition-transform ${
+                selectedStep && editorOpenMobile ? 'translate-x-0' : 'translate-x-full'
+              }`
+            : 'w-80 shrink-0'
+        }`}
+      >
+        {isMobile && selectedStep && editorOpenMobile && (
+          <div className={`flex items-center justify-between border-b px-3 py-2 ${ct.divider}`}>
+            <span className={`text-xs font-semibold ${ct.headerText}`}>Step editor</span>
+            <button
+              onClick={() => { setEditorOpenMobile(false); setSelectedUid(null); }}
+              className={`rounded p-1 ${ct.muted} ${ct.hoverSurface}`}
+              title="Close editor"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
         {selectedStep && selectedDef ? (
           <StepEditor
             ct={ct}
@@ -836,6 +1022,14 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
           </div>
         )}
       </div>
+
+      {/* Mobile drawer backdrop */}
+      {isMobile && (paletteOpen || (selectedStep && editorOpenMobile)) && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50"
+          onClick={() => { setPaletteOpen(false); setEditorOpenMobile(false); if (editorOpenMobile) setSelectedUid(null); }}
+        />
+      )}
 
       {/* Floating drag ghost */}
       {drag && (

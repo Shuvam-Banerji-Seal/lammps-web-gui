@@ -70,7 +70,33 @@ export interface ScriptModel {
    * can return to builder mode without losing work.
    */
   manualText?: string;
+  /**
+   * Snapshot of JSON.stringify(steps) taken when the manual override was
+   * entered — lets the UI detect that the steps moved on while an override
+   * is active (stale banner).
+   */
+  manualBase?: string;
 }
+
+/** One tab in the multi-flowchart workspace. */
+export interface ScriptTab {
+  id: string;
+  model: ScriptModel;
+}
+
+/** The whole multi-tab workspace as persisted. */
+export interface ScriptWorkspace {
+  tabs: ScriptTab[];
+  activeId: string;
+}
+
+export const emptyScriptModel = (title = 'Untitled'): ScriptModel => ({
+  title,
+  steps: [],
+});
+
+let tabCounter = 1;
+export const newTabId = (): string => `tab-${Date.now().toString(36)}-${tabCounter++}`;
 
 export const SECTION_ORDER: ScriptSection[] = [
   'setup',

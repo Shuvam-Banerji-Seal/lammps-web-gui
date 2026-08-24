@@ -4,6 +4,8 @@ import { createHistory, HistoryState } from '../services/history';
 /**
  * useState with bounded undo/redo. Persistence stays with the plain value
  * (callers persist `value` separately); history itself is in-memory.
+ * `replace` sets the present WITHOUT pushing history — for UI-only state
+ * changes (e.g. switching tabs in a multi-document workspace).
  */
 export function useUndoableState<T>(
   initial: T | (() => T),
@@ -11,6 +13,7 @@ export function useUndoableState<T>(
 ): {
   value: T;
   set: (next: T | ((prev: T) => T)) => void;
+  replace: (next: T | ((prev: T) => T)) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -25,14 +28,26 @@ export function useUndoableState<T>(
 
   const commit = useCallback(() => forceRender(n => n + 1), []);
 
+  const resolve = useCallback(
+    (next: T | ((prev: T) => T)) =>
+      typeof next === 'function' ? (next as (prev: T) => T)(historyRef.current.get().present) : next,
+    [],
+  );
+
   const set = useCallback(
     (next: T | ((prev: T) => T)) => {
-      const resolved =
-        typeof next === 'function' ? (next as (prev: T) => T)(historyRef.current.get().present) : next;
-      historyRef.current.push(resolved);
+      historyRef.current.push(resolve(next));
       commit();
     },
-    [commit],
+    [commit, resolve],
+  );
+
+  const replace = useCallback(
+    (next: T | ((prev: T) => T)) => {
+      historyRef.current.reset(resolve(next));
+      commit();
+    },
+    [commit, resolve],
   );
 
   const undo = useCallback(() => {
@@ -48,6 +63,7 @@ export function useUndoableState<T>(
   return {
     value: snapshot.present,
     set,
+    replace,
     undo,
     redo,
     canUndo: snapshot.past.length > 0,

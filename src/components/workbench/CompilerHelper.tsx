@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   LMP_PACKAGES,
   PACKAGE_CATEGORIES,
@@ -14,7 +14,7 @@ import {
 import { downloadTextFile } from '../../lammps/exporter';
 import { usePersistentState } from '../../hooks/usePersistentState';
 import { getThemeTokens, ThemeTokens, Theme } from '../../theme';
-import { Copy, Download, Terminal, Monitor, Cpu, Package, Zap, Settings, ChevronDown, ChevronUp, X, Info } from 'lucide-react';
+import { Copy, Download, Terminal, Monitor, Cpu, Package, Zap, Settings, ChevronDown, ChevronUp, X, Info, SlidersHorizontal } from 'lucide-react';
 
 const CATEGORY_LABELS: Record<string, string> = {
   'accel': 'Accelerators',
@@ -68,6 +68,16 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
   const [copied, setCopied] = useState(false);
   const [showAllFlags, setShowAllFlags] = useState(false);
   const [selectedFlag, setSelectedFlag] = useState<FlagDetail | null>(null);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+  const [optionsOpen, setOptionsOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   const result = useMemo(() => generateBuildScript(opts), [opts]);
 
@@ -119,8 +129,24 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
 
   return (
     <div className="flex h-full min-h-0">
-      {/* Left: options */}
-      <div className={`w-96 shrink-0 overflow-y-auto border-r ${ct.panel}`}>
+      {/* Left: options (overlay drawer on mobile) */}
+      <div
+        className={`overflow-y-auto border-r ${ct.panel} ${
+          isMobile
+            ? `fixed inset-y-0 left-0 z-40 w-96 max-w-[92vw] shadow-2xl transition-transform ${
+                optionsOpen ? 'translate-x-0' : '-translate-x-full'
+              }`
+            : 'w-96 shrink-0'
+        }`}
+      >
+        {isMobile && optionsOpen && (
+          <div className={`flex items-center justify-between border-b px-3 py-2 ${ct.divider}`}>
+            <span className={`text-xs font-semibold ${ct.headerText}`}>Build options</span>
+            <button onClick={() => setOptionsOpen(false)} className={`rounded p-1 ${ct.muted}`} title="Close">
+              <X size={14} />
+            </button>
+          </div>
+        )}
         <div className="space-y-5 p-4">
           {/* OS target */}
           <section className="space-y-2">
@@ -289,8 +315,18 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
 
       {/* Right: generated script */}
       <div className={`flex min-w-0 flex-1 flex-col ${ct.bg}`}>
-        <div className={`flex h-10 shrink-0 items-center justify-between border-b px-3 ${ct.divider}`}>
+        <div className={`flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b px-3 py-1 ${ct.divider}`}>
           <div className="flex items-center gap-2">
+            {isMobile && (
+              <button
+                onClick={() => setOptionsOpen(v => !v)}
+                className={`rounded p-1.5 ${ct.muted} ${ct.hoverSurface}`}
+                title={optionsOpen ? 'Hide build options' : 'Show build options'}
+                aria-label="Toggle build options"
+              >
+                <SlidersHorizontal size={14} />
+              </button>
+            )}
             <Terminal size={14} className={ct.muted} />
             <span className={`text-xs font-medium ${ct.headerText}`}>
               {opts.os === 'linux' ? 'build.sh' : 'build.ps1'}
@@ -383,6 +419,9 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
           </pre>
         </div>
       </div>
+      {isMobile && optionsOpen && (
+        <div className="fixed inset-0 z-30 bg-black/50" onClick={() => setOptionsOpen(false)} />
+      )}
     </div>
   );
 };

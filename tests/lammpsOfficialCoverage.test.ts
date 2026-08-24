@@ -10,7 +10,7 @@ import { ALL_COMMANDS } from '../src/lammps/catalog';
 const OFFICIAL_GENERAL_COMMANDS = [
   // 6.5 general commands
   'angle_coeff', 'angle_style', 'angle_write', 'atom_modify', 'atom_style',
-  'balance', 'bond_coeff', 'bond_style', 'bond_write', 'boundary',
+  'balance', 'bond_coeff', 'bond_style', 'bond_write', 'boundary', 'box',
   'change_box', 'clear', 'comm_modify', 'comm_style', 'compute',
   'compute_modify', 'create_atoms', 'create_bonds', 'create_box',
   'delete_atoms', 'delete_bonds', 'dielectric', 'dihedral_coeff',

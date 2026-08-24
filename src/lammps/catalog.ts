@@ -178,6 +178,19 @@ export const SETUP_COMMANDS: CommandDef[] = [
     build: v => [line('boundary', v.bx, v.by, v.bz)],
   },
   {
+    id: 'box_cmd',
+    command: 'box',
+    label: 'box — triclinic tilt-factor limit',
+    section: 'setup',
+    category: 'Fundamentals',
+    doc: 'https://docs.lammps.org/Howto_triclinic.html',
+    params: [
+      en('style', 'Tilt limit', ['large', 'small'], 'small',
+        'large = allow tilt > half the box length'),
+    ],
+    build: v => [line('box', 'tilt', v.style)],
+  },
+  {
     id: 'atom_style_cmd',
     command: 'atom_style',
     label: 'atom_style — particle attributes',

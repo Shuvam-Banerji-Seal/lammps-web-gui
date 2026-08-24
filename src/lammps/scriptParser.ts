@@ -41,10 +41,12 @@ export interface ImportResult {
 
 /** Commands whose first argument is a user-chosen ID (wildcard on import). */
 const ID_FLEX = new Set([
-  'fix', 'dump', 'compute', 'region', 'group', 'variable', 'label', 'jump',
-  'next', 'include', 'shell', 'log', 'undump', 'unfix', 'uncompute',
-  'dump_modify', 'compute_modify', 'fix_modify', 'molecule', 'partition',
+  'fix', 'dump', 'compute', 'region', 'group', 'variable', 'label',
+  'molecule', 'undump', 'unfix', 'uncompute', 'dump_modify',
+  'compute_modify', 'fix_modify',
 ]);
+/** Param keys that hold the user-chosen ID (flex token maps back into it). */
+const ID_PARAM_KEYS = new Set(['id', 'name', 'fixid', 'dumpid', 'compid']);
 
 const SLOT = '\u0000';
 const slotOf = (i: number) => `${SLOT}${i}`;
@@ -155,10 +157,28 @@ const buildVariant = (def: CommandDef, minimal: boolean): PatternVariant | null 
     }
   });
 
-  // ID-flex: wildcard the token right after the command keyword.
+  // ID-flex: wildcard the token right after the command keyword. When the
+  // def has an explicit ID param, the token maps back into it so region
+  // names, fix IDs etc. survive the import.
   if (ID_FLEX.has(def.command) && tokens.length > 1 && !isSlot[1]) {
     isSlot[1] = true;
-    paramKeys[1] = null; // consumed, not mapped back
+    const first = def.params[0];
+    paramKeys[1] = first && ID_PARAM_KEYS.has(first.key) ? first.key : null;
+  }
+
+  // Trailing absorb: ensure the LAST param — when it is a string/text slot —
+  // is present at the pattern tail even if the minimal build omitted it
+  // (optional-empty). Without this, `velocity … loop geom` has nothing to
+  // absorb the trailing keywords.
+  const lastPd = def.params[def.params.length - 1];
+  if (lastPd && (lastPd.type === 'string' || lastPd.type === 'text') && tokens.length > 0) {
+    const endsWithIt =
+      isSlot[tokens.length - 1] && paramKeys[tokens.length - 1] === lastPd.key;
+    if (!endsWithIt) {
+      tokens.push(slotOf(def.params.length - 1));
+      isSlot.push(true);
+      paramKeys.push(lastPd.key);
+    }
   }
 
   // Trailing absorb: last param is a string/text slot → eats the rest.

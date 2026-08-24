@@ -202,11 +202,9 @@ export const SETUP_COMMANDS: CommandDef[] = [
     category: 'Neighbor lists',
     doc: 'https://docs.lammps.org/neigh_modify.html',
     params: [
-      num('every', 'delay = every steps', '0'),
-      num('check_dist', 'check yes interval', '1'),
-      str('page', 'one/page keywords', '', 'e.g. exclude group A B'),
+      str('args', 'Keywords', '', 'every N · delay N · check yes/no/N · exclude group A B · page N · one N'),
     ],
-    build: v => [line('neigh_modify', v.every ? line('delay', v.every) : '', v.check_dist ? line('every', v.check_dist) : '', v.page)],
+    build: v => [line('neigh_modify', v.args)],
   },
   {
     id: 'timestep',
@@ -508,10 +506,13 @@ export const SYSTEM_COMMANDS: CommandDef[] = [
       en('style', 'Style', ['create', 'set', 'scale'], 'create'),
       num('temp', 'Temperature (T)', '300.0'),
       num('seed', 'RNG seed', '4928459'),
-      en('dist_kw', 'Distribution', ['gaussian', 'uniform'], 'gaussian'),
+      en('dist_kw', 'Distribution', ['', 'uniform', 'gaussian'], '', 'dist keyword — empty = LAMMPS default (uniform)'),
       flag('mom', 'zero total momentum (mom yes)'),
+      str('extra', 'Extra keywords', '', 'e.g. loop geom · sum yes'),
     ],
-    build: v => [line('velocity', v.group, v.style, v.temp, v.seed, line('dist', v.dist_kw), v.mom === 'yes' ? 'mom yes' : '')],
+    build: v => [line('velocity', v.group, v.style, v.temp, v.seed,
+      v.dist_kw ? line('dist', v.dist_kw) : '',
+      v.mom === 'yes' ? 'mom yes' : '', v.extra)],
   },
   {
     id: 'replicate',
@@ -719,17 +720,31 @@ export const SYSTEM_COMMANDS: CommandDef[] = [
     doc: 'https://docs.lammps.org/velocity.html',
     params: [
       str('group', 'Group', 'flow'),
-      en('dim', 'Velocity component', ['vx', 'vy', 'vz'], 'vx'),
-      num('vlo', 'v at coord1', '0.0'),
-      num('vhi', 'v at coord2', '5.0'),
-      num('c1', 'coord1 value', '0.0'),
-      num('v1', 'coord1 position', '0.0'),
-      num('c2', 'coord2 value', '10.0'),
-      num('v2', 'coord2 position', '10.0'),
+      en('vdim', 'Velocity component', ['vx', 'vy', 'vz'], 'vx'),
+      num('vlo', 'Lower velocity', '0.0'),
+      num('vhi', 'Upper velocity', '5.0'),
+      en('axis', 'Coordinate axis', ['x', 'y', 'z'], 'y'),
+      num('clo', 'Lower coordinate bound', '0.0'),
+      num('chi', 'Upper coordinate bound', '10.0'),
+      str('extra', 'Extra keywords', '', 'e.g. sum yes · units box'),
     ],
     build: v => [
-      line('velocity', v.group, 'ramp', v.dim, v.vlo, v.vhi, v.c1, v.v1, v.c2, v.v2),
+      line('velocity', v.group, 'ramp', v.vdim, v.vlo, v.vhi, v.axis, v.clo, v.chi, v.extra),
     ],
+  },
+  {
+    id: 'velocity_zero',
+    command: 'velocity',
+    label: 'velocity zero — remove momentum',
+    section: 'system',
+    category: 'Velocities',
+    doc: 'https://docs.lammps.org/velocity.html',
+    params: [
+      str('group', 'Group', 'all'),
+      en('what', 'Zero', ['linear', 'angular'], 'linear'),
+      str('extra', 'Extra keywords', '', 'e.g. rigid fixID'),
+    ],
+    build: v => [line('velocity', v.group, 'zero', v.what, v.extra)],
   },
 ];
 
@@ -1205,6 +1220,7 @@ export const OUTPUT_COMMANDS: CommandDef[] = [
     category: 'Averaging',
     doc: 'https://docs.lammps.org/fix_ave_histo.html',
     params: [
+      str('id', 'Fix ID', 'histo'),
       str('group', 'Group (ignored)', 'all'),
       num('nevery', 'Nevery', '100'),
       num('nrepeat', 'Nrepeat', '5'),
@@ -1216,7 +1232,7 @@ export const OUTPUT_COMMANDS: CommandDef[] = [
       str('file', 'Output file', '', 'optional'),
     ],
     build: v => [
-      line('fix', 'histo', v.group, 'ave/histo', v.nevery, v.nrepeat, v.nfreq,
+      line('fix', v.id, v.group, 'ave/histo', v.nevery, v.nrepeat, v.nfreq,
         v.values, v.lo, v.hi, v.bins, v.file && line('file', v.file)),
     ],
   },
@@ -1228,13 +1244,14 @@ export const OUTPUT_COMMANDS: CommandDef[] = [
     category: 'Misc',
     doc: 'https://docs.lammps.org/fix_print.html',
     params: [
+      str('id', 'Fix ID', 'printer'),
       num('n', 'Every N steps', '1000'),
       str('text', 'String (variables expand)', '"step = ${myStep}"'),
       str('file', 'Append to file', '', 'optional'),
       flag('screen', 'also print to screen'),
     ],
     build: v => [
-      line('fix', 'printer', 'all', 'print', v.n, v.text,
+      line('fix', v.id, 'all', 'print', v.n, v.text,
         v.file && line('file', v.file),
         v.screen === 'yes' ? 'screen yes' : ''),
     ],
@@ -1548,8 +1565,9 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     section: 'control',
     category: 'Integrators',
     doc: 'https://docs.lammps.org/fix_nve.html',
-    params: [str('group', 'Group', 'all')],
-    build: v => [line('fix', 'integrate', v.group, 'nve')],
+    params: [
+      str('id', 'Fix ID', 'integrate'),str('group', 'Group', 'all')],
+    build: v => [line('fix', v.id, v.group, 'nve')],
   },
   {
     id: 'fix_nvt',
@@ -1559,12 +1577,13 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Integrators',
     doc: 'https://docs.lammps.org/fix_nh.html',
     params: [
+      str('id', 'Fix ID', 'integrate'),
       str('group', 'Group', 'all'),
       num('temp_start', 'T start', '300.0'),
       num('temp_end', 'T end', '300.0'),
       num('temp_damp', 'T damp (≈100·dt)', '0.1'),
     ],
-    build: v => [line('fix', 'integrate', v.group, 'nvt', 'temp', v.temp_start, v.temp_end, v.temp_damp)],
+    build: v => [line('fix', v.id, v.group, 'nvt', 'temp', v.temp_start, v.temp_end, v.temp_damp)],
   },
   {
     id: 'fix_npt',
@@ -1574,6 +1593,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Integrators',
     doc: 'https://docs.lammps.org/fix_nh.html',
     params: [
+      str('id', 'Fix ID', 'integrate'),
       str('group', 'Group', 'all'),
       num('temp_start', 'T start', '300.0'),
       num('temp_end', 'T end', '300.0'),
@@ -1583,7 +1603,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       num('p_end', 'P end', '0.0'),
       num('p_damp', 'P damp', '1.0'),
     ],
-    build: v => [line('fix', 'integrate', v.group, 'npt', 'temp', v.temp_start, v.temp_end, v.temp_damp, v.pstyle, v.p_start, v.p_end, v.p_damp)],
+    build: v => [line('fix', v.id, v.group, 'npt', 'temp', v.temp_start, v.temp_end, v.temp_damp, v.pstyle, v.p_start, v.p_end, v.p_damp)],
   },
   {
     id: 'fix_langevin',
@@ -1593,13 +1613,14 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Thermostats',
     doc: 'https://docs.lammps.org/fix_langevin.html',
     params: [
+      str('id', 'Fix ID', 'lang'),
       str('group', 'Group', 'all'),
       num('temp_start', 'T start', '300.0'),
       num('temp_end', 'T end', '300.0'),
       num('damp', 'Damping', '0.1'),
       num('seed', 'Seed', '12345'),
     ],
-    build: v => [line('fix', 'lang', v.group, 'langevin', v.temp_start, v.temp_end, v.damp, v.seed)],
+    build: v => [line('fix', v.id, v.group, 'langevin', v.temp_start, v.temp_end, v.damp, v.seed)],
   },
   {
     id: 'fix_berendsen',
@@ -1609,12 +1630,13 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Thermostats',
     doc: 'https://docs.lammps.org/fix_berendsen.html',
     params: [
+      str('id', 'Fix ID', 'berend'),
       str('group', 'Group', 'all'),
       num('temp_start', 'T start', '300.0'),
       num('temp_end', 'T end', '300.0'),
       num('tdamp', 'T damp', '0.1'),
     ],
-    build: v => [line('fix', 'berend', v.group, 'berendsen', v.temp_start, v.temp_end, v.tdamp)],
+    build: v => [line('fix', v.id, v.group, 'berendsen', v.temp_start, v.temp_end, v.tdamp)],
   },
   {
     id: 'fix_minimize',
@@ -1649,12 +1671,13 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Constraints',
     doc: 'https://docs.lammps.org/fix_shake.html',
     params: [
+      str('id', 'Fix ID', 'shake'),
       str('group', 'Group', 'water'),
       num('tol', 'Tolerance', '1.0e-4'),
       str('bonds', 'bonds keyword', 'b 1'),
       str('angles', 'angles keyword', 'a 1'),
     ],
-    build: v => [line('fix', 'shake', v.group, 'shake', v.tol, v.bonds, v.angles)],
+    build: v => [line('fix', v.id, v.group, 'shake', v.tol, v.bonds, v.angles)],
   },
   {
     id: 'fix_rigid',
@@ -1664,11 +1687,12 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Constraints',
     doc: 'https://docs.lammps.org/fix_rigid.html',
     params: [
+      str('id', 'Fix ID', 'rigid'),
       str('group', 'Group', 'molecules'),
       en('style', 'Style', ['small', 'nve', 'nvt', 'npt'], 'nvt'),
       str('args', 'Style args', 'temp 300 300 100'),
     ],
-    build: v => [line('fix', 'rigid', v.group, 'rigid', v.style, v.args)],
+    build: v => [line('fix', v.id, v.group, 'rigid', v.style, v.args)],
   },
   {
     id: 'fix_wall',
@@ -1678,6 +1702,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Walls',
     doc: 'https://docs.lammps.org/fix_wall.html',
     params: [
+      str('id', 'Fix ID', 'walls'),
       str('group', 'Group', 'all'),
       en('style', 'Potential', ['lj93', 'lj126', 'colloid', 'harmonic', 'reflect'], 'lj126'),
       en('axis', 'Axis', ['xlo', 'xhi', 'ylo', 'yhi', 'zlo', 'zhi'], 'zlo'),
@@ -1686,7 +1711,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       num('sigma', 'sigma', '1.0'),
       num('cutoff', 'cutoff', '3.0'),
     ],
-    build: v => [line('fix', 'walls', v.group, 'wall', v.style, v.axis, v.pos, v.epsilon, v.sigma, v.cutoff)],
+    build: v => [line('fix', v.id, v.group, 'wall', v.style, v.axis, v.pos, v.epsilon, v.sigma, v.cutoff)],
   },
   {
     id: 'fix_addforce',
@@ -1696,10 +1721,11 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Forcing',
     doc: 'https://docs.lammps.org/fix_addforce.html',
     params: [
+      str('id', 'Fix ID', 'pull'),
       str('group', 'Group', 'pull'),
       num('fx', 'Fx', '0.0'), num('fy', 'Fy', '0.0'), num('fz', 'Fz', '1.0'),
     ],
-    build: v => [line('fix', 'pull', v.group, 'addforce', v.fx, v.fy, v.fz)],
+    build: v => [line('fix', v.id, v.group, 'addforce', v.fx, v.fy, v.fz)],
   },
   {
     id: 'fix_momentum',
@@ -1709,12 +1735,13 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Constraints',
     doc: 'https://docs.lammps.org/fix_momentum.html',
     params: [
+      str('id', 'Fix ID', 'drift'),
       str('group', 'Group', 'all'),
       num('n', 'Every N steps', '100'),
       flag('linear', 'zero linear momentum'),
       flag('angular', 'zero angular momentum'),
     ],
-    build: v => [line('fix', 'drift', v.group, 'momentum', v.n, v.linear === 'yes' ? 'linear 1 1 1' : '', v.angular === 'yes' ? 'angular 1 1 1' : '')],
+    build: v => [line('fix', v.id, v.group, 'momentum', v.n, v.linear === 'yes' ? 'linear 1 1 1' : '', v.angular === 'yes' ? 'angular 1 1 1' : '')],
   },
   {
     id: 'fix_recenter',
@@ -1724,10 +1751,11 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Constraints',
     doc: 'https://docs.lammps.org/fix_recenter.html',
     params: [
+      str('id', 'Fix ID', 'rcm'),
       str('group', 'Group', 'all'),
       str('coords', 'INIT INIT INIT mode…', 'INIT INIT INIT'),
     ],
-    build: v => [line('fix', 'rcm', v.group, 'recenter', v.coords)],
+    build: v => [line('fix', v.id, v.group, 'recenter', v.coords)],
   },
   {
     id: 'run',
@@ -1773,13 +1801,14 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Integrators',
     doc: 'https://docs.lammps.org/fix_nh.html',
     params: [
+      str('id', 'Fix ID', 'integrate'),
       str('group', 'Group', 'all'),
       en('pstyle', 'Pressure components', ['iso', 'aniso', 'tri'], 'iso'),
       num('p_start', 'P start', '0.0'),
       num('p_end', 'P end', '0.0'),
       num('p_damp', 'P damp', '1.0'),
     ],
-    build: v => [line('fix', 'integrate', v.group, 'nph', v.pstyle, v.p_start, v.p_end, v.p_damp)],
+    build: v => [line('fix', v.id, v.group, 'nph', v.pstyle, v.p_start, v.p_end, v.p_damp)],
   },
   {
     id: 'fix_temp_rescale',
@@ -1789,6 +1818,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Thermostats',
     doc: 'https://docs.lammps.org/fix_temp_rescale.html',
     params: [
+      str('id', 'Fix ID', 'trescale'),
       str('group', 'Group', 'all'),
       num('n', 'Every N steps', '100'),
       num('t_start', 'T start', '300.0'),
@@ -1797,7 +1827,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       num('fraction', 'Fraction', '1.0', 'velocity rescale fraction'),
     ],
     build: v => [
-      line('fix', 'trescale', v.group, 'temp/rescale', v.n, v.t_start, v.t_end,
+      line('fix', v.id, v.group, 'temp/rescale', v.n, v.t_start, v.t_end,
         Number(v.window) > 0 ? line('window', v.window) : '',
         line('fraction', v.fraction)),
     ],
@@ -1810,12 +1840,13 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Thermostats',
     doc: 'https://docs.lammps.org/fix_temp_berendsen.html',
     params: [
+      str('id', 'Fix ID', 'tberend'),
       str('group', 'Group', 'all'),
       num('t_start', 'T start', '300.0'),
       num('t_end', 'T end', '300.0'),
       num('t_damp', 'T damp', '0.5'),
     ],
-    build: v => [line('fix', 'tberend', v.group, 'temp/berendsen', v.t_start, v.t_end, v.t_damp)],
+    build: v => [line('fix', v.id, v.group, 'temp/berendsen', v.t_start, v.t_end, v.t_damp)],
   },
   {
     id: 'fix_press_berendsen',
@@ -1825,13 +1856,14 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Barostats',
     doc: 'https://docs.lammps.org/fix_press_berendsen.html',
     params: [
+      str('id', 'Fix ID', 'pberend'),
       str('group', 'Group', 'all'),
       en('pstyle', 'Pressure components', ['iso', 'aniso', 'tri'], 'iso'),
       num('p_start', 'P start', '0.0'),
       num('p_end', 'P end', '0.0'),
       num('p_damp', 'P damp', '1.0'),
     ],
-    build: v => [line('fix', 'pberend', v.group, 'press/berendsen', v.pstyle, v.p_start, v.p_end, v.p_damp)],
+    build: v => [line('fix', v.id, v.group, 'press/berendsen', v.pstyle, v.p_start, v.p_end, v.p_damp)],
   },
   {
     id: 'fix_press_langevin',
@@ -1841,6 +1873,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Barostats',
     doc: 'https://docs.lammps.org/fix_press_langevin.html',
     params: [
+      str('id', 'Fix ID', 'plangevin'),
       str('group', 'Group', 'all'),
       en('pstyle', 'Pressure components', ['iso', 'aniso', 'tri'], 'iso'),
       num('p_start', 'P start', '0.0'),
@@ -1851,7 +1884,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       num('t_damp', 'Thermo T damp', '0.1'),
     ],
     build: v => [
-      line('fix', 'plangevin', v.group, 'press/langevin', v.pstyle,
+      line('fix', v.id, v.group, 'press/langevin', v.pstyle,
         v.p_start, v.p_end, v.p_damp, v.seed, v.t_temp, v.t_damp),
     ],
   },
@@ -1863,13 +1896,14 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Minimization',
     doc: 'https://docs.lammps.org/fix_box_relax.html',
     params: [
+      str('id', 'Fix ID', 'relax'),
       str('group', 'Group', 'all'),
       en('dims', 'Coupled dims', ['iso', 'aniso', 'x', 'y', 'z', 'xy', 'xz', 'yz'], 'iso'),
       num('p', 'Target P (or 0 for dim pairs)', '0.0'),
       num('vmax', 'vmax', '0.0001'),
       str('extra', 'Extra keywords', '', 'e.g. couple none · nreset 0 · dilate all · fixedpoint …'),
     ],
-    build: v => [line('fix', 'relax', v.group, 'box/relax', v.dims, v.p, 'vmax', v.vmax, v.extra)],
+    build: v => [line('fix', v.id, v.group, 'box/relax', v.dims, v.p, 'vmax', v.vmax, v.extra)],
   },
   {
     id: 'fix_deform',
@@ -1897,7 +1931,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
         v.extra,
         line('remap', v.remap),
         v.flip === 'yes' ? 'flip yes' : '',
-        line('units', v.units)
+        v.units ? line('units', v.units) : ''
       ),
     ],
   },
@@ -1909,6 +1943,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Integration',
     doc: 'https://docs.lammps.org/fix_dt_reset.html',
     params: [
+      str('id', 'Fix ID', 'adaptivedt'),
       str('group', 'Group', 'all'),
       num('n', 'Check every N steps', '1'),
       num('tmin', 'dt lower bound', '0.0001'),
@@ -1916,7 +1951,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       num('xmax', 'Max atom displacement per step', '0.1'),
       str('extra', 'Extra keywords', '', 'e.g. emin E · error warn'),
     ],
-    build: v => [line('fix', 'adaptivedt', v.group, 'dt/reset', v.n, v.tmin, v.tmax, v.xmax, v.extra)],
+    build: v => [line('fix', v.id, v.group, 'dt/reset', v.n, v.tmin, v.tmax, v.xmax, v.extra)],
   },
   {
     id: 'fix_enforce2d',
@@ -1925,8 +1960,9 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     section: 'control',
     category: 'Constraints',
     doc: 'https://docs.lammps.org/fix_enforce2d.html',
-    params: [str('group', 'Group', 'all')],
-    build: v => [line('fix', 'flat', v.group, 'enforce2d')],
+    params: [
+      str('id', 'Fix ID', 'flat'),str('group', 'Group', 'all')],
+    build: v => [line('fix', v.id, v.group, 'enforce2d')],
   },
   {
     id: 'fix_spring',
@@ -1936,12 +1972,13 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Forcing',
     doc: 'https://docs.lammps.org/fix_spring.html',
     params: [
+      str('id', 'Fix ID', 'springy'),
       str('group', 'Group', 'pull'),
       num('k', 'Spring constant K', '10.0'),
       en('mode', 'Mode', ['tether', 'pull'], 'tether'),
       str('coords', 'Tether point x y z (or pull dir x y z)', '0 0 0'),
     ],
-    build: v => [line('fix', 'springy', v.group, 'spring', v.k, v.coords)],
+    build: v => [line('fix', v.id, v.group, 'spring', v.k, v.coords)],
   },
   {
     id: 'fix_drag',
@@ -1951,11 +1988,12 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Forcing',
     doc: 'https://docs.lammps.org/fix_drag.html',
     params: [
+      str('id', 'Fix ID', 'dragged'),
       str('group', 'Group', 'all'),
       num('d', 'Drag coefficient D', '5.0'),
       num('max', 'Max force cutoff', '20.0'),
     ],
-    build: v => [line('fix', 'dragged', v.group, 'drag', v.d, v.max)],
+    build: v => [line('fix', v.id, v.group, 'drag', v.d, v.max)],
   },
   {
     id: 'fix_viscous',
@@ -1965,10 +2003,11 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Forcing',
     doc: 'https://docs.lammps.org/fix_viscous.html',
     params: [
+      str('id', 'Fix ID', 'goo'),
       str('group', 'Group', 'all'),
       num('gamma', 'Damping γ (per unit mass)', '0.5'),
     ],
-    build: v => [line('fix', 'goo', v.group, 'viscous', v.gamma)],
+    build: v => [line('fix', v.id, v.group, 'viscous', v.gamma)],
   },
   {
     id: 'fix_gravity',
@@ -1978,11 +2017,12 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Forcing',
     doc: 'https://docs.lammps.org/fix_gravity.html',
     params: [
+      str('id', 'Fix ID', 'grav'),
       str('group', 'Group', 'all'),
       num('magnitude', 'Magnitude g', '9.8'),
       str('direction', 'Direction', 'down', 'e.g. down · up · chute dir …'),
     ],
-    build: v => [line('fix', 'grav', v.group, 'gravity', v.magnitude, v.direction)],
+    build: v => [line('fix', v.id, v.group, 'gravity', v.magnitude, v.direction)],
   },
   {
     id: 'fix_efield',
@@ -1992,11 +2032,12 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Forcing',
     doc: 'https://docs.lammps.org/fix_efield.html',
     params: [
+      str('id', 'Fix ID', 'field'),
       str('group', 'Group', 'ions'),
       num('ex', 'Ex', '0.0'), num('ey', 'Ey', '1.0'), num('ez', 'Ez', '0.0'),
       str('extra', 'Extra keywords', '', 'e.g. region zone'),
     ],
-    build: v => [line('fix', 'field', v.group, 'efield', v.ex, v.ey, v.ez, v.extra)],
+    build: v => [line('fix', v.id, v.group, 'efield', v.ex, v.ey, v.ez, v.extra)],
   },
   {
     id: 'fix_setforce',
@@ -2006,12 +2047,13 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Forcing',
     doc: 'https://docs.lammps.org/fix_setforce.html',
     params: [
+      str('id', 'Fix ID', 'pinforce'),
       str('group', 'Group', 'frozen'),
       str('fx', 'Fx (NULL or value)', 'NULL'),
       str('fy', 'Fy', 'NULL'),
       str('fz', 'Fz', 'NULL'),
     ],
-    build: v => [line('fix', 'pinforce', v.group, 'setforce', v.fx, v.fy, v.fz)],
+    build: v => [line('fix', v.id, v.group, 'setforce', v.fx, v.fy, v.fz)],
   },
   {
     id: 'fix_aveforce',
@@ -2021,10 +2063,11 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Forcing',
     doc: 'https://docs.lammps.org/fix_aveforce.html',
     params: [
+      str('id', 'Fix ID', 'shared'),
       str('group', 'Group', 'interface'),
       str('fx', 'Fx', '0.0'), str('fy', 'Fy', '0.0'), str('fz', 'Fz', '-v_cm'),
     ],
-    build: v => [line('fix', 'shared', v.group, 'aveforce', v.fx, v.fy, v.fz)],
+    build: v => [line('fix', v.id, v.group, 'aveforce', v.fx, v.fy, v.fz)],
   },
   {
     id: 'fix_move',
@@ -2034,11 +2077,12 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Forcing',
     doc: 'https://docs.lammps.org/fix_move.html',
     params: [
+      str('id', 'Fix ID', 'driver'),
       str('group', 'Group', 'piston'),
       en('style', 'Style', ['linear', 'wiggle', 'rotate'], 'linear'),
       str('args', 'Style args', '0.0 0.0 2.0', 'linear Vx Vy Vz · wiggle A T axis · rotate …'),
     ],
-    build: v => [line('fix', 'driver', v.group, 'move', v.style, v.args)],
+    build: v => [line('fix', v.id, v.group, 'move', v.style, v.args)],
   },
   {
     id: 'fix_indent',
@@ -2048,11 +2092,12 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Forcing',
     doc: 'https://docs.lammps.org/fix_indent.html',
     params: [
+      str('id', 'Fix ID', 'tip'),
       str('group', 'Group', 'all'),
       num('k', 'Indenter stiffness K', '10.0'),
       str('args', 'Shape args', 'sphere 0 0 15 5 units box'),
     ],
-    build: v => [line('fix', 'tip', v.group, 'indent', v.k, v.args)],
+    build: v => [line('fix', v.id, v.group, 'indent', v.k, v.args)],
   },
   {
     id: 'fix_wall_potential',
@@ -2062,6 +2107,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Walls',
     doc: 'https://docs.lammps.org/fix_wall.html',
     params: [
+      str('id', 'Fix ID', 'walls'),
       str('group', 'Group', 'all'),
       en('style', 'Potential', ['lj93', 'lj126', 'lj1043', 'colloid', 'harmonic', 'morse'], 'lj126'),
       en('face', 'Wall face', ['xlo', 'xhi', 'ylo', 'yhi', 'zlo', 'zhi'], 'zlo'),
@@ -2072,8 +2118,8 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       en('units', 'units kw', ['box', 'lattice', 'reduced'], 'box'),
     ],
     build: v => [
-      line('fix', 'walls', v.group, 'wall', v.style, v.face, v.pos,
-        v.epsilon, v.sigma, v.cutoff, line('units', v.units)),
+      line('fix', v.id, v.group, 'wall', v.style, v.face, v.pos,
+        v.epsilon, v.sigma, v.cutoff, v.units ? line('units', v.units) : ''),
     ],
   },
   {
@@ -2084,11 +2130,12 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Walls',
     doc: 'https://docs.lammps.org/fix_wall_reflect.html',
     params: [
+      str('id', 'Fix ID', 'bounce'),
       str('group', 'Group', 'all'),
       en('face', 'Wall face', ['xlo', 'xhi', 'ylo', 'yhi', 'zlo', 'zhi'], 'zhi'),
       num('pos', 'Position', '30.0'),
     ],
-    build: v => [line('fix', 'bounce', v.group, 'wall/reflect', v.face, v.pos)],
+    build: v => [line('fix', v.id, v.group, 'wall/reflect', v.face, v.pos)],
   },
   {
     id: 'fix_deposit',
@@ -2098,6 +2145,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Insert / remove',
     doc: 'https://docs.lammps.org/fix_deposit.html',
     params: [
+      str('id', 'Fix ID', 'deposit'),
       str('group', 'Group for new atoms', 'all'),
       num('n', 'N — total insertions', '1000'),
       str('type', 'Atom type of inserted atoms', '1'),
@@ -2106,13 +2154,15 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       str('region', 'region-ID (insertion volume)', 'myblock'),
       flag('near', 'near R — keep distance from existing'),
       num('nearDist', 'near distance R', '2.0'),
-      en('units', 'units kw', ['lattice', 'box'], 'box'),
+      en('units', 'units kw', ['', 'lattice', 'box'], '', 'empty = LAMMPS default (lattice)'),
+      str('extra', 'More keywords', '', 'vz lo hi · gaussian x y z s · rate V · target …'),
     ],
     build: v => [
-      line('fix', 'deposit', v.group, 'deposit', v.n, v.type, v.m, v.seed,
+      line('fix', v.id, v.group, 'deposit', v.n, v.type, v.m, v.seed,
         v.region && line('region', v.region),
         v.near === 'yes' ? line('near', v.nearDist) : '',
-        line('units', v.units)),
+        v.units ? line('units', v.units) : '',
+        v.extra),
     ],
   },
   {
@@ -2123,6 +2173,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Insert / remove',
     doc: 'https://docs.lammps.org/fix_pour.html',
     params: [
+      str('id', 'Fix ID', 'pour'),
       str('group', 'Group for new particles', 'all'),
       num('n', 'N — total particles', '10000'),
       str('type', 'Atom type of inserted particles', '1'),
@@ -2131,13 +2182,15 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       str('diam', 'diam style args', 'range 0.9 1.1', 'one D · range Dlo Dhi · poly …'),
       str('vol', 'vol fraction + attempts', '', 'e.g. 0.33 100'),
       num('rate', 'Insertion-volume descent velocity', '0.0'),
+      str('extra', 'More keywords', '', 'dens lo hi · vel … · mol ID …'),
     ],
     build: v => [
-      line('fix', 'pour', v.group, 'pour', v.n, v.type, v.seed,
+      line('fix', v.id, v.group, 'pour', v.n, v.type, v.seed,
         v.region && line('region', v.region),
         line('diam', v.diam),
         v.vol.trim() ? line('vol', v.vol) : '',
-        Number(v.rate) !== 0 ? line('rate', v.rate) : ''),
+        Number(v.rate) !== 0 ? line('rate', v.rate) : '',
+        v.extra),
     ],
   },
   {
@@ -2148,13 +2201,14 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Insert / remove',
     doc: 'https://docs.lammps.org/fix_evaporate.html',
     params: [
+      str('id', 'Fix ID', 'evap'),
       str('group', 'Group', 'liquid'),
       num('n', 'Delete one atom every N steps', '100'),
       str('region', 'Restrict to region', '', 'optional region ID'),
       flag('molecule', 'molecule yes — remove whole molecules'),
     ],
     build: v => [
-      line('fix', 'evap', v.group, 'evaporate', v.n,
+      line('fix', v.id, v.group, 'evaporate', v.n,
         v.region && line('region', v.region),
         v.molecule === 'yes' ? 'molecule yes' : ''),
     ],
@@ -2167,11 +2221,12 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Thermostats',
     doc: 'https://docs.lammps.org/fix_heat.html',
     params: [
+      str('id', 'Fix ID', 'heater'),
       str('group', 'Group', 'hotend'),
       num('n', 'Apply every N steps', '100'),
       num('flux', 'Energy add rate (+/-)', '1.0'),
     ],
-    build: v => [line('fix', 'heater', v.group, 'heat', v.n, v.flux)],
+    build: v => [line('fix', v.id, v.group, 'heat', v.n, v.flux)],
   },
   {
     id: 'fix_gcmc',
@@ -2181,6 +2236,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Insert / remove',
     doc: 'https://docs.lammps.org/fix_gcmc.html',
     params: [
+      str('id', 'Fix ID', 'exchange'),
       str('group', 'Group (gas type)', 'gas'),
       num('nevery', 'Nevery (MD steps per MC attempt)', '100'),
       num('nmove', 'Nmove rotation/displacement attempts', '10'),
@@ -2192,7 +2248,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       str('extra', 'Keywords', 'pressure 1.0', 'e.g. pressure P · fugacity · molecule …'),
     ],
     build: v => [
-      line('fix', 'exchange', v.group, 'gcmc', v.nevery, v.nmove, v.nexchg,
+      line('fix', v.id, v.group, 'gcmc', v.nevery, v.nmove, v.nexchg,
         v.nwexchange, v.temp, v.seed, 'disp', v.disp, v.extra),
     ],
   },
@@ -2421,6 +2477,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Averaging',
     doc: 'https://docs.lammps.org/fix_ave_chunk.html',
     params: [
+      str('id', 'Fix ID', 'avechunk'),
       str('group', 'Group', 'all'),
       str('chunk', 'chunk-ID (compute chunk/atom)', 'myChunk'),
       num('nevery', 'Nevery', '100'),
@@ -2430,7 +2487,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       str('file', 'Output file', 'profile.txt'),
       str('extra', 'Keywords', '', 'e.g. norm sample · ave running · bias …'),
     ],
-    build: v => [line('fix', 'avechunk', v.group, 'ave/chunk', v.chunk,
+    build: v => [line('fix', v.id, v.group, 'ave/chunk', v.chunk,
       v.nevery, v.nrepeat, v.nfreq, v.values, v.file && line('file', v.file), v.extra)],
   },
   {
@@ -2441,6 +2498,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Averaging',
     doc: 'https://docs.lammps.org/fix_ave_correlate.html',
     params: [
+      str('id', 'Fix ID', 'corr'),
       str('group', 'Group (ignored)', 'all'),
       num('nevery', 'Nevery', '100'),
       num('nrepeat', 'Nrepeat', '5'),
@@ -2451,7 +2509,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       str('file', 'Output file', 'corr.txt'),
       str('extra', 'Keywords', '', 'e.g. ave running · type auto/upper'),
     ],
-    build: v => [line('fix', 'corr', v.group, 'ave/correlate', v.nevery, v.nrepeat,
+    build: v => [line('fix', v.id, v.group, 'ave/correlate', v.nevery, v.nrepeat,
       v.nfreq, v.p, v.m, v.values, v.file && line('file', v.file), v.extra)],
   },
   {
@@ -2462,12 +2520,13 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Constraints',
     doc: 'https://docs.lammps.org/fix_qeq_reaxff.html',
     params: [
+      str('id', 'Fix ID', 'qeq'),
       str('group', 'Group', 'all'),
       num('nevery', 'Every N steps', '1'),
       num('lepsilon', 'Least-squares epsilon', '1.0e-6'),
       num('itermax', 'Max iterations', '200'),
     ],
-    build: v => [line('fix', 'qeq', v.group, 'qeq/reaxff', v.nevery, v.lepsilon, v.itermax)],
+    build: v => [line('fix', v.id, v.group, 'qeq/reaxff', v.nevery, v.lepsilon, v.itermax)],
   },
   {
     id: 'fix_reaxff_species',
@@ -2477,13 +2536,14 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Output',
     doc: 'https://docs.lammps.org/fix_reaxff_species.html',
     params: [
+      str('id', 'Fix ID', 'spec'),
       num('nevery', 'Every N steps', '100'),
       num('nmaxmol', 'Max molecules estimate', '100'),
       str('file', 'Species file', 'species.txt'),
       str('bulk', 'Bulk file (optional)', '', 'e.g. bulk.txt'),
       str('maxspec', 'Max species', '', 'keyword maxspec N'),
     ],
-    build: v => [line('fix', 'spec', 'all', 'reaxff/species', v.nevery, v.nmaxmol,
+    build: v => [line('fix', v.id, 'all', 'reaxff/species', v.nevery, v.nmaxmol,
       v.file && line('file', v.file), v.bulk && line('bulk', v.bulk), v.maxspec)],
   },
   {
@@ -2494,13 +2554,14 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Thermostats',
     doc: 'https://docs.lammps.org/fix_temp_csvr.html',
     params: [
+      str('id', 'Fix ID', 'csvr'),
       str('group', 'Group', 'all'),
       num('t_start', 'T start', '300.0'),
       num('t_end', 'T end', '300.0'),
       num('t_damp', 'T damp', '0.1'),
       num('seed', 'Seed', '12345'),
     ],
-    build: v => [line('fix', 'csvr', v.group, 'temp/csvr', v.t_start, v.t_end, v.t_damp, v.seed)],
+    build: v => [line('fix', v.id, v.group, 'temp/csvr', v.t_start, v.t_end, v.t_damp, v.seed)],
   },
   {
     id: 'fix_bond_break',
@@ -2510,13 +2571,14 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Insert / remove',
     doc: 'https://docs.lammps.org/fix_bond_break.html',
     params: [
+      str('id', 'Fix ID', 'brk'),
       str('group', 'Group', 'all'),
       num('n', 'Check every N steps', '1'),
       str('btype', 'Bond type', '1'),
       num('rmin', 'Break beyond distance', '5.0'),
       num('maxdist', 'maxdistance (optional)', '', ''),
     ],
-    build: v => [line('fix', 'brk', v.group, 'bond/break', v.n, v.btype, v.rmin,
+    build: v => [line('fix', v.id, v.group, 'bond/break', v.n, v.btype, v.rmin,
       Number(v.maxdist) > 0 ? line('maxdistance', v.maxdist) : '')],
   },
   {
@@ -2527,6 +2589,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     category: 'Insert / remove',
     doc: 'https://docs.lammps.org/fix_bond_create.html',
     params: [
+      str('id', 'Fix ID', 'bcreate'),
       str('group', 'Group', 'all'),
       num('n', 'Check every N steps', '1'),
       str('btype', 'Bond type', '1'),
@@ -2534,7 +2597,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       num('rhigh', '…but above distance', '0.8'),
       str('iparam', 'atype + iparams', '1 0 1 1 0'),
     ],
-    build: v => [line('fix', 'bcreate', v.group, 'bond/create', v.n, v.btype,
+    build: v => [line('fix', v.id, v.group, 'bond/create', v.n, v.btype,
       v.rlow, v.rhigh, v.iparam)],
   },
   {

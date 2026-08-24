@@ -152,6 +152,7 @@ const isRequired = (defId: string, key: string): boolean =>
 
 export interface FlowNode {
   uid: string;
+  defId: string;
   label: string;
   sublabel: string;
   section: string;
@@ -183,6 +184,7 @@ export const deriveFlowchart = (model: ScriptModel): FlowGraph => {
     const def = COMMAND_BY_ID[step.defId];
     nodes.push({
       uid: step.uid,
+      defId: step.defId,
       label: def.command === 'fix' ? fixLabel(def.id, step) : def.command,
       sublabel: shortParams(def, step),
       section: def.section,

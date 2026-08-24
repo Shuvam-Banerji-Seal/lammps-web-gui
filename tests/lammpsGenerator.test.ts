@@ -56,7 +56,7 @@ describe('LAMMPS script generator', () => {
     expect(text).toContain('region box block 0 20 0 20 0 20');
     expect(text).toContain('create_box 1 box');
     expect(text).toContain('mass 1 1.0');
-    expect(text).toContain('velocity all create 1.0 12345 dist gaussian');
+    expect(text).toContain('velocity all create 1.0 12345'); // dist kw omitted = LAMMPS default (gaussian)
     expect(text).toContain('pair_style lj/cut 2.5');
     expect(text).toContain('pair_coeff * * 1.0 1.0 2.5');
     expect(text).toContain('thermo_style custom step temp pe press');

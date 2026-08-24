@@ -995,11 +995,13 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
               onClick={() => onSelect(node.uid)}
               style={{ touchAction: 'none' }}
               className={`group relative w-full cursor-grab rounded-xl border p-3 transition-shadow active:cursor-grabbing ${
-                isSel
-                  ? `${ct.active} ring-1 ring-[#7fa66b]/40`
-                  : node.enabled
-                    ? ct.nodeCard
-                    : `${ct.nodeDisabled} opacity-50`
+                node.defId === 'raw_line'
+                  ? `border-dashed border-[#6b5124]/70 bg-[#332612]/25 ${isSel ? 'ring-1 ring-[#d9a05b]/60' : ''}`
+                  : isSel
+                    ? `${ct.active} ring-1 ring-[#7fa66b]/40`
+                    : node.enabled
+                      ? ct.nodeCard
+                      : `${ct.nodeDisabled} opacity-50`
               } ${isDragging ? 'opacity-30' : ''}`}
             >
               <div className="mb-1 flex items-center justify-between">
@@ -1046,7 +1048,14 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <code className={`text-xs font-bold ${ct.accentCode}`}>{node.label}</code>
+                <code className={`text-xs font-bold ${node.defId === 'raw_line' ? 'text-[#e4b877]' : ct.accentCode}`}>
+                  {node.defId === 'raw_line' ? 'raw' : node.label}
+                </code>
+                {node.defId === 'raw_line' && (
+                  <span className={`rounded px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wide ${ct.warn.split(' ').slice(-1)}`}>
+                    not in library
+                  </span>
+                )}
               </div>
               {node.sublabel && (
                 <div className={`mt-0.5 truncate text-[10px] font-mono ${ct.muted}`}>{node.sublabel}</div>

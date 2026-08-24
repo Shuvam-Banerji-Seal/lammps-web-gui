@@ -597,14 +597,14 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 <div
                   key={tab.id}
                   onClick={() => switchTab(tab.id)}
-                  className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-t-lg border-b-2 px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                  className={`group flex shrink-0 cursor-pointer items-center gap-1 rounded-t-lg border-b-2 px-1.5 py-1.5 text-[11px] font-medium transition-colors sm:gap-1.5 sm:px-2.5 ${
                     active ? ct.active : `${ct.muted} border-transparent ${ct.hoverSurface}`
                   }`}
                   title={tab.model.title || 'Untitled'}
                 >
                   <FileCode2 size={11} className="shrink-0 opacity-60" />
-                  <span className="max-w-[110px] truncate">{tab.model.title || 'Untitled'}</span>
-                  <span className={`text-[9px] tabular-nums opacity-50`}>{tab.model.steps.length}</span>
+                  <span className="max-w-[72px] truncate sm:max-w-[110px]">{tab.model.title || 'Untitled'}</span>
+                  <span className={`hidden text-[9px] tabular-nums opacity-50 sm:inline`}>{tab.model.steps.length}</span>
                   <button
                     onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
                     className={`rounded p-0.5 opacity-0 transition-opacity hover:text-[#cf8b76] group-hover:opacity-100 ${
@@ -638,25 +638,25 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
           </button>
         </div>
 
-        {/* Toolbar (wraps on narrow screens) */}
-        <div className={`flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b px-3 py-1 ${ct.divider}`}>
-          <div className="flex min-w-0 items-center gap-2">
+        {/* Toolbar (scrollable on mobile, two groups on desktop) */}
+        <div className={`flex min-h-10 shrink-0 items-center justify-between gap-x-2 overflow-x-auto border-b px-3 py-1 ${ct.divider}`}>
+          <div className="flex min-w-0 shrink-0 items-center gap-1.5">
             {!paletteOpen && (
-              <button onClick={() => setPaletteOpen(true)} className={`p-1 rounded ${ct.muted} ${ct.hoverSurface}`} title="Open palette">
+              <button onClick={() => setPaletteOpen(true)} className={`shrink-0 rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Open palette">
                 <ChevronRight size={16} />
               </button>
             )}
             <input
               value={model.title}
               onChange={e => setModel(prev => ({ ...prev, title: e.target.value }))}
-              className={`w-32 min-w-0 flex-shrink rounded bg-transparent px-1.5 py-0.5 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-[#7fa66b] sm:w-40 ${ct.headerText}`}
+              className={`w-24 min-w-0 flex-shrink rounded bg-transparent px-1 py-0.5 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-[#7fa66b] sm:w-40 sm:px-1.5 ${ct.headerText}`}
               aria-label="Script title"
             />
             <span className={`hidden whitespace-nowrap text-[10px] md:block ${ct.muted}`}>
               {isManual ? 'manual' : `${model.steps.length} steps · ${generated.emitted.length} lines`}
             </span>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1.5">
             <button
               onClick={undo}
               disabled={!canUndo}
@@ -917,7 +917,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 
             {/* Zoom controls */}
             <div
-              className={`absolute bottom-3 right-3 z-20 flex items-center gap-1 rounded-full border px-1.5 py-1 shadow-lg ${ct.card}`}
+              className={`absolute bottom-3 right-3 z-20 flex items-center gap-0.5 rounded-full border px-1 py-0.5 shadow-lg sm:gap-1 sm:px-1.5 sm:py-1 ${ct.card}`}
               onPointerDown={e => e.stopPropagation()}
               onWheel={e => e.stopPropagation()}
             >
@@ -954,7 +954,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 <Maximize2 size={14} />
               </button>
             </div>
-            <p className={`pointer-events-none absolute bottom-3 left-3 text-[10px] ${ct.muted}`}>
+            <p className={`pointer-events-none absolute bottom-3 left-3 hidden text-[10px] md:block ${ct.muted}`}>
               wheel = zoom · drag background = pan · grab cards to reorder
             </p>
           </div>

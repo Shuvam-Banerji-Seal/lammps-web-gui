@@ -55,13 +55,10 @@ const App: React.FC = () => {
     <div className={`flex h-screen w-screen flex-col overflow-hidden font-sans ${ct.bg} ${ct.text}`}>
       {/* Top-level module switcher */}
       <header className={`flex h-12 shrink-0 items-center justify-between border-b px-4 ${ct.panel}`}>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <FlaskConical size={18} className="text-[#9dc487]" />
-            <span className="text-sm font-bold tracking-tight">LAMMPS Workbench</span>
-            <span className={`rounded px-1.5 py-0.5 text-[9px] ${ct.chip} ${ct.muted}`}>
-              by Shuvam Banerji Seal
-            </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <FlaskConical size={18} className="shrink-0 text-[#9dc487]" />
+            <span className="hidden text-sm font-bold tracking-tight sm:inline">LAMMPS Workbench</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -71,14 +68,14 @@ const App: React.FC = () => {
                 key={m.id}
                 onClick={() => switchModule(m.id)}
                 title={m.hint}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors sm:gap-1.5 sm:px-3 ${
                   module === m.id
                     ? ct.active
                     : `${ct.muted} ${ct.hoverSurface} border border-transparent`
                 }`}
               >
                 {m.icon}
-                {m.label}
+                <span className="hidden sm:inline">{m.label}</span>
               </button>
             ))}
           </nav>
@@ -86,7 +83,7 @@ const App: React.FC = () => {
             onClick={toggleTheme}
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             aria-label="Toggle color theme"
-            className={`rounded-lg p-2 transition-colors ${ct.button}`}
+            className={`rounded-lg p-1.5 transition-colors sm:p-2 ${ct.button}`}
           >
             {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
           </button>

@@ -558,9 +558,9 @@ const ViewerModule: React.FC<{
         <div className={`flex items-center justify-between px-4 h-14 border-b ${ct.divider}`}>
           <div className="flex items-center gap-2.5">
             <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Molecule3D logo" className="w-8 h-8" />
-            <div>
+            <div className="min-w-0">
               <h1 className="text-base font-bold tracking-tight">Molecule3D</h1>
-              <p className={`text-[10px] leading-none ${ct.muted}`}>Molecular Structure Viewer</p>
+              <p className={`hidden text-[10px] leading-none sm:block ${ct.muted}`}>Molecular Structure Viewer</p>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
@@ -1015,18 +1015,18 @@ const ViewerModule: React.FC<{
       <main className={`flex-1 relative min-w-0 ${ct.bg}`}>
         {/* Top-left controls */}
         <div className="absolute top-3 left-3 right-3 z-10 flex items-start justify-between pointer-events-none">
-          <div className="pointer-events-auto flex gap-2">
+          <div className="pointer-events-auto flex gap-1 sm:gap-2">
             {!isSidebarOpen && (
               <button
                 onClick={() => setIsSidebarOpen(true)}
-                className={`p-2.5 rounded-lg shadow-lg backdrop-blur ${ct.sidebar}`}
+                className={`rounded-lg p-1.5 shadow-lg backdrop-blur sm:p-2.5 ${ct.sidebar}`}
                 title="Open sidebar (O)"
               >
                 <Menu size={18} />
               </button>
             )}
             {moleculeData && (
-              <div className={`px-3 py-2 rounded-lg shadow-lg text-[11px] font-mono hidden sm:block backdrop-blur ${ct.card}`}>
+              <div className={`rounded-lg px-2 py-1.5 text-[10px] shadow-lg backdrop-blur hidden sm:block sm:px-3 sm:py-2 sm:text-[11px] font-mono ${ct.card}`}>
                 {moleculeData.atoms.length.toLocaleString()} atoms
                 {moleculeData.bonds.length > 0 && ` · ${moleculeData.bonds.length.toLocaleString()} bonds`}
                 {moleculeData.box && ' · cell'}
@@ -1040,24 +1040,24 @@ const ViewerModule: React.FC<{
               </div>
             )}
           </div>
-          <div className="pointer-events-auto flex gap-2">
+          <div className="pointer-events-auto flex gap-1 sm:gap-2">
             <button
               onClick={() => emitCameraCommand({ type: 'zoom', delta: 1 })}
-              className={`p-2.5 rounded-lg shadow-lg backdrop-blur ${ct.sidebar}`}
+              className={`rounded-lg p-1.5 shadow-lg backdrop-blur sm:p-2.5 ${ct.sidebar}`}
               title="Zoom in (+)"
             >
               <ZoomIn size={18} />
             </button>
             <button
               onClick={() => emitCameraCommand({ type: 'zoom', delta: -1 })}
-              className={`p-2.5 rounded-lg shadow-lg backdrop-blur ${ct.sidebar}`}
+              className={`rounded-lg p-1.5 shadow-lg backdrop-blur sm:p-2.5 ${ct.sidebar}`}
               title="Zoom out (−)"
             >
               <ZoomOut size={18} />
             </button>
             <button
               onClick={() => setShowHelp(true)}
-              className={`p-2.5 rounded-lg shadow-lg backdrop-blur ${ct.sidebar}`}
+              className={`rounded-lg p-1.5 shadow-lg backdrop-blur sm:p-2.5 ${ct.sidebar}`}
               title="Keyboard shortcuts (H)"
             >
               <HelpCircle size={18} />
@@ -1066,12 +1066,12 @@ const ViewerModule: React.FC<{
         </div>
 
         {/* Bottom toolbar */}
-        <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 px-2 py-1.5 rounded-full border shadow-2xl backdrop-blur ${
+        <div className={`absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-full border px-1 py-1 shadow-2xl backdrop-blur sm:bottom-4 sm:gap-1 sm:px-2 sm:py-1.5 ${
           theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
         }`}>
           <button
             onClick={() => setAutoRotate(v => !v)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium transition-colors ${
+            className={`flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium transition-colors sm:gap-1.5 sm:px-3 sm:py-2 ${
               autoRotate ? ct.accentText : `${ct.muted}`
             }`}
             title="Auto-rotate (Space)"
@@ -1115,7 +1115,7 @@ const ViewerModule: React.FC<{
           <button
             onClick={() => (isRecording ? stopRecording() : startRecording())}
             disabled={savingVideo}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium transition-colors ${
+            className={`flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium transition-colors sm:gap-1.5 sm:px-3 sm:py-2 ${
               isRecording ? 'text-red-400' : savingVideo ? 'opacity-50' : ct.muted
             }`}
             title={isRecording ? 'Stop recording & save video' : 'Record high-quality video (MP4 where supported)'}
@@ -1149,7 +1149,7 @@ const ViewerModule: React.FC<{
 
         {/* Trajectory playback bar (P5) */}
         {frameCount > 1 && (
-          <div className={`absolute bottom-20 sm:bottom-16 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full border shadow-2xl backdrop-blur ${
+          <div className={`absolute bottom-14 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border px-2 py-1 shadow-2xl backdrop-blur sm:bottom-16 sm:gap-2 sm:px-3 sm:py-1.5 ${
             theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
           }`}>
             <button
@@ -1224,7 +1224,7 @@ const ViewerModule: React.FC<{
 
         {/* Hint for first-time users */}
         {moleculeData && frameCount <= 1 && selectedIds.length === 0 && (
-          <div className={`absolute bottom-20 sm:bottom-16 left-1/2 -translate-x-1/2 z-[5] text-[10px] px-3 py-1 rounded-full ${ct.muted}`}>
+          <div className={`absolute bottom-14 left-1/2 z-[5] hidden -translate-x-1/2 rounded-full px-3 py-1 text-[10px] sm:bottom-20 sm:block ${ct.muted}`}>
             Press <kbd className={`px-1 rounded ${ct.chip}`}>H</kbd> for keyboard shortcuts · drag & drop files anywhere
           </div>
         )}

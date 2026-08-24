@@ -133,7 +133,7 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
       <div
         className={`overflow-y-auto border-r ${ct.panel} ${
           isMobile
-            ? `fixed inset-y-0 left-0 z-40 w-96 max-w-[92vw] shadow-2xl transition-transform ${
+            ? `fixed inset-y-0 left-0 z-40 w-80 max-w-[92vw] shadow-2xl transition-transform sm:w-96 ${
                 optionsOpen ? 'translate-x-0' : '-translate-x-full'
               }`
             : 'w-96 shrink-0'
@@ -315,7 +315,7 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
 
       {/* Right: generated script */}
       <div className={`flex min-w-0 flex-1 flex-col ${ct.bg}`}>
-        <div className={`flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b px-3 py-1 ${ct.divider}`}>
+        <div className={`flex min-h-10 shrink-0 items-center justify-between gap-x-2 overflow-x-auto border-b px-3 py-1 ${ct.divider}`}>
           <div className="flex items-center gap-2">
             {isMobile && (
               <button
@@ -414,7 +414,7 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
 
         {/* Script text */}
         <div className="min-h-0 flex-1 overflow-auto p-4">
-          <pre className={`text-[11px] leading-relaxed font-mono whitespace-pre-wrap ${ct.muted}`}>
+          <pre className={`text-[10px] leading-relaxed font-mono whitespace-pre-wrap sm:text-[11px] ${ct.muted}`}>
             {result.text}
           </pre>
         </div>

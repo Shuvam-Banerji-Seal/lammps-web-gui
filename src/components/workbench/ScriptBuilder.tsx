@@ -645,7 +645,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
         </div>
 
         {/* Toolbar (scrollable on mobile, two groups on desktop) */}
-        <div className={`flex min-h-10 shrink-0 items-center justify-between gap-x-2 overflow-x-auto border-b px-3 py-1 ${ct.divider}`}>
+        <div className={`flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-x-1 gap-y-1 border-b px-2 py-1 sm:gap-x-2 sm:px-3 ${ct.divider}`}>
           <div className="flex min-w-0 shrink-0 items-center gap-1.5">
             {!paletteOpen && (
               <button onClick={() => setPaletteOpen(true)} className={`shrink-0 rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Open palette">

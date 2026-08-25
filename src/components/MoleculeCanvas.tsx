@@ -13,6 +13,7 @@ import LightingRig from './LightingRig';
 import CameraRig from './CameraRig';
 import AtomLabels from './AtomLabels';
 import MeasurementOverlay from './MeasurementOverlay';
+import { CanvasErrorBoundary } from './CanvasErrorBoundary';
 
 interface MoleculeCanvasProps {
   data: MoleculeData;
@@ -165,7 +166,7 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
   );
 
   return (
-    <>
+    <CanvasErrorBoundary>
       <Canvas
         shadows={shadowsEnabled ? 'percentage' : false}
         camera={{ position: [boundingRadius, boundingRadius * 0.8, boundingRadius], fov: config.fov }}
@@ -241,7 +242,7 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
           </div>
         </div>
       )}
-    </>
+    </CanvasErrorBoundary>
   );
 };
 

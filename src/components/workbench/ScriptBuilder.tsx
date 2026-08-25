@@ -1150,7 +1150,7 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
         <button
           onClick={(e) => { e.stopPropagation(); onEdgeClick(i); }}
           title="Edit this connection — insert or rewire steps here"
-          className={`flex h-5 items-center gap-1 rounded-full border px-2 text-[9px] font-medium transition-colors ${
+          className={`flex h-5 items-center gap-1 rounded-full border px-2.5 text-[10px] font-medium transition-colors ${
             menuOpen
               ? ct.edgeActive
               : ct.edgePill
@@ -1293,7 +1293,7 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
                 )}
               </div>
               {node.sublabel && (
-                <div className={`mt-0.5 truncate text-[10px] font-mono ${ct.muted}`}>{node.sublabel}</div>
+                <div className={`mt-1 truncate text-[11px] font-mono ${ct.muted}`}>{node.sublabel}</div>
               )}
             </div>
             {i === flow.nodes.length - 1 && <DropLine ct={ct} active={dragUid !== null && overIndex === flow.nodes.length} />}
@@ -1351,7 +1351,7 @@ const StepEditor: React.FC<StepEditorProps> = ({
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
-        <h3 className={`text-sm font-bold ${ct.headerText}`}>{def.label}</h3>
+        <h3 className={`text-[15px] font-bold ${ct.headerText}`}>{def.label}</h3>
         <div className="flex items-center gap-1">
           <button onClick={onMoveUp} className={`rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Move up">
             <ChevronUp size={14} />
@@ -1369,16 +1369,16 @@ const StepEditor: React.FC<StepEditorProps> = ({
       )}
 
       <div className="space-y-1">
-        <label className={`text-[10px] font-semibold ${ct.muted}`}>Comment (optional)</label>
+        <label className={`text-[11px] font-semibold ${ct.muted}`}>Comment (optional)</label>
         <input
           value={step.note ?? ''}
           onChange={e => onUpdateNote(e.target.value || undefined)}
           placeholder="# your note…"
-          className={`w-full rounded border px-2 py-1.5 text-xs focus:border-[#7fa66b] focus:outline-none ${ct.input}`}
+          className={`w-full rounded border px-2.5 py-2 text-[13px] focus:border-[#7fa66b] focus:outline-none ${ct.input}`}
         />
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         {def.params.map(pd => (
           <ParamControl key={pd.key} ct={ct} def={pd} value={step.params[pd.key] ?? ''} onChange={v => onUpdateParam(pd.key, v)} />
         ))}
@@ -1430,7 +1430,7 @@ const ParamControl: React.FC<{ ct: ThemeTokens; def: ParamDef; value: string; on
         <select
           value={value}
           onChange={e => onChange(e.target.value)}
-          className={`w-full rounded border px-2 py-1.5 text-xs focus:border-[#7fa66b] focus:outline-none ${ct.input}`}
+          className={`w-full rounded border px-2.5 py-2 text-[13px] focus:border-[#7fa66b] focus:outline-none ${ct.input}`}
         >
           {!known && value !== '' && <option value={value}>{value} (imported)</option>}
           {def.options.map(o => (
@@ -1465,7 +1465,7 @@ const ParamControl: React.FC<{ ct: ThemeTokens; def: ParamDef; value: string; on
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={def.placeholder}
-        className={`w-full rounded border px-2 py-1.5 text-xs focus:border-[#7fa66b] focus:outline-none ${ct.input}`}
+        className={`w-full rounded border px-2.5 py-2 text-[13px] focus:border-[#7fa66b] focus:outline-none ${ct.input}`}
       />
     </div>
   );

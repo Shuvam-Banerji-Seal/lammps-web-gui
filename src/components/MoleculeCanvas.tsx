@@ -165,6 +165,31 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
     [selectedAtoms]
   );
 
+  // Detect WebGL availability ONCE before mounting — prevents R3F from
+  // flooding the console with retry errors in GPU-less environments.
+  const webglAvailable = useMemo(() => {
+    try {
+      const c = document.createElement('canvas');
+      return !!(c.getContext('webgl2') || c.getContext('webgl'));
+    } catch {
+      return false;
+    }
+  }, []);
+
+  if (!webglAvailable) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-8 text-center">
+        <div className="text-3xl opacity-40">🔬</div>
+        <p className="text-sm font-medium text-gray-400">3D view unavailable</p>
+        <p className="max-w-xs text-xs leading-relaxed text-gray-500">
+          WebGL could not be initialised. The Script Builder and Compiler
+          Helper remain fully functional. Try enabling hardware acceleration
+          or closing other GPU-heavy tabs.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <CanvasErrorBoundary>
       <Canvas

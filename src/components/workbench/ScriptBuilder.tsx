@@ -535,11 +535,11 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
         className={`flex-col border-r transition-all ${ct.panel} ${
           isMobile
             ? `fixed inset-y-0 left-0 z-40 flex w-72 ${paletteOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`
-            : `${paletteOpen ? 'flex w-64' : 'hidden w-0 overflow-hidden'}`
+            : `${paletteOpen ? 'flex w-72' : 'hidden w-0 overflow-hidden'}`
         }`}
       >
         <div className={`flex items-center justify-between px-3 py-2 border-b ${ct.divider}`}>
-          <span className={`text-xs font-semibold ${ct.headerText}`}>Commands</span>
+          <span className={`text-[13px] font-bold tracking-tight ${ct.headerText}`}>Commands</span>
           <button onClick={() => setPaletteOpen(false)} className={`p-1 rounded ${ct.muted} ${ct.hoverSurface}`}>
             <ChevronLeft size={14} />
           </button>
@@ -549,14 +549,14 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             </button>
           )}
         </div>
-        <div className={`px-3 py-2 border-b ${ct.divider}`}>
-          <div className="flex items-center gap-1.5">
-            <Search size={13} className={ct.muted} />
+        <div className={`border-b px-3 py-2.5 ${ct.divider}`}>
+          <div className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 ${ct.input}`}>
+            <Search size={14} className="shrink-0 opacity-50" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder={`Search ${ALL_COMMANDS.length} commands…`}
-              className={`flex-1 bg-transparent text-xs ${ct.text} placeholder:text-[#6f6353] focus:outline-none`}
+              className={`w-full bg-transparent text-[13px] ${ct.text} placeholder:text-[#6f6353] focus:outline-none`}
             />
           </div>
         </div>
@@ -566,18 +566,24 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             if (!cmds || cmds.length === 0) return null;
             return (
               <div key={section} className="space-y-0.5">
-                <div className={`text-[10px] font-semibold uppercase px-1 pb-0.5 ${ct.muted}`}>
-                  {SECTION_LABELS[section]}
+                <div className={`mb-1 flex items-center gap-2 px-1 pt-2`}>
+                  <div className="h-3.5 w-0.5 rounded-full bg-[#7fa66b] opacity-60" />
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${ct.headerText}`}>
+                    {SECTION_LABELS[section]}
+                  </span>
                 </div>
                 {cmds.map(cmd => (
                   <button
                     key={cmd.id}
                     onClick={() => addStep(cmd.id)}
                     title={cmd.doc ?? cmd.label}
-                    className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[11px] transition-colors ${ct.muted} ${ct.hoverSurface}`}
+                    className={`group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${ct.muted} ${ct.hoverSurface}`}
                   >
-                    <Plus size={11} className="shrink-0 opacity-50" />
-                    <span className="truncate">{cmd.label}</span>
+                    <Plus size={12} className="shrink-0 opacity-40 transition-opacity group-hover:opacity-80" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[12px] leading-tight">{cmd.label}</div>
+                      <code className={`text-[10px] font-mono opacity-50 ${ct.accentCode}`}>{cmd.command}</code>
+                    </div>
                   </button>
                 ))}
               </div>

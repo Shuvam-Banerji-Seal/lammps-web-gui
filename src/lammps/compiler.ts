@@ -229,6 +229,26 @@ export const BUILD_OPTIONS: BuildOption[] = [
   { key: 'KOKKOS_PREC', label: 'Kokkos precision', values: ['double', 'mixed', 'single'], default: 'double', help: 'KOKKOS package only. mixed = FP64 accumulation, FP32 elsewhere.' },
   { key: 'Kokkos_ENABLE_DEBUG', label: 'Kokkos debug checks', values: ['no', 'yes'], default: 'no', help: 'KOKKOS package only. Big performance cost — development only.' },
   { key: 'Kokkos_ENABLE_CUDA_UVM', label: 'Kokkos CUDA UVM', values: ['no', 'yes'], default: 'no', help: 'KOKKOS package only. Lets RAM supplement GPU memory (slower).' },
+  { key: 'Kokkos_ENABLE_OPENMP', label: 'Kokkos OpenMP host', values: ['no', 'yes'], default: 'no', help: 'KOKKOS package only. Requires BUILD_OMP=yes.' },
+  { key: 'KOKKOS_LAYOUT', label: 'Kokkos array layout', values: ['legacy', 'default'], default: 'legacy', help: 'KOKKOS package only. default (LayoutLeft) may speed up some GPU models.' },
+  // --- GPU package extras ---
+  { key: 'GPU_DEBUG', label: 'GPU debug code', values: ['no', 'yes'], default: 'no', help: 'GPU package only. Developer debugging.' },
+  { key: 'CUDA_MPS_SUPPORT', label: 'CUDA MPS support', values: ['no', 'yes'], default: 'no', help: 'GPU package only. For nvidia-cuda-mps daemon.' },
+  { key: 'CUDA_BUILD_MULTIARCH', label: 'CUDA multiarch kernels', values: ['yes', 'no'], default: 'yes', help: 'GPU package only. Build for all supported GPU archs.' },
+  { key: 'USE_STATIC_OPENCL_LOADER', label: 'Static OpenCL loader', values: ['yes', 'no'], default: 'yes', help: 'GPU package only. Downloads OpenCL ICD loader — no local headers needed.' },
+  // --- package-specific downloads & options ---
+  { key: 'LAMMPS_MACHINE', label: 'Executable suffix', values: ['', 'mpi', 'serial'], default: '', help: 'Names the binary lmp_<suffix>. Empty = plain lmp.' },
+  { key: 'DOWNLOAD_KIM', label: 'Download OpenKIM API', values: ['no', 'yes'], default: 'no', help: 'KIM package only.' },
+  { key: 'KIM_EXTRA_UNITTESTS', label: 'KIM extra unit tests', values: ['no', 'yes'], default: 'no', help: 'KIM package only. Requires internet + Python.' },
+  { key: 'LEPTON_ENABLE_JIT', label: 'Lepton JIT compiler', values: ['yes', 'no'], default: 'yes', help: 'LEPTON package only. Auto-detected on x86.' },
+  { key: 'DOWNLOAD_EIGEN3', label: 'Download Eigen3', values: ['no', 'yes'], default: 'no', help: 'MACHDYN package only.' },
+  { key: 'MLIAP_ENABLE_PYTHON', label: 'ML-IAP Python support', values: ['no', 'yes'], default: 'no', help: 'ML-IAP package only. Requires Python 3.6+ and cython.' },
+  { key: 'DOWNLOAD_VORO', label: 'Download Voro++', values: ['no', 'yes'], default: 'no', help: 'VORONOI package only.' },
+  { key: 'COLVARS_LEPTON', label: 'Colvars Lepton support', values: ['yes', 'no'], default: 'yes', help: 'COLVARS package only.' },
+  { key: 'COLVARS_DEBUG', label: 'Colvars debug messages', values: ['no', 'yes'], default: 'no', help: 'COLVARS package only. Verbose output.' },
+  { key: 'Python_EXECUTABLE', label: 'Python executable path', values: ['', '/usr/bin/python3'], default: '', help: 'PYTHON package only. Empty = CMake auto-detect.' },
+  { key: 'DOWNLOAD_QUIP', label: 'Download QUIP library', values: ['no', 'yes'], default: 'no', help: 'ML-QUIP package only. Non-commercial licence.' },
+  { key: 'USE_INTERNAL_LINALG', label: 'Use internal LAPACK', values: ['no', 'yes'], default: 'no', help: 'ML-QUIP/ELECTRODE package only. Workaround for LAPACK link issues.' },
 ];
 
 export interface NamedPreset {

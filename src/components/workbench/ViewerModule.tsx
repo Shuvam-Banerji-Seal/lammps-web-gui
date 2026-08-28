@@ -518,7 +518,7 @@ const ViewerModule: React.FC<{
   }, [selectedIds]);
 
   return (
-    <div className={`flex h-screen w-screen font-sans overflow-hidden ${ct.bg} ${ct.text}`}>
+    <div className={`flex h-full w-full font-sans overflow-hidden ${ct.bg} ${ct.text}`}>
       {/* Mobile backdrop */}
       {isMobile && isSidebarOpen && (
         <div className="fixed inset-0 bg-black/50 z-20" onClick={() => setIsSidebarOpen(false)} />
@@ -533,15 +533,14 @@ const ViewerModule: React.FC<{
         </div>
       )}
 
-      {/* Sidebar */}
       <aside
         className={`
-        relative flex flex-col border-r transition-[transform] duration-300 ease-in-out z-30
-        ${isMobile ? 'fixed inset-y-0 left-0 w-80 max-w-[85vw]' : 'shrink-0'}
+        flex flex-col border-r transition-transform duration-300 ease-in-out z-30
+        ${isMobile ? 'fixed inset-y-0 left-0 w-80 max-w-[85vw] shadow-2xl' : 'relative shrink-0'}
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         ${ct.sidebar}
       `}
-        style={!isMobile ? { width: sidebarWidth } : undefined}
+        style={isMobile ? undefined : { width: sidebarWidth }}
       >
         {/* Desktop resize handle (P9) */}
         {!isMobile && isSidebarOpen && (
@@ -586,7 +585,7 @@ const ViewerModule: React.FC<{
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors ${
+              className={`flex flex-col items-center gap-1.5 py-3 text-xs font-semibold tracking-wide transition-colors ${
                 activeTab === tab.id
                   ? `${ct.active} border-b-2`
                   : `${ct.muted} hover:${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`
@@ -598,15 +597,16 @@ const ViewerModule: React.FC<{
           ))}
         </nav>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 antialiased">
+          {/* Improved readability: slightly larger base, better line-height */}
           {/* ============================== DATA TAB */}
           {activeTab === 'data' && (
             <>
-              <section className={`rounded-lg p-3 text-xs border ${ct.card} ${ct.muted}`}>
-                <div className={`flex items-center gap-2 mb-2 font-semibold ${ct.accentText}`}>
-                  <Info size={14} /> Supported formats
+              <section className={`rounded-xl p-4 text-sm border shadow-sm ${ct.card} ${ct.muted} leading-relaxed`}>
+                <div className={`flex items-center gap-2 mb-2.5 font-bold tracking-tight ${ct.accentText}`}>
+                  <Info size={15} /> Supported formats
                 </div>
-                <ul className="space-y-1">
+                <ul className="space-y-1.5 leading-relaxed">
                   <li><span className={`font-semibold ${ct.accentText}`}>.data / .lmp</span> — LAMMPS (atomic·charge·molecular·full)</li>
                   <li><span className={`font-semibold ${theme === 'dark' ? 'text-[#e4b877]' : 'text-[#7a5716]'}`}>.xyz</span> — XYZ trajectories (first frame)</li>
                   <li><span className={`font-semibold ${theme === 'dark' ? 'text-[#e4b877]' : 'text-[#7a5716]'}`}>.lammpstrj / .dump</span> — LAMMPS dump trajectories (playback)</li>
@@ -615,9 +615,9 @@ const ViewerModule: React.FC<{
                 </ul>
               </section>
 
-              <section className="space-y-2">
-                <h3 className={`text-xs font-semibold ${ct.header}`}>Load structure</h3>
-                <label className={`flex cursor-pointer items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${ct.accent}`}>
+              <section className="space-y-3">
+                <h3 className={`text-sm font-bold tracking-tight ${ct.header}`}>Load structure</h3>
+                <label className={`flex cursor-pointer items-center justify-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold transition-colors shadow-sm hover:shadow ${ct.accent}`}>
                   <Upload size={14} /> Upload file
                   <input
                     ref={fileInputRef}
@@ -631,12 +631,12 @@ const ViewerModule: React.FC<{
                     }}
                   />
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2.5">
                   {EXAMPLES.map(ex => (
                     <button
                       key={ex.file}
                       onClick={() => loadExample(ex.file, ex.format)}
-                      className={`px-2 py-2 rounded-lg text-[11px] font-medium transition-colors ${ct.button}`}
+                      className={`px-3 py-2.5 rounded-xl text-xs font-semibold transition-colors shadow-sm hover:shadow ${ct.button}`}
                       title={`Load ${ex.label} example`}
                     >
                       {ex.label}
@@ -645,9 +645,9 @@ const ViewerModule: React.FC<{
                 </div>
               </section>
 
-              <section className="space-y-2">
+              <section className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className={`text-xs font-semibold ${ct.header}`}>Paste data</h3>
+                  <h3 className={`text-sm font-bold tracking-tight ${ct.header}`}>Paste data</h3>
                   <div className="flex gap-1">
                     {( ['lammps', 'xyz', 'pdb', 'cif', 'lammpsdump'] as FileFormat[]).map(fmt => (
                       <button
@@ -667,12 +667,12 @@ const ViewerModule: React.FC<{
                   value={inputText}
                   onChange={e => setInputText(e.target.value)}
                   placeholder="# Paste LAMMPS / XYZ / PDB / CIF content here…"
-                  className={`w-full h-44 border rounded-lg p-3 text-xs font-mono resize-y focus:outline-none ${ct.input}`}
+                  className={`w-full h-44 border rounded-xl p-3.5 text-sm font-mono resize-y focus:outline-none leading-relaxed ${ct.input}`}
                   spellCheck={false}
                 />
                 <button
                   onClick={() => handleVisualize(inputText, fileFormat)}
-                  className={`w-full py-2.5 rounded-lg text-sm font-bold transition-colors ${ct.go}`}
+                  className={`w-full py-3 rounded-xl text-sm font-bold tracking-wide transition-colors shadow-sm hover:shadow ${ct.go}`}
                 >
                   Visualize
                 </button>
@@ -698,9 +698,9 @@ const ViewerModule: React.FC<{
               )}
 
               {error && (
-                <div className="p-3 rounded-lg ${ct.errorBox} text-xs flex gap-2 items-start" role="alert">
+                <div className={`p-3 rounded-lg border text-xs flex gap-2 items-start ${ct.errorBox}`} role="alert">
                   <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                  <span>{error}</span>
+                  <span className="leading-relaxed">{error}</span>
                 </div>
               )}
             </>

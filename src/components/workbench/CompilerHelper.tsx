@@ -131,11 +131,9 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
     <div className="flex h-full min-h-0">
       {/* Left: options (overlay drawer on mobile) */}
       <div
-        className={`overflow-y-auto border-r ${ct.panel} ${
+        className={`overflow-y-auto border-r transition-transform duration-300 ease-in-out ${ct.panel} ${
           isMobile
-            ? `fixed inset-y-0 left-0 z-40 w-80 max-w-[92vw] shadow-2xl transition-transform sm:w-96 ${
-                optionsOpen ? 'translate-x-0' : '-translate-x-full'
-              }`
+            ? `fixed inset-y-0 left-0 z-40 w-80 max-w-[92vw] shadow-2xl sm:w-96 ${optionsOpen ? 'translate-x-0' : '-translate-x-full'}`
             : 'w-96 shrink-0'
         }`}
       >
@@ -147,10 +145,10 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
             </button>
           </div>
         )}
-        <div className="space-y-5 p-4">
+        <div className="space-y-6 p-4 antialiased">
           {/* OS target */}
-          <section className="space-y-2">
-            <h3 className={`flex items-center gap-1.5 text-xs font-semibold ${ct.headerText}`}>
+          <section className="space-y-3">
+            <h3 className={`flex items-center gap-2 text-sm font-bold tracking-tight ${ct.headerText}`}>
               <Monitor size={13} /> Target OS
             </h3>
             <div className="grid grid-cols-2 gap-2">
@@ -169,9 +167,9 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
           </section>
 
           {/* Preset */}
-          <section className="space-y-2">
-            <h3 className={`flex items-center gap-1.5 text-xs font-semibold ${ct.headerText}`}>
-              <Package size={13} /> Package preset
+          <section className="space-y-3">
+            <h3 className={`flex items-center gap-2 text-sm font-bold tracking-tight ${ct.headerText}`}>
+              <Package size={14} /> Package preset
             </h3>
             <div className="grid grid-cols-1 gap-1.5">
               <button
@@ -199,9 +197,9 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
           </section>
 
           {/* Accelerator */}
-          <section className="space-y-2">
-            <h3 className={`flex items-center gap-1.5 text-xs font-semibold ${ct.headerText}`}>
-              <Zap size={13} /> Accelerator backend
+          <section className="space-y-3">
+            <h3 className={`flex items-center gap-2 text-sm font-bold tracking-tight ${ct.headerText}`}>
+              <Zap size={14} /> Accelerator backend
             </h3>
             <div className="space-y-1">
               {ACCELERATORS.map(acc => (
@@ -226,9 +224,9 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
 
           {/* Manual packages (when presetId === '') */}
           {opts.presetId === '' && (
-            <section className="space-y-2">
-              <h3 className={`flex items-center gap-1.5 text-xs font-semibold ${ct.headerText}`}>
-                <Package size={13} /> Packages ({opts.manualPackages.length} selected)
+            <section className="space-y-3">
+              <h3 className={`flex items-center gap-2 text-sm font-bold tracking-tight ${ct.headerText}`}>
+                <Package size={14} /> Packages ({opts.manualPackages.length} selected)
               </h3>
               <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
                 {PACKAGE_CATEGORIES.map(cat => {
@@ -259,13 +257,13 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
           )}
 
           {/* Build options */}
-          <section className="space-y-2">
-            <h3 className={`flex items-center gap-1.5 text-xs font-semibold ${ct.headerText}`}>
-              <Settings size={13} /> Build options
+          <section className="space-y-3">
+            <h3 className={`flex items-center gap-2 text-sm font-bold tracking-tight ${ct.headerText}`}>
+              <Settings size={14} /> Build options
             </h3>
-            <div className="space-y-2">
-              <label className={`flex items-center justify-between text-[11px]`}>
-                <span className={ct.muted}>MPI parallel</span>
+            <div className="space-y-3">
+              <label className={`flex items-center justify-between text-sm`}>
+                <span className={`${ct.muted} font-medium`}>MPI parallel</span>
                 <button
                   onClick={() => update('withMpi', !opts.withMpi)}
                   role="switch"

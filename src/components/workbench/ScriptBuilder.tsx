@@ -532,14 +532,14 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     <div className="flex h-full min-h-0">
       {/* Left: palette (overlay drawer on mobile) */}
       <div
-        className={`flex-col border-r transition-all ${ct.panel} ${
+        className={`flex-col border-r transition-transform duration-300 ease-in-out ${ct.panel} ${
           isMobile
-            ? `fixed inset-y-0 left-0 z-40 flex w-72 ${paletteOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`
+            ? `fixed inset-y-0 left-0 z-40 flex w-72 shadow-2xl ${paletteOpen ? 'translate-x-0' : '-translate-x-full'}`
             : `${paletteOpen ? 'flex w-72' : 'hidden w-0 overflow-hidden'}`
         }`}
       >
-        <div className={`flex items-center justify-between px-3 py-2 border-b ${ct.divider}`}>
-          <span className={`text-[13px] font-bold tracking-tight ${ct.headerText}`}>Commands</span>
+        <div className={`flex items-center justify-between px-4 py-3 border-b ${ct.divider}`}>
+          <span className={`text-sm font-bold tracking-tight ${ct.headerText} antialiased`}>Commands</span>
           <button onClick={() => setPaletteOpen(false)} className={`p-1 rounded ${ct.muted} ${ct.hoverSurface}`}>
             <ChevronLeft size={14} />
           </button>
@@ -549,14 +549,14 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             </button>
           )}
         </div>
-        <div className={`border-b px-3 py-2.5 ${ct.divider}`}>
-          <div className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 ${ct.input}`}>
-            <Search size={14} className="shrink-0 opacity-50" />
+        <div className={`border-b px-3 py-3 ${ct.divider}`}>
+          <div className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 shadow-sm ${ct.input} focus-within:ring-2 focus-within:ring-[#7fa66b]/30 transition-all`}>
+            <Search size={16} className="shrink-0 opacity-60" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder={`Search ${ALL_COMMANDS.length} commands…`}
-              className={`w-full bg-transparent text-[13px] ${ct.text} placeholder:text-[#6f6353] focus:outline-none`}
+              className={`w-full bg-transparent text-sm font-medium ${ct.text} placeholder:text-[#6f6353]/70 focus:outline-none`}
             />
           </div>
         </div>
@@ -566,23 +566,26 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             if (!cmds || cmds.length === 0) return null;
             return (
               <div key={section} className="space-y-0.5">
-                <div className={`mb-1 flex items-center gap-2 px-1 pt-2`}>
-                  <div className="h-3.5 w-0.5 rounded-full bg-[#7fa66b] opacity-60" />
-                  <span className={`text-[10px] font-bold uppercase tracking-wider ${ct.headerText}`}>
+                <div className={`mb-2 flex items-center gap-2 px-1 pt-3`}>
+                  <div className="h-4 w-1 rounded-full bg-[#7fa66b]" />
+                  <span className={`text-xs font-bold uppercase tracking-widest ${ct.headerText}`}>
                     {SECTION_LABELS[section]}
                   </span>
+                  <span className="ml-auto text-[11px] font-mono opacity-40">{cmds.length}</span>
                 </div>
                 {cmds.map(cmd => (
                   <button
                     key={cmd.id}
                     onClick={() => addStep(cmd.id)}
                     title={cmd.doc ?? cmd.label}
-                    className={`group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${ct.muted} ${ct.hoverSurface}`}
+                    className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all border border-transparent hover:border-[#7fa66b]/20 hover:shadow-sm ${ct.muted} ${ct.hoverSurface}`}
                   >
-                    <Plus size={12} className="shrink-0 opacity-40 transition-opacity group-hover:opacity-80" />
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#7fa66b]/10 group-hover:bg-[#7fa66b]/20 transition-colors">
+                      <Plus size={14} className="opacity-60 transition-opacity group-hover:opacity-100" />
+                    </span>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[12px] leading-tight">{cmd.label}</div>
-                      <code className={`text-[10px] font-mono opacity-50 ${ct.accentCode}`}>{cmd.command}</code>
+                      <div className="truncate text-[13px] font-semibold leading-tight tracking-tight">{cmd.label}</div>
+                      <code className={`text-xs font-mono font-medium tracking-wide opacity-70 ${ct.accentCode}`}>{cmd.command}</code>
                     </div>
                   </button>
                 ))}
@@ -989,9 +992,9 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 
       {/* Right: step editor (overlay drawer on mobile) */}
       <div
-        className={`overflow-y-auto border-l ${ct.panel} ${
+        className={`overflow-y-auto border-l transition-transform duration-300 ease-in-out ${ct.panel} ${
           isMobile
-            ? `fixed inset-y-0 right-0 z-40 w-80 max-w-[85vw] shadow-2xl transition-transform ${
+            ? `fixed inset-y-0 right-0 z-40 w-80 max-w-[85vw] shadow-2xl ${
                 selectedStep && editorOpenMobile ? 'translate-x-0' : 'translate-x-full'
               }`
             : 'w-80 shrink-0'

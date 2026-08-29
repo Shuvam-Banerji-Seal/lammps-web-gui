@@ -103,8 +103,9 @@ const rowToAtom = (
   const id = idRaw !== undefined ? Math.round(idRaw) : fallbackId;
   const mol = num('mol');
   const q = num('q');
-
-  // Element: explicit column wins; else type-as-atomic-number heuristic.
+  const vx = num('vx');
+  const vy = num('vy');
+  const vz = num('vz');
   let symbol: string | undefined;
   const elemIdx = col.get('element');
   if (elemIdx !== undefined && elemIdx < tokens.length) {
@@ -120,6 +121,9 @@ const rowToAtom = (
     type: symbol ? (getAtomicNumberFromSymbol(symbol) ?? type) : type,
     charge: q ?? 0,
     x, y, z,
+    ...(vx !== undefined ? { vx } : {}),
+    ...(vy !== undefined ? { vy } : {}),
+    ...(vz !== undefined ? { vz } : {}),
   };
 };
 

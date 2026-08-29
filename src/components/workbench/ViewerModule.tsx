@@ -18,8 +18,11 @@ import {
   Upload, RotateCw, AlertCircle, Info, Settings, Eye, EyeOff, Palette, Box,
   Sun, Moon, Menu, X, Camera, Atom, Keyboard, Layers, Lightbulb,
   Grid3x3, Maximize2, Play, Pause, ZoomIn, ZoomOut, FileText, HelpCircle,
-  Link2, Check, ChevronLeft, ChevronRight, Ruler, Circle, Loader2,
+  Link2, Check, ChevronLeft, ChevronRight, Ruler, Circle, Loader2, BarChart3, Activity, TrendingUp, Download, Sparkles,
 } from 'lucide-react';
+import { LineChart, Histogram } from '../charts/SimpleChart';
+import { computeRDF, computeMSD, computeDensityProfile, computeSpeedDistribution, trajStats } from '../../services/trajectoryAnalysis';
+import { downloadTextFile } from '../../lammps/exporter';
 
 /** GitHub mark as inline SVG — lucide 1.x removed brand icons. */
 const GithubIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
@@ -29,7 +32,7 @@ const GithubIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
 );
 
 type Theme = 'light' | 'dark';
-type Tab = 'data' | 'view' | 'scene' | 'elements';
+type Tab = 'data' | 'view' | 'scene' | 'elements' | 'analysis';
 
 const VIZ_MODES: { value: VisualizationMode; label: string; desc: string; key: string }[] = [
   { value: 'ball-and-stick', label: 'Ball & Stick', desc: 'Classic molecular view', key: '1' },
@@ -493,6 +496,7 @@ const ViewerModule: React.FC<{
     { id: 'view', label: 'View', icon: <Atom size={14} /> },
     { id: 'scene', label: 'Scene', icon: <Lightbulb size={14} /> },
     { id: 'elements', label: 'Elements', icon: <Palette size={14} /> },
+    { id: 'analysis', label: 'Analysis', icon: <BarChart3 size={14} /> },
   ];
 
   const atomTypeList = moleculeData ? Object.values(moleculeData.atomTypes) : [];
@@ -580,7 +584,7 @@ const ViewerModule: React.FC<{
         </div>
 
         {/* Tabs */}
-        <nav className={`grid grid-cols-4 border-b ${ct.divider}`} aria-label="Sidebar sections">
+        <nav className={`grid grid-cols-5 border-b ${ct.divider}`} aria-label="Sidebar sections">
           {tabs.map(tab => (
             <button
               key={tab.id}
@@ -984,6 +988,184 @@ const ViewerModule: React.FC<{
                   supported format — LAMMPS mass tables, XYZ symbols, PDB element columns and CIF type symbols.
                 </p>
               </section>
+            </>
+          )}
+
+          {/* ============================== ANALYSIS TAB */}
+          {activeTab === 'analysis' && (
+            <>
+              {!moleculeData || !moleculeData.frames || moleculeData.frames.length <= 1 ? (
+                <section className={`rounded-xl p-4 text-sm border shadow-sm ${ct.card} ${ct.muted} leading-relaxed`}>
+                  <div className={`flex items-center gap-2 mb-2 font-bold ${ct.accentText}`}>
+                    <BarChart3 size={15} /> Trajectory analysis
+                  </div>
+                  <p className="leading-relaxed">
+                    Load a <span className="font-semibold">LAMMPS dump</span> (`.lammpstrj`/`.dump`) or multi-frame <span className="font-semibold">XYZ</span> trajectory to unlock analysis.
+                    Try the bundled <em>Trajectory · Dump</em> or <em>Trajectory · XYZ</em> examples in the Data tab.
+                  </p>
+                  <p className={`mt-2 text-xs ${ct.muted}`}>
+                    Once loaded, this tab shows RDF, MSD, density profiles and velocity histograms — all computed locally, with CSV export.
+                  </p>
+                </section>
+              ) : (
+                <>
+                  {/* Stats */}
+                  {(() => {
+                    const stats = trajStats(moleculeData);
+                    const is2D = stats.box ? (stats.box.zhi - stats.box.zlo) < 2 : false;
+                    return (
+                      <section className={`rounded-xl p-3 border ${ct.card} space-y-2`}>
+                        <h3 className={`text-xs font-bold flex items-center gap-1.5 ${ct.header}`}>
+                          <Activity size={13} className={ct.accentText} /> Trajectory stats
+                        </h3>
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                          {[
+                            { label: 'Frames', value: stats.frames },
+                            { label: 'Atoms', value: stats.atoms },
+                            { label: is2D ? 'Area ρ' : 'Density', value: (is2D ? stats.areaDensity : stats.density)?.toFixed(3) ?? '—' },
+                          ].map(s => (
+                            <div key={s.label} className={`p-2 rounded-lg ${ct.stat}`}>
+                              <div className={`text-[10px] ${ct.muted}`}>{s.label}</div>
+                              <div className="text-sm font-mono font-bold">{s.value}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {stats.box && (
+                          <div className={`text-[10px] font-mono ${ct.muted} leading-relaxed`}>
+                            Box {stats.box.xlo.toFixed(1)}→{stats.box.xhi.toFixed(1)} × {stats.box.ylo.toFixed(1)}→{stats.box.yhi.toFixed(1)} × {stats.box.zlo.toFixed(1)}→{stats.box.zhi.toFixed(1)}
+                            {is2D && ' · 2D (thin z)'}
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })()}
+
+                  {/* RDF */}
+                  <section className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className={`text-xs font-semibold flex items-center gap-1.5 ${ct.header}`}>
+                        <TrendingUp size={12} className={ct.accentText} /> Radial distribution g(r)
+                      </h3>
+                      <button
+                        onClick={() => {
+                          const frames = moleculeData.frames!.slice(0, Math.min(20, moleculeData.frames!.length));
+                          const pts = computeRDF(frames, moleculeData.box, { rMax: 10, bins: 80 });
+                          const csv = 'r,g(r),count\n' + pts.map(p => `${p.r.toFixed(3)},${p.g.toFixed(4)},${p.count.toFixed(1)}`).join('\n');
+                          downloadTextFile('rdf.csv', csv);
+                        }}
+                        className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium ${ct.button}`}
+                        title="Export RDF as CSV"
+                      >
+                        <Download size={11} /> CSV
+                      </button>
+                    </div>
+                    {(() => {
+                      const frames = moleculeData.frames!.filter((_, i) => i % Math.ceil(moleculeData.frames!.length / 15) === 0);
+                      const pts = computeRDF(frames, moleculeData.box, { rMax: 10, bins: 80 });
+                      const data = pts.map(p => ({ x: p.r, y: p.g }));
+                      const hasPeaks = data.some(d => d.y > 1.5);
+                      return (
+                        <>
+                          <div className={`rounded-lg border p-2 ${ct.card}`}>
+                            <LineChart data={data} xLabel="r (Å / LJ σ)" yLabel="g(r)" theme={theme} height={150} yMin={0} />
+                          </div>
+                          <p className={`text-[10px] leading-relaxed ${ct.muted}`}>
+                            {hasPeaks ? 'Peaks indicate local order (crystal). Flat ~1 = ideal gas / liquid.' : 'Flat g(r)≈1 — disordered / ideal gas.'}
+                            {' '}Averaged over {frames.length} sampled frames. First peak ≈ nearest-neighbour.
+                          </p>
+                        </>
+                      );
+                    })()}
+                  </section>
+
+                  {/* MSD */}
+                  <section className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className={`text-xs font-semibold flex items-center gap-1.5 ${ct.header}`}>
+                        <Activity size={12} className={ct.accentText} /> Mean squared displacement
+                      </h3>
+                      <button
+                        onClick={() => {
+                          const pts = computeMSD(moleculeData.frames!, moleculeData.box);
+                          const csv = 't,msd\n' + pts.map(p => `${p.t},${p.msd.toFixed(4)}`).join('\n');
+                          downloadTextFile('msd.csv', csv);
+                        }}
+                        className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium ${ct.button}`}
+                        title="Export MSD as CSV"
+                      >
+                        <Download size={11} /> CSV
+                      </button>
+                    </div>
+                    {(() => {
+                      const pts = computeMSD(moleculeData.frames!, moleculeData.box, { timeOriginStride: Math.max(1, Math.floor(moleculeData.frames!.length / 15)) });
+                      const data = pts.map(p => ({ x: p.t, y: p.msd }));
+                      const last = data[data.length - 1];
+                      const slope = last && last.x > 0 ? (last.y / last.x).toFixed(3) : '—';
+                      return (
+                        <>
+                          <div className={`rounded-lg border p-2 ${ct.card}`}>
+                            <LineChart data={data} xLabel="lag (frames)" yLabel="MSD (Å²)" theme={theme} height={150} yMin={0} color={theme === 'dark' ? '#d9a05b' : '#b97f3e'} />
+                          </div>
+                          <p className={`text-[10px] leading-relaxed ${ct.muted}`}>
+                            Slope ≈ {slope} Å²/frame — linear = diffusive, plateau = caged/crystal. Averaged over time origins.
+                          </p>
+                        </>
+                      );
+                    })()}
+                  </section>
+
+                  {/* Density profile */}
+                  <section className="space-y-2">
+                    <h3 className={`text-xs font-semibold flex items-center gap-1.5 ${ct.header}`}>
+                      <BarChart3 size={12} className={ct.accentText} /> Density profile
+                    </h3>
+                    {(() => {
+                      const axis: 'x' | 'y' | 'z' = (moleculeData.box && (moleculeData.box.zhi - moleculeData.box.zlo) < 2) ? 'x' : 'y';
+                      const prof = computeDensityProfile(moleculeData.frames!, moleculeData.box, axis, 24);
+                      return (
+                        <>
+                          <div className={`rounded-lg border p-2 ${ct.card}`}>
+                            <Histogram bins={prof.bins} xLabel={`${axis} (Å)`} yLabel="count" theme={theme} height={140} />
+                          </div>
+                          <p className={`text-[10px] ${ct.muted}`}>Histogram of atom counts along <span className="font-mono">{axis}</span> (averaged over all frames) — uniform = homogeneous, peaks = layering.</p>
+                        </>
+                      );
+                    })()}
+                  </section>
+
+                  {/* Velocity distribution */}
+                  {moleculeData.atoms.some(a => a.vx !== undefined) && (
+                    <section className="space-y-2">
+                      <h3 className={`text-xs font-semibold flex items-center gap-1.5 ${ct.header}`}>
+                        <Sparkles size={12} className={ct.accentText} /> Speed distribution
+                      </h3>
+                      {(() => {
+                        const bins = computeSpeedDistribution(moleculeData.frames ? moleculeData.frames[frameIdx]?.atoms ?? moleculeData.atoms : moleculeData.atoms, 24);
+                        if (!bins) return <p className={`text-xs italic ${ct.muted}`}>No velocities in current frame.</p>;
+                        return (
+                          <>
+                            <div className={`rounded-lg border p-2 ${ct.card}`}>
+                              <Histogram bins={bins} xLabel="|v| (LJ)" yLabel="count" theme={theme} height={140} color={theme === 'dark' ? '#c9a9d4' : '#7d5a8c'} />
+                            </div>
+                            <p className={`text-[10px] ${ct.muted}`}>Current frame speed |v| — Maxwell–Boltzmann peak shifts with temperature. Requires dump with vx vy vz.</p>
+                          </>
+                        );
+                      })()}
+                    </section>
+                  )}
+
+                  {/* Visuals helper */}
+                  <section className={`rounded-lg border p-3 space-y-2 ${ct.card}`}>
+                    <h3 className={`text-xs font-semibold flex items-center gap-1.5 ${ct.header}`}>
+                      <Palette size={12} className={ct.accentText} /> Trajectory visuals
+                    </h3>
+                    <p className={`text-[10px] leading-relaxed ${ct.muted}`}>
+                      Tip: use <span className="font-semibold">View → Atom size</span> and <span className="font-semibold">Scene → Box / Axes</span> while scrubbing.
+                      For 2D LJ runs the box is thin (z≈1); enable <span className="font-semibold">Box</span> to see it, and use <span className="font-semibold">Top</span> camera for a clear 2D view. Video `● Rec` captures the live canvas at 60 fps.
+                    </p>
+                  </section>
+                </>
+              )}
             </>
           )}
         </div>

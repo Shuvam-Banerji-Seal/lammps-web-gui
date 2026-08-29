@@ -6,6 +6,9 @@ export interface Atom {
   x: number;
   y: number;
   z: number;
+  vx?: number;
+  vy?: number;
+  vz?: number;
 }
 
 export interface Bond {

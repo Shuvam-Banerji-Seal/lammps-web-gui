@@ -27,8 +27,10 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
 | ![Box](docs/screenshots/simulation-box.png) | ![Templates](docs/screenshots/templates-menu.png) |
 | **Warm light theme** | **Keyboard shortcuts overlay** |
 | ![Light](docs/screenshots/app-light.png) | ![Shortcuts](docs/screenshots/shortcuts-overlay.png) |
-| **Mobile** | |
-| ![Mobile](docs/screenshots/app-mobile.png) | |
+| **Mobile** | **Trajectory Analysis — RDF/MSD** |
+| ![Mobile](docs/screenshots/app-mobile.png) | ![Analysis](docs/screenshots/analysis-desktop.png) |
+| **Analysis — mobile** | |
+| ![Analysis Mobile](docs/screenshots/analysis-mobile.png) | |
 
 ## 🎬 Simulation Videos — rendered **in-browser**
 
@@ -56,6 +58,8 @@ The viewer plays **LAMMPS dump** (`.lammpstrj`/`.dump`) natively and exports **M
 - 🧊 **True 3D rendering** — depth-correct perspective view of atoms, bonds and the simulation cell, powered by three.js / React Three Fiber.
 - 📐 **Measurement tools** — click 2–4 atoms for live distance / angle / dihedral readouts with on-canvas overlays.
 - 🎞️ **Trajectory playback** — multi-frame XYZ **and LAMMPS dump** files get a scrubber with play/pause and 2–30 fps speeds (`P`, `,`, `.`).
+- 📊 **Trajectory analysis** — new **Analysis** tab for dump trajectories: **RDF g(r)** (2D/3D PBC-aware, 100 bins), **MSD vs lag**, **density profiles** along x/y/z, **speed histograms** (if `vx vy vz`), all as SVG charts with CSV export. Verified on your 3 demos: Ideal Gas flat `g(r)≈1`, LJ Freezing crystal peaks at `g≈2.4`.
+- 🔬 **Improved LAMMPS dump rendering** — handles `x y z` / `xu yu zu` / `xs ys zs`, optional `vx vy vz` velocities, thin 2D boxes (`-0.5→0.5`) with correct PBC and box display.
 - 🔗 **Shareable views** — the Share button copies a URL that restores your exact visualization settings.
 - 📁 **Four structure formats**
   | Format | Extensions | Highlights |

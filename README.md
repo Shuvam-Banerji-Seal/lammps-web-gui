@@ -30,6 +30,16 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
 | **Mobile** | |
 | ![Mobile](docs/screenshots/app-mobile.png) | |
 
+## 🎬 Simulation Videos — rendered **in-browser**
+
+The viewer plays **LAMMPS dump** (`.lammpstrj`/`.dump`) natively and exports **MP4/WebM at 60 fps** — no Python needed. The 15 s clip below was recorded **directly from this website** (canvas capture) at 896×752, stitched from the three GPU trajectories in [`introduction-to-molecular-simulation/simulations`](https://github.com/Shuvam-Banerji-Seal/introduction-to-molecular-simulation/tree/main/simulations):
+
+<video src="https://raw.githubusercontent.com/Shuvam-Banerji-Seal/lammps-web-gui/main/docs/videos/simulations_demo.mp4" controls muted loop playsinline width="100%" poster="docs/screenshots/viewer-dump-playback.png"></video>
+
+*Left to right: **01 Ideal Gas** (194 atoms × 200 frames, dilute LJ NVE 30×30) → **02 LJ Freezing** (431×200, NVT 3.0→0.3, FCC) → **03 Water-Ice** (431×250, NVT 2.0→0.01, deep quench). Load any `.lammpstrj` via drag-drop or **Paste data → DUMP → Visualize** → scrub with the playback bar (`P` / `,` / `.`, 2–30 fps) → **● Rec** to save MP4.*
+
+*Raw file: [`docs/videos/simulations_demo.mp4`](docs/videos/simulations_demo.mp4) (188 KB, H.264, 30 fps) — also at `/videos/simulations_demo.mp4` on the [live site](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/simulations_demo.mp4).*
+
 ## ✨ Features
 
 - 🧪 **LAMMPS Workbench** — three integrated modules: a visual **Script Builder** (flowchart pipeline of 186 curated commands — the complete general-command surface, locked by a coverage test against docs.lammps.org), a **Compiler Helper** (package/accelerator presets → ready-to-run CMake build scripts) and the 3D **Structure Viewer**.

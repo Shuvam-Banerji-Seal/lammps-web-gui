@@ -17,16 +17,16 @@
   "dependencies": {
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",
-    "lucide-react": "^1.33.0",
+    "lucide-react": "^1.40.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "^0.185.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.3",
+    "@types/react-dom": "^19.2.7",
     "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "^6.1.0",
     "@xmldom/xmldom": "^0.9.12",

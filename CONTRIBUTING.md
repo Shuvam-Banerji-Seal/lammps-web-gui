@@ -50,12 +50,31 @@ A PR can merge when:
 | `commit-conventions` | the **PR title** is a conventional commit — it becomes the squash commit subject |
 | `dependency-review` | no new high-severity advisories, and no copyleft dependency that would conflict with this project's licence |
 | `codeql (javascript-typescript)` | static analysis finds no new security or quality alerts |
-| Code-owner review | [CODEOWNERS](.github/CODEOWNERS) requires the author's review; `src/lammps/`, the licence files and `.github/` are called out explicitly |
-| Conversations resolved | every review thread is resolved |
+| Conversations resolved | every review thread must be resolved |
 | Branch up to date | required checks ran against the merge result, not a stale base |
 
 Merges are **squash or rebase only** and the branch is deleted afterwards, so
 `main` keeps one linear, conventionally-named commit per change.
+
+[CODEOWNERS](.github/CODEOWNERS) routes review requests — `src/lammps/`, the
+licence files and `.github/` are called out explicitly — but code-owner review
+is **not** currently enforced as a merge gate. With a single maintainer it can
+only deadlock: GitHub does not let you approve your own pull request. Turn
+`require_code_owner_review` back on in the `protect-main` ruleset once there is
+a second person who can review:
+
+```bash
+gh api repos/Shuvam-Banerji-Seal/lammps-web-gui/rules/branches/main \
+  --jq '.[] | select(.type=="pull_request") | .parameters'
+```
+
+`require_extra_approval_for_unattributed_changes` is off for the same reason:
+it demands an approval for commits GitHub cannot attribute to an account, which
+includes every `Co-Authored-By:` trailer that is not a GitHub user.
+
+Repository admins keep a **pull-request-scoped bypass**, so the maintainer can
+merge their own PR. Direct and force pushes to `main` are blocked for everyone,
+bypass or not.
 
 ## How we review PRs
 

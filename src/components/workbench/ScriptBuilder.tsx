@@ -141,7 +141,13 @@ const loadWorkspace = (): ScriptWorkspace => {
   };
   return { tabs: [first], activeId: first.id };
 };
-const ZOOM_MIN = 0.35;
+/**
+ * Zoom floor. 0.35 was too high for "Fit" to mean anything: an 18-step
+ * pipeline is ~2800px tall, so fitting it into a 540px canvas needs ~0.19x.
+ * At 0.15x the cards read as shapes rather than text, which is exactly what a
+ * bird's-eye overview of a long pipeline is for.
+ */
+const ZOOM_MIN = 0.15;
 const ZOOM_MAX = 2.5;
 
 interface Transform {
@@ -243,7 +249,10 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 
   // Flowchart canvas pan/zoom
   const canvasRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [viewTf, setViewTf] = useState<Transform>({ x: 0, y: 0, k: 1 });
+  /** Cleared the first time the user pans or zooms, so auto-centring stops. */
+  const viewUntouched = useRef(true);
   const panRef = useRef<{ startX: number; startY: number; ox: number; oy: number } | null>(null);
   const [panning, setPanning] = useState(false);
 
@@ -564,6 +573,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      viewUntouched.current = false;
       const rect = el.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
@@ -581,6 +591,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   const bgPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.button !== 1) return;
     panRef.current = { startX: e.clientX, startY: e.clientY, ox: viewTf.x, oy: viewTf.y };
+    viewUntouched.current = false;
     setPanning(true);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, [viewTf]);
@@ -597,6 +608,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   }, []);
 
   const zoomBy = useCallback((factor: number) => {
+    viewUntouched.current = false;
     const el = canvasRef.current;
     const cx = (el?.clientWidth ?? 800) / 2;
     const cy = (el?.clientHeight ?? 600) / 2;
@@ -607,7 +619,63 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     });
   }, []);
 
-  const resetView = useCallback(() => setViewTf({ x: 0, y: 0, k: 1 }), []);
+  /**
+   * Centre the column at 100%. The pipeline is rendered in a fixed-width
+   * column, so at k=1 in a wider canvas it used to sit flush against the left
+   * edge with dead space on the right.
+   */
+  const centerView = useCallback(() => {
+    const el = canvasRef.current;
+    const content = contentRef.current;
+    if (!el || !content) {
+      setViewTf({ x: 0, y: 0, k: 1 });
+      return;
+    }
+    setViewTf({ x: Math.max(0, (el.clientWidth - content.offsetWidth) / 2), y: 0, k: 1 });
+  }, []);
+
+  /**
+   * True fit-to-content. The button used to be labelled "Fit" but only reset
+   * the transform, which is not the same thing once the pipeline is taller
+   * than the canvas.
+   */
+  const fitToView = useCallback(() => {
+    const el = canvasRef.current;
+    const content = contentRef.current;
+    if (!el || !content) return;
+    const pad = 24;
+    const w = content.offsetWidth;
+    const h = content.offsetHeight;
+    if (w === 0 || h === 0) return;
+    const k = Math.min(
+      ZOOM_MAX,
+      Math.max(
+        ZOOM_MIN,
+        Math.min((el.clientWidth - pad * 2) / w, (el.clientHeight - pad * 2) / h),
+      ),
+    );
+    setViewTf({
+      x: Math.max(pad, (el.clientWidth - w * k) / 2),
+      y: Math.max(pad, (el.clientHeight - h * k) / 2),
+      k,
+    });
+  }, []);
+
+  const resetView = useCallback(() => centerView(), [centerView]);
+
+  // Centre once the pipeline first has content, and keep it centred while the
+  // user has not taken over the view themselves.
+  useEffect(() => {
+    if (view !== 'flow' || !viewUntouched.current) return;
+    const el = canvasRef.current;
+    if (!el) return;
+    const id = window.requestAnimationFrame(centerView);
+    const ro = new ResizeObserver(() => {
+      if (viewUntouched.current) centerView();
+    });
+    ro.observe(el);
+    return () => { window.cancelAnimationFrame(id); ro.disconnect(); };
+  }, [view, centerView, flow.nodes.length]);
 
   return (
     <div className="flex h-full min-h-0">
@@ -1162,7 +1230,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               className="absolute left-0 top-0 origin-top-left"
               style={{ transform: `translate(${viewTf.x}px, ${viewTf.y}px) scale(${viewTf.k})` }}
             >
-              <div style={{ width: 640 }}>
+              <div ref={contentRef} style={{ width: 640 }}>
                 <FlowchartView
                   ct={ct}
                   flow={flow}
@@ -1224,7 +1292,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               <button
                 onClick={resetView}
                 className={`rounded-full px-2 py-1 text-[10px] font-mono tabular-nums ${ct.muted} ${ct.hoverSurface}`}
-                title="Reset view"
+                title="Back to 100%, centred"
               >
                 {Math.round(viewTf.k * 100)}%
               </button>
@@ -1238,10 +1306,10 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               </button>
               <div className={`mx-0.5 h-4 w-px ${ct.divider.split(' ')[0]}`} />
               <button
-                onClick={resetView}
+                onClick={fitToView}
                 className={`rounded-full p-1.5 ${ct.muted} ${ct.hoverSurface}`}
-                title="Fit / reset pan & zoom"
-                aria-label="Reset view"
+                title="Fit the whole pipeline in view"
+                aria-label="Fit pipeline to view"
               >
                 <Maximize2 size={14} />
               </button>

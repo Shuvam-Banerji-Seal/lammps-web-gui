@@ -32,8 +32,10 @@ Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and expl
 | ![Light](docs/screenshots/app-light.png) | ![Shortcuts](docs/screenshots/shortcuts-overlay.png) |
 | **Mobile** | **Trajectory Analysis — RDF/MSD** |
 | ![Mobile](docs/screenshots/app-mobile.png) | ![Analysis](docs/screenshots/analysis-desktop.png) |
-| **Analysis — mobile** | |
-| ![Analysis Mobile](docs/screenshots/analysis-mobile.png) | |
+| **Analysis — mobile** | **Concept branching — one flowchart, several ideas** |
+| ![Analysis Mobile](docs/screenshots/analysis-mobile.png) | ![Branching](docs/screenshots/flowchart-branching.png) |
+| **Script check — doc-grounded validation** | **Viewer dock on a phone** |
+| ![Script check](docs/screenshots/script-check.png) | ![Mobile dock](docs/screenshots/viewer-dock-mobile.png) |
 
 ## 🎬 Simulation Videos — rendered **in-browser**
 
@@ -47,6 +49,9 @@ The viewer plays **LAMMPS dump** (`.lammpstrj`/`.dump`) natively and exports **M
 
 ## ✨ Features
 
+- 🌿 **Concept branching — divergent ideas in one flowchart.** Hover any step and hit the branch icon to *fork the pipeline from that point onward*. The new concept starts as a **copy of the rest of your pipeline**, so you edit a variant instead of rebuilding from scratch: swap the thermostat, try a different pair style, extend the production run. Switch between **Main line** and each concept with one click — the generated script, the warnings and the SVG export all follow whichever concept is taken. A concept either **replaces** everything after the fork (truly divergent) or **rejoins** the main line (a detour), and the steps it cut off stay visible, ghosted, under *"not in this concept"*. When one idea wins, **Promote** folds it into the main line and drops its rivals; **Tab** flattens any concept into its own flowchart tab for side-by-side comparison. Several forks can be open at once.
+- ✅ **Script check — validation against the LAMMPS rules, not vibes.** A linter reads the *final* script (generated or hand-edited) and flags what LAMMPS would reject or silently do wrong: header-only commands used after the box (`units`, `dimension`, `boundary`, `atom_style`), commands used before it (`pair_coeff`, `mass`, `velocity`, `create_atoms`), `unfix`/`undump`/`uncompute` of an ID that was never defined, fix/dump/compute ID reuse with a different style, groups and regions referenced before definition, a `run` with no time-integration fix, `pair_style reaxff` without charge equilibration, and kspace/pair-style mismatches. **Every rule quotes the `docs.lammps.org` page it enforces and links to it**, and the whole rule set is verified silent on the official example scripts (`in.melt`, `in.heatflux`, `in.msd.2d`, `in.cos.1000SPCE`) — a linter that cries wolf on `in.melt` would be worse than none. Every shipped template is asserted to pass with zero errors *and* zero warnings.
+- ⬇️ **Pipeline-order emission.** The script comes out in exactly the order the flowchart shows, because LAMMPS executes an input file top to bottom and the docs are explicit that the settings/run phases *"can be repeated as many times as desired"*. That makes multi-stage scripts work: `run` → `reset_timestep` → `run`, a second `dump` opened after a stage, and `write_data` **after** the run rather than before it. A **Sort** action still reorders into canonical section order on demand — it moves the steps, so the flowchart never disagrees with the script.
 - 🧪 **LAMMPS Workbench** — three integrated modules: a visual **Script Builder** (flowchart pipeline of 186 curated commands — the complete general-command surface, locked by a coverage test against docs.lammps.org), a **Compiler Helper** (package/accelerator presets → ready-to-run CMake build scripts) and the 3D **Structure Viewer**.
 - 💾 **Everything persists** — your script pipeline, compiler options, active module and light/dark theme survive module switches *and* page reloads (local-only, nothing uploaded).
 - 🧩 **Editable flowchart** — grab any card and drop it between two others (it locks into place with a live insertion indicator), pan by dragging the background, zoom with the mouse wheel (35–250%), click any **connect** pill to insert a command at that exact spot. Prefer raw text? **Edit script** switches to a hand-editing mode that emits your text verbatim.
@@ -61,7 +66,7 @@ The viewer plays **LAMMPS dump** (`.lammpstrj`/`.dump`) natively and exports **M
 - 🧊 **True 3D rendering** — depth-correct perspective view of atoms, bonds and the simulation cell, powered by three.js / React Three Fiber.
 - 📐 **Measurement tools** — click 2–4 atoms for live distance / angle / dihedral readouts with on-canvas overlays.
 - 🎞️ **Trajectory playback** — multi-frame XYZ **and LAMMPS dump** files get a scrubber with play/pause and 2–30 fps speeds (`P`, `,`, `.`).
-- 📊 **Trajectory analysis** — new **Analysis** tab for dump trajectories: **RDF g(r)** (2D/3D PBC-aware, 100 bins), **MSD vs lag**, **density profiles** along x/y/z, **speed histograms** (if `vx vy vz`), all as SVG charts with CSV export. Verified on your 3 demos: Ideal Gas flat `g(r)≈1`, LJ Freezing crystal peaks at `g≈2.4`.
+- 📊 **Trajectory analysis** — the **Analysis** tab for dump trajectories: **RDF g(r)** (2D/3D PBC-aware), **MSD vs lag** (minimum-image, time-origin averaged, ID-following), **density profiles**, **speed histograms** (if `vx vy vz`), all as SVG charts with CSV export. Runs in a worker, once per structure. The physics is unit-tested, not just eyeballed: `g(r)→1` for a random gas, first and second shells of a simple-cubic lattice at `a` and `a√2`, MSD exactly `(v·t)²` under uniform drift, zero for a frozen structure, and correct across a periodic wrap.
 - 🔬 **Improved LAMMPS dump rendering** — handles `x y z` / `xu yu zu` / `xs ys zs`, optional `vx vy vz` velocities, thin 2D boxes (`-0.5→0.5`) with correct PBC and box display.
 - 🔗 **Shareable views** — the Share button copies a URL that restores your exact visualization settings.
 - 📁 **Four structure formats**
@@ -72,7 +77,8 @@ The viewer plays **LAMMPS dump** (`.lammpstrj`/`.dump`) natively and exports **M
   | Protein Data Bank | `.pdb` `.ent` | `CONECT` bonds, `CRYST1` unit cell |
   | CIF | `.cif` `.mmcif` | fractional ↔ Cartesian conversion, triclinic cells as true parallelepipeds |
 - 🎨 **All 118 elements** resolved by symbol from *any* format and colored with standard **CPK/Jmol** palettes; per-type recoloring in the sidebar.
-- ⚡ **Large-system performance** — atoms *and* bonds render as single instanced draw calls; bond inference uses an O(n) spatial hash grid; adaptive device-pixel-ratio and tessellation scale with system size; FPS-adaptive quality degradation; parsing runs in a Web Worker so the UI never freezes.
+- ⚡ **Large-system performance** — atoms *and* bonds render as single instanced draw calls with instance matrices written straight into the GPU buffer (no per-atom `Object3D` compose, no per-instance colour string re-parsing); bond inference uses an O(n) spatial hash grid; adaptive device-pixel-ratio and tessellation scale with system size; FPS-adaptive quality degradation; `frameloop="demand"` means zero idle GPU burn.
+- 🧵 **Two Web Workers, so the UI never freezes** — parsing runs off the main thread, and so does trajectory analysis. **RDF uses a periodic cell list** instead of an all-pairs loop: measured **7× faster at 10 000 atoms and 36× at 30 000** (36.9 s → 1.0 s), with the accelerated histogram asserted bin-for-bin identical to a brute-force reference. MSD resolves a stable atom ordering once instead of rebuilding a lookup inside its inner loop.
 - 🎬 **High-quality video export** — one-click recording of the live canvas at up to 60 fps and ~24 Mbps, saved as MP4 (H.264) where the browser supports it, WebM (VP9/VP8) otherwise.
 - 💡 **Five lighting rigs** (studio · lab · outdoor · space · soft) plus four materials (realistic · plastic · metallic · toon).
 - 📦 **Simulation box display** for LAMMPS bounds, PDB `CRYST1` and CIF cells — triclinic cells render correctly, never faked as cubes.

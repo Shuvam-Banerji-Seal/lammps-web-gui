@@ -2,15 +2,18 @@
 
 # Molecule3D
 
-**A free, open-source, GPU-accelerated 3D molecular structure viewer that runs entirely in your browser.**
+**A free, GPU-accelerated LAMMPS workbench and 3D molecular structure viewer that runs entirely in your browser.**
+
+*Free for education and non-commercial research · attribution required · [commercial use needs a licence](COMMERCIAL.md)*
 
 Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and explore them in real-time 3D — no install, no upload, no account.
 
 [![Live Demo](https://img.shields.io/badge/▶_Live_Demo-shuvam--banerji--seal.github.io-blue?style=for-the-badge)](https://shuvam-banerji-seal.github.io/lammps-web-gui/)
 [![CI](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/ci.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/ci.yml)
 [![Deploy](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/deploy.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/deploy.yml)
-[![Tests](https://img.shields.io/badge/tests-143%20passing-brightgreen)](#development)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-241%20passing-brightgreen)](#development)
+[![License: Educational / Non-Commercial](https://img.shields.io/badge/License-Educational%20%2F%20Non--Commercial-blue.svg)](LICENSE)
+[![Commercial licence](https://img.shields.io/badge/Commercial_use-licence_required-orange.svg)](COMMERCIAL.md)
 
 </div>
 
@@ -196,7 +199,9 @@ the URL can be (re-)submitted through
 ## 🤝 Contributing
 
 PRs welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) and our
-[Code of Conduct](CODE_OF_CONDUCT.md). Security issues go through
+[Code of Conduct](CODE_OF_CONDUCT.md). By opening a PR you license your
+contribution to the author under [LICENSE §6](LICENSE) so it can ship as part
+of the project — you keep your copyright and get credited. Security issues go through
 [private advisories](SECURITY.md) — please don't open public issues for them.
 
 The project wiki has deeper documentation:
@@ -206,4 +211,26 @@ and more.
 
 ## 📄 License
 
-[MIT](LICENSE) © Shuvam Banerji Seal
+**[LAMMPS Web GUI / Molecule3D Educational and Non-Commercial Source-Available
+Licence v1.0](LICENSE)** © 2025–2026 Shuvam Banerji Seal. All rights reserved.
+
+This is **source-available, not open source**. In plain terms:
+
+| | |
+|---|---|
+| ✅ **Free** | Education, teaching, coursework, theses, academic research, personal study — clone it, modify it, fork it, share it at no charge. |
+| ✅ **Free** | Universities, schools, research institutes, national labs, public libraries and museums, for their educational and academic mission. |
+| ⚠️ **Required** | **Credit Shuvam Banerji Seal.** Keep the notices in the source, keep the visible credit in any build you deploy, and **cite the project** in any paper, thesis or poster it helped produce — see [`CITATION.cff`](CITATION.cff). Attribution is a licence condition (§3), not a courtesy. |
+| ❌ **Not allowed** | Selling it, hosting it as a paid or ad-supported service, using it inside a for-profit company to build what you sell, paid consulting or training, or bundling it into a commercial product. |
+| 📩 **Ask first** | Commercial use is available **by written permission**, with a revenue share (10% of gross by default, negotiable — reduced or waived terms are genuinely available for spin-offs, non-profits and small teams). Read [**COMMERCIAL.md**](COMMERCIAL.md) and email <shuvam@sycolex.com>. |
+
+Redistributing it? Ship [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE) unmodified,
+keep every credit intact, and keep this same licence on your derivative work.
+
+Releases made **before 22 September 2026** were MIT-licensed; that grant is not
+revoked for those copies (LICENSE §11).
+
+Third-party dependencies (React, three.js, Tailwind, …) keep their own licences
+— see [`NOTICE`](NOTICE). **LAMMPS** itself is a separate GPL-2.0 project of
+Sandia National Laboratories and the LAMMPS Developers; this tool is
+independent and is not affiliated with or endorsed by it.

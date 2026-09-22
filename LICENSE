@@ -1,21 +1,361 @@
-MIT License
+LAMMPS WEB GUI / MOLECULE3D
+EDUCATIONAL AND NON-COMMERCIAL SOURCE-AVAILABLE LICENSE
+Version 1.0, 22 September 2026
 
-Copyright (c) 2026 Shuvam Banerji Seal
+Copyright (c) 2025-2026 Shuvam Banerji Seal. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This is a SOURCE-AVAILABLE license, not an open source license as defined
+by the Open Source Initiative. You may read, copy, modify and share this
+software freely for education, teaching and non-commercial research, but
+you must credit the author, and you may not use it to make money without a
+separate written commercial licence.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+READ SECTION 3 (ATTRIBUTION) AND SECTION 5 (COMMERCIAL USE) BEFORE USING
+THIS SOFTWARE.
+
+--------------------------------------------------------------------------
+0. DEFINITIONS
+--------------------------------------------------------------------------
+
+"Author" means Shuvam Banerji Seal, the sole copyright holder and original
+creator of the Software.
+
+"Software" means the source code, build scripts, generated LAMMPS input
+scripts and build commands, documentation, UI design, iconography,
+screenshots and any other material in this repository, together with every
+modification, translation, port and derivative work of any of them.
+
+"You" (or "Your") means the individual or legal entity exercising the
+rights granted by this Licence. For a legal entity, "You" includes every
+entity that controls, is controlled by, or is under common control with it.
+
+"Educational Use" means use by or within a school, college, university,
+research institute, public library, museum, government laboratory or other
+not-for-profit educational or academic body, for teaching, coursework,
+training, thesis or dissertation work, academic research, public outreach
+or science communication — including use by students, teachers, faculty,
+academic staff and independent learners acting in that capacity.
+
+"Non-Commercial Use" means any use whose purpose is NOT, directly or
+indirectly, commercial advantage, monetary compensation or the production
+of goods or services for sale. Personal study, hobby use and evaluation are
+Non-Commercial Use.
+
+"Commercial Use" means any use that is not Non-Commercial Use. Without
+limiting that, the following are Commercial Use and require a Commercial
+Licence under Section 5:
+
+  (a) selling, licensing, renting, leasing or sublicensing the Software or
+      any work containing or derived from it;
+  (b) offering the Software, or any service built on it, as a paid,
+      freemium, ad-supported, subscription or hosted (SaaS) product;
+  (c) using the Software internally at a for-profit entity to design,
+      simulate, analyse, validate, document or produce anything that the
+      entity sells, licenses or uses to generate revenue;
+  (d) using the Software in paid consulting, paid training, paid workshops,
+      paid certification, or contract research performed for a fee;
+  (e) bundling or shipping the Software with, or embedding it in, any
+      commercial product, appliance, distribution or service;
+  (f) using the Software to generate content that is monetised, including
+      advertising revenue, sponsorship and paid media;
+  (g) any use by a for-profit entity that is not plainly Educational Use as
+      defined above.
+
+"Commercial Licence" means a separate written agreement signed by the
+Author under Section 5.
+
+"Revenue" means all gross amounts received by You and Your affiliates that
+are attributable, in whole or in part, to a product, service, deliverable
+or engagement that uses, embeds, is derived from, or was produced with the
+assistance of the Software — before deduction of costs, taxes, commissions,
+refunds, discounts or any other amount.
+
+--------------------------------------------------------------------------
+1. GRANT OF RIGHTS
+--------------------------------------------------------------------------
+
+Subject to Your continuous compliance with every term of this Licence, the
+Author grants You a worldwide, royalty-free, non-exclusive, non-
+sublicensable, non-transferable and revocable licence to:
+
+  1.1  clone, download, copy and store the Software;
+  1.2  run and use the Software for Educational Use and Non-Commercial Use;
+  1.3  study and modify the Software and create derivative works of it, for
+       Educational Use and Non-Commercial Use;
+  1.4  redistribute the Software and Your derivative works, in source or
+       compiled form, at no charge, provided that Sections 2, 3 and 4 are
+       satisfied in full;
+  1.5  fork this repository on a public code-hosting platform and publish
+       Your fork, provided Sections 2, 3 and 4 are satisfied in full.
+
+No other rights are granted. Any right not expressly granted here is
+reserved by the Author.
+
+--------------------------------------------------------------------------
+2. REDISTRIBUTION CONDITIONS
+--------------------------------------------------------------------------
+
+If You redistribute the Software or any derivative work, You must:
+
+  2.1  include a complete, unmodified copy of this LICENCE file;
+  2.2  include the NOTICE file and reproduce its contents in any
+       documentation or "about" screen You provide;
+  2.3  retain every copyright, attribution, authorship and licence notice
+       present in the Software, in both source code and user interface;
+  2.4  place this same Licence on the whole of Your derivative work — You
+       may not relicense it, including under any open source, permissive,
+       copyleft or proprietary licence;
+  2.5  state prominently, in a file such as CHANGES or NOTICE, that You
+       modified the Software, what You changed, and on what date;
+  2.6  not charge any fee for the Software itself, nor for access to it,
+       nor for any service whose substance is providing it.
+
+--------------------------------------------------------------------------
+3. ATTRIBUTION — MANDATORY
+--------------------------------------------------------------------------
+
+Attribution to the Author is a condition of this Licence, not a courtesy.
+Every use permitted under Section 1, and every Commercial Licence granted
+under Section 5, requires all of the following that apply:
+
+  3.1  SOURCE. Keep the copyright header and this Licence in every copy of
+       the source, and keep the NOTICE file intact at the repository root.
+
+  3.2  USER INTERFACE. Any deployed, hosted, published or distributed build
+       must display, in a place a user can reach without dismissing it
+       permanently (for example an "About", "Credits" or footer area), and
+       in text no less legible than the surrounding body text:
+
+         "Built on LAMMPS Web GUI / Molecule3D by Shuvam Banerji Seal —
+          https://github.com/Shuvam-Banerji-Seal/lammps-web-gui"
+
+       You may not remove, obscure, shrink below legibility, overlay,
+       relocate off-screen or condition on interaction the equivalent
+       notice that already ships in the Software.
+
+  3.3  DOCUMENTATION AND README. Any repository, package listing, manual,
+       course page, handout or product page that offers the Software or a
+       derivative work must name Shuvam Banerji Seal as the original author
+       and link to the upstream repository.
+
+  3.4  ACADEMIC AND SCIENTIFIC WORK. If the Software — including any LAMMPS
+       input script, build command, flowchart, figure, video or analysis it
+       produced or helped You produce — contributed to a paper, preprint,
+       poster, thesis, dissertation, grant application or technical report,
+       You must cite it. Use the CITATION.cff file in this repository, or:
+
+         Banerji Seal, Shuvam. "LAMMPS Web GUI / Molecule3D: a browser-based
+         LAMMPS script builder, compiler helper and molecular structure
+         viewer." 2026. https://github.com/Shuvam-Banerji-Seal/lammps-web-gui
+
+  3.5  PRESENTATIONS AND TEACHING. Slides, lectures, tutorials, workshops
+       and recorded material that demonstrate the Software must credit the
+       Author verbally or on a visible slide.
+
+  3.6  NO IMPLIED ENDORSEMENT. Attribution does not let You state or imply
+       that the Author endorses, sponsors, reviewed, certified or is
+       affiliated with You or Your work. You may not use the Author's name,
+       likeness or any project mark in advertising, product names, domain
+       names or app-store listings without prior written permission.
+
+--------------------------------------------------------------------------
+4. RESTRICTIONS
+--------------------------------------------------------------------------
+
+You may NOT:
+
+  4.1  make any Commercial Use of the Software without a Commercial Licence
+       granted under Section 5;
+  4.2  remove, alter, disable, circumvent or obscure any copyright notice,
+       attribution, licence text, authorship metadata or in-product credit;
+  4.3  relicense, sell, sublicense, rent, lease or transfer the Software or
+       any right under this Licence;
+  4.4  represent Yourself as the author or originator of the Software, or
+       submit it — whole or in substantial part, with or without cosmetic
+       changes — as Your own work for a grade, degree, prize, grant,
+       portfolio, hiring process or publication;
+  4.5  use the Software in a way that violates applicable law, or in any
+       safety-critical, life-critical, weapons, or human-rights-abusive
+       application;
+  4.6  train, fine-tune, distil or otherwise develop a machine-learning
+       model on the Software for the purpose of producing a competing or
+       substantially similar product, or to launder the Software's
+       provenance and strip its attribution;
+  4.7  assert any patent claim against the Author or any user of the
+       Software in respect of the Software.
+
+Nothing in this Licence restricts any right You have under applicable
+mandatory law, such as a statutory right of quotation, fair dealing or fair
+use, or a non-waivable right to decompile for interoperability.
+
+--------------------------------------------------------------------------
+5. COMMERCIAL USE AND REVENUE SHARE
+--------------------------------------------------------------------------
+
+  5.1  PERMISSION IS REQUIRED. Commercial Use is prohibited unless the
+       Author has granted You a Commercial Licence in a signed written
+       agreement. Silence, delay, non-response, prior discussion or an
+       unanswered email is NOT permission.
+
+  5.2  HOW TO REQUEST. Write to shuvam@sycolex.com with the subject line
+       "Commercial licence request — lammps-web-gui", describing who You
+       are, what You intend to build or deliver, how the Software is used,
+       the expected scale, and Your pricing model. See COMMERCIAL.md for
+       the full checklist.
+
+  5.3  THE AUTHOR'S DISCRETION. The Author may grant, refuse or condition a
+       Commercial Licence for any reason, and may attach different terms to
+       different licensees.
+
+  5.4  REVENUE SHARE. Unless the signed Commercial Licence states otherwise,
+       a granted Commercial Licence carries a royalty of TEN PERCENT (10%)
+       of Revenue, payable to the Author. Where the Software is one
+       component of a larger offering, the parties will agree in writing on
+       an apportionment before the licence takes effect; absent such a
+       written apportionment, the royalty applies to the full Revenue of
+       the offering. The headline rate is a starting point and may be
+       negotiated up or down — academic spin-offs, non-profits and small
+       independent developers are explicitly invited to ask for reduced or
+       waived terms.
+
+  5.5  REPORTING AND PAYMENT. A commercial licensee shall, within thirty
+       (30) days of the end of each calendar quarter, deliver a written
+       statement of Revenue for that quarter and pay the royalty due.
+       Amounts unpaid after that date accrue interest at 1.5% per month or
+       the maximum rate permitted by law, whichever is lower.
+
+  5.6  AUDIT. Once per calendar year, on thirty (30) days' notice, the
+       Author or an independent auditor bound to confidentiality may
+       inspect the licensee's relevant records. If an audit discovers an
+       underpayment exceeding five percent (5%) for the audited period, the
+       licensee bears the cost of the audit in addition to the shortfall
+       and interest.
+
+  5.7  UNLICENSED COMMERCIAL USE. Commercial Use without a Commercial
+       Licence is copyright infringement, terminates this Licence
+       automatically under Section 7, and makes You liable for the royalty
+       that would have been due on all Revenue earned during the
+       infringement, in addition to every other remedy available at law or
+       in equity.
+
+--------------------------------------------------------------------------
+6. CONTRIBUTIONS
+--------------------------------------------------------------------------
+
+  6.1  By submitting a pull request, patch, issue attachment or any other
+       contribution to this repository, You grant the Author a perpetual,
+       worldwide, irrevocable, royalty-free, non-exclusive licence to use,
+       reproduce, modify, publish, distribute, sublicense and relicense
+       Your contribution as part of the Software, including under future
+       versions of this Licence and under Commercial Licences granted to
+       third parties.
+
+  6.2  You represent that You are legally entitled to grant that licence
+       and that Your contribution is Your original work or is properly
+       attributed and compatibly licensed.
+
+  6.3  You retain copyright in Your contribution and are credited in the
+       repository's commit history and, for substantial contributions, in
+       NOTICE.
+
+--------------------------------------------------------------------------
+7. TERM AND TERMINATION
+--------------------------------------------------------------------------
+
+  7.1  This Licence takes effect when You first exercise any right under it
+       and continues until terminated.
+
+  7.2  It terminates automatically and immediately if You breach any term,
+       without notice from the Author.
+
+  7.3  If Your breach was inadvertent and You cure it within thirty (30)
+       days of becoming aware of it, and it is Your first breach, the
+       Licence is reinstated as of the cure. A second breach is not
+       curable.
+
+  7.4  On termination You must stop all use, destroy every copy in Your
+       possession, and remove every public distribution of the Software and
+       of Your derivative works within seven (7) days. Sections 3.4, 4, 5.7,
+       6, 8, 9 and 10 survive termination.
+
+  7.5  Copies that You lawfully distributed before termination may continue
+       to be used by their recipients under this Licence, provided those
+       recipients are themselves in compliance.
+
+--------------------------------------------------------------------------
+8. NO WARRANTY
+--------------------------------------------------------------------------
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT.
+
+THE SOFTWARE GENERATES LAMMPS INPUT SCRIPTS, BUILD COMMANDS AND NUMERICAL
+ANALYSES. THESE ARE AIDS, NOT AUTHORITY. THE AUTHOR DOES NOT WARRANT THAT
+ANY GENERATED SCRIPT, BUILD CONFIGURATION, FORCE FIELD, PARAMETER OR
+ANALYSIS IS CORRECT, PHYSICALLY MEANINGFUL, NUMERICALLY STABLE OR FIT FOR
+ANY SCIENTIFIC PURPOSE. YOU REMAIN SOLELY RESPONSIBLE FOR VERIFYING EVERY
+SCRIPT AND RESULT AGAINST THE OFFICIAL LAMMPS DOCUMENTATION AND YOUR OWN
+SCIENTIFIC JUDGEMENT BEFORE RELYING ON IT.
+
+--------------------------------------------------------------------------
+9. LIMITATION OF LIABILITY
+--------------------------------------------------------------------------
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR ITS USE, INCLUDING ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY OR CONSEQUENTIAL DAMAGES, LOST PROFITS,
+LOST DATA, WASTED COMPUTE OR INVALIDATED RESEARCH.
+
+--------------------------------------------------------------------------
+10. GENERAL
+--------------------------------------------------------------------------
+
+  10.1 GOVERNING LAW. This Licence is governed by the laws of India, and
+       the courts at Kolkata, West Bengal, India have exclusive
+       jurisdiction, without regard to conflict-of-law rules. This does not
+       deprive a consumer of the protection of mandatory law in their place
+       of residence.
+
+  10.2 SEVERABILITY. If any provision is held unenforceable, it is modified
+       to the minimum extent needed to make it enforceable, and the rest of
+       the Licence remains in force.
+
+  10.3 NO WAIVER. A failure to enforce any provision is not a waiver of it.
+
+  10.4 ENTIRE AGREEMENT. This Licence is the entire agreement between You
+       and the Author regarding the Software, superseding any prior
+       understanding, except a signed Commercial Licence, which prevails
+       over this Licence to the extent of any conflict.
+
+  10.5 VERSIONS. The Author may publish revised versions of this Licence.
+       Each release of the Software is governed by the version distributed
+       with it; a new version does not retroactively change the terms of a
+       release You already obtained.
+
+  10.6 THIRD-PARTY COMPONENTS. The Software depends on third-party
+       packages (React, three.js, @react-three/fiber, @react-three/drei,
+       lucide-react, Tailwind CSS, Vite, TypeScript and others), each
+       governed by its own licence. This Licence does not apply to them.
+       LAMMPS itself is a separate project of Sandia National Laboratories
+       and the LAMMPS Developers, distributed under its own terms; this
+       Software is an independent tool for working with LAMMPS and is not
+       affiliated with, endorsed by or a product of the LAMMPS project.
+
+--------------------------------------------------------------------------
+11. RELATIONSHIP TO PRIOR RELEASES
+--------------------------------------------------------------------------
+
+Releases of this Software made before 22 September 2026 were distributed
+under the MIT Licence. That grant is not revoked: anyone who obtained a
+copy of one of those earlier releases keeps their MIT rights in THAT copy.
+This Licence governs the current release and everything published after
+that date.
+
+--------------------------------------------------------------------------
+
+Questions, permission requests and reports of misuse:
+  Shuvam Banerji Seal — shuvam@sycolex.com
+  https://github.com/Shuvam-Banerji-Seal/lammps-web-gui

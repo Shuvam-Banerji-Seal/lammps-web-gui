@@ -4,6 +4,20 @@
   "private": true,
   "type": "module",
   "description": "High-performance 3D molecular structure visualizer for LAMMPS, XYZ, PDB and CIF files",
+  "license": "LicenseRef-LAMMPS-Web-GUI-Educational-1.0",
+  "author": {
+    "name": "Shuvam Banerji Seal",
+    "email": "shuvam@sycolex.com",
+    "url": "https://github.com/Shuvam-Banerji-Seal"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Shuvam-Banerji-Seal/lammps-web-gui.git"
+  },
+  "homepage": "https://shuvam-banerji-seal.github.io/lammps-web-gui/",
+  "bugs": {
+    "url": "https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/issues"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

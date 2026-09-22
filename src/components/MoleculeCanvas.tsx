@@ -87,11 +87,16 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
 
   const { atoms, bonds } = data;
 
+  // Only bond rendering and the measurement tool look atoms up by id.
+  // A LAMMPS dump has no bonds, so building a Map of every atom on every
+  // playback frame was pure waste — 60k inserts per frame at 30 fps.
+  const needsAtomMap = bonds.length > 0 || selectedIds.length > 0;
   const atomMap = useMemo(() => {
     const map = new Map<number, Atom>();
-    atoms.forEach(atom => map.set(atom.id, atom));
+    if (!needsAtomMap) return map;
+    for (let i = 0; i < atoms.length; i++) map.set(atoms[i].id, atoms[i]);
     return map;
-  }, [atoms]);
+  }, [atoms, needsAtomMap]);
 
   // Center the molecule group at the origin so camera math is trivial.
   const groupPosition = useMemo(
@@ -99,7 +104,23 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
     [data.center]
   );
 
-  const { radius: boundingRadius } = useMemo(() => sceneExtent(data), [data]);
+  /**
+   * Camera framing radius.
+   *
+   * Keyed on the BOX and the atom count rather than on `data` identity: during
+   * trajectory playback `data` is a new object every frame, so this used to
+   * rescan every atom per frame AND hand CameraRig a slightly different radius
+   * each time, which made the camera distance visibly pump. A trajectory's
+   * framing should come from its cell, which does not move.
+   */
+  const extentKey = data.box
+    ? `box:${data.box.xlo},${data.box.xhi},${data.box.ylo},${data.box.yhi},${data.box.zlo},${data.box.zhi}`
+    : `atoms:${atoms.length}`;
+  const boundingRadius = useMemo(
+    () => sceneExtent(data).radius,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [extentKey],
+  );
 
   // Periodic-image guard: drop explicit bonds that span nearly the whole cell.
   const maxBondLength = useMemo(() => {

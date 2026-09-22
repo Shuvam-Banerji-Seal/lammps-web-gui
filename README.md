@@ -98,6 +98,26 @@ Your files never leave your machine — parsing happens locally in the browser.
 
 ## ⌨️ Keyboard shortcuts
 
+### Script Builder
+
+| Key | Action |
+|---|---|
+| `/` | Focus the command palette search |
+| `B` | **Fork a concept** at the selected step (or at the end) |
+| `[` `]` | Cycle which concept is taken at that fork |
+| `F` | Fit the whole pipeline in view |
+| `0` | Back to 100%, centred |
+| `S` | Toggle flowchart ⇄ generated script |
+| `C` | Toggle the Script check panel |
+| `Delete` | Remove the selected step |
+| `Esc` | Deselect / close any open menu |
+| `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo (includes template loads and forks) |
+
+Typing targets are always skipped, so the manual-script editor and every
+parameter field keep their native behaviour.
+
+### Structure Viewer
+
 | Key | Action |
 |---|---|
 | `Space` | Play / pause auto-rotation |

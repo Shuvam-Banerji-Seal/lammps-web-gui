@@ -1,6 +1,29 @@
 # Keyboard Shortcuts
 
-Press `H` inside the app to see this list at any time.
+## Script Builder
+
+| Key | Action |
+|---|---|
+| `/` | Focus the command palette search |
+| `B` | Fork a concept at the selected step (or at the end of the pipeline) |
+| `[` / `]` | Cycle which concept is taken at that fork (main line ⇄ each concept) |
+| `F` | Fit the whole pipeline in view |
+| `0` | Back to 100%, centred |
+| `S` | Toggle flowchart ⇄ generated script |
+| `C` | Toggle the Script check panel |
+| `Delete` | Remove the selected step |
+| `Esc` | Deselect, and close the connector menu / template menu / insert picker |
+| `Ctrl+Z` | Undo (covers template loads, forks, promotes and deletes) |
+| `Ctrl+Shift+Z` / `Ctrl+Y` | Redo |
+
+Shortcuts are ignored while a text field, number field, `<select>` or the
+manual-script editor has focus, so typing never triggers them.
+
+See [[Concept Branching]] for what `B` and `[` / `]` operate on.
+
+## Structure Viewer
+
+Press `H` inside the viewer to see this list at any time.
 
 | Key | Action |
 |---|---|

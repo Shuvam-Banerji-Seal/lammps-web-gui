@@ -313,21 +313,11 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     saveJson(browserStore(), WORKSPACE_KEY, workspace);
   }, [workspace]);
 
-  // Undo/redo + Delete-selected keyboard layer (builder-local; the manual
-  // textarea keeps native undo because typing targets are skipped).
+  // The builder's keyboard layer lives further down, after the view and
+  // branch callbacks it drives, so their consts are initialised by the time
+  // its dependency array is evaluated.
   const removeStepRef = useRef<(uid: string) => void>(() => {});
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
-      if ((mod && e.shiftKey && e.key.toLowerCase() === 'z') || (mod && e.key.toLowerCase() === 'y')) { e.preventDefault(); redo(); return; }
-      if (!mod && e.key === 'Delete' && selectedUid) { e.preventDefault(); removeStepRef.current(selectedUid); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, selectedUid]);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // ---- model mutations (lane-aware: trunk OR the branch that owns the step) --
   const insertStepAt = useCallback((defId: string, index: number) => {
@@ -674,6 +664,64 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 
   const resetView = useCallback(() => centerView(), [centerView]);
 
+  /**
+   * Builder keyboard layer. Typing targets are skipped, so the manual-script
+   * textarea and every parameter field keep their native behaviour.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      const mod = e.ctrlKey || e.metaKey;
+      const k = e.key.toLowerCase();
+
+      if (mod && !e.shiftKey && k === 'z') { e.preventDefault(); undo(); return; }
+      if ((mod && e.shiftKey && k === 'z') || (mod && k === 'y')) { e.preventDefault(); redo(); return; }
+      if (mod) return; // leave every other browser/OS chord alone
+
+      if (e.key === 'Delete' && selectedUid) { e.preventDefault(); removeStepRef.current(selectedUid); return; }
+      if (e.key === 'Escape') { setSelectedUid(null); setEdgeMenuIndex(null); setInsertAt(null); setTemplatesOpen(false); return; }
+
+      if (k === '/') { e.preventDefault(); setPaletteOpen(true); searchRef.current?.focus(); return; }
+      if (k === 'f') { e.preventDefault(); fitToView(); return; }
+      if (e.key === '0') { e.preventDefault(); centerView(); return; }
+      if (k === 's') { e.preventDefault(); setView(v => (v === 'flow' ? 'script' : 'flow')); return; }
+      if (k === 'c') { e.preventDefault(); setLintOpen(v => !v); return; }
+
+      // Branching: fork at the selected step, and cycle the concept taken at
+      // that fork with [ and ].
+      if (k === 'b' && !isManual) {
+        e.preventDefault();
+        forkHere(selectedUid ?? model.steps[model.steps.length - 1]?.uid ?? null);
+        return;
+      }
+      if (e.key === '[' || e.key === ']') {
+        const lane = selectedUid ? findLane(model, selectedUid) : null;
+        // The fork to cycle is the one anchored at the selected TRUNK step,
+        // else the first fork in the flowchart.
+        const anchorUid =
+          lane === null && selectedUid && forkMap.has(selectedUid)
+            ? selectedUid
+            : [...forkMap.keys()][0] ?? undefined;
+        if (anchorUid === undefined) return;
+        const list = forkMap.get(anchorUid) ?? [];
+        if (list.length === 0) return;
+        e.preventDefault();
+        // Options at this fork: main line (null) followed by each concept.
+        const options: (string | null)[] = [null, ...list.map(b => b.id)];
+        const current = list.find(b => (model.activeBranchIds ?? []).includes(b.id))?.id ?? null;
+        const at = options.indexOf(current);
+        const next = options[(at + (e.key === ']' ? 1 : options.length - 1) + options.length) % options.length];
+        chooseBranch(anchorUid, next);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [
+    undo, redo, selectedUid, fitToView, centerView, forkHere, chooseBranch,
+    forkMap, model, isManual,
+  ]);
+
   // Centre once the pipeline first has content, and keep it centred while the
   // user has not taken over the view themselves.
   useEffect(() => {
@@ -713,9 +761,10 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
           <div className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 shadow-sm ${ct.input} focus-within:ring-2 focus-within:ring-[#7fa66b]/30 transition-all`}>
             <Search size={16} className="shrink-0 opacity-60" />
             <input
+              ref={searchRef}
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder={`Search ${addableCommands.length} commands…`}
+              placeholder={`Search ${addableCommands.length} commands… ( / )`}
               className={`w-full bg-transparent text-sm font-medium ${ct.text} placeholder:text-[#6f6353]/70 focus:outline-none`}
             />
           </div>
@@ -1326,7 +1375,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               </button>
             </div>
             <p className={`pointer-events-none absolute bottom-3 left-3 hidden text-[10px] md:block ${ct.muted}`}>
-              wheel = zoom · drag background = pan · grab cards to reorder
+              wheel = zoom · drag = pan · <kbd>F</kbd> fit · <kbd>0</kbd> centre · <kbd>B</kbd> fork · <kbd>[</kbd><kbd>]</kbd> concept · <kbd>/</kbd> search · <kbd>S</kbd> script · <kbd>C</kbd> check
             </p>
           </div>
         ) : isManual ? (

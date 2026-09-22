@@ -74,6 +74,14 @@ export interface TrajectoryFrame {
    * for every later frame.
    */
   box?: BoxBounds;
+  /**
+   * True when x/y/z are ABSOLUTE (a dump's `xu yu zu` / `xsu ysu zsu`).
+   *
+   * Displacement maths depends on this. Applying the minimum-image convention
+   * to already-unwrapped coordinates does not just lose precision, it destroys
+   * the signal: a genuine one-box drift folds to exactly zero.
+   */
+  coordsUnwrapped?: boolean;
 }
 
 export enum ParseSection {

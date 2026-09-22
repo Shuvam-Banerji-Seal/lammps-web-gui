@@ -1144,7 +1144,8 @@ const ViewerModule: React.FC<{
                           {' '}
                           {analysis.result.msdUnwrapped ? (
                             <span className={ct.accentText}>
-                              Unwrapped with image flags — exact at long lag.
+                              Displacements are exact — this dump gives absolute positions
+                              (<code>xu yu zu</code>) or image flags to reconstruct them.
                             </span>
                           ) : (
                             <span className="text-[#d9a05b]">

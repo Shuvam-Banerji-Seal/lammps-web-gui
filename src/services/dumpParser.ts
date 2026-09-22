@@ -26,9 +26,12 @@ import { inferBonds } from './bondInference';
  *
  *    x/y/z is preferred for RENDERING because it is wrapped: an unwrapped
  *    diffusing system scatters across box images and looks broken.
- *  - Image flags ix/iy/iz are captured separately when present. Rendering
- *    keeps the wrapped position; MSD unwraps with them, which is what lets it
- *    exceed (L/2)² and show real linear diffusion.
+ *  - Image flags ix/iy/iz are captured separately when present, and ONLY
+ *    alongside a wrapped position. Rendering keeps the wrapped coordinate;
+ *    MSD unwraps with the flags, which is what lets it exceed (L/2)² and show
+ *    real linear diffusion. A dump carrying both `xu yu zu` and `ix iy iz`
+ *    must NOT pass the flags on — the coordinate is already absolute, so
+ *    applying them again double-counts the box offset.
  *  - `element` column → symbol lookup; else type-as-atomic-number heuristic
  *    (types 1..118), matching the .data parser's fallback.
  *  - q / mol columns honored when present; arbitrary extra columns ignored.
@@ -73,6 +76,8 @@ interface ParsedFrame {
   timestep: number;
   atoms: Atom[];
   box?: BoxBounds;
+  /** False when the coordinate columns were the unwrapped ones. */
+  wrapped: boolean;
 }
 
 /** Resolve one atom row given the column index map. */
@@ -81,7 +86,7 @@ const rowToAtom = (
   col: Map<string, number>,
   frameBox: BoxBounds | undefined,
   fallbackId: number,
-): Atom | null => {
+): { atom: Atom; wrapped: boolean } | null => {
   const num = (name: string): number | undefined => {
     const i = col.get(name);
     if (i === undefined || i >= tokens.length) return undefined;
@@ -89,29 +94,56 @@ const rowToAtom = (
     return Number.isFinite(v) ? v : undefined;
   };
 
-  let x = num('x') ?? num('xu');
-  let y = num('y') ?? num('yu');
-  let z = num('z') ?? num('zu');
+  /*
+   * Resolve the position, tracking whether what we store is WRAPPED.
+   *
+   * That flag decides whether the image flags may be attached at all. A dump
+   * can legitimately carry `xu yu zu` AND `ix iy iz`; in that case the
+   * coordinate is already absolute, so handing the flags downstream would
+   * make MSD add the same box offset a second time — a 4x overestimate on a
+   * steady drift. The invariant this function guarantees is therefore:
+   *
+   *   ix/iy/iz are present on an Atom ONLY IF x/y/z are wrapped.
+   */
+  let x: number | undefined;
+  let y: number | undefined;
+  let z: number | undefined;
+  let wrapped = false;
 
-  // Scaled columns, wrapped (xs) or unwrapped (xsu). Both map through the
-  // same restricted-triclinic basis; xsu values simply run outside 0..1.
-  if (x === undefined && frameBox) {
-    const sx = num('xs') ?? num('xsu');
-    const sy = num('ys') ?? num('ysu');
-    const sz = num('zs') ?? num('zsu');
-    if (sx !== undefined && sy !== undefined && sz !== undefined) {
-      const lx = frameBox.xhi - frameBox.xlo;
-      const ly = frameBox.yhi - frameBox.ylo;
-      const lz = frameBox.zhi - frameBox.zlo;
-      const xy = frameBox.xy ?? 0, xz = frameBox.xz ?? 0, yz = frameBox.yz ?? 0;
-      x = frameBox.xlo + sx * lx + sy * xy + sz * xz;
-      y = frameBox.ylo + sy * ly + sz * yz;
-      z = frameBox.zlo + sz * lz;
+  const xw = num('x'), yw = num('y'), zw = num('z');
+  if (xw !== undefined && yw !== undefined && zw !== undefined) {
+    x = xw; y = yw; z = zw;
+    wrapped = true;
+  } else {
+    const xu = num('xu'), yu = num('yu'), zu = num('zu');
+    if (xu !== undefined && yu !== undefined && zu !== undefined) {
+      x = xu; y = yu; z = zu;          // already unwrapped
+    } else if (frameBox) {
+      // Scaled columns, wrapped (xs) or unwrapped (xsu). Both map through the
+      // same restricted-triclinic basis; xsu values simply run outside 0..1.
+      const xs = num('xs'), ys = num('ys'), zs = num('zs');
+      const scaledWrapped = xs !== undefined && ys !== undefined && zs !== undefined;
+      const sx = scaledWrapped ? xs : num('xsu');
+      const sy = scaledWrapped ? ys : num('ysu');
+      const sz = scaledWrapped ? zs : num('zsu');
+      if (sx !== undefined && sy !== undefined && sz !== undefined) {
+        const lx = frameBox.xhi - frameBox.xlo;
+        const ly = frameBox.yhi - frameBox.ylo;
+        const lz = frameBox.zhi - frameBox.zlo;
+        const xy = frameBox.xy ?? 0, xz = frameBox.xz ?? 0, yz = frameBox.yz ?? 0;
+        x = frameBox.xlo + sx * lx + sy * xy + sz * xz;
+        y = frameBox.ylo + sy * ly + sz * yz;
+        z = frameBox.zlo + sz * lz;
+        wrapped = scaledWrapped;
+      }
     }
   }
   if (x === undefined || y === undefined || z === undefined) return null;
 
-  const ix = num('ix'), iy = num('iy'), iz = num('iz');
+  // Only meaningful alongside a wrapped position — see the note above.
+  const ix = wrapped ? num('ix') : undefined;
+  const iy = wrapped ? num('iy') : undefined;
+  const iz = wrapped ? num('iz') : undefined;
 
   const idRaw = num('id');
   const typeRaw = num('type');
@@ -131,7 +163,7 @@ const rowToAtom = (
   }
   if (!symbol && type >= 1 && type <= 118) symbol = ELEMENT_DATA[type - 1].symbol;
 
-  return {
+  const atom: Atom = {
     id,
     molId: mol !== undefined ? Math.round(mol) : 1,
     type: symbol ? (getAtomicNumberFromSymbol(symbol) ?? type) : type,
@@ -144,6 +176,7 @@ const rowToAtom = (
     ...(iy !== undefined ? { iy: Math.round(iy) } : {}),
     ...(iz !== undefined ? { iz: Math.round(iz) } : {}),
   };
+  return { atom, wrapped };
 };
 
 export const parseDumpFile = (data: string): MoleculeData => {
@@ -217,13 +250,17 @@ export const parseDumpFile = (data: string): MoleculeData => {
     i++;
 
     const atoms: Atom[] = [];
+    let frameWrapped = true;
     while (i < lines.length && atoms.length < numAtoms) {
       const row = lines[i].trim();
       if (!row) { i++; continue; }
       if (row.startsWith('ITEM:')) break; // truncated frame
       const tokens = row.split(/\s+/);
-      const atom = rowToAtom(tokens, col, frameBox, atoms.length + 1);
-      if (atom) atoms.push(atom);
+      const parsed = rowToAtom(tokens, col, frameBox, atoms.length + 1);
+      if (parsed) {
+        atoms.push(parsed.atom);
+        frameWrapped = parsed.wrapped;
+      }
       i++;
     }
 
@@ -236,7 +273,7 @@ export const parseDumpFile = (data: string): MoleculeData => {
       break; // truncated trailing frame — drop silently (xyz-parser policy)
     }
 
-    frames.push({ timestep, atoms, box: frameBox });
+    frames.push({ timestep, atoms, box: frameBox, wrapped: frameWrapped });
   }
 
   const first = frames[0];
@@ -267,6 +304,7 @@ export const parseDumpFile = (data: string): MoleculeData => {
     // the rendered cell and the RDF normalisation must not all be pinned to
     // frame 0.
     ...(f.box ? { box: f.box } : {}),
+    ...(f.wrapped ? {} : { coordsUnwrapped: true }),
   }));
 
   // --- Bonds from the reference frame (dumps carry no topology) ---

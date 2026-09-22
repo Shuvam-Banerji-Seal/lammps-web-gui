@@ -31,6 +31,20 @@ export const hasImageFlags = (atoms: Atom[]): boolean =>
   atoms.length > 0 && atoms[0].ix !== undefined && atoms[0].iy !== undefined &&
   atoms[0].iz !== undefined;
 
+/**
+ * True when MSD can measure displacement EXACTLY — either the coordinates are
+ * already absolute, or image flags let them be reconstructed. False means the
+ * minimum-image fallback, whose MSD saturates near (L/2)².
+ */
+export const msdIsExact = (
+  frames: TrajectoryFrame[],
+  box?: BoxBounds,
+): boolean => {
+  if (frames.length === 0) return false;
+  if (frames[0].coordsUnwrapped === true) return true;
+  return !!box && hasImageFlags(frames[0].atoms);
+};
+
 /** Largest value in a numeric array, floored at 1 (used for normalisation). */
 const maxOf = (values: number[]): number => {
   let m = 1;
@@ -376,19 +390,24 @@ export const computeMSD = (
   const wrapZ = !!box && lz > 2;
 
   /*
-   * Two displacement modes.
+   * Three displacement modes, in order of fidelity.
    *
-   * With image flags the absolute position is recoverable exactly
-   * (docs.lammps.org/dump.html: "A value of 2 means add 2 box lengths to get
-   * the true value"), so MSD is unbounded and a diffusive system shows the
-   * linear growth it should.
-   *
-   * Without them, all we have is the wrapped position, and the best we can do
-   * is the minimum-image convention — which caps any single displacement at
-   * half a box, so MSD SATURATES near (L/2)² and cannot represent diffusion
-   * beyond that. Dump `ix iy iz` (or `xu yu zu`) if you need long-time MSD.
+   * 1. Coordinates ALREADY absolute (`xu yu zu` / `xsu ysu zsu`, flagged by
+   *    the parser as `coordsUnwrapped`): take plain differences. Applying the
+   *    minimum-image convention here would be actively destructive — a
+   *    genuine one-box drift folds to exactly zero.
+   * 2. Wrapped coordinates PLUS image flags: reconstruct the absolute position
+   *    (docs.lammps.org/dump.html — "A value of 2 means add 2 box lengths to
+   *    get the true value"). MSD is then unbounded and a diffusive system
+   *    shows the linear growth it should.
+   * 3. Wrapped coordinates, no flags: minimum image is all that is available,
+   *    and it caps any single displacement at half a box — so MSD SATURATES
+   *    near (L/2)² and cannot represent diffusion beyond that. Dump
+   *    `ix iy iz` or `xu yu zu` if you need long-time MSD.
    */
-  const unwrap = !!box && hasImageFlags(frames[0].atoms);
+  const alreadyAbsolute = frames[0].coordsUnwrapped === true;
+  const useImageFlags = !alreadyAbsolute && !!box && hasImageFlags(frames[0].atoms);
+  const minimumImage = !alreadyAbsolute && !useImageFlags && !!box;
 
   const msd: MSDPoint[] = [];
   for (let dt = 0; dt < frames.length; dt++) {
@@ -409,7 +428,7 @@ export const computeMSD = (
         let dx = to.x - from.x;
         let dy = to.y - from.y;
         let dz = to.z - from.z;
-        if (unwrap) {
+        if (useImageFlags) {
           // Restricted-triclinic image offset; degenerates to the orthogonal
           // case when the tilt factors are zero.
           const dix = (to.ix ?? 0) - (from.ix ?? 0);
@@ -418,7 +437,7 @@ export const computeMSD = (
           dx += dix * lx + diy * xy + diz * xz;
           dy += diy * ly + diz * yz;
           dz += diz * lz;
-        } else if (box) {
+        } else if (minimumImage) {
           dx = pbcDelta(dx, lx);
           dy = pbcDelta(dy, ly);
           if (wrapZ) dz = pbcDelta(dz, lz);

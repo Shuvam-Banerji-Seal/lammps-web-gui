@@ -4,7 +4,7 @@ import {
   computeDensityProfile,
   computeMSD,
   computeRDF,
-  hasImageFlags,
+  msdIsExact,
 } from './trajectoryAnalysis';
 
 /**
@@ -121,7 +121,7 @@ export const analyzeSync = (
     rdf: computeRDF(frames, box, { rMax: opts.rdfRMax, bins: opts.rdfBins }),
     msd: computeMSD(frames, box, { timeOriginStride: opts.msdStride }),
     density: computeDensityProfile(frames, box, opts.densityAxis, opts.densityBins),
-    msdUnwrapped: !!box && frames.length > 0 && hasImageFlags(frames[0].atoms),
+    msdUnwrapped: msdIsExact(frames, box),
     ms: Date.now() - started,
     onMainThread: true,
   };

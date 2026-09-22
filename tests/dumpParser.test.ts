@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseDumpFile, boundBoxToTriclinic } from '../src/services/dumpParser';
 import { detectFileFormat, detectFormatFromContent } from '../src/services/fileParser';
+import { computeMSD } from '../src/services/trajectoryAnalysis';
 
 // Orthogonal, 2 frames, custom columns incl. element + q
 const ORTHO = `ITEM: TIMESTEP
@@ -228,5 +229,74 @@ ITEM: ATOMS id type x y z
     expect(d.frames![2].box!.xhi).toBeCloseTo(11, 6);
     // the reference box stays frame 0's, which is what camera framing uses
     expect(d.box!.xhi).toBeCloseTo(10, 6);
+  });
+});
+
+describe('dump parser — image flags only accompany a WRAPPED position', () => {
+  const frames = (cols: string, rows: (t: number) => string, n = 5) => {
+    let src = '';
+    for (let t = 0; t <= n; t++) {
+      src += `ITEM: TIMESTEP\n${t}\nITEM: NUMBER OF ATOMS\n1\n` +
+        `ITEM: BOX BOUNDS pp pp pp\n0.0 10.0\n0.0 10.0\n0.0 10.0\n` +
+        `ITEM: ATOMS ${cols}\n${rows(t)}\n`;
+    }
+    return src;
+  };
+
+  /**
+   * Regression: a dump may legitimately carry BOTH `xu yu zu` and `ix iy iz`.
+   * The coordinate is then already absolute, so passing the flags downstream
+   * makes MSD add the same box offset twice — a 4x overestimate on a steady
+   * drift (400 instead of 100 for a +2/frame drift over 5 frames).
+   */
+  it('drops ix/iy/iz when the coordinate came from xu/yu/zu', () => {
+    const d = parseDumpFile(frames(
+      'id type xu yu zu ix iy iz',
+      t => `1 1 ${2 * t} 0.0 0.0 ${Math.floor((2 * t) / 10)} 0 0`,
+    ));
+    expect(d.atoms[0].ix).toBeUndefined();
+    const pts = computeMSD(d.frames!, d.box, { timeOriginStride: 1 });
+    // xu is already unwrapped: drift of 2/frame over 5 frames -> 10² = 100
+    expect(pts[pts.length - 1].msd).toBeCloseTo(100, 6);
+  });
+
+  it('drops ix/iy/iz when the coordinate came from xsu/ysu/zsu', () => {
+    const d = parseDumpFile(frames(
+      'id type xsu ysu zsu ix iy iz',
+      t => `1 1 ${(2 * t) / 10} 0.0 0.0 ${Math.floor((2 * t) / 10)} 0 0`,
+    ));
+    expect(d.atoms[0].ix).toBeUndefined();
+    const pts = computeMSD(d.frames!, d.box, { timeOriginStride: 1 });
+    expect(pts[pts.length - 1].msd).toBeCloseTo(100, 6);
+  });
+
+  it('KEEPS ix/iy/iz alongside wrapped x/y/z, and MSD then matches exactly', () => {
+    const d = parseDumpFile(frames(
+      'id type x y z ix iy iz',
+      t => `1 1 ${(2 * t) % 10} 0.0 0.0 ${Math.floor((2 * t) / 10)} 0 0`,
+    ));
+    expect(d.atoms[0].ix).toBe(0);
+    const pts = computeMSD(d.frames!, d.box, { timeOriginStride: 1 });
+    expect(pts[pts.length - 1].msd).toBeCloseTo(100, 6);
+  });
+
+  it('KEEPS ix/iy/iz alongside wrapped scaled xs/ys/zs', () => {
+    const d = parseDumpFile(frames(
+      'id type xs ys zs ix iy iz',
+      t => `1 1 ${((2 * t) % 10) / 10} 0.0 0.0 ${Math.floor((2 * t) / 10)} 0 0`,
+    ));
+    expect(d.atoms[0].ix).toBe(0);
+    const pts = computeMSD(d.frames!, d.box, { timeOriginStride: 1 });
+    expect(pts[pts.length - 1].msd).toBeCloseTo(100, 6);
+  });
+
+  it('prefers wrapped x/y/z when a dump carries both x and xu', () => {
+    const d = parseDumpFile(frames(
+      'id type x y z xu yu zu',
+      t => `1 1 ${(2 * t) % 10} 0.0 0.0 ${2 * t} 0.0 0.0`,
+    ));
+    // rendering must use the wrapped column
+    expect(d.atoms[0].x).toBeCloseTo(0, 6);
+    expect(d.frames![3].atoms[0].x).toBeCloseTo(6, 6);
   });
 });

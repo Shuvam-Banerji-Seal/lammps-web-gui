@@ -488,24 +488,35 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     } catch { /* clipboard blocked */ }
   }, [activeText]);
 
+  /**
+   * Commands offered for ADDING. Deprecated defs stay in ALL_COMMANDS so the
+   * script importer can still recognise them, but they are never offered for
+   * a new pipeline — a palette that suggests a command LAMMPS removed four
+   * years ago is worse than one that omits it.
+   */
+  const addableCommands = useMemo(
+    () => ALL_COMMANDS.filter(d => !d.deprecated),
+    [],
+  );
+
   const filteredCommands = useMemo(() => {
-    if (!search.trim()) return ALL_COMMANDS;
+    if (!search.trim()) return addableCommands;
     const q = search.toLowerCase();
-    return ALL_COMMANDS.filter(d =>
+    return addableCommands.filter(d =>
       d.label.toLowerCase().includes(q) ||
       d.command.toLowerCase().includes(q) ||
       d.category.toLowerCase().includes(q)
     );
-  }, [search]);
+  }, [search, addableCommands]);
 
   const insertCandidates = useMemo(() => {
-    if (!insertSearch.trim()) return ALL_COMMANDS;
+    if (!insertSearch.trim()) return addableCommands;
     const q = insertSearch.toLowerCase();
-    return ALL_COMMANDS.filter(d =>
+    return addableCommands.filter(d =>
       d.label.toLowerCase().includes(q) ||
       d.command.toLowerCase().includes(q)
     );
-  }, [insertSearch]);
+  }, [insertSearch, addableCommands]);
 
   const selectedStep = model.steps.find(s => s.uid === selectedUid) ?? null;
   const selectedDef = selectedStep ? COMMAND_BY_ID[selectedStep.defId] : null;
@@ -704,7 +715,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder={`Search ${ALL_COMMANDS.length} commands…`}
+              placeholder={`Search ${addableCommands.length} commands…`}
               className={`w-full bg-transparent text-sm font-medium ${ct.text} placeholder:text-[#6f6353]/70 focus:outline-none`}
             />
           </div>
@@ -1827,6 +1838,12 @@ const StepEditor: React.FC<StepEditorProps> = ({
           </button>
         </div>
       </div>
+
+      {def.deprecated && (
+        <div className={`rounded-lg border px-2.5 py-2 text-[11px] leading-relaxed ${ct.warn}`} role="alert">
+          ⚠ {def.deprecated}
+        </div>
+      )}
 
       {def.doc && (
         <a href={def.doc} target="_blank" rel="noopener noreferrer" className={`block text-[10px] ${ct.accentText} hover:underline`}>

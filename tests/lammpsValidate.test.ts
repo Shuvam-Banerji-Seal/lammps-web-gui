@@ -346,6 +346,11 @@ run 10`, 'kspace/pair-mismatch');
     expect(c.errors + c.warnings).toBeGreaterThan(0);
   });
 
+  it('warns about commands LAMMPS has removed', () => {
+    fire('units lj\nbox tilt large', 'deprecated/removed-command');
+    fire('read_data in.data\nreset_ids', 'deprecated/removed-command');
+  });
+
   it('returns nothing for empty input', () => {
     expect(validateScript('')).toEqual([]);
     expect(validateScript('# just a comment\n')).toEqual([]);

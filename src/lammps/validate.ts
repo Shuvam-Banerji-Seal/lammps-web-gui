@@ -107,6 +107,18 @@ const derivesMass = (atomStyleLine: string | null): boolean =>
     .split(/\s+/)
     .some(tok => PER_ATOM_MASS_STYLES.includes(tok));
 
+/**
+ * Commands LAMMPS has REMOVED. Quoted from
+ * docs.lammps.org/Commands_removed.html (2026-09-22).
+ */
+const REMOVED_COMMANDS: Record<string, string> = {
+  box: 'removed in 22Dec2022 — LAMMPS ignores it and prints a warning; ' +
+    'triclinic tilt limits no longer need declaring',
+  reset_ids: 'removed in 22Dec2022 — folded into `reset_atoms`',
+  reset_atom_ids: 'removed in 22Dec2022 — folded into `reset_atoms`',
+  reset_mol_ids: 'removed in 22Dec2022 — folded into `reset_atoms`',
+};
+
 /** Fix styles that create atoms at run time, so a run with 0 atoms is fine. */
 const ATOM_CREATING_FIXES = ['pour', 'deposit', 'gcmc', 'widom', 'append/atoms'];
 
@@ -182,6 +194,13 @@ export const validateScript = (text: string): Diagnostic[] => {
     const tok = tokenizeLine(stmt);
     if (tok.length === 0) continue;
     const cmd = tok[0];
+
+    /* ---- commands LAMMPS has removed -------------------------------- */
+    if (REMOVED_COMMANDS[cmd]) {
+      add('warning', line, cmd, 'deprecated/removed-command',
+        `\`${cmd}\` was ${REMOVED_COMMANDS[cmd]}.`,
+        'Commands_removed.html');
+    }
 
     /* ---- header-only commands after the box ------------------------- */
     const header = HEADER_ONLY[cmd];

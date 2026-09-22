@@ -2,20 +2,27 @@ import { describe, it, expect } from 'vitest';
 import { ALL_COMMANDS } from '../src/lammps/catalog';
 
 /**
- * The authoritative alphabetical list of general LAMMPS commands from
- * docs.lammps.org/Commands_all.html (git 4Jul2026), including the
- * package-provided section. This test LOCKS coverage: every new command
- * LAMMPS adds will fail this test until the catalog grows — by design.
+ * The authoritative alphabetical list of general LAMMPS commands, scraped from
+ * docs.lammps.org/Commands_all.html and diffed against the catalog on
+ * 2026-09-22. Includes the package-provided section. This test LOCKS coverage:
+ * every new command LAMMPS adds fails this test until the catalog grows — by
+ * design.
+ *
+ * The 2026-09-22 re-check against the LIVE index found two drifts:
+ *  - `fenix` was added upstream (FENIX package, 2Sep2026) and was missing;
+ *  - `box` is NOT in the index any more — it was removed in 22Dec2022. It
+ *    stays in the catalog, marked `deprecated`, so old scripts still import,
+ *    but it is hidden from the palette and the validator warns about it.
  */
 const OFFICIAL_GENERAL_COMMANDS = [
   // 6.5 general commands
   'angle_coeff', 'angle_style', 'angle_write', 'atom_modify', 'atom_style',
-  'balance', 'bond_coeff', 'bond_style', 'bond_write', 'boundary', 'box',
+  'balance', 'bond_coeff', 'bond_style', 'bond_write', 'boundary',
   'change_box', 'clear', 'comm_modify', 'comm_style', 'compute',
   'compute_modify', 'create_atoms', 'create_bonds', 'create_box',
   'delete_atoms', 'delete_bonds', 'dielectric', 'dihedral_coeff',
   'dihedral_style', 'dihedral_write', 'dimension', 'displace_atoms', 'dump',
-  'dump_modify', 'echo', 'fix', 'fix_modify', 'geturl', 'group', 'if',
+  'dump_modify', 'echo', 'fenix', 'fix', 'fix_modify', 'geturl', 'group', 'if',
   'improper_coeff', 'improper_style', 'include', 'info', 'jump',
   'kspace_modify', 'kspace_style', 'label', 'labelmap', 'lattice', 'log',
   'mass', 'minimize', 'min_modify', 'min_style', 'molecule', 'neigh_modify',
@@ -46,13 +53,29 @@ describe('official LAMMPS command coverage (docs.lammps.org Commands_all)', () =
   });
 
   it('catalog has no command keyword outside the official list (except tooling)', () => {
-    // Allowed extras: free-form escape hatches and the import raw fallback.
-    const allowed = new Set(['raw']);
+    // Allowed extras: the import raw fallback, plus commands LAMMPS has
+    // removed that we keep purely so old scripts still round-trip.
+    const allowed = new Set(['raw', 'box']);
     const extras = [...catalogKeywords].filter(c => !OFFICIAL_GENERAL_COMMANDS.includes(c));
     const unexplained = extras.filter(c => !allowed.has(c));
-    // Every extra must be a def-id-level alias of an official command family
-    // (e.g. 'region' variants share the keyword; these are keyword-level so
-    // extras should be none beyond tooling).
     expect(unexplained, `unexplained keywords: ${unexplained.join(', ')}`).toEqual([]);
+  });
+
+  it('every command LAMMPS removed is marked deprecated, not offered as new', () => {
+    // docs.lammps.org/Commands_removed.html — removed in 22Dec2022.
+    const removed = ['box', 'reset_ids', 'reset_atom_ids', 'reset_mol_ids'];
+    for (const cmd of ALL_COMMANDS) {
+      if (removed.includes(cmd.command)) {
+        expect(cmd.deprecated, `${cmd.id} must carry a deprecation note`).toBeTruthy();
+        expect(cmd.deprecated).toMatch(/22Dec2022/);
+      }
+    }
+    // and nothing removed may be reachable without a deprecation note
+    const addable = ALL_COMMANDS.filter(d => !d.deprecated).map(d => d.command);
+    for (const r of removed) expect(addable).not.toContain(r);
+  });
+
+  it('newly added commands are present (fenix, FENIX package 2Sep2026)', () => {
+    expect(catalogKeywords.has('fenix')).toBe(true);
   });
 });

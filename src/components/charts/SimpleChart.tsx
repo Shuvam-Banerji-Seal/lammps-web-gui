@@ -1,7 +1,61 @@
 import React from 'react';
 import { getThemeTokens, Theme } from '../../theme';
 
-interface Point { x: number; y: number; }
+export interface Point { x: number; y: number; }
+
+/** Extent without spreading the array into Math.min/Math.max. */
+export const extent = (values: number[]): { lo: number; hi: number } => {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (!Number.isFinite(v)) continue;
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  return Number.isFinite(lo) ? { lo, hi } : { lo: 0, hi: 1 };
+};
+
+/**
+ * Plot width in CSS pixels. The chart is drawn in this viewBox and scaled, so
+ * there is nothing to gain from more than ~2 points per unit of it.
+ */
+const PLOT_PX = 320;
+
+/**
+ * Min/max decimation.
+ *
+ * An MSD curve has one point per lag, so a few-thousand-frame trajectory used
+ * to emit a few thousand sub-pixel `L` segments into a 320px-wide SVG. Plain
+ * stride sampling would hide peaks, which for g(r) is exactly the information
+ * the chart exists to show — so each bucket contributes both its minimum and
+ * its maximum, in x order.
+ */
+export const decimate = (data: Point[], budget = PLOT_PX * 2): Point[] => {
+  if (data.length <= budget) return data;
+  const buckets = Math.max(1, Math.floor(budget / 2));
+  const size = data.length / buckets;
+  const out: Point[] = [];
+  for (let b = 0; b < buckets; b++) {
+    const start = Math.floor(b * size);
+    const end = Math.min(data.length, Math.floor((b + 1) * size));
+    if (end <= start) continue;
+    let lo = data[start];
+    let hi = data[start];
+    for (let i = start + 1; i < end; i++) {
+      if (data[i].y < lo.y) lo = data[i];
+      if (data[i].y > hi.y) hi = data[i];
+    }
+    if (lo.x <= hi.x) {
+      out.push(lo);
+      if (hi !== lo) out.push(hi);
+    } else {
+      out.push(hi);
+      out.push(lo);
+    }
+  }
+  return out;
+};
 
 interface LineChartProps {
   data: Point[];
@@ -23,25 +77,31 @@ export const LineChart: React.FC<LineChartProps> = ({
   if (data.length === 0) {
     return <div className={`flex h-[160px] items-center justify-center text-xs ${ct.muted}`}>No data</div>;
   }
-  const xs = data.map(d => d.x);
-  const ys = data.map(d => d.y);
-  const xMin = Math.min(...xs);
-  const xMax = Math.max(...xs);
-  const yLo = yMin ?? Math.min(0, Math.min(...ys));
-  const yHi = yMax ?? Math.max(...ys);
+  // Extents come from the FULL series so decimation cannot change the axes.
+  const xe = extent(data.map(d => d.x));
+  const ye = extent(data.map(d => d.y));
+  const xMin = xe.lo;
+  const xMax = xe.hi;
+  const yLo = yMin ?? Math.min(0, ye.lo);
+  const yHi = yMax ?? ye.hi;
   const yRange = yHi - yLo || 1;
   const xRange = xMax - xMin || 1;
 
-  const W = 320, H = height, padL = 36, padR = 12, padT = 12, padB = 22;
+  const plotted = decimate(data);
+
+  const W = PLOT_PX, H = height, padL = 36, padR = 12, padT = 12, padB = 22;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
 
   const sx = (x: number) => padL + ((x - xMin) / xRange) * plotW;
   const sy = (y: number) => padT + (1 - (y - yLo) / yRange) * plotH;
 
-  const path = data.map((p, i) => `${i === 0 ? 'M' : 'L'} ${sx(p.x).toFixed(1)} ${sy(p.y).toFixed(1)}`).join(' ');
-  const fillPath = data.length > 1
-    ? `${path} L ${sx(data[data.length - 1].x).toFixed(1)} ${sy(yLo).toFixed(1)} L ${sx(data[0].x).toFixed(1)} ${sy(yLo).toFixed(1)} Z`
+  const path = plotted
+    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${sx(p.x).toFixed(1)} ${sy(p.y).toFixed(1)}`)
+    .join(' ');
+  const fillPath = plotted.length > 1
+    ? `${path} L ${sx(plotted[plotted.length - 1].x).toFixed(1)} ${sy(yLo).toFixed(1)} ` +
+      `L ${sx(plotted[0].x).toFixed(1)} ${sy(yLo).toFixed(1)} Z`
     : '';
 
   // ticks
@@ -111,7 +171,7 @@ export const Histogram: React.FC<HistogramProps> = ({ bins, xLabel, yLabel, colo
   const W = 320, H = height, padL = 36, padR = 12, padT = 12, padB = 22;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
-  const maxCount = Math.max(...bins.map(b => b.count), 1);
+  const maxCount = Math.max(1, extent(bins.map(b => b.count)).hi);
   const barW = plotW / bins.length;
   const gridColor = isDark ? '#332a1f' : '#e0d7c6';
   const textColor = isDark ? '#a3937f' : '#7c7060';

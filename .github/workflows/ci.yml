@@ -2,9 +2,10 @@ name: CI
 
 on:
   pull_request:
-    branches: ["main", "master"]
+    branches: ["main"]
   push:
-    branches: ["main", "master"]
+    branches: ["main"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,16 +16,25 @@ concurrency:
 
 jobs:
   verify:
-    name: Typecheck · Test · Audit · Build
+    name: verify (node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Active LTS plus current, so a dependency that quietly needs a newer
+        # runtime is caught before it reaches the Pages deploy (which uses 24).
+        node: ["22", "24"]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: ${{ matrix.node }}
           cache: "npm"
 
       - name: Install dependencies
@@ -46,9 +56,33 @@ jobs:
         run: npm run check:size
 
       - name: Upload build artifact (on main)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: matrix.node == '24' && github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
           retention-days: 3
+
+  conventions:
+    name: commit-conventions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: PR title must be a conventional commit
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.pull_request.title;
+            // type(scope)!: subject — matches the project's existing history
+            const re = /^(feat|fix|docs|design|perf|refactor|test|build|ci|chore|audit|license|revert)(\([a-z0-9._/+-]+\))?!?: .{3,}/;
+            if (!re.test(title)) {
+              core.setFailed(
+                `PR title "${title}" is not a conventional commit.\n` +
+                'Expected: <type>(<optional scope>): <subject>\n' +
+                'Types: feat, fix, docs, design, perf, refactor, test, build, ci, chore, audit, license, revert\n' +
+                'Append "!" for a breaking change, e.g. "fix(lammps)!: ...".'
+              );
+            } else {
+              core.info(`OK: ${title}`);
+            }

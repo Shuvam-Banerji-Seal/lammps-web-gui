@@ -1,0 +1,32 @@
+name: "📄 Licensing or attribution question"
+description: Ask whether your use is allowed, or report misuse.
+title: "licensing: "
+labels: ["licensing"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read [COMMERCIAL.md](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/blob/main/COMMERCIAL.md)
+        first — it has a "do I need a licence?" table that answers most questions.
+
+        **Do not post commercial terms, revenue figures or anything confidential
+        in a public issue.** For an actual commercial licence request, email
+        shuvam@sycolex.com instead.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is this about?
+      options:
+        - "Is my use covered by the free educational / non-commercial grant?"
+        - "How do I attribute / cite the project correctly?"
+        - "Reporting apparent misuse by someone else"
+        - "Something in LICENSE or COMMERCIAL.md is unclear or contradictory"
+    validations:
+      required: true
+  - type: textarea
+    id: detail
+    attributes:
+      label: Details
+      description: Who you are, the context of the use, and which licence section you are asking about.
+    validations:
+      required: true

@@ -1,0 +1,19 @@
+# Every change needs the author's review.
+# Attribution, licensing and the LAMMPS correctness layer are the parts that
+# must never drift silently, so they are listed explicitly as well.
+
+*                               @Shuvam-Banerji-Seal
+
+# Licence, attribution and citation — see LICENSE §3
+/LICENSE                        @Shuvam-Banerji-Seal
+/NOTICE                         @Shuvam-Banerji-Seal
+/COMMERCIAL.md                  @Shuvam-Banerji-Seal
+/CITATION.cff                   @Shuvam-Banerji-Seal
+/tests/attribution.test.ts      @Shuvam-Banerji-Seal
+
+# LAMMPS command grammars, script generation and validation — changes here
+# alter the scripts users actually run
+/src/lammps/                    @Shuvam-Banerji-Seal
+
+# CI, release and repository policy
+/.github/                       @Shuvam-Banerji-Seal

@@ -1,0 +1,49 @@
+# Path-based PR labels (actions/labeler v5 syntax).
+lammps-correctness:
+  - changed-files:
+      - any-glob-to-any-file: ["src/lammps/**", "tests/lammps*.test.ts"]
+
+script-builder:
+  - changed-files:
+      - any-glob-to-any-file: ["src/components/workbench/ScriptBuilder.tsx"]
+
+compiler-helper:
+  - changed-files:
+      - any-glob-to-any-file: ["src/components/workbench/CompilerHelper.tsx"]
+
+viewer:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/components/workbench/ViewerModule.tsx"
+          - "src/components/*Mesh.tsx"
+          - "src/components/MoleculeCanvas.tsx"
+          - "src/components/CameraRig.tsx"
+          - "src/components/LightingRig.tsx"
+          - "src/components/SimulationBox.tsx"
+          - "src/services/*Parser.ts"
+          - "src/services/trajectoryAnalysis.ts"
+          - "src/services/recorder.ts"
+
+performance:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/workers/**"
+          - "src/services/glRegistry.ts"
+          - "scripts/check-bundle-size.mjs"
+          - "vite.config.ts"
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file: ["**/*.md", "wiki/**", "docs/**"]
+
+licensing:
+  - changed-files:
+      - any-glob-to-any-file: ["LICENSE", "NOTICE", "COMMERCIAL.md", "CITATION.cff"]
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: [".github/**"]
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file: ["package.json", "package-lock.json"]

@@ -3,6 +3,7 @@ import { flowchartToSVG } from '../src/lammps/flowchartSvg';
 import { buildTemplate } from '../src/lammps/templates';
 import { SCRIPT_TEMPLATES } from '../src/lammps/templates';
 import { DOMParser } from '@xmldom/xmldom';
+import type { ScriptStep } from '../src/lammps/catalog';
 
 const model = buildTemplate(SCRIPT_TEMPLATES.find(t => t.id === 'lj-nvt')!);
 
@@ -38,5 +39,30 @@ describe('flowchart SVG export', () => {
     const svg = flowchartToSVG({ title: 'A <b> & "c" test', steps: [] });
     expect(svg).toContain('A &lt;b&gt; &amp; &quot;c&quot; test');
     expect(() => new DOMParser().parseFromString(svg, 'image/svg+xml')).not.toThrow();
+  });
+});
+
+describe('flowchart SVG — branching', () => {
+  it('names the taken concept in the subtitle and marks the fork', () => {
+    const trunk: ScriptStep[] = [
+      { uid: 'a', defId: 'units', params: { style: 'lj' }, enabled: true },
+      { uid: 'b', defId: 'fix_nve', params: {}, enabled: true },
+    ];
+    const svg = flowchartToSVG({
+      title: 'Fork demo',
+      steps: trunk,
+      branches: [{
+        id: 'br1',
+        label: 'Hot run',
+        forkAfter: 'a',
+        steps: [{ uid: 'c', defId: 'run', params: { steps: '9999' }, enabled: true }] as ScriptStep[],
+        rejoin: false,
+      }],
+      activeBranchIds: ['br1'],
+    });
+    expect(svg).toContain('concept: Hot run');
+    expect(svg).toContain('HOT RUN');          // per-card concept label
+    expect(svg).toMatch(/<path d="M \d+(\.\d+)? \d+(\.\d+)? L/); // fork diamond
+    expect(svg).not.toContain('>fix nve<');    // trunk tail replaced
   });
 });

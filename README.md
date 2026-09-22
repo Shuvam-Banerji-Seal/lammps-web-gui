@@ -178,22 +178,31 @@ Project layout:
 │   │   ├── measure.ts             # distance / angle / dihedral math
 │   │   ├── persistence.ts         # safe JSON localStorage layer
 │   │   └── viewState.ts           # shareable ?s= view encoding
-│   ├── hooks/               # useKeyboardShortcuts · usePersistentState
-│   └── workers/parser.worker.ts   # off-main-thread parsing
+│   ├── hooks/               # keyboard · persistence · trajectory analysis
+│   └── workers/             # parser + trajectory-analysis Web Workers
 ├── tests/                   # vitest suites (parsers, chemistry, catalog, persistence)
 ├── public/                  # static assets + example structures
 ├── docs/screenshots/
 ├── scripts/                 # wiki publisher, size budget check
-├── server/                  # optional legacy Flask backend (not used by Pages)
 ├── wiki/                    # versioned GitHub wiki source
 └── .github/workflows/       # CI (typecheck·test·audit·build) + Pages deploy
 ```
 
 ## 📦 Deployment
 
-Every push to `main` runs CI (typecheck → tests → `npm audit` → build) and deploys
-the static build to GitHub Pages via GitHub Actions. No backend is required —
-the optional Flask server (`server/server.py`) is legacy and not used by the deployed site.
+Every push to `main` runs CI (typecheck → tests → `npm audit` → build → bundle
+budget, on Node 22 and 24) and deploys the static build to GitHub Pages via
+GitHub Actions.
+
+**There is no backend, by design.** Every parser, the script generator, the
+validator and all the trajectory analysis run in your browser — your files
+never leave your machine. A legacy Flask stub used to sit in `server/`; it was
+unused by the deployed site and carried its own CVEs, so it was removed (it is
+still in the git history if you ever want it back).
+
+`main` is protected: direct pushes are blocked and every change lands through a
+pull request that must pass CI on both Node lines, dependency review, CodeQL
+and code-owner review. See [CONTRIBUTING.md](CONTRIBUTING.md#branch-protection-and-the-pr-flow).
 
 ## 🔍 Search indexing
 

@@ -52,7 +52,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className={`flex h-screen w-screen flex-col overflow-hidden font-sans ${ct.bg} ${ct.text}`}>
+    <div className={`flex h-dvh w-full flex-col overflow-hidden font-sans ${ct.bg} ${ct.text}`}>
       {/* Top-level module switcher */}
       <header className={`flex h-12 shrink-0 items-center justify-between border-b px-4 ${ct.panel}`}>
         <div className="flex min-w-0 items-center gap-2">

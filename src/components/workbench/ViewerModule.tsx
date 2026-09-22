@@ -1194,7 +1194,7 @@ const ViewerModule: React.FC<{
       </aside>
 
       {/* ============================ MAIN CANVAS AREA */}
-      <main className={`flex-1 relative min-w-0 ${ct.bg}`}>
+      <main className={`@container relative min-w-0 flex-1 ${ct.bg}`}>
         {/* Top-left controls */}
         <div className="absolute top-3 left-3 right-3 z-10 flex items-start justify-between pointer-events-none">
           <div className="pointer-events-auto flex gap-1 sm:gap-2">
@@ -1247,136 +1247,173 @@ const ViewerModule: React.FC<{
           </div>
         </div>
 
-        {/* Bottom toolbar */}
-        <div className={`absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-full border px-1 py-1 shadow-2xl backdrop-blur sm:bottom-4 sm:gap-1 sm:px-2 sm:py-1.5 ${
-          theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
-        }`}>
-          <button
-            onClick={() => setAutoRotate(v => !v)}
-            className={`flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium transition-colors sm:gap-1.5 sm:px-3 sm:py-2 ${
-              autoRotate ? ct.accentText : `${ct.muted}`
-            }`}
-            title="Auto-rotate (Space)"
-          >
-            {autoRotate ? <Pause size={16} /> : <Play size={16} />}
-            <span className="hidden sm:inline">Rotate</span>
-          </button>
-          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
-          <button
-            onClick={() => emitCameraCommand({ type: 'fit' })}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium ${ct.muted}`}
-            title="Fit view (R)"
-          >
-            <Maximize2 size={16} />
-            <span className="hidden sm:inline">Fit</span>
-          </button>
-          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
-          <button
-            onClick={() => updateConfig('showBox', !vizConfig.showBox)}
-            disabled={!moleculeData?.box}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium disabled:opacity-30 ${
-              vizConfig.showBox ? ct.accentText : ct.muted
-            }`}
-            title="Simulation box (X)"
-          >
-            <Box size={16} />
-            <span className="hidden sm:inline">Box</span>
-          </button>
-          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
-          <button
-            onClick={() => updateConfig('showLabels', !vizConfig.showLabels)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium ${
-              vizConfig.showLabels ? ct.accentText : ct.muted
-            }`}
-            title="Element labels (L)"
-          >
-            <Layers size={16} />
-            <span className="hidden sm:inline">Labels</span>
-          </button>
-          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
-          <button
-            onClick={() => (isRecording ? stopRecording() : startRecording())}
-            disabled={savingVideo}
-            className={`flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium transition-colors sm:gap-1.5 sm:px-3 sm:py-2 ${
-              isRecording ? 'text-red-400' : savingVideo ? 'opacity-50' : ct.muted
-            }`}
-            title={isRecording ? 'Stop recording & save video' : 'Record high-quality video (MP4 where supported)'}
-          >
-            {isRecording ? (
-              <>
-                <span className="w-3 h-3 rounded-sm bg-red-500 animate-pulse" />
-                <span className="font-mono tabular-nums hidden sm:inline">
-                  {String(Math.floor(recordingMs / 60000)).padStart(2, '0')}:
-                  {String(Math.floor((recordingMs % 60000) / 1000)).padStart(2, '0')}
-                </span>
-                <span className="sm:hidden">Stop</span>
-              </>
-            ) : (
-              <>
-                <Circle size={13} className="text-red-400" fill="currentColor" />
-                <span className="hidden sm:inline">{savingVideo ? 'Saving…' : 'Rec'}</span>
-              </>
-            )}
-          </button>
-          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
-          <button
-            onClick={doScreenshot}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium ${ct.muted}`}
-            title="Screenshot (S)"
-          >
-            <Camera size={16} />
-            <span className="hidden sm:inline">Shot</span>
-          </button>
-        </div>
+        {/*
+          BOTTOM DOCK — one absolutely-positioned column holding the hint, the
+          trajectory transport and the tool bar.
 
-        {/* Trajectory playback bar (P5) */}
-        {frameCount > 1 && (
-          <div className={`absolute bottom-14 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border px-2 py-1 shadow-2xl backdrop-blur sm:bottom-16 sm:gap-2 sm:px-3 sm:py-1.5 ${
+          Three things were breaking before and are fixed here:
+           1. The bars were independently `left-1/2 -translate-x-1/2` with no
+              width clamp, so whenever they were wider than <main> they were
+              clipped on BOTH edges and their end buttons became unreachable.
+              They now live in an inset-x-0 column, clamp to the container and
+              scroll horizontally as a last resort.
+           2. Label visibility keyed off the VIEWPORT (`sm:`) while the sidebar
+              is inline from 768px — at 768-1100px the labels were shown inside
+              a much narrower <main>. They now key off the CONTAINER (`@…:`).
+           3. `100vh` sits under the mobile browser's URL bar. The app root is
+              `100dvh` now and the dock adds `env(safe-area-inset-bottom)`.
+        */}
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-1.5 px-2 sm:gap-2"
+          style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+        >
+          {/* Hint for first-time users */}
+          {moleculeData && frameCount <= 1 && selectedIds.length === 0 && (
+            <div className={`hidden rounded-full px-3 py-1 text-[10px] @2xl:block ${ct.muted}`}>
+              Press <kbd className={`px-1 rounded ${ct.chip}`}>H</kbd> for keyboard shortcuts · drag & drop files anywhere
+            </div>
+          )}
+
+          {/* Trajectory playback bar (P5) */}
+          {frameCount > 1 && (
+            <div className={`pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-full border px-2 py-1 shadow-2xl backdrop-blur @lg:gap-2 @lg:px-3 @lg:py-1.5 ${
+              theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
+            }`}>
+              <button
+                onClick={() => setFrameIdx(i => (i - 1 + frameCount) % frameCount)}
+                className={`shrink-0 rounded-full p-1.5 ${ct.button}`}
+                title="Previous frame (,)"
+                aria-label="Previous frame"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <button
+                onClick={() => setTrajPlaying(v => !v)}
+                className={`shrink-0 rounded-full p-1.5 ${trajPlaying ? ct.accentText : ct.muted}`}
+                title="Play / pause trajectory (P)"
+                aria-label={trajPlaying ? 'Pause trajectory' : 'Play trajectory'}
+              >
+                {trajPlaying ? <Pause size={14} /> : <Play size={14} />}
+              </button>
+              <button
+                onClick={() => setFrameIdx(i => (i + 1) % frameCount)}
+                className={`shrink-0 rounded-full p-1.5 ${ct.button}`}
+                title="Next frame (.)"
+                aria-label="Next frame"
+              >
+                <ChevronRight size={14} />
+              </button>
+              <input
+                type="range"
+                min="0"
+                max={frameCount - 1}
+                value={Math.min(frameIdx, frameCount - 1)}
+                onChange={e => { setTrajPlaying(false); setFrameIdx(parseInt(e.target.value, 10)); }}
+                className={`w-20 min-w-16 flex-1 @md:w-32 @2xl:w-48 ${theme === 'dark' ? 'accent-[#7fa66b]' : 'accent-[#4e7a41]'}`}
+                aria-label="Trajectory frame"
+              />
+              <span className={`shrink-0 text-[10px] font-mono tabular-nums ${ct.muted}`}>
+                {Math.min(frameIdx, frameCount - 1) + 1}/{frameCount}
+              </span>
+              <select
+                value={trajFps}
+                onChange={e => setTrajFps(parseInt(e.target.value, 10))}
+                className={`hidden shrink-0 rounded border bg-transparent py-0.5 text-[10px] @md:block ${ct.input}`}
+                title="Playback speed"
+                aria-label="Playback speed"
+              >
+                {[2, 5, 10, 30].map(f => <option key={f} value={f}>{f} fps</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Tool dock */}
+          <div className={`pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border px-1 py-1 shadow-2xl backdrop-blur @xl:gap-1 @xl:px-2 @xl:py-1.5 ${
             theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
           }`}>
             <button
-              onClick={() => setFrameIdx(i => (i - 1 + frameCount) % frameCount)}
-              className={`p-1.5 rounded-full ${ct.button}`}
-              title="Previous frame (,)"
+              onClick={() => setAutoRotate(v => !v)}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium transition-colors @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${
+                autoRotate ? ct.accentText : ct.muted
+              }`}
+              title="Auto-rotate (Space)"
+              aria-label="Toggle auto-rotate"
             >
-              <ChevronLeft size={14} />
+              {autoRotate ? <Pause size={16} /> : <Play size={16} />}
+              <span className="hidden @2xl:inline">Rotate</span>
             </button>
+            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
             <button
-              onClick={() => setTrajPlaying(v => !v)}
-              className={`p-1.5 rounded-full ${trajPlaying ? ct.accentText : ct.muted}`}
-              title="Play / pause trajectory (P)"
+              onClick={() => emitCameraCommand({ type: 'fit' })}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${ct.muted}`}
+              title="Fit view (R)"
+              aria-label="Fit view"
             >
-              {trajPlaying ? <Pause size={14} /> : <Play size={14} />}
+              <Maximize2 size={16} />
+              <span className="hidden @2xl:inline">Fit</span>
             </button>
+            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
             <button
-              onClick={() => setFrameIdx(i => (i + 1) % frameCount)}
-              className={`p-1.5 rounded-full ${ct.button}`}
-              title="Next frame (.)"
+              onClick={() => updateConfig('showBox', !vizConfig.showBox)}
+              disabled={!moleculeData?.box}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium disabled:opacity-30 @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${
+                vizConfig.showBox ? ct.accentText : ct.muted
+              }`}
+              title="Simulation box (X)"
+              aria-label="Toggle simulation box"
             >
-              <ChevronRight size={14} />
+              <Box size={16} />
+              <span className="hidden @2xl:inline">Box</span>
             </button>
-            <input
-              type="range"
-              min="0"
-              max={frameCount - 1}
-              value={Math.min(frameIdx, frameCount - 1)}
-              onChange={e => { setTrajPlaying(false); setFrameIdx(parseInt(e.target.value, 10)); }}
-              className={`w-32 sm:w-48 ${theme === 'dark' ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
-              aria-label="Trajectory frame"
-            />
-            <span className={`text-[10px] font-mono tabular-nums ${ct.muted}`}>
-              {Math.min(frameIdx, frameCount - 1) + 1}/{frameCount}
-            </span>
-            <select
-              value={trajFps}
-              onChange={e => setTrajFps(parseInt(e.target.value, 10))}
-              className={`text-[10px] rounded border bg-transparent ${ct.input} py-0.5`}
-              title="Playback speed"
+            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+            <button
+              onClick={() => updateConfig('showLabels', !vizConfig.showLabels)}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${
+                vizConfig.showLabels ? ct.accentText : ct.muted
+              }`}
+              title="Element labels (L)"
+              aria-label="Toggle element labels"
             >
-              {[2, 5, 10, 30].map(f => <option key={f} value={f}>{f} fps</option>)}
-            </select>
+              <Layers size={16} />
+              <span className="hidden @2xl:inline">Labels</span>
+            </button>
+            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+            <button
+              onClick={() => (isRecording ? stopRecording() : startRecording())}
+              disabled={savingVideo}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium transition-colors @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${
+                isRecording ? 'text-red-400' : savingVideo ? 'opacity-50' : ct.muted
+              }`}
+              title={isRecording ? 'Stop recording & save video' : 'Record high-quality video (MP4 where supported)'}
+              aria-label={isRecording ? 'Stop recording' : 'Start recording'}
+            >
+              {isRecording ? (
+                <>
+                  <span className="h-3 w-3 shrink-0 rounded-sm bg-red-500 animate-pulse" />
+                  <span className="hidden font-mono tabular-nums @2xl:inline">
+                    {String(Math.floor(recordingMs / 60000)).padStart(2, '0')}:
+                    {String(Math.floor((recordingMs % 60000) / 1000)).padStart(2, '0')}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Circle size={13} className="shrink-0 text-red-400" fill="currentColor" />
+                  <span className="hidden @2xl:inline">{savingVideo ? 'Saving…' : 'Rec'}</span>
+                </>
+              )}
+            </button>
+            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+            <button
+              onClick={doScreenshot}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${ct.muted}`}
+              title="Screenshot (S)"
+              aria-label="Take screenshot"
+            >
+              <Camera size={16} />
+              <span className="hidden @2xl:inline">Shot</span>
+            </button>
           </div>
-        )}
+        </div>
 
         {/* Measurement panel (P4) */}
         {selectedIds.length > 0 && activeData && (
@@ -1401,13 +1438,6 @@ const ViewerModule: React.FC<{
             >
               Clear selection
             </button>
-          </div>
-        )}
-
-        {/* Hint for first-time users */}
-        {moleculeData && frameCount <= 1 && selectedIds.length === 0 && (
-          <div className={`absolute bottom-14 left-1/2 z-[5] hidden -translate-x-1/2 rounded-full px-3 py-1 text-[10px] sm:bottom-20 sm:block ${ct.muted}`}>
-            Press <kbd className={`px-1 rounded ${ct.chip}`}>H</kbd> for keyboard shortcuts · drag & drop files anywhere
           </div>
         )}
 

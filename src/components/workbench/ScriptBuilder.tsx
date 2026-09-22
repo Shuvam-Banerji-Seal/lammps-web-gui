@@ -4,6 +4,7 @@ import {
   COMMAND_BY_ID,
   SECTION_LABELS,
   SECTION_ORDER,
+  ScriptBranch,
   ScriptModel,
   ScriptStep,
   ScriptTab,
@@ -13,7 +14,17 @@ import {
   newTabId,
   ParamDef,
 } from '../../lammps/catalog';
-import { generateScript, deriveFlowchart, FlowGraph } from '../../lammps/generator';
+import {
+  generateScript, deriveFlowchart, FlowGraph, resolvePath,
+  skippedTrunkUids, sortStepsBySection, isSectionSorted, branchesOf,
+} from '../../lammps/generator';
+import {
+  addBranch, takeBranchAtFork, promoteBranch, removeBranch, updateBranch,
+  branchesByFork, findLane, laneSteps, appendToLane, insertStepAtPathIndex,
+  moveStepToPathIndex, moveStepInModel, removeStepFromModel,
+  duplicateStepInModel, updateStepInModel, updateParamInModel, freshUid,
+} from '../../lammps/model';
+import { validateScript, Diagnostic, diagnosticCounts } from '../../lammps/validate';
 import { parseScript, ImportResult } from '../../lammps/scriptParser';
 import { downloadTextFile } from '../../lammps/exporter';
 import { SCRIPT_TEMPLATES, buildTemplate } from '../../lammps/templates';
@@ -26,6 +37,7 @@ import {
   FileCode2, Workflow, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, Search,
   Atom as AtomIcon, PencilLine, X, GripVertical, Link2, Undo2, Redo2,
   LayoutTemplate, ZoomIn, ZoomOut, Maximize2, FileInput, ImageDown, FileImage,
+  GitBranch, Split, ArrowDownUp, AlertTriangle, ShieldCheck, Check, CornerDownRight,
 } from 'lucide-react';
 
 interface ScriptBuilderProps {
@@ -37,12 +49,10 @@ let uidCounter = 1;
 const newUid = () => `step-${uidCounter++}`;
 
 /** Merge a stored payload onto fresh defaults; drop unknown commands. */
-const reviveModel = (raw: unknown): ScriptModel | null => {
-  if (typeof raw !== 'object' || raw === null) return null;
-  const r = raw as Partial<ScriptModel>;
-  if (!Array.isArray(r.steps)) return null;
+const reviveSteps = (raw: unknown): ScriptStep[] => {
   const steps: ScriptStep[] = [];
-  for (const s of r.steps) {
+  if (!Array.isArray(raw)) return steps;
+  for (const s of raw) {
     if (!s || typeof s !== 'object') continue;
     const rec = s as Partial<ScriptStep>;
     const def = rec.defId ? COMMAND_BY_ID[rec.defId] : undefined;
@@ -55,9 +65,40 @@ const reviveModel = (raw: unknown): ScriptModel | null => {
       note: typeof rec.note === 'string' ? rec.note : undefined,
     });
   }
+  return steps;
+};
+
+const reviveModel = (raw: unknown): ScriptModel | null => {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Partial<ScriptModel>;
+  if (!Array.isArray(r.steps)) return null;
+  const steps = reviveSteps(r.steps);
+  const branches: ScriptBranch[] = [];
+  if (Array.isArray(r.branches)) {
+    for (const raw of r.branches) {
+      if (!raw || typeof raw !== 'object') continue;
+      const b = raw as Partial<ScriptBranch>;
+      if (typeof b.id !== 'string') continue;
+      branches.push({
+        id: b.id,
+        label: typeof b.label === 'string' ? b.label : 'Concept',
+        forkAfter: typeof b.forkAfter === 'string' ? b.forkAfter : null,
+        steps: reviveSteps(b.steps),
+        rejoin: b.rejoin === true,
+        note: typeof b.note === 'string' ? b.note : undefined,
+      });
+    }
+  }
+  const knownBranchIds = new Set(branches.map(b => b.id));
+  const activeBranchIds = Array.isArray(r.activeBranchIds)
+    ? r.activeBranchIds.filter((id): id is string => typeof id === 'string' && knownBranchIds.has(id))
+    : [];
+
   return {
     title: typeof r.title === 'string' ? r.title : 'My LAMMPS Simulation',
     steps,
+    branches: branches.length > 0 ? branches : undefined,
+    activeBranchIds: activeBranchIds.length > 0 ? activeBranchIds : undefined,
     manualText: typeof r.manualText === 'string' ? r.manualText : undefined,
     manualBase: typeof r.manualBase === 'string' ? r.manualBase : undefined,
   };
@@ -232,8 +273,31 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 
   const generated = useMemo(() => generateScript(model), [model]);
   const flow = useMemo(() => deriveFlowchart(model), [model]);
+  /** Steps along the CURRENTLY TAKEN path — what the flowchart renders. */
+  const pathSteps = useMemo(() => resolvePath(model).map(r => r.step), [model]);
+  /** Trunk steps a divergent branch cut off (rendered ghosted). */
+  const ghostedUids = useMemo(() => skippedTrunkUids(model), [model]);
+  const forkMap = useMemo(() => branchesByFork(model), [model]);
+  const hasBranches = (model.branches?.length ?? 0) > 0;
+  const activeBranches = useMemo(
+    () => branchesOf(model).filter(b => (model.activeBranchIds ?? []).includes(b.id)),
+    [model],
+  );
+  const sectionSorted = useMemo(() => isSectionSorted(model.steps), [model.steps]);
+
   /** The text currently shown/copied/downloaded. */
   const activeText = isManual ? (model.manualText ?? '') : generated.text;
+
+  /** Doc-grounded LAMMPS lint over the EXACT text the user will run. */
+  const diagnostics = useMemo<Diagnostic[]>(() => {
+    try {
+      return validateScript(activeText);
+    } catch {
+      return [];
+    }
+  }, [activeText]);
+  const lintCounts = useMemo(() => diagnosticCounts(diagnostics), [diagnostics]);
+  const [lintOpen, setLintOpen] = useState(false);
 
   // Persist the workspace whenever it changes (history itself is in-memory).
   useEffect(() => {
@@ -256,22 +320,22 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     return () => window.removeEventListener('keydown', onKey);
   }, [undo, redo, selectedUid]);
 
-  // ---- model mutations -------------------------------------------------
+  // ---- model mutations (lane-aware: trunk OR the branch that owns the step) --
   const insertStepAt = useCallback((defId: string, index: number) => {
     const def = COMMAND_BY_ID[defId];
     if (!def) return;
     const step: ScriptStep = {
       uid: newUid(), defId, params: defaultParams(def), enabled: true,
     };
-    setModel(prev => {
-      const steps = [...prev.steps];
-      const at = Math.max(0, Math.min(index, steps.length));
-      steps.splice(at, 0, step);
-      return { ...prev, steps };
-    });
+    setModel(prev => insertStepAtPathIndex(prev, step, index));
     setSelectedUid(step.uid);
   }, [setModel]);
 
+  /**
+   * Palette add. Lands in the lane the user is currently working in (the
+   * selected step's lane, else the trunk), grouped after the last step of the
+   * same section.
+   */
   const addStep = useCallback((defId: string) => {
     const def = COMMAND_BY_ID[defId];
     if (!def) return;
@@ -279,79 +343,96 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
       uid: newUid(), defId, params: defaultParams(def), enabled: true,
     };
     setModel(prev => {
-      // Insert after the last step in the same section, else at end
-      const sectionSteps = prev.steps.filter(s => COMMAND_BY_ID[s.defId]?.section === def.section);
-      const insertAfter = sectionSteps.length > 0 ? sectionSteps[sectionSteps.length - 1] : null;
-      if (!insertAfter) return { ...prev, steps: [...prev.steps, step] };
-      const idx = prev.steps.indexOf(insertAfter);
-      const steps = [...prev.steps];
-      steps.splice(idx + 1, 0, step);
-      return { ...prev, steps };
+      const lane = selectedUid ? findLane(prev, selectedUid) ?? null : null;
+      return appendToLane(prev, lane, step);
     });
     setSelectedUid(step.uid);
-  }, [setModel]);
+  }, [setModel, selectedUid]);
 
   const updateStep = useCallback((uid: string, patch: Partial<ScriptStep>) => {
-    setModel(prev => ({
-      ...prev,
-      steps: prev.steps.map(s => (s.uid === uid ? { ...s, ...patch } : s)),
-    }));
+    setModel(prev => updateStepInModel(prev, uid, patch));
   }, [setModel]);
 
   const updateParam = useCallback((uid: string, key: string, value: string) => {
-    setModel(prev => ({
-      ...prev,
-      steps: prev.steps.map(s =>
-        s.uid === uid ? { ...s, params: { ...s.params, [key]: value } } : s
-      ),
-    }));
+    setModel(prev => updateParamInModel(prev, uid, key, value));
   }, [setModel]);
 
   const removeStep = useCallback((uid: string) => {
-    setModel(prev => ({ ...prev, steps: prev.steps.filter(s => s.uid !== uid) }));
+    setModel(prev => removeStepFromModel(prev, uid));
     setSelectedUid(prev => (prev === uid ? null : prev));
   }, [setModel]);
   removeStepRef.current = removeStep;
 
-  /** Chevron move: swap with the neighbour. */
+  /** Chevron move: swap with the neighbour inside the owning lane. */
   const moveStep = useCallback((uid: string, dir: -1 | 1) => {
-    setModel(prev => {
-      const steps = [...prev.steps];
-      const i = steps.findIndex(s => s.uid === uid);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= steps.length) return prev;
-      [steps[i], steps[j]] = [steps[j], steps[i]];
-      return { ...prev, steps };
-    });
+    setModel(prev => moveStepInModel(prev, uid, dir));
   }, [setModel]);
 
   /** Move a dragged step so that it lands at insertion position `toIndex`. */
   const moveStepToIndex = useCallback((uid: string, toIndex: number) => {
-    setModel(prev => {
-      const steps = [...prev.steps];
-      const from = steps.findIndex(s => s.uid === uid);
-      if (from < 0) return prev;
-      const clamped = Math.max(0, Math.min(toIndex, steps.length));
-      if (clamped === from || clamped === from + 1) return prev;
-      const [dragged] = steps.splice(from, 1);
-      const at = clamped > from ? clamped - 1 : clamped;
-      steps.splice(at, 0, dragged);
-      return { ...prev, steps };
-    });
+    setModel(prev => moveStepToPathIndex(prev, uid, toIndex));
   }, [setModel]);
 
   /** Duplicate a step (same command + params) right below it. */
   const duplicateStep = useCallback((uid: string) => {
-    setModel(prev => {
-      const idx = prev.steps.findIndex(s => s.uid === uid);
-      if (idx < 0) return prev;
-      const src = prev.steps[idx];
-      const clone: ScriptStep = { ...src, uid: newUid(), params: { ...src.params } };
-      const steps = [...prev.steps];
-      steps.splice(idx + 1, 0, clone);
-      return { ...prev, steps };
-    });
+    setModel(prev => duplicateStepInModel(prev, uid));
   }, [setModel]);
+
+  /** Physically reorder the trunk into canonical section order. */
+  const sortBySection = useCallback(() => {
+    setModel(prev => ({ ...prev, steps: sortStepsBySection(prev.steps) }));
+  }, [setModel]);
+
+  // ---- branching --------------------------------------------------------
+  const forkHere = useCallback((afterUid: string | null) => {
+    setModel(prev => addBranch(prev, afterUid).model);
+  }, [setModel]);
+
+  const forkHereEmpty = useCallback((afterUid: string | null) => {
+    setModel(prev => addBranch(prev, afterUid, { seed: 'empty' }).model);
+  }, [setModel]);
+
+  const chooseBranch = useCallback((forkAfter: string | null, branchId: string | null) => {
+    setModel(prev => takeBranchAtFork(prev, forkAfter, branchId));
+    setSelectedUid(null);
+  }, [setModel]);
+
+  const renameBranch = useCallback((branchId: string, label: string) => {
+    setModel(prev => updateBranch(prev, branchId, { label }));
+  }, [setModel]);
+
+  const setBranchRejoin = useCallback((branchId: string, rejoin: boolean) => {
+    setModel(prev => updateBranch(prev, branchId, { rejoin }));
+  }, [setModel]);
+
+  const dropBranch = useCallback((branchId: string) => {
+    setModel(prev => removeBranch(prev, branchId));
+    setSelectedUid(null);
+  }, [setModel]);
+
+  const makeBranchMain = useCallback((branchId: string) => {
+    setModel(prev => promoteBranch(prev, branchId));
+    setSelectedUid(null);
+  }, [setModel]);
+
+  /** Copy the taken path of this flowchart into a brand-new tab. */
+  const branchToNewTab = useCallback((branchId: string) => {
+    setWorkspace(ws => {
+      const current = ws.tabs.find(t => t.id === ws.activeId);
+      if (!current) return ws;
+      const branch = branchesOf(current.model).find(b => b.id === branchId);
+      if (!branch) return ws;
+      const taken = takeBranchAtFork(current.model, branch.forkAfter, branch.id);
+      const flat: ScriptModel = {
+        title: `${current.model.title || 'Untitled'} — ${branch.label}`,
+        steps: resolvePath(taken).map(r => ({
+          ...r.step, uid: freshUid(), params: { ...r.step.params },
+        })),
+      };
+      const tab: ScriptTab = { id: newTabId(), model: flat };
+      return { tabs: [...ws.tabs, tab], activeId: tab.id };
+    });
+  }, [setWorkspace]);
 
   // ---- script import ----------------------------------------------------
   const handleImportFile = useCallback((file: File) => {
@@ -684,6 +765,51 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             >
               <Redo2 size={13} />
             </button>
+            <button
+              onClick={sortBySection}
+              disabled={sectionSorted || model.steps.length < 2}
+              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+              title={sectionSorted
+                ? 'Already in canonical section order'
+                : 'Reorder the steps into canonical section order (setup → system → interactions → output → run control)'}
+              aria-label="Sort steps by section"
+            >
+              <ArrowDownUp size={13} />
+              <span className="hidden 2xl:inline">Sort</span>
+            </button>
+            <button
+              onClick={() => forkHere(model.steps[model.steps.length - 1]?.uid ?? null)}
+              disabled={isManual}
+              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+              title="Fork a new concept branch at the end of the pipeline"
+            >
+              <GitBranch size={13} />
+              <span className="hidden 2xl:inline">Fork</span>
+            </button>
+            <button
+              onClick={() => setLintOpen(v => !v)}
+              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+                lintOpen ? ct.active : `${ct.muted} ${ct.hoverSurface}`
+              }`}
+              title="Validate the script against the LAMMPS command ordering rules"
+              aria-label={`Script check: ${lintCounts.errors} errors, ${lintCounts.warnings} warnings`}
+            >
+              {lintCounts.errors > 0 ? (
+                <AlertTriangle size={13} className="text-[#cf8b76]" />
+              ) : lintCounts.warnings > 0 ? (
+                <AlertTriangle size={13} className="text-[#d9a05b]" />
+              ) : (
+                <ShieldCheck size={13} className={ct.accentText} />
+              )}
+              <span className="tabular-nums">
+                {lintCounts.errors > 0
+                  ? lintCounts.errors
+                  : lintCounts.warnings > 0
+                    ? lintCounts.warnings
+                    : ''}
+              </span>
+              <span className="hidden 2xl:inline">Check</span>
+            </button>
             <div className="relative">
               <button
                 onClick={() => setTemplatesOpen(v => !v)}
@@ -824,6 +950,156 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
           </div>
         </div>
 
+        {/* Concept branches — divergent ideas living in one flowchart */}
+        {hasBranches && !isManual && (
+          <div className={`flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5 text-[11px] ${ct.card}`}>
+            <span className={`flex items-center gap-1 font-semibold ${ct.accentText}`}>
+              <GitBranch size={12} /> Concepts
+            </span>
+            {[...forkMap.entries()].map(([forkAfter, list]) => {
+              const anchorStep = forkAfter === null
+                ? null
+                : model.steps.find(st => st.uid === forkAfter);
+              const anchorLabel = forkAfter === null
+                ? 'start'
+                : COMMAND_BY_ID[anchorStep?.defId ?? '']?.command ?? 'step';
+              const taken = list.find(b => (model.activeBranchIds ?? []).includes(b.id)) ?? null;
+              return (
+                <div key={forkAfter ?? '__start__'} className="flex items-center gap-1">
+                  <span className={`text-[10px] ${ct.muted}`}>after <code className={ct.accentCode}>{anchorLabel}</code>:</span>
+                  <button
+                    onClick={() => chooseBranch(forkAfter, null)}
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                      taken === null ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
+                    }`}
+                    title="Follow the main line at this fork"
+                  >
+                    Main
+                  </button>
+                  {list.map(b => (
+                    <button
+                      key={b.id}
+                      onClick={() => chooseBranch(forkAfter, b.id)}
+                      className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                        taken?.id === b.id ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
+                      }`}
+                      title={`${b.label} — ${b.steps.length} steps, ${b.rejoin ? 'rejoins the main line' : 'replaces the tail'}`}
+                    >
+                      {taken?.id === b.id && <Check size={9} />}
+                      {b.label}
+                      <span className="tabular-nums opacity-60">{b.steps.length}</span>
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => forkHereEmpty(forkAfter)}
+                    className={`rounded-full p-1 ${ct.muted} ${ct.hoverSurface}`}
+                    title="Add another empty concept at this fork"
+                    aria-label="Add concept"
+                  >
+                    <Plus size={10} />
+                  </button>
+                </div>
+              );
+            })}
+            {activeBranches.map(b => (
+              <div key={`ctl-${b.id}`} className="ml-auto flex items-center gap-1">
+                <input
+                  value={b.label}
+                  onChange={e => renameBranch(b.id, e.target.value)}
+                  className={`w-28 rounded border bg-transparent px-1.5 py-0.5 text-[10px] focus:outline-none ${ct.input}`}
+                  aria-label={`Rename ${b.label}`}
+                  title="Rename this concept"
+                />
+                <button
+                  onClick={() => setBranchRejoin(b.id, !b.rejoin)}
+                  className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+                    b.rejoin ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
+                  }`}
+                  title={b.rejoin
+                    ? 'Rejoining: the main line resumes after this concept'
+                    : 'Divergent: this concept replaces everything after the fork'}
+                >
+                  <CornerDownRight size={10} /> {b.rejoin ? 'rejoins' : 'diverges'}
+                </button>
+                <button
+                  onClick={() => branchToNewTab(b.id)}
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ct.muted} ${ct.hoverSurface}`}
+                  title="Copy this concept into its own flowchart tab, flattened"
+                >
+                  <Copy size={10} className="inline" /> Tab
+                </button>
+                <button
+                  onClick={() => makeBranchMain(b.id)}
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ct.muted} ${ct.hoverSurface}`}
+                  title="This concept won — fold it into the main line and drop the others at this fork"
+                >
+                  Promote
+                </button>
+                <button
+                  onClick={() => dropBranch(b.id)}
+                  className={`rounded p-1 ${ct.dangerItem}`}
+                  title="Delete this concept"
+                  aria-label={`Delete ${b.label}`}
+                >
+                  <Trash2 size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Script check (doc-grounded LAMMPS lint) */}
+        {lintOpen && (
+          <div className={`max-h-48 shrink-0 overflow-y-auto border-b text-[11px] ${ct.card}`}>
+            <div className={`sticky top-0 flex items-center justify-between border-b px-3 py-1.5 ${ct.card} ${ct.divider}`}>
+              <span className="flex items-center gap-1.5 font-semibold">
+                {lintCounts.errors > 0
+                  ? <AlertTriangle size={12} className="text-[#cf8b76]" />
+                  : <ShieldCheck size={12} className={ct.accentText} />}
+                Script check — {lintCounts.errors} error{lintCounts.errors === 1 ? '' : 's'},{' '}
+                {lintCounts.warnings} warning{lintCounts.warnings === 1 ? '' : 's'}
+              </span>
+              <button onClick={() => setLintOpen(false)} className={`rounded p-0.5 ${ct.muted}`} title="Close">
+                <X size={12} />
+              </button>
+            </div>
+            {diagnostics.length === 0 ? (
+              <p className={`px-3 py-2.5 ${ct.muted}`}>
+                No ordering or reference problems found — the command sequence matches the
+                LAMMPS input-script rules.
+              </p>
+            ) : (
+              <ul className="divide-y divide-transparent">
+                {diagnostics.map((d, i) => (
+                  <li key={`${d.rule}-${d.line}-${i}`} className="flex gap-2 px-3 py-1.5">
+                    <span className={`mt-0.5 shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase ${
+                      d.level === 'error' ? 'bg-[#cf8b76]/20 text-[#cf8b76]' : 'bg-[#d9a05b]/20 text-[#d9a05b]'
+                    }`}>
+                      {d.level}
+                    </span>
+                    <span className="min-w-0">
+                      {d.line > 0 && (
+                        <code className={`mr-1 text-[10px] ${ct.muted}`}>line {d.line}</code>
+                      )}
+                      <span className={ct.text}>{d.message}</span>
+                      {d.doc && (
+                        <a
+                          href={d.doc}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`ml-1.5 whitespace-nowrap text-[10px] ${ct.accentText} hover:underline`}
+                        >
+                          docs ↗
+                        </a>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         {/* Import / manual notices */}
         {importStats && (
           <div className={`flex shrink-0 items-center justify-between border-b px-3 py-1.5 text-[11px] ${ct.card}`}>
@@ -890,7 +1166,14 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 <FlowchartView
                   ct={ct}
                   flow={flow}
-                  steps={model.steps}
+                  steps={pathSteps}
+                  trunkSteps={model.steps}
+                  forkMap={forkMap}
+                  activeBranchIds={model.activeBranchIds ?? []}
+                  ghostedUids={ghostedUids}
+                  onFork={forkHere}
+                  onForkEmpty={forkHereEmpty}
+                  onChooseBranch={chooseBranch}
                   selectedUid={selectedUid}
                   dragUid={drag?.uid ?? null}
                   overIndex={overIndex}
@@ -1109,7 +1392,16 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 interface FlowchartViewProps {
   ct: ThemeTokens;
   flow: FlowGraph;
+  /** Steps along the taken path — index-aligned with `flow.nodes`. */
   steps: ScriptStep[];
+  /** The trunk, for labelling fork anchors. */
+  trunkSteps: ScriptStep[];
+  forkMap: Map<string | null, ScriptBranch[]>;
+  activeBranchIds: string[];
+  ghostedUids: Set<string>;
+  onFork: (afterUid: string | null) => void;
+  onForkEmpty: (afterUid: string | null) => void;
+  onChooseBranch: (forkAfter: string | null, branchId: string | null) => void;
   selectedUid: string | null;
   dragUid: string | null;
   overIndex: number | null;
@@ -1138,7 +1430,9 @@ const DropLine: React.FC<{ ct: ThemeTokens; active: boolean }> = ({ ct, active }
   ) : null;
 
 const FlowchartView: React.FC<FlowchartViewProps> = ({
-  ct, flow, steps, selectedUid, dragUid, overIndex, edgeMenuIndex,
+  ct, flow, steps, trunkSteps, forkMap, activeBranchIds, ghostedUids,
+  onFork, onForkEmpty, onChooseBranch,
+  selectedUid, dragUid, overIndex, edgeMenuIndex,
   onSelect, onToggle, onRemove, onDuplicate, onMove,
   onCardPointerDown, onCardPointerMove, onCardPointerUp, registerNodeRef,
   onEdgeClick, onEdgeInsertHere, onEdgeDisableNext, onEdgeRemoveNext, onCloseEdgeMenu,
@@ -1172,6 +1466,12 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
           >
             <p className={`px-2 pb-1 pt-0.5 text-[9px] uppercase tracking-wide ${ct.muted}`}>Edit pipeline here</p>
             <MenuItem ct={ct} icon={<Plus size={12} />} label="Add command at this point…" onClick={() => onEdgeInsertHere(i)} />
+            <MenuItem
+              ct={ct}
+              icon={<GitBranch size={12} />}
+              label={i === 0 ? 'Fork a concept from the start…' : 'Fork a concept here…'}
+              onClick={() => { onCloseEdgeMenu(); onFork(i === 0 ? null : steps[i - 1]?.uid ?? null); }}
+            />
             {steps[i] && (
               <>
                 <MenuItem
@@ -1191,6 +1491,58 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
             </button>
           </div>
         )}
+      </div>
+    );
+  };
+
+  /** Chips for choosing which concept the pipeline follows at a fork point. */
+  const forkRow = (forkAfter: string | null) => {
+    const list = forkMap.get(forkAfter);
+    if (!list || list.length === 0) return null;
+    const taken = list.find(b => activeBranchIds.includes(b.id)) ?? null;
+    const anchor =
+      forkAfter === null
+        ? 'start'
+        : COMMAND_BY_ID[trunkSteps.find(t => t.uid === forkAfter)?.defId ?? '']?.command ?? 'step';
+    return (
+      <div
+        key={`fork-${forkAfter ?? '__start__'}`}
+        className={`my-1 flex w-full flex-wrap items-center gap-1 rounded-xl border border-dashed px-3 py-2 ${ct.card}`}
+        onPointerDown={e => e.stopPropagation()}
+      >
+        <Split size={12} className={ct.accentText} />
+        <span className={`text-[10px] font-semibold uppercase tracking-wide ${ct.muted}`}>
+          fork after {anchor}
+        </span>
+        <button
+          onClick={e => { e.stopPropagation(); onChooseBranch(forkAfter, null); }}
+          className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+            taken === null ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
+          }`}
+        >
+          Main line
+        </button>
+        {list.map(b => (
+          <button
+            key={b.id}
+            onClick={e => { e.stopPropagation(); onChooseBranch(forkAfter, b.id); }}
+            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+              taken?.id === b.id ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
+            }`}
+            title={`${b.steps.length} steps · ${b.rejoin ? 'rejoins the main line' : 'replaces the tail'}`}
+          >
+            {taken?.id === b.id && <Check size={9} />}
+            {b.label}
+          </button>
+        ))}
+        <button
+          onClick={e => { e.stopPropagation(); onForkEmpty(forkAfter); }}
+          className={`rounded-full p-1 ${ct.muted} ${ct.hoverSurface}`}
+          title="Add another concept at this fork"
+          aria-label="Add concept at this fork"
+        >
+          <Plus size={10} />
+        </button>
       </div>
     );
   };
@@ -1216,11 +1568,13 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
         </span>
       </div>
       {edgeRow(0)}
+      {forkRow(null)}
 
       {flow.nodes.map((node, i) => {
         const step = steps.find(s => s.uid === node.uid);
         const isSel = selectedUid === node.uid;
         const isDragging = dragUid === node.uid;
+        const inBranch = !!node.branchId;
         return (
           <React.Fragment key={node.uid}>
             <DropLine ct={ct} active={dragUid !== null && overIndex === i} />
@@ -1233,6 +1587,8 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
               onClick={() => onSelect(node.uid)}
               style={{ touchAction: 'none' }}
               className={`group relative w-full cursor-grab rounded-xl border p-3 transition-shadow active:cursor-grabbing ${
+                inBranch ? 'border-l-4 border-l-[#d9a05b]' : ''
+              } ${
                 node.defId === 'raw_line'
                   ? `border-dashed border-[#6b5124]/70 bg-[#332612]/25 ${isSel ? 'ring-1 ring-[#d9a05b]/60' : ''}`
                   : isSel
@@ -1243,11 +1599,27 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
               } ${isDragging ? 'opacity-30' : ''}`}
             >
               <div className="mb-1 flex items-center justify-between">
-                <span className={`text-[9px] uppercase tracking-wide ${ct.muted}`}>
-                  <GripVertical size={9} className="mr-1 inline opacity-50" />
+                <span className={`flex items-center gap-1.5 text-[9px] uppercase tracking-wide ${ct.muted}`}>
+                  <GripVertical size={9} className="inline opacity-50" />
                   {SECTION_LABELS[node.section as keyof typeof SECTION_LABELS]?.split('·')[1]?.trim() ?? node.section}
+                  {inBranch && (
+                    <span className="flex items-center gap-0.5 rounded-full bg-[#d9a05b]/15 px-1.5 py-0.5 text-[8px] font-bold normal-case tracking-normal text-[#d9a05b]">
+                      <GitBranch size={8} />
+                      {node.branchLabel}
+                    </span>
+                  )}
                 </span>
                 <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  {!inBranch && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onFork(node.uid); }}
+                      className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
+                      title="Fork a concept after this step — the rest is copied so you can try a variant"
+                      aria-label="Fork a concept here"
+                    >
+                      <GitBranch size={12} />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => { e.stopPropagation(); onMove(node.uid, -1); }}
                     className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
@@ -1300,19 +1672,42 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
               )}
             </div>
             {i === flow.nodes.length - 1 && <DropLine ct={ct} active={dragUid !== null && overIndex === flow.nodes.length} />}
+            {!inBranch && forkRow(node.uid)}
             {i < flow.nodes.length - 1 && edgeRow(i + 1)}
           </React.Fragment>
         );
       })}
 
-      <div className="flex items-center gap-2 text-[10px] text-[#a3937f]">
+      {ghostedUids.size > 0 && (
+        <div className="mt-4 w-full space-y-1 opacity-45">
+          <div className={`flex items-center gap-2 text-[9px] uppercase tracking-wide ${ct.muted}`}>
+            <div className={`h-px flex-1 ${ct.edgeLine}`} />
+            not in this concept
+            <div className={`h-px flex-1 ${ct.edgeLine}`} />
+          </div>
+          {trunkSteps
+            .filter(st => ghostedUids.has(st.uid))
+            .map(st => (
+              <div
+                key={`ghost-${st.uid}`}
+                className={`w-full rounded-lg border border-dashed px-3 py-1.5 text-[11px] ${ct.nodeDisabled}`}
+                title="A divergent concept replaced the rest of the main line — switch back to Main to restore it"
+              >
+                <code className={ct.accentCode}>{COMMAND_BY_ID[st.defId]?.command ?? st.defId}</code>
+              </div>
+            ))}
+        </div>
+      )}
+
+      <div className="mt-2 flex items-center gap-2 text-[10px] text-[#a3937f]">
         <div className={`h-px w-8 ${ct.edgeLine}`} />
         <span className={`rounded-full px-3 py-0.5 ${ct.endBadge}`}>
           END
         </span>
       </div>
       <p className={`mt-3 text-center text-[10px] ${ct.muted}`}>
-        Grab a card and drop it between two others — it locks into place · click any <span className={ct.accentText}>connect</span> pill to insert there.
+        Grab a card and drop it between two others — it locks into place · click any <span className={ct.accentText}>connect</span> pill to insert there ·
+        hover a card and hit <GitBranch size={9} className="inline" /> to fork a divergent concept.
       </p>
     </div>
   );

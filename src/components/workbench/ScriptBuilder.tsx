@@ -89,15 +89,32 @@ const reviveModel = (raw: unknown): ScriptModel | null => {
       });
     }
   }
-  const knownBranchIds = new Set(branches.map(b => b.id));
-  const activeBranchIds = Array.isArray(r.activeBranchIds)
-    ? r.activeBranchIds.filter((id): id is string => typeof id === 'string' && knownBranchIds.has(id))
-    : [];
+  // Re-anchor or drop branches whose fork step no longer exists. A stored
+  // workspace can outlive the step it forked after — the step may have been
+  // deleted in a build that did not re-anchor, or dropped here because its
+  // command id is gone. An orphan branch can never be spliced in, so it would
+  // sit in the Concepts bar doing nothing.
+  const stepUids = new Set(steps.map(st => st.uid));
+  const anchored = branches.filter(
+    b => b.forkAfter === null || stepUids.has(b.forkAfter),
+  );
+
+  const knownBranchIds = new Set(anchored.map(b => b.id));
+  // At most one branch may be taken per fork point.
+  const seenForks = new Set<string>();
+  const activeBranchIds = (Array.isArray(r.activeBranchIds) ? r.activeBranchIds : [])
+    .filter((id): id is string => typeof id === 'string' && knownBranchIds.has(id))
+    .filter(id => {
+      const fork = anchored.find(b => b.id === id)!.forkAfter ?? '__start__';
+      if (seenForks.has(fork)) return false;
+      seenForks.add(fork);
+      return true;
+    });
 
   return {
     title: typeof r.title === 'string' ? r.title : 'My LAMMPS Simulation',
     steps,
-    branches: branches.length > 0 ? branches : undefined,
+    branches: anchored.length > 0 ? anchored : undefined,
     activeBranchIds: activeBranchIds.length > 0 ? activeBranchIds : undefined,
     manualText: typeof r.manualText === 'string' ? r.manualText : undefined,
     manualBase: typeof r.manualBase === 'string' ? r.manualBase : undefined,

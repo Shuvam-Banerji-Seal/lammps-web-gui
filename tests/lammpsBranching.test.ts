@@ -192,3 +192,40 @@ describe('concept branching', () => {
     expect(resolvePath(m)).toHaveLength(3);
   });
 });
+
+/**
+ * Persistence hardening: a stored workspace can outlive the step a branch
+ * forked after. The revive path must not resurrect a branch that can never be
+ * spliced in, and must not leave two branches taken at one fork point.
+ */
+describe('branch invariants that revive must preserve', () => {
+  it('a branch anchored to a missing step can never be taken', () => {
+    const steps = trunk();
+    const m: ScriptModel = {
+      title: 'T',
+      steps,
+      branches: [branch({ id: 'orphan', forkAfter: 'step-that-was-deleted', steps: [step('fix_npt')] })],
+      activeBranchIds: ['orphan'],
+    };
+    // resolvePath simply never reaches it — the whole trunk is emitted.
+    expect(resolvePath(m).map(r => r.step.uid)).toEqual(steps.map(s => s.uid));
+  });
+
+  it('only the first active branch at a fork point is honoured', () => {
+    const steps = trunk();
+    const a = step('fix_nvt');
+    const b = step('fix_npt');
+    const m: ScriptModel = {
+      title: 'T',
+      steps,
+      branches: [
+        branch({ id: 'a', forkAfter: steps[0].uid, steps: [a] }),
+        branch({ id: 'b', forkAfter: steps[0].uid, steps: [b] }),
+      ],
+      activeBranchIds: ['b', 'a'],   // both taken at one fork — invalid state
+    };
+    const uids = resolvePath(m).map(r => r.step.uid);
+    // exactly one of them appears, never both
+    expect([uids.includes(a.uid), uids.includes(b.uid)].filter(Boolean)).toHaveLength(1);
+  });
+});

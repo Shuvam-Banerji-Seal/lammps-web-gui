@@ -6,8 +6,8 @@
  * PNG export draws the same SVG onto an offscreen canvas at 2x scale.
  */
 
-import { COMMAND_BY_ID, SECTION_LABELS, ScriptModel } from './catalog';
-import { deriveFlowchart } from './generator';
+import { SECTION_LABELS, ScriptModel } from './catalog';
+import { branchesOf, deriveFlowchart } from './generator';
 
 export interface FlowchartSvgOptions {
   /** 'dark' coffee theme or 'light' paper theme. */
@@ -35,6 +35,8 @@ interface Palette {
   endBg: string;
   endBorder: string;
   arrow: string;
+  branch: string;
+  branchSoft: string;
 }
 
 const PALETTES: Record<'dark' | 'light', Palette> = {
@@ -44,6 +46,7 @@ const PALETTES: Record<'dark' | 'light', Palette> = {
     subtext: '#a3937f', muted: '#6f6353', accent: '#9dc48b',
     startBg: '#22301c', startBorder: '#47693b', endBg: '#332612',
     endBorder: '#6b5124', arrow: '#659054',
+    branch: '#d9a05b', branchSoft: '#3a2c15',
   },
   light: {
     bg: '#f4efe6', card: '#ffffff', cardDisabled: '#f0ebe0',
@@ -51,6 +54,7 @@ const PALETTES: Record<'dark' | 'light', Palette> = {
     subtext: '#5d5344', muted: '#a2937c', accent: '#3c5c32',
     startBg: '#e7efdf', startBorder: '#4e7a41', endBg: '#f7ecd7',
     endBorder: '#caa15c', arrow: '#4e7a41',
+    branch: '#b97f3e', branchSoft: '#f3e6d0',
   },
 };
 
@@ -88,9 +92,15 @@ export const flowchartToSVG = (model: ScriptModel, opts: FlowchartSvgOptions = {
   // Title + subtitle
   const title = model.title || 'LAMMPS pipeline';
   const date = new Date().toISOString().slice(0, 10);
+  const takenLabels = branchesOf(model)
+    .filter(b => (model.activeBranchIds ?? []).includes(b.id))
+    .map(b => b.label);
+  const subtitle =
+    `${credit} · ${date} · ${nodes.length} steps` +
+    (takenLabels.length > 0 ? ` · concept: ${takenLabels.join(' → ')}` : '');
   parts.push(
     `<text x="${cx}" y="34" text-anchor="middle" font-size="17" font-weight="700" fill="${p.text}">${esc(title)}</text>`,
-    `<text x="${cx}" y="54" text-anchor="middle" font-size="11" fill="${p.muted}">${esc(credit)} · ${date} · ${nodes.length} steps</text>`,
+    `<text x="${cx}" y="54" text-anchor="middle" font-size="11" fill="${p.muted}">${esc(subtitle)}</text>`,
   );
 
   let y = TOP_H;
@@ -116,27 +126,44 @@ export const flowchartToSVG = (model: ScriptModel, opts: FlowchartSvgOptions = {
   arrowDown();
   y += GAP - 8;
 
-  for (const node of nodes) {
-    const def = COMMAND_BY_ID[node.uid ? (model.steps.find(s => s.uid === node.uid)?.defId ?? '') : ''];
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const next = nodes[i + 1];
     const sectionLabel =
       SECTION_LABELS[node.section as keyof typeof SECTION_LABELS]?.split('·')[1]?.trim() ?? node.section;
     const dashed = node.enabled ? '' : ` stroke-dasharray="5 4" opacity="0.65"`;
+    const inBranch = !!node.branchId;
 
     parts.push(
-      `<rect x="${cardX}" y="${y}" width="${CARD_W}" height="${CARD_H}" rx="12" fill="${node.enabled ? p.card : p.cardDisabled}" stroke="${p.border}" stroke-width="1.2"${dashed}/>`,
+      `<rect x="${cardX}" y="${y}" width="${CARD_W}" height="${CARD_H}" rx="12" fill="${node.enabled ? p.card : p.cardDisabled}" stroke="${inBranch ? p.branch : p.border}" stroke-width="1.2"${dashed}/>`,
       `<text x="${cardX + 16}" y="${y + 20}" font-size="9" letter-spacing="1" fill="${p.muted}">${esc(sectionLabel.toUpperCase())}</text>`,
-      `<text x="${cardX + 16}" y="${y + 40}" font-size="14" font-weight="700" fill="${p.accent}">${esc(node.label)}</text>`,
+      `<text x="${cardX + 16}" y="${y + 40}" font-size="14" font-weight="700" fill="${inBranch ? p.branch : p.accent}">${esc(node.label)}</text>`,
     );
+    if (inBranch) {
+      // accent rail down the left edge + the concept name on the right
+      parts.push(
+        `<rect x="${cardX + 1.5}" y="${y + 10}" width="4" height="${CARD_H - 20}" rx="2" fill="${p.branch}"/>`,
+        `<text x="${cardX + CARD_W - 16}" y="${y + 20}" text-anchor="end" font-size="9" letter-spacing="0.5" fill="${p.branch}">${esc((node.branchLabel ?? 'concept').toUpperCase())}</text>`,
+      );
+    }
     if (showParams && node.sublabel) {
       const sub = node.sublabel.length > 52 ? node.sublabel.slice(0, 51) + '…' : node.sublabel;
       parts.push(
         `<text x="${cardX + 16}" y="${y + 56}" font-size="10" font-family="ui-monospace, 'Cascadia Mono', Consolas, monospace" fill="${p.subtext}">${esc(sub)}</text>`,
       );
     }
-    void def;
+
     y += CARD_H;
-    if (node !== nodes[nodes.length - 1]) {
+    if (next) {
       arrowDown();
+      if (!node.branchId && next.branchId) {
+        // diamond decision marker where the pipeline diverges
+        const my = y + GAP / 2 - 6;
+        parts.push(
+          `<path d="M ${cx} ${my - 9} L ${cx + 9} ${my} L ${cx} ${my + 9} L ${cx - 9} ${my} Z" fill="${p.branchSoft}" stroke="${p.branch}" stroke-width="1.4"/>`,
+          `<text x="${cx + 16}" y="${my + 4}" font-size="9" fill="${p.branch}">${esc(next.branchLabel ?? 'concept')}</text>`,
+        );
+      }
       y += GAP;
     }
   }

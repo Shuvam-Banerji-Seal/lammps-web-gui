@@ -43,6 +43,13 @@ export interface CommandDef {
   section: ScriptSection;
   category: string;
   doc?: string;
+  /**
+   * Set when LAMMPS has REMOVED or deprecated this command. The def stays in
+   * the catalog so old scripts still import losslessly, but it is hidden from
+   * the palette so nobody reaches for it in a new pipeline, and the validator
+   * warns about it. The string is shown to the user verbatim.
+   */
+  deprecated?: string;
   params: ParamDef[];
   /**
    * Render the exact input line(s). Return empty array to skip emission
@@ -61,9 +68,42 @@ export interface ScriptStep {
   note?: string;
 }
 
+/**
+ * A divergent concept line: an alternative tail (or detour) that starts
+ * after a given trunk step.
+ *
+ * Branching lets one flowchart carry several competing ideas — swap a
+ * thermostat, try a different pair style, extend a production run — without
+ * duplicating the shared prefix. Exactly one branch may be taken per fork
+ * point; the taken set lives in `ScriptModel.activeBranchIds`.
+ */
+export interface ScriptBranch {
+  id: string;
+  /** Human label shown on the fork chip, e.g. "NPT variant". */
+  label: string;
+  /**
+   * uid of the TRUNK step this branch forks after.
+   * `null` forks before the first trunk step (whole-script alternative).
+   */
+  forkAfter: string | null;
+  steps: ScriptStep[];
+  /**
+   * `false` (default): the branch REPLACES the trunk tail — a truly
+   * divergent concept. `true`: the trunk resumes after the branch steps,
+   * making the branch an insertable detour.
+   */
+  rejoin: boolean;
+  /** Optional note describing the concept being tested. */
+  note?: string;
+}
+
 export interface ScriptModel {
   title: string;
   steps: ScriptStep[];
+  /** Divergent concept lines. Absent/empty = a plain linear pipeline. */
+  branches?: ScriptBranch[];
+  /** Branch ids currently taken (at most one per fork point). */
+  activeBranchIds?: string[];
   /**
    * Manual-edit mode: when set, the generator emits this text VERBATIM and
    * ignores the step list. The flowchart still shows the steps so the user
@@ -97,6 +137,10 @@ export const emptyScriptModel = (title = 'Untitled'): ScriptModel => ({
 
 let tabCounter = 1;
 export const newTabId = (): string => `tab-${Date.now().toString(36)}-${tabCounter++}`;
+
+let branchCounter = 1;
+export const newBranchId = (): string =>
+  `br-${Date.now().toString(36)}-${branchCounter++}`;
 
 export const SECTION_ORDER: ScriptSection[] = [
   'setup',
@@ -178,17 +222,42 @@ export const SETUP_COMMANDS: CommandDef[] = [
     build: v => [line('boundary', v.bx, v.by, v.bz)],
   },
   {
+    // [VERIFIED 2026-09-22] docs.lammps.org/Commands_removed.html:
+    //   "Removed in version 22Dec2022. The box command has been removed and
+    //    the LAMMPS code changed so it won't be needed. If present, LAMMPS
+    //    will ignore the command and print a warning."
+    // Kept so scripts that still contain `box tilt large` import losslessly.
     id: 'box_cmd',
     command: 'box',
-    label: 'box — triclinic tilt-factor limit',
+    label: 'box — REMOVED in 22Dec2022 (ignored with a warning)',
     section: 'setup',
     category: 'Fundamentals',
-    doc: 'https://docs.lammps.org/Howto_triclinic.html',
+    doc: 'https://docs.lammps.org/Commands_removed.html',
+    deprecated:
+      'LAMMPS removed the `box` command in 22Dec2022 — it is ignored with a ' +
+      'warning. Triclinic tilt limits no longer need declaring.',
     params: [
       en('style', 'Tilt limit', ['large', 'small'], 'small',
         'large = allow tilt > half the box length'),
     ],
     build: v => [line('box', 'tilt', v.style)],
+  },
+  {
+    // [VERIFIED 2026-09-22] docs.lammps.org/fenix.html — added 2Sep2026,
+    // FENIX package: "fenix keyword value ... keyword = restart_file,
+    // restart_label, universal, or spares". Initializes Fenix for online
+    // process recovery, claiming ranks as spares.
+    id: 'fenix_cmd',
+    command: 'fenix',
+    label: 'fenix — online MPI process recovery',
+    section: 'setup',
+    category: 'Fundamentals',
+    doc: 'https://docs.lammps.org/fenix.html',
+    params: [
+      str('args', 'Keywords', 'spares 1',
+        'restart_file <f> · restart_label <l> · universal · spares <n>'),
+    ],
+    build: v => (v.args.trim() ? [line('fenix', v.args)] : []),
   },
   {
     id: 'atom_style_cmd',
@@ -835,6 +904,12 @@ const PAIR_POPULAR: { style: string; coeffHelp: string }[] = [
   { style: 'coul/dsf', coeffHelp: 'alpha rc' },
   { style: 'zbl', coeffHelp: 'type1 type2 inner outer' },
   { style: 'meam', coeffHelp: 'type1..N library-file element-list parameter-file' },
+  // Granular contact models — pair_coeff carries the contact model itself and
+  // atom_style sphere supplies per-particle mass/radius.
+  { style: 'granular', coeffHelp: 'I J <normal model> … tangential … [rolling …] [twisting …]' },
+  { style: 'gran/hooke', coeffHelp: '(coeffs are on pair_style; use `pair_coeff * *`)' },
+  { style: 'gran/hooke/history', coeffHelp: '(coeffs are on pair_style; use `pair_coeff * *`)' },
+  { style: 'gran/hertz/history', coeffHelp: '(coeffs are on pair_style; use `pair_coeff * *`)' },
   { style: 'hybrid', coeffHelp: 'sub-style args… (advanced)' },
 ];
 
@@ -2561,14 +2636,23 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     section: 'control',
     category: 'Constraints',
     doc: 'https://docs.lammps.org/fix_qeq_reaxff.html',
+    // [VERIFIED 2026-09-22] docs.lammps.org/fix_qeq_reaxff.html:
+    //   fix ID group-ID qeq/reaxff Nevery cutlo cuthi tolerance params args
+    //   example: fix 1 all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff
     params: [
       str('id', 'Fix ID', 'qeq'),
       str('group', 'Group', 'all'),
       num('nevery', 'Every N steps', '1'),
-      num('lepsilon', 'Least-squares epsilon', '1.0e-6'),
-      num('itermax', 'Max iterations', '200'),
+      num('cutlo', 'Taper cutoff low', '0.0'),
+      num('cuthi', 'Taper cutoff high', '10.0'),
+      num('tolerance', 'Convergence tolerance', '1.0e-6'),
+      str('params', 'Params', 'reaxff', 'a parameter file, or "reaxff" to read them from the force field'),
+      str('args', 'Extra keywords', '', 'e.g. maxiter N · dual · nowarn'),
     ],
-    build: v => [line('fix', v.id, v.group, 'qeq/reaxff', v.nevery, v.lepsilon, v.itermax)],
+    build: v => [
+      line('fix', v.id, v.group, 'qeq/reaxff',
+        v.nevery, v.cutlo, v.cuthi, v.tolerance, v.params, v.args),
+    ],
   },
   {
     id: 'fix_reaxff_species',

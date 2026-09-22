@@ -21,7 +21,8 @@ import {
   Link2, Check, ChevronLeft, ChevronRight, Ruler, Circle, Loader2, BarChart3, Activity, TrendingUp, Download, Sparkles,
 } from 'lucide-react';
 import { LineChart, Histogram } from '../charts/SimpleChart';
-import { computeRDF, computeMSD, computeDensityProfile, computeSpeedDistribution, trajStats } from '../../services/trajectoryAnalysis';
+import { trajStats } from '../../services/trajectoryAnalysis';
+import { useTrajectoryAnalysis } from '../../hooks/useTrajectoryAnalysis';
 import { downloadTextFile } from '../../lammps/exporter';
 
 /** GitHub mark as inline SVG — lucide 1.x removed brand icons. */
@@ -142,6 +143,14 @@ const ViewerModule: React.FC<{
   const frameCount = moleculeData?.frames?.length ?? 1;
   const [frameIdx, setFrameIdx] = useState(0);
   const [trajPlaying, setTrajPlaying] = useState(false);
+
+  /**
+   * Trajectory analysis runs in a worker, once per loaded structure.
+   * It used to be computed inline in the Analysis panel's JSX, so RDF (then
+   * O(N^2)), MSD and the density profile re-ran on every React render —
+   * including every playback tick.
+   */
+  const analysis = useTrajectoryAnalysis(moleculeData, frameIdx);
   const [trajFps, setTrajFps] = useState(10);
 
   // Share-link feedback
@@ -507,6 +516,17 @@ const ViewerModule: React.FC<{
     const frame = moleculeData.frames[Math.min(frameIdx, frameCount - 1)];
     return frame ? { ...moleculeData, atoms: frame.atoms } : moleculeData;
   }, [moleculeData, frameIdx, frameCount]);
+
+  /**
+   * This frame's own cell, when the dump carries one per frame. Under NPT the
+   * box breathes, so drawing frame 0's cell for the whole trajectory is simply
+   * wrong. Passed separately from `activeData` so camera framing keeps using
+   * the stable reference box and the view does not pump.
+   */
+  const displayBox = useMemo(
+    () => moleculeData?.frames?.[Math.min(frameIdx, frameCount - 1)]?.box,
+    [moleculeData, frameIdx, frameCount],
+  );
 
   const measurement: MeasurementResult | null = useMemo(() => {
     if (!activeData) return null;
@@ -1040,118 +1060,147 @@ const ViewerModule: React.FC<{
                     );
                   })()}
 
-                  {/* RDF */}
-                  <section className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h3 className={`text-xs font-semibold flex items-center gap-1.5 ${ct.header}`}>
-                        <TrendingUp size={12} className={ct.accentText} /> Radial distribution g(r)
-                      </h3>
-                      <button
-                        onClick={() => {
-                          const frames = moleculeData.frames!.slice(0, Math.min(20, moleculeData.frames!.length));
-                          const pts = computeRDF(frames, moleculeData.box, { rMax: 10, bins: 80 });
-                          const csv = 'r,g(r),count\n' + pts.map(p => `${p.r.toFixed(3)},${p.g.toFixed(4)},${p.count.toFixed(1)}`).join('\n');
-                          downloadTextFile('rdf.csv', csv);
-                        }}
-                        className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium ${ct.button}`}
-                        title="Export RDF as CSV"
-                      >
-                        <Download size={11} /> CSV
-                      </button>
+                  {/* Worker status — analyses run off the main thread */}
+                  {analysis.status === 'running' && (
+                    <div className={`flex items-center gap-2 rounded-lg border p-2.5 text-[11px] ${ct.card} ${ct.muted}`} role="status">
+                      <Loader2 size={13} className={`animate-spin ${ct.accentText}`} />
+                      Analysing {analysis.sampledFrames} sampled frames in a background worker…
                     </div>
-                    {(() => {
-                      const frames = moleculeData.frames!.filter((_, i) => i % Math.ceil(moleculeData.frames!.length / 15) === 0);
-                      const pts = computeRDF(frames, moleculeData.box, { rMax: 10, bins: 80 });
-                      const data = pts.map(p => ({ x: p.r, y: p.g }));
-                      const hasPeaks = data.some(d => d.y > 1.5);
-                      return (
-                        <>
-                          <div className={`rounded-lg border p-2 ${ct.card}`}>
-                            <LineChart data={data} xLabel="r (Å / LJ σ)" yLabel="g(r)" theme={theme} height={150} yMin={0} />
-                          </div>
-                          <p className={`text-[10px] leading-relaxed ${ct.muted}`}>
-                            {hasPeaks ? 'Peaks indicate local order (crystal). Flat ~1 = ideal gas / liquid.' : 'Flat g(r)≈1 — disordered / ideal gas.'}
-                            {' '}Averaged over {frames.length} sampled frames. First peak ≈ nearest-neighbour.
-                          </p>
-                        </>
-                      );
-                    })()}
-                  </section>
-
-                  {/* MSD */}
-                  <section className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h3 className={`text-xs font-semibold flex items-center gap-1.5 ${ct.header}`}>
-                        <Activity size={12} className={ct.accentText} /> Mean squared displacement
-                      </h3>
-                      <button
-                        onClick={() => {
-                          const pts = computeMSD(moleculeData.frames!, moleculeData.box);
-                          const csv = 't,msd\n' + pts.map(p => `${p.t},${p.msd.toFixed(4)}`).join('\n');
-                          downloadTextFile('msd.csv', csv);
-                        }}
-                        className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium ${ct.button}`}
-                        title="Export MSD as CSV"
-                      >
-                        <Download size={11} /> CSV
-                      </button>
+                  )}
+                  {analysis.status === 'error' && (
+                    <div className={`flex items-start gap-2 rounded-lg border p-2.5 text-[11px] ${ct.errorBox}`} role="alert">
+                      <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                      Analysis failed: {analysis.error}
                     </div>
-                    {(() => {
-                      const pts = computeMSD(moleculeData.frames!, moleculeData.box, { timeOriginStride: Math.max(1, Math.floor(moleculeData.frames!.length / 15)) });
-                      const data = pts.map(p => ({ x: p.t, y: p.msd }));
-                      const last = data[data.length - 1];
-                      const slope = last && last.x > 0 ? (last.y / last.x).toFixed(3) : '—';
-                      return (
-                        <>
+                  )}
+
+                  {analysis.result && (
+                    <>
+                      {/* RDF */}
+                      <section className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h3 className={`text-xs font-semibold flex items-center gap-1.5 ${ct.header}`}>
+                            <TrendingUp size={12} className={ct.accentText} /> Radial distribution g(r)
+                          </h3>
+                          <button
+                            onClick={() => {
+                              const csv = 'r,g(r),count\n' + analysis.result!.rdf
+                                .map(pt => `${pt.r.toFixed(3)},${pt.g.toFixed(4)},${pt.count.toFixed(1)}`)
+                                .join('\n');
+                              downloadTextFile('rdf.csv', csv);
+                            }}
+                            className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium ${ct.button}`}
+                            title="Export RDF as CSV"
+                          >
+                            <Download size={11} /> CSV
+                          </button>
+                        </div>
+                        <div className={`rounded-lg border p-2 ${ct.card}`}>
+                          <LineChart
+                            data={analysis.result.rdf.map(pt => ({ x: pt.r, y: pt.g }))}
+                            xLabel="r (Å / LJ σ)" yLabel="g(r)" theme={theme} height={150} yMin={0}
+                          />
+                        </div>
+                        <p className={`text-[10px] leading-relaxed ${ct.muted}`}>
+                          {analysis.result.rdf.some(pt => pt.g > 1.5)
+                            ? 'Peaks indicate local order (crystal). Flat ~1 = ideal gas / liquid.'
+                            : 'Flat g(r)≈1 — disordered / ideal gas.'}
+                          {' '}Averaged over {analysis.sampledFrames} sampled frames. First peak ≈ nearest-neighbour.
+                        </p>
+                      </section>
+
+                      {/* MSD */}
+                      <section className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h3 className={`text-xs font-semibold flex items-center gap-1.5 ${ct.header}`}>
+                            <Activity size={12} className={ct.accentText} /> Mean squared displacement
+                          </h3>
+                          <button
+                            onClick={() => {
+                              const csv = 't,msd\n' + analysis.result!.msd
+                                .map(pt => `${pt.t},${pt.msd.toFixed(4)}`)
+                                .join('\n');
+                              downloadTextFile('msd.csv', csv);
+                            }}
+                            className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium ${ct.button}`}
+                            title="Export MSD as CSV"
+                          >
+                            <Download size={11} /> CSV
+                          </button>
+                        </div>
+                        <div className={`rounded-lg border p-2 ${ct.card}`}>
+                          <LineChart
+                            data={analysis.result.msd.map(pt => ({ x: pt.t, y: pt.msd }))}
+                            xLabel="lag (frames)" yLabel="MSD (Å²)" theme={theme} height={150} yMin={0}
+                            color={theme === 'dark' ? '#d9a05b' : '#b97f3e'}
+                          />
+                        </div>
+                        <p className={`text-[10px] leading-relaxed ${ct.muted}`}>
+                          {(() => {
+                            const last = analysis.result!.msd[analysis.result!.msd.length - 1];
+                            const slope = last && last.t > 0 ? (last.msd / last.t).toFixed(3) : '—';
+                            return `Slope ≈ ${slope} Å²/frame`;
+                          })()} — linear = diffusive, plateau = caged/crystal. Averaged over time origins.
+                          {' '}
+                          {analysis.result.msdUnwrapped ? (
+                            <span className={ct.accentText}>
+                              Displacements are exact — this dump gives absolute positions
+                              (<code>xu yu zu</code>) or image flags to reconstruct them.
+                            </span>
+                          ) : (
+                            <span className="text-[#d9a05b]">
+                              No <code>ix iy iz</code> in this dump, so displacements use the
+                              minimum-image convention and MSD saturates near (L/2)². Dump{' '}
+                              <code>ix iy iz</code> or <code>xu yu zu</code> for long-time diffusion.
+                            </span>
+                          )}
+                        </p>
+                      </section>
+
+                      {/* Density profile */}
+                      <section className="space-y-2">
+                        <h3 className={`text-xs font-semibold flex items-center gap-1.5 ${ct.header}`}>
+                          <BarChart3 size={12} className={ct.accentText} /> Density profile
+                        </h3>
+                        <div className={`rounded-lg border p-2 ${ct.card}`}>
+                          <Histogram
+                            bins={analysis.result.density.bins}
+                            xLabel={`${analysis.result.density.axis} (Å)`} yLabel="count"
+                            theme={theme} height={140}
+                          />
+                        </div>
+                        <p className={`text-[10px] ${ct.muted}`}>
+                          Histogram of atom counts along <span className="font-mono">{analysis.result.density.axis}</span>{' '}
+                          (averaged over {analysis.sampledFrames} sampled frames) — uniform = homogeneous, peaks = layering.
+                        </p>
+                      </section>
+
+                      {/* Velocity distribution */}
+                      {analysis.speeds && (
+                        <section className="space-y-2">
+                          <h3 className={`text-xs font-semibold flex items-center gap-1.5 ${ct.header}`}>
+                            <Sparkles size={12} className={ct.accentText} /> Speed distribution
+                          </h3>
                           <div className={`rounded-lg border p-2 ${ct.card}`}>
-                            <LineChart data={data} xLabel="lag (frames)" yLabel="MSD (Å²)" theme={theme} height={150} yMin={0} color={theme === 'dark' ? '#d9a05b' : '#b97f3e'} />
+                            <Histogram
+                              bins={analysis.speeds} xLabel="|v| (LJ)" yLabel="count" theme={theme}
+                              height={140} color={theme === 'dark' ? '#c9a9d4' : '#7d5a8c'}
+                            />
                           </div>
-                          <p className={`text-[10px] leading-relaxed ${ct.muted}`}>
-                            Slope ≈ {slope} Å²/frame — linear = diffusive, plateau = caged/crystal. Averaged over time origins.
+                          <p className={`text-[10px] ${ct.muted}`}>
+                            Frame {Math.min(frameIdx, frameCount - 1) + 1} speed |v| — the Maxwell–Boltzmann peak
+                            shifts with temperature. Requires a dump with vx vy vz.
                           </p>
-                        </>
-                      );
-                    })()}
-                  </section>
+                        </section>
+                      )}
 
-                  {/* Density profile */}
-                  <section className="space-y-2">
-                    <h3 className={`text-xs font-semibold flex items-center gap-1.5 ${ct.header}`}>
-                      <BarChart3 size={12} className={ct.accentText} /> Density profile
-                    </h3>
-                    {(() => {
-                      const axis: 'x' | 'y' | 'z' = (moleculeData.box && (moleculeData.box.zhi - moleculeData.box.zlo) < 2) ? 'x' : 'y';
-                      const prof = computeDensityProfile(moleculeData.frames!, moleculeData.box, axis, 24);
-                      return (
-                        <>
-                          <div className={`rounded-lg border p-2 ${ct.card}`}>
-                            <Histogram bins={prof.bins} xLabel={`${axis} (Å)`} yLabel="count" theme={theme} height={140} />
-                          </div>
-                          <p className={`text-[10px] ${ct.muted}`}>Histogram of atom counts along <span className="font-mono">{axis}</span> (averaged over all frames) — uniform = homogeneous, peaks = layering.</p>
-                        </>
-                      );
-                    })()}
-                  </section>
-
-                  {/* Velocity distribution */}
-                  {moleculeData.atoms.some(a => a.vx !== undefined) && (
-                    <section className="space-y-2">
-                      <h3 className={`text-xs font-semibold flex items-center gap-1.5 ${ct.header}`}>
-                        <Sparkles size={12} className={ct.accentText} /> Speed distribution
-                      </h3>
-                      {(() => {
-                        const bins = computeSpeedDistribution(moleculeData.frames ? moleculeData.frames[frameIdx]?.atoms ?? moleculeData.atoms : moleculeData.atoms, 24);
-                        if (!bins) return <p className={`text-xs italic ${ct.muted}`}>No velocities in current frame.</p>;
-                        return (
-                          <>
-                            <div className={`rounded-lg border p-2 ${ct.card}`}>
-                              <Histogram bins={bins} xLabel="|v| (LJ)" yLabel="count" theme={theme} height={140} color={theme === 'dark' ? '#c9a9d4' : '#7d5a8c'} />
-                            </div>
-                            <p className={`text-[10px] ${ct.muted}`}>Current frame speed |v| — Maxwell–Boltzmann peak shifts with temperature. Requires dump with vx vy vz.</p>
-                          </>
-                        );
-                      })()}
-                    </section>
+                      <p className={`text-[10px] ${ct.muted}`}>
+                        Computed in {analysis.result.ms} ms
+                        {analysis.result.onMainThread
+                          ? ' on the main thread (Web Workers unavailable here).'
+                          : ' in a background worker — the 3D view keeps rendering while it works.'}
+                      </p>
+                    </>
                   )}
 
                   {/* Visuals helper */}
@@ -1194,7 +1243,7 @@ const ViewerModule: React.FC<{
       </aside>
 
       {/* ============================ MAIN CANVAS AREA */}
-      <main className={`flex-1 relative min-w-0 ${ct.bg}`}>
+      <main className={`@container relative min-w-0 flex-1 ${ct.bg}`}>
         {/* Top-left controls */}
         <div className="absolute top-3 left-3 right-3 z-10 flex items-start justify-between pointer-events-none">
           <div className="pointer-events-auto flex gap-1 sm:gap-2">
@@ -1247,136 +1296,173 @@ const ViewerModule: React.FC<{
           </div>
         </div>
 
-        {/* Bottom toolbar */}
-        <div className={`absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-full border px-1 py-1 shadow-2xl backdrop-blur sm:bottom-4 sm:gap-1 sm:px-2 sm:py-1.5 ${
-          theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
-        }`}>
-          <button
-            onClick={() => setAutoRotate(v => !v)}
-            className={`flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium transition-colors sm:gap-1.5 sm:px-3 sm:py-2 ${
-              autoRotate ? ct.accentText : `${ct.muted}`
-            }`}
-            title="Auto-rotate (Space)"
-          >
-            {autoRotate ? <Pause size={16} /> : <Play size={16} />}
-            <span className="hidden sm:inline">Rotate</span>
-          </button>
-          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
-          <button
-            onClick={() => emitCameraCommand({ type: 'fit' })}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium ${ct.muted}`}
-            title="Fit view (R)"
-          >
-            <Maximize2 size={16} />
-            <span className="hidden sm:inline">Fit</span>
-          </button>
-          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
-          <button
-            onClick={() => updateConfig('showBox', !vizConfig.showBox)}
-            disabled={!moleculeData?.box}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium disabled:opacity-30 ${
-              vizConfig.showBox ? ct.accentText : ct.muted
-            }`}
-            title="Simulation box (X)"
-          >
-            <Box size={16} />
-            <span className="hidden sm:inline">Box</span>
-          </button>
-          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
-          <button
-            onClick={() => updateConfig('showLabels', !vizConfig.showLabels)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium ${
-              vizConfig.showLabels ? ct.accentText : ct.muted
-            }`}
-            title="Element labels (L)"
-          >
-            <Layers size={16} />
-            <span className="hidden sm:inline">Labels</span>
-          </button>
-          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
-          <button
-            onClick={() => (isRecording ? stopRecording() : startRecording())}
-            disabled={savingVideo}
-            className={`flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium transition-colors sm:gap-1.5 sm:px-3 sm:py-2 ${
-              isRecording ? 'text-red-400' : savingVideo ? 'opacity-50' : ct.muted
-            }`}
-            title={isRecording ? 'Stop recording & save video' : 'Record high-quality video (MP4 where supported)'}
-          >
-            {isRecording ? (
-              <>
-                <span className="w-3 h-3 rounded-sm bg-red-500 animate-pulse" />
-                <span className="font-mono tabular-nums hidden sm:inline">
-                  {String(Math.floor(recordingMs / 60000)).padStart(2, '0')}:
-                  {String(Math.floor((recordingMs % 60000) / 1000)).padStart(2, '0')}
-                </span>
-                <span className="sm:hidden">Stop</span>
-              </>
-            ) : (
-              <>
-                <Circle size={13} className="text-red-400" fill="currentColor" />
-                <span className="hidden sm:inline">{savingVideo ? 'Saving…' : 'Rec'}</span>
-              </>
-            )}
-          </button>
-          <div className={`w-px h-5 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
-          <button
-            onClick={doScreenshot}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium ${ct.muted}`}
-            title="Screenshot (S)"
-          >
-            <Camera size={16} />
-            <span className="hidden sm:inline">Shot</span>
-          </button>
-        </div>
+        {/*
+          BOTTOM DOCK — one absolutely-positioned column holding the hint, the
+          trajectory transport and the tool bar.
 
-        {/* Trajectory playback bar (P5) */}
-        {frameCount > 1 && (
-          <div className={`absolute bottom-14 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border px-2 py-1 shadow-2xl backdrop-blur sm:bottom-16 sm:gap-2 sm:px-3 sm:py-1.5 ${
+          Three things were breaking before and are fixed here:
+           1. The bars were independently `left-1/2 -translate-x-1/2` with no
+              width clamp, so whenever they were wider than <main> they were
+              clipped on BOTH edges and their end buttons became unreachable.
+              They now live in an inset-x-0 column, clamp to the container and
+              scroll horizontally as a last resort.
+           2. Label visibility keyed off the VIEWPORT (`sm:`) while the sidebar
+              is inline from 768px — at 768-1100px the labels were shown inside
+              a much narrower <main>. They now key off the CONTAINER (`@…:`).
+           3. `100vh` sits under the mobile browser's URL bar. The app root is
+              `100dvh` now and the dock adds `env(safe-area-inset-bottom)`.
+        */}
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-1.5 px-2 sm:gap-2"
+          style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+        >
+          {/* Hint for first-time users */}
+          {moleculeData && frameCount <= 1 && selectedIds.length === 0 && (
+            <div className={`hidden rounded-full px-3 py-1 text-[10px] @2xl:block ${ct.muted}`}>
+              Press <kbd className={`px-1 rounded ${ct.chip}`}>H</kbd> for keyboard shortcuts · drag & drop files anywhere
+            </div>
+          )}
+
+          {/* Trajectory playback bar (P5) */}
+          {frameCount > 1 && (
+            <div className={`pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-full border px-2 py-1 shadow-2xl backdrop-blur @lg:gap-2 @lg:px-3 @lg:py-1.5 ${
+              theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
+            }`}>
+              <button
+                onClick={() => setFrameIdx(i => (i - 1 + frameCount) % frameCount)}
+                className={`shrink-0 rounded-full p-1.5 ${ct.button}`}
+                title="Previous frame (,)"
+                aria-label="Previous frame"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <button
+                onClick={() => setTrajPlaying(v => !v)}
+                className={`shrink-0 rounded-full p-1.5 ${trajPlaying ? ct.accentText : ct.muted}`}
+                title="Play / pause trajectory (P)"
+                aria-label={trajPlaying ? 'Pause trajectory' : 'Play trajectory'}
+              >
+                {trajPlaying ? <Pause size={14} /> : <Play size={14} />}
+              </button>
+              <button
+                onClick={() => setFrameIdx(i => (i + 1) % frameCount)}
+                className={`shrink-0 rounded-full p-1.5 ${ct.button}`}
+                title="Next frame (.)"
+                aria-label="Next frame"
+              >
+                <ChevronRight size={14} />
+              </button>
+              <input
+                type="range"
+                min="0"
+                max={frameCount - 1}
+                value={Math.min(frameIdx, frameCount - 1)}
+                onChange={e => { setTrajPlaying(false); setFrameIdx(parseInt(e.target.value, 10)); }}
+                className={`w-20 min-w-16 flex-1 @md:w-32 @2xl:w-48 ${theme === 'dark' ? 'accent-[#7fa66b]' : 'accent-[#4e7a41]'}`}
+                aria-label="Trajectory frame"
+              />
+              <span className={`shrink-0 text-[10px] font-mono tabular-nums ${ct.muted}`}>
+                {Math.min(frameIdx, frameCount - 1) + 1}/{frameCount}
+              </span>
+              <select
+                value={trajFps}
+                onChange={e => setTrajFps(parseInt(e.target.value, 10))}
+                className={`hidden shrink-0 rounded border bg-transparent py-0.5 text-[10px] @md:block ${ct.input}`}
+                title="Playback speed"
+                aria-label="Playback speed"
+              >
+                {[2, 5, 10, 30].map(f => <option key={f} value={f}>{f} fps</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Tool dock */}
+          <div className={`pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border px-1 py-1 shadow-2xl backdrop-blur @xl:gap-1 @xl:px-2 @xl:py-1.5 ${
             theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
           }`}>
             <button
-              onClick={() => setFrameIdx(i => (i - 1 + frameCount) % frameCount)}
-              className={`p-1.5 rounded-full ${ct.button}`}
-              title="Previous frame (,)"
+              onClick={() => setAutoRotate(v => !v)}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium transition-colors @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${
+                autoRotate ? ct.accentText : ct.muted
+              }`}
+              title="Auto-rotate (Space)"
+              aria-label="Toggle auto-rotate"
             >
-              <ChevronLeft size={14} />
+              {autoRotate ? <Pause size={16} /> : <Play size={16} />}
+              <span className="hidden @2xl:inline">Rotate</span>
             </button>
+            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
             <button
-              onClick={() => setTrajPlaying(v => !v)}
-              className={`p-1.5 rounded-full ${trajPlaying ? ct.accentText : ct.muted}`}
-              title="Play / pause trajectory (P)"
+              onClick={() => emitCameraCommand({ type: 'fit' })}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${ct.muted}`}
+              title="Fit view (R)"
+              aria-label="Fit view"
             >
-              {trajPlaying ? <Pause size={14} /> : <Play size={14} />}
+              <Maximize2 size={16} />
+              <span className="hidden @2xl:inline">Fit</span>
             </button>
+            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
             <button
-              onClick={() => setFrameIdx(i => (i + 1) % frameCount)}
-              className={`p-1.5 rounded-full ${ct.button}`}
-              title="Next frame (.)"
+              onClick={() => updateConfig('showBox', !vizConfig.showBox)}
+              disabled={!moleculeData?.box}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium disabled:opacity-30 @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${
+                vizConfig.showBox ? ct.accentText : ct.muted
+              }`}
+              title="Simulation box (X)"
+              aria-label="Toggle simulation box"
             >
-              <ChevronRight size={14} />
+              <Box size={16} />
+              <span className="hidden @2xl:inline">Box</span>
             </button>
-            <input
-              type="range"
-              min="0"
-              max={frameCount - 1}
-              value={Math.min(frameIdx, frameCount - 1)}
-              onChange={e => { setTrajPlaying(false); setFrameIdx(parseInt(e.target.value, 10)); }}
-              className={`w-32 sm:w-48 ${theme === 'dark' ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
-              aria-label="Trajectory frame"
-            />
-            <span className={`text-[10px] font-mono tabular-nums ${ct.muted}`}>
-              {Math.min(frameIdx, frameCount - 1) + 1}/{frameCount}
-            </span>
-            <select
-              value={trajFps}
-              onChange={e => setTrajFps(parseInt(e.target.value, 10))}
-              className={`text-[10px] rounded border bg-transparent ${ct.input} py-0.5`}
-              title="Playback speed"
+            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+            <button
+              onClick={() => updateConfig('showLabels', !vizConfig.showLabels)}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${
+                vizConfig.showLabels ? ct.accentText : ct.muted
+              }`}
+              title="Element labels (L)"
+              aria-label="Toggle element labels"
             >
-              {[2, 5, 10, 30].map(f => <option key={f} value={f}>{f} fps</option>)}
-            </select>
+              <Layers size={16} />
+              <span className="hidden @2xl:inline">Labels</span>
+            </button>
+            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+            <button
+              onClick={() => (isRecording ? stopRecording() : startRecording())}
+              disabled={savingVideo}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium transition-colors @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${
+                isRecording ? 'text-red-400' : savingVideo ? 'opacity-50' : ct.muted
+              }`}
+              title={isRecording ? 'Stop recording & save video' : 'Record high-quality video (MP4 where supported)'}
+              aria-label={isRecording ? 'Stop recording' : 'Start recording'}
+            >
+              {isRecording ? (
+                <>
+                  <span className="h-3 w-3 shrink-0 rounded-sm bg-red-500 animate-pulse" />
+                  <span className="hidden font-mono tabular-nums @2xl:inline">
+                    {String(Math.floor(recordingMs / 60000)).padStart(2, '0')}:
+                    {String(Math.floor((recordingMs % 60000) / 1000)).padStart(2, '0')}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Circle size={13} className="shrink-0 text-red-400" fill="currentColor" />
+                  <span className="hidden @2xl:inline">{savingVideo ? 'Saving…' : 'Rec'}</span>
+                </>
+              )}
+            </button>
+            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+            <button
+              onClick={doScreenshot}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${ct.muted}`}
+              title="Screenshot (S)"
+              aria-label="Take screenshot"
+            >
+              <Camera size={16} />
+              <span className="hidden @2xl:inline">Shot</span>
+            </button>
           </div>
-        )}
+        </div>
 
         {/* Measurement panel (P4) */}
         {selectedIds.length > 0 && activeData && (
@@ -1404,13 +1490,6 @@ const ViewerModule: React.FC<{
           </div>
         )}
 
-        {/* Hint for first-time users */}
-        {moleculeData && frameCount <= 1 && selectedIds.length === 0 && (
-          <div className={`absolute bottom-14 left-1/2 z-[5] hidden -translate-x-1/2 rounded-full px-3 py-1 text-[10px] sm:bottom-20 sm:block ${ct.muted}`}>
-            Press <kbd className={`px-1 rounded ${ct.chip}`}>H</kbd> for keyboard shortcuts · drag & drop files anywhere
-          </div>
-        )}
-
         {activeData ? (
           <MoleculeCanvas
             data={activeData}
@@ -1419,6 +1498,7 @@ const ViewerModule: React.FC<{
             selectedIds={selectedIds}
             onSelectAtom={toggleSelectAtom}
             forceContinuousRender={isRecording || savingVideo}
+            displayBox={displayBox}
           />
         ) : (
           <div className={`w-full h-full flex flex-col items-center justify-center ${ct.muted}`}>

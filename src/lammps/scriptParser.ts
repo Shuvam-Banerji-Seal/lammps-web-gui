@@ -78,26 +78,45 @@ const stripComment = (line: string): string => {
   return line;
 };
 
-/** Join `&`-continued lines, strip comments/blanks → logical statements. */
-export const scriptStatements = (text: string): string[] => {
-  const out: string[] = [];
+/** A logical statement plus the 1-based source line it started on. */
+export interface SourceStatement {
+  text: string;
+  line: number;
+}
+
+/**
+ * Join `&`-continued lines, strip comments/blanks → logical statements,
+ * keeping the 1-based source line each statement started on so diagnostics
+ * can point at it.
+ */
+export const scriptStatementsDetailed = (text: string): SourceStatement[] => {
+  const out: SourceStatement[] = [];
   const rawLines = text.split(/\r?\n/);
   let buffer = '';
-  for (const raw of rawLines) {
-    const noComment = stripComment(raw).trimEnd();
+  let startLine = 0;
+  for (let i = 0; i < rawLines.length; i++) {
+    const noComment = stripComment(rawLines[i]).trimEnd();
     if (buffer === '' && noComment.trim() === '') continue;
-    if (buffer === '') buffer = noComment.trim();
-    else buffer += ' ' + noComment.trim();
+    if (buffer === '') {
+      buffer = noComment.trim();
+      startLine = i + 1;
+    } else {
+      buffer += ' ' + noComment.trim();
+    }
     if (buffer.endsWith('&')) {
       buffer = buffer.slice(0, -1).trimEnd();
       continue;
     }
-    if (buffer.trim()) out.push(buffer.trim());
+    if (buffer.trim()) out.push({ text: buffer.trim(), line: startLine });
     buffer = '';
   }
-  if (buffer.trim()) out.push(buffer.trim());
+  if (buffer.trim()) out.push({ text: buffer.trim(), line: startLine });
   return out;
 };
+
+/** Join `&`-continued lines, strip comments/blanks → logical statements. */
+export const scriptStatements = (text: string): string[] =>
+  scriptStatementsDetailed(text).map(s => s.text);
 
 interface PatternVariant {
   tokens: string[];

@@ -8,13 +8,64 @@ import {
   CompilerOptions,
 } from '../src/lammps/compiler';
 
+/**
+ * The full ALL_PACKAGES list from lammps/lammps `cmake/presets/most.cmake`
+ * (fetched 2026-09-22). Snapshotted so the catalog cannot silently drift out
+ * of sync with upstream — a missing package means the Compiler Helper cannot
+ * build an input that needs it.
+ */
+const MOST_CMAKE_PACKAGES = [
+  'AMOEBA', 'ASPHERE', 'BOCS', 'BODY', 'BPM', 'BROWNIAN', 'CG-DNA', 'CG-SPICA',
+  'CLASS2', 'COLLOID', 'COLVARS', 'COMPRESS', 'CORESHELL', 'DIELECTRIC',
+  'DIFFRACTION', 'DIPOLE', 'DPD-BASIC', 'DPD-MESO', 'DPD-REACT', 'DPD-SMOOTH',
+  'DRUDE', 'EFF', 'ELECTRODE', 'EXTRA-COMMAND', 'EXTRA-COMPUTE', 'EXTRA-DUMP',
+  'EXTRA-FIX', 'EXTRA-MOLECULE', 'EXTRA-PAIR', 'FEP', 'GRAPHICS', 'GRANULAR',
+  'GRANSURF', 'INTERLAYER', 'KSPACE', 'LEPTON', 'MACHDYN', 'MANYBODY', 'MC',
+  'MEAM', 'MESONT', 'MISC', 'ML-IAP', 'ML-POD', 'ML-SNAP', 'ML-UF3', 'MOFFF',
+  'MOLECULE', 'OPENMP', 'OPT', 'ORIENT', 'PERI', 'PHONON', 'PLUGIN', 'QEQ',
+  'REACTION', 'REAXFF', 'REPLICA', 'RHEO', 'RIGID', 'SHOCK', 'SPH', 'SPIN',
+  'SRD', 'TALLY', 'UEF', 'VORONOI', 'YAFF',
+];
+
 describe('LAMMPS compiler helper', () => {
-  it('package catalog contains the most.cmake set and accelerators', () => {
+  it('covers every package in most.cmake, plus the special-toolchain ones', () => {
     const names = new Set(LMP_PACKAGES.map(p => p.name));
-    for (const p of ['MOLECULE', 'KSPACE', 'REAXFF', 'KOKKOS', 'GPU', 'OPENMP']) {
-      expect(names.has(p)).toBe(true);
+    const missing = MOST_CMAKE_PACKAGES.filter(p => !names.has(p));
+    expect(missing).toEqual([]);
+    // most.cmake deliberately omits these: they need CUDA/HIP/oneAPI.
+    for (const p of ['GPU', 'INTEL', 'KOKKOS']) expect(names.has(p)).toBe(true);
+  });
+
+  it('has no duplicate package entries', () => {
+    const names = LMP_PACKAGES.map(p => p.name);
+    expect(names.length).toBe(new Set(names).size);
+  });
+
+  it('every package description is specific enough to be useful', () => {
+    for (const pkg of LMP_PACKAGES) {
+      expect(pkg.description.length, pkg.name).toBeGreaterThan(20);
+      // Descriptions come from the package's own docs "Contents" line, so they
+      // must not just restate the package name.
+      expect(pkg.description.toUpperCase(), pkg.name).not.toBe(pkg.name);
     }
-    expect(LMP_PACKAGES.length).toBeGreaterThanOrEqual(60);
+  });
+
+  it('carries the corrected package descriptions (regression)', () => {
+    const byName = new Map(LMP_PACKAGES.map(p => [p.name, p.description]));
+    // Each of these was materially WRONG before the 2026-09-22 docs pass.
+    expect(byName.get('MESONT')).toMatch(/nanotube/i);
+    expect(byName.get('MESONT')).not.toMatch(/mesoporous/i);
+    expect(byName.get('SHOCK')).toMatch(/msst|nphug|shock/i);
+    expect(byName.get('SHOCK')).not.toMatch(/SPaSM/i);
+    expect(byName.get('ORIENT')).toMatch(/grain.boundary/i);
+    expect(byName.get('ORIENT')).not.toMatch(/resquared/i);
+    expect(byName.get('ML-UF3')).toMatch(/ultra-fast/i);
+    expect(byName.get('ML-UF3')).not.toMatch(/UFL3|four-body/i);
+    expect(byName.get('MOFFF')).toMatch(/MOF-FF/);
+    expect(byName.get('MOFFF')).not.toMatch(/diffusion/i);
+    expect(byName.get('PHONON')).toMatch(/dynamical matri/i);
+    expect(byName.get('BOCS')).toMatch(/barostat/i);
+    expect(byName.get('YAFF')).toMatch(/pair_style yaff/);
   });
 
   it('presets reference known packages only', () => {

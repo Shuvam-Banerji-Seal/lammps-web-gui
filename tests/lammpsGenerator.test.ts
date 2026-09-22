@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { generateScript, deriveFlowchart } from '../src/lammps/generator';
+import {
+  generateScript,
+  deriveFlowchart,
+  sortStepsBySection,
+  isSectionSorted,
+} from '../src/lammps/generator';
 import {
   COMMAND_BY_ID,
   defaultParams,
@@ -69,7 +74,7 @@ describe('LAMMPS script generator', () => {
     expect(idx('4 · Output')).toBeLessThan(idx('5 · Run control'));
   });
 
-  it('groups user steps by canonical section regardless of insertion order', () => {
+  it('emits in PIPELINE order — LAMMPS executes an input file top to bottom', () => {
     const m = model([
       step('run', { steps: '5' }),          // control section first in list
       step('units', { style: 'real' }),     // setup later
@@ -77,7 +82,53 @@ describe('LAMMPS script generator', () => {
     const out = generateScript(m);
     const iUnits = out.text.indexOf('units real');
     const iRun = out.text.indexOf('run 5');
-    expect(iUnits).toBeLessThan(iRun);
+    expect(iRun).toBeLessThan(iUnits);
+  });
+
+  it('keeps multi-stage scripts correct: write_data stays AFTER run', () => {
+    // Regression: section grouping used to hoist the whole `output` section
+    // above `control`, so the data file captured the INITIAL state.
+    const m = model([
+      step('units', { style: 'lj' }),
+      step('fix_nve'),
+      step('run', { steps: '1000' }),
+      step('write_data_out', { file: 'final.data' }),
+    ]);
+    const text = generateScript(m).text;
+    expect(text.indexOf('run 1000')).toBeLessThan(text.indexOf('write_data final.data'));
+  });
+
+  it('keeps reset_timestep between two runs instead of hoisting it', () => {
+    const m = model([
+      step('run', { steps: '1000' }),
+      step('reset_timestep', { n: '0' }),
+      step('run', { steps: '5000' }),
+    ]);
+    const text = generateScript(m).text;
+    const iReset = text.indexOf('reset_timestep 0');
+    expect(text.indexOf('run 1000')).toBeLessThan(iReset);
+    expect(iReset).toBeLessThan(text.lastIndexOf('run 5000'));
+  });
+
+  it('sortStepsBySection() physically reorders so the flowchart matches', () => {
+    const steps = [step('run', { steps: '5' }), step('units', { style: 'real' })];
+    expect(isSectionSorted(steps)).toBe(false);
+    const sorted = sortStepsBySection(steps);
+    expect(sorted.map(s => s.defId)).toEqual(['units', 'run']);
+    expect(isSectionSorted(sorted)).toBe(true);
+    const text = generateScript(model(sorted)).text;
+    expect(text.indexOf('units real')).toBeLessThan(text.indexOf('run 5'));
+  });
+
+  it('writes a section banner each time the section changes', () => {
+    const m = model([
+      step('units', { style: 'lj' }),
+      step('fix_nve'),
+      step('run', { steps: '10' }),
+    ]);
+    const text = generateScript(m).text;
+    expect(text).toContain('# ---- 1 · Simulation setup ----');
+    expect(text).toContain('# ---- 5 · Run control ----');
   });
 
   it('skips disabled steps silently (flowchart shows them dashed)', () => {
@@ -106,8 +157,8 @@ describe('LAMMPS script generator', () => {
     const g = deriveFlowchart(m);
     expect(g.nodes).toHaveLength(3);
     expect(g.edges).toEqual([
-      { from: 'units-1', to: 'read_data-1' },
-      { from: 'read_data-1', to: 'fix_npt-1' },
+      { from: 'units-1', to: 'read_data-1', fork: false },
+      { from: 'read_data-1', to: 'fix_npt-1', fork: false },
     ]);
     expect(g.start).toBe(true);
     expect(g.end).toBe(true);

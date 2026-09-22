@@ -50,7 +50,23 @@ CDN). First paint depends only on this repo's own static assets.
 | Hover picking guard | Per-move raycasting switches off beyond 50,000 atoms; orbit/zoom remain unaffected. |
 | No `preserveDrawingBuffer` | Screenshots force an explicit render before capture instead of keeping the drawing buffer alive every frame. |
 
+## v3.5 additions
+
+| Mechanism | Effect |
+|---|---|
+| Cell-list RDF | `g(r)` bins pairs through a periodic cell list instead of an all-pairs loop. Measured on a fixed-density gas: **7x faster at 10 000 atoms**, **36x at 30 000** (36.9 s → 1.0 s). The accelerated histogram is asserted **bin-for-bin identical** to a brute-force reference, including the awkward 1-cell and 2-cell wrap cases and thin-z 2D slabs. |
+| Analysis Web Worker | RDF, MSD and the density profile run off the main thread. They used to be called **inline in the Analysis panel's JSX**, so every React render recomputed all of them — up to 30x/second with a trajectory playing. Now: once per loaded structure, with stale results discarded by request generation. |
+| Allocation-free MSD | A stable atom ordering is resolved once instead of rebuilding an `id → atom` Map inside the (lag x origin) loop. A permutation array is allocated only for frames whose atom order actually differs — for a normal LAMMPS dump, none. |
+| Direct instance-matrix writes | An atom instance is a translation plus a uniform scale, so its 4x4 is written straight into the `InstancedBufferAttribute`: no `Object3D.updateMatrix()` quaternion compose, no `setMatrixAt` copy per atom. Unit-tested against `THREE.Object3D` for random inputs so the shortcut is provably identical. |
+| Typed-array bond buffers | Bonds no longer allocate 2 `Vector3` + 1 `Quaternion` per half-bond — 300k short-lived objects for a 50k-bond structure, previously rebuilt whenever `atomMap` changed identity. |
+| Per-type colour cache | Both instanced meshes cached one `THREE.Color` per atom **type** instead of calling `color.set(hexString)` once per instance, which re-parsed the same handful of strings tens of thousands of times per frame. |
+| Geometry disposal | The sphere and cylinder geometries are `useMemo`'d and replaced when the tessellation tier changes. R3F only disposes what it builds from `args`, so each differently sized load used to leak the previous GPU buffers. |
+| Lazy `atomMap` | Only built when something needs id lookup (bonds, or a measurement selection). A LAMMPS dump has no bonds, so playback was doing 60k `Map` inserts per frame for nothing. |
+| Stable camera radius | The framing radius is keyed on the simulation box, not on `data` identity. Playback previously rescanned every atom per frame and handed the camera a slightly different radius each time — the view visibly pumped. |
+| No argument spreading | `computeSpeedDistribution` / `computeDensityProfile` used `Math.min(...atoms.map(...))`, which throws `RangeError` past the engine's argument limit — the bundled 60k example was already near it. Both now track their extent in one pass; regression-tested at 200 000 atoms. |
+
 ## Bundle budget
 
 CI fails if gzipped JS exceeds **420 KB total** or any single chunk exceeds
-**300 KB** (`scripts/check-bundle-size.mjs`). Current usage: ~326 KB total.
+**300 KB** (`scripts/check-bundle-size.mjs`). Current usage: ~392 KB total
+across 6 chunks, including two Web Workers.

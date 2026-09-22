@@ -1,0 +1,66 @@
+LAMMPS Web GUI / Molecule3D
+Copyright (c) 2025-2026 Shuvam Banerji Seal. All rights reserved.
+
+Original author and copyright holder:
+  Shuvam Banerji Seal <shuvam@sycolex.com>
+  https://github.com/Shuvam-Banerji-Seal/lammps-web-gui
+
+This product includes software developed by Shuvam Banerji Seal.
+
+Licensed under the LAMMPS Web GUI / Molecule3D Educational and
+Non-Commercial Source-Available Licence, Version 1.0 — see LICENSE.
+
+  * Free for education, teaching and non-commercial research.
+  * Attribution to Shuvam Banerji Seal is MANDATORY (LICENSE §3),
+    including a visible credit in any deployed user interface and a
+    citation in any academic or scientific work.
+  * Commercial use requires a separate written licence and carries a
+    revenue share (LICENSE §5) — see COMMERCIAL.md.
+
+If you redistribute this software or a derivative work, this NOTICE file
+must travel with it unmodified, and its contents must be reproduced in your
+documentation or "about" screen.
+
+--------------------------------------------------------------------------
+THIRD-PARTY COMPONENTS
+--------------------------------------------------------------------------
+
+This software depends on third-party packages that are NOT covered by the
+licence above and remain under their own terms. Run `npm ls --all` or read
+package-lock.json for the full, versioned dependency tree. The principal
+runtime dependencies are:
+
+  React, React DOM ............ MIT — Meta Platforms, Inc. and affiliates
+  three.js .................... MIT — three.js authors
+  @react-three/fiber .......... MIT — Poimandres
+  @react-three/drei ........... MIT — Poimandres
+  lucide-react ................ ISC — Lucide Contributors
+  Tailwind CSS ................ MIT — Tailwind Labs, Inc.
+  Vite, TypeScript, Vitest .... MIT — respective authors
+
+Fonts loaded at runtime:
+  Inter ....................... SIL Open Font License 1.1 — Rasmus Andersson
+  JetBrains Mono .............. SIL Open Font License 1.1 — JetBrains s.r.o.
+
+--------------------------------------------------------------------------
+RELATIONSHIP TO LAMMPS
+--------------------------------------------------------------------------
+
+LAMMPS (Large-scale Atomic/Molecular Massively Parallel Simulator) is a
+separate project of Sandia National Laboratories and the LAMMPS Developers,
+distributed under its own licence (GPL-2.0), with documentation at
+https://docs.lammps.org.
+
+This software is an INDEPENDENT tool for authoring and inspecting LAMMPS
+input. It is not affiliated with, endorsed by, or a product of the LAMMPS
+project or Sandia National Laboratories. Command grammars, flag lists and
+validation rules in this repository were derived from the public LAMMPS
+documentation; that documentation is the authority, and generated scripts
+must always be verified against it.
+
+--------------------------------------------------------------------------
+PRIOR RELEASES
+--------------------------------------------------------------------------
+
+Releases made before 22 September 2026 were distributed under the MIT
+Licence. That grant stands for those copies; see LICENSE §11.

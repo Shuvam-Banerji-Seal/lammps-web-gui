@@ -3,12 +3,29 @@ export interface Atom {
   molId: number;
   type: number;
   charge: number;
+  /** WRAPPED position, as the file gives it — this is what gets rendered. */
   x: number;
   y: number;
   z: number;
   vx?: number;
   vy?: number;
   vz?: number;
+  /**
+   * LAMMPS periodic image flags, when the dump carries `ix iy iz`.
+   *
+   * docs.lammps.org/dump.html: "For periodic dimensions, they specify which
+   * image of the simulation box the atom is considered to be in. An image of
+   * 0 means it is inside the box as defined. A value of 2 means add 2 box
+   * lengths to get the true value."
+   *
+   * Kept separate from x/y/z deliberately: rendering wants the WRAPPED
+   * position (otherwise a diffusing system scatters across box images and
+   * looks broken), while MSD needs the UNWRAPPED one or it saturates at
+   * (L/2)² and can never show linear diffusion.
+   */
+  ix?: number;
+  iy?: number;
+  iz?: number;
 }
 
 export interface Bond {
@@ -51,6 +68,12 @@ export interface MoleculeData {
 export interface TrajectoryFrame {
   comment?: string;
   atoms: Atom[];
+  /**
+   * This frame's own cell. A LAMMPS dump repeats BOX BOUNDS every frame, and
+   * under NPT the cell breathes, so a single box taken from frame 0 is wrong
+   * for every later frame.
+   */
+  box?: BoxBounds;
 }
 
 export enum ParseSection {

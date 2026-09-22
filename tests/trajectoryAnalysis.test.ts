@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeRDF, computeMSD, computeDensityProfile, computeSpeedDistribution,
-  trajStats, distancePBC,
+  trajStats, distancePBC, hasImageFlags,
 } from '../src/services/trajectoryAnalysis';
 import type { Atom, BoxBounds, TrajectoryFrame, MoleculeData } from '../src/types';
 
@@ -236,5 +236,53 @@ describe('trajStats', () => {
     expect(st.frames).toBe(2);
     expect(st.density).toBeCloseTo(2 / 1000, 9);
     expect(st.hasVelocities).toBe(true);
+  });
+});
+
+describe('MSD with LAMMPS image flags', () => {
+  const L = 10;
+  const withImage = (id: number, x: number, ix: number): Atom =>
+    ({ ...atom(id, x, 0, 0), ix, iy: 0, iz: 0 });
+
+  it('reports image flags when the frame carries them', () => {
+    expect(hasImageFlags([withImage(1, 0, 0)])).toBe(true);
+    expect(hasImageFlags([atom(1, 0, 0, 0)])).toBe(false);
+    expect(hasImageFlags([])).toBe(false);
+  });
+
+  it('unwraps exactly across many box crossings', () => {
+    // One atom drifting +2 per frame through a box of length 10, wrapped, with
+    // honest image flags. True displacement after 10 frames is 20 = 2 boxes.
+    const frames: TrajectoryFrame[] = [];
+    for (let t = 0; t <= 10; t++) {
+      const trueX = 2 * t;
+      frames.push({ atoms: [withImage(1, trueX % L, Math.floor(trueX / L))] });
+    }
+    const pts = computeMSD(frames, cube(L), { timeOriginStride: 1 });
+    for (const p of pts) expect(p.msd).toBeCloseTo((2 * p.t) ** 2, 6);
+    // and the last lag exceeds (L/2)^2 = 25, which minimum image cannot reach
+    expect(pts[pts.length - 1].msd).toBeCloseTo(400, 6);
+  });
+
+  it('WITHOUT image flags the same motion saturates below (L/2)²', () => {
+    const frames: TrajectoryFrame[] = [];
+    for (let t = 0; t <= 10; t++) frames.push({ atoms: [atom(1, (2 * t) % L, 0, 0)] });
+    const pts = computeMSD(frames, cube(L), { timeOriginStride: 1 });
+    // minimum image caps every displacement at L/2, so MSD can never exceed 25
+    expect(Math.max(...pts.map(p => p.msd))).toBeLessThanOrEqual((L / 2) ** 2 + 1e-9);
+    // which is exactly why the caption warns about it
+    expect(pts[pts.length - 1].msd).toBeLessThan(400);
+  });
+
+  it('applies the triclinic tilt to image offsets', () => {
+    const box: BoxBounds = { xlo: 0, xhi: 10, ylo: 0, yhi: 10, zlo: 0, zhi: 10, xy: 3, xz: 0, yz: 0 };
+    // one y-image step carries an extra xy = 3 in x
+    const frames: TrajectoryFrame[] = [
+      { atoms: [{ ...atom(1, 0, 0, 0), ix: 0, iy: 0, iz: 0 }] },
+      { atoms: [{ ...atom(1, 0, 0, 0), ix: 0, iy: 1, iz: 0 }] },
+    ];
+    const pts = computeMSD(frames, box, { timeOriginStride: 1 });
+    // displacement = (xy, ly, 0) = (3, 10, 0) -> 9 + 100
+    expect(pts.find(p => p.t === 1)!.msd).toBeCloseTo(109, 6);
   });
 });

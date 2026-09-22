@@ -2,6 +2,7 @@ import {
   computeRDF,
   computeMSD,
   computeDensityProfile,
+  hasImageFlags,
 } from '../services/trajectoryAnalysis';
 import type {
   AnalysisRequest,
@@ -30,6 +31,7 @@ self.onmessage = (e: MessageEvent<AnalysisRequest>) => {
       rdf: computeRDF(frames, box, { rMax: opts.rdfRMax, bins: opts.rdfBins }),
       msd: computeMSD(frames, box, { timeOriginStride: opts.msdStride }),
       density: computeDensityProfile(frames, box, opts.densityAxis, opts.densityBins),
+      msdUnwrapped: !!box && frames.length > 0 && hasImageFlags(frames[0].atoms),
       ms: Date.now() - started,
     });
   } catch (err) {

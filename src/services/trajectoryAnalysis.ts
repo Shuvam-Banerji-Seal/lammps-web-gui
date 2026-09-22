@@ -23,6 +23,14 @@ export interface MSDPoint { t: number; msd: number; }
 export interface HistogramBin { x0: number; x1: number; count: number; density: number; }
 export interface DensityProfile { bins: HistogramBin[]; axis: 'x' | 'y' | 'z'; }
 
+/**
+ * True when the frame carries LAMMPS image flags, so displacements can be
+ * unwrapped exactly instead of falling back to the minimum-image convention.
+ */
+export const hasImageFlags = (atoms: Atom[]): boolean =>
+  atoms.length > 0 && atoms[0].ix !== undefined && atoms[0].iy !== undefined &&
+  atoms[0].iz !== undefined;
+
 /** Largest value in a numeric array, floored at 1 (used for normalisation). */
 const maxOf = (values: number[]): number => {
   let m = 1;
@@ -364,7 +372,23 @@ export const computeMSD = (
   const lx = box ? box.xhi - box.xlo : 0;
   const ly = box ? box.yhi - box.ylo : 0;
   const lz = box ? box.zhi - box.zlo : 0;
+  const xy = box?.xy ?? 0, xz = box?.xz ?? 0, yz = box?.yz ?? 0;
   const wrapZ = !!box && lz > 2;
+
+  /*
+   * Two displacement modes.
+   *
+   * With image flags the absolute position is recoverable exactly
+   * (docs.lammps.org/dump.html: "A value of 2 means add 2 box lengths to get
+   * the true value"), so MSD is unbounded and a diffusive system shows the
+   * linear growth it should.
+   *
+   * Without them, all we have is the wrapped position, and the best we can do
+   * is the minimum-image convention — which caps any single displacement at
+   * half a box, so MSD SATURATES near (L/2)² and cannot represent diffusion
+   * beyond that. Dump `ix iy iz` (or `xu yu zu`) if you need long-time MSD.
+   */
+  const unwrap = !!box && hasImageFlags(frames[0].atoms);
 
   const msd: MSDPoint[] = [];
   for (let dt = 0; dt < frames.length; dt++) {
@@ -385,7 +409,16 @@ export const computeMSD = (
         let dx = to.x - from.x;
         let dy = to.y - from.y;
         let dz = to.z - from.z;
-        if (box) {
+        if (unwrap) {
+          // Restricted-triclinic image offset; degenerates to the orthogonal
+          // case when the tilt factors are zero.
+          const dix = (to.ix ?? 0) - (from.ix ?? 0);
+          const diy = (to.iy ?? 0) - (from.iy ?? 0);
+          const diz = (to.iz ?? 0) - (from.iz ?? 0);
+          dx += dix * lx + diy * xy + diz * xz;
+          dy += diy * ly + diz * yz;
+          dz += diz * lz;
+        } else if (box) {
           dx = pbcDelta(dx, lx);
           dy = pbcDelta(dy, ly);
           if (wrapZ) dz = pbcDelta(dz, lz);

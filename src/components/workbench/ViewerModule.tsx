@@ -517,6 +517,17 @@ const ViewerModule: React.FC<{
     return frame ? { ...moleculeData, atoms: frame.atoms } : moleculeData;
   }, [moleculeData, frameIdx, frameCount]);
 
+  /**
+   * This frame's own cell, when the dump carries one per frame. Under NPT the
+   * box breathes, so drawing frame 0's cell for the whole trajectory is simply
+   * wrong. Passed separately from `activeData` so camera framing keeps using
+   * the stable reference box and the view does not pump.
+   */
+  const displayBox = useMemo(
+    () => moleculeData?.frames?.[Math.min(frameIdx, frameCount - 1)]?.box,
+    [moleculeData, frameIdx, frameCount],
+  );
+
   const measurement: MeasurementResult | null = useMemo(() => {
     if (!activeData) return null;
     const picked = selectedIds
@@ -1130,6 +1141,18 @@ const ViewerModule: React.FC<{
                             const slope = last && last.t > 0 ? (last.msd / last.t).toFixed(3) : '—';
                             return `Slope ≈ ${slope} Å²/frame`;
                           })()} — linear = diffusive, plateau = caged/crystal. Averaged over time origins.
+                          {' '}
+                          {analysis.result.msdUnwrapped ? (
+                            <span className={ct.accentText}>
+                              Unwrapped with image flags — exact at long lag.
+                            </span>
+                          ) : (
+                            <span className="text-[#d9a05b]">
+                              No <code>ix iy iz</code> in this dump, so displacements use the
+                              minimum-image convention and MSD saturates near (L/2)². Dump{' '}
+                              <code>ix iy iz</code> or <code>xu yu zu</code> for long-time diffusion.
+                            </span>
+                          )}
                         </p>
                       </section>
 
@@ -1474,6 +1497,7 @@ const ViewerModule: React.FC<{
             selectedIds={selectedIds}
             onSelectAtom={toggleSelectAtom}
             forceContinuousRender={isRecording || savingVideo}
+            displayBox={displayBox}
           />
         ) : (
           <div className={`w-full h-full flex flex-col items-center justify-center ${ct.muted}`}>

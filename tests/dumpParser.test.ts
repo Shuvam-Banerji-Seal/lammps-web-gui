@@ -157,3 +157,76 @@ ITEM: ATOMS id type x y z
     expect(detectFormatFromContent(ORTHO)).toBe('lammpsdump');
   });
 });
+
+describe('dump parser — scaled-unwrapped columns and image flags', () => {
+  const header = (cols: string) => `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS ${cols}
+`;
+
+  it('reads xsu/ysu/zsu (scaled UNWRAPPED) — previously rejected outright', () => {
+    // docs.lammps.org/dump.html: "unwrapped coordinates are scaled by the box
+    // size. Atoms that have passed through a periodic boundary will have the
+    // corresponding coordinate increased or decreased by 1.0."
+    const d = parseDumpFile(header('id type xsu ysu zsu') +
+      '1 1 0.25 0.5 0.75\n' +
+      '2 1 1.5 -0.5 2.0\n');
+    expect(d.atoms).toHaveLength(2);
+    expect(d.atoms[0].x).toBeCloseTo(2.5, 6);
+    expect(d.atoms[0].y).toBeCloseTo(5.0, 6);
+    expect(d.atoms[0].z).toBeCloseTo(7.5, 6);
+    // past the boundary: 1.5 -> 15, -0.5 -> -5, 2.0 -> 20
+    expect(d.atoms[1].x).toBeCloseTo(15, 6);
+    expect(d.atoms[1].y).toBeCloseTo(-5, 6);
+    expect(d.atoms[1].z).toBeCloseTo(20, 6);
+  });
+
+  it('captures ix/iy/iz without moving the rendered position', () => {
+    const d = parseDumpFile(header('id type x y z ix iy iz') +
+      '1 1 1.0 2.0 3.0 2 -1 0\n' +
+      '2 1 4.0 5.0 6.0 0 0 0\n');
+    // x/y/z stay WRAPPED — unwrapping here would scatter the render
+    expect(d.atoms[0].x).toBeCloseTo(1.0, 6);
+    expect(d.atoms[0].ix).toBe(2);
+    expect(d.atoms[0].iy).toBe(-1);
+    expect(d.atoms[0].iz).toBe(0);
+    expect(d.atoms[1].ix).toBe(0);
+  });
+
+  it('leaves image flags undefined when the dump has no such columns', () => {
+    const d = parseDumpFile(header('id type x y z') + '1 1 1 2 3\n2 1 4 5 6\n');
+    expect(d.atoms[0].ix).toBeUndefined();
+  });
+
+  it('still rejects a dump with no coordinate columns at all', () => {
+    expect(() => parseDumpFile(header('id type q') + '1 1 0.5\n2 1 0.5\n'))
+      .toThrow(/no coordinate columns/);
+  });
+
+  it('gives every frame its own box, so an NPT cell can breathe', () => {
+    const frame = (ts: number, hi: number) => `ITEM: TIMESTEP
+${ts}
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS pp pp pp
+0.0 ${hi}
+0.0 ${hi}
+0.0 ${hi}
+ITEM: ATOMS id type x y z
+1 1 1.0 1.0 1.0
+`;
+    const d = parseDumpFile(frame(0, 10) + frame(100, 12) + frame(200, 11));
+    expect(d.frames).toHaveLength(3);
+    expect(d.frames![0].box!.xhi).toBeCloseTo(10, 6);
+    expect(d.frames![1].box!.xhi).toBeCloseTo(12, 6);
+    expect(d.frames![2].box!.xhi).toBeCloseTo(11, 6);
+    // the reference box stays frame 0's, which is what camera framing uses
+    expect(d.box!.xhi).toBeCloseTo(10, 6);
+  });
+});

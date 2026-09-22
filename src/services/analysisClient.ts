@@ -4,6 +4,7 @@ import {
   computeDensityProfile,
   computeMSD,
   computeRDF,
+  hasImageFlags,
 } from './trajectoryAnalysis';
 
 /**
@@ -36,6 +37,8 @@ export interface AnalysisResponse {
   rdf?: RDFPoint[];
   msd?: MSDPoint[];
   density?: DensityProfile;
+  /** True when MSD used image flags (exact) rather than minimum image. */
+  msdUnwrapped?: boolean;
   /** Wall-clock milliseconds spent in the worker. */
   ms?: number;
   error?: string;
@@ -45,6 +48,12 @@ export interface AnalysisResult {
   rdf: RDFPoint[];
   msd: MSDPoint[];
   density: DensityProfile;
+  /**
+   * True when MSD unwrapped displacements with LAMMPS image flags, so it is
+   * exact at long lag. False means minimum-image, which saturates near
+   * (L/2)² — the caption tells the user which they are looking at.
+   */
+  msdUnwrapped: boolean;
   ms: number;
   /** True when the work ran on the calling thread instead of a worker. */
   onMainThread: boolean;
@@ -79,6 +88,7 @@ const ensureWorker = (): Worker | null => {
           rdf: ev.data.rdf,
           msd: ev.data.msd,
           density: ev.data.density,
+          msdUnwrapped: ev.data.msdUnwrapped === true,
           ms: ev.data.ms ?? 0,
           onMainThread: false,
         });
@@ -111,6 +121,7 @@ export const analyzeSync = (
     rdf: computeRDF(frames, box, { rMax: opts.rdfRMax, bins: opts.rdfBins }),
     msd: computeMSD(frames, box, { timeOriginStride: opts.msdStride }),
     density: computeDensityProfile(frames, box, opts.densityAxis, opts.densityBins),
+    msdUnwrapped: !!box && frames.length > 0 && hasImageFlags(frames[0].atoms),
     ms: Date.now() - started,
     onMainThread: true,
   };

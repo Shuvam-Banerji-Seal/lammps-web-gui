@@ -17,10 +17,18 @@ import { inferBonds } from './bondInference';
  *      xlo = xlo_bound - MIN(0, xy, xz, xy+xz)
  *      xhi = xhi_bound - MAX(0, xy, xz, xy+xz)
  *      ylo = ylo_bound - MIN(0, yz) ; yhi = yhi_bound - MAX(0, yz)
- *  - Coordinate columns: prefer x/y/z, then xu/yu/zu (unwrapped), then
- *    xs/ys/zs (fractional). Fractional → Cartesian uses the restricted
- *    triclinic basis: x = xlo + xs·lx + ys·xy + zs·xz (and cyclic), which
- *    also degenerates correctly for orthogonal boxes.
+ *  - Coordinate columns [VERIFIED 2026-09-22, docs.lammps.org/dump.html]:
+ *    x/y/z (wrapped), xu/yu/zu (unwrapped), xs/ys/zs (scaled to 0..1) and
+ *    xsu/ysu/zsu ("unwrapped coordinates scaled by the box size"). Scaled →
+ *    Cartesian uses the restricted triclinic basis
+ *      x = xlo + xs·lx + ys·xy + zs·xz   (and cyclic),
+ *    which degenerates correctly for orthogonal boxes.
+ *
+ *    x/y/z is preferred for RENDERING because it is wrapped: an unwrapped
+ *    diffusing system scatters across box images and looks broken.
+ *  - Image flags ix/iy/iz are captured separately when present. Rendering
+ *    keeps the wrapped position; MSD unwraps with them, which is what lets it
+ *    exceed (L/2)² and show real linear diffusion.
  *  - `element` column → symbol lookup; else type-as-atomic-number heuristic
  *    (types 1..118), matching the .data parser's fallback.
  *  - q / mol columns honored when present; arbitrary extra columns ignored.
@@ -85,17 +93,25 @@ const rowToAtom = (
   let y = num('y') ?? num('yu');
   let z = num('z') ?? num('zu');
 
-  const xs = num('xs'), ys = num('ys'), zs = num('zs');
-  if (x === undefined && xs !== undefined && ys !== undefined && zs !== undefined && frameBox) {
-    const lx = frameBox.xhi - frameBox.xlo;
-    const ly = frameBox.yhi - frameBox.ylo;
-    const lz = frameBox.zhi - frameBox.zlo;
-    const xy = frameBox.xy ?? 0, xz = frameBox.xz ?? 0, yz = frameBox.yz ?? 0;
-    x = frameBox.xlo + xs * lx + ys * xy + zs * xz;
-    y = frameBox.ylo + ys * ly + zs * yz;
-    z = frameBox.zlo + zs * lz;
+  // Scaled columns, wrapped (xs) or unwrapped (xsu). Both map through the
+  // same restricted-triclinic basis; xsu values simply run outside 0..1.
+  if (x === undefined && frameBox) {
+    const sx = num('xs') ?? num('xsu');
+    const sy = num('ys') ?? num('ysu');
+    const sz = num('zs') ?? num('zsu');
+    if (sx !== undefined && sy !== undefined && sz !== undefined) {
+      const lx = frameBox.xhi - frameBox.xlo;
+      const ly = frameBox.yhi - frameBox.ylo;
+      const lz = frameBox.zhi - frameBox.zlo;
+      const xy = frameBox.xy ?? 0, xz = frameBox.xz ?? 0, yz = frameBox.yz ?? 0;
+      x = frameBox.xlo + sx * lx + sy * xy + sz * xz;
+      y = frameBox.ylo + sy * ly + sz * yz;
+      z = frameBox.zlo + sz * lz;
+    }
   }
   if (x === undefined || y === undefined || z === undefined) return null;
+
+  const ix = num('ix'), iy = num('iy'), iz = num('iz');
 
   const idRaw = num('id');
   const typeRaw = num('type');
@@ -109,9 +125,9 @@ const rowToAtom = (
   let symbol: string | undefined;
   const elemIdx = col.get('element');
   if (elemIdx !== undefined && elemIdx < tokens.length) {
-    const norm = tokens[elemIdx].trim();
-    const z = getAtomicNumberFromSymbol(norm);
-    if (z !== undefined) symbol = ELEMENT_DATA[z - 1].symbol;
+    // `atomicNumber`, not `z` — the outer `z` here is a COORDINATE.
+    const atomicNumber = getAtomicNumberFromSymbol(tokens[elemIdx].trim());
+    if (atomicNumber !== undefined) symbol = ELEMENT_DATA[atomicNumber - 1].symbol;
   }
   if (!symbol && type >= 1 && type <= 118) symbol = ELEMENT_DATA[type - 1].symbol;
 
@@ -124,6 +140,9 @@ const rowToAtom = (
     ...(vx !== undefined ? { vx } : {}),
     ...(vy !== undefined ? { vy } : {}),
     ...(vz !== undefined ? { vz } : {}),
+    ...(ix !== undefined ? { ix: Math.round(ix) } : {}),
+    ...(iy !== undefined ? { iy: Math.round(iy) } : {}),
+    ...(iz !== undefined ? { iz: Math.round(iz) } : {}),
   };
 };
 
@@ -185,11 +204,14 @@ export const parseDumpFile = (data: string): MoleculeData => {
     const columns = lines[i].trim().split(/\s+/).slice(2);
     const col = new Map<string, number>();
     columns.forEach((name, idx) => { if (!col.has(name)) col.set(name, idx); });
-    const hasCoords = ['x', 'y', 'z', 'xu', 'yu', 'zu', 'xs', 'ys', 'zs']
-      .some(c => col.has(c));
+    const hasCoords = [
+      'x', 'y', 'z', 'xu', 'yu', 'zu',
+      'xs', 'ys', 'zs', 'xsu', 'ysu', 'zsu',
+    ].some(c => col.has(c));
     if (!hasCoords) {
       throw new Error(
-        'Invalid LAMMPS dump: no coordinate columns (x/y/z, xu/yu/zu or xs/ys/zs) in ITEM: ATOMS header',
+        'Invalid LAMMPS dump: no coordinate columns (x/y/z, xu/yu/zu, ' +
+        'xs/ys/zs or xsu/ysu/zsu) in ITEM: ATOMS header',
       );
     }
     i++;
@@ -241,6 +263,10 @@ export const parseDumpFile = (data: string): MoleculeData => {
   const trajFrames: TrajectoryFrame[] = frames.map(f => ({
     comment: Number.isFinite(f.timestep) ? `timestep ${f.timestep}` : undefined,
     atoms: f.atoms,
+    // Each frame keeps its own cell: under NPT the box breathes, so framing,
+    // the rendered cell and the RDF normalisation must not all be pinned to
+    // frame 0.
+    ...(f.box ? { box: f.box } : {}),
   }));
 
   // --- Bonds from the reference frame (dumps carry no topology) ---

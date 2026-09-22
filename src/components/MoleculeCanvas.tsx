@@ -2,7 +2,7 @@ import React, { useMemo, useState, useCallback, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { PerformanceMonitor } from '@react-three/drei';
 import * as THREE from 'three';
-import { MoleculeData, VisualizationConfig, Atom } from '../types';
+import { MoleculeData, VisualizationConfig, Atom, BoxBounds } from '../types';
 import { ELEMENT_DATA } from '../constants';
 import { measureSelection, MeasurementResult } from '../services/measure';
 import { registerActiveGL } from '../services/glRegistry';
@@ -24,6 +24,12 @@ interface MoleculeCanvasProps {
   onSelectAtom?: (id: number) => void;
   /** Video recording: keep frames flowing even when idle. */
   forceContinuousRender?: boolean;
+  /**
+   * Cell to DRAW, when the current trajectory frame has its own (NPT).
+   * Camera framing deliberately stays on `data.box` — keying it to a
+   * per-frame box would make the view distance pump during playback.
+   */
+  displayBox?: BoxBounds;
 }
 
 interface HoverInfo {
@@ -80,6 +86,7 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
   selectedIds = [],
   onSelectAtom,
   forceContinuousRender = false,
+  displayBox,
 }) => {
   const [hover, setHover] = useState<HoverInfo | null>(null);
   // Adaptive quality: PerformanceMonitor lowers this when FPS dips (P6).
@@ -257,8 +264,8 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
               maxBondLength={maxBondLength}
             />
           )}
-          {config.showBox && data.box && (
-            <SimulationBox box={data.box} showFaces={false} />
+          {config.showBox && (displayBox ?? data.box) && (
+            <SimulationBox box={(displayBox ?? data.box)!} showFaces={false} />
           )}
           <AtomLabels atoms={atoms} config={config} />
           <MeasurementOverlay selected={selectedAtoms} config={config} result={measurement} />

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import MoleculeCanvas from '../../components/MoleculeCanvas';
-import { parseFile, detectFileFormat } from '../../services/fileParser';
+import { parseFile, detectFileFormat, detectFormatFromContent } from '../../services/fileParser';
 import { parseInWorker } from '../../services/parserClient';
 import {
   MoleculeData, VisualizationConfig, VisualizationMode, FileFormat,
@@ -76,6 +76,49 @@ const prefersLightScheme = (): boolean =>
   typeof window !== 'undefined' &&
   !!window.matchMedia?.('(prefers-color-scheme: light)').matches;
 
+/** Sidebar width clamp, shared by the pointer and keyboard resize paths (P9). */
+export const SIDEBAR_MIN_WIDTH = 280;
+export const SIDEBAR_MAX_WIDTH = 560;
+
+export const clampSidebarWidth = (width: number): number =>
+  Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
+
+/** Arrow keys resize in 16px steps inside the clamp; other keys are a no-op. */
+export const stepSidebarWidth = (width: number, key: string): number => {
+  if (key === 'ArrowLeft') return clampSidebarWidth(width - 16);
+  if (key === 'ArrowRight') return clampSidebarWidth(width + 16);
+  return clampSidebarWidth(width);
+};
+
+/**
+ * Roving-tabindex cycling for the sidebar tablist: ArrowRight/ArrowLeft move
+ * cyclically, Home/End jump to the first/last tab, other keys keep the index.
+ */
+export const nextTabIndex = (current: number, count: number, key: string): number => {
+  if (count <= 0) return -1;
+  const i = ((current % count) + count) % count;
+  if (key === 'ArrowRight') return (i + 1) % count;
+  if (key === 'ArrowLeft') return (i - 1 + count) % count;
+  if (key === 'Home') return 0;
+  if (key === 'End') return count - 1;
+  return i;
+};
+
+/**
+ * Format for an uploaded file. Trusted structure extensions keep their
+ * extension mapping; a generic (.txt) or unknown extension is sniffed from
+ * the content so a plain-text XYZ file is not forced through the LAMMPS parser.
+ */
+const KNOWN_STRUCTURE_EXTENSIONS: ReadonlySet<string> = new Set([
+  'xyz', 'pdb', 'ent', 'cif', 'mmcif', 'lammpstrj', 'dump', 'data', 'lammps', 'lmp',
+]);
+
+export const chooseUploadFormat = (filename: string, content: string): FileFormat => {
+  const ext = filename.toLowerCase().split('.').pop() ?? '';
+  if (ext !== '' && KNOWN_STRUCTURE_EXTENSIONS.has(ext)) return detectFileFormat(filename);
+  return detectFormatFromContent(content);
+};
+
 /** Base defaults, optionally overridden by a shared-view ?s= token (P3). */
 const initialConfig = (): VisualizationConfig => ({
   atomScale: 1.0,
@@ -125,6 +168,12 @@ const ViewerModule: React.FC<{
   const [showHelp, setShowHelp] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Roving-tabindex tab buttons of the sidebar tablist. */
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  /** Help dialog focus management (focus in on open, restore on close). */
+  const helpDialogRef = useRef<HTMLDivElement | null>(null);
+  const helpCloseRef = useRef<HTMLButtonElement | null>(null);
+  const helpReturnFocusRef = useRef<HTMLElement | null>(null);
   /** Type ids the user manually recolored — survive re-parsing. */
   const userEditedTypes = useRef<Set<number>>(new Set());
 
@@ -311,8 +360,10 @@ const ViewerModule: React.FC<{
       .then(applyParsed)
       .then(() => setInputText(text))
       .catch(e => {
+        // A failed parse must never destroy the structure already on screen:
+        // keep moleculeData and the selection untouched and surface the
+        // message in the banner over the canvas instead.
         setError(e instanceof Error ? e.message : 'Failed to parse data file.');
-        setMoleculeData(null);
       })
       .finally(() => setIsParsing(false));
   }, [applyParsed]);
@@ -330,12 +381,14 @@ const ViewerModule: React.FC<{
   }, [handleVisualize]);
 
   const handleFileUpload = useCallback((file: File) => {
-    const detectedFormat = detectFileFormat(file.name);
-    setFileFormat(detectedFormat);
     const reader = new FileReader();
     reader.onload = e => {
       const content = (e.target?.result as string) ?? '';
       setInputText(content);
+      // Known extensions keep their mapping; generic ones (.txt) are detected
+      // from the content so an XYZ file named *.txt parses as XYZ.
+      const detectedFormat = chooseUploadFormat(file.name, content);
+      setFileFormat(detectedFormat);
       handleVisualize(content, detectedFormat);
     };
     reader.readAsText(file);
@@ -362,6 +415,48 @@ const ViewerModule: React.FC<{
       window.removeEventListener('drop', onDrop);
     };
   }, [handleFileUpload]);
+
+  // Help dialog: move focus into it on open, restore focus to the opener on
+  // close (aria-modal dialogs must manage focus).
+  useEffect(() => {
+    if (!showHelp) return;
+    helpReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    helpCloseRef.current?.focus();
+    return () => {
+      helpReturnFocusRef.current?.focus();
+      helpReturnFocusRef.current = null;
+    };
+  }, [showHelp]);
+
+  // Focus trap + Escape for the help dialog, handled on the dialog itself so
+  // it works whichever element inside currently holds focus.
+  const handleHelpKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      setShowHelp(false);
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const root = helpDialogRef.current;
+    if (!root) return;
+    const focusables = Array.from(
+      root.querySelectorAll<HTMLElement>('button, [href], input, select, textarea')
+    );
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    const inside = active instanceof HTMLElement && root.contains(active);
+    if (e.shiftKey) {
+      if (active === first || !inside) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (active === last || !inside) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
 
   const updateConfig = (key: keyof VisualizationConfig, value: unknown) => {
     setVizConfig(prev => ({ ...prev, [key]: value }));
@@ -447,7 +542,7 @@ const ViewerModule: React.FC<{
   };
   const moveSidebarResize = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!resizingRef.current) return;
-    setSidebarWidth(Math.min(560, Math.max(280, Math.round(e.clientX))));
+    setSidebarWidth(clampSidebarWidth(e.clientX));
   };
   const endSidebarResize = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!resizingRef.current) return;
@@ -559,23 +654,43 @@ const ViewerModule: React.FC<{
 
       <aside
         className={`
-        flex flex-col border-r transition-transform duration-300 ease-in-out z-30
+        flex flex-col transition-[width,transform] duration-300 ease-in-out z-30
         ${isMobile ? 'fixed inset-y-0 left-0 w-80 max-w-[85vw] shadow-2xl' : 'relative shrink-0'}
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        ${ct.sidebar}
+        ${!isMobile && !isSidebarOpen ? 'overflow-hidden' : ''}
+        ${isMobile || isSidebarOpen ? `border-r ${ct.sidebar}` : ct.sidebar}
       `}
-        style={isMobile ? undefined : { width: sidebarWidth }}
+        style={isMobile ? undefined : { width: isSidebarOpen ? sidebarWidth : 0 }}
+        inert={isMobile && !isSidebarOpen}
       >
-        {/* Desktop resize handle (P9) */}
+        {/* Desktop resize handle (P9): pointer + keyboard operable separator */}
         {!isMobile && isSidebarOpen && (
           <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+            aria-valuenow={sidebarWidth}
+            aria-valuemin={SIDEBAR_MIN_WIDTH}
+            aria-valuemax={SIDEBAR_MAX_WIDTH}
+            tabIndex={0}
             onPointerDown={startSidebarResize}
             onPointerMove={moveSidebarResize}
             onPointerUp={endSidebarResize}
-            className="absolute top-0 right-[-3px] h-full w-1.5 cursor-col-resize z-40 hover:bg-[#7fa66b]/40 transition-colors touch-none"
-            title="Drag to resize sidebar"
-            aria-label="Resize sidebar"
-          />
+            onKeyDown={e => {
+              const next = stepSidebarWidth(sidebarWidthRef.current, e.key);
+              if (next === sidebarWidthRef.current) return;
+              e.preventDefault();
+              e.stopPropagation(); // arrows here resize — they must not orbit the camera
+              setSidebarWidth(next);
+              try {
+                localStorage.setItem('m3d.sidebarWidth', String(next));
+              } catch { /* storage unavailable — non-fatal */ }
+            }}
+            className="group absolute top-0 right-[-12px] flex h-full w-6 cursor-col-resize items-center justify-center z-40 touch-none"
+            title="Drag or use arrow keys to resize sidebar"
+          >
+            <div className="h-full w-1.5 transition-colors group-hover:bg-[#7fa66b]/40 group-focus-visible:bg-[#7fa66b]/40" />
+          </div>
         )}
         {/* Header */}
         <div className={`flex items-center justify-between px-4 h-14 border-b ${ct.divider}`}>
@@ -604,10 +719,32 @@ const ViewerModule: React.FC<{
         </div>
 
         {/* Tabs */}
-        <nav className={`grid grid-cols-5 border-b ${ct.divider}`} aria-label="Sidebar sections">
-          {tabs.map(tab => (
+        <nav
+          className={`grid grid-cols-5 border-b ${ct.divider}`}
+          role="tablist"
+          aria-label="Sidebar sections"
+          onKeyDown={e => {
+            const next = nextTabIndex(
+              tabs.findIndex(t => t.id === activeTab),
+              tabs.length,
+              e.key
+            );
+            if (next < 0 || tabs[next].id === activeTab) return;
+            e.preventDefault();
+            e.stopPropagation(); // arrows here switch tabs — they must not orbit the camera
+            setActiveTab(tabs[next].id);
+            tabRefs.current[next]?.focus();
+          }}
+        >
+          {tabs.map((tab, i) => (
             <button
               key={tab.id}
+              ref={el => { tabRefs.current[i] = el; }}
+              id={`viewer-tab-${tab.id}`}
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              aria-controls="viewer-tabpanel"
+              tabIndex={activeTab === tab.id ? 0 : -1}
               onClick={() => setActiveTab(tab.id)}
               className={`flex flex-col items-center gap-1.5 py-3 text-xs font-semibold tracking-wide transition-colors ${
                 activeTab === tab.id
@@ -621,7 +758,12 @@ const ViewerModule: React.FC<{
           ))}
         </nav>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 antialiased">
+        <div
+          id="viewer-tabpanel"
+          role="tabpanel"
+          aria-labelledby={`viewer-tab-${activeTab}`}
+          className="flex-1 overflow-y-auto p-4 space-y-6 antialiased"
+        >
           {/* Improved readability: slightly larger base, better line-height */}
           {/* ============================== DATA TAB */}
           {activeTab === 'data' && (
@@ -721,12 +863,6 @@ const ViewerModule: React.FC<{
                 </section>
               )}
 
-              {error && (
-                <div className={`p-3 rounded-lg border text-xs flex gap-2 items-start ${ct.errorBox}`} role="alert">
-                  <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                  <span className="leading-relaxed">{error}</span>
-                </div>
-              )}
             </>
           )}
 
@@ -785,6 +921,7 @@ const ViewerModule: React.FC<{
                       value={vizConfig[sl.key]}
                       onChange={e => updateConfig(sl.key, parseFloat(e.target.value))}
                       className={`w-full ${theme === 'dark' ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
+                      aria-label={sl.label}
                     />
                   </div>
                 ))}
@@ -895,6 +1032,7 @@ const ViewerModule: React.FC<{
                     value={vizConfig.autoRotateSpeed}
                     onChange={e => updateConfig('autoRotateSpeed', parseFloat(e.target.value))}
                     className={`w-full ${theme === 'dark' ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
+                    aria-label="Auto-rotate speed"
                   />
                 </div>
                 <div className="space-y-1">
@@ -906,6 +1044,7 @@ const ViewerModule: React.FC<{
                     value={vizConfig.fov}
                     onChange={e => updateConfig('fov', parseInt(e.target.value, 10))}
                     className={`w-full ${theme === 'dark' ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
+                    aria-label="Field of view"
                   />
                 </div>
                 <button
@@ -941,6 +1080,7 @@ const ViewerModule: React.FC<{
                       }`}
                       style={{ backgroundColor: color }}
                       title={color}
+                      aria-label={`Background colour ${color}`}
                     />
                   ))}
                   <label className={`relative w-7 h-7 rounded-full overflow-hidden border-2 ${ct.chip} cursor-pointer`}>
@@ -950,6 +1090,7 @@ const ViewerModule: React.FC<{
                       onChange={e => updateConfig('backgroundColor', e.target.value)}
                       className="absolute -top-2 -left-2 w-12 h-12 cursor-pointer p-0 border-0"
                       title="Custom background"
+                      aria-label="Custom background colour"
                     />
                   </label>
                 </div>
@@ -976,6 +1117,7 @@ const ViewerModule: React.FC<{
                                 onChange={e => updateCustomColor(typeInfo.id, e.target.value)}
                                 className="absolute -top-2 -left-2 w-14 h-14 cursor-pointer p-0 border-0"
                                 title={`Pick color for type ${typeInfo.id}`}
+                                aria-label={`Colour for element type ${typeInfo.id}`}
                               />
                             </div>
                             <div>
@@ -1244,6 +1386,26 @@ const ViewerModule: React.FC<{
 
       {/* ============================ MAIN CANVAS AREA */}
       <main className={`@container relative min-w-0 flex-1 ${ct.bg}`}>
+        {/* Error banner — OUTSIDE the sidebar tab conditional so a failed load
+            is visible (and announced) from any tab. A failed parse keeps the
+            previous structure; the banner auto-clears on the next load. */}
+        {error && (
+          <div
+            role="alert"
+            className={`absolute top-14 left-1/2 z-20 flex max-w-[min(92%,34rem)] -translate-x-1/2 items-start gap-2 rounded-xl border p-3 text-xs shadow-xl backdrop-blur ${ct.errorBox}`}
+          >
+            <AlertCircle size={14} className="mt-0.5 shrink-0" />
+            <span className="leading-relaxed">{error}</span>
+            <button
+              onClick={() => setError(null)}
+              className="shrink-0 rounded p-1"
+              aria-label="Dismiss error"
+              title="Dismiss error"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
         {/* Top-left controls */}
         <div className="absolute top-3 left-3 right-3 z-10 flex items-start justify-between pointer-events-none">
           <div className="pointer-events-auto flex gap-1 sm:gap-2">
@@ -1502,7 +1664,7 @@ const ViewerModule: React.FC<{
           />
         ) : (
           <div className={`w-full h-full flex flex-col items-center justify-center ${ct.muted}`}>
-            <div className="w-14 h-14 border-4 rounded-full animate-spin mb-4 ${ct.loader}" />
+            <div className={`w-14 h-14 border-4 rounded-full animate-spin mb-4 ${ct.loader}`} />
             <p>Waiting for structure data…</p>
           </div>
         )}
@@ -1511,8 +1673,10 @@ const ViewerModule: React.FC<{
       {/* ============================ HELP OVERLAY */}
       {showHelp && (
         <div
+          ref={helpDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           onClick={() => setShowHelp(false)}
+          onKeyDown={handleHelpKeyDown}
           role="dialog"
           aria-modal="true"
           aria-label="Keyboard shortcuts"
@@ -1525,7 +1689,13 @@ const ViewerModule: React.FC<{
               <h2 className="text-base font-bold flex items-center gap-2">
                 <Keyboard size={18} /> Keyboard shortcuts
               </h2>
-              <button onClick={() => setShowHelp(false)} className={`p-1.5 rounded-lg ${ct.button}`}>
+              <button
+                ref={helpCloseRef}
+                onClick={() => setShowHelp(false)}
+                className={`p-1.5 rounded-lg ${ct.button}`}
+                aria-label="Close shortcuts dialog"
+                title="Close shortcuts dialog"
+              >
                 <X size={16} />
               </button>
             </div>

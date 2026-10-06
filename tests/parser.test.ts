@@ -216,7 +216,7 @@ Atoms # full
     const data = `# No masses
 2 atoms
 
-1 atom types
+6 atom types
 
 -5.0 5.0 xlo xhi
 -5.0 5.0 ylo yhi

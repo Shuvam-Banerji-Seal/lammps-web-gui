@@ -1,7 +1,8 @@
 # AGENTS.md — map for coding agents
 
 Browser-only LAMMPS workbench: a branching script builder, a CMake compiler
-helper and a WebGL structure/trajectory viewer. There is **no backend**;
+helper, a WebGL structure/trajectory viewer and an MD notebook that runs a
+documented subset of LAMMPS input in the browser. There is **no backend**;
 everything runs client-side.
 
 ## Stack
@@ -14,7 +15,7 @@ everything runs client-side.
 ## Commands
 
 ```bash
-npm test             # vitest run — the whole suite (~310 tests, ~10 s)
+npm test             # vitest run — the whole suite (~520 tests, ~15 s)
 npx vitest run tests/<file>.test.ts   # one file
 npm run typecheck    # tsc --noEmit — must be clean
 npm run build        # tsc && vite build
@@ -37,7 +38,9 @@ There is no linter configured; `typecheck` is the static gate.
 | `src/services/*Parser.ts` | Structure parsers: LAMMPS data (`parser.ts`), dump, XYZ, PDB, CIF |
 | `src/services/trajectoryAnalysis.ts` | RDF (cell list), MSD, density, speeds |
 | `src/services/instanceMatrix.ts` | Direct instanced-matrix writes |
-| `src/components/workbench/` | The three modules: `ScriptBuilder`, `CompilerHelper`, `ViewerModule` |
+| `src/components/workbench/` | The four modules: `ScriptBuilder`, `CompilerHelper`, `ViewerModule`, `Notebook` (lazy-loaded) |
+| `src/engine/` | In-browser MD engine for the notebook: `types.ts` (contracts), `units`, `rng`, `lattice`, `pairs`, `cpu/forces.ts` (fp64 reference), `integrate`, `velocity`, `observables`, `md` (run loop), `script` + `expr` (input parsing), `interpreter.ts` (LAMMPS subset), `fixes.ts`, `host`/`client`/`protocol` (worker plumbing), `view.ts` |
+| `docs/design/notebook.md` | Notebook design: scope, supported subset, acceptance test (LAMMPS `examples/melt` log) |
 | `src/components/*.tsx` | three.js scene pieces (instanced meshes, camera, box, labels) |
 | `src/workers/` | Parser and analysis Web Workers |
 | `tests/*.test.ts` | Vitest suites, one per module |
@@ -58,6 +61,11 @@ There is no linter configured; `typecheck` is the static gate.
 5. No `Math.min(...arr)` / `Math.max(...arr)` on data-sized arrays — it throws
    `RangeError` past the engine's argument limit. Loop instead.
 6. Rendering keeps O(1) draw calls (instancing). Do not add per-atom meshes.
+7. **The engine contains no LAMMPS source code** (LAMMPS is GPL-2.0, this
+   project is not). Write engine code from textbook physics and the
+   documented behaviour on docs.lammps.org, citing the page as in rule 1.
+   An unsupported command must be an `EngineError` naming it — never a
+   silent no-op.
 
 ## Environment notes
 

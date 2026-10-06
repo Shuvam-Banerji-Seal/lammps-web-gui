@@ -105,7 +105,11 @@ describe('LAMMPS compiler helper', () => {
     const out = generateBuildScript(opts);
     expect(out.text).toContain('$ErrorActionPreference');
     expect(out.text).toContain('-G "Visual Studio 17 2022" -A x64');
-    expect(out.text).toContain('.\\bin\\lmp.exe');
+    // Why .\Release\: docs.lammps.org/Build_cmake.html — with the
+    // multi-config Visual Studio generator "the resulting binaries are not in
+    // the build folder directly but in subdirectories corresponding to the
+    // build type", and this test's buildType is the default 'Release'.
+    expect(out.text).toContain('.\\Release\\lmp.exe');
     expect(out.flags).toContain('-D BUILD_MPI=no');
     expect(out.warnings.join(' ')).toMatch(/serial build/i);
   });

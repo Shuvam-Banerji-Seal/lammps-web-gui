@@ -180,9 +180,11 @@ export const ACCELERATORS: Accelerator[] = [
     extraFlags: [
       '-D Kokkos_ENABLE_HIP=yes',
       '-D CMAKE_CXX_STANDARD=17',
-      '-D Kokkos_ARCH_VEGA90A=yes',
-    ],
-    notes: 'Requires ROCm; set Kokkos_ARCH for your GPU (VEGA90A/MI200…).',
+    // docs.lammps.org/Build_extras.html Kokkos architecture table lists
+    // AMD_GFX90A (MI200), AMD_GFX942 (MI300), … — no Vega-family entries.
+    '-D Kokkos_ARCH_AMD_GFX90A=yes',
+  ],
+  notes: 'Requires ROCm; set Kokkos_ARCH for your GPU (AMD_GFX90A = MI200, AMD_GFX942 = MI300…).',
   },
   {
     id: 'kokkos-sycl',
@@ -237,7 +239,13 @@ export const BUILD_OPTIONS: BuildOption[] = [
   { key: 'GPU_ARCH', label: 'GPU architecture', values: ['', 'sm_75', 'sm_80', 'sm_86', 'sm_89', 'sm_90', 'gfx906', 'gfx1030', 'gfx1100', 'spirv'], default: '', help: 'GPU package only. Empty = multiarch (slower builds).' },
   { key: 'KOKKOS_PREC', label: 'Kokkos precision', values: ['double', 'mixed', 'single'], default: 'double', help: 'KOKKOS package only. mixed = FP64 accumulation, FP32 elsewhere.' },
   { key: 'Kokkos_ENABLE_DEBUG', label: 'Kokkos debug checks', values: ['no', 'yes'], default: 'no', help: 'KOKKOS package only. Big performance cost — development only.' },
-  { key: 'Kokkos_ENABLE_CUDA_UVM', label: 'Kokkos CUDA UVM', values: ['no', 'yes'], default: 'no', help: 'KOKKOS package only. Lets RAM supplement GPU memory (slower).' },
+  // docs.lammps.org/Build_extras.html (Changed in version 2Sep2026):
+  // "The CMake option -D Kokkos_ENABLE_IMPL_CUDA_UNIFIED_MEMORY=on makes
+  // Kokkos allocate all GPU memory as CUDA managed memory, which the host can
+  // read and write directly. ... It requires CUDA 12.2 or later ... It
+  // replaces the option -D Kokkos_ENABLE_CUDA_UVM=on, which Kokkos no longer
+  // supports; configuring with that option now stops with an error."
+  { key: 'Kokkos_ENABLE_IMPL_CUDA_UNIFIED_MEMORY', label: 'Kokkos CUDA unified memory', values: ['no', 'yes'], default: 'no', help: 'KOKKOS+CUDA only. GPU memory as CUDA managed memory; needs CUDA 12.2+.' },
   { key: 'Kokkos_ENABLE_OPENMP', label: 'Kokkos OpenMP host', values: ['no', 'yes'], default: 'no', help: 'KOKKOS package only. Requires BUILD_OMP=yes.' },
   { key: 'KOKKOS_LAYOUT', label: 'Kokkos array layout', values: ['legacy', 'default'], default: 'legacy', help: 'KOKKOS package only. default (LayoutLeft) may speed up some GPU models.' },
   // --- GPU package extras ---
@@ -376,7 +384,9 @@ const FLAG_DESCRIPTIONS: Record<string, { description: string; source: string }>
 
 const kokkosArchHint = (flag: string): string =>
   `Selects the Kokkos GPU architecture to compile for (${flag.replace('-D Kokkos_ARCH_', '').replace('=yes', '')}). ` +
-  'Set it to match your hardware, e.g. VOLTA70, AMPERE80, VEGA90A, MI300.';
+  // docs.lammps.org/Build_extras.html Kokkos architecture table:
+  // NVIDIA VOLTA70/AMPERE80/HOPPER90 and AMD AMD_GFX90A/AMD_GFX942.
+  'Set it to match your hardware, e.g. VOLTA70, AMPERE80, HOPPER90, AMD_GFX90A, AMD_GFX942.';
 
 const describeFlag = (
   flag: string,
@@ -508,15 +518,44 @@ export const generateBuildScript = (opts: CompilerOptions): CompilerScript => {
       flagDetails.push({ flag, ...d });
     }
   }
-  flags.push(`-D CMAKE_BUILD_TYPE=${opts.buildType}`);
-  flagDetails.push({
-    flag: `-D CMAKE_BUILD_TYPE=${opts.buildType}`,
-    ...describeFlag('-D CMAKE_BUILD_TYPE=x', pkgMap, accMap, optMap),
-  });
+  // docs.lammps.org/Build_cmake.html: "For a multi-configuration build, the
+  // built type (or configuration) is selected at compile time using the same
+  // build files. E.g. with: cmake --build build-multi --config Release" — so
+  // the Visual Studio (multi-config) script picks it with --config and does
+  // not set CMAKE_BUILD_TYPE; the single-config Linux build keeps it.
+  if (opts.os === 'linux') {
+    flags.push(`-D CMAKE_BUILD_TYPE=${opts.buildType}`);
+    flagDetails.push({
+      flag: `-D CMAKE_BUILD_TYPE=${opts.buildType}`,
+      ...describeFlag('-D CMAKE_BUILD_TYPE=x', pkgMap, accMap, optMap),
+    });
+  }
 
   const cloneCmd = `git clone --depth 1 --branch ${opts.branch} ${opts.repoUrl} lammps`;
-  const cmakeBase = ['cmake', '../cmake', ...flags].join(' \\\n    ');
+  // docs.lammps.org/Build_cmake.html shows the multi-line cmake configure
+  // command continued with ' \' at end of line (bash). PowerShell has no '\'
+  // line continuation — its continuation character is a trailing backtick —
+  // so the Windows command is joined with ' `' instead; the last line of the
+  // command carries no continuation character.
+  const cmakeJoiner = opts.os === 'linux' ? ' \\\n    ' : ' `\n    ';
+  const cmakeBase = opts.os === 'windows'
+    // The VS generator arguments stay part of the same continued command,
+    // on the final (unterminated) line after the flags.
+    ? ['cmake', '../cmake', ...flags, '-G "Visual Studio 17 2022" -A x64'].join(cmakeJoiner)
+    : ['cmake', '../cmake', ...flags].join(cmakeJoiner);
 
+  // Script tails, per docs.lammps.org/Build_cmake.html:
+  //  - "cmake --install build    # optional, copy compiled files into
+  //    installation location" and "The location of the installation tree
+  //    defaults to ${HOME}/.local." — so install is an optional step without
+  //    sudo (sudo would install into root's home, off the user's PATH);
+  //  - "cmake --build build ... will ultimately produce a library liblammps.a
+  //    and the LAMMPS executable lmp inside the build folder." — run ./lmp;
+  //    'lmp -h | head' would exit 141 (SIGPIPE) under 'set -o pipefail' once
+  //    the help text outgrows the pipe buffer, so it goes through a file;
+  //  - multi-config (Visual Studio): "the resulting binaries are not in the
+  //    build folder directly but in subdirectories corresponding to the build
+  //    type (i.e. Release in the example from above)".
   if (opts.os === 'linux') {
     const text = `#!/usr/bin/env bash
 # ============================================================
@@ -539,10 +578,11 @@ ${cmakeBase}
 
 # --- build & install ---
 cmake --build . --parallel ${opts.jobs}
-sudo cmake --install .        # installs lmp + library (optional)
+# cmake --install .   # optional: installs into \${HOME}/.local (no sudo needed)
 
-# --- sanity check ---
-lmp -h | head -n 30
+# --- sanity check (the lmp binary is in this build folder) ---
+./lmp -h > lmp-help.txt
+head -n 30 lmp-help.txt
 `;
     return { text, flags, flagDetails, warnings };
   }
@@ -568,13 +608,13 @@ if (-Not (Test-Path build)) { New-Item -ItemType Directory build | Out-Null }
 cd build
 
 # --- configure (Visual Studio generator) ---
-${cmakeBase} -G "Visual Studio 17 2022" -A x64
+${cmakeBase}
 
 # --- build ---
 cmake --build . --config ${opts.buildType} --parallel ${opts.jobs}
 
-# binary: .\\bin\\lmp.exe (copy DLLs next to it as needed)
-.\\bin\\lmp.exe -h | Select-Object -First 30
+# binary: .\\${opts.buildType}\\lmp.exe (multi-config generator: one folder per build type)
+.\\${opts.buildType}\\lmp.exe -h | Select-Object -First 30
 `;
   return { text, flags, flagDetails, warnings };
 };

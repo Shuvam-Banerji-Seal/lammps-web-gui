@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   LMP_PACKAGES,
   PACKAGE_CATEGORIES,
@@ -66,18 +66,58 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
     'm3d.compilerOpts.v1', DEFAULT_COMPILER_OPTIONS, reviveOptions,
   );
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
   const [showAllFlags, setShowAllFlags] = useState(false);
   const [selectedFlag, setSelectedFlag] = useState<FlagDetail | null>(null);
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   const [optionsOpen, setOptionsOpen] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  /** Tracks the last known isMobile so the resize handler fires only on a 768px crossing. */
+  const wasMobileRef = useRef(isMobile);
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
+    const check = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile !== wasMobileRef.current) {
+        wasMobileRef.current = mobile;
+        // Crossing below 768px must never pop the drawer open over the script;
+        // crossing back to desktop restores the in-flow panel.
+        setOptionsOpen(!mobile);
+      }
+    };
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
+
+  // ARIA APG modal drawer (mobile only): focus moves into it on open, Escape
+  // closes, Tab stays inside, and focus returns to the toggle on close
+  // (WCAG 2.4.3). Mirrors the About dialog pattern in App.tsx.
+  useEffect(() => {
+    if (!isMobile || !optionsOpen) return;
+    drawerCloseRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); setOptionsOpen(false); return; }
+      if (e.key !== 'Tab' || !drawerRef.current) return;
+      const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      toggleRef.current?.focus?.();
+    };
+  }, [isMobile, optionsOpen]);
 
   const result = useMemo(() => generateBuildScript(opts), [opts]);
 
@@ -102,8 +142,14 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
     try {
       await navigator.clipboard.writeText(result.text);
       setCopied(true);
+      setCopyError(false);
       setTimeout(() => setCopied(false), 1600);
-    } catch { /* blocked */ }
+    } catch {
+      // Clipboard blocked (permissions / insecure context) — tell the user
+      // instead of swallowing the failure.
+      setCopyError(true);
+      setTimeout(() => setCopyError(false), 4000);
+    }
   };
 
   const selectedPackages = useMemo(() => {
@@ -121,7 +167,7 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
   const hiddenCount = result.flagDetails.length - visibleFlags.length;
 
   const chipClass = (d: FlagDetail) =>
-    `cursor-pointer rounded px-1.5 py-0.5 text-[9px] transition-colors ${
+    `min-h-6 cursor-pointer rounded px-1.5 py-1 text-[10px] transition-colors ${
       selectedDetail?.flag === d.flag
         ? ct.accentSoft
         : ct.chipIdle
@@ -131,16 +177,28 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
     <div className="flex h-full min-h-0">
       {/* Left: options (overlay drawer on mobile) */}
       <div
+        ref={drawerRef}
         className={`overflow-y-auto border-r transition-transform duration-300 ease-in-out ${ct.panel} ${
           isMobile
             ? `fixed inset-y-0 left-0 z-40 w-80 max-w-[92vw] shadow-2xl sm:w-96 ${optionsOpen ? 'translate-x-0' : '-translate-x-full'}`
             : 'w-96 shrink-0'
         }`}
+        /* Off-canvas drawer must leave the tab order (WCAG 2.4.3 / 4.1.2). */
+        inert={isMobile && !optionsOpen}
+        {...(isMobile && optionsOpen
+          ? { role: 'dialog', 'aria-modal': true, 'aria-label': 'Build options' }
+          : {})}
       >
         {isMobile && optionsOpen && (
           <div className={`flex items-center justify-between border-b px-3 py-2 ${ct.divider}`}>
             <span className={`text-xs font-semibold ${ct.headerText}`}>Build options</span>
-            <button onClick={() => setOptionsOpen(false)} className={`rounded p-1 ${ct.muted}`} title="Close">
+            <button
+              ref={drawerCloseRef}
+              onClick={() => setOptionsOpen(false)}
+              className={`min-h-6 min-w-6 rounded p-1.5 ${ct.muted}`}
+              title="Close"
+              aria-label="Close build options"
+            >
               <X size={14} />
             </button>
           </div>
@@ -268,9 +326,9 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
                   onClick={() => update('withMpi', !opts.withMpi)}
                   role="switch"
                   aria-checked={opts.withMpi}
-                  className={`relative h-5 w-9 rounded-full transition-colors ${opts.withMpi ? ct.toggleOn : ct.toggleOff}`}
+                  className={`relative h-6 w-11 rounded-full transition-colors ${opts.withMpi ? ct.toggleOn : ct.toggleOff}`}
                 >
-                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${opts.withMpi ? 'left-4' : 'left-0.5'}`} />
+                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${opts.withMpi ? 'left-[22px]' : 'left-0.5'}`} />
                 </button>
               </label>
               <label className={`flex items-center justify-between text-[11px]`}>
@@ -295,16 +353,22 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
                 />
               </label>
               {BUILD_OPTIONS.map(bo => (
-                <label key={bo.key} className={`flex items-center justify-between text-[11px]`} title={bo.help}>
-                  <span className={ct.muted}>{bo.label}</span>
-                  <select
-                    value={opts.options[bo.key] ?? bo.default}
-                    onChange={e => setOpts(prev => ({ ...prev, options: { ...prev.options, [bo.key]: e.target.value } }))}
-                    className={`rounded border px-1.5 py-0.5 text-[11px] focus:outline-none ${ct.input}`}
-                  >
-                    {bo.values.map(v => <option key={v} value={v}>{v}</option>)}
-                  </select>
-                </label>
+                <div key={bo.key}>
+                  <label className={`flex items-center justify-between text-[11px]`}>
+                    <span className={ct.muted}>{bo.label}</span>
+                    <select
+                      value={opts.options[bo.key] ?? bo.default}
+                      onChange={e => setOpts(prev => ({ ...prev, options: { ...prev.options, [bo.key]: e.target.value } }))}
+                      aria-describedby={bo.help ? `opt-help-${bo.key}` : undefined}
+                      className={`rounded border px-1.5 py-0.5 text-[11px] focus:outline-none ${ct.input}`}
+                    >
+                      {bo.values.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </label>
+                  {bo.help && (
+                    <p id={`opt-help-${bo.key}`} className={`text-[10px] leading-snug ${ct.muted}`}>{bo.help}</p>
+                  )}
+                </div>
               ))}
             </div>
           </section>
@@ -312,11 +376,12 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
       </div>
 
       {/* Right: generated script */}
-      <div className={`flex min-w-0 flex-1 flex-col ${ct.bg}`}>
+      <div className={`flex min-w-0 flex-1 flex-col ${ct.bg}`} inert={isMobile && optionsOpen}>
         <div className={`flex min-h-10 shrink-0 items-center justify-between gap-x-2 overflow-x-auto border-b px-3 py-1 ${ct.divider}`}>
           <div className="flex items-center gap-2">
             {isMobile && (
               <button
+                ref={toggleRef}
                 onClick={() => setOptionsOpen(v => !v)}
                 className={`rounded p-1.5 ${ct.muted} ${ct.hoverSurface}`}
                 title={optionsOpen ? 'Hide build options' : 'Show build options'}
@@ -334,6 +399,11 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
             </span>
           </div>
           <div className="flex items-center gap-1.5">
+            {copyError && (
+              <span role="alert" className={`whitespace-nowrap text-[11px] ${ct.warn}`}>
+                Copy failed — select the script text and copy it manually
+              </span>
+            )}
             <button
               onClick={copyScript}
               className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
@@ -365,7 +435,7 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
             {result.flagDetails.length > COLLAPSED_CHIPS && (
               <button
                 onClick={() => setShowAllFlags(v => !v)}
-                className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${ct.chip} ${ct.muted} ${ct.hoverSurface}`}
+                className={`flex min-h-6 items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium transition-colors ${ct.chip} ${ct.muted} ${ct.hoverSurface}`}
                 title={showAllFlags ? 'Collapse the flag list' : 'Show every flag that will be added'}
               >
                 {showAllFlags ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
@@ -378,6 +448,7 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
               <button
                 key={d.flag}
                 onClick={() => setSelectedFlag(prev => (prev?.flag === d.flag ? null : d))}
+                aria-pressed={selectedDetail?.flag === d.flag}
                 className={chipClass(d)}
                 title={`${GROUP_LABELS[d.group]} — ${d.description}`}
               >
@@ -391,11 +462,11 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
             <div className={`relative mt-2 rounded-lg border p-3 pr-8 text-xs shadow-lg ${ct.card}`} role="status">
               <button
                 onClick={() => setSelectedFlag(null)}
-                className={`absolute right-2 top-2 rounded p-0.5 ${ct.muted}`}
+                className={`absolute right-2 top-2 min-h-6 min-w-6 rounded p-1 ${ct.muted}`}
                 title="Close"
                 aria-label="Close flag details"
               >
-                <X size={12} />
+                <X size={14} />
               </button>
               <code className={`block break-all font-mono text-[11px] font-bold ${ct.accentCode}`}>
                 {selectedDetail.flag}

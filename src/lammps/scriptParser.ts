@@ -20,10 +20,17 @@
  *      - Enum slots validate against their option list for scoring, so
  *        `pair_style hybrid/overlay …` picks pair_style_hybrid over
  *        pair_style_popular.
- *  3. Best-scoring def wins; params are extracted from the consumed slots.
+ *      - Enum and flag params are also tried at each of their options, so
+ *        tokens that build() emits only for one option (`create_atoms …
+ *        region ID`, `region … side out`, `kspace_style none`) are matchable.
+ *  3. A candidate is ACCEPTED only if rebuilding the def with the captured
+ *     params reproduces the statement's tokens exactly — import → regenerate
+ *     can therefore never change a command. Among accepted candidates the
+ *     best score wins (ties: more non-empty captured params).
  *  4. Unmatched statements become `raw_line` steps — nothing is lost.
  */
 
+import { mapUnquoted, splitCommands } from '../engine/script';
 import {
   ALL_COMMANDS,
   COMMAND_BY_ID,
@@ -51,31 +58,20 @@ const ID_PARAM_KEYS = new Set(['id', 'name', 'fixid', 'dumpid', 'compid']);
 const SLOT = '\u0000';
 const slotOf = (i: number) => `${SLOT}${i}`;
 
-/** Quote-aware tokenizer: keeps "…" as one token. */
+/**
+ * Quote-aware tokenizer: a triple-, double- or single-quoted argument is one
+ * token (quotes kept). docs.lammps.org/Commands_parse.html: "If you want
+ * text with spaces to be treated as a single argument, it can be enclosed in
+ * either single (') or double (") or triple (""") quotes."
+ */
 export const tokenizeLine = (line: string): string[] => {
   const tokens: string[] = [];
-  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  const re = /"""[\s\S]*?"""|"([^"]*)"|'([^']*)'|(\S+)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(line)) !== null) {
     tokens.push(m[0]);
   }
   return tokens;
-};
-
-/** Strip a trailing comment (naive: first # outside quotes). */
-const stripComment = (line: string): string => {
-  let inQuote: string | null = null;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (inQuote) {
-      if (c === inQuote) inQuote = null;
-    } else if (c === '"' || c === "'") {
-      inQuote = c;
-    } else if (c === '#') {
-      return line.slice(0, i);
-    }
-  }
-  return line;
 };
 
 /** A logical statement plus the 1-based source line it started on. */
@@ -85,34 +81,19 @@ export interface SourceStatement {
 }
 
 /**
- * Join `&`-continued lines, strip comments/blanks → logical statements,
- * keeping the 1-based source line each statement started on so diagnostics
- * can point at it.
+ * Logical statements with the 1-based source line each started on, split by
+ * one character scan over the whole text (src/engine/script.ts) that follows
+ * docs.lammps.org/Commands_parse.html: '&' continues a line (also inside
+ * quotes; "a comment after a trailing “&” character will prevent the command
+ * from continuing"); '#' starts a comment only outside quotes; triple quotes
+ * keep their line breaks and make "&" characters unnecessary.
  */
-export const scriptStatementsDetailed = (text: string): SourceStatement[] => {
-  const out: SourceStatement[] = [];
-  const rawLines = text.split(/\r?\n/);
-  let buffer = '';
-  let startLine = 0;
-  for (let i = 0; i < rawLines.length; i++) {
-    const noComment = stripComment(rawLines[i]).trimEnd();
-    if (buffer === '' && noComment.trim() === '') continue;
-    if (buffer === '') {
-      buffer = noComment.trim();
-      startLine = i + 1;
-    } else {
-      buffer += ' ' + noComment.trim();
-    }
-    if (buffer.endsWith('&')) {
-      buffer = buffer.slice(0, -1).trimEnd();
-      continue;
-    }
-    if (buffer.trim()) out.push({ text: buffer.trim(), line: startLine });
-    buffer = '';
-  }
-  if (buffer.trim()) out.push({ text: buffer.trim(), line: startLine });
-  return out;
-};
+export const scriptStatementsDetailed = (text: string): SourceStatement[] =>
+  splitCommands(text.replace(/\r\n?/g, '\n')).map((c) => ({
+    // whitespace outside quotes only separates words, so normalise it
+    text: mapUnquoted(c.text, (part) => part.replace(/\s+/g, ' ')).trim(),
+    line: c.line,
+  }));
 
 /** Join `&`-continued lines, strip comments/blanks → logical statements. */
 export const scriptStatements = (text: string): string[] =>
@@ -122,31 +103,42 @@ interface PatternVariant {
   tokens: string[];
   isSlot: boolean[];
   paramKeys: (string | null)[];
+  /** Literal text around a slot inside its token (e.g. the quotes of "SLOT"). */
+  affix: ([string, string] | null)[];
+  /** Index of a final string/text slot that absorbs the remaining tokens, or -1. */
   absorbIndex: number;
+  /** Enum / flag values baked into this variant (literal in its tokens). */
+  fixed: Record<string, string>;
 }
 
 interface Pattern {
   def: CommandDef;
-  variants: PatternVariant[];     // minimal first, full second
-  literalCount: number;
+  variants: PatternVariant[];
   enumKeys: Set<string>;          // params that are enums (for scoring)
 }
 
 const patternCache = new Map<string, Pattern | null>();
 
-const buildVariant = (def: CommandDef, minimal: boolean): PatternVariant | null => {
+/** Most option combinations tried per def (beyond it only the first two enum/flag params vary). */
+const MAX_COMBOS = 64;
+
+const isTextParam = (pd: ParamDef | undefined) => !!pd && (pd.type === 'string' || pd.type === 'text');
+
+const buildVariant = (def: CommandDef, minimal: boolean, fixed: Record<string, string>): PatternVariant | null => {
   const params: Record<string, string> = {};
   def.params.forEach((pd, i) => {
-    // Every non-flag param becomes a SLOT; enums are validated for scoring
-    // in matchLine (so `pair_style hybrid/overlay` prefers the hybrid def).
+    // Every non-flag param becomes a SLOT unless this variant fixes it to
+    // one of its options; enums are validated for scoring in matchLine.
     // Minimal variant: optional empty-default strings stay truly empty so
     // conditional tokens (`v.units && …`) vanish from the pattern.
     params[pd.key] =
-      pd.type === 'flag'
-        ? (pd.default ?? 'no')
-        : minimal && (pd.default ?? '') === ''
-          ? ''
-          : slotOf(i);
+      pd.key in fixed
+        ? fixed[pd.key]
+        : pd.type === 'flag'
+          ? (pd.default ?? 'no')
+          : minimal && (pd.default ?? '') === ''
+            ? ''
+            : slotOf(i);
   });
 
   let built: string[];
@@ -160,19 +152,23 @@ const buildVariant = (def: CommandDef, minimal: boolean): PatternVariant | null 
   const tokens = tokenizeLine(built[0]);
   const isSlot: boolean[] = [];
   const paramKeys: (string | null)[] = [];
-  const enumKeys = new Set<string>();
+  const affix: ([string, string] | null)[] = [];
 
   tokens.forEach(tok => {
-    const slotMatch = tok.includes(SLOT);
-    if (slotMatch) {
-      const idx = parseInt(tok.slice(SLOT.length), 10);
+    const at = tok.indexOf(SLOT);
+    if (at >= 0) {
+      const m = /^\d+/.exec(tok.slice(at + SLOT.length));
+      const idx = m ? parseInt(m[0], 10) : -1;
       const pd: ParamDef | undefined = def.params[idx];
       isSlot.push(true);
       paramKeys.push(pd ? pd.key : null);
-      if (pd?.type === 'enum') enumKeys.add(pd.key);
+      const prefix = tok.slice(0, at);
+      const suffix = m ? tok.slice(at + SLOT.length + m[0].length) : '';
+      affix.push(prefix || suffix ? [prefix, suffix] : null);
     } else {
       isSlot.push(false);
       paramKeys.push(null);
+      affix.push(null);
     }
   });
 
@@ -181,59 +177,82 @@ const buildVariant = (def: CommandDef, minimal: boolean): PatternVariant | null 
   // names, fix IDs etc. survive the import.
   if (ID_FLEX.has(def.command) && tokens.length > 1 && !isSlot[1]) {
     isSlot[1] = true;
+    affix[1] = null;
     const first = def.params[0];
     paramKeys[1] = first && ID_PARAM_KEYS.has(first.key) ? first.key : null;
   }
 
-  // Trailing absorb: ensure the LAST param — when it is a string/text slot —
-  // is present at the pattern tail even if the minimal build omitted it
-  // (optional-empty). Without this, `velocity … loop geom` has nothing to
-  // absorb the trailing keywords.
+  // Trailing absorb slot: when the LAST param is a string/text that has no
+  // slot ANYWHERE in this pattern (the minimal build omitted it), append one
+  // so trailing keywords (`velocity … loop geom`) have somewhere to go. A
+  // param that already has a slot must not get a second one: the absorb
+  // would overwrite the value captured for it (`fix 1 all nve` lost `all`).
   const lastPd = def.params[def.params.length - 1];
-  if (lastPd && (lastPd.type === 'string' || lastPd.type === 'text') && tokens.length > 0) {
-    const endsWithIt =
-      isSlot[tokens.length - 1] && paramKeys[tokens.length - 1] === lastPd.key;
-    if (!endsWithIt) {
-      tokens.push(slotOf(def.params.length - 1));
-      isSlot.push(true);
-      paramKeys.push(lastPd.key);
-    }
+  if (isTextParam(lastPd) && !(lastPd.key in fixed) && !paramKeys.includes(lastPd.key) && tokens.length > 0) {
+    tokens.push(slotOf(def.params.length - 1));
+    isSlot.push(true);
+    paramKeys.push(lastPd.key);
+    affix.push(null);
   }
 
-  // Trailing absorb: last param is a string/text slot → eats the rest.
+  // A final string/text slot eats the rest of the line (multi-word values
+  // such as `processors * * *` or custom special_bonds weights).
   let absorbIndex = -1;
-  const last = def.params[def.params.length - 1];
-  if (last && (last.type === 'string' || last.type === 'text') && tokens.length > 0) {
-    const lastIdx = tokens.length - 1;
-    if (isSlot[lastIdx] && paramKeys[lastIdx] === last.key) absorbIndex = lastIdx;
+  const li = tokens.length - 1;
+  if (li >= 0 && isSlot[li] && paramKeys[li] && !affix[li]) {
+    const pd = def.params.find(p => p.key === paramKeys[li]);
+    if (isTextParam(pd)) absorbIndex = li;
   }
 
-  return { tokens, isSlot, paramKeys, absorbIndex };
+  return { tokens, isSlot, paramKeys, affix, absorbIndex, fixed };
+};
+
+/** Option combinations of the enum and flag params, defaults first. */
+const optionCombos = (def: CommandDef): Record<string, string>[] => {
+  const vary = def.params
+    .filter(pd => (pd.type === 'enum' && pd.options?.length) || pd.type === 'flag')
+    .map(pd => {
+      const values = pd.type === 'flag' ? ['no', 'yes'] : pd.options!.map(o => o.value);
+      const d = pd.default ?? values[0];
+      return { key: pd.key, values: [d, ...values.filter(v => v !== d)] };
+    });
+  const size = vary.reduce((n, v) => n * v.values.length, 1);
+  const used = size <= MAX_COMBOS ? vary : vary.slice(0, 2);
+  let combos: Record<string, string>[] = [{}];
+  for (const v of used) {
+    combos = combos.flatMap(c => v.values.map(val => ({ ...c, [v.key]: val })));
+  }
+  return combos.slice(0, MAX_COMBOS);
 };
 
 const buildPattern = (def: CommandDef): Pattern | null => {
   const cached = patternCache.get(def.id);
   if (cached !== undefined) return cached;
 
-  const minimal = buildVariant(def, true);
-  const full = buildVariant(def, false);
-  const variants = [minimal, full].filter((v): v is PatternVariant => v !== null);
-  // De-duplicate identical variants
-  const unique: PatternVariant[] = variants.filter(
-    (v, i) => variants.findIndex(o => o.tokens.join('\u0001') === v.tokens.join('\u0001')) === i,
-  );
-  if (unique.length === 0) {
+  const variants: PatternVariant[] = [];
+  const seen = new Set<string>();
+  const add = (v: PatternVariant | null) => {
+    if (!v) return;
+    const key = v.tokens.join('\u0001') + '\u0002' + v.absorbIndex;
+    if (seen.has(key)) return;
+    seen.add(key);
+    variants.push(v);
+  };
+  add(buildVariant(def, true, {}));
+  add(buildVariant(def, false, {}));
+  for (const combo of optionCombos(def)) {
+    add(buildVariant(def, true, combo));
+    add(buildVariant(def, false, combo));
+  }
+  if (variants.length === 0) {
     patternCache.set(def.id, null);
     return null;
   }
 
-  const literalCount = Math.min(
-    ...unique.map(v => v.tokens.filter((t, i) => !v.isSlot[i]).length),
-  );
   const enumKeys = new Set<string>();
   def.params.forEach(pd => { if (pd.type === 'enum') enumKeys.add(pd.key); });
 
-  const pattern: Pattern = { def, variants: unique, literalCount, enumKeys };
+  const pattern: Pattern = { def, variants, enumKeys };
   patternCache.set(def.id, pattern);
   return pattern;
 };
@@ -244,12 +263,23 @@ export interface LineMatch {
   score: number;
 }
 
+/** True when the def rebuilt with `params` gives exactly these tokens. */
+const rebuildsTo = (def: CommandDef, params: Record<string, string>, tokens: string[]): boolean => {
+  let built: string[];
+  try {
+    built = def.build({ ...defaultParams(def), ...params }).filter(l => l.trim() !== '');
+  } catch {
+    return false;
+  }
+  return built.length === 1 && tokenizeLine(built[0]).join('\u0001') === tokens.join('\u0001');
+};
+
 /** Match one statement's tokens against the catalog. */
 export const matchLine = (tokens: string[]): LineMatch | null => {
   if (tokens.length === 0) return null;
   const keyword = tokens[0];
 
-  let best: LineMatch | null = null;
+  let best: (LineMatch & { filled: number }) | null = null;
   for (const def of ALL_COMMANDS) {
     if (def.command !== keyword) continue;
     const pat = buildPattern(def);
@@ -261,17 +291,25 @@ export const matchLine = (tokens: string[]): LineMatch | null => {
       if (variant.absorbIndex < 0 && tokens.length !== variant.tokens.length) continue;
 
       let ok = true;
-      let score = variant.tokens.filter((t, i) => !variant.isSlot[i]).length;
-      const values: Record<string, string> = {};
+      let score = variant.tokens.filter((t, i) => !variant.isSlot[i]).length + Object.keys(variant.fixed).length;
+      const values: Record<string, string> = { ...variant.fixed };
 
       for (let t = 0; t < required && ok; t++) {
         if (variant.isSlot[t]) {
           const key = variant.paramKeys[t];
+          let tok = tokens[t];
+          const af = variant.affix[t];
+          if (af) {
+            // a slot written inside quotes etc.: the input must carry the same
+            // surrounding text, and only the inside is the value
+            if (!tok.startsWith(af[0]) || !tok.endsWith(af[1]) || tok.length < af[0].length + af[1].length) { ok = false; break; }
+            tok = tok.slice(af[0].length, tok.length - af[1].length);
+          }
           if (key) {
-            values[key] = tokens[t];
+            values[key] = tok;
             if (pat.enumKeys.has(key)) {
               const pd = def.params.find(p => p.key === key);
-              if (pd?.options?.some(o => o.value === tokens[t])) score += 2;
+              if (pd?.options?.some(o => o.value === tok)) score += 2;
             }
           }
         } else if (variant.tokens[t] !== tokens[t]) {
@@ -282,15 +320,28 @@ export const matchLine = (tokens: string[]): LineMatch | null => {
 
       if (variant.absorbIndex >= 0) {
         const key = variant.paramKeys[variant.absorbIndex];
-        if (key) values[key] = tokens.slice(variant.absorbIndex).join(' ');
+        const rest = tokens.slice(variant.absorbIndex).join(' ');
+        if (key) {
+          const earlier = variant.paramKeys.indexOf(key);
+          if (earlier >= 0 && earlier < variant.absorbIndex) {
+            // the key already has its own slot: an absorb must not overwrite it
+            if (rest !== '' && rest !== values[key]) continue;
+          } else {
+            values[key] = rest;   // may be '' — an explicitly empty tail
+          }
+        }
       }
 
-      if (!best || score > best.score) {
-        best = { def, params: values, score };
+      // Accept only matches that regenerate the statement exactly.
+      if (!rebuildsTo(def, values, tokens)) continue;
+
+      const filled = Object.values(values).filter(v => v !== '').length;
+      if (!best || score > best.score || (score === best.score && filled > best.filled)) {
+        best = { def, params: values, score, filled };
       }
     }
   }
-  return best;
+  return best ? { def: best.def, params: best.params, score: best.score } : null;
 };
 
 let rawCounter = 1;

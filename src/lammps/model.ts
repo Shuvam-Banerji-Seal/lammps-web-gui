@@ -51,6 +51,23 @@ export const findLane = (model: ScriptModel, uid: string): LaneId | undefined =>
   return b ? b.id : undefined;
 };
 
+/** The step with this uid, wherever it lives — trunk or any branch. */
+export const findStepInModel = (
+  model: ScriptModel,
+  uid: string,
+): ScriptStep | undefined => {
+  const lane = findLane(model, uid);
+  return lane === undefined ? undefined : laneSteps(model, lane).find(s => s.uid === uid);
+};
+
+/**
+ * May a concept be forked after this point? Only the start (`null`) or a
+ * TRUNK step: `addBranch` resolves `forkAfter` against the trunk, so a
+ * branch uid would create a concept nothing can ever display.
+ */
+export const canForkAfter = (model: ScriptModel, uid: string | null): boolean =>
+  uid === null || findLane(model, uid) === null;
+
 /**
  * Map a position in the resolved path onto the lane that owns it.
  *

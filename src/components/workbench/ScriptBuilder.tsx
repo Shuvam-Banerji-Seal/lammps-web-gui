@@ -21,6 +21,7 @@ import {
 import {
   addBranch, takeBranchAtFork, promoteBranch, removeBranch, updateBranch,
   branchesByFork, findLane, laneSteps, appendToLane, insertStepAtPathIndex,
+  findStepInModel, canForkAfter,
   moveStepToPathIndex, moveStepInModel, removeStepFromModel,
   duplicateStepInModel, updateStepInModel, updateParamInModel, freshUid,
 } from '../../lammps/model';
@@ -202,7 +203,10 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 
   /** Switch tabs WITHOUT pushing undo history. */
   const switchTab = useCallback(
-    (id: string) => replaceWorkspace(ws => ({ ...ws, activeId: id })),
+    (id: string) => {
+      setEdgeMenuIndex(null); // a menu left open must not retarget the new tab
+      replaceWorkspace(ws => ({ ...ws, activeId: id }));
+    },
     [replaceWorkspace],
   );
 
@@ -268,6 +272,12 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   const canvasRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [viewTf, setViewTf] = useState<Transform>({ x: 0, y: 0, k: 1 });
+  /**
+   * Width of the flowchart column: 640px, or the canvas width on a phone. A
+   * fixed 640px column had to be scaled to ~0.5 to fit 360px, which shrank
+   * every card button below the 24px WCAG 2.5.8 target size.
+   */
+  const [columnWidth, setColumnWidth] = useState(640);
   /** Cleared the first time the user pans or zooms, so auto-centring stops. */
   const viewUntouched = useRef(true);
   const panRef = useRef<{ startX: number; startY: number; ox: number; oy: number } | null>(null);
@@ -277,6 +287,57 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   const [edgeMenuIndex, setEdgeMenuIndex] = useState<number | null>(null);
   const [insertAt, setInsertAt] = useState<number | null>(null);
   const [insertSearch, setInsertSearch] = useState('');
+
+  // Outside-click + focus management. The refs cover each open menu's
+  // CONTAINER (toggle button included, so pressing the toggle still reaches
+  // its own onClick and toggles) and the insert dialog's opener.
+  const templatesMenuRef = useRef<HTMLDivElement>(null);
+  const edgePillRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
+  const edgeMenuRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const insertDialogRef = useRef<HTMLDivElement>(null);
+  const insertReturnFocusRef = useRef<HTMLElement | null>(null);
+  const registerEdgePillRef = useCallback((i: number, el: HTMLButtonElement | null) => {
+    if (el) edgePillRefs.current.set(i, el);
+    else edgePillRefs.current.delete(i);
+  }, []);
+  const registerEdgeMenuRef = useCallback((i: number, el: HTMLDivElement | null) => {
+    if (el) edgeMenuRefs.current.set(i, el);
+    else edgeMenuRefs.current.delete(i);
+  }, []);
+
+  /** Close the insert dialog and hand focus back to the element that opened it. */
+  const closeInsertAt = useCallback(() => {
+    setInsertAt(null);
+    const opener = insertReturnFocusRef.current;
+    insertReturnFocusRef.current = null;
+    opener?.focus();
+  }, []);
+
+  /** Escape closes the dialog even from its input; Tab cycles inside it. */
+  const onInsertDialogKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeInsertAt();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const container = insertDialogRef.current;
+    if (!container) return;
+    const focusables = Array.from(
+      container.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    const outside = !active || !container.contains(active);
+    if (e.shiftKey ? outside || active === first : outside || active === last) {
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+    }
+  }, [closeInsertAt]);
 
   // Mobile: palette/editor become overlay drawers
   const [isMobile, setIsMobile] = useState(() =>
@@ -292,6 +353,30 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   useEffect(() => {
     if (!selectedUid) setEditorOpenMobile(false);
   }, [selectedUid]);
+
+  // Close the templates menu and any connection menu on a pointer press
+  // outside them. Listener is document-level so it also fires when the press
+  // lands on the canvas or another card.
+  useEffect(() => {
+    if (!templatesOpen && edgeMenuIndex === null) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (
+        templatesOpen && templatesMenuRef.current &&
+        (!target || !templatesMenuRef.current.contains(target))
+      ) {
+        setTemplatesOpen(false);
+      }
+      if (edgeMenuIndex !== null) {
+        const pill = edgePillRefs.current.get(edgeMenuIndex);
+        const menu = edgeMenuRefs.current.get(edgeMenuIndex);
+        const inside = (el?: Element) => !!el && !!target && el.contains(target);
+        if (!inside(pill) && !inside(menu)) setEdgeMenuIndex(null);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [templatesOpen, edgeMenuIndex]);
 
   const isManual = model.manualText !== undefined;
   const manualStale =
@@ -376,6 +461,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   const removeStep = useCallback((uid: string) => {
     setModel(prev => removeStepFromModel(prev, uid));
     setSelectedUid(prev => (prev === uid ? null : prev));
+    setEdgeMenuIndex(null);
   }, [setModel]);
   removeStepRef.current = removeStep;
 
@@ -401,8 +487,12 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 
   // ---- branching --------------------------------------------------------
   const forkHere = useCallback((afterUid: string | null) => {
+    // A concept may only be anchored to the start or a TRUNK step: addBranch
+    // resolves the fork against the trunk, so a branch uid would create a
+    // concept nothing can ever display.
+    if (!canForkAfter(model, afterUid)) return;
     setModel(prev => addBranch(prev, afterUid).model);
-  }, [setModel]);
+  }, [setModel, model]);
 
   const forkHereEmpty = useCallback((afterUid: string | null) => {
     setModel(prev => addBranch(prev, afterUid, { seed: 'empty' }).model);
@@ -411,6 +501,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   const chooseBranch = useCallback((forkAfter: string | null, branchId: string | null) => {
     setModel(prev => takeBranchAtFork(prev, forkAfter, branchId));
     setSelectedUid(null);
+    setEdgeMenuIndex(null);
   }, [setModel]);
 
   const renameBranch = useCallback((branchId: string, label: string) => {
@@ -525,7 +616,8 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     );
   }, [insertSearch, addableCommands]);
 
-  const selectedStep = model.steps.find(s => s.uid === selectedUid) ?? null;
+  // Lane-aware: the selected uid may live in the trunk or in a branch.
+  const selectedStep = selectedUid ? findStepInModel(model, selectedUid) ?? null : null;
   const selectedDef = selectedStep ? COMMAND_BY_ID[selectedStep.defId] : null;
 
   // Group palette commands by section
@@ -542,14 +634,16 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   // ---- pointer drag-to-reorder ------------------------------------------
   const computeInsertIndex = useCallback((clientY: number): number => {
     let idx = 0;
-    for (const s of model.steps) {
+    // Cards are laid out in RESOLVED-PATH order, so measure against the path,
+    // not the trunk — with a concept taken the two disagree.
+    for (const s of pathSteps) {
       const el = nodeRefs.current.get(s.uid);
       if (!el) continue;
       const r = el.getBoundingClientRect();
       if (clientY > r.top + r.height / 2) idx++;
     }
     return idx;
-  }, [model.steps]);
+  }, [pathSteps]);
 
   const cardPointerDown = useCallback((uid: string) => (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
@@ -564,7 +658,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     if (!st.active) {
       if (Math.hypot(e.clientX - st.startX, e.clientY - st.startY) < 6) return;
       st.active = true;
-      const step = model.steps.find(s => s.uid === st.uid);
+      const step = findStepInModel(model, st.uid);
       setDrag({
         uid: st.uid,
         label: COMMAND_BY_ID[step?.defId ?? '']?.command ?? step?.defId ?? '',
@@ -573,7 +667,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     }
     setDrag(d => (d ? { ...d, x: e.clientX, y: e.clientY } : d));
     setOverIndex(computeInsertIndex(e.clientY));
-  }, [model.steps, computeInsertIndex]);
+  }, [model, computeInsertIndex]);
 
   const cardPointerUp = useCallback(() => {
     const st = dragState.current;
@@ -649,7 +743,15 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
       setViewTf({ x: 0, y: 0, k: 1 });
       return;
     }
-    setViewTf({ x: Math.max(0, (el.clientWidth - content.offsetWidth) / 2), y: 0, k: 1 });
+    const w = content.offsetWidth;
+    if (el.clientWidth < w) {
+      // Canvas narrower than even the 300px minimum column: the column
+      // would be clipped at k=1, so fit it to the width (zoom floor applies).
+      const k = Math.max(ZOOM_MIN, (el.clientWidth - 16) / w);
+      setViewTf({ k, x: (el.clientWidth - w * k) / 2, y: 8 });
+      return;
+    }
+    setViewTf({ x: Math.max(0, (el.clientWidth - w) / 2), y: 0, k: 1 });
   }, []);
 
   /**
@@ -697,7 +799,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
       if (mod) return; // leave every other browser/OS chord alone
 
       if (e.key === 'Delete' && selectedUid) { e.preventDefault(); removeStepRef.current(selectedUid); return; }
-      if (e.key === 'Escape') { setSelectedUid(null); setEdgeMenuIndex(null); setInsertAt(null); setTemplatesOpen(false); return; }
+      if (e.key === 'Escape') { setSelectedUid(null); setEdgeMenuIndex(null); closeInsertAt(); setTemplatesOpen(false); return; }
 
       if (k === '/') { e.preventDefault(); setPaletteOpen(true); searchRef.current?.focus(); return; }
       if (k === 'f') { e.preventDefault(); fitToView(); return; }
@@ -736,8 +838,20 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     return () => window.removeEventListener('keydown', onKey);
   }, [
     undo, redo, selectedUid, fitToView, centerView, forkHere, chooseBranch,
-    forkMap, model, isManual,
+    forkMap, model, isManual, closeInsertAt,
   ]);
+
+  // Track the canvas width to size the flowchart column (see columnWidth).
+  useEffect(() => {
+    if (view !== 'flow') return;
+    const el = canvasRef.current;
+    if (!el) return;
+    const update = () => setColumnWidth(Math.max(300, Math.min(640, el.clientWidth - 16)));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [view]);
 
   // Centre once the pipeline first has content, and keep it centred while the
   // user has not taken over the view themselves.
@@ -751,12 +865,13 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     });
     ro.observe(el);
     return () => { window.cancelAnimationFrame(id); ro.disconnect(); };
-  }, [view, centerView, flow.nodes.length]);
+  }, [view, centerView, flow.nodes.length, columnWidth]);
 
   return (
     <div className="flex h-full min-h-0">
       {/* Left: palette (overlay drawer on mobile) */}
       <div
+        inert={isMobile && !paletteOpen}
         className={`flex-col border-r transition-transform duration-300 ease-in-out ${ct.panel} ${
           isMobile
             ? `fixed inset-y-0 left-0 z-40 flex w-72 shadow-2xl ${paletteOpen ? 'translate-x-0' : '-translate-x-full'}`
@@ -765,11 +880,15 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
       >
         <div className={`flex items-center justify-between px-4 py-3 border-b ${ct.divider}`}>
           <span className={`text-sm font-bold tracking-tight ${ct.headerText} antialiased`}>Commands</span>
-          <button onClick={() => setPaletteOpen(false)} className={`p-1 rounded ${ct.muted} ${ct.hoverSurface}`}>
+          <button
+            onClick={() => setPaletteOpen(false)}
+            aria-label="Collapse command palette"
+            className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 ${ct.muted} ${ct.hoverSurface}`}
+          >
             <ChevronLeft size={14} />
           </button>
           {isMobile && (
-            <button onClick={() => setPaletteOpen(false)} className={`rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Close">
+            <button onClick={() => setPaletteOpen(false)} className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Close">
               <X size={14} />
             </button>
           )}
@@ -826,33 +945,44 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
         {/* Tab strip */}
         <div className={`flex h-9 shrink-0 items-center gap-1 border-b px-2 ${ct.divider}`}>
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-            {workspace.tabs.map(tab => {
-              const active = tab.id === workspace.activeId;
-              return (
-                <div
-                  key={tab.id}
-                  onClick={() => switchTab(tab.id)}
-                  className={`group flex shrink-0 cursor-pointer items-center gap-1 rounded-t-lg border-b-2 px-1.5 py-1.5 text-[11px] font-medium transition-colors sm:gap-1.5 sm:px-2.5 ${
-                    active ? ct.active : `${ct.muted} border-transparent ${ct.hoverSurface}`
-                  }`}
-                  title={tab.model.title || 'Untitled'}
-                >
-                  <FileCode2 size={11} className="shrink-0 opacity-60" />
-                  <span className="max-w-[72px] truncate sm:max-w-[110px]">{tab.model.title || 'Untitled'}</span>
-                  <span className={`hidden text-[9px] tabular-nums opacity-50 sm:inline`}>{tab.model.steps.length}</span>
-                  <button
-                    onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
-                    className={`rounded p-0.5 opacity-0 transition-opacity hover:text-[#cf8b76] group-hover:opacity-100 ${
-                      active ? 'opacity-70' : ''
+            {/* display:contents keeps the tabs as flex items of the scroller
+                while giving them a proper tablist parent. */}
+            <div role="tablist" className="contents">
+              {workspace.tabs.map(tab => {
+                const active = tab.id === workspace.activeId;
+                return (
+                  <div
+                    key={tab.id}
+                    role="tab"
+                    aria-selected={active}
+                    tabIndex={0}
+                    onClick={() => switchTab(tab.id)}
+                    onKeyDown={e => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchTab(tab.id); }
+                    }}
+                    className={`group flex shrink-0 cursor-pointer items-center gap-1 rounded-t-lg border-b-2 px-1.5 py-1 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#7fa66b] sm:gap-1.5 sm:px-2.5 ${
+                      active ? ct.active : `${ct.muted} border-transparent ${ct.hoverSurface}`
                     }`}
-                    title="Close this flowchart (Ctrl+Z restores)"
-                    aria-label={`Close ${tab.model.title || 'tab'}`}
+                    title={tab.model.title || 'Untitled'}
                   >
-                    <X size={11} />
-                  </button>
-                </div>
-              );
-            })}
+                    <FileCode2 size={11} className="shrink-0 opacity-60" />
+                    <span className="max-w-[72px] truncate sm:max-w-[110px]">{tab.model.title || 'Untitled'}</span>
+                    <span className={`hidden text-[9px] tabular-nums opacity-50 sm:inline`}>{tab.model.steps.length}</span>
+                    <button
+                      onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
+                      className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 opacity-100 transition-opacity hover:text-[#cf8b76] md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 ${
+                        active ? 'md:opacity-70' : ''
+                      }`}
+                      title="Close this flowchart (Ctrl+Z restores)"
+                      aria-label={`Close ${tab.model.title || 'tab'}`}
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
             <button
               onClick={addTab}
               className={`shrink-0 rounded p-1.5 ${ct.muted} ${ct.hoverSurface}`}
@@ -865,7 +995,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
           <button
             onClick={clearActive}
             disabled={model.steps.length === 0}
-            className={`flex shrink-0 items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+            className={`flex min-h-6 min-w-6 shrink-0 items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
             title="Clear this flowchart (Ctrl+Z restores it)"
           >
             <Trash2 size={12} />
@@ -877,7 +1007,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
         <div className={`flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-x-1 gap-y-1 border-b px-2 py-1 sm:gap-x-2 sm:px-3 ${ct.divider}`}>
           <div className="flex min-w-0 shrink-0 items-center gap-1.5">
             {!paletteOpen && (
-              <button onClick={() => setPaletteOpen(true)} className={`shrink-0 rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Open palette">
+              <button onClick={() => setPaletteOpen(true)} className={`inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Open palette">
                 <ChevronRight size={16} />
               </button>
             )}
@@ -891,11 +1021,14 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               {isManual ? 'manual' : `${model.steps.length} steps · ${generated.emitted.length} lines`}
             </span>
           </div>
-          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1.5">
+          {/* min-w-0 + (below md) horizontal scroll keeps every button
+              reachable at phone widths; overflow stays visible at md+ so the
+              templates dropdown is never clipped by a scroll container. */}
+          <div className="flex min-w-0 items-center gap-0.5 max-md:overflow-x-auto sm:gap-1.5">
             <button
               onClick={undo}
               disabled={!canUndo}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
               title="Undo (Ctrl+Z)"
               aria-label="Undo"
             >
@@ -904,7 +1037,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             <button
               onClick={redo}
               disabled={!canRedo}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
               title="Redo (Ctrl+Shift+Z)"
               aria-label="Redo"
             >
@@ -913,7 +1046,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             <button
               onClick={sortBySection}
               disabled={sectionSorted || model.steps.length < 2}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
               title={sectionSorted
                 ? 'Already in canonical section order'
                 : 'Reorder the steps into canonical section order (setup → system → interactions → output → run control)'}
@@ -925,7 +1058,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             <button
               onClick={() => forkHere(model.steps[model.steps.length - 1]?.uid ?? null)}
               disabled={isManual}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
               title="Fork a new concept branch at the end of the pipeline"
             >
               <GitBranch size={13} />
@@ -933,7 +1066,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             </button>
             <button
               onClick={() => setLintOpen(v => !v)}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
                 lintOpen ? ct.active : `${ct.muted} ${ct.hoverSurface}`
               }`}
               title="Validate the script against the LAMMPS command ordering rules"
@@ -955,10 +1088,10 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               </span>
               <span className="hidden 2xl:inline">Check</span>
             </button>
-            <div className="relative">
+            <div ref={templatesMenuRef} className="relative">
               <button
                 onClick={() => setTemplatesOpen(v => !v)}
-                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+                className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
                 title="Start from a ready-made pipeline"
               >
                 <LayoutTemplate size={13} />
@@ -989,7 +1122,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                   ))}
                   <button
                     onClick={() => setTemplatesOpen(false)}
-                    className={`mt-0.5 w-full rounded px-2 py-1 text-left text-[10px] ${ct.muted} ${ct.hoverSurface}`}
+                    className={`mt-0.5 min-h-6 w-full rounded px-2 py-1 text-left text-[10px] ${ct.muted} ${ct.hoverSurface}`}
                   >
                     Close
                   </button>
@@ -998,7 +1131,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             </div>
             <button
               onClick={() => importInputRef.current?.click()}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
               title="Import a LAMMPS input script — builds the flowchart"
             >
               <FileInput size={13} />
@@ -1020,7 +1153,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 <button
                   onClick={() => exportFlowchart('svg')}
                   disabled={exporting !== null || model.steps.length === 0}
-                  className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+                  className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
                   title="Export the flowchart as a presentable SVG"
                 >
                   <FileImage size={13} />
@@ -1029,7 +1162,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 <button
                   onClick={() => exportFlowchart('png')}
                   disabled={exporting !== null || model.steps.length === 0}
-                  className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+                  className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
                   title="Export the flowchart as a 2x PNG image"
                 >
                   <ImageDown size={13} />
@@ -1039,7 +1172,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             )}
             <button
               onClick={() => setView(v => v === 'flow' ? 'script' : 'flow')}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
                 view === 'script' ? ct.active : `${ct.muted} ${ct.hoverSurface}`
               }`}
               title={view === 'flow' ? 'View the generated script' : 'Back to the flowchart'}
@@ -1051,7 +1184,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             {isManual ? (
               <button
                 onClick={exitManualMode}
-                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium ${ct.warnAction}`}
+                className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium ${ct.warnAction}`}
                 title="Discard manual edits and regenerate from your steps"
               >
                 <X size={13} />
@@ -1060,7 +1193,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             ) : (
               <button
                 onClick={() => { enterManualMode(); setView('script'); }}
-                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+                className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
                 title="Override the generated script with hand-edited text"
               >
                 <PencilLine size={13} />
@@ -1069,14 +1202,14 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             )}
             <button
               onClick={copyScript}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
               title="Copy script to clipboard"
             >
               {copied ? <span className={ct.accentText}>✓ Copied</span> : <><Copy size={13} /><span className="hidden lg:inline">Copy</span></>}
             </button>
             <button
               onClick={() => downloadTextFile('in.lammps', activeText)}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
               title="Download in.lammps"
             >
               <Download size={13} />
@@ -1085,7 +1218,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             {onOpenViewer && (
               <button
                 onClick={onOpenViewer}
-                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+                className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
                 title="Open 3D structure viewer"
               >
                 <AtomIcon size={13} />
@@ -1114,7 +1247,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                   <span className={`text-[10px] ${ct.muted}`}>after <code className={ct.accentCode}>{anchorLabel}</code>:</span>
                   <button
                     onClick={() => chooseBranch(forkAfter, null)}
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    className={`min-h-6 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
                       taken === null ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
                     }`}
                     title="Follow the main line at this fork"
@@ -1125,7 +1258,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                     <button
                       key={b.id}
                       onClick={() => chooseBranch(forkAfter, b.id)}
-                      className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                      className={`flex items-center gap-1 min-h-6 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
                         taken?.id === b.id ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
                       }`}
                       title={`${b.label} — ${b.steps.length} steps, ${b.rejoin ? 'rejoins the main line' : 'replaces the tail'}`}
@@ -1137,7 +1270,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                   ))}
                   <button
                     onClick={() => forkHereEmpty(forkAfter)}
-                    className={`rounded-full p-1 ${ct.muted} ${ct.hoverSurface}`}
+                    className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded-full p-1 ${ct.muted} ${ct.hoverSurface}`}
                     title="Add another empty concept at this fork"
                     aria-label="Add concept"
                   >
@@ -1157,7 +1290,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 />
                 <button
                   onClick={() => setBranchRejoin(b.id, !b.rejoin)}
-                  className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+                  className={`flex min-h-6 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
                     b.rejoin ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
                   }`}
                   title={b.rejoin
@@ -1168,21 +1301,21 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 </button>
                 <button
                   onClick={() => branchToNewTab(b.id)}
-                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ct.muted} ${ct.hoverSurface}`}
+                  className={`min-h-6 rounded px-1.5 py-0.5 text-[10px] font-medium ${ct.muted} ${ct.hoverSurface}`}
                   title="Copy this concept into its own flowchart tab, flattened"
                 >
                   <Copy size={10} className="inline" /> Tab
                 </button>
                 <button
                   onClick={() => makeBranchMain(b.id)}
-                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ct.muted} ${ct.hoverSurface}`}
+                  className={`min-h-6 rounded px-1.5 py-0.5 text-[10px] font-medium ${ct.muted} ${ct.hoverSurface}`}
                   title="This concept won — fold it into the main line and drop the others at this fork"
                 >
                   Promote
                 </button>
                 <button
                   onClick={() => dropBranch(b.id)}
-                  className={`rounded p-1 ${ct.dangerItem}`}
+                  className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 ${ct.dangerItem}`}
                   title="Delete this concept"
                   aria-label={`Delete ${b.label}`}
                 >
@@ -1204,7 +1337,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 Script check — {lintCounts.errors} error{lintCounts.errors === 1 ? '' : 's'},{' '}
                 {lintCounts.warnings} warning{lintCounts.warnings === 1 ? '' : 's'}
               </span>
-              <button onClick={() => setLintOpen(false)} className={`rounded p-0.5 ${ct.muted}`} title="Close">
+              <button onClick={() => setLintOpen(false)} className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.muted}`} title="Close">
                 <X size={12} />
               </button>
             </div>
@@ -1254,7 +1387,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               {importStats.raw > 0 && `, ${importStats.raw} kept as verbatim raw lines`}
               .
             </span>
-            <button onClick={() => setImportStats(null)} className={`rounded p-0.5 ${ct.muted}`} title="Dismiss">
+            <button onClick={() => setImportStats(null)} className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.muted}`} title="Dismiss">
               <X size={12} />
             </button>
           </div>
@@ -1267,7 +1400,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             </span>
             <button
               onClick={exitManualMode}
-              className={`rounded px-2 py-0.5 font-semibold ${ct.button}`}
+              className={`min-h-6 rounded px-2 py-0.5 font-semibold ${ct.button}`}
               title="Discard the manual text and follow the builder steps again"
             >
               Discard & follow builder
@@ -1279,7 +1412,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             <span>⚠ Builder steps changed since your manual edit — the script text is stale.</span>
             <button
               onClick={exitManualMode}
-              className={`rounded px-2 py-0.5 font-semibold ${ct.button}`}
+              className={`min-h-6 rounded px-2 py-0.5 font-semibold ${ct.button}`}
               title="Discard the manual text and regenerate from the current steps"
             >
               Regenerate from steps
@@ -1307,7 +1440,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               className="absolute left-0 top-0 origin-top-left"
               style={{ transform: `translate(${viewTf.x}px, ${viewTf.y}px) scale(${viewTf.k})` }}
             >
-              <div ref={contentRef} style={{ width: 640 }}>
+              <div ref={contentRef} style={{ width: columnWidth }}>
                 <FlowchartView
                   ct={ct}
                   flow={flow}
@@ -1324,7 +1457,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                   overIndex={overIndex}
                   edgeMenuIndex={edgeMenuIndex}
                   onSelect={(uid) => { setSelectedUid(uid); if (isMobile) setEditorOpenMobile(true); }}
-                  onToggle={(uid) => updateStep(uid, { enabled: !model.steps.find(s => s.uid === uid)?.enabled })}
+                  onToggle={(uid) => updateStep(uid, { enabled: !findStepInModel(model, uid)?.enabled })}
                   onRemove={removeStep}
                   onDuplicate={duplicateStep}
                   onMove={moveStep}
@@ -1335,15 +1468,24 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                     if (el) nodeRefs.current.set(uid, el);
                     else nodeRefs.current.delete(uid);
                   }}
+                  registerEdgePillRef={registerEdgePillRef}
+                  registerEdgeMenuRef={registerEdgeMenuRef}
                   onEdgeClick={(i) => setEdgeMenuIndex(prev => (prev === i ? null : i))}
-                  onEdgeInsertHere={(i) => { setEdgeMenuIndex(null); setInsertAt(i); }}
+                  onEdgeInsertHere={(i) => {
+                    // The opener menu item unmounts with the connection menu;
+                    // its connector pill is the surviving focus target.
+                    insertReturnFocusRef.current = edgePillRefs.current.get(i) ?? null;
+                    setEdgeMenuIndex(null);
+                    setInsertAt(i);
+                  }}
                   onEdgeDisableNext={(i) => {
-                    const s = model.steps[i];
+                    // Same array the menu labels use — NOT the trunk.
+                    const s = pathSteps[i];
                     if (s) updateStep(s.uid, { enabled: !s.enabled });
                     setEdgeMenuIndex(null);
                   }}
                   onEdgeRemoveNext={(i) => {
-                    const s = model.steps[i];
+                    const s = pathSteps[i];
                     if (s) removeStep(s.uid);
                     setEdgeMenuIndex(null);
                   }}
@@ -1368,7 +1510,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               </button>
               <button
                 onClick={resetView}
-                className={`rounded-full px-2 py-1 text-[10px] font-mono tabular-nums ${ct.muted} ${ct.hoverSurface}`}
+                className={`min-h-6 rounded-full px-2 py-1 text-[10px] font-mono tabular-nums ${ct.muted} ${ct.hoverSurface}`}
                 title="Back to 100%, centred"
               >
                 {Math.round(viewTf.k * 100)}%
@@ -1420,6 +1562,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 
       {/* Right: step editor (overlay drawer on mobile) */}
       <div
+        inert={isMobile && !(selectedStep && editorOpenMobile)}
         className={`overflow-y-auto border-l transition-transform duration-300 ease-in-out ${ct.panel} ${
           isMobile
             ? `fixed inset-y-0 right-0 z-40 w-80 max-w-[85vw] shadow-2xl ${
@@ -1433,7 +1576,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             <span className={`text-xs font-semibold ${ct.headerText}`}>Step editor</span>
             <button
               onClick={() => { setEditorOpenMobile(false); setSelectedUid(null); }}
-              className={`rounded p-1 ${ct.muted} ${ct.hoverSurface}`}
+              className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 ${ct.muted} ${ct.hoverSurface}`}
               title="Close editor"
             >
               <X size={14} />
@@ -1483,18 +1626,26 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
       {insertAt !== null && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setInsertAt(null)}
+          onClick={closeInsertAt}
+          onKeyDown={onInsertDialogKeyDown}
           role="dialog"
           aria-modal="true"
           aria-label="Add command at connection"
         >
           <div
+            ref={insertDialogRef}
             className={`flex max-h-[70vh] w-full max-w-md flex-col rounded-xl border shadow-2xl ${ct.card}`}
             onClick={e => e.stopPropagation()}
           >
             <div className={`flex items-center justify-between border-b px-4 py-2.5 ${ct.divider}`}>
               <span className="text-xs font-semibold">Add command at position {(insertAt ?? 0) + 1}</span>
-              <button onClick={() => setInsertAt(null)} className={`rounded p-1 ${ct.muted}`}><X size={14} /></button>
+              <button
+                onClick={closeInsertAt}
+                aria-label="Close dialog"
+                className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 ${ct.muted}`}
+              >
+                <X size={14} />
+              </button>
             </div>
             <div className={`border-b px-3 py-2 ${ct.divider}`}>
               <input
@@ -1509,7 +1660,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               {insertCandidates.map(cmd => (
                 <button
                   key={cmd.id}
-                  onClick={() => { insertStepAt(cmd.id, insertAt ?? model.steps.length); setInsertAt(null); setInsertSearch(''); }}
+                  onClick={() => { insertStepAt(cmd.id, insertAt ?? model.steps.length); closeInsertAt(); setInsertSearch(''); }}
                   title={cmd.doc ?? cmd.label}
                   className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[11px] transition-colors ${ct.muted} ${ct.hoverSurface}`}
                 >
@@ -1560,6 +1711,8 @@ interface FlowchartViewProps {
   onCardPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
   onCardPointerUp: () => void;
   registerNodeRef: (uid: string, el: HTMLDivElement | null) => void;
+  registerEdgePillRef: (index: number, el: HTMLButtonElement | null) => void;
+  registerEdgeMenuRef: (index: number, el: HTMLDivElement | null) => void;
   onEdgeClick: (index: number) => void;
   onEdgeInsertHere: (index: number) => void;
   onEdgeDisableNext: (index: number) => void;
@@ -1580,19 +1733,25 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
   selectedUid, dragUid, overIndex, edgeMenuIndex,
   onSelect, onToggle, onRemove, onDuplicate, onMove,
   onCardPointerDown, onCardPointerMove, onCardPointerUp, registerNodeRef,
+  registerEdgePillRef, registerEdgeMenuRef,
   onEdgeClick, onEdgeInsertHere, onEdgeDisableNext, onEdgeRemoveNext, onCloseEdgeMenu,
 }) => {
   const shortLabel = (s: ScriptStep): string => COMMAND_BY_ID[s.defId]?.command ?? s.defId;
 
   const edgeRow = (i: number) => {
     const menuOpen = edgeMenuIndex === i;
+    // A concept may only be forked from the start or after a TRUNK card:
+    // below a branch card the next step lives inside that concept, and
+    // addBranch cannot anchor to a branch uid.
+    const canForkHere = i === 0 || trunkSteps.some(t => t.uid === steps[i - 1]?.uid);
     return (
       <div key={`edge-${i}`} className="relative flex flex-col items-center">
         <div className={`h-3 w-px bg-[#453a2b]`} />
         <button
+          ref={el => registerEdgePillRef(i, el)}
           onClick={(e) => { e.stopPropagation(); onEdgeClick(i); }}
           title="Edit this connection — insert or rewire steps here"
-          className={`flex h-5 items-center gap-1 rounded-full border px-2.5 text-[10px] font-medium transition-colors ${
+          className={`flex h-6 items-center gap-1 rounded-full border px-2.5 text-[10px] font-medium transition-colors ${
             menuOpen
               ? ct.edgeActive
               : ct.edgePill
@@ -1606,17 +1765,20 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
 
         {menuOpen && (
           <div
+            ref={el => registerEdgeMenuRef(i, el)}
             className={`absolute left-1/2 top-full z-30 w-56 -translate-x-1/2 rounded-lg border p-1.5 shadow-2xl ${ct.card}`}
             onClick={e => e.stopPropagation()}
           >
             <p className={`px-2 pb-1 pt-0.5 text-[9px] uppercase tracking-wide ${ct.muted}`}>Edit pipeline here</p>
             <MenuItem ct={ct} icon={<Plus size={12} />} label="Add command at this point…" onClick={() => onEdgeInsertHere(i)} />
-            <MenuItem
-              ct={ct}
-              icon={<GitBranch size={12} />}
-              label={i === 0 ? 'Fork a concept from the start…' : 'Fork a concept here…'}
-              onClick={() => { onCloseEdgeMenu(); onFork(i === 0 ? null : steps[i - 1]?.uid ?? null); }}
-            />
+            {canForkHere && (
+              <MenuItem
+                ct={ct}
+                icon={<GitBranch size={12} />}
+                label={i === 0 ? 'Fork a concept from the start…' : 'Fork a concept here…'}
+                onClick={() => { onCloseEdgeMenu(); onFork(i === 0 ? null : steps[i - 1]?.uid ?? null); }}
+              />
+            )}
             {steps[i] && (
               <>
                 <MenuItem
@@ -1661,7 +1823,7 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
         </span>
         <button
           onClick={e => { e.stopPropagation(); onChooseBranch(forkAfter, null); }}
-          className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+          className={`min-h-6 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
             taken === null ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
           }`}
         >
@@ -1671,7 +1833,7 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
           <button
             key={b.id}
             onClick={e => { e.stopPropagation(); onChooseBranch(forkAfter, b.id); }}
-            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+            className={`flex items-center gap-1 min-h-6 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
               taken?.id === b.id ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
             }`}
             title={`${b.steps.length} steps · ${b.rejoin ? 'rejoins the main line' : 'replaces the tail'}`}
@@ -1730,8 +1892,19 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
               onPointerUp={onCardPointerUp}
               onPointerCancel={onCardPointerUp}
               onClick={() => onSelect(node.uid)}
+              role="button"
+              tabIndex={0}
+              aria-pressed={isSel}
+              aria-label={`${node.label} step`}
+              onKeyDown={e => {
+                if (e.target !== e.currentTarget) return; // inner buttons keep their own keys
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelect(node.uid);
+                }
+              }}
               style={{ touchAction: 'none' }}
-              className={`group relative w-full cursor-grab rounded-xl border p-3 transition-shadow active:cursor-grabbing ${
+              className={`group relative w-full cursor-grab rounded-xl border p-3 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7fa66b] active:cursor-grabbing ${
                 inBranch ? 'border-l-4 border-l-[#d9a05b]' : ''
               } ${
                 node.defId === 'raw_line'
@@ -1754,11 +1927,11 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
                     </span>
                   )}
                 </span>
-                <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <div className="flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                   {!inBranch && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onFork(node.uid); }}
-                      className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
+                      className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
                       title="Fork a concept after this step — the rest is copied so you can try a variant"
                       aria-label="Fork a concept here"
                     >
@@ -1767,35 +1940,35 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
                   )}
                   <button
                     onClick={(e) => { e.stopPropagation(); onMove(node.uid, -1); }}
-                    className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
+                    className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
                     title="Move up"
                   >
                     <ChevronUp size={12} />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onMove(node.uid, 1); }}
-                    className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
+                    className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
                     title="Move down"
                   >
                     <ChevronDown size={12} />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onToggle(node.uid); }}
-                    className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
+                    className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
                     title={node.enabled ? 'Disable' : 'Enable'}
                   >
                     {node.enabled ? <Eye size={12} /> : <EyeOff size={12} />}
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onDuplicate(node.uid); }}
-                    className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
+                    className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
                     title="Duplicate step"
                   >
                     <Copy size={12} />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onRemove(node.uid); }}
-                    className={`rounded p-0.5 ${ct.dangerItem}`}
+                    className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.dangerItem}`}
                     title="Remove"
                   >
                     <Trash2 size={12} />
@@ -1896,10 +2069,10 @@ const StepEditor: React.FC<StepEditorProps> = ({
       <div className="flex items-center justify-between">
         <h3 className={`text-[15px] font-bold ${ct.headerText}`}>{def.label}</h3>
         <div className="flex items-center gap-1">
-          <button onClick={onMoveUp} className={`rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Move up">
+          <button onClick={onMoveUp} className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Move up">
             <ChevronUp size={14} />
           </button>
-          <button onClick={onMoveDown} className={`rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Move down">
+          <button onClick={onMoveDown} className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Move down">
             <ChevronDown size={14} />
           </button>
         </div>
@@ -1936,7 +2109,7 @@ const StepEditor: React.FC<StepEditorProps> = ({
       <div className={`flex flex-wrap items-center gap-2 border-t pt-3 ${ct.divider}`}>
         <button
           onClick={onToggle}
-          className={`flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+          className={`flex min-h-6 items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
             step.enabled ? ct.enabledBtn : ct.disabledBtn
           }`}
         >
@@ -1945,14 +2118,14 @@ const StepEditor: React.FC<StepEditorProps> = ({
         </button>
         <button
           onClick={onDuplicate}
-          className={`flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium ${ct.muted} ${ct.hoverSurface}`}
+          className={`flex min-h-6 items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium ${ct.muted} ${ct.hoverSurface}`}
           title="Duplicate this step with its parameters"
         >
           <Copy size={13} /> Duplicate
         </button>
         <button
           onClick={onRemove}
-          className={`flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium ${ct.removeBtn}`}
+          className={`flex min-h-6 items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium ${ct.removeBtn}`}
         >
           <Trash2 size={13} /> Remove
         </button>

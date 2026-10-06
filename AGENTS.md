@@ -61,10 +61,29 @@ There is no linter configured; `typecheck` is the static gate.
 
 ## Environment notes
 
-- There is **no WebGL** in the headless browsers on this machine; the 3D
-  canvas shows its error-boundary fallback. Test the scene logic as pure
-  functions instead.
-- jsdom ignores CSS media and container queries.
+- **Real browser checks (WebGL2 + WebGPU):** the default headless browsers
+  here have neither, but a Chromium launched with SwiftShader flags has both.
+  Run a node script like this (playwright-core is NOT a repo dependency —
+  borrow the installed copy; do not add it to package.json):
+
+  ```js
+  const { chromium } = require('/store/shuvam/qiskit_fallfest/node_modules/playwright-core');
+  const browser = await chromium.launch({
+    executablePath: '/home/roy/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome',
+    headless: true,
+    args: ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader', '--ignore-gpu-blocklist'],
+  });
+  ```
+
+  The page must be a secure context (`http://127.0.0.1:…`); on `about:blank`
+  `navigator.gpu` is absent. SwiftShader proves correctness, not speed.
+- **Serve the app** from the production build — `vite` dev crashes here with
+  `ENOSPC` (inotify limit):
+  `npm run build && ln -sfn . dist/lammps-web-gui && python3 -m http.server <port> --bind 127.0.0.1 --directory dist`,
+  then open `http://127.0.0.1:<port>/lammps-web-gui/`. Use your own port; do not
+  kill servers you did not start.
+- jsdom ignores CSS media and container queries — measure layout in a real
+  browser.
 
 ## Orchestrator-only
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ViewerModule from './components/workbench/ViewerModule';
 import ScriptBuilder from './components/workbench/ScriptBuilder';
 import CompilerHelper from './components/workbench/CompilerHelper';
@@ -39,6 +39,40 @@ const App: React.FC = () => {
   const [module, setModule] = useState<Module>(loadLastModule);
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const aboutDialogRef = useRef<HTMLDivElement>(null);
+  const aboutCloseRef = useRef<HTMLButtonElement>(null);
+  /** Element that had focus when the dialog opened — focus returns there. */
+  const aboutReturnFocus = useRef<HTMLElement | null>(null);
+
+  const openAbout = useCallback(() => {
+    aboutReturnFocus.current = document.activeElement as HTMLElement | null;
+    setAboutOpen(true);
+  }, []);
+  const closeAbout = useCallback(() => setAboutOpen(false), []);
+
+  // ARIA APG modal dialog: focus moves in on open, Escape closes, Tab stays
+  // inside, and focus returns to the trigger on close (WCAG 2.4.3).
+  useEffect(() => {
+    if (!aboutOpen) return;
+    aboutCloseRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); setAboutOpen(false); return; }
+      if (e.key !== 'Tab' || !aboutDialogRef.current) return;
+      const focusable = aboutDialogRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      aboutReturnFocus.current?.focus?.();
+    };
+  }, [aboutOpen]);
   const ct = getThemeTokens(theme);
 
   const switchModule = (m: Module) => {
@@ -60,7 +94,7 @@ const App: React.FC = () => {
       <header className={`flex h-12 shrink-0 items-center justify-between border-b px-4 ${ct.panel}`}>
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
-            <FlaskConical size={18} className="shrink-0 text-[#9dc487]" />
+            <FlaskConical size={18} aria-hidden="true" className={`shrink-0 ${ct.accentText}`} />
             <span className="hidden truncate text-sm font-bold tracking-tight sm:inline">LAMMPS Workbench</span>
             {/*
               Author credit. LICENSE §3.2 requires a legible, permanently
@@ -68,9 +102,10 @@ const App: React.FC = () => {
               shrink or hide this, and keep the About dialog reachable.
             */}
             <button
-              onClick={() => setAboutOpen(true)}
+              onClick={openAbout}
               title="About, credits and licence"
-              className={`flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors ${ct.muted} ${ct.hoverSurface}`}
+              aria-label="About, credits and licence"
+              className={`flex min-h-6 min-w-6 shrink-0 items-center justify-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors ${ct.muted} ${ct.hoverSurface}`}
             >
               <Info size={12} />
               <span className="hidden whitespace-nowrap md:inline">by Shuvam Banerji Seal</span>
@@ -84,6 +119,8 @@ const App: React.FC = () => {
                 key={m.id}
                 onClick={() => switchModule(m.id)}
                 title={m.hint}
+                aria-label={m.label}
+                aria-current={module === m.id ? 'page' : undefined}
                 className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors sm:gap-1.5 sm:px-3 ${
                   module === m.id
                     ? ct.active
@@ -115,18 +152,19 @@ const App: React.FC = () => {
       {aboutOpen && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
-          onClick={() => setAboutOpen(false)}
+          onClick={closeAbout}
           role="dialog"
           aria-modal="true"
           aria-label="About LAMMPS Workbench"
         >
           <div
+            ref={aboutDialogRef}
             className={`max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border p-6 shadow-2xl ${ct.card}`}
             onClick={e => e.stopPropagation()}
           >
             <div className="mb-4 flex items-start justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <FlaskConical size={22} className="shrink-0 text-[#9dc487]" />
+                <FlaskConical size={22} aria-hidden="true" className={`shrink-0 ${ct.accentText}`} />
                 <div>
                   <h2 className="text-base font-bold tracking-tight">LAMMPS Workbench · Molecule3D</h2>
                   <p className={`text-[11px] ${ct.muted}`}>
@@ -135,7 +173,8 @@ const App: React.FC = () => {
                 </div>
               </div>
               <button
-                onClick={() => setAboutOpen(false)}
+                ref={aboutCloseRef}
+                onClick={closeAbout}
                 className={`shrink-0 rounded-lg p-1.5 ${ct.button}`}
                 aria-label="Close about dialog"
               >

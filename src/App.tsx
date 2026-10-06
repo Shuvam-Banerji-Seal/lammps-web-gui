@@ -1,33 +1,38 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import ViewerModule from './components/workbench/ViewerModule';
 import ScriptBuilder from './components/workbench/ScriptBuilder';
 import CompilerHelper from './components/workbench/CompilerHelper';
-import { FlaskConical, FileCode2, Hammer, Atom as AtomIcon, Sun, Moon, Info, X, ExternalLink } from 'lucide-react';
+import { FlaskConical, FileCode2, Hammer, Atom as AtomIcon, NotebookPen, Sun, Moon, Info, X, ExternalLink } from 'lucide-react';
 import { getThemeTokens, initialTheme, Theme, THEME_STORAGE_KEY } from './theme';
 import { browserStore } from './services/persistence';
 
-type Module = 'builder' | 'compiler' | 'viewer';
+// The notebook carries the MD engine; load it only when it is opened.
+const Notebook = lazy(() => import('./components/workbench/Notebook'));
+
+type Module = 'builder' | 'compiler' | 'viewer' | 'notebook';
 
 const MODULES: { id: Module; label: string; icon: React.ReactNode; hint: string }[] = [
   { id: 'builder', label: 'Script Builder', icon: <FileCode2 size={15} />, hint: 'Build LAMMPS input scripts visually' },
   { id: 'compiler', label: 'Compiler Helper', icon: <Hammer size={15} />, hint: 'Generate clone + CMake build commands' },
   { id: 'viewer', label: 'Structure Viewer', icon: <AtomIcon size={15} />, hint: '3D visualization of LAMMPS/XYZ/PDB/CIF files' },
+  { id: 'notebook', label: 'MD Notebook', icon: <NotebookPen size={15} />, hint: 'Run small LAMMPS-style simulations in the browser (WebGPU or CPU)' },
 ];
 
 const MODULE_KEY = 'm3d.activeModule';
 const loadLastModule = (): Module => {
   try {
     const v = localStorage.getItem(MODULE_KEY);
-    if (v === 'builder' || v === 'compiler' || v === 'viewer') return v;
+    if (v === 'builder' || v === 'compiler' || v === 'viewer' || v === 'notebook') return v;
   } catch { /* storage unavailable */ }
   return 'builder';
 };
 
 /**
- * Molecule3D Workbench — three modules:
+ * Molecule3D Workbench — four modules:
  *  1. Script Builder (primary): visual LAMMPS input construction + flowchart
  *  2. Compiler Helper: package/accelerator selection → build commands
  *  3. Structure Viewer: the original 3D visualizer
+ *  4. MD Notebook: runs a documented LAMMPS input subset in the browser
  *
  * Global light/dark theme (warm coffee-green dark) is owned here and passed
  * to every module so switching modules never loses your look. The active
@@ -147,6 +152,11 @@ const App: React.FC = () => {
         {module === 'builder' && <ScriptBuilder theme={theme} onOpenViewer={() => switchModule('viewer')} />}
         {module === 'compiler' && <CompilerHelper theme={theme} />}
         {module === 'viewer' && <ViewerModule theme={theme} onToggleTheme={toggleTheme} />}
+        {module === 'notebook' && (
+          <Suspense fallback={<div className={`p-6 text-sm ${ct.muted}`}>Loading the notebook…</div>}>
+            <Notebook theme={theme} />
+          </Suspense>
+        )}
       </main>
 
       {aboutOpen && (

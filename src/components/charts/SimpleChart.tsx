@@ -107,7 +107,7 @@ export const LineChart: React.FC<LineChartProps> = ({
   // ticks
   const xTicks = 4, yTicks = 4;
   const gridColor = isDark ? '#332a1f' : '#e0d7c6';
-  const textColor = isDark ? '#a3937f' : '#7c7060';
+  const textColor = isDark ? '#a3937f' : '#6b6053'; // light: the AA muted token (theme.ts)
   const lineColor = color ?? (isDark ? '#7fa66b' : '#4e7a41');
   const areaFill = fillColor ?? (isDark ? 'rgba(127,166,107,0.18)' : 'rgba(78,122,65,0.12)');
 
@@ -174,7 +174,7 @@ export const Histogram: React.FC<HistogramProps> = ({ bins, xLabel, yLabel, colo
   const maxCount = Math.max(1, extent(bins.map(b => b.count)).hi);
   const barW = plotW / bins.length;
   const gridColor = isDark ? '#332a1f' : '#e0d7c6';
-  const textColor = isDark ? '#a3937f' : '#7c7060';
+  const textColor = isDark ? '#a3937f' : '#6b6053'; // light: the AA muted token (theme.ts)
   const barColor = color ?? (isDark ? '#7fa66b' : '#4e7a41');
   const yTicks = 4;
   const xTicks = 4;

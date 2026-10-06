@@ -67,7 +67,7 @@ const EXAMPLES: { file: string; format: FileFormat; label: string }[] = [
   { file: 'examples/nacl.cif', format: 'cif', label: 'NaCl · CIF' },
   { file: 'examples/water.xyz', format: 'xyz', label: 'Water · XYZ' },
   { file: 'examples/water-traj.xyz', format: 'xyz', label: 'Trajectory · XYZ' },
-  { file: 'examples/water-dump.lammpstrj', format: 'lammpsdump', label: 'Trajectory · Dump' },
+  { file: 'examples/lj-melt.lammpstrj', format: 'lammpsdump', label: 'LJ melt · Dump' },
   { file: 'examples/stress-12k.xyz', format: 'xyz', label: 'Stress 12k · XYZ' },
   { file: 'examples/stress-60k.xyz', format: 'xyz', label: 'Stress 60k · XYZ' },
 ];
@@ -632,7 +632,7 @@ const ViewerModule: React.FC<{
                 </div>
                 <ul className="space-y-1.5 leading-relaxed">
                   <li><span className={`font-semibold ${ct.accentText}`}>.data / .lmp</span> — LAMMPS (atomic·charge·molecular·full)</li>
-                  <li><span className={`font-semibold ${theme === 'dark' ? 'text-[#e4b877]' : 'text-[#7a5716]'}`}>.xyz</span> — XYZ trajectories (first frame)</li>
+                  <li><span className={`font-semibold ${theme === 'dark' ? 'text-[#e4b877]' : 'text-[#7a5716]'}`}>.xyz</span> — XYZ structures and multi-frame trajectories (playback)</li>
                   <li><span className={`font-semibold ${theme === 'dark' ? 'text-[#e4b877]' : 'text-[#7a5716]'}`}>.lammpstrj / .dump</span> — LAMMPS dump trajectories (playback)</li>
                   <li><span className={`font-semibold ${theme === 'dark' ? "text-[#c9a9d4]" : "text-[#7d5a8c]"}`}>.pdb</span> — Protein Data Bank (+CONECT, CRYST1)</li>
                   <li><span className={`font-semibold ${theme === 'dark' ? "text-[#cf8b76]" : "text-[#a4502f]"}`}>.cif</span> — Crystallographic Information Framework</li>
@@ -1021,7 +1021,7 @@ const ViewerModule: React.FC<{
                   </div>
                   <p className="leading-relaxed">
                     Load a <span className="font-semibold">LAMMPS dump</span> (`.lammpstrj`/`.dump`) or multi-frame <span className="font-semibold">XYZ</span> trajectory to unlock analysis.
-                    Try the bundled <em>Trajectory · Dump</em> or <em>Trajectory · XYZ</em> examples in the Data tab.
+                    Try the bundled <em>LJ melt · Dump</em> or <em>Trajectory · XYZ</em> examples in the Data tab.
                   </p>
                   <p className={`mt-2 text-xs ${ct.muted}`}>
                     Once loaded, this tab shows RDF, MSD, density profiles and velocity histograms — all computed locally, with CSV export.

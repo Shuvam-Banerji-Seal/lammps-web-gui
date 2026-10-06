@@ -2,10 +2,11 @@ import type { BoxBounds, TrajectoryFrame } from '../types';
 import type { DensityProfile, MSDPoint, RDFPoint } from './trajectoryAnalysis';
 import {
   computeDensityProfile,
-  computeMSD,
   computeRDF,
   msdIsExact,
+  msdInRealFrames,
 } from './trajectoryAnalysis';
+import type { MsdSample } from './trajectoryAnalysis';
 
 /**
  * Client side of the trajectory-analysis worker. Same id-routing contract as
@@ -26,10 +27,17 @@ export interface AnalysisOptions {
 
 export interface AnalysisRequest {
   id: number;
+  /** Frames for RDF and density — any even spread will do (plain averages). */
   frames: TrajectoryFrame[];
   box?: BoxBounds;
   opts: AnalysisOptions;
+  /** Frames for MSD — must be a UNIFORM stride of the trajectory. */
+  msdFrames: TrajectoryFrame[];
+  /** Real frames between consecutive `msdFrames`; MSD lags are scaled by it. */
+  msdFrameStride: number;
 }
+
+export type { MsdSample } from './trajectoryAnalysis';
 
 export interface AnalysisResponse {
   id: number;
@@ -115,13 +123,14 @@ export const analyzeSync = (
   frames: TrajectoryFrame[],
   box: BoxBounds | undefined,
   opts: AnalysisOptions,
+  msd: MsdSample = { frames, stride: 1 },
 ): AnalysisResult => {
   const started = Date.now();
   return {
     rdf: computeRDF(frames, box, { rMax: opts.rdfRMax, bins: opts.rdfBins }),
-    msd: computeMSD(frames, box, { timeOriginStride: opts.msdStride }),
+    msd: msdInRealFrames(msd, box, opts.msdStride),
     density: computeDensityProfile(frames, box, opts.densityAxis, opts.densityBins),
-    msdUnwrapped: msdIsExact(frames, box),
+    msdUnwrapped: msdIsExact(msd.frames, box),
     ms: Date.now() - started,
     onMainThread: true,
   };
@@ -132,14 +141,17 @@ export const analyzeTrajectory = (
   frames: TrajectoryFrame[],
   box: BoxBounds | undefined,
   opts: AnalysisOptions,
+  msd: MsdSample = { frames, stride: 1 },
 ): Promise<AnalysisResult> => {
   const w = ensureWorker();
-  if (!w) return Promise.resolve(analyzeSync(frames, box, opts));
+  if (!w) return Promise.resolve(analyzeSync(frames, box, opts, msd));
   return new Promise<AnalysisResult>((resolve, reject) => {
     const id = nextId++;
     pending.set(id, { resolve, reject });
     try {
-      w.postMessage({ id, frames, box, opts } satisfies AnalysisRequest);
+      w.postMessage({
+        id, frames, box, opts, msdFrames: msd.frames, msdFrameStride: msd.stride,
+      } satisfies AnalysisRequest);
     } catch (err) {
       // Structured clone can fail on exotic inputs; degrade rather than hang.
       pending.delete(id);

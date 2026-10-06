@@ -452,6 +452,25 @@ export const computeMSD = (
   return msd;
 };
 
+/** MSD input: uniformly strided frames and the stride, in real frames. */
+export interface MsdSample {
+  frames: TrajectoryFrame[];
+  stride: number;
+}
+
+/**
+ * MSD with lags expressed in REAL frames. `computeMSD` counts lags in steps of
+ * whatever list it is given; when that list is every `stride`-th frame, lag k
+ * really spans k * stride frames.
+ */
+export const msdInRealFrames = (
+  sample: MsdSample,
+  box: BoxBounds | undefined,
+  timeOriginStride: number,
+): MSDPoint[] =>
+  computeMSD(sample.frames, box, { timeOriginStride })
+    .map(p => ({ t: p.t * sample.stride, msd: p.msd }));
+
 /** Density profile along an axis (histogram) */
 export const computeDensityProfile = (
   frames: TrajectoryFrame[],

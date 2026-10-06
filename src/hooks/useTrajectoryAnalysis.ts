@@ -38,6 +38,36 @@ const sampleFrames = <T,>(frames: T[], want: number): T[] => {
 };
 
 /**
+ * Upper bound on atom·frames shipped to the worker for MSD. Each frame is
+ * structured-cloned, so 200 frames of a 60k-atom system (12M Atom objects)
+ * would stall the page; this keeps the clone in the low millions.
+ */
+const MSD_ATOM_FRAME_BUDGET = 2_000_000;
+const MSD_MAX_FRAMES = 200;
+
+/**
+ * Frames for MSD, taken at a UNIFORM integer stride.
+ *
+ * `sampleFrames` is fine for RDF and density, which are plain averages, but
+ * MSD is a function of the time lag between frames. Sampling 15 of 51 frames
+ * with floor(i * 3.4) gives indices 0, 3, 6, 10, 13, … — so "lag 1" meant 3
+ * frames sometimes and 4 at others, and the reported slope was inflated by
+ * the ~3.4x stride. A uniform stride keeps every lag the same length, and the
+ * stride is returned so lags can be reported in REAL frames.
+ */
+export const uniformFrames = <T,>(
+  frames: T[],
+  atomsPerFrame: number,
+): { frames: T[]; stride: number } => {
+  const byBudget = Math.max(2, Math.floor(MSD_ATOM_FRAME_BUDGET / Math.max(1, atomsPerFrame)));
+  const maxFrames = Math.min(MSD_MAX_FRAMES, byBudget);
+  const stride = Math.max(1, Math.ceil(frames.length / maxFrames));
+  const out: T[] = [];
+  for (let i = 0; i < frames.length; i += stride) out.push(frames[i]);
+  return { frames: out, stride };
+};
+
+/**
  * Run the trajectory analyses off the main thread, once per structure.
  *
  * Previously the Analysis panel called computeRDF/computeMSD/
@@ -63,19 +93,27 @@ export const useTrajectoryAnalysis = (
     [frames, hasTrajectory],
   );
 
+  const msdSample = useMemo(
+    () => (hasTrajectory
+      ? uniformFrames(frames!, frames![0]?.atoms.length ?? 0)
+      : { frames: [], stride: 1 }),
+    [frames, hasTrajectory],
+  );
+
   const opts = useMemo<AnalysisOptions>(() => {
     const box = data?.box;
     const thinZ = box ? box.zhi - box.zlo < 2 : false;
     return {
       rdfRMax: 10,
       rdfBins: 80,
-      // Cap the number of time origins so MSD stays linear in frame count.
-      msdStride: Math.max(1, Math.floor((frames?.length ?? 1) / SAMPLE_FRAMES)),
+      // Time-origin stride WITHIN the uniformly strided MSD frames: about 15
+      // origins, so MSD stays linear in frame count.
+      msdStride: Math.max(1, Math.floor(msdSample.frames.length / SAMPLE_FRAMES)),
       // A 2D slab has no meaningful y-profile; profile along x instead.
       densityAxis: thinZ ? 'x' : 'y',
       densityBins: 24,
     };
-  }, [data?.box, frames?.length]);
+  }, [data?.box, msdSample.frames.length]);
 
   useEffect(() => {
     if (!hasTrajectory) {
@@ -89,7 +127,7 @@ export const useTrajectoryAnalysis = (
     setError(null);
     let cancelled = false;
 
-    analyzeTrajectory(sampled, data?.box, opts)
+    analyzeTrajectory(sampled, data?.box, opts, msdSample)
       .then(r => {
         // Ignore a result for a structure the user has already replaced.
         if (cancelled || gen !== generation.current) return;
@@ -103,7 +141,7 @@ export const useTrajectoryAnalysis = (
       });
 
     return () => { cancelled = true; };
-  }, [hasTrajectory, sampled, data?.box, opts]);
+  }, [hasTrajectory, sampled, msdSample, data?.box, opts]);
 
   // Single-frame, O(N): no worker round-trip needed.
   const speeds = useMemo(() => {

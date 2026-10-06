@@ -1,8 +1,8 @@
 import {
   computeRDF,
-  computeMSD,
   computeDensityProfile,
   msdIsExact,
+  msdInRealFrames,
 } from '../services/trajectoryAnalysis';
 import type {
   AnalysisRequest,
@@ -21,7 +21,8 @@ import type {
  * Protocol: AnalysisRequest -> AnalysisResponse, routed by `id`.
  */
 self.onmessage = (e: MessageEvent<AnalysisRequest>) => {
-  const { id, frames, box, opts } = e.data;
+  const { id, frames, box, opts, msdFrames, msdFrameStride } = e.data;
+  const msdSample = { frames: msdFrames ?? frames, stride: msdFrameStride ?? 1 };
   const post = (r: AnalysisResponse) => (self as unknown as Worker).postMessage(r);
   const started = Date.now();
   try {
@@ -29,9 +30,9 @@ self.onmessage = (e: MessageEvent<AnalysisRequest>) => {
       id,
       ok: true,
       rdf: computeRDF(frames, box, { rMax: opts.rdfRMax, bins: opts.rdfBins }),
-      msd: computeMSD(frames, box, { timeOriginStride: opts.msdStride }),
+      msd: msdInRealFrames(msdSample, box, opts.msdStride),
       density: computeDensityProfile(frames, box, opts.densityAxis, opts.densityBins),
-      msdUnwrapped: msdIsExact(frames, box),
+      msdUnwrapped: msdIsExact(msdSample.frames, box),
       ms: Date.now() - started,
     });
   } catch (err) {

@@ -59,6 +59,8 @@ export interface RunOptions {
   keywords: readonly ThermoKeyword[];
   norm?: boolean;
   onThermo?: (row: ThermoRow) => void;
+  /** Called once after the setup force evaluation (e.g. the step-0 dump). */
+  onSetup?: (s: SimState) => void;
   /** Called after every step (e.g. dumps); return false to stop early. */
   onStep?: (s: SimState) => boolean | void;
   /** Lets a caller yield to the event loop every `yieldEvery` steps. */
@@ -81,6 +83,7 @@ export const run = async (
 ): Promise<ForceResult> => {
   const ctx: RunContext = { runStart: s.step, runStop: s.step + nsteps };
   let res = await setupRun(s, table, backend, fixes, ctx);
+  opts.onSetup?.(s);
   const emit = () => opts.onThermo?.(thermoRow(s, opts.keywords, res, { norm: opts.norm, runStart: ctx.runStart }));
   emit();
   for (let k = 0; k < nsteps; k++) {

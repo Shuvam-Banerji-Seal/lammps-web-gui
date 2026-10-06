@@ -124,7 +124,8 @@ export type FixSpec =
 /** Supported thermo_style custom keywords (v1). */
 export const THERMO_KEYWORDS = [
   'step', 'elapsed', 'time', 'temp', 'press', 'pe', 'ke', 'etotal', 'enthalpy',
-  'evdwl', 'ecoul', 'epair', 'emol', 'vol', 'density', 'lx', 'ly', 'lz', 'atoms',
+  'evdwl', 'ecoul', 'epair', 'emol', 'vol', 'density', 'lx', 'ly', 'lz',
+  'xlo', 'xhi', 'ylo', 'yhi', 'zlo', 'zhi', 'dt', 'atoms',
 ] as const;
 export type ThermoKeyword = typeof THERMO_KEYWORDS[number];
 

@@ -92,6 +92,13 @@ export const thermoRow = (
       case 'lx': row.lx = s.box.hi[0] - s.box.lo[0]; break;
       case 'ly': row.ly = s.box.hi[1] - s.box.lo[1]; break;
       case 'lz': row.lz = s.box.hi[2] - s.box.lo[2]; break;
+      case 'xlo': row.xlo = s.box.lo[0]; break;
+      case 'xhi': row.xhi = s.box.hi[0]; break;
+      case 'ylo': row.ylo = s.box.lo[1]; break;
+      case 'yhi': row.yhi = s.box.hi[1]; break;
+      case 'zlo': row.zlo = s.box.lo[2]; break;
+      case 'zhi': row.zhi = s.box.hi[2]; break;
+      case 'dt': row.dt = s.dt; break;
       case 'atoms': row.atoms = s.n; break;
     }
   }

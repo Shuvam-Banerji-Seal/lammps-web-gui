@@ -18,7 +18,7 @@ npm test             # vitest run — the whole suite (~310 tests, ~10 s)
 npx vitest run tests/<file>.test.ts   # one file
 npm run typecheck    # tsc --noEmit — must be clean
 npm run build        # tsc && vite build
-npm run check:size   # gzip bundle budget (420 KB total)
+npm run check:size   # gzip budgets: 420 KB initial JS, 120 KB lazy (notebook, workers)
 ```
 
 There is no linter configured; `typecheck` is the static gate.

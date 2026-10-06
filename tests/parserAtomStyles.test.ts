@@ -429,3 +429,13 @@ describe.skipIf(!haveRealFiles)('real LAMMPS data files (read from disk)', () =>
     expect(a100.z).toBe(0);
   });
 });
+
+describe('the bundled C60 example (public/c60.data)', () => {
+  it('declares "1 atom types" but uses type 6; all 60 carbons still load', () => {
+    const m = parseDataFile(readFileSync('public/c60.data', 'utf8'));
+    expect(m.atoms).toHaveLength(60);
+    expect(m.bonds).toHaveLength(90);
+    expect(Object.values(m.atomTypes).map((t) => t.element)).toEqual(['C']);
+    expect(Number.isFinite(m.min.x) && Number.isFinite(m.max.z)).toBe(true);
+  });
+});

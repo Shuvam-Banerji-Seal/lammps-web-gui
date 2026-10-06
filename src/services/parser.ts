@@ -256,8 +256,12 @@ export const parseDataFile = (data: string): MoleculeData => {
     if (pendingAtomRows.length === 0) return;
     const style = atomLayoutHint ?? chooseSectionLayout(pendingAtomRows, ntypes, typeLabels);
     const layout = STYLE_LAYOUTS[style];
+    // "N atom types" helps CHOOSE a layout above, but is not enforced on the
+    // rows: generated files often declare 1 type and use the atomic number
+    // as the type (the bundled C60 example: "1 atom types", type 6), and a
+    // viewer should show them rather than drop every atom.
     for (const tokens of pendingAtomRows) {
-      const atom = parseAtomRow(tokens, layout, ntypes, typeLabels);
+      const atom = parseAtomRow(tokens, layout, null, typeLabels);
       if (atom) atoms.push(atom); // rows that do not fit are skipped
     }
     pendingAtomRows.length = 0;

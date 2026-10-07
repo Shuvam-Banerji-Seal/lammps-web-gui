@@ -3,6 +3,10 @@ import type { Bonded, KSpace, Pair } from './force/types';
 import type { Fix } from './fix/fix';
 import type { Compute } from './compute/compute';
 import { PairLJCut } from './force/pair/lj_cut';
+import { BondHarmonic } from './force/bond/harmonic';
+import { AngleHarmonic } from './force/angle/harmonic';
+import { DihedralHarmonic } from './force/dihedral/harmonic';
+import { ImproperHarmonic } from './force/improper/harmonic';
 import { FixNVE } from './fix/nve';
 import { FixEnforce2d } from './fix/enforce2d';
 import { FixNH } from './fix/nh';
@@ -25,10 +29,18 @@ export const PAIR_STYLES: Record<string, () => Pair> = {
   'lj/cut': () => new PairLJCut(),
 };
 
-export const BOND_STYLES: Record<string, () => Bonded> = {};
-export const ANGLE_STYLES: Record<string, () => Bonded> = {};
-export const DIHEDRAL_STYLES: Record<string, () => Bonded> = {};
-export const IMPROPER_STYLES: Record<string, () => Bonded> = {};
+export const BOND_STYLES: Record<string, () => Bonded> = {
+  harmonic: () => new BondHarmonic(),
+};
+export const ANGLE_STYLES: Record<string, () => Bonded> = {
+  harmonic: () => new AngleHarmonic(),
+};
+export const DIHEDRAL_STYLES: Record<string, () => Bonded> = {
+  harmonic: () => new DihedralHarmonic(),
+};
+export const IMPROPER_STYLES: Record<string, () => Bonded> = {
+  harmonic: () => new ImproperHarmonic(),
+};
 export const KSPACE_STYLES: Record<string, () => KSpace> = {};
 
 export const FIX_STYLES: Record<string, FixFactory> = {

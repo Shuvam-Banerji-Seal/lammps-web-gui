@@ -1042,17 +1042,23 @@ const displaceAtoms: Handler = ({ sys }, a) => {
   for (let i = 0; i < s.n; i++) if (s.mask[i] & bit) members.push(i);
   switch (style) {
     case 'move': {
-      const comp = args.map((w, d) => {
+      // native LAMMPS evaluates the components in turn, each after the previous one moved the
+      // atoms (atom-style dx=1, dy=x, dz=y on an atom at (1,1,1) gives (2,3,4))
+      for (let d = 0; d < 3; d++) {
+        const w = args[d];
+        let comp: (i: number) => number;
         if (w.startsWith('v_')) {
           const v = sys.vars.get(w.slice(2));
-          if (v?.style === 'atom') { const arr = sys.atomVariable(w.slice(2)); return (i: number) => arr[i]; }
-          const x = sys.equalVariable(w.slice(2));
-          return () => x;
+          if (v?.style === 'atom') { const arr = sys.atomVariable(w.slice(2)); comp = (i) => arr[i] * sc[d]; } else {
+            const x = sys.equalVariable(w.slice(2)) * sc[d];
+            comp = () => x;
+          }
+        } else {
+          const x = num(w, 'displacement') * sc[d];
+          comp = () => x;
         }
-        const x = num(w, 'displacement') * sc[d];
-        return () => x;
-      });
-      for (const i of members) for (let d = 0; d < 3; d++) s.x[3 * i + d] += comp[d](i);
+        for (const i of members) s.x[3 * i + d] += comp(i);
+      }
       break;
     }
     case 'ramp': {

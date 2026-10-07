@@ -264,6 +264,10 @@ export abstract class Pair {
   initStyle(_ctx: StyleContext): void {}
 
   init(ctx: StyleContext): void {
+    // pair_modify.html: "You cannot use shift yes with tail yes, since those are conflicting
+    // options. You cannot use tail yes with 2d simulations."
+    if (this.shift && this.tail) throw new StyleError('cannot have both pair_modify shift and tail set to yes');
+    if (this.tail && ctx.s?.dimension === 2) throw new StyleError('cannot use pair_modify tail yes with 2d simulations');
     this.initStyle(ctx);
     const nt = this.ntypes + 1;
     this.cut = new Float64Array(nt * nt);

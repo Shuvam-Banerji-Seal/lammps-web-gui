@@ -10,10 +10,14 @@ import { CpuForceBackend } from '../cpu/forces';
 /*
  * Accelerated force paths for the notebook's CPU-threads and WebGPU choices
  * (cpu/parallel.ts, gpu/webgpuForces.ts, gpu/resident.ts). They implement one
- * case exactly — plain pair_style lj/cut in a fully periodic orthogonal box,
- * no bonds, charges or kspace, and only fix nve / enforce2d on all atoms —
- * and return the pair energy and virial. Every other input runs on the
- * general fp64 engine; accelerator() says why, and the run log shows it.
+ * force field exactly — plain pair_style lj/cut in a fully periodic
+ * orthogonal box, no bonds, charges or kspace — and return the pair forces,
+ * energy and virial. The run then follows the usual velocity-Verlet hook
+ * order with every fix (thermostats, force-modifying fixes, ...); only the
+ * force evaluation is replaced. Whole steps stay on the GPU (resident.ts)
+ * when the only fixes are nve / enforce2d on all atoms. Every other input
+ * runs on the general fp64 engine; accelerator() says why, and the run log
+ * shows it.
  */
 
 export interface Accel {
@@ -38,11 +42,11 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
   if (s.box.triclinic || !s.box.periodic.every(Boolean)) return why('a triclinic or non-periodic box');
   if (p.tail) return why('pair_modify tail yes');
   if (sys.nb.excludes.length || sys.nb.includeBit) return why('neigh_modify exclude/include');
-  const allBit = sys.groupBit('all');
+  // the backends build their own cell lists, so fixes that act at neighbor-list time cannot run with them
   for (const f of sys.fixes) {
-    if ((f.style !== 'nve' && f.style !== 'enforce2d') || f.groupBit !== allBit) return why(`fix ${f.style}${f.groupBit !== allBit ? ` on group ${f.group}` : ''}`);
+    if (f.preExchange || f.preNeighbor || f.postNeighbor || f.preReverse) return why(`fix ${f.style} (it acts when neighbor lists are rebuilt)`);
   }
-  if (!sys.fixes.some((f) => f.style === 'nve')) return why('no fix nve');
+  if (!sys.fixes.some((f) => f.timeIntegrate)) return why('no time-integration fix');
   if (sys.computes.some((c) => c.needsEatom || c.needsVatom)) return why('per-atom energy or stress computes');
   // the accelerated backends return a scalar virial only
   if (sys.thermo.keywords.some((k) => PRESSURE_TENSOR.has(k))) return why('pressure-tensor thermo keywords');
@@ -59,7 +63,9 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     }
   }
   const enforce2d = sys.fixes.some((f) => f.style === 'enforce2d');
-  const resident = isResident(backend) && backend.canAdvance(s, t);
+  const allBit = sys.groupBit('all');
+  const onlyNve = sys.fixes.every((f) => (f.style === 'nve' || f.style === 'enforce2d') && f.groupBit === allBit);
+  const resident = onlyNve && isResident(backend) && backend.canAdvance(s, t);
   return { accel: { backend, table: t, resident, enforce2d }, reason: null };
 };
 
@@ -101,8 +107,14 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
   const end = s.step + n;
   let taken = 0;
   let lastYield = performance.now();
-  const nve = sys.fixes.filter((f) => f.style === 'nve');
-  const e2d = sys.fixes.filter((f) => f.style === 'enforce2d');
+  const fixes = sys.fixes;
+  const has = <K extends keyof (typeof fixes)[number]>(k: K) => fixes.filter((f) => typeof f[k] === 'function');
+  const fInitial = has('initialIntegrate');
+  const fPostInt = has('postIntegrate');
+  const fPreForce = has('preForce');
+  const fPostForce = has('postForce');
+  const fFinal = has('finalIntegrate');
+  const fEnd = has('endOfStep');
   while (s.step < end) {
     if (hooks.cancelled()) break;
     if (a.resident) {
@@ -120,18 +132,23 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
       lastYield = performance.now();
       continue;
     }
+    // the hook order of verlet.ts runVerlet, with the backend's forces
     s.step++;
     sys.refreshComputes();
-    for (const f of nve) f.initialIntegrate!();
+    for (const f of fInitial) f.initialIntegrate!();
+    for (const f of fPostInt) f.postIntegrate!();
     remap();
     sys.bump();
+    for (const f of fPreForce) f.preForce!();
     store(sys, await a.backend.compute(s, a.table));
-    for (const f of e2d) f.postForce!();
-    for (const f of nve) f.finalIntegrate!();
+    for (const f of fPostForce) f.postForce!();
+    for (const f of fFinal) f.finalIntegrate!();
+    for (const f of fEnd) if (s.step % f.nevery === 0) f.endOfStep!();
     sys.refreshComputes();
     taken++;
     hooks.afterStep(s.step);
     if (performance.now() - lastYield > 30) { await yieldNow(); lastYield = performance.now(); }
   }
+  for (const f of fixes) f.postRun?.();
   return taken;
 };

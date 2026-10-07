@@ -139,6 +139,43 @@ describe('GPU-resident run loop (md.run with a ResidentBackend)', () => {
     expect(f3.chunks).toEqual([]);
   });
 
+  it('through the interpreter: a thermostatted run uses accelerated forces with every fix, matching the fp64 engine', async () => {
+    const script = `units lj
+atom_style atomic
+lattice fcc 0.8442
+region box block 0 4 0 4 0 4
+create_box 1 box
+create_atoms 1 box
+mass 1 1.0
+velocity all create 3.0 87287
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0 2.5
+fix 1 all nvt temp 1.5 1.5 0.5
+thermo_style custom step temp pe etotal press
+thermo 10
+run 60`;
+    const go = async (backend?: FakeResident) => {
+      const rows: ThermoRow[] = [];
+      const logs: string[] = [];
+      const session = new Session({
+        emit: (ev: EngineEvent) => { if (ev.kind === 'thermo') rows.push(ev.row); if (ev.kind === 'log') logs.push(ev.text); },
+        writeFile: () => {},
+      }, backend);
+      await session.execute(script);
+      return { rows, logs };
+    };
+    const fake = new FakeResident();
+    const acc = await go(fake);
+    const ref = await go();
+    // per-step accelerated forces (no resident chunks: fix nvt integrates on the host)
+    expect(fake.chunks).toEqual([]);
+    expect(acc.logs.some((l) => /general fp64/.test(l))).toBe(false);
+    expect(acc.rows.length).toBe(ref.rows.length);
+    for (let r = 0; r < ref.rows.length; r++) {
+      for (const k of ['temp', 'pe', 'etotal', 'press']) expect(acc.rows[r][k]).toBeCloseTo(ref.rows[r][k], 9);
+    }
+  });
+
   it('through the interpreter: dumps and viewer frames land on their steps', async () => {
     const fake = new FakeResident();
     const frames: number[] = [];

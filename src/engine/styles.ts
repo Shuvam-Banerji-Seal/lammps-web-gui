@@ -19,6 +19,7 @@ import * as pairSimple2 from './registry/pair_simple2';
 import * as pairLJ2 from './registry/pair_lj2';
 import * as bondedA from './registry/bonded_a';
 import * as bondedB from './registry/bonded_b';
+import * as bondedC from './registry/bonded_c';
 import * as pairEAM from './registry/pair_eam';
 import * as pair3Body from './registry/pair_3body';
 import * as fixForce from './registry/fix_force';
@@ -71,7 +72,7 @@ export const DIHEDRAL_STYLES: Record<string, () => Bonded> = {
 };
 export const IMPROPER_STYLES: Record<string, () => Bonded> = {
   harmonic: () => new ImproperHarmonic(),
-  ...bondedB.IMPROPERS,
+  ...bondedB.IMPROPERS, ...bondedC.IMPROPERS,
 };
 export const KSPACE_STYLES: Record<string, () => KSpace> = {
   ewald: () => new KSpaceEwald(),

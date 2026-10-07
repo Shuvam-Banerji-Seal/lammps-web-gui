@@ -33,6 +33,8 @@ import * as fixAvg from './registry/fix_avg';
 import * as computeRed from './registry/compute_red';
 import * as computeTemp from './registry/compute_temp';
 import * as pairSW from './registry/pair_sw';
+import * as fixDeform from './registry/fix_deform';
+import * as computeDeform from './registry/compute_deform';
 import * as pairZBL from './registry/pair_zbl';
 import * as pairTable from './registry/pair_table';
 import * as pairCharmm from './registry/pair_charmm';
@@ -106,7 +108,7 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   shake: (s, i, g, a) => new FixShake(s, i, g, a, 'shake'),
   rattle: (s, i, g, a) => new FixShake(s, i, g, a, 'rattle'),
   ...fixForce.FIXES, ...fixWall.FIXES, ...fixOutput.FIXES, ...fixMotion.FIXES,
-  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES,
+  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES, ...fixDeform.FIXES,
 };
 
 export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
@@ -114,7 +116,7 @@ export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
   ke: (s, i, g, a) => new ComputeKE(s, i, g, a),
   pe: (s, i, g, a) => new ComputePE(s, i, g, a),
   pressure: (s, i, g, a) => new ComputePressure(s, i, g, a),
-  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES,
+  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES, ...computeDeform.COMPUTES,
 };
 
 /** Lists for messages and is_available(). */

@@ -192,6 +192,39 @@ export class System {
   }
 
   /** domain->pbc() and reset_box(): wrap periodic coordinates, shrink-wrap, drop lost atoms. */
+  /**
+   * Changes the box (used by box-changing fixes such as fix deform): new
+   * bounds and tilt factors (xy, xz, yz); atoms whose mask has `remapBit` keep
+   * their fractional coordinates, the rest keep their Cartesian ones. Other
+   * fixes are told through boxChanged(); computes are invalidated.
+   */
+  setBox(lo: readonly number[], hi: readonly number[], tilt: readonly number[], remapBit: number, from?: Fix): void {
+    const s = this.state;
+    const g = this.geom;
+    const lam = new Float64Array(3 * s.n);
+    const tmp = [0, 0, 0];
+    if (remapBit) {
+      for (let i = 0; i < s.n; i++) {
+        if (!(s.mask[i] & remapBit)) continue;
+        g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], tmp);
+        lam[3 * i] = tmp[0]; lam[3 * i + 1] = tmp[1]; lam[3 * i + 2] = tmp[2];
+      }
+    }
+    const b = s.box;
+    for (let d = 0; d < 3; d++) { b.lo[d] = lo[d]; b.hi[d] = hi[d]; b.tilt[d] = tilt[d]; }
+    b.minLo = [...b.lo]; b.minHi = [...b.hi];
+    g.update();
+    if (remapBit) {
+      for (let i = 0; i < s.n; i++) {
+        if (!(s.mask[i] & remapBit)) continue;
+        g.fromLamda(lam[3 * i], lam[3 * i + 1], lam[3 * i + 2], tmp);
+        s.x[3 * i] = tmp[0]; s.x[3 * i + 1] = tmp[1]; s.x[3 * i + 2] = tmp[2];
+      }
+    }
+    for (const f of this.fixes) if (f !== from) f.boxChanged?.();
+    this.bump();
+  }
+
   pbc(): void {
     const s = this.state;
     const g = this.geom;

@@ -20,7 +20,7 @@ const runScript = async (text: string) => {
   const thermo = events
     .filter((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo')
     .map((e) => e.row);
-  return { session, thermo, error };
+  return { session, thermo, error, events };
 };
 
 /** The 500-atom examples/melt liquid (5x5x5 fcc at rho* 0.8442) via the interpreter. */
@@ -191,8 +191,8 @@ run 5`);
     expect(error?.message).toMatch(/zero temperature/);
   });
 
-  it('nve + nvt together fail with the both-integrate error', async () => {
-    const { error } = await runScript(`
+  it('nve + nvt together run with the native-LAMMPS warning', async () => {
+    const { error, events } = await runScript(`
 units lj
 atom_style atomic
 lattice sc 1.0
@@ -205,6 +205,7 @@ pair_coeff 1 1 1.0 1.0
 fix 1 all nve
 fix 2 all nvt temp 1 1 0.5
 run 1`);
-    expect(error?.message).toMatch(/both integrate/);
+    expect(error).toBeNull();
+    expect(events.some((e) => e.kind === 'log' && e.text === 'WARNING: One or more atoms are time integrated more than once')).toBe(true);
   });
 });

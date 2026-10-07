@@ -1,4 +1,4 @@
-import { Session, RunCancelled } from './interpreter';
+import { Session, RunCancelled, SUPPORTED_COMMANDS } from './interpreter';
 import { CpuForceBackend } from './cpu/forces';
 import { ParallelCpuForceBackend } from './cpu/parallel';
 import type { ForceBackend } from './types';
@@ -22,6 +22,8 @@ export class EngineHost {
   private backend: ForceBackend | null = null;
   private current = 0;
   private frameEvery = 0;
+  /** Files added by the notebook; kept across session resets. */
+  private files = new Map<string, string>();
 
   constructor(private post: (msg: FromEngine, transfer?: Transferable[]) => void) {}
 
@@ -30,6 +32,7 @@ export class EngineHost {
     if (msg.type === 'backend') return this.switchBackend(msg.backend, msg.threads);
     if (msg.type === 'cancel') { this.session?.cancel(); return; }
     if (msg.type === 'exec') return this.exec(msg.id, msg.text, msg.firstLine);
+    if (msg.type === 'file') { this.files.set(msg.name, msg.text); this.session?.addFile(msg.name, msg.text); return; }
   }
 
   private cpuBackend(threads: number): ForceBackend {
@@ -62,7 +65,7 @@ export class EngineHost {
 
   private ready(backend: ForceBackend, note?: string): void {
     const webgpuAvailable = typeof navigator !== 'undefined' && 'gpu' in navigator;
-    this.post({ type: 'ready', backend: backend.label, kind: backend.kind, webgpuAvailable, cores: cores(), note });
+    this.post({ type: 'ready', backend: backend.label, kind: backend.kind, webgpuAvailable, cores: cores(), note, commands: [...SUPPORTED_COMMANDS] });
   }
 
   private async reset(choice: BackendChoice, threads: number, frameEvery: number): Promise<void> {
@@ -80,6 +83,7 @@ export class EngineHost {
       },
       writeFile: (name, text, append) => this.post({ type: 'file', id: this.current, name, text, append }),
     }, backend, this.frameEvery);
+    for (const [name, text] of this.files) this.session.addFile(name, text);
     this.ready(backend, note);
   }
 

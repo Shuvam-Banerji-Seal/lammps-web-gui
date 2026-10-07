@@ -57,14 +57,23 @@ const randomGas = (n: number, L: number, seed: number, dmin = 0.85): SimState =>
 };
 
 describe('units (derived from exact SI constants)', () => {
-  it('matches the known conversion factors', () => {
-    expect(UNIT_SYSTEMS.metal.mvv2e).toBeCloseTo(1.0364269e-4, 10);
-    expect(UNIT_SYSTEMS.metal.boltz).toBeCloseTo(8.617333e-5, 10);
-    expect(UNIT_SYSTEMS.metal.nktv2p).toBeCloseTo(1.602176634e6, 3);
-    expect(UNIT_SYSTEMS.real.boltz).toBeCloseTo(0.0019872, 7);
-    expect(UNIT_SYSTEMS.real.mvv2e).toBeCloseTo(2390.0574, 3);
-    expect(UNIT_SYSTEMS.real.nktv2p / 68568.4).toBeCloseTo(1, 5);
-    for (const u of Object.values(UNIT_SYSTEMS)) expect(u.mvv2e * u.ftm2v).toBeCloseTo(1, 12);
+  it('matches the constants native LAMMPS uses (measured with scripts/oracle/constants.in)', () => {
+    // values derived from native LAMMPS 2Sep2026 output; see src/engine/units.ts
+    const measured: Record<string, Record<string, number>> = {
+      real: { mvv2e: 2390.05736153349, boltz: 0.0019872067, qqr2e: 332.06371, nktv2p: 68568.415, mv2d: 1.66053892103219, qe2f: 23.060549 },
+      metal: { mvv2e: 0.00010364269, boltz: 8.617343e-5, qqr2e: 14.399645, nktv2p: 1602176.5, mv2d: 1.66053892103219, qe2f: 1 },
+      si: { boltz: 1.3806504e-23, qqr2e: 8.9876e9 },
+      cgs: { boltz: 1.3806504e-16, qqr2e: 1 },
+      electron: { mvv2e: 1.06657236, boltz: 3.16681534e-6, nktv2p: 2.94210108e13, ftm2v: 0.937582899, qe2f: 1.94469051e-10 },
+      micro: { boltz: 1.3806504e-8, qqr2e: 8987556 },
+      nano: { boltz: 0.013806504, qqr2e: 230.7078669 },
+    };
+    for (const [style, vals] of Object.entries(measured)) {
+      const u = UNIT_SYSTEMS[style as keyof typeof UNIT_SYSTEMS] as unknown as Record<string, number>;
+      for (const [k, v] of Object.entries(vals)) expect(u[k] / v, `${style} ${k}`).toBeCloseTo(1, 9);
+    }
+    for (const u of Object.values(UNIT_SYSTEMS)) expect(u.mvv2e * u.ftm2v).toBeCloseTo(1, 7);
+    expect(Object.keys(UNIT_SYSTEMS).sort()).toEqual(['cgs', 'electron', 'lj', 'metal', 'micro', 'nano', 'real', 'si']);
   });
 });
 

@@ -1,4 +1,3 @@
-import { EngineHost } from './host';
 import type { BackendChoice, FromEngine, ToEngine } from './protocol';
 import type { EngineEvent } from './types';
 
@@ -17,7 +16,8 @@ export interface ExecResult { ok: boolean; cancelled: boolean }
 
 export class EngineClient {
   private worker: Worker | null = null;
-  private host: EngineHost | null = null;
+  /** Main-thread fallback, loaded on demand so the UI bundle does not carry the engine. */
+  private host: Promise<{ handle(msg: ToEngine): Promise<void> }> | null = null;
   private nextId = 1;
   private pending = new Map<number, { handlers: ExecHandlers; resolve: (r: ExecResult) => void }>();
   private readyWaiters: ((info: Extract<FromEngine, { type: 'ready' }>) => void)[] = [];
@@ -33,13 +33,13 @@ export class EngineClient {
         this.worker = null;
       }
     }
-    if (!this.worker) this.host = new EngineHost((msg) => this.receive(msg));
+    if (!this.worker) this.host = import('./host').then((m) => new m.EngineHost((msg) => this.receive(msg)));
     this.onMainThread = !this.worker;
   }
 
   private send(msg: ToEngine): void {
     if (this.worker) this.worker.postMessage(msg);
-    else void this.host!.handle(msg);
+    else void this.host!.then((h) => h.handle(msg));
   }
 
   private receive(msg: FromEngine): void {
@@ -71,6 +71,11 @@ export class EngineClient {
     const p = new Promise<Extract<FromEngine, { type: 'ready' }>>((r) => this.readyWaiters.push(r));
     this.send({ type: 'backend', backend, threads });
     return p;
+  }
+
+  /** Makes a file available to the session (read_data, include, potential files). */
+  addFile(name: string, text: string): void {
+    this.send({ type: 'file', name, text });
   }
 
   /** Runs one cell; events for it stream to `handlers` until it finishes. */

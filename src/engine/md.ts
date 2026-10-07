@@ -12,46 +12,7 @@ import { thermoRow } from './observables';
  * timestep."
  */
 
-export const emptyState = (units: UnitSystem, dimension: 2 | 3, box: SimBox, ntypes: number): SimState => ({
-  n: 0,
-  dimension,
-  box,
-  units,
-  ntypes,
-  type: new Int32Array(0),
-  massByType: new Float64Array(ntypes + 1).fill(Number.NaN),
-  x: new Float64Array(0),
-  v: new Float64Array(0),
-  f: new Float64Array(0),
-  image: new Int32Array(0),
-  id: new Int32Array(0),
-  step: 0,
-  dt: units.dt,
-});
-
-/** Appends atoms (flat 3N positions, already inside the box) of one type. */
-export const addAtoms = (s: SimState, positions: Float64Array, type: number): number => {
-  const add = positions.length / 3;
-  if (add === 0) return 0;
-  const n = s.n + add;
-  const grow3 = (a: Float64Array) => { const b = new Float64Array(3 * n); b.set(a); return b; };
-  const x = grow3(s.x);
-  x.set(positions, 3 * s.n);
-  const t = new Int32Array(n); t.set(s.type); t.fill(type, s.n);
-  const id = new Int32Array(n); id.set(s.id);
-  let next = 0;
-  for (let i = 0; i < s.n; i++) if (s.id[i] > next) next = s.id[i];
-  for (let i = s.n; i < n; i++) id[i] = ++next;
-  const image = new Int32Array(3 * n); image.set(s.image);
-  s.x = x;
-  s.v = grow3(s.v);
-  s.f = grow3(s.f);
-  s.image = image;
-  s.type = t;
-  s.id = id;
-  s.n = n;
-  return add;
-};
+export { emptyState, addAtoms } from './atoms';
 
 /**
  * A backend that can run whole velocity-Verlet steps itself (the WebGPU
@@ -62,11 +23,11 @@ export interface ResidentBackend extends ForceBackend {
   advance(state: SimState, table: PairTable, nsteps: number, opts: { enforce2d: boolean }): Promise<ForceResult>;
 }
 
-const isResident = (b: ForceBackend): b is ResidentBackend =>
+export const isResident = (b: ForceBackend): b is ResidentBackend =>
   typeof (b as Partial<ResidentBackend>).advance === 'function' && typeof (b as Partial<ResidentBackend>).canAdvance === 'function';
 
 /** Longest stretch run on the GPU without coming back (keeps Stop responsive). */
-const MAX_CHUNK = 200;
+export const MAX_CHUNK = 200;
 
 export interface RunOptions {
   /** thermo N; 0 = only first and last step. */

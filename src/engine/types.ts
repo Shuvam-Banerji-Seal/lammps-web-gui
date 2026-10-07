@@ -17,22 +17,44 @@
  *    unused.
  */
 
-/** Orthogonal box. Triclinic is out of scope for v1. */
+/**
+ * Boundary style of one box face — docs.lammps.org/boundary.html:
+ * "p is periodic", "f is non-periodic and fixed", "s is non-periodic and
+ * shrink-wrapped", "m is non-periodic and shrink-wrapped with a minimum value".
+ */
+export type BoundaryStyle = 'p' | 'f' | 's' | 'm';
+
+/**
+ * Simulation box. Orthogonal, or restricted triclinic (docs.lammps.org/
+ * Howto_triclinic.html): edge vectors A = (lx, 0, 0), B = (xy, ly, 0),
+ * C = (xz, yz, lz), with lx = xhi - xlo etc. and the tilt factors xy, xz, yz.
+ */
 export interface SimBox {
   lo: [number, number, number];
   hi: [number, number, number];
   periodic: [boolean, boolean, boolean];
+  /** Tilt factors [xy, xz, yz]; all 0 for an orthogonal box. */
+  tilt: [number, number, number];
+  triclinic: boolean;
+  /** [lower, upper] face style per dimension; periodic dims are ['p', 'p']. */
+  boundary: [[BoundaryStyle, BoundaryStyle], [BoundaryStyle, BoundaryStyle], [BoundaryStyle, BoundaryStyle]];
+  /** For 'm' faces: the box never shrinks inside these bounds (docs: "minimum value"). */
+  minLo: [number, number, number];
+  minHi: [number, number, number];
 }
 
-export type UnitStyle = 'lj' | 'real' | 'metal';
+export type UnitStyle = 'lj' | 'real' | 'metal' | 'si' | 'cgs' | 'electron' | 'micro' | 'nano';
 
 /**
- * Conversion constants for one units style (see units.ts for derivations).
+ * Conversion constants for one units style (see units.ts for their source).
  *  boltz   Boltzmann constant in energy/temperature units
  *  mvv2e   mass * velocity^2 -> energy
  *  ftm2v   force / mass * time -> velocity
  *  nktv2p  energy / volume -> pressure
- *  dt      the style's default timestep
+ *  qqr2e   q_i q_j / r -> energy (Coulomb constant)
+ *  qe2f    charge * electric field -> force
+ *  mv2d    mass / volume -> density
+ *  dt      the style's default timestep;  skin  the default neighbor skin
  */
 export interface UnitSystem {
   style: UnitStyle;
@@ -40,9 +62,39 @@ export interface UnitSystem {
   mvv2e: number;
   ftm2v: number;
   nktv2p: number;
+  qqr2e: number;
+  qe2f: number;
+  mv2d: number;
   dt: number;
+  skin: number;
   /** thermo_modify norm default: yes for lj, no otherwise. */
   normDefault: boolean;
+}
+
+/** docs.lammps.org/atom_style.html styles the engine implements. */
+export type AtomStyle = 'atomic' | 'charge' | 'bond' | 'angle' | 'molecular' | 'full';
+
+/**
+ * Bonded topology entries of one kind, stored by atom ID (not index) so that
+ * deleting or adding atoms never invalidates them. Entry k has type type[k]
+ * and atoms atoms[width*k .. width*k + width).
+ */
+export interface TopoList {
+  n: number;
+  width: 2 | 3 | 4;
+  type: Int32Array;
+  atoms: Int32Array;
+}
+
+export interface Topology {
+  nbondtypes: number;
+  nangletypes: number;
+  ndihedraltypes: number;
+  nimpropertypes: number;
+  bonds: TopoList;
+  angles: TopoList;
+  dihedrals: TopoList;
+  impropers: TopoList;
 }
 
 export interface SimState {
@@ -50,6 +102,7 @@ export interface SimState {
   dimension: 2 | 3;
   box: SimBox;
   units: UnitSystem;
+  atomStyle: AtomStyle;
   /** Number of atom types (create_box N). */
   ntypes: number;
   /** 1-based type per atom, length n. */
@@ -62,8 +115,18 @@ export interface SimState {
   image: Int32Array;
   /** Atom IDs, 1-based and stable for the whole session. */
   id: Int32Array;
+  /** Group membership bits (bit 0 = group all). */
+  mask: Int32Array;
+  /** Molecule ID per atom (0 = none). */
+  molecule: Int32Array;
+  /** Charge per atom. */
+  q: Float64Array;
+  topo: Topology;
   step: number;
   dt: number;
+  /** Simulation time at step `timeStep` (thermo 'time' advances by dt from there). */
+  time: number;
+  timeStep: number;
 }
 
 /** Lennard-Jones 12-6 parameters of one type pair. */
@@ -92,6 +155,8 @@ export interface PairTable {
 export interface ForceResult {
   /** Total pair potential energy (not per atom), energy units. */
   pe: number;
+  /** Virial tensor [xx, yy, zz, xy, xz, yz] when the backend computes it. */
+  virialTensor?: number[];
   /**
    * Scalar pair virial W = sum over interacting pairs of r_ij . F_ij, energy
    * units. Pressure (docs.lammps.org/compute_pressure.html):
@@ -121,16 +186,21 @@ export type FixSpec =
   | { style: 'nvt'; id: string; group: 'all'; tStart: number; tStop: number; damp: number }
   | { style: 'enforce2d'; id: string; group: 'all' };
 
-/** Supported thermo_style custom keywords (v1). */
+/** Built-in thermo_style custom keywords (docs.lammps.org/thermo_style.html) the engine implements. */
 export const THERMO_KEYWORDS = [
-  'step', 'elapsed', 'time', 'temp', 'press', 'pe', 'ke', 'etotal', 'enthalpy',
-  'evdwl', 'ecoul', 'epair', 'emol', 'vol', 'density', 'lx', 'ly', 'lz',
-  'xlo', 'xhi', 'ylo', 'yhi', 'zlo', 'zhi', 'dt', 'atoms',
+  'step', 'elapsed', 'elaplong', 'dt', 'time', 'cpu', 'tpcpu', 'spcpu', 'cpuremain', 'part', 'timeremain',
+  'atoms', 'temp', 'press', 'pe', 'ke', 'etotal', 'enthalpy',
+  'evdwl', 'ecoul', 'epair', 'ebond', 'eangle', 'edihed', 'eimp', 'emol', 'elong', 'etail',
+  'vol', 'density', 'lx', 'ly', 'lz', 'xlo', 'xhi', 'ylo', 'yhi', 'zlo', 'zhi',
+  'xy', 'xz', 'yz', 'xlat', 'ylat', 'zlat', 'bonds', 'angles', 'dihedrals', 'impropers',
+  'pxx', 'pyy', 'pzz', 'pxy', 'pxz', 'pyz', 'fmax', 'fnorm', 'nbuild', 'ndanger',
+  'cella', 'cellb', 'cellc', 'cellalpha', 'cellbeta', 'cellgamma',
 ] as const;
-export type ThermoKeyword = typeof THERMO_KEYWORDS[number];
+/** A thermo column: a built-in keyword or c_ID, c_ID[i], f_ID, f_ID[i], v_name. */
+export type ThermoKeyword = string;
 
-/** One thermo output row keyed by thermo keyword. */
-export type ThermoRow = Partial<Record<ThermoKeyword, number>>;
+/** One thermo output row keyed by thermo column. */
+export type ThermoRow = Record<string, number>;
 
 /** Interpreter errors carry the 1-based source line and the command word. */
 export class EngineError extends Error {

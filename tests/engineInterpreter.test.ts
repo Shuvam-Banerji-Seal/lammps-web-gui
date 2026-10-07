@@ -146,31 +146,36 @@ describe('Session: examples/melt (LAMMPS log.8Apr21.melt.g++.1)', () => {
 
 describe('Session: errors are explicit and carry the line', () => {
   it('rejects an unsupported command with its line number and the supported list', async () => {
-    const { error, events } = await runScript('units lj\n\nread_data system.data\n');
+    const { error, events } = await runScript('units lj\n\nneb 0.1 0.0 1000 100 10 final coords.final\n');
     expect(error).toBeInstanceOf(EngineError);
     expect(error!.line).toBe(3);
-    expect(error!.command).toBe('read_data');
+    expect(error!.command).toBe('neb');
     expect(error!.message).toMatch(/not supported/);
     expect(error!.message).toContain(SUPPORTED_COMMANDS.join(', '));
     expect(events.some((e) => e.kind === 'error' && e.line === 3)).toBe(true);
   });
 
   it.each([
-    ['units after the box', 'lattice sc 1\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nunits real', /before the simulation box/],
-    ['boundary other than p p p', 'boundary p p f', /fully periodic/],
-    ['pair style', 'pair_style lj/cut/coul/long 10', /only lj\/cut/],
-    ['groups', 'lattice sc 1\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nfix 1 mobile nve', /group 'all'/],
-    ['missing mass before run', 'lattice sc 1\nregion b block 0 3 0 3 0 3\ncreate_box 1 b\ncreate_atoms 1 box\npair_style lj/cut 1.1\npair_coeff * * 1 1\nrun 1', /mass of atom type 1/],
-    ['missing pair coeffs', 'lattice sc 1\nregion b block 0 3 0 3 0 3\ncreate_box 2 b\nmass * 1\npair_style lj/cut 1.1\npair_coeff 1 1 1 1\nrun 1', /missing: 2 2/],
-    ['region without lattice', 'region b block 0 2 0 2 0 2', /no lattice is defined/],
+    ['a file the notebook does not have', 'read_data system.data', /cannot open file system.data/],
+    ['units after the box', 'lattice sc 1\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nunits real', /cannot be used after the simulation box/],
+    ['2d with a non-periodic z', 'dimension 2\nboundary p p f', /z dimension must be periodic/],
+    ['an unsupported pair style', 'pair_style reaxff NULL', /pair_style 'reaxff' is not supported/],
+    ['an undefined group', 'lattice sc 1\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nfix 1 mobile nve', /unknown group 'mobile'/],
+    ['missing mass before run', 'lattice sc 1\nregion b block 0 3 0 3 0 3\ncreate_box 1 b\ncreate_atoms 1 box\npair_style lj/cut 1.1\npair_coeff * * 1 1\nrun 1', /masses are set \(type 1\)/],
+    ['missing pair coeffs', 'lattice sc 1\nregion b block 0 3 0 3 0 3\ncreate_box 2 b\nmass * 1\npair_style lj/cut 1.1\npair_coeff 1 1 1 1\nrun 1', /all pair coeffs are not set/],
     ['2d box not bracketing z = 0', 'dimension 2\nlattice sq 1\nregion b block 0 2 0 2 0 1\ncreate_box 1 b', /bracket zero/],
-    ['undefined variable', 'print "${nope}"', /undefined variable 'nope'/],
+    ['undefined variable', 'print "${nope}"', /illegal variable nope/],
     ['unquoted formula with spaces', 'variable a equal 1 + 2', /quote/],
-    ['two integrators', 'lattice sc 1\nregion b block 0 3 0 3 0 3\ncreate_box 1 b\ncreate_atoms 1 box\nmass 1 1\npair_style lj/cut 1.1\npair_coeff 1 1 1 1\nfix 1 all nve\nfix 2 all nvt temp 1 1 0.1\nrun 1', /nvt|both integrate|not available/],
   ])('%s', async (_name, script, pattern) => {
     const { error } = await runScript(script);
     expect(error).toBeInstanceOf(EngineError);
     expect(error!.message).toMatch(pattern);
+  });
+
+  it('two integrators on the same atoms warn, as native LAMMPS does', async () => {
+    const { error, logs } = await runScript('lattice sc 1\nregion b block 0 3 0 3 0 3\ncreate_box 1 b\ncreate_atoms 1 box\nmass 1 1\npair_style lj/cut 1.1\npair_coeff 1 1 1 1\nfix 1 all nve\nfix 2 all nvt temp 1 1 0.1\nrun 1');
+    expect(error).toBeNull();
+    expect(logs).toContain('WARNING: One or more atoms are time integrated more than once');
   });
 });
 

@@ -10,7 +10,6 @@ import { EngineClient } from '../../engine/client';
 import type { BackendChoice, FromEngine } from '../../engine/protocol';
 import type { EngineEvent, ThermoKeyword, ThermoRow } from '../../engine/types';
 import { frameToMoleculeData, typeColors, type FrameEvent } from '../../engine/view';
-import { SUPPORTED_COMMANDS } from '../../engine/interpreter';
 import { formatNumber } from '../../engine/script';
 
 /**
@@ -312,7 +311,7 @@ const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
             (Lennard-Jones atoms, periodic boxes, NVE and thermostats). It is not LAMMPS; anything outside the
             subset stops with an error that names the command.
           </p>
-          <p className={`mt-1 font-mono ${ct.muted}`}>{SUPPORTED_COMMANDS.join(' · ')}</p>
+          <p className={`mt-1 font-mono ${ct.muted}`}>{ready ? ready.commands.join(' · ') : 'starting engine…'}</p>
           <p className={`mt-1 ${ct.muted}`}>Shift+Enter runs a cell. Run all restarts the session first.</p>
         </div>
       )}

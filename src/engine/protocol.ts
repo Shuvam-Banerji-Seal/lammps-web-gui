@@ -12,7 +12,9 @@ export type ToEngine =
   /** Runs one cell's text in the current session. */
   | { type: 'exec'; id: number; text: string; firstLine: number }
   /** Stops the running `run` after its current step. */
-  | { type: 'cancel' };
+  | { type: 'cancel' }
+  /** Adds or replaces a file the session can read (data, include, potential files). */
+  | { type: 'file'; name: string; text: string };
 
 export type FromEngine =
   | {
@@ -24,6 +26,8 @@ export type FromEngine =
     /** Logical cores the browser reports (navigator.hardwareConcurrency). */
     cores: number;
     note?: string;
+    /** Commands the engine accepts (for the notebook's help panel). */
+    commands: string[];
   }
   | { type: 'event'; id: number; event: EngineEvent }
   | { type: 'file'; id: number; name: string; text: string; append: boolean }

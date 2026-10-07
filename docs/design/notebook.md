@@ -1,6 +1,11 @@
 # In-browser MD notebook (WebGPU) — design
 
-Status: **design, not yet built.** Written 2026-10-07.
+Status: **implemented (v1), 2026-10-07.** Engine `src/engine/`, worker
+`src/workers/engine.worker.ts`, UI `src/components/workbench/Notebook.tsx`.
+Verified: the melt step-0 line below matches on the CPU (fp64) and WebGPU
+paths; GPU forces match CPU within 1e-4 (real Chromium, SwiftShader);
+the notebook UI passes a 16-check real-browser test at desktop and phone
+widths.
 
 ## Goal
 
@@ -67,7 +72,7 @@ per-atom kinetic energy at T = 3 is 1.5 · 3 · 3999/4000 = 4.49887, and
 | `pair_modify` | `shift yes|no` | default `no`, as in LAMMPS |
 | `neighbor`, `neigh_modify` | accepted | the engine always evaluates the exact cutoff; documented |
 | `timestep` | `dt` | defaults per units style |
-| `fix` | `nve`, `langevin T0 T1 damp seed`, `temp/berendsen`, `temp/rescale`, `nvt temp T0 T1 damp` (Nosé–Hoover, single chain), `enforce2d` | |
+| `fix` | `nve`, `langevin T0 T1 damp seed`, `temp/berendsen`, `temp/rescale`, `nvt temp T0 T1 damp` (Nosé–Hoover chain of 3, the documented `tchain` default), `enforce2d` | |
 | `thermo` | `N` | |
 | `thermo_style` | `custom step temp pe ke etotal press vol density` (+ `one`) | |
 | `run` | `N` | |

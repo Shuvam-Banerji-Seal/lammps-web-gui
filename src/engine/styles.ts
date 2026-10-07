@@ -14,6 +14,9 @@ import { KSpaceEwald } from './force/kspace/ewald';
 import { KSpacePPPM } from './force/kspace/pppm';
 import * as pairSimple from './registry/pair_simple';
 import * as pairLJ from './registry/pair_lj';
+import * as pairLJCoul from './registry/pair_ljcoul';
+import * as pairSimple2 from './registry/pair_simple2';
+import * as pairLJ2 from './registry/pair_lj2';
 import * as bondedA from './registry/bonded_a';
 import * as bondedB from './registry/bonded_b';
 import * as pairEAM from './registry/pair_eam';
@@ -50,7 +53,8 @@ export const PAIR_STYLES: Record<string, () => Pair> = {
   'lj/cut': () => new PairLJCut(),
   'coul/long': () => new PairCoulLong(),
   'lj/cut/coul/long': () => new PairLJCutCoulLong(),
-  ...pairCoul.PAIRS, ...pairSimple.PAIRS, ...pairLJ.PAIRS, ...pairEAM.PAIRS, ...pair3Body.PAIRS,
+  ...pairCoul.PAIRS, ...pairSimple.PAIRS, ...pairLJ.PAIRS, ...pairLJCoul.PAIRS, ...pairSimple2.PAIRS, ...pairLJ2.PAIRS,
+  ...pairEAM.PAIRS, ...pair3Body.PAIRS,
 };
 
 export const BOND_STYLES: Record<string, () => Bonded> = {

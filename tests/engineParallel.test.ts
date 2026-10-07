@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { ParallelCpuForceBackend, type ForceWorkerLike } from '../src/engine/cpu/parallel';
+import { ParallelCpuForceBackend, sliceRange, type ForceWorkerLike } from '../src/engine/cpu/parallel';
+import { cellGrid, sortIntoCells } from '../src/engine/cpu/cells';
+import { pairArrays } from '../src/engine/pairs';
 import { computeCellRange, type RangeTask } from '../src/engine/cpu/rangeKernel';
 import { CpuForceBackend } from '../src/engine/cpu/forces';
 import { UNIT_SYSTEMS } from '../src/engine/units';
@@ -101,6 +103,31 @@ describe('multi-threaded CPU forces', () => {
     const r = await compare(s, 5);
     expect(r.worst).toBeLessThan(1e-12);
     expect(r.pe).toBeLessThan(1e-12);
+  });
+
+  it.each([3, 5, 8, 12])('a box of 8x8x8 cells on %i threads (slabs + periodic wrap) matches too', async (threads) => {
+    const r = await compare(jitteredFcc(16, 21), threads);
+    expect(r.worst).toBeLessThan(1e-12);
+    expect(r.pe).toBeLessThan(1e-12);
+    expect(r.vir).toBeLessThan(1e-12);
+  });
+
+  it('each worker gets only its slab: own layers + one layer up (+ layer 0 when it wraps)', () => {
+    const s = jitteredFcc(16, 21);
+    const pa = pairArrays(twoTypes());
+    const cs = sortIntoCells(s, cellGrid(s, pa.maxCutoff)!);
+    const nxy = cs.nc[0] * cs.nc[1];
+    const coef = { stride: pa.stride, cutsq: pa.cutsq, e12: pa.e12, e6: pa.e6, f12: pa.f12, f6: pa.f6, eshift: pa.eshift };
+    // a middle range of 2 layers: 3 layers of atoms, no wrap
+    const mid = sliceRange(cs, 3 * nxy, 5 * nxy, false, coef);
+    expect(mid.task.ts.length).toBe(cs.start[6 * nxy] - cs.start[3 * nxy]);
+    expect(mid.toGlobal(0)).toBe(cs.start[3 * nxy]);
+    // the last 2 layers: those + layer 0 (the wrap), not the 5 layers between
+    const last = sliceRange(cs, 6 * nxy, 8 * nxy, false, coef);
+    expect(last.task.ts.length).toBe((cs.start[8 * nxy] - cs.start[6 * nxy]) + cs.start[nxy]);
+    expect(last.toGlobal(0)).toBe(0);
+    expect(last.toGlobal(cs.start[nxy])).toBe(cs.start[6 * nxy]);
+    expect(last.task.ts.length).toBeLessThan(s.n / 2);
   });
 
   it('small boxes (< 3 cells) fall back to the single-thread path', async () => {

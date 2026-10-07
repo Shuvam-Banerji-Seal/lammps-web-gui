@@ -147,16 +147,20 @@ passes `allowFallback`.
 
 Force step, ms (bench in real Chromium; the machine carried other jobs):
 
-| atoms | 1 thread | 2 | 4 | 8 | WebGPU (A100, compat) |
-|---|---|---|---|---|---|
-| 4,000 | 10.9 | 6.5 | 3.4 | 2.6 | 2.8 |
-| 16,384 | 41.9 | 22.7 | 12.6 | 9.2 | 2.3 |
-| 55,296 | 123.6 | 70.5 | 41.3 | 34.3 | 7.2 |
+| atoms | 1 thread | 2 | 4 | 8 | 12 | 16 | WebGPU (A100, compat) |
+|---|---|---|---|---|---|---|---|
+| 4,000 | 11.0 | 6.3 | 3.5 | 2.4 | 2.5 | 3.1 | 2.2 |
+| 16,384 | 42.6 | 22.3 | 12.2 | 8.9 | 7.4 | 8.7 | 3.7 |
+| 55,296 | 126.8 | 66.0 | 39.5 | 23.3 | 21.0 | 20.5 | 3.7 |
+
+Each force worker receives only the atoms its range can reach — its own
+z-layers of cells, one layer up, and layer 0 when that wraps — not every
+position (`sliceRange`); that moved the point where more threads stop
+helping from ~8 to ~12-16 for large systems.
 
 Whole notebook runs (16,384 atoms, live view on): 22 steps/s on 1 thread,
 51 on 4, 58 on 8 (6.5 cores busy); on the A100, 55,296 atoms at 91 steps/s.
-More than ~8 threads stopped helping here: every thread receives a copy of
-the positions each step.
+Small systems stop gaining past ~8 threads (per-step messaging dominates).
 
 ## Verification plan
 

@@ -68,8 +68,8 @@ const browserCores = (): number =>
   typeof navigator !== 'undefined' && navigator.hardwareConcurrency > 0 ? navigator.hardwareConcurrency : 1;
 /**
  * Default CPU threads: half the cores (leave the rest to the page and the
- * OS), at most 8 — measured in Chromium, more threads stop paying off around
- * there because every thread receives a copy of the positions each step.
+ * OS), at most 8 — measured in Chromium, small systems stop gaining around
+ * there; large ones keep gaining to ~12-16, which the selector allows.
  */
 const defaultThreads = (): number => Math.max(1, Math.min(8, Math.floor(browserCores() / 2)));
 const reviveThreads = (raw: unknown): number | null =>

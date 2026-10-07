@@ -42,8 +42,10 @@ export interface RunHooks {
 /** Fix and compute initialization shared by run and minimize. */
 export const initRun = (sys: System): void => {
   const s = sys.state;
-  for (let t = 1; t <= s.ntypes; t++) {
-    if (!(s.massByType[t] > 0)) throw new StyleError(`not all per-type masses are set (type ${t}); use the mass command`);
+  if (!s.rmass) {
+    for (let t = 1; t <= s.ntypes; t++) {
+      if (!(s.massByType[t] > 0)) throw new StyleError(`not all per-type masses are set (type ${t}); use the mass command`);
+    }
   }
   for (const c of sys.computes) c.invalidate();
   for (const c of sys.computes) c.init();

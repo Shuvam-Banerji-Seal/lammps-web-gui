@@ -158,6 +158,7 @@ export class ForceField {
     const acc = this.acc;
     clearAccum(acc);
     s.f.fill(0, 0, 3 * s.n);
+    s.torque?.fill(0, 0, 3 * s.n);
     nb.clearForces();
     const nall = nb.nall;
     const eatomAll = flags.eatom ? new Float64Array(nall) : null;

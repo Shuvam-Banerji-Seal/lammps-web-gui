@@ -15,7 +15,7 @@ import type { Lattice } from './lattice';
 import { Rng } from './rng';
 import { Thermo } from './output/thermo';
 import type { Dump } from './output/dump';
-import { buildAtomMap, deleteAtoms as deleteAtomsImpl } from './atoms';
+import { buildAtomMap, deleteAtoms as deleteAtomsImpl, massOf } from './atoms';
 import { groupFunction } from './groupfn';
 import { defaultMinSettings, type MinSettings } from './run/min';
 
@@ -495,7 +495,7 @@ export class System {
     const s = this.state;
     switch (name) {
       case 'id': return s.id[i];
-      case 'mass': return s.massByType[s.type[i]];
+      case 'mass': return massOf(s, i);
       case 'type': return s.type[i];
       case 'mol': return s.molecule[i];
       case 'x': return s.x[3 * i];
@@ -508,6 +508,10 @@ export class System {
       case 'fy': return s.f[3 * i + 1];
       case 'fz': return s.f[3 * i + 2];
       case 'q': return s.q[i];
+      // variable.html: "atom vector = id, mass, type, mol, radius, q, x, y, z, vx, vy, vz, fx, fy, fz"
+      case 'radius':
+        if (!s.radius) throw new StyleError('variable uses atom property radius, which needs atom_style sphere');
+        return s.radius[i];
     }
     throw new StyleError(`unknown atom vector ${name}`);
   }

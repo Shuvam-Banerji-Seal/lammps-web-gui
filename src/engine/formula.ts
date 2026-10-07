@@ -45,7 +45,7 @@ type Node =
 
 export type Index = number | { variable: string };
 
-export const ATOM_VECTORS = ['id', 'mass', 'type', 'mol', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'q'];
+export const ATOM_VECTORS = ['id', 'mass', 'type', 'mol', 'radius', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'q'];
 
 /** Functions whose arguments are IDs or references, not formulas. */
 const RAW_FUNCS = new Set([

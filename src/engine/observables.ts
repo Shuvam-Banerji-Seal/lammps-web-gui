@@ -1,5 +1,6 @@
 import type { ForceResult, SimState, ThermoKeyword, ThermoRow } from './types';
 import { densityFactor } from './units';
+import { massOf } from './atoms';
 
 /*
  * Thermodynamic observables, following the documented definitions:
@@ -22,9 +23,9 @@ export const degreesOfFreedom = (s: SimState): number =>
 
 export const kineticEnergy = (s: SimState): number => {
   let sum = 0;
-  const { v, type, massByType } = s;
+  const { v, type } = s;
   for (let i = 0; i < s.n; i++) {
-    const m = massByType[type[i]];
+    const m = massOf(s, i);
     sum += m * (v[3 * i] ** 2 + v[3 * i + 1] ** 2 + v[3 * i + 2] ** 2);
   }
   return 0.5 * sum * s.units.mvv2e;
@@ -51,7 +52,7 @@ export const pressure = (s: SimState, temp: number, virial: number): number => {
 
 export const totalMass = (s: SimState): number => {
   let m = 0;
-  for (let i = 0; i < s.n; i++) m += s.massByType[s.type[i]];
+  for (let i = 0; i < s.n; i++) m += massOf(s, i);
   return m;
 };
 

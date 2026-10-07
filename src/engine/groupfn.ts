@@ -1,6 +1,7 @@
 import type { System } from './system';
 import { StyleError } from './force/types';
 import type { Mode, Value } from './formula';
+import { hasChargeStyle, isMolecularStyle, massOf } from './atoms';
 
 /*
  * Group, region, special and feature functions of variable formulas —
@@ -90,7 +91,7 @@ const groupFn = (sys: System, fn: string, args: string[]): number => {
   const s = sys.state;
   if (fn === 'fcm' || fn === 'torque') sys.forces();
   const idx = members(sys, args[0], region);
-  const m = (i: number) => s.massByType[s.type[i]];
+  const m = (i: number) => massOf(s, i);
   const dim = (w: string) => {
     if (!(w in DIMS)) throw new StyleError(`${fn}(): dimension must be x, y or z, got '${w}'`);
     return DIMS[w];
@@ -302,8 +303,8 @@ const extractSetting = (sys: System, name: string | undefined): number => {
     case 'nangletypes': return s?.topo.nangletypes ?? 0;
     case 'ndihedraltypes': return s?.topo.ndihedraltypes ?? 0;
     case 'nimpropertypes': return s?.topo.nimpropertypes ?? 0;
-    case 'molecule_flag': return s && s.atomStyle !== 'atomic' && s.atomStyle !== 'charge' ? 1 : 0;
-    case 'q_flag': return s && (s.atomStyle === 'charge' || s.atomStyle === 'full') ? 1 : 0;
+    case 'molecule_flag': return s && isMolecularStyle(s.atomStyle) ? 1 : 0;
+    case 'q_flag': return s && hasChargeStyle(s.atomStyle) ? 1 : 0;
     case 'world_rank': case 'universe_rank': return 0;
     case 'world_size': case 'universe_size': case 'nthreads': return 1;
     case 'bigint': case 'tagint': case 'imageint': return 4;

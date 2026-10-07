@@ -3,7 +3,7 @@ import { int, num, yesno, latticeScale, keywords, numOrVar } from './args';
 import { StyleError, typeBounds } from '../force/types';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT } from '../atoms';
+import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, massOf } from '../atoms';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import {
   BIG, BlockRegion, CompoundRegion, ConeRegion, EllipsoidRegion, PlaneRegion, PrismRegion, SphereRegion,
@@ -62,7 +62,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: AtomStyle[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full'];
+const ATOM_STYLES: AtomStyle[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere'];
 
 /** atom_style — atom_style.html: "The default atom style is atomic." */
 const atomStyle: Handler = ({ sys }, a) => {
@@ -71,7 +71,11 @@ const atomStyle: Handler = ({ sys }, a) => {
   if (!(ATOM_STYLES as string[]).includes(a[0])) {
     throw new StyleError(`atom_style '${a[0]}' is not supported by the browser engine; supported: ${ATOM_STYLES.join(', ')}`);
   }
-  if (a.length > 1) throw new StyleError(`atom_style ${a[0]} takes no arguments`);
+  // atom_style.html: "*sphere* arg = 0/1 (optional) for static/dynamic particle radii"; the engine
+  // never changes radii during a run, so both values behave the same.
+  if (a[0] === 'sphere') {
+    if (a.length > 2 || (a.length === 2 && a[1] !== '0' && a[1] !== '1')) throw new StyleError('usage: atom_style sphere [0|1]');
+  } else if (a.length > 1) throw new StyleError(`atom_style ${a[0]} takes no arguments`);
   sys.atomStyle = a[0] as AtomStyle;
 };
 
@@ -269,7 +273,7 @@ const createBox: Handler = ({ sys }, a) => {
   s.topo.nangletypes = types('angle/types');
   s.topo.ndihedraltypes = types('dihedral/types');
   s.topo.nimpropertypes = types('improper/types');
-  const molecular = s.atomStyle !== 'atomic' && s.atomStyle !== 'charge';
+  const molecular = isMolecularStyle(s.atomStyle);
   if (!molecular && (s.topo.nbondtypes || s.topo.nangletypes)) throw new StyleError(`atom_style ${s.atomStyle} cannot have bond or angle types`);
   sys.setState(s);
   sys.ff.bond?.allocate(s.topo.nbondtypes);
@@ -305,7 +309,7 @@ export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[],
   const types = new Int32Array(copies * t.natoms);
   for (let c = 0; c < copies; c++) for (let i = 0; i < t.natoms; i++) types[c * t.natoms + i] = t.type[i] + toff;
   for (const ty of types) if (ty < 1 || ty > s.ntypes) throw new StyleError(`molecule ${t.id}: atom type ${ty} is outside 1..${s.ntypes}`);
-  const molecular = sys.atomStyle === 'bond' || sys.atomStyle === 'angle' || sys.atomStyle === 'molecular' || sys.atomStyle === 'full';
+  const molecular = isMolecularStyle(sys.atomStyle);
   const needs: [string, number[][], number, string[]][] = [
     ['bonds', t.bonds, s.topo.nbondtypes, ['bond', 'angle', 'molecular', 'full']],
     ['angles', t.angles, s.topo.nangletypes, ['angle', 'molecular', 'full']],
@@ -317,7 +321,7 @@ export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[],
     if (!styles.includes(sys.atomStyle)) throw new StyleError(`molecule ${t.id} has ${what}, which atom_style ${sys.atomStyle} cannot store`);
     for (const e of list) if (e[0] < 1 || e[0] > ntypes) throw new StyleError(`molecule ${t.id}: ${what.slice(0, -1)} type ${e[0]} is outside 1..${ntypes}`);
   }
-  if (t.q && sys.atomStyle !== 'charge' && sys.atomStyle !== 'full') throw new StyleError(`molecule ${t.id} has charges, which atom_style ${sys.atomStyle} cannot store`);
+  if (t.q && !hasChargeStyle(sys.atomStyle)) throw new StyleError(`molecule ${t.id} has charges, which atom_style ${sys.atomStyle} cannot store`);
   const x = Float64Array.from(pts);
   const image = new Int32Array(x.length);
   const g = sys.geom;
@@ -580,6 +584,8 @@ const molecule: Handler = ({ sys }, a) => {
 const mass: Handler = ({ sys }, a) => {
   const s = sys.state;
   if (a.length !== 2) throw new StyleError('usage: mass I value');
+  // measured with native LAMMPS: "Cannot set per-type atom mass for atom style sphere"
+  if (s.rmass) throw new StyleError(`Cannot set per-type atom mass for atom style ${s.atomStyle}`);
   const m = num(a[1], 'mass');
   if (!(m > 0)) throw new StyleError('mass must be > 0');
   const [lo, hi] = typeBounds(a[0], s.ntypes);
@@ -850,7 +856,7 @@ const set: Handler = ({ sys }, a) => {
         break;
       }
       case 'charge': {
-        if (s.atomStyle !== 'charge' && s.atomStyle !== 'full') throw new StyleError(`set charge needs atom_style charge or full (current: ${s.atomStyle})`);
+        if (!hasChargeStyle(s.atomStyle)) throw new StyleError(`set charge needs atom_style charge or full (current: ${s.atomStyle})`);
         const v = value(a[k + 1], 'charge');
         for (const i of atoms) s.q[i] = v(i);
         changed = atoms.length;
@@ -879,8 +885,44 @@ const set: Handler = ({ sys }, a) => {
         k += 4;
         break;
       }
-      case 'mass':
-        throw new StyleError('set mass needs per-atom masses (atom_style sphere etc.), which the browser engine does not support; use the mass command per type');
+      // set.html: "Keyword *mass* sets the mass of all selected particles.  The particles must have a
+      // per-atom mass attribute"; "Keyword *diameter* sets the size of the selected atoms ... this
+      // command does not adjust the particle mass"; "Keyword *density* or *density/disc* also sets the
+      // mass" (atoms.ts sphereMass); "Keyword *omega* sets the angular velocity of selected atoms."
+      case 'mass': case 'density': case 'density/disc': {
+        // errors as measured with native LAMMPS
+        if (!s.rmass) throw new StyleError(`Cannot set attribute ${key} for atom style ${s.atomStyle}`);
+        if (key === 'density/disc' && sys.dimension !== 2) throw new StyleError('Set density/disc requires 2d simulation');
+        const v = value(a[k + 1], key);
+        for (const i of atoms) {
+          const x = v(i);
+          if (!(x > 0)) throw new StyleError(key === 'mass' ? `Invalid mass ${x} in set command` : `Invalid density value ${x} in set command`);
+          s.rmass[i] = key === 'mass' ? x : sphereMass(s.radius ? s.radius[i] : 0, x, key === 'density/disc');
+        }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
+      case 'diameter': {
+        if (!s.radius) throw new StyleError(`Cannot set attribute diameter for atom style ${s.atomStyle}`);
+        const v = value(a[k + 1], key);
+        for (const i of atoms) {
+          const d = v(i);
+          if (!(d >= 0)) throw new StyleError(`Invalid diameter value ${d} in set command`);
+          s.radius[i] = d / 2;
+        }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
+      case 'omega': {
+        if (!s.omega) throw new StyleError(`Cannot set attribute omega for atom style ${s.atomStyle}`);
+        const vs = [1, 2, 3].map((d) => value(a[k + d], 'omega'));
+        for (const i of atoms) for (let d = 0; d < 3; d++) s.omega[3 * i + d] = vs[d](i);
+        changed = atoms.length;
+        k += 4;
+        break;
+      }
       case 'bond': case 'angle': case 'dihedral': case 'improper': {
         const t = int(a[k + 1], `${key} type`);
         const list = s.topo[`${key}s` as 'bonds' | 'angles' | 'dihedrals' | 'impropers'];
@@ -926,7 +968,7 @@ const velocity: Handler = ({ sys }, a) => {
   if (kw.has('rigid')) throw new StyleError('velocity rigid is not supported by the browser engine');
   const unitsW = kw.get('units')?.[0] ?? 'lattice';
   for (let t = 1; t <= s.ntypes; t++) {
-    if (!(s.massByType[t] > 0)) throw new StyleError(`velocity: the mass of atom type ${t} is not set`);
+    if (!s.rmass && !(s.massByType[t] > 0)) throw new StyleError(`velocity: the mass of atom type ${t} is not set`);
   }
   const members: number[] = [];
   for (let i = 0; i < s.n; i++) if (s.mask[i] & bit) members.push(i);
@@ -979,7 +1021,7 @@ const velocity: Handler = ({ sys }, a) => {
       // velocities for two simulations run on different machines", so the
       // engine's coordinate hash gives valid but different velocities.
       const draw = (rng: { uniform(): number; gaussian(): number }, i: number) => {
-        const c = 1 / Math.sqrt(s.massByType[s.type[i]]);
+        const c = 1 / Math.sqrt(massOf(s, i));
         for (let d = 0; d < 3; d++) {
           const r = dist === 'gaussian' ? rng.gaussian() : rng.uniform() - 0.5;
           s.v[3 * i + d] = d === 2 && s.dimension === 2 ? 0 : r * c;
@@ -1055,7 +1097,7 @@ export const zeroMomentum = (sys: System, members: number[]): void => {
   const p = [0, 0, 0];
   let mt = 0;
   for (const i of members) {
-    const m = s.massByType[s.type[i]];
+    const m = massOf(s, i);
     mt += m;
     for (let d = 0; d < 3; d++) p[d] += m * s.v[3 * i + d];
   }
@@ -1069,13 +1111,13 @@ export const zeroRotation = (sys: System, members: number[]): void => {
   const pos = members.map((i) => { const u = [0, 0, 0]; g.unwrap(s.x, s.image, i, u); return u; });
   let mt = 0;
   const c = [0, 0, 0];
-  members.forEach((i, k) => { const m = s.massByType[s.type[i]]; mt += m; for (let d = 0; d < 3; d++) c[d] += m * pos[k][d]; });
+  members.forEach((i, k) => { const m = massOf(s, i); mt += m; for (let d = 0; d < 3; d++) c[d] += m * pos[k][d]; });
   if (!(mt > 0)) return;
   for (let d = 0; d < 3; d++) c[d] /= mt;
   const L = [0, 0, 0];
   const I = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
   members.forEach((i, k) => {
-    const m = s.massByType[s.type[i]];
+    const m = massOf(s, i);
     const r = [pos[k][0] - c[0], pos[k][1] - c[1], pos[k][2] - c[2]];
     const v = [s.v[3 * i], s.v[3 * i + 1], s.v[3 * i + 2]];
     L[0] += m * (r[1] * v[2] - r[2] * v[1]); L[1] += m * (r[2] * v[0] - r[0] * v[2]); L[2] += m * (r[0] * v[1] - r[1] * v[0]);

@@ -2,6 +2,7 @@ import type { SimState } from './types';
 import { degreesOfFreedom, kineticEnergy, temperature } from './observables';
 import { Rng } from './rng';
 import { halfKick, drift, rampFraction, type Fix, type RunContext } from './integrate';
+import { massOf } from './atoms';
 
 /*
  * Thermostats for the in-browser MD engine, written from the DOCUMENTED
@@ -56,11 +57,11 @@ export class FixLangevin implements Fix {
     // sqrt(24 kB T / (mvv2e dt damp)) / ftm2v — per sqrt(mass); the f array
     // holds forces such that f/m*ftm2v is an acceleration (see halfKick).
     const ampBase = Math.sqrt((24 * u.boltz * T) / (u.mvv2e * s.dt * this.damp)) / u.ftm2v;
-    const { f, v, type, massByType } = s;
+    const { f, v, type } = s;
     const rng = this.rng;
     const threeD = s.dimension === 3;
     for (let i = 0; i < s.n; i++) {
-      const m = massByType[type[i]];
+      const m = massOf(s, i);
       const fric = -(m / this.damp) / u.ftm2v;
       const amp = ampBase * Math.sqrt(m);
       const k = 3 * i;

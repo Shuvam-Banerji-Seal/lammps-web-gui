@@ -1,4 +1,5 @@
 import type { ForceResult, SimState } from '../types';
+import { massOf } from '../atoms';
 
 /*
  * GPU-resident velocity Verlet (docs/design/notebook.md, "Backends", v2).
@@ -294,7 +295,7 @@ export class ResidentStepper {
         I[4 * i + d] = s.image[3 * i + d];
       }
       X[4 * i + 3] = s.type[i];
-      V[4 * i + 3] = kf / s.massByType[s.type[i]];
+      V[4 * i + 3] = kf / massOf(s, i);
     }
     const q = this.device.queue;
     // an invalid command buffer is skipped silently, which would read back zeros

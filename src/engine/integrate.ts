@@ -1,4 +1,5 @@
 import type { SimState } from './types';
+import { massOf } from './atoms';
 
 /*
  * Velocity Verlet (Swope et al., 1982; Allen & Tildesley §3.2) split into the
@@ -43,9 +44,9 @@ export interface Fix {
 /** Half kick: v += dt/2 · F/m (with the units' force-to-velocity factor). */
 export const halfKick = (s: SimState): void => {
   const h = 0.5 * s.dt * s.units.ftm2v;
-  const { v, f, type, massByType } = s;
+  const { v, f, type } = s;
   for (let i = 0; i < s.n; i++) {
-    const c = h / massByType[type[i]];
+    const c = h / massOf(s, i);
     v[3 * i] += c * f[3 * i];
     v[3 * i + 1] += c * f[3 * i + 1];
     v[3 * i + 2] += c * f[3 * i + 2];

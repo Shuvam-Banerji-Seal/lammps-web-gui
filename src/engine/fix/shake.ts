@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { TopoList } from '../types';
 import { int, num } from '../commands/args';
+import { massOf } from '../atoms';
 
 /*
  * fix ID group shake|rattle tol iter N constraint values ... —
@@ -91,7 +92,7 @@ export class FixShake extends Fix {
 
   private massOf(i: number): number {
     const s = this.sys.state;
-    return s.massByType[s.type[i]];
+    return massOf(s, i);
   }
 
   init(): void {
@@ -245,7 +246,7 @@ export class FixShake extends Fix {
     for (const c of this.clusters) {
       this.current = c;
       const at = c.ids.map((id) => index.get(id)!);
-      const m = at.map((i) => s.massByType[s.type[i]]);
+      const m = at.map((i) => massOf(s, i));
       // current bond vectors (minimum image)
       const r = c.cons.map((k) => {
         for (let q = 0; q < 3; q++) d[q] = s.x[3 * at[k.a] + q] - s.x[3 * at[k.b] + q];
@@ -365,7 +366,7 @@ export class FixShake extends Fix {
     const d = [0, 0, 0];
     for (const c of this.clusters) {
       const at = c.ids.map((id) => index.get(id)!);
-      const m = at.map((i) => s.massByType[s.type[i]]);
+      const m = at.map((i) => massOf(s, i));
       const nc = c.cons.length;
       const r = c.cons.map((k) => {
         for (let q = 0; q < 3; q++) d[q] = s.x[3 * at[k.a] + q] - s.x[3 * at[k.b] + q];

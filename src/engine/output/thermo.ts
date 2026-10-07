@@ -3,6 +3,7 @@ import type { ThermoRow } from '../types';
 import { THERMO_KEYWORDS } from '../types';
 import { StyleError } from '../force/types';
 import { totalVirial } from '../force/types';
+import { massOf } from '../atoms';
 
 /*
  * Thermodynamic output — docs.lammps.org/thermo_style.html and
@@ -243,7 +244,7 @@ export class Thermo {
       case 'vol': return vol();
       case 'density': {
         let m = 0;
-        for (let i = 0; i < s.n; i++) m += s.massByType[s.type[i]];
+        for (let i = 0; i < s.n; i++) m += massOf(s, i);
         return (m * u.mv2d) / vol();
       }
       case 'lx': return g.lx;

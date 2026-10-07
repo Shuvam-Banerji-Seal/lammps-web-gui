@@ -5,6 +5,7 @@ import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLE
 import type { System } from '../system';
 import type { MixRule, Pair } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
+import { isMolecularStyle } from '../atoms';
 
 /*
  * Force-field commands. Styles come from styles.ts; anything else is an
@@ -113,7 +114,7 @@ const bondedKinds = {
 const bondedStyle = (kind: keyof typeof bondedKinds): Handler => (({ sys }, a) => {
   const name = a[0];
   if (!name) throw new StyleError(`usage: ${kind}_style style args`);
-  if (sys.atomStyle === 'atomic' || sys.atomStyle === 'charge') {
+  if (!isMolecularStyle(sys.atomStyle)) {
     throw new StyleError(`${kind}_style needs a molecular atom_style (bond, angle, molecular or full); the current one is ${sys.atomStyle}`);
   }
   if (name === 'none') { sys.ff[kind] = null; sys.bump(); return; }

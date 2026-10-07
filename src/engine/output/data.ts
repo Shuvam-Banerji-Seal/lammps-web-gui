@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
-import { appendAtoms, emptyState, maxAtomId, pushTopo } from '../atoms';
+import { appendAtoms, emptyState, isMolecularStyle, maxAtomId, pushTopo, sphereMass } from '../atoms';
 import { makeBox } from '../domain';
 
 /*
@@ -39,6 +39,8 @@ const STYLE_COLS: Record<AtomStyle, string[]> = {
   angle: ['id', 'mol', 'type', 'x', 'y', 'z'],
   molecular: ['id', 'mol', 'type', 'x', 'y', 'z'],
   full: ['id', 'mol', 'type', 'q', 'x', 'y', 'z'],
+  // read_data.html: "sphere | atom-ID atom-type diameter density x y z"
+  sphere: ['id', 'type', 'diameter', 'density', 'x', 'y', 'z'],
 };
 
 const HEADER_KEYS: [RegExp, string][] = [
@@ -150,7 +152,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   const n0 = s.n;
   const gbit = opts.group ? (sys.groups.create(opts.group), sys.groupBit(opts.group)) : 0;
   let sawAtoms = false;
-  const vel = new Map<number, [number, number, number]>();
+  const vel = new Map<number, number[]>();
   const coeffLines: { section: string; line: string; at: number }[] = [];
   const topo: { kind: 'bonds' | 'angles' | 'dihedrals' | 'impropers'; type: number; ids: number[] }[] = [];
   // sections
@@ -192,6 +194,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         sawAtoms = true;
         const x = new Float64Array(3 * count), type = new Int32Array(count), id = new Int32Array(count);
         const mol = new Int32Array(count), q = new Float64Array(count), image = new Int32Array(3 * count);
+        const radius = new Float64Array(count), density = new Float64Array(count);
         body.forEach(({ w, at }, a) => {
           if (w.length !== cols.length && w.length !== cols.length + 3) {
             throw new StyleError(`data file line ${at}: Atoms # ${style} expects ${cols.length} values (+3 image flags), got ${w.length}`);
@@ -208,6 +211,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
                 break;
               }
               case 'q': q[a] = numOf(v, 'charge', at); break;
+              case 'diameter': radius[a] = numOf(v, 'diameter', at) / 2; break;
+              case 'density': density[a] = numOf(v, 'density', at); break;
               case 'x': x[3 * a] = numOf(v, 'x', at) + opts.shift[0]; break;
               case 'y': x[3 * a + 1] = numOf(v, 'y', at) + opts.shift[1]; break;
               case 'z': x[3 * a + 2] = numOf(v, 'z', at) + opts.shift[2]; break;
@@ -228,18 +233,26 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
           const existing = new Set(Array.from(s.id.subarray(0, s.n)));
           for (const i of id) if (existing.has(i)) throw new StyleError(`read_data: atom ID ${i} already exists`);
         }
-        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit });
+        // read_data.html: "the density is used in conjunction with the particle volume to set the mass
+        // of each particle as mass = density * volume ... If the volume is 0.0, meaning a point
+        // particle, then the density value is used as the mass."
+        const rmass = s.radius ? radius.map((r, a) => sphereMass(r, density[a])) : undefined;
+        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass });
         // periodic remap of the new atoms
         for (let i = n0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);
         break;
       }
       case 'Velocities':
+        // read_data.html: "sphere | atom-ID vx vy vz wx wy wz"
         for (const { w, at } of body) {
-          if (w.length < 4) throw new StyleError(`data file line ${at}: Velocities needs atom-ID vx vy vz`);
-          vel.set(intOf(w[0], 'atom-ID', at) + (idBase || 0), [numOf(w[1], 'vx', at), numOf(w[2], 'vy', at), numOf(w[3], 'vz', at)]);
+          const need = s.omega ? 7 : 4;
+          if (w.length < need) throw new StyleError(`data file line ${at}: Velocities needs atom-ID vx vy vz${s.omega ? ' wx wy wz' : ''}`);
+          vel.set(intOf(w[0], 'atom-ID', at) + (idBase || 0), w.slice(1, need).map((t, c) => numOf(t, ['vx', 'vy', 'vz', 'wx', 'wy', 'wz'][c], at)));
         }
         break;
       case 'Masses':
+        // measured with native LAMMPS (atom_style sphere): "Cannot set mass for atom style sphere"
+        if (s.rmass) throw new StyleError(`Cannot set mass for atom style ${s.atomStyle}`);
         for (const { w, at } of body) {
           const t = intOf(w[0], 'atom type', at) + toff;
           if (t < 1 || t > s.ntypes) throw new StyleError(`data file line ${at}: atom type ${t} is outside 1..${s.ntypes}`);
@@ -272,6 +285,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
     for (let i = n0; i < s.n; i++) {
       const v = vel.get(s.id[i]);
       if (v) { s.v[3 * i] = v[0]; s.v[3 * i + 1] = v[1]; s.v[3 * i + 2] = sys.dimension === 2 ? 0 : v[2]; }
+      if (v && s.omega) for (let d = 0; d < 3; d++) s.omega[3 * i + d] = v[3 + d];
     }
   }
   // topology must reference existing atoms
@@ -322,7 +336,7 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
     `${s.n} atoms`,
     `${s.ntypes} atom types`,
   ];
-  const mol = s.atomStyle !== 'atomic' && s.atomStyle !== 'charge';
+  const mol = isMolecularStyle(s.atomStyle);
   if (mol) {
     const lines: [number, number, string][] = [
       [t.bonds.n, t.nbondtypes, 'bond'], [t.angles.n, t.nangletypes, 'angle'],
@@ -337,8 +351,11 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   out.push('');
   out.push(...[0, 1, 2].map((d) => `${shortest(s.box.lo[d])} ${shortest(s.box.hi[d])} ${'xyz'[d]}lo ${'xyz'[d]}hi`));
   if (s.box.triclinic) out.push(`${shortest(s.box.tilt[0])} ${shortest(s.box.tilt[1])} ${shortest(s.box.tilt[2])} xy xz yz`);
-  out.push('', 'Masses', '');
-  for (let k = 1; k <= s.ntypes; k++) out.push(`${k} ${shortest(s.massByType[k])}`);
+  // measured with native write_data: atom_style sphere (per-atom masses) writes no Masses section
+  if (!s.rmass) {
+    out.push('', 'Masses', '');
+    for (let k = 1; k <= s.ntypes; k++) out.push(`${k} ${shortest(s.massByType[k])}`);
+  }
   if (!opts.nocoeff) {
     const p = sys.ff.pair;
     if (p) {
@@ -369,13 +386,19 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
         case 'mol': return String(s.molecule[i]);
         case 'type': return String(s.type[i]);
         case 'q': return shortest(s.q[i]);
+        // measured with native write_data: diameter 2r, and density = mass / volume (mass itself for r = 0)
+        case 'diameter': return shortest(2 * s.radius![i]);
+        case 'density': return shortest(s.radius![i] > 0 ? s.rmass![i] / sphereMass(s.radius![i], 1) : s.rmass![i]);
         default: return shortest(s.x[3 * i + 'xyz'.indexOf(c)]);
       }
     });
     out.push(`${v.join(' ')} ${s.image[3 * i]} ${s.image[3 * i + 1]} ${s.image[3 * i + 2]}`);
   }
   out.push('', 'Velocities', '');
-  for (const i of order) out.push(`${s.id[i]} ${shortest(s.v[3 * i])} ${shortest(s.v[3 * i + 1])} ${shortest(s.v[3 * i + 2])}`);
+  for (const i of order) {
+    const w = s.omega ? ` ${shortest(s.omega[3 * i])} ${shortest(s.omega[3 * i + 1])} ${shortest(s.omega[3 * i + 2])}` : '';
+    out.push(`${s.id[i]} ${shortest(s.v[3 * i])} ${shortest(s.v[3 * i + 1])} ${shortest(s.v[3 * i + 2])}${w}`);
+  }
   let maxId = 0;
   for (let i = 0; i < s.n; i++) if (s.id[i] > maxId) maxId = s.id[i];
   const local = new Int32Array(maxId + 1).fill(-1);

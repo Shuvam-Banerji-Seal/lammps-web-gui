@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { Compute } from '../compute/compute';
 import { ownCompute, ramp, removeCompute } from './util';
+import { massOf } from '../atoms';
 
 /*
  * fix nvt / npt / nph — docs.lammps.org/fix_nh.html.
@@ -317,10 +318,10 @@ export class FixNH extends Fix {
 
   private kick(): void {
     const s = this.sys.state;
-    const { v, f, mask, type, massByType } = s;
+    const { v, f, mask, type } = s;
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & this.groupBit)) continue;
-      const c = this.dtf / massByType[type[i]];
+      const c = this.dtf / massOf(s, i);
       v[3 * i] += c * f[3 * i]; v[3 * i + 1] += c * f[3 * i + 1]; v[3 * i + 2] += c * f[3 * i + 2];
     }
   }

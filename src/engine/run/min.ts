@@ -1,5 +1,6 @@
 import type { System } from '../system';
 import { StyleError } from '../force/types';
+import { massOf } from '../atoms';
 
 /*
  * Energy minimization — docs.lammps.org/minimize.html, min_style.html,
@@ -255,7 +256,7 @@ export const minimize = async (
       }
       // semi-implicit Euler: v += dt F/m, mix, x += dt v (limited by dmax)
       for (let i = 0; i < s.n; i++) {
-        const c = dt * ftm2v / s.massByType[s.type[i]];
+        const c = dt * ftm2v / massOf(s, i);
         v[3 * i] += c * f[3 * i]; v[3 * i + 1] += c * f[3 * i + 1]; v[3 * i + 2] += c * f[3 * i + 2];
       }
       if (style === 'fire') {

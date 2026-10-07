@@ -42,6 +42,8 @@ import * as pairCoulLong2 from './registry/pair_coullong2';
 import * as computeAtom from './registry/compute_atom';
 import * as computeGlobal from './registry/compute_global';
 import { FixNVE } from './fix/nve';
+import { FixNVESphere } from './fix/nve_sphere';
+import { ComputeERotateSphere, ComputeTempSphere } from './compute/sphere';
 import { FixShake } from './fix/shake';
 import { FixRigid } from './fix/rigid';
 import { FixEnforce2d } from './fix/enforce2d';
@@ -97,6 +99,7 @@ export const KSPACE_STYLES: Record<string, () => KSpace> = {
 
 export const FIX_STYLES: Record<string, FixFactory> = {
   nve: (s, i, g, a) => new FixNVE(s, i, g, a),
+  'nve/sphere': (s, i, g, a) => new FixNVESphere(s, i, g, a),
   enforce2d: (s, i, g, a) => new FixEnforce2d(s, i, g, a),
   nvt: (s, i, g, a) => new FixNH(s, i, g, a, 'nvt'),
   npt: (s, i, g, a) => new FixNH(s, i, g, a, 'npt'),
@@ -118,6 +121,8 @@ export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
   ke: (s, i, g, a) => new ComputeKE(s, i, g, a),
   pe: (s, i, g, a) => new ComputePE(s, i, g, a),
   pressure: (s, i, g, a) => new ComputePressure(s, i, g, a),
+  'erotate/sphere': (s, i, g, a) => new ComputeERotateSphere(s, i, g, a),
+  'temp/sphere': (s, i, g, a) => new ComputeTempSphere(s, i, g, a),
   ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES, ...computeDeform.COMPUTES,
 };
 

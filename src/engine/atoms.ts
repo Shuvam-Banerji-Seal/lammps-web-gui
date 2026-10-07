@@ -10,8 +10,34 @@ import { makeBox, type BoxInit } from './domain';
  * molecules", "angle" "bonds and angles", "molecular" "bonds, angles,
  * dihedrals, impropers", "full" "molecular + charge". Every array exists in
  * every style here; the style only decides what read_data / write_data /
- * set accept and print.
+ * set accept and print. "sphere" is "atomic + radius, rmass, omega, torque";
+ * those four arrays exist only for it (null otherwise).
  */
+
+/** Styles with bond topology and molecule IDs. */
+export const isMolecularStyle = (st: AtomStyle): boolean => st === 'bond' || st === 'angle' || st === 'molecular' || st === 'full';
+/** Styles that store a per-atom charge. */
+export const hasChargeStyle = (st: AtomStyle): boolean => st === 'charge' || st === 'full';
+
+/**
+ * Mass of a sphere of the given radius and density: "If the atom has a
+ * radius attribute ... and its radius is non-zero, its mass is set from the
+ * density and particle volume for 3d systems" and "If none of these cases are
+ * valid, then the mass is set to the density value directly" (set.html);
+ * read_data.html: "for 2d simulations of spheres, this command will treat
+ * them as spheres when converting density to mass". disc = set density/disc
+ * ("Their mass is set from the density and particle area").
+ */
+export const sphereMass = (radius: number, density: number, disc = false): number =>
+  radius > 0 ? density * (disc ? Math.PI * radius * radius : (4 * Math.PI / 3) * radius ** 3) : density;
+
+/**
+ * create_atoms defaults for atom_style sphere, measured with native LAMMPS
+ * (write_data after create_atoms): diameter 1 and density 1, i.e. radius 0.5
+ * and mass 4 pi / 3 * 0.125, in 2d as in 3d.
+ */
+export const SPHERE_DEFAULT_RADIUS = 0.5;
+export const SPHERE_DEFAULT_MASS = sphereMass(0.5, 1);
 
 export const ALL_GROUP_BIT = 1;
 
@@ -35,7 +61,10 @@ export const emptyState = (
   ntypes,
   type: new Int32Array(0),
   massByType: new Float64Array(ntypes + 1).fill(Number.NaN),
-  rmass: null,
+  rmass: atomStyle === 'sphere' ? new Float64Array(0) : null,
+  radius: atomStyle === 'sphere' ? new Float64Array(0) : null,
+  omega: atomStyle === 'sphere' ? new Float64Array(0) : null,
+  torque: atomStyle === 'sphere' ? new Float64Array(0) : null,
   x: new Float64Array(0),
   v: new Float64Array(0),
   f: new Float64Array(0),
@@ -69,8 +98,11 @@ export interface NewAtoms {
   image?: Int32Array;
   molecule?: number | Int32Array;
   q?: number | Float64Array;
-  /** Per-atom masses (only for atom styles with rmass). */
+  /** Per-atom masses (only for atom styles with rmass; default SPHERE_DEFAULT_MASS). */
   rmass?: number | Float64Array;
+  /** atom_style sphere: radii (default SPHERE_DEFAULT_RADIUS) and flat 3N angular velocities (default 0). */
+  radius?: number | Float64Array;
+  omega?: Float64Array;
   /** Group bits to set besides 'all'. */
   mask?: number;
 }
@@ -105,9 +137,16 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
   else if (a.q) s.q.set(a.q, n0);
   if (s.rmass) {
     s.rmass = growF(s.rmass, n);
-    if (typeof a.rmass === 'number') s.rmass.fill(a.rmass, n0, n);
-    else if (a.rmass) s.rmass.set(a.rmass, n0);
+    if (a.rmass instanceof Float64Array) s.rmass.set(a.rmass, n0);
+    else s.rmass.fill(a.rmass ?? SPHERE_DEFAULT_MASS, n0, n);
   }
+  if (s.radius) {
+    s.radius = growF(s.radius, n);
+    if (a.radius instanceof Float64Array) s.radius.set(a.radius, n0);
+    else s.radius.fill(a.radius ?? SPHERE_DEFAULT_RADIUS, n0, n);
+  }
+  if (s.omega) { s.omega = growF(s.omega, 3 * n); if (a.omega) s.omega.set(a.omega, 3 * n0); }
+  if (s.torque) s.torque = growF(s.torque, 3 * n);
   s.n = n;
   return add;
 };
@@ -133,6 +172,11 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
       s.type[k] = s.type[i]; s.id[k] = s.id[i]; s.mask[k] = s.mask[i];
       s.molecule[k] = s.molecule[i]; s.q[k] = s.q[i];
       if (s.rmass) s.rmass[k] = s.rmass[i];
+      if (s.radius) s.radius[k] = s.radius[i];
+      for (let d = 0; d < 3; d++) {
+        if (s.omega) s.omega[3 * k + d] = s.omega[3 * i + d];
+        if (s.torque) s.torque[3 * k + d] = s.torque[3 * i + d];
+      }
     }
     k++;
   }
@@ -143,6 +187,9 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
   s.image = s.image.slice(0, 3 * k); s.type = s.type.slice(0, k); s.id = s.id.slice(0, k);
   s.mask = s.mask.slice(0, k); s.molecule = s.molecule.slice(0, k); s.q = s.q.slice(0, k);
   if (s.rmass) s.rmass = s.rmass.slice(0, k);
+  if (s.radius) s.radius = s.radius.slice(0, k);
+  if (s.omega) s.omega = s.omega.slice(0, 3 * k);
+  if (s.torque) s.torque = s.torque.slice(0, 3 * k);
   for (const list of [s.topo.bonds, s.topo.angles, s.topo.dihedrals, s.topo.impropers]) {
     filterTopo(list, (ids) => !ids.some((id) => gone.has(id)));
   }

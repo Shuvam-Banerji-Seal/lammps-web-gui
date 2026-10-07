@@ -1,6 +1,7 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
 import type { System } from '../system';
+import { massOf } from '../atoms';
 
 /*
  * fix ID group rigid|rigid/nve|rigid/small|rigid/nve/small bodystyle ... —
@@ -210,7 +211,7 @@ export class FixRigid extends Fix {
       const xcm = [0, 0, 0], vcm = [0, 0, 0];
       const pos = idx.map((i) => { g.unwrap(s.x, s.image, i, u); return [u[0], u[1], u[2]]; });
       idx.forEach((i, n) => {
-        const m = s.massByType[s.type[i]];
+        const m = massOf(s, i);
         M += m;
         for (let d = 0; d < 3; d++) { xcm[d] += m * pos[n][d]; vcm[d] += m * s.v[3 * i + d]; }
       });
@@ -218,7 +219,7 @@ export class FixRigid extends Fix {
       const I = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
       const angmom = [0, 0, 0];
       idx.forEach((i, n) => {
-        const m = s.massByType[s.type[i]];
+        const m = massOf(s, i);
         const r = [pos[n][0] - xcm[0], pos[n][1] - xcm[1], pos[n][2] - xcm[2]];
         const r2 = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
         for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) I[a][b] += m * ((a === b ? r2 : 0) - r[a] * r[b]);
@@ -355,7 +356,7 @@ export class FixRigid extends Fix {
           }
         }
         if (virialFactor) {
-          const m = s.massByType[s.type[i]];
+          const m = massOf(s, i);
           if (setX) { u[0] = xold[0]; u[1] = xold[1]; u[2] = xold[2]; } else g.unwrap(s.x, s.image, i, u);
           const fc = [0, 1, 2].map((d) => (m * (s.v[3 * i + d] - vold[d])) / dtf - s.f[3 * i + d]);
           vir[0] += virialFactor * u[0] * fc[0]; vir[1] += virialFactor * u[1] * fc[1]; vir[2] += virialFactor * u[2] * fc[2];

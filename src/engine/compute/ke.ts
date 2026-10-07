@@ -1,6 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
+import { massOf } from '../atoms';
 
 /*
  * compute ID group ke — docs.lammps.org/compute_ke.html: "Define a
@@ -25,7 +26,7 @@ export class ComputeKE extends Compute {
     let k = 0;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      const m = s.massByType[s.type[i]];
+      const m = massOf(s, i);
       k += m * (s.v[3 * i] ** 2 + s.v[3 * i + 1] ** 2 + s.v[3 * i + 2] ** 2);
     }
     return 0.5 * s.units.mvv2e * k;

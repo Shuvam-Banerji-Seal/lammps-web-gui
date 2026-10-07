@@ -1,6 +1,7 @@
 import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { formatNumber } from '../script';
+import { hasChargeStyle, isMolecularStyle, massOf } from '../atoms';
 
 /*
  * Per-atom snapshots — docs.lammps.org/dump.html and dump_modify.html.
@@ -27,7 +28,11 @@ const INT_COLS = new Set(['id', 'mol', 'proc', 'procp1', 'type', 'ix', 'iy', 'iz
 const ATOM_COLS = new Set([
   'id', 'mol', 'proc', 'procp1', 'type', 'element', 'mass', 'x', 'y', 'z', 'xs', 'ys', 'zs', 'xu', 'yu', 'zu',
   'xsu', 'ysu', 'zsu', 'ix', 'iy', 'iz', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'q',
+  // dump.html: "radius,diameter = radius, diameter of spherical particle", "omegax,omegay,omegaz =
+  // angular velocity of spherical particle", "tqx,tqy,tqz = torque on finite-size particles"
+  'radius', 'diameter', 'omegax', 'omegay', 'omegaz', 'tqx', 'tqy', 'tqz',
 ]);
+const SPHERE_COLS = new Set(['radius', 'diameter', 'omegax', 'omegay', 'omegaz', 'tqx', 'tqy', 'tqz']);
 
 /** Compiled C formats (parsing a format per value is slow for large dumps). */
 const fmtCache = new Map<string, (v: number) => string>();
@@ -107,8 +112,9 @@ export class Dump {
   private validate(c: string): void {
     if (ATOM_COLS.has(c)) {
       const st = this.sys.atomStyle;
-      if (c === 'q' && st !== 'charge' && st !== 'full') throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (q needs atom_style charge or full)`);
-      if (c === 'mol' && (st === 'atomic' || st === 'charge')) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (mol needs a molecular atom_style)`);
+      if (c === 'q' && !hasChargeStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (q needs atom_style charge or full)`);
+      if (SPHERE_COLS.has(c) && st !== 'sphere') throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style sphere)`);
+      if (c === 'mol' && !isMolecularStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (mol needs a molecular atom_style)`);
       return;
     }
     const m = /^([cfv])_([A-Za-z0-9_]+)(?:\[(\d+)\])?$/.exec(c);
@@ -369,7 +375,7 @@ export class Dump {
       case 'proc': return out;
       case 'procp1': return out.fill(1);
       case 'type': for (let i = 0; i < s.n; i++) out[i] = s.type[i]; return out;
-      case 'mass': for (let i = 0; i < s.n; i++) out[i] = s.massByType[s.type[i]]; return out;
+      case 'mass': for (let i = 0; i < s.n; i++) out[i] = massOf(s, i); return out;
       case 'q': for (let i = 0; i < s.n; i++) out[i] = s.q[i]; return out;
       case 'x': case 'y': case 'z': {
         const d = 'xyz'.indexOf(c);
@@ -409,6 +415,21 @@ export class Dump {
       case 'fx': case 'fy': case 'fz': {
         const d = 'xyz'.indexOf(c[1]);
         for (let i = 0; i < s.n; i++) out[i] = s.f[3 * i + d];
+        return out;
+      }
+      case 'radius': case 'diameter': {
+        const f = c === 'radius' ? 1 : 2;
+        for (let i = 0; i < s.n; i++) out[i] = f * s.radius![i];
+        return out;
+      }
+      case 'omegax': case 'omegay': case 'omegaz': {
+        const d = 'xyz'.indexOf(c[5]);
+        for (let i = 0; i < s.n; i++) out[i] = s.omega![3 * i + d];
+        return out;
+      }
+      case 'tqx': case 'tqy': case 'tqz': {
+        const d = 'xyz'.indexOf(c[2]);
+        for (let i = 0; i < s.n; i++) out[i] = s.torque![3 * i + d];
         return out;
       }
     }

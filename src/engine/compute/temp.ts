@@ -1,6 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
+import { massOf } from '../atoms';
 
 /*
  * compute ID group temp — docs.lammps.org/compute_temp.html:
@@ -48,11 +49,11 @@ export class ComputeTemp extends Compute {
   protected computeScalar(): number {
     if (this.dynamicDof) this.dofCompute();
     const s = this.sys.state;
-    const { v, massByType, type } = s;
+    const { v, type } = s;
     let t = 0;
     for (let i = 0; i < s.n; i++) {
       if (!this.counted(i)) continue;
-      const m = massByType[type[i]];
+      const m = massOf(s, i);
       t += m * (v[3 * i] * v[3 * i] + v[3 * i + 1] * v[3 * i + 1] + v[3 * i + 2] * v[3 * i + 2]);
     }
     const tfactor = this.dof > 0 ? s.units.mvv2e / (this.dof * s.units.boltz) : 0;
@@ -61,11 +62,11 @@ export class ComputeTemp extends Compute {
 
   protected computeVector(): void {
     const s = this.sys.state;
-    const { v, massByType, type } = s;
+    const { v, type } = s;
     const t = [0, 0, 0, 0, 0, 0];
     for (let i = 0; i < s.n; i++) {
       if (!this.counted(i)) continue;
-      const m = massByType[type[i]];
+      const m = massOf(s, i);
       const vx = v[3 * i], vy = v[3 * i + 1], vz = v[3 * i + 2];
       t[0] += m * vx * vx; t[1] += m * vy * vy; t[2] += m * vz * vz;
       t[3] += m * vx * vy; t[4] += m * vx * vz; t[5] += m * vy * vz;

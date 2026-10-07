@@ -1,6 +1,7 @@
 import type { SimState } from './types';
 import { Rng } from './rng';
 import { kineticEnergy, temperature } from './observables';
+import { massOf } from './atoms';
 
 /*
  * docs.lammps.org/velocity.html:
@@ -26,10 +27,10 @@ export interface CreateOptions {
 export const createVelocities = (s: SimState, temp: number, seed: number, opts: CreateOptions = {}): void => {
   const rng = new Rng(seed);
   const gaussian = opts.dist === 'gaussian';
-  const { v, type, massByType } = s;
+  const { v, type } = s;
   for (let i = 0; i < s.n; i++) {
     // per-component variance kT/m: scale the deviate by 1/sqrt(m)
-    const c = 1 / Math.sqrt(massByType[type[i]]);
+    const c = 1 / Math.sqrt(massOf(s, i));
     for (let d = 0; d < 3; d++) {
       const r = gaussian ? rng.gaussian() : rng.uniform() - 0.5;
       v[3 * i + d] = d === 2 && s.dimension === 2 ? 0 : r * c;
@@ -62,7 +63,7 @@ export const zeroMomentum = (s: SimState): void => {
   const p = [0, 0, 0];
   let mtot = 0;
   for (let i = 0; i < s.n; i++) {
-    const m = s.massByType[s.type[i]];
+    const m = massOf(s, i);
     mtot += m;
     for (let d = 0; d < 3; d++) p[d] += m * s.v[3 * i + d];
   }
@@ -82,7 +83,7 @@ export const zeroAngularMomentum = (s: SimState): void => {
   const com = [0, 0, 0];
   let mtot = 0;
   for (let i = 0; i < s.n; i++) {
-    const m = s.massByType[s.type[i]];
+    const m = massOf(s, i);
     mtot += m;
     for (let d = 0; d < 3; d++) com[d] += m * pos(i, d);
   }
@@ -91,7 +92,7 @@ export const zeroAngularMomentum = (s: SimState): void => {
   const ang = [0, 0, 0];
   const I = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
   for (let i = 0; i < s.n; i++) {
-    const m = s.massByType[s.type[i]];
+    const m = massOf(s, i);
     const r = [pos(i, 0) - com[0], pos(i, 1) - com[1], pos(i, 2) - com[2]];
     const vv = [s.v[3 * i], s.v[3 * i + 1], s.v[3 * i + 2]];
     ang[0] += m * (r[1] * vv[2] - r[2] * vv[1]);

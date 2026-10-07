@@ -4,6 +4,7 @@ import type { System } from '../system';
 import type { Compute } from '../compute/compute';
 import { Rng } from '../rng';
 import { ownCompute, parseNumOrVar, ramp, removeCompute, valueOf, type NumOrVar } from './util';
+import { massOf } from '../atoms';
 
 /*
  * Velocity thermostats that do not integrate (use them with fix nve):
@@ -34,7 +35,7 @@ const twoKE = (sys: System, bit: number): number => {
   let t = 0;
   for (let i = 0; i < s.n; i++) {
     if (!(s.mask[i] & bit)) continue;
-    const m = s.massByType[s.type[i]];
+    const m = massOf(s, i);
     t += m * (s.v[3 * i] ** 2 + s.v[3 * i + 1] ** 2 + s.v[3 * i + 2] ** 2);
   }
   return t * s.units.mvv2e;
@@ -222,7 +223,7 @@ export class FixTempCSVR extends RescaleFix {
       const c2 = Math.sqrt(1 - c * c);
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & this.groupBit)) continue;
-        const sd = Math.sqrt(kt / s.massByType[s.type[i]]);
+        const sd = Math.sqrt(kt / massOf(s, i));
         for (let d = 0; d < 3; d++) {
           if (d === 2 && s.dimension === 2) continue;
           s.v[3 * i + d] = c * s.v[3 * i + d] + c2 * sd * this.rng.gaussian();
@@ -336,14 +337,14 @@ export class FixLangevin extends Fix {
     if (tt < 0) throw new StyleError(`fix ${this.id} langevin: target temperature is negative`);
     const bias = this.temp?.hasBias() ?? false;
     if (bias) { this.temp!.computeBias(); this.temp!.removeBiasAll(); }
-    const { f, v, type, massByType, mask } = s;
+    const { f, v, type, mask } = s;
     const two = s.dimension === 2;
     if (this.tally && this.fl.length !== 3 * s.n) this.fl = new Float64Array(3 * s.n);
     let sx = 0, sy = 0, sz = 0, count = 0;
     const rand = this.zero ? new Float64Array(3 * s.n) : null;
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & this.groupBit)) continue;
-      const m = massByType[type[i]];
+      const m = massOf(s, i);
       const damp = this.damp / this.ratio[type[i]];
       const g1 = -(m / damp) / u.ftm2v;
       const g2 = Math.sqrt(m) * Math.sqrt((24 * u.boltz * tt) / (u.mvv2e * s.dt * damp)) / u.ftm2v;

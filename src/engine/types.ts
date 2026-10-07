@@ -72,7 +72,7 @@ export interface UnitSystem {
 }
 
 /** docs.lammps.org/atom_style.html styles the engine implements. */
-export type AtomStyle = 'atomic' | 'charge' | 'bond' | 'angle' | 'molecular' | 'full';
+export type AtomStyle = 'atomic' | 'charge' | 'bond' | 'angle' | 'molecular' | 'full' | 'sphere';
 
 /**
  * Bonded topology entries of one kind, stored by atom ID (not index) so that
@@ -111,6 +111,10 @@ export interface SimState {
   massByType: Float64Array;
   /** Per-atom masses (atom styles with a per-atom mass, e.g. sphere), else null: use massOf(). */
   rmass: Float64Array | null;
+  /** atom_style sphere: per-atom radius (0 = point particle), angular velocity and torque (3N); else null. */
+  radius: Float64Array | null;
+  omega: Float64Array | null;
+  torque: Float64Array | null;
   x: Float64Array;
   v: Float64Array;
   f: Float64Array;

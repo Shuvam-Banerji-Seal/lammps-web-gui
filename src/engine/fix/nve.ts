@@ -1,6 +1,7 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
+import { massOf } from '../atoms';
 
 /*
  * fix ID group nve — docs.lammps.org/fix_nve.html: "Perform plain time
@@ -18,7 +19,7 @@ export class FixNVE extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length && this.style === 'nve') throw new StyleError('fix nve takes no arguments');
+    if (args.length && new.target === FixNVE) throw new StyleError('fix nve takes no arguments');
     this.timeIntegrate = true;
   }
 
@@ -32,12 +33,12 @@ export class FixNVE extends Fix {
 
   initialIntegrate(): void {
     const s = this.sys.state;
-    const { x, v, f, mask, type, massByType } = s;
+    const { x, v, f, mask, type } = s;
     const bit = this.groupBit;
     const dtf = this.dtf, dtv = this.dtv;
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & bit)) continue;
-      const c = dtf / massByType[type[i]];
+      const c = dtf / massOf(s, i);
       v[3 * i] += c * f[3 * i]; v[3 * i + 1] += c * f[3 * i + 1]; v[3 * i + 2] += c * f[3 * i + 2];
       x[3 * i] += dtv * v[3 * i]; x[3 * i + 1] += dtv * v[3 * i + 1]; x[3 * i + 2] += dtv * v[3 * i + 2];
     }
@@ -45,12 +46,12 @@ export class FixNVE extends Fix {
 
   finalIntegrate(): void {
     const s = this.sys.state;
-    const { v, f, mask, type, massByType } = s;
+    const { v, f, mask, type } = s;
     const bit = this.groupBit;
     const dtf = this.dtf;
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & bit)) continue;
-      const c = dtf / massByType[type[i]];
+      const c = dtf / massOf(s, i);
       v[3 * i] += c * f[3 * i]; v[3 * i + 1] += c * f[3 * i + 1]; v[3 * i + 2] += c * f[3 * i + 2];
     }
   }

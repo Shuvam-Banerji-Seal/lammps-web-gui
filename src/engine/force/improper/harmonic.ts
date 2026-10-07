@@ -10,7 +10,14 @@ import { StyleError, type BondedCompute } from '../types';
  *   coefficients "K (energy)", "chi0 (degrees)".
  * chi is taken as the unsigned angle between the planes, in [0, pi] (the
  * oracle case improper_harmonic checks this with chi0 != 0).
+ * Near-flat geometry: the force is dE/dchi dchi/dcos(chi) dcos(chi)/dr with
+ * dchi/dcos = -1/sin(chi), and native LAMMPS floors sin(chi) at 0.001 —
+ * measured on a lone improper (K 12, chi0 20): its forces equal the exact
+ * gradient for sin(chi) >= 0.001 and the gradient times sin(chi)/0.001 below
+ * (ratio 0.872665 at chi = 0.05 deg, 0.174532 at 0.01 deg, to 6 digits).
+ * Oracle case w1ba_angle_cosine reaches chi = 0.03 deg at step 37.
  */
+const SIN_FLOOR = 0.001;
 
 export class ImproperHarmonic extends SimpleBonded {
   readonly name = 'harmonic';
@@ -44,7 +51,9 @@ export class ImproperHarmonic extends SimpleBonded {
       const dchi = chi - c0[t];
       const ei = K[t] * dchi * dchi;
       e += ei;
-      applyDihedral(bc, atoms, 2 * K[t] * dchi * sgn, grad, rel, ei);
+      const sn = Math.sin(chi);
+      const floor = sn < SIN_FLOOR ? sn / SIN_FLOOR : 1;
+      applyDihedral(bc, atoms, 2 * K[t] * dchi * sgn * floor, grad, rel, ei);
     }
     bc.acc.eimp += e;
   }

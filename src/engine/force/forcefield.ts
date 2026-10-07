@@ -72,7 +72,11 @@ export class ForceField {
    * Setup before a run / force evaluation: checks coefficients, mixes, sets
    * neighbor requirements and the special list.
    */
+  /** Run-log warnings for bonded styles, set at init from the style context. */
+  private warn: (text: string) => void = () => {};
+
   init(s: SimState, nb: Neighbor, geom: Geometry, ctx: StyleContext): void {
+    this.warn = (t) => ctx.log(`WARNING: ${t}`);
     this.checkTopology(s);
     if (this.pair) {
       if (this.pair.ntypes !== s.ntypes) this.pair.allocate(s.ntypes);
@@ -162,7 +166,7 @@ export class ForceField {
     const vatom = flags.vatom ? new Float64Array(6 * s.n) : null;
     if (this.bond || this.angle || this.dihedral || this.improper) {
       if (this.map.length === 0 || this.mapStale(s)) this.map = buildAtomMap(s);
-      const bc = { s, geom, map: this.map, f: s.f, acc, eatom, vatom, virial: acc.vbond };
+      const bc = { s, geom, map: this.map, f: s.f, acc, eatom, vatom, virial: acc.vbond, warn: this.warn };
       this.bond?.compute(bc);
       bc.virial = acc.vangle;
       this.angle?.compute(bc);

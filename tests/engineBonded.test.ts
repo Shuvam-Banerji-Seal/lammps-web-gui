@@ -52,3 +52,26 @@ describe('dihedral geometry', () => {
     expect(Math.abs(phi)).toBeCloseTo(Math.PI, 12);
   });
 });
+
+describe('FENE guard (native LAMMPS behaviour, see bond/styles.ts feneArg)', () => {
+  const run = async (x2: number) => {
+    const { Session } = await import('../src/engine/interpreter');
+    const logs: string[] = [];
+    let error: Error | null = null;
+    const session = new Session({ emit: (e) => { if (e.kind === 'log') logs.push(e.text); }, writeFile: () => {} });
+    session.addFile('d.data', `LAMMPS data file\n\n2 atoms\n1 bonds\n1 atom types\n1 bond types\n\n-10 10 xlo xhi\n-10 10 ylo yhi\n-10 10 zlo zhi\n\nMasses\n\n1 1.0\n\nAtoms # bond\n\n1 1 1 0 0 0\n2 1 1 ${x2} 0 0\n\nBonds\n\n1 1 1 2\n`);
+    try {
+      await session.execute('units lj\natom_style bond\nboundary f f f\nread_data d.data\npair_style lj/cut 1.0\npair_coeff * * 0.0 1.0\nbond_style fene\nbond_coeff 1 30.0 1.5 1.0 1.0\nthermo_style custom step ebond\nrun 0');
+    } catch (e) { error = e as Error; }
+    return { logs, error };
+  };
+  it('warns and uses 0.1 when 1 - (r/R0)^2 < 0.1', async () => {
+    const { logs, error } = await run(1.45);
+    expect(error).toBeNull();
+    expect(logs.some((l) => /^WARNING: FENE bond too long: 0 1 2 1\.45$/.test(l))).toBe(true);
+  });
+  it('stops with "Bad FENE bond" at -3 or below', async () => {
+    const { error } = await run(3.0);
+    expect(error?.message).toMatch(/Bad FENE bond/);
+  });
+});

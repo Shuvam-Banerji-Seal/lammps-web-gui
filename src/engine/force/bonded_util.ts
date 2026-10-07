@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute } from './types';
+import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from './types';
 import { fmtCoeff, parseNum } from './util';
 
 /*
@@ -59,7 +59,7 @@ export class TypeParams {
 export abstract class SimpleBonded extends Bonded {
   params!: TypeParams;
   abstract readonly paramNames: readonly string[];
-  settings(args: string[]): void {
+  settings(args: string[], _ctx?: StyleContext): void {
     if (args.length) throw new StyleError(`${this.kind}_style ${this.name} takes no arguments`);
   }
   allocate(ntypes: number): void {
@@ -72,11 +72,11 @@ export abstract class SimpleBonded extends Bonded {
     if (args.length !== n) throw new StyleError(`${this.kind}_coeff ${this.name} needs ${n} coefficient(s): ${this.paramNames.join(' ')}`);
     return args.map((w, k) => parseNum(w, this.paramNames[k]));
   }
-  coeff(args: string[]): void {
+  coeff(args: string[], _ctx?: StyleContext): void {
     if (!args.length) throw new StyleError(`usage: ${this.kind}_coeff N coefficients`);
     this.params.setRange(args[0], this.parse(args.slice(1)));
   }
-  init(): void {
+  init(_ctx?: StyleContext): void {
     this.params.check(this.kind);
   }
   dataCoeffs(): string[] {

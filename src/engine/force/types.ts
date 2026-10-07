@@ -319,6 +319,8 @@ export interface BondedCompute {
   virial: Float64Array;
   eatom: Float64Array | null;
   vatom: Float64Array | null;
+  /** Emits a "WARNING: ..." line in the run log (e.g. FENE bond too long). */
+  warn?: (text: string) => void;
 }
 
 /**

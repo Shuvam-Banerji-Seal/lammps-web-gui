@@ -120,7 +120,18 @@ export class PairHybrid extends Pair {
       let e = k + 1;
       while (e < args.length && !this.startsSub(args, e)) e++;
       const style = make();
-      style.settings(args.slice(k + 1, e), ctx);
+      const subArgs = args.slice(k + 1, e);
+      try {
+        style.settings(subArgs, ctx);
+      } catch (err) {
+        if (!(err instanceof StyleError)) throw err;
+        // an unsupported sub-style's name lands in the previous sub-style's arguments
+        const words = subArgs.filter((w) => /^[A-Za-z]/.test(w) && !w.startsWith('v_'));
+        const hint = words.length
+          ? ` If ${words.map((w) => `'${w}'`).join(' or ')} is meant as a pair style, the browser engine does not support it; supported: ${Object.keys(this.registry).filter((n) => !n.startsWith('hybrid')).sort().join(', ')}.`
+          : '';
+        throw new StyleError(`pair_style ${this.mode}: sub-style ${name} ${subArgs.join(' ')}: ${err.message}.${hint}`);
+      }
       if (!style.virialFdotr) throw new StyleError(`pair_style ${this.mode}: sub-style ${name} cannot be combined by the browser engine`);
       const instance = subs.filter((s) => s.name === name).length + 1;
       subs.push({ style, name, instance, scale, specialLJ: null, specialCoul: null, used: false, half: null, full: null });

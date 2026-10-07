@@ -25,7 +25,6 @@ export const ensureThermoComputes = (sys: System): void => {
 
 /** fix ID group style args — fix.html: "If you specify a fix ID that already exists, it will replace the existing fix" when the style matches. */
 const fix: Handler = ({ sys }, a) => {
-  sys.state;
   const [id, group, style] = a;
   if (!id || !group || !style) throw new StyleError('usage: fix ID group-ID style args');
   if (!/^[A-Za-z0-9_]+$/.test(id)) throw new StyleError(`fix ID '${id}' must be alphanumeric or underscore`);
@@ -33,6 +32,8 @@ const fix: Handler = ({ sys }, a) => {
   if (!make) {
     throw new StyleError(`fix style '${style}' is not supported by the browser engine; supported: ${Object.keys(FIX_STYLES).sort().join(', ')}`);
   }
+  // the style is checked first, so a fix the engine lacks is named even before the box exists
+  sys.state;
   const k = sys.fixes.findIndex((f) => f.id === id);
   if (k >= 0 && sys.fixes[k].style !== style) throw new StyleError(`replacing fix ${id} with a different style (${sys.fixes[k].style} -> ${style}) is not allowed; unfix it first`);
   ensureThermoComputes(sys);

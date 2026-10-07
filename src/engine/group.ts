@@ -29,7 +29,9 @@ export class Groups {
   create(name: string): number {
     const k = this.find(name);
     if (k >= 0) return k;
-    if (!/^[A-Za-z0-9_]+$/.test(name)) throw new StyleError(`group ID '${name}' must be alphanumeric or underscore`);
+    // group.html sets no character rule for group IDs (unlike fix, compute and variable IDs), and native
+    // LAMMPS accepts e.g. lo-fixed, a.b, a+b, a/b and 1abc, also inside count() (measured 2026-10-07)
+    if (name === '') throw new StyleError('group ID must not be empty');
     let free = this.names.indexOf(null);
     if (free < 0) {
       if (this.names.length >= MAX_GROUPS) throw new StyleError('too many groups (at most 32, including all)');

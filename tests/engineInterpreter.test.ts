@@ -332,3 +332,15 @@ describe('filesReadBy (notebook reminder of files to add)', () => {
     expect(filesReadBy(script)).toEqual(['system.data', 'settings.in', 'tip3p.mol', 'traj.dump']);
   });
 });
+
+describe('IDs and command order measured against native LAMMPS', () => {
+  it('group IDs may contain any characters (examples/friction uses lo-fixed), also in count()', async () => {
+    const { logs, error } = await runScript('units lj\nlattice sc 1.0\nregion box block 0 2 0 2 0 2\ncreate_box 1 box\ncreate_atoms 1 box\ngroup lo-fixed id 1 2\ngroup a+b id 3\nprint "N $(count(lo-fixed)+count(a+b))"');
+    expect(error).toBeNull();
+    expect(logs).toContain('N 3');
+  });
+  it('an unsupported fix style is named even before the box exists', async () => {
+    const { error } = await runScript('units real\nfix csinfo all property/atom i_CSID\n');
+    expect(error?.message).toMatch(/fix style 'property\/atom' is not supported/);
+  });
+});

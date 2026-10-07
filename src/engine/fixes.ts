@@ -1,5 +1,6 @@
 import type { FixSpec } from './types';
 import { FixEnforce2d, FixNve, type Fix } from './integrate';
+import { FixLangevin, FixNvt, FixTempBerendsen, FixTempRescale } from './thermostats';
 
 /*
  * Fix construction from parsed specs. The interpreter parses every
@@ -15,7 +16,18 @@ export const makeFix = (spec: FixSpec): Fix => {
       return new FixNve(spec.id);
     case 'enforce2d':
       return new FixEnforce2d(spec.id);
-    default:
-      throw new FixNotImplementedError(`fix ${spec.style} is not available in this build of the notebook engine yet`);
+    case 'langevin':
+      return new FixLangevin(spec.id, spec.tStart, spec.tStop, spec.damp, spec.seed);
+    case 'temp/berendsen':
+      return new FixTempBerendsen(spec.id, spec.tStart, spec.tStop, spec.damp);
+    case 'temp/rescale':
+      return new FixTempRescale(spec.id, spec.every, spec.tStart, spec.tStop, spec.window, spec.fraction);
+    case 'nvt':
+      return new FixNvt(spec.id, spec.tStart, spec.tStop, spec.damp);
+    default: {
+      // All FixSpec styles are handled above; kept for future spec variants.
+      const style = (spec as { style: string }).style;
+      throw new FixNotImplementedError(`fix ${style} is not available in this build of the notebook engine yet`);
+    }
   }
 };

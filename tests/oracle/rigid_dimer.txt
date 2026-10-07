@@ -1,0 +1,12 @@
+# rigid linear dimer (5 degrees of freedom)
+2 atoms
+
+Coords
+
+1 0.0 0.0 0.0
+2 1.1 0.0 0.0
+
+Types
+
+1 2
+2 2

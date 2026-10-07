@@ -43,6 +43,7 @@ import * as computeAtom from './registry/compute_atom';
 import * as computeGlobal from './registry/compute_global';
 import { FixNVE } from './fix/nve';
 import { FixShake } from './fix/shake';
+import { FixRigid } from './fix/rigid';
 import { FixEnforce2d } from './fix/enforce2d';
 import { FixNH } from './fix/nh';
 import { FixLangevin, FixTempBerendsen, FixTempCSVR, FixTempRescale } from './fix/thermostats';
@@ -107,6 +108,7 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   'temp/csld': (s, i, g, a) => new FixTempCSVR(s, i, g, a, 'temp/csld'),
   shake: (s, i, g, a) => new FixShake(s, i, g, a, 'shake'),
   rattle: (s, i, g, a) => new FixShake(s, i, g, a, 'rattle'),
+  ...Object.fromEntries(['rigid', 'rigid/nve', 'rigid/small', 'rigid/nve/small'].map((st) => [st, (s: System, i: string, g: string, a: string[]) => new FixRigid(s, i, g, a, st)])),
   ...fixForce.FIXES, ...fixWall.FIXES, ...fixOutput.FIXES, ...fixMotion.FIXES,
   ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES, ...fixDeform.FIXES,
 };

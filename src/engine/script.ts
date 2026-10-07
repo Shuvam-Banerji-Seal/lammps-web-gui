@@ -241,3 +241,19 @@ const cGeneral = (v: number, prec: number, upper: boolean, keepZeros: boolean): 
   }
   return s;
 };
+
+/**
+ * Files a script reads by name — read_data, read_dump and include take the
+ * file as their first argument, molecule as its second — so the notebook can
+ * remind the user to add them. Names built from variables are skipped.
+ */
+export const filesReadBy = (script: string): string[] => {
+  const out = new Set<string>();
+  for (const raw of script.split('\n')) {
+    const line = raw.replace(/#.*$/, '').trim();
+    const w = line.split(/\s+/);
+    if ((w[0] === 'read_data' || w[0] === 'read_dump' || w[0] === 'include') && w[1] && !w[1].includes('$')) out.add(w[1]);
+    if (w[0] === 'molecule' && w[2] && !w[2].includes('$')) out.add(w[2]);
+  }
+  return [...out];
+};

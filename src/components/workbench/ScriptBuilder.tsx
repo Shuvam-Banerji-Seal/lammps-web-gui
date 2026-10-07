@@ -38,12 +38,14 @@ import {
   FileCode2, Workflow, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, Search,
   Atom as AtomIcon, PencilLine, X, GripVertical, Link2, Undo2, Redo2,
   LayoutTemplate, ZoomIn, ZoomOut, Maximize2, FileInput, ImageDown, FileImage,
-  GitBranch, Split, ArrowDownUp, AlertTriangle, ShieldCheck, Check, CornerDownRight,
+  GitBranch, Split, ArrowDownUp, AlertTriangle, ShieldCheck, Check, CornerDownRight, NotebookPen,
 } from 'lucide-react';
 
 interface ScriptBuilderProps {
   theme: Theme;
   onOpenViewer?: () => void;
+  /** Sends the current script to the MD Notebook. */
+  onRunInNotebook?: (script: string) => void;
 }
 
 let uidCounter = 1;
@@ -174,7 +176,7 @@ interface Transform {
   k: number;
 }
 
-const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) => {
+const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRunInNotebook }) => {
   const ct = getThemeTokens(theme);
   // Undoable WORKSPACE (multi-tab); persists to localStorage for durability.
   const [workspace, setWorkspace, replaceWorkspace, undo, redo, canUndo, canRedo] = (() => {
@@ -1215,6 +1217,17 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               <Download size={13} />
               <span className="hidden 2xl:inline">Download</span>
             </button>
+            {onRunInNotebook && (
+              <button
+                onClick={() => onRunInNotebook(activeText)}
+                className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+                title="Run this script in the MD Notebook (in your browser)"
+                aria-label="Run this script in the MD Notebook"
+              >
+                <NotebookPen size={13} />
+                <span className="hidden 2xl:inline">Run</span>
+              </button>
+            )}
             {onOpenViewer && (
               <button
                 onClick={onOpenViewer}

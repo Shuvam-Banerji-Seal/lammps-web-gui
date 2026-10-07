@@ -42,6 +42,8 @@ const REPO_URL = 'https://github.com/Shuvam-Banerji-Seal/lammps-web-gui';
 
 const App: React.FC = () => {
   const [module, setModule] = useState<Module>(loadLastModule);
+  /** A script the Script Builder sent to the notebook, until the notebook places it. */
+  const [notebookInbox, setNotebookInbox] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [aboutOpen, setAboutOpen] = useState(false);
   const aboutDialogRef = useRef<HTMLDivElement>(null);
@@ -149,12 +151,15 @@ const App: React.FC = () => {
       </header>
 
       <main className="min-h-0 flex-1">
-        {module === 'builder' && <ScriptBuilder theme={theme} onOpenViewer={() => switchModule('viewer')} />}
+        {module === 'builder' && (
+          <ScriptBuilder theme={theme} onOpenViewer={() => switchModule('viewer')}
+            onRunInNotebook={(script) => { setNotebookInbox(script); switchModule('notebook'); }} />
+        )}
         {module === 'compiler' && <CompilerHelper theme={theme} />}
         {module === 'viewer' && <ViewerModule theme={theme} onToggleTheme={toggleTheme} />}
         {module === 'notebook' && (
           <Suspense fallback={<div className={`p-6 text-sm ${ct.muted}`}>Loading the notebook…</div>}>
-            <Notebook theme={theme} />
+            <Notebook theme={theme} incoming={notebookInbox} onIncomingTaken={() => setNotebookInbox(null)} />
           </Suspense>
         )}
       </main>

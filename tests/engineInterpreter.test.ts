@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Session, SUPPORTED_COMMANDS } from '../src/engine/interpreter';
-import { formatNumber, splitCommands, substituteVariables, tokenize } from '../src/engine/script';
+import { filesReadBy, formatNumber, splitCommands, substituteVariables, tokenize } from '../src/engine/script';
 import { evaluateFormula } from '../src/engine/expr';
 import { Rng } from '../src/engine/rng';
 import { EngineError, type EngineEvent, type ThermoRow } from '../src/engine/types';
@@ -323,5 +323,12 @@ describe('Session: frames for the viewer', () => {
       .replace('run             250', 'run 20'), 5);
     const steps = events.filter((e) => e.kind === 'frame').map((e) => (e as { step: number }).step);
     expect(steps).toEqual([0, 5, 10, 15, 20, 20]);
+  });
+});
+
+describe('filesReadBy (notebook reminder of files to add)', () => {
+  it('lists read_data / read_dump / include files and molecule templates, once each, skipping variables and comments', () => {
+    const script = 'units real\nread_data system.data # the box\ninclude settings.in\nmolecule h2o tip3p.mol\n# read_data old.data\nread_dump traj.dump 100 x y z\ninclude ${dir}/more.in\nread_data system.data add append';
+    expect(filesReadBy(script)).toEqual(['system.data', 'settings.in', 'tip3p.mol', 'traj.dump']);
   });
 });

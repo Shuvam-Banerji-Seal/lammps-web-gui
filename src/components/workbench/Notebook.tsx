@@ -10,7 +10,7 @@ import { EngineClient } from '../../engine/client';
 import type { BackendChoice, FromEngine } from '../../engine/protocol';
 import type { EngineEvent, ThermoKeyword, ThermoRow } from '../../engine/types';
 import { frameToMoleculeData, typeColors, type FrameEvent } from '../../engine/view';
-import { formatNumber } from '../../engine/script';
+import { filesReadBy, formatNumber } from '../../engine/script';
 
 /**
  * MD Notebook: LAMMPS-style input in cells, run by the in-browser engine
@@ -111,7 +111,14 @@ const vizConfig = (spacing: number, ntypes: number, dark: boolean): Visualizatio
 const formatBytes = (n: number): string =>
   n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`;
 
-const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
+interface NotebookProps {
+  theme: Theme;
+  /** A script sent from the Script Builder, waiting for the user to place it. */
+  incoming?: string | null;
+  onIncomingTaken?: () => void;
+}
+
+const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingTaken }) => {
   const ct = getThemeTokens(theme);
   const [cells, setCells] = usePersistentState<Cell[]>(STORAGE_KEY, STARTER, reviveCells);
   const [backend, setBackend] = usePersistentState<BackendChoice>(BACKEND_KEY, 'cpu', reviveBackend);
@@ -257,6 +264,14 @@ const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
 
   const busy = running !== null;
 
+  const takeIncoming = (mode: 'replace' | 'append') => {
+    if (incoming === null) return;
+    const cell = { id: newId(), text: incoming };
+    setCells((prev) => (mode === 'replace' ? [cell] : [...prev, cell]));
+    onIncomingTaken?.();
+  };
+  const incomingNeeds = incoming === null ? [] : filesReadBy(incoming).filter((f) => !(f in inputs));
+
   const addInputFiles = async (list: FileList | null) => {
     if (!list) return;
     for (const file of Array.from(list)) {
@@ -333,6 +348,27 @@ const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
           <HelpCircle size={13} aria-hidden="true" />
         </button>
       </div>
+      {incoming !== null && (
+        <div role="region" aria-label="Script from the Script Builder"
+          className={`flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 text-xs ${ct.divider} ${ct.panel}`}>
+          <span className="font-medium">Script from the Script Builder ({incoming.split('\n').length} lines)</span>
+          <button className={`${btn} ${ct.accent}`} disabled={busy} onClick={() => takeIncoming('replace')}
+            title="Replace every cell with this script">
+            Replace cells
+          </button>
+          <button className={`${btn} ${ct.button}`} disabled={busy} onClick={() => takeIncoming('append')}
+            title="Add the script as a new cell after the current ones">
+            Add as a new cell
+          </button>
+          <button className={`${btn} ${ct.button}`} onClick={() => onIncomingTaken?.()}>Dismiss</button>
+          {incomingNeeds.length > 0 && (
+            <span className={ct.muted}>
+              It reads {incomingNeeds.map((f) => <code key={f} className="font-mono">{f}</code>).reduce<React.ReactNode[]>((a, el, i) => (i ? [...a, ', ', el] : [el]), [])}
+              {' '}— add {incomingNeeds.length === 1 ? 'it' : 'them'} with Add files.
+            </span>
+          )}
+        </div>
+      )}
       {showHelp && (
         <div className={`shrink-0 border-b px-3 py-2 text-xs leading-relaxed ${ct.divider} ${ct.panel}`}>
           <p>

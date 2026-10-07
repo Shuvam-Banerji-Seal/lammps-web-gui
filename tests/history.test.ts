@@ -59,3 +59,14 @@ describe('bounded undo/redo history', () => {
     expect(h.canUndo()).toBe(false);
   });
 });
+
+describe('replacePresent', () => {
+  it('swaps the present but keeps undo and redo', () => {
+    const h = createHistory(1);
+    h.push(2); h.push(3); h.undo();          // past [1], present 2, future [3]
+    h.replacePresent(20);
+    expect(h.get()).toEqual({ past: [1], present: 20, future: [3] });
+    expect(h.canUndo()).toBe(true);
+    expect(h.canRedo()).toBe(true);
+  });
+});

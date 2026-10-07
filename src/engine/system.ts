@@ -1,4 +1,5 @@
 import type { AtomStyle, EngineEvent, SimState, UnitSystem } from './types';
+import type { MoleculeTemplate } from './molecule';
 import { UNIT_SYSTEMS } from './units';
 import { Geometry, shrinkWrap } from './domain';
 import { Neighbor } from './neighbor';
@@ -79,6 +80,8 @@ export class System {
   registries: Record<string, string[]> = {};
   /** Files the session can read: uploads plus everything it wrote. */
   readonly files = new Map<string, string>();
+  /** molecule templates by ID (each a list of sets; create_atoms uses the first). */
+  readonly molecules = new Map<string, MoleculeTemplate[]>();
   run: RunInfo = { inRun: false, firstStep: 0, lastStep: 0, beginStep: 0, endStep: 0, t0: 0, ranOnce: false };
 
   epoch = 0;

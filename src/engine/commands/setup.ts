@@ -15,6 +15,7 @@ import { ComputeTemp } from '../compute/temp';
 import type { AtomStyle, SimState } from '../types';
 import type { System } from '../system';
 import { bitOfIndex } from '../group';
+import { parseMoleculeFile, geometricCenter, rotationMatrix, type MoleculeTemplate, type MoleculeOptions } from '../molecule';
 
 /*
  * System setup commands. Each handler cites its docs.lammps.org page.
@@ -289,10 +290,69 @@ const createBox: Handler = ({ sys }, a) => {
  * 8 atoms with p/f/m, 27 with s). Keywords basis, ratio, subset, group,
  * remap, var, set, overlap, maxtry, units ("units = lattice" default).
  */
+/**
+ * Appends copies of a molecule template whose atom positions are given
+ * (flat, natoms per copy): types offset by toff, consecutive atom and
+ * molecule IDs after the existing maxima, template charges, and the
+ * template's bonds / angles / dihedrals / impropers with those IDs.
+ * Atoms are wrapped into periodic dimensions with image flags, so each
+ * molecule stays whole when unwrapped.
+ */
+export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[], toff: number, gbit: number): void => {
+  const s = sys.state;
+  const copies = pts.length / (3 * t.natoms);
+  if (copies === 0) { sys.log('Created 0 atoms'); return; }
+  const types = new Int32Array(copies * t.natoms);
+  for (let c = 0; c < copies; c++) for (let i = 0; i < t.natoms; i++) types[c * t.natoms + i] = t.type[i] + toff;
+  for (const ty of types) if (ty < 1 || ty > s.ntypes) throw new StyleError(`molecule ${t.id}: atom type ${ty} is outside 1..${s.ntypes}`);
+  const molecular = sys.atomStyle === 'bond' || sys.atomStyle === 'angle' || sys.atomStyle === 'molecular' || sys.atomStyle === 'full';
+  const needs: [string, number[][], number, string[]][] = [
+    ['bonds', t.bonds, s.topo.nbondtypes, ['bond', 'angle', 'molecular', 'full']],
+    ['angles', t.angles, s.topo.nangletypes, ['angle', 'molecular', 'full']],
+    ['dihedrals', t.dihedrals, s.topo.ndihedraltypes, ['molecular', 'full']],
+    ['impropers', t.impropers, s.topo.nimpropertypes, ['molecular', 'full']],
+  ];
+  for (const [what, list, ntypes, styles] of needs) {
+    if (!list.length) continue;
+    if (!styles.includes(sys.atomStyle)) throw new StyleError(`molecule ${t.id} has ${what}, which atom_style ${sys.atomStyle} cannot store`);
+    for (const e of list) if (e[0] < 1 || e[0] > ntypes) throw new StyleError(`molecule ${t.id}: ${what.slice(0, -1)} type ${e[0]} is outside 1..${ntypes}`);
+  }
+  if (t.q && sys.atomStyle !== 'charge' && sys.atomStyle !== 'full') throw new StyleError(`molecule ${t.id} has charges, which atom_style ${sys.atomStyle} cannot store`);
+  const x = Float64Array.from(pts);
+  const image = new Int32Array(x.length);
+  const g = sys.geom;
+  for (let i = 0; i < x.length / 3; i++) {
+    g.remap(x, image, i);
+    for (let d = 0; d < 3; d++) {
+      if (s.box.periodic[d] || (d === 2 && sys.dimension === 2)) continue;
+      if (x[3 * i + d] < s.box.lo[d] || x[3 * i + d] > s.box.hi[d]) throw new StyleError(`molecule ${t.id}: an inserted atom lies outside the non-periodic ${'xyz'[d]} boundary`);
+    }
+  }
+  let maxMol = 0;
+  for (let i = 0; i < s.n; i++) if (s.molecule[i] > maxMol) maxMol = s.molecule[i];
+  let tmplMaxMol = 1;
+  if (t.mol) for (const m of t.mol) tmplMaxMol = Math.max(tmplMaxMol, m);
+  const mol = new Int32Array(copies * t.natoms);
+  for (let c = 0; c < copies; c++) {
+    for (let i = 0; i < t.natoms; i++) mol[c * t.natoms + i] = molecular ? maxMol + c * tmplMaxMol + (t.mol ? t.mol[i] : 1) : 0;
+  }
+  const q = t.q ? new Float64Array(copies * t.natoms) : undefined;
+  if (q) for (let c = 0; c < copies; c++) q.set(t.q!, c * t.natoms);
+  const base = maxAtomId(s);
+  const added = appendAtoms(s, { x, image, type: types, molecule: mol, q, mask: gbit });
+  for (let c = 0; c < copies; c++) {
+    const id0 = base + c * t.natoms;
+    for (const [what, list] of [['bonds', t.bonds], ['angles', t.angles], ['dihedrals', t.dihedrals], ['impropers', t.impropers]] as const) {
+      for (const e of list) pushTopo(s.topo[what], e[0], e.slice(1).map((k) => id0 + k));
+    }
+  }
+  sys.atomsChanged();
+  sys.log(`Created ${added} atoms (${copies} molecules of template ${t.id})`);
+};
+
 const createAtoms: Handler = ({ sys }, a) => {
   const s = sys.state;
   let type = int(a[0], 'atom type');
-  if (type < 1 || type > s.ntypes) throw new StyleError(`atom type ${type} is outside 1..${s.ntypes}`);
   const style = a[1];
   let rest: string[];
   let regionId: string | null = null;
@@ -318,7 +378,6 @@ const createAtoms: Handler = ({ sys }, a) => {
     const key = rest[k];
     const nv: Record<string, number> = { basis: 2, ratio: 2, subset: 2, group: 1, remap: 1, var: 1, set: 2, overlap: 1, maxtry: 1, units: 1, rotate: 4, mol: 2, radscale: 1 };
     if (!(key in nv)) throw new StyleError(`unknown create_atoms keyword '${key}'`);
-    if (key === 'mol') throw new StyleError('create_atoms mol (molecule templates) is not supported by the browser engine yet');
     const vals = rest.slice(k + 1, k + 1 + nv[key]);
     if (vals.length < nv[key]) throw new StyleError(`create_atoms ${key} needs ${nv[key]} value(s)`);
     if (key === 'basis') basisType.set(int(vals[0], 'basis index'), int(vals[1], 'basis type'));
@@ -326,6 +385,45 @@ const createAtoms: Handler = ({ sys }, a) => {
     else kw.set(key, vals);
     k += 1 + nv[key];
   }
+  // create_atoms.html: "type = atom type ... of atoms to create (offset for molecule creation)"
+  const molKw = kw.get('mol');
+  const tmpl = molKw ? sys.molecules.get(molKw[0])?.[0] : undefined;
+  if (molKw && !tmpl) throw new StyleError(`create_atoms mol: molecule template '${molKw[0]}' does not exist`);
+  if (!tmpl && (type < 1 || type > s.ntypes)) throw new StyleError(`atom type ${type} is outside 1..${s.ntypes}`);
+  if (tmpl && type < 0) throw new StyleError('create_atoms with mol: the type (an offset) must be >= 0');
+  const molRng = molKw ? new Rng(int(molKw[1], 'mol seed')) : null;
+  if (molKw && int(molKw[1], 'mol seed') <= 0) throw new StyleError('create_atoms mol: seed must be a positive integer');
+  const rotKw = kw.get('rotate');
+  if (rotKw && !tmpl) throw new StyleError('create_atoms rotate needs the mol keyword');
+  if (rotKw && sys.dimension === 2 && (num(rotKw[1], 'Rx') !== 0 || num(rotKw[2], 'Ry') !== 0)) {
+    throw new StyleError('create_atoms rotate: "A rotation vector specified for a single molecule must be in the z-direction for a 2d model."');
+  }
+  const fixedR = rotKw ? rotationMatrix((num(rotKw[0], 'theta') * Math.PI) / 180, num(rotKw[1], 'Rx'), num(rotKw[2], 'Ry'), num(rotKw[3], 'Rz')) : null;
+  const molCenter = tmpl ? geometricCenter(tmpl) : [0, 0, 0];
+  /** create_atoms.html: "placing the geometric center of the molecule at the lattice point, and (by default) giving the molecule a random orientation about the point" */
+  const placeMol = (p: number[]): number[] => {
+    let R = fixedR;
+    if (!R) {
+      if (sys.dimension === 2) R = rotationMatrix(2 * Math.PI * molRng!.uniform(), 0, 0, 1);
+      else {
+        // uniformly random rotation from a random unit quaternion (Shoemake)
+        const u1 = molRng!.uniform(), u2 = molRng!.uniform(), u3 = molRng!.uniform();
+        const q0 = Math.sqrt(1 - u1) * Math.sin(2 * Math.PI * u2), q1 = Math.sqrt(1 - u1) * Math.cos(2 * Math.PI * u2);
+        const q2 = Math.sqrt(u1) * Math.sin(2 * Math.PI * u3), q3 = Math.sqrt(u1) * Math.cos(2 * Math.PI * u3);
+        R = [
+          [1 - 2 * (q2 * q2 + q3 * q3), 2 * (q1 * q2 - q0 * q3), 2 * (q1 * q3 + q0 * q2)],
+          [2 * (q1 * q2 + q0 * q3), 1 - 2 * (q1 * q1 + q3 * q3), 2 * (q2 * q3 - q0 * q1)],
+          [2 * (q1 * q3 - q0 * q2), 2 * (q2 * q3 + q0 * q1), 1 - 2 * (q1 * q1 + q2 * q2)],
+        ];
+      }
+    }
+    const out: number[] = [];
+    for (let i = 0; i < tmpl!.natoms; i++) {
+      const r = [0, 1, 2].map((d) => tmpl!.x[3 * i + d] - molCenter[d]);
+      for (let d = 0; d < 3; d++) out.push(p[d] + R[d][0] * r[0] + R[d][1] * r[1] + R[d][2] * r[2]);
+    }
+    return out;
+  };
   const unitsW = kw.get('units')?.[0] ?? 'lattice';
   const g = sys.geom;
   const box = s.box;
@@ -365,7 +463,7 @@ const createAtoms: Handler = ({ sys }, a) => {
     const inside = [0, 1, 2].every((d) => (d === 2 && sys.dimension === 2) || (lam[d] >= 0 && (box.boundary[d][1] === 's' || box.boundary[d][1] === 'm' ? lam[d] <= 1 : lam[d] < 1)));
     if (!inside) {
       sys.warn('create_atoms single: the point is outside the box; no atom created');
-    } else if (varOk(p)) { pts = p; types = [type]; }
+    } else if (varOk(p)) { pts = tmpl ? placeMol(p) : p; types = [type]; }
   } else if (random) {
     const rng = new Rng(random.seed);
     const overlap = kw.has('overlap') ? num(kw.get('overlap')![0], 'overlap') : 0;
@@ -395,8 +493,11 @@ const createAtoms: Handler = ({ sys }, a) => {
         if (!insideBox(p[0], p[1], p[2])) continue;
         if (reg && !reg.match(p[0], p[1], p[2])) continue;
         if (!varOk(p)) continue;
-        if (tooClose(p)) { if (t >= maxtry - 1) break; continue; }
-        pts.push(...p);
+        const atoms = tmpl ? placeMol(p) : p;
+        let close = false;
+        for (let j = 0; j < atoms.length && !close; j += 3) close = tooClose([atoms[j], atoms[j + 1], atoms[j + 2]]);
+        if (close) { if (t >= maxtry - 1) break; continue; }
+        pts.push(...atoms);
         types.push(type);
         placed = true;
       }
@@ -428,13 +529,51 @@ const createAtoms: Handler = ({ sys }, a) => {
       types = keep.map((i) => types[i]);
     }
   }
-  for (const t of types) if (t < 1 || t > s.ntypes) throw new StyleError(`create_atoms basis type ${t} is outside 1..${s.ntypes}`);
   const groupName = kw.get('group')?.[0];
   const gbit = groupName ? bitOfIndex(sys.groups.create(groupName)) : 0;
+  if (tmpl) {
+    if (!single && !random) {
+      const centers = pts;
+      pts = [];
+      for (let c = 0; c < centers.length; c += 3) pts.push(...placeMol([centers[c], centers[c + 1], centers[c + 2]]));
+    }
+    insertMolecules(sys, tmpl, pts, type, gbit);
+    return;
+  }
+  for (const t of types) if (t < 1 || t > s.ntypes) throw new StyleError(`create_atoms basis type ${t} is outside 1..${s.ntypes}`);
   const added = appendAtoms(s, { x: Float64Array.from(pts), type: Int32Array.from(types), mask: gbit });
   type = 0;
   sys.atomsChanged();
   sys.log(`Created ${added} atoms`);
+};
+
+/**
+ * molecule ID file1 keyword values ... file2 ... — molecule.html: "zero or
+ * more keyword/value pairs may be appended after each file"; "keyword =
+ * offset or toff or boff or aoff or doff or ioff or scale". The ID "can only
+ * contain alphanumeric characters and underscores".
+ */
+const molecule: Handler = ({ sys }, a) => {
+  const id = a[0];
+  if (!id || a.length < 2) throw new StyleError('usage: molecule ID file1 keyword values ... file2 ...');
+  if (!/^[A-Za-z0-9_]+$/.test(id)) throw new StyleError(`molecule ID '${id}' must be alphanumeric or underscore`);
+  if (sys.molecules.has(id)) throw new StyleError(`molecule template ID '${id}' already exists`);
+  const sets: MoleculeTemplate[] = [];
+  for (let k = 1; k < a.length;) {
+    const file = a[k++];
+    const o: MoleculeOptions = { toff: 0, boff: 0, aoff: 0, doff: 0, ioff: 0, scale: 1 };
+    while (k < a.length && ['offset', 'toff', 'boff', 'aoff', 'doff', 'ioff', 'scale'].includes(a[k])) {
+      const key = a[k];
+      if (key === 'offset') {
+        [o.toff, o.boff, o.aoff, o.doff, o.ioff] = [1, 2, 3, 4, 5].map((j) => int(a[k + j], 'offset'));
+        k += 6;
+      } else if (key === 'scale') { o.scale = num(a[k + 1], 'scale'); k += 2; } else { o[key as 'toff'] = int(a[k + 1], key); k += 2; }
+    }
+    const t = parseMoleculeFile(id, file, sys.readFile(file), o);
+    sets.push(t);
+    sys.log(`Read molecule template ${id}: ${t.natoms} atoms, ${t.bonds.length} bonds, ${t.angles.length} angles, ${t.dihedrals.length} dihedrals, ${t.impropers.length} impropers (${file})`);
+  }
+  sys.molecules.set(id, sets);
 };
 
 /** mass I value — mass.html: "I can be specified ... as a wildcard"; "All masses must be defined before a simulation is run." */
@@ -1314,7 +1453,7 @@ export const SETUP_COMMANDS: Record<string, Handler> = {
   units, dimension, boundary, atom_style: atomStyle, atom_modify: atomModify, newton,
   processors: parallelOnly('processors'), comm_style: parallelOnly('comm_style'), package: parallelOnly('package'),
   suffix: parallelOnly('suffix'), partition: parallelOnly('partition'), balance: parallelOnly('balance'),
-  comm_modify: commModify, lattice, region, create_box: createBox, create_atoms: createAtoms, mass,
+  comm_modify: commModify, lattice, region, create_box: createBox, create_atoms: createAtoms, mass, molecule,
   read_data: readDataCmd, write_data: writeDataCmd, timestep, reset_timestep: resetTimestep,
   group, set, velocity, delete_atoms: deleteAtomsCmd, displace_atoms: displaceAtoms, replicate,
   change_box: changeBox, create_bonds: createBonds, delete_bonds: deleteBonds,

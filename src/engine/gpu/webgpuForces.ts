@@ -40,17 +40,18 @@ struct Params {
   nc : vec3<u32>,
   stride : u32,
   two : u32,
-  pad0 : u32,
+  cellOfBase : u32,   // offset of the per-slot cell indices inside ints
   pad1 : u32,
   pad2 : u32,
 };
 
+// Four storage buffers: the limit of WebGPU compatibility mode, which is how
+// some GPUs (e.g. NVIDIA through ANGLE on Linux) are exposed.
 @group(0) @binding(0) var<uniform> P : Params;
 @group(0) @binding(1) var<storage, read> pos : array<vec4<f32>>;      // xyz, w = type
-@group(0) @binding(2) var<storage, read> cellOf : array<u32>;         // per sorted slot
-@group(0) @binding(3) var<storage, read> cellStart : array<u32>;      // ncell + 1
-@group(0) @binding(4) var<storage, read> coef : array<vec4<f32>>;     // [cutsq f12 f6 _], [e12 e6 eshift _]
-@group(0) @binding(5) var<storage, read_write> outv : array<f32>;     // fx fy fz e w per slot
+@group(0) @binding(2) var<storage, read> ints : array<u32>;           // cellStart[ncell+1], then cellOf[n]
+@group(0) @binding(3) var<storage, read> coef : array<vec4<f32>>;     // [cutsq f12 f6 _], [e12 e6 eshift _]
+@group(0) @binding(4) var<storage, read_write> outv : array<f32>;     // fx fy fz e w per slot
 
 fn wrapCell(c : i32, n : u32) -> u32 {
   let m = i32(n);
@@ -65,7 +66,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
   let ti = u32(pi.w);
   let L = P.L;
   let nc = P.nc;
-  let c = cellOf[i];
+  let c = ints[P.cellOfBase + i];
   let cx = i32(c % nc.x);
   let cy = i32((c / nc.x) % nc.y);
   let cz = i32(c / (nc.x * nc.y));
@@ -78,8 +79,8 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
     for (var dy = -1; dy <= 1; dy = dy + 1) {
       for (var dx = -1; dx <= 1; dx = dx + 1) {
         let c2 = (wrapCell(cz + dz, nc.z) * nc.y + wrapCell(cy + dy, nc.y)) * nc.x + wrapCell(cx + dx, nc.x);
-        let jEnd = cellStart[c2 + 1u];
-        for (var j = cellStart[c2]; j < jEnd; j = j + 1u) {
+        let jEnd = ints[c2 + 1u];
+        for (var j = ints[c2]; j < jEnd; j = j + 1u) {
           if (j == i) { continue; }
           let pj = pos[j];
           var d = pi.xyz - pj.xyz;
@@ -109,38 +110,81 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
 }
 `;
 
-type Gpu = { requestAdapter(): Promise<GPUAdapter | null> };
+type AdapterRequest = { powerPreference?: 'high-performance'; featureLevel?: 'compatibility' };
+type Gpu = { requestAdapter(opts?: AdapterRequest): Promise<GPUAdapter | null> };
 
 const navigatorGpu = (): Gpu | null => {
   const nav = (globalThis as { navigator?: { gpu?: Gpu } }).navigator;
   return nav?.gpu ?? null;
 };
 
-/** A WebGPU backend, or null when the browser offers no WebGPU adapter. */
-export const createWebGpuBackend = async (): Promise<WebGpuForceBackend | null> => {
+const isFallback = (a: GPUAdapter): boolean =>
+  !!((a.info as GPUAdapterInfo & { isFallbackAdapter?: boolean })?.isFallbackAdapter
+    ?? (a as GPUAdapter & { isFallbackAdapter?: boolean }).isFallbackAdapter);
+
+export interface WebGpuOptions {
+  /**
+   * Accept a software fallback adapter (SwiftShader). It runs WebGPU on the
+   * CPU and is slower than the CPU engine, so the notebook declines it; the
+   * real-browser tests use it to check the kernel on machines without a GPU.
+   */
+  allowFallback?: boolean;
+}
+
+/** What WebGPU this browser offers, without creating a device. */
+export const webgpuAdapterKind = async (): Promise<'hardware' | 'software' | 'none'> => {
+  const gpu = navigatorGpu();
+  if (!gpu) return 'none';
+  let software = false;
+  for (const o of [{ powerPreference: 'high-performance' }, { powerPreference: 'high-performance', featureLevel: 'compatibility' }] as AdapterRequest[]) {
+    let a: GPUAdapter | null = null;
+    try { a = await gpu.requestAdapter(o); } catch { a = null; }
+    if (!a) continue;
+    if (!isFallback(a)) return 'hardware';
+    software = true;
+  }
+  return software ? 'software' : 'none';
+};
+
+/**
+ * A WebGPU backend on the best adapter: a hardware core-WebGPU adapter, else
+ * a hardware compatibility-mode adapter (how e.g. NVIDIA GPUs are exposed
+ * through ANGLE on Linux), else — only with allowFallback — a software one.
+ * Null when there is none of those.
+ */
+export const createWebGpuBackend = async (opts: WebGpuOptions = {}): Promise<WebGpuForceBackend | null> => {
   const gpu = navigatorGpu();
   if (!gpu) return null;
-  let adapter: GPUAdapter | null = null;
-  try {
-    adapter = await gpu.requestAdapter();
-  } catch {
-    return null;
+  const ask = async (o: AdapterRequest): Promise<GPUAdapter | null> => {
+    try { return await gpu.requestAdapter(o); } catch { return null; }
+  };
+  const tried: GPUAdapter[] = [];
+  let chosen: GPUAdapter | null = null;
+  for (const o of [{ powerPreference: 'high-performance' }, { powerPreference: 'high-performance', featureLevel: 'compatibility' }] as AdapterRequest[]) {
+    const a = await ask(o);
+    if (!a) continue;
+    if (!isFallback(a)) { chosen = a; break; }
+    tried.push(a);
   }
-  if (!adapter) return null;
-  const device = await adapter.requestDevice();
-  const info = adapter.info;
+  if (!chosen && opts.allowFallback) chosen = tried[0] ?? null;
+  if (!chosen) return null;
+  const device = await chosen.requestDevice();
+  const info = chosen.info;
   const name = [info?.vendor, info?.architecture].filter(Boolean).join(' ') || info?.description || 'adapter';
-  return new WebGpuForceBackend(device, `WebGPU · ${name}`);
+  const tags = [
+    isFallback(chosen) ? 'software' : '',
+    (chosen as GPUAdapter & { featureLevel?: string }).featureLevel === 'compatibility' ? 'compat' : '',
+  ].filter(Boolean);
+  return new WebGpuForceBackend(device, `WebGPU · ${name}${tags.length ? ` (${tags.join(', ')})` : ''}`, isFallback(chosen));
 };
 
 interface Buffers {
   pos: GPUBuffer;
-  cellOf: GPUBuffer;
   out: GPUBuffer;
   staging: GPUBuffer;
   atomCap: number;
-  cellStart: GPUBuffer;
-  cellCap: number;
+  ints: GPUBuffer;
+  intsCap: number;
   coef: GPUBuffer;
   coefCap: number;
   bind: GPUBindGroup | null;
@@ -157,11 +201,10 @@ export class WebGpuForceBackend implements ForceBackend {
   private sorted = new Int32Array(0);
   private cellOfAtom = new Int32Array(0);
   private posData = new Float32Array(0);
-  private cellOfSlot = new Uint32Array(0);
-  private startData = new Uint32Array(0);
+  private intsData = new Uint32Array(0);
   private disposed = false;
 
-  constructor(private device: GPUDevice, readonly label: string) {
+  constructor(private device: GPUDevice, readonly label: string, readonly software = false) {
     const module = device.createShaderModule({ code: KERNEL });
     this.pipeline = device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
     this.params = device.createBuffer({ size: 48, usage: BUF_UNIFORM | BUF_COPY_DST });
@@ -188,24 +231,24 @@ export class WebGpuForceBackend implements ForceBackend {
   /** Grows GPU buffers to fit n atoms, ncell cells and the coefficient table. */
   private ensure(n: number, ncell: number, coefBytes: number): Buffers {
     let b = this.bufs;
+    const intsNeed = ncell + 1 + n;
     const needAtoms = !b || b.atomCap < n;
-    const needCells = !b || b.cellCap < ncell + 1;
+    const needInts = !b || b.intsCap < intsNeed;
     const needCoef = !b || b.coefCap < coefBytes;
-    if (!needAtoms && !needCells && !needCoef) return b!;
+    if (!needAtoms && !needInts && !needCoef) return b!;
     const atomCap = needAtoms ? Math.max(64, Math.ceil(n * 1.25)) : b!.atomCap;
-    const cellCap = needCells ? Math.max(64, Math.ceil((ncell + 1) * 1.25)) : b!.cellCap;
+    const intsCap = needInts ? Math.max(128, Math.ceil(intsNeed * 1.25)) : b!.intsCap;
     const coefCap = needCoef ? coefBytes : b!.coefCap;
-    if (b && needAtoms) { b.pos.destroy(); b.cellOf.destroy(); b.out.destroy(); b.staging.destroy(); }
-    if (b && needCells) b.cellStart.destroy();
+    if (b && needAtoms) { b.pos.destroy(); b.out.destroy(); b.staging.destroy(); }
+    if (b && needInts) b.ints.destroy();
     if (b && needCoef) b.coef.destroy();
     b = {
       pos: needAtoms ? this.buffer(16 * atomCap, BUF_STORAGE | BUF_COPY_DST) : b!.pos,
-      cellOf: needAtoms ? this.buffer(4 * atomCap, BUF_STORAGE | BUF_COPY_DST) : b!.cellOf,
       out: needAtoms ? this.buffer(20 * atomCap, BUF_STORAGE | BUF_COPY_SRC) : b!.out,
       staging: needAtoms ? this.buffer(20 * atomCap, BUF_MAP_READ | BUF_COPY_DST) : b!.staging,
       atomCap,
-      cellStart: needCells ? this.buffer(4 * cellCap, BUF_STORAGE | BUF_COPY_DST) : b!.cellStart,
-      cellCap,
+      ints: needInts ? this.buffer(4 * intsCap, BUF_STORAGE | BUF_COPY_DST) : b!.ints,
+      intsCap,
       coef: needCoef ? this.buffer(coefBytes, BUF_STORAGE | BUF_COPY_DST) : b!.coef,
       coefCap,
       bind: null,
@@ -215,10 +258,9 @@ export class WebGpuForceBackend implements ForceBackend {
       entries: [
         { binding: 0, resource: { buffer: this.params } },
         { binding: 1, resource: { buffer: b.pos } },
-        { binding: 2, resource: { buffer: b.cellOf } },
-        { binding: 3, resource: { buffer: b.cellStart } },
-        { binding: 4, resource: { buffer: b.coef } },
-        { binding: 5, resource: { buffer: b.out } },
+        { binding: 2, resource: { buffer: b.ints } },
+        { binding: 3, resource: { buffer: b.coef } },
+        { binding: 4, resource: { buffer: b.out } },
       ],
     });
     this.bufs = b;
@@ -239,17 +281,18 @@ export class WebGpuForceBackend implements ForceBackend {
     if (nc.some((c, d) => !(d === 2 && two) && c < 3)) return this.cpu.compute(state, table);
     const ncell = nc[0] * nc[1] * nc[2];
 
-    // --- counting sort by cell (same assignment as cpu/forces.ts) ---
+    // --- counting sort by cell (same assignment as cpu/cells.ts) ---
     if (this.sorted.length < n) {
       this.sorted = new Int32Array(n);
       this.cellOfAtom = new Int32Array(n);
       this.posData = new Float32Array(4 * n);
-      this.cellOfSlot = new Uint32Array(n);
     }
-    if (this.startData.length < ncell + 1) this.startData = new Uint32Array(ncell + 1);
-    const { sorted, cellOfAtom, posData, cellOfSlot } = this;
-    const start = this.startData;
-    start.fill(0, 0, ncell + 1);
+    if (this.intsData.length < ncell + 1 + n) this.intsData = new Uint32Array(ncell + 1 + n);
+    const { sorted, cellOfAtom, posData } = this;
+    // ints = [cellStart (ncell + 1) | cellOf per slot (n)]
+    const ints = this.intsData;
+    const base = ncell + 1;
+    ints.fill(0, 0, base);
     const lo = state.box.lo;
     const s = [nc[0] / L[0], nc[1] / L[1], nc[2] / L[2]];
     for (let i = 0; i < n; i++) {
@@ -260,15 +303,15 @@ export class WebGpuForceBackend implements ForceBackend {
         c = c * nc[d] + k;
       }
       cellOfAtom[i] = c;
-      start[c + 1]++;
+      ints[c + 1]++;
     }
-    for (let c = 0; c < ncell; c++) start[c + 1] += start[c];
-    const fill = start.slice(0, ncell);
+    for (let c = 0; c < ncell; c++) ints[c + 1] += ints[c];
+    const fill = ints.slice(0, ncell);
     for (let i = 0; i < n; i++) {
       const c = cellOfAtom[i];
       const slot = fill[c]++;
       sorted[slot] = i;
-      cellOfSlot[slot] = c;
+      ints[base + slot] = c;
       posData[4 * slot] = x[3 * i] - lo[0];
       posData[4 * slot + 1] = x[3 * i + 1] - lo[1];
       posData[4 * slot + 2] = two ? 0 : x[3 * i + 2] - lo[2];
@@ -282,12 +325,11 @@ export class WebGpuForceBackend implements ForceBackend {
     const pu = new Uint32Array(params);
     pf[0] = L[0]; pf[1] = L[1]; pf[2] = L[2]; pu[3] = n;
     pu[4] = nc[0]; pu[5] = nc[1]; pu[6] = nc[2]; pu[7] = arrays.stride;
-    pu[8] = two ? 1 : 0;
+    pu[8] = two ? 1 : 0; pu[9] = base;
     const q = this.device.queue;
     q.writeBuffer(this.params, 0, params);
     q.writeBuffer(b.pos, 0, posData.buffer, posData.byteOffset, 16 * n);
-    q.writeBuffer(b.cellOf, 0, cellOfSlot.buffer, cellOfSlot.byteOffset, 4 * n);
-    q.writeBuffer(b.cellStart, 0, start.buffer, start.byteOffset, 4 * (ncell + 1));
+    q.writeBuffer(b.ints, 0, ints.buffer, ints.byteOffset, 4 * (base + n));
     q.writeBuffer(b.coef, 0, coef.buffer, coef.byteOffset, coef.byteLength);
     const enc = this.device.createCommandEncoder();
     const pass = enc.beginComputePass();
@@ -319,7 +361,7 @@ export class WebGpuForceBackend implements ForceBackend {
     if (this.disposed) return;
     this.disposed = true;
     const b = this.bufs;
-    if (b) for (const buf of [b.pos, b.cellOf, b.out, b.staging, b.cellStart, b.coef]) buf.destroy();
+    if (b) for (const buf of [b.pos, b.out, b.staging, b.ints, b.coef]) buf.destroy();
     this.params.destroy();
     this.bufs = null;
     this.cpu.dispose();

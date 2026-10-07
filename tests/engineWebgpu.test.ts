@@ -11,6 +11,29 @@ describe('createWebGpuBackend', () => {
     await expect(createWebGpuBackend()).resolves.toBeNull();
   });
 
+  it('declines a software fallback adapter unless allowFallback is set', async () => {
+    const asked: unknown[] = [];
+    Object.defineProperty(navigator, 'gpu', {
+      configurable: true,
+      value: {
+        requestAdapter: async (o: unknown) => {
+          asked.push(o);
+          return { info: { vendor: 'google', architecture: 'swiftshader', isFallbackAdapter: true }, requestDevice: async () => ({ createShaderModule: () => ({}), createComputePipeline: () => ({}), createBuffer: () => ({ destroy() {} }), destroy() {} }) };
+        },
+      },
+    });
+    try {
+      await expect(createWebGpuBackend()).resolves.toBeNull();
+      // a core adapter was asked for first, then a compatibility-mode one
+      expect(asked).toEqual([{ powerPreference: 'high-performance' }, { powerPreference: 'high-performance', featureLevel: 'compatibility' }]);
+      const sw = await createWebGpuBackend({ allowFallback: true });
+      expect(sw?.label).toBe('WebGPU · google swiftshader (software)');
+      expect(sw?.software).toBe(true);
+    } finally {
+      delete (navigator as unknown as { gpu?: unknown }).gpu;
+    }
+  });
+
   it('resolves to null when requestAdapter() finds no adapter', async () => {
     Object.defineProperty(navigator, 'gpu', { configurable: true, value: { requestAdapter: async () => null } });
     try {

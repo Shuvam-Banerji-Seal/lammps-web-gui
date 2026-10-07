@@ -109,6 +109,8 @@ export interface SimState {
   type: Int32Array;
   /** Per-type mass, length ntypes + 1, index 0 unused; NaN = not set. */
   massByType: Float64Array;
+  /** Per-atom masses (atom styles with a per-atom mass, e.g. sphere), else null: use massOf(). */
+  rmass: Float64Array | null;
   x: Float64Array;
   v: Float64Array;
   f: Float64Array;

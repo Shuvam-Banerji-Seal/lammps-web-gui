@@ -35,6 +35,7 @@ export const emptyState = (
   ntypes,
   type: new Int32Array(0),
   massByType: new Float64Array(ntypes + 1).fill(Number.NaN),
+  rmass: null,
   x: new Float64Array(0),
   v: new Float64Array(0),
   f: new Float64Array(0),
@@ -49,6 +50,9 @@ export const emptyState = (
   time: 0,
   timeStep: 0,
 });
+
+/** Mass of atom i: the per-atom mass when the atom style has one (rmass), else its type's mass. */
+export const massOf = (s: SimState, i: number): number => (s.rmass ? s.rmass[i] : s.massByType[s.type[i]]);
 
 export const maxAtomId = (s: SimState): number => {
   let m = 0;
@@ -65,6 +69,8 @@ export interface NewAtoms {
   image?: Int32Array;
   molecule?: number | Int32Array;
   q?: number | Float64Array;
+  /** Per-atom masses (only for atom styles with rmass). */
+  rmass?: number | Float64Array;
   /** Group bits to set besides 'all'. */
   mask?: number;
 }
@@ -97,6 +103,11 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
   s.q = growF(s.q, n);
   if (typeof a.q === 'number') s.q.fill(a.q, n0, n);
   else if (a.q) s.q.set(a.q, n0);
+  if (s.rmass) {
+    s.rmass = growF(s.rmass, n);
+    if (typeof a.rmass === 'number') s.rmass.fill(a.rmass, n0, n);
+    else if (a.rmass) s.rmass.set(a.rmass, n0);
+  }
   s.n = n;
   return add;
 };
@@ -121,6 +132,7 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
       }
       s.type[k] = s.type[i]; s.id[k] = s.id[i]; s.mask[k] = s.mask[i];
       s.molecule[k] = s.molecule[i]; s.q[k] = s.q[i];
+      if (s.rmass) s.rmass[k] = s.rmass[i];
     }
     k++;
   }
@@ -130,6 +142,7 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
   s.x = s.x.slice(0, 3 * k); s.v = s.v.slice(0, 3 * k); s.f = s.f.slice(0, 3 * k);
   s.image = s.image.slice(0, 3 * k); s.type = s.type.slice(0, k); s.id = s.id.slice(0, k);
   s.mask = s.mask.slice(0, k); s.molecule = s.molecule.slice(0, k); s.q = s.q.slice(0, k);
+  if (s.rmass) s.rmass = s.rmass.slice(0, k);
   for (const list of [s.topo.bonds, s.topo.angles, s.topo.dihedrals, s.topo.impropers]) {
     filterTopo(list, (ids) => !ids.some((id) => gone.has(id)));
   }

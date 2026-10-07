@@ -1,4 +1,4 @@
-import type { SimState } from '../types';
+import type { SimState, TopoList } from '../types';
 import type { Geometry } from '../domain';
 import type { Neighbor, SpecialSettings } from '../neighbor';
 import { buildAtomMap, buildSpecial, type SpecialList } from '../atoms';
@@ -72,6 +72,16 @@ export class ForceField {
    * Setup before a run / force evaluation: checks coefficients, mixes, sets
    * neighbor requirements and the special list.
    */
+  /**
+   * Bond and angle lists without entries that a constraint fix (fix shake)
+   * switched off; used while the live lists still have the counts it saw.
+   */
+  private topoOverride: { bonds: TopoList; angles: TopoList; bondsN: number; anglesN: number } | null = null;
+
+  setTopologyOverride(o: { bonds: TopoList; angles: TopoList; bondsN: number; anglesN: number } | null): void {
+    this.topoOverride = o;
+  }
+
   /** Run-log warnings for bonded styles, set at init from the style context. */
   private warn: (text: string) => void = () => {};
 
@@ -166,7 +176,11 @@ export class ForceField {
     const vatom = flags.vatom ? new Float64Array(6 * s.n) : null;
     if (this.bond || this.angle || this.dihedral || this.improper) {
       if (this.map.length === 0 || this.mapStale(s)) this.map = buildAtomMap(s);
-      const bc = { s, geom, map: this.map, f: s.f, acc, eatom, vatom, virial: acc.vbond, warn: this.warn };
+      const ov = this.topoOverride;
+      const sb = ov && ov.bondsN === s.topo.bonds.n && ov.anglesN === s.topo.angles.n
+        ? { ...s, topo: { ...s.topo, bonds: ov.bonds, angles: ov.angles } }
+        : s;
+      const bc = { s: sb, geom, map: this.map, f: s.f, acc, eatom, vatom, virial: acc.vbond, warn: this.warn };
       this.bond?.compute(bc);
       bc.virial = acc.vangle;
       this.angle?.compute(bc);

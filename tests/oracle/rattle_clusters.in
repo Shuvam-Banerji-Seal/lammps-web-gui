@@ -1,0 +1,50 @@
+# oracle: fix rattle on all four cluster kinds, tight tolerance
+# oracle-inputs: shake_water.txt shake_methyl.txt shake_chain.txt
+units           real
+atom_style      full
+region          box block 0 22 0 22 0 22 units box
+create_box      4 box bond/types 4 angle/types 1 extra/bond/per/atom 3 extra/angle/per/atom 1 extra/special/per/atom 6
+mass            1 15.9994
+mass            2 1.008
+mass            3 12.011
+mass            4 14.007
+molecule        w shake_water.txt
+molecule        m shake_methyl.txt
+molecule        c shake_chain.txt
+create_atoms    0 single 3 3 3 mol w 1 rotate 20 1 0 0 units box
+create_atoms    0 single 9 4 3 mol w 1 rotate 75 0 1 1 units box
+create_atoms    0 single 15 3 4 mol w 1 rotate 130 1 1 0 units box
+create_atoms    0 single 4 12 6 mol w 1 rotate 200 0 0 1 units box
+create_atoms    0 single 12 12 12 mol m 1 rotate 33 1 2 3 units box
+create_atoms    0 single 18 16 8 mol m 1 rotate 160 3 1 0 units box
+create_atoms    0 single 5 18 16 mol c 1 rotate 10 0 1 0 units box
+create_atoms    0 single 14 6 17 mol c 1 rotate 95 1 0 1 units box
+pair_style      lj/cut 8.0
+pair_coeff      * * 0.05 3.0
+pair_coeff      1 1 0.1553 3.166
+bond_style      harmonic
+bond_coeff      1 450.0 1.0
+bond_coeff      2 340.0 1.09
+bond_coeff      3 300.0 1.25
+bond_coeff      4 280.0 1.15
+angle_style     harmonic
+angle_coeff     1 55.0 109.47
+variable        vx atom 0.004*sin(0.6*x+0.2*z)
+variable        vy atom 0.004*cos(0.5*y+0.3*x)
+variable        vz atom 0.004*sin(0.4*z-0.5*y)
+velocity        all set v_vx v_vy v_vz units box
+group           hyd type 2
+group           wat molecule 1:4
+group           meth molecule 5:6
+group           chn molecule 7:8
+compute         th hyd temp
+compute         tw wat temp
+compute         tm meth temp
+compute         tc chn temp
+timestep        1.0
+fix             1 all nve
+fix             2 all rattle 1.0e-12 200 0 b 1 2 3 4 a 1
+thermo_style    custom step temp pe ebond eangle evdwl etotal press pxx pyy pzz pxy pxz pyz c_th c_tw c_tm c_tc
+thermo_modify   format float %.15g
+thermo          10
+run             60

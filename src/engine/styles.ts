@@ -40,6 +40,7 @@ import * as pairCoulLong2 from './registry/pair_coullong2';
 import * as computeAtom from './registry/compute_atom';
 import * as computeGlobal from './registry/compute_global';
 import { FixNVE } from './fix/nve';
+import { FixShake } from './fix/shake';
 import { FixEnforce2d } from './fix/enforce2d';
 import { FixNH } from './fix/nh';
 import { FixLangevin, FixTempBerendsen, FixTempCSVR, FixTempRescale } from './fix/thermostats';
@@ -102,6 +103,8 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   'temp/rescale': (s, i, g, a) => new FixTempRescale(s, i, g, a),
   'temp/csvr': (s, i, g, a) => new FixTempCSVR(s, i, g, a, 'temp/csvr'),
   'temp/csld': (s, i, g, a) => new FixTempCSVR(s, i, g, a, 'temp/csld'),
+  shake: (s, i, g, a) => new FixShake(s, i, g, a, 'shake'),
+  rattle: (s, i, g, a) => new FixShake(s, i, g, a, 'rattle'),
   ...fixForce.FIXES, ...fixWall.FIXES, ...fixOutput.FIXES, ...fixMotion.FIXES,
   ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES,
 };

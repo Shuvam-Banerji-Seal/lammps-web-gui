@@ -20,6 +20,7 @@ import * as pair3Body from './registry/pair_3body';
 import * as fixForce from './registry/fix_force';
 import * as fixWall from './registry/fix_wall';
 import * as fixOutput from './registry/fix_output';
+import * as fixMotion from './registry/fix_motion';
 import * as computeAtom from './registry/compute_atom';
 import * as computeGlobal from './registry/compute_global';
 import { FixNVE } from './fix/nve';
@@ -79,7 +80,7 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   'temp/rescale': (s, i, g, a) => new FixTempRescale(s, i, g, a),
   'temp/csvr': (s, i, g, a) => new FixTempCSVR(s, i, g, a, 'temp/csvr'),
   'temp/csld': (s, i, g, a) => new FixTempCSVR(s, i, g, a, 'temp/csld'),
-  ...fixForce.FIXES, ...fixWall.FIXES, ...fixOutput.FIXES,
+  ...fixForce.FIXES, ...fixWall.FIXES, ...fixOutput.FIXES, ...fixMotion.FIXES,
 };
 
 export const COMPUTE_STYLES: Record<string, ComputeFactory> = {

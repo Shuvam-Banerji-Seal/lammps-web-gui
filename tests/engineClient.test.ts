@@ -65,10 +65,10 @@ describe('EngineClient (main-thread fallback, same protocol as the worker)', () 
     expect(ev.some((e) => e.kind === 'done')).toBe(true);
   });
 
-  it('a webgpu request falls back to the CPU and says so', async () => {
+  it('a webgpu request without navigator.gpu (jsdom) falls back to the CPU and says so', async () => {
     const client = new EngineClient(false);
     const ready = await client.reset('webgpu', 0);
     expect(ready.backend).toBe('CPU · fp64');
-    expect(ready.note).toMatch(/CPU/);
+    expect(ready.note).toMatch(/no WebGPU adapter/);
   });
 });

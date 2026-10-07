@@ -23,7 +23,16 @@ export class EngineHost {
 
   private async makeBackend(choice: BackendChoice): Promise<{ backend: ForceBackend; note?: string }> {
     if (choice === 'webgpu') {
-      return { backend: new CpuForceBackend(), note: 'WebGPU forces are not available in this build yet; using the CPU' };
+      try {
+        // loaded on demand: the WGSL backend is only needed when chosen
+        const { createWebGpuBackend } = await import('./gpu/webgpuForces');
+        const gpu = await createWebGpuBackend();
+        if (gpu) return { backend: gpu };
+        return { backend: new CpuForceBackend(), note: 'no WebGPU adapter in this browser; using the CPU' };
+      } catch (e) {
+        const why = e instanceof Error ? e.message : String(e);
+        return { backend: new CpuForceBackend(), note: `WebGPU failed to start (${why}); using the CPU` };
+      }
     }
     return { backend: new CpuForceBackend() };
   }

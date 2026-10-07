@@ -39,7 +39,7 @@ There is no linter configured; `typecheck` is the static gate.
 | `src/services/trajectoryAnalysis.ts` | RDF (cell list), MSD, density, speeds |
 | `src/services/instanceMatrix.ts` | Direct instanced-matrix writes |
 | `src/components/workbench/` | The four modules: `ScriptBuilder`, `CompilerHelper`, `ViewerModule`, `Notebook` (lazy-loaded) |
-| `src/engine/` | In-browser MD engine for the notebook: `types.ts` (contracts), `units`, `rng`, `lattice`, `pairs`, `cpu/forces.ts` (fp64 reference), `integrate`, `velocity`, `observables`, `md` (run loop), `script` + `expr` (input parsing), `interpreter.ts` (LAMMPS subset), `fixes.ts`, `host`/`client`/`protocol` (worker plumbing), `view.ts` |
+| `src/engine/` | In-browser MD engine for the notebook: `types.ts` (contracts), `units`, `rng`, `lattice`, `pairs`, `cpu/forces.ts` (fp64 reference), `cpu/parallel.ts` + `cpu/rangeKernel.ts` (multi-threaded CPU forces via `src/workers/force.worker.ts`), `gpu/webgpuForces.ts` (WGSL), `integrate`, `velocity`, `observables`, `md` (run loop), `script` + `expr` (input parsing), `interpreter.ts` (LAMMPS subset), `fixes.ts`, `host`/`client`/`protocol` (worker plumbing), `view.ts` |
 | `docs/design/notebook.md` | Notebook design: scope, supported subset, acceptance test (LAMMPS `examples/melt` log) |
 | `src/components/*.tsx` | three.js scene pieces (instanced meshes, camera, box, labels) |
 | `src/workers/` | Parser and analysis Web Workers |

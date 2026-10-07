@@ -120,8 +120,43 @@ interface ForceBackend {
 ### Threading
 
 The engine runs in a dedicated Web Worker (WebGPU is exposed to workers), so
-the notebook and the 3D viewer never stall. The worker posts thermo rows and,
-at `dump` intervals, frames that the existing `MoleculeCanvas` renders.
+the notebook and the 3D viewer never stall. The worker posts thermo rows and
+frames (every 25 steps, repainted at most ~8x/s) that the existing
+`MoleculeCanvas` renders.
+
+CPU forces can use several threads (`src/engine/cpu/parallel.ts`): the engine
+worker sorts atoms into cells, splits the cells into contiguous ranges of
+about equal atom count, computes one range itself and sends the others to
+force workers (`src/workers/force.worker.ts`). Each range uses the half
+stencil, so every pair is computed once; reactions on atoms owned by another
+range come back as a short ghost list and are summed by the engine worker.
+No SharedArrayBuffer is needed (GitHub Pages cannot send the cross-origin
+isolation headers it requires).
+
+### Choosing the GPU
+
+`createWebGpuBackend()` asks for a high-performance core adapter, then for a
+compatibility-mode one (`featureLevel: 'compatibility'`), and takes the first
+that is not a software fallback. On Linux + NVIDIA, Chromium exposes the GPU
+only in compatibility mode (OpenGL ES through ANGLE on Vulkan), whose limit of
+4 storage buffers per shader stage the kernel respects. A software adapter
+(SwiftShader) is declined — it is slower than the CPU engine — unless a test
+passes `allowFallback`.
+
+### Measured (Chromium 153, 24-core Xeon Silver 4310, NVIDIA A100, shared machine)
+
+Force step, ms (bench in real Chromium; the machine carried other jobs):
+
+| atoms | 1 thread | 2 | 4 | 8 | WebGPU (A100, compat) |
+|---|---|---|---|---|---|
+| 4,000 | 10.9 | 6.5 | 3.4 | 2.6 | 2.8 |
+| 16,384 | 41.9 | 22.7 | 12.6 | 9.2 | 2.3 |
+| 55,296 | 123.6 | 70.5 | 41.3 | 34.3 | 7.2 |
+
+Whole notebook runs (16,384 atoms, live view on): 22 steps/s on 1 thread,
+51 on 4, 58 on 8 (6.5 cores busy); on the A100, 55,296 atoms at 91 steps/s.
+More than ~8 threads stopped helping here: every thread receives a copy of
+the positions each step.
 
 ## Verification plan
 

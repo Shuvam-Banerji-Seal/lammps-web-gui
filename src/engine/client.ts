@@ -60,9 +60,16 @@ export class EngineClient {
   }
 
   /** Starts a fresh session; resolves with the backend actually in use. */
-  reset(backend: BackendChoice, frameEvery = 0): Promise<Extract<FromEngine, { type: 'ready' }>> {
+  reset(backend: BackendChoice, frameEvery = 0, threads = 1): Promise<Extract<FromEngine, { type: 'ready' }>> {
     const p = new Promise<Extract<FromEngine, { type: 'ready' }>>((r) => this.readyWaiters.push(r));
-    this.send({ type: 'reset', backend, frameEvery });
+    this.send({ type: 'reset', backend, threads, frameEvery });
+    return p;
+  }
+
+  /** Changes CPU/GPU or the CPU thread count, keeping the current system. */
+  setBackend(backend: BackendChoice, threads = 1): Promise<Extract<FromEngine, { type: 'ready' }>> {
+    const p = new Promise<Extract<FromEngine, { type: 'ready' }>>((r) => this.readyWaiters.push(r));
+    this.send({ type: 'backend', backend, threads });
     return p;
   }
 

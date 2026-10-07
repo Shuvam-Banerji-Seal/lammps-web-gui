@@ -1,5 +1,6 @@
 import { Session, RunCancelled } from './interpreter';
 import { CpuForceBackend } from './cpu/forces';
+import { ParallelCpuForceBackend } from './cpu/parallel';
 import type { ForceBackend } from './types';
 import type { BackendChoice, FromEngine, ToEngine } from './protocol';
 
@@ -8,38 +9,66 @@ import type { BackendChoice, FromEngine, ToEngine } from './protocol';
  * the Web Worker wraps it, and the client uses it directly on the main
  * thread when Workers are unavailable (tests, locked-down embeds).
  */
+
+const cores = (): number => {
+  const n = (globalThis as { navigator?: { hardwareConcurrency?: number } }).navigator?.hardwareConcurrency;
+  return n && n > 0 ? n : 1;
+};
+
+const hasWorkers = (): boolean => typeof Worker !== 'undefined';
+
 export class EngineHost {
   private session: Session | null = null;
   private backend: ForceBackend | null = null;
   private current = 0;
+  private frameEvery = 0;
 
   constructor(private post: (msg: FromEngine, transfer?: Transferable[]) => void) {}
 
   async handle(msg: ToEngine): Promise<void> {
-    if (msg.type === 'reset') return this.reset(msg.backend, msg.frameEvery);
+    if (msg.type === 'reset') return this.reset(msg.backend, msg.threads, msg.frameEvery);
+    if (msg.type === 'backend') return this.switchBackend(msg.backend, msg.threads);
     if (msg.type === 'cancel') { this.session?.cancel(); return; }
     if (msg.type === 'exec') return this.exec(msg.id, msg.text, msg.firstLine);
   }
 
-  private async makeBackend(choice: BackendChoice): Promise<{ backend: ForceBackend; note?: string }> {
+  private cpuBackend(threads: number): ForceBackend {
+    const t = Math.max(1, Math.min(Math.floor(threads) || 1, cores()));
+    // the threaded backend needs (nested) Web Workers
+    return t > 1 && hasWorkers() ? new ParallelCpuForceBackend(t) : new CpuForceBackend();
+  }
+
+  private async makeBackend(choice: BackendChoice, threads: number): Promise<{ backend: ForceBackend; note?: string }> {
     if (choice === 'webgpu') {
       try {
         // loaded on demand: the WGSL backend is only needed when chosen
-        const { createWebGpuBackend } = await import('./gpu/webgpuForces');
+        const { createWebGpuBackend, webgpuAdapterKind } = await import('./gpu/webgpuForces');
         const gpu = await createWebGpuBackend();
         if (gpu) return { backend: gpu };
-        return { backend: new CpuForceBackend(), note: 'no WebGPU adapter in this browser; using the CPU' };
+        const kind = await webgpuAdapterKind();
+        return {
+          backend: this.cpuBackend(threads),
+          note: kind === 'software'
+            ? 'this browser offers only a software WebGPU adapter (SwiftShader), which is slower than the CPU engine; using the CPU'
+            : 'no WebGPU adapter in this browser; using the CPU',
+        };
       } catch (e) {
         const why = e instanceof Error ? e.message : String(e);
-        return { backend: new CpuForceBackend(), note: `WebGPU failed to start (${why}); using the CPU` };
+        return { backend: this.cpuBackend(threads), note: `WebGPU failed to start (${why}); using the CPU` };
       }
     }
-    return { backend: new CpuForceBackend() };
+    return { backend: this.cpuBackend(threads) };
   }
 
-  private async reset(choice: BackendChoice, frameEvery: number): Promise<void> {
+  private ready(backend: ForceBackend, note?: string): void {
+    const webgpuAvailable = typeof navigator !== 'undefined' && 'gpu' in navigator;
+    this.post({ type: 'ready', backend: backend.label, kind: backend.kind, webgpuAvailable, cores: cores(), note });
+  }
+
+  private async reset(choice: BackendChoice, threads: number, frameEvery: number): Promise<void> {
     this.backend?.dispose();
-    const { backend, note } = await this.makeBackend(choice);
+    this.frameEvery = frameEvery;
+    const { backend, note } = await this.makeBackend(choice, threads);
     this.backend = backend;
     this.session = new Session({
       emit: (event) => {
@@ -50,13 +79,22 @@ export class EngineHost {
         }
       },
       writeFile: (name, text, append) => this.post({ type: 'file', id: this.current, name, text, append }),
-    }, backend, frameEvery);
-    const webgpuAvailable = typeof navigator !== 'undefined' && 'gpu' in navigator;
-    this.post({ type: 'ready', backend: backend.label, webgpuAvailable, note });
+    }, backend, this.frameEvery);
+    this.ready(backend, note);
+  }
+
+  private async switchBackend(choice: BackendChoice, threads: number): Promise<void> {
+    if (!this.session) return this.reset(choice, threads, this.frameEvery);
+    const { backend, note } = await this.makeBackend(choice, threads);
+    const old = this.backend;
+    this.backend = backend;
+    this.session.setBackend(backend);
+    old?.dispose();
+    this.ready(backend, note);
   }
 
   private async exec(id: number, text: string, firstLine: number): Promise<void> {
-    if (!this.session) await this.reset('cpu', 0);
+    if (!this.session) await this.reset('cpu', 1, 0);
     this.current = id;
     try {
       await this.session!.execute(text, firstLine);

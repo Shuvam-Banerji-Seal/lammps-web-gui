@@ -95,6 +95,12 @@ export class Session {
   get system(): SimState | null { return this.state; }
   get backendLabel(): string { return this.backend.label; }
 
+  /** Swaps the force backend between runs; the system and settings stay. */
+  setBackend(backend: ForceBackend): void {
+    this.backend = backend;
+    this.invalidate();
+  }
+
   /** Requests that a running `run` stop after its current step. */
   cancel(): void { this.cancelled = true; }
 

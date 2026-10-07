@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Square, Plus, Trash2, RotateCcw, Download, Cpu, HelpCircle } from 'lucide-react';
+import { Play, Square, Plus, Trash2, RotateCcw, Download, Cpu, Gpu, HelpCircle } from 'lucide-react';
 import { getThemeTokens, Theme } from '../../theme';
 import { usePersistentState } from '../../hooks/usePersistentState';
 import MoleculeCanvas from '../MoleculeCanvas';
@@ -61,6 +61,19 @@ const STARTER: Cell[] = [
 
 const STORAGE_KEY = 'm3d.notebook.v1';
 const BACKEND_KEY = 'm3d.notebook.backend';
+const THREADS_KEY = 'm3d.notebook.threads';
+
+/** Logical cores the browser reports (at least 1). */
+const browserCores = (): number =>
+  typeof navigator !== 'undefined' && navigator.hardwareConcurrency > 0 ? navigator.hardwareConcurrency : 1;
+/**
+ * Default CPU threads: half the cores (leave the rest to the page and the
+ * OS), at most 8 — measured in Chromium, more threads stop paying off around
+ * there because every thread receives a copy of the positions each step.
+ */
+const defaultThreads = (): number => Math.max(1, Math.min(8, Math.floor(browserCores() / 2)));
+const reviveThreads = (raw: unknown): number | null =>
+  typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 ? Math.min(raw, browserCores()) : null;
 
 const reviveCells = (raw: unknown): Cell[] | null => {
   if (!Array.isArray(raw)) return null;
@@ -100,6 +113,7 @@ const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
   const ct = getThemeTokens(theme);
   const [cells, setCells] = usePersistentState<Cell[]>(STORAGE_KEY, STARTER, reviveCells);
   const [backend, setBackend] = usePersistentState<BackendChoice>(BACKEND_KEY, 'cpu', reviveBackend);
+  const [threads, setThreads] = usePersistentState<number>(THREADS_KEY, defaultThreads, reviveThreads);
   const [runs, setRuns] = useState<Record<string, CellRun>>({});
   const [ready, setReady] = useState<Extract<FromEngine, { type: 'ready' }> | null>(null);
   const [running, setRunning] = useState<string | null>(null);
@@ -117,18 +131,18 @@ const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
     return clientRef.current;
   }, []);
 
-  const resetSession = useCallback(async (choice: BackendChoice) => {
+  const resetSession = useCallback(async (choice: BackendChoice, nThreads: number) => {
     setReady(null);
     setFrame(null);
     setFiles({});
     setSeries([]);
     setRuns({});
-    const info = await client().reset(choice, 25);
+    const info = await client().reset(choice, 25, nThreads);
     setReady(info);
   }, [client]);
 
   useEffect(() => {
-    void resetSession(backend);
+    void resetSession(backend, threads);
     return () => {
       clientRef.current?.dispose();
       clientRef.current = null;
@@ -190,22 +204,25 @@ const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
 
   const runAll = useCallback(async () => {
     stopAll.current = false;
-    await resetSession(backend);
+    await resetSession(backend, threads);
     for (const cell of cells) {
       if (stopAll.current) break;
       const ok = await runCell(cell);
       if (!ok) break;
     }
-  }, [backend, cells, resetSession, runCell]);
+  }, [backend, threads, cells, resetSession, runCell]);
 
   const stop = () => {
     stopAll.current = true;
     clientRef.current?.cancel();
   };
 
-  const changeBackend = async (choice: BackendChoice) => {
+  // Switching CPU/GPU or the thread count keeps the system already built.
+  const changeBackend = async (choice: BackendChoice, nThreads = threads) => {
     setBackend(choice);
-    await resetSession(choice);
+    setThreads(nThreads);
+    setReady(null);
+    setReady(await client().setBackend(choice, nThreads));
   };
 
   const updateText = (id: string, text: string) =>
@@ -235,6 +252,7 @@ const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
 
   const busy = running !== null;
   const webgpuAvailable = ready?.webgpuAvailable ?? (typeof navigator !== 'undefined' && 'gpu' in navigator);
+  const cores = ready?.cores ?? browserCores();
   const btn = `inline-flex min-h-6 min-w-6 items-center justify-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${ct.hoverSurface}`;
 
   return (
@@ -249,18 +267,35 @@ const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
         <button className={`${btn} ${ct.button}`} onClick={stop} disabled={!busy} aria-label="Stop the run" title="Stop the run">
           <Square size={13} aria-hidden="true" />Stop
         </button>
-        <button className={`${btn} ${ct.button}`} onClick={() => void resetSession(backend)} disabled={busy}
+        <button className={`${btn} ${ct.button}`} onClick={() => void resetSession(backend, threads)} disabled={busy}
           title="Drop every atom, fix and variable and start over">
           <RotateCcw size={13} aria-hidden="true" />Reset session
         </button>
-        <label className="flex items-center gap-1 text-xs">
-          <Cpu size={13} aria-hidden="true" className={ct.muted} />
-          <select aria-label="Force backend" value={backend} disabled={busy}
-            onChange={(e) => void changeBackend(e.target.value as BackendChoice)}
+        <div role="radiogroup" aria-label="Compute device" className={`flex overflow-hidden rounded border ${ct.divider}`}>
+          {([['cpu', 'CPU', <Cpu key="i" size={13} aria-hidden="true" />], ['webgpu', 'GPU', <Gpu key="i" size={13} aria-hidden="true" />]] as const)
+            .map(([value, text, icon]) => (
+              <button key={value} role="radio" aria-checked={backend === value}
+                disabled={busy || (value === 'webgpu' && !webgpuAvailable)}
+                title={value === 'webgpu'
+                  ? (webgpuAvailable ? 'Compute forces on the GPU with WebGPU' : 'This browser has no WebGPU')
+                  : 'Compute forces on the CPU (fp64), on the chosen number of threads'}
+                onClick={() => { if (backend !== value) void changeBackend(value); }}
+                className={`${btn} rounded-none ${backend === value ? ct.accent : ct.button}`}>
+                {icon}{text}
+              </button>
+            ))}
+        </div>
+        <label className={`flex items-center gap-1 text-xs ${backend === 'webgpu' ? 'opacity-50' : ''}`}
+          title="CPU threads used for force computation (your browser reports this many logical cores)">
+          <span className={ct.muted}>Threads</span>
+          <select aria-label="CPU threads" value={Math.min(threads, cores)} disabled={busy || backend === 'webgpu'}
+            onChange={(e) => void changeBackend(backend, Number(e.target.value))}
             className={`min-h-6 rounded border px-1 py-0.5 text-xs ${ct.input}`}>
-            <option value="cpu">CPU (fp64)</option>
-            <option value="webgpu" disabled={!webgpuAvailable}>WebGPU{webgpuAvailable ? '' : ' (not available)'}</option>
+            {Array.from({ length: cores }, (_, k) => k + 1).map((k) => (
+              <option key={k} value={k}>{k}{k === cores ? ' (all)' : ''}</option>
+            ))}
           </select>
+          <span className={ct.muted}>of {cores}</span>
         </label>
         <span className={`text-xs ${ct.muted}`} aria-live="polite">
           {ready ? `${ready.backend}${ready.note ? ` — ${ready.note}` : ''}` : 'starting engine…'}

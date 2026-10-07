@@ -69,6 +69,35 @@ describe('EngineClient (main-thread fallback, same protocol as the worker)', () 
     const client = new EngineClient(false);
     const ready = await client.reset('webgpu', 0);
     expect(ready.backend).toBe('CPU · fp64');
+    expect(ready.kind).toBe('cpu');
     expect(ready.note).toMatch(/no WebGPU adapter/);
+  });
+
+  it('a software-only WebGPU adapter is declined in favour of the CPU, with a note', async () => {
+    Object.defineProperty(navigator, 'gpu', {
+      configurable: true,
+      value: { requestAdapter: async () => ({ info: { vendor: 'google', architecture: 'swiftshader', isFallbackAdapter: true }, requestDevice: async () => ({ destroy() {} }) }) },
+    });
+    try {
+      const client = new EngineClient(false);
+      const ready = await client.reset('webgpu', 0);
+      expect(ready.kind).toBe('cpu');
+      expect(ready.note).toMatch(/software WebGPU adapter \(SwiftShader\)/);
+    } finally {
+      delete (navigator as unknown as { gpu?: unknown }).gpu;
+    }
+  });
+
+  it('switching backend or thread count keeps the system already built', async () => {
+    const client = new EngineClient(false);
+    const r0 = await client.reset('cpu', 0, 1);
+    expect(r0.cores).toBeGreaterThanOrEqual(1);
+    await client.exec(SMALL, 1, { onEvent: () => {} });
+    const r1 = await client.setBackend('cpu', 1);
+    expect(r1.backend).toBe('CPU · fp64');
+    const ev: EngineEvent[] = [];
+    const r = await client.exec('run 10', 20, { onEvent: (e) => ev.push(e) });
+    expect(r.ok).toBe(true);
+    expect(ev.some((e) => e.kind === 'done')).toBe(true);   // atoms survived the switch
   });
 });

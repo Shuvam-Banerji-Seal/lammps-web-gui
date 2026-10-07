@@ -103,6 +103,7 @@ export class ForceField {
       const cutCoul = this.pair.extract('cut_coul');
       if (typeof cutCoul !== 'number') throw new StyleError(`kspace_style ${this.kspace.name} is not compatible with pair style ${this.pair.name}`);
       this.kspace.init(s, geom, cutCoul, s.units.qqr2e / this.dielectric, ctx);
+      this.pair.gEwald = this.kspace.gEwald;
     }
     this.updateTail(s);
   }

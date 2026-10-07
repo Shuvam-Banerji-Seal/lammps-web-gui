@@ -242,6 +242,8 @@ export abstract class Pair {
    * correctly accounted for.").
    */
   virialFdotr = false;
+  /** G-ewald splitting parameter, set from the kspace style at init (coul/long styles). */
+  gEwald = 0;
   /** Cutoff per type pair after init: (ntypes+1)^2. */
   cut = new Float64Array(0);
   cutsq = new Float64Array(0);

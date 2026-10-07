@@ -113,9 +113,25 @@ interface ForceBackend {
   positions; a WGSL kernel scans the 27 neighbour cells per atom and writes
   forces, per-atom energy and virial; the CPU integrates. This keeps the GPU
   path small enough to verify against the CPU path force-by-force.
-  v2 (later): integrate on the GPU and read back only at thermo/dump steps.
+- **WebGPU resident stepping**, v2 (`src/engine/gpu/resident.ts`): for runs
+  whose only fixes are `nve` (plus `enforce2d`), whole velocity-Verlet steps
+  stay on the GPU — half kick + drift + wrap, cell list rebuilt on the GPU
+  (atomic counts, one-workgroup prefix sum, scatter into cell-sorted slots),
+  the same 27-cell force kernel, second half kick. `md.run` hands the backend
+  chunks of steps ending at the next step the host needs (thermo, dump, viewer
+  frame, end of run; at most 200 so Stop stays responsive), and x, v, f,
+  images, energy and virial are read back once per chunk. Thermostats and
+  other fixes keep the per-step path. Every entry point fits compatibility
+  mode (<= 4 storage buffers, <= 128 invocations per workgroup), and kernel
+  validation errors are raised, not read back as zeros.
 - The two must agree: GPU vs CPU forces within 1e-4 relative on random LJ
-  configurations, checked in a real Chromium (SwiftShader adapter).
+  configurations, checked in a real Chromium (SwiftShader adapter). The
+  resident path additionally: one GPU step vs one fp64 CPU step (x within
+  1e-5, v within 1e-4, F within 1e-4 relative), melt step-100 temperature
+  within 0.02 of the CPU, NVE energy drift over 2000 steps below 2e-3 per atom
+  (measured 1.2e-4 on the A100, 9e-5 on SwiftShader, fp32), and dumps on
+  their steps. `tests/engineResident.test.ts` checks the chunking against an
+  fp64 stand-in, which must reproduce the per-step loop exactly.
 
 ### Threading
 
@@ -158,9 +174,16 @@ z-layers of cells, one layer up, and layer 0 when that wraps — not every
 position (`sliceRange`); that moved the point where more threads stop
 helping from ~8 to ~12-16 for large systems.
 
-Whole notebook runs (16,384 atoms, live view on): 22 steps/s on 1 thread,
-51 on 4, 58 on 8 (6.5 cores busy); on the A100, 55,296 atoms at 91 steps/s.
+Whole notebook runs (`fix nve`, live view on, a frame every 25 steps):
+
+| atoms | 1 thread | 4 | 8 | WebGPU per step (v1) | WebGPU resident (v2) |
+|---|---|---|---|---|---|
+| 16,384 | 22 steps/s | 51 | 58 (6.5 cores busy) | — | 817 steps/s |
+| 55,296 | — | — | — | 91 steps/s | 745–760 steps/s |
+
 Small systems stop gaining past ~8 threads (per-step messaging dominates).
+With resident stepping the A100 runs at 30–45 % SM utilisation and the
+browser uses ~1.5 cores (mostly the renderer drawing frames).
 
 ## Verification plan
 

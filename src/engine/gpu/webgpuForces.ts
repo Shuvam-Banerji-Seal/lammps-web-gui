@@ -1,6 +1,7 @@
 import type { ForceBackend, ForceResult, PairTable, SimState } from '../types';
 import { pairArrays, type PairArrays } from '../pairs';
 import { CpuForceBackend } from '../cpu/forces';
+import { ResidentStepper } from './resident';
 
 /*
  * WebGPU Lennard-Jones forces (docs/design/notebook.md, "Backends", v1).
@@ -203,6 +204,7 @@ export class WebGpuForceBackend implements ForceBackend {
   private posData = new Float32Array(0);
   private intsData = new Uint32Array(0);
   private disposed = false;
+  private resident: Promise<ResidentStepper> | null = null;
 
   constructor(private device: GPUDevice, readonly label: string, readonly software = false) {
     const module = device.createShaderModule({ code: KERNEL });
@@ -357,8 +359,32 @@ export class WebGpuForceBackend implements ForceBackend {
     return { pe, virial };
   }
 
+  /** True when `advance` can run this system entirely on the GPU. */
+  canAdvance(state: SimState, table: PairTable): boolean {
+    const { arrays } = this.coefFor(table);
+    if (state.n === 0 || !(arrays.maxCutoff > 0)) return false;
+    const two = state.dimension === 2;
+    return [0, 1, 2].every((d) => (d === 2 && two)
+      || (state.box.periodic[d] && Math.floor((state.box.hi[d] - state.box.lo[d]) / arrays.maxCutoff) >= 3));
+  }
+
+  /**
+   * Runs `nsteps` velocity-Verlet steps (fix nve, optionally enforce2d)
+   * without leaving the GPU, then writes x, v, f and images back into
+   * `state`; returns the final step's energy and virial.
+   */
+  async advance(state: SimState, table: PairTable, nsteps: number, opts: { enforce2d: boolean }): Promise<ForceResult> {
+    if (this.disposed) throw new Error('the WebGPU backend was disposed');
+    const { arrays, coef } = this.coefFor(table);
+    const two = state.dimension === 2;
+    const nc = [0, 1, 2].map((d) => (d === 2 && two ? 1 : Math.floor((state.box.hi[d] - state.box.lo[d]) / arrays.maxCutoff))) as [number, number, number];
+    this.resident ??= ResidentStepper.create(this.device);
+    return (await this.resident).advance(state, nsteps, { nc, stride: arrays.stride, coef, enforce2d: opts.enforce2d });
+  }
+
   dispose(): void {
     if (this.disposed) return;
+    this.resident?.then((r) => r.dispose(), () => undefined);
     this.disposed = true;
     const b = this.bufs;
     if (b) for (const buf of [b.pos, b.out, b.staging, b.ints, b.coef]) buf.destroy();

@@ -836,6 +836,9 @@ export class Session {
         return !this.cancelled;
       },
       onSetup: () => this.writeDumps(),
+      // steps whose state must be on the host: dumps and viewer frames
+      hostStep: (step) => this.dumps.some((d) => step % d.every === 0)
+        || (this.frameEvery > 0 && step % this.frameEvery === 0),
       yieldEvery: 25,
     });
     const seconds = (performance.now() - t0) / 1000;

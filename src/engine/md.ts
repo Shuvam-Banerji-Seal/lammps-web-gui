@@ -53,6 +53,21 @@ export const addAtoms = (s: SimState, positions: Float64Array, type: number): nu
   return add;
 };
 
+/**
+ * A backend that can run whole velocity-Verlet steps itself (the WebGPU
+ * backend, gpu/resident.ts), reading state back only when asked to.
+ */
+export interface ResidentBackend extends ForceBackend {
+  canAdvance(state: SimState, table: PairTable): boolean;
+  advance(state: SimState, table: PairTable, nsteps: number, opts: { enforce2d: boolean }): Promise<ForceResult>;
+}
+
+const isResident = (b: ForceBackend): b is ResidentBackend =>
+  typeof (b as Partial<ResidentBackend>).advance === 'function' && typeof (b as Partial<ResidentBackend>).canAdvance === 'function';
+
+/** Longest stretch run on the GPU without coming back (keeps Stop responsive). */
+const MAX_CHUNK = 200;
+
 export interface RunOptions {
   /** thermo N; 0 = only first and last step. */
   thermoEvery: number;
@@ -65,6 +80,12 @@ export interface RunOptions {
   onStep?: (s: SimState) => boolean | void;
   /** Lets a caller yield to the event loop every `yieldEvery` steps. */
   yieldEvery?: number;
+  /**
+   * Steps at which the caller needs the state on the host (dumps, frames).
+   * With a resident backend only those steps, thermo steps and the last step
+   * come back from the GPU, and onStep is called only for them.
+   */
+  hostStep?: (step: number) => boolean;
 }
 
 /** Forces + fix setup at the start of a run; returns the step-0 forces. */
@@ -86,6 +107,25 @@ export const run = async (
   opts.onSetup?.(s);
   const emit = () => opts.onThermo?.(thermoRow(s, opts.keywords, res, { norm: opts.norm, runStart: ctx.runStart }));
   emit();
+  // GPU-resident path: plain NVE (optionally 2d) on a backend that can step itself
+  const nve = fixes.filter((f) => f.style === 'nve').length === 1
+    && fixes.every((f) => f.style === 'nve' || f.style === 'enforce2d');
+  if (nsteps > 0 && nve && isResident(backend) && backend.canAdvance(s, table)) {
+    const enforce2d = fixes.some((f) => f.style === 'enforce2d');
+    const due = (step: number) => step === ctx.runStop
+      || (opts.thermoEvery > 0 && step % opts.thermoEvery === 0)
+      || (opts.hostStep?.(step) ?? false);
+    while (s.step < ctx.runStop) {
+      let m = 1;
+      while (m < MAX_CHUNK && !due(s.step + m)) m++;
+      res = await backend.advance(s, table, m, { enforce2d });
+      s.step += m;
+      if (s.step === ctx.runStop || (opts.thermoEvery > 0 && s.step % opts.thermoEvery === 0)) emit();
+      if (opts.onStep?.(s) === false) break;
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    return res;
+  }
   for (let k = 0; k < nsteps; k++) {
     for (const fx of fixes) fx.initialIntegrate?.(s, ctx);
     wrapPositions(s);

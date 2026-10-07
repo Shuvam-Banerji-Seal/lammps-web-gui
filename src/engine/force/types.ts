@@ -233,6 +233,14 @@ export abstract class Pair {
   /** Styles with a long-range Coulomb part (need a kspace style). */
   coulLong = false;
   /**
+   * Keep pairs whose special_bonds weights are both 0.0 in the neighbor list
+   * (special_bonds.html: "a value of 0.0 means exclude the pair completely
+   * from the neighbor list, except for pair styles that require a kspace
+   * style and pair styles amoeba, hippo, thole, coul/exclude, and pair styles
+   * that include “coul/dsf” or “coul/wolf”.").
+   */
+  keepExcluded = false;
+  /**
    * The style does not tally the global virial itself; the force field takes
    * it as sum_k x_k . f_k over owned and ghost atoms right after compute()
    * (Developer_flow.html: "the global virial ... to be calculated cheaply (at

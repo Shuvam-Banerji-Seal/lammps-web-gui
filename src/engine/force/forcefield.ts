@@ -103,7 +103,7 @@ export class ForceField {
     const settings: SpecialSettings = {
       lj: [1, ...this.special.lj] as SpecialSettings['lj'],
       coul: [1, ...this.special.coul] as SpecialSettings['coul'],
-      keepExcluded: !!this.kspace || (this.pair?.coulLong ?? false),
+      keepExcluded: !!this.kspace || (this.pair?.coulLong ?? false) || (this.pair?.keepExcluded ?? false),
     };
     if (this.pair instanceof PairHybrid) this.pair.checkSpecial(this.special);
     nb.init({

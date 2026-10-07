@@ -145,6 +145,7 @@ export class PairHybrid extends Pair {
     this.needsHalf = subs.some((s) => s.style.needsHalf);
     this.needsFull = subs.some((s) => s.style.needsFull);
     this.coulLong = subs.some((s) => s.style.coulLong);
+    this.keepExcluded = subs.some((s) => s.style.keepExcluded);
     // special_bonds weights do not apply to many-body sub-styles; pairwise ones need them
     this.manybody = subs.every((s) => s.style.manybody);
     if (this.ntypes > 0) this.allocate(this.ntypes);

@@ -51,3 +51,15 @@ export const erfcFast = (x: number, ex: number): number => {
 };
 
 export const EWALD_F = TWO_OVER_SQRTPI;
+
+/**
+ * pair_modify table 0 — pair_modify.html: "For N = 0, forces and energies are
+ * computed directly, using a polynomial fit for the needed erfc() function
+ * evaluation": the Abramowitz & Stegun 7.1.26 rational fit,
+ * erfc(x) = t (a1 + t (a2 + t (a3 + t (a4 + t a5)))) exp(-x^2), t = 1/(1 + p x)
+ * (absolute error <= 1.5e-7).
+ */
+export const erfcPoly = (x: number, ex: number): number => {
+  const t = 1 / (1 + 0.3275911 * x);
+  return t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * ex;
+};

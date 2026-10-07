@@ -8,6 +8,9 @@ import { AngleHarmonic } from './force/angle/harmonic';
 import { DihedralHarmonic } from './force/dihedral/harmonic';
 import { ImproperHarmonic } from './force/improper/harmonic';
 import * as pairCoul from './registry/pair_coul';
+import { PairCoulLong, PairLJCutCoulLong } from './force/pair/coul_long';
+import { KSpaceEwald } from './force/kspace/ewald';
+import { KSpacePPPM } from './force/kspace/pppm';
 import * as pairSimple from './registry/pair_simple';
 import * as pairLJ from './registry/pair_lj';
 import * as bondedA from './registry/bonded_a';
@@ -32,6 +35,8 @@ export type ComputeFactory = (sys: System, id: string, group: string, args: stri
 
 export const PAIR_STYLES: Record<string, () => Pair> = {
   'lj/cut': () => new PairLJCut(),
+  'coul/long': () => new PairCoulLong(),
+  'lj/cut/coul/long': () => new PairLJCutCoulLong(),
   ...pairCoul.PAIRS, ...pairSimple.PAIRS, ...pairLJ.PAIRS,
 };
 
@@ -51,7 +56,10 @@ export const IMPROPER_STYLES: Record<string, () => Bonded> = {
   harmonic: () => new ImproperHarmonic(),
   ...bondedB.IMPROPERS,
 };
-export const KSPACE_STYLES: Record<string, () => KSpace> = {};
+export const KSPACE_STYLES: Record<string, () => KSpace> = {
+  ewald: () => new KSpaceEwald(),
+  pppm: () => new KSpacePPPM(),
+};
 
 export const FIX_STYLES: Record<string, FixFactory> = {
   nve: (s, i, g, a) => new FixNVE(s, i, g, a),

@@ -2,7 +2,7 @@ import { Pair, PairParams, StyleError, type PairCompute } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairLJCut, tallyAtom } from './lj_cut';
 import { parseNum } from '../util';
-import { erfcFast, EWALD_F } from '../erfc';
+import { erfcFast, erfcPoly, EWALD_F } from '../erfc';
 
 /*
  * Real-space parts of Ewald/PPPM Coulombics.
@@ -16,27 +16,29 @@ import { erfcFast, EWALD_F } from '../erfc';
  * computed in reciprocal space." "For coul/cut/global, coul/long and coul/msm
  * no cutoff can be specified for an individual I,J type pair".
  * docs.lammps.org/pair_lj_cut_coul.html: "lj/cut/coul/long args = cutoff
- * (cutoff2) ... cutoff = global cutoff for LJ (and Coulombic if only 1 arg),
- * cutoff2 = global cutoff for Coulombic (optional)"; "For lj/cut/coul/long
+ * (cutoff2)"; "cutoff = global cutoff for LJ (and Coulombic if only 1 arg)
+ * (distance units)"; "cutoff2 = global cutoff for Coulombic (optional)
+ * (distance units)"; "For lj/cut/coul/long
  * ... only the LJ cutoff can be specified".
  * The damped pair term is the standard Ewald real-space sum: E = C q_i q_j
  * erfc(g r)/r with C = qqr2e/dielectric and g the kspace G-ewald parameter.
  * special_bonds.html: excluded pairs are kept in the neighbor list for
  * kspace styles; their Coulomb weight w removes (1 - w) of the bare C q_i q_j
  * / r term, which the reciprocal sum includes.
- * pair_modify table N (default 12) tabulates this term in LAMMPS; the engine
- * always evaluates it to ~1e-12 (erfc.ts), so energies agree with LAMMPS's
- * table 0 setting to that precision and with its default to ~1e-6.
+ * pair_modify table N: with N = 0 the polynomial erfc fit LAMMPS documents
+ * is used (erfc.ts erfcPoly; native LAMMPS agrees to ~1e-12); otherwise the
+ * engine evaluates erfc to ~1e-12 instead of tabulating it, which agrees with
+ * LAMMPS's default table to ~1e-6.
  */
 
 /** Coulomb long-range real-space loop shared by both styles. */
 const coulLongPair = (
-  rsq: number, qi: number, qj: number, g: number, qqrd2e: number, fc: number,
+  rsq: number, qi: number, qj: number, g: number, qqrd2e: number, fc: number, poly: boolean,
 ): { e: number; f: number } => {
   const r = Math.sqrt(rsq);
   const grij = g * r;
   const ex = Math.exp(-grij * grij);
-  const erfc = erfcFast(grij, ex);
+  const erfc = poly ? erfcPoly(grij, ex) : erfcFast(grij, ex);
   const pre = qqrd2e * qi * qj / r;
   let forcecoul = pre * (erfc + EWALD_F * grij * ex);
   let e = pre * erfc;
@@ -97,7 +99,7 @@ export class PairCoulLong extends Pair {
         const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
         const rsq = dx * dx + dy * dy + dz * dz;
         if (rsq >= cutsq) continue;
-        const r = coulLongPair(rsq, qi, qj, g, pc.qqrd2e, sC[jj >>> SBBITS]);
+        const r = coulLongPair(rsq, qi, qj, g, pc.qqrd2e, sC[jj >>> SBBITS], this.table === 0);
         fxi += dx * r.f; fyi += dy * r.f; fzi += dz * r.f;
         f[3 * j] -= dx * r.f; f[3 * j + 1] -= dy * r.f; f[3 * j + 2] -= dz * r.f;
         ecoul += r.e;
@@ -161,7 +163,7 @@ export class PairLJCutCoulLong extends PairLJCut {
         const t = ti + type[j];
         let fpair = 0, e = 0;
         if (rsq < cutcsq && qi !== 0 && q[j] !== 0) {
-          const r = coulLongPair(rsq, qi, q[j], g, pc.qqrd2e, sC[sb]);
+          const r = coulLongPair(rsq, qi, q[j], g, pc.qqrd2e, sC[sb], this.table === 0);
           fpair += r.f;
           ecoul += r.e;
           e += r.e;

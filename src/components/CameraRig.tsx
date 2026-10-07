@@ -29,12 +29,16 @@ const CameraRig: React.FC<CameraRigProps> = ({
 
   const distanceFor = React.useCallback(
     (direction: THREE.Vector3) => {
-      // frame the bounding sphere with margin; fov-aware
-      const fovRad = (fov * Math.PI) / 180;
-      const dist = boundingRadius / Math.sin(Math.min(fovRad, Math.PI / 3) / 2);
+      // frame the bounding sphere with margin; fov- and aspect-aware: on a
+      // portrait pane the horizontal half-angle atan(tan(fov/2)·aspect) is
+      // the narrower one and must set the distance
+      const halfV = (fov * Math.PI) / 360;
+      const aspect = (camera as THREE.PerspectiveCamera).aspect || 1;
+      const halfH = Math.atan(Math.tan(halfV) * aspect);
+      const dist = boundingRadius / Math.sin(Math.min(halfV, halfH, Math.PI / 6));
       return Math.max(dist * 1.05, boundingRadius + 1);
     },
-    [boundingRadius, fov]
+    [boundingRadius, fov, camera]
   );
 
   useEffect(() => {

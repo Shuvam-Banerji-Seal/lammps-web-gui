@@ -1,11 +1,11 @@
-import React, { useMemo, useState, useCallback, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { PerformanceMonitor } from '@react-three/drei';
 import * as THREE from 'three';
 import { MoleculeData, VisualizationConfig, Atom, BoxBounds } from '../types';
 import { ELEMENT_DATA } from '../constants';
 import { measureSelection, MeasurementResult } from '../services/measure';
-import { registerActiveGL } from '../services/glRegistry';
+import { getActiveGL, registerActiveGL } from '../services/glRegistry';
 import InstancedAtomMesh from './InstancedAtomMesh';
 import InstancedBondMesh from './InstancedBondMesh';
 import SimulationBox from './SimulationBox';
@@ -30,6 +30,11 @@ interface MoleculeCanvasProps {
    * per-frame box would make the view distance pump during playback.
    */
   displayBox?: BoxBounds;
+  /**
+   * Periodic cell for measurements (minimum image), passed only for formats
+   * whose coordinates are wrapped into a periodic cell.
+   */
+  measureBox?: BoxBounds;
 }
 
 interface HoverInfo {
@@ -87,8 +92,14 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
   onSelectAtom,
   forceContinuousRender = false,
   displayBox,
+  measureBox,
 }) => {
   const [hover, setHover] = useState<HoverInfo | null>(null);
+  // The GL registry must not pin this renderer (and its scene) after unmount.
+  const glRef = useRef<THREE.WebGLRenderer | null>(null);
+  useEffect(() => () => {
+    if (glRef.current && getActiveGL()?.gl === glRef.current) registerActiveGL(null);
+  }, []);
   // Adaptive quality: PerformanceMonitor lowers this when FPS dips (P6).
   const [perfFactor, setPerfFactor] = useState(1);
 
@@ -189,8 +200,8 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
   );
 
   const measurement: MeasurementResult | null = useMemo(
-    () => measureSelection(selectedAtoms),
-    [selectedAtoms]
+    () => measureSelection(selectedAtoms, measureBox),
+    [selectedAtoms, measureBox]
   );
 
   // Detect WebGL availability ONCE before mounting — prevents R3F from
@@ -229,7 +240,7 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
         // invalidates during interaction and damping settles naturally.
         // Recording forces continuous frames so captured video has motion.
         frameloop={autoRotate || forceContinuousRender ? 'always' : 'demand'}
-        onCreated={({ gl, scene, camera }) => registerActiveGL({ gl, scene, camera })}
+        onCreated={({ gl, scene, camera }) => { glRef.current = gl; registerActiveGL({ gl, scene, camera }); }}
         gl={{
           antialias: atoms.length <= 20000,
           alpha: false,
@@ -246,7 +257,7 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
         />
         <color attach="background" args={[config.backgroundColor]} />
 
-        <LightingRig preset={config.lightingPreset} shadows={shadowsEnabled} />
+        <LightingRig preset={config.lightingPreset} shadows={shadowsEnabled} radius={boundingRadius} />
 
         <group position={groupPosition}>
           {config.showAxes && <axesHelper args={[boundingRadius * 1.2]} />}

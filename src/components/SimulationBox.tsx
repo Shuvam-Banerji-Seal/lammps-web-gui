@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { BoxBounds } from '../types';
 
@@ -68,6 +68,8 @@ const SimulationBox: React.FC<SimulationBoxProps> = ({
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     return geo;
   }, [box]);
+  // a new geometry per box / selection change: free the previous one's GPU buffers
+  useEffect(() => () => { lineGeometry?.dispose(); }, [lineGeometry]);
 
   const faceGeometry = useMemo(() => {
     if (!showFaces) return null;
@@ -88,6 +90,8 @@ const SimulationBox: React.FC<SimulationBoxProps> = ({
     geo.computeVertexNormals();
     return geo;
   }, [box, showFaces]);
+  // a new geometry per box / selection change: free the previous one's GPU buffers
+  useEffect(() => () => { faceGeometry?.dispose(); }, [faceGeometry]);
 
   return (
     <group>

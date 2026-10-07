@@ -1,4 +1,4 @@
-import { Atom } from '../types';
+import { Atom, BoxBounds } from '../types';
 
 /**
  * Geometric measurements over atom selections.
@@ -86,8 +86,52 @@ export interface MeasurementResult {
   label: string;
 }
 
-/** Measure the current selection (2 → distance, 3 → angle, 4 → dihedral). */
-export const measureSelection = (atoms: Atom[]): MeasurementResult | null => {
+/**
+ * Minimum-image displacement in a (restricted-triclinic) periodic cell:
+ * edge vectors A = (lx,0,0), B = (xy,ly,0), C = (xz,yz,lz)
+ * (docs.lammps.org/Howto_triclinic.html). The displacement is taken to
+ * fractional coordinates, each wrapped into [-0.5, 0.5], and back.
+ */
+export const minimumImage = (d: Vec3, box: BoxBounds): Vec3 => {
+  const lx = box.xhi - box.xlo, ly = box.yhi - box.ylo, lz = box.zhi - box.zlo;
+  if (!(lx > 0 && ly > 0 && lz > 0)) return d;
+  const xy = box.xy ?? 0, xz = box.xz ?? 0, yz = box.yz ?? 0;
+  let sz = d.z / lz;
+  let sy = (d.y - yz * sz) / ly;
+  let sx = (d.x - xy * sy - xz * sz) / lx;
+  sx -= Math.round(sx); sy -= Math.round(sy); sz -= Math.round(sz);
+  return { x: lx * sx + xy * sy + xz * sz, y: ly * sy + yz * sz, z: lz * sz };
+};
+
+/**
+ * The selection as one connected chain: each atom is replaced by its
+ * periodic image nearest to the previous one, so a bond or angle that
+ * crosses the cell boundary is measured as it physically is.
+ */
+const unwrapChain = (atoms: Atom[], box: BoxBounds): Atom[] => {
+  const out: Atom[] = [atoms[0]];
+  for (let i = 1; i < atoms.length; i++) {
+    const prev = out[i - 1];
+    const d = minimumImage(sub(atoms[i], prev), box);
+    out.push({ ...atoms[i], x: prev.x + d.x, y: prev.y + d.y, z: prev.z + d.z });
+  }
+  return out;
+};
+
+/**
+ * Measure the current selection (2 → distance, 3 → angle, 4 → dihedral).
+ * With a periodic `box`, consecutive atoms are joined through their nearest
+ * periodic images; the label says so when that changed the value.
+ */
+export const measureSelection = (picked: Atom[], box?: BoxBounds): MeasurementResult | null => {
+  const atoms = box && picked.length >= 2 ? unwrapChain(picked, box) : picked;
+  const result = measureRaw(atoms);
+  if (!result || !box || picked.length < 2) return result;
+  const raw = measureRaw(picked);
+  return raw && raw.label !== result.label ? { ...result, label: `${result.label} (min. image)` } : result;
+};
+
+const measureRaw = (atoms: Atom[]): MeasurementResult | null => {
   if (atoms.length === 2) {
     return { kind: 'distance', label: `${distance(atoms[0], atoms[1]).toFixed(3)} Å` };
   }

@@ -70,3 +70,29 @@ describe('measurement math', () => {
     expect(measureSelection(pts.slice(0, 2))!.label).toMatch(/Å$/);
   });
 });
+
+describe('periodic boundaries (minimum image)', () => {
+  const box = { xlo: 0, xhi: 40, ylo: 0, yhi: 40, zlo: 0, zhi: 40 };
+  const at = (id: number, x: number, y: number, z: number) => ({ id, molId: 1, type: 1, charge: 0, x, y, z });
+
+  it('two atoms 1 A apart across the x boundary measure 1 A, not 39 A', () => {
+    const r = measureSelection([at(1, 0.5, 5, 5), at(2, 39.5, 5, 5)], box);
+    expect(r?.label).toBe('1.000 Å (min. image)');
+    expect(measureSelection([at(1, 0.5, 5, 5), at(2, 39.5, 5, 5)])?.label).toBe('39.000 Å');
+  });
+
+  it('an angle across the boundary uses the nearest images; inside the cell nothing changes', () => {
+    // a straight chain 39.0 -> 0.5 -> 1.5 along x through the boundary
+    const r = measureSelection([at(1, 39.0, 5, 5), at(2, 0.5, 5, 5), at(3, 1.5, 5, 5)], box);
+    expect(r?.label).toBe('180.0° (min. image)');
+    expect(measureSelection([at(1, 39.0, 5, 5), at(2, 0.5, 5, 5), at(3, 1.5, 5, 5)])?.label).toBe('0.0°');
+    expect(measureSelection([at(1, 10, 10, 10), at(2, 11, 10, 10)], box)?.label).toBe('1.000 Å');
+  });
+
+  it('triclinic cell: wraps along the tilted edge vectors', () => {
+    const tri = { xlo: 0, xhi: 10, ylo: 0, yhi: 10, zlo: 0, zhi: 10, xy: 5 };
+    // b-vector is (5, 10, 0): (1,1,1) and (1+5, 1+10-0.5, 1) are 0.5 apart through it
+    const r = measureSelection([at(1, 1, 1, 1), at(2, 6, 10.5, 1)], tri);
+    expect(r?.label).toBe('0.500 Å (min. image)');
+  });
+});

@@ -623,13 +623,26 @@ const ViewerModule: React.FC<{
     [moleculeData, frameIdx, frameCount],
   );
 
+  /**
+   * Cell for minimum-image measurements — only for formats whose coordinates
+   * live in a periodic cell (LAMMPS data/dump, CIF, extended XYZ). A PDB
+   * CRYST1 cell is crystallographic: a protein's own atoms can be more than
+   * half a cell apart, so it is never wrapped.
+   */
+  const measureBox = useMemo(() => {
+    const box = displayBox ?? moleculeData?.box;
+    if (!box) return undefined;
+    return fileFormat === 'lammps' || fileFormat === 'lammpsdump' || fileFormat === 'cif' || fileFormat === 'xyz'
+      ? box : undefined;
+  }, [displayBox, moleculeData, fileFormat]);
+
   const measurement: MeasurementResult | null = useMemo(() => {
     if (!activeData) return null;
     const picked = selectedIds
       .map(id => activeData.atoms.find(a => a.id === id))
       .filter((a): a is NonNullable<typeof a> => !!a);
-    return measureSelection(picked);
-  }, [activeData, selectedIds]);
+    return measureSelection(picked, measureBox);
+  }, [activeData, selectedIds, measureBox]);
 
   const measurementHint = useMemo(() => {
     if (!selectedIds.length) return 'Click 2–4 atoms to measure';
@@ -1661,6 +1674,7 @@ const ViewerModule: React.FC<{
             onSelectAtom={toggleSelectAtom}
             forceContinuousRender={isRecording || savingVideo}
             displayBox={displayBox}
+            measureBox={measureBox}
           />
         ) : (
           <div className={`w-full h-full flex flex-col items-center justify-center ${ct.muted}`}>

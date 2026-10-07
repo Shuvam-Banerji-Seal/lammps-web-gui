@@ -15,6 +15,13 @@ import * as pairSimple from './registry/pair_simple';
 import * as pairLJ from './registry/pair_lj';
 import * as bondedA from './registry/bonded_a';
 import * as bondedB from './registry/bonded_b';
+import * as pairEAM from './registry/pair_eam';
+import * as pair3Body from './registry/pair_3body';
+import * as fixForce from './registry/fix_force';
+import * as fixWall from './registry/fix_wall';
+import * as fixOutput from './registry/fix_output';
+import * as computeAtom from './registry/compute_atom';
+import * as computeGlobal from './registry/compute_global';
 import { FixNVE } from './fix/nve';
 import { FixEnforce2d } from './fix/enforce2d';
 import { FixNH } from './fix/nh';
@@ -37,7 +44,7 @@ export const PAIR_STYLES: Record<string, () => Pair> = {
   'lj/cut': () => new PairLJCut(),
   'coul/long': () => new PairCoulLong(),
   'lj/cut/coul/long': () => new PairLJCutCoulLong(),
-  ...pairCoul.PAIRS, ...pairSimple.PAIRS, ...pairLJ.PAIRS,
+  ...pairCoul.PAIRS, ...pairSimple.PAIRS, ...pairLJ.PAIRS, ...pairEAM.PAIRS, ...pair3Body.PAIRS,
 };
 
 export const BOND_STYLES: Record<string, () => Bonded> = {
@@ -72,6 +79,7 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   'temp/rescale': (s, i, g, a) => new FixTempRescale(s, i, g, a),
   'temp/csvr': (s, i, g, a) => new FixTempCSVR(s, i, g, a, 'temp/csvr'),
   'temp/csld': (s, i, g, a) => new FixTempCSVR(s, i, g, a, 'temp/csld'),
+  ...fixForce.FIXES, ...fixWall.FIXES, ...fixOutput.FIXES,
 };
 
 export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
@@ -79,6 +87,7 @@ export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
   ke: (s, i, g, a) => new ComputeKE(s, i, g, a),
   pe: (s, i, g, a) => new ComputePE(s, i, g, a),
   pressure: (s, i, g, a) => new ComputePressure(s, i, g, a),
+  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES,
 };
 
 /** Lists for messages and is_available(). */

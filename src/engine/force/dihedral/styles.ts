@@ -120,11 +120,14 @@ abstract class DihedralVarLen extends SimpleBonded {
     }
   }
 
+  /** One type's values as dihedral_coeff takes them (the data file re-reads them). */
+  protected dataValues(v: Float64Array): number[] { return Array.from(v); }
+
   override dataCoeffs(): string[] {
     const out: string[] = [];
     for (let t = 1; t <= this.ntypes; t++) {
       const v = this.vals[t];
-      out.push(`${t} ${v ? Array.from(v, fmtCoeff).join(' ') : ''}`.trimEnd());
+      out.push(`${t} ${v ? this.dataValues(v).map(fmtCoeff).join(' ') : ''}`.trimEnd());
     }
     return out;
   }
@@ -170,6 +173,13 @@ export class DihedralFourier extends DihedralVarLen {
     this.setCoeffs(args[0], packed);
   }
 
+  // write_data, measured with native LAMMPS: "1 2 1 1 0 0.6 3 180" — m first, d in degrees
+  protected dataValues(v: Float64Array): number[] {
+    const out = [v.length / 3];
+    for (let i = 0; i < v.length; i += 3) out.push(v[i], v[i + 1], v[i + 2] / DEG2RAD);
+    return out;
+  }
+
   compute(bc: BondedCompute): void {
     eachDihedral(bc, (t, phi) => {
       const v = this.vals[t]!;
@@ -206,6 +216,12 @@ export class DihedralQuadratic extends SimpleBonded {
     return [parseNum(args[0], 'K'), parseNum(args[1], 'phi0') * DEG2RAD];
   }
 
+  // write_data, measured with native LAMMPS: phi0 back in degrees ("1 2 120")
+  dataCoeffs(): string[] {
+    const K = this.params.p('K'), phi0 = this.params.p('phi0');
+    return Array.from({ length: this.ntypes }, (_, k) => `${k + 1} ${fmtCoeff(K[k + 1])} ${fmtCoeff(phi0[k + 1] / DEG2RAD)}`);
+  }
+
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), phi0 = this.params.p('phi0');
     eachDihedral(bc, (t, phi) => {
@@ -240,6 +256,9 @@ export class DihedralNHarmonic extends DihedralVarLen {
     }
     this.setCoeffs(args[0], vals.map((w, i) => parseNum(w, `A${i + 1}`)));
   }
+
+  // write_data, measured with native LAMMPS: "1 4 1 -0.5 0.8 0.2" — n first
+  protected dataValues(v: Float64Array): number[] { return [v.length, ...v]; }
 
   compute(bc: BondedCompute): void {
     eachDihedral(bc, (t, phi) => {
@@ -280,6 +299,12 @@ export class DihedralCosineShiftExp extends SimpleBonded {
   protected parse(args: string[]): number[] {
     if (args.length !== 3) throw new StyleError('dihedral_coeff cosine/shift/exp needs Umin theta0 a');
     return [parseNum(args[0], 'Umin'), parseNum(args[1], 'theta0') * DEG2RAD, parseNum(args[2], 'a')];
+  }
+
+  // write_data, measured with native LAMMPS: theta0 back in degrees ("1 1.5 45 2")
+  dataCoeffs(): string[] {
+    const U = this.params.p('Umin'), th = this.params.p('theta0'), a = this.params.p('a');
+    return Array.from({ length: this.ntypes }, (_, k) => `${k + 1} ${fmtCoeff(U[k + 1])} ${fmtCoeff(th[k + 1] / DEG2RAD)} ${fmtCoeff(a[k + 1])}`);
   }
 
   compute(bc: BondedCompute): void {

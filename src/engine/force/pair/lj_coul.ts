@@ -201,15 +201,9 @@ abstract class PairLJCutCoul extends PairLJCut {
     return { etail: 2 * Math.PI * e, ptail: -2 * Math.PI / 3 * pr };
   }
 
-  dataCoeffsIJ(): string[] {
-    const out: string[] = [];
-    for (let i = 1; i <= this.ntypes; i++) {
-      for (let j = i; j <= this.ntypes; j++) {
-        out.push(`${i} ${j} ${fmtCoeff(this.p.get('epsilon', i, j))} ${fmtCoeff(this.p.get('sigma', i, j))} ${fmtCoeff(this.p.get('cut', i, j))} ${fmtCoeff(this.p.get('cut_coul', i, j))}`);
-      }
-    }
-    return out;
-  }
+  // write_data, measured with native LAMMPS: "PairIJ Coeffs" lines are
+  // "I J epsilon sigma cutoff1" (no Coulomb cutoff column), which is
+  // PairLJCut.dataCoeffsIJ; lj/cut/coul/dsf writes no pair section at all.
 
   extract(name: string): unknown {
     if (name === 'cut_coul') return this.cutCoul;
@@ -321,6 +315,9 @@ export class PairLJCutCoulDsf extends PairLJCutCoul {
    *   E_self = -(erfc(a rc)/rc + a/sqrt(pi) (1 + exp(-a^2 rc^2))) q^2 C
    * (alpha 0.6, rc 3, q 1: -0.355407766583; alpha 0.3, rc 4: -0.231780032557).
    */
+  dataCoeffs(): string[] | null { return null; }
+  dataCoeffsIJ(): string[] | null { return null; }
+
   protected coulSelf(qi: number, qqrd2e: number): number {
     const arc = this.alpha * this.cutCoul;
     return -(erfcExact(arc) / this.cutCoul + (this.alpha / Math.sqrt(Math.PI)) * (1 + Math.exp(-arc * arc))) * qi * qi * qqrd2e;

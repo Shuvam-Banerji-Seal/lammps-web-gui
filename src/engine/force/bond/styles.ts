@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, delta } from '../bonded_util';
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
-import { parseNum } from '../util';
+import { fmtCoeff, parseNum } from '../util';
 
 /*
  * Bond styles added by wave 1. Each class cites its docs.lammps.org page and
@@ -326,7 +326,7 @@ export class BondZero extends Bonded {
   dataCoeffs(): string[] | null {
     if (this.nocoeff) return null;
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${this.eq[t]}`);
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(this.eq[t])}`);
     return out;
   }
 

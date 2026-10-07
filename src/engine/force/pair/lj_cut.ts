@@ -143,13 +143,13 @@ export class PairLJCut extends Pair {
     };
   }
 
-  dataCoeffs(): string[] {
+  dataCoeffs(): string[] | null {
     const out: string[] = [];
     for (let i = 1; i <= this.ntypes; i++) out.push(`${i} ${fmtCoeff(this.p.get('epsilon', i, i))} ${fmtCoeff(this.p.get('sigma', i, i))}`);
     return out;
   }
 
-  dataCoeffsIJ(): string[] {
+  dataCoeffsIJ(): string[] | null {
     const out: string[] = [];
     for (let i = 1; i <= this.ntypes; i++) {
       for (let j = i; j <= this.ntypes; j++) {

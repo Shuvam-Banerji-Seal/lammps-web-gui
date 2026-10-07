@@ -353,7 +353,14 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
     }
   }
   out.push('', `Atoms # ${s.atomStyle}`, '');
-  const order = Array.from({ length: s.n }, (_, i) => i).sort((a, b) => s.id[a] - s.id[b]);
+  // Measured with native LAMMPS (black box, a 10-atom chain whose Atoms
+  // section was shuffled): Atoms and Velocities come out in storage order
+  // (the order read_data/create_atoms added them), not sorted by ID; each
+  // topology section is grouped by its owning atom in that same order (bonds
+  // by the first atom, angles, dihedrals and impropers by the second), keeps
+  // the read order within one owner, and is renumbered from 1. Native's
+  // periodic spatial re-sort of atoms (atom_modify sort) is not reproduced.
+  const order = Array.from({ length: s.n }, (_, i) => i);
   const cols = STYLE_COLS[s.atomStyle];
   for (const i of order) {
     const v = cols.map((c) => {
@@ -369,13 +376,21 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   }
   out.push('', 'Velocities', '');
   for (const i of order) out.push(`${s.id[i]} ${shortest(s.v[3 * i])} ${shortest(s.v[3 * i + 1])} ${shortest(s.v[3 * i + 2])}`);
-  for (const [list, title] of [[t.bonds, 'Bonds'], [t.angles, 'Angles'], [t.dihedrals, 'Dihedrals'], [t.impropers, 'Impropers']] as const) {
+  let maxId = 0;
+  for (let i = 0; i < s.n; i++) if (s.id[i] > maxId) maxId = s.id[i];
+  const local = new Int32Array(maxId + 1).fill(-1);
+  for (let i = 0; i < s.n; i++) local[s.id[i]] = i;
+  const slot = (id: number): number => (id <= maxId ? local[id] : -1);
+  for (const [list, title, owner] of [[t.bonds, 'Bonds', 0], [t.angles, 'Angles', 1], [t.dihedrals, 'Dihedrals', 1], [t.impropers, 'Impropers', 1]] as const) {
     if (!list.n) continue;
     out.push('', title, '');
-    for (let e = 0; e < list.n; e++) {
-      const ids = Array.from(list.atoms.subarray(e * list.width, (e + 1) * list.width));
-      out.push(`${e + 1} ${list.type[e]} ${ids.join(' ')}`);
-    }
+    const w = list.width;
+    const rows = Array.from({ length: list.n }, (_, e) => e)
+      .sort((a, b) => slot(list.atoms[a * w + owner]) - slot(list.atoms[b * w + owner]) || a - b);
+    rows.forEach((e, k) => {
+      const ids = Array.from(list.atoms.subarray(e * w, (e + 1) * w));
+      out.push(`${k + 1} ${list.type[e]} ${ids.join(' ')}`);
+    });
   }
   return out.join('\n') + '\n';
 };

@@ -1,5 +1,5 @@
 import { SimpleBonded, atomIndex, delta } from '../bonded_util';
-import { parseNum } from '../util';
+import { fmtCoeff, parseNum } from '../util';
 import { StyleError, type BondedCompute } from '../types';
 
 /*
@@ -24,7 +24,7 @@ export class AngleHarmonic extends SimpleBonded {
   dataCoeffs(): string[] {
     const K = this.params.p('K'), th = this.params.p('theta0');
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${K[t]} ${(th[t] * 180) / Math.PI}`);
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((th[t] * 180) / Math.PI)}`);
     return out;
   }
 

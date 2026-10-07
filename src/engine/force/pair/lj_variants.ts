@@ -546,11 +546,11 @@ export class PairLJSmooth extends PairLJVariant {
     throw new StyleError('pair_modify tail yes is not supported for pair style lj/smooth (the energy is smoothed to 0.0 at the cutoff)');
   }
 
+  // write_data, measured with native LAMMPS: "Pair Coeffs" holds epsilon sigma only; "PairIJ
+  // Coeffs" adds the inner and outer cutoffs.
   dataCoeffs(): string[] {
     const out: string[] = [];
-    for (let i = 1; i <= this.ntypes; i++) {
-      out.push(`${i} ${fmtCoeff(this.p.get('epsilon', i, i))} ${fmtCoeff(this.p.get('sigma', i, i))} ${fmtCoeff(this.p.get('rin', i, i))}`);
-    }
+    for (let i = 1; i <= this.ntypes; i++) out.push(`${i} ${fmtCoeff(this.p.get('epsilon', i, i))} ${fmtCoeff(this.p.get('sigma', i, i))}`);
     return out;
   }
 
@@ -669,19 +669,7 @@ export class PairLJSmoothLinear extends PairLJVariant {
     throw new StyleError('pair_modify tail yes is not supported for pair style lj/smooth/linear (the energy is smoothed to 0.0 at the cutoff)');
   }
 
-  dataCoeffs(): string[] {
-    const out: string[] = [];
-    for (let i = 1; i <= this.ntypes; i++) out.push(`${i} ${fmtCoeff(this.p.get('epsilon', i, i))} ${fmtCoeff(this.p.get('sigma', i, i))}`);
-    return out;
-  }
-
-  dataCoeffsIJ(): string[] {
-    const out: string[] = [];
-    for (let i = 1; i <= this.ntypes; i++) {
-      for (let j = i; j <= this.ntypes; j++) {
-        out.push(`${i} ${j} ${fmtCoeff(this.p.get('epsilon', i, j))} ${fmtCoeff(this.p.get('sigma', i, j))} ${fmtCoeff(this.p.get('cut', i, j))}`);
-      }
-    }
-    return out;
-  }
+  // write_data, measured with native LAMMPS: lj/smooth/linear writes no pair coefficient section.
+  dataCoeffs(): string[] | null { return null; }
+  dataCoeffsIJ(): string[] | null { return null; }
 }

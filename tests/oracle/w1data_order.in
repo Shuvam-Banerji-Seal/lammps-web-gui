@@ -1,0 +1,25 @@
+# oracle: write_data ordering — atoms in storage order (atom sorting off), topology grouped by owning atom and renumbered
+# oracle-inputs: w1data_shuffled.data
+# oracle-files: o.data
+units           lj
+atom_style      molecular
+atom_modify     sort 0 0.0
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  harmonic
+improper_style  harmonic
+pair_style      zero 2.5
+read_data       w1data_shuffled.data
+pair_coeff      * *
+bond_coeff      * 100.0 1.0
+angle_coeff     * 10.0 120.0
+dihedral_coeff  * 1.0 1 2
+improper_coeff  * 1.0 0.0
+velocity        all create 0.5 4928459
+timestep        0.002
+fix             1 all nve
+thermo_style    custom step temp pe ebond eangle edihed eimp etotal press
+thermo_modify   format float %.15g
+thermo          10
+run             20
+write_data      o.data

@@ -1,0 +1,53 @@
+# oracle: write_data coefficient sections — C %g formatting (6 significant digits), degrees, term counts, and styles that write no pair section
+# oracle-inputs: mol_chains.data
+# oracle-files: a.data b.data c.data d.data e.data f.data g.data h.data i.data j.data k.data l.data
+# oracle-compare: atoms=none
+units           lj
+atom_style      molecular
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  harmonic
+improper_style  harmonic
+pair_style      lj/cut 2.5
+read_data       mol_chains.data
+pair_coeff      * * 0.523456789 0.912345678
+pair_coeff      1 3 1234567.89 0.0000123456789 2.123456789
+bond_coeff      1 120.123456789 1.0512345
+bond_coeff      2 90.0 1.1
+angle_coeff     1 40.987654321 109.4712206
+angle_coeff     2 25.0 120.0
+dihedral_coeff  1 1.523456789 -1 3
+improper_coeff  1 12.3456789 20.123456789
+write_data      a.data
+write_data      b.data pair ij
+dihedral_style  fourier
+dihedral_coeff  1 2 1.0 1 0.0 0.6 3 180.0
+write_data      c.data
+dihedral_style  nharmonic
+dihedral_coeff  1 4 1.0 -0.5 0.8 0.2
+write_data      d.data
+dihedral_style  quadratic
+dihedral_coeff  1 2.0 120.123456789
+write_data      e.data
+dihedral_style  cosine/shift/exp
+dihedral_coeff  1 1.5 45.0 2.0
+write_data      f.data
+pair_style      lj/smooth 2.0 2.5
+pair_coeff      * * 1.0 1.0
+pair_coeff      1 2 0.9 1.0 1.8 2.3
+write_data      g.data
+pair_style      lj/gromacs 2.0 2.5
+pair_coeff      * * 1.0 1.0
+write_data      h.data
+pair_style      lj/smooth/linear 2.5
+pair_coeff      * * 1.0 1.0
+write_data      i.data pair ij
+pair_style      lj/cubic
+pair_coeff      * * 1.0 1.0
+write_data      j.data pair ij
+pair_style      mie/cut 2.5
+pair_coeff      * * 1.0 1.0 12.0 6.0
+write_data      k.data
+pair_style      zero 2.5
+pair_coeff      * *
+write_data      l.data pair ij

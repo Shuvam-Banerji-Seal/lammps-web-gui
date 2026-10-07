@@ -328,7 +328,7 @@ export class PairBuckCoulCut extends PairBuck {
     const nt = this.ntypes + 1;
     for (let i = 1; i <= this.ntypes; i++) {
       for (let j = i; j <= this.ntypes; j++) {
-        out.push(`${i} ${j} ${fmtCoeff(this.p.get('A', i, j))} ${fmtCoeff(this.p.get('rho', i, j))} ${fmtCoeff(this.p.get('C', i, j))} ${fmtCoeff(this.cut[i * nt + j])} ${fmtCoeff(this.coulCut[i * nt + j])}`);
+        out.push(`${i} ${j} ${fmtCoeff(this.p.get('A', i, j))} ${fmtCoeff(this.p.get('rho', i, j))} ${fmtCoeff(this.p.get('C', i, j))} ${fmtCoeff(Math.sqrt(this.buckCutSq[i * nt + j]))} ${fmtCoeff(this.coulCut[i * nt + j])}`);
       }
     }
     return out;

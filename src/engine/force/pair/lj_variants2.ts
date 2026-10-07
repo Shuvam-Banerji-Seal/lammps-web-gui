@@ -262,7 +262,8 @@ export class PairLJGromacs extends PairLJ2Variant {
 
   dataCoeffs(): string[] {
     const out: string[] = [];
-    for (let i = 1; i <= this.ntypes; i++) out.push(this.coeffLine([i], ['epsilon', 'sigma', 'inner']));
+    // write_data, measured with native LAMMPS: "Pair Coeffs" holds epsilon sigma only.
+    for (let i = 1; i <= this.ntypes; i++) out.push(this.coeffLine([i], ['epsilon', 'sigma']));
     return out;
   }
 
@@ -534,19 +535,9 @@ export class PairLJCubic extends PairLJ2Variant {
     throw new StyleError('pair_modify tail yes is not supported for pair style lj/cubic (there are no corrections for a potential that goes to 0.0 at the cutoff)');
   }
 
-  dataCoeffs(): string[] {
-    const out: string[] = [];
-    for (let i = 1; i <= this.ntypes; i++) out.push(this.coeffLine([i], ['epsilon', 'sigma']));
-    return out;
-  }
-
-  dataCoeffsIJ(): string[] {
-    const out: string[] = [];
-    for (let i = 1; i <= this.ntypes; i++) {
-      for (let j = i; j <= this.ntypes; j++) out.push(this.coeffLine([i, j], ['epsilon', 'sigma']));
-    }
-    return out;
-  }
+  // write_data, measured with native LAMMPS: lj/cubic writes no pair coefficient section.
+  dataCoeffs(): string[] | null { return null; }
+  dataCoeffsIJ(): string[] | null { return null; }
 }
 
 /*
@@ -669,17 +660,7 @@ export class PairMieCut extends PairLJ2Variant {
     return { etail: 2 * Math.PI * e, ptail: -2 * Math.PI / 3 * pr };
   }
 
-  dataCoeffs(): string[] {
-    const out: string[] = [];
-    for (let i = 1; i <= this.ntypes; i++) out.push(this.coeffLine([i], ['epsilon', 'sigma', 'gammaR', 'gammaA']));
-    return out;
-  }
-
-  dataCoeffsIJ(): string[] {
-    const out: string[] = [];
-    for (let i = 1; i <= this.ntypes; i++) {
-      for (let j = i; j <= this.ntypes; j++) out.push(this.coeffLine([i, j], ['epsilon', 'sigma', 'gammaR', 'gammaA', 'cut']));
-    }
-    return out;
-  }
+  // write_data, measured with native LAMMPS: mie/cut writes no pair coefficient section.
+  dataCoeffs(): string[] | null { return null; }
+  dataCoeffsIJ(): string[] | null { return null; }
 }

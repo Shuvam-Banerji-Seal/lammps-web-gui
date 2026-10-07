@@ -479,6 +479,20 @@ export class PairZero extends Pair {
     return p.get('cut', i, j);
   }
 
+  // write_data, measured with native LAMMPS: "Pair Coeffs" lists bare type numbers and "PairIJ
+  // Coeffs" lists "I J cutoff".
+  dataCoeffs(): string[] {
+    return Array.from({ length: this.ntypes }, (_, k) => `${k + 1}`);
+  }
+
+  dataCoeffsIJ(): string[] {
+    const out: string[] = [];
+    for (let i = 1; i <= this.ntypes; i++) {
+      for (let j = i; j <= this.ntypes; j++) out.push(`${i} ${j} ${fmtCoeff(this.nocoeff ? this.cutGlobal : this.p.get('cut', i, j))}`);
+    }
+    return out;
+  }
+
   compute(_pc: PairCompute): void {
     // "but do not compute any pairwise forces or energies"
   }

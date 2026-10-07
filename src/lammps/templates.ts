@@ -139,7 +139,7 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
       // insertion volume: a cylinder high above the wall
       { defId: 'region_cylinder', params: { id: 'insreg', axis: 'z', c1: '10', c2: '10', radius: '5', lo: '15', hi: '30', units: 'box' } },
       { defId: 'fix_any', params: { id: 'integrate', group: 'all', style: 'nve/sphere', args: '' } },
-      { defId: 'fix_gravity', params: { id: 'grav', magnitude: '10.0', direction: 'vector 0 0 -1' } },
+      { defId: 'fix_gravity', params: { id: 'grav', magnitude: '10.0', style: 'vector', args: '0 0 -1' } },
       { defId: 'fix_any', params: { id: 'wall', group: 'all', style: 'wall/gran', args: 'granular hertz/material 1e5 1e3 0.3 tangential mindlin NULL 1.0 0.5 zplane 0 NULL' } },
       { defId: 'fix_pour', params: { id: 'ins', group: 'all', n: '1500', type: '1', seed: '3123', region: 'insreg', diam: 'range 0.5 1.0', vol: '', rate: '0', extra: 'dens 1.0 1.0' } },
       { defId: 'timestep', params: { dt: '0.001' } },

@@ -86,8 +86,12 @@ pair_style lj/cut &
       .toBe('pair_style_hybrid');
     expect(matchLine(tokenizeLine('variable myT equal temp'))?.def.id).toBe('variable_eq');
     expect(matchLine(tokenizeLine('variable myC atom x>0.5'))?.def.id).toBe('variable_atom');
+    // docs.lammps.org/fix_wall.html: "style = wall/lj93 or wall/lj126 or ..."
+    // (there is no bare "wall" style)
+    expect(['fix_wall', 'fix_wall_potential'])
+      .toContain(matchLine(tokenizeLine('fix walls all wall/lj126 zlo 0.0 1.0 1.0 3.0 units box'))?.def.id);
     expect(matchLine(tokenizeLine('fix walls all wall lj126 zlo 0.0 1.0 1.0 3.0 units box'))?.def.id)
-      .toBe('fix_wall_potential');
+      .not.toMatch(/^fix_wall/);
     expect(matchLine(tokenizeLine('fix dt all dt/reset 1 1e-4 1e-2 0.1'))?.def.id)
       .toBe('fix_dt_reset');
   });

@@ -211,7 +211,10 @@ describe('real-world corpus wave 2 (DIFFUSE / KAPPA / VISCOSITY)', () => {
     const shake = model.steps.find(s => s.defId === 'fix_shake')!;
     expect(shake.params.id).toBe('rigid');
     expect(shake.params.tol).toBe('1e-4');
-    expect(shake.params.args).toBe('0 b 1 a 1');
+    // docs.lammps.org/fix_shake.html: "tol iter N constraint values" — N is
+    // its own (required) argument
+    expect(shake.params.nprint).toBe('0');
+    expect(shake.params.args).toBe('b 1 a 1');
     const mom = model.steps.find(s => s.defId === 'fix_momentum')!;
     expect(mom.params.id).toBe('com');
     expect(mom.params.args).toBe('linear 1 1 1');

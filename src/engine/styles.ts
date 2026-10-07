@@ -3,6 +3,7 @@ import type { Bonded, KSpace, Pair } from './force/types';
 import type { Fix } from './fix/fix';
 import type { Compute } from './compute/compute';
 import { PairLJCut } from './force/pair/lj_cut';
+import { PairHybrid } from './force/pair/hybrid';
 import { BondHarmonic } from './force/bond/harmonic';
 import { AngleHarmonic } from './force/angle/harmonic';
 import { DihedralHarmonic } from './force/dihedral/harmonic';
@@ -42,6 +43,10 @@ export type FixFactory = (sys: System, id: string, group: string, args: string[]
 export type ComputeFactory = (sys: System, id: string, group: string, args: string[]) => Compute;
 
 export const PAIR_STYLES: Record<string, () => Pair> = {
+  hybrid: () => new PairHybrid('hybrid', PAIR_STYLES),
+  'hybrid/overlay': () => new PairHybrid('hybrid/overlay', PAIR_STYLES),
+  'hybrid/scaled': () => new PairHybrid('hybrid/scaled', PAIR_STYLES),
+  'hybrid/molecular': () => new PairHybrid('hybrid/molecular', PAIR_STYLES),
   'lj/cut': () => new PairLJCut(),
   'coul/long': () => new PairCoulLong(),
   'lj/cut/coul/long': () => new PairLJCutCoulLong(),

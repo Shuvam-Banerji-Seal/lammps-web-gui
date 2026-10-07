@@ -196,7 +196,10 @@ export class KSpaceEwald extends KSpaceBase {
           const kyv = 2 * Math.PI * (nx * inv[0][1] + ny * inv[1][1] + nz * inv[2][1]);
           const kzv = 2 * Math.PI * (nx * inv[0][2] + ny * inv[1][2] + nz * inv[2][2]);
           const k2 = kxv * kxv + kyv * kyv + kzv * kzv;
-          if (k2 > gsqmx) continue;
+          // vectors on the sphere (n^2 = kmax^2 in a cubic box, e.g. (3,4,0) for kmax 5) are
+          // included, as native LAMMPS does (oracle case ewald_sphere_boundary); the slack only
+          // absorbs the last-bit rounding of k2 against gsqmx
+          if (k2 > gsqmx * (1 + 1e-12)) continue;
           list.push(kxv, kyv, kzv, Math.exp(-k2 / (4 * g * g)) / k2);
           ns.push(nx, ny, nz);
         }

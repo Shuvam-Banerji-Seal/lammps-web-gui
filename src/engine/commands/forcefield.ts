@@ -3,7 +3,8 @@ import { int, num, yesno } from './args';
 import { StyleError, type Bonded } from '../force/types';
 import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES, KSPACE_STYLES } from '../styles';
 import type { System } from '../system';
-import type { MixRule } from '../force/types';
+import type { MixRule, Pair } from '../force/types';
+import { PairHybrid } from '../force/pair/hybrid';
 
 /*
  * Force-field commands. Styles come from styles.ts; anything else is an
@@ -23,6 +24,7 @@ const pairStyle: Handler = ({ sys }, a) => {
   // "If the pair style is redefined ... the pair coefficients are lost" unless the style is the same
   const same = sys.ff.pair && sys.ff.pair.name === name ? sys.ff.pair : null;
   const p = same ?? make();
+  if (p instanceof PairHybrid) p.setVariableEvaluator((v) => sys.equalVariable(v));
   p.settings(a.slice(1), sys.styleContext());
   if (!same && sys.hasBox) p.allocate(sys.state.ntypes);
   sys.ff.pair = p;
@@ -40,28 +42,62 @@ const pairCoeff: Handler = ({ sys }, a) => {
   sys.bump();
 };
 
-/** pair_modify keyword value ... — pair_modify.html (mix, shift, tail, table, tabinner, compute). */
+/**
+ * pair_modify keyword value ... — pair_modify.html (pair, special, mix, shift,
+ * tail, table, tabinner, compute). For hybrid styles: "the specified
+ * parameters are by default modified for all the hybrid sub-styles"; "The
+ * pair keyword can only be used with the hybrid and hybrid/overlay pair
+ * styles. If used, it must appear first in the list of keywords."; "The
+ * special and compute/tally keywords can only be used in conjunction with
+ * the pair keyword and they must directly follow it."
+ */
 const pairModify: Handler = ({ sys }, a) => {
   const p = sys.ff.pair;
   if (!p) throw new StyleError('pair_modify needs a pair_style first');
-  for (let k = 0; k < a.length;) {
+  let targets: Pair[] = [p];
+  let k = 0;
+  if (p instanceof PairHybrid) {
+    targets = [p, ...p.subs.map((x) => x.style)];
+    if (a[0] === 'pair') {
+      const { sub, used } = p.selectSub(a.slice(1), 'pair_modify pair');
+      // the selected sub-style first (style-specific keywords go to it); the hybrid's own
+      // shift / tail flags follow, as native LAMMPS rejects shift on one sub-style with tail on another
+      targets = [sub.style, p];
+      k = 1 + used;
+      for (;;) {
+        if (a[k] === 'special') {
+          const w = [num(a[k + 2], 'special'), num(a[k + 3], 'special'), num(a[k + 4], 'special')] as [number, number, number];
+          p.setSpecial(sub, a[k + 1] ?? '', w);
+          k += 5;
+        } else if (a[k] === 'compute/tally') {
+          yesno(a[k + 1], 'compute/tally');
+          k += 2;
+        } else break;
+      }
+    }
+  }
+  for (; k < a.length;) {
     const key = a[k];
     const v = a[k + 1];
     switch (key) {
       case 'mix':
         if (!['geometric', 'arithmetic', 'sixthpower'].includes(v ?? '')) throw new StyleError('pair_modify mix must be geometric, arithmetic or sixthpower');
-        p.mix = v as MixRule;
+        for (const t of targets) t.mix = v as MixRule;
         k += 2;
         break;
-      case 'shift': p.shift = yesno(v, 'shift'); k += 2; break;
-      case 'tail': p.tail = yesno(v, 'tail'); k += 2; break;
-      case 'table': p.table = int(v, 'table'); k += 2; break;
+      case 'shift': { const y = yesno(v, 'shift'); for (const t of targets) t.shift = y; k += 2; break; }
+      case 'tail': { const y = yesno(v, 'tail'); for (const t of targets) t.tail = y; k += 2; break; }
+      case 'table': { const n = int(v, 'table'); for (const t of targets) t.table = n; k += 2; break; }
       case 'tabinner': case 'table/disp': case 'tabinner/disp': num(v, key); k += 2; break;
       case 'compute': if (!yesno(v, 'compute')) throw new StyleError('pair_modify compute no is not supported'); k += 2; break;
       case 'neigh/trim': yesno(v, key); k += 2; break;
-      case 'pair': case 'special': case 'compute/tally':
-        throw new StyleError(`pair_modify ${key} applies to hybrid pair styles; it is not supported yet`);
-      default: k += 1 + p.modify(key, a.slice(k + 1));
+      case 'pair':
+        throw new StyleError(p instanceof PairHybrid
+          ? 'pair_modify pair must appear first in the list of keywords'
+          : 'pair_modify pair can only be used with the hybrid and hybrid/overlay pair styles');
+      case 'special': case 'compute/tally':
+        throw new StyleError(`pair_modify ${key} can only be used directly after the pair keyword (hybrid pair styles)`);
+      default: k += 1 + targets[0].modify(key, a.slice(k + 1));
     }
   }
   sys.bump();

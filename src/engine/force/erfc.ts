@@ -50,7 +50,15 @@ export const erfcFast = (x: number, ex: number): number => {
   return (2 * t3 - 3 * t2 + 1) * f0 + (t3 - 2 * t2 + t) * d0 + (-2 * t3 + 3 * t2) * f1 + (t3 - t2) * d1;
 };
 
-export const EWALD_F = TWO_OVER_SQRTPI;
+/**
+ * 2/sqrt(pi) as used in the Ewald real-space force term C q_i q_j / r
+ * (erfc(g r) + EWALD_F g r exp(-g^2 r^2)). Native LAMMPS uses it rounded to 8
+ * digits: with the exact value the pair virial of oracle case ewald_nacl
+ * (pair_modify table 0) is off by 6e-9 relative on every diagonal component
+ * while energies agree to 1e-15; with 1.12837917 every pressure component
+ * agrees to 1e-15 (measured 2026-10-07).
+ */
+export const EWALD_F = 1.12837917;
 
 /**
  * pair_modify table 0 — pair_modify.html: "For N = 0, forces and energies are

@@ -1,0 +1,42 @@
+# oracle: pair_style hybrid/overlay lj/cut + coul/long with Ewald; coul/long has one global cutoff, so its skip list must hold only its pairs
+units           metal
+atom_style      charge
+lattice         fcc 5.64
+region          box block 0 2 0 2 0 2
+create_box      3 box
+create_atoms    1 box
+lattice         fcc 5.64 origin 0.5 0.0 0.0
+create_atoms    2 box
+group           some id 1:64:5
+set             group some type 3
+mass            1 22.99
+mass            2 35.45
+mass            3 22.99
+set             type 1 charge 1.0
+set             type 3 charge 1.0
+set             type 2 charge -1.0
+variable        dx atom 0.12*sin(0.53*x+0.21*y)
+variable        dy atom 0.12*cos(0.37*y-0.19*z)
+variable        dz atom 0.12*sin(0.29*z+0.41*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 2.0*sin(0.7*x+0.3*z)
+variable        vy atom 2.0*cos(0.5*y+0.2*x)
+variable        vz atom 2.0*sin(0.4*z-0.6*y)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      hybrid/overlay lj/cut 5.0 coul/long 5.5
+pair_coeff      * * lj/cut 0.0060 3.30
+pair_coeff      1 1 lj/cut 0.0100 2.35
+pair_coeff      2 2 lj/cut 0.0050 4.40
+pair_coeff      1 2 lj/cut 0.0070 3.00
+pair_coeff      * * coul/long
+pair_coeff      3 3 none
+pair_modify     table 0
+kspace_style    ewald 1.0e-6
+kspace_modify   gewald 0.45 kmax/ewald 5 5 5
+timestep        0.001
+fix             1 all nve
+thermo_style    custom step temp pe evdwl ecoul elong etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             40

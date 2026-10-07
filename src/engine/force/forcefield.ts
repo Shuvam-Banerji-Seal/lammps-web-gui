@@ -3,6 +3,7 @@ import type { Geometry } from '../domain';
 import type { Neighbor, SpecialSettings } from '../neighbor';
 import { buildAtomMap, buildSpecial, type SpecialList } from '../atoms';
 import { clearAccum, newAccum, StyleError, type Accum, type Bonded, type KSpace, type Pair, type StyleContext } from './types';
+import { PairHybrid } from './pair/hybrid';
 
 /*
  * The force field: one pair style (possibly hybrid), bond/angle/dihedral/
@@ -90,6 +91,7 @@ export class ForceField {
       coul: [1, ...this.special.coul] as SpecialSettings['coul'],
       keepExcluded: !!this.kspace || (this.pair?.coulLong ?? false),
     };
+    if (this.pair instanceof PairHybrid) this.pair.checkSpecial(this.special);
     nb.init({
       half: this.pair ? this.pair.needsHalf : false,
       full: this.pair ? this.pair.needsFull : false,

@@ -88,8 +88,14 @@ const info: Handler = ({ sys }, a) => {
   sys.log(out.join('\n'));
 };
 
-const browserOnly = (name: string, why: string): Handler => () => {
-  throw new StyleError(`${name} ${why}`);
+/** Commands that are recognized only to explain why the browser engine cannot run them. */
+export const UNAVAILABLE_COMMANDS = new Set<string>(['package']);
+
+const browserOnly = (name: string, why: string): Handler => {
+  UNAVAILABLE_COMMANDS.add(name);
+  return () => {
+    throw new StyleError(`${name} ${why}`);
+  };
 };
 
 export const MISC_COMMANDS: Record<string, Handler> = {

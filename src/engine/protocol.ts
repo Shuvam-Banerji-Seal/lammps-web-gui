@@ -13,8 +13,8 @@ export type ToEngine =
   | { type: 'exec'; id: number; text: string; firstLine: number }
   /** Stops the running `run` after its current step. */
   | { type: 'cancel' }
-  /** Adds or replaces a file the session can read (data, include, potential files). */
-  | { type: 'file'; name: string; text: string };
+  /** Adds or replaces a file the session can read (data, include, potential files); null text removes it. */
+  | { type: 'file'; name: string; text: string | null };
 
 export type FromEngine =
   | {
@@ -28,6 +28,8 @@ export type FromEngine =
     note?: string;
     /** Commands the engine accepts (for the notebook's help panel). */
     commands: string[];
+    /** Styles per style command (pair_style, fix, compute, ...), for the help panel. */
+    styles: Record<string, string[]>;
   }
   | { type: 'event'; id: number; event: EngineEvent }
   | { type: 'file'; id: number; name: string; text: string; append: boolean }

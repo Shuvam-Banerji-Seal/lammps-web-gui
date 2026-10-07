@@ -155,6 +155,16 @@ describe('Session: errors are explicit and carry the line', () => {
     expect(events.some((e) => e.kind === 'error' && e.line === 3)).toBe(true);
   });
 
+  it('explains commands a browser cannot run, and does not list them as supported', async () => {
+    for (const [cmd, why] of [['python', /no Python interpreter/], ['shell', /no operating-system shell/], ['package', /accelerator packages/]] as const) {
+      expect(SUPPORTED_COMMANDS).not.toContain(cmd);
+      const { error } = await runScript(`units lj\n${cmd} gpu 1\n`);
+      expect(error?.command).toBe(cmd);
+      expect(error!.message).toMatch(why);
+    }
+    expect(SUPPORTED_COMMANDS).toEqual(expect.arrayContaining(['processors', 'run', 'include']));
+  });
+
   it.each([
     ['a file the notebook does not have', 'read_data system.data', /cannot open file system.data/],
     ['units after the box', 'lattice sc 1\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nunits real', /cannot be used after the simulation box/],

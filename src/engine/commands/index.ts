@@ -2,7 +2,9 @@ import type { Handler } from './args';
 import { SETUP_COMMANDS } from './setup';
 import { FORCEFIELD_COMMANDS } from './forcefield';
 import { RUN_COMMANDS } from './run';
-import { MISC_COMMANDS } from './misc';
+import { MISC_COMMANDS, UNAVAILABLE_COMMANDS } from './misc';
+
+export { UNAVAILABLE_COMMANDS };
 
 export type { Ctx, Handler } from './args';
 

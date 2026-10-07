@@ -1,4 +1,5 @@
 import { Session, RunCancelled, SUPPORTED_COMMANDS } from './interpreter';
+import { styleNames } from './styles';
 import { CpuForceBackend } from './cpu/forces';
 import { ParallelCpuForceBackend } from './cpu/parallel';
 import type { ForceBackend } from './types';
@@ -32,7 +33,11 @@ export class EngineHost {
     if (msg.type === 'backend') return this.switchBackend(msg.backend, msg.threads);
     if (msg.type === 'cancel') { this.session?.cancel(); return; }
     if (msg.type === 'exec') return this.exec(msg.id, msg.text, msg.firstLine);
-    if (msg.type === 'file') { this.files.set(msg.name, msg.text); this.session?.addFile(msg.name, msg.text); return; }
+    if (msg.type === 'file') {
+      if (msg.text === null) { this.files.delete(msg.name); this.session?.removeFile(msg.name); return; }
+      this.files.set(msg.name, msg.text);
+      this.session?.addFile(msg.name, msg.text);
+    }
   }
 
   private cpuBackend(threads: number): ForceBackend {
@@ -65,7 +70,7 @@ export class EngineHost {
 
   private ready(backend: ForceBackend, note?: string): void {
     const webgpuAvailable = typeof navigator !== 'undefined' && 'gpu' in navigator;
-    this.post({ type: 'ready', backend: backend.label, kind: backend.kind, webgpuAvailable, cores: cores(), note, commands: [...SUPPORTED_COMMANDS] });
+    this.post({ type: 'ready', backend: backend.label, kind: backend.kind, webgpuAvailable, cores: cores(), note, commands: [...SUPPORTED_COMMANDS], styles: styleNames() });
   }
 
   private async reset(choice: BackendChoice, threads: number, frameEvery: number): Promise<void> {

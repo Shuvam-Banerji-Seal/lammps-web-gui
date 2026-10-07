@@ -78,6 +78,11 @@ export class EngineClient {
     this.send({ type: 'file', name, text });
   }
 
+  /** Removes a file added with addFile. */
+  removeFile(name: string): void {
+    this.send({ type: 'file', name, text: null });
+  }
+
   /** Runs one cell; events for it stream to `handlers` until it finishes. */
   exec(text: string, firstLine: number, handlers: ExecHandlers): Promise<ExecResult> {
     const id = this.nextId++;

@@ -3,7 +3,7 @@ import { System, type SessionIO } from './system';
 import { StyleError } from './force/types';
 import { mapUnquoted, splitCommands, substituteVariables, tokenize, formatNumber, type RawCommand } from './script';
 import { evaluateScalar } from './formula';
-import { COMMANDS, type Ctx } from './commands';
+import { COMMANDS, UNAVAILABLE_COMMANDS, type Ctx } from './commands';
 import { styleNames } from './styles';
 import { evaluateBoolean } from './boolean';
 import { CpuForceBackend } from './cpu/forces';
@@ -86,6 +86,11 @@ export class Session {
   /** Makes a file available to read_data, include, jump, potential files. */
   addFile(name: string, text: string): void {
     this.sys.files.set(name, text);
+  }
+
+  /** Forgets a file added with addFile (or written by the session). */
+  removeFile(name: string): void {
+    this.sys.files.delete(name);
   }
 
   /** clear: a fresh system; "input script variables" survive (clear.html). */
@@ -258,7 +263,8 @@ export class Session {
   }
 }
 
+/** Commands the engine runs (recognized-but-unavailable ones such as python or shell excluded). */
 export const SUPPORTED_COMMANDS = [
   'label', 'jump', 'next', 'include', 'if', 'quit', 'clear', 'echo',
-  ...Object.keys(COMMANDS),
+  ...Object.keys(COMMANDS).filter((c) => !UNAVAILABLE_COMMANDS.has(c)),
 ].sort();

@@ -38,6 +38,26 @@ describe('EngineClient (main-thread fallback, same protocol as the worker)', () 
     client.dispose();
   });
 
+  it('reads added files by name, keeps them across resets, and forgets removed ones', async () => {
+    const client = new EngineClient(false);
+    const ready = await client.reset('cpu', 0);
+    expect(ready.styles.pair_style).toContain('lj/cut');
+    expect(ready.styles.kspace_style).toEqual(expect.arrayContaining(['ewald', 'pppm']));
+    client.addFile('setup.in', SMALL);
+    const ev: EngineEvent[] = [];
+    expect((await client.exec('include setup.in\nrun 0', 1, { onEvent: (e) => ev.push(e) })).ok).toBe(true);
+    expect(ev.some((e) => e.kind === 'log' && e.text === 'Created 108 atoms')).toBe(true);
+    // a fresh session still sees the file
+    await client.reset('cpu', 0);
+    expect((await client.exec('include setup.in', 1, { onEvent: () => {} })).ok).toBe(true);
+    client.removeFile('setup.in');
+    await client.reset('cpu', 0);
+    const ev2: EngineEvent[] = [];
+    expect((await client.exec('include setup.in', 1, { onEvent: (e) => ev2.push(e) })).ok).toBe(false);
+    expect(ev2.some((e) => e.kind === 'error' && /setup\.in/.test(e.message))).toBe(true);
+    client.dispose();
+  });
+
   it('reports errors with the cell line offset and recovers', async () => {
     const client = new EngineClient(false);
     await client.reset('cpu', 0);

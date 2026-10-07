@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Square, Plus, Trash2, RotateCcw, Download, Cpu, Gpu, HelpCircle } from 'lucide-react';
+import { Play, Square, Plus, Trash2, RotateCcw, Download, Cpu, Gpu, HelpCircle, FileUp, X } from 'lucide-react';
 import { getThemeTokens, Theme } from '../../theme';
 import { usePersistentState } from '../../hooks/usePersistentState';
 import MoleculeCanvas from '../MoleculeCanvas';
@@ -108,6 +108,9 @@ const vizConfig = (spacing: number, ntypes: number, dark: boolean): Visualizatio
   fov: 40,
 });
 
+const formatBytes = (n: number): string =>
+  n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`;
+
 const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
   const ct = getThemeTokens(theme);
   const [cells, setCells] = usePersistentState<Cell[]>(STORAGE_KEY, STARTER, reviveCells);
@@ -118,6 +121,9 @@ const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
   const [running, setRunning] = useState<string | null>(null);
   const [frame, setFrame] = useState<FrameEvent | null>(null);
   const [files, setFiles] = useState<Record<string, string>>({});
+  /** Files the user added for read_data / include / potential files: name -> size in bytes. */
+  const [inputs, setInputs] = useState<Record<string, number>>({});
+  const fileInput = useRef<HTMLInputElement>(null);
   const [series, setSeries] = useState<ThermoRow[]>([]);
   const [showHelp, setShowHelp] = useState(false);
   const clientRef = useRef<EngineClient | null>(null);
@@ -250,6 +256,23 @@ const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
   }, [series]);
 
   const busy = running !== null;
+
+  const addInputFiles = async (list: FileList | null) => {
+    if (!list) return;
+    for (const file of Array.from(list)) {
+      const text = await file.text();
+      client().addFile(file.name, text);
+      setInputs((prev) => ({ ...prev, [file.name]: file.size }));
+    }
+  };
+  const removeInputFile = (name: string) => {
+    client().removeFile(name);
+    setInputs((prev) => {
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+  };
   const webgpuAvailable = ready?.webgpuAvailable ?? (typeof navigator !== 'undefined' && 'gpu' in navigator);
   const cores = ready?.cores ?? browserCores();
   const btn = `inline-flex min-h-6 min-w-6 items-center justify-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${ct.hoverSurface}`;
@@ -299,6 +322,12 @@ const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
         <span className={`text-xs ${ct.muted}`} aria-live="polite">
           {ready ? `${ready.backend}${ready.note ? ` — ${ready.note}` : ''}` : 'starting engine…'}
         </span>
+        <button className={`${btn} ${ct.button}`} onClick={() => fileInput.current?.click()}
+          title="Add data, include or potential files; scripts refer to them by file name">
+          <FileUp size={13} aria-hidden="true" />Add files
+        </button>
+        <input ref={fileInput} type="file" multiple hidden aria-label="Add input files"
+          onChange={(e) => { void addInputFiles(e.target.files); e.target.value = ''; }} />
         <button className={`${btn} ml-auto ${ct.button}`} onClick={() => setShowHelp((v) => !v)} aria-expanded={showHelp}
           aria-label="What the notebook supports">
           <HelpCircle size={13} aria-hidden="true" />
@@ -307,12 +336,25 @@ const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
       {showHelp && (
         <div className={`shrink-0 border-b px-3 py-2 text-xs leading-relaxed ${ct.divider} ${ct.panel}`}>
           <p>
-            This notebook runs a documented subset of LAMMPS input in your browser with an independent engine
-            (Lennard-Jones atoms, periodic boxes, NVE and thermostats). It is not LAMMPS; anything outside the
-            subset stops with an error that names the command.
+            This notebook runs a documented subset of LAMMPS input in your browser with an independent engine,
+            checked against native LAMMPS. It is not LAMMPS; a command or style outside the subset stops with an
+            error that names it.
           </p>
           <p className={`mt-1 font-mono ${ct.muted}`}>{ready ? ready.commands.join(' · ') : 'starting engine…'}</p>
-          <p className={`mt-1 ${ct.muted}`}>Shift+Enter runs a cell. Run all restarts the session first.</p>
+          {ready && (
+            <dl className="mt-1 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 font-mono">
+              {Object.entries(ready.styles).filter(([, names]) => names.length > 0).map(([cmd, names]) => (
+                <React.Fragment key={cmd}>
+                  <dt className={ct.muted}>{cmd}</dt>
+                  <dd className="break-words">{names.join(' · ')}</dd>
+                </React.Fragment>
+              ))}
+            </dl>
+          )}
+          <p className={`mt-1 ${ct.muted}`}>
+            Shift+Enter runs a cell. Run all restarts the session first. Add files makes data, include and
+            potential files readable by name (read_data, include, pair_coeff).
+          </p>
         </div>
       )}
 
@@ -410,6 +452,23 @@ const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
               <LineChart data={chart.etotal} xLabel="step" yLabel="etotal" theme={theme} height={120} />
             </div>
           )}
+          {Object.keys(inputs).length > 0 && (
+            <div>
+              <p className={`text-[11px] font-semibold ${ct.muted}`}>Input files</p>
+              <ul className="mt-1 flex flex-wrap gap-1" aria-label="Input files">
+                {Object.entries(inputs).map(([name, size]) => (
+                  <li key={name} className={`inline-flex items-center rounded text-xs ${ct.chip}`}>
+                    <span className="px-2 py-1 font-mono">{name}</span>
+                    <span className={`pr-1 ${ct.muted}`}>{formatBytes(size)}</span>
+                    <button className={`${btn} ${ct.hoverSurface}`} aria-label={`Remove ${name}`} title={`Remove ${name}`}
+                      disabled={busy} onClick={() => removeInputFile(name)}>
+                      <X size={12} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {Object.keys(files).length > 0 && (
             <div>
               <p className={`text-[11px] font-semibold ${ct.muted}`}>Files written</p>
@@ -425,8 +484,10 @@ const Notebook: React.FC<{ theme: Theme }> = ({ theme }) => {
               </ul>
             </div>
           )}
-          {chart.temp.length <= 1 && Object.keys(files).length === 0 && (
-            <p className={`text-xs ${ct.muted}`}>Thermo charts and files written by dump / write_data appear here.</p>
+          {chart.temp.length <= 1 && Object.keys(files).length === 0 && Object.keys(inputs).length === 0 && (
+            <p className={`text-xs ${ct.muted}`}>
+              Thermo charts, files written by dump / write_data, and the files you add with Add files appear here.
+            </p>
           )}
         </div>
       </div>

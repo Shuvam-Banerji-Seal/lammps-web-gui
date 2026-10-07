@@ -10,7 +10,7 @@ import {
   type Param, type Region,
 } from '../region';
 import { readData, writeData, defaultReadOptions, type ReadDataOptions } from '../output/data';
-import { Rng } from '../rng';
+import { RanPark, Rng } from '../rng';
 import { ComputeTemp } from '../compute/temp';
 import type { AtomStyle, SimState } from '../types';
 import type { System } from '../system';
@@ -962,13 +962,47 @@ const velocity: Handler = ({ sys }, a) => {
       const seed = int(args[1], 'seed');
       if (seed <= 0) throw new StyleError('velocity create: seed must be a positive integer');
       if (t < 0) throw new StyleError('velocity create: temperature must be >= 0');
-      const rng = new Rng(seed);
-      for (const i of members) {
+      // Measured with native LAMMPS (black box; rng.ts RanPark): each atom takes
+      // three draws, uniform() - 0.5 or gaussian(), scaled by 1/sqrt(mass).
+      // velocity.html: "If loop = all, then each processor loops over all
+      // atoms in the simulation to create velocities, but only stores
+      // velocities for atoms it owns." — draws run over atom IDs 1..N
+      // (non-members draw too) and need consecutive IDs (native stops with an
+      // error otherwise). "If loop = local, then
+      // each processor loops over only its atoms to produce velocities.  The
+      // random number seed is adjusted to give a different set of velocities
+      // on each processor." — on one processor: group members in storage
+      // order, after 100 discarded uniform draws. loop geom seeds every atom
+      // from its coordinates ("For each atom a unique random number seed is
+      // created, based on the atom's xyz coordinates"); the docs leave the
+      // seeding unspecified and say it "will not necessarily assign identical
+      // velocities for two simulations run on different machines", so the
+      // engine's coordinate hash gives valid but different velocities.
+      const draw = (rng: { uniform(): number; gaussian(): number }, i: number) => {
         const c = 1 / Math.sqrt(s.massByType[s.type[i]]);
         for (let d = 0; d < 3; d++) {
           const r = dist === 'gaussian' ? rng.gaussian() : rng.uniform() - 0.5;
           s.v[3 * i + d] = d === 2 && s.dimension === 2 ? 0 : r * c;
         }
+      };
+      if (loop === 'all') {
+        let maxId = 0;
+        for (let i = 0; i < s.n; i++) if (s.id[i] > maxId) maxId = s.id[i];
+        if (maxId !== s.n) throw new StyleError('Atom IDs must be consecutive for velocity create loop all');
+        const slot = new Int32Array(maxId + 1).fill(-1);
+        for (const i of members) slot[s.id[i]] = i;
+        const rng = new RanPark(seed);
+        const sink = new Float64Array(3);
+        for (let id = 1; id <= maxId; id++) {
+          if (slot[id] >= 0) draw(rng, slot[id]);
+          else for (let d = 0; d < 3; d++) sink[d] = dist === 'gaussian' ? rng.gaussian() : rng.uniform();
+        }
+      } else if (loop === 'local') {
+        const rng = new RanPark(seed);
+        for (let k = 0; k < 100; k++) rng.uniform();
+        for (const i of members) draw(rng, i);
+      } else {
+        for (const i of members) draw(new Rng(geomSeed(seed, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2])), i);
       }
       if (mom) zeroMomentum(sys, members);
       if (rot) zeroRotation(sys, members);
@@ -1460,3 +1494,11 @@ export const SETUP_COMMANDS: Record<string, Handler> = {
 };
 
 void ALL_GROUP_BIT;
+
+/** velocity loop geom: a seed from the user seed and the coordinate bits (engine-defined hash). */
+const geomSeed = (seed: number, x: number, y: number, z: number): number => {
+  const b = new Uint32Array(new Float64Array([x, y, z]).buffer);
+  let h = seed | 0;
+  for (let k = 0; k < b.length; k++) h = Math.imul(h ^ b[k], 0x9e3779b1) ^ (h >>> 15);
+  return h;
+};

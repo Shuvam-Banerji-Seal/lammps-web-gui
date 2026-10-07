@@ -56,16 +56,26 @@ export class ForceField {
   private specialLJ = new Float64Array([1, 0, 0, 0]);
   private specialCoul = new Float64Array([1, 0, 0, 0]);
 
-  /** Everything molecular (bonds/angles/...) has a style or there are none. */
+  /**
+   * Topology without a style is allowed (those terms add nothing). Measured
+   * with native LAMMPS (black box): each init warns "Bonds are defined but no
+   * bond style is set" (likewise Angles, Dihedrals, Impropers), followed for
+   * bonds, angles and dihedrals by "Likewise 1-2 (1-3, 1-4) special neighbor
+   * interactions != 1.0" when that special_bonds lj or coul weight is not 1.
+   */
   private checkTopology(s: SimState): void {
-    const t = s.topo;
-    const need = (n: number, style: Bonded | null, kind: string) => {
-      if (n > 0 && !style) throw new StyleError(`${n} ${kind}s are defined but no ${kind}_style is set`);
+    const t = s.topo, sp = this.special;
+    const need = (n: number, style: Bonded | null, title: string, kind: string, order: number) => {
+      if (n === 0 || style) return;
+      this.warn(`${title} are defined but no ${kind} style is set`);
+      if (order > 0 && (sp.lj[order - 1] !== 1 || sp.coul[order - 1] !== 1)) {
+        this.warn(`Likewise 1-${order + 1} special neighbor interactions != 1.0`);
+      }
     };
-    need(t.bonds.n, this.bond, 'bond');
-    need(t.angles.n, this.angle, 'angle');
-    need(t.dihedrals.n, this.dihedral, 'dihedral');
-    need(t.impropers.n, this.improper, 'improper');
+    need(t.bonds.n, this.bond, 'Bonds', 'bond', 1);
+    need(t.angles.n, this.angle, 'Angles', 'angle', 2);
+    need(t.dihedrals.n, this.dihedral, 'Dihedrals', 'dihedral', 3);
+    need(t.impropers.n, this.improper, 'Impropers', 'improper', 0);
   }
 
   /**

@@ -1,0 +1,15 @@
+# oracle: bonds, angles, dihedrals and impropers in the data file but no bonded styles — native warns and runs with pair forces only
+# oracle-inputs: mol_chains.data
+units           lj
+atom_style      molecular
+pair_style      lj/cut 2.5
+read_data       mol_chains.data
+pair_coeff      * * 0.5 0.9
+special_bonds   lj 0.0 0.5 1.0
+velocity        all create 0.8 4928459
+timestep        0.002
+fix             1 all nve
+thermo_style    custom step temp pe evdwl ebond eangle edihed eimp etotal press
+thermo_modify   format float %.15g
+thermo          10
+run             40

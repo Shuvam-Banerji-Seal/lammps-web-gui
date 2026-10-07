@@ -26,6 +26,13 @@ import * as fixForce from './registry/fix_force';
 import * as fixWall from './registry/fix_wall';
 import * as fixOutput from './registry/fix_output';
 import * as fixMotion from './registry/fix_motion';
+import * as fixExt from './registry/fix_ext';
+import * as fixMom from './registry/fix_mom';
+import * as fixWref from './registry/fix_wref';
+import * as fixAvg from './registry/fix_avg';
+import * as computeRed from './registry/compute_red';
+import * as computeTemp from './registry/compute_temp';
+import * as pairSW from './registry/pair_sw';
 import * as computeAtom from './registry/compute_atom';
 import * as computeGlobal from './registry/compute_global';
 import { FixNVE } from './fix/nve';
@@ -55,7 +62,7 @@ export const PAIR_STYLES: Record<string, () => Pair> = {
   'coul/long': () => new PairCoulLong(),
   'lj/cut/coul/long': () => new PairLJCutCoulLong(),
   ...pairCoul.PAIRS, ...pairSimple.PAIRS, ...pairLJ.PAIRS, ...pairLJCoul.PAIRS, ...pairSimple2.PAIRS, ...pairLJ2.PAIRS,
-  ...pairEAM.PAIRS, ...pair3Body.PAIRS,
+  ...pairEAM.PAIRS, ...pair3Body.PAIRS, ...pairSW.PAIRS,
 };
 
 export const BOND_STYLES: Record<string, () => Bonded> = {
@@ -91,6 +98,7 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   'temp/csvr': (s, i, g, a) => new FixTempCSVR(s, i, g, a, 'temp/csvr'),
   'temp/csld': (s, i, g, a) => new FixTempCSVR(s, i, g, a, 'temp/csld'),
   ...fixForce.FIXES, ...fixWall.FIXES, ...fixOutput.FIXES, ...fixMotion.FIXES,
+  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES,
 };
 
 export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
@@ -98,7 +106,7 @@ export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
   ke: (s, i, g, a) => new ComputeKE(s, i, g, a),
   pe: (s, i, g, a) => new ComputePE(s, i, g, a),
   pressure: (s, i, g, a) => new ComputePressure(s, i, g, a),
-  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES,
+  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES,
 };
 
 /** Lists for messages and is_available(). */

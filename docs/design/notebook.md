@@ -1,105 +1,121 @@
-# In-browser MD notebook (WebGPU) — design
+# In-browser MD notebook — design
 
-Status: **implemented (v1), 2026-10-07.** Engine `src/engine/`, worker
+Status: **engine v2, 2026-10-07.** Engine `src/engine/`, worker
 `src/workers/engine.worker.ts`, UI `src/components/workbench/Notebook.tsx`.
-Verified: the melt step-0 line below matches on the CPU (fp64) and WebGPU
-paths; GPU forces match CPU within 1e-4 (real Chromium, SwiftShader);
-the notebook UI passes a 16-check real-browser test at desktop and phone
-widths.
+The notebook runs real LAMMPS input scripts — data files, molecular force
+fields, long-range electrostatics, minimization, variables and loops — and
+every supported feature is checked against **native LAMMPS used as a
+black-box oracle** (below). The CPU-threads and WebGPU paths accelerate the
+plain Lennard-Jones case; everything else runs on the fp64 engine.
 
 ## Goal
 
 Let a student run a *small* molecular-dynamics simulation in the browser:
-type LAMMPS-style input into notebook cells, press Run, watch the system move
-in the existing 3D viewer and read the thermo output — no install, no server,
-no account. Force evaluation runs on the GPU through **WebGPU** when the
-browser offers it, and on the CPU otherwise.
+type LAMMPS input into notebook cells (or add the data and potential files a
+script reads), press Run, watch the system move in the 3D viewer and read the
+thermo output — no install, no server, no account.
 
 ## What it is not
 
-- **It is not LAMMPS.** It is an independent engine that understands a
-  documented subset of LAMMPS input syntax. Every unsupported command is a
-  clear error that names the command and lists what is supported — never a
-  silent no-op.
+- **It is not LAMMPS.** It is an independent engine that runs a documented,
+  growing subset of LAMMPS input. Every unsupported command or style is an
+  error that names it and lists what is supported — never a silent no-op.
+  Commands that cannot exist in a browser (`shell`, `python`, `kim`, `mdi`,
+  `plugin`, `geturl`, `package`) are errors that say why.
 - **It contains no LAMMPS source code.** LAMMPS is GPL-2.0; this project is
   under its own source-available licence, so porting LAMMPS code would be a
-  licence violation. The engine is written from the textbook physics (Allen &
-  Tildesley, *Computer Simulation of Liquids*; Frenkel & Smit, *Understanding
-  Molecular Simulation*) and from the *documented semantics* on
-  docs.lammps.org — never from the LAMMPS source tree.
+  licence violation. The engine is written from textbook physics (Allen &
+  Tildesley; Frenkel & Smit; Hockney & Eastwood; Deserno & Holm) and from the
+  *documented semantics* on docs.lammps.org, quoted in code comments — never
+  from the LAMMPS source tree. Where the documentation is silent, behaviour
+  is **measured** by running the native binary on small inputs, and the
+  measurement is written next to the code (e.g. the PPPM alias-image count,
+  Ewald's cutoff sphere, `2/sqrt(pi)` to 8 digits in the real-space force).
 - It is not for production science or large systems. The target is
   ≤ ~20 000 atoms, short runs, teaching.
 
-## Acceptance test — real LAMMPS output
+## Verification — native LAMMPS as a black-box oracle
 
-The first thing the engine must do is reproduce the official `examples/melt`
-run (`in.melt`: fcc LJ lattice, ρ* = 0.8442, 4000 atoms, `velocity create 3.0`,
-`lj/cut 2.5`, `fix nve`, `run 250`). LAMMPS's own published log
-(`log.8Apr21.melt.g++.1`) reports:
+`tests/oracle/*.in` are deterministic inputs: positions from lattices plus
+analytic displacements, velocities from atom-style variables, no random
+seeds. `scripts/oracle/run-oracle.mjs` runs each one through a native `lmp`
+binary (`LMP=/path/to/lmp node scripts/oracle/run-oracle.mjs [case ...]`) and
+stores in `tests/fixtures/oracle/<case>.json`:
+- every thermo row;
+- the final per-atom positions, velocities and forces;
+- any files the case writes.
 
-| Step | Temp | E_pair | TotEng | Press |
-|---|---|---|---|---|
-| 0 | 3 | −6.7733681 | −2.2744931 | −3.7033504 |
-| 50 | 1.6842865 | −4.8082494 | −2.2824513 | 5.5666131 |
-| 250 | 1.6645597 | −4.7774327 | −2.2812174 | 5.7526089 |
+`tests/engineOracle.test.ts` runs the same input in the engine and requires
+agreement to **1e-8 relative** (thermo) and 1e-6 (per-atom state, written
+files), unless a case documents a looser tolerance. Case directives:
+`# oracle-inputs:` (files the input reads), `# oracle-files:` (files compared
+token by token), `# oracle-compare:` (tolerances, rows, skipped keywords).
 
-Step 0 depends only on the lattice positions and the exactly-rescaled
-temperature, so it is **deterministic** and must match to the printed
-precision (CPU fp64). Later steps diverge because our velocity RNG differs
-from LAMMPS's; they are matched **statistically** (Temp 1.55–1.75,
-Press 5.2–6.2 after step 50, TotEng drift < 0.01 per atom over 250 steps).
+The binary is only ever *run*; nothing from its source or its `examples/` and
+`potentials/` directories is copied into the repository. Oracle cases use
+data and potential files written for this project.
 
-Consistency check of the reference itself: with 3N − 3 degrees of freedom the
-per-atom kinetic energy at T = 3 is 1.5 · 3 · 3999/4000 = 4.49887, and
-−6.7733681 + 4.49887 = −2.27450 ✓.
+The original acceptance check still holds: the documented `examples/melt` run
+reproduces LAMMPS's published step-0 line (Temp 3, E_pair −6.7733681,
+TotEng −2.2744931, Press −3.7033504) exactly. Later steps differ only because
+`velocity create` uses our own documented RNG.
 
-## Supported subset (v1)
+## Supported subset
 
-| Command | Supported form | Notes |
-|---|---|---|
-| `units` | `lj`, `real`, `metal` | constants cited from docs.lammps.org/units.html |
-| `dimension` | `2`, `3` | |
-| `boundary` | `p p p` (2D: `p p p` with thin z) | non-periodic boundaries are a clear error in v1 |
-| `atom_style` | `atomic` | |
-| `lattice` | `sc bcc fcc hcp diamond sq sq2 hex` + scale | reduced density in lj, lattice constant otherwise |
-| `region` | `block` (lattice or box units) | |
-| `create_box` | `N region` | |
-| `create_atoms` | `type box`, `type region ID`, `type random N seed region` | |
-| `mass` | `type value`, `* value` | |
-| `velocity` | `group create T seed [dist gaussian|uniform] [mom yes] [rot yes] [loop all|geom|local]`, `scale T`, `set` | `loop` accepted; values are reproducible from our own RNG, not LAMMPS's |
-| `pair_style` | `lj/cut rc` | |
-| `pair_coeff` | `i j eps sigma [rc]`, wildcards | |
-| `pair_modify` | `shift yes|no` | default `no`, as in LAMMPS |
-| `neighbor`, `neigh_modify` | accepted | the engine always evaluates the exact cutoff; documented |
-| `timestep` | `dt` | defaults per units style |
-| `fix` | `nve`, `langevin T0 T1 damp seed`, `temp/berendsen`, `temp/rescale`, `nvt temp T0 T1 damp` (Nosé–Hoover chain of 3, the documented `tchain` default), `enforce2d` | |
-| `thermo` | `N` | |
-| `thermo_style` | `custom step temp pe ke etotal press vol density` (+ `one`) | |
-| `run` | `N` | |
-| `dump` | `ID group atom|custom N file …` | streams frames to the viewer; downloadable as `.lammpstrj` |
-| `write_data` | `file` | download |
-| `print`, `variable … equal <expr>`, `${name}` / `$x` | | numeric expressions only, via a safe parser (no `eval`) |
+The authoritative list is what the engine reports: the notebook's help panel
+shows the commands and styles, and an unsupported one is an error naming it.
+The block below is checked against the engine's registries by
+`tests/notebookDocs.test.ts`.
+
+<!-- coverage:begin -->
+| Kind | Supported |
+|---|---|
+| commands | `angle_coeff` `angle_style` `atom_modify` `atom_style` `balance` `bond_coeff` `bond_style` `boundary` `change_box` `clear` `comm_modify` `comm_style` `compute` `compute_modify` `create_atoms` `create_bonds` `create_box` `delete_atoms` `delete_bonds` `dielectric` `dihedral_coeff` `dihedral_style` `dimension` `displace_atoms` `dump` `dump_modify` `echo` `fix` `fix_modify` `group` `if` `improper_coeff` `improper_style` `include` `info` `jump` `kspace_modify` `kspace_style` `label` `lattice` `log` `mass` `min_modify` `min_style` `minimize` `neigh_modify` `neighbor` `newton` `next` `pair_coeff` `pair_modify` `pair_style` `partition` `print` `processors` `quit` `read_data` `region` `replicate` `reset_timestep` `run` `set` `special_bonds` `suffix` `thermo` `thermo_modify` `thermo_style` `timer` `timestep` `uncompute` `undump` `unfix` `units` `variable` `velocity` `write_data` `write_dump` |
+| pair_style | `coul/long` `hybrid` `hybrid/molecular` `hybrid/overlay` `hybrid/scaled` `lj/cut` `lj/cut/coul/long` |
+| bond_style | `class2` `fene` `fene/expand` `gromos` `harmonic` `harmonic/shift` `harmonic/shift/cut` `morse` `nonlinear` `zero` |
+| angle_style | `charmm` `cosine` `cosine/delta` `cosine/periodic` `cosine/shift` `cosine/squared` `fourier` `fourier/simple` `harmonic` `quartic` `zero` |
+| dihedral_style | `harmonic` |
+| improper_style | `harmonic` |
+| kspace_style | `ewald` `pppm` |
+| fix | `enforce2d` `langevin` `nph` `npt` `nve` `nvt` `temp/berendsen` `temp/csld` `temp/csvr` `temp/rescale` |
+| compute | `ke` `pe` `pressure` `temp` |
+<!-- coverage:end -->
+
+Not supported (an error names each): restart files, `atom_style` other than
+atomic / charge / bond / angle / molecular / full, `pppm/disp`, `msm`,
+`kspace_modify diff ad`, `run_style`, atom-style `hybrid/scaled` factors.
 
 ## Architecture
 
 ```
 src/engine/
-  types.ts           contracts shared by every piece below      (orchestrator)
-  units.ts           unit systems + constants
-  rng.ts             seeded RNG (deterministic, documented)
-  lattice.ts         lattice generation, create_atoms in regions
-  cpu/forces.ts      LJ forces, energy, virial; cell list; minimum image
-  integrate.ts       velocity Verlet + thermostats + enforce2d
-  observables.ts     temp (dof-aware), ke, pe, press (virial), density
-  interpreter.ts     LAMMPS-subset parsing → engine operations
-  gpu/               WebGPU force backend (WGSL) + device lifecycle
-  engine.worker.ts   runs a session off the main thread
-src/components/workbench/Notebook.tsx   the 4th module
+  types.ts, units.ts, domain.ts     contracts, unit constants, box geometry (triclinic, boundaries)
+  system.ts, session.ts             one simulation; command dispatch, loops, jump/label/if, include
+  commands/                         setup, force field, run and misc command handlers
+  script.ts, formula.ts, variables.ts, groupfn.ts, boolean.ts, refs.ts
+                                    parsing, $-substitution, variables, c_/f_/v_ references
+  atoms.ts, lattice.ts, region.ts, group.ts, neighbor.ts
+                                    atoms and topology, lattices, regions, groups,
+                                    ghost atoms + binned Verlet lists with special bonds
+  force/                            force field: pair/, bond/, angle/, dihedral/, improper/,
+                                    kspace/ (ewald, pppm), fft.ts, erfc.ts
+  fix/, compute/                    fixes and computes (Developer_flow hook order)
+  run/                              velocity Verlet run loop, minimizers, accelerators
+  output/                           thermo, dump, write_data
+  registry/ + styles.ts             style name -> implementation, one file per family
+  cpu/, gpu/                        threaded CPU and WebGPU force paths (plain lj/cut)
+  host.ts, client.ts, protocol.ts   worker plumbing; files added in the notebook
+src/components/workbench/Notebook.tsx   the notebook module
 ```
 
-### Backends
+### Accelerated backends (plain lj/cut)
 
-One interface, two implementations:
+For the one case they implement exactly — `pair_style lj/cut`, a fully
+periodic orthogonal box, no bonds, charges or kspace, only `fix nve` /
+`enforce2d` on all atoms, no pressure-tensor output — the notebook's
+CPU-threads and WebGPU choices replace the force evaluation
+(`src/engine/run/accel.ts`). Any other input runs on the fp64 engine, and
+the run log says why. One interface, two implementations:
 
 ```ts
 interface ForceBackend {
@@ -185,14 +201,17 @@ Small systems stop gaining past ~8 threads (per-step messaging dominates).
 With resident stepping the A100 runs at 30–45 % SM utilisation and the
 browser uses ~1.5 cores (mostly the renderer drawing frames).
 
-## Verification plan
+## Tests
 
-1. **Unit physics (CPU):** two-atom LJ force/energy vs the analytic formula;
-   cell-list forces identical to brute force; Newton's third law (net force
-   ≈ 0); NVE energy drift bounded; momentum conserved; each thermostat reaches
-   its target within tolerance.
-2. **Reference reproduction:** run the real `in.melt` and match the table above.
-3. **GPU parity:** in real Chromium via SwiftShader — WGSL forces vs CPU forces.
-4. **Interpreter:** every supported command parses; every unsupported one
-   errors with its line number; `${var}` substitution; no `eval`.
-5. **UI:** the notebook at 360 px and desktop in a real browser.
+1. **Oracle parity** (`tests/engineOracle.test.ts`): every `tests/oracle/*.in`
+   against native LAMMPS, as above.
+2. **Physics without LAMMPS**: forces equal minus the energy gradient (central
+   differences) for every pair, bonded and kspace style; the rocksalt Madelung
+   constant from Ewald; PPPM error falling with assignment order; Newton's
+   third law; NVE energy drift; thermostats reaching their targets.
+3. **Interpreter**: every command's error paths name the command and line;
+   `$`-substitution, loops, `jump`/`label`/`if`, `include`.
+4. **GPU parity**, in real Chromium via SwiftShader: WGSL forces vs CPU forces,
+   resident GPU steps vs fp64 steps.
+5. **UI**: the notebook at phone and desktop widths in a real browser,
+   including adding files and reading them with `read_data`.

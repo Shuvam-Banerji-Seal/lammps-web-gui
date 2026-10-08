@@ -246,13 +246,65 @@ export class FixTempCSVR extends RescaleFix {
 }
 
 /**
+ * Marsaglia-Zaman lagged-Fibonacci generator with carry, in the form published
+ * by F. James (Comput. Phys. Commun. 60, 329 (1990)) for RANMAR: a 97-element
+ * state, seeded from one integer through IJ = (seed-1)/30082, KL = seed-1-30082*IJ.
+ * fix_langevin.html: "A Marsaglia random number generator is used." Measured
+ * with native LAMMPS (black box): with seed 12345 the fix's force components
+ * are (uniform() - 0.5) times the amplitude below, drawn in this stream, which
+ * is why the engine uses it here (rng.ts Rng is a different generator).
+ */
+class RanMars {
+  private readonly u = new Float64Array(98);
+  private c = 362436 / 16777216;
+  private readonly cd = 7654321 / 16777216;
+  private readonly cm = 16777213 / 16777216;
+  private ui = 97;
+  private uj = 33;
+
+  constructor(seed: number) {
+    const ij = Math.floor((seed - 1) / 30082);
+    const kl = seed - 1 - 30082 * ij;
+    let i = (Math.floor(ij / 177) % 177) + 2;
+    let j = (ij % 177) + 2;
+    let k = (Math.floor(kl / 169) % 178) + 1;
+    let l = kl % 169;
+    for (let ii = 1; ii <= 97; ii++) {
+      let x = 0;
+      let t = 0.5;
+      for (let jj = 1; jj <= 24; jj++) {
+        const m = ((i * j) % 179) * k % 179;
+        i = j; j = k; k = m;
+        l = (53 * l + 1) % 169;
+        if ((l * m) % 64 >= 32) x += t;
+        t *= 0.5;
+      }
+      this.u[ii] = x;
+    }
+  }
+
+  uniform(): number {
+    let uni = this.u[this.ui] - this.u[this.uj];
+    if (uni < 0) uni += 1;
+    this.u[this.ui] = uni;
+    if (--this.ui === 0) this.ui = 97;
+    if (--this.uj === 0) this.uj = 97;
+    this.c -= this.cd;
+    if (this.c < 0) this.c += this.cm;
+    uni -= this.c;
+    if (uni < 0) uni += 1;
+    return uni;
+  }
+}
+
+/**
  * fix ID group langevin Tstart Tstop damp seed [angmom omega scale tally zero] —
  * fix_langevin.html: "F_f = - (m/damp) v"; "F_r is proportional to
  * sqrt(k_B T m / (dt damp))"; "a uniform random number is used (instead of a
  * Gaussian random number) for speed"; "this fix does NOT perform time
  * integration. It only modifies forces"; "The keyword scale allows the damp
  * factor to be scaled up or down by the specified factor for atoms of that
- * type" (damp_type = damp / ratio); "The keyword tally enables the
+ * type" (damp_type = damp * ratio, measured with native LAMMPS); "The keyword tally enables the
  * calculation of the cumulative energy added/subtracted to the atoms";
  * "If the keyword zero is set to yes, the total random force is set exactly
  * to zero by subtracting off an equal part of it from each atom in the
@@ -268,7 +320,7 @@ export class FixLangevin extends Fix {
   private tStart: NumOrVar;
   private tStop: number;
   private damp: number;
-  private rng: Rng;
+  private rng: RanMars;
   private ratio: Float64Array;
   private tally = false;
   private zero = false;
@@ -285,7 +337,10 @@ export class FixLangevin extends Fix {
     const seed = Number(args[3]);
     if (!Number.isFinite(this.tStop) || !(this.damp > 0)) throw new StyleError('fix langevin: Tstop must be a number and damp > 0');
     if (!Number.isInteger(seed) || seed <= 0) throw new StyleError('fix langevin: seed must be a positive integer');
-    this.rng = new Rng(seed);
+    this.rng = new RanMars(seed);
+    // Measured with native LAMMPS (black box): the stream starts one draw in,
+    // so the first draw is discarded (the draw is taken here, at fix creation).
+    this.rng.uniform();
     const s = sys.state;
     this.ratio = new Float64Array(s.ntypes + 1).fill(1);
     for (let k = 4; k < args.length;) {
@@ -326,8 +381,9 @@ export class FixLangevin extends Fix {
     return super.modify(key, values);
   }
 
-  // forces at step 0 are left alone: the thermostat acts during the run
-  setup(): void {}
+  // Measured with native LAMMPS (black box): run 0 already dumps the random
+  // forces, so the setup force evaluation includes this fix.
+  setup(): void { this.postForce(); }
 
   postForce(): void {
     const sys = this.sys;
@@ -338,18 +394,20 @@ export class FixLangevin extends Fix {
     const bias = this.temp?.hasBias() ?? false;
     if (bias) { this.temp!.computeBias(); this.temp!.removeBiasAll(); }
     const { f, v, type, mask } = s;
-    const two = s.dimension === 2;
     if (this.tally && this.fl.length !== 3 * s.n) this.fl = new Float64Array(3 * s.n);
     let sx = 0, sy = 0, sz = 0, count = 0;
     const rand = this.zero ? new Float64Array(3 * s.n) : null;
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & this.groupBit)) continue;
       const m = massOf(s, i);
-      const damp = this.damp / this.ratio[type[i]];
+      // "scale ... factor by which to scale the damping coefficient": a ratio of 2
+      // doubles damp (measured: native random amplitude follows damp * ratio)
+      const damp = this.damp * this.ratio[type[i]];
       const g1 = -(m / damp) / u.ftm2v;
       const g2 = Math.sqrt(m) * Math.sqrt((24 * u.boltz * tt) / (u.mvv2e * s.dt * damp)) / u.ftm2v;
-      const rx = g2 * (this.rng.uniform() - 0.5), ry = g2 * (this.rng.uniform() - 0.5), rz = two ? 0 : g2 * (this.rng.uniform() - 0.5);
-      const fx = g1 * v[3 * i] + rx, fy = g1 * v[3 * i + 1] + ry, fz = two ? 0 : g1 * v[3 * i + 2] + rz;
+      // three draws per atom in storage order, also in 2d (measured: native keeps fz)
+      const rx = g2 * (this.rng.uniform() - 0.5), ry = g2 * (this.rng.uniform() - 0.5), rz = g2 * (this.rng.uniform() - 0.5);
+      const fx = g1 * v[3 * i] + rx, fy = g1 * v[3 * i + 1] + ry, fz = g1 * v[3 * i + 2] + rz;
       if (rand) { rand[3 * i] = rx; rand[3 * i + 1] = ry; rand[3 * i + 2] = rz; sx += rx; sy += ry; sz += rz; count++; }
       f[3 * i] += fx; f[3 * i + 1] += fy; f[3 * i + 2] += fz;
       if (this.tally) { this.fl[3 * i] = fx; this.fl[3 * i + 1] = fy; this.fl[3 * i + 2] = fz; }

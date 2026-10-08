@@ -1,0 +1,26 @@
+# oracle: fix langevin (no keywords) on three atom types of different mass, with fix nve
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      atomic
+atom_modify     map array sort 0 0.0
+lattice         sc 0.8
+region          box block 0 4 0 4 0 4
+create_box      3 box
+create_atoms    1 box
+group           two id 2:64:3
+group           three id 3:64:3
+set             group two type 2
+set             group three type 3
+mass            1 1.0
+mass            2 2.0
+mass            3 0.5
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+velocity        all create 1.0 4928 loop all
+timestep        0.005
+fix             1 all langevin 1.0 1.0 2.0 9182 
+fix             2 all nve
+thermo_style    custom step temp pe etotal press
+thermo_modify   format float %.15g
+thermo          10
+run             100

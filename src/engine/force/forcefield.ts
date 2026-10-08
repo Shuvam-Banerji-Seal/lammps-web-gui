@@ -38,6 +38,13 @@ export interface ComputeFlags {
 
 export class ForceField {
   pair: Pair | null = null;
+  /**
+   * Name of the pair style a restart file named but could not store (restart.ts PAIR_NOT_IN_RESTART);
+   * cleared by the next pair_style command. Measured with native LAMMPS (black box): a run after
+   * read_restart without a new pair_style stops with the error Must re-specify non-restarted pair
+   * style (sw) after read_restart.
+   */
+  pairNotRestarted: string | null = null;
   bond: Bonded | null = null;
   angle: Bonded | null = null;
   dihedral: Bonded | null = null;
@@ -99,6 +106,7 @@ export class ForceField {
   private warn: (text: string) => void = () => {};
 
   init(s: SimState, nb: Neighbor, geom: Geometry, ctx: StyleContext): void {
+    if (!this.pair && this.pairNotRestarted) throw new StyleError(`Must re-specify non-restarted pair style (${this.pairNotRestarted}) after read_restart`);
     this.warn = (t) => ctx.log(`WARNING: ${t}`);
     this.checkTopology(s);
     if (this.pair) {

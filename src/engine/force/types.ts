@@ -222,13 +222,13 @@ export interface StyleContext {
   freezeGroupBit?: number;
 }
 
-/** Base for pair styles. */
 /** Equilibrium bond lengths and angles (degrees) by type, for Pair.linkBonded. */
 export interface BondedEquilibria {
   bond(type: number): number;
   angle(type: number): number;
 }
 
+/** Base for pair styles. */
 export abstract class Pair {
   abstract readonly name: string;
   ntypes = 0;

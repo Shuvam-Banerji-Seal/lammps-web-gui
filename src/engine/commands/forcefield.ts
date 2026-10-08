@@ -19,6 +19,7 @@ const unsupported = (kind: string, name: string, list: Record<string, unknown>) 
 const pairStyle: Handler = ({ sys }, a) => {
   const name = a[0];
   if (!name) throw new StyleError('usage: pair_style style args');
+  sys.ff.pairNotRestarted = null;
   if (name === 'none') { sys.ff.pair = null; sys.bump(); return; }
   const make = PAIR_STYLES[name];
   if (!make) throw unsupported('pair_style', name, PAIR_STYLES);

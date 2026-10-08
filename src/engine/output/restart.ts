@@ -191,6 +191,7 @@ export const writeRestartText = (sys: System): string => {
   const { f: _f, custom: _c, ...rest } = s;
   const styleEntry = (name: string, obj: unknown) => ({ name, data: encodeValue(obj, name, []) });
   styles.pair = pairStored ? styleEntry(pairStored.name, pairStored) : null;
+  if (pair && !pairStored) styles.pairNotStored = pair.name;
   for (const kind of BONDED_KINDS) {
     const st = sys.ff[kind];
     styles[kind] = st ? styleEntry(st.name, st) : null;
@@ -226,7 +227,7 @@ export const readRestartText = (sys: System, text: string, name: string): void =
     if (header.startsWith('LAMMPS-WEB-RESTART')) throw new StyleError(`${name}: restart format '${header}' is not supported (this engine reads '${RESTART_MAGIC}')`);
     throw new StyleError(`${name} is not a restart file written by this browser engine. Native LAMMPS binary restart files cannot be read in the browser: their format is platform-specific. Convert the native file with the lmp -restart2data command-line flag and use read_data, or write the state here with write_restart (or write_data)`);
   }
-  let doc: { format: string; version: number; step: number; state: Json; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null>; fixes?: PropertyAtomRestart[] };
+  let doc: { format: string; version: number; step: number; state: Json; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: PropertyAtomRestart[] };
   try {
     doc = JSON.parse(text.slice(nl + 1));
   } catch {
@@ -282,6 +283,11 @@ export const readRestartText = (sys: System, text: string, name: string): void =
   };
   const pair = restoreStyle('pair', PAIR_STYLES as Record<string, () => Pair>, doc.styles.pair, state.ntypes);
   sys.ff.pair = pair;
+  // measured with native LAMMPS (black box): read_restart logs pair style sw stores no restart info,
+  // and the next run needs a new pair_style (ForceField.pairNotRestarted)
+  const notStored = typeof doc.styles.pairNotStored === 'string' ? doc.styles.pairNotStored : null;
+  sys.ff.pairNotRestarted = pair ? null : notStored;
+  if (!pair && notStored) sys.log(`pair style ${notStored} stores no restart info`);
   for (const kind of BONDED_KINDS) {
     const st = restoreStyle(kind, registryOf(kind) as Record<string, () => Bonded>, doc.styles[kind], bondedTypeCount(state, kind));
     sys.ff[kind] = st;

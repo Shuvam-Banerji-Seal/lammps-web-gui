@@ -236,10 +236,13 @@ describe('write_restart options and unsupported states', () => {
     const s2 = newSession();
     s2.session.addFile('s.restart', sw.files.get('s.restart')!);
     s2.session.addFile('Si.sw', readFileSync('tests/oracle/w2tsw_Si.sw', 'utf8'));
-    // without re-specifying, the restored system has no pair style: a run sees zero pair energy
-    await s2.session.execute('read_restart s.restart\nthermo_style custom step pe\nrun 0\n');
-    const row = s2.events.find((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo');
-    expect(row?.row.pe).toBe(0);
+    // measured with native LAMMPS (black box): read_restart logs pair style sw stores no restart info,
+    // and a run without a new pair_style stops with the error Must re-specify non-restarted pair style
+    // (sw) after read_restart
+    await expect(s2.session.execute('read_restart s.restart\nthermo_style custom step pe\nrun 0\n'))
+      .rejects.toThrow('Must re-specify non-restarted pair style (sw) after read_restart');
+    expect(s2.events.some((e) => e.kind === 'log' && e.text === 'pair style sw stores no restart info')).toBe(true);
+    expect(s2.events.some((e) => e.kind === 'thermo')).toBe(false);
     const s3 = newSession();
     s3.session.addFile('s.restart', sw.files.get('s.restart')!);
     s3.session.addFile('Si.sw', readFileSync('tests/oracle/w2tsw_Si.sw', 'utf8'));

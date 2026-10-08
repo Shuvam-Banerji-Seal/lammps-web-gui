@@ -111,7 +111,9 @@ export class System {
     this._state = s;
     this.geom = new Geometry(s.box);
     if (this.pendingDt !== null) { s.dt = this.pendingDt; this.pendingDt = null; }
-    this.ff.pair?.allocate(s.ntypes);
+    // a new state with the same number of types keeps the pair coefficients (measured with native LAMMPS, black
+    // box: replicate after pair_coeff runs with the same coefficients); a different count needs new tables
+    if (this.ff.pair && this.ff.pair.ntypes !== s.ntypes) this.ff.pair.allocate(s.ntypes);
     // fix property/atom defined before the box adds its per-atom properties to the new state
     for (const f of this.fixes) (f as { attachState?: (st: SimState) => void }).attachState?.(s);
     this.bump();

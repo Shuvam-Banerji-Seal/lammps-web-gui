@@ -14,7 +14,9 @@ pair_coeff 1 1 1.0 1.0
 fix 1 all nve
 thermo 10`;
 
-describe('EngineClient (main-thread fallback, same protocol as the worker)', () => {
+// the first case loads and initialises the whole engine on the main thread, which can take longer than the
+// default 5 s while other test files load the machine
+describe('EngineClient (main-thread fallback, same protocol as the worker)', { timeout: 30_000 }, () => {
   it('runs cells in one persistent session and streams events and files', async () => {
     const client = new EngineClient(false);
     expect(client.onMainThread).toBe(true);

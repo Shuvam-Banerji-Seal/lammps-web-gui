@@ -16,7 +16,7 @@ import {
 } from '../../lammps/catalog';
 import {
   generateScript, deriveFlowchart, FlowGraph, resolvePath,
-  skippedTrunkUids, sortStepsBySection, isSectionSorted, branchesOf,
+  skippedTrunkUids, sortStepsBySection, isSectionSorted, branchesOf, missingParams,
 } from '../../lammps/generator';
 import {
   addBranch, takeBranchAtFork, promoteBranch, removeBranch, updateBranch,
@@ -983,7 +983,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
                       if (e.target !== e.currentTarget) return;
                       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchTab(tab.id); }
                     }}
-                    className={`group flex shrink-0 cursor-pointer items-center gap-1 rounded-t-lg border-b-2 px-1.5 py-1 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#7fa66b] sm:gap-1.5 sm:px-2.5 ${
+                    className={`group flex shrink-0 cursor-pointer items-center gap-1 rounded-t-lg border-b-2 px-1.5 py-1 text-[11px] font-medium transition-colors focus-visible:outline-none ${ct.tabFocusRing} sm:gap-1.5 sm:px-2.5 ${
                       active ? ct.active : `${ct.muted} border-transparent ${ct.hoverSurface}`
                     }`}
                     title={tab.model.title || 'Untitled'}
@@ -1245,7 +1245,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
                 aria-label="Run this script in the MD Notebook"
               >
                 <NotebookPen size={13} />
-                <span className="hidden xl:inline">Run in Notebook</span>
+                <span className="hidden whitespace-nowrap xl:inline">Run in Notebook</span>
               </button>
             )}
             {onOpenViewer && (
@@ -2097,6 +2097,7 @@ interface StepEditorProps {
 const StepEditor: React.FC<StepEditorProps> = ({
   ct, step, def, onUpdateParam, onUpdateNote, onToggle, onDuplicate, onRemove, onMoveUp, onMoveDown,
 }) => {
+  const missing = useMemo(() => new Set(missingParams(def, step.params).map(p => p.key)), [def, step.params]);
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
@@ -2124,8 +2125,9 @@ const StepEditor: React.FC<StepEditorProps> = ({
       )}
 
       <div className="space-y-1">
-        <label className={`text-[11px] font-semibold ${ct.muted}`}>Comment (optional)</label>
+        <label htmlFor={`${step.uid}-note`} className={`text-[11px] font-semibold ${ct.muted}`}>Comment (optional)</label>
         <input
+          id={`${step.uid}-note`}
           value={step.note ?? ''}
           onChange={e => onUpdateNote(e.target.value || undefined)}
           placeholder="# your note…"
@@ -2135,7 +2137,8 @@ const StepEditor: React.FC<StepEditorProps> = ({
 
       <div className="space-y-4">
         {def.params.map(pd => (
-          <ParamControl key={pd.key} ct={ct} def={pd} value={step.params[pd.key] ?? ''} onChange={v => onUpdateParam(pd.key, v)} />
+          <ParamControl key={pd.key} ct={ct} def={pd} id={`${step.uid}-${pd.key}`} missing={missing.has(pd.key)}
+            value={step.params[pd.key] ?? ''} onChange={v => onUpdateParam(pd.key, v)} />
         ))}
       </div>
 
@@ -2167,14 +2170,21 @@ const StepEditor: React.FC<StepEditorProps> = ({
   );
 };
 
-const ParamControl: React.FC<{ ct: ThemeTokens; def: ParamDef; value: string; onChange: (v: string) => void }> = ({
-  ct, def, value, onChange,
+const ParamControl: React.FC<{
+  ct: ThemeTokens; def: ParamDef; id: string; value: string; onChange: (v: string) => void;
+  /** Blank, but LAMMPS needs a value here (generator missingParams): the step is skipped until it is filled. */
+  missing?: boolean;
+}> = ({
+  ct, def, id, value, onChange, missing = false,
 }) => {
   const label = (
-    <label className={`text-[10px] font-semibold ${ct.muted}`}>
+    <label id={`${id}-label`} htmlFor={id} className={`text-[10px] font-semibold ${ct.muted}`}>
       {def.label}
       {def.help && <span className={`ml-1 font-normal opacity-60`}>— {def.help}</span>}
     </label>
+  );
+  const note = missing && (
+    <p id={`${id}-note`} className={`text-[11px] ${ct.invalidText}`}>Required: LAMMPS needs a value here, so this step is left out of the script until it is filled.</p>
   );
 
   if (def.type === 'enum' && def.options) {
@@ -2183,6 +2193,7 @@ const ParamControl: React.FC<{ ct: ThemeTokens; def: ParamDef; value: string; on
       <div className="space-y-1">
         {label}
         <select
+          id={id}
           value={value}
           onChange={e => onChange(e.target.value)}
           className={`w-full rounded border px-2.5 py-2 text-[13px] focus:border-[#7fa66b] focus:outline-none ${ct.input}`}
@@ -2202,6 +2213,7 @@ const ParamControl: React.FC<{ ct: ThemeTokens; def: ParamDef; value: string; on
         {label}
         <button
           onClick={() => onChange(value === 'yes' ? 'no' : 'yes')}
+          aria-labelledby={`${id}-label`}
           role="switch"
           aria-checked={value === 'yes'}
           className={`relative h-5 w-9 rounded-full transition-colors ${value === 'yes' ? ct.toggleOn : ct.toggleOff}`}
@@ -2216,12 +2228,16 @@ const ParamControl: React.FC<{ ct: ThemeTokens; def: ParamDef; value: string; on
     <div className="space-y-1">
       {label}
       <input
+        id={id}
         type={def.type === 'number' ? 'number' : 'text'}
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={def.placeholder}
-        className={`w-full rounded border px-2.5 py-2 text-[13px] focus:border-[#7fa66b] focus:outline-none ${ct.input}`}
+        aria-invalid={missing || undefined}
+        aria-describedby={missing ? `${id}-note` : undefined}
+        className={`w-full rounded border px-2.5 py-2 text-[13px] focus:border-[#7fa66b] focus:outline-none ${ct.input} ${missing ? ct.invalidField : ''}`}
       />
+      {note}
     </div>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Play, Square, Plus, Trash2, RotateCcw, Download, Cpu, Gpu, HelpCircle, FileUp, X, Workflow } from 'lucide-react';
 import { cellsToScript } from '../../lammps/notebookBridge';
+import { explainEngineError } from './engineError';
 import { getThemeTokens, Theme } from '../../theme';
 import { usePersistentState } from '../../hooks/usePersistentState';
 import MoleculeCanvas from '../MoleculeCanvas';
@@ -181,6 +182,10 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     setRuns((prev) => ({ ...prev, [id]: fn(prev[id] ?? emptyRun()) }));
 
   const runCell = useCallback(async (cell: Cell): Promise<boolean> => {
+    if (cell.text.trim() === '') {
+      setRuns((prev) => ({ ...prev, [cell.id]: { ...emptyRun(), status: 'ok', logs: ['Nothing to run: this cell is empty.'] } }));
+      return true;
+    }
     setRunning(cell.id);
     setRuns((prev) => ({ ...prev, [cell.id]: { ...emptyRun(), status: 'running' } }));
     const onEvent = (ev: EngineEvent) => {
@@ -364,8 +369,8 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           className={`flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 text-xs ${ct.divider} ${ct.panel}`}>
           <span className="font-medium">Script from the Script Builder ({incoming.split('\n').length} lines)</span>
           <button className={`${btn} ${ct.accent}`} disabled={busy} onClick={() => takeIncoming('replace')}
-            title="Replace every cell with this script">
-            Replace cells
+            title="Replace every cell, and its output, with this script">
+            Replace {cells.length === 1 ? 'the cell' : `all ${cells.length} cells`}
           </button>
           <button className={`${btn} ${ct.button}`} disabled={busy} onClick={() => takeIncoming('append')}
             title="Add the script as a new cell after the current ones">
@@ -430,7 +435,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
             const n = i + 1;
             return (
               <section key={cell.id} data-cell="" data-status={run.status}
-                className={`rounded-lg border p-2 ${ct.card}`} aria-label={`Cell ${n}`}>
+                className={`rounded-lg border p-2 ${ct.card} ${run.status === 'error' ? ct.errorAccent : ''}`} aria-label={`Cell ${n}`}>
                 <div className="mb-1 flex items-center gap-1">
                   <span className={`font-mono text-[11px] ${ct.muted}`}>In [{n}]</span>
                   <button className={`${btn} ${ct.button}`} aria-label={`Run cell ${n}`} title="Run this cell (Shift+Enter)"
@@ -447,6 +452,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
                 </div>
                 <textarea
                   aria-label={`Cell ${n} input`}
+                  placeholder="LAMMPS input, e.g. run 100 (Shift+Enter runs this cell)"
                   value={cell.text}
                   spellCheck={false}
                   rows={Math.max(2, cell.text.split('\n').length + 1)}
@@ -461,7 +467,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
                 />
                 <div role="log" aria-label={`Cell ${n} output`} className="mt-1 space-y-1 font-mono text-[11px]">
                   {run.logs.map((l, k) => <p key={k} className={ct.muted}>{l}</p>)}
-                  {run.error && <p role="alert" className={`rounded px-1.5 py-1 ${ct.errorBox}`}>{run.error}</p>}
+                  {run.error && <EngineErrorText ct={ct} message={run.error} />}
                   {run.tables.map((t, k) => (
                     <div key={k} className="max-h-64 overflow-auto">
                       <table className="border-collapse text-right">
@@ -539,6 +545,23 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           )}
         </div>
       </div>
+    </div>
+  );
+};
+
+/** An engine error: its head, a "did you mean" for an unknown name, and the supported list folded away. */
+const EngineErrorText: React.FC<{ ct: ReturnType<typeof getThemeTokens>; message: string }> = ({ ct, message }) => {
+  const v = explainEngineError(message);
+  return (
+    <div role="alert" className={`rounded px-1.5 py-1 ${ct.errorBox}`}>
+      <p>{v.head}</p>
+      {v.suggestion && <p className="mt-0.5 font-semibold">Did you mean <code>{v.suggestion}</code>?</p>}
+      {v.supported.length > 0 && (
+        <details className="mt-0.5">
+          <summary className="cursor-pointer">Supported ({v.supported.length})</summary>
+          <p className="mt-0.5 break-words">{v.supported.join(' · ')}</p>
+        </details>
+      )}
     </div>
   );
 };

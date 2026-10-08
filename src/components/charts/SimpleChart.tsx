@@ -17,6 +17,16 @@ export const extent = (values: number[]): { lo: number; hi: number } => {
 };
 
 /**
+ * Tick label with enough decimals that neighbouring ticks (`step` apart) read differently: a fixed two
+ * decimals printed -2.28 -2.28 -2.29 for a total-energy axis spanning 0.01.
+ */
+export const tickLabel = (v: number, step: number): string => {
+  const d = step > 0 && Number.isFinite(step) ? Math.min(6, Math.max(0, Math.ceil(-Math.log10(step)) + 1)) : 2;
+  const s = v.toFixed(d);
+  return /^-0(\.0*)?$/.test(s) ? s.slice(1) : s;
+};
+
+/**
  * Plot width in CSS pixels. The chart is drawn in this viewBox and scaled, so
  * there is nothing to gain from more than ~2 points per unit of it.
  */
@@ -113,7 +123,8 @@ export const LineChart: React.FC<LineChartProps> = ({
 
   return (
     <div className="w-full">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img"
+        aria-label={`${yLabel ?? 'y'} against ${xLabel ?? 'x'}: ${data.length} points, last ${yLabel ?? 'y'} ${data[data.length - 1].y.toPrecision(6)}`}>
         {/* grid */}
         {Array.from({ length: yTicks + 1 }).map((_, i) => {
           const y = padT + (i / yTicks) * plotH;
@@ -134,13 +145,13 @@ export const LineChart: React.FC<LineChartProps> = ({
         {Array.from({ length: yTicks + 1 }).map((_, i) => {
           const v = yHi - (i / yTicks) * yRange;
           const y = padT + (i / yTicks) * plotH;
-          return <text key={`yl${i}`} x={padL - 4} y={y + 3} textAnchor="end" fontSize={8} fill={textColor}>{v.toFixed(v >= 10 ? 1 : 2)}</text>;
+          return <text key={`yl${i}`} x={padL - 4} y={y + 3} textAnchor="end" fontSize={8} fill={textColor}>{tickLabel(v, yRange / yTicks)}</text>;
         })}
         {/* x labels */}
         {Array.from({ length: xTicks + 1 }).map((_, i) => {
           const v = xMin + (i / xTicks) * xRange;
           const x = padL + (i / xTicks) * plotW;
-          return <text key={`xl${i}`} x={x} y={H - 4} textAnchor="middle" fontSize={8} fill={textColor}>{v.toFixed(v >= 10 ? 1 : 2)}</text>;
+          return <text key={`xl${i}`} x={x} y={H - 4} textAnchor="middle" fontSize={8} fill={textColor}>{tickLabel(v, xRange / xTicks)}</text>;
         })}
       </svg>
       {(xLabel || yLabel) && (
@@ -181,7 +192,7 @@ export const Histogram: React.FC<HistogramProps> = ({ bins, xLabel, yLabel, colo
 
   return (
     <div className="w-full">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img" aria-label={`Histogram of ${xLabel ?? 'x'}: ${bins.length} bins`}>
         {Array.from({ length: yTicks + 1 }).map((_, i) => {
           const y = padT + (i / yTicks) * plotH;
           return <line key={`y${i}`} x1={padL} x2={W - padR} y1={y} y2={y} stroke={gridColor} strokeWidth={0.5} opacity={0.7} />;
@@ -204,7 +215,7 @@ export const Histogram: React.FC<HistogramProps> = ({ bins, xLabel, yLabel, colo
           const b = bins[idx];
           const x = padL + (idx + 0.5) * barW;
           const v = (b.x0 + b.x1) / 2;
-          return <text key={`xl${i}`} x={x} y={H - 4} textAnchor="middle" fontSize={8} fill={textColor}>{v.toFixed(1)}</text>;
+          return <text key={`xl${i}`} x={x} y={H - 4} textAnchor="middle" fontSize={8} fill={textColor}>{tickLabel(v, (bins[bins.length - 1].x1 - bins[0].x0) / xTicks)}</text>;
         })}
       </svg>
       {(xLabel || yLabel) && (

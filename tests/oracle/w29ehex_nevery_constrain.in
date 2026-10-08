@@ -1,0 +1,27 @@
+# oracle: fix ehex with nevery 2 and the constrain keyword re-applying SHAKE only on the ehex steps
+# oracle-inputs: w29ehex_water.data
+units           real
+atom_style      full
+boundary        p p p
+read_data       w29ehex_water.data
+pair_style      lj/cut 8.0
+pair_coeff      * * 0.05 3.0
+pair_coeff      1 1 0.1553 3.166
+bond_style      harmonic
+bond_coeff      1 450.0 1.0
+angle_style     harmonic
+angle_coeff     1 55.0 109.47
+region          hot block INF INF INF INF 0 5.0 units box
+region          cold block INF INF INF INF 15.0 20.0 units box
+velocity        all create 400.0 4321 mom yes rot yes dist gaussian
+timestep        1.0
+fix             1 all nve
+fix             2 all shake 1.0e-12 400 0 b 1 a 1
+fix             3 all ehex 2 0.1 region hot constrain
+fix             4 all ehex 2 -0.1 region cold constrain
+compute         th all temp/region hot
+compute         tc all temp/region cold
+thermo_style    custom step temp pe ke etotal press c_th c_tc f_3 f_4
+thermo_modify   format float %.15g
+thermo          1
+run             50

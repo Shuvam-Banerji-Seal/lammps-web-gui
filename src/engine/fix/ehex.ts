@@ -1,4 +1,5 @@
 import { Fix } from './fix';
+import { FixShake } from './shake';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { Region } from '../region';
@@ -63,8 +64,16 @@ import { num } from '../commands/args';
  * correction accumulates in positions over the run while velocities do not
  * change, so it is a pure position shift each application.
  *
- * Not implemented (StyleError): constrain (re-applying fix shake/rattle at
- * the end of the step), com (with constrain), atom-style variables for eflux.
+ * Compatible with SHAKE/RATTLE (docs.lammps.org/fix_ehex.html, "Compatibility
+ * with SHAKE and RATTLE (rigid molecules)"): "If either of these constraining
+ * algorithms is specified in the input script and the keyword *constrain* is
+ * set, the bond distances will be corrected a second time at the end of the
+ * integration step." Measured with native LAMMPS (black box) on rigid water:
+ * the correction is applied by the shake/rattle fix as an additional force at
+ * the end of the step; positions and velocities on that step are unchanged.
+ *
+ * Not implemented (StyleError): com (cluster rescaling; constrain alone scales
+ * individual atoms), atom-style variables for eflux.
  */
 
 const USAGE_HEAT = 'usage: fix ID group-ID heat N eflux [region region-ID]';
@@ -205,25 +214,41 @@ export class FixHeat extends HeatBase {
 export class FixEhex extends HeatBase {
   readonly style = 'ehex';
   private hex = false;
+  private constrain = false;
+  private shakeFix: FixShake | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args, USAGE_EHEX, args[1], 'ehex');
     this.parseKeywords(args.slice(2), USAGE_EHEX);
   }
 
+  init(): void {
+    if (!this.constrain) return;
+    const shake = this.sys.fixes.find((f) => f instanceof FixShake);
+    if (!shake) throw new StyleError(`fix ${this.id} (ehex): keyword constrain requires a fix shake or rattle; without one it is not implemented`);
+    this.shakeFix = shake;
+  }
+
   protected parseKeywords(words: string[], usage: string): void {
-    let constrain = false, com = false;
+    let com = false;
     for (let k = 0; k < words.length;) {
       const w = words[k];
       if (w === 'region') { k += this.parseRegion(words, k, usage); continue; }
-      if (w === 'constrain') { constrain = true; k++; continue; }
+      if (w === 'constrain') { this.constrain = true; k++; continue; }
       if (w === 'com') { com = true; k++; continue; }
       if (w === 'hex') { this.hex = true; k++; continue; }
       throw new StyleError(`fix ${this.id} (ehex): unknown keyword '${w}' (${usage})`);
     }
-    if (com && !constrain) throw new StyleError(`fix ${this.id} (ehex): You can only use the keyword 'com' together with the keyword 'constrain'`);
-    if (constrain) throw new StyleError(`fix ${this.id} (ehex): keyword constrain (SHAKE/RATTLE re-constraint at the end of the step) is not implemented in this engine`);
-    if (com) throw new StyleError(`fix ${this.id} (ehex): keyword com is not implemented in this engine`);
+    if (com && !this.constrain) throw new StyleError(`fix ${this.id} (ehex): You can only use the keyword 'com' together with the keyword 'constrain'`);
+    if (com) throw new StyleError(`fix ${this.id} (ehex): keyword com is not implemented in this engine; constrain without com is supported`);
+  }
+
+  endOfStep(): void {
+    super.endOfStep();
+    // docs.lammps.org/fix_ehex.html: constrain re-applies SHAKE/RATTLE after the
+    // thermostat rescaling, which otherwise introduces velocity components along
+    // the fixed bonds.
+    this.shakeFix?.applyConstraint();
   }
 
   protected correctPositions(idx: number[], vc: number[], eps: number, ke: number, power: number): void {

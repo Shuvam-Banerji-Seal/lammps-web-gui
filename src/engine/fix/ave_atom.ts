@@ -24,14 +24,15 @@ import { formatNumber } from '../script';
  * fix with ID"; "v_name = per-atom vector calculated by an atom-style
  * variable with name").
  *
- * Sampling schedule: "The Nevery, Nrepeat, and Nfreq arguments specify on
- * what timesteps the input values will be used in order to contribute to the
- * average.  The final averaged quantities are generated on timesteps that are
- * a multiple of Nfreq.  The average is over Nrepeat quantities, computed in
- * the preceding portion of the simulation every Nevery timesteps.  Nfreq must
- * be a multiple of Nevery and Nevery must be non-zero even if Nrepeat is 1.
- * Also, the timesteps contributing to the average value cannot overlap; that
- * is, Nrepeat x Nevery cannot exceed Nfreq." — "For example, if Nevery=2,
+ * Sampling schedule: "The final averaged quantities are generated on
+ * timesteps that are a multiple of :math:`N_\text{freq}`\ .  The average is
+ * over :math:`N_\text{repeat}` quantities, computed in the preceding portion
+ * of the simulation every :math:`N_\text{every}` timesteps.
+ * :math:`N_\text{freq}` must be a multiple of :math:`N_\text{every}` and
+ * :math:`N_\text{every}` must be non-zero even if :math:`N_\text{repeat}` is
+ * 1.  Also, the timesteps contributing to the average value cannot overlap;
+ * that is, :math:`N_\text{repeat} \times N_\text{every}` cannot exceed
+ * :math:`N_\text{freq}`." — "For example, if Nevery=2,
  * Nrepeat=6, and Nfreq=100, then values on timesteps 90, 92, 94, 96, 98, and
  * 100 will be used to compute the final average on time step 100."
  *

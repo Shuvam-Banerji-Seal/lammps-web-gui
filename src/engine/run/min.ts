@@ -65,6 +65,8 @@ export interface MinHooks {
 }
 
 const ALPHA_ARMIJO = 1e-4;
+/** native min_modify line backtrack: Armijo slope 0.4 and halving (measured, see the backtrack branch) */
+const BACKTRACK_SLOPE = 0.4;
 const BACKTRACK = 0.5;
 const EPS_ENERGY = 1e-8;
 const EMACH = 1e-8;
@@ -78,6 +80,9 @@ export const minimize = async (
   const set = sys.minSettings;
   const style = sys.minStyle;
   if (!(MIN_STYLES as readonly string[]).includes(style)) throw new StyleError(`min_style ${style} is not supported`);
+  // measured with native LAMMPS (black box): min_modify line forcezero gives different energies from quadratic
+  // (chain, dmax 0.1: 13.4795499709744 vs 13.4813750335936 after one iteration); not reproduced yet
+  if (set.line === 'forcezero') throw new StyleError('min_modify line forcezero is not supported by the browser engine yet; use line quadratic or backtrack');
   const nb = sys.nb;
   const saved = { every: nb.every, delay: nb.delay, check: nb.check };
   if (nb.every !== 1 || nb.delay !== 0) {
@@ -195,6 +200,23 @@ export const minimize = async (
         }
         if (s.dimension === 2) for (let k = 2; k < n3; k += 3) s.x[k] = x0[k];
       };
+      if (set.line === 'backtrack') {
+        // Measured with native LAMMPS (black box, tests/oracle/w16min_backtrack.in): line backtrack accepts the
+        // first trial alpha = dmax/max|h|, halved (alpha *= 0.5), whose energy satisfies
+        // E(alpha) <= E(0) + 0.4 alpha s0, with s0 = dE/dalpha at 0 = -F.h. Acceptance does not test the slope
+        // at the accepted point (native accepted a point with positive slope). A step that halves below the
+        // floor ends the search.
+        const s0 = -slope;
+        const armijo = (ev: number, al: number) => ev <= eStart + BACKTRACK_SLOPE * al * s0;
+        for (;;) {
+          moveTo(alpha);
+          eTry = evaluate();
+          packForce(gNew);
+          if (armijo(eTry, alpha)) { accepted = true; break; }
+          alpha *= BACKTRACK;
+          if (alpha * Math.max(hmax, hbox) < EMACH) break;
+        }
+      } else
       for (;;) {
         moveTo(alpha);
         eTry = evaluate();
@@ -203,7 +225,7 @@ export const minimize = async (
         const slopeNew = dot(gNew, h);
         // quadratic refinement near the minimum: zero of the interpolated directional force
         // E(a) ~ E0 - slope a + c a^2 through the trial: its minimum a0 = slope / (2 c) is the estimated zero of the gradient
-        if ((set.line === 'quadratic' || set.line === 'forcezero') && Math.abs(eTry - eStart) < 1e-6 * Math.max(1, Math.abs(eStart))) {
+        if (set.line === 'quadratic' && Math.abs(eTry - eStart) < 1e-6 * Math.max(1, Math.abs(eStart))) {
           const c2 = (eTry - eStart + slope * alpha) / (alpha * alpha);
           const a0 = c2 > 0 ? slope / (2 * c2) : -1;
           if (a0 > 0 && a0 <= alphaMax) {
@@ -254,7 +276,11 @@ export const minimize = async (
         // Polak-Ribiere: beta = F1.(F1 - F0) / F0.F0, restarted when negative
         let num = 0;
         for (let k = 0; k < L; k++) num += gNew[k] * (gNew[k] - g[k]);
-        const beta = gg > 0 ? Math.max(0, num / gg) : 0;
+        // Measured with native LAMMPS (black box, tests/oracle/w16min_backtrack.in): cg restarted the direction at
+        // iteration 24 of the 8-atom chain (24 degrees of freedom) where beta was 1.853, so the direction restarts
+        // every 3N iterations; seen once, with line backtrack
+        const restartNow = iter % L === L - 1;
+        const beta = gg > 0 && !restartNow ? Math.max(0, num / gg) : 0;
         g.set(gNew);
         gg = dot(g, g);
         for (let k = 0; k < L; k++) h[k] = g[k] + beta * h[k];

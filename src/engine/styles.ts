@@ -105,6 +105,7 @@ import * as w18angle18 from './registry/angle18';
 import * as w18dipole from './registry/pair_dipole18';
 import * as w19asphere from './registry/asphere19';
 import * as w19pairasphere from './registry/pair_asphere19';
+import * as peri22 from './registry/peri22';
 import * as pairTable from './registry/pair_table';
 import * as pairCharmm from './registry/pair_charmm';
 import * as pairCoulLong2 from './registry/pair_coullong2';
@@ -145,7 +146,7 @@ export const PAIR_STYLES: Record<string, () => Pair> = {
   ...pairCoul.PAIRS, ...pairSimple.PAIRS, ...pairLJ.PAIRS, ...pairLJCoul.PAIRS, ...pairSimple2.PAIRS, ...pairLJ2.PAIRS,
   ...pairEAM.PAIRS, ...pair3Body.PAIRS, ...pairSW.PAIRS,
   ...pairZBL.PAIRS, ...pairTable.PAIRS, ...pairCharmm.PAIRS, ...pairCoulLong2.PAIRS,
-  ...pairGran.PAIRS, ...pairColloid.PAIRS, ...pairYColloid.PAIRS, ...pairVashishta.PAIRS, ...pairRelres.PAIRS, ...pairGranular.PAIRS, ...pairSnap.PAIRS, ...pairMisc4.PAIRS, ...pairMisc5.PAIRS, ...pairMeam.PAIRS, ...pairTip4p.PAIRS, ...pairMisc13.PAIRS, ...pairHbond.PAIRS, ...pairEim.PAIRS, ...pairTersoff2.PAIRS, ...lepton.PAIRS, ...mliap.PAIRS, ...w17pairsoft17.PAIRS, ...w17pairmisc17.PAIRS, ...w18pairmisc18.PAIRS, ...w18dipole.PAIRS, ...w19pairasphere.PAIRS,
+  ...pairGran.PAIRS, ...pairColloid.PAIRS, ...pairYColloid.PAIRS, ...pairVashishta.PAIRS, ...pairRelres.PAIRS, ...pairGranular.PAIRS, ...pairSnap.PAIRS, ...pairMisc4.PAIRS, ...pairMisc5.PAIRS, ...pairMeam.PAIRS, ...pairTip4p.PAIRS, ...pairMisc13.PAIRS, ...pairHbond.PAIRS, ...pairEim.PAIRS, ...pairTersoff2.PAIRS, ...lepton.PAIRS, ...mliap.PAIRS, ...w17pairsoft17.PAIRS, ...w17pairmisc17.PAIRS, ...w18pairmisc18.PAIRS, ...w18dipole.PAIRS, ...w19pairasphere.PAIRS, ...peri22.PAIRS,
 };
 
 export const BOND_STYLES: Record<string, () => Bonded> = {
@@ -203,7 +204,7 @@ export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
   pressure: (s, i, g, a) => new ComputePressure(s, i, g, a),
   'erotate/sphere': (s, i, g, a) => new ComputeERotateSphere(s, i, g, a),
   'temp/sphere': (s, i, g, a) => new ComputeTempSphere(s, i, g, a),
-  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES, ...computeDeform.COMPUTES, ...computeOrient.COMPUTES, ...computeVoro.COMPUTES, ...computeChunk.COMPUTES, ...computeSna.COMPUTES, ...computeStruct.COMPUTES, ...computeLocal.COMPUTES, ...computeGk.COMPUTES, ...computeRestrain.COMPUTES, ...computeMisc13.COMPUTES, ...computeMisc14.COMPUTES, ...computeMisc14b.COMPUTES, ...computeMisc15.COMPUTES, ...computeSnap15.COMPUTES, ...mliap.COMPUTES, ...w17computechunk17.COMPUTES, ...w17computemisc17.COMPUTES, ...w18computemisc18.COMPUTES, ...w19asphere.COMPUTES,
+  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES, ...computeDeform.COMPUTES, ...computeOrient.COMPUTES, ...computeVoro.COMPUTES, ...computeChunk.COMPUTES, ...computeSna.COMPUTES, ...computeStruct.COMPUTES, ...computeLocal.COMPUTES, ...computeGk.COMPUTES, ...computeRestrain.COMPUTES, ...computeMisc13.COMPUTES, ...computeMisc14.COMPUTES, ...computeMisc14b.COMPUTES, ...computeMisc15.COMPUTES, ...computeSnap15.COMPUTES, ...mliap.COMPUTES, ...w17computechunk17.COMPUTES, ...w17computemisc17.COMPUTES, ...w18computemisc18.COMPUTES, ...w19asphere.COMPUTES, ...peri22.COMPUTES,
 };
 
 /** Lists for messages and is_available(). */

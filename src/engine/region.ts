@@ -149,6 +149,23 @@ export class ConeRegion extends Region {
     const e1 = p[d1] - this.val(this.c1), e2 = p[d2] - this.val(this.c2);
     return e1 * e1 + e2 * e2 <= r * r;
   }
+  /**
+   * Axis-aligned bounding box, as create_box.html describes for regions other than prism. Measured with
+   * native LAMMPS (black box): region cylinder y 0 0 0.005 -0.005 0 gives the box (-0.005 -0.005 -0.005)
+   * to (0.005 0 0.005).
+   */
+  bbox(): { lo: number[]; hi: number[] } | null {
+    if (!this.interior || this.dynamic) return null;
+    const lo = [0, 0, 0], hi = [0, 0, 0];
+    const [d1, d2] = this.axis === 0 ? [1, 2] : this.axis === 1 ? [0, 2] : [0, 1];
+    const a0 = this.val(this.lo), a1 = this.val(this.hi);
+    const r = Math.max(Math.abs(this.val(this.radlo)), Math.abs(this.val(this.radhi)));
+    const c1 = this.val(this.c1), c2 = this.val(this.c2);
+    lo[this.axis] = Math.min(a0, a1); hi[this.axis] = Math.max(a0, a1);
+    lo[d1] = c1 - r; hi[d1] = c1 + r;
+    lo[d2] = c2 - r; hi[d2] = c2 + r;
+    return { lo, hi };
+  }
 }
 
 export class PlaneRegion extends Region {

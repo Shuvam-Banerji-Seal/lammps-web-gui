@@ -224,6 +224,8 @@ export interface StyleContext {
   newtonPair?: boolean;
   /** Value of an equal-style variable (lepton expressions with v_name references). */
   equalVariable?(name: string): number;
+  /** Lattice spacing in x of the lattice command (1 when none is defined): peri styles take half of it as the node radius. */
+  xlattice?: number;
 }
 
 /** Equilibrium bond lengths and angles (degrees) by type, for Pair.linkBonded. */

@@ -1,0 +1,21 @@
+# oracle-inputs: w22peri_block.data
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+# oracle: peri/lps read from a data file with volume and density columns (non-uniform volumes: one atom with 1e-10), mass from density
+units           si
+boundary        s s s
+atom_style      peri
+atom_modify     map array
+neighbor        0.0010 bin
+read_data       w22peri_block.data
+pair_style      peri/lps
+pair_coeff      * * 14.9e9 7.0e9 0.0015001 0.0005 0.25
+velocity        all set 0.0 0.0 0.0 sum yes units box
+fix             1 all nve
+compute         1 all damage/atom
+compute         2 all reduce sum c_1
+variable        m equal mass(all)
+timestep        1.0e-7
+thermo_style    custom step pe ke etotal c_2 v_m
+thermo_modify   format float %.15g norm no
+thermo          10
+run             60

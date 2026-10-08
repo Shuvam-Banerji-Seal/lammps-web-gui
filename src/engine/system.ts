@@ -150,7 +150,7 @@ export class System {
 
   styleContext(): StyleContext {
     const freeze = this.fixes.find((f) => f.style === 'freeze');
-    return { s: this._state, readFile: (n) => this.readFile(n), log: (t) => this.log(t), ghostVelocity: this.ghostVelocity, freezeGroupBit: freeze ? freeze.groupBit : 0, newtonPair: this.newtonPair, equalVariable: (n: string) => this.equalVariable(n) };
+    return { s: this._state, readFile: (n) => this.readFile(n), log: (t) => this.log(t), ghostVelocity: this.ghostVelocity, freezeGroupBit: freeze ? freeze.groupBit : 0, newtonPair: this.newtonPair, equalVariable: (n: string) => this.equalVariable(n), xlattice: this.lattice ? this.lattice.spacing[0] : 1 };
   }
 
   /** log file: a copy of the log text goes to this file (log.html). */

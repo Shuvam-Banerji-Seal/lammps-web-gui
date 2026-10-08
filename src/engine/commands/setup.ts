@@ -63,7 +63,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: AtomStyle[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'dipole', 'ellipsoid'];
+const ATOM_STYLES: AtomStyle[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'dipole', 'ellipsoid', 'peri'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -312,7 +312,11 @@ const createBox: Handler = ({ sys }, a) => {
     const v = reg.values();
     lo = [v[0], v[2], v[4]]; hi = [v[1], v[3], v[5]];
     tilt = [v[6], v[7], v[8]];
-  } else throw new StyleError('create_box needs a block or prism region');
+  } else if (reg instanceof ConeRegion && reg.bbox()) {
+    // create_box.html: the region is enclosed by its axis-aligned bounding box (cylinder and cone)
+    const b = reg.bbox()!;
+    lo = b.lo as [number, number, number]; hi = b.hi as [number, number, number];
+  } else throw new StyleError('create_box needs a block, cylinder, cone or prism region');
   if ([...lo, ...hi].some((v) => Math.abs(v) >= BIG)) throw new StyleError('create_box needs a finite region (no INF bounds)');
   if (sys.dimension === 2 && !(lo[2] < 0 && hi[2] > 0)) throw new StyleError('for a 2d simulation the region z bounds must bracket zero (e.g. -0.5 0.5)');
   if (sys.dimension === 2 && tilt && (tilt[1] !== 0 || tilt[2] !== 0)) throw new StyleError('2d triclinic boxes must have xz = yz = 0');
@@ -640,7 +644,8 @@ const mass: Handler = ({ sys }, a) => {
   if (a.length !== 2) throw new StyleError('usage: mass I value');
   // Measured with native LAMMPS (black box): mass is refused for atom style sphere and for atom style ellipsoid
   // (Cannot set per-type atom mass for atom style sphere, and the same with ellipsoid)
-  if (s.atomStyle === 'sphere' || s.atomStyle === 'ellipsoid') throw new StyleError(`Cannot set per-type atom mass for atom style ${s.atomStyle}`);
+  // Measured with native LAMMPS (black box): mass is refused for atom style peri too (Cannot set per-type atom mass for atom style peri)
+  if (s.atomStyle === 'sphere' || s.atomStyle === 'ellipsoid' || s.atomStyle === 'peri') throw new StyleError(`Cannot set per-type atom mass for atom style ${s.atomStyle}`);
   const m = num(a[1], 'mass');
   if (!(m > 0)) throw new StyleError('mass must be > 0');
   const [lo, hi] = typeBounds(a[0], s.ntypes);
@@ -1061,6 +1066,21 @@ const set: Handler = ({ sys }, a) => {
           // atom style ellipsoid gets mass = density
           if (key !== 'mass' && !(s.radius && s.radius[i] > 0) && isEllipsoid(s, i)) s.rmass[i] = x * ellipsoidVolume(s, i);
           else s.rmass[i] = key === 'mass' ? x : sphereMass(s.radius ? s.radius[i] : 0, x, key === 'density/disc');
+        }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
+      // set.html: "Keyword *volume* sets the volume of all selected particles. Currently, only the atom_style peri
+      // command defines particles with a volume attribute. Note that this command does not adjust the particle mass."
+      // Measured with native LAMMPS (black box): a volume <= 0 is refused (Invalid volume in set command)
+      case 'volume': {
+        if (!s.vfrac) throw new StyleError(`Cannot set attribute volume for atom style ${s.atomStyle}`);
+        const v = value(a[k + 1], key);
+        for (const i of atoms) {
+          const x = v(i);
+          if (!(x > 0)) throw new StyleError(`Invalid volume in set command`);
+          s.vfrac[i] = x;
         }
         changed = atoms.length;
         k += 2;

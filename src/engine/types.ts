@@ -80,7 +80,7 @@ export interface UnitSystem {
 
 /** docs.lammps.org/atom_style.html styles the engine implements. */
 /** An atom style; atom_style hybrid is stored as 'hybrid' followed by its sub-styles. */
-export type AtomStyle = 'atomic' | 'charge' | 'bond' | 'angle' | 'molecular' | 'full' | 'sphere' | 'dipole' | 'ellipsoid' | `hybrid ${string}`;
+export type AtomStyle = 'atomic' | 'charge' | 'bond' | 'angle' | 'molecular' | 'full' | 'sphere' | 'dipole' | 'ellipsoid' | 'peri' | `hybrid ${string}`;
 
 /**
  * Bonded topology entries of one kind, stored by atom ID (not index) so that
@@ -132,6 +132,12 @@ export interface SimState {
   shape: Float64Array | null;
   quat: Float64Array | null;
   angmom: Float64Array | null;
+  /**
+   * atom_style peri: per-atom volume (vfrac, 1 by default) and the reference (strain-free) position
+   * x0 (3N), set when the atom is created; else null.
+   */
+  vfrac: Float64Array | null;
+  x0: Float64Array | null;
   /**
    * fix property/atom: custom per-atom vectors and arrays by name (i_name /
    * d_name: cols 0; i2_name / d2_name: cols N), values stored as doubles

@@ -46,6 +46,8 @@ const BASE_COLS: Record<string, string[]> = {
   dipole: ['id', 'type', 'q', 'x', 'y', 'z', 'mux', 'muy', 'muz'],
   // read_data.html, the Atoms-section table, row ellipsoid: "atom-ID atom-type ellipsoidflag density x y z"
   ellipsoid: ['id', 'type', 'ellipsoidflag', 'density', 'x', 'y', 'z'],
+  // read_data.html, the Atoms-section table, row peri: "atom-ID atom-type volume density x y z"
+  peri: ['id', 'type', 'volume', 'density', 'x', 'y', 'z'],
 };
 
 /**
@@ -305,7 +307,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         sawAtoms = true;
         const x = new Float64Array(3 * count), type = new Int32Array(count), id = new Int32Array(count);
         const mol = new Int32Array(count), q = new Float64Array(count), image = new Int32Array(3 * count);
-        const radius = new Float64Array(count), density = new Float64Array(count);
+        const radius = new Float64Array(count), density = new Float64Array(count), vol = new Float64Array(count);
         const mu = s.mu ? new Float64Array(4 * count) : null;
         const eflag = s.shape ? new Uint8Array(count) : null;
         body.forEach(({ w, at }, a) => {
@@ -326,6 +328,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
               case 'q': q[a] = numOf(v, 'charge', at); break;
               case 'diameter': radius[a] = numOf(v, 'diameter', at) / 2; break;
               case 'density': density[a] = numOf(v, 'density', at); break;
+              case 'volume': vol[a] = numOf(v, 'volume', at); break;
               case 'x': x[3 * a] = numOf(v, 'x', at) + opts.shift[0]; break;
               case 'y': x[3 * a + 1] = numOf(v, 'y', at) + opts.shift[1]; break;
               case 'z': x[3 * a + 2] = numOf(v, 'z', at) + opts.shift[2]; break;
@@ -361,7 +364,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         // particle, then the density value is used as the mass."
         // ellipsoids: the density becomes a mass once the Ellipsoids section gives the volume; a point
         // particle (ellipsoidflag 0) takes the density as its mass
-        const rmass = s.radius ? radius.map((r, a) => sphereMass(r, density[a])) : s.shape ? Float64Array.from(density) : undefined;
+        // atom_style peri. Measured with native LAMMPS (black box): read_data gives mass = density (volume is kept apart)
+        const rmass = s.radius ? radius.map((r, a) => sphereMass(r, density[a])) : s.shape || s.vfrac ? Float64Array.from(density) : undefined;
         if (eflag) for (let a = 0; a < count; a++) if (eflag[a]) ellPending.set(id[a], density[a]);
         if (genFrame) {
           // read_data.html: coordinates "should be inside the general triclinic simulation box"; the
@@ -372,7 +376,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
             x[3 * a] = r[0]; x[3 * a + 1] = r[1]; x[3 * a + 2] = r[2];
           }
         }
-        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined });
+        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined, vfrac: s.vfrac ? vol : undefined });
         // periodic remap of the new atoms
         for (let i = n0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);
         break;
@@ -588,7 +592,8 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   }
   // measured with native write_data: atom_style sphere (per-atom masses) writes no Masses section; a
   // hybrid style with sphere writes it (per-type and per-atom masses both exist there)
-  if (s.atomStyle !== 'sphere' && s.atomStyle !== 'ellipsoid') {
+  // measured with native write_data: atom_style peri writes no Masses section either
+  if (s.atomStyle !== 'sphere' && s.atomStyle !== 'ellipsoid' && s.atomStyle !== 'peri') {
     out.push('', 'Masses', '');
     for (let k = 1; k <= s.ntypes; k++) out.push(`${k} ${shortest(s.massByType[k])}`);
   }
@@ -637,6 +642,8 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
           if (s.radius) return shortest(s.radius[i] > 0 ? s.rmass![i] / sphereMass(s.radius[i], 1) : s.rmass![i]);
           return shortest(isEllipsoid(s, i) ? s.rmass![i] / ellipsoidVolume(s, i) : s.rmass![i]);
         case 'ellipsoidflag': return isEllipsoid(s, i) ? '1' : '0';
+        // measured with native write_data: atom_style peri writes its volume and the density (= mass) column
+        case 'volume': return shortest(s.vfrac![i]);
         case 'mux': return shortest(mu![4 * i]);
         case 'muy': return shortest(mu![4 * i + 1]);
         case 'muz': return shortest(mu![4 * i + 2]);

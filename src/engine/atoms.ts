@@ -31,8 +31,10 @@ export const isSphereStyle = (st: AtomStyle): boolean => atomSubStyles(st).inclu
 export const hasDipoleStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('dipole');
 /** Styles with ellipsoidal particles (shape, quat, angmom). */
 export const isEllipsoidStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('ellipsoid');
-/** Styles with a per-atom mass (rmass): sphere and ellipsoid. */
-export const hasRmassStyle = (st: AtomStyle): boolean => isSphereStyle(st) || isEllipsoidStyle(st);
+/** Styles with peridynamic particles (vfrac, x0): atom_style.html lists peri as atomic plus rmass, vfrac, s0 and x0. */
+export const isPeriStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('peri');
+/** Styles with a per-atom mass (rmass): sphere, ellipsoid and peri. */
+export const hasRmassStyle = (st: AtomStyle): boolean => isSphereStyle(st) || isEllipsoidStyle(st) || isPeriStyle(st);
 /** Bonded topology a style stores: 0 none, 1 bonds, 2 bonds and angles, 3 also dihedrals and impropers. */
 export const topologyLevel = (st: AtomStyle): number => {
   let lv = 0;
@@ -113,9 +115,11 @@ export const emptyState = (
   type: new Int32Array(0),
   massByType: new Float64Array(ntypes + 1).fill(Number.NaN),
   rmass: hasRmassStyle(atomStyle) ? new Float64Array(0) : null,
+  vfrac: isPeriStyle(atomStyle) ? new Float64Array(0) : null,
+  x0: isPeriStyle(atomStyle) ? new Float64Array(0) : null,
   radius: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
   omega: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
-  torque: hasRmassStyle(atomStyle) ? new Float64Array(0) : null,
+  torque: isSphereStyle(atomStyle) || isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
   mu: hasDipoleStyle(atomStyle) ? new Float64Array(0) : null,
   shape: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
   quat: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
@@ -181,6 +185,9 @@ export interface NewAtoms {
   angmom?: Float64Array;
   /** fix property/atom values by name (n * max(cols, 1) each; default 0). */
   custom?: Map<string, Float64Array>;
+  /** atom_style peri: volumes (default 1) and reference positions (flat 3N; default the positions x). */
+  vfrac?: number | Float64Array;
+  x0?: Float64Array;
   /** Group bits to set besides 'all'. */
   mask?: number;
 }
@@ -222,7 +229,18 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     // measured: fix property/atom rmass starts at 0 for new atoms; sphere atoms get the sphere default
     if (a.rmass instanceof Float64Array) s.rmass.set(a.rmass, n0);
     // measured with native LAMMPS: create_atoms gives ellipsoid-style atoms (point particles) mass 1
-    else s.rmass.fill(a.rmass ?? (isSphereStyle(s.atomStyle) ? SPHERE_DEFAULT_MASS : isEllipsoidStyle(s.atomStyle) ? 1 : 0), n0, n);
+    // measured with native LAMMPS: atom_style peri gives mass 1 (its density and volume defaults are 1)
+    else s.rmass.fill(a.rmass ?? (isSphereStyle(s.atomStyle) ? SPHERE_DEFAULT_MASS : isEllipsoidStyle(s.atomStyle) || isPeriStyle(s.atomStyle) ? 1 : 0), n0, n);
+  }
+  if (s.vfrac) {
+    s.vfrac = growF(s.vfrac, n);
+    if (a.vfrac instanceof Float64Array) s.vfrac.set(a.vfrac, n0);
+    else s.vfrac.fill(a.vfrac ?? 1, n0, n);
+  }
+  if (s.x0) {
+    s.x0 = growF(s.x0, 3 * n);
+    // the reference configuration of new atoms is the configuration they are created in (x0 = x)
+    if (a.x0) s.x0.set(a.x0, 3 * n0); else s.x0.set(a.x, 3 * n0);
   }
   if (s.radius) {
     s.radius = growF(s.radius, n);
@@ -269,6 +287,7 @@ export const gatherAtoms = (s: SimState, idx: ArrayLike<number>): NewAtoms => {
     rmass: s.rmass ? pick(s.rmass, 1) : undefined, radius: s.radius ? pick(s.radius, 1) : undefined,
     omega: s.omega ? pick(s.omega, 3) : undefined, mu: s.mu ? pick(s.mu, 4) : undefined,
     shape: s.shape ? pick(s.shape, 3) : undefined, quat: s.quat ? pick(s.quat, 4) : undefined, angmom: s.angmom ? pick(s.angmom, 3) : undefined, custom,
+    vfrac: s.vfrac ? pick(s.vfrac, 1) : undefined, x0: s.x0 ? pick(s.x0, 3) : undefined,
   };
 };
 
@@ -308,6 +327,8 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
       if (s.shape) for (let d = 0; d < 3; d++) s.shape[3 * k + d] = s.shape[3 * i + d];
       if (s.quat) for (let d = 0; d < 4; d++) s.quat[4 * k + d] = s.quat[4 * i + d];
       if (s.angmom) for (let d = 0; d < 3; d++) s.angmom[3 * k + d] = s.angmom[3 * i + d];
+      if (s.vfrac) s.vfrac[k] = s.vfrac[i];
+      if (s.x0) for (let d = 0; d < 3; d++) s.x0[3 * k + d] = s.x0[3 * i + d];
       for (const c of s.custom.values()) {
         const w = Math.max(c.cols, 1);
         for (let m = 0; m < w; m++) c.data[w * k + m] = c.data[w * i + m];
@@ -331,6 +352,8 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
   if (s.shape) s.shape = s.shape.slice(0, 3 * k);
   if (s.quat) s.quat = s.quat.slice(0, 4 * k);
   if (s.angmom) s.angmom = s.angmom.slice(0, 3 * k);
+  if (s.vfrac) s.vfrac = s.vfrac.slice(0, k);
+  if (s.x0) s.x0 = s.x0.slice(0, 3 * k);
   for (const c of s.custom.values()) c.data = c.data.slice(0, Math.max(c.cols, 1) * k);
   for (const list of [s.topo.bonds, s.topo.angles, s.topo.dihedrals, s.topo.impropers]) {
     filterTopo(list, (ids) => !ids.some((id) => gone.has(id)));

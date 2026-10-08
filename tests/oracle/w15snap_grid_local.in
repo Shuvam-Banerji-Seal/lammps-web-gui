@@ -1,0 +1,24 @@
+# oracle: compute sna/grid/local on a 2x2x2 grid, two types, zbl pair; written by a dump local (%.15g)
+# oracle-files: w15snap_grid_local.dump
+# oracle-compare: thermo=first atoms=all rel=1e-8 abs=1e-9
+units           metal
+atom_modify     map hash
+lattice         bcc 2.0
+region          box block 0 2 0 1 0 1
+create_box      2 box
+create_atoms    1 box
+group           odd id 1:4:2
+set             group odd type 2
+mass            * 180.88
+variable        dx atom 0.05*sin(1.3*x+0.7*y)
+variable        dy atom 0.05*cos(0.9*y-1.1*z)
+variable        dz atom 0.05*sin(1.7*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      zbl 4 4.8
+pair_coeff      * * 73 73
+compute         mygl all sna/grid/local grid 2 2 2 1.0 0.99363 2 2.3 2.0 1.0 0.96 rmin0 0 switchflag 1 bzeroflag 1
+dump            dl all local 1 w15snap_grid_local.dump c_mygl[*]
+dump_modify     dl format float %.15g
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0

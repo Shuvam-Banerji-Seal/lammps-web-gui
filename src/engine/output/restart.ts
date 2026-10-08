@@ -53,8 +53,33 @@ export const RESTART_MAGIC = 'LAMMPS-WEB-RESTART 1';
 const FORMAT = 'lammps-web-restart';
 const VERSION = 1;
 
-/** Pair styles whose coefficients are stored (see the doc quotes above). */
-const PAIR_RESTART_STYLES = new Set(['lj/cut', 'lj/cut/coul/cut', 'coul/cut', 'zero']);
+/*
+ * Pair styles whose doc page says they write their information to binary restart files, so their
+ * coefficients are stored here and restored by read_restart. Each name is the registry key; a
+ * style family covered by one page lists every member the page names (pair_lj.rst "All of the
+ * *lj/cut* pair styles write their information to binary restart files"). The CS variants follow
+ * their base style (pair_cs.rst: "See the corresponding doc pages for pair styles without the "cs"
+ * suffix").
+ */
+const PAIR_RESTART_STYLES = new Set([
+  // pair_lj.rst, pair_lj_cut_coul.rst, pair_lj_cut_tip4p.rst, pair_lj_long.rst
+  'lj/cut', 'lj/cut/coul/cut', 'lj/cut/coul/debye', 'lj/cut/coul/dsf', 'lj/cut/coul/wolf',
+  'lj/cut/coul/long', 'lj/cut/tip4p/cut', 'lj/cut/tip4p/long', 'lj/long/coul/long',
+  // pair_coul.rst, pair_coul_slater.rst
+  'coul/cut', 'coul/debye', 'coul/dsf', 'coul/wolf', 'coul/long', 'coul/long/cs',
+  // pair_born.rst, pair_buck.rst
+  'born', 'born/coul/long', 'born/coul/long/cs', 'buck', 'buck/coul/cut', 'buck/coul/long', 'buck/coul/long/cs',
+  // pair_charmm.rst, pair_class2.rst, pair_gromacs.rst, pair_gauss.rst
+  'lj/charmm/coul/charmm', 'lj/charmm/coul/charmm/implicit', 'lj/charmm/coul/long',
+  'lj/charmmfsw/coul/charmmfsh', 'lj/charmmfsw/coul/long', 'lj/class2', 'lj/gromacs', 'gauss',
+  // pair_lj_cubic.rst, pair_lj_expand.rst, pair_lj_relres.rst, pair_lj_smooth.rst, pair_lj_smooth_linear.rst
+  'lj/cubic', 'lj/expand', 'lj/relres', 'lj/smooth', 'lj/smooth/linear',
+  // pair_lj96.rst, pair_mie.rst, pair_morse.rst, pair_soft.rst, pair_yukawa.rst, pair_yukawa_colloid.rst
+  'lj96/cut', 'mie/cut', 'morse', 'soft', 'yukawa', 'yukawa/colloid',
+  // pair_colloid.rst, pair_zero.rst, pair_atm.rst, pair_gran.rst, pair_granular.rst
+  'colloid', 'zero', 'atm',
+  'gran/hooke', 'gran/hooke/history', 'gran/hertz/history', 'granular',
+]);
 
 /*
  * Pair styles whose doc pages say they keep nothing in restart files, e.g. pair_eam.html: "The eam
@@ -74,7 +99,34 @@ export const PAIR_NOT_IN_RESTART = new Set([
   'polymorphic', 'python', 'quip', 'reaxff', 'rebo', 'rebomos', 'smtbq', 'snap', 'sw',
   'sw/angle/table', 'sw/mod', 'tersoff', 'tersoff/mod', 'tersoff/mod/c', 'tersoff/table',
   'tersoff/zbl', 'threebody/table', 'tri/lj', 'uf3', 'vashishta', 'vashishta/table',
+  'zbl', 'sph/heatconduction', 'sph/idealgas', 'sph/lj', 'sph/rhosum', 'sph/taitwater',
+  'sph/taitwater/morris', 'sdpd/taitwater/isothermal', 'hdnnp', 'rheo',
 ]);
+
+/*
+ * Pair styles that store their settings but not their coefficients (pair_table.rst: "This pair style
+ * writes the settings for the \"pair_style table\" command to :doc:`binary restart files <restart>`, so a pair_style
+ * command does not need to specified in an input script that reads a restart file. However, the
+ * coefficient information is not stored in the restart file, since it is tabulated in the potential
+ * files. Thus, pair_coeff commands do need to be specified in the restart input script."). The value
+ * lists the fields that hold coefficients; they are left out of the file.
+ */
+const PAIR_SETTINGS_ONLY: Record<string, readonly string[]> = {
+  table: ['p', 'inputs', 'tRsq1', 'tInvDelta', 'tE', 'tG', 'tE2', 'tG2'],
+};
+
+/*
+ * lepton, lepton/coul and lepton/sphere (pair_lepton.rst: "These pair styles write their information to
+ * :doc:`binary restart files <restart>`") are not in PAIR_RESTART_STYLES yet: their compiled expressions are functions,
+ * and a restore needs a hook that recompiles them from the stored expression text (HOOKS NEEDED).
+ */
+
+/** A copy of a pair style object without the listed fields, keeping its class (for encodeValue). */
+const withoutFields = <T extends object>(obj: T, drop: readonly string[]): T => {
+  const copy = Object.create(Object.getPrototypeOf(obj)) as T;
+  for (const [k, v] of Object.entries(obj)) if (!drop.includes(k)) (copy as Record<string, unknown>)[k] = v;
+  return copy;
+};
 
 const TYPED = {
   Float64Array, Float32Array, Int32Array, Uint32Array, Int16Array, Uint16Array, Int8Array, Uint8Array,
@@ -183,7 +235,7 @@ export const writeRestartText = (sys: System): string => {
   }
   const pair = sys.ff.pair;
   const pairStored = pair && !PAIR_NOT_IN_RESTART.has(pair.name) ? pair : null;
-  if (pairStored && !PAIR_RESTART_STYLES.has(pairStored.name)) {
+  if (pairStored && !PAIR_RESTART_STYLES.has(pairStored.name) && !(pairStored.name in PAIR_SETTINGS_ONLY)) {
     throw new StyleError(`write_restart: pair_style ${pairStored.name} is not stored in the browser restart file yet; re-specify it after read_restart, or use write_data`);
   }
   if (pair && !pairStored) sys.log(`write_restart: pair_style ${pair.name} keeps its coefficients in potential files and is not stored; re-specify pair_style and pair_coeff after read_restart`);
@@ -196,7 +248,9 @@ export const writeRestartText = (sys: System): string => {
   }
   const { f: _f, custom: _c, ...rest } = s;
   const styleEntry = (name: string, obj: unknown) => ({ name, data: encodeValue(obj, name, []) });
-  styles.pair = pairStored ? styleEntry(pairStored.name, pairStored) : null;
+  styles.pair = pairStored
+    ? styleEntry(pairStored.name, pairStored.name in PAIR_SETTINGS_ONLY ? withoutFields(pairStored, PAIR_SETTINGS_ONLY[pairStored.name]) : pairStored)
+    : null;
   if (pair && !pairStored) styles.pairNotStored = pair.name;
   for (const kind of BONDED_KINDS) {
     const st = sys.ff[kind];

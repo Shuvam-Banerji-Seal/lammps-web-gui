@@ -5,6 +5,7 @@ import { emptyState, addAtoms } from '../src/engine/atoms';
 import { UNIT_SYSTEMS } from '../src/engine/units';
 import type { BondedCompute } from '../src/engine/force/types';
 import { newAccum } from '../src/engine/force/types';
+import { Session } from '../src/engine/interpreter';
 
 /*
  * Bonded geometry: the analytic dihedral gradient must match finite
@@ -55,7 +56,6 @@ describe('dihedral geometry', () => {
 
 describe('FENE guard (native LAMMPS behaviour, see bond/styles.ts feneArg)', () => {
   const run = async (x2: number) => {
-    const { Session } = await import('../src/engine/interpreter');
     const logs: string[] = [];
     let error: Error | null = null;
     const session = new Session({ emit: (e) => { if (e.kind === 'log') logs.push(e.text); }, writeFile: () => {} });

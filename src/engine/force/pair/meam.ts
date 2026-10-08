@@ -25,8 +25,12 @@ import { Pair, StyleError, type PairCompute, type StyleContext } from '../types'
  *  - screening S_ij = prod_k fs((C - Cmin)/(Cmax - Cmin)), fs(x) = [1-(1-x)^4]^2 for 0<x<1.
  *  - pair term screened: E_pair = 1/2 sum S_ij fc(r) phi(r).
  *  - t1 augmented by 0.6 t3 (augt1 = 1).
- *  - radial weight: [1-(1-x)^4]^2 with x = (rc - r)/delr. Dimer fits give weights within ~1e-3 of
- *    this form, residual 1e-7 eV; cases with neighbours in [rc-delr, rc] are NOT covered by tests.
+ *  - radial weight fc(r) = [1-(1-x)^4]^2 with x = (rc - r)/delr, inside the window [rc - delr, rc]. Measured
+ *    with native LAMMPS (black box): the pair term of a bond inside the window is exactly fc(r) times phi(r)
+ *    (A = 0 probe, 1e-12), and the partial densities of that bond carry the same fc(r) (dimers 3.9 to 3.999 A
+ *    agree to 1e-12 eV). The reference structure of phi carries no fc (see refRhoBarPrime). The screening
+ *    factor S uses the C function only, with no fc of the screening atom (trimers with an in-window screener
+ *    agree to 1e-12 eV).
  *  - ZBL blend (zbl = 1) is not implemented; an energy offset of -2.3e-5 eV appears for a pair at 2.0 A.
  */
 
@@ -116,9 +120,12 @@ const refTuple = (el: MeamElement, o: MeamOptions): [number, number, number, num
 /*
  * Background density of the reference structure at nearest-neighbour distance r:
  * rho_bar = rho0 * G(Gamma), evaluated for one atom of the lattice el.lat (fcc, bcc or dia) with the
- * same screening, radial weight and angular moments as the atom energy. The derivative with respect to r
- * is analytic: the screening factors depend only on distance ratios (fixed by the scaled lattice), so each
- * neighbour contributes d/dr [fc(r_m) S_m a_n(r_m) u...] with dr_m/dr = r_m/r.
+ * screening S and the angular moments of the atom energy, but WITHOUT the radial cutoff weight fc.
+ * Measured with native LAMMPS (black box): for a bcc dimer inside the window [rc - delr, rc] the native
+ * energy agrees with the engine to 1e-12 eV only if the reference shell carries no fc(r), while the
+ * dimer's own partial densities and pair weight carry fc(r) (the pair term's weight is exactly fc(r)).
+ * The derivative with respect to r is analytic: S depends only on distance ratios (fixed by the scaled
+ * lattice), so each neighbour contributes d/dr [S_m a_n(r_m) u...] with dr_m/dr = r_m/r.
  * Measured with native LAMMPS (black box): bcc and dia crystal energies (dia has Gamma != 0 in the
  * reference) agree with this background to about 1e-11 relative (see tests/enginePairMeam15.test.ts).
  */
@@ -132,8 +139,8 @@ const refRhoBarPrime = (el: MeamElement, o: MeamOptions, r: number): { rho: numb
   for (let m = 0; m < nb.length; m++) {
     const p = nb[m];
     const rm = p.r, sm = rm / r;
-    const fc = radialWeight(rm, o), fcp = radialWeightPrime(rm, o);
-    const wt = fc * S[m], dwt = fcp * S[m] * sm;
+    // Reference structure: the radial cutoff is not applied to its shells (see the header of this function).
+    const wt = S[m], dwt = 0;
     const u = [p.dx / rm, p.dy / rm, p.dz / rm];
     const a = [0, 1, 2, 3].map((n) => Math.exp(-el.beta[n] * (rm / el.re - 1)));
     // weights W_n = wt a_n and their r-derivatives dW_n = dwt a_n + wt (-beta_n/re) a_n s_m

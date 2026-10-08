@@ -322,6 +322,20 @@ describe('multi-element MEAM (B1 alloy, fcc elements)', () => {
     }
   });
 
+  it('A-B dimers inside the smoothing window [3.9, 4.0] A match native pe to 1e-10 relative', () => {
+    // Measured with native LAMMPS (black box, w15meam_alloy_* entries): A-B dimers at 3.92, 3.95, 3.97, 3.99 A.
+    const cases: Array<[number, number]> = [
+      [3.92, -1.56249847692229],
+      [3.95, -1.41962888480406],
+      [3.97, -1.06207996048462],
+      [3.99, -0.321820764013811],
+    ];
+    for (const [r, pe] of cases) {
+      const E = clusterAlloy(AB_MODEL, [0, 1], [0, 0, 0, r, 0, 0]).E;
+      expect(Math.abs(E - pe) / Math.abs(pe)).toBeLessThan(1e-10);
+    }
+  });
+
   it('mixed clusters (t-averaging weighted by the partial densities) match native to 1e-9 relative', () => {
     const cases: Array<[number[], number[], number]> = [
       [[0, 1, 0], [0, 0, 0, 2.4, 0, 0, 1.2, 2.0, 0.3], -6.23612331013911],

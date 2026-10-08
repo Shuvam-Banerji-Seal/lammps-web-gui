@@ -266,12 +266,15 @@ const embedFp = (el: AlloyElement, rhoRef: number, rb: number): number => {
   return (el.A * el.Ec * (Math.log(x) + 1)) / rhoRef;
 };
 
-/** Element-i density terms for a neighbour list at distance scale: W = fc S, A_n = exp(-beta_n (r/re_e - 1)). */
-const termsOf = (model: AlloyModel, list: AlloyNeighbor[]): Term[] => {
+/**
+ * Element-i density terms for a neighbour list at distance scale: W = fc S, A_n = exp(-beta_n (r/re_e - 1)).
+ * radial = false gives the reference-structure weights W = S (no radial cutoff; see the reference note in meam.ts).
+ */
+const termsOf = (model: AlloyModel, list: AlloyNeighbor[], radial = true): Term[] => {
   const sc = screenAll(list, model.opts);
   return list.map((p, m) => {
     const el = model.elements[p.e];
-    const W = fcW(p.r, model.opts) * sc.S[m];
+    const W = (radial ? fcW(p.r, model.opts) : 1) * sc.S[m];
     const A: [number, number, number, number] = [0, 0, 0, 0];
     for (let n = 0; n < 4; n++) A[n] = Math.exp(-el.beta[n] * (p.r / el.re - 1));
     return { e: p.e, W, A, u: [p.dx / p.r, p.dy / p.r, p.dz / p.r] };
@@ -279,8 +282,13 @@ const termsOf = (model: AlloyModel, list: AlloyNeighbor[]): Term[] => {
 };
 
 /** Background density of a central element from a list; returns rho_bar and d rho_bar / d r (lists scale with r). */
-const scaledRho = (model: AlloyModel, list: AlloyNeighbor[], r: number): { rho: number; drho: number; rho0: number } => {
-  const terms = termsOf(model, list);
+const scaledRho = (
+  model: AlloyModel,
+  list: AlloyNeighbor[],
+  r: number,
+  radial = true,
+): { rho: number; drho: number; rho0: number } => {
+  const terms = termsOf(model, list, radial);
   const part = densityPartials(terms, model.tEff, 1);
   let drho = 0;
   const sc = screenAll(list, model.opts);
@@ -289,7 +297,7 @@ const scaledRho = (model: AlloyModel, list: AlloyNeighbor[], r: number): { rho: 
     const el = model.elements[p.e];
     const sm = p.r / r;
     // d(fc S)/dr = fc'(r_m) s_m S_m (screening depends on ratios only); d a_n/dr = -(beta_n/re) a_n s_m
-    drho += part.gW[m] * fcP(p.r, model.opts) * sc.S[m] * sm;
+    if (radial) drho += part.gW[m] * fcP(p.r, model.opts) * sc.S[m] * sm;
     for (let n = 0; n < 4; n++) drho += part.gA[4 * m + n] * (-(el.beta[n] / el.re)) * terms[m].A[n] * sm;
   }
   return { rho: part.rb, drho, rho0: part.rho0 };
@@ -323,13 +331,13 @@ export const alloyPair = (model: AlloyModel, i: number, j: number, r: number): {
   const dEu = (pr.Ec * s * Math.exp(-s) * pr.alpha) / pr.re;
   if (pr.lat === 'self') {
     const el = model.elements[i];
-    const { rho, drho } = scaledRho(model, ownList(model, i, r), r);
+    const { rho, drho } = scaledRho(model, ownList(model, i, r), r, false);
     const Fv = embedF(el, model.rhoRef[i], rho);
     const Fp = embedFp(el, model.rhoRef[i], rho);
     return { phi: (2 / el.z) * (Eu - Fv), dphi: (2 / el.z) * (dEu - Fp * drho) };
   }
-  const ri = scaledRho(model, b1List(model, i, j, r), r);
-  const rj = scaledRho(model, b1List(model, j, i, r), r);
+  const ri = scaledRho(model, b1List(model, i, j, r), r, false);
+  const rj = scaledRho(model, b1List(model, j, i, r), r, false);
   const Fi = embedF(model.elements[i], model.rhoRef[i], ri.rho), Fj = embedF(model.elements[j], model.rhoRef[j], rj.rho);
   const Fip = embedFp(model.elements[i], model.rhoRef[i], ri.rho), Fjp = embedFp(model.elements[j], model.rhoRef[j], rj.rho);
   return {

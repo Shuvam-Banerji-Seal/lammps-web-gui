@@ -41,6 +41,13 @@ export interface SimBox {
   /** For 'm' faces: the box never shrinks inside these bounds (docs: "minimum value"). */
   minLo: [number, number, number];
   minHi: [number, number, number];
+  /**
+   * Set when the box was created as general triclinic (create_box NULL, or a general
+   * triclinic read_data header). Q is the rotation general -> restricted (rows e1, e2, e3,
+   * triclinic_general.ts); the box itself stays restricted. Kept so write_data, dump and
+   * thermo can rotate back to the general frame.
+   */
+  general?: { Q: [[number, number, number], [number, number, number], [number, number, number]] };
 }
 
 export type UnitStyle = 'lj' | 'real' | 'metal' | 'si' | 'cgs' | 'electron' | 'micro' | 'nano';

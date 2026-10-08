@@ -207,8 +207,8 @@ export const generalAtomSites = (
  * the restricted box (lo, hi, tilt) that LAMMPS stores.
  */
 export const generalCreateBox = (
-  lat: { general?: GeneralLattice } | null | undefined, bounds: readonly string[],
-): { lo: V3; hi: V3; tilt: V3 } => {
+  lat: { general?: GeneralLattice } | null | undefined, bounds: readonly string[], dimension: 2 | 3 = 3,
+): { lo: V3; hi: V3; tilt: V3; Q: Mat3 } => {
   if (!lat?.general) throw new StyleError('create_box N NULL needs a lattice with the triclinic/general option');
   if (bounds.length < 6) throw new StyleError('create_box N NULL needs alo ahi blo bhi clo chi');
   const v = bounds.slice(0, 6).map((w) => {
@@ -217,6 +217,12 @@ export const generalCreateBox = (
     return n;
   });
   if (!(v[1] > v[0]) || !(v[3] > v[2]) || !(v[5] > v[4])) throw new StyleError('create_box NULL: each hi bound must exceed its lo bound');
+  // create_box.html: "For 2d general triclinic boxes, clo = -0.5 and chi = 0.5 is required."
+  // Measured with native LAMMPS (black box): a 2d general box with clo chi other than -0.5 0.5 stops with
+  // Create_box for general triclinic requires clo = -0.5 and chi = 0.5
+  if (dimension === 2 && (v[4] !== -0.5 || v[5] !== 0.5)) {
+    throw new StyleError('Create_box for general triclinic requires clo = -0.5 and chi = 0.5');
+  }
   const [a1, a2, a3] = lat.general.cell;
   const o: V3 = [
     v[0] * a1[0] + v[2] * a2[0] + v[4] * a3[0],
@@ -230,7 +236,7 @@ export const generalCreateBox = (
     C: scale(a3, v[5] - v[4]),
   };
   const f = generalFrame(gb);
-  return { lo: f.lo, hi: f.hi, tilt: f.tilt };
+  return { lo: f.lo, hi: f.hi, tilt: f.tilt, Q: f.Q };
 };
 
 const invert3 = (m: Mat3): Mat3 => {
@@ -244,4 +250,23 @@ const invert3 = (m: Mat3): Mat3 => {
     [B * s, (a * k - c * g) * s, -(a * f - c * d) * s],
     [C * s, -(a * h - b * g) * s, (a * e - b * d) * s],
   ];
+};
+
+/**
+ * Pressure tensor in the general frame: Q^T P Q (the tensor transforms like the velocity vectors, with
+ * the rotation Q of the box). `p` is [pxx, pyy, pzz, pxy, pxz, pyz] in the restricted frame; the result
+ * uses the same order. Measured with native LAMMPS (black box): for a data file with A = (1 -1 0),
+ * B = (1 1 0), C = (1 1 1) the restricted pxx 2555.560420096022, pyy 2555.560420096022, pzz 598.9403737997255,
+ * pxy 2553.738575102881, pxz 1199.0103881871867, pyz 1199.0103881871867 give general Pxx 5109.299,
+ * Pyy 1.821845, Pzz 598.94037 (thermo_modify triclinic/general yes).
+ */
+export const rotateTensorToGeneral = (Q: Mat3, p: ArrayLike<number>): number[] => {
+  const P: Mat3 = [[p[0], p[3], p[4]], [p[3], p[1], p[5]], [p[4], p[5], p[2]]];
+  const R: Mat3 = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+    let s = 0;
+    for (let k = 0; k < 3; k++) for (let l = 0; l < 3; l++) s += Q[k][i] * P[k][l] * Q[l][j];
+    R[i][j] = s;
+  }
+  return [R[0][0], R[1][1], R[2][2], R[0][1], R[0][2], R[1][2]];
 };

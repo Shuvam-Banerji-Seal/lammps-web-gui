@@ -4,6 +4,7 @@ import { THERMO_KEYWORDS } from '../types';
 import { StyleError } from '../force/types';
 import { totalVirial } from '../force/types';
 import { massOf } from '../atoms';
+import { generalBoxFromRestricted, rotateTensorToGeneral, type GeneralBox } from '../triclinic_general';
 
 /*
  * Thermodynamic output — docs.lammps.org/thermo_style.html and
@@ -77,6 +78,8 @@ export class Thermo {
   /** thermo_modify colname: header text per column index (0-based). */
   colname = new Map<number, string>();
   lineStyle: 'one' | 'multi' | 'yaml' = 'one';
+  /** thermo_modify triclinic/general: edge vectors and the pressure tensor in the general triclinic frame. */
+  triclinicGeneral = false;
   /** Last wall time / step for tpcpu, spcpu. */
   private lastCpu = { t: 0, step: 0, time: 0 };
 
@@ -267,15 +270,16 @@ export class Thermo {
       case 'xy': return s.box.tilt[0];
       case 'xz': return s.box.tilt[1];
       case 'yz': return s.box.tilt[2];
-      case 'avecx': return g.lx;
-      case 'avecy': return 0;
-      case 'avecz': return 0;
-      case 'bvecx': return g.xy;
-      case 'bvecy': return g.ly;
-      case 'bvecz': return 0;
-      case 'cvecx': return g.xz;
-      case 'cvecy': return g.yz;
-      case 'cvecz': return g.lz;
+      // thermo_style.html: "**A**, **B**, **C** vector which define the general triclinic box." (thermo_modify triclinic/general yes)
+      case 'avecx': return this.triclinicGeneral ? this.generalEdges().A[0] : g.lx;
+      case 'avecy': return this.triclinicGeneral ? this.generalEdges().A[1] : 0;
+      case 'avecz': return this.triclinicGeneral ? this.generalEdges().A[2] : 0;
+      case 'bvecx': return this.triclinicGeneral ? this.generalEdges().B[0] : g.xy;
+      case 'bvecy': return this.triclinicGeneral ? this.generalEdges().B[1] : g.ly;
+      case 'bvecz': return this.triclinicGeneral ? this.generalEdges().B[2] : 0;
+      case 'cvecx': return this.triclinicGeneral ? this.generalEdges().C[0] : g.xz;
+      case 'cvecy': return this.triclinicGeneral ? this.generalEdges().C[1] : g.yz;
+      case 'cvecz': return this.triclinicGeneral ? this.generalEdges().C[2] : g.lz;
       case 'xlat': return sys.lattice?.spacing[0] ?? 1;
       case 'ylat': return sys.lattice?.spacing[1] ?? 1;
       case 'zlat': return sys.lattice?.spacing[2] ?? 1;
@@ -295,6 +299,11 @@ export class Thermo {
         return (Math.acos(g.xy / b) * 180) / Math.PI;
       }
       case 'pxx': case 'pyy': case 'pzz': case 'pxy': case 'pxz': case 'pyz':
+        if (this.triclinicGeneral) {
+          // thermo_style.html: "the 6 components will be output as values consistent with" the orientation of the general box
+          const Q = this.generalEdgesQ();
+          return rotateTensorToGeneral(Q, press().vectorValues())[['pxx', 'pyy', 'pzz', 'pxy', 'pxz', 'pyz'].indexOf(k)];
+        }
         return press().vectorValues()[['pxx', 'pyy', 'pzz', 'pxy', 'pxz', 'pyz'].indexOf(k)];
       case 'bonds': return s.topo.bonds.n;
       case 'angles': return s.topo.angles.n;
@@ -345,6 +354,19 @@ export class Thermo {
   }
 
   /** thermo_modify keyword list. */
+  /** Edge vectors of the general box (thermo_modify triclinic/general yes); throws when the box is not general. */
+  private generalEdges(): GeneralBox {
+    const b = this.sys.state.box;
+    if (!b.general) throw new StyleError('thermo_modify triclinic/general cannot be used if simulation box is not general triclinic');
+    return generalBoxFromRestricted(b.general.Q, b.lo, b.hi, b.tilt);
+  }
+
+  private generalEdgesQ() {
+    const b = this.sys.state.box;
+    if (!b.general) throw new StyleError('thermo_modify triclinic/general cannot be used if simulation box is not general triclinic');
+    return b.general.Q;
+  }
+
   modify(args: string[]): void {
     for (let k = 0; k < args.length;) {
       const key = args[k];
@@ -432,7 +454,16 @@ export class Thermo {
           throw new StyleError("thermo_modify every is not a LAMMPS keyword; use 'thermo v_name'");
         }
         case 'triclinic/general':
-          if (yesno(need(val), key)) throw new StyleError('thermo_modify triclinic/general yes is not supported');
+          // thermo_modify.html: "The *triclinic/general* keyword can only be used with a value of *yes*" (the simulation box
+          // must have been created as a general triclinic box). Measured with native LAMMPS (black box): the check runs when the
+          // command executes, so a box created later does not satisfy it: Thermo_modify triclinic/general cannot be used
+          // if simulation box is not general triclinic
+          if (yesno(need(val), key)) {
+            if (!this.sys.hasBox || !this.sys.state.box.general) {
+              throw new StyleError('thermo_modify triclinic/general cannot be used if simulation box is not general triclinic');
+            }
+            this.triclinicGeneral = true;
+          } else this.triclinicGeneral = false;
           k += 2;
           break;
         default:

@@ -3,7 +3,7 @@ import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
 import { appendAtoms, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isSphereStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, topologyLevel } from '../atoms';
 import { makeBox } from '../domain';
-import { generalFrame, rotateVector, toRestrictedPoint, type GeneralFrame, type V3 } from '../triclinic_general';
+import { generalBoxFromRestricted, generalFrame, rotateVector, toGeneralPoint, toRestrictedPoint, unrotateVector, type GeneralFrame, type Mat3, type V3 } from '../triclinic_general';
 
 /*
  * Data files — docs.lammps.org/read_data.html and write_data.html.
@@ -211,6 +211,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   if (!adding) {
     if (sys.dimension === 2 && !(lo[2] < 0 && hi[2] > 0)) throw new StyleError('read_data: for a 2d simulation zlo and zhi must straddle zero');
     const box = makeBox({ lo, hi, boundary: sys.boundary, tilt: tilt ?? undefined });
+    // the general triclinic rotation stays on the box so write_data triclinic/general can undo it
+    if (genFrame) box.general = { Q: genFrame.Q };
     s = emptyState(sys.units, sys.dimension, box, ntypesFile + opts.extraTypes[0], sys.atomStyle);
     s.topo.nbondtypes = (h['bond types'] ?? 0) + opts.extraTypes[1];
     s.topo.nangletypes = (h['angle types'] ?? 0) + opts.extraTypes[2];
@@ -513,11 +515,41 @@ export const shortest = (v: number): string => {
   return m ? `${m[1]}e${m[2]}${m[3].padStart(2, '0')}` : t;
 };
 
-export interface WriteDataOptions { nocoeff: boolean; pairStyle: 'ii' | 'ij' | null; nofix?: boolean }
+export interface WriteDataOptions { nocoeff: boolean; pairStyle: 'ii' | 'ij' | null; nofix?: boolean; triclinicGeneral?: boolean }
+
+/** Maps every 3-vector of a flat array (x, v, omega, ...) through f; out is a new array. */
+const mapVectors = (arr: ArrayLike<number>, f: (v: V3) => V3): Float64Array => {
+  const out = Float64Array.from(arr);
+  for (let i = 0; i + 2 < arr.length; i += 3) {
+    const r = f([arr[i], arr[i + 1], arr[i + 2]]);
+    out[i] = r[0]; out[i + 1] = r[1]; out[i + 2] = r[2];
+  }
+  return out;
+};
+
+/**
+ * write_data triclinic/general (write_data.html: "write data file in general triclinic format"; Howto_triclinic.html:
+ * "is effectively the inverse of the operation described in the" preceding bullet). The box edges come back from the restricted box
+ * with the stored rotation; the origin is the box lower-left corner, which the rotation keeps fixed.
+ */
+const generalOutput = (s: SimState): { Q: Mat3; origin: V3; header: string[] } => {
+  const Q = s.box.general?.Q;
+  if (!Q) throw new StyleError('write_data triclinic/general needs a general triclinic box (create_box NULL, or a general triclinic data file)');
+  if (s.shape) throw new StyleError('write_data triclinic/general: ellipsoid orientations (quaternions) are not rotated by the browser engine');
+  const origin: V3 = [s.box.lo[0], s.box.lo[1], s.box.lo[2]];
+  const g = generalBoxFromRestricted(Q, s.box.lo, s.box.hi, s.box.tilt);
+  const edge = (v: V3, name: string) => `${shortest(v[0])} ${shortest(v[1])} ${shortest(v[2])} ${name}`;
+  return {
+    Q,
+    origin,
+    header: [edge(g.A, 'avec'), edge(g.B, 'bvec'), edge(g.C, 'cvec'), `${shortest(origin[0])} ${shortest(origin[1])} ${shortest(origin[2])} abc origin`],
+  };
+};
 
 export const writeData = (sys: System, opts: WriteDataOptions): string => {
   const s = sys.state;
   const t = s.topo;
+  const gen = opts.triclinicGeneral ? generalOutput(s) : null;
   const out: string[] = [
     `LAMMPS data file via write_data, version 2 Sep 2026 (LAMMPS web notebook), timestep = ${s.step}, units = ${s.units.style}`,
     '',
@@ -549,8 +581,11 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
     }
   }
   out.push('');
-  out.push(...[0, 1, 2].map((d) => `${shortest(s.box.lo[d])} ${shortest(s.box.hi[d])} ${'xyz'[d]}lo ${'xyz'[d]}hi`));
-  if (s.box.triclinic) out.push(`${shortest(s.box.tilt[0])} ${shortest(s.box.tilt[1])} ${shortest(s.box.tilt[2])} xy xz yz`);
+  if (gen) out.push(...gen.header);
+  else {
+    out.push(...[0, 1, 2].map((d) => `${shortest(s.box.lo[d])} ${shortest(s.box.hi[d])} ${'xyz'[d]}lo ${'xyz'[d]}hi`));
+    if (s.box.triclinic) out.push(`${shortest(s.box.tilt[0])} ${shortest(s.box.tilt[1])} ${shortest(s.box.tilt[2])} xy xz yz`);
+  }
   // measured with native write_data: atom_style sphere (per-atom masses) writes no Masses section; a
   // hybrid style with sphere writes it (per-type and per-atom masses both exist there)
   if (s.atomStyle !== 'sphere' && s.atomStyle !== 'ellipsoid') {
@@ -581,6 +616,14 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   // is native's (SimState.order, including its spatial sort at run setup).
   const order = nativeOrder(s);
   const cols = atomStyleCols(s.atomStyle);
+  // general output: positions, dipole directions and velocities rotated to the general frame
+  const xo = gen ? mapVectors(s.x, (p) => toGeneralPoint(gen.Q, gen.origin, p)) : s.x;
+  const mu = gen && s.mu ? Float64Array.from(s.mu) : s.mu;
+  if (gen && mu) for (let i = 0; i < s.n; i++) {
+    const m = unrotateVector(gen.Q, [mu[4 * i], mu[4 * i + 1], mu[4 * i + 2]]);
+    mu[4 * i] = m[0]; mu[4 * i + 1] = m[1]; mu[4 * i + 2] = m[2];
+  }
+  const vo = gen ? mapVectors(s.v, (w) => unrotateVector(gen.Q, w)) : s.v;
   for (const i of order) {
     const v = cols.map((c) => {
       switch (c) {
@@ -594,19 +637,20 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
           if (s.radius) return shortest(s.radius[i] > 0 ? s.rmass![i] / sphereMass(s.radius[i], 1) : s.rmass![i]);
           return shortest(isEllipsoid(s, i) ? s.rmass![i] / ellipsoidVolume(s, i) : s.rmass![i]);
         case 'ellipsoidflag': return isEllipsoid(s, i) ? '1' : '0';
-        case 'mux': return shortest(s.mu![4 * i]);
-        case 'muy': return shortest(s.mu![4 * i + 1]);
-        case 'muz': return shortest(s.mu![4 * i + 2]);
-        default: return shortest(s.x[3 * i + 'xyz'.indexOf(c)]);
+        case 'mux': return shortest(mu![4 * i]);
+        case 'muy': return shortest(mu![4 * i + 1]);
+        case 'muz': return shortest(mu![4 * i + 2]);
+        default: return shortest(xo[3 * i + 'xyz'.indexOf(c)]);
       }
     });
     out.push(`${v.join(' ')} ${s.image[3 * i]} ${s.image[3 * i + 1]} ${s.image[3 * i + 2]}`);
   }
   out.push('', 'Velocities', '');
+  const angRaw = s.omega ?? s.angmom;
+  const ang = angRaw && gen ? mapVectors(angRaw, (w) => unrotateVector(gen.Q, w)) : angRaw;
   for (const i of order) {
-    const ang = s.omega ?? s.angmom;
     const w = ang ? ` ${shortest(ang[3 * i])} ${shortest(ang[3 * i + 1])} ${shortest(ang[3 * i + 2])}` : '';
-    out.push(`${s.id[i]} ${shortest(s.v[3 * i])} ${shortest(s.v[3 * i + 1])} ${shortest(s.v[3 * i + 2])}${w}`);
+    out.push(`${s.id[i]} ${shortest(vo[3 * i])} ${shortest(vo[3 * i + 1])} ${shortest(vo[3 * i + 2])}${w}`);
   }
   // measured with native write_data: an Ellipsoids section (diameters and quaternion) after Velocities
   if (s.shape && nEll > 0) {

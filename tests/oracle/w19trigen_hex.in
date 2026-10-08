@@ -1,0 +1,17 @@
+# oracle: 2d general triclinic hex primitive cell; write_data triclinic/general and dump triclinic/general
+# oracle-files: w19trigen_hex.data w19trigen_hex.dump
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+dimension       2
+lattice         custom 1.0 a1 1.0 0.0 0.0 a2 0.5 0.86602540378 0.0 a3 0.0 0.0 1.0 basis 0.0 0.0 0.0 triclinic/general
+create_box      1 NULL 0 1 0 1 -0.5 0.5
+create_atoms    1 box
+mass            * 1.0
+write_data      w19trigen_hex.data triclinic/general
+pair_style      lj/cut 1.1
+pair_coeff      * * 1.0 1.0
+neighbor        0.0 bin
+thermo_style    custom step pe pxx pyy vol
+thermo_modify   format float %.15g norm no
+dump            1 all custom 100 w19trigen_hex.dump id type x y z
+dump_modify     1 triclinic/general yes
+run             0

@@ -49,6 +49,8 @@ export const makeBox = (b: BoxInit): SimBox => {
 export const cloneBox = (b: SimBox): SimBox => ({
   lo: [...b.lo], hi: [...b.hi], periodic: [...b.periodic], tilt: [...b.tilt], triclinic: b.triclinic,
   boundary: b.boundary.map((f) => [f[0], f[1]]) as SimBox['boundary'], minLo: [...b.minLo], minHi: [...b.minHi],
+  // the general triclinic rotation is part of the box (SimBox.general); a copy keeps it
+  ...(b.general ? { general: { Q: b.general.Q.map((r) => [...r]) as NonNullable<SimBox['general']>['Q'] } } : {}),
 });
 
 /** Parses a boundary spec word: 'p', 'f', 's', 'm' or two of f/s/m. */

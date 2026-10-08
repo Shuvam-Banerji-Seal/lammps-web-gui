@@ -2,6 +2,7 @@ import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { formatNumber } from '../script';
 import { localDumpColumns, localColumnSource } from '../compute/local_dump';
+import { generalBoxFromRestricted, toGeneralPoint, unrotateVector, type V3 } from '../triclinic_general';
 import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, hasRmassStyle, isEllipsoidStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
 
 /*
@@ -60,6 +61,11 @@ export const fmt = (f: string): ((v: number) => string) => {
 
 export type DumpStyle = 'atom' | 'custom' | 'xyz' | 'extxyz' | 'yaml' | 'local';
 
+/** Columns dump_modify triclinic/general rotates (dump.html: "vx,vy,vz = atom velocities" and the others listed there). */
+const GENERAL_ROTATED = /^(x|y|z|xu|yu|zu|vx|vy|vz|fx|fy|fz)$/;
+/** Per-atom vector columns the browser engine does not rotate; they stop the dump rather than write restricted values. */
+const GENERAL_UNSUPPORTED = /^(mu[xyz]|omega[xyz]|angmom[xyz]|tq[xyz]|sp[xyz]|quat[wijk]|shape[xyz])$/;
+
 export class Dump {
   readonly groupBit: number;
   every: number;
@@ -71,6 +77,8 @@ export class Dump {
   scale = true;
   image = false;
   unwrap = false;
+  /** dump_modify triclinic/general: write the box and per-atom vectors in the general triclinic frame. */
+  triclinicGeneral = false;
   time = false;
   units = false;
   header = true;
@@ -245,7 +253,7 @@ export class Dump {
         }
         case 'label': if (!v) throw new StyleError('dump_modify label needs a string'); this.label = v; k += 2; break;
         case 'precision': case 'sfactor': case 'tfactor': case 'maxfiles': case 'nfile': case 'fileper': case 'at': numArg(v, key); k += 2; break;
-        case 'triclinic/general': if (yesno(v, key)) throw new StyleError('dump_modify triclinic/general yes is not supported'); k += 2; break;
+        case 'triclinic/general': this.triclinicGeneral = yesno(v, key); k += 2; break;
         case 'types': if (v !== 'numeric') throw new StyleError('dump_modify types labels needs type labels (not supported)'); k += 2; break;
         default:
           throw new StyleError(`unsupported dump_modify keyword '${key}'`);
@@ -296,6 +304,12 @@ export class Dump {
       return;
     }
     const g = sys.geom;
+    // dump_modify.html: "It can only be used with a value of *yes* if the" simulation box was created as a general
+    // triclinic box. Only the atom and custom styles take it (Howto_triclinic.html lists dump atom, dump custom).
+    if (this.triclinicGeneral) {
+      if (!s.box.general) throw new StyleError(`dump ${this.id}: dump_modify triclinic/general yes needs a general triclinic box (create_box NULL, or a general triclinic data file)`);
+      if (this.style !== 'atom' && this.style !== 'custom') throw new StyleError(`dump ${this.id}: dump_modify triclinic/general applies only to the atom and custom styles`);
+    }
     // atoms to write
     const reg = this.region ? sys.region(this.region) : null;
     const rows: number[] = [];
@@ -360,7 +374,12 @@ export class Dump {
         lines.push('ITEM: TIMESTEP', String(step), 'ITEM: NUMBER OF ATOMS', String(keep.length));
         const bnd = s.box.boundary.map((f) => f[0] + f[1]).join(' ');
         const e = (v: number) => formatNumber(v, '%-1.16e');
-        if (g.triclinic) {
+        if (this.triclinicGeneral && s.box.general) {
+          // dump.html: "ITEM: BOX BOUNDS abc origin" then "ax ay az originx", "bx by bz originy", "cx cy cz originz"
+          const gb = generalBoxFromRestricted(s.box.general.Q, s.box.lo, s.box.hi, s.box.tilt);
+          const o = s.box.lo;
+          lines.push(`ITEM: BOX BOUNDS abc origin ${bnd}`, `${e(gb.A[0])} ${e(gb.A[1])} ${e(gb.A[2])} ${e(o[0])}`, `${e(gb.B[0])} ${e(gb.B[1])} ${e(gb.B[2])} ${e(o[1])}`, `${e(gb.C[0])} ${e(gb.C[1])} ${e(gb.C[2])} ${e(o[2])}`);
+        } else if (g.triclinic) {
           const [xy, xz, yz] = s.box.tilt;
           const xlob = s.box.lo[0] + Math.min(0, xy, xz, xy + xz), xhib = s.box.hi[0] + Math.max(0, xy, xz, xy + xz);
           const ylob = s.box.lo[1] + Math.min(0, yz), yhib = s.box.hi[1] + Math.max(0, yz);
@@ -454,6 +473,9 @@ export class Dump {
     const out = new Float64Array(s.n);
     const lam = [0, 0, 0];
     const u = [0, 0, 0];
+    if (this.triclinicGeneral && GENERAL_UNSUPPORTED.test(c)) {
+      throw new StyleError(`dump ${this.id}: dump_modify triclinic/general does not rotate column ${c} (the browser engine rotates x, y, z, xu, yu, zu, vx, vy, vz, fx, fy, fz)`);
+    }
     const pos = (i: number, d: number) => {
       if (!this.pbc) return s.x[3 * i + d];
       const x = [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]];
@@ -463,6 +485,21 @@ export class Dump {
       g.remap(xx, ii, 0);
       return xx[d];
     };
+    // dump_modify triclinic/general: positions (x, xu: about the box origin), velocities and forces are rotated
+    // into the general frame (dump.html; Howto_triclinic.html). The rotation is the stored one (SimBox.general).
+    if (this.triclinicGeneral && s.box.general && GENERAL_ROTATED.test(c)) {
+      const Q = s.box.general.Q;
+      const o: V3 = [s.box.lo[0], s.box.lo[1], s.box.lo[2]];
+      const d = 'xyz'.indexOf(c[c.length - 1]);
+      for (let i = 0; i < s.n; i++) {
+        let w: V3;
+        if (c[0] === 'v') w = [s.v[3 * i], s.v[3 * i + 1], s.v[3 * i + 2]];
+        else if (c[0] === 'f') w = [s.f[3 * i], s.f[3 * i + 1], s.f[3 * i + 2]];
+        else if (c.endsWith('u') || this.unwrap) { g.unwrap(s.x, s.image, i, u); w = [u[0], u[1], u[2]]; } else w = [pos(i, 0), pos(i, 1), pos(i, 2)];
+        out[i] = c[0] === 'v' || c[0] === 'f' ? unrotateVector(Q, w)[d] : toGeneralPoint(Q, o, w)[d];
+      }
+      return out;
+    }
     switch (c) {
       case 'id': for (let i = 0; i < s.n; i++) out[i] = s.id[i]; return out;
       case 'mol': for (let i = 0; i < s.n; i++) out[i] = s.molecule[i]; return out;

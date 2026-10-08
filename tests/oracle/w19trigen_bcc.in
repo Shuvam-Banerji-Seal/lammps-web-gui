@@ -1,0 +1,16 @@
+# oracle: general triclinic bcc primitive cell; write_data triclinic/general and dump triclinic/general
+# oracle-files: w19trigen_bcc.data w19trigen_bcc.dump
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+lattice         custom 1.0 a1 -0.5 0.5 0.5 a2 0.5 -0.5 0.5 a3 0.5 0.5 -0.5 basis 0.0 0.0 0.0 triclinic/general
+create_box      1 NULL 0 1 0 1 0 1
+create_atoms    1 box
+mass            * 1.0
+write_data      w19trigen_bcc.data triclinic/general
+pair_style      lj/cut 1.1
+pair_coeff      * * 1.0 1.0
+neighbor        0.0 bin
+thermo_style    custom step pe pxx pyy pzz vol
+thermo_modify   format float %.15g norm no
+dump            1 all custom 100 w19trigen_bcc.dump id type x y z
+dump_modify     1 triclinic/general yes
+run             0

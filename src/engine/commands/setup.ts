@@ -301,8 +301,9 @@ const createBox: Handler = ({ sys }, a) => {
   }, 'create_box');
   let lo: [number, number, number], hi: [number, number, number];
   let tilt: [number, number, number] | undefined;
+  let genQ: [[number, number, number], [number, number, number], [number, number, number]] | undefined;
   if (general) {
-    ({ lo, hi, tilt } = generalCreateBox(sys.lattice, a.slice(2, 8)));
+    ({ lo, hi, tilt, Q: genQ } = generalCreateBox(sys.lattice, a.slice(2, 8), sys.dimension));
   } else if (reg instanceof BlockRegion) {
     const b = reg.bbox();
     if (!b) throw new StyleError('create_box: the region must be a static block with side in');
@@ -316,6 +317,8 @@ const createBox: Handler = ({ sys }, a) => {
   if (sys.dimension === 2 && !(lo[2] < 0 && hi[2] > 0)) throw new StyleError('for a 2d simulation the region z bounds must bracket zero (e.g. -0.5 0.5)');
   if (sys.dimension === 2 && tilt && (tilt[1] !== 0 || tilt[2] !== 0)) throw new StyleError('2d triclinic boxes must have xz = yz = 0');
   const box = makeBox({ lo, hi, boundary: sys.boundary, tilt });
+  // the rotation of a general triclinic box is kept on the box (types.ts SimBox.general)
+  if (genQ) box.general = { Q: genQ };
   const s = emptyState(sys.units, sys.dimension, box, n, sys.atomStyle);
   const types = (k: string) => (kw.has(k) ? int(kw.get(k)![0], k) : 0);
   s.topo.nbondtypes = types('bond/types');
@@ -696,7 +699,7 @@ const readDataCmd: Handler = ({ sys }, a) => {
 /** write_data file [nocoeff] [pair ii|ij] [nofix] [nolabelmap] [types numeric] — write_data.html. */
 const writeDataCmd: Handler = ({ sys }, a) => {
   if (!a[0]) throw new StyleError('usage: write_data file [keywords]');
-  let nocoeff = false, nofix = false;
+  let nocoeff = false, nofix = false, triclinicGeneral = false;
   let pairStyle: 'ii' | 'ij' | null = null;
   for (let k = 1; k < a.length;) {
     if (a[k] === 'nocoeff') { nocoeff = true; k++; } else if (a[k] === 'nofix') { nofix = true; k++; } else if (a[k] === 'nolabelmap') k++;
@@ -711,7 +714,8 @@ const writeDataCmd: Handler = ({ sys }, a) => {
       k += 2;
     } else if (a[k] === 'triclinic/general') {
       // write_data.html: "*triclinic/general* = write data file in general triclinic format"
-      throw new StyleError('write_data triclinic/general is not supported by the browser engine (the box rotation is not kept after read)');
+      triclinicGeneral = true;
+      k++;
     }
     else throw new StyleError(`unknown write_data keyword '${a[k]}'`);
   }
@@ -725,7 +729,7 @@ const writeDataCmd: Handler = ({ sys }, a) => {
   sys.nb.lastBuild = -1;
   sys.bump();
   if (wasCurrent) sys.forcesCurrent(); else sys.forces();
-  sys.writeFile(a[0], writeData(sys, { nocoeff, pairStyle, nofix }), false);
+  sys.writeFile(a[0], writeData(sys, { nocoeff, pairStyle, nofix, triclinicGeneral }), false);
   sys.log(`Wrote ${sys.state.n} atoms to ${a[0]}`);
 };
 

@@ -1,0 +1,15 @@
+# oracle: read a general triclinic data file with velocities, write it back with triclinic/general and dump velocities rotated
+# oracle-inputs: w19trigen_general.data
+# oracle-files: w19trigen_general_out.data w19trigen_general.dump
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+read_data       w19trigen_general.data
+mass            * 1.0
+write_data      w19trigen_general_out.data triclinic/general
+pair_style      lj/cut 1.2
+pair_coeff      * * 1.0 1.0
+neighbor        0.0 bin
+thermo_style    custom step pe vol
+thermo_modify   format float %.15g norm no
+dump            1 all custom 100 w19trigen_general.dump id type x y z vx vy vz
+dump_modify     1 triclinic/general yes
+run             0

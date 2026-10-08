@@ -150,8 +150,19 @@ export const makeLattice = (style: LatticeStyle, scale: number, units: UnitSyste
   if (general) {
     // lattice.html: "If this option is specified, a custom lattice style must be used."
     if (style !== 'custom') throw new StyleError('lattice triclinic/general needs style custom');
-    if (dimension === 2) throw new StyleError('lattice triclinic/general is not supported in 2d');
     if (orientGiven) throw new StyleError('lattice triclinic/general cannot be combined with orient');
+    if (dimension === 2) {
+      // lattice.html (2d): a1 and a2 lie in the xy plane and a3 is along z. Checked on the unscaled
+      // vectors, in the order native reports them.
+      // Measured with native LAMMPS (black box): a1 or a2 with a z component, or a3 with x or y
+      // components, stops with Lattice a1/a2/a3 vectors are not compatible with 2d simulation;
+      // a3 = (0 0 2) stops with Lattice triclinic/general a3 vector for a 2d simulation must be (0,0,1);
+      // a lattice scale of 2 with a3 = (0 0 1) is accepted, so the test is on the unscaled a3.
+      if (a[0][2] !== 0 || a[1][2] !== 0 || a[2][0] !== 0 || a[2][1] !== 0) {
+        throw new StyleError('Lattice a1/a2/a3 vectors are not compatible with 2d simulation');
+      }
+      if (a[2][2] !== 1) throw new StyleError('Lattice triclinic/general a3 vector for a 2d simulation must be (0,0,1)');
+    }
   }
   if (dimension === 2) {
     if (origin[2] !== 0) throw new StyleError('lattice origin z must be 0.0 for 2d');
@@ -181,6 +192,11 @@ export const makeLattice = (style: LatticeStyle, scale: number, units: UnitSyste
   if (general) {
     const sc = (v: V3): V3 => [v[0] * factor, v[1] * factor, v[2] * factor];
     const edges = [sc(a[0]), sc(a[1]), sc(a[2])] as [V3, V3, V3];
+    // Measured with native LAMMPS (black box): a left-handed a1,a2,a3 stops with Lattice triclinic/general
+    // a1,a2,a3 must be right-handed, and collinear 2d a1,a2 with Lattice primitive vectors are collinear
+    const cr12: V3 = [a[0][1] * a[1][2] - a[0][2] * a[1][1], a[0][2] * a[1][0] - a[0][0] * a[1][2], a[0][0] * a[1][1] - a[0][1] * a[1][0]];
+    if (dimension === 2 && dot(cr12, cr12) === 0) throw new StyleError('Lattice primitive vectors are collinear');
+    if (dot(cr12, a[2]) <= 0) throw new StyleError('Lattice triclinic/general a1,a2,a3 must be right-handed');
     // rotationFromEdges throws the StyleError for left-handed or co-planar cells
     Rot = rotationFromEdges(edges[0], edges[1], edges[2]).Q;
   }

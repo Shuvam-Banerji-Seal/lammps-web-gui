@@ -8,48 +8,66 @@ import { massOf } from '../atoms';
 /*
  * fix nvt / npt / nph — docs.lammps.org/fix_nh.html.
  *
- * "These commands perform time integration on Nose-Hoover style
- * non-Hamiltonian equations of motion ... The equations of motion used are
- * those of Shinoda et al in :ref:`(Shinoda) <nh-Shinoda>`, which combine the
- * hydrostatic equations of Martyna, Tobias and Klein in :ref:`(Martyna)
- * <nh-Martyna>` with the strain energy proposed by Parrinello and Rahman in
- * :ref:`(Parrinello) <nh-Parrinello>`. The time integration schemes closely
- * follow the time-reversible measure-preserving Verlet and rRESPA integrators
- * derived by Tuckerman et al in :ref:`(Tuckerman) <nh-Tuckerman>`." Written
- * here from those papers (MTK J Chem Phys 101,
- * 4177 (1994); Martyna et al. Mol Phys 87, 1117 (1996); Tuckerman et al. J
- * Phys A 39, 5629 (2006)), not from LAMMPS code. Per step:
- *   initial: thermostat chain (dt/2); barostat chain (dt/2); barostat
- *            velocities (dt/2); velocity scaling by the strain rate (dt/4);
- *            half kick; velocity scaling (dt/4); box and positions scaled
- *            (dt/2); drift; box (dt/2)
- *   final:   velocity scaling (dt/4); half kick; velocity scaling (dt/4);
- *            barostat velocities (dt/2); barostat chain; thermostat chain.
+ * "The equations of motion used are those of Shinoda et al in :ref:`(Shinoda)
+ * <nh-Shinoda>`, which combine the hydrostatic equations of Martyna, Tobias and
+ * Klein in :ref:`(Martyna) <nh-Martyna>` with the strain energy proposed by
+ * Parrinello and Rahman in :ref:`(Parrinello) <nh-Parrinello>`. The time
+ * integration schemes closely follow the time-reversible measure-preserving
+ * Verlet and rRESPA integrators derived by Tuckerman et al in :ref:`(Tuckerman)
+ * <nh-Tuckerman>`." The equations are written from those papers (Martyna,
+ * Tobias, Klein, J Chem Phys 101, 4177 (1994); Shinoda, Shiga, Mikami, Phys
+ * Rev B 69, 134103 (2004); Tuckerman et al, J Phys A 39, 5629 (2006)).
+ *
+ * Step order (per timestep, the factorisation is the one checked against
+ * native LAMMPS, see the measurements below):
+ *   initial: thermostat chain; barostat chain; pressure; barostat velocity
+ *            update (dt/2); velocity scaling by the strain rate (dt/4) twice;
+ *            half kick; box remap (dt/2); drift; box remap (dt/2)
+ *   final:   half kick; velocity scaling (dt/4) twice; pressure; barostat
+ *            velocity update (dt/2); barostat chain; thermostat chain.
  * Masses: thermostat Q_1 = N_f k_B T Tdamp^2, Q_k = k_B T Tdamp^2 (k > 1);
- * barostat "W = (N + 1) k_B T_\mathrm{target} P_\mathrm{damp}^2";
- * barostat-thermostat chain
- * Q_1 = n_dims k_B T Pdamp^2, Q_k = k_B T Pdamp^2.
+ * barostat "W = (N + 1) k_B T_\mathrm{target} P_\mathrm{damp}^2"; the
+ * barostat chain has Q_1 = k_B T Pdamp^2 and Q_k = k_B T Pdamp^2 (k > 1), with
+ * the number of barostatted dimensions entering the chain force.
+ * "If a thermostat is not defined, :math:`T_\mathrm{target}` is set to the
+ * current temperature of the system when the barostat is initialized." "The
+ * *mtk* keyword controls whether or not the correction terms due to Martyna,
+ * Tuckerman, and Klein are included in the equations of motion". The MTK terms are measured below with
+ * the 3N denominator (3 N = dimension times atoms).
  * Keywords: temp, iso, aniso, tri, x, y, z, xy, yz, xz, couple, tchain,
  * pchain, mtk, tloop, ploop, nreset, drag, ptemp, dilate, scalexy/yz/xz,
  * flip, fixedpoint. Defaults "tchain = 3, pchain = 3, mtk = yes, tloop = 1,
  * ploop = 1, nreset = 0, drag = 0.0, dilate = all, couple = none, flip =
- * yes". "iso ... couple xyz"; "aniso ... couple none"; Using "tri Pstart
- * Pstop Pdamp" is the same as specifying these 7 keywords, one per line in the
- * docs: "x Pstart Pstop Pdamp", "y Pstart Pstop Pdamp", "z Pstart Pstop
- * Pdamp", "xy 0.0 0.0 Pdamp", "yz 0.0 0.0 Pdamp", "xz 0.0 0.0 Pdamp",
- * "couple none".
+ * yes". "iso ... couple xyz"; "aniso ... couple none"; "tri Pstart Pstop Pdamp"
+ * is the same as x, y and z with Pstart Pstop Pdamp, xy, yz and xz with
+ * 0.0 0.0 Pdamp, and couple none (the doc lists the 7 keywords).
+ * "The optional *drag* keyword will damp these oscillations, although it alters
+ * the Nose/Hoover equations." The drag factor is applied to the particle
+ * thermostat, the barostat velocities and the barostat chain.
  * For fix nvt, the docs give the code line "compute fix-ID_temp group-ID
  * temp"; for fix npt and fix nph, the code lines "compute fix-ID_temp all
- * temp" and "compute fix-ID_press all pressure fix-ID_temp". "If a thermostat
- * is not defined, :math:`T_\mathrm{target}` is set to the current temperature
- * of the system when the barostat is initialized."
+ * temp" and "compute fix-ID_press all pressure fix-ID_temp".
  * Global scalar: "The scalar is the same cumulative energy change due to this
  * fix described in the previous paragraph", reported by thermo ecouple.
+ *
+ * Measured with native LAMMPS (black box, tests/oracle/w7nh_*.in):
+ *   - the global vector (f_ID[k]) layout: eta, eta_dot (tchain), omega,
+ *     omega_dot (ndof), etap, etap_dot (pchain), PE_eta, KE_eta_dot,
+ *     PE_omega, KE_omega_dot, PE_etap, KE_etap_dot (no PE_strain entry for iso).
+ *   - barostat velocity scaling: both scalings of a half step come before the
+ *     kick in the initial step and after it in the final step.
+ *   - the MTK terms use sum p^2/m / (3N) per barostat dimension and per trace.
+ *   - the first barostat-chain potential term counts the barostatted
+ *     dimensions, while the chain mass uses n_dim = 1 for couple xyz.
+ *   - tilts: the xy-only barostat is exact (xy += ly * omega_xy); with the
+ *     diagonal and tilt couplings together, the box is within ~3e-8 of the
+ *     exact flow at dt = 0.02 (not reproduced; see the w7nh_npt_tri notes).
  * Not implemented (StyleError): dilate with a partial group's strain-energy
  * reference cell (nreset > 0 is accepted; the reference cell is the current
  * one), box flips (flip yes stops with an error when a tilt passes 0.6 of the
  * box length), update dipole.
  */
+
 
 type Dim = 0 | 1 | 2 | 3 | 4 | 5;   // x y z yz xz xy (Voigt order as LAMMPS documents for tensors)
 const KEYS = ['x', 'y', 'z', 'yz', 'xz', 'xy'];
@@ -73,11 +91,13 @@ export class FixNH extends Fix {
   private dilateBit: number;
   private fixedpoint: number[] | null = null;
   private omegaDot = new Float64Array(6);
+  private omegaPos = new Float64Array(6);
   private omegaMass = new Float64Array(6);
   private etap: Float64Array; private etapDot: Float64Array;
   private pTarget = new Float64Array(6);
   private pCurrent = new Float64Array(6);
   private tTarget = 0;
+  private pTempFixed = 0;
   private tempCompute!: Compute;
   private pressCompute: Compute | null = null;
   private tempId: string;
@@ -186,6 +206,8 @@ export class FixNH extends Fix {
     this.etapDot = new Float64Array(Math.max(1, this.pchain) + 1);
     this.tempId = `${id}_temp`;
     this.tempCompute = ownCompute(sys, this.tempId, this.pstat ? 'all' : group, 'temp', []);
+    this.vectorFlag = true;
+    this.sizeVector = this.vectorLayout().reduce((a, b) => a + b.n, 0);
     if (this.pstat) {
       this.pressId = `${id}_press`;
       this.pressCompute = ownCompute(sys, this.pressId, 'all', 'pressure', [this.tempId]);
@@ -250,6 +272,7 @@ export class FixNH extends Fix {
         throw new StyleError(`fix ${this.style}: the system temperature is 0; set ptemp to give the barostat a target temperature`);
       }
       if (!(tb > 0)) tb = this.ptemp ?? 1;
+      this.pTempFixed = tb;
       const kt = s.units.boltz * tb;
       const nAtoms = s.n;
       for (let d = 0; d < 6; d++) {
@@ -265,6 +288,11 @@ export class FixNH extends Fix {
     this.dthalf = 0.5 * s.dt;
     this.dt4 = 0.25 * s.dt;
     this.dt8 = 0.125 * s.dt;
+  }
+
+  /** Temperature of the barostat chain: the thermostat target, or for nph the fixed ptemp / initial temperature. */
+  private baroTemp(): number {
+    return this.tstat ? this.tTarget : this.pTempFixed;
   }
 
   private currentTemp(): number {
@@ -298,21 +326,20 @@ export class FixNH extends Fix {
       if (this.pchain > 0) this.nhcPress();
       this.computePressCurrent();
       this.omegaUpdate();
+      // barostat velocity scaling (dt/4 each) on both sides of the half kick is applied before it
+      this.velocityPress();
       this.velocityPress();
     }
     this.kick();
-    if (this.pstat) {
-      this.velocityPress();
-      this.remap();
-    }
+    if (this.pstat) this.remap();
     this.drift();
     if (this.pstat) this.remap();
   }
 
   finalIntegrate(): void {
-    if (this.pstat) this.velocityPress();
     this.kick();
     if (this.pstat) {
+      this.velocityPress();
       this.velocityPress();
       this.computePressCurrent();
       this.omegaUpdate();
@@ -414,30 +441,31 @@ export class FixNH extends Fix {
     const s = this.sys.state;
     const kB = s.units.boltz;
     const M = this.pchain;
-    const kt = kB * (this.tstat ? this.tTarget : (this.ptemp ?? this.currentTemp()));
+    const kt = kB * this.baroTemp();
     if (!(kt > 0)) return;
     // kinetic energy of the barostat
     let kecurrent = 0;
-    let ndims = 0;
     let pfreqMax = 0;
     for (let d = 0; d < 6; d++) {
       if (!this.pFlag[d]) continue;
       kecurrent += this.omegaMass[d] * this.omegaDot[d] * this.omegaDot[d];
-      ndims++;
       pfreqMax = Math.max(pfreqMax, 1 / this.pPeriod[d]);
     }
+    const ndims = this.ndofDims().length;
     const q = new Float64Array(M);
-    q[0] = ndims * kt / (pfreqMax * pfreqMax);
+    q[0] = kt / (pfreqMax * pfreqMax);
     for (let k = 1; k < M; k++) q[k] = kt / (pfreqMax * pfreqMax);
     const nc = this.ploop;
     const dthalf = this.dthalf / nc, dt4 = this.dt4 / nc, dt8 = this.dt8 / nc;
     const ed = this.etapDot;
+    const pdrag = this.drag > 0 ? 1 - this.dtv * pfreqMax * this.drag / nc : 1;
     for (let loop = 0; loop < nc; loop++) {
       const g = (k: number) => (k === 0 ? (kecurrent - ndims * kt) / q[0] : (q[k - 1] * ed[k - 1] * ed[k - 1] - kt) / q[k]);
       ed[M - 1] += g(M - 1) * dt4;
+      ed[M - 1] *= pdrag;
       for (let k = M - 2; k >= 0; k--) {
         const ex = Math.exp(-dt8 * ed[k + 1]);
-        ed[k] *= ex; ed[k] += g(k) * dt4; ed[k] *= ex;
+        ed[k] *= ex; ed[k] += g(k) * dt4; ed[k] *= pdrag; ed[k] *= ex;
       }
       const factor = Math.exp(-dthalf * ed[0]);
       for (let d = 0; d < 6; d++) if (this.pFlag[d]) this.omegaDot[d] *= factor;
@@ -484,8 +512,8 @@ export class FixNH extends Fix {
     let mtkTerm1 = 0;
     if (this.mtk) {
       const { dof, kT } = this.dofKT();
-      if (dof > 0) mtkTerm1 = kT;   // 2 KE / N_f = k_B T_current
-      // energy per dimension (MTK): (1/N_f) sum p^2/m
+      // MTK term per barostat dimension: sum p^2/m / (3 N), with sum p^2/m = dof k_B T
+      if (dof > 0) mtkTerm1 = (dof * kT) / (s.dimension * s.n);
     }
     const drag = this.drag > 0 ? 1 - this.dtv / this.pPeriod.reduce((a, b) => Math.max(a, b), 0) * this.drag : 1;
     for (let d = 0; d < 6; d++) {
@@ -506,7 +534,7 @@ export class FixNH extends Fix {
       if (dof > 0) {
         let tr = 0;
         for (let d = 0; d < (s.dimension === 2 ? 2 : 3); d++) if (this.pFlag[d]) tr += this.omegaDot[d];
-        mtkTerm2 = tr / dof;
+        mtkTerm2 = tr / (s.dimension * s.n);
       }
     }
     // each call advances the strain-rate scaling by dt/4: diagonal factors split
@@ -540,6 +568,7 @@ export class FixNH extends Fix {
     const s = sys.state;
     const g = sys.geom;
     const b = s.box;
+    for (let d = 0; d < 6; d++) if (this.pFlag[d]) this.omegaPos[d] += this.dthalf * this.omegaDot[d];
     // fractional coordinates of dilated atoms
     const lam = new Float64Array(3 * s.n);
     const tmp = [0, 0, 0];
@@ -603,20 +632,23 @@ export class FixNH extends Fix {
     }
     if (this.pstat) {
       const vol = this.sys.geom.volume(s.dimension);
-      let ndims = 0, pfreqMax = 0;
+      let pfreqMax = 0;
       let pHydro = 0, nhyd = 0;
       for (let d = 0; d < 6; d++) {
         if (!this.pFlag[d]) continue;
         e += 0.5 * this.omegaDot[d] * this.omegaDot[d] * this.omegaMass[d];
-        ndims++;
         pfreqMax = Math.max(pfreqMax, 1 / this.pPeriod[d]);
         if (d < 3) { pHydro += this.pTarget[d]; nhyd++; }
       }
+      const ndims = this.ndofDims().length;
+      let nflag = 0;
+      for (let d = 0; d < 6; d++) if (this.pFlag[d]) nflag++;
       if (nhyd) e += (pHydro / nhyd) * (vol - this.vol0) / s.units.nktv2p;
       if (this.pchain > 0) {
-        const kt = kB * (this.tstat ? this.tTarget : (this.ptemp ?? 0));
-        const q0 = ndims * kt / (pfreqMax * pfreqMax), qk = kt / (pfreqMax * pfreqMax);
-        e += ndims * kt * this.etap[0] + 0.5 * q0 * this.etapDot[0] * this.etapDot[0];
+        const kt = kB * this.baroTemp();
+        const q0 = kt / (pfreqMax * pfreqMax), qk = kt / (pfreqMax * pfreqMax);
+        // the scalar's potential term of the first barostat chain element counts the barostatted dimensions
+        e += nflag * kt * this.etap[0] + 0.5 * q0 * this.etapDot[0] * this.etapDot[0];
         for (let k = 1; k < this.pchain; k++) e += kt * this.etap[k] + 0.5 * qk * this.etapDot[k] * this.etapDot[k];
       }
     }
@@ -626,4 +658,60 @@ export class FixNH extends Fix {
   computeScalar(): number {
     return this.ecouple();
   }
+
+  /**
+   * Global vector, in the documented order: "eta[tchain] ... eta_dot[tchain]
+   * ... omega[ndof] ... omega_dot[ndof] ... etap[pchain] ... etap_dot[pchain]
+   * ... PE_eta[tchain] ... KE_eta_dot[tchain] ... PE_omega[ndof] ...
+   * KE_omega_dot[ndof] ... PE_etap[pchain] ... KE_etap_dot[pchain]". The
+   * "ndof" barostat entries are the coupled dimensions (one entry for couple
+   * xyz; six for tilt keywords; otherwise three).
+   */
+  computeVector(i: number): number {
+    for (const seg of this.vectorLayout()) {
+      if (i < seg.n) return seg.value(i);
+      i -= seg.n;
+    }
+    return 0;
+  }
+
+  /** Barostat dimensions reported in the vector (ndof of the docs). */
+  private ndofDims(): number[] {
+    if (!this.pstat) return [];
+    if (this.pFlag[3] || this.pFlag[4] || this.pFlag[5]) return [0, 1, 2, 3, 4, 5];
+    if (this.couple === 'xyz' || (this.couple === 'xy' && this.sys.dimension === 2)) return [0];
+    return [0, 1, 2];
+  }
+
+  private vectorLayout(): { n: number; value: (i: number) => number }[] {
+    const s = this.sys.state;
+    const kB = s.units.boltz;
+    const nT = this.tstat ? this.tchain : 0;
+    const nP = this.pstat ? this.pchain : 0;
+    const dims = this.ndofDims();
+    const kt = kB * this.tTarget;
+    const ktP = kB * this.baroTemp();
+    const tfreq = this.tstat ? 1 / this.tPeriod : 0;
+    const dof = this.tstat ? this.tempCompute.dof : 0;
+    const qT = (k: number) => (k === 0 ? dof * kt / (tfreq * tfreq) : kt / (tfreq * tfreq));
+    let pfreq = 0;
+    for (const d of dims) pfreq = Math.max(pfreq, 1 / this.pPeriod[d]);
+    const qP = (k: number) => ktP / (pfreq * pfreq);
+    const omegaGroup = (j: number) => (dims.length === 1 ? [0, 1, 2] : [dims[j]]);
+    return [
+      { n: nT, value: (k) => this.eta[k] },
+      { n: nT, value: (k) => this.etaDot[k] },
+      { n: dims.length, value: (j) => this.omegaPos[dims[j]] },
+      { n: dims.length, value: (j) => this.omegaDot[dims[j]] },
+      { n: nP, value: (k) => this.etap[k] },
+      { n: nP, value: (k) => this.etapDot[k] },
+      { n: nT, value: (k) => (k === 0 ? dof * kt : kt) * this.eta[k] },
+      { n: nT, value: (k) => 0.5 * qT(k) * this.etaDot[k] * this.etaDot[k] },
+      { n: dims.length, value: (j) => omegaGroup(j).reduce((acc, d) => acc + this.pTarget[d], 0) * (this.sys.geom.volume(s.dimension) - this.vol0) / (3 * s.units.nktv2p) },
+      { n: dims.length, value: (j) => omegaGroup(j).reduce((a, d) => a + 0.5 * this.omegaMass[d] * this.omegaDot[d] * this.omegaDot[d], 0) },
+      { n: nP, value: (k) => (k === 0 ? dims.length * ktP : ktP) * this.etap[k] },
+      { n: nP, value: (k) => 0.5 * qP(k) * this.etapDot[k] * this.etapDot[k] },
+    ];
+  }
+
 }

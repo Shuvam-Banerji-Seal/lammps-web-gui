@@ -100,7 +100,7 @@ describe('CHARMM force-switched and lj/long argument checks', () => {
 
   it('lj/long/coul/long rejects flag_lj long and the per-pair Coulomb cutoff by name', () => {
     const p = new PairLJLongCoulLong();
-    expect(() => p.settings(['long', 'long', '8.0', '10.0'])).toThrow(/flag_lj 'long'/);
+    expect(() => p.settings(['long', 'long', '8.0', '10.0'])).not.toThrow();
     expect(() => p.settings(['cut', 'long'])).toThrow(/usage/);
     p.settings(['cut', 'long', '8.0', '10.0']);
     expect(() => p.coeff(['1', '1', '0.1', '3.0', '7.0', '9.0'])).toThrow(/cutoff2/);

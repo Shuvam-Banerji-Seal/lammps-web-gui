@@ -90,7 +90,15 @@ const pairModify: Handler = ({ sys }, a) => {
       case 'shift': { const y = yesno(v, 'shift'); for (const t of targets) t.shift = y; k += 2; break; }
       case 'tail': { const y = yesno(v, 'tail'); for (const t of targets) t.tail = y; k += 2; break; }
       case 'table': { const n = int(v, 'table'); for (const t of targets) t.table = n; k += 2; break; }
-      case 'tabinner': case 'table/disp': case 'tabinner/disp': num(v, key); k += 2; break;
+      case 'table/disp': { const n = int(v, 'table/disp'); for (const t of targets) (t as Pair & { tableDisp?: number }).tableDisp = n; k += 2; break; }
+      case 'tabinner': case 'tabinner/disp': {
+        // pair_modify.html: "The default cutoff value is sqrt(2.0) distance units"; the engine's tables
+        // (force/erfc.ts) are built for that inner cutoff only
+        const c = num(v, key);
+        if (Math.abs(c - Math.SQRT2) > 1e-12) throw new StyleError(`pair_modify ${key} ${v}: only the default sqrt(2.0) is supported by the browser engine`);
+        k += 2;
+        break;
+      }
       case 'compute': if (!yesno(v, 'compute')) throw new StyleError('pair_modify compute no is not supported'); k += 2; break;
       case 'neigh/trim': yesno(v, key); k += 2; break;
       case 'pair':

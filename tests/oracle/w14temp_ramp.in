@@ -1,0 +1,30 @@
+# oracle: compute temp/ramp (box and lattice units, three ramp directions), then a fix nvt thermostat that uses one of them via fix_modify temp
+# oracle-compare: thermo=all rel=1e-8 abs=1e-10
+units lj
+atom_style atomic
+lattice fcc 0.8442
+region box block 0 3 0 3 0 3
+create_box 1 box
+create_atoms 1 box
+mass 1 1.0
+variable vx atom 1.4*sin(1.7*x+2.3*y+0.7*z)
+variable vy atom 1.4*cos(2.1*x-1.1*y+0.3*z)
+variable vz atom 1.4*sin(0.5*x+1.9*z+1.3*y)
+velocity all set v_vx v_vy v_vz units box
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0 2.5
+timestep 0.002
+compute ra all temp/ramp vx -1.0 1.5 y 2 9 units box
+compute rb all temp/ramp vz 0.0 0.5 x 0 4 units lattice
+compute rc all temp/ramp vy -0.5 0.8 z 1 6
+thermo_style custom step temp c_ra c_ra[1] c_ra[2] c_ra[3] c_ra[4] c_ra[5] c_ra[6] c_rb c_rb[3] c_rc c_rc[6] press
+thermo_modify format float %.15g
+thermo 10
+run 0
+fix 1 all nvt temp 0.8 0.8 0.5
+fix_modify 1 temp ra
+run 40
+fix_modify 1 temp rb
+run 30
+velocity all scale 0.9 temp rc bias yes
+run 0

@@ -54,13 +54,17 @@ const pairEnergyForce = (st: PairLJCharmmCoulCharmm, r: number, qi: number, qj: 
  * separation r = x1 - x0 by -dx, so F_0x = -dE/dx_0 = +dE/dr.
  */
 const checkFD = (st: PairLJCharmmCoulCharmm, radii: readonly number[], qi = 0, qj = 0): void => {
+  // coul/long styles with pair_modify table N > 0 interpolate separate energy and force tables at
+  // float32(r^2) (as native does, erfc.ts makeErfcTable): a larger step and the ~1e-3 chord-slope
+  // difference between the two tables
+  const tabled = st.coulLong && st.table > 0;
   for (const r of radii) {
-    const h = 1e-6 * r;
+    const h = (tabled ? 1e-3 : 1e-6) * r;
     const ePlus = pairEnergyForce(st, r + h, qi, qj).e;
     const eMinus = pairEnergyForce(st, r - h, qi, qj).e;
     const fd = (ePlus - eMinus) / (2 * h); // F_0x = +dE/dr
     const { fx } = pairEnergyForce(st, r, qi, qj);
-    expect(Math.abs(fx - fd), `r=${r}: fx=${fx} fd=${fd}`).toBeLessThan(1e-5 * (1 + Math.abs(fd)));
+    expect(Math.abs(fx - fd), `r=${r}: fx=${fx} fd=${fd}`).toBeLessThan((tabled ? 5e-3 : 1e-5) * (1 + Math.abs(fd)));
   }
 };
 

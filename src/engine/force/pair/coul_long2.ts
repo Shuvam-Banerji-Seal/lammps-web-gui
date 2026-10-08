@@ -2,7 +2,7 @@ import { StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairBorn, PairBuck, } from './simple';
 import { tallyAtom } from './lj_cut';
-import { erfcFast, erfcPoly, EWALD_F } from '../erfc';
+import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, TABLE_INNER_RSQ, type ErfcTable } from '../erfc';
 import { fmtCoeff, parseNum } from '../util';
 
 /*
@@ -89,8 +89,21 @@ const nonCoulCut = (raw: number, cutGlobal: number): number => (Number.isNaN(raw
  * term, which the reciprocal sum includes (docs.lammps.org/special_bonds.html).
  */
 const coulLongPair = (
-  rsq: number, qi: number, qj: number, g: number, qqrd2e: number, fc: number, poly: boolean,
+  rsq: number, qi: number, qj: number, g: number, qqrd2e: number, fc: number, poly: boolean, table: ErfcTable | null = null,
 ): { e: number; f: number } => {
+  if (table && rsq >= TABLE_INNER_RSQ) {
+    // pair_modify table N > 0 (erfc.ts makeErfcTable): native interpolates erfc/r, the force kernel
+    // and the bare 1/r of the special-bond correction from its tables
+    const qq = qqrd2e * qi * qj;
+    let forcecoul = qq * table.force(rsq);
+    let e = qq * table.energy(rsq);
+    if (fc < 1) {
+      const bare = qq * table.coul(rsq);
+      forcecoul -= (1 - fc) * bare;
+      e -= (1 - fc) * bare;
+    }
+    return { e, f: forcecoul / rsq };
+  }
   const r = Math.sqrt(rsq);
   const grij = g * r;
   const ex = Math.exp(-grij * grij);
@@ -109,6 +122,9 @@ export class PairBornCoulLong extends PairBorn {
   readonly name: string = 'born/coul/long';
   coulLong = true;
   cutCoul = 0;
+  private readonly erfcTables = new ErfcTableCache();
+  /** pair_modify table N (null for 0): erfc.ts makeErfcTable. */
+  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul); }
   /** Coulomb prefactor of the current run (pc.qqrd2e); single() uses the last-seen value. */
   qqrd2e = 1;
 
@@ -134,6 +150,7 @@ export class PairBornCoulLong extends PairBorn {
     for (let i = 1; i < nt; i++) for (let j = 1; j < nt; j++) bornCutSq[i * nt + j] = nonCoulCut(this.p.get('cut', i, j), this.cutGlobal) ** 2;
     const cutcsq = this.cutCoul * this.cutCoul;
     const g = this.gEwald;
+    const tab = this.erfcTable(g);
     const sLJ = pc.specialLJ, sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0, ecoul = 0;
@@ -167,7 +184,7 @@ export class PairBornCoulLong extends PairBorn {
           e += ev;
         }
         if (rsq < cutcsq && qi !== 0 && q[j] !== 0) {
-          const r = coulLongPair(rsq, qi, q[j], g, pc.qqrd2e, sC[sb], this.table === 0);
+          const r = coulLongPair(rsq, qi, q[j], g, pc.qqrd2e, sC[sb], this.table === 0, tab);
           fpair += r.f;
           ecoul += r.e;
           e += r.e;
@@ -187,7 +204,7 @@ export class PairBornCoulLong extends PairBorn {
     const b = super.single(_i, _j, itype, jtype, rsq, factorCoul, factorLJ, qi, qj);
     let eng = b.eng, fforce = b.fforce;
     if (rsq < this.cutCoul * this.cutCoul && qi !== 0 && qj !== 0) {
-      const r = coulLongPair(rsq, qi, qj, this.gEwald, this.qqrd2e, factorCoul, this.table === 0);
+      const r = coulLongPair(rsq, qi, qj, this.gEwald, this.qqrd2e, factorCoul, this.table === 0, this.erfcTable(this.gEwald));
       fforce += r.f;
       eng += r.e;
     }
@@ -235,6 +252,9 @@ export class PairBuckCoulLong extends PairBuck {
   readonly name: string = 'buck/coul/long';
   coulLong = true;
   cutCoul = 0;
+  private readonly erfcTables = new ErfcTableCache();
+  /** pair_modify table N (null for 0): erfc.ts makeErfcTable. */
+  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul); }
   /** Coulomb prefactor of the current run (pc.qqrd2e); single() uses the last-seen value. */
   qqrd2e = 1;
 
@@ -260,6 +280,7 @@ export class PairBuckCoulLong extends PairBuck {
     for (let i = 1; i < nt; i++) for (let j = 1; j < nt; j++) buckCutSq[i * nt + j] = nonCoulCut(this.p.get('cut', i, j), this.cutGlobal) ** 2;
     const cutcsq = this.cutCoul * this.cutCoul;
     const g = this.gEwald;
+    const tab = this.erfcTable(g);
     const sLJ = pc.specialLJ, sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0, ecoul = 0;
@@ -289,7 +310,7 @@ export class PairBuckCoulLong extends PairBuck {
           e += ev;
         }
         if (rsq < cutcsq && qi !== 0 && q[j] !== 0) {
-          const r = coulLongPair(rsq, qi, q[j], g, pc.qqrd2e, sC[sb], this.table === 0);
+          const r = coulLongPair(rsq, qi, q[j], g, pc.qqrd2e, sC[sb], this.table === 0, tab);
           fpair += r.f;
           ecoul += r.e;
           e += r.e;
@@ -309,7 +330,7 @@ export class PairBuckCoulLong extends PairBuck {
     const b = super.single(_i, _j, itype, jtype, rsq, factorCoul, factorLJ, qi, qj);
     let eng = b.eng, fforce = b.fforce;
     if (rsq < this.cutCoul * this.cutCoul && qi !== 0 && qj !== 0) {
-      const r = coulLongPair(rsq, qi, qj, this.gEwald, this.qqrd2e, factorCoul, this.table === 0);
+      const r = coulLongPair(rsq, qi, qj, this.gEwald, this.qqrd2e, factorCoul, this.table === 0, this.erfcTable(this.gEwald));
       fforce += r.f;
       eng += r.e;
     }

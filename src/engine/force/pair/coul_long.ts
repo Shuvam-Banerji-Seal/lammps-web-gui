@@ -2,7 +2,7 @@ import { Pair, PairParams, StyleError, type PairCompute } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairLJCut, tallyAtom } from './lj_cut';
 import { parseNum } from '../util';
-import { erfcFast, erfcPoly, EWALD_F } from '../erfc';
+import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, TABLE_INNER_RSQ, type ErfcTable } from '../erfc';
 
 /*
  * Real-space parts of Ewald/PPPM Coulombics.
@@ -26,15 +26,28 @@ import { erfcFast, erfcPoly, EWALD_F } from '../erfc';
  * kspace styles; their Coulomb weight w removes (1 - w) of the bare C q_i q_j
  * / r term, which the reciprocal sum includes.
  * pair_modify table N: with N = 0 the polynomial erfc fit LAMMPS documents
- * is used (erfc.ts erfcPoly; native LAMMPS agrees to ~1e-12); otherwise the
- * engine evaluates erfc to ~1e-12 instead of tabulating it, which agrees with
- * LAMMPS's default table to ~1e-6.
+ * is used (erfc.ts erfcPoly; native LAMMPS agrees to ~1e-12); with N > 0
+ * (default 12) the engine interpolates the same tables native builds
+ * (erfc.ts makeErfcTable) for r^2 >= 2, which agrees with native to ~1e-14.
  */
 
 /** Coulomb long-range real-space loop shared by both styles. */
 const coulLongPair = (
-  rsq: number, qi: number, qj: number, g: number, qqrd2e: number, fc: number, poly: boolean,
+  rsq: number, qi: number, qj: number, g: number, qqrd2e: number, fc: number, poly: boolean, table: ErfcTable | null = null,
 ): { e: number; f: number } => {
+  if (table && rsq >= TABLE_INNER_RSQ) {
+    // pair_modify table N > 0 (erfc.ts makeErfcTable): native interpolates erfc/r, the force kernel
+    // and the bare 1/r of the special-bond correction from its tables
+    const qq = qqrd2e * qi * qj;
+    let forcecoul = qq * table.force(rsq);
+    let e = qq * table.energy(rsq);
+    if (fc < 1) {
+      const bare = qq * table.coul(rsq);
+      forcecoul -= (1 - fc) * bare;
+      e -= (1 - fc) * bare;
+    }
+    return { e, f: forcecoul / rsq };
+  }
   const r = Math.sqrt(rsq);
   const grij = g * r;
   const ex = Math.exp(-grij * grij);
@@ -54,6 +67,9 @@ export class PairCoulLong extends Pair {
   virialFdotr = true;
   coulLong = true;
   cutCoul = 0;
+  private readonly erfcTables = new ErfcTableCache();
+  /** pair_modify table N (null for 0): erfc.ts makeErfcTable. */
+  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul); }
   private set!: PairParams;
 
   settings(args: string[]): void {
@@ -82,6 +98,7 @@ export class PairCoulLong extends Pair {
     const { x, f, q } = pc;
     const cutsq = this.cutCoul * this.cutCoul;
     const g = this.gEwald;
+    const tab = this.erfcTable(g);
     const sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;
     let ecoul = 0;
@@ -99,7 +116,7 @@ export class PairCoulLong extends Pair {
         const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
         const rsq = dx * dx + dy * dy + dz * dz;
         if (rsq >= cutsq) continue;
-        const r = coulLongPair(rsq, qi, qj, g, pc.qqrd2e, sC[jj >>> SBBITS], this.table === 0);
+        const r = coulLongPair(rsq, qi, qj, g, pc.qqrd2e, sC[jj >>> SBBITS], this.table === 0, tab);
         fxi += dx * r.f; fyi += dy * r.f; fzi += dz * r.f;
         f[3 * j] -= dx * r.f; f[3 * j + 1] -= dy * r.f; f[3 * j + 2] -= dz * r.f;
         ecoul += r.e;
@@ -123,6 +140,9 @@ export class PairLJCutCoulLong extends PairLJCut {
   readonly name: string = 'lj/cut/coul/long';
   coulLong = true;
   cutCoul = 0;
+  private readonly erfcTables = new ErfcTableCache();
+  /** pair_modify table N (null for 0): erfc.ts makeErfcTable. */
+  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul); }
 
   settings(args: string[]): void {
     if (args.length !== 1 && args.length !== 2) throw new StyleError('usage: pair_style lj/cut/coul/long cutoff (cutoff2)');
@@ -145,6 +165,7 @@ export class PairLJCutCoulLong extends PairLJCut {
     for (let i = 1; i < nt; i++) for (let j = 1; j < nt; j++) cutljsq[i * nt + j] = this.p.get('cut', i, j) ** 2;
     const cutcsq = this.cutCoul * this.cutCoul;
     const g = this.gEwald;
+    const tab = this.erfcTable(g);
     const sLJ = pc.specialLJ, sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0, ecoul = 0;
@@ -163,7 +184,7 @@ export class PairLJCutCoulLong extends PairLJCut {
         const t = ti + type[j];
         let fpair = 0, e = 0;
         if (rsq < cutcsq && qi !== 0 && q[j] !== 0) {
-          const r = coulLongPair(rsq, qi, q[j], g, pc.qqrd2e, sC[sb], this.table === 0);
+          const r = coulLongPair(rsq, qi, q[j], g, pc.qqrd2e, sC[sb], this.table === 0, tab);
           fpair += r.f;
           ecoul += r.e;
           e += r.e;

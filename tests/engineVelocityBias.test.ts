@@ -105,7 +105,6 @@ const velocities = (files: Map<string, string>): Atom[] => {
 };
 
 const MASS: Record<number, number> = { 1: 20, 2: 2, 3: 25 };
-const TYPE = [1, 2, 1, 2, 1, 2, 1, 2, 3, 3];
 const PAIRS: [number, number][] = [[1, 2], [3, 4], [5, 6], [7, 8]];
 const X = [2, 2.1, 6, 6.1, 2, 2.1, 2, 2.1, 14, 14];
 

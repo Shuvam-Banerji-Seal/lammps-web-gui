@@ -50,7 +50,27 @@ const FORMAT = 'lammps-web-restart';
 const VERSION = 1;
 
 /** Pair styles whose coefficients are stored (see the doc quotes above). */
-const PAIR_RESTART_STYLES = new Set(['lj/cut', 'lj/cut/coul/cut', 'coul/cut']);
+const PAIR_RESTART_STYLES = new Set(['lj/cut', 'lj/cut/coul/cut', 'coul/cut', 'zero']);
+
+/*
+ * Pair styles whose doc pages say they keep nothing in restart files, e.g. pair_eam.html: "The eam
+ * pair styles do not write their information to :doc:`binary restart files <restart>`, since it is
+ * stored in tabulated potential files.  Thus, you need to re-specify the pair_style and pair_coeff
+ * commands in an input script that reads a restart file." (pair_sw.html and the others say the same;
+ * the list below is every style whose page says so). write_restart stores no pair style for them.
+ */
+export const PAIR_NOT_IN_RESTART = new Set([
+  'adp', 'agni', 'airebo', 'airebo/morse', 'amoeba', 'body/nparticle', 'body/rounded/polygon',
+  'body/rounded/polyhedron', 'bop', 'comb', 'comb3', 'dispersion/d3', 'e3b', 'eam', 'eam/alloy',
+  'eam/apip', 'eam/cd', 'eam/cd/old', 'eam/fs', 'eam/fs/apip', 'eam/he', 'edip', 'edip/multi',
+  'gw', 'gw/zbl', 'hbond/dreiding/lj', 'hbond/dreiding/lj/angleoffset', 'hbond/dreiding/morse',
+  'hbond/dreiding/morse/angleoffset', 'hippo', 'kim', 'lcbop', 'line/lj', 'list', 'local/density',
+  'meam', 'meam/ms', 'meam/spline', 'meam/sw/spline', 'mesocnt', 'mesocnt/viscous', 'mgpt',
+  'mliap', 'pace', 'pace/apip', 'pace/extrapolation', 'pace/fast/apip', 'pace/precise/apip', 'pod',
+  'polymorphic', 'python', 'quip', 'reaxff', 'rebo', 'rebomos', 'smtbq', 'snap', 'sw',
+  'sw/angle/table', 'sw/mod', 'tersoff', 'tersoff/mod', 'tersoff/mod/c', 'tersoff/table',
+  'tersoff/zbl', 'threebody/table', 'tri/lj', 'uf3', 'vashishta', 'vashishta/table',
+]);
 
 const TYPED = {
   Float64Array, Float32Array, Int32Array, Uint32Array, Int16Array, Uint16Array, Int8Array, Uint8Array,
@@ -156,9 +176,11 @@ export const writeRestartText = (sys: System): string => {
     fixes.push({ id: f.id, props: f.props.map((p) => ({ ...p })), data });
   }
   const pair = sys.ff.pair;
-  if (pair && !PAIR_RESTART_STYLES.has(pair.name)) {
-    throw new StyleError(`write_restart: pair_style ${pair.name} is not stored in the browser restart file (its coefficients come from files or it is a hybrid style); re-specify it after read_restart, or use write_data`);
+  const pairStored = pair && !PAIR_NOT_IN_RESTART.has(pair.name) ? pair : null;
+  if (pairStored && !PAIR_RESTART_STYLES.has(pairStored.name)) {
+    throw new StyleError(`write_restart: pair_style ${pairStored.name} is not stored in the browser restart file yet; re-specify it after read_restart, or use write_data`);
   }
+  if (pair && !pairStored) sys.log(`write_restart: pair_style ${pair.name} keeps its coefficients in potential files and is not stored; re-specify pair_style and pair_coeff after read_restart`);
   const styles: Record<string, Json> = {};
   for (const kind of BONDED_KINDS) {
     const st = sys.ff[kind];
@@ -168,7 +190,7 @@ export const writeRestartText = (sys: System): string => {
   }
   const { f: _f, custom: _c, ...rest } = s;
   const styleEntry = (name: string, obj: unknown) => ({ name, data: encodeValue(obj, name, []) });
-  styles.pair = pair ? styleEntry(pair.name, pair) : null;
+  styles.pair = pairStored ? styleEntry(pairStored.name, pairStored) : null;
   for (const kind of BONDED_KINDS) {
     const st = sys.ff[kind];
     styles[kind] = st ? styleEntry(st.name, st) : null;

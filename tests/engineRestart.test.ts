@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { Session } from '../src/engine/interpreter';
 import type { EngineEvent, SimState } from '../src/engine/types';
 
@@ -217,6 +218,32 @@ describe('write_restart options and unsupported states', () => {
     const third = newSession();
     third.session.addFile('p.restart', files.get('p.restart')!);
     await expect(third.session.execute('read_restart p.restart\nfix p all property/atom i_flag\n')).rejects.toThrow(/same properties/);
+  });
+
+  it('stores pair_style zero, and leaves file-based styles (sw) to be re-specified, as the docs say', async () => {
+    // pair_zero.html: "This pair style writes its information to binary restart files"; pair_sw.html:
+    // "This pair style does not write its information to binary restart files"
+    const zero = newSession();
+    await zero.session.execute(`${LJ_BOX}pair_style zero 2.5\npair_coeff * *\nwrite_restart z.restart\n`);
+    const z2 = newSession();
+    z2.session.addFile('z.restart', zero.files.get('z.restart')!);
+    await expect(z2.session.execute('read_restart z.restart\nrun 0\n')).resolves.toBeUndefined();
+
+    const sw = newSession();
+    sw.session.addFile('Si.sw', readFileSync('tests/oracle/w2tsw_Si.sw', 'utf8'));
+    await sw.session.execute(`units metal\natom_style atomic\nlattice diamond 5.431\nregion box block 0 2 0 2 0 2\ncreate_box 1 box\ncreate_atoms 1 box\nmass * 28.0855\npair_style sw\npair_coeff * * Si.sw Si\nwrite_restart s.restart\n`);
+    expect(sw.events.some((e) => e.kind === 'log' && /pair_style sw keeps its coefficients in potential files/.test(e.text))).toBe(true);
+    const s2 = newSession();
+    s2.session.addFile('s.restart', sw.files.get('s.restart')!);
+    s2.session.addFile('Si.sw', readFileSync('tests/oracle/w2tsw_Si.sw', 'utf8'));
+    // without re-specifying, the restored system has no pair style: a run sees zero pair energy
+    await s2.session.execute('read_restart s.restart\nthermo_style custom step pe\nrun 0\n');
+    const row = s2.events.find((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo');
+    expect(row?.row.pe).toBe(0);
+    const s3 = newSession();
+    s3.session.addFile('s.restart', sw.files.get('s.restart')!);
+    s3.session.addFile('Si.sw', readFileSync('tests/oracle/w2tsw_Si.sw', 'utf8'));
+    await expect(s3.session.execute('read_restart s.restart\npair_style sw\npair_coeff * * Si.sw Si\nrun 0\n')).resolves.toBeUndefined();
   });
 
   it('refuses hybrid pair styles (only the sub-style list is stored natively)', async () => {

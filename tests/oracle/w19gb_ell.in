@@ -1,0 +1,87 @@
+# oracle: atom_style ellipsoid pair gayberne: ellipsoid-ellipsoid pairs with four types, different shapes, epsilon a,b,c and orientations, gamma/upsilon/mu not 1, mixed I J pairs (1 3, 2 3, 1 4 etc. unset), per-pair cutoff, and several run 0 blocks with set quat, shape and displace_atoms between them; torque checksums and pressure in thermo
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      ellipsoid
+boundary        f f f
+region          box block 0 16 0 16 0 16
+create_box      4 box
+create_atoms  1 single 2.353746 2.638973 2.605510 units box
+create_atoms  2 single 2.402028 2.498174 4.879796 units box
+create_atoms  3 single 2.560637 2.615489 7.137544 units box
+create_atoms  4 single 2.311339 2.634306 9.673107 units box
+create_atoms  1 single 2.604912 4.700842 2.478155 units box
+create_atoms  2 single 2.588616 4.791505 5.078108 units box
+create_atoms  3 single 2.660571 4.712236 7.110178 units box
+create_atoms  4 single 2.516565 5.075660 9.652482 units box
+create_atoms  1 single 2.386640 7.268847 2.311616 units box
+create_atoms  2 single 2.388677 7.275155 4.898325 units box
+create_atoms  3 single 2.393234 7.192347 7.187512 units box
+create_atoms  4 single 2.483841 7.215913 9.508596 units box
+create_atoms  1 single 2.635031 9.722582 2.556918 units box
+create_atoms  2 single 2.374363 9.897017 5.043979 units box
+create_atoms  3 single 2.348356 9.633078 7.388594 units box
+create_atoms  4 single 2.584477 9.874576 9.668843 units box
+create_atoms  1 single 5.032014 2.568122 2.421347 units box
+create_atoms  2 single 4.935032 2.652992 5.038479 units box
+create_atoms  3 single 4.902114 2.535601 7.113810 units box
+set             atom * mass 1.0
+set             atom 1 shape 1.044 1.3719 1.2031
+set             atom 1 quat 0.255782479 0.698305535 -0.6685392309 89.96598678
+set             atom 2 shape 1.1277 1.5101 1.5298
+set             atom 2 quat -0.7340407296 0.6747219609 0.07703559388 60.71591987
+set             atom 3 shape 1.5909 1.4479 1.1374
+set             atom 3 quat 0.1788194637 0.7559130702 0.6297769682 63.45446851
+set             atom 4 shape 1.5177 1.381 1.2391
+set             atom 4 quat -0.9378618123 0.3455714461 -0.031553077 128.3290817
+set             atom 5 shape 1.044 1.3719 1.2031
+set             atom 5 quat 0.6210684909 0.365616613 0.6932520624 134.0497511
+set             atom 6 shape 1.1277 1.5101 1.5298
+set             atom 6 quat -0.1880189333 -0.7938303303 -0.5783444367 67.5783599
+set             atom 7 shape 1.5909 1.4479 1.1374
+set             atom 7 quat -0.3608345232 0.5663381869 0.7409854958 167.2322677
+set             atom 8 shape 1.5177 1.381 1.2391
+set             atom 8 quat -0.8815712375 0.3584975434 -0.3071020426 98.69898059
+set             atom 9 shape 1.044 1.3719 1.2031
+set             atom 9 quat 0.123160941 0.09463797418 0.9878638755 138.9797963
+set             atom 10 shape 1.1277 1.5101 1.5298
+set             atom 10 quat 0.6980592513 0.3390495598 -0.630681122 109.5816255
+set             atom 11 shape 1.5909 1.4479 1.1374
+set             atom 11 quat 0.166244619 -0.8181930917 -0.5503842215 18.8963546
+set             atom 12 shape 1.5177 1.381 1.2391
+set             atom 12 quat -0.1439740445 -0.1037917454 0.9841233399 100.9559617
+set             atom 13 shape 1.044 1.3719 1.2031
+set             atom 13 quat 0.8603512388 -0.4379133598 -0.260821079 145.7205866
+set             atom 14 shape 1.1277 1.5101 1.5298
+set             atom 14 quat 0.7583102338 0.6499221009 0.0506641099 20.58613084
+set             atom 15 shape 1.5909 1.4479 1.1374
+set             atom 15 quat 0.7087675477 0.6256743494 0.3258529912 172.9869448
+set             atom 16 shape 1.5177 1.381 1.2391
+set             atom 16 quat 0.3483806894 -0.8242680054 0.446333004 33.45518437
+set             atom 17 shape 1.044 1.3719 1.2031
+set             atom 17 quat 0.03691471398 0.684109783 0.7284443072 69.30713599
+set             atom 18 shape 1.1277 1.5101 1.5298
+set             atom 18 quat 0.5171636422 0.8409913421 -0.1589821676 54.98400944
+set             atom 19 shape 1.5909 1.4479 1.1374
+set             atom 19 quat -0.01491032725 0.6957755037 0.7181045401 11.73543628
+pair_style gayberne 1.3 0.8 1.5 5.0
+pair_coeff 1 1 1.0 1.0 1.0 0.6 0.5 1.0 0.5 1.0
+pair_coeff 2 2 0.7 0.9 0.8 0.4 0.3 0.8 0.4 0.3 4.0
+pair_coeff 3 3 1.3 1.1 0.9 0.9 1.2 0.6 0.9 0.5
+pair_coeff 4 4 0.8 1.0 1.6 0.5 0.9 1.3 0.5 0.9
+pair_coeff 1 2 1.1 0.95 0 0 0 0 0 0
+compute         p all property/atom tqx tqy tqz
+variable        t1 atom c_p[1]*(1+0.1*id)
+variable        t2 atom c_p[2]*(1+0.1*id)
+variable        t3 atom c_p[3]*(1+0.1*id)
+variable        t4 atom c_p[1]*(1+0.2*id)+c_p[2]*(2+0.3*id)
+variable        t5 atom c_p[3]*(1+0.4*id)-c_p[1]*(0.5+0.1*id)
+compute         r all reduce sum v_t1 v_t2 v_t3 v_t4 v_t5
+timestep        0.002
+thermo_style    custom step atoms pe evdwl press c_r[1] c_r[2] c_r[3] c_r[4] c_r[5]
+thermo_modify   format float %.15g norm no
+run             0
+set             atom 4 quat -0.4161032521 0.8316713916 -0.3676693895 96.09994073
+displace_atoms  all move 0.05 0.1 -0.08 units box
+run             0
+set             atom 2 quat 0.1340855543 0.9095754566 0.393311013 19.48149557
+run             0

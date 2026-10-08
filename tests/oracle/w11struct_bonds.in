@@ -1,0 +1,32 @@
+# oracle: fragment/atom and aggregate/atom on an fcc crystal with explicit bonds (one long bond across the box) and a vacancy
+# oracle-files: w11struct_bonds.dump
+# oracle-compare: thermo=all atoms=none
+# thermo is step-only: the bond energy (harmonic, one long bond across the box) is not what this case checks
+units           metal
+atom_style      bond
+lattice         fcc 4.05
+region          box block 0 3 0 3 0 3
+create_box      1 box bond/types 1 extra/bond/per/atom 12
+create_atoms    1 box
+mass            1 26.98
+bond_style      harmonic
+bond_coeff      1 1.0 2.9
+pair_style      lj/cut 4.5
+pair_coeff      * * 0.01 2.5
+group           vac id 60
+delete_atoms    group vac compress no
+group           few id 5 17 30
+displace_atoms  few move 0.4 -0.3 0.2 units box
+create_bonds    single/bond 1 1 2
+create_bonds    single/bond 1 2 3
+create_bonds    single/bond 1 3 4
+create_bonds    single/bond 1 10 11
+create_bonds    single/bond 1 1 108
+compute         fr all fragment/atom
+compute         fs all fragment/atom single yes
+compute         ag all aggregate/atom 2.6
+compute         cl all cluster/atom 2.6
+dump            d all custom 1 w11struct_bonds.dump id c_fr c_fs c_ag c_cl
+dump_modify     d sort id format float %.12g
+thermo_style    custom step
+run             0

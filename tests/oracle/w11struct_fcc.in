@@ -1,0 +1,47 @@
+# oracle: per-atom centro/atom, cna/atom, cluster/atom, aggregate/atom on an fcc crystal with a vacancy and displaced atoms
+# oracle-files: w11struct_fcc.dump
+# oracle-compare: thermo=all atoms=none
+units           metal
+atom_style      atomic
+lattice         fcc 4.05
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 26.98
+group           vac id 1
+delete_atoms    group vac
+group           few id 5 17 30 52 88
+displace_atoms  few move 0.45 -0.30 0.20 units box
+variable        dx atom 0.08*sin(0.9*x+0.4*y)
+variable        dy atom 0.08*cos(0.7*y-0.5*z)
+variable        dz atom 0.08*sin(1.1*z+0.3*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      lj/cut 4.5
+pair_coeff      * * 0.01 2.5
+variable        p1xx atom c_ax[2]*c_ax[2]
+variable        p1xy atom c_ax[2]*c_ax[3]
+variable        p1xz atom c_ax[2]*c_ax[4]
+variable        p1yy atom c_ax[3]*c_ax[3]
+variable        p1yz atom c_ax[3]*c_ax[4]
+variable        p1zz atom c_ax[4]*c_ax[4]
+variable        p2xx atom c_ax[5]*c_ax[5]
+variable        p2xy atom c_ax[5]*c_ax[6]
+variable        p2xz atom c_ax[5]*c_ax[7]
+variable        p2yy atom c_ax[6]*c_ax[6]
+variable        p2yz atom c_ax[6]*c_ax[7]
+variable        p2zz atom c_ax[7]*c_ax[7]
+variable        p3xx atom c_ax[8]*c_ax[8]
+variable        p3xy atom c_ax[8]*c_ax[9]
+variable        p3xz atom c_ax[8]*c_ax[10]
+variable        p3yy atom c_ax[9]*c_ax[9]
+variable        p3yz atom c_ax[9]*c_ax[10]
+variable        p3zz atom c_ax[10]*c_ax[10]
+compute         cf all centro/atom fcc
+compute         c8 all centro/atom 8
+compute         ax all centro/atom fcc axes yes
+# axis signs are not documented (only unit length), so the projector products a_k a_k^T are compared
+compute         cna all cna/atom 3.4
+compute         cl all cluster/atom 2.6
+dump            d all custom 1 w11struct_fcc.dump id c_cf c_c8 c_ax[1] v_p1xx v_p1xy v_p1xz v_p1yy v_p1yz v_p1zz v_p2xx v_p2xy v_p2xz v_p2yy v_p2yz v_p2zz v_p3xx v_p3xy v_p3xz v_p3yy v_p3yz v_p3zz c_cna c_cl
+dump_modify     d sort id format float %.12g
+run             0

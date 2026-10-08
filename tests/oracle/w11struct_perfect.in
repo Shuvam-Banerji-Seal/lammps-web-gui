@@ -1,0 +1,17 @@
+# oracle: centro/atom fcc on a perfect fcc crystal (all 12 neighbours and all 6 opposite pairs exact: CS = 0). Not compared: N=8 (tie-broken neighbour choice) and axes of degenerate pairs, which depend on the neighbour-list order
+# oracle-files: w11struct_perfect.dump
+# oracle-compare: thermo=all atoms=none
+units           metal
+atom_style      atomic
+lattice         fcc 4.05
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 26.98
+pair_style      lj/cut 4.5
+pair_coeff      * * 0.01 2.5
+compute         cf all centro/atom fcc
+compute         ax all centro/atom fcc axes yes
+dump            d all custom 1 w11struct_perfect.dump id c_cf c_ax[1]
+dump_modify     d sort id format float %.12g
+run             0

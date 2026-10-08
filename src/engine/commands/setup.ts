@@ -108,7 +108,7 @@ const newton: Handler = ({ sys }, a) => {
 /** comm_modify cutoff C — sets the ghost cutoff (comm_modify.html "cutoff value = Rcut"). */
 const commModify: Handler = ({ sys }, a) => {
   for (let k = 0; k < a.length;) {
-    if (a[k] === 'cutoff') { sys.nb.commCutoff = num(a[k + 1], 'cutoff'); k += 2; } else if (a[k] === 'mode') { k += 2; } else if (a[k] === 'vel') { yesno(a[k + 1], 'vel'); k += 2; } else if (a[k] === 'group') { k += 2; } else if (a[k] === 'cutoff/multi' || a[k] === 'reduce/multi') { k += a[k] === 'cutoff/multi' ? 3 : 1; } else throw new StyleError(`unknown comm_modify keyword '${a[k]}'`);
+    if (a[k] === 'cutoff') { sys.nb.commCutoff = num(a[k + 1], 'cutoff'); k += 2; } else if (a[k] === 'mode') { k += 2; } else if (a[k] === 'vel') { sys.ghostVelocity = yesno(a[k + 1], 'vel'); k += 2; } else if (a[k] === 'group') { k += 2; } else if (a[k] === 'cutoff/multi' || a[k] === 'reduce/multi') { k += a[k] === 'cutoff/multi' ? 3 : 1; } else throw new StyleError(`unknown comm_modify keyword '${a[k]}'`);
   }
 };
 

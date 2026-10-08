@@ -136,8 +136,11 @@ export class System {
     this.forcesVersion = this.stateVersion;
   }
 
+  /** comm_modify vel yes|no (comm_modify.html: ghost atoms store velocity info). */
+  ghostVelocity = false;
+
   styleContext(): StyleContext {
-    return { s: this._state, readFile: (n) => this.readFile(n), log: (t) => this.log(t) };
+    return { s: this._state, readFile: (n) => this.readFile(n), log: (t) => this.log(t), ghostVelocity: this.ghostVelocity };
   }
 
   /** log file: a copy of the log text goes to this file (log.html). */

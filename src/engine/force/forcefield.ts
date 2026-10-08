@@ -32,6 +32,8 @@ export interface ComputeFlags {
   /** Per-atom energy / virial wanted on this step (compute pe/atom, stress/atom). */
   eatom?: boolean;
   vatom?: boolean;
+  /** A force evaluation inside a timestep: history-dependent pair styles advance their history (not at setup or between runs). */
+  step?: boolean;
 }
 
 export class ForceField {
@@ -168,7 +170,7 @@ export class ForceField {
       this.pair.compute({
         s, nb, geom, x: nb.xall, f: nb.fall, type: nb.typeall, q: nb.qall,
         nlocal: nb.nlocal, nall, half: nb.half, full: nb.full,
-        specialLJ: this.specialLJ, specialCoul: this.specialCoul, qqrd2e, acc,
+        specialLJ: this.specialLJ, specialCoul: this.specialCoul, qqrd2e, acc, historyUpdate: !!flags.step,
         eatom: eatomAll, vatom: vatomAll,
       });
       if (this.pair.virialFdotr) {
@@ -177,7 +179,8 @@ export class ForceField {
         for (let k = 0; k < 3 * nall; k += 3) {
           const x = xa[k], y = xa[k + 1], z = xa[k + 2];
           const fx = fa[k], fy = fa[k + 1], fz = fa[k + 2];
-          v0 += x * fx; v1 += y * fy; v2 += z * fz; v3 += y * fx; v4 += z * fx; v5 += z * fy;
+          // xy = sum x f_y etc.; matters only for non-central forces with torques (granular contacts)
+          v0 += x * fx; v1 += y * fy; v2 += z * fz; v3 += x * fy; v4 += x * fz; v5 += y * fz;
         }
         const v = acc.virial;
         v[0] += v0; v[1] += v1; v[2] += v2; v[3] += v3; v[4] += v4; v[5] += v5;

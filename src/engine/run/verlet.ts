@@ -125,7 +125,7 @@ export const runVerlet = async (sys: System, nsteps: number, hooks: RunHooks): P
       nb.forwardComm(s, sys.geom);
     }
     for (const f of fPreForce) f.preForce!();
-    sys.computeForcesInRun(flags);
+    sys.computeForcesInRun({ ...flags, step: true });
     sys.forcesCurrent();
     for (const f of fPreRev) f.preReverse!();
     for (const f of fPostForce) f.postForce!();

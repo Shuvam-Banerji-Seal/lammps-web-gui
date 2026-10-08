@@ -36,6 +36,7 @@ import * as pairSW from './registry/pair_sw';
 import * as fixDeform from './registry/fix_deform';
 import * as computeDeform from './registry/compute_deform';
 import * as pairZBL from './registry/pair_zbl';
+import * as pairGran from './registry/pair_gran';
 import * as pairTable from './registry/pair_table';
 import * as pairCharmm from './registry/pair_charmm';
 import * as pairCoulLong2 from './registry/pair_coullong2';
@@ -74,6 +75,7 @@ export const PAIR_STYLES: Record<string, () => Pair> = {
   ...pairCoul.PAIRS, ...pairSimple.PAIRS, ...pairLJ.PAIRS, ...pairLJCoul.PAIRS, ...pairSimple2.PAIRS, ...pairLJ2.PAIRS,
   ...pairEAM.PAIRS, ...pair3Body.PAIRS, ...pairSW.PAIRS,
   ...pairZBL.PAIRS, ...pairTable.PAIRS, ...pairCharmm.PAIRS, ...pairCoulLong2.PAIRS,
+  ...pairGran.PAIRS,
 };
 
 export const BOND_STYLES: Record<string, () => Bonded> = {

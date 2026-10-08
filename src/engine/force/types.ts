@@ -76,6 +76,8 @@ export interface PairCompute {
   /** Per-atom energy (length nall) and virial (6 * nall), or null when not requested. */
   eatom: Float64Array | null;
   vatom: Float64Array | null;
+  /** True inside a timestep; false at run setup and between runs (granular contact history is then left alone). */
+  historyUpdate?: boolean;
 }
 
 /**
@@ -214,6 +216,8 @@ export interface StyleContext {
   /** Reads a file the notebook has (uploads or files written by the session). */
   readFile(name: string): string;
   log(text: string): void;
+  /** comm_modify vel yes: ghost atoms carry velocities (granular pair styles require it). */
+  ghostVelocity?: boolean;
 }
 
 /** Base for pair styles. */

@@ -2,7 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { globalScalar, parseRef, type Ref } from '../refs';
-import { BlockRegion, ConeRegion, SphereRegion, type Region } from '../region';
+import { BlockRegion, ConeRegion, SphereRegion, type Region, type SurfaceContact } from '../region';
 import { massOf, nativeOrder } from '../atoms';
 import { RanMars } from '../rng';
 
@@ -214,9 +214,13 @@ export class FixVector extends Fix {
  * used in fix wall/region", and an atom outside a side-in region errors the
  * same way.
  *
- * Supported here: block, sphere and cylinder (radlo = radhi) regions, static
- * (no move/rotate). Not supported (StyleError): union, intersect, cone,
- * prism, dynamic regions, and style colloid (rejected in the constructor).
+ * Supported here: block, sphere, cylinder (radlo = radhi), cone (side in),
+ * compound (union/intersect) regions and dynamic (move/rotate) regions.  A
+ * side-in region contributes one force per face within the cutoff (region.ts
+ * filters the faces of a compound region as documented on region.html); a
+ * side-out region contributes the nearest point of the solid only.  Not
+ * supported (StyleError): a side-out union/intersect region, and style colloid
+ * (rejected in the constructor).
  */
 const WR_STYLES = ['lj93', 'lj126', 'lj1043', 'colloid', 'harmonic', 'morse'];
 
@@ -269,13 +273,15 @@ export class FixWallRegion extends Fix {
     this.energyGlobal = true;
   }
 
-  /** The region, which must be a static block, sphere or cylinder. */
+  /** The region, which may be a primitive or a compound (union/intersect). */
   private regionOf() {
     const r = this.sys.region(this.regionId);
-    if (r.style !== 'block' && r.style !== 'sphere' && r.style !== 'cylinder') {
-      throw new StyleError(`fix ${this.id} (wall/region): region style ${r.style} is not supported (block, sphere and cylinder are)`);
+    if (!['block', 'sphere', 'cylinder', 'cone', 'union', 'intersect'].includes(r.style)) {
+      throw new StyleError(`fix ${this.id} (wall/region): region style ${r.style} is not supported (block, sphere, cylinder, cone, union and intersect are)`);
     }
-    if (r.dynamic) throw new StyleError(`fix ${this.id} (wall/region): a region with move or rotate is not supported`);
+    if (r.hasSideOutSubRegion()) {
+      throw new StyleError(`fix ${this.id} (wall/region): region style ${r.style} is not supported (a side-out sub-region is not supported)`);
+    }
     return r;
   }
 
@@ -345,61 +351,39 @@ export class FixWallRegion extends Fix {
     if (!r.match(x, y, z)) {
       throw new StyleError(`Particle outside surface of region used in fix ${this.id} wall/region`);
     }
-    const g = this.regionGeometry(r);
     if (r.interior) {
-      // side in: each face of the region exerts a force on the atom (fix_wall_region.html)
-      if (g.kind === 'block') {
-        const [lo, hi] = [g.lo, g.hi];
-        for (let k = 0; k < 3; k++) {
-          const p = [x, y, z][k];
-          const dlo = p - lo[k], dhi = hi[k] - p;
-          if (dlo <= 0 || dhi <= 0) throw new StyleError(`Particle on or inside fix ${this.id} wall/region surface`);
-          const e = [0, 0, 0];
-          e[k] = 1;
-          this.contribute(i, dlo, e[0], e[1], e[2]);
-          this.contribute(i, dhi, -e[0], -e[1], -e[2]);
-        }
-      } else if (g.kind === 'sphere') {
-        const dx = x - g.c[0], dy = y - g.c[1], dz = z - g.c[2];
-        const rho = Math.hypot(dx, dy, dz);
-        const d = g.R - rho;
-        if (!(d > 0) || rho === 0) throw new StyleError(`Particle on or inside fix ${this.id} wall/region surface`);
-        this.contribute(i, d, -dx / rho, -dy / rho, -dz / rho);
-      } else {
-        // cylinder: lateral surface and the two caps, each a face of the region
-        const { axis, c1, c2, R, lo, hi } = g;
-        const p = [x, y, z];
-        const a = p[axis];
-        const [d1, d2] = axis === 0 ? [1, 2] : axis === 1 ? [0, 2] : [0, 1];
-        const e1 = p[d1] - c1, e2 = p[d2] - c2;
-        const rho = Math.hypot(e1, e2);
-        const dLat = R - rho;
-        if (!(dLat > 0) || rho === 0) throw new StyleError(`Particle on or inside fix ${this.id} wall/region surface`);
-        const u = [0, 0, 0];
-        u[d1] = -e1 / rho;
-        u[d2] = -e2 / rho;
-        this.contribute(i, dLat, u[0], u[1], u[2]);
-        const ax = [0, 0, 0];
-        ax[axis] = 1;
-        if (a - lo <= 0 || hi - a <= 0) throw new StyleError(`Particle on or inside fix ${this.id} wall/region surface`);
-        this.contribute(i, a - lo, ax[0], ax[1], ax[2]);
-        this.contribute(i, hi - a, -ax[0], -ax[1], -ax[2]);
+      // side in: every face of the region within the cutoff exerts a force on the
+      // atom (fix_wall_region.html).  A compound region returns its sub-region
+      // faces filtered as documented on region.html; a dynamic region's faces are
+      // returned in the lab frame.
+      const cs: SurfaceContact[] = [];
+      r.contacts(x, y, z, cs);
+      for (const c of cs) {
+        if (c.dist <= 0) throw new StyleError(`Particle on or inside fix ${this.id} wall/region surface`);
+        this.contribute(i, c.dist, c.nx, c.ny, c.nz);
       }
       return;
     }
-    // side out: the particle is in the exterior; the nearest point of the solid is the only one
+    if (r.style === 'union' || r.style === 'intersect') {
+      throw new StyleError(`fix ${this.id} (wall/region): a side-out ${r.style} region is not supported`);
+    }
+    // side out: the particle is in the exterior; the nearest point of the solid
+    // is the only one.  The nearest point is found in the region's body frame
+    // and mapped back to the lab frame for a moving region.
+    const g = this.regionGeometry(r);
+    const [bx, by, bz] = r.bodyPoint(x, y, z);
     let sx: number, sy: number, sz: number;
     if (g.kind === 'block') {
-      sx = Math.min(Math.max(x, g.lo[0]), g.hi[0]);
-      sy = Math.min(Math.max(y, g.lo[1]), g.hi[1]);
-      sz = Math.min(Math.max(z, g.lo[2]), g.hi[2]);
+      sx = Math.min(Math.max(bx, g.lo[0]), g.hi[0]);
+      sy = Math.min(Math.max(by, g.lo[1]), g.hi[1]);
+      sz = Math.min(Math.max(bz, g.lo[2]), g.hi[2]);
     } else if (g.kind === 'sphere') {
-      const dx = x - g.c[0], dy = y - g.c[1], dz = z - g.c[2];
+      const dx = bx - g.c[0], dy = by - g.c[1], dz = bz - g.c[2];
       const rho = Math.hypot(dx, dy, dz);
       const s = rho > 0 ? g.R / rho : 0;
       sx = g.c[0] + dx * s; sy = g.c[1] + dy * s; sz = g.c[2] + dz * s;
     } else {
-      const p = [x, y, z];
+      const p = [bx, by, bz];
       const { axis, c1, c2, R, lo, hi } = g;
       const [d1, d2] = axis === 0 ? [1, 2] : axis === 1 ? [0, 2] : [0, 1];
       const e1 = p[d1] - c1, e2 = p[d2] - c2;
@@ -412,7 +396,8 @@ export class FixWallRegion extends Fix {
       q[d2] = c2 + (rho > 0 ? e2 * (rc / rho) : 0);
       [sx, sy, sz] = q;
     }
-    const dx = x - sx, dy = y - sy, dz = z - sz;
+    const [lx, ly, lz] = r.labPoint(sx, sy, sz);
+    const dx = x - lx, dy = y - ly, dz = z - lz;
     const d = Math.hypot(dx, dy, dz);
     if (!(d > 0)) throw new StyleError(`Particle on or inside fix ${this.id} wall/region surface`);
     this.contribute(i, d, dx / d, dy / d, dz / d);

@@ -26,6 +26,31 @@ export const BIG = 1.0e20;
 /** A parameter: a constant or an equal-style variable (with a scale factor). */
 export type Param = number | { variable: string; scale: number };
 
+/**
+ * One wall/particle contact point of a region surface (fix wall/region and
+ * fix wall/gran/region).  "The distance between a particle and the region
+ * boundary is the distance to the nearest point on the region surface.  The
+ * force the wall exerts on the particle is along the direction between that
+ * point and the particle center, which is the direction normal to the surface
+ * at that point." (docs.lammps.org/fix_wall_gran_region.html)
+ * For a compound region the contacts are those of its primitive sub-regions,
+ * filtered so that internal faces are dropped: "LAMMPS discards points that
+ * are part of multiple sub-regions when calculating wall/particle
+ * interactions, to avoid double-counting the interaction." (region.html)
+ */
+export interface SurfaceContact {
+  /** Stable identity of the face (granular shear-history key). */
+  key: string;
+  /** Distance from the particle center to the surface point (>= 0 inside). */
+  dist: number;
+  /** Unit normal from the surface point toward the particle (lab frame). */
+  nx: number; ny: number; nz: number;
+  /** Signed radius of curvature of the wall at the contact (0 = flat). */
+  curvature: number;
+  /** The primitive sub-region that produced this contact (for its motion). */
+  source: Region;
+}
+
 export interface RegionEnv {
   /** Evaluates an equal-style variable. */
   variable(name: string): number;
@@ -95,6 +120,98 @@ export abstract class Region {
     return typeof p === 'number' ? p : this.env.variable(p.variable) * p.scale;
   }
 
+  /**
+   * Current rigid motion of the region: the move displacement and the rotate
+   * angle.  "If the move or rotate keywords are used, the region is dynamic,
+   * meaning its location or orientation changes with time." (region.html)  The
+   * wall fixes difference this over a timestep to get the surface velocity
+   * that enters the granular contact.
+   */
+  transformState(): { d: [number, number, number]; theta: number } {
+    const d = this.move
+      ? (this.move.map((v) => (v ? this.env.variable(v) : 0)) as [number, number, number])
+      : ([0, 0, 0] as [number, number, number]);
+    const theta = this.rotate ? this.env.variable(this.rotate.theta) : 0;
+    return { d, theta };
+  }
+
+  /** Rotate a body-frame vector by +theta about the region axis (Rodrigues). */
+  protected toLabVector(vx: number, vy: number, vz: number): [number, number, number] {
+    if (!this.rotate) return [vx, vy, vz];
+    const th = this.env.variable(this.rotate.theta);
+    const [ux, uy, uz] = this.rotate.r;
+    const c = Math.cos(th), s = Math.sin(th);
+    const dot = ux * vx + uy * vy + uz * vz;
+    const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
+    return [vx * c + cx * s + ux * dot * (1 - c), vy * c + cy * s + uy * dot * (1 - c), vz * c + cz * s + uz * dot * (1 - c)];
+  }
+
+  /** Maps a lab-frame point into the region's body frame (identity when static). */
+  bodyPoint(x: number, y: number, z: number): [number, number, number] {
+    return this.dynamic ? this.toBodyFrame(x, y, z) : [x, y, z];
+  }
+
+  /** Maps a body-frame point back to the lab frame (move applied after rotate). */
+  labPoint(bx: number, by: number, bz: number): [number, number, number] {
+    if (!this.dynamic) return [bx, by, bz];
+    let px = bx, py = by, pz = bz;
+    if (this.rotate) {
+      const th = this.env.variable(this.rotate.theta);
+      const [ox, oy, oz] = this.rotate.p;
+      const [ux, uy, uz] = this.rotate.r;
+      const vx = bx - ox, vy = by - oy, vz = bz - oz;
+      const c = Math.cos(th), s = Math.sin(th);
+      const dot = ux * vx + uy * vy + uz * vz;
+      const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
+      px = ox + vx * c + cx * s + ux * dot * (1 - c);
+      py = oy + vy * c + cy * s + uy * dot * (1 - c);
+      pz = oz + vz * c + cz * s + uz * dot * (1 - c);
+    }
+    const d = this.move ? this.move.map((v) => (v ? this.env.variable(v) : 0)) : [0, 0, 0];
+    return [px + d[0], py + d[1], pz + d[2]];
+  }
+
+  /**
+   * Surface contacts the region's interior surface exerts on a particle at the
+   * lab-frame point (x, y, z).  A primitive returns its faces (the wall fixes
+   * apply each one: "if the region surface is comprised of multiple faces,
+   * then each face can exert a force on the particle if it is close enough").
+   * A point outside the region yields no contact.
+   */
+  contacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+    let px = x, py = y, pz = z;
+    if (this.env.remap) {
+      const p = [px, py, pz];
+      this.env.remap(p);
+      px = p[0]; py = p[1]; pz = p[2];
+    }
+    const [bx, by, bz] = this.dynamic ? this.toBodyFrame(px, py, pz) : [px, py, pz];
+    const body: SurfaceContact[] = [];
+    this.primitiveContacts(bx, by, bz, body);
+    if (!this.dynamic) { for (const c of body) out.push(c); return; }
+    for (const c of body) {
+      const [nx, ny, nz] = this.toLabVector(c.nx, c.ny, c.nz);
+      out.push({ key: c.key, dist: c.dist, nx, ny, nz, curvature: c.curvature, source: c.source });
+    }
+  }
+
+  /** The interior faces of a primitive region in its body frame (no motion). */
+  protected primitiveContacts(_x: number, _y: number, _z: number, _out: SurfaceContact[]): void {
+    throw new StyleError(`region style ${this.style} cannot be used as a wall`);
+  }
+
+  /** The primitive sub-regions of a compound region (empty for a primitive). */
+  subRegions(): Region[] { return []; }
+
+  /**
+   * True if the region or any sub-region is side out.  The wall surface
+   * helpers model interior surfaces only, so a compound region with a
+   * side-out sub-region is rejected by the wall fixes.
+   */
+  hasSideOutSubRegion(): boolean {
+    return this.subRegions().some((r) => !r.interior || r.hasSideOutSubRegion());
+  }
+
   /** Axis-aligned bounding box of the interior, if finite (for create_atoms). */
   bbox(): { lo: number[]; hi: number[] } | null { return null; }
 }
@@ -104,6 +221,18 @@ export class BlockRegion extends Region {
   protected inside(x: number, y: number, z: number): boolean {
     const b = this.b.map((p) => this.val(p));
     return x >= b[0] && x <= b[1] && y >= b[2] && y <= b[3] && z >= b[4] && z <= b[5];
+  }
+  protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+    const b = this.b.map((p) => this.val(p));
+    const lo = [b[0], b[2], b[4]], hi = [b[1], b[3], b[5]];
+    const p = [x, y, z];
+    for (let a = 0; a < 3; a++) if (p[a] < lo[a] || p[a] > hi[a]) return;
+    for (let a = 0; a < 3; a++) {
+      const e = [0, 0, 0];
+      e[a] = 1;
+      out.push({ key: `${a}lo`, dist: p[a] - lo[a], nx: e[0], ny: e[1], nz: e[2], curvature: 0, source: this });
+      out.push({ key: `${a}hi`, dist: hi[a] - p[a], nx: -e[0], ny: -e[1], nz: -e[2], curvature: 0, source: this });
+    }
   }
   bbox() {
     if (!this.interior || this.dynamic) return null;
@@ -119,6 +248,17 @@ export class SphereRegion extends Region {
     const r = this.val(this.r);
     const dx = x - cx, dy = y - cy, dz = z - cz;
     return dx * dx + dy * dy + dz * dz <= r * r;
+  }
+  protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+    const [cx, cy, cz] = this.c.map((p) => this.val(p));
+    const R = this.val(this.r);
+    const dx = x - cx, dy = y - cy, dz = z - cz;
+    const rho = Math.hypot(dx, dy, dz);
+    if (rho > R) return;
+    // concave wall as seen from the interior: radius of curvature -R (measured
+    // with native LAMMPS: R_eff = R Rw / (R + Rw) with Rw = -R)
+    if (rho === 0) { out.push({ key: 'sphere', dist: R, nx: 0, ny: 0, nz: 0, curvature: -R, source: this }); return; }
+    out.push({ key: 'sphere', dist: R - rho, nx: -dx / rho, ny: -dy / rho, nz: -dz / rho, curvature: -R, source: this });
   }
 }
 
@@ -148,6 +288,41 @@ export class ConeRegion extends Region {
     const r = hi > lo ? r1 + (r2 - r1) * (a - lo) / (hi - lo) : Math.max(r1, r2);
     const e1 = p[d1] - this.val(this.c1), e2 = p[d2] - this.val(this.c2);
     return e1 * e1 + e2 * e2 <= r * r;
+  }
+  protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+    // lateral surface: the generator radius rho(a) = rl + slope (a - lo) (a
+    // cylinder has slope 0).  Measured with native LAMMPS (black box, single
+    // sphere, Hertz k_n): the overlap is the distance to the generator, the
+    // normal is the gradient of the generator, and the curvature radius of the
+    // wall at the contact point is Rw = -2 rho_s, rho_s = radial distance of
+    // the surface point (cylinder: rho_s = Rc; cones: 2.94 = 2 x 1.47 and
+    // 3.44 = 2 x 1.72 at two points).
+    const rl = this.val(this.radlo), rh = this.val(this.radhi);
+    const axis = this.axis;
+    const c1 = this.val(this.c1), c2 = this.val(this.c2), lo = this.val(this.lo), hi = this.val(this.hi);
+    const p = [x, y, z];
+    const a = p[axis];
+    if (a < lo || a > hi) return;
+    const [d1, d2] = axis === 0 ? [1, 2] : axis === 1 ? [0, 2] : [0, 1];
+    const e1 = p[d1] - c1, e2 = p[d2] - c2;
+    const rho = Math.hypot(e1, e2);
+    const slope = hi > lo ? (rh - rl) / (hi - lo) : 0;
+    const rad = rl + slope * (a - lo);
+    if (rho > rad) return;
+    const f = rho - rad;
+    const q = 1 + slope * slope;
+    if (rho > 0) {
+      const u = [0, 0, 0];
+      u[d1] = (-e1 / rho) / Math.sqrt(q);
+      u[d2] = (-e2 / rho) / Math.sqrt(q);
+      u[axis] = slope / Math.sqrt(q);
+      const rhoS = rho - f / q;
+      out.push({ key: 'lat', dist: -f / Math.sqrt(q), nx: u[0], ny: u[1], nz: u[2], curvature: -2 * rhoS, source: this });
+    }
+    const ax = [0, 0, 0];
+    ax[axis] = 1;
+    out.push({ key: 'lo', dist: a - lo, nx: ax[0], ny: ax[1], nz: ax[2], curvature: 0, source: this });
+    out.push({ key: 'hi', dist: hi - a, nx: -ax[0], ny: -ax[1], nz: -ax[2], curvature: 0, source: this });
   }
   /**
    * Axis-aligned bounding box, as create_box.html describes for regions other than prism. Measured with
@@ -195,6 +370,13 @@ export class PrismRegion extends Region {
 
 export class CompoundRegion extends Region {
   constructor(id: string, style: 'union' | 'intersect', env: RegionEnv, readonly members: string[]) { super(id, style, env); }
+  subRegions(): Region[] {
+    return this.members.map((m) => {
+      const r = this.env.region(m);
+      if (!r) throw new StyleError(`region ${this.id}: sub-region ${m} no longer exists`);
+      return r;
+    });
+  }
   protected inside(x: number, y: number, z: number): boolean {
     const regs = this.members.map((m) => {
       const r = this.env.region(m);
@@ -202,5 +384,43 @@ export class CompoundRegion extends Region {
       return r;
     });
     return this.style === 'union' ? regs.some((r) => r.match(x, y, z)) : regs.every((r) => r.match(x, y, z));
+  }
+  /**
+   * Contacts of the union/intersect surface.  Measured with native LAMMPS
+   * (black box, fix wall/gran/region granular hooke, blocks A = [0,2]^3 and
+   * B = [1,3]x[0,2]x[0,2], particle radius 0.5):
+   * - a sub-region contributes only when the particle is inside it;
+   * - intersect keeps a face contact only when its contact point lies inside
+   *   every sub-region (A's xlo and B's xhi faces were dropped, the shared
+   *   ylo/yhi/zlo/zhi faces were counted once per sub-region);
+   * - union keeps a face contact only when its contact point lies inside no
+   *   other sub-region (the shared faces became invisible, matching the note
+   *   "Having two coincident faces could cause the face to become invisible
+   *   to the particles." on region.html).
+   */
+  contacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+    let px = x, py = y, pz = z;
+    if (this.env.remap) {
+      const p = [px, py, pz];
+      this.env.remap(p);
+      px = p[0]; py = p[1]; pz = p[2];
+    }
+    const members = this.members.map((m) => {
+      const r = this.env.region(m);
+      if (!r) throw new StyleError(`region ${this.id}: sub-region ${m} no longer exists`);
+      return r;
+    });
+    for (const m of members) {
+      if (!m.match(px, py, pz)) continue;
+      const sub: SurfaceContact[] = [];
+      m.contacts(px, py, pz, sub);
+      for (const c of sub) {
+        const qx = px - c.dist * c.nx, qy = py - c.dist * c.ny, qz = pz - c.dist * c.nz;
+        const keep = this.style === 'intersect'
+          ? members.every((mm) => mm.match(qx, qy, qz))
+          : members.every((mm) => mm === m || !mm.match(qx, qy, qz));
+        if (keep) out.push(c);
+      }
+    }
   }
 }

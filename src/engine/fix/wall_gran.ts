@@ -6,7 +6,7 @@ import { granularContact, newContactOut, parseGranularSpec, PairGranular, type C
 
 /** The classic fstyles of fix wall/gran/region (hooke, hooke/history, hertz/history). */
 const CLASSIC_FSTYLES = ['hooke', 'hooke/history', 'hertz/history'] as const;
-import { BlockRegion, ConeRegion, SphereRegion } from '../region';
+import { type Region, type SurfaceContact } from '../region';
 
 /*
  * fix ID group-ID wall/gran fstyle fstyle_params wallstyle args keyword values ...
@@ -319,15 +319,18 @@ export class FixWallGran extends Fix {
  * pair_coeff of pair_style granular is NOT used for the wall ("Any pair coefficients defined by pair_style
  * granular are not taken into consideration").
  * Supported here: planes xplane/yplane/zplane (lo and hi, NULL allowed; wiggle and shear motion) for
- * wall/gran; region walls for wall/gran/region with block, sphere (interior) and cylinder (radlo = radhi,
- * interior) regions, static only. Side-out regions, cones, the contacts and temperature keywords, and
- * dynamic regions throw a StyleError.
+ * wall/gran; region walls for wall/gran/region with block, sphere (interior), cylinder and cone
+ * regions, including compound (union/intersect) regions and dynamic (move/rotate) regions.  For a
+ * compound region the sub-region faces are filtered as documented on region.html (see region.ts);
+ * for a moving region the surface velocity enters the granular contact through the full relative
+ * velocity (measured with native LAMMPS, see updateVelocities).  Side-out regions, the contacts and
+ * temperature keywords throw a StyleError.
  */
 
 const WALL_WORDS = ['xplane', 'yplane', 'zplane', 'zcylinder', 'region'] as const;
 
 /** A wall/particle contact candidate: history key, distance to the surface, unit normal (wall to particle), effective radius. */
-interface WallElement { key: number; dist: number; nx: number; ny: number; nz: number; Rf: number }
+interface WallElement { key: string; dist: number; nx: number; ny: number; nz: number; Rf: number; source: Region | null }
 
 export class FixWallGranGranular extends Fix {
   readonly style: string;
@@ -340,6 +343,8 @@ export class FixWallGranGranular extends Fix {
   private readonly step0: number;
   private shear = new Map<string, Float64Array>();
   private readonly out: ContactOut = newContactOut();
+  /** Previous move/rotate state of every sub-region, for the surface velocity. */
+  private readonly prevStates = new Map<Region, { d: [number, number, number]; theta: number }>();
 
   constructor(sys: System, id: string, group: string, args: string[], regionMode: boolean) {
     super(sys, id, group, args);
@@ -439,7 +444,10 @@ export class FixWallGranGranular extends Fix {
     }
     if (this.regionId) {
       const r = this.sys.region(this.regionId);
-      if (r.dynamic) throw new StyleError(`fix ${this.id} wall/gran/region: a dynamic region is not supported`);
+      if (!r.interior) throw new StyleError(`fix ${this.id} wall/gran/region: side-out regions are not supported`);
+      if (r.hasSideOutSubRegion()) {
+        throw new StyleError(`fix ${this.id} wall/gran/region: region style ${r.style} is not supported (a side-out sub-region is not supported)`);
+      }
     }
   }
 
@@ -447,73 +455,57 @@ export class FixWallGranGranular extends Fix {
 
   setup(): void { this.apply(false); }
 
-  private pv(p: number | { variable: string; scale: number }): number {
-    return typeof p === 'number' ? p : this.sys.regionEnv.variable(p.variable) * p.scale;
+  /** The primitive sub-regions of a region (a compound recurses into members). */
+  private sourcesOf(r: Region, out: Region[]): void {
+    if (r.style === 'union' || r.style === 'intersect') {
+      const c = r as unknown as { members: string[] };
+      for (const id of c.members) this.sourcesOf(this.sys.region(id), out);
+      return;
+    }
+    out.push(r);
   }
 
-  /** Contact candidates of one atom at its position (planes or region faces; static walls only). */
+  /**
+   * Velocity of a moving region at the contact point.  Measured with native
+   * LAMMPS (black box, a block region moved by dy = v*time and a block rotated
+   * by theta = omega*time, single sphere with classic hooke and xmu > 0): the
+   * surface velocity enters the granular contact through the full relative
+   * velocity — its normal component changes the normal damping and its
+   * tangential component enters the tangential damping, Coulomb-capped by
+   * xmu |F_n|.  The surface velocity is the finite difference of the region's
+   * move/rotate state over one timestep (zero on the setup step):
+   * ddot + omega x (q - (P + d)), with the move displacement applied to the
+   * rotation point P (region.html).
+   */
+  private updateVelocities(dt: number, vel: Map<Region, { ddot: number[]; omega: number[]; d: number[] }>): void {
+    const srcs: Region[] = [];
+    this.sourcesOf(this.sys.region(this.regionId!), srcs);
+    for (const src of srcs) {
+      const cur = src.transformState();
+      const prev = this.prevStates.get(src);
+      const ddot = [0, 0, 0], omega = [0, 0, 0];
+      if (prev) {
+        for (let q = 0; q < 3; q++) ddot[q] = (cur.d[q] - prev.d[q]) / dt;
+        if (src.rotate) {
+          const dth = (cur.theta - prev.theta) / dt;
+          omega[0] = dth * src.rotate.r[0]; omega[1] = dth * src.rotate.r[1]; omega[2] = dth * src.rotate.r[2];
+        }
+      }
+      this.prevStates.set(src, cur);
+      vel.set(src, { ddot, omega, d: cur.d });
+    }
+  }
+
+  /** Contact candidates of one atom at its position (region faces; all sub-regions of a compound). */
   private regionElements(x: number, y: number, z: number, R: number, out: WallElement[]): void {
     out.length = 0;
-    if (this.regionId) {
-      const r = this.sys.region(this.regionId);
-      if (!r.interior) throw new StyleError(`fix ${this.id} wall/gran/region: side-out regions are not supported`);
-      if (r instanceof BlockRegion) {
-        const b = r.b.map((q) => this.pv(q));
-        const lo = [b[0], b[2], b[4]], hi = [b[1], b[3], b[5]];
-        const p = [x, y, z];
-        for (let a = 0; a < 3; a++) {
-          const dlo = p[a] - lo[a], dhi = hi[a] - p[a];
-          if (dlo <= 0 || dhi <= 0) continue;
-          const e = [0, 0, 0];
-          e[a] = 1;
-          out.push({ key: 2 * a, dist: dlo, nx: e[0], ny: e[1], nz: e[2], Rf: R });
-          out.push({ key: 2 * a + 1, dist: dhi, nx: -e[0], ny: -e[1], nz: -e[2], Rf: R });
-        }
-      } else if (r instanceof SphereRegion) {
-        const c = r.c.map((q) => this.pv(q));
-        const Rs = this.pv(r.r);
-        const dx = x - c[0], dy = y - c[1], dz = z - c[2];
-        const rho = Math.hypot(dx, dy, dz);
-        if (rho === 0 || !(Rs - rho > 0)) return;
-        // concave wall: radius of curvature -Rs, so R_eff = R (-Rs) / (R - Rs)
-        // measured with native LAMMPS: the interior sphere has curvature radius -Rs (R_eff = R Rw / (R + Rw))
-        out.push({ key: 0, dist: Rs - rho, nx: -dx / rho, ny: -dy / rho, nz: -dz / rho, Rf: (R * -Rs) / (R - Rs) });
-      } else if (r instanceof ConeRegion) {
-        // lateral surface: the generator radius rho(a) = rl + slope (a - lo) of the cone (a cylinder has slope 0).
-        // Measured with native LAMMPS (black box, single sphere, Hertz k_n): the overlap is the distance to the
-        // generator, the normal is the gradient of the generator (checked against the hooke forces), and the
-        // curvature radius of the wall at the contact point is Rw = -2 rho_s, rho_s = radial distance of the
-        // surface point (cylinder: rho_s = Rc; cones: 2.94 = 2 x 1.47 and 3.44 = 2 x 1.72 at two points).
-        const rl = this.pv(r.radlo), rh = this.pv(r.radhi);
-        const axis = r.axis;
-        const c1 = this.pv(r.c1), c2 = this.pv(r.c2), lo = this.pv(r.lo), hi = this.pv(r.hi);
-        const p = [x, y, z];
-        const a = p[axis];
-        const [d1, d2] = axis === 0 ? [1, 2] : axis === 1 ? [0, 2] : [0, 1];
-        const e1 = p[d1] - c1, e2 = p[d2] - c2;
-        const rho = Math.hypot(e1, e2);
-        const slope = hi > lo ? (rh - rl) / (hi - lo) : 0;
-        const f = rho - (rl + slope * (a - lo));
-        const q = 1 + slope * slope;
-        if (rho > 0 && f < 0 && a - lo > 0 && hi - a > 0) {
-          // inside the generator: unit normal from the wall to the particle = (-e_rho + slope e_axis) / sqrt(q)
-          const u = [0, 0, 0];
-          u[d1] = (-e1 / rho) / Math.sqrt(q);
-          u[d2] = (-e2 / rho) / Math.sqrt(q);
-          u[axis] = slope / Math.sqrt(q);
-          const rhoS = rho - f / q;
-          const Rw = -2 * rhoS;
-          out.push({ key: 0, dist: -f / Math.sqrt(q), nx: u[0], ny: u[1], nz: u[2], Rf: (R * Rw) / (R + Rw) });
-        }
-        // the flat caps of the cone (and of the cylinder): side in, the axial faces
-        const ax = [0, 0, 0];
-        ax[axis] = 1;
-        if (a - lo > 0) out.push({ key: 1, dist: a - lo, nx: ax[0], ny: ax[1], nz: ax[2], Rf: R });
-        if (hi - a > 0) out.push({ key: 2, dist: hi - a, nx: -ax[0], ny: -ax[1], nz: -ax[2], Rf: R });
-      } else {
-        throw new StyleError(`fix ${this.id} wall/gran/region: region style ${r.style} is not supported (block, sphere, cylinder)`);
-      }
-      return;
+    const r = this.sys.region(this.regionId!);
+    if (!r.interior) throw new StyleError(`fix ${this.id} wall/gran/region: side-out regions are not supported`);
+    const cs: SurfaceContact[] = [];
+    r.contacts(x, y, z, cs);
+    for (const c of cs) {
+      const Rf = c.curvature === 0 ? R : (R * c.curvature) / (R + c.curvature);
+      out.push({ key: `${c.source.id}:${c.key}`, dist: c.dist, nx: c.nx, ny: c.ny, nz: c.nz, Rf, source: c.source });
     }
   }
 
@@ -535,6 +527,8 @@ export class FixWallGranGranular extends Fix {
     const bit = this.groupBit;
     const pm = this.pm;
     const jkr = pm.normal === 'jkr';
+    const vel = new Map<Region, { ddot: number[]; omega: number[]; d: number[] }>();
+    if (this.regionId) this.updateVelocities(dt, vel);
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & bit)) continue;
       const R = radius[i];
@@ -552,7 +546,7 @@ export class FixWallGranGranular extends Fix {
           if (sd === 0) throw new StyleError(`fix wall/gran: particle ${id[i]} is at the wall position (zero distance); native LAMMPS gives NaN forces`);
           const n = [0, 0, 0];
           n[p.dim] = sd > 0 ? 1 : -1;
-          cand.push({ key: k, dist, nx: n[0], ny: n[1], nz: n[2], Rf: R });
+          cand.push({ key: `${k}`, dist, nx: n[0], ny: n[1], nz: n[2], Rf: R, source: null });
         }
       }
       for (const e of cand) {
@@ -561,10 +555,29 @@ export class FixWallGranGranular extends Fix {
           this.shear.delete(key);
           continue;
         }
+        // region walls: the moving surface velocity enters the granular contact
+        // through the full relative velocity (measured with native LAMMPS, see
+        // updateVelocities)
+        let vrx = v[3 * i] - mv[0], vry = v[3 * i + 1] - mv[1], vrz = v[3 * i + 2] - mv[2];
+        if (e.source) {
+          const st = vel.get(e.source);
+          let wx = 0, wy = 0, wz = 0;
+          if (st) {
+            const qx = xi - e.dist * e.nx, qy = yi - e.dist * e.ny, qz = zi - e.dist * e.nz;
+            const P = e.source.rotate ? e.source.rotate.p : [0, 0, 0];
+            const rx = qx - (P[0] + st.d[0]), ry = qy - (P[1] + st.d[1]), rz = qz - (P[2] + st.d[2]);
+            wx = st.ddot[0] + st.omega[1] * rz - st.omega[2] * ry;
+            wy = st.ddot[1] + st.omega[2] * rx - st.omega[0] * rz;
+            wz = st.ddot[2] + st.omega[0] * ry - st.omega[1] * rx;
+          }
+          vrx = v[3 * i] - wx;
+          vry = v[3 * i + 1] - wy;
+          vrz = v[3 * i + 2] - wz;
+        }
         const sh = this.shear.get(key) ?? new Float64Array(8);
         const ok = granularContact({
           pm, nx: e.nx, ny: e.ny, nz: e.nz, r: e.dist, delta: R - e.dist, Rf: e.Rf, ri: R, rj: 0, meff: mi,
-          vrx: v[3 * i] - mv[0], vry: v[3 * i + 1] - mv[1], vrz: v[3 * i + 2] - mv[2],
+          vrx, vry, vrz,
           oix: omega[3 * i], oiy: omega[3 * i + 1], oiz: omega[3 * i + 2],
           ojx: 0, ojy: 0, ojz: 0, dt, update, sg: 1, surfaceArm: true,
           poly: this.legacyHertz ? Math.sqrt((R - e.dist) * e.Rf) : 1,

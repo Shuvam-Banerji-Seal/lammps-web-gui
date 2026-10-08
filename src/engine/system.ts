@@ -368,6 +368,9 @@ export class System {
   /** Per-atom group mask bit by name. */
   groupBit(name: string): number { return this.groups.bit(name); }
 
+  /** restart N: periodic restart files, one entry per mode (single file name, or two toggled names). */
+  restartOut: { mode: 'single' | 'toggle'; every: number; everyVar: string | null; files: string[]; flip: number; next: number }[] = [];
+
   /** atom_modify sort Nfreq binsize (atom_modify.html: "By default, sorting is enabled with a frequency of 1000 and a binsize of 0.0"). */
   sortEvery = 1000;
   sortBinsize = 0;

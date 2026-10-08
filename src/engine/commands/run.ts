@@ -9,6 +9,7 @@ import { DYNAMIC_GROUP_FIXES, NO_DYNAMIC_GROUP_FIXES } from '../group';
 import type { System } from '../system';
 import { minimize, MIN_STYLES } from '../run/min';
 import { accelerator, runAccelerated } from '../run/accel';
+import { restartDue, startRestarts, writeRestarts } from './restart';
 
 /*
  * fix / compute / thermo / dump / run commands.
@@ -248,7 +249,9 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
     const dumped = writeDumps(sys, true);
     if (dumped || frameEvery > 0) emitFrame(sys);
   };
+  startRestarts(sys);
   const afterStep = (step: number) => {
+    writeRestarts(sys, step);
     let due = th.due(step, first, first + n);
     if (th.everyVar && step >= nextThermoVar) { due = true; nextThermoVar = th.nextVariableStep(); }
     if (due) emitThermo();
@@ -265,7 +268,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
       afterStep,
       hostStep: (step) => th.due(step, first, first + n) || (th.everyVar !== null && step >= nextThermoVar)
         || sys.dumps.some((d) => step >= d.delay && (d.everyVar ? true : step % d.every === 0))
-        || (frameEvery > 0 && step % frameEvery === 0),
+        || (frameEvery > 0 && step % frameEvery === 0) || restartDue(sys, step),
     })
     : await runVerlet(sys, n, {
       cancelled: () => session.isCancelled,
@@ -349,13 +352,20 @@ const minimizeCmd: Handler = async (ctx, a) => {
   sys.run = { inRun: true, firstStep: s.step, lastStep: s.step + maxiter, beginStep: s.step, endStep: s.step + maxiter, t0: performance.now(), ranOnce: true };
   sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels() });
   const first = s.step;
+  startRestarts(sys);
+  let lastRestart = -1;
   const result = await minimize(sys, { etol, ftol, maxiter, maxeval }, {
     cancelled: () => session.isCancelled,
     thermo: (iterDone) => {
       if (iterDone || th.due(s.step, first, Number.MAX_SAFE_INTEGER)) sys.io.emit({ kind: 'thermo', row: th.row() });
       writeDumps(sys, s.step === first);
+      if (s.step !== first && s.step !== lastRestart && restartDue(sys, s.step)) { writeRestarts(sys, s.step); lastRestart = s.step; }
     },
   });
+  // restart.html: "A restart file is written on the last timestep of a minimization if N > 0 and
+  // the minimization converges."
+  const converged = result.reason === 'energy tolerance' || result.reason === 'force tolerance' || result.reason === 'forces are zero';
+  if (converged && sys.restartOut.length && s.step !== lastRestart) writeRestarts(sys, s.step, true);
   sys.run.inRun = false;
   emitFrame(sys);
   const seconds = (performance.now() - sys.run.t0) / 1000;

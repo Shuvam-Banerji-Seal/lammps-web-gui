@@ -230,15 +230,32 @@ describe('restart command', () => {
     await expect(session.execute('restart 0\n')).resolves.toBeUndefined();
   });
 
-  it('refuses periodic restart files by name (no run-loop hook yet)', async () => {
-    const { session } = newSession();
-    await expect(session.execute('restart 1000 poly.restart\n')).rejects.toThrow(/restart 1000: periodic restart files/);
-    await expect(session.execute('restart 100 a.restart b.restart nfile 2\n')).rejects.toThrow(/restart 100: periodic restart files/);
+  it('writes periodic restart files with the names and steps native LAMMPS uses', async () => {
+    // Measured with native LAMMPS (black box) on this input: the same file names
+    const { session, files } = newSession();
+    await session.execute(`${LJ_BOX}
+restart 5 r.*.eq
+restart 4 a.rst b.rst
+run 12
+variable s equal stride(13,30,7)
+restart v_s v.rst
+run 15
+restart 0
+run 5
+restart 3 m.rst
+minimize 1e-12 1e-12 7 100
+`);
+    expect([...files.keys()].sort()).toEqual(['a.rst', 'b.rst', 'm.rst.33', 'm.rst.36', 'm.rst.39', 'r.10.eq', 'r.5.eq', 'v.rst.13', 'v.rst.20', 'v.rst.27']);
+    // the toggled pair keeps alternating in the second run (a 4, b 8, a 12, b 16, a 20, b 24)
+    const stepOf = (name: string) => JSON.parse(files.get(name)!.split('\n')[1]).step;
+    expect([stepOf('a.rst'), stepOf('b.rst'), stepOf('r.10.eq'), stepOf('v.rst.27')]).toEqual([20, 24, 10, 27]);
   });
 
-  it('refuses variable schedules and malformed arguments', async () => {
+  it('refuses per-processor files and malformed arguments', async () => {
     const { session } = newSession();
-    await expect(session.execute('restart v_s poly.restart\n')).rejects.toThrow(/v_name/);
+    await expect(session.execute('restart 100 a.restart b.restart nfile 2\n')).rejects.toThrow(/nfile needs a '%' file name/);
+    await expect(session.execute('restart 100 a.%.restart\n')).rejects.toThrow(/one file per processor/);
+    await expect(session.execute('restart v_nope poly.restart\n')).rejects.toThrow(/variable nope does not exist/);
     await expect(session.execute('restart -5 x\n')).rejects.toThrow(/integer >= 0/);
     await expect(session.execute('restart 0 extra\n')).rejects.toThrow(/takes no other arguments/);
     await expect(session.execute('restart 10 a.restart c.restart d.restart\n')).rejects.toThrow(/one file name, or two/);

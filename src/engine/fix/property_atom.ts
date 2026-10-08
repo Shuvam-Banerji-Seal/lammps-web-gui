@@ -27,10 +27,11 @@ import { shortest } from '../output/data';
  * Measured with native LAMMPS (black box): new atoms get 0 for every
  * property (rmass too, which then replaces the per-type mass); write_data
  * appends a section titled with the fix ID and the names (arrays without
- * the 2: "pa # mol q rmass i_flag d_val d_vec"), one line per atom; native
- * stops with "Fix property/atom vector name already exists", "... mol when
- * atom_style already has molecule attribute" (likewise q / charge, rmass),
- * and "Invalid array columns number N in fix property/atom". The ghost
+ * the 2: pa # mol q rmass i_flag d_val d_vec), one line per atom; native
+ * stops with the errors Fix property/atom vector name already exists,
+ * Fix property/atom mol when atom_style already has molecule attribute
+ * (likewise q / charge, rmass) and Invalid array columns number N in fix
+ * property/atom. The ghost
  * keyword only changes communication, which a single-process engine does
  * not need. temperature and heatflow (GRANULAR heat conduction) are not
  * supported here.

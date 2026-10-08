@@ -1,6 +1,7 @@
 import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { massOf } from '../atoms';
+import type { BoxDof } from '../fix/box_relax';
 
 /*
  * Energy minimization — docs.lammps.org/minimize.html, min_style.html,
@@ -67,6 +68,8 @@ const ALPHA_ARMIJO = 1e-4;
 const BACKTRACK = 0.5;
 const EPS_ENERGY = 1e-8;
 const EMACH = 1e-8;
+/** Energy resolution in units of the machine epsilon (sums of ~N terms). */
+const ROUNDOFF = 64 * Number.EPSILON;
 
 export const minimize = async (
   sys: System, p: { etol: number; ftol: number; maxiter: number; maxeval: number }, hooks: MinHooks,
@@ -82,6 +85,10 @@ export const minimize = async (
     nb.every = 1; nb.delay = 0; nb.check = true;
   }
   const n3 = 3 * s.n;
+  // fix box/relax (docs fix_box_relax.html): its DOF join the vector after the 3N coordinates; the count is known after minSetup
+  let box: BoxDof | null = null;
+  let M = 0;
+  let boxForce = new Float64Array(0);
   let evaluations = 0;
   const fixesPost = sys.fixes.filter((f) => f.minPostForce);
   const fixesPre = sys.fixes.filter((f) => f.minPreForce);
@@ -92,6 +99,8 @@ export const minimize = async (
     if (evaluations === 1) { sys.setupNeighbors(); sys.sortAtoms(true); }
     else if (nb.decide(s.step, s, sys.geom)) {
       sys.pbc();
+      // native's periodic atom sort (System.sortAtoms) only rewrites SimState.order; the engine's
+      // arrays, and so the line search's per-atom snapshots, keep their indices
       sys.sortAtoms(false);
       nb.build(s, sys.geom, s.step);
     } else nb.forwardComm(s, sys.geom);
@@ -105,7 +114,8 @@ export const minimize = async (
     for (const f of fixesPost) f.minPostForce!();
     sys.refreshComputes();
     const a = sys.ff.acc;
-    return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp + sys.fixEnergy();
+    const eBox = box ? box.evaluate(boxForce) : 0;
+    return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp + sys.fixEnergy() + eBox;
   };
   const norms = () => {
     let two = 0, inf = 0, mx = 0;
@@ -116,11 +126,22 @@ export const minimize = async (
       mx = Math.max(mx, Math.sqrt(a2));
       inf = Math.max(inf, Math.abs(fx), Math.abs(fy), Math.abs(fz));
     }
+    // the box degrees of freedom are part of the global force vector (native: "Force two-norm initial" of a
+    // box-only system equals the box gradient)
+    for (let k = 0; k < M; k++) { two += boxForce[k] * boxForce[k]; inf = Math.max(inf, Math.abs(boxForce[k])); mx = Math.max(mx, Math.abs(boxForce[k])); }
     return { two: Math.sqrt(two), inf, max: mx };
   };
   const fnormOf = () => { const n = norms(); return set.norm === 'two' ? n.two : set.norm === 'max' ? n.max : n.inf; };
 
   for (const f of sys.fixes) f.minSetup?.();
+  const boxFixes = sys.fixes.filter((f) => (f as unknown as { boxDof?: BoxDof }).boxDof);
+  if (boxFixes.length > 1) throw new StyleError('only one fix box/relax may be defined');
+  if (boxFixes.length) {
+    if (style !== 'cg' && style !== 'sd') throw new StyleError(`min_style ${style} with fix box/relax is not supported by the browser engine; use cg or sd`);
+    box = (boxFixes[0] as unknown as { boxDof: BoxDof }).boxDof;
+    M = box.dofCount;
+    boxForce = new Float64Array(M);
+  }
   let e = evaluate();
   const e0 = e;
   let ePrev = e;
@@ -132,59 +153,78 @@ export const minimize = async (
   let lastYield = performance.now();
 
   if (style === 'cg' || style === 'sd') {
+    const L = n3 + M;
     const x0 = new Float64Array(n3);
-    const g = new Float64Array(n3);   // force = -gradient
-    const h = new Float64Array(n3);   // search direction
-    g.set(s.f.subarray(0, n3));
+    const u0 = new Float64Array(M);
+    const uTry = new Float64Array(M);
+    const g = new Float64Array(L);   // force = -gradient: atoms, then box DOF
+    const h = new Float64Array(L);   // search direction
+    const gNew = new Float64Array(L);
+    const packForce = (out: Float64Array) => { out.set(s.f.subarray(0, n3)); if (M) out.set(boxForce, n3); };
+    packForce(g);
     h.set(g);
     let gg = dot(g, g);
     for (iter = 1; iter <= p.maxiter; iter++) {
       if (hooks.cancelled()) { reason = 'cancelled'; break; }
       // line search along h, starting with the step that moves the farthest atom by dmax
-      let hmax = 0;
+      // (and the box DOF by at most vmax per iteration, as documented for fix box/relax)
+      let hmax = 0, hbox = 0;
       for (let k = 0; k < n3; k++) hmax = Math.max(hmax, Math.abs(h[k]));
-      if (hmax === 0) { reason = 'forces are zero'; break; }
+      for (let k = n3; k < L; k++) hbox = Math.max(hbox, Math.abs(h[k]));
+      if (hmax === 0 && hbox === 0) { reason = 'forces are zero'; break; }
       const fh0 = dot(g, h);
       if (fh0 <= 0) { h.set(g); }
       const slope = dot(g, h);
-      const alphaMax = set.dmax / hmax;
+      let alphaMax = hmax > 0 ? set.dmax / hmax : Infinity;
+      if (box && hbox > 0) alphaMax = Math.min(alphaMax, box.vmax / hbox);
       x0.set(s.x.subarray(0, n3));
       const img0 = Int32Array.from(s.image.subarray(0, n3));
+      if (box) { box.begin(); box.dof(u0); }
       const eStart = e;
       let alpha = alphaMax;
       let accepted = false;
       let eTry = e;
-      let lastAlpha = 0;
-      let lastE = eStart;
-      let lastSlope = slope;
       const moveTo = (al: number) => {
         s.image.set(img0);
-        for (let k = 0; k < n3; k++) s.x[k] = x0[k] + al * h[k];
+        if (box) {
+          for (let k = 0; k < M; k++) uTry[k] = u0[k] + al * h[n3 + k];
+          box.trial(uTry, x0, s.x);
+          for (let k = 0; k < n3; k++) s.x[k] += al * h[k];
+        } else {
+          for (let k = 0; k < n3; k++) s.x[k] = x0[k] + al * h[k];
+        }
         if (s.dimension === 2) for (let k = 2; k < n3; k += 3) s.x[k] = x0[k];
       };
       for (;;) {
         moveTo(alpha);
         eTry = evaluate();
         if (evaluations >= p.maxeval) break;
-        const slopeNew = dot(s.f.subarray(0, n3), h);
+        packForce(gNew);
+        const slopeNew = dot(gNew, h);
         // quadratic refinement near the minimum: zero of the interpolated directional force
-        if ((set.line === 'quadratic' || set.line === 'forcezero') && Math.abs(eTry - eStart) < 1e-6 * Math.max(1, Math.abs(eStart)) && lastSlope - slopeNew !== 0) {
-          const a0 = lastAlpha + (alpha - lastAlpha) * lastSlope / (lastSlope - slopeNew);
+        // E(a) ~ E0 - slope a + c a^2 through the trial: its minimum a0 = slope / (2 c) is the estimated zero of the gradient
+        if ((set.line === 'quadratic' || set.line === 'forcezero') && Math.abs(eTry - eStart) < 1e-6 * Math.max(1, Math.abs(eStart))) {
+          const c2 = (eTry - eStart + slope * alpha) / (alpha * alpha);
+          const a0 = c2 > 0 ? slope / (2 * c2) : -1;
           if (a0 > 0 && a0 <= alphaMax) {
             moveTo(a0);
             const eq = evaluate();
-            if (eq <= eStart) { eTry = eq; alpha = a0; accepted = true; break; }
+            if (eq <= eStart + ROUNDOFF * (Math.abs(eStart) + 1)) { eTry = eq; alpha = a0; accepted = true; packForce(gNew); break; }
             moveTo(alpha);
             eTry = evaluate();
+            packForce(gNew);
           }
         }
         // Armijo sufficient decrease: E(alpha) <= E(0) - c alpha (F . h)
         if (eTry <= eStart - ALPHA_ARMIJO * alpha * slope) { accepted = true; break; }
-        lastAlpha = alpha; lastE = eTry; lastSlope = slopeNew;
+        // round-off floor: when the predicted decrease is below the energy's resolution, the energy cannot
+        // decide the step. Then the forces decide it: a step that does not raise the energy beyond that
+        // resolution and that flattens the directional force (strong Wolfe curvature, |F1.h| <= 0.9 |F0.h|)
+        // is accepted, so the search does not stall at a tiny force
+        if (slope > 0 && eTry <= eStart + ROUNDOFF * (Math.abs(eStart) + 1) && Math.abs(slopeNew) <= 0.9 * slope) { accepted = true; break; }
         alpha *= BACKTRACK;
-        if (alpha * hmax < EMACH) break;
+        if (alpha * Math.max(hmax, hbox) < EMACH) break;
       }
-      void lastE;
       if (!accepted) {
         // restore the starting point
         moveTo(0);
@@ -196,21 +236,28 @@ export const minimize = async (
       e = eTry;
       s.step++;
       hooks.thermo(false);
-      // convergence checks
+      // convergence checks (the force test uses the atoms only: a box that is still moving does not hold the minimizer)
       if (Math.abs(e - ePrev) < p.etol * 0.5 * (Math.abs(e) + Math.abs(ePrev) + EPS_ENERGY)) { reason = 'energy tolerance'; break; }
       const fn = fnormOf();
       if (fn < p.ftol) { reason = 'force tolerance'; break; }
       if (evaluations >= p.maxeval) { reason = 'max force evaluations'; break; }
-      // new direction
-      const fnew = s.f.subarray(0, n3);
-      if (style === 'sd') { h.set(fnew); g.set(fnew); gg = dot(g, g); } else {
+      if (box && box.nreset > 0 && iter % box.nreset === 0) {
+        // nreset: the current box becomes the reference; the objective changes, so restart the search
+        box.resetReference();
+        e = evaluate();
+        packForce(gNew);
+        g.set(gNew); h.set(gNew); gg = dot(g, g);
+      } else if (style === 'sd') {
+        // steepest descent: the search direction is the new force
+        g.set(gNew); h.set(gNew); gg = dot(g, g);
+      } else {
         // Polak-Ribiere: beta = F1.(F1 - F0) / F0.F0, restarted when negative
         let num = 0;
-        for (let k = 0; k < n3; k++) num += fnew[k] * (fnew[k] - g[k]);
+        for (let k = 0; k < L; k++) num += gNew[k] * (gNew[k] - g[k]);
         const beta = gg > 0 ? Math.max(0, num / gg) : 0;
-        g.set(fnew);
+        g.set(gNew);
         gg = dot(g, g);
-        for (let k = 0; k < n3; k++) h[k] = g[k] + beta * h[k];
+        for (let k = 0; k < L; k++) h[k] = g[k] + beta * h[k];
         if (dot(g, h) <= 0) h.set(g);
       }
       if (performance.now() - lastYield > 30) { await yieldNow(); lastYield = performance.now(); }

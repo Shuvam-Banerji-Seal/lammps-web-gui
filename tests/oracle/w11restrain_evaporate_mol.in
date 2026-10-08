@@ -1,0 +1,52 @@
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# Atoms inside region ev (x < 2.6) are removed from the group: M atoms every N steps.
+units           lj
+atom_style      molecular
+atom_modify     map array
+region          box block 0 6 0 6 -2 2
+create_box     1 box bond/types 0 extra/bond/per/atom 0 extra/special/per/atom 0 extra/angle/per/atom 0
+region          ev block 0 2.6 -10 10 -10 10 units box
+create_atoms    1 single 0.500000 0.550000 0.252441 units box
+create_atoms    1 single 0.542074 1.777015 0.252441 units box
+create_atoms    1 single 0.545465 2.979193 0.252441 units box
+create_atoms    1 single 0.507056 4.200500 0.252441 units box
+create_atoms    1 single 1.757056 0.527015 0.252441 units box
+create_atoms    1 single 1.712160 1.800000 0.272789 units box
+create_atoms    1 single 1.702054 3.027015 0.042336 units box
+create_atoms    1 single 1.736029 4.229193 -0.227041 units box
+create_atoms    1 single 2.986029 0.479193 0.252441 units box
+create_atoms    1 single 3.032849 1.777015 0.042336 units box
+create_atoms    1 single 3.049468 3.050000 -0.287677 units box
+create_atoms    1 single 3.020606 4.277015 0.197096 units box
+create_atoms    1 single 4.270606 0.450500 0.252441 units box
+create_atoms    1 single 4.222799 1.729193 -0.227041 units box
+create_atoms    1 single 4.200000 3.027015 0.197096 units box
+create_atoms    1 single 4.223171 4.300000 -0.163206 units box
+set atom 1 mol 1
+set atom 2 mol 1
+set atom 3 mol 2
+set atom 4 mol 2
+set atom 5 mol 3
+set atom 6 mol 3
+set atom 7 mol 4
+set atom 8 mol 4
+set atom 9 mol 5
+set atom 10 mol 5
+set atom 11 mol 6
+set atom 12 mol 6
+set atom 13 mol 7
+set atom 14 mol 7
+set atom 15 mol 8
+set atom 16 mol 8
+mass            1 1.0
+pair_style      lj/cut 1.5
+pair_coeff      1 1 0.2 1.0 1.5
+velocity        all create 0.6 2024 loop all
+timestep        0.002
+group           all2 type 1
+fix             1 all2 nve
+fix             EV all2 evaporate 4 2 ev 20243 molecule yes
+thermo_style    custom step atoms pe ke
+thermo_modify  norm no format float %.12g
+thermo          4
+run             20

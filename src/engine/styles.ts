@@ -66,6 +66,7 @@ import * as computeLocal from './registry/compute_local';
 import * as computeGk from './registry/compute_gk';
 import * as fixGk from './registry/fix_gk';
 import * as fixRestrain from './registry/fix_restrain';
+import * as computeRestrain from './registry/compute_restrain';
 import * as pairTable from './registry/pair_table';
 import * as pairCharmm from './registry/pair_charmm';
 import * as pairCoulLong2 from './registry/pair_coullong2';
@@ -158,7 +159,7 @@ export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
   pressure: (s, i, g, a) => new ComputePressure(s, i, g, a),
   'erotate/sphere': (s, i, g, a) => new ComputeERotateSphere(s, i, g, a),
   'temp/sphere': (s, i, g, a) => new ComputeTempSphere(s, i, g, a),
-  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES, ...computeDeform.COMPUTES, ...computeOrient.COMPUTES, ...computeVoro.COMPUTES, ...computeChunk.COMPUTES, ...computeSna.COMPUTES, ...computeStruct.COMPUTES, ...computeLocal.COMPUTES, ...computeGk.COMPUTES,
+  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES, ...computeDeform.COMPUTES, ...computeOrient.COMPUTES, ...computeVoro.COMPUTES, ...computeChunk.COMPUTES, ...computeSna.COMPUTES, ...computeStruct.COMPUTES, ...computeLocal.COMPUTES, ...computeGk.COMPUTES, ...computeRestrain.COMPUTES,
 };
 
 /** Lists for messages and is_available(). */

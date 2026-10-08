@@ -1,0 +1,24 @@
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# Dihedral restraints with multiplicity 2 and 3, K ramping from 0 to 20 over the run.
+units           lj
+atom_style      atomic
+atom_modify     map array
+region          box block -6 6 -6 6 -6 6
+create_box      1 box
+create_atoms    1 single 0.0 1.0 0.0 units box
+create_atoms    1 single 0.0 0.0 0.0 units box
+create_atoms    1 single 1.0 0.0 0.0 units box
+create_atoms    1 single 1.6 0.7 0.9 units box
+create_atoms    1 single 2.0 -0.9 0.4 units box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.05 1.0 2.5
+velocity        all create 0.3 9731 loop all
+timestep        0.002
+fix             1 all nve
+fix             R all restrain dihedral 1 2 3 4 0.0 20.0 60.0 mult 2 dihedral 1 2 3 5 5.0 5.0 -120.0 mult 3
+fix_modify      R energy yes
+thermo_style    custom step pe ke f_R f_R[1] f_R[2] f_R[3]
+thermo_modify   norm no format float %.12g
+thermo          10
+run             100

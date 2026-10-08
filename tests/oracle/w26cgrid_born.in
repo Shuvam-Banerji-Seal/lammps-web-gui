@@ -1,0 +1,23 @@
+# oracle: compute born/matrix analytic (lj/cut) and numdiff finite differences of the virial
+units           lj
+atom_style      atomic
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 single 0.5 0.5 0.5
+create_atoms    1 single 1.7 1.2 0.9
+create_atoms    1 single 2.3 0.7 1.8
+create_atoms    1 single 0.9 2.1 0.4
+create_atoms    1 single 3.1 2.9 2.2
+mass            1 1.0
+
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+
+compute         myvirial all pressure NULL virial
+compute         bm all born/matrix numdiff 1.0e-6 myvirial
+compute         ba all born/matrix
+
+thermo_style    custom step c_ba[1] c_ba[2] c_ba[3] c_ba[4] c_ba[5] c_ba[6] c_ba[7] c_ba[8] c_ba[9] c_ba[10] c_ba[11] c_ba[12] c_ba[13] c_ba[14] c_ba[15] c_ba[16] c_ba[17] c_ba[18] c_ba[19] c_ba[20] c_ba[21] c_bm[1] c_bm[2] c_bm[3] c_bm[4] c_bm[5] c_bm[6] c_bm[7] c_bm[8] c_bm[9] c_bm[10] c_bm[11] c_bm[12] c_bm[13] c_bm[14] c_bm[15] c_bm[16] c_bm[17] c_bm[18] c_bm[19] c_bm[20] c_bm[21]
+thermo_modify   format float %.15g
+thermo          1
+run             0

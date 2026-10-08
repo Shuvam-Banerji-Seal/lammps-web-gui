@@ -1,0 +1,24 @@
+# oracle: compute property/grid (2d, Nz = 1) with the non-Z attributes
+units           lj
+atom_style      atomic
+dimension       2
+lattice         sq 0.5
+region          box block 0 10 0 10 -0.5 0.5
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    delay 0 every 20 check no
+
+fix             1 all nve
+fix             2 all enforce2d
+
+compute         pg all property/grid 5 4 1 id ix iy x y xc yc xs ys xsc ysc proc
+
+thermo_style    custom step temp pe etotal press
+thermo_modify   format float %.15g
+thermo          1
+run             0

@@ -376,7 +376,7 @@ export function alloyAtomEnergyGrad(model: AlloyModel, ci: number, nb: AlloyNeig
   const phi = new Float64Array(N), dphi = new Float64Array(N);
   let pairE = 0;
   for (let m = 0; m < N; m++) {
-    const pv = alloyPair(model, ci, nb[m].e, nb[m].r);
+    const pv = alloyPairTab(model, ci, nb[m].e, nb[m].r);
     phi[m] = pv.phi;
     dphi[m] = pv.dphi;
     pairE += 0.5 * terms[m].W * pv.phi;
@@ -427,3 +427,86 @@ export function alloyAtomEnergyGrad(model: AlloyModel, ci: number, nb: AlloyNeig
   }
   return Fv + pairE;
 }
+
+/*
+ * Tabulated pair term (see meam.ts): 1000 uniform intervals over [0, 1.1 rc] with the cubic of PhiTable, nodes
+ * from 1 A, reference shells summed up to 1.1 rc. The alloy path reads the same table as the single element.
+ */
+export const PHI_INTERVALS = 1000;
+export const PHI_SPAN = 1.1;
+export const PHI_LO = 1.0;
+
+/** Cubic Hermite interpolation of tabulated values over a uniform grid (x_k = k dx; the eam.ts scheme). */
+export class PhiTable {
+  readonly n: number;
+  readonly dx: number;
+  readonly y: Float64Array;
+  private readonly s: Float64Array;
+  private readonly c2: Float64Array;
+  private readonly c3: Float64Array;
+
+  constructor(y: Float64Array, dx: number) {
+    const n = y.length;
+    this.n = n;
+    this.dx = dx;
+    this.y = y;
+    const s = new Float64Array(n);
+    s[0] = y[1] - y[0];
+    s[n - 1] = y[n - 1] - y[n - 2];
+    s[1] = 0.5 * (y[2] - y[0]);
+    s[n - 2] = 0.5 * (y[n - 1] - y[n - 3]);
+    for (let k = 2; k < n - 2; k++) s[k] = ((y[k - 2] - y[k + 2]) + 8 * (y[k + 1] - y[k - 1])) / 12;
+    this.s = s;
+    this.c2 = new Float64Array(n - 1);
+    this.c3 = new Float64Array(n - 1);
+    for (let k = 0; k < n - 1; k++) {
+      const dy = y[k + 1] - y[k];
+      this.c2[k] = 3 * dy - 2 * s[k] - s[k + 1];
+      this.c3[k] = s[k] + s[k + 1] - 2 * dy;
+    }
+  }
+
+  private at(x: number): [number, number] {
+    let p = x / this.dx;
+    let k = Math.floor(p);
+    if (k < 0) k = 0;
+    else if (k > this.n - 2) k = this.n - 2;
+    p -= k;
+    if (p > 1) p = 1;
+    return [k, p];
+  }
+
+  eval(x: number): number {
+    const [k, p] = this.at(x);
+    return ((this.c3[k] * p + this.c2[k]) * p + this.s[k]) * p + this.y[k];
+  }
+
+  deriv(x: number): number {
+    const [k, p] = this.at(x);
+    return ((3 * this.c3[k] * p + 2 * this.c2[k]) * p + this.s[k]) / this.dx;
+  }
+}
+
+const alloyTables = new WeakMap<AlloyModel, Map<number, { tab: PhiTable }>>();
+
+/** Tabulated alloy pair term phi_ij and its derivative for pair (i, j) at distance r. */
+export const alloyPairTab = (model: AlloyModel, i: number, j: number, r: number): { phi: number; dphi: number } => {
+  const rc1 = PHI_SPAN * model.opts.rc;
+  const dr = rc1 / PHI_INTERVALS;
+  const kLo = Math.ceil(PHI_LO / dr);
+  const tmodel = (): AlloyModel => ({ ...model, opts: { ...model.opts, rc: rc1 } });
+  if (r < (kLo + 2) * dr) return alloyPair(tmodel(), i, j, r);
+  let per = alloyTables.get(model);
+  if (!per) alloyTables.set(model, (per = new Map()));
+  const key = i * 64 + j; // element pairs (i, j) of a model
+  let ent = per.get(key);
+  if (!ent) {
+    const tm = tmodel();
+    const y = new Float64Array(PHI_INTERVALS + 1);
+    for (let k = kLo; k <= PHI_INTERVALS; k++) y[k] = alloyPair(tm, i, j, k * dr).phi;
+    for (let k = 0; k < kLo; k++) y[k] = y[kLo];
+    ent = { tab: new PhiTable(y, dr) };
+    per.set(key, ent);
+  }
+  return { phi: ent.tab.eval(r), dphi: ent.tab.deriv(r) };
+};

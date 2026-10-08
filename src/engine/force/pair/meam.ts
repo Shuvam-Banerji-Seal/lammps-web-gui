@@ -1,7 +1,12 @@
 import { NEIGHMASK } from '../../neighbor';
 import { referenceVectors, SUPPORTED_REFERENCE_LATTICES, type ReferenceLattice } from './meam_lattice';
 import {
+  PHI_INTERVALS,
+  PHI_LO,
+  PHI_SPAN,
+  PhiTable,
   alloyAtomEnergyGrad,
+  alloyPairTab,
   makeAlloyModel,
   type AlloyElement,
   type AlloyModel,
@@ -45,7 +50,17 @@ export interface MeamElement {
   ibar: number;
   /** reference lattice of the element (default fcc); see meam_lattice.ts */
   lat?: ReferenceLattice;
+  /** Rose energy form (erose_form, attrac, repuls); default form 0 with attrac = repuls = 0 */
+  erose?: EroseSettings;
 }
+
+/** erose_form, attrac and repuls of an element (see eroseE). */
+export interface EroseSettings {
+  form: number;
+  attrac: number;
+  repuls: number;
+}
+const NO_EROSE: EroseSettings = { form: 0, attrac: 0, repuls: 0 };
 
 export interface MeamOptions {
   rc: number;
@@ -201,13 +216,93 @@ export const embedding = (el: MeamElement, rhoRef: number, rhoBar: number): numb
   return el.A * el.Ec * x * Math.log(x);
 };
 
-/** Pair term phi(r) from the fcc reference structure (Rose universal form, erose_form = 0, a3 = 0). */
-export const pairPhi = (el: MeamElement, o: MeamOptions, rhoRef: number, r: number): number => {
-  const rs = r / el.re;
-  const astar = el.alpha * (rs - 1);
-  const Eu = -el.Ec * (1 + astar) * Math.exp(-astar);
-  return (2 / el.z) * (Eu - embedding(el, rhoRef, refBackground(el, o, r)));
+/*
+ * Rose energy erose(r) (docs, pair_meam.rst):
+ *   "astar = alpha \* (r/re - 1.d0)"
+ *   "if erose_form = 0: erose = -Ec\*(1+astar+a3\*(astar\*\*3)/(r/re))\*exp(-astar)"
+ *   "if erose_form = 1: erose = -Ec\*(1+astar+(-attrac+repuls/r)\*(astar\*\*3))\*exp(-astar)"
+ *   "if erose_form = 2: erose = -Ec\*(1 +astar + a3\*(astar\*\*3))\*exp(-astar)"
+ *   "a3 = repuls, astar < 0"
+ *   "a3 = attrac, astar >= 0"
+ * Derivative with respect to r: d/dr[-Ec(1+s+T)e^{-s}] = -Ec e^{-s}[T' - (s+T) s'], s' = alpha/re.
+ */
+const eroseA3 = (e: EroseSettings, astar: number): number => (astar < 0 ? e.repuls : e.attrac);
+export const eroseE = (el: MeamElement, r: number): number => {
+  const e = el.erose ?? NO_EROSE;
+  const q = r / el.re;
+  const s = el.alpha * (q - 1);
+  let T: number;
+  if (e.form === 0) T = (eroseA3(e, s) * s ** 3) / q;
+  else if (e.form === 1) T = (-e.attrac + e.repuls / r) * s ** 3;
+  else T = eroseA3(e, s) * s ** 3;
+  return -el.Ec * (1 + s + T) * Math.exp(-s);
 };
+export const eroseDeriv = (el: MeamElement, r: number): number => {
+  const e = el.erose ?? NO_EROSE;
+  const q = r / el.re;
+  const s = el.alpha * (q - 1);
+  const sp = el.alpha / el.re;
+  const a3 = eroseA3(e, s);
+  let T: number, Tp: number;
+  if (e.form === 0) {
+    T = (a3 * s ** 3) / q;
+    Tp = a3 * (3 * s * s * sp / q - (s ** 3) / (el.re * q * q));
+  } else if (e.form === 1) {
+    T = (-e.attrac + e.repuls / r) * s ** 3;
+    Tp = (-e.repuls / (r * r)) * s ** 3 + (-e.attrac + e.repuls / r) * 3 * s * s * sp;
+  } else {
+    T = a3 * s ** 3;
+    Tp = a3 * 3 * s * s * sp;
+  }
+  return -el.Ec * Math.exp(-s) * (Tp - (s + T) * sp);
+};
+
+/** Pair term phi(r) from the reference structure (Rose energy erose and the reference background). */
+export const pairPhi = (el: MeamElement, o: MeamOptions, rhoRef: number, r: number): number =>
+  (2 / el.z) * (eroseE(el, r) - embedding(el, rhoRef, refBackground(el, o, r)));
+
+/*
+ * Tabulated pair term (production path and the helper). Measured with native LAMMPS (black box): the pair
+ * term is read from a table of 1000 uniform intervals over [0, 1.1 rc], with nodes at k * dr, dr = 1.1 rc / 1000,
+ * and the piecewise cubic of eam.ts (Hermite form with five-point finite-difference slopes) gives the energy and
+ * the force of a bcc dimer inside the window to 1e-13 eV and 2e-13 eV/A (1500 dimer distances, 2.3 to 2.75 A);
+ * the analytic pair term leaves a force residual of 6e-8 eV/A. dr = 1.1 rc / 999 does not fit (1e-7 eV/A).
+ * Nodes below 1 A are not tabulated (see PHI_LO); pairs below that distance use the analytic pair term.
+ */
+
+
+const phiTables = new WeakMap<MeamElement, { rc: number; delr: number; Cmin: number; Cmax: number; augt1: boolean; rhoRef: number; tab: PhiTable }>();
+
+/** The pair-term table of an element (cached per element and options). */
+const phiTableOf = (el: MeamElement, o: MeamOptions, rhoRef: number): PhiTable => {
+  // Cache keyed by the element object (its parameters do not change) and the numbers the table depends on.
+  const hit = phiTables.get(el);
+  if (hit && hit.rc === o.rc && hit.delr === o.delr && hit.Cmin === o.Cmin && hit.Cmax === o.Cmax && hit.augt1 === o.augt1 && hit.rhoRef === rhoRef) return hit.tab;
+  const dr = (PHI_SPAN * o.rc) / PHI_INTERVALS;
+  const kLo = Math.ceil(PHI_LO / dr);
+  const y = new Float64Array(PHI_INTERVALS + 1);
+  const oT = phiOpts(o);
+  for (let k = kLo; k <= PHI_INTERVALS; k++) y[k] = pairPhi(el, oT, rhoRef, k * dr);
+  for (let k = 0; k < kLo; k++) y[k] = y[kLo];
+  const tab = new PhiTable(y, dr);
+  phiTables.set(el, { rc: o.rc, delr: o.delr, Cmin: o.Cmin, Cmax: o.Cmax, augt1: o.augt1, rhoRef, tab });
+  return tab;
+};
+
+/** Tabulated pair term and its derivative (the values used by the energy and the forces). */
+/**
+ * Options of the pair term: the reference shells of phi are summed up to PHI_SPAN rc (not rc), so phi is continuous
+ * across rc; a pair is only ever evaluated inside rc. Measured with native LAMMPS (black box): with shells cut at rc
+ * the table is off by 1e-4 eV and 0.5 eV/A on the bcc dimers at 3.99 to 3.9996 A (the reference's first shell
+ * switches off at rc inside the last table intervals), while with the cut at 1.1 rc it agrees to 1e-14.
+ */
+const phiOpts = (o: MeamOptions): MeamOptions => ({ ...o, rc: PHI_SPAN * o.rc });
+
+const tabulated = (o: MeamOptions, r: number): boolean => r >= (Math.ceil(PHI_LO / ((PHI_SPAN * o.rc) / PHI_INTERVALS)) + 2) * ((PHI_SPAN * o.rc) / PHI_INTERVALS);
+export const pairPhiTab = (el: MeamElement, o: MeamOptions, rhoRef: number, r: number): number =>
+  tabulated(o, r) ? phiTableOf(el, o, rhoRef).eval(r) : pairPhi(el, phiOpts(o), rhoRef, r);
+export const pairPhiTabPrime = (el: MeamElement, o: MeamOptions, rhoRef: number, r: number): number =>
+  tabulated(o, r) ? phiTableOf(el, o, rhoRef).deriv(r) : pairPhiPrime(el, phiOpts(o), rhoRef, r);
 
 /** Total energy of a periodic orthorhombic configuration (brute-force neighbour images). */
 export function meamEnergy(el: MeamElement, o: MeamOptions, x: Float64Array, L: [number, number, number]): number {
@@ -277,7 +372,7 @@ export function meamEnergy(el: MeamElement, o: MeamOptions, x: Float64Array, L: 
             nb.push({ j, dx, dy, dz, r });
           }
     const S = screening(nb, o);
-    for (let m = 0; m < nb.length; m++) E += 0.5 * S[m] * radialWeight(nb[m].r, o) * pairPhi(el, o, rhoRef, nb[m].r);
+    for (let m = 0; m < nb.length; m++) E += 0.5 * S[m] * radialWeight(nb[m].r, o) * pairPhiTab(el, o, rhoRef, nb[m].r);
   }
   return E;
 }
@@ -324,8 +419,7 @@ export const refBackgroundPrime = (el: MeamElement, o: MeamOptions, r: number): 
 
 /** d phi / dr for the fcc-reference pair term (same form as pairPhi). */
 export const pairPhiPrime = (el: MeamElement, o: MeamOptions, rhoRef: number, r: number): number => {
-  const as = el.alpha * (r / el.re - 1);
-  const dEu = (el.Ec * as * Math.exp(-as) * el.alpha) / el.re;
+  const dEu = eroseDeriv(el, r);
   const { rho, drho } = refBackgroundPrime(el, o, r);
   const fp = rho > 0 ? (el.A * el.Ec * (Math.log(rho / rhoRef) + 1)) / rhoRef : 0;
   return (2 / el.z) * (dEu - fp * drho);
@@ -397,8 +491,8 @@ export function meamAtomEnergyGrad(
     fc[m] = radialWeight(r[m], o);
     fcp[m] = radialWeightPrime(r[m], o);
     W[m] = fc[m] * S[m];
-    phi[m] = pairPhi(el, o, rhoRef, r[m]);
-    phip[m] = pairPhiPrime(el, o, rhoRef, r[m]);
+    phi[m] = pairPhiTab(el, o, rhoRef, r[m]);
+    phip[m] = pairPhiTabPrime(el, o, rhoRef, r[m]);
     for (let n = 0; n < 4; n++) {
       a[n][m] = Math.exp(-el.beta[n] * (r[m] / el.re - 1));
       ap[n][m] = (-el.beta[n] / el.re) * a[n][m];
@@ -639,6 +733,8 @@ interface PairParams {
 export interface MeamParams {
   /** indexed settings keyed "i,j" with i <= j (an element's own settings have i = j) */
   pair: Map<string, PairParams>;
+  /** erose_form, attrac(1,1), repuls(1,1) of a single element */
+  erose: EroseSettings;
   /** single-element convenience: the (1,1) settings */
   Ec?: number;
   re?: number;
@@ -647,7 +743,7 @@ export interface MeamParams {
   opts: MeamOptions;
 }
 
-const NUMERIC_DEFAULT_ZERO = ['nn2', 'attrac', 'repuls', 'erose_form', 'emb_lin_neg', 'bkgd_dyn', 'ialloy', 'mixture_ref_t'];
+const NUMERIC_DEFAULT_ZERO = ['nn2', 'emb_lin_neg', 'bkgd_dyn', 'ialloy', 'mixture_ref_t'];
 const PAIR_KEYS = ['Ec', 're', 'alpha', 'lattce', 'nn2', 'attrac', 'repuls', 'zbl'];
 
 /**
@@ -655,7 +751,7 @@ const PAIR_KEYS = ['Ec', 're', 'alpha', 'lattce', 'nn2', 'attrac', 'repuls', 'zb
  * verified subset (see meam_alloy.ts for the multi-element part, and the header of this file for the rest).
  */
 export const parseMeamParams = (text: string, name: string, nelem = 1): MeamParams => {
-  const out: MeamParams = { pair: new Map(), opts: { ...DEFAULT_MEAM_OPTIONS } };
+  const out: MeamParams = { pair: new Map(), opts: { ...DEFAULT_MEAM_OPTIONS }, erose: { form: 0, attrac: 0, repuls: 0 } };
   const pairOf = (i: number, j: number): PairParams => {
     const k = `${i},${j}`;
     let p = out.pair.get(k);
@@ -707,6 +803,25 @@ export const parseMeamParams = (text: string, name: string, nelem = 1): MeamPara
         if (idx.length) throw new StyleError(`MEAM parameter delr in ${name} takes no index`);
         out.opts.delr = num();
         break;
+      case 'erose_form': {
+        if (idx.length) throw new StyleError(`MEAM parameter erose_form in ${name} takes no index`);
+        const v = num();
+        if (!Number.isInteger(v) || v < 0 || v > 2) throw new StyleError(`MEAM erose_form = ${val} is not supported (only 0, 1, 2; ${name})`);
+        if (nelem > 1 && v !== 0) throw new StyleError(`MEAM erose_form = ${v} in a multi-element potential is not supported (${name})`);
+        out.erose.form = v;
+        break;
+      }
+      case 'attrac':
+      case 'repuls': {
+        const [i, j] = pairIndex();
+        const v = num();
+        if (nelem > 1 && v !== 0) throw new StyleError(`MEAM ${key}(${i},${j}) = ${val} in a multi-element potential is not supported (${name})`);
+        if (nelem === 1) {
+          if (key === 'attrac') out.erose.attrac = v;
+          else out.erose.repuls = v;
+        }
+        break;
+      }
       case 'Ec':
       case 're':
       case 'alpha': {
@@ -853,6 +968,7 @@ export class PairMeam extends Pair {
       t: lib.t,
       ibar: lib.ibar,
       lat: lib.lat as ReferenceLattice,
+      erose: par.erose,
     };
     this.opts = par.opts;
     this.alloy = null;

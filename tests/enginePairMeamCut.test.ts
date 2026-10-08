@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MEAM_OPTIONS, meamEnergy, meamEnergyForces, type MeamElement } from '../src/engine/force/pair/meam';
+import { DEFAULT_MEAM_OPTIONS, meamEnergy, meamEnergyForces, parseMeamParams, type MeamElement } from '../src/engine/force/pair/meam';
 
 /*
  * MEAM smoothing window [rc - delr, rc] and partially screened clusters (meamcut scope). The synthetic bcc
@@ -80,5 +80,56 @@ describe('MEAM periodic distorted diamond cell: helper against native', () => {
     const E = meamEnergy(W_DIA, OPTS, x, [5, 5, 5]);
     expect(rel(E, -36.6157506731495)).toBeLessThan(1e-9);
     expect(meamEnergyForces(W_DIA, OPTS, x, [5, 5, 5]).E).toBeCloseTo(E, 12);
+  });
+});
+
+describe('MEAM Rose energy forms (erose_form 0, 1, 2 with attrac and repuls)', () => {
+  // Measured with native LAMMPS (black box): bcc W entry of tests/oracle/w16meamcut_bcc_lib.meam with
+  // attrac(1,1) = 0.4 and repuls(1,1) = 0.9 (tests/oracle/w17meam_erose1.meam, w17meam_erose2.meam; form 0 with the same numbers).
+  const EROSE: Record<number, Array<[number, number]>> = {
+    0: [[2.2, -1.66227435023832], [2.7, -8.61120313931507], [3.2, -7.10997982705863], [3.95, -4.86202032965563]],
+    1: [[2.2, -7.87019867137249], [2.7, -8.61190178278414], [3.2, -6.84316133263483], [3.95, -3.81913317082445]],
+    2: [[2.2, -2.88958008591648], [2.7, -8.61121185605331], [3.2, -7.14351524619321], [3.95, -5.14723561938785]],
+  };
+  for (const form of [0, 1, 2]) {
+    it(`erose_form ${form} dimers match native pe to 1e-10 relative`, () => {
+      const el: MeamElement = { ...W_BCC, erose: { form, attrac: 0.4, repuls: 0.9 } };
+      for (const [r, pe] of EROSE[form]) {
+        const E = meamEnergy(el, OPTS, Float64Array.from([0, 0, 0, r, 0, 0]), BOX);
+        expect(rel(E, pe)).toBeLessThan(1e-10);
+      }
+    });
+  }
+
+  it('erose_form 1 and 2 forces equal -grad E (bcc dimer and cluster)', () => {
+    for (const form of [1, 2]) {
+      const el: MeamElement = { ...W_BCC, erose: { form, attrac: 0.4, repuls: 0.9 } };
+      const x = Float64Array.from([0, 0, 0, 2.6, 0.2, 0, 1.4, 2.2, 0.3]);
+      const { F } = meamEnergyForces(el, OPTS, x, BOX);
+      const h = 1e-6;
+      for (let q = 0; q < x.length; q++) {
+        const xp = Float64Array.from(x), xm = Float64Array.from(x);
+        xp[q] += h;
+        xm[q] -= h;
+        const fd = -(meamEnergy(el, OPTS, xp, BOX) - meamEnergy(el, OPTS, xm, BOX)) / (2 * h);
+        expect(Math.abs(F[q] - fd)).toBeLessThan(1e-6 * Math.max(1, Math.abs(fd)));
+      }
+    }
+  });
+
+  it('the parser keeps erose_form, attrac and repuls of a single element and rejects unsupported forms', () => {
+    const par = parseMeamParams('Ec(1,1) = 8.9\nre(1,1) = 2.7\nerose_form = 2\nattrac(1,1) = 0.4\nrepuls(1,1) = 0.9\n', 'par');
+    expect(par.erose).toEqual({ form: 2, attrac: 0.4, repuls: 0.9 });
+    expect(() => parseMeamParams('erose_form = 3\n', 'par')).toThrow(/erose_form/);
+  });
+});
+
+describe('MEAM tabulated pair term: forces against native', () => {
+  it('bcc dimer forces match native to 1e-10 relative, also inside the window', () => {
+    // Measured with native LAMMPS (black box, dump of the force on atom 2): x-force -0.14251957938563331 eV/A at 2.5 A
+    // and -27.148276609005627 eV/A at 3.95 A (the analytic pair term differs by 6e-7 relative at 2.5 A).
+    const f2 = (r: number) => meamEnergyForces(W_BCC, OPTS, Float64Array.from([0, 0, 0, r, 0, 0]), BOX).F[3];
+    expect(rel(f2(2.5), -0.14251957938563331)).toBeLessThan(1e-10);
+    expect(rel(f2(3.95), -27.148276609005627)).toBeLessThan(1e-10);
   });
 });

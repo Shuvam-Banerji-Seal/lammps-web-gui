@@ -145,7 +145,8 @@ describe('pair_style meam: files and StyleError paths', () => {
   it('parameters: zbl must be 0, unsupported keywords are named', () => {
     expect(parseMeamParams(PAR, 'par').opts.Cmax).toBe(2.8);
     expect(() => parseMeamParams(PAR.replace('zbl(1,1) = 0', 'zbl(1,1) = 1'), 'par')).toThrow(/zbl/);
-    expect(() => parseMeamParams(PAR + 'attrac(1,1) = 0.1\n', 'par')).toThrow(/attrac/);
+    expect(() => parseMeamParams(PAR + 'erose_form = 3\n', 'par')).toThrow(/erose_form/);
+    expect(() => parseMeamParams(PAR + 'attrac(2,2) = 0.1\n', 'par', 2)).toThrow(/attrac/);
     expect(() => parseMeamParams(PAR + 'gsmooth_factor = 0.5\n', 'par')).toThrow(/gsmooth_factor/);
     expect(() => parseMeamParams(PAR + 'theta(1,1) = 170\n', 'par')).toThrow(/theta/);
     expect(() => parseMeamParams(PAR + 'Ec(2,2) = 1\n', 'par')).toThrow(/indexed/);

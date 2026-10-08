@@ -1,8 +1,8 @@
 # oracle: pair_style meam, single element diamond reference (w15meam_dia_lib.meam + w15meam_dia.meam, zbl 0), 2x2x2 diamond cells (64 atoms), lattice constant 5.0 A (nearest-neighbour distance re = sqrt(3)/4 a), 0.02 A sinusoidal displacement, velocities from atom-style variables, fix nve, 50 steps of 0.001 ps
 # oracle: the diamond reference has 4 nearest neighbours at re = 2.165 A, 12 second neighbours at 3.54 A (screened to zero in the perfect crystal) and 12 third neighbours at 4.146 A; the 0.02 A displacements keep every pair distance in [2.0, 4.06] A, so no pair enters the cutoff smoothing window [3.9, 4.0] A (the window form is not verified, see the meam15 report)
 # oracle-inputs: w15meam_dia_lib.meam w15meam_dia.meam
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9 skip=press
-# oracle-tolerance: press is not compared (the virial offset of about 1e-6 relative, measured with native LAMMPS in w15meam_dia_step0.in, grows to 5e-6 at step 20 along this trajectory). pe and the per-atom state agree within rel=1e-6.
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-tolerance: pe, press and the per-atom state agree within rel=1e-6 with the tabulated pair term (native pair table of 1000 intervals over [0, 1.1 rc], see meam.ts); the earlier press offset of 5e-6 was the analytic pair term forces
 units           metal
 atom_style      atomic
 lattice         diamond 5.0

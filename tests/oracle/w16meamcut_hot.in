@@ -1,8 +1,8 @@
 # oracle: pair_style meam, single element bcc reference (w16meamcut_bcc_lib.meam + w16meamcut_bcc.meam, zbl 0) at lattice constant 2.82 A: the third neighbours sit at sqrt(2) a = 3.988 A, inside the smoothing window [3.9, 4.0] A; 2x2x2 cells (16 atoms), 0.05 A sinusoidal displacement and thermal velocities (atom-style variables), fix nve, 100 steps of 0.001 ps
 # oracle: the 1NN distance is 2.44 A and the 2NN distance 2.82 A (screened to zero by the 1NN); the 3NN are the only shell that crosses the window during the run
 # oracle-inputs: w16meamcut_bcc_lib.meam w16meamcut_bcc.meam
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9 skip=press
-# oracle-tolerance: press is skipped for the same reason as w16meamcut_dimer (the native force residual of about 1e-7 eV/A); pe and the per-atom state agree within rel=1e-6
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-tolerance: pe, press and the per-atom state agree within rel=1e-6 with the tabulated pair term (native pair table of 1000 intervals over [0, 1.1 rc], see meam.ts)
 units           metal
 atom_style      atomic
 lattice         bcc 2.82

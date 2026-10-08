@@ -1,0 +1,27 @@
+# oracle: compute voronoi/atom in a 2d periodic box with a perturbed lattice — surface, edge_histo, edge_threshold and face_threshold keywords
+# oracle-files: w29voro_2d_kw.dump
+units           lj
+dimension       2
+boundary        p p p
+atom_style      atomic
+lattice         sq 1.0 origin 0.5 0.5 0.0
+region          box block 0 3 0 3 -1.0 1.0 units box
+region          atoms block 0 3 0 3 0.0 0.0 units box
+create_box      1 box
+create_atoms    1 region atoms
+mass            1 1.0
+variable        dx atom 0.1*sin(1.3*x+0.7*y)
+variable        dy atom 0.1*cos(0.9*y)
+displace_atoms  all move v_dx v_dy 0.0 units box
+region          right block 2.0 INF INF INF -0.5 0.5 units box
+group           right region right
+pair_style      lj/cut 0.5
+pair_coeff      1 1 0.0 1.0
+neighbor        0.3 nsq
+comm_modify     cutoff 5.0
+compute         v all voronoi/atom surface right edge_histo 8 edge_threshold 0.1 face_threshold 0.01
+thermo_style    custom step c_v[1] c_v[2] c_v[3] c_v[4] c_v[5] c_v[6] c_v[7] c_v[8] c_v[9]
+thermo_modify   format float %.15g
+dump            d all custom 1 w29voro_2d_kw.dump id type c_v[*]
+dump_modify     d sort id format float %.17g
+run             0

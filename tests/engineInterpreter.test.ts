@@ -125,7 +125,7 @@ describe('Session: examples/melt (LAMMPS log.8Apr21.melt.g++.1)', () => {
     const { thermo, error, events, logs } = await runScript(MELT);
     expect(error).toBeNull();
     const header = events.find((e) => e.kind === 'thermo-header');
-    expect(header).toEqual({ kind: 'thermo-header', keywords: ['step', 'temp', 'epair', 'emol', 'etotal', 'press'] });
+    expect(header).toEqual({ kind: 'thermo-header', keywords: ['step', 'temp', 'epair', 'emol', 'etotal', 'press'], units: 'lj' });
     expect(thermo.map((r) => r.step)).toEqual([0, 50, 100, 150, 200, 250]);
     const r0 = thermo[0];
     expect(r0.temp).toBeCloseTo(3, 10);

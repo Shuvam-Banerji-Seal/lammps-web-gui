@@ -173,9 +173,14 @@ describe('lane-aware step edits', () => {
   it('appendToLane groups by section inside a branch', () => {
     const { model, branch } = forked();
     const next = appendToLane(model, branch.id, step('fix_langevin'));
-    // fix_langevin is `control`, same as fix_nve/run → lands after the last one
+    // fix_langevin is `control`, same as fix_nve/run, but a setting must not land after the run it is
+    // meant for: it goes before the trailing run (a fix added after `run` never affected that run).
     expect(laneSteps(next, branch.id).map(s => s.defId)).toEqual(
-      ['fix_nve', 'run', 'fix_langevin'],
+      ['fix_nve', 'fix_langevin', 'run'],
+    );
+    // a new run still goes last
+    expect(laneSteps(appendToLane(next, branch.id, step('run')), branch.id).map(s => s.defId)).toEqual(
+      ['fix_nve', 'fix_langevin', 'run', 'run'],
     );
   });
 

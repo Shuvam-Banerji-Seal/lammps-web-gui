@@ -107,6 +107,9 @@ export const insertStepAtPathIndex = (
 };
 
 /** Append to a specific lane (used by the palette's section-aware add). */
+const RUN_COMMANDS = new Set(['run', 'minimize', 'rerun']);
+const isRunCommand = (command: string | undefined): boolean => command !== undefined && RUN_COMMANDS.has(command);
+
 export const appendToLane = (
   model: ScriptModel,
   lane: LaneId,
@@ -122,6 +125,11 @@ export const appendToLane = (
       at = i + 1;
       break;
     }
+  }
+  // run, minimize and rerun share the control section with fixes and thermo settings; a new setting
+  // must not land after the run it is meant for, so it goes before a trailing block of run commands.
+  if (!isRunCommand(def?.command)) {
+    while (at > 0 && isRunCommand(COMMAND_BY_ID[steps[at - 1].defId]?.command)) at--;
   }
   steps.splice(at, 0, step);
   return setLaneSteps(model, lane, steps);

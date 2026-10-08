@@ -237,7 +237,8 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   if (opts.start !== null && opts.start > first) throw new StyleError('run start cannot be after the current timestep');
   if (opts.stop !== null && opts.stop < first + n) throw new StyleError('run stop cannot be before the last timestep of the run');
   const th = sys.thermo;
-  sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels() });
+  sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels(), units: sys.units.style });
+  sys.io.emit({ kind: 'run', from: first, to: first + n });
   const frameEvery = session.frameEvery;
   let nextThermoVar = th.everyVar ? th.nextVariableStep() : -1;
   let lastThermo = -1;
@@ -354,7 +355,7 @@ const minimizeCmd: Handler = async (ctx, a) => {
   const s = sys.state;
   const th = sys.thermo;
   sys.run = { inRun: true, firstStep: s.step, lastStep: s.step + maxiter, beginStep: s.step, endStep: s.step + maxiter, t0: performance.now(), ranOnce: true };
-  sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels() });
+  sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels(), units: sys.units.style });
   const first = s.step;
   startRestarts(sys);
   let lastRestart = -1;

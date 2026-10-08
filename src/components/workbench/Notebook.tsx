@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Play, Square, Plus, Trash2, RotateCcw, Download, Cpu, Gpu, HelpCircle, FileUp, X, Workflow } from 'lucide-react';
 import { cellsToScript } from '../../lammps/notebookBridge';
 import { explainEngineError } from './engineError';
+import { thermoUnit, unitsCaption } from '../../lammps/thermoUnits';
 import { getThemeTokens, Theme } from '../../theme';
 import { usePersistentState } from '../../hooks/usePersistentState';
 import MoleculeCanvas from '../MoleculeCanvas';
@@ -24,7 +25,7 @@ interface Cell { id: string; text: string }
 
 type Status = 'idle' | 'running' | 'ok' | 'error' | 'cancelled';
 
-interface ThermoTable { keywords: ThermoKeyword[]; labels?: string[]; rows: ThermoRow[] }
+interface ThermoTable { keywords: ThermoKeyword[]; labels?: string[]; units?: string; rows: ThermoRow[] }
 
 interface CellRun {
   status: Status;
@@ -131,12 +132,29 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const [ready, setReady] = useState<Extract<FromEngine, { type: 'ready' }> | null>(null);
   const [running, setRunning] = useState<string | null>(null);
   const [frame, setFrame] = useState<FrameEvent | null>(null);
+  /** The MD run in progress (engine 'run' event): its cell and its first and last step, for the progress bar. */
+  const [runSpan, setRunSpan] = useState<{ cell: string; from: number; to: number } | null>(null);
   const [files, setFiles] = useState<Record<string, string>>({});
   /** Files the user added for read_data / include / potential files: name -> size in bytes. */
   const [inputs, setInputs] = useState<Record<string, number>>({});
   const fileInput = useRef<HTMLInputElement>(null);
   const [series, setSeries] = useState<ThermoRow[]>([]);
   const [showHelp, setShowHelp] = useState(false);
+  const helpButton = useRef<HTMLButtonElement>(null);
+  /** Reset asks for a second click (within 4 s) when it would drop cell output. */
+  const [confirmReset, setConfirmReset] = useState(false);
+  /** The last deleted cell and its place, for Undo (offered for 10 s). */
+  const [deleted, setDeleted] = useState<{ cell: Cell; index: number } | null>(null);
+  useEffect(() => {
+    if (!confirmReset) return;
+    const t = setTimeout(() => setConfirmReset(false), 4000);
+    return () => clearTimeout(t);
+  }, [confirmReset]);
+  useEffect(() => {
+    if (!deleted) return;
+    const t = setTimeout(() => setDeleted(null), 10000);
+    return () => clearTimeout(t);
+  }, [deleted]);
   const clientRef = useRef<EngineClient | null>(null);
   const pendingFrame = useRef<FrameEvent | null>(null);
   const frameTimer = useRef<number | null>(null);
@@ -197,7 +215,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           patchRun(cell.id, (r) => ({ ...r, error: ev.message }));
           break;
         case 'thermo-header':
-          patchRun(cell.id, (r) => ({ ...r, tables: [...r.tables, { keywords: ev.keywords, labels: ev.labels, rows: [] }] }));
+          patchRun(cell.id, (r) => ({ ...r, tables: [...r.tables, { keywords: ev.keywords, labels: ev.labels, units: ev.units, rows: [] }] }));
           break;
         case 'thermo':
           patchRun(cell.id, (r) => {
@@ -212,6 +230,9 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
         case 'frame':
           showFrame(ev);
           break;
+        case 'run':
+          setRunSpan({ cell: cell.id, from: ev.from, to: ev.to });
+          break;
       }
     };
     const onFile = (name: string, text: string, append: boolean) =>
@@ -219,6 +240,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     const result = await client().exec(cell.text, 1, { onEvent, onFile });
     patchRun(cell.id, (r) => ({ ...r, status: result.cancelled ? 'cancelled' : result.ok ? 'ok' : 'error' }));
     setRunning(null);
+    setRunSpan(null);
     return result.ok;
   }, [client, showFrame]);
 
@@ -251,8 +273,18 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const addBelow = (index: number) =>
     setCells((prev) => [...prev.slice(0, index + 1), { id: newId(), text: '' }, ...prev.slice(index + 1)]);
 
-  const removeCell = (index: number) =>
-    setCells((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+  const removeCell = (index: number) => {
+    if (cells.length <= 1) return;
+    const cell = cells[index];
+    setDeleted({ cell, index });
+    setCells((prev) => prev.filter((c) => c.id !== cell.id));
+  };
+  const undoDelete = () => {
+    if (!deleted) return;
+    const { cell, index } = deleted;
+    setCells((prev) => [...prev.slice(0, index), cell, ...prev.slice(index)]);
+    setDeleted(null);
+  };
 
   const data = useMemo(() => (frame ? frameToMoleculeData(frame) : null), [frame]);
   const config = useMemo(() => {
@@ -312,9 +344,15 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
         <button className={`${btn} ${ct.button}`} onClick={stop} disabled={!busy} aria-label="Stop the run" title="Stop the run">
           <Square size={13} aria-hidden="true" />Stop
         </button>
-        <button className={`${btn} ${ct.button}`} onClick={() => void resetSession(backend, threads)} disabled={busy}
-          title="Drop every atom, fix and variable and start over">
-          <RotateCcw size={13} aria-hidden="true" />Reset session
+        <button className={`${btn} ${confirmReset ? ct.accent : ct.button}`} disabled={busy}
+          onClick={() => {
+            const hasOutput = Object.values(runs).some((r) => r.status !== 'idle');
+            if (hasOutput && !confirmReset) { setConfirmReset(true); return; }
+            setConfirmReset(false);
+            void resetSession(backend, threads);
+          }}
+          title="Drop every atom, fix and variable and start over (cell output is cleared; the cells are kept)">
+          <RotateCcw size={13} aria-hidden="true" />{confirmReset ? 'Click again to reset' : 'Reset session'}
         </button>
         <div role="radiogroup" aria-label="Compute device" className={`flex overflow-hidden rounded border ${ct.divider}`}>
           {([['cpu', 'CPU', <Cpu key="i" size={13} aria-hidden="true" />], ['webgpu', 'GPU', <Gpu key="i" size={13} aria-hidden="true" />]] as const)
@@ -359,7 +397,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
             <Workflow size={13} aria-hidden="true" />Open in Script Builder
           </button>
         )}
-        <button className={`${btn} ml-auto ${ct.button}`} onClick={() => setShowHelp((v) => !v)} aria-expanded={showHelp}
+        <button ref={helpButton} className={`${btn} ml-auto ${ct.button}`} onClick={() => setShowHelp((v) => !v)} aria-expanded={showHelp}
           aria-label="What the notebook supports">
           <HelpCircle size={13} aria-hidden="true" />
         </button>
@@ -385,8 +423,21 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           )}
         </div>
       )}
+      {deleted && (
+        <div role="status" className={`flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-xs ${ct.divider} ${ct.panel}`}>
+          <span>Cell {deleted.index + 1} deleted.</span>
+          <button className={`${btn} ${ct.button}`} onClick={undoDelete}>Undo</button>
+          <button className={`${btn} ${ct.button}`} aria-label="Dismiss" onClick={() => setDeleted(null)}><X size={12} aria-hidden="true" /></button>
+        </div>
+      )}
       {showHelp && (
-        <div className={`shrink-0 border-b px-3 py-2 text-xs leading-relaxed ${ct.divider} ${ct.panel}`}>
+        <div role="region" aria-label="What the notebook supports"
+          onKeyDown={(e) => { if (e.key === 'Escape') { setShowHelp(false); helpButton.current?.focus(); } }}
+          className={`relative max-h-[40vh] shrink-0 overflow-y-auto border-b px-3 py-2 pr-9 text-xs leading-relaxed ${ct.divider} ${ct.panel}`}>
+          <button className={`${btn} absolute right-2 top-2 ${ct.button}`} aria-label="Close help"
+            onClick={() => { setShowHelp(false); helpButton.current?.focus(); }}>
+            <X size={12} aria-hidden="true" />
+          </button>
           <p>
             This notebook runs a documented subset of LAMMPS input in your browser with an independent engine,
             checked against native LAMMPS. It is not LAMMPS; a command or style outside the subset stops with an
@@ -442,9 +493,12 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
                     disabled={busy} onClick={() => void runCell(cell)}>
                     <Play size={12} aria-hidden="true" />
                   </button>
-                  <span className={`text-[11px] ${run.status === 'error' ? ct.danger : ct.muted}`}>
+                  <span aria-live="polite" className={`text-[11px] ${run.status === 'error' ? ct.danger : ct.muted}`}>
                     {run.status === 'idle' ? '' : run.status}
                   </span>
+                  {running === cell.id && runSpan?.cell === cell.id && runSpan.to > runSpan.from && (
+                    <RunProgress ct={ct} from={runSpan.from} to={runSpan.to} step={frame?.step ?? runSpan.from} />
+                  )}
                   <button className={`${btn} ml-auto ${ct.button}`} aria-label={`Delete cell ${n}`} title="Delete this cell"
                     disabled={busy || cells.length <= 1} onClick={() => removeCell(i)}>
                     <Trash2 size={12} aria-hidden="true" />
@@ -470,9 +524,10 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
                   {run.error && <EngineErrorText ct={ct} message={run.error} />}
                   {run.tables.map((t, k) => (
                     <div key={k} className="max-h-64 overflow-auto">
+                      {unitsCaption(t.units) && <p className={`mb-0.5 font-sans ${ct.muted}`}>{unitsCaption(t.units)}</p>}
                       <table className="border-collapse text-right">
                         <thead>
-                          <tr>{t.keywords.map((kw, c) => <th key={kw} className={`px-2 font-semibold ${ct.headerText}`}>{t.labels?.[c] ?? kw}</th>)}</tr>
+                          <tr>{t.keywords.map((kw, c) => <th key={kw} title={thermoUnit(t.units, kw) ?? undefined} className={`px-2 font-semibold ${ct.headerText}`}>{t.labels?.[c] ?? kw}</th>)}</tr>
                         </thead>
                         <tbody>
                           {t.rows.map((r, j) => (
@@ -546,6 +601,21 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
         </div>
       </div>
     </div>
+  );
+};
+
+/** Progress of the MD run in a cell: a bar and "step S of T (P%)" (the step of the latest frame shown). */
+const RunProgress: React.FC<{ ct: ReturnType<typeof getThemeTokens>; from: number; to: number; step: number }> = ({ ct, from, to, step }) => {
+  const s = Math.min(to, Math.max(from, step));
+  const pct = Math.round((100 * (s - from)) / (to - from));
+  return (
+    <span className="flex items-center gap-1.5">
+      <span role="progressbar" aria-label="Run progress" aria-valuemin={from} aria-valuemax={to} aria-valuenow={s}
+        className={`h-1.5 w-24 overflow-hidden rounded ${ct.track}`}>
+        <span className={`block h-full ${ct.trackFill}`} style={{ width: `${pct}%` }} />
+      </span>
+      <span className={`font-mono text-[11px] ${ct.muted}`}>step {s} of {to} ({pct}%)</span>
+    </span>
   );
 };
 

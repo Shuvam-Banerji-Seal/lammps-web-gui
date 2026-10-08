@@ -173,6 +173,8 @@ const loadWorkspace = (): ScriptWorkspace => {
  */
 const ZOOM_MIN = 0.15;
 const ZOOM_MAX = 2.5;
+/** Fit to view never zooms out below this (text stays legible); see fitToView. */
+const FIT_MIN = 0.5;
 
 interface Transform {
   x: number;
@@ -789,16 +791,14 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
     const w = content.offsetWidth;
     const h = content.offsetHeight;
     if (w === 0 || h === 0) return;
-    const k = Math.min(
-      ZOOM_MAX,
-      Math.max(
-        ZOOM_MIN,
-        Math.min((el.clientWidth - pad * 2) / w, (el.clientHeight - pad * 2) / h),
-      ),
-    );
+    const fitW = (el.clientWidth - pad * 2) / w;
+    const fitAll = Math.min(fitW, (el.clientHeight - pad * 2) / h);
+    // A long pipeline fitted whole became unreadable (20 steps: 21 %, 13 px titles at about 3 px). Below
+    // FIT_MIN the view fits the width instead (never below FIT_MIN), starts at the top and is panned.
+    const k = Math.min(ZOOM_MAX, fitAll >= FIT_MIN ? fitAll : Math.max(FIT_MIN, Math.min(fitW, 1)));
     setViewTf({
       x: Math.max(pad, (el.clientWidth - w * k) / 2),
-      y: Math.max(pad, (el.clientHeight - h * k) / 2),
+      y: fitAll >= FIT_MIN ? Math.max(pad, (el.clientHeight - h * k) / 2) : pad,
       k,
     });
   }, []);

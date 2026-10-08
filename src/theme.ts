@@ -105,6 +105,9 @@ export interface ThemeTokens {
   invalidText: string;
   /** Left accent of a notebook cell whose run failed. */
   errorAccent: string;
+  /** Progress bar: the empty track and the filled part. */
+  track: string;
+  trackFill: string;
   /** Keyboard focus ring (focus-visible, 2 px) of the script tabs. */
   tabFocusRing: string;
   /** Loading spinner ring. */
@@ -156,6 +159,8 @@ const DARK: ThemeTokens = {
   invalidField: 'border-[#cf8b76] focus:border-[#cf8b76]',
   invalidText: 'text-[#e8a68f]',
   errorAccent: 'border-l-4 border-l-[#cf8b76]',
+  track: 'bg-[#342b1d]',
+  trackFill: 'bg-[#7fa66b]',
   tabFocusRing: 'focus-visible:ring-2 focus-visible:ring-[#9dc487]',
   loader: 'border-[#453a2b] border-t-[#7fa66b]',
   errorBox: 'bg-[#3a1f16]/40 border border-[#6b3a2a]/60 text-[#e8a68f]',
@@ -204,6 +209,8 @@ const LIGHT: ThemeTokens = {
   invalidField: 'border-[#a4502f] focus:border-[#a4502f]',
   invalidText: 'text-[#8f3b1f]',
   errorAccent: 'border-l-4 border-l-[#a4502f]',
+  track: 'bg-[#e5ddcb]',
+  trackFill: 'bg-[#4e7a41]',
   tabFocusRing: 'focus-visible:ring-2 focus-visible:ring-[#456b39]',
   loader: 'border-[#d8cdb8] border-t-[#4e7a41]',
   errorBox: 'bg-[#f7e3dd] border border-[#d9a08c] text-[#8f3b1f]',

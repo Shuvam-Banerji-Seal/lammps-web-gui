@@ -1,0 +1,24 @@
+# oracle: fix nve/asphere/noforce on the asymmetric ellipsoid of w19asphere_top (positions and orientation move with the stored velocity and angular momentum, no force or torque update), 200 steps; compute erotate/asphere and temp/asphere (dof all) in thermo, quaternion and angular momentum checksums
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      ellipsoid
+region          box block 0 10 0 10 0 10
+create_box      1 box
+create_atoms    1 single 5.0 5.0 5.0 units box
+set             atom 1 shape 2.0 3.0 4.0
+set             atom 1 mass 2.0
+set             atom 1 quat 0.3 1.0 0.5 47
+set             atom 1 angmom 0.5 -0.8 1.3
+velocity        all set 0.1 -0.05 0.2
+compute         p all property/atom quatw quati quatj quatk angmomx angmomy angmomz
+compute         r all reduce sum c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] c_p[7]
+compute         erot all erotate/asphere
+compute         tmp all temp/asphere
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.0 1.0
+timestep        0.002
+fix             1 all nve/asphere/noforce
+thermo_style    custom step c_erot c_tmp c_tmp[1] c_tmp[2] c_tmp[3] c_tmp[4] c_tmp[5] c_tmp[6] c_r[1] c_r[2] c_r[3] c_r[4] c_r[5] c_r[6] c_r[7]
+thermo_modify   format float %.15g norm no
+thermo          20
+run             200

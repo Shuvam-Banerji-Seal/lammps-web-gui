@@ -48,6 +48,10 @@ import * as pairRelres from './registry/pair_relres';
 import * as pairGranular from './registry/pair_granular';
 import * as fixPour from './registry/fix_pour';
 import * as fixNHSphere from './registry/fix_nhsphere';
+import * as computeChunk from './registry/compute_chunk';
+import * as fixAveChunk from './registry/fix_avechunk';
+import * as fixMisc3 from './registry/fix_misc3';
+import * as fixSllod from './registry/fix_sllod';
 import * as pairTable from './registry/pair_table';
 import * as pairCharmm from './registry/pair_charmm';
 import * as pairCoulLong2 from './registry/pair_coullong2';
@@ -128,7 +132,7 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   rattle: (s, i, g, a) => new FixShake(s, i, g, a, 'rattle'),
   ...Object.fromEntries(['rigid', 'rigid/nve', 'rigid/small', 'rigid/nve/small'].map((st) => [st, (s: System, i: string, g: string, a: string[]) => new FixRigid(s, i, g, a, st)])),
   ...fixForce.FIXES, ...fixWall.FIXES, ...fixOutput.FIXES, ...fixMotion.FIXES,
-  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES, ...fixDeform.FIXES, ...fixWallGran.FIXES, ...fixRigid2.FIXES, ...fixPour.FIXES, ...fixNHSphere.FIXES,
+  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES, ...fixDeform.FIXES, ...fixWallGran.FIXES, ...fixRigid2.FIXES, ...fixPour.FIXES, ...fixNHSphere.FIXES, ...fixAveChunk.FIXES, ...fixMisc3.FIXES, ...fixSllod.FIXES,
 };
 
 export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
@@ -138,7 +142,7 @@ export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
   pressure: (s, i, g, a) => new ComputePressure(s, i, g, a),
   'erotate/sphere': (s, i, g, a) => new ComputeERotateSphere(s, i, g, a),
   'temp/sphere': (s, i, g, a) => new ComputeTempSphere(s, i, g, a),
-  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES, ...computeDeform.COMPUTES, ...computeOrient.COMPUTES, ...computeVoro.COMPUTES,
+  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES, ...computeDeform.COMPUTES, ...computeOrient.COMPUTES, ...computeVoro.COMPUTES, ...computeChunk.COMPUTES,
 };
 
 /** Lists for messages and is_available(). */

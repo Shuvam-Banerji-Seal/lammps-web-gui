@@ -1,0 +1,19 @@
+# oracle: fix deposit global placement: z above the highest atom plus lo..hi, M=2, N=5
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      atomic
+atom_modify     map array
+boundary        p p f
+region          box block -10 10 -10 10 -10 10
+create_box      1 box
+mass            1 1.0
+region          reg block 0 3 0 3 0 1 side in units box
+pair_style      lj/cut 2.5
+pair_coeff      * * 0.0 1.0
+timestep        0.01
+fix             1 all nve
+fix             3 all deposit 5 1 2 777 region reg units box global 1.0 2.0 units box
+thermo_style    custom step atoms pe
+thermo_modify   format float %.15g
+thermo          2
+run             20

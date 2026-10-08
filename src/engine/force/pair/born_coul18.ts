@@ -4,6 +4,7 @@ import { PairBorn } from './simple';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
 import { erfcExact } from '../erfc';
+import { erfAcc } from './coul_cs';
 
 /*
  * pair_style born/coul/wolf and pair_style born/coul/dsf —
@@ -97,6 +98,20 @@ abstract class PairBornCoul18 extends PairBorn {
   /** Unscaled Coulomb energy e and force-over-r f of one pair. */
   protected abstract coulPair(t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number };
 
+  /**
+   * Coulomb term of a pair with special-bonds weight fc, as the base styles
+   * compute it. Measured with native LAMMPS (black box): a special pair of
+   * weight w keeps the full damped term minus (1 - w) times the bare
+   * C q_i q_j / r. The /cs subclasses override this to stay finite for a
+   * weight-0 core/shell pair at r = 0 (pair_cs.html).
+   */
+  protected coulPairSB(t: number, rsq: number, qi: number, qj: number, qqrd2e: number, fc: number): { e: number; f: number } {
+    const c = this.coulPair(t, rsq, qi, qj, qqrd2e);
+    if (fc === 1) return c;
+    const bare = qqrd2e * qi * qj / Math.sqrt(rsq);
+    return { e: c.e - (1 - fc) * bare, f: c.f - (1 - fc) * bare / rsq };
+  }
+
   compute(pc: PairCompute): void {
     this.qqrd2eSingle = pc.qqrd2e;
     const list = pc.half!;
@@ -128,7 +143,7 @@ abstract class PairBornCoul18 extends PairBorn {
         let fpair = 0, e = 0;
         const qj = q[j];
         // Born-Mayer-Huggins A,C,D term, cut at the per-pair A,C,D cutoff.
-        if (rsq < bornCutSq[t]) {
+        if (rsq < bornCutSq[t] && sLJ[sb] !== 0) {
           const factor = sLJ[sb];
           const r = Math.sqrt(rsq);
           const rinv = 1 / r;
@@ -145,19 +160,10 @@ abstract class PairBornCoul18 extends PairBorn {
         }
         // Coulomb term at the global Coulombic cutoff.
         if (rsq < coulCutSq[t] && qi !== 0 && qj !== 0) {
-          const fc = sC[sb];
-          const c = this.coulPair(t, rsq, qi, qj, pc.qqrd2e);
-          let ef = fc * c.e, ff = fc * c.f;
-          // measured with native LAMMPS: a special pair (weight w) keeps the
-          // full damped term minus (1 - w) times the bare C q_i q_j / r.
-          if (fc !== 1) {
-            const bare = pc.qqrd2e * qi * qj / Math.sqrt(rsq);
-            ef = c.e - (1 - fc) * bare;
-            ff = c.f - (1 - fc) * bare / rsq;
-          }
-          fpair += ff;
-          ecoul += ef;
-          e += ef;
+          const c = this.coulPairSB(t, rsq, qi, qj, pc.qqrd2e, sC[sb]);
+          fpair += c.f;
+          ecoul += c.e;
+          e += c.e;
         }
         if (fpair === 0 && e === 0) continue;
         fxi += dx * fpair; fyi += dy * fpair; fzi += dz * fpair;
@@ -198,7 +204,7 @@ abstract class PairBornCoul18 extends PairBorn {
   single(_i: number, _j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi: number, qj: number) {
     const t = itype * (this.ntypes + 1) + jtype;
     let eng = 0, fforce = 0;
-    if (rsq < this.bornCutSq[t]) {
+    if (rsq < this.bornCutSq[t] && factorLJ !== 0) {
       const r = Math.sqrt(rsq);
       const rinv = 1 / r;
       const ex = Math.exp((this.bornSig[t] - r) * this.bornIR[t]);
@@ -209,15 +215,9 @@ abstract class PairBornCoul18 extends PairBorn {
       eng += factorLJ * (this.bornA[t] * ex - this.bornC[t] * r6inv + this.bornD[t] * r8inv - this.offset[t]);
     }
     if (rsq < this.coulCutSq[t] && qi !== 0 && qj !== 0) {
-      const c = this.coulPair(t, rsq, qi, qj, this.qqrd2eSingle);
-      let ef = factorCoul * c.e, ff = factorCoul * c.f;
-      if (factorCoul !== 1) {
-        const bare = this.qqrd2eSingle * qi * qj / Math.sqrt(rsq);
-        ef = c.e - (1 - factorCoul) * bare;
-        ff = c.f - (1 - factorCoul) * bare / rsq;
-      }
-      fforce += ff;
-      eng += ef;
+      const c = this.coulPairSB(t, rsq, qi, qj, this.qqrd2eSingle, factorCoul);
+      fforce += c.f;
+      eng += c.e;
     }
     return { eng, fforce };
   }
@@ -249,8 +249,8 @@ abstract class PairBornCoul18 extends PairBorn {
  */
 export class PairBornCoulWolf extends PairBornCoul18 {
   readonly name: string = 'born/coul/wolf';
-  private wolfA = new Float64Array(0);
-  private wolfF = new Float64Array(0);
+  protected wolfA = new Float64Array(0);
+  protected wolfF = new Float64Array(0);
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 2 && args.length !== 3) throw new StyleError('usage: pair_style born/coul/wolf alpha cutoff (cutoff2)');
@@ -300,8 +300,8 @@ export class PairBornCoulWolf extends PairBornCoul18 {
  */
 export class PairBornCoulDsf extends PairBornCoul18 {
   readonly name: string = 'born/coul/dsf';
-  private dsfA = new Float64Array(0);
-  private dsfB = new Float64Array(0);
+  protected dsfA = new Float64Array(0);
+  protected dsfB = new Float64Array(0);
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 2 && args.length !== 3) throw new StyleError('usage: pair_style born/coul/dsf alpha cutoff (cutoff2)');
@@ -347,6 +347,90 @@ export class PairBornCoulDsf extends PairBornCoul18 {
     return {
       e: pref * (erfcc / r - a + b * (r - this.cutCoul)),
       f: pref * (erfcc / (rsq * r) + (TWO_OVER_SQRTPI * this.alpha * ex) / rsq - b / r),
+    };
+  }
+}
+
+/*
+ * pair_style born/coul/wolf/cs and born/coul/dsf/cs —
+ * docs.lammps.org/pair_cs.html:
+ * "All the styles are identical to the corresponding pair style without
+ * the "/cs" in the name:" ... "except that they correctly treat the special
+ * case where the distance between two charged core and shell atoms in the
+ * same core/shell pair approach r = 0.0." The core/shell pair is marked by
+ * the 1-2 special_bonds weight: "the short-range Coulomb interaction between
+ * a core and its shell should be turned off using the special_bonds command
+ * by setting the 1-2 weight to 0.0". "For styles that are not used with a
+ * long-range solver, i.e. those with "/dsf" or "/wolf" in the name, the only
+ * correction is the addition of a minimal distance to avoid the possible
+ * r = 0.0 case for a core/shell pair."
+ *
+ * Both base kernels are finite in the r -> 0 limit once the special-bonds
+ * subtraction is combined with the damped term, but only if the cancellation
+ * is removed. With pref = C q_i q_j the weight-fc Coulomb term is
+ *   E = pref [ (fc - erf(g r)) / r - A ]     (wolf, A = erfc(g rc)/rc)
+ *   E = pref [ (fc - erf(g r)) / r - a + b (r - rc) ]  (dsf)
+ * (algebraically the base style's c.e - (1 - fc) * bare), which for fc = 0
+ * tends to -pref (2 g / sqrt(pi) + A) and -pref (2 g / sqrt(pi) + a + b rc)
+ * as r -> 0. erf(g r)/r is evaluated with the cancellation-free erfAcc power
+ * series (coul_cs.ts, as for born/coul/long/cs) and the exact r = 0 limits
+ * return the analytic values; the force is the derivative of the same
+ * expression (returned as 0 at rsq = 0, where the vector weight d is 0
+ * anyway). The /cs styles only differ from their base styles for a weight-0
+ * pair at r = 0; for weight-0 pairs at larger r the two agree (measured with
+ * native LAMMPS: same ecoul to the printed 15 digits at r = 1e-3 and above).
+ */
+
+export class PairBornCoulWolfCS extends PairBornCoulWolf {
+  readonly name: string = 'born/coul/wolf/cs';
+
+  settings(args: string[], ctx: StyleContext): void {
+    if (args.length !== 2 && args.length !== 3) throw new StyleError('usage: pair_style born/coul/wolf/cs alpha cutoff (cutoff2)');
+    super.settings(args, ctx);
+  }
+
+  protected coulPairSB(t: number, rsq: number, qi: number, qj: number, qqrd2e: number, fc: number): { e: number; f: number } {
+    if (fc === 1) return this.coulPair(t, rsq, qi, qj, qqrd2e);
+    const pref = qqrd2e * qi * qj;
+    if (rsq === 0) {
+      // only a core/shell pair (weight 0) may sit at r = 0; any other weight
+      // keeps the bare 1/r term and is singular there as in the base style
+      if (fc !== 0) return { e: Number.NaN, f: Number.NaN };
+      return { e: -pref * (TWO_OVER_SQRTPI * this.alpha + this.wolfA[t]), f: 0 };
+    }
+    const r = Math.sqrt(rsq);
+    const x = this.alpha * r;
+    const ex = Math.exp(-x * x);
+    const erf = erfAcc(x);
+    return {
+      e: pref * ((fc - erf) / r - this.wolfA[t]),
+      f: pref * ((fc - erf) / (r * rsq) + (TWO_OVER_SQRTPI * this.alpha * ex) / rsq + this.wolfF[t] / r),
+    };
+  }
+}
+
+export class PairBornCoulDsfCS extends PairBornCoulDsf {
+  readonly name: string = 'born/coul/dsf/cs';
+
+  settings(args: string[], ctx: StyleContext): void {
+    if (args.length !== 2 && args.length !== 3) throw new StyleError('usage: pair_style born/coul/dsf/cs alpha cutoff (cutoff2)');
+    super.settings(args, ctx);
+  }
+
+  protected coulPairSB(t: number, rsq: number, qi: number, qj: number, qqrd2e: number, fc: number): { e: number; f: number } {
+    if (fc === 1) return this.coulPair(t, rsq, qi, qj, qqrd2e);
+    const pref = qqrd2e * qi * qj;
+    if (rsq === 0) {
+      if (fc !== 0) return { e: Number.NaN, f: Number.NaN };
+      return { e: -pref * (TWO_OVER_SQRTPI * this.alpha + this.dsfA[t] + this.dsfB[t] * this.cutCoul), f: 0 };
+    }
+    const r = Math.sqrt(rsq);
+    const x = this.alpha * r;
+    const ex = Math.exp(-x * x);
+    const erf = erfAcc(x);
+    return {
+      e: pref * ((fc - erf) / r - this.dsfA[t] + this.dsfB[t] * (r - this.cutCoul)),
+      f: pref * ((fc - erf) / (r * rsq) + (TWO_OVER_SQRTPI * this.alpha * ex) / rsq - this.dsfB[t] / r),
     };
   }
 }

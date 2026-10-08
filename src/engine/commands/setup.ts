@@ -3,7 +3,7 @@ import { int, num, yesno, latticeScale, keywords, numOrVar } from './args';
 import { StyleError, typeBounds } from '../force/types';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder } from '../atoms';
+import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, atomSubStyles } from '../atoms';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import { generalAtomSites, generalBoxFromRestricted, generalCreateBox } from '../triclinic_general';
 import {
@@ -11,7 +11,7 @@ import {
   type Param, type Region,
 } from '../region';
 import { readData, writeData, defaultReadOptions, type ReadDataOptions } from '../output/data';
-import { RanPark, Rng } from '../rng';
+import { RanMars, RanPark, Rng } from '../rng';
 import { ComputeTemp } from '../compute/temp';
 import type { AtomStyle, SimState } from '../types';
 import type { System } from '../system';
@@ -64,7 +64,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: AtomStyle[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'dipole', 'ellipsoid', 'peri'];
+const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'dipole', 'ellipsoid', 'peri', 'template'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -82,18 +82,41 @@ const atomStyle: Handler = ({ sys }, a) => {
   // atom_style.html: "*sphere* arg = 0/1 (optional) for static/dynamic particle radii"; the engine
   // never changes radii during a run, so both values behave the same.
   const sphereArg = (w: string | undefined) => w === '0' || w === '1';
+  // atom_style.html: "*template* arg = template-ID" and "template-ID = ID of molecule template specified in a separate"
+  // (the molecule command follows); the ID is kept in the style string (template:ID, see atoms.ts).
+  const templateArg = (id: string | undefined): string => {
+    if (!id) throw new StyleError('atom_style template needs a molecule template-ID (defined by a molecule command)');
+    if (!sys.molecules.has(id)) throw new StyleError(`atom_style template: molecule template ${id} does not exist (define it with the molecule command first)`);
+    return `template:${id}`;
+  };
   if (a[0] === 'hybrid') {
     const subs: string[] = [];
     for (let k = 1; k < a.length; k++) {
       const w = a[k];
       if (w === 'hybrid') throw new StyleError('atom_style hybrid cannot have hybrid as a sub-style');
+      if (w === 'template') {
+        if (subs.some((x) => x.startsWith('template:'))) throw new StyleError('atom_style hybrid lists template twice');
+        subs.push(templateArg(a[k + 1]));
+        k++;
+        continue;
+      }
       known(w);
       if (subs.includes(w)) throw new StyleError(`atom_style hybrid lists ${w} twice`);
       subs.push(w);
       if (w === 'sphere' && sphereArg(a[k + 1])) k++;
     }
     if (!subs.length) throw new StyleError('usage: atom_style hybrid sub-style1 sub-style2 ...');
+    // atom_style.html: "When using the *hybrid* style, you cannot combine the *template* style"
+    // with another molecular style that stores bond, angle, etc info on a per-atom basis
+    if (subs.some((x) => x.startsWith('template:')) && subs.some((x) => ['bond', 'angle', 'molecular', 'full'].includes(x))) {
+      throw new StyleError('atom_style hybrid: you cannot combine the template style with a bond, angle, molecular or full sub-style');
+    }
     sys.atomStyle = `hybrid ${subs.join(' ')}`;
+    return;
+  }
+  if (a[0] === 'template') {
+    if (a.length !== 2) throw new StyleError('usage: atom_style template template-ID');
+    sys.atomStyle = templateArg(a[1]) as AtomStyle;
     return;
   }
   known(a[0]);
@@ -419,15 +442,17 @@ export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[],
   for (let c = 0; c < copies; c++) for (let i = 0; i < t.natoms; i++) types[c * t.natoms + i] = t.type[i] + toff;
   for (const ty of types) if (ty < 1 || ty > s.ntypes) throw new StyleError(`molecule ${t.id}: atom type ${ty} is outside 1..${s.ntypes}`);
   const molecular = isMolecularStyle(sys.atomStyle);
+  const tmplStyle = isTemplateStyle(sys.atomStyle);
   const needs: [string, number[][], number, string[]][] = [
-    ['bonds', t.bonds, s.topo.nbondtypes, ['bond', 'angle', 'molecular', 'full']],
-    ['angles', t.angles, s.topo.nangletypes, ['angle', 'molecular', 'full']],
-    ['dihedrals', t.dihedrals, s.topo.ndihedraltypes, ['molecular', 'full']],
-    ['impropers', t.impropers, s.topo.nimpropertypes, ['molecular', 'full']],
+    ['bonds', t.bonds, s.topo.nbondtypes, ['bond', 'angle', 'molecular', 'full', 'template']],
+    ['angles', t.angles, s.topo.nangletypes, ['angle', 'molecular', 'full', 'template']],
+    ['dihedrals', t.dihedrals, s.topo.ndihedraltypes, ['molecular', 'full', 'template']],
+    ['impropers', t.impropers, s.topo.nimpropertypes, ['molecular', 'full', 'template']],
   ];
   for (const [what, list, ntypes, styles] of needs) {
     if (!list.length) continue;
-    if (!styles.includes(sys.atomStyle)) throw new StyleError(`molecule ${t.id} has ${what}, which atom_style ${sys.atomStyle} cannot store`);
+    const ok = tmplStyle ? styles.includes('template') : styles.includes(sys.atomStyle);
+    if (!ok) throw new StyleError(`molecule ${t.id} has ${what}, which atom_style ${sys.atomStyle} cannot store`);
     for (const e of list) if (e[0] < 1 || e[0] > ntypes) throw new StyleError(`molecule ${t.id}: ${what.slice(0, -1)} type ${e[0]} is outside 1..${ntypes}`);
   }
   if (t.q && !hasChargeStyle(sys.atomStyle)) throw new StyleError(`molecule ${t.id} has charges, which atom_style ${sys.atomStyle} cannot store`);
@@ -451,8 +476,11 @@ export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[],
   }
   const q = t.q ? new Float64Array(copies * t.natoms) : undefined;
   if (q) for (let c = 0; c < copies; c++) q.set(t.q!, c * t.natoms);
+  // atom_style template: every copy is template index 1 (the first molecule of the template), atoms 1..Natoms
+  const tIdx = tmplStyle ? new Int32Array(copies * t.natoms).fill(1) : undefined;
+  const tAt = tmplStyle ? Int32Array.from({ length: copies * t.natoms }, (_, k) => (k % t.natoms) + 1) : undefined;
   const base = maxAtomId(s);
-  const added = appendAtoms(s, { x, image, type: types, molecule: mol, q, mask: gbit });
+  const added = appendAtoms(s, { x, image, type: types, molecule: mol, q, mask: gbit, tmplIndex: tIdx, tmplAtom: tAt });
   for (let c = 0; c < copies; c++) {
     const id0 = base + c * t.natoms;
     for (const [what, list] of [['bonds', t.bonds], ['angles', t.angles], ['dihedrals', t.dihedrals], ['impropers', t.impropers]] as const) {
@@ -502,9 +530,19 @@ const createAtoms: Handler = ({ sys }, a) => {
   const molKw = kw.get('mol');
   const tmpl = molKw ? sys.molecules.get(molKw[0])?.[0] : undefined;
   if (molKw && !tmpl) throw new StyleError(`create_atoms mol: molecule template '${molKw[0]}' does not exist`);
+  // create_atoms.html: "the same molecule template-ID." (the mol template must be the atom_style template)
+  const styleTmpl = templateStyleId(sys.atomStyle);
+  if (tmpl && styleTmpl !== null && molKw![0] !== styleTmpl) {
+    throw new StyleError(`create_atoms mol: molecule template ${molKw![0]} is not the template ${styleTmpl} of atom_style template; they must use the same molecule template-ID`);
+  }
   if (!tmpl && (type < 1 || type > s.ntypes)) throw new StyleError(`atom type ${type} is outside 1..${s.ntypes}`);
   if (tmpl && type < 0) throw new StyleError('create_atoms with mol: the type (an offset) must be >= 0');
-  const molRng = molKw ? new Rng(int(molKw[1], 'mol seed')) : null;
+  // Measured with native LAMMPS (black box, 3d, create_atoms box mol cychex 734594 on a lattice): the
+  // orientation of molecule k (k = 0, 1, ...) comes from a Marsaglia stream (RanMars) seeded with the mol
+  // seed: one leading draw, then four per molecule: the axis is (u1 - 0.5, u2 - 0.5, u3 - 0.5) (normalised)
+  // and the angle is 2 pi u4. Recovered from the coordinates of all 64 molecules of that run.
+  const molRng = molKw ? new RanMars(int(molKw[1], 'mol seed')) : null;
+  if (molRng) molRng.uniform();
   if (molKw && int(molKw[1], 'mol seed') <= 0) throw new StyleError('create_atoms mol: seed must be a positive integer');
   const rotKw = kw.get('rotate');
   if (rotKw && !tmpl) throw new StyleError('create_atoms rotate needs the mol keyword');
@@ -519,15 +557,9 @@ const createAtoms: Handler = ({ sys }, a) => {
     if (!R) {
       if (sys.dimension === 2) R = rotationMatrix(2 * Math.PI * molRng!.uniform(), 0, 0, 1);
       else {
-        // uniformly random rotation from a random unit quaternion (Shoemake)
-        const u1 = molRng!.uniform(), u2 = molRng!.uniform(), u3 = molRng!.uniform();
-        const q0 = Math.sqrt(1 - u1) * Math.sin(2 * Math.PI * u2), q1 = Math.sqrt(1 - u1) * Math.cos(2 * Math.PI * u2);
-        const q2 = Math.sqrt(u1) * Math.sin(2 * Math.PI * u3), q3 = Math.sqrt(u1) * Math.cos(2 * Math.PI * u3);
-        R = [
-          [1 - 2 * (q2 * q2 + q3 * q3), 2 * (q1 * q2 - q0 * q3), 2 * (q1 * q3 + q0 * q2)],
-          [2 * (q1 * q2 + q0 * q3), 1 - 2 * (q1 * q1 + q3 * q3), 2 * (q2 * q3 - q0 * q1)],
-          [2 * (q1 * q3 - q0 * q2), 2 * (q2 * q3 + q0 * q1), 1 - 2 * (q1 * q1 + q2 * q2)],
-        ];
+        // rotation by 2 pi u4 about the axis (u1 - 0.5, u2 - 0.5, u3 - 0.5), see molRng above
+        const u1 = molRng!.uniform(), u2 = molRng!.uniform(), u3 = molRng!.uniform(), u4 = molRng!.uniform();
+        R = rotationMatrix(2 * Math.PI * u4, u1 - 0.5, u2 - 0.5, u3 - 0.5);
       }
     }
     const out: number[] = [];
@@ -578,7 +610,12 @@ const createAtoms: Handler = ({ sys }, a) => {
       sys.warn('create_atoms single: the point is outside the box; no atom created');
     } else if (varOk(p)) { pts = tmpl ? placeMol(p) : p; types = [type]; }
   } else if (random) {
-    const rng = new Rng(random.seed);
+    // Measured with native LAMMPS (black box, create_atoms 2 random 800 495437 box, and 3 or 5 atoms with
+    // seeds 12345 and 777, with and without molecules): the coordinates are consecutive Park-Miller draws
+    // (RanPark), x then y then z for each attempt, after the first 30 draws of the stream, which native
+    // does not use for any atom
+    const rng = new RanPark(random.seed);
+    for (let k = 0; k < 30; k++) rng.uniform();
     const overlap = kw.has('overlap') ? num(kw.get('overlap')![0], 'overlap') : 0;
     const maxtry = kw.has('maxtry') ? int(kw.get('maxtry')![0], 'maxtry') : 10;
     // sample in the region's bounding box clipped to the box, accept points inside both
@@ -1824,8 +1861,15 @@ const replicate: Handler = ({ sys }, a) => {
   };
   const custom = new Map<string, Float64Array>();
   for (const [name, arr] of base.custom!) custom.set(name, tile(arr)!);
+  // atom_style template: the template index and atom are copied with each atom
+  const tileI = (a: Int32Array | null): Int32Array | undefined => {
+    if (!a) return undefined;
+    const out = new Int32Array(a.length * ncopy);
+    for (let k = 0; k < ncopy; k++) out.set(a, k * a.length);
+    return out;
+  };
   appendAtoms(s, {
-    x, v, type, id, mask: 0, molecule: mol, q, image,
+    x, v, type, id, mask: 0, molecule: mol, q, image, tmplIndex: tileI((base.tmplIndex as Int32Array | undefined) ?? null), tmplAtom: tileI((base.tmplAtom as Int32Array | undefined) ?? null),
     rmass: tile(base.rmass as Float64Array | undefined), radius: tile(base.radius as Float64Array | undefined), omega: tile(base.omega),
     mu: tile(base.mu), shape: tile(base.shape), quat: tile(base.quat), angmom: tile(base.angmom), custom,
   });

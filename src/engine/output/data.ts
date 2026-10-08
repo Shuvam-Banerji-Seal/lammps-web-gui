@@ -1,7 +1,8 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
-import { appendAtoms, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isSphereStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, topologyLevel } from '../atoms';
+import { appendAtoms, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isSphereStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel } from '../atoms';
+import { expandTemplateTopology } from '../template';
 import { makeBox } from '../domain';
 import { generalBoxFromRestricted, generalFrame, rotateVector, toGeneralPoint, toRestrictedPoint, unrotateVector, type GeneralFrame, type Mat3, type V3 } from '../triclinic_general';
 
@@ -48,6 +49,10 @@ const BASE_COLS: Record<string, string[]> = {
   ellipsoid: ['id', 'type', 'ellipsoidflag', 'density', 'x', 'y', 'z'],
   // read_data.html, the Atoms-section table, row peri: "atom-ID atom-type volume density x y z"
   peri: ['id', 'type', 'volume', 'density', 'x', 'y', 'z'],
+  // read_data.html, the Atoms-section table, row template. Measured with native LAMMPS (black box):
+  // the column order is atom-ID molecule-ID template-index template-atom atom-type x y z (the docs row
+  // lists atom-type before molecule-ID; native rejects that order: Invalid atom type)
+  template: ['id', 'mol', 'tindex', 'tatom', 'type', 'x', 'y', 'z'],
 };
 
 /**
@@ -58,7 +63,7 @@ const BASE_COLS: Record<string, string[]> = {
  */
 export const atomStyleCols = (style: AtomStyle): string[] => {
   const subs = atomSubStyles(style);
-  if (!style.startsWith('hybrid ')) return BASE_COLS[style];
+  if (!style.startsWith('hybrid ')) return BASE_COLS[subs[0]];
   const out = ['id', 'type', 'x', 'y', 'z'];
   for (const sub of subs) for (const c of BASE_COLS[sub]) if (!out.includes(c)) out.push(c);
   return out;
@@ -232,6 +237,13 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   const natoms = h.atoms ?? 0;
   const style = s.atomStyle;
   const cols = atomStyleCols(style);
+  // atom_style template: read_data.html "set the *bonds*, *angles*, etc header keywords in the data file," (see template.ts)
+  const tmplId = templateStyleId(style);
+  if (tmplId !== null) {
+    for (const k of ['bonds', 'angles', 'dihedrals', 'impropers'] as const) {
+      if ((h[k] ?? 0) > 0) throw new StyleError(`data file header ${k}: the topology of atom_style template comes from the molecule templates`);
+    }
+  }
   const idBase = opts.add === 'append' ? maxAtomId(s) : typeof opts.add === 'object' ? opts.add.id : 0;
   const molBase = typeof opts.add === 'object' ? opts.add.mol : 0;
   const n0 = s.n;
@@ -310,6 +322,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const radius = new Float64Array(count), density = new Float64Array(count), vol = new Float64Array(count);
         const mu = s.mu ? new Float64Array(4 * count) : null;
         const eflag = s.shape ? new Uint8Array(count) : null;
+        const tIdx = new Int32Array(count), tAt = new Int32Array(count);
         body.forEach(({ w, at }, a) => {
           if (w.length !== cols.length && w.length !== cols.length + 3) {
             throw new StyleError(`data file line ${at}: Atoms # ${style} expects ${cols.length} values (+3 image flags), got ${w.length}`);
@@ -338,6 +351,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
                 eflag![a] = f;
                 break;
               }
+              case 'tindex': tIdx[a] = intOf(v, 'template-index', at); break;
+              case 'tatom': tAt[a] = intOf(v, 'template-atom', at); break;
               case 'mux': mu![4 * a] = numOf(v, 'mux', at); break;
               case 'muy': mu![4 * a + 1] = numOf(v, 'muy', at); break;
               case 'muz': mu![4 * a + 2] = numOf(v, 'muz', at); break;
@@ -376,9 +391,11 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
             x[3 * a] = r[0]; x[3 * a + 1] = r[1]; x[3 * a + 2] = r[2];
           }
         }
-        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined, vfrac: s.vfrac ? vol : undefined });
+        const firstNew = s.n;
+        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined, vfrac: s.vfrac ? vol : undefined, tmplIndex: tmplId !== null ? tIdx : undefined, tmplAtom: tmplId !== null ? tAt : undefined });
         // periodic remap of the new atoms
         for (let i = n0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);
+        if (tmplId !== null) expandTemplateTopology(s, sys.molecules.get(tmplId) ?? [], tmplId, firstNew, s.n);
         break;
       }
       // read_data.html: "line syntax: atom-ID shapex shapey shapez quatw quati quatj quatk" with "shapex,shapey,shapez
@@ -426,6 +443,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         }
         break;
       case 'Bonds': case 'Angles': case 'Dihedrals': case 'Impropers': {
+        if (tmplId !== null) throw new StyleError(`data file section ${title}: the topology of atom_style template comes from the molecule templates, not from a ${title} section`);
         const kind = title.toLowerCase() as 'bonds' | 'angles' | 'dihedrals' | 'impropers';
         const width = kind === 'bonds' ? 2 : kind === 'angles' ? 3 : 4;
         const off = kind === 'bonds' ? boff : kind === 'angles' ? aoff : kind === 'dihedrals' ? doff : ioff;
@@ -564,7 +582,13 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   const nEll = s.shape ? countEllipsoids(s) : 0;
   if (s.shape) out.push(`${nEll} ellipsoids`);
   const mol = isMolecularStyle(s.atomStyle);
-  if (mol) {
+  if (mol && isTemplateStyle(s.atomStyle)) {
+    // measured with native write_data: a template style writes no bond, angle, dihedral or improper
+    // counts (its topology is in the molecule templates), only the type counts that are non-zero
+    for (const [nt, name] of [[t.nbondtypes, 'bond'], [t.nangletypes, 'angle'], [t.ndihedraltypes, 'dihedral'], [t.nimpropertypes, 'improper']] as const) {
+      if (nt > 0) out.push(`${nt} ${name} types`);
+    }
+  } else if (mol) {
     const lines: [number, number, string][] = [
       [t.bonds.n, t.nbondtypes, 'bond'], [t.angles.n, t.nangletypes, 'angle'],
       [t.dihedrals.n, t.ndihedraltypes, 'dihedral'], [t.impropers.n, t.nimpropertypes, 'improper'],
@@ -611,7 +635,7 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
     }
   }
   // measured with native write_data: a hybrid style is labelled Atoms # hybrid
-  out.push('', `Atoms # ${s.atomStyle.startsWith('hybrid ') ? 'hybrid' : s.atomStyle}`, '');
+  out.push('', `Atoms # ${s.atomStyle.startsWith('hybrid ') ? 'hybrid' : atomSubStyles(s.atomStyle)[0]}`, '');
   // Measured with native LAMMPS (black box, a 10-atom chain whose Atoms
   // section was shuffled): Atoms and Velocities come out in storage order
   // (the order read_data/create_atoms added them), not sorted by ID; each
@@ -634,6 +658,8 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
       switch (c) {
         case 'id': return String(s.id[i]);
         case 'mol': return String(s.molecule[i]);
+        case 'tindex': return String(s.tmplIndex![i]);
+        case 'tatom': return String(s.tmplAtom![i]);
         case 'type': return String(s.type[i]);
         case 'q': return shortest(s.q[i]);
         // measured with native write_data: diameter 2r, and density = mass / volume (mass itself for r = 0)
@@ -675,7 +701,8 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   order.forEach((i, k) => { local[s.id[i]] = k; });
   const slot = (id: number): number => (id <= maxId ? local[id] : -1);
   for (const [list, title, owner] of [[t.bonds, 'Bonds', 0], [t.angles, 'Angles', 1], [t.dihedrals, 'Dihedrals', 1], [t.impropers, 'Impropers', 1]] as const) {
-    if (!list.n) continue;
+    // measured with native write_data: no topology sections for atom_style template (the templates hold them)
+    if (!list.n || isTemplateStyle(s.atomStyle)) continue;
     out.push('', title, '');
     const w = list.width;
     const rows = Array.from({ length: list.n }, (_, e) => e)

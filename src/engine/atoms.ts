@@ -20,9 +20,17 @@ import { StyleError } from './force/types';
  * hybrid style is used, atoms store and communicate the union of all quantities implied by the
  * individual styles."
  */
-export const atomSubStyles = (st: AtomStyle): string[] => (st.startsWith('hybrid ') ? st.slice(7).trim().split(/\s+/) : [st]);
-/** Styles with bond topology and molecule IDs. */
-export const isMolecularStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'bond' || x === 'angle' || x === 'molecular' || x === 'full');
+export const atomSubStyles = (st: AtomStyle): string[] => (st.startsWith('hybrid ') ? st.slice(7).trim().split(/\s+/) : [st])
+  .map((x) => (x.startsWith('template:') ? 'template' : x));
+/** atom_style template ID of a style (the ID after the template keyword), or null when there is no template sub-style. */
+export const templateStyleId = (st: AtomStyle): string | null => {
+  const w = (st.startsWith('hybrid ') ? st.slice(7).trim().split(/\s+/) : [st]).find((x) => x.startsWith('template:'));
+  return w ? w.slice('template:'.length) : null;
+};
+/** Styles with molecule templates (atom_style template): topology comes from the template, per-atom template index and atom. */
+export const isTemplateStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('template');
+/** Styles with bond topology and molecule IDs (template styles too: their topology is expanded from the template). */
+export const isMolecularStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'bond' || x === 'angle' || x === 'molecular' || x === 'full' || x === 'template');
 /** Styles that store a per-atom charge. */
 export const hasChargeStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'charge' || x === 'full' || x === 'dipole');
 /** Styles with finite-size spheres (radius, rmass, omega, torque). */
@@ -120,6 +128,8 @@ export const emptyState = (
   radius: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
   omega: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
   torque: isSphereStyle(atomStyle) || isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
+  tmplIndex: isTemplateStyle(atomStyle) ? new Int32Array(0) : null,
+  tmplAtom: isTemplateStyle(atomStyle) ? new Int32Array(0) : null,
   mu: hasDipoleStyle(atomStyle) ? new Float64Array(0) : null,
   shape: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
   quat: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
@@ -171,6 +181,9 @@ export interface NewAtoms {
   v?: Float64Array;
   image?: Int32Array;
   molecule?: number | Int32Array;
+  /** atom_style template: template index and template atom per atom (default 0). */
+  tmplIndex?: number | Int32Array;
+  tmplAtom?: number | Int32Array;
   q?: number | Float64Array;
   /** Per-atom masses (only for atom styles with rmass; default SPHERE_DEFAULT_MASS). */
   rmass?: number | Float64Array;
@@ -221,6 +234,14 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
   s.molecule = growI(s.molecule, n);
   if (typeof a.molecule === 'number') s.molecule.fill(a.molecule, n0, n);
   else if (a.molecule) s.molecule.set(a.molecule, n0);
+  if (s.tmplIndex && s.tmplAtom) {
+    s.tmplIndex = growI(s.tmplIndex, n); s.tmplAtom = growI(s.tmplAtom, n);
+    for (const [arr, src] of [[s.tmplIndex, a.tmplIndex], [s.tmplAtom, a.tmplAtom]] as const) {
+      if (typeof src === 'number') arr.fill(src, n0, n);
+      else if (src) arr.set(src, n0);
+      else arr.fill(0, n0, n);
+    }
+  }
   s.q = growF(s.q, n);
   if (typeof a.q === 'number') s.q.fill(a.q, n0, n);
   else if (a.q) s.q.set(a.q, n0);
@@ -284,6 +305,7 @@ export const gatherAtoms = (s: SimState, idx: ArrayLike<number>): NewAtoms => {
   return {
     x: pick(s.x, 3), v: pick(s.v, 3), image: pickI(s.image, 3), type: pickI(s.type, 1), id: pickI(s.id, 1),
     molecule: pickI(s.molecule, 1), q: pick(s.q, 1),
+    tmplIndex: s.tmplIndex ? pickI(s.tmplIndex, 1) : undefined, tmplAtom: s.tmplAtom ? pickI(s.tmplAtom, 1) : undefined,
     rmass: s.rmass ? pick(s.rmass, 1) : undefined, radius: s.radius ? pick(s.radius, 1) : undefined,
     omega: s.omega ? pick(s.omega, 3) : undefined, mu: s.mu ? pick(s.mu, 4) : undefined,
     shape: s.shape ? pick(s.shape, 3) : undefined, quat: s.quat ? pick(s.quat, 4) : undefined, angmom: s.angmom ? pick(s.angmom, 3) : undefined, custom,
@@ -296,6 +318,24 @@ export const gatherAtoms = (s: SimState, idx: ArrayLike<number>): NewAtoms => {
  * Bonded entries that reference a deleted atom are removed too.
  */
 export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
+  // atom_style template: the bonds of a template molecule come from its template, so a molecule
+  // that loses some atoms but keeps others cannot be bonded any more. Measured with native LAMMPS
+  // (black box, delete_atoms group of one atom of a 6-atom template molecule, then run 0): native stops
+  // at the next run setup with Bond atom missing in image check. Deleting a whole molecule is fine.
+  if (s.tmplIndex && s.tmplAtom) {
+    const total = new Map<string, number>(), gone = new Map<string, number>();
+    for (let i = 0; i < s.n; i++) {
+      if (s.tmplIndex[i] === 0) continue;
+      const key = `${s.molecule[i]}:${s.tmplIndex[i]}`;
+      total.set(key, (total.get(key) ?? 0) + 1);
+      if (del[i]) gone.set(key, (gone.get(key) ?? 0) + 1);
+    }
+    for (const [key, g] of gone) {
+      if (g < (total.get(key) ?? 0)) {
+        throw new StyleError(`Bond atom missing in image check: molecule ${key.split(':')[0]} (template index ${key.split(':')[1]}) lost some atoms, but its bonds come from the molecule template`);
+      }
+    }
+  }
   // Measured with native LAMMPS (black box, atoms 1..10, delete 2 3 7 with compress no): native
   // storage becomes 1 10 9 4 5 6 8, i.e. walking its list, a deleted atom's slot takes the last
   // atom of the list, which is then checked in turn.
@@ -317,6 +357,7 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
       }
       s.type[k] = s.type[i]; s.id[k] = s.id[i]; s.mask[k] = s.mask[i];
       s.molecule[k] = s.molecule[i]; s.q[k] = s.q[i];
+      if (s.tmplIndex && s.tmplAtom) { s.tmplIndex[k] = s.tmplIndex[i]; s.tmplAtom[k] = s.tmplAtom[i]; }
       if (s.rmass) s.rmass[k] = s.rmass[i];
       if (s.radius) s.radius[k] = s.radius[i];
       for (let d = 0; d < 3; d++) {
@@ -344,6 +385,7 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
   s.x = s.x.slice(0, 3 * k); s.v = s.v.slice(0, 3 * k); s.f = s.f.slice(0, 3 * k);
   s.image = s.image.slice(0, 3 * k); s.type = s.type.slice(0, k); s.id = s.id.slice(0, k);
   s.mask = s.mask.slice(0, k); s.molecule = s.molecule.slice(0, k); s.q = s.q.slice(0, k);
+  if (s.tmplIndex && s.tmplAtom) { s.tmplIndex = s.tmplIndex.slice(0, k); s.tmplAtom = s.tmplAtom.slice(0, k); }
   if (s.rmass) s.rmass = s.rmass.slice(0, k);
   if (s.radius) s.radius = s.radius.slice(0, k);
   if (s.omega) s.omega = s.omega.slice(0, 3 * k);

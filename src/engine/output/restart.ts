@@ -10,7 +10,7 @@ import { BondedHybrid, type HybridKind } from '../force/bonded_hybrid';
 
 /** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
 type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart };
-import { hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle } from '../atoms';
+import { hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isTemplateStyle, templateStyleId } from '../atoms';
 
 /*
  * The browser engine's restart file (write_restart / read_restart).
@@ -323,6 +323,15 @@ export const readRestartText = (sys: System, text: string, name: string): void =
   // per-atom values of fix property/atom wait for the fix to be re-specified (FixPropertyAtom);
   // until then the attributes the atom style lacks are absent
   if (!isMolecularStyle(state.atomStyle)) state.molecule.fill(0);
+  // atom_style template: the template index and atom per atom come with the file; the bonded topology
+  // they imply is already in the stored topo
+  if (isTemplateStyle(state.atomStyle)) {
+    need(!!state.tmplIndex && !!state.tmplAtom && state.tmplIndex.length === n && state.tmplAtom.length === n, 'template index and atom have the wrong length');
+    // Measured with native LAMMPS (black box): read_restart of an atom_style template file stops with an
+    // error unless the molecule command for that template ID was given first
+    const tid = templateStyleId(state.atomStyle)!;
+    if (!sys.molecules.has(tid)) throw new StyleError(`${name}: atom_style template needs molecule template ${tid}; define it with the molecule command before read_restart`);
+  } else { state.tmplIndex = null; state.tmplAtom = null; }
   if (!hasChargeStyle(state.atomStyle)) state.q.fill(0);
   if (!hasRmassStyle(state.atomStyle)) state.rmass = null;
   if (!hasDipoleStyle(state.atomStyle)) state.mu = null;

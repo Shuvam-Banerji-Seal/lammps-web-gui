@@ -80,7 +80,11 @@ export interface UnitSystem {
 
 /** docs.lammps.org/atom_style.html styles the engine implements. */
 /** An atom style; atom_style hybrid is stored as 'hybrid' followed by its sub-styles. */
-export type AtomStyle = 'atomic' | 'charge' | 'bond' | 'angle' | 'molecular' | 'full' | 'sphere' | 'dipole' | 'ellipsoid' | 'peri' | `hybrid ${string}`;
+/**
+ * `template:<ID>` is atom_style template ID: the molecule template ID is part of the style string so that
+ * it survives write_restart / read_restart (atoms.ts templateStyleId reads it back).
+ */
+export type AtomStyle = 'atomic' | 'charge' | 'bond' | 'angle' | 'molecular' | 'full' | 'sphere' | 'dipole' | 'ellipsoid' | 'peri' | `template:${string}` | `hybrid ${string}`;
 
 /**
  * Bonded topology entries of one kind, stored by atom ID (not index) so that
@@ -164,6 +168,12 @@ export interface SimState {
   mask: Int32Array;
   /** Molecule ID per atom (0 = none). */
   molecule: Int32Array;
+  /**
+   * atom_style template: per atom the molecule index within the template (1..Nmols, 0 = not a template
+   * atom) and the atom index within that molecule (1..Natoms, 0 = not a template atom); else null.
+   */
+  tmplIndex: Int32Array | null;
+  tmplAtom: Int32Array | null;
   /** Charge per atom. */
   q: Float64Array;
   topo: Topology;

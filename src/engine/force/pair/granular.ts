@@ -2,6 +2,7 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } fro
 import type { SimState } from '../../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
+import { mdrCheckTriangles, mdrDampCoeff, mdrElastic } from './granular_mdr';
 
 /*
  * pair_style granular — docs.lammps.org/pair_granular.html (plans/lammps-docs/pair_granular.rst).
@@ -47,11 +48,15 @@ import { parseNum } from '../util';
  * - a frozen partner (fix freeze) contributes no mass to m_eff.
  * The multi-body periodic rolling case (w6granular_rolling) still differs by about 1e-5 at step
  * 150 although two-sphere rolling and twisting runs match to 1e-12.
- * Not implemented (StyleError): normal mdr, damping coeff_restitution, heat, synchronized_verlet.
+ * mdr (granular_mdr.ts, measured on two equal spheres): the elastic branch is implemented for particle pairs with
+ * equal radii, the damping mdr 1 and mdr 2, and the tangential linear models. The plastic branch (overlap at or
+ * beyond the yield displacement), adhesion (surface energy > 0), unequal radii, mindlin tangential models and
+ * the marshall twisting model throw a StyleError.
+ * Not implemented (StyleError): damping coeff_restitution with mdr, heat, synchronized_verlet.
  */
 
-type NormalKind = 'hooke' | 'hertz' | 'hertz/material' | 'dmt' | 'jkr';
-type DampKind = 'velocity' | 'mass_velocity' | 'viscoelastic' | 'tsuji' | 'coeff_restitution';
+type NormalKind = 'hooke' | 'hertz' | 'hertz/material' | 'dmt' | 'jkr' | 'mdr';
+type DampKind = 'velocity' | 'mass_velocity' | 'viscoelastic' | 'tsuji' | 'coeff_restitution' | 'mdr';
 type TangKind = 'linear_nohistory' | 'linear_history' | 'mindlin' | 'mindlin/force' | 'mindlin_rescale' | 'mindlin_rescale/force';
 type RollKind = 'none' | 'sds';
 type TwistKind = 'none' | 'sds' | 'marshall';
@@ -65,6 +70,8 @@ export interface Spec {
   E: number; nu: number; gamma: number;
   /** eta_n0, or the restitution coefficient e for tsuji. */
   eta: number;
+  /** mdr: yield stress Y, critical confinement ratio psi_b (bulk response, not used before yield), damping class d_type. */
+  Y: number; psib: number; dtype: number;
   damp: DampKind;
   tang: TangKind;
   /** tangential stiffness; ktNull means NULL (from the shear modulus). */
@@ -84,6 +91,8 @@ export interface Pm {
   Eeff: number;
   gamma: number;
   eta: number;
+  /** mdr fields (absent for the other models; the legacy wall path builds a Pm without them). */
+  Y?: number; psib?: number; dtype?: number;
   damp: DampKind;
   tang: TangKind;
   kt: number;
@@ -96,7 +105,7 @@ export interface Pm {
   sig: string;
 }
 
-const NUM_ARGS: Record<NormalKind, number> = { hooke: 2, hertz: 2, 'hertz/material': 3, dmt: 4, jkr: 4 };
+const NUM_ARGS: Record<NormalKind, number> = { hooke: 2, hertz: 2, 'hertz/material': 3, dmt: 4, jkr: 4, mdr: 6 };
 const DAMPS: Record<string, DampKind> = { velocity: 'velocity', mass_velocity: 'mass_velocity', viscoelastic: 'viscoelastic', tsuji: 'tsuji', coeff_restitution: 'coeff_restitution' };
 const TANGS: Record<string, TangKind> = {
   linear_nohistory: 'linear_nohistory', linear_history: 'linear_history', mindlin: 'mindlin',
@@ -110,20 +119,34 @@ const tsujiAlpha = (e: number): number =>
 /** Parses the arguments of one pair_coeff (after I J). */
 export function parseGranularSpec(args: string[]): Spec {
   const word = args[0];
-  if (word === 'mdr') throw new StyleError("pair_style granular: normal model 'mdr' is not implemented in this engine");
-  if (!(word in NUM_ARGS)) throw new StyleError(`pair_style granular: unknown normal model '${word}' (hooke, hertz, hertz/material, dmt, jkr)`);
+  if (!(word in NUM_ARGS)) throw new StyleError(`pair_style granular: unknown normal model '${word}' (hooke, hertz, hertz/material, dmt, jkr, mdr)`);
   const normal = word as NormalKind;
   const nn = NUM_ARGS[normal];
   if (args.length < 1 + nn) throw new StyleError(`pair_coeff granular ${normal} needs ${nn} numeric arguments`);
   const num = args.slice(1, 1 + nn).map((w, k) => parseNum(w, `${normal} argument ${k + 1}`));
   const sp: Spec = {
-    normal, kn: 0, E: 0, nu: 0, gamma: 0, eta: 0,
+    normal, kn: 0, E: 0, nu: 0, gamma: 0, eta: 0, Y: 0, psib: 0, dtype: 0,
     damp: 'viscoelastic', tang: 'linear_nohistory', kt: 0, ktNull: false, xgt: 0, mu: 0,
     roll: 'none', kr: 0, gr: 0, mr: 0, twist: 'none', kw: 0, gw: 0, mw: 0, limit: false, cutoff: null,
   };
   if (normal === 'hooke' || normal === 'hertz') {
     sp.kn = num[0];
     sp.eta = num[1];
+  } else if (normal === 'mdr') {
+    // doc (pair_granular.html, normal model 6, in this order): E, nu, Y, Delta gamma, psi_b, eta_n0
+    sp.E = num[0];
+    sp.nu = num[1];
+    sp.Y = num[2];
+    sp.gamma = num[3];
+    sp.psib = num[4];
+    sp.eta = num[5];
+    // doc: the surface energy is "\Delta\gamma \ge 0"; a non-zero value is the adhesive (Part I) branch, not implemented here
+    if (sp.gamma !== 0) throw new StyleError("pair_style granular: 'mdr' is not implemented for a surface energy above 0 (adhesive mdr) in this engine");
+    if (!(sp.E > 0)) throw new StyleError("pair_style granular: normal model 'mdr' needs Young's modulus E > 0");
+    if (!(sp.nu >= 0 && sp.nu <= 0.5)) throw new StyleError("pair_style granular: normal model 'mdr' needs Poisson's ratio 0 <= nu <= 0.5");
+    if (!(sp.Y >= 0)) throw new StyleError("pair_style granular: normal model 'mdr' needs yield stress Y >= 0");
+    if (!(sp.psib >= 0 && sp.psib <= 1)) throw new StyleError("pair_style granular: normal model 'mdr' needs critical confinement ratio 0 <= psi_b <= 1");
+    if (!(sp.eta >= 0)) throw new StyleError("pair_style granular: normal model 'mdr' needs damping coefficient eta_n0 >= 0");
   } else {
     sp.E = num[0];
     sp.eta = num[1];
@@ -131,6 +154,7 @@ export function parseGranularSpec(args: string[]): Spec {
     if (normal === 'dmt' || normal === 'jkr') sp.gamma = num[3];
   }
   let tangSeen = false;
+  let dampSeen = false;
   let k = 1 + nn;
   const need = (n: number, what: string) => {
     if (args.length < k + n) throw new StyleError(`pair_coeff granular: '${what}' needs ${n} arguments`);
@@ -140,8 +164,17 @@ export function parseGranularSpec(args: string[]): Spec {
     const kw = next();
     if (kw === 'damping') {
       need(1, 'damping');
+      dampSeen = true;
       const d = next();
-      if (d === 'mdr') throw new StyleError("pair_style granular: damping 'mdr' is not implemented in this engine");
+      if (d === 'mdr') {
+        // doc: "The *mdr* damping class contains multiple damping models that can be toggled between by specifying different integer values for the :math:`d_{type}` input parameter."
+        need(1, 'damping mdr');
+        const dt = parseNum(next(), 'damping mdr d_type');
+        if (dt !== 1 && dt !== 2) throw new StyleError(`pair_style granular: damping mdr d_type must be 1 or 2 (got ${dt})`);
+        sp.damp = 'mdr';
+        sp.dtype = dt;
+        continue;
+      }
       if (!(d in DAMPS)) throw new StyleError(`pair_style granular: unknown damping '${d}'`);
       sp.damp = DAMPS[d];
     } else if (kw === 'tangential') {
@@ -200,6 +233,17 @@ export function parseGranularSpec(args: string[]): Spec {
     }
   }
   if (!tangSeen) throw new StyleError('pair_coeff granular: the required keyword tangential is missing');
+  // doc: "If you use the *mdr* normal model the only supported damping option is the *mdr* damping class described below."
+  if (normal === 'mdr' && (!dampSeen || sp.damp !== 'mdr')) {
+    throw new StyleError("pair_style granular: normal model 'mdr' needs damping mdr d_type (the only supported damping option)");
+  }
+  if (sp.damp === 'mdr' && normal !== 'mdr') throw new StyleError("pair_style granular: damping 'mdr' needs the normal model 'mdr'");
+  if (normal === 'mdr' && sp.tang !== 'linear_nohistory' && sp.tang !== 'linear_history') {
+    throw new StyleError(`pair_style granular: tangential ${sp.tang} with normal model 'mdr' is not implemented in this engine`);
+  }
+  if (normal === 'mdr' && sp.twist === 'marshall') {
+    throw new StyleError("pair_style granular: twisting marshall with normal model 'mdr' is not implemented in this engine");
+  }
   if ((normal === 'dmt' || normal === 'jkr') && (sp.damp === 'tsuji' || sp.damp === 'coeff_restitution')) {
     throw new StyleError(`pair_style granular: damping ${sp.damp} is not compatible with the ${normal} model`);
   }
@@ -261,6 +305,11 @@ export interface ContactIn {
   dt: number;
   /** True inside a timestep: the history advances. */
   update: boolean;
+  /**
+   * mdr damping is evaluated unless this is the setup force evaluation at step 0 (measured: the first run's setup has no
+   * mdr damping; a setup at a later step, e.g. the second of two runs, has it). Default true.
+   */
+  mdrDamp?: boolean;
   /** -1 when the stored history is in the frame of the other atom (ID order). */
   sg: number;
   /**
@@ -296,6 +345,7 @@ export const newContactOut = (): ContactOut => ({ fx: 0, fy: 0, fz: 0, tix: 0, t
 export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut, hadHistory: boolean): boolean {
   const { pm, nx, ny, nz, r, delta, Rf, ri, rj, meff, dt, update, sg } = c;
   const jkr = pm.normal === 'jkr';
+  const mdr = pm.normal === 'mdr';
   // jkr hysteresis (doc): the tensile range delta < 0 applies only once the pair has been in contact
   if (jkr && delta < 0 && !hadHistory) return false;
   const sqrtR = Math.sqrt(Rf);
@@ -313,7 +363,14 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
   let contactA = 0;
   // pull-off force of the cohesive models (doc: F_pulloff = 4 pi gamma R for dmt, 3 pi gamma R for jkr)
   const fPull = pm.normal === 'dmt' ? 4 * Math.PI * pm.gamma * Rf : jkr ? 3 * Math.PI * pm.gamma * Rf : 0;
-  if (jkr) {
+  if (mdr) {
+    // mdr: equal radii only (the unequal-radius formula was not identified; a 0.7 % mismatch to the candidate forms was measured)
+    if (ri !== rj) throw new StyleError("pair_style granular: normal model 'mdr' with particles of unequal radii is not implemented in this engine");
+    if (delta <= 0) return false;
+    const m = mdrElastic(delta, ri, 2 * pm.Eeff, pm.Y ?? 0);
+    fne = m.fne;
+    contactA = m.a;
+  } else if (jkr) {
     const cc = jklContact(delta, Rf, pm.Eeff, pm.gamma);
     if (!cc) return false;
     fne = cc.f;
@@ -333,6 +390,8 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
     case 'velocity': etaN = pm.eta; break;
     case 'mass_velocity': etaN = pm.eta * meff; break;
     case 'viscoelastic': etaN = pm.eta * contact * meff; break;
+    // doc: the mdr damping class (d_type 1 or 2); the coefficients are measured in granular_mdr.ts
+    case 'mdr': etaN = (c.mdrDamp ?? true) ? mdrDampCoeff(pm.dtype ?? 0, pm.eta, meff, delta, ri, 2 * pm.Eeff) : 0; break;
     case 'coeff_restitution': {
       // doc: eta_n = sqrt(4 m_eff k_nd / (1 + (pi / log e)^2)) for hooke; otherwise
       // eta_n = -2 sqrt(5/6) log(e) / sqrt(pi^2 + log(e)^2) * sqrt(3/2 k_nd m_eff); k_nd = F_elastic / delta.
@@ -561,6 +620,19 @@ export class PairGranular extends Pair {
     const nt = this.ntypes + 1;
     const self = (t: number) => this.specs[t * nt + t];
     this.pm = new Array(nt * nt).fill(null);
+    // doc: "The definition of multiple *mdr* models in the *pair_style* is currently not supported."
+    let mdrRef: Spec | null = null;
+    for (const sp of this.specs) {
+      if (!sp || sp.normal !== 'mdr') continue;
+      if (!mdrRef) mdrRef = sp;
+      else if (sp.E !== mdrRef.E || sp.nu !== mdrRef.nu || sp.Y !== mdrRef.Y || sp.gamma !== mdrRef.gamma
+        || sp.psib !== mdrRef.psib || sp.eta !== mdrRef.eta || sp.dtype !== mdrRef.dtype) {
+        throw new StyleError("pair_style granular: multiple 'mdr' models (different E, nu, Y, Delta gamma, psi_b, eta_n0 or d_type) are not supported");
+      }
+    }
+    if (mdrRef && this.specs.some((sp) => sp && sp.normal !== 'mdr')) {
+      throw new StyleError("pair_style granular: the 'mdr' normal model cannot be combined with a different normal model in the pair_style");
+    }
     for (let i = 1; i < nt; i++) {
       for (let j = i; j < nt; j++) {
         const sp = this.specs[i * nt + j];
@@ -596,6 +668,8 @@ export class PairGranular extends Pair {
    * against a flat wall; E_eff = E / (2 (1 - nu^2)) as in the doc note for fix wall/gran.
    */
   wallParams(sp: Spec): Pm {
+    // doc: "The *mdr* model currently only supports *fix wall/gran/region*, not *fix wall/gran*."
+    if (sp.normal === 'mdr') throw new StyleError("fix wall/gran with normal model 'mdr' is not implemented in this engine (the doc supports fix wall/gran/region only)");
     return this.pmOf(sp, sp.E ? effModulus(sp.E, sp.nu) : 0, sp, sp);
   }
 
@@ -609,7 +683,8 @@ export class PairGranular extends Pair {
     }
     const sig = [sp.normal, sp.damp, sp.tang, sp.roll, sp.twist, sp.limit ? 1 : 0].join('|');
     return {
-      normal: sp.normal, kn: sp.kn, Eeff: eff, gamma: sp.gamma, eta: sp.eta, damp: sp.damp, tang: sp.tang,
+      normal: sp.normal, kn: sp.kn, Eeff: eff, gamma: sp.gamma, eta: sp.eta, Y: sp.Y, psib: sp.psib, dtype: sp.dtype,
+      damp: sp.damp, tang: sp.tang,
       kt, xgt: sp.xgt, mu: sp.mu, roll: sp.roll, kr: sp.kr, gr: sp.gr, mr: sp.mr,
       twist: sp.twist, kw: sp.kw, gw: sp.gw, mw: sp.mw, limit: sp.limit,
       cutoff: sp.cutoff ?? this.globalCut ?? -1, sig,
@@ -652,6 +727,8 @@ export class PairGranular extends Pair {
     const nt = this.ntypes + 1;
     const tq = new Float64Array(3 * nall);
     const seen = new Set<string>();
+    // mdr: the active contacts (atom-ID pairs), checked for closed triangles after the loop
+    const mdrPairs: Array<[number, number]> = [];
     const out = newContactOut();
     for (let i = 0; i < list.inum; i++) {
       const oi = owner[i];
@@ -690,7 +767,7 @@ export class PairGranular extends Pair {
           vrx: v[3 * oi] - v[3 * oj], vry: v[3 * oi + 1] - v[3 * oj + 1], vrz: v[3 * oi + 2] - v[3 * oj + 2],
           oix: omega[3 * oi], oiy: omega[3 * oi + 1], oiz: omega[3 * oi + 2],
           ojx: omega[3 * oj], ojy: omega[3 * oj + 1], ojz: omega[3 * oj + 2],
-          dt, update, sg: flip ? -1 : 1,
+          dt, update, sg: flip ? -1 : 1, mdrDamp: update || s.step > 0,
         }, sh, out, this.shear.has(key));
         if (!ok) {
           this.shear.delete(key);
@@ -700,6 +777,7 @@ export class PairGranular extends Pair {
           seen.add(key);
           this.shear.set(key, sh);
         }
+        if (pm.normal === 'mdr') mdrPairs.push([a, b]);
         f[3 * i] += out.fx; f[3 * i + 1] += out.fy; f[3 * i + 2] += out.fz;
         f[3 * j] -= out.fx; f[3 * j + 1] -= out.fy; f[3 * j + 2] -= out.fz;
         tq[3 * i] += out.tix; tq[3 * i + 1] += out.tiy; tq[3 * i + 2] += out.tiz;
@@ -707,6 +785,7 @@ export class PairGranular extends Pair {
       }
     }
     if (this.shear.size) for (const key of this.shear.keys()) if (!seen.has(key)) this.shear.delete(key);
+    mdrCheckTriangles(mdrPairs);
     nb.reverseSum(tq, 3, s.torque!);
   }
 

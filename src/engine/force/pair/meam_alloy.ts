@@ -43,7 +43,37 @@ export interface AlloyElement {
   beta: [number, number, number, number];
   /** t0..t3 of the element, t0 = 1, t1 already augmented by 3/5 t3 when augt1 = 1 */
   t: [number, number, number, number];
+  /** ibar of the element (library entry; default 0); selects G(Gamma) through gOfIbar */
+  ibar?: number;
 }
+
+/**
+ * G(Gamma) and dG/dGamma of the ibar forms. Docs (pair_meam.rst): "0 => G = sqrt(1+Gamma)", "1 => G = exp(Gamma/2)",
+ * "3 => G = 2/(1+exp(-Gamma))", "-5 => G = +-sqrt(abs(1+Gamma))". The sign of the -5 form is measured in the tests.
+ */
+export const gOfIbar = (ibar: number, gamma: number): number => {
+  if (ibar === 0 || ibar === 4) return Math.sqrt(1 + gamma);
+  if (ibar === 1) return Math.exp(gamma / 2);
+  if (ibar === 3) return 2 / (1 + Math.exp(-gamma));
+  if (ibar === -5) return (gamma >= 0 ? 1 : -1) * Math.sqrt(Math.abs(1 + gamma));
+  throw new Error(`MEAM ibar ${ibar} is not supported`);
+};
+
+/** dG/dGamma for the same ibar forms as gOfIbar. */
+export const gPrimeOfIbar = (ibar: number, gamma: number): number => {
+  if (ibar === 0 || ibar === 4) return 1 / (2 * Math.sqrt(1 + gamma));
+  if (ibar === 1) return Math.exp(gamma / 2) / 2;
+  if (ibar === 3) {
+    const e = Math.exp(-gamma);
+    return (2 * e) / ((1 + e) * (1 + e));
+  }
+  if (ibar === -5) {
+    const s = gamma >= 0 ? 1 : -1;
+    const s2 = 1 + gamma >= 0 ? 1 : -1;
+    return (s * s2) / (2 * Math.sqrt(Math.abs(1 + gamma)));
+  }
+  throw new Error(`MEAM ibar ${ibar} is not supported`);
+};
 
 export interface AlloyPair {
   Ec: number;
@@ -176,7 +206,7 @@ interface Term {
  *   Gamma = (T1 q1 + T2 q2 + T3 q3) / rho0^3 (t_l = T_l / rho0 is the density-weighted average),  G = sqrt(1+Gamma).
  * Returns gW_m = d(P rho_bar)/dW_m, gA_m[n] = d(P rho_bar)/dA_n,m and gU_m = d(P rho_bar)/du_m.
  */
-export const densityPartials = (terms: Term[], tEff: Array<[number, number, number, number]>, P: number) => {
+export const densityPartials = (terms: Term[], tEff: Array<[number, number, number, number]>, P: number, ibar: number) => {
   const N = terms.length;
   const out = { rb: 0, rho0: 0, gW: new Float64Array(N), gA: new Float64Array(4 * N), gU: new Float64Array(3 * N) };
   let S0 = 0, s2 = 0;
@@ -204,7 +234,7 @@ export const densityPartials = (terms: Term[], tEff: Array<[number, number, numb
   const qs = [0, q1, q2, q3];
   const Nn = ST[1] * q1 + ST[2] * q2 + ST[3] * q3;
   const g = Nn / (S0 * S0 * S0);
-  const G = Math.sqrt(1 + g), Gp = 1 / (2 * Math.sqrt(1 + g));
+  const G = gOfIbar(ibar, g), Gp = gPrimeOfIbar(ibar, g);
   out.rb = S0 * G;
   const PG = P * Gp;
   const dS0 = P * (G - 3 * g * Gp);
@@ -286,10 +316,11 @@ const scaledRho = (
   model: AlloyModel,
   list: AlloyNeighbor[],
   r: number,
+  ibar: number,
   radial = true,
 ): { rho: number; drho: number; rho0: number } => {
   const terms = termsOf(model, list, radial);
-  const part = densityPartials(terms, model.tEff, 1);
+  const part = densityPartials(terms, model.tEff, 1, ibar);
   let drho = 0;
   const sc = screenAll(list, model.opts);
   for (let m = 0; m < list.length; m++) {
@@ -331,13 +362,13 @@ export const alloyPair = (model: AlloyModel, i: number, j: number, r: number): {
   const dEu = (pr.Ec * s * Math.exp(-s) * pr.alpha) / pr.re;
   if (pr.lat === 'self') {
     const el = model.elements[i];
-    const { rho, drho } = scaledRho(model, ownList(model, i, r), r, false);
+    const { rho, drho } = scaledRho(model, ownList(model, i, r), r, model.elements[i].ibar ?? 0, false);
     const Fv = embedF(el, model.rhoRef[i], rho);
     const Fp = embedFp(el, model.rhoRef[i], rho);
     return { phi: (2 / el.z) * (Eu - Fv), dphi: (2 / el.z) * (dEu - Fp * drho) };
   }
-  const ri = scaledRho(model, b1List(model, i, j, r), r, false);
-  const rj = scaledRho(model, b1List(model, j, i, r), r, false);
+  const ri = scaledRho(model, b1List(model, i, j, r), r, model.elements[i].ibar ?? 0, false);
+  const rj = scaledRho(model, b1List(model, j, i, r), r, model.elements[j].ibar ?? 0, false);
   const Fi = embedF(model.elements[i], model.rhoRef[i], ri.rho), Fj = embedF(model.elements[j], model.rhoRef[j], rj.rho);
   const Fip = embedFp(model.elements[i], model.rhoRef[i], ri.rho), Fjp = embedFp(model.elements[j], model.rhoRef[j], rj.rho);
   return {
@@ -351,7 +382,7 @@ export const makeAlloyModel = (elements: AlloyElement[], pairs: AlloyPair[][], o
   const tEff = elements.map((el) => [1, augt1 ? el.t[1] + 0.6 * el.t[3] : el.t[1], el.t[2], el.t[3]] as [number, number, number, number]);
   const model: AlloyModel = { elements, pairs, opts, tEff, rhoRef: [] };
   // embedding normalisation: rho0 at re without G(Gamma), as in meam.ts referenceBackground
-  model.rhoRef = elements.map((el, c) => scaledRho({ ...model, rhoRef: [] }, ownList(model, c, el.re), el.re).rho0);
+  model.rhoRef = elements.map((el, c) => scaledRho({ ...model, rhoRef: [] }, ownList(model, c, el.re), el.re, el.ibar ?? 0).rho0);
   return model;
 };
 
@@ -367,11 +398,11 @@ export function alloyAtomEnergyGrad(model: AlloyModel, ci: number, nb: AlloyNeig
   const el = model.elements[ci];
   const terms = termsOf(model, nb);
   const sc = screenAll(nb, o);
-  const rb0 = densityPartials(terms, model.tEff, 1).rb;
+  const rb0 = densityPartials(terms, model.tEff, 1, el.ibar ?? 0).rb;
   const rhoRef = model.rhoRef[ci];
   const Fv = embedF(el, rhoRef, rb0);
   const P = embedFp(el, rhoRef, rb0);
-  const part = densityPartials(terms, model.tEff, P);
+  const part = densityPartials(terms, model.tEff, P, el.ibar ?? 0);
   // pair terms
   const phi = new Float64Array(N), dphi = new Float64Array(N);
   let pairE = 0;

@@ -1,6 +1,8 @@
 import { NEIGHMASK } from '../../neighbor';
 import { referenceVectors, SUPPORTED_REFERENCE_LATTICES, type ReferenceLattice } from './meam_lattice';
 import {
+  gOfIbar,
+  gPrimeOfIbar,
   PHI_INTERVALS,
   PHI_LO,
   PHI_SPAN,
@@ -116,13 +118,20 @@ export function screening(nb: MeamNeighbor[], o: MeamOptions): Float64Array {
   return S;
 }
 
-export const gOf = (ibar: number, gamma: number): number => {
-  if (ibar === 0 || ibar === 4) return Math.sqrt(1 + gamma);
-  if (ibar === 1) return Math.exp(gamma / 2);
-  if (ibar === 3) return 2 / (1 + Math.exp(-gamma));
-  if (ibar === -5) return (gamma >= 0 ? 1 : -1) * Math.sqrt(Math.abs(1 + gamma));
-  throw new Error(`MEAM ibar ${ibar} is not supported`);
-};
+/**
+ * ZBL blend guard. The default zbl = 1 blends the pair term with the ZBL potential at short range, which is NOT
+ * implemented. Measured with native LAMMPS (black box) on a Cu dimer (library Cu, Cu.meam with and without
+ * zbl(1,1) = 0): the blended pair term differs from the unblended one below about 2.0 A, and the blend weight is
+ * 1 up to about 1.05 A, falls to about 0.1 at 1.6 A and is about 0 at 2.0 A (Cu re = 2.55 A, so 0.78 re). Pairs
+ * are refused below ZBL_GUARD * re (0.8 re = 2.04 A for Cu), which keeps every pair where the blend is measurably
+ * nonzero out of the engine's energy. The blend profile of other elements is not measured.
+ */
+export const ZBL_GUARD = 0.8;
+
+/** ibar values with a G(Gamma) form (gOfIbar in meam_alloy.ts; docs: ibar 2 is not implemented, 4 needs gsmooth_factor). */
+export const SUPPORTED_IBAR: readonly number[] = [0, 1, 3];
+/** G(Gamma) forms (the docs quotes are in meam_alloy.ts). */
+export const gOf = gOfIbar;
 
 /** Reference-structure t parameters (augt1 applied to t1); t0 = 1 (library entries normalised to t0 = 1). */
 const refTuple = (el: MeamElement, o: MeamOptions): [number, number, number, number] => [
@@ -397,21 +406,7 @@ const radialWeightPrime = (r: number, o: MeamOptions): number => polyPrime((o.rc
 const screenWeightPrime = (C: number, o: MeamOptions): number =>
   C >= o.Cmax || C <= o.Cmin ? 0 : polyPrime((C - o.Cmin) / (o.Cmax - o.Cmin)) / (o.Cmax - o.Cmin);
 
-/** dG/dGamma for the same ibar forms as gOf. */
-export const gPrimeOf = (ibar: number, gamma: number): number => {
-  if (ibar === 0 || ibar === 4) return 1 / (2 * Math.sqrt(1 + gamma));
-  if (ibar === 1) return Math.exp(gamma / 2) / 2;
-  if (ibar === 3) {
-    const e = Math.exp(-gamma);
-    return (2 * e) / ((1 + e) * (1 + e));
-  }
-  if (ibar === -5) {
-    const s = gamma >= 0 ? 1 : -1;
-    const s2 = 1 + gamma >= 0 ? 1 : -1;
-    return (s * s2) / (2 * Math.sqrt(Math.abs(1 + gamma)));
-  }
-  throw new Error(`MEAM ibar ${ibar} is not supported`);
-};
+export const gPrimeOf = gPrimeOfIbar;
 
 /** rho_ref(r) of the reference structure and its r-derivative (see refRhoBarPrime). */
 export const refBackgroundPrime = (el: MeamElement, o: MeamOptions, r: number): { rho: number; drho: number } =>
@@ -749,6 +744,8 @@ interface PairParams {
 export interface MeamParams {
   /** indexed settings keyed "i,j" with i <= j (an element's own settings have i = j) */
   pair: Map<string, PairParams>;
+  /** pairs with an explicit zbl(I,J) = 0 ("i,j" keys); every other pair keeps the default zbl = 1 (see ZBL_GUARD) */
+  zblOff: Set<string>;
   /** erose_form, attrac(1,1), repuls(1,1) of a single element */
   erose: EroseSettings;
   /** single-element convenience: the (1,1) settings */
@@ -767,7 +764,7 @@ const PAIR_KEYS = ['Ec', 're', 'alpha', 'lattce', 'nn2', 'attrac', 'repuls', 'zb
  * verified subset (see meam_alloy.ts for the multi-element part, and the header of this file for the rest).
  */
 export const parseMeamParams = (text: string, name: string, nelem = 1): MeamParams => {
-  const out: MeamParams = { pair: new Map(), opts: { ...DEFAULT_MEAM_OPTIONS }, erose: { form: 0, attrac: 0, repuls: 0 } };
+  const out: MeamParams = { pair: new Map(), zblOff: new Set(), opts: { ...DEFAULT_MEAM_OPTIONS }, erose: { form: 0, attrac: 0, repuls: 0 } };
   const pairOf = (i: number, j: number): PairParams => {
     const k = `${i},${j}`;
     let p = out.pair.get(k);
@@ -891,6 +888,7 @@ export const parseMeamParams = (text: string, name: string, nelem = 1): MeamPara
       case 'zbl': {
         pairIndex();
         if (num() !== 0) throw new StyleError(`MEAM zbl(I,J) = ${val} is not supported; set zbl(I,J) = 0 (${name})`);
+        out.zblOff.add(`${pairIndex()[0]},${pairIndex()[1]}`);
         break;
       }
       case 'rho0': {
@@ -924,6 +922,8 @@ export class PairMeam extends Pair {
   private alloy: AlloyModel | null = null;
   /** LAMMPS type (1..ntypes) -> element index of the alloy model */
   private typeElem: number[] = [];
+  /** per type pair (ti * nt + tj): pairs closer than this distance are inside the unimplemented ZBL blend region (0 = no guard) */
+  private zblGuard: Float64Array = new Float64Array(0);
   private opts: MeamOptions = { ...DEFAULT_MEAM_OPTIONS };
   private rhoRef = 0;
   private t: [number, number, number, number] = [1, 1, 1, 1];
@@ -967,7 +967,10 @@ export class PairMeam extends Pair {
     }
     if (lib.t[0] !== 1) throw new StyleError('only MEAM parameters normalized to t0 = 1.0 are supported');
     if (lib.rozero !== 1) throw new StyleError(`MEAM rozero = ${lib.rozero} is not supported (only 1)`);
-    if (lib.ibar !== 0) throw new StyleError(`MEAM ibar = ${lib.ibar} is not supported (only ibar = 0)`);
+    if (!SUPPORTED_IBAR.includes(lib.ibar)) throw new StyleError(`MEAM ibar = ${lib.ibar} is not supported (only ibar = 0, 1, 3; -5 measured to mismatch on bcc)`);
+    if (lib.ibar !== 0 && lib.lat !== 'fcc' && lib.lat !== 'bcc') {
+      throw new StyleError(`MEAM ibar = ${lib.ibar} with the ${lib.lat} reference of ${elem} is not supported (measured to mismatch at step 0 for dia; only fcc and bcc verified)`);
+    }
     if (par.lattce !== undefined && par.lattce !== lib.lat) {
       throw new StyleError(`MEAM lattce(1,1) = ${par.lattce} differs from the library lattice '${lib.lat}' of ${elem}; not supported`);
     }
@@ -997,6 +1000,7 @@ export class PairMeam extends Pair {
       erose: par.erose,
     };
     this.opts = par.opts;
+    this.zblGuard = new Float64Array((this.ntypes + 1) * (this.ntypes + 1)).fill(par.zblOff.has('1,1') ? 0 : ZBL_GUARD * re);
     this.alloy = null;
     this.typeElem = [];
   }
@@ -1025,7 +1029,7 @@ export class PairMeam extends Pair {
       if (lib.lat !== 'fcc') throw new StyleError(`multi-element MEAM: reference lattice '${lib.lat}' of ${elt} is not supported (only fcc)`);
       if (lib.t[0] !== 1) throw new StyleError('only MEAM parameters normalized to t0 = 1.0 are supported');
       if (lib.rozero !== 1) throw new StyleError(`multi-element MEAM: rozero = ${lib.rozero} is not supported (only 1)`);
-      if (lib.ibar !== 0) throw new StyleError(`multi-element MEAM: ibar = ${lib.ibar} is not supported (only ibar = 0)`);
+      if (lib.ibar !== 0) throw new StyleError(`multi-element MEAM: ibar = ${lib.ibar} is not supported (only ibar = 0; the alloy density has no verified G-function selection)`);
       const own = par.pair.get(`${c + 1},${c + 1}`) ?? {};
       if (own.lattce !== undefined && own.lattce !== 'fcc') throw new StyleError(`multi-element MEAM: lattce(${c + 1},${c + 1}) = ${own.lattce} for ${elt} is not supported`);
       // Ec and re of the element default as in the single-element style (measured: the same energies as the explicit values)
@@ -1041,6 +1045,7 @@ export class PairMeam extends Pair {
         A: lib.asub,
         beta: lib.b,
         t: lib.t,
+        ibar: lib.ibar,
       };
     });
     const pairs: AlloyPair[][] = [];
@@ -1066,6 +1071,15 @@ export class PairMeam extends Pair {
     this.typeElem = [-1, ...maps.map((m) => elems.indexOf(m))];
     this.el = null;
     this.opts = par.opts;
+    const nt0 = this.ntypes + 1;
+    this.zblGuard = new Float64Array(nt0 * nt0);
+    for (let a = 1; a <= this.ntypes; a++) {
+      for (let b = 1; b <= this.ntypes; b++) {
+        const ea = this.typeElem[a], eb = this.typeElem[b];
+        const key = `${Math.min(ea, eb) + 1},${Math.max(ea, eb) + 1}`;
+        this.zblGuard[a * nt0 + b] = par.zblOff.has(key) ? 0 : ZBL_GUARD * pairs[ea][eb].re;
+      }
+    }
   }
 
   override initStyle(_ctx: StyleContext): void {
@@ -1103,6 +1117,10 @@ export class PairMeam extends Pair {
         const rsq = dx * dx + dy * dy + dz * dz;
         if (rsq >= cutsq[ti + type[j]]) continue;
         const r = Math.sqrt(rsq);
+        const zg = this.zblGuard[ti + type[j]];
+        if (r < zg) {
+          throw new StyleError(`MEAM pair at ${r} A is inside the ZBL blend region (zbl = 1 is the default; blending is not implemented): the blend is not applied below 0.9 re = ${zg} A; set zbl(I,J) = 0 in the parameter file, or keep the atoms farther apart`);
+        }
         if (this.alloy) anb.push({ e: this.typeElem[type[j]], j, dx, dy, dz, r });
         else nb.push({ j, dx, dy, dz, r });
       }

@@ -54,6 +54,17 @@ interface Body {
   dof: number;
 }
 
+/** One line of an infile (fix rigid infile): attributes that override the computed ones. */
+interface InfileBody {
+  mass: number;
+  xcm: number[];
+  /** box-frame inertia tensor (ixx iyy izz ixy ixz iyz), as a symmetric 3x3 */
+  I: number[][];
+  vcm: number[];
+  lam: number[];
+  image: number[];
+}
+
 const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const qnorm = (q: number[]) => { const n = Math.hypot(q[0], q[1], q[2], q[3]); return q.map((v) => v / n); };
 /** Rotation matrix (columns = body axes in the space frame) of a unit quaternion. */
@@ -113,6 +124,67 @@ const jacobi = (A: number[][]): { values: number[]; vectors: number[][] } => {
   return { values: [a[0][0], a[1][1], a[2][2]], vectors: v };
 };
 
+/**
+ * Principal moments and the body -> space quaternion of a box-frame inertia tensor.
+ * docs.lammps.org/fix_rigid.html: "The values are with respect to the simulation box XYZ axes,
+ * not with respect to the principal axes of the rigid body itself. LAMMPS performs the latter
+ * calculation internally."
+ */
+const principalFrame = (I: number[][]): { inertia: number[]; q: number[] } => {
+  const { values, vectors } = jacobi(I);
+  const maxI = Math.max(values[0], values[1], values[2]);
+  const inertia = values.map((v) => (v < 1e-7 * maxI ? 0 : v));
+  // right-handed axes
+  const e = [0, 1, 2].map((c) => [vectors[0][c], vectors[1][c], vectors[2][c]]);
+  const e3 = cross(e[0], e[1]);
+  if (e3[0] * e[2][0] + e3[1] * e[2][1] + e3[2] * e[2][2] < 0) e[2] = e[2].map((x) => -x);
+  const R = [[e[0][0], e[1][0], e[2][0]], [e[0][1], e[1][1], e[2][1]], [e[0][2], e[1][2], e[2][2]]];
+  return { inertia, q: matq(R) };
+};
+
+/**
+ * Parses an infile: "The file can contain initial blank lines or comment lines starting with "#"
+ * which are ignored. The first non-blank, non-comment line should list N = the number of lines
+ * to follow." Each line: "ID1 masstotal xcm ycm zcm ixx iyy izz ixy ixz iyz vxcm vycm vzcm lx ly lz ixcm iycm izcm".
+ * Measured with native LAMMPS (black box): a blank line between the count line and the body lines is an
+ * error, so only the lines before the count are skipped.
+ */
+const parseInfileText = (text: string, style: string, fname: string): Map<string, InfileBody> => {
+  const where = `fix ${style} infile ${fname}`;
+  // only initial blank and comment lines are skipped; the N body lines follow the count line directly
+  const all = text.split('\n').map((l) => l.trim());
+  let start = 0;
+  while (start < all.length && (all[start] === '' || all[start].startsWith('#'))) start++;
+  if (start >= all.length) throw new StyleError(`${where}: file has no count line`);
+  const n = Number(all[start]);
+  if (!Number.isInteger(n) || n < 0) throw new StyleError(`${where}: first line must be the number of bodies N, got '${all[start]}'`);
+  // the N body lines must follow the count line without a blank line in between
+  let m = 0;
+  while (m < n && start + 1 + m < all.length && all[start + 1 + m] !== '') m++;
+  if (m < n) throw new StyleError(`${where}: expected ${n} body lines, found ${m}`);
+  const lines = all.slice(start + 1, start + 1 + n);
+  const out = new Map<string, InfileBody>();
+  for (let j = 0; j < n; j++) {
+    const w = lines[j].split(/\s+/);
+    if (w.length !== 20) throw new StyleError(`${where}: body line ${j + 1} needs 20 values (ID masstotal xcm ycm zcm ixx iyy izz ixy ixz iyz vxcm vycm vzcm lx ly lz ixcm iycm izcm), got ${w.length}`);
+    const v = w.map(Number);
+    if (v.some((x) => !Number.isFinite(x))) throw new StyleError(`${where}: body line ${j + 1} has a non-numeric value: '${lines[j]}'`);
+    if (!Number.isInteger(v[0]) || v[0] < 1) throw new StyleError(`${where}: body ID on line ${j + 1} must be a positive integer, got ${w[0]}`);
+    if (!(v[1] > 0)) throw new StyleError(`${where}: masstotal of body ${v[0]} must be positive`);
+    const key = String(v[0]);
+    if (out.has(key)) throw new StyleError(`${where}: body ID ${v[0]} listed twice`);
+    out.set(key, {
+      mass: v[1],
+      xcm: v.slice(2, 5),
+      I: [[v[5], v[8], v[9]], [v[8], v[6], v[10]], [v[9], v[10], v[7]]],
+      vcm: v.slice(11, 14),
+      lam: v.slice(14, 17),
+      image: v.slice(17, 20),
+    });
+  }
+  return out;
+};
+
 export class FixRigid extends Fix {
   readonly style: string;
   private bodies: Body[] = [];
@@ -122,7 +194,12 @@ export class FixRigid extends Fix {
   private torqueSpecs: [string, boolean[]][] = [];
   private reinit = true;
   private built = false;
-
+  /** bodystyle custom: name of the atom-style variable (v_name) that gives each atom's body ID. */
+  private customVar: string | null = null;
+  /** keyword infile: per-body attributes keyed by body ID (see parseInfile). */
+  private infile: Map<string, InfileBody> | null = null;
+  /** fix_modify bodyforces early: forces and torques are summed in post_force, not final_integrate. */
+  private early = false;
   constructor(sys: System, id: string, group: string, args: string[], style: string) {
     super(sys, id, group, args);
     this.style = style;
@@ -149,7 +226,20 @@ export class FixRigid extends Fix {
       for (const gname of this.groupList) sys.groups.bit(gname);
       k = 2 + n;
     } else if (this.bodystyle === 'custom') {
-      throw new StyleError(`fix ${style}: bodystyle custom is not supported by the browser engine`);
+      /* docs.lammps.org/fix_rigid.html: "*custom* args = *i_propname* or *v_varname*" and
+       * "v_varname = an atom-style or atomfile-style variable"; "the floating-point value
+       * produced by the variable is rounded to an integer". */
+      const w = args[1] ?? '';
+      if (w.startsWith('i_')) {
+        throw new StyleError(`fix ${style} custom ${w}: integer per-atom properties (i_name) need fix property/atom, which the browser engine does not have; use v_name with an atom-style variable`);
+      }
+      if (!w.startsWith('v_') || w.length < 3) throw new StyleError(`fix ${style} custom: expected v_name (or i_name), got '${w}'`);
+      const vname = w.slice(2);
+      const v = sys.vars.get(vname);
+      if (!v) throw new StyleError(`fix ${style} custom: variable ${vname} does not exist`);
+      if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`fix ${style} custom: variable ${vname} must be atom-style or atomfile-style, not ${v.style}`);
+      this.customVar = vname;
+      k = 2;
     } else throw new StyleError(`fix ${style}: unknown bodystyle '${this.bodystyle ?? ''}' (single, molecule or group)`);
     const onoff = (w: string | undefined) => {
       if (w !== 'on' && w !== 'off') throw new StyleError(`fix ${style}: force/torque flags must be on or off`);
@@ -166,8 +256,15 @@ export class FixRigid extends Fix {
         if (args[k + 1] !== 'yes' && args[k + 1] !== 'no') throw new StyleError(`fix ${style}: reinit must be yes or no`);
         this.reinit = args[k + 1] === 'yes';
         k += 2;
+      } else if (key === 'infile') {
+        const fname = args[k + 1];
+        if (!fname) throw new StyleError(`fix ${style}: keyword infile needs a filename`);
+        this.infile = parseInfileText(sys.readFile(fname), style, fname);
+        // docs.lammps.org/fix_rigid.html: "When using the *infile* keyword, the *reinit* option is automatically set to *no*\ ."
+        this.reinit = false;
+        k += 2;
       } else {
-        throw new StyleError(`fix ${style}: keyword '${key}' is not supported by the browser engine (supported: force, torque, reinit)`);
+        throw new StyleError(`fix ${style}: keyword '${key}' is not supported by the browser engine (supported: force, torque, reinit, infile)`);
       }
     }
   }
@@ -186,11 +283,14 @@ export class FixRigid extends Fix {
     const s = sys.state;
     const g = sys.geom;
     const members = new Map<string, number[]>();
+    // bodystyle custom: the atom-style variable's value, rounded to an integer (per-atom, all atoms)
+    const custom = this.customVar ? sys.atomVariable(this.customVar) : null;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
       let key: string | null = null;
       if (this.bodystyle === 'single') key = '1';
       else if (this.bodystyle === 'molecule') key = String(s.molecule[i]);
+      else if (custom) key = String(Math.round(custom[i]));
       else {
         const k = this.groupList.findIndex((gname) => (s.mask[i] & sys.groups.bit(gname)) !== 0);
         if (k >= 0) key = String(k + 1);
@@ -203,6 +303,10 @@ export class FixRigid extends Fix {
     const keys = [...members.keys()].sort((a, b) => Number(a) - Number(b));
     const bodies: Body[] = [];
     const u = [0, 0, 0];
+    // infile body IDs: the molecule/group/single ID, or for bodystyle custom the value minus the
+    // smallest body value plus 1. Measured with native LAMMPS (black box): custom values 0,1,3,4 take
+    // infile IDs 1,2,4,5, and infile ID 3 (no body with value 2) is an error.
+    const infileId = (key: string) => (this.customVar ? String(Number(key) - Number(keys[0]) + 1) : key);
     for (const key of keys) {
       const idx = members.get(key)!;
       if (idx.length < 2) throw new StyleError(`fix ${this.style}: "Each rigid body must have two or more atoms." (body ${key})`);
@@ -226,28 +330,40 @@ export class FixRigid extends Fix {
         const L = cross(r, [s.v[3 * i], s.v[3 * i + 1], s.v[3 * i + 2]]);
         for (let d = 0; d < 3; d++) angmom[d] += m * L[d];
       });
-      const { values, vectors } = jacobi(I);
-      const maxI = Math.max(values[0], values[1], values[2]);
-      const inertia = values.map((v) => (v < 1e-7 * maxI ? 0 : v));
-      // right-handed axes
-      const e = [0, 1, 2].map((c) => [vectors[0][c], vectors[1][c], vectors[2][c]]);
-      const e3 = cross(e[0], e[1]);
-      if (e3[0] * e[2][0] + e3[1] * e[2][1] + e3[2] * e[2][2] < 0) e[2] = e[2].map((x) => -x);
-      const R = [[e[0][0], e[1][0], e[2][0]], [e[0][1], e[1][1], e[2][1]], [e[0][2], e[1][2], e[2][2]]];
-      const q = matq(R);
-      const Rq = qmat(q);
+      // infile attributes replace the computed ones; the atoms keep their positions relative to the body
+      const over = this.infile?.get(infileId(key)) ?? null;
+      const L = (d: number) => s.box.hi[d] - s.box.lo[d];
+      const xcmB = over ? over.xcm.map((c, d) => c + (s.box.periodic[d] ? over.image[d] * L(d) : 0)) : xcm;
+      const frame = principalFrame(over ? over.I : I);
+      const Rq = qmat(frame.q);
       const displace = pos.map((p) => {
-        const r = [p[0] - xcm[0], p[1] - xcm[1], p[2] - xcm[2]];
+        const r = [p[0] - xcmB[0], p[1] - xcmB[1], p[2] - xcmB[2]];
         return [0, 1, 2].map((c) => Rq[0][c] * r[0] + Rq[1][c] * r[1] + Rq[2][c] * r[2]);
       });
+      const inertia = frame.inertia;
       const ncollinear = inertia.filter((v) => v === 0).length;
       const b: Body = {
-        atoms: idx.map((i) => s.id[i]), mass: M, xcm, vcm, image: [0, 0, 0], inertia, q, angmom, omega: [0, 0, 0], displace,
+        atoms: idx.map((i) => s.id[i]),
+        mass: over ? over.mass : M,
+        xcm: xcmB,
+        vcm: over ? over.vcm.slice() : vcm,
+        image: [0, 0, 0],
+        inertia,
+        q: frame.q,
+        angmom: over ? over.lam.slice() : angmom,
+        omega: [0, 0, 0],
+        displace,
         fcm: [0, 0, 0], torque: [0, 0, 0], fflag: [true, true, true], tflag: [true, true, true],
         dof: sys.dimension === 2 ? 3 : ncollinear >= 1 ? 5 : 6,
       };
       this.wrapCom(b);
       bodies.push(b);
+    }
+    if (this.infile) {
+      const valid = new Set(keys.map(infileId));
+      for (const key of this.infile.keys()) {
+        if (!valid.has(key)) throw new StyleError(`fix ${this.style}: infile body ID ${key} is not a rigid body (bodystyle ${this.bodystyle})`);
+      }
     }
     const nb = bodies.length;
     for (const [spec, flags] of this.forceSpecs) { const [lo, hi] = typeBounds(spec, nb); for (let k = lo; k <= hi; k++) bodies[k - 1].fflag = flags.slice(); }
@@ -391,10 +507,25 @@ export class FixRigid extends Fix {
     this.setXV(true, 0.5);
   }
 
+  /** fix_modify bodyforces early|late (fix_modify.rst: "early/late = compute rigid-body forces/torques early or late in the timestep"). */
+  modify(key: string, values: string[]): number {
+    if (key === 'bodyforces') {
+      if (values[0] !== 'early' && values[0] !== 'late') throw new StyleError(`fix_modify bodyforces must be early or late, got '${values[0] ?? ''}'`);
+      this.early = values[0] === 'early';
+      return 1;
+    }
+    return super.modify(key, values);
+  }
+
+  /** Early bodyforces: the forces are summed right after the per-atom forces (before later fixes' post_force). */
+  postForce(): void {
+    if (this.early) this.sumForces();
+  }
+
   finalIntegrate(): void {
     const s = this.sys.state;
     const dtf = 0.5 * s.dt * s.units.ftm2v;
-    this.sumForces();
+    if (!this.early) this.sumForces();
     for (const b of this.bodies) {
       for (let d = 0; d < 3; d++) {
         if (b.fflag[d]) b.vcm[d] += (dtf * b.fcm[d]) / b.mass;

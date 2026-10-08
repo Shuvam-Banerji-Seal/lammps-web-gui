@@ -368,7 +368,9 @@ export class Neighbor {
     const mx = Math.max(1, Math.min(512, Math.floor((x1 - x0) / binsize) + 1));
     const my = Math.max(1, Math.min(512, Math.floor((y1 - y0) / binsize) + 1));
     const mz = Math.max(1, Math.min(512, Math.floor((z1 - z0) / binsize) + 1));
-    const bx = (x1 - x0) / mx || binsize, by = (y1 - y0) / my || binsize, bz = (z1 - z0) / mz || binsize;
+    // bins are never narrower than binsize: a tiny but nonzero extent (atoms almost in a line or a
+    // plane) would otherwise make the stencil reach ~cmax/extent bins and exhaust memory
+    const bx = Math.max(binsize, (x1 - x0) / mx), by = Math.max(binsize, (y1 - y0) / my), bz = Math.max(binsize, (z1 - z0) / mz);
     const sx = Math.ceil(cmax / bx), sy = Math.ceil(cmax / by), sz = Math.ceil(cmax / bz);
     const nbx = mx + 2 * sx, nby = my + 2 * sy, nbz = mz + 2 * sz;
     const nbins = nbx * nby * nbz;

@@ -15,10 +15,26 @@ import { StyleError } from './force/types';
  * those four arrays exist only for it (null otherwise).
  */
 
+/**
+ * The sub-styles of an atom style (one, or the list of atom_style hybrid). atom_style.html: "When a
+ * hybrid style is used, atoms store and communicate the union of all quantities implied by the
+ * individual styles."
+ */
+export const atomSubStyles = (st: AtomStyle): string[] => (st.startsWith('hybrid ') ? st.slice(7).trim().split(/\s+/) : [st]);
 /** Styles with bond topology and molecule IDs. */
-export const isMolecularStyle = (st: AtomStyle): boolean => st === 'bond' || st === 'angle' || st === 'molecular' || st === 'full';
+export const isMolecularStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'bond' || x === 'angle' || x === 'molecular' || x === 'full');
 /** Styles that store a per-atom charge. */
-export const hasChargeStyle = (st: AtomStyle): boolean => st === 'charge' || st === 'full';
+export const hasChargeStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'charge' || x === 'full' || x === 'dipole');
+/** Styles with finite-size spheres (radius, rmass, omega, torque). */
+export const isSphereStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('sphere');
+/** Styles with point dipoles (mu). */
+export const hasDipoleStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('dipole');
+/** Bonded topology a style stores: 0 none, 1 bonds, 2 bonds and angles, 3 also dihedrals and impropers. */
+export const topologyLevel = (st: AtomStyle): number => {
+  let lv = 0;
+  for (const x of atomSubStyles(st)) lv = Math.max(lv, x === 'bond' ? 1 : x === 'angle' ? 2 : x === 'molecular' || x === 'full' ? 3 : 0);
+  return lv;
+};
 /** Per-atom charges exist: from the atom style or from fix property/atom q. */
 export const hasCharge = (s: SimState): boolean => hasChargeStyle(s.atomStyle) || s.propQ;
 /** A custom property attribute name (fix property/atom). */
@@ -92,10 +108,11 @@ export const emptyState = (
   ntypes,
   type: new Int32Array(0),
   massByType: new Float64Array(ntypes + 1).fill(Number.NaN),
-  rmass: atomStyle === 'sphere' ? new Float64Array(0) : null,
-  radius: atomStyle === 'sphere' ? new Float64Array(0) : null,
-  omega: atomStyle === 'sphere' ? new Float64Array(0) : null,
-  torque: atomStyle === 'sphere' ? new Float64Array(0) : null,
+  rmass: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
+  radius: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
+  omega: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
+  torque: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
+  mu: hasDipoleStyle(atomStyle) ? new Float64Array(0) : null,
   custom: new Map(),
   propMol: false,
   propQ: false,
@@ -138,6 +155,8 @@ export interface NewAtoms {
   /** atom_style sphere: radii (default SPHERE_DEFAULT_RADIUS) and flat 3N angular velocities (default 0). */
   radius?: number | Float64Array;
   omega?: Float64Array;
+  /** atom_style dipole: flat 4N dipoles (mux, muy, muz, length; default 0). */
+  mu?: Float64Array;
   /** fix property/atom values by name (n * max(cols, 1) each; default 0). */
   custom?: Map<string, Float64Array>;
   /** Group bits to set besides 'all'. */
@@ -180,7 +199,7 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     s.rmass = growF(s.rmass, n);
     // measured: fix property/atom rmass starts at 0 for new atoms; sphere atoms get the sphere default
     if (a.rmass instanceof Float64Array) s.rmass.set(a.rmass, n0);
-    else s.rmass.fill(a.rmass ?? (s.atomStyle === 'sphere' ? SPHERE_DEFAULT_MASS : 0), n0, n);
+    else s.rmass.fill(a.rmass ?? (isSphereStyle(s.atomStyle) ? SPHERE_DEFAULT_MASS : 0), n0, n);
   }
   if (s.radius) {
     s.radius = growF(s.radius, n);
@@ -189,6 +208,7 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
   }
   if (s.omega) { s.omega = growF(s.omega, 3 * n); if (a.omega) s.omega.set(a.omega, 3 * n0); }
   if (s.torque) s.torque = growF(s.torque, 3 * n);
+  if (s.mu) { s.mu = growF(s.mu, 4 * n); if (a.mu) s.mu.set(a.mu, 4 * n0); }
   for (const [name, c] of s.custom) {
     const w = Math.max(c.cols, 1);
     c.data = growF(c.data, w * n);
@@ -217,7 +237,7 @@ export const gatherAtoms = (s: SimState, idx: ArrayLike<number>): NewAtoms => {
     x: pick(s.x, 3), v: pick(s.v, 3), image: pickI(s.image, 3), type: pickI(s.type, 1), id: pickI(s.id, 1),
     molecule: pickI(s.molecule, 1), q: pick(s.q, 1),
     rmass: s.rmass ? pick(s.rmass, 1) : undefined, radius: s.radius ? pick(s.radius, 1) : undefined,
-    omega: s.omega ? pick(s.omega, 3) : undefined, custom,
+    omega: s.omega ? pick(s.omega, 3) : undefined, mu: s.mu ? pick(s.mu, 4) : undefined, custom,
   };
 };
 
@@ -253,6 +273,7 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
         if (s.omega) s.omega[3 * k + d] = s.omega[3 * i + d];
         if (s.torque) s.torque[3 * k + d] = s.torque[3 * i + d];
       }
+      if (s.mu) for (let d = 0; d < 4; d++) s.mu[4 * k + d] = s.mu[4 * i + d];
       for (const c of s.custom.values()) {
         const w = Math.max(c.cols, 1);
         for (let m = 0; m < w; m++) c.data[w * k + m] = c.data[w * i + m];
@@ -272,6 +293,7 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
   if (s.radius) s.radius = s.radius.slice(0, k);
   if (s.omega) s.omega = s.omega.slice(0, 3 * k);
   if (s.torque) s.torque = s.torque.slice(0, 3 * k);
+  if (s.mu) s.mu = s.mu.slice(0, 4 * k);
   for (const c of s.custom.values()) c.data = c.data.slice(0, Math.max(c.cols, 1) * k);
   for (const list of [s.topo.bonds, s.topo.angles, s.topo.dihedrals, s.topo.impropers]) {
     filterTopo(list, (ids) => !ids.some((id) => gone.has(id)));

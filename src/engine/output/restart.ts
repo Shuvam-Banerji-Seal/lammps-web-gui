@@ -9,7 +9,7 @@ import { FixCmap, type CmapRestart } from '../fix/cmap';
 
 /** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
 type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart };
-import { hasChargeStyle, isMolecularStyle } from '../atoms';
+import { hasChargeStyle, isMolecularStyle, isSphereStyle, hasDipoleStyle } from '../atoms';
 
 /*
  * The browser engine's restart file (write_restart / read_restart).
@@ -254,7 +254,8 @@ export const readRestartText = (sys: System, text: string, name: string): void =
   // until then the attributes the atom style lacks are absent
   if (!isMolecularStyle(state.atomStyle)) state.molecule.fill(0);
   if (!hasChargeStyle(state.atomStyle)) state.q.fill(0);
-  if (state.atomStyle !== 'sphere') state.rmass = null;
+  if (!isSphereStyle(state.atomStyle)) state.rmass = null;
+  if (!hasDipoleStyle(state.atomStyle)) state.mu = null;
   sys.pendingFixData = new Map((doc.fixes ?? []).map((f) => [f.id, f]));
 
   sys.units = state.units;

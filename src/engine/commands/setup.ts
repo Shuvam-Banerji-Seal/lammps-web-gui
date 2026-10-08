@@ -63,19 +63,41 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: AtomStyle[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere'];
+const ATOM_STYLES: AtomStyle[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'dipole'];
 
-/** atom_style — atom_style.html: "The default atom style is atomic." */
+/**
+ * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
+ * or more sub-styles, each with their args"; "atoms store and communicate the union of all quantities
+ * implied by the individual styles".
+ */
 const atomStyle: Handler = ({ sys }, a) => {
   noBox(sys, 'atom_style');
   if (a.length < 1) throw new StyleError('usage: atom_style style');
-  if (!(ATOM_STYLES as string[]).includes(a[0])) {
-    throw new StyleError(`atom_style '${a[0]}' is not supported by the browser engine; supported: ${ATOM_STYLES.join(', ')}`);
-  }
+  const known = (w: string) => {
+    if (!(ATOM_STYLES as string[]).includes(w)) {
+      throw new StyleError(`atom_style '${w}' is not supported by the browser engine; supported: ${ATOM_STYLES.join(', ')}, hybrid`);
+    }
+  };
   // atom_style.html: "*sphere* arg = 0/1 (optional) for static/dynamic particle radii"; the engine
   // never changes radii during a run, so both values behave the same.
+  const sphereArg = (w: string | undefined) => w === '0' || w === '1';
+  if (a[0] === 'hybrid') {
+    const subs: string[] = [];
+    for (let k = 1; k < a.length; k++) {
+      const w = a[k];
+      if (w === 'hybrid') throw new StyleError('atom_style hybrid cannot have hybrid as a sub-style');
+      known(w);
+      if (subs.includes(w)) throw new StyleError(`atom_style hybrid lists ${w} twice`);
+      subs.push(w);
+      if (w === 'sphere' && sphereArg(a[k + 1])) k++;
+    }
+    if (!subs.length) throw new StyleError('usage: atom_style hybrid sub-style1 sub-style2 ...');
+    sys.atomStyle = `hybrid ${subs.join(' ')}`;
+    return;
+  }
+  known(a[0]);
   if (a[0] === 'sphere') {
-    if (a.length > 2 || (a.length === 2 && a[1] !== '0' && a[1] !== '1')) throw new StyleError('usage: atom_style sphere [0|1]');
+    if (a.length > 2 || (a.length === 2 && !sphereArg(a[1]))) throw new StyleError('usage: atom_style sphere [0|1]');
   } else if (a.length > 1) throw new StyleError(`atom_style ${a[0]} takes no arguments`);
   sys.atomStyle = a[0] as AtomStyle;
 };
@@ -1046,6 +1068,22 @@ const set: Handler = ({ sys }, a) => {
         k += 2;
         break;
       }
+      // set.html: "Keyword *dipole* uses the specified x,y,z values as components of a vector to set as
+      // the orientation of the dipole moment vectors of the selected atoms.  The magnitude of the dipole
+      // moment is set by the length of this orientation vector."
+      case 'dipole': {
+        if (!s.mu) throw new StyleError(`Cannot set attribute dipole for atom style ${s.atomStyle}`);
+        const vx = value(a[k + 1], 'dipole x'), vy = value(a[k + 2], 'dipole y'), vz = value(a[k + 3], 'dipole z');
+        for (const i of atoms) {
+          const mx = vx(i), my = vy(i), mz = vz(i);
+          s.mu[4 * i] = mx; s.mu[4 * i + 1] = my; s.mu[4 * i + 2] = mz; s.mu[4 * i + 3] = Math.hypot(mx, my, mz);
+        }
+        changed = atoms.length;
+        k += 4;
+        break;
+      }
+      case 'dipole/random':
+        throw new StyleError('set dipole/random is not supported by the browser engine: native LAMMPS seeds each atom from its coordinates in a way the documentation does not give, so the orientations could not match');
       case 'omega': {
         if (!s.omega) throw new StyleError(`Cannot set attribute omega for atom style ${s.atomStyle}`);
         const vs = [1, 2, 3].map((d) => value(a[k + d], 'omega'));

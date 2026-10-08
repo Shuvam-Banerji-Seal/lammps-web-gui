@@ -1,3 +1,4 @@
+import { hasChargeStyle } from '../../atoms';
 import { KSpace, StyleError, type KSpaceCompute, type StyleContext } from '../types';
 import type { SimState } from '../../types';
 import type { Geometry } from '../../domain';
@@ -87,7 +88,7 @@ export abstract class KSpaceBase extends KSpace {
     this.qsum = qs;
     this.qsqsum = q2;
     this.natoms = s.n;
-    if (s.atomStyle !== 'charge' && s.atomStyle !== 'full') throw new StyleError(`kspace_style ${this.name} needs charges (atom_style charge or full)`);
+    if (!hasChargeStyle(s.atomStyle)) throw new StyleError(`kspace_style ${this.name} needs charges (atom_style charge or full)`);
     if (q2 === 0) ctx.log(`WARNING: kspace_style ${this.name}: no atoms are charged`);
     if (Math.abs(qs) > 1e-5) ctx.log(`WARNING: kspace_style ${this.name}: the system is not charge neutral (net charge ${qs}); a uniform neutralizing background is assumed`);
     const p = s.box.periodic;

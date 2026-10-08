@@ -1,0 +1,33 @@
+# oracle: atom_style dipole: set dipole, property/atom mux muy muz mu, write_data then read_data round trip, a short run
+units           lj
+atom_style      dipole
+lattice         sc 0.6
+region          box block 0 3 0 3 0 3
+create_box      2 box
+create_atoms    1 box
+set             atom 1*13 type 2
+set             group all dipole 0.3 -0.2 0.5
+set             type 2 dipole 0.0 0.4 0.1
+set             type 2 charge 0.5
+mass            * 1.0
+variable        vx atom 0.5*sin(1.3*x+0.7*y)
+variable        vy atom 0.5*cos(0.9*y-0.4*z)
+variable        vz atom 0.5*sin(1.1*z+0.5*x)
+velocity        all set v_vx v_vy v_vz
+velocity        all zero linear
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+write_data      w17dip.data
+clear
+units           lj
+atom_style      dipole
+pair_style      lj/cut 2.5
+read_data       w17dip.data
+pair_coeff      * * 1.0 1.0
+compute         p all property/atom mux muy muz mu q q
+compute         r all reduce sum c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6]
+fix             1 all nve
+thermo_style    custom step pe ke c_r[1] c_r[2] c_r[3] c_r[4] c_r[5] c_r[6]
+thermo_modify   format float %.15g
+thermo          10
+run             30

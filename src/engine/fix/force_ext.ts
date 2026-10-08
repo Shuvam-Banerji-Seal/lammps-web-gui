@@ -2,7 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNumOrVar, valueOf, type NumOrVar } from './util';
-import { massOf } from '../atoms';
+import { massOf, hasChargeStyle } from '../atoms';
 
 /*
  * Force-style fixes from wave "force_ext", written only from the LAMMPS
@@ -389,7 +389,7 @@ export class FixEfield extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     const s = sys.state;
-    if (s.atomStyle !== 'charge' && s.atomStyle !== 'full') {
+    if (!hasChargeStyle(s.atomStyle)) {
       throw new StyleError(`fix efield requires atoms that store a charge; atom_style ${s.atomStyle} does not (use atom_style charge or full)`);
     }
     if (args.length < 3) throw new StyleError('usage: fix ID group-ID efield ex ey ez keyword value ...');

@@ -72,7 +72,8 @@ export interface UnitSystem {
 }
 
 /** docs.lammps.org/atom_style.html styles the engine implements. */
-export type AtomStyle = 'atomic' | 'charge' | 'bond' | 'angle' | 'molecular' | 'full' | 'sphere';
+/** An atom style; atom_style hybrid is stored as 'hybrid' followed by its sub-styles. */
+export type AtomStyle = 'atomic' | 'charge' | 'bond' | 'angle' | 'molecular' | 'full' | 'sphere' | 'dipole' | `hybrid ${string}`;
 
 /**
  * Bonded topology entries of one kind, stored by atom ID (not index) so that
@@ -115,6 +116,8 @@ export interface SimState {
   radius: Float64Array | null;
   omega: Float64Array | null;
   torque: Float64Array | null;
+  /** atom_style dipole: point dipole per atom as mux, muy, muz and its length (4N); else null. */
+  mu: Float64Array | null;
   /**
    * fix property/atom: custom per-atom vectors and arrays by name (i_name /
    * d_name: cols 0; i2_name / d2_name: cols N), values stored as doubles

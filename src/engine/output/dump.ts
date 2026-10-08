@@ -2,7 +2,7 @@ import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { formatNumber } from '../script';
 import { localDumpColumns, localColumnSource } from '../compute/local_dump';
-import { hasChargeStyle, isMolecularStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
+import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
 
 /*
  * Per-atom snapshots — docs.lammps.org/dump.html and dump_modify.html.
@@ -32,8 +32,11 @@ const ATOM_COLS = new Set([
   // dump.html: "radius,diameter = radius, diameter of spherical particle", "omegax,omegay,omegaz =
   // angular velocity of spherical particle", "tqx,tqy,tqz = torque on finite-size particles"
   'radius', 'diameter', 'omegax', 'omegay', 'omegaz', 'tqx', 'tqy', 'tqz',
+  // dump.html: "mux,muy,muz = orientation of dipole moment of atom", "mu = magnitude of dipole moment of atom"
+  'mux', 'muy', 'muz', 'mu',
 ]);
 const SPHERE_COLS = new Set(['radius', 'diameter', 'omegax', 'omegay', 'omegaz', 'tqx', 'tqy', 'tqz']);
+const DIPOLE_COLS = new Set(['mux', 'muy', 'muz', 'mu']);
 
 /** Compiled C formats (parsing a format per value is slow for large dumps). */
 const fmtCache = new Map<string, (v: number) => string>();
@@ -126,7 +129,8 @@ export class Dump {
       const st = this.sys.atomStyle;
       const sh = this.sys.hasBox ? this.sys.state : null;
       if (c === 'q' && !(sh ? hasCharge(sh) : hasChargeStyle(st))) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (q needs atom_style charge or full)`);
-      if (SPHERE_COLS.has(c) && st !== 'sphere') throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style sphere)`);
+      if (SPHERE_COLS.has(c) && !isSphereStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style sphere)`);
+      if (DIPOLE_COLS.has(c) && !hasDipoleStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style dipole)`);
       if (c === 'mol' && !(sh ? hasMolecule(sh) : isMolecularStyle(st))) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (mol needs a molecular atom_style)`);
       return;
     }
@@ -508,6 +512,11 @@ export class Dump {
       case 'tqx': case 'tqy': case 'tqz': {
         const d = 'xyz'.indexOf(c[2]);
         for (let i = 0; i < s.n; i++) out[i] = s.torque![3 * i + d];
+        return out;
+      }
+      case 'mux': case 'muy': case 'muz': case 'mu': {
+        const d = c === 'mu' ? 3 : 'xyz'.indexOf(c[2]);
+        for (let i = 0; i < s.n; i++) out[i] = s.mu![4 * i + d];
         return out;
       }
     }

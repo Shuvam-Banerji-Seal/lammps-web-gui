@@ -1,7 +1,7 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { RanPark } from '../rng';
-import { appendAtoms, maxAtomId, sphereMass } from '../atoms';
+import { appendAtoms, maxAtomId, sphereMass, isSphereStyle } from '../atoms';
 import { BlockRegion, ConeRegion, type Param, type Region } from '../region';
 import type { System } from '../system';
 
@@ -208,7 +208,7 @@ export class FixPour extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (sys.dimension !== 3) throw new StyleError('fix pour: only 3d simulations are supported');
-    if (sys.atomStyle !== 'sphere') throw new StyleError('fix pour requires atom_style sphere');
+    if (!isSphereStyle(sys.atomStyle)) throw new StyleError('fix pour requires atom_style sphere');
     if (args.length < 3) throw new StyleError('usage: fix ID group-ID pour N type seed keyword values ...');
     this.N = posInt(args[0], 'N');
     // molecule insertion (fix_pour.html: type is an offset with mol, so 0 is valid there) is not

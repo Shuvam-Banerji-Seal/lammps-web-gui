@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
-import { appendAtoms, emptyState, isMolecularStyle, maxAtomId, nativeOrder, pushTopo, sphereMass } from '../atoms';
+import { appendAtoms, atomSubStyles, emptyState, isMolecularStyle, isSphereStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, topologyLevel } from '../atoms';
 import { makeBox } from '../domain';
 import { generalFrame, rotateVector, toRestrictedPoint, type GeneralFrame, type V3 } from '../triclinic_general';
 
@@ -33,7 +33,7 @@ import { generalFrame, rotateVector, toRestrictedPoint, type GeneralFrame, type 
  * round-trip numbers, atoms ordered by ID).
  */
 
-const STYLE_COLS: Record<AtomStyle, string[]> = {
+const BASE_COLS: Record<string, string[]> = {
   atomic: ['id', 'type', 'x', 'y', 'z'],
   charge: ['id', 'type', 'q', 'x', 'y', 'z'],
   bond: ['id', 'mol', 'type', 'x', 'y', 'z'],
@@ -42,6 +42,22 @@ const STYLE_COLS: Record<AtomStyle, string[]> = {
   full: ['id', 'mol', 'type', 'q', 'x', 'y', 'z'],
   // read_data.html: "sphere | atom-ID atom-type diameter density x y z"
   sphere: ['id', 'type', 'diameter', 'density', 'x', 'y', 'z'],
+  // read_data.html: "dipole | atom-ID atom-type q x y z mux muy muz"
+  dipole: ['id', 'type', 'q', 'x', 'y', 'z', 'mux', 'muy', 'muz'],
+};
+
+/**
+ * Atoms-line columns of an atom style. read_data.html for hybrid: "following the 5 initial values
+ * (ID,type,x,y,z), specific values for each sub-style must be listed. The order of the sub-styles is
+ * the same as they were listed in the atom_style command." and "if a non-standard value is defined by
+ * multiple sub-styles, it only appears once in the atom line".
+ */
+export const atomStyleCols = (style: AtomStyle): string[] => {
+  const subs = atomSubStyles(style);
+  if (!style.startsWith('hybrid ')) return BASE_COLS[style];
+  const out = ['id', 'type', 'x', 'y', 'z'];
+  for (const sub of subs) for (const c of BASE_COLS[sub]) if (!out.includes(c)) out.push(c);
+  return out;
 };
 
 const HEADER_KEYS: [RegExp, string][] = [
@@ -208,7 +224,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   }
   const natoms = h.atoms ?? 0;
   const style = s.atomStyle;
-  const cols = STYLE_COLS[style];
+  const cols = atomStyleCols(style);
   const idBase = opts.add === 'append' ? maxAtomId(s) : typeof opts.add === 'object' ? opts.add.id : 0;
   const molBase = typeof opts.add === 'object' ? opts.add.mol : 0;
   const n0 = s.n;
@@ -280,6 +296,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const x = new Float64Array(3 * count), type = new Int32Array(count), id = new Int32Array(count);
         const mol = new Int32Array(count), q = new Float64Array(count), image = new Int32Array(3 * count);
         const radius = new Float64Array(count), density = new Float64Array(count);
+        const mu = s.mu ? new Float64Array(4 * count) : null;
         body.forEach(({ w, at }, a) => {
           if (w.length !== cols.length && w.length !== cols.length + 3) {
             throw new StyleError(`data file line ${at}: Atoms # ${style} expects ${cols.length} values (+3 image flags), got ${w.length}`);
@@ -301,8 +318,12 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
               case 'x': x[3 * a] = numOf(v, 'x', at) + opts.shift[0]; break;
               case 'y': x[3 * a + 1] = numOf(v, 'y', at) + opts.shift[1]; break;
               case 'z': x[3 * a + 2] = numOf(v, 'z', at) + opts.shift[2]; break;
+              case 'mux': mu![4 * a] = numOf(v, 'mux', at); break;
+              case 'muy': mu![4 * a + 1] = numOf(v, 'muy', at); break;
+              case 'muz': mu![4 * a + 2] = numOf(v, 'muz', at); break;
             }
           }
+          if (mu) mu[4 * a + 3] = Math.hypot(mu[4 * a], mu[4 * a + 1], mu[4 * a + 2]);
           if (w.length === cols.length + 3) {
             for (let d = 0; d < 3; d++) {
               const f = intOf(w[cols.length + d], 'image flag', at);
@@ -331,7 +352,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
             x[3 * a] = r[0]; x[3 * a + 1] = r[1]; x[3 * a + 2] = r[2];
           }
         }
-        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass });
+        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined });
         // periodic remap of the new atoms
         for (let i = n0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);
         break;
@@ -462,8 +483,9 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
       [t.dihedrals.n, t.ndihedraltypes, 'dihedral'], [t.impropers.n, t.nimpropertypes, 'improper'],
     ];
     for (const [n, nt, name] of lines) {
-      if (name === 'angle' && s.atomStyle === 'bond') continue;
-      if ((name === 'dihedral' || name === 'improper') && (s.atomStyle === 'bond' || s.atomStyle === 'angle')) continue;
+      const lv = topologyLevel(s.atomStyle);
+      if (name === 'angle' && lv < 2) continue;
+      if ((name === 'dihedral' || name === 'improper') && lv < 3) continue;
       out.push(`${n} ${name}s`, `${nt} ${name} types`);
     }
   }
@@ -478,7 +500,8 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   out.push('');
   out.push(...[0, 1, 2].map((d) => `${shortest(s.box.lo[d])} ${shortest(s.box.hi[d])} ${'xyz'[d]}lo ${'xyz'[d]}hi`));
   if (s.box.triclinic) out.push(`${shortest(s.box.tilt[0])} ${shortest(s.box.tilt[1])} ${shortest(s.box.tilt[2])} xy xz yz`);
-  // measured with native write_data: atom_style sphere (per-atom masses) writes no Masses section
+  // measured with native write_data: atom_style sphere (per-atom masses) writes no Masses section; a
+  // hybrid style with sphere writes it (per-type and per-atom masses both exist there)
   if (s.atomStyle !== 'sphere') {
     out.push('', 'Masses', '');
     for (let k = 1; k <= s.ntypes; k++) out.push(`${k} ${shortest(s.massByType[k])}`);
@@ -496,7 +519,8 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
       if (st && lines) out.push('', `${title} Coeffs # ${st.name}`, '', ...lines);
     }
   }
-  out.push('', `Atoms # ${s.atomStyle}`, '');
+  // measured with native write_data: a hybrid style is labelled Atoms # hybrid
+  out.push('', `Atoms # ${s.atomStyle.startsWith('hybrid ') ? 'hybrid' : s.atomStyle}`, '');
   // Measured with native LAMMPS (black box, a 10-atom chain whose Atoms
   // section was shuffled): Atoms and Velocities come out in storage order
   // (the order read_data/create_atoms added them), not sorted by ID; each
@@ -505,7 +529,7 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   // the read order within one owner, and is renumbered from 1. Storage order
   // is native's (SimState.order, including its spatial sort at run setup).
   const order = nativeOrder(s);
-  const cols = STYLE_COLS[s.atomStyle];
+  const cols = atomStyleCols(s.atomStyle);
   for (const i of order) {
     const v = cols.map((c) => {
       switch (c) {
@@ -516,6 +540,9 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
         // measured with native write_data: diameter 2r, and density = mass / volume (mass itself for r = 0)
         case 'diameter': return shortest(2 * s.radius![i]);
         case 'density': return shortest(s.radius![i] > 0 ? s.rmass![i] / sphereMass(s.radius![i], 1) : s.rmass![i]);
+        case 'mux': return shortest(s.mu![4 * i]);
+        case 'muy': return shortest(s.mu![4 * i + 1]);
+        case 'muz': return shortest(s.mu![4 * i + 2]);
         default: return shortest(s.x[3 * i + 'xyz'.indexOf(c)]);
       }
     });

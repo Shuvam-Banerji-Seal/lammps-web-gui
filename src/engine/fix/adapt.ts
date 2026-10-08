@@ -1,3 +1,4 @@
+import { hasChargeStyle, isSphereStyle } from '../atoms';
 import { Fix } from './fix';
 import { Pair, PairParams, StyleError, typeBounds } from '../force/types';
 import type { System } from '../system';
@@ -214,10 +215,10 @@ export class FixAdapt extends Fix {
       });
     }
     for (const a of this.atoms) {
-      if (a.kind === 'charge' && s.atomStyle !== 'charge' && s.atomStyle !== 'full') {
+      if (a.kind === 'charge' && !hasChargeStyle(s.atomStyle)) {
         throw new StyleError(`fix ${this.id} (adapt): atom charge needs atom_style charge or full (atom_style is ${s.atomStyle})`);
       }
-      if (a.kind === 'diameter' && (s.atomStyle !== 'sphere' || !s.radius || !s.rmass)) {
+      if (a.kind === 'diameter' && (!isSphereStyle(s.atomStyle) || !s.radius || !s.rmass)) {
         throw new StyleError(`fix ${this.id} (adapt): atom diameter needs atom_style sphere`);
       }
     }

@@ -83,7 +83,13 @@ const atomStyle: Handler = ({ sys }, a) => {
 const atomModify: Handler = ({ sys }, a) => {
   const kw = keywords(a, { id: 1, map: 1, first: 1, sort: 2 }, 'atom_modify');
   if (kw.get('id') && kw.get('id')![0] !== 'yes') throw new StyleError('atom_modify id no is not supported (atoms always have IDs)');
-  if (kw.has('first')) throw new StyleError('atom_modify first is not supported');
+  // atom_modify.html: "*first* value = group-ID = group whose atoms will appear first in internal
+  // atom lists" — an ordering for performance; the engine keeps its own storage order (as it
+  // does for the spatial *sort*), so say so instead of reordering
+  if (kw.has('first')) {
+    const g = kw.get('first')![0];
+    sys.log(`atom_modify first ${g}: accepted; the browser engine does not reorder its atom storage (results are unchanged, only the internal order differs)`);
+  }
   if (kw.get('map') && !['array', 'hash', 'yes'].includes(kw.get('map')![0])) throw new StyleError('atom_modify map must be array, hash or yes');
   void sys;
 };

@@ -288,9 +288,8 @@ const readGrid = (t: Tables, name: string): { nrho: number; drho: number; nr: nu
   const drho = g[1], dr = g[3], cutoff = g[4];
   if (nrho < 2 || nr < 2) throw new StyleError(`EAM potential file ${name}: Nrho and Nr must be at least 2`);
   if (!(drho > 0) || !(dr > 0) || !(cutoff > 0)) throw new StyleError(`EAM potential file ${name}: drho, dr and cutoff must be > 0`);
-  if (cutoff > (nr - 1) * dr) {
-    throw new StyleError(`EAM potential file ${name}: cutoff ${cutoff} is beyond the table (last table point at r = ${(nr - 1) * dr})`);
-  }
+  // measured with native LAMMPS (black box): a cutoff beyond the last table point is accepted;
+  // between the two, the tables hold the value of the last interval at p = 1 (Spline clamps it)
   return { nrho, drho, nr, dr, cutoff };
 };
 

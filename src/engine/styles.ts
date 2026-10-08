@@ -46,6 +46,8 @@ import * as fixRigid2 from './registry/fix_rigid2';
 import * as computeVoro from './registry/compute_voro';
 import * as pairRelres from './registry/pair_relres';
 import * as pairGranular from './registry/pair_granular';
+import * as fixPour from './registry/fix_pour';
+import * as fixNHSphere from './registry/fix_nhsphere';
 import * as pairTable from './registry/pair_table';
 import * as pairCharmm from './registry/pair_charmm';
 import * as pairCoulLong2 from './registry/pair_coullong2';
@@ -126,7 +128,7 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   rattle: (s, i, g, a) => new FixShake(s, i, g, a, 'rattle'),
   ...Object.fromEntries(['rigid', 'rigid/nve', 'rigid/small', 'rigid/nve/small'].map((st) => [st, (s: System, i: string, g: string, a: string[]) => new FixRigid(s, i, g, a, st)])),
   ...fixForce.FIXES, ...fixWall.FIXES, ...fixOutput.FIXES, ...fixMotion.FIXES,
-  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES, ...fixDeform.FIXES, ...fixWallGran.FIXES, ...fixRigid2.FIXES,
+  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES, ...fixDeform.FIXES, ...fixWallGran.FIXES, ...fixRigid2.FIXES, ...fixPour.FIXES, ...fixNHSphere.FIXES,
 };
 
 export const COMPUTE_STYLES: Record<string, ComputeFactory> = {

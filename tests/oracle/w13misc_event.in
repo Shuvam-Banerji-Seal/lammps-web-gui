@@ -1,0 +1,26 @@
+# Wave 13: compute event/displace (docs.lammps.org/compute_event_displace.html).
+# A LJ liquid with deterministic velocities; the flag is printed every step. Measured with native LAMMPS
+# (black box): the flag stayed 0 in every run tried, so the case checks that the
+# engine keeps the same flag and the same thermo for the liquid.
+# oracle-compare: thermo=all rel=1e-7 abs=1e-9
+units lj
+atom_style atomic
+lattice fcc 0.8442
+region box block 0 3 0 3 0 3
+create_box 1 box
+create_atoms 1 box
+mass 1 1.0
+variable        vx atom 1.4*sin(1.7*x+2.3*y+0.7*z)
+variable        vy atom 1.4*cos(2.1*x-1.1*y+0.3*z)
+variable        vz atom 1.4*sin(0.5*x+1.9*z+1.3*y)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0 2.5
+fix 1 all nve
+compute ev all event/displace 0.1
+timestep 0.005
+thermo_modify format float %.15g
+thermo_style custom step temp pe c_ev
+thermo 1
+run 50

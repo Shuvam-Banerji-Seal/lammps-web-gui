@@ -1,0 +1,17 @@
+# oracle: read_data with a fix property/atom section (fix ID NULL Section, lines in any order) and write_data
+# oracle-inputs: w6prop_read.data
+# oracle-files: r1.data r2.data
+units           lj
+atom_style      atomic
+atom_modify     map array sort 0 0.0
+fix             pr all property/atom mol q i_tag d2_arr 2
+read_data       w6prop_read.data fix pr NULL Props
+write_data      r1.data
+variable        t atom i_tag+2*mol
+compute         s all reduce sum v_t
+pair_style      lj/cut/coul/cut 1.2
+pair_coeff      * * 0.2 0.8
+thermo_style    custom step pe ecoul c_s
+thermo_modify   format float %.15g
+run             0
+write_data      r2.data

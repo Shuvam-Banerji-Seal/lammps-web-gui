@@ -1,0 +1,26 @@
+# Wave 14: pair_style hbond/dreiding/lj/angleoffset (acceptor 3) and hbond/dreiding/morse/angleoffset
+# (acceptor 5) through hybrid/overlay with lj/cut (docs.lammps.org/pair_hbond_dreiding.html:
+# "the referenced angle offset is the supplementary angle of the equilibrium angle parameter").
+# Global equilibrium angle 150 degrees; the (1,5) pair sets its own 160 degrees.
+# oracle-inputs: w14hbond_system.data
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           real
+atom_style      full
+boundary        p p p
+read_data       w14hbond_system.data
+special_bonds   lj/coul 0.0 0.0 1.0
+pair_style      hybrid/overlay lj/cut 8.0 hbond/dreiding/lj/angleoffset 4 3.0 4.5 90.0 150.0 hbond/dreiding/morse/angleoffset 2 3.0 4.5 90.0 150.0
+pair_coeff      * * lj/cut 0.1 2.8
+pair_coeff      1 3 hbond/dreiding/lj/angleoffset 2 i 2.0 2.2
+pair_coeff      1 5 hbond/dreiding/morse/angleoffset 2 i 2.0 1.5 2.2 2 3.0 4.5 90.0 160.0
+bond_style      harmonic
+bond_coeff      1 450.0 0.9572
+bond_coeff      2 300.0 1.2
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        1.0
+fix             1 all nve
+thermo_style    custom step pe evdwl ebond press
+thermo_modify   format float %.15g
+thermo          20
+run             100

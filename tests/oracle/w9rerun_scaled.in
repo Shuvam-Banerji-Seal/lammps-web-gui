@@ -1,0 +1,19 @@
+# oracle: read_dump of step 20 from a scaled-coordinate dump (xs ys zs columns, native-written), with velocities and image flags
+# oracle-inputs: w9rerun_scaled.dump
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+thermo_style    custom step pe press ke
+thermo_modify   format float %.15g
+read_dump       w9rerun_scaled.dump 20 x y z vx vy vz ix iy iz
+thermo          1
+run             0

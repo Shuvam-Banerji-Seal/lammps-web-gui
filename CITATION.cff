@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+title: "LAMMPS Web GUI / Molecule3D"
+message: >-
+  If you use this software, or any LAMMPS input script, build command,
+  figure, video or analysis it produced, please cite it. Citation is a
+  condition of the licence (LICENSE §3.4), not a courtesy.
+type: software
+authors:
+  - given-names: Shuvam
+    family-names: Banerji Seal
+    email: shuvam@sycolex.com
+    affiliation: Independent
+repository-code: "https://github.com/Shuvam-Banerji-Seal/lammps-web-gui"
+url: "https://shuvam-banerji-seal.github.io/lammps-web-gui/"
+abstract: >-
+  A browser-based workbench for LAMMPS: a visual script builder that
+  assembles verified LAMMPS input from a branching flowchart and validates
+  it against the official command-ordering rules, a CMake compiler helper
+  covering the full build-option surface, and a GPU-accelerated 3D viewer
+  for LAMMPS data files, dump trajectories, XYZ, PDB and CIF structures
+  with in-browser RDF, MSD, density and velocity analysis. Runs entirely
+  client-side; no data leaves the browser.
+keywords:
+  - LAMMPS
+  - molecular dynamics
+  - molecular visualisation
+  - simulation input generation
+  - computational chemistry
+  - materials science
+  - WebGL
+  - science education
+license: LicenseRef-LAMMPS-Web-GUI-Educational-1.0
+version: 3.1.0
+date-released: "2026-09-22"

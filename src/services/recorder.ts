@@ -70,10 +70,17 @@ export const startCanvasRecording = (
 
   const fps = options.fps ?? 60;
   const stream = canvas.captureStream(fps);
-  const recorder = new MediaRecorder(stream, {
-    mimeType: format.mime,
-    videoBitsPerSecond: options.videoBitsPerSecond ?? 24_000_000,
-  });
+  let recorder: MediaRecorder;
+  try {
+    recorder = new MediaRecorder(stream, {
+      mimeType: format.mime,
+      videoBitsPerSecond: options.videoBitsPerSecond ?? 24_000_000,
+    });
+  } catch (e) {
+    // the constructor can still reject the stream: release its live tracks
+    stream.getTracks().forEach(t => t.stop());
+    throw e;
+  }
 
   const chunks: BlobPart[] = [];
   let finished: ((r: RecordingResult) => void) | null = null;

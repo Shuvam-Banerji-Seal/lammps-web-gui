@@ -1,0 +1,25 @@
+# oracle: voronoi/atom occupation: first invocation stores the tessellation, later ones count atoms per stored cell (moved and inserted atoms)
+# oracle-files: w15small_voro_0.occ w15small_voro_1.occ
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+atom_modify     map array
+lattice         sc 1.0
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 1.5
+pair_coeff      * * 1.0 1.0
+thermo_modify   format float %.15g
+compute         occ all voronoi/atom occupation
+dump            d0 all custom 1 w15small_voro_0.occ id c_occ[1] c_occ[2]
+dump_modify     d0 sort id format float %.15g
+run             0
+undump          d0
+set             atom 1 x 0.3 y 0.0 z 0.0
+run             0
+create_atoms    1 single 1.5 1.5 1.5
+dump            d1 all custom 1 w15small_voro_1.occ id c_occ[1] c_occ[2]
+dump_modify     d1 sort id format float %.15g
+run             0

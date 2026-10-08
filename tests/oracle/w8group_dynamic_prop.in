@@ -1,0 +1,34 @@
+# oracle: group dynamic by a fix property/atom custom vector set between runs, the docs' shrinking-sphere quench with a variable radius, and group static
+units           lj
+atom_style      atomic
+boundary        p p p
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+fix             p all property/atom i_flag
+variable        vx atom 1.2*sin(0.9*x+0.4*z)
+variable        vy atom 1.2*cos(0.6*y+0.8*x)
+variable        vz atom 1.2*sin(0.7*z-0.3*y)
+velocity        all set v_vx v_vy v_vz units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+timestep        0.004
+variable        nsteps equal 60
+variable        rad equal 3.6-(elapsed/v_nsteps)*(3.6-1.5)
+region          ss sphere 3.36 3.36 3.36 v_rad units box
+group           mobile dynamic all region ss
+group           flagged dynamic all property flag every 2
+variable        nm equal count(mobile)
+variable        nf equal count(flagged)
+fix             1 mobile nve
+compute         tm mobile temp
+thermo_style    custom step temp pe etotal press v_nm v_nf c_tm
+thermo_modify   format float %.15g
+thermo          4
+run             ${nsteps}
+set             region ss i_flag 1
+group           mobile static
+fix             2 flagged temp/rescale 2 0.5 0.5 0.02 1.0
+run             ${nsteps}

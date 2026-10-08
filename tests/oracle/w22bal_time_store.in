@@ -1,0 +1,27 @@
+# oracle: fix balance weight time + var + store on one process (one rank: the time factor is a no-op, measured)
+# oracle-compare: thermo=all atoms=none rel=1e-9
+units           lj
+atom_style      atomic
+lattice         sc 1.0
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 1.5
+pair_coeff      * * 1.0 1.0
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check no
+velocity        all create 1.0 87287
+fix             p all property/atom d_W
+compute         cw all property/atom d_W
+compute         s1 all reduce sum c_cw
+compute         s2 all reduce sumsq c_cw
+compute         s3 all reduce min c_cw
+compute         s4 all reduce max c_cw
+variable        wt atom x+2*y+1.0
+fix             1 all nve
+fix             b all balance 1 2.0 shift x 5 1.1 weight var wt weight time 2.0 weight store W
+thermo_style    custom step atoms f_b f_b[1] c_s1 c_s2 c_s3 c_s4
+thermo_modify   format float %.15g norm no
+thermo          1
+run             4

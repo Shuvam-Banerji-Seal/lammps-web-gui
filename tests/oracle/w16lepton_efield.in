@@ -1,0 +1,29 @@
+# oracle: fix efield/lepton (non-uniform potential in x, y, z with v_name; energy and virial), charged atoms
+units           lj
+atom_style      charge
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+set             type 1 charge 0.5
+variable        vx atom 0.5*sin(1.3*x+0.7*y)
+variable        vy atom 0.5*cos(0.9*y-0.4*z)
+variable        vz atom 0.5*sin(1.1*z+0.5*x)
+variable        th equal 2*PI*ramp(0,1)
+velocity        all set v_vx v_vy v_vz
+velocity        all zero linear
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+fix             1 all nve
+fix             ef all efield/lepton "-0.5*x^2 - 0.3*y*z + sin(x)*exp(-0.1*z) + 0.2*abs(y-2)*v_th" step 1e-3
+fix_modify      ef energy yes virial yes
+region          sub block 0 2.1 INF INF INF INF units lattice
+fix             ex2 all efield/lepton "0.3*x*y - 0.1*z^2" region sub
+fix_modify      ex2 energy yes
+compute         ef2 all pe/atom fix
+compute         ref all reduce sum c_ef2
+thermo_style    custom step pe f_ef f_ex2 c_ref press pxx
+thermo_modify   format float %.15g
+thermo          10
+run             30

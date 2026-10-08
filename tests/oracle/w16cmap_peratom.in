@@ -1,0 +1,34 @@
+# Wave 16: per-atom CMAP energy and virial (docs.lammps.org/fix_cmap.html: fix_modify energy adds the CMAP
+# energy "to both the global potential energy and peratom potential energies"). Compute pe/atom fix and
+# compute stress/atom NULL fix, summed by compute reduce, on the 8-atom chain of w15cmap_run (NVE, 60 steps).
+# units lj: native stress/atom in real units carries the pressure conversion nktv2p, which the per-atom
+# stress compute of this engine does not apply (see the wave-16 report); the CMAP split is units-free.
+# oracle-inputs: w15cmap_grid.txt w15cmap_chain.data
+# oracle-files: w16cmap_peratom.dump
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      full
+boundary        f f f
+fix             cmap all cmap w15cmap_grid.txt
+read_data       w15cmap_chain.data fix cmap crossterm CMAP
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  harmonic
+pair_style      zero 10.0
+pair_coeff      * *
+bond_coeff      1 300.0 1.53
+angle_coeff     1 60.0 111.0
+dihedral_coeff  1 2.0 1 3
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        0.005
+fix             1 all nve
+compute         pe all pe/atom fix
+compute         sa all stress/atom NULL fix
+compute         tpe all reduce sum c_pe
+compute         tsa all reduce sum c_sa[1] c_sa[2] c_sa[3] c_sa[4] c_sa[5] c_sa[6]
+thermo_style    custom step pe f_cmap c_tpe c_tsa[1] c_tsa[2] c_tsa[3] c_tsa[4] c_tsa[5] c_tsa[6] press
+thermo_modify   format float %.15g
+thermo          20
+run             60
+write_dump      all custom w16cmap_peratom.dump id c_pe c_sa[1] c_sa[2] c_sa[3] c_sa[4] c_sa[5] c_sa[6] modify format float %.15g sort id

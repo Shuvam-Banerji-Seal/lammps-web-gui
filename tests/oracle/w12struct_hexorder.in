@@ -1,0 +1,27 @@
+# oracle: compute hexorder/atom (2d) on a hexagonal lattice with a vacancy, displaced atoms and a random-looking displacement field; default, degree 4 nnn 4 cutoff 1.2, and nnn NULL
+# oracle-files: w12struct_hexorder.dump
+# oracle-compare: thermo=all atoms=none
+units           lj
+dimension       2
+atom_style      atomic
+lattice         hex 0.9
+region          box block 0 8 0 6 -0.5 0.5
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+group           vac id 5
+delete_atoms    group vac compress no
+group           few id 9 21 33
+displace_atoms  few move 0.15 -0.1 0.0 units box
+variable        dx atom 0.05*sin(2.3*x+1.1*y)
+variable        dy atom 0.05*cos(1.9*y-0.7*x)
+displace_atoms  all move v_dx v_dy 0.0 units box
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+compute         h6 all hexorder/atom
+compute         h4 all hexorder/atom degree 4 nnn 4 cutoff 1.2
+compute         hn all hexorder/atom nnn NULL cutoff 1.2
+dump            d all custom 1 w12struct_hexorder.dump id c_h6[1] c_h6[2] c_h4[1] c_h4[2] c_hn[1] c_hn[2]
+dump_modify     d sort id format float %.12g
+thermo_style    custom step
+run             0

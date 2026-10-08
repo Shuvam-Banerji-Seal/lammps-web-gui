@@ -1,0 +1,22 @@
+# oracle-inputs: w9pair_cs.data
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-4
+# oracle: born/coul/long/cs core-shell dimers: 1-2 (core-shell) special weight 0, ewald
+units           real
+atom_style      full
+bond_style      harmonic
+read_data       w9pair_cs.data
+pair_style      born/coul/long/cs 10.0 8.0
+pair_coeff      1 1 6.08 0.317 2.340 24.18 11.51
+pair_coeff      2 2 2.50 0.300 1.600 5.00 2.00
+pair_coeff      1 2 4.00 0.300 2.000 15.00 6.00
+bond_coeff      1 50.0 0.1
+special_bonds   lj/coul 0.0 1.0 1.0
+pair_modify    table 0
+kspace_style    ewald 1.0e-5
+kspace_modify   gewald 0.28 kmax/ewald 7 7 7
+timestep        0.5
+fix             1 all nve
+thermo_style    custom step temp pe evdwl ecoul elong etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             40

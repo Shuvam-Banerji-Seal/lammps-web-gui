@@ -14,9 +14,15 @@ import { inferBonds } from './bondInference';
  *   - element from _atom_site_type_symbol (charges like "Fe3+" tolerated)
  *     falling back to the alphabetic prefix of _atom_site_label ("Cl2" -> Cl)
  *
- * The first data_ block is visualized. Symmetry operations are NOT expanded;
- * files relying purely on symmetry with an asymmetric unit will render that
- * asymmetric unit only. P1-style files render completely. [documented limit]
+ * The first data_ block is visualized. If the file carries a symmetry
+ * operation loop (`_space_group_symop_operation_xyz` or the older
+ * `_symmetry_equiv_pos_as_xyz`), the listed asymmetric unit is expanded:
+ * every operation (rotation R + translation t parsed from its "x,y,z" string)
+ * is applied to every site, each generated position is wrapped into [0,1)
+ * and deduplicated against all accepted positions, so special positions,
+ * lattice centring and duplicate disordered sites collapse to one atom each.
+ * Files without such a loop are treated as P1 and render exactly the listed
+ * sites; Cartesian (`_atom_site_Cartn_*`) files are never expanded.
  */
 
 export interface CifCell {
@@ -89,6 +95,89 @@ export const elementFromLabel = (label: string): string | undefined => {
   }
   const one = letters[0].toUpperCase();
   return getAtomicNumberFromSymbol(one) !== undefined ? one : undefined;
+};
+
+/** Split a CIF data row into values, honouring single/double quotes. */
+const tokenizeCifRow = (row: string): string[] =>
+  row.match(/'[^']*'|"[^"]*"|\S+/g)?.map(t => t.replace(/^['"]|['"]$/g, '')) ?? [];
+
+/**
+ * A crystallographic symmetry operation in fractional coordinates:
+ *   x' = R·x + t
+ * with an integer rotation matrix R (R[row][col], rows are output x,y/z,
+ * columns are input x/y/z) and a rational translation vector t.
+ */
+export interface SymmetryOperation {
+  r: number[][];
+  t: [number, number, number];
+}
+
+/**
+ * Parse a symmetry operation string as found in `_space_group_symop_operation_xyz`
+ * / `_symmetry_equiv_pos_as_xyz` loops, e.g. "-x+1/2,y,-z", "1/2+z,y,1/2-x",
+ * "x-y,x,z+1/6". Components are signed sums of the variables x/y/z
+ * (case-insensitive) and constants written as fractions (1/2, 2/3, ...) or
+ * decimals (0.5); term order is arbitrary and whitespace/quotes are ignored.
+ * Throws naming the operation when a component cannot be parsed.
+ */
+export const parseSymmetryOperation = (opRaw: string): SymmetryOperation => {
+  const op = opRaw.trim();
+  const components = op.split(',').map(c => c.trim().toLowerCase());
+  if (components.length !== 3 || components.some(c => c === '')) {
+    throw new Error(
+      `Invalid CIF symmetry operation "${opRaw}": expected three comma-separated components`
+    );
+  }
+
+  const r: number[][] = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  const t: [number, number, number] = [0, 0, 0];
+
+  components.forEach((component, row) => {
+    const compact = component.replace(/\s+/g, '');
+    // Split into signed terms: a new term starts at each + / - after the first
+    // character ("1/2-x" -> ["1/2", "-x"], "x-y" -> ["x", "-y"], "+y" -> ["+y"]).
+    const terms: string[] = [];
+    let start = 0;
+    for (let i = 1; i < compact.length; i++) {
+      if (compact[i] === '+' || compact[i] === '-') {
+        terms.push(compact.slice(start, i));
+        start = i;
+      }
+    }
+    terms.push(compact.slice(start));
+
+    for (const term of terms) {
+      const varMatch = term.match(/^([+-]?)([xyz])$/);
+      if (varMatch) {
+        const col = 'xyz'.indexOf(varMatch[2]);
+        r[row][col] += varMatch[1] === '-' ? -1 : 1;
+        continue;
+      }
+      const numMatch = term.match(/^([+-]?)(\d+(?:\.\d+)?|\.\d+)(?:\/(\d+(?:\.\d+)?|\.\d+))?$/);
+      if (numMatch) {
+        const denominator = numMatch[3] !== undefined ? parseFloat(numMatch[3]) : 1;
+        if (denominator === 0) {
+          throw new Error(
+            `Invalid CIF symmetry operation "${opRaw}": cannot parse component "${component}"`
+          );
+        }
+        const value = parseFloat(numMatch[2]) / denominator;
+        t[row] += numMatch[1] === '-' ? -value : value;
+        continue;
+      }
+      throw new Error(
+        `Invalid CIF symmetry operation "${opRaw}": cannot parse component "${component}"`
+      );
+    }
+  });
+
+  return { r, t };
+};
+
+/** Wrap a fractional coordinate component into [0, 1), snapping ~1 to 0. */
+const wrap01 = (v: number): number => {
+  const w = v - Math.floor(v);
+  return 1 - w < 1e-6 ? 0 : w;
 };
 
 /**
@@ -213,37 +302,86 @@ export const parseCIFFile = (data: string): MoleculeData => {
     );
   }
 
+  // --- Symmetry operations loop (optional; its absence means P1) ---
+  // Read from a loop containing `_space_group_symop_operation_xyz` (modern
+  // tag) or `_symmetry_equiv_pos_as_xyz` (legacy tag); other columns such as
+  // `_space_group_symop_id` / `_symmetry_equiv_pos_site_id` may precede it,
+  // so the xyz column is picked by its header name.
+  const symLoop = findLoopBlock(lines, [
+    '_space_group_symop_operation_xyz',
+    '_symmetry_equiv_pos_as_xyz',
+  ]);
+  const symOps: SymmetryOperation[] = [];
+  if (symLoop) {
+    const opCol =
+      symLoop.tags.indexOf('_space_group_symop_operation_xyz') >= 0
+        ? symLoop.tags.indexOf('_space_group_symop_operation_xyz')
+        : symLoop.tags.indexOf('_symmetry_equiv_pos_as_xyz');
+    if (opCol >= 0) {
+      for (const row of symLoop.rows) {
+        const raw = tokenizeCifRow(row)[opCol];
+        if (raw === undefined || raw === '.' || raw === '?') continue; // inapplicable value
+        symOps.push(parseSymmetryOperation(raw));
+      }
+    }
+  }
+  const expandSymmetry = useFractional && symOps.length > 0;
+
+  // --- Deduplication of generated positions (fractional space) ---
+  // O(n): positions are hashed into buckets quantized to 0.01 fractional
+  // units; a candidate only needs its 3x3x3 neighbour buckets, since two
+  // positions whose minimum-image difference is < FRAC_TOL (1e-3) per
+  // component can never land in buckets further apart than one step
+  // (mod 100, so the 0/1 wrap is covered too).
+  const FRAC_TOL = 1e-3;
+  const BUCKET_STEPS = 100; // 1 / 0.01
+  const expandedFrac: Array<[number, number, number]> = [];
+  const fracBuckets = new Map<string, number[]>();
+  const bucketOf = (f: [number, number, number]): [number, number, number] => {
+    const q = (v: number) => ((Math.round(v * BUCKET_STEPS)) % BUCKET_STEPS + BUCKET_STEPS) % BUCKET_STEPS;
+    return [q(f[0]), q(f[1]), q(f[2])];
+  };
+  const isDuplicatePosition = (f: [number, number, number]): boolean => {
+    const [q0, q1, q2] = bucketOf(f);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          const key =
+            `${((q0 + dx) % BUCKET_STEPS + BUCKET_STEPS) % BUCKET_STEPS},` +
+            `${((q1 + dy) % BUCKET_STEPS + BUCKET_STEPS) % BUCKET_STEPS},` +
+            `${((q2 + dz) % BUCKET_STEPS + BUCKET_STEPS) % BUCKET_STEPS}`;
+          const hits = fracBuckets.get(key);
+          if (!hits) continue;
+          for (const idx of hits) {
+            const g = expandedFrac[idx];
+            const d0 = f[0] - g[0] - Math.round(f[0] - g[0]);
+            const d1 = f[1] - g[1] - Math.round(f[1] - g[1]);
+            const d2 = f[2] - g[2] - Math.round(f[2] - g[2]);
+            if (Math.abs(d0) < FRAC_TOL && Math.abs(d1) < FRAC_TOL && Math.abs(d2) < FRAC_TOL) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  };
+  const rememberPosition = (f: [number, number, number]): void => {
+    const key = bucketOf(f).join(',');
+    const hits = fracBuckets.get(key);
+    if (hits) hits.push(expandedFrac.push(f) - 1);
+    else fracBuckets.set(key, [expandedFrac.push(f) - 1]);
+  };
+
   const atoms: Atom[] = [];
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
-  const elementTypeMap: Record<string, number> = {};
+  // keys are element symbols from the file: a null-prototype map (no prototype keys)
+  const elementTypeMap: Record<string, number> = Object.create(null);
   let nextSyntheticTypeId = 1000;
 
-  for (const row of loop.rows) {
-    // split respecting simple quotes
-    const tokens = row.match(/'[^']*'|"[^"]*"|\S+/g)?.map(t => t.replace(/^['"]|['"]$/g, '')) ?? [];
-    if (tokens.length < loop.tags.length) continue;
-
-    let symbol: string | undefined;
-    if (iType >= 0) symbol = elementFromTypeSymbol(tokens[iType]);
-    if (!symbol && iLabel >= 0) symbol = elementFromLabel(tokens[iLabel]);
-
-    let cx: number, cy: number, cz: number;
-    if (useFractional) {
-      if (!cell) continue; // fractional coords require a cell
-      const fx = parseCifNumber(tokens[iFx]);
-      const fy = parseCifNumber(tokens[iFy]);
-      const fz = parseCifNumber(tokens[iFz]);
-      if (![fx, fy, fz].every(Number.isFinite)) continue;
-      ({ x: cx, y: cy, z: cz } = fractionalToCartesian(cell, fx, fy, fz));
-    } else {
-      cx = parseCifNumber(tokens[iCx]);
-      cy = parseCifNumber(tokens[iCy]);
-      cz = parseCifNumber(tokens[iCz]);
-    }
-    if (![cx, cy, cz].every(Number.isFinite)) continue;
-
+  const addAtom = (symbol: string | undefined, cx: number, cy: number, cz: number): void => {
     const lookupKey = (symbol ?? 'X').toUpperCase();
     if (!(lookupKey in elementTypeMap)) {
       const atomicNumber = symbol ? getAtomicNumberFromSymbol(symbol) : undefined;
@@ -257,6 +395,48 @@ export const parseCIFFile = (data: string): MoleculeData => {
     minX = Math.min(minX, cx); maxX = Math.max(maxX, cx);
     minY = Math.min(minY, cy); maxY = Math.max(maxY, cy);
     minZ = Math.min(minZ, cz); maxZ = Math.max(maxZ, cz);
+  };
+
+  for (const row of loop.rows) {
+    // split respecting simple quotes
+    const tokens = tokenizeCifRow(row);
+    if (tokens.length < loop.tags.length) continue;
+
+    let symbol: string | undefined;
+    if (iType >= 0) symbol = elementFromTypeSymbol(tokens[iType]);
+    if (!symbol && iLabel >= 0) symbol = elementFromLabel(tokens[iLabel]);
+
+    if (useFractional) {
+      if (!cell) continue; // fractional coords require a cell
+      const fx = parseCifNumber(tokens[iFx]);
+      const fy = parseCifNumber(tokens[iFy]);
+      const fz = parseCifNumber(tokens[iFz]);
+      if (![fx, fy, fz].every(Number.isFinite)) continue;
+
+      if (expandSymmetry) {
+        // Generate R·f + t for every operation, wrap into [0,1), dedup.
+        for (const op of symOps) {
+          const gf: [number, number, number] = [
+            wrap01(op.r[0][0] * fx + op.r[0][1] * fy + op.r[0][2] * fz + op.t[0]),
+            wrap01(op.r[1][0] * fx + op.r[1][1] * fy + op.r[1][2] * fz + op.t[1]),
+            wrap01(op.r[2][0] * fx + op.r[2][1] * fy + op.r[2][2] * fz + op.t[2]),
+          ];
+          if (isDuplicatePosition(gf)) continue;
+          rememberPosition(gf);
+          const cart = fractionalToCartesian(cell, gf[0], gf[1], gf[2]);
+          addAtom(symbol, cart.x, cart.y, cart.z);
+        }
+      } else {
+        const cart = fractionalToCartesian(cell, fx, fy, fz);
+        addAtom(symbol, cart.x, cart.y, cart.z);
+      }
+    } else {
+      const cx = parseCifNumber(tokens[iCx]);
+      const cy = parseCifNumber(tokens[iCy]);
+      const cz = parseCifNumber(tokens[iCz]);
+      if (![cx, cy, cz].every(Number.isFinite)) continue;
+      addAtom(symbol, cx, cy, cz);
+    }
   }
 
   if (atoms.length === 0) throw new Error('Invalid CIF file: zero atom positions parsed');

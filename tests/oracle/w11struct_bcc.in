@@ -1,0 +1,22 @@
+# oracle: centro/atom bcc and cna/atom (bcc 14-neighbour class) on a bcc crystal with displaced atoms. No vacancy: next to a vacancy the 8th
+# neighbour is a tie between equidistant second-shell atoms and the choice is neighbour-list dependent (measured, see the report)
+# oracle-files: w11struct_bcc.dump
+# oracle-compare: thermo=all atoms=none
+# thermo is step-only: the per-atom structure values are what this case checks
+units           metal
+atom_style      atomic
+lattice         bcc 2.87
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 55.85
+group           few id 9 40 77
+displace_atoms  few move 0.35 0.25 -0.2 units box
+pair_style      lj/cut 4.5
+pair_coeff      * * 0.01 2.5
+compute         cb all centro/atom bcc
+compute         cna all cna/atom 3.46
+dump            d all custom 1 w11struct_bcc.dump id c_cb c_cna
+dump_modify     d sort id format float %.12g
+thermo_style    custom step
+run             0

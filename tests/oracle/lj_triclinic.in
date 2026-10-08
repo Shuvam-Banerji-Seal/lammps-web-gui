@@ -1,0 +1,24 @@
+# oracle: restricted triclinic box from a prism region, ghosts across tilted faces
+units           lj
+atom_style      atomic
+lattice         sc 1.0
+region          box prism 0 6 0 6 0 6 1.0 -1.0 2.0 units box
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+displace_atoms  all move 0.05 0.02 -0.03 units box
+variable        dx atom 0.08*sin(2.1*x+0.7*y)
+variable        dy atom 0.08*cos(1.3*y+1.1*z)
+variable        dz atom 0.08*sin(0.9*z+1.7*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.6*sin(1.1*x+0.4*y)
+variable        vy atom 0.6*cos(0.8*y-0.5*z)
+variable        vz atom 0.6*sin(1.3*z+0.2*x)
+velocity        all set v_vx v_vy v_vz units box
+pair_style      lj/cut 2.0
+pair_coeff      1 1 1.0 1.0
+fix             1 all nve
+thermo_style    custom step temp pe etotal press pxx pyy pzz pxy pxz pyz cella cellb cellc cellalpha cellbeta cellgamma
+thermo_modify   format float %.15g
+thermo          10
+run             60

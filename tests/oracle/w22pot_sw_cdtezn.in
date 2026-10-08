@@ -1,0 +1,33 @@
+# oracle: pair_style sw with the multi-element CdTeZnSeHgS0.sw file (Cd Te Zn, three types), displaced lattice, velocities from atom-style variables, 50 steps of nve
+# oracle-potentials: CdTeZnSeHgS0.sw
+# oracle-tolerance: rel=1e-6 abs=1e-9; measured with native LAMMPS (black box): with pair_style sw threebody off the energies agree to 1e-15; the three-body term differs by about 1e-9 relative in energy (2e-7 in pyz at step 0). This file gives different three-body parameters to the CSiC-type and CCSi-type orders (for example Te Te Zn and Te Zn Te), which the documentation says must agree because the neighbour order is arbitrary; isolating single triplets shows that native and this engine attribute the same pair energies to different triplets, so the total differs in the last digits
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+units           metal
+atom_style      atomic
+lattice         diamond 5.6
+region          box block 0 3 0 3 0 3
+create_box      3 box
+create_atoms    1 box
+group         t2 id 2:216:3
+set             group t2 type 2
+group         t3 id 3:216:3
+set             group t3 type 3
+mass            1 112.41
+mass            2 127.6
+mass            3 65.38
+variable        dx atom 0.05*sin(1.3*x+0.7*y)
+variable        dy atom 0.05*cos(0.9*y-0.4*z)
+variable        dz atom 0.05*sin(1.1*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.01*sin(id)
+variable        vy atom 0.01*cos(2*id)
+variable        vz atom 0.01*sin(3*id)
+pair_style sw
+pair_coeff * * CdTeZnSeHgS0.sw Cd Te Zn
+velocity        all set v_vx v_vy v_vz
+timestep        0.001
+fix             1 all nve
+thermo_style    custom step pe ke press pxx pyz
+thermo_modify   format float %.15g norm no
+thermo          10
+run             50

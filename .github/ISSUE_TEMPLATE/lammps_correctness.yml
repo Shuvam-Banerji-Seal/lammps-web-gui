@@ -1,0 +1,71 @@
+name: "🧪 Incorrect LAMMPS output"
+description: A generated script, build command or validator verdict does not match the LAMMPS documentation.
+title: "fix(lammps): "
+labels: ["lammps-correctness", "bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the highest-priority class of bug in this project: the scripts it
+        emits are meant to run. Please point at the documentation — that is what
+        makes a report actionable.
+  - type: dropdown
+    id: area
+    attributes:
+      label: What produced the wrong output?
+      options:
+        - Script Builder — a generated command line is wrong
+        - Script Builder — commands come out in the wrong order
+        - Script Builder — Script check (validator) is wrong
+        - Script Builder — a starter template is wrong
+        - Script Builder — importing an in.* script mis-parsed a line
+        - Compiler Helper — a CMake flag or build command is wrong
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: LAMMPS command or CMake option
+      placeholder: "fix qeq/reaxff"
+    validations:
+      required: true
+  - type: input
+    id: doc
+    attributes:
+      label: Documentation page
+      description: The docs.lammps.org page that defines the correct behaviour.
+      placeholder: "https://docs.lammps.org/fix_qeq_reaxff.html"
+    validations:
+      required: true
+  - type: textarea
+    id: quote
+    attributes:
+      label: Quote the relevant sentence
+      description: Copy the Syntax line or the Restrictions sentence verbatim.
+      placeholder: "fix ID group-ID qeq/reaxff Nevery cutlo cuthi tolerance params args"
+    validations:
+      required: true
+  - type: textarea
+    id: got
+    attributes:
+      label: What the tool produced
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: want
+    attributes:
+      label: What it should have produced
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The steps, or paste the flowchart's exported script / the imported `in.*` file.
+  - type: input
+    id: version
+    attributes:
+      label: LAMMPS version you are targeting
+      placeholder: "stable 4 Jul 2026"

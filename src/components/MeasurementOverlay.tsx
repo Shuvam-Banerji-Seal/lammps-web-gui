@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { Atom, VisualizationConfig } from '../types';
 import { MeasurementResult } from '../services/measure';
@@ -109,6 +109,8 @@ const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     return geo;
   }, [selected]);
+  // a new geometry per box / selection change: free the previous one's GPU buffers
+  useEffect(() => () => { lineGeometry?.dispose(); }, [lineGeometry]);
 
   const labelInfo = useMemo(() => {
     if (!selected.length) return null;
@@ -138,16 +140,22 @@ const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
         </lineSegments>
       )}
 
-      {labelInfo && result && (
-        <sprite position={labelInfo.pos} scale={[labelInfo.size * 4, labelInfo.size * 4 * 0.28, 1]}>
+      {labelInfo && result && (() => {
+        // keep the texture's own aspect: its width follows the text length
+        const tex = getTextTexture(result.label);
+        const img = tex.image as { width: number; height: number };
+        const h = labelInfo.size * 1.12;
+        return (
+        <sprite position={labelInfo.pos} scale={[h * (img.width / img.height), h, 1]}>
           <spriteMaterial
-            map={getTextTexture(result.label)}
+            map={tex}
             transparent
             depthTest={false}
             depthWrite={false}
           />
         </sprite>
-      )}
+        );
+      })()}
     </group>
   );
 };

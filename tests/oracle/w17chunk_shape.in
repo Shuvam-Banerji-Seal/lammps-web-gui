@@ -1,0 +1,31 @@
+# oracle: gyration/shape (system) and gyration/shape/chunk (per molecule, from gyration/chunk tensor) on the branched chains, after a short NVE run
+# oracle-inputs: mol_chains.data
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-8
+units           lj
+atom_style      molecular
+bond_style      class2
+angle_style     harmonic
+dihedral_style  harmonic
+improper_style  harmonic
+pair_style      lj/cut 2.5
+read_data       mol_chains.data
+pair_coeff      * * 0.5 0.9
+pair_coeff      1 3 0.8 1.0
+bond_coeff      1 1.05 100.0 -50.0 20.0
+bond_coeff      2 1.1 90.0 -40.0 15.0
+angle_coeff     1 40.0 109.5
+angle_coeff     2 25.0 120.0
+dihedral_coeff  1 1.5 -1 3
+improper_coeff  1 12.0 20.0
+special_bonds   lj 0.0 0.5 0.8
+timestep        0.002
+fix             1 all nve
+compute cm all chunk/atom molecule compress yes
+compute gyr all gyration
+compute gsh all gyration/shape gyr
+compute gyt all gyration/chunk cm tensor
+compute gshc all gyration/shape/chunk gyt
+thermo_modify   format float %.15g norm no
+thermo_style    custom step c_gyr c_gsh[1] c_gsh[2] c_gsh[3] c_gsh[4] c_gsh[5] c_gsh[6] c_gshc[1][1] c_gshc[1][2] c_gshc[1][3] c_gshc[1][4] c_gshc[1][5] c_gshc[1][6] c_gshc[2][1] c_gshc[2][2] c_gshc[2][3] c_gshc[2][4] c_gshc[2][5] c_gshc[2][6] c_gshc[3][1] c_gshc[3][2] c_gshc[3][3] c_gshc[3][4] c_gshc[3][5] c_gshc[3][6] c_gshc[4][1] c_gshc[4][2] c_gshc[4][3] c_gshc[4][4] c_gshc[4][5] c_gshc[4][6] c_gshc[5][1] c_gshc[5][2] c_gshc[5][3] c_gshc[5][4] c_gshc[5][5] c_gshc[5][6] c_gshc[6][1] c_gshc[6][2] c_gshc[6][3] c_gshc[6][4] c_gshc[6][5] c_gshc[6][6] c_gshc[7][1] c_gshc[7][2] c_gshc[7][3] c_gshc[7][4] c_gshc[7][5] c_gshc[7][6] c_gshc[8][1] c_gshc[8][2] c_gshc[8][3] c_gshc[8][4] c_gshc[8][5] c_gshc[8][6] c_gshc[9][1] c_gshc[9][2] c_gshc[9][3] c_gshc[9][4] c_gshc[9][5] c_gshc[9][6] c_gshc[10][1] c_gshc[10][2] c_gshc[10][3] c_gshc[10][4] c_gshc[10][5] c_gshc[10][6] c_gshc[11][1] c_gshc[11][2] c_gshc[11][3] c_gshc[11][4] c_gshc[11][5] c_gshc[11][6] c_gshc[12][1] c_gshc[12][2] c_gshc[12][3] c_gshc[12][4] c_gshc[12][5] c_gshc[12][6] c_gshc[13][1] c_gshc[13][2] c_gshc[13][3] c_gshc[13][4] c_gshc[13][5] c_gshc[13][6] c_gshc[14][1] c_gshc[14][2] c_gshc[14][3] c_gshc[14][4] c_gshc[14][5] c_gshc[14][6] c_gshc[15][1] c_gshc[15][2] c_gshc[15][3] c_gshc[15][4] c_gshc[15][5] c_gshc[15][6] c_gshc[16][1] c_gshc[16][2] c_gshc[16][3] c_gshc[16][4] c_gshc[16][5] c_gshc[16][6] c_gshc[17][1] c_gshc[17][2] c_gshc[17][3] c_gshc[17][4] c_gshc[17][5] c_gshc[17][6] c_gshc[18][1] c_gshc[18][2] c_gshc[18][3] c_gshc[18][4] c_gshc[18][5] c_gshc[18][6]
+thermo          10
+run             20

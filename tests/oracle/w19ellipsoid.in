@@ -1,0 +1,45 @@
+# oracle: atom_style ellipsoid core: read_data with an Ellipsoids section (unnormalized quaternions, point particles), set shape/quat/angmom/density/mass, displace_atoms rotate of the quaternions, create_atoms, replicate, a write_data/read_data round trip, compute property/atom shape*/quat*/angmom* checksums, and an lj/cut nve run on the per-atom masses
+# oracle-inputs: w19ellipsoid.data
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      ellipsoid
+read_data       w19ellipsoid.data
+set             atom 2 shape 1.0 1.5 2.0
+set             atom 3 quat 1 2 3 40
+set             atom 9 shape 0.8 0.9 1.0
+set             atom 9 quat 0 1 1 70
+set             atom 4 shape 0 0 0
+set             atom 5 angmom 0.1 -0.2 0.3
+set             atom 6 density 2.0
+set             atom 7 density 1.5
+set             atom 8 mass 3.0
+group           ell id 1 2 3 5 6
+displace_atoms  ell rotate 3 3 1 0.3 0.4 1 33 units box
+create_atoms    1 single 5.0 1.0 1.0 units box
+replicate       1 1 2
+write_data      w19ellipsoid_out.data
+clear
+units           lj
+atom_style      ellipsoid
+read_data       w19ellipsoid_out.data
+compute         p all property/atom shapex shapey shapez quatw quati quatj quatk angmomx angmomy angmomz mass
+variable        a1 atom c_p[1]*(1+0.1*id)
+variable        a2 atom c_p[2]*(1+0.2*id)
+variable        a3 atom c_p[3]*(1+0.3*id)
+variable        a4 atom c_p[4]*(1+0.1*id)
+variable        a5 atom c_p[5]*(1+0.2*id)
+variable        a6 atom c_p[6]*(1+0.3*id)
+variable        a7 atom c_p[7]*(1+0.4*id)
+variable        a8 atom c_p[8]*(1+0.1*id)
+variable        a9 atom c_p[9]*(1+0.2*id)
+variable        a10 atom c_p[10]*(1+0.3*id)
+variable        a11 atom c_p[11]*(1+0.1*id)
+compute         r all reduce sum v_a1 v_a2 v_a3 v_a4 v_a5 v_a6 v_a7 v_a8 v_a9 v_a10 v_a11
+pair_style      lj/cut 2.5
+pair_coeff      * * 0.2 0.9
+timestep        0.002
+fix             1 all nve
+thermo_style    custom step atoms pe ke c_r[1] c_r[2] c_r[3] c_r[4] c_r[5] c_r[6] c_r[7] c_r[8] c_r[9] c_r[10] c_r[11]
+thermo_modify   format float %.15g norm no
+thermo          10
+run             50

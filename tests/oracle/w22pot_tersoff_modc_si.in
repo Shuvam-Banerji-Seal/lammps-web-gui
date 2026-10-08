@@ -1,0 +1,26 @@
+# oracle: pair_style tersoff/mod/c with Si.tersoff.modc, displaced lattice, velocities from atom-style variables, 50 steps of nve
+# oracle-potentials: Si.tersoff.modc
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           metal
+atom_style      atomic
+lattice         diamond 5.431
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 28.06
+variable        dx atom 0.05*sin(1.3*x+0.7*y)
+variable        dy atom 0.05*cos(0.9*y-0.4*z)
+variable        dz atom 0.05*sin(1.1*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.01*sin(id)
+variable        vy atom 0.01*cos(2*id)
+variable        vz atom 0.01*sin(3*id)
+pair_style tersoff/mod/c
+pair_coeff * * Si.tersoff.modc Si
+velocity        all set v_vx v_vy v_vz
+timestep        0.001
+fix             1 all nve
+thermo_style    custom step pe ke press pxx pyz
+thermo_modify   format float %.15g norm no
+thermo          10
+run             50

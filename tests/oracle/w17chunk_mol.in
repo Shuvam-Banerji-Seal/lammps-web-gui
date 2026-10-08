@@ -1,0 +1,40 @@
+# oracle: chunk computes on the branched chains (18 molecules of 5 atoms): angmom/chunk, omega/chunk, inertia/chunk, gyration/chunk (vector and tensor), gyration/shape/chunk, com/chunk, property/chunk (count, id), reduce/chunk, chunk/spread/atom and momentum, after a short NVE run
+# oracle-inputs: mol_chains.data
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-8
+units           lj
+atom_style      molecular
+bond_style      class2
+angle_style     harmonic
+dihedral_style  harmonic
+improper_style  harmonic
+pair_style      lj/cut 2.5
+read_data       mol_chains.data
+pair_coeff      * * 0.5 0.9
+pair_coeff      1 3 0.8 1.0
+bond_coeff      1 1.05 100.0 -50.0 20.0
+bond_coeff      2 1.1 90.0 -40.0 15.0
+angle_coeff     1 40.0 109.5
+angle_coeff     2 25.0 120.0
+dihedral_coeff  1 1.5 -1 3
+improper_coeff  1 12.0 20.0
+special_bonds   lj 0.0 0.5 0.8
+timestep        0.002
+fix             1 all nve
+compute cm all chunk/atom molecule compress yes
+compute ang all angmom/chunk cm
+compute om all omega/chunk cm
+compute ine all inertia/chunk cm
+compute gy all gyration/chunk cm
+compute gyt all gyration/chunk cm tensor
+compute gsh all gyration/shape/chunk gyt
+compute com all com/chunk cm
+compute cnt all property/chunk cm count id
+compute pa all property/atom vx vy vz
+compute rmx all reduce/chunk cm max c_pa[*]
+compute spr all chunk/spread/atom cm c_gy
+compute rsp all reduce/chunk cm sum c_spr
+compute mom all momentum
+thermo_modify   format float %.15g norm no
+thermo_style    custom step c_ang[1][1] c_ang[1][2] c_ang[1][3] c_om[1][1] c_om[1][2] c_om[1][3] c_ine[1][1] c_ine[1][2] c_ine[1][3] c_ine[1][4] c_ine[1][5] c_ine[1][6] c_gy[1] c_gyt[1][6] c_com[1][1] c_com[1][3] c_gsh[1][1] c_gsh[1][2] c_gsh[1][3] c_gsh[1][4] c_gsh[1][5] c_gsh[1][6] c_cnt[1][1] c_cnt[1][2] c_rmx[1][1] c_rmx[1][3] c_rsp[1] c_ang[2][1] c_ang[2][2] c_ang[2][3] c_om[2][1] c_om[2][2] c_om[2][3] c_ine[2][1] c_ine[2][2] c_ine[2][3] c_ine[2][4] c_ine[2][5] c_ine[2][6] c_gy[2] c_gyt[2][6] c_com[2][1] c_com[2][3] c_gsh[2][1] c_gsh[2][2] c_gsh[2][3] c_gsh[2][4] c_gsh[2][5] c_gsh[2][6] c_cnt[2][1] c_cnt[2][2] c_rmx[2][1] c_rmx[2][3] c_rsp[2] c_ang[3][1] c_ang[3][2] c_ang[3][3] c_om[3][1] c_om[3][2] c_om[3][3] c_ine[3][1] c_ine[3][2] c_ine[3][3] c_ine[3][4] c_ine[3][5] c_ine[3][6] c_gy[3] c_gyt[3][6] c_com[3][1] c_com[3][3] c_gsh[3][1] c_gsh[3][2] c_gsh[3][3] c_gsh[3][4] c_gsh[3][5] c_gsh[3][6] c_cnt[3][1] c_cnt[3][2] c_rmx[3][1] c_rmx[3][3] c_rsp[3] c_ang[4][1] c_ang[4][2] c_ang[4][3] c_om[4][1] c_om[4][2] c_om[4][3] c_ine[4][1] c_ine[4][2] c_ine[4][3] c_ine[4][4] c_ine[4][5] c_ine[4][6] c_gy[4] c_gyt[4][6] c_com[4][1] c_com[4][3] c_gsh[4][1] c_gsh[4][2] c_gsh[4][3] c_gsh[4][4] c_gsh[4][5] c_gsh[4][6] c_cnt[4][1] c_cnt[4][2] c_rmx[4][1] c_rmx[4][3] c_rsp[4] c_ang[5][1] c_ang[5][2] c_ang[5][3] c_om[5][1] c_om[5][2] c_om[5][3] c_ine[5][1] c_ine[5][2] c_ine[5][3] c_ine[5][4] c_ine[5][5] c_ine[5][6] c_gy[5] c_gyt[5][6] c_com[5][1] c_com[5][3] c_gsh[5][1] c_gsh[5][2] c_gsh[5][3] c_gsh[5][4] c_gsh[5][5] c_gsh[5][6] c_cnt[5][1] c_cnt[5][2] c_rmx[5][1] c_rmx[5][3] c_rsp[5] c_ang[6][1] c_ang[6][2] c_ang[6][3] c_om[6][1] c_om[6][2] c_om[6][3] c_ine[6][1] c_ine[6][2] c_ine[6][3] c_ine[6][4] c_ine[6][5] c_ine[6][6] c_gy[6] c_gyt[6][6] c_com[6][1] c_com[6][3] c_gsh[6][1] c_gsh[6][2] c_gsh[6][3] c_gsh[6][4] c_gsh[6][5] c_gsh[6][6] c_cnt[6][1] c_cnt[6][2] c_rmx[6][1] c_rmx[6][3] c_rsp[6] c_ang[7][1] c_ang[7][2] c_ang[7][3] c_om[7][1] c_om[7][2] c_om[7][3] c_ine[7][1] c_ine[7][2] c_ine[7][3] c_ine[7][4] c_ine[7][5] c_ine[7][6] c_gy[7] c_gyt[7][6] c_com[7][1] c_com[7][3] c_gsh[7][1] c_gsh[7][2] c_gsh[7][3] c_gsh[7][4] c_gsh[7][5] c_gsh[7][6] c_cnt[7][1] c_cnt[7][2] c_rmx[7][1] c_rmx[7][3] c_rsp[7] c_ang[8][1] c_ang[8][2] c_ang[8][3] c_om[8][1] c_om[8][2] c_om[8][3] c_ine[8][1] c_ine[8][2] c_ine[8][3] c_ine[8][4] c_ine[8][5] c_ine[8][6] c_gy[8] c_gyt[8][6] c_com[8][1] c_com[8][3] c_gsh[8][1] c_gsh[8][2] c_gsh[8][3] c_gsh[8][4] c_gsh[8][5] c_gsh[8][6] c_cnt[8][1] c_cnt[8][2] c_rmx[8][1] c_rmx[8][3] c_rsp[8] c_ang[9][1] c_ang[9][2] c_ang[9][3] c_om[9][1] c_om[9][2] c_om[9][3] c_ine[9][1] c_ine[9][2] c_ine[9][3] c_ine[9][4] c_ine[9][5] c_ine[9][6] c_gy[9] c_gyt[9][6] c_com[9][1] c_com[9][3] c_gsh[9][1] c_gsh[9][2] c_gsh[9][3] c_gsh[9][4] c_gsh[9][5] c_gsh[9][6] c_cnt[9][1] c_cnt[9][2] c_rmx[9][1] c_rmx[9][3] c_rsp[9] c_ang[10][1] c_ang[10][2] c_ang[10][3] c_om[10][1] c_om[10][2] c_om[10][3] c_ine[10][1] c_ine[10][2] c_ine[10][3] c_ine[10][4] c_ine[10][5] c_ine[10][6] c_gy[10] c_gyt[10][6] c_com[10][1] c_com[10][3] c_gsh[10][1] c_gsh[10][2] c_gsh[10][3] c_gsh[10][4] c_gsh[10][5] c_gsh[10][6] c_cnt[10][1] c_cnt[10][2] c_rmx[10][1] c_rmx[10][3] c_rsp[10] c_ang[11][1] c_ang[11][2] c_ang[11][3] c_om[11][1] c_om[11][2] c_om[11][3] c_ine[11][1] c_ine[11][2] c_ine[11][3] c_ine[11][4] c_ine[11][5] c_ine[11][6] c_gy[11] c_gyt[11][6] c_com[11][1] c_com[11][3] c_gsh[11][1] c_gsh[11][2] c_gsh[11][3] c_gsh[11][4] c_gsh[11][5] c_gsh[11][6] c_cnt[11][1] c_cnt[11][2] c_rmx[11][1] c_rmx[11][3] c_rsp[11] c_ang[12][1] c_ang[12][2] c_ang[12][3] c_om[12][1] c_om[12][2] c_om[12][3] c_ine[12][1] c_ine[12][2] c_ine[12][3] c_ine[12][4] c_ine[12][5] c_ine[12][6] c_gy[12] c_gyt[12][6] c_com[12][1] c_com[12][3] c_gsh[12][1] c_gsh[12][2] c_gsh[12][3] c_gsh[12][4] c_gsh[12][5] c_gsh[12][6] c_cnt[12][1] c_cnt[12][2] c_rmx[12][1] c_rmx[12][3] c_rsp[12] c_ang[13][1] c_ang[13][2] c_ang[13][3] c_om[13][1] c_om[13][2] c_om[13][3] c_ine[13][1] c_ine[13][2] c_ine[13][3] c_ine[13][4] c_ine[13][5] c_ine[13][6] c_gy[13] c_gyt[13][6] c_com[13][1] c_com[13][3] c_gsh[13][1] c_gsh[13][2] c_gsh[13][3] c_gsh[13][4] c_gsh[13][5] c_gsh[13][6] c_cnt[13][1] c_cnt[13][2] c_rmx[13][1] c_rmx[13][3] c_rsp[13] c_ang[14][1] c_ang[14][2] c_ang[14][3] c_om[14][1] c_om[14][2] c_om[14][3] c_ine[14][1] c_ine[14][2] c_ine[14][3] c_ine[14][4] c_ine[14][5] c_ine[14][6] c_gy[14] c_gyt[14][6] c_com[14][1] c_com[14][3] c_gsh[14][1] c_gsh[14][2] c_gsh[14][3] c_gsh[14][4] c_gsh[14][5] c_gsh[14][6] c_cnt[14][1] c_cnt[14][2] c_rmx[14][1] c_rmx[14][3] c_rsp[14] c_ang[15][1] c_ang[15][2] c_ang[15][3] c_om[15][1] c_om[15][2] c_om[15][3] c_ine[15][1] c_ine[15][2] c_ine[15][3] c_ine[15][4] c_ine[15][5] c_ine[15][6] c_gy[15] c_gyt[15][6] c_com[15][1] c_com[15][3] c_gsh[15][1] c_gsh[15][2] c_gsh[15][3] c_gsh[15][4] c_gsh[15][5] c_gsh[15][6] c_cnt[15][1] c_cnt[15][2] c_rmx[15][1] c_rmx[15][3] c_rsp[15] c_ang[16][1] c_ang[16][2] c_ang[16][3] c_om[16][1] c_om[16][2] c_om[16][3] c_ine[16][1] c_ine[16][2] c_ine[16][3] c_ine[16][4] c_ine[16][5] c_ine[16][6] c_gy[16] c_gyt[16][6] c_com[16][1] c_com[16][3] c_gsh[16][1] c_gsh[16][2] c_gsh[16][3] c_gsh[16][4] c_gsh[16][5] c_gsh[16][6] c_cnt[16][1] c_cnt[16][2] c_rmx[16][1] c_rmx[16][3] c_rsp[16] c_ang[17][1] c_ang[17][2] c_ang[17][3] c_om[17][1] c_om[17][2] c_om[17][3] c_ine[17][1] c_ine[17][2] c_ine[17][3] c_ine[17][4] c_ine[17][5] c_ine[17][6] c_gy[17] c_gyt[17][6] c_com[17][1] c_com[17][3] c_gsh[17][1] c_gsh[17][2] c_gsh[17][3] c_gsh[17][4] c_gsh[17][5] c_gsh[17][6] c_cnt[17][1] c_cnt[17][2] c_rmx[17][1] c_rmx[17][3] c_rsp[17] c_ang[18][1] c_ang[18][2] c_ang[18][3] c_om[18][1] c_om[18][2] c_om[18][3] c_ine[18][1] c_ine[18][2] c_ine[18][3] c_ine[18][4] c_ine[18][5] c_ine[18][6] c_gy[18] c_gyt[18][6] c_com[18][1] c_com[18][3] c_gsh[18][1] c_gsh[18][2] c_gsh[18][3] c_gsh[18][4] c_gsh[18][5] c_gsh[18][6] c_cnt[18][1] c_cnt[18][2] c_rmx[18][1] c_rmx[18][3] c_rsp[18] c_mom[1] c_mom[2] c_mom[3]
+thermo          10
+run             20

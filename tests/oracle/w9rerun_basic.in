@@ -1,0 +1,21 @@
+# oracle: rerun of the five LJ snapshots in w9rerun_basic.dump (native-written, 32 atoms, steps 0..20)
+# oracle-inputs: w9rerun_basic.dump
+# oracle-files: w9rerun_basic_forces.dump
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+thermo_style    custom step pe press
+thermo_modify   format float %.15g
+thermo          1
+dump            1 all custom 1 w9rerun_basic_forces.dump id fx fy fz
+dump_modify     1 format float %.15g sort id
+rerun           w9rerun_basic.dump dump x y z

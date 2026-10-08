@@ -1,0 +1,28 @@
+# oracle: pair_style meam, single element bcc reference (w16meamcut_bcc_lib.meam + w16meamcut_bcc.meam, zbl 0) at lattice constant 2.82 A: the third neighbours sit at sqrt(2) a = 3.988 A, inside the smoothing window [3.9, 4.0] A; 2x2x2 cells (16 atoms), 0.05 A sinusoidal displacement and thermal velocities (atom-style variables), fix nve, 100 steps of 0.001 ps
+# oracle: the 1NN distance is 2.44 A and the 2NN distance 2.82 A (screened to zero by the 1NN); the 3NN are the only shell that crosses the window during the run
+# oracle-inputs: w16meamcut_bcc_lib.meam w16meamcut_bcc.meam
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-tolerance: pe, press and the per-atom state agree within rel=1e-6 with the tabulated pair term (native pair table of 1000 intervals over [0, 1.1 rc], see meam.ts)
+units           metal
+atom_style      atomic
+lattice         bcc 2.82
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 183.84
+variable        dx atom 0.05*sin(2.3*x+1.1*y+0.4*z)
+variable        dy atom 0.05*cos(1.9*y-0.7*x+0.3*z)
+variable        dz atom 0.05*sin(1.3*z+0.8*x-0.5*y)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.4*cos(1.7*y-0.6*z)
+variable        vy atom 0.4*sin(1.2*z+0.9*x)
+variable        vz atom 0.3*cos(2.1*x-0.8*y+0.2)
+velocity        all set v_vx v_vy v_vz units box
+pair_style      meam
+pair_coeff      * * w16meamcut_bcc_lib.meam W w16meamcut_bcc.meam W
+timestep        0.001
+fix             1 all nve
+thermo          10
+thermo_style    custom step pe press
+thermo_modify   format float %.15g
+run             100

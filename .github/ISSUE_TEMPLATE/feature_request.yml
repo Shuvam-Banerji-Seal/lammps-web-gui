@@ -1,0 +1,41 @@
+name: "✨ Feature request"
+description: Suggest a capability for the builder, compiler helper or viewer.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: module
+    attributes:
+      label: Which module?
+      options:
+        - Script Builder (flowchart, palette, branching, templates)
+        - Compiler Helper (CMake options, build commands)
+        - Structure Viewer (rendering, trajectories, analysis)
+        - Cross-cutting (theme, keyboard, mobile, export)
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do that you cannot do today?
+      description: Describe the workflow, not the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like it to do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What do you do instead right now?
+      description: Hand-editing? Another tool? Knowing the workaround helps rank this.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This runs entirely client-side (the project never uploads user files)
+        - label: This is for educational or non-commercial use

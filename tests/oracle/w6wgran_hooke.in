@@ -1,0 +1,36 @@
+# oracle: fix wall/gran hooke zplane lo (EDGE-free plane at z = 0) with fix gravity — 54 spheres of diameter 1 fall onto the wall and settle, pair_style gran/hooke between them, fix nve/sphere
+# oracle-compare: thermo=all atoms=all
+units           lj
+boundary        p p f
+atom_style      sphere
+atom_modify     map array
+comm_modify     vel yes
+lattice         sc 0.8
+region          b block 0 3 0 3 0 6
+create_box      1 b
+create_atoms    1 box
+set type 1 diameter 1.0 density 1.0
+displace_atoms  all move 0 0 0.6 units box
+variable dx atom 0.05*sin(1.3*x+0.7*y)
+variable dy atom 0.05*cos(0.9*y-1.1*z)
+variable dz atom 0.05*sin(1.7*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable vx atom 0.2*sin(0.9*x+0.4*z)
+variable vy atom 0.2*cos(0.6*y+0.8*x)
+variable vz atom 0.2*sin(0.7*z-0.3*y)
+velocity        all set v_vx v_vy v_vz units box
+variable wx atom 0.5*sin(0.3*id)
+variable wy atom 0.5*cos(0.7*id)
+variable wz atom 0.5*sin(1.1*id)
+set group all omega v_wx v_wy v_wz
+pair_style      gran/hooke 2000.0 700.0 50.0 30.0 0.5 1
+pair_coeff      * *
+timestep        0.001
+fix 1 all nve/sphere
+fix 2 all gravity 20.0 vector 0 0 -1
+fix 3 all wall/gran hooke 2000.0 700.0 50.0 30.0 0.5 1 zplane 0.0 NULL
+compute er all erotate/sphere
+thermo_style    custom step ke c_er press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          50
+run             400

@@ -1,0 +1,22 @@
+# oracle: fix move linear moves a group at constant velocity while the rest run fix nve
+units           lj
+atom_style      atomic
+region          box block 0 10 0 10 0 10
+create_box      2 box
+create_atoms    1 single 2.0 5.0 5.0 units box
+create_atoms    2 single 3.4 5.0 5.0 units box
+create_atoms    2 single 2.0 6.4 5.0 units box
+create_atoms    2 single 3.4 6.4 5.0 units box
+mass            1 1.0
+mass            2 1.0
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+velocity        all set 0.0 0.0 0.0
+group           moved type 1
+group           mobile type 2
+fix             1 moved move linear 0.5 0.0 0.0 units box
+fix             2 mobile nve
+thermo_style    custom step temp pe ke press
+thermo_modify   format float %.15g
+thermo          20
+run             100

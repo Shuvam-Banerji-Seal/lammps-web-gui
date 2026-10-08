@@ -1,0 +1,25 @@
+# Wave 15: fix cmap (docs.lammps.org/fix_cmap.html) on an 8-atom chain with four CMAP cross-terms
+# (types alternate between the two grids of the file; the grids are synthetic). NVE, 100 steps.
+# oracle-inputs: w15cmap_grid.txt w15cmap_chain.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      full
+boundary        f f f
+fix             cmap all cmap w15cmap_grid.txt
+read_data       w15cmap_chain.data fix cmap crossterm CMAP
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  harmonic
+pair_style      zero 10.0
+pair_coeff      * *
+bond_coeff      1 300.0 1.53
+angle_coeff     1 60.0 111.0
+dihedral_coeff  1 2.0 1 3
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        0.5
+fix             1 all nve
+thermo_style    custom step pe ebond eangle edihed f_cmap press
+thermo_modify   format float %.15g
+thermo          20
+run             100

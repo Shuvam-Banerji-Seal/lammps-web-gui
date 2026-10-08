@@ -1,0 +1,28 @@
+# oracle: 2d atom_style sphere — fix nvt/sphere disc: 2d moment of inertia (disc) in the thermostat temperature and rotation
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# oracle-files: w7nhs_omega.dump
+units           lj
+dimension       2
+atom_style      sphere
+lattice         sq 0.8
+region          box block 0 6 0 6 -0.5 0.5
+create_box      1 box
+create_atoms    1 box
+set             group all density/disc 1.1
+group           small id 1:36:3
+set             group small diameter 0.9
+variable        wz atom 0.3*sin(0.4*id)
+set             group all omega 0.0 0.0 v_wz
+velocity        all create 0.8 4928459
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+timestep        0.002
+fix             1 all nvt/sphere temp 0.8 0.5 0.5 disc
+fix             2 all enforce2d
+compute         ts all temp/sphere
+compute         er all erotate/sphere
+thermo_style    custom step temp pe etotal press c_ts c_er f_1
+thermo_modify   format float %.15g
+thermo          20
+run             200
+write_dump      all custom w7nhs_omega.dump id omegax omegay omegaz modify format float %.17g sort id

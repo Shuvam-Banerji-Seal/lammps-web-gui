@@ -1,11 +1,11 @@
-import React, { useMemo, useState, useCallback, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { PerformanceMonitor } from '@react-three/drei';
 import * as THREE from 'three';
-import { MoleculeData, VisualizationConfig, Atom } from '../types';
+import { MoleculeData, VisualizationConfig, Atom, BoxBounds } from '../types';
 import { ELEMENT_DATA } from '../constants';
 import { measureSelection, MeasurementResult } from '../services/measure';
-import { registerActiveGL } from '../services/glRegistry';
+import { getActiveGL, registerActiveGL } from '../services/glRegistry';
 import InstancedAtomMesh from './InstancedAtomMesh';
 import InstancedBondMesh from './InstancedBondMesh';
 import SimulationBox from './SimulationBox';
@@ -24,6 +24,17 @@ interface MoleculeCanvasProps {
   onSelectAtom?: (id: number) => void;
   /** Video recording: keep frames flowing even when idle. */
   forceContinuousRender?: boolean;
+  /**
+   * Cell to DRAW, when the current trajectory frame has its own (NPT).
+   * Camera framing deliberately stays on `data.box` — keying it to a
+   * per-frame box would make the view distance pump during playback.
+   */
+  displayBox?: BoxBounds;
+  /**
+   * Periodic cell for measurements (minimum image), passed only for formats
+   * whose coordinates are wrapped into a periodic cell.
+   */
+  measureBox?: BoxBounds;
 }
 
 interface HoverInfo {
@@ -80,18 +91,30 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
   selectedIds = [],
   onSelectAtom,
   forceContinuousRender = false,
+  displayBox,
+  measureBox,
 }) => {
   const [hover, setHover] = useState<HoverInfo | null>(null);
+  // The GL registry must not pin this renderer (and its scene) after unmount.
+  const glRef = useRef<THREE.WebGLRenderer | null>(null);
+  useEffect(() => () => {
+    if (glRef.current && getActiveGL()?.gl === glRef.current) registerActiveGL(null);
+  }, []);
   // Adaptive quality: PerformanceMonitor lowers this when FPS dips (P6).
   const [perfFactor, setPerfFactor] = useState(1);
 
   const { atoms, bonds } = data;
 
+  // Only bond rendering and the measurement tool look atoms up by id.
+  // A LAMMPS dump has no bonds, so building a Map of every atom on every
+  // playback frame was pure waste — 60k inserts per frame at 30 fps.
+  const needsAtomMap = bonds.length > 0 || selectedIds.length > 0;
   const atomMap = useMemo(() => {
     const map = new Map<number, Atom>();
-    atoms.forEach(atom => map.set(atom.id, atom));
+    if (!needsAtomMap) return map;
+    for (let i = 0; i < atoms.length; i++) map.set(atoms[i].id, atoms[i]);
     return map;
-  }, [atoms]);
+  }, [atoms, needsAtomMap]);
 
   // Center the molecule group at the origin so camera math is trivial.
   const groupPosition = useMemo(
@@ -99,7 +122,23 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
     [data.center]
   );
 
-  const { radius: boundingRadius } = useMemo(() => sceneExtent(data), [data]);
+  /**
+   * Camera framing radius.
+   *
+   * Keyed on the BOX and the atom count rather than on `data` identity: during
+   * trajectory playback `data` is a new object every frame, so this used to
+   * rescan every atom per frame AND hand CameraRig a slightly different radius
+   * each time, which made the camera distance visibly pump. A trajectory's
+   * framing should come from its cell, which does not move.
+   */
+  const extentKey = data.box
+    ? `box:${data.box.xlo},${data.box.xhi},${data.box.ylo},${data.box.yhi},${data.box.zlo},${data.box.zhi}`
+    : `atoms:${atoms.length}`;
+  const boundingRadius = useMemo(
+    () => sceneExtent(data).radius,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [extentKey],
+  );
 
   // Periodic-image guard: drop explicit bonds that span nearly the whole cell.
   const maxBondLength = useMemo(() => {
@@ -161,8 +200,8 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
   );
 
   const measurement: MeasurementResult | null = useMemo(
-    () => measureSelection(selectedAtoms),
-    [selectedAtoms]
+    () => measureSelection(selectedAtoms, measureBox),
+    [selectedAtoms, measureBox]
   );
 
   // Detect WebGL availability ONCE before mounting — prevents R3F from
@@ -201,7 +240,7 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
         // invalidates during interaction and damping settles naturally.
         // Recording forces continuous frames so captured video has motion.
         frameloop={autoRotate || forceContinuousRender ? 'always' : 'demand'}
-        onCreated={({ gl, scene, camera }) => registerActiveGL({ gl, scene, camera })}
+        onCreated={({ gl, scene, camera }) => { glRef.current = gl; registerActiveGL({ gl, scene, camera }); }}
         gl={{
           antialias: atoms.length <= 20000,
           alpha: false,
@@ -218,7 +257,7 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
         />
         <color attach="background" args={[config.backgroundColor]} />
 
-        <LightingRig preset={config.lightingPreset} shadows={shadowsEnabled} />
+        <LightingRig preset={config.lightingPreset} shadows={shadowsEnabled} radius={boundingRadius} />
 
         <group position={groupPosition}>
           {config.showAxes && <axesHelper args={[boundingRadius * 1.2]} />}
@@ -236,8 +275,8 @@ const MoleculeCanvas: React.FC<MoleculeCanvasProps> = ({
               maxBondLength={maxBondLength}
             />
           )}
-          {config.showBox && data.box && (
-            <SimulationBox box={data.box} showFaces={false} />
+          {config.showBox && (displayBox ?? data.box) && (
+            <SimulationBox box={(displayBox ?? data.box)!} showFaces={false} />
           )}
           <AtomLabels atoms={atoms} config={config} />
           <MeasurementOverlay selected={selectedAtoms} config={config} result={measurement} />

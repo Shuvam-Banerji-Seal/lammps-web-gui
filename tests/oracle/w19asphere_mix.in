@@ -1,0 +1,48 @@
+# oracle: fix nve/asphere on five ellipsoids (different half-axes, masses, orientations and angular momenta) and fix nve on three point particles of a lj/cut fluid; compute erotate/asphere, temp/asphere (dof all and dof rotate, a temp/com bias and the six-component tensor) on the ellipsoid group, 300 steps
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      ellipsoid
+lattice         sc 0.3
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+group           ell id 1 2 3 4 5
+group           pts id 6 7 8
+set             atom 1 shape 1.0 1.4 1.8
+set             atom 2 shape 0.9 0.9 0.9
+set             atom 3 shape 1.2 0.8 1.1
+set             atom 4 shape 2.0 1.0 1.6
+set             atom 5 shape 0.7 1.3 1.0
+set             atom 6 shape 0 0 0
+set             atom 7 shape 0 0 0
+set             atom 8 shape 0 0 0
+set             group ell density 0.8
+set             atom 3 mass 2.5
+set             atom 1 quat 0.3 1.0 0.5 47
+set             atom 2 quat 1 2 3 40
+set             atom 3 quat 0 1 1 70
+set             atom 4 quat 1 0 0 25
+set             atom 5 quat 0.5 0.2 -1 110
+set             atom 1 angmom 0.5 -0.8 1.3
+set             atom 2 angmom -0.3 0.6 0.2
+set             atom 3 angmom 0.1 0.1 -0.4
+set             atom 4 angmom 0.9 -0.2 0.5
+set             atom 5 angmom 0.0 0.4 0.7
+velocity        all create 0.8 4928 mom yes rot no dist gaussian
+compute         p all property/atom quatw quati quatj quatk angmomx angmomy angmomz
+compute         r all reduce sum c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] c_p[7]
+compute         erot ell erotate/asphere
+compute         tcom ell temp/com
+compute         tmp ell temp/asphere
+compute         tmr ell temp/asphere dof rotate
+compute         tmb ell temp/asphere bias tcom
+compute         tmv ell temp/asphere
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.2 1.0
+timestep        0.001
+fix             1 ell nve/asphere
+fix             2 pts nve
+thermo_style    custom step pe c_erot c_tmp c_tmr c_tmb c_tmv[1] c_tmv[2] c_tmv[3] c_tmv[4] c_tmv[5] c_tmv[6] c_r[1] c_r[2] c_r[3] c_r[4] c_r[5] c_r[6] c_r[7]
+thermo_modify   format float %.15g norm no
+thermo          30
+run             300

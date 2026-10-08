@@ -4,6 +4,7 @@ import {
   COMMAND_BY_ID,
   SECTION_LABELS,
   SECTION_ORDER,
+  ScriptBranch,
   ScriptModel,
   ScriptStep,
   ScriptTab,
@@ -13,7 +14,18 @@ import {
   newTabId,
   ParamDef,
 } from '../../lammps/catalog';
-import { generateScript, deriveFlowchart, FlowGraph } from '../../lammps/generator';
+import {
+  generateScript, deriveFlowchart, FlowGraph, resolvePath,
+  skippedTrunkUids, sortStepsBySection, isSectionSorted, branchesOf,
+} from '../../lammps/generator';
+import {
+  addBranch, takeBranchAtFork, promoteBranch, removeBranch, updateBranch,
+  branchesByFork, findLane, laneSteps, appendToLane, insertStepAtPathIndex,
+  findStepInModel, canForkAfter,
+  moveStepToPathIndex, moveStepInModel, removeStepFromModel,
+  duplicateStepInModel, updateStepInModel, updateParamInModel, freshUid,
+} from '../../lammps/model';
+import { validateScript, Diagnostic, diagnosticCounts } from '../../lammps/validate';
 import { parseScript, ImportResult } from '../../lammps/scriptParser';
 import { downloadTextFile } from '../../lammps/exporter';
 import { SCRIPT_TEMPLATES, buildTemplate } from '../../lammps/templates';
@@ -26,23 +38,24 @@ import {
   FileCode2, Workflow, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, Search,
   Atom as AtomIcon, PencilLine, X, GripVertical, Link2, Undo2, Redo2,
   LayoutTemplate, ZoomIn, ZoomOut, Maximize2, FileInput, ImageDown, FileImage,
+  GitBranch, Split, ArrowDownUp, AlertTriangle, ShieldCheck, Check, CornerDownRight, NotebookPen,
 } from 'lucide-react';
 
 interface ScriptBuilderProps {
   theme: Theme;
   onOpenViewer?: () => void;
+  /** Sends the current script to the MD Notebook. */
+  onRunInNotebook?: (script: string) => void;
 }
 
 let uidCounter = 1;
 const newUid = () => `step-${uidCounter++}`;
 
 /** Merge a stored payload onto fresh defaults; drop unknown commands. */
-const reviveModel = (raw: unknown): ScriptModel | null => {
-  if (typeof raw !== 'object' || raw === null) return null;
-  const r = raw as Partial<ScriptModel>;
-  if (!Array.isArray(r.steps)) return null;
+const reviveSteps = (raw: unknown): ScriptStep[] => {
   const steps: ScriptStep[] = [];
-  for (const s of r.steps) {
+  if (!Array.isArray(raw)) return steps;
+  for (const s of raw) {
     if (!s || typeof s !== 'object') continue;
     const rec = s as Partial<ScriptStep>;
     const def = rec.defId ? COMMAND_BY_ID[rec.defId] : undefined;
@@ -55,9 +68,57 @@ const reviveModel = (raw: unknown): ScriptModel | null => {
       note: typeof rec.note === 'string' ? rec.note : undefined,
     });
   }
+  return steps;
+};
+
+const reviveModel = (raw: unknown): ScriptModel | null => {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Partial<ScriptModel>;
+  if (!Array.isArray(r.steps)) return null;
+  const steps = reviveSteps(r.steps);
+  const branches: ScriptBranch[] = [];
+  if (Array.isArray(r.branches)) {
+    for (const raw of r.branches) {
+      if (!raw || typeof raw !== 'object') continue;
+      const b = raw as Partial<ScriptBranch>;
+      if (typeof b.id !== 'string') continue;
+      branches.push({
+        id: b.id,
+        label: typeof b.label === 'string' ? b.label : 'Concept',
+        forkAfter: typeof b.forkAfter === 'string' ? b.forkAfter : null,
+        steps: reviveSteps(b.steps),
+        rejoin: b.rejoin === true,
+        note: typeof b.note === 'string' ? b.note : undefined,
+      });
+    }
+  }
+  // Re-anchor or drop branches whose fork step no longer exists. A stored
+  // workspace can outlive the step it forked after — the step may have been
+  // deleted in a build that did not re-anchor, or dropped here because its
+  // command id is gone. An orphan branch can never be spliced in, so it would
+  // sit in the Concepts bar doing nothing.
+  const stepUids = new Set(steps.map(st => st.uid));
+  const anchored = branches.filter(
+    b => b.forkAfter === null || stepUids.has(b.forkAfter),
+  );
+
+  const knownBranchIds = new Set(anchored.map(b => b.id));
+  // At most one branch may be taken per fork point.
+  const seenForks = new Set<string>();
+  const activeBranchIds = (Array.isArray(r.activeBranchIds) ? r.activeBranchIds : [])
+    .filter((id): id is string => typeof id === 'string' && knownBranchIds.has(id))
+    .filter(id => {
+      const fork = anchored.find(b => b.id === id)!.forkAfter ?? '__start__';
+      if (seenForks.has(fork)) return false;
+      seenForks.add(fork);
+      return true;
+    });
+
   return {
     title: typeof r.title === 'string' ? r.title : 'My LAMMPS Simulation',
     steps,
+    branches: anchored.length > 0 ? anchored : undefined,
+    activeBranchIds: activeBranchIds.length > 0 ? activeBranchIds : undefined,
     manualText: typeof r.manualText === 'string' ? r.manualText : undefined,
     manualBase: typeof r.manualBase === 'string' ? r.manualBase : undefined,
   };
@@ -100,7 +161,13 @@ const loadWorkspace = (): ScriptWorkspace => {
   };
   return { tabs: [first], activeId: first.id };
 };
-const ZOOM_MIN = 0.35;
+/**
+ * Zoom floor. 0.35 was too high for "Fit" to mean anything: an 18-step
+ * pipeline is ~2800px tall, so fitting it into a 540px canvas needs ~0.19x.
+ * At 0.15x the cards read as shapes rather than text, which is exactly what a
+ * bird's-eye overview of a long pipeline is for.
+ */
+const ZOOM_MIN = 0.15;
 const ZOOM_MAX = 2.5;
 
 interface Transform {
@@ -109,7 +176,7 @@ interface Transform {
   k: number;
 }
 
-const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) => {
+const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRunInNotebook }) => {
   const ct = getThemeTokens(theme);
   // Undoable WORKSPACE (multi-tab); persists to localStorage for durability.
   const [workspace, setWorkspace, replaceWorkspace, undo, redo, canUndo, canRedo] = (() => {
@@ -138,7 +205,10 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 
   /** Switch tabs WITHOUT pushing undo history. */
   const switchTab = useCallback(
-    (id: string) => replaceWorkspace(ws => ({ ...ws, activeId: id })),
+    (id: string) => {
+      setEdgeMenuIndex(null); // a menu left open must not retarget the new tab
+      replaceWorkspace(ws => ({ ...ws, activeId: id }));
+    },
     [replaceWorkspace],
   );
 
@@ -202,7 +272,16 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 
   // Flowchart canvas pan/zoom
   const canvasRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [viewTf, setViewTf] = useState<Transform>({ x: 0, y: 0, k: 1 });
+  /**
+   * Width of the flowchart column: 640px, or the canvas width on a phone. A
+   * fixed 640px column had to be scaled to ~0.5 to fit 360px, which shrank
+   * every card button below the 24px WCAG 2.5.8 target size.
+   */
+  const [columnWidth, setColumnWidth] = useState(640);
+  /** Cleared the first time the user pans or zooms, so auto-centring stops. */
+  const viewUntouched = useRef(true);
   const panRef = useRef<{ startX: number; startY: number; ox: number; oy: number } | null>(null);
   const [panning, setPanning] = useState(false);
 
@@ -210,6 +289,57 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   const [edgeMenuIndex, setEdgeMenuIndex] = useState<number | null>(null);
   const [insertAt, setInsertAt] = useState<number | null>(null);
   const [insertSearch, setInsertSearch] = useState('');
+
+  // Outside-click + focus management. The refs cover each open menu's
+  // CONTAINER (toggle button included, so pressing the toggle still reaches
+  // its own onClick and toggles) and the insert dialog's opener.
+  const templatesMenuRef = useRef<HTMLDivElement>(null);
+  const edgePillRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
+  const edgeMenuRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const insertDialogRef = useRef<HTMLDivElement>(null);
+  const insertReturnFocusRef = useRef<HTMLElement | null>(null);
+  const registerEdgePillRef = useCallback((i: number, el: HTMLButtonElement | null) => {
+    if (el) edgePillRefs.current.set(i, el);
+    else edgePillRefs.current.delete(i);
+  }, []);
+  const registerEdgeMenuRef = useCallback((i: number, el: HTMLDivElement | null) => {
+    if (el) edgeMenuRefs.current.set(i, el);
+    else edgeMenuRefs.current.delete(i);
+  }, []);
+
+  /** Close the insert dialog and hand focus back to the element that opened it. */
+  const closeInsertAt = useCallback(() => {
+    setInsertAt(null);
+    const opener = insertReturnFocusRef.current;
+    insertReturnFocusRef.current = null;
+    opener?.focus();
+  }, []);
+
+  /** Escape closes the dialog even from its input; Tab cycles inside it. */
+  const onInsertDialogKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeInsertAt();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const container = insertDialogRef.current;
+    if (!container) return;
+    const focusables = Array.from(
+      container.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    const outside = !active || !container.contains(active);
+    if (e.shiftKey ? outside || active === first : outside || active === last) {
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+    }
+  }, [closeInsertAt]);
 
   // Mobile: palette/editor become overlay drawers
   const [isMobile, setIsMobile] = useState(() =>
@@ -226,52 +356,89 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     if (!selectedUid) setEditorOpenMobile(false);
   }, [selectedUid]);
 
+  // Close the templates menu and any connection menu on a pointer press
+  // outside them. Listener is document-level so it also fires when the press
+  // lands on the canvas or another card.
+  useEffect(() => {
+    if (!templatesOpen && edgeMenuIndex === null) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (
+        templatesOpen && templatesMenuRef.current &&
+        (!target || !templatesMenuRef.current.contains(target))
+      ) {
+        setTemplatesOpen(false);
+      }
+      if (edgeMenuIndex !== null) {
+        const pill = edgePillRefs.current.get(edgeMenuIndex);
+        const menu = edgeMenuRefs.current.get(edgeMenuIndex);
+        const inside = (el?: Element) => !!el && !!target && el.contains(target);
+        if (!inside(pill) && !inside(menu)) setEdgeMenuIndex(null);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [templatesOpen, edgeMenuIndex]);
+
   const isManual = model.manualText !== undefined;
   const manualStale =
     isManual && model.manualBase !== undefined && JSON.stringify(model.steps) !== model.manualBase;
 
   const generated = useMemo(() => generateScript(model), [model]);
   const flow = useMemo(() => deriveFlowchart(model), [model]);
+  /** Steps along the CURRENTLY TAKEN path — what the flowchart renders. */
+  const pathSteps = useMemo(() => resolvePath(model).map(r => r.step), [model]);
+  /** Trunk steps a divergent branch cut off (rendered ghosted). */
+  const ghostedUids = useMemo(() => skippedTrunkUids(model), [model]);
+  const forkMap = useMemo(() => branchesByFork(model), [model]);
+  const hasBranches = (model.branches?.length ?? 0) > 0;
+  const activeBranches = useMemo(
+    () => branchesOf(model).filter(b => (model.activeBranchIds ?? []).includes(b.id)),
+    [model],
+  );
+  const sectionSorted = useMemo(() => isSectionSorted(model.steps), [model.steps]);
+
   /** The text currently shown/copied/downloaded. */
   const activeText = isManual ? (model.manualText ?? '') : generated.text;
+
+  /** Doc-grounded LAMMPS lint over the EXACT text the user will run. */
+  const diagnostics = useMemo<Diagnostic[]>(() => {
+    try {
+      return validateScript(activeText);
+    } catch {
+      return [];
+    }
+  }, [activeText]);
+  const lintCounts = useMemo(() => diagnosticCounts(diagnostics), [diagnostics]);
+  const [lintOpen, setLintOpen] = useState(false);
 
   // Persist the workspace whenever it changes (history itself is in-memory).
   useEffect(() => {
     saveJson(browserStore(), WORKSPACE_KEY, workspace);
   }, [workspace]);
 
-  // Undo/redo + Delete-selected keyboard layer (builder-local; the manual
-  // textarea keeps native undo because typing targets are skipped).
+  // The builder's keyboard layer lives further down, after the view and
+  // branch callbacks it drives, so their consts are initialised by the time
+  // its dependency array is evaluated.
   const removeStepRef = useRef<(uid: string) => void>(() => {});
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
-      if ((mod && e.shiftKey && e.key.toLowerCase() === 'z') || (mod && e.key.toLowerCase() === 'y')) { e.preventDefault(); redo(); return; }
-      if (!mod && e.key === 'Delete' && selectedUid) { e.preventDefault(); removeStepRef.current(selectedUid); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, selectedUid]);
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  // ---- model mutations -------------------------------------------------
+  // ---- model mutations (lane-aware: trunk OR the branch that owns the step) --
   const insertStepAt = useCallback((defId: string, index: number) => {
     const def = COMMAND_BY_ID[defId];
     if (!def) return;
     const step: ScriptStep = {
       uid: newUid(), defId, params: defaultParams(def), enabled: true,
     };
-    setModel(prev => {
-      const steps = [...prev.steps];
-      const at = Math.max(0, Math.min(index, steps.length));
-      steps.splice(at, 0, step);
-      return { ...prev, steps };
-    });
+    setModel(prev => insertStepAtPathIndex(prev, step, index));
     setSelectedUid(step.uid);
   }, [setModel]);
 
+  /**
+   * Palette add. Lands in the lane the user is currently working in (the
+   * selected step's lane, else the trunk), grouped after the last step of the
+   * same section.
+   */
   const addStep = useCallback((defId: string) => {
     const def = COMMAND_BY_ID[defId];
     if (!def) return;
@@ -279,79 +446,102 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
       uid: newUid(), defId, params: defaultParams(def), enabled: true,
     };
     setModel(prev => {
-      // Insert after the last step in the same section, else at end
-      const sectionSteps = prev.steps.filter(s => COMMAND_BY_ID[s.defId]?.section === def.section);
-      const insertAfter = sectionSteps.length > 0 ? sectionSteps[sectionSteps.length - 1] : null;
-      if (!insertAfter) return { ...prev, steps: [...prev.steps, step] };
-      const idx = prev.steps.indexOf(insertAfter);
-      const steps = [...prev.steps];
-      steps.splice(idx + 1, 0, step);
-      return { ...prev, steps };
+      const lane = selectedUid ? findLane(prev, selectedUid) ?? null : null;
+      return appendToLane(prev, lane, step);
     });
     setSelectedUid(step.uid);
-  }, [setModel]);
+  }, [setModel, selectedUid]);
 
   const updateStep = useCallback((uid: string, patch: Partial<ScriptStep>) => {
-    setModel(prev => ({
-      ...prev,
-      steps: prev.steps.map(s => (s.uid === uid ? { ...s, ...patch } : s)),
-    }));
+    setModel(prev => updateStepInModel(prev, uid, patch));
   }, [setModel]);
 
   const updateParam = useCallback((uid: string, key: string, value: string) => {
-    setModel(prev => ({
-      ...prev,
-      steps: prev.steps.map(s =>
-        s.uid === uid ? { ...s, params: { ...s.params, [key]: value } } : s
-      ),
-    }));
+    setModel(prev => updateParamInModel(prev, uid, key, value));
   }, [setModel]);
 
   const removeStep = useCallback((uid: string) => {
-    setModel(prev => ({ ...prev, steps: prev.steps.filter(s => s.uid !== uid) }));
+    setModel(prev => removeStepFromModel(prev, uid));
     setSelectedUid(prev => (prev === uid ? null : prev));
+    setEdgeMenuIndex(null);
   }, [setModel]);
   removeStepRef.current = removeStep;
 
-  /** Chevron move: swap with the neighbour. */
+  /** Chevron move: swap with the neighbour inside the owning lane. */
   const moveStep = useCallback((uid: string, dir: -1 | 1) => {
-    setModel(prev => {
-      const steps = [...prev.steps];
-      const i = steps.findIndex(s => s.uid === uid);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= steps.length) return prev;
-      [steps[i], steps[j]] = [steps[j], steps[i]];
-      return { ...prev, steps };
-    });
+    setModel(prev => moveStepInModel(prev, uid, dir));
   }, [setModel]);
 
   /** Move a dragged step so that it lands at insertion position `toIndex`. */
   const moveStepToIndex = useCallback((uid: string, toIndex: number) => {
-    setModel(prev => {
-      const steps = [...prev.steps];
-      const from = steps.findIndex(s => s.uid === uid);
-      if (from < 0) return prev;
-      const clamped = Math.max(0, Math.min(toIndex, steps.length));
-      if (clamped === from || clamped === from + 1) return prev;
-      const [dragged] = steps.splice(from, 1);
-      const at = clamped > from ? clamped - 1 : clamped;
-      steps.splice(at, 0, dragged);
-      return { ...prev, steps };
-    });
+    setModel(prev => moveStepToPathIndex(prev, uid, toIndex));
   }, [setModel]);
 
   /** Duplicate a step (same command + params) right below it. */
   const duplicateStep = useCallback((uid: string) => {
-    setModel(prev => {
-      const idx = prev.steps.findIndex(s => s.uid === uid);
-      if (idx < 0) return prev;
-      const src = prev.steps[idx];
-      const clone: ScriptStep = { ...src, uid: newUid(), params: { ...src.params } };
-      const steps = [...prev.steps];
-      steps.splice(idx + 1, 0, clone);
-      return { ...prev, steps };
-    });
+    setModel(prev => duplicateStepInModel(prev, uid));
   }, [setModel]);
+
+  /** Physically reorder the trunk into canonical section order. */
+  const sortBySection = useCallback(() => {
+    setModel(prev => ({ ...prev, steps: sortStepsBySection(prev.steps) }));
+  }, [setModel]);
+
+  // ---- branching --------------------------------------------------------
+  const forkHere = useCallback((afterUid: string | null) => {
+    // A concept may only be anchored to the start or a TRUNK step: addBranch
+    // resolves the fork against the trunk, so a branch uid would create a
+    // concept nothing can ever display.
+    if (!canForkAfter(model, afterUid)) return;
+    setModel(prev => addBranch(prev, afterUid).model);
+  }, [setModel, model]);
+
+  const forkHereEmpty = useCallback((afterUid: string | null) => {
+    setModel(prev => addBranch(prev, afterUid, { seed: 'empty' }).model);
+  }, [setModel]);
+
+  const chooseBranch = useCallback((forkAfter: string | null, branchId: string | null) => {
+    setModel(prev => takeBranchAtFork(prev, forkAfter, branchId));
+    setSelectedUid(null);
+    setEdgeMenuIndex(null);
+  }, [setModel]);
+
+  const renameBranch = useCallback((branchId: string, label: string) => {
+    setModel(prev => updateBranch(prev, branchId, { label }));
+  }, [setModel]);
+
+  const setBranchRejoin = useCallback((branchId: string, rejoin: boolean) => {
+    setModel(prev => updateBranch(prev, branchId, { rejoin }));
+  }, [setModel]);
+
+  const dropBranch = useCallback((branchId: string) => {
+    setModel(prev => removeBranch(prev, branchId));
+    setSelectedUid(null);
+  }, [setModel]);
+
+  const makeBranchMain = useCallback((branchId: string) => {
+    setModel(prev => promoteBranch(prev, branchId));
+    setSelectedUid(null);
+  }, [setModel]);
+
+  /** Copy the taken path of this flowchart into a brand-new tab. */
+  const branchToNewTab = useCallback((branchId: string) => {
+    setWorkspace(ws => {
+      const current = ws.tabs.find(t => t.id === ws.activeId);
+      if (!current) return ws;
+      const branch = branchesOf(current.model).find(b => b.id === branchId);
+      if (!branch) return ws;
+      const taken = takeBranchAtFork(current.model, branch.forkAfter, branch.id);
+      const flat: ScriptModel = {
+        title: `${current.model.title || 'Untitled'} — ${branch.label}`,
+        steps: resolvePath(taken).map(r => ({
+          ...r.step, uid: freshUid(), params: { ...r.step.params },
+        })),
+      };
+      const tab: ScriptTab = { id: newTabId(), model: flat };
+      return { tabs: [...ws.tabs, tab], activeId: tab.id };
+    });
+  }, [setWorkspace]);
 
   // ---- script import ----------------------------------------------------
   const handleImportFile = useCallback((file: File) => {
@@ -398,26 +588,38 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     } catch { /* clipboard blocked */ }
   }, [activeText]);
 
+  /**
+   * Commands offered for ADDING. Deprecated defs stay in ALL_COMMANDS so the
+   * script importer can still recognise them, but they are never offered for
+   * a new pipeline — a palette that suggests a command LAMMPS removed four
+   * years ago is worse than one that omits it.
+   */
+  const addableCommands = useMemo(
+    () => ALL_COMMANDS.filter(d => !d.deprecated),
+    [],
+  );
+
   const filteredCommands = useMemo(() => {
-    if (!search.trim()) return ALL_COMMANDS;
+    if (!search.trim()) return addableCommands;
     const q = search.toLowerCase();
-    return ALL_COMMANDS.filter(d =>
+    return addableCommands.filter(d =>
       d.label.toLowerCase().includes(q) ||
       d.command.toLowerCase().includes(q) ||
       d.category.toLowerCase().includes(q)
     );
-  }, [search]);
+  }, [search, addableCommands]);
 
   const insertCandidates = useMemo(() => {
-    if (!insertSearch.trim()) return ALL_COMMANDS;
+    if (!insertSearch.trim()) return addableCommands;
     const q = insertSearch.toLowerCase();
-    return ALL_COMMANDS.filter(d =>
+    return addableCommands.filter(d =>
       d.label.toLowerCase().includes(q) ||
       d.command.toLowerCase().includes(q)
     );
-  }, [insertSearch]);
+  }, [insertSearch, addableCommands]);
 
-  const selectedStep = model.steps.find(s => s.uid === selectedUid) ?? null;
+  // Lane-aware: the selected uid may live in the trunk or in a branch.
+  const selectedStep = selectedUid ? findStepInModel(model, selectedUid) ?? null : null;
   const selectedDef = selectedStep ? COMMAND_BY_ID[selectedStep.defId] : null;
 
   // Group palette commands by section
@@ -434,14 +636,16 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   // ---- pointer drag-to-reorder ------------------------------------------
   const computeInsertIndex = useCallback((clientY: number): number => {
     let idx = 0;
-    for (const s of model.steps) {
+    // Cards are laid out in RESOLVED-PATH order, so measure against the path,
+    // not the trunk — with a concept taken the two disagree.
+    for (const s of pathSteps) {
       const el = nodeRefs.current.get(s.uid);
       if (!el) continue;
       const r = el.getBoundingClientRect();
       if (clientY > r.top + r.height / 2) idx++;
     }
     return idx;
-  }, [model.steps]);
+  }, [pathSteps]);
 
   const cardPointerDown = useCallback((uid: string) => (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
@@ -456,7 +660,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     if (!st.active) {
       if (Math.hypot(e.clientX - st.startX, e.clientY - st.startY) < 6) return;
       st.active = true;
-      const step = model.steps.find(s => s.uid === st.uid);
+      const step = findStepInModel(model, st.uid);
       setDrag({
         uid: st.uid,
         label: COMMAND_BY_ID[step?.defId ?? '']?.command ?? step?.defId ?? '',
@@ -465,7 +669,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     }
     setDrag(d => (d ? { ...d, x: e.clientX, y: e.clientY } : d));
     setOverIndex(computeInsertIndex(e.clientY));
-  }, [model.steps, computeInsertIndex]);
+  }, [model, computeInsertIndex]);
 
   const cardPointerUp = useCallback(() => {
     const st = dragState.current;
@@ -483,6 +687,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      viewUntouched.current = false;
       const rect = el.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
@@ -500,6 +705,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   const bgPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.button !== 1) return;
     panRef.current = { startX: e.clientX, startY: e.clientY, ox: viewTf.x, oy: viewTf.y };
+    viewUntouched.current = false;
     setPanning(true);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, [viewTf]);
@@ -516,6 +722,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
   }, []);
 
   const zoomBy = useCallback((factor: number) => {
+    viewUntouched.current = false;
     const el = canvasRef.current;
     const cx = (el?.clientWidth ?? 800) / 2;
     const cy = (el?.clientHeight ?? 600) / 2;
@@ -526,12 +733,147 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
     });
   }, []);
 
-  const resetView = useCallback(() => setViewTf({ x: 0, y: 0, k: 1 }), []);
+  /**
+   * Centre the column at 100%. The pipeline is rendered in a fixed-width
+   * column, so at k=1 in a wider canvas it used to sit flush against the left
+   * edge with dead space on the right.
+   */
+  const centerView = useCallback(() => {
+    const el = canvasRef.current;
+    const content = contentRef.current;
+    if (!el || !content) {
+      setViewTf({ x: 0, y: 0, k: 1 });
+      return;
+    }
+    const w = content.offsetWidth;
+    if (el.clientWidth < w) {
+      // Canvas narrower than even the 300px minimum column: the column
+      // would be clipped at k=1, so fit it to the width (zoom floor applies).
+      const k = Math.max(ZOOM_MIN, (el.clientWidth - 16) / w);
+      setViewTf({ k, x: (el.clientWidth - w * k) / 2, y: 8 });
+      return;
+    }
+    setViewTf({ x: Math.max(0, (el.clientWidth - w) / 2), y: 0, k: 1 });
+  }, []);
+
+  /**
+   * True fit-to-content. The button used to be labelled "Fit" but only reset
+   * the transform, which is not the same thing once the pipeline is taller
+   * than the canvas.
+   */
+  const fitToView = useCallback(() => {
+    const el = canvasRef.current;
+    const content = contentRef.current;
+    if (!el || !content) return;
+    const pad = 24;
+    const w = content.offsetWidth;
+    const h = content.offsetHeight;
+    if (w === 0 || h === 0) return;
+    const k = Math.min(
+      ZOOM_MAX,
+      Math.max(
+        ZOOM_MIN,
+        Math.min((el.clientWidth - pad * 2) / w, (el.clientHeight - pad * 2) / h),
+      ),
+    );
+    setViewTf({
+      x: Math.max(pad, (el.clientWidth - w * k) / 2),
+      y: Math.max(pad, (el.clientHeight - h * k) / 2),
+      k,
+    });
+  }, []);
+
+  const resetView = useCallback(() => centerView(), [centerView]);
+
+  /**
+   * Builder keyboard layer. Typing targets are skipped, so the manual-script
+   * textarea and every parameter field keep their native behaviour.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      const mod = e.ctrlKey || e.metaKey;
+      const k = e.key.toLowerCase();
+
+      if (mod && !e.shiftKey && k === 'z') { e.preventDefault(); undo(); return; }
+      if ((mod && e.shiftKey && k === 'z') || (mod && k === 'y')) { e.preventDefault(); redo(); return; }
+      if (mod) return; // leave every other browser/OS chord alone
+
+      if (e.key === 'Delete' && selectedUid) { e.preventDefault(); removeStepRef.current(selectedUid); return; }
+      if (e.key === 'Escape') { setSelectedUid(null); setEdgeMenuIndex(null); closeInsertAt(); setTemplatesOpen(false); return; }
+
+      if (k === '/') { e.preventDefault(); setPaletteOpen(true); searchRef.current?.focus(); return; }
+      if (k === 'f') { e.preventDefault(); fitToView(); return; }
+      if (e.key === '0') { e.preventDefault(); centerView(); return; }
+      if (k === 's') { e.preventDefault(); setView(v => (v === 'flow' ? 'script' : 'flow')); return; }
+      if (k === 'c') { e.preventDefault(); setLintOpen(v => !v); return; }
+
+      // Branching: fork at the selected step, and cycle the concept taken at
+      // that fork with [ and ].
+      if (k === 'b' && !isManual) {
+        e.preventDefault();
+        forkHere(selectedUid ?? model.steps[model.steps.length - 1]?.uid ?? null);
+        return;
+      }
+      if (e.key === '[' || e.key === ']') {
+        const lane = selectedUid ? findLane(model, selectedUid) : null;
+        // The fork to cycle is the one anchored at the selected TRUNK step,
+        // else the first fork in the flowchart.
+        const anchorUid =
+          lane === null && selectedUid && forkMap.has(selectedUid)
+            ? selectedUid
+            : [...forkMap.keys()][0] ?? undefined;
+        if (anchorUid === undefined) return;
+        const list = forkMap.get(anchorUid) ?? [];
+        if (list.length === 0) return;
+        e.preventDefault();
+        // Options at this fork: main line (null) followed by each concept.
+        const options: (string | null)[] = [null, ...list.map(b => b.id)];
+        const current = list.find(b => (model.activeBranchIds ?? []).includes(b.id))?.id ?? null;
+        const at = options.indexOf(current);
+        const next = options[(at + (e.key === ']' ? 1 : options.length - 1) + options.length) % options.length];
+        chooseBranch(anchorUid, next);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [
+    undo, redo, selectedUid, fitToView, centerView, forkHere, chooseBranch,
+    forkMap, model, isManual, closeInsertAt,
+  ]);
+
+  // Track the canvas width to size the flowchart column (see columnWidth).
+  useEffect(() => {
+    if (view !== 'flow') return;
+    const el = canvasRef.current;
+    if (!el) return;
+    const update = () => setColumnWidth(Math.max(300, Math.min(640, el.clientWidth - 16)));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [view]);
+
+  // Centre once the pipeline first has content, and keep it centred while the
+  // user has not taken over the view themselves.
+  useEffect(() => {
+    if (view !== 'flow' || !viewUntouched.current) return;
+    const el = canvasRef.current;
+    if (!el) return;
+    const id = window.requestAnimationFrame(centerView);
+    const ro = new ResizeObserver(() => {
+      if (viewUntouched.current) centerView();
+    });
+    ro.observe(el);
+    return () => { window.cancelAnimationFrame(id); ro.disconnect(); };
+  }, [view, centerView, flow.nodes.length, columnWidth]);
 
   return (
     <div className="flex h-full min-h-0">
       {/* Left: palette (overlay drawer on mobile) */}
       <div
+        inert={isMobile && !paletteOpen}
         className={`flex-col border-r transition-transform duration-300 ease-in-out ${ct.panel} ${
           isMobile
             ? `fixed inset-y-0 left-0 z-40 flex w-72 shadow-2xl ${paletteOpen ? 'translate-x-0' : '-translate-x-full'}`
@@ -540,11 +882,15 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
       >
         <div className={`flex items-center justify-between px-4 py-3 border-b ${ct.divider}`}>
           <span className={`text-sm font-bold tracking-tight ${ct.headerText} antialiased`}>Commands</span>
-          <button onClick={() => setPaletteOpen(false)} className={`p-1 rounded ${ct.muted} ${ct.hoverSurface}`}>
+          <button
+            onClick={() => setPaletteOpen(false)}
+            aria-label="Collapse command palette"
+            className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 ${ct.muted} ${ct.hoverSurface}`}
+          >
             <ChevronLeft size={14} />
           </button>
           {isMobile && (
-            <button onClick={() => setPaletteOpen(false)} className={`rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Close">
+            <button onClick={() => setPaletteOpen(false)} className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Close">
               <X size={14} />
             </button>
           )}
@@ -553,9 +899,10 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
           <div className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 shadow-sm ${ct.input} focus-within:ring-2 focus-within:ring-[#7fa66b]/30 transition-all`}>
             <Search size={16} className="shrink-0 opacity-60" />
             <input
+              ref={searchRef}
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder={`Search ${ALL_COMMANDS.length} commands…`}
+              placeholder={`Search ${addableCommands.length} commands… ( / )`}
               className={`w-full bg-transparent text-sm font-medium ${ct.text} placeholder:text-[#6f6353]/70 focus:outline-none`}
             />
           </div>
@@ -600,33 +947,44 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
         {/* Tab strip */}
         <div className={`flex h-9 shrink-0 items-center gap-1 border-b px-2 ${ct.divider}`}>
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-            {workspace.tabs.map(tab => {
-              const active = tab.id === workspace.activeId;
-              return (
-                <div
-                  key={tab.id}
-                  onClick={() => switchTab(tab.id)}
-                  className={`group flex shrink-0 cursor-pointer items-center gap-1 rounded-t-lg border-b-2 px-1.5 py-1.5 text-[11px] font-medium transition-colors sm:gap-1.5 sm:px-2.5 ${
-                    active ? ct.active : `${ct.muted} border-transparent ${ct.hoverSurface}`
-                  }`}
-                  title={tab.model.title || 'Untitled'}
-                >
-                  <FileCode2 size={11} className="shrink-0 opacity-60" />
-                  <span className="max-w-[72px] truncate sm:max-w-[110px]">{tab.model.title || 'Untitled'}</span>
-                  <span className={`hidden text-[9px] tabular-nums opacity-50 sm:inline`}>{tab.model.steps.length}</span>
-                  <button
-                    onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
-                    className={`rounded p-0.5 opacity-0 transition-opacity hover:text-[#cf8b76] group-hover:opacity-100 ${
-                      active ? 'opacity-70' : ''
+            {/* display:contents keeps the tabs as flex items of the scroller
+                while giving them a proper tablist parent. */}
+            <div role="tablist" className="contents">
+              {workspace.tabs.map(tab => {
+                const active = tab.id === workspace.activeId;
+                return (
+                  <div
+                    key={tab.id}
+                    role="tab"
+                    aria-selected={active}
+                    tabIndex={0}
+                    onClick={() => switchTab(tab.id)}
+                    onKeyDown={e => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchTab(tab.id); }
+                    }}
+                    className={`group flex shrink-0 cursor-pointer items-center gap-1 rounded-t-lg border-b-2 px-1.5 py-1 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#7fa66b] sm:gap-1.5 sm:px-2.5 ${
+                      active ? ct.active : `${ct.muted} border-transparent ${ct.hoverSurface}`
                     }`}
-                    title="Close this flowchart (Ctrl+Z restores)"
-                    aria-label={`Close ${tab.model.title || 'tab'}`}
+                    title={tab.model.title || 'Untitled'}
                   >
-                    <X size={11} />
-                  </button>
-                </div>
-              );
-            })}
+                    <FileCode2 size={11} className="shrink-0 opacity-60" />
+                    <span className="max-w-[72px] truncate sm:max-w-[110px]">{tab.model.title || 'Untitled'}</span>
+                    <span className={`hidden text-[9px] tabular-nums opacity-50 sm:inline`}>{tab.model.steps.length}</span>
+                    <button
+                      onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
+                      className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 opacity-100 transition-opacity hover:text-[#cf8b76] md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 ${
+                        active ? 'md:opacity-70' : ''
+                      }`}
+                      title="Close this flowchart (Ctrl+Z restores)"
+                      aria-label={`Close ${tab.model.title || 'tab'}`}
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
             <button
               onClick={addTab}
               className={`shrink-0 rounded p-1.5 ${ct.muted} ${ct.hoverSurface}`}
@@ -639,7 +997,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
           <button
             onClick={clearActive}
             disabled={model.steps.length === 0}
-            className={`flex shrink-0 items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+            className={`flex min-h-6 min-w-6 shrink-0 items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
             title="Clear this flowchart (Ctrl+Z restores it)"
           >
             <Trash2 size={12} />
@@ -651,7 +1009,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
         <div className={`flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-x-1 gap-y-1 border-b px-2 py-1 sm:gap-x-2 sm:px-3 ${ct.divider}`}>
           <div className="flex min-w-0 shrink-0 items-center gap-1.5">
             {!paletteOpen && (
-              <button onClick={() => setPaletteOpen(true)} className={`shrink-0 rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Open palette">
+              <button onClick={() => setPaletteOpen(true)} className={`inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Open palette">
                 <ChevronRight size={16} />
               </button>
             )}
@@ -665,11 +1023,14 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               {isManual ? 'manual' : `${model.steps.length} steps · ${generated.emitted.length} lines`}
             </span>
           </div>
-          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1.5">
+          {/* min-w-0 + (below md) horizontal scroll keeps every button
+              reachable at phone widths; overflow stays visible at md+ so the
+              templates dropdown is never clipped by a scroll container. */}
+          <div className="flex min-w-0 items-center gap-0.5 max-md:overflow-x-auto sm:gap-1.5">
             <button
               onClick={undo}
               disabled={!canUndo}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
               title="Undo (Ctrl+Z)"
               aria-label="Undo"
             >
@@ -678,16 +1039,61 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             <button
               onClick={redo}
               disabled={!canRedo}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
               title="Redo (Ctrl+Shift+Z)"
               aria-label="Redo"
             >
               <Redo2 size={13} />
             </button>
-            <div className="relative">
+            <button
+              onClick={sortBySection}
+              disabled={sectionSorted || model.steps.length < 2}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+              title={sectionSorted
+                ? 'Already in canonical section order'
+                : 'Reorder the steps into canonical section order (setup → system → interactions → output → run control)'}
+              aria-label="Sort steps by section"
+            >
+              <ArrowDownUp size={13} />
+              <span className="hidden 2xl:inline">Sort</span>
+            </button>
+            <button
+              onClick={() => forkHere(model.steps[model.steps.length - 1]?.uid ?? null)}
+              disabled={isManual}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+              title="Fork a new concept branch at the end of the pipeline"
+            >
+              <GitBranch size={13} />
+              <span className="hidden 2xl:inline">Fork</span>
+            </button>
+            <button
+              onClick={() => setLintOpen(v => !v)}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+                lintOpen ? ct.active : `${ct.muted} ${ct.hoverSurface}`
+              }`}
+              title="Validate the script against the LAMMPS command ordering rules"
+              aria-label={`Script check: ${lintCounts.errors} errors, ${lintCounts.warnings} warnings`}
+            >
+              {lintCounts.errors > 0 ? (
+                <AlertTriangle size={13} className="text-[#cf8b76]" />
+              ) : lintCounts.warnings > 0 ? (
+                <AlertTriangle size={13} className="text-[#d9a05b]" />
+              ) : (
+                <ShieldCheck size={13} className={ct.accentText} />
+              )}
+              <span className="tabular-nums">
+                {lintCounts.errors > 0
+                  ? lintCounts.errors
+                  : lintCounts.warnings > 0
+                    ? lintCounts.warnings
+                    : ''}
+              </span>
+              <span className="hidden 2xl:inline">Check</span>
+            </button>
+            <div ref={templatesMenuRef} className="relative">
               <button
                 onClick={() => setTemplatesOpen(v => !v)}
-                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+                className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
                 title="Start from a ready-made pipeline"
               >
                 <LayoutTemplate size={13} />
@@ -718,7 +1124,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                   ))}
                   <button
                     onClick={() => setTemplatesOpen(false)}
-                    className={`mt-0.5 w-full rounded px-2 py-1 text-left text-[10px] ${ct.muted} ${ct.hoverSurface}`}
+                    className={`mt-0.5 min-h-6 w-full rounded px-2 py-1 text-left text-[10px] ${ct.muted} ${ct.hoverSurface}`}
                   >
                     Close
                   </button>
@@ -727,7 +1133,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             </div>
             <button
               onClick={() => importInputRef.current?.click()}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
               title="Import a LAMMPS input script — builds the flowchart"
             >
               <FileInput size={13} />
@@ -749,7 +1155,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 <button
                   onClick={() => exportFlowchart('svg')}
                   disabled={exporting !== null || model.steps.length === 0}
-                  className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+                  className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
                   title="Export the flowchart as a presentable SVG"
                 >
                   <FileImage size={13} />
@@ -758,7 +1164,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                 <button
                   onClick={() => exportFlowchart('png')}
                   disabled={exporting !== null || model.steps.length === 0}
-                  className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
+                  className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface} disabled:opacity-30 disabled:pointer-events-none`}
                   title="Export the flowchart as a 2x PNG image"
                 >
                   <ImageDown size={13} />
@@ -768,7 +1174,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             )}
             <button
               onClick={() => setView(v => v === 'flow' ? 'script' : 'flow')}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
                 view === 'script' ? ct.active : `${ct.muted} ${ct.hoverSurface}`
               }`}
               title={view === 'flow' ? 'View the generated script' : 'Back to the flowchart'}
@@ -780,7 +1186,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             {isManual ? (
               <button
                 onClick={exitManualMode}
-                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium ${ct.warnAction}`}
+                className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium ${ct.warnAction}`}
                 title="Discard manual edits and regenerate from your steps"
               >
                 <X size={13} />
@@ -789,7 +1195,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             ) : (
               <button
                 onClick={() => { enterManualMode(); setView('script'); }}
-                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+                className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
                 title="Override the generated script with hand-edited text"
               >
                 <PencilLine size={13} />
@@ -798,23 +1204,34 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             )}
             <button
               onClick={copyScript}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
               title="Copy script to clipboard"
             >
               {copied ? <span className={ct.accentText}>✓ Copied</span> : <><Copy size={13} /><span className="hidden lg:inline">Copy</span></>}
             </button>
             <button
               onClick={() => downloadTextFile('in.lammps', activeText)}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+              className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
               title="Download in.lammps"
             >
               <Download size={13} />
               <span className="hidden 2xl:inline">Download</span>
             </button>
+            {onRunInNotebook && (
+              <button
+                onClick={() => onRunInNotebook(activeText)}
+                className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+                title="Run this script in the MD Notebook (in your browser)"
+                aria-label="Run this script in the MD Notebook"
+              >
+                <NotebookPen size={13} />
+                <span className="hidden 2xl:inline">Run</span>
+              </button>
+            )}
             {onOpenViewer && (
               <button
                 onClick={onOpenViewer}
-                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
+                className={`flex min-h-6 min-w-6 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${ct.muted} ${ct.hoverSurface}`}
                 title="Open 3D structure viewer"
               >
                 <AtomIcon size={13} />
@@ -823,6 +1240,156 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             )}
           </div>
         </div>
+
+        {/* Concept branches — divergent ideas living in one flowchart */}
+        {hasBranches && !isManual && (
+          <div className={`flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5 text-[11px] ${ct.card}`}>
+            <span className={`flex items-center gap-1 font-semibold ${ct.accentText}`}>
+              <GitBranch size={12} /> Concepts
+            </span>
+            {[...forkMap.entries()].map(([forkAfter, list]) => {
+              const anchorStep = forkAfter === null
+                ? null
+                : model.steps.find(st => st.uid === forkAfter);
+              const anchorLabel = forkAfter === null
+                ? 'start'
+                : COMMAND_BY_ID[anchorStep?.defId ?? '']?.command ?? 'step';
+              const taken = list.find(b => (model.activeBranchIds ?? []).includes(b.id)) ?? null;
+              return (
+                <div key={forkAfter ?? '__start__'} className="flex items-center gap-1">
+                  <span className={`text-[10px] ${ct.muted}`}>after <code className={ct.accentCode}>{anchorLabel}</code>:</span>
+                  <button
+                    onClick={() => chooseBranch(forkAfter, null)}
+                    className={`min-h-6 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                      taken === null ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
+                    }`}
+                    title="Follow the main line at this fork"
+                  >
+                    Main
+                  </button>
+                  {list.map(b => (
+                    <button
+                      key={b.id}
+                      onClick={() => chooseBranch(forkAfter, b.id)}
+                      className={`flex items-center gap-1 min-h-6 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                        taken?.id === b.id ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
+                      }`}
+                      title={`${b.label} — ${b.steps.length} steps, ${b.rejoin ? 'rejoins the main line' : 'replaces the tail'}`}
+                    >
+                      {taken?.id === b.id && <Check size={9} />}
+                      {b.label}
+                      <span className="tabular-nums opacity-60">{b.steps.length}</span>
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => forkHereEmpty(forkAfter)}
+                    className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded-full p-1 ${ct.muted} ${ct.hoverSurface}`}
+                    title="Add another empty concept at this fork"
+                    aria-label="Add concept"
+                  >
+                    <Plus size={10} />
+                  </button>
+                </div>
+              );
+            })}
+            {activeBranches.map(b => (
+              <div key={`ctl-${b.id}`} className="ml-auto flex items-center gap-1">
+                <input
+                  value={b.label}
+                  onChange={e => renameBranch(b.id, e.target.value)}
+                  className={`w-28 rounded border bg-transparent px-1.5 py-0.5 text-[10px] focus:outline-none ${ct.input}`}
+                  aria-label={`Rename ${b.label}`}
+                  title="Rename this concept"
+                />
+                <button
+                  onClick={() => setBranchRejoin(b.id, !b.rejoin)}
+                  className={`flex min-h-6 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+                    b.rejoin ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
+                  }`}
+                  title={b.rejoin
+                    ? 'Rejoining: the main line resumes after this concept'
+                    : 'Divergent: this concept replaces everything after the fork'}
+                >
+                  <CornerDownRight size={10} /> {b.rejoin ? 'rejoins' : 'diverges'}
+                </button>
+                <button
+                  onClick={() => branchToNewTab(b.id)}
+                  className={`min-h-6 rounded px-1.5 py-0.5 text-[10px] font-medium ${ct.muted} ${ct.hoverSurface}`}
+                  title="Copy this concept into its own flowchart tab, flattened"
+                >
+                  <Copy size={10} className="inline" /> Tab
+                </button>
+                <button
+                  onClick={() => makeBranchMain(b.id)}
+                  className={`min-h-6 rounded px-1.5 py-0.5 text-[10px] font-medium ${ct.muted} ${ct.hoverSurface}`}
+                  title="This concept won — fold it into the main line and drop the others at this fork"
+                >
+                  Promote
+                </button>
+                <button
+                  onClick={() => dropBranch(b.id)}
+                  className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 ${ct.dangerItem}`}
+                  title="Delete this concept"
+                  aria-label={`Delete ${b.label}`}
+                >
+                  <Trash2 size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Script check (doc-grounded LAMMPS lint) */}
+        {lintOpen && (
+          <div className={`max-h-48 shrink-0 overflow-y-auto border-b text-[11px] ${ct.card}`}>
+            <div className={`sticky top-0 flex items-center justify-between border-b px-3 py-1.5 ${ct.card} ${ct.divider}`}>
+              <span className="flex items-center gap-1.5 font-semibold">
+                {lintCounts.errors > 0
+                  ? <AlertTriangle size={12} className="text-[#cf8b76]" />
+                  : <ShieldCheck size={12} className={ct.accentText} />}
+                Script check — {lintCounts.errors} error{lintCounts.errors === 1 ? '' : 's'},{' '}
+                {lintCounts.warnings} warning{lintCounts.warnings === 1 ? '' : 's'}
+              </span>
+              <button onClick={() => setLintOpen(false)} className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.muted}`} title="Close">
+                <X size={12} />
+              </button>
+            </div>
+            {diagnostics.length === 0 ? (
+              <p className={`px-3 py-2.5 ${ct.muted}`}>
+                No ordering or reference problems found — the command sequence matches the
+                LAMMPS input-script rules.
+              </p>
+            ) : (
+              <ul className="divide-y divide-transparent">
+                {diagnostics.map((d, i) => (
+                  <li key={`${d.rule}-${d.line}-${i}`} className="flex gap-2 px-3 py-1.5">
+                    <span className={`mt-0.5 shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase ${
+                      d.level === 'error' ? 'bg-[#cf8b76]/20 text-[#cf8b76]' : 'bg-[#d9a05b]/20 text-[#d9a05b]'
+                    }`}>
+                      {d.level}
+                    </span>
+                    <span className="min-w-0">
+                      {d.line > 0 && (
+                        <code className={`mr-1 text-[10px] ${ct.muted}`}>line {d.line}</code>
+                      )}
+                      <span className={ct.text}>{d.message}</span>
+                      {d.doc && (
+                        <a
+                          href={d.doc}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`ml-1.5 whitespace-nowrap text-[10px] ${ct.accentText} hover:underline`}
+                        >
+                          docs ↗
+                        </a>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {/* Import / manual notices */}
         {importStats && (
@@ -833,7 +1400,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               {importStats.raw > 0 && `, ${importStats.raw} kept as verbatim raw lines`}
               .
             </span>
-            <button onClick={() => setImportStats(null)} className={`rounded p-0.5 ${ct.muted}`} title="Dismiss">
+            <button onClick={() => setImportStats(null)} className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.muted}`} title="Dismiss">
               <X size={12} />
             </button>
           </div>
@@ -846,7 +1413,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             </span>
             <button
               onClick={exitManualMode}
-              className={`rounded px-2 py-0.5 font-semibold ${ct.button}`}
+              className={`min-h-6 rounded px-2 py-0.5 font-semibold ${ct.button}`}
               title="Discard the manual text and follow the builder steps again"
             >
               Discard & follow builder
@@ -858,7 +1425,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             <span>⚠ Builder steps changed since your manual edit — the script text is stale.</span>
             <button
               onClick={exitManualMode}
-              className={`rounded px-2 py-0.5 font-semibold ${ct.button}`}
+              className={`min-h-6 rounded px-2 py-0.5 font-semibold ${ct.button}`}
               title="Discard the manual text and regenerate from the current steps"
             >
               Regenerate from steps
@@ -886,17 +1453,24 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               className="absolute left-0 top-0 origin-top-left"
               style={{ transform: `translate(${viewTf.x}px, ${viewTf.y}px) scale(${viewTf.k})` }}
             >
-              <div style={{ width: 640 }}>
+              <div ref={contentRef} style={{ width: columnWidth }}>
                 <FlowchartView
                   ct={ct}
                   flow={flow}
-                  steps={model.steps}
+                  steps={pathSteps}
+                  trunkSteps={model.steps}
+                  forkMap={forkMap}
+                  activeBranchIds={model.activeBranchIds ?? []}
+                  ghostedUids={ghostedUids}
+                  onFork={forkHere}
+                  onForkEmpty={forkHereEmpty}
+                  onChooseBranch={chooseBranch}
                   selectedUid={selectedUid}
                   dragUid={drag?.uid ?? null}
                   overIndex={overIndex}
                   edgeMenuIndex={edgeMenuIndex}
                   onSelect={(uid) => { setSelectedUid(uid); if (isMobile) setEditorOpenMobile(true); }}
-                  onToggle={(uid) => updateStep(uid, { enabled: !model.steps.find(s => s.uid === uid)?.enabled })}
+                  onToggle={(uid) => updateStep(uid, { enabled: !findStepInModel(model, uid)?.enabled })}
                   onRemove={removeStep}
                   onDuplicate={duplicateStep}
                   onMove={moveStep}
@@ -907,15 +1481,24 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
                     if (el) nodeRefs.current.set(uid, el);
                     else nodeRefs.current.delete(uid);
                   }}
+                  registerEdgePillRef={registerEdgePillRef}
+                  registerEdgeMenuRef={registerEdgeMenuRef}
                   onEdgeClick={(i) => setEdgeMenuIndex(prev => (prev === i ? null : i))}
-                  onEdgeInsertHere={(i) => { setEdgeMenuIndex(null); setInsertAt(i); }}
+                  onEdgeInsertHere={(i) => {
+                    // The opener menu item unmounts with the connection menu;
+                    // its connector pill is the surviving focus target.
+                    insertReturnFocusRef.current = edgePillRefs.current.get(i) ?? null;
+                    setEdgeMenuIndex(null);
+                    setInsertAt(i);
+                  }}
                   onEdgeDisableNext={(i) => {
-                    const s = model.steps[i];
+                    // Same array the menu labels use — NOT the trunk.
+                    const s = pathSteps[i];
                     if (s) updateStep(s.uid, { enabled: !s.enabled });
                     setEdgeMenuIndex(null);
                   }}
                   onEdgeRemoveNext={(i) => {
-                    const s = model.steps[i];
+                    const s = pathSteps[i];
                     if (s) removeStep(s.uid);
                     setEdgeMenuIndex(null);
                   }}
@@ -940,8 +1523,8 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               </button>
               <button
                 onClick={resetView}
-                className={`rounded-full px-2 py-1 text-[10px] font-mono tabular-nums ${ct.muted} ${ct.hoverSurface}`}
-                title="Reset view"
+                className={`min-h-6 rounded-full px-2 py-1 text-[10px] font-mono tabular-nums ${ct.muted} ${ct.hoverSurface}`}
+                title="Back to 100%, centred"
               >
                 {Math.round(viewTf.k * 100)}%
               </button>
@@ -955,16 +1538,16 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               </button>
               <div className={`mx-0.5 h-4 w-px ${ct.divider.split(' ')[0]}`} />
               <button
-                onClick={resetView}
+                onClick={fitToView}
                 className={`rounded-full p-1.5 ${ct.muted} ${ct.hoverSurface}`}
-                title="Fit / reset pan & zoom"
-                aria-label="Reset view"
+                title="Fit the whole pipeline in view"
+                aria-label="Fit pipeline to view"
               >
                 <Maximize2 size={14} />
               </button>
             </div>
             <p className={`pointer-events-none absolute bottom-3 left-3 hidden text-[10px] md:block ${ct.muted}`}>
-              wheel = zoom · drag background = pan · grab cards to reorder
+              wheel = zoom · drag = pan · <kbd>F</kbd> fit · <kbd>0</kbd> centre · <kbd>B</kbd> fork · <kbd>[</kbd><kbd>]</kbd> concept · <kbd>/</kbd> search · <kbd>S</kbd> script · <kbd>C</kbd> check
             </p>
           </div>
         ) : isManual ? (
@@ -992,6 +1575,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 
       {/* Right: step editor (overlay drawer on mobile) */}
       <div
+        inert={isMobile && !(selectedStep && editorOpenMobile)}
         className={`overflow-y-auto border-l transition-transform duration-300 ease-in-out ${ct.panel} ${
           isMobile
             ? `fixed inset-y-0 right-0 z-40 w-80 max-w-[85vw] shadow-2xl ${
@@ -1005,7 +1589,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
             <span className={`text-xs font-semibold ${ct.headerText}`}>Step editor</span>
             <button
               onClick={() => { setEditorOpenMobile(false); setSelectedUid(null); }}
-              className={`rounded p-1 ${ct.muted} ${ct.hoverSurface}`}
+              className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 ${ct.muted} ${ct.hoverSurface}`}
               title="Close editor"
             >
               <X size={14} />
@@ -1055,18 +1639,26 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
       {insertAt !== null && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setInsertAt(null)}
+          onClick={closeInsertAt}
+          onKeyDown={onInsertDialogKeyDown}
           role="dialog"
           aria-modal="true"
           aria-label="Add command at connection"
         >
           <div
+            ref={insertDialogRef}
             className={`flex max-h-[70vh] w-full max-w-md flex-col rounded-xl border shadow-2xl ${ct.card}`}
             onClick={e => e.stopPropagation()}
           >
             <div className={`flex items-center justify-between border-b px-4 py-2.5 ${ct.divider}`}>
               <span className="text-xs font-semibold">Add command at position {(insertAt ?? 0) + 1}</span>
-              <button onClick={() => setInsertAt(null)} className={`rounded p-1 ${ct.muted}`}><X size={14} /></button>
+              <button
+                onClick={closeInsertAt}
+                aria-label="Close dialog"
+                className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 ${ct.muted}`}
+              >
+                <X size={14} />
+              </button>
             </div>
             <div className={`border-b px-3 py-2 ${ct.divider}`}>
               <input
@@ -1081,7 +1673,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
               {insertCandidates.map(cmd => (
                 <button
                   key={cmd.id}
-                  onClick={() => { insertStepAt(cmd.id, insertAt ?? model.steps.length); setInsertAt(null); setInsertSearch(''); }}
+                  onClick={() => { insertStepAt(cmd.id, insertAt ?? model.steps.length); closeInsertAt(); setInsertSearch(''); }}
                   title={cmd.doc ?? cmd.label}
                   className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[11px] transition-colors ${ct.muted} ${ct.hoverSurface}`}
                 >
@@ -1109,7 +1701,16 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer }) =>
 interface FlowchartViewProps {
   ct: ThemeTokens;
   flow: FlowGraph;
+  /** Steps along the taken path — index-aligned with `flow.nodes`. */
   steps: ScriptStep[];
+  /** The trunk, for labelling fork anchors. */
+  trunkSteps: ScriptStep[];
+  forkMap: Map<string | null, ScriptBranch[]>;
+  activeBranchIds: string[];
+  ghostedUids: Set<string>;
+  onFork: (afterUid: string | null) => void;
+  onForkEmpty: (afterUid: string | null) => void;
+  onChooseBranch: (forkAfter: string | null, branchId: string | null) => void;
   selectedUid: string | null;
   dragUid: string | null;
   overIndex: number | null;
@@ -1123,6 +1724,8 @@ interface FlowchartViewProps {
   onCardPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
   onCardPointerUp: () => void;
   registerNodeRef: (uid: string, el: HTMLDivElement | null) => void;
+  registerEdgePillRef: (index: number, el: HTMLButtonElement | null) => void;
+  registerEdgeMenuRef: (index: number, el: HTMLDivElement | null) => void;
   onEdgeClick: (index: number) => void;
   onEdgeInsertHere: (index: number) => void;
   onEdgeDisableNext: (index: number) => void;
@@ -1138,22 +1741,30 @@ const DropLine: React.FC<{ ct: ThemeTokens; active: boolean }> = ({ ct, active }
   ) : null;
 
 const FlowchartView: React.FC<FlowchartViewProps> = ({
-  ct, flow, steps, selectedUid, dragUid, overIndex, edgeMenuIndex,
+  ct, flow, steps, trunkSteps, forkMap, activeBranchIds, ghostedUids,
+  onFork, onForkEmpty, onChooseBranch,
+  selectedUid, dragUid, overIndex, edgeMenuIndex,
   onSelect, onToggle, onRemove, onDuplicate, onMove,
   onCardPointerDown, onCardPointerMove, onCardPointerUp, registerNodeRef,
+  registerEdgePillRef, registerEdgeMenuRef,
   onEdgeClick, onEdgeInsertHere, onEdgeDisableNext, onEdgeRemoveNext, onCloseEdgeMenu,
 }) => {
   const shortLabel = (s: ScriptStep): string => COMMAND_BY_ID[s.defId]?.command ?? s.defId;
 
   const edgeRow = (i: number) => {
     const menuOpen = edgeMenuIndex === i;
+    // A concept may only be forked from the start or after a TRUNK card:
+    // below a branch card the next step lives inside that concept, and
+    // addBranch cannot anchor to a branch uid.
+    const canForkHere = i === 0 || trunkSteps.some(t => t.uid === steps[i - 1]?.uid);
     return (
       <div key={`edge-${i}`} className="relative flex flex-col items-center">
         <div className={`h-3 w-px bg-[#453a2b]`} />
         <button
+          ref={el => registerEdgePillRef(i, el)}
           onClick={(e) => { e.stopPropagation(); onEdgeClick(i); }}
           title="Edit this connection — insert or rewire steps here"
-          className={`flex h-5 items-center gap-1 rounded-full border px-2.5 text-[10px] font-medium transition-colors ${
+          className={`flex h-6 items-center gap-1 rounded-full border px-2.5 text-[10px] font-medium transition-colors ${
             menuOpen
               ? ct.edgeActive
               : ct.edgePill
@@ -1167,11 +1778,20 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
 
         {menuOpen && (
           <div
+            ref={el => registerEdgeMenuRef(i, el)}
             className={`absolute left-1/2 top-full z-30 w-56 -translate-x-1/2 rounded-lg border p-1.5 shadow-2xl ${ct.card}`}
             onClick={e => e.stopPropagation()}
           >
             <p className={`px-2 pb-1 pt-0.5 text-[9px] uppercase tracking-wide ${ct.muted}`}>Edit pipeline here</p>
             <MenuItem ct={ct} icon={<Plus size={12} />} label="Add command at this point…" onClick={() => onEdgeInsertHere(i)} />
+            {canForkHere && (
+              <MenuItem
+                ct={ct}
+                icon={<GitBranch size={12} />}
+                label={i === 0 ? 'Fork a concept from the start…' : 'Fork a concept here…'}
+                onClick={() => { onCloseEdgeMenu(); onFork(i === 0 ? null : steps[i - 1]?.uid ?? null); }}
+              />
+            )}
             {steps[i] && (
               <>
                 <MenuItem
@@ -1191,6 +1811,58 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
             </button>
           </div>
         )}
+      </div>
+    );
+  };
+
+  /** Chips for choosing which concept the pipeline follows at a fork point. */
+  const forkRow = (forkAfter: string | null) => {
+    const list = forkMap.get(forkAfter);
+    if (!list || list.length === 0) return null;
+    const taken = list.find(b => activeBranchIds.includes(b.id)) ?? null;
+    const anchor =
+      forkAfter === null
+        ? 'start'
+        : COMMAND_BY_ID[trunkSteps.find(t => t.uid === forkAfter)?.defId ?? '']?.command ?? 'step';
+    return (
+      <div
+        key={`fork-${forkAfter ?? '__start__'}`}
+        className={`my-1 flex w-full flex-wrap items-center gap-1 rounded-xl border border-dashed px-3 py-2 ${ct.card}`}
+        onPointerDown={e => e.stopPropagation()}
+      >
+        <Split size={12} className={ct.accentText} />
+        <span className={`text-[10px] font-semibold uppercase tracking-wide ${ct.muted}`}>
+          fork after {anchor}
+        </span>
+        <button
+          onClick={e => { e.stopPropagation(); onChooseBranch(forkAfter, null); }}
+          className={`min-h-6 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+            taken === null ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
+          }`}
+        >
+          Main line
+        </button>
+        {list.map(b => (
+          <button
+            key={b.id}
+            onClick={e => { e.stopPropagation(); onChooseBranch(forkAfter, b.id); }}
+            className={`flex items-center gap-1 min-h-6 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+              taken?.id === b.id ? ct.active : `${ct.chipIdle} ${ct.hoverSurface}`
+            }`}
+            title={`${b.steps.length} steps · ${b.rejoin ? 'rejoins the main line' : 'replaces the tail'}`}
+          >
+            {taken?.id === b.id && <Check size={9} />}
+            {b.label}
+          </button>
+        ))}
+        <button
+          onClick={e => { e.stopPropagation(); onForkEmpty(forkAfter); }}
+          className={`rounded-full p-1 ${ct.muted} ${ct.hoverSurface}`}
+          title="Add another concept at this fork"
+          aria-label="Add concept at this fork"
+        >
+          <Plus size={10} />
+        </button>
       </div>
     );
   };
@@ -1216,11 +1888,13 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
         </span>
       </div>
       {edgeRow(0)}
+      {forkRow(null)}
 
       {flow.nodes.map((node, i) => {
         const step = steps.find(s => s.uid === node.uid);
         const isSel = selectedUid === node.uid;
         const isDragging = dragUid === node.uid;
+        const inBranch = !!node.branchId;
         return (
           <React.Fragment key={node.uid}>
             <DropLine ct={ct} active={dragUid !== null && overIndex === i} />
@@ -1231,8 +1905,21 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
               onPointerUp={onCardPointerUp}
               onPointerCancel={onCardPointerUp}
               onClick={() => onSelect(node.uid)}
+              role="button"
+              tabIndex={0}
+              aria-pressed={isSel}
+              aria-label={`${node.label} step`}
+              onKeyDown={e => {
+                if (e.target !== e.currentTarget) return; // inner buttons keep their own keys
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelect(node.uid);
+                }
+              }}
               style={{ touchAction: 'none' }}
-              className={`group relative w-full cursor-grab rounded-xl border p-3 transition-shadow active:cursor-grabbing ${
+              className={`group relative w-full cursor-grab rounded-xl border p-3 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7fa66b] active:cursor-grabbing ${
+                inBranch ? 'border-l-4 border-l-[#d9a05b]' : ''
+              } ${
                 node.defId === 'raw_line'
                   ? `border-dashed border-[#6b5124]/70 bg-[#332612]/25 ${isSel ? 'ring-1 ring-[#d9a05b]/60' : ''}`
                   : isSel
@@ -1243,42 +1930,58 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
               } ${isDragging ? 'opacity-30' : ''}`}
             >
               <div className="mb-1 flex items-center justify-between">
-                <span className={`text-[9px] uppercase tracking-wide ${ct.muted}`}>
-                  <GripVertical size={9} className="mr-1 inline opacity-50" />
+                <span className={`flex items-center gap-1.5 text-[9px] uppercase tracking-wide ${ct.muted}`}>
+                  <GripVertical size={9} className="inline opacity-50" />
                   {SECTION_LABELS[node.section as keyof typeof SECTION_LABELS]?.split('·')[1]?.trim() ?? node.section}
+                  {inBranch && (
+                    <span className="flex items-center gap-0.5 rounded-full bg-[#d9a05b]/15 px-1.5 py-0.5 text-[8px] font-bold normal-case tracking-normal text-[#d9a05b]">
+                      <GitBranch size={8} />
+                      {node.branchLabel}
+                    </span>
+                  )}
                 </span>
-                <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <div className="flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                  {!inBranch && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onFork(node.uid); }}
+                      className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
+                      title="Fork a concept after this step — the rest is copied so you can try a variant"
+                      aria-label="Fork a concept here"
+                    >
+                      <GitBranch size={12} />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => { e.stopPropagation(); onMove(node.uid, -1); }}
-                    className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
+                    className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
                     title="Move up"
                   >
                     <ChevronUp size={12} />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onMove(node.uid, 1); }}
-                    className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
+                    className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
                     title="Move down"
                   >
                     <ChevronDown size={12} />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onToggle(node.uid); }}
-                    className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
+                    className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
                     title={node.enabled ? 'Disable' : 'Enable'}
                   >
                     {node.enabled ? <Eye size={12} /> : <EyeOff size={12} />}
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onDuplicate(node.uid); }}
-                    className={`rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
+                    className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.muted} ${ct.hoverSurface}`}
                     title="Duplicate step"
                   >
                     <Copy size={12} />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onRemove(node.uid); }}
-                    className={`rounded p-0.5 ${ct.dangerItem}`}
+                    className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-0.5 ${ct.dangerItem}`}
                     title="Remove"
                   >
                     <Trash2 size={12} />
@@ -1300,19 +2003,42 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
               )}
             </div>
             {i === flow.nodes.length - 1 && <DropLine ct={ct} active={dragUid !== null && overIndex === flow.nodes.length} />}
+            {!inBranch && forkRow(node.uid)}
             {i < flow.nodes.length - 1 && edgeRow(i + 1)}
           </React.Fragment>
         );
       })}
 
-      <div className="flex items-center gap-2 text-[10px] text-[#a3937f]">
+      {ghostedUids.size > 0 && (
+        <div className="mt-4 w-full space-y-1 opacity-45">
+          <div className={`flex items-center gap-2 text-[9px] uppercase tracking-wide ${ct.muted}`}>
+            <div className={`h-px flex-1 ${ct.edgeLine}`} />
+            not in this concept
+            <div className={`h-px flex-1 ${ct.edgeLine}`} />
+          </div>
+          {trunkSteps
+            .filter(st => ghostedUids.has(st.uid))
+            .map(st => (
+              <div
+                key={`ghost-${st.uid}`}
+                className={`w-full rounded-lg border border-dashed px-3 py-1.5 text-[11px] ${ct.nodeDisabled}`}
+                title="A divergent concept replaced the rest of the main line — switch back to Main to restore it"
+              >
+                <code className={ct.accentCode}>{COMMAND_BY_ID[st.defId]?.command ?? st.defId}</code>
+              </div>
+            ))}
+        </div>
+      )}
+
+      <div className="mt-2 flex items-center gap-2 text-[10px] text-[#a3937f]">
         <div className={`h-px w-8 ${ct.edgeLine}`} />
         <span className={`rounded-full px-3 py-0.5 ${ct.endBadge}`}>
           END
         </span>
       </div>
       <p className={`mt-3 text-center text-[10px] ${ct.muted}`}>
-        Grab a card and drop it between two others — it locks into place · click any <span className={ct.accentText}>connect</span> pill to insert there.
+        Grab a card and drop it between two others — it locks into place · click any <span className={ct.accentText}>connect</span> pill to insert there ·
+        hover a card and hit <GitBranch size={9} className="inline" /> to fork a divergent concept.
       </p>
     </div>
   );
@@ -1356,14 +2082,20 @@ const StepEditor: React.FC<StepEditorProps> = ({
       <div className="flex items-center justify-between">
         <h3 className={`text-[15px] font-bold ${ct.headerText}`}>{def.label}</h3>
         <div className="flex items-center gap-1">
-          <button onClick={onMoveUp} className={`rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Move up">
+          <button onClick={onMoveUp} className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Move up">
             <ChevronUp size={14} />
           </button>
-          <button onClick={onMoveDown} className={`rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Move down">
+          <button onClick={onMoveDown} className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 ${ct.muted} ${ct.hoverSurface}`} title="Move down">
             <ChevronDown size={14} />
           </button>
         </div>
       </div>
+
+      {def.deprecated && (
+        <div className={`rounded-lg border px-2.5 py-2 text-[11px] leading-relaxed ${ct.warn}`} role="alert">
+          ⚠ {def.deprecated}
+        </div>
+      )}
 
       {def.doc && (
         <a href={def.doc} target="_blank" rel="noopener noreferrer" className={`block text-[10px] ${ct.accentText} hover:underline`}>
@@ -1390,7 +2122,7 @@ const StepEditor: React.FC<StepEditorProps> = ({
       <div className={`flex flex-wrap items-center gap-2 border-t pt-3 ${ct.divider}`}>
         <button
           onClick={onToggle}
-          className={`flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+          className={`flex min-h-6 items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
             step.enabled ? ct.enabledBtn : ct.disabledBtn
           }`}
         >
@@ -1399,14 +2131,14 @@ const StepEditor: React.FC<StepEditorProps> = ({
         </button>
         <button
           onClick={onDuplicate}
-          className={`flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium ${ct.muted} ${ct.hoverSurface}`}
+          className={`flex min-h-6 items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium ${ct.muted} ${ct.hoverSurface}`}
           title="Duplicate this step with its parameters"
         >
           <Copy size={13} /> Duplicate
         </button>
         <button
           onClick={onRemove}
-          className={`flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium ${ct.removeBtn}`}
+          className={`flex min-h-6 items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium ${ct.removeBtn}`}
         >
           <Trash2 size={13} /> Remove
         </button>

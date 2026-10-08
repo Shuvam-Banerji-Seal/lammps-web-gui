@@ -1,0 +1,31 @@
+# oracle: nvt/sllod + fix deform remap v over several runs: the streaming profile is added once per fix instance, neighbor rebuilds follow native's box-change threshold, velocity scale with temp/deform bias yes
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box prism 0 4 0 4 0 4 0 0 0
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        vx atom 0.8*sin(1.3*x+0.7*y)
+variable        vy atom 0.8*cos(0.9*y-0.4*z)
+variable        vz atom 0.8*sin(1.1*z+0.5*x)
+velocity        all set v_vx v_vy v_vz
+velocity        all zero linear
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+compute         tdef all temp/deform
+fix             1 all nvt/sllod temp 1.0 1.0 0.5
+fix_modify      1 temp tdef
+fix             2 all deform 1 xy erate 0.2 remap v
+thermo_style    custom step c_tdef temp pe press pxy
+thermo_modify   format float %.15g
+thermo          10
+run             50
+run             0
+velocity        all scale 1.5 temp tdef bias yes
+run             20
+unfix           1
+fix             1 all nvt/sllod temp 1.5 1.5 0.5
+fix_modify      1 temp tdef
+run             30

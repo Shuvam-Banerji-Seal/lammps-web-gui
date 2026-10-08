@@ -1,0 +1,29 @@
+# oracle: pair_style meam, single element bcc reference (w16meamcut_bcc_lib.meam + w16meamcut_bcc.meam, zbl 0), non-periodic clusters inside the smoothing window [rc - delr, rc] = [3.9, 4.0] A: dimers at 3.92 A and 3.96 A, and a trimer whose bond 0-1 (3.80 A) is partly screened by atom 2 at 3.918 A (inside the window)
+# oracle: the native values were measured with LAMMPS as a black box (dimers at 3.92, 3.96, 3.99 A: -4.5907421718859, -3.85736275330339, -1.05457803891509 eV; the case itself uses 3.92 and 3.96 A); the window weight is fc(r) on the partial densities and on the pair term, the bcc reference shells carry no fc (see meam.ts)
+# oracle-inputs: w16meamcut_bcc_lib.meam w16meamcut_bcc.meam
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-tolerance: pe, press and forces agree within rel=1e-6 with the tabulated pair term (native pair table of 1000 intervals over [0, 1.1 rc], see meam.ts)
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 3.8 0 0 units box
+create_atoms    1 single 1.95 3.4 0 units box
+create_atoms    1 single 20 0 0 units box
+create_atoms    1 single 23.92 0 0 units box
+create_atoms    1 single 40 0 0 units box
+create_atoms    1 single 36.04 0 0 units box
+mass            1 183.84
+velocity        all set 0.0 0.0 0.0 units box
+pair_style      meam
+pair_coeff      * * w16meamcut_bcc_lib.meam W w16meamcut_bcc.meam W
+timestep        0.001
+fix             1 all nve
+thermo          10
+thermo_style    custom step pe press
+thermo_modify   format float %.15g
+run             0
+velocity        all set 0.3 -0.2 0.1 units box
+run             20

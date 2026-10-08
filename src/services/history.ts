@@ -24,6 +24,8 @@ export interface HistoryApi<T> {
   canUndo(): boolean;
   canRedo(): boolean;
   reset(initial: T): HistoryState<T>;
+  /** Swap the present without touching the undo/redo stacks. */
+  replacePresent(next: T): HistoryState<T>;
 }
 
 export const createHistory = <T>(initial: T, capacity = 50): HistoryApi<T> => {
@@ -66,6 +68,10 @@ export const createHistory = <T>(initial: T, capacity = 50): HistoryApi<T> => {
     canRedo: () => state.future.length > 0,
     reset: (initial: T) => {
       state = { past: [], present: initial, future: [] };
+      return state;
+    },
+    replacePresent: (next: T) => {
+      state = { ...state, present: next };
       return state;
     },
   };

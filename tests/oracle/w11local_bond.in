@@ -1,0 +1,18 @@
+# oracle: bond/local values and dump local of bonds (velocities from the data file)
+# oracle-inputs: w11local_mol.data
+# oracle-files: w11local_bond.local w11local_bprop.local
+units           lj
+atom_style      full
+read_data       w11local_mol.data
+bond_style      harmonic
+bond_coeff      * 100.0 1.0
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+compute         bl all bond/local dist engpot force fx fy fz engvib engrot engtrans velvib
+compute         bp all property/local batom1 batom2 btype
+dump            1 all local 1 w11local_bond.local index c_bl[*] c_bp[*]
+dump            2 all local 1 w11local_bprop.local index c_bp[*]
+dump_modify     2 label BONDS
+thermo_style    custom step pe ebond
+thermo_modify   format float %.15g
+run             0

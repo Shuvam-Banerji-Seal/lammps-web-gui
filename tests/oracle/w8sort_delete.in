@@ -1,0 +1,27 @@
+# oracle: delete_atoms moves the last atom into each hole of native's atom list and compress renumbers IDs in that order; an unsorted dump and write_data list atoms in native order after the run setup sort
+# oracle-files: w8sort_unsorted.dump w8sort.data
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+region          hole sphere 2.5 2.5 2.5 1.2 units box
+delete_atoms    region hole
+region          slab block INF INF INF INF 0.5 0.9
+delete_atoms    region slab
+velocity        all create 1.0 777 loop all
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+neighbor        1.0 bin
+timestep        0.004
+fix             1 all nve
+fix             2 all langevin 1.0 1.0 0.5 99
+thermo_style    custom step atoms temp pe etotal press
+thermo_modify   format float %.15g
+thermo          10
+dump            d all custom 20 w8sort_unsorted.dump id type x y z
+dump_modify     d format float %.10g
+run             40
+write_data      w8sort.data

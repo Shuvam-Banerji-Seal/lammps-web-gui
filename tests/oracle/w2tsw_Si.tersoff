@@ -1,0 +1,3 @@
+# Tersoff test file: Si(C) of Tersoff, PRB 38, 9902 (1988), and a perturbed element X
+# e1 e2 e3 m gamma lambda3 c d costheta0 n beta lambda2 B R D lambda1 A
+Si Si Si 3 1.0 0.0 100390.0 16.217 -0.59825 0.78734 1.1e-06 1.7322 471.18 2.85 0.15 2.4799 1830.8

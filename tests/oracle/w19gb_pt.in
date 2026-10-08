@@ -1,0 +1,68 @@
+# oracle: pair gayberne with point particles (shape 0 0 0, treated as radius 1.0) and spheres with unequal epsilon triples: ellipsoid-point, point-point (unequal and equal epsilon), sphere-point, and a re-set pair_coeff between run 0 blocks
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      ellipsoid
+boundary        f f f
+region          box block 0 14 0 14 0 14
+create_box      4 box
+create_atoms  1 single 2.395186 2.517692 2.447982 units box
+create_atoms  2 single 2.541568 2.550288 4.526212 units box
+create_atoms  3 single 2.305267 2.634988 6.803742 units box
+create_atoms  4 single 2.393732 4.898258 2.488105 units box
+create_atoms  1 single 2.634585 4.690541 4.755627 units box
+create_atoms  2 single 2.360247 4.753944 7.047218 units box
+create_atoms  3 single 2.509272 6.996501 2.568565 units box
+create_atoms  4 single 2.325613 7.003292 4.736440 units box
+create_atoms  1 single 2.420507 6.712405 7.046211 units box
+create_atoms  2 single 4.689100 2.587530 2.651525 units box
+create_atoms  3 single 4.785652 2.668439 4.657985 units box
+create_atoms  4 single 4.820364 2.477848 7.074235 units box
+create_atoms  1 single 4.851547 4.538982 2.354388 units box
+create_atoms  2 single 4.586795 4.886192 4.674465 units box
+create_atoms  3 single 4.750659 4.620410 6.902897 units box
+set             atom * mass 1.0
+set             atom 1 shape 1.5864 1.2538 1.599
+set             atom 1 quat -0.3260933844 0.8286327056 -0.4550065316 38.55542559
+set             atom 3 shape 1.1 1.1 1.1
+set             atom 3 quat -0.06935150099 0.9641271487 -0.2562210189 69.2241707
+set             atom 4 shape 1.5 1.5 1.5
+set             atom 4 quat -0.4903842389 -0.3362017802 -0.8040470516 91.19455871
+set             atom 5 shape 1.5864 1.2538 1.599
+set             atom 5 quat -0.7140646481 -0.6356649839 0.2933286664 45.39805531
+set             atom 7 shape 1.1 1.1 1.1
+set             atom 7 quat -0.2873993897 0.864394149 -0.4125825323 6.947772682
+set             atom 8 shape 1.5 1.5 1.5
+set             atom 8 quat -0.1257086216 -0.8545806194 0.5038742972 8.408991352
+set             atom 9 shape 1.5864 1.2538 1.599
+set             atom 9 quat -0.5486264718 -0.4885895518 0.6784461985 84.26257305
+set             atom 11 shape 1.1 1.1 1.1
+set             atom 11 quat 0.4855387248 -0.375790418 -0.7893248434 125.1815424
+set             atom 12 shape 1.5 1.5 1.5
+set             atom 12 quat -0.01128391696 -0.1498035675 0.9886513867 168.7619487
+set             atom 13 shape 1.5864 1.2538 1.599
+set             atom 13 quat 0.4509377719 -0.00629378593 0.8925332006 105.7542189
+set             atom 15 shape 1.1 1.1 1.1
+set             atom 15 quat -0.3971972765 0.8437378293 -0.3610274214 106.255656
+pair_style gayberne 0.9 1.2 1.0 4.0
+pair_coeff 1 1 1.0 1.0 1 0.6 0.4 1 0.6 0.4
+pair_coeff 2 2 1.0 1.0 1.5 1.5 1.5 1.5 1.5 1.5
+pair_coeff 3 3 1.0 1.0 1 1 2 1 1 2
+pair_coeff 4 4 1.5 1.1 1.5 1.5 1.5 1.5 1.5 1.5 3.0
+pair_coeff 1 4 1.2 1.0 0 0 0 0 0 0
+compute         p all property/atom tqx tqy tqz
+variable        t1 atom c_p[1]*(1+0.1*id)
+variable        t2 atom c_p[2]*(1+0.1*id)
+variable        t3 atom c_p[3]*(1+0.1*id)
+variable        t4 atom c_p[1]*(1+0.2*id)+c_p[2]*(2+0.3*id)
+variable        t5 atom c_p[3]*(1+0.4*id)-c_p[1]*(0.5+0.1*id)
+compute         r all reduce sum v_t1 v_t2 v_t3 v_t4 v_t5
+timestep        0.002
+thermo_style    custom step atoms pe evdwl press c_r[1] c_r[2] c_r[3] c_r[4] c_r[5]
+thermo_modify   format float %.15g norm no
+run             0
+set             atom 1 quat 0.4566980935 0.7716751446 -0.4426559867 41.72243914
+displace_atoms  all move -0.04 0.06 0.03 units box
+run             0
+set             atom 3 quat 0 0 1 90
+pair_coeff 2 2 1.3 1.0 1.2 1.2 1.2 1.2 1.2 1.2
+run             0

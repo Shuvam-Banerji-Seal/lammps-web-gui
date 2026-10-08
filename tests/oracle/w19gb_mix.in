@@ -1,0 +1,77 @@
+# oracle: pair gayberne mixing and epsilon-triple semantics: a later pair_coeff with non-zero epsilon triples for one type replaces the earlier ones (last setting wins), unset I J pairs mixed with pair_modify mix arithmetic, a per-pair cutoff, and a sphere type (4) with equal epsilon in a mixed pair
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      ellipsoid
+boundary        f f f
+region          box block 0 14 0 14 0 14
+create_box      4 box
+create_atoms  1 single 2.394419 2.341266 2.458423 units box
+create_atoms  2 single 2.361989 2.326606 4.660636 units box
+create_atoms  3 single 2.667182 2.620181 7.006065 units box
+create_atoms  4 single 2.388771 4.714672 2.410673 units box
+create_atoms  1 single 2.369066 4.542473 4.585760 units box
+create_atoms  2 single 2.670990 4.831568 7.022661 units box
+create_atoms  3 single 2.620179 6.777374 2.423940 units box
+create_atoms  4 single 2.550790 6.992758 4.841859 units box
+create_atoms  1 single 2.652020 6.734687 6.942341 units box
+create_atoms  2 single 4.768681 2.502382 2.371116 units box
+create_atoms  3 single 4.689435 2.335738 4.873835 units box
+create_atoms  4 single 4.846194 2.519056 6.820098 units box
+create_atoms  1 single 4.863548 4.728947 2.652927 units box
+create_atoms  2 single 4.839218 4.703349 4.665578 units box
+create_atoms  3 single 4.739565 4.672417 6.764528 units box
+set             atom * mass 1.0
+set             atom 1 shape 1.1445 1.483 1.3876
+set             atom 1 quat -0.7379713152 0.4655538233 -0.4885263305 54.87974312
+set             atom 2 shape 1.0957 1.2221 1.0682
+set             atom 2 quat -0.4444204919 -0.6592871906 0.6064905825 61.32222896
+set             atom 3 shape 1.0047 1.0224 1.0848
+set             atom 3 quat 0.2089614378 -0.9707129975 -0.1185385763 171.8972704
+set             atom 4 shape 1.0 1.0 1.0
+set             atom 4 quat 0.5395569496 -0.7476502196 0.387165917 15.08771904
+set             atom 5 shape 1.1445 1.483 1.3876
+set             atom 5 quat 0.8682819517 0.3142695444 -0.3838243164 11.95170233
+set             atom 6 shape 1.0957 1.2221 1.0682
+set             atom 6 quat -0.5589952797 -0.8277457726 0.04859231614 174.5982096
+set             atom 7 shape 1.0047 1.0224 1.0848
+set             atom 7 quat 0.7136076936 0.6895653008 0.1235465723 172.9017554
+set             atom 8 shape 1.0 1.0 1.0
+set             atom 8 quat -0.8063848909 -0.5856275198 0.08236392275 74.80582307
+set             atom 9 shape 1.1445 1.483 1.3876
+set             atom 9 quat 0.9731329787 0.2295530628 0.0178212531 146.2780103
+set             atom 10 shape 1.0957 1.2221 1.0682
+set             atom 10 quat 0.992772097 -0.120010068 0.00107098449 48.24692244
+set             atom 11 shape 1.0047 1.0224 1.0848
+set             atom 11 quat 0.04521069151 0.94470326 0.3247949261 29.08930052
+set             atom 12 shape 1.0 1.0 1.0
+set             atom 12 quat 0.6581058887 0.7141896405 0.2383900096 101.1085141
+set             atom 13 shape 1.1445 1.483 1.3876
+set             atom 13 quat 0.6500258944 -0.03855652786 0.7589332848 139.4458129
+set             atom 14 shape 1.0957 1.2221 1.0682
+set             atom 14 quat -0.5881758967 -0.0267930513 -0.8082890862 20.79446482
+set             atom 15 shape 1.0047 1.0224 1.0848
+set             atom 15 quat 0.1804062139 0.7199109662 0.6702102645 62.22022936
+pair_style gayberne 1.0 1.0 1.0 4.0
+pair_modify mix arithmetic
+pair_coeff 1 1 1.0 1.0 1 1 1 1 1 1
+pair_coeff 2 2 0.6 1.3 2 0.5 0.4 2 0.5 0.4
+pair_coeff 3 3 0.9 1.1 1.2 0.8 1.0 1.2 0.8 1.0
+pair_coeff 4 4 1.1 0.9 1 1 1 1 1 1
+pair_coeff 1 2 1.0 1.0 3 1 1 1 1 1 2.5
+pair_coeff 2 3 0.8 1.2 0 0 0 0 0 0
+compute         p all property/atom tqx tqy tqz
+variable        t1 atom c_p[1]*(1+0.1*id)
+variable        t2 atom c_p[2]*(1+0.1*id)
+variable        t3 atom c_p[3]*(1+0.1*id)
+variable        t4 atom c_p[1]*(1+0.2*id)+c_p[2]*(2+0.3*id)
+variable        t5 atom c_p[3]*(1+0.4*id)-c_p[1]*(0.5+0.1*id)
+compute         r all reduce sum v_t1 v_t2 v_t3 v_t4 v_t5
+timestep        0.002
+thermo_style    custom step atoms pe evdwl press c_r[1] c_r[2] c_r[3] c_r[4] c_r[5]
+thermo_modify   format float %.15g norm no
+run             0
+pair_coeff 1 1 1.0 1.0 1 1 1 1 1 1
+run             0
+pair_coeff 1 3 0.7 1.0 0 0 0 0 0 0 3.0
+displace_atoms  all move 0.07 0.02 -0.03 units box
+run             0

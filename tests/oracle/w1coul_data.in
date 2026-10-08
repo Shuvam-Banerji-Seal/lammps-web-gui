@@ -1,0 +1,37 @@
+# oracle: write_data pair coefficient sections of the coul/*, lj/cut/coul/* and buck/coul/cut styles (default and pair ij)
+# oracle-files: a.data b.data c.data d.data e.data f.data g.data
+# oracle-compare: atoms=none
+units           lj
+atom_style      charge
+lattice         fcc 0.8442
+region          box block 0 2 0 2 0 2
+create_box      2 box
+create_atoms    1 box
+group           odd id 1:32:2
+set             group odd type 2
+mass            * 1.0
+set             type 1 charge 0.5
+set             type 2 charge -0.5
+pair_style      coul/cut 2.5
+pair_coeff      1 1 2.2
+pair_coeff      2 2 2.4
+write_data      a.data
+write_data      b.data pair ij
+pair_style      coul/dsf 0.6 2.5
+pair_coeff      * *
+write_data      c.data pair ij
+pair_style      lj/cut/coul/cut 2.5 3.0
+pair_coeff      1 1 1.0 1.0
+pair_coeff      2 2 0.8 1.1 2.2 2.6
+write_data      d.data pair ij
+pair_style      lj/cut/coul/dsf 0.6 2.5 3.0
+pair_coeff      * * 1.0 1.0
+write_data      e.data
+pair_style      coul/debye 1.5 2.5
+pair_coeff      * *
+pair_coeff      2 2 2.0
+write_data      f.data pair ij
+pair_style      buck/coul/cut 2.5 3.0
+pair_coeff      * * 600.0 0.15 1.0
+pair_coeff      1 2 700.0 0.155 1.1 2.3 2.8
+write_data      g.data pair ij

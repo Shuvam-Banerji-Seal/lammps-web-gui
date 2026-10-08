@@ -1,0 +1,21 @@
+# oracle: compute snap (default switchflag and bzeroflag, rmin0 0.1) on a 2-type crystal with a zbl reference potential, every array entry through thermo
+# oracle-compare: thermo=first atoms=all rel=1e-8 abs=1e-9
+units           metal
+atom_modify     map hash
+lattice         bcc 2.0
+region          box block 0 2 0 1 0 1
+create_box      2 box
+create_atoms    1 box
+group           odd id 1:4:2
+set             group odd type 2
+mass            * 180.88
+variable        dx atom 0.05*sin(1.3*x+0.7*y)
+variable        dy atom 0.05*cos(0.9*y-1.1*z)
+variable        dz atom 0.05*sin(1.7*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      zbl 4 4.8
+pair_coeff      * * 73 73
+compute snap all snap 1.0 0.99363 2 2.3 2.0 1.0 0.96 rmin0 0.1
+thermo_style    custom step pe c_snap[1][1] c_snap[1][2] c_snap[1][3] c_snap[1][4] c_snap[1][5] c_snap[1][6] c_snap[1][7] c_snap[1][8] c_snap[1][9] c_snap[1][10] c_snap[1][11] c_snap[2][1] c_snap[2][2] c_snap[2][3] c_snap[2][4] c_snap[2][5] c_snap[2][6] c_snap[2][7] c_snap[2][8] c_snap[2][9] c_snap[2][10] c_snap[2][11] c_snap[3][1] c_snap[3][2] c_snap[3][3] c_snap[3][4] c_snap[3][5] c_snap[3][6] c_snap[3][7] c_snap[3][8] c_snap[3][9] c_snap[3][10] c_snap[3][11] c_snap[4][1] c_snap[4][2] c_snap[4][3] c_snap[4][4] c_snap[4][5] c_snap[4][6] c_snap[4][7] c_snap[4][8] c_snap[4][9] c_snap[4][10] c_snap[4][11] c_snap[5][1] c_snap[5][2] c_snap[5][3] c_snap[5][4] c_snap[5][5] c_snap[5][6] c_snap[5][7] c_snap[5][8] c_snap[5][9] c_snap[5][10] c_snap[5][11] c_snap[6][1] c_snap[6][2] c_snap[6][3] c_snap[6][4] c_snap[6][5] c_snap[6][6] c_snap[6][7] c_snap[6][8] c_snap[6][9] c_snap[6][10] c_snap[6][11] c_snap[7][1] c_snap[7][2] c_snap[7][3] c_snap[7][4] c_snap[7][5] c_snap[7][6] c_snap[7][7] c_snap[7][8] c_snap[7][9] c_snap[7][10] c_snap[7][11] c_snap[8][1] c_snap[8][2] c_snap[8][3] c_snap[8][4] c_snap[8][5] c_snap[8][6] c_snap[8][7] c_snap[8][8] c_snap[8][9] c_snap[8][10] c_snap[8][11] c_snap[9][1] c_snap[9][2] c_snap[9][3] c_snap[9][4] c_snap[9][5] c_snap[9][6] c_snap[9][7] c_snap[9][8] c_snap[9][9] c_snap[9][10] c_snap[9][11] c_snap[10][1] c_snap[10][2] c_snap[10][3] c_snap[10][4] c_snap[10][5] c_snap[10][6] c_snap[10][7] c_snap[10][8] c_snap[10][9] c_snap[10][10] c_snap[10][11] c_snap[11][1] c_snap[11][2] c_snap[11][3] c_snap[11][4] c_snap[11][5] c_snap[11][6] c_snap[11][7] c_snap[11][8] c_snap[11][9] c_snap[11][10] c_snap[11][11] c_snap[12][1] c_snap[12][2] c_snap[12][3] c_snap[12][4] c_snap[12][5] c_snap[12][6] c_snap[12][7] c_snap[12][8] c_snap[12][9] c_snap[12][10] c_snap[12][11] c_snap[13][1] c_snap[13][2] c_snap[13][3] c_snap[13][4] c_snap[13][5] c_snap[13][6] c_snap[13][7] c_snap[13][8] c_snap[13][9] c_snap[13][10] c_snap[13][11] c_snap[14][1] c_snap[14][2] c_snap[14][3] c_snap[14][4] c_snap[14][5] c_snap[14][6] c_snap[14][7] c_snap[14][8] c_snap[14][9] c_snap[14][10] c_snap[14][11] c_snap[15][1] c_snap[15][2] c_snap[15][3] c_snap[15][4] c_snap[15][5] c_snap[15][6] c_snap[15][7] c_snap[15][8] c_snap[15][9] c_snap[15][10] c_snap[15][11] c_snap[16][1] c_snap[16][2] c_snap[16][3] c_snap[16][4] c_snap[16][5] c_snap[16][6] c_snap[16][7] c_snap[16][8] c_snap[16][9] c_snap[16][10] c_snap[16][11] c_snap[17][1] c_snap[17][2] c_snap[17][3] c_snap[17][4] c_snap[17][5] c_snap[17][6] c_snap[17][7] c_snap[17][8] c_snap[17][9] c_snap[17][10] c_snap[17][11] c_snap[18][1] c_snap[18][2] c_snap[18][3] c_snap[18][4] c_snap[18][5] c_snap[18][6] c_snap[18][7] c_snap[18][8] c_snap[18][9] c_snap[18][10] c_snap[18][11] c_snap[19][1] c_snap[19][2] c_snap[19][3] c_snap[19][4] c_snap[19][5] c_snap[19][6] c_snap[19][7] c_snap[19][8] c_snap[19][9] c_snap[19][10] c_snap[19][11]
+thermo_modify   format float %.15g
+run             0

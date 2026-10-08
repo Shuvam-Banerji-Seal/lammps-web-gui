@@ -1,0 +1,37 @@
+# oracle: atom_style template restart: write_restart after 50 steps, clear, define the template again, read_restart, 50 more steps
+# oracle-inputs: w24tmpl_a.txt
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           real
+boundary        p p p
+molecule        chain w24tmpl_a.txt
+atom_style      template chain
+pair_style      lj/cut 4.0
+pair_modify     mix geometric
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  harmonic
+lattice         sc 8.0
+region          box block 0 2 0 2 0 2 units lattice
+create_box      1 box bond/types 1 angle/types 1 dihedral/types 1
+create_atoms    0 box mol chain 4242
+mass            1 12.0
+pair_coeff      1 1 0.1 2.5
+bond_coeff      1 300.0 1.5
+angle_coeff     1 50.0 110.0
+dihedral_coeff  1 2.0 1 3
+velocity        all create 300.0 4321
+fix             1 all nve
+timestep        1.0
+thermo          10
+thermo_style    custom step temp pe ebond eangle edihed etotal press atoms
+thermo_modify   format float %.15g norm no
+run             50
+write_restart   w24tmpl_restart.restart
+clear
+molecule        chain w24tmpl_a.txt
+read_restart    w24tmpl_restart.restart
+fix             1 all nve
+thermo          10
+thermo_style    custom step temp pe ebond eangle edihed etotal press atoms
+thermo_modify   format float %.15g norm no
+run             50

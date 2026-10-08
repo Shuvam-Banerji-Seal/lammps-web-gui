@@ -1,0 +1,13 @@
+# oracle: general triclinic data file whose Velocities are rotated with the box, then an NVE run
+# oracle-inputs: w10gentri_velocities.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+read_data       w10gentri_velocities.data
+pair_style      lj/cut 2.0
+pair_coeff      1 1 1.0 1.0
+fix             1 all nve
+thermo_style    custom step temp pe etotal press cella cellb cellc
+thermo_modify   format float %.15g
+thermo          5
+run             20

@@ -1,0 +1,21 @@
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-inputs: w11restrain_chain.data
+# Polymer chain: fix spring/rg with NULL (RG0 taken at definition) on all atoms, and a numeric RG0 on atoms 1-4.
+units           lj
+atom_style      bond
+read_data       w11restrain_chain.data
+pair_style      lj/cut 1.2
+pair_coeff      1 1 0.05 0.8 1.2
+bond_style      harmonic
+bond_coeff      1 100.0 1.0
+special_bonds   fene
+velocity        all create 0.2 4711 loop all
+timestep        0.002
+fix             1 all nve
+group           half id 1 2 3 4
+fix             SRG all spring/rg 5.0 NULL
+fix             SRG2 half spring/rg 2.0 1.5
+thermo_style    custom step pe ke f_SRG f_SRG2 temp
+thermo_modify   norm no format float %.12g
+thermo          10
+run             100

@@ -1,0 +1,9 @@
+# synthetic SNAP-type descriptor for oracle w16mliap (not a LAMMPS potential)
+rcutfac 1.1
+twojmax 4
+rfac0 0.9
+rmin0 0.1
+nelems 2
+elems A B
+radelems 1.4 1.6
+welems 1.0 0.8

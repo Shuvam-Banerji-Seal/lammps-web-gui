@@ -1,0 +1,17 @@
+# oracle: fix balance on one process (forced) — global scalar and vector as native reports them
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.0 4928459
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+fix             1 all nve
+fix             2 all balance 10 0.9 shift xy 5 1.05
+thermo_style    custom step temp pe press f_2 f_2[1] f_2[2] f_2[3]
+thermo_modify   format float %.15g
+thermo          10
+run             30

@@ -1,29 +1,59 @@
 version: 2
 updates:
-  # npm dependencies — weekly, grouped minor/patch to reduce PR noise
+  # ---- npm -------------------------------------------------------------
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
-    groups:
-      minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
+      time: "06:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 8
+    versioning-strategy: increase
+    commit-message:
+      prefix: "build(deps)"
+      prefix-development: "build(deps-dev)"
+      include: "scope"
     reviewers:
       - "Shuvam-Banerji-Seal"
     labels:
       - "dependencies"
+    groups:
+      # One PR for the routine churn — CI proves it green, review is quick.
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+      # The 3D stack moves together; a partial bump usually breaks types.
+      three-stack:
+        applies-to: version-updates
+        patterns:
+          - "three"
+          - "@types/three"
+          - "@react-three/*"
+      # Security fixes get their own PR so they are never buried in a group.
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
     ignore:
-      # three.js minor bumps can change rendering behavior; review majors deliberately
+      # three.js minors change rendering behaviour (materials, colour
+      # management, shadow defaults). Bump it deliberately, with screenshots.
       - dependency-name: "three"
         update-types: ["version-update:semver-minor"]
 
-  # GitHub Actions — weekly
+  # ---- GitHub Actions --------------------------------------------------
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(deps)"
+    reviewers:
+      - "Shuvam-Banerji-Seal"
     labels:
       - "ci"
+      - "dependencies"
+    groups:
+      actions:
+        patterns: ["*"]

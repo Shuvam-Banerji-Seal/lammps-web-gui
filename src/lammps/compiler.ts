@@ -1,7 +1,16 @@
 /**
  * LAMMPS build-system catalog — packages, presets, accelerator backends.
- * Sources [VERIFIED 2026-08-22, git 4Jul2026]:
- *  - lammps/lammps develop branch: cmake/presets/most.cmake (68 packages)
+ * Sources [VERIFIED 2026-09-22]:
+ *  - lammps/lammps develop: cmake/presets/most.cmake — all 68 packages of the
+ *    preset are represented here, plus GPU / INTEL / KOKKOS, which the preset
+ *    deliberately omits because they need a special toolchain.
+ *  - docs.lammps.org/Packages_details.html — every `description` below is the
+ *    package's own "Contents" line, condensed. Fourteen were materially wrong
+ *    before this pass (MESONT was "mesoporous nanoparticles" rather than
+ *    nanotube mechanics; SHOCK credited SPaSM; ORIENT described RESquared,
+ *    which lives in ASPHERE; ML-UF3 said "UFL3 four-body"; MOFFF said
+ *    "diffusion"; BOCS, PHONON, GRANSURF, YAFF, TALLY, UEF, MISC,
+ *    INTERLAYER and EXTRA-COMMAND were vague or misattributed).
  *  - docs.lammps.org/Build_settings.html (FFT, sizes, gzip, curl, memalign)
  *  - docs.lammps.org Build chapter (accelerator packages, Windows notes)
  */
@@ -20,7 +29,7 @@ export const LMP_PACKAGES: LmpPackage[] = [
   { name: 'CLASS2', description: 'Class II force fields (COMPASS)', category: 'force-fields' },
   { name: 'COLLOID', description: 'Colloid interactions (coarse spheres)', category: 'force-fields' },
   { name: 'DIELECTRIC', description: 'Surface polarization / dielectrics', category: 'force-fields' },
-  { name: 'DIPOLE', description: 'Point dipole interactions', category: 'force-fields' },
+  { name: 'DIPOLE', description: 'Point-dipole particles and their pair interactions', category: 'force-fields' },
   { name: 'DRUDE', description: 'Drude oscillators (polarizable)', category: 'force-fields', heavy: true },
   { name: 'FEP', description: 'Free-energy perturbation styles', category: 'force-fields' },
   { name: 'GRANULAR', description: 'Granular (sand/sphere) contacts', category: 'force-fields' },
@@ -30,66 +39,66 @@ export const LMP_PACKAGES: LmpPackage[] = [
   { name: 'QEQ', description: 'Charge equilibration (ReaxFF aid)', category: 'force-fields' },
   { name: 'REACTION', description: 'Reactive force fields + bond breaking', category: 'force-fields' },
   { name: 'REAXFF', description: 'ReaxFF reactive force field', category: 'force-fields' },
-  { name: 'SPIN', description: 'Magnetic spin dynamics', category: 'force-fields' },
+  { name: 'SPIN', description: 'Atomistic magnetic spin dynamics coupled to the lattice', category: 'force-fields' },
 
   // Methods
   { name: 'KSPACE', description: 'Long-range Coulomb (PPPM/Ewald/MSM)', category: 'methods' },
-  { name: 'RIGID', description: 'Rigid body integration', category: 'methods' },
-  { name: 'SHOCK', description: 'Shock dynamics (SPaSM)', category: 'methods' },
+  { name: 'RIGID', description: 'Rigid-body constraints and integration (fix rigid, SHAKE)', category: 'methods' },
+  { name: 'SHOCK', description: 'Uniaxial shock dynamics (fix msst, fix nphug) + shock pair style', category: 'methods' },
   { name: 'MC', description: 'Monte Carlo (fix gcmc etc.)', category: 'methods' },
-  { name: 'PHONON', description: 'Phonon/DOS analysis (dyn mat, QM)', category: 'methods' },
+  { name: 'PHONON', description: 'fix phonon — dynamical matrices for phonon dispersion', category: 'methods' },
   { name: 'REPLICA', description: 'Replica exchange, NEB, PRD, TAD', category: 'methods' },
-  { name: 'UEF', description: 'Uniaxial extensional flow', category: 'methods' },
-  { name: 'INTERLAYER', description: 'Layered materials potentials', category: 'force-fields' },
+  { name: 'UEF', description: 'fix nvt/npt/uef — uniaxial extensional flow box deformation', category: 'methods' },
+  { name: 'INTERLAYER', description: 'Pair styles for layered materials (graphene sheets, ILP/KC)', category: 'force-fields' },
 
   // ML potentials
-  { name: 'ML-SNAP', description: 'SNAP / qSNAP potentials', category: 'ml' },
+  { name: 'ML-SNAP', description: 'SNAP and quadratic SNAP machine-learned potentials', category: 'ml' },
   { name: 'ML-POD', description: 'Pytorch-free POD potentials', category: 'ml' },
   { name: 'ML-IAP', description: 'Implicit/analytic ML potentials (mliap)', category: 'ml' },
-  { name: 'ML-UF3', description: 'UFL3 four-body ML potentials', category: 'ml' },
+  { name: 'ML-UF3', description: 'Ultra-fast force field (UF3) pair style', category: 'ml' },
 
   // Mesoscale
   { name: 'DPD-BASIC', description: 'Dissipative particle dynamics (basic)', category: 'mesoscale' },
-  { name: 'DPD-MESO', description: 'eDPD/mDPD/tDPD mesoscale', category: 'mesoscale' },
-  { name: 'DPD-REACT', description: 'Reactive DPD', category: 'mesoscale' },
-  { name: 'DPD-SMOOTH', description: 'Smoothed DPD', category: 'mesoscale' },
-  { name: 'PERI', description: 'Peridynamics', category: 'mesoscale' },
-  { name: 'RHEO', description: 'RHEO solid/fluid mesoscale', category: 'mesoscale' },
+  { name: 'DPD-MESO', description: 'Energy-, many-body and transport DPD (eDPD/mDPD/tDPD)', category: 'mesoscale' },
+  { name: 'DPD-REACT', description: 'Reactive DPD with per-particle internal temperature', category: 'mesoscale' },
+  { name: 'DPD-SMOOTH', description: 'Smoothed DPD (SDPD) for mesoscopic hydrodynamics', category: 'mesoscale' },
+  { name: 'PERI', description: 'Peridynamics — mesoscale continuum fracture modelling', category: 'mesoscale' },
+  { name: 'RHEO', description: 'Reproducing hydrodynamics and elastic objects (fluid + solid)', category: 'mesoscale' },
   { name: 'SPH', description: 'Smoothed particle hydrodynamics', category: 'mesoscale' },
-  { name: 'MACHDYN', description: 'Smooth Mach dynamics (SMD)', category: 'mesoscale' },
-  { name: 'BPM', description: 'Bonded particle models', category: 'mesoscale' },
+  { name: 'MACHDYN', description: 'Smooth Mach dynamics (SMD) for solid mechanics', category: 'mesoscale' },
+  { name: 'BPM', description: 'Bonded particle models for solid fracture', category: 'mesoscale' },
 
   // Specialized
   { name: 'ASPHERE', description: 'Ellipsoid/line/tri aspherical particles', category: 'methods' },
-  { name: 'BODY', description: 'Arbitrary body particles', category: 'mesoscale' },
-  { name: 'BROWNIAN', description: 'Brownian pair styles', category: 'force-fields' },
-  { name: 'BOCS', description: 'BOCS bottom-up coarse-graining', category: 'methods' },
-  { name: 'CG-DNA', description: 'Coarse-grained DNA (oxDNA)', category: 'molecular' },
-  { name: 'CG-SPICA', description: 'SPICA coarse-grained FF', category: 'molecular' },
-  { name: 'CORESHELL', description: 'Core-shell particles', category: 'methods' },
+  { name: 'BODY', description: 'Arbitrarily shaped rigid body particles', category: 'mesoscale' },
+  { name: 'BROWNIAN', description: 'Brownian dynamics of spheres in an implicit solvent', category: 'force-fields' },
+  { name: 'BOCS', description: 'fix bocs — NPT with a pressure correction to the barostat', category: 'methods' },
+  { name: 'CG-DNA', description: 'Coarse-grained DNA/RNA models (oxDNA, oxRNA)', category: 'molecular' },
+  { name: 'CG-SPICA', description: 'SPICA/SDK coarse-grained force field styles', category: 'molecular' },
+  { name: 'CORESHELL', description: 'Adiabatic core-shell model for polarizable ions', category: 'methods' },
   { name: 'COLVARS', description: 'Collective variables (enhanced sampling)', category: 'methods', heavy: true },
   { name: 'COMPRESS', description: 'Compressed dump/read via zlib', category: 'io' },
   { name: 'DIFFRACTION', description: 'X-ray/electron diffraction computes', category: 'methods' },
-  { name: 'EFF', description: 'Electron force field', category: 'force-fields' },
+  { name: 'EFF', description: 'Electron force field — explicit electrons as particles', category: 'force-fields' },
   { name: 'ELECTRODE', description: 'Constant-potential electrodes', category: 'methods', heavy: true },
-  { name: 'EXTRA-COMMAND', description: 'Extra commands (balance, quip…)', category: 'methods' },
-  { name: 'EXTRA-COMPUTE', description: 'Extra compute styles', category: 'methods' },
-  { name: 'EXTRA-DUMP', description: 'Extra dump styles', category: 'io' },
-  { name: 'EXTRA-FIX', description: 'Extra fix styles', category: 'methods' },
+  { name: 'EXTRA-COMMAND', description: 'Additional, less commonly used command styles', category: 'methods' },
+  { name: 'EXTRA-COMPUTE', description: 'Additional, less commonly used compute styles', category: 'methods' },
+  { name: 'EXTRA-DUMP', description: 'Additional, less commonly used dump styles', category: 'io' },
+  { name: 'EXTRA-FIX', description: 'Additional, less commonly used fix styles', category: 'methods' },
   { name: 'EXTRA-MOLECULE', description: 'Extra molecule/bond/angle styles', category: 'molecular' },
-  { name: 'EXTRA-PAIR', description: 'Extra pair styles', category: 'force-fields' },
-  { name: 'GRANSURF', description: 'Granular surfaces', category: 'force-fields' },
+  { name: 'EXTRA-PAIR', description: 'Additional, less commonly used pair styles', category: 'force-fields' },
+  { name: 'GRANSURF', description: 'Granular surfaces from triangles (3d) or line segments (2d)', category: 'force-fields' },
   { name: 'GRAPHICS', description: 'Dump styles for rendering (image/vtk)', category: 'io' },
   { name: 'LEPTON', description: 'Lepton expression potentials', category: 'force-fields' },
-  { name: 'MESONT', description: 'Mesoporous nanoparticles', category: 'mesoscale' },
-  { name: 'MISC', description: 'Miscellaneous fixes/computes', category: 'methods' },
-  { name: 'MOFFF', description: 'Metal-organic framework diffusion', category: 'methods' },
-  { name: 'ORIENT', description: 'Orientational potentials (resquared…)', category: 'force-fields' },
+  { name: 'MESONT', description: 'Nanomechanics of nanotubes (mesoscopic NT models)', category: 'mesoscale' },
+  { name: 'MISC', description: 'Specialized compute/fix/pair/bond styles that fit nowhere else', category: 'methods' },
+  { name: 'MOFFF', description: 'MOF-FF force field: pair, angle and improper styles', category: 'force-fields' },
+  { name: 'ORIENT', description: 'Orientation-dependent forces for grain-boundary migration', category: 'methods' },
   { name: 'PLUGIN', description: 'Load external plugins at runtime', category: 'io' },
   { name: 'SRD', description: 'Stochastic rotation dynamics', category: 'mesoscale' },
-  { name: 'TALLY', description: 'Per-atom energy/stress tallying', category: 'methods' },
-  { name: 'VORONOI', description: 'Voronoi volume computes', category: 'methods', heavy: true },
-  { name: 'YAFF', description: 'YAFF force field styles', category: 'force-fields' },
+  { name: 'TALLY', description: 'Computes that tally pairwise quantities during a run', category: 'methods' },
+  { name: 'VORONOI', description: 'Per-atom Voronoi volumes via the Voro++ library', category: 'methods', heavy: true },
+  { name: 'YAFF', description: 'pair_style yaff — Yet Another Force Field potentials', category: 'force-fields' },
   { name: 'OPENMP', description: 'OpenMP-accelerated styles (/omp)', category: 'accel' },
   { name: 'OPT', description: 'Optimized CPU styles (/opt)', category: 'accel' },
   { name: 'INTEL', description: 'Intel SIMD-accelerated styles', category: 'accel', heavy: true },
@@ -171,9 +180,11 @@ export const ACCELERATORS: Accelerator[] = [
     extraFlags: [
       '-D Kokkos_ENABLE_HIP=yes',
       '-D CMAKE_CXX_STANDARD=17',
-      '-D Kokkos_ARCH_VEGA90A=yes',
-    ],
-    notes: 'Requires ROCm; set Kokkos_ARCH for your GPU (VEGA90A/MI200…).',
+    // docs.lammps.org/Build_extras.html Kokkos architecture table lists
+    // AMD_GFX90A (MI200), AMD_GFX942 (MI300), … — no Vega-family entries.
+    '-D Kokkos_ARCH_AMD_GFX90A=yes',
+  ],
+  notes: 'Requires ROCm; set Kokkos_ARCH for your GPU (AMD_GFX90A = MI200, AMD_GFX942 = MI300…).',
   },
   {
     id: 'kokkos-sycl',
@@ -228,7 +239,13 @@ export const BUILD_OPTIONS: BuildOption[] = [
   { key: 'GPU_ARCH', label: 'GPU architecture', values: ['', 'sm_75', 'sm_80', 'sm_86', 'sm_89', 'sm_90', 'gfx906', 'gfx1030', 'gfx1100', 'spirv'], default: '', help: 'GPU package only. Empty = multiarch (slower builds).' },
   { key: 'KOKKOS_PREC', label: 'Kokkos precision', values: ['double', 'mixed', 'single'], default: 'double', help: 'KOKKOS package only. mixed = FP64 accumulation, FP32 elsewhere.' },
   { key: 'Kokkos_ENABLE_DEBUG', label: 'Kokkos debug checks', values: ['no', 'yes'], default: 'no', help: 'KOKKOS package only. Big performance cost — development only.' },
-  { key: 'Kokkos_ENABLE_CUDA_UVM', label: 'Kokkos CUDA UVM', values: ['no', 'yes'], default: 'no', help: 'KOKKOS package only. Lets RAM supplement GPU memory (slower).' },
+  // docs.lammps.org/Build_extras.html (Changed in version 2Sep2026):
+  // "The CMake option -D Kokkos_ENABLE_IMPL_CUDA_UNIFIED_MEMORY=on makes
+  // Kokkos allocate all GPU memory as CUDA managed memory, which the host can
+  // read and write directly. ... It requires CUDA 12.2 or later ... It
+  // replaces the option -D Kokkos_ENABLE_CUDA_UVM=on, which Kokkos no longer
+  // supports; configuring with that option now stops with an error."
+  { key: 'Kokkos_ENABLE_IMPL_CUDA_UNIFIED_MEMORY', label: 'Kokkos CUDA unified memory', values: ['no', 'yes'], default: 'no', help: 'KOKKOS+CUDA only. GPU memory as CUDA managed memory; needs CUDA 12.2+.' },
   { key: 'Kokkos_ENABLE_OPENMP', label: 'Kokkos OpenMP host', values: ['no', 'yes'], default: 'no', help: 'KOKKOS package only. Requires BUILD_OMP=yes.' },
   { key: 'KOKKOS_LAYOUT', label: 'Kokkos array layout', values: ['legacy', 'default'], default: 'legacy', help: 'KOKKOS package only. default (LayoutLeft) may speed up some GPU models.' },
   // --- GPU package extras ---
@@ -367,7 +384,9 @@ const FLAG_DESCRIPTIONS: Record<string, { description: string; source: string }>
 
 const kokkosArchHint = (flag: string): string =>
   `Selects the Kokkos GPU architecture to compile for (${flag.replace('-D Kokkos_ARCH_', '').replace('=yes', '')}). ` +
-  'Set it to match your hardware, e.g. VOLTA70, AMPERE80, VEGA90A, MI300.';
+  // docs.lammps.org/Build_extras.html Kokkos architecture table:
+  // NVIDIA VOLTA70/AMPERE80/HOPPER90 and AMD AMD_GFX90A/AMD_GFX942.
+  'Set it to match your hardware, e.g. VOLTA70, AMPERE80, HOPPER90, AMD_GFX90A, AMD_GFX942.';
 
 const describeFlag = (
   flag: string,
@@ -499,15 +518,44 @@ export const generateBuildScript = (opts: CompilerOptions): CompilerScript => {
       flagDetails.push({ flag, ...d });
     }
   }
-  flags.push(`-D CMAKE_BUILD_TYPE=${opts.buildType}`);
-  flagDetails.push({
-    flag: `-D CMAKE_BUILD_TYPE=${opts.buildType}`,
-    ...describeFlag('-D CMAKE_BUILD_TYPE=x', pkgMap, accMap, optMap),
-  });
+  // docs.lammps.org/Build_cmake.html: "For a multi-configuration build, the
+  // built type (or configuration) is selected at compile time using the same
+  // build files. E.g. with: cmake --build build-multi --config Release" — so
+  // the Visual Studio (multi-config) script picks it with --config and does
+  // not set CMAKE_BUILD_TYPE; the single-config Linux build keeps it.
+  if (opts.os === 'linux') {
+    flags.push(`-D CMAKE_BUILD_TYPE=${opts.buildType}`);
+    flagDetails.push({
+      flag: `-D CMAKE_BUILD_TYPE=${opts.buildType}`,
+      ...describeFlag('-D CMAKE_BUILD_TYPE=x', pkgMap, accMap, optMap),
+    });
+  }
 
   const cloneCmd = `git clone --depth 1 --branch ${opts.branch} ${opts.repoUrl} lammps`;
-  const cmakeBase = ['cmake', '../cmake', ...flags].join(' \\\n    ');
+  // docs.lammps.org/Build_cmake.html shows the multi-line cmake configure
+  // command continued with ' \' at end of line (bash). PowerShell has no '\'
+  // line continuation — its continuation character is a trailing backtick —
+  // so the Windows command is joined with ' `' instead; the last line of the
+  // command carries no continuation character.
+  const cmakeJoiner = opts.os === 'linux' ? ' \\\n    ' : ' `\n    ';
+  const cmakeBase = opts.os === 'windows'
+    // The VS generator arguments stay part of the same continued command,
+    // on the final (unterminated) line after the flags.
+    ? ['cmake', '../cmake', ...flags, '-G "Visual Studio 17 2022" -A x64'].join(cmakeJoiner)
+    : ['cmake', '../cmake', ...flags].join(cmakeJoiner);
 
+  // Script tails, per docs.lammps.org/Build_cmake.html:
+  //  - "cmake --install build    # optional, copy compiled files into
+  //    installation location" and "The location of the installation tree
+  //    defaults to ${HOME}/.local." — so install is an optional step without
+  //    sudo (sudo would install into root's home, off the user's PATH);
+  //  - "cmake --build build ... will ultimately produce a library liblammps.a
+  //    and the LAMMPS executable lmp inside the build folder." — run ./lmp;
+  //    'lmp -h | head' would exit 141 (SIGPIPE) under 'set -o pipefail' once
+  //    the help text outgrows the pipe buffer, so it goes through a file;
+  //  - multi-config (Visual Studio): "the resulting binaries are not in the
+  //    build folder directly but in subdirectories corresponding to the build
+  //    type (i.e. Release in the example from above)".
   if (opts.os === 'linux') {
     const text = `#!/usr/bin/env bash
 # ============================================================
@@ -530,10 +578,11 @@ ${cmakeBase}
 
 # --- build & install ---
 cmake --build . --parallel ${opts.jobs}
-sudo cmake --install .        # installs lmp + library (optional)
+# cmake --install .   # optional: installs into \${HOME}/.local (no sudo needed)
 
-# --- sanity check ---
-lmp -h | head -n 30
+# --- sanity check (the lmp binary is in this build folder) ---
+./lmp -h > lmp-help.txt
+head -n 30 lmp-help.txt
 `;
     return { text, flags, flagDetails, warnings };
   }
@@ -559,13 +608,13 @@ if (-Not (Test-Path build)) { New-Item -ItemType Directory build | Out-Null }
 cd build
 
 # --- configure (Visual Studio generator) ---
-${cmakeBase} -G "Visual Studio 17 2022" -A x64
+${cmakeBase}
 
 # --- build ---
 cmake --build . --config ${opts.buildType} --parallel ${opts.jobs}
 
-# binary: .\\bin\\lmp.exe (copy DLLs next to it as needed)
-.\\bin\\lmp.exe -h | Select-Object -First 30
+# binary: .\\${opts.buildType}\\lmp.exe (multi-config generator: one folder per build type)
+.\\${opts.buildType}\\lmp.exe -h | Select-Object -First 30
 `;
   return { text, flags, flagDetails, warnings };
 };

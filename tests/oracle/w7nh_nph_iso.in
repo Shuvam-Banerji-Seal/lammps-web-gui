@@ -1,0 +1,23 @@
+# oracle: LJ fcc 3x3x3, fix nph iso (no thermostat)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        vx atom 1.4*sin(1.7*x+2.3*y+0.7*z)
+variable        vy atom 1.4*cos(2.1*x-1.1*y+0.3*z)
+variable        vz atom 1.4*sin(0.5*x+1.9*z+1.3*y)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+fix             1 all nph iso 2.0 0.5 2.0
+thermo_style    custom step temp pe etotal press pxx pyy pzz pxy pxz pyz vol lx ly lz xy xz yz f_1
+thermo_modify   format float %.15g
+thermo          20
+run             200

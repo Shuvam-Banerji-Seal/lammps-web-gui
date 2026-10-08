@@ -1,0 +1,42 @@
+# oracle: molecule templates + create_atoms mol (single with rotate, across the periodic corner, on a lattice) and offsets
+# oracle-inputs: mol_water.txt mol_dimer.txt
+units           real
+atom_style      full
+region          box block 0 18 0 18 0 18 units box
+create_box      3 box bond/types 2 angle/types 1 extra/bond/per/atom 2 extra/angle/per/atom 1 extra/special/per/atom 2
+mass            1 15.9994
+mass            2 1.008
+mass            3 12.0
+molecule        w mol_water.txt
+molecule        d mol_dimer.txt toff 2 boff 1
+create_atoms    0 single 4.0 4.0 4.0 mol w 1234 rotate 30.0 1 1 0 units box
+create_atoms    0 single 17.6 17.7 0.3 mol w 1234 rotate 120.0 0 0 1 units box
+create_atoms    0 single 9.0 3.0 12.0 mol d 99 rotate 45.0 0 1 0 units box
+lattice         sc 6.3
+region          inner block 0.5 2.5 0.5 2.5 0.5 2.5 units lattice
+create_atoms    0 region inner mol w 4321 rotate 70.0 1 0 1
+pair_style      lj/cut 6.0
+pair_coeff      1 1 0.1553 3.166
+pair_coeff      2 2 0.0 1.0
+pair_coeff      3 3 0.1 3.4
+bond_style      harmonic
+bond_coeff      1 450.0 1.0
+bond_coeff      2 300.0 1.12
+angle_style     harmonic
+angle_coeff     1 55.0 104.52
+variable        vx atom 0.002*sin(0.6*x+0.2*z)
+variable        vy atom 0.002*cos(0.5*y+0.3*x)
+variable        vz atom 0.002*sin(0.4*z-0.5*y)
+velocity        all set v_vx v_vy v_vz units box
+timestep        0.5
+fix             1 all nve
+variable        q4 equal q[4]
+variable        q8 equal q[8]
+variable        m7 equal mol[7]
+variable        m9 equal mol[9]
+variable        m32 equal mol[32]
+variable        t8 equal type[8]
+thermo_style    custom step temp pe ebond eangle evdwl etotal press atoms v_q4 v_q8 v_m7 v_m9 v_m32 v_t8
+thermo_modify   format float %.15g
+thermo          10
+run             40

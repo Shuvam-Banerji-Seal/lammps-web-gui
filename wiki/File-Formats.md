@@ -49,16 +49,41 @@ covalent radii (tolerance ×1.2) — H₂ at 0.74 Å bonds, non-bonded contacts 
 
 Native `ITEM:`-block dump format from `dump custom` / `dump atom`. Every frame
 is captured and the built-in scrubber plays them back (`P` play/pause, `,`/`.`
-step). Handled per docs.lammps.org (git 4Jul2026):
+step). Handled per docs.lammps.org (dump.html, re-verified 2026-09-22):
 
 - **Boxes** — orthogonal (`BOX BOUNDS pp pp pp`) as-is; restricted triclinic
   (`BOX BOUNDS xy xz yz …`) converted from the bounding box to the true cell
   (`xlo = xlo_bound − MIN(0, xy, xz, xy+xz)` per Howto triclinic) and rendered
-  as true parallelepipeds.
-- **Coordinates** — prefers `x y z`, falls back to unwrapped `xu yu zu`, then
-  de-scales fractional `xs ys zs` in the triclinic vector basis.
+  as true parallelepipeds. **Every frame keeps its own cell**, so an NPT box
+  that breathes is drawn correctly rather than frozen at frame 0.
+- **Coordinates** — all four documented forms:
+
+  | Columns | Meaning | Notes |
+  |---|---|---|
+  | `x y z` | wrapped, distance units | preferred for rendering |
+  | `xu yu zu` | unwrapped by the image flags | |
+  | `xs ys zs` | scaled to 0–1 | de-scaled in the triclinic vector basis |
+  | `xsu ysu zsu` | scaled **and** unwrapped | values run outside 0–1 |
+
+- **Image flags** — `ix iy iz` are read and kept **separate** from the
+  rendered position, which stays wrapped. This matters:
+
+  - rendering wants **wrapped** coordinates, or a diffusing system scatters
+    across periodic images and looks broken;
+  - **MSD wants unwrapped**. With no image flags the only option is the
+    minimum-image convention, which clamps every displacement to half a box,
+    so MSD *saturates near (L/2)²* and can never show linear diffusion. The
+    Analysis tab says which mode it is using.
+
+  **If you care about long-time diffusion, dump `ix iy iz` (or `xu yu zu`):**
+
+  ```
+  dump 1 all custom 1000 traj.lammpstrj id type x y z ix iy iz
+  ```
+
 - **Columns** — arbitrary `ITEM: ATOMS` layouts; `element` resolves CPK colors
-  directly, otherwise type-as-atomic-number; `q` and `mol` honored.
+  directly, otherwise type-as-atomic-number; `q`, `mol` and `vx vy vz`
+  honored (velocities feed the speed histogram).
 - **Bonds** — inferred on the first frame (dumps carry no topology).
 
 ## PDB (`.pdb`, `.ent`)

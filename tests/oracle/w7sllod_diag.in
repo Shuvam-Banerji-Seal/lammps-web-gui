@@ -1,0 +1,29 @@
+# oracle: fix nvt/sllod (default SLLOD) on an LJ liquid under xy shear with a x dilation (trate 0.02), fix deform remap v
+# oracle-compare: thermo=all atoms=all rel=1e-5 abs=1e-10
+# neigh_modify every 1 delay 0 check no: the engine fix deform (N = 1) rebuilds and wraps at other steps than native, so the case rebuilds every step; rel 1e-5 (not 1e-8): the thermostat amplifies a ~1e-10 per-step residual of the diagonal-streaming term (see fix_nvt_sllod.ts)
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box prism 0 4 0 4 0 4 0.3 0.0 0.0
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        dx atom 0.04*sin(1.3*x+0.7*y)
+variable        dy atom 0.04*cos(0.9*y-1.1*z)
+variable        dz atom 0.04*sin(1.7*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.8*sin(0.9*x+0.4*z)
+variable        vy atom 0.8*cos(0.6*y+0.8*x)
+variable        vz atom 0.8*sin(0.7*z-0.3*y)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+timestep        0.002
+neigh_modify    every 1 delay 0 check no
+fix             1 all nvt/sllod temp 1.0 1.0 0.1
+fix             2 all deform 1 xy erate 0.05 x trate 0.02 remap v
+thermo_style    custom step temp pe press pxy pxz c_1_temp lx ly lz xy xz vol
+thermo_modify   format float %.15g
+thermo          10
+run             200

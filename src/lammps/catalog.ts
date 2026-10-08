@@ -43,6 +43,13 @@ export interface CommandDef {
   section: ScriptSection;
   category: string;
   doc?: string;
+  /**
+   * Set when LAMMPS has REMOVED or deprecated this command. The def stays in
+   * the catalog so old scripts still import losslessly, but it is hidden from
+   * the palette so nobody reaches for it in a new pipeline, and the validator
+   * warns about it. The string is shown to the user verbatim.
+   */
+  deprecated?: string;
   params: ParamDef[];
   /**
    * Render the exact input line(s). Return empty array to skip emission
@@ -61,9 +68,42 @@ export interface ScriptStep {
   note?: string;
 }
 
+/**
+ * A divergent concept line: an alternative tail (or detour) that starts
+ * after a given trunk step.
+ *
+ * Branching lets one flowchart carry several competing ideas — swap a
+ * thermostat, try a different pair style, extend a production run — without
+ * duplicating the shared prefix. Exactly one branch may be taken per fork
+ * point; the taken set lives in `ScriptModel.activeBranchIds`.
+ */
+export interface ScriptBranch {
+  id: string;
+  /** Human label shown on the fork chip, e.g. "NPT variant". */
+  label: string;
+  /**
+   * uid of the TRUNK step this branch forks after.
+   * `null` forks before the first trunk step (whole-script alternative).
+   */
+  forkAfter: string | null;
+  steps: ScriptStep[];
+  /**
+   * `false` (default): the branch REPLACES the trunk tail — a truly
+   * divergent concept. `true`: the trunk resumes after the branch steps,
+   * making the branch an insertable detour.
+   */
+  rejoin: boolean;
+  /** Optional note describing the concept being tested. */
+  note?: string;
+}
+
 export interface ScriptModel {
   title: string;
   steps: ScriptStep[];
+  /** Divergent concept lines. Absent/empty = a plain linear pipeline. */
+  branches?: ScriptBranch[];
+  /** Branch ids currently taken (at most one per fork point). */
+  activeBranchIds?: string[];
   /**
    * Manual-edit mode: when set, the generator emits this text VERBATIM and
    * ignores the step list. The flowchart still shows the steps so the user
@@ -97,6 +137,10 @@ export const emptyScriptModel = (title = 'Untitled'): ScriptModel => ({
 
 let tabCounter = 1;
 export const newTabId = (): string => `tab-${Date.now().toString(36)}-${tabCounter++}`;
+
+let branchCounter = 1;
+export const newBranchId = (): string =>
+  `br-${Date.now().toString(36)}-${branchCounter++}`;
 
 export const SECTION_ORDER: ScriptSection[] = [
   'setup',
@@ -178,17 +222,42 @@ export const SETUP_COMMANDS: CommandDef[] = [
     build: v => [line('boundary', v.bx, v.by, v.bz)],
   },
   {
+    // [VERIFIED 2026-09-22] docs.lammps.org/Commands_removed.html:
+    //   "Removed in version 22Dec2022. The box command has been removed and
+    //    the LAMMPS code changed so it won't be needed. If present, LAMMPS
+    //    will ignore the command and print a warning."
+    // Kept so scripts that still contain `box tilt large` import losslessly.
     id: 'box_cmd',
     command: 'box',
-    label: 'box — triclinic tilt-factor limit',
+    label: 'box — REMOVED in 22Dec2022 (ignored with a warning)',
     section: 'setup',
     category: 'Fundamentals',
-    doc: 'https://docs.lammps.org/Howto_triclinic.html',
+    doc: 'https://docs.lammps.org/Commands_removed.html',
+    deprecated:
+      'LAMMPS removed the `box` command in 22Dec2022 — it is ignored with a ' +
+      'warning. Triclinic tilt limits no longer need declaring.',
     params: [
       en('style', 'Tilt limit', ['large', 'small'], 'small',
         'large = allow tilt > half the box length'),
     ],
     build: v => [line('box', 'tilt', v.style)],
+  },
+  {
+    // [VERIFIED 2026-09-22] docs.lammps.org/fenix.html — added 2Sep2026,
+    // FENIX package: "fenix keyword value ... keyword = restart_file,
+    // restart_label, universal, or spares". Initializes Fenix for online
+    // process recovery, claiming ranks as spares.
+    id: 'fenix_cmd',
+    command: 'fenix',
+    label: 'fenix — online MPI process recovery',
+    section: 'setup',
+    category: 'Fundamentals',
+    doc: 'https://docs.lammps.org/fenix.html',
+    params: [
+      str('args', 'Keywords', 'spares 1',
+        'restart_file <f> · restart_label <l> · universal · spares <n>'),
+    ],
+    build: v => (v.args.trim() ? [line('fenix', v.args)] : []),
   },
   {
     id: 'atom_style_cmd',
@@ -353,14 +422,13 @@ export const SETUP_COMMANDS: CommandDef[] = [
     category: 'Performance',
     doc: 'https://docs.lammps.org/timer.html',
     params: [
-      num('timeout', 'Timeout (s, 0 = none)', '0'),
-      en('mode', 'Level', ['normal', 'loop', 'full', 'partial', 'off'], 'normal'),
+      num('timeout', 'Wall-time limit (s, 0 = none)', '0'),
+      en('mode', 'Level', ['normal', 'loop', 'full', 'off'], 'normal'),
     ],
-    build: v => [
-      Number(v.timeout) > 0
-        ? line('timer', v.timeout, v.mode)
-        : line('timer', '0', v.mode),
-    ],
+    // docs.lammps.org/timer.html: "timer args" with "args = one or more of off
+    // or loop or normal or full or sync or nosync or timeout or every";
+    // "timeout elapse = set wall time limit to elapse" — keyword form only.
+    build: v => [line('timer', v.mode, Number(v.timeout) > 0 ? line('timeout', v.timeout) : '')],
   },
   {
     id: 'balance',
@@ -690,7 +758,11 @@ export const SYSTEM_COMMANDS: CommandDef[] = [
     category: 'Topology edits',
     doc: 'https://docs.lammps.org/reset_atoms.html',
     params: [
-      str('args', 'Arguments', 'ID sort id', 'e.g. ID sort id · ID mol sort id group …'),
+      // docs.lammps.org/reset_atoms.html: "reset_atoms property arguments ..."
+      // with "property = id or image or mol"; "reset_atoms id keyword value"
+      // with "sort value = yes or no"; "reset_atoms image group-ID";
+      // "reset_atoms mol group-ID keyword value ...".
+      str('args', 'Arguments', 'id sort yes', 'id [sort yes|no] · image group-ID · mol group-ID [compress yes|no] …'),
     ],
     build: v => (v.args.trim() ? [line('reset_atoms', v.args)] : []),
   },
@@ -835,6 +907,12 @@ const PAIR_POPULAR: { style: string; coeffHelp: string }[] = [
   { style: 'coul/dsf', coeffHelp: 'alpha rc' },
   { style: 'zbl', coeffHelp: 'type1 type2 inner outer' },
   { style: 'meam', coeffHelp: 'type1..N library-file element-list parameter-file' },
+  // Granular contact models — pair_coeff carries the contact model itself and
+  // atom_style sphere supplies per-particle mass/radius.
+  { style: 'granular', coeffHelp: 'I J <normal model> … tangential … [rolling …] [twisting …]' },
+  { style: 'gran/hooke', coeffHelp: '(coeffs are on pair_style; use `pair_coeff * *`)' },
+  { style: 'gran/hooke/history', coeffHelp: '(coeffs are on pair_style; use `pair_coeff * *`)' },
+  { style: 'gran/hertz/history', coeffHelp: '(coeffs are on pair_style; use `pair_coeff * *`)' },
   { style: 'hybrid', coeffHelp: 'sub-style args… (advanced)' },
 ];
 
@@ -889,7 +967,7 @@ export const INTERACTION_COMMANDS: CommandDef[] = [
     category: 'Long range',
     doc: 'https://docs.lammps.org/kspace_style.html',
     params: [
-      en('style', 'Style', ['pppm', 'pppm/disp', 'pppm/tip4p', 'ewald', 'ewald/disp', 'msm', 'pppm/stencil', 'none'], 'pppm'),
+      en('style', 'Style', ['pppm', 'pppm/disp', 'pppm/tip4p', 'ewald', 'ewald/disp', 'msm', 'pppm/stagger', 'none'], 'pppm'),
       num('precision', 'Relative force accuracy', '1.0e-4'),
     ],
     build: v => [line('kspace_style', v.style, v.style === 'none' ? '' : v.precision)],
@@ -973,7 +1051,9 @@ export const INTERACTION_COMMANDS: CommandDef[] = [
     category: 'Pair styles',
     doc: 'https://docs.lammps.org/pair_write.html',
     params: [
-      str('args', 'Arguments', '1 1 1000 0.001 0.5 10.0 table.txt "LJ table"',
+      // docs.lammps.org/pair_write.html: "pair_write itype jtype N style inner
+      // outer file keyword Qi Qj" with "style = r or rsq or bitmap".
+      str('args', 'Arguments', '1 1 1000 r 0.5 10.0 table.txt LJ',
           'itype jtype N delta rmin rmax file header'),
     ],
     build: v => [line('pair_write', v.args)],
@@ -1278,9 +1358,12 @@ export const OUTPUT_COMMANDS: CommandDef[] = [
       num('bins', 'Number of bins', '50'),
       str('file', 'Output file', '', 'optional'),
     ],
+    // docs.lammps.org/fix_ave_histo.html: "fix ID group-ID style Nevery
+    // Nrepeat Nfreq lo hi Nbin value1 value2 ... keyword args ..." — the
+    // bounds and bin count come BEFORE the values.
     build: v => [
       line('fix', v.id, v.group, 'ave/histo', v.nevery, v.nrepeat, v.nfreq,
-        v.values, v.lo, v.hi, v.bins, v.file && line('file', v.file)),
+        v.lo, v.hi, v.bins, v.values, v.file && line('file', v.file)),
     ],
   },
   {
@@ -1373,11 +1456,12 @@ export const OUTPUT_COMMANDS: CommandDef[] = [
     section: 'output',
     category: 'Checkpoints',
     doc: 'https://docs.lammps.org/write_molecule.html',
+    // docs.lammps.org/write_molecule.html: "write_molecule mol-ID file"
     params: [
-      str('file', 'File pattern', 'mol.*'),
-      str('extra', 'Keywords', '', 'e.g. singleproc one'),
+      str('molid', 'Molecule template ID', 'mol1'),
+      str('file', 'File', 'mol1.mol'),
     ],
-    build: v => [line('write_molecule', v.file || 'mol.*', v.extra)],
+    build: v => [line('write_molecule', v.molid, v.file || 'mol1.mol')],
   },
   {
     id: 'angle_write',
@@ -1386,12 +1470,14 @@ export const OUTPUT_COMMANDS: CommandDef[] = [
     section: 'output',
     category: 'Checkpoints',
     doc: 'https://docs.lammps.org/angle_write.html',
+    // docs.lammps.org/angle_write.html: "angle_write atype N file keyword"
     params: [
-      str('group', 'Group', 'all'),
-      str('type', 'Angle type', '1'),
-      str('file', 'File', 'angles.txt'),
+      str('type', 'Type', '1'),
+      num('n', 'Number of table points N', '500'),
+      str('file', 'File', 'table.txt'),
+      str('keyword', 'Section keyword', 'Angle_1'),
     ],
-    build: v => [line('angle_write', v.group, v.type, v.file || 'angles.txt')],
+    build: v => [line('angle_write', v.type, v.n, v.file || 'table.txt', v.keyword)],
   },
   {
     id: 'bond_write',
@@ -1400,12 +1486,17 @@ export const OUTPUT_COMMANDS: CommandDef[] = [
     section: 'output',
     category: 'Checkpoints',
     doc: 'https://docs.lammps.org/bond_write.html',
+    // docs.lammps.org/bond_write.html: "bond_write btype N inner outer file
+    // keyword itype jtype" (itype, jtype optional).
     params: [
-      str('group', 'Group', 'all'),
       str('type', 'Bond type', '1'),
-      str('file', 'File', 'bonds.txt'),
+      num('n', 'Number of table points N', '500'),
+      num('inner', 'Inner bond length', '0.5'),
+      num('outer', 'Outer bond length', '3.5'),
+      str('file', 'File', 'table.txt'),
+      str('keyword', 'Section keyword', 'Bond_1'),
     ],
-    build: v => [line('bond_write', v.group, v.type, v.file || 'bonds.txt')],
+    build: v => [line('bond_write', v.type, v.n, v.inner, v.outer, v.file || 'table.txt', v.keyword)],
   },
   {
     id: 'dihedral_write',
@@ -1414,12 +1505,14 @@ export const OUTPUT_COMMANDS: CommandDef[] = [
     section: 'output',
     category: 'Checkpoints',
     doc: 'https://docs.lammps.org/dihedral_write.html',
+    // docs.lammps.org/dihedral_write.html: "dihedral_write dtype N file keyword"
     params: [
-      str('group', 'Group', 'all'),
-      str('type', 'Dihedral type', '1'),
-      str('file', 'File', 'dihedrals.txt'),
+      str('type', 'Type', '1'),
+      num('n', 'Number of table points N', '500'),
+      str('file', 'File', 'table.txt'),
+      str('keyword', 'Section keyword', 'Dihedral_1'),
     ],
-    build: v => [line('dihedral_write', v.group, v.type, v.file || 'dihedrals.txt')],
+    build: v => [line('dihedral_write', v.type, v.n, v.file || 'table.txt', v.keyword)],
   },
   {
     id: 'group2ndx',
@@ -1452,7 +1545,9 @@ export const OUTPUT_COMMANDS: CommandDef[] = [
     category: 'Misc',
     doc: 'https://docs.lammps.org/region2vmd.html',
     params: [
-      str('args', 'Arguments', 'box draw', 'region-ID(s) + draw/nodraw …'),
+      // docs.lammps.org/region2vmd.html: "region2vmd filename keyword arg ..."
+      // with "keyword = region or color or material or command".
+      str('args', 'Arguments', 'regions.vmd region box', 'filename region ID · color name · material name · command "…"'),
     ],
     build: v => [line('region2vmd', v.args)],
   },
@@ -1513,7 +1608,9 @@ export const OUTPUT_COMMANDS: CommandDef[] = [
     params: [
       str('id', 'Compute ID', 'centro'),
       str('group', 'Group', 'all'),
-      en('lattice', 'Lattice', ['fcc', 'bcc', 'nrel'], 'fcc'),
+      // docs.lammps.org/compute_centro_atom.html: "lattice = fcc or bcc or N
+      // = # of neighbors per atom to include"
+      str('lattice', 'Lattice (fcc, bcc or neighbour count N)', 'fcc'),
     ],
     build: v => [line('compute', v.id, v.group, 'centro/atom', v.lattice)],
   },
@@ -1594,9 +1691,10 @@ export const OUTPUT_COMMANDS: CommandDef[] = [
     params: [
       str('id', 'Compute ID', 'vacf'),
       str('group', 'Group', 'all'),
-      num('n', 'Sample every N steps', '1'),
     ],
-    build: v => [line('compute', v.id, v.group, 'vacf', v.n)],
+    // docs.lammps.org/compute_vacf.html: "compute ID group-ID vacf" — no
+    // further arguments (sample it with fix ave/time).
+    build: v => [line('compute', v.id, v.group, 'vacf')],
   },
 ];
 
@@ -1672,10 +1770,15 @@ export const CONTROL_COMMANDS: CommandDef[] = [
   {
     id: 'fix_berendsen',
     command: 'fix',
-    label: 'fix berendsen — weak-coupling T',
+    label: 'fix berendsen (no such style — emits temp/berendsen)',
     section: 'control',
     category: 'Thermostats',
-    doc: 'https://docs.lammps.org/fix_berendsen.html',
+    doc: 'https://docs.lammps.org/fix_temp_berendsen.html',
+    // There is no "fix berendsen" in LAMMPS (docs.lammps.org/fix_berendsen.html
+    // is a 404); the Berendsen thermostat is "fix ID group-ID temp/berendsen
+    // Tstart Tstop Tdamp" (docs.lammps.org/fix_temp_berendsen.html). Kept so
+    // old pipelines still load, and it now emits the real command.
+    deprecated: 'There is no fix berendsen in LAMMPS — this step emits fix temp/berendsen; use that command instead.',
     params: [
       str('id', 'Fix ID', 'berend'),
       str('group', 'Group', 'all'),
@@ -1683,7 +1786,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       num('temp_end', 'T end', '300.0'),
       num('tdamp', 'T damp', '0.1'),
     ],
-    build: v => [line('fix', v.id, v.group, 'berendsen', v.temp_start, v.temp_end, v.tdamp)],
+    build: v => [line('fix', v.id, v.group, 'temp/berendsen', v.temp_start, v.temp_end, v.tdamp)],
   },
   {
     id: 'fix_minimize',
@@ -1722,9 +1825,13 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       str('group', 'Group', 'water'),
       num('tol', 'Tolerance', '1.0e-4'),
       num('iter', 'Max SHAKE iterations', '20'),
-      str('args', 'Constraints + keywords', 'b 1 a 1', 'b N · a N · t N · e N · mol · minlen …'),
+      num('nprint', 'Print statistics every N steps (0 = never)', '0'),
+      str('args', 'Constraints + keywords', 'b 1 a 1', 'b N · a N · t N · m mass · mol ID · kbond K · store yes'),
     ],
-    build: v => [line('fix', v.id, v.group, 'shake', v.tol, v.iter, v.args)],
+    // docs.lammps.org/fix_shake.html: "fix ID group-ID style tol iter N
+    // constraint values ..." with "N = print SHAKE or RATTLE statistics every
+    // this many timesteps (0 = never)" — N is required.
+    build: v => [line('fix', v.id, v.group, 'shake', v.tol, v.iter, v.nprint, v.args)],
   },
   {
     id: 'fix_rigid',
@@ -1736,29 +1843,46 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     params: [
       str('id', 'Fix ID', 'rigid'),
       str('group', 'Group', 'molecules'),
-      en('style', 'Style', ['small', 'nve', 'nvt', 'npt'], 'nvt'),
-      str('args', 'Style args', 'temp 300 300 100'),
+      en('style', 'Style', ['rigid', 'rigid/nve', 'rigid/nvt', 'rigid/npt', 'rigid/nph',
+        'rigid/small', 'rigid/nve/small', 'rigid/nvt/small', 'rigid/npt/small', 'rigid/nph/small'], 'rigid/nvt'),
+      en('bodystyle', 'Bodies', ['single', 'molecule', 'group'], 'molecule'),
+      str('args', 'Body args + keywords', 'temp 300 300 100', 'group: N groupIDs · temp T T damp · iso P P damp · langevin …'),
     ],
-    build: v => [line('fix', v.id, v.group, 'rigid', v.style, v.args)],
+    // docs.lammps.org/fix_rigid.html: "fix ID group-ID style bodystyle args
+    // keyword values ..." with "style = rigid or rigid/nve or rigid/nvt or
+    // rigid/npt or rigid/nph or rigid/small or ..." and "bodystyle = single
+    // or molecule or group". (Older saved steps stored only the suffix.)
+    build: v => [line('fix', v.id, v.group,
+      v.style.startsWith('rigid') ? v.style : `rigid/${v.style}`, v.bodystyle, v.args)],
   },
   {
     id: 'fix_wall',
     command: 'fix',
-    label: 'fix wall — reflective walls',
+    label: 'fix wall/<style> — single LJ / colloid / harmonic wall',
     section: 'control',
     category: 'Walls',
     doc: 'https://docs.lammps.org/fix_wall.html',
     params: [
       str('id', 'Fix ID', 'walls'),
       str('group', 'Group', 'all'),
-      en('style', 'Potential', ['lj93', 'lj126', 'colloid', 'harmonic', 'reflect'], 'lj126'),
-      en('axis', 'Axis', ['xlo', 'xhi', 'ylo', 'yhi', 'zlo', 'zhi'], 'zlo'),
+      en('style', 'Potential', ['lj93', 'lj126', 'lj1043', 'colloid', 'harmonic'], 'lj126'),
+      en('axis', 'Face', ['xlo', 'xhi', 'ylo', 'yhi', 'zlo', 'zhi'], 'zlo'),
       num('pos', 'Position', '0.0'),
       num('epsilon', 'epsilon', '1.0'),
       num('sigma', 'sigma', '1.0'),
       num('cutoff', 'cutoff', '3.0'),
+      en('units', 'units kw', ['box', 'lattice'], 'box'),
     ],
-    build: v => [line('fix', v.id, v.group, 'wall', v.style, v.axis, v.pos, v.epsilon, v.sigma, v.cutoff)],
+    // docs.lammps.org/fix_wall.html: "fix ID group-ID style [tabstyle] [N]
+    // face args ... keyword value ..." with "style = wall/lj93 or wall/lj126
+    // or wall/lj1043 or wall/colloid or wall/harmonic ..."; for these "args =
+    // coord epsilon sigma cutoff"; "units value = lattice or box". There is no
+    // bare "wall" style. A reflecting wall is fix wall/reflect, which takes
+    // only "face arg" pairs (older saved steps with style 'reflect').
+    build: v => [v.style === 'reflect'
+      ? line('fix', v.id, v.group, 'wall/reflect', v.axis, v.pos, v.units && line('units', v.units))
+      : line('fix', v.id, v.group, `wall/${v.style}`, v.axis, v.pos, v.epsilon, v.sigma, v.cutoff,
+        v.units && line('units', v.units))],
   },
   {
     id: 'fix_addforce',
@@ -1785,8 +1909,11 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       str('id', 'Fix ID', 'drift'),
       str('group', 'Group', 'all'),
       num('n', 'Every N steps', '100'),
-      str('args', 'Keywords', '', 'linear 1 1 1 · angular · one · reverse'),
+      str('args', 'Keywords', 'linear 1 1 1', 'linear xflag yflag zflag · angular · rescale'),
     ],
+    // docs.lammps.org/fix_momentum.html: "fix ID group-ID momentum N keyword
+    // values ..." — "one or more keyword/value pairs may be appended" with
+    // "keyword = linear or angular or rescale"; at least one is required.
     build: v => [line('fix', v.id, v.group, 'momentum', v.n, v.args)],
   },
   {
@@ -1872,11 +1999,10 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       num('window', 'Window T', '0.0', 'only rescale outside window'),
       num('fraction', 'Fraction', '1.0', 'velocity rescale fraction'),
     ],
-    build: v => [
-      line('fix', v.id, v.group, 'temp/rescale', v.n, v.t_start, v.t_end,
-        Number(v.window) > 0 ? line('window', v.window) : '',
-        line('fraction', v.fraction)),
-    ],
+    // docs.lammps.org/fix_temp_rescale.html: "fix ID group-ID temp/rescale N
+    // Tstart Tstop window fraction" — window and fraction are positional
+    // numbers, not keywords (e.g. "fix 3 flow temp/rescale 100 1.0 1.1 0.02 0.5").
+    build: v => [line('fix', v.id, v.group, 'temp/rescale', v.n, v.t_start, v.t_end, v.window, v.fraction)],
   },
   {
     id: 'fix_temp_berendsen',
@@ -1992,10 +2118,11 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       str('id', 'Fix ID', 'adaptivedt'),
       str('group', 'Group', 'all'),
       num('n', 'Check every N steps', '1'),
-      num('tmin', 'dt lower bound', '0.0001'),
-      num('tmax', 'dt upper bound', '0.01'),
+      num('tmin', 'dt lower bound (or NULL)', '0.0001'),
+      num('tmax', 'dt upper bound (or NULL)', '0.01'),
       num('xmax', 'Max atom displacement per step', '0.1'),
-      str('extra', 'Extra keywords', '', 'e.g. emin E · error warn'),
+      // docs.lammps.org/fix_dt_reset.html: "keyword = emax or units"
+      str('extra', 'Extra keywords', '', 'emax E · units box|lattice'),
     ],
     build: v => [line('fix', v.id, v.group, 'dt/reset', v.n, v.tmin, v.tmax, v.xmax, v.extra)],
   },
@@ -2013,33 +2140,49 @@ export const CONTROL_COMMANDS: CommandDef[] = [
   {
     id: 'fix_spring',
     command: 'fix',
-    label: 'fix spring — harmonic tether/pull',
+    label: 'fix spring — harmonic tether / couple',
     section: 'control',
     category: 'Forcing',
     doc: 'https://docs.lammps.org/fix_spring.html',
     params: [
       str('id', 'Fix ID', 'springy'),
       str('group', 'Group', 'pull'),
+      en('mode', 'Mode', ['tether', 'couple'], 'tether'),
+      str('group2', '2nd group (couple only)', '', 'group-ID2'),
       num('k', 'Spring constant K', '10.0'),
-      en('mode', 'Mode', ['tether', 'pull'], 'tether'),
-      str('coords', 'Tether point x y z (or pull dir x y z)', '0 0 0'),
+      str('coords', 'x y z (tether point, or couple direction; NULL allowed)', '0.0 0.0 0.0'),
+      num('r0', 'Equilibrium distance R0', '0.0'),
     ],
-    build: v => [line('fix', v.id, v.group, 'spring', v.k, v.coords)],
+    // docs.lammps.org/fix_spring.html: "fix ID group-ID spring keyword
+    // values"; "keyword = tether or couple"; "tether values = K x y z R0";
+    // "couple values = group-ID2 K x y z R0". (Older saved steps used 'pull'.)
+    build: v => {
+      const couple = v.mode === 'couple';
+      return [line('fix', v.id, v.group, 'spring', couple ? 'couple' : 'tether',
+        couple ? v.group2 : '', v.k, v.coords, v.r0)];
+    },
   },
   {
     id: 'fix_drag',
     command: 'fix',
-    label: 'fix drag — damp COM motion toward target',
+    label: 'fix drag — pull atoms toward a point',
     section: 'control',
     category: 'Forcing',
     doc: 'https://docs.lammps.org/fix_drag.html',
     params: [
       str('id', 'Fix ID', 'dragged'),
       str('group', 'Group', 'all'),
-      num('d', 'Drag coefficient D', '5.0'),
-      num('max', 'Max force cutoff', '20.0'),
+      str('x', 'Target x (or NULL)', '0.0'),
+      str('y', 'Target y (or NULL)', '0.0'),
+      str('z', 'Target z (or NULL)', '0.0'),
+      num('fmag', 'Force magnitude', '5.0'),
+      num('delta', 'No force within distance', '2.0'),
     ],
-    build: v => [line('fix', v.id, v.group, 'drag', v.d, v.max)],
+    // docs.lammps.org/fix_drag.html: "fix ID group-ID drag x y z fmag delta"
+    // with "x,y,z = coord to drag atoms towards", "fmag = magnitude of force
+    // to apply to each atom", "delta = cutoff distance inside of which force
+    // is not applied".
+    build: v => [line('fix', v.id, v.group, 'drag', v.x, v.y, v.z, v.fmag, v.delta)],
   },
   {
     id: 'fix_viscous',
@@ -2066,9 +2209,13 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       str('id', 'Fix ID', 'grav'),
       str('group', 'Group', 'all'),
       num('magnitude', 'Magnitude g', '9.8'),
-      str('direction', 'Direction', 'down', 'e.g. down · up · chute dir …'),
+      en('style', 'Direction style', ['vector', 'chute', 'spherical'], 'vector'),
+      str('args', 'Style args', '0 0 -1', 'vector: x y z · chute: angle · spherical: phi theta'),
     ],
-    build: v => [line('fix', v.id, v.group, 'gravity', v.magnitude, v.direction)],
+    // docs.lammps.org/fix_gravity.html: "fix ID group gravity magnitude style
+    // args" with "style = chute or spherical or gradient or vector"; "chute
+    // args = angle", "spherical args = phi theta", "vector args = x y z".
+    build: v => [line('fix', v.id, v.group, 'gravity', v.magnitude, v.style, v.args)],
   },
   {
     id: 'fix_efield',
@@ -2148,23 +2295,26 @@ export const CONTROL_COMMANDS: CommandDef[] = [
   {
     id: 'fix_wall_potential',
     command: 'fix',
-    label: 'fix wall — attractive/repulsive wall',
+    label: 'fix wall/<style> — attractive/repulsive wall',
     section: 'control',
     category: 'Walls',
     doc: 'https://docs.lammps.org/fix_wall.html',
     params: [
       str('id', 'Fix ID', 'walls'),
       str('group', 'Group', 'all'),
-      en('style', 'Potential', ['lj93', 'lj126', 'lj1043', 'colloid', 'harmonic', 'morse'], 'lj126'),
+      en('style', 'Potential', ['lj93', 'lj126', 'lj1043', 'colloid', 'harmonic'], 'lj126'),
       en('face', 'Wall face', ['xlo', 'xhi', 'ylo', 'yhi', 'zlo', 'zhi'], 'zlo'),
       num('pos', 'Position', '0.0'),
       num('epsilon', 'epsilon', '1.0'),
-      num('sigma', 'sigma / D / k', '1.0'),
-      num('cutoff', 'cutoff / alpha / r0', '3.0'),
-      en('units', 'units kw', ['box', 'lattice', 'reduced'], 'box'),
+      num('sigma', 'sigma', '1.0'),
+      num('cutoff', 'cutoff', '3.0'),
+      en('units', 'units kw', ['box', 'lattice'], 'box'),
     ],
+    // docs.lammps.org/fix_wall.html: "style = wall/lj93 or wall/lj126 or
+    // wall/lj1043 or wall/colloid or wall/harmonic ..."; "args = coord epsilon
+    // sigma cutoff"; "units value = lattice or box".
     build: v => [
-      line('fix', v.id, v.group, 'wall', v.style, v.face, v.pos,
+      line('fix', v.id, v.group, `wall/${v.style}`, v.face, v.pos,
         v.epsilon, v.sigma, v.cutoff, v.units ? line('units', v.units) : ''),
     ],
   },
@@ -2249,13 +2399,16 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     params: [
       str('id', 'Fix ID', 'evap'),
       str('group', 'Group', 'liquid'),
-      num('n', 'Delete one atom every N steps', '100'),
-      str('region', 'Restrict to region', '', 'optional region ID'),
+      num('n', 'Delete every N steps', '1000'),
+      num('m', 'Atoms deleted each time', '10'),
+      str('region', 'Region ID (required)', 'surface'),
+      num('seed', 'Random seed', '49892'),
       flag('molecule', 'molecule yes — remove whole molecules'),
     ],
+    // docs.lammps.org/fix_evaporate.html: "fix ID group-ID evaporate N M
+    // region-ID seed" — all four are required; "keyword = molecule".
     build: v => [
-      line('fix', v.id, v.group, 'evaporate', v.n,
-        v.region && line('region', v.region),
+      line('fix', v.id, v.group, 'evaporate', v.n, v.m, v.region, v.seed,
         v.molecule === 'yes' ? 'molecule yes' : ''),
     ],
   },
@@ -2284,18 +2437,23 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     params: [
       str('id', 'Fix ID', 'exchange'),
       str('group', 'Group (gas type)', 'gas'),
-      num('nevery', 'Nevery (MD steps per MC attempt)', '100'),
-      num('nmove', 'Nmove rotation/displacement attempts', '10'),
-      num('nexchg', 'Nexchange gas insert/delete attempts', '10'),
-      num('nwexchange', 'Nwexchange MC cycles before recompute', '10'),
-      num('temp', 'Temperature T', '300.0'),
+      num('nevery', 'N — invoke every N steps', '100'),
+      num('nexchg', 'X — exchanges attempted every N steps', '100'),
+      num('nmove', 'M — MC moves attempted every N steps', '100'),
+      str('type', 'Inserted atom type (0 with mol)', '1'),
       num('seed', 'RNG seed', '6172'),
-      str('disp', 'Max displacement distance', '0.5'),
-      str('extra', 'Keywords', 'pressure 1.0', 'e.g. pressure P · fugacity · molecule …'),
+      num('temp', 'Reservoir temperature T', '300.0'),
+      num('mu', 'Chemical potential mu', '-1.0'),
+      num('disp', 'Max MC displacement', '0.5'),
+      str('extra', 'Keywords', '', 'pressure P · fugacity_coeff f · mol ID · region ID · full_energy …'),
     ],
+    // docs.lammps.org/fix_gcmc.html: "fix ID group-ID gcmc N X M type seed T
+    // mu displace keyword values ..." — X = "average number of GCMC exchanges
+    // to attempt every N steps", M = "average number of MC moves"; mu stays
+    // required even when the pressure keyword is used.
     build: v => [
-      line('fix', v.id, v.group, 'gcmc', v.nevery, v.nmove, v.nexchg,
-        v.nwexchange, v.temp, v.seed, 'disp', v.disp, v.extra),
+      line('fix', v.id, v.group, 'gcmc', v.nevery, v.nexchg, v.nmove,
+        v.type, v.seed, v.temp, v.mu, v.disp, v.extra),
     ],
   },
   {
@@ -2373,7 +2531,9 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     doc: 'https://docs.lammps.org/variable.html',
     params: [
       str('name', 'Name', 'myCoord'),
-      str('expr', 'Per-atom formula', 'atom.x > 5.0'),
+      // docs.lammps.org/variable.html: "atom vector = id, mass, type, mol,
+      // radius, q, x, y, z, vx, vy, vz, fx, fy, fz" — bare names, no prefix.
+      str('expr', 'Per-atom formula', 'x>5.0', 'quote it if it contains spaces'),
     ],
     build: v => [line('variable', v.name, 'atom', v.expr)],
   },
@@ -2513,7 +2673,9 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       str('url', 'URL', 'https://lammps.org/potentials/Cu_u3.eam'),
       str('output', 'Output file', '', 'optional'),
     ],
-    build: v => [line('geturl', v.url, v.output)],
+    // docs.lammps.org/geturl.html: "geturl url keyword args ..." with
+    // "output filename = write to filename instead of inferring the name"
+    build: v => [line('geturl', v.url, v.output && line('output', v.output))],
   },
   {
     id: 'fix_ave_chunk',
@@ -2533,8 +2695,10 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       str('file', 'Output file', 'profile.txt'),
       str('extra', 'Keywords', '', 'e.g. norm sample · ave running · bias …'),
     ],
-    build: v => [line('fix', v.id, v.group, 'ave/chunk', v.chunk,
-      v.nevery, v.nrepeat, v.nfreq, v.values, v.file && line('file', v.file), v.extra)],
+    // docs.lammps.org/fix_ave_chunk.html: "fix ID group-ID ave/chunk Nevery
+    // Nrepeat Nfreq chunkID value1 value2 ... keyword args ..."
+    build: v => [line('fix', v.id, v.group, 'ave/chunk', v.nevery, v.nrepeat, v.nfreq,
+      v.chunk, v.values, v.file && line('file', v.file), v.extra)],
   },
   {
     id: 'fix_ave_correlate',
@@ -2561,14 +2725,23 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     section: 'control',
     category: 'Constraints',
     doc: 'https://docs.lammps.org/fix_qeq_reaxff.html',
+    // [VERIFIED 2026-09-22] docs.lammps.org/fix_qeq_reaxff.html:
+    //   fix ID group-ID qeq/reaxff Nevery cutlo cuthi tolerance params args
+    //   example: fix 1 all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff
     params: [
       str('id', 'Fix ID', 'qeq'),
       str('group', 'Group', 'all'),
       num('nevery', 'Every N steps', '1'),
-      num('lepsilon', 'Least-squares epsilon', '1.0e-6'),
-      num('itermax', 'Max iterations', '200'),
+      num('cutlo', 'Taper cutoff low', '0.0'),
+      num('cuthi', 'Taper cutoff high', '10.0'),
+      num('tolerance', 'Convergence tolerance', '1.0e-6'),
+      str('params', 'Params', 'reaxff', 'a parameter file, or "reaxff" to read them from the force field'),
+      str('args', 'Extra keywords', '', 'e.g. maxiter N · dual · nowarn'),
     ],
-    build: v => [line('fix', v.id, v.group, 'qeq/reaxff', v.nevery, v.lepsilon, v.itermax)],
+    build: v => [
+      line('fix', v.id, v.group, 'qeq/reaxff',
+        v.nevery, v.cutlo, v.cuthi, v.tolerance, v.params, v.args),
+    ],
   },
   {
     id: 'fix_reaxff_species',
@@ -2579,14 +2752,19 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     doc: 'https://docs.lammps.org/fix_reaxff_species.html',
     params: [
       str('id', 'Fix ID', 'spec'),
-      num('nevery', 'Every N steps', '100'),
-      num('nmaxmol', 'Max molecules estimate', '100'),
-      str('file', 'Species file', 'species.txt'),
-      str('bulk', 'Bulk file (optional)', '', 'e.g. bulk.txt'),
-      str('maxspec', 'Max species', '', 'keyword maxspec N'),
+      str('group', 'Group', 'all'),
+      num('nevery', 'Nevery (sample bond orders)', '10'),
+      num('nrepeat', 'Nrepeat (samples averaged)', '10'),
+      num('nfreq', 'Nfreq (output every)', '100'),
+      str('file', 'Species file', 'species.out'),
+      str('extra', 'Keywords', '', 'cutoff I J R · element C H O · position N file · delete file …'),
     ],
-    build: v => [line('fix', v.id, 'all', 'reaxff/species', v.nevery, v.nmaxmol,
-      v.file && line('file', v.file), v.bulk && line('bulk', v.bulk), v.maxspec)],
+    // docs.lammps.org/fix_reaxff_species.html: "fix ID group-ID
+    // reaxff/species Nevery Nrepeat Nfreq filename keyword value ..." — the
+    // filename is positional; "keyword = cutoff or element or position or
+    // delete or delete_rate_limit".
+    build: v => [line('fix', v.id, v.group || 'all', 'reaxff/species', v.nevery, v.nrepeat, v.nfreq,
+      v.file, v.extra)],
   },
   {
     id: 'fix_temp_csvr',
@@ -2617,11 +2795,14 @@ export const CONTROL_COMMANDS: CommandDef[] = [
       str('group', 'Group', 'all'),
       num('n', 'Check every N steps', '1'),
       str('btype', 'Bond type', '1'),
-      num('rmin', 'Break beyond distance', '5.0'),
-      num('maxdist', 'maxdistance (optional)', '', ''),
+      num('rmin', 'Rmax — bonds longer than this can break', '5.0'),
+      str('prob', 'prob fraction seed (optional)', '', 'e.g. 0.5 49829'),
     ],
+    // docs.lammps.org/fix_bond_break.html: "fix ID group-ID bond/break Nevery
+    // bondtype Rmax keyword values ..." with "keyword = prob" and "prob values
+    // = fraction seed" — there is no maxdistance keyword.
     build: v => [line('fix', v.id, v.group, 'bond/break', v.n, v.btype, v.rmin,
-      Number(v.maxdist) > 0 ? line('maxdistance', v.maxdist) : '')],
+      v.prob && line('prob', v.prob))],
   },
   {
     id: 'fix_bond_create',
@@ -2633,14 +2814,21 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     params: [
       str('id', 'Fix ID', 'bcreate'),
       str('group', 'Group', 'all'),
-      num('n', 'Check every N steps', '1'),
-      str('btype', 'Bond type', '1'),
-      num('rlow', 'Create below distance', '1.2'),
-      num('rhigh', '…but above distance', '0.8'),
-      str('iparam', 'atype + iparams', '1 0 1 1 0'),
+      num('n', 'Check every N steps', '10'),
+      str('itype', 'Atom type i', '1'),
+      str('jtype', 'Atom type j', '2'),
+      num('rmin', 'Rmin — bond when closer than', '0.8'),
+      str('btype', 'Type of created bonds', '1'),
+      str('iparam', 'iparam maxbond newtype (optional)', '', 'e.g. 2 3'),
+      str('jparam', 'jparam maxbond newtype (optional)', '', 'e.g. 1 27'),
+      str('prob', 'prob fraction seed (optional)', '', 'e.g. 0.5 85784'),
     ],
-    build: v => [line('fix', v.id, v.group, 'bond/create', v.n, v.btype,
-      v.rlow, v.rhigh, v.iparam)],
+    // docs.lammps.org/fix_bond_create.html: "fix ID group-ID style Nevery itype
+    // jtype Rmin bondtype keyword values ..." with "iparam values = maxbond,
+    // newtype", "jparam values = maxbond, newtype", "prob values = fraction seed".
+    build: v => [line('fix', v.id, v.group, 'bond/create', v.n, v.itype, v.jtype, v.rmin, v.btype,
+      v.iparam && line('iparam', v.iparam), v.jparam && line('jparam', v.jparam),
+      v.prob && line('prob', v.prob))],
   },
   {
     id: 'fix_any',
@@ -2676,7 +2864,9 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     section: 'control',
     category: 'Actions',
     doc: 'https://docs.lammps.org/neb.html',
-    params: [str('args', 'Arguments', '1.0 1.0 1000 1000 100', 'etol ftol niter nevery nreplica')],
+    // docs.lammps.org/neb.html: "neb etol ftol N1 N2 Nevery file-style arg
+    // keyword values" with "file-style = final or each or none".
+    params: [str('args', 'Arguments', '0.0 0.001 1000 500 50 none', 'etol ftol N1 N2 Nevery final|each file · none')],
     build: v => [line('neb', v.args)],
   },
   {
@@ -2686,7 +2876,9 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     section: 'control',
     category: 'Actions',
     doc: 'https://docs.lammps.org/neb_spin.html',
-    params: [str('args', 'Arguments', '1.0 1.0 1000 1000 100')],
+    // docs.lammps.org/neb_spin.html: "neb/spin etol ttol N1 N2 Nevery
+    // file-style arg keyword" with "file-style = final or each or none".
+    params: [str('args', 'Arguments', '0.0 0.001 1000 500 50 none', 'etol ttol N1 N2 Nevery final|each file · none')],
     build: v => [line('neb/spin', v.args)],
   },
   {
@@ -2716,7 +2908,9 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     section: 'control',
     category: 'Actions',
     doc: 'https://docs.lammps.org/temper.html',
-    params: [str('args', 'Arguments', '100 100 100 2 12345', 'N swap steps temp index seed')],
+    // docs.lammps.org/temper.html: "temper Nsteps Nevery temp fix-ID seed1
+    // seed2 index" (index optional).
+    params: [str('args', 'Arguments', '100000 100 $t tempfix 0 58728', 'Nsteps Nevery temp fix-ID seed1 seed2 [index]')],
     build: v => [line('temper', v.args)],
   },
   {
@@ -2823,7 +3017,9 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     doc: 'https://docs.lammps.org/python.html',
     params: [
       str('func', 'Function name', 'myFunc'),
-      str('args', 'Keywords', 'input 1 2 format ii return v_res here here.py', 'here|file …'),
+      // docs.lammps.org/python.html: "file arg = filename" and "here arg =
+      // inline" (inline Python code, not a file name).
+      str('args', 'Keywords', 'input 1 2 format ii return v_res file here.py', 'input N … format … return v_x · file name.py | here inline-code'),
     ],
     build: v => [line('python', v.func, v.args)],
   },

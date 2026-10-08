@@ -1,0 +1,32 @@
+# oracle: fix adapt pair lj/cut epsilon 1 1 and sigma 2 2 ramped; the 1-2 pair is mixed and must follow the new diagonal values
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         sc 0.8
+region          b block 0 4 0 4 0 4
+create_box      2 b
+create_atoms    1 box
+mass            * 1.0
+set             group all type 1
+group           odd id 1:64:2
+set             group odd type 2
+variable        dx atom 0.1*sin(1.3*x+0.7*y)
+variable        dy atom 0.1*cos(0.9*y-1.1*z)
+variable        dz atom 0.1*sin(1.7*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.5*sin(1.7*x+2.3*y+0.7*z)
+variable        vy atom 0.5*cos(2.1*x-1.1*y+0.3*z)
+variable        vz atom 0.5*sin(0.5*x+1.9*z+1.3*y)
+velocity        all set v_vx v_vy v_vz units box
+timestep        0.002
+thermo_style    custom step temp pe ke etotal press pxx pyy pzz
+thermo_modify   format float %.15g
+thermo          10
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+pair_coeff      2 2 0.5 1.1
+variable        eps equal ramp(1.0,2.5)
+variable        sig equal ramp(1.1,0.9)
+fix             1 all adapt 2 pair lj/cut epsilon 1 1 v_eps pair lj/cut sigma 2 2 v_sig
+fix             2 all nve
+run             100

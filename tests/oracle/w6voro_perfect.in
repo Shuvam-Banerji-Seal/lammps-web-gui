@@ -1,0 +1,19 @@
+# oracle: compute voronoi/atom on a perfect fcc crystal (degenerate: bisector planes pass through cell vertices), volume/faces dumped and edge histogram printed
+# oracle-files: perfect.dump
+# oracle-compare: thermo=first-last
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+compute         v all voronoi/atom edge_histo 8
+compute         s all reduce sum c_v[2]
+thermo_style    custom step c_v[1] c_v[2] c_v[3] c_v[4] c_v[5] c_v[6] c_v[7] c_v[8] c_v[9] c_s
+thermo_modify   format float %.15g
+dump            d all custom 1 perfect.dump id c_v[*]
+dump_modify     d sort id format float %.12g
+run             0

@@ -1,0 +1,30 @@
+# oracle: fix vector — one input (vector), two inputs (array), nmax ring; reductions of stored values
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.44 87287 loop all
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+timestep        0.004
+fix             1 all nve
+compute         ke all ke
+compute         pe all pe
+fix             3 all vector 5 c_ke
+fix             4 all vector 5 c_ke c_pe
+fix             5 all vector 5 c_ke nmax 3
+variable        e1 equal f_3[1]
+variable        s3 equal sum(f_3)
+variable        m3 equal ave(f_3)
+variable        a41 equal f_4[1][2]
+variable        s41 equal sum(f_4[1])
+variable        q42 equal ave(f_4[2])
+variable        s5 equal sum(f_5)
+thermo_style    custom step temp pe v_e1 v_s3 v_m3 v_a41 v_s41 v_q42 v_s5
+thermo_modify   format float %.15g
+thermo          5
+run             20

@@ -1,0 +1,19 @@
+# oracle: energy minimization (cg) of a perturbed lattice; compared by first and final energy
+# oracle-compare: thermo=first-last atoms=none rel=1e-7 skip=fnorm,fmax
+units           lj
+atom_style      atomic
+lattice         fcc 1.0
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        dx atom 0.07*sin(3.1*x+1.7*y)
+variable        dy atom 0.07*cos(2.3*y+0.9*z)
+variable        dz atom 0.07*sin(1.9*z+2.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+pair_modify     shift yes
+thermo_style    custom step pe fnorm fmax press
+thermo_modify   format float %.15g
+minimize        1.0e-12 1.0e-10 2000 20000

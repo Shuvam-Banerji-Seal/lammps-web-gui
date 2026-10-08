@@ -1,0 +1,27 @@
+# oracle: compute temp/cs on a small core/shell system (8 core-shell pairs bonded by bond_style harmonic, 6 non-polarized ions), with fix nvt thermostatting the pair centre-of-mass motion through fix_modify temp
+# oracle-inputs: w14temp_cs.data
+# oracle-compare: thermo=all rel=1e-8 abs=1e-10
+units lj
+atom_style full
+comm_modify vel yes
+read_data w14temp_cs.data
+group cores type 1
+group shells type 2
+group ions type 3
+pair_style lj/cut/coul/cut 4.0
+pair_coeff * * 0.1 1.0
+bond_style harmonic
+bond_coeff 1 300.0 0.08
+variable vx atom 0.4*sin(3.1*x+1.7*y)
+variable vy atom 0.4*cos(2.3*y-1.3*z)
+variable vz atom 0.4*sin(1.9*z+0.8*x)
+velocity all set v_vx v_vy v_vz units box
+timestep 0.001
+compute cs all temp/cs cores shells
+compute ct all temp
+thermo_style custom step temp c_cs c_cs[1] c_cs[2] c_cs[4] c_ct pe press
+thermo_modify format float %.15g
+thermo 10
+fix 1 all nvt temp 0.3 0.3 0.5
+fix_modify 1 temp cs
+run 60

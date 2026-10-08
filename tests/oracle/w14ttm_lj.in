@@ -1,0 +1,28 @@
+# Wave 14: fix ttm in lj units (thermo_modify norm yes divides the extensive fix vector by the atom count,
+# docs.lammps.org/fix_ttm.html: "The vector values calculated are "extensive"."). Eight atoms on a 2x2x2 sc
+# lattice, C_e 1, rho_e 1, kappa_e 0.2, gamma_p 2.0, gamma_s 0.5 with v_0 0.4, seed 99, infile start, two runs.
+# oracle-inputs: w14ttm_lj.init
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         sc 1.0
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+displace_atoms  all move 0.25 0.25 0.25 units box
+variable        vx atom 1.1*sin(0.9*x+0.4*y)
+variable        vy atom 0.9*cos(0.7*y-0.5*z)
+variable        vz atom 0.8*sin(1.1*z+0.3*x)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.0 1.0
+fix             1 all nve
+fix             2 all ttm 99 1.0 1.0 0.2 2.0 0.5 0.4 2 2 2 infile w14ttm_lj.init
+timestep        0.002
+thermo_style    custom step temp pe f_2[1] f_2[2]
+thermo_modify   format float %.15g
+thermo          1
+run             3
+run             2

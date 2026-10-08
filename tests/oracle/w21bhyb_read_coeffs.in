@@ -1,0 +1,24 @@
+# oracle: hybrid bonded coefficients read from the data file coefficient sections (ID style coeffs lines), two sub-styles per kind, compute vectors, 50 nve steps
+# oracle-inputs: w21bhyb_coeffs.data
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      molecular
+bond_style      hybrid harmonic morse
+angle_style     hybrid harmonic cosine
+dihedral_style  hybrid harmonic zero
+improper_style  hybrid harmonic zero
+read_data       w21bhyb_coeffs.data
+pair_style      lj/cut 2.5
+pair_coeff      * * 0.5 0.9
+pair_coeff      1 3 0.8 1.0
+special_bonds   lj 0.0 0.5 0.8
+timestep        0.002
+fix             1 all nve
+compute         cb all bond
+compute         ca all angle
+compute         cd all dihedral
+compute         ci all improper
+thermo_style    custom step temp pe ebond eangle edihed eimp evdwl etotal press c_cb[1] c_cb[2] c_ca[1] c_ca[2] c_cd[1] c_cd[2] c_ci[1] c_ci[2]
+thermo_modify   format float %.15g norm no
+thermo          10
+run             50

@@ -1,0 +1,26 @@
+# oracle: compute voronoi/atom only_group and surface on a group of a distorted bcc crystal, written by a dump
+# oracle-files: surf.dump
+# oracle-compare: thermo=first-last
+units           lj
+atom_style      atomic
+lattice         bcc 0.9
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        dx atom 0.05*sin(1.1*x+0.4*y)
+variable        dy atom 0.05*cos(0.8*y-1.2*z)
+variable        dz atom 0.05*sin(1.5*z+0.3*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+region          left block INF 2.1 INF INF INF INF
+group           left region left
+group           matrix subtract all left
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+compute         v left voronoi/atom surface matrix
+compute         w left voronoi/atom only_group
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+dump            d all custom 1 surf.dump id c_v[*] c_w[*]
+dump_modify     d sort id format float %.12g
+run             0

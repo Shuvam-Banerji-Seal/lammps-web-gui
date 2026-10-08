@@ -1,0 +1,29 @@
+# oracle: pair_style eim, one element (p = 2 pair term), fcc crystal with displaced atoms, NVE
+# oracle-inputs: w14eim_one.eim
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# rel=1e-7: measured in trial runs, native and the engine agree to about 3e-8 relative in the virial and
+# 1e-9 absolute in forces. A pair within about 0.01 A of a cutoff made native and engine forces disagree
+# (see src/engine/force/pair/eim.ts), so the displacements and velocities keep the runs clear of cutoffs.
+units           metal
+atom_style      atomic
+lattice         fcc 4.1
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+pair_style      eim
+pair_coeff      * * Qa w14eim_one.eim Qa
+variable        dx atom 0.08*sin(0.9*x+0.4*y)
+variable        dy atom 0.08*cos(0.7*y-0.5*z)
+variable        dz atom 0.08*sin(1.1*z+0.3*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 2.0*sin(0.9*x+0.4*z)
+variable        vy atom 2.0*cos(0.6*y+0.8*x)
+variable        vz atom 2.0*sin(0.7*z-0.3*y)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+timestep        0.001
+fix             1 all nve
+thermo_style    custom step temp pe etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             50

@@ -1,0 +1,24 @@
+# oracle-inputs: w12tip4p_long_water.data
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-8
+# oracle: 27 rigid TIP4P/2005 waters, lj/cut/tip4p/cut (no kspace); cutoff 4.5 A keeps every Coulomb pair below half the box (no periodic images); shake tolerance 1e-10
+units           real
+atom_style      full
+boundary        p p p
+read_data       w12tip4p_long_water.data
+pair_style      lj/cut/tip4p/cut 1 2 1 1 0.1546 4.5
+pair_coeff      1 1 0.1852 3.1589
+pair_coeff      1 2 0.0 1.0
+pair_coeff      2 2 0.0 1.0
+bond_style      harmonic
+bond_coeff      1 450.0 0.9572
+angle_style     harmonic
+angle_coeff     1 55.0 104.52
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        1.0
+fix             1 all shake 1.0e-10 200 0 b 1 a 1
+fix             2 all nve
+thermo_style    custom step pe evdwl ecoul press
+thermo_modify   format float %.15g
+thermo          10
+run             50

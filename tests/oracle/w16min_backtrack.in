@@ -1,0 +1,21 @@
+# oracle: w16 cg on the 8-atom chain with min_modify line backtrack (Armijo halving), every thermo row
+# oracle-inputs: w16min_chain.data
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+units           real
+atom_style      full
+boundary        f f f
+read_data       w16min_chain.data
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  harmonic
+pair_style      zero 10.0
+pair_coeff      * *
+bond_coeff      1 300.0 1.53
+angle_coeff     1 60.0 111.0
+dihedral_coeff  1 2.0 1 3
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+thermo          1
+min_style       cg
+min_modify    line backtrack
+minimize        1.0e-10 1.0e-10 30 300

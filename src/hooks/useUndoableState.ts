@@ -19,24 +19,29 @@ export function useUndoableState<T>(
   canUndo: boolean;
   canRedo: boolean;
 } {
-  const historyRef = useRef(createHistory<T>(
-    typeof initial === 'function' ? (initial as () => T)() : initial,
-    capacity,
-  ));
+  // Lazy: build the history (and run an `initial` loader such as a
+  // localStorage read) once, not on every render.
+  const historyRef = useRef<ReturnType<typeof createHistory<T>> | null>(null);
+  if (historyRef.current === null) {
+    historyRef.current = createHistory<T>(
+      typeof initial === 'function' ? (initial as () => T)() : initial,
+      capacity,
+    );
+  }
   const [, forceRender] = useState(0);
-  const snapshot: HistoryState<T> = historyRef.current.get();
+  const snapshot: HistoryState<T> = historyRef.current!.get();
 
   const commit = useCallback(() => forceRender(n => n + 1), []);
 
   const resolve = useCallback(
     (next: T | ((prev: T) => T)) =>
-      typeof next === 'function' ? (next as (prev: T) => T)(historyRef.current.get().present) : next,
+      typeof next === 'function' ? (next as (prev: T) => T)(historyRef.current!.get().present) : next,
     [],
   );
 
   const set = useCallback(
     (next: T | ((prev: T) => T)) => {
-      historyRef.current.push(resolve(next));
+      historyRef.current!.push(resolve(next));
       commit();
     },
     [commit, resolve],
@@ -44,19 +49,20 @@ export function useUndoableState<T>(
 
   const replace = useCallback(
     (next: T | ((prev: T) => T)) => {
-      historyRef.current.reset(resolve(next));
+      // keep the undo/redo stacks: switching tabs must not erase them
+      historyRef.current!.replacePresent(resolve(next));
       commit();
     },
     [commit, resolve],
   );
 
   const undo = useCallback(() => {
-    historyRef.current.undo();
+    historyRef.current!.undo();
     commit();
   }, [commit]);
 
   const redo = useCallback(() => {
-    historyRef.current.redo();
+    historyRef.current!.redo();
     commit();
   }, [commit]);
 

@@ -1,0 +1,25 @@
+# oracle: gaussian bonded styles (bond and angle) — two Gaussian terms each, molecular data, NVE
+# oracle-inputs: mol_chains.data
+units           lj
+atom_style      molecular
+bond_style      gaussian
+angle_style     gaussian
+dihedral_style  harmonic
+improper_style  harmonic
+pair_style      lj/cut 2.5
+read_data       mol_chains.data
+pair_coeff      * * 0.5 0.9
+pair_coeff      1 3 0.8 1.0
+bond_coeff      1 1.0 2 1.0 0.25 1.05 1.0 0.25 1.40
+bond_coeff      2 1.0 2 1.0 0.25 1.20 1.0 0.25 1.48
+angle_coeff     1 1.0 2 1.0 0.3 110.0 1.0 0.3 132.0
+angle_coeff     2 1.0 2 1.0 0.12 117.0 1.0 0.12 121.0
+dihedral_coeff  1 1.5 -1 3
+improper_coeff  1 12.0 20.0
+special_bonds   lj 0.0 0.5 0.8
+timestep        0.002
+fix             1 all nve
+thermo_style    custom step temp pe ebond eangle press
+thermo_modify   format float %.15g
+thermo          10
+run             50

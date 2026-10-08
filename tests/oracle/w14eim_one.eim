@@ -1,0 +1,4 @@
+# synthetic single-element EIM file for the w14eim_one oracle case (not a fitted potential)
+global: 2.0 -1.5 1.7
+element: Qa 11 22.99 0.90 1.30 1.30 -1.10 0.0
+pair: Qa Qa 5.41 5.41 -0.30 3.4 7.2 3.1 0.0 0.0 2.0 4.6 0.30 0.60 2.0 2.0

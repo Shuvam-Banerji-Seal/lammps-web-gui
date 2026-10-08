@@ -62,6 +62,19 @@ const covalentRadius = (atomicNumber: number): number =>
   COVALENT_RADII[atomicNumber] ?? DEFAULT_COVALENT_RADIUS;
 
 /**
+ * Noble gases (He, Ne, Ar, Kr, Xe, Rn, Og). Closed-shell atoms do not form
+ * covalent bonds in any structure this viewer renders — they interact only
+ * through dispersion, so the covalent-radius criterion must not be applied
+ * to them. Without this guard the bundled LJ-liquid demo (108 Ar atoms,
+ * public/examples/lj-melt.lammpstrj) gained ~1554 phantom sticks.
+ */
+const NOBLE_GASES = new Set([2, 10, 18, 36, 54, 86, 118]);
+
+/** Two atoms closer than this fraction of the sum of their covalent radii
+ * are an overlap artefact (duplicate/pasted coordinates), not a bond. */
+const OVERLAP_FRACTION = 0.1;
+
+/**
  * Infer bonds from coordinates using covalent radii and a spatial hash grid.
  * Complexity: O(n * k) where k = average neighbors per cell neighborhood,
  * versus O(n^2) for naive all-pairs scanning. Deduplicates pairs by atom id.
@@ -108,6 +121,12 @@ export const inferBonds = (
       const dz = a.z - b.z;
       const d2 = dx * dx + dy * dy + dz * dz;
       if (d2 > threshold * threshold) return;
+      // Overlap artefact, not a bond: nearer than 10% of ra+rb means the two
+      // sites coincide (bad parse / duplicated row), and drawing a stick
+      // there just paints a blob.
+      if (d2 < (OVERLAP_FRACTION * (ra + rb)) * (OVERLAP_FRACTION * (ra + rb))) return;
+      // Noble gases never bond (see NOBLE_GASES above).
+      if (NOBLE_GASES.has(a.type) || NOBLE_GASES.has(b.type)) return;
 
       const key = a.id < b.id ? `${a.id}-${b.id}` : `${b.id}-${a.id}`;
       if (seen.has(key)) return;

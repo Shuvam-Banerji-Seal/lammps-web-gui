@@ -1,0 +1,32 @@
+# oracle: pair_style meam, two-element B1 (rock salt) alloy (w15meam_alloy_lib.meam + w15meam_alloy_b1.meam, zbl 0), 2x2x2 cells of 8 atoms (64 atoms, A on fcc sites, B on octahedral sites), lattice constant 5.2 A = 2 re(1,2), 0.04 A sinusoidal displacement, velocities from atom-style variables, fix nve, 50 steps of 0.001 ps
+# oracle: shells of the B1 reference at re(1,2) = 2.6 A: 6 unlike neighbours at 2.6 A and 12 like neighbours at 3.68 A (the like pairs are screened to zero); the 0.04 A displacements keep every pair distance in [2.4, 3.85] A, away from the cutoff window [3.9, 4.0]
+# oracle-inputs: w15meam_alloy_lib.meam w15meam_alloy_b1.meam
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-tolerance: rel=1e-6 is needed for press only (the same offset as w12meam_fcc and w15meam_bcc). Measured with native LAMMPS (black box): pe agrees to better than 1e-9 relative at step 0 for the B1 crystal (8 atoms, pe -30.400000000089 eV) and on A-B dimers and clusters to 4e-12 eV.
+units           metal
+atom_style      atomic
+variable        a equal 5.2
+lattice         custom ${a} a1 1 0 0 a2 0 1 0 a3 0 0 1 &
+                basis 0 0 0 basis 0.5 0.5 0 basis 0.5 0 0.5 basis 0 0.5 0.5 &
+                basis 0.5 0 0 basis 0 0.5 0 basis 0 0 0.5 basis 0.5 0.5 0.5
+region          box block 0 2 0 2 0 2
+create_box      2 box
+create_atoms    1 box basis 1 1 basis 2 1 basis 3 1 basis 4 1 basis 5 2 basis 6 2 basis 7 2 basis 8 2
+mass            1 63.546
+mass            2 58.69
+variable        dx atom 0.04*sin(2.3*x+1.1*y+0.4*z)
+variable        dy atom 0.04*cos(1.9*y-0.7*x+0.3*z)
+variable        dz atom 0.04*sin(1.3*z+0.8*x-0.5*y)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.4*cos(1.7*y-0.6*z)
+variable        vy atom 0.4*sin(1.2*z+0.9*x)
+variable        vz atom 0.3*cos(2.1*x-0.8*y+0.2)
+velocity        all set v_vx v_vy v_vz units box
+pair_style      meam
+pair_coeff      * * w15meam_alloy_lib.meam A B w15meam_alloy_b1.meam A B
+timestep        0.001
+fix             1 all nve
+thermo          10
+thermo_style    custom step pe press
+thermo_modify   format float %.15g
+run             50

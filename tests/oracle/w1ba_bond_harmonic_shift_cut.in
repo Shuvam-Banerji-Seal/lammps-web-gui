@@ -1,0 +1,25 @@
+# oracle: bond_style harmonic/shift/cut on the mol_chains force field (other terms harmonic)
+# oracle-inputs: mol_chains.data
+units           lj
+atom_style      molecular
+bond_style      harmonic/shift/cut
+angle_style     harmonic
+dihedral_style  harmonic
+improper_style  harmonic
+pair_style      lj/cut 2.5
+read_data       mol_chains.data
+pair_coeff      * * 0.5 0.9
+pair_coeff      1 3 0.8 1.0
+bond_coeff      1 10.0 1.05 2.0
+bond_coeff      2 8.0 1.1 1.3
+angle_coeff     1 40.0 109.5
+angle_coeff     2 25.0 120.0
+dihedral_coeff  1 1.5 -1 3
+improper_coeff  1 12.0 20.0
+special_bonds   lj 0.0 0.5 0.8
+timestep        0.002
+fix             1 all nve
+thermo_style    custom step temp pe ebond eangle edihed eimp evdwl etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             50

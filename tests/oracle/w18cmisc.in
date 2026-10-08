@@ -1,0 +1,64 @@
+# oracle: compute nbond/atom (plain, bond/type, per-atom groups) and compute count/type atom/bond/angle/dihedral/improper
+# oracle-inputs: mol_chains.data
+units           lj
+atom_style      molecular
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  harmonic
+improper_style  harmonic
+pair_style      lj/cut 2.5
+read_data       mol_chains.data
+pair_coeff      * * 0.5 0.9
+pair_coeff      1 3 0.8 1.0
+bond_coeff      1 120.0 1.05
+bond_coeff      2 90.0 1.1
+angle_coeff     1 40.0 109.5
+angle_coeff     2 25.0 120.0
+dihedral_coeff  1 1.5 -1 3
+improper_coeff  1 12.0 20.0
+special_bonds   lj 0.0 0.5 0.8
+variable        vx atom 0.05*sin(1.3*x+0.7*y)
+variable        vy atom 0.05*cos(0.9*y-0.4*z)
+variable        vz atom 0.03*sin(1.1*z+0.5*x)
+velocity        all set v_vx v_vy v_vz
+velocity        all zero linear
+group           half molecule 1:9
+group           frag id 1:3
+group           a2 id 2
+group           a5 id 5
+compute         nb all nbond/atom
+compute         nb1 all nbond/atom bond/type 1
+compute         nb2 all nbond/atom bond/type 2
+compute         nbh half nbond/atom
+compute         nbf frag nbond/atom
+compute         nba2 a2 nbond/atom
+compute         nba21 a2 nbond/atom bond/type 1
+compute         nba22 a2 nbond/atom bond/type 2
+compute         nba5 a5 nbond/atom
+compute         ct all count/type atom
+compute         cth half count/type atom
+compute         ctf frag count/type atom
+compute         cb all count/type bond
+compute         cbf frag count/type bond
+compute         ca all count/type angle
+compute         caf frag count/type angle
+compute         cd all count/type dihedral
+compute         ci all count/type improper
+compute         s all reduce sum c_nb
+compute         s1 all reduce sum c_nb1
+compute         s2 all reduce sum c_nb2
+compute         sh all reduce sum c_nbh
+compute         sf all reduce sum c_nbf
+compute         sa2 all reduce sum c_nba2
+compute         sa21 all reduce sum c_nba21
+compute         sa22 all reduce sum c_nba22
+compute         sa5 all reduce sum c_nba5
+timestep        0.002
+fix             1 all nve
+thermo_style    custom step atoms bonds angles c_s c_s1 c_s2 c_sh c_sf c_sa2 c_sa21 c_sa22 c_sa5 c_ct[1] c_ct[2] c_ct[3] c_cth[1] c_cth[2] c_cth[3] c_ctf[1] c_ctf[2] c_ctf[3] c_cb[1] c_cb[2] c_cbf[1] c_cbf[2] c_ca[1] c_ca[2] c_caf[1] c_caf[2] c_cd[1] c_ci[1]
+thermo_modify   format float %.15g norm no
+thermo          5
+run             10
+thermo_modify   norm yes
+thermo          5
+run             10

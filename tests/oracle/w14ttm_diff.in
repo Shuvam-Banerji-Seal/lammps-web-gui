@@ -1,0 +1,29 @@
+# Wave 14: fix ttm heat diffusion with sub-stepping (docs.lammps.org/fix_ttm.html: the electron equation
+# is "C_e rho_e dT_e/dt = div(kappa_e grad T_e) - g_p (T_e - T_a) + g_s T_a'"). Small C_e (0.001) so that
+# the atom coupling is visible in the electron energy; kappa_e 0.01 on a 2x2x2 grid with timestep 0.2 gives
+# a diffusion number above 1/2, so each step is split into sub-steps. Two runs, infile start.
+# oracle-inputs: w14ttm_diff.init
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      atomic
+lattice         sc 3.0
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 10.0
+displace_atoms  all move 0.5 0.5 0.5 units box
+variable        vx atom 3.0*sin(0.9*x+0.4*y)
+variable        vy atom 2.5*cos(0.7*y-0.5*z)
+variable        vz atom 2.0*sin(1.1*z+0.3*x)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      lj/cut 3.0
+pair_coeff      1 1 0.0 2.0
+fix             1 all nve
+fix             2 all ttm 777 0.001 1.0 0.01 20.0 0.0 2.0 2 2 2 infile w14ttm_diff.init
+timestep        0.2
+thermo_style    custom step temp pe f_2[1] f_2[2]
+thermo_modify   format float %.15g
+thermo          1
+run             3
+run             2

@@ -4,6 +4,7 @@ import { ThreeEvent } from '@react-three/fiber';
 import { Atom, VisualizationConfig } from '../types';
 import { DEFAULT_ATOM_COLOR } from '../constants';
 import { atomDisplayRadius } from '../services/atomStyle';
+import { writeInstanceTransform } from '../services/instanceMatrix';
 
 interface InstancedAtomMeshProps {
   atoms: Atom[];
@@ -51,18 +52,28 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
     return new THREE.SphereGeometry(1, baseSegments, Math.max(6, Math.round(baseSegments / 2)));
   }, [atoms.length]);
 
+  // R3F disposes what it constructs from `args`, but a useMemo'd geometry that
+  // is REPLACED when the tier changes is not R3F's to clean up — without this
+  // the old buffers leak on the GPU every time a differently sized structure
+  // is loaded.
+  useEffect(() => () => geometry.dispose(), [geometry]);
+
   // --- Matrices: positions + radius inputs only ---
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
 
-    const dummy = new THREE.Object3D();
+    // An instance is only ever a translation plus a UNIFORM scale, so the
+    // matrix is known in closed form. Writing the 16 floats straight into the
+    // instance buffer skips Object3D.updateMatrix()'s quaternion compose and
+    // the setMatrixAt copy for every atom — which matters when a trajectory
+    // rewrites 60k instances on every frame.
+    const m = mesh.instanceMatrix.array as Float32Array;
     for (let i = 0; i < atoms.length; i++) {
       const atom = atoms[i];
-      dummy.position.set(atom.x, atom.y, atom.z);
-      dummy.scale.setScalar(atomDisplayRadius(atom, config));
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
+      writeInstanceTransform(
+        m, i, atom.x, atom.y, atom.z, atomDisplayRadius(atom, config),
+      );
     }
     mesh.instanceMatrix.needsUpdate = true;
     // Correct frustum culling: derive bounds from actual instance placements.
@@ -74,10 +85,20 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
-    const color = new THREE.Color();
+    // Colour depends only on atom TYPE, of which there are a handful. The
+    // previous version called color.set(hexString) once per ATOM, re-parsing
+    // the same few strings tens of thousands of times per trajectory frame.
+    const byType = new Map<number, THREE.Color>();
+    const colorFor = (type: number): THREE.Color => {
+      let c = byType.get(type);
+      if (!c) {
+        c = new THREE.Color(config.customColors[type] || DEFAULT_ATOM_COLOR);
+        byType.set(type, c);
+      }
+      return c;
+    };
     for (let i = 0; i < atoms.length; i++) {
-      color.set(config.customColors[atoms[i].type] || DEFAULT_ATOM_COLOR);
-      mesh.setColorAt(i, color);
+      mesh.setColorAt(i, colorFor(atoms[i].type));
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps

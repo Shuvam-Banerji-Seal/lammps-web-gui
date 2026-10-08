@@ -1,0 +1,31 @@
+# oracle: fix ave/histo bin assignment of values exactly on bin edges. Native puts an interior edge value in the UPPER bin, v = hi in the last bin, and
+# oracle: multiplies by the inverse width (0.3 with 10 bins over [0,1) -> bin 4). Each histogram is written to its own file.
+# oracle-files: w12histo_b1.txt w12histo_b2.txt w12histo_b3.txt w12histo_b4.txt w12histo_b5.txt w12histo_b6.txt w12histo_b7.txt w12histo_b8.txt
+# oracle-compare: thermo=all atoms=none
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      zero 2.5
+pair_coeff      * *
+variable        e1 equal 0.5
+variable        e2 equal 1.0
+variable        e3 equal 2.5
+variable        e4 equal 3.0
+variable        e5 equal -1.0
+variable        e6 equal 0.3
+variable        e7 equal 0.7
+variable        e8 equal 1.0/3.0
+fix             b1 all ave/histo 1 1 1 0 3 6 v_e1 mode scalar file w12histo_b1.txt
+fix             b2 all ave/histo 1 1 1 0 3 6 v_e2 mode scalar file w12histo_b2.txt
+fix             b3 all ave/histo 1 1 1 0 3 6 v_e3 mode scalar file w12histo_b3.txt
+fix             b4 all ave/histo 1 1 1 0 3 6 v_e4 mode scalar file w12histo_b4.txt
+fix             b5 all ave/histo 1 1 1 -1.5 1.5 6 v_e5 mode scalar file w12histo_b5.txt
+fix             b6 all ave/histo 1 1 1 0 1 10 v_e6 mode scalar file w12histo_b6.txt
+fix             b7 all ave/histo 1 1 1 0 1 10 v_e7 mode scalar file w12histo_b7.txt
+fix             b8 all ave/histo 1 1 1 0 1 3 v_e8 mode scalar file w12histo_b8.txt
+thermo_style    custom step
+run             1

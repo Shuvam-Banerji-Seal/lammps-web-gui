@@ -5,6 +5,8 @@ interface LightingRigProps {
   preset: LightingPreset;
   /** Enable shadow casting on the key light. */
   shadows: boolean;
+  /** Scene bounding radius (world units) — sizes the key light's shadow camera. */
+  radius?: number;
 }
 
 export interface LightConfig {
@@ -83,8 +85,17 @@ export const LIGHT_PRESETS: Record<LightingPreset, LightConfig> = {
   },
 };
 
-const LightingRig: React.FC<LightingRigProps> = ({ preset, shadows }) => {
+const LightingRig: React.FC<LightingRigProps> = ({ preset, shadows, radius = 10 }) => {
   const cfg = LIGHT_PRESETS[preset] ?? LIGHT_PRESETS.studio;
+  // A directional light's shadow camera is an orthographic box (three.js
+  // default: +-5 units, near 0.5). Sized here to the scene so shadows are not
+  // clipped for systems larger than 10 units: the light sits outside the
+  // bounding sphere along its preset direction and its frustum covers it.
+  const [kx, ky, kz] = cfg.keyPosition;
+  const kn = Math.hypot(kx, ky, kz) || 1;
+  const keyDist = Math.max(kn, 2 * radius + 5);
+  const keyPos: [number, number, number] = [kx / kn * keyDist, ky / kn * keyDist, kz / kn * keyDist];
+  const half = radius * 1.25 + 1;
 
   return (
     <>
@@ -97,13 +108,19 @@ const LightingRig: React.FC<LightingRigProps> = ({ preset, shadows }) => {
         />
       )}
       <directionalLight
-        position={cfg.keyPosition}
+        position={keyPos}
         intensity={cfg.keyIntensity}
         color={cfg.keyColor}
         castShadow={shadows}
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
         shadow-bias={-0.0002}
+        shadow-camera-left={-half}
+        shadow-camera-right={half}
+        shadow-camera-top={half}
+        shadow-camera-bottom={-half}
+        shadow-camera-near={Math.max(0.1, keyDist - half - 1)}
+        shadow-camera-far={keyDist + half + 1}
       />
       <directionalLight position={[-6, 3, -8]} intensity={cfg.fillIntensity} color={cfg.fillColor} />
       <spotLight

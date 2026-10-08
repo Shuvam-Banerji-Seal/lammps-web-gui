@@ -1,0 +1,8 @@
+{
+"lammps": "2 Sep 2026",
+"note": "outfile of w14ttm_diff.in with outfile 2 T.out (run by hand: run-oracle compares whole files including the DATE line, so this fixture is read by tests/engineFixTtm.test.ts skipping line 1)",
+"files": {
+"T.out.2": "# DATE: 2026-10-08 UNITS: metal COMMENT: Electron temperature on 2x2x2 grid at step 2 - created by fix ttm\n1 1 1    2574.699039357564\n2 1 1    2323.548584012089\n1 2 1    2430.663833002688\n2 2 1     2167.98539464181\n1 1 2    2564.403313005704\n2 1 2    2317.743939304674\n1 2 2    2431.683201671324\n2 2 2    2175.389089914044\n",
+"T.out.4": "# DATE: 2026-10-08 UNITS: metal COMMENT: Electron temperature on 2x2x2 grid at step 4 - created by fix ttm\n1 1 1    2378.155347207233\n2 1 1     2371.71821347152\n1 2 1    2369.205209163413\n2 2 1    2352.680236515187\n1 1 2    2389.665722231319\n2 1 2     2370.47812476593\n1 2 2    2379.406016816909\n2 2 2    2355.902716453878\n"
+}
+}

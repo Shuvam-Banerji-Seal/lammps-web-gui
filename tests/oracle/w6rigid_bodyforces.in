@@ -1,0 +1,23 @@
+# oracle: fix rigid with fix_modify bodyforces early and a later fix addforce (adds forces after the rigid fix's post_force)
+# oracle-compare: abs=1e-7
+units           lj
+lattice         sc 0.5
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        bid atom floor(x/2.0)+3*floor(y/2.5)
+fix             1 all rigid custom v_bid
+variable        vx atom 0.3*sin(0.9*x+0.4*z)
+variable        vy atom 0.3*cos(0.6*y+0.8*x)
+variable        vz atom 0.3*sin(0.7*z-0.3*y)
+velocity        all set v_vx v_vy v_vz units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+timestep        0.002
+fix             2 all addforce 0.05 -0.02 0.03
+fix_modify      1 bodyforces early
+thermo_style    custom step temp pe ke etotal press pxx pyy pzz pxy pxz pyz f_1 f_1[1][1] f_1[1][4] f_1[4][7] f_1[4][10] f_1[2][13]
+thermo_modify   format float %.15g
+thermo          10
+run             60

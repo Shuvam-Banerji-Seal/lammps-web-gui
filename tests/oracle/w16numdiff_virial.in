@@ -1,0 +1,21 @@
+# oracle: fix numdiff/virial finite-difference virial stress vector (xx yy zz yz xz xy) vs lj/cut
+units           lj
+atom_style      atomic
+atom_modify     map yes
+boundary        p p p
+region          box block 0 8 0 8 0 8
+create_box      1 box
+create_atoms    1 single 3.0 4.0 4.0
+create_atoms    1 single 4.5 4.0 4.0
+create_atoms    1 single 4.0 5.2 4.0
+create_atoms    1 single 4.3 3.3 4.7
+mass            1 1.0
+pair_style      lj/cut 3.0
+pair_coeff      1 1 1.0 1.0
+pair_modify     tail yes
+fix             fd all numdiff/virial 1 1e-6
+fix             nve all nve
+thermo          1
+thermo_style    custom step f_fd[1] f_fd[2] f_fd[3] f_fd[4] f_fd[5] f_fd[6]
+thermo_modify   format float %.15g
+run             4

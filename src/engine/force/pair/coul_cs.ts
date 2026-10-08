@@ -128,7 +128,10 @@ export const csCoulPair = (
     return { e: pre * erfc, f: pre * (erfc + EWALD_F * x * ex) / rsq };
   }
   if (fc === 0) {
-    // fpair = -K h(x) / r^3 = -K g^3 h(x)/x^3 (no cancellation)
+    // fpair = -K h(x) / r^3 = -K g^3 h(x)/x^3 (no cancellation). Measured with native LAMMPS (black box): a core
+    // and its shell at the same position (r = 0, as in the coreshell example data) give the r -> 0 limit
+    // -K g 2/sqrt(pi) (ecoul at r = 0 equals the r = 1e-12 value to 14 digits) and no force.
+    if (rsq === 0) return { e: -K * g * TWO_OVER_SQRTPI, f: 0 };
     return { e: -K * erfAcc(x) / r, f: -K * g * g * g * hOverX3(x) };
   }
   const erf = erfAcc(x);
@@ -175,7 +178,8 @@ export class PairBornCoulLongCS extends PairBornCoulLong {
         const rsq = dx * dx + dy * dy + dz * dz;
         const t = ti + type[j];
         let fpair = 0, e = 0;
-        if (rsq < bornCutSq[t]) {
+        // a special pair with weight 0 has no Born term (at r = 0 its 0 * infinity would be NaN; native gives 0)
+        if (rsq < bornCutSq[t] && sLJ[sb] !== 0) {
           const factor = sLJ[sb];
           const r = Math.sqrt(rsq);
           const rinv = 1 / r;
@@ -252,7 +256,8 @@ export class PairBuckCoulLongCS extends PairBuckCoulLong {
         const rsq = dx * dx + dy * dy + dz * dz;
         const t = ti + type[j];
         let fpair = 0, e = 0;
-        if (rsq < buckCutSq[t]) {
+        // as in born/coul/long/cs: no Buckingham term for a special pair with weight 0 (finite at r = 0)
+        if (rsq < buckCutSq[t] && sLJ[sb] !== 0) {
           const factor = sLJ[sb];
           const r = Math.sqrt(rsq);
           const ex = Math.exp(-r * buckIR[t]);

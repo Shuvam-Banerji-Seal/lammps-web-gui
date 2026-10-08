@@ -118,7 +118,12 @@ export class Variables {
         break;
       }
       case 'equal': case 'vector': case 'atom': {
-        const f = one();
+        // variable.html: "If you want spaces in the string, enclose it in double quotes so the parser will treat
+        // it as a single argument." Measured with native LAMMPS (black box): unquoted words after an equal,
+        // vector or atom style are joined with single spaces (variable a equal 2 +    3 gives 5; atom x + 1 and
+        // vector [1,2] * 3 are joined the same way), while string, format, getenv and internal refuse extra words.
+        if (args.length < 1) throw new StyleError(`variable ${style} needs a formula`);
+        const f = args.join(' ');
         v = { style, values: [], which: 0, formula: f };
         const list = /^\s*\[(.*)\]\s*$/.exec(f);
         if (style === 'vector' && list) {

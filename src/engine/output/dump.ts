@@ -372,8 +372,11 @@ export class Dump {
       }
       const formatters = this.columns.map((c, k) => fmt(this.formatCol.get(k) ?? (this.isInt(c) ? this.formatInt : this.formatFloat)));
       const line = this.formatLine ? this.formatLine.split(/\s+/).filter(Boolean) : null;
+      // dump_modify.html, Default section: the element name is C for every atom type without dump_modify element
+      // (measured the same with native LAMMPS for dump custom ... element); the column is the name of the atom's type
+      const elementName = (i: number): string => (this.element.length ? this.element[s.type[i] - 1] : 'C');
       for (const i of keep) {
-        lines.push(this.columns.map((_, k) => (line?.[k] ? fmt(line[k])(values[k][i]) : formatters[k](values[k][i]))).join(' '));
+        lines.push(this.columns.map((c, k) => (c === 'element' ? elementName(i) : line?.[k] ? fmt(line[k])(values[k][i]) : formatters[k](values[k][i]))).join(' '));
       }
     }
     const multi = this.file.includes('*');
@@ -466,6 +469,8 @@ export class Dump {
       case 'proc': return out;
       case 'procp1': return out.fill(1);
       case 'type': for (let i = 0; i < s.n; i++) out[i] = s.type[i]; return out;
+      // the element column is written as text (writeCustom); its numeric stand-in is the type
+      case 'element': for (let i = 0; i < s.n; i++) out[i] = s.type[i]; return out;
       case 'mass': for (let i = 0; i < s.n; i++) out[i] = massOf(s, i); return out;
       case 'q': for (let i = 0; i < s.n; i++) out[i] = s.q[i]; return out;
       case 'x': case 'y': case 'z': {

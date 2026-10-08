@@ -175,7 +175,7 @@ describe('Session: errors are explicit and carry the line', () => {
     ['missing pair coeffs', 'lattice sc 1\nregion b block 0 3 0 3 0 3\ncreate_box 2 b\nmass * 1\npair_style lj/cut 1.1\npair_coeff 1 1 1 1\nrun 1', /all pair coeffs are not set/],
     ['2d box not bracketing z = 0', 'dimension 2\nlattice sq 1\nregion b block 0 2 0 2 0 1\ncreate_box 1 b', /bracket zero/],
     ['undefined variable', 'print "${nope}"', /illegal variable nope/],
-    ['unquoted formula with spaces', 'variable a equal 1 + 2', /quote/],
+    ['string variable with extra words', 'variable a string hello world', /quote/],
   ])('%s', async (_name, script, pattern) => {
     const { error } = await runScript(script);
     expect(error).toBeInstanceOf(EngineError);

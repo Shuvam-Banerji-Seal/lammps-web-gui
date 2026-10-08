@@ -2,7 +2,7 @@ import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type MixRule, ty
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { parseNum } from '../util';
-import { erfcFast, erfcPoly, EWALD_F } from '../erfc';
+import { erfcPoly, EWALD_F, ErfcTableCache, TABLE_INNER_RSQ } from '../erfc';
 
 /*
  * CHARMM LJ + Coulomb pair styles with the energy switching function:
@@ -404,13 +404,22 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
     this.invDL3 = 1 / (this.bL2 - this.aL2) ** 3;
   }
 
+  private readonly erfcTables = new ErfcTableCache();
+
   protected override coulombPair(rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
     // Ewald real-space damped term: U = C q_i q_j erfc(g r)/r,
-    // F_std = C q_i q_j (erfc(g r) + EWALD_F g r exp(-g^2 r^2)) / r^3 (coul_long.ts).
+    // F_std = C q_i q_j (erfc(g r) + EWALD_F g r exp(-g^2 r^2)) / r^3 (coul_long.ts). pair_modify table N
+    // > 0: native's tables above r^2 = 2 (erfc.ts makeErfcTable), the polynomial below; measured with
+    // native LAMMPS (black box): table 0 and 12 agree at r = 1.2 and differ at 3.1 and 4.7
+    const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul);
+    if (tab && rsq >= TABLE_INNER_RSQ) {
+      const qq = qqrd2e * qi * qj;
+      return { e: qq * tab.energy(rsq), f: qq * tab.force(rsq) / rsq };
+    }
     const r = Math.sqrt(rsq);
     const grij = this.gEwald * r;
     const ex = Math.exp(-grij * grij);
-    const erfc = this.table === 0 ? erfcPoly(grij, ex) : erfcFast(grij, ex);
+    const erfc = erfcPoly(grij, ex);
     const pre = qqrd2e * qi * qj / r;
     return { e: pre * erfc, f: pre * (erfc + EWALD_F * grij * ex) / rsq };
   }
@@ -419,10 +428,13 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
     const c = this.coulombPair(rsq, qi, qj, pc.qqrd2e);
     // special_bonds.html, as cited in coul_long.ts: excluded pairs stay in the
     // neighbor list for kspace styles; their Coulomb weight w removes (1 - w)
-    // of the bare C q_i q_j / r term, which the reciprocal sum includes.
+    // of the bare C q_i q_j / r term, which the reciprocal sum includes (from the 1/r table when
+    // the table is in use, as native does).
     const fc = pc.specialCoul[sb];
     if (fc < 1) {
-      const bare = pc.qqrd2e * qi * qj / Math.sqrt(rsq);
+      const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul);
+      const inv = tab && rsq >= TABLE_INNER_RSQ ? tab.coul(rsq) : 1 / Math.sqrt(rsq);
+      const bare = pc.qqrd2e * qi * qj * inv;
       return { e: c.e - (1 - fc) * bare, f: c.f - (1 - fc) * bare / rsq };
     }
     return c;
@@ -622,17 +634,29 @@ export class PairLJCharmmfswCoulLong extends PairLJCharmmfswBase {
   coulLong = true;
   protected override tableSupported = true;
 
+  private readonly erfcTables = new ErfcTableCache();
+
   protected coulFswPair(rsq: number, sb: number, qi: number, qj: number, qqr: number, pc: PairCompute): { e: number; f: number } {
-    const r = Math.sqrt(rsq);
-    const grij = this.gEwald * r;
-    const ex = Math.exp(-grij * grij);
-    const erfc = this.table === 0 ? erfcPoly(grij, ex) : erfcFast(grij, ex);
-    const pre = qqr * qi * qj / r;
-    let e = pre * erfc, f = pre * (erfc + EWALD_F * grij * ex) / rsq;
+    // pair_modify table N as in PairLJCharmmCoulLong (measured the same way for this style)
+    const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul);
+    const useTab = tab !== null && rsq >= TABLE_INNER_RSQ;
+    let e: number, f: number;
+    const qq = qqr * qi * qj;
+    if (useTab) {
+      e = qq * tab!.energy(rsq);
+      f = qq * tab!.force(rsq) / rsq;
+    } else {
+      const r = Math.sqrt(rsq);
+      const grij = this.gEwald * r;
+      const ex = Math.exp(-grij * grij);
+      const erfc = erfcPoly(grij, ex);
+      e = qq * erfc / r;
+      f = qq * (erfc + EWALD_F * grij * ex) / (r * rsq);
+    }
     const fc = pc.specialCoul[sb];
     if (fc < 1) {
       // special_bonds: removes (1 - w) of the bare term, as in PairLJCharmmCoulLong
-      const bare = qqr * qi * qj / r;
+      const bare = qq * (useTab ? tab!.coul(rsq) : 1 / Math.sqrt(rsq));
       e -= (1 - fc) * bare;
       f -= (1 - fc) * bare / rsq;
     }

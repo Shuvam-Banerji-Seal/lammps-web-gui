@@ -45,6 +45,7 @@ import * as fixWallGran from './registry/fix_wallgran';
 import * as fixRigid2 from './registry/fix_rigid2';
 import * as computeVoro from './registry/compute_voro';
 import * as pairRelres from './registry/pair_relres';
+import * as pairGranular from './registry/pair_granular';
 import * as pairTable from './registry/pair_table';
 import * as pairCharmm from './registry/pair_charmm';
 import * as pairCoulLong2 from './registry/pair_coullong2';
@@ -83,7 +84,7 @@ export const PAIR_STYLES: Record<string, () => Pair> = {
   ...pairCoul.PAIRS, ...pairSimple.PAIRS, ...pairLJ.PAIRS, ...pairLJCoul.PAIRS, ...pairSimple2.PAIRS, ...pairLJ2.PAIRS,
   ...pairEAM.PAIRS, ...pair3Body.PAIRS, ...pairSW.PAIRS,
   ...pairZBL.PAIRS, ...pairTable.PAIRS, ...pairCharmm.PAIRS, ...pairCoulLong2.PAIRS,
-  ...pairGran.PAIRS, ...pairColloid.PAIRS, ...pairYColloid.PAIRS, ...pairVashishta.PAIRS, ...pairRelres.PAIRS,
+  ...pairGran.PAIRS, ...pairColloid.PAIRS, ...pairYColloid.PAIRS, ...pairVashishta.PAIRS, ...pairRelres.PAIRS, ...pairGranular.PAIRS,
 };
 
 export const BOND_STYLES: Record<string, () => Bonded> = {

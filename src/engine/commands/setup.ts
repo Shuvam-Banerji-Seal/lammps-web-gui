@@ -92,6 +92,7 @@ const atomModify: Handler = ({ sys }, a) => {
     sys.log(`atom_modify first ${g}: accepted; the browser engine does not reorder its atom storage (results are unchanged, only the internal order differs)`);
   }
   if (kw.get('map') && !['array', 'hash', 'yes'].includes(kw.get('map')![0])) throw new StyleError('atom_modify map must be array, hash or yes');
+  if (kw.get('map')) sys.atomMapSet = true;
   // atom_modify.html: "*sort* values = Nfreq binsize"; the order matters for per-atom random draws
   // and unsorted output (SimState.order, System.sortAtoms)
   if (kw.has('sort')) {
@@ -1373,12 +1374,52 @@ const deleteAtomsCmd: Handler = ({ sys }, a) => {
     for (let i = 0; i < s.n; i++) if (del[i] && s.molecule[i]) mols.add(s.molecule[i]);
     for (let i = 0; i < s.n; i++) if (mols.has(s.molecule[i])) del[i] = 1;
   }
+  // delete_atoms.html: compress "is enabled by default for atomic systems"; "For molecular systems
+  // (see the :doc:`atom_style <atom_style>` command), the atom ID re-assignment now calls the
+  // :doc:`reset_atoms id <reset_atoms>` command internally.  For backward compatibility, the default
+  // setting is *no* in this case."; "the *compress* and the *condense* keywords cannot be used at
+  // the same time.  Whichever of the two is used last will be applied."
+  const molecular = isMolecularStyle(s.atomStyle);
+  let mode: 'compress' | 'condense' | 'none' = molecular ? 'none' : 'compress';
+  for (let k = 0; k < rest.length; k += 2) {
+    if (rest[k] === 'compress') mode = yesno(rest[k + 1], 'compress') ? 'compress' : 'none';
+    else if (rest[k] === 'condense') mode = yesno(rest[k + 1], 'condense') ? 'condense' : 'none';
+  }
+  // Measured with native LAMMPS (black box, 10 atoms, delete 2 3 7): an atomic system needs an atom
+  // map for condense (error below); on a molecular system condense yes leaves the IDs as they are
+  // (with and without bonds), and compress yes renumbers in atom-list order like an atomic system,
+  // bonded entries following the new IDs.
+  if (mode === 'condense' && !molecular && !sys.atomMapSet) throw new StyleError("Using 'condense yes' option requires an atom map");
+  if (mode === 'condense' && molecular) mode = 'none';
+  const dropBonds = kw.has('bond') && yesno(kw.get('bond')![0], 'bond');
+  const t = s.topo;
+  const nTopo = t.bonds.n + t.angles.n + t.dihedrals.n + t.impropers.n;
   const n = sys.deleteAtoms(del);
-  const compress = kw.has('compress') ? yesno(kw.get('compress')![0], 'compress') : true;
-  if (compress && n > 0 && s.topo.bonds.n === 0 && s.topo.angles.n === 0) {
+  if (!dropBonds && t.bonds.n + t.angles.n + t.dihedrals.n + t.impropers.n < nTopo) {
+    // delete_atoms.html: "you must be careful not to end up with bonded interactions that are stored
+    // by remaining atoms but which include deleted atoms"; native keeps them (bond no) and stops at
+    // the next run, the engine drops them
+    sys.warn('delete_atoms removed bonded interactions that included deleted atoms (native LAMMPS keeps them with bond no and stops with a missing-atoms error at the next run; use bond yes)');
+  }
+  if (n > 0 && mode === 'compress') {
     // "compress yes ... atom IDs are re-assigned so that they run from 1 to N"; measured with
     // native LAMMPS (black box): in the order of its atom list (SimState.order), not of the old IDs
-    nativeOrder(s).forEach((i, k) => { s.id[i] = k + 1; });
+    const map = new Map<number, number>();
+    nativeOrder(s).forEach((i, k) => { map.set(s.id[i], k + 1); s.id[i] = k + 1; });
+    for (const list of [t.bonds, t.angles, t.dihedrals, t.impropers]) {
+      for (let e = 0; e < list.n * list.width; e++) list.atoms[e] = map.get(list.atoms[e]) ?? list.atoms[e];
+    }
+    sys.atomsChanged();
+  } else if (n > 0 && mode === 'condense') {
+    // "If the *condense* keyword set to *yes*, then after atoms are deleted, the atom IDs are
+    // re-assigned in such a way that the order of atom-IDs is preserved." Bonded entries follow.
+    const byId = Array.from({ length: s.n }, (_, i) => i).sort((p, q) => s.id[p] - s.id[q]);
+    const map = new Map<number, number>();
+    byId.forEach((i, k) => { map.set(s.id[i], k + 1); });
+    for (const i of byId) s.id[i] = map.get(s.id[i])!;
+    for (const list of [s.topo.bonds, s.topo.angles, s.topo.dihedrals, s.topo.impropers]) {
+      for (let e = 0; e < list.n * list.width; e++) list.atoms[e] = map.get(list.atoms[e]) ?? list.atoms[e];
+    }
     sys.atomsChanged();
   }
   sys.log(`Deleted ${n} atoms, new total = ${s.n}`);

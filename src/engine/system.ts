@@ -371,6 +371,9 @@ export class System {
   /** fix property/atom values from read_restart, by fix ID, until the fix is re-specified. */
   pendingFixData = new Map<string, import('./fix/property_atom').PropertyAtomRestart>();
 
+  /** atom_modify map was given (atomic systems have no map by default). */
+  atomMapSet = false;
+
   /** restart N: periodic restart files, one entry per mode (single file name, or two toggled names). */
   restartOut: { mode: 'single' | 'toggle'; every: number; everyVar: string | null; files: string[]; flip: number; next: number }[] = [];
 

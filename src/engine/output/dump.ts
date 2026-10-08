@@ -5,6 +5,7 @@ import { localDumpColumns, localColumnSource } from '../compute/local_dump';
 import { generalBoxFromRestricted, toGeneralPoint, unrotateVector, type V3 } from '../triclinic_general';
 import { fillWildcard } from '../commands/restart';
 import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, hasRmassStyle, isEllipsoidStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
+import { ImageDump } from './dump_image';
 
 /*
  * Per-atom snapshots — docs.lammps.org/dump.html and dump_modify.html.
@@ -60,7 +61,7 @@ export const fmt = (f: string): ((v: number) => string) => {
   return h;
 };
 
-export type DumpStyle = 'atom' | 'custom' | 'xyz' | 'extxyz' | 'yaml' | 'local';
+export type DumpStyle = 'atom' | 'custom' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image';
 
 /** Columns dump_modify triclinic/general rotates (dump.html: "vx,vy,vz = atom velocities" and the others listed there). */
 const GENERAL_ROTATED = /^(x|y|z|xu|yu|zu|vx|vy|vz|fx|fy|fz)$/;
@@ -98,6 +99,8 @@ export class Dump {
   lastStep = -1;
   private opened = false;
   private nextStep = -1;
+  /** dump image: the image renderer (dump_image.ts); null for every other style. */
+  private imageDump: ImageDump | null = null;
   readonly columns: string[];
 
   constructor(private sys: System, readonly id: string, readonly group: string, readonly style: DumpStyle, every: number | string, readonly file: string, cols: string[]) {
@@ -105,7 +108,10 @@ export class Dump {
     if (typeof every === 'string') this.everyVar = every;
     this.every = typeof every === 'number' ? every : 0;
     this.sort = style === 'xyz' || style === 'extxyz' ? 'id' : 'off';
-    if (style === 'atom') {
+    if (style === 'image') {
+      this.imageDump = new ImageDump(sys, id, group, file, cols);
+      this.columns = [];
+    } else if (style === 'atom') {
       if (cols.length) throw new StyleError('dump atom takes no attributes (use dump custom)');
       this.columns = ['id', 'type', 'xs', 'ys', 'zs'];
     } else if (style === 'xyz' || style === 'extxyz') {
@@ -179,6 +185,12 @@ export class Dump {
     for (let k = 0; k < args.length;) {
       const key = args[k];
       const v = args[k + 1];
+      // dump image/movie-only dump_modify keywords (dump_image.html, "dump_modify options for dump
+      // image/movie"): acolor, adiam, bcolor, bdiam, backcolor, boxcolor, color.
+      if (this.imageDump) {
+        const n = this.imageDump.modifyKeyword(args, k);
+        if (n > 0) { k += n; continue; }
+      }
       switch (key) {
         case 'append': this.append = yesno(v, key); k += 2; break;
         case 'first': this.first = yesno(v, key); k += 2; break;
@@ -296,10 +308,16 @@ export class Dump {
   write(): void {
     const sys = this.sys;
     const s = sys.state;
-    sys.forces();
     const step = s.step;
     this.lastStep = step;
     if (this.everyVar) this.nextStep = Math.trunc(sys.equalVariable(this.everyVar));
+    if (this.imageDump) {
+      const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
+      const name = this.file.includes('*') ? fillWildcard(this.file, stepText) : this.file;
+      this.imageDump.write(s, name, this);
+      return;
+    }
+    sys.forces();
     if (this.style === 'local') {
       this.writeLocal(step);
       return;

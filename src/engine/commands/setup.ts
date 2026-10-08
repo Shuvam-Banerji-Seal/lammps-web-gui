@@ -1678,11 +1678,126 @@ const changeBox: Handler = ({ sys }, a) => {
 };
 
 /** create_bonds single/bond|angle|dihedral|improper type atoms... — create_bonds.html (single styles). */
+/*
+ * create_bonds many group1 group2 btype rmin rmax — docs.lammps.org/create_bonds.html.
+ * Quoted from the page: "Pairs of atoms that are already bonded cannot appear in the
+ * neighbor list, to avoid creation of duplicate bonds." and "1--3 or 1--4 atoms are
+ * those which are two hops or three hops apart in the bond topology."
+ * "When using periodic boundary conditions, the box length in each periodic dimension
+ * must be larger than rmax, so that no bonds are created between the system and its
+ * own periodic image."
+ *
+ * Measured with native LAMMPS (black box, 1 process), on small periodic lattices:
+ *   - a bond joins a pair of atoms whose distance D lies in [rmin, rmax] (both ends
+ *     inclusive: a sc lattice with rmin = rmax = 1.0 gives its 81 nearest-neighbour bonds);
+ *   - each periodic image of a pair within the range is a separate bond (two images at
+ *     1.4 and 1.6 in a box of length 3 gave two bonds between the same IDs); an atom is
+ *     never bonded to its own image;
+ *   - the stored bond lists the lower atom ID first and the lines are grouped by that
+ *     first atom in ascending ID order (write_data "Bonds" section);
+ *   - a pair is skipped when its special weight is 0 for its 1-2, 1-3 or 1-4 relation:
+ *     a 1-3 pair was created with special_bonds lj 0 1 1 and not with lj 0 0 0 or 0 0 1;
+ *     the skip applies to the closest image of the pair only: after a first many all all
+ *     (81 bonds, 27 atoms, box 3) a many hi all with rmin 1.9 rmax 2.1 added 34 bonds, among
+ *     them a second bond between 2 and 20 through the image at distance 2 (the NN bond uses
+ *     the image at distance 1);
+ *   - group1/group2 are symmetric: the set of bonds is the same with the groups swapped;
+ *   - rmax above the box length of a periodic dimension is an error (rmax equal to it is
+ *     accepted); rmax above the largest pair cutoff plus neighbor skin is an error;
+ *   - a non-zero 1-2 special weight is an error; any optional keyword with many is an error;
+ *   - non-periodic boundaries create only the shift-0 images (a 5x5x5 lattice with x
+ *     non-periodic gave 350 bonds against 375 periodic).
+ * Not reproduced: the order of the partners of one atom (native follows its neighbour
+ * list order, e.g. 19 7 3 2 4 10 for atom 1; here partners are in ascending ID order), and
+ * the limit of bonds per atom set by extra/bond/per/atom (native errors when it is exceeded;
+ * create_box and read_data do not keep that value, so it is not enforced here).
+ */
+const createBondsMany = (sys: System, a: string[]): void => {
+  const s = sys.state;
+  if (a.length !== 6) throw new StyleError('usage: create_bonds many group1 group2 btype rmin rmax (create_bonds many takes no keywords)');
+  const bit1 = sys.groupBit(a[1]), bit2 = sys.groupBit(a[2]);
+  const t = int(a[3], 'bond type');
+  if (t < 1 || t > s.topo.nbondtypes) throw new StyleError(`bond type ${t} is outside 1..${s.topo.nbondtypes}`);
+  const rmin = num(a[4], 'rmin'), rmax = num(a[5], 'rmax');
+  if (!(rmin >= 0) || !(rmax >= rmin)) throw new StyleError('create_bonds many needs 0 <= rmin <= rmax');
+  const ff = sys.ff;
+  if (!ff.pair) throw new StyleError('create_bonds many needs a pair_style (the neighbor list is used to find the pairs)');
+  if (ff.kspace) throw new StyleError('create_bonds many cannot be used with a kspace_style (see create_bonds.html restrictions)');
+  if (ff.special.lj[0] !== 0) throw new StyleError('create_bonds many requires special_bonds 1-2 (lj) weight 0.0');
+  // the system must be ready for a run (create_bonds.html: "similar to what a run command would require"):
+  // the force field is initialised and the neighbor cutoff (largest pair cutoff plus skin) is set
+  sys.setupNeighbors();
+  const cutneigh = sys.nb.cutneighmax;
+  if (rmax > cutneigh) throw new StyleError(`create_bonds many: rmax ${rmax} exceeds the neighbor cutoff ${cutneigh} (largest pair cutoff plus neighbor skin)`);
+  const g = sys.geom;
+  if (g.triclinic) throw new StyleError('create_bonds many is not supported for triclinic boxes');
+  const L = [g.hi[0] - g.lo[0], g.hi[1] - g.lo[1], g.hi[2] - g.lo[2]];
+  for (let d = 0; d < 3; d++) if (g.periodic[d] && rmax > L[d]) throw new StyleError(`create_bonds many: rmax ${rmax} is larger than the periodic box length ${L[d]} in ${'xyz'[d]}`);
+  // relation of two atoms by bond hops (1, 2 or 3); beyond three hops there is no special weight
+  const adj = new Map<number, number[]>();
+  for (let e = 0; e < s.topo.bonds.n; e++) {
+    const i = s.topo.bonds.atoms[2 * e], j = s.topo.bonds.atoms[2 * e + 1];
+    if (!adj.has(i)) adj.set(i, []);
+    if (!adj.has(j)) adj.set(j, []);
+    adj.get(i)!.push(j);
+    adj.get(j)!.push(i);
+  }
+  const hops = new Map<number, Map<number, number>>();
+  for (const start of adj.keys()) {
+    const dist = new Map<number, number>([[start, 0]]);
+    let frontier = [start];
+    for (let h = 1; h <= 3; h++) {
+      const next: number[] = [];
+      for (const u of frontier) for (const v of adj.get(u) ?? []) if (!dist.has(v)) { dist.set(v, h); next.push(v); }
+      frontier = next;
+    }
+    dist.delete(start);
+    hops.set(start, dist);
+  }
+  const lj = ff.special.lj;
+  const order = Array.from({ length: s.n }, (_, i) => i).sort((p, q) => s.id[p] - s.id[q]);
+  const newBonds: [number, number][] = [];
+  for (let u = 0; u < order.length; u++) {
+    const ia = order[u];
+    const ma = s.mask[ia];
+    const inA1 = (ma & bit1) !== 0, inA2 = (ma & bit2) !== 0;
+    if (!inA1 && !inA2) continue;
+    for (let v = u + 1; v < order.length; v++) {
+      const ib = order[v];
+      const mb = s.mask[ib];
+      if (!((inA1 && (mb & bit2) !== 0) || (inA2 && (mb & bit1) !== 0))) continue;
+      // a special pair (weight 0) is skipped at its closest image: a second image of a bonded pair
+      // is bonded again (measured: a second many all all added the far image of an existing NN bond)
+      const h = hops.get(s.id[ia])?.get(s.id[ib]);
+      const special = h !== undefined && lj[h - 1] === 0;
+      const dx = s.x[3 * ib] - s.x[3 * ia], dy = s.x[3 * ib + 1] - s.x[3 * ia + 1], dz = s.x[3 * ib + 2] - s.x[3 * ia + 2];
+      const dv = [dx, dy, dz];
+      const kr = [0, 1, 2].map((d) => (g.periodic[d]
+        ? [Math.ceil((-rmax - dv[d]) / L[d]), Math.floor((rmax - dv[d]) / L[d])]
+        : [0, 0]));
+      const closest = [0, 1, 2].map((d) => (g.periodic[d] ? -Math.round(dv[d] / L[d]) : 0));
+      for (let kx = kr[0][0]; kx <= kr[0][1]; kx++) {
+        for (let ky = kr[1][0]; ky <= kr[1][1]; ky++) {
+          for (let kz = kr[2][0]; kz <= kr[2][1]; kz++) {
+            if (special && kx === closest[0] && ky === closest[1] && kz === closest[2]) continue;
+            const ex = dx + kx * (g.periodic[0] ? L[0] : 0), ey = dy + ky * (g.periodic[1] ? L[1] : 0), ez = dz + kz * (g.periodic[2] ? L[2] : 0);
+            const d = Math.sqrt(ex * ex + ey * ey + ez * ez);
+            if (d >= rmin && d <= rmax) newBonds.push([s.id[ia], s.id[ib]]);
+          }
+        }
+      }
+    }
+  }
+  for (const [i, j] of newBonds) pushTopo(s.topo.bonds, t, [i, j]);
+  sys.atomsChanged();
+};
+
 const createBonds: Handler = ({ sys }, a) => {
+  if (a[0] === 'many') { createBondsMany(sys, a); return; }
   const s = sys.state;
   const width: Record<string, number> = { 'single/bond': 2, 'single/angle': 3, 'single/dihedral': 4, 'single/improper': 4 };
   const style = a[0];
-  if (!(style in width)) throw new StyleError('create_bonds supports single/bond, single/angle, single/dihedral and single/improper');
+  if (!(style in width)) throw new StyleError('create_bonds supports many, single/bond, single/angle, single/dihedral and single/improper');
   const kind = style.split('/')[1] as 'bond' | 'angle' | 'dihedral' | 'improper';
   const t = int(a[1], `${kind} type`);
   const ntypes = { bond: s.topo.nbondtypes, angle: s.topo.nangletypes, dihedral: s.topo.ndihedraltypes, improper: s.topo.nimpropertypes }[kind];
@@ -1691,7 +1806,11 @@ const createBonds: Handler = ({ sys }, a) => {
   if (ids.length < width[style]) throw new StyleError(`create_bonds ${style} needs ${width[style]} atom IDs`);
   for (const id of ids) if (sys.indexOfId(id) < 0) throw new StyleError(`create_bonds: atom ${id} does not exist`);
   const kw = keywords(a.slice(2 + width[style]), { special: 1 }, 'create_bonds');
-  void kw;
+  // special no leaves the special list stale until a later special yes (create_bonds.html); the engine
+  // always rebuilds it after a topology change, so 'no' would silently differ: rejected instead
+  if (kw.has('special') && yesno(kw.get('special')![0], 'create_bonds special') === false) {
+    throw new StyleError('create_bonds special no is not supported (the browser engine always rebuilds the special list after a change)');
+  }
   pushTopo(s.topo[`${kind}s` as 'bonds'], t, ids);
   sys.atomsChanged();
 };

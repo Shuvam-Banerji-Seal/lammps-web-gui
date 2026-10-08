@@ -90,8 +90,6 @@ describe('compute voronoi/atom', () => {
       await expect(runScript(text)).rejects.toThrow(EngineError);
       await expect(runScript(text)).rejects.toThrow(pattern);
     };
-    await bad(SC('occupation'), /occupation/);
-    await bad(SC('neighbors yes'), /neighbors yes/);
     await bad(SC('peratom yes'), /peratom/);
     await bad(SC('frobnicate 1'), /frobnicate/);
     await bad(SC('surface nosuchgroup'), /nosuchgroup/);

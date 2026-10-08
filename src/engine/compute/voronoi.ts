@@ -30,8 +30,34 @@ import { parseNum, parseInt_ } from '../force/util';
  * Scope of this implementation: 3d, periodic orthogonal boxes, the default
  * per-atom output (volume, number of faces), surface (third column), only_group,
  * radius (radical tessellation with an atom-style variable), edge_histo (global
- * vector), edge_threshold and face_threshold. Not implemented, each an error:
- * occupation, neighbors yes, non-periodic boundaries, triclinic boxes, 2d.
+ * vector), edge_threshold, face_threshold, neighbors yes (local array) and
+ * occupation. Not implemented, each an error: non-periodic boundaries, triclinic
+ * boxes, 2d.
+ *
+ * neighbors yes (docs.lammps.org/compute_voronoi_atom.html): "If the *neighbors*
+ * value is set to yes, then this compute also creates a local array with 3 columns.
+ * There is one row for each face of each Voronoi cell. The 3 columns are the atom
+ * ID of the atom that owns the cell, the atom ID of the atom in the neighboring cell
+ * (or zero if the face is external), and the area of the face." Measured with
+ * native LAMMPS (black box): 27 atoms on a periodic sc lattice gave 162 rows (six
+ * faces per atom), each owner with its six neighbour IDs (periodic images resolve to
+ * the atom ID) and face areas 1. The row order inside one owner is voro++'s own
+ * face order, which this code does not reproduce: the rows are per owner in the
+ * order the faces are clipped here.
+ *
+ * occupation (docs.lammps.org/compute_voronoi_atom.html): "If the *occupation*
+ * keyword is specified the tessellation is only performed for the first invocation
+ * of the compute and then stored. For all following invocations of the compute the
+ * number of atoms in each Voronoi cell in the stored tessellation is counted." The
+ * first column counts the atoms currently in the cell of this atom, the second the
+ * atoms sharing the cell at the current location of this atom. Here the stored
+ * tessellation is the set of seed positions at the first invocation, and an atom
+ * belongs to the cell of its nearest seed (minimum image). Measured with native
+ * LAMMPS (black box): the first invocation gives (1, 1) for every atom; after atom 1
+ * moved to x = 0.3 and an atom was inserted at (1.5, 1.5, 1.5), atom 1 gave (1, 1),
+ * atom 14 gave (2, 2) (the inserted atom sits in its cell) and the inserted atom gave
+ * (0, 2) (it has no stored cell). Occupation is not combined with only_group,
+ * surface, radius, edge_histo or neighbors yes here (not measured).
  *
  * Algorithm (textbook): the cell of atom i is the intersection of half-spaces
  * bounded by the bisecting planes with each other atom j (its periodic images
@@ -227,6 +253,9 @@ interface Images {
 
 interface Candidate { h: number; dx: number; dy: number; dz: number; c: number; atom: number }
 
+/** One target atom's tessellation: volume, face count, surface area, edge counts per kept face, and kept faces as (neighbor ID, area) pairs. */
+interface CellResult { vol: number; nf: number; surf: number; edges: number[]; faces: { nid: number; area: number }[] }
+
 export class ComputeVoronoiAtom extends Compute {
   readonly style = 'voronoi/atom';
   peratomFlag = true;
@@ -238,6 +267,13 @@ export class ComputeVoronoiAtom extends Compute {
   private readonly edgeMax: number | null;
   private readonly edgeThreshold: number;
   private readonly faceThreshold: number;
+  private readonly occupationOn: boolean;
+  private readonly neighborsOn: boolean;
+  /** occupation: seed IDs and positions of the tessellation stored at the first invocation. */
+  private seedIds: Int32Array | null = null;
+  private seedX: Float64Array = new Float64Array(0);
+  /** neighbors yes: row-major (owner ID, neighbor ID, area) rows of the last evaluation. */
+  private localOut: Float64Array<ArrayBuffer> = new Float64Array(0);
   private cachedEpoch = -1;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
@@ -248,17 +284,17 @@ export class ComputeVoronoiAtom extends Compute {
     let edgeMax: number | null = null;
     let edgeThreshold = 0;
     let faceThreshold = 0;
+    let occupationOn = false;
+    let neighborsOn = false;
     for (let k = 0; k < args.length; k++) {
       const kw = args[k];
       const where = `compute ${id} (voronoi/atom)`;
       if (kw === 'only_group') { onlyGroup = true; continue; }
-      if (kw === 'occupation') {
-        throw new StyleError(`${where}: keyword occupation is not supported (it needs the tessellation stored from the first invocation)`);
-      }
+      if (kw === 'occupation') { occupationOn = true; continue; }
       if (kw === 'neighbors') {
         const w = args[++k];
         if (w === 'no') continue;
-        if (w === 'yes') throw new StyleError(`${where}: keyword neighbors yes is not supported (the local face array is not implemented)`);
+        if (w === 'yes') { neighborsOn = true; continue; }
         throw new StyleError(`${where}: neighbors must be yes or no (got '${w}')`);
       }
       if (kw === 'peratom') {
@@ -302,7 +338,16 @@ export class ComputeVoronoiAtom extends Compute {
     this.edgeMax = edgeMax;
     this.edgeThreshold = edgeThreshold;
     this.faceThreshold = faceThreshold;
-    this.sizePeratomCols = surfaceBit === null ? 2 : 3;
+    this.occupationOn = occupationOn;
+    this.neighborsOn = neighborsOn;
+    if (occupationOn && (onlyGroup || surfaceBit !== null || radiusName !== null || edgeMax !== null || neighborsOn)) {
+      throw new StyleError(`compute ${id} (voronoi/atom): keyword occupation cannot be combined with only_group, surface, radius, edge_histo or neighbors yes (not supported by the browser engine)`);
+    }
+    this.sizePeratomCols = occupationOn ? 2 : surfaceBit === null ? 2 : 3;
+    if (neighborsOn) {
+      this.localFlag = true;
+      this.sizeLocalCols = 3;
+    }
     if (edgeMax !== null) {
       this.vectorFlag = true;
       this.sizeVector = edgeMax + 1;
@@ -318,7 +363,12 @@ export class ComputeVoronoiAtom extends Compute {
     this.ensure();
   }
 
-  /** Runs the tessellation once per state epoch and fills both outputs. */
+  protected computeLocal(): Float64Array<ArrayBuffer> {
+    this.ensure();
+    return this.localOut;
+  }
+
+  /** Runs the tessellation once per state epoch and fills the outputs. */
   private ensure(): void {
     if (this.cachedEpoch === this.sys.epoch) return;
     const sys = this.sys;
@@ -329,6 +379,11 @@ export class ComputeVoronoiAtom extends Compute {
     if (g.triclinic) throw new StyleError(`${where}: triclinic boxes are not supported`);
     for (let d = 0; d < 3; d++) {
       if (!g.periodic[d]) throw new StyleError(`${where}: non-periodic boundaries are not supported (dimension ${'xyz'[d]} is not periodic)`);
+    }
+    if (this.occupationOn) {
+      this.computeOccupation();
+      this.cachedEpoch = sys.epoch;
+      return;
     }
     const n = s.n;
     const L = [g.hi[0] - g.lo[0], g.hi[1] - g.lo[1], g.hi[2] - g.lo[2]];
@@ -351,6 +406,7 @@ export class ComputeVoronoiAtom extends Compute {
     const cols = this.sizePeratomCols;
     const out = new Float64Array(cols * n);
     const histo = new Float64Array(this.edgeMax !== null ? this.edgeMax + 1 : 0);
+    const targetRows: number[][] = [];
     if (targets.length > 0) {
       // window over all owned positions
       const wlo = [Infinity, Infinity, Infinity], whi = [-Infinity, -Infinity, -Infinity];
@@ -363,16 +419,21 @@ export class ComputeVoronoiAtom extends Compute {
       }
       const vol = L[0] * L[1] * L[2];
       let D = 1.5 * Math.cbrt(vol / Math.max(1, pool.length));
-      let results: { vol: number; nf: number; surf: number; edges: number[] }[] | null = null;
+      let results: CellResult[] | null = null;
       for (let attempt = 0; attempt < 80 && results === null; attempt++) {
         const img = this.buildImages(D, pool, rad, s.x, wlo, whi, L);
-        results = this.tessellateAll(D, targets, img, rad, rmax, s.x, s.mask);
+        results = this.tessellateAll(D, targets, img, rad, rmax, s.x, s.mask, s.id);
         if (results === null) D *= 1.5;
       }
       if (results === null) throw new StyleError(`${where}: the Voronoi search radius did not converge`);
       for (let t = 0; t < targets.length; t++) {
         const i = targets[t];
         const r = results[t];
+        if (this.neighborsOn) {
+          const row: number[] = [];
+          for (const f of r.faces) row.push(s.id[i], f.nid, f.area);
+          targetRows.push(row);
+        }
         out[cols * i] = r.vol;
         out[cols * i + 1] = r.nf;
         if (cols === 3) out[cols * i + 2] = r.surf;
@@ -387,7 +448,58 @@ export class ComputeVoronoiAtom extends Compute {
     }
     this.arrayAtom = out;
     if (this.edgeMax !== null) this.vector = histo;
+    if (this.neighborsOn) {
+      let rows = 0;
+      for (const r of targetRows) rows += r.length / 3;
+      const loc = new Float64Array(3 * rows);
+      let q = 0;
+      for (const r of targetRows) for (let k = 0; k < r.length; k++) loc[q++] = r[k];
+      this.localOut = loc;
+      this.localRows = rows;
+    }
     this.cachedEpoch = sys.epoch;
+  }
+
+  /** occupation: the first invocation stores the seeds; later ones count the atoms per stored cell (see the module comment). */
+  private computeOccupation(): void {
+    const sys = this.sys;
+    const s = sys.state;
+    const g = sys.geom;
+    const n = s.n;
+    const L = [g.hi[0] - g.lo[0], g.hi[1] - g.lo[1], g.hi[2] - g.lo[2]];
+    if (this.seedIds === null) {
+      this.seedIds = s.id.slice(0, n);
+      this.seedX = s.x.slice(0, 3 * n);
+    }
+    const seedIds = this.seedIds, seedX = this.seedX;
+    const M = seedIds.length;
+    const seedOf = new Map<number, number>();
+    for (let k = 0; k < M; k++) seedOf.set(seedIds[k], k);
+    // nearest stored seed of every current atom (minimum image): the cell that holds the atom
+    const near = new Int32Array(n);
+    for (let j = 0; j < n; j++) {
+      let best = -1, bestd = Infinity;
+      for (let k = 0; k < M; k++) {
+        let d2 = 0;
+        for (let d = 0; d < 3; d++) {
+          let dd = s.x[3 * j + d] - seedX[3 * k + d];
+          dd -= L[d] * Math.round(dd / L[d]);
+          d2 += dd * dd;
+        }
+        if (d2 < bestd) { bestd = d2; best = k; }
+      }
+      near[j] = best;
+    }
+    const cnt = new Float64Array(M);
+    for (let j = 0; j < n; j++) if (near[j] >= 0) cnt[near[j]]++;
+    const out = new Float64Array(2 * n);
+    for (let i = 0; i < n; i++) {
+      if ((s.mask[i] & this.groupBit) === 0) continue;
+      const k = seedOf.get(s.id[i]);
+      out[2 * i] = k === undefined ? 0 : cnt[k];
+      out[2 * i + 1] = near[i] >= 0 ? cnt[near[i]] : 0;
+    }
+    this.arrayAtom = out;
   }
 
   /** Periodic images of the pool atoms inside the window [wlo - D, whi + D], binned with cell size D. */
@@ -451,10 +563,10 @@ export class ComputeVoronoiAtom extends Compute {
    * f(D)), so the caller grows D and retries.
    */
   private tessellateAll(D: number, targets: number[], img: Images, rad: Float64Array, rmax: number,
-    x: Float64Array, mask: Int32Array): { vol: number; nf: number; surf: number; edges: number[] }[] | null {
+    x: Float64Array, mask: Int32Array, ids: Int32Array): CellResult[] | null {
     const D2 = D * D;
     const eps = 1e-12 * D2;
-    const res: { vol: number; nf: number; surf: number; edges: number[] }[] = [];
+    const res: CellResult[] = [];
     const cands: Candidate[] = [];
     const [nbx, nby, nbz] = img.nb;
     const wlo = img.wlo;
@@ -502,6 +614,7 @@ export class ComputeVoronoiAtom extends Compute {
       if (!(R < fD)) return null;
       let vol = 0, nf = 0, surf = 0;
       const edges: number[] = [];
+      const faces: { nid: number; area: number }[] = [];
       for (const f of poly.f) {
         const area = faceArea(poly, f);
         if (f.plane < 0) continue; // cube face: cannot remain once R < fD
@@ -510,6 +623,7 @@ export class ComputeVoronoiAtom extends Compute {
         if (this.surfaceBit !== null && j >= 0 && (mask[j] & this.surfaceBit) !== 0) surf += area;
         if (area > this.faceThreshold) {
           nf++;
+          if (this.neighborsOn) faces.push({ nid: j >= 0 ? ids[j] : 0, area });
           if (this.edgeMax !== null) {
             let ne = 0;
             const m = f.idx.length;
@@ -523,7 +637,7 @@ export class ComputeVoronoiAtom extends Compute {
         }
       }
       vol = polyVolume(poly);
-      res.push({ vol, nf, surf, edges });
+      res.push({ vol, nf, surf, edges, faces });
     }
     return res;
   }

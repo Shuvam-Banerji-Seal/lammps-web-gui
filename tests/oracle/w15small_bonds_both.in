@@ -1,0 +1,29 @@
+# oracle: create_bonds many all all, then create_bonds many hi all (second images of bonded pairs), short NVE run
+# oracle-files: w15small_bonds_both.nb
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      bond
+lattice         sc 1.0
+region          box block 0 3 0 3 0 3
+create_box      2 box bond/types 1 extra/bond/per/atom 8
+create_atoms    1 box
+mass            * 1.0
+group           hi id 20:27
+pair_style      lj/cut 2.0
+pair_coeff      * * 1.0 1.0
+special_bonds   lj 0 1 1
+bond_style      harmonic
+bond_coeff      1 100.0 1.0
+create_bonds    single/bond 1 1 2
+create_bonds    many all all 1 0.9 1.1
+create_bonds    many hi all 1 1.9 2.1
+compute         bpe all pe/atom bond pair
+velocity        all create 1.0 4928
+fix             1 all nve
+thermo_style    custom step temp pe ebond press
+thermo_modify   format float %.15g
+thermo          1
+run             10
+dump            nbd all custom 1 w15small_bonds_both.nb id c_bpe
+dump_modify     nbd sort id format float %.15g
+run             0

@@ -1,0 +1,20 @@
+# oracle: fix balance weight neigh with a group weight over a short run (neighbor pairs recounted at each reneighbor step)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         sc 1.0
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+group           g1 id 1:10
+pair_style      lj/cut 1.5
+pair_coeff      * * 1.0 1.0
+neigh_modify    every 1 delay 0 check no
+velocity        all create 1.0 87287
+fix             2 all nve
+fix             1 all balance 1 1.0 shift x 10 1.1 weight neigh 1.0 weight group 1 g1 2.0
+thermo_style    custom step atoms f_1 f_1[1] f_1[2] f_1[3] pe
+thermo_modify   format float %.15g
+thermo          1
+run             5

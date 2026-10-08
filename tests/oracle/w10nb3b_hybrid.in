@@ -1,0 +1,32 @@
+# oracle: pair_style hybrid/overlay nb3b/harmonic (NULL type 3) + lj/cut on all pairs, the NULL mapping of the pair_nb3b doc, 50 MD steps
+# oracle-inputs: w10nb3b_SiC.nb3b
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      atomic
+lattice         diamond 5.431
+region          box block 0 2 0 2 0 2
+create_box      3 box
+create_atoms    1 box
+group           odd id 1:64:2
+set             group odd type 2
+group           three id 1:64:3
+set             group three type 3
+mass            * 28.0855
+variable        dx atom 0.07*sin(0.9*x+0.4*y)
+variable        dy atom 0.07*cos(0.7*y-0.5*z)
+variable        dz atom 0.07*sin(1.1*z+0.3*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 1.0*sin(0.5*x+0.2*z)
+variable        vy atom 1.0*cos(0.4*y+0.6*x)
+variable        vz atom 1.0*sin(0.3*z-0.5*y)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      hybrid/overlay nb3b/harmonic lj/cut 3.0
+pair_coeff      * * nb3b/harmonic w10nb3b_SiC.nb3b Si C NULL
+pair_coeff      * * lj/cut 0.005 2.2
+timestep        0.001
+fix             1 all nve
+thermo_style    custom step temp pe evdwl etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             50

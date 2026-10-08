@@ -1,0 +1,10 @@
+# synthetic nb3b/harmonic file for the w10nb3b oracle cases (not a published parameter set)
+# el1 el2 el3 K(energy/rad^2) theta0(deg) cutoff(A); entries with el2 == el3 give the leg cutoff el1-el2
+Si Si Si 0.5 109.47 2.6
+Si Si C 0.5 109.47 0.0
+Si C Si 0.5 109.47 0.0
+Si C C 0.5 109.47 2.6
+C Si Si 0.5 109.47 2.6
+C Si C 0.5 109.47 0.0
+C C Si 0.5 109.47 0.0
+C C C 0.5 109.47 2.6

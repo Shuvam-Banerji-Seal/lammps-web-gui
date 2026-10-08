@@ -76,6 +76,14 @@ interface Sub {
   used: boolean;
   half: NeighList | null;
   full: NeighList | null;
+  /**
+   * Energies of the last evaluation for compute pair (docs.lammps.org/compute_pair.html): evdwl and
+   * ecoul of this sub-style alone, unscaled and without tail corrections. evaluated is false when the
+   * sub-style did not run (hybrid/scaled factor 0).
+   */
+  evdwl: number;
+  ecoul: number;
+  evaluated: boolean;
 }
 
 export class PairHybrid extends Pair {
@@ -134,7 +142,7 @@ export class PairHybrid extends Pair {
       }
       if (!style.virialFdotr) throw new StyleError(`pair_style ${this.mode}: sub-style ${name} cannot be combined by the browser engine`);
       const instance = subs.filter((s) => s.name === name).length + 1;
-      subs.push({ style, name, instance, scale, specialLJ: null, specialCoul: null, used: false, half: null, full: null });
+      subs.push({ style, name, instance, scale, specialLJ: null, specialCoul: null, used: false, half: null, full: null, evdwl: 0, ecoul: 0, evaluated: false });
       k = e;
     }
     if (this.mode === 'hybrid/molecular') {
@@ -217,6 +225,15 @@ export class PairHybrid extends Pair {
     const nt = this.ntypes + 1;
     this.map[i * nt + j] = subs;
     this.map[j * nt + i] = subs;
+  }
+
+  /**
+   * The energies of the last evaluation of sub-style `name`, its `instance`-th listing (1-based), for
+   * compute pair; null when no such sub-style exists.
+   */
+  subEnergy(name: string, instance: number): { style: Pair; evdwl: number; ecoul: number; evaluated: boolean } | null {
+    const s = this.subs.find((x) => x.name === name && x.instance === instance);
+    return s ? { style: s.style, evdwl: s.evdwl, ecoul: s.ecoul, evaluated: s.evaluated } : null;
   }
 
   /** Sub-styles assigned to the type pair (after init: including mixed pairs). */
@@ -351,13 +368,19 @@ export class PairHybrid extends Pair {
     const scaled = this.mode === 'hybrid/scaled';
     for (const s of this.subs) {
       s.style.gEwald = this.gEwald;
+      s.evaluated = false;
       const sub: PairCompute = {
         ...pc, half: s.half, full: s.full,
         specialLJ: s.specialLJ ?? pc.specialLJ,
         specialCoul: s.specialCoul ?? pc.specialCoul,
       };
       if (!scaled) {
+        // the sub-style's own energy is the change of the shared accumulator over its call
+        const e0 = pc.acc.evdwl, c0 = pc.acc.ecoul;
         s.style.compute(sub);
+        s.evdwl = pc.acc.evdwl - e0;
+        s.ecoul = pc.acc.ecoul - c0;
+        s.evaluated = true;
         continue;
       }
       const f = this.scaleOf(s);
@@ -368,6 +391,9 @@ export class PairHybrid extends Pair {
       const eatom = pc.eatom ? new Float64Array(pc.eatom.length) : null;
       const vatom = pc.vatom ? new Float64Array(pc.vatom.length) : null;
       s.style.compute({ ...sub, f: fbuf, acc, eatom, vatom });
+      s.evdwl = acc.evdwl;
+      s.ecoul = acc.ecoul;
+      s.evaluated = true;
       for (let q = 0; q < fbuf.length; q++) pc.f[q] += f * fbuf[q];
       pc.acc.evdwl += f * acc.evdwl;
       pc.acc.ecoul += f * acc.ecoul;

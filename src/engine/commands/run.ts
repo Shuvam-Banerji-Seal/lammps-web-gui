@@ -36,8 +36,9 @@ const fix: Handler = ({ sys }, a) => {
   }
   // the style is checked first, so a fix the engine lacks is named even before the box exists;
   // fix_property_atom.html: "This fix is one of a small number that can be defined in an input
-  // script before the simulation box is created or atoms are defined."
-  if (style !== 'property/atom') sys.state;
+  // script before the simulation box is created or atoms are defined." fix_cmap.html: "To function
+  // as expected this fix command must be issued *before* a read_data command".
+  if (style !== 'property/atom' && style !== 'cmap') sys.state;
   const k = sys.fixes.findIndex((f) => f.id === id);
   if (k >= 0 && sys.fixes[k].style !== style) throw new StyleError(`replacing fix ${id} with a different style (${sys.fixes[k].style} -> ${style}) is not allowed; unfix it first`);
   ensureThermoComputes(sys);
@@ -357,10 +358,17 @@ const minimizeCmd: Handler = async (ctx, a) => {
   const first = s.step;
   startRestarts(sys);
   let lastRestart = -1;
+  // one thermo row per step: the final row of a minimization that stops on a step already printed
+  // (maxiter 0, or a thermo step) is not repeated (measured with native LAMMPS: minimize ... 0 0
+  // prints the step-0 row once)
+  let lastThermo = -1;
   const result = await minimize(sys, { etol, ftol, maxiter, maxeval }, {
     cancelled: () => session.isCancelled,
     thermo: (iterDone) => {
-      if (iterDone || th.due(s.step, first, Number.MAX_SAFE_INTEGER)) sys.io.emit({ kind: 'thermo', row: th.row() });
+      if ((iterDone || th.due(s.step, first, Number.MAX_SAFE_INTEGER)) && s.step !== lastThermo) {
+        sys.io.emit({ kind: 'thermo', row: th.row() });
+        lastThermo = s.step;
+      }
       writeDumps(sys, s.step === first);
       if (s.step !== first && s.step !== lastRestart && restartDue(sys, s.step)) { writeRestarts(sys, s.step); lastRestart = s.step; }
     },

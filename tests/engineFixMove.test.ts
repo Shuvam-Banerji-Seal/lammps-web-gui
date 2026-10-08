@@ -206,15 +206,15 @@ ${VDUMP}
 
 describe('fix move errors (fix_move.html)', () => {
   const base = `${box(1)}\ncreate_atoms 1 single 5 5 5 units box\nmass 1 1.0\nvelocity all set 0 0 0\n`;
-  it('throws StyleError naming rotate, transrot and variable', async () => {
-    expect(errText((await runScript(`${base}fix 1 all move rotate 0 0 0 0 0 1 5\nrun 1\n`)).error)).toMatch(/rotate/);
-    expect(errText((await runScript(`${base}fix 1 all move transrot 1 0 0 0 0 0 0 0 1 5\nrun 1\n`)).error)).toMatch(/transrot/);
+  it('throws StyleError naming variable; transrot refuses NULL translation components', async () => {
     expect(errText((await runScript(`${base}fix 1 all move variable v_x NULL NULL NULL NULL NULL\nrun 1\n`)).error)).toMatch(/variable/);
+    expect(errText((await runScript(`${base}fix 1 all move transrot NULL 0 0 0 0 0 0 0 1 5\nrun 1\n`)).error)).toMatch(/transrot: velocity components must be a number/);
+    expect(errText((await runScript(`${base}fix 1 all move rotate 0 0 0 0 0 0 5\nrun 1\n`)).error)).toMatch(/zero length rotation vector/);
   });
 
   it('rejects bad arguments and keywords', async () => {
     expect(errText((await runScript(`${base}fix 1 all move linear 1 0\nrun 1\n`)).error)).toMatch(/usage/);
-    expect(errText((await runScript(`${base}fix 1 all move linear 1 bogus 0\nrun 1\n`)).error)).toMatch(/numbers or NULL/);
+    expect(errText((await runScript(`${base}fix 1 all move linear 1 bogus 0\nrun 1\n`)).error)).toMatch(/velocity components must be a number/);
     expect(errText((await runScript(`${base}fix 1 all move linear 1 0 0 units parsecs\nrun 1\n`)).error)).toMatch(/box or lattice/);
     expect(errText((await runScript(`${base}fix 1 all move linear 1 0 0 bogus\nrun 1\n`)).error)).toMatch(/unknown keyword/);
     expect(errText((await runScript(`${base}fix 1 all move linear 1 0 0 units box update dipole\nrun 1\n`)).error)).toMatch(/rotate or transrot/);

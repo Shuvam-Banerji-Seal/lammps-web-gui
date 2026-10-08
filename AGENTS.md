@@ -15,7 +15,7 @@ everything runs client-side.
 ## Commands
 
 ```bash
-npm test             # vitest run — the whole suite (~630 tests, ~15 s)
+npm test             # vitest run — the whole suite (~2250 tests, a few minutes; ~400 are native-LAMMPS oracle cases)
 npx vitest run tests/<file>.test.ts   # one file
 npm run typecheck    # tsc --noEmit — must be clean
 npm run build        # tsc && vite build
@@ -23,6 +23,15 @@ npm run check:size   # gzip budgets: 420 KB initial JS, 120 KB lazy (notebook UI
 ```
 
 There is no linter configured; `typecheck` is the static gate.
+
+### Native parity (oracle cases)
+
+Engine behaviour is checked against native LAMMPS (`/home/roy/.local/bin/lmp`, run as a black box only, rule 7):
+a case is `tests/oracle/<case>.in` (header lines `# oracle:`, optional `# oracle-inputs:` and
+`# oracle-compare:`); `LMP=/home/roy/.local/bin/lmp node scripts/oracle/run-oracle.mjs <case>` writes the native
+fixture `tests/fixtures/oracle/<case>.json`, and `npx vitest run tests/engineOracle.test.ts -t <case>` compares the
+engine with it. Put `thermo_modify format float %.15g` after `thermo_style`. Measured native behaviour is written in
+comments as "Measured with native LAMMPS (black box): ..." without quote marks; quote marks are for doc text only.
 
 ## Layout
 
@@ -39,7 +48,7 @@ There is no linter configured; `typecheck` is the static gate.
 | `src/services/trajectoryAnalysis.ts` | RDF (cell list), MSD, density, speeds |
 | `src/services/instanceMatrix.ts` | Direct instanced-matrix writes |
 | `src/components/workbench/` | The four modules: `ScriptBuilder`, `CompilerHelper`, `ViewerModule`, `Notebook` (lazy-loaded) |
-| `src/engine/` | In-browser MD engine for the notebook: `types.ts` (contracts), `units`, `rng`, `lattice`, `pairs`, `cpu/forces.ts` (fp64 reference), `cpu/parallel.ts` + `cpu/rangeKernel.ts` (multi-threaded CPU forces via `src/workers/force.worker.ts`), `gpu/webgpuForces.ts` (WGSL forces) + `gpu/resident.ts` (whole NVE steps on the GPU), `integrate`, `velocity`, `observables`, `md` (run loop), `script` + `expr` (input parsing), `interpreter.ts` (LAMMPS subset), `fixes.ts`, `host`/`client`/`protocol` (worker plumbing), `view.ts` |
+| `src/engine/` | In-browser MD engine for the notebook: `types.ts` (contracts), `units`, `rng`, `lattice`, `pairs`, `cpu/forces.ts` (fp64 reference), `cpu/parallel.ts` + `cpu/rangeKernel.ts` (lj/cut-only threaded forces via `src/workers/force.worker.ts`, used without cross-origin isolation), `cpu/pairThreads.ts` + `cpu/pairThreadsCore.ts` + `cpu/threadedPairs.ts` (shared-memory threads for the general engine's pair term via `src/workers/pair.worker.ts`), `force/` (pair, bond, angle, dihedral, improper, kspace styles), `fix/`, `compute/`, `commands/`, `registry/` (style factories merged in `styles.ts`), `neighbor.ts`, `gpu/webgpuForces.ts` (WGSL forces) + `gpu/resident.ts` (whole NVE steps on the GPU), `integrate`, `velocity`, `observables`, `md` (run loop), `script` + `expr` (input parsing), `interpreter.ts` (LAMMPS subset), `fixes.ts`, `host`/`client`/`protocol` (worker plumbing), `view.ts` |
 | `docs/design/notebook.md` | Notebook design: scope, supported subset, acceptance test (LAMMPS `examples/melt` log) |
 | `src/components/*.tsx` | three.js scene pieces (instanced meshes, camera, box, labels) |
 | `src/workers/` | Parser and analysis Web Workers |

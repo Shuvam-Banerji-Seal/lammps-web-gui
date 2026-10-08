@@ -63,7 +63,6 @@ const close = (a: number, b: number) => Math.abs(a - b) <= 1e-9 + 1e-9 * Math.ab
 
 describe('fix wall/gran argument errors', () => {
   const cases: [string, string, RegExp][] = [
-    ['granular fstyle', 'granular hooke 1000.0 50.0 tangential linear_nohistory 1.0 0.4 damping velocity zplane 0.0 NULL', /granular/],
     ['unknown fstyle', 'foo 2000.0 NULL 50.0 NULL 0.5 0 zplane 0.0 NULL', /foo/],
     ['zcylinder wallstyle', 'hooke 2000.0 NULL 50.0 NULL 0.5 0 zcylinder 1.0', /zcylinder/],
     ['contacts keyword', 'hooke 2000.0 NULL 50.0 NULL 0.5 0 zplane 0.0 NULL contacts', /contacts/],

@@ -1,0 +1,30 @@
+# oracle: fix wall/gran granular — hertz/material normal, mindlin (k_t NULL) tangential, rolling sds, velocity damping; 100 polydisperse spheres falling under gravity onto a zplane wall (fix nve/sphere, comm_modify vel yes)
+units           lj
+atom_style sphere
+atom_modify map array
+comm_modify vel yes
+boundary        p p f
+lattice sc 0.9
+region b block 0 5 0 5 0 6
+create_box 2 b
+create_atoms 1 box
+group odd id 1:150:2
+set group odd type 2
+set type 1 diameter 1.0 density 1.0
+set type 2 diameter 1.15 density 1.4
+displace_atoms all move 0 0 0.6 units box
+velocity all set 0 0 -0.6 units box
+variable wx atom 0.3*sin(0.3*id)
+variable wy atom 0.3*cos(0.7*id)
+variable wz atom 0.2*sin(1.1*id)
+set group all omega v_wx v_wy v_wz
+pair_style none
+timestep 0.0005
+fix 1 all nve/sphere
+fix 2 all gravity 1.0 vector 0 0 -1
+fix 3 all wall/gran granular hertz/material 2000.0 0.4 0.3 tangential mindlin NULL 0.6 0.4 damping velocity rolling sds 100.0 10.0 0.3 zplane 0.0 NULL
+compute er all erotate/sphere
+thermo_style custom step ke c_er press
+thermo_modify format float %.15g
+thermo 25
+run 200

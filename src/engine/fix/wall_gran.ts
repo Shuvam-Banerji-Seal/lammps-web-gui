@@ -2,6 +2,8 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { parseNum } from '../force/util';
 import type { System } from '../system';
+import { granularContact, newContactOut, parseGranularSpec, PairGranular, type ContactOut, type Pm } from '../force/pair/granular';
+import { BlockRegion, ConeRegion, SphereRegion } from '../region';
 
 /*
  * fix ID group-ID wall/gran fstyle fstyle_params wallstyle args keyword values ...
@@ -292,6 +294,244 @@ export class FixWallGran extends Fix {
         torque[3 * i] -= R * (n[1] * ft2 - n[2] * ft1);
         torque[3 * i + 1] -= R * (n[2] * ft0 - n[0] * ft2);
         torque[3 * i + 2] -= R * (n[0] * ft1 - n[1] * ft0);
+      }
+    }
+  }
+}
+
+/*
+ * fix wall/gran granular and fix wall/gran/region granular — docs.lammps.org/fix_wall_gran.html and
+ * fix_wall_gran_region.html (plans/lammps-docs). "For *granular*, *fstyle_params* are set using the same
+ * syntax as for the *pair_coeff* command of pair_style granular"; the wall/particle contact is the
+ * granular contact of pair_style granular with the wall as the second particle:
+ * "delta = radius - r = overlap of particle with wall, m_eff = mass of particle, and the effective radius
+ * of contact = RiRj/Ri+Rj is set to the radius of the particle" (flat walls, fix_wall_gran.rst);
+ * for region walls "the effective radius is calculated using the radius of the particle and the radius
+ * of curvature of the wall at the contact point ... The radius of curvature can be negative for a concave
+ * wall section, e.g. the interior of cylinder" (fix_wall_gran_region.rst).
+ * "The distance between a particle and the region boundary is the distance to the nearest point on the
+ * region surface" and "for region_style block, a particle in the interior, near a corner of the block,
+ * could feel wall forces from 1, 2, or 3 faces of the block" (fix_wall_gran_region.rst).
+ * E_eff of the wall/particle pair: E_eff = 960 / (2 (1 - 0.2^2)) = 500 (the worked example of the fix_wall_gran.rst note); the
+ * pair_coeff of pair_style granular is NOT used for the wall ("Any pair coefficients defined by pair_style
+ * granular are not taken into consideration").
+ * Supported here: planes xplane/yplane/zplane (lo and hi, NULL allowed; wiggle and shear motion) for
+ * wall/gran; region walls for wall/gran/region with block, sphere (interior) and cylinder (radlo = radhi,
+ * interior) regions, static only. Side-out regions, cones, the contacts and temperature keywords, and
+ * dynamic regions throw a StyleError.
+ */
+
+const WALL_WORDS = ['xplane', 'yplane', 'zplane', 'zcylinder', 'region'] as const;
+
+/** A wall/particle contact candidate: history key, distance to the surface, unit normal (wall to particle), effective radius. */
+interface WallElement { key: number; dist: number; nx: number; ny: number; nz: number; Rf: number }
+
+export class FixWallGranGranular extends Fix {
+  readonly style: string;
+  private readonly pm: Pm;
+  private readonly planes: Plane[] = [];
+  private motion: Motion | null = null;
+  private readonly regionId: string | null;
+  private readonly step0: number;
+  private shear = new Map<string, Float64Array>();
+  private readonly out: ContactOut = newContactOut();
+
+  constructor(sys: System, id: string, group: string, args: string[], regionMode: boolean) {
+    super(sys, id, group, args);
+    this.style = regionMode ? 'wall/gran/region' : 'wall/gran';
+    if (args[0] !== 'granular') throw new StyleError(`fix ${id} ${this.style}: expected fstyle granular`);
+    let k = 1;
+    while (k < args.length && !(WALL_WORDS as readonly string[]).includes(args[k])) k++;
+    if (k >= args.length) throw new StyleError(`fix ${id} ${this.style} granular: missing wallstyle`);
+    const ws = args[k];
+    const model = args.slice(1, k);
+    const sp = parseGranularSpec(model);
+    this.pm = new PairGranular().wallParams(sp);
+    if (regionMode) {
+      if (ws !== 'region') throw new StyleError(`fix ${id} wall/gran/region: wallstyle must be region, got '${ws}'`);
+      this.regionId = args[k + 1] ?? null;
+      if (!this.regionId) throw new StyleError(`fix ${id} wall/gran/region: missing region ID`);
+      this.sys.region(this.regionId);
+      k += 2;
+    } else {
+      this.regionId = null;
+      if (ws === 'region') throw new StyleError(`fix ${id} wall/gran: wallstyle region is wall/gran/region`);
+      if (ws === 'zcylinder') throw new StyleError('The zcylinder keyword has been removed. Please use fix wall/gran/region instead.');
+      const dim = (ws === 'xplane' ? 0 : ws === 'yplane' ? 1 : 2) as Dim;
+      const lo = args[k + 1], hi = args[k + 2];
+      if (lo === undefined || hi === undefined) throw new StyleError(`fix ${id} wall/gran ${ws} needs lo and hi (either may be NULL)`);
+      if (lo === 'NULL' && hi === 'NULL') throw new StyleError(`fix ${id} wall/gran ${ws}: lo and hi are both NULL, no wall is defined`);
+      if (lo !== 'NULL') this.planes.push({ dim, lo: true, coord: parseNum(lo, `${ws} lo`) });
+      if (hi !== 'NULL') this.planes.push({ dim, lo: false, coord: parseNum(hi, `${ws} hi`) });
+      k += 3;
+    }
+    this.step0 = sys.state.step;
+    while (k < args.length) {
+      const w = args[k];
+      if (w === 'wiggle' && !regionMode) {
+        const d = DIM_OF[args[k + 1]];
+        if (d === undefined) throw new StyleError(`fix ${id} wall/gran wiggle: dim must be x, y or z`);
+        const amp = parseNum(args[k + 2], 'wiggle amplitude');
+        const period = parseNum(args[k + 3], 'wiggle period');
+        if (!(period > 0)) throw new StyleError(`fix ${id} wall/gran wiggle: period must be > 0`);
+        this.motion = { kind: 'wiggle', dim: d, amp, omega: (2 * Math.PI) / period, vshear: 0 };
+        k += 4;
+      } else if (w === 'shear' && !regionMode) {
+        const d = DIM_OF[args[k + 1]];
+        if (d === undefined) throw new StyleError(`fix ${id} wall/gran shear: dim must be x, y or z`);
+        this.motion = { kind: 'shear', dim: d, amp: 0, omega: 0, vshear: parseNum(args[k + 2], 'shear velocity') };
+        k += 3;
+      } else if (w === 'contacts') {
+        throw new StyleError(`fix ${id} ${this.style} keyword contacts is not supported yet`);
+      } else if (w === 'temperature') {
+        throw new StyleError(`fix ${id} ${this.style} keyword temperature is not supported yet (needs a heat model)`);
+      } else {
+        throw new StyleError(`fix ${id} ${this.style}: unknown keyword or argument '${w}'`);
+      }
+    }
+    if (this.motion && this.planes.length) {
+      for (const p of this.planes) {
+        if (this.motion.kind === 'shear' && this.motion.dim === p.dim) throw new StyleError('Invalid shear direction for fix wall/gran (shear must be tangential to the wall)');
+      }
+    }
+  }
+
+  init(): void {
+    const s = this.sys.state;
+    for (const p of this.planes) {
+      if (s.dimension === 2 && p.dim === 2) throw new StyleError('fix wall/gran: cannot use a z wall in a 2d simulation');
+      if (s.box.periodic[p.dim]) throw new StyleError('Cannot use wall in periodic dimension');
+    }
+    if (this.regionId) {
+      const r = this.sys.region(this.regionId);
+      if (r.dynamic) throw new StyleError(`fix ${this.id} wall/gran/region: a dynamic region is not supported`);
+    }
+  }
+
+  postForce(): void { this.apply(true); }
+
+  setup(): void { this.apply(false); }
+
+  private pv(p: number | { variable: string; scale: number }): number {
+    return typeof p === 'number' ? p : this.sys.regionEnv.variable(p.variable) * p.scale;
+  }
+
+  /** Contact candidates of one atom at its position (planes or region faces; static walls only). */
+  private regionElements(x: number, y: number, z: number, R: number, out: WallElement[]): void {
+    out.length = 0;
+    if (this.regionId) {
+      const r = this.sys.region(this.regionId);
+      if (!r.interior) throw new StyleError(`fix ${this.id} wall/gran/region: side-out regions are not supported`);
+      if (r instanceof BlockRegion) {
+        const b = r.b.map((q) => this.pv(q));
+        const lo = [b[0], b[2], b[4]], hi = [b[1], b[3], b[5]];
+        const p = [x, y, z];
+        for (let a = 0; a < 3; a++) {
+          const dlo = p[a] - lo[a], dhi = hi[a] - p[a];
+          if (dlo <= 0 || dhi <= 0) continue;
+          const e = [0, 0, 0];
+          e[a] = 1;
+          out.push({ key: 2 * a, dist: dlo, nx: e[0], ny: e[1], nz: e[2], Rf: R });
+          out.push({ key: 2 * a + 1, dist: dhi, nx: -e[0], ny: -e[1], nz: -e[2], Rf: R });
+        }
+      } else if (r instanceof SphereRegion) {
+        const c = r.c.map((q) => this.pv(q));
+        const Rs = this.pv(r.r);
+        const dx = x - c[0], dy = y - c[1], dz = z - c[2];
+        const rho = Math.hypot(dx, dy, dz);
+        if (rho === 0 || !(Rs - rho > 0)) return;
+        // concave wall: radius of curvature -Rs, so R_eff = R (-Rs) / (R - Rs)
+        // measured with native LAMMPS: the interior sphere has curvature radius -Rs (R_eff = R Rw / (R + Rw))
+        out.push({ key: 0, dist: Rs - rho, nx: -dx / rho, ny: -dy / rho, nz: -dz / rho, Rf: (R * -Rs) / (R - Rs) });
+      } else if (r instanceof ConeRegion) {
+        const rl = this.pv(r.radlo), rh = this.pv(r.radhi);
+        if (rl !== rh) throw new StyleError(`fix ${this.id} wall/gran/region: a cone region is not supported (cylinder radlo = radhi only)`);
+        const axis = r.axis;
+        const c1 = this.pv(r.c1), c2 = this.pv(r.c2), lo = this.pv(r.lo), hi = this.pv(r.hi);
+        const p = [x, y, z];
+        const [d1, d2] = axis === 0 ? [1, 2] : axis === 1 ? [0, 2] : [0, 1];
+        const e1 = p[d1] - c1, e2 = p[d2] - c2;
+        const rho = Math.hypot(e1, e2);
+        if (rho > 0 && rl - rho > 0) {
+          const u = [0, 0, 0];
+          u[d1] = -e1 / rho;
+          u[d2] = -e2 / rho;
+          // measured with native LAMMPS (black box, single sphere in an interior cylinder of radius Rc, fixed
+        // Hertz k_n): the effective radius implies a wall curvature radius of -2 Rc (Rc = 2.0, 2.5, 3.0 gave
+        // -4, -5, -6); the sphere region gives -Rs. R_eff = R Rw / (R + Rw).
+        const Rw = -2 * rl;
+        out.push({ key: 0, dist: rl - rho, nx: u[0], ny: u[1], nz: u[2], Rf: (R * Rw) / (R + Rw) });
+        }
+        const a = p[axis];
+        const ax = [0, 0, 0];
+        ax[axis] = 1;
+        if (a - lo > 0) out.push({ key: 1, dist: a - lo, nx: ax[0], ny: ax[1], nz: ax[2], Rf: R });
+        if (hi - a > 0) out.push({ key: 2, dist: hi - a, nx: -ax[0], ny: -ax[1], nz: -ax[2], Rf: R });
+      } else {
+        throw new StyleError(`fix ${this.id} wall/gran/region: region style ${r.style} is not supported (block, sphere, cylinder)`);
+      }
+      return;
+    }
+  }
+
+  private apply(update: boolean): void {
+    const s = this.sys.state;
+    const { x, v, f, id, mask, radius, rmass, omega, torque } = s;
+    if (!radius || !rmass || !omega || !torque) throw new StyleError('fix wall/gran requires atom_style sphere');
+    const dt = s.dt;
+    const delta = (s.step - this.step0) * dt;
+    const mv = [0, 0, 0];
+    let off = 0;
+    const m = this.motion;
+    if (m?.kind === 'wiggle') {
+      off = m.amp - m.amp * Math.cos(m.omega * delta);
+      mv[m.dim] = m.amp * m.omega * Math.sin(m.omega * delta);
+    } else if (m?.kind === 'shear') {
+      mv[m.dim] = m.vshear;
+    }
+    const bit = this.groupBit;
+    const pm = this.pm;
+    const jkr = pm.normal === 'jkr';
+    for (let i = 0; i < s.n; i++) {
+      if (!(mask[i] & bit)) continue;
+      const R = radius[i];
+      const mi = rmass[i];
+      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
+      const cand: WallElement[] = [];
+      if (this.regionId) {
+        this.regionElements(xi, yi, zi, R, cand);
+      } else {
+        for (let k = 0; k < this.planes.length; k++) {
+          const p = this.planes[k];
+          const c = p.coord + (m?.kind === 'wiggle' && m.dim === p.dim ? off : 0);
+          const sd = x[3 * i + p.dim] - c;
+          const dist = Math.abs(sd);
+          if (sd === 0) throw new StyleError(`fix wall/gran: particle ${id[i]} is at the wall position (zero distance); native LAMMPS gives NaN forces`);
+          const n = [0, 0, 0];
+          n[p.dim] = sd > 0 ? 1 : -1;
+          cand.push({ key: k, dist, nx: n[0], ny: n[1], nz: n[2], Rf: R });
+        }
+      }
+      for (const e of cand) {
+        const key = `${e.key}:${id[i]}`;
+        if (e.dist >= R && !jkr) {
+          this.shear.delete(key);
+          continue;
+        }
+        const sh = this.shear.get(key) ?? new Float64Array(8);
+        const ok = granularContact({
+          pm, nx: e.nx, ny: e.ny, nz: e.nz, r: e.dist, delta: R - e.dist, Rf: e.Rf, ri: R, rj: 0, meff: mi,
+          vrx: v[3 * i] - mv[0], vry: v[3 * i + 1] - mv[1], vrz: v[3 * i + 2] - mv[2],
+          oix: omega[3 * i], oiy: omega[3 * i + 1], oiz: omega[3 * i + 2],
+          ojx: 0, ojy: 0, ojz: 0, dt, update, sg: 1, surfaceArm: true,
+        }, sh, this.out, this.shear.has(key));
+        if (!ok) {
+          this.shear.delete(key);
+          continue;
+        }
+        if (this.out.hist) this.shear.set(key, sh);
+        f[3 * i] += this.out.fx; f[3 * i + 1] += this.out.fy; f[3 * i + 2] += this.out.fz;
+        torque[3 * i] += this.out.tix; torque[3 * i + 1] += this.out.tiy; torque[3 * i + 2] += this.out.tiz;
       }
     }
   }

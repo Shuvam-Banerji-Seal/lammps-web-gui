@@ -57,7 +57,7 @@ type RollKind = 'none' | 'sds';
 type TwistKind = 'none' | 'sds' | 'marshall';
 
 /** One pair_coeff line as written. */
-interface Spec {
+export interface Spec {
   normal: NormalKind;
   /** hooke / hertz: spring constant k_n. */
   kn: number;
@@ -77,7 +77,7 @@ interface Spec {
 }
 
 /** Resolved parameters for one type pair (i <= j), after mixing. */
-interface Pm {
+export interface Pm {
   normal: NormalKind;
   kn: number;
   /** Effective modulus E_eff (doc: E_eff = E/(2(1-nu^2)) for identical types). */
@@ -242,6 +242,248 @@ export function jklContact(delta: number, R: number, E: number, gamma: number): 
   return { a, f };
 }
 
+/** Inputs of one contact (pair or wall): unit normal n from j to i, overlap, effective and per-particle radii. */
+export interface ContactIn {
+  pm: Pm;
+  nx: number; ny: number; nz: number;
+  r: number; delta: number;
+  /** Effective radius of the contact (R_i R_j / (R_i + R_j); the particle radius for a flat wall). */
+  Rf: number;
+  /** Radii used for the torque arms (R_i - delta/2 on i, R_j - delta/2 on j) and the tangential rotation term. */
+  ri: number; rj: number;
+  meff: number;
+  /** v_i - v_j (for a wall: the particle velocity minus the wall velocity). */
+  vrx: number; vry: number; vrz: number;
+  oix: number; oiy: number; oiz: number;
+  ojx: number; ojy: number; ojz: number;
+  dt: number;
+  /** True inside a timestep: the history advances. */
+  update: boolean;
+  /** -1 when the stored history is in the frame of the other atom (ID order). */
+  sg: number;
+  /**
+   * Torque arm of particle i is its full radius R_i (the contact point on a wall surface, measured with
+   * native LAMMPS for fix wall/gran granular); by default the arm is R_i - delta/2 (contact at the overlap centre).
+   */
+  surfaceArm?: boolean;
+}
+
+/** Outputs of one contact: force on i (minus on j), torques on i and j. */
+export interface ContactOut {
+  fx: number; fy: number; fz: number;
+  tix: number; tiy: number; tiz: number;
+  tjx: number; tjy: number; tjz: number;
+  /** The contact keeps a history record (the caller stores sh and marks the key as seen). */
+  hist: boolean;
+}
+
+export const newContactOut = (): ContactOut => ({ fx: 0, fy: 0, fz: 0, tix: 0, tiy: 0, tiz: 0, tjx: 0, tjy: 0, tjz: 0, hist: false });
+
+/**
+ * One granular contact: normal (hooke/hertz/hertz-material/dmt/jkr), damping, tangential (linear, mindlin),
+ * rolling sds and twisting. sh holds the history: [0..2] tangential displacement (or elastic force), [3] the
+ * previous contact radius, [4..6] rolling displacement, [7] twisting displacement; it is read and written in
+ * the frame given by sg. Returns false when there is no contact (the caller drops the history record).
+ */
+export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut, hadHistory: boolean): boolean {
+  const { pm, nx, ny, nz, r, delta, Rf, ri, rj, meff, dt, update, sg } = c;
+  const jkr = pm.normal === 'jkr';
+  // jkr hysteresis (doc): the tensile range delta < 0 applies only once the pair has been in contact
+  if (jkr && delta < 0 && !hadHistory) return false;
+  const sqrtR = Math.sqrt(Rf);
+  const vrx = c.vrx, vry = c.vry, vrz = c.vrz;
+  const vn = vrx * nx + vry * ny + vrz * nz; // (v_i - v_j) . n
+  const vnx = nx * vn, vny = ny * vn, vnz = nz * vn;
+  // (R_i w_i + R_j w_j) x n
+  const Ax = ri * c.oix + rj * c.ojx;
+  const Ay = ri * c.oiy + rj * c.ojy;
+  const Az = ri * c.oiz + rj * c.ojz;
+  const wnx = Ay * nz - Az * ny, wny = Az * nx - Ax * nz, wnz = Ax * ny - Ay * nx;
+  const vtx = vrx - vnx - wnx, vty = vry - vny - wny, vtz = vrz - vnz - wnz;
+  // normal force along n (positive repulsive): elastic part, then damping
+  let fne = 0;
+  let contactA = 0;
+  // pull-off force of the cohesive models (doc: F_pulloff = 4 pi gamma R for dmt, 3 pi gamma R for jkr)
+  const fPull = pm.normal === 'dmt' ? 4 * Math.PI * pm.gamma * Rf : jkr ? 3 * Math.PI * pm.gamma * Rf : 0;
+  if (jkr) {
+    const cc = jklContact(delta, Rf, pm.Eeff, pm.gamma);
+    if (!cc) return false;
+    fne = cc.f;
+    contactA = cc.a;
+  } else {
+    if (delta <= 0) return false;
+    contactA = Math.sqrt(Rf * delta);
+    if (pm.normal === 'hooke') fne = pm.kn * delta;
+    else if (pm.normal === 'hertz') fne = pm.kn * sqrtR * delta * Math.sqrt(delta);
+    else fne = (4 / 3) * pm.Eeff * sqrtR * delta * Math.sqrt(delta);
+    // dmt: cohesion -4 pi gamma R on top of the Hertz term (doc: F_ne,dmt = (4/3 E R^1/2 delta^3/2 - 4 pi gamma R) n)
+    fne -= pm.normal === 'dmt' ? fPull : 0;
+  }
+  const contact = contactA;
+  let etaN: number;
+  switch (pm.damp) {
+    case 'velocity': etaN = pm.eta; break;
+    case 'mass_velocity': etaN = pm.eta * meff; break;
+    case 'viscoelastic': etaN = pm.eta * contact * meff; break;
+    default: {
+      // knd: the elastic normal force per unit overlap; measured with native LAMMPS (black box):
+      // eta_n = sqrt(2) * alpha(e) * sqrt(m_eff * knd) for hooke, hertz and hertz/material alike
+      const knd = fne / delta;
+      etaN = Math.SQRT2 * tsujiAlpha(pm.eta) * Math.sqrt(meff * knd);
+    }
+  }
+  const fn = fne - etaN * vn;
+  if (pm.limit && fn < 0) return false;
+  // F_n0 for the Coulomb cap: |F_ne| for non-cohesive models, |F_ne + 2 F_pulloff| for dmt and jkr (doc)
+  const fnAbs = pm.normal === 'dmt' || jkr ? Math.abs(fne + 2 * fPull) : Math.abs(fn);
+  const fnx = fn * nx, fny = fn * ny, fnz = fn * nz;
+  // tangential force: damping from eta_t = x_gamma_t eta_n; the spring is -k_t xi (linear_history),
+  // -k_t a xi with a = sqrt(R delta) (mindlin), or the stored elastic force F_te (mindlin/force)
+  const etaT = pm.xgt * etaN;
+  const dampx = -etaT * vtx, dampy = -etaT * vty, dampz = -etaT * vtz;
+  const kind = pm.tang;
+  // jkr keeps a contact record too, so the tensile branch can be recognised (see hysteresis above)
+  const hist = kind !== 'linear_nohistory' || pm.roll !== 'none' || pm.twist !== 'none' || jkr;
+  const forceVariant = kind === 'mindlin/force' || kind === 'mindlin_rescale/force';
+  const rescale = kind === 'mindlin_rescale' || kind === 'mindlin_rescale/force';
+  const aC = contactA;
+  const keff = kind === 'linear_history' ? pm.kt : kind === 'linear_nohistory' ? 0 : pm.kt * aC;
+  let shx = 0, shy = 0, shz = 0;
+  if (hist) {
+    shx = sg * sh[0]; shy = sg * sh[1]; shz = sg * sh[2];
+    if (update) {
+      // keep the prior displacement (or elastic force) in the tangent plane, rescaled to its previous magnitude
+      const mag0 = Math.hypot(shx, shy, shz);
+      const sn = shx * nx + shy * ny + shz * nz;
+      let px = shx - sn * nx, py = shy - sn * ny, pz = shz - sn * nz;
+      const mag1 = Math.hypot(px, py, pz);
+      if (mag1 > 0) {
+        const cr = mag0 / mag1;
+        px *= cr; py *= cr; pz *= cr;
+      }
+      shx = px; shy = py; shz = pz;
+      // mindlin_rescale: on unloading (a < a_prev) the stored value is scaled by a / a_prev
+      const aPrev = sh[3];
+      if (rescale && aPrev > 0 && aC < aPrev) {
+        const cr = aC / aPrev;
+        shx *= cr; shy *= cr; shz *= cr;
+      }
+      if (forceVariant) {
+        shx -= keff * vtx * dt; shy -= keff * vty * dt; shz -= keff * vtz * dt;
+      } else {
+        shx += vtx * dt; shy += vty * dt; shz += vtz * dt;
+      }
+    }
+  }
+  // spring force on the particle: F_s = -k_eff xi (displacement models) or F_te (force models)
+  const spring = (q: number) => (forceVariant ? q : -keff * q);
+  let ftx = spring(shx) + dampx, fty = spring(shy) + dampy, ftz = spring(shz) + dampz;
+  const ft = Math.hypot(ftx, fty, ftz);
+  const fcap = pm.mu * fnAbs;
+  if (ft > fcap) {
+    let scale = ft > 0 ? fcap / ft : 0;
+    if (hist) {
+      // with no stored displacement (a contact at run setup) the capped force is dropped
+      if (shx === 0 && shy === 0 && shz === 0) scale = 0;
+      else if (keff > 0) {
+        if (forceVariant) {
+          // F_te = s (F_te + F_damp) - F_damp
+          shx = scale * (shx + dampx) - dampx;
+          shy = scale * (shy + dampy) - dampy;
+          shz = scale * (shz + dampz) - dampz;
+        } else {
+          const cr = etaT / keff;
+          shx = scale * (shx + cr * vtx) - cr * vtx;
+          shy = scale * (shy + cr * vty) - cr * vty;
+          shz = scale * (shz + cr * vtz) - cr * vtz;
+        }
+      }
+    }
+    ftx *= scale; fty *= scale; ftz *= scale;
+  }
+  // rolling sds: pseudo-force F_roll = s (-k_r xi_r - gamma_r v_roll), acting as a torque only (measured sign)
+  let rlx = 0, rly = 0, rlz = 0;
+  if (pm.roll === 'sds') {
+    const wdx = c.oix - c.ojx, wdy = c.oiy - c.ojy, wdz = c.oiz - c.ojz;
+    // v_roll = -R (w_i - w_j) x n, with R the effective radius
+    const vrlx = -Rf * (wdy * nz - wdz * ny), vrly = -Rf * (wdz * nx - wdx * nz), vrlz = -Rf * (wdx * ny - wdy * nx);
+    let qx = sh[4], qy = sh[5], qz = sh[6];
+    if (update) {
+      // prior rolling displacement rotated into the tangent plane, rescaled to its previous magnitude
+      const mag0 = Math.hypot(qx, qy, qz);
+      const sn = qx * nx + qy * ny + qz * nz;
+      let px = qx - sn * nx, py = qy - sn * ny, pz = qz - sn * nz;
+      const mag1 = Math.hypot(px, py, pz);
+      if (mag1 > 0) {
+        const cr = mag0 / mag1;
+        px *= cr; py *= cr; pz *= cr;
+      }
+      qx = px + vrlx * dt; qy = py + vrly * dt; qz = pz + vrlz * dt;
+    }
+    const k = pm.kr, g = pm.gr;
+    let fx0 = -k * qx - g * vrlx, fy0 = -k * qy - g * vrly, fz0 = -k * qz - g * vrlz;
+    const f0 = Math.hypot(fx0, fy0, fz0);
+    const cap = pm.mr * fnAbs;
+    if (f0 > cap) {
+      // measured as for the tangential force: with no stored displacement the capped rolling force is dropped
+      const sc = f0 > 0 && (qx !== 0 || qy !== 0 || qz !== 0) ? cap / f0 : 0;
+      if (k > 0 && sc > 0) {
+        // F0 = -k xi - gamma v; capped: xi = s xi - gamma v (1 - s) / k
+        const cr = -(g * (1 - sc)) / k;
+        qx = sc * qx + cr * vrlx; qy = sc * qy + cr * vrly; qz = sc * qz + cr * vrlz;
+      }
+      fx0 *= sc; fy0 *= sc; fz0 *= sc;
+    }
+    sh[4] = qx; sh[5] = qy; sh[6] = qz;
+    rlx = fx0; rly = fy0; rlz = fz0;
+  }
+  // twisting: torque along n, tau = clamp(-k xi - gamma Omega_tw); no force
+  let twq = 0;
+  if (pm.twist !== 'none') {
+    let k: number, g: number, mu: number;
+    if (pm.twist === 'sds') { k = pm.kw; g = pm.gw; mu = pm.mw; }
+    else {
+      // marshall: k_tw = 0.5 k_t a^2, gamma_tw = 0.5 eta_t a^2, mu_tw = 2/3 a mu_t
+      k = 0.5 * pm.kt * aC * aC; g = 0.5 * etaT * aC * aC; mu = (2 / 3) * aC * pm.mu;
+    }
+    const om = (c.oix - c.ojx) * nx + (c.oiy - c.ojy) * ny + (c.oiz - c.ojz) * nz;
+    let q = sh[7];
+    if (update) q += om * dt;
+    const t0 = -k * q - g * om;
+    const cap = mu * fnAbs;
+    let tau = t0;
+    if (Math.abs(t0) > cap) {
+      // doc: the capped twisting displacement is xi = (mu F sgn(Omega) - gamma Omega) / k, i.e. tau = -mu F sgn(Omega)
+      tau = om > 0 ? -cap : cap;
+      if (k > 0) q = -(tau + g * om) / k;
+    }
+    sh[7] = q;
+    twq = tau;
+  }
+  if (hist) {
+    sh[0] = sg * shx; sh[1] = sg * shy; sh[2] = sg * shz;
+    sh[3] = aC;
+  }
+  out.fx = fnx + ftx; out.fy = fny + fty; out.fz = fnz + ftz;
+  // torques: -(R - delta/2) n x F_t on each particle (contact point at the centre of the overlap)
+  const cx = ny * ftz - nz * fty, cy = nz * ftx - nx * ftz, cz = nx * fty - ny * ftx;
+  const ci = c.surfaceArm ? ri : ri - 0.5 * delta, cj = rj - 0.5 * delta;
+  out.tix = -ci * cx; out.tiy = -ci * cy; out.tiz = -ci * cz;
+  out.tjx = -cj * cx; out.tjy = -cj * cy; out.tjz = -cj * cz;
+  // rolling torque on i: R n x F_roll (and its opposite on j); twisting torque tau n on i
+  if (pm.roll === 'sds') {
+    const rx = -Rf * (ny * rlz - nz * rly), ry = -Rf * (nz * rlx - nx * rlz), rz = -Rf * (nx * rly - ny * rlx);
+    out.tix += rx; out.tiy += ry; out.tiz += rz;
+    out.tjx -= rx; out.tjy -= ry; out.tjz -= rz;
+  }
+  if (twq !== 0) {
+    out.tix += twq * nx; out.tiy += twq * ny; out.tiz += twq * nz;
+    out.tjx -= twq * nx; out.tjy -= twq * ny; out.tjz -= twq * nz;
+  }
+  out.hist = hist;
+  return true;
+}
+
 export class PairGranular extends Pair {
   readonly name = 'granular';
   virialFdotr = true;
@@ -327,6 +569,14 @@ export class PairGranular extends Pair {
     for (let i = 1; i < nt; i++) for (let j = 1; j < i; j++) this.pm[i * nt + j] = this.pm[j * nt + i];
   }
 
+  /**
+   * Resolved parameters of a wall/particle pair (fix wall/gran granular): the particle's own material
+   * against a flat wall; E_eff = E / (2 (1 - nu^2)) as in the doc note for fix wall/gran.
+   */
+  wallParams(sp: Spec): Pm {
+    return this.pmOf(sp, sp.E ? effModulus(sp.E, sp.nu) : 0, sp, sp);
+  }
+
   /** Resolved parameters of a spec whose effective modulus is eff (kt NULL uses the given like-type specs). */
   private pmOf(sp: Spec, eff: number, si: Spec, sj: Spec): Pm {
     let kt = sp.kt;
@@ -380,6 +630,7 @@ export class PairGranular extends Pair {
     const nt = this.ntypes + 1;
     const tq = new Float64Array(3 * nall);
     const seen = new Set<string>();
+    const out = newContactOut();
     for (let i = 0; i < list.inum; i++) {
       const oi = owner[i];
       const ri = radius[oi], mi = rmass[oi];
@@ -401,228 +652,36 @@ export class PairGranular extends Pair {
           this.shear.delete(key);
           continue;
         }
-        const r = Math.sqrt(rsq), rinv = 1 / r, rsqinv = 1 / rsq;
+        const r = Math.sqrt(rsq), rinv = 1 / r;
         const mj = rmass[oj];
         const delta = radsum - r;
         const Rf = (ri * rj) / radsum;
-        const sqrtR = Math.sqrt(Rf);
-        // relative velocity, its normal part and the tangential part
-        const vrx = v[3 * oi] - v[3 * oj], vry = v[3 * oi + 1] - v[3 * oj + 1], vrz = v[3 * oi + 2] - v[3 * oj + 2];
-        const vnr = vrx * dx + vry * dy + vrz * dz;
-        const vn = vnr * rinv; // (v_i - v_j) . n
-        const vnx = dx * vnr * rsqinv, vny = dy * vnr * rsqinv, vnz = dz * vnr * rsqinv;
-        // (R_i w_i + R_j w_j) x n
-        const Ax = ri * omega[3 * oi] + rj * omega[3 * oj];
-        const Ay = ri * omega[3 * oi + 1] + rj * omega[3 * oj + 1];
-        const Az = ri * omega[3 * oi + 2] + rj * omega[3 * oj + 2];
-        const nx = dx * rinv, ny = dy * rinv, nz = dz * rinv;
-        const wnx = Ay * nz - Az * ny, wny = Az * nx - Ax * nz, wnz = Ax * ny - Ay * nx;
-        const vtx = vrx - vnx - wnx, vty = vry - vny - wny, vtz = vrz - vnz - wnz;
         // m_eff; a contact with a particle of the fix freeze group uses the other particle's mass (measured in gran.ts)
         let meff = (mi * mj) / (mi + mj);
         if (this.freezeBit) {
           if (s.mask[oi] & this.freezeBit) meff = mj;
           else if (s.mask[oj] & this.freezeBit) meff = mi;
         }
-        // normal force along n (positive repulsive): elastic part, then damping
-        let fne = 0;
-        let contactA = 0;
-        // pull-off force of the cohesive models (doc: F_pulloff = 4 pi gamma R for dmt, 3 pi gamma R for jkr)
-        const fPull = pm.normal === 'dmt' ? 4 * Math.PI * pm.gamma * Rf : jkr ? 3 * Math.PI * pm.gamma * Rf : 0;
-        if (jkr) {
-          // hysteresis (doc): the tensile range delta < 0 applies only once the pair has been in contact
-          if (delta < 0 && !this.shear.has(key)) continue;
-          const c = jklContact(delta, Rf, pm.Eeff, pm.gamma);
-          if (!c) {
-            this.shear.delete(key);
-            continue;
-          }
-          fne = c.f;
-          contactA = c.a;
-        } else {
-          if (delta <= 0) {
-            this.shear.delete(key);
-            continue;
-          }
-          contactA = Math.sqrt(Rf * delta);
-          if (pm.normal === 'hooke') fne = pm.kn * delta;
-          else if (pm.normal === 'hertz') fne = pm.kn * sqrtR * delta * Math.sqrt(delta);
-          else fne = (4 / 3) * pm.Eeff * sqrtR * delta * Math.sqrt(delta);
-          // dmt: cohesion -4 pi gamma R on top of the Hertz term (doc: F_ne,dmt = (4/3 E R^1/2 delta^3/2 - 4 pi gamma R) n)
-          fne -= pm.normal === 'dmt' ? fPull : 0;
-        }
-        const contact = contactA;
-        let etaN: number;
-        switch (pm.damp) {
-          case 'velocity': etaN = pm.eta; break;
-          case 'mass_velocity': etaN = pm.eta * meff; break;
-          case 'viscoelastic': etaN = pm.eta * contact * meff; break;
-          default: {
-            // knd: the elastic normal force per unit overlap; measured with native LAMMPS (black box):
-            // eta_n = sqrt(2) * alpha(e) * sqrt(m_eff * knd) for hooke, hertz and hertz/material alike
-            const knd = fne / delta;
-            etaN = Math.SQRT2 * tsujiAlpha(pm.eta) * Math.sqrt(meff * knd);
-          }
-        }
-        const fn = fne - etaN * vn;
-        if (pm.limit && fn < 0) {
+        const sh = this.shear.get(key) ?? new Float64Array(8);
+        const ok = granularContact({
+          pm, nx: dx * rinv, ny: dy * rinv, nz: dz * rinv, r, delta, Rf, ri, rj, meff,
+          vrx: v[3 * oi] - v[3 * oj], vry: v[3 * oi + 1] - v[3 * oj + 1], vrz: v[3 * oi + 2] - v[3 * oj + 2],
+          oix: omega[3 * oi], oiy: omega[3 * oi + 1], oiz: omega[3 * oi + 2],
+          ojx: omega[3 * oj], ojy: omega[3 * oj + 1], ojz: omega[3 * oj + 2],
+          dt, update, sg: flip ? -1 : 1,
+        }, sh, out, this.shear.has(key));
+        if (!ok) {
           this.shear.delete(key);
           continue;
         }
-        // F_n0 for the Coulomb cap: |F_ne| for non-cohesive models, |F_ne + 2 F_pulloff| for dmt (doc)
-        const fnAbs = pm.normal === 'dmt' || jkr ? Math.abs(fne + 2 * fPull) : Math.abs(fn);
-        const fnx = fn * nx, fny = fn * ny, fnz = fn * nz;
-        // tangential force: damping from eta_t = x_gamma_t eta_n; the spring is -k_t xi (linear_history),
-        // -k_t a xi with a = sqrt(R delta) (mindlin), or the stored elastic force F_te (mindlin/force)
-        const etaT = pm.xgt * etaN;
-        const dampx = -etaT * vtx, dampy = -etaT * vty, dampz = -etaT * vtz;
-        const kind = pm.tang;
-        // jkr keeps a contact record too, so the tensile branch can be recognised (see hysteresis above)
-        const hist = kind !== 'linear_nohistory' || pm.roll !== 'none' || pm.twist !== 'none' || jkr;
-        const forceVariant = kind === 'mindlin/force' || kind === 'mindlin_rescale/force';
-        const rescale = kind === 'mindlin_rescale' || kind === 'mindlin_rescale/force';
-        const aC = contactA;
-        const keff = kind === 'linear_history' ? pm.kt : kind === 'linear_nohistory' ? 0 : pm.kt * aC;
-        let sh: Float64Array | null = null;
-        let shx = 0, shy = 0, shz = 0;
-        if (hist) {
+        if (out.hist) {
           seen.add(key);
-          sh = this.shear.get(key) ?? new Float64Array(8);
-          const sg = flip ? -1 : 1;
-          shx = sg * sh[0]; shy = sg * sh[1]; shz = sg * sh[2];
-          if (update) {
-            // keep the prior displacement (or elastic force) in the tangent plane, rescaled to its previous magnitude
-            const mag0 = Math.hypot(shx, shy, shz);
-            const sn = shx * nx + shy * ny + shz * nz;
-            let px = shx - sn * nx, py = shy - sn * ny, pz = shz - sn * nz;
-            const mag1 = Math.hypot(px, py, pz);
-            if (mag1 > 0) {
-              const c = mag0 / mag1;
-              px *= c; py *= c; pz *= c;
-            }
-            shx = px; shy = py; shz = pz;
-            // mindlin_rescale: on unloading (a < a_prev) the stored value is scaled by a / a_prev
-            const aPrev = sh[3];
-            if (rescale && aPrev > 0 && aC < aPrev) {
-              const c = aC / aPrev;
-              shx *= c; shy *= c; shz *= c;
-            }
-            if (forceVariant) {
-              shx -= keff * vtx * dt; shy -= keff * vty * dt; shz -= keff * vtz * dt;
-            } else {
-              shx += vtx * dt; shy += vty * dt; shz += vtz * dt;
-            }
-          }
+          this.shear.set(key, sh);
         }
-        // spring force on the particle: F_s = -k_eff xi (displacement models) or F_te (force models)
-        const spring = (q: number) => (forceVariant ? q : -keff * q);
-        let ftx = spring(shx) + dampx, fty = spring(shy) + dampy, ftz = spring(shz) + dampz;
-        const ft = Math.hypot(ftx, fty, ftz);
-        const fcap = pm.mu * fnAbs;
-        if (ft > fcap) {
-          let scale = ft > 0 ? fcap / ft : 0;
-          if (hist) {
-            // with no stored displacement (a contact at run setup) the capped force is dropped
-            if (shx === 0 && shy === 0 && shz === 0) scale = 0;
-            else if (keff > 0) {
-              if (forceVariant) {
-                // F_te = s (F_te + F_damp) - F_damp
-                shx = scale * (shx + dampx) - dampx;
-                shy = scale * (shy + dampy) - dampy;
-                shz = scale * (shz + dampz) - dampz;
-              } else {
-                const c = etaT / keff;
-                shx = scale * (shx + c * vtx) - c * vtx;
-                shy = scale * (shy + c * vty) - c * vty;
-                shz = scale * (shz + c * vtz) - c * vtz;
-              }
-            }
-          }
-          ftx *= scale; fty *= scale; ftz *= scale;
-        }
-        // rolling sds: pseudo-force F_roll = s (-k_r xi_r - gamma_r v_roll), acting as a torque only (measured sign)
-        let rlx = 0, rly = 0, rlz = 0;
-        if (pm.roll === 'sds') {
-          const wdx = omega[3 * oi] - omega[3 * oj], wdy = omega[3 * oi + 1] - omega[3 * oj + 1], wdz = omega[3 * oi + 2] - omega[3 * oj + 2];
-          // v_roll = -R (w_i - w_j) x n, with R the effective radius
-          const vrlx = -Rf * (wdy * nz - wdz * ny), vrly = -Rf * (wdz * nx - wdx * nz), vrlz = -Rf * (wdx * ny - wdy * nx);
-          let qx = sh![4], qy = sh![5], qz = sh![6];
-          if (update) {
-            // prior rolling displacement rotated into the tangent plane, rescaled to its previous magnitude
-            const mag0 = Math.hypot(qx, qy, qz);
-            const sn = qx * nx + qy * ny + qz * nz;
-            let px = qx - sn * nx, py = qy - sn * ny, pz = qz - sn * nz;
-            const mag1 = Math.hypot(px, py, pz);
-            if (mag1 > 0) {
-              const c = mag0 / mag1;
-              px *= c; py *= c; pz *= c;
-            }
-            qx = px + vrlx * dt; qy = py + vrly * dt; qz = pz + vrlz * dt;
-          }
-          const k = pm.kr, g = pm.gr;
-          let fx0 = -k * qx - g * vrlx, fy0 = -k * qy - g * vrly, fz0 = -k * qz - g * vrlz;
-          const f0 = Math.hypot(fx0, fy0, fz0);
-          const cap = pm.mr * fnAbs;
-          if (f0 > cap) {
-            // measured as for the tangential force: with no stored displacement the capped rolling force is dropped
-            const sc = f0 > 0 && (qx !== 0 || qy !== 0 || qz !== 0) ? cap / f0 : 0;
-            if (k > 0 && sc > 0) {
-              // F0 = -k xi - gamma v; capped: xi = s xi - gamma v (1 - s) / k
-              const c = -(g * (1 - sc)) / k;
-              qx = sc * qx + c * vrlx; qy = sc * qy + c * vrly; qz = sc * qz + c * vrlz;
-            }
-            fx0 *= sc; fy0 *= sc; fz0 *= sc;
-          }
-          sh![4] = qx; sh![5] = qy; sh![6] = qz;
-          rlx = fx0; rly = fy0; rlz = fz0;
-        }
-        // twisting: torque along n, tau = clamp(-k xi - gamma Omega_tw); no force
-        let twq = 0;
-        if (pm.twist !== 'none') {
-          let k: number, g: number, mu: number;
-          if (pm.twist === 'sds') { k = pm.kw; g = pm.gw; mu = pm.mw; }
-          else {
-            // marshall: k_tw = 0.5 k_t a^2, gamma_tw = 0.5 eta_t a^2, mu_tw = 2/3 a mu_t
-            k = 0.5 * pm.kt * aC * aC; g = 0.5 * etaT * aC * aC; mu = (2 / 3) * aC * pm.mu;
-          }
-          const om = (omega[3 * oi] - omega[3 * oj]) * nx + (omega[3 * oi + 1] - omega[3 * oj + 1]) * ny + (omega[3 * oi + 2] - omega[3 * oj + 2]) * nz;
-          let q = sh![7];
-          if (update) q += om * dt;
-          const t0 = -k * q - g * om;
-          const cap = mu * fnAbs;
-          let tau = t0;
-          if (Math.abs(t0) > cap) {
-            // doc: the capped twisting displacement is xi = (mu F sgn(Omega) - gamma Omega) / k, i.e. tau = -mu F sgn(Omega)
-            tau = om > 0 ? -cap : cap;
-            if (k > 0) q = -(tau + g * om) / k;
-          }
-          sh![7] = q;
-          twq = tau;
-        }
-        if (hist) {
-          const sg = flip ? -1 : 1;
-          sh![0] = sg * shx; sh![1] = sg * shy; sh![2] = sg * shz;
-          sh![3] = aC;
-          this.shear.set(key, sh!);
-        }
-        const fx = fnx + ftx, fy = fny + fty, fz = fnz + ftz;
-        f[3 * i] += fx; f[3 * i + 1] += fy; f[3 * i + 2] += fz;
-        f[3 * j] -= fx; f[3 * j + 1] -= fy; f[3 * j + 2] -= fz;
-        // torques: -(R - delta/2) n x F_t on each particle (contact point at the centre of the overlap)
-        const cx = ny * ftz - nz * fty, cy = nz * ftx - nx * ftz, cz = nx * fty - ny * ftx;
-        const ci = ri - 0.5 * delta, cj = rj - 0.5 * delta;
-        tq[3 * i] -= ci * cx; tq[3 * i + 1] -= ci * cy; tq[3 * i + 2] -= ci * cz;
-        tq[3 * j] -= cj * cx; tq[3 * j + 1] -= cj * cy; tq[3 * j + 2] -= cj * cz;
-        // rolling torque on i: R n x F_roll (and its opposite on j); twisting torque tau n on i
-        if (pm.roll === 'sds') {
-          const rx = -Rf * (ny * rlz - nz * rly), ry = -Rf * (nz * rlx - nx * rlz), rz = -Rf * (nx * rly - ny * rlx);
-          tq[3 * i] += rx; tq[3 * i + 1] += ry; tq[3 * i + 2] += rz;
-          tq[3 * j] -= rx; tq[3 * j + 1] -= ry; tq[3 * j + 2] -= rz;
-        }
-        if (twq !== 0) {
-          tq[3 * i] += twq * nx; tq[3 * i + 1] += twq * ny; tq[3 * i + 2] += twq * nz;
-          tq[3 * j] -= twq * nx; tq[3 * j + 1] -= twq * ny; tq[3 * j + 2] -= twq * nz;
-        }
+        f[3 * i] += out.fx; f[3 * i + 1] += out.fy; f[3 * i + 2] += out.fz;
+        f[3 * j] -= out.fx; f[3 * j + 1] -= out.fy; f[3 * j + 2] -= out.fz;
+        tq[3 * i] += out.tix; tq[3 * i + 1] += out.tiy; tq[3 * i + 2] += out.tiz;
+        tq[3 * j] += out.tjx; tq[3 * j + 1] += out.tjy; tq[3 * j + 2] += out.tjz;
       }
     }
     if (this.shear.size) for (const key of this.shear.keys()) if (!seen.has(key)) this.shear.delete(key);

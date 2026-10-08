@@ -1,5 +1,6 @@
 import type { UnitSystem } from './types';
 import { StyleError } from './force/types';
+import { rotationFromEdges, type GeneralLattice, type Mat3 } from './triclinic_general';
 
 /*
  * Lattices — docs.lammps.org/lattice.html.
@@ -67,6 +68,11 @@ export interface Lattice {
   toBox(f: V3): V3;
   /** Inverse of toBox. */
   fromBox(x: V3): V3;
+  /**
+   * Set for `triclinic/general` lattices: lattice points in general (unrotated)
+   * coordinates. toBox then applies the rotation Q of triclinic_general.ts.
+   */
+  general?: GeneralLattice;
 }
 
 /** lattice style scale [keywords]; throws StyleError for bad input. */
@@ -90,7 +96,9 @@ export const makeLattice = (style: LatticeStyle, scale: number, units: UnitSyste
   }
   let origin: V3 = [0, 0, 0];
   const orient: [V3, V3, V3] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  let orientGiven = false;
   let spacing: V3 | null = null;
+  let general = false;
   const num = (w: string | undefined, what: string) => {
     const v = Number(w);
     if (w === undefined || !Number.isFinite(v)) throw new StyleError(`lattice: expected a number for ${what}, got '${w ?? ''}'`);
@@ -112,6 +120,7 @@ export const makeLattice = (style: LatticeStyle, scale: number, units: UnitSyste
         const v: V3 = [num(kw[k + 2], 'orient'), num(kw[k + 3], 'orient'), num(kw[k + 4], 'orient')];
         if (v.some((c) => !Number.isInteger(c))) throw new StyleError('lattice orient directions must be integers');
         orient[d] = v;
+        orientGiven = true;
         k += 5;
         break;
       }
@@ -130,12 +139,20 @@ export const makeLattice = (style: LatticeStyle, scale: number, units: UnitSyste
         break;
       }
       case 'triclinic/general':
-        throw new StyleError('lattice triclinic/general is not supported (use a restricted triclinic box)');
+        general = true;
+        k += 1;
+        break;
       default:
         throw new StyleError(`unknown lattice keyword '${key}'`);
     }
   }
   if (style === 'custom' && !basis.length) throw new StyleError('lattice custom needs at least one basis atom');
+  if (general) {
+    // lattice.html: "If this option is specified, a custom lattice style must be used."
+    if (style !== 'custom') throw new StyleError('lattice triclinic/general needs style custom');
+    if (dimension === 2) throw new StyleError('lattice triclinic/general is not supported in 2d');
+    if (orientGiven) throw new StyleError('lattice triclinic/general cannot be combined with orient');
+  }
   if (dimension === 2) {
     if (origin[2] !== 0) throw new StyleError('lattice origin z must be 0.0 for 2d');
     if (orient[0][2] !== 0 || orient[1][2] !== 0 || orient[2][0] !== 0 || orient[2][1] !== 0) {
@@ -159,11 +176,24 @@ export const makeLattice = (style: LatticeStyle, scale: number, units: UnitSyste
       : Math.abs(a[0][0] * a[1][1] - a[0][1] * a[1][0]);
     factor = Math.pow((basis.length / vol) / scale, 1 / dimension);
   }
-  // unit-cell position -> box: rotate(factor * (f0 a1 + f1 a2 + f2 a3))
-  const toBoxRaw = (f: V3): V3 => {
+  // general triclinic: the rotation of the scaled cell (triclinic_general.ts); the orient rows are unused
+  let Rot: Mat3 = [R[0], R[1], R[2]];
+  if (general) {
+    const sc = (v: V3): V3 => [v[0] * factor, v[1] * factor, v[2] * factor];
+    const edges = [sc(a[0]), sc(a[1]), sc(a[2])] as [V3, V3, V3];
+    // rotationFromEdges throws the StyleError for left-handed or co-planar cells
+    Rot = rotationFromEdges(edges[0], edges[1], edges[2]).Q;
+  }
+  // unit-cell position -> general coordinates: factor * (f0 a1 + f1 a2 + f2 a3)
+  const genRaw = (f: V3): V3 => {
     const p: V3 = [0, 0, 0];
     for (let d = 0; d < 3; d++) p[d] = factor * (f[0] * a[0][d] + f[1] * a[1][d] + f[2] * a[2][d]);
-    return [dot(R[0], p), dot(R[1], p), dot(R[2], p)];
+    return p;
+  };
+  // unit-cell position -> box: rotate(factor * (f0 a1 + f1 a2 + f2 a3))
+  const toBoxRaw = (f: V3): V3 => {
+    const p = genRaw(f);
+    return [dot(Rot[0], p), dot(Rot[1], p), dot(Rot[2], p)];
   };
   // spacings from the 8 (4 in 2d) corners of the transformed unit cell
   if (!spacing) {
@@ -181,12 +211,24 @@ export const makeLattice = (style: LatticeStyle, scale: number, units: UnitSyste
   const M = [0, 1, 2].map((d) => [a[0][d] * factor, a[1][d] * factor, a[2][d] * factor]);
   const inv = invert3(M);
   const fromBox = (x: V3): V3 => {
-    const p: V3 = [R[0][0] * x[0] + R[1][0] * x[1] + R[2][0] * x[2], R[0][1] * x[0] + R[1][1] * x[1] + R[2][1] * x[2], R[0][2] * x[0] + R[1][2] * x[1] + R[2][2] * x[2]];
+    const p: V3 = [Rot[0][0] * x[0] + Rot[1][0] * x[1] + Rot[2][0] * x[2], Rot[0][1] * x[0] + Rot[1][1] * x[1] + Rot[2][1] * x[2], Rot[0][2] * x[0] + Rot[1][2] * x[1] + Rot[2][2] * x[2]];
     const f: V3 = [0, 0, 0];
     for (let r = 0; r < 3; r++) f[r] = inv[r][0] * p[0] + inv[r][1] * p[1] + inv[r][2] * p[2];
     return [f[0] - origin[0], f[1] - origin[1], f[2] - origin[2]];
   };
-  return { style, factor, spacing, a, basis, origin, orient, toBox, fromBox };
+  const sc3 = (v: V3): V3 => [v[0] * factor, v[1] * factor, v[2] * factor];
+  let gen: GeneralLattice | undefined;
+  if (general) {
+    // lattice points in general coordinates; fromGeneral undoes toGeneral (inv of factor * [a1 a2 a3])
+    const toGeneral = (f: V3): V3 => genRaw([f[0] + origin[0], f[1] + origin[1], f[2] + origin[2]]);
+    const fromGeneral = (x: V3): V3 => {
+      const f: V3 = [0, 0, 0];
+      for (let r = 0; r < 3; r++) f[r] = inv[r][0] * x[0] + inv[r][1] * x[1] + inv[r][2] * x[2];
+      return [f[0] - origin[0], f[1] - origin[1], f[2] - origin[2]];
+    };
+    gen = { basis, cell: [sc3(a[0]), sc3(a[1]), sc3(a[2])], Q: Rot, toGeneral, fromGeneral };
+  }
+  return { style, factor, spacing, a, basis, origin, orient, toBox, fromBox, general: gen };
 };
 
 const invert3 = (m: number[][]): number[][] => {

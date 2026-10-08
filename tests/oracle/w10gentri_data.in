@@ -1,0 +1,12 @@
+# oracle: read_data with a general triclinic header (avec, bvec, cvec, abc origin), run 0
+# oracle-inputs: w10gentri_data.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+read_data       w10gentri_data.data
+pair_style      lj/cut 2.0
+pair_coeff      1 1 1.0 1.0
+thermo_style    custom step temp pe etotal press cella cellb cellc cellalpha cellbeta cellgamma
+thermo_modify   format float %.15g
+thermo          1
+run             0

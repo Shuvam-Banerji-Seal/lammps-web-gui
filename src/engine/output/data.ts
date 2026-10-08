@@ -3,6 +3,7 @@ import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
 import { appendAtoms, emptyState, isMolecularStyle, maxAtomId, nativeOrder, pushTopo, sphereMass } from '../atoms';
 import { makeBox } from '../domain';
+import { generalFrame, rotateVector, toRestrictedPoint, type GeneralFrame, type V3 } from '../triclinic_general';
 
 /*
  * Data files — docs.lammps.org/read_data.html and write_data.html.
@@ -100,9 +101,12 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   const lines = text.split('\n');
   // header: skip the first line (title)
   const h: Record<string, number> = {};
+  let orthoLines = false;
   let lo: [number, number, number] = [-0.5, -0.5, -0.5];
   let hi: [number, number, number] = [0.5, 0.5, 0.5];
   let tilt: [number, number, number] | null = null;
+  // general triclinic header (Howto_triclinic.html): avec, bvec, cvec, abc origin
+  const gen: { avec?: V3; bvec?: V3; cvec?: V3; origin?: V3 } = {};
   let k = 1;
   for (; k < lines.length; k++) {
     const raw = lines[k].replace(/#.*/, '').trim();
@@ -116,14 +120,21 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
       const d = 'xyz'.indexOf(rest2[0]);
       lo[d] = numOf(w[0], rest2, k + 1);
       hi[d] = numOf(w[1], rest2, k + 1);
+      orthoLines = true;
       continue;
     }
     if (rest3 === 'xy xz yz') {
       tilt = [numOf(w[0], 'xy', k + 1), numOf(w[1], 'xz', k + 1), numOf(w[2], 'yz', k + 1)];
+      orthoLines = true;
       continue;
     }
-    if (/^(avec|bvec|cvec|abc origin)$/.test(rest3) || /^(avec|bvec|cvec)$/.test(w.slice(3).join(' '))) {
-      throw new StyleError('general triclinic data files (avec/bvec/cvec) are not supported; use xlo xhi ... xy xz yz');
+    if (rest3 === 'avec' || rest3 === 'bvec' || rest3 === 'cvec') {
+      gen[rest3] = [numOf(w[0], rest3, k + 1), numOf(w[1], rest3, k + 1), numOf(w[2], rest3, k + 1)];
+      continue;
+    }
+    if (rest3 === 'abc origin') {
+      gen.origin = [numOf(w[0], 'abc origin', k + 1), numOf(w[1], 'abc origin', k + 1), numOf(w[2], 'abc origin', k + 1)];
+      continue;
     }
     const key = HEADER_KEYS.find(([re]) => re.test(rest));
     if (!key) {
@@ -138,6 +149,18 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   if (!adding && s0) throw new StyleError('read_data: a simulation box already exists (use add append/merge, or clear first)');
   if (adding && !s0) throw new StyleError('read_data add needs an existing box');
   const [toff, boff, aoff, doff, ioff] = opts.offset;
+  // read_data.html: "For a general triclinic box, the avec, bvec, cvec, and abc origin keywords are used.
+  // The xlo xhi, ylo yhi, zlo zhi, and xy xz yz keywords are NOT used."
+  const isGeneral = gen.avec !== undefined || gen.bvec !== undefined || gen.cvec !== undefined || gen.origin !== undefined;
+  let genFrame: GeneralFrame | null = null;
+  if (isGeneral) {
+    if (orthoLines) throw new StyleError('read_data: a general triclinic header (avec/bvec/cvec/abc origin) cannot be combined with xlo/xhi or xy xz yz lines');
+    if (sys.dimension === 2) throw new StyleError('read_data: general triclinic data files are not supported in 2d');
+    if (adding) throw new StyleError('read_data: general triclinic data files cannot be combined with add append/merge');
+    if (opts.shift.some((v) => v !== 0)) throw new StyleError('read_data: shift is not supported with a general triclinic data file');
+    genFrame = generalFrame({ origin: gen.origin ?? [0, 0, 0], A: gen.avec ?? [1, 0, 0], B: gen.bvec ?? [0, 1, 0], C: gen.cvec ?? [0, 0, 1] });
+    lo = genFrame.lo; hi = genFrame.hi; tilt = genFrame.tilt;
+  }
   let s: SimState;
   if (!adding) {
     if (sys.dimension === 2 && !(lo[2] < 0 && hi[2] > 0)) throw new StyleError('read_data: for a 2d simulation zlo and zhi must straddle zero');
@@ -267,6 +290,15 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         // of each particle as mass = density * volume ... If the volume is 0.0, meaning a point
         // particle, then the density value is used as the mass."
         const rmass = s.radius ? radius.map((r, a) => sphereMass(r, density[a])) : undefined;
+        if (genFrame) {
+          // read_data.html: coordinates "should be inside the general triclinic simulation box"; the
+          // general -> restricted rotation is about the box origin (Howto_triclinic.html)
+          const o = gen.origin ?? [0, 0, 0];
+          for (let a = 0; a < count; a++) {
+            const r = toRestrictedPoint(genFrame.Q, o, [x[3 * a], x[3 * a + 1], x[3 * a + 2]]);
+            x[3 * a] = r[0]; x[3 * a + 1] = r[1]; x[3 * a + 2] = r[2];
+          }
+        }
         appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass });
         // periodic remap of the new atoms
         for (let i = n0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);
@@ -314,8 +346,15 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   if (vel.size) {
     for (let i = n0; i < s.n; i++) {
       const v = vel.get(s.id[i]);
-      if (v) { s.v[3 * i] = v[0]; s.v[3 * i + 1] = v[1]; s.v[3 * i + 2] = sys.dimension === 2 ? 0 : v[2]; }
-      if (v && s.omega) for (let d = 0; d < 3; d++) s.omega[3 * i + d] = v[3 + d];
+      if (v) {
+        // velocities (and angular velocities) rotate with the box: read_data.html "should be specified for the rotated coordinate axes"
+        const lin = genFrame ? rotateVector(genFrame.Q, [v[0], v[1], v[2]]) : [v[0], v[1], v[2]];
+        s.v[3 * i] = lin[0]; s.v[3 * i + 1] = lin[1]; s.v[3 * i + 2] = sys.dimension === 2 ? 0 : lin[2];
+        if (s.omega) {
+          const ang = genFrame ? rotateVector(genFrame.Q, [v[3], v[4], v[5]]) : [v[3], v[4], v[5]];
+          for (let d = 0; d < 3; d++) s.omega[3 * i + d] = ang[d];
+        }
+      }
     }
   }
   // fix sections: "the lines of per-atom properties can be listed in any order" (fix_property_atom.html)

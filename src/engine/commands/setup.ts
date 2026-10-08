@@ -5,6 +5,7 @@ import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
 import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, massOf, gatherAtoms, hasCharge, hasMolecule, nativeOrder } from '../atoms';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
+import { generalAtomSites, generalBoxFromRestricted, generalCreateBox } from '../triclinic_general';
 import {
   BIG, BlockRegion, CompoundRegion, ConeRegion, EllipsoidRegion, PlaneRegion, PrismRegion, SphereRegion,
   type Param, type Region,
@@ -268,15 +269,17 @@ const createBox: Handler = ({ sys }, a) => {
   if (sys.hasBox) throw new StyleError('a simulation box already exists (use clear to start over)');
   const n = int(a[0], 'number of atom types');
   if (n < 1) throw new StyleError('create_box needs at least 1 atom type');
-  if (a[1] === 'NULL') throw new StyleError('general triclinic boxes (create_box N NULL ...) are not supported');
-  const reg = sys.region(a[1] ?? '');
-  const kw = keywords(a.slice(2), {
+  const general = a[1] === 'NULL';
+  const reg = general ? null : sys.region(a[1] ?? '');
+  const kw = keywords(a.slice(general ? 8 : 2), {
     'bond/types': 1, 'angle/types': 1, 'dihedral/types': 1, 'improper/types': 1,
     'extra/bond/per/atom': 1, 'extra/angle/per/atom': 1, 'extra/dihedral/per/atom': 1, 'extra/improper/per/atom': 1, 'extra/special/per/atom': 1,
   }, 'create_box');
   let lo: [number, number, number], hi: [number, number, number];
   let tilt: [number, number, number] | undefined;
-  if (reg instanceof BlockRegion) {
+  if (general) {
+    ({ lo, hi, tilt } = generalCreateBox(sys.lattice, a.slice(2, 8)));
+  } else if (reg instanceof BlockRegion) {
     const b = reg.bbox();
     if (!b) throw new StyleError('create_box: the region must be a static block with side in');
     lo = b.lo as [number, number, number]; hi = b.hi as [number, number, number];
@@ -537,8 +540,10 @@ const createAtoms: Handler = ({ sys }, a) => {
     const xlo = box.lo[0] + Math.min(0, box.tilt[0], box.tilt[1], box.tilt[0] + box.tilt[1]);
     const xhi = box.hi[0] + Math.max(0, box.tilt[0], box.tilt[1], box.tilt[0] + box.tilt[1]);
     const ylo = box.lo[1] + Math.min(0, box.tilt[2]), yhi = box.hi[1] + Math.max(0, box.tilt[2]);
-    const site = latticeSites(lat, [xlo, ylo, box.lo[2]], [xhi, yhi, box.hi[2]], sys.dimension,
-      (x, y, z) => insideBox(x, y, z) && (!reg || reg.match(x, y, z)) && varOk([x, y, z]));
+    const accept = (x: number, y: number, z: number) => insideBox(x, y, z) && (!reg || reg.match(x, y, z)) && varOk([x, y, z]);
+    const site = lat.general
+      ? generalAtomSites(lat.general, generalBoxFromRestricted(lat.general.Q, box.lo as [number, number, number], box.hi as [number, number, number], box.tilt as [number, number, number]), accept)
+      : latticeSites(lat, [xlo, ylo, box.lo[2]], [xhi, yhi, box.hi[2]], sys.dimension, accept);
     pts = site.x;
     types = site.basis.map((b) => basisType.get(b + 1) ?? type);
     // ratio / subset: choose a random subset of the sites
@@ -669,7 +674,15 @@ const writeDataCmd: Handler = ({ sys }, a) => {
       if (a[k + 1] !== 'ii' && a[k + 1] !== 'ij') throw new StyleError('write_data pair must be ii or ij');
       pairStyle = a[k + 1] as 'ii' | 'ij';
       k += 2;
-    } else if (a[k] === 'types' || a[k] === 'triclinic/general') k += 2;
+    } else if (a[k] === 'types') {
+      // write_data.html: "*types* value = *numeric* or *labels*"; the engine has no type labels
+      if (a[k + 1] === 'labels') throw new StyleError('write_data types labels: type labels are not supported by the browser engine');
+      if (a[k + 1] !== 'numeric') throw new StyleError('write_data types must be numeric or labels');
+      k += 2;
+    } else if (a[k] === 'triclinic/general') {
+      // write_data.html: "*triclinic/general* = write data file in general triclinic format"
+      throw new StyleError('write_data triclinic/general is not supported by the browser engine (the box rotation is not kept after read)');
+    }
     else throw new StyleError(`unknown write_data keyword '${a[k]}'`);
   }
   // the box must be current (shrink-wrapped faces, remapped atoms): write_data "calls ... pbc" via a setup.

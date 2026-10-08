@@ -1,0 +1,38 @@
+# oracle: fix deposit mol + fix shake mol — the examples/deposit/in.deposit.molecule.shake pipeline (shortened)
+# oracle-inputs: w26depmol_dimer_shake.mol
+# oracle-compare: thermo=all atoms=none rel=1e-4 abs=1e-10
+# (thermo only: the browser SHAKE solver's convergence criterion differs from native at the 1e-7 level
+#  for a molecule added mid-run; the deposit mol stream itself is pinned by the other w26depmol_* cases)
+units           lj
+atom_style      bond
+boundary        p p f
+lattice         fcc 1.0
+region          box block 0 5 0 5 0 10
+create_box      3 box bond/types 1 extra/bond/per/atom 1
+region          substrate block INF INF INF INF INF 3
+create_atoms    1 region substrate
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+pair_coeff      1 2 1.0 1.0 5.0
+mass            * 1.0
+bond_style      harmonic
+bond_coeff      1 5.0 1.0
+neigh_modify    delay 0
+group           addatoms empty
+region          mobile block 0 5 0 5 2 INF
+group           mobile region mobile
+compute         add addatoms temp
+compute_modify  add dynamic/dof yes extra/dof 0
+fix             1 addatoms nve
+fix             2 mobile langevin 0.1 0.1 0.1 587283
+fix             3 mobile nve
+molecule        dimer w26depmol_dimer_shake.mol
+region          slab block 0 5 0 5 8 9
+fix             4 addatoms deposit 100 0 100 12345 region slab near 1.0 mol dimer vz -1.0 -1.0 shake 6
+fix             5 addatoms wall/reflect zhi EDGE
+fix             6 all shake 0.0001 20 1000 b 1 mol dimer
+thermo_style    custom step atoms temp epair etotal press
+thermo          100
+thermo_modify   temp add lost/bond ignore lost warn
+thermo_modify   format float %.15g
+run             20

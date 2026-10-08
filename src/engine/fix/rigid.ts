@@ -196,6 +196,8 @@ export class FixRigid extends Fix {
   private built = false;
   /** bodystyle custom: name of the atom-style variable (v_name) that gives each atom's body ID. */
   private customVar: string | null = null;
+  /** keyword mol: molecule template-ID whose molecules may be added during the run (fix deposit rigid). */
+  private molTemplateId: string | null = null;
   /** keyword infile: per-body attributes keyed by body ID (see parseInfile). */
   private infile: Map<string, InfileBody> | null = null;
   /** fix_modify bodyforces early: forces and torques are summed in post_force, not final_integrate. */
@@ -263,9 +265,20 @@ export class FixRigid extends Fix {
         // docs.lammps.org/fix_rigid.html: "When using the *infile* keyword, the *reinit* option is automatically set to *no*\ ."
         this.reinit = false;
         k += 2;
+      } else if (key === 'mol') {
+        // docs.lammps.org/fix_rigid.html: "The *mol* keyword can only be used with the *rigid/small* styles."
+        // Measured with native LAMMPS (black box): fix rigid molecule mol <template> stops with Illegal fix rigid command.
+        if (!small) throw new StyleError(`fix ${style}: the mol keyword can only be used with the rigid/small styles (Illegal fix ${style} command)`);
+        const t = args[k + 1];
+        if (!t) throw new StyleError(`fix ${style}: keyword mol needs a molecule template-ID`);
+        this.molTemplateId = t;
+        k += 2;
       } else {
-        throw new StyleError(`fix ${style}: keyword '${key}' is not supported by the browser engine (supported: force, torque, reinit, infile)`);
+        throw new StyleError(`fix ${style}: keyword '${key}' is not supported by the browser engine (supported: force, torque, reinit, infile, mol)`);
       }
+    }
+    if (this.molTemplateId && this.bodystyle !== 'molecule') {
+      throw new StyleError(`fix ${style}: the mol keyword requires bodystyle molecule`);
     }
   }
 
@@ -302,63 +315,11 @@ export class FixRigid extends Fix {
     // body order: molecule IDs ascending, group order, single
     const keys = [...members.keys()].sort((a, b) => Number(a) - Number(b));
     const bodies: Body[] = [];
-    const u = [0, 0, 0];
     // infile body IDs: the molecule/group/single ID, or for bodystyle custom the value minus the
     // smallest body value plus 1. Measured with native LAMMPS (black box): custom values 0,1,3,4 take
     // infile IDs 1,2,4,5, and infile ID 3 (no body with value 2) is an error.
     const infileId = (key: string) => (this.customVar ? String(Number(key) - Number(keys[0]) + 1) : key);
-    for (const key of keys) {
-      const idx = members.get(key)!;
-      if (idx.length < 2) throw new StyleError(`fix ${this.style}: "Each rigid body must have two or more atoms." (body ${key})`);
-      for (const i of idx) for (let d = 0; d < 3; d++) if (!s.box.periodic[d] && s.image[3 * i + d] !== 0) throw new StyleError(`fix ${this.style}: an atom of body ${key} has a non-zero image flag in a non-periodic dimension`);
-      let M = 0;
-      const xcm = [0, 0, 0], vcm = [0, 0, 0];
-      const pos = idx.map((i) => { g.unwrap(s.x, s.image, i, u); return [u[0], u[1], u[2]]; });
-      idx.forEach((i, n) => {
-        const m = massOf(s, i);
-        M += m;
-        for (let d = 0; d < 3; d++) { xcm[d] += m * pos[n][d]; vcm[d] += m * s.v[3 * i + d]; }
-      });
-      for (let d = 0; d < 3; d++) { xcm[d] /= M; vcm[d] /= M; }
-      const I = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
-      const angmom = [0, 0, 0];
-      idx.forEach((i, n) => {
-        const m = massOf(s, i);
-        const r = [pos[n][0] - xcm[0], pos[n][1] - xcm[1], pos[n][2] - xcm[2]];
-        const r2 = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
-        for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) I[a][b] += m * ((a === b ? r2 : 0) - r[a] * r[b]);
-        const L = cross(r, [s.v[3 * i], s.v[3 * i + 1], s.v[3 * i + 2]]);
-        for (let d = 0; d < 3; d++) angmom[d] += m * L[d];
-      });
-      // infile attributes replace the computed ones; the atoms keep their positions relative to the body
-      const over = this.infile?.get(infileId(key)) ?? null;
-      const L = (d: number) => s.box.hi[d] - s.box.lo[d];
-      const xcmB = over ? over.xcm.map((c, d) => c + (s.box.periodic[d] ? over.image[d] * L(d) : 0)) : xcm;
-      const frame = principalFrame(over ? over.I : I);
-      const Rq = qmat(frame.q);
-      const displace = pos.map((p) => {
-        const r = [p[0] - xcmB[0], p[1] - xcmB[1], p[2] - xcmB[2]];
-        return [0, 1, 2].map((c) => Rq[0][c] * r[0] + Rq[1][c] * r[1] + Rq[2][c] * r[2]);
-      });
-      const inertia = frame.inertia;
-      const ncollinear = inertia.filter((v) => v === 0).length;
-      const b: Body = {
-        atoms: idx.map((i) => s.id[i]),
-        mass: over ? over.mass : M,
-        xcm: xcmB,
-        vcm: over ? over.vcm.slice() : vcm,
-        image: [0, 0, 0],
-        inertia,
-        q: frame.q,
-        angmom: over ? over.lam.slice() : angmom,
-        omega: [0, 0, 0],
-        displace,
-        fcm: [0, 0, 0], torque: [0, 0, 0], fflag: [true, true, true], tflag: [true, true, true],
-        dof: sys.dimension === 2 ? 3 : ncollinear >= 1 ? 5 : 6,
-      };
-      this.wrapCom(b);
-      bodies.push(b);
-    }
+    for (const key of keys) bodies.push(this.constructBody(key, members.get(key)!, infileId(key)));
     if (this.infile) {
       const valid = new Set(keys.map(infileId));
       for (const key of this.infile.keys()) {
@@ -372,6 +333,85 @@ export class FixRigid extends Fix {
     this.sizeArrayRows = nb;
     for (const b of bodies) this.omegaFromAngmom(b);
     sys.log(`fix ${this.id} ${this.style}: ${nb} rigid bodies with ${bodies.reduce((a, b) => a + b.atoms.length, 0)} atoms`);
+  }
+
+  /** Builds one rigid body from the current state of the atoms at indices `idx` (see buildBodies). */
+  private constructBody(key: string, idx: number[], infileKey: string): Body {
+    const sys = this.sys;
+    const s = sys.state;
+    const g = sys.geom;
+    const u = [0, 0, 0];
+    if (idx.length < 2) throw new StyleError(`fix ${this.style}: "Each rigid body must have two or more atoms." (body ${key})`);
+    for (const i of idx) for (let d = 0; d < 3; d++) if (!s.box.periodic[d] && s.image[3 * i + d] !== 0) throw new StyleError(`fix ${this.style}: an atom of body ${key} has a non-zero image flag in a non-periodic dimension`);
+    let M = 0;
+    const xcm = [0, 0, 0], vcm = [0, 0, 0];
+    const pos = idx.map((i) => { g.unwrap(s.x, s.image, i, u); return [u[0], u[1], u[2]]; });
+    idx.forEach((i, n) => {
+      const m = massOf(s, i);
+      M += m;
+      for (let d = 0; d < 3; d++) { xcm[d] += m * pos[n][d]; vcm[d] += m * s.v[3 * i + d]; }
+    });
+    for (let d = 0; d < 3; d++) { xcm[d] /= M; vcm[d] /= M; }
+    const I = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    const angmom = [0, 0, 0];
+    idx.forEach((i, n) => {
+      const m = massOf(s, i);
+      const r = [pos[n][0] - xcm[0], pos[n][1] - xcm[1], pos[n][2] - xcm[2]];
+      const r2 = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
+      for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) I[a][b] += m * ((a === b ? r2 : 0) - r[a] * r[b]);
+      const L = cross(r, [s.v[3 * i], s.v[3 * i + 1], s.v[3 * i + 2]]);
+      for (let d = 0; d < 3; d++) angmom[d] += m * L[d];
+    });
+    // infile attributes replace the computed ones; the atoms keep their positions relative to the body
+    const over = this.infile?.get(infileKey) ?? null;
+    const L = (d: number) => s.box.hi[d] - s.box.lo[d];
+    const xcmB = over ? over.xcm.map((c, d) => c + (s.box.periodic[d] ? over.image[d] * L(d) : 0)) : xcm;
+    const frame = principalFrame(over ? over.I : I);
+    const Rq = qmat(frame.q);
+    const displace = pos.map((p) => {
+      const r = [p[0] - xcmB[0], p[1] - xcmB[1], p[2] - xcmB[2]];
+      return [0, 1, 2].map((c) => Rq[0][c] * r[0] + Rq[1][c] * r[1] + Rq[2][c] * r[2]);
+    });
+    const inertia = frame.inertia;
+    const ncollinear = inertia.filter((v) => v === 0).length;
+    const b: Body = {
+      atoms: idx.map((i) => s.id[i]),
+      mass: over ? over.mass : M,
+      xcm: xcmB,
+      vcm: over ? over.vcm.slice() : vcm,
+      image: [0, 0, 0],
+      inertia,
+      q: frame.q,
+      angmom: over ? over.lam.slice() : angmom,
+      omega: [0, 0, 0],
+      displace,
+      fcm: [0, 0, 0], torque: [0, 0, 0], fflag: [true, true, true], tflag: [true, true, true],
+      dof: sys.dimension === 2 ? 3 : ncollinear >= 1 ? 5 : 6,
+    };
+    this.wrapCom(b);
+    return b;
+  }
+
+  /**
+   * Adds a rigid body for the molecule given by its new atom IDs (fix deposit with the rigid keyword).
+   * docs.lammps.org/fix_rigid.html: "It must be used when other commands, such as fix deposit or fix pour,
+   * add rigid bodies on-the-fly during a simulation." The body is built from the atoms as deposited, so it
+   * keeps the deposited positions and velocities.
+   */
+  addMolecule(atomIds: readonly number[]): void {
+    if (this.bodystyle !== 'molecule') throw new StyleError(`fix ${this.style}: the mol keyword needs bodystyle molecule`);
+    const idx = this.index();
+    const ii: number[] = [];
+    for (const idNum of atomIds) {
+      const k = idx.get(idNum);
+      if (k === undefined) throw new StyleError(`fix ${this.style}: atom ${idNum} does not exist`);
+      ii.push(k);
+    }
+    const key = String(this.sys.state.molecule[ii[0]]);
+    const b = this.constructBody(key, ii, key);
+    this.bodies.push(b);
+    this.sizeArrayRows = this.bodies.length;
+    this.omegaFromAngmom(b);
   }
 
   /** COM image flags: xcm stays the unwrapped position; image counts box periods. */
@@ -396,6 +436,9 @@ export class FixRigid extends Fix {
   }
 
   init(): void {
+    if (this.molTemplateId && !this.sys.molecules.has(this.molTemplateId)) {
+      throw new StyleError(`fix ${this.style}: mol molecule template '${this.molTemplateId}' does not exist`);
+    }
     if (!this.built || this.reinit) { this.buildBodies(); this.built = true; }
   }
 

@@ -1135,8 +1135,34 @@ const set: Handler = ({ sys }, a) => {
         k += 5;
         break;
       }
-      case 'quat/random':
-        throw new StyleError('set quat/random is not supported by the browser engine: native LAMMPS seeds each atom from its coordinates in a way the documentation does not give, so the orientations could not match');
+      // set.html: "Keyword *quat/random* randomizes the orientation of the quaternion for the selected atoms."; "As with
+      // keyword *quat*, for ellipsoidal particles, the 3 shape values must be non-zero for each particle set by this
+      // command."; "For 2d systems, only orientations in the xy plane are generated." Native seeds each atom from its
+      // coordinates in a way the page does not give, so the engine seeds each atom from the user seed and its
+      // coordinates (geomSeed, as velocity loop geom does): uniformly random orientations, not native's values.
+      case 'quat/random': {
+        if (!s.quat) throw new StyleError(`Cannot set attribute quat/random for atom style ${s.atomStyle}`);
+        const seed = int(a[k + 1], 'seed');
+        if (seed <= 0) throw new StyleError('set quat/random: seed must be a positive integer');
+        for (const i of atoms) {
+          if (!isEllipsoid(s, i)) throw new StyleError('Cannot set quaternion for atom that has none');
+          const rng = new Rng(geomSeed(seed, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]));
+          if (sys.dimension === 2) {
+            const h = Math.PI * rng.uniform();
+            s.quat[4 * i] = Math.cos(h); s.quat[4 * i + 1] = 0; s.quat[4 * i + 2] = 0; s.quat[4 * i + 3] = Math.sin(h);
+          } else {
+            // uniform random rotation (Shoemake's subgroup algorithm)
+            const u1 = rng.uniform(), u2 = 2 * Math.PI * rng.uniform(), u3 = 2 * Math.PI * rng.uniform();
+            const r1 = Math.sqrt(1 - u1), r2 = Math.sqrt(u1);
+            s.quat[4 * i] = r2 * Math.cos(u3); s.quat[4 * i + 1] = r1 * Math.sin(u2);
+            s.quat[4 * i + 2] = r1 * Math.cos(u2); s.quat[4 * i + 3] = r2 * Math.sin(u3);
+          }
+        }
+        sys.warn('set quat/random: orientations are random but differ from native LAMMPS (its per-atom seeding is not documented)');
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
       // set.html: "Keyword *angmom* sets the angular momentum of selected atoms.  The particles must be
       // ellipsoids as defined by the :doc:`atom_style ellipsoid <atom_style>` command"; "The angular momentum
       // vector of the particles is set to the 3 specified components."
@@ -1148,8 +1174,32 @@ const set: Handler = ({ sys }, a) => {
         k += 4;
         break;
       }
-      case 'dipole/random':
-        throw new StyleError('set dipole/random is not supported by the browser engine: native LAMMPS seeds each atom from its coordinates in a way the documentation does not give, so the orientations could not match');
+      // set.html: "Keyword *dipole/random* randomizes the orientation of the dipole moment vectors for the selected
+      // atoms and sets the magnitude of each to the specified *Dlen* value.  For 2d systems, the z component of the
+      // orientation is set to 0.0." Seeded per atom like quat/random above (not native's values).
+      case 'dipole/random': {
+        if (!s.mu) throw new StyleError(`Cannot set attribute dipole/random for atom style ${s.atomStyle}`);
+        const seed = int(a[k + 1], 'seed');
+        const dlen = num(a[k + 2], 'Dlen');
+        if (seed <= 0) throw new StyleError('set dipole/random: seed must be a positive integer');
+        if (!(dlen > 0)) throw new StyleError('set dipole/random: Dlen must be > 0');
+        for (const i of atoms) {
+          const rng = new Rng(geomSeed(seed, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]));
+          let dx: number, dy: number, dz: number;
+          if (sys.dimension === 2) {
+            const ph = 2 * Math.PI * rng.uniform();
+            dx = Math.cos(ph); dy = Math.sin(ph); dz = 0;
+          } else {
+            const cz = 2 * rng.uniform() - 1, ph = 2 * Math.PI * rng.uniform(), sz = Math.sqrt(1 - cz * cz);
+            dx = sz * Math.cos(ph); dy = sz * Math.sin(ph); dz = cz;
+          }
+          s.mu[4 * i] = dlen * dx; s.mu[4 * i + 1] = dlen * dy; s.mu[4 * i + 2] = dlen * dz; s.mu[4 * i + 3] = dlen;
+        }
+        sys.warn('set dipole/random: orientations are random but differ from native LAMMPS (its per-atom seeding is not documented)');
+        changed = atoms.length;
+        k += 3;
+        break;
+      }
       case 'omega': {
         if (!s.omega) throw new StyleError(`Cannot set attribute omega for atom style ${s.atomStyle}`);
         const vs = [1, 2, 3].map((d) => value(a[k + d], 'omega'));

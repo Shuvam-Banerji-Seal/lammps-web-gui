@@ -54,7 +54,7 @@ describe('atom_style ellipsoid', () => {
     expect(s.rmass![1]).toBe(2.5);
   });
 
-  it('set quat normalizes the 4-vector and refuses point particles and quat/random', async () => {
+  it('set quat normalizes the 4-vector and refuses point particles', async () => {
     const { session } = newSession();
     await session.execute(`${BOX}set atom 1 shape 1 1 1\nset atom 1 quat 1 1 0 90\n`);
     const q = Array.from(session.sys.state.quat!.subarray(0, 4));
@@ -62,7 +62,29 @@ describe('atom_style ellipsoid', () => {
     for (let d = 0; d < 3; d++) expect(q[d]).toBeCloseTo(1 / Math.sqrt(3), 14);
     expect(q[3]).toBe(0);
     await expect(session.execute('set atom 2 quat 0 0 1 30\n')).rejects.toThrow('Cannot set quaternion for atom that has none');
-    await expect(session.execute('set atom 1 quat/random 4321\n')).rejects.toThrow(/quat\/random/);
+  });
+
+  it('set quat/random gives unit quaternions (engine seeding) and refuses point particles; dipole/random sets Dlen', async () => {
+    const { session } = newSession();
+    await session.execute(`${BOX}set atom 1*2 shape 1 2 3\nset atom 1*2 quat/random 4321\n`);
+    const q = session.sys.state.quat!;
+    for (const i of [0, 1]) expect(Math.hypot(q[4 * i], q[4 * i + 1], q[4 * i + 2], q[4 * i + 3])).toBeCloseTo(1, 14);
+    expect(Array.from(q.subarray(0, 4))).not.toEqual(Array.from(q.subarray(4, 8)));
+    await expect(session.execute('set atom 3 quat/random 4321\n')).rejects.toThrow('Cannot set quaternion for atom that has none');
+    const d = newSession();
+    await d.session.execute(`units lj
+atom_style hybrid sphere dipole
+lattice sc 1.0
+region box block 0 3 0 1 0 1
+create_box 1 box
+create_atoms 1 box
+set group all dipole/random 77 1.5
+`);
+    const mu = d.session.sys.state.mu!;
+    for (let i = 0; i < 3; i++) {
+      expect(Math.hypot(mu[4 * i], mu[4 * i + 1], mu[4 * i + 2])).toBeCloseTo(1.5, 13);
+      expect(mu[4 * i + 3]).toBe(1.5);
+    }
   });
 
   it('refuses a quaternion with xy components in 2d', async () => {

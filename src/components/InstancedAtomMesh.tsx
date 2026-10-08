@@ -1,6 +1,6 @@
 import React, { useRef, useMemo, useEffect, useState } from 'react';
 import * as THREE from 'three';
-import { ThreeEvent } from '@react-three/fiber';
+import { ThreeEvent, useThree } from '@react-three/fiber';
 import { Atom, VisualizationConfig } from '../types';
 import { DEFAULT_ATOM_COLOR } from '../constants';
 import { atomDisplayRadius } from '../services/atomStyle';
@@ -31,6 +31,7 @@ export const PICKING_MAX_ATOMS = 50_000;
  */
 const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, onHover, onSelectAtom }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
+  const invalidate = useThree((s) => s.invalidate);
   const [hoverId, setHoverId] = useState<number | null>(null);
 
   // Narrow dependency keys — object identity of `config` must NOT trigger O(n) work.
@@ -76,6 +77,9 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
       );
     }
     mesh.instanceMatrix.needsUpdate = true;
+    // the canvas renders on demand: the effect runs after React's commit, so request the frame that shows these
+    // matrices (without it the last trajectory/engine frame could stay unpainted until the next interaction)
+    invalidate();
     // Correct frustum culling: derive bounds from actual instance placements.
     mesh.computeBoundingSphere();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -101,6 +105,7 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
       mesh.setColorAt(i, colorFor(atoms[i].type));
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    invalidate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [atoms, colorKey]);
 

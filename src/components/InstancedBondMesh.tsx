@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
+import { useThree } from '@react-three/fiber';
 import { Atom, Bond, VisualizationConfig } from '../types';
 import { DEFAULT_ATOM_COLOR } from '../constants';
 import { writeInstanceSegment } from '../services/instanceMatrix';
@@ -52,6 +53,7 @@ const InstancedBondMesh: React.FC<InstancedBondMeshProps> = ({
   maxBondLength = Infinity,
 }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
+  const invalidate = useThree((s) => s.invalidate);
   const radius = Math.max(0.02, 0.12 * config.bondScale);
 
   // Narrow colour dependency: identity of `config` must not rebuild buffers.
@@ -128,6 +130,9 @@ const InstancedBondMesh: React.FC<InstancedBondMeshProps> = ({
     }
     mesh.count = buf.count;
     mesh.instanceMatrix.needsUpdate = true;
+    // the canvas renders on demand: the effect runs after React's commit, so request the frame that shows these
+    // matrices (without it the last trajectory/engine frame could stay unpainted until the next interaction)
+    invalidate();
     mesh.computeBoundingSphere();
   }, [buf, radius]);
 
@@ -147,6 +152,7 @@ const InstancedBondMesh: React.FC<InstancedBondMeshProps> = ({
       mesh.setColorAt(i, c);
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    invalidate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buf, colorKey]);
 

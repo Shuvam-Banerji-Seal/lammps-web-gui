@@ -211,6 +211,11 @@ export class FixPour extends Fix {
     if (sys.atomStyle !== 'sphere') throw new StyleError('fix pour requires atom_style sphere');
     if (args.length < 3) throw new StyleError('usage: fix ID group-ID pour N type seed keyword values ...');
     this.N = posInt(args[0], 'N');
+    // molecule insertion (fix_pour.html: type is an offset with mol, so 0 is valid there) is not
+    // supported; name it before the type check rejects a 0 offset
+    for (const key of ['mol', 'molfrac', 'rigid', 'shake']) {
+      if (args.slice(3).includes(key)) throw new StyleError(`fix pour keyword '${key}' is not supported by the browser engine (molecule insertion)`);
+    }
     this.type = posInt(args[1], 'type');
     this.rng = insertionStream(posInt(args[2], 'seed'));
     let region: string | null = null;

@@ -332,12 +332,8 @@ export class PairCoulLongCS extends PairCoulLong {
     pc.acc.ecoul += ecoul;
   }
 
-  /**
-   * write_data: measured with native LAMMPS (black box), coul/long/cs writes no pair coefficient
-   * section. The base PairCoulLong.dataCoeffs is typed string[] but returns bare type numbers; the
-   * writer (output/data.ts) skips a section whose lines are null, so null is returned here.
-   */
-  dataCoeffs(): string[] { return null as unknown as string[]; }
+  // write_data: measured with native LAMMPS (black box), coul/long/cs writes no pair coefficient
+  // section, like coul/long (PairCoulLong.dataCoeffs returns null).
   dataCoeffsIJ(): string[] | null { return null; }
 }
 

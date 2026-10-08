@@ -110,9 +110,9 @@ export class PairCoulLong extends Pair {
     pc.acc.ecoul += ecoul;
   }
 
-  dataCoeffs(): string[] {
-    return Array.from({ length: this.ntypes }, (_, k) => `${k + 1}`);
-  }
+  // Measured with native LAMMPS (black box): write_data writes no Pair Coeffs or PairIJ Coeffs
+  // section for coul/long (with or without pair ij).
+  dataCoeffs(): string[] | null { return null; }
 
   extract(name: string): unknown {
     return name === 'cut_coul' ? this.cutCoul : undefined;

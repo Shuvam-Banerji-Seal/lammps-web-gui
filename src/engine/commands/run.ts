@@ -130,6 +130,26 @@ const thermoModify: Handler = ({ sys }, a) => {
   sys.thermo.modify(a);
 };
 
+/**
+ * run_style style args — docs.lammps.org/run_style.html: "*style* = *verlet* or *verlet/split* or
+ * *respa* or *respa/omp*"; "*verlet* args = none". The engine integrates with velocity Verlet, so
+ * run_style verlet changes nothing; the other styles split the force computation across levels or
+ * partitions, which the engine does not do. Measured with native LAMMPS (black box): before a box
+ * exists the command stops with Run_style command before simulation box is defined.
+ */
+const runStyle: Handler = ({ sys }, a) => {
+  if (!sys.hasBox) throw new StyleError('Run_style command before simulation box is defined');
+  const style = a[0];
+  if (style === 'verlet') {
+    if (a.length > 1) throw new StyleError('run_style verlet takes no arguments');
+    return;
+  }
+  if (style === 'verlet/split' || style === 'respa' || style === 'respa/omp') {
+    throw new StyleError(`run_style ${style} is not supported by the browser engine (it runs velocity Verlet only)`);
+  }
+  throw new StyleError(`unknown run_style '${style ?? ''}' (verlet, verlet/split, respa or respa/omp)`);
+};
+
 const DUMP_STYLES: DumpStyle[] = ['atom', 'custom', 'xyz', 'extxyz', 'yaml'];
 
 /** dump ID group style N file args — dump.html. */
@@ -388,7 +408,7 @@ const minModify: Handler = ({ sys }, a) => {
 
 export const RUN_COMMANDS: Record<string, Handler> = {
   fix, unfix, fix_modify: fixModify, compute, uncompute, compute_modify: computeModify,
-  thermo, thermo_style: thermoStyle, thermo_modify: thermoModify,
+  thermo, thermo_style: thermoStyle, thermo_modify: thermoModify, run_style: runStyle,
   dump, undump, dump_modify: dumpModify, write_dump: writeDump,
   run, minimize: minimizeCmd, min_style: minStyle, min_modify: minModify,
 };

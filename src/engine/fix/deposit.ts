@@ -78,6 +78,11 @@ export class FixDeposit extends Fix {
     super(sys, id, group, args);
     if (sys.dimension !== 3) throw new StyleError('fix deposit: only 3d simulations are supported');
     if (args.length < 4) throw new StyleError('usage: fix ID group-ID deposit N type M seed keyword values ...');
+    // molecule insertion (fix_deposit.html: type is an offset with mol, so 0 is valid there) is not
+    // supported; name it before the type check rejects a 0 offset
+    for (const key of ['mol', 'molfrac', 'rigid', 'shake']) {
+      if (args.slice(4).includes(key)) throw new StyleError(`fix deposit keyword '${key}' is not supported by the browser engine (molecule insertion)`);
+    }
     this.N = posInt(args[0], 'N');
     this.type = posInt(args[1], 'type');
     this.M = posInt(args[2], 'M');

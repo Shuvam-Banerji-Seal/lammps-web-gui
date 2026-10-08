@@ -27,7 +27,8 @@ There is no linter configured; `typecheck` is the static gate.
 ### Native parity (oracle cases)
 
 Engine behaviour is checked against native LAMMPS (`/home/roy/.local/bin/lmp`, run as a black box only, rule 7):
-a case is `tests/oracle/<case>.in` (header lines `# oracle:`, optional `# oracle-inputs:` and
+a case is `tests/oracle/<case>.in` (header lines `# oracle:`, optional `# oracle-inputs:` (files next to the
+case), `# oracle-potentials:` (unmodified LAMMPS potential files from `third_party/lammps/potentials`) and
 `# oracle-compare:`); `LMP=/home/roy/.local/bin/lmp node scripts/oracle/run-oracle.mjs <case>` writes the native
 fixture `tests/fixtures/oracle/<case>.json`, and `npx vitest run tests/engineOracle.test.ts -t <case>` compares the
 engine with it. Put `thermo_modify format float %.15g` after `thermo_style`. Measured native behaviour is written in
@@ -53,6 +54,7 @@ comments as "Measured with native LAMMPS (black box): ..." without quote marks; 
 | `src/components/*.tsx` | three.js scene pieces (instanced meshes, camera, box, labels) |
 | `src/workers/` | Parser and analysis Web Workers |
 | `tests/*.test.ts` | Vitest suites, one per module |
+| `third_party/lammps/` | Unmodified LAMMPS potential files (GPL-2.0, own `LICENSE` and `README.md`; not under this project's licence). Data only: rule 7 still forbids LAMMPS source code |
 
 ## Rules that are enforced
 

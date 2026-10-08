@@ -177,8 +177,11 @@ export const parseTersoffFile = (text: string, fileName: string): ParsedFile => 
       n: nums[6], beta: nums[7], lambda2: nums[8], B: nums[9], R: nums[10], D: nums[11],
       lambda1: nums[12], A: nums[13],
     };
-    if (!(e.D > 0) || !(e.n > 0)) {
-      throw new StyleError(`Tersoff potential file ${fileName} entry ${k}: D and n must be > 0`);
+    // Measured with native LAMMPS (black box): n = 0 and D = 0 are accepted (SiC.tersoff of the LAMMPS distribution
+    // has n = 0 in its mixed Si Si C and C Si C entries, which only carry three-body terms), negative n or D stop the
+    // run with an illegal Tersoff parameter error
+    if (!(e.D >= 0) || !(e.n >= 0)) {
+      throw new StyleError(`Tersoff potential file ${fileName} entry ${k}: illegal Tersoff parameter (D and n must be >= 0)`);
     }
     if (e.m !== 3 && e.m !== 1) {
       throw new StyleError(`Tersoff potential file ${fileName} entry ${k}: m must be 3 or 1 (got ${e.m})`);

@@ -11,13 +11,15 @@ import type { EngineEvent, ThermoRow } from '../src/engine/types';
  * input and must agree within the case's tolerances.
  *
  * Case directives (comment lines in the .in file):
- *   # oracle-inputs: files the input reads (data, potentials)
+ *   # oracle-inputs: files the input reads (data, potentials), next to the .in file
+ *   # oracle-potentials: unmodified LAMMPS potential files from third_party/lammps/potentials
  *   # oracle-files: files it writes that are compared token by token
  *   # oracle-compare: thermo=all|first|first-last atoms=all|none rel=1e-8 abs=1e-10 skip=kw1,kw2
  */
 
 const CASES = join(__dirname, 'oracle');
 const FIX = join(__dirname, 'fixtures', 'oracle');
+const POTENTIALS = join(__dirname, '..', 'third_party', 'lammps', 'potentials');
 const FINAL_DUMP = 'write_dump all custom oracle_final.dump id type xu yu zu vx vy vz fx fy fz modify format float %.17g sort id';
 
 interface Fixture {
@@ -80,6 +82,7 @@ describe('oracle parity with native LAMMPS', () => {
         writeFile: (n, t, ap) => files.set(n, (ap ? files.get(n) ?? '' : '') + t),
       });
       for (const f of directive(text, 'oracle-inputs')) session.addFile(f, readFileSync(join(CASES, f), 'utf8'));
+      for (const f of directive(text, 'oracle-potentials')) session.addFile(f, readFileSync(join(POTENTIALS, f), 'utf8'));
       try {
         await session.execute(`${text}\n${FINAL_DUMP}\n`);
       } catch (e) {

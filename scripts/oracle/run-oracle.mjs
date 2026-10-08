@@ -12,7 +12,8 @@
  * LAMMPS is used as a black box (its output only). Usage:
  *   LMP=/path/to/lmp node scripts/oracle/run-oracle.mjs [case-name ...]
  * A case may list data/potential files it reads in "# oracle-inputs: a b";
- * they are looked up next to the .in file.
+ * they are looked up next to the .in file. "# oracle-potentials: a b" lists
+ * unmodified LAMMPS potential files from third_party/lammps/potentials.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync, copyFileSync, existsSync, rmSync } from 'node:fs';
@@ -22,6 +23,7 @@ import { tmpdir } from 'node:os';
 const ROOT = new URL('../..', import.meta.url).pathname;
 const CASES = join(ROOT, 'tests/oracle');
 const OUT = join(ROOT, 'tests/fixtures/oracle');
+const POTENTIALS = join(ROOT, 'third_party/lammps/potentials');
 const LMP = process.env.LMP ?? 'lmp';
 
 export const FINAL_DUMP = 'write_dump all custom oracle_final.dump id type xu yu zu vx vy vz fx fy fz modify format float %.17g sort id';
@@ -82,6 +84,7 @@ for (const name of cases) {
   const text = readFileSync(join(CASES, `${name}.in`), 'utf8');
   const dir = mkdtempSync(join(tmpdir(), `oracle-${name}-`));
   for (const f of header(text, 'oracle-inputs')) copyFileSync(join(CASES, f), join(dir, f));
+  for (const f of header(text, 'oracle-potentials')) copyFileSync(join(POTENTIALS, f), join(dir, f));
   writeFileSync(join(dir, 'in.case'), `${text}\n${FINAL_DUMP}\n`);
   try {
     execFileSync(LMP, ['-in', 'in.case', '-log', 'log.lammps', '-screen', 'none'], { cwd: dir, stdio: 'pipe' });

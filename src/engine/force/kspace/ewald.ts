@@ -30,9 +30,10 @@ import { parseNum } from '../util';
  * cutoff was determined from native LAMMPS output (pressures of the
  * ewald_* oracle cases agree only with it). Default parameters, when gewald / kmax/ewald are not set:
  * g from the Kolafa-Perram real-space estimate 2 C Q2 exp(-g^2 rc^2) /
- * sqrt(N rc V) = accuracy, and kmax_d so that exp(-k_max^2 / (4 g^2)) is
- * below the relative accuracy. These can differ from LAMMPS's own choice; set
- * gewald and kmax/ewald to reproduce a LAMMPS run exactly.
+ * sqrt(N rc V) = accuracy, and kmax_d the smallest m whose Kolafa-Perram rms
+ * k-space force error is below the accuracy (kmaxFor). Measured with native
+ * LAMMPS (black box, 2026-10): g_ewald and kmax/ewald matched both rules on 8
+ * automatic cases (accuracy 1e-3..1e-6, cutoffs 6..12, a 12x18x24 box).
  */
 
 /** Distance of 1 Angstrom and the proton charge in each unit style (units.html). */
@@ -165,13 +166,31 @@ export class KSpaceEwald extends KSpaceBase {
     const g = this.gEwald;
     if (this.kmaxUser) this.kmax = [...this.kmaxUser];
     else {
-      // exp(-k^2/(4 g^2)) <= relative accuracy at the largest wave vector of each dimension
-      const kcut = 2 * g * Math.sqrt(Math.max(1, -Math.log(Math.max(1e-300, this.accuracy))));
+      // smallest kmax per dimension whose Kolafa-Perram rms force error is below the absolute accuracy
+      const acc = this.absAccuracy(s, qqrd2e);
       const L = [geom.lx, geom.ly, geom.lz * this.slab];
-      this.kmax = [0, 1, 2].map((d) => Math.max(1, Math.ceil((kcut * L[d]) / (2 * Math.PI)))) as [number, number, number];
+      this.kmax = [0, 1, 2].map((d) => this.kmaxFor(acc, g, L[d], qqrd2e)) as [number, number, number];
     }
     ctx.log(`  G vector (1/distance) = ${g}\n  kmax/ewald = ${this.kmax.join(' ')}`);
     this.buildVectors(geom);
+  }
+
+  /**
+   * Smallest m >= 1 with 2 C Q2 g / L sqrt(1/(pi m N)) exp(-(pi m / (g L))^2) <= acc
+   * (Kolafa & Perram 1992, the real-space-equivalent rms force error of the k-space
+   * sum truncated at m). kspace_style.html: "RMS force errors in real space for
+   * ewald and pppm are estimated using equation 18 of (Kolafa)". Measured with
+   * native LAMMPS (black box, 2026-10, real units, 8 cases incl. a 12x18x24 box):
+   * the printed kmax/ewald matched this rule in every case.
+   */
+  private kmaxFor(acc: number, g: number, prd: number, qqrd2e: number): number {
+    const q2 = qqrd2e * this.qsqsum;
+    const N = Math.max(1, this.natoms);
+    for (let m = 1; m < 1000; m++) {
+      const rms = (2 * q2 * g / prd) * Math.sqrt(1 / (Math.PI * m * N)) * Math.exp(-(Math.PI * Math.PI * m * m) / (g * g * prd * prd));
+      if (rms <= acc) return m;
+    }
+    return 999;
   }
 
   /** Half-space wave vectors for the current box. */

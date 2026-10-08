@@ -1,0 +1,27 @@
+# oracle: pair_style meam, library Mg entry (hcp reference, nn2 = 0) with rc and delr from a parameter file, displaced hcp crystal, 50 steps of nve
+# oracle-potentials: library.meam
+# oracle-inputs: w26meam_mg.meam
+# oracle-compare: thermo=all atoms=all rel=1e-5 abs=1e-8
+units           metal
+atom_style      atomic
+lattice         hcp 3.20
+region          box block 0 3 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 24.305
+variable        dx atom 0.05*sin(1.3*x+0.7*y)
+variable        dy atom 0.05*cos(0.9*y-0.4*z)
+variable        dz atom 0.05*sin(1.1*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.01*sin(id)
+variable        vy atom 0.01*cos(2*id)
+variable        vz atom 0.01*sin(3*id)
+velocity        all set v_vx v_vy v_vz
+pair_style      meam
+pair_coeff      * * library.meam Mg w26meam_mg.meam Mg
+timestep        0.001
+fix             1 all nve
+thermo_style    custom step pe ke press pxx pyz
+thermo_modify   format float %.15g norm no
+thermo          10
+run             50

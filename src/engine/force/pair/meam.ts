@@ -1,5 +1,11 @@
 import { NEIGHMASK } from '../../neighbor';
-import { referenceVectors, SUPPORTED_REFERENCE_LATTICES, type ReferenceLattice } from './meam_lattice';
+import {
+  PAIR_SHELL_RATIO,
+  referenceVectors,
+  SUPPORTED_REFERENCE_LATTICES,
+  type ReferenceLattice,
+  type ReferenceVector,
+} from './meam_lattice';
 import {
   gOfIbar,
   gPrimeOfIbar,
@@ -54,6 +60,24 @@ export interface MeamElement {
   lat?: ReferenceLattice;
   /** Rose energy form (erose_form, attrac, repuls); default form 0 with attrac = repuls = 0 */
   erose?: EroseSettings;
+  /** 2NN (nn2 = 1) data: the second-neighbour pair recurrence of Lee-Baskes (see nn2Phi) */
+  nn2?: Nn2Ref;
+}
+
+/**
+ * 2NN pair recurrence data of an element: a = r2/r1 of the reference lattice, z1/z2 = the
+ * screening-weighted coordination of its first/second neighbour shell.
+ */
+export interface Nn2Ref {
+  a: number;
+  z1: number;
+  z2: number;
+  /** unit directions of the first two shells (3 per neighbour) */
+  dir: Float64Array;
+  /** |vector| of each neighbour of the unit-scale reference structure */
+  ratio: Float64Array;
+  /** screening weight of each neighbour */
+  s: Float64Array;
 }
 
 /** erose_form, attrac and repuls of an element (see eroseE). */
@@ -153,9 +177,14 @@ const refTuple = (el: MeamElement, o: MeamOptions): [number, number, number, num
  * Measured with native LAMMPS (black box): bcc and dia crystal energies (dia has Gamma != 0 in the
  * reference) agree with this background to about 1e-11 relative (see tests/enginePairMeam15.test.ts).
  */
-const refRhoBarPrime = (el: MeamElement, o: MeamOptions, r: number): { rho: number; drho: number; rho0: number } => {
+const refRhoBarPrime = (
+  el: MeamElement,
+  o: MeamOptions,
+  r: number,
+  vectors?: ReferenceVector[],
+): { rho: number; drho: number; rho0: number } => {
   const t = refTuple(el, o);
-  const nb: MeamNeighbor[] = referenceVectors(el.lat ?? 'fcc', r, o.rc).map((v) => ({ j: -1, ...v }));
+  const nb: MeamNeighbor[] = (vectors ?? referenceVectors(el.lat ?? 'fcc', r, o.rc)).map((v) => ({ j: -1, ...v }));
   const S = screening(nb, o);
   let rho0 = 0, drho0 = 0, s2 = 0, ds2 = 0;
   const v1 = [0, 0, 0], dv1 = [0, 0, 0], v3 = [0, 0, 0], dv3 = [0, 0, 0];
@@ -216,7 +245,142 @@ const refBackground = (el: MeamElement, o: MeamOptions, r: number): number => re
  * at 2.2, 2.4 and 2.6 A (tests/enginePairMeam15.test.ts) agree to 1e-10 eV only with this normalisation; the
  * pair term keeps the full background rho0 G(Gamma) of the reference at distance r.
  */
-export const referenceBackground = (el: MeamElement, o: MeamOptions): number => refRhoBarPrime(el, o, el.re).rho0;
+export const referenceBackground = (el: MeamElement, o: MeamOptions): number =>
+  refRhoBarPrime(el, o, el.re, el.nn2 ? nn2Vectors(el.lat ?? 'fcc', el.re) : undefined).rho0;
+
+/*
+ * 2NN (nn2 = 1) pair term of Lee-Baskes (Phys. Rev. B 62, 8564 (2000); docs.lammps.org/pair_meam.html
+ * "nn2(I,J)    = turn on second-nearest neighbor MEAM formulation for I-J pair"). The reference
+ * structure of the pair term holds exactly its first two neighbour shells; with the screening
+ * weights S of that structure the reference energy per atom is
+ *   E_u(r) = F(rho_bar(r)) + (z1/2) phi(r) + (z2/2) phi(a r),
+ * z1 = sum S over the first shell and z2 = sum S over the second shell (both independent of r
+ * because S depends only on distance ratios). Solved for phi:
+ *   phi(r) = (2/z1) sum_{n>=0} (-(z2/z1))^n [E_rose(a^n r) - F(rho_bar(a^n r))].
+ * Measured with native LAMMPS (black box): for the WL library entry (bcc, ibar = 3) and a
+ * synthetic sc entry this sum reproduces the native dimer pair term to the native table
+ * precision; the reference energy erose(r) is exactly the ideal reference-crystal energy.
+ */
+const nn2Vectors = (lat: ReferenceLattice, r: number): ReferenceVector[] =>
+  referenceVectors(lat, r, PAIR_SHELL_RATIO[lat] * r * (1 + 1e-6));
+
+/** a, z1, z2 of the reference lattice (screening weights of the first two shells). */
+export const nn2RefData = (lat: ReferenceLattice, o: MeamOptions): Nn2Ref => {
+  const nb: MeamNeighbor[] = nn2Vectors(lat, 1).map((v) => ({ j: -1, ...v }));
+  const S = screening(nb, o);
+  let r1 = Infinity, r2 = 0;
+  for (const p of nb) {
+    if (p.r < r1) r1 = p.r;
+    if (p.r > r2) r2 = p.r;
+  }
+  const n = nb.length;
+  const dir = new Float64Array(3 * n), ratio = new Float64Array(n);
+  let z1 = 0, z2 = 0;
+  for (let m = 0; m < n; m++) {
+    const p = nb[m];
+    ratio[m] = p.r;
+    dir[3 * m] = p.dx / p.r; dir[3 * m + 1] = p.dy / p.r; dir[3 * m + 2] = p.dz / p.r;
+    if (Math.abs(p.r - r1) < 1e-9) z1 += S[m];
+    else z2 += S[m];
+  }
+  return { a: r2 / r1, z1, z2, dir, ratio, s: S };
+};
+
+/*
+ * Background density rho0 G(Gamma) of the two-shell reference structure at nearest-neighbour
+ * distance ar and its r-derivative, from the precomputed unit-scale shells. Mirror of
+ * refRhoBarPrime with the screening constant (S depends only on distance ratios, so the
+ * reference's screening weight does not depend on r; d r_m/d r = ratio_m).
+ */
+const nn2RhoBarPrime = (
+  el: MeamElement,
+  o: MeamOptions,
+  ref: Nn2Ref,
+  r: number,
+): { rho: number; drho: number; rho0: number } => {
+  const t = refTuple(el, o);
+  const n = ref.ratio.length;
+  let rho0 = 0, drho0 = 0, s2 = 0, ds2 = 0;
+  const v1 = [0, 0, 0], dv1 = [0, 0, 0], v3 = [0, 0, 0], dv3 = [0, 0, 0];
+  const V2 = new Float64Array(9), dV2 = new Float64Array(9), V3 = new Float64Array(27), dV3 = new Float64Array(27);
+  for (let m = 0; m < n; m++) {
+    const sm = ref.ratio[m];
+    const rm = r * sm;
+    const wt = ref.s[m];
+    const u = [ref.dir[3 * m], ref.dir[3 * m + 1], ref.dir[3 * m + 2]];
+    const a = [0, 1, 2, 3].map((q) => Math.exp(-el.beta[q] * (rm / el.re - 1)));
+    const W = [0, 1, 2, 3].map((q) => wt * a[q]);
+    const dW = [0, 1, 2, 3].map((q) => wt * (-el.beta[q] / el.re) * a[q] * sm);
+    rho0 += W[0]; drho0 += dW[0];
+    s2 += W[2]; ds2 += dW[2];
+    for (let c = 0; c < 3; c++) {
+      v1[c] += W[1] * u[c]; dv1[c] += dW[1] * u[c];
+      v3[c] += W[3] * u[c]; dv3[c] += dW[3] * u[c];
+    }
+    for (let q = 0; q < 9; q++) {
+      const uu = u[Math.floor(q / 3)] * u[q % 3];
+      V2[q] += W[2] * uu; dV2[q] += dW[2] * uu;
+    }
+    for (let q = 0; q < 27; q++) {
+      const uuu = u[Math.floor(q / 9)] * u[Math.floor(q / 3) % 3] * u[q % 3];
+      V3[q] += W[3] * uuu; dV3[q] += dW[3] * uuu;
+    }
+  }
+  if (rho0 <= 0) return { rho: 0, drho: 0, rho0: 0 };
+  const rho1sq = v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2];
+  const drho1sq = 2 * (v1[0] * dv1[0] + v1[1] * dv1[1] + v1[2] * dv1[2]);
+  let V2sq = 0, dV2sq = 0;
+  for (let q = 0; q < 9; q++) { V2sq += V2[q] * V2[q]; dV2sq += V2[q] * dV2[q]; }
+  const rho2sq = V2sq - (s2 * s2) / 3;
+  const drho2sq = 2 * dV2sq - (2 * s2 * ds2) / 3;
+  let V3sq = 0, dV3sq = 0;
+  for (let q = 0; q < 27; q++) { V3sq += V3[q] * V3[q]; dV3sq += V3[q] * dV3[q]; }
+  const v3sq = v3[0] * v3[0] + v3[1] * v3[1] + v3[2] * v3[2];
+  const dv3sq = 2 * (v3[0] * dv3[0] + v3[1] * dv3[1] + v3[2] * dv3[2]);
+  const rho3sq = V3sq - (3 / 5) * v3sq;
+  const drho3sq = 2 * dV3sq - (3 / 5) * dv3sq;
+  const Q = t[1] * rho1sq + t[2] * rho2sq + t[3] * rho3sq;
+  const dQ = t[1] * drho1sq + t[2] * drho2sq + t[3] * drho3sq;
+  const gam = Q / (rho0 * rho0);
+  const dgam = dQ / (rho0 * rho0) - (2 * Q * drho0) / (rho0 * rho0 * rho0);
+  const G = gOf(el.ibar, gam), Gp = gPrimeOf(el.ibar, gam);
+  return { rho: rho0 * G, drho: drho0 * G + rho0 * Gp * dgam, rho0 };
+};
+
+/** F(rho_bar) of the two-shell reference structure at nearest-neighbour distance r. */
+const nn2RefEmbedding = (el: MeamElement, o: MeamOptions, rhoRef: number, r: number): number =>
+  embedding(el, rhoRef, nn2RhoBarPrime(el, o, el.nn2!, r).rho);
+
+/** 2NN pair term phi(r) (see the recurrence note above). */
+export const nn2Phi = (el: MeamElement, o: MeamOptions, rhoRef: number, r: number): number => {
+  const { a, z1, z2 } = el.nn2!;
+  const q = z2 / z1;
+  let s = 0, ar = r, sign = 1;
+  for (let n = 0; n < 500; n++) {
+    s += sign * (2 / z1) * (eroseE(el, ar) - nn2RefEmbedding(el, o, rhoRef, ar));
+    sign *= -q;
+    ar *= a;
+    if (ar > 60) break;
+  }
+  return s;
+};
+
+/** d phi / dr of the 2NN pair term (term-by-term derivative of nn2Phi). */
+export const nn2PhiPrime = (el: MeamElement, o: MeamOptions, rhoRef: number, r: number): number => {
+  const { a, z1, z2 } = el.nn2!;
+  const q = z2 / z1;
+  let s = 0, ar = r, sign = 1, scale = 1;
+  for (let n = 0; n < 500; n++) {
+    const { rho, drho } = nn2RhoBarPrime(el, o, el.nn2!, ar);
+    const fp = rho > 0 ? (el.A * el.Ec * (Math.log(rho / rhoRef) + 1)) / rhoRef : 0;
+    s += sign * (2 / z1) * scale * (eroseDeriv(el, ar) - fp * drho);
+    sign *= -q;
+    ar *= a;
+    scale *= a;
+    if (ar > 60) break;
+  }
+  return s;
+};
 
 /** F(rhobar) = A Ec (rhobar/rhoRef) ln(rhobar/rhoRef). */
 export const embedding = (el: MeamElement, rhoRef: number, rhoBar: number): number => {
@@ -291,7 +455,8 @@ const phiTableOf = (el: MeamElement, o: MeamOptions, rhoRef: number): PhiTable =
   const kLo = Math.ceil(PHI_LO / dr);
   const y = new Float64Array(PHI_INTERVALS + 1);
   const oT = phiOpts(o);
-  for (let k = kLo; k <= PHI_INTERVALS; k++) y[k] = pairPhi(el, oT, rhoRef, k * dr);
+  // The 2NN recurrence is defined by the reference structure (not by rc), so it needs no rc extension.
+  for (let k = kLo; k <= PHI_INTERVALS; k++) y[k] = el.nn2 ? nn2Phi(el, o, rhoRef, k * dr) : pairPhi(el, oT, rhoRef, k * dr);
   for (let k = 0; k < kLo; k++) y[k] = y[kLo];
   const tab = new PhiTable(y, dr);
   phiTables.set(el, { rc: o.rc, delr: o.delr, Cmin: o.Cmin, Cmax: o.Cmax, augt1: o.augt1, rhoRef, tab });
@@ -309,9 +474,9 @@ const phiOpts = (o: MeamOptions): MeamOptions => ({ ...o, rc: PHI_SPAN * o.rc })
 
 const tabulated = (o: MeamOptions, r: number): boolean => r >= (Math.ceil(PHI_LO / ((PHI_SPAN * o.rc) / PHI_INTERVALS)) + 2) * ((PHI_SPAN * o.rc) / PHI_INTERVALS);
 export const pairPhiTab = (el: MeamElement, o: MeamOptions, rhoRef: number, r: number): number =>
-  tabulated(o, r) ? phiTableOf(el, o, rhoRef).eval(r) : pairPhi(el, phiOpts(o), rhoRef, r);
+  tabulated(o, r) ? phiTableOf(el, o, rhoRef).eval(r) : el.nn2 ? nn2Phi(el, o, rhoRef, r) : pairPhi(el, phiOpts(o), rhoRef, r);
 export const pairPhiTabPrime = (el: MeamElement, o: MeamOptions, rhoRef: number, r: number): number =>
-  tabulated(o, r) ? phiTableOf(el, o, rhoRef).deriv(r) : pairPhiPrime(el, phiOpts(o), rhoRef, r);
+  tabulated(o, r) ? phiTableOf(el, o, rhoRef).deriv(r) : el.nn2 ? nn2PhiPrime(el, o, rhoRef, r) : pairPhiPrime(el, phiOpts(o), rhoRef, r);
 
 /** Total energy of a periodic orthorhombic configuration (brute-force neighbour images). */
 export function meamEnergy(el: MeamElement, o: MeamOptions, x: Float64Array, L: [number, number, number]): number {
@@ -739,6 +904,8 @@ interface PairParams {
   re?: number;
   alpha?: number;
   lattce?: string;
+  /** nn2(I,J): 1 selects the 2NN pair recurrence (docs: "1 = second-nearest neighbor formulation on") */
+  nn2?: number;
 }
 
 export interface MeamParams {
@@ -756,7 +923,7 @@ export interface MeamParams {
   opts: MeamOptions;
 }
 
-const NUMERIC_DEFAULT_ZERO = ['nn2', 'emb_lin_neg', 'bkgd_dyn', 'ialloy', 'mixture_ref_t'];
+const NUMERIC_DEFAULT_ZERO = ['emb_lin_neg', 'bkgd_dyn', 'ialloy', 'mixture_ref_t'];
 const PAIR_KEYS = ['Ec', 're', 'alpha', 'lattce', 'nn2', 'attrac', 'repuls', 'zbl'];
 
 /**
@@ -869,11 +1036,18 @@ export const parseMeamParams = (text: string, name: string, nelem = 1): MeamPara
         out.opts.augt1 = x === 1;
         break;
       }
+      case 'nn2': {
+        const [i, j] = pairIndex();
+        const v = num();
+        if (v !== 0 && v !== 1) throw new StyleError(`MEAM nn2(${i},${j}) = ${val} must be 0 or 1 (${name})`);
+        pairOf(i, j).nn2 = v;
+        break;
+      }
       case 'lattce': {
         const [i, j] = pairIndex();
         if (i === j) {
           if (!SUPPORTED_REFERENCE_LATTICES.includes(val as ReferenceLattice)) {
-            throw new StyleError(`MEAM lattce(${i},${j}) = ${val} is not supported (only fcc, bcc, dia; ${name})`);
+            throw new StyleError(`MEAM lattce(${i},${j}) = ${val} is not supported (only fcc, bcc, dia, hcp, sc; ${name})`);
           }
           pairOf(i, j).lattce = val;
           if (nelem === 1) out.lattce = val;
@@ -963,13 +1137,19 @@ export class PairMeam extends Pair {
     const lib = parseMeamLibrary(ctx.readFile(args[2]), elem, args[2]);
     const par = parseMeamParams(ctx.readFile(paramFile), paramFile);
     if (!SUPPORTED_REFERENCE_LATTICES.includes(lib.lat as ReferenceLattice)) {
-      throw new StyleError(`MEAM reference lattice '${lib.lat}' is not supported (only fcc, bcc, dia)`);
+      throw new StyleError(`MEAM reference lattice '${lib.lat}' is not supported (only fcc, bcc, dia, hcp, sc)`);
     }
+    const nn2 = (par.pair.get('1,1')?.nn2 ?? 0) === 1;
     if (lib.t[0] !== 1) throw new StyleError('only MEAM parameters normalized to t0 = 1.0 are supported');
     if (lib.rozero !== 1) throw new StyleError(`MEAM rozero = ${lib.rozero} is not supported (only 1)`);
-    if (!SUPPORTED_IBAR.includes(lib.ibar)) throw new StyleError(`MEAM ibar = ${lib.ibar} is not supported (only ibar = 0, 1, 3; -5 measured to mismatch on bcc)`);
-    if (lib.ibar !== 0 && lib.lat !== 'fcc' && lib.lat !== 'bcc') {
+    if (!SUPPORTED_IBAR.includes(lib.ibar) && !(nn2 && lib.ibar === -5)) {
+      throw new StyleError(`MEAM ibar = ${lib.ibar} is not supported (only ibar = 0, 1, 3, and -5 with nn2 = 1; ${paramFile})`);
+    }
+    if (lib.ibar !== 0 && !nn2 && lib.lat !== 'fcc' && lib.lat !== 'bcc') {
       throw new StyleError(`MEAM ibar = ${lib.ibar} with the ${lib.lat} reference of ${elem} is not supported (measured to mismatch at step 0 for dia; only fcc and bcc verified)`);
+    }
+    if (nn2 && lib.lat === 'hcp') {
+      throw new StyleError(`MEAM nn2 = 1 with the hcp reference of ${elem} is not supported (no c/a parameter for the second-neighbour shell)`);
     }
     if (par.lattce !== undefined && par.lattce !== lib.lat) {
       throw new StyleError(`MEAM lattce(1,1) = ${par.lattce} differs from the library lattice '${lib.lat}' of ${elem}; not supported`);
@@ -982,10 +1162,13 @@ export class PairMeam extends Pair {
     const Ec = par.Ec ?? lib.esub;
     let re = par.re;
     if (re === undefined) {
-      if (lib.lat !== 'fcc') {
-        throw new StyleError(`MEAM parameter file ${paramFile} must set re(1,1): the default equilibrium distance is only verified for fcc (${lib.lat})`);
-      }
-      re = lib.alat / Math.SQRT2;
+      // nearest-neighbour distance of the reference structure from the conventional lattice constant
+      const lat = lib.lat as ReferenceLattice;
+      if (lat === 'fcc') re = lib.alat / Math.SQRT2;
+      else if (lat === 'bcc') re = (lib.alat * Math.sqrt(3)) / 2;
+      else if (lat === 'dia') re = (lib.alat * Math.sqrt(3)) / 4;
+      else if (lat === 'sc' || lat === 'hcp') re = lib.alat;
+      else throw new StyleError(`MEAM parameter file ${paramFile} must set re(1,1) for the ${lib.lat} reference (${elem})`);
     }
     this.el = {
       z: lib.z,
@@ -998,6 +1181,7 @@ export class PairMeam extends Pair {
       ibar: lib.ibar,
       lat: lib.lat as ReferenceLattice,
       erose: par.erose,
+      nn2: nn2 ? nn2RefData(lib.lat as ReferenceLattice, par.opts) : undefined,
     };
     this.opts = par.opts;
     this.zblGuard = new Float64Array((this.ntypes + 1) * (this.ntypes + 1)).fill(par.zblOff.has('1,1') ? 0 : ZBL_GUARD * re);
@@ -1016,6 +1200,7 @@ export class PairMeam extends Pair {
       }
     });
     const par = parseMeamParams(ctx.readFile(paramFile), paramFile, elems.length);
+    for (const [, p] of par.pair) if (p.nn2 === 1) throw new StyleError(`multi-element MEAM: nn2 = 1 is not supported (${paramFile})`);
     const n = elems.length;
     // masses of the mapped types from the library atomic weights (same rule as the single-element style)
     if (ctx.s && !ctx.s.rmass) {

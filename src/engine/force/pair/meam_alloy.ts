@@ -55,7 +55,11 @@ export const gOfIbar = (ibar: number, gamma: number): number => {
   if (ibar === 0 || ibar === 4) return Math.sqrt(1 + gamma);
   if (ibar === 1) return Math.exp(gamma / 2);
   if (ibar === 3) return 2 / (1 + Math.exp(-gamma));
-  if (ibar === -5) return (gamma >= 0 ? 1 : -1) * Math.sqrt(Math.abs(1 + gamma));
+  // The -5 form is signed; a symmetric reference lattice has Gamma = 0 only up to rounding, so a
+  // tiny negative value must not flip the sign (the reference density would go negative and the
+  // embedding would vanish). Measured with native LAMMPS (black box): the sc Bi reference crystal
+  // (Gamma = 0) has the +sqrt branch, giving the Rose reference energy.
+  if (ibar === -5) return (gamma > -1e-12 ? 1 : -1) * Math.sqrt(Math.abs(1 + gamma));
   throw new Error(`MEAM ibar ${ibar} is not supported`);
 };
 
@@ -64,11 +68,13 @@ export const gPrimeOfIbar = (ibar: number, gamma: number): number => {
   if (ibar === 0 || ibar === 4) return 1 / (2 * Math.sqrt(1 + gamma));
   if (ibar === 1) return Math.exp(gamma / 2) / 2;
   if (ibar === 3) {
-    const e = Math.exp(-gamma);
+    // 2 exp(-Gamma) / (1 + exp(-Gamma))^2 is even in Gamma; with exp(-|Gamma|) neither factor overflows, so a
+    // large |Gamma| (a far reference shell of the 2NN series, where rho0 is tiny) gives 0, not Infinity/Infinity.
+    const e = Math.exp(-Math.abs(gamma));
     return (2 * e) / ((1 + e) * (1 + e));
   }
   if (ibar === -5) {
-    const s = gamma >= 0 ? 1 : -1;
+    const s = gamma > -1e-12 ? 1 : -1;
     const s2 = 1 + gamma >= 0 ? 1 : -1;
     return (s * s2) / (2 * Math.sqrt(Math.abs(1 + gamma)));
   }

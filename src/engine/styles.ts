@@ -98,6 +98,9 @@ import * as w17dihimp17 from './registry/dihimp17';
 import * as w17computechunk17 from './registry/compute_chunk17';
 import * as w17computemisc17 from './registry/compute_misc17';
 import * as w17fixmisc17 from './registry/fix_misc17';
+import * as w18pairmisc18 from './registry/pair_misc18';
+import * as w18computemisc18 from './registry/compute_misc18';
+import * as w18angle18 from './registry/angle18';
 import * as pairTable from './registry/pair_table';
 import * as pairCharmm from './registry/pair_charmm';
 import * as pairCoulLong2 from './registry/pair_coullong2';
@@ -138,7 +141,7 @@ export const PAIR_STYLES: Record<string, () => Pair> = {
   ...pairCoul.PAIRS, ...pairSimple.PAIRS, ...pairLJ.PAIRS, ...pairLJCoul.PAIRS, ...pairSimple2.PAIRS, ...pairLJ2.PAIRS,
   ...pairEAM.PAIRS, ...pair3Body.PAIRS, ...pairSW.PAIRS,
   ...pairZBL.PAIRS, ...pairTable.PAIRS, ...pairCharmm.PAIRS, ...pairCoulLong2.PAIRS,
-  ...pairGran.PAIRS, ...pairColloid.PAIRS, ...pairYColloid.PAIRS, ...pairVashishta.PAIRS, ...pairRelres.PAIRS, ...pairGranular.PAIRS, ...pairSnap.PAIRS, ...pairMisc4.PAIRS, ...pairMisc5.PAIRS, ...pairMeam.PAIRS, ...pairTip4p.PAIRS, ...pairMisc13.PAIRS, ...pairHbond.PAIRS, ...pairEim.PAIRS, ...pairTersoff2.PAIRS, ...lepton.PAIRS, ...mliap.PAIRS, ...w17pairsoft17.PAIRS, ...w17pairmisc17.PAIRS,
+  ...pairGran.PAIRS, ...pairColloid.PAIRS, ...pairYColloid.PAIRS, ...pairVashishta.PAIRS, ...pairRelres.PAIRS, ...pairGranular.PAIRS, ...pairSnap.PAIRS, ...pairMisc4.PAIRS, ...pairMisc5.PAIRS, ...pairMeam.PAIRS, ...pairTip4p.PAIRS, ...pairMisc13.PAIRS, ...pairHbond.PAIRS, ...pairEim.PAIRS, ...pairTersoff2.PAIRS, ...lepton.PAIRS, ...mliap.PAIRS, ...w17pairsoft17.PAIRS, ...w17pairmisc17.PAIRS, ...w18pairmisc18.PAIRS,
 };
 
 export const BOND_STYLES: Record<string, () => Bonded> = {
@@ -147,7 +150,7 @@ export const BOND_STYLES: Record<string, () => Bonded> = {
 };
 export const ANGLE_STYLES: Record<string, () => Bonded> = {
   harmonic: () => new AngleHarmonic(),
-  ...bondedA.ANGLES, ...lepton.ANGLES, ...w17angle17.ANGLES,
+  ...bondedA.ANGLES, ...lepton.ANGLES, ...w17angle17.ANGLES, ...w18angle18.ANGLES,
 };
 export const DIHEDRAL_STYLES: Record<string, () => Bonded> = {
   harmonic: () => new DihedralHarmonic(),
@@ -192,7 +195,7 @@ export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
   pressure: (s, i, g, a) => new ComputePressure(s, i, g, a),
   'erotate/sphere': (s, i, g, a) => new ComputeERotateSphere(s, i, g, a),
   'temp/sphere': (s, i, g, a) => new ComputeTempSphere(s, i, g, a),
-  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES, ...computeDeform.COMPUTES, ...computeOrient.COMPUTES, ...computeVoro.COMPUTES, ...computeChunk.COMPUTES, ...computeSna.COMPUTES, ...computeStruct.COMPUTES, ...computeLocal.COMPUTES, ...computeGk.COMPUTES, ...computeRestrain.COMPUTES, ...computeMisc13.COMPUTES, ...computeMisc14.COMPUTES, ...computeMisc14b.COMPUTES, ...computeMisc15.COMPUTES, ...computeSnap15.COMPUTES, ...mliap.COMPUTES, ...w17computechunk17.COMPUTES, ...w17computemisc17.COMPUTES,
+  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES, ...computeDeform.COMPUTES, ...computeOrient.COMPUTES, ...computeVoro.COMPUTES, ...computeChunk.COMPUTES, ...computeSna.COMPUTES, ...computeStruct.COMPUTES, ...computeLocal.COMPUTES, ...computeGk.COMPUTES, ...computeRestrain.COMPUTES, ...computeMisc13.COMPUTES, ...computeMisc14.COMPUTES, ...computeMisc14b.COMPUTES, ...computeMisc15.COMPUTES, ...computeSnap15.COMPUTES, ...mliap.COMPUTES, ...w17computechunk17.COMPUTES, ...w17computemisc17.COMPUTES, ...w18computemisc18.COMPUTES,
 };
 
 /** Lists for messages and is_available(). */

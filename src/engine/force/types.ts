@@ -260,6 +260,11 @@ export abstract class Pair {
    */
   coulConstScale = 1;
   /**
+   * Bumped whenever the style's coefficients may have changed (ForceField.init, fix adapt), so
+   * copies of the style held by force threads (cpu/pairThreads.ts) are refreshed.
+   */
+  version = 0;
+  /**
    * Force-field hook, called before init(): the equilibrium length of each bond type and angle
    * (degrees) of each angle type, NaN without a bond or angle style. The TIP4P styles place
    * their massless charge site from them.

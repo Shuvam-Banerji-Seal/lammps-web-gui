@@ -271,6 +271,8 @@ export class FixAdapt extends Fix {
       pair.init(sys.styleContext());
       if (pair.tail) sys.ff.updateTail(s);
     }
+    // copies of the style in force threads (cpu/pairThreads.ts) must be refreshed
+    if (pairChanged) this.pairs[0].pair.version++;
     for (const a of this.atoms) {
       const v = sys.equalVariable(a.vname);
       if (a.kind === 'charge') this.setCharges(a, v, s);
@@ -330,6 +332,7 @@ export class FixAdapt extends Fix {
       const pair = this.pairs[0].pair;
       pair.init(this.sys.styleContext());
       if (pair.tail) this.sys.ff.updateTail(s);
+      pair.version++;
     }
     for (const a of this.atoms) {
       for (let i = 0; i < s.n; i++) {

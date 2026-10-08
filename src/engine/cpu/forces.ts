@@ -27,7 +27,7 @@ const FORWARD_2D = FORWARD_3D.filter(([, , dz]) => dz === 0);
 
 export class CpuForceBackend implements ForceBackend {
   readonly kind = 'cpu' as const;
-  readonly label = 'CPU · fp64';
+  readonly label: string = 'CPU · fp64';
   private cache: { table: PairTable; arrays: PairArrays; key: string } | null = null;
   // cell-list scratch, grown on demand and reused across steps
   private start = new Int32Array(0);

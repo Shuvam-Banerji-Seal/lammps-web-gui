@@ -1,4 +1,5 @@
 import { EngineError, type ForceBackend } from './types';
+import type { ForceField } from './force/forcefield';
 import { System, type SessionIO } from './system';
 import { StyleError } from './force/types';
 import { mapUnquoted, splitCommands, substituteVariables, tokenize, formatNumber, type RawCommand } from './script';
@@ -44,6 +45,10 @@ interface Frame {
   pc: number;
 }
 
+/** The shared-memory pair threads a backend carries (cpu/pairThreads.ts SharedThreadsBackend), if any. */
+const pairThreadsOf = (b: ForceBackend): ForceField['pairThreads'] =>
+  (b as { pairThreads?: ForceField['pairThreads'] }).pairThreads ?? null;
+
 export class Session {
   sys: System;
   private frames: Frame[] = [];
@@ -65,6 +70,7 @@ export class Session {
   private newSystem(): System {
     const sys = new System(this.io);
     sys.registries = { ...styleNames(), command: SUPPORTED_COMMANDS.slice() };
+    sys.ff.pairThreads = pairThreadsOf(this.backend);
     return sys;
   }
 
@@ -76,6 +82,7 @@ export class Session {
   /** Swaps the force backend between runs; the system and settings stay. */
   setBackend(backend: ForceBackend): void {
     this.backend = backend;
+    this.sys.ff.pairThreads = pairThreadsOf(backend);
     this.sys.bump();
   }
 

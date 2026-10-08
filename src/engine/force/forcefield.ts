@@ -2,7 +2,7 @@ import type { SimState, TopoList } from '../types';
 import type { Geometry } from '../domain';
 import type { Neighbor, SpecialSettings } from '../neighbor';
 import { buildAtomMap, buildSpecial, type SpecialList } from '../atoms';
-import { clearAccum, newAccum, StyleError, type Accum, type Bonded, type KSpace, type Pair, type StyleContext } from './types';
+import { clearAccum, newAccum, StyleError, type Accum, type Bonded, type KSpace, type Pair, type PairCompute, type StyleContext } from './types';
 import { PairHybrid } from './pair/hybrid';
 
 /*
@@ -45,6 +45,8 @@ export class ForceField {
    * style (sw) after read_restart.
    */
   pairNotRestarted: string | null = null;
+  /** Shared-memory threads for the pair term (cpu/pairThreads.ts), set by the session when available. */
+  pairThreads: { run(pair: Pair, pc: PairCompute): boolean; readonly calls: number } | null = null;
   bond: Bonded | null = null;
   angle: Bonded | null = null;
   dihedral: Bonded | null = null;
@@ -145,6 +147,7 @@ export class ForceField {
       this.kspace.init(s, geom, cutCoul, s.units.qqr2e * this.pair.coulConstScale / this.dielectric, ctx);
       this.pair.gEwald = this.kspace.gEwald;
     }
+    if (this.pair) this.pair.version++;
     this.updateTail(s);
   }
 
@@ -179,12 +182,13 @@ export class ForceField {
     const vatomAll = flags.vatom ? new Float64Array(6 * nall) : null;
     const qqrd2e = s.units.qqr2e * (this.pair?.coulConstScale ?? 1) / this.dielectric;
     if (this.pair) {
-      this.pair.compute({
+      const pc: PairCompute = {
         s, nb, geom, x: nb.xall, f: nb.fall, type: nb.typeall, q: nb.qall,
         nlocal: nb.nlocal, nall, half: nb.half, full: nb.full,
         specialLJ: this.specialLJ, specialCoul: this.specialCoul, qqrd2e, acc, historyUpdate: !!flags.step,
         eatom: eatomAll, vatom: vatomAll,
-      });
+      };
+      if (!this.pairThreads?.run(this.pair, pc)) this.pair.compute(pc);
       if (this.pair.virialFdotr) {
         const xa = nb.xall, fa = nb.fall;
         let v0 = 0, v1 = 0, v2 = 0, v3 = 0, v4 = 0, v5 = 0;

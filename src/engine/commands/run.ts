@@ -260,7 +260,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   };
   const { accel, reason } = accelerator(sys, session.forceBackend);
   if (reason) sys.log(`${session.backendLabel}: this run uses the general fp64 CPU engine (${reason})`);
-  const label = accel ? session.backendLabel : 'CPU · fp64';
+  const threadCalls0 = sys.ff.pairThreads?.calls ?? 0;
   const taken = accel
     ? await runAccelerated(sys, n, accel, {
       cancelled: () => session.isCancelled,
@@ -282,6 +282,9 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   sys.run.inRun = false;
   emitFrame(sys);
   const seconds = (performance.now() - sys.run.t0) / 1000;
+  // the general engine names the shared-memory threads only when its pair term ran on them
+  const threaded = (sys.ff.pairThreads?.calls ?? 0) > threadCalls0;
+  const label = accel || threaded ? session.backendLabel : 'CPU · fp64';
   sys.log(`Loop time of ${seconds.toFixed(3)} s for ${taken} steps with ${s.n} atoms (${label})`);
   sys.io.emit({ kind: 'done', steps: taken, seconds, backend: label });
   if (session.isCancelled) throw new RunCancelled();

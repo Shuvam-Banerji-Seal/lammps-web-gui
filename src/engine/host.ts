@@ -2,6 +2,7 @@ import { Session, RunCancelled, SUPPORTED_COMMANDS } from './interpreter';
 import { styleNames } from './styles';
 import { CpuForceBackend } from './cpu/forces';
 import { ParallelCpuForceBackend } from './cpu/parallel';
+import { SharedThreadsBackend, sharedThreadsAvailable } from './cpu/pairThreads';
 import type { ForceBackend } from './types';
 import type { BackendChoice, FromEngine, ToEngine } from './protocol';
 
@@ -42,8 +43,10 @@ export class EngineHost {
 
   private cpuBackend(threads: number): ForceBackend {
     const t = Math.max(1, Math.min(Math.floor(threads) || 1, cores()));
-    // the threaded backend needs (nested) Web Workers
-    return t > 1 && hasWorkers() ? new ParallelCpuForceBackend(t) : new CpuForceBackend();
+    // threads need (nested) Web Workers; with shared memory (a cross-origin isolated page) the
+    // general engine runs its pair term on them, otherwise only plain lj/cut runs threaded
+    if (t <= 1 || !hasWorkers()) return new CpuForceBackend();
+    return sharedThreadsAvailable() ? new SharedThreadsBackend(t) : new ParallelCpuForceBackend(t);
   }
 
   private async makeBackend(choice: BackendChoice, threads: number): Promise<{ backend: ForceBackend; note?: string }> {

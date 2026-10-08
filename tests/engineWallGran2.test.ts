@@ -46,7 +46,7 @@ describe('fix wall/gran granular argument errors', () => {
   });
   it('names an unsupported keyword and an unsupported region style', async () => {
     await expect(fzOn(base('fix 2 all wall/gran granular hooke 1000 50 tangential linear_nohistory 1 0.4 damping velocity zplane 0.0 NULL contacts'))).rejects.toThrow(/contacts/);
-    await expect(fzOn(base('fix 2 all wall/gran/region granular hooke 1000 50 tangential linear_nohistory 1 0.4 damping velocity region reg', 'region reg cone z 0 0 1 2 0 3 units box'))).rejects.toThrow(/cone region is not supported|region style cone/);
+    await expect(fzOn(base('fix 2 all wall/gran/region granular hooke 1000 50 tangential linear_nohistory 1 0.4 damping velocity region reg', 'region reg block -1 1 -1 1 -1 1 units box side out'))).rejects.toThrow(/side-out/);
   });
   it('rejects a side-out region', async () => {
     await expect(fzOn(base('fix 2 all wall/gran/region granular hooke 1000 50 tangential linear_nohistory 1 0.4 damping velocity region reg', 'region reg block -1 1 -1 1 -1 1 side out units box'))).rejects.toThrow(/side-out/);
@@ -73,5 +73,24 @@ describe('fix wall/gran granular analytic single-sphere force', () => {
       .replace('create_atoms 1 single 0.1 0.05 0.4', 'create_atoms 1 single 2.2 0.0 3.0');
     const fx = await fzOn(text, 1);
     expect(fx).toBeCloseTo(-2000 * Math.sqrt(5 / 9) * 0.2 ** 1.5, 6);
+  });
+});
+
+describe('fix wall/gran/region classic fstyles and cones', () => {
+  it('rejects a classic fstyle with too few parameters and a bad dampflag', async () => {
+    await expect(fzOn(base('fix 2 all wall/gran/region hooke 1000 NULL 0.4 region reg', 'region reg block -1 1 -1 1 -1 1 units box'))).rejects.toThrow(/needs Kn Kt/);
+    await expect(fzOn(base('fix 2 all wall/gran/region hooke 1000 NULL 0.4 NULL 0.6 2 region reg', 'region reg block -1 1 -1 1 -1 1 units box'))).rejects.toThrow(/dampflag/);
+  });
+  it('hooke on an interior cone: normal along the generator, overlap = distance to the generator (measured)', async () => {
+    // cone radius 1.0 at z = 0 to 2.0 at z = 3; sphere at (1.2, 0, 1.5): distance 0.2846, F = k_n delta n
+    const reg = 'region reg cone z 0.0 0.0 1.0 2.0 0.0 3.0 side in units box';
+    const text = base('fix 2 all wall/gran/region hooke 2000.0 NULL 0.0 NULL 0.0 0 region reg', reg)
+      .replace('create_atoms 1 single 0.1 0.05 0.4', 'create_atoms 1 single 1.2 0.0 1.5');
+    const fx = await fzOn(text, 1);
+    const fz = await fzOn(text, 3);
+    const delta = 0.5 - 0.3 / Math.sqrt(1 + (1 / 3) ** 2);
+    const nx = -1 / Math.sqrt(1 + 1 / 9), nz = (1 / 3) / Math.sqrt(1 + 1 / 9);
+    expect(fx).toBeCloseTo(2000 * delta * nx, 4);
+    expect(fz).toBeCloseTo(2000 * delta * nz, 4);
   });
 });

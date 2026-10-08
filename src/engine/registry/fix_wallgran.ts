@@ -11,7 +11,9 @@ export const FIXES: Record<string, FixFactory> = {
     : new FixWallGran(sys, id, group, args)),
   // docs.lammps.org/fix_wall_gran_region.html: fstyle granular with a block, sphere or cylinder region
   'wall/gran/region': (sys, id, group, args) => {
-    if (args[0] !== 'granular') throw new StyleError('fix wall/gran/region: only fstyle granular is supported yet');
+    if (!['granular', 'hooke', 'hooke/history', 'hertz/history'].includes(args[0])) {
+      throw new StyleError(`fix ${id} wall/gran/region: unknown fstyle '${args[0] ?? ''}' (granular, hooke, hooke/history, hertz/history)`);
+    }
     return new FixWallGranGranular(sys, id, group, args, true);
   },
   freeze: (sys, id, group, args) => new FixFreeze(sys, id, group, args),

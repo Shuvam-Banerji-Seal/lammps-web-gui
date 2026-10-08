@@ -51,7 +51,7 @@ import { parseNum } from '../util';
  */
 
 type NormalKind = 'hooke' | 'hertz' | 'hertz/material' | 'dmt' | 'jkr';
-type DampKind = 'velocity' | 'mass_velocity' | 'viscoelastic' | 'tsuji';
+type DampKind = 'velocity' | 'mass_velocity' | 'viscoelastic' | 'tsuji' | 'coeff_restitution';
 type TangKind = 'linear_nohistory' | 'linear_history' | 'mindlin' | 'mindlin/force' | 'mindlin_rescale' | 'mindlin_rescale/force';
 type RollKind = 'none' | 'sds';
 type TwistKind = 'none' | 'sds' | 'marshall';
@@ -97,7 +97,7 @@ export interface Pm {
 }
 
 const NUM_ARGS: Record<NormalKind, number> = { hooke: 2, hertz: 2, 'hertz/material': 3, dmt: 4, jkr: 4 };
-const DAMPS: Record<string, DampKind> = { velocity: 'velocity', mass_velocity: 'mass_velocity', viscoelastic: 'viscoelastic', tsuji: 'tsuji' };
+const DAMPS: Record<string, DampKind> = { velocity: 'velocity', mass_velocity: 'mass_velocity', viscoelastic: 'viscoelastic', tsuji: 'tsuji', coeff_restitution: 'coeff_restitution' };
 const TANGS: Record<string, TangKind> = {
   linear_nohistory: 'linear_nohistory', linear_history: 'linear_history', mindlin: 'mindlin',
   'mindlin/force': 'mindlin/force', mindlin_rescale: 'mindlin_rescale', 'mindlin_rescale/force': 'mindlin_rescale/force',
@@ -141,7 +141,6 @@ export function parseGranularSpec(args: string[]): Spec {
     if (kw === 'damping') {
       need(1, 'damping');
       const d = next();
-      if (d === 'coeff_restitution') throw new StyleError("pair_style granular: damping 'coeff_restitution' is not implemented in this engine");
       if (d === 'mdr') throw new StyleError("pair_style granular: damping 'mdr' is not implemented in this engine");
       if (!(d in DAMPS)) throw new StyleError(`pair_style granular: unknown damping '${d}'`);
       sp.damp = DAMPS[d];
@@ -201,8 +200,11 @@ export function parseGranularSpec(args: string[]): Spec {
     }
   }
   if (!tangSeen) throw new StyleError('pair_coeff granular: the required keyword tangential is missing');
-  if ((normal === 'dmt' || normal === 'jkr') && sp.damp === 'tsuji') {
-    throw new StyleError(`pair_style granular: damping tsuji is not compatible with the ${normal} model`);
+  if ((normal === 'dmt' || normal === 'jkr') && (sp.damp === 'tsuji' || sp.damp === 'coeff_restitution')) {
+    throw new StyleError(`pair_style granular: damping ${sp.damp} is not compatible with the ${normal} model`);
+  }
+  if (sp.damp === 'coeff_restitution' && !(sp.eta > 0 && sp.eta <= 1)) {
+    throw new StyleError('pair_style granular: damping coeff_restitution needs the restitution coefficient e in (0, 1]');
   }
   if ((normal === 'dmt' || normal === 'jkr') && sp.limit) {
     throw new StyleError(`pair_style granular: limit_damping cannot be used with the ${normal} model`);
@@ -266,6 +268,12 @@ export interface ContactIn {
    * native LAMMPS for fix wall/gran granular); by default the arm is R_i - delta/2 (contact at the overlap centre).
    */
   surfaceArm?: boolean;
+  /**
+   * Legacy hertz/history wall forces (fix wall/gran hertz/history): the normal force, the damping and the
+   * tangential force (spring and damping, not the displacement update) are scaled by sqrt(delta R_eff).
+   * Measured-to-legacy: gran.ts and wall/gran use poly = sqrt(delta R) for the whole contact. Default 1.
+   */
+  poly?: number;
 }
 
 /** Outputs of one contact: force on i (minus on j), torques on i and j. */
@@ -325,6 +333,17 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
     case 'velocity': etaN = pm.eta; break;
     case 'mass_velocity': etaN = pm.eta * meff; break;
     case 'viscoelastic': etaN = pm.eta * contact * meff; break;
+    case 'coeff_restitution': {
+      // doc: eta_n = sqrt(4 m_eff k_nd / (1 + (pi / log e)^2)) for hooke; otherwise
+      // eta_n = -2 sqrt(5/6) log(e) / sqrt(pi^2 + log(e)^2) * sqrt(3/2 k_nd m_eff); k_nd = F_elastic / delta.
+      // Measured with native LAMMPS (black box): both forms match with no extra factor (ratio 1.0 for hooke and hertz).
+      const knd = fne / delta;
+      const le = Math.log(pm.eta);
+      etaN = pm.normal === 'hooke'
+        ? Math.sqrt((4 * meff * knd) / (1 + (Math.PI / le) ** 2))
+        : (-2 * Math.sqrt(5 / 6) * le / Math.sqrt(Math.PI * Math.PI + le * le)) * Math.sqrt(1.5 * knd * meff);
+      break;
+    }
     default: {
       // knd: the elastic normal force per unit overlap; measured with native LAMMPS (black box):
       // eta_n = sqrt(2) * alpha(e) * sqrt(m_eff * knd) for hooke, hertz and hertz/material alike
@@ -332,7 +351,8 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
       etaN = Math.SQRT2 * tsujiAlpha(pm.eta) * Math.sqrt(meff * knd);
     }
   }
-  const fn = fne - etaN * vn;
+  const poly = c.poly ?? 1;
+  const fn = poly * (fne - etaN * vn);
   if (pm.limit && fn < 0) return false;
   // F_n0 for the Coulomb cap: |F_ne| for non-cohesive models, |F_ne + 2 F_pulloff| for dmt and jkr (doc)
   const fnAbs = pm.normal === 'dmt' || jkr ? Math.abs(fne + 2 * fPull) : Math.abs(fn);
@@ -340,7 +360,9 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
   // tangential force: damping from eta_t = x_gamma_t eta_n; the spring is -k_t xi (linear_history),
   // -k_t a xi with a = sqrt(R delta) (mindlin), or the stored elastic force F_te (mindlin/force)
   const etaT = pm.xgt * etaN;
-  const dampx = -etaT * vtx, dampy = -etaT * vty, dampz = -etaT * vtz;
+  // the poly factor scales the forces (not the displacement update, and not the history-cap coefficient)
+  const etaTf = etaT * poly;
+  const dampx = -etaTf * vtx, dampy = -etaTf * vty, dampz = -etaTf * vtz;
   const kind = pm.tang;
   // jkr keeps a contact record too, so the tensile branch can be recognised (see hysteresis above)
   const hist = kind !== 'linear_nohistory' || pm.roll !== 'none' || pm.twist !== 'none' || jkr;
@@ -376,7 +398,7 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
     }
   }
   // spring force on the particle: F_s = -k_eff xi (displacement models) or F_te (force models)
-  const spring = (q: number) => (forceVariant ? q : -keff * q);
+  const spring = (q: number) => poly * (forceVariant ? q : -keff * q);
   let ftx = spring(shx) + dampx, fty = spring(shy) + dampy, ftz = spring(shz) + dampz;
   const ft = Math.hypot(ftx, fty, ftz);
   const fcap = pm.mu * fnAbs;

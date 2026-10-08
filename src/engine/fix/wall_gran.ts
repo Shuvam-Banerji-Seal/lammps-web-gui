@@ -3,6 +3,9 @@ import { StyleError } from '../force/types';
 import { parseNum } from '../force/util';
 import type { System } from '../system';
 import { granularContact, newContactOut, parseGranularSpec, PairGranular, type ContactOut, type Pm } from '../force/pair/granular';
+
+/** The classic fstyles of fix wall/gran/region (hooke, hooke/history, hertz/history). */
+const CLASSIC_FSTYLES = ['hooke', 'hooke/history', 'hertz/history'] as const;
 import { BlockRegion, ConeRegion, SphereRegion } from '../region';
 
 /*
@@ -329,6 +332,8 @@ interface WallElement { key: number; dist: number; nx: number; ny: number; nz: n
 export class FixWallGranGranular extends Fix {
   readonly style: string;
   private readonly pm: Pm;
+  /** Legacy hertz/history: forces scaled by sqrt(delta R). */
+  private legacyHertz = false;
   private readonly planes: Plane[] = [];
   private motion: Motion | null = null;
   private readonly regionId: string | null;
@@ -339,14 +344,44 @@ export class FixWallGranGranular extends Fix {
   constructor(sys: System, id: string, group: string, args: string[], regionMode: boolean) {
     super(sys, id, group, args);
     this.style = regionMode ? 'wall/gran/region' : 'wall/gran';
-    if (args[0] !== 'granular') throw new StyleError(`fix ${id} ${this.style}: expected fstyle granular`);
+    const classic = (CLASSIC_FSTYLES as readonly string[]).includes(args[0]);
+    if (args[0] !== 'granular' && !classic) throw new StyleError(`fix ${id} ${this.style}: expected fstyle granular or hooke, hooke/history, hertz/history`);
+    if (classic && !regionMode) throw new StyleError(`fix ${id} wall/gran: classic fstyle ${args[0]} is the plane legacy style (FixWallGran)`);
     let k = 1;
-    while (k < args.length && !(WALL_WORDS as readonly string[]).includes(args[k])) k++;
-    if (k >= args.length) throw new StyleError(`fix ${id} ${this.style} granular: missing wallstyle`);
+    let pmOut: Pm;
+    if (classic) {
+      // fstyle_params: Kn Kt gamma_n gamma_t xmu dampflag [limit_damping], then the wallstyle region ID
+      if (args.length < 8) throw new StyleError(`fix ${id} ${this.style} ${args[0]}: needs Kn Kt gamma_n gamma_t xmu dampflag`);
+      const kn = parseNum(args[1], 'Kn');
+      const kt = args[2] === 'NULL' ? (kn * 2) / 7 : parseNum(args[2], 'Kt');
+      const gn = parseNum(args[3], 'gamma_n');
+      const gt = args[4] === 'NULL' ? 0.5 * gn : parseNum(args[4], 'gamma_t');
+      const xmu = parseNum(args[5], 'xmu');
+      if (args[6] !== '0' && args[6] !== '1') throw new StyleError(`fix ${id} ${this.style}: dampflag must be 0 or 1, got '${args[6]}'`);
+      const dampflag = Number(args[6]);
+      k = 7;
+      let limit = false;
+      if (args[k] === 'limit_damping') { limit = true; k++; }
+      if (kn < 0 || kt < 0 || gn < 0 || gt < 0 || xmu < 0 || xmu > 10000) {
+        throw new StyleError(`fix ${id} ${this.style}: Kn, Kt, gamma_n, gamma_t must be >= 0 and xmu in 0..1e4`);
+      }
+      const gtEff = dampflag === 0 ? 0 : gt;
+      if (gn === 0 && gtEff > 0) throw new StyleError(`fix ${id} ${this.style}: gamma_t > 0 needs gamma_n > 0 (the tangential damping scales with gamma_n)`);
+      const hist = args[0] !== 'hooke';
+      this.legacyHertz = args[0] === 'hertz/history';
+      pmOut = {
+        normal: 'hooke', kn, Eeff: 0, gamma: 0, eta: gn, damp: 'mass_velocity',
+        tang: hist ? 'linear_history' : 'linear_nohistory', kt, xgt: gn > 0 ? gtEff / gn : 0, mu: xmu,
+        roll: 'none', kr: 0, gr: 0, mr: 0, twist: 'none', kw: 0, gw: 0, mw: 0, limit, cutoff: -1, sig: 'legacy',
+      };
+    } else {
+      while (k < args.length && !(WALL_WORDS as readonly string[]).includes(args[k])) k++;
+      if (k >= args.length) throw new StyleError(`fix ${id} ${this.style} granular: missing wallstyle`);
+      const sp = parseGranularSpec(args.slice(1, k));
+      pmOut = new PairGranular().wallParams(sp);
+    }
+    this.pm = pmOut;
     const ws = args[k];
-    const model = args.slice(1, k);
-    const sp = parseGranularSpec(model);
-    this.pm = new PairGranular().wallParams(sp);
     if (regionMode) {
       if (ws !== 'region') throw new StyleError(`fix ${id} wall/gran/region: wallstyle must be region, got '${ws}'`);
       this.regionId = args[k + 1] ?? null;
@@ -444,25 +479,33 @@ export class FixWallGranGranular extends Fix {
         // measured with native LAMMPS: the interior sphere has curvature radius -Rs (R_eff = R Rw / (R + Rw))
         out.push({ key: 0, dist: Rs - rho, nx: -dx / rho, ny: -dy / rho, nz: -dz / rho, Rf: (R * -Rs) / (R - Rs) });
       } else if (r instanceof ConeRegion) {
+        // lateral surface: the generator radius rho(a) = rl + slope (a - lo) of the cone (a cylinder has slope 0).
+        // Measured with native LAMMPS (black box, single sphere, Hertz k_n): the overlap is the distance to the
+        // generator, the normal is the gradient of the generator (checked against the hooke forces), and the
+        // curvature radius of the wall at the contact point is Rw = -2 rho_s, rho_s = radial distance of the
+        // surface point (cylinder: rho_s = Rc; cones: 2.94 = 2 x 1.47 and 3.44 = 2 x 1.72 at two points).
         const rl = this.pv(r.radlo), rh = this.pv(r.radhi);
-        if (rl !== rh) throw new StyleError(`fix ${this.id} wall/gran/region: a cone region is not supported (cylinder radlo = radhi only)`);
         const axis = r.axis;
         const c1 = this.pv(r.c1), c2 = this.pv(r.c2), lo = this.pv(r.lo), hi = this.pv(r.hi);
         const p = [x, y, z];
+        const a = p[axis];
         const [d1, d2] = axis === 0 ? [1, 2] : axis === 1 ? [0, 2] : [0, 1];
         const e1 = p[d1] - c1, e2 = p[d2] - c2;
         const rho = Math.hypot(e1, e2);
-        if (rho > 0 && rl - rho > 0) {
+        const slope = hi > lo ? (rh - rl) / (hi - lo) : 0;
+        const f = rho - (rl + slope * (a - lo));
+        const q = 1 + slope * slope;
+        if (rho > 0 && f < 0 && a - lo > 0 && hi - a > 0) {
+          // inside the generator: unit normal from the wall to the particle = (-e_rho + slope e_axis) / sqrt(q)
           const u = [0, 0, 0];
-          u[d1] = -e1 / rho;
-          u[d2] = -e2 / rho;
-          // measured with native LAMMPS (black box, single sphere in an interior cylinder of radius Rc, fixed
-        // Hertz k_n): the effective radius implies a wall curvature radius of -2 Rc (Rc = 2.0, 2.5, 3.0 gave
-        // -4, -5, -6); the sphere region gives -Rs. R_eff = R Rw / (R + Rw).
-        const Rw = -2 * rl;
-        out.push({ key: 0, dist: rl - rho, nx: u[0], ny: u[1], nz: u[2], Rf: (R * Rw) / (R + Rw) });
+          u[d1] = (-e1 / rho) / Math.sqrt(q);
+          u[d2] = (-e2 / rho) / Math.sqrt(q);
+          u[axis] = slope / Math.sqrt(q);
+          const rhoS = rho - f / q;
+          const Rw = -2 * rhoS;
+          out.push({ key: 0, dist: -f / Math.sqrt(q), nx: u[0], ny: u[1], nz: u[2], Rf: (R * Rw) / (R + Rw) });
         }
-        const a = p[axis];
+        // the flat caps of the cone (and of the cylinder): side in, the axial faces
         const ax = [0, 0, 0];
         ax[axis] = 1;
         if (a - lo > 0) out.push({ key: 1, dist: a - lo, nx: ax[0], ny: ax[1], nz: ax[2], Rf: R });
@@ -524,6 +567,7 @@ export class FixWallGranGranular extends Fix {
           vrx: v[3 * i] - mv[0], vry: v[3 * i + 1] - mv[1], vrz: v[3 * i + 2] - mv[2],
           oix: omega[3 * i], oiy: omega[3 * i + 1], oiz: omega[3 * i + 2],
           ojx: 0, ojy: 0, ojz: 0, dt, update, sg: 1, surfaceArm: true,
+          poly: this.legacyHertz ? Math.sqrt((R - e.dist) * e.Rf) : 1,
         }, sh, this.out, this.shear.has(key));
         if (!ok) {
           this.shear.delete(key);

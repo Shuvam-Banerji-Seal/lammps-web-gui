@@ -7,8 +7,8 @@ everything runs client-side.
 
 ## Stack
 
-- Node 24, npm. React 19.2 (pinned `~19.2.8` — `@react-three/fiber@9.7.0`
-  rejects 19.3), three.js 0.185, @react-three/fiber 9, @react-three/drei 10,
+- Node 24, npm. React 19.3 (pinned `~19.3.0`; `@react-three/fiber@9.8.1`
+  accepts React `>=19 <19.4`, so React 19.4 needs a newer fiber first), three.js 0.185, @react-three/fiber 9, @react-three/drei 10,
   Tailwind CSS 4, Vite 8, TypeScript 7, Vitest 5 (jsdom environment).
 - **Do not add dependencies.** Everything needed is installed.
 

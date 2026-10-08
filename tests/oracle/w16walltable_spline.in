@@ -1,0 +1,20 @@
+# oracle: fix wall/table spline interpolation, harmonic + LJ 12-6 tables, both z faces
+# oracle-compare: rel=1e-11 abs=1e-11
+# oracle-inputs: w16walltable.dat
+units           lj
+atom_style      atomic
+boundary        p p f
+lattice         fcc 0.8442
+region          box block 0 3 0 3 -1 4
+create_box      1 box
+region          atoms block 0 3 0 3 0 3.0
+create_atoms    1 region atoms
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+fix             2 all wall/table spline 201 zlo EDGE w16walltable.dat HARMONIC 2.5 zhi EDGE w16walltable.dat LJ126 2.5
+fix_modify      2 energy yes virial yes
+thermo_style    custom step pe press pxx pyy pzz f_2 f_2[1] f_2[2]
+thermo_modify   format float %.15g
+thermo          10
+run             0

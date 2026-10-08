@@ -91,7 +91,7 @@ interface Wall {
   cutoff: number;
 }
 
-abstract class FixWallBase extends Fix {
+export abstract class FixWallBase extends Fix {
   protected readonly walls: Wall[] = [];
   private unitsMode: 'lattice' | 'box' = 'lattice';
   private fld = false;

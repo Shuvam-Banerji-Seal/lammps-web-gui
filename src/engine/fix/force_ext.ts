@@ -102,11 +102,13 @@ export class FixViscous extends Fix {
  * namely mass \* (g dot x) for each particles, where x and mass are the
  * particles position and mass, and g is the gravitational field.  The
  * scalar value calculated by this fix is "extensive"." The
- * fix_modify energy option is supported ("The :doc:`fix_modify <fix_modify>` *energy* option is supported by
- * this fix to add the gravitational potential energy of the system to",
- * "The default setting for
- * this fix is :doc:`fix_modify energy no <fix_modify>`"). "This fix is not invoked during
- * :doc:`energy minimization <minimize>`." Default: "none".
+ * The fix_modify energy option is supported: "The :doc:`fix_modify
+ * <fix_modify>` *energy* option is supported by this fix to add the
+ * gravitational potential energy of the system to the global potential energy
+ * of the system as part of :doc:`thermodynamic output <thermo_style>`."
+ * "The default setting for this fix is :doc:`fix_modify energy no
+ * <fix_modify>`." "This fix is not invoked during :doc:`energy minimization
+ * <minimize>`." Default: "none".
  */
 export class FixGravity extends Fix {
   readonly style = 'gravity';
@@ -205,7 +207,7 @@ export class FixGravity extends Fix {
 
   /**
    * Potential energy of the field: -mass * (g dot x) for each particle in the
-   * group, in energy units. The doc names the expression "mass * (g dot x)";
+   * group, in energy units. The doc names the expression "mass \* (g dot x)";
    * the potential energy of the field is its negative, so that -Grad(U) =
    * F = +mass * g (the same -x.qE convention the fix_efield page states
    * explicitly), which is also what native LAMMPS outputs (oracle cases

@@ -8,10 +8,13 @@ import { massOf } from '../atoms';
  *   T = 2 E_kin / (N_DOF k_B),  E_kin = sum 1/2 m_i v_i^2,
  *   N_DOF = n_dim N_atoms - n_dim - N_fixDOFs
  * "A symmetric tensor, stored as a six-element vector, is also calculated
- * ... the same as the above expression for E_kin, except that the 1/2 factor
- * is NOT included and the v_i^2 is replaced by v_i,x v_i,y for the xy
- * component". "This compute subtracts out degrees-of-freedom due to fixes
- * that constrain molecular motion, such as fix shake and fix rigid."
+ * by this compute for use in the computation of a pressure tensor by the
+ * :doc:`compute pressue <compute_pressure>` command. The formula for the
+ * components of the tensor is the same as the above expression for
+ * :math:`E_\mathrm{kin}`, except that the 1/2 factor is NOT included and the
+ * :math:`v_i^2` is replaced by :math:`v_{i,x} v_{i,y}` for the :math:`xy`
+ * component, and so on." "This compute subtracts out degrees-of-freedom due
+ * to fixes that constrain molecular motion, such as fix shake and fix rigid."
  */
 
 export class ComputeTemp extends Compute {

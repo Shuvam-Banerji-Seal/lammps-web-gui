@@ -408,7 +408,8 @@ const parseTypeRange = (id: string, w: string, ntypes: number): readonly [number
  * computed for each of the *typeN* keywords listed.  If no *typeN*
  * keywords are listed, a single coordination number is calculated, which
  * includes atoms of all types (same as the "\*" format, see below)."  The
- * typeN wildcards "take the form "*" or "*n" or "m*" or "m*n".  If N is the
+ * typeN wildcards: "This takes the form "\*" or "\*n" or "m\*" or "m\*n". If N
+ * is the
  * number of atom types, then an asterisk with no numeric values means all
  * types from 1 to N.  A leading asterisk means all types from 1 to n
  * (inclusive).  A trailing asterisk means all types from m to N

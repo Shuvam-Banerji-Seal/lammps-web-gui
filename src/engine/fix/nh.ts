@@ -10,11 +10,13 @@ import { massOf } from '../atoms';
  *
  * "These commands perform time integration on Nose-Hoover style
  * non-Hamiltonian equations of motion ... The equations of motion used are
- * those of Shinoda et al ..., which combine the hydrostatic equations of
- * Martyna, Tobias and Klein ... with the strain energy proposed by Parrinello
- * and Rahman. The time integration schemes closely follow the
- * time-reversible measure-preserving Verlet ... integrators derived by
- * Tuckerman et al". Written here from those papers (MTK J Chem Phys 101,
+ * those of Shinoda et al in :ref:`(Shinoda) <nh-Shinoda>`, which combine the
+ * hydrostatic equations of Martyna, Tobias and Klein in :ref:`(Martyna)
+ * <nh-Martyna>` with the strain energy proposed by Parrinello and Rahman in
+ * :ref:`(Parrinello) <nh-Parrinello>`. The time integration schemes closely
+ * follow the time-reversible measure-preserving Verlet and rRESPA integrators
+ * derived by Tuckerman et al in :ref:`(Tuckerman) <nh-Tuckerman>`." Written
+ * here from those papers (MTK J Chem Phys 101,
  * 4177 (1994); Martyna et al. Mol Phys 87, 1117 (1996); Tuckerman et al. J
  * Phys A 39, 5629 (2006)), not from LAMMPS code. Per step:
  *   initial: thermostat chain (dt/2); barostat chain (dt/2); barostat
@@ -24,20 +26,25 @@ import { massOf } from '../atoms';
  *   final:   velocity scaling (dt/4); half kick; velocity scaling (dt/4);
  *            barostat velocities (dt/2); barostat chain; thermostat chain.
  * Masses: thermostat Q_1 = N_f k_B T Tdamp^2, Q_k = k_B T Tdamp^2 (k > 1);
- * barostat "W = (N + 1) k_B T_target P_damp^2"; barostat-thermostat chain
+ * barostat "W = (N + 1) k_B T_\mathrm{target} P_\mathrm{damp}^2";
+ * barostat-thermostat chain
  * Q_1 = n_dims k_B T Pdamp^2, Q_k = k_B T Pdamp^2.
  * Keywords: temp, iso, aniso, tri, x, y, z, xy, yz, xz, couple, tchain,
  * pchain, mtk, tloop, ploop, nreset, drag, ptemp, dilate, scalexy/yz/xz,
  * flip, fixedpoint. Defaults "tchain = 3, pchain = 3, mtk = yes, tloop = 1,
  * ploop = 1, nreset = 0, drag = 0.0, dilate = all, couple = none, flip =
- * yes". "iso ... couple xyz"; "aniso ... couple none"; "tri ... x y z
- * Pstart Pstop Pdamp, xy yz xz 0.0 0.0 Pdamp, couple none".
- * "For fix nvt: compute fix-ID_temp group-ID temp. For fix npt and fix nph:
- * compute fix-ID_temp all temp; compute fix-ID_press all pressure
- * fix-ID_temp". "If a thermostat is not defined, T_target is set to the
- * current temperature of the system when the barostat is initialized."
- * Global scalar: "the cumulative energy change due to this fix", reported
- * by thermo ecouple.
+ * yes". "iso ... couple xyz"; "aniso ... couple none"; Using "tri Pstart
+ * Pstop Pdamp" is the same as specifying these 7 keywords, one per line in the
+ * docs: "x Pstart Pstop Pdamp", "y Pstart Pstop Pdamp", "z Pstart Pstop
+ * Pdamp", "xy 0.0 0.0 Pdamp", "yz 0.0 0.0 Pdamp", "xz 0.0 0.0 Pdamp",
+ * "couple none".
+ * For fix nvt, the docs give the code line "compute fix-ID_temp group-ID
+ * temp"; for fix npt and fix nph, the code lines "compute fix-ID_temp all
+ * temp" and "compute fix-ID_press all pressure fix-ID_temp". "If a thermostat
+ * is not defined, :math:`T_\mathrm{target}` is set to the current temperature
+ * of the system when the barostat is initialized."
+ * Global scalar: "The scalar is the same cumulative energy change due to this
+ * fix described in the previous paragraph", reported by thermo ecouple.
  * Not implemented (StyleError): dilate with a partial group's strain-energy
  * reference cell (nreset > 0 is accepted; the reference cell is the current
  * one), box flips (flip yes stops with an error when a tilt passes 0.6 of the

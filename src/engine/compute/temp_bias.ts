@@ -6,7 +6,8 @@ import type { Region } from '../region';
 
 /*
  * Temperature computes that remove a velocity bias, attached to thermostats
- * with "fix_modify temp <compute-ID>". Written from the LAMMPS documentation
+ * with fix_modify temp <compute-ID> (unquoted paraphrase). Written from the
+ * LAMMPS documentation
  * only (docs.lammps.org/compute_temp_partial.html, compute_temp_com.html,
  * compute_temp_region.html, compute_modify.html). Comment lines marked "|"
  * are verbatim quotes from the cited .rst pages (verified with grep -F).
@@ -60,7 +61,7 @@ import type { Region } from '../region';
  *   |more velocity components are excluded, the value used for *extra/dof* is
  *   |scaled accordingly.
  *
- * Default (docs.lammps.org/compute_temp_partial.html): "Default none".
+ * Default (docs.lammps.org/compute_temp_partial.html): none.
  */
 export class ComputeTempPartial extends ComputeTemp {
   readonly style = 'temp/partial';
@@ -184,7 +185,7 @@ export class ComputeTempPartial extends ComputeTemp {
  *
  * The center-of-mass velocity of the group is the mass-weighted mean
  * velocity; the temperature and the tensor use v - v_com. Default
- * (docs.lammps.org/compute_temp_com.html): "Default none".
+ * (docs.lammps.org/compute_temp_com.html): none.
  */
 export class ComputeTempCom extends ComputeTemp {
   readonly style = 'temp/com';
@@ -310,7 +311,7 @@ export class ComputeTempCom extends ComputeTemp {
  *   |computing the temperature after a "bias" has been removed, which in
  *   |this case is the velocity of any atoms outside the region.
  *
- * Default (docs.lammps.org/compute_temp_region.html): "Default none".
+ * Default (docs.lammps.org/compute_temp_region.html): none.
  */
 export class ComputeTempRegion extends ComputeTemp {
   readonly style = 'temp/region';

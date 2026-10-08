@@ -4,13 +4,14 @@ import { parseNum } from '../force/util';
 
 /*
  * Base class for computes — docs.lammps.org/compute.html: "Define a
- * computation that will be performed on a group of atoms. Quantities
- * calculated by a compute are instantaneous values". A compute produces a
- * global scalar, vector or array and/or per-atom values; thermo output,
- * variables, fixes and dumps reference them as c_ID, c_ID[i], c_ID[i][j].
- * "Global scalar or vector quantities ... are classified as either
- * intensive or extensive"; extensive ones are normalized by atom count in
- * thermo output when thermo_modify norm is yes.
+ * diagnostic computation that will be performed on a group of atoms.
+ * Quantities calculated by a compute are instantaneous values". A compute
+ * produces a global scalar, vector or array and/or per-atom values; thermo
+ * output, variables, fixes and dumps reference them as c_ID, c_ID[i],
+ * c_ID[i][j]. Per the same page, the results of computes that calculate
+ * global quantities can be either "intensive" or "extensive" values;
+ * extensive ones are normalized by atom count in thermo output when
+ * thermo_modify norm is yes.
  *
  * Results are cached per state epoch (System.epoch), which advances on every
  * timestep and every command that changes the system, so a compute is

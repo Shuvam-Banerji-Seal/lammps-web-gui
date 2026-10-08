@@ -6,9 +6,9 @@ import { massOf } from '../atoms';
 /*
  * compute ID group ke — docs.lammps.org/compute_ke.html: "Define a
  * computation that calculates the translational kinetic energy of a group
- * of particles. The kinetic energy of each particle is computed as 1/2 m v^2,
- * where m and v are the mass and velocity of the particle." The value is
- * extensive.
+ * of particles. The kinetic energy of each particle is computed as
+ * :math:`\frac{1}{2} m v^2`, where *m* and *v* are the mass and velocity of
+ * the particle, respectively." The value is extensive.
  */
 
 export class ComputeKE extends Compute {

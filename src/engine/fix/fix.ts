@@ -3,7 +3,7 @@ import { StyleError } from '../force/types';
 
 /*
  * Base class for fixes — docs.lammps.org/fix.html: "Set a fix that will be
- * applied to a group of atoms. In LAMMPS, a 'fix' is any operation that is
+ * applied to a group of atoms. In LAMMPS, a "fix" is any operation that is
  * applied to the system during timestepping or minimization."
  *
  * Hooks follow the timestep of docs.lammps.org/Developer_flow.html:

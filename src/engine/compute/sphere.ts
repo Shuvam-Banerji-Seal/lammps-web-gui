@@ -29,8 +29,9 @@ import type { System } from '../system';
  *   dof rotate = R N_ext with nothing subtracted;
  * - the rotational energy sums all three omega components in 2d as well;
  * - with dof rotate the tensor holds only the rotational part;
- * - errors "Compute temp/sphere requires atom attribute omega" (likewise
- *   erotate/sphere) and "Unknown compute temp/sphere dof keyword ...".
+ * - errors (native LAMMPS messages, paraphrased here, not quoted from the
+ *   docs) for a missing omega atom attribute (likewise erotate/sphere) and
+ *   for an unknown temp/sphere dof keyword.
  */
 
 const SPHERE_INERTIA = 0.4;

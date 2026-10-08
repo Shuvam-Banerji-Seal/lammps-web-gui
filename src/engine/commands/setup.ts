@@ -16,6 +16,7 @@ import { ComputeTemp } from '../compute/temp';
 import type { AtomStyle, SimState } from '../types';
 import type { System } from '../system';
 import { bitOfIndex, type DynamicGroup } from '../group';
+import { parseBalanceWeight, applyBalanceWeights, balanceNeighFactor, balanceUsesNeigh, type BalanceWeightAction } from '../fix/balance';
 import { parseMoleculeFile, geometricCenter, rotationMatrix, type MoleculeTemplate, type MoleculeOptions } from '../molecule';
 
 /*
@@ -143,6 +144,58 @@ const commStyle: Handler = ({ sys }, a) => {
   if (a.length < 1 || (a[0] !== 'brick' && a[0] !== 'tiled')) throw new StyleError('usage: comm_style brick|tiled');
   sys.commStyle = a[0];
   sys.log(`comm_style ${a[0]}: accepted (the browser engine runs one process)`);
+};
+
+/*
+ * balance thresh style args ... keyword args ... — docs.lammps.org/balance.html:
+ * static load balancing. The engine is one process, so the subdomains are
+ * always the whole box and no atom moves; the only observable effect is the
+ * *weight* processing, which can compute and, with *store*, write the custom
+ * d_name vector (the same weighted-balance options as fix balance, see
+ * fix/balance.ts). style = x/y/z (a "grid" method, combinable) or shift or
+ * rcb; "Balancing through recursive bisectioning (rcb style) requires
+ * comm_style tiled."
+ */
+const balanceCommand: Handler = ({ sys }, a) => {
+  if (!sys.hasBox) throw new StyleError('balance requires a simulation box (create_box or read_data first)');
+  const thresh = Number(a[0]);
+  if (a.length < 2 || !Number.isFinite(thresh) || thresh <= 0) throw new StyleError('usage: balance thresh style args ... keyword args ...');
+  let k = 1;
+  const style = a[k];
+  if (style === 'shift') {
+    const dims = a[k + 1];
+    if (!dims || !/^[xyz]{1,3}$/.test(dims) || new Set(dims).size !== dims.length) throw new StyleError(`balance shift: dimstr '${dims ?? ''}' must contain x, y or z, each at most once`);
+    if (sys.dimension === 2 && dims.includes('z')) throw new StyleError('balance shift: cannot balance in z for a 2d simulation');
+    const niter = Number(a[k + 2]), stop = Number(a[k + 3]);
+    if (!Number.isInteger(niter) || niter < 1 || !Number.isFinite(stop)) throw new StyleError('usage: balance thresh shift dimstr Niter stopthresh');
+    k += 4;
+  } else if (style === 'rcb') {
+    if (sys.commStyle !== 'tiled') throw new StyleError('balance rcb requires comm_style tiled');
+    k += 1;
+  } else if (style === 'x' || style === 'y' || style === 'z') {
+    while (a[k] === 'x' || a[k] === 'y' || a[k] === 'z') {
+      const dim = a[k++];
+      if (sys.dimension === 2 && dim === 'z') throw new StyleError('balance: cannot balance in z for a 2d simulation');
+      if (a[k] === 'uniform') k += 1;
+      else {
+        const start = k;
+        while (k < a.length && a[k] !== '' && Number.isFinite(Number(a[k]))) k += 1;
+        if (k === start) throw new StyleError(`balance ${dim}: expected uniform or cut positions`);
+      }
+    }
+  } else throw new StyleError(`balance: unknown style '${style ?? ''}' (x, y, z, shift or rcb)`);
+  const actions: BalanceWeightAction[] = [];
+  while (k < a.length) {
+    const key = a[k];
+    if (key === 'weight') k = parseBalanceWeight(sys, a, k, actions);
+    else if (key === 'sort') {
+      if (a[k + 1] !== 'yes' && a[k + 1] !== 'no') throw new StyleError('balance sort must be yes or no');
+      k += 2;
+    } else if (key === 'out') throw new StyleError('balance out (writing subdomain files) is not supported by the browser engine');
+    else throw new StyleError(`balance: unknown keyword '${key}'`);
+  }
+  applyBalanceWeights(sys, actions, balanceUsesNeigh(actions) ? balanceNeighFactor(sys) : null);
+  sys.log('balance: accepted (the browser engine runs one process; subdomains are unchanged; stored weights are written)');
 };
 
 /** newton on/off — newton.html; forces are always summed once per pair here, so either setting gives the same result. */
@@ -2053,7 +2106,7 @@ const deleteBonds: Handler = ({ sys }, a) => {
 export const SETUP_COMMANDS: Record<string, Handler> = {
   units, dimension, boundary, atom_style: atomStyle, atom_modify: atomModify, newton,
   processors: parallelOnly('processors'), comm_style: commStyle, package: parallelOnly('package'),
-  suffix: parallelOnly('suffix'), partition: parallelOnly('partition'), balance: parallelOnly('balance'),
+  suffix: parallelOnly('suffix'), partition: parallelOnly('partition'), balance: balanceCommand,
   comm_modify: commModify, lattice, region, create_box: createBox, create_atoms: createAtoms, mass, molecule,
   read_data: readDataCmd, write_data: writeDataCmd, timestep, reset_timestep: resetTimestep,
   group, set, velocity, delete_atoms: deleteAtomsCmd, displace_atoms: displaceAtoms, replicate,

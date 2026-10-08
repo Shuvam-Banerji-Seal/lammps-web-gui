@@ -23,3 +23,35 @@ export const parseInt_ = (w: string | undefined, what: string): number => {
  * (0.894427); only the Masses section keeps full precision.
  */
 export const fmtCoeff = (v: number): string => formatNumber(v, '%g');
+
+/**
+ * Joins potential-file entries that continue over several lines (sw,
+ * tersoff, vashishta, ...): measured with native LAMMPS (black box), words are
+ * read across lines until an entry has `nwords` of them, and extra words on
+ * that last line are ignored. Comments (#...) and blank lines are skipped.
+ * Returns the lines with each entry joined onto its first line (exactly
+ * `nwords` words) and the continuation lines emptied, so line numbers in
+ * error messages stay those of the file.
+ */
+export const joinPotentialEntries = (lines: readonly string[], nwords: number): string[] => {
+  const strip = (r: string): string[] => {
+    const h = r.indexOf('#');
+    const t = (h >= 0 ? r.slice(0, h) : r).trim();
+    return t ? t.split(/\s+/) : [];
+  };
+  const out = lines.slice();
+  for (let ln = 0; ln < lines.length; ln++) {
+    let words = strip(lines[ln]);
+    if (!words.length) continue;
+    let k = ln;
+    while (words.length < nwords && k + 1 < lines.length) {
+      k++;
+      words = words.concat(strip(lines[k]));
+      out[k] = '';
+    }
+    out[ln] = words.slice(0, nwords).join(' ');
+    ln = k;
+  }
+  return out;
+};
+

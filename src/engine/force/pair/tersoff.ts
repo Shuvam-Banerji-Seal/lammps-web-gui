@@ -1,6 +1,6 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
-import { parseNum } from '../util';
+import { parseNum, joinPotentialEntries } from '../util';
 
 /*
  * pair_style tersoff — docs.lammps.org/pair_tersoff.html
@@ -139,7 +139,7 @@ const key3 = (e1: string, e2: string, e3: string): string => `${e1} ${e2} ${e3}`
 
 /** Parses a .tersoff potential file: entry lines of 3 element names + 15 numbers. */
 const parseTersoffFile = (text: string, fileName: string): { entries: Map<string, TersoffEntry>; elems: Set<string>; unitTag: string | null } => {
-  const lines = text.split(/\r?\n/);
+  const lines = joinPotentialEntries(text.split(/\r?\n/), 17);
   let unitTag: string | null = null;
   let start = 0;
   if (lines.length > 0) {

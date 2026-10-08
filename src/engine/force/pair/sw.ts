@@ -1,6 +1,6 @@
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
-import { parseNum } from '../util';
+import { parseNum, joinPotentialEntries } from '../util';
 
 /*
  * pair_style sw, sw/mod — docs.lammps.org/pair_sw.html
@@ -153,7 +153,7 @@ const key3 = (e1: string, e2: string, e3: string): string => `${e1} ${e2} ${e3}`
 
 /** Parses a .sw potential file: entry lines of 3 element names + 11 numbers. */
 const parseSWFile = (text: string, fileName: string): { entries: Map<string, SWEntry>; elems: Set<string>; unitTag: string | null } => {
-  const lines = text.split(/\r?\n/);
+  const lines = joinPotentialEntries(text.split(/\r?\n/), 14);
   let unitTag: string | null = null;
   let start = 0;
   if (lines.length > 0) {

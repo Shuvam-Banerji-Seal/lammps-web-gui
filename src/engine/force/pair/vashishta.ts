@@ -1,6 +1,6 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
-import { parseNum } from '../util';
+import { parseNum, joinPotentialEntries } from '../util';
 
 /*
  * pair_style vashishta — docs.lammps.org/pair_vashishta.html
@@ -118,7 +118,7 @@ const key3 = (e1: string, e2: string, e3: string): string => `${e1} ${e2} ${e3}`
 
 /** Parses a .vashishta potential file: entry lines of 3 element names + 14 numbers. */
 const parseVFile = (text: string, fileName: string): { entries: Map<string, VEntry>; elems: Set<string> } => {
-  const lines = text.split(/\r?\n/);
+  const lines = joinPotentialEntries(text.split(/\r?\n/), 17);
   const entries = new Map<string, VEntry>();
   const elems = new Set<string>();
   for (let ln = 0; ln < lines.length; ln++) {

@@ -76,7 +76,7 @@ describe('kspace: rocksalt Madelung energy', () => {
     for (let i = 1; i < err.length; i++) expect(err[i], `order ${i + 2}`).toBeLessThan(err[i - 1]);
     expect(err[0]).toBeLessThan(1e-2);
     expect(err[5]).toBeLessThan(5e-8);
-  });
+  }, 60_000); // six PPPM orders: ~5 s alone, longer when the machine is busy
 });
 
 describe('kspace: ewald forces are the energy gradient', () => {

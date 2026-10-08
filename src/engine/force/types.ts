@@ -8,8 +8,8 @@ import type { Neighbor, NeighList } from '../neighbor';
  * LAMMPS style name to a factory.
  *
  * Energy and virial bookkeeping follows docs.lammps.org/compute_pressure.html:
- * "The virial for each atom is computed as ... W = sum r_i . f_i" summed over
- * pairs as r_ij . F_ij; the 6 components are xx, yy, zz, xy, xz, yz. Energies
+ * the virial of each atom is the sum W = sum r_i . f_i, summed over pairs
+ * as r_ij . F_ij; the 6 components are xx, yy, zz, xy, xz, yz. Energies
  * are split as in docs.lammps.org/thermo_style.html: "evdwl = van der Waals
  * pairwise energy (includes etail)", "ecoul = Coulombic pairwise energy",
  * "elong = long-range kspace energy", "ebond", "eangle", "edihed", "eimp".

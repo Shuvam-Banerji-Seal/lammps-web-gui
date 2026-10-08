@@ -5,8 +5,8 @@ import { fmtCoeff, parseNum } from '../util';
 /*
  * pair_style lj/cut cutoff — docs.lammps.org/pair_lj.html:
  *   E = 4 eps [ (sigma/r)^12 - (sigma/r)^6 ]   r < rc
- *   coefficients "epsilon (energy units), sigma (distance units), LJ cutoff
- *   (distance units). The last coefficient is optional. If not specified,
+ *   coefficients epsilon (energy units), sigma (distance units), LJ cutoff
+ *   (distance units). "The last coefficient is optional.  If not specified,
  *   the global LJ cutoff specified in the pair_style command is used."
  *   "For atom type pairs I,J and I != J, the epsilon and sigma coefficients
  *   and cutoff distance for all of the lj/cut pair styles can be mixed."

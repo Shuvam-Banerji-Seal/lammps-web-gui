@@ -326,7 +326,7 @@ export class PairLJExpand extends PairLJVariant {
     this.lj4[k1] = this.lj4[k2] = 4 * eps * s6;
     this.delta[k1] = this.delta[k2] = delta;
     this.offset[k1] = this.offset[k2] = this.shift && cut > 0 ? 4 * eps * ((sig / cut) ** 12 - (sig / cut) ** 6) : 0;
-    // "the actual force cutoff is the sum of r_c + Delta"
+    // "the actual force cutoff is the sum of :math:`r_c + \Delta`"
     return cut + delta;
   }
 

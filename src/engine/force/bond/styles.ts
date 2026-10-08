@@ -53,8 +53,9 @@ export const bondLoop = (
 /**
  * The FENE logarithm's argument 1 - (r/R0)^2 for bond k, as native LAMMPS
  * guards it (measured 2026-10-07, K 30 R0 1.5): below 0.1 it prints
- * "WARNING: FENE bond too long: <step> <id1> <id2> <r>" and uses 0.1 in both
- * the energy and the force; at -3 or below it stops with "Bad FENE bond".
+ * a WARNING that the "FENE bond too long" message names with the step, the
+ * two atom IDs and r, and uses 0.1 in both the energy and the force; at -3 or
+ * below it stops with "Bad FENE bond".
  */
 const feneArg = (bc: BondedCompute, arg: number, k: number, r: number): number => {
   if (arg >= 0.1) return arg;

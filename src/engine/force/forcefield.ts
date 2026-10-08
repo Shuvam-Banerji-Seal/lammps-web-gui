@@ -62,8 +62,9 @@ export class ForceField {
    * Topology without a style is allowed (those terms add nothing). Measured
    * with native LAMMPS (black box): each init warns "Bonds are defined but no
    * bond style is set" (likewise Angles, Dihedrals, Impropers), followed for
-   * bonds, angles and dihedrals by "Likewise 1-2 (1-3, 1-4) special neighbor
-   * interactions != 1.0" when that special_bonds lj or coul weight is not 1.
+   * bonds, angles and dihedrals by the warning "Likewise 1-2 special neighbor
+   * interactions != 1.0" (the 1-3 and 1-4 forms of it are the same text with
+   * those numbers) when that special_bonds lj or coul weight is not 1.
    */
   private checkTopology(s: SimState): void {
     const t = s.topo, sp = this.special;

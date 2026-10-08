@@ -202,7 +202,7 @@ abstract class PairLJCutCoul extends PairLJCut {
   }
 
   // write_data, measured with native LAMMPS: "PairIJ Coeffs" lines are
-  // "I J epsilon sigma cutoff1" (no Coulomb cutoff column), which is
+  // I J epsilon sigma cutoff1 (no Coulomb cutoff column), which is
   // PairLJCut.dataCoeffsIJ; lj/cut/coul/dsf writes no pair section at all.
 
   extract(name: string): unknown {

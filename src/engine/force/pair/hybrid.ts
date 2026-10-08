@@ -431,9 +431,9 @@ export class PairHybrid extends Pair {
    * A sub-style's special weights must keep the neighbor list valid: where
    * the global special_bonds weight is 0 (pair excluded) or 1 (pair not
    * flagged) the sub-style's weight must be the same. Measured with native
-   * LAMMPS (2 Sep 2026), which stops with "Pair_modify special lj 1-2
-   * setting for pair hybrid substyle lj/cut incompatible with global
-   * special_bonds setting"; weights strictly between 0 and 1 globally allow
+   * LAMMPS (2 Sep 2026), which stops with an error that the Pair_modify
+   * special lj 1-2 setting for pair hybrid substyle lj/cut is incompatible
+   * with the global special_bonds setting; weights strictly between 0 and 1 globally allow
    * any sub-style weight.
    */
   checkSpecial(global: { lj: readonly number[]; coul: readonly number[] }): void {

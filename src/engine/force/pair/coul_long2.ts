@@ -77,7 +77,7 @@ import { fmtCoeff, parseNum } from '../util';
  * for the erfc variants and the special_bonds subtraction.
  */
 
-/** Per-pair non-Coulomb cutoff: NaN means "use the global pair_style cutoff". */
+/** Per-pair non-Coulomb cutoff: NaN means use the global pair_style cutoff. */
 const nonCoulCut = (raw: number, cutGlobal: number): number => (Number.isNaN(raw) ? cutGlobal : raw);
 
 /**

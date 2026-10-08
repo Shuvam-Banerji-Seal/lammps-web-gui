@@ -1,0 +1,22 @@
+# oracle: LJ fluid with two masses, Muller-Plathe kinetic-energy exchange (fix thermal/conductivity z 8 swap 2), thermo f_tc and per-atom state
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      2 box
+create_atoms    1 box
+mass            1 1.0
+mass            2 2.0
+group           half id 1:256:2
+set             group half type 2
+velocity        all create 1.44 87287 loop all
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+timestep        0.002
+fix             1 all nve
+fix             tc all thermal/conductivity 10 z 8 swap 2
+thermo_style    custom step temp pe f_tc
+thermo_modify   format float %.15g
+thermo          10
+run             200

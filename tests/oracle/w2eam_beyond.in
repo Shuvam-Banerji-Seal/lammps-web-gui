@@ -1,0 +1,25 @@
+# oracle: pair_style eam/alloy on a coarse 20-point table whose density range is exceeded (linear F extrapolation) — interpolation between table points
+# oracle-inputs: w2eam_beyond.eam.alloy
+units           metal
+atom_style      atomic
+lattice         fcc 3.2
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+pair_style      eam/alloy
+pair_coeff      * * w2eam_beyond.eam.alloy Xx
+variable        dx atom 0.08*sin(0.9*x+0.4*y)
+variable        dy atom 0.08*cos(0.7*y-0.5*z)
+variable        dz atom 0.08*sin(1.1*z+0.3*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 3.0*sin(0.5*x+0.2*z)
+variable        vy atom 3.0*cos(0.4*y+0.6*x)
+variable        vz atom 3.0*sin(0.3*z-0.5*y)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+timestep        0.001
+fix             1 all nve
+thermo_style    custom step temp pe etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             50

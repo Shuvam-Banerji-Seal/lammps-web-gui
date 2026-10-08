@@ -1,0 +1,28 @@
+# Wave 14: fix ttm (docs.lammps.org/fix_ttm.html) on an eight-atom sc crystal: Ce 1, rho_e 1,
+# kappa_e 1 (diffusion on a 2x2x2 grid), gamma_p 20 (random + friction), gamma_s 0, seed 4242,
+# infile of electron temperatures; two runs so the random stream continues across runs.
+# oracle-inputs: w14ttm_ttm.init
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      atomic
+lattice         sc 3.0
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 10.0
+displace_atoms  all move 0.5 0.5 0.5 units box
+variable        vx atom 9.0*sin(0.9*x+0.4*y)
+variable        vy atom 7.0*cos(0.7*y-0.5*z)
+variable        vz atom 6.0*sin(1.1*z+0.3*x)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      lj/cut 3.0
+pair_coeff      1 1 0.0 2.0
+fix             1 all nve
+fix             2 all ttm 4242 1.0 1.0 1.0 20.0 0.0 2.0 2 2 2 infile w14ttm_ttm.init
+timestep        0.001
+thermo_style    custom step temp pe f_2[1] f_2[2]
+thermo_modify   format float %.15g
+thermo          1
+run             4
+run             3

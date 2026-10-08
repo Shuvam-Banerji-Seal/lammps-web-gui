@@ -22,7 +22,7 @@ interface Cell { id: string; text: string }
 
 type Status = 'idle' | 'running' | 'ok' | 'error' | 'cancelled';
 
-interface ThermoTable { keywords: ThermoKeyword[]; rows: ThermoRow[] }
+interface ThermoTable { keywords: ThermoKeyword[]; labels?: string[]; rows: ThermoRow[] }
 
 interface CellRun {
   status: Status;
@@ -189,7 +189,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           patchRun(cell.id, (r) => ({ ...r, error: ev.message }));
           break;
         case 'thermo-header':
-          patchRun(cell.id, (r) => ({ ...r, tables: [...r.tables, { keywords: ev.keywords, rows: [] }] }));
+          patchRun(cell.id, (r) => ({ ...r, tables: [...r.tables, { keywords: ev.keywords, labels: ev.labels, rows: [] }] }));
           break;
         case 'thermo':
           patchRun(cell.id, (r) => {
@@ -454,7 +454,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
                     <div key={k} className="max-h-64 overflow-auto">
                       <table className="border-collapse text-right">
                         <thead>
-                          <tr>{t.keywords.map((kw) => <th key={kw} className={`px-2 font-semibold ${ct.headerText}`}>{kw}</th>)}</tr>
+                          <tr>{t.keywords.map((kw, c) => <th key={kw} className={`px-2 font-semibold ${ct.headerText}`}>{t.labels?.[c] ?? kw}</th>)}</tr>
                         </thead>
                         <tbody>
                           {t.rows.map((r, j) => (

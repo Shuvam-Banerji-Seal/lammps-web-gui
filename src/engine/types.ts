@@ -244,7 +244,8 @@ export class EngineError extends Error {
 /** What the engine streams back while running (worker -> UI). */
 export type EngineEvent =
   | { kind: 'log'; text: string }
-  | { kind: 'thermo-header'; keywords: ThermoKeyword[] }
+  /** labels: header text per column where thermo_modify colname renamed it (else the keyword). */
+  | { kind: 'thermo-header'; keywords: ThermoKeyword[]; labels?: string[] }
   | { kind: 'thermo'; row: ThermoRow }
   | { kind: 'frame'; step: number; x: Float64Array; image: Int32Array; type: Int32Array; id: Int32Array; box: SimBox }
   | { kind: 'error'; message: string; line: number; command: string }

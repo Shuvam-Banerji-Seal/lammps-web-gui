@@ -74,6 +74,8 @@ export class Thermo {
   formatInt: string | null = null;
   formatFloat: string | null = null;
   formatCol = new Map<number, string>();
+  /** thermo_modify colname: header text per column index (0-based). */
+  colname = new Map<number, string>();
   lineStyle: 'one' | 'multi' | 'yaml' = 'one';
   /** Last wall time / step for tpcpu, spcpu. */
   private lastCpu = { t: 0, step: 0, time: 0 };
@@ -109,6 +111,7 @@ export class Thermo {
     this.flush = false;
     this.formatLine = this.formatInt = this.formatFloat = null;
     this.formatCol.clear();
+    this.colname.clear();
   }
 
   /** c_ID[*] / f_ID[*] wildcards expand to every component. */
@@ -153,8 +156,13 @@ export class Thermo {
     this.lastCpu = { t: performance.now(), step: this.sys.state.step, time: 0 };
   }
 
+  /** Column labels for the notebook table when thermo_modify colname renamed a column (else undefined). */
+  labels(): string[] | undefined {
+    return this.colname.size ? this.keywords.map((k, c) => this.colname.get(c) ?? k) : undefined;
+  }
+
   header(): string[] {
-    return this.keywords.map((k) => HEADER[k] ?? k);
+    return this.keywords.map((k, c) => this.colname.get(c) ?? HEADER[k] ?? k);
   }
 
   /** The current row (fresh compute values). */
@@ -392,6 +400,30 @@ export class Thermo {
           else if (which === 'float') this.formatFloat = fmt;
           else if (/^\d+$/.test(which)) this.formatCol.set(Number(which), fmt);
           else throw new StyleError(`thermo_modify format: '${which}' must be line, int, float, a column number, or none`);
+          k += 3;
+          break;
+        }
+        case 'colname': {
+          // thermo_modify.html: "*colname* values =  ID string, or *default*"; "*ID* can be a positive
+          // integer when it represents the column number counting from the left, a negative integer
+          // when it represents the column number from the right (i.e., :math:`-1` is the last
+          // column/keyword), or a thermo keyword (or compute, fix, property, or variable reference)";
+          // "A setting of *default* clears all previous settings". Measured with native LAMMPS (black
+          // box): a column number out of range, 0, or a keyword not in the thermo style stop with
+          // Invalid thermo_modify colname argument: <ID>.
+          const id = need(val);
+          if (id === 'default') { this.colname.clear(); k += 2; break; }
+          const name = args[k + 2];
+          if (name === undefined) throw new StyleError('thermo_modify colname needs an ID and a string');
+          const n = this.keywords.length;
+          let col = -1;
+          if (/^-?\d+$/.test(id)) {
+            const v = Number(id);
+            if (v >= 1 && v <= n) col = v - 1;
+            else if (v <= -1 && v >= -n) col = n + v;
+          } else col = this.keywords.indexOf(id);
+          if (col < 0) throw new StyleError(`Invalid thermo_modify colname argument: ${id}`);
+          this.colname.set(col, name);
           k += 3;
           break;
         }

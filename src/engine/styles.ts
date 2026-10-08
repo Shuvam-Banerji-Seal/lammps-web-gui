@@ -80,6 +80,9 @@ import * as pairHbond from './registry/pair_hbond';
 import * as pairEim from './registry/pair_eim';
 import * as computeMisc14b from './registry/compute_misc14b';
 import * as pairTersoff2 from './registry/pair_tersoff2';
+import * as computeMisc15 from './registry/compute_misc15';
+import * as fixCmap from './registry/fix_cmap';
+import * as computeSnap15 from './registry/compute_snap15';
 import * as pairTable from './registry/pair_table';
 import * as pairCharmm from './registry/pair_charmm';
 import * as pairCoulLong2 from './registry/pair_coullong2';
@@ -164,7 +167,7 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   rattle: (s, i, g, a) => new FixShake(s, i, g, a, 'rattle'),
   ...Object.fromEntries(['rigid', 'rigid/nve', 'rigid/small', 'rigid/nve/small'].map((st) => [st, (s: System, i: string, g: string, a: string[]) => new FixRigid(s, i, g, a, st)])),
   ...fixForce.FIXES, ...fixWall.FIXES, ...fixOutput.FIXES, ...fixMotion.FIXES,
-  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES, ...fixDeform.FIXES, ...fixWallGran.FIXES, ...fixRigid2.FIXES, ...fixPour.FIXES, ...fixNHSphere.FIXES, ...fixAveChunk.FIXES, ...fixMisc3.FIXES, ...fixSllod.FIXES, ...fixEhex.FIXES, ...fixGjf.FIXES, ...fixAdapt.FIXES, ...fixBoxRelax.FIXES, ...fixGk.FIXES, ...fixRestrain.FIXES, ...fixMisc13.FIXES, ...fixTtm.FIXES, ...fixMisc14.FIXES,
+  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES, ...fixDeform.FIXES, ...fixWallGran.FIXES, ...fixRigid2.FIXES, ...fixPour.FIXES, ...fixNHSphere.FIXES, ...fixAveChunk.FIXES, ...fixMisc3.FIXES, ...fixSllod.FIXES, ...fixEhex.FIXES, ...fixGjf.FIXES, ...fixAdapt.FIXES, ...fixBoxRelax.FIXES, ...fixGk.FIXES, ...fixRestrain.FIXES, ...fixMisc13.FIXES, ...fixTtm.FIXES, ...fixMisc14.FIXES, ...fixCmap.FIXES,
 };
 
 export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
@@ -174,7 +177,7 @@ export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
   pressure: (s, i, g, a) => new ComputePressure(s, i, g, a),
   'erotate/sphere': (s, i, g, a) => new ComputeERotateSphere(s, i, g, a),
   'temp/sphere': (s, i, g, a) => new ComputeTempSphere(s, i, g, a),
-  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES, ...computeDeform.COMPUTES, ...computeOrient.COMPUTES, ...computeVoro.COMPUTES, ...computeChunk.COMPUTES, ...computeSna.COMPUTES, ...computeStruct.COMPUTES, ...computeLocal.COMPUTES, ...computeGk.COMPUTES, ...computeRestrain.COMPUTES, ...computeMisc13.COMPUTES, ...computeMisc14.COMPUTES, ...computeMisc14b.COMPUTES,
+  ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES, ...computeDeform.COMPUTES, ...computeOrient.COMPUTES, ...computeVoro.COMPUTES, ...computeChunk.COMPUTES, ...computeSna.COMPUTES, ...computeStruct.COMPUTES, ...computeLocal.COMPUTES, ...computeGk.COMPUTES, ...computeRestrain.COMPUTES, ...computeMisc13.COMPUTES, ...computeMisc14.COMPUTES, ...computeMisc14b.COMPUTES, ...computeMisc15.COMPUTES, ...computeSnap15.COMPUTES,
 };
 
 /** Lists for messages and is_available(). */

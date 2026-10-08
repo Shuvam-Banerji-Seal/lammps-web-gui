@@ -5,6 +5,7 @@ import { FIX_STYLES, COMPUTE_STYLES } from '../styles';
 import { Dump, type DumpStyle } from '../output/dump';
 import { initRun, runVerlet } from '../run/verlet';
 import { RunCancelled } from '../errors';
+import { DYNAMIC_GROUP_FIXES, NO_DYNAMIC_GROUP_FIXES } from '../group';
 import type { System } from '../system';
 import { minimize, MIN_STYLES } from '../run/min';
 import { accelerator, runAccelerated } from '../run/accel';
@@ -39,6 +40,10 @@ const fix: Handler = ({ sys }, a) => {
   const k = sys.fixes.findIndex((f) => f.id === id);
   if (k >= 0 && sys.fixes[k].style !== style) throw new StyleError(`replacing fix ${id} with a different style (${sys.fixes[k].style} -> ${style}) is not allowed; unfix it first`);
   ensureThermoComputes(sys);
+  if (sys.groups.isDynamic(sys.groupBit(group))) {
+    if (NO_DYNAMIC_GROUP_FIXES.has(style)) throw new StyleError(`Fix ${style} does not allow use with a dynamic group`);
+    if (!DYNAMIC_GROUP_FIXES.has(style)) throw new StyleError(`fix ${style} with a dynamic group is not supported by the browser engine`);
+  }
   if (k >= 0) sys.fixes[k].destroy?.();
   const f = make(sys, id, group, a.slice(3));
   if (k >= 0) sys.fixes[k] = f; else sys.fixes.push(f);
@@ -76,6 +81,7 @@ const compute: Handler = ({ sys }, a) => {
     throw new StyleError(`compute style '${style}' is not supported by the browser engine; supported: ${Object.keys(COMPUTE_STYLES).sort().join(', ')}`);
   }
   ensureThermoComputes(sys);
+  if (style === 'msd' && sys.groups.isDynamic(sys.groupBit(group))) throw new StyleError('Compute msd is not compatible with dynamic groups');
   sys.computes.push(make(sys, id, group, a.slice(3)));
 };
 

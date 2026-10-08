@@ -47,6 +47,7 @@ export const accelerator = (sys: System, backend: ForceBackend): { accel: Accel 
     if (f.preExchange || f.preNeighbor || f.postNeighbor || f.preReverse) return why(`fix ${f.style} (it acts when neighbor lists are rebuilt)`);
   }
   if (!sys.fixes.some((f) => f.timeIntegrate)) return why('no time-integration fix');
+  if (sys.groups.dynamic.size) return why('a dynamic group (atoms are reassigned between force evaluations)');
   if (sys.computes.some((c) => c.needsEatom || c.needsVatom)) return why('per-atom energy or stress computes');
   // the accelerated backends return a scalar virial only
   if (sys.thermo.keywords.some((k) => PRESSURE_TENSOR.has(k))) return why('pressure-tensor thermo keywords');

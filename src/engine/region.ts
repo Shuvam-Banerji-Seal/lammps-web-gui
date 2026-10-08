@@ -31,6 +31,8 @@ export interface RegionEnv {
   variable(name: string): number;
   /** Looks up another region (union / intersect). */
   region(id: string): Region | undefined;
+  /** Maps a point into the periodic box (absent before the box exists). */
+  remap?(p: number[]): void;
 }
 
 export abstract class Region {
@@ -40,6 +42,7 @@ export abstract class Region {
   /** rotate: theta variable, point P, unit axis R. */
   rotate: { theta: string; p: [number, number, number]; r: [number, number, number] } | null = null;
   openFaces: number[] = [];
+  private readonly remapBuf = [0, 0, 0];
 
   constructor(readonly id: string, readonly style: string, protected env: RegionEnv) {}
 
@@ -48,8 +51,19 @@ export abstract class Region {
 
   get dynamic(): boolean { return this.move !== null || this.rotate !== null; }
 
-  /** True if (x, y, z) belongs to the region, honouring side and move/rotate. */
+  /**
+   * True if (x, y, z) belongs to the region, honouring side and move/rotate. Measured with native
+   * LAMMPS (black box): the point is first mapped into the periodic box — an atom that has
+   * crossed a periodic face since the last reneighboring (stored x = -0.0033 in a box 0..6.72)
+   * is tested at x + L by count(group,region), compute reduce/region and dynamic groups.
+   */
   match(x: number, y: number, z: number): boolean {
+    if (this.env.remap) {
+      const p = this.remapBuf;
+      p[0] = x; p[1] = y; p[2] = z;
+      this.env.remap(p);
+      [x, y, z] = p;
+    }
     if (this.dynamic) [x, y, z] = this.toBodyFrame(x, y, z);
     const ins = this.inside(x, y, z);
     return this.interior ? ins : !ins;

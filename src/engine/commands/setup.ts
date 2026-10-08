@@ -14,7 +14,7 @@ import { RanPark, Rng } from '../rng';
 import { ComputeTemp } from '../compute/temp';
 import type { AtomStyle, SimState } from '../types';
 import type { System } from '../system';
-import { bitOfIndex } from '../group';
+import { bitOfIndex, type DynamicGroup } from '../group';
 import { parseMoleculeFile, geometricCenter, rotationMatrix, type MoleculeTemplate, type MoleculeOptions } from '../molecule';
 
 /*
@@ -721,11 +721,29 @@ const group: Handler = ({ sys }, a) => {
     if (sys.hasBox) { const s = sys.state; const m = ~bitOfIndex(k); for (let i = 0; i < s.n; i++) s.mask[i] &= m; }
     return;
   }
-  if (style === 'dynamic' || style === 'static') throw new StyleError(`group ${style} is not supported by the browser engine`);
   const s = sys.state;
+  const args = a.slice(2);
+  if (style === 'dynamic') {
+    groupDynamic(sys, id, args);
+    return;
+  }
+  if (style === 'static') {
+    // Measured with native LAMMPS (black box): group static on a group that is not dynamic only
+    // reports its count, and before any run a new dynamic group has no atoms yet
+    const k0 = sys.groups.find(id);
+    if (k0 < 0) throw new StyleError(`Could not find group static group ID ${id}`);
+    if (args.length) throw new StyleError('usage: group ID static');
+    sys.groups.dynamic.delete(bitOfIndex(k0));
+    let n = 0;
+    for (let i = 0; i < s.n; i++) if (s.mask[i] & bitOfIndex(k0)) n++;
+    sys.log(`${n} atoms in group ${id}`);
+    sys.refreshComputes();
+    return;
+  }
+  // Measured with native LAMMPS (black box): group clear needs an existing group and logs nothing
+  if (style === 'clear' && sys.groups.find(id) < 0) throw new StyleError(`Could not find group clear group ID ${id}`);
   const k = sys.groups.create(id);
   const bit = bitOfIndex(k);
-  const args = a.slice(2);
   const set = (pred: (i: number) => boolean) => { for (let i = 0; i < s.n; i++) if (pred(i)) s.mask[i] |= bit; };
   switch (style) {
     case 'clear': {
@@ -778,6 +796,11 @@ const group: Handler = ({ sys }, a) => {
     case 'subtract': case 'union': case 'intersect': {
       if (!args.length) throw new StyleError(`group ${style} needs group IDs`);
       const bits = args.map((g) => sys.groupBit(g));
+      // Measured with native LAMMPS (black box): a dynamic group cannot be combined
+      if (bits.some((b) => sys.groups.isDynamic(b))) {
+        throw new StyleError(style === 'subtract' ? 'Cannot subtract dynamic groups'
+          : style === 'union' ? 'Cannot union groups from a dynamic group' : 'Cannot intersect groups using a dynamic group');
+      }
       if (style !== 'union' && bits.length < 2) throw new StyleError(`group ${style} needs 2 or more groups`);
       set((i) => {
         const m = s.mask[i];
@@ -789,10 +812,60 @@ const group: Handler = ({ sys }, a) => {
     }
     default: throw new StyleError(`unknown group style '${style}'`);
   }
+  sys.refreshComputes();
+  if (style === 'clear') return;
+  // Measured with native LAMMPS (black box): a dynamic group reports "dynamic group ID defined"
+  // after any group command instead of its count
+  if (sys.groups.isDynamic(bit)) { sys.log(`dynamic group ${id} defined`); return; }
   let count = 0;
   for (let i = 0; i < s.n; i++) if (s.mask[i] & bit) count++;
   sys.log(`${count} atoms in group ${id}`);
-  sys.refreshComputes();
+};
+
+/*
+ * group ID dynamic parent-ID keyword value ... — docs.lammps.org/group.html:
+ *   *dynamic* args = parent-ID keyword value ...
+ *     keyword = *region* or *var* or *property* or *every*
+ * "A group with the ID all is predefined. All atoms belong to this group.
+ * This group cannot be deleted, or made dynamic." "If the *var* keyword is
+ * used, the variable name must be an atom-style or atomfile-style variable."
+ * "Note that the name of the custom per-atom vector is specified just as
+ * *name*, not as *i_name* or *d_name*".
+ * Measured with native LAMMPS (black box): the group keeps its atoms until the
+ * next run assigns them; the command logs "dynamic group ID defined"; a
+ * missing region, variable or property and a non-positive every stop at the
+ * command, the variable style and a dynamic parent at the next run; the
+ * error texts below are native's.
+ */
+const groupDynamic = (sys: System, id: string, args: string[]): void => {
+  const parent = args[0];
+  if (!parent || args.length < 3) throw new StyleError('Illegal group command: usage group ID dynamic parent-ID keyword value ...');
+  if (parent === id) throw new StyleError('Group dynamic cannot reference itself');
+  if (sys.groups.find(parent) < 0) throw new StyleError(`Group dynamic parent group ${parent} does not exist`);
+  if (id === 'all') throw new StyleError('Group all cannot be made dynamic');
+  const g: DynamicGroup = { parent, region: null, variable: null, property: null, every: 1 };
+  for (let k = 1; k < args.length; k += 2) {
+    const key = args[k], val = args[k + 1];
+    if (!['region', 'var', 'property', 'every'].includes(key)) throw new StyleError(`Unknown keyword ${key} in dynamic group command`);
+    if (val === undefined) throw new StyleError(`Illegal group dynamic command: missing value for ${key}`);
+    if (key === 'region') {
+      if (!sys.regions.has(val)) throw new StyleError(`Region ${val} for dynamic group ${id} does not exist`);
+      g.region = val;
+    } else if (key === 'var') {
+      if (!sys.vars.has(val)) throw new StyleError(`Variable '${val}' for dynamic group ${id} does not exist`);
+      g.variable = val;
+    } else if (key === 'property') {
+      const c = sys.state.custom.get(val);
+      if (!c || c.cols !== 0) throw new StyleError(`Custom per-atom vector ${val} for dynamic group ${id} does not exist`);
+      g.property = val;
+    } else {
+      const n = Number(val);
+      if (!Number.isInteger(n) || n <= 0) throw new StyleError(`Illegal every value ${val} for dynamic group ${id}`);
+      g.every = n;
+    }
+  }
+  sys.groups.dynamic.set(bitOfIndex(sys.groups.create(id)), g);
+  sys.log(`dynamic group ${id} defined`);
 };
 
 // ----------------------------------------------------------------- set

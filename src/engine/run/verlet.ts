@@ -49,6 +49,7 @@ export const initRun = (sys: System): void => {
   }
   for (const c of sys.computes) c.invalidate();
   for (const c of sys.computes) c.init();
+  sys.checkDynamicGroups();
   for (const f of sys.fixes) f.init?.();
   // native LAMMPS: "WARNING: One or more atoms are time integrated more than once"
   const integ = sys.fixes.filter((f) => f.timeIntegrate);
@@ -71,6 +72,7 @@ export const setupRun = (sys: System): void => {
   sys.setupNeighbors();
   sys.computeForcesInRun(sys.computeFlags());
   sys.forcesCurrent();
+  sys.assignDynamicGroups(true);
   for (const f of sys.fixes) f.setup();
   sys.refreshComputes();
 };
@@ -127,6 +129,7 @@ export const runVerlet = async (sys: System, nsteps: number, hooks: RunHooks): P
     for (const f of fPreForce) f.preForce!();
     sys.computeForcesInRun({ ...flags, step: true });
     sys.forcesCurrent();
+    sys.assignDynamicGroups(false);
     for (const f of fPreRev) f.preReverse!();
     for (const f of fPostForce) f.postForce!();
     for (const f of fFinal) f.finalIntegrate!();

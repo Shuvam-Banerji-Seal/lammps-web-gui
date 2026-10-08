@@ -97,6 +97,10 @@ export const minimize = async (
     for (const f of fixesPre) f.minPreForce!();
     sys.computeForcesInRun(sys.computeFlags());
     sys.forcesCurrent();
+    // group.html: "For an energy minimization, via the :doc:`minimize <minimize>` command, an
+    // assignment is made at the beginning of the minimization, but not during the iterations of
+    // the minimizer."
+    if (evaluations === 1) sys.assignDynamicGroups(true);
     for (const f of fixesPost) f.minPostForce!();
     sys.refreshComputes();
     const a = sys.ff.acc;

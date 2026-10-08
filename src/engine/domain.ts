@@ -151,6 +151,17 @@ export class Geometry {
     }
   }
 
+  private readonly scratchX = new Float64Array(3);
+  private readonly scratchImage = new Int32Array(3);
+
+  /** A point mapped into the periodic box (the rule of remap(), without an atom). */
+  remapPoint(p: number[]): void {
+    const x = this.scratchX;
+    x[0] = p[0]; x[1] = p[1]; x[2] = p[2];
+    this.remap(x, this.scratchImage, 0);
+    p[0] = x[0]; p[1] = x[1]; p[2] = x[2];
+  }
+
   /** Unwrapped position of atom i: x + ix*A + iy*B + iz*C. */
   unwrap(x: Float64Array, image: Int32Array, i: number, out: number[]): void {
     const ix = image[3 * i], iy = image[3 * i + 1], iz = image[3 * i + 2];

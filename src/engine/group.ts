@@ -10,9 +10,58 @@ import { StyleError } from './force/types';
 
 export const MAX_GROUPS = 32;
 
+/*
+ * Dynamic groups — docs.lammps.org/group.html: "The *dynamic* style flags an
+ * existing or new group as dynamic.  This means atoms will be (re)assigned to
+ * the group periodically as a simulation runs." "Only atoms in the group
+ * specified as the parent group via the parent-ID are assigned to the dynamic
+ * group before the following conditions are applied." "The assignment of
+ * atoms to a dynamic group is done at the beginning of each run and on every
+ * timestep that is a multiple of *N*\ , which is the argument for the *every*
+ * keyword (:math:`N = 1` is the default)." "The *static* style removes the
+ * setting for a dynamic group, converting it to a static group (the default).
+ * The atoms in the static group are those currently in the dynamic group."
+ */
+export interface DynamicGroup {
+  parent: string;
+  region: string | null;
+  variable: string | null;
+  property: string | null;
+  every: number;
+}
+
+/*
+ * Measured with native LAMMPS (black box, a dynamic group whose membership
+ * changes during the run): given a dynamic group, the fix styles in
+ * NO_DYNAMIC_GROUP_FIXES stop with the error Fix <style> does not allow use
+ * with a dynamic group, and compute msd with Compute msd is not compatible
+ * with dynamic groups. The fixes in
+ * DYNAMIC_GROUP_FIXES accept one; every other compute style registered here
+ * accepts one too. A fix style in neither list has not been measured.
+ */
+export const DYNAMIC_GROUP_FIXES = new Set([
+  'addforce', 'ave/histo', 'ave/time', 'aveforce', 'efield', 'gravity', 'langevin', 'lineforce',
+  'momentum', 'nph', 'nph/sphere', 'npt', 'npt/sphere', 'nve', 'nve/limit', 'nve/sphere', 'nvt',
+  'nvt/sllod', 'nvt/sphere', 'planeforce', 'recenter', 'setforce', 'spring', 'temp/berendsen',
+  'temp/csld', 'temp/csvr', 'temp/rescale', 'viscous', 'wall/harmonic', 'wall/lj1043', 'wall/lj126',
+  'wall/lj93', 'wall/morse', 'wall/reflect', 'wall/reflect/stochastic', 'wall/region',
+]);
+export const NO_DYNAMIC_GROUP_FIXES = new Set([
+  'ave/atom', 'ave/chunk', 'balance', 'deform', 'deposit', 'ehex', 'enforce2d', 'freeze', 'heat', 'indent',
+  'nve/noforce', 'pour', 'print',
+  'property/atom', 'rattle', 'rigid', 'rigid/nve', 'rigid/nve/small', 'rigid/nvt', 'rigid/nvt/small',
+  'rigid/small', 'shake', 'spring/self', 'vector', 'wall/gran', 'wall/gran/region',
+]);
+
 export class Groups {
   /** Name per bit index (null = free); index 0 is 'all'. */
   names: (string | null)[] = ['all'];
+  /** Dynamic groups by mask bit. */
+  readonly dynamic = new Map<number, DynamicGroup>();
+
+  isDynamic(bit: number): boolean {
+    return this.dynamic.has(bit);
+  }
 
   find(name: string): number {
     return this.names.indexOf(name);
@@ -46,6 +95,7 @@ export class Groups {
     const k = this.find(name);
     if (k < 0) throw new StyleError(`unknown group '${name}'`);
     this.names[k] = null;
+    this.dynamic.delete(bitOfIndex(k));
     return k;
   }
 

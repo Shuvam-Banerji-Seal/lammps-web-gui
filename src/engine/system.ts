@@ -358,11 +358,60 @@ export class System {
     return {
       variable: (name) => this.vars.scalar(name, this.formulaEnv),
       region: (id) => this.regions.get(id),
+      remap: (p) => { if (this.hasBox) this.geom.remapPoint(p); },
     };
   }
 
   /** Per-atom group mask bit by name. */
   groupBit(name: string): number { return this.groups.bit(name); }
+
+  /** Run-time checks of the dynamic groups (group.html; native error texts, measured black box). */
+  checkDynamicGroups(): void {
+    for (const [bit, g] of this.groups.dynamic) {
+      const name = this.groups.names[Math.log2(bit >>> 0)] ?? '';
+      const p = this.groups.find(g.parent);
+      if (p < 0) throw new StyleError(`Group dynamic parent group ${g.parent} does not exist`);
+      if (this.groups.isDynamic(this.groups.bit(g.parent))) throw new StyleError(`Dynamic group parent group ${g.parent} cannot be dynamic`);
+      if (g.region && !this.regions.has(g.region)) throw new StyleError(`Region ${g.region} for dynamic group ${name} does not exist`);
+      if (g.variable) {
+        const v = this.vars.get(g.variable);
+        if (!v) throw new StyleError(`Variable '${g.variable}' for dynamic group ${name} does not exist`);
+        if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Variable '${g.variable}' for dynamic group ${name} is of incompatible style`);
+      }
+      if (g.property && !this.state.custom.has(g.property)) throw new StyleError(`Custom per-atom vector ${g.property} for dynamic group ${name} does not exist`);
+    }
+  }
+
+  /**
+   * (Re)assigns the atoms of the dynamic groups — at the start of a run (setup) and on steps that
+   * are a multiple of each group's every, after the forces and before the fixes (group.html:
+   * "The point in the timestep at which atoms are assigned to a dynamic group is after interatomic
+   * forces have been computed, but before any fixes which alter forces or otherwise update the
+   * system have been invoked.").
+   */
+  assignDynamicGroups(setup: boolean): void {
+    if (!this.groups.dynamic.size) return;
+    const s = this.state;
+    let changed = false;
+    for (const [bit, g] of this.groups.dynamic) {
+      if (!setup && s.step % g.every !== 0) continue;
+      changed = true;
+      const parent = this.groups.bit(g.parent);
+      const region = g.region ? this.region(g.region) : null;
+      const vals = g.variable ? this.atomVariable(g.variable) : null;
+      const prop = g.property ? this.state.custom.get(g.property)! : null;
+      const clear = ~bit;
+      for (let i = 0; i < s.n; i++) {
+        let keep = (s.mask[i] & parent) !== 0;
+        if (keep && region) keep = region.match(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]);
+        if (keep && vals) keep = vals[i] !== 0;
+        if (keep && prop) keep = prop.data[i] !== 0;
+        s.mask[i] = keep ? s.mask[i] | bit : s.mask[i] & clear;
+      }
+    }
+    // compute values cached earlier in this step belong to the old membership
+    if (changed) this.refreshComputes();
+  }
 
   // ---------------------------------------------------------------- formulas
 

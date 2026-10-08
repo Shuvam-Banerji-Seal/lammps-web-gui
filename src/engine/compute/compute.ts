@@ -61,7 +61,14 @@ export abstract class Compute {
   // temperature computes
   dof = 0;
   extraDof: number;
-  dynamicDof = false;
+  /** compute_modify dynamic/dof. */
+  dynamicDofFlag = false;
+  /**
+   * Recount the degrees of freedom at every evaluation: compute_modify dynamic/dof yes, or a
+   * dynamic group. Measured with native LAMMPS (black box): compute temp on a dynamic group of
+   * 450 and then 404 atoms divides by 3N - 3 of the current count (1347, then 1209).
+   */
+  get dynamicDof(): boolean { return this.dynamicDofFlag || this.sys.groups.isDynamic(this.groupBit); }
 
   constructor(protected sys: System, readonly id: string, readonly group: string, protected args: string[]) {
     this.groupBit = sys.groups.bit(group);
@@ -127,7 +134,7 @@ export abstract class Compute {
     }
     if (key === 'dynamic/dof' || key === 'dynamic') {
       if (values[0] !== 'yes' && values[0] !== 'no') throw new StyleError(`${key} must be yes or no`);
-      this.dynamicDof = values[0] === 'yes';
+      this.dynamicDofFlag = values[0] === 'yes';
       return 1;
     }
     return 0;

@@ -372,9 +372,10 @@ type EComp = { const: number } | { var: string; atom: boolean };
  * "The forces due to this fix are imposed during an energy minimization,
  * invoked by the :doc:`minimize <minimize>` command." Default: "none".
  *
- * Point dipoles ("If the system
- * contains point-dipoles, also add a torque ...") are not supported by this
- * engine: any dipole request is a StyleError.
+ * Point dipoles (the page's point-dipole paragraph): torque mu x E (times qe2f) and energy -mu . E
+ * for equal-style fields; atom-style
+ * variables on dipoles and dipoles without torque storage are StyleErrors. The dipole
+ * force (p . grad) E is not computed (the page points to fix efield/lepton).
  */
 export class FixEfield extends Fix {
   readonly style = 'efield';
@@ -395,6 +396,12 @@ export class FixEfield extends Fix {
     if (args.length < 3) throw new StyleError('usage: fix ID group-ID efield ex ey ez keyword value ...');
     this.comp = [FixEfield.parseComp(sys, args[0], 'ex'), FixEfield.parseComp(sys, args[1], 'ey'), FixEfield.parseComp(sys, args[2], 'ez')];
     this.allConst = this.comp.every((c) => 'const' in c);
+    // docs.lammps.org/fix_efield.html: "For point-dipoles, equal-style variables can be used, but atom-style
+    // variables are not currently supported, since they imply a spatial gradient in the electric field".
+    if (s.mu) {
+      if (!s.torque) throw new StyleError('fix efield: point dipoles need per-atom torque (use atom_style hybrid sphere dipole)');
+      if (this.comp.some((c) => 'atom' in c)) throw new StyleError('fix efield: atom-style variables are not supported for point dipoles (use an equal-style variable)');
+    }
     for (let k = 3; k < args.length; k += 2) {
       const key = args[k];
       const val = args[k + 1];
@@ -476,6 +483,20 @@ export class FixEfield extends Fix {
     const bit = this.groupBit;
     const fadd = this.fadd;
     fadd.fill(0);
+    // fix_efield.html: "also add a torque" p x E "on the dipoles due to the external electric field";
+    // the torque uses the charge-to-force factor qe2f alone (measured with native LAMMPS, black box).
+    const mu = s.mu, tq = s.torque;
+    if (mu && tq) {
+      const kt = s.units.qe2f;
+      for (let i = 0; i < s.n; i++) {
+        if (!(mask[i] & bit) || !this.inRegion(i)) continue;
+        const ex = this.compAt(rx, i), ey = this.compAt(ry, i), ez = this.compAt(rz, i);
+        const px = mu[4 * i], py = mu[4 * i + 1], pz = mu[4 * i + 2];
+        tq[3 * i] += kt * (py * ez - pz * ey);
+        tq[3 * i + 1] += kt * (pz * ex - px * ez);
+        tq[3 * i + 2] += kt * (px * ey - py * ex);
+      }
+    }
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & bit)) continue;
       if (!this.inRegion(i)) continue;
@@ -545,9 +566,15 @@ export class FixEfield extends Fix {
       const [ex, ey, ez] = [this.compAt(this.resolve(this.comp[0]), 0), this.compAt(this.resolve(this.comp[1]), 0), this.compAt(this.resolve(this.comp[2]), 0)];
       const k = s.units.qe2f;
       let e = 0;
+      const u: number[] = [0, 0, 0];
       for (let i = 0; i < s.n; i++) {
         if (!(mask[i] & bit) || !this.inRegion(i)) continue;
-        e -= q[i] * (x[3 * i] * ex + x[3 * i + 1] * ey + x[3 * i + 2] * ez) * k;
+        // the energy is -x . qE on the unwrapped position (image flags), so periodic images count
+        this.sys.geom.unwrap(x, s.image, i, u);
+        e -= q[i] * (u[0] * ex + u[1] * ey + u[2] * ez) * k;
+        // fix_efield.html gives the dipole energy U_efield = -mu . E (the page's U_{efield} = -mu E form),
+        // with the same conversion factor as the charges
+        if (s.mu) e -= (s.mu[4 * i] * ex + s.mu[4 * i + 1] * ey + s.mu[4 * i + 2] * ez) * k;
       }
       return e;
     }

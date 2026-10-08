@@ -25,6 +25,8 @@ import type { System } from '../system';
 export class FixNVESphere extends FixNVE {
   readonly style: string = 'nve/sphere';
   private inertia = 0.4;
+  /** update dipole: the dipole orientation follows the angular velocity (see rotateDipoles). */
+  private updateDipole = false;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -35,8 +37,14 @@ export class FixNVESphere extends FixNVE {
         k++;
       } else if (args[k] === 'update') {
         const w = args[k + 1];
-        if (w !== 'dipole' && w !== 'dipole/dlm') throw new StyleError(`Unknown keyword in fix nve/sphere command: update ${w ?? ''}`.trim());
-        throw new StyleError('Fix nve/sphere update dipole requires atom attribute mu');
+        if (w === 'dipole') {
+          if (!sys.state.mu) throw new StyleError('Fix nve/sphere update dipole requires atom attribute mu');
+          this.updateDipole = true;
+        } else if (w === 'dipole/dlm') {
+          // The Dullweber-Leimkuhler-McLachlan splitting is not given on the fix page, so it is not implemented.
+          throw new StyleError('Fix nve/sphere update dipole/dlm is not supported (the DLM orientation integrator is not implemented)');
+        } else throw new StyleError(`Unknown keyword in fix nve/sphere command: update ${w ?? ''}`.trim());
+        k += 2;
       } else throw new StyleError(`Unknown keyword in fix nve/sphere command: ${args[k]}`);
     }
     if (!sys.state.omega) throw new StyleError('Fix nve/sphere requires atom attribute omega');
@@ -65,9 +73,35 @@ export class FixNVESphere extends FixNVE {
     }
   }
 
+  /**
+   * Orientation update of update dipole, measured with native LAMMPS (black box): with a constant
+   * angular velocity the dipole after one step is |mu| (mu + dt w x mu) / |mu + dt w x mu| (first
+   * step and the step after it checked to 6 digits, a 2 and 3 step run, |mu| = 1 and 2, w along z
+   * and along (1,1,0)); the rotation is applied once per step with the full timestep.
+   */
+  private rotateDipoles(): void {
+    const s = this.sys.state;
+    const { mask } = s;
+    const mu = s.mu!, omega = s.omega!;
+    const bit = this.groupBit;
+    const dt = this.dtv;
+    for (let i = 0; i < s.n; i++) {
+      if (!(mask[i] & bit)) continue;
+      const px = mu[4 * i], py = mu[4 * i + 1], pz = mu[4 * i + 2], len = mu[4 * i + 3];
+      const wx = omega[3 * i], wy = omega[3 * i + 1], wz = omega[3 * i + 2];
+      const nx = px + dt * (wy * pz - wz * py);
+      const ny = py + dt * (wz * px - wx * pz);
+      const nz = pz + dt * (wx * py - wy * px);
+      const norm = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      const sc = len / norm;
+      mu[4 * i] = nx * sc; mu[4 * i + 1] = ny * sc; mu[4 * i + 2] = nz * sc;
+    }
+  }
+
   initialIntegrate(): void {
     super.initialIntegrate();
     this.kickOmega();
+    if (this.updateDipole) this.rotateDipoles();
   }
 
   finalIntegrate(): void {

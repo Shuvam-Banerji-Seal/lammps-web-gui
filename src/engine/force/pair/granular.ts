@@ -612,6 +612,11 @@ export class PairGranular extends Pair {
     if (!ctx.ghostVelocity) throw new StyleError('pair_style granular requires ghost atoms store velocity (use comm_modify vel yes)');
     const s = ctx.s;
     if (s && (!s.radius || !s.rmass || !s.omega)) throw new StyleError('pair_style granular requires atom_style sphere (radius, rmass, omega)');
+    // pair_granular.html (mdr): "Newton's third law must be set to *off*." (measured with native
+    // LAMMPS, black box: mdr with the default newton on stops with an error)
+    if (ctx.newtonPair !== false && this.specs.some((sp) => sp?.normal === 'mdr')) {
+      throw new StyleError("pair_style granular: normal model 'mdr' requires newton off");
+    }
     this.resolve();
   }
 

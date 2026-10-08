@@ -220,6 +220,8 @@ export interface StyleContext {
   ghostVelocity?: boolean;
   /** Group bit of a fix freeze (0 when none): granular contacts with a frozen particle use the other one's mass. */
   freezeGroupBit?: number;
+  /** newton pair setting (default on); a few styles require it off. */
+  newtonPair?: boolean;
 }
 
 /** Equilibrium bond lengths and angles (degrees) by type, for Pair.linkBonded. */

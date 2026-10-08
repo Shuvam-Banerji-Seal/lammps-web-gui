@@ -232,3 +232,12 @@ describe('pair_style granular mdr: committed oracle cases', () => {
     }
   });
 });
+
+describe('mdr and the newton setting', () => {
+  it('stops when newton is on (the default), as native LAMMPS does', async () => {
+    const script = twoSphere({ pairCoeff: 'mdr 1.0 0.0 0.1 0.0 0.0 0.0 damping mdr 1 tangential linear_nohistory 1.0 0.0', runs: 'run 1' })
+      .replace('newton          off\n', '');
+    const r = await run(script);
+    expect(r.error).toMatch(/mdr' requires newton off/);
+  });
+});

@@ -126,6 +126,7 @@ const commStyle: Handler = ({ sys }, a) => {
 /** newton on/off — newton.html; forces are always summed once per pair here, so either setting gives the same result. */
 const newton: Handler = ({ sys }, a) => {
   if (a.length < 1 || a.length > 2 || a.some((w) => w !== 'on' && w !== 'off')) throw new StyleError('usage: newton on|off [on|off]');
+  sys.newtonPair = a[0] === 'on';
   sys.log('newton: accepted (the engine always uses Newton\'s 3rd law within one process; results are the same)');
 };
 

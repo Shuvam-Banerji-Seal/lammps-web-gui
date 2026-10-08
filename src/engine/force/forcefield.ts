@@ -103,6 +103,7 @@ export class ForceField {
     this.checkTopology(s);
     if (this.pair) {
       if (this.pair.ntypes !== s.ntypes) this.pair.allocate(s.ntypes);
+      this.pair.linkBonded?.({ bond: (t) => this.bond?.equilibrium(t) ?? Number.NaN, angle: (t) => this.angle?.equilibrium(t) ?? Number.NaN });
       this.pair.init(ctx);
     }
     for (const b of [this.bond, this.angle, this.dihedral, this.improper]) b?.linkForceField?.({ pair: this.pair, special: this.special });
@@ -132,6 +133,7 @@ export class ForceField {
       if (!this.pair) throw new StyleError('kspace_style needs a pair style with a long-range Coulomb part');
       const cutCoul = this.pair.extract('cut_coul');
       if (typeof cutCoul !== 'number') throw new StyleError(`kspace_style ${this.kspace.name} is not compatible with pair style ${this.pair.name}`);
+      this.kspace.linkPair?.(this.pair);
       this.kspace.init(s, geom, cutCoul, s.units.qqr2e * this.pair.coulConstScale / this.dielectric, ctx);
       this.pair.gEwald = this.kspace.gEwald;
     }

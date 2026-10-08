@@ -223,6 +223,12 @@ export interface StyleContext {
 }
 
 /** Base for pair styles. */
+/** Equilibrium bond lengths and angles (degrees) by type, for Pair.linkBonded. */
+export interface BondedEquilibria {
+  bond(type: number): number;
+  angle(type: number): number;
+}
+
 export abstract class Pair {
   abstract readonly name: string;
   ntypes = 0;
@@ -253,6 +259,12 @@ export abstract class Pair {
    * effectively a parameter of the force field." Those styles set CHARMM / LAMMPS in units real.
    */
   coulConstScale = 1;
+  /**
+   * Force-field hook, called before init(): the equilibrium length of each bond type and angle
+   * (degrees) of each angle type, NaN without a bond or angle style. The TIP4P styles place
+   * their massless charge site from them.
+   */
+  linkBonded?(link: BondedEquilibria): void;
   /**
    * The style does not tally the global virial itself; the force field takes
    * it as sum_k x_k . f_k over owned and ghost atoms right after compute()
@@ -413,4 +425,6 @@ export abstract class KSpace {
   /** Sets up parameters for the current box and pair cutoff. */
   abstract init(s: SimState, geom: Geometry, cutCoul: number, qqrd2e: number, ctx: StyleContext): void;
   abstract compute(kc: KSpaceCompute): void;
+  /** Force-field hook, called before init(): the pair style (pppm/tip4p reads its charge sites). */
+  linkPair?(pair: Pair | null): void;
 }

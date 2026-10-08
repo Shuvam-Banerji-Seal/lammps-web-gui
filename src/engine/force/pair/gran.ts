@@ -36,7 +36,11 @@ import { parseNum } from '../util';
  * - limit_damping zeroes the whole contact (normal, tangential and torque)
  *   when the normal force is attractive;
  * - without comm_modify vel yes native stops at init (ghost atoms must
- *   store velocities).
+ *   store velocities);
+ * - with fix freeze on one particle of a contact, m_eff is the other
+ *   particle's mass (frozen sphere at rest against a moving one: 200 +
+ *   m_2 gamma_n v_n, not the reduced mass); pair_gran.html says the same for
+ *   rigid bodies ("its mass is replaced by the mass of the rigid body").
  * Shear history (hooke/history, hertz/history): the tangential displacement
  * accumulates v_t dt in each timestep (not at run setup), is kept in the
  * tangent plane, enters F_t as -k_t s, and is reset when the particles lose
@@ -103,8 +107,12 @@ export class PairGran extends Pair {
     for (let i = ilo; i <= ihi; i++) for (let j = jlo; j <= jhi; j++) this.set[i * nt + j] = this.set[j * nt + i] = 1;
   }
 
+  /** Group bit of fix freeze (StyleContext.freezeGroupBit), 0 when none. */
+  private freezeBit = 0;
+
   initStyle(ctx: StyleContext): void {
     this.state = ctx.s;
+    this.freezeBit = ctx.freezeGroupBit ?? 0;
     if (!ctx.ghostVelocity) throw new StyleError('Pair gran/h* requires ghost atoms store velocity (use comm_modify vel yes)');
     const s = ctx.s;
     if (s && (!s.radius || !s.rmass || !s.omega)) throw new StyleError(`pair_style ${this.name} requires atom_style sphere (radius, rmass, omega)`);
@@ -174,7 +182,12 @@ export class PairGran extends Pair {
         const vtx = vrx - vnx - (wy * dz - wz * dy);
         const vty = vry - vny - (wz * dx - wx * dz);
         const vtz = vrz - vnz - (wx * dy - wy * dx);
-        const meff = (mi * mj) / (mi + mj);
+        // measured: with fix freeze on one of the two particles, m_eff is the other particle's mass
+        let meff = (mi * mj) / (mi + mj);
+        if (this.freezeBit) {
+          if (s.mask[oi] & this.freezeBit) meff = mj;
+          else if (s.mask[oj] & this.freezeBit) meff = mi;
+        }
         const poly = this.hertz ? Math.sqrt(((radsum - r) * ri * rj) / radsum) : 1;
         // normal force F_n = ccel * (dx, dy, dz)
         const ccel = (kn * (radsum - r) * rinv - meff * gn * vnnr * rsqinv) * poly;

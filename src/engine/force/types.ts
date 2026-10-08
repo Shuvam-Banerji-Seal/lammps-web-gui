@@ -218,6 +218,8 @@ export interface StyleContext {
   log(text: string): void;
   /** comm_modify vel yes: ghost atoms carry velocities (granular pair styles require it). */
   ghostVelocity?: boolean;
+  /** Group bit of a fix freeze (0 when none): granular contacts with a frozen particle use the other one's mass. */
+  freezeGroupBit?: number;
 }
 
 /** Base for pair styles. */

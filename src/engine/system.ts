@@ -142,7 +142,8 @@ export class System {
   ghostVelocity = false;
 
   styleContext(): StyleContext {
-    return { s: this._state, readFile: (n) => this.readFile(n), log: (t) => this.log(t), ghostVelocity: this.ghostVelocity };
+    const freeze = this.fixes.find((f) => f.style === 'freeze');
+    return { s: this._state, readFile: (n) => this.readFile(n), log: (t) => this.log(t), ghostVelocity: this.ghostVelocity, freezeGroupBit: freeze ? freeze.groupBit : 0 };
   }
 
   /** log file: a copy of the log text goes to this file (log.html). */

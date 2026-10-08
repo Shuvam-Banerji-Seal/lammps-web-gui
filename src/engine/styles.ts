@@ -101,6 +101,7 @@ import * as w17fixmisc17 from './registry/fix_misc17';
 import * as w18pairmisc18 from './registry/pair_misc18';
 import * as w18computemisc18 from './registry/compute_misc18';
 import * as w18angle18 from './registry/angle18';
+import * as w18dipole from './registry/pair_dipole18';
 import * as pairTable from './registry/pair_table';
 import * as pairCharmm from './registry/pair_charmm';
 import * as pairCoulLong2 from './registry/pair_coullong2';
@@ -141,7 +142,7 @@ export const PAIR_STYLES: Record<string, () => Pair> = {
   ...pairCoul.PAIRS, ...pairSimple.PAIRS, ...pairLJ.PAIRS, ...pairLJCoul.PAIRS, ...pairSimple2.PAIRS, ...pairLJ2.PAIRS,
   ...pairEAM.PAIRS, ...pair3Body.PAIRS, ...pairSW.PAIRS,
   ...pairZBL.PAIRS, ...pairTable.PAIRS, ...pairCharmm.PAIRS, ...pairCoulLong2.PAIRS,
-  ...pairGran.PAIRS, ...pairColloid.PAIRS, ...pairYColloid.PAIRS, ...pairVashishta.PAIRS, ...pairRelres.PAIRS, ...pairGranular.PAIRS, ...pairSnap.PAIRS, ...pairMisc4.PAIRS, ...pairMisc5.PAIRS, ...pairMeam.PAIRS, ...pairTip4p.PAIRS, ...pairMisc13.PAIRS, ...pairHbond.PAIRS, ...pairEim.PAIRS, ...pairTersoff2.PAIRS, ...lepton.PAIRS, ...mliap.PAIRS, ...w17pairsoft17.PAIRS, ...w17pairmisc17.PAIRS, ...w18pairmisc18.PAIRS,
+  ...pairGran.PAIRS, ...pairColloid.PAIRS, ...pairYColloid.PAIRS, ...pairVashishta.PAIRS, ...pairRelres.PAIRS, ...pairGranular.PAIRS, ...pairSnap.PAIRS, ...pairMisc4.PAIRS, ...pairMisc5.PAIRS, ...pairMeam.PAIRS, ...pairTip4p.PAIRS, ...pairMisc13.PAIRS, ...pairHbond.PAIRS, ...pairEim.PAIRS, ...pairTersoff2.PAIRS, ...lepton.PAIRS, ...mliap.PAIRS, ...w17pairsoft17.PAIRS, ...w17pairmisc17.PAIRS, ...w18pairmisc18.PAIRS, ...w18dipole.PAIRS,
 };
 
 export const BOND_STYLES: Record<string, () => Bonded> = {
@@ -164,7 +165,7 @@ export const IMPROPER_STYLES: Record<string, () => Bonded> = {
 export const KSPACE_STYLES: Record<string, () => KSpace> = {
   ewald: () => new KSpaceEwald(),
   pppm: () => new KSpacePPPM(),
-  ...kspaceTip4p.KSPACES, ...kspaceDisp.KSPACES,
+  ...kspaceTip4p.KSPACES, ...kspaceDisp.KSPACES, ...w18dipole.KSPACES,
 };
 
 export const FIX_STYLES: Record<string, FixFactory> = {

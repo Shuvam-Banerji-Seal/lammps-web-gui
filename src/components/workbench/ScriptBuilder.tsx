@@ -2119,7 +2119,7 @@ const StepEditor: React.FC<StepEditorProps> = ({
       )}
 
       {def.doc && (
-        <a href={def.doc} target="_blank" rel="noopener noreferrer" className={`block text-[10px] ${ct.accentText} hover:underline`}>
+        <a href={def.doc} target="_blank" rel="noopener noreferrer" className={`inline-block py-1 text-[11px] ${ct.accentText} hover:underline`}>
           📖 LAMMPS docs ↗
         </a>
       )}
@@ -2178,7 +2178,7 @@ const ParamControl: React.FC<{
   ct, def, id, value, onChange, missing = false,
 }) => {
   const label = (
-    <label id={`${id}-label`} htmlFor={id} className={`text-[10px] font-semibold ${ct.muted}`}>
+    <label id={`${id}-label`} htmlFor={id} className={`text-[11px] font-semibold ${ct.muted}`}>
       {def.label}
       {def.help && <span className={`ml-1 font-normal opacity-60`}>— {def.help}</span>}
     </label>

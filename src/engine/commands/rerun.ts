@@ -96,7 +96,7 @@ const rerun: Handler = async (ctx: Ctx, a) => {
   const th = sys.thermo;
   const first = selected[0].snap.step;
   const last = selected[selected.length - 1].snap.step;
-  sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels() });
+  sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels(), units: sys.units.style });
   const t0 = performance.now();
   let k = 0;
   for (const { file, snap } of selected) {

@@ -278,8 +278,10 @@ export class EngineError extends Error {
 export type EngineEvent =
   | { kind: 'log'; text: string }
   /** labels: header text per column where thermo_modify colname renamed it (else the keyword). */
-  | { kind: 'thermo-header'; keywords: ThermoKeyword[]; labels?: string[] }
+  | { kind: 'thermo-header'; keywords: ThermoKeyword[]; labels?: string[]; units?: UnitStyle }
   | { kind: 'thermo'; row: ThermoRow }
+  /** A run (or rerun/minimize-free MD run) starts: it goes from step `from` to step `to` (for progress display). */
+  | { kind: 'run'; from: number; to: number }
   | { kind: 'frame'; step: number; x: Float64Array; image: Int32Array; type: Int32Array; id: Int32Array; box: SimBox }
   | { kind: 'error'; message: string; line: number; command: string }
   | { kind: 'done'; steps: number; seconds: number; backend: string };

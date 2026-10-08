@@ -1,5 +1,7 @@
 import {
   COMMAND_BY_ID,
+  CommandDef,
+  ParamDef,
   SECTION_LABELS,
   ScriptBranch,
   ScriptModel,
@@ -37,6 +39,30 @@ export interface GenerateOptions {
 
 const isFilled = (v: string | undefined): boolean =>
   v !== undefined && v.trim() !== '';
+
+const tokenCount = (lines: string[]): number => lines.join(' ').split(/\s+/).filter(Boolean).length;
+
+/**
+ * Blank params the line cannot do without: those in REQUIRED, and every number param with a default
+ * whose blank value drops exactly one token from the built line, i.e. a positional argument or a keyword's
+ * value. (String params are free-form, e.g. pair_style args is legitimately empty for eam.) Emitting such a line would shift the later arguments into the blank one's slot: a
+ * fix nvt step with T start and T end cleared printed "fix integrate all nvt temp 0.1".
+ */
+export const missingParams = (def: CommandDef, params: Record<string, string>): ParamDef[] => {
+  let built: number | null = null;
+  const builtCount = (): number => {
+    if (built === null) { try { built = tokenCount(def.build(params)); } catch { built = -1; } }
+    return built;
+  };
+  return def.params.filter(pd => {
+    if (pd.type === 'flag' || isFilled(params[pd.key])) return false;
+    if (isRequired(def.id, pd.key)) return true;
+    if (pd.type !== 'number' || !pd.default) return false;
+    let withDefault: number;
+    try { withDefault = tokenCount(def.build({ ...params, [pd.key]: pd.default })); } catch { return false; }
+    return builtCount() >= 0 && withDefault - builtCount() === 1;
+  });
+};
 
 /* ------------------------------------------------------------------ */
 /* Branch resolution                                                   */
@@ -234,12 +260,7 @@ export const generateScript = (
 
     // Required-param check happens BEFORE the banner so a skipped step never
     // leaves an orphan section header behind.
-    const missing = def.params.filter(
-      pd =>
-        pd.type !== 'flag' &&
-        !isFilled(step.params[pd.key]) &&
-        isRequired(def.id, pd.key),
-    );
+    const missing = missingParams(def, step.params);
     if (missing.length > 0) {
       warnings.push(
         `${def.label}: missing ${missing.map(m => m.label).join(', ')} — skipped.`,

@@ -4,6 +4,7 @@ import {
   deriveFlowchart,
   sortStepsBySection,
   isSectionSorted,
+  missingParams,
 } from '../src/lammps/generator';
 import {
   COMMAND_BY_ID,
@@ -178,5 +179,22 @@ describe('LAMMPS script generator', () => {
     const out = generateScript(m);
     expect(out.text).toContain('units metal');
     expect(out.warnings).toHaveLength(0);
+  });
+});
+
+describe('blank required parameters (missingParams)', () => {
+  it('a cleared fix nvt temperature is reported and the misaligned line is not emitted', () => {
+    // Before: T start and T end blank printed "fix integrate all nvt temp 0.1" (Tdamp in the Tstart slot).
+    const s = step('fix_nvt', { temp_start: '', temp_end: '' });
+    expect(missingParams(COMMAND_BY_ID.fix_nvt, s.params).map((p) => p.key)).toEqual(['temp_start', 'temp_end']);
+    const g = generateScript(model([s]));
+    expect(g.text).not.toMatch(/nvt temp/);
+    expect(g.warnings.join('\n')).toMatch(/fix nvt.*missing T start, T end — skipped/);
+  });
+
+  it('a filled step and free-form string params are not flagged', () => {
+    expect(missingParams(COMMAND_BY_ID.fix_nvt, step('fix_nvt').params)).toEqual([]);
+    // pair_style eam takes no arguments: its blank args string is legitimate.
+    expect(missingParams(COMMAND_BY_ID.pair_style_popular, step('pair_style_popular', { style: 'eam', args: '' }).params)).toEqual([]);
   });
 });

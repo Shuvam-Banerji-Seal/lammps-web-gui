@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
-import { appendAtoms, atomSubStyles, emptyState, isMolecularStyle, isSphereStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, topologyLevel } from '../atoms';
+import { appendAtoms, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isSphereStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, topologyLevel } from '../atoms';
 import { makeBox } from '../domain';
 import { generalFrame, rotateVector, toRestrictedPoint, type GeneralFrame, type V3 } from '../triclinic_general';
 
@@ -44,6 +44,8 @@ const BASE_COLS: Record<string, string[]> = {
   sphere: ['id', 'type', 'diameter', 'density', 'x', 'y', 'z'],
   // read_data.html: "dipole | atom-ID atom-type q x y z mux muy muz"
   dipole: ['id', 'type', 'q', 'x', 'y', 'z', 'mux', 'muy', 'muz'],
+  // read_data.html, the Atoms-section table, row ellipsoid: "atom-ID atom-type ellipsoidflag density x y z"
+  ellipsoid: ['id', 'type', 'ellipsoidflag', 'density', 'x', 'y', 'z'],
 };
 
 /**
@@ -65,6 +67,7 @@ const HEADER_KEYS: [RegExp, string][] = [
   [/^atom types$/, 'atom types'], [/^bond types$/, 'bond types'], [/^angle types$/, 'angle types'],
   [/^dihedral types$/, 'dihedral types'], [/^improper types$/, 'improper types'],
   [/^extra (bond|angle|dihedral|improper|special) per atom$/, 'extra'],
+  [/^ellipsoids$/, 'ellipsoids'],
 ];
 
 const SECTIONS = new Set([
@@ -231,6 +234,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   const gbit = opts.group ? (sys.groups.create(opts.group), sys.groupBit(opts.group)) : 0;
   let sawAtoms = false;
   const vel = new Map<number, number[]>();
+  /** Atoms with ellipsoidflag 1 waiting for their Ellipsoids line: atom ID -> density. */
+  const ellPending = new Map<number, number>();
   const coeffLines: { section: string; line: string; at: number }[] = [];
   const topo: { kind: 'bonds' | 'angles' | 'dihedrals' | 'impropers'; type: number; ids: number[] }[] = [];
   const fixRows: { fx: DataFix; rows: { w: string[]; at: number }[] }[] = [];
@@ -277,6 +282,9 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         case 'Angle Coeffs': return h['angle types'] ?? 0;
         case 'Dihedral Coeffs': return h['dihedral types'] ?? 0;
         case 'Improper Coeffs': return h['improper types'] ?? 0;
+        case 'Ellipsoids':
+          if (!s.shape) throw new StyleError('data file section Ellipsoids needs atom_style ellipsoid');
+          return h.ellipsoids ?? 0;
         default: throw new StyleError(`data file section '${title}' needs features the browser engine does not support (type labels, class2 cross terms or finite-size particles)`);
       }
     })();
@@ -297,6 +305,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const mol = new Int32Array(count), q = new Float64Array(count), image = new Int32Array(3 * count);
         const radius = new Float64Array(count), density = new Float64Array(count);
         const mu = s.mu ? new Float64Array(4 * count) : null;
+        const eflag = s.shape ? new Uint8Array(count) : null;
         body.forEach(({ w, at }, a) => {
           if (w.length !== cols.length && w.length !== cols.length + 3) {
             throw new StyleError(`data file line ${at}: Atoms # ${style} expects ${cols.length} values (+3 image flags), got ${w.length}`);
@@ -318,6 +327,12 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
               case 'x': x[3 * a] = numOf(v, 'x', at) + opts.shift[0]; break;
               case 'y': x[3 * a + 1] = numOf(v, 'y', at) + opts.shift[1]; break;
               case 'z': x[3 * a + 2] = numOf(v, 'z', at) + opts.shift[2]; break;
+              case 'ellipsoidflag': {
+                const f = intOf(v, 'ellipsoidflag', at);
+                if (f !== 0 && f !== 1) throw new StyleError(`data file line ${at}: ellipsoidflag must be 0 or 1`);
+                eflag![a] = f;
+                break;
+              }
               case 'mux': mu![4 * a] = numOf(v, 'mux', at); break;
               case 'muy': mu![4 * a + 1] = numOf(v, 'muy', at); break;
               case 'muz': mu![4 * a + 2] = numOf(v, 'muz', at); break;
@@ -342,7 +357,10 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         // read_data.html: "the density is used in conjunction with the particle volume to set the mass
         // of each particle as mass = density * volume ... If the volume is 0.0, meaning a point
         // particle, then the density value is used as the mass."
-        const rmass = s.radius ? radius.map((r, a) => sphereMass(r, density[a])) : undefined;
+        // ellipsoids: the density becomes a mass once the Ellipsoids section gives the volume; a point
+        // particle (ellipsoidflag 0) takes the density as its mass
+        const rmass = s.radius ? radius.map((r, a) => sphereMass(r, density[a])) : s.shape ? Float64Array.from(density) : undefined;
+        if (eflag) for (let a = 0; a < count; a++) if (eflag[a]) ellPending.set(id[a], density[a]);
         if (genFrame) {
           // read_data.html: coordinates "should be inside the general triclinic simulation box"; the
           // general -> restricted rotation is about the box origin (Howto_triclinic.html)
@@ -357,11 +375,36 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         for (let i = n0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);
         break;
       }
+      // read_data.html: "line syntax: atom-ID shapex shapey shapez quatw quati quatj quatk" with "shapex,shapey,shapez
+      // = 3 diameters of ellipsoid"; "They must all be non-zero values."; "LAMMPS normalizes each atom's quaternion"
+      case 'Ellipsoids': {
+        const where = new Map<number, number>();
+        for (let i = n0; i < s.n; i++) where.set(s.id[i], i);
+        for (const { w, at } of body) {
+          if (w.length !== 8) throw new StyleError(`data file line ${at}: Ellipsoids needs atom-ID shapex shapey shapez quatw quati quatj quatk`);
+          const aid = intOf(w[0], 'atom-ID', at) + (idBase || 0);
+          const i = where.get(aid);
+          const dens = ellPending.get(aid);
+          if (i === undefined || dens === undefined) throw new StyleError(`data file line ${at}: atom ${aid} is not an ellipsoid (ellipsoidflag 1) of this data file`);
+          const sh = [1, 2, 3].map((c) => numOf(w[c], 'shape', at));
+          if (sh.some((x) => !(x > 0))) throw new StyleError(`data file line ${at}: ellipsoid shape values must all be > 0`);
+          const q = [4, 5, 6, 7].map((c) => numOf(w[c], 'quaternion', at));
+          const qn = Math.hypot(q[0], q[1], q[2], q[3]);
+          if (!(qn > 0)) throw new StyleError(`data file line ${at}: ellipsoid quaternion is zero`);
+          for (let d = 0; d < 3; d++) s.shape![3 * i + d] = sh[d] / 2;
+          for (let d = 0; d < 4; d++) s.quat![4 * i + d] = q[d] / qn;
+          s.rmass![i] = dens * ellipsoidVolume(s, i);
+          ellPending.delete(aid);
+        }
+        break;
+      }
       case 'Velocities':
         // read_data.html: "sphere | atom-ID vx vy vz wx wy wz"
+        if (s.omega && s.angmom) throw new StyleError('data file Velocities: hybrid styles with both sphere and ellipsoid sub-styles are not supported by the browser engine');
         for (const { w, at } of body) {
-          const need = s.omega ? 7 : 4;
-          if (w.length < need) throw new StyleError(`data file line ${at}: Velocities needs atom-ID vx vy vz${s.omega ? ' wx wy wz' : ''}`);
+          // read_data.html: "ellipsoid | atom-ID vx vy vz lx ly lz"
+          const need = s.omega || s.angmom ? 7 : 4;
+          if (w.length < need) throw new StyleError(`data file line ${at}: Velocities needs atom-ID vx vy vz${s.omega ? ' wx wy wz' : s.angmom ? ' lx ly lz' : ''}`);
           vel.set(intOf(w[0], 'atom-ID', at) + (idBase || 0), w.slice(1, need).map((t, c) => numOf(t, ['vx', 'vy', 'vz', 'wx', 'wy', 'wz'][c], at)));
         }
         break;
@@ -395,6 +438,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
     }
   }
   if (natoms > 0 && !sawAtoms) throw new StyleError('data file: an Atoms section is required when atoms > 0');
+  if (ellPending.size) throw new StyleError(`data file: ${ellPending.size} atoms have ellipsoidflag 1 but no Ellipsoids line`);
   // velocities
   if (vel.size) {
     for (let i = n0; i < s.n; i++) {
@@ -406,6 +450,10 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         if (s.omega) {
           const ang = genFrame ? rotateVector(genFrame.Q, [v[3], v[4], v[5]]) : [v[3], v[4], v[5]];
           for (let d = 0; d < 3; d++) s.omega[3 * i + d] = ang[d];
+        }
+        if (s.angmom) {
+          if (genFrame) throw new StyleError('read_data: ellipsoid angular momenta with a general triclinic box are not supported by the browser engine');
+          for (let d = 0; d < 3; d++) s.angmom[3 * i + d] = v[3 + d];
         }
       }
     }
@@ -476,6 +524,9 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
     `${s.n} atoms`,
     `${s.ntypes} atom types`,
   ];
+  // measured with native write_data: N ellipsoids follows the atom types
+  const nEll = s.shape ? countEllipsoids(s) : 0;
+  if (s.shape) out.push(`${nEll} ellipsoids`);
   const mol = isMolecularStyle(s.atomStyle);
   if (mol) {
     const lines: [number, number, string][] = [
@@ -502,7 +553,7 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   if (s.box.triclinic) out.push(`${shortest(s.box.tilt[0])} ${shortest(s.box.tilt[1])} ${shortest(s.box.tilt[2])} xy xz yz`);
   // measured with native write_data: atom_style sphere (per-atom masses) writes no Masses section; a
   // hybrid style with sphere writes it (per-type and per-atom masses both exist there)
-  if (s.atomStyle !== 'sphere') {
+  if (s.atomStyle !== 'sphere' && s.atomStyle !== 'ellipsoid') {
     out.push('', 'Masses', '');
     for (let k = 1; k <= s.ntypes; k++) out.push(`${k} ${shortest(s.massByType[k])}`);
   }
@@ -539,7 +590,10 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
         case 'q': return shortest(s.q[i]);
         // measured with native write_data: diameter 2r, and density = mass / volume (mass itself for r = 0)
         case 'diameter': return shortest(2 * s.radius![i]);
-        case 'density': return shortest(s.radius![i] > 0 ? s.rmass![i] / sphereMass(s.radius![i], 1) : s.rmass![i]);
+        case 'density':
+          if (s.radius) return shortest(s.radius[i] > 0 ? s.rmass![i] / sphereMass(s.radius[i], 1) : s.rmass![i]);
+          return shortest(isEllipsoid(s, i) ? s.rmass![i] / ellipsoidVolume(s, i) : s.rmass![i]);
+        case 'ellipsoidflag': return isEllipsoid(s, i) ? '1' : '0';
         case 'mux': return shortest(s.mu![4 * i]);
         case 'muy': return shortest(s.mu![4 * i + 1]);
         case 'muz': return shortest(s.mu![4 * i + 2]);
@@ -550,8 +604,19 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   }
   out.push('', 'Velocities', '');
   for (const i of order) {
-    const w = s.omega ? ` ${shortest(s.omega[3 * i])} ${shortest(s.omega[3 * i + 1])} ${shortest(s.omega[3 * i + 2])}` : '';
+    const ang = s.omega ?? s.angmom;
+    const w = ang ? ` ${shortest(ang[3 * i])} ${shortest(ang[3 * i + 1])} ${shortest(ang[3 * i + 2])}` : '';
     out.push(`${s.id[i]} ${shortest(s.v[3 * i])} ${shortest(s.v[3 * i + 1])} ${shortest(s.v[3 * i + 2])}${w}`);
+  }
+  // measured with native write_data: an Ellipsoids section (diameters and quaternion) after Velocities
+  if (s.shape && nEll > 0) {
+    out.push('', 'Ellipsoids', '');
+    for (const i of order) {
+      if (!isEllipsoid(s, i)) continue;
+      const sh = [0, 1, 2].map((d) => shortest(2 * s.shape![3 * i + d]));
+      const q = [0, 1, 2, 3].map((d) => shortest(s.quat![4 * i + d]));
+      out.push(`${s.id[i]} ${sh.join(' ')} ${q.join(' ')}`);
+    }
   }
   let maxId = 0;
   for (let i = 0; i < s.n; i++) if (s.id[i] > maxId) maxId = s.id[i];

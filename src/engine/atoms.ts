@@ -29,6 +29,10 @@ export const hasChargeStyle = (st: AtomStyle): boolean => atomSubStyles(st).some
 export const isSphereStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('sphere');
 /** Styles with point dipoles (mu). */
 export const hasDipoleStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('dipole');
+/** Styles with ellipsoidal particles (shape, quat, angmom). */
+export const isEllipsoidStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('ellipsoid');
+/** Styles with a per-atom mass (rmass): sphere and ellipsoid. */
+export const hasRmassStyle = (st: AtomStyle): boolean => isSphereStyle(st) || isEllipsoidStyle(st);
 /** Bonded topology a style stores: 0 none, 1 bonds, 2 bonds and angles, 3 also dihedrals and impropers. */
 export const topologyLevel = (st: AtomStyle): number => {
   let lv = 0;
@@ -108,11 +112,14 @@ export const emptyState = (
   ntypes,
   type: new Int32Array(0),
   massByType: new Float64Array(ntypes + 1).fill(Number.NaN),
-  rmass: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
+  rmass: hasRmassStyle(atomStyle) ? new Float64Array(0) : null,
   radius: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
   omega: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
-  torque: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
+  torque: hasRmassStyle(atomStyle) ? new Float64Array(0) : null,
   mu: hasDipoleStyle(atomStyle) ? new Float64Array(0) : null,
+  shape: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
+  quat: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
+  angmom: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
   custom: new Map(),
   propMol: false,
   propQ: false,
@@ -131,6 +138,17 @@ export const emptyState = (
   time: 0,
   timeStep: 0,
 });
+
+/** Atom i is a finite-size ellipsoid (atom_style ellipsoid; 0 half-axes mean a point particle). */
+export const isEllipsoid = (s: SimState, i: number): boolean => !!s.shape && s.shape[3 * i] > 0;
+/** Volume 4/3 pi a b c of ellipsoid i from its half-axes. */
+export const ellipsoidVolume = (s: SimState, i: number): number => (4 / 3) * Math.PI * s.shape![3 * i] * s.shape![3 * i + 1] * s.shape![3 * i + 2];
+/** Number of finite-size ellipsoids. */
+export const countEllipsoids = (s: SimState): number => {
+  let n = 0;
+  for (let i = 0; i < s.n; i++) if (isEllipsoid(s, i)) n++;
+  return n;
+};
 
 /** Mass of atom i: the per-atom mass when the atom style has one (rmass), else its type's mass. */
 export const massOf = (s: SimState, i: number): number => (s.rmass ? s.rmass[i] : s.massByType[s.type[i]]);
@@ -157,6 +175,10 @@ export interface NewAtoms {
   omega?: Float64Array;
   /** atom_style dipole: flat 4N dipoles (mux, muy, muz, length; default 0). */
   mu?: Float64Array;
+  /** atom_style ellipsoid: flat 3N half-axes (default 0, a point particle), 4N quaternions (default 1 0 0 0), 3N angular momenta. */
+  shape?: Float64Array;
+  quat?: Float64Array;
+  angmom?: Float64Array;
   /** fix property/atom values by name (n * max(cols, 1) each; default 0). */
   custom?: Map<string, Float64Array>;
   /** Group bits to set besides 'all'. */
@@ -199,7 +221,8 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     s.rmass = growF(s.rmass, n);
     // measured: fix property/atom rmass starts at 0 for new atoms; sphere atoms get the sphere default
     if (a.rmass instanceof Float64Array) s.rmass.set(a.rmass, n0);
-    else s.rmass.fill(a.rmass ?? (isSphereStyle(s.atomStyle) ? SPHERE_DEFAULT_MASS : 0), n0, n);
+    // measured with native LAMMPS: create_atoms gives ellipsoid-style atoms (point particles) mass 1
+    else s.rmass.fill(a.rmass ?? (isSphereStyle(s.atomStyle) ? SPHERE_DEFAULT_MASS : isEllipsoidStyle(s.atomStyle) ? 1 : 0), n0, n);
   }
   if (s.radius) {
     s.radius = growF(s.radius, n);
@@ -209,6 +232,13 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
   if (s.omega) { s.omega = growF(s.omega, 3 * n); if (a.omega) s.omega.set(a.omega, 3 * n0); }
   if (s.torque) s.torque = growF(s.torque, 3 * n);
   if (s.mu) { s.mu = growF(s.mu, 4 * n); if (a.mu) s.mu.set(a.mu, 4 * n0); }
+  if (s.shape) { s.shape = growF(s.shape, 3 * n); if (a.shape) s.shape.set(a.shape, 3 * n0); }
+  if (s.quat) {
+    s.quat = growF(s.quat, 4 * n);
+    if (a.quat) s.quat.set(a.quat, 4 * n0);
+    else for (let i = n0; i < n; i++) s.quat[4 * i] = 1;
+  }
+  if (s.angmom) { s.angmom = growF(s.angmom, 3 * n); if (a.angmom) s.angmom.set(a.angmom, 3 * n0); }
   for (const [name, c] of s.custom) {
     const w = Math.max(c.cols, 1);
     c.data = growF(c.data, w * n);
@@ -237,7 +267,8 @@ export const gatherAtoms = (s: SimState, idx: ArrayLike<number>): NewAtoms => {
     x: pick(s.x, 3), v: pick(s.v, 3), image: pickI(s.image, 3), type: pickI(s.type, 1), id: pickI(s.id, 1),
     molecule: pickI(s.molecule, 1), q: pick(s.q, 1),
     rmass: s.rmass ? pick(s.rmass, 1) : undefined, radius: s.radius ? pick(s.radius, 1) : undefined,
-    omega: s.omega ? pick(s.omega, 3) : undefined, mu: s.mu ? pick(s.mu, 4) : undefined, custom,
+    omega: s.omega ? pick(s.omega, 3) : undefined, mu: s.mu ? pick(s.mu, 4) : undefined,
+    shape: s.shape ? pick(s.shape, 3) : undefined, quat: s.quat ? pick(s.quat, 4) : undefined, angmom: s.angmom ? pick(s.angmom, 3) : undefined, custom,
   };
 };
 
@@ -274,6 +305,9 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
         if (s.torque) s.torque[3 * k + d] = s.torque[3 * i + d];
       }
       if (s.mu) for (let d = 0; d < 4; d++) s.mu[4 * k + d] = s.mu[4 * i + d];
+      if (s.shape) for (let d = 0; d < 3; d++) s.shape[3 * k + d] = s.shape[3 * i + d];
+      if (s.quat) for (let d = 0; d < 4; d++) s.quat[4 * k + d] = s.quat[4 * i + d];
+      if (s.angmom) for (let d = 0; d < 3; d++) s.angmom[3 * k + d] = s.angmom[3 * i + d];
       for (const c of s.custom.values()) {
         const w = Math.max(c.cols, 1);
         for (let m = 0; m < w; m++) c.data[w * k + m] = c.data[w * i + m];
@@ -294,6 +328,9 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
   if (s.omega) s.omega = s.omega.slice(0, 3 * k);
   if (s.torque) s.torque = s.torque.slice(0, 3 * k);
   if (s.mu) s.mu = s.mu.slice(0, 4 * k);
+  if (s.shape) s.shape = s.shape.slice(0, 3 * k);
+  if (s.quat) s.quat = s.quat.slice(0, 4 * k);
+  if (s.angmom) s.angmom = s.angmom.slice(0, 3 * k);
   for (const c of s.custom.values()) c.data = c.data.slice(0, Math.max(c.cols, 1) * k);
   for (const list of [s.topo.bonds, s.topo.angles, s.topo.dihedrals, s.topo.impropers]) {
     filterTopo(list, (ids) => !ids.some((id) => gone.has(id)));

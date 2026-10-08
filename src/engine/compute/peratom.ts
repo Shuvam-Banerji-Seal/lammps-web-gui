@@ -1,7 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { massOf, CUSTOM_ATTR, customAttr } from '../atoms';
+import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid } from '../atoms';
 
 /*
  * Per-atom computes: ke/atom, pe/atom, stress/atom and property/atom.
@@ -257,7 +257,16 @@ const PROPERTY_ATTRS = [
   'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'q',
 ] as const;
 
-const SPHERE_ATTRS = new Set(['radius', 'diameter', 'omegax', 'omegay', 'omegaz', 'tqx', 'tqy', 'tqz']);
+const SPHERE_ATTRS = new Set(['radius', 'diameter', 'omegax', 'omegay', 'omegaz']);
+/** compute_property_atom.html: "*tqx,tqy,tqz* = torque on finite-size particles" (sphere and ellipsoid styles). */
+const TORQUE_ATTRS = new Set(['tqx', 'tqy', 'tqz']);
+/**
+ * compute_property_atom.html: "*angmomx,angmomy,angmomz* = angular momentum of aspherical particle",
+ * "*shapex,shapey,shapez* = 3 diameters of aspherical particle", "*quatw,quati,quatj,quatk* = quaternion
+ * components for aspherical or body particles". Measured with native LAMMPS (black box): a point particle of
+ * atom style ellipsoid reports shape 1 1 1 and quaternion 1 0 0 0 (not the zeroes the page describes).
+ */
+const ELLIPSOID_ATTRS = new Set(['angmomx', 'angmomy', 'angmomz', 'shapex', 'shapey', 'shapez', 'quatw', 'quati', 'quatj', 'quatk']);
 /** compute_property_atom.html: "*mux,muy,muz* = orientation of dipole moment of atom" (and mu, its magnitude). */
 const DIPOLE_ATTRS = new Set(['mux', 'muy', 'muz', 'mu']);
 
@@ -271,10 +280,12 @@ export class ComputePropertyAtom extends Compute {
     for (const a of args) {
       // compute_property_atom.html also lists "i_name, d_name, i2_name[I], d2_name[I]" (fix
       // property/atom) and the finite-size sphere attributes radius, diameter, omega*, tq*
-      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !CUSTOM_ATTR.test(a)) {
+      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !CUSTOM_ATTR.test(a)) {
         throw new StyleError(`compute property/atom: attribute '${a}' is not supported by the browser engine`);
       }
       if (SPHERE_ATTRS.has(a) && !sys.state.radius) throw new StyleError(`compute property/atom ${a} needs atom_style sphere`);
+      if (TORQUE_ATTRS.has(a) && !sys.state.torque) throw new StyleError(`compute property/atom ${a} needs atom_style sphere or ellipsoid`);
+      if (ELLIPSOID_ATTRS.has(a) && !sys.state.shape) throw new StyleError(`compute property/atom ${a} needs atom_style ellipsoid`);
       if (DIPOLE_ATTRS.has(a) && !sys.state.mu) throw new StyleError(`compute property/atom ${a} needs atom_style dipole`);
       if (CUSTOM_ATTR.test(a)) customAttr(sys.state, a);
     }
@@ -305,6 +316,11 @@ export class ComputePropertyAtom extends Compute {
           case 'diameter': set(i, 2 * s.radius![i]); break;
           case 'omegax': case 'omegay': case 'omegaz': set(i, s.omega![3 * i + d]); break;
           case 'tqx': case 'tqy': case 'tqz': set(i, s.torque![3 * i + d]); break;
+          case 'angmomx': case 'angmomy': case 'angmomz': set(i, s.angmom![3 * i + d]); break;
+          case 'shapex': case 'shapey': case 'shapez': set(i, isEllipsoid(s, i) ? 2 * s.shape![3 * i + d] : 1); break;
+          case 'quatw': case 'quati': case 'quatj': case 'quatk':
+            set(i, isEllipsoid(s, i) ? s.quat![4 * i + 'wijk'.indexOf(attr[4])] : attr === 'quatw' ? 1 : 0);
+            break;
           case 'mux': case 'muy': case 'muz': set(i, s.mu![4 * i + 'xyz'.indexOf(attr[2])]); break;
           case 'mu': set(i, s.mu![4 * i + 3]); break;
           case 'id': set(i, s.id[i]); break;

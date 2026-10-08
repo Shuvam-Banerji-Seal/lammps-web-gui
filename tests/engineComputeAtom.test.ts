@@ -164,7 +164,7 @@ describe('compute property/atom', () => {
   });
 
   it('rejects an unsupported attribute instead of storing zeroes', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute q all property/atom shapex`)).rejects.toThrow("attribute 'shapex' is not supported");
+    await expect(runScript(`${TWO_ATOMS}\ncompute q all property/atom end1x`)).rejects.toThrow("attribute 'end1x' is not supported");
     await expect(runScript(`${TWO_ATOMS}\ncompute q all property/atom nbonds`)).rejects.toThrow("attribute 'nbonds' is not supported");
   });
 });

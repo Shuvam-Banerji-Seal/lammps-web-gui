@@ -2,7 +2,7 @@ import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { formatNumber } from '../script';
 import { localDumpColumns, localColumnSource } from '../compute/local_dump';
-import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
+import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, hasRmassStyle, isEllipsoidStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
 
 /*
  * Per-atom snapshots — docs.lammps.org/dump.html and dump_modify.html.
@@ -34,8 +34,15 @@ const ATOM_COLS = new Set([
   'radius', 'diameter', 'omegax', 'omegay', 'omegaz', 'tqx', 'tqy', 'tqz',
   // dump.html: "mux,muy,muz = orientation of dipole moment of atom", "mu = magnitude of dipole moment of atom"
   'mux', 'muy', 'muz', 'mu',
+  // dump.html: "The *angmomx*, *angmomy*, and *angmomz* attributes are specific to finite-size aspherical
+  // particles that have an angular momentum.  Only the *ellipsoid* atom style defines this quantity."
+  'angmomx', 'angmomy', 'angmomz',
 ]);
-const SPHERE_COLS = new Set(['radius', 'diameter', 'omegax', 'omegay', 'omegaz', 'tqx', 'tqy', 'tqz']);
+const SPHERE_COLS = new Set(['radius', 'diameter', 'omegax', 'omegay', 'omegaz']);
+// dump.html: "The *tqx*, *tqy*, and *tqz* attributes are for finite-size particles that can sustain a rotational
+// torque due to interactions with other particles."
+const TORQUE_COLS = new Set(['tqx', 'tqy', 'tqz']);
+const ANGMOM_COLS = new Set(['angmomx', 'angmomy', 'angmomz']);
 const DIPOLE_COLS = new Set(['mux', 'muy', 'muz', 'mu']);
 
 /** Compiled C formats (parsing a format per value is slow for large dumps). */
@@ -130,6 +137,8 @@ export class Dump {
       const sh = this.sys.hasBox ? this.sys.state : null;
       if (c === 'q' && !(sh ? hasCharge(sh) : hasChargeStyle(st))) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (q needs atom_style charge or full)`);
       if (SPHERE_COLS.has(c) && !isSphereStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style sphere)`);
+      if (TORQUE_COLS.has(c) && !hasRmassStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style sphere or ellipsoid)`);
+      if (ANGMOM_COLS.has(c) && !isEllipsoidStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style ellipsoid)`);
       if (DIPOLE_COLS.has(c) && !hasDipoleStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style dipole)`);
       if (c === 'mol' && !(sh ? hasMolecule(sh) : isMolecularStyle(st))) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (mol needs a molecular atom_style)`);
       return;
@@ -512,6 +521,11 @@ export class Dump {
       case 'tqx': case 'tqy': case 'tqz': {
         const d = 'xyz'.indexOf(c[2]);
         for (let i = 0; i < s.n; i++) out[i] = s.torque![3 * i + d];
+        return out;
+      }
+      case 'angmomx': case 'angmomy': case 'angmomz': {
+        const d = 'xyz'.indexOf(c[6]);
+        for (let i = 0; i < s.n; i++) out[i] = s.angmom![3 * i + d];
         return out;
       }
       case 'mux': case 'muy': case 'muz': case 'mu': {

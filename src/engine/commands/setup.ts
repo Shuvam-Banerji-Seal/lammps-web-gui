@@ -3,7 +3,7 @@ import { int, num, yesno, latticeScale, keywords, numOrVar } from './args';
 import { StyleError, typeBounds } from '../force/types';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, massOf, gatherAtoms, hasCharge, hasMolecule, nativeOrder } from '../atoms';
+import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder } from '../atoms';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import { generalAtomSites, generalBoxFromRestricted, generalCreateBox } from '../triclinic_general';
 import {
@@ -63,7 +63,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: AtomStyle[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'dipole'];
+const ATOM_STYLES: AtomStyle[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'dipole', 'ellipsoid'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -635,8 +635,9 @@ const molecule: Handler = ({ sys }, a) => {
 const mass: Handler = ({ sys }, a) => {
   const s = sys.state;
   if (a.length !== 2) throw new StyleError('usage: mass I value');
-  // measured with native LAMMPS: "Cannot set per-type atom mass for atom style sphere"
-  if (s.atomStyle === 'sphere') throw new StyleError(`Cannot set per-type atom mass for atom style ${s.atomStyle}`);
+  // Measured with native LAMMPS (black box): mass is refused for atom style sphere and for atom style ellipsoid
+  // (Cannot set per-type atom mass for atom style sphere, and the same with ellipsoid)
+  if (s.atomStyle === 'sphere' || s.atomStyle === 'ellipsoid') throw new StyleError(`Cannot set per-type atom mass for atom style ${s.atomStyle}`);
   const m = num(a[1], 'mass');
   if (!(m > 0)) throw new StyleError('mass must be > 0');
   const [lo, hi] = typeBounds(a[0], s.ntypes);
@@ -1050,7 +1051,12 @@ const set: Handler = ({ sys }, a) => {
         for (const i of atoms) {
           const x = v(i);
           if (!(x > 0)) throw new StyleError(key === 'mass' ? `Invalid mass ${x} in set command` : `Invalid density value ${x} in set command`);
-          s.rmass[i] = key === 'mass' ? x : sphereMass(s.radius ? s.radius[i] : 0, x, key === 'density/disc');
+          // set.html: "If the atom has a shape attribute (see :doc:`atom_style ellipsoid <atom_style>`) and its 3
+          // shape parameters are non-zero, then its mass is set from the density and particle volume" and "The
+          // *density/disc* keyword has no effect"; measured with native LAMMPS (black box): a point particle of
+          // atom style ellipsoid gets mass = density
+          if (key !== 'mass' && !(s.radius && s.radius[i] > 0) && isEllipsoid(s, i)) s.rmass[i] = x * ellipsoidVolume(s, i);
+          else s.rmass[i] = key === 'mass' ? x : sphereMass(s.radius ? s.radius[i] : 0, x, key === 'density/disc');
         }
         changed = atoms.length;
         k += 2;
@@ -1078,6 +1084,62 @@ const set: Handler = ({ sys }, a) => {
           const mx = vx(i), my = vy(i), mz = vz(i);
           s.mu[4 * i] = mx; s.mu[4 * i + 1] = my; s.mu[4 * i + 2] = mz; s.mu[4 * i + 3] = Math.hypot(mx, my, mz);
         }
+        changed = atoms.length;
+        k += 4;
+        break;
+      }
+      // set.html: "Keyword *shape* sets the size and shape of the selected atoms.  The particles must be
+      // ellipsoids as defined by the :doc:`atom_style ellipsoid <atom_style>` command.  The *Sx*, *Sy*, *Sz*
+      // settings are the 3 diameters of the ellipsoid in each direction."; "They can also all be set to 0.0
+      // which means the particle will be treated as a point particle.  Note that this command does not adjust
+      // the particle mass". Measured with native LAMMPS (black box): one zero diameter among non-zero ones is
+      // refused (Invalid shape in set command).
+      case 'shape': {
+        if (!s.shape) throw new StyleError(`Cannot set attribute shape for atom style ${s.atomStyle}`);
+        const vs = [1, 2, 3].map((d) => value(a[k + d], 'shape'));
+        for (const i of atoms) {
+          const d3 = vs.map((f) => f(i));
+          const zeros = d3.filter((x) => x === 0).length;
+          if (d3.some((x) => !(x >= 0)) || (zeros > 0 && zeros < 3)) throw new StyleError('Invalid shape in set command');
+          for (let d = 0; d < 3; d++) s.shape[3 * i + d] = d3[d] / 2;
+        }
+        changed = atoms.length;
+        k += 4;
+        break;
+      }
+      // set.html: "If this body is rotated (via the right-hand rule) by an angle theta around a unit rotation
+      // vector (a,b,c), then the quaternion that represents its new orientation is given by (cos(theta/2),
+      // a\*sin(theta/2), b\*sin(theta/2), c\*sin(theta/2))."; "LAMMPS normalizes the quaternion in case (a,b,c)
+      // was not specified as a unit vector."; "The 3 values must be non-zero for each particle set by this
+      // command." Measured with native LAMMPS (black box): the whole 4-vector is normalized (a b c = 1 1 0,
+      // theta 90 gives 0.57735 0.57735 0.57735 0); a point particle is refused (Cannot set quaternion for atom
+      // that has none); in 2d a non-zero a or b is refused (Cannot set quaternion with xy components for 2d
+      // system).
+      case 'quat': {
+        if (!s.quat) throw new StyleError(`Cannot set attribute quat for atom style ${s.atomStyle}`);
+        const vs = [1, 2, 3, 4].map((d) => value(a[k + d], 'quat'));
+        for (const i of atoms) {
+          if (!isEllipsoid(s, i)) throw new StyleError('Cannot set quaternion for atom that has none');
+          const [qa, qb, qc, th] = vs.map((f) => f(i));
+          if (sys.dimension === 2 && (qa !== 0 || qb !== 0)) throw new StyleError('Cannot set quaternion with xy components for 2d system');
+          const h = (th * Math.PI) / 360, sn = Math.sin(h);
+          const q = [Math.cos(h), qa * sn, qb * sn, qc * sn];
+          const len = Math.hypot(q[0], q[1], q[2], q[3]);
+          for (let d = 0; d < 4; d++) s.quat[4 * i + d] = q[d] / len;
+        }
+        changed = atoms.length;
+        k += 5;
+        break;
+      }
+      case 'quat/random':
+        throw new StyleError('set quat/random is not supported by the browser engine: native LAMMPS seeds each atom from its coordinates in a way the documentation does not give, so the orientations could not match');
+      // set.html: "Keyword *angmom* sets the angular momentum of selected atoms.  The particles must be
+      // ellipsoids as defined by the :doc:`atom_style ellipsoid <atom_style>` command"; "The angular momentum
+      // vector of the particles is set to the 3 specified components."
+      case 'angmom': {
+        if (!s.angmom) throw new StyleError(`Cannot set attribute angmom for atom style ${s.atomStyle}`);
+        const vs = [1, 2, 3].map((d) => value(a[k + d], 'angmom'));
+        for (const i of atoms) for (let d = 0; d < 3; d++) s.angmom[3 * i + d] = vs[d](i);
         changed = atoms.length;
         k += 4;
         break;
@@ -1538,6 +1600,24 @@ const displaceAtoms: Handler = ({ sys }, a) => {
         for (let d = 0; d < 3; d++) s.x[3 * i + d] = P[d] + v[d] * c + cr[d] * sn + R[d] * dot * (1 - c);
         s.image[3 * i] = s.image[3 * i + 1] = s.image[3 * i + 2] = 0;
       }
+      // displace_atoms.html: "If the defined :doc:`atom_style <atom_style>` assigns an orientation to each atom
+      // (:doc:`atom styles <atom_style>` ellipsoid, line, tri, body), then that property is also updated
+      // appropriately to correspond to the atom's rotation." The ellipsoid quaternion q becomes r q, with r the
+      // rotation by theta about R (the composition measured with native LAMMPS, black box).
+      if (s.quat) {
+        const h = th / 2, rs = Math.sin(h);
+        const r = [Math.cos(h), R[0] * rs, R[1] * rs, R[2] * rs];
+        for (const i of members) {
+          if (!isEllipsoid(s, i)) continue;
+          const q = s.quat.subarray(4 * i, 4 * i + 4);
+          const w = r[0] * q[0] - r[1] * q[1] - r[2] * q[2] - r[3] * q[3];
+          const x = r[0] * q[1] + r[1] * q[0] + r[2] * q[3] - r[3] * q[2];
+          const y = r[0] * q[2] - r[1] * q[3] + r[2] * q[0] + r[3] * q[1];
+          const z = r[0] * q[3] + r[1] * q[2] - r[2] * q[1] + r[3] * q[0];
+          const len = Math.hypot(w, x, y, z);
+          q[0] = w / len; q[1] = x / len; q[2] = y / len; q[3] = z / len;
+        }
+      }
       break;
     }
   }
@@ -1563,7 +1643,7 @@ const replicate: Handler = ({ sys }, a) => {
   const old: SimState = { ...s, x: s.x.slice(0, 3 * s.n), v: s.v.slice(0, 3 * s.n), image: s.image.slice(0, 3 * s.n), type: s.type.slice(0, s.n), id: s.id.slice(0, s.n), mask: s.mask.slice(0, s.n), molecule: s.molecule.slice(0, s.n), q: s.q.slice(0, s.n) };
   // measured with native LAMMPS: "Cannot replicate with fixes that store per-atom quantities"
   for (const f of sys.fixes) if (f.style === 'property/atom') throw new StyleError('Cannot replicate with fixes that store per-atom quantities');
-  // every other per-atom field (sphere radius/mass/omega) is copied as is
+  // every other per-atom field (sphere radius/mass/omega, dipoles, ellipsoid shape/quat/angmom) is copied as is
   const base = gatherAtoms(s, Array.from({ length: s.n }, (_, i) => i));
   const maxId = maxAtomId(s);
   let maxMol = 0;
@@ -1604,6 +1684,10 @@ const replicate: Handler = ({ sys }, a) => {
   if (s.radius) s.radius = new Float64Array(0);
   if (s.omega) s.omega = new Float64Array(0);
   if (s.torque) s.torque = new Float64Array(0);
+  if (s.mu) s.mu = new Float64Array(0);
+  if (s.shape) s.shape = new Float64Array(0);
+  if (s.quat) s.quat = new Float64Array(0);
+  if (s.angmom) s.angmom = new Float64Array(0);
   for (const cp of s.custom.values()) cp.data = new Float64Array(0);
   const tile = (a: Float64Array | undefined): Float64Array | undefined => {
     if (!a) return undefined;
@@ -1615,7 +1699,8 @@ const replicate: Handler = ({ sys }, a) => {
   for (const [name, arr] of base.custom!) custom.set(name, tile(arr)!);
   appendAtoms(s, {
     x, v, type, id, mask: 0, molecule: mol, q, image,
-    rmass: tile(base.rmass as Float64Array | undefined), radius: tile(base.radius as Float64Array | undefined), omega: tile(base.omega), custom,
+    rmass: tile(base.rmass as Float64Array | undefined), radius: tile(base.radius as Float64Array | undefined), omega: tile(base.omega),
+    mu: tile(base.mu), shape: tile(base.shape), quat: tile(base.quat), angmom: tile(base.angmom), custom,
   });
   s.mask.set(mask);
   sys.setState(s);

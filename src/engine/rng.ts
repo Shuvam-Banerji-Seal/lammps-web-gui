@@ -117,3 +117,72 @@ export class RanPark {
 }
 
 const PM_A = 16807, PM_M = 2147483647, PM_Q = 127773, PM_R = 2836;
+
+/**
+ * Marsaglia-Zaman lagged-Fibonacci generator with carry, in the form published
+ * by F. James (Comput. Phys. Commun. 60, 329 (1990)) for RANMAR: a 97-element
+ * state, seeded from one integer through IJ = (seed-1)/30082, KL = seed-1-30082*IJ.
+ * fix_langevin.html: "A Marsaglia random number generator is used." Measured
+ * with native LAMMPS (black box): with seed 12345 the fix's force components
+ * are (uniform() - 0.5) times the amplitude below, drawn in this stream, which
+ * is why the engine uses it for fix langevin (Rng above is a different generator).
+ */
+export class RanMars {
+  private readonly u = new Float64Array(98);
+  private c = 362436 / 16777216;
+  private readonly cd = 7654321 / 16777216;
+  private readonly cm = 16777213 / 16777216;
+  private ui = 97;
+  private uj = 33;
+
+  constructor(seed: number) {
+    const ij = Math.floor((seed - 1) / 30082);
+    const kl = seed - 1 - 30082 * ij;
+    let i = (Math.floor(ij / 177) % 177) + 2;
+    let j = (ij % 177) + 2;
+    let k = (Math.floor(kl / 169) % 178) + 1;
+    let l = kl % 169;
+    for (let ii = 1; ii <= 97; ii++) {
+      let x = 0;
+      let t = 0.5;
+      for (let jj = 1; jj <= 24; jj++) {
+        const m = ((i * j) % 179) * k % 179;
+        i = j; j = k; k = m;
+        l = (53 * l + 1) % 169;
+        if ((l * m) % 64 >= 32) x += t;
+        t *= 0.5;
+      }
+      this.u[ii] = x;
+    }
+  }
+
+  uniform(): number {
+    let uni = this.u[this.ui] - this.u[this.uj];
+    if (uni < 0) uni += 1;
+    this.u[this.ui] = uni;
+    if (--this.ui === 0) this.ui = 97;
+    if (--this.uj === 0) this.uj = 97;
+    this.c -= this.cd;
+    if (this.c < 0) this.c += this.cm;
+    uni -= this.c;
+    if (uni < 0) uni += 1;
+    return uni;
+  }
+
+  /**
+   * The first accepted Marsaglia polar pair, [v2 f, v1 f] with f = sqrt(-2 ln s / s); rejected
+   * pairs consume their draws. Measured with native LAMMPS (black box) by fix
+   * wall/reflect/stochastic, whose tangential velocities are this pair.
+   */
+  polarPair(): [number, number] {
+    for (;;) {
+      const v1 = 2 * this.uniform() - 1;
+      const v2 = 2 * this.uniform() - 1;
+      const s = v1 * v1 + v2 * v2;
+      if (s < 1 && s > 0) {
+        const f = Math.sqrt((-2 * Math.log(s)) / s);
+        return [v2 * f, v1 * f];
+      }
+    }
+  }
+}

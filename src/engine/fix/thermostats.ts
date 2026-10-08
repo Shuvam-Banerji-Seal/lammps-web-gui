@@ -2,7 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { Compute } from '../compute/compute';
-import { Rng } from '../rng';
+import { RanMars, Rng } from '../rng';
 import { ownCompute, parseNumOrVar, ramp, removeCompute, valueOf, type NumOrVar } from './util';
 import { massOf } from '../atoms';
 
@@ -242,58 +242,6 @@ export class FixTempCSVR extends RescaleFix {
     const r2 = this.sumNoises(nf - 1);
     const knew = kin + (1 - c) * (kt * (r1 * r1 + r2) / nf - kin) + 2 * r1 * Math.sqrt(c * (1 - c) * kin * kt / nf);
     this.rescale(Math.sqrt(Math.max(0, knew) / kin), t);
-  }
-}
-
-/**
- * Marsaglia-Zaman lagged-Fibonacci generator with carry, in the form published
- * by F. James (Comput. Phys. Commun. 60, 329 (1990)) for RANMAR: a 97-element
- * state, seeded from one integer through IJ = (seed-1)/30082, KL = seed-1-30082*IJ.
- * fix_langevin.html: "A Marsaglia random number generator is used." Measured
- * with native LAMMPS (black box): with seed 12345 the fix's force components
- * are (uniform() - 0.5) times the amplitude below, drawn in this stream, which
- * is why the engine uses it here (rng.ts Rng is a different generator).
- */
-class RanMars {
-  private readonly u = new Float64Array(98);
-  private c = 362436 / 16777216;
-  private readonly cd = 7654321 / 16777216;
-  private readonly cm = 16777213 / 16777216;
-  private ui = 97;
-  private uj = 33;
-
-  constructor(seed: number) {
-    const ij = Math.floor((seed - 1) / 30082);
-    const kl = seed - 1 - 30082 * ij;
-    let i = (Math.floor(ij / 177) % 177) + 2;
-    let j = (ij % 177) + 2;
-    let k = (Math.floor(kl / 169) % 178) + 1;
-    let l = kl % 169;
-    for (let ii = 1; ii <= 97; ii++) {
-      let x = 0;
-      let t = 0.5;
-      for (let jj = 1; jj <= 24; jj++) {
-        const m = ((i * j) % 179) * k % 179;
-        i = j; j = k; k = m;
-        l = (53 * l + 1) % 169;
-        if ((l * m) % 64 >= 32) x += t;
-        t *= 0.5;
-      }
-      this.u[ii] = x;
-    }
-  }
-
-  uniform(): number {
-    let uni = this.u[this.ui] - this.u[this.uj];
-    if (uni < 0) uni += 1;
-    this.u[this.ui] = uni;
-    if (--this.ui === 0) this.ui = 97;
-    if (--this.uj === 0) this.uj = 97;
-    this.c -= this.cd;
-    if (this.c < 0) this.c += this.cm;
-    uni -= this.c;
-    if (uni < 0) uni += 1;
-    return uni;
   }
 }
 

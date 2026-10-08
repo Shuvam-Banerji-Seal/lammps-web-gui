@@ -4,6 +4,8 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNumOrVar, valueOf, type NumOrVar } from './util';
 import { compileLepton, fillVrefs, type LeptonProgram } from '../lepton';
+import { parseLepton } from '../lepton/parse';
+import { resolveNames, dependsOn, diff } from '../lepton/resolve';
 
 /*
  * fix wall/lepton (docs.lammps.org/fix_wall.html, style wall/lepton) and
@@ -20,9 +22,20 @@ import { compileLepton, fillVrefs, type LeptonProgram } from '../lepton';
  *
  * efield/lepton: the expression V is in x, y, z (unwrapped coordinates). Charged
  * atoms get F = q E with E = -grad V; the energy is q V (fix_modify energy), and
- * the virial is that of the added forces. The keywords are region and step; step
- * only matters for point dipoles, which this engine does not support (atom_style
- * dipole is a StyleError), so for charges the result does not depend on it.
+ * the virial is that of the added forces. The keywords are region and step.
+ *
+ * Point dipoles (docs.lammps.org/fix_efield_lepton.html): the page gives
+ * F = q E on charges and F = (p . grad) E, T = p x E on dipoles with E = -grad V.
+ * "It creates an analytical representation of :math:`V` and :math:`\vec{E}`, while the gradient force
+ * is computed using a central difference scheme", so the dipole force is
+ * |p|/(2h) [ E(x + h p) - E(x - h p) ] with E the analytic gradient.
+ * "The step keyword is required when atom_style dipole is used and the electric
+ * field is non-uniform." Measured with native LAMMPS (black box): atom_style
+ * dipole without the sphere sub-style aborts with Dipoles must be finite-sized
+ * to rotate; the torque and the energy use the analytic E at the atom; the force
+ * and the energy carry the same qe2f factor as fix efield; and the virial of the
+ * added forces is sum f (x) r (off-diagonals f_x r_y, f_x r_z, f_y r_z) in
+ * unwrapped coordinates.
  *
  * The wall logic follows fix/walls.ts (copied, since that class is not exported),
  * except for the virial sign (see apply()).
@@ -195,24 +208,52 @@ export class FixWallLepton extends Fix {
   computeVector(i: number): number { return this.wallForce[i]; }
 }
 
-/** fix efield/lepton V [region ID] [step h]: F = q E with E = -grad V (exact gradient). */
+/**
+ * True if E = -grad V depends on x, y or z, i.e. the field is non-uniform.
+ * The page requires the step keyword in that case ("The step keyword is
+ * required when atom_style dipole is used and the electric field is
+ * non-uniform."). The rule was measured with native LAMMPS (black box): it
+ * rejects -x^2, -x*y and -abs(x) without step, while -x, a tumbling uniform
+ * field -(x cos + y sin) and a constant are accepted.
+ */
+const fieldIsNonUniform = (text: string): boolean => {
+  const tree = resolveNames(parseLepton(text, { zbl: false }), new Set(['x', 'y', 'z']));
+  for (const c of ['x', 'y', 'z']) {
+    const d = diff(tree, c);
+    for (const q of ['x', 'y', 'z']) if (dependsOn(d, q)) return true;
+  }
+  return false;
+};
+
+/**
+ * fix efield/lepton V [region ID] [step h] — docs.lammps.org/fix_efield_lepton.html.
+ * Charges get F = q E; dipoles get the central-difference gradient force
+ * F = |p|/(2h) [E(x + h p) - E(x - h p)], the analytic torque T = p x E and the
+ * energy -p . E, all with the qe2f factor fix efield uses (measured, see the
+ * file comment).
+ */
 export class FixEfieldLepton extends Fix {
   readonly style = 'efield/lepton';
   private prog: LeptonProgram;
   private regionId: string | null = null;
-  /** step h: unused for charges (analytic gradient); kept for the dipole keyword. */
+  /** step h: the central-difference displacement for the dipole force (distance units). */
   private stepH = 0;
+  /** Point dipoles present (atom_style dipole): also apply torque and grad E force. */
+  private dipoles = false;
   private fadd: Float64Array;
   private pot: Float64Array;
+  /** grad V at the atom, for the dipole energy -p . E = p . grad V. */
+  private gx: Float64Array;
+  private gy: Float64Array;
+  private gz: Float64Array;
   private unwrapped = [0, 0, 0];
   private envBuf: Float64Array;
+  private envP: Float64Array;
+  private envM: Float64Array;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     const s = sys.state;
-    if (s.mu) {
-      throw new StyleError(`fix ${id} efield/lepton: point dipoles (atom_style ${String(s.atomStyle)}) are not supported by this engine`);
-    }
     if (!hasChargeStyle(s.atomStyle)) {
       throw new StyleError(`fix efield/lepton requires atoms that store a charge; atom_style ${s.atomStyle} does not`);
     }
@@ -237,8 +278,19 @@ export class FixEfieldLepton extends Fix {
         throw new StyleError(`fix efield/lepton: unknown keyword '${key}' (expected region or step)`);
       }
     }
+    if (s.mu) {
+      // Measured with native LAMMPS (black box): atom_style dipole without the sphere
+      // sub-style is rejected (Dipoles must be finite-sized to rotate); hybrid sphere dipole works.
+      if (!s.radius || !s.torque) {
+        throw new StyleError(`fix ${id} efield/lepton: point dipoles require finite-size particles (use atom_style hybrid sphere dipole)`);
+      }
+      this.dipoles = true;
+      if (this.stepH <= 0 && fieldIsNonUniform(args[0])) {
+        throw new StyleError(`fix ${id} efield/lepton requires keyword 'step' for dipoles in a non-uniform electric field`);
+      }
+    }
     // The page says the fix "computes a global scalar and a global 3-vector of forces"; a native
-    // build (2 Sep 2026) rejects f_ID[i] for this fix ("does not compute the requested property"),
+    // build (2 Sep 2026) rejects f_ID[i] for this fix (does not compute the requested property),
     // measured in a variable formula, so only the scalar is exposed here.
     this.scalarFlag = true;
     this.extscalar = 1;
@@ -246,7 +298,13 @@ export class FixEfieldLepton extends Fix {
     this.virialGlobal = true;
     this.fadd = new Float64Array(3 * s.n);
     this.pot = new Float64Array(s.n);
-    this.envBuf = new Float64Array(this.prog.builtins.length + this.prog.vrefs.length);
+    this.gx = new Float64Array(s.n);
+    this.gy = new Float64Array(s.n);
+    this.gz = new Float64Array(s.n);
+    const nv = this.prog.builtins.length + this.prog.vrefs.length;
+    this.envBuf = new Float64Array(nv);
+    this.envP = new Float64Array(nv);
+    this.envM = new Float64Array(nv);
   }
 
   /** Fills the env (unwrapped x, y, z of atom i; then the v_name values). */
@@ -269,49 +327,85 @@ export class FixEfieldLepton extends Fix {
   postForce(): void {
     const s = this.sys.state;
     const k = s.units.qe2f / s.units.ftm2v;
+    const kt = s.units.qe2f;
     const { f, q, mask } = s;
     const bit = this.groupBit;
+    const mu = s.mu, tq = s.torque;
+    const useDip = this.dipoles && !!mu && !!tq;
+    const h = this.stepH;
+    const nb = this.prog.builtins.length;
     this.fadd.fill(0);
+    this.gx.fill(0); this.gy.fill(0); this.gz.fill(0);
     // v_name slots are refreshed once per force evaluation
     const vals = new Float64Array(this.prog.vrefs.length);
     this.prog.vrefs.forEach((name, m) => { vals[m] = this.sys.equalVariable(name); });
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & bit) || !this.inRegion(i)) continue;
       const env = this.env(i);
-      env.set(vals, this.prog.builtins.length);
-      const [dx, dy, dz] = [0, 1, 2].map((c) => this.prog.deriv[c](env));
+      env.set(vals, nb);
+      const dx = this.prog.deriv[0](env), dy = this.prog.deriv[1](env), dz = this.prog.deriv[2](env);
       // F = -q grad V (times the units factor)
       const fx = -q[i] * dx * k, fy = -q[i] * dy * k, fz = -q[i] * dz * k;
-      this.fadd[3 * i] = fx; this.fadd[3 * i + 1] = fy; this.fadd[3 * i + 2] = fz;
+      this.fadd[3 * i] += fx; this.fadd[3 * i + 1] += fy; this.fadd[3 * i + 2] += fz;
       f[3 * i] += fx; f[3 * i + 1] += fy; f[3 * i + 2] += fz;
       this.pot[i] = this.prog.value(env);
+      if (!useDip) continue;
+      const px = mu![4 * i], py = mu![4 * i + 1], pz = mu![4 * i + 2], len = mu![4 * i + 3];
+      this.gx[i] = dx; this.gy[i] = dy; this.gz[i] = dz;
+      // Torque T = p x E with E = -grad V (analytic, measured with native LAMMPS)
+      tq![3 * i] += kt * (pz * dy - py * dz);
+      tq![3 * i + 1] += kt * (px * dz - pz * dx);
+      tq![3 * i + 2] += kt * (py * dx - px * dy);
+      if (!(len > 0) || !(h > 0)) continue;
+      // F = |p|/(2h) [E(x + h p_hat) - E(x - h p_hat)] with E = -grad V (central difference)
+      const ox = (h * px) / len, oy = (h * py) / len, oz = (h * pz) / len;
+      const ep = this.envP, em = this.envM;
+      ep[0] = this.unwrapped[0] + ox; ep[1] = this.unwrapped[1] + oy; ep[2] = this.unwrapped[2] + oz;
+      em[0] = this.unwrapped[0] - ox; em[1] = this.unwrapped[1] - oy; em[2] = this.unwrapped[2] - oz;
+      ep.set(vals, nb); em.set(vals, nb);
+      const c = (len / (2 * h)) * kt / s.units.ftm2v;
+      const gx2 = c * (-this.prog.deriv[0](ep) + this.prog.deriv[0](em));
+      const gy2 = c * (-this.prog.deriv[1](ep) + this.prog.deriv[1](em));
+      const gz2 = c * (-this.prog.deriv[2](ep) + this.prog.deriv[2](em));
+      this.fadd[3 * i] += gx2; this.fadd[3 * i + 1] += gy2; this.fadd[3 * i + 2] += gz2;
+      f[3 * i] += gx2; f[3 * i + 1] += gy2; f[3 * i + 2] += gz2;
     }
     if (this.thermoVirial) this.tallyVirial();
   }
 
+  /**
+   * Virial of the added forces: sum f (x) r (the transpose of the pair r (x) f
+   * convention), with the unwrapped position (the fix evaluates V and its
+   * gradient in unwrapped coordinates). Measured with native LAMMPS (black box):
+   * a charge at unwrapped x = -0.5 (wrapped 9.5, image -1) under V = -x gives
+   * Pxx = -0.5/V, i.e. the unwrapped coordinate, and pxy = f_x r_y.
+   */
   private tallyVirial(): void {
     const s = this.sys.state;
     const v = this.virial;
     v.fill(0);
-    const { x } = s;
+    const u = [0, 0, 0];
     for (let i = 0; i < s.n; i++) {
       const fx = this.fadd[3 * i], fy = this.fadd[3 * i + 1], fz = this.fadd[3 * i + 2];
       if (fx === 0 && fy === 0 && fz === 0) continue;
-      const px = x[3 * i], py = x[3 * i + 1], pz = x[3 * i + 2];
+      this.sys.geom.unwrap(s.x, s.image, i, u);
+      const px = u[0], py = u[1], pz = u[2];
       v[0] += fx * px; v[1] += fy * py; v[2] += fz * pz;
-      v[3] += 0.5 * (fx * py + fy * px);
-      v[4] += 0.5 * (fx * pz + fz * px);
-      v[5] += 0.5 * (fy * pz + fz * py);
+      v[3] += fx * py; v[4] += fx * pz; v[5] += fy * pz;
     }
   }
 
-  /** U = sum q V (energy units), for fix_modify energy yes. */
+  /** U = sum q V + sum (-p . E) (energy units), for fix_modify energy yes. */
   energy(): number {
     const s = this.sys.state;
+    const k = s.units.qe2f;
+    const mu = s.mu;
     let e = 0;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit) || !this.inRegion(i)) continue;
-      e += s.q[i] * this.pot[i] * s.units.qe2f;
+      e += s.q[i] * this.pot[i] * k;
+      // -p . E = p . grad V (measured with native LAMMPS, black box)
+      if (this.dipoles && mu) e += (mu[4 * i] * this.gx[i] + mu[4 * i + 1] * this.gy[i] + mu[4 * i + 2] * this.gz[i]) * k;
     }
     return e;
   }

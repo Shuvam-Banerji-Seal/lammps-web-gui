@@ -1,0 +1,34 @@
+# oracle: fix efield/lepton on charged point dipoles (nonzero grad E with step): force, torque and energy over 100 steps
+# oracle-files: w23eflep_dipole_mu.dump
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-9
+units           lj
+atom_style      hybrid sphere dipole
+lattice         sc 1.0
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            * 1.0
+set             type * diameter 0.8 density 1.0
+variable        mx atom 0.7*sin(1.1*x+0.3*y)
+variable        my atom 0.7*cos(0.9*y-0.4*z)
+variable        mz atom 0.7*sin(0.8*z+0.5*x)
+set             group all dipole v_mx v_my v_mz
+set             type 1 charge 0.3
+variable        vx atom 0.4*sin(0.7*x+0.2*z)
+variable        vy atom 0.4*cos(0.5*y+0.3*x)
+variable        vz atom 0.4*sin(0.6*z-0.4*y)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+set             group all omega 0.2 -0.1 0.3
+pair_style      zero 5.0
+pair_coeff      * *
+fix             1 all nve/sphere update dipole
+fix             ef all efield/lepton "-0.5*x^2 - 0.3*y*z + 0.2*sin(x)*exp(-0.1*z)" step 1e-4
+fix_modify      ef energy yes virial yes
+compute         tq all property/atom tqx tqy tqz mux muy muz
+compute         chk all reduce sum c_tq[1] c_tq[2] c_tq[3] c_tq[4] c_tq[5] c_tq[6]
+thermo_style    custom step pe f_ef c_chk[1] c_chk[2] c_chk[3] c_chk[4] c_chk[5] c_chk[6] press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          20
+run             100
+write_dump      all custom w23eflep_dipole_mu.dump id fx fy fz tqx tqy tqz mux muy muz modify format float %.17g sort id

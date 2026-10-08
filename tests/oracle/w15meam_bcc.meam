@@ -1,0 +1,11 @@
+# w15meam: synthetic parameter file for the engine oracle (not a LAMMPS potential file).
+rc = 4.0
+delr = 0.1
+Ec(1,1) = 8.9
+re(1,1) = 2.736640
+alpha(1,1) = 5.0
+lattce(1,1) = bcc
+Cmin(1,1,1) = 2.0
+Cmax(1,1,1) = 2.8
+zbl(1,1) = 0
+augt1 = 1

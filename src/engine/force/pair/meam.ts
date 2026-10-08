@@ -1,4 +1,13 @@
 import { NEIGHMASK } from '../../neighbor';
+import { referenceVectors, SUPPORTED_REFERENCE_LATTICES, type ReferenceLattice } from './meam_lattice';
+import {
+  alloyAtomEnergyGrad,
+  makeAlloyModel,
+  type AlloyElement,
+  type AlloyModel,
+  type AlloyNeighbor,
+  type AlloyPair,
+} from './meam_alloy';
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 
 /*
@@ -30,6 +39,8 @@ export interface MeamElement {
   beta: [number, number, number, number];
   t: [number, number, number, number];
   ibar: number;
+  /** reference lattice of the element (default fcc); see meam_lattice.ts */
+  lat?: ReferenceLattice;
 }
 
 export interface MeamOptions {
@@ -94,28 +105,87 @@ export const gOf = (ibar: number, gamma: number): number => {
   throw new Error(`MEAM ibar ${ibar} is not supported`);
 };
 
-/** Background density of the fcc reference at nearest-neighbour distance r (G = 1 for cubic symmetry). */
-const refBackground = (el: MeamElement, o: MeamOptions, r: number): number => {
-  const a = r * Math.SQRT2;
-  const nb: MeamNeighbor[] = [];
-  const m = Math.ceil(o.rc / a) + 1;
-  for (let i = -m; i <= m; i++)
-    for (let j = -m; j <= m; j++)
-      for (let k = -m; k <= m; k++) {
-        if (((i + j + k) & 1) !== 0 || (i === 0 && j === 0 && k === 0)) continue;
-        const dx = (i * a) / 2, dy = (j * a) / 2, dz = (k * a) / 2;
-        const rr = Math.hypot(dx, dy, dz);
-        if (rr >= o.rc) continue;
-        nb.push({ j: -1, dx, dy, dz, r: rr });
-      }
+/** Reference-structure t parameters (augt1 applied to t1); t0 = 1 (library entries normalised to t0 = 1). */
+const refTuple = (el: MeamElement, o: MeamOptions): [number, number, number, number] => [
+  1,
+  o.augt1 ? el.t[1] + 0.6 * el.t[3] : el.t[1],
+  el.t[2],
+  el.t[3],
+];
+
+/*
+ * Background density of the reference structure at nearest-neighbour distance r:
+ * rho_bar = rho0 * G(Gamma), evaluated for one atom of the lattice el.lat (fcc, bcc or dia) with the
+ * same screening, radial weight and angular moments as the atom energy. The derivative with respect to r
+ * is analytic: the screening factors depend only on distance ratios (fixed by the scaled lattice), so each
+ * neighbour contributes d/dr [fc(r_m) S_m a_n(r_m) u...] with dr_m/dr = r_m/r.
+ * Measured with native LAMMPS (black box): bcc and dia crystal energies (dia has Gamma != 0 in the
+ * reference) agree with this background to about 1e-11 relative (see tests/enginePairMeam15.test.ts).
+ */
+const refRhoBarPrime = (el: MeamElement, o: MeamOptions, r: number): { rho: number; drho: number; rho0: number } => {
+  const t = refTuple(el, o);
+  const nb: MeamNeighbor[] = referenceVectors(el.lat ?? 'fcc', r, o.rc).map((v) => ({ j: -1, ...v }));
   const S = screening(nb, o);
-  let rho0 = 0;
-  for (let n = 0; n < nb.length; n++) rho0 += radialWeight(nb[n].r, o) * S[n] * Math.exp(-el.beta[0] * (nb[n].r / el.re - 1));
-  return rho0;
+  let rho0 = 0, drho0 = 0, s2 = 0, ds2 = 0;
+  const v1 = [0, 0, 0], dv1 = [0, 0, 0], v3 = [0, 0, 0], dv3 = [0, 0, 0];
+  const V2 = new Float64Array(9), dV2 = new Float64Array(9), V3 = new Float64Array(27), dV3 = new Float64Array(27);
+  for (let m = 0; m < nb.length; m++) {
+    const p = nb[m];
+    const rm = p.r, sm = rm / r;
+    const fc = radialWeight(rm, o), fcp = radialWeightPrime(rm, o);
+    const wt = fc * S[m], dwt = fcp * S[m] * sm;
+    const u = [p.dx / rm, p.dy / rm, p.dz / rm];
+    const a = [0, 1, 2, 3].map((n) => Math.exp(-el.beta[n] * (rm / el.re - 1)));
+    // weights W_n = wt a_n and their r-derivatives dW_n = dwt a_n + wt (-beta_n/re) a_n s_m
+    const W = [0, 1, 2, 3].map((n) => wt * a[n]);
+    const dW = [0, 1, 2, 3].map((n) => dwt * a[n] + wt * (-el.beta[n] / el.re) * a[n] * sm);
+    rho0 += W[0]; drho0 += dW[0];
+    s2 += W[2]; ds2 += dW[2];
+    for (let c = 0; c < 3; c++) {
+      v1[c] += W[1] * u[c]; dv1[c] += dW[1] * u[c];
+      v3[c] += W[3] * u[c]; dv3[c] += dW[3] * u[c];
+    }
+    for (let q = 0; q < 9; q++) {
+      const uu = u[Math.floor(q / 3)] * u[q % 3];
+      V2[q] += W[2] * uu; dV2[q] += dW[2] * uu;
+    }
+    for (let q = 0; q < 27; q++) {
+      const uuu = u[Math.floor(q / 9)] * u[Math.floor(q / 3) % 3] * u[q % 3];
+      V3[q] += W[3] * uuu; dV3[q] += dW[3] * uuu;
+    }
+  }
+  if (rho0 <= 0) return { rho: 0, drho: 0, rho0: 0 };
+  // rho1^2 = |v1|^2, rho2^2 = sum V2^2 - s2^2/3, rho3^2 = sum V3^2 - (3/5)|v3|^2
+  const rho1sq = v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2];
+  const drho1sq = 2 * (v1[0] * dv1[0] + v1[1] * dv1[1] + v1[2] * dv1[2]);
+  let V2sq = 0, dV2sq = 0;
+  for (let q = 0; q < 9; q++) { V2sq += V2[q] * V2[q]; dV2sq += V2[q] * dV2[q]; }
+  const rho2sq = V2sq - (s2 * s2) / 3;
+  const drho2sq = 2 * dV2sq - (2 * s2 * ds2) / 3;
+  let V3sq = 0, dV3sq = 0;
+  for (let q = 0; q < 27; q++) { V3sq += V3[q] * V3[q]; dV3sq += V3[q] * dV3[q]; }
+  const v3sq = v3[0] * v3[0] + v3[1] * v3[1] + v3[2] * v3[2];
+  const dv3sq = 2 * (v3[0] * dv3[0] + v3[1] * dv3[1] + v3[2] * dv3[2]);
+  const rho3sq = V3sq - (3 / 5) * v3sq;
+  const drho3sq = 2 * dV3sq - (3 / 5) * dv3sq;
+  const Q = t[1] * rho1sq + t[2] * rho2sq + t[3] * rho3sq;
+  const dQ = t[1] * drho1sq + t[2] * drho2sq + t[3] * drho3sq;
+  const gam = Q / (rho0 * rho0);
+  const dgam = dQ / (rho0 * rho0) - (2 * Q * drho0) / (rho0 * rho0 * rho0);
+  const G = gOf(el.ibar, gam), Gp = gPrimeOf(el.ibar, gam);
+  return { rho: rho0 * G, drho: drho0 * G + rho0 * Gp * dgam, rho0 };
 };
 
-/** Reference background at equilibrium; F is normalised by it. */
-export const referenceBackground = (el: MeamElement, o: MeamOptions): number => refBackground(el, o, el.re);
+/** Background density of the reference structure at nearest-neighbour distance r (rho0 G(Gamma)). */
+const refBackground = (el: MeamElement, o: MeamOptions, r: number): number => refRhoBarPrime(el, o, r).rho;
+
+/*
+ * Embedding normalisation rho_ref of the element: the reference rho0 at re, WITHOUT the G(Gamma) factor.
+ * Measured with native LAMMPS (black box): for the diamond reference (Gamma != 0 in the reference) the A-atom dimers
+ * at 2.2, 2.4 and 2.6 A (tests/enginePairMeam15.test.ts) agree to 1e-10 eV only with this normalisation; the
+ * pair term keeps the full background rho0 G(Gamma) of the reference at distance r.
+ */
+export const referenceBackground = (el: MeamElement, o: MeamOptions): number => refRhoBarPrime(el, o, el.re).rho0;
 
 /** F(rhobar) = A Ec (rhobar/rhoRef) ln(rhobar/rhoRef). */
 export const embedding = (el: MeamElement, rhoRef: number, rhoBar: number): number => {
@@ -241,31 +311,9 @@ export const gPrimeOf = (ibar: number, gamma: number): number => {
   throw new Error(`MEAM ibar ${ibar} is not supported`);
 };
 
-/** rho_ref(r) of the fcc reference and its r-derivative (same neighbour set as refBackground). */
-export const refBackgroundPrime = (el: MeamElement, o: MeamOptions, r: number): { rho: number; drho: number } => {
-  const a = r * Math.SQRT2;
-  const nb: MeamNeighbor[] = [];
-  const m = Math.ceil(o.rc / a) + 1;
-  for (let i = -m; i <= m; i++)
-    for (let j = -m; j <= m; j++)
-      for (let k = -m; k <= m; k++) {
-        if (((i + j + k) & 1) !== 0 || (i === 0 && j === 0 && k === 0)) continue;
-        const dx = (i * a) / 2, dy = (j * a) / 2, dz = (k * a) / 2;
-        const rr = Math.hypot(dx, dy, dz);
-        if (rr >= o.rc) continue;
-        nb.push({ j: -1, dx, dy, dz, r: rr });
-      }
-  const S = screening(nb, o);
-  let rho = 0, drho = 0;
-  for (let n = 0; n < nb.length; n++) {
-    const rr = nb[n].r, s = rr / r;
-    const e = Math.exp(-el.beta[0] * (rr / el.re - 1));
-    const f = radialWeight(rr, o), fp = radialWeightPrime(rr, o);
-    rho += f * S[n] * e;
-    drho += S[n] * s * (fp * e + f * ((-el.beta[0] / el.re) * e));
-  }
-  return { rho, drho };
-};
+/** rho_ref(r) of the reference structure and its r-derivative (see refRhoBarPrime). */
+export const refBackgroundPrime = (el: MeamElement, o: MeamOptions, r: number): { rho: number; drho: number } =>
+  refRhoBarPrime(el, o, r);
 
 /** d phi / dr for the fcc-reference pair term (same form as pairPhi). */
 export const pairPhiPrime = (el: MeamElement, o: MeamOptions, rhoRef: number, r: number): number => {
@@ -510,7 +558,7 @@ export function meamEnergyForces(
 }
 
 /*
- * pair_style meam (task 2). Single element only. Documented file formats (docs.lammps.org/pair_meam.html,
+ * pair_style meam: parameter files (one or more elements; the alloy part is in meam_alloy.ts). Documented file formats (docs.lammps.org/pair_meam.html,
  * plans/lammps-docs/pair_meam.rst):
  *   "The first 2 arguments must be \* \* so as to span all LAMMPS atom types."
  *   "formatted as a series of entries, each of which" (then "has 19 parameters and can span multiple lines:")
@@ -574,18 +622,39 @@ export const parseMeamLibrary = (text: string, elt: string, name: string): Libra
 };
 
 /** Settings from the parameter file, after the checks of the supported subset. */
-interface MeamParams {
+interface PairParams {
   Ec?: number;
   re?: number;
   alpha?: number;
+  lattce?: string;
+}
+
+export interface MeamParams {
+  /** indexed settings keyed "i,j" with i <= j (an element's own settings have i = j) */
+  pair: Map<string, PairParams>;
+  /** single-element convenience: the (1,1) settings */
+  Ec?: number;
+  re?: number;
+  alpha?: number;
+  lattce?: string;
   opts: MeamOptions;
 }
 
 const NUMERIC_DEFAULT_ZERO = ['nn2', 'attrac', 'repuls', 'erose_form', 'emb_lin_neg', 'bkgd_dyn', 'ialloy', 'mixture_ref_t'];
+const PAIR_KEYS = ['Ec', 're', 'alpha', 'lattce', 'nn2', 'attrac', 'repuls', 'zbl'];
 
-/** Parses "keyword = value" and "keyword(I,J) = value" lines; rejects everything outside the verified subset. */
-export const parseMeamParams = (text: string, name: string): MeamParams => {
-  const out: MeamParams = { opts: { ...DEFAULT_MEAM_OPTIONS } };
+/**
+ * Parses "keyword = value" and "keyword(I,J) = value" lines for nelem elements; rejects everything outside the
+ * verified subset (see meam_alloy.ts for the multi-element part, and the header of this file for the rest).
+ */
+export const parseMeamParams = (text: string, name: string, nelem = 1): MeamParams => {
+  const out: MeamParams = { pair: new Map(), opts: { ...DEFAULT_MEAM_OPTIONS } };
+  const pairOf = (i: number, j: number): PairParams => {
+    const k = `${i},${j}`;
+    let p = out.pair.get(k);
+    if (!p) out.pair.set(k, (p = {}));
+    return p;
+  };
   for (const line of text.split(/\r?\n/)) {
     const h = line.indexOf('#');
     const body = (h >= 0 ? line.slice(0, h) : line).trim();
@@ -595,46 +664,106 @@ export const parseMeamParams = (text: string, name: string): MeamParams => {
     const key = m[1];
     const idx = m[2] ? m[2].split(',').map((s) => Number(s.trim())) : [];
     const val = m[3];
-    const want = (n: number[], label: string) => {
-      if (idx.length !== n.length || idx.some((v, k) => v !== n[k])) {
-        throw new StyleError(`MEAM parameter ${key} in ${name} must be indexed ${label} for a single element`);
+    const label = (_n: number) => (nelem === 1 ? '(1,1)' : `with I<=J<=${nelem}`);
+    /** Validates the index tuple of a keyword with `arity` indices; returns the indices (1-based). */
+    const index = (arity: number): number[] => {
+      if (idx.length !== arity || idx.some((v) => !Number.isInteger(v) || v < 1 || v > nelem)) {
+        if (nelem === 1 && arity === 2) throw new StyleError(`MEAM parameter ${key} in ${name} must be indexed (1,1) for a single element`);
+        if (nelem === 1 && arity === 3) throw new StyleError(`MEAM parameter ${key} in ${name} must be indexed (1,1,1) for a single element`);
+        if (nelem === 1 && arity === 1) throw new StyleError(`MEAM parameter ${key} in ${name} must be indexed (1) for a single element`);
+        if (nelem === 1 && arity === 0) throw new StyleError(`MEAM parameter ${key} in ${name} takes no index`);
+        throw new StyleError(`MEAM parameter ${key} in ${name} must be indexed ${label(nelem)} (${arity} indices)`);
       }
+      return idx;
+    };
+    const pairIndex = (): [number, number] => {
+      const [i, j] = index(2);
+      if (i > j) throw new StyleError(`MEAM parameter ${key}(${i},${j}) in ${name}: I<=J is required`);
+      return [i, j];
     };
     const num = (): number => {
       const x = Number(val);
       if (!Number.isFinite(x)) throw new StyleError(`MEAM parameter ${key} in ${name}: '${val}' is not a number`);
       return x;
     };
+    if (PAIR_KEYS.includes(key) && idx.length === 0 && key !== 'zbl') {
+      if (key === 'lattce' || key === 'Ec' || key === 're' || key === 'alpha') {
+        throw new StyleError(`MEAM parameter ${key} in ${name} must be indexed by element numbers`);
+      }
+    }
     switch (key) {
-      case 'rc': want([], ''); out.opts.rc = num(); break;
-      case 'delr': want([], ''); out.opts.delr = num(); break;
-      case 'Ec': want([1, 1], '(1,1)'); out.Ec = num(); break;
-      case 're': want([1, 1], '(1,1)'); out.re = num(); break;
-      case 'alpha': want([1, 1], '(1,1)'); out.alpha = num(); break;
-      case 'Cmin': want([1, 1, 1], '(1,1,1)'); out.opts.Cmin = num(); break;
-      case 'Cmax': want([1, 1, 1], '(1,1,1)'); out.opts.Cmax = num(); break;
+      case 'rc':
+        if (idx.length) throw new StyleError(`MEAM parameter rc in ${name} takes no index`);
+        out.opts.rc = num();
+        break;
+      case 'delr':
+        if (idx.length) throw new StyleError(`MEAM parameter delr in ${name} takes no index`);
+        out.opts.delr = num();
+        break;
+      case 'Ec':
+      case 're':
+      case 'alpha': {
+        const [i, j] = pairIndex();
+        const v = num();
+        const p = pairOf(i, j);
+        if (key === 'Ec') p.Ec = v;
+        else if (key === 're') p.re = v;
+        else p.alpha = v;
+        if (nelem === 1) {
+          out.Ec = p.Ec;
+          out.re = p.re;
+          out.alpha = p.alpha;
+        }
+        break;
+      }
+      case 'Cmin':
+      case 'Cmax': {
+        index(3);
+        const v = num();
+        if (nelem > 1 && v !== (key === 'Cmin' ? DEFAULT_MEAM_OPTIONS.Cmin : DEFAULT_MEAM_OPTIONS.Cmax)) {
+          throw new StyleError(`MEAM ${key}(I,J,K) = ${val} in a multi-element potential is not supported (only the default; ${name})`);
+        }
+        if (key === 'Cmin') out.opts.Cmin = v;
+        else out.opts.Cmax = v;
+        break;
+      }
       case 'augt1': {
-        want([], '');
+        if (idx.length) throw new StyleError(`MEAM parameter augt1 in ${name} takes no index`);
         const x = num();
         if (x !== 0 && x !== 1) throw new StyleError(`augt1 must be 0 or 1 (${name})`);
         out.opts.augt1 = x === 1;
         break;
       }
-      case 'lattce':
-        want([1, 1], '(1,1)');
-        if (val !== 'fcc') throw new StyleError(`MEAM lattce '${val}' is not supported (only fcc, ${name})`);
+      case 'lattce': {
+        const [i, j] = pairIndex();
+        if (i === j) {
+          if (!SUPPORTED_REFERENCE_LATTICES.includes(val as ReferenceLattice)) {
+            throw new StyleError(`MEAM lattce(${i},${j}) = ${val} is not supported (only fcc, bcc, dia; ${name})`);
+          }
+          pairOf(i, j).lattce = val;
+          if (nelem === 1) out.lattce = val;
+        } else {
+          if (val !== 'b1') {
+            throw new StyleError(`MEAM lattce(${i},${j}) = ${val} is not supported (only b1 for an I-J pair; ${name})`);
+          }
+          pairOf(i, j).lattce = val;
+        }
         break;
-      case 'zbl':
-        want([1, 1], '(1,1)');
-        if (num() !== 0) throw new StyleError(`MEAM zbl(1,1) = ${val} is not supported; set zbl(1,1) = 0 (${name})`);
+      }
+      case 'zbl': {
+        pairIndex();
+        if (num() !== 0) throw new StyleError(`MEAM zbl(I,J) = ${val} is not supported; set zbl(I,J) = 0 (${name})`);
         break;
-      case 'rho0':
-        want([1], '(1)');
+      }
+      case 'rho0': {
+        index(1);
         if (num() !== 1) throw new StyleError(`MEAM rho0 = ${val} is not supported; only 1 (${name})`);
         break;
+      }
       default:
         if (NUMERIC_DEFAULT_ZERO.includes(key)) {
           const k = idx.length ? `${key}(${idx.join(',')})` : key;
+          if (idx.length) pairIndex();
           if (num() !== 0) throw new StyleError(`MEAM keyword ${k} = ${val} is not supported (only the default 0; ${name})`);
           break;
         }
@@ -645,7 +774,7 @@ export const parseMeamParams = (text: string, name: string): MeamParams => {
   return out;
 };
 
-/** pair_style meam: single element, energy and analytic forces, full neighbour list. */
+/** pair_style meam: energy and analytic forces, full neighbour list; one element or several (meam_alloy.ts). */
 export class PairMeam extends Pair {
   readonly name = 'meam';
   manybody = true;
@@ -654,6 +783,9 @@ export class PairMeam extends Pair {
   virialFdotr = true;
 
   private el: MeamElement | null = null;
+  private alloy: AlloyModel | null = null;
+  /** LAMMPS type (1..ntypes) -> element index of the alloy model */
+  private typeElem: number[] = [];
   private opts: MeamOptions = { ...DEFAULT_MEAM_OPTIONS };
   private rhoRef = 0;
   private t: [number, number, number, number] = [1, 1, 1, 1];
@@ -675,23 +807,32 @@ export class PairMeam extends Pair {
     if (nelem < 1) {
       throw new StyleError(`pair_coeff for style meam needs the element list and one element name per atom type (${this.ntypes})`);
     }
-    if (nelem !== 1) throw new StyleError('multi-element MEAM potentials are not supported (single element only)');
-    const elem = args[3];
+    const elems = args.slice(3, 3 + nelem);
     const paramFile = args[3 + nelem];
     const maps = args.slice(4 + nelem);
     for (const m of maps) {
       if (m === 'NULL') throw new StyleError('NULL type mappings are not supported for pair_style meam');
-      if (m !== elem) throw new StyleError(`element '${m}' is not the MEAM element '${elem}'`);
+      if (!elems.includes(m)) throw new StyleError(`element '${m}' is not one of the MEAM elements ${elems.join(' ')}`);
     }
     if (paramFile === 'NULL') {
       throw new StyleError('pair_coeff for style meam needs a parameter file: the NULL parameter file (zbl = 1 default, Ec and re without verified defaults) is not supported');
     }
+    if (nelem > 1) {
+      this.coeffAlloy(args, elems, maps, ctx);
+      return;
+    }
+    const elem = elems[0];
     const lib = parseMeamLibrary(ctx.readFile(args[2]), elem, args[2]);
     const par = parseMeamParams(ctx.readFile(paramFile), paramFile);
-    if (lib.lat !== 'fcc') throw new StyleError(`MEAM reference lattice '${lib.lat}' is not supported (only fcc)`);
+    if (!SUPPORTED_REFERENCE_LATTICES.includes(lib.lat as ReferenceLattice)) {
+      throw new StyleError(`MEAM reference lattice '${lib.lat}' is not supported (only fcc, bcc, dia)`);
+    }
     if (lib.t[0] !== 1) throw new StyleError('only MEAM parameters normalized to t0 = 1.0 are supported');
     if (lib.rozero !== 1) throw new StyleError(`MEAM rozero = ${lib.rozero} is not supported (only 1)`);
     if (lib.ibar !== 0) throw new StyleError(`MEAM ibar = ${lib.ibar} is not supported (only ibar = 0)`);
+    if (par.lattce !== undefined && par.lattce !== lib.lat) {
+      throw new StyleError(`MEAM lattce(1,1) = ${par.lattce} differs from the library lattice '${lib.lat}' of ${elem}; not supported`);
+    }
     if (par.Ec === undefined || par.re === undefined) {
       throw new StyleError(`MEAM parameter file ${paramFile} must set Ec(1,1) and re(1,1)`);
     }
@@ -704,28 +845,91 @@ export class PairMeam extends Pair {
       beta: lib.b,
       t: lib.t,
       ibar: lib.ibar,
+      lat: lib.lat as ReferenceLattice,
     };
+    this.opts = par.opts;
+    this.alloy = null;
+    this.typeElem = [];
+  }
+
+  /** Multi-element pair_coeff: fcc elements, b1 pairs, default screening (see meam_alloy.ts). */
+  private coeffAlloy(args: string[], elems: string[], maps: string[], ctx: StyleContext): void {
+    const libFile = args[2], paramFile = args[3 + elems.length];
+    const libs = elems.map((elt) => {
+      try {
+        return parseMeamLibrary(ctx.readFile(libFile), elt, libFile);
+      } catch (e) {
+        throw new StyleError(`multi-element MEAM: ${(e as Error).message}`);
+      }
+    });
+    const par = parseMeamParams(ctx.readFile(paramFile), paramFile, elems.length);
+    const n = elems.length;
+    const elements: AlloyElement[] = libs.map((lib, c) => {
+      const elt = elems[c];
+      if (lib.lat !== 'fcc') throw new StyleError(`multi-element MEAM: reference lattice '${lib.lat}' of ${elt} is not supported (only fcc)`);
+      if (lib.t[0] !== 1) throw new StyleError('only MEAM parameters normalized to t0 = 1.0 are supported');
+      if (lib.rozero !== 1) throw new StyleError(`multi-element MEAM: rozero = ${lib.rozero} is not supported (only 1)`);
+      if (lib.ibar !== 0) throw new StyleError(`multi-element MEAM: ibar = ${lib.ibar} is not supported (only ibar = 0)`);
+      const own = par.pair.get(`${c + 1},${c + 1}`) ?? {};
+      if (own.lattce !== undefined && own.lattce !== 'fcc') throw new StyleError(`multi-element MEAM: lattce(${c + 1},${c + 1}) = ${own.lattce} for ${elt} is not supported`);
+      if (own.Ec === undefined || own.re === undefined) {
+        throw new StyleError(`multi-element MEAM: parameter file ${paramFile} must set Ec(${c + 1},${c + 1}) and re(${c + 1},${c + 1})`);
+      }
+      return {
+        z: lib.z,
+        lat: 'fcc' as ReferenceLattice,
+        re: own.re,
+        alpha: own.alpha ?? lib.alpha,
+        Ec: own.Ec,
+        A: lib.asub,
+        beta: lib.b,
+        t: lib.t,
+      };
+    });
+    const pairs: AlloyPair[][] = [];
+    for (let i = 0; i < n; i++) {
+      pairs.push([]);
+      for (let j = 0; j < n; j++) {
+        if (i === j) {
+          pairs[i].push({ Ec: elements[i].Ec, re: elements[i].re, alpha: elements[i].alpha, lat: 'self' });
+          continue;
+        }
+        const a = Math.min(i, j), b = Math.max(i, j);
+        const p = par.pair.get(`${a + 1},${b + 1}`) ?? {};
+        if (p.Ec === undefined || p.re === undefined || p.alpha === undefined) {
+          throw new StyleError(`multi-element MEAM: parameter file ${paramFile} must set Ec(${a + 1},${b + 1}), re(${a + 1},${b + 1}) and alpha(${a + 1},${b + 1})`);
+        }
+        if (p.lattce !== 'b1') {
+          throw new StyleError(`multi-element MEAM: lattce(${a + 1},${b + 1}) must be set to b1 (${p.lattce ?? 'not set'} is not supported)`);
+        }
+        pairs[i].push({ Ec: p.Ec, re: p.re, alpha: p.alpha, lat: 'b1' });
+      }
+    }
+    this.alloy = makeAlloyModel(elements, pairs, par.opts, par.opts.augt1);
+    this.typeElem = [-1, ...maps.map((m) => elems.indexOf(m))];
+    this.el = null;
     this.opts = par.opts;
   }
 
   override initStyle(_ctx: StyleContext): void {
-    if (!this.el) throw new StyleError('pair_coeff for style meam must be set before the run');
+    if (!this.el && !this.alloy) throw new StyleError('pair_coeff for style meam must be set before the run');
     if (this.shift || this.tail) throw new StyleError('pair_style meam does not support the pair_modify shift and tail options');
     if (this.table !== 12) throw new StyleError('pair_style meam does not support the pair_modify table option');
-    this.rhoRef = referenceBackground(this.el, this.opts);
-    const t1 = this.opts.augt1 ? this.el.t[1] + 0.6 * this.el.t[3] : this.el.t[1];
-    this.t = [1, t1, this.el.t[2], this.el.t[3]];
+    if (this.alloy) return;
+    this.rhoRef = referenceBackground(this.el!, this.opts);
+    const t1 = this.opts.augt1 ? this.el!.t[1] + 0.6 * this.el!.t[3] : this.el!.t[1];
+    this.t = [1, t1, this.el!.t[2], this.el!.t[3]];
   }
 
   override initOne(_i: number, _j: number): number {
-    if (!this.el) throw new StyleError('pair_coeff for style meam must be set before the run');
+    if (!this.el && !this.alloy) throw new StyleError('pair_coeff for style meam must be set before the run');
     return this.opts.rc;
   }
 
   override compute(pc: PairCompute): void {
     const list = pc.full;
     if (!list) throw new Error('pair style meam needs a full neighbor list');
-    if (!this.el) throw new StyleError('pair_coeff for style meam must be set before the run');
+    if (!this.el && !this.alloy) throw new StyleError('pair_coeff for style meam must be set before the run');
     const { x, f, type } = pc;
     const nt = this.ntypes + 1;
     const cutsq = this.cutsq;
@@ -734,21 +938,28 @@ export class PairMeam extends Pair {
     for (let i = 0; i < pc.nlocal; i++) {
       const ti = type[i] * nt;
       const nb: MeamNeighbor[] = [];
+      const anb: AlloyNeighbor[] = [];
       const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
       for (let k = k0; k < k1; k++) {
         const j = list.neighbors[k] & NEIGHMASK;
         const dx = x[3 * j] - x[3 * i], dy = x[3 * j + 1] - x[3 * i + 1], dz = x[3 * j + 2] - x[3 * i + 2];
         const rsq = dx * dx + dy * dy + dz * dz;
         if (rsq >= cutsq[ti + type[j]]) continue;
-        nb.push({ j, dx, dy, dz, r: Math.sqrt(rsq) });
+        const r = Math.sqrt(rsq);
+        if (this.alloy) anb.push({ e: this.typeElem[type[j]], j, dx, dy, dz, r });
+        else nb.push({ j, dx, dy, dz, r });
       }
-      if (nb.length === 0) continue;
-      const g = new Float64Array(3 * nb.length);
-      const e = meamAtomEnergyGrad(this.el, this.opts, this.rhoRef, this.t, nb, g);
+      const count = this.alloy ? anb.length : nb.length;
+      if (count === 0) continue;
+      const g = new Float64Array(3 * count);
+      let e: number;
+      if (this.alloy) e = alloyAtomEnergyGrad(this.alloy, this.typeElem[type[i]], anb, g);
+      else e = meamAtomEnergyGrad(this.el!, this.opts, this.rhoRef, this.t, nb, g);
+      const list2 = this.alloy ? anb : nb;
       evdwl += e;
       if (eatom) eatom[i] += e;
-      for (let m = 0; m < nb.length; m++) {
-        const j = nb[m].j;
+      for (let m = 0; m < list2.length; m++) {
+        const j = list2[m].j;
         for (let c = 0; c < 3; c++) {
           f[3 * j + c] -= g[3 * m + c];
           f[3 * i + c] += g[3 * m + c];

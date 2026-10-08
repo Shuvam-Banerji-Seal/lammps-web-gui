@@ -1,3 +1,4 @@
+import { hasChargeStyle } from '../atoms';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
@@ -209,10 +210,10 @@ export class FixEfieldLepton extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     const s = sys.state;
-    if (String(s.atomStyle) === 'dipole' || String(s.atomStyle) === 'hybrid') {
+    if (s.mu) {
       throw new StyleError(`fix ${id} efield/lepton: point dipoles (atom_style ${String(s.atomStyle)}) are not supported by this engine`);
     }
-    if (s.atomStyle !== 'charge' && s.atomStyle !== 'full') {
+    if (!hasChargeStyle(s.atomStyle)) {
       throw new StyleError(`fix efield/lepton requires atoms that store a charge; atom_style ${s.atomStyle} does not`);
     }
     if (s.box.triclinic) throw new StyleError(`fix ${id} efield/lepton: triclinic boxes are not supported`);

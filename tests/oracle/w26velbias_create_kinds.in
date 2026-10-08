@@ -1,0 +1,33 @@
+# oracle: velocity create bias yes with temp/partial, temp/ramp, temp/region and temp/com (bias post-processing after the plain rescale)
+# oracle-inputs: w26velbias_cs.data
+units           metal
+atom_style      full
+boundary        p p p
+read_data       w26velbias_cs.data
+comm_modify     vel yes
+group           cores type 1
+group           shells type 2
+pair_style      zero 10.0
+pair_coeff      * *
+bond_style      harmonic
+bond_coeff      1 100.0 0.1
+region          left block 0 4 0 20 0 20
+compute         Txy all temp/partial 1 1 0
+compute         Treg all temp/region left
+compute         Tramp all temp/ramp vx 0.0 2.0 x 0.0 20.0 units box
+compute         Tcom all temp/com
+thermo_style    custom step temp c_Txy c_Treg c_Tramp c_Tcom
+thermo_modify   format float %.15g
+thermo          1
+velocity        all set 0.0 0.0 0.0 units box
+velocity        all create 1427.0 134 dist gaussian mom no rot no bias yes temp Txy
+run             0
+velocity        all set 0.0 0.0 0.0 units box
+velocity        all create 1427.0 134 dist gaussian mom no rot no bias yes temp Tramp
+run             0
+velocity        all set 0.0 0.0 0.0 units box
+velocity        all create 1427.0 134 dist gaussian mom no rot no bias yes temp Treg
+run             0
+velocity        all set 0.0 0.0 0.0 units box
+velocity        all create 1427.0 134 dist gaussian mom no rot no bias yes temp Tcom
+run             0

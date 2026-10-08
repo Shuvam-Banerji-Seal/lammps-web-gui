@@ -130,6 +130,22 @@ describe('dump image', () => {
     expect(url?.startsWith('data:image/x-portable-pixmap;base64,')).toBe(true);
   });
 
+  it('box outline spans exactly the box (8 corners, 12 edges), not twice it', async () => {
+    // A 10x10x10 box seen along x (view 90 0) in 200x200: scale = h / (2 L) = 10 px per unit, so the
+    // y-z face projects to a 100 px square around the centre. An earlier corner loop over 0..2 drew
+    // a 3x3x3 lattice of corners reaching 2 L (a 200 px outline with extra lines).
+    const files = await run(base('dump im all image 1 out.*.ppm type type size 200 200 box yes 0.02 view 90 0'));
+    const img = decodePpm(b64(files.get('out.0.ppm')!));
+    let x0 = Infinity, x1 = -1, y0 = Infinity, y1 = -1;
+    for (let y = 0; y < img.h; y++) for (let x = 0; x < img.w; x++) {
+      const o = (y * img.w + x) * 3;
+      if (img.rgb[o] > 200 && img.rgb[o + 1] > 200 && img.rgb[o + 2] < 60) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    }
+    expect(Math.abs(x1 - x0 - 100)).toBeLessThanOrEqual(4);
+    expect(Math.abs(y1 - y0 - 100)).toBeLessThanOrEqual(4);
+    expect(Math.abs((x0 + x1) / 2 - 100)).toBeLessThanOrEqual(2);
+  });
+
   it('PPM: one atom at the box centre lands at the image centre', async () => {
     const files = await run(base('dump im all image 1 out.*.ppm type type size 200 200 box no 0.02 view 90 0 zoom 1.0'));
     const img = decodePpm(b64(files.get('out.0.ppm')!));

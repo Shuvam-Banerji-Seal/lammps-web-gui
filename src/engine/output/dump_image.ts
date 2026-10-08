@@ -496,9 +496,10 @@ export class ImageDump {
     const b = s.box;
     const corners: number[][] = [];
     const dim = s.dimension;
-    const ks = dim === 2 ? [0, 1] : [0, 1, 2];
+    // the 8 corners (4 in 2d) of the (possibly tilted) box: each fractional coordinate is 0 or 1
+    const kz = dim === 2 ? [0] : [0, 1];
     const idx = (i: number, j: number, k: number) => [b.lo[0] + i * (b.hi[0] - b.lo[0]) + j * b.tilt[0] + k * b.tilt[1], b.lo[1] + j * (b.hi[1] - b.lo[1]) + k * b.tilt[2], b.lo[2] + k * (b.hi[2] - b.lo[2])];
-    for (const i of ks) for (const j of ks) for (const k of ks) corners.push(idx(i, j, k));
+    for (const i of [0, 1]) for (const j of [0, 1]) for (const k of kz) corners.push(idx(i, j, k));
     const width = Math.max(1, diam * Math.min(b.hi[0] - b.lo[0], b.hi[1] - b.lo[1]) * scale);
     const edges: [number, number][] = [];
     // connect corners differing in exactly one axis

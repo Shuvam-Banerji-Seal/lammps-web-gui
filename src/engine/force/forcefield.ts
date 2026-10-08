@@ -36,6 +36,9 @@ export interface ComputeFlags {
   step?: boolean;
 }
 
+/** The force-field terms compute pe/atom and stress/atom can select. */
+export type PerAtomTerm = 'pair' | 'bond' | 'angle' | 'dihedral' | 'improper' | 'kspace';
+
 export class ForceField {
   pair: Pair | null = null;
   /**
@@ -59,6 +62,12 @@ export class ForceField {
   /** Per owned atom, after compute() with the flags set. */
   eatom: Float64Array | null = null;
   vatom: Float64Array | null = null;
+  /**
+   * The same per term (pair, bond, angle, dihedral, improper, kspace), for compute pe/atom and
+   * stress/atom keyword subsets; a term without a style has no entry. eatom/vatom are their sums.
+   */
+  eatomTerm: Partial<Record<PerAtomTerm, Float64Array>> = {};
+  vatomTerm: Partial<Record<PerAtomTerm, Float64Array>> = {};
   /** Tail corrections: energy = etailV / V, pressure term = ptailV / V^2 (in energy/volume). */
   etailV = 0;
   ptailV = 0;
@@ -202,30 +211,49 @@ export class ForceField {
         v[0] += v0; v[1] += v1; v[2] += v2; v[3] += v3; v[4] += v4; v[5] += v5;
       }
     }
-    const eatom = flags.eatom ? new Float64Array(s.n) : null;
-    const vatom = flags.vatom ? new Float64Array(6 * s.n) : null;
+    // per-atom energy and virial are tallied per term, then summed
+    const eTerm: Partial<Record<PerAtomTerm, Float64Array>> = {};
+    const vTerm: Partial<Record<PerAtomTerm, Float64Array>> = {};
+    const termArrays = (t: PerAtomTerm): { eatom: Float64Array | null; vatom: Float64Array | null } => {
+      const e = flags.eatom ? (eTerm[t] = new Float64Array(s.n)) : null;
+      const v = flags.vatom ? (vTerm[t] = new Float64Array(6 * s.n)) : null;
+      return { eatom: e, vatom: v };
+    };
     if (this.bond || this.angle || this.dihedral || this.improper) {
       if (this.map.length === 0 || this.mapStale(s)) this.map = buildAtomMap(s);
       const ov = this.topoOverride;
       const sb = ov && ov.bondsN === s.topo.bonds.n && ov.anglesN === s.topo.angles.n
         ? { ...s, topo: { ...s.topo, bonds: ov.bonds, angles: ov.angles } }
         : s;
-      const bc = { s: sb, geom, map: this.map, f: s.f, acc, eatom, vatom, virial: acc.vbond, warn: this.warn };
-      this.bond?.compute(bc);
-      bc.virial = acc.vangle;
-      this.angle?.compute(bc);
-      bc.virial = acc.vdihed;
-      this.dihedral?.compute(bc);
-      bc.virial = acc.vimp;
-      this.improper?.compute(bc);
+      const bc = { s: sb, geom, map: this.map, f: s.f, acc, eatom: null as Float64Array | null, vatom: null as Float64Array | null, virial: acc.vbond, warn: this.warn };
+      const run = (style: Bonded | null, t: PerAtomTerm, virial: Float64Array) => {
+        if (!style) return;
+        Object.assign(bc, termArrays(t));
+        bc.virial = virial;
+        style.compute(bc);
+      };
+      run(this.bond, 'bond', acc.vbond);
+      run(this.angle, 'angle', acc.vangle);
+      run(this.dihedral, 'dihedral', acc.vdihed);
+      run(this.improper, 'improper', acc.vimp);
     }
-    if (this.kspace) this.kspace.compute({ s, geom, f: s.f, qqrd2e, acc, eatom, vatom });
+    if (this.kspace) this.kspace.compute({ s, geom, f: s.f, qqrd2e, acc, ...termArrays('kspace') });
     nb.reverseComm(s.f);
-    if (eatomAll && eatom) nb.reverseSum(eatomAll, 1, eatom);
-    if (vatomAll && vatom) nb.reverseSum(vatomAll, 6, vatom);
+    if (this.pair && (eatomAll || vatomAll)) {
+      const pt = termArrays('pair');
+      if (eatomAll && pt.eatom) nb.reverseSum(eatomAll, 1, pt.eatom);
+      if (vatomAll && pt.vatom) nb.reverseSum(vatomAll, 6, pt.vatom);
+    }
     if (this.etailV !== 0) acc.evdwl += this.etailV / geom.volume(s.dimension);
-    this.eatom = eatom;
-    this.vatom = vatom;
+    const sum = (terms: Partial<Record<PerAtomTerm, Float64Array>>, len: number): Float64Array => {
+      const out = new Float64Array(len);
+      for (const arr of Object.values(terms)) for (let k = 0; k < len; k++) out[k] += arr![k];
+      return out;
+    };
+    this.eatomTerm = eTerm;
+    this.vatomTerm = vTerm;
+    this.eatom = flags.eatom ? sum(eTerm, s.n) : null;
+    this.vatom = flags.vatom ? sum(vTerm, 6 * s.n) : null;
     return acc;
   }
 

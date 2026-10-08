@@ -82,6 +82,14 @@ export abstract class Fix {
 
   /** Global energy contribution for compute pe when fix_modify energy yes. */
   energy(): number { return 0; }
+  /**
+   * Adds this fix's per-atom energy (owned atoms) to out, for compute pe/atom fix (with fix_modify
+   * energy yes). compute_pe_atom.html: "Various fixes can contribute to the per-atom potential
+   * energy of the system if the *fix* contribution is included."
+   */
+  energyAtom?(out: Float64Array): void;
+  /** Adds this fix's per-atom virial (6 per owned atom) to out, for compute stress/atom fix (fix_modify virial yes). */
+  virialAtom?(out: Float64Array): void;
   /** f_ID scalar. */
   computeScalar(): number { throw new StyleError(`fix ${this.id} does not compute a global scalar`); }
   /** f_ID[i] (0-based i). */

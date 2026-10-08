@@ -230,6 +230,8 @@ abstract class FixWallBase extends Fix {
     this.wallEnergy = 0;
     this.wallForce.fill(0);
     if (this.thermoVirial) this.virial.fill(0);
+    if (this.vAtom.length !== 6 * s.n) this.vAtom = new Float64Array(6 * s.n);
+    else this.vAtom.fill(0);
     // shifted energy at the cutoff per wall (depends on the current parameters)
     const eCut = new Float64Array(walls.length);
     for (let k = 0; k < walls.length; k++) eCut[k] = this.energyAt(walls[k].cutoff, walls[k]);
@@ -249,6 +251,7 @@ abstract class FixWallBase extends Fix {
         // force ON the wall is opposite the force on the atom
         this.wallForce[k] -= sign * f;
         if (this.thermoVirial) this.virial[d] += r * f;
+        this.vAtom[6 * i + d] += r * f;
       }
     }
   }
@@ -260,6 +263,16 @@ abstract class FixWallBase extends Fix {
   protected abstract forceAt(r: number, w: Wall): number;
 
   energy(): number { return this.wallEnergy; }
+  /**
+   * Per-atom wall virial of the last evaluation, for compute stress/atom fix. fix_wall.html: the
+   * fix_modify virial option adds the wall contribution "to both the global pressure and per-atom
+   * stress of the system"; the energy option names only the global potential energy, and measured
+   * with native LAMMPS (black box) compute pe/atom fix stays 0 with fix_modify energy yes walls.
+   */
+  private vAtom = new Float64Array(0);
+  virialAtom(out: Float64Array): void {
+    for (let k = 0; k < this.vAtom.length && k < out.length; k++) out[k] += this.vAtom[k];
+  }
   computeScalar(): number { return this.wallEnergy; }
   computeVector(i: number): number { return this.wallForce[i]; }
 }

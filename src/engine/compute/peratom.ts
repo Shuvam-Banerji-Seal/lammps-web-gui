@@ -90,26 +90,24 @@ export class ComputePEAtom extends Compute {
 
   protected computePeratom(): void {
     const s = this.sys.state;
-    const per = this.sys.peratomEnergy();
-    const a = this.sys.forces();
-    const termEnergy: Record<string, number> = {
-      pair: a.evdwl + a.ecoul, bond: a.ebond, angle: a.eangle, dihedral: a.edihed, improper: a.eimp, kspace: a.elong,
-    };
+    this.sys.peratomEnergy();
+    const ff = this.sys.ff;
+    const out = new Float64Array(s.n);
     for (const t of PE_KEYWORDS) {
-      if (t === 'fix' || this.terms.has(t)) continue;
-      const e = termEnergy[t];
-      if (e !== 0) throw new StyleError(`compute ${this.id} (pe/atom): the '${t}' term is present (energy ${e}) but is not among the requested keywords`);
+      if (t === 'fix' || !this.terms.has(t)) continue;
+      const arr = ff.eatomTerm[t];
+      if (arr) for (let i = 0; i < s.n; i++) out[i] += arr[i];
     }
+    // compute_pe_atom.html: "The fix_modify energy yes command must also be specified if a fix is
+    // to contribute per-atom potential energy to this command." and "See the doc pages for individual
+    // fixes for details of which ones compute a per-atom potential energy": a fix without one adds
+    // nothing (measured with native LAMMPS, black box: fix wall/lj93 and wall/harmonic with
+    // fix_modify energy yes leave compute pe/atom fix at 0).
     if (this.terms.has('fix')) {
-      const fixE = this.sys.fixEnergy();
-      if (fixE !== 0) throw new StyleError(`compute ${this.id} (pe/atom): per-atom fix energy is not available (fix energy = ${fixE})`);
+      for (const f of this.sys.fixes) if (f.thermoEnergy && f.energyAtom) f.energyAtom(out);
     }
-    this.vectorAtom = new Float64Array(s.n);
-    const eatom = per.eatom!;
-    for (let i = 0; i < s.n; i++) {
-      if (!(s.mask[i] & this.groupBit)) continue;
-      this.vectorAtom[i] = eatom[i];
-    }
+    for (let i = 0; i < s.n; i++) if (!(s.mask[i] & this.groupBit)) out[i] = 0;
+    this.vectorAtom = out;
   }
 }
 
@@ -182,21 +180,19 @@ export class ComputeStressAtom extends Compute {
     const v = s.v;
     const per = this.sys.peratomEnergy();
     const a = this.sys.forces();
-    const termVirial: Record<string, Float64Array> = {
-      pair: a.virial, bond: a.vbond, angle: a.vangle, dihedral: a.vdihed, improper: a.vimp, kspace: a.vlong,
-    };
+    const vsum = new Float64Array(6 * s.n);
     for (const t of VIRIAL_TERMS) {
-      if (t === 'fix' || this.terms.has(t)) continue;
-      const w = termVirial[t];
-      for (let c = 0; c < 6; c++) {
-        if (w[c] !== 0) throw new StyleError(`compute ${this.id} (stress/atom): the '${t}' term is present (virial component ${c} = ${w[c]}) but is not among the requested keywords`);
-      }
+      if (t === 'fix' || !this.terms.has(t)) continue;
+      const arr = this.sys.ff.vatomTerm[t];
+      if (arr) for (let k = 0; k < 6 * s.n; k++) vsum[k] += arr[k];
     }
     if (this.terms.has('fix')) {
-      const w = new Float64Array(6);
-      this.sys.fixVirial(w);
-      for (let c = 0; c < 6; c++) {
-        if (w[c] !== 0) throw new StyleError(`compute ${this.id} (stress/atom): per-atom fix virial is not available (fix virial component ${c} = ${w[c]})`);
+      for (const f of this.sys.fixes) {
+        if (!f.thermoVirial) continue;
+        if (f.virialAtom) { f.virialAtom(vsum); continue; }
+        for (let c = 0; c < 6; c++) {
+          if (f.virial[c] !== 0) throw new StyleError(`compute ${this.id} (stress/atom): fix ${f.id} (${f.style}) has a virial but no per-atom virial in this engine`);
+        }
       }
     }
     this.arrayAtom = new Float64Array(6 * s.n);
@@ -216,10 +212,9 @@ export class ComputeStressAtom extends Compute {
       }
       if (t && t.hasBias()) t.restoreBiasAll();
     }
-    const vatom = per.vatom!;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      for (let c = 0; c < 6; c++) arr[6 * i + c] -= vatom[6 * i + c];
+      for (let c = 0; c < 6; c++) arr[6 * i + c] -= vsum[6 * i + c];
     }
   }
 }

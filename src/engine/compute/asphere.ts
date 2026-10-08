@@ -132,7 +132,6 @@ export class ComputeTempAsphere extends ComputeTemp {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, []);
     if (!sys.state.shape || !sys.state.quat || !sys.state.angmom) throw new StyleError('Compute temp/asphere requires atom style ellipsoid');
-    if (sys.dimension !== 3) throw new StyleError('compute temp/asphere is only supported for 3d systems');
     for (let k = 0; k < args.length; k += 2) {
       const key = args[k], val = args[k + 1];
       if (val === undefined) throw new StyleError(`Illegal compute temp/asphere keyword ${key}: missing value`);
@@ -156,7 +155,10 @@ export class ComputeTempAsphere extends ComputeTemp {
     const s = this.sys.state;
     let n = 0;
     for (let i = 0; i < s.n; i++) if (this.counted(i)) n++;
-    this.dof = this.rotateOnly ? 3 * n : 6 * n - this.extraDof - this.sys.dofRemoved(this.groupBit);
+    // docs.lammps.org/compute_temp_asphere.html: "For 2d finite-size particles, each has three degrees of freedom (two translational, one rotational)." Measured with native LAMMPS (black box):
+    // dof all in 2d is 3N - 2 (the default extra/dof is the dimension), dof rotate is N.
+    const d = this.sys.dimension, rot = d === 3 ? 3 : 1;
+    this.dof = this.rotateOnly ? rot * n : (d + rot) * n - this.extraDof - this.sys.dofRemoved(this.groupBit);
   }
 
   /**

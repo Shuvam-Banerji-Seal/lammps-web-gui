@@ -7,7 +7,8 @@ import type { SimState } from '../src/engine/types';
 /*
  * Neighbor.buildList (wave: row-based bin enumeration) must hold exactly the pairs the
  * previous per-atom stencil scan held. refBuildList below is that previous algorithm copied
- * verbatim from this project's history (HEAD of src/engine/neighbor.ts, before the rewrite),
+ * from this project's history (src/engine/neighbor.ts before the rewrite; since then given the
+ * periodic-image rule for special partners that neighbor.ts follows),
  * with `this` replaced by `self`. The membership rules it encodes are the ones in the class
  * comment of neighbor.ts: half lists keep an owned-owned pair once (lower index), an owned-ghost
  * pair only when the ghost lies lex-above; full lists keep every neighbor; special bits and
@@ -139,8 +140,15 @@ function refBuildList(self: any, s: SimState, needs: NeighborNeeds, fullList: bo
         if (sp1 > sp0) {
           const jid = id[jo];
           let skip = false;
+          // a partner seen through an image more than half a box edge away is not special (measured
+          // with native LAMMPS; see neighbor.ts encode)
+          const bx = s.box;
+          const far = (bx.periodic[0] && Math.abs(dx) > 0.5 * (bx.hi[0] - bx.lo[0]))
+            || (bx.periodic[1] && Math.abs(dy) > 0.5 * (bx.hi[1] - bx.lo[1]))
+            || (bx.periodic[2] && Math.abs(dz) > 0.5 * (bx.hi[2] - bx.lo[2]));
           for (let k = sp0; k < sp1; k++) {
             if (special!.partner[k] !== jid) continue;
+            if (far) break;
             const o = special!.order[k];
             const lj = ss.lj[o], cl = ss.coul[o];
             if (lj === 1 && cl === 1) break;

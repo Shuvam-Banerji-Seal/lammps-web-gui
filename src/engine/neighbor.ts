@@ -470,6 +470,18 @@ export class Neighbor {
     const incl = this.includeBit;
     const plain = !special && !exclude && !incl;
     const id = s.id;
+    // Measured with native LAMMPS (black box): a special partner seen through a periodic image more
+    // than half a box length away (in any periodic dimension) is an ordinary neighbor. A bonded pair
+    // 1.2 apart in a 5-wide periodic box with lj/cut 4.0 has its image pair at 3.8 counted at weight
+    // 1 for special_bonds lj 0, 0.5 and 1 alike, while the direct pair takes the special weight. The
+    // test is per Cartesian dimension against half the box edge, in triclinic boxes too (xy = 2 in a
+    // 5-wide box: of the images (-2.3, 2.4), (2.7, 2.4) and (0.7, -2.6) only the first is special).
+    const box = s.box, per = box.periodic;
+    const hx = 0.5 * (box.hi[0] - box.lo[0]), hy = 0.5 * (box.hi[1] - box.lo[1]), hz = 0.5 * (box.hi[2] - box.lo[2]);
+    const farImage = (a: number, j: number): boolean => {
+      const dx = xa[3 * j] - xa[3 * a], dy = xa[3 * j + 1] - xa[3 * a + 1], dz = xa[3 * j + 2] - xa[3 * a + 2];
+      return (per[0] && Math.abs(dx) > hx) || (per[1] && Math.abs(dy) > hy) || (per[2] && Math.abs(dz) > hz);
+    };
     // the entry for owned atom a and neighbor j (index into owned+ghost), NaN when rejected
     const encode = (a: number, j: number): number => {
       const jo = owner[j];
@@ -479,6 +491,7 @@ export class Neighbor {
       const sp1 = special.offset[a + 1];
       for (let k = special.offset[a]; k < sp1; k++) {
         if (special.partner[k] !== id[jo]) continue;
+        if (farImage(a, j)) return j;
         const o = special.order[k];
         const lj = ss.lj[o], cl = ss.coul[o];
         if (lj === 1 && cl === 1) return j;

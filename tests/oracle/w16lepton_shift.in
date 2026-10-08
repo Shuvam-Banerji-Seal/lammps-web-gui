@@ -1,0 +1,21 @@
+# oracle: pair_style lepton with pair_modify shift yes (energy zero at the cutoff, force unchanged)
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        vx atom 0.5*sin(1.3*x+0.7*y)
+variable        vy atom 0.5*cos(0.9*y-0.4*z)
+variable        vz atom 0.5*sin(1.1*z+0.5*x)
+velocity        all set v_vx v_vy v_vz
+velocity        all zero linear
+pair_style      lepton 2.5
+pair_coeff      * * "4.0*((1.0/r)^12 - (1.0/r)^6)" 2.0
+pair_modify     shift yes
+fix             1 all nve
+thermo_style    custom step temp pe evdwl press
+thermo_modify   format float %.15g
+thermo          10
+run             30

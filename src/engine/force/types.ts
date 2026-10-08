@@ -222,6 +222,8 @@ export interface StyleContext {
   freezeGroupBit?: number;
   /** newton pair setting (default on); a few styles require it off. */
   newtonPair?: boolean;
+  /** Value of an equal-style variable (lepton expressions with v_name references). */
+  equalVariable?(name: string): number;
 }
 
 /** Equilibrium bond lengths and angles (degrees) by type, for Pair.linkBonded. */

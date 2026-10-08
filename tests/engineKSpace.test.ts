@@ -26,6 +26,8 @@ const run = async (text: string) => {
 };
 
 /** 3x3x3 rocksalt cells, a = 5.64 A, charges +-1: 216 ions, nearest-neighbour distance 2.82 A. */
+// pair_modify table 16: the real-space erfc table (native's default is 12) interpolates to ~2e-9, below
+// the accuracies checked here
 const nacl = (kspace: string) => `
 units           metal
 atom_style      charge
@@ -40,6 +42,7 @@ set             type 1 charge 1.0
 set             type 2 charge -1.0
 pair_style      coul/long 8.0
 pair_coeff      * *
+pair_modify     table 16
 ${kspace}
 thermo_style    custom step pe ecoul elong
 run             0
@@ -80,6 +83,7 @@ describe('kspace: rocksalt Madelung energy', () => {
 });
 
 describe('kspace: ewald forces are the energy gradient', () => {
+  // gewald 2.0 makes the real-space term (and its erfc table) negligible: the check is on the k-space sum
   it('matches central differences for every component of a charged atom', async () => {
     const base = `
 units           real
@@ -98,6 +102,7 @@ set             type 2 charge -0.6
 pair_style      coul/long 4.5
 pair_coeff      * *
 kspace_style    ewald 1.0e-10
+kspace_modify   gewald 2.0
 group           one id 3
 thermo_style    custom step pe
 run             0

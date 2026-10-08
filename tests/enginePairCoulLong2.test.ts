@@ -28,7 +28,9 @@ const close = (a: number, b: number, rel: number, abs: number) => Math.abs(a - b
 /** fforce * r must equal -dE/dr (central difference) at each geometry. */
 const finiteDiff = (s: Pair, itype: number, jtype: number, radii: number[], qi = 0, qj = 0, factorCoul = 1, factorLJ = 1, rel = 1e-6) => {
   const single = s.single!;
-  const h = 1e-6;
+  // the erfc table interpolates at float32(r^2) (as native does), so its difference quotient needs a
+  // step well above the float32 spacing of r^2
+  const h = s.table > 0 ? 1e-3 : 1e-6;
   for (const r of radii) {
     const em = single.call(s, 0, 0, itype, jtype, (r - h) * (r - h), factorCoul, factorLJ, qi, qj).eng;
     const ep = single.call(s, 0, 0, itype, jtype, (r + h) * (r + h), factorCoul, factorLJ, qi, qj).eng;
@@ -48,7 +50,10 @@ describe('born/coul/long and buck/coul/long: force = -dE/dr (central differences
     // finite difference of the energy disagrees with the force at ~1e-6
     // relative, exactly as in native LAMMPS, which uses the same published
     // fit. A real term/sign error would be O(1) relative; 1e-4 catches it.
-    const rel = table === 0 ? 1e-4 : 1e-6;
+    // With table 12 the energy and the force are separate linear interpolations in r^2 (as native
+    // LAMMPS tabulates them, erfc.ts makeErfcTable); inside a bin the difference quotient is the
+    // chord slope, so they agree to ~1e-3 relative. A term or sign error is still O(1).
+    const rel = table === 0 ? 1e-4 : 5e-3;
     it(`born/coul/long (pair_modify table ${table})`, () => {
       const s = make(new PairBornCoulLong(), ['4.0', '3.0'], ['* * 1.5 0.25 0.9 0.7 0.3', '1 2 2.0 0.28 0.85 0.9 0.4']);
       s.gEwald = 0.28;

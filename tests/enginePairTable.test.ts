@@ -159,10 +159,9 @@ describe('pair_style table unit tests', () => {
     expect(() => p.init(ctx)).toThrow(StyleError);
   });
 
-  it('spline and bitmap interpolation styles are rejected by name', () => {
+  it('the bitmap interpolation style is rejected by name', () => {
     const p = new PairTable();
-    expect(() => p.settings(['spline', '100'])).toThrow(StyleError);
-    expect(() => p.settings(['spline', '100'])).toThrow(/spline/);
+    expect(() => p.settings(['bitmap', '12'])).toThrow(StyleError);
     expect(() => p.settings(['bitmap', '12'])).toThrow(/bitmap/);
   });
 

@@ -1,0 +1,15 @@
+# w29meama: synthetic two-element diamond (zincblende) alloy parameter file (not a LAMMPS potential file).
+rc = 4.0
+delr = 0.1
+Ec(1,1) = 4.0
+alpha(1,1) = 4.5
+Ec(2,2) = 4.5
+alpha(2,2) = 4.0
+Ec(1,2) = 4.2
+re(1,2) = 2.0
+alpha(1,2) = 4.2
+lattce(1,2) = dia
+zbl(1,1) = 0
+zbl(2,2) = 0
+zbl(1,2) = 0
+augt1 = 1

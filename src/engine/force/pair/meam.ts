@@ -19,6 +19,7 @@ import {
   type AlloyElement,
   type AlloyModel,
   type AlloyNeighbor,
+  type AlloyOptions,
   type AlloyPair,
 } from './meam_alloy';
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
@@ -906,6 +907,9 @@ interface PairParams {
   lattce?: string;
   /** nn2(I,J): 1 selects the 2NN pair recurrence (docs: "1 = second-nearest neighbor formulation on") */
   nn2?: number;
+  /** attrac(I,J) and repuls(I,J): cubic Rose-energy terms (only erose_form 1 or 2 in a multi-element potential) */
+  attrac?: number;
+  repuls?: number;
 }
 
 export interface MeamParams {
@@ -987,7 +991,6 @@ export const parseMeamParams = (text: string, name: string, nelem = 1): MeamPara
         if (idx.length) throw new StyleError(`MEAM parameter erose_form in ${name} takes no index`);
         const v = num();
         if (!Number.isInteger(v) || v < 0 || v > 2) throw new StyleError(`MEAM erose_form = ${val} is not supported (only 0, 1, 2; ${name})`);
-        if (nelem > 1 && v !== 0) throw new StyleError(`MEAM erose_form = ${v} in a multi-element potential is not supported (${name})`);
         out.erose.form = v;
         break;
       }
@@ -995,10 +998,15 @@ export const parseMeamParams = (text: string, name: string, nelem = 1): MeamPara
       case 'repuls': {
         const [i, j] = pairIndex();
         const v = num();
-        if (nelem > 1 && v !== 0) throw new StyleError(`MEAM ${key}(${i},${j}) = ${val} in a multi-element potential is not supported (${name})`);
+        // Multi-element attrac/repuls enter the Rose energy only through the a3 term of erose_form 1 and 2 (see
+        // pairErose in meam_alloy.ts); erose_form = 0 with nonzero attrac/repuls is refused at the end below.
         if (nelem === 1) {
           if (key === 'attrac') out.erose.attrac = v;
           else out.erose.repuls = v;
+        } else {
+          const p = pairOf(i, j);
+          if (key === 'attrac') p.attrac = v;
+          else p.repuls = v;
         }
         break;
       }
@@ -1052,8 +1060,8 @@ export const parseMeamParams = (text: string, name: string, nelem = 1): MeamPara
           pairOf(i, j).lattce = val;
           if (nelem === 1) out.lattce = val;
         } else {
-          if (val !== 'b1') {
-            throw new StyleError(`MEAM lattce(${i},${j}) = ${val} is not supported (only b1 for an I-J pair; ${name})`);
+          if (val !== 'b1' && val !== 'dia') {
+            throw new StyleError(`MEAM lattce(${i},${j}) = ${val} is not supported (only b1 and dia for an I-J pair; ${name})`);
           }
           pairOf(i, j).lattce = val;
         }
@@ -1078,6 +1086,15 @@ export const parseMeamParams = (text: string, name: string, nelem = 1): MeamPara
           break;
         }
         throw new StyleError(`MEAM parameter keyword '${key}' is not supported (${name})`);
+    }
+  }
+  if (nelem > 1 && out.erose.form === 0) {
+    for (const [k, p] of out.pair) {
+      if ((p.attrac ?? 0) !== 0 || (p.repuls ?? 0) !== 0) {
+        throw new StyleError(
+          `MEAM attrac(I,J) or repuls(I,J) of pair ${k} in a multi-element potential is not supported with erose_form = 0 (set erose_form = 1 or 2; ${name})`,
+        );
+      }
     }
   }
   if (out.opts.delr <= 0 || out.opts.rc <= out.opts.delr) throw new StyleError(`MEAM rc/delr must satisfy 0 < delr < rc (${name})`);
@@ -1189,7 +1206,7 @@ export class PairMeam extends Pair {
     this.typeElem = [];
   }
 
-  /** Multi-element pair_coeff: fcc elements, b1 pairs, default screening (see meam_alloy.ts). */
+  /** Multi-element pair_coeff: fcc/dia elements, b1/dia pairs, default screening, erose_form 0/1/2 (see meam_alloy.ts). */
   private coeffAlloy(args: string[], elems: string[], maps: string[], ctx: StyleContext): void {
     const libFile = args[2], paramFile = args[3 + elems.length];
     const libs = elems.map((elt) => {
@@ -1211,20 +1228,19 @@ export class PairMeam extends Pair {
     }
     const elements: AlloyElement[] = libs.map((lib, c) => {
       const elt = elems[c];
-      if (lib.lat !== 'fcc') throw new StyleError(`multi-element MEAM: reference lattice '${lib.lat}' of ${elt} is not supported (only fcc)`);
+      if (lib.lat !== 'fcc' && lib.lat !== 'dia') {
+        throw new StyleError(`multi-element MEAM: reference lattice '${lib.lat}' of ${elt} is not supported (only fcc and dia)`);
+      }
       if (lib.t[0] !== 1) throw new StyleError('only MEAM parameters normalized to t0 = 1.0 are supported');
       if (lib.rozero !== 1) throw new StyleError(`multi-element MEAM: rozero = ${lib.rozero} is not supported (only 1)`);
       if (lib.ibar !== 0) throw new StyleError(`multi-element MEAM: ibar = ${lib.ibar} is not supported (only ibar = 0; the alloy density has no verified G-function selection)`);
       const own = par.pair.get(`${c + 1},${c + 1}`) ?? {};
-      if (own.lattce !== undefined && own.lattce !== 'fcc') throw new StyleError(`multi-element MEAM: lattce(${c + 1},${c + 1}) = ${own.lattce} for ${elt} is not supported`);
+      if (own.lattce !== undefined && own.lattce !== lib.lat) throw new StyleError(`multi-element MEAM: lattce(${c + 1},${c + 1}) = ${own.lattce} for ${elt} differs from the library lattice '${lib.lat}'`);
       // Ec and re of the element default as in the single-element style (measured: the same energies as the explicit values)
-      if (own.re === undefined && lib.lat !== 'fcc') {
-        throw new StyleError(`multi-element MEAM: parameter file ${paramFile} must set re(${c + 1},${c + 1}): the default is only verified for fcc (${elt} is ${lib.lat})`);
-      }
       return {
         z: lib.z,
-        lat: 'fcc' as ReferenceLattice,
-        re: own.re ?? lib.alat / Math.SQRT2,
+        lat: lib.lat as ReferenceLattice,
+        re: own.re ?? (lib.lat === 'dia' ? (lib.alat * Math.sqrt(3)) / 4 : lib.alat / Math.SQRT2),
         alpha: own.alpha ?? lib.alpha,
         Ec: own.Ec ?? lib.esub,
         A: lib.asub,
@@ -1238,7 +1254,8 @@ export class PairMeam extends Pair {
       pairs.push([]);
       for (let j = 0; j < n; j++) {
         if (i === j) {
-          pairs[i].push({ Ec: elements[i].Ec, re: elements[i].re, alpha: elements[i].alpha, lat: 'self' });
+          const own = par.pair.get(`${i + 1},${i + 1}`) ?? {};
+          pairs[i].push({ Ec: elements[i].Ec, re: elements[i].re, alpha: elements[i].alpha, lat: 'self', attrac: own.attrac, repuls: own.repuls });
           continue;
         }
         const a = Math.min(i, j), b = Math.max(i, j);
@@ -1246,13 +1263,14 @@ export class PairMeam extends Pair {
         if (p.Ec === undefined || p.re === undefined || p.alpha === undefined) {
           throw new StyleError(`multi-element MEAM: parameter file ${paramFile} must set Ec(${a + 1},${b + 1}), re(${a + 1},${b + 1}) and alpha(${a + 1},${b + 1})`);
         }
-        if (p.lattce !== 'b1') {
-          throw new StyleError(`multi-element MEAM: lattce(${a + 1},${b + 1}) must be set to b1 (${p.lattce ?? 'not set'} is not supported)`);
+        if (p.lattce !== 'b1' && p.lattce !== 'dia') {
+          throw new StyleError(`multi-element MEAM: lattce(${a + 1},${b + 1}) must be set to b1 or dia (${p.lattce ?? 'not set'} is not supported)`);
         }
-        pairs[i].push({ Ec: p.Ec, re: p.re, alpha: p.alpha, lat: 'b1' });
+        pairs[i].push({ Ec: p.Ec, re: p.re, alpha: p.alpha, lat: p.lattce, attrac: p.attrac, repuls: p.repuls });
       }
     }
-    this.alloy = makeAlloyModel(elements, pairs, par.opts, par.opts.augt1);
+    const alloyOpts: AlloyOptions = { rc: par.opts.rc, delr: par.opts.delr, Cmin: par.opts.Cmin, Cmax: par.opts.Cmax, eroseForm: par.erose.form };
+    this.alloy = makeAlloyModel(elements, pairs, alloyOpts, par.opts.augt1);
     this.typeElem = [-1, ...maps.map((m) => elems.indexOf(m))];
     this.el = null;
     this.opts = par.opts;

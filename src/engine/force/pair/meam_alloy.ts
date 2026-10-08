@@ -3,15 +3,18 @@ import { referenceVectors, type ReferenceLattice } from './meam_lattice';
 /*
  * Multi-element MEAM (pair_style meam, two or more elements). Energy and analytic forces for the
  * subset verified against native LAMMPS (black box):
- *   - fcc, bcc and dia single-element references (the homonuclear pair term phi_ii and the embedding
- *     reference rho_ref,i use the element's own lattice, as in meam.ts);
- *   - heteronuclear pairs with lattce(I,J) = b1 (rock salt) only;
- *   - ibar = 0, t0 = 1, rozero = 1, zbl = 0, default Cmin/Cmax, no nn2/attrac/repuls/delta.
+ *   - fcc and dia single-element references (the homonuclear pair term phi_ii and the embedding
+ *     reference rho_ref,i use the element's own lattice, as in meam.ts; z is the library coordination);
+ *   - heteronuclear pairs with lattce(I,J) = b1 (rock salt) or dia (diamond/zincblende);
+ *   - ibar = 0, t0 = 1, rozero = 1, zbl = 0, default Cmin/Cmax, no nn2/delta;
+ *   - erose_form 0 (with attrac = repuls = 0), 1 and 2 with per-pair attrac(I,J)/repuls(I,J)
+ *     (pairErose below; erose_form 0 with nonzero attrac/repuls is refused by the parser).
  *
  * Documented model (docs.lammps.org/pair_meam.html, plans/lammps-docs/pair_meam.rst):
  *   "E = \sum_i \left\{ F_i(\bar{\rho}_i)"   (energy: embedding F_i plus half the pair sum, as on that page)
  *   "lattce(I,J) = lattice structure of I-J reference structure:"
  *   "b1  = rock salt (NaCl structure)"
+ *   "dia = diamond (interlaced fcc for alloy)"
  *   "Ec(I,J)     = cohesive energy of reference structure for I-J mixture"
  *
  * Measured with native LAMMPS (black box), all with the synthetic entries of tests/oracle/w15meam_alloy_*:
@@ -22,9 +25,24 @@ import { referenceVectors, type ReferenceLattice } from './meam_lattice';
  *  - A-B-A, B-A-A-B and A-A-B-B clusters agree to 1e-10 (eV); the averaging of t uses the weights w_j a0_j
  *    of each neighbour (unweighted averaging differs by about 1e-5 eV on these clusters);
  *  - the partial density of a neighbour of element j uses beta_j and re(j,j) (the element's own re).
+ *
+ * Measured with native LAMMPS (black box) for the w29meama_erose2 entries (B1 alloy, erose_form = 2,
+ * per-pair attrac/repuls): the pair term uses the same erose expression as the single-element path
+ * (pairErose reproduces eroseE/eroseDeriv of meam.ts exactly), and A-B, A-A and B-B dimers, the A-B-A
+ * trimer and an A-B-A-A cluster agree with native to 1e-13 (eV); the displaced B1 crystal (tests/oracle/
+ * w29meama_erose2) agrees over 40 nve steps at rel = 1e-6 including the forces.
+ *
+ * Measured with native LAMMPS (black box) for the w29meama_dia entries (zincblende alloy, lattce(1,2) = dia,
+ * fcc/dia elements): phi_ij(r) = (2/4)(erose_ij(r) - (F_i(rho_bar_i) + F_j(rho_bar_j))/2), with rho_bar_i the
+ * background of element i in the diamond reference (4 unlike neighbours at r, the same-sublattice shell at
+ * r sqrt(8/3) screened to zero); A-B, A-A and B-B dimers, an A-B-A trimer and an A-B-A-A cluster agree with
+ * native to 1e-13 (eV), and the displaced zincblende crystal (tests/oracle/w29meama_dia) agrees over 40 nve
+ * steps at rel = 1e-6 including the forces.
+ *
  * Not verified (and therefore rejected with a StyleError in meam.ts): lattce(I,J) = l12 and other names
- * (the L12 pair term is not the B1 form, see the remaining issues of the meam15 report), non-fcc elements
- * in an alloy, non-default Cmin/Cmax, delta, nn2, attrac, repuls.
+ * (the L12 pair term is not the B1/dia form, see the remaining issues of the meam15 report), bcc/hcp/sc
+ * elements in an alloy, non-default Cmin/Cmax (per-triplet entries), delta, nn2, and erose_form 0 with
+ * nonzero attrac/repuls.
  */
 
 export interface AlloyElement {
@@ -85,8 +103,11 @@ export interface AlloyPair {
   Ec: number;
   re: number;
   alpha: number;
-  /** 'self' for i = j (the element's own lattice), 'b1' for i != j */
-  lat: 'self' | 'b1';
+  /** 'self' for i = j (the element's own lattice), 'b1' (rock salt) or 'dia' (diamond/zincblende) for i != j */
+  lat: 'self' | 'b1' | 'dia';
+  /** attrac(I,J) and repuls(I,J) of the I-J pair (docs pair_meam.rst); default 0 */
+  attrac?: number;
+  repuls?: number;
 }
 
 export interface AlloyOptions {
@@ -94,6 +115,8 @@ export interface AlloyOptions {
   delr: number;
   Cmin: number;
   Cmax: number;
+  /** erose_form of the potential (docs pair_meam.rst); default 0. Only 0, 1 and 2 are supported. */
+  eroseForm?: number;
 }
 
 export interface AlloyModel {
@@ -360,18 +383,92 @@ const b1List = (model: AlloyModel, c: number, p: number, r: number): AlloyNeighb
   return out;
 };
 
-/** Pair term phi_ij(r) and its derivative (homonuclear: fcc/bcc/dia reference; heteronuclear: B1). */
+/**
+ * Diamond (zincblende) list for central element c with partner p at nearest-neighbour distance r: the two
+ * interpenetrating fcc sublattices of diamond, the central atom on the c sublattice, the four nearest
+ * neighbours on the p sublattice (the diamond reference of the I-J pair, "dia = diamond (interlaced fcc for
+ * alloy)" on docs.lammps.org/pair_meam.html). Geometry as in referenceVectors('dia') of meam_lattice.ts.
+ */
+const diaList = (model: AlloyModel, c: number, p: number, r: number): AlloyNeighbor[] => {
+  const out: AlloyNeighbor[] = [];
+  const a = (4 * r) / Math.sqrt(3);
+  const h = a / 2;
+  const s = a / 4;
+  const m = Math.ceil(model.opts.rc / h) + 1;
+  for (let i = -m; i <= m; i++)
+    for (let j = -m; j <= m; j++)
+      for (let k = -m; k <= m; k++) {
+        if (((i + j + k) & 1) !== 0 || (i === 0 && j === 0 && k === 0)) continue;
+        const dx = i * h, dy = j * h, dz = k * h;
+        const rr = Math.hypot(dx, dy, dz);
+        if (rr < model.opts.rc) out.push({ e: c, j: -1, dx, dy, dz, r: rr });
+      }
+  for (let i = -m; i <= m; i++)
+    for (let j = -m; j <= m; j++)
+      for (let k = -m; k <= m; k++) {
+        if (((i + j + k) & 1) !== 0) continue;
+        const dx = i * h + s, dy = j * h + s, dz = k * h + s;
+        const rr = Math.hypot(dx, dy, dz);
+        if (rr < model.opts.rc) out.push({ e: p, j: -1, dx, dy, dz, r: rr });
+      }
+  return out;
+};
+
+/**
+ * Rose reference energy erose(r) and its r-derivative of one I-J pair, with the I-J attrac/repuls. Docs
+ * (docs.lammps.org/pair_meam.html, plans/lammps-docs/pair_meam.rst):
+ *   "astar = alpha \* (r/re - 1.d0)"
+ *   "if erose_form = 0: erose = -Ec\*(1+astar+a3\*(astar\*\*3)/(r/re))\*exp(-astar)"
+ *   "if erose_form = 1: erose = -Ec\*(1+astar+(-attrac+repuls/r)\*(astar\*\*3))\*exp(-astar)"
+ *   "if erose_form = 2: erose = -Ec\*(1 +astar + a3\*(astar\*\*3))\*exp(-astar)"
+ *   "a3 = repuls, astar < 0"
+ *   "a3 = attrac, astar >= 0"
+ * form 0 with attrac = repuls = 0 is the plain -Ec (1 + astar) exp(-astar) used by the verified alloy subset.
+ */
+export const pairErose = (pr: AlloyPair, form: number, r: number): { E: number; dE: number } => {
+  const q = r / pr.re;
+  const s = pr.alpha * (q - 1);
+  const sp = pr.alpha / pr.re;
+  const attrac = pr.attrac ?? 0;
+  const repuls = pr.repuls ?? 0;
+  const a3 = s < 0 ? repuls : attrac;
+  let T: number, Tp: number;
+  if (form === 0) {
+    T = (a3 * s ** 3) / q;
+    Tp = a3 * ((3 * s * s * sp) / q - s ** 3 / (pr.re * q * q));
+  } else if (form === 1) {
+    T = (-attrac + repuls / r) * s ** 3;
+    Tp = (-repuls / (r * r)) * s ** 3 + (-attrac + repuls / r) * 3 * s * s * sp;
+  } else {
+    T = a3 * s ** 3;
+    Tp = a3 * 3 * s * s * sp;
+  }
+  return { E: -pr.Ec * (1 + s + T) * Math.exp(-s), dE: -pr.Ec * Math.exp(-s) * (Tp - (s + T) * sp) };
+};
+
+/** Pair term phi_ij(r) and its derivative (homonuclear: fcc/bcc/dia reference; heteronuclear: B1 or dia). */
 export const alloyPair = (model: AlloyModel, i: number, j: number, r: number): { phi: number; dphi: number } => {
   const pr = model.pairs[i][j];
-  const s = pr.alpha * (r / pr.re - 1);
-  const Eu = -pr.Ec * (1 + s) * Math.exp(-s);
-  const dEu = (pr.Ec * s * Math.exp(-s) * pr.alpha) / pr.re;
+  const { E: Eu, dE: dEu } = pairErose(pr, model.opts.eroseForm ?? 0, r);
   if (pr.lat === 'self') {
     const el = model.elements[i];
     const { rho, drho } = scaledRho(model, ownList(model, i, r), r, model.elements[i].ibar ?? 0, false);
     const Fv = embedF(el, model.rhoRef[i], rho);
     const Fp = embedFp(el, model.rhoRef[i], rho);
     return { phi: (2 / el.z) * (Eu - Fv), dphi: (2 / el.z) * (dEu - Fp * drho) };
+  }
+  if (pr.lat === 'dia') {
+    const ri = scaledRho(model, diaList(model, i, j, r), r, model.elements[i].ibar ?? 0, false);
+    const rj = scaledRho(model, diaList(model, j, i, r), r, model.elements[j].ibar ?? 0, false);
+    const Fi = embedF(model.elements[i], model.rhoRef[i], ri.rho);
+    const Fj = embedF(model.elements[j], model.rhoRef[j], rj.rho);
+    const Fip = embedFp(model.elements[i], model.rhoRef[i], ri.rho);
+    const Fjp = embedFp(model.elements[j], model.rhoRef[j], rj.rho);
+    // Diamond reference: z = 4 unlike neighbours, two atoms per cell, so phi = (2/4)(Eu - (Fi+Fj)/2).
+    return {
+      phi: (2 / 4) * (Eu - (Fi + Fj) / 2),
+      dphi: (2 / 4) * (dEu - (Fip * ri.drho + Fjp * rj.drho) / 2),
+    };
   }
   const ri = scaledRho(model, b1List(model, i, j, r), r, model.elements[i].ibar ?? 0, false);
   const rj = scaledRho(model, b1List(model, j, i, r), r, model.elements[j].ibar ?? 0, false);

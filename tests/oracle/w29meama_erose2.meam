@@ -1,0 +1,25 @@
+# w29meama: synthetic multi-element parameter file with erose_form = 2 and per-pair attrac/repuls
+# (not a LAMMPS potential file). Same base numbers as w15meam_alloy_b1.meam.
+rc = 4.0
+delr = 0.1
+erose_form = 2
+Ec(1,1) = 3.5
+re(1,1) = 2.5
+alpha(1,1) = 5.0
+attrac(1,1) = 0.4
+repuls(1,1) = 0.9
+Ec(2,2) = 4.0
+re(2,2) = 2.7
+alpha(2,2) = 4.0
+attrac(2,2) = 0.2
+repuls(2,2) = 0.5
+Ec(1,2) = 3.8
+re(1,2) = 2.6
+alpha(1,2) = 4.5
+attrac(1,2) = 0.3
+repuls(1,2) = 0.6
+lattce(1,2) = b1
+zbl(1,1) = 0
+zbl(2,2) = 0
+zbl(1,2) = 0
+augt1 = 1

@@ -252,7 +252,6 @@ export class PairSnap extends Pair {
 
   override compute(pc: PairCompute): void {
     if (!this.param || !this.file) throw new StyleError('pair_coeff for style snap has not been given');
-    if (pc.vatom) throw new StyleError('per-atom virial (compute stress/atom) is not implemented for pair style snap');
     if (!this.setupDone) this.initStyle();
     const p = this.param, file = this.file;
     const list = pc.full;
@@ -280,6 +279,11 @@ export class PairSnap extends Pair {
     const nR = new Float64Array(mx), nRc = new Float64Array(mx), nTh = new Float64Array(mx);
     const nSc = new Float64Array(mx), nDsc = new Float64Array(mx);
     const dp = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    // per-atom virial (compute stress/atom): each bond term d = x_j - x_i with G0 = dE_i/dd gives the pair
+    // virial -d (x) G0, half to i and half to j. Measured with native LAMMPS (black box): the stress/atom values
+    // of a 3-atom, 2-type triclinic system match this split atom by atom to 1e-15, and they sum to the global
+    // virial (oracle cases w19vatom_snap and w19vatom_nn).
+    const va = pc.vatom;
 
     for (let i = 0; i < nlocal; i++) {
       const ei = this.elemOf[type[i]];
@@ -421,6 +425,12 @@ export class PairSnap extends Pair {
         f[3 * i] += G0[0];
         f[3 * i + 1] += G0[1];
         f[3 * i + 2] += G0[2];
+        if (va) {
+          const w0 = -0.5 * dx * G0[0], w1 = -0.5 * dy * G0[1], w2 = -0.5 * dz * G0[2];
+          const w3 = -0.5 * dx * G0[1], w4 = -0.5 * dx * G0[2], w5 = -0.5 * dy * G0[2];
+          va[6 * i] += w0; va[6 * i + 1] += w1; va[6 * i + 2] += w2; va[6 * i + 3] += w3; va[6 * i + 4] += w4; va[6 * i + 5] += w5;
+          va[6 * j] += w0; va[6 * j + 1] += w1; va[6 * j + 2] += w2; va[6 * j + 3] += w3; va[6 * j + 4] += w4; va[6 * j + 5] += w5;
+        }
       }
     }
     pc.acc.evdwl += evdwl;

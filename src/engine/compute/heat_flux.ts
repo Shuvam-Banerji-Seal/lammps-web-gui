@@ -57,6 +57,9 @@ export class ComputeHeatFlux extends Compute {
     const e = this.sys.compute(this.keId).peratomValues();
     const p = this.sys.compute(this.peId).peratomValues();
     const S = this.sys.compute(this.stressId).peratomValues();
+    // compute_heat_flux.html: "The vector values will be in energy*velocity units"; the per-atom stress
+    // is in pressure*volume units (compute stress/atom), so it is converted back to energy units
+    const inv = 1 / s.units.nktv2p;
     const v = s.v;
     const conv = [0, 0, 0];
     const sv = [0, 0, 0];
@@ -64,8 +67,8 @@ export class ComputeHeatFlux extends Compute {
       if (!(s.mask[i] & this.groupBit)) continue;
       const ei = e[i] + p[i];
       for (let a = 0; a < 3; a++) conv[a] += ei * v[3 * i + a];
-      const sxx = S[6 * i], syy = S[6 * i + 1], szz = S[6 * i + 2];
-      const sxy = S[6 * i + 3], sxz = S[6 * i + 4], syz = S[6 * i + 5];
+      const sxx = S[6 * i] * inv, syy = S[6 * i + 1] * inv, szz = S[6 * i + 2] * inv;
+      const sxy = S[6 * i + 3] * inv, sxz = S[6 * i + 4] * inv, syz = S[6 * i + 5] * inv;
       const vx = v[3 * i], vy = v[3 * i + 1], vz = v[3 * i + 2];
       sv[0] += sxx * vx + sxy * vy + sxz * vz;
       sv[1] += sxy * vx + syy * vy + syz * vz;

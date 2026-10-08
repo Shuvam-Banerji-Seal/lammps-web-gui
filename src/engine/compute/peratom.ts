@@ -216,6 +216,12 @@ export class ComputeStressAtom extends Compute {
       if (!(s.mask[i] & this.groupBit)) continue;
       for (let c = 0; c < 6; c++) arr[6 * i + c] -= vsum[6 * i + c];
     }
+    // compute_stress_atom.html: "The per-atom array values will be in pressure*volume units"; the
+    // kinetic and virial sums above are in energy units, so both take the pressure conversion
+    // (measured with native LAMMPS, black box: in units real the summed values are nktv2p = 68568.415
+    // times the energy-unit sums, for the kinetic and the virial parts alike)
+    const nktv2p = s.units.nktv2p;
+    if (nktv2p !== 1) for (let k = 0; k < arr.length; k++) arr[k] *= nktv2p;
   }
 }
 

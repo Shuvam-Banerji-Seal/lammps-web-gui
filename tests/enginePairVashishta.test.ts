@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
-import { PairVashishta, PairVashishtaTable } from '../src/engine/force/pair/vashishta';
+import { PairVashishta } from '../src/engine/force/pair/vashishta';
 import { StyleError, type Pair, type StyleContext } from '../src/engine/force/types';
 import type { EngineEvent, ThermoRow } from '../src/engine/types';
 
@@ -215,12 +215,6 @@ describe('vashishta: coefficients, mapping and cutoffs', () => {
     s.shift = true;
     expect(() => s.initStyle(ctx)).toThrow(StyleError);
   });
-
-  it('vashishta/table throws a StyleError naming the style', () => {
-    const t = new PairVashishtaTable();
-    expect(() => t.settings(['100000', '0.2'], ctx)).toThrow(/vashishta\/table/);
-    expect(() => t.settings(['100000', '0.2'], ctx)).toThrow(StyleError);
-  });
 });
 
 describe('vashishta: force = -dE/dx by central differences (two elements, three atoms)', () => {
@@ -283,11 +277,5 @@ write_dump all custom fd.dump id fx fy fz modify format float %.17g sort id
     }
     // the configuration is not trivially force-free
     expect(maxAbs).toBeGreaterThan(1e-3);
-  });
-
-  it('pair_style vashishta/table throws a StyleError naming the style', async () => {
-    await expect(
-      runSession(script('create_atoms 1 single 2 2 2\ncreate_atoms 1 single 4 2 2').replace('pair_style vashishta', 'pair_style vashishta/table 100000 0.2'), { 'tiny.vashishta': fileContent }),
-    ).rejects.toThrow(/vashishta\/table/);
   });
 });

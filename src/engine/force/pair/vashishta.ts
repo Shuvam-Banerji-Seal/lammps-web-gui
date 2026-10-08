@@ -57,9 +57,7 @@ import { parseNum, joinPotentialEntries } from '../util';
  * "This pair style does not support the pair_modify shift, table, and tail
  * options."  "These pair styles requires the newton setting to be "on" for
  * pair interactions" (the engine always evaluates each physical pair once).
- * The vashishta/table variant is not implemented: constructing it throws a
- * StyleError naming the style instead of silently approximating the
- * tabulated evaluation.
+ * The vashishta/table variant is vashishta_table.ts.
  *
  * Coulomb prefactor: the doc lists Z_i and Z_j in "(electron charge units)",
  * so the screened Coulomb term carries the e^2/(4 pi eps_0) prefactor of the
@@ -551,39 +549,5 @@ export class PairVashishta extends Pair {
       f[3 * i + 2] += fzi;
     }
     pc.acc.evdwl += evdwl;
-  }
-}
-
-/**
- * pair_style vashishta/table — the tabulated variant of the Vashishta
- * potential ("*vashishta/table* args = Ntable cutinner").  Tabulated
- * evaluation is not implemented in this engine: constructing and using it
- * throws a StyleError naming the style instead of silently falling back to
- * the analytic form.
- */
-export class PairVashishtaTable extends Pair {
-  readonly name = 'vashishta/table';
-  manybody = true;
-  needsFull = true;
-  needsHalf = false;
-  virialFdotr = true;
-
-  override settings(args: string[], _ctx: StyleContext): void {
-    if (args.length !== 2) {
-      throw new StyleError(`usage: pair_style ${this.name} Ntable cutinner`);
-    }
-    throw new StyleError(`pair_style ${this.name} is not supported by this engine (only the analytic vashishta style is)`);
-  }
-
-  override coeff(_args: string[], _ctx: StyleContext): void {
-    throw new StyleError(`pair_style ${this.name} is not supported by this engine (only the analytic vashishta style is)`);
-  }
-
-  override initOne(_i: number, _j: number): number {
-    throw new StyleError(`pair_style ${this.name} is not supported by this engine (only the analytic vashishta style is)`);
-  }
-
-  override compute(_pc: PairCompute): void {
-    throw new StyleError(`pair_style ${this.name} is not supported by this engine (only the analytic vashishta style is)`);
   }
 }

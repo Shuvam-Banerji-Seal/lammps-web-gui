@@ -125,43 +125,48 @@ export const substituteVariables = (
   lookup: (name: string) => string,
   immediate: (formula: string, format?: string) => string,
 ): string => {
-  let out = '';
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (c !== '$') { out += c; continue; }
-    const next = text[i + 1];
+  // Measured with native LAMMPS (black box): the text a variable substitutes is scanned again, so a
+  // string variable defined in quotes as "${a}0" (quotes keep the $ at definition) gives 20 when
+  // used after variable a equal 2. Immediate $(...) results are numbers and are not rescanned.
+  let s = text;
+  let substitutions = 0;
+  const splice = (i: number, end: number, value: string): void => {
+    if (++substitutions > 10000) throw new Error('variable substitution does not terminate (a variable refers to itself)');
+    s = s.slice(0, i) + value + s.slice(end + 1);
+  };
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] !== '$') { i++; continue; }
+    const next = s[i + 1];
     if (next === undefined) throw new Error("a '$' at the end of the line has no variable name");
     if (next === '{') {
-      const end = text.indexOf('}', i + 2);
+      const end = s.indexOf('}', i + 2);
       if (end < 0) throw new Error("unterminated '${' variable reference");
-      const name = text.slice(i + 2, end);
+      const name = s.slice(i + 2, end);
       if (name.includes('$')) throw new Error('variable references cannot be nested');
-      out += lookup(name);
-      i = end;
+      splice(i, end, lookup(name));
     } else if (next === '(') {
       let depth = 0;
       let end = -1;
-      for (let k = i + 1; k < text.length; k++) {
-        if (text[k] === '(') depth++;
-        else if (text[k] === ')') { depth--; if (depth === 0) { end = k; break; } }
+      for (let k = i + 1; k < s.length; k++) {
+        if (s[k] === '(') depth++;
+        else if (s[k] === ')') { depth--; if (depth === 0) { end = k; break; } }
       }
       if (end < 0) throw new Error("unterminated '$(' immediate variable");
-      const body = text.slice(i + 2, end);
+      const body = s.slice(i + 2, end);
       if (body.includes('$')) throw new Error('immediate variables cannot contain $ references');
       // optional trailing :%fmt — a colon followed by a % format
       const colon = body.lastIndexOf(':');
-      if (colon >= 0 && /^%/.test(body.slice(colon + 1).trim())) {
-        out += immediate(body.slice(0, colon), body.slice(colon + 1).trim());
-      } else {
-        out += immediate(body);
-      }
-      i = end;
+      const value = colon >= 0 && /^%/.test(body.slice(colon + 1).trim())
+        ? immediate(body.slice(0, colon), body.slice(colon + 1).trim())
+        : immediate(body);
+      splice(i, end, value);
+      i += value.length;
     } else {
-      out += lookup(next);
-      i += 1;
+      splice(i, i + 1, lookup(next));
     }
   }
-  return out;
+  return s;
 };
 
 /** Splits a substituted command into words, removing the quotes of quoted words. */

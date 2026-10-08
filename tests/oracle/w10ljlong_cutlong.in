@@ -1,0 +1,23 @@
+# oracle: pair_style lj/long/coul/long cut long 8 10 (LJ cut, Ewald Coulomb) on bonded chains
+# oracle-inputs: w10charmmfsw_chains.data
+units           real
+atom_style      full
+read_data       w10charmmfsw_chains.data
+special_bonds   charmm
+bond_style      harmonic
+bond_coeff      1 300.0 1.5
+angle_style     harmonic
+angle_coeff     1 50.0 110.0
+pair_style      lj/long/coul/long cut long 8.0 10.0
+pair_modify     table 0
+kspace_style    ewald 1.0e-5
+kspace_modify   gewald 0.28 kmax/ewald 7 7 7
+pair_coeff      1 1 0.1 3.0
+pair_coeff      2 2 0.15 3.2
+timestep        1.0
+velocity        all set 0.001 0.0 0.0 units box
+fix             1 all nve
+thermo_style    custom step temp pe evdwl ecoul ebond eangle elong etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             40

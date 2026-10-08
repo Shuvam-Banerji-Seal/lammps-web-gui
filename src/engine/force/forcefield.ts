@@ -131,7 +131,7 @@ export class ForceField {
       if (!this.pair) throw new StyleError('kspace_style needs a pair style with a long-range Coulomb part');
       const cutCoul = this.pair.extract('cut_coul');
       if (typeof cutCoul !== 'number') throw new StyleError(`kspace_style ${this.kspace.name} is not compatible with pair style ${this.pair.name}`);
-      this.kspace.init(s, geom, cutCoul, s.units.qqr2e / this.dielectric, ctx);
+      this.kspace.init(s, geom, cutCoul, s.units.qqr2e * this.pair.coulConstScale / this.dielectric, ctx);
       this.pair.gEwald = this.kspace.gEwald;
     }
     this.updateTail(s);
@@ -166,7 +166,7 @@ export class ForceField {
     const nall = nb.nall;
     const eatomAll = flags.eatom ? new Float64Array(nall) : null;
     const vatomAll = flags.vatom ? new Float64Array(6 * nall) : null;
-    const qqrd2e = s.units.qqr2e / this.dielectric;
+    const qqrd2e = s.units.qqr2e * (this.pair?.coulConstScale ?? 1) / this.dielectric;
     if (this.pair) {
       this.pair.compute({
         s, nb, geom, x: nb.xall, f: nb.fall, type: nb.typeall, q: nb.qall,

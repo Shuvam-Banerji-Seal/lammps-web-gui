@@ -247,6 +247,13 @@ export abstract class Pair {
    */
   keepExcluded = false;
   /**
+   * Factor on the Coulomb conversion constant the whole force field uses (pair and kspace); set in
+   * init(). pair_charmm.html: "The newest CHARMM pair styles reset the Coulombic energy conversion
+   * factor used internally in the code, from the LAMMPS value to the CHARMM value, as if it were
+   * effectively a parameter of the force field." Those styles set CHARMM / LAMMPS in units real.
+   */
+  coulConstScale = 1;
+  /**
    * The style does not tally the global virial itself; the force field takes
    * it as sum_k x_k . f_k over owned and ghost atoms right after compute()
    * (Developer_flow.html: "the global virial ... to be calculated cheaply (at

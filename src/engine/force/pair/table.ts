@@ -109,6 +109,19 @@ import { parseInt_, parseNum } from '../util';
  *   linearly in r^2 and the radial force is fpair*r; lookup evaluation
  *   takes the single nearest entry (the bin containing r^2) and the
  *   radial force is again fpair*r.
+ * - spline: "For the *spline* style, cubic spline coefficients are computed
+ *   and stored for each of the *N* values in the table, one set of splines
+ *   for energy, another for force." Measured with native LAMMPS (black
+ *   box, pair_write on an LJ 12-6 RSQ table with FPRIME, N = 200 and 1000):
+ *   the energy spline is a complete cubic in r^2 through the Ntable
+ *   samples, with first derivative -F/(2r) at both ends (dE/dr = -F), and
+ *   the force spline is the complete cubic in r^2 through the samples of
+ *   fpair = F/r, with end derivative d(F/r)/d(r^2) taken from the FPRIME
+ *   slopes. Measured agreement with pair_write: energy 1e-15 relative,
+ *   force 2e-11 relative. Without FPRIME the end slopes are estimated from
+ *   the first and last two force values, and the force then agrees with
+ *   pair_write only to about 5e-5 relative (the estimate used by LAMMPS was
+ *   not identified); energy is unaffected.
  */
 
 /** One parsed section of a table file (docs.lammps.org/pair_table.html). */
@@ -136,6 +149,9 @@ interface Tab {
   e: Float64Array;
   /** F/r at the table points (the pair force scalar). */
   g: Float64Array;
+  /** spline only: second derivatives (in r^2) of e and g at the table points. */
+  e2?: Float64Array;
+  g2?: Float64Array;
 }
 
 /** Parses the parameter line of one section (keyword + numeric values). */
@@ -259,15 +275,38 @@ const evalSpline = (x: Float64Array, y: Float64Array, M: Float64Array, xq: numbe
   return a * y[lo] + b * y[hi] + ((a * a * a - a) * M[lo] + (b * b * b - b) * M[hi]) * h * h / 6;
 };
 
+/** Derivative dS/dx of the complete spline (x, y, M) at xq. */
+const evalSplineDeriv = (x: Float64Array, y: Float64Array, M: Float64Array, xq: number): number => {
+  let lo = 0, hi = x.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (x[mid] > xq) hi = mid; else lo = mid;
+  }
+  const h = x[hi] - x[lo];
+  const a = (x[hi] - xq) / h, b = (xq - x[lo]) / h;
+  return (y[hi] - y[lo]) / h + ((3 * b * b - 1) * M[hi] - (3 * a * a - 1) * M[lo]) * h / 6;
+};
+
 /**
- * pair_style table — tabulated pair potentials with lookup or linear
- * interpolation (spline and bitmap are rejected by name).
+ * Cubic spline in r^2 on uniform nodes: value at table position p (in units of
+ * the node spacing), nodes y, second derivatives y2, h2_6 = spacing^2 / 6.
+ */
+const uniformSpline = (y: Float64Array, y2: Float64Array, p: number, h2_6: number, last: number): number => {
+  let m = Math.floor(p), t = p - m;
+  if (m >= last) { m = last - 1; t = 1; } else if (m < 0) { m = 0; t = 0; }
+  const a = 1 - t, b = t;
+  return a * y[m] + b * y[m + 1] + ((a * a * a - a) * y2[m] + (b * b * b - b) * y2[m + 1]) * h2_6;
+};
+
+/**
+ * pair_style table — tabulated pair potentials with lookup, linear or
+ * spline interpolation (bitmap is rejected by name).
  */
 export class PairTable extends Pair {
   readonly name: string = 'table';
   virialFdotr = true;
   /** Interpolation style from pair_style: lookup or linear. */
-  mode: 'lookup' | 'linear' = 'linear';
+  mode: 'lookup' | 'linear' | 'spline' = 'linear';
   /** N from pair_style: the length of the internal interpolation table. */
   ntable = 0;
   p!: PairParams;
@@ -277,14 +316,17 @@ export class PairTable extends Pair {
   private tInvDelta = new Float64Array(0);
   private tE: Float64Array[] = [];
   private tG: Float64Array[] = [];
+  private tE2: Float64Array[] = [];
+  private tG2: Float64Array[] = [];
 
   settings(args: string[]): void {
     if (args.length < 2) throw new StyleError('usage: pair_style table style N [keyword ...]');
     const style = args[0];
-    if (style === 'spline' || style === 'bitmap') {
-      throw new StyleError(`pair_style table interpolation style '${style}' is not supported (lookup and linear only)`);
+    if (style === 'bitmap') {
+      throw new StyleError(`pair_style table interpolation style 'bitmap' is not supported (bitmap tables use an index order that is not documented; lookup, linear and spline only)`);
     }
-    if (style !== 'lookup' && style !== 'linear') {
+    if (style === 'spline' && parseInt_(args[1], 'N') < 3) throw new StyleError('pair_style table spline needs N >= 3');
+    if (style !== 'lookup' && style !== 'linear' && style !== 'spline') {
       throw new StyleError(`invalid pair_style table interpolation style '${style}' (lookup, linear, spline or bitmap)`);
     }
     this.mode = style;
@@ -341,6 +383,8 @@ export class PairTable extends Pair {
       this.tInvDelta = new Float64Array(nt * nt);
       this.tE = new Array(nt * nt);
       this.tG = new Array(nt * nt);
+      this.tE2 = new Array(nt * nt);
+      this.tG2 = new Array(nt * nt);
     }
     const k1 = i * nt + j, k2 = j * nt + i;
     const input = this.inputs.get(k1)!;
@@ -349,6 +393,8 @@ export class PairTable extends Pair {
     this.tInvDelta[k1] = this.tInvDelta[k2] = tab.invDelta;
     this.tE[k1] = this.tE[k2] = tab.e;
     this.tG[k1] = this.tG[k2] = tab.g;
+    this.tE2[k1] = this.tE2[k2] = tab.e2 ?? tab.e;
+    this.tG2[k1] = this.tG2[k2] = tab.g2 ?? tab.g;
     return input.cut;
   }
 
@@ -407,6 +453,25 @@ export class PairTable extends Pair {
       eT[k] = evalSpline(r, sec.e, me, rq);
       gT[k] = evalSpline(r, sec.f, mf, rq) / rq;
     }
+    if (this.mode === 'spline') {
+      // "cubic spline coefficients are computed and stored for each of the N values
+      // in the table, one set of splines for energy, another for force" (measured,
+      // see the header): complete splines in r^2 through the Ntable samples.
+      // End slopes come from the preliminary interpolant: dE/d(r^2) = -F/(2r) and
+      // d(F/r)/d(r^2) = (F'/r - F/r^2)/(2r) at the first and last table distances.
+      const nt = this.ntable;
+      const xs = new Float64Array(nt);
+      for (let k = 0; k < nt; k++) xs[k] = rsq1 + ((rsqN - rsq1) * k) / (nt - 1);
+      const rLo = Math.sqrt(rsq1), rHi = cut;
+      const fLo = evalSpline(r, sec.f, mf, rLo), fHi = evalSpline(r, sec.f, mf, rHi);
+      const dfLo = evalSplineDeriv(r, sec.f, mf, rLo), dfHi = evalSplineDeriv(r, sec.f, mf, rHi);
+      const dE0 = -fLo / (2 * rLo), dEN = -fHi / (2 * rHi);
+      const dG0 = (dfLo / rLo - fLo / (rLo * rLo)) / (2 * rLo);
+      const dGN = (dfHi / rHi - fHi / (rHi * rHi)) / (2 * rHi);
+      const e2 = completeSpline(xs, eT, dE0, dEN);
+      const g2 = completeSpline(xs, gT, dG0, dGN);
+      return { rsq1, invDelta: (nt - 1) / (rsqN - rsq1), e: eT, g: gT, e2, g2 };
+    }
     return { rsq1, invDelta: (this.ntable - 1) / (rsqN - rsq1), e: eT, g: gT };
   }
 
@@ -417,10 +482,11 @@ export class PairTable extends Pair {
     const { cutsq } = this;
     const sLJ = pc.specialLJ;
     const lookup = this.mode === 'lookup';
+    const spline = this.mode === 'spline';
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0;
     const nb = list.neighbors;
-    const { tRsq1, tInvDelta, tE, tG } = this;
+    const { tRsq1, tInvDelta, tE, tG, tE2, tG2 } = this;
     for (let i = 0; i < list.inum; i++) {
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       const ti = type[i] * nt;
@@ -444,6 +510,11 @@ export class PairTable extends Pair {
           const last = eT.length - 1;
           if (m > last) m = last; else if (m < 0) m = 0;
           e = eT[m]; fpair = gT[m];
+        } else if (spline) {
+          // "The distance *R* is used to find the appropriate set of spline coefficients"
+          const h2_6 = 1 / (6 * tInvDelta[t] * tInvDelta[t]), last = eT.length - 1;
+          e = uniformSpline(eT, tE2[t]!, p, h2_6, last);
+          fpair = uniformSpline(gT, tG2[t]!, p, h2_6, last);
         } else {
           // "find the 2 surrounding table values from which an energy or force
           // is computed by linear interpolation" (uniform rsq abscissa)
@@ -480,6 +551,10 @@ export class PairTable extends Pair {
       const last = eT.length - 1;
       if (m > last) m = last; else if (m < 0) m = 0;
       e = eT[m]; fpair = gT[m];
+    } else if (this.mode === 'spline') {
+      const h2_6 = 1 / (6 * this.tInvDelta[t] * this.tInvDelta[t]), last = eT.length - 1;
+      e = uniformSpline(eT, this.tE2[t]!, p, h2_6, last);
+      fpair = uniformSpline(gT, this.tG2[t]!, p, h2_6, last);
     } else {
       let m = Math.floor(p), frac = p - m;
       const last = eT.length - 1;

@@ -428,3 +428,214 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
     return c;
   }
 }
+
+/**
+ * Force-switched CHARMM styles lj/charmmfsw/coul/charmmfsh and
+ * lj/charmmfsw/coul/long (docs.lammps.org/pair_charmm.html; the energy forms
+ * are in docs.lammps.org/Howto_bioFF.html).
+ *
+ * pair_charmm.html (Description): "The newer styles with *charmmfsw* or
+ * *charmmfsh* in their name replace the energy switching with force switching
+ * (fsw) and force shifting (fsh) functions, for LJ and Coulombic interactions
+ * respectively."
+ * pair_charmm.html (Description): "For the *lj/charmmfsw/coul/charmmfsh* style,
+ * the LJ term requires both an inner and outer cutoff, while the Coulombic term
+ * requires only one cutoff.  If the Coulombic cutoff is not specified (2
+ * instead of 3 arguments), the LJ outer cutoff is used for the Coulombic cutoff."
+ * pair_charmm.html (Description): "*lj/charmmfsw/coul/long* computes the same
+ * formulas as style *lj/charmmfsw/coul/charmmfsh*, except that an additional
+ * damping factor is applied to the Coulombic term".
+ * pair_charmm.html (Description): "The newest CHARMM pair styles reset the
+ * Coulombic energy conversion factor used internally in the code, from the
+ * LAMMPS value to the CHARMM value ... CHARMM = 332.0716, LAMMPS = 332.06371."
+ * Howto_bioFF.rst gives the force-switched LJ energy as
+ *   E_LJ(r) = 4 eps sigma^6 ( (sigma^6-r^6)/r^12 - sigma^6/(a^6 b^6) + 1/(a^3 b^3) ), r <= a
+ *   E_LJ(r) = 4 eps sigma^6 ( sigma^6 (b^6-r^6)^2 - b^3 r^6 (a^3+b^3) (b^3-r^3)^2 )
+ *             / ( b^6 r^12 (b^6-a^6) ),                                           a < r <= b
+ * and the Coulombic energy as E_coul(r) = C(r) (b-r)^2 / (r b^2), r <= b (its
+ * "C(r) \frac{\displaystyle (b-r)^2}{\displaystyle r b^2}, &  r \leq b").
+ *
+ * Measured with native LAMMPS (black box, pair_write on two-atom inputs,
+ * units real, a=8, b=10, eps=0.1, sigma=3):
+ *  - the LJ energy equals the Howto_bioFF forms above to 1e-9 absolute;
+ *  - the LJ force is NOT the derivative of that energy: for a < r <= b the
+ *    native fpair is the unswitched LJ fpair times S(r) with the energy
+ *    switching polynomial S(r) = (b^2-r^2)^2 (b^2+2r^2-3a^2)/(b^2-a^2)^3
+ *    (agreement to 8 digits at r = 8.02 ... 9.90);
+ *  - the Coulomb (charmmfsh) energy and radial force are
+ *    E = C q_i q_j (b-r)^2/(r b^2) and F = C q_i q_j (1/r^2 - 1/b^2), agreeing to
+ *    1e-12 with C = 332.0716 in units real (C = 332.06371 is off by 6e-3);
+ *  - in units lj the Coulomb conversion factor is the LAMMPS one (C = 1);
+ *    the CHARMM value is applied only in units real (the docs state real
+ *    units; other unit styles are not measured and keep qqrd2e);
+ *  - the charmmfsw/coul/long Coulombic energy is the plain damped
+ *    C q_i q_j erfc(g r)/r with C = 332.0716 (agreement 1e-9 at r = 6 and 8.5
+ *    for g = 0.3), i.e. no force shifting, and the cutoff at the Coulombic
+ *    cutoff.
+ */
+const CHARMM_QQR2E_REAL = 332.0716;
+const LAMMPS_QQR2E_REAL = 332.06371;
+
+abstract class PairLJCharmmfswBase extends PairLJCharmmCoulCharmm {
+  /** Per type-pair sigma^6 and the energy constant added for r <= a (Howto_bioFF.rst). */
+  protected fswSig6 = new Float64Array(0);
+  protected fswAdd = new Float64Array(0);
+  /** a^3, b^3, a^6, b^6. */
+  protected fA3 = 0;
+  protected fB3 = 0;
+  protected fA6 = 0;
+  protected fB6 = 0;
+  // coulConstScale (Pair base): CHARMM / LAMMPS Coulomb conversion in units real, 1 otherwise;
+  // the force field multiplies the qqrd2e of the pair and of kspace by it (measured with native
+  // LAMMPS: the kspace energy of lj/charmmfsw/coul/long is scaled by 332.0716/332.06371).
+
+  override settings(args: string[]): void {
+    if (args.length !== 2 && args.length !== 3) throw new StyleError(`usage: pair_style ${this.name} inner outer [Coulomb cutoff]`);
+    this.inner = parseNum(args[0], 'inner cutoff');
+    this.outer = parseNum(args[1], 'outer cutoff');
+    if (!(this.inner > 0) || !(this.outer > 0)) throw new StyleError(`${this.name}: cutoffs must be > 0`);
+    // pair_charmm.html: "the inner cutoff distance must be less than the outer cutoff"
+    if (!(this.outer > this.inner)) {
+      throw new StyleError(`${this.name}: the inner cutoff (${this.inner}) must be less than the outer cutoff (${this.outer})`);
+    }
+    this.cutCoul = args.length === 3 ? parseNum(args[2], 'Coulomb cutoff') : this.outer;
+    if (!(this.cutCoul > 0)) throw new StyleError(`${this.name}: Coulomb cutoff must be > 0`);
+    this.innerCoul = this.outerCoul = this.cutCoul;
+    this.aL2 = this.inner * this.inner;
+    this.bL2 = this.outer * this.outer;
+    this.invDL3 = 1 / (this.bL2 - this.aL2) ** 3;
+    this.fA3 = this.inner ** 3;
+    this.fB3 = this.outer ** 3;
+    this.fA6 = this.aL2 ** 3;
+    this.fB6 = this.bL2 ** 3;
+  }
+
+  override initOne(i: number, j: number): number {
+    const cut = super.initOne(i, j);
+    const nt = this.ntypes + 1;
+    if (this.fswSig6.length !== nt * nt) {
+      this.fswSig6 = new Float64Array(nt * nt);
+      this.fswAdd = new Float64Array(nt * nt);
+    }
+    const eps = this.p.get('epsilon', i, j), sig = this.p.get('sigma', i, j);
+    const s6 = sig ** 6;
+    // Howto_bioFF.rst, r <= a branch: 4 eps s6 ((s6-r^6)/r^12 - s6/(a^6 b^6) + 1/(a^3 b^3)),
+    // i.e. the LJ energy plus the constant 4 eps s6 (1/(a^3 b^3) - s6/(a^6 b^6)).
+    const add = 4 * eps * s6 * (1 / (this.fA3 * this.fB3) - s6 / (this.fA6 * this.fB6));
+    const k1 = i * nt + j, k2 = j * nt + i;
+    this.fswSig6[k1] = this.fswSig6[k2] = s6;
+    this.fswAdd[k1] = this.fswAdd[k2] = add;
+    return cut;
+  }
+
+  override init(ctx: StyleContext): void {
+    this.coulConstScale = ctx.s?.units.style === 'real' ? CHARMM_QQR2E_REAL / LAMMPS_QQR2E_REAL : 1;
+    super.init(ctx);
+  }
+
+  /** Force-switched LJ for rsq < b^2: energy and fpair (before special_lj). */
+  protected ljForceSwitched(rsq: number, t: number): { e: number; fpair: number } {
+    const { lj1, lj2, lj3, lj4 } = this;
+    const r2inv = 1 / rsq, r6inv = r2inv * r2inv * r2inv;
+    const fstd = r6inv * (lj1[t] * r6inv - lj2[t]) * r2inv;
+    if (rsq <= this.aL2) {
+      return { e: r6inv * (lj3[t] * r6inv - lj4[t]) + this.fswAdd[t], fpair: fstd };
+    }
+    // Howto_bioFF.rst, a < r <= b: E = 4 eps s6 (s6 (b^6-r^6)^2 - b^3 r^6 (a^3+b^3) (b^3-r^3)^2) / (b^6 r^12 (b^6-a^6))
+    const r = Math.sqrt(rsq), r3 = rsq * r, r6 = r3 * r3;
+    const b6 = this.fB6, a6 = this.fA6, b3 = this.fB3, a3 = this.fA3;
+    const s6 = this.fswSig6[t];
+    const d6 = b6 - r6, d3 = b3 - r3;
+    const e = lj4[t] * (s6 * d6 * d6 - b3 * r6 * (a3 + b3) * d3 * d3) / (b6 * r6 * r6 * (b6 - a6));
+    // measured with native LAMMPS: fpair = unswitched LJ fpair times the energy-switch polynomial S(r)
+    return { e, fpair: fstd * esw(rsq, this.aL2, this.bL2, this.invDL3) };
+  }
+
+  /** The Coulomb term of one pair with the special_coul weight applied (energy, fpair). */
+  protected abstract coulFswPair(rsq: number, sb: number, qi: number, qj: number, qqr: number, pc: PairCompute): { e: number; f: number };
+
+  compute(pc: PairCompute): void {
+    const list = pc.half!;
+    const { x, f, type, q } = pc;
+    const nt = this.ntypes + 1;
+    const { bL2 } = this;
+    const cutCoulSq = this.cutCoul * this.cutCoul;
+    const qqr = pc.qqrd2e;
+    const sLJ = pc.specialLJ;
+    const tally = pc.eatom !== null || pc.vatom !== null;
+    let evdwl = 0, ecoul = 0;
+    const nb = list.neighbors;
+    for (let i = 0; i < list.inum; i++) {
+      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
+      const qi = q[i];
+      const ti = type[i] * nt;
+      let fxi = 0, fyi = 0, fzi = 0;
+      for (let k = list.firstneigh[i], k1 = k + list.numneigh[i]; k < k1; k++) {
+        const jj = nb[k];
+        const j = jj & NEIGHMASK;
+        const sb = jj >>> SBBITS;
+        const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
+        const rsq = dx * dx + dy * dy + dz * dz;
+        const t = ti + type[j];
+        let fpair = 0, e = 0;
+        if (rsq < bL2) {
+          const lj = this.ljForceSwitched(rsq, t);
+          const factor = sLJ[sb];
+          e = lj.e * factor;
+          fpair = lj.fpair * factor;
+          evdwl += e;
+        }
+        if (rsq < cutCoulSq && qi !== 0 && q[j] !== 0) {
+          const c = this.coulFswPair(rsq, sb, qi, q[j], qqr, pc);
+          ecoul += c.e;
+          e += c.e;
+          fpair += c.f;
+        }
+        if (fpair === 0 && e === 0) continue;
+        fxi += dx * fpair; fyi += dy * fpair; fzi += dz * fpair;
+        f[3 * j] -= dx * fpair; f[3 * j + 1] -= dy * fpair; f[3 * j + 2] -= dz * fpair;
+        if (tally) tallyAtom(pc, i, j, e, fpair, dx, dy, dz);
+      }
+      f[3 * i] += fxi; f[3 * i + 1] += fyi; f[3 * i + 2] += fzi;
+    }
+    pc.acc.evdwl += evdwl;
+    pc.acc.ecoul += ecoul;
+  }
+}
+
+/** lj/charmmfsw/coul/charmmfsh: force-shifted Coulomb, E = C q q (b-r)^2 / (r b^2). */
+export class PairLJCharmmfswCoulCharmmfsh extends PairLJCharmmfswBase {
+  readonly name: string = 'lj/charmmfsw/coul/charmmfsh';
+
+  protected coulFswPair(rsq: number, sb: number, qi: number, qj: number, qqr: number, pc: PairCompute): { e: number; f: number } {
+    const r = Math.sqrt(rsq);
+    const b2 = this.cutCoul * this.cutCoul;
+    const pre = qqr * qi * qj * pc.specialCoul[sb];
+    // E = pre (b-r)^2/(r b^2); radial F = pre (1/r^2 - 1/b^2); fpair = F/r (measured, see the header)
+    return { e: pre * (this.cutCoul - r) * (this.cutCoul - r) / (r * b2), f: pre * (1 / rsq - 1 / b2) / r };
+  }
+}
+
+/** lj/charmmfsw/coul/long: the damped Ewald real-space Coulomb term, as lj/charmm/coul/long. */
+export class PairLJCharmmfswCoulLong extends PairLJCharmmfswBase {
+  readonly name: string = 'lj/charmmfsw/coul/long';
+  coulLong = true;
+  protected override tableSupported = true;
+
+  protected coulFswPair(rsq: number, sb: number, qi: number, qj: number, qqr: number, pc: PairCompute): { e: number; f: number } {
+    const r = Math.sqrt(rsq);
+    const grij = this.gEwald * r;
+    const ex = Math.exp(-grij * grij);
+    const erfc = this.table === 0 ? erfcPoly(grij, ex) : erfcFast(grij, ex);
+    const pre = qqr * qi * qj / r;
+    let e = pre * erfc, f = pre * (erfc + EWALD_F * grij * ex) / rsq;
+    const fc = pc.specialCoul[sb];
+    if (fc < 1) {
+      // special_bonds: removes (1 - w) of the bare term, as in PairLJCharmmCoulLong
+      const bare = qqr * qi * qj / r;
+      e -= (1 - fc) * bare;
+      f -= (1 - fc) * bare / rsq;
+    }
+    return { e, f };
+  }
+}

@@ -112,7 +112,7 @@ import { parseNum, joinPotentialEntries } from '../util';
  */
 
 /** One entry (element triplet) of a Tersoff potential file. */
-interface TersoffEntry {
+export interface TersoffEntry {
   e1: string;
   e2: string;
   e3: string;
@@ -130,15 +130,20 @@ interface TersoffEntry {
   D: number;
   lambda1: number;
   A: number;
+  /** Columns beyond the base 17 of a variant file (tersoff_variants.ts), by name. */
+  ext?: Record<string, number>;
 }
 
 /** 1 eV in kcal/mol (NIST thermochemical calorie; src/engine/units.ts real qe2f). */
 const EV_TO_KCAL = 23.060549;
 
-const key3 = (e1: string, e2: string, e3: string): string => `${e1} ${e2} ${e3}`;
+export const key3 = (e1: string, e2: string, e3: string): string => `${e1} ${e2} ${e3}`;
+
+/** Result of parsing a potential file. */
+export interface ParsedFile { entries: Map<string, TersoffEntry>; elems: Set<string>; unitTag: string | null }
 
 /** Parses a .tersoff potential file: entry lines of 3 element names + 15 numbers. */
-const parseTersoffFile = (text: string, fileName: string): { entries: Map<string, TersoffEntry>; elems: Set<string>; unitTag: string | null } => {
+export const parseTersoffFile = (text: string, fileName: string): ParsedFile => {
   const lines = joinPotentialEntries(text.split(/\r?\n/), 17);
   let unitTag: string | null = null;
   let start = 0;
@@ -188,7 +193,7 @@ const parseTersoffFile = (text: string, fileName: string): { entries: Map<string
 };
 
 /** Energy scale for the UNITS: metadata tag (only A and B carry energy units). */
-const unitScaleOf = (tag: string | null, ctx: StyleContext, fileName: string): number => {
+export const unitScaleOf = (tag: string | null, ctx: StyleContext, fileName: string): number => {
   if (!tag) return 1;
   const style = ctx.s?.units.style;
   if (tag === style) return 1;
@@ -200,66 +205,66 @@ const unitScaleOf = (tag: string | null, ctx: StyleContext, fileName: string): n
 };
 
 export class PairTersoff extends Pair {
-  readonly name = 'tersoff';
+  readonly name: string = 'tersoff';
   manybody = true;
   needsFull = true;
   needsHalf = false;
   virialFdotr = true;
 
   /** pair_style keyword *shift* delta (default 0.0). */
-  private shiftDelta = 0;
+  protected shiftDelta = 0;
 
-  private fileName = '';
-  private fileRead = false;
-  private entries = new Map<string, TersoffEntry>();
-  private fileElems = new Set<string>();
-  private unitScale = 1;
-  private elemOf = new Int32Array(0);
-  private elemNames: string[] = [];
+  protected fileName = '';
+  protected fileRead = false;
+  protected entries = new Map<string, TersoffEntry>();
+  protected fileElems = new Set<string>();
+  protected unitScale = 1;
+  protected elemOf = new Int32Array(0);
+  protected elemNames: string[] = [];
 
   // two-body parameters of the (E_i, E_j, E_j) entry, indexed ti*nt+tj (ordered)
-  private A2 = new Float64Array(0);
-  private B2 = new Float64Array(0);
-  private lam1 = new Float64Array(0);
-  private lam2 = new Float64Array(0);
-  private beta2 = new Float64Array(0);
-  private n2 = new Float64Array(0);
-  private R2 = new Float64Array(0);
-  private D2 = new Float64Array(0);
-  private cut2 = new Float64Array(0);
+  protected A2 = new Float64Array(0);
+  protected B2 = new Float64Array(0);
+  protected lam1 = new Float64Array(0);
+  protected lam2 = new Float64Array(0);
+  protected beta2 = new Float64Array(0);
+  protected n2 = new Float64Array(0);
+  protected R2 = new Float64Array(0);
+  protected D2 = new Float64Array(0);
+  protected cut2 = new Float64Array(0);
   // three-body parameters of the (E_i, E_j, E_k) entry, indexed (ti*nt+tj)*nt+tk
-  private m3 = new Float64Array(0);
-  private gam3 = new Float64Array(0);
-  private lam3p = new Float64Array(0);
-  private c3 = new Float64Array(0);
-  private d3 = new Float64Array(0);
-  private ct03 = new Float64Array(0);
-  private R3 = new Float64Array(0);
-  private D3 = new Float64Array(0);
-  private cut3 = new Float64Array(0);
-  private valid3 = new Uint8Array(0);
+  protected m3 = new Float64Array(0);
+  protected gam3 = new Float64Array(0);
+  protected lam3p = new Float64Array(0);
+  protected c3 = new Float64Array(0);
+  protected d3 = new Float64Array(0);
+  protected ct03 = new Float64Array(0);
+  protected R3 = new Float64Array(0);
+  protected D3 = new Float64Array(0);
+  protected cut3 = new Float64Array(0);
+  protected valid3 = new Uint8Array(0);
   /** The neighbor-list cutoff for every non-NULL type pair (max R+D of relevant entries). */
-  private pairCut = 0;
+  protected pairCut = 0;
 
   // per-center gathered-neighbor scratch
-  private cap = 0;
-  private gJ = new Int32Array(0);
-  private gDx = new Float64Array(0);
-  private gDy = new Float64Array(0);
-  private gDz = new Float64Array(0);
-  private gR = new Float64Array(0);
+  protected cap = 0;
+  protected gJ = new Int32Array(0);
+  protected gDx = new Float64Array(0);
+  protected gDy = new Float64Array(0);
+  protected gDz = new Float64Array(0);
+  protected gR = new Float64Array(0);
   // per-k scratch for the second pass of one bond
-  private kIdx = new Int32Array(0);
-  private kDx = new Float64Array(0);
-  private kDy = new Float64Array(0);
-  private kDz = new Float64Array(0);
-  private kR = new Float64Array(0);
-  private dHdRik = new Float64Array(0);
-  private dHdRij = new Float64Array(0);
-  private dHdc = new Float64Array(0);
-  private kGx = new Float64Array(0);
-  private kGy = new Float64Array(0);
-  private kGz = new Float64Array(0);
+  protected kIdx = new Int32Array(0);
+  protected kDx = new Float64Array(0);
+  protected kDy = new Float64Array(0);
+  protected kDz = new Float64Array(0);
+  protected kR = new Float64Array(0);
+  protected dHdRik = new Float64Array(0);
+  protected dHdRij = new Float64Array(0);
+  protected dHdc = new Float64Array(0);
+  protected kGx = new Float64Array(0);
+  protected kGy = new Float64Array(0);
+  protected kGz = new Float64Array(0);
 
   override settings(args: string[], _ctx: StyleContext): void {
     for (let k = 0; k < args.length; k++) {
@@ -341,8 +346,13 @@ export class PairTersoff extends Pair {
     }
   }
 
-  private readFile(filename: string, ctx: StyleContext): void {
-    const parsed = parseTersoffFile(ctx.readFile(filename), filename);
+  /** Parses the potential file text; the variant styles (tersoff_variants.ts) override it for their file layouts. */
+  protected parseFile(text: string, fileName: string): ParsedFile {
+    return parseTersoffFile(text, fileName);
+  }
+
+  protected readFile(filename: string, ctx: StyleContext): void {
+    const parsed = this.parseFile(ctx.readFile(filename), filename);
     const scale = unitScaleOf(parsed.unitTag, ctx, filename);
     if (scale !== 1) ctx.log(`WARNING: converting Tersoff potential file ${filename} from ${parsed.unitTag} to ${ctx.s?.units.style} units`);
     this.entries = parsed.entries;
@@ -352,7 +362,7 @@ export class PairTersoff extends Pair {
     this.fileRead = true;
   }
 
-  private entry(k: string, what: string): TersoffEntry {
+  protected entry(k: string, what: string): TersoffEntry {
     const e = this.entries.get(k);
     if (!e) throw new StyleError(`Tersoff potential file ${this.fileName} has no entry for elements ${k} (${what})`);
     return e;
@@ -389,6 +399,7 @@ export class PairTersoff extends Pair {
         this.R2[t] = e.R;
         this.D2[t] = e.D;
         this.cut2[t] = e.R + e.D;
+        this.onPair(t, e);
       }
     }
     // three-body tables from the (E_i, E_j, E_k) entries
@@ -414,6 +425,7 @@ export class PairTersoff extends Pair {
           this.D3[t] = e.D;
           this.cut3[t] = e.R + e.D;
           this.valid3[t] = 1;
+          this.onTriplet(t, e);
           if (e.R + e.D > this.pairCut) this.pairCut = e.R + e.D;
         }
       }
@@ -428,6 +440,12 @@ export class PairTersoff extends Pair {
     }
   }
 
+  /** Hook: the two-body table of type index t (ordered, ti*nt+tj) was filled from entry e. */
+  protected onPair(_t: number, _e: TersoffEntry): void {}
+
+  /** Hook: the three-body table of type index t ((ti*nt+tj)*nt+tk) was filled from entry e. */
+  protected onTriplet(_t: number, _e: TersoffEntry): void {}
+
   override initOne(i: number, j: number): number {
     const ei = this.elemOf[i];
     const ej = this.elemOf[j];
@@ -436,17 +454,92 @@ export class PairTersoff extends Pair {
   }
 
   /** f_C(r) with cutoff R,D (docs formula above). */
-  private static fc(r: number, R: number, D: number): number {
+  protected cutFn(r: number, R: number, D: number): number {
     if (r < R - D) return 1;
     if (r > R + D) return 0;
     return 0.5 - 0.5 * Math.sin((Math.PI / 2) * (r - R) / D);
   }
 
   /** d f_C/dr. */
-  private static dfc(r: number, R: number, D: number): number {
+  protected cutDeriv(r: number, R: number, D: number): number {
     if (r <= R - D || r >= R + D) return 0;
     return -(Math.PI / (4 * D)) * Math.cos((Math.PI / 2) * (r - R) / D);
   }
+
+  /** Angular factor g(cos theta) of the (ijk) entry t3 (docs: g(theta) formula above). */
+  protected angular(t3: number, cth: number): number {
+    const q = cth - this.ct03[t3];
+    const dd = this.d3[t3] * this.d3[t3];
+    const den = dd + q * q;
+    const c2 = this.c3[t3] * this.c3[t3];
+    return this.gam3[t3] * (1 + c2 / dd - c2 / den);
+  }
+
+  /** d g / d cos(theta) of the (ijk) entry t3. */
+  protected angularDeriv(t3: number, cth: number): number {
+    const q = cth - this.ct03[t3];
+    const dd = this.d3[t3] * this.d3[t3];
+    const den = dd + q * q;
+    const c2 = this.c3[t3] * this.c3[t3];
+    return 2 * this.gam3[t3] * c2 * q / (den * den);
+  }
+
+  /** exp[lambda3^m (r_ij - r_ik)^m] of the (ijk) entry t3, dr = r_ij - r_ik. */
+  protected zetaExp(t3: number, dr: number): number {
+    const lp = this.lam3p[t3];
+    if (lp === 0) return 1;
+    return Math.exp(lp * Math.pow(dr, this.m3[t3]));
+  }
+
+  /** d ln(zetaExp) / d r_ij of the (ijk) entry t3. */
+  protected zetaLogDeriv(t3: number, dr: number): number {
+    const lp = this.lam3p[t3];
+    if (lp === 0) return 0;
+    const mm = this.m3[t3];
+    return lp * mm * Math.pow(dr, mm - 1);
+  }
+
+  /** b_ij of the (ij) entry t2 for a bond-order sum zeta > 0 (docs: b_ij formula above). */
+  protected bondOrder(t2: number, zeta: number): number {
+    const bn = Math.pow(this.beta2[t2], this.n2[t2]);
+    const zn = Math.pow(zeta, this.n2[t2]);
+    const denom = 1 + bn * zn;
+    return Math.pow(denom, -1 / (2 * this.n2[t2]));
+  }
+
+  /** d b_ij / d zeta_ij (b is the value of bondOrder at this zeta). */
+  protected bondOrderDeriv(t2: number, zeta: number, b: number): number {
+    const bn = Math.pow(this.beta2[t2], this.n2[t2]);
+    const zn = Math.pow(zeta, this.n2[t2]);
+    const denom = 1 + bn * zn;
+    return -0.5 * b * bn * Math.pow(zeta, this.n2[t2] - 1) / denom;
+  }
+
+  /**
+   * Radial pieces of the (ij) pair of entry t2 at distance r, written to out:
+   * [0] f_C (cutoff factor multiplying the bond-order terms), [1] f_R (plus any
+   * zeta-independent constant), [2] f_A, [3] d f_C/dr, [4] d f_R/dr, [5] d f_A/dr,
+   * [6] additive zeta-independent pair energy, [7] its derivative d/dr.
+   * V_ij = out[0] (out[1] + b out[2]) + out[6].
+   */
+  protected pairRadial(t2: number, r: number, out: Float64Array): void {
+    const rs = r + this.shiftDelta;
+    const R = this.R2[t2], D = this.D2[t2];
+    const facc = this.cutFn(rs, R, D);
+    const fr = this.A2[t2] * Math.exp(-this.lam1[t2] * rs);
+    const fa = -this.B2[t2] * Math.exp(-this.lam2[t2] * rs);
+    out[0] = facc;
+    out[1] = fr;
+    out[2] = fa;
+    out[3] = this.cutDeriv(rs, R, D);
+    out[4] = -this.lam1[t2] * fr;
+    out[5] = -this.lam2[t2] * fa;
+    out[6] = 0;
+    out[7] = 0;
+  }
+
+  /** Scratch for pairRadial. */
+  protected pr = new Float64Array(8);
 
   override compute(pc: PairCompute): void {
     const list = pc.full;
@@ -510,9 +603,11 @@ export class PairTersoff extends Pair {
         const c2r = cut2[t2];
         if (r1 >= c2r) continue;
         const e1x = gDx[a] / r1, e1y = gDy[a] / r1, e1z = gDz[a] / r1;
-        const facc = PairTersoff.fc(r1 + sft, R2[t2], D2[t2]);
-        const fr = A2[t2] * Math.exp(-lam1[t2] * (r1 + sft));
-        const fa = -B2[t2] * Math.exp(-lam2[t2] * (r1 + sft));
+        const pr = this.pr;
+        this.pairRadial(t2, r1, pr);
+        const facc = pr[0];
+        const fr = pr[1];
+        const fa = pr[2];
 
         // bond-order environment: zeta_ij = sum_k f_C(r_ik) g exp[...]
         const base3 = (base2 + tjv) * nt; // (tiv*nt + tjv)*nt
@@ -528,29 +623,20 @@ export class PairTersoff extends Pair {
           if (valid3[t3] === 0) continue;
           if (r2 >= cut3[t3]) continue;
           const e2x = gDx[b] / r2, e2y = gDy[b] / r2, e2z = gDz[b] / r2;
-          const fc2 = PairTersoff.fc(r2 + sft, R3[t3], D3[t3]);
+          const fc2 = this.cutFn(r2 + sft, R3[t3], D3[t3]);
           const cth = (e1x * e2x + e1y * e2y + e1z * e2z);
-          const q = cth - ct03[t3];
-          const dd = d3[t3] * d3[t3];
-          const den = dd + q * q;
-          const c2 = c3[t3] * c3[t3];
-          const g = gam3[t3] * (1 + c2 / dd - c2 / den);
+          const g = this.angular(t3, cth);
           // exp[lambda3^m (r_ij - r_ik)^m]
           const dr = r1 - r2;
-          let efil = 1, dphi = 0;
-          const lp = lam3p[t3];
-          if (lp !== 0) {
-            const mm = m3[t3];
-            efil = Math.exp(lp * Math.pow(dr, mm));
-            dphi = lp * mm * Math.pow(dr, mm - 1);
-          }
+          const efil = this.zetaExp(t3, dr);
+          const dphi = this.zetaLogDeriv(t3, dr);
           const H = fc2 * g * efil;
           zeta += H;
           // partials of H
-          const fc2p = PairTersoff.dfc(r2 + sft, R3[t3], D3[t3]);
+          const fc2p = this.cutDeriv(r2 + sft, R3[t3], D3[t3]);
           const drik = g * efil * fc2p - H * dphi;
           const drij = H * dphi;
-          const dgdc = 2 * gam3[t3] * c2 * q / (den * den);
+          const dgdc = this.angularDeriv(t3, cth);
           kIdx[nk] = kk; kR[nk] = r2;
           kGx[nk] = e2x; kGy[nk] = e2y; kGz[nk] = e2z;
           dHdRik[nk] = drik; dHdRij[nk] = drij; dHdc[nk] = fc2 * efil * dgdc;
@@ -560,19 +646,14 @@ export class PairTersoff extends Pair {
         // b_ij and d b/d zeta
         let b = 1, dbdz = 0;
         if (zeta > 0) {
-          const bn = Math.pow(beta2[t2], n2[t2]);
-          const zn = Math.pow(zeta, n2[t2]);
-          const denom = 1 + bn * zn;
-          b = Math.pow(denom, -1 / (2 * n2[t2]));
-          dbdz = -0.5 * b * bn * Math.pow(zeta, n2[t2] - 1) / denom;
+          b = this.bondOrder(t2, zeta);
+          dbdz = this.bondOrderDeriv(t2, zeta, b);
         }
 
-        const v = facc * (fr + b * fa);
+        const v = facc * (fr + b * fa) + pr[6];
         evdwl += 0.5 * v;
 
-        const dfrdr = -lam1[t2] * fr;
-        const dfadr = -lam2[t2] * fa;
-        const dRad = PairTersoff.dfc(r1 + sft, R2[t2], D2[t2]) * (fr + b * fa) + facc * (dfrdr + b * dfadr);
+        const dRad = pr[3] * (fr + b * fa) + facc * (pr[4] + b * pr[5]) + pr[7];
 
         // radial half-force: on j = -0.5*dRad*e1, on i = +0.5*dRad*e1
         const hx = 0.5 * dRad * e1x, hy = 0.5 * dRad * e1y, hz = 0.5 * dRad * e1z;

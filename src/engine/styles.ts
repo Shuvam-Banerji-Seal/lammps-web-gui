@@ -58,6 +58,9 @@ import * as fixEhex from './registry/fix_ehex';
 import * as pairMisc4 from './registry/pair_misc4';
 import * as fixGjf from './registry/fix_gjf';
 import * as fixAdapt from './registry/fix_adapt';
+import * as pairMisc5 from './registry/pair_misc5';
+import * as pairMeam from './registry/pair_meam';
+import * as fixBoxRelax from './registry/fix_boxrelax';
 import * as pairTable from './registry/pair_table';
 import * as pairCharmm from './registry/pair_charmm';
 import * as pairCoulLong2 from './registry/pair_coullong2';
@@ -98,7 +101,7 @@ export const PAIR_STYLES: Record<string, () => Pair> = {
   ...pairCoul.PAIRS, ...pairSimple.PAIRS, ...pairLJ.PAIRS, ...pairLJCoul.PAIRS, ...pairSimple2.PAIRS, ...pairLJ2.PAIRS,
   ...pairEAM.PAIRS, ...pair3Body.PAIRS, ...pairSW.PAIRS,
   ...pairZBL.PAIRS, ...pairTable.PAIRS, ...pairCharmm.PAIRS, ...pairCoulLong2.PAIRS,
-  ...pairGran.PAIRS, ...pairColloid.PAIRS, ...pairYColloid.PAIRS, ...pairVashishta.PAIRS, ...pairRelres.PAIRS, ...pairGranular.PAIRS, ...pairSnap.PAIRS, ...pairMisc4.PAIRS,
+  ...pairGran.PAIRS, ...pairColloid.PAIRS, ...pairYColloid.PAIRS, ...pairVashishta.PAIRS, ...pairRelres.PAIRS, ...pairGranular.PAIRS, ...pairSnap.PAIRS, ...pairMisc4.PAIRS, ...pairMisc5.PAIRS, ...pairMeam.PAIRS,
 };
 
 export const BOND_STYLES: Record<string, () => Bonded> = {
@@ -140,7 +143,7 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   rattle: (s, i, g, a) => new FixShake(s, i, g, a, 'rattle'),
   ...Object.fromEntries(['rigid', 'rigid/nve', 'rigid/small', 'rigid/nve/small'].map((st) => [st, (s: System, i: string, g: string, a: string[]) => new FixRigid(s, i, g, a, st)])),
   ...fixForce.FIXES, ...fixWall.FIXES, ...fixOutput.FIXES, ...fixMotion.FIXES,
-  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES, ...fixDeform.FIXES, ...fixWallGran.FIXES, ...fixRigid2.FIXES, ...fixPour.FIXES, ...fixNHSphere.FIXES, ...fixAveChunk.FIXES, ...fixMisc3.FIXES, ...fixSllod.FIXES, ...fixEhex.FIXES, ...fixGjf.FIXES, ...fixAdapt.FIXES,
+  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES, ...fixDeform.FIXES, ...fixWallGran.FIXES, ...fixRigid2.FIXES, ...fixPour.FIXES, ...fixNHSphere.FIXES, ...fixAveChunk.FIXES, ...fixMisc3.FIXES, ...fixSllod.FIXES, ...fixEhex.FIXES, ...fixGjf.FIXES, ...fixAdapt.FIXES, ...fixBoxRelax.FIXES,
 };
 
 export const COMPUTE_STYLES: Record<string, ComputeFactory> = {

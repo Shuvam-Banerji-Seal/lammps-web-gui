@@ -1,0 +1,6 @@
+# synthetic SNAP parameters for oracle w8snap
+rcutfac 1.1
+twojmax 3
+rfac0 0.9
+rmin0 0.1
+quadraticflag 1

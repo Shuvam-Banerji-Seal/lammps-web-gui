@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
 import { clebsch, wignerU, ComputeSnaAtom } from '../src/engine/compute/sna';
+import { parseSnapCoeff, parseSnapParam } from '../src/engine/force/pair/snap';
 import type { EngineEvent } from '../src/engine/types';
 
 /** Runs input text in a fresh session. */
@@ -143,5 +144,137 @@ describe('compute sna/atom: argument errors', () => {
 
   it('is registered under the sna/atom style name', () => {
     expect(ComputeSnaAtom).toBeDefined();
+  });
+});
+
+/* ---- pair_style snap: synthetic 2-element files, energy and forces ---- */
+
+const K3 = 8; // twojmax 3: K = 8 bispectrum components
+
+/** Deterministic pseudo-random coefficients (small, so the energies stay O(1)). */
+const coefLines = (n: number, seed: number): string[] => {
+  const out: string[] = [];
+  let v = seed;
+  for (let k = 0; k < n; k++) {
+    v = (v * 16807) % 2147483647;
+    out.push(String((v / 2147483647 - 0.5) * (k === 0 ? 0.5 : 0.2)));
+  }
+  return out;
+};
+
+const snapCoeffText = (quadratic: boolean): string => {
+  const n = 1 + K3 + (quadratic ? (K3 * (K3 + 1)) / 2 : 0);
+  return [
+    `# synthetic two-element SNAP coefficients (test only)`,
+    `2 ${n}`,
+    `A 1.4 1.0`, ...coefLines(n, 12345),
+    `B 1.6 0.8`, ...coefLines(n, 67891),
+  ].join('\n') + '\n';
+};
+
+const snapParamText = (quadratic: boolean): string => [
+  '# synthetic SNAP parameters (test only)',
+  'rcutfac 1.1',
+  'twojmax 3',
+  'rfac0 0.9',
+  'rmin0 0.1',
+  ...(quadratic ? ['quadraticflag 1'] : []),
+].join('\n') + '\n';
+
+/** Energy (sum of atom energies) and forces of a 4-atom configuration. */
+const snapRun = async (quadratic: boolean, pos: number[][]) => {
+  const events: EngineEvent[] = [];
+  const session = new Session({ emit: (ev) => events.push(ev) });
+  session.addFile('t.snapcoeff', snapCoeffText(quadratic));
+  session.addFile('t.snapparam', snapParamText(quadratic));
+  const types = [1, 2, 1, 2];
+  const create = pos.map((p, i) => `create_atoms ${types[i]} single ${p.join(' ')}`).join('\n');
+  await session.execute(`
+units lj
+atom_style atomic
+boundary p p p
+region box block -10 10 -10 10 -10 10
+create_box 2 box
+${create}
+mass * 1.0
+pair_style snap
+pair_coeff * * t.snapcoeff t.snapparam A B
+run 0
+`);
+  const sys = session.sys;
+  const E = sys.forces().evdwl;
+  return { E, f: Array.from(sys.state.f.slice(0, 3 * pos.length)) };
+};
+
+const SNAP_POS = [[0.0, 0.0, 0.0], [0.9, 0.4, -0.5], [-0.3, 1.0, 0.6], [1.1, -0.7, 0.5]];
+
+describe('pair_style snap', () => {
+  for (const quadratic of [false, true]) {
+    it(`forces equal -dE/dx by finite differences (quadraticflag ${quadratic ? 1 : 0})`, async () => {
+      const ref = await snapRun(quadratic, SNAP_POS);
+      expect(Number.isFinite(ref.E)).toBe(true);
+      // guard against a trivially passing test: the forces must be sizeable
+      expect(Math.max(...ref.f.map(Math.abs))).toBeGreaterThan(1e-3);
+      const h = 1e-5;
+      // check atoms 0 and 2 in all three directions
+      for (const atom of [0, 2]) {
+        for (let c = 0; c < 3; c++) {
+          const plus = SNAP_POS.map((p) => p.slice());
+          const minus = SNAP_POS.map((p) => p.slice());
+          plus[atom][c] += h;
+          minus[atom][c] -= h;
+          const Ep = (await snapRun(quadratic, plus)).E;
+          const Em = (await snapRun(quadratic, minus)).E;
+          const fd = -(Ep - Em) / (2 * h);
+          const f = ref.f[3 * atom + c];
+          expect(Math.abs(f - fd), `atom ${atom} component ${c}: engine ${f} vs fd ${fd}`).toBeLessThan(1e-6 * Math.max(1, Math.abs(fd)));
+        }
+      }
+    }, 60_000);
+  }
+
+  it('forces stay consistent with the energy for a pair closer than rmin0', async () => {
+    // rmin0 = 0.1: the second atom is at 0.08 from the first (theta0 < 0 branch, f_c = 1 there)
+    const close = [[0.0, 0.0, 0.0], [0.08, 0.02, -0.01], [-0.3, 1.0, 0.6], [1.1, -0.7, 0.5]];
+    const ref = await snapRun(false, close);
+    const h = 1e-6;
+    for (let c = 0; c < 3; c++) {
+      const plus = close.map((p) => p.slice());
+      const minus = close.map((p) => p.slice());
+      plus[1][c] += h;
+      minus[1][c] -= h;
+      const fd = -((await snapRun(false, plus)).E - (await snapRun(false, minus)).E) / (2 * h);
+      expect(Math.abs(ref.f[3 + c] - fd)).toBeLessThan(1e-5 * Math.max(1, Math.abs(fd)));
+    }
+  }, 60_000);
+
+  it('the quadratic energy differs from the linear one (the quadratic block is used)', async () => {
+    const lin = await snapRun(false, SNAP_POS);
+    const quad = await snapRun(true, SNAP_POS);
+    expect(Math.abs(lin.E - quad.E)).toBeGreaterThan(1e-6);
+  });
+
+  it('total force on an isolated pair is zero (Newton third law)', async () => {
+    const r = await snapRun(false, SNAP_POS);
+    for (let c = 0; c < 3; c++) {
+      let sum = 0;
+      for (let a = 0; a < SNAP_POS.length; a++) sum += r.f[3 * a + c];
+      expect(Math.abs(sum)).toBeLessThan(1e-9);
+    }
+  });
+
+  it('parses the documented coefficient and parameter layouts', () => {
+    const lin = parseSnapCoeff(snapCoeffText(false), 'x', K3, false);
+    expect(lin.elems).toEqual(['A', 'B']);
+    expect(lin.ncoeff).toBe(1 + K3);
+    expect(lin.radius[1]).toBeCloseTo(1.6, 12);
+    const quad = parseSnapCoeff(snapCoeffText(true), 'x', K3, true);
+    expect(quad.ncoeff).toBe(1 + K3 + (K3 * (K3 + 1)) / 2);
+    expect(() => parseSnapCoeff(snapCoeffText(false), 'x', K3, true)).toThrow(/does not match twojmax/);
+    const prm = parseSnapParam(snapParamText(true), 'x');
+    expect(prm.quadraticflag).toBe(true);
+    expect(prm.bzeroflag).toBe(true);
+    expect(() => parseSnapParam('rcutfac 1.0\nchemflag 1\ntwojmax 2\n', 'x')).toThrow(/chemflag 1 is not implemented/);
+    expect(() => parseSnapParam('rcutfac 1.0\n', 'x')).toThrow(/twojmax are required/);
   });
 });

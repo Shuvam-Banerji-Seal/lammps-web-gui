@@ -150,7 +150,7 @@ export const wignerU = (J: number, ar: number, ai: number, br: number, bi: numbe
 };
 
 /** One bispectrum component: doubled indices and its coupling table. */
-interface Triple {
+export interface Triple {
   J1: number;
   J2: number;
   J: number;
@@ -161,7 +161,7 @@ interface Triple {
 }
 
 /** Bispectrum component list in the documented order, with coupling tables. */
-const buildTriples = (twojmax: number): Triple[] => {
+export const buildTriples = (twojmax: number): Triple[] => {
   const out: Triple[] = [];
   for (let J1 = 0; J1 <= twojmax; J1++) {
     for (let J2 = 0; J2 <= J1; J2++) {

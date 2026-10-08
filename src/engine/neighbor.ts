@@ -344,8 +344,35 @@ export class Neighbor {
     };
   }
 
+  // Scratch buffers for buildList: grown on demand, never handed out with a list.
+  private sBinOf = new Int32Array(0);
+  private sBinStart = new Int32Array(0);
+  private sBinGhost = new Int32Array(0);
+  private sCursor = new Int32Array(0);
+  private sAtoms = new Int32Array(0);
+  private sAtomsG = new Int32Array(0);
+  private sBx = new Float64Array(0);
+  private sBxG = new Float64Array(0);
+  private sBt = new Int32Array(0);
+  private sBtG = new Int32Array(0);
+  private sPairA = new Int32Array(0);
+  private sPairJ = new Int32Array(0);
+
+  /**
+   * Builds one list over the owned and ghost atoms. Owned and ghost atoms are binned
+   * into two bin-sorted arrays, so each row of the stencil (five bins along x, as
+   * far as the cutoff reaches) is one contiguous range of owned atoms and one of
+   * ghosts. Every candidate pair is visited once: owned-owned, owned-ghost (from the
+   * owned side) and ghost-owned (from the ghost side), never ghost-ghost. The
+   * membership rules are the class comment's: a half list keeps an owned-owned pair
+   * at the lower index and an owned-ghost pair only when the ghost lies "above";
+   * a full list keeps every neighbor. Special bits, exclusions and the include group
+   * apply per entry. Entries are collected as (owner, neighbor) pairs in scratch
+   * buffers and counting-sorted into fresh per-atom CSR arrays, so a returned list
+   * never aliases a later build.
+   */
   private buildList(s: SimState, needs: NeighborNeeds, fullList: boolean, skin = this.skin): NeighList {
-    const nlocal = this.nlocal, nall = this.nall;
+    const nlocal = this.nlocal, nall = this.nall, nghost = nall - nlocal;
     const xa = this.xall, ta = this.typeall, owner = this.owner;
     const nt = needs.ntypes + 1;
     const cutsq = new Float64Array(nt * nt);
@@ -355,8 +382,8 @@ export class Neighbor {
       if (c > 0) { cutsq[k] = (c + skin) * (c + skin); if (c + skin > cmax) cmax = c + skin; }
     }
     if (cmax <= 0) return emptyList(nlocal);
-    // bins over the bounding box of all atoms, padded by the stencil reach so
-    // the stencil is a flat list of index offsets with no bounds checks
+    // bins over the bounding box of all atoms; the stencil reaches past the box, so every
+    // stencil row stays inside the padded bin grid
     const binsize = this.binsize > 0 ? this.binsize : 0.5 * cmax;
     let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
     for (let k = 0; k < nall; k++) {
@@ -374,122 +401,212 @@ export class Neighbor {
     const sx = Math.ceil(cmax / bx), sy = Math.ceil(cmax / by), sz = Math.ceil(cmax / bz);
     const nbx = mx + 2 * sx, nby = my + 2 * sy, nbz = mz + 2 * sz;
     const nbins = nbx * nby * nbz;
-    const binOf = new Int32Array(nall);
-    const binCount = new Int32Array(nbins + 1);
-    for (let k = 0; k < nall; k++) {
-      let ix = Math.floor((xa[3 * k] - x0) / bx); if (ix >= mx) ix = mx - 1; if (ix < 0) ix = 0;
-      let iy = Math.floor((xa[3 * k + 1] - y0) / by); if (iy >= my) iy = my - 1; if (iy < 0) iy = 0;
-      let iz = Math.floor((xa[3 * k + 2] - z0) / bz); if (iz >= mz) iz = mz - 1; if (iz < 0) iz = 0;
-      const b = ((iz + sz) * nby + iy + sy) * nbx + ix + sx;
-      binOf[k] = b;
-      binCount[b + 1]++;
-    }
-    for (let b = 0; b < nbins; b++) binCount[b + 1] += binCount[b];
-    const binStart = binCount;
-    const fill = binStart.slice(0, nbins);
-    // atoms in bin order, with their positions and types copied contiguously
-    const binAtoms = new Int32Array(nall);
-    for (let k = 0; k < nall; k++) binAtoms[fill[binOf[k]]++] = k;
-    const bxs = new Float64Array(3 * nall);
-    const bts = new Int32Array(nall);
-    for (let p = 0; p < nall; p++) {
-      const k = binAtoms[p];
-      bxs[3 * p] = xa[3 * k]; bxs[3 * p + 1] = xa[3 * k + 1]; bxs[3 * p + 2] = xa[3 * k + 2];
-      bts[p] = ta[k];
-    }
-    // stencil: bins whose closest point can be within cmax, as linear offsets
-    const sten: number[] = [];
-    for (let dz = -sz; dz <= sz; dz++) {
+
+    // stencil rows: for the upper half of the stencil (dz > 0, or dz = 0 and dy > 0) the bins with
+    // dx in [-m, m] are contiguous in bin order, as is the row dx in [1, m0] of the own z-y plane
+    const cmax2 = cmax * cmax;
+    const gapOK = (dx: number, dy: number, dz: number): boolean => {
+      const gx = Math.max(0, Math.abs(dx) - 1) * bx, gy = Math.max(0, Math.abs(dy) - 1) * by, gz = Math.max(0, Math.abs(dz) - 1) * bz;
+      return gx * gx + gy * gy + gz * gz < cmax2;
+    };
+    const rowLo: number[] = [], rowHi: number[] = [];
+    for (let dz = 0; dz <= sz; dz++) {
       for (let dy = -sy; dy <= sy; dy++) {
-        for (let dx = -sx; dx <= sx; dx++) {
-          const gx = Math.max(0, Math.abs(dx) - 1) * bx, gy = Math.max(0, Math.abs(dy) - 1) * by, gz = Math.max(0, Math.abs(dz) - 1) * bz;
-          if (gx * gx + gy * gy + gz * gz < cmax * cmax) sten.push((dz * nby + dy) * nbx + dx);
-        }
+        if (dz === 0 && dy <= 0) continue;
+        let m = -1;
+        for (let d = 0; d <= sx; d++) if (gapOK(d, dy, dz)) m = d;
+        if (m < 0) continue;
+        const base = (dz * nby + dy) * nbx;
+        rowLo.push(base - m); rowHi.push(base + m);
       }
     }
-    const stencil = Int32Array.from(sten);
-    const ns = stencil.length;
+    let m0 = 0;
+    for (let d = 1; d <= sx; d++) if (gapOK(d, 0, 0)) m0 = d;
+    if (m0 >= 1) { rowLo.push(1); rowHi.push(m0); }
+    const nrows = rowLo.length;
+    const rLo = Int32Array.from(rowLo), rHi = Int32Array.from(rowHi);
+
+    // counting sort of the owned and of the ghost atoms into bins (two grids, one per class)
+    const binOf = (this.sBinOf = grownI32(this.sBinOf, nall));
+    const bL = (this.sBinStart = grownI32(this.sBinStart, nbins + 1));
+    const bG = (this.sBinGhost = grownI32(this.sBinGhost, nbins + 1));
+    const cursor = (this.sCursor = grownI32(this.sCursor, Math.max(2 * nbins, nlocal, nghost)));
+    bL.fill(0, 0, nbins + 1);
+    bG.fill(0, 0, nbins + 1);
+    for (let k = 0; k < nall; k++) {
+      // the box covers every atom, so the scaled offsets are non-negative
+      let ix = ((xa[3 * k] - x0) / bx) | 0; if (ix >= mx) ix = mx - 1;
+      let iy = ((xa[3 * k + 1] - y0) / by) | 0; if (iy >= my) iy = my - 1;
+      let iz = ((xa[3 * k + 2] - z0) / bz) | 0; if (iz >= mz) iz = mz - 1;
+      const b = ((iz + sz) * nby + iy + sy) * nbx + ix + sx;
+      binOf[k] = b;
+      if (k < nlocal) bL[b + 1]++; else bG[b + 1]++;
+    }
+    for (let b = 0; b < nbins; b++) { bL[b + 1] += bL[b]; bG[b + 1] += bG[b]; }
+    const lk = (this.sAtoms.length >= nlocal ? this.sAtoms : (this.sAtoms = new Int32Array(Math.max(nlocal, 2 * this.sAtoms.length))));
+    const gk = (this.sAtomsG.length >= nghost ? this.sAtomsG : (this.sAtomsG = new Int32Array(Math.max(nghost, 2 * this.sAtomsG.length))));
+    const lxs = (this.sBx.length >= 3 * nlocal ? this.sBx : (this.sBx = new Float64Array(Math.max(3 * nlocal, 2 * this.sBx.length))));
+    const gxs = (this.sBxG.length >= 3 * nghost ? this.sBxG : (this.sBxG = new Float64Array(Math.max(3 * nghost, 2 * this.sBxG.length))));
+    const lt = (this.sBt.length >= nlocal ? this.sBt : (this.sBt = new Int32Array(Math.max(nlocal, 2 * this.sBt.length))));
+    const gt = (this.sBtG.length >= nghost ? this.sBtG : (this.sBtG = new Int32Array(Math.max(nghost, 2 * this.sBtG.length))));
+    for (let b = 0; b < nbins; b++) cursor[b] = bL[b];
+    for (let b = 0; b < nbins; b++) cursor[nbins + b] = bG[b];
+    for (let k = 0; k < nall; k++) {
+      const b = binOf[k];
+      if (k < nlocal) {
+        const p = cursor[b]++;
+        lk[p] = k; lt[p] = ta[k];
+        lxs[3 * p] = xa[3 * k]; lxs[3 * p + 1] = xa[3 * k + 1]; lxs[3 * p + 2] = xa[3 * k + 2];
+      } else {
+        const p = cursor[nbins + b]++;
+        gk[p] = k; gt[p] = ta[k];
+        gxs[3 * p] = xa[3 * k]; gxs[3 * p + 1] = xa[3 * k + 1]; gxs[3 * p + 2] = xa[3 * k + 2];
+      }
+    }
+
     const special = needs.special;
     const ss = needs.specialSettings;
     const exclude = needs.exclude ?? this.excludeFn(s);
     const incl = this.includeBit;
     const plain = !special && !exclude && !incl;
-    const numneigh = new Int32Array(nlocal);
-    const firstneigh = new Int32Array(nlocal + 1);
-    let cap = Math.max(64, nlocal * (fullList ? 96 : 48));
-    let neigh = new Int32Array(cap);
-    let count = 0;
     const id = s.id;
-    for (let i = 0; i < nlocal; i++) {
-      firstneigh[i] = count;
-      if (incl && !(s.mask[i] & incl)) { numneigh[i] = 0; continue; }
-      if (count + 2048 > cap) {
-        cap = Math.max(2 * cap, count + 4096);
-        const nn = new Int32Array(cap);
-        nn.set(neigh.subarray(0, count));
-        neigh = nn;
+    // the entry for owned atom a and neighbor j (index into owned+ghost), NaN when rejected
+    const encode = (a: number, j: number): number => {
+      const jo = owner[j];
+      if (incl && (!(s.mask[a] & incl) || !(s.mask[jo] & incl))) return NaN;
+      if (exclude && exclude(a, jo)) return NaN;
+      if (!special) return j;
+      const sp1 = special.offset[a + 1];
+      for (let k = special.offset[a]; k < sp1; k++) {
+        if (special.partner[k] !== id[jo]) continue;
+        const o = special.order[k];
+        const lj = ss.lj[o], cl = ss.coul[o];
+        if (lj === 1 && cl === 1) return j;
+        if (lj === 0 && cl === 0 && !ss.keepExcluded) return NaN;
+        return j | (o << SBBITS);
       }
-      const xi = xa[3 * i], yi = xa[3 * i + 1], zi = xa[3 * i + 2];
-      const ti = ta[i] * nt;
-      const b = binOf[i];
-      const sp0 = special ? special.offset[i] : 0;
-      const sp1 = special ? special.offset[i + 1] : 0;
-      for (let q = 0; q < ns; q++) {
-        const jb = b + stencil[q];
-        const pEnd = binStart[jb + 1];
-        for (let p = binStart[jb]; p < pEnd; p++) {
-          const j = binAtoms[p];
-          if (j === i) continue;
-          const dx = bxs[3 * p] - xi, dy = bxs[3 * p + 1] - yi, dz = bxs[3 * p + 2] - zi;
-          if (!fullList) {
-            if (j < nlocal) { if (j < i) continue; }
-            else if (dz < 0 || (dz === 0 && (dy < 0 || (dy === 0 && dx < 0)))) continue;
-          }
-          const r2 = dx * dx + dy * dy + dz * dz;
-          if (r2 >= cutsq[ti + bts[p]]) continue;
-          if (plain) {
-            if (count === cap) {
-              cap *= 2;
-              const nn = new Int32Array(cap);
-              nn.set(neigh);
-              neigh = nn;
+      return j;
+    };
+
+    // entries (owned source, neighbor code) as parallel buffers
+    let cap = Math.min(this.sPairA.length, this.sPairJ.length);
+    if (cap < 1024) cap = Math.max(1024, nlocal * (fullList ? 96 : 48));
+    let pa = this.sPairA.length >= cap ? this.sPairA : new Int32Array(cap);
+    let pj = this.sPairJ.length >= cap ? this.sPairJ : new Int32Array(cap);
+    cap = Math.min(pa.length, pj.length);
+    let np = 0;
+
+    for (let b = 0; b < nbins; b++) {
+      const l0 = bL[b], l1 = bL[b + 1], g0 = bG[b], g1 = bG[b + 1];
+      if (l1 === l0 && g1 === g0) continue;
+      // row -1 is the bin itself (its owned atoms pair with later owned atoms of the bin), then the
+      // stencil rows: every row is a contiguous range of owned atoms and of ghosts
+      for (let r = -1; r < nrows; r++) {
+        const own = r < 0;
+        let lA = l0, lB = l1, gA = g0, gB = g1;
+        if (!own) {
+          const ba = b + rLo[r], bb = b + rHi[r];
+          lA = bL[ba]; lB = bL[bb + 1];
+          gA = bG[ba]; gB = bG[bb + 1];
+          if (lB === lA && gB === gA) continue;
+        }
+        // owned p with owned q (q later in the bin, for the own row) and with ghost q
+        for (let p = l0; p < l1; p++) {
+          const kp = lk[p], tp = lt[p];
+          const px = lxs[3 * p], py = lxs[3 * p + 1], pz = lxs[3 * p + 2];
+          const qs = own ? p + 1 : lA;
+          if (lB > qs) {
+            const need = np + 2 * (lB - qs);
+            if (need > cap) {
+              cap = Math.max(2 * cap, need);
+              const na = new Int32Array(cap); na.set(pa.subarray(0, np)); pa = na;
+              const nj = new Int32Array(cap); nj.set(pj.subarray(0, np)); pj = nj;
             }
-            neigh[count++] = j;
-            continue;
-          }
-          const jo = owner[j];
-          if (incl && !(s.mask[jo] & incl)) continue;
-          if (exclude && exclude(i, jo)) continue;
-          let enc = j;
-          if (sp1 > sp0) {
-            const jid = id[jo];
-            let skip = false;
-            for (let k = sp0; k < sp1; k++) {
-              if (special!.partner[k] !== jid) continue;
-              const o = special!.order[k];
-              const lj = ss.lj[o], cl = ss.coul[o];
-              if (lj === 1 && cl === 1) break;
-              if (lj === 0 && cl === 0 && !ss.keepExcluded) { skip = true; break; }
-              enc = j | (o << SBBITS);
-              break;
+            for (let q = qs; q < lB; q++) {
+              const kq = lk[q], tq = lt[q];
+              const dx = lxs[3 * q] - px, dy = lxs[3 * q + 1] - py, dz = lxs[3 * q + 2] - pz;
+              const r2 = dx * dx + dy * dy + dz * dz;
+              if (fullList) {
+                const c1 = r2 < cutsq[tp * nt + tq], c2 = r2 < cutsq[tq * nt + tp];
+                if (plain) {
+                  pa[np] = kp; pj[np] = kq; np += +c1;
+                  pa[np] = kq; pj[np] = kp; np += +c2;
+                } else {
+                  if (c1) { const e = encode(kp, kq); if (e === e) { pa[np] = kp; pj[np] = e; np++; } }
+                  if (c2) { const e = encode(kq, kp); if (e === e) { pa[np] = kq; pj[np] = e; np++; } }
+                }
+              } else {
+                // half: the lower index owns the pair
+                const lo = kp < kq ? kp : kq, hi = kp < kq ? kq : kp;
+                const c = r2 < (kp < kq ? cutsq[tp * nt + tq] : cutsq[tq * nt + tp]);
+                if (plain) { pa[np] = lo; pj[np] = hi; np += +c; }
+                else if (c) { const e = encode(lo, hi); if (e === e) { pa[np] = lo; pj[np] = e; np++; } }
+              }
             }
-            if (skip) continue;
           }
-          if (count === cap) {
-            cap *= 2;
-            const nn = new Int32Array(cap);
-            nn.set(neigh);
-            neigh = nn;
+          if (gB > gA) {
+            const need = np + 2 * (gB - gA);
+            if (need > cap) {
+              cap = Math.max(2 * cap, need);
+              const na = new Int32Array(cap); na.set(pa.subarray(0, np)); pa = na;
+              const nj = new Int32Array(cap); nj.set(pj.subarray(0, np)); pj = nj;
+            }
+            for (let q = gA; q < gB; q++) {
+              const kq = gk[q], tq = gt[q];
+              const dx = gxs[3 * q] - px, dy = gxs[3 * q + 1] - py, dz = gxs[3 * q + 2] - pz;
+              const r2 = dx * dx + dy * dy + dz * dz;
+              // ghost q lies "above" the owned atom p when its offset is lex-positive
+              const c = r2 < cutsq[tp * nt + tq] && (fullList || keepAbove(dx, dy, dz));
+              if (plain) { pa[np] = kp; pj[np] = kq; np += +c; }
+              else if (c) { const e = encode(kp, kq); if (e === e) { pa[np] = kp; pj[np] = e; np++; } }
+            }
           }
-          neigh[count++] = enc;
+        }
+        // ghost p with owned q of the stencil row (the own row is covered from the owned side)
+        if (!own && lB > lA) {
+          for (let p = g0; p < g1; p++) {
+            const kp = gk[p], tp = gt[p];
+            const px = gxs[3 * p], py = gxs[3 * p + 1], pz = gxs[3 * p + 2];
+            const need = np + 2 * (lB - lA);
+            if (need > cap) {
+              cap = Math.max(2 * cap, need);
+              const na = new Int32Array(cap); na.set(pa.subarray(0, np)); pa = na;
+              const nj = new Int32Array(cap); nj.set(pj.subarray(0, np)); pj = nj;
+            }
+            for (let q = lA; q < lB; q++) {
+              const kq = lk[q], tq = lt[q];
+              const dx = lxs[3 * q] - px, dy = lxs[3 * q + 1] - py, dz = lxs[3 * q + 2] - pz;
+              const r2 = dx * dx + dy * dy + dz * dz;
+              // the owned atom is q: the ghost lies at offset p - q
+              const c = r2 < cutsq[tq * nt + tp] && (fullList || keepAbove(-dx, -dy, -dz));
+              if (plain) { pa[np] = kq; pj[np] = kp; np += +c; }
+              else if (c) { const e = encode(kq, kp); if (e === e) { pa[np] = kq; pj[np] = e; np++; } }
+            }
+          }
         }
       }
-      numneigh[i] = count - firstneigh[i];
     }
-    firstneigh[nlocal] = count;
-    return { inum: nlocal, numneigh, firstneigh, neighbors: neigh.subarray(0, count) };
+
+    // counting sort of the entries into per-atom rows
+    const numneigh = new Int32Array(nlocal);
+    for (let e = 0; e < np; e++) numneigh[pa[e]]++;
+    const firstneigh = new Int32Array(nlocal + 1);
+    for (let i = 0; i < nlocal; i++) firstneigh[i + 1] = firstneigh[i] + numneigh[i];
+    const neighbors = new Int32Array(np);
+    const pos = this.sCursor;
+    pos.set(firstneigh.subarray(0, nlocal));
+    for (let e = 0; e < np; e++) neighbors[pos[pa[e]]++] = pj[e];
+    this.sPairA = pa;
+    this.sPairJ = pj;
+    return { inum: nlocal, numneigh, firstneigh, neighbors };
   }
 }
+
+/** Whether a ghost at offset (dx, dy, dz) from an owned atom belongs to its half list (the lower mirror keeps the pair). */
+const keepAbove = (dx: number, dy: number, dz: number): boolean =>
+  !(dz < 0 || (dz === 0 && (dy < 0 || (dy === 0 && dx < 0))));
+
+const grownI32 = (a: Int32Array<ArrayBuffer>, n: number): Int32Array<ArrayBuffer> => (a.length >= n ? a : new Int32Array(Math.max(n, 2 * a.length)));
 
 const emptyList = (n: number): NeighList => ({
   inum: n, numneigh: new Int32Array(n), firstneigh: new Int32Array(n + 1), neighbors: new Int32Array(0),

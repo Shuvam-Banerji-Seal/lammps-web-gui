@@ -39,7 +39,7 @@ import type { System } from '../system';
  * weights. The neigh factor is applied to every atom in the same way, but only a
  * factor of exactly 1.0 gave the neighbor weights in the native runs: factors 0.5,
  * 0.6, 0.8, 0.9999, 1.0001, 1.5, 2.0 and 3 left W = 27 with the warning, so any
- * other factor is rejected here instead of guessing.
+ * other factor uses no neighbor weight here either, with a warning.
  */
 
 export class FixBalance extends Fix {
@@ -83,8 +83,8 @@ export class FixBalance extends Fix {
       if (key === 'weight' && args[k + 1] === 'neigh') {
         const f = Number(args[k + 2]);
         if (!(f > 0)) throw new StyleError('fix balance weight neigh: factor must be a positive number');
-        if (f !== 1) throw new StyleError(`fix balance weight neigh factor ${args[k + 2]} is not supported by the browser engine (only 1.0: native LAMMPS applied the neighbor weights for 1.0 only in the measured runs)`);
-        this.neigh = true;
+        if (f !== 1) sys.warn(`fix balance weight neigh factor ${args[k + 2]}: no neighbor weights are used (as in native LAMMPS for factors other than 1.0)`);
+        this.neigh = f === 1;
         k += 3;
       } else if (key === 'weight') {
         if (args[k + 1] !== 'group') throw new StyleError(`fix balance weight ${args[k + 1] ?? ''} is not supported by the browser engine (only weight group and neigh)`);

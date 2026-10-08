@@ -1738,7 +1738,8 @@ const createBondsMany = (sys: System, a: string[]): void => {
   const g = sys.geom;
   if (g.triclinic) throw new StyleError('create_bonds many is not supported for triclinic boxes');
   const L = [g.hi[0] - g.lo[0], g.hi[1] - g.lo[1], g.hi[2] - g.lo[2]];
-  for (let d = 0; d < 3; d++) if (g.periodic[d] && rmax > L[d]) throw new StyleError(`create_bonds many: rmax ${rmax} is larger than the periodic box length ${L[d]} in ${'xyz'[d]}`);
+  // measured with native LAMMPS (black box): in 2d the z extent is not checked (rmax 1.5 with a 1.17-thick box adds the bonds)
+  for (let d = 0; d < (sys.dimension === 2 ? 2 : 3); d++) if (g.periodic[d] && rmax > L[d]) throw new StyleError(`create_bonds many: rmax ${rmax} is larger than the periodic box length ${L[d]} in ${'xyz'[d]}`);
   // relation of two atoms by bond hops (1, 2 or 3); beyond three hops there is no special weight
   const adj = new Map<number, number[]>();
   for (let e = 0; e < s.topo.bonds.n; e++) {

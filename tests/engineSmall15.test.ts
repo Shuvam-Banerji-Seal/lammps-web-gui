@@ -222,8 +222,10 @@ run 0
     expect(rows[0].f_1).toBe(0);
   });
 
-  it('rejects other factors (measured: native left the neighbor weights unapplied for them)', async () => {
-    await expect(run(setup('fix 1 all balance 1 1.0 shift x 10 1.1 weight neigh 0.6'))).rejects.toThrow(/factor/);
+  it('uses no neighbor weight for other factors, with a warning (measured: native W stays the atom count)', async () => {
+    const { events } = await run(setup('fix 1 all balance 1 1.0 shift x 10 1.1 weight neigh 0.6'));
+    const rows = events.filter((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo').map((e) => e.row);
+    for (const r of rows) expect(r['f_1[1]']).toBe(27);
     await expect(run(setup('fix 1 all balance 1 1.0 shift x 10 1.1 weight neigh 0'))).rejects.toThrow(/positive/);
   });
 });

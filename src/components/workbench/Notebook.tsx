@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Square, Plus, Trash2, RotateCcw, Download, Cpu, Gpu, HelpCircle, FileUp, X } from 'lucide-react';
+import { Play, Square, Plus, Trash2, RotateCcw, Download, Cpu, Gpu, HelpCircle, FileUp, X, Workflow } from 'lucide-react';
+import { cellsToScript } from '../../lammps/notebookBridge';
 import { getThemeTokens, Theme } from '../../theme';
 import { usePersistentState } from '../../hooks/usePersistentState';
 import MoleculeCanvas from '../MoleculeCanvas';
@@ -116,9 +117,11 @@ interface NotebookProps {
   /** A script sent from the Script Builder, waiting for the user to place it. */
   incoming?: string | null;
   onIncomingTaken?: () => void;
+  /** Opens the notebook's cells in the Script Builder (as a new tab). */
+  onOpenInBuilder?: (script: string) => void;
 }
 
-const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingTaken }) => {
+const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingTaken, onOpenInBuilder }) => {
   const ct = getThemeTokens(theme);
   const [cells, setCells] = usePersistentState<Cell[]>(STORAGE_KEY, STARTER, reviveCells);
   const [backend, setBackend] = usePersistentState<BackendChoice>(BACKEND_KEY, 'cpu', reviveBackend);
@@ -343,6 +346,14 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
         </button>
         <input ref={fileInput} type="file" multiple hidden aria-label="Add input files"
           onChange={(e) => { void addInputFiles(e.target.files); e.target.value = ''; }} />
+        {onOpenInBuilder && (
+          <button className={`${btn} ${ct.button}`} disabled={cells.every((c) => c.text.trim() === '')}
+            onClick={() => onOpenInBuilder(cellsToScript(cells.map((c) => c.text)))}
+            title="Open these cells in the Script Builder as a new tab (flowchart, validator, export)"
+            aria-label="Open these cells in the Script Builder">
+            <Workflow size={13} aria-hidden="true" />Open in Script Builder
+          </button>
+        )}
         <button className={`${btn} ml-auto ${ct.button}`} onClick={() => setShowHelp((v) => !v)} aria-expanded={showHelp}
           aria-label="What the notebook supports">
           <HelpCircle size={13} aria-hidden="true" />
@@ -389,7 +400,8 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           )}
           <p className={`mt-1 ${ct.muted}`}>
             Shift+Enter runs a cell. Run all restarts the session first. Add files makes data, include and
-            potential files readable by name (read_data, include, pair_coeff).
+            potential files readable by name (read_data, include, pair_coeff). Open in Script Builder opens the
+            cells as a new Script Builder tab; its Run in Notebook sends a script back here.
           </p>
         </div>
       )}

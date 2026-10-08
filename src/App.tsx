@@ -5,6 +5,7 @@ import CompilerHelper from './components/workbench/CompilerHelper';
 import { FlaskConical, FileCode2, Hammer, Atom as AtomIcon, NotebookPen, Sun, Moon, Info, X, ExternalLink } from 'lucide-react';
 import { getThemeTokens, initialTheme, Theme, THEME_STORAGE_KEY } from './theme';
 import { browserStore } from './services/persistence';
+import type { BuilderIncoming } from './lammps/notebookBridge';
 
 // The notebook carries the MD engine; load it only when it is opened.
 const Notebook = lazy(() => import('./components/workbench/Notebook'));
@@ -44,6 +45,7 @@ const App: React.FC = () => {
   const [module, setModule] = useState<Module>(loadLastModule);
   /** A script the Script Builder sent to the notebook, until the notebook places it. */
   const [notebookInbox, setNotebookInbox] = useState<string | null>(null);
+  const [builderInbox, setBuilderInbox] = useState<BuilderIncoming | null>(null);
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [aboutOpen, setAboutOpen] = useState(false);
   const aboutDialogRef = useRef<HTMLDivElement>(null);
@@ -153,13 +155,15 @@ const App: React.FC = () => {
       <main className="min-h-0 flex-1">
         {module === 'builder' && (
           <ScriptBuilder theme={theme} onOpenViewer={() => switchModule('viewer')}
-            onRunInNotebook={(script) => { setNotebookInbox(script); switchModule('notebook'); }} />
+            onRunInNotebook={(script) => { setNotebookInbox(script); switchModule('notebook'); }}
+            incoming={builderInbox} onIncomingTaken={() => setBuilderInbox(null)} />
         )}
         {module === 'compiler' && <CompilerHelper theme={theme} />}
         {module === 'viewer' && <ViewerModule theme={theme} onToggleTheme={toggleTheme} />}
         {module === 'notebook' && (
           <Suspense fallback={<div className={`p-6 text-sm ${ct.muted}`}>Loading the notebook…</div>}>
-            <Notebook theme={theme} incoming={notebookInbox} onIncomingTaken={() => setNotebookInbox(null)} />
+            <Notebook theme={theme} incoming={notebookInbox} onIncomingTaken={() => setNotebookInbox(null)}
+              onOpenInBuilder={(script) => { setBuilderInbox({ text: script, name: 'From MD Notebook' }); switchModule('builder'); }} />
           </Suspense>
         )}
       </main>

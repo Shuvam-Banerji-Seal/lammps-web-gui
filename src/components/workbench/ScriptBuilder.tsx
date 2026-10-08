@@ -27,6 +27,7 @@ import {
 } from '../../lammps/model';
 import { validateScript, Diagnostic, diagnosticCounts } from '../../lammps/validate';
 import { parseScript, ImportResult } from '../../lammps/scriptParser';
+import type { BuilderIncoming } from '../../lammps/notebookBridge';
 import { downloadTextFile } from '../../lammps/exporter';
 import { SCRIPT_TEMPLATES, buildTemplate } from '../../lammps/templates';
 import { downloadFlowchart } from '../../lammps/flowchartSvg';
@@ -46,6 +47,9 @@ interface ScriptBuilderProps {
   onOpenViewer?: () => void;
   /** Sends the current script to the MD Notebook. */
   onRunInNotebook?: (script: string) => void;
+  /** A script sent from the MD Notebook, imported as a new tab once. */
+  incoming?: BuilderIncoming | null;
+  onIncomingTaken?: () => void;
 }
 
 let uidCounter = 1;
@@ -176,7 +180,7 @@ interface Transform {
   k: number;
 }
 
-const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRunInNotebook }) => {
+const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRunInNotebook, incoming = null, onIncomingTaken }) => {
   const ct = getThemeTokens(theme);
   // Undoable WORKSPACE (multi-tab); persists to localStorage for durability.
   const [workspace, setWorkspace, replaceWorkspace, undo, redo, canUndo, canRedo] = (() => {
@@ -556,6 +560,22 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
     };
     reader.readAsText(file);
   }, [setModel]);
+
+  // ---- script from the MD Notebook: imported once, as a NEW tab (the open tabs are kept) ----
+  const takenIncoming = useRef<BuilderIncoming | null>(null);
+  useEffect(() => {
+    if (!incoming || takenIncoming.current === incoming) return;
+    takenIncoming.current = incoming;
+    const result = parseScript(incoming.text, incoming.name);
+    setWorkspace(ws => {
+      const tab: ScriptTab = { id: newTabId(), model: result.model };
+      return { ...ws, tabs: [...ws.tabs, tab], activeId: tab.id };
+    });
+    setImportStats(result.stats);
+    setSelectedUid(null);
+    setView('flow');
+    onIncomingTaken?.();
+  }, [incoming, onIncomingTaken, setWorkspace]);
 
   // ---- manual script editing -------------------------------------------
   const enterManualMode = useCallback(() => {
@@ -1225,7 +1245,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
                 aria-label="Run this script in the MD Notebook"
               >
                 <NotebookPen size={13} />
-                <span className="hidden 2xl:inline">Run</span>
+                <span className="hidden xl:inline">Run in Notebook</span>
               </button>
             )}
             {onOpenViewer && (

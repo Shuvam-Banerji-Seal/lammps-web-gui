@@ -188,24 +188,24 @@ export const buildTriples = (twojmax: number): Triple[] => {
 };
 
 export class ComputeSnaAtom extends Compute {
-  readonly style = 'sna/atom';
+  readonly style: string = 'sna/atom';
   peratomFlag = true;
-  private readonly rcutfac: number;
-  private readonly rfac0: number;
-  private readonly twojmax: number;
+  protected readonly rcutfac: number;
+  protected readonly rfac0: number;
+  protected readonly twojmax: number;
   /** Per-type radius and neighbor weight, index t-1 for LAMMPS type t. */
-  private readonly radius: Float64Array;
-  private readonly weight: Float64Array;
-  private readonly rmin0: number;
-  private readonly switchflag: boolean;
-  private readonly bzeroflag: boolean;
-  private readonly quadraticflag: boolean;
-  private readonly bnormflag: boolean;
-  private readonly triples: Triple[];
-  private readonly nbComps: number;
-  private readonly ncols: number;
+  protected readonly radius: Float64Array;
+  protected readonly weight: Float64Array;
+  protected readonly rmin0: number;
+  protected readonly switchflag: boolean;
+  protected readonly bzeroflag: boolean;
+  protected readonly quadraticflag: boolean;
+  protected readonly bnormflag: boolean;
+  protected readonly triples: Triple[];
+  protected readonly nbComps: number;
+  protected readonly ncols: number;
   /** Bispectrum of an atom with no neighbors, scaled as the output (for bzeroflag). */
-  private b0: Float64Array | null = null;
+  protected b0: Float64Array | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -259,7 +259,7 @@ export class ComputeSnaAtom extends Compute {
   }
 
   /** Largest pair cutoff rcutfac (R_i + R_j) over the type pairs. */
-  private maxCutoff(): number {
+  protected maxCutoff(): number {
     let rmax = 0;
     for (let t = 0; t < this.radius.length; t++) if (this.radius[t] > rmax) rmax = this.radius[t];
     return this.rcutfac * 2 * rmax;
@@ -302,7 +302,7 @@ export class ComputeSnaAtom extends Compute {
   }
 
   /** Output-column transform: B0 subtraction, bnorm, quadratic terms. */
-  private finish(raw: Float64Array, row: Float64Array, off: number): void {
+  protected finish(raw: Float64Array, row: Float64Array, off: number): void {
     const K = this.nbComps;
     for (let c = 0; c < K; c++) {
       let b = raw[c];
@@ -375,12 +375,14 @@ export class ComputeSnaAtom extends Compute {
         if (!(r < Rii) || r === 0) continue;
         const wj = this.weight[ta[k] - 1];
         const theta0 = (rfac0 * Math.PI * (r - rmin0)) / (Rii - rmin0);
-        const z0 = r / Math.tan(theta0);
-        const r0 = r / Math.sin(theta0);
-        const fc = this.switchflag ? 0.5 * (Math.cos((Math.PI * (r - rmin0)) / (Rii - rmin0)) + 1) : 1;
+        // positive radial normalization r0 = r / |sin theta0| (theta0 < 0 when r < rmin0)
+        const sn = Math.sin(theta0), sg = sn < 0 ? -1 : 1;
+        const r0 = r / Math.abs(sn);
+        // f_c = 1 for r < rmin0 (measured with native LAMMPS; see the header of snap.ts)
+        const fc = this.switchflag && r >= rmin0 ? 0.5 * (Math.cos((Math.PI * (r - rmin0)) / (Rii - rmin0)) + 1) : 1;
         const sc = fc * wj;
         // Cayley-Klein parameters of the point on the 3-sphere
-        const ar = z0 / r0, ai = dz / r0, br = dy / r0, bi = dx / r0;
+        const ar = sg * Math.cos(theta0), ai = dz / r0, br = dy / r0, bi = dx / r0;
         for (let J = 0; J <= tj; J++) {
           const U = wignerU(J, ar, ai, br, bi);
           const uj = u[J];
@@ -392,6 +394,519 @@ export class ComputeSnaAtom extends Compute {
       }
       this.bispectrum(u, raw);
       this.finish(raw, out, i * this.ncols);
+    }
+  }
+}
+
+/*
+ * Derivatives of the linear forms L1 = a x - conj(b) y and L2 = b x + conj(a) y
+ * with respect to p = (Re a, Im a, Re b, Im b); [re, im] pairs. DL1Y/DL1X are the
+ * y- and x-coefficients of dL1/dp, DL2Y/DL2X those of dL2/dp.
+ */
+const DL1Y: number[][] = [[0, 0], [0, 0], [-1, 0], [0, 1]];
+const DL1X: number[][] = [[1, 0], [0, 1], [0, 0], [0, 0]];
+const DL2Y: number[][] = [[1, 0], [0, -1], [0, 0], [0, 0]];
+const DL2X: number[][] = [[0, 0], [0, 0], [1, 0], [0, 1]];
+
+
+/** Real and imaginary flat (J+1)^2 matrices. */
+export interface Cmat { re: Float64Array; im: Float64Array }
+
+/** Bispectrum components (raw, before B0/bnorm) and their adjoints, shared by the pair style. */
+export const rawBispectrum = (triples: Triple[], u: Cmat[], out: Float64Array): void => {
+  for (let c = 0; c < triples.length; c++) {
+    const t = triples[c];
+    const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1;
+    const u1 = u[t.J1], u2 = u[t.J2], uj = u[t.J];
+    let val = 0;
+    for (let k = 0; k < n; k++) {
+      for (let kp = 0; kp < n; kp++) {
+        let cr = 0, ci = 0;
+        for (let m1 = 0; m1 < n1; m1++) {
+          const s1 = k * n1 + m1;
+          const c1 = t.coef[s1];
+          if (c1 === 0) continue;
+          const m2 = t.m2[s1];
+          for (let m1p = 0; m1p < n1; m1p++) {
+            const s2 = kp * n1 + m1p;
+            const c2 = t.coef[s2];
+            if (c2 === 0) continue;
+            const m2p = t.m2[s2];
+            const ar = u1.re[m1 * n1 + m1p], ai = u1.im[m1 * n1 + m1p];
+            const br = u2.re[m2 * n2 + m2p], bi = u2.im[m2 * n2 + m2p];
+            const w = c1 * c2;
+            cr += w * (ar * br - ai * bi);
+            ci += w * (ar * bi + ai * br);
+          }
+        }
+        val += uj.re[k * n + kp] * cr + uj.im[k * n + kp] * ci;
+      }
+    }
+    out[c] = val;
+  }
+};
+
+/** Gradient of a real function with respect to the real (r) and imaginary (i) parts of a matrix. */
+export interface Grad { r: Float64Array; i: Float64Array }
+
+/**
+ * Adds sum_c g_c dB_c/d(u) to the gradients gr[J] (w.r.t. Re u^J) and gi[J]
+ * (w.r.t. Im u^J), for the three roles of every component: the conjugated
+ * u^J (dB/dRe = Re C, dB/dIm = Im C), and the holomorphic u^{J1}, u^{J2}
+ * (dB/dRe = Re H, dB/dIm = -Im H), with the Clebsch-Gordan weights.
+ */
+export const adjointBispectrum = (triples: Triple[], u: Cmat[], g: Float64Array, gr: Grad[], gi: Grad[]): void => {
+  for (let c = 0; c < triples.length; c++) {
+    const gc = g[c];
+    if (gc === 0) continue;
+    const t = triples[c];
+    const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1;
+    const u1 = u[t.J1], u2 = u[t.J2], uj = u[t.J];
+    for (let k = 0; k < n; k++) {
+      for (let kp = 0; kp < n; kp++) {
+        const cur = uj.re[k * n + kp], cui = uj.im[k * n + kp];
+        for (let m1 = 0; m1 < n1; m1++) {
+          const s1 = k * n1 + m1;
+          const c1 = t.coef[s1];
+          if (c1 === 0) continue;
+          const m2 = t.m2[s1];
+          for (let m1p = 0; m1p < n1; m1p++) {
+            const s2 = kp * n1 + m1p;
+            const c2 = t.coef[s2];
+            if (c2 === 0) continue;
+            const m2p = t.m2[s2];
+            const w = gc * c1 * c2;
+            const a = u1.re[m1 * n1 + m1p], b = u1.im[m1 * n1 + m1p];
+            const cc = u2.re[m2 * n2 + m2p], dd = u2.im[m2 * n2 + m2p];
+            // role J: conj(u) * (u1 u2)
+            const pr = a * cc - b * dd, pi = a * dd + b * cc;
+            gr[t.J].r[k * n + kp] += w * pr;
+            gi[t.J].r[k * n + kp] += w * pi;
+            // role J1: conj(uJ) * u2 ; dB/dRe = Re h, dB/dIm = -Im h
+            const hr = cur * cc + cui * dd, hi = cur * dd - cui * cc;
+            gr[t.J1].r[m1 * n1 + m1p] += w * hr;
+            gi[t.J1].r[m1 * n1 + m1p] -= w * hi;
+            // role J2: conj(uJ) * u1
+            const yr = cur * a + cui * b, yi = cur * b - cui * a;
+            gr[t.J2].r[m2 * n2 + m2p] += w * yr;
+            gi[t.J2].r[m2 * n2 + m2p] -= w * yi;
+          }
+        }
+      }
+    }
+  }
+};
+
+
+/**
+ * Cayley-Klein Wigner tables for every J <= tj, with optional derivatives with
+ * respect to the four real parameters p = (Re a, Im a, Re b, Im b).
+ *
+ * Same matrices as wignerU (orthonormal monomial basis). The polynomial
+ * P_{k,J} = L1^k L2^(J-k) (L1 = a x - conj(b) y, L2 = b x + conj(a) y) is built by
+ * the recursion P_{0,J} = P_{0,J-1} L2 and P_{k,J} = P_{k-1,J-1} L1, each step
+ * one multiplication by a linear form on flat arrays; the derivative chain
+ * uses the constant derivative forms of L1 and L2. Output U^J is row-major
+ * [kp*(J+1)+k], as in wignerU.
+ */
+export class WignerTables {
+  readonly tj: number;
+  /** Offset of the polynomial block of each J (size (J+1)^2 per J). */
+  private readonly off: Int32Array;
+  /** Normalization sqrt(kp!(J-kp)!)/sqrt(k!(J-k)!), per J, row-major [kp*(J+1)+k]. */
+  private readonly norm: Float64Array[] = [];
+  private readonly pr: Float64Array;
+  private readonly pi: Float64Array;
+  private readonly dpr: Float64Array[];
+  private readonly dpi: Float64Array[];
+  /** Outputs: U^J (value) and dU^J/dp_q (derivative), per J. */
+  readonly ur: Float64Array[] = [];
+  readonly ui: Float64Array[] = [];
+  readonly dur: Float64Array[][] = [];
+  readonly dui: Float64Array[][] = [];
+
+  constructor(tj: number) {
+    this.tj = tj;
+    this.off = new Int32Array(tj + 2);
+    for (let J = 0; J <= tj; J++) this.off[J + 1] = this.off[J] + (J + 1) * (J + 1);
+    const S = this.off[tj + 1];
+    this.pr = new Float64Array(S);
+    this.pi = new Float64Array(S);
+    this.dpr = [0, 1, 2, 3].map(() => new Float64Array(S));
+    this.dpi = [0, 1, 2, 3].map(() => new Float64Array(S));
+    for (let J = 0; J <= tj; J++) {
+      const n = J + 1;
+      const nm = new Float64Array(n * n);
+      for (let kp = 0; kp <= J; kp++) {
+        for (let k = 0; k <= J; k++) {
+          nm[kp * n + k] = Math.sqrt(factorial(kp) * factorial(J - kp)) / Math.sqrt(factorial(k) * factorial(J - k));
+        }
+      }
+      this.norm.push(nm);
+      this.ur.push(new Float64Array(n * n));
+      this.ui.push(new Float64Array(n * n));
+      this.dur.push([0, 1, 2, 3].map(() => new Float64Array(n * n)));
+      this.dui.push([0, 1, 2, 3].map(() => new Float64Array(n * n)));
+    }
+  }
+
+  /** Fills the outputs for the Cayley-Klein parameters (a, b); derivatives only if deriv. */
+  compute(ar: number, ai: number, br: number, bi: number, deriv: boolean): void {
+    const { pr, pi, dpr, dpi, off } = this;
+    // linear forms [y-coefficient, x-coefficient] as (re, im)
+    const L1y = [-br, bi], L1x = [ar, ai];
+    const L2y = [ar, -ai], L2x = [br, bi];
+    pr[0] = 1; pi[0] = 0;
+    if (deriv) for (let p = 0; p < 4; p++) { dpr[p][0] = 0; dpi[p][0] = 0; }
+    for (let J = 1; J <= this.tj; J++) {
+      const oJ = off[J], oP = off[J - 1], nJ = J + 1, nP = J;
+      for (let k = 0; k <= J; k++) {
+        const dst = oJ + k * nJ;
+        const src = k === 0 ? oP : oP + (k - 1) * nP;
+        // base form F and its constant derivative forms
+        const fy = k === 0 ? L2y : L1y;
+        const fx = k === 0 ? L2x : L1x;
+        for (let i = 0; i < nJ; i++) {
+          let vr = 0, vi = 0;
+          if (i < nP) {
+            const a = pr[src + i], b = pi[src + i];
+            vr += fy[0] * a - fy[1] * b;
+            vi += fy[0] * b + fy[1] * a;
+          }
+          if (i >= 1) {
+            const a = pr[src + i - 1], b = pi[src + i - 1];
+            vr += fx[0] * a - fx[1] * b;
+            vi += fx[0] * b + fx[1] * a;
+          }
+          pr[dst + i] = vr;
+          pi[dst + i] = vi;
+        }
+        if (!deriv) continue;
+        for (let p = 0; p < 4; p++) {
+          // constant derivative form of the base factor (complex [re, im] pairs)
+          const dfy = k === 0 ? DL2Y[p] : DL1Y[p];
+          const dfx = k === 0 ? DL2X[p] : DL1X[p];
+          const Dr = dpr[p], Di = dpi[p];
+          for (let i = 0; i < nJ; i++) {
+            // d(new) = dold * F + old * dF
+            let vr = 0, vi = 0;
+            if (i < nP) {
+              const a = Dr[src + i], b = Di[src + i];
+              vr += fy[0] * a - fy[1] * b;
+              vi += fy[0] * b + fy[1] * a;
+              const c = pr[src + i], d = pi[src + i];
+              vr += dfy[0] * c - dfy[1] * d;
+              vi += dfy[0] * d + dfy[1] * c;
+            }
+            if (i >= 1) {
+              const a = Dr[src + i - 1], b = Di[src + i - 1];
+              vr += fx[0] * a - fx[1] * b;
+              vi += fx[0] * b + fx[1] * a;
+              const c = pr[src + i - 1], d = pi[src + i - 1];
+              vr += dfx[0] * c - dfx[1] * d;
+              vi += dfx[0] * d + dfx[1] * c;
+            }
+            Dr[dst + i] = vr;
+            Di[dst + i] = vi;
+          }
+        }
+      }
+    }
+    for (let J = 0; J <= this.tj; J++) {
+      const n = J + 1, oJ = off[J], nm = this.norm[J];
+      const ur = this.ur[J], ui = this.ui[J];
+      for (let k = 0; k <= J; k++) {
+        for (let kp = 0; kp < n; kp++) {
+          const s = nm[kp * n + k];
+          const src = oJ + k * n + kp;
+          ur[kp * n + k] = pr[src] * s;
+          ui[kp * n + k] = pi[src] * s;
+          if (deriv) {
+            for (let p = 0; p < 4; p++) {
+              this.dur[J][p][kp * n + k] = dpr[p][src] * s;
+              this.dui[J][p][kp * n + k] = dpi[p][src] * s;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * compute snad/atom and snav/atom (docs.lammps.org/compute_sna_atom.html).
+ *
+ * "Compute *snad/atom* calculates the derivative of the bispectrum components
+ * summed separately for each LAMMPS atom type:" -sum_{i' in I} dB^{i'}_{j1,j2,j}/dr_i;
+ * "The sum is over all atoms *i'* of atom type *I*". "Compute *snav/atom* calculates
+ * the virial contribution due to the derivatives:" -r_i (x) sum_{i' in I} dB^{i'}/dr_i.
+ *
+ * Layout (doc, Output info): "Compute *snad/atom* evaluates a per-atom array.
+ * The columns are arranged into *ntypes* blocks, listed in order of atom type I.
+ * Each block contains three sub-blocks corresponding to the *x*, *y*, and *z*
+ * components of the atom position." "Compute *snav/atom* ... Each block contains
+ * six sub-blocks corresponding to the *xx*, *yy*, *zz*, *yz*, *xz*, and *xy*
+ * components". "For computes *snad/atom* and *snav/atom* each set of K(K+1)/2
+ * additional columns is inserted directly after each of sub-block of linear
+ * terms i.e. linear and quadratic terms are contiguous."
+ *
+ * snav (measured with native LAMMPS, black box, periodic and non-periodic cases):
+ * the virial of atom o uses the image positions x_j of the neighbour entries
+ * that are images of o, i.e. snav_o = sum_{i' in I} sum_{j: owner(j)=o} -x_j (x) G_j
+ * plus the self term x_o (x) sum_j G_{o->j} for o in I, with G_j = dB^{i'}/dd_j.
+ * For a non-periodic cluster this equals x_o (x) snad_o. The Voigt off-diagonal
+ * components use the pair order (z,y), (z,x), (y,x) for yz, xz, xy (measured).
+ *
+ * Derivation used for snad: the sum over i' of type I runs over owned atoms i'
+ * (the central atoms) and their neighbour entries j (ghost images are folded
+ * to their owner). With d_j = x_j - x_i', the term -dB^{i'}/dx_o is
+ * +sum_j G_j for o = i' (translation invariance) and -G_j for o = owner(j),
+ * where G_j = dB^{i'}/dd_j. Quadratic terms use dQ = B_k dB_l + B_l dB_k
+ * (Q_kk = B_k^2/2). The Cayley-Klein parameters and f_c follow the sna/atom
+ * conventions (positive radial normalization; f_c = 1 for r < rmin0).
+ */
+export class ComputeSnaDeriv extends ComputeSnaAtom {
+  override readonly style: string;
+  private readonly mode: 'snad' | 'snav';
+
+  constructor(sys: System, id: string, group: string, args: string[], mode: 'snad' | 'snav') {
+    super(sys, id, group, args);
+    this.mode = mode;
+    this.style = `${mode}/atom`;
+    const K = this.nbComps;
+    const blk = K + (this.quadraticflag ? (K * (K + 1)) / 2 : 0);
+    const nt = this.radius.length;
+    this.sizePeratomCols = mode === 'snad' ? nt * 3 * blk : nt * 6 * blk;
+  }
+
+  protected override computePeratom(): void {
+    this.sys.forces();
+    const sys = this.sys;
+    const s = sys.state;
+    const nb = sys.nb;
+    const cutmax = this.maxCutoff();
+    if (nb.cutghost < cutmax - 1e-12) {
+      throw new StyleError(`compute ${this.id} (${this.style}): cutoff up to ${cutmax} exceeds the ghost cutoff ${nb.cutghost} (set a pair style with a larger cutoff)`);
+    }
+    const n = s.n, nall = nb.nall, xa = nb.xall, ta = nb.typeall, owner = nb.owner;
+    const tj = this.twojmax, triples = this.triples, K = this.nbComps;
+    const quad = this.quadraticflag;
+    const Q = quad ? (K * (K + 1)) / 2 : 0;
+    const blk = K + Q;
+    const nt = this.radius.length;
+    const ncolSnad = nt * 3 * blk;
+    const snad = new Float64Array(n * ncolSnad);
+    // snav: pair virial with the image positions of the neighbours (see the class header)
+    const pairsV: [number, number][] = [[0, 0], [1, 1], [2, 2], [2, 1], [2, 0], [1, 0]];
+    const ncolSnav = nt * 6 * blk;
+    const vir = this.mode === 'snav' ? new Float64Array(n * ncolSnav) : null;
+    // B0 and normalizations (same conventions as ComputeSnaAtom.finish)
+    const b0 = new Float64Array(K);
+    {
+      const id: Cmat[] = [];
+      for (let J = 0; J <= tj; J++) {
+        const m = J + 1;
+        const re = new Float64Array(m * m), im = new Float64Array(m * m);
+        for (let k = 0; k < m; k++) re[k * m + k] = 1;
+        id.push({ re, im });
+      }
+      rawBispectrum(triples, id, b0);
+      if (!this.bzeroflag) b0.fill(0);
+    }
+    const norm = new Float64Array(K);
+    for (let c = 0; c < K; c++) norm[c] = this.bnormflag ? triples[c].J + 1 : 1;
+
+    // per-J offsets of the flat Wigner tables
+    const offJ = new Int32Array(tj + 2);
+    for (let J = 0; J <= tj; J++) offJ[J + 1] = offJ[J] + (J + 1) * (J + 1);
+    const S = offJ[tj + 1];
+    const T = new WignerTables(tj);
+    const u: Cmat[] = [], gr: Grad[] = [], gi: Grad[] = [];
+    for (let J = 0; J <= tj; J++) {
+      const nn = (J + 1) * (J + 1);
+      u.push({ re: new Float64Array(nn), im: new Float64Array(nn) });
+      gr.push({ r: new Float64Array(nn), i: new Float64Array(nn) });
+      gi.push({ r: new Float64Array(nn), i: new Float64Array(nn) });
+    }
+    const cap = Math.max(nall, 1);
+    const nbJ = new Int32Array(cap);
+    const nDx = new Float64Array(cap), nDy = new Float64Array(cap), nDz = new Float64Array(cap);
+    const nR = new Float64Array(cap), nTh = new Float64Array(cap), nRc = new Float64Array(cap);
+    const nSc = new Float64Array(cap), nDsc = new Float64Array(cap);
+    // derivative tables per neighbour: WR/WI[a][(offJ[J]+q)*3 + m]
+    let WR = new Float64Array(0), WI = new Float64Array(0);
+    // Jacobian: G[k][a][m], dQ for quadratic pairs
+    let G = new Float64Array(0);
+    const raw = new Float64Array(K), Bf = new Float64Array(K), gbuf = new Float64Array(K);
+    const dQ = new Float64Array(Q * 3);
+    const rfac0 = this.rfac0, rmin0 = this.rmin0;
+
+    for (let ip = 0; ip < n; ip++) {
+      if (!(s.mask[ip] & this.groupBit)) continue;
+      const tI = ta[ip] - 1;
+      const xi = xa[3 * ip], yi = xa[3 * ip + 1], zi = xa[3 * ip + 2];
+      // neighbours inside their pair cutoff
+      let m = 0;
+      for (let k = 0; k < nall; k++) {
+        if (k === ip) continue;
+        const dx = xa[3 * k] - xi, dy = xa[3 * k + 1] - yi, dz = xa[3 * k + 2] - zi;
+        const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const Rii = this.rcutfac * (this.radius[tI] + this.radius[ta[k] - 1]);
+        if (!(r < Rii) || r === 0) continue;
+        nbJ[m] = k; nDx[m] = dx; nDy[m] = dy; nDz[m] = dz; nR[m] = r; nRc[m] = Rii;
+        const span = Rii - rmin0;
+        nTh[m] = (rfac0 * Math.PI * (r - rmin0)) / span;
+        const inside = this.switchflag && r >= rmin0;
+        const fc = inside ? 0.5 * (Math.cos((Math.PI * (r - rmin0)) / span) + 1) : 1;
+        const dfc = inside ? -0.5 * Math.sin((Math.PI * (r - rmin0)) / span) * (Math.PI / span) : 0;
+        const w = this.weight[ta[k] - 1];
+        nSc[m] = fc * w; nDsc[m] = dfc * w;
+        m++;
+      }
+      if (WR.length < m * 3 * S) {
+        WR = new Float64Array(m * 3 * S);
+        WI = new Float64Array(m * 3 * S);
+        G = new Float64Array(K * m * 3);
+      }
+      // pass 1: u matrices, and derivative tables of every neighbour
+      for (let J = 0; J <= tj; J++) {
+        const nn = (J + 1) * (J + 1);
+        u[J].re.fill(0); u[J].im.fill(0);
+        for (let q = 0; q < J + 1; q++) u[J].re[q * (J + 1) + q] = 1;
+      }
+      for (let a = 0; a < m; a++) {
+        const r = nR[a];
+        const sn = Math.sin(nTh[a]), cs = Math.cos(nTh[a]);
+        const sg = sn < 0 ? -1 : 1;
+        const Sx = sg * sn, Cx = sg * cs;
+        const g = Sx / r;
+        const dx = nDx[a], dy = nDy[a], dz = nDz[a];
+        const nm = [dx / r, dy / r, dz / r];
+        const thp = (rfac0 * Math.PI) / (nRc[a] - rmin0);
+        const gp = (Cx * thp * r - Sx) / (r * r);
+        const dp = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]];
+        const vz = [0, 0, 1], vy = [0, 1, 0], vx = [1, 0, 0];
+        for (let mm = 0; mm < 3; mm++) {
+          dp[0][mm] = -Sx * thp * nm[mm];
+          dp[1][mm] = gp * nm[mm] * dz + g * vz[mm];
+          dp[2][mm] = gp * nm[mm] * dy + g * vy[mm];
+          dp[3][mm] = gp * nm[mm] * dx + g * vx[mm];
+        }
+        const ar = Cx, ai = g * dz, br = g * dy, bi = g * dx;
+        const sc = nSc[a], dsc = nDsc[a];
+        T.compute(ar, ai, br, bi, true);
+        for (let J = 0; J <= tj; J++) {
+          const nn = (J + 1) * (J + 1);
+          const Ur = T.ur[J], Ui = T.ui[J];
+          const Dr = T.dur[J], Di = T.dui[J];
+          for (let q = 0; q < nn; q++) {
+            u[J].re[q] += sc * Ur[q];
+            u[J].im[q] += sc * Ui[q];
+            const base = a * 3 * S + (offJ[J] + q) * 3;
+            for (let mm = 0; mm < 3; mm++) {
+              let dre = dsc * nm[mm] * Ur[q], dim = dsc * nm[mm] * Ui[q];
+              for (let pp = 0; pp < 4; pp++) {
+                dre += sc * Dr[pp][q] * dp[pp][mm];
+                dim += sc * Di[pp][q] * dp[pp][mm];
+              }
+              WR[base + mm] = dre;
+              WI[base + mm] = dim;
+            }
+          }
+        }
+      }
+      rawBispectrum(triples, u, raw);
+      for (let c = 0; c < K; c++) Bf[c] = (raw[c] - b0[c]) / norm[c];
+
+      // Jacobian of every bispectrum component with respect to every neighbour displacement
+      for (let k = 0; k < K; k++) {
+        gbuf.fill(0);
+        gbuf[k] = 1 / norm[k];
+        for (let J = 0; J <= tj; J++) { gr[J].r.fill(0); gi[J].r.fill(0); }
+        adjointBispectrum(triples, u, gbuf, gr, gi);
+        for (let a = 0; a < m; a++) {
+          for (let mm = 0; mm < 3; mm++) {
+            let acc = 0;
+            for (let J = 0; J <= tj; J++) {
+              const nn = (J + 1) * (J + 1);
+              const GR = gr[J].r, GI = gi[J].r;
+              for (let q = 0; q < nn; q++) {
+                const gR = GR[q], gI = GI[q];
+                if (gR === 0 && gI === 0) continue;
+                const idx = a * 3 * S + (offJ[J] + q) * 3 + mm;
+                acc += gR * WR[idx] + gI * WI[idx];
+              }
+            }
+            G[(k * m + a) * 3 + mm] = acc;
+          }
+        }
+      }
+
+      // accumulate into snad: -dB/dx_o for every owner o of a neighbour, +sum_j for o = i'
+      for (let a = 0; a < m; a++) {
+        const o = owner[nbJ[a]];
+        // quadratic derivatives for this neighbour
+        if (quad) {
+          let q = 0;
+          for (let kk = 0; kk < K; kk++) {
+            for (let ll = kk; ll < K; ll++) {
+              for (let mm = 0; mm < 3; mm++) {
+                const gk = G[(kk * m + a) * 3 + mm], gl = G[(ll * m + a) * 3 + mm];
+                dQ[q * 3 + mm] = kk === ll ? Bf[kk] * gk : Bf[kk] * gl + Bf[ll] * gk;
+              }
+              q++;
+            }
+          }
+        }
+        if (vir) {
+          const jx = xa[3 * nbJ[a]], jy = xa[3 * nbJ[a] + 1], jz = xa[3 * nbJ[a] + 2];
+          const xj = [jx, jy, jz];
+          const xi3 = [xi, yi, zi];
+          for (let c = 0; c < 6; c++) {
+            const [pa, pb] = pairsV[c];
+            const colBase = (tI * 6 + c) * blk;
+            for (let k = 0; k < K; k++) {
+              const g = G[(k * m + a) * 3 + pb];
+              vir[o * ncolSnav + colBase + k] -= xj[pa] * g;
+              vir[ip * ncolSnav + colBase + k] += xi3[pa] * g;
+            }
+            for (let q = 0; q < Q; q++) {
+              const g = dQ[q * 3 + pb];
+              vir[o * ncolSnav + colBase + K + q] -= xj[pa] * g;
+              vir[ip * ncolSnav + colBase + K + q] += xi3[pa] * g;
+            }
+          }
+        }
+        for (let mm = 0; mm < 3; mm++) {
+          const colBase = tI * 3 * blk + mm * blk;
+          for (let k = 0; k < K; k++) {
+            const g = G[(k * m + a) * 3 + mm];
+            snad[o * ncolSnad + colBase + k] -= g;
+            snad[ip * ncolSnad + colBase + k] += g;
+          }
+          for (let q = 0; q < Q; q++) {
+            const g = dQ[q * 3 + mm];
+            snad[o * ncolSnad + colBase + K + q] -= g;
+            snad[ip * ncolSnad + colBase + K + q] += g;
+          }
+        }
+      }
+    }
+
+    // output rows of the group atoms only
+    if (this.mode === 'snad') {
+      this.arrayAtom = new Float64Array(n * ncolSnad);
+      for (let i = 0; i < n; i++) {
+        if (!(s.mask[i] & this.groupBit)) continue;
+        for (let c = 0; c < ncolSnad; c++) this.arrayAtom[i * ncolSnad + c] = snad[i * ncolSnad + c];
+      }
+      return;
+    }
+    // snav: Voigt order xx yy zz yz xz xy (vir was accumulated above)
+    this.arrayAtom = new Float64Array(n * ncolSnav);
+    for (let i = 0; i < n; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      for (let c = 0; c < ncolSnav; c++) this.arrayAtom[i * ncolSnav + c] = vir![i * ncolSnav + c];
     }
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
-import { clebsch, wignerU, ComputeSnaAtom } from '../src/engine/compute/sna';
+import { clebsch, wignerU, ComputeSnaAtom, WignerTables } from '../src/engine/compute/sna';
 import { parseSnapCoeff, parseSnapParam } from '../src/engine/force/pair/snap';
 import type { EngineEvent } from '../src/engine/types';
 
@@ -277,4 +277,94 @@ describe('pair_style snap', () => {
     expect(() => parseSnapParam('rcutfac 1.0\nchemflag 1\ntwojmax 2\n', 'x')).toThrow(/chemflag 1 is not implemented/);
     expect(() => parseSnapParam('rcutfac 1.0\n', 'x')).toThrow(/twojmax are required/);
   });
+});
+
+describe('WignerTables (recursion)', () => {
+  it('matches the polynomial wignerU for every J, and its derivatives match finite differences', () => {
+    const tj = 5;
+    const ar = 0.61, ai = 0.27, br = -0.2, bi = 0.5;
+    const nrm = Math.sqrt(ar * ar + ai * ai + br * br + bi * bi);
+    const p0 = [ar / nrm, ai / nrm, br / nrm, bi / nrm];
+    const T = new WignerTables(tj);
+    T.compute(p0[0], p0[1], p0[2], p0[3], true);
+    for (let J = 0; J <= tj; J++) {
+      const W = wignerU(J, p0[0], p0[1], p0[2], p0[3]);
+      for (let q = 0; q < (J + 1) * (J + 1); q++) {
+        expect(T.ur[J][q]).toBeCloseTo(W.re[q], 12);
+        expect(T.ui[J][q]).toBeCloseTo(W.im[q], 12);
+      }
+    }
+    // derivative with respect to each real parameter against central differences
+    const h = 1e-6;
+    for (let p = 0; p < 4; p++) {
+      const plus = p0.slice(), minus = p0.slice();
+      plus[p] += h; minus[p] -= h;
+      T.compute(plus[0], plus[1], plus[2], plus[3], false);
+      const up = [T.ur.map((a) => Float64Array.from(a)), T.ui.map((a) => Float64Array.from(a))];
+      T.compute(minus[0], minus[1], minus[2], minus[3], false);
+      const um = [T.ur.map((a) => Float64Array.from(a)), T.ui.map((a) => Float64Array.from(a))];
+      T.compute(p0[0], p0[1], p0[2], p0[3], true);
+      for (let J = 2; J <= tj; J++) {
+        for (let q = 0; q < (J + 1) * (J + 1); q++) {
+          const fdr = (up[0][J][q] - um[0][J][q]) / (2 * h);
+          const fdi = (up[1][J][q] - um[1][J][q]) / (2 * h);
+          expect(Math.abs(T.dur[J][p][q] - fdr)).toBeLessThan(1e-6);
+          expect(Math.abs(T.dui[J][p][q] - fdi)).toBeLessThan(1e-6);
+        }
+      }
+    }
+  });
+});
+
+describe('compute snad/atom: finite-difference check against sna/atom', () => {
+  /** Bispectrum rows of a 4-atom 2-type cluster (no periodic images: non-periodic box). */
+  const cluster = (pts: number[][], cmd: string) => `
+units lj
+atom_style atomic
+boundary f f f
+region box block -10 10 -10 10 -10 10
+create_box 2 box
+${pts.map((p, i) => `create_atoms ${i % 2 === 0 ? 1 : 2} single ${p.join(' ')}`).join('\n')}
+mass * 1.0
+pair_style zero 6.0
+pair_coeff * *
+compute d all ${cmd}
+run 0
+`;
+  it('snad equals minus the summed finite-difference derivative of sna/atom', async () => {
+    const pts = [[0.3, 0.1, -0.2], [1.2, 0.5, 0.4], [-0.5, 0.9, 0.6], [0.2, -0.8, 1.1]];
+    const SNA = 'sna/atom 1.0 0.9 2 2.0 2.5 1.0 0.8 rmin0 0.1 bzeroflag 0';
+    const SNAD = 'snad/atom 1.0 0.9 2 2.0 2.5 1.0 0.8 rmin0 0.1 bzeroflag 0';
+    const base = await runScript(cluster(pts, SNAD));
+    const snad = Array.from(base.sys.compute('d').peratomValues());
+    const K = 5, nt = 2, blk = K;
+    const ncol = nt * 3 * blk;
+    const h = 1e-6;
+    // sna/atom values of every atom at displaced positions
+    const sumB = async (p: number[][], I: number): Promise<number[]> => {
+      const s = await runScript(cluster(p, SNA));
+      const v = s.sys.compute('d').peratomValues();
+      const out = new Array(K).fill(0);
+      for (let i = 0; i < p.length; i++) {
+        if (s.sys.state.type[i] !== I + 1) continue;
+        for (let k = 0; k < K; k++) out[k] += v[i * K + k];
+      }
+      return out;
+    };
+    for (const o of [0, 2]) {
+      for (let a = 0; a < 3; a++) {
+        const plus = pts.map((p) => p.slice()), minus = pts.map((p) => p.slice());
+        plus[o][a] += h; minus[o][a] -= h;
+        for (let I = 0; I < nt; I++) {
+          const bp = await sumB(plus, I), bm = await sumB(minus, I);
+          for (let k = 0; k < K; k++) {
+            const fd = -(bp[k] - bm[k]) / (2 * h);
+            const col = (I * 3 + a) * blk + k;
+            const got = snad[o * ncol + col];
+            expect(Math.abs(got - fd), `atom ${o} type ${I + 1} dir ${a} k ${k}`).toBeLessThan(1e-5 * Math.max(1, Math.abs(fd)));
+          }
+        }
+      }
+    }
+  }, 120_000);
 });

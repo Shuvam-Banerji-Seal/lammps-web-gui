@@ -1,6 +1,6 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
-import { buildTriples, wignerU, type Triple } from '../../compute/sna';
+import { buildTriples, WignerTables, rawBispectrum, adjointBispectrum, type Triple, type Cmat, type Grad } from '../../compute/sna';
 import { parseNum } from '../util';
 
 /*
@@ -75,83 +75,6 @@ import { parseNum } from '../util';
  * rule), and the adjoint of E_i with respect to the real and imaginary parts of
  * each u^j entry. Then F_j = -dE/dd and F_i = +dE/dd, summed over the pairs.
  */
-
-/** Real and imaginary flat (J+1)^2 matrices. */
-interface Cmat { re: Float64Array; im: Float64Array }
-
-type Cx = [number, number];
-const pmul = (p: Cx[], q: Cx[]): Cx[] => {
-  if (!p.length || !q.length) return [];
-  const r: Cx[] = Array.from({ length: p.length + q.length - 1 }, () => [0, 0] as Cx);
-  for (let i = 0; i < p.length; i++) {
-    for (let j = 0; j < q.length; j++) {
-      r[i + j][0] += p[i][0] * q[j][0] - p[i][1] * q[j][1];
-      r[i + j][1] += p[i][0] * q[j][1] + p[i][1] * q[j][0];
-    }
-  }
-  return r;
-};
-const padd = (p: Cx[], q: Cx[]): Cx[] => {
-  const n = Math.max(p.length, q.length);
-  const r: Cx[] = [];
-  for (let i = 0; i < n; i++) {
-    const a = p[i] ?? [0, 0], b = q[i] ?? [0, 0];
-    r.push([a[0] + b[0], a[1] + b[1]]);
-  }
-  return r;
-};
-
-/**
- * Wigner U^J and its derivatives with respect to the four real parameters
- * p = (Re a, Im a, Re b, Im b). Same construction as wignerU in compute/sna.ts
- * (orthonormal monomial basis, flat row-major (J+1)^2), with forward-mode product
- * rule on the polynomial factors.
- */
-const wignerUd = (J: number, ar: number, ai: number, br: number, bi: number, U: Cmat, dU: Cmat[]): void => {
-  const n = J + 1;
-  // linear forms as [y-coefficient, x-coefficient]; a = x-coef of L1, conj(b) in y-coef
-  const L1: Cx[] = [[-br, bi], [ar, ai]];
-  const L2: Cx[] = [[ar, -ai], [br, bi]];
-  const D1: Cx[][] = [
-    [[0, 0], [1, 0]], // d/d Re a
-    [[0, 0], [0, 1]], // d/d Im a
-    [[-1, 0], [0, 0]], // d/d Re b
-    [[0, 1], [0, 0]], // d/d Im b
-  ];
-  const D2: Cx[][] = [
-    [[1, 0], [0, 0]],
-    [[0, -1], [0, 0]],
-    [[0, 0], [1, 0]],
-    [[0, 0], [0, 1]],
-  ];
-  for (let k = 0; k <= J; k++) {
-    let P: Cx[] = [[1, 0]];
-    const dP: Cx[][] = [[], [], [], []];
-    const step = (F: Cx[], dF: Cx[][]) => {
-      for (let p = 0; p < 4; p++) dP[p] = padd(pmul(dP[p], F), pmul(P, dF[p]));
-      P = pmul(P, F);
-    };
-    for (let t = 0; t < k; t++) step(L1, D1);
-    for (let t = 0; t < J - k; t++) step(L2, D2);
-    for (let kp = 0; kp <= J; kp++) {
-      const c = P[kp] ?? [0, 0];
-      const s = Math.sqrt(factorial(kp) * factorial(J - kp)) / Math.sqrt(factorial(k) * factorial(J - k));
-      U.re[kp * n + k] = c[0] * s;
-      U.im[kp * n + k] = c[1] * s;
-      for (let p = 0; p < 4; p++) {
-        const d = dP[p][kp] ?? [0, 0];
-        dU[p].re[kp * n + k] = d[0] * s;
-        dU[p].im[kp * n + k] = d[1] * s;
-      }
-    }
-  }
-};
-
-const factorial = (n: number): number => {
-  let f = 1;
-  for (let i = 2; i <= n; i++) f *= i;
-  return f;
-};
 
 /** Parsed coefficient file: element names, radii, weights and coefficient vectors. */
 interface SnapFile {
@@ -249,91 +172,6 @@ export const parseSnapCoeff = (text: string, filename: string, K: number, quadra
   return out;
 };
 
-/** Bispectrum components (raw, before B0/bnorm) and their adjoints, shared by the pair style. */
-const rawBispectrum = (triples: Triple[], u: Cmat[], out: Float64Array): void => {
-  for (let c = 0; c < triples.length; c++) {
-    const t = triples[c];
-    const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1;
-    const u1 = u[t.J1], u2 = u[t.J2], uj = u[t.J];
-    let val = 0;
-    for (let k = 0; k < n; k++) {
-      for (let kp = 0; kp < n; kp++) {
-        let cr = 0, ci = 0;
-        for (let m1 = 0; m1 < n1; m1++) {
-          const s1 = k * n1 + m1;
-          const c1 = t.coef[s1];
-          if (c1 === 0) continue;
-          const m2 = t.m2[s1];
-          for (let m1p = 0; m1p < n1; m1p++) {
-            const s2 = kp * n1 + m1p;
-            const c2 = t.coef[s2];
-            if (c2 === 0) continue;
-            const m2p = t.m2[s2];
-            const ar = u1.re[m1 * n1 + m1p], ai = u1.im[m1 * n1 + m1p];
-            const br = u2.re[m2 * n2 + m2p], bi = u2.im[m2 * n2 + m2p];
-            const w = c1 * c2;
-            cr += w * (ar * br - ai * bi);
-            ci += w * (ar * bi + ai * br);
-          }
-        }
-        val += uj.re[k * n + kp] * cr + uj.im[k * n + kp] * ci;
-      }
-    }
-    out[c] = val;
-  }
-};
-
-/** Gradient of a real function with respect to the real (r) and imaginary (i) parts of a matrix. */
-interface Grad { r: Float64Array; i: Float64Array }
-
-/**
- * Adds sum_c g_c dB_c/d(u) to the gradients gr[J] (w.r.t. Re u^J) and gi[J]
- * (w.r.t. Im u^J), for the three roles of every component: the conjugated
- * u^J (dB/dRe = Re C, dB/dIm = Im C), and the holomorphic u^{J1}, u^{J2}
- * (dB/dRe = Re H, dB/dIm = -Im H), with the Clebsch-Gordan weights.
- */
-const adjointBispectrum = (triples: Triple[], u: Cmat[], g: Float64Array, gr: Grad[], gi: Grad[]): void => {
-  for (let c = 0; c < triples.length; c++) {
-    const gc = g[c];
-    if (gc === 0) continue;
-    const t = triples[c];
-    const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1;
-    const u1 = u[t.J1], u2 = u[t.J2], uj = u[t.J];
-    for (let k = 0; k < n; k++) {
-      for (let kp = 0; kp < n; kp++) {
-        const cur = uj.re[k * n + kp], cui = uj.im[k * n + kp];
-        for (let m1 = 0; m1 < n1; m1++) {
-          const s1 = k * n1 + m1;
-          const c1 = t.coef[s1];
-          if (c1 === 0) continue;
-          const m2 = t.m2[s1];
-          for (let m1p = 0; m1p < n1; m1p++) {
-            const s2 = kp * n1 + m1p;
-            const c2 = t.coef[s2];
-            if (c2 === 0) continue;
-            const m2p = t.m2[s2];
-            const w = gc * c1 * c2;
-            const a = u1.re[m1 * n1 + m1p], b = u1.im[m1 * n1 + m1p];
-            const cc = u2.re[m2 * n2 + m2p], dd = u2.im[m2 * n2 + m2p];
-            // role J: conj(u) * (u1 u2)
-            const pr = a * cc - b * dd, pi = a * dd + b * cc;
-            gr[t.J].r[k * n + kp] += w * pr;
-            gi[t.J].r[k * n + kp] += w * pi;
-            // role J1: conj(uJ) * u2 ; dB/dRe = Re h, dB/dIm = -Im h
-            const hr = cur * cc + cui * dd, hi = cur * dd - cui * cc;
-            gr[t.J1].r[m1 * n1 + m1p] += w * hr;
-            gi[t.J1].r[m1 * n1 + m1p] -= w * hi;
-            // role J2: conj(uJ) * u1
-            const yr = cur * a + cui * b, yi = cur * b - cui * a;
-            gr[t.J2].r[m2 * n2 + m2p] += w * yr;
-            gi[t.J2].r[m2 * n2 + m2p] -= w * yi;
-          }
-        }
-      }
-    }
-  }
-};
-
 export class PairSnap extends Pair {
   readonly name = 'snap';
   manybody = true;
@@ -351,6 +189,7 @@ export class PairSnap extends Pair {
   private b0: Float64Array = new Float64Array(0);
   private normOf: Float64Array = new Float64Array(0);
   private setupDone = false;
+  private tables: WignerTables | null = null;
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError(`pair_style snap takes no arguments (got ${args.length})`);
@@ -432,13 +271,7 @@ export class PairSnap extends Pair {
       gr.push({ r: new Float64Array(nn), i: new Float64Array(nn) });
       gi.push({ r: new Float64Array(nn), i: new Float64Array(nn) });
     }
-    const dU: Cmat[][] = [];
-    const Ud: Cmat[] = [];
-    for (let J = 0; J <= tj; J++) {
-      const nn = (J + 1) * (J + 1);
-      Ud.push({ re: new Float64Array(nn), im: new Float64Array(nn) });
-      dU.push([0, 1, 2, 3].map(() => ({ re: new Float64Array(nn), im: new Float64Array(nn) })));
-    }
+    const WT = this.tables ?? (this.tables = new WignerTables(tj));
     const B = new Float64Array(K), Bf = new Float64Array(K), gam = new Float64Array(K), gbuf = new Float64Array(K);
     let evdwl = 0;
     let mx = 0;
@@ -492,12 +325,13 @@ export class PairSnap extends Pair {
         const g = S / r;
         const ar = C, ai = g * nDz[a], br = g * nDy[a], bi = g * nDx[a];
         const sc = nSc[a];
+        WT.compute(ar, ai, br, bi, false);
         for (let J = 0; J <= tj; J++) {
-          const Uv = wignerU(J, ar, ai, br, bi);
+          const Ur = WT.ur[J], Ui = WT.ui[J];
           const uj = u[J];
-          for (let q = 0; q < Uv.re.length; q++) {
-            uj.re[q] += sc * Uv.re[q];
-            uj.im[q] += sc * Uv.im[q];
+          for (let q = 0; q < Ur.length; q++) {
+            uj.re[q] += sc * Ur[q];
+            uj.im[q] += sc * Ui[q];
           }
         }
       }
@@ -561,21 +395,21 @@ export class PairSnap extends Pair {
         const ar = C, ai = g * dz, br = g * dy, bi = g * dx;
         const sc = nSc[a], dsc = nDsc[a];
         const G0 = [0, 0, 0];
+        WT.compute(ar, ai, br, bi, true);
         for (let J = 0; J <= tj; J++) {
           const nn = (J + 1) * (J + 1);
-          const Uv = Ud[J];
-          const D = dU[J];
-          wignerUd(J, ar, ai, br, bi, Uv, D);
+          const Ur = WT.ur[J], Ui = WT.ui[J];
+          const Dr = WT.dur[J], Di = WT.dui[J];
           const GR = gr[J], GI = gi[J];
           for (let q = 0; q < nn; q++) {
             const gR = GR.r[q], gI = GI.r[q];
             if (gR === 0 && gI === 0) continue;
             for (let mm = 0; mm < 3; mm++) {
               // d u / d d_m = dsc n_m U + sc sum_p dU_p dp_p/dd_m
-              let dre = dsc * nm[mm] * Uv.re[q], dim = dsc * nm[mm] * Uv.im[q];
+              let dre = dsc * nm[mm] * Ur[q], dim = dsc * nm[mm] * Ui[q];
               for (let pp = 0; pp < 4; pp++) {
-                dre += sc * D[pp].re[q] * dp[pp][mm];
-                dim += sc * D[pp].im[q] * dp[pp][mm];
+                dre += sc * Dr[pp][q] * dp[pp][mm];
+                dim += sc * Di[pp][q] * dp[pp][mm];
               }
               G0[mm] += gR * dre + gI * dim;
             }

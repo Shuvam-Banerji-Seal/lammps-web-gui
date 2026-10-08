@@ -156,12 +156,17 @@ describe('Session: errors are explicit and carry the line', () => {
   });
 
   it('explains commands a browser cannot run, and does not list them as supported', async () => {
-    for (const [cmd, why] of [['python', /no Python interpreter/], ['shell', /no operating-system shell/], ['package', /accelerator packages/]] as const) {
+    for (const [cmd, why] of [['python', /no Python interpreter/], ['package', /accelerator packages/]] as const) {
       expect(SUPPORTED_COMMANDS).not.toContain(cmd);
       const { error } = await runScript(`units lj\n${cmd} gpu 1\n`);
       expect(error?.command).toBe(cmd);
       expect(error!.message).toMatch(why);
     }
+    // shell runs its file built-ins (rm, mv) on the session files; an external command is refused, naming it
+    expect(SUPPORTED_COMMANDS).toContain('shell');
+    const { error } = await runScript('units lj\nshell gpu 1\n');
+    expect(error?.command).toBe('shell');
+    expect(error!.message).toMatch(/no operating-system shell/);
     expect(SUPPORTED_COMMANDS).toEqual(expect.arrayContaining(['processors', 'run', 'include']));
   });
 

@@ -98,9 +98,62 @@ const browserOnly = (name: string, why: string): Handler => {
   };
 };
 
+/**
+ * shell command args — shell.html: "A few simple file-based shell commands are
+ * supported directly, in Unix-style syntax."; "*rm* args = [-f] file1 file2 ...",
+ * "file1,file2 = one or more filenames to delete"; "*mv* args = old new",
+ * "new = new filename or destination folder". The browser has no operating-system
+ * shell and no directories, so only the file-store operations rm and mv are
+ * implemented (they act on the session files that read_restart, read_data,
+ * include and pair_coeff read, and that write_restart, write_data, dump and
+ * fix print write). Every other form — cd, mkdir, rmdir, putenv and arbitrary
+ * external commands — is refused, naming it.
+ *
+ * Measured with native LAMMPS (black box):
+ *   shell rm <file>          deletes it, silently.
+ *   shell rm <missing>       warns once per missing file and continues; the warning reads
+ *                            Shell command 'rm <missing>' failed with error 'No such file or directory'.
+ *   shell rm -f <missing>    silent (no warning); also silent with no file names.
+ *   shell mv <old> <new>     renames old to new, silently overwriting an existing new.
+ *   shell mv <missing> <new> warns and continues; the warning reads
+ *                            Shell command 'mv <missing> <new>' failed with error 'No such file or directory'.
+ *   shell                    is an error (Illegal shell command: missing argument(s)).
+ *   shell rm                 is an error (Illegal shell rm command: missing argument(s)).
+ *   shell mv [a]             is an error (expected 3 argument but found N).
+ */
+const shell: Handler = ({ sys, session }, a) => {
+  const sub = a[0];
+  if (sub === undefined) throw new StyleError('shell: missing command (usage: shell command args)');
+  if (sub === 'rm') {
+    let k = 1;
+    let force = false;
+    if (a[k] === '-f') { force = true; k++; }
+    if (k >= a.length && !force) throw new StyleError('shell rm: missing argument(s) (usage: shell rm [-f] file1 file2 ...)');
+    for (; k < a.length; k++) {
+      const name = a[k];
+      if (sys.files.has(name)) session.removeFile(name);
+      else if (!force) sys.warn(`Shell command 'rm ${name}' failed with error 'No such file or directory'`);
+    }
+    return;
+  }
+  if (sub === 'mv') {
+    if (a.length !== 3) throw new StyleError(`shell mv: expected 2 arguments (old new) but found ${a.length - 1}`);
+    const oldName = a[1], newName = a[2];
+    const text = sys.files.get(oldName);
+    if (text === undefined) {
+      sys.warn(`Shell command 'mv ${oldName} ${newName}' failed with error 'No such file or directory'`);
+      return;
+    }
+    session.removeFile(oldName);
+    sys.writeFile(newName, text, false);
+    return;
+  }
+  // cd, mkdir, rmdir, putenv and arbitrary commands: the browser has no shell and no directories
+  throw new StyleError(`shell ${sub}: cannot run 'shell ${a.join(' ')}': a browser has no operating-system shell and no directories`);
+};
+
 export const MISC_COMMANDS: Record<string, Handler> = {
-  variable, print, log, timer, info,
-  shell: browserOnly('shell', 'cannot run: a browser has no operating-system shell'),
+  variable, print, log, timer, info, shell,
   python: browserOnly('python', 'is not available: the browser engine has no Python interpreter'),
   plugin: browserOnly('plugin', 'is not available: plugins are native shared libraries'),
   mdi: browserOnly('mdi', 'is not available in the browser engine'),

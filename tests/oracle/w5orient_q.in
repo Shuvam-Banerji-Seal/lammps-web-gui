@@ -1,0 +1,24 @@
+# oracle: compute orientorder/atom (Q4 Q6 default nnn 12, and degrees/cutoff/wl options) written by a dump
+# oracle-files: q.dump
+# oracle-compare: thermo=first-last
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        dx atom 0.06*sin(1.3*x+0.7*y)
+variable        dy atom 0.06*cos(0.9*y-1.1*z)
+variable        dz atom 0.06*sin(1.7*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+compute         q1 all orientorder/atom
+compute         q2 all orientorder/atom degrees 3 4 6 8 nnn NULL cutoff 1.5 wl yes
+compute         q3 all orientorder/atom wl/hat yes
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+dump            d all custom 1 q.dump id c_q1[*] c_q2[*] c_q3[*]
+dump_modify     d sort id format float %.12g
+run             0

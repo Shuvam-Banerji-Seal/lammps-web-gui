@@ -67,6 +67,8 @@ import * as computeGk from './registry/compute_gk';
 import * as fixGk from './registry/fix_gk';
 import * as fixRestrain from './registry/fix_restrain';
 import * as computeRestrain from './registry/compute_restrain';
+import * as pairTip4p from './registry/pair_tip4p';
+import * as kspaceTip4p from './registry/kspace_tip4p';
 import * as pairTable from './registry/pair_table';
 import * as pairCharmm from './registry/pair_charmm';
 import * as pairCoulLong2 from './registry/pair_coullong2';
@@ -107,7 +109,7 @@ export const PAIR_STYLES: Record<string, () => Pair> = {
   ...pairCoul.PAIRS, ...pairSimple.PAIRS, ...pairLJ.PAIRS, ...pairLJCoul.PAIRS, ...pairSimple2.PAIRS, ...pairLJ2.PAIRS,
   ...pairEAM.PAIRS, ...pair3Body.PAIRS, ...pairSW.PAIRS,
   ...pairZBL.PAIRS, ...pairTable.PAIRS, ...pairCharmm.PAIRS, ...pairCoulLong2.PAIRS,
-  ...pairGran.PAIRS, ...pairColloid.PAIRS, ...pairYColloid.PAIRS, ...pairVashishta.PAIRS, ...pairRelres.PAIRS, ...pairGranular.PAIRS, ...pairSnap.PAIRS, ...pairMisc4.PAIRS, ...pairMisc5.PAIRS, ...pairMeam.PAIRS,
+  ...pairGran.PAIRS, ...pairColloid.PAIRS, ...pairYColloid.PAIRS, ...pairVashishta.PAIRS, ...pairRelres.PAIRS, ...pairGranular.PAIRS, ...pairSnap.PAIRS, ...pairMisc4.PAIRS, ...pairMisc5.PAIRS, ...pairMeam.PAIRS, ...pairTip4p.PAIRS,
 };
 
 export const BOND_STYLES: Record<string, () => Bonded> = {
@@ -129,6 +131,7 @@ export const IMPROPER_STYLES: Record<string, () => Bonded> = {
 export const KSPACE_STYLES: Record<string, () => KSpace> = {
   ewald: () => new KSpaceEwald(),
   pppm: () => new KSpacePPPM(),
+  ...kspaceTip4p.KSPACES,
 };
 
 export const FIX_STYLES: Record<string, FixFactory> = {

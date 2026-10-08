@@ -673,8 +673,15 @@ export function meamEnergyForces(
  *   "augt1           = integer flag for whether to augment t1 parameter by"  (default = 1)
  *   "zbl(I,J)    = blend the MEAM I-J pair potential with the ZBL potential for small"  (default = 1)
  *   "rho0(I)     = relative density for element I (overwrites value"
- * The parameter-file keywords Ec and re have no documented default for a single element, so the parameter file
- * must set Ec(1,1) and re(1,1). The NULL parameter file is therefore rejected.
+ * Single-element Ec and re when the parameter file omits them (docs: "esub     = energy per atom (eV) in the reference structure at equilibrium"
+ * in the library entry, and "alat     = lattice constant of reference structure"). Measured with
+ * native LAMMPS (black box): with Cu.meam, which sets neither, the energy equals the one with Ec = esub = 3.54 and
+ * re = alat / sqrt(2) = 3.62 / sqrt(2) to all printed digits; so Ec defaults to esub and, for fcc, re to alat / sqrt(2).
+ * The other reference lattices keep the requirement that the parameter file sets re(1,1) (not measured).
+ * The NULL parameter file is still rejected.
+ * Masses: measured with native LAMMPS (black box), with pair_style meam the type masses are the library atomic weights
+ * (Cu: 63.54 from library.meam, whatever a mass command before pair_coeff sets), as the kinetic energy of Cu.meam with
+ * mass 100 equals the one with mass 63.54 and not the one of mass 100. The engine sets the same masses in pair_coeff.
  * ibar: the docs list "0 => G = sqrt(1+Gamma)" and "1 => G = exp(Gamma/2)"; only ibar = 0 is measured here.
  */
 
@@ -684,6 +691,12 @@ interface LibraryEntry {
   z: number;
   alpha: number;
   b: [number, number, number, number];
+  /** atomic weight (library column 5); native LAMMPS sets the type mass from it (measured). */
+  atwt: number;
+  /** lattice constant of the reference structure (library column 11). */
+  alat: number;
+  /** energy per atom of the reference structure (library column 12). */
+  esub: number;
   asub: number;
   t: [number, number, number, number];
   rozero: number;
@@ -713,6 +726,9 @@ export const parseMeamLibrary = (text: string, elt: string, name: string): Libra
       z: num(2),
       alpha: num(5),
       b: [num(6), num(7), num(8), num(9)],
+      atwt: num(4),
+      alat: num(10),
+      esub: num(11),
       asub: num(12),
       t: [num(13), num(14), num(15), num(16)],
       rozero: num(17),
@@ -955,14 +971,24 @@ export class PairMeam extends Pair {
     if (par.lattce !== undefined && par.lattce !== lib.lat) {
       throw new StyleError(`MEAM lattce(1,1) = ${par.lattce} differs from the library lattice '${lib.lat}' of ${elem}; not supported`);
     }
-    if (par.Ec === undefined || par.re === undefined) {
-      throw new StyleError(`MEAM parameter file ${paramFile} must set Ec(1,1) and re(1,1)`);
+    // Ec and re default as measured below (see the defaults note above the coeff method)
+    // The masses of the types mapped to this element come from the library (see the mass note above the coeff method).
+    if (ctx.s && !ctx.s.rmass) {
+      for (let t = 1; t <= this.ntypes; t++) if (maps[t - 1] === elem) ctx.s.massByType[t] = lib.atwt;
+    }
+    const Ec = par.Ec ?? lib.esub;
+    let re = par.re;
+    if (re === undefined) {
+      if (lib.lat !== 'fcc') {
+        throw new StyleError(`MEAM parameter file ${paramFile} must set re(1,1): the default equilibrium distance is only verified for fcc (${lib.lat})`);
+      }
+      re = lib.alat / Math.SQRT2;
     }
     this.el = {
       z: lib.z,
-      re: par.re,
+      re,
       alpha: par.alpha ?? lib.alpha,
-      Ec: par.Ec,
+      Ec,
       A: lib.asub,
       beta: lib.b,
       t: lib.t,
@@ -987,6 +1013,13 @@ export class PairMeam extends Pair {
     });
     const par = parseMeamParams(ctx.readFile(paramFile), paramFile, elems.length);
     const n = elems.length;
+    // masses of the mapped types from the library atomic weights (same rule as the single-element style)
+    if (ctx.s && !ctx.s.rmass) {
+      for (let t = 1; t <= this.ntypes; t++) {
+        const c = elems.indexOf(maps[t - 1]);
+        if (c >= 0) ctx.s.massByType[t] = libs[c].atwt;
+      }
+    }
     const elements: AlloyElement[] = libs.map((lib, c) => {
       const elt = elems[c];
       if (lib.lat !== 'fcc') throw new StyleError(`multi-element MEAM: reference lattice '${lib.lat}' of ${elt} is not supported (only fcc)`);
@@ -995,15 +1028,16 @@ export class PairMeam extends Pair {
       if (lib.ibar !== 0) throw new StyleError(`multi-element MEAM: ibar = ${lib.ibar} is not supported (only ibar = 0)`);
       const own = par.pair.get(`${c + 1},${c + 1}`) ?? {};
       if (own.lattce !== undefined && own.lattce !== 'fcc') throw new StyleError(`multi-element MEAM: lattce(${c + 1},${c + 1}) = ${own.lattce} for ${elt} is not supported`);
-      if (own.Ec === undefined || own.re === undefined) {
-        throw new StyleError(`multi-element MEAM: parameter file ${paramFile} must set Ec(${c + 1},${c + 1}) and re(${c + 1},${c + 1})`);
+      // Ec and re of the element default as in the single-element style (measured: the same energies as the explicit values)
+      if (own.re === undefined && lib.lat !== 'fcc') {
+        throw new StyleError(`multi-element MEAM: parameter file ${paramFile} must set re(${c + 1},${c + 1}): the default is only verified for fcc (${elt} is ${lib.lat})`);
       }
       return {
         z: lib.z,
         lat: 'fcc' as ReferenceLattice,
-        re: own.re,
+        re: own.re ?? lib.alat / Math.SQRT2,
         alpha: own.alpha ?? lib.alpha,
-        Ec: own.Ec,
+        Ec: own.Ec ?? lib.esub,
         A: lib.asub,
         beta: lib.b,
         t: lib.t,

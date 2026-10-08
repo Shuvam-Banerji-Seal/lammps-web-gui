@@ -89,7 +89,9 @@ const baseEntry = (
   pick: { m: number; gamma: number; lambda3: number; c: number; d: number; cos0: number; n: number; beta: number },
 ): TersoffEntry => {
   const [e1, e2, e3] = k.split(' ');
-  if (!(named.D > 0) || !(pick.n > 0)) throw new StyleError(`potential file entry ${k}: D and n must be > 0`);
+  // Measured with native LAMMPS (black box): the n = 0 entry Si Si C of SiC.tersoff.zbl is accepted (w22pot_tersoff_zbl_sic),
+  // as n = 0 and D = 0 are accepted by the base Tersoff reader (tersoff.ts); negative values are refused.
+  if (!(named.D >= 0) || !(pick.n >= 0)) throw new StyleError(`potential file entry ${k}: D and n must be >= 0`);
   return {
     e1, e2, e3,
     m: pick.m, gamma: pick.gamma, lambda3: pick.lambda3, c: pick.c, d: pick.d, costheta0: pick.cos0,
@@ -99,9 +101,17 @@ const baseEntry = (
   };
 };
 
-/** tersoff/mod: entries of the MOD layout (no m, gamma, lambda3, c, d, cos theta0 columns). */
-const modEntry = (named: Record<string, number>, k: string): TersoffEntry =>
-  baseEntry(k, named, { m: 1, gamma: 1, lambda3: 0, c: 0, d: 1, cos0: 0, n: named.n, beta: named.eta });
+/**
+ * tersoff/mod: entries of the MOD layout (no m, gamma, lambda3, c, d, cos theta0 columns).
+ * Measured with native LAMMPS (black box): beta values 1 and 3 are accepted; 0.5, 1.5, 2 and 5 stop the
+ * run with an illegal Tersoff parameter error, so only those two are accepted here.
+ */
+const modEntry = (named: Record<string, number>, k: string): TersoffEntry => {
+  if (named.beta !== 1 && named.beta !== 3) {
+    throw new StyleError(`potential file entry ${k}: beta must be 1 or 3 for tersoff/mod (got ${named.beta})`);
+  }
+  return baseEntry(k, named, { m: 1, gamma: 1, lambda3: 0, c: 0, d: 1, cos0: 0, n: named.n, beta: named.eta });
+};
 
 /** tersoff/zbl: entries of the Tersoff/ZBL layout. */
 const zblEntry = (named: Record<string, number>, k: string): TersoffEntry => {
@@ -113,13 +123,15 @@ const zblEntry = (named: Record<string, number>, k: string): TersoffEntry => {
 };
 
 /**
- * Refuses a "UNITS:" header in a tersoff/mod or tersoff/zbl potential file. Native LAMMPS converts
- * such files (warning printed) but, measured with a tersoff/mod file whose first entry is A A A,
- * then reports a missing entry, so no conversion is verified here.
+ * Refuses a UNITS: header in a tersoff/mod or tersoff/zbl potential file whose unit style differs
+ * from the simulation's. A header that matches the simulation needs no conversion and is accepted.
+ * Native LAMMPS converts mismatched files (warning printed) but, measured with a tersoff/mod file
+ * whose first entry is A A A, then reports a missing entry, so no conversion is verified here.
  */
-const refuseUnitsTag = (text: string, fileName: string, style: string): void => {
+const refuseUnitsTag = (text: string, fileName: string, style: string, ctx: StyleContext): void => {
   const first = text.split(/\r?\n/)[0] ?? '';
-  if (/UNITS:/.test(first)) {
+  const m = /UNITS:\s*(\S+)/.exec(first);
+  if (m && m[1] !== ctx.s?.units.style) {
     throw new StyleError(`potential file ${fileName} has a UNITS: header; ${style} does not convert potential units in this engine`);
   }
 };
@@ -169,7 +181,7 @@ export class PairTersoffMod extends PairTersoff {
   }
 
   protected override readFile(filename: string, ctx: StyleContext): void {
-    refuseUnitsTag(ctx.readFile(filename), filename, this.name);
+    refuseUnitsTag(ctx.readFile(filename), filename, this.name, ctx);
     super.readFile(filename, ctx);
   }
 
@@ -235,19 +247,23 @@ export class PairTersoffMod extends PairTersoff {
     return -(dgo * ga + go * dga);
   }
 
-  /** exp[alpha (r_ij - r_ik)^beta]. */
+  /**
+   * exp[(alpha (r_ij - r_ik))^beta]. Measured with native LAMMPS (black box): with beta = 3 the energy
+   * matches this form (alpha inside the cube) and not alpha (r_ij - r_ik)^beta as printed in
+   * pair_tersoff_mod.html; for beta = 1 the two forms coincide.
+   */
   protected override zetaExp(t3: number, dr: number): number {
     const alpha = this.p3[8 * t3];
     if (alpha === 0) return 1;
-    return Math.exp(alpha * Math.pow(dr, this.p3[8 * t3 + 1]));
+    return Math.exp(Math.pow(alpha * dr, this.p3[8 * t3 + 1]));
   }
 
-  /** d ln(zetaExp) / d r_ij. */
+  /** d ln(zetaExp) / d r_ij = beta alpha (alpha dr)^(beta - 1). */
   protected override zetaLogDeriv(t3: number, dr: number): number {
     const alpha = this.p3[8 * t3];
     if (alpha === 0) return 0;
     const beta = this.p3[8 * t3 + 1];
-    return alpha * beta * Math.pow(dr, beta - 1);
+    return beta * alpha * Math.pow(alpha * dr, beta - 1);
   }
 
   /** b_ij = (1 + zeta^eta)^(-1/(2n)). */
@@ -337,7 +353,7 @@ export class PairTersoffZBL extends PairTersoff {
   }
 
   protected override readFile(filename: string, ctx: StyleContext): void {
-    refuseUnitsTag(ctx.readFile(filename), filename, this.name);
+    refuseUnitsTag(ctx.readFile(filename), filename, this.name, ctx);
     super.readFile(filename, ctx);
   }
 

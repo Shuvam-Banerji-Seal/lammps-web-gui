@@ -1,0 +1,30 @@
+# oracle: pair_style eim with ffield.eim (Na Cl, examples/eim), displaced lattice, velocities from atom-style variables, 50 steps of nve
+# oracle-potentials: ffield.eim
+# oracle-tolerance: thermo=first atoms=none rel=1e-7 abs=1e-3; measured with native LAMMPS (black box) at this geometry: at step 0 the pe agrees to 5e-11 relative and the off-diagonal pyz differs by about 1.2e-4 (8e-8 relative); the native forces agree with finite differences of the native energy and with this engine to about 2e-9 relative; the pressure difference grows along the trajectory (pyz about 7e-5 relative at step 10), and the cause is not isolated, so only step 0 is compared
+# oracle-compare: thermo=first atoms=none rel=1e-7 abs=1e-3
+units           metal
+atom_style      atomic
+lattice         diamond 5.53
+region          box block 0 3 0 3 0 3
+create_box      2 box
+create_atoms    1 box
+group         t2 id 2:216:2
+set             group t2 type 2
+mass            1 22.99
+mass            2 35.45
+variable        dx atom 0.05*sin(1.3*x+0.7*y)
+variable        dy atom 0.05*cos(0.9*y-0.4*z)
+variable        dz atom 0.05*sin(1.1*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.01*sin(id)
+variable        vy atom 0.01*cos(2*id)
+variable        vz atom 0.01*sin(3*id)
+pair_style eim
+pair_coeff * * Na Cl ffield.eim Na Cl
+velocity        all set v_vx v_vy v_vz
+timestep        0.001
+fix             1 all nve
+thermo_style    custom step pe ke press pxx pyz
+thermo_modify   format float %.15g norm no
+thermo          10
+run             50

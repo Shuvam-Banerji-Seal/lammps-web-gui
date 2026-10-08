@@ -92,9 +92,10 @@ import { parseNum, joinPotentialEntries } from '../util';
  *     \end{array} \right. \\
  *
  * and the force caveat "the angle dependence for the cut-off function is not
- * implemented in the force (first derivation of potential)": the force treats
- * f_C as a constant with respect to the angle, i.e. d(zeta^2)/d(angle) is
- * taken as 2*zeta*f_C with zeta = f_C*delta.
+ * implemented in the force (first derivation of potential)". Measured with
+ * native LAMMPS (black box): the forces of sw/mod agree with finite differences
+ * of its energy, which include the angle derivative of f_C, so this engine
+ * differentiates f_C as well (d(zeta^2)/d(delta) = 2 zeta (f_C + delta f_C')).
  *
  * "This pair style does not support the pair_modify shift, table, and tail
  * options."  "The single() function of the sw pair style is only enabled and
@@ -185,8 +186,11 @@ const parseSWFile = (text: string, fileName: string): { entries: Map<string, SWE
       eps: nums[0], sigma: nums[1], a: nums[2], lambda: nums[3], gamma: nums[4],
       costheta0: nums[5], A: nums[6], B: nums[7], p: nums[8], q: nums[9], tol: nums[10],
     };
-    if (!(e.sigma > 0) || !(e.a > 0)) {
-      throw new StyleError(`SW potential file ${fileName} entry ${k}: sigma and a must be > 0`);
+    // Measured with native LAMMPS (black box): entries with sigma = 0 or a = 0 are accepted (the GaN.sw and
+    // tmd.sw.mod files of the LAMMPS distribution carry them for three-body-only or unused triplets); such an
+    // entry has a zero cutoff, so it contributes nothing. Negative values are refused.
+    if (!(e.sigma >= 0) || !(e.a >= 0)) {
+      throw new StyleError(`SW potential file ${fileName} entry ${k}: sigma and a must be >= 0`);
     }
     entries.set(k, e);
     elems.add(t[0]);
@@ -301,6 +305,11 @@ abstract class PairSWBase extends Pair {
   /** f_C(delta) of sw/mod; the plain sw style returns 1 (no angle scaling). */
   protected angleScale(_dc: number): number {
     return 1;
+  }
+
+  /** d f_C / d delta of sw/mod; zero for the plain sw style. */
+  protected angleScaleDeriv(_dc: number): number {
+    return 0;
   }
 
   override allocate(ntypes: number): void {
@@ -608,7 +617,7 @@ abstract class PairSWBase extends Pair {
             const e3v = P * zeta2;
             evdwl += e3v;
             // fj = aj*ej - bk*ek, fk = ak*ek - bk*ej, fi = -(fj + fk)
-            const zf = 2 * zeta * fc;
+            const zf = 2 * zeta * (fc + dc * this.angleScaleDeriv(dc));
             const bk = P * zf * invrj * invrk;
             const aj = P * (zf * c * invrj * invrj + zeta2 * wj * invrj);
             const ak = P * (zf * c * invrk * invrk + zeta2 * wk * invrk);
@@ -711,5 +720,14 @@ export class PairSWMod extends PairSWBase {
     if (ad <= this.delta1) return 1;
     if (ad >= this.delta2) return 0;
     return 0.5 + 0.5 * Math.cos((Math.PI * (ad - this.delta1)) / (this.delta2 - this.delta1));
+  }
+
+  /** d f_C / d delta = sign(delta) d f_C / d|delta| inside the switching band (0 outside). */
+  protected override angleScaleDeriv(dc: number): number {
+    const ad = Math.abs(dc);
+    if (ad <= this.delta1 || ad >= this.delta2) return 0;
+    const w = this.delta2 - this.delta1;
+    const d = -(Math.PI / (2 * w)) * Math.sin((Math.PI * (ad - this.delta1)) / w);
+    return dc < 0 ? -d : d;
   }
 }

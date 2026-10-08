@@ -1,0 +1,26 @@
+# oracle: chunk/atom bin/1d with reduce/chunk (sum, max over per-atom velocities), property/chunk count, chunk/spread/atom feeding reduce/chunk and gyration/chunk, momentum, after a short NVE run
+# oracle-inputs: w17chunk_bin.data
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-8
+units           lj
+atom_style      atomic
+read_data       w17chunk_bin.data
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+mass            * 1.0
+timestep        0.002
+fix             1 all nve
+compute cb all chunk/atom bin/1d x lower 1.0 units box
+compute pa all property/atom vx vy vz
+compute rs all reduce/chunk cb sum c_pa[1] c_pa[2]
+compute rmx all reduce/chunk cb max c_pa[*]
+compute cnt all property/chunk cb count
+compute spr all chunk/spread/atom cb c_rs[1] c_rs[2]
+compute rsp all reduce/chunk cb sum c_spr[1]
+compute ang all angmom/chunk cb
+compute gy all gyration/chunk cb
+compute com all com/chunk cb
+compute mom all momentum
+thermo_modify   format float %.15g norm no
+thermo_style    custom step c_rs[1][1] c_rs[1][2] c_rs[2][1] c_rs[2][2] c_rs[3][1] c_rs[3][2] c_rs[4][1] c_rs[4][2] c_rmx[1][1] c_rmx[2][2] c_rmx[3][3] c_rmx[4][1] c_cnt[1] c_cnt[2] c_cnt[3] c_cnt[4] c_rsp[1] c_rsp[2] c_rsp[3] c_rsp[4] c_ang[1][1] c_ang[2][2] c_ang[3][3] c_ang[4][1] c_gy[1] c_gy[2] c_gy[3] c_gy[4] c_com[1][1] c_com[4][3] c_mom[1] c_mom[2] c_mom[3]
+thermo          10
+run             20

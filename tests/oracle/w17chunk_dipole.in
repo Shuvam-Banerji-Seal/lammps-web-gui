@@ -1,0 +1,24 @@
+# oracle: dipole and dipole/chunk (mass and geometry net-charge corrections) on 12 charged molecules of 3 atoms (some with a net charge), after a short NVE run
+# oracle-inputs: w17chunk_dipole.data
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-8
+units           lj
+atom_style      full
+read_data       w17chunk_dipole.data
+pair_style      lj/cut 1.0
+pair_coeff      * * 0.01 0.3
+mass            1 16.0
+mass            2 1.0
+timestep        0.002
+fix             1 all nve
+compute cm all chunk/atom molecule compress no
+compute dip all dipole
+compute dipg all dipole geometry
+compute dipk all dipole mass
+compute dm all dipole/chunk cm
+compute dg all dipole/chunk cm geometry
+compute cnt all property/chunk cm count
+compute mom all momentum
+thermo_modify   format float %.15g norm no
+thermo_style    custom step c_dip c_dip[1] c_dip[2] c_dip[3] c_dipg c_dipg[1] c_dipg[2] c_dipg[3] c_dipk[1] c_dipk[2] c_mom[1] c_mom[2] c_mom[3] c_dm[1][1] c_dm[1][2] c_dm[1][3] c_dm[1][4] c_dg[1][1] c_dg[1][2] c_dg[1][3] c_dg[1][4] c_cnt[1] c_dm[2][1] c_dm[2][2] c_dm[2][3] c_dm[2][4] c_dg[2][1] c_dg[2][2] c_dg[2][3] c_dg[2][4] c_cnt[2] c_dm[3][1] c_dm[3][2] c_dm[3][3] c_dm[3][4] c_dg[3][1] c_dg[3][2] c_dg[3][3] c_dg[3][4] c_cnt[3] c_dm[4][1] c_dm[4][2] c_dm[4][3] c_dm[4][4] c_dg[4][1] c_dg[4][2] c_dg[4][3] c_dg[4][4] c_cnt[4] c_dm[5][1] c_dm[5][2] c_dm[5][3] c_dm[5][4] c_dg[5][1] c_dg[5][2] c_dg[5][3] c_dg[5][4] c_cnt[5] c_dm[6][1] c_dm[6][2] c_dm[6][3] c_dm[6][4] c_dg[6][1] c_dg[6][2] c_dg[6][3] c_dg[6][4] c_cnt[6] c_dm[7][1] c_dm[7][2] c_dm[7][3] c_dm[7][4] c_dg[7][1] c_dg[7][2] c_dg[7][3] c_dg[7][4] c_cnt[7] c_dm[8][1] c_dm[8][2] c_dm[8][3] c_dm[8][4] c_dg[8][1] c_dg[8][2] c_dg[8][3] c_dg[8][4] c_cnt[8] c_dm[9][1] c_dm[9][2] c_dm[9][3] c_dm[9][4] c_dg[9][1] c_dg[9][2] c_dg[9][3] c_dg[9][4] c_cnt[9] c_dm[10][1] c_dm[10][2] c_dm[10][3] c_dm[10][4] c_dg[10][1] c_dg[10][2] c_dg[10][3] c_dg[10][4] c_cnt[10] c_dm[11][1] c_dm[11][2] c_dm[11][3] c_dm[11][4] c_dg[11][1] c_dg[11][2] c_dg[11][3] c_dg[11][4] c_cnt[11] c_dm[12][1] c_dm[12][2] c_dm[12][3] c_dm[12][4] c_dg[12][1] c_dg[12][2] c_dg[12][3] c_dg[12][4] c_cnt[12]
+thermo          10
+run             20

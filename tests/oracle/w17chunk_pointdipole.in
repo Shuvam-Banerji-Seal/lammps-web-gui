@@ -1,0 +1,22 @@
+# oracle: compute dipole and dipole/chunk with charges and point dipoles (atom_style dipole)
+units           lj
+atom_style      dipole
+lattice         sc 0.6
+region          box block 0 3 0 3 0 3
+create_box      2 box
+create_atoms    1 box
+set             atom 1*13 type 2
+set             group all dipole 0.3 -0.2 0.5
+set             type 2 dipole 0.0 0.4 0.1
+set             type 2 charge 0.5
+set             type 1 charge -0.2
+mass            * 1.0
+compute         cc all chunk/atom type
+compute         d all dipole
+compute         dg all dipole geometry
+compute         dc all dipole/chunk cc
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+thermo_style    custom step c_d c_d[1] c_d[2] c_d[3] c_dg[1] c_dc[1][1] c_dc[1][2] c_dc[2][3] c_dc[2][4]
+thermo_modify   format float %.15g
+run             0

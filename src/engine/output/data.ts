@@ -67,19 +67,35 @@ export interface ReadDataOptions {
   extraTypes: [number, number, number, number, number];
   group: string | null;
   nocoeff: boolean;
-  /** read_data fix fix-ID header-string section-string (section name -> fix ID). */
-  fixSections: Map<string, string>;
+  /** read_data fix fix-ID header-string section-string (section name -> fix ID and header-string; NULL = no header lines). */
+  fixSections: Map<string, { fixId: string; header: string }>;
 }
 
-/** What read_data / write_data need from a fix that owns a data-file section (fix property/atom). */
-interface DataSectionFix {
+/**
+ * What read_data / write_data need from a fix that owns data-file lines. Every hook is optional:
+ * - per-atom sections (fix property/atom): readValues(s, i, w, at) per line, sectionLines = natoms;
+ * - a whole-section reader (fix cmap): readHeader for the header lines that contain the header-string,
+ *   sectionLines(natoms) for the number of section lines, readSection(rows) for the section;
+ * - write_data: dataHeaderLine() (a header line, after the topology counts), dataSection() (a section,
+ *   after the topology), and for per-atom fixes sectionHeader() / writeValues().
+ */
+interface DataFix {
   id: string;
-  nvalues: number;
-  readValues(s: SimState, i: number, w: readonly string[], at: number): void;
-  sectionHeader(): string;
-  writeValues(s: SimState, i: number): string;
+  style: string;
+  readValues?(s: SimState, i: number, w: readonly string[], at: number): void;
+  readHeader?(line: string, at: number): void;
+  sectionLines?(natoms: number): number;
+  readSection?(rows: { w: string[]; at: number }[]): void;
+  sectionHeader?(): string;
+  writeValues?(s: SimState, i: number): string;
+  dataHeaderLine?(): string | null;
+  dataSection?(slot: (id: number) => number): { title: string; lines: string[] } | null;
 }
-const isDataSectionFix = (f: unknown): f is DataSectionFix => typeof (f as DataSectionFix)?.readValues === 'function';
+const isDataFix = (f: unknown): f is DataFix => {
+  const x = f as DataFix;
+  return typeof x?.readValues === 'function' || typeof x?.readSection === 'function' || typeof x?.readHeader === 'function'
+    || typeof x?.dataHeaderLine === 'function' || typeof x?.dataSection === 'function';
+};
 
 export const defaultReadOptions = (): ReadDataOptions => ({
   add: 'none', offset: [0, 0, 0, 0, 0], shift: [0, 0, 0], extraTypes: [0, 0, 0, 0, 0], group: null, nocoeff: false, fixSections: new Map(),
@@ -108,10 +124,21 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   // general triclinic header (Howto_triclinic.html): avec, bvec, cvec, abc origin
   const gen: { avec?: V3; bvec?: V3; cvec?: V3; origin?: V3 } = {};
   let k = 1;
+  // read_data.html: "header lines containing this string will be passed to fix"
+  const headerFixes = [...opts.fixSections.values()].filter((e) => e.header !== 'NULL');
   for (; k < lines.length; k++) {
     const raw = lines[k].replace(/#.*/, '').trim();
     if (!raw) continue;
     if (SECTIONS.has(raw) || SECTIONS.has(lines[k].trim().split('#')[0].trim())) break;
+    const hf = headerFixes.find((e) => raw.includes(e.header));
+    if (hf) {
+      const fx = sys.fix(hf.fixId) as unknown as DataFix;
+      if (!isDataFix(fx) || typeof fx.readHeader !== 'function') {
+        throw new StyleError(`read_data fix ${hf.fixId}: header-string must be NULL (fix ${fx.style} reads no header lines)`);
+      }
+      fx.readHeader(raw, k + 1);
+      continue;
+    }
     const w = raw.split(/\s+/);
     const rest = w.slice(1).join(' ');
     const rest3 = w.slice(3).join(' ');
@@ -190,7 +217,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   const vel = new Map<number, number[]>();
   const coeffLines: { section: string; line: string; at: number }[] = [];
   const topo: { kind: 'bonds' | 'angles' | 'dihedrals' | 'impropers'; type: number; ids: number[] }[] = [];
-  const fixRows: { fx: DataSectionFix; rows: { w: string[]; at: number }[] }[] = [];
+  const fixRows: { fx: DataFix; rows: { w: string[]; at: number }[] }[] = [];
   // sections
   while (k < lines.length) {
     const title = lines[k].split('#')[0].trim();
@@ -199,18 +226,23 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
     if (!title) continue;
     // read_data.html: "fix values = fix-ID header-string section-string" — a section named
     // section-string carries one line per atom for that fix
-    const fixId = opts.fixSections.get(title);
-    if (fixId !== undefined) {
-      const fx = sys.fix(fixId);
-      if (!isDataSectionFix(fx)) throw new StyleError(`read_data fix ${fixId}: fix style ${fx.style} does not read data-file sections`);
+    const fixEntry = opts.fixSections.get(title);
+    if (fixEntry !== undefined) {
+      const fixId = fixEntry.fixId;
+      const fx = sys.fix(fixId) as unknown as DataFix;
+      if (!isDataFix(fx) || (typeof fx.readValues !== 'function' && typeof fx.readSection !== 'function')) {
+        throw new StyleError(`read_data fix ${fixId}: fix style ${fx.style} does not read data-file sections`);
+      }
+      // the fix says how many lines its section holds (per-atom fixes: one line per atom)
+      const nlines = fx.sectionLines ? fx.sectionLines(natoms) : natoms;
       const rows: { w: string[]; at: number }[] = [];
-      while (rows.length < natoms && k < lines.length) {
+      while (rows.length < nlines && k < lines.length) {
         const t = lines[k].replace(/#.*/, '').trim();
         k++;
         if (!t) continue;
         rows.push({ w: t.split(/\s+/), at: k });
       }
-      if (rows.length < natoms) throw new StyleError(`data file section ${title}: expected ${natoms} lines, found ${rows.length}`);
+      if (rows.length < nlines) throw new StyleError(`data file section ${title}: expected ${nlines} lines, found ${rows.length}`);
       fixRows.push({ fx, rows });
       continue;
     }
@@ -362,10 +394,16 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
     const byId = new Map<number, number>();
     for (let i = n0; i < s.n; i++) byId.set(s.id[i], i);
     for (const { fx, rows } of fixRows) {
+      // whole-section fixes (fix cmap) take their rows as they are; the IDs are checked when the fix acts
+      if (fx.readSection) {
+        if (adding) throw new StyleError(`read_data fix ${fx.id} (${fx.style}): add append/merge is not supported with this fix's section`);
+        fx.readSection(rows);
+        continue;
+      }
       for (const { w, at } of rows) {
         const i = byId.get(intOf(w[0], 'atom-ID', at) + (idBase || 0));
         if (i === undefined) throw new StyleError(`data file line ${at}: fix ${fx.id} section names atom ${w[0]}, which this file does not define`);
-        fx.readValues(s, i, w.slice(1), at);
+        fx.readValues!(s, i, w.slice(1), at);
       }
     }
   }
@@ -427,6 +465,14 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
       if (name === 'angle' && s.atomStyle === 'bond') continue;
       if ((name === 'dihedral' || name === 'improper') && (s.atomStyle === 'bond' || s.atomStyle === 'angle')) continue;
       out.push(`${n} ${name}s`, `${nt} ${name} types`);
+    }
+  }
+  // fix cmap header line N crossterms (measured with native write_data: after the topology counts;
+  // the nofix keyword leaves it out)
+  if (!opts.nofix) {
+    for (const f of sys.fixes) {
+      const hl = (f as unknown as DataFix).dataHeaderLine?.();
+      if (hl) out.push(hl);
     }
   }
   out.push('');
@@ -496,13 +542,24 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
       out.push(`${k + 1} ${list.type[e]} ${ids.join(' ')}`);
     });
   }
-  // measured with native write_data: each fix property/atom adds a section titled
-  // "<fix-ID> # <names>" after the topology, one line per atom ("nofix" leaves them out)
+  // fix cmap: the N crossterms header and a CMAP section after the topology (measured with native
+  // write_data; the nofix keyword leaves both out)
   if (!opts.nofix) {
     for (const f of sys.fixes) {
-      if (!isDataSectionFix(f)) continue;
-      out.push('', f.sectionHeader(), '');
-      for (const i of order) out.push(f.writeValues(s, i));
+      const sec = (f as unknown as DataFix).dataSection?.(slot);
+      if (!sec) continue;
+      out.push('', sec.title, '');
+      for (const line of sec.lines) out.push(line);
+    }
+  }
+  // measured with native write_data: each fix property/atom adds a section titled
+  // <fix-ID> # <names> after the topology, one line per atom (the nofix keyword leaves them out)
+  if (!opts.nofix) {
+    for (const f of sys.fixes) {
+      const df = f as unknown as DataFix;
+      if (typeof df.sectionHeader !== 'function' || typeof df.writeValues !== 'function') continue;
+      out.push('', df.sectionHeader(), '');
+      for (const i of order) out.push(df.writeValues(s, i));
     }
   }
   return out.join('\n') + '\n';

@@ -651,8 +651,13 @@ const readDataCmd: Handler = ({ sys }, a) => {
       case 'fix': {
         const [fid, header, section] = [a[k + 1], a[k + 2], a[k + 3]];
         if (!fid || !header || !section) throw new StyleError('usage: read_data file fix fix-ID header-string section-string');
-        if (header !== 'NULL') throw new StyleError(`read_data fix ${fid}: header-string must be NULL (fix property/atom reads no header lines)`);
-        o.fixSections.set(section, fid);
+        if (header !== 'NULL') {
+          // read_data.html: "header lines containing this string will be passed to fix"; only a fix that reads
+          // header lines (fix cmap: "N crossterms") accepts a header-string other than NULL
+          const fx = sys.fix(fid) as unknown as { style: string; readHeader?: unknown };
+          if (typeof fx.readHeader !== 'function') throw new StyleError(`read_data fix ${fid}: header-string must be NULL (fix ${fx.style} reads no header lines)`);
+        }
+        o.fixSections.set(section, { fixId: fid, header });
         k += 4;
         break;
       }

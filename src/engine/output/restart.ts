@@ -165,6 +165,9 @@ export const writeRestartText = (sys: System): string => {
   // files <restart>`, so that the values can be restored when a simulation is restarted."
   const fixes: PropertyAtomRestart[] = [];
   for (const f of sys.fixes) {
+    // fix_cmap.html: "This fix writes the list of CMAP cross-terms to binary restart files"; the
+    // browser restart format does not hold them yet
+    if (f.style === 'cmap') throw new StyleError(`write_restart: the cross-terms of fix ${f.id} (cmap) are not stored in the browser restart file yet; use write_data`);
     if (!(f instanceof FixPropertyAtom)) continue;
     const data: Record<string, number[]> = {};
     for (const p of f.props) {

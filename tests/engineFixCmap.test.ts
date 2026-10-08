@@ -165,6 +165,24 @@ describe('fix_modify energy (fix_cmap.rst: energy is on by default)', () => {
   });
 });
 
+describe('per-atom CMAP energy and virial (fix_cmap.rst: fix_modify energy yes adds it per atom)', () => {
+  it('the per-atom energies (compute pe/atom fix) sum to f_cmap at every row', async () => {
+    const { events } = await runWithFix('w16cmap_peratom');
+    const rows = events.filter((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo').map((e) => e.row);
+    expect(rows.length).toBeGreaterThan(1);
+    for (const r of rows) expect(Math.abs((r.c_tpe as number) - (r.f_cmap as number))).toBeLessThan(1e-10);
+  });
+
+  it('fix_modify cmap energy no leaves the CMAP energy out of the per-atom energies, f_cmap unchanged', async () => {
+    const { events } = await runWithFix('w16cmap_peratom', 'fix_modify cmap energy no\n');
+    const rows = events.filter((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo').map((e) => e.row);
+    for (const r of rows) {
+      expect(r.c_tpe as number).toBe(0);
+      expect(Math.abs(r.f_cmap as number)).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe('oracle: fix cmap in the minimizer setup (fix_modify energy yes)', () => {
   it('w15cmap_minimize: the setup thermo row and the atoms match the native fixture', async () => {
     const fx = JSON.parse(readFileSync(join(FIX, 'w15cmap_minimize.json'), 'utf8')) as { thermo: ThermoRow[]; atoms: Record<string, number>[] };

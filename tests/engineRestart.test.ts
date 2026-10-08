@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Session } from '../src/engine/interpreter';
 import type { EngineEvent, SimState } from '../src/engine/types';
 
@@ -316,5 +317,56 @@ describe('wildcard file names', () => {
     session.addFile('w.100', 'LAMMPS-WEB-RESTART 1\n{}');
     // the chosen file is the one parsed: its body is not a valid restart, so the error names it
     await expect(session.execute('read_restart w.*\n')).rejects.toThrow(/w\.100/);
+  });
+});
+
+/*
+ * fix cmap cross-terms in a restart file (wave 16): the list is stored by write_restart and restored when the
+ * fix is specified again after read_restart (fix_cmap.html). A run after the restart must match the run
+ * that was never interrupted.
+ */
+describe('fix cmap cross-terms in restart files', () => {
+  const ORACLE = join(__dirname, 'oracle');
+  const CHAIN_STYLES = [
+    'bond_style harmonic', 'angle_style harmonic', 'dihedral_style harmonic', 'pair_style zero 10.0', 'pair_coeff * *',
+    'bond_coeff 1 300.0 1.53', 'angle_coeff 1 60.0 111.0', 'dihedral_coeff 1 2.0 1 3', 'timestep 0.5', 'fix 1 all nve',
+  ].join('\n');
+  const thermoRows = (events: EngineEvent[]) =>
+    events.filter((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo').map((e) => e.row);
+
+  const chainSession = () => {
+    const { session, events, files } = newSession();
+    session.addFile('w15cmap_grid.txt', readFileSync(join(ORACLE, 'w15cmap_grid.txt'), 'utf8'));
+    session.addFile('w15cmap_chain.data', readFileSync(join(ORACLE, 'w15cmap_chain.data'), 'utf8'));
+    return { session, events, files };
+  };
+  const THERMO = 'thermo_style custom step pe f_cmap edihed press\nthermo_modify format float %.15g\nthermo 10';
+
+  it('a run after write_restart, read_restart and a new fix cmap matches the uninterrupted run', async () => {
+    const cont = chainSession();
+    await cont.session.execute(`units real\natom_style full\nboundary f f f\nfix cmap all cmap w15cmap_grid.txt\nread_data w15cmap_chain.data fix cmap crossterm CMAP\n${CHAIN_STYLES}\n${THERMO}\nrun 40`);
+    const want = thermoRows(cont.events);
+
+    const part = chainSession();
+    await part.session.execute(`units real\natom_style full\nboundary f f f\nfix cmap all cmap w15cmap_grid.txt\nread_data w15cmap_chain.data fix cmap crossterm CMAP\n${CHAIN_STYLES}\n${THERMO}\nrun 20\nwrite_restart w16.restart\nclear`);
+    await part.session.execute(`read_restart w16.restart\nfix cmap all cmap w15cmap_grid.txt\npair_style zero 10.0\npair_coeff * *\nfix 1 all nve\n${THERMO}\nrun 20`);
+    const got = thermoRows(part.events).slice(-3); // the three rows of the continuation (steps 20, 30, 40)
+    const ref = want.slice(-3);
+    for (let r = 0; r < 3; r++) {
+      expect(got[r].step).toBe(ref[r].step);
+      for (const k of ['pe', 'f_cmap', 'edihed', 'press'] as const) {
+        expect(Math.abs((got[r][k] as number) - (ref[r][k] as number)), `step ${ref[r].step} ${k}`).toBeLessThan(1e-9 * Math.max(1, Math.abs(ref[r][k] as number)));
+      }
+    }
+    expect(Math.abs(got[0].f_cmap as number)).toBeGreaterThan(0.1);
+  });
+
+  it('refuses to restore cross-terms whose grid type the new grid file does not hold', async () => {
+    // the saved list uses grid types 1 and 2; the grid file given after read_restart holds one grid
+    const { session } = chainSession();
+    await session.execute(`units real\natom_style full\nboundary f f f\nfix cmap all cmap w15cmap_grid.txt\nread_data w15cmap_chain.data fix cmap crossterm CMAP\n${CHAIN_STYLES}\nrun 0\nwrite_restart w16b.restart\nclear`);
+    const one = Array.from({ length: 576 }, (_, k) => String(k % 7)).join(' ');
+    session.addFile('one.txt', one + '\n');
+    await expect(session.execute(`read_restart w16b.restart\nfix cmap all cmap one.txt`)).rejects.toThrow(/has no grid in this grid file/);
   });
 });

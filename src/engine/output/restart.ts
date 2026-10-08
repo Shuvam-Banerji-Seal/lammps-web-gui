@@ -5,6 +5,10 @@ import type { DynamicGroup } from '../group';
 import { StyleError, type Bonded, type Pair } from '../force/types';
 import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES } from '../styles';
 import { FixPropertyAtom, type PropertyAtomRestart } from '../fix/property_atom';
+import { FixCmap, type CmapRestart } from '../fix/cmap';
+
+/** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
+type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart };
 import { hasChargeStyle, isMolecularStyle } from '../atoms';
 
 /*
@@ -163,11 +167,10 @@ export const writeRestartText = (sys: System): string => {
   const s = sys.state;
   // fix_property_atom.html: "This fix writes the per-atom values it stores to :doc:`binary restart
   // files <restart>`, so that the values can be restored when a simulation is restarted."
-  const fixes: PropertyAtomRestart[] = [];
+  const fixes: FixRestart[] = [];
   for (const f of sys.fixes) {
-    // fix_cmap.html: "This fix writes the list of CMAP cross-terms to binary restart files"; the
-    // browser restart format does not hold them yet
-    if (f.style === 'cmap') throw new StyleError(`write_restart: the cross-terms of fix ${f.id} (cmap) are not stored in the browser restart file yet; use write_data`);
+    // fix_cmap.html: "This fix writes the list of CMAP cross-terms to binary restart files"
+    if (f instanceof FixCmap) { fixes.push({ id: f.id, props: [], data: {}, cmap: f.restartState() }); continue; }
     if (!(f instanceof FixPropertyAtom)) continue;
     const data: Record<string, number[]> = {};
     for (const p of f.props) {
@@ -230,7 +233,7 @@ export const readRestartText = (sys: System, text: string, name: string): void =
     if (header.startsWith('LAMMPS-WEB-RESTART')) throw new StyleError(`${name}: restart format '${header}' is not supported (this engine reads '${RESTART_MAGIC}')`);
     throw new StyleError(`${name} is not a restart file written by this browser engine. Native LAMMPS binary restart files cannot be read in the browser: their format is platform-specific. Convert the native file with the lmp -restart2data command-line flag and use read_data, or write the state here with write_restart (or write_data)`);
   }
-  let doc: { format: string; version: number; step: number; state: Json; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: PropertyAtomRestart[] };
+  let doc: { format: string; version: number; step: number; state: Json; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: FixRestart[] };
   try {
     doc = JSON.parse(text.slice(nl + 1));
   } catch {

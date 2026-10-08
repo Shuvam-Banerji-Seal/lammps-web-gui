@@ -47,13 +47,14 @@ import { dihedralGeometry } from '../force/bonded_util';
  *
  * fix_modify energy and virial: the doc gives the default as "default setting for this fix is" energy yes
  * and virial yes; measured with native LAMMPS: pe includes the CMAP energy by default and drops it with
- * fix_modify energy no, while f_ID (the scalar, "extensive") is the CMAP energy either way. The virial of
- * a dihedral-only energy is zero (scale invariance); the engine tallies sum(r F) anyway.
+ * fix_modify energy no, while f_ID (the extensive scalar) is the CMAP energy either way. The virial of a
+ * dihedral-only energy has zero trace (scale invariance); its off-diagonal components are not zero, and the
+ * engine tallies sum(r F).
  *
  * Not supported (StyleError): a group other than all (LAMMPS cannot define another group before the box
- * exists, where this fix must be defined); a header other than "N crossterms" and a section that is not
- * the crossterm list. Restart files: the doc says cross-terms go to binary restart files; this engine has
- * no fix restart hook, so write_restart does not save them (see the report).
+ * exists, where this fix must be defined); a header other than the N crossterms line and a section that is
+ * not the crossterm list. Restart files: the cross-term list is stored in the engine's restart file and
+ * restored when the fix is re-specified after read_restart (restartState / restoreFromRestart).
  */
 
 const NODES = 24;
@@ -204,6 +205,9 @@ export const evaluateCmap = (tab: CmapTable, phi: number, psi: number): { e: num
 
 interface CrossTerm { type: number; ids: number[] }
 
+/** Restart record of fix cmap: the cross-term list (written by write_restart, restored by re-specifying the fix). */
+export interface CmapRestart { crossterms: { type: number; ids: number[] }[] }
+
 /** fix cmap: the CMAP energy and forces of the crossterms read from read_data (see the header). */
 export class FixCmap extends Fix {
   readonly style = 'cmap';
@@ -211,6 +215,8 @@ export class FixCmap extends Fix {
   private readonly cross: CrossTerm[] = [];
   private ncross: number | null = null;
   private etotal = 0;
+  private perE = new Float64Array(0);
+  private perV = new Float64Array(0);
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -228,6 +234,31 @@ export class FixCmap extends Fix {
     this.thermoVirial = true;
     this.scalarFlag = true;
     this.extscalar = 1;
+    this.restoreFromRestart();
+  }
+
+  /**
+   * fix_cmap.html: "This fix writes the list of CMAP cross-terms to binary restart files"; "See the
+   * read_restart command for info on how to re-specify a fix in an input script that reads a restart
+   * file". The saved list is restored when this fix is re-specified after read_restart (the grid file
+   * is read again from the new filename).
+   */
+  private restoreFromRestart(): void {
+    const saved = (this.sys.pendingFixData.get(this.id) as { cmap?: CmapRestart } | undefined)?.cmap;
+    if (!saved) return;
+    this.sys.pendingFixData.delete(this.id);
+    for (const c of saved.crossterms) {
+      if (c.type < 1 || c.type > this.tables.length) {
+        throw new StyleError(`fix ${this.id} (cmap): the restart file's CMAP type ${c.type} has no grid in this grid file (it holds ${this.tables.length})`);
+      }
+      this.cross.push({ type: c.type, ids: c.ids.slice() });
+    }
+    this.ncross = saved.crossterms.length;
+  }
+
+  /** The cross-term list for the restart file (ids are the atom IDs, types the grid indices). */
+  restartState(): CmapRestart {
+    return { crossterms: this.cross.map((c) => ({ type: c.type, ids: c.ids.slice() })) };
   }
 
   /** read_data header-string line: "N crossterms" (fix_cmap.rst: "N crossterms"). */
@@ -287,8 +318,10 @@ export class FixCmap extends Fix {
     };
     const v = this.virial;
     v.fill(0);
+    if (this.perE.length !== s.n) { this.perE = new Float64Array(s.n); this.perV = new Float64Array(6 * s.n); } else { this.perE.fill(0); this.perV.fill(0); }
     const gp = new Array(12).fill(0), rp = new Array(12).fill(0);
     const gs = new Array(12).fill(0), rs = new Array(12).fill(0);
+    const w = new Float64Array(6);
     let etot = 0;
     for (const ct of this.cross) {
       const a = ct.ids.map(idx);
@@ -297,40 +330,47 @@ export class FixCmap extends Fix {
       const r = evaluateCmap(this.tables[ct.type - 1], phi, psi);
       etot += r.e;
       // phi acts on atoms 1-4 (positions rp relative to atom 1), psi on atoms 2-5 (rs relative to atom 2)
-      this.applyForces(f, a, 0, -r.dphi, gp, rp);
-      this.applyForces(f, a, 1, -r.dpsi, gs, rs);
+      w.fill(0);
+      this.applyForces(f, a, 0, -r.dphi, gp, rp, w);
+      this.applyForces(f, a, 1, -r.dpsi, gs, rs, w);
+      for (let c = 0; c < 6; c++) v[c] += w[c];
+      // measured with native LAMMPS (single crossterms, compute pe/atom fix and stress/atom NULL fix): the
+      // energy and the virial of a crossterm are split equally among its five atoms (fifths)
+      for (let k = 0; k < 5; k++) {
+        const atom = a[k];
+        this.perE[atom] += r.e / 5;
+        for (let c = 0; c < 6; c++) this.perV[6 * atom + c] += w[c] / 5;
+      }
     }
     this.etotal = etot;
   }
 
-  /** F_k = -dE/dphi * dphi/dx_k for the four atoms starting at atom slot `first`; virial sum(r F). */
-  private applyForces(f: Float64Array, a: number[], first: number, dEdq: number, grad: number[], rel: number[]): void {
-    const v = this.virial;
+  /** Per-atom energy of the crossterms (compute pe/atom fix, fix_modify energy yes). */
+  energyAtom(out: Float64Array): void {
+    for (let i = 0; i < this.perE.length && i < out.length; i++) out[i] += this.perE[i];
+  }
+
+  /** Per-atom virial of the crossterms, 6 per atom (compute stress/atom fix, fix_modify virial yes). */
+  virialAtom(out: Float64Array): void {
+    for (let k = 0; k < this.perV.length && k < out.length; k++) out[k] += this.perV[k];
+  }
+
+  /** F_k = -dE/dphi * dphi/dx_k for the four atoms starting at atom slot `first`; virial sum(r F) into w. */
+  private applyForces(f: Float64Array, a: number[], first: number, dEdq: number, grad: number[], rel: number[], w: Float64Array): void {
     for (let k = 0; k < 4; k++) {
       const atom = a[first + k];
       const fx = dEdq * grad[3 * k], fy = dEdq * grad[3 * k + 1], fz = dEdq * grad[3 * k + 2];
       f[3 * atom] += fx; f[3 * atom + 1] += fy; f[3 * atom + 2] += fz;
       const rx = rel[3 * k], ry = rel[3 * k + 1], rz = rel[3 * k + 2];
-      v[0] += rx * fx; v[1] += ry * fy; v[2] += rz * fz;
-      v[3] += 0.5 * (rx * fy + ry * fx);
-      v[4] += 0.5 * (rx * fz + rz * fx);
-      v[5] += 0.5 * (ry * fz + rz * fy);
+      w[0] += rx * fx; w[1] += ry * fy; w[2] += rz * fz;
+      w[3] += 0.5 * (rx * fy + ry * fx);
+      w[4] += 0.5 * (rx * fz + rz * fx);
+      w[5] += 0.5 * (ry * fz + rz * fy);
     }
   }
 
   minPostForce(): void { this.postForce(); }
 
   energy(): number { return this.etotal; }
-  /**
-   * fix_cmap.html: fix_modify energy adds the CMAP energy "to both the global potential energy and
-   * peratom potential energies"; the per-atom split is not implemented yet, so a request for it is
-   * an error rather than a missing term.
-   */
-  energyAtom(_out: Float64Array): void {
-    throw new StyleError(`fix ${this.id} (cmap): the per-atom CMAP energy (compute pe/atom fix) is not implemented in the browser engine`);
-  }
-  virialAtom(_out: Float64Array): void {
-    throw new StyleError(`fix ${this.id} (cmap): the per-atom CMAP virial (compute stress/atom fix) is not implemented in the browser engine`);
-  }
   computeScalar(): number { return this.etotal; }
 }

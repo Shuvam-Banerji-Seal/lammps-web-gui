@@ -4,6 +4,8 @@ import type { SpecialBonds } from '../force/forcefield';
 import type { DynamicGroup } from '../group';
 import { StyleError, type Bonded, type Pair } from '../force/types';
 import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES } from '../styles';
+import { FixPropertyAtom, type PropertyAtomRestart } from '../fix/property_atom';
+import { hasChargeStyle, isMolecularStyle } from '../atoms';
 
 /*
  * The browser engine's restart file (write_restart / read_restart).
@@ -139,8 +141,19 @@ const bondedTypeCount = (s: SimState, kind: typeof BONDED_KINDS[number]): number
 /** The restart text (magic line, then one JSON line). Throws StyleError for anything it cannot store. */
 export const writeRestartText = (sys: System): string => {
   const s = sys.state;
-  if (s.custom.size || s.propMol || s.propQ || (s.rmass && s.atomStyle !== 'sphere')) {
-    throw new StyleError('write_restart: per-atom properties from fix property/atom are not stored in the browser restart file; use write_data (its fix sections keep them)');
+  // fix_property_atom.html: "This fix writes the per-atom values it stores to :doc:`binary restart
+  // files <restart>`, so that the values can be restored when a simulation is restarted."
+  const fixes: PropertyAtomRestart[] = [];
+  for (const f of sys.fixes) {
+    if (!(f instanceof FixPropertyAtom)) continue;
+    const data: Record<string, number[]> = {};
+    for (const p of f.props) {
+      if (p.kind === 'mol') data.mol = Array.from(s.molecule.subarray(0, s.n));
+      else if (p.kind === 'q') data.q = Array.from(s.q.subarray(0, s.n));
+      else if (p.kind === 'rmass') data.rmass = Array.from(s.rmass!.subarray(0, s.n));
+      else data[`${p.kind}_${p.name}`] = Array.from(s.custom.get(p.name)!.data);
+    }
+    fixes.push({ id: f.id, props: f.props.map((p) => ({ ...p })), data });
   }
   const pair = sys.ff.pair;
   if (pair && !PAIR_RESTART_STYLES.has(pair.name)) {
@@ -169,6 +182,7 @@ export const writeRestartText = (sys: System): string => {
     groups: encodeValue({ names: sys.groups.names, dynamic: sys.groups.dynamic }, 'groups', []),
     special: encodeValue(sys.ff.special, 'special', []),
     styles,
+    fixes,
   };
   return `${RESTART_MAGIC}\n${JSON.stringify(doc)}\n`;
 };
@@ -190,7 +204,7 @@ export const readRestartText = (sys: System, text: string, name: string): void =
     if (header.startsWith('LAMMPS-WEB-RESTART')) throw new StyleError(`${name}: restart format '${header}' is not supported (this engine reads '${RESTART_MAGIC}')`);
     throw new StyleError(`${name} is not a restart file written by this browser engine. Native LAMMPS binary restart files cannot be read in the browser: their format is platform-specific. Convert the native file with the lmp -restart2data command-line flag and use read_data, or write the state here with write_restart (or write_data)`);
   }
-  let doc: { format: string; version: number; step: number; state: Json; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> };
+  let doc: { format: string; version: number; step: number; state: Json; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null>; fixes?: PropertyAtomRestart[] };
   try {
     doc = JSON.parse(text.slice(nl + 1));
   } catch {
@@ -207,6 +221,12 @@ export const readRestartText = (sys: System, text: string, name: string): void =
   state.custom = new Map();
   state.propMol = false;
   state.propQ = false;
+  // per-atom values of fix property/atom wait for the fix to be re-specified (FixPropertyAtom);
+  // until then the attributes the atom style lacks are absent
+  if (!isMolecularStyle(state.atomStyle)) state.molecule.fill(0);
+  if (!hasChargeStyle(state.atomStyle)) state.q.fill(0);
+  if (state.atomStyle !== 'sphere') state.rmass = null;
+  sys.pendingFixData = new Map((doc.fixes ?? []).map((f) => [f.id, f]));
 
   sys.units = state.units;
   sys.dimension = state.dimension;

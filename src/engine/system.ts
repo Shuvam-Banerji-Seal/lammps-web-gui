@@ -368,6 +368,9 @@ export class System {
   /** Per-atom group mask bit by name. */
   groupBit(name: string): number { return this.groups.bit(name); }
 
+  /** fix property/atom values from read_restart, by fix ID, until the fix is re-specified. */
+  pendingFixData = new Map<string, import('./fix/property_atom').PropertyAtomRestart>();
+
   /** restart N: periodic restart files, one entry per mode (single file name, or two toggled names). */
   restartOut: { mode: 'single' | 'toggle'; every: number; everyVar: string | null; files: string[]; flip: number; next: number }[] = [];
 

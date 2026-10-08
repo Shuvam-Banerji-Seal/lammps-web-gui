@@ -1,0 +1,40 @@
+# oracle: fix property/atom values (i_, d_, d2_ and q) survive write_restart / read_restart when the fix is re-specified after read_restart with the same ID and names
+# oracle-files: w9rp.dump
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+fix             p all property/atom i_flag d_val d2_vec 2 q
+create_atoms    1 box
+mass            1 1.0
+variable        vx atom 0.9*sin(1.7*x+2.3*y+0.7*z)
+variable        vy atom 0.9*cos(2.1*x-1.1*y+0.3*z)
+variable        vz atom 0.9*sin(1.3*x+0.9*y-1.7*z)
+velocity        all set v_vx v_vy v_vz units box
+variable        fl atom (id%3)
+variable        dv atom 0.5*x-0.25*y
+variable        qq atom 0.1*(id%2)-0.05
+set             atom * i_flag v_fl
+set             atom * d_val v_dv
+set             atom * d2_vec[1] v_dv
+set             atom * d2_vec[2] 1.5
+set             atom * charge v_qq
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+fix             1 all nve
+thermo_style    custom step temp pe etotal press
+thermo_modify   format float %.15g
+run             20
+write_restart   w9rp.restart
+clear
+read_restart    w9rp.restart
+fix             p all property/atom i_flag d_val d2_vec 2 q
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+fix             1 all nve
+thermo_style    custom step temp pe etotal press
+thermo_modify   format float %.15g
+dump            d all custom 10 w9rp.dump id i_flag d_val d2_vec[1] d2_vec[2] q
+dump_modify     d sort id format float %.12g
+run             20

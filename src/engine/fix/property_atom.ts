@@ -38,6 +38,9 @@ import { shortest } from '../output/data';
 
 interface PropSpec { kind: 'mol' | 'q' | 'rmass' | 'i' | 'd'; name: string; cols: number }
 
+/** The fix's per-atom values as a restart file keeps them (output/restart.ts). */
+export interface PropertyAtomRestart { id: string; props: PropSpec[]; data: Record<string, number[]> }
+
 export class FixPropertyAtom extends Fix {
   readonly style = 'property/atom';
   readonly props: PropSpec[] = [];
@@ -76,7 +79,36 @@ export class FixPropertyAtom extends Fix {
       this.props.push(spec);
     }
     const s = sys.hasBox ? sys.state : null;
-    if (s) this.attachState(s);
+    if (s) {
+      this.attachState(s);
+      this.restoreFromRestart(s);
+    }
+  }
+
+  /**
+   * fix_property_atom.html: "When reading data from a restart file, this fix command has to be
+   * specified **after** the *read_restart* command and **exactly** the same was in the input
+   * script that created the restart file." "LAMMPS will only check whether a fix is of the same
+   * style and has the same fix ID and in case of a match will then try to initialize the fix with
+   * the data stored in the binary restart file." Where native may corrupt data on a mismatch, the
+   * engine stops with an error instead.
+   */
+  private restoreFromRestart(s: SimState): void {
+    const saved = this.sys.pendingFixData.get(this.id);
+    if (!saved) return;
+    this.sys.pendingFixData.delete(this.id);
+    const same = saved.props.length === this.props.length
+      && saved.props.every((p, k) => p.kind === this.props[k].kind && p.name === this.props[k].name && p.cols === this.props[k].cols);
+    if (!same) throw new StyleError(`fix ${this.id} property/atom does not define the same properties as the fix that wrote the restart file`);
+    for (const p of this.props) {
+      const key = p.kind === 'mol' || p.kind === 'q' || p.kind === 'rmass' ? p.kind : `${p.kind}_${p.name}`;
+      const v = saved.data[key];
+      if (!v) continue;
+      if (p.kind === 'mol') s.molecule.set(v.slice(0, s.n));
+      else if (p.kind === 'q') s.q.set(v.slice(0, s.n));
+      else if (p.kind === 'rmass') s.rmass!.set(v.slice(0, s.n));
+      else s.custom.get(p.name)!.data.set(v.slice(0, s.custom.get(p.name)!.data.length));
+    }
   }
 
   /** Adds the properties to a state (the current one, or the one create_box / read_data makes later). */

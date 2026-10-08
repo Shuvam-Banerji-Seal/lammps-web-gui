@@ -206,10 +206,17 @@ describe('write_restart options and unsupported states', () => {
     await expect(session.execute('write_restart r.mpiio\n')).rejects.toThrow(/MPI-IO/);
   });
 
-  it('refuses fix property/atom data, which the file does not hold yet', async () => {
-    const { session } = newSession();
-    await session.execute(`${LJ_BOX}fix p all property/atom i_flag\n`);
-    await expect(session.execute('write_restart p.restart\n')).rejects.toThrow(/fix property\/atom.*write_data/);
+  it('keeps fix property/atom data for a fix re-specified with the same ID after read_restart', async () => {
+    const { session, files } = newSession();
+    await session.execute(`${LJ_BOX}fix p all property/atom i_flag d_val\nset atom 5 i_flag 7\nset atom 6 d_val 2.5\nwrite_restart p.restart\n`);
+    const again = newSession();
+    again.session.addFile('p.restart', files.get('p.restart')!);
+    await again.session.execute('read_restart p.restart\nfix p all property/atom i_flag d_val\nvariable f equal i_flag[5]\nvariable d equal d_val[6]\nprint "f=${f} d=${d}"\n');
+    expect(again.events.some((e) => e.kind === 'log' && e.text === 'f=7 d=2.5')).toBe(true);
+    // a different layout under the same ID is refused (native may corrupt the data)
+    const third = newSession();
+    third.session.addFile('p.restart', files.get('p.restart')!);
+    await expect(third.session.execute('read_restart p.restart\nfix p all property/atom i_flag\n')).rejects.toThrow(/same properties/);
   });
 
   it('refuses hybrid pair styles (only the sub-style list is stored natively)', async () => {

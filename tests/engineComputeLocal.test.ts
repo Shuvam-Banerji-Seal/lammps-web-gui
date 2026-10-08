@@ -84,8 +84,9 @@ describe('local computes: argument errors', () => {
     await expect(molecule('compute c all angle/local dist')).rejects.toThrow(/unknown value 'dist'/);
   });
 
-  it('rejects pair/local and pair attributes of property/local', async () => {
-    await expect(molecule('compute c all pair/local dist')).rejects.toThrow(/pair\/local/);
+  it('rejects pair/local pN values and cutoff, and pair attributes of property/local', async () => {
+    await expect(molecule('compute c all pair/local dist p1')).rejects.toThrow(/pN quantities are not supported/);
+    await expect(molecule('compute c all pair/local dist cutoff type')).rejects.toThrow(/cutoff keyword is not supported/);
     await expect(molecule('compute c all property/local patom1 patom2')).rejects.toThrow(/not supported/);
     await expect(molecule('compute c all property/local batom1 aatom1')).rejects.toThrow(/cannot be mixed/);
   });

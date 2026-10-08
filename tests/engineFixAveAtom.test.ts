@@ -169,11 +169,12 @@ run 5`);
     ]);
   });
 
-  it('assigns values on a bin boundary to the lower bin (mode scalar, global input)', async () => {
+  it('assigns values on a bin boundary to the upper bin (mode scalar, global input; measured with native)', async () => {
     // Nevery=1, Nrepeat=5, Nfreq=5: the step-0 window (just the value 0) is
     // incomplete and discarded; the window at 5 holds samples of step 1..5 ->
-    // values 1,2,3,4,5; bins of width 3 over [0,12]: 1,2,3 -> bin 1 (3 sits
-    // exactly on the boundary), 4,5 -> bin 2.
+    // values 1,2,3,4,5; bins of width 3 over [0,12]: 1,2 -> bin 1; 3 sits exactly
+    // on the boundary and native puts it in the upper bin 2 (the docs' "lower"
+    // sentence is not what native does); 4,5 -> bin 2.
     const { thermo, files, error } = await runScript(`${SYS}
 variable s equal step
 fix 2 all ave/histo 1 5 5 0 12 4 v_s file hs.txt
@@ -187,8 +188,8 @@ run 5`);
     ]);
     expect(files.get('hs.txt')!.trim().split('\n').slice(3)).toEqual([
       '5 4 5 0 1 5',
-      '1 1.5 3 0.6',
-      '2 4.5 2 0.4',
+      '1 1.5 2 0.4',
+      '2 4.5 3 0.6',
       '3 7.5 0 0',
       '4 10.5 0 0',
     ]);

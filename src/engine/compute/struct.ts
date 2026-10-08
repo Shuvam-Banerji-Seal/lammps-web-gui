@@ -534,3 +534,96 @@ export class ComputeAggregateAtom extends Compute {
     fillMinIds(out, s.id, s.mask, this.groupBit, n, forest);
   }
 }
+
+// ---------------------------------------------------------------------------
+// compute hexorder/atom
+// ---------------------------------------------------------------------------
+
+/**
+ * Bond-orientational order of a 2d system (compute_hexorder_atom.rst):
+ * "q_n = \frac{1}{nnn}\sum_{j = 1}^{nnn} e^{n i \theta({\textbf{r}}_{ij})}"
+ * "where the sum is over the *nnn* nearest neighbors of the central atom. The
+ * angle :math:`\theta` is formed by the bond vector :math:`r_{ij}` and the *x* axis."
+ * "\theta is calculated only using the x and y components, whereas the
+ * distance from the central atom is calculated using all three x, y, and z
+ * components of the bond vector." Output: 2 columns, Re and Im of q_n.
+ * "The value of :math:`q_n` is set to zero for atoms not in the specified compute
+ * group, as well as for atoms that have less than *nnn* neighbors within the
+ * distance cutoff." Defaults: cutoff = pair style cutoff, nnn = 6, degree = 6.
+ * "If the value is NULL, then all neighbors up to the distance cutoff are used."
+ * Neighbours outside the group are included, as the docs state.
+ */
+export class ComputeHexorderAtom extends Compute {
+  readonly style = 'hexorder/atom';
+  peratomFlag = true;
+  sizePeratomCols = 2;
+  private readonly degree: number;
+  /** null = all neighbours within the cutoff (NULL keyword). */
+  private readonly nnn: number | null;
+  private readonly cutoffArg: number | null;
+  private readonly scratch = new NeighbourScratch();
+
+  constructor(sys: System, id: string, group: string, args: string[]) {
+    super(sys, id, group, args);
+    let degree = 6;
+    let nnn: number | null = 6;
+    let cutoffArg: number | null = null;
+    if (sys.dimension !== 2) throw new StyleError(`compute ${id} (hexorder/atom): requires a 2d system (dimension 2)`);
+    for (let k = 0; k < args.length; k++) {
+      const kw = args[k];
+      const w = args[k + 1];
+      if (kw === 'degree') {
+        degree = parseInt_(w, `compute ${id} (hexorder/atom) degree`);
+        if (degree < 0) throw new StyleError(`compute ${id} (hexorder/atom): degree must be a non-negative integer (got ${w})`);
+      } else if (kw === 'nnn') {
+        if (w === 'NULL') nnn = null;
+        else {
+          nnn = parseInt_(w, `compute ${id} (hexorder/atom) nnn`);
+          if (nnn < 1) throw new StyleError(`compute ${id} (hexorder/atom): nnn must be a positive integer or NULL (got ${w})`);
+        }
+      } else if (kw === 'cutoff') {
+        cutoffArg = parseCutoff(w, id, 'hexorder/atom');
+      } else {
+        throw new StyleError(`compute ${id} (hexorder/atom): unknown keyword '${kw}' (use degree, nnn, cutoff)`);
+      }
+      k++;
+    }
+    this.degree = degree;
+    this.nnn = nnn;
+    this.cutoffArg = cutoffArg;
+  }
+
+  protected computePeratom(): void {
+    const pairCut = pairMaxCut(this.sys);
+    const cut = this.cutoffArg ?? pairCut;
+    if (!(cut > 0)) throw new StyleError(`compute ${this.id} (hexorder/atom): no pair style cutoff is defined; define a pair style or use the cutoff keyword`);
+    if (this.cutoffArg !== null && this.cutoffArg > pairCut + EPS) {
+      throw new StyleError(`compute ${this.id} (hexorder/atom): cutoff ${this.cutoffArg} exceeds the pair style cutoff ${pairCut} (the maximum allowable value)`);
+    }
+    const { s, nb } = prepare(this.sys, this.id, 'hexorder/atom', cut);
+    const n = s.n;
+    const out = (this.arrayAtom = new Float64Array(2 * n));
+    const sc = this.scratch;
+    const xa = nb.xall;
+    const cut2 = cut * cut;
+    const sel = this.nnn ?? 0;
+    for (let i = 0; i < n; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      sc.gather(xa, nb.nall, i, cut2);
+      if (sel > 0) {
+        if (sc.count < sel) continue; // fewer than nnn neighbours: q_n = 0
+        sc.nearestFirst(sel);
+      }
+      const m = sel > 0 ? sel : sc.count;
+      if (m === 0) continue;
+      let re = 0, im = 0;
+      for (let t = 0; t < m; t++) {
+        const theta = Math.atan2(sc.dy[t], sc.dx[t]);
+        re += Math.cos(this.degree * theta);
+        im += Math.sin(this.degree * theta);
+      }
+      out[2 * i] = re / m;
+      out[2 * i + 1] = im / m;
+    }
+  }
+}

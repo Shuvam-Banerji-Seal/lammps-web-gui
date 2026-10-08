@@ -1,0 +1,27 @@
+# oracle: compute pair/local (dist eng force fx fy fz) on a displaced lj fcc crystal with a vacancy. Row order is not compared (native's pair-list order is not reproduced):
+# oracle: the rows are checked through fix ave/histo of each column, whose leading line gives the total count, the missing count and the min and max.
+# oracle-files: w12local_pd.histo w12local_pe.histo w12local_pf.histo
+# oracle-compare: thermo=all atoms=none
+units           lj
+atom_style      atomic
+lattice         fcc 0.9
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+group           vac id 4
+delete_atoms    group vac compress no
+variable        dx atom 0.06*sin(2.3*x+1.1*y)
+variable        dy atom 0.06*cos(1.9*y-0.7*z)
+variable        dz atom 0.06*sin(1.4*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      lj/cut 2.2
+pair_coeff      * * 1.0 1.0
+compute         pl all pair/local dist eng force fx
+# fx, dx, dy, dz are not compared: their sign follows the atom order of each code's pair list (native differs from the engine), so only the orientation-free columns are checked
+compute         pl2 all pair/local dist eng force fx fy fz
+fix             hd all ave/histo 1 1 1 0.8 2.2 14 c_pl[1] mode vector file w12local_pd.histo
+fix             he all ave/histo 1 1 1 -1.2 0.6 18 c_pl[2] mode vector file w12local_pe.histo
+fix             hf all ave/histo 1 1 1 -6.13 6.13 24 c_pl[3] mode vector file w12local_pf.histo
+thermo_style    custom step
+run             0

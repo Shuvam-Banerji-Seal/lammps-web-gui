@@ -281,3 +281,93 @@ export class ComputePropertyLocal extends Compute {
     return out;
   }
 }
+
+/*
+ * compute pair/local (docs.lammps.org/compute_pair_local.html):
+ *   "Define a computation that calculates properties of individual pairwise
+ *   interactions. ... Info about an individual pairwise interaction will only
+ *   be included if both atoms in the pair are in the specified compute group,
+ *   and if the current pairwise distance is less than the force cutoff distance
+ *   for that interaction, as defined by the pair_style and pair_coeff commands."
+ *   "The value *dist* is the distance between the pair of atoms. The values
+ *   *dx*, *dy*, and *dz* are the :math:`(x,y,z)` components of the distance vector
+ *   :math:`\vec{x_i} - \vec{x_j}` between the pair of atoms."
+ *   "The value *eng* is the interaction energy for the pair of atoms."
+ *   "The value *force* is the force acting between the pair of atoms, which is
+ *   positive for a repulsive force and negative for an attractive force."
+ *   "The values *fx*, *fy*, and *fz* are the (x,y,z) components of the force
+ *   vector on the first atom *i* of a pair in the neighbor list due to the second
+ *   atom *j*."
+ *   Keywords: "cutoff = type or radius" and the pN values are not supported; they
+ *   throw StyleError.
+ *
+ * Row order: the rows follow this engine's half neighbour list (owned i, then its
+ * list). That is NOT native's row order (native's list is built by its own bins), so
+ * the values are only meaningful through order-independent aggregates (fix ave/histo,
+ * compute reduce) — see tests/oracle/w12local_*.in.
+ */
+const PAIR_VALUES = ['dist', 'dx', 'dy', 'dz', 'eng', 'force', 'fx', 'fy', 'fz'];
+
+export class ComputePairLocal extends Compute {
+  readonly style = 'pair/local';
+  private readonly values: string[];
+
+  constructor(sys: System, id: string, group: string, args: string[]) {
+    super(sys, id, group, args);
+    if (!args.length) throw new StyleError(`compute ${id} pair/local needs at least one value`);
+    const values: string[] = [];
+    for (let a = 0; a < args.length; a++) {
+      const w = args[a];
+      if (w === 'cutoff') throw new StyleError(`compute ${id} pair/local: the cutoff keyword is not supported by the browser engine`);
+      if (/^p\d+$/.test(w)) throw new StyleError(`compute ${id} pair/local: pN quantities are not supported by the browser engine (no pair style defines them)`);
+      if (!PAIR_VALUES.includes(w)) throw new StyleError(`compute ${id} pair/local: unknown value '${w}' (use ${PAIR_VALUES.join(', ')})`);
+      values.push(w);
+    }
+    this.values = values;
+    this.localFlag = true;
+    this.sizeLocalCols = values.length > 1 ? values.length : 0;
+  }
+
+  protected computeLocal(): Float64Array<ArrayBuffer> {
+    const sys = this.sys;
+    const pair = sys.ff.pair;
+    if (!pair || !pair.single) throw new StyleError(`compute ${this.id} pair/local needs a pair_style that supports single() (the engine's pairwise evaluation)`);
+    sys.forces();
+    const s = sys.state;
+    const nb = sys.nb;
+    const list = nb.half;
+    if (!list) throw new StyleError(`compute ${this.id} pair/local: no half neighbour list is available`);
+    // special-bond factors of the last force evaluation (index = special bits of the neighbour)
+    const sLJ = (sys.ff as unknown as { specialLJ: Float64Array }).specialLJ;
+    const nt = pair.ntypes + 1;
+    const ncol = this.values.length;
+    const rows: number[] = [];
+    const nb0 = list.neighbors;
+    const xa = nb.xall;
+    const NEIGH_MASK = (1 << 30) - 1;
+    // rows are collected as the list is walked; each row fills `ncol` values
+    for (let i = 0; i < list.inum; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
+      for (let k = k0; k < k1; k++) {
+        const jj = nb0[k];
+        const j = jj & NEIGH_MASK;
+        const sb = jj >>> 30;
+        if (!(s.mask[nb.owner[j]] & this.groupBit)) continue;
+        const dx = xa[3 * i] - xa[3 * j], dy = xa[3 * i + 1] - xa[3 * j + 1], dz = xa[3 * i + 2] - xa[3 * j + 2];
+        const rsq = dx * dx + dy * dy + dz * dz;
+        const ti = nb.typeall[i], tj = nb.typeall[j];
+        if (rsq >= pair.cutsq[ti * nt + tj]) continue;
+        const factorLJ = sb === 0 ? 1 : sLJ[sb];
+        const r = Math.sqrt(rsq);
+        const res = pair.single(nb.owner[i], nb.owner[j], ti, tj, rsq, factorLJ, factorLJ, nb.qall[i], nb.qall[j]);
+        const force = res.fforce * r;
+        const fx = res.fforce * dx, fy = res.fforce * dy, fz = res.fforce * dz;
+        const vals: Record<string, number> = { dist: r, dx, dy, dz, eng: res.eng, force, fx, fy, fz };
+        for (const name of this.values) rows.push(vals[name]);
+      }
+    }
+    this.localRows = rows.length / ncol;
+    return Float64Array.from(rows);
+  }
+}

@@ -615,9 +615,13 @@ export class FixAveHisto extends Fix {
       this.bins[v < this.lo ? 0 : this.bins.length - 1]++;
       return;
     }
-    // "Values on a bin boundary are assigned to the lower of the two bins"
-    const t = (v - this.lo) / this.delta;
-    let idx = Math.ceil(t) - 1;
+    // Bin assignment: the docs (fix_ave_histo.html) say "Values on a bin boundary are assigned to the
+    // lower of the two bins." Measured with native LAMMPS (black box): values exactly on an interior
+    // edge go to the UPPER bin (lo 0, hi 3, 6 bins: 0.5 -> bin 2, 1.0 -> bin 3, 2.5 -> bin 6; lo -1.5,
+    // hi 1.5: -1.0 -> bin 2, -0.5 -> bin 3), and v = hi goes to the last bin. Native multiplies by the
+    // inverse width: lo 0, hi 1, 10 bins: 0.3 -> bin 4 (0.3/0.1 = 2.9999999999999996 would give bin 3),
+    // 0.6 -> bin 7, 0.7 -> bin 8, 0.9 -> bin 10. So idx = floor((v - lo) * nBins / (hi - lo)).
+    let idx = Math.floor((v - this.lo) * (this.nBins / (this.hi - this.lo)));
     if (idx < 0) idx = 0;
     if (idx >= this.nBins) idx = this.nBins - 1;
     this.bins[this.beyond === 'extra' ? idx + 1 : idx]++;

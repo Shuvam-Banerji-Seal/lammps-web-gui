@@ -1,4 +1,7 @@
 import type { Pair } from '../force/types';
+import { PairMeam } from '../force/pair/meam';
 
-/** pair_style meam (Haiku wave 10); merged into styles.ts. Style name -> factory. */
-export const PAIRS: Record<string, () => Pair> = {};
+/** pair_style meam (single element; docs.lammps.org/pair_meam.html). Style name -> factory. */
+export const PAIRS: Record<string, () => Pair> = {
+  meam: () => new PairMeam(),
+};

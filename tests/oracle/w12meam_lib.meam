@@ -1,0 +1,3 @@
+# w12meam: synthetic single-element library file for the engine oracle (not a LAMMPS potential file).
+# Field order: elt, lat, z, ielement, atwt, alpha, b0, b1, b2, b3, alat, esub, asub, t0, t1, t2, t3, rozero, ibar
+'Cu' 'fcc' 12 29 63.546 4.95 2 1 2 4 3.615 3.54 1 1 1 1 1 1 0

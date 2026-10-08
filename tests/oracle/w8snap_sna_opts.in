@@ -1,0 +1,33 @@
+# oracle: compute sna/atom options (bnormflag, quadraticflag, switchflag 0, rmin0, bzeroflag 0 and 1) on a perturbed bcc cell
+# oracle-files: opts1.dump opts2.dump opts3.dump opts4.dump
+# oracle-compare: thermo=first-last
+units           lj
+atom_style      atomic
+lattice         bcc 0.9
+region          box block 0 2 0 2 0 2
+create_box      2 box
+create_atoms    1 box
+group           odd id 1:128:2
+set             group odd type 2
+mass            * 1.0
+variable        dx atom 0.05*sin(1.3*x+0.7*y)
+variable        dy atom 0.05*cos(0.9*y-1.1*z)
+variable        dz atom 0.05*sin(1.7*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      zero 4.5
+pair_coeff      * *
+compute         b1 all sna/atom 1.1 0.85 4 1.6 2.0 0.9 1.2 rmin0 0.1 bnormflag 1
+compute         b2 all sna/atom 1.1 0.85 3 1.6 2.0 0.9 1.2 rmin0 0.1 quadraticflag 1 bzeroflag 0
+compute         b3 all sna/atom 1.1 0.85 4 1.6 2.0 0.9 1.2 rmin0 0.1 switchflag 0 bzeroflag 0 bnormflag 1
+compute         b4 all sna/atom 1.1 0.85 2 1.6 2.0 0.9 1.2 rmin0 0.1 quadraticflag 1 bnormflag 1
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+dump            d1 all custom 1 opts1.dump id c_b1[*]
+dump_modify     d1 sort id format float %.12g
+dump            d2 all custom 1 opts2.dump id c_b2[*]
+dump_modify     d2 sort id format float %.12g
+dump            d3 all custom 1 opts3.dump id c_b3[*]
+dump_modify     d3 sort id format float %.12g
+dump            d4 all custom 1 opts4.dump id c_b4[*]
+dump_modify     d4 sort id format float %.12g
+run             0

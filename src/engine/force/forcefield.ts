@@ -105,6 +105,7 @@ export class ForceField {
       if (this.pair.ntypes !== s.ntypes) this.pair.allocate(s.ntypes);
       this.pair.init(ctx);
     }
+    for (const b of [this.bond, this.angle, this.dihedral, this.improper]) b?.linkForceField?.({ pair: this.pair, special: this.special });
     for (const b of [this.bond, this.angle, this.dihedral, this.improper]) b?.init(ctx);
     this.specialLJ = new Float64Array([1, ...this.special.lj]);
     this.specialCoul = new Float64Array([1, ...this.special.coul]);

@@ -379,6 +379,11 @@ export abstract class Bonded {
   allocate(ntypes: number): void { this.ntypes = ntypes; }
   /** Throws a StyleError if a type has no coefficients. */
   abstract init(ctx: StyleContext): void;
+  /**
+   * Styles that compute pair-like terms themselves (dihedral charmm / charmmfsw add the 1-4 LJ and
+   * Coulomb) get the pair style and the special_bonds weights before init().
+   */
+  linkForceField?(link: { pair: Pair | null; special: { lj: readonly number[]; coul: readonly number[] } }): void;
   abstract compute(bc: BondedCompute): void;
   /** Lines of the "<Kind> Coeffs" data-file section, or null. */
   dataCoeffs(): string[] | null { return null; }

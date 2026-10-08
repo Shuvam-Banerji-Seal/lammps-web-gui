@@ -1,0 +1,20 @@
+# oracle-inputs: w9pair_cs_short.data
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle: coul/long/cs with core-shell pairs 1e-3 A apart (the r -> 0 case the /cs styles correct), ewald
+units           real
+atom_style      full
+bond_style      harmonic
+read_data       w9pair_cs_short.data
+pair_style      coul/long/cs 10.0
+pair_coeff      * *
+bond_coeff      1 50.0 0.001
+special_bonds   lj/coul 0.0 0.5 1.0
+pair_modify    table 0
+kspace_style    ewald 1.0e-5
+kspace_modify   gewald 0.28 kmax/ewald 7 7 7
+timestep        0.5
+fix             1 all nve
+thermo_style    custom step temp pe evdwl ecoul elong etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             40

@@ -57,7 +57,7 @@ jobs:
 
       - name: Upload build artifact (on main)
         if: matrix.node == '24' && github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: dist
           path: dist/

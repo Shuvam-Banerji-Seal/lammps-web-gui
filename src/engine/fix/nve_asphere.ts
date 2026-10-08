@@ -38,7 +38,7 @@ import { ellipsoidInertia, quatToMatrix, rotateTransposeVec, rotateVec } from '.
 const DT_HALF_ORIENT = 0.5;
 
 /** One Richardson step of the orientation quaternion q (w i j k) over the full time step h. */
-const richardsonStep = (q: Float64Array, off: number, L: Float64Array, lo: number, I: [number, number, number], h: number): void => {
+export const richardsonStep = (q: Float64Array, off: number, L: Float64Array, lo: number, I: [number, number, number], h: number): void => {
   const q0 = q[off], q1 = q[off + 1], q2 = q[off + 2], q3 = q[off + 3];
   const omega = (w0: number, w1: number, w2: number, w3: number): [number, number, number] => {
     const R = quatToMatrix(w0, w1, w2, w3);

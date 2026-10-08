@@ -129,7 +129,8 @@ const bondedStyle = (kind: keyof typeof bondedKinds): Handler => (({ sys }, a) =
   if (name === 'none') { sys.ff[kind] = null; sys.bump(); return; }
   const make = bondedKinds[kind].list[name];
   if (!make) throw unsupported(`${kind}_style`, name, bondedKinds[kind].list);
-  const same = sys.ff[kind] && sys.ff[kind]!.name === name ? sys.ff[kind] : null;
+  // measured with native LAMMPS (black box): re-issuing a hybrid style clears its coefficients, so it is always made anew
+  const same = name !== 'hybrid' && sys.ff[kind] && sys.ff[kind]!.name === name ? sys.ff[kind] : null;
   const st: Bonded = same ?? make();
   st.settings(a.slice(1), sys.styleContext());
   if (!same && sys.hasBox) st.allocate(bondedKinds[kind].types(sys));

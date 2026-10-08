@@ -5,6 +5,7 @@ import type { Compute } from './compute/compute';
 import { PairLJCut } from './force/pair/lj_cut';
 import { PairHybrid } from './force/pair/hybrid';
 import { BondHarmonic } from './force/bond/harmonic';
+import { BondedHybrid } from './force/bonded_hybrid';
 import { AngleHarmonic } from './force/angle/harmonic';
 import { DihedralHarmonic } from './force/dihedral/harmonic';
 import { ImproperHarmonic } from './force/improper/harmonic';
@@ -149,19 +150,23 @@ export const PAIR_STYLES: Record<string, () => Pair> = {
 
 export const BOND_STYLES: Record<string, () => Bonded> = {
   harmonic: () => new BondHarmonic(),
+  hybrid: () => new BondedHybrid('bond', BOND_STYLES),
   ...bondedA.BONDS, ...lepton.BONDS, ...w17bond17.BONDS,
 };
 export const ANGLE_STYLES: Record<string, () => Bonded> = {
   harmonic: () => new AngleHarmonic(),
+  hybrid: () => new BondedHybrid('angle', ANGLE_STYLES),
   ...bondedA.ANGLES, ...lepton.ANGLES, ...w17angle17.ANGLES, ...w18angle18.ANGLES,
 };
 export const DIHEDRAL_STYLES: Record<string, () => Bonded> = {
   harmonic: () => new DihedralHarmonic(),
+  hybrid: () => new BondedHybrid('dihedral', DIHEDRAL_STYLES),
   ...bondedB.DIHEDRALS,
   ...dihedralCharmm.DIHEDRALS, ...lepton.DIHEDRALS, ...w17dihimp17.DIHEDRALS,
 };
 export const IMPROPER_STYLES: Record<string, () => Bonded> = {
   harmonic: () => new ImproperHarmonic(),
+  hybrid: () => new BondedHybrid('improper', IMPROPER_STYLES),
   ...bondedB.IMPROPERS, ...bondedC.IMPROPERS, ...w17dihimp17.IMPROPERS,
 };
 export const KSPACE_STYLES: Record<string, () => KSpace> = {

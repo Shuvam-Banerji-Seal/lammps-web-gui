@@ -6,6 +6,7 @@ import { StyleError, type Bonded, type Pair } from '../force/types';
 import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES } from '../styles';
 import { FixPropertyAtom, type PropertyAtomRestart } from '../fix/property_atom';
 import { FixCmap, type CmapRestart } from '../fix/cmap';
+import { BondedHybrid, type HybridKind } from '../force/bonded_hybrid';
 
 /** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
 type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart };
@@ -45,8 +46,8 @@ import { hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isElli
  *    angle_style.rst, dihedral_style.rst and improper_style.rst). Table styles
  *    are refused: angle_table.rst "the coefficient information is not stored in
  *    the restart file, since it is tabulated in the potential files".
- *  - hybrid styles: bond_style.rst "only stores the list of sub-styles in the
- *    restart file", so they are refused too.
+ *  - hybrid styles: the sub-style list is stored and restored; the coefficients are
+ *    not (bond_hybrid.rst: "Unlike other bond styles, the hybrid bond style does not store bond").
  */
 
 export const RESTART_MAGIC = 'LAMMPS-WEB-RESTART 1';
@@ -207,8 +208,23 @@ const registryOf = (kind: 'bond' | 'angle' | 'dihedral' | 'improper') => ({
 
 const BONDED_KINDS = ['bond', 'angle', 'dihedral', 'improper'] as const;
 
-/** Bonded styles with coefficients in the file: all except table styles (and hybrid, which stores only its sub-style list). */
-const bondedStorable = (name: string): boolean => !name.includes('table') && !name.includes('hybrid');
+/** Bonded styles with coefficients in the file: all except table styles (a hybrid style stores only its sub-style list, see below). */
+const bondedStorable = (name: string): boolean => !name.includes('table');
+
+/**
+ * The sub-style list of a hybrid bonded style. Measured with native LAMMPS (black box): read_restart
+ * restores the hybrid style, the listed sub-styles are usable without a new bond_style, and no
+ * coefficients come back (bond_coeff must be given again, otherwise the run stops with All bond coeffs
+ * are not set). bond_hybrid.rst: "Unlike other bond styles, the hybrid bond style does not store bond".
+ */
+const restoreHybrid = (kind: HybridKind, data: Json, ntypes: number, reg: Record<string, () => Bonded>): Bonded => {
+  const subs = typeof data === 'object' && data !== null && !Array.isArray(data) ? data.subs : undefined;
+  need(Array.isArray(subs) && subs.every((x) => typeof x === 'string'), `restart file: ${kind} hybrid data has no sub-style list`);
+  const st = new BondedHybrid(kind, reg);
+  st.settings(subs as string[]);
+  st.allocate(ntypes);
+  return st;
+};
 
 const bondedTypeCount = (s: SimState, kind: typeof BONDED_KINDS[number]): number => ({
   bond: s.topo.nbondtypes, angle: s.topo.nangletypes, dihedral: s.topo.ndihedraltypes, improper: s.topo.nimpropertypes,
@@ -243,7 +259,7 @@ export const writeRestartText = (sys: System): string => {
   for (const kind of BONDED_KINDS) {
     const st = sys.ff[kind];
     if (st && !bondedStorable(st.name)) {
-      throw new StyleError(`write_restart: ${kind}_style ${st.name} is not stored in the browser restart file (its coefficients are tabulated or it is hybrid); re-specify it after read_restart`);
+      throw new StyleError(`write_restart: ${kind}_style ${st.name} is not stored in the browser restart file (its coefficients are tabulated); re-specify it after read_restart`);
     }
   }
   const { f: _f, custom: _c, ...rest } = s;
@@ -254,7 +270,7 @@ export const writeRestartText = (sys: System): string => {
   if (pair && !pairStored) styles.pairNotStored = pair.name;
   for (const kind of BONDED_KINDS) {
     const st = sys.ff[kind];
-    styles[kind] = st ? styleEntry(st.name, st) : null;
+    styles[kind] = st instanceof BondedHybrid ? { name: 'hybrid', data: { subs: st.subNames } } : st ? styleEntry(st.name, st) : null;
   }
   const doc = {
     format: FORMAT,
@@ -351,7 +367,11 @@ export const readRestartText = (sys: System, text: string, name: string): void =
   sys.ff.pairNotRestarted = pair ? null : notStored;
   if (!pair && notStored) sys.log(`pair style ${notStored} stores no restart info`);
   for (const kind of BONDED_KINDS) {
-    const st = restoreStyle(kind, registryOf(kind) as Record<string, () => Bonded>, doc.styles[kind], bondedTypeCount(state, kind));
+    const entry = doc.styles[kind];
+    const reg = registryOf(kind) as Record<string, () => Bonded>;
+    const st = entry?.name === 'hybrid'
+      ? restoreHybrid(kind, entry.data, bondedTypeCount(state, kind), reg)
+      : restoreStyle(kind, reg, entry, bondedTypeCount(state, kind));
     sys.ff[kind] = st;
   }
   sys.bump();

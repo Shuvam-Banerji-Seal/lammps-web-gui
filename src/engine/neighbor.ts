@@ -145,13 +145,16 @@ export class Neighbor {
 
   private movedTooFar(s: SimState, g: Geometry): boolean {
     if (this.xhold.length !== 3 * s.n) return true;
-    // a box change moves atoms relative to the ghosts: count the largest corner shift
+    // a box change moves atoms relative to the ghosts. neigh_modify.html: check yes means "only
+    // build if at least one atom has moved half the skin distance or more"; with a changing box,
+    // measured with native LAMMPS (black box, fix deform runs; see fix/deform.ts remap v): the
+    // threshold is skin/2 less the largest change of a box parameter (lo, hi, tilt) since the last
+    // build, never below 0, so a deforming box whose atoms do not move is never rebuilt.
     let boxDelta = 0;
     const bh = this.boxhold;
     const cur = [g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2], g.xy, g.xz, g.yz];
     for (let k = 0; k < cur.length; k++) boxDelta = Math.max(boxDelta, Math.abs(cur[k] - bh[k]));
-    const lim = 0.5 * this.skin - 2 * boxDelta;
-    if (lim <= 0) return true;
+    const lim = Math.max(0, 0.5 * this.skin - boxDelta);
     const lim2 = lim * lim;
     const x = s.x, h = this.xhold;
     for (let k = 0; k < 3 * s.n; k += 3) {

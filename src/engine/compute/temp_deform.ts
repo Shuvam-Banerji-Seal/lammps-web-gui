@@ -95,7 +95,7 @@ export class ComputeTempDeform extends ComputeTemp {
     let t = 0;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      df.vstream(i, vs);
+      this.streaming(df, i, vs);
       const m = massOf(s, i);
       const dx = s.v[3 * i] - vs[0], dy = s.v[3 * i + 1] - vs[1], dz = s.v[3 * i + 2] - vs[2];
       t += m * (dx * dx + dy * dy + dz * dz);
@@ -111,13 +111,23 @@ export class ComputeTempDeform extends ComputeTemp {
     const t = [0, 0, 0, 0, 0, 0];
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      df.vstream(i, vs);
+      this.streaming(df, i, vs);
       const m = massOf(s, i);
       const dx = s.v[3 * i] - vs[0], dy = s.v[3 * i + 1] - vs[1], dz = s.v[3 * i + 2] - vs[2];
       t[0] += m * dx * dx; t[1] += m * dy * dy; t[2] += m * dz * dz;
       t[3] += m * dx * dy; t[4] += m * dx * dz; t[5] += m * dy * dz;
     }
     for (let c = 0; c < 6; c++) this.vector[c] = t[c] * s.units.mvv2e;
+  }
+
+  /**
+   * The streaming velocity still in atom i's stored velocity: none while the bias is removed
+   * (velocity scale with bias yes reads the temperature after removing it), so it is not
+   * subtracted twice.
+   */
+  private streaming(df: FixDeform, i: number, out: number[]): void {
+    if (this.biasOn[i]) { out[0] = 0; out[1] = 0; out[2] = 0; return; }
+    df.vstream(i, out);
   }
 
   // ---- velocity bias: the box deformation streaming velocity

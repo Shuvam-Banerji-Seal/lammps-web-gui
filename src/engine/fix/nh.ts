@@ -232,9 +232,13 @@ export class FixNH extends Fix {
     }
   }
 
+  /**
+   * unfix deletes the computes this fix created (ID_temp, ID_press), not computes that fix_modify
+   * temp/press pointed it to: those belong to the input script.
+   */
   destroy(): void {
-    removeCompute(this.sys, this.tempId);
-    if (this.pressId) removeCompute(this.sys, this.pressId);
+    removeCompute(this.sys, `${this.id}_temp`);
+    removeCompute(this.sys, `${this.id}_press`);
   }
 
   modify(key: string, values: string[]): number {

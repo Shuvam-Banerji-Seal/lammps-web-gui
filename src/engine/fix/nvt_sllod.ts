@@ -212,15 +212,27 @@ export class FixNVTSllod extends FixNH {
     }
   }
 
-  /** The velocities present at run start are thermal: add the box streaming velocity. */
+  /** The box streaming velocity has been added (once per fix instance, see setup). */
+  private profileAdded = false;
+
+  /**
+   * At the first run of this fix the velocities present are thermal: add the box streaming
+   * velocity. Measured with native LAMMPS (black box): later runs leave the velocities alone
+   * (after run 50 with xy erate 0.2, two more run 0 keep temp/deform at 0.154967), while an
+   * unfix and a new fix nvt/sllod adds the profile again at its first run (temp/deform becomes
+   * the previous plain temperature, 0.320004).
+   */
   setup(): void {
-    const df = findDeform(this.sys);
-    const s = this.sys.state;
-    const vs = [0, 0, 0];
-    for (let i = 0; i < s.n; i++) {
-      if (!(s.mask[i] & this.groupBit)) continue;
-      df.vstream(i, vs);
-      s.v[3 * i] += vs[0]; s.v[3 * i + 1] += vs[1]; s.v[3 * i + 2] += vs[2];
+    if (!this.profileAdded) {
+      this.profileAdded = true;
+      const df = findDeform(this.sys);
+      const s = this.sys.state;
+      const vs = [0, 0, 0];
+      for (let i = 0; i < s.n; i++) {
+        if (!(s.mask[i] & this.groupBit)) continue;
+        df.vstream(i, vs);
+        s.v[3 * i] += vs[0]; s.v[3 * i + 1] += vs[1]; s.v[3 * i + 2] += vs[2];
+      }
     }
     super.setup();
   }

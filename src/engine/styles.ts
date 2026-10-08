@@ -60,6 +60,7 @@ import * as computeGlobal from './registry/compute_global';
 import { FixNVE } from './fix/nve';
 import { FixNVESphere } from './fix/nve_sphere';
 import { FixPropertyAtom } from './fix/property_atom';
+import { FixBalance } from './fix/balance';
 import { ComputeERotateSphere, ComputeTempSphere } from './compute/sphere';
 import { FixShake } from './fix/shake';
 import { FixRigid } from './fix/rigid';
@@ -119,6 +120,7 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   nve: (s, i, g, a) => new FixNVE(s, i, g, a),
   'nve/sphere': (s, i, g, a) => new FixNVESphere(s, i, g, a),
   'property/atom': (s, i, g, a) => new FixPropertyAtom(s, i, g, a),
+  balance: (s, i, g, a) => new FixBalance(s, i, g, a),
   enforce2d: (s, i, g, a) => new FixEnforce2d(s, i, g, a),
   nvt: (s, i, g, a) => new FixNH(s, i, g, a, 'nvt'),
   npt: (s, i, g, a) => new FixNH(s, i, g, a, 'npt'),

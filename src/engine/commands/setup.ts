@@ -99,6 +99,13 @@ const parallelOnly = (name: string): Handler => (({ sys }, a) => {
   sys.log(`${name}: accepted (the browser engine runs one process; this setting has no effect)`);
 }) as Handler;
 
+/** comm_style brick|tiled — comm_style.html; recorded for fix balance rcb, otherwise no effect in one process. */
+const commStyle: Handler = ({ sys }, a) => {
+  if (a.length < 1 || (a[0] !== 'brick' && a[0] !== 'tiled')) throw new StyleError('usage: comm_style brick|tiled');
+  sys.commStyle = a[0];
+  sys.log(`comm_style ${a[0]}: accepted (the browser engine runs one process)`);
+};
+
 /** newton on/off — newton.html; forces are always summed once per pair here, so either setting gives the same result. */
 const newton: Handler = ({ sys }, a) => {
   if (a.length < 1 || a.length > 2 || a.some((w) => w !== 'on' && w !== 'off')) throw new StyleError('usage: newton on|off [on|off]');
@@ -1576,7 +1583,7 @@ const deleteBonds: Handler = ({ sys }, a) => {
 
 export const SETUP_COMMANDS: Record<string, Handler> = {
   units, dimension, boundary, atom_style: atomStyle, atom_modify: atomModify, newton,
-  processors: parallelOnly('processors'), comm_style: parallelOnly('comm_style'), package: parallelOnly('package'),
+  processors: parallelOnly('processors'), comm_style: commStyle, package: parallelOnly('package'),
   suffix: parallelOnly('suffix'), partition: parallelOnly('partition'), balance: parallelOnly('balance'),
   comm_modify: commModify, lattice, region, create_box: createBox, create_atoms: createAtoms, mass, molecule,
   read_data: readDataCmd, write_data: writeDataCmd, timestep, reset_timestep: resetTimestep,

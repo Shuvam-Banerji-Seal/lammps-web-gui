@@ -140,6 +140,8 @@ export class System {
 
   /** comm_modify vel yes|no (comm_modify.html: ghost atoms store velocity info). */
   ghostVelocity = false;
+  /** comm_style brick|tiled (only fix balance rcb cares in a one-process engine). */
+  commStyle: 'brick' | 'tiled' = 'brick';
 
   styleContext(): StyleContext {
     const freeze = this.fixes.find((f) => f.style === 'freeze');

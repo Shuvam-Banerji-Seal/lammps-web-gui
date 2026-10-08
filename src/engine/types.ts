@@ -115,6 +115,15 @@ export interface SimState {
   radius: Float64Array | null;
   omega: Float64Array | null;
   torque: Float64Array | null;
+  /**
+   * fix property/atom: custom per-atom vectors and arrays by name (i_name /
+   * d_name: cols 0; i2_name / d2_name: cols N), values stored as doubles
+   * (integer properties are truncated when set).
+   */
+  custom: Map<string, CustomProp>;
+  /** fix property/atom mol / q: molecule IDs or charges the atom style itself lacks. */
+  propMol: boolean;
+  propQ: boolean;
   x: Float64Array;
   v: Float64Array;
   f: Float64Array;
@@ -133,6 +142,15 @@ export interface SimState {
   /** Simulation time at step `timeStep` (thermo 'time' advances by dt from there). */
   time: number;
   timeStep: number;
+}
+
+/** One custom per-atom property of fix property/atom. */
+export interface CustomProp {
+  int: boolean;
+  /** 0 for a vector, N for an N-column array. */
+  cols: number;
+  /** Length n * max(cols, 1). */
+  data: Float64Array;
 }
 
 /** Lennard-Jones 12-6 parameters of one type pair. */

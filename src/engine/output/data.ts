@@ -66,10 +66,22 @@ export interface ReadDataOptions {
   extraTypes: [number, number, number, number, number];
   group: string | null;
   nocoeff: boolean;
+  /** read_data fix fix-ID header-string section-string (section name -> fix ID). */
+  fixSections: Map<string, string>;
 }
 
+/** What read_data / write_data need from a fix that owns a data-file section (fix property/atom). */
+interface DataSectionFix {
+  id: string;
+  nvalues: number;
+  readValues(s: SimState, i: number, w: readonly string[], at: number): void;
+  sectionHeader(): string;
+  writeValues(s: SimState, i: number): string;
+}
+const isDataSectionFix = (f: unknown): f is DataSectionFix => typeof (f as DataSectionFix)?.readValues === 'function';
+
 export const defaultReadOptions = (): ReadDataOptions => ({
-  add: 'none', offset: [0, 0, 0, 0, 0], shift: [0, 0, 0], extraTypes: [0, 0, 0, 0, 0], group: null, nocoeff: false,
+  add: 'none', offset: [0, 0, 0, 0, 0], shift: [0, 0, 0], extraTypes: [0, 0, 0, 0, 0], group: null, nocoeff: false, fixSections: new Map(),
 });
 
 const intOf = (w: string | undefined, what: string, line: number): number => {
@@ -155,12 +167,30 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   const vel = new Map<number, number[]>();
   const coeffLines: { section: string; line: string; at: number }[] = [];
   const topo: { kind: 'bonds' | 'angles' | 'dihedrals' | 'impropers'; type: number; ids: number[] }[] = [];
+  const fixRows: { fx: DataSectionFix; rows: { w: string[]; at: number }[] }[] = [];
   // sections
   while (k < lines.length) {
     const title = lines[k].split('#')[0].trim();
     const hint = (lines[k].split('#')[1] ?? '').trim();
     k++;
     if (!title) continue;
+    // read_data.html: "fix values = fix-ID header-string section-string" — a section named
+    // section-string carries one line per atom for that fix
+    const fixId = opts.fixSections.get(title);
+    if (fixId !== undefined) {
+      const fx = sys.fix(fixId);
+      if (!isDataSectionFix(fx)) throw new StyleError(`read_data fix ${fixId}: fix style ${fx.style} does not read data-file sections`);
+      const rows: { w: string[]; at: number }[] = [];
+      while (rows.length < natoms && k < lines.length) {
+        const t = lines[k].replace(/#.*/, '').trim();
+        k++;
+        if (!t) continue;
+        rows.push({ w: t.split(/\s+/), at: k });
+      }
+      if (rows.length < natoms) throw new StyleError(`data file section ${title}: expected ${natoms} lines, found ${rows.length}`);
+      fixRows.push({ fx, rows });
+      continue;
+    }
     if (!SECTIONS.has(title)) throw new StyleError(`unknown data file section '${title}' (line ${k})`);
     // count of lines expected
     const count = (() => {
@@ -252,7 +282,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         break;
       case 'Masses':
         // measured with native LAMMPS (atom_style sphere): "Cannot set mass for atom style sphere"
-        if (s.rmass) throw new StyleError(`Cannot set mass for atom style ${s.atomStyle}`);
+        if (s.atomStyle === 'sphere') throw new StyleError(`Cannot set mass for atom style ${s.atomStyle}`);
         for (const { w, at } of body) {
           const t = intOf(w[0], 'atom type', at) + toff;
           if (t < 1 || t > s.ntypes) throw new StyleError(`data file line ${at}: atom type ${t} is outside 1..${s.ntypes}`);
@@ -286,6 +316,18 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
       const v = vel.get(s.id[i]);
       if (v) { s.v[3 * i] = v[0]; s.v[3 * i + 1] = v[1]; s.v[3 * i + 2] = sys.dimension === 2 ? 0 : v[2]; }
       if (v && s.omega) for (let d = 0; d < 3; d++) s.omega[3 * i + d] = v[3 + d];
+    }
+  }
+  // fix sections: "the lines of per-atom properties can be listed in any order" (fix_property_atom.html)
+  if (fixRows.length) {
+    const byId = new Map<number, number>();
+    for (let i = n0; i < s.n; i++) byId.set(s.id[i], i);
+    for (const { fx, rows } of fixRows) {
+      for (const { w, at } of rows) {
+        const i = byId.get(intOf(w[0], 'atom-ID', at) + (idBase || 0));
+        if (i === undefined) throw new StyleError(`data file line ${at}: fix ${fx.id} section names atom ${w[0]}, which this file does not define`);
+        fx.readValues(s, i, w.slice(1), at);
+      }
     }
   }
   // topology must reference existing atoms
@@ -325,7 +367,7 @@ export const shortest = (v: number): string => {
   return m ? `${m[1]}e${m[2]}${m[3].padStart(2, '0')}` : t;
 };
 
-export interface WriteDataOptions { nocoeff: boolean; pairStyle: 'ii' | 'ij' | null }
+export interface WriteDataOptions { nocoeff: boolean; pairStyle: 'ii' | 'ij' | null; nofix?: boolean }
 
 export const writeData = (sys: System, opts: WriteDataOptions): string => {
   const s = sys.state;
@@ -352,7 +394,7 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   out.push(...[0, 1, 2].map((d) => `${shortest(s.box.lo[d])} ${shortest(s.box.hi[d])} ${'xyz'[d]}lo ${'xyz'[d]}hi`));
   if (s.box.triclinic) out.push(`${shortest(s.box.tilt[0])} ${shortest(s.box.tilt[1])} ${shortest(s.box.tilt[2])} xy xz yz`);
   // measured with native write_data: atom_style sphere (per-atom masses) writes no Masses section
-  if (!s.rmass) {
+  if (s.atomStyle !== 'sphere') {
     out.push('', 'Masses', '');
     for (let k = 1; k <= s.ntypes; k++) out.push(`${k} ${shortest(s.massByType[k])}`);
   }
@@ -414,6 +456,15 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
       const ids = Array.from(list.atoms.subarray(e * w, (e + 1) * w));
       out.push(`${k + 1} ${list.type[e]} ${ids.join(' ')}`);
     });
+  }
+  // measured with native write_data: each fix property/atom adds a section titled
+  // "<fix-ID> # <names>" after the topology, one line per atom ("nofix" leaves them out)
+  if (!opts.nofix) {
+    for (const f of sys.fixes) {
+      if (!isDataSectionFix(f)) continue;
+      out.push('', f.sectionHeader(), '');
+      for (const i of order) out.push(f.writeValues(s, i));
+    }
   }
   return out.join('\n') + '\n';
 };

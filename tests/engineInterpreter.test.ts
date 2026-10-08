@@ -340,7 +340,12 @@ describe('IDs and command order measured against native LAMMPS', () => {
     expect(logs).toContain('N 3');
   });
   it('an unsupported fix style is named even before the box exists', async () => {
-    const { error } = await runScript('units real\nfix csinfo all property/atom i_CSID\n');
-    expect(error?.message).toMatch(/fix style 'property\/atom' is not supported/);
+    const { error } = await runScript('units real\nfix tt all ttm/mod 1 2 3\n');
+    expect(error?.message).toMatch(/fix style 'ttm\/mod' is not supported/);
+  });
+
+  it('fix property/atom may be defined before the box (fix_property_atom.html)', async () => {
+    const { error } = await runScript('units real\nfix csinfo all property/atom i_CSID\nregion b block 0 5 0 5 0 5\ncreate_box 1 b\ncreate_atoms 1 single 1 1 1\nset atom 1 i_CSID 4\n');
+    expect(error).toBeNull();
   });
 });

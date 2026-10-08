@@ -3,7 +3,7 @@ import { int, num, yesno, latticeScale, keywords, numOrVar } from './args';
 import { StyleError, typeBounds } from '../force/types';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, massOf } from '../atoms';
+import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, massOf, gatherAtoms, hasCharge, hasMolecule } from '../atoms';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import {
   BIG, BlockRegion, CompoundRegion, ConeRegion, EllipsoidRegion, PlaneRegion, PrismRegion, SphereRegion,
@@ -585,7 +585,7 @@ const mass: Handler = ({ sys }, a) => {
   const s = sys.state;
   if (a.length !== 2) throw new StyleError('usage: mass I value');
   // measured with native LAMMPS: "Cannot set per-type atom mass for atom style sphere"
-  if (s.rmass) throw new StyleError(`Cannot set per-type atom mass for atom style ${s.atomStyle}`);
+  if (s.atomStyle === 'sphere') throw new StyleError(`Cannot set per-type atom mass for atom style ${s.atomStyle}`);
   const m = num(a[1], 'mass');
   if (!(m > 0)) throw new StyleError('mass must be > 0');
   const [lo, hi] = typeBounds(a[0], s.ntypes);
@@ -620,7 +620,14 @@ const readDataCmd: Handler = ({ sys }, a) => {
       case 'extra/improper/per/atom': case 'extra/special/per/atom': int(a[k + 1], key); k += 2; break;
       case 'group': o.group = a[k + 1]; k += 2; break;
       case 'nocoeff': o.nocoeff = true; k += 1; break;
-      case 'fix': throw new StyleError('read_data fix is not supported by the browser engine');
+      case 'fix': {
+        const [fid, header, section] = [a[k + 1], a[k + 2], a[k + 3]];
+        if (!fid || !header || !section) throw new StyleError('usage: read_data file fix fix-ID header-string section-string');
+        if (header !== 'NULL') throw new StyleError(`read_data fix ${fid}: header-string must be NULL (fix property/atom reads no header lines)`);
+        o.fixSections.set(section, fid);
+        k += 4;
+        break;
+      }
       default: throw new StyleError(`unknown read_data keyword '${key}'`);
     }
   }
@@ -632,10 +639,10 @@ const readDataCmd: Handler = ({ sys }, a) => {
 /** write_data file [nocoeff] [pair ii|ij] [nofix] [nolabelmap] [types numeric] — write_data.html. */
 const writeDataCmd: Handler = ({ sys }, a) => {
   if (!a[0]) throw new StyleError('usage: write_data file [keywords]');
-  let nocoeff = false;
+  let nocoeff = false, nofix = false;
   let pairStyle: 'ii' | 'ij' | null = null;
   for (let k = 1; k < a.length;) {
-    if (a[k] === 'nocoeff') { nocoeff = true; k++; } else if (a[k] === 'nofix' || a[k] === 'nolabelmap') k++;
+    if (a[k] === 'nocoeff') { nocoeff = true; k++; } else if (a[k] === 'nofix') { nofix = true; k++; } else if (a[k] === 'nolabelmap') k++;
     else if (a[k] === 'pair') {
       if (a[k + 1] !== 'ii' && a[k + 1] !== 'ij') throw new StyleError('write_data pair must be ii or ij');
       pairStyle = a[k + 1] as 'ii' | 'ij';
@@ -643,9 +650,14 @@ const writeDataCmd: Handler = ({ sys }, a) => {
     } else if (a[k] === 'types' || a[k] === 'triclinic/general') k += 2;
     else throw new StyleError(`unknown write_data keyword '${a[k]}'`);
   }
-  // the box must be current (shrink-wrapped faces, remapped atoms): write_data "calls ... pbc" via a setup
+  // the box must be current (shrink-wrapped faces, remapped atoms): write_data "calls ... pbc" via a setup.
+  // Measured with native LAMMPS: atoms that drifted out of a periodic box since the last reneighboring
+  // are written wrapped back in, so remap them even when forces are current.
+  sys.pbc();
+  sys.nb.lastBuild = -1;
+  sys.bump();
   sys.forces();
-  sys.writeFile(a[0], writeData(sys, { nocoeff, pairStyle }), false);
+  sys.writeFile(a[0], writeData(sys, { nocoeff, pairStyle, nofix }), false);
   sys.log(`Wrote ${sys.state.n} atoms to ${a[0]}`);
 };
 
@@ -849,6 +861,7 @@ const set: Handler = ({ sys }, a) => {
         break;
       }
       case 'mol': {
+        if (!hasMolecule(s)) throw new StyleError(`Cannot set attribute mol for atom style ${s.atomStyle}`);
         const v = value(a[k + 1], 'mol');
         for (const i of atoms) s.molecule[i] = Math.trunc(v(i));
         changed = atoms.length;
@@ -856,7 +869,7 @@ const set: Handler = ({ sys }, a) => {
         break;
       }
       case 'charge': {
-        if (!hasChargeStyle(s.atomStyle)) throw new StyleError(`set charge needs atom_style charge or full (current: ${s.atomStyle})`);
+        if (!hasCharge(s)) throw new StyleError(`set charge needs atom_style charge or full, or fix property/atom q (current: ${s.atomStyle})`);
         const v = value(a[k + 1], 'charge');
         for (const i of atoms) s.q[i] = v(i);
         changed = atoms.length;
@@ -935,8 +948,24 @@ const set: Handler = ({ sys }, a) => {
         k += 2;
         break;
       }
-      default:
-        throw new StyleError(`set keyword '${key}' is not supported by the browser engine`);
+      default: {
+        // set.html: "*i_name* value = custom integer vector with name", "*d_name* value = custom
+        // floating-point vector with name", "column specified as i2_name[N] where N is 1 to Ncol"
+        const m = /^(i|d)(2?)_([A-Za-z0-9_]+)(?:\[(\d+)\])?$/.exec(key);
+        const cp = m ? s.custom.get(m[3]) : undefined;
+        if (!m || !cp || cp.int !== (m[1] === 'i') || (cp.cols > 0) !== (m[2] === '2')) {
+          throw new StyleError(m ? `set ${key}: no fix property/atom defines this property` : `set keyword '${key}' is not supported by the browser engine`);
+        }
+        const col = m[4] ? Number(m[4]) : 0;
+        if (cp.cols > 0 && (col < 1 || col > cp.cols)) throw new StyleError(`set ${key}: column must be 1..${cp.cols}`);
+        if (cp.cols === 0 && m[4]) throw new StyleError(`set ${key}: ${m[1]}_${m[3]} is a vector, not an array`);
+        const w = Math.max(cp.cols, 1), off = cp.cols ? col - 1 : 0;
+        const v = value(a[k + 1], key);
+        for (const i of atoms) { const x = v(i); cp.data[w * i + off] = cp.int ? Math.trunc(x) : x; }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
     }
   }
   sys.bump();
@@ -1335,6 +1364,10 @@ const replicate: Handler = ({ sys }, a) => {
   for (const w of a.slice(3)) if (w !== 'bbox' && w !== 'bond/periodic') throw new StyleError(`unknown replicate keyword '${w}'`);
   const g = sys.geom;
   const old: SimState = { ...s, x: s.x.slice(0, 3 * s.n), v: s.v.slice(0, 3 * s.n), image: s.image.slice(0, 3 * s.n), type: s.type.slice(0, s.n), id: s.id.slice(0, s.n), mask: s.mask.slice(0, s.n), molecule: s.molecule.slice(0, s.n), q: s.q.slice(0, s.n) };
+  // measured with native LAMMPS: "Cannot replicate with fixes that store per-atom quantities"
+  for (const f of sys.fixes) if (f.style === 'property/atom') throw new StyleError('Cannot replicate with fixes that store per-atom quantities');
+  // every other per-atom field (sphere radius/mass/omega) is copied as is
+  const base = gatherAtoms(s, Array.from({ length: s.n }, (_, i) => i));
   const maxId = maxAtomId(s);
   let maxMol = 0;
   for (let i = 0; i < s.n; i++) maxMol = Math.max(maxMol, s.molecule[i]);
@@ -1370,7 +1403,23 @@ const replicate: Handler = ({ sys }, a) => {
   s.n = 0;
   s.x = new Float64Array(0); s.v = new Float64Array(0); s.f = new Float64Array(0); s.image = new Int32Array(0);
   s.type = new Int32Array(0); s.id = new Int32Array(0); s.mask = new Int32Array(0); s.molecule = new Int32Array(0); s.q = new Float64Array(0);
-  appendAtoms(s, { x, v, type, id, mask: 0, molecule: mol, q, image });
+  if (s.rmass) s.rmass = new Float64Array(0);
+  if (s.radius) s.radius = new Float64Array(0);
+  if (s.omega) s.omega = new Float64Array(0);
+  if (s.torque) s.torque = new Float64Array(0);
+  for (const cp of s.custom.values()) cp.data = new Float64Array(0);
+  const tile = (a: Float64Array | undefined): Float64Array | undefined => {
+    if (!a) return undefined;
+    const out = new Float64Array(a.length * ncopy);
+    for (let k = 0; k < ncopy; k++) out.set(a, k * a.length);
+    return out;
+  };
+  const custom = new Map<string, Float64Array>();
+  for (const [name, arr] of base.custom!) custom.set(name, tile(arr)!);
+  appendAtoms(s, {
+    x, v, type, id, mask: 0, molecule: mol, q, image,
+    rmass: tile(base.rmass as Float64Array | undefined), radius: tile(base.radius as Float64Array | undefined), omega: tile(base.omega), custom,
+  });
   s.mask.set(mask);
   sys.setState(s);
   const gnew = sys.geom;

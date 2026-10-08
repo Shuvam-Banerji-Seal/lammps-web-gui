@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { formatNumber } from '../script';
-import { hasChargeStyle, isMolecularStyle, massOf } from '../atoms';
+import { hasChargeStyle, isMolecularStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule } from '../atoms';
 
 /*
  * Per-atom snapshots — docs.lammps.org/dump.html and dump_modify.html.
@@ -99,6 +99,13 @@ export class Dump {
   }
 
   private expand(c: string): string[] {
+    // i2_name[*] / d2_name[*]: every column of a custom array (dump.html "I can include wildcard")
+    const cm = /^([id])2_([A-Za-z0-9_]+)\[\*\]$/.exec(c);
+    if (cm) {
+      const cp = this.sys.state.custom.get(cm[2]);
+      if (!cp || cp.cols === 0) throw new StyleError(`dump ${this.id}: custom per-atom array ${c} does not exist`);
+      return Array.from({ length: cp.cols }, (_, k) => `${cm[1]}2_${cm[2]}[${k + 1}]`);
+    }
     const m = /^([cf])_([A-Za-z0-9_]+)\[(\d*)\*(\d*)\]$/.exec(c);
     if (!m) return [c];
     const [, kind, id, lo, hi] = m;
@@ -112,9 +119,14 @@ export class Dump {
   private validate(c: string): void {
     if (ATOM_COLS.has(c)) {
       const st = this.sys.atomStyle;
-      if (c === 'q' && !hasChargeStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (q needs atom_style charge or full)`);
+      const sh = this.sys.hasBox ? this.sys.state : null;
+      if (c === 'q' && !(sh ? hasCharge(sh) : hasChargeStyle(st))) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (q needs atom_style charge or full)`);
       if (SPHERE_COLS.has(c) && st !== 'sphere') throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style sphere)`);
-      if (c === 'mol' && !isMolecularStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (mol needs a molecular atom_style)`);
+      if (c === 'mol' && !(sh ? hasMolecule(sh) : isMolecularStyle(st))) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (mol needs a molecular atom_style)`);
+      return;
+    }
+    if (CUSTOM_ATTR.test(c)) {
+      customAttr(this.sys.state, c);
       return;
     }
     const m = /^([cfv])_([A-Za-z0-9_]+)(?:\[(\d+)\])?$/.exec(c);
@@ -349,7 +361,7 @@ export class Dump {
   }
 
   private isInt(c: string): boolean {
-    return INT_COLS.has(c);
+    return INT_COLS.has(c) || /^i2?_/.test(c);
   }
 
   /** Values of one column for every atom index (length n). */
@@ -433,6 +445,8 @@ export class Dump {
         return out;
       }
     }
+    const getter = customAttr(s, c);
+    if (getter) { for (let i = 0; i < s.n; i++) out[i] = getter(i); return out; }
     const m = /^([cfv])_([A-Za-z0-9_]+)(?:\[(\d+)\])?$/.exec(c);
     if (!m) throw new StyleError(`invalid dump attribute '${c}'`);
     const col = m[3] ? Number(m[3]) : 0;

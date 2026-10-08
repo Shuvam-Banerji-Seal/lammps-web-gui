@@ -1,7 +1,7 @@
 import type { System } from './system';
 import { StyleError } from './force/types';
 import type { Mode, Value } from './formula';
-import { hasChargeStyle, isMolecularStyle, massOf } from './atoms';
+import { hasCharge, hasMolecule, massOf } from './atoms';
 
 /*
  * Group, region, special and feature functions of variable formulas —
@@ -303,8 +303,8 @@ const extractSetting = (sys: System, name: string | undefined): number => {
     case 'nangletypes': return s?.topo.nangletypes ?? 0;
     case 'ndihedraltypes': return s?.topo.ndihedraltypes ?? 0;
     case 'nimpropertypes': return s?.topo.nimpropertypes ?? 0;
-    case 'molecule_flag': return s && isMolecularStyle(s.atomStyle) ? 1 : 0;
-    case 'q_flag': return s && hasChargeStyle(s.atomStyle) ? 1 : 0;
+    case 'molecule_flag': return s && hasMolecule(s) ? 1 : 0;
+    case 'q_flag': return s && hasCharge(s) ? 1 : 0;
     case 'world_rank': case 'universe_rank': return 0;
     case 'world_size': case 'universe_size': case 'nthreads': return 1;
     case 'bigint': case 'tagint': case 'imageint': return 4;

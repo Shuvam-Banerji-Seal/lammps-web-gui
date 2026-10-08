@@ -1,7 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { massOf } from '../atoms';
+import { massOf, CUSTOM_ATTR, customAttr } from '../atoms';
 
 /*
  * Per-atom computes: ke/atom, pe/atom, stress/atom and property/atom.
@@ -256,6 +256,8 @@ const PROPERTY_ATTRS = [
   'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'q',
 ] as const;
 
+const SPHERE_ATTRS = new Set(['radius', 'diameter', 'omegax', 'omegay', 'omegaz', 'tqx', 'tqy', 'tqz']);
+
 export class ComputePropertyAtom extends Compute {
   readonly style = 'property/atom';
   private readonly attrs: string[];
@@ -264,9 +266,13 @@ export class ComputePropertyAtom extends Compute {
     super(sys, id, group, args);
     if (!args.length) throw new StyleError('usage: compute ID group-ID property/atom input1 input2 ...');
     for (const a of args) {
-      if (!(PROPERTY_ATTRS as readonly string[]).includes(a)) {
+      // compute_property_atom.html also lists "i_name, d_name, i2_name[I], d2_name[I]" (fix
+      // property/atom) and the finite-size sphere attributes radius, diameter, omega*, tq*
+      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !CUSTOM_ATTR.test(a)) {
         throw new StyleError(`compute property/atom: attribute '${a}' is not supported by the browser engine`);
       }
+      if (SPHERE_ATTRS.has(a) && !sys.state.radius) throw new StyleError(`compute property/atom ${a} needs atom_style sphere`);
+      if (CUSTOM_ATTR.test(a)) customAttr(sys.state, a);
     }
     this.attrs = [...args];
     this.peratomFlag = true;
@@ -286,9 +292,15 @@ export class ComputePropertyAtom extends Compute {
       let d = 'xyz'.indexOf(attr[attr.length - 1]);
       if (d < 0) d = 'xyz'.indexOf(attr[0]);
       const set = (i: number, val: number) => { out[m > 1 ? m * i + k : i] = val; };
+      const custom = customAttr(s, attr);
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & this.groupBit)) continue;
+        if (custom) { set(i, custom(i)); continue; }
         switch (attr) {
+          case 'radius': set(i, s.radius![i]); break;
+          case 'diameter': set(i, 2 * s.radius![i]); break;
+          case 'omegax': case 'omegay': case 'omegaz': set(i, s.omega![3 * i + d]); break;
+          case 'tqx': case 'tqy': case 'tqz': set(i, s.torque![3 * i + d]); break;
           case 'id': set(i, s.id[i]); break;
           case 'mol': set(i, s.molecule[i]); break;
           case 'proc': set(i, 0); break;

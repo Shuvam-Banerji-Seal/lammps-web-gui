@@ -181,6 +181,31 @@ export const parseFormula = (src: string): Node => {
       expect(']');
       return { t: 'atomval', name, index: ix };
     }
+    // variable.html: custom atom properties "i_name[I]" (atom ID I), "i2_name[I][J]", and in
+    // atom-style variables "i_name" (per-atom vector) and "i2_name[I]" (column of per-atom array).
+    // Measured: native LAMMPS (2 Sep 2026) reads J of i2_name[I][J] as 0-based (J = Ncol runs into
+    // the next atom's row) and gives inconsistent atom-style column sums; the engine follows the
+    // documented 1-based columns.
+    const cm = /^[id](2?)_[A-Za-z0-9_]+$/.exec(name);
+    if (cm) {
+      if (!isOp('[')) {
+        if (cm[1]) throw new StyleError(`${name} is a per-atom array: give a column, ${name}[J], in formula "${src}"`);
+        return { t: 'name', name };
+      }
+      p++;
+      const a1 = index();
+      expect(']');
+      if (!cm[1]) return { t: 'atomval', name, index: a1 };
+      if (!isOp('[')) {
+        if (typeof a1 !== 'number') throw new StyleError(`the column of ${name} must be an integer in formula "${src}"`);
+        return { t: 'name', name: `${name}[${a1}]` };
+      }
+      p++;
+      const a2 = index();
+      expect(']');
+      if (typeof a2 !== 'number') throw new StyleError(`the column of ${name} must be an integer in formula "${src}"`);
+      return { t: 'atomval', name: `${name}[${a2}]`, index: a1 };
+    }
     return { t: 'name', name };
   };
   const node = binary(0);
@@ -293,10 +318,10 @@ const evalNode = (n: Node, env: FormulaEnv, mode: Mode, src: string): Value => {
     case 'name': {
       if (n.name in CONSTANTS) return CONSTANTS[n.name];
       if (n.name === 'version') return 20260902;
-      if (mode === 'atom' && ATOM_VECTORS.includes(n.name)) return env.atomVector(n.name);
+      if (mode === 'atom' && (ATOM_VECTORS.includes(n.name) || /^[id]2?_/.test(n.name))) return env.atomVector(n.name);
       const th = env.thermo(n.name);
       if (th !== undefined) return th;
-      if (ATOM_VECTORS.includes(n.name)) throw new StyleError(`atom vector '${n.name}' can only be used in an atom-style variable (use ${n.name}[ID] for one atom)`);
+      if (ATOM_VECTORS.includes(n.name) || /^[id]2?_/.test(n.name)) throw new StyleError(`atom vector '${n.name}' can only be used in an atom-style variable (use ${n.name}[ID] for one atom)`);
       throw new StyleError(`invalid thermo keyword or name '${n.name}' in variable formula "${src}"`);
     }
     case 'atomval': return env.atomValue(n.name, resolveIndex(n.index, env));

@@ -32,8 +32,10 @@ const fix: Handler = ({ sys }, a) => {
   if (!make) {
     throw new StyleError(`fix style '${style}' is not supported by the browser engine; supported: ${Object.keys(FIX_STYLES).sort().join(', ')}`);
   }
-  // the style is checked first, so a fix the engine lacks is named even before the box exists
-  sys.state;
+  // the style is checked first, so a fix the engine lacks is named even before the box exists;
+  // fix_property_atom.html: "This fix is one of a small number that can be defined in an input
+  // script before the simulation box is created or atoms are defined."
+  if (style !== 'property/atom') sys.state;
   const k = sys.fixes.findIndex((f) => f.id === id);
   if (k >= 0 && sys.fixes[k].style !== style) throw new StyleError(`replacing fix ${id} with a different style (${sys.fixes[k].style} -> ${style}) is not allowed; unfix it first`);
   ensureThermoComputes(sys);

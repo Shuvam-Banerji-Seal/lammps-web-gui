@@ -15,7 +15,7 @@ import type { Lattice } from './lattice';
 import { Rng } from './rng';
 import { Thermo } from './output/thermo';
 import type { Dump } from './output/dump';
-import { buildAtomMap, deleteAtoms as deleteAtomsImpl, massOf } from './atoms';
+import { buildAtomMap, deleteAtoms as deleteAtomsImpl, massOf, customAttr } from './atoms';
 import { groupFunction } from './groupfn';
 import { defaultMinSettings, type MinSettings } from './run/min';
 
@@ -112,6 +112,8 @@ export class System {
     this.geom = new Geometry(s.box);
     if (this.pendingDt !== null) { s.dt = this.pendingDt; this.pendingDt = null; }
     this.ff.pair?.allocate(s.ntypes);
+    // fix property/atom defined before the box adds its per-atom properties to the new state
+    for (const f of this.fixes) (f as { attachState?: (st: SimState) => void }).attachState?.(s);
     this.bump();
   }
 
@@ -516,6 +518,8 @@ export class System {
         if (!s.radius) throw new StyleError('variable uses atom property radius, which needs atom_style sphere');
         return s.radius[i];
     }
+    const custom = customAttr(s, name);
+    if (custom) return custom(i);
     throw new StyleError(`unknown atom vector ${name}`);
   }
 

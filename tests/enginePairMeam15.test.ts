@@ -195,9 +195,9 @@ describe('MEAM reference lattices: parameter and library handling', () => {
   const LIB_BCC = "'W' 'bcc' 8 74 183.84 5.0 2.0 1.5 2.5 4.0 3.16 8.9 1.0 1.0 2.0 1.0 1.0 1.0 0\n";
   const PAR_BCC = 'rc = 4.0\ndelr = 0.1\nEc(1,1) = 8.9\nre(1,1) = 2.73664\nalpha(1,1) = 5.0\nlattce(1,1) = bcc\nzbl(1,1) = 0\n';
 
-  it('bcc and dia library entries are accepted; other lattices are StyleErrors', () => {
+  it('bcc and dia library entries are accepted; lattices other than fcc, bcc, dia, hcp and sc are StyleErrors', () => {
     expect(parseMeamLibrary(LIB_BCC, 'W', 'lib').lat).toBe('bcc');
-    expect(() => parseMeamParams(PAR_BCC.replace('bcc', 'hcp'), 'par')).toThrow(StyleError);
+    expect(() => parseMeamParams(PAR_BCC.replace('bcc', 'c11'), 'par')).toThrow(StyleError);
     expect(() => parseMeamParams(PAR_BCC.replace('bcc', 'b1'), 'par')).toThrow(/b1/);
     expect(() => parseMeamParams(PAR_BCC.replace('bcc', 'dim'), 'par')).toThrow(/dim/);
   });

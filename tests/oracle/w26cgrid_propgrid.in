@@ -1,0 +1,23 @@
+# oracle: compute property/grid (3d) defines a grid alongside fix ave/grid and runs
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    delay 0 every 20 check no
+
+fix             1 all nve
+fix             ave all ave/grid 5 1 5 4 4 4 vx vy vz
+
+compute         pg all property/grid 4 4 4 id ix iy iz x y z xc yc zc xs ys zs xsc ysc zsc proc
+
+thermo_style    custom step temp pe etotal press
+thermo_modify   format float %.15g
+thermo          1
+run             0

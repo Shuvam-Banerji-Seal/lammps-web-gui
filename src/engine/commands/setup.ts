@@ -1409,6 +1409,44 @@ const velocity: Handler = ({ sys }, a) => {
     } else if (target > 0) sys.warn('velocity: current temperature is 0, cannot rescale');
     if (bias && c.hasBias()) c.restoreBiasAll();
   };
+  // docs.lammps.org/velocity.html (bias keyword) says the bias "is subtracted
+  // from atom velocities before the *create* and *scale* operations are
+  // performed.  After the operations, the bias is added back to the atom
+  // velocities." Measured with native LAMMPS (black box) on a 4-pair core/shell
+  // probe (tests/oracle/w26velbias_*.in), `create ... bias yes temp <compute>`
+  // first rescales the freshly generated ensemble to the target with the
+  // internal plain compute (the *temp* keyword does not enter the scale factor:
+  // `create ... temp CStemp` gives c_CStemp = 1427 without bias, but with
+  // `bias yes` the pair-COM field equals a plain create, c_CStemp = 1719.538
+  // on the probe) and then applies the temp compute's bias to the rescaled
+  // velocities without adding it back: temp/cs and temp/partial remove the bias
+  // (velocities replaced by the pair COM / excluded components zeroed),
+  // temp/ramp adds the ramp, and temp/com and temp/region leave the velocities
+  // unchanged.
+  const scalePlain = (target: number) => {
+    sys.refreshComputes();
+    const pc = new ComputeTemp(sys, 'velocity_temp', gname, []);
+    pc.init();
+    sys.refreshComputes();
+    const t = pc.scalarValue();
+    if (t > 0) {
+      const f = Math.sqrt(target / t);
+      for (const i of members) { s.v[3 * i] *= f; s.v[3 * i + 1] *= f; s.v[3 * i + 2] *= f; }
+    } else if (target > 0) sys.warn('velocity: current temperature is 0, cannot rescale');
+  };
+  const createBias = () => {
+    const c = tempCompute();
+    if (!c.hasBias()) return;
+    const before = Float64Array.from(s.v);
+    c.removeBiasAll();
+    const removed = Float64Array.from(s.v);
+    c.restoreBiasAll();
+    if (c.style === 'temp/ramp') {
+      for (let k = 0; k < s.v.length; k++) s.v[k] = before[k] + (before[k] - removed[k]);
+    } else if (c.style === 'temp/cs' || c.style === 'temp/partial') {
+      s.v.set(removed);
+    }
+  };
   const old = sum ? Float64Array.from(s.v) : null;
   switch (style) {
     case 'create': {
@@ -1460,7 +1498,7 @@ const velocity: Handler = ({ sys }, a) => {
       }
       if (mom) zeroMomentum(sys, members);
       if (rot) zeroRotation(sys, members);
-      scaleTo(t);
+      if (bias) { scalePlain(t); createBias(); } else scaleTo(t);
       break;
     }
     case 'scale': scaleTo(num(args[0], 'temperature')); break;

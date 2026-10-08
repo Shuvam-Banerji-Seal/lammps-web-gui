@@ -1,8 +1,9 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { RanPark } from '../rng';
-import { appendAtoms, maxAtomId, sphereMass, isSphereStyle } from '../atoms';
+import { appendAtoms, maxAtomId, pushTopo, sphereMass, isSphereStyle, hasChargeStyle } from '../atoms';
 import { BlockRegion, ConeRegion, type Param, type Region } from '../region';
+import type { MoleculeTemplate } from '../molecule';
 import type { System } from '../system';
 
 /*
@@ -154,6 +155,41 @@ export const gravityMagnitude = (sys: System, what: string): number => {
     throw new StyleError(`fix ${what}: the gravity fix must point in the -z direction`);
   }
   return -out[2];
+};
+
+/**
+ * Appends one molecule of a template at the given absolute coordinates (flat
+ * 3N, already rotated and translated), giving every atom one molecule ID, a
+ * common velocity, the template's atom types offset by `toff`, its charges and
+ * its bonds / angles / dihedrals / impropers with the new atom IDs. The
+ * coordinates are wrapped into the periodic box with image flags, so the
+ * molecule stays whole when unwrapped. `ids` (optional) is the explicit atom
+ * ID list; otherwise the IDs continue from the current maximum. Returns the
+ * first new atom ID. Used by fix deposit mol (fix_deposit.rst) and fix pour mol.
+ */
+export const appendMolecule = (
+  sys: System, t: MoleculeTemplate, toff: number, pos: Float64Array,
+  vel: readonly number[], molId: number, gbit: number, ids?: Int32Array,
+): number => {
+  const s = sys.state;
+  const n = t.natoms;
+  const types = new Int32Array(n);
+  for (let i = 0; i < n; i++) types[i] = t.type[i] + toff;
+  for (const ty of types) if (ty < 1 || ty > s.ntypes) throw new StyleError(`molecule ${t.id}: atom type ${ty} is outside 1..${s.ntypes}`);
+  if (t.q && !hasChargeStyle(s.atomStyle)) throw new StyleError(`molecule ${t.id} has charges, which atom_style ${s.atomStyle} cannot store`);
+  const image = new Int32Array(3 * n);
+  for (let i = 0; i < n; i++) sys.geom.remap(pos, image, i);
+  const v = new Float64Array(3 * n);
+  for (let i = 0; i < n; i++) { v[3 * i] = vel[0]; v[3 * i + 1] = vel[1]; v[3 * i + 2] = vel[2]; }
+  const molecule = new Int32Array(n).fill(molId);
+  const q = t.q ? Float64Array.from(t.q) : undefined;
+  const base = ids && ids.length ? ids[0] - 1 : maxAtomId(s);
+  appendAtoms(s, { x: pos, type: types, v, image, molecule, q, mask: gbit, id: ids });
+  for (const [what, list] of [['bonds', t.bonds], ['angles', t.angles], ['dihedrals', t.dihedrals], ['impropers', t.impropers]] as const) {
+    if (!list.length) continue;
+    for (const e of list) pushTopo(s.topo[what], e[0], e.slice(1).map((k) => base + k));
+  }
+  return base + 1;
 };
 
 /** Atom list checks shared by pour and deposit. */

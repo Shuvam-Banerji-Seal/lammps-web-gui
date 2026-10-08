@@ -103,9 +103,9 @@ run 1
     expect((await run(poly)).error).toMatch(/sum to 1/);
   });
 
-  it('deposit rejects units lattice, var and unknown keywords', async () => {
+  it('deposit accepts units lattice (the default) and rejects var and unknown keywords', async () => {
     const base = `${deposHeader}region r block 0 3 0 3 0 1 side in units box\n`;
-    expect((await run(`${base}fix 3 all deposit 2 1 1 7 region r\nrun 1\n`)).error).toMatch(/units lattice/);
+    expect((await run(`${base}fix 3 all deposit 2 1 1 7 region r\nrun 1\n`)).error).toBeNull();
     expect((await run(`${base}fix 3 all deposit 2 1 1 7 region r units box var v\nrun 1\n`)).error).toMatch(/'var' is not supported/);
     expect((await run(`${base}fix 3 all deposit 2 1 1 7 region r units box bogus 1\nrun 1\n`)).error).toMatch(/unknown keyword 'bogus'/);
   });

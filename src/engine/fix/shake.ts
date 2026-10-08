@@ -64,6 +64,8 @@ export class FixShake extends Fix {
   private atomTypes = new Set<number>();
   private masses: number[] = [];
   private clusters: Cluster[] = [];
+  /** keyword mol: molecule template-ID whose molecules may be added during the run (fix deposit shake). */
+  private molTemplateId: string | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[], style: 'shake' | 'rattle') {
     super(sys, id, group, args);
@@ -77,7 +79,12 @@ export class FixShake extends Fix {
     for (let k = 3; k < args.length; k++) {
       const w = args[k];
       if (w === 'b' || w === 'a' || w === 't' || w === 'm') { mode = w; continue; }
-      if (w === 'mol') throw new StyleError(`fix ${style} mol (molecules added during the run) is not supported by the browser engine`);
+      if (w === 'mol') {
+        const t = args[++k];
+        if (!t) throw new StyleError(`fix ${style}: keyword mol needs a molecule template-ID`);
+        this.molTemplateId = t;
+        continue;
+      }
       if (w === 'kbond') { num(args[++k], 'kbond'); continue; }
       if (!mode) throw new StyleError(`fix ${style}: '${w}' must follow a constraint keyword b, a, t or m`);
       if (mode === 'm') this.masses.push(num(w, 'mass'));
@@ -96,11 +103,32 @@ export class FixShake extends Fix {
   }
 
   init(): void {
+    const ff = this.sys.ff;
+    if (!ff.bond) throw new StyleError(`fix ${this.style} needs a bond style for the bond lengths`);
+    if (this.angleTypes.size && !ff.angle) throw new StyleError(`fix ${this.style} a needs an angle style for the angles`);
+    if (this.molTemplateId && !this.sys.molecules.has(this.molTemplateId)) {
+      throw new StyleError(`fix ${this.style}: mol molecule template '${this.molTemplateId}' does not exist`);
+    }
+    this.buildClusters();
+  }
+
+  /**
+   * Rebuilds the clusters and the force-field topology override. Called at run setup and, for the
+   * mol keyword, by fix deposit after it adds a molecule
+   * (docs.lammps.org/fix_shake.html: "The mol keyword should be used when other commands, such as
+   * fix deposit or fix pour, add molecules on-the-fly during a simulation, and you wish to
+   * constrain the new molecules via SHAKE.").
+   */
+  rebuildClusters(): void {
+    const ff = this.sys.ff;
+    if (!ff.bond) throw new StyleError(`fix ${this.style} needs a bond style for the bond lengths`);
+    this.buildClusters();
+  }
+
+  private buildClusters(): void {
     const sys = this.sys;
     const s = sys.state;
     const ff = sys.ff;
-    if (!ff.bond) throw new StyleError(`fix ${this.style} needs a bond style for the bond lengths`);
-    if (this.angleTypes.size && !ff.angle) throw new StyleError(`fix ${this.style} a needs an angle style for the angles`);
     const index = new Map<number, number>();
     for (let i = 0; i < s.n; i++) index.set(s.id[i], i);
     const inGroup = (id: number) => (s.mask[index.get(id)!] & this.groupBit) !== 0;
@@ -263,6 +291,7 @@ export class FixShake extends Fix {
         return factor * (sg(ck.a) / m[ck.a] - sg(ck.b) / m[ck.b]);
       }));
       let it = 0;
+      let prevDev = Infinity;
       for (; it < this.maxIter; it++) {
         const sep = s0.map((sk, k) => [0, 1, 2].map((q) => {
           let v = sk[q];
@@ -270,7 +299,16 @@ export class FixShake extends Fix {
           return v;
         }));
         const F = sep.map((v, k) => v[0] * v[0] + v[1] * v[1] + v[2] * v[2] - c.cons[k].d2);
-        if (F.every((fk, k) => Math.abs(fk) <= this.tol * c.cons[k].d2)) break;
+        let dev = 0;
+        for (let k = 0; k < nc; k++) { const a = Math.abs(F[k]) / c.cons[k].d2; if (a > dev) dev = a; }
+        if (dev <= this.tol) break;
+        // The position residual saturates at a floating-point floor well above the
+        // user tolerance on ill-conditioned angle clusters; once it stops falling the
+        // constraint force has converged to machine precision, so further Newton
+        // sweeps only add noise to the virial. Stop there (only at that floor: a residual that rises
+        // while still large keeps iterating up to the iteration limit).
+        if (dev >= prevDev && dev < 1e-8) break;
+        prevDev = dev;
         const J = Array.from({ length: nc }, (_, k) => Array.from({ length: nc }, (_, j) => 2 * C[k][j] * (sep[k][0] * r[j][0] + sep[k][1] * r[j][1] + sep[k][2] * r[j][2])));
         const delta = solve(J, F.map((x) => -x));
         if (!delta) { sys.warn(`fix ${this.style}: singular SHAKE system for cluster at atom ${c.ids[0]}`); break; }

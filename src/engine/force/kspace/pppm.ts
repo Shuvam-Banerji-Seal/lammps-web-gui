@@ -33,10 +33,9 @@ import { fft3d, isFFTSize, nextFFTSize } from '../fft';
  *   E_a  = inverse FFT of -i k_a G rho / V, interpolated back with the same
  *          weights; F_j = C q_j E(r_j),
  *   W_ab = C / (2 V) sum_k G |rho|^2 (delta_ab - 2 k_a k_b (1/k^2 + 1/(4g^2))).
- * Without kspace_modify mesh, the mesh is chosen so that (h g)^P times the
- * smooth-part estimate stays below the requested accuracy; the result can
- * differ from LAMMPS's own choice — set mesh, order and gewald to reproduce a
- * LAMMPS run.
+ * Automatic g_ewald, mesh and order: see selectPppmAuto below (orthorhombic
+ * boxes without slab). Triclinic and slab boxes keep the older estimate and
+ * log a warning, because their native choice is not reproduced yet.
  */
 
 /*
@@ -59,6 +58,137 @@ const bspline = (p: number, x: number): number => {
   if (x <= 0 || x >= p) return 0;
   return (x * bspline(p - 1, x) + (p - x) * bspline(p - 1, x - 1)) / (p - 1);
 };
+
+/*
+ * Automatic g_ewald, mesh (orthorhombic boxes, no slab).
+ *
+ * docs.lammps.org/kspace_modify.html: "this setting, LAMMPS chooses the
+ * parameter automatically as a function" (the gewald keyword); "must be
+ * factorizable into powers of 2, 3, and 5." (the mesh keyword); "solver
+ * chooses its own grid size, consistent with the" (the mesh keyword, unset).
+ * kspace_modify.html on force: "The accuracy determines the RMS error in
+ * per-atom forces" (absolute accuracy in force units, accE).
+ *
+ * Error estimates, from Deserno and Holm, J Chem Phys 109, 7694 (1998)
+ * (arXiv cond-mat/9807100): real space, eq. (23),
+ *   dF_r = 2 Q^2 / sqrt(N r_max V) exp(-alpha^2 r_max^2);
+ * reciprocal space for ik differentiation, eq. (38),
+ *   dF_k = (Q^2 / L^2) (h alpha)^P sqrt(alpha L / N sqrt(2 pi) sum_m a_m (h alpha)^2m),
+ * with the coefficients a_m^(P) of their Table 2 (IK_COEF below). Q^2 is the
+ * sum of q_i^2 times qqrd2e (the Coulomb constant of the units).
+ *
+ * Measured with native LAMMPS (black box), 42 orthorhombic cubic-edge systems
+ * (accuracy 1e-3..1e-6, cutoffs 2..12, lj, real and metal units, orders 3, 4,
+ * 5 and 7, charges 0.3..2, coul/long and lj/cut/coul/long) and the three
+ * orthorhombic non-cubic systems (edges 8x8x30, 6x12x30, 40x30x25):
+ *  - the initial g: g0 = acc/pre with pre = 2 Q^2 / sqrt(N rc V); g0 = sqrt(-ln g0)/rc,
+ *    or (1.35 - 0.15 ln acc)/rc when acc/pre >= 1 (the Kolafa-Perram form; the
+ *    second branch was measured with acc = 0.5 at N = 20, L = 10).
+ *  - the mesh: per edge L_d, the smallest n >= 2 with dF_k(g0, L_d/n) <= acc,
+ *    then the next size of the form 2^a 3^b 5^c after n + 1 (the +1 was
+ *    measured: the smallest n alone gives one grid point too few in 6 of 38
+ *    cubic cases). Matched in all 38 cubic and all 9 orthorhombic edges.
+ *  - g: a Newton-Raphson root of dF_r(g) - dF_k(g, mesh) started at g0, with
+ *    a finite-difference derivative (step 1e-6) and the stop |f| < 1e-5 in
+ *    absolute force units (the stop is measured: the native g is off the exact
+ *    root by up to 4e-3 when the stop is loose). Matched to the 8 digits native
+ *    prints in all cubic cases. For non-cubic edges the k-space term is the
+ *    largest per-edge dF_k; this is NOT the native rule (measured g differs
+ *    by 1e-3 to 2e-2), so non-cubic g is an approximation.
+ *  - kspace_modify gewald set: the mesh is chosen with that g; mesh set: g is
+ *    solved with that mesh (both measured on a cubic 10-box).
+ */
+const IK_COEF: Record<number, number[]> = {
+  1: [2 / 3],
+  2: [1 / 50, 5 / 294],
+  3: [1 / 588, 7 / 1440, 21 / 3872],
+  4: [1 / 4320, 3 / 1936, 7601 / 2271360, 143 / 28800],
+  5: [1 / 23232, 7601 / 13628160, 143 / 69120, 517231 / 106536960, 106640677 / 11737571328],
+  6: [691 / 68140800, 13 / 57600, 47021 / 35512320, 9694607 / 2095994880, 733191589 / 59609088000, 326190917 / 11700633600],
+  7: [1 / 345600, 3617 / 35512320, 745739 / 838397952, 56399353 / 12773376000, 25091609 / 1560084480, 1755948832039 / 36229939200000, 4887769399 / 37838389248],
+};
+
+/** Real-space rms force error, Deserno and Holm eq. (23). */
+export const pppmRealError = (g: number, rc: number, q2: number, n: number, volume: number): number =>
+  (2 * q2 / Math.sqrt(n * rc * volume)) * Math.exp(-g * g * rc * rc);
+
+/** Reciprocal-space rms force error for ik differentiation, Deserno and Holm eq. (38), one edge L, mesh spacing h. */
+export const pppmKspaceError = (g: number, h: number, P: number, q2: number, n: number, L: number): number => {
+  const coef = IK_COEF[P];
+  if (!coef) throw new StyleError(`kspace_modify order ${P} has no PPPM error estimate`);
+  const ha = h * g;
+  let s = 0;
+  for (let m = 0; m < P; m++) s += coef[m] * Math.pow(ha, 2 * m);
+  return (q2 / (L * L)) * Math.pow(ha, P) * Math.sqrt(((g * L) / n) * Math.sqrt(2 * Math.PI) * s);
+};
+
+/** Smallest size >= n that factors into 2, 3 and 5. */
+const factorableAtLeast = (n: number): number => {
+  let m = Math.max(2, n);
+  while (!isFFTSize(m)) m++;
+  return m;
+};
+
+export interface PppmAutoInput {
+  lx: number; ly: number; lz: number;
+  natoms: number;
+  /** qqrd2e times the sum of q_i^2 */
+  q2: number;
+  rc: number;
+  /** absolute force accuracy */
+  accE: number;
+  order: number;
+  gUser: number;
+  meshUser: [number, number, number] | null;
+}
+
+export interface PppmAutoResult {
+  g: number;
+  mesh: [number, number, number];
+  g0: number;
+}
+
+/** Native-matched automatic choice of g_ewald and mesh (see the comment above). */
+export function selectPppmAuto(inp: PppmAutoInput): PppmAutoResult {
+  const L = [inp.lx, inp.ly, inp.lz];
+  const V = inp.lx * inp.ly * inp.lz;
+  const N = Math.max(1, inp.natoms);
+  const P = inp.order;
+  const rc = inp.rc;
+  const pre = (2 * inp.q2) / Math.sqrt(N * rc * V);
+  const ratio = inp.accE / pre;
+  const g0 = ratio >= 1 ? (1.35 - 0.15 * Math.log(inp.accE)) / rc : Math.sqrt(-Math.log(ratio)) / rc;
+  const gGrid = inp.gUser > 0 ? inp.gUser : g0;
+  let mesh: [number, number, number];
+  if (inp.meshUser) mesh = [...inp.meshUser];
+  else {
+    const m = L.map((len) => {
+      let n = 2;
+      while (pppmKspaceError(gGrid, len / n, P, inp.q2, N, len) > inp.accE) {
+        n++;
+        if (n > 100000) throw new StyleError('kspace_style pppm: no mesh meets the accuracy');
+      }
+      return factorableAtLeast(n + 1);
+    });
+    mesh = [m[0], m[1], m[2]];
+  }
+  if (inp.gUser > 0) return { g: inp.gUser, mesh, g0 };
+  const kspace = (g: number) => {
+    let worst = 0;
+    for (let d = 0; d < 3; d++) worst = Math.max(worst, pppmKspaceError(g, L[d] / mesh[d], P, inp.q2, N, L[d]));
+    return worst;
+  };
+  const f = (g: number) => pppmRealError(g, rc, inp.q2, N, V) - kspace(g);
+  let g = g0;
+  for (let it = 0; it < 10000; it++) {
+    const f1 = f(g);
+    const h = 1e-6;
+    const df = (f(g + h) - f1) / h;
+    g -= f1 / df;
+    if (Math.abs(f(g)) < 1e-5) return { g, mesh, g0 };
+  }
+  throw new StyleError('kspace_style pppm: the G-ewald Newton iteration did not converge');
+}
 
 export class KSpacePPPM extends KSpaceBase {
   readonly name = 'pppm';
@@ -94,7 +224,27 @@ export class KSpacePPPM extends KSpaceBase {
   init(s: SimState, geom: Geometry, cutCoul: number, qqrd2e: number, ctx: StyleContext): void {
     this.cutCoul = cutCoul;
     this.setupCharges(s, geom, ctx);
-    this.gEwald = this.chooseGEwald(s, qqrd2e);
+    const orthoNoSlab = !s.box.triclinic && this.slab === 1 && geom.xy === 0 && geom.xz === 0 && geom.yz === 0;
+    if (orthoNoSlab && this.qsqsum > 0 && this.natoms > 0) {
+      const r = selectPppmAuto({
+        lx: geom.lx, ly: geom.ly, lz: geom.lz, natoms: this.natoms, q2: qqrd2e * this.qsqsum, rc: cutCoul,
+        accE: this.absAccuracy(s, qqrd2e), order: this.order, gUser: this.gewaldUser, meshUser: this.meshUser,
+      });
+      this.gEwald = r.g;
+      this.mesh = r.mesh;
+    } else {
+      if (this.gewaldUser <= 0 || !this.meshUser) {
+        ctx.log(`WARNING: kspace_style pppm: automatic G-ewald and mesh for triclinic or slab boxes are not reproduced; using the older estimate`);
+      }
+      this.gEwald = this.chooseGEwald(s, qqrd2e);
+      this.legacyMesh(geom);
+    }
+    this.greenBox = '';
+    ctx.log(`  G vector (1/distance) = ${this.gEwald}\n  grid = ${this.mesh.join(' ')}\n  stencil order = ${this.order}`);
+  }
+
+  /** Mesh of the older estimate (triclinic and slab boxes). */
+  private legacyMesh(geom: Geometry): void {
     if (this.meshUser) this.mesh = [...this.meshUser];
     else {
       // mesh spacing h with (h g)^P ~ relative accuracy, scaled for the smooth part
@@ -104,8 +254,6 @@ export class KSpacePPPM extends KSpaceBase {
       const h = hg / this.gEwald;
       this.mesh = L.map((len) => nextFFTSize(Math.max(2 * P, Math.ceil(len / h)))) as [number, number, number];
     }
-    this.greenBox = '';
-    ctx.log(`  G vector (1/distance) = ${this.gEwald}\n  grid = ${this.mesh.join(' ')}\n  stencil order = ${this.order}`);
   }
 
   /** Optimal influence function for the current box. */

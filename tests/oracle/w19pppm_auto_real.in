@@ -1,0 +1,20 @@
+# oracle: salt-like charges in real units, lj/cut/coul/long + PPPM with automatic G-ewald and mesh
+# oracle-inputs: w19pppm_auto_real.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# oracle-tolerance: G is chosen automatically and reproduced to about 1e-12 relative (native prints 8 digits; a pinned-gewald scan recovers more), and elong is sensitive enough to it that the step-0 elong differs by 2e-9 to 3e-9 relative
+units           real
+atom_style      charge
+read_data       w19pppm_auto_real.data
+pair_style      lj/cut/coul/long 8.0
+pair_coeff      1 1 0.1 3.0
+pair_coeff      1 2 0.1 3.2
+pair_coeff      2 2 0.1 3.4
+pair_modify     table 0
+kspace_style    pppm 1.0e-5
+timestep        1.0
+velocity        all create 300.0 4928459 dist gaussian
+fix             1 all nve
+thermo_style    custom step temp pe evdwl ecoul elong etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g norm no
+thermo          10
+run             40

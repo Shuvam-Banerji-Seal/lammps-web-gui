@@ -64,7 +64,8 @@ export const parsePDBFile = (data: string): MoleculeData => {
   // current model (in practice 'A'). Reset per model.
   let altLocKeeper: string | undefined;
 
-  const elementTypeMap: Record<string, number> = {};
+  // keys are element symbols from the file: a null-prototype map (no prototype keys)
+  const elementTypeMap: Record<string, number> = Object.create(null);
 
   const pushCurrentModel = () => {
     if (current.length === 0) return;

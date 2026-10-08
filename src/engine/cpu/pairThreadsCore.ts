@@ -74,6 +74,7 @@ const plainProto = (o: object): boolean => {
 /** Copies cloned fields into a fresh instance, keeping the instance's own class-typed members (their methods). */
 export const adoptFields = (target: Record<string, unknown>, src: Record<string, unknown>): void => {
   for (const k of Object.keys(src)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
     const v = src[k], cur = target[k];
     if (v && typeof v === 'object' && cur && typeof cur === 'object' && !ArrayBuffer.isView(cur) && !Array.isArray(cur)
       && !(cur instanceof Map) && !(cur instanceof Set) && !plainProto(cur) && plainProto(v)) {
@@ -86,8 +87,8 @@ export const adoptFields = (target: Record<string, unknown>, src: Record<string,
 
 /** A pair style rebuilt in a worker from the engine's fields (null when the style is not threaded). */
 export const pairFromFields = (name: string, fields: Record<string, unknown>): Pair | null => {
+  if (!Object.hasOwn(THREADED_PAIRS, name)) return null;
   const make = THREADED_PAIRS[name];
-  if (!make) return null;
   const p = make();
   // allocate() creates the class-typed members (coefficient tables) the cloned fields go into
   if (typeof fields.ntypes === 'number' && fields.ntypes > 0) p.allocate(fields.ntypes);

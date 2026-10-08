@@ -238,7 +238,8 @@ export const parseDataFile = (data: string): MoleculeData => {
   const bonds: Bond[] = [];
   const masses: Record<number, { mass: number; comment?: string }> = {};
   // Masses rows whose first column is a type label, merged once labels are known
-  const labelMasses: Record<string, { mass: number; comment?: string }> = {};
+  // keys are type labels from the file: a null-prototype map, so a label like __proto__ cannot reach Object.prototype
+  const labelMasses: Record<string, { mass: number; comment?: string }> = Object.create(null);
   // "Atom Type Labels" section: label -> numeric type
   const typeLabels = new Map<string, number>();
 

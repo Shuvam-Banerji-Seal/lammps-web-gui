@@ -26,7 +26,7 @@ const step = (defId: string, params?: Record<string, string>, note?: string): Sc
   const def = COMMAND_BY_ID[defId];
   if (!def) throw new Error(`template references unknown command ${defId}`);
   return {
-    uid: `tpl-${defId}-${Math.random().toString(36).slice(2, 8)}`,
+    uid: `tpl-${defId}-${globalThis.crypto.randomUUID().slice(0, 8)}`,
     defId,
     params: { ...defaultParams(def), ...(params ?? {}) },
     enabled: true,

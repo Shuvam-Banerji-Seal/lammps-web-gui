@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import {
   generateBuildScript,
   DEFAULT_COMPILER_OPTIONS,
@@ -71,12 +71,12 @@ const checkWindowsShape = (text: string): void => {
 };
 
 const runBashN = (text: string, tag: string): void => {
-  const file = join(tmpdir(), `lmp-build-${tag}-${process.pid}-${Date.now()}.sh`);
+  const file = join(mkdtempSync(join(tmpdir(), 'lmp-build-')), `${tag}.sh`);
   writeFileSync(file, text);
   try {
     expect(() => execFileSync('bash', ['-n', file], { stdio: 'pipe' })).not.toThrow();
   } finally {
-    rmSync(file, { force: true });
+    rmSync(dirname(file), { recursive: true, force: true });
   }
 };
 

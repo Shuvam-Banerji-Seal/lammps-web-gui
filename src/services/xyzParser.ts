@@ -48,7 +48,8 @@ const isNumericToken = (s: string): boolean =>
  * comments ("Water molecule") behave exactly as before.
  */
 export const parseExtxyzComment = (comment: string): Record<string, string> => {
-  const meta: Record<string, string> = {};
+  // keys are extxyz comment keys from the file: a null-prototype map (no prototype keys)
+  const meta: Record<string, string> = Object.create(null);
   let i = 0;
   const n = comment.length;
   while (i < n) {
@@ -281,7 +282,8 @@ export const parseXYZFile = (data: string): MoleculeData => {
   }
 
   // Symbol token -> type id, shared across frames for stable coloring.
-  const elementTypeMap: Record<string, number> = {};
+  // keys are element symbols from the file: a null-prototype map (no prototype keys)
+  const elementTypeMap: Record<string, number> = Object.create(null);
   let nextSyntheticTypeId = 1000;
 
   let minX = Infinity, minY = Infinity, minZ = Infinity;

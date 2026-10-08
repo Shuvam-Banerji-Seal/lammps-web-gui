@@ -377,7 +377,8 @@ export const parseCIFFile = (data: string): MoleculeData => {
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
-  const elementTypeMap: Record<string, number> = {};
+  // keys are element symbols from the file: a null-prototype map (no prototype keys)
+  const elementTypeMap: Record<string, number> = Object.create(null);
   let nextSyntheticTypeId = 1000;
 
   const addAtom = (symbol: string | undefined, cx: number, cy: number, cz: number): void => {

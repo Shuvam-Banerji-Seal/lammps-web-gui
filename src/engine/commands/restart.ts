@@ -3,6 +3,12 @@ import { StyleError } from '../force/types';
 import { writeRestartText, readRestartText } from '../output/restart';
 import type { System } from '../system';
 
+/** The file name with its (first) '*' wildcard replaced by text. */
+export const fillWildcard = (file: string, text: string): string => {
+  const i = file.indexOf('*');
+  return i < 0 ? file : file.slice(0, i) + text + file.slice(i + 1);
+};
+
 /*
  * write_restart, read_restart and restart (wave 9). The file format is the
  * browser engine's own (output/restart.ts): a native binary restart file
@@ -38,7 +44,7 @@ import type { System } from '../system';
 const expandStar = (file: string, step: number): string => {
   const n = file.split('*').length - 1;
   if (n > 1) throw new StyleError(`restart file name '${file}' has ${n} '*' wildcards; use one`);
-  return n === 1 ? file.replace('*', String(step)) : file;
+  return n === 1 ? fillWildcard(file, String(step)) : file;
 };
 
 const KEYWORDS = new Set(['fileper', 'nfile']);
@@ -179,7 +185,7 @@ export const writeRestarts = (sys: System, step: number, force = false): void =>
     const due = r.everyVar !== null ? step === r.next : step % r.every === 0;
     if (!due && !force) continue;
     let name: string;
-    if (r.mode === 'single') name = r.files[0].includes('*') ? r.files[0].replace('*', String(step)) : `${r.files[0]}.${step}`;
+    if (r.mode === 'single') name = r.files[0].includes('*') ? fillWildcard(r.files[0], String(step)) : `${r.files[0]}.${step}`;
     else { name = r.files[r.flip]; r.flip = 1 - r.flip; }
     sys.writeFile(name, writeRestartText(sys), false);
     if (r.everyVar !== null && due) r.next = nextVarStep(sys, r.everyVar);

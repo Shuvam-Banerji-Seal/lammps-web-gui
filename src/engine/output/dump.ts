@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import { formatNumber } from '../script';
 import { localDumpColumns, localColumnSource } from '../compute/local_dump';
 import { generalBoxFromRestricted, toGeneralPoint, unrotateVector, type V3 } from '../triclinic_general';
+import { fillWildcard } from '../commands/restart';
 import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, hasRmassStyle, isEllipsoidStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
 
 /*
@@ -400,7 +401,7 @@ export class Dump {
     }
     const multi = this.file.includes('*');
     const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
-    const name = multi ? this.file.replace('*', stepText) : this.file;
+    const name = multi ? fillWildcard(this.file, stepText) : this.file;
     const appendNow = multi ? false : this.opened || this.append;
     sys.writeFile(name, lines.join('\n') + '\n', appendNow);
     this.opened = true;
@@ -455,7 +456,7 @@ export class Dump {
     }
     const multi = this.file.includes('*');
     const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
-    const name = multi ? this.file.replace('*', stepText) : this.file;
+    const name = multi ? fillWildcard(this.file, stepText) : this.file;
     const appendNow = multi ? false : this.opened || this.append;
     sys.writeFile(name, lines.join('\n') + '\n', appendNow);
     this.opened = true;

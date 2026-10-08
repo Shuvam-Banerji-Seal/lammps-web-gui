@@ -169,6 +169,24 @@ describe('shared-memory pair threads: refresh and fallback', () => {
     expectClose(serial, threaded, 1e-10);
   });
 
+  it('runs on the engine thread until every worker has started (no Atomics.wait on an unstarted worker)', async () => {
+    // a worker created inside the engine worker starts only when the engine thread returns to its event loop: until
+    // then it handles no message, so the threads must not be used (they would block in Atomics.wait)
+    class UnstartedWorker extends InProcessWorker {
+      postMessage(msg: unknown): void { if ((msg as PairThreadMessage).type === 'compute') this.computes++; }
+    }
+    const workers: UnstartedWorker[] = [];
+    const backend = new SharedThreadsBackend(3, () => { const w = new UnstartedWorker(); workers.push(w); return w; });
+    backend.pairThreads.minAtoms = 1;
+    const events: EngineEvent[] = [];
+    const session = new Session({ emit: (e) => events.push(e), writeFile: () => {} }, backend);
+    await session.execute(`${BOX}${STYLES['lj/cut']}\nfix 1 all nve\nthermo 10\nrun 20\n`);
+    expect(workers.reduce((s, w) => s + w.computes, 0)).toBe(0);
+    expect(backend.pairThreads.calls).toBe(0);
+    expect(events.filter((e) => e.kind === 'thermo').length).toBeGreaterThan(0);
+    backend.dispose();
+  });
+
   it('leaves styles outside the list (eam, dsf) to the engine thread', async () => {
     const lines = 'pair_style lj/cut/coul/dsf 0.8 2.5\npair_coeff * * 1.0 1.0';
     const serial = await runCase(lines, 1);

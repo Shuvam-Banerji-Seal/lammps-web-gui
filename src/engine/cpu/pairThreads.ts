@@ -3,7 +3,7 @@ import type { NeighList } from '../neighbor';
 import { THREADED_PAIRS } from './threadedPairs';
 import { CpuForceBackend } from './forces';
 import {
-  ACC_LEN, DONE, FAILED, cloneableFields, pairFromFields, restrictCounts, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
+  ACC_LEN, DONE, FAILED, READY, cloneableFields, pairFromFields, restrictCounts, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
 } from './pairThreadsCore';
 
 /*
@@ -79,6 +79,9 @@ export class SharedPairThreads {
     const list = pc.half;
     if (W === 0 || !list || pc.full || pc.eatom || pc.vatom || pair.needsFull || !pair.needsHalf) return false;
     if (!THREADED_PAIRS[pair.name] || list.inum < this.minAtoms) return false;
+    // until every worker has started (READY, see pairThreadsCore.ts) the pair term runs on the engine thread: blocking
+    // in Atomics.wait on a worker that has not started yet would deadlock
+    if (Atomics.load(this.ctl, READY) < W) return false;
     if (pair !== this.pairRef || pair.version !== this.pairVersion) this.sendPair(pair);
     if (!this.pairOk) return false;
     const nall = pc.nall, nlocal = list.inum;

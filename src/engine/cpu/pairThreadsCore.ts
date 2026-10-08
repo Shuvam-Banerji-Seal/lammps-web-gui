@@ -22,7 +22,12 @@ export type PairThreadMessage =
   | { type: 'compute'; nlocal: number; nall: number; qqrd2e: number; specialLJ: number[]; specialCoul: number[]; listGen: number; i0: number; i1: number };
 
 /** Words of the control buffer: finished workers, failed workers. */
-export const DONE = 0, FAILED = 1;
+/**
+ * Slots of the shared control array: DONE counts finished ranges, FAILED counts failed ones, READY counts workers that
+ * have started and handled their init message. A worker created from inside the engine worker may only start once the
+ * engine thread returns to its event loop, so the engine must not block in Atomics.wait on a worker before it is READY.
+ */
+export const DONE = 0, FAILED = 1, READY = 2;
 /** Doubles of a worker's result: evdwl, ecoul, virial[6]. */
 export const ACC_LEN = 8;
 
@@ -123,7 +128,11 @@ export class PairThreadWorker {
   private key = '';
 
   handle(m: PairThreadMessage): void {
-    if (m.type === 'init') { this.ctl = new Int32Array(m.ctl); return; }
+    if (m.type === 'init') {
+      this.ctl = new Int32Array(m.ctl);
+      Atomics.add(this.ctl, READY, 1);
+      return;
+    }
     if (m.type === 'buffers') {
       this.x = new Float64Array(m.x); this.t = new Int32Array(m.t); this.q = new Float64Array(m.q);
       this.numneigh = new Int32Array(m.numneigh); this.firstneigh = new Int32Array(m.firstneigh); this.neighbors = new Int32Array(m.neighbors);

@@ -70,6 +70,7 @@ export const initRun = (sys: System): void => {
 /** Setup half of a run: neighbor lists, forces, fix setup (Verlet::setup()). */
 export const setupRun = (sys: System): void => {
   sys.setupNeighbors();
+  sys.sortAtoms(true);
   sys.computeForcesInRun(sys.computeFlags());
   sys.forcesCurrent();
   sys.assignDynamicGroups(true);
@@ -120,6 +121,7 @@ export const runVerlet = async (sys: System, nsteps: number, hooks: RunHooks): P
     if (nb.decide(s.step, s, sys.geom)) {
       for (const f of fPreEx) f.preExchange!();
       sys.pbc();
+      sys.sortAtoms(false);
       for (const f of fPreNeigh) f.preNeighbor!();
       nb.build(s, sys.geom, s.step);
       for (const f of fPostNeigh) f.postNeighbor!();

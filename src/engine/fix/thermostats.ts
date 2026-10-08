@@ -4,7 +4,7 @@ import type { System } from '../system';
 import type { Compute } from '../compute/compute';
 import { RanMars, Rng } from '../rng';
 import { ownCompute, parseNumOrVar, ramp, removeCompute, valueOf, type NumOrVar } from './util';
-import { massOf } from '../atoms';
+import { massOf, nativeOrder } from '../atoms';
 
 /*
  * Velocity thermostats that do not integrate (use them with fix nve):
@@ -345,7 +345,8 @@ export class FixLangevin extends Fix {
     if (this.tally && this.fl.length !== 3 * s.n) this.fl = new Float64Array(3 * s.n);
     let sx = 0, sy = 0, sz = 0, count = 0;
     const rand = this.zero ? new Float64Array(3 * s.n) : null;
-    for (let i = 0; i < s.n; i++) {
+    // the draws follow native LAMMPS's atom list (SimState.order, see System.sortAtoms)
+    for (const i of nativeOrder(s)) {
       if (!(mask[i] & this.groupBit)) continue;
       const m = massOf(s, i);
       // "scale ... factor by which to scale the damping coefficient": a ratio of 2
@@ -353,7 +354,7 @@ export class FixLangevin extends Fix {
       const damp = this.damp * this.ratio[type[i]];
       const g1 = -(m / damp) / u.ftm2v;
       const g2 = Math.sqrt(m) * Math.sqrt((24 * u.boltz * tt) / (u.mvv2e * s.dt * damp)) / u.ftm2v;
-      // three draws per atom in storage order, also in 2d (measured: native keeps fz)
+      // three draws per atom in native storage order, also in 2d (measured: native keeps fz)
       const rx = g2 * (this.rng.uniform() - 0.5), ry = g2 * (this.rng.uniform() - 0.5), rz = g2 * (this.rng.uniform() - 0.5);
       const fx = g1 * v[3 * i] + rx, fy = g1 * v[3 * i + 1] + ry, fz = g1 * v[3 * i + 2] + rz;
       if (rand) { rand[3 * i] = rx; rand[3 * i + 1] = ry; rand[3 * i + 2] = rz; sx += rx; sy += ry; sz += rz; count++; }

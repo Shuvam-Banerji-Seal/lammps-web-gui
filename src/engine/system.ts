@@ -15,7 +15,7 @@ import type { Lattice } from './lattice';
 import { Rng } from './rng';
 import { Thermo } from './output/thermo';
 import type { Dump } from './output/dump';
-import { buildAtomMap, deleteAtoms as deleteAtomsImpl, massOf, customAttr } from './atoms';
+import { buildAtomMap, deleteAtoms as deleteAtomsImpl, massOf, customAttr, nativeOrder } from './atoms';
 import { groupFunction } from './groupfn';
 import { defaultMinSettings, type MinSettings } from './run/min';
 
@@ -132,6 +132,9 @@ export class System {
   refreshComputes(): void {
     this.epoch++;
   }
+
+  /** True when the stored forces belong to the current state. */
+  get hasForces(): boolean { return this.forcesVersion === this.stateVersion; }
 
   /** Forces were computed for the current state by the run loop. */
   forcesCurrent(): void {
@@ -364,6 +367,53 @@ export class System {
 
   /** Per-atom group mask bit by name. */
   groupBit(name: string): number { return this.groups.bit(name); }
+
+  /** atom_modify sort Nfreq binsize (atom_modify.html: "By default, sorting is enabled with a frequency of 1000 and a binsize of 0.0"). */
+  sortEvery = 1000;
+  sortBinsize = 0;
+  private nextSort = 0;
+
+  /**
+   * Native LAMMPS's spatial sort of its atom list, applied to SimState.order (the engine keeps its
+   * own arrays). atom_modify.html: "Reordering is performed every *Nfreq* timesteps during a
+   * dynamics run or iterations during a minimization.  More precisely, reordering occurs at the
+   * first reneighboring that occurs after the target timestep." "If *binsize* is set to 0.0, then
+   * a binsize equal to half the :doc:`neighbor <neighbor>` cutoff distance (force cutoff plus skin
+   * distance) is used" "After the atoms have been binned, they are reordered so that atoms in the
+   * same bin are adjacent to each other". "If no neighbor cutoff is defined, sorting will be
+   * turned off."
+   * Measured with native LAMMPS (black box, unsorted dumps of the atom IDs): every run and
+   * minimization setup sorts; during a run the sort happens at the first reneighboring with
+   * step >= floor(last/N)*N + N (N = 5 and reneighboring every 3 steps: 6, 12, 15, 21, 27, 30);
+   * each dimension has floor(L / binsize) bins, x varies fastest, and atoms of one bin keep
+   * their previous relative order.
+   */
+  sortAtoms(setup: boolean): void {
+    if (!(this.sortEvery > 0)) return;
+    const s = this.state;
+    if (!setup && s.step < this.nextSort) return;
+    this.nextSort = Math.floor(s.step / this.sortEvery) * this.sortEvery + this.sortEvery;
+    const binsize = this.sortBinsize > 0 ? this.sortBinsize : 0.5 * this.nb.cutneighmax;
+    if (!(binsize > 0) || s.n < 2) return;
+    const b = s.box;
+    const lo = [b.lo[0], b.lo[1], b.lo[2]];
+    const len = [b.hi[0] - b.lo[0], b.hi[1] - b.lo[1], b.hi[2] - b.lo[2]];
+    const nb = len.map((l, d) => (d === 2 && s.dimension === 2 ? 1 : Math.max(1, Math.floor(l / binsize))));
+    const bin = new Float64Array(s.n);
+    for (let i = 0; i < s.n; i++) {
+      let key = 0;
+      for (let d = 2; d >= 0; d--) {
+        let c = Math.floor((s.x[3 * i + d] - lo[d]) * nb[d] / len[d]);
+        if (c < 0) c = 0; else if (c >= nb[d]) c = nb[d] - 1;
+        key = key * nb[d] + c;
+      }
+      bin[i] = key;
+    }
+    const ord = Array.from(nativeOrder(s));
+    // Array.prototype.sort is stable: atoms of a bin keep their order
+    ord.sort((p, q) => bin[p] - bin[q]);
+    s.order = Int32Array.from(ord);
+  }
 
   /** Run-time checks of the dynamic groups (group.html; native error texts, measured black box). */
   checkDynamicGroups(): void {

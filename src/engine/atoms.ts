@@ -104,6 +104,7 @@ export const emptyState = (
   f: new Float64Array(0),
   image: new Int32Array(0),
   id: new Int32Array(0),
+  order: new Int32Array(0),
   mask: new Int32Array(0),
   molecule: new Int32Array(0),
   q: new Float64Array(0),
@@ -164,6 +165,10 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     let next = maxAtomId(s);
     for (let i = n0; i < n; i++) s.id[i] = ++next;
   }
+  // new atoms go to the end of native storage
+  nativeOrder(s);
+  s.order = growI(s.order, n);
+  for (let i = n0; i < n; i++) s.order[i] = i;
   s.mask = growI(s.mask, n); s.mask.fill(ALL_GROUP_BIT | (a.mask ?? 0), n0, n);
   s.molecule = growI(s.molecule, n);
   if (typeof a.molecule === 'number') s.molecule.fill(a.molecule, n0, n);
@@ -221,10 +226,20 @@ export const gatherAtoms = (s: SimState, idx: ArrayLike<number>): NewAtoms => {
  * Bonded entries that reference a deleted atom are removed too.
  */
 export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
+  // Measured with native LAMMPS (black box, atoms 1..10, delete 2 3 7 with compress no): native
+  // storage becomes 1 10 9 4 5 6 8, i.e. walking its list, a deleted atom's slot takes the last
+  // atom of the list, which is then checked in turn.
+  const ord = Array.from(nativeOrder(s));
+  let m = ord.length;
+  for (let p = 0; p < m;) {
+    if (del[ord[p]]) { ord[p] = ord[m - 1]; m--; } else p++;
+  }
+  const newIndex = new Int32Array(s.n).fill(-1);
   let k = 0;
   const gone = new Set<number>();
   for (let i = 0; i < s.n; i++) {
     if (del[i]) { gone.add(s.id[i]); continue; }
+    newIndex[i] = k;
     if (k !== i) {
       for (let d = 0; d < 3; d++) {
         s.x[3 * k + d] = s.x[3 * i + d]; s.v[3 * k + d] = s.v[3 * i + d];
@@ -247,6 +262,8 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
   }
   const removed = s.n - k;
   if (removed === 0) return 0;
+  s.order = new Int32Array(k);
+  for (let p = 0; p < m; p++) s.order[p] = newIndex[ord[p]];
   s.n = k;
   s.x = s.x.slice(0, 3 * k); s.v = s.v.slice(0, 3 * k); s.f = s.f.slice(0, 3 * k);
   s.image = s.image.slice(0, 3 * k); s.type = s.type.slice(0, k); s.id = s.id.slice(0, k);
@@ -260,6 +277,15 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
     filterTopo(list, (ids) => !ids.some((id) => gone.has(id)));
   }
   return removed;
+};
+
+/** The native storage order (SimState.order), reset to the engine's order if it does not fit the atoms. */
+export const nativeOrder = (s: SimState): Int32Array => {
+  if (!s.order || s.order.length !== s.n) {
+    s.order = new Int32Array(s.n);
+    for (let i = 0; i < s.n; i++) s.order[i] = i;
+  }
+  return s.order;
 };
 
 /** id -> index lookup (index -1 = no such atom). Rebuild after atoms change. */

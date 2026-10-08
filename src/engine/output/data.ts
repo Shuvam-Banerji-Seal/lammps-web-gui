@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
-import { appendAtoms, emptyState, isMolecularStyle, maxAtomId, pushTopo, sphereMass } from '../atoms';
+import { appendAtoms, emptyState, isMolecularStyle, maxAtomId, nativeOrder, pushTopo, sphereMass } from '../atoms';
 import { makeBox } from '../domain';
 
 /*
@@ -417,9 +417,9 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   // (the order read_data/create_atoms added them), not sorted by ID; each
   // topology section is grouped by its owning atom in that same order (bonds
   // by the first atom, angles, dihedrals and impropers by the second), keeps
-  // the read order within one owner, and is renumbered from 1. Native's
-  // periodic spatial re-sort of atoms (atom_modify sort) is not reproduced.
-  const order = Array.from({ length: s.n }, (_, i) => i);
+  // the read order within one owner, and is renumbered from 1. Storage order
+  // is native's (SimState.order, including its spatial sort at run setup).
+  const order = nativeOrder(s);
   const cols = STYLE_COLS[s.atomStyle];
   for (const i of order) {
     const v = cols.map((c) => {
@@ -444,7 +444,7 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   let maxId = 0;
   for (let i = 0; i < s.n; i++) if (s.id[i] > maxId) maxId = s.id[i];
   const local = new Int32Array(maxId + 1).fill(-1);
-  for (let i = 0; i < s.n; i++) local[s.id[i]] = i;
+  order.forEach((i, k) => { local[s.id[i]] = k; });
   const slot = (id: number): number => (id <= maxId ? local[id] : -1);
   for (const [list, title, owner] of [[t.bonds, 'Bonds', 0], [t.angles, 'Angles', 1], [t.dihedrals, 'Dihedrals', 1], [t.impropers, 'Impropers', 1]] as const) {
     if (!list.n) continue;

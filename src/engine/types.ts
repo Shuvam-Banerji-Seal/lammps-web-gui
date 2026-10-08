@@ -130,6 +130,13 @@ export interface SimState {
   image: Int32Array;
   /** Atom IDs, 1-based and stable for the whole session. */
   id: Int32Array;
+  /**
+   * Native LAMMPS storage order: order[k] is the index of the atom that native LAMMPS (one process)
+   * keeps at position k of its atom list. The engine never permutes its own arrays; commands whose
+   * results depend on that order (per-atom random draws, unsorted dumps, write_data, ID
+   * compression) walk this list. Kept by atoms.ts (append, delete) and System.sortAtoms.
+   */
+  order: Int32Array;
   /** Group membership bits (bit 0 = group all). */
   mask: Int32Array;
   /** Molecule ID per atom (0 = none). */

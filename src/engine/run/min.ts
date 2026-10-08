@@ -89,9 +89,10 @@ export const minimize = async (
   const evaluate = (): number => {
     evaluations++;
     sys.bump();
-    if (evaluations === 1) sys.setupNeighbors();
+    if (evaluations === 1) { sys.setupNeighbors(); sys.sortAtoms(true); }
     else if (nb.decide(s.step, s, sys.geom)) {
       sys.pbc();
+      sys.sortAtoms(false);
       nb.build(s, sys.geom, s.step);
     } else nb.forwardComm(s, sys.geom);
     for (const f of fixesPre) f.minPreForce!();

@@ -3,7 +3,7 @@ import { int, num, yesno, latticeScale, keywords, numOrVar } from './args';
 import { StyleError, typeBounds } from '../force/types';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, massOf, gatherAtoms, hasCharge, hasMolecule } from '../atoms';
+import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, massOf, gatherAtoms, hasCharge, hasMolecule, nativeOrder } from '../atoms';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import {
   BIG, BlockRegion, CompoundRegion, ConeRegion, EllipsoidRegion, PlaneRegion, PrismRegion, SphereRegion,
@@ -91,7 +91,16 @@ const atomModify: Handler = ({ sys }, a) => {
     sys.log(`atom_modify first ${g}: accepted; the browser engine does not reorder its atom storage (results are unchanged, only the internal order differs)`);
   }
   if (kw.get('map') && !['array', 'hash', 'yes'].includes(kw.get('map')![0])) throw new StyleError('atom_modify map must be array, hash or yes');
-  void sys;
+  // atom_modify.html: "*sort* values = Nfreq binsize"; the order matters for per-atom random draws
+  // and unsorted output (SimState.order, System.sortAtoms)
+  if (kw.has('sort')) {
+    const [nf, bs] = kw.get('sort')!;
+    const nfreq = Number(nf), binsize = Number(bs);
+    if (!Number.isInteger(nfreq) || nfreq < 0) throw new StyleError(`atom_modify sort: Nfreq must be an integer >= 0, got '${nf}'`);
+    if (!Number.isFinite(binsize) || binsize < 0) throw new StyleError(`atom_modify sort: binsize must be a number >= 0, got '${bs}'`);
+    sys.sortEvery = nfreq;
+    sys.sortBinsize = binsize;
+  }
 };
 
 /** Single-process / no-accelerator commands: accepted, with what they mean here. */
@@ -665,11 +674,14 @@ const writeDataCmd: Handler = ({ sys }, a) => {
   }
   // the box must be current (shrink-wrapped faces, remapped atoms): write_data "calls ... pbc" via a setup.
   // Measured with native LAMMPS: atoms that drifted out of a periodic box since the last reneighboring
-  // are written wrapped back in, so remap them even when forces are current.
+  // are written wrapped back in, so remap them even when forces are current. Measured likewise: the
+  // forces are not recomputed (fx of an atom after a fix langevin run is unchanged by write_data,
+  // random force included), so the wrapped state keeps the forces of the last run.
+  const wasCurrent = sys.hasForces;
   sys.pbc();
   sys.nb.lastBuild = -1;
   sys.bump();
-  sys.forces();
+  if (wasCurrent) sys.forcesCurrent(); else sys.forces();
   sys.writeFile(a[0], writeData(sys, { nocoeff, pairStyle, nofix }), false);
   sys.log(`Wrote ${sys.state.n} atoms to ${a[0]}`);
 };
@@ -1086,7 +1098,8 @@ const velocity: Handler = ({ sys }, a) => {
     if (!s.rmass && !(s.massByType[t] > 0)) throw new StyleError(`velocity: the mass of atom type ${t} is not set`);
   }
   const members: number[] = [];
-  for (let i = 0; i < s.n; i++) if (s.mask[i] & bit) members.push(i);
+  // native order (SimState.order): loop local draws and the sums follow native's atom list
+  for (const i of nativeOrder(s)) if (s.mask[i] & bit) members.push(i);
   // "If this keyword is not specified, create and scale calculate temperature using a compute ...
   //  compute velocity_temp group-ID temp"
   const tempCompute = () => {
@@ -1350,9 +1363,9 @@ const deleteAtomsCmd: Handler = ({ sys }, a) => {
   const n = sys.deleteAtoms(del);
   const compress = kw.has('compress') ? yesno(kw.get('compress')![0], 'compress') : true;
   if (compress && n > 0 && s.topo.bonds.n === 0 && s.topo.angles.n === 0) {
-    // "compress yes ... atom IDs are re-assigned so that they run from 1 to N"
-    const order = Array.from({ length: s.n }, (_, i) => i).sort((p, q) => s.id[p] - s.id[q]);
-    order.forEach((i, k) => { s.id[i] = k + 1; });
+    // "compress yes ... atom IDs are re-assigned so that they run from 1 to N"; measured with
+    // native LAMMPS (black box): in the order of its atom list (SimState.order), not of the old IDs
+    nativeOrder(s).forEach((i, k) => { s.id[i] = k + 1; });
     sys.atomsChanged();
   }
   sys.log(`Deleted ${n} atoms, new total = ${s.n}`);

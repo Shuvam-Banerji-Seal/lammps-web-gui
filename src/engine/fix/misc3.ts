@@ -3,7 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { globalScalar, parseRef, type Ref } from '../refs';
 import { BlockRegion, ConeRegion, SphereRegion, type Region } from '../region';
-import { massOf } from '../atoms';
+import { massOf, nativeOrder } from '../atoms';
 import { RanMars } from '../rng';
 
 /*
@@ -613,7 +613,8 @@ export class FixWallReflectStochastic extends Fix {
     const sp: number[] = this.unitsMode === 'lattice' && sys.lattice ? [...sys.lattice.spacing] : [1, 1, 1];
     const pos = this.faces.map((f) => (f.pos === null ? (f.lo ? g.lo[f.dim] : g.hi[f.dim]) : f.pos * (this.unitsMode === 'lattice' ? sp[f.dim] : 1)));
     const { x, v, mask } = s;
-    for (let i = 0; i < s.n; i++) {
+    // per-atom draws follow native LAMMPS's atom list (SimState.order)
+    for (const i of nativeOrder(s)) {
       if (!(mask[i] & this.groupBit)) continue;
       for (let k = 0; k < this.faces.length; k++) {
         const f = this.faces[k];

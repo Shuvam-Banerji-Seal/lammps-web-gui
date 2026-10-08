@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { formatNumber } from '../script';
-import { hasChargeStyle, isMolecularStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule } from '../atoms';
+import { hasChargeStyle, isMolecularStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
 
 /*
  * Per-atom snapshots — docs.lammps.org/dump.html and dump_modify.html.
@@ -276,7 +276,8 @@ export class Dump {
     // atoms to write
     const reg = this.region ? sys.region(this.region) : null;
     const rows: number[] = [];
-    for (let i = 0; i < s.n; i++) {
+    // unsorted dumps list atoms in native LAMMPS's storage order (SimState.order)
+    for (const i of nativeOrder(s)) {
       if (!(s.mask[i] & this.groupBit)) continue;
       if (reg && !reg.match(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2])) continue;
       rows.push(i);

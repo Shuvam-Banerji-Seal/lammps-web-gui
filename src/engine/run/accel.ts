@@ -100,6 +100,7 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
   // setup forces through the backend (fix setup: enforce2d zeroes vz/fz)
   sys.ff.init(s, sys.nb, g, sys.styleContext());
   remap();
+  sys.sortAtoms(true);
   sys.bump();
   store(sys, await a.backend.compute(s, a.table));
   for (const f of sys.fixes) f.setup();

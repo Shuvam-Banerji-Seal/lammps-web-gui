@@ -1,6 +1,7 @@
 import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { formatNumber } from '../script';
+import { localDumpColumns, localColumnSource } from '../compute/local_dump';
 import { hasChargeStyle, isMolecularStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
 
 /*
@@ -47,7 +48,7 @@ export const fmt = (f: string): ((v: number) => string) => {
   return h;
 };
 
-export type DumpStyle = 'atom' | 'custom' | 'xyz' | 'extxyz' | 'yaml';
+export type DumpStyle = 'atom' | 'custom' | 'xyz' | 'extxyz' | 'yaml' | 'local';
 
 export class Dump {
   readonly groupBit: number;
@@ -73,6 +74,8 @@ export class Dump {
   region: string | null = null;
   thresh: { col: string; op: string; value: number | 'LAST'; last?: Map<number, number> }[] = [];
   pad = 0;
+  /** dump_modify label (dump local): the word in the header lines, default ENTRIES. */
+  label = 'ENTRIES';
   lastStep = -1;
   private opened = false;
   private nextStep = -1;
@@ -89,6 +92,8 @@ export class Dump {
     } else if (style === 'xyz' || style === 'extxyz') {
       if (cols.length) throw new StyleError(`dump ${style} takes no attributes`);
       this.columns = ['type', 'x', 'y', 'z'];
+    } else if (style === 'local') {
+      this.columns = localDumpColumns(sys, id, cols);
     } else {
       if (!cols.length) throw new StyleError('dump custom needs a list of attributes, e.g. id type x y z');
       const out: string[] = [];
@@ -225,6 +230,7 @@ export class Dump {
           k += 4;
           break;
         }
+        case 'label': if (!v) throw new StyleError('dump_modify label needs a string'); this.label = v; k += 2; break;
         case 'precision': case 'sfactor': case 'tfactor': case 'maxfiles': case 'nfile': case 'fileper': case 'at': numArg(v, key); k += 2; break;
         case 'triclinic/general': if (yesno(v, key)) throw new StyleError('dump_modify triclinic/general yes is not supported'); k += 2; break;
         case 'types': if (v !== 'numeric') throw new StyleError('dump_modify types labels needs type labels (not supported)'); k += 2; break;
@@ -272,6 +278,10 @@ export class Dump {
     const step = s.step;
     this.lastStep = step;
     if (this.everyVar) this.nextStep = Math.trunc(sys.equalVariable(this.everyVar));
+    if (this.style === 'local') {
+      this.writeLocal(step);
+      return;
+    }
     const g = sys.geom;
     // atoms to write
     const reg = this.region ? sys.region(this.region) : null;
@@ -352,6 +362,61 @@ export class Dump {
       for (const i of keep) {
         lines.push(this.columns.map((_, k) => (line?.[k] ? fmt(line[k])(values[k][i]) : formatters[k](values[k][i]))).join(' '));
       }
+    }
+    const multi = this.file.includes('*');
+    const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
+    const name = multi ? this.file.replace('*', stepText) : this.file;
+    const appendNow = multi ? false : this.opened || this.append;
+    sys.writeFile(name, lines.join('\n') + '\n', appendNow);
+    this.opened = true;
+  }
+
+  /**
+   * dump local: "ITEM: TIMESTEP", "ITEM: NUMBER OF ENTRIES", the box, "ITEM: ENTRIES ..." (the word
+   * ENTRIES is replaced by dump_modify label), then one line per local datum. Measured with native
+   * LAMMPS (black box): every value, the index included, is followed by one space; dump_modify header
+   * no leaves out all header lines.
+   */
+  private writeLocal(step: number): void {
+    const sys = this.sys;
+    const s = sys.state;
+    const g = sys.geom;
+    if (this.thresh.length || this.region) throw new StyleError(`dump ${this.id} local: thresh and region are not supported by the browser engine`);
+    const srcs = this.columns.map((c) => localColumnSource(sys, c));
+    let nrows = -1;
+    for (const c of this.columns) {
+      if (c === 'index') continue;
+      const m = /^c_([A-Za-z0-9_]+)/.exec(c)!;
+      const r = sys.compute(m[1]).localRows;
+      if (nrows >= 0 && r !== nrows) throw new StyleError(`dump ${this.id} local: the computes do not have the same number of local entries (${nrows} and ${r})`);
+      nrows = r;
+    }
+    if (nrows < 0) nrows = 0;
+    const lines: string[] = [];
+    if (this.header) {
+      lines.push('ITEM: TIMESTEP', String(step), `ITEM: NUMBER OF ${this.label}`, String(nrows));
+      const bnd = s.box.boundary.map((f) => f[0] + f[1]).join(' ');
+      const e = (v: number) => formatNumber(v, '%-1.16e');
+      if (g.triclinic) {
+        const [xy, xz, yz] = s.box.tilt;
+        const xlob = s.box.lo[0] + Math.min(0, xy, xz, xy + xz), xhib = s.box.hi[0] + Math.max(0, xy, xz, xy + xz);
+        const ylob = s.box.lo[1] + Math.min(0, yz), yhib = s.box.hi[1] + Math.max(0, yz);
+        lines.push(`ITEM: BOX BOUNDS xy xz yz ${bnd}`, `${e(xlob)} ${e(xhib)} ${e(xy)}`, `${e(ylob)} ${e(yhib)} ${e(xz)}`, `${e(s.box.lo[2])} ${e(s.box.hi[2])} ${e(yz)}`);
+      } else {
+        lines.push(`ITEM: BOX BOUNDS ${bnd}`, ...[0, 1, 2].map((d) => `${e(s.box.lo[d])} ${e(s.box.hi[d])}`));
+      }
+      lines.push(`ITEM: ${this.label} ${this.columns.map((c, k) => this.colnames.get(k) ?? c).join(' ')}`);
+    }
+    const formatters = this.columns.map((c, k) => fmt(this.formatCol.get(k) ?? (c === 'index' ? this.formatInt : this.formatFloat)));
+    const line = this.formatLine ? this.formatLine.split(/\s+/).filter(Boolean) : null;
+    for (let r = 0; r < nrows; r++) {
+      let text = '';
+      this.columns.forEach((_, k) => {
+        const src = srcs[k];
+        const v = src ? src.data[r * src.ncol + src.col] : r + 1;
+        text += (line?.[k] ? fmt(line[k])(v) : formatters[k](v)) + ' ';
+      });
+      lines.push(text);
     }
     const multi = this.file.includes('*');
     const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);

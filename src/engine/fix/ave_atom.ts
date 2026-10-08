@@ -291,6 +291,8 @@ export class FixAveAtom extends Fix {
 interface HistoInput {
   ref: Ref;
   peratom: boolean;
+  /** Local values of a compute (every row, or one column, is tallied). */
+  local?: boolean;
 }
 
 const HISTO_KEYWORDS = new Set([
@@ -367,7 +369,7 @@ export class FixAveHisto extends Fix {
     this.fileName = null;
     this.fileAppend = false;
     this.overwriteFile = false;
-    let kindFlag: 'global' | 'peratom' | null = null;
+    let kindFlag: 'global' | 'peratom' | 'local' | null = null;
     let file: string | null = null;
     let append: string | null = null;
     const words: string[] = [];
@@ -394,7 +396,6 @@ export class FixAveHisto extends Fix {
           if (v !== 'global' && v !== 'peratom' && v !== 'local') {
             throw new StyleError(`${what}: kind must be global, peratom or local, got '${v}'`);
           }
-          if (v === 'local') throw new StyleError(`${what}: kind local is not supported (the engine has no local quantities)`);
           kindFlag = v;
           k += 2;
           break;
@@ -465,9 +466,10 @@ export class FixAveHisto extends Fix {
   }
 
   /** Resolves one input word to a global or per-atom source, per the mode/kind rules. */
-  private resolveInput(w: string, kindFlag: 'global' | 'peratom' | null): HistoInput {
+  private resolveInput(w: string, kindFlag: 'global' | 'peratom' | 'local' | null): HistoInput {
     const what = `fix ${this.id} (ave/histo)`;
     const r = parseRef(w, true);
+    if (kindFlag === 'local' && r.kind !== 'c') throw new StyleError(`${what}: ${w}: kind local needs a compute input (c_ID)`);
     if (r.kind === 'attr') return { ref: r, peratom: true };
     if (r.kind === 'v') {
       const v = this.sys.vars.get(r.id);
@@ -493,6 +495,18 @@ export class FixAveHisto extends Fix {
     }
     const obj = r.kind === 'c' ? this.sys.compute(r.id) : this.sys.fix(r.id);
     const kind = r.kind === 'c' ? 'compute' : 'fix';
+    // local values (fix_ave_histo.html: "*kind* arg = *global* or *peratom* or *local*"): a compute's
+    // local vector or array column, in mode vector
+    if (r.kind === 'c' && (kindFlag === 'local' || (kindFlag === null && this.sys.compute(r.id).localFlag))) {
+      const comp = this.sys.compute(r.id);
+      if (!comp.localFlag) throw new StyleError(`${what}: ${w}: compute ${r.id} does not calculate local values`);
+      if (this.mode !== 'vector') throw new StyleError(`${what}: ${w}: local values can only be histogrammed in mode vector`);
+      const cols = comp.sizeLocalCols;
+      if (r.index === null && cols !== 0) throw new StyleError(`${what}: ${w}: it calculates a local array; give a column, e.g. ${w}[1]`);
+      if (r.index !== null && (cols === 0 || r.index > cols)) throw new StyleError(`${what}: ${w}: column out of range 1..${cols}`);
+      return { ref: r, peratom: false, local: true };
+    }
+    if (kindFlag === 'local') throw new StyleError(`${what}: ${w}: kind local needs a compute input (c_ID)`);
     let peratom: boolean;
     if (kindFlag === 'peratom') peratom = true;
     else if (kindFlag === 'global') peratom = false;
@@ -568,7 +582,13 @@ export class FixAveHisto extends Fix {
     const sys = this.sys;
     const n = sys.state.n;
     for (const inp of this.inputs) {
-      if (inp.peratom) {
+      if (inp.local) {
+        const comp = sys.compute(inp.ref.id);
+        const data = comp.localValues();
+        const ncol = Math.max(1, comp.sizeLocalCols);
+        const col = inp.ref.index === null ? 0 : inp.ref.index - 1;
+        for (let r = 0; r < comp.localRows; r++) this.tally(data[r * ncol + col]);
+      } else if (inp.peratom) {
         // "For per-atom input values, only atoms in the group contribute to the histogram"
         const vals = peratomValues(sys, inp.ref);
         for (let i = 0; i < n; i++) {

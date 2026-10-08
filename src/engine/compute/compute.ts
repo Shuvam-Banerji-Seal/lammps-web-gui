@@ -36,6 +36,14 @@ export abstract class Compute {
   sizeArrayCols = 0;
   /** 0 = per-atom vector, >0 = per-atom array with that many columns. */
   sizePeratomCols = 0;
+  /**
+   * Local data (one row per bond, angle, pair, ...): localFlag set, sizeLocalCols 0 = local vector,
+   * >0 = local array with that many columns. localValues() returns row-major rows x max(1, cols).
+   */
+  localFlag = false;
+  sizeLocalCols = 0;
+  /** Rows of the local data after the last evaluation (valid after localValues()). */
+  localRows = 0;
   /** 1 = extensive (normalized by N with thermo_modify norm yes), 0 = intensive. */
   extscalar = 0;
   extvector = 0;
@@ -57,6 +65,8 @@ export abstract class Compute {
   private epochVector = -1;
   private epochArray = -1;
   private epochPeratom = -1;
+  private epochLocal = -1;
+  private localData: Float64Array<ArrayBuffer> = new Float64Array(0);
 
   // temperature computes
   dof = 0;
@@ -116,15 +126,27 @@ export abstract class Compute {
     return this.sizePeratomCols === 0 ? this.vectorAtom : this.arrayAtom;
   }
 
+  /** Local values, row-major (see localFlag); cached per state epoch like the others. */
+  localValues(): Float64Array<ArrayBuffer> {
+    if (!this.localFlag) throw new StyleError(`compute ${this.id} does not calculate local values`);
+    if (this.epochLocal !== this.sys.epoch) {
+      this.localData = this.computeLocal();
+      this.epochLocal = this.sys.epoch;
+    }
+    return this.localData;
+  }
+
   /** Forget cached values (the state changed without an epoch bump). */
   invalidate(): void {
-    this.epochScalar = this.epochVector = this.epochArray = this.epochPeratom = -1;
+    this.epochScalar = this.epochVector = this.epochArray = this.epochPeratom = this.epochLocal = -1;
   }
 
   protected computeScalar(): number { throw new StyleError(`compute ${this.id} has no scalar`); }
   protected computeVector(): void { throw new StyleError(`compute ${this.id} has no vector`); }
   protected computeArray(): void { throw new StyleError(`compute ${this.id} has no array`); }
   protected computePeratom(): void { throw new StyleError(`compute ${this.id} has no per-atom values`); }
+  /** Returns the row-major local data and sets localRows. */
+  protected computeLocal(): Float64Array<ArrayBuffer> { throw new StyleError(`compute ${this.id} has no local values`); }
 
   /** compute_modify keyword; returns values consumed (0 = unknown keyword). */
   modify(key: string, values: string[]): number {

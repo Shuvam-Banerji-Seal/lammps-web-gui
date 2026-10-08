@@ -1,0 +1,28 @@
+# oracle: angle/local, dihedral/local, improper/local and property/local of the same molecule
+# oracle-inputs: w11local_mol.data
+# oracle-files: w11local_angle.local w11local_dihedral.local w11local_improper.local
+units           lj
+atom_style      full
+read_data       w11local_mol.data
+bond_style      harmonic
+bond_coeff      * 100.0 1.0
+angle_style     harmonic
+angle_coeff     * 10.0 110
+dihedral_style  harmonic
+dihedral_coeff  * 2.0 1 2
+improper_style  harmonic
+improper_coeff  * 3.0 20.0
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+compute         al all angle/local theta eng
+compute         ap all property/local aatom1 aatom2 aatom3 atype
+compute         dl all dihedral/local phi
+compute         dp all property/local datom1 datom2 datom3 datom4 dtype
+compute         il all improper/local chi
+compute         ip all property/local iatom1 iatom2 iatom3 iatom4 itype
+dump            1 all local 1 w11local_angle.local index c_al[*] c_ap[*]
+dump            2 all local 1 w11local_dihedral.local index c_dl c_dp[*]
+dump            3 all local 1 w11local_improper.local index c_il c_ip[*]
+thermo_style    custom step pe ebond
+thermo_modify   format float %.15g
+run             0

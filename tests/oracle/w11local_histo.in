@@ -1,0 +1,15 @@
+# oracle: fix ave/histo of a bond/local vector (kind local, mode vector)
+# oracle-inputs: w11local_mol.data
+# oracle-files: w11local_histo.histo
+units           lj
+atom_style      full
+read_data       w11local_mol.data
+bond_style      harmonic
+bond_coeff      * 100.0 1.0
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+compute         bl all bond/local dist
+fix             h all ave/histo 1 1 1 0 3 5 c_bl mode vector file w11local_histo.histo
+thermo_style    custom step pe ebond
+thermo_modify   format float %.15g
+run             0

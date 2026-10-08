@@ -151,7 +151,7 @@ const runStyle: Handler = ({ sys }, a) => {
   throw new StyleError(`unknown run_style '${style ?? ''}' (verlet, verlet/split, respa or respa/omp)`);
 };
 
-const DUMP_STYLES: DumpStyle[] = ['atom', 'custom', 'xyz', 'extxyz', 'yaml'];
+const DUMP_STYLES: DumpStyle[] = ['atom', 'custom', 'xyz', 'extxyz', 'yaml', 'local'];
 
 /** dump ID group style N file args — dump.html. */
 const dump: Handler = ({ sys }, a) => {

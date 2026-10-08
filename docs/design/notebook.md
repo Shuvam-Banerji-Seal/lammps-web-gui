@@ -71,18 +71,18 @@ The block below is checked against the engine's registries by
 | Kind | Supported |
 |---|---|
 | commands | `angle_coeff` `angle_style` `atom_modify` `atom_style` `balance` `bond_coeff` `bond_style` `boundary` `change_box` `clear` `comm_modify` `comm_style` `compute` `compute_modify` `create_atoms` `create_bonds` `create_box` `delete_atoms` `delete_bonds` `dielectric` `dihedral_coeff` `dihedral_style` `dimension` `displace_atoms` `dump` `dump_modify` `echo` `fix` `fix_modify` `group` `if` `improper_coeff` `improper_style` `include` `info` `jump` `kspace_modify` `kspace_style` `label` `lattice` `log` `mass` `min_modify` `min_style` `minimize` `molecule` `neigh_modify` `neighbor` `newton` `next` `pair_coeff` `pair_modify` `pair_style` `partition` `print` `processors` `quit` `read_data` `region` `replicate` `reset_timestep` `run` `set` `special_bonds` `suffix` `thermo` `thermo_modify` `thermo_style` `timer` `timestep` `uncompute` `undump` `unfix` `units` `variable` `velocity` `write_data` `write_dump` |
-| pair_style | `born` `buck` `buck/coul/cut` `coul/long` `gauss` `hybrid` `hybrid/molecular` `hybrid/overlay` `hybrid/scaled` `lj/class2` `lj/cubic` `lj/cut` `lj/cut/coul/cut` `lj/cut/coul/debye` `lj/cut/coul/dsf` `lj/cut/coul/long` `lj/cut/coul/wolf` `lj/expand` `lj/gromacs` `lj/smooth` `lj/smooth/linear` `lj96/cut` `mie/cut` `morse` `soft` `yukawa` `zero` |
+| pair_style | `born` `born/coul/long` `buck` `buck/coul/cut` `buck/coul/long` `colloid` `coul/cut` `coul/debye` `coul/dsf` `coul/long` `coul/wolf` `eam` `eam/alloy` `eam/fs` `gauss` `gran/hertz/history` `gran/hooke` `gran/hooke/history` `granular` `hybrid` `hybrid/molecular` `hybrid/overlay` `hybrid/scaled` `lj/charmm/coul/charmm` `lj/charmm/coul/charmm/implicit` `lj/charmm/coul/long` `lj/class2` `lj/cubic` `lj/cut` `lj/cut/coul/cut` `lj/cut/coul/debye` `lj/cut/coul/dsf` `lj/cut/coul/long` `lj/cut/coul/wolf` `lj/expand` `lj/gromacs` `lj/relres` `lj/smooth` `lj/smooth/linear` `lj96/cut` `mie/cut` `morse` `snap` `soft` `sw` `sw/mod` `table` `tersoff` `vashishta` `vashishta/table` `yukawa` `yukawa/colloid` `zbl` `zero` |
 | bond_style | `class2` `fene` `fene/expand` `gromos` `harmonic` `harmonic/shift` `harmonic/shift/cut` `morse` `nonlinear` `zero` |
 | angle_style | `charmm` `cosine` `cosine/delta` `cosine/periodic` `cosine/shift` `cosine/squared` `fourier` `fourier/simple` `harmonic` `quartic` `zero` |
 | dihedral_style | `cosine/shift/exp` `fourier` `harmonic` `helix` `multi/harmonic` `nharmonic` `opls` `quadratic` `zero` |
-| improper_style | `harmonic` |
+| improper_style | `cossq` `cvff` `distance` `fourier` `harmonic` `umbrella` `zero` |
 | kspace_style | `ewald` `pppm` |
-| fix | `enforce2d` `langevin` `nph` `npt` `nve` `nvt` `rattle` `rigid` `rigid/nve` `rigid/nve/small` `rigid/small` `shake` `temp/berendsen` `temp/csld` `temp/csvr` `temp/rescale` |
-| compute | `ke` `pe` `pressure` `temp` |
+| fix | `addforce` `ave/atom` `ave/chunk` `ave/histo` `ave/time` `aveforce` `balance` `deform` `deposit` `efield` `ehex` `enforce2d` `freeze` `gravity` `heat` `indent` `langevin` `lineforce` `momentum` `nph` `nph/sphere` `npt` `npt/sphere` `nve` `nve/limit` `nve/noforce` `nve/sphere` `nvt` `nvt/sllod` `nvt/sphere` `planeforce` `pour` `print` `property/atom` `rattle` `recenter` `rigid` `rigid/nve` `rigid/nve/small` `rigid/nvt` `rigid/nvt/small` `rigid/small` `setforce` `shake` `spring` `spring/self` `temp/berendsen` `temp/csld` `temp/csvr` `temp/rescale` `vector` `viscous` `wall/gran` `wall/gran/region` `wall/harmonic` `wall/lj1043` `wall/lj126` `wall/lj93` `wall/morse` `wall/reflect` `wall/reflect/stochastic` `wall/region` |
+| compute | `chunk/atom` `com` `com/chunk` `coord/atom` `displace/atom` `erotate/sphere` `gyration` `ke` `ke/atom` `msd` `msd/chunk` `orientorder/atom` `pe` `pe/atom` `pressure` `property/atom` `rdf` `reduce` `reduce/region` `sna/atom` `stress/atom` `temp` `temp/com` `temp/deform` `temp/partial` `temp/region` `temp/sphere` `vacf` `voronoi/atom` |
 <!-- coverage:end -->
 
 Not supported (an error names each): restart files, `atom_style` other than
-atomic / charge / bond / angle / molecular / full, `pppm/disp`, `msm`,
+atomic / charge / bond / angle / molecular / full / sphere, `pppm/disp`, `msm`,
 `kspace_modify diff ad`, `run_style`, atom-style `hybrid/scaled` factors.
 
 ## Architecture

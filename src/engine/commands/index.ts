@@ -3,6 +3,8 @@ import { SETUP_COMMANDS } from './setup';
 import { FORCEFIELD_COMMANDS } from './forcefield';
 import { RUN_COMMANDS } from './run';
 import { MISC_COMMANDS, UNAVAILABLE_COMMANDS } from './misc';
+import { RESTART_COMMANDS } from './restart';
+import { RERUN_COMMANDS } from './rerun';
 
 export { UNAVAILABLE_COMMANDS };
 
@@ -10,5 +12,5 @@ export type { Ctx, Handler } from './args';
 
 /** Every command the browser engine implements (control flow lives in session.ts). */
 export const COMMANDS: Record<string, Handler> = {
-  ...SETUP_COMMANDS, ...FORCEFIELD_COMMANDS, ...RUN_COMMANDS, ...MISC_COMMANDS,
+  ...SETUP_COMMANDS, ...FORCEFIELD_COMMANDS, ...RUN_COMMANDS, ...MISC_COMMANDS, ...RESTART_COMMANDS, ...RERUN_COMMANDS,
 };

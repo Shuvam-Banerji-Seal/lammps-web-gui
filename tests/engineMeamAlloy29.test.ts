@@ -230,9 +230,12 @@ describe('multi-element MEAM: parser subset and StyleErrors', () => {
     expect(() => parseMeamParams('erose_form = 3\n', 'par', 2)).toThrow(/erose_form/);
   });
 
-  it('per-triplet Cmin(I,J,K)/Cmax(I,J,K) in a multi-element potential is a StyleError naming it (not matched)', () => {
-    expect(() => parseMeamParams('rc = 4\ndelr = 0.1\nCmax(1,1,2) = 3.0\n', 'par', 2)).toThrow(/Cmax/);
-    expect(() => parseMeamParams('rc = 4\ndelr = 0.1\nCmin(1,2,1) = 0.5\n', 'par', 2)).toThrow(/Cmin/);
+  it('per-triplet Cmin(I,J,K)/Cmax(I,J,K) in a multi-element potential are kept per triplet (w33meamtrip_* oracle cases)', () => {
+    const par = parseMeamParams('rc = 4\ndelr = 0.1\nCmax(1,1,2) = 3.0\nCmin(1,2,1) = 0.5\n', 'par', 2);
+    expect(par.cmax3.get('1,1,2')).toBe(3.0);
+    expect(par.cmin3.get('1,2,1')).toBe(0.5);
+    expect(par.opts.Cmin).toBe(2.0);
+    expect(par.opts.Cmax).toBe(2.8);
   });
 
   it('a dia two-element alloy is accepted; a bcc element and lattce(1,2) = l12 are StyleErrors', () => {

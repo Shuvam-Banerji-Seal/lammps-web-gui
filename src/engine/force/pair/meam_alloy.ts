@@ -6,7 +6,7 @@ import { referenceVectors, type ReferenceLattice } from './meam_lattice';
  *   - fcc and dia single-element references (the homonuclear pair term phi_ii and the embedding
  *     reference rho_ref,i use the element's own lattice, as in meam.ts; z is the library coordination);
  *   - heteronuclear pairs with lattce(I,J) = b1 (rock salt) or dia (diamond/zincblende);
- *   - ibar = 0, t0 = 1, rozero = 1, zbl = 0, default Cmin/Cmax, no nn2/delta;
+ *   - ibar = 0, t0 = 1, rozero = 1, zbl = 0, per-triplet Cmin/Cmax, no nn2/delta;
  *   - ialloy = 0, 1 and 2 (docs.lammps.org/pair_meam.html); see densityPartials1 and effT;
  *   - erose_form 0 (with attrac = repuls = 0), 1 and 2 with per-pair attrac(I,J)/repuls(I,J)
  *     (pairErose below; erose_form 0 with nonzero attrac/repuls is refused by the parser).
@@ -52,8 +52,15 @@ import { referenceVectors, type ReferenceLattice } from './meam_lattice';
  *
  * Not verified (and therefore rejected with a StyleError in meam.ts): lattce(I,J) = l12 and other names
  * (the L12 pair term is not the B1/dia form, see the remaining issues of the meam15 report), bcc/hcp/sc
- * elements in an alloy, non-default Cmin/Cmax (per-triplet entries), delta, nn2, and erose_form 0 with
- * nonzero attrac/repuls.
+ * elements in an alloy, delta, nn2, and erose_form 0 with nonzero attrac/repuls.
+ *
+ * Per-triplet Cmin/Cmax (docs.lammps.org/pair_meam.html "Cmin(I,J,K) = Cmin screening parameter when
+ * I-J pair is screened by K (I<=J)"). Measured with native LAMMPS (black box) on a three-element
+ * trimer: the parameter that screens the bond (central c, neighbour j) by the atom k is looked up at
+ * (min(c,j), max(c,j), k), i.e. the bonded pair is sorted and the screening atom is the third index;
+ * a value written in the reversed pair order is stored but not aliased (a trimer with the reversed
+ * entry left at its default keeps the default screening). The screening formula, prefilter bound
+ * Cmax^2/(4(Cmax-1)) and the chain rule are unchanged, evaluated with the triplet's limits.
  */
 
 export interface AlloyElement {
@@ -136,6 +143,16 @@ export interface AlloyOptions {
    * (see effT).
    */
   ialloy?: number;
+  /**
+   * Per-triplet screening limits (docs.lammps.org/pair_meam.html "Cmin(I,J,K) = Cmin screening
+   * parameter when I-J pair is screened by K (I<=J)"). Keyed by (central element c, bond neighbour
+   * element j, screening atom element k): measured with native LAMMPS (black box), the lookup uses
+   * the pair sorted (min(c,j), max(c,j)) and the screening atom as the third index, and the written
+   * index triple is stored exactly as given (a reversed pair entry is not aliased). Undefined means
+   * the uniform Cmin/Cmax defaults.
+   */
+  CminOf?: (c: number, j: number, k: number) => number;
+  CmaxOf?: (c: number, j: number, k: number) => number;
 }
 
 export interface AlloyModel {
@@ -172,10 +189,10 @@ const polyP = (x: number): number => {
 };
 const fcW = (r: number, o: AlloyOptions): number => polyW((o.rc - r) / o.delr);
 const fcP = (r: number, o: AlloyOptions): number => polyP((o.rc - r) / o.delr) * (-1 / o.delr);
-const screenW = (C: number, o: AlloyOptions): number => (C >= o.Cmax ? 1 : polyW((C - o.Cmin) / (o.Cmax - o.Cmin)));
-const screenP = (C: number, o: AlloyOptions): number =>
-  C >= o.Cmax || C <= o.Cmin ? 0 : polyP((C - o.Cmin) / (o.Cmax - o.Cmin)) / (o.Cmax - o.Cmin);
-const ebound = (o: AlloyOptions): number => (o.Cmax * o.Cmax) / (4 * (o.Cmax - 1));
+const screenW = (C: number, cmin: number, cmax: number): number => (C >= cmax ? 1 : polyW((C - cmin) / (cmax - cmin)));
+const screenP = (C: number, cmin: number, cmax: number): number =>
+  C >= cmax || C <= cmin ? 0 : polyP((C - cmin) / (cmax - cmin)) / (cmax - cmin);
+const eboundOf = (cmax: number): number => (cmax * cmax) / (4 * (cmax - 1));
 
 /** Screening S_m and the pair factors f_mk with their C-derivatives (same formulas as meam.ts). */
 interface Screen {
@@ -185,9 +202,8 @@ interface Screen {
   cB: Float64Array;
 }
 
-const screenAll = (nb: Array<{ dx: number; dy: number; dz: number; r: number }>, o: AlloyOptions): Screen => {
+const screenAll = (nb: Array<{ e: number; dx: number; dy: number; dz: number; r: number }>, c: number, o: AlloyOptions): Screen => {
   const N = nb.length;
-  const eb = ebound(o);
   const f = new Float64Array(N * N).fill(1);
   const cA = new Float64Array(N * N), cB = new Float64Array(N * N);
   for (let m = 0; m < N; m++) {
@@ -196,6 +212,10 @@ const screenAll = (nb: Array<{ dx: number; dy: number; dz: number; r: number }>,
     for (let k = 0; k < N; k++) {
       if (k === m) continue;
       const q = nb[k];
+      // Per-triplet limits: the bond is (central c, neighbour p.e), the screening atom is q.e.
+      const cmin = o.CminOf ? o.CminOf(c, p.e, q.e) : o.Cmin;
+      const cmax = o.CmaxOf ? o.CmaxOf(c, p.e, q.e) : o.Cmax;
+      const eb = eboundOf(cmax);
       const A = (q.r * q.r) / rm2;
       const ex = q.dx - p.dx, ey = q.dy - p.dy, ez = q.dz - p.dz;
       const B = (ex * ex + ey * ey + ez * ez) / rm2;
@@ -204,8 +224,8 @@ const screenAll = (nb: Array<{ dx: number; dy: number; dz: number; r: number }>,
       const Dn = 1 - dd * dd;
       const Nn = 2 * (A + B) - dd * dd - 1;
       const C = Nn / Dn;
-      const sp = screenP(C, o);
-      f[m * N + k] = screenW(C, o);
+      const sp = screenP(C, cmin, cmax);
+      f[m * N + k] = screenW(C, cmin, cmax);
       cA[m * N + k] = (sp * ((2 - 2 * dd) * Dn + 2 * dd * Nn)) / (Dn * Dn);
       cB[m * N + k] = (sp * ((2 + 2 * dd) * Dn - 2 * dd * Nn)) / (Dn * Dn);
     }
@@ -459,7 +479,7 @@ const embedFp = (el: AlloyElement, rhoRef: number, rb: number): number => {
  * radial = false gives the reference-structure weights W = S (no radial cutoff; see the reference note in meam.ts).
  */
 const termsOf = (model: AlloyModel, list: AlloyNeighbor[], central: number, radial = true): Term[] => {
-  const sc = screenAll(list, model.opts);
+  const sc = screenAll(list, central, model.opts);
   return list.map((p, m) => {
     const el = model.elements[p.e];
     const W = (radial ? fcW(p.r, model.opts) : 1) * sc.S[m];
@@ -481,7 +501,7 @@ const scaledRho = (
   const terms = termsOf(model, list, central, radial);
   const part = densityPartials(terms, 1, ibar, model.opts.ialloy ?? 0);
   let drho = 0;
-  const sc = screenAll(list, model.opts);
+  const sc = screenAll(list, central, model.opts);
   for (let m = 0; m < list.length; m++) {
     const p = list[m];
     const el = model.elements[p.e];
@@ -493,9 +513,12 @@ const scaledRho = (
   return { rho: part.rb, drho, rho0: part.rho0 };
 };
 
+/** Reference structures hold the first neighbour shell only (nn2 = 0; see refRhoBarPrime in meam.ts). */
+const firstShell = (r: number): number => r * (1 + 1e-6);
+
 /** Neighbour list of the element c's own reference lattice at nearest-neighbour distance r (all neighbours are c). */
 const ownList = (model: AlloyModel, c: number, r: number): AlloyNeighbor[] =>
-  referenceVectors(model.elements[c].lat, r, model.opts.rc).map((v) => ({ e: c, j: -1, dx: v.dx, dy: v.dy, dz: v.dz, r: v.r }));
+  referenceVectors(model.elements[c].lat, r, firstShell(r)).map((v) => ({ e: c, j: -1, dx: v.dx, dy: v.dy, dz: v.dz, r: v.r }));
 
 /** B1 (rock salt) list for central element c with partner p at nearest-neighbour distance r. */
 const b1List = (model: AlloyModel, c: number, p: number, r: number): AlloyNeighbor[] => {
@@ -506,7 +529,7 @@ const b1List = (model: AlloyModel, c: number, p: number, r: number): AlloyNeighb
       for (let k = -m; k <= m; k++) {
         if (!i && !j && !k) continue;
         const dx = i * r, dy = j * r, dz = k * r, rr = Math.hypot(dx, dy, dz);
-        if (rr >= model.opts.rc) continue;
+        if (rr > firstShell(r)) continue;
         const e = (i + j + k) & 1 ? p : c;
         out.push({ e, j: -1, dx, dy, dz, r: rr });
       }
@@ -531,7 +554,7 @@ const diaList = (model: AlloyModel, c: number, p: number, r: number): AlloyNeigh
         if (((i + j + k) & 1) !== 0 || (i === 0 && j === 0 && k === 0)) continue;
         const dx = i * h, dy = j * h, dz = k * h;
         const rr = Math.hypot(dx, dy, dz);
-        if (rr < model.opts.rc) out.push({ e: c, j: -1, dx, dy, dz, r: rr });
+        if (rr <= firstShell(r)) out.push({ e: c, j: -1, dx, dy, dz, r: rr });
       }
   for (let i = -m; i <= m; i++)
     for (let j = -m; j <= m; j++)
@@ -539,7 +562,7 @@ const diaList = (model: AlloyModel, c: number, p: number, r: number): AlloyNeigh
         if (((i + j + k) & 1) !== 0) continue;
         const dx = i * h + s, dy = j * h + s, dz = k * h + s;
         const rr = Math.hypot(dx, dy, dz);
-        if (rr < model.opts.rc) out.push({ e: p, j: -1, dx, dy, dz, r: rr });
+        if (rr <= firstShell(r)) out.push({ e: p, j: -1, dx, dy, dz, r: rr });
       }
   return out;
 };
@@ -630,7 +653,7 @@ export function alloyAtomEnergyGrad(model: AlloyModel, ci: number, nb: AlloyNeig
   const o = model.opts;
   const el = model.elements[ci];
   const terms = termsOf(model, nb, ci);
-  const sc = screenAll(nb, o);
+  const sc = screenAll(nb, ci, o);
   const rb0 = densityPartials(terms, 1, el.ibar ?? 0, o.ialloy ?? 0).rb;
   const rhoRef = model.rhoRef[ci];
   const Fv = embedF(el, rhoRef, rb0);

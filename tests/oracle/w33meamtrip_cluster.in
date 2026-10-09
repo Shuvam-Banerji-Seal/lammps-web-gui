@@ -1,0 +1,41 @@
+# oracle: pair_style meam, per-triplet Cmin/Cmax (w33meamtrip_lib.meam + w33meamtrip.meam, zbl 0), eight isolated trimers in a periodic box, run 0
+# oracle: docs.lammps.org/pair_meam.html "Cmin(I,J,K) = Cmin screening parameter when I-J pair is screened by K (I<=J)". Each trimer is a central atom with one bonded neighbour and one screening neighbour placed so the screening C = 2.402, inside every triplet's [Cmin, Cmax] window; the trimer limbs (A-B-A, B-A-B, C-A-B, A-C-B, C-B-A, B-B-B, A-A-A, C-C-C) pick out the sorted-pair lookups (1,1,1), (1,2,1), (1,2,2), (1,3,2), (2,2,2), (2,3,1) and (3,3,3)
+# oracle-inputs: w33meamtrip_lib.meam w33meamtrip.meam
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-9
+units           metal
+atom_style      atomic
+boundary        p p p
+region          box block 0 60 0 20 0 20
+create_box      3 box
+create_atoms    2 single 5.0 5.0 5.0
+create_atoms    1 single 7.6 5.0 5.0
+create_atoms    1 single 6.3 7.015 5.0
+create_atoms    1 single 15.0 5.0 5.0
+create_atoms    2 single 17.6 5.0 5.0
+create_atoms    2 single 16.3 7.015 5.0
+create_atoms    3 single 25.0 5.0 5.0
+create_atoms    1 single 27.6 5.0 5.0
+create_atoms    2 single 26.3 7.015 5.0
+create_atoms    1 single 35.0 5.0 5.0
+create_atoms    3 single 37.6 5.0 5.0
+create_atoms    2 single 36.3 7.015 5.0
+create_atoms    3 single 45.0 5.0 5.0
+create_atoms    2 single 47.6 5.0 5.0
+create_atoms    1 single 46.3 7.015 5.0
+create_atoms    2 single 5.0 15.0 5.0
+create_atoms    2 single 7.6 15.0 5.0
+create_atoms    2 single 6.3 17.015 5.0
+create_atoms    1 single 15.0 15.0 5.0
+create_atoms    1 single 17.6 15.0 5.0
+create_atoms    1 single 16.3 17.015 5.0
+create_atoms    3 single 25.0 15.0 5.0
+create_atoms    3 single 27.6 15.0 5.0
+create_atoms    3 single 26.3 17.015 5.0
+mass            1 63.546
+mass            2 58.69
+mass            3 58.933
+pair_style      meam
+pair_coeff      * * w33meamtrip_lib.meam A B C w33meamtrip.meam A B C
+thermo_style    custom step pe pxx pyy pzz
+thermo_modify   format float %.15g
+run             0

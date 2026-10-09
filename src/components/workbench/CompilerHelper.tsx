@@ -13,7 +13,7 @@ import {
 } from '../../lammps/compiler';
 import { downloadTextFile } from '../../lammps/exporter';
 import { usePersistentState } from '../../hooks/usePersistentState';
-import { getThemeTokens, isDarkTheme, ThemeTokens, Theme } from '../../theme';
+import { getThemeTokens, isDarkTheme, Theme } from '../../theme';
 import { Copy, Download, Terminal, Monitor, Cpu, Package, Zap, Settings, ChevronDown, ChevronUp, X, Info, SlidersHorizontal } from 'lucide-react';
 
 const CATEGORY_LABELS: Record<string, string> = {

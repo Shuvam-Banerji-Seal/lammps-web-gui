@@ -1,0 +1,1 @@
+{"lammps":"2 Sep 2026","thermo":[{"step":0,"pe":0,"ke":1.25,"f_swap[1]":0,"f_swap[2]":0},{"step":1,"pe":0,"ke":1.25,"f_swap[1]":1,"f_swap[2]":1}],"atoms":[{"id":1,"type":2,"xu":0,"yu":0,"zu":0,"vx":0,"vy":0,"vz":0.5,"fx":0,"fy":0,"fz":0},{"id":2,"type":1,"xu":2,"yu":0,"zu":0,"vx":0,"vy":0,"vz":-2,"fx":0,"fy":0,"fz":0}],"files":{}}

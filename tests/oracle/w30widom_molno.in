@@ -1,0 +1,25 @@
+# oracle: Widom molecule insertion (dimer) without full_energy, lj/cut + harmonic, seed 12345, N=2 M=2
+# oracle-inputs: w30widom_dimer.txt
+units lj
+atom_style molecular
+boundary p p p
+region box block 0 5 0 5 0 5
+create_box 2 box bond/types 1 extra/bond/per/atom 4 extra/special/per/atom 8
+create_atoms 1 single 1.0 1.0 1.0 units box
+create_atoms 2 single 3.0 3.0 3.0 units box
+mass 1 1.0
+mass 2 1.0
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0
+pair_coeff 1 2 1.0 1.0
+pair_coeff 2 2 1.0 1.0
+bond_style harmonic
+bond_coeff 1 50.0 0.8
+set atom 1 mol 1
+set atom 2 mol 1
+molecule m w30widom_dimer.txt
+fix w all widom 2 2 0 12345 1.0 mol m
+thermo_style custom step f_w[1] f_w[2] f_w[3]
+thermo_modify format float %.15g
+thermo 1
+run 8

@@ -1,0 +1,24 @@
+# oracle: fix wall/region on an oblique plane region (side in): the distance is the projection onto the unit normal, force along the normal into the half-space; global energy and wall force vector
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# (regions in box units; the box is larger than the atoms so no atom is wrapped or lost; the plane point and normal are oblique)
+units           lj
+atom_style      atomic
+boundary        f f f
+region          box block -0.5 6.5 -0.5 6.5 -0.5 6.5 units box
+create_box      1 box
+create_atoms    1 single 2.0 2.0 3.0
+create_atoms    1 single 1.5 2.5 2.4
+create_atoms    1 single 3.0 1.5 2.2
+create_atoms    1 single 2.5 3.0 2.5
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+timestep        0.002
+fix             1 all nve
+region          pl plane 1.0 1.0 1.0 1.0 1.0 1.0 side in units box
+fix             2 all wall/region pl lj93 1.0 1.0 2.5
+fix_modify      2 energy yes
+thermo_style    custom step ke pe etotal f_2 f_2[1] f_2[2] f_2[3]
+thermo_modify   format float %.15g
+thermo          5
+run             40

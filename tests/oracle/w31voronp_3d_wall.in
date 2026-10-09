@@ -1,0 +1,20 @@
+# oracle: compute voronoi/atom for a small cluster in a large fully non-periodic (f f f) box — the cells of the wall-adjacent atoms run all the way to the box faces
+# oracle-files: w31voronp_3d_wall.dump
+units           lj
+atom_style      atomic
+boundary        f f f
+lattice         sc 1.0 origin 0.5 0.5 0.5
+region          box block 0 10 0 10 0 10 units box
+region          atoms block 0 3 0 3 0 3 units box
+create_box      1 box
+create_atoms    1 region atoms
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.0 1.0
+neighbor        0.3 nsq
+compute         v all voronoi/atom
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+dump            d all custom 1 w31voronp_3d_wall.dump id type x y z c_v[1] c_v[2]
+dump_modify     d sort id format float %.17g
+run             0

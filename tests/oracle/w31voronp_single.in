@@ -1,0 +1,18 @@
+# oracle: compute voronoi/atom for a single atom in a non-periodic box — the cell is the whole box and surface all is the full box surface
+# oracle-files: w31voronp_single.dump
+units           lj
+atom_style      atomic
+boundary        f f f
+region          box block 0 2 0 3 0 4 units box
+create_box      1 box
+create_atoms    1 single 1.0 1.5 2.0 units box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.0 1.0
+neighbor        0.3 nsq
+compute         v all voronoi/atom surface all
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+dump            d all custom 1 w31voronp_single.dump id type x y z c_v[1] c_v[2] c_v[3]
+dump_modify     d sort id format float %.17g
+run             0

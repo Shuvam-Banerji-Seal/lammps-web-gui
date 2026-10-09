@@ -28,12 +28,35 @@ import { parseNum, parseInt_ } from '../force/util';
  *   "The default for the neighbors keyword is no."
  *   "The *peratom* keyword was removed as it is no longer required."
  *
- * Scope of this implementation: 3d and 2d, periodic orthogonal and restricted
- * triclinic boxes, the default per-atom output (volume, number of faces),
- * surface (third column), only_group, radius (radical tessellation with an
- * atom-style variable), edge_histo (global vector), edge_threshold,
- * face_threshold, neighbors yes (local array) and occupation. Not implemented,
- * an error: non-periodic boundaries and general (rotated) triclinic boxes.
+ * Scope of this implementation: 3d and 2d, orthogonal boxes with periodic or
+ * non-periodic boundaries, restricted triclinic boxes (periodic only), the
+ * default per-atom output (volume, number of faces), surface (third column),
+ * only_group, radius (radical tessellation with an atom-style variable),
+ * edge_histo (global vector), edge_threshold, face_threshold, neighbors yes
+ * (local array) and occupation. Not implemented, an error: general (rotated)
+ * triclinic boxes and a non-periodic boundary on a triclinic box.
+ *
+ * Non-periodic boundaries (docs.lammps.org/compute_voronoi_atom.html): the
+ * page's note on exterior faces reads "The Voronoi cells for atoms adjacent to
+ * empty regions will extend into those regions up to the communication cutoff
+ * in x, y, or z.  In that situation, an exterior face is created at the cutoff
+ * distance normal to the x, y, or z direction."  Measured with native LAMMPS
+ * (black box): for an orthogonal box a non-periodic face instead bounds the
+ * tessellation at the box face itself, independent of the communication cutoff —
+ * a 3x3x3 sc lattice inside a 10x10x10 f f f box gave every cell volume 1 except
+ * the wall-adjacent ones, whose cells run up to the wall (the far corner atom had
+ * volume 512 = 8x8x8, from the bisector x = 2 to the wall x = 10), unchanged
+ * when the pair/communication cutoff was lowered to 0.9/1.0.  A non-periodic
+ * dimension therefore contributes two wall half-spaces (the box faces) that
+ * clip the cell; the resulting cut is an exterior face, counted in the face
+ * count and edge histogram and reported with neighbor ID zero in the local
+ * array, but counted towards the surface area only for the built-in all group
+ * (measured: a single atom in a 2x3x4 f f f box gave volume 24 and 6 faces with
+ * surface all = 52, and with a named group holding that atom surface = 0).
+ * For a triclinic box the page says "For triclinic systems, the exterior face is
+ * parallel to the corresponding reciprocal lattice vector.", but the measured
+ * native placement of a non-periodic face on a tilted box is not reproduced
+ * here, so that combination is rejected by name rather than answered wrongly.
  *
  * 2d (docs.lammps.org/compute_voronoi_atom.html): "The Voro++ package performs
  * its calculation in 3d.  This will still work for a 2d LAMMPS simulation,
@@ -102,6 +125,9 @@ import { parseNum, parseInt_ } from '../force/util';
 
 interface Face { idx: number[]; plane: number }
 interface Poly { v: number[]; f: Face[] }
+
+/** Face plane id of a non-periodic box wall (cube faces keep the negative default -1). */
+const WALL = -2;
 
 /** Cube of half-side h centred on the origin (the atom), faces oriented outward. */
 const cubePoly = (h: number): Poly => {
@@ -405,9 +431,10 @@ export class ComputeVoronoiAtom extends Compute {
     const s = sys.state;
     const where = `compute ${this.id} (voronoi/atom)`;
     if (g.box.general) throw new StyleError(`${where}: general triclinic boxes are not supported`);
-    for (let d = 0; d < 3; d++) {
-      if (!g.periodic[d]) throw new StyleError(`${where}: non-periodic boundaries are not supported (dimension ${'xyz'[d]} is not periodic)`);
+    if (g.triclinic && (!g.periodic[0] || !g.periodic[1] || !g.periodic[2])) {
+      throw new StyleError(`${where}: non-periodic boundaries with a triclinic box are not supported`);
     }
+    const walls = this.wallPlanes(g);
     if (this.occupationOn) {
       this.computeOccupation();
       this.cachedEpoch = sys.epoch;
@@ -450,7 +477,7 @@ export class ComputeVoronoiAtom extends Compute {
       let results: CellResult[] | null = null;
       for (let attempt = 0; attempt < 80 && results === null; attempt++) {
         const img = this.buildImages(D, pool, rad, s.x, wlo, whi, L, g);
-        results = this.tessellateAll(D, targets, img, rad, rmax, s.x, s.mask, s.id);
+        results = this.tessellateAll(D, targets, img, rad, rmax, s.x, s.mask, s.id, walls);
         if (results === null) D *= 1.5;
       }
       if (results === null) throw new StyleError(`${where}: the Voronoi search radius did not converge`);
@@ -528,11 +555,32 @@ export class ComputeVoronoiAtom extends Compute {
   }
 
   /**
+   * Half-spaces n.x <= c of every non-periodic box face, as unit normals: for
+   * each non-periodic dimension d the two orthogonal box faces x_d = lo_d and
+   * x_d = hi_d. (A triclinic non-periodic face is rejected by the caller, so
+   * only orthogonal boxes reach here.) See the measured wall geometry in the
+   * module comment.
+   */
+  private wallPlanes(g: Geometry): number[][] {
+    const out: number[][] = [];
+    for (let d = 0; d < 3; d++) {
+      if (g.periodic[d]) continue;
+      const lo = [0, 0, 0]; lo[d] = -1;
+      out.push([lo[0], lo[1], lo[2], -g.lo[d]]); // x_d >= lo_d
+      const hi = [0, 0, 0]; hi[d] = 1;
+      out.push([hi[0], hi[1], hi[2], g.hi[d]]); // x_d <= hi_d
+    }
+    return out;
+  }
+
+  /**
    * Periodic images of the pool atoms inside the window [wlo - D, whi + D],
    * binned with cell size D. For a triclinic box the images are x + ix*A +
    * iy*B + iz*C, i.e. the integer offsets are taken in fractional coordinates
    * of the tilted box (the window's fractional extent from its eight corners);
    * for an orthogonal box this reduces to the axis-aligned integer shifts.
+   * A non-periodic dimension is not replicated: its offset range is just 0, so
+   * only the atom itself (bounded later by the box walls) enters the pool.
    */
   private buildImages(D: number, pool: number[], rad: Float64Array, x: Float64Array,
     wlo0: number[], whi0: number[], L: number[], g: Geometry): Images {
@@ -560,9 +608,13 @@ export class ComputeVoronoiAtom extends Compute {
       const kr: [number, number][] = [];
       if (g.triclinic) {
         g.toLamda(x[3 * j], x[3 * j + 1], x[3 * j + 2], fj);
-        for (let d = 0; d < 3; d++) kr.push([Math.ceil(flo[d] - fj[d]), Math.floor(fhi[d] - fj[d])]);
+        for (let d = 0; d < 3; d++) {
+          if (!g.periodic[d]) kr.push([0, 0]);
+          else kr.push([Math.ceil(flo[d] - fj[d]), Math.floor(fhi[d] - fj[d])]);
+        }
       } else {
         for (let d = 0; d < 3; d++) {
+          if (!g.periodic[d]) { kr.push([0, 0]); continue; }
           const xj = x[3 * j + d];
           kr.push([Math.ceil((wlo[d] - xj) / L[d]), Math.floor((whi[d] - xj) / L[d])]);
         }
@@ -623,7 +675,7 @@ export class ComputeVoronoiAtom extends Compute {
    * f(D)), so the caller grows D and retries.
    */
   private tessellateAll(D: number, targets: number[], img: Images, rad: Float64Array, rmax: number,
-    x: Float64Array, mask: Int32Array, ids: Int32Array): CellResult[] | null {
+    x: Float64Array, mask: Int32Array, ids: Int32Array, walls: number[][]): CellResult[] | null {
     const D2 = D * D;
     const eps = 1e-12 * D2;
     const res: CellResult[] = [];
@@ -661,7 +713,11 @@ export class ComputeVoronoiAtom extends Compute {
       }
       cands.sort((a, b) => a.h - b.h);
       let poly: Poly = cubePoly(D);
-      let R = D * Math.sqrt(3);
+      // non-periodic box faces clip the cell; their cut is an exterior face.
+      // The cell is built in the atom's frame (atom at the origin), so the wall
+      // half-space n.x <= c becomes n.x <= c - n.atom here.
+      for (const w of walls) poly = clipPoly(poly, w[0], w[1], w[2], w[3] - (w[0] * xi + w[1] * yi + w[2] * zi), WALL, eps);
+      let R = maxRadius(poly);
       for (let k = 0; k < cands.length; k++) {
         const cd = cands[k];
         if (cd.h > R + 1e-12 * D) break;
@@ -675,8 +731,29 @@ export class ComputeVoronoiAtom extends Compute {
       let vol = 0, nf = 0, surf = 0;
       const edges: number[] = [];
       const faces: { nid: number; area: number }[] = [];
+      const countEdges = (f: Face): number => {
+        let ne = 0;
+        const m = f.idx.length;
+        for (let k = 0; k < m; k++) {
+          const a = 3 * f.idx[k], b = 3 * f.idx[(k + 1) % m];
+          const ex = poly.v[a] - poly.v[b], ey = poly.v[a + 1] - poly.v[b + 1], ez = poly.v[a + 2] - poly.v[b + 2];
+          if (Math.sqrt(ex * ex + ey * ey + ez * ez) > this.edgeThreshold) ne++;
+        }
+        return ne;
+      };
       for (const f of poly.f) {
         const area = faceArea(poly, f);
+        if (f.plane === WALL) {
+          // exterior box-wall face: counts as a face and its edges join the
+          // histogram, but only surface all counts its area
+          if (this.surfaceBit !== null && this.surfaceAll) surf += area;
+          if (area > this.faceThreshold) {
+            nf++;
+            if (this.neighborsOn) faces.push({ nid: 0, area });
+            if (this.edgeMax !== null) edges.push(countEdges(f));
+          }
+          continue;
+        }
         if (f.plane < 0) continue; // cube face: cannot remain once R < fD
         const cand = cands[f.plane];
         const j = cand ? cand.atom : -1;
@@ -692,16 +769,7 @@ export class ComputeVoronoiAtom extends Compute {
         if (area > this.faceThreshold) {
           nf++;
           if (this.neighborsOn) faces.push({ nid: j >= 0 ? ids[j] : 0, area });
-          if (this.edgeMax !== null) {
-            let ne = 0;
-            const m = f.idx.length;
-            for (let k = 0; k < m; k++) {
-              const a = 3 * f.idx[k], b = 3 * f.idx[(k + 1) % m];
-              const ex = poly.v[a] - poly.v[b], ey = poly.v[a + 1] - poly.v[b + 1], ez = poly.v[a + 2] - poly.v[b + 2];
-              if (Math.sqrt(ex * ex + ey * ey + ez * ez) > this.edgeThreshold) ne++;
-            }
-            edges.push(ne);
-          }
+          if (this.edgeMax !== null) edges.push(countEdges(f));
         }
       }
       vol = polyVolume(poly);

@@ -1,0 +1,19 @@
+# oracle: compute voronoi/atom in a fully non-periodic (f f f) box — the box walls clip the outer cells but every cell is still bounded by neighbors at unit distance
+# oracle-files: w31voronp_3d_ff.dump
+units           lj
+atom_style      atomic
+boundary        f f f
+lattice         sc 1.0 origin 0.5 0.5 0.5
+region          box block 0 3 0 3 0 3 units box
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.0 1.0
+neighbor        0.3 nsq
+compute         v all voronoi/atom
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+dump            d all custom 1 w31voronp_3d_ff.dump id type x y z c_v[1] c_v[2]
+dump_modify     d sort id format float %.17g
+run             0

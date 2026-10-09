@@ -238,10 +238,10 @@ describe('multi-element MEAM: parser subset and StyleErrors', () => {
     expect(par.opts.Cmax).toBe(2.8);
   });
 
-  it('a dia two-element alloy is accepted; a bcc element and lattce(1,2) = l12 are StyleErrors', () => {
+  it('a dia two-element alloy is accepted; a bcc element and lattce(1,2) = c11 are StyleErrors', () => {
     expect(() => coeffWith(LIB_DIA, PAR_DIA)).not.toThrow();
     const libBcc = LIB_DIA.replace("'A' 'dia'", "'A' 'bcc'");
     expect(() => coeffWith(libBcc, PAR_DIA)).toThrow(StyleError);
-    expect(() => coeffWith(LIB_DIA, PAR_DIA.replace('lattce(1,2) = dia', 'lattce(1,2) = l12'))).toThrow(/l12/);
+    expect(() => coeffWith(LIB_DIA, PAR_DIA.replace('lattce(1,2) = dia', 'lattce(1,2) = c11'))).toThrow(/c11/);
   });
 });

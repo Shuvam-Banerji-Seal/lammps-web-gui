@@ -5,7 +5,8 @@ import { referenceVectors, type ReferenceLattice } from './meam_lattice';
  * subset verified against native LAMMPS (black box):
  *   - fcc and dia single-element references (the homonuclear pair term phi_ii and the embedding
  *     reference rho_ref,i use the element's own lattice, as in meam.ts; z is the library coordination);
- *   - heteronuclear pairs with lattce(I,J) = b1 (rock salt) or dia (diamond/zincblende);
+ *   - heteronuclear pairs with lattce(I,J) = b1 (rock salt), dia (diamond/zincblende), b2 (CsCl) or
+ *     l12 (Cu3Au), nn2 = 0 (see the b2 and l12 notes below);
  *   - ibar = 0 and 1, t0 = 1, zbl = 0, per-triplet Cmin/Cmax, no nn2/delta;
  *   - ialloy = 0, 1 and 2 (docs.lammps.org/pair_meam.html); see densityPartials1 and effT;
  *   - erose_form 0 (with attrac = repuls = 0), 1 and 2 with per-pair attrac(I,J)/repuls(I,J)
@@ -16,6 +17,8 @@ import { referenceVectors, type ReferenceLattice } from './meam_lattice';
  *   "lattce(I,J) = lattice structure of I-J reference structure:"
  *   "b1  = rock salt (NaCl structure)"
  *   "dia = diamond (interlaced fcc for alloy)"
+ *   "b2  = CsCl structure (interpenetrating simple cubic)"
+ *   "l12 = Cu3Au structure (lower case L, followed by 12)"
  *   "Ec(I,J)     = cohesive energy of reference structure for I-J mixture"
  *
  * Density scaling rozero / rho0(I): docs.lammps.org/pair_meam.html "The *rozero* parameter is an
@@ -60,9 +63,18 @@ import { referenceVectors, type ReferenceLattice } from './meam_lattice';
  * uses the central atom's t ("2 = no averaging of t (use single-element values)"); ialloy = 0 leaves the
  * moments unscaled and weights each neighbour's t by its density contribution.
  *
- * Not verified (and therefore rejected with a StyleError in meam.ts): lattce(I,J) = l12 and other names
- * (the L12 pair term is not the B1/dia form, see the remaining issues of the meam15 report), bcc/hcp/sc
- * elements in an alloy, delta, nn2, and erose_form 0 with nonzero attrac/repuls.
+ * Measured with native LAMMPS (black box) for the b2 and l12 pairs (synthetic fcc A/B entries of
+ * tests/oracle/w37meam_*, nn2 = 0):
+ *  - b2: phi_IJ = (2/8)(erose_IJ - (F_I(rho_bar_I) + F_J(rho_bar_J))/2), the B1 form with z = 8, where
+ *    rho_bar_I sums the eight unlike neighbours at r (b2List). A-B dimers at 2.2 to 3.3 A and the perfect
+ *    CsCl crystals agree to 1e-12 (eV); the reference energy is the Rose energy by construction.
+ *  - l12: the element J of lattce(I,J) occupies the corner sites (one atom per Cu3Au cell, cornerEl = J)
+ *    and I the three face sites. The cell energy 4 erose = F_K + 3 F_F + 12 phi_KF + 12 phi_FF gives
+ *    phi_KF = (4 erose - F_K - 3 F_F - 12 phi_FF)/12, with phi_FF the elemental F-F pair term of the face
+ *    element's own fcc reference (l12List: 12 unlike neighbours for a corner atom; 4 unlike and 8 like for a
+ *    face atom). Dimers and perfect L12 crystals agree to 1e-12 (eV) for either species order.
+ *  - Not verified (rejected with a StyleError in meam.ts): other lattce names, bcc/hcp/sc elements in an
+ *    alloy, delta, nn2 = 1 with alloy pairs, and erose_form 0 with nonzero attrac/repuls.
  *
  * Per-triplet Cmin/Cmax (docs.lammps.org/pair_meam.html "Cmin(I,J,K) = Cmin screening parameter when
  * I-J pair is screened by K (I<=J)"). Measured with native LAMMPS (black box) on a three-element
@@ -138,11 +150,19 @@ export interface AlloyPair {
   Ec: number;
   re: number;
   alpha: number;
-  /** 'self' for i = j (the element's own lattice), 'b1' (rock salt) or 'dia' (diamond/zincblende) for i != j */
-  lat: 'self' | 'b1' | 'dia';
+  /**
+   * 'self' for i = j (the element's own lattice); for i != j 'b1' (rock salt), 'dia' (diamond/zincblende),
+   * 'b2' (CsCl) or 'l12' (Cu3Au)
+   */
+  lat: 'self' | 'b1' | 'dia' | 'b2' | 'l12';
   /** attrac(I,J) and repuls(I,J) of the I-J pair (docs pair_meam.rst); default 0 */
   attrac?: number;
   repuls?: number;
+  /**
+   * l12 only: index of the element on the corner sites of the Cu3Au cell (one atom per cell); the other
+   * element sits on the three face sites. Measured with native LAMMPS (black box): see alloyPair.
+   */
+  cornerEl?: number;
 }
 
 export interface AlloyOptions {
@@ -587,6 +607,43 @@ const diaList = (model: AlloyModel, c: number, p: number, r: number): AlloyNeigh
 };
 
 /**
+ * B2 (CsCl) list for a central atom with partner p at nearest-neighbour distance r: the eight unlike
+ * neighbours (+-a/2, +-a/2, +-a/2) of the two interpenetrating simple cubic sublattices, a = 2 r / sqrt(3).
+ * The six like neighbours at a are outside the first shell and are not included (nn2 = 0).
+ */
+const b2List = (p: number, r: number): AlloyNeighbor[] => {
+  const out: AlloyNeighbor[] = [];
+  const h = r / Math.sqrt(3);
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+    const dx = sx * h, dy = sy * h, dz = sz * h;
+    out.push({ e: p, j: -1, dx, dy, dz, r: Math.hypot(dx, dy, dz) });
+  }
+  return out;
+};
+
+/**
+ * L12 (Cu3Au) list at nearest-neighbour distance r. The twelve fcc nearest-neighbour vectors (+-a/2, +-a/2, 0)
+ * and permutations, a = sqrt(2) r. A corner atom has twelve unlike neighbours (partner p). A face atom (on a
+ * z face) has four unlike neighbours in its own z plane (dz = 0; partner p) and eight like neighbours (c).
+ * Only the first shell is used (nn2 = 0).
+ */
+const l12List = (c: number, p: number, r: number, corner: boolean): AlloyNeighbor[] => {
+  const out: AlloyNeighbor[] = [];
+  const h = (r * Math.SQRT2) / 2;
+  const signs: [number, number, number][] = [
+    [1, 1, 0], [1, -1, 0], [-1, 1, 0], [-1, -1, 0],
+    [1, 0, 1], [1, 0, -1], [-1, 0, 1], [-1, 0, -1],
+    [0, 1, 1], [0, 1, -1], [0, -1, 1], [0, -1, -1],
+  ];
+  for (const [x, y, z] of signs) {
+    const dx = x * h, dy = y * h, dz = z * h;
+    const e = corner || z === 0 ? p : c;
+    out.push({ e, j: -1, dx, dy, dz, r: Math.hypot(dx, dy, dz) });
+  }
+  return out;
+};
+
+/**
  * Rose reference energy erose(r) and its r-derivative of one I-J pair, with the I-J attrac/repuls. Docs
  * (docs.lammps.org/pair_meam.html, plans/lammps-docs/pair_meam.rst):
  *   "astar = alpha \* (r/re - 1.d0)"
@@ -629,6 +686,17 @@ export const alloyPair = (model: AlloyModel, i: number, j: number, r: number): {
     const Fp = embedFp(el, model.rhoRef[i], rho);
     return { phi: (2 / el.z) * (Eu - Fv), dphi: (2 / el.z) * (dEu - Fp * drho) };
   }
+  if (pr.lat === 'b2') {
+    // Eight unlike neighbours: phi = (2/8)(Eu - (F_i + F_j)/2), the B1 form with z = 8 (measured, see the header).
+    const ri = scaledRho(model, b2List(j, r), r, model.elements[i].ibar ?? 0, i, false);
+    const rj = scaledRho(model, b2List(i, r), r, model.elements[j].ibar ?? 0, j, false);
+    const Fi = embedF(model.elements[i], model.rhoRef[i], ri.rho), Fj = embedF(model.elements[j], model.rhoRef[j], rj.rho);
+    const Fip = embedFp(model.elements[i], model.rhoRef[i], ri.rho), Fjp = embedFp(model.elements[j], model.rhoRef[j], rj.rho);
+    return {
+      phi: (2 / 8) * (Eu - (Fi + Fj) / 2),
+      dphi: (2 / 8) * (dEu - (Fip * ri.drho + Fjp * rj.drho) / 2),
+    };
+  }
   if (pr.lat === 'dia') {
     const ri = scaledRho(model, diaList(model, i, j, r), r, model.elements[i].ibar ?? 0, i, false);
     const rj = scaledRho(model, diaList(model, j, i, r), r, model.elements[j].ibar ?? 0, j, false);
@@ -640,6 +708,26 @@ export const alloyPair = (model: AlloyModel, i: number, j: number, r: number): {
     return {
       phi: (2 / 4) * (Eu - (Fi + Fj) / 2),
       dphi: (2 / 4) * (dEu - (Fip * ri.drho + Fjp * rj.drho) / 2),
+    };
+  }
+  if (pr.lat === 'l12') {
+    // Cu3Au reference, one corner atom K and three face atoms F per cell (K = cornerEl). The cell holds 12 K-F
+    // bonds and 12 F-F bonds (each corner has 12 face neighbours; each face atom has 4 K and 8 F neighbours),
+    // and the cell energy 4 Eu = F_K + 3 F_F + 12 phi_KF + 12 phi_FF is solved for phi_KF with the
+    // elemental F-F pair term phi_FF(r) (its own fcc reference). Measured with native LAMMPS (black box):
+    // dimers and the perfect L12 crystals agree to 1e-12 (eV) for either species order.
+    const K = pr.cornerEl ?? j;
+    const F = K === j ? i : j;
+    const rK = scaledRho(model, l12List(K, F, r, true), r, model.elements[K].ibar ?? 0, K, false);
+    const rF = scaledRho(model, l12List(F, K, r, false), r, model.elements[F].ibar ?? 0, F, false);
+    const FK = embedF(model.elements[K], model.rhoRef[K], rK.rho);
+    const FF = embedF(model.elements[F], model.rhoRef[F], rF.rho);
+    const FKp = embedFp(model.elements[K], model.rhoRef[K], rK.rho);
+    const FFp = embedFp(model.elements[F], model.rhoRef[F], rF.rho);
+    const ff = alloyPair(model, F, F, r);
+    return {
+      phi: (4 * Eu - FK - 3 * FF - 12 * ff.phi) / 12,
+      dphi: (4 * dEu - FKp * rK.drho - 3 * FFp * rF.drho - 12 * ff.dphi) / 12,
     };
   }
   const ri = scaledRho(model, b1List(model, i, j, r), r, model.elements[i].ibar ?? 0, i, false);

@@ -441,9 +441,9 @@ describe('multi-element pair_coeff: supported subset and StyleErrors', () => {
     expect(() => coeffWith(PAR2, ['*', '*', 'lib.meam', 'A', 'B', 'par.meam', 'A', 'B', 'A'], 3)).not.toThrow();
   });
 
-  it('lattce(1,2) other than b1 is a StyleError naming it (L12 is not verified)', () => {
-    expect(() => coeffWith(PAR2.replace('b1', 'l12'), ARGS)).toThrow(/l12/);
-    expect(() => coeffWith(PAR2.replace('b1', 'l12'), ARGS)).toThrow(StyleError);
+  it('an unsupported lattce(1,2) is a StyleError naming it (b1, dia, b2 and l12 are verified)', () => {
+    expect(() => coeffWith(PAR2.replace('b1', 'c11'), ARGS)).toThrow(/c11/);
+    expect(() => coeffWith(PAR2.replace('b1', 'c11'), ARGS)).toThrow(StyleError);
   });
 
   it('missing pair parameters, unknown elements, delta and nn2 are StyleErrors; per-triplet screening is accepted', () => {

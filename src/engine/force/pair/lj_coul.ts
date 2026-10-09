@@ -128,7 +128,7 @@ abstract class PairLJCutCoul extends PairLJCut {
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0, ecoul = 0;
     const nb = list.neighbors;
-    for (let i = 0; i < list.inum; i++) {
+    for (let i = list.ilo ?? 0; i < list.inum; i++) {
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       const qi = q[i];
       const ti = type[i] * nt;

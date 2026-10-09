@@ -3,16 +3,18 @@ import type { NeighList } from '../neighbor';
 import { THREADED_PAIRS } from './threadedPairs';
 import { CpuForceBackend } from './forces';
 import {
-  ACC_LEN, DONE, FAILED, READY, cloneableFields, pairFromFields, restrictCounts, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
+  ACC_LEN, CHUNKS_PER_THREAD, DONE, FAILED, NEXT, READY, cloneableFields, pairFromFields, sameShape, splitRanges, type PairThreadMessage, type PairWorkerLike,
 } from './pairThreadsCore';
 
 /*
  * Shared-memory threads for the pair term of the general engine. The engine thread copies the
  * owned+ghost coordinates, types and charges into SharedArrayBuffers every force evaluation and the
  * half neighbor list after every rebuild; each force worker (src/workers/pair.worker.ts) holds a
- * copy of the pair style, made from the engine's object when its version changes, and runs it on
- * its own range of owned atoms into its own force array. The engine thread runs the first range
- * itself, waits on an Atomics counter, then adds the workers' forces, energies and virials. Every
+ * copy of the pair style, made from the engine's object when its version changes. The half list is
+ * cut into chunks of about equal work (CHUNKS_PER_THREAD per thread); every thread, the engine thread
+ * included, claims chunks from a shared Atomics counter until none are left, each into its own force
+ * array, so slow threads take fewer chunks. The engine thread then waits on an Atomics counter and
+ * adds the workers' forces, energies and virials. Every
  * other part of the step (neighbor lists, bonded terms, kspace, fixes) stays on the engine thread,
  * so any input whose pair style is in THREADED_PAIRS gets the threads.
  *
@@ -50,9 +52,10 @@ export class SharedPairThreads {
   private pairOk = false;
   private listRef: NeighList | null = null;
   private listArrays: Int32Array | null = null;
-  private listGen = 0;
-  private ranges: Int32Array<ArrayBufferLike> = new Int32Array(0);
-  private own: Int32Array<ArrayBufferLike> = new Int32Array(0);
+  /** Chunk boundaries of the current half list (nchunks + 1 entries), shared with the workers. */
+  private readonly chunksBuf: SharedArrayBuffer;
+  private readonly chunks: Int32Array;
+  private nchunks = 0;
   private cap = 0;
   private capL = 0;
   private capN = 0;
@@ -66,6 +69,8 @@ export class SharedPairThreads {
   private accs: Float64Array<ArrayBufferLike>[] = [];
 
   constructor(readonly threads: number, spawn: () => PairWorkerLike = spawnPairWorker, public minAtoms = MIN_THREADED_ATOMS) {
+    this.chunksBuf = shared(4 * (CHUNKS_PER_THREAD * Math.max(1, threads) + 1));
+    this.chunks = new Int32Array(this.chunksBuf);
     for (let k = 0; k < threads - 1; k++) {
       const w = spawn();
       w.postMessage({ type: 'init', ctl: this.ctlBuf, index: k } satisfies PairThreadMessage);
@@ -95,12 +100,9 @@ export class SharedPairThreads {
       this.numneigh.set(list.numneigh.subarray(0, nlocal));
       this.firstneigh.set(list.firstneigh.subarray(0, nlocal));
       this.neighbors.set(list.neighbors.subarray(0, nnb));
-      this.ranges = splitRanges(list.numneigh, nlocal, W + 1);
-      if (this.own.length < nlocal) this.own = new Int32Array(this.capL);
-      restrictCounts(list.numneigh, nlocal, this.ranges[0], this.ranges[1], this.own);
+      this.splitChunks(list, nlocal, W + 1);
       this.listRef = list;
       this.listArrays = list.neighbors;
-      this.listGen++;
     } else if (resend) {
       this.allocate();
       this.copyList(list);
@@ -110,15 +112,20 @@ export class SharedPairThreads {
     this.q.set(pc.q.subarray(0, nall));
     Atomics.store(this.ctl, DONE, 0);
     Atomics.store(this.ctl, FAILED, 0);
+    Atomics.store(this.ctl, NEXT, 0);
+    const nchunks = this.nchunks;
     const specialLJ = Array.from(pc.specialLJ), specialCoul = Array.from(pc.specialCoul);
     for (let w = 0; w < W; w++) {
       this.workers[w].postMessage({
-        type: 'compute', nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, listGen: this.listGen,
-        i0: this.ranges[w + 1], i1: this.ranges[w + 2],
+        type: 'compute', nlocal, nall, qqrd2e: pc.qqrd2e, specialLJ, specialCoul, nchunks,
       } satisfies PairThreadMessage);
     }
-    // the engine thread's own range, straight into the real arrays
-    pair.compute({ ...pc, half: { inum: nlocal, numneigh: this.own, firstneigh: list.firstneigh, neighbors: list.neighbors } });
+    // the engine thread claims chunks too, straight into the real arrays
+    for (;;) {
+      const c = Atomics.add(this.ctl, NEXT, 1);
+      if (c >= nchunks) break;
+      pair.compute({ ...pc, half: { ilo: this.chunks[c], inum: this.chunks[c + 1], numneigh: list.numneigh, firstneigh: list.firstneigh, neighbors: list.neighbors } });
+    }
     for (;;) {
       const done = Atomics.load(this.ctl, DONE);
       if (done >= W) break;
@@ -136,6 +143,13 @@ export class SharedPairThreads {
     }
     this.calls++;
     return true;
+  }
+
+  /** Cuts the half list into chunks of about equal work, written where the workers read them. */
+  private splitChunks(list: NeighList, nlocal: number, threads: number): void {
+    const k = Math.max(1, Math.min(nlocal, CHUNKS_PER_THREAD * threads));
+    this.chunks.set(splitRanges(list.numneigh, nlocal, k));
+    this.nchunks = k;
   }
 
   private sendPair(pair: Pair): void {
@@ -168,7 +182,7 @@ export class SharedPairThreads {
       const f = shared(24 * this.cap), acc = shared(8 * ACC_LEN);
       this.fs.push(new Float64Array(f));
       this.accs.push(new Float64Array(acc));
-      w.postMessage({ type: 'buffers', x: xb, t: tb, q: qb, numneigh: nb, firstneigh: fb, neighbors: lb, f, acc } satisfies PairThreadMessage);
+      w.postMessage({ type: 'buffers', x: xb, t: tb, q: qb, numneigh: nb, firstneigh: fb, neighbors: lb, f, acc, chunks: this.chunksBuf } satisfies PairThreadMessage);
     });
   }
 

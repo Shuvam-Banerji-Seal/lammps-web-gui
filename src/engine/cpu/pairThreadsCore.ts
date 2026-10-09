@@ -17,9 +17,9 @@ export interface PairWorkerLike {
 
 export type PairThreadMessage =
   | { type: 'init'; ctl: SharedArrayBuffer; index: number }
-  | { type: 'buffers'; x: SharedArrayBuffer; t: SharedArrayBuffer; q: SharedArrayBuffer; numneigh: SharedArrayBuffer; firstneigh: SharedArrayBuffer; neighbors: SharedArrayBuffer; f: SharedArrayBuffer; acc: SharedArrayBuffer }
+  | { type: 'buffers'; x: SharedArrayBuffer; t: SharedArrayBuffer; q: SharedArrayBuffer; numneigh: SharedArrayBuffer; firstneigh: SharedArrayBuffer; neighbors: SharedArrayBuffer; f: SharedArrayBuffer; acc: SharedArrayBuffer; chunks: SharedArrayBuffer }
   | { type: 'pair'; name: string; fields: Record<string, unknown> }
-  | { type: 'compute'; nlocal: number; nall: number; qqrd2e: number; specialLJ: number[]; specialCoul: number[]; listGen: number; i0: number; i1: number };
+  | { type: 'compute'; nlocal: number; nall: number; qqrd2e: number; specialLJ: number[]; specialCoul: number[]; nchunks: number };
 
 /** Words of the control buffer: finished workers, failed workers. */
 /**
@@ -28,6 +28,15 @@ export type PairThreadMessage =
  * engine thread returns to its event loop, so the engine must not block in Atomics.wait on a worker before it is READY.
  */
 export const DONE = 0, FAILED = 1, READY = 2;
+/**
+ * NEXT is the next unclaimed chunk of the neighbor list. Every thread (the engine thread too) claims chunks with
+ * Atomics.add until none are left, so a thread that runs slower (a busy core, an efficiency core, a late wake-up)
+ * simply takes fewer chunks. Measured in Chromium before this (8 threads, 16k-atom LJ, fixed equal ranges): the
+ * engine thread finished its range in 2.1 ms and then waited 2.4 ms for the slowest worker.
+ */
+export const NEXT = 3;
+/** Chunks per thread: enough to even out the load, few enough that the per-call overhead stays small. */
+export const CHUNKS_PER_THREAD = 8;
 /** Doubles of a worker's result: evdwl, ecoul, virial[6]. */
 export const ACC_LEN = 8;
 
@@ -125,8 +134,7 @@ export class PairThreadWorker {
   private neighbors: Int32Array<ArrayBufferLike> = new Int32Array(0);
   private f: Float64Array<ArrayBufferLike> = new Float64Array(0);
   private acc: Float64Array<ArrayBufferLike> = new Float64Array(0);
-  private counts: Int32Array<ArrayBufferLike> = new Int32Array(0);
-  private key = '';
+  private chunks: Int32Array<ArrayBufferLike> = new Int32Array(0);
 
   handle(m: PairThreadMessage): void {
     if (m.type === 'init') {
@@ -137,8 +145,7 @@ export class PairThreadWorker {
     if (m.type === 'buffers') {
       this.x = new Float64Array(m.x); this.t = new Int32Array(m.t); this.q = new Float64Array(m.q);
       this.numneigh = new Int32Array(m.numneigh); this.firstneigh = new Int32Array(m.firstneigh); this.neighbors = new Int32Array(m.neighbors);
-      this.f = new Float64Array(m.f); this.acc = new Float64Array(m.acc);
-      this.key = '';
+      this.f = new Float64Array(m.f); this.acc = new Float64Array(m.acc); this.chunks = new Int32Array(m.chunks);
       return;
     }
     if (m.type === 'pair') { this.pair = pairFromFields(m.name, m.fields); return; }
@@ -146,22 +153,21 @@ export class PairThreadWorker {
     try {
       const pair = this.pair;
       if (!pair) throw new Error('no pair style');
-      const key = `${m.listGen} ${m.i0} ${m.i1} ${m.nlocal}`;
-      if (key !== this.key) {
-        if (this.counts.length < m.nlocal) this.counts = new Int32Array(m.nlocal);
-        restrictCounts(this.numneigh, m.nlocal, m.i0, m.i1, this.counts);
-        this.key = key;
-      }
       this.f.fill(0, 0, 3 * m.nall);
       const a = newAccum();
-      const half: NeighList = { inum: m.nlocal, numneigh: this.counts, firstneigh: this.firstneigh, neighbors: this.neighbors };
-      pair.compute({
-        x: this.x, f: this.f, type: this.t, q: this.q, nlocal: m.nlocal, nall: m.nall, half, full: null,
-        specialLJ: Float64Array.from(m.specialLJ), specialCoul: Float64Array.from(m.specialCoul), qqrd2e: m.qqrd2e,
-        acc: a, eatom: null, vatom: null,
-        // THREADED_PAIRS styles do not read these
-        s: undefined as never, nb: undefined as never, geom: undefined as never,
-      });
+      const specialLJ = Float64Array.from(m.specialLJ), specialCoul = Float64Array.from(m.specialCoul);
+      for (;;) {
+        const c = Atomics.add(ctl, NEXT, 1);
+        if (c >= m.nchunks) break;
+        const half: NeighList = { ilo: this.chunks[c], inum: this.chunks[c + 1], numneigh: this.numneigh, firstneigh: this.firstneigh, neighbors: this.neighbors };
+        pair.compute({
+          x: this.x, f: this.f, type: this.t, q: this.q, nlocal: m.nlocal, nall: m.nall, half, full: null,
+          specialLJ, specialCoul, qqrd2e: m.qqrd2e,
+          acc: a, eatom: null, vatom: null,
+          // THREADED_PAIRS styles do not read these
+          s: undefined as never, nb: undefined as never, geom: undefined as never,
+        });
+      }
       this.acc[0] = a.evdwl; this.acc[1] = a.ecoul;
       for (let c = 0; c < 6; c++) this.acc[2 + c] = a.virial[c];
     } catch {

@@ -1,0 +1,14 @@
+# oracle: create_atoms mesh meshmode qrand on one scalene triangle and on the open box of examples/mesh (Roberts R2 sequence with native's 7-decimal constants), atom_style sphere radii, run 0
+# oracle-inputs: w35mesh_qtri.stl w35mesh_open_box.stl
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-9
+units           lj
+atom_style      sphere
+region          b block 0 250 0 250 0 250
+create_box      2 b
+create_atoms    1 mesh w35mesh_qtri.stl meshmode qrand 0.5 units box
+create_atoms    2 mesh w35mesh_open_box.stl meshmode qrand 0.1 units box radscale 0.9
+compute         r all property/atom radius
+compute         rs all reduce sum c_r
+thermo_style    custom step atoms c_rs
+thermo_modify   format float %.15g
+run             0

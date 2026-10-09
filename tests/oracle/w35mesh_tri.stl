@@ -1,0 +1,9 @@
+solid tri
+  facet normal 0.0 1.0 0.0
+    outer loop
+      vertex 2.0 2.0 5.0
+      vertex 4.0 2.0 5.0
+      vertex 3.0 5.0 5.0
+    endloop
+  endfacet
+endsolid tri

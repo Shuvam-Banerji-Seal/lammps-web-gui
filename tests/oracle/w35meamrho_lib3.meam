@@ -1,0 +1,4 @@
+# w35meamrho_lib3: the Si entry of library.meam with ibar changed to 3 (synthetic, not a LAMMPS potential file)
+'Si3'        'dia'   4.      14           28.086
+4.87        4.8     4.8     4.8          4.8   5.431   4.63    1.
+1.0         3.30            5.105        -0.80         1.    3

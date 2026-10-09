@@ -1,0 +1,22 @@
+# oracle: pair_style meam single fcc element run twice, first with library rozero = 1 and then with rozero = 2.5 (docs.lammps.org/pair_meam.html "The *rozero* parameter is an element-dependent density scaling that weights the reference background density"); the two run 0 rows must be identical because the scaling multiplies every atomic density and its reference, so it cancels exactly for one element
+# oracle-inputs: w35meamrho_single_lib.meam w35meamrho_single_lib2.meam w35meamrho_single.meam
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-9
+units           metal
+atom_style      atomic
+lattice         fcc 2.8284271247461903
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 20.0
+variable        dx atom 0.02*sin(2.3*x+1.1*y+0.4*z)
+variable        dy atom 0.02*cos(1.9*y-0.7*x+0.3*z)
+variable        dz atom 0.02*sin(1.3*z+0.8*x-0.5*y)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      meam
+pair_coeff      * * w35meamrho_single_lib.meam S w35meamrho_single.meam S
+thermo          1
+thermo_style    custom step pe press
+thermo_modify   format float %.15g
+run             0
+pair_coeff      * * w35meamrho_single_lib2.meam S w35meamrho_single.meam S
+run             0

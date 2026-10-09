@@ -245,13 +245,20 @@ const refRhoBarPrime = (
 const refBackground = (el: MeamElement, o: MeamOptions, r: number): number => refRhoBarPrime(el, o, r).rho;
 
 /*
- * Embedding normalisation rho_ref of the element: the reference rho0 at re, WITHOUT the G(Gamma) factor.
- * Measured with native LAMMPS (black box): for the diamond reference (Gamma != 0 in the reference) the A-atom dimers
- * at 2.2, 2.4 and 2.6 A (tests/enginePairMeam15.test.ts) agree to 1e-10 eV only with this normalisation; the
- * pair term keeps the full background rho0 G(Gamma) of the reference at distance r.
+ * Embedding normalisation rho_ref of the element (the denominator of F): the background density of its own
+ * reference structure at re. Measured with native LAMMPS (black box): for the G forms ibar = 1
+ * (exp(Gamma/2)) and ibar = 3 (2/(1+exp(-Gamma))) it is the FULL reference background rho0*G(Gamma_ref)
+ * (a synthetic diamond dimer, whose reference has Gamma_ref != 0 through the tetrahedral third moment,
+ * matches native to 1e-13 at 2.0, 2.4 and 3.0 A only with the G_ref factor; an fcc reference has
+ * Gamma_ref = 0 and cannot tell the two apart), while the ibar = 0 form sqrt(1+Gamma) keeps the raw rho0
+ * (the diamond A-atom dimers at 2.2, 2.4 and 2.6 A of tests/enginePairMeam15.test.ts agree to 1e-10 eV
+ * only without the G_ref factor). The 2NN form (nn2 = 1) keeps the raw rho0 as before. The pair term
+ * always keeps the full background rho0 G(Gamma) of the reference at distance r. See tests/engineMeamRho35.test.ts.
  */
-export const referenceBackground = (el: MeamElement, o: MeamOptions): number =>
-  refRhoBarPrime(el, o, el.re, el.nn2 ? nn2Vectors(el.lat ?? 'fcc', el.re) : undefined).rho0;
+export const referenceBackground = (el: MeamElement, o: MeamOptions): number => {
+  const r = refRhoBarPrime(el, o, el.re, el.nn2 ? nn2Vectors(el.lat ?? 'fcc', el.re) : undefined);
+  return !el.nn2 && (el.ibar === 1 || el.ibar === 3) ? r.rho : r.rho0;
+};
 
 /*
  * 2NN (nn2 = 1) pair term of Lee-Baskes (Phys. Rev. B 62, 8564 (2000); docs.lammps.org/pair_meam.html
@@ -934,6 +941,14 @@ export interface MeamParams {
    * Only used by the multi-element path (meam_alloy.ts); a single element has one t vector.
    */
   ialloy: number;
+  /**
+   * rho0(I): the parameter-file density scaling of element I, keyed by element index (1-based).
+   * docs.lammps.org/pair_meam.html: "rho0(I) = relative density for element I (overwrites value
+   * read from meamf file)". Undefined keeps the library rozero. rozero weights the atomic electron
+   * density contributed by a neighbour of the element (see the header of meam_alloy.ts); it cancels
+   * exactly for a single element, so the single-element path ignores it.
+   */
+  rho0: Map<number, number>;
   opts: MeamOptions;
   /**
    * Per-triplet Cmin/Cmax overrides of a multi-element potential, keyed i,j,k exactly as written
@@ -951,7 +966,7 @@ const PAIR_KEYS = ['Ec', 're', 'alpha', 'lattce', 'nn2', 'attrac', 'repuls', 'zb
  * verified subset (see meam_alloy.ts for the multi-element part, and the header of this file for the rest).
  */
 export const parseMeamParams = (text: string, name: string, nelem = 1): MeamParams => {
-  const out: MeamParams = { pair: new Map(), zblOff: new Set(), opts: { ...DEFAULT_MEAM_OPTIONS }, erose: { form: 0, attrac: 0, repuls: 0 }, ialloy: 0, cmin3: new Map(), cmax3: new Map() };
+  const out: MeamParams = { pair: new Map(), zblOff: new Set(), opts: { ...DEFAULT_MEAM_OPTIONS }, erose: { form: 0, attrac: 0, repuls: 0 }, ialloy: 0, rho0: new Map(), cmin3: new Map(), cmax3: new Map() };
   const pairOf = (i: number, j: number): PairParams => {
     const k = `${i},${j}`;
     let p = out.pair.get(k);
@@ -966,7 +981,11 @@ export const parseMeamParams = (text: string, name: string, nelem = 1): MeamPara
     if (!m) throw new StyleError(`cannot parse MEAM parameter line '${body}' in ${name}`);
     const key = m[1];
     const idx = m[2] ? m[2].split(',').map((s) => Number(s.trim())) : [];
-    const val = m[3];
+    // Text values may be enclosed in quotes in the Fortran-style files, as docs.lammps.org/pair_meam.html
+    // notes for the library: "these strings may be enclosed in single quotes, but this is not required".
+    // Measured with native LAMMPS (black box): lattce(1,2) = 'dia' and lattce(1,2) = dia give the same
+    // energy (SiC.meam, examples/meam/in.meam), i.e. native strips the quotes around a keyword value.
+    const val = m[3].replace(/^['"]|['"]$/g, '');
     const label = (_n: number) => (nelem === 1 ? '(1,1)' : `with I<=J<=${nelem}`);
     /** Validates the index tuple of a keyword with `arity` indices; returns the indices (1-based). */
     const index = (arity: number): number[] => {
@@ -1102,8 +1121,8 @@ export const parseMeamParams = (text: string, name: string, nelem = 1): MeamPara
         break;
       }
       case 'rho0': {
-        index(1);
-        if (num() !== 1) throw new StyleError(`MEAM rho0 = ${val} is not supported; only 1 (${name})`);
+        const [i] = index(1);
+        out.rho0.set(i, num());
         break;
       }
       default:
@@ -1186,12 +1205,20 @@ export class PairMeam extends Pair {
     }
     const nn2 = (par.pair.get('1,1')?.nn2 ?? 0) === 1;
     if (lib.t[0] !== 1) throw new StyleError('only MEAM parameters normalized to t0 = 1.0 are supported');
-    if (lib.rozero !== 1) throw new StyleError(`MEAM rozero = ${lib.rozero} is not supported (only 1)`);
+    // rozero (and the rho0(1) override) scale every atomic density of the single element, so rho_bar,
+    // every angular moment and the reference background all carry the same factor and cancel exactly
+    // (see the header of meam_alloy.ts). Measured with native LAMMPS (black box): an fcc crystal with
+    // rozero = 1 and with rozero = 2.5 have the same pe (-127.868272984149 eV, tests/oracle/w35meamrho_single).
     if (!SUPPORTED_IBAR.includes(lib.ibar) && !(nn2 && lib.ibar === -5)) {
       throw new StyleError(`MEAM ibar = ${lib.ibar} is not supported (only ibar = 0, 1, 3, and -5 with nn2 = 1; ${paramFile})`);
     }
-    if (lib.ibar !== 0 && !nn2 && lib.lat !== 'fcc' && lib.lat !== 'bcc') {
-      throw new StyleError(`MEAM ibar = ${lib.ibar} with the ${lib.lat} reference of ${elem} is not supported (measured to mismatch at step 0 for dia; only fcc and bcc verified)`);
+    // Measured with native LAMMPS (black box, tests/oracle/w35meamrho_si): with the embedding normalisation
+    // of referenceBackground (the full reference background for ibar 1 and 3), dia elements with ibar 1
+    // (the Si and C entries of library.meam: dimers and displaced crystals) and ibar 3 (the Si entry with
+    // ibar set to 3) match native to 1e-9; the old raw-rho0 normalisation was 15% off in pe. Other
+    // non-fcc/bcc references with ibar != 0 (hcp, sc) are not measured.
+    if (lib.ibar !== 0 && !nn2 && lib.lat !== 'fcc' && lib.lat !== 'bcc' && lib.lat !== 'dia') {
+      throw new StyleError(`MEAM ibar = ${lib.ibar} with the ${lib.lat} reference of ${elem} is not supported (only fcc, bcc and dia are verified for ibar != 0 without nn2)`);
     }
     if (nn2 && lib.lat === 'hcp') {
       throw new StyleError(`MEAM nn2 = 1 with the hcp reference of ${elem} is not supported (no c/a parameter for the second-neighbour shell)`);
@@ -1260,10 +1287,15 @@ export class PairMeam extends Pair {
         throw new StyleError(`multi-element MEAM: reference lattice '${lib.lat}' of ${elt} is not supported (only fcc and dia)`);
       }
       if (lib.t[0] !== 1) throw new StyleError('only MEAM parameters normalized to t0 = 1.0 are supported');
-      if (lib.rozero !== 1) throw new StyleError(`multi-element MEAM: rozero = ${lib.rozero} is not supported (only 1)`);
-      if (lib.ibar !== 0) throw new StyleError(`multi-element MEAM: ibar = ${lib.ibar} is not supported (only ibar = 0; the alloy density has no verified G-function selection)`);
+      // ibar = 1 ("1 => G = exp(Gamma/2)") is verified for the alloy density by the real SiC potential
+      // (tests/oracle/w35meamrho_sic, library.meam + SiC.meam); ibar = 0 is the existing alloy subset.
+      if (lib.ibar !== 0 && lib.ibar !== 1) {
+        throw new StyleError(`multi-element MEAM: ibar = ${lib.ibar} is not supported (only ibar = 0 and 1; ${paramFile})`);
+      }
       const own = par.pair.get(`${c + 1},${c + 1}`) ?? {};
       if (own.lattce !== undefined && own.lattce !== lib.lat) throw new StyleError(`multi-element MEAM: lattce(${c + 1},${c + 1}) = ${own.lattce} for ${elt} differs from the library lattice '${lib.lat}'`);
+      // rho0(I) of the parameter file overwrites the library rozero (docs quote in MeamParams.rho0).
+      const rozero = par.rho0.get(c + 1) ?? lib.rozero;
       // Ec and re of the element default as in the single-element style (measured: the same energies as the explicit values)
       return {
         z: lib.z,
@@ -1275,6 +1307,7 @@ export class PairMeam extends Pair {
         beta: lib.b,
         t: lib.t,
         ibar: lib.ibar,
+        rozero,
       };
     });
     const pairs: AlloyPair[][] = [];

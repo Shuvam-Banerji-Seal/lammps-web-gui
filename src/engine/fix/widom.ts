@@ -57,7 +57,10 @@ import type { SimState, TopoList } from '../types';
  * The energy difference U_{N+1}-U_N is evaluated by temporarily appending the
  * probe atom(s) to the system and taking the total potential-energy difference
  * (which covers every pair, bond, angle, dihedral, improper, kspace and tail
- * term). This is exactly the full_energy path. With full_energy off, native
+ * term). This is exactly the full_energy path. For an atom insertion with
+ * full_energy off the difference is the probe's pair energies alone, which
+ * probeEnergy sums directly (see canProbeFast; w35widom_fast and
+ * w35widom_cells check it against native). With full_energy off, native
  * excludes the inserted molecule's intramolecular energy, so that constant
  * (the template's bonded energy) is subtracted. intra_energy is subtracted as
  * the doc requires: "an amount of energy that is subtracted from the final
@@ -133,6 +136,12 @@ export class FixWidom extends Fix {
   private reg: { lo: Vec3; hi: Vec3; volume: number } | null = null;
   private region: Region | null = null;
   private fullEnergy = false;
+  /** Atom insertions may use probeEnergy instead of the total-energy difference (set per event). */
+  private probeFast = false;
+  /** Cell list of the atoms for probeEnergy (cells at least one cutoff wide), built once per event. */
+  private cells: { n: [number, number, number]; start: Int32Array; atoms: Int32Array } | null = null;
+  /** Reused candidate list of probeEnergy. */
+  private cand = new Int32Array(0);
   private readonly charge: number | null;
   private readonly intraEnergy: number;
   private intraMolEnergy = 0;
@@ -235,6 +244,115 @@ export class FixWidom extends Fix {
     this.volume = this.reg ? this.reg.volume : (s.box.hi[0] - s.box.lo[0]) * (s.box.hi[1] - s.box.lo[1]) * (s.box.hi[2] - s.box.lo[2]);
   }
 
+  /**
+   * With full_energy off, an atom insertion changes the energy by the probe atom's pair energies alone:
+   * init() switches full_energy on for kspace, tail corrections, many-body, hybrid and eam styles, and a
+   * single atom brings no bonds. Summing pair.single() over the atoms is then the same number as the
+   * total-energy difference, without rebuilding neighbour lists for every trial (in.widom.lj makes 100000
+   * insertions per event). The sum uses the minimum image, so it needs an orthogonal box with every
+   * pair cutoff within half of each periodic length, and no neigh_modify exclude or include.
+   */
+  private canProbeFast(): boolean {
+    const s = this.sys.state;
+    const pair = this.sys.ff.pair;
+    if (this.fullEnergy || this.molTemplate || !pair || typeof pair.single !== 'function') return false;
+    if (s.box.triclinic || this.sys.nb.excludes.length || this.sys.nb.includeBit) return false;
+    let cmax = 0;
+    for (let k = 0; k < pair.cut.length; k++) if (pair.cut[k] > cmax) cmax = pair.cut[k];
+    for (let d = 0; d < 3; d++) {
+      if (s.box.periodic[d] && 2 * cmax > s.box.hi[d] - s.box.lo[d]) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Cells of at least half the largest pair cutoff per side, for a fully periodic box with five or more
+   * cells along every axis (so the 5 x 5 x 5 cells around a point, which hold every atom within the
+   * cutoff, are distinct); null otherwise, and probeEnergy then loops over every atom.
+   */
+  private buildCells(): { n: [number, number, number]; start: Int32Array; atoms: Int32Array } | null {
+    const s = this.sys.state;
+    const pair = this.sys.ff.pair!;
+    if (!s.box.periodic[0] || !s.box.periodic[1] || !s.box.periodic[2]) return null;
+    let cmax = 0;
+    for (let k = 0; k < pair.cut.length; k++) if (pair.cut[k] > cmax) cmax = pair.cut[k];
+    if (!(cmax > 0)) return null;
+    const n: [number, number, number] = [0, 0, 0];
+    for (let d = 0; d < 3; d++) {
+      n[d] = Math.floor((s.box.hi[d] - s.box.lo[d]) / (cmax / 2));
+      if (n[d] < 5) return null;
+    }
+    const cellOf = new Int32Array(s.n);
+    const start = new Int32Array(n[0] * n[1] * n[2] + 1);
+    for (let j = 0; j < s.n; j++) {
+      const c = this.cellIndex(s.x[3 * j], s.x[3 * j + 1], s.x[3 * j + 2], n);
+      cellOf[j] = c;
+      start[c + 1]++;
+    }
+    for (let c = 0; c < start.length - 1; c++) start[c + 1] += start[c];
+    const fill = start.slice(0, start.length - 1);
+    const atoms = new Int32Array(s.n);
+    for (let j = 0; j < s.n; j++) atoms[fill[cellOf[j]]++] = j;
+    if (this.cand.length < s.n) this.cand = new Int32Array(s.n);
+    return { n, start, atoms };
+  }
+
+  /** Cell of a point (wrapped into the periodic box). */
+  private cellIndex(x: number, y: number, z: number, n: [number, number, number]): number {
+    const b = this.sys.state.box;
+    const cell = (v: number, d: number): number => {
+      const f = (v - b.lo[d]) / (b.hi[d] - b.lo[d]);
+      return Math.min(n[d] - 1, Math.floor((f - Math.floor(f)) * n[d]));
+    };
+    return (cell(z, 2) * n[1] + cell(y, 1)) * n[0] + cell(x, 0);
+  }
+
+  /** Pair energy of a probe atom of this.type at p with every atom (see canProbeFast). */
+  private probeEnergy(p: Vec3): number {
+    const s = this.sys.state;
+    const pair = this.sys.ff.pair!;
+    const nt = s.ntypes + 1;
+    const it = this.type;
+    const qi = this.charge ?? 0;
+    const lx = s.box.hi[0] - s.box.lo[0], ly = s.box.hi[1] - s.box.lo[1], lz = s.box.hi[2] - s.box.lo[2];
+    const [px, py, pz] = s.box.periodic;
+    const x = s.x, type = s.type, q = s.q, cutsq = pair.cutsq;
+    // candidates: the atoms of the 125 cells around p, or every atom
+    const cl = this.cells;
+    let count = s.n;
+    let idx: Int32Array | null = null;
+    if (cl) {
+      const [nx, ny, nz] = cl.n;
+      const c0 = this.cellIndex(p[0], p[1], p[2], cl.n);
+      const cx = c0 % nx, cy = Math.floor(c0 / nx) % ny, cz = Math.floor(c0 / (nx * ny));
+      idx = this.cand;
+      count = 0;
+      for (let a = -2; a <= 2; a++) {
+        const kz = (cz + a + nz) % nz;
+        for (let b = -2; b <= 2; b++) {
+          const ky = (cy + b + ny) % ny;
+          for (let c = -2; c <= 2; c++) {
+            const k = (kz * ny + ky) * nx + (cx + c + nx) % nx;
+            for (let m = cl.start[k]; m < cl.start[k + 1]; m++) idx[count++] = cl.atoms[m];
+          }
+        }
+      }
+    }
+    let e = 0;
+    for (let m = 0; m < count; m++) {
+      const j = idx ? idx[m] : m;
+      let dx = p[0] - x[3 * j], dy = p[1] - x[3 * j + 1], dz = p[2] - x[3 * j + 2];
+      if (px) dx -= lx * Math.round(dx / lx);
+      if (py) dy -= ly * Math.round(dy / ly);
+      if (pz) dz -= lz * Math.round(dz / lz);
+      const rsq = dx * dx + dy * dy + dz * dz;
+      const jt = type[j];
+      if (rsq >= cutsq[it * nt + jt]) continue;
+      e += pair.single!(s.n, j, it, jt, rsq, 1, 1, qi, q ? q[j] : 0).eng;
+    }
+    return e;
+  }
+
   /** One event at the first step and every N steps after (measured, see the header). */
   postForce(): void {
     if (this.sys.state.step !== this.nextStep) return;
@@ -247,6 +365,9 @@ export class FixWidom extends Fix {
     const s = sys.state;
     const kT = s.units.boltz * this.T;
     const eBefore = this.potentialEnergy();
+    // decided here, after the energy call has set up the pair style's cutoffs (empty during init)
+    this.probeFast = this.canProbeFast();
+    this.cells = this.probeFast ? this.buildCells() : null;
     let sum = 0;
     let ninsert = 0;
     for (let k = 0; k < this.M; k++) {
@@ -279,6 +400,7 @@ export class FixWidom extends Fix {
 
   /** One insertion: append the probe, take the energy difference, remove it. */
   private trial(p: Vec3, eBefore: number): number {
+    if (this.probeFast) return this.probeEnergy(p) - this.intraEnergy;
     const sys = this.sys;
     const s = sys.state;
     const n0 = s.n;

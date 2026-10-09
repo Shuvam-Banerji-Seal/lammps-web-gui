@@ -70,8 +70,22 @@ import { parseNum, parseInt_ } from '../force/util';
  * *bzeroflag* = 1, *quadraticflag* = 0, *bnormflag* = 0, *wselfallflag* = 0,
  * *switchinnerflag* = 0, *nnn* = -1, *wmode* = 0, *delta* = 1.e-3"
  *
- * Unsupported (StyleError): chem, switchinnerflag/sinner/dinner, nnn/wmode/delta,
- * and the compute snad/atom, snav/atom, snap, sna/grid families.
+ * The keyword *chem* activates the explicit multi-element form (docs: "The
+ * keyword *chem* activates the explicit multi-element variant of the SNAP
+ * bispectrum components. The argument *nelements* specifies the number of SNAP
+ * elements that will be handled. This is followed by *elementlist*, a list of
+ * integers of length *ntypes*, with values in the range [0, *nelements* ),
+ * which maps each LAMMPS type to one of the SNAP elements."). The partial
+ * density of element μ is
+ * u^μ = wself_{μ_i μ} U(0,0,0) + sum_{j: elem(j)=μ} f_c w_{μ_j} U(θ0,θ,φ), the
+ * bispectrum is indexed on ordered triplets B^{κλμ} = sum conj(u^μ) H u^κ u^λ,
+ * and "the data is arranged into" N_elem^3 "sub-blocks, each sub-block
+ * corresponding to a particular chemical labeling" κλμ "with the last label
+ * changing fastest." For the self term, "If *wselfallflag* is on, then"
+ * wself = 1; "If it is off then" wself = 0 "except in the case of" μ_i = μ.
+ *
+ * Unsupported (StyleError): switchinnerflag/sinner/dinner, nnn/wmode/delta,
+ * chem on snad/atom and snav/atom, and the compute snap, sna/grid families.
  */
 
 /** Factorial of a non-negative integer (exact in doubles for the sizes used here). */
@@ -201,10 +215,19 @@ export class ComputeSnaAtom extends Compute {
   protected readonly bzeroflag: boolean;
   protected readonly quadraticflag: boolean;
   protected readonly bnormflag: boolean;
+  /** chemflag: explicit multi-element bispectrum (docs.lammps.org/compute_sna_atom.html). */
+  protected readonly chemflag: boolean;
+  /** Number of SNAP elements when chemflag is set, else 1. */
+  protected readonly nelements: number;
+  /** LAMMPS type (t-1) -> SNAP element index; all 0 when chemflag is off. */
+  protected readonly elemMap: Int32Array;
+  protected readonly wselfallflag: boolean;
   protected readonly triples: Triple[];
   protected readonly nbComps: number;
+  /** Number of linear bispectrum columns: K, or K*nelements^3 with chemflag. */
+  protected readonly nbase: number;
   protected readonly ncols: number;
-  /** Bispectrum of an atom with no neighbors, scaled as the output (for bzeroflag). */
+  /** Bispectrum of an atom with no neighbors (identity self term), per component. */
   protected b0: Float64Array | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
@@ -228,6 +251,8 @@ export class ComputeSnaAtom extends Compute {
     }
     let rmin0 = 0;
     let switchflag = true, bzeroflag = true, quadraticflag = false, bnormflag = false;
+    let chemflag = false, nelements = 1, wselfallflag = false;
+    const elemMap = new Int32Array(ntypes);
     for (let k = need; k < args.length; k++) {
       const kw = args[k];
       const flag = (): boolean => {
@@ -240,8 +265,19 @@ export class ComputeSnaAtom extends Compute {
       else if (kw === 'bzeroflag') bzeroflag = flag();
       else if (kw === 'quadraticflag') quadraticflag = flag();
       else if (kw === 'bnormflag') bnormflag = flag();
-      else if (kw === 'wselfallflag') flag(); // only acts together with chem, which is not implemented
-      else if (kw === 'chem' || kw === 'switchinnerflag' || kw === 'sinner' || kw === 'dinner' || kw === 'nnn' || kw === 'wmode' || kw === 'delta' || kw === 'bikflag' || kw === 'dgradflag') {
+      else if (kw === 'wselfallflag') wselfallflag = flag();
+      else if (kw === 'chem') {
+        // "chem values = nelements elementlist", "elementlist = ntypes integers in range [0, nelements)"
+        const ne = parseInt_(args[++k], `compute ${id} (sna/atom) chem nelements`);
+        if (ne < 1) throw new StyleError(`compute ${id} (sna/atom): chem nelements must be positive (got ${ne})`);
+        for (let t = 0; t < ntypes; t++) {
+          const e = parseInt_(args[++k], `compute ${id} (sna/atom) chem element ${t + 1}`);
+          if (e < 0 || e >= ne) throw new StyleError(`compute ${id} (sna/atom): chem elementlist entry ${e} out of range [0, ${ne})`);
+          elemMap[t] = e;
+        }
+        nelements = ne;
+        chemflag = true;
+      } else if (kw === 'switchinnerflag' || kw === 'sinner' || kw === 'dinner' || kw === 'nnn' || kw === 'wmode' || kw === 'delta' || kw === 'bikflag' || kw === 'dgradflag') {
         throw new StyleError(`compute ${id} (sna/atom): keyword '${kw}' is not implemented in this engine`);
       } else {
         throw new StyleError(`compute ${id} (sna/atom): unknown keyword '${kw}'`);
@@ -252,9 +288,14 @@ export class ComputeSnaAtom extends Compute {
     this.bzeroflag = bzeroflag;
     this.quadraticflag = quadraticflag;
     this.bnormflag = bnormflag;
+    this.chemflag = chemflag;
+    this.nelements = nelements;
+    this.elemMap = elemMap;
+    this.wselfallflag = wselfallflag;
     this.triples = buildTriples(tj);
     this.nbComps = this.triples.length;
-    this.ncols = this.nbComps + (quadraticflag ? (this.nbComps * (this.nbComps + 1)) / 2 : 0);
+    this.nbase = this.nbComps * (chemflag ? nelements * nelements * nelements : 1);
+    this.ncols = this.nbase + (quadraticflag ? (this.nbase * (this.nbase + 1)) / 2 : 0);
     this.sizePeratomCols = this.ncols;
   }
 
@@ -265,55 +306,58 @@ export class ComputeSnaAtom extends Compute {
     return this.rcutfac * 2 * rmax;
   }
 
-  /** Bispectrum components (scaled) from the accumulated u matrices. */
-  private bispectrum(u: { re: Float64Array; im: Float64Array }[], out: Float64Array): void {
-    let c = 0;
-    for (const t of this.triples) {
-      const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1;
-      const u1 = u[t.J1], u2 = u[t.J2], uj = u[t.J];
-      let val = 0;
-      // C_{k,kp} = sum_{m1,m1'} T[k,m1] T[kp,m1'] u1[m1,m1'] u2[m2(k,m1), m2(kp,m1')]
-      for (let k = 0; k < n; k++) {
-        for (let kp = 0; kp < n; kp++) {
-          let cr = 0, ci = 0;
-          for (let m1 = 0; m1 < n1; m1++) {
-            const s1 = k * n1 + m1;
-            const c1 = t.coef[s1];
-            if (c1 === 0) continue;
-            const m2 = t.m2[s1];
-            for (let m1p = 0; m1p < n1; m1p++) {
-              const s2 = kp * n1 + m1p;
-              const c2 = t.coef[s2];
-              if (c2 === 0) continue;
-              const m2p = t.m2[s2];
-              const ar = u1.re[m1 * n1 + m1p], ai = u1.im[m1 * n1 + m1p];
-              const br = u2.re[m2 * n2 + m2p], bi = u2.im[m2 * n2 + m2p];
-              const w = c1 * c2;
-              cr += w * (ar * br - ai * bi);
-              ci += w * (ar * bi + ai * br);
-            }
+  /**
+   * Raw bispectrum of every chem block: block b = (κ,λ,μ) in row-major order
+   * with μ fastest (docs: "each sub-block corresponding to a particular
+   * chemical labeling" κλμ "with the last label changing fastest").
+   */
+  private rawBlocks(ue: Cmat[][], out: Float64Array): void {
+    if (!this.chemflag) {
+      rawBispectrum(this.triples, ue[0], out);
+      return;
+    }
+    const Ne = this.nelements, K = this.nbComps;
+    let b = 0;
+    for (let k1 = 0; k1 < Ne; k1++) {
+      for (let k2 = 0; k2 < Ne; k2++) {
+        for (let k3 = 0; k3 < Ne; k3++) {
+          for (let c = 0; c < K; c++) {
+            const t = this.triples[c];
+            out[b * K + c] = bispectrumComponent(t, ue[k1][t.J1], ue[k2][t.J2], ue[k3][t.J]);
           }
-          // conj(u^j_{k,kp}) * C_{k,kp}, real part
-          val += uj.re[k * n + kp] * cr + uj.im[k * n + kp] * ci;
+          b++;
         }
       }
-      out[c++] = val;
     }
   }
 
   /** Output-column transform: B0 subtraction, bnorm, quadratic terms. */
-  protected finish(raw: Float64Array, row: Float64Array, off: number): void {
-    const K = this.nbComps;
-    for (let c = 0; c < K; c++) {
-      let b = raw[c];
-      if (this.bzeroflag) b -= this.b0![c];
-      if (this.bnormflag) b /= this.triples[c].J + 1;
-      row[off + c] = b;
+  protected finish(raw: Float64Array, row: Float64Array, off: number, muI = 0): void {
+    const K = this.nbComps, Ne = this.chemflag ? this.nelements : 1;
+    const b0 = this.b0;
+    let b = 0;
+    for (let k1 = 0; k1 < Ne; k1++) {
+      for (let k2 = 0; k2 < Ne; k2++) {
+        for (let k3 = 0; k3 < Ne; k3++) {
+          // B0 enters only for the self patterns: all elements with wselfallflag,
+          // else only the block (μ_i,μ_i,μ_i)
+          const useB0 = !this.chemflag || this.wselfallflag || (k1 === muI && k2 === muI && k3 === muI);
+          const bo = b * K;
+          for (let c = 0; c < K; c++) {
+            let v = raw[bo + c];
+            if (this.bzeroflag && useB0 && b0) v -= b0[c];
+            if (this.bnormflag) v /= this.triples[c].J + 1;
+            row[off + bo + c] = v;
+          }
+          b++;
+        }
+      }
     }
     if (this.quadraticflag) {
-      let q = off + K;
-      for (let i = 0; i < K; i++) {
-        for (let j = i; j < K; j++) {
+      const nb = this.nbase;
+      let q = off + nb;
+      for (let i = 0; i < nb; i++) {
+        for (let j = i; j < nb; j++) {
           row[q++] = i === j ? 0.5 * row[off + i] * row[off + i] : row[off + i] * row[off + j];
         }
       }
@@ -335,8 +379,9 @@ export class ComputeSnaAtom extends Compute {
     const ta = nb.typeall;
     const out = (this.arrayAtom = new Float64Array(this.ncols * n));
     const tj = this.twojmax;
+    const Ne = this.chemflag ? this.nelements : 1;
     if (this.bzeroflag && !this.b0) {
-      const id: { re: Float64Array; im: Float64Array }[] = [];
+      const id: Cmat[] = [];
       for (let J = 0; J <= tj; J++) {
         const m = J + 1;
         const re = new Float64Array(m * m), im = new Float64Array(m * m);
@@ -344,28 +389,39 @@ export class ComputeSnaAtom extends Compute {
         id.push({ re, im });
       }
       const raw = new Float64Array(this.nbComps);
-      this.bispectrum(id, raw);
-      this.b0 = raw.slice();
+      rawBispectrum(this.triples, id, raw);
+      this.b0 = raw;
     }
-    const u: { re: Float64Array; im: Float64Array }[] = [];
-    for (let J = 0; J <= tj; J++) {
-      const m = J + 1;
-      u.push({ re: new Float64Array(m * m), im: new Float64Array(m * m) });
+    // one set of coefficient matrices per element for the explicit multi-element form
+    const ue: Cmat[][] = [];
+    for (let e = 0; e < Ne; e++) {
+      const arr: Cmat[] = [];
+      for (let J = 0; J <= tj; J++) {
+        const m = J + 1;
+        arr.push({ re: new Float64Array(m * m), im: new Float64Array(m * m) });
+      }
+      ue.push(arr);
     }
-    const raw = new Float64Array(this.nbComps);
+    const raw = new Float64Array(this.nbase);
     const rc = this.rcutfac;
     const rfac0 = this.rfac0;
     const rmin0 = this.rmin0;
     for (let i = 0; i < n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
       const ti = ta[i];
+      const muI = this.chemflag ? this.elemMap[ti - 1] : 0;
       const xi = xa[3 * i], yi = xa[3 * i + 1], zi = xa[3 * i + 2];
-      // self term: identity (weight 1 for the central atom)
-      for (let J = 0; J <= tj; J++) {
-        const m = J + 1;
-        u[J].re.fill(0);
-        u[J].im.fill(0);
-        for (let k = 0; k < m; k++) u[J].re[k * m + k] = 1;
+      // self term: identity times w^self_{μ_i,e} (1 for all e with wselfallflag,
+      // else 1 only for e = μ_i); docs.lammps.org/compute_sna_atom.html gives
+      // u^μ = w^self U(0,0,0) + sum over neighbours of element μ
+      for (let e = 0; e < Ne; e++) {
+        const wself = this.wselfallflag || e === muI ? 1 : 0;
+        for (let J = 0; J <= tj; J++) {
+          const m = J + 1;
+          ue[e][J].re.fill(0);
+          ue[e][J].im.fill(0);
+          if (wself !== 0) for (let k = 0; k < m; k++) ue[e][J].re[k * m + k] = 1;
+        }
       }
       for (let k = 0; k < nall; k++) {
         if (k === i) continue;
@@ -383,17 +439,18 @@ export class ComputeSnaAtom extends Compute {
         const sc = fc * wj;
         // Cayley-Klein parameters of the point on the 3-sphere
         const ar = sg * Math.cos(theta0), ai = dz / r0, br = dy / r0, bi = dx / r0;
+        const e = this.chemflag ? this.elemMap[ta[k] - 1] : 0;
         for (let J = 0; J <= tj; J++) {
           const U = wignerU(J, ar, ai, br, bi);
-          const uj = u[J];
+          const uj = ue[e][J];
           for (let q = 0; q < U.re.length; q++) {
             uj.re[q] += sc * U.re[q];
             uj.im[q] += sc * U.im[q];
           }
         }
       }
-      this.bispectrum(u, raw);
-      this.finish(raw, out, i * this.ncols);
+      this.rawBlocks(ue, raw);
+      this.finish(raw, out, i * this.ncols, muI);
     }
   }
 }
@@ -412,37 +469,45 @@ const DL2X: number[][] = [[0, 0], [0, 0], [1, 0], [0, 1]];
 /** Real and imaginary flat (J+1)^2 matrices. */
 export interface Cmat { re: Float64Array; im: Float64Array }
 
+/**
+ * One bispectrum component B_{j1,j2,j} = sum conj(u^j) H u^{j1} u^{j2}, with
+ * the three expansion-coefficient matrices supplied explicitly (chemflag uses
+ * a different element's partial density in each of the three slots).
+ */
+export const bispectrumComponent = (t: Triple, u1: Cmat, u2: Cmat, uj: Cmat): number => {
+  const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1;
+  let val = 0;
+  for (let k = 0; k < n; k++) {
+    for (let kp = 0; kp < n; kp++) {
+      let cr = 0, ci = 0;
+      for (let m1 = 0; m1 < n1; m1++) {
+        const s1 = k * n1 + m1;
+        const c1 = t.coef[s1];
+        if (c1 === 0) continue;
+        const m2 = t.m2[s1];
+        for (let m1p = 0; m1p < n1; m1p++) {
+          const s2 = kp * n1 + m1p;
+          const c2 = t.coef[s2];
+          if (c2 === 0) continue;
+          const m2p = t.m2[s2];
+          const ar = u1.re[m1 * n1 + m1p], ai = u1.im[m1 * n1 + m1p];
+          const br = u2.re[m2 * n2 + m2p], bi = u2.im[m2 * n2 + m2p];
+          const w = c1 * c2;
+          cr += w * (ar * br - ai * bi);
+          ci += w * (ar * bi + ai * br);
+        }
+      }
+      val += uj.re[k * n + kp] * cr + uj.im[k * n + kp] * ci;
+    }
+  }
+  return val;
+};
+
 /** Bispectrum components (raw, before B0/bnorm) and their adjoints, shared by the pair style. */
 export const rawBispectrum = (triples: Triple[], u: Cmat[], out: Float64Array): void => {
   for (let c = 0; c < triples.length; c++) {
     const t = triples[c];
-    const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1;
-    const u1 = u[t.J1], u2 = u[t.J2], uj = u[t.J];
-    let val = 0;
-    for (let k = 0; k < n; k++) {
-      for (let kp = 0; kp < n; kp++) {
-        let cr = 0, ci = 0;
-        for (let m1 = 0; m1 < n1; m1++) {
-          const s1 = k * n1 + m1;
-          const c1 = t.coef[s1];
-          if (c1 === 0) continue;
-          const m2 = t.m2[s1];
-          for (let m1p = 0; m1p < n1; m1p++) {
-            const s2 = kp * n1 + m1p;
-            const c2 = t.coef[s2];
-            if (c2 === 0) continue;
-            const m2p = t.m2[s2];
-            const ar = u1.re[m1 * n1 + m1p], ai = u1.im[m1 * n1 + m1p];
-            const br = u2.re[m2 * n2 + m2p], bi = u2.im[m2 * n2 + m2p];
-            const w = c1 * c2;
-            cr += w * (ar * br - ai * bi);
-            ci += w * (ar * bi + ai * br);
-          }
-        }
-        val += uj.re[k * n + kp] * cr + uj.im[k * n + kp] * ci;
-      }
-    }
-    out[c] = val;
+    out[c] = bispectrumComponent(t, u[t.J1], u[t.J2], u[t.J]);
   }
 };
 
@@ -491,6 +556,47 @@ export const adjointBispectrum = (triples: Triple[], u: Cmat[], g: Float64Array,
             gr[t.J2].r[m2 * n2 + m2p] += w * yr;
             gi[t.J2].r[m2 * n2 + m2p] -= w * yi;
           }
+        }
+      }
+    }
+  }
+};
+
+/**
+ * chemflag adjoint: adds g dB/d(u) to per-element gradient tables. The
+ * conjugated slot J uses element gEj, the holomorphic slots J1, J2 use gE1,
+ * gE2 (each an array of per-J real/imaginary gradient matrices). Same signs
+ * as adjointBispectrum.
+ */
+export const adjointComponentChem = (
+  t: Triple, u1: Cmat, u2: Cmat, uj: Cmat, g: number,
+  gE1: Cmat[], gE2: Cmat[], gEj: Cmat[],
+): void => {
+  const n1 = t.J1 + 1, n2 = t.J2 + 1, n = t.J + 1;
+  for (let k = 0; k < n; k++) {
+    for (let kp = 0; kp < n; kp++) {
+      const cur = uj.re[k * n + kp], cui = uj.im[k * n + kp];
+      for (let m1 = 0; m1 < n1; m1++) {
+        const s1 = k * n1 + m1;
+        const c1 = t.coef[s1];
+        if (c1 === 0) continue;
+        const m2 = t.m2[s1];
+        for (let m1p = 0; m1p < n1; m1p++) {
+          const s2 = kp * n1 + m1p;
+          const c2 = t.coef[s2];
+          if (c2 === 0) continue;
+          const m2p = t.m2[s2];
+          const w = g * c1 * c2;
+          const a = u1.re[m1 * n1 + m1p], b = u1.im[m1 * n1 + m1p];
+          const cc = u2.re[m2 * n2 + m2p], dd = u2.im[m2 * n2 + m2p];
+          gEj[t.J].re[k * n + kp] += w * (a * cc - b * dd);
+          gEj[t.J].im[k * n + kp] += w * (a * dd + b * cc);
+          const hr = cur * cc + cui * dd, hi = cur * dd - cui * cc;
+          gE1[t.J1].re[m1 * n1 + m1p] += w * hr;
+          gE1[t.J1].im[m1 * n1 + m1p] -= w * hi;
+          const yr = cur * a + cui * b, yi = cur * b - cui * a;
+          gE2[t.J2].re[m2 * n2 + m2p] += w * yr;
+          gE2[t.J2].im[m2 * n2 + m2p] -= w * yi;
         }
       }
     }
@@ -673,6 +779,7 @@ export class ComputeSnaDeriv extends ComputeSnaAtom {
     super(sys, id, group, args);
     this.mode = mode;
     this.style = `${mode}/atom`;
+    if (this.chemflag) throw new StyleError(`compute ${id} (${mode}/atom): keyword 'chem' is not implemented in this engine`);
     const K = this.nbComps;
     const blk = K + (this.quadraticflag ? (K * (K + 1)) / 2 : 0);
     const nt = this.radius.length;
@@ -770,7 +877,6 @@ export class ComputeSnaDeriv extends ComputeSnaAtom {
       }
       // pass 1: u matrices, and derivative tables of every neighbour
       for (let J = 0; J <= tj; J++) {
-        const nn = (J + 1) * (J + 1);
         u[J].re.fill(0); u[J].im.fill(0);
         for (let q = 0; q < J + 1; q++) u[J].re[q * (J + 1) + q] = 1;
       }

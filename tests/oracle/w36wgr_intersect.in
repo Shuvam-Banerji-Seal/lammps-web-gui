@@ -1,0 +1,30 @@
+# oracle: fix wall/gran/region on an intersect region (side-in cylinder minus a side-out block obstacle), hertz/history, spheres under gravity
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+units           lj
+atom_style      sphere
+atom_modify     map array
+comm_modify     vel yes
+boundary        f f f
+region          box block -5 5 -5 5 -2 10 units box
+create_box      1 box
+region          cyl cylinder z 0.0 0.0 3.0 0.0 8.0 side in units box
+region          blk block -1.0 1.0 -1.0 1.0 3.0 5.0 side out units box
+region          I intersect 2 cyl blk
+create_atoms    1 single 0.0 0.0 7.0 units box
+create_atoms    1 single 2.0 0.0 6.0 units box
+create_atoms    1 single -2.0 0.5 6.5 units box
+create_atoms    1 single 0.5 -2.0 5.5 units box
+create_atoms    1 single 1.5 1.5 4.0 units box
+create_atoms    1 single 0.0 0.0 2.0 units box
+create_atoms    1 single -1.5 -1.5 7.5 units box
+set             type 1 diameter 1.0 density 1.0
+velocity        all set 0.0 0.0 -0.2 units box
+pair_style      none
+timestep        0.0005
+fix             1 all nve/sphere
+fix             2 all gravity 1.0 vector 0 0 -1
+fix             3 all wall/gran/region hertz/history 2000.0 1000.0 30.0 30.0 0.5 1 region I
+thermo_style    custom step ke pe etotal
+thermo_modify   format float %.15g
+thermo          40
+run             400

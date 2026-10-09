@@ -200,13 +200,124 @@ export abstract class Region {
     throw new StyleError(`region style ${this.style} cannot be used as a wall`);
   }
 
+  /**
+   * Contact candidates of the region surface for fix wall/gran/region.  A
+   * side-in region returns its interior faces (contacts); a side-out region
+   * returns the nearest point of the solid (its exterior surface).  A
+   * compound region overrides this to filter the sub-region contacts as
+   * region.html describes.  The force direction is "along the direction
+   * between that point and the particle center, which is the direction normal
+   * to the surface at that point" (fix_wall_gran_region.rst).
+   */
+  surfaceContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+    if (this.interior) this.contacts(x, y, z, out);
+    else this.outContacts(x, y, z, out);
+  }
+
+  /**
+   * Side-out surface contacts (nearest point of the solid) in the lab frame.
+   * Measured with native LAMMPS (black box, fix wall/gran/region, single
+   * sphere radius 0.5 against a side-out block 0..2^3, hooke and
+   * hertz/history): a particle outside a face, an edge, or a corner feels a
+   * single contact at the nearest point of the solid, with the normal along
+   * (particle - nearest point) and the block faces, edges and corners all
+   * flat (R_eff = R, the edge and corner forces are the face-like
+   * kn * delta * sqrt(delta R)); a side-out sphere of radius 1 gives R_eff =
+   * R * Rw / (R + Rw) with Rw = +1 (the convex outer surface); a side-out
+   * cylinder (radius 1) gives Rw = +2 at the lateral surface and at the rim,
+   * and Rw = 0 at the flat caps.
+   */
+  outContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+    let px = x, py = y, pz = z;
+    if (this.env.remap) {
+      const p = [px, py, pz];
+      this.env.remap(p);
+      px = p[0]; py = p[1]; pz = p[2];
+    }
+    const [bx, by, bz] = this.dynamic ? this.toBodyFrame(px, py, pz) : [px, py, pz];
+    const body: SurfaceContact[] = [];
+    this.primitiveSideOutContacts(bx, by, bz, body);
+    if (!this.dynamic) { for (const c of body) out.push(c); return; }
+    for (const c of body) {
+      const [nx, ny, nz] = this.toLabVector(c.nx, c.ny, c.nz);
+      out.push({ key: c.key, dist: c.dist, nx, ny, nz, curvature: c.curvature, source: c.source });
+    }
+  }
+
+  /**
+   * Nearest-point (side-out) contacts of a primitive region in its body frame.
+   * Measured with native LAMMPS (black box): block, sphere, cylinder (radlo =
+   * radhi) and cone solids use the nearest point of the solid; a particle on
+   * or inside the solid yields no exterior contact.
+   */
+  protected primitiveSideOutContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+    if (this instanceof BlockRegion) {
+      const b = this.b.map((p) => this.val(p));
+      const lo = [b[0], b[2], b[4]], hi = [b[1], b[3], b[5]];
+      const p = [x, y, z];
+      let inside = true;
+      for (let a = 0; a < 3; a++) if (p[a] < lo[a] || p[a] > hi[a]) inside = false;
+      if (inside) return;
+      const s = [0, 0, 0];
+      const act: string[] = [];
+      for (let a = 0; a < 3; a++) {
+        if (p[a] < lo[a]) { s[a] = lo[a]; act.push(`${a}lo`); }
+        else if (p[a] > hi[a]) { s[a] = hi[a]; act.push(`${a}hi`); }
+        else s[a] = p[a];
+      }
+      const dx = x - s[0], dy = y - s[1], dz = z - s[2];
+      const d = Math.hypot(dx, dy, dz);
+      if (!(d > 0)) return;
+      out.push({ key: `out:${act.join('')}`, dist: d, nx: dx / d, ny: dy / d, nz: dz / d, curvature: 0, source: this });
+      return;
+    }
+    if (this instanceof SphereRegion) {
+      const c = this.c.map((p) => this.val(p));
+      const R = this.val(this.r);
+      const dx = x - c[0], dy = y - c[1], dz = z - c[2];
+      const rho = Math.hypot(dx, dy, dz);
+      if (rho <= R) return;
+      out.push({ key: 'out', dist: rho - R, nx: dx / rho, ny: dy / rho, nz: dz / rho, curvature: R, source: this });
+      return;
+    }
+    if (this instanceof ConeRegion) {
+      const axis = this.axis;
+      const c1 = this.val(this.c1), c2 = this.val(this.c2);
+      const rl = this.val(this.radlo), rh = this.val(this.radhi);
+      const lo = this.val(this.lo), hi = this.val(this.hi);
+      const p = [x, y, z];
+      const [d1, d2] = axis === 0 ? [1, 2] : axis === 1 ? [0, 2] : [0, 1];
+      const e1 = p[d1] - c1, e2 = p[d2] - c2;
+      const rho = Math.hypot(e1, e2);
+      const ac = Math.min(Math.max(p[axis], lo), hi);
+      const slope = hi > lo ? (rh - rl) / (hi - lo) : 0;
+      const rad = rl + slope * (ac - lo);
+      const curved = rho > rad;
+      const rc = Math.min(rho, rad);
+      const s = [0, 0, 0];
+      s[axis] = ac;
+      s[d1] = c1 + (rho > 0 ? (e1 * rc) / rho : 0);
+      s[d2] = c2 + (rho > 0 ? (e2 * rc) / rho : 0);
+      const dx = x - s[0], dy = y - s[1], dz = z - s[2];
+      const d = Math.hypot(dx, dy, dz);
+      if (!(d > 0)) return;
+      out.push({
+        key: curved ? 'outlat' : 'outcap', dist: d, nx: dx / d, ny: dy / d, nz: dz / d,
+        curvature: curved ? 2 * rc : 0, source: this,
+      });
+      return;
+    }
+    throw new StyleError(`region style ${this.style} cannot be used as a side-out wall`);
+  }
+
   /** The primitive sub-regions of a compound region (empty for a primitive). */
   subRegions(): Region[] { return []; }
 
   /**
-   * True if the region or any sub-region is side out.  The wall surface
-   * helpers model interior surfaces only, so a compound region with a
-   * side-out sub-region is rejected by the wall fixes.
+   * True if the region or any sub-region is side out.  The interior-surface
+   * helper `contacts` models side-in regions only, so fix wall/region rejects
+   * a compound region with a side-out sub-region.  fix wall/gran/region uses
+   * `surfaceContacts`, which handles side-out sub-regions (region.ts).
    */
   hasSideOutSubRegion(): boolean {
     return this.subRegions().some((r) => !r.interior || r.hasSideOutSubRegion());
@@ -443,6 +554,45 @@ export class CompoundRegion extends Region {
         const qx = px - c.dist * c.nx, qy = py - c.dist * c.ny, qz = pz - c.dist * c.nz;
         const keep = this.style === 'intersect'
           ? members.every((mm) => mm.match(qx, qy, qz))
+          : members.every((mm) => mm === m || !mm.match(qx, qy, qz));
+        if (keep) out.push(c);
+      }
+    }
+  }
+
+  /**
+   * Compound contacts including side-out sub-regions.  The sub-region faces are
+   * filtered as docs.lammps.org/region.html describes: "LAMMPS discards points
+   * that are part of multiple sub-regions when calculating wall/particle
+   * interactions, to avoid double-counting the interaction."  A contact's own
+   * sub-region is not re-tested: a side-out sub-region's nearest point lies on
+   * its boundary, which is not "part of" a side-out region ("coordinates
+   * exactly on the region boundary are considered to be interior to the
+   * region ... would not be part of the region if it were defined using the
+   * side out keyword", region.html).  For an intersect region the contact
+   * point must lie in every other sub-region; for a union it must lie in no
+   * other sub-region.
+   */
+  surfaceContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+    let px = x, py = y, pz = z;
+    if (this.env.remap) {
+      const p = [px, py, pz];
+      this.env.remap(p);
+      px = p[0]; py = p[1]; pz = p[2];
+    }
+    const members = this.members.map((m) => {
+      const r = this.env.region(m);
+      if (!r) throw new StyleError(`region ${this.id}: sub-region ${m} no longer exists`);
+      return r;
+    });
+    for (const m of members) {
+      if (!m.match(px, py, pz)) continue;
+      const sub: SurfaceContact[] = [];
+      m.surfaceContacts(px, py, pz, sub);
+      for (const c of sub) {
+        const qx = px - c.dist * c.nx, qy = py - c.dist * c.ny, qz = pz - c.dist * c.nz;
+        const keep = this.style === 'intersect'
+          ? members.every((mm) => mm === m || mm.match(qx, qy, qz))
           : members.every((mm) => mm === m || !mm.match(qx, qy, qz));
         if (keep) out.push(c);
       }

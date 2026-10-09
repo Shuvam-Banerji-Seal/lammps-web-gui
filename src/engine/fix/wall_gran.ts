@@ -323,8 +323,10 @@ export class FixWallGran extends Fix {
  * regions, including compound (union/intersect) regions and dynamic (move/rotate) regions.  For a
  * compound region the sub-region faces are filtered as documented on region.html (see region.ts);
  * for a moving region the surface velocity enters the granular contact through the full relative
- * velocity (measured with native LAMMPS, see updateVelocities).  Side-out regions, the contacts and
- * temperature keywords throw a StyleError.
+ * velocity (measured with native LAMMPS, see updateVelocities).  A side-out region (or a compound
+ * region with a side-out member) contributes the nearest point of the solid (region.ts
+ * surfaceContacts/outContacts), measured with native LAMMPS for block, sphere and cylinder.  The
+ * contacts and temperature keywords throw a StyleError.
  */
 
 const WALL_WORDS = ['xplane', 'yplane', 'zplane', 'zcylinder', 'region'] as const;
@@ -442,13 +444,6 @@ export class FixWallGranGranular extends Fix {
       if (s.dimension === 2 && p.dim === 2) throw new StyleError('fix wall/gran: cannot use a z wall in a 2d simulation');
       if (s.box.periodic[p.dim]) throw new StyleError('Cannot use wall in periodic dimension');
     }
-    if (this.regionId) {
-      const r = this.sys.region(this.regionId);
-      if (!r.interior) throw new StyleError(`fix ${this.id} wall/gran/region: side-out regions are not supported`);
-      if (r.hasSideOutSubRegion()) {
-        throw new StyleError(`fix ${this.id} wall/gran/region: region style ${r.style} is not supported (a side-out sub-region is not supported)`);
-      }
-    }
   }
 
   postForce(): void { this.apply(true); }
@@ -500,9 +495,8 @@ export class FixWallGranGranular extends Fix {
   private regionElements(x: number, y: number, z: number, R: number, out: WallElement[]): void {
     out.length = 0;
     const r = this.sys.region(this.regionId!);
-    if (!r.interior) throw new StyleError(`fix ${this.id} wall/gran/region: side-out regions are not supported`);
     const cs: SurfaceContact[] = [];
-    r.contacts(x, y, z, cs);
+    r.surfaceContacts(x, y, z, cs);
     for (const c of cs) {
       const Rf = c.curvature === 0 ? R : (R * c.curvature) / (R + c.curvature);
       out.push({ key: `${c.source.id}:${c.key}`, dist: c.dist, nx: c.nx, ny: c.ny, nz: c.nz, Rf, source: c.source });

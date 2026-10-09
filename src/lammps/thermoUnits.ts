@@ -46,3 +46,22 @@ export const unitsCaption = (units: string | undefined): string | null => {
   if (!u) return null;
   return `units ${units}: energy ${u.energy}, temperature ${u.temperature}, pressure ${u.pressure}, distance ${u.distance}, time ${u.time}`;
 };
+
+const TIME_SECONDS: Record<string, number> = {
+  femtoseconds: 1e-15, picoseconds: 1e-12, nanoseconds: 1e-9, microseconds: 1e-6, seconds: 1,
+};
+
+/**
+ * Simulated time per wall-clock day at `stepsPerSec` with timestep `dt` (in the units style's time unit,
+ * from the table above): "12.3 ns/day", or "4.1e+05 τ/day" for lj (whose time is unitless).
+ */
+export const simulatedPerDay = (units: string | undefined, dt: number, stepsPerSec: number): string | null => {
+  if (!units || !(dt > 0) || !(stepsPerSec > 0)) return null;
+  const perDay = dt * stepsPerSec * 86400;
+  if (units === 'lj') return `${perDay < 1e4 ? perDay.toFixed(0) : perDay.toExponential(1)} τ/day`;
+  const unit = UNITS[units]?.time;
+  const sec = unit ? TIME_SECONDS[unit] : undefined;
+  if (!sec) return null;
+  const ns = (perDay * sec) / 1e-9;
+  return ns >= 1000 ? `${(ns / 1000).toFixed(ns >= 1e4 ? 0 : 1)} µs/day` : ns >= 1 ? `${ns.toFixed(ns >= 100 ? 0 : 1)} ns/day` : `${(ns * 1000).toFixed(1)} ps/day`;
+};

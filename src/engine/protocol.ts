@@ -1,11 +1,13 @@
 import type { EngineEvent } from './types';
+import type { AutoPlan, DeviceProfile } from './device';
 
 /** Messages between the notebook UI and the engine worker. */
 
-export type BackendChoice = 'cpu' | 'webgpu';
+/** 'auto' lets the engine choose from the device (device.ts autoPlan). */
+export type BackendChoice = 'auto' | 'cpu' | 'webgpu';
 
 export type ToEngine =
-  /** (Re)creates the session; drops every atom, fix and variable. */
+  /** (Re)creates the session; drops every atom, fix and variable. threads 0 = the engine's choice (device.ts autoThreads). */
   | { type: 'reset'; backend: BackendChoice; threads: number; frameEvery: number }
   /** Switches the force backend of the current session, keeping its system. */
   | { type: 'backend'; backend: BackendChoice; threads: number }
@@ -25,6 +27,12 @@ export type FromEngine =
     webgpuAvailable: boolean;
     /** Logical cores the browser reports (navigator.hardwareConcurrency). */
     cores: number;
+    /** What the engine found on this device (cores, memory, shared memory, WebGPU adapter). */
+    device: DeviceProfile;
+    /** The plan behind backend 'auto' or threads 0 (what was chosen and why). */
+    auto?: AutoPlan;
+    /** CPU threads the backend runs (pair term; for a GPU backend, the runs the GPU path cannot take). */
+    threads: number;
     note?: string;
     /** Commands the engine accepts (for the notebook's help panel). */
     commands: string[];

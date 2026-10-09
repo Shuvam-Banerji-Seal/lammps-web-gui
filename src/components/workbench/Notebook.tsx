@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Square, Plus, Trash2, RotateCcw, Download, Cpu, Gpu, HelpCircle, FileUp, X, Workflow } from 'lucide-react';
+import { Play, Square, Plus, Trash2, RotateCcw, Download, Cpu, Gpu, Gauge, HelpCircle, FileUp, X, Workflow } from 'lucide-react';
+import ResourceMonitor from './ResourceMonitor';
 import { cellsToScript } from '../../lammps/notebookBridge';
 import { explainEngineError } from './engineError';
 import { thermoUnit, unitsCaption } from '../../lammps/thermoUnits';
@@ -68,14 +69,10 @@ const THREADS_KEY = 'm3d.notebook.threads';
 /** Logical cores the browser reports (at least 1). */
 const browserCores = (): number =>
   typeof navigator !== 'undefined' && navigator.hardwareConcurrency > 0 ? navigator.hardwareConcurrency : 1;
-/**
- * Default CPU threads: half the cores (leave the rest to the page and the
- * OS), at most 8 — measured in Chromium, small systems stop gaining around
- * there; large ones keep gaining to ~12-16, which the selector allows.
- */
-const defaultThreads = (): number => Math.max(1, Math.min(8, Math.floor(browserCores() / 2)));
+/** Threads 0 = Auto: the engine picks (engine/device.ts autoThreads, from measurements). */
+const AUTO_THREADS = 0;
 const reviveThreads = (raw: unknown): number | null =>
-  typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 ? Math.min(raw, browserCores()) : null;
+  typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 ? Math.min(raw, browserCores()) : null;
 
 const reviveCells = (raw: unknown): Cell[] | null => {
   if (!Array.isArray(raw)) return null;
@@ -84,7 +81,7 @@ const reviveCells = (raw: unknown): Cell[] | null => {
   return cells.length ? cells : null;
 };
 
-const reviveBackend = (raw: unknown): BackendChoice | null => (raw === 'cpu' || raw === 'webgpu' ? raw : null);
+const reviveBackend = (raw: unknown): BackendChoice | null => (raw === 'auto' || raw === 'cpu' || raw === 'webgpu' ? raw : null);
 
 const emptyRun = (): CellRun => ({ status: 'idle', logs: [], error: null, tables: [] });
 
@@ -126,8 +123,12 @@ interface NotebookProps {
 const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingTaken, onOpenInBuilder }) => {
   const ct = getThemeTokens(theme);
   const [cells, setCells] = usePersistentState<Cell[]>(STORAGE_KEY, STARTER, reviveCells);
-  const [backend, setBackend] = usePersistentState<BackendChoice>(BACKEND_KEY, 'cpu', reviveBackend);
-  const [threads, setThreads] = usePersistentState<number>(THREADS_KEY, defaultThreads, reviveThreads);
+  const [backend, setBackend] = usePersistentState<BackendChoice>(BACKEND_KEY, 'auto', reviveBackend);
+  const [threads, setThreads] = usePersistentState<number>(THREADS_KEY, AUTO_THREADS, reviveThreads);
+  /** Run speed (engine 'perf' events) for the resource monitor, and the run's timestep/units. */
+  const [perf, setPerf] = useState<Extract<EngineEvent, { kind: 'perf' }> | null>(null);
+  const [perfHistory, setPerfHistory] = useState<number[]>([]);
+  const [runInfo, setRunInfo] = useState<{ dt: number; units: string } | null>(null);
   const [runs, setRuns] = useState<Record<string, CellRun>>({});
   const [ready, setReady] = useState<Extract<FromEngine, { type: 'ready' }> | null>(null);
   const [running, setRunning] = useState<string | null>(null);
@@ -235,6 +236,12 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           break;
         case 'run':
           setRunSpan({ cell: cell.id, from: ev.from, to: ev.to });
+          setRunInfo({ dt: ev.dt, units: ev.units });
+          setPerfHistory([]);
+          break;
+        case 'perf':
+          setPerf(ev);
+          setPerfHistory((h) => [...h.slice(-59), ev.stepsPerSec]);
           break;
       }
     };
@@ -358,25 +365,28 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           <RotateCcw size={13} aria-hidden="true" />{confirmReset ? 'Click again to reset' : 'Reset session'}
         </button>
         <div role="radiogroup" aria-label="Compute device" className={`flex overflow-hidden rounded border ${ct.divider}`}>
-          {([['cpu', 'CPU', <Cpu key="i" size={13} aria-hidden="true" />], ['webgpu', 'GPU', <Gpu key="i" size={13} aria-hidden="true" />]] as const)
+          {([['auto', 'Auto', <Gauge key="i" size={13} aria-hidden="true" />], ['cpu', 'CPU', <Cpu key="i" size={13} aria-hidden="true" />], ['webgpu', 'GPU', <Gpu key="i" size={13} aria-hidden="true" />]] as const)
             .map(([value, text, icon]) => (
               <button key={value} role="radio" aria-checked={backend === value}
                 disabled={busy || (value === 'webgpu' && !webgpuAvailable)}
-                title={value === 'webgpu'
-                  ? (webgpuAvailable ? 'Compute forces on the GPU with WebGPU' : 'This browser has no WebGPU')
-                  : 'Compute forces on the CPU (fp64), on the chosen number of threads'}
+                title={value === 'auto'
+                  ? 'Let the engine choose from this device: a hardware GPU if there is one, else the CPU on several threads'
+                  : value === 'webgpu'
+                    ? (webgpuAvailable ? 'Compute forces on the GPU with WebGPU' : 'This browser has no WebGPU')
+                    : 'Compute forces on the CPU (fp64), on the chosen number of threads'}
                 onClick={() => { if (backend !== value) void changeBackend(value); }}
                 className={`${btn} rounded-none ${backend === value ? ct.accent : ct.button}`}>
                 {icon}{text}
               </button>
             ))}
         </div>
-        <label className={`flex items-center gap-1 text-xs ${backend === 'webgpu' ? 'opacity-50' : ''}`}
-          title="CPU threads used for force computation (your browser reports this many logical cores)">
+        <label className="flex items-center gap-1 text-xs"
+          title="CPU threads used for force computation (with the GPU: for the runs the GPU path cannot take). Your browser reports this many logical cores">
           <span className={ct.muted}>Threads</span>
-          <select aria-label="CPU threads" value={Math.min(threads, cores)} disabled={busy || backend === 'webgpu'}
+          <select aria-label="CPU threads" value={threads === AUTO_THREADS ? AUTO_THREADS : Math.min(threads, cores)} disabled={busy}
             onChange={(e) => void changeBackend(backend, Number(e.target.value))}
             className={`min-h-6 rounded border px-1 py-0.5 text-xs ${ct.input}`}>
+            <option value={AUTO_THREADS}>Auto{ready && threads === AUTO_THREADS ? ` (${ready.threads})` : ''}</option>
             {Array.from({ length: cores }, (_, k) => k + 1).map((k) => (
               <option key={k} value={k}>{k}{k === cores ? ' (all)' : ''}</option>
             ))}
@@ -384,7 +394,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           <span className={ct.muted}>of {cores}</span>
         </label>
         <span className={`text-xs ${ct.muted}`} aria-live="polite">
-          {ready ? `${ready.backend}${ready.note ? ` — ${ready.note}` : ''}` : 'starting engine…'}
+          {ready ? `${ready.auto && backend === 'auto' ? 'Auto: ' : ''}${ready.backend}${ready.note ? ` — ${ready.note}` : ''}` : 'starting engine…'}
         </span>
         <button className={`${btn} ${ct.button}`} onClick={() => fileInput.current?.click()}
           title="Add data, include or potential files; scripts refer to them by file name">
@@ -552,6 +562,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
         </div>
 
         <div className={`space-y-2 border-t p-3 lg:col-start-2 lg:row-start-2 lg:overflow-y-auto lg:border-l lg:border-t-0 ${ct.divider}`}>
+          <ResourceMonitor ct={ct} ready={ready} perf={perf} history={perfHistory} runInfo={runInfo} running={running !== null} />
           {chart.temp.length > 1 && (
             <div>
               <p className={`text-[11px] font-semibold ${ct.muted}`}>Temperature</p>

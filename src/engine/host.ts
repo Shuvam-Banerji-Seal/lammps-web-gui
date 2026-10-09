@@ -2,7 +2,8 @@ import { Session, RunCancelled, SUPPORTED_COMMANDS } from './interpreter';
 import { styleNames } from './styles';
 import { CpuForceBackend } from './cpu/forces';
 import { ParallelCpuForceBackend } from './cpu/parallel';
-import { SharedThreadsBackend, sharedThreadsAvailable } from './cpu/pairThreads';
+import { SharedThreadsBackend, SharedPairThreads, sharedThreadsAvailable } from './cpu/pairThreads';
+import { probeDevice, autoPlan, autoThreads, type AutoPlan, type DeviceProfile } from './device';
 import type { ForceBackend } from './types';
 import type { BackendChoice, FromEngine, ToEngine } from './protocol';
 
@@ -26,6 +27,15 @@ export class EngineHost {
   private frameEvery = 0;
   /** Files added by the notebook; kept across session resets. */
   private files = new Map<string, string>();
+  private device: DeviceProfile | null = null;
+  private plan: AutoPlan | undefined;
+  private threadsInUse = 1;
+
+  /** The device profile (probed once: the WebGPU adapter request is not free). */
+  private async profile(): Promise<DeviceProfile> {
+    this.device ??= await probeDevice();
+    return this.device;
+  }
 
   constructor(private post: (msg: FromEngine, transfer?: Transferable[]) => void) {}
 
@@ -43,6 +53,7 @@ export class EngineHost {
 
   private cpuBackend(threads: number): ForceBackend {
     const t = Math.max(1, Math.min(Math.floor(threads) || 1, cores()));
+    this.threadsInUse = t <= 1 || !hasWorkers() ? 1 : t;
     // threads need (nested) Web Workers; with shared memory (a cross-origin isolated page) the
     // general engine runs its pair term on them, otherwise only plain lj/cut runs threaded
     if (t <= 1 || !hasWorkers()) return new CpuForceBackend();
@@ -50,12 +61,23 @@ export class EngineHost {
   }
 
   private async makeBackend(choice: BackendChoice, threads: number): Promise<{ backend: ForceBackend; note?: string }> {
+    const device = await this.profile();
+    this.plan = undefined;
+    if (choice === 'auto') {
+      this.plan = autoPlan(device);
+      choice = this.plan.backend;
+      if (threads <= 0) threads = this.plan.threads;
+    }
+    if (threads <= 0) {
+      threads = autoThreads(device);
+      this.plan ??= { backend: choice, threads, why: `${threads} CPU threads (half the ${device.cores} cores, at most 8)` };
+    }
     if (choice === 'webgpu') {
       try {
         // loaded on demand: the WGSL backend is only needed when chosen
         const { createWebGpuBackend, webgpuAdapterKind } = await import('./gpu/webgpuForces');
         const gpu = await createWebGpuBackend();
-        if (gpu) return { backend: gpu };
+        if (gpu) return { backend: this.withFallbackThreads(gpu, threads) };
         const kind = await webgpuAdapterKind();
         return {
           backend: this.cpuBackend(threads),
@@ -71,9 +93,27 @@ export class EngineHost {
     return { backend: this.cpuBackend(threads) };
   }
 
+  /**
+   * A GPU backend runs plain lj/cut only (run/accel.ts); every other run takes the general fp64 engine,
+   * which used to run on one thread under a GPU backend. With shared memory it now gets the pair threads.
+   */
+  private withFallbackThreads(gpu: ForceBackend, threads: number): ForceBackend {
+    const t = Math.max(1, Math.min(Math.floor(threads) || 1, cores()));
+    this.threadsInUse = 1;
+    if (t <= 1 || !hasWorkers() || !sharedThreadsAvailable()) return gpu;
+    const pairThreads = new SharedPairThreads(t);
+    this.threadsInUse = t;
+    const dispose = gpu.dispose.bind(gpu);
+    return Object.assign(gpu, { pairThreads, dispose: () => { pairThreads.dispose(); dispose(); } });
+  }
+
   private ready(backend: ForceBackend, note?: string): void {
     const webgpuAvailable = typeof navigator !== 'undefined' && 'gpu' in navigator;
-    this.post({ type: 'ready', backend: backend.label, kind: backend.kind, webgpuAvailable, cores: cores(), note, commands: [...SUPPORTED_COMMANDS], styles: styleNames() });
+    this.post({
+      type: 'ready', backend: backend.label, kind: backend.kind, webgpuAvailable, cores: cores(), note,
+      device: this.device!, auto: this.plan, threads: this.threadsInUse,
+      commands: [...SUPPORTED_COMMANDS], styles: styleNames(),
+    });
   }
 
   private async reset(choice: BackendChoice, threads: number, frameEvery: number): Promise<void> {

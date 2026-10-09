@@ -24,7 +24,7 @@ describe('notebook run information from the engine', () => {
   it('each run announces its first and last step (progress bar), after its thermo header', async () => {
     const ev = await events(`${BOX('lj')}run 10\nrun 15\n`);
     const runs = ev.filter((e) => e.kind === 'run');
-    expect(runs).toEqual([{ kind: 'run', from: 0, to: 10 }, { kind: 'run', from: 10, to: 25 }]);
+    expect(runs).toEqual([{ kind: 'run', from: 0, to: 10, dt: 0.005, units: 'lj' }, { kind: 'run', from: 10, to: 25, dt: 0.005, units: 'lj' }]);
     const i = ev.findIndex((e) => e.kind === 'run');
     expect(ev[i - 1].kind).toBe('thermo-header');
   });

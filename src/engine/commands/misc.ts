@@ -152,8 +152,18 @@ const shell: Handler = ({ sys, session }, a) => {
   throw new StyleError(`shell ${sub}: cannot run 'shell ${a.join(' ')}': a browser has no operating-system shell and no directories`);
 };
 
+/*
+ * box: docs.lammps.org/Commands_removed.html: "The *box* command has been removed and the LAMMPS code
+ * changed so it won't be needed.  If present, LAMMPS will ignore the command and print a warning."
+ * Measured with native LAMMPS (black box): box tilt large prints WARNING: The 'box' command has been
+ * removed and will be ignored, and the input carries on (examples/ELASTIC displace.mod uses it).
+ */
+const box: Handler = ({ sys }) => {
+  sys.warn("The 'box' command has been removed and will be ignored");
+};
+
 export const MISC_COMMANDS: Record<string, Handler> = {
-  variable, print, log, timer, info, shell,
+  variable, print, log, timer, info, shell, box,
   python: browserOnly('python', 'is not available: the browser engine has no Python interpreter'),
   plugin: browserOnly('plugin', 'is not available: plugins are native shared libraries'),
   mdi: browserOnly('mdi', 'is not available in the browser engine'),

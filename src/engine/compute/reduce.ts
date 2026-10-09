@@ -77,9 +77,30 @@ const EXTENSIVE_MODES: ReadonlySet<string> = new Set(['sum', 'sumsq', 'sumabs'])
  * Wildcards (same asterisk form as fix ave/time, documented on this page
  * for the bracketed index I of c_ID / f_ID inputs): expandWildcards in
  * refs.ts implements "This takes the form "*" or "*n" or "m*" or "m*n"."
+ * Local array columns are expanded against the local column count here.
  *
- * Engine limitation: this engine has no computes/fixes producing local
- * quantities, so "inputs local" is a StyleError, never a silent no-op.
+ * inputs local (the *inputs* keyword "allows selection of whether all the
+ * inputs are per-atom or local quantities"; "For the compute reduce command,
+ * the inputs can be either per-atom or local quantities and must all be of
+ * the same kind"; "If a compute *only* produces local
+ * data, like for example the :doc:`compute bond/local command
+ * <compute_bond_local>`, the setting "inputs local" is *required*."):
+ * the engine reduces the local vectors and local array columns of its local
+ * computes (bond/local, angle/local, dihedral/local, improper/local,
+ * property/local, pair/local and voronoi/atom neighbors yes) through the same
+ * modes. The engine has no fix with local output, so an f_ID local input is a
+ * StyleError naming it.
+ *
+ * Measured with native LAMMPS (black box): the group of compute reduce does
+ * not filter local rows — reduce sum c_bond[1] is identical for group all and
+ * for a subgroup, so the only group that restricts local rows is the one of
+ * the input compute; the count used by ave is the number of local rows.
+ * Measured with native LAMMPS (black box): an empty local list gives 0 for
+ * sum, sumsq, sumabs, ave, avesq and aveabs, 1e20 for min and minabs, -1e20
+ * for max and 0 for maxabs. Measured with native LAMMPS (black box):
+ * compute reduce/region rejects local inputs ("Compute reduce/region cannot
+ * use local data as input") and mixing a per-atom and a local input in one
+ * compute is an error.
  */
 export class ComputeReduce extends Compute {
   readonly style: string = 'reduce';
@@ -87,6 +108,8 @@ export class ComputeReduce extends Compute {
   protected readonly inputs: Ref[];
   private readonly replaces: Array<readonly [number, number]> = [];
   private readonly regionId: string | null;
+  /** True when the *inputs local* keyword selected local quantities (default peratom). */
+  private localInputs = false;
 
   constructor(sys: System, id: string, group: string, args: string[], regionId: string | null = null) {
     super(sys, id, group, args);
@@ -114,17 +137,18 @@ export class ComputeReduce extends Compute {
       } else if (w === 'inputs') {
         const v = args[k + 1];
         if (v === undefined) throw new StyleError(`compute ${id} (reduce): the inputs keyword needs peratom or local`);
-        if (v === 'local') {
-          throw new StyleError(`compute ${id} (reduce): inputs local is not supported by the browser engine (it has no local-quantity computes)`);
-        }
-        if (v !== 'peratom') throw new StyleError(`compute ${id} (reduce): the inputs keyword value must be peratom or local, got '${v}'`);
+        if (v === 'local') this.localInputs = true;
+        else if (v === 'peratom') this.localInputs = false;
+        else throw new StyleError(`compute ${id} (reduce): the inputs keyword value must be peratom or local, got '${v}'`);
         k += 1;
       } else {
         words.push(w);
       }
     }
     if (!words.length) throw new StyleError(`compute ${id} (reduce): at least one input value is required`);
-    this.inputs = expandWildcards(sys, words, 'peratom').map((w) => this.parseInput(w));
+    // "The compute reduce/region command can only be used with per-atom inputs."
+    if (regionId !== null && this.localInputs) throw new StyleError(`compute ${id} (reduce/region): cannot use local data as input`);
+    this.inputs = (this.localInputs ? expandLocalWildcards(sys, words) : expandWildcards(sys, words, 'peratom')).map((w) => this.parseInput(w));
     const n = this.inputs.length;
     if (n === 1) {
       this.scalarFlag = true;
@@ -140,9 +164,29 @@ export class ComputeReduce extends Compute {
     }
   }
 
-  /** One input: must be a per-atom producer ("must all be of the same kind (per-atom or local)"). */
+  /** One input: must be a producer of the selected kind ("must all be of the same kind (per-atom or local)"). */
   private parseInput(w: string): Ref {
     const r = parseRef(w, true);
+    if (this.localInputs) {
+      // "all the inputs must be the same kind": with inputs local, only a compute's local data is local.
+      if (r.kind === 'attr' || r.kind === 'v') {
+        throw new StyleError(`compute ${this.id} (reduce): ${w}: inputs local is not supported for per-atom inputs; with inputs local every input must be a local vector or local array column`);
+      }
+      if (r.kind === 'f') {
+        throw new StyleError(`compute ${this.id} (reduce): ${w}: fix ${r.id} does not calculate local values (the browser engine has no fix with local output)`);
+      }
+      const obj = this.sys.compute(r.id);
+      if (!obj.localFlag) throw new StyleError(`compute ${this.id} (reduce): ${w}: compute ${r.id} does not calculate local values`);
+      const cols = obj.sizeLocalCols;
+      if (r.index === null) {
+        if (cols !== 0) throw new StyleError(`compute ${this.id} (reduce): ${w}: it calculates a local array; give a column, e.g. ${w}[1]`);
+      } else if (cols === 0) {
+        throw new StyleError(`compute ${this.id} (reduce): ${w}: it calculates a local vector, which has no columns`);
+      } else if (r.index > cols) {
+        throw new StyleError(`compute ${this.id} (reduce): ${w}: column out of range 1..${cols}`);
+      }
+      return r;
+    }
     if (r.kind === 'attr' || r.kind === 'v') return r;
     const obj = r.kind === 'c' ? this.sys.compute(r.id) : this.sys.fix(r.id);
     const kind = r.kind === 'c' ? 'compute' : 'fix';
@@ -201,13 +245,76 @@ export class ComputeReduce extends Compute {
     }
   }
 
+  /**
+   * One mode reduction over the local rows of one local input (a local vector, or one column of a
+   * local array). "Each listed input is operated on independently"; the rows come straight from the
+   * local compute, whose own group already selected them (the reduce group does not filter them).
+   * Empty-list sentinels are the measured native ones (see the module comment).
+   */
+  private reduceLocalOne(r: Ref): number {
+    const src = this.localSource(r);
+    let sum = 0, sumsq = 0, sumabs = 0;
+    let mn = Infinity, mx = -Infinity, mnabs = Infinity, mxabs = 0;
+    for (let row = 0; row < src.rows; row++) {
+      const v = src.data[row * src.ncol + src.col];
+      sum += v;
+      sumsq += v * v;
+      const a = Math.abs(v);
+      sumabs += a;
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+      if (a < mnabs) mnabs = a;
+      if (a > mxabs) mxabs = a;
+    }
+    switch (this.mode) {
+      case 'sum': return sum;
+      case 'min': return src.rows ? mn : 1e20;
+      case 'minabs': return src.rows ? mnabs : 1e20;
+      case 'max': return src.rows ? mx : -1e20;
+      case 'maxabs': return src.rows ? mxabs : 0;
+      case 'ave': return src.rows ? sum / src.rows : 0;
+      case 'sumsq': return sumsq;
+      case 'avesq': return src.rows ? sumsq / src.rows : 0;
+      case 'sumabs': return sumabs;
+      case 'aveabs': return src.rows ? sumabs / src.rows : 0;
+    }
+  }
+
+  /** The local data of one validated local input: its rows, column count and selected column. */
+  private localSource(r: Ref): { data: Float64Array; ncol: number; col: number; rows: number } {
+    const c = this.sys.compute(r.id);
+    const data = c.localValues(); // evaluated once per state epoch; sets localRows
+    return { data, ncol: Math.max(1, c.sizeLocalCols), col: r.index === null ? 0 : r.index - 1, rows: c.localRows };
+  }
+
   protected computeScalar(): number {
-    return this.reduceOne(peratomValues(this.sys, this.inputs[0]));
+    return this.localInputs ? this.reduceLocalOne(this.inputs[0]) : this.reduceOne(peratomValues(this.sys, this.inputs[0]));
   }
 
   protected computeVector(): void {
+    if (this.localInputs) {
+      for (let k = 0; k < this.inputs.length; k++) this.vector[k] = this.reduceLocalOne(this.inputs[k]);
+      this.applyReplacesLocal();
+      return;
+    }
     for (let k = 0; k < this.inputs.length; k++) this.vector[k] = this.reduceOne(peratomValues(this.sys, this.inputs[k]));
     this.applyReplaces();
+  }
+
+  /** replace on local inputs: the vec2 min/max row selects the reported value of vec1 (compute_reduce.html). */
+  private applyReplacesLocal(): void {
+    if (!this.replaces.length) return;
+    for (const [v1, v2] of this.replaces) {
+      const a = this.localSource(this.inputs[v1 - 1]);
+      const b = this.localSource(this.inputs[v2 - 1]);
+      let best = this.mode === 'min' ? Infinity : -Infinity;
+      let idx = -1;
+      for (let row = 0; row < b.rows; row++) {
+        const v = b.data[row * b.ncol + b.col];
+        if (this.mode === 'min' ? v < best : v > best) { best = v; idx = row; }
+      }
+      if (idx >= 0 && idx < a.rows) this.vector[v1 - 1] = a.data[idx * a.ncol + a.col];
+    }
   }
 
   /** replace: the vec2 min/max index selects the reported element of vec1 (compute_reduce.html). */
@@ -511,4 +618,25 @@ const parseIndex = (w: string, id: string): number => {
   const v = Number(w);
   if (!Number.isInteger(v) || v < 1) throw new StyleError(`compute ${id} (reduce): replace index '${w}' must be a positive integer (input values are numbered from 1)`);
   return v;
+};
+
+/*
+ * Wildcard expansion of local c_ID[*] inputs, against the local column count (refs.ts
+ * expandWildcards expands against the per-atom or global counts): compute_reduce.html
+ * "the bracketed index I can be specified using a wildcard asterisk ... This takes the form
+ * "*" or "*n" or "m*" or "m*n". If N is ... the number of columns in the array ... then an
+ * asterisk with no numeric values means all indices from 1 to N."
+ */
+const expandLocalWildcards = (sys: System, words: string[]): string[] => {
+  const out: string[] = [];
+  for (const w of words) {
+    const m = /^c_([A-Za-z0-9_\-/]+)\[(\d*)\*(\d*)\]$/.exec(w);
+    if (!m) { out.push(w); continue; }
+    const [, id, lo, hi] = m;
+    const n = sys.compute(id).sizeLocalCols;
+    if (n < 1) throw new StyleError(`${w}: compute ${id} has no local columns to expand`);
+    const a = lo === '' ? 1 : Number(lo), b = hi === '' ? n : Math.min(Number(hi), n);
+    for (let k = a; k <= b; k++) out.push(`c_${id}[${k}]`);
+  }
+  return out;
 };

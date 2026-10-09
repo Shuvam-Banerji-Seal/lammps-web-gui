@@ -1,0 +1,24 @@
+# oracle: compute voronoi/atom local output (neighbors yes) reduced with compute reduce sum/ave/min/max inputs local in a 2d periodic square lattice, as examples/voronoi/in.voronoi.data does
+# oracle-compare: thermo=all atoms=none rel=1e-9
+units           lj
+dimension       2
+boundary        p p p
+atom_style      atomic
+lattice         sq 1.0 origin 0.5 0.5 0.0
+region          box block 0 3 0 3 -1.0 1.0 units box
+region          atoms block 0 3 0 3 0.0 0.0 units box
+create_box      1 box
+create_atoms    1 region atoms
+mass            1 1.0
+pair_style      lj/cut 0.5
+pair_coeff      1 1 0.0 1.0
+neighbor        0.3 nsq
+comm_modify     cutoff 5.0
+compute         v all voronoi/atom neighbors yes
+compute         rsum all reduce sum c_v[1] c_v[3] inputs local
+compute         rave all reduce ave c_v[3] inputs local
+compute         rmax all reduce max c_v[3] inputs local
+compute         rmin all reduce min c_v[3] inputs local
+thermo_style    custom step pe c_rsum[1] c_rsum[2] c_rave c_rmax c_rmin
+thermo_modify   format float %.15g
+run             0

@@ -1,0 +1,25 @@
+# oracle: compute reduce over local bond/local vectors and a local property/local array column (sum, min, max, ave, sumsq and replace), run 0 and a few nve steps
+# oracle-inputs: w35reduce_chain.data
+# oracle-compare: rel=1e-9
+units           lj
+atom_style      full
+read_data       w35reduce_chain.data
+bond_style      harmonic
+bond_coeff      * 50.0 1.0
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+neighbor        0.3 bin
+compute         bl all bond/local dist engpot
+compute         pl all property/local batom1 batom2
+compute         rsum all reduce sum c_bl[1] c_bl[2] inputs local
+compute         rmn all reduce min c_bl[1] inputs local
+compute         rmx all reduce max c_bl[1] inputs local
+compute         rave all reduce ave c_bl[1] inputs local
+compute         rsq all reduce sumsq c_bl[1] inputs local
+compute         rrep all reduce max c_pl[1] c_pl[2] c_bl[1] replace 1 3 replace 2 3 inputs local
+thermo_style    custom step pe ebond c_rsum[1] c_rsum[2] c_rmn c_rmx c_rave c_rsq c_rrep[1] c_rrep[2] c_rrep[3]
+thermo_modify   format float %.15g
+fix             1 all nve
+timestep        0.002
+run             0
+run             5

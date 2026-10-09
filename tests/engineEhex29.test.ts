@@ -63,13 +63,13 @@ run             1
     expect(errorText(error)).toMatch(/constrain.*shake|rattle/i);
   });
 
-  it('rejects com (not implemented)', async () => {
+  it('accepts constrain com (implemented in wave 32; parity in the w31ehexcom oracle cases)', async () => {
     const { error } = await runScript(`${BODY}
 fix             2 all shake 1.0e-10 400 0 b 1 a 1
 fix             3 all ehex 1 0.05 region hot constrain com
 run             1
 `, { 'w29ehex_water.data': WATER });
-    expect(errorText(error)).toMatch(/com.*not implemented/);
+    expect(error).toBeNull();
   });
 
   it('rejects com without constrain', async () => {

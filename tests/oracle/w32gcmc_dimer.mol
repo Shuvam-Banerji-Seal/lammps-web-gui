@@ -1,0 +1,13 @@
+# dimer molecule template (2 atoms, no bonds) for the w32gcmc_rot oracle
+2 atoms
+0 bonds
+
+Coords
+
+1 0.0 0.0 0.0
+2 1.2 0.0 0.0
+
+Types
+
+1 1
+2 1

@@ -75,7 +75,7 @@ import type { SimState, TopoList } from '../types';
 type Vec3 = [number, number, number];
 
 /** A minimal TopoList from template-local entries [type, ids...]. */
-const topoList = (entries: number[][], width: 2 | 3 | 4): TopoList => {
+export const topoList = (entries: number[][], width: 2 | 3 | 4): TopoList => {
   const type = new Int32Array(entries.length);
   const atoms = new Int32Array(entries.length * width);
   entries.forEach((e, k) => {
@@ -86,14 +86,14 @@ const topoList = (entries: number[][], width: 2 | 3 | 4): TopoList => {
 };
 
 /** Largest molecule ID in the system (0 when none). */
-const maxMoleculeId = (s: SimState): number => {
+export const maxMoleculeId = (s: SimState): number => {
   let m = 0;
   for (let i = 0; i < s.n; i++) if (s.molecule[i] > m) m = s.molecule[i];
   return m;
 };
 
 /** Bounding box and volume of an insertion region (side in). */
-const regionBox = (sys: System, r: Region): { lo: Vec3; hi: Vec3; volume: number } => {
+export const regionBox = (sys: System, r: Region): { lo: Vec3; hi: Vec3; volume: number } => {
   if (r instanceof BlockRegion) {
     const b = r.b.map((p) => paramValue(sys, p));
     const lo: Vec3 = [b[0], b[2], b[4]], hi: Vec3 = [b[1], b[3], b[5]];

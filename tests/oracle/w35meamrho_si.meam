@@ -1,0 +1,2 @@
+# w35meamrho_si: minimal single-element parameter file (not a LAMMPS potential file): no ZBL blend
+zbl(1,1) = 0

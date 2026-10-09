@@ -1,0 +1,75 @@
+# oracle: pair_style meam, the real Si entry of library.meam alone (dia, ibar 1, parameter file with zbl 0 only): Si dimers at 2.25, 2.7 and 3.3 A and a displaced 64-atom diamond crystal, then the same crystal with the C entry (dia, ibar 1) and with a synthetic Si entry whose ibar is 3; the embedding normalisation of an ibar 1 element is the full reference background rho0 G(Gamma_ref)
+# oracle-inputs: w35meamrho_si.meam w35meamrho_lib3.meam
+# oracle-potentials: library.meam
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-9
+units           metal
+atom_style      atomic
+boundary        p p p
+region          box block 0 30 0 30 0 30
+create_box      1 box
+create_atoms    1 single 2.0 2.0 2.0
+create_atoms    1 single 4.25 2.0 2.0
+create_atoms    1 single 10.0 10.0 10.0
+create_atoms    1 single 12.7 10.0 10.0
+create_atoms    1 single 20.0 20.0 20.0
+create_atoms    1 single 23.3 20.0 20.0
+mass            1 28.086
+pair_style      meam
+pair_coeff      * * library.meam Si w35meamrho_si.meam Si
+thermo_style    custom step pe press pxx pyy pzz pxy
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        p p p
+lattice         diamond 5.431
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 28.086
+variable        dx atom 0.05*sin(1.3*x+0.7*y)
+variable        dy atom 0.05*sin(0.9*y+1.1*z)
+variable        dz atom 0.05*sin(1.7*z+0.4*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      meam
+pair_coeff      * * library.meam Si w35meamrho_si.meam Si
+thermo_style    custom step pe press pxx pyy pzz pxy
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        p p p
+lattice         diamond 3.567
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 12.0111
+variable        dx atom 0.04*sin(1.3*x+0.7*y)
+variable        dy atom 0.04*sin(0.9*y+1.1*z)
+variable        dz atom 0.04*sin(1.7*z+0.4*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      meam
+pair_coeff      * * library.meam C w35meamrho_si.meam C
+thermo_style    custom step pe press pxx pyy pzz pxy
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        p p p
+lattice         diamond 5.431
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 28.086
+variable        dx atom 0.05*sin(1.3*x+0.7*y)
+variable        dy atom 0.05*sin(0.9*y+1.1*z)
+variable        dz atom 0.05*sin(1.7*z+0.4*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      meam
+pair_coeff      * * w35meamrho_lib3.meam Si3 w35meamrho_si.meam Si3
+thermo_style    custom step pe press pxx pyy pzz pxy
+thermo_modify   format float %.15g
+run             0

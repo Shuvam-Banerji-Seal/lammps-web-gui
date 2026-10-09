@@ -6,7 +6,7 @@ import { referenceVectors, type ReferenceLattice } from './meam_lattice';
  *   - fcc and dia single-element references (the homonuclear pair term phi_ii and the embedding
  *     reference rho_ref,i use the element's own lattice, as in meam.ts; z is the library coordination);
  *   - heteronuclear pairs with lattce(I,J) = b1 (rock salt) or dia (diamond/zincblende);
- *   - ibar = 0, t0 = 1, rozero = 1, zbl = 0, per-triplet Cmin/Cmax, no nn2/delta;
+ *   - ibar = 0 and 1, t0 = 1, zbl = 0, per-triplet Cmin/Cmax, no nn2/delta;
  *   - ialloy = 0, 1 and 2 (docs.lammps.org/pair_meam.html); see densityPartials1 and effT;
  *   - erose_form 0 (with attrac = repuls = 0), 1 and 2 with per-pair attrac(I,J)/repuls(I,J)
  *     (pairErose below; erose_form 0 with nonzero attrac/repuls is refused by the parser).
@@ -17,6 +17,16 @@ import { referenceVectors, type ReferenceLattice } from './meam_lattice';
  *   "b1  = rock salt (NaCl structure)"
  *   "dia = diamond (interlaced fcc for alloy)"
  *   "Ec(I,J)     = cohesive energy of reference structure for I-J mixture"
+ *
+ * Density scaling rozero / rho0(I): docs.lammps.org/pair_meam.html "The *rozero* parameter is an
+ * element-dependent density scaling that weights the reference background density" and "rho0(I) =
+ * relative density for element I (overwrites value read from meamf file)". Measured with native LAMMPS
+ * (black box) on synthetic two-element probes (plans/scratch/w35meamrho) and the real SiC potential:
+ * the scaling multiplies the atomic electron density contributed by a neighbour of the element, so a
+ * single element and the perfect B1 crystal are invariant (every density and every reference density
+ * carry the same factor), while a mixed cluster changes; rho0(2) = 2.25 with library rozero = 1 gives
+ * exactly the same energy as library rozero = 2.25 (the override), and the A-B dimer pe moves from
+ * -3.15152249979223 to -3.25215323144868 eV for rho0(2) = 2.25. See tests/engineMeamRho35.test.ts.
  *
  * Measured with native LAMMPS (black box), all with the synthetic entries of tests/oracle/w15meam_alloy_*:
  *  - B1 crystal (8 atoms, lattce(1,2) = b1): pe per atom equals the Rose energy of the B1 pair at the
@@ -81,6 +91,13 @@ export interface AlloyElement {
   t: [number, number, number, number];
   /** ibar of the element (library entry; default 0); selects G(Gamma) through gOfIbar */
   ibar?: number;
+  /**
+   * rozero (or the rho0(I) override) of the element: docs.lammps.org/pair_meam.html "The *rozero*
+   * parameter is an element-dependent density scaling that weights the reference background density"
+   * and "rho0(I) = relative density for element I (overwrites value read from meamf file)". It multiplies
+   * the atomic electron density contributed by a neighbour of this element (see termsOf). Default 1.
+   */
+  rozero?: number;
 }
 
 /**
@@ -483,8 +500,10 @@ const termsOf = (model: AlloyModel, list: AlloyNeighbor[], central: number, radi
   return list.map((p, m) => {
     const el = model.elements[p.e];
     const W = (radial ? fcW(p.r, model.opts) : 1) * sc.S[m];
+    // The neighbour's atomic electron density is scaled by its own rozero / rho0(I) (see AlloyElement.rozero).
+    const rz = el.rozero ?? 1;
     const A: [number, number, number, number] = [0, 0, 0, 0];
-    for (let n = 0; n < 4; n++) A[n] = Math.exp(-el.beta[n] * (p.r / el.re - 1));
+    for (let n = 0; n < 4; n++) A[n] = rz * Math.exp(-el.beta[n] * (p.r / el.re - 1));
     return { e: p.e, W, A, u: [p.dx / p.r, p.dy / p.r, p.dz / p.r], t: effT(model, central, p.e) };
   });
 };
@@ -637,8 +656,12 @@ export const alloyPair = (model: AlloyModel, i: number, j: number, r: number): {
 export const makeAlloyModel = (elements: AlloyElement[], pairs: AlloyPair[][], opts: AlloyOptions, augt1: boolean): AlloyModel => {
   const tEff = elements.map((el) => [1, augt1 ? el.t[1] + 0.6 * el.t[3] : el.t[1], el.t[2], el.t[3]] as [number, number, number, number]);
   const model: AlloyModel = { elements, pairs, opts, tEff, rhoRef: [] };
-  // embedding normalisation: rho0 at re without G(Gamma), as in meam.ts referenceBackground
-  model.rhoRef = elements.map((el, c) => scaledRho({ ...model, rhoRef: [] }, ownList(model, c, el.re), el.re, el.ibar ?? 0, c).rho0);
+  // Embedding normalisation at re; same rule as meam.ts referenceBackground: the full reference
+  // background rho0*G(Gamma_ref) for ibar = 1 and 3, the raw rho0 for ibar = 0 (see the note there).
+  model.rhoRef = elements.map((el, c) => {
+    const ref = scaledRho({ ...model, rhoRef: [] }, ownList(model, c, el.re), el.re, el.ibar ?? 0, c);
+    return el.ibar === 1 || el.ibar === 3 ? ref.rho : ref.rho0;
+  });
   return model;
 };
 

@@ -55,7 +55,9 @@ describe('molecule templates', () => {
 
   it('names what it cannot do', () => {
     expect(() => parseMoleculeFile('c', 'w.json', '{}', O)).toThrow(/JSON molecule files/);
-    expect(() => parseMoleculeFile('c', 'm.txt', CHAIN + '\nMasses\n\n1 1\n2 1\n3 1\n4 1\n', O)).toThrow(/per-atom masses/);
+    const md = parseMoleculeFile('c', 'm.txt', CHAIN + '\nMasses\n\n1 1\n2 1\n3 1\n4 1\n\nDiameters\n\n1 0.5\n2 0.5\n3 0.5\n4 0.5\n', O);
+    expect(md.mass && Array.from(md.mass)).toEqual([1, 1, 1, 1]);
+    expect(md.diam && Array.from(md.diam)).toEqual([0.5, 0.5, 0.5, 0.5]);
     expect(() => parseMoleculeFile('c', 'm.txt', CHAIN.replace('Types', 'Typo'), O)).toThrow(/section 'Typo'/);
     expect(() => parseMoleculeFile('c', 'm.txt', '# x\n\nCoords\n\n1 0 0 0\n', O)).toThrow(/needs an "N atoms" header/);
     expect(() => parseMoleculeFile('c', 'm.txt', CHAIN.replace('4 2\n\nBonds', '\nBonds'), O)).toThrow(/bad line 'Bonds' in the Types section/);

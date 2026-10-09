@@ -3,7 +3,7 @@ import { int, num, yesno, latticeScale, keywords } from './args';
 import { StyleError, typeBounds } from '../force/types';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId } from '../atoms';
+import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId } from '../atoms';
 import { parseStl } from '../stl';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import { generalAtomSites, generalBoxFromRestricted, generalCreateBox } from '../triclinic_general';
@@ -481,7 +481,22 @@ export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[],
   const tIdx = tmplStyle ? new Int32Array(copies * t.natoms).fill(1) : undefined;
   const tAt = tmplStyle ? Int32Array.from({ length: copies * t.natoms }, (_, k) => (k % t.natoms) + 1) : undefined;
   const base = maxAtomId(s);
-  const added = appendAtoms(s, { x, image, type: types, molecule: mol, q, mask: gbit, tmplIndex: tIdx, tmplAtom: tAt });
+  // Diameters / Masses from the molecule template (molecule.html): a sphere-style copy gets
+  // radius = diameter / 2 (default 0.5) and per-atom mass = template mass, else 4/3 pi r^3 at
+  // density 1. Measured with native LAMMPS (black box, create_atoms single mol atom_style sphere):
+  // Diameters 1.0 / 2.0 gives radii 0.5 / 1.0; Masses 0.5 / 1.5 gives masses 0.5 / 1.5; without
+  // both, radius 0.5 and mass 0.5235987755982988.
+  let radius: Float64Array | undefined;
+  let rmass: Float64Array | undefined;
+  if (s.radius) {
+    radius = new Float64Array(copies * t.natoms);
+    for (let c = 0; c < copies; c++) for (let i = 0; i < t.natoms; i++) radius[c * t.natoms + i] = t.diam ? t.diam[i] / 2 : SPHERE_DEFAULT_RADIUS;
+  }
+  if (s.rmass && (t.mass || radius)) {
+    rmass = new Float64Array(copies * t.natoms);
+    for (let c = 0; c < copies; c++) for (let i = 0; i < t.natoms; i++) rmass[c * t.natoms + i] = t.mass ? t.mass[i] : sphereMass(radius![c * t.natoms + i], 1);
+  }
+  const added = appendAtoms(s, { x, image, type: types, molecule: mol, q, mask: gbit, tmplIndex: tIdx, tmplAtom: tAt, radius, rmass });
   for (let c = 0; c < copies; c++) {
     const id0 = base + c * t.natoms;
     for (const [what, list] of [['bonds', t.bonds], ['angles', t.angles], ['dihedrals', t.dihedrals], ['impropers', t.impropers]] as const) {

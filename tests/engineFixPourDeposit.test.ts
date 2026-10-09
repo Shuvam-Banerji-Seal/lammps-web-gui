@@ -72,9 +72,9 @@ describe('fix pour / fix deposit argument errors', () => {
     expect((await run(`${header}region r block 0 3 0 3 0 1 side in units box\nfix 3 all pour 2.5 1 7 region r\n`)).error).toMatch(/N must be a positive integer/);
   });
 
-  it('pour names unsupported molecule keywords', async () => {
-    const r = await run(`${header}region r block 0 3 0 3 0 1 side in units box\nfix 3 all pour 5 1 7 region r mol tmpl\n`);
-    expect(r.error).toMatch(/keyword 'mol' is not supported/);
+  it('pour mol requires an existing molecule template', async () => {
+    const r = await run(`${header}region r block 0 3 0 3 0 1 side in units box\nfix 3 all pour 5 1 7 region r mol tmpl\nrun 1\n`);
+    expect(r.error).toMatch(/molecule template 'tmpl' does not exist/);
   });
 
   it('pour requires atom_style sphere and a gravity fix', async () => {

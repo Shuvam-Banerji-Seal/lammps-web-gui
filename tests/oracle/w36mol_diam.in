@@ -1,0 +1,23 @@
+# oracle: create_atoms mol carries molecule Diameters and Masses into sphere atoms
+# oracle-inputs: w36mol_diam.mol
+# oracle-files: w36mol_diam.dump
+units		lj
+atom_style	sphere
+boundary	p p p
+
+region		box block 0 15 0 15 0 15 units box
+create_box	1 box
+
+molecule	md w36mol_diam.mol
+
+fix		1 all nve/sphere
+
+create_atoms	0 single 5 5 5 mol md 12345 units box
+create_atoms	0 single 11 9 11 mol md 12345 units box
+
+thermo_style	custom step atoms ke pe
+thermo_modify	format float %.15g
+thermo		1
+run		5
+
+write_dump all custom w36mol_diam.dump id type x y z radius mass modify format float %.15g sort id

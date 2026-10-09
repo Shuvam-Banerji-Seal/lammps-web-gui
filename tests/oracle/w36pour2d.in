@@ -1,0 +1,27 @@
+# oracle: 2d fix pour of granular spheres (fall axis y, area count, range diameters)
+dimension	2
+atom_style	sphere
+boundary	f f p
+newton		off
+comm_modify	vel yes
+
+region		box block 0 20 0 20 -0.5 0.5 units box
+create_box	1 box
+
+pair_style	gran/hooke/history 4000.0 NULL 100.0 NULL 0.5 0
+pair_coeff	* *
+
+timestep	0.001
+
+fix		1 all nve/sphere
+fix		2 all gravity 1.0 spherical 0.0 -180.0
+
+region		slab block 2 18 10 15 -0.5 0.5 units box
+fix		ins all pour 20 1 4767548 vol 0.2 50 diam range 0.5 1.0 region slab
+
+fix		3 all enforce2d
+
+thermo_style	custom step atoms ke
+thermo_modify	format float %.15g
+thermo		10
+run		200

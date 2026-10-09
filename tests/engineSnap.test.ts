@@ -133,7 +133,7 @@ describe('compute sna/atom: argument errors', () => {
   });
 
   it('rejects unsupported keywords by name', async () => {
-    await fails('sna/atom 1.1 0.85 4 1.6 2.0 1.0 1.0 chem 2 0 1', /keyword 'chem' is not implemented/);
+    // chem (explicit multi-element bispectrum) is implemented since wave 33 (tests/engineSnapChem33.test.ts, oracle w33snapchem_*)
     await fails('sna/atom 1.1 0.85 4 1.6 2.0 1.0 1.0 nnn 12', /keyword 'nnn' is not implemented/);
   });
 
@@ -274,7 +274,7 @@ describe('pair_style snap', () => {
     const prm = parseSnapParam(snapParamText(true), 'x');
     expect(prm.quadraticflag).toBe(true);
     expect(prm.bzeroflag).toBe(true);
-    expect(() => parseSnapParam('rcutfac 1.0\nchemflag 1\ntwojmax 2\n', 'x')).toThrow(/chemflag 1 is not implemented/);
+    expect(parseSnapParam('rcutfac 1.0\nchemflag 1\ntwojmax 2\n', 'x').chemflag).toBe(true);
     expect(() => parseSnapParam('rcutfac 1.0\n', 'x')).toThrow(/twojmax are required/);
   });
 });

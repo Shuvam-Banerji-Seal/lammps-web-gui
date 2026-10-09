@@ -1,6 +1,6 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
-import { buildTriples, WignerTables, rawBispectrum, adjointBispectrum, type Triple, type Cmat, type Grad } from '../../compute/sna';
+import { buildTriples, WignerTables, rawBispectrum, adjointBispectrum, bispectrumComponent, adjointComponentChem, type Triple, type Cmat, type Grad } from '../../compute/sna';
 import { parseNum } from '../util';
 
 /*
@@ -47,8 +47,9 @@ import { parseNum } from '../util';
  * wselfallflag 0, switchinnerflag 0, chunksize 32768 and parallelthresh 8192.
  * "chunksize" and "parallelthresh" "are only
  * applicable when using the pair style *snap* with the KOKKOS package ... and
- * are ignored otherwise." chemflag 1 and switchinnerflag 1 are not implemented
- * here and throw StyleError.
+ * are ignored otherwise." chemflag 1 is implemented below (explicit
+ * multi-element form); switchinnerflag 1 is not implemented here and throws
+ * StyleError.
  *
  * Cutoffs: "cutoffs for SNAP potentials are not set in the pair_style or
  * pair_coeff command; they are specified in the SNAP potential files
@@ -95,13 +96,15 @@ interface SnapParam {
   bzeroflag: boolean;
   quadraticflag: boolean;
   bnormflag: boolean;
+  chemflag: boolean;
+  wselfallflag: boolean;
 }
 
 const dataLines = (text: string): string[] =>
   text.split('\n').map((l) => l.replace(/#.*$/, '').trim()).filter((l) => l.length > 0);
 
 export const parseSnapParam = (text: string, filename: string): SnapParam => {
-  const p: SnapParam = { rcutfac: NaN, twojmax: NaN, rfac0: 0.99363, rmin0: 0, switchflag: true, bzeroflag: true, quadraticflag: false, bnormflag: false };
+  const p: SnapParam = { rcutfac: NaN, twojmax: NaN, rfac0: 0.99363, rmin0: 0, switchflag: true, bzeroflag: true, quadraticflag: false, bnormflag: false, chemflag: false, wselfallflag: false };
   const seen = new Set<string>();
   for (const line of dataLines(text)) {
     const w = line.split(/\s+/);
@@ -121,11 +124,9 @@ export const parseSnapParam = (text: string, filename: string): SnapParam => {
       case 'bzeroflag': p.bzeroflag = flag(); break;
       case 'quadraticflag': p.quadraticflag = flag(); break;
       case 'bnormflag': p.bnormflag = flag(); break;
-      case 'wselfallflag': flag(); break; // acts only with chemflag
+      case 'wselfallflag': p.wselfallflag = flag(); break; // acts only with chemflag
       case 'chunksize': case 'parallelthresh': break; // KOKKOS-only, ignored
-      case 'chemflag':
-        if (v !== '0') throw new StyleError(`pair style snap: chemflag ${v} is not implemented in this engine`);
-        break;
+      case 'chemflag': p.chemflag = flag(); break;
       case 'switchinnerflag':
         if (v !== '0') throw new StyleError(`pair style snap: switchinnerflag ${v} is not implemented in this engine`);
         break;
@@ -139,7 +140,7 @@ export const parseSnapParam = (text: string, filename: string): SnapParam => {
   return p;
 };
 
-export const parseSnapCoeff = (text: string, filename: string, K: number, quadratic: boolean): SnapFile => {
+export const parseSnapCoeff = (text: string, filename: string, K: number, quadratic: boolean, chem = false): SnapFile => {
   const lines = dataLines(text);
   if (lines.length === 0) throw new StyleError(`SNAP coefficient file ${filename} is empty`);
   const head = lines[0].split(/\s+/).map(Number);
@@ -147,9 +148,11 @@ export const parseSnapCoeff = (text: string, filename: string, K: number, quadra
     throw new StyleError(`SNAP coefficient file ${filename}: first line must hold nelem and ncoeff (got '${lines[0]}')`);
   }
   const [nelem, ncoeff] = head;
-  const want = 1 + K + (quadratic ? (K * (K + 1)) / 2 : 0);
+  if (chem && quadratic) throw new StyleError(`SNAP coefficient file ${filename}: chemflag and quadraticflag cannot be combined in this engine`);
+  // chemflag: K N_elem^3 "coefficients in each element block", plus beta_0
+  const want = chem ? 1 + K * nelem * nelem * nelem : 1 + K + (quadratic ? (K * (K + 1)) / 2 : 0);
   if (ncoeff !== want) {
-    throw new StyleError(`SNAP coefficient file ${filename}: ncoeff ${ncoeff} does not match twojmax (K = ${K} bispectrum components${quadratic ? ', quadratic terms included' : ''}): expected ${want}`);
+    throw new StyleError(`SNAP coefficient file ${filename}: ncoeff ${ncoeff} does not match twojmax (K = ${K} bispectrum components${quadratic ? ', quadratic terms included' : ''}${chem ? `, chem (${nelem} elements)` : ''}): expected ${want}`);
   }
   const out: SnapFile = { elems: [], radius: [], weight: [], coeff: [], ncoeff };
   let at = 1;
@@ -184,6 +187,11 @@ export class PairSnap extends Pair {
   private triples: Triple[] = [];
   private K = 0;
   private quadratic = false;
+  private chem = false;
+  private nelem = 1;
+  private wselfall = false;
+  /** Number of linear bispectrum columns: K, or K*nelem^3 with chemflag. */
+  private nbase = 0;
   /** Per atom type: element index in file, or -1 for NULL. */
   private elemOf = new Int32Array(0);
   private b0: Float64Array = new Float64Array(0);
@@ -209,7 +217,9 @@ export class PairSnap extends Pair {
     this.triples = buildTriples(p.twojmax);
     this.K = this.triples.length;
     this.quadratic = p.quadraticflag;
-    this.file = parseSnapCoeff(ctx.readFile(coefFile), coefFile, this.K, p.quadraticflag);
+    this.chem = p.chemflag;
+    this.wselfall = p.wselfallflag;
+    this.file = parseSnapCoeff(ctx.readFile(coefFile), coefFile, this.K, p.quadraticflag, p.chemflag);
     const nt = this.ntypes + 1;
     this.elemOf = new Int32Array(nt).fill(-1);
     for (let t = 1; t <= this.ntypes; t++) {
@@ -219,6 +229,15 @@ export class PairSnap extends Pair {
       if (idx < 0) throw new StyleError(`element '${name}' is not in SNAP coefficient file ${coefFile} (elements: ${this.file.elems.join(' ')})`);
       this.elemOf[t] = idx;
     }
+    this.nelem = this.chem ? this.file.elems.length : 1;
+    // chemflag: the coefficient file must hold exactly the unique elements in pair_coeff
+    // (docs: "which must equal the number of unique elements appearing in the LAMMPS pair_coeff command")
+    if (this.chem) {
+      const used = new Set<number>();
+      for (let t = 1; t <= this.ntypes; t++) if (this.elemOf[t] >= 0) used.add(this.elemOf[t]);
+      if (used.size !== this.nelem) throw new StyleError(`pair_coeff for style snap with chemflag 1: ${used.size} unique elements in pair_coeff but the coefficient file has ${this.nelem}`);
+    }
+    this.nbase = this.K * (this.chem ? this.nelem * this.nelem * this.nelem : 1);
     this.setupDone = false;
   }
 
@@ -253,6 +272,7 @@ export class PairSnap extends Pair {
   override compute(pc: PairCompute): void {
     if (!this.param || !this.file) throw new StyleError('pair_coeff for style snap has not been given');
     if (!this.setupDone) this.initStyle();
+    if (this.chem) { this.computeChem(pc); return; }
     const p = this.param, file = this.file;
     const list = pc.full;
     if (!list) throw new Error('pair style snap needs a full neighbor list');
@@ -410,6 +430,219 @@ export class PairSnap extends Pair {
             if (gR === 0 && gI === 0) continue;
             for (let mm = 0; mm < 3; mm++) {
               // d u / d d_m = dsc n_m U + sc sum_p dU_p dp_p/dd_m
+              let dre = dsc * nm[mm] * Ur[q], dim = dsc * nm[mm] * Ui[q];
+              for (let pp = 0; pp < 4; pp++) {
+                dre += sc * Dr[pp][q] * dp[pp][mm];
+                dim += sc * Di[pp][q] * dp[pp][mm];
+              }
+              G0[mm] += gR * dre + gI * dim;
+            }
+          }
+        }
+        f[3 * j] -= G0[0];
+        f[3 * j + 1] -= G0[1];
+        f[3 * j + 2] -= G0[2];
+        f[3 * i] += G0[0];
+        f[3 * i + 1] += G0[1];
+        f[3 * i + 2] += G0[2];
+        if (va) {
+          const w0 = -0.5 * dx * G0[0], w1 = -0.5 * dy * G0[1], w2 = -0.5 * dz * G0[2];
+          const w3 = -0.5 * dx * G0[1], w4 = -0.5 * dx * G0[2], w5 = -0.5 * dy * G0[2];
+          va[6 * i] += w0; va[6 * i + 1] += w1; va[6 * i + 2] += w2; va[6 * i + 3] += w3; va[6 * i + 4] += w4; va[6 * i + 5] += w5;
+          va[6 * j] += w0; va[6 * j + 1] += w1; va[6 * j + 2] += w2; va[6 * j + 3] += w3; va[6 * j + 4] += w4; va[6 * j + 5] += w5;
+        }
+      }
+    }
+    pc.acc.evdwl += evdwl;
+  }
+
+  /**
+   * chemflag 1: explicit multi-element SNAP. The neighbour density is
+   * partitioned by element; the bispectrum is indexed on ordered triplets
+   * (docs.lammps.org/pair_snap.html, "If *chemflag* is set to 1, then the
+   * energy expression is written in terms of explicit multi-element
+   * bispectrum components indexed on ordered triplets of elements"):
+   *
+   *   E^i = beta_0 + sum_{κλμ} beta^{κλμ}_{μ_i} . B^{κλμ}_i
+   *
+   * with B^{κλμ} = sum conj(u^μ) H u^κ u^λ and
+   * u^μ = wself_{μ_i μ} U(0,0,0) + sum_{j: elem(j)=μ} f_c w_{μ_j} U(θ0,θ,φ)
+   * (docs.lammps.org/compute_sna_atom.html, chem section). "The SNAP
+   * coefficient file should contain a total of" K N_elem^3 "coefficients in
+   * each element block"; block order has the last label changing fastest.
+   * bnormflag divides every component by 2j+1, bzeroflag subtracts the
+   * self-term bispectrum (identity matrices, scaled by wself).
+   */
+  private computeChem(pc: PairCompute): void {
+    const p = this.param!, file = this.file!;
+    const list = pc.full;
+    if (!list) throw new Error('pair style snap needs a full neighbor list');
+    const { x, f, type } = pc;
+    const nlocal = pc.nlocal;
+    const K = this.K, tj = p.twojmax, triples = this.triples;
+    const Ne = this.nelem, nbase = this.nbase;
+    const rfac0 = p.rfac0, rmin0 = p.rmin0, rcutfac = p.rcutfac;
+    const WT = this.tables ?? (this.tables = new WignerTables(tj));
+    const Bf = new Float64Array(nbase), gam = new Float64Array(nbase);
+    let evdwl = 0;
+    let mx = 0;
+    for (let i = 0; i < list.inum; i++) if (list.numneigh[i] > mx) mx = list.numneigh[i];
+    const nJ = new Int32Array(mx), nEle = new Int32Array(mx);
+    const nDx = new Float64Array(mx), nDy = new Float64Array(mx), nDz = new Float64Array(mx);
+    const nR = new Float64Array(mx), nRc = new Float64Array(mx), nTh = new Float64Array(mx);
+    const nSc = new Float64Array(mx), nDsc = new Float64Array(mx);
+    const dp = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    const ue: Cmat[][] = [], gd: Cmat[][] = [];
+    for (let e = 0; e < Ne; e++) {
+      const um: Cmat[] = [], gm: Cmat[] = [];
+      for (let J = 0; J <= tj; J++) {
+        const nn = (J + 1) * (J + 1);
+        um.push({ re: new Float64Array(nn), im: new Float64Array(nn) });
+        gm.push({ re: new Float64Array(nn), im: new Float64Array(nn) });
+      }
+      ue.push(um); gd.push(gm);
+    }
+    const va = pc.vatom;
+
+    for (let i = 0; i < nlocal; i++) {
+      const ei = this.elemOf[type[i]];
+      if (ei < 0) continue;
+      const coef = file.coeff[ei];
+      const k0 = list.firstneigh[i];
+      const k1 = k0 + list.numneigh[i];
+      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
+      let m = 0;
+      for (let k = k0; k < k1; k++) {
+        const j = list.neighbors[k] & NEIGHMASK;
+        const ej = this.elemOf[type[j]];
+        if (ej < 0) continue;
+        const dx = x[3 * j] - xi, dy = x[3 * j + 1] - yi, dz = x[3 * j + 2] - zi;
+        const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const Rii = rcutfac * (file.radius[ei] + file.radius[ej]);
+        if (!(r < Rii) || r === 0) continue;
+        const span = Rii - rmin0;
+        const th = (rfac0 * Math.PI * (r - rmin0)) / span;
+        const sw = p.switchflag && r >= rmin0;
+        const fc = sw ? 0.5 * (Math.cos((Math.PI * (r - rmin0)) / span) + 1) : 1;
+        const dfc = sw ? -0.5 * Math.sin((Math.PI * (r - rmin0)) / span) * (Math.PI / span) : 0;
+        nJ[m] = j; nEle[m] = ej; nDx[m] = dx; nDy[m] = dy; nDz[m] = dz;
+        nR[m] = r; nRc[m] = Rii; nTh[m] = th;
+        nSc[m] = fc * file.weight[ej];
+        nDsc[m] = dfc * file.weight[ej];
+        m++;
+      }
+
+      // self term per element: identity times wself_{μ_i,e}
+      for (let e = 0; e < Ne; e++) {
+        const wself = this.wselfall || e === ei ? 1 : 0;
+        for (let J = 0; J <= tj; J++) {
+          const nn = J + 1;
+          ue[e][J].re.fill(0); ue[e][J].im.fill(0);
+          if (wself !== 0) for (let q = 0; q < nn; q++) ue[e][J].re[q * nn + q] = 1;
+        }
+      }
+      for (let a = 0; a < m; a++) {
+        const r = nR[a];
+        const sn = Math.sin(nTh[a]), cs = Math.cos(nTh[a]);
+        const sg = sn < 0 ? -1 : 1;
+        const S = sg * sn, C = sg * cs;
+        const g = S / r;
+        const ar = C, ai = g * nDz[a], br = g * nDy[a], bi = g * nDx[a];
+        const sc = nSc[a];
+        WT.compute(ar, ai, br, bi, false);
+        const um = ue[nEle[a]];
+        for (let J = 0; J <= tj; J++) {
+          const Ur = WT.ur[J], Ui = WT.ui[J];
+          const uj = um[J];
+          for (let q = 0; q < Ur.length; q++) {
+            uj.re[q] += sc * Ur[q];
+            uj.im[q] += sc * Ui[q];
+          }
+        }
+      }
+
+      // raw multi-element bispectrum, blocks (κ,λ,μ) with μ fastest
+      let b = 0;
+      for (let k1e = 0; k1e < Ne; k1e++) {
+        for (let k2e = 0; k2e < Ne; k2e++) {
+          for (let k3e = 0; k3e < Ne; k3e++) {
+            const bo = b * K;
+            const useB0 = this.wselfall || (k1e === ei && k2e === ei && k3e === ei);
+            for (let c = 0; c < K; c++) {
+              const t = triples[c];
+              let v = bispectrumComponent(t, ue[k1e][t.J1], ue[k2e][t.J2], ue[k3e][t.J]);
+              if (useB0) v -= this.b0[c];
+              Bf[bo + c] = v / this.normOf[c];
+            }
+            b++;
+          }
+        }
+      }
+
+      // energy E_i = beta_0 + sum over the K*N_elem^3 multi-element components
+      let E = coef[0];
+      for (let q = 0; q < nbase; q++) {
+        E += coef[1 + q] * Bf[q];
+        gam[q] = coef[1 + q];
+      }
+      evdwl += E;
+      if (pc.eatom) pc.eatom[i] += E;
+      if (m === 0) continue;
+
+      // adjoint of E_i w.r.t. every element's u entries
+      for (let e = 0; e < Ne; e++) {
+        for (let J = 0; J <= tj; J++) { gd[e][J].re.fill(0); gd[e][J].im.fill(0); }
+      }
+      b = 0;
+      for (let k1e = 0; k1e < Ne; k1e++) {
+        for (let k2e = 0; k2e < Ne; k2e++) {
+          for (let k3e = 0; k3e < Ne; k3e++) {
+            const bo = b * K;
+            for (let c = 0; c < K; c++) {
+              const g = gam[bo + c] / this.normOf[c];
+              if (g === 0) continue;
+              const t = triples[c];
+              adjointComponentChem(t, ue[k1e][t.J1], ue[k2e][t.J2], ue[k3e][t.J], g, gd[k1e], gd[k2e], gd[k3e]);
+            }
+            b++;
+          }
+        }
+      }
+
+      // pass 2: dE_i/dd for every neighbour (d = x_j - x_i); F_j = -G, F_i = +G
+      for (let a = 0; a < m; a++) {
+        const j = nJ[a];
+        const dx = nDx[a], dy = nDy[a], dz = nDz[a];
+        const r = nR[a], Rii = nRc[a];
+        const sn = Math.sin(nTh[a]), cs = Math.cos(nTh[a]);
+        const sg = sn < 0 ? -1 : 1;
+        const S = sg * sn, C = sg * cs;
+        const g = S / r;
+        const nx = dx / r, ny = dy / r, nz = dz / r;
+        const nm = [nx, ny, nz];
+        const thp = (rfac0 * Math.PI) / (Rii - rmin0);
+        const gp = (C * thp * r - S) / (r * r);
+        const vz = [0, 0, 1], vy = [0, 1, 0], vx = [1, 0, 0];
+        for (let mm = 0; mm < 3; mm++) {
+          dp[0][mm] = -S * thp * nm[mm];
+          dp[1][mm] = gp * nm[mm] * dz + g * vz[mm];
+          dp[2][mm] = gp * nm[mm] * dy + g * vy[mm];
+          dp[3][mm] = gp * nm[mm] * dx + g * vx[mm];
+        }
+        const ar = C, ai = g * dz, br = g * dy, bi = g * dx;
+        const sc = nSc[a], dsc = nDsc[a];
+        const G0 = [0, 0, 0];
+        WT.compute(ar, ai, br, bi, true);
+        const gm = gd[nEle[a]];
+        for (let J = 0; J <= tj; J++) {
+          const nn = (J + 1) * (J + 1);
+          const Ur = WT.ur[J], Ui = WT.ui[J];
+          const Dr = WT.dur[J], Di = WT.dui[J];
+          const GR = gm[J].re, GI = gm[J].im;
+          for (let q = 0; q < nn; q++) {
+            const gR = GR[q], gI = GI[q];
+            if (gR === 0 && gI === 0) continue;
+            for (let mm = 0; mm < 3; mm++) {
               let dre = dsc * nm[mm] * Ur[q], dim = dsc * nm[mm] * Ui[q];
               for (let pp = 0; pp < 4; pp++) {
                 dre += sc * Dr[pp][q] * dp[pp][mm];

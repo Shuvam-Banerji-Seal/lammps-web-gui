@@ -1,0 +1,27 @@
+# oracle: fix qeq/shielded, four charged atoms in metal units, pair lj/cut/coul/cut, run 0
+# oracle-inputs: w32qeq_shield.params
+# oracle-files: w32qeq_shield4_q.dump
+units metal
+atom_style charge
+boundary f f f
+region box block 0 30 0 30 0 30
+create_box 2 box
+create_atoms 1 single 5 15 15
+create_atoms 2 single 7 15 15
+create_atoms 1 single 9 15 15
+create_atoms 2 single 11 15 15
+mass 1 1.0
+mass 2 1.0
+set atom 1 charge 0.0
+set atom 2 charge 0.0
+set atom 3 charge 0.0
+set atom 4 charge 0.0
+pair_style lj/cut/coul/cut 10.0 8.0
+pair_coeff 1 1 0.0 1.0
+pair_coeff 2 2 0.0 1.0
+pair_coeff 1 2 0.0 1.0
+fix q all qeq/shielded 1 8 1.0e-14 200 w32qeq_shield.params
+thermo_style custom step pe evdwl ecoul f_q
+thermo_modify format float %.15g
+run 0
+write_dump all custom w32qeq_shield4_q.dump id q modify format float %.15g sort id

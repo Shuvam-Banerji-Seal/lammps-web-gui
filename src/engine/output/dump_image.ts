@@ -44,8 +44,6 @@ import { encodeJpeg } from './jpeg';
 
 type RGB = [number, number, number];
 
-const hexToRgb = (h: string): RGB => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-
 /** A useful subset of the 140 pre-defined colour names (dump_image.html). */
 const NAMED_COLORS: Record<string, RGB> = {
   red: [255, 0, 0], green: [0, 255, 0], blue: [0, 0, 255], yellow: [255, 255, 0],

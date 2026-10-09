@@ -1,0 +1,25 @@
+# oracle: compute pair/local dist eng reduced with compute reduce sum/ave/min/max inputs local on a displaced lj fcc crystal with a vacancy (row order is not compared; the reductions are order-independent)
+# oracle-compare: thermo=all atoms=none rel=1e-9
+units           lj
+atom_style      atomic
+lattice         fcc 0.9
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+group           vac id 4
+delete_atoms    group vac compress no
+variable        dx atom 0.06*sin(2.3*x+1.1*y)
+variable        dy atom 0.06*cos(1.9*y-0.7*z)
+variable        dz atom 0.06*sin(1.4*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      lj/cut 2.2
+pair_coeff      * * 1.0 1.0
+compute         pl all pair/local dist eng
+compute         rsum all reduce sum c_pl[1] c_pl[2] inputs local
+compute         rave all reduce ave c_pl[1] c_pl[2] inputs local
+compute         rmin all reduce min c_pl[1] inputs local
+compute         rmax all reduce max c_pl[1] inputs local
+thermo_style    custom step pe c_rsum[1] c_rsum[2] c_rave[1] c_rave[2] c_rmin c_rmax
+thermo_modify   format float %.15g
+run             0

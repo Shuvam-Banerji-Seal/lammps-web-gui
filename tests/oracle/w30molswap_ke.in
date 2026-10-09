@@ -1,0 +1,23 @@
+# oracle: fix mol/swap ke yes rescales swapped-atom velocities by sqrt(mass ratio), conserving ke
+# oracle-inputs: w30molswap_mass.data
+# oracle-compare: atoms=all
+units           lj
+atom_style      molecular
+neighbor        0.3 bin
+neigh_modify    delay 0
+
+pair_style      lj/cut 2.0
+read_data       w30molswap_mass.data
+pair_coeff      1 1 0.1 1.0
+pair_coeff      1 2 0.5 1.0
+pair_coeff      2 2 1.0 1.0
+
+velocity        all set 0.0 0.0 1.0
+group           g2 type 2
+velocity        g2 set 0.0 0.0 -1.0
+
+fix             swap all mol/swap 1 1 1 2 12345 1e9
+thermo          1
+thermo_style    custom step pe ke f_swap[1] f_swap[2]
+thermo_modify   format float %.15g
+run             1

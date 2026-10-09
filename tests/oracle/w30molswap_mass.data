@@ -1,0 +1,19 @@
+w30 mol/swap kinetic-energy probe
+
+2 atoms
+0 bonds
+2 atom types
+
+-10 10 xlo xhi
+-10 10 ylo yhi
+-10 10 zlo zhi
+
+Masses
+
+1 1.0
+2 4.0
+
+Atoms # molecular
+
+1 1 1 0.0 0.0 0.0
+2 1 2 2.0 0.0 0.0

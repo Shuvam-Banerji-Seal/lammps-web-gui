@@ -56,6 +56,8 @@ import * as fixSllod from './registry/fix_sllod';
 import * as computeSna from './registry/compute_sna';
 import * as pairSnap from './registry/pair_snap';
 import * as fixEhex from './registry/fix_ehex';
+import * as fixWidom from './registry/fix_widom';
+import * as fixMolSwap from './registry/fix_molswap';
 import * as pairMisc4 from './registry/pair_misc4';
 import * as fixGjf from './registry/fix_gjf';
 import * as fixAdapt from './registry/fix_adapt';
@@ -194,7 +196,7 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   rattle: (s, i, g, a) => new FixShake(s, i, g, a, 'rattle'),
   ...Object.fromEntries(['rigid', 'rigid/nve', 'rigid/small', 'rigid/nve/small'].map((st) => [st, (s: System, i: string, g: string, a: string[]) => new FixRigid(s, i, g, a, st)])),
   ...fixForce.FIXES, ...fixWall.FIXES, ...fixOutput.FIXES, ...fixMotion.FIXES,
-  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES, ...fixDeform.FIXES, ...fixWallGran.FIXES, ...fixRigid2.FIXES, ...fixPour.FIXES, ...fixNHSphere.FIXES, ...fixAveChunk.FIXES, ...fixMisc3.FIXES, ...fixSllod.FIXES, ...fixEhex.FIXES, ...fixGjf.FIXES, ...fixAdapt.FIXES, ...fixBoxRelax.FIXES, ...fixGk.FIXES, ...fixRestrain.FIXES, ...fixMisc13.FIXES, ...fixTtm.FIXES, ...fixMisc14.FIXES, ...fixCmap.FIXES, ...fixWall16.FIXES, ...fixNumdiff.FIXES, ...fixMsst.FIXES, ...lepton.FIXES, ...w17fixmove17.FIXES, ...w17fixmisc17.FIXES, ...w19asphere.FIXES,
+  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES, ...fixDeform.FIXES, ...fixWallGran.FIXES, ...fixRigid2.FIXES, ...fixPour.FIXES, ...fixNHSphere.FIXES, ...fixAveChunk.FIXES, ...fixMisc3.FIXES, ...fixSllod.FIXES, ...fixEhex.FIXES, ...fixWidom.FIXES, ...fixMolSwap.FIXES, ...fixGjf.FIXES, ...fixAdapt.FIXES, ...fixBoxRelax.FIXES, ...fixGk.FIXES, ...fixRestrain.FIXES, ...fixMisc13.FIXES, ...fixTtm.FIXES, ...fixMisc14.FIXES, ...fixCmap.FIXES, ...fixWall16.FIXES, ...fixNumdiff.FIXES, ...fixMsst.FIXES, ...lepton.FIXES, ...w17fixmove17.FIXES, ...w17fixmisc17.FIXES, ...w19asphere.FIXES,
 };
 
 export const COMPUTE_STYLES: Record<string, ComputeFactory> = {

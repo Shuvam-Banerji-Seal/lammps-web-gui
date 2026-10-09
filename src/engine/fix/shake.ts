@@ -64,6 +64,9 @@ export class FixShake extends Fix {
   private atomTypes = new Set<number>();
   private masses: number[] = [];
   private clusters: Cluster[] = [];
+  /** Per-bond and per-angle "constrained" flags of the last build, indexed like s.topo (see extendTopology). */
+  private keepBonds: boolean[] = [];
+  private keepAngles: boolean[] = [];
   /** keyword mol: molecule template-ID whose molecules may be added during the run (fix deposit shake). */
   private molTemplateId: string | null = null;
 
@@ -187,6 +190,7 @@ export class FixShake extends Fix {
     this.clusters = clusters;
     // constrained bonds and angles are switched off in the force field
     const keepB: boolean[] = constrained.map((on) => !on);
+    this.keepBonds = keepB;
     const angleOff = new Set<string>();
     for (const c of clusters) if (c.cons.length === 3 && c.ids.length === 3) angleOff.add(`${c.ids[0]}:${Math.min(c.ids[1], c.ids[2])}:${Math.max(c.ids[1], c.ids[2])}`);
     const A = s.topo.angles;
@@ -195,12 +199,33 @@ export class FixShake extends Fix {
       const key = `${A.atoms[3 * e + 1]}:${Math.min(A.atoms[3 * e], A.atoms[3 * e + 2])}:${Math.max(A.atoms[3 * e], A.atoms[3 * e + 2])}`;
       keepA.push(!(angleOff.has(key) && this.angleTypes.has(A.type[e])));
     }
+    this.keepAngles = keepA;
     ff.setTopologyOverride({ bonds: filterList(bonds, keepB), angles: filterList(A, keepA), bondsN: bonds.n, anglesN: A.n });
     sys.log(`fix ${this.id} ${this.style}: ${clusters.length} clusters (${clusters.filter((c) => c.ids.length === 2).length} of 2 atoms, ${clusters.filter((c) => c.ids.length === 3 && c.cons.length === 2).length} of 3, ${clusters.filter((c) => c.ids.length === 4).length} of 4, ${clusters.filter((c) => c.cons.length === 3 && c.ids.length === 3).length} with an angle)`);
   }
 
   destroy(): void {
     this.sys.ff.setTopologyOverride(null);
+  }
+
+  /** The molecule template-ID of the mol keyword, or null (fix gcmc checks it matches its own mol). */
+  moleculeTemplateId(): string | null {
+    return this.molTemplateId;
+  }
+
+  /**
+   * Keeps the constraints of the last build while bonds and angles were appended to (or removed from
+   * the end of) the topology after it: the appended entries stay unconstrained. fix gcmc uses it for a
+   * trial insertion, whose energy is evaluated before the new molecule is registered (measured with
+   * native LAMMPS, black box: the trial energy includes the inserted molecule's bonds, see fix_gcmc.ts).
+   */
+  extendTopology(): void {
+    const s = this.sys.state;
+    const ff = this.sys.ff;
+    const B = s.topo.bonds, A = s.topo.angles;
+    const pad = (keep: boolean[], n: number) => keep.slice(0, n).concat(new Array(Math.max(0, n - keep.length)).fill(true));
+    const keepB = pad(this.keepBonds, B.n), keepA = pad(this.keepAngles, A.n);
+    ff.setTopologyOverride({ bonds: filterList(B, keepB), angles: filterList(A, keepA), bondsN: B.n, anglesN: A.n });
   }
 
   dofRemoved(groupBit: number): number {

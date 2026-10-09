@@ -1,7 +1,7 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { RanPark } from '../rng';
-import { appendAtoms, deleteAtoms, maxAtomId, hasChargeStyle, isMolecularStyle } from '../atoms';
+import { appendAtoms, deleteAtoms, hasChargeStyle, isMolecularStyle } from '../atoms';
 import { appendMolecule, num, posInt, paramValue } from './pour';
 import { geometricCenter, rotationMatrix, type MoleculeTemplate } from '../molecule';
 import { BlockRegion, SphereRegion, EllipsoidRegion, ConeRegion, type Region } from '../region';

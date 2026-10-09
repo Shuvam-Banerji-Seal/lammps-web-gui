@@ -6,7 +6,9 @@ The notebook runs real LAMMPS input scripts — data files, molecular force
 fields, long-range electrostatics, minimization, variables and loops — and
 every supported feature is checked against **native LAMMPS used as a
 black-box oracle** (below). The CPU-threads and WebGPU paths accelerate the
-plain Lennard-Jones case; everything else runs on the fp64 engine.
+plain Lennard-Jones case. The general engine's pair term can run on
+shared-memory threads when the page is cross-origin isolated; the rest of
+each step runs on the engine's thread.
 
 ## Goal
 
@@ -20,8 +22,11 @@ thermo output — no install, no server, no account.
 - **It is not LAMMPS.** It is an independent engine that runs a documented,
   growing subset of LAMMPS input. Every unsupported command or style is an
   error that names it and lists what is supported — never a silent no-op.
-  Commands that cannot exist in a browser (`shell`, `python`, `kim`, `mdi`,
-  `plugin`, `geturl`, `package`) are errors that say why.
+  Commands that cannot exist in a browser (`python`, `kim`, `mdi`,
+  `plugin`, `geturl`, `package`) are errors that say why. `shell` is refused
+  except `shell rm [-f]` and `shell mv`, which work on the in-browser file
+  store (the docs say LAMMPS handles these built-ins itself; quoted in
+  `commands/misc.ts`).
 - **It contains no LAMMPS source code.** LAMMPS is GPL-2.0; this project is
   under its own source-available licence, so porting LAMMPS code would be a
   licence violation. The engine is written from textbook physics (Allen &
@@ -104,7 +109,9 @@ src/engine/
   run/                              velocity Verlet run loop, minimizers, accelerators
   output/                           thermo, dump, write_data
   registry/ + styles.ts             style name -> implementation, one file per family
-  cpu/, gpu/                        threaded CPU and WebGPU force paths (plain lj/cut)
+  cpu/, gpu/                        threaded CPU force paths (plain lj/cut; shared-memory
+                                    pair threads for the general pair term), WebGPU forces
+  workers/                          engine, force and pair Web Workers
   host.ts, client.ts, protocol.ts   worker plumbing; files added in the notebook
 src/components/workbench/Notebook.tsx   the notebook module
 ```
@@ -175,6 +182,102 @@ only in compatibility mode (OpenGL ES through ANGLE on Vulkan), whose limit of
 4 storage buffers per shader stage the kernel respects. A software adapter
 (SwiftShader) is declined — it is slower than the CPU engine — unless a test
 passes `allowFallback`.
+
+### Device detection and Auto
+
+`probeDevice()` (`src/engine/device.ts`) runs in the engine worker, so it
+reports what the engine can use: logical cores (`navigator.hardwareConcurrency`),
+memory (`navigator.deviceMemory`, Chromium), Web Worker support, shared memory
+(SharedArrayBuffer and Atomics on a cross-origin isolated page) and the WebGPU
+adapter (`webgpuAdapterInfo` in `gpu/webgpuForces.ts`: hardware, software or
+none, with its name, compatibility mode and largest storage buffer; no device
+is created).
+
+The backend `auto` (the default) calls `autoPlan()`:
+
+- a hardware GPU if there is one; the CPU threads still run the runs the GPU
+  path cannot take;
+- otherwise the CPU. A software-only adapter (SwiftShader) is not used, because
+  it is slower than the CPU engine.
+
+Auto's thread count (`autoThreads()`) is half the logical cores, at most 8,
+and 1 without Web Workers. The rule comes from browser measurements, recorded
+in `device.ts`: LJ melt, 24 logical cores, cross-origin isolated, steps/s at
+1/2/4/8/12/16 threads:
+
+| atoms | 1 | 2 | 4 | 8 | 12 | 16 |
+|---|---|---|---|---|---|---|
+| 2,048 | 373 | 437 | 491 | 499 | 384 | 306 |
+| 6,912 | 117 | 153 | 149 | 152 | 134 | 119 |
+| 16,384 | 46 | 60 | 69 | 71 | 71 | 53 |
+| 42,592 | 18 | 20 | 27 | 28 | 26 | 27 |
+
+Throughput peaks at 4–8 threads and falls beyond 8, so the cap is 8. Half the
+cores leaves the rest to the page, the 3D view and the OS. The engine's
+`ready` message carries the device profile, the plan and its reason (`why`),
+and the threads in use; the notebook shows them in the resource monitor.
+
+### Resource monitor and run events
+
+The notebook's right panel (`src/components/workbench/ResourceMonitor.tsx`)
+shows the device chips, the engine in use (with Auto's reason), the live speed
+and page memory, and plain-language hints from `deviceHints()` (no shared
+memory, few cores, little memory, software-only WebGPU). The engine reports
+progress through three events (`src/engine/types.ts`):
+
+- `run` `{ from, to, dt, units }` at the start of each run; the notebook's
+  progress bar reads "step S of T (P%)" from it.
+- `perf` `{ step, atoms, stepsPerSec, elapsed, threaded }`, about twice a
+  second of wall time (`PERF_EVERY_MS = 500` in `commands/run.ts`) and once at
+  the end of a run. `threaded` says whether the pair term ran on threads.
+- `thermo` rows as before.
+
+The monitor turns steps/s into ms per step, atom-steps/s (atoms times
+steps/s) and simulated time per day, using `simulatedPerDay()` in
+`lammps/thermoUnits.ts` with the run's `dt` and units style.
+
+### Shared-memory pair threads
+
+`src/engine/cpu/pairThreads.ts` runs the pair term of the general engine on
+threads, for every style in `THREADED_PAIRS` (`cpu/threadedPairs.ts`), when:
+
+- the page is cross-origin isolated (the COI service worker, `src/coi.ts` and
+  `public/coi-sw.js`), so SharedArrayBuffer and Atomics exist;
+- the system has at least `MIN_THREADED_ATOMS` (2000) owned atoms, below which
+  threads cost more than they save.
+
+Each force evaluation the engine thread copies positions, types and charges into
+shared buffers (the half neighbour list is copied after each rebuild). Each force worker
+(`src/workers/pair.worker.ts`) holds its own copy of the pair style. The half
+list is cut into chunks of about equal work (`CHUNKS_PER_THREAD` = 8 per thread,
+`splitRanges` in `pairThreadsCore.ts`); every thread, the engine thread included,
+claims chunks from a shared `Atomics.add` counter until none are left, each into
+its own force array, so a slow thread (a busy core, an efficiency core) takes
+fewer chunks. The kernels take an optional start atom (`NeighList.ilo`) so a
+chunk runs on the shared list directly. The engine thread then waits on an
+Atomics counter and adds the forces, energies and virials. Everything else in
+the step stays on the engine thread.
+
+Before the chunks (PR 35) each thread had one fixed range, and the engine thread
+waited for the slowest: measured in Chromium at 16,384 atoms on 8 threads, 2.1 ms
+of its own work then 2.4 ms waiting, and a whole-step speedup of about 1.5x. With
+the chunks the same run went from about 75 to 92.8 steps/s (2.07x over one
+thread). The force reduction is still serial on the engine thread. The plain lj/cut path
+(`cpu/parallel.ts`) does not use shared memory and works without isolation.
+
+With the GPU selected, runs the GPU path cannot take (any style but plain
+lj/cut) use the CPU threads instead of one core (PR 34).
+
+### Script hand-over to the Script Builder
+
+- **Notebook to Builder:** "Open in Script Builder" joins the non-empty cells
+  (`cellsToScript` in `src/lammps/notebookBridge.ts`) and imports them with the
+  Builder's own `parseScript` as a new tab named "From MD Notebook"
+  (`src/App.tsx`). Open tabs are kept.
+- **Builder to Notebook:** "Run in Notebook" sends the Builder's script; the
+  notebook shows an incoming banner with Replace cells, Add as a new cell and
+  Dismiss. The button reads "Run in Notebook" from the `xl` breakpoint (1280 px)
+  up and is icon-only below it (PR 25).
 
 ### Measured (Chromium 153, 24-core Xeon Silver 4310, NVIDIA A100, shared machine)
 

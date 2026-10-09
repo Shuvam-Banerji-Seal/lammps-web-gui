@@ -40,14 +40,18 @@ describe('fix rigid bodystyle custom', () => {
     expect(await run('fix 1 all rigid/small custom v_bid')).toBeNull();
   });
 
-  it('rejects i_name (fix property/atom is not in the engine)', async () => {
+  it('accepts a fix property/atom integer vector i_name (oracle: w35rigid_iname)', async () => {
+    expect(await run('fix p all property/atom i_bodyid\nset atom 1*14 i_bodyid 1\nset atom 15*27 i_bodyid 2\nfix 1 all rigid custom i_bodyid')).toBeNull();
+  });
+
+  it('names fix property/atom when i_name is not defined', async () => {
     expect(msg(await run('fix 1 all rigid custom i_bodyid'))).toMatch(/i_bodyid.*fix property\/atom/);
   });
 
   it('names an undefined or non-atom variable', async () => {
     expect(msg(await run('fix 1 all rigid custom v_nope'))).toMatch(/variable nope does not exist/);
     expect(msg(await run('fix 1 all rigid custom v_scal'))).toMatch(/v_scal|scal.*must be atom-style/);
-    expect(msg(await run('fix 1 all rigid custom bodyid'))).toMatch(/expected v_name/);
+    expect(msg(await run('fix 1 all rigid custom bodyid'))).toMatch(/expected i_name or v_name/);
   });
 
   it('rejects unknown bodystyles by name', async () => {

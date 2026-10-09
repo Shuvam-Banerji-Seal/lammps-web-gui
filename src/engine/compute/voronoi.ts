@@ -1,6 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
+import type { Geometry } from '../domain';
 import { parseNum, parseInt_ } from '../force/util';
 
 /*
@@ -27,12 +28,35 @@ import { parseNum, parseInt_ } from '../force/util';
  *   "The default for the neighbors keyword is no."
  *   "The *peratom* keyword was removed as it is no longer required."
  *
- * Scope of this implementation: 3d, periodic orthogonal boxes, the default
- * per-atom output (volume, number of faces), surface (third column), only_group,
- * radius (radical tessellation with an atom-style variable), edge_histo (global
- * vector), edge_threshold, face_threshold, neighbors yes (local array) and
- * occupation. Not implemented, each an error: non-periodic boundaries, triclinic
- * boxes, 2d.
+ * Scope of this implementation: 3d and 2d, periodic orthogonal and restricted
+ * triclinic boxes, the default per-atom output (volume, number of faces),
+ * surface (third column), only_group, radius (radical tessellation with an
+ * atom-style variable), edge_histo (global vector), edge_threshold,
+ * face_threshold, neighbors yes (local array) and occupation. Not implemented,
+ * an error: non-periodic boundaries and general (rotated) triclinic boxes.
+ *
+ * 2d (docs.lammps.org/compute_voronoi_atom.html): "The Voro++ package performs
+ * its calculation in 3d.  This will still work for a 2d LAMMPS simulation,
+ * provided all the atoms have the same z-coordinate.  The Voronoi cell of each
+ * atom will be a columnar polyhedron with constant cross-sectional area along
+ * the z-direction and two exterior faces at the top and bottom of the simulation
+ * box." "The cross-sectional area of each Voronoi cell can be obtained by
+ * dividing its volume by the z extent of the simulation box."  In a 2d run the
+ * z dimension is periodic (boundary.html: "For 2d simulations, the z dimension
+ * must be periodic.") and the engine stores the defined z extent, so running the
+ * same 3d tessellation in that periodic box already yields the column, with the
+ * per-atom volume equal to the cross-sectional area times lz and the face count
+ * including the two z-direction faces.  Measured with native LAMMPS (black
+ * box): a 3x3 square lattice (in-plane spacing 1) with lz = 2 gave volume 2 and
+ * 6 faces per atom, and with lz = 1 gave volume 1 and 6 faces.
+ *
+ * Triclinic (docs.lammps.org/compute_voronoi_atom.html): "For triclinic systems,
+ * the exterior face is parallel to the corresponding reciprocal lattice vector."
+ * The tessellation is built from the periodic images of the atoms, which sit at
+ * x + ix*A + iy*B + iz*C with the restricted triclinic edge vectors
+ * (Howto_triclinic.html: "**A** = (xhi-xlo,0,0), **B** = (xy,yhi-ylo,0),
+ * **C** = (xz,yz,zhi-zlo)").  Measured with native LAMMPS (black box): a 3x3x3
+ * simple cubic lattice sheared to xy = 0.6 gave volume 1 and 8 faces per atom.
  *
  * neighbors yes (docs.lammps.org/compute_voronoi_atom.html): "If the *neighbors*
  * value is set to yes, then this compute also creates a local array with 3 columns.
@@ -263,6 +287,8 @@ export class ComputeVoronoiAtom extends Compute {
   private readonly onlyGroup: boolean;
   /** Group bit of the surface group, or null when the surface keyword is absent. */
   private readonly surfaceBit: number | null;
+  /** True when the surface group is the built-in all group (see the surface rule below). */
+  private readonly surfaceAll: boolean;
   private readonly radiusName: string | null;
   private readonly edgeMax: number | null;
   private readonly edgeThreshold: number;
@@ -280,6 +306,7 @@ export class ComputeVoronoiAtom extends Compute {
     super(sys, id, group, args);
     let onlyGroup = false;
     let surfaceBit: number | null = null;
+    let surfaceAll = false;
     let radiusName: string | null = null;
     let edgeMax: number | null = null;
     let edgeThreshold = 0;
@@ -304,6 +331,7 @@ export class ComputeVoronoiAtom extends Compute {
         const g = args[++k];
         if (g === undefined) throw new StyleError(`${where}: surface needs a group ID`);
         surfaceBit = sys.groups.bit(g);
+        surfaceAll = g === 'all';
         continue;
       }
       if (kw === 'radius') {
@@ -334,6 +362,7 @@ export class ComputeVoronoiAtom extends Compute {
     }
     this.onlyGroup = onlyGroup;
     this.surfaceBit = surfaceBit;
+    this.surfaceAll = surfaceAll;
     this.radiusName = radiusName;
     this.edgeMax = edgeMax;
     this.edgeThreshold = edgeThreshold;
@@ -375,8 +404,7 @@ export class ComputeVoronoiAtom extends Compute {
     const g = sys.geom;
     const s = sys.state;
     const where = `compute ${this.id} (voronoi/atom)`;
-    if (sys.dimension !== 3) throw new StyleError(`${where}: 2d systems are not supported (the cell would need the z extent of the box)`);
-    if (g.triclinic) throw new StyleError(`${where}: triclinic boxes are not supported`);
+    if (g.box.general) throw new StyleError(`${where}: general triclinic boxes are not supported`);
     for (let d = 0; d < 3; d++) {
       if (!g.periodic[d]) throw new StyleError(`${where}: non-periodic boundaries are not supported (dimension ${'xyz'[d]} is not periodic)`);
     }
@@ -421,7 +449,7 @@ export class ComputeVoronoiAtom extends Compute {
       let D = 1.5 * Math.cbrt(vol / Math.max(1, pool.length));
       let results: CellResult[] | null = null;
       for (let attempt = 0; attempt < 80 && results === null; attempt++) {
-        const img = this.buildImages(D, pool, rad, s.x, wlo, whi, L);
+        const img = this.buildImages(D, pool, rad, s.x, wlo, whi, L, g);
         results = this.tessellateAll(D, targets, img, rad, rmax, s.x, s.mask, s.id);
         if (results === null) D *= 1.5;
       }
@@ -466,7 +494,6 @@ export class ComputeVoronoiAtom extends Compute {
     const s = sys.state;
     const g = sys.geom;
     const n = s.n;
-    const L = [g.hi[0] - g.lo[0], g.hi[1] - g.lo[1], g.hi[2] - g.lo[2]];
     if (this.seedIds === null) {
       this.seedIds = s.id.slice(0, n);
       this.seedX = s.x.slice(0, 3 * n);
@@ -477,15 +504,13 @@ export class ComputeVoronoiAtom extends Compute {
     for (let k = 0; k < M; k++) seedOf.set(seedIds[k], k);
     // nearest stored seed of every current atom (minimum image): the cell that holds the atom
     const near = new Int32Array(n);
+    const d = [0, 0, 0];
     for (let j = 0; j < n; j++) {
       let best = -1, bestd = Infinity;
       for (let k = 0; k < M; k++) {
-        let d2 = 0;
-        for (let d = 0; d < 3; d++) {
-          let dd = s.x[3 * j + d] - seedX[3 * k + d];
-          dd -= L[d] * Math.round(dd / L[d]);
-          d2 += dd * dd;
-        }
+        for (let c = 0; c < 3; c++) d[c] = s.x[3 * j + c] - seedX[3 * k + c];
+        g.minimumImage(d);
+        const d2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
         if (d2 < bestd) { bestd = d2; best = k; }
       }
       near[j] = best;
@@ -502,24 +527,59 @@ export class ComputeVoronoiAtom extends Compute {
     this.arrayAtom = out;
   }
 
-  /** Periodic images of the pool atoms inside the window [wlo - D, whi + D], binned with cell size D. */
+  /**
+   * Periodic images of the pool atoms inside the window [wlo - D, whi + D],
+   * binned with cell size D. For a triclinic box the images are x + ix*A +
+   * iy*B + iz*C, i.e. the integer offsets are taken in fractional coordinates
+   * of the tilted box (the window's fractional extent from its eight corners);
+   * for an orthogonal box this reduces to the axis-aligned integer shifts.
+   */
   private buildImages(D: number, pool: number[], rad: Float64Array, x: Float64Array,
-    wlo0: number[], whi0: number[], L: number[]): Images {
+    wlo0: number[], whi0: number[], L: number[], g: Geometry): Images {
     const wlo = [wlo0[0] - D, wlo0[1] - D, wlo0[2] - D];
     const whi = [whi0[0] + D, whi0[1] + D, whi0[2] + D];
     const X: number[] = [], Y: number[] = [], Z: number[] = [], R: number[] = [], A: number[] = [];
+    // fractional bounds of the window (only used for a triclinic box)
+    let flo: number[] = [];
+    let fhi: number[] = [];
+    if (g.triclinic) {
+      flo = [Infinity, Infinity, Infinity];
+      fhi = [-Infinity, -Infinity, -Infinity];
+      const c = [0, 0, 0];
+      for (let b = 0; b < 8; b++) {
+        g.toLamda((b & 1) ? whi[0] : wlo[0], (b & 2) ? whi[1] : wlo[1], (b & 4) ? whi[2] : wlo[2], c);
+        for (let d = 0; d < 3; d++) {
+          if (c[d] < flo[d]) flo[d] = c[d];
+          if (c[d] > fhi[d]) fhi[d] = c[d];
+        }
+      }
+    }
+    const tmp = [0, 0, 0];
+    const fj = [0, 0, 0];
     for (const j of pool) {
       const kr: [number, number][] = [];
-      for (let d = 0; d < 3; d++) {
-        const xj = x[3 * j + d];
-        kr.push([Math.ceil((wlo[d] - xj) / L[d]), Math.floor((whi[d] - xj) / L[d])]);
+      if (g.triclinic) {
+        g.toLamda(x[3 * j], x[3 * j + 1], x[3 * j + 2], fj);
+        for (let d = 0; d < 3; d++) kr.push([Math.ceil(flo[d] - fj[d]), Math.floor(fhi[d] - fj[d])]);
+      } else {
+        for (let d = 0; d < 3; d++) {
+          const xj = x[3 * j + d];
+          kr.push([Math.ceil((wlo[d] - xj) / L[d]), Math.floor((whi[d] - xj) / L[d])]);
+        }
       }
       for (let kx = kr[0][0]; kx <= kr[0][1]; kx++) {
         for (let ky = kr[1][0]; ky <= kr[1][1]; ky++) {
           for (let kz = kr[2][0]; kz <= kr[2][1]; kz++) {
-            X.push(x[3 * j] + kx * L[0]);
-            Y.push(x[3 * j + 1] + ky * L[1]);
-            Z.push(x[3 * j + 2] + kz * L[2]);
+            if (g.triclinic) {
+              g.fromLamda(fj[0] + kx, fj[1] + ky, fj[2] + kz, tmp);
+              X.push(tmp[0]);
+              Y.push(tmp[1]);
+              Z.push(tmp[2]);
+            } else {
+              X.push(x[3 * j] + kx * L[0]);
+              Y.push(x[3 * j + 1] + ky * L[1]);
+              Z.push(x[3 * j + 2] + kz * L[2]);
+            }
             R.push(rad[j]);
             A.push(j);
           }
@@ -620,7 +680,15 @@ export class ComputeVoronoiAtom extends Compute {
         if (f.plane < 0) continue; // cube face: cannot remain once R < fD
         const cand = cands[f.plane];
         const j = cand ? cand.atom : -1;
-        if (this.surfaceBit !== null && j >= 0 && (mask[j] & this.surfaceBit) !== 0) surf += area;
+        // A face whose neighbour image is the atom itself is a periodic self-face
+        // (the two z-direction caps of a 2d cell, say). The docs say: "If a group
+        // other than all is specified, only the Voronoi cell facets facing a
+        // neighbor atom from the specified group are counted towards the surface
+        // area" (docs.lammps.org/compute_voronoi_atom.html), so a self-face is
+        // excluded for a named group. Measured with native LAMMPS (black box): a
+        // 2d square lattice gave surface all = 10 (both caps counted) and, with a
+        // named group holding every atom, surface = 8 (caps excluded).
+        if (this.surfaceBit !== null && j >= 0 && (mask[j] & this.surfaceBit) !== 0 && (j !== i || this.surfaceAll)) surf += area;
         if (area > this.faceThreshold) {
           nf++;
           if (this.neighborsOn) faces.push({ nid: j >= 0 ? ids[j] : 0, area });

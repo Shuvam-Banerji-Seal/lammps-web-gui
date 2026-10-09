@@ -254,6 +254,29 @@ export class FixShake extends Fix {
     if (this.style === 'rattle') this.rattleVelocities();
   }
 
+  /**
+   * Re-applies the position constraint as a force correction at the end of a
+   * step, for fix ehex with the constrain keyword (docs.lammps.org/fix_ehex.html:
+   * "apply the constraint algorithm (SHAKE or RATTLE) again at the end of the
+   * timestep"). Positions and velocities are left untouched here; the added
+   * force reaches the next step's integration, as measured with native LAMMPS
+   * (black box): with constrain only the dumped forces change on the step the
+   * ehex fix acts, while positions and velocities are identical to a run
+   * without constrain on that step. The solve uses dt^2/2 because the added
+   * force enters only the next step's first half kick, and it is the same
+   * position solve for SHAKE and RATTLE (measured: the correction force of a
+   * RATTLE fix equals the SHAKE one to 1e-7).
+   */
+  applyConstraint(): void {
+    // The constraint force added here acts on the next step; native LAMMPS keeps
+    // the virial of the step's post-force solve for thermo, so the re-application
+    // must not replace it (measured with native LAMMPS (black box): the pressure
+    // on the step the ehex fix acts equals the one without constrain).
+    const saved = this.virial.slice();
+    this.shake(0.5);
+    this.virial.set(saved);
+  }
+
   private current: Cluster | null = null;
 
   /**

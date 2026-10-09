@@ -1,0 +1,4 @@
+# w29meama: synthetic two-element diamond library for the engine oracle (not a LAMMPS potential file).
+# Field order: elt, lat, z, ielement, atwt, alpha, b0, b1, b2, b3, alat, esub, asub, t0, t1, t2, t3, rozero, ibar
+'A' 'dia' 4 14 28.086 4.5 2.0 1.5 2.5 4.0 5.4 4.0 1.0 1.0 2.0 1.0 1.0 1.0 0
+'B' 'dia' 4 6 12.011 4.0 3.0 1.0 2.0 3.0 3.4 4.5 1.0 1.0 1.5 0.5 2.0 1.0 0

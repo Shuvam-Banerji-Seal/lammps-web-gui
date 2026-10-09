@@ -3,15 +3,16 @@ import { NEIGHMASK } from '../../neighbor';
 import { WignerTables, rawBispectrum, adjointBispectrum, type Cmat, type Grad } from '../../compute/sna';
 import { parseMliapSnaDescriptor, type MliapSnaDescriptor } from '../../mliap/descriptor';
 import { parseMliapModel, type MliapModel, type ModelKind } from '../../mliap/model';
+import { parseMliapSo3Descriptor, So3Engine, type So3Descriptor } from '../../mliap/so3';
 
 /*
  * pair_style mliap (wave 16) — docs.lammps.org/pair_mliap.html (plans/lammps-docs/pair_mliap.rst).
  *
  * Syntax (verbatim): "pair_style mliap ... keyword values ..."; "one or two keyword/value pairs must
  * be appended"; "keyword = model or descriptor or unified". This engine implements the pair
- * "model" plus "descriptor sna" combination. "model" with style linear, quadratic or nn, and
- * "descriptor" with style sna are implemented. The other styles are reported as StyleError:
- * model mliappy, descriptor so3 and ace, and the unified keyword (they need the Python or ML-PACE
+ * model plus descriptor combinations: model linear, quadratic or nn with descriptor sna, and model
+ * linear or nn with descriptor so3 (src/engine/mliap/so3.ts). The other styles are reported as
+ * StyleError: model mliappy, descriptor ace, and the unified keyword (they need the Python or ML-PACE
  * packages or a serialized Python object).
  *
  * pair_coeff: the first 2 arguments must be * *, followed by N element names mapping the MLIAP elements
@@ -33,7 +34,7 @@ import { parseMliapModel, type MliapModel, type ModelKind } from '../../mliap/mo
  * virial (stress/atom) is a StyleError, as for pair_style snap.
  */
 
-const DESCRIPTOR_STYLES = ['sna'];
+const DESCRIPTOR_STYLES = ['sna', 'so3'];
 
 export class PairMliap extends Pair {
   readonly name = 'mliap';
@@ -47,6 +48,9 @@ export class PairMliap extends Pair {
   private modelText = '';
   private descFile = '';
   private desc: MliapSnaDescriptor | null = null;
+  /** Descriptor so3 (wave 37, src/engine/mliap/so3.ts); null for sna. */
+  private so3: So3Descriptor | null = null;
+  private so3Engine: So3Engine | null = null;
   private model: MliapModel | null = null;
   /** Per atom type: element index in the descriptor, or -1 for NULL. */
   private elemOf = new Int32Array(0);
@@ -85,9 +89,21 @@ export class PairMliap extends Pair {
       }
     }
     if (kind === null || dstyle === null) throw new StyleError(`pair_style mliap needs both model and descriptor keywords`);
+    if (dstyle === 'so3' && kind === 'quadratic') {
+      // doc: "The available models are *linear* and *nn*." (so3)
+      throw new StyleError(`pair_style mliap: model quadratic with descriptor so3 is not implemented (the doc lists linear and nn for so3)`);
+    }
     this.modelKind = kind as ModelKind;
     this.modelFile = mfile;
-    this.desc = parseMliapSnaDescriptor(ctx.readFile(dfile), dfile);
+    if (dstyle === 'so3') {
+      this.so3 = parseMliapSo3Descriptor(ctx.readFile(dfile), dfile);
+      this.so3Engine = new So3Engine(this.so3);
+      this.desc = null;
+    } else {
+      this.desc = parseMliapSnaDescriptor(ctx.readFile(dfile), dfile);
+      this.so3 = null;
+      this.so3Engine = null;
+    }
     this.descFile = dfile;
     this.modelText = ctx.readFile(mfile);
     this.model = null;
@@ -95,11 +111,14 @@ export class PairMliap extends Pair {
 
   coeff(args: string[]): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
-    if (!this.desc || !this.modelKind) throw new StyleError('pair_coeff for style mliap needs pair_style mliap first');
+    const base = this.desc ?? this.so3;
+    if (!base || !this.modelKind) throw new StyleError('pair_coeff for style mliap needs pair_style mliap first');
     if (args.length < 2 || args[0] !== '*' || args[1] !== '*') throw new StyleError('the first 2 arguments of pair_coeff for style mliap must be * *');
+    // Measured with native LAMMPS (black box): the Si nn example's "pair_coeff * * Si Si" runs with one atom type,
+    // so extra element names are accepted and only the first N (N = atom types) are mapped. Fewer names: StyleError.
     const elems = args.slice(2);
-    if (elems.length !== this.ntypes) throw new StyleError(`pair_coeff for style mliap needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
-    const d = this.desc;
+    if (elems.length < this.ntypes) throw new StyleError(`pair_coeff for style mliap needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
+    const d = base;
     this.model = parseMliapModel(this.modelKind, this.modelText, this.modelFile, d.K, d.elems.length);
     const nt = this.ntypes + 1;
     this.elemOf = new Int32Array(nt).fill(-1);
@@ -114,13 +133,19 @@ export class PairMliap extends Pair {
 
   /** Cutoff rcutfac (R_i + R_j) between mapped types. */
   initOne(i: number, j: number): number {
-    if (!this.desc) throw new StyleError('pair_coeff for style mliap has not been given');
+    if (!this.desc && !this.so3) throw new StyleError('pair_coeff for style mliap has not been given');
     const ei = this.elemOf[i], ej = this.elemOf[j];
     if (ei < 0 || ej < 0) return 0;
-    return this.desc.rcutfac * (this.desc.radius[ei] + this.desc.radius[ej]);
+    // so3: every pair is cut at rcutfac (measured with native LAMMPS, black box; see so3.ts)
+    if (this.so3) return this.so3.rcutfac;
+    return this.desc!.rcutfac * (this.desc!.radius[ei] + this.desc!.radius[ej]);
   }
 
   compute(pc: PairCompute): void {
+    if (this.so3Engine && this.so3 && this.model) {
+      this.computeSo3(pc, this.so3Engine, this.so3, this.model);
+      return;
+    }
     if (!this.desc || !this.model) throw new StyleError('pair_coeff for style mliap has not been given');
     const d = this.desc, model = this.model;
     const list = pc.full;
@@ -270,6 +295,65 @@ export class PairMliap extends Pair {
         if (va) {
           const w0 = -0.5 * dx * G0[0], w1 = -0.5 * dy * G0[1], w2 = -0.5 * dz * G0[2];
           const w3 = -0.5 * dx * G0[1], w4 = -0.5 * dx * G0[2], w5 = -0.5 * dy * G0[2];
+          va[6 * i] += w0; va[6 * i + 1] += w1; va[6 * i + 2] += w2; va[6 * i + 3] += w3; va[6 * i + 4] += w4; va[6 * i + 5] += w5;
+          va[6 * j] += w0; va[6 * j + 1] += w1; va[6 * j + 2] += w2; va[6 * j + 3] += w3; va[6 * j + 4] += w4; va[6 * j + 5] += w5;
+        }
+      }
+    }
+    pc.acc.evdwl += evdwl;
+  }
+
+  /** Descriptor so3 path: same energy and force conventions as the sna path (F_j = -G_j, F_i = +sum G_j). */
+  private computeSo3(pc: PairCompute, eng: So3Engine, d: So3Descriptor, model: MliapModel): void {
+    const list = pc.full;
+    if (!list) throw new Error('pair style mliap needs a full neighbor list');
+    const { x, f, type } = pc;
+    const K = eng.K;
+    const B = new Float64Array(K), gam = new Float64Array(K);
+    let nb = new Float64Array(3 * 64), wt = new Float64Array(64), G = new Float64Array(3 * 64);
+    let evdwl = 0;
+    const va = pc.vatom;
+    for (let i = 0; i < pc.nlocal; i++) {
+      if (this.elemOf[type[i]] < 0) continue;
+      const k0 = list.firstneigh[i];
+      const k1 = k0 + list.numneigh[i];
+      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
+      const js: number[] = [];
+      let m = 0;
+      for (let k = k0; k < k1; k++) {
+        const j = list.neighbors[k] & NEIGHMASK;
+        const ej = this.elemOf[type[j]];
+        if (ej < 0) continue;
+        const dx = x[3 * j] - xi, dy = x[3 * j + 1] - yi, dz = x[3 * j + 2] - zi;
+        const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (!(r < d.rcutfac) || r === 0) continue;
+        if (3 * (m + 1) > nb.length) {
+          const nb2 = new Float64Array(2 * nb.length); nb2.set(nb); nb = nb2;
+          const wt2 = new Float64Array(2 * wt.length); wt2.set(wt); wt = wt2;
+          G = new Float64Array(2 * G.length);
+        }
+        nb[3 * m] = dx; nb[3 * m + 1] = dy; nb[3 * m + 2] = dz;
+        wt[m] = d.weight[ej];
+        js.push(j);
+        m++;
+      }
+      const ei = this.elemOf[type[i]];
+      const nbv = nb.subarray(0, 3 * m), wv = wt.subarray(0, m);
+      eng.evaluate(nbv, wv, B);
+      const E = model.energy(ei, B, gam);
+      evdwl += E;
+      if (pc.eatom) pc.eatom[i] += E;
+      if (m === 0) continue;
+      eng.evaluate(nbv, wv, B, gam, G.subarray(0, 3 * m));
+      for (let a = 0; a < m; a++) {
+        const j = js[a];
+        const g0 = G[3 * a], g1 = G[3 * a + 1], g2 = G[3 * a + 2];
+        f[3 * j] -= g0; f[3 * j + 1] -= g1; f[3 * j + 2] -= g2;
+        f[3 * i] += g0; f[3 * i + 1] += g1; f[3 * i + 2] += g2;
+        if (va) {
+          const dx = nb[3 * a], dy = nb[3 * a + 1], dz = nb[3 * a + 2];
+          const w0 = -0.5 * dx * g0, w1 = -0.5 * dy * g1, w2 = -0.5 * dz * g2;
+          const w3 = -0.5 * dx * g1, w4 = -0.5 * dx * g2, w5 = -0.5 * dy * g2;
           va[6 * i] += w0; va[6 * i + 1] += w1; va[6 * i + 2] += w2; va[6 * i + 3] += w3; va[6 * i + 4] += w4; va[6 * i + 5] += w5;
           va[6 * j] += w0; va[6 * j + 1] += w1; va[6 * j + 2] += w2; va[6 * j + 3] += w3; va[6 * j + 4] += w4; va[6 * j + 5] += w5;
         }

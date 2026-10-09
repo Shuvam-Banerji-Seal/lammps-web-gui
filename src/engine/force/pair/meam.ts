@@ -176,6 +176,11 @@ const refTuple = (el: MeamElement, o: MeamOptions): [number, number, number, num
  * lattice), so each neighbour contributes d/dr [S_m a_n(r_m) u...] with dr_m/dr = r_m/r.
  * Measured with native LAMMPS (black box): bcc and dia crystal energies (dia has Gamma != 0 in the
  * reference) agree with this background to about 1e-11 relative (see tests/enginePairMeam15.test.ts).
+ * Without explicit vectors (nn2 = 0) the reference holds the first neighbour shell only. Measured with
+ * native LAMMPS (black box): with Cmin(1,1,1) = 0.70 the fcc second shell (four screening atoms at C = 1)
+ * is partly screened, and native's energies, per-atom energies and forces (w33meamref_trimer,
+ * w33meamref_fcc) match to 1e-14 only when that shell is left out of the reference; with the default
+ * Cmin = 2 the second shell is fully screened, so both forms agree there.
  */
 const refRhoBarPrime = (
   el: MeamElement,
@@ -184,7 +189,7 @@ const refRhoBarPrime = (
   vectors?: ReferenceVector[],
 ): { rho: number; drho: number; rho0: number } => {
   const t = refTuple(el, o);
-  const nb: MeamNeighbor[] = (vectors ?? referenceVectors(el.lat ?? 'fcc', r, o.rc)).map((v) => ({ j: -1, ...v }));
+  const nb: MeamNeighbor[] = (vectors ?? referenceVectors(el.lat ?? 'fcc', r, r * (1 + 1e-6))).map((v) => ({ j: -1, ...v }));
   const S = screening(nb, o);
   let rho0 = 0, drho0 = 0, s2 = 0, ds2 = 0;
   const v1 = [0, 0, 0], dv1 = [0, 0, 0], v3 = [0, 0, 0], dv3 = [0, 0, 0];
@@ -930,6 +935,12 @@ export interface MeamParams {
    */
   ialloy: number;
   opts: MeamOptions;
+  /**
+   * Per-triplet Cmin/Cmax overrides of a multi-element potential, keyed i,j,k exactly as written
+   * (docs.lammps.org/pair_meam.html "Cmin(I,J,K) ... (I<=J)"). Unused by the single-element style.
+   */
+  cmin3: Map<string, number>;
+  cmax3: Map<string, number>;
 }
 
 const NUMERIC_DEFAULT_ZERO = ['emb_lin_neg', 'bkgd_dyn', 'mixture_ref_t'];
@@ -940,7 +951,7 @@ const PAIR_KEYS = ['Ec', 're', 'alpha', 'lattce', 'nn2', 'attrac', 'repuls', 'zb
  * verified subset (see meam_alloy.ts for the multi-element part, and the header of this file for the rest).
  */
 export const parseMeamParams = (text: string, name: string, nelem = 1): MeamParams => {
-  const out: MeamParams = { pair: new Map(), zblOff: new Set(), opts: { ...DEFAULT_MEAM_OPTIONS }, erose: { form: 0, attrac: 0, repuls: 0 }, ialloy: 0 };
+  const out: MeamParams = { pair: new Map(), zblOff: new Set(), opts: { ...DEFAULT_MEAM_OPTIONS }, erose: { form: 0, attrac: 0, repuls: 0 }, ialloy: 0, cmin3: new Map(), cmax3: new Map() };
   const pairOf = (i: number, j: number): PairParams => {
     const k = `${i},${j}`;
     let p = out.pair.get(k);
@@ -1033,13 +1044,16 @@ export const parseMeamParams = (text: string, name: string, nelem = 1): MeamPara
       }
       case 'Cmin':
       case 'Cmax': {
-        index(3);
+        const [i, j, k] = index(3);
         const v = num();
-        if (nelem > 1 && v !== (key === 'Cmin' ? DEFAULT_MEAM_OPTIONS.Cmin : DEFAULT_MEAM_OPTIONS.Cmax)) {
-          throw new StyleError(`MEAM ${key}(I,J,K) = ${val} in a multi-element potential is not supported (only the default; ${name})`);
+        if (nelem === 1) {
+          // Single-element style: the one triplet Cmin(1,1,1)/Cmax(1,1,1) is the uniform limit.
+          if (key === 'Cmin') out.opts.Cmin = v;
+          else out.opts.Cmax = v;
+        } else {
+          // Multi-element: kept exactly as written; the alloy screening looks the pair up sorted (see meam_alloy.ts).
+          (key === 'Cmin' ? out.cmin3 : out.cmax3).set(`${i},${j},${k}`, v);
         }
-        if (key === 'Cmin') out.opts.Cmin = v;
-        else out.opts.Cmax = v;
         break;
       }
       case 'augt1': {
@@ -1283,7 +1297,17 @@ export class PairMeam extends Pair {
         pairs[i].push({ Ec: p.Ec, re: p.re, alpha: p.alpha, lat: p.lattce, attrac: p.attrac, repuls: p.repuls });
       }
     }
-    const alloyOpts: AlloyOptions = { rc: par.opts.rc, delr: par.opts.delr, Cmin: par.opts.Cmin, Cmax: par.opts.Cmax, eroseForm: par.erose.form, ialloy: par.ialloy };
+    // Per-triplet screening limits: key "min(c,j),max(c,j),k" (1-based), the pair sorted as measured
+    // with native LAMMPS (black box); undefined entries keep the uniform Cmin/Cmax defaults.
+    const CminOf = (c: number, j: number, k: number): number => {
+      const a = Math.min(c, j) + 1, b = Math.max(c, j) + 1;
+      return par.cmin3.get(`${a},${b},${k + 1}`) ?? par.opts.Cmin;
+    };
+    const CmaxOf = (c: number, j: number, k: number): number => {
+      const a = Math.min(c, j) + 1, b = Math.max(c, j) + 1;
+      return par.cmax3.get(`${a},${b},${k + 1}`) ?? par.opts.Cmax;
+    };
+    const alloyOpts: AlloyOptions = { rc: par.opts.rc, delr: par.opts.delr, Cmin: par.opts.Cmin, Cmax: par.opts.Cmax, eroseForm: par.erose.form, ialloy: par.ialloy, CminOf, CmaxOf };
     this.alloy = makeAlloyModel(elements, pairs, alloyOpts, par.opts.augt1);
     this.typeElem = [-1, ...maps.map((m) => elems.indexOf(m))];
     this.el = null;

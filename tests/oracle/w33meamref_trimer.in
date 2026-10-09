@@ -1,0 +1,23 @@
+# oracle: pair_style meam, one element with Cmin(1,1,1) = 0.70 (w33meamtrip_b1_lib.meam element A + w33meamref.meam, nn2 0): an L-shaped trimer whose long bond is partly screened (C = 1), run 0; the reference structure holds the first neighbour shell only
+# oracle-inputs: w33meamtrip_b1_lib.meam w33meamref.meam
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-9
+units           metal
+atom_style      atomic
+atom_modify     map array
+boundary        p p p
+region          box block 0 30 0 30 0 30
+create_box      1 box
+create_atoms    1 single 10.0 10.0 10.0
+create_atoms    1 single 12.6 12.6 10.0
+create_atoms    1 single 12.6 10.0 10.0
+mass            1 63.546
+pair_style      meam
+pair_coeff      * * w33meamtrip_b1_lib.meam A w33meamref.meam A
+compute         pa all pe/atom
+group           g1 id 1
+group           g3 id 3
+compute         e1 g1 reduce sum c_pa
+compute         e3 g3 reduce sum c_pa
+thermo_style    custom step pe c_e1 c_e3 pxx pyy pzz pxy
+thermo_modify   format float %.15g
+run             0

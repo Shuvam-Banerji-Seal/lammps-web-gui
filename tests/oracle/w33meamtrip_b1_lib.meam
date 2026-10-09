@@ -1,0 +1,4 @@
+# w33meamtrip: synthetic two-element library for the engine oracle (not a LAMMPS potential file).
+# Field order: elt, lat, z, ielement, atwt, alpha, b0, b1, b2, b3, alat, esub, asub, t0, t1, t2, t3, rozero, ibar
+'A' 'fcc' 12 29 63.546 5.0 2.0 1.5 2.5 4.0 3.6 3.5 1.0 1.0 2.0 1.0 1.0 1.0 0
+'B' 'fcc' 12 28 58.69 4.0 3.0 1.0 2.0 3.0 3.5 4.0 1.0 1.0 1.5 0.5 2.0 1.0 0

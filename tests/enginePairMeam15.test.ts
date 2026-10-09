@@ -446,11 +446,11 @@ describe('multi-element pair_coeff: supported subset and StyleErrors', () => {
     expect(() => coeffWith(PAR2.replace('b1', 'l12'), ARGS)).toThrow(StyleError);
   });
 
-  it('missing pair parameters, unknown elements, delta and non-default screening are StyleErrors', () => {
+  it('missing pair parameters, unknown elements, delta and nn2 are StyleErrors; per-triplet screening is accepted', () => {
     expect(() => coeffWith(PAR2.replace('Ec(1,2) = 3.8\n', ''), ARGS)).toThrow(/Ec\(1,2\)/);
     expect(() => coeffWith(PAR2, ['*', '*', 'lib.meam', 'A', 'C', 'par.meam', 'A', 'C'])).toThrow(/multi-element/);
     expect(() => coeffWith(PAR2 + 'delta(1,2) = 0.1\n', ARGS)).toThrow(/delta/);
-    expect(() => coeffWith(PAR2 + 'Cmax(1,1,2) = 3.0\n', ARGS)).toThrow(/Cmax/);
+    expect(() => coeffWith(PAR2 + 'Cmax(1,1,2) = 3.0\n', ARGS)).not.toThrow();
     expect(() => coeffWith(PAR2 + 'nn2(1,2) = 1\n', ARGS)).toThrow(/nn2/);
   });
 

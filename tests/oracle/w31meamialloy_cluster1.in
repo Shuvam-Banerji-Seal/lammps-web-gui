@@ -1,0 +1,38 @@
+# oracle: pair_style meam, isolated A-B dimer, A-B-A and B-A-B trimers, A-A-B and A-B-B trimers and an 8-atom mixed cluster (w31meamialloy_lib.meam + w31meamialloy_1.meam, zbl 0, ialloy = 1) in a 45 A periodic box, run 0
+# oracle: ialloy = 1 (docs.lammps.org/pair_meam.html: "0 = standard averaging", "1 = alternative averaging", "2 = no averaging of t (use single-element values)"); a central atom with two elements among its neighbours is the only place ialloy changes the density
+# oracle-inputs: w31meamialloy_lib.meam w31meamialloy_1.meam
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-9
+units           metal
+atom_style      atomic
+boundary        p p p
+region          box block 0 45 0 45 0 45
+create_box      2 box
+create_atoms    1 single 5.0000000000 5.0000000000 5.0000000000
+create_atoms    2 single 7.6000000000 5.0000000000 5.0000000000
+create_atoms    1 single 5.0000000000 15.0000000000 5.0000000000
+create_atoms    2 single 7.6000000000 15.0000000000 5.0000000000
+create_atoms    1 single 10.2000000000 15.0000000000 5.0000000000
+create_atoms    2 single 5.0000000000 25.0000000000 5.0000000000
+create_atoms    1 single 7.6000000000 25.0000000000 5.0000000000
+create_atoms    2 single 10.2000000000 25.0000000000 5.0000000000
+create_atoms    1 single 5.0000000000 35.0000000000 5.0000000000
+create_atoms    1 single 7.5000000000 35.0000000000 5.0000000000
+create_atoms    2 single 5.0000000000 37.6000000000 5.0000000000
+create_atoms    2 single 15.0000000000 35.0000000000 5.0000000000
+create_atoms    1 single 17.6000000000 35.0000000000 5.0000000000
+create_atoms    2 single 15.0000000000 37.5000000000 5.0000000000
+create_atoms    1 single 21.0000000000 5.0000000000 5.0000000000
+create_atoms    2 single 22.9000000000 5.4000000000 5.1000000000
+create_atoms    1 single 22.1000000000 7.0000000000 5.3000000000
+create_atoms    2 single 23.6000000000 6.4000000000 6.9000000000
+create_atoms    1 single 21.2000000000 6.7000000000 7.4000000000
+create_atoms    2 single 22.6000000000 5.2000000000 7.1000000000
+create_atoms    1 single 23.8000000000 7.7000000000 5.6000000000
+create_atoms    2 single 21.7000000000 7.9000000000 6.2000000000
+mass            1 63.546
+mass            2 58.69
+pair_style      meam
+pair_coeff      * * w31meamialloy_lib.meam A B w31meamialloy_1.meam A B
+thermo_style    custom step pe press pxx pyy pzz
+thermo_modify   format float %.15g
+run             0

@@ -14,7 +14,6 @@ import {
   PHI_SPAN,
   PhiTable,
   alloyAtomEnergyGrad,
-  alloyPairTab,
   makeAlloyModel,
   type AlloyElement,
   type AlloyModel,
@@ -924,10 +923,16 @@ export interface MeamParams {
   re?: number;
   alpha?: number;
   lattce?: string;
+  /**
+   * ialloy: t-averaging rule for the alloy density (docs pair_meam.rst: "0 = standard averaging",
+   * "1 = alternative averaging", "2 = no averaging of t (use single-element values)"; default 0).
+   * Only used by the multi-element path (meam_alloy.ts); a single element has one t vector.
+   */
+  ialloy: number;
   opts: MeamOptions;
 }
 
-const NUMERIC_DEFAULT_ZERO = ['emb_lin_neg', 'bkgd_dyn', 'ialloy', 'mixture_ref_t'];
+const NUMERIC_DEFAULT_ZERO = ['emb_lin_neg', 'bkgd_dyn', 'mixture_ref_t'];
 const PAIR_KEYS = ['Ec', 're', 'alpha', 'lattce', 'nn2', 'attrac', 'repuls', 'zbl'];
 
 /**
@@ -935,7 +940,7 @@ const PAIR_KEYS = ['Ec', 're', 'alpha', 'lattce', 'nn2', 'attrac', 'repuls', 'zb
  * verified subset (see meam_alloy.ts for the multi-element part, and the header of this file for the rest).
  */
 export const parseMeamParams = (text: string, name: string, nelem = 1): MeamParams => {
-  const out: MeamParams = { pair: new Map(), zblOff: new Set(), opts: { ...DEFAULT_MEAM_OPTIONS }, erose: { form: 0, attrac: 0, repuls: 0 } };
+  const out: MeamParams = { pair: new Map(), zblOff: new Set(), opts: { ...DEFAULT_MEAM_OPTIONS }, erose: { form: 0, attrac: 0, repuls: 0 }, ialloy: 0 };
   const pairOf = (i: number, j: number): PairParams => {
     const k = `${i},${j}`;
     let p = out.pair.get(k);
@@ -1042,6 +1047,15 @@ export const parseMeamParams = (text: string, name: string, nelem = 1): MeamPara
         const x = num();
         if (x !== 0 && x !== 1) throw new StyleError(`augt1 must be 0 or 1 (${name})`);
         out.opts.augt1 = x === 1;
+        break;
+      }
+      case 'ialloy': {
+        if (idx.length) throw new StyleError(`MEAM parameter ialloy in ${name} takes no index`);
+        const x = num();
+        // docs.lammps.org/pair_meam.html: "0 = standard averaging", "1 = alternative averaging",
+        // "2 = no averaging of t (use single-element values)"; default 0.
+        if (x !== 0 && x !== 1 && x !== 2) throw new StyleError(`MEAM ialloy = ${val} is not supported (only 0, 1, 2; ${name})`);
+        out.ialloy = x;
         break;
       }
       case 'nn2': {
@@ -1269,7 +1283,7 @@ export class PairMeam extends Pair {
         pairs[i].push({ Ec: p.Ec, re: p.re, alpha: p.alpha, lat: p.lattce, attrac: p.attrac, repuls: p.repuls });
       }
     }
-    const alloyOpts: AlloyOptions = { rc: par.opts.rc, delr: par.opts.delr, Cmin: par.opts.Cmin, Cmax: par.opts.Cmax, eroseForm: par.erose.form };
+    const alloyOpts: AlloyOptions = { rc: par.opts.rc, delr: par.opts.delr, Cmin: par.opts.Cmin, Cmax: par.opts.Cmax, eroseForm: par.erose.form, ialloy: par.ialloy };
     this.alloy = makeAlloyModel(elements, pairs, alloyOpts, par.opts.augt1);
     this.typeElem = [-1, ...maps.map((m) => elems.indexOf(m))];
     this.el = null;

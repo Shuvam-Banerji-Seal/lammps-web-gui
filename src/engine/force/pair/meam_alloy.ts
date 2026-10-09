@@ -7,6 +7,7 @@ import { referenceVectors, type ReferenceLattice } from './meam_lattice';
  *     reference rho_ref,i use the element's own lattice, as in meam.ts; z is the library coordination);
  *   - heteronuclear pairs with lattce(I,J) = b1 (rock salt) or dia (diamond/zincblende);
  *   - ibar = 0, t0 = 1, rozero = 1, zbl = 0, default Cmin/Cmax, no nn2/delta;
+ *   - ialloy = 0, 1 and 2 (docs.lammps.org/pair_meam.html); see densityPartials1 and effT;
  *   - erose_form 0 (with attrac = repuls = 0), 1 and 2 with per-pair attrac(I,J)/repuls(I,J)
  *     (pairErose below; erose_form 0 with nonzero attrac/repuls is refused by the parser).
  *
@@ -38,6 +39,16 @@ import { referenceVectors, type ReferenceLattice } from './meam_lattice';
  * r sqrt(8/3) screened to zero); A-B, A-A and B-B dimers, an A-B-A trimer and an A-B-A-A cluster agree with
  * native to 1e-13 (eV), and the displaced zincblende crystal (tests/oracle/w29meama_dia) agrees over 40 nve
  * steps at rel = 1e-6 including the forces.
+ *
+ * Measured with native LAMMPS (black box) for the w31meamialloy entries (ialloy = 1 and 2, the same
+ * synthetic A/B entries as w15meam_alloy): on a disordered fcc A/B crystal the like neighbours are not
+ * all screened, so ialloy 0, 1 and 2 give three different energies; the 8-atom mixed cluster and the
+ * 40-step nve disordered fcc crystal agree with native to 1e-9 (eV) and rel = 1e-6 including the forces
+ * (tests/oracle/w31meamialloy_cluster{1,2}, w31meamialloy_crystal{1,2}). ialloy = 1 multiplies every
+ * angular moment by the neighbour's t and uses the t average sum W A0 t / sum W A0 t^2 (the mixing-rule
+ * forms of the MEAM literature; docs.lammps.org/pair_meam.html "1 = alternative averaging"); ialloy = 2
+ * uses the central atom's t ("2 = no averaging of t (use single-element values)"); ialloy = 0 leaves the
+ * moments unscaled and weights each neighbour's t by its density contribution.
  *
  * Not verified (and therefore rejected with a StyleError in meam.ts): lattce(I,J) = l12 and other names
  * (the L12 pair term is not the B1/dia form, see the remaining issues of the meam15 report), bcc/hcp/sc
@@ -117,6 +128,14 @@ export interface AlloyOptions {
   Cmax: number;
   /** erose_form of the potential (docs pair_meam.rst); default 0. Only 0, 1 and 2 are supported. */
   eroseForm?: number;
+  /**
+   * ialloy: averaging rule of the t parameters (docs pair_meam.rst: "ialloy = integer flag to use
+   * alternative averaging rule for t parameters", "0 = standard averaging", "1 = alternative averaging",
+   * "2 = no averaging of t (use single-element values)"; default 0). The rule selects the t vector used
+   * for a neighbour of element e around a central atom of element c: 0 and 2 differ only in mixed pairs
+   * (see effT).
+   */
+  ialloy?: number;
 }
 
 export interface AlloyModel {
@@ -225,7 +244,114 @@ interface Term {
   W: number;
   A: [number, number, number, number];
   u: [number, number, number];
+  /** t vector entering Gamma for this neighbour (ialloy rule; see effT) */
+  t: [number, number, number, number];
 }
+
+/*
+ * t vector assigned to a neighbour of element e around a central atom of element c (ialloy, docs
+ * pair_meam.rst). ialloy = 0 (standard averaging) uses each neighbour's own t; the density-weighted
+ * sum over neighbours is then the implicit average. ialloy = 2 ("no averaging of t (use single-element
+ * values)") uses the central atom's t for every neighbour. ialloy = 1 (alternative averaging) also
+ * uses each neighbour's own t here: the alternative rule lives in densityPartials1, which multiplies
+ * every angular moment by the neighbour's t and divides the t average by the t^2 average (the
+ * mixing-rule forms (a)/(b) of the MEAM literature; measured against native in
+ * tests/oracle/w31meamialloy_*).
+ */
+const effT = (model: AlloyModel, c: number, e: number): [number, number, number, number] => {
+  const il = model.opts.ialloy ?? 0;
+  if (il === 2) return model.tEff[c];
+  return model.tEff[e];
+};
+
+/**
+ * Alternative (ialloy = 1) density: every angular moment carries the neighbour's t, the spherically
+ * symmetric density rho0 carries none, and the t average is t_ave_l = sum W A0 t_l divided by
+ * sum W A0 t_l^2 (docs.lammps.org/pair_meam.html "1 = alternative averaging"; the two mixing-rule
+ * forms are those of Baskes's MEAM, plans/lammps-docs/pair_meam.rst). Gamma = sum_l t_ave_l q_l / rho0^2
+ * with the t-scaled moments q_l. For one element this reduces to the standard density exactly (the
+ * t factors cancel); the rule only changes a central atom whose contributing neighbours mix elements.
+ * Same contract as densityPartials (see below): returns rho_bar and its partials w.r.t. W_m, A_n,m, u_m.
+ */
+const densityPartials1 = (terms: Term[], P: number, ibar: number) => {
+  const N = terms.length;
+  const out = { rb: 0, rho0: 0, gW: new Float64Array(N), gA: new Float64Array(4 * N), gU: new Float64Array(3 * N) };
+  let S0 = 0, s2 = 0;
+  const ST = [0, 0, 0, 0], TS = [0, 0, 0, 0];
+  const v1 = [0, 0, 0], v3 = [0, 0, 0], V2 = new Float64Array(9), V3 = new Float64Array(27);
+  for (const t of terms) {
+    const te = t.t;
+    const { W, A, u } = t;
+    S0 += W * A[0];
+    for (let l = 1; l < 4; l++) { ST[l] += W * A[0] * te[l]; TS[l] += W * A[0] * te[l] * te[l]; }
+    for (let c = 0; c < 3; c++) { v1[c] += W * A[1] * te[1] * u[c]; v3[c] += W * A[3] * te[3] * u[c]; }
+    s2 += W * A[2] * te[2];
+    for (let p = 0; p < 3; p++) for (let q = 0; q < 3; q++) V2[3 * p + q] += W * A[2] * te[2] * u[p] * u[q];
+    for (let p = 0; p < 3; p++) for (let q = 0; q < 3; q++) for (let s = 0; s < 3; s++) V3[9 * p + 3 * q + s] += W * A[3] * te[3] * u[p] * u[q] * u[s];
+  }
+  out.rho0 = S0;
+  if (S0 <= 0) return out;
+  const q1 = v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2];
+  let V2sq = 0;
+  for (let q = 0; q < 9; q++) V2sq += V2[q] * V2[q];
+  const q2 = V2sq - (s2 * s2) / 3;
+  let V3sq = 0;
+  for (let q = 0; q < 27; q++) V3sq += V3[q] * V3[q];
+  const q3 = V3sq - (3 / 5) * (v3[0] * v3[0] + v3[1] * v3[1] + v3[2] * v3[2]);
+  const qs = [0, q1, q2, q3];
+  const r = [0, 0, 0, 0];
+  for (let l = 1; l < 4; l++) r[l] = TS[l] !== 0 ? ST[l] / TS[l] : 0;
+  const g = (r[1] * q1 + r[2] * q2 + r[3] * q3) / (S0 * S0);
+  const G = gOfIbar(ibar, g), Gp = gPrimeOfIbar(ibar, g);
+  out.rb = S0 * G;
+  const PG = P * Gp;
+  const dS0 = P * (G - 2 * g * Gp);
+  const dST = [0, 0, 0, 0], dTS = [0, 0, 0, 0], dq = [0, 0, 0, 0];
+  for (let l = 1; l < 4; l++) {
+    if (TS[l] !== 0) {
+      dST[l] = (PG * qs[l]) / (TS[l] * S0);
+      dTS[l] = -(PG * ST[l] * qs[l]) / (TS[l] * TS[l] * S0);
+    }
+    dq[l] = (PG * r[l]) / S0;
+  }
+  const M1 = [0, 1, 2].map((c) => dq[1] * 2 * v1[c]);
+  const ms2 = (dq[2] * (-2 * s2)) / 3;
+  const M2 = new Float64Array(9);
+  for (let q = 0; q < 9; q++) M2[q] = dq[2] * 2 * V2[q];
+  const M3v = [0, 1, 2].map((c) => dq[3] * (-6 / 5) * v3[c]);
+  const M3 = new Float64Array(27);
+  for (let q = 0; q < 27; q++) M3[q] = dq[3] * 2 * V3[q];
+  for (let m = 0; m < N; m++) {
+    const { W, A, u, t: te } = terms[m];
+    const uu = (p: number, q: number) => u[p] * u[q];
+    let uM2u = 0;
+    for (let p = 0; p < 3; p++) for (let q = 0; q < 3; q++) uM2u += M2[3 * p + q] * uu(p, q);
+    let uM3uu = 0;
+    for (let p = 0; p < 3; p++) for (let q = 0; q < 3; q++) for (let s = 0; s < 3; s++) uM3uu += M3[9 * p + 3 * q + s] * u[p] * u[q] * u[s];
+    let M1u = 0, M3vu = 0;
+    for (let c = 0; c < 3; c++) { M1u += M1[c] * u[c]; M3vu += M3v[c] * u[c]; }
+    const t1 = te[1], t2 = te[2], t3 = te[3];
+    out.gW[m] =
+      dS0 * A[0] +
+      dST[1] * A[0] * t1 + dTS[1] * A[0] * t1 * t1 +
+      dST[2] * A[0] * t2 + dTS[2] * A[0] * t2 * t2 +
+      dST[3] * A[0] * t3 + dTS[3] * A[0] * t3 * t3 +
+      t1 * A[1] * M1u + t2 * A[2] * (ms2 + uM2u) + t3 * A[3] * (M3vu + uM3uu);
+    out.gA[4 * m] = dS0 * W + W * (dST[1] * t1 + dTS[1] * t1 * t1 + dST[2] * t2 + dTS[2] * t2 * t2 + dST[3] * t3 + dTS[3] * t3 * t3);
+    out.gA[4 * m + 1] = W * t1 * M1u;
+    out.gA[4 * m + 2] = W * t2 * (ms2 + uM2u);
+    out.gA[4 * m + 3] = W * t3 * (M3vu + uM3uu);
+    for (let c = 0; c < 3; c++) {
+      let gc = W * t1 * A[1] * M1[c] + W * t3 * A[3] * M3v[c];
+      let m2 = 0, m3 = 0;
+      for (let q = 0; q < 3; q++) m2 += M2[3 * c + q] * u[q];
+      for (let p = 0; p < 3; p++) for (let q = 0; q < 3; q++) m3 += M3[9 * c + 3 * p + q] * u[p] * u[q];
+      gc += 2 * W * t2 * A[2] * m2 + 3 * W * t3 * A[3] * m3;
+      out.gU[3 * m + c] = gc;
+    }
+  }
+  return out;
+};
 
 /**
  * Background density rho_bar = rho0 G(Gamma) of one atom from its density terms, with the partial derivatives
@@ -234,15 +360,18 @@ interface Term {
  *   v3 = sum W A3 u,  V3 = sum W A3 uuu,  q1 = |v1|^2, q2 = |V2|^2 - s2^2/3, q3 = |V3|^2 - 3/5 |v3|^2,
  *   Gamma = (T1 q1 + T2 q2 + T3 q3) / rho0^3 (t_l = T_l / rho0 is the density-weighted average),  G = sqrt(1+Gamma).
  * Returns gW_m = d(P rho_bar)/dW_m, gA_m[n] = d(P rho_bar)/dA_n,m and gU_m = d(P rho_bar)/du_m.
+ * mode = 1 selects the alternative averaging of densityPartials1 (all other modes use this path; the
+ * ialloy = 2 central-t selection is already baked into the terms by effT).
  */
-export const densityPartials = (terms: Term[], tEff: Array<[number, number, number, number]>, P: number, ibar: number) => {
+export const densityPartials = (terms: Term[], P: number, ibar: number, mode = 0) => {
+  if (mode === 1) return densityPartials1(terms, P, ibar);
   const N = terms.length;
   const out = { rb: 0, rho0: 0, gW: new Float64Array(N), gA: new Float64Array(4 * N), gU: new Float64Array(3 * N) };
   let S0 = 0, s2 = 0;
   const ST = [0, 0, 0, 0];
   const v1 = [0, 0, 0], v3 = [0, 0, 0], V2 = new Float64Array(9), V3 = new Float64Array(27);
   for (const t of terms) {
-    const te = tEff[t.e];
+    const te = t.t;
     const { W, A, u } = t;
     S0 += W * A[0];
     for (let l = 1; l < 4; l++) ST[l] += W * A[0] * te[l];
@@ -281,8 +410,8 @@ export const densityPartials = (terms: Term[], tEff: Array<[number, number, numb
   const M3 = new Float64Array(27);
   for (let q = 0; q < 27; q++) M3[q] = dq[3] * 2 * V3[q];
   for (let m = 0; m < N; m++) {
-    const { e, W, A, u } = terms[m];
-    const te = tEff[e];
+    const { W, A, u, t } = terms[m];
+    const te = t;
     const uu = (p: number, q: number) => u[p] * u[q];
     let uM2u = 0; // sum M2_pq u_p u_q
     for (let p = 0; p < 3; p++) for (let q = 0; q < 3; q++) uM2u += M2[3 * p + q] * uu(p, q);
@@ -329,14 +458,14 @@ const embedFp = (el: AlloyElement, rhoRef: number, rb: number): number => {
  * Element-i density terms for a neighbour list at distance scale: W = fc S, A_n = exp(-beta_n (r/re_e - 1)).
  * radial = false gives the reference-structure weights W = S (no radial cutoff; see the reference note in meam.ts).
  */
-const termsOf = (model: AlloyModel, list: AlloyNeighbor[], radial = true): Term[] => {
+const termsOf = (model: AlloyModel, list: AlloyNeighbor[], central: number, radial = true): Term[] => {
   const sc = screenAll(list, model.opts);
   return list.map((p, m) => {
     const el = model.elements[p.e];
     const W = (radial ? fcW(p.r, model.opts) : 1) * sc.S[m];
     const A: [number, number, number, number] = [0, 0, 0, 0];
     for (let n = 0; n < 4; n++) A[n] = Math.exp(-el.beta[n] * (p.r / el.re - 1));
-    return { e: p.e, W, A, u: [p.dx / p.r, p.dy / p.r, p.dz / p.r] };
+    return { e: p.e, W, A, u: [p.dx / p.r, p.dy / p.r, p.dz / p.r], t: effT(model, central, p.e) };
   });
 };
 
@@ -346,10 +475,11 @@ const scaledRho = (
   list: AlloyNeighbor[],
   r: number,
   ibar: number,
+  central: number,
   radial = true,
 ): { rho: number; drho: number; rho0: number } => {
-  const terms = termsOf(model, list, radial);
-  const part = densityPartials(terms, model.tEff, 1, ibar);
+  const terms = termsOf(model, list, central, radial);
+  const part = densityPartials(terms, 1, ibar, model.opts.ialloy ?? 0);
   let drho = 0;
   const sc = screenAll(list, model.opts);
   for (let m = 0; m < list.length; m++) {
@@ -452,14 +582,14 @@ export const alloyPair = (model: AlloyModel, i: number, j: number, r: number): {
   const { E: Eu, dE: dEu } = pairErose(pr, model.opts.eroseForm ?? 0, r);
   if (pr.lat === 'self') {
     const el = model.elements[i];
-    const { rho, drho } = scaledRho(model, ownList(model, i, r), r, model.elements[i].ibar ?? 0, false);
+    const { rho, drho } = scaledRho(model, ownList(model, i, r), r, model.elements[i].ibar ?? 0, i, false);
     const Fv = embedF(el, model.rhoRef[i], rho);
     const Fp = embedFp(el, model.rhoRef[i], rho);
     return { phi: (2 / el.z) * (Eu - Fv), dphi: (2 / el.z) * (dEu - Fp * drho) };
   }
   if (pr.lat === 'dia') {
-    const ri = scaledRho(model, diaList(model, i, j, r), r, model.elements[i].ibar ?? 0, false);
-    const rj = scaledRho(model, diaList(model, j, i, r), r, model.elements[j].ibar ?? 0, false);
+    const ri = scaledRho(model, diaList(model, i, j, r), r, model.elements[i].ibar ?? 0, i, false);
+    const rj = scaledRho(model, diaList(model, j, i, r), r, model.elements[j].ibar ?? 0, j, false);
     const Fi = embedF(model.elements[i], model.rhoRef[i], ri.rho);
     const Fj = embedF(model.elements[j], model.rhoRef[j], rj.rho);
     const Fip = embedFp(model.elements[i], model.rhoRef[i], ri.rho);
@@ -470,8 +600,8 @@ export const alloyPair = (model: AlloyModel, i: number, j: number, r: number): {
       dphi: (2 / 4) * (dEu - (Fip * ri.drho + Fjp * rj.drho) / 2),
     };
   }
-  const ri = scaledRho(model, b1List(model, i, j, r), r, model.elements[i].ibar ?? 0, false);
-  const rj = scaledRho(model, b1List(model, j, i, r), r, model.elements[j].ibar ?? 0, false);
+  const ri = scaledRho(model, b1List(model, i, j, r), r, model.elements[i].ibar ?? 0, i, false);
+  const rj = scaledRho(model, b1List(model, j, i, r), r, model.elements[j].ibar ?? 0, j, false);
   const Fi = embedF(model.elements[i], model.rhoRef[i], ri.rho), Fj = embedF(model.elements[j], model.rhoRef[j], rj.rho);
   const Fip = embedFp(model.elements[i], model.rhoRef[i], ri.rho), Fjp = embedFp(model.elements[j], model.rhoRef[j], rj.rho);
   return {
@@ -485,7 +615,7 @@ export const makeAlloyModel = (elements: AlloyElement[], pairs: AlloyPair[][], o
   const tEff = elements.map((el) => [1, augt1 ? el.t[1] + 0.6 * el.t[3] : el.t[1], el.t[2], el.t[3]] as [number, number, number, number]);
   const model: AlloyModel = { elements, pairs, opts, tEff, rhoRef: [] };
   // embedding normalisation: rho0 at re without G(Gamma), as in meam.ts referenceBackground
-  model.rhoRef = elements.map((el, c) => scaledRho({ ...model, rhoRef: [] }, ownList(model, c, el.re), el.re, el.ibar ?? 0).rho0);
+  model.rhoRef = elements.map((el, c) => scaledRho({ ...model, rhoRef: [] }, ownList(model, c, el.re), el.re, el.ibar ?? 0, c).rho0);
   return model;
 };
 
@@ -499,13 +629,13 @@ export function alloyAtomEnergyGrad(model: AlloyModel, ci: number, nb: AlloyNeig
   if (N === 0) return 0;
   const o = model.opts;
   const el = model.elements[ci];
-  const terms = termsOf(model, nb);
+  const terms = termsOf(model, nb, ci);
   const sc = screenAll(nb, o);
-  const rb0 = densityPartials(terms, model.tEff, 1, el.ibar ?? 0).rb;
+  const rb0 = densityPartials(terms, 1, el.ibar ?? 0, o.ialloy ?? 0).rb;
   const rhoRef = model.rhoRef[ci];
   const Fv = embedF(el, rhoRef, rb0);
   const P = embedFp(el, rhoRef, rb0);
-  const part = densityPartials(terms, model.tEff, P, el.ibar ?? 0);
+  const part = densityPartials(terms, P, el.ibar ?? 0, o.ialloy ?? 0);
   // pair terms
   const phi = new Float64Array(N), dphi = new Float64Array(N);
   let pairE = 0;

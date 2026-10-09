@@ -3,7 +3,7 @@ import { FixShake } from './shake';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { Region } from '../region';
-import { massOf } from '../atoms';
+import { hasMolecule, massOf } from '../atoms';
 import { num } from '../commands/args';
 
 /*
@@ -72,8 +72,23 @@ import { num } from '../commands/args';
  * the correction is applied by the shake/rattle fix as an additional force at
  * the end of the step; positions and velocities on that step are unchanged.
  *
- * Not implemented (StyleError): com (cluster rescaling; constrain alone scales
- * individual atoms), atom-style variables for eflux.
+ * The com keyword groups the reservoir by molecule instead of by atom
+ * (docs.lammps.org/fix_ehex.html, "Compatibility with SHAKE and RATTLE (rigid
+ * molecules)"): "With this option all sites of a constrained cluster are
+ * rescaled, if its center of mass is located inside the region. Rescaling all
+ * sites of a cluster by the same factor does not introduce any velocity
+ * components along fixed bonds. No rescaling takes place if the center of mass
+ * lies outside the region." "You can only use the keyword *com* along with
+ * *constrain*." Measured with native LAMMPS (black box) on SPC/E-like rigid
+ * waters with hex/constrain com: the reservoir R is every atom of a molecule
+ * (atom->molecule ID) whose mass-weighted centre of mass of the wrapped
+ * positions lies in the region; K and v_cm are the non-translational kinetic
+ * energy and centre-of-mass velocity of those atoms, and every R atom is
+ * rescaled by the same factor (matching the K/v_cm formula measured for the
+ * atom-grouped case, region x 0..2.5 over waters 1,3,12: atom grouping
+ * f = 1.01037030105274, molecule grouping f = 1.01509046796031).
+ *
+ * Not implemented (StyleError): atom-style variables for eflux.
  */
 
 const USAGE_HEAT = 'usage: fix ID group-ID heat N eflux [region region-ID]';
@@ -82,6 +97,8 @@ const USAGE_EHEX = 'usage: fix ID group-ID ehex N F [region region-ID] [constrai
 abstract class HeatBase extends Fix {
   protected regionId: string | null = null;
   protected regionObj: Region | null = null;
+  /** com keyword (fix ehex only): the reservoir is grouped by molecule ID. */
+  protected com = false;
   scalarFlag = true;
   extscalar = 0;
   /** The most recent velocity scale factor (1 until the first application). */
@@ -140,13 +157,40 @@ abstract class HeatBase extends Fix {
     // step) counts as inside a region that reaches the upper box face.
     const scratchX = new Float64Array(3);
     const scratchImage = new Int32Array(3);
+    const inRegion = (x: number, y: number, z: number): boolean => {
+      if (!reg) return true;
+      scratchX[0] = x; scratchX[1] = y; scratchX[2] = z;
+      this.sys.geom.remap(scratchX, scratchImage, 0);
+      return reg.match(scratchX[0], scratchX[1], scratchX[2]);
+    };
+    if (this.com) {
+      // docs.lammps.org/fix_ehex.html: "all sites of a constrained cluster are
+      // rescaled, if its center of mass is located inside the region." Group the
+      // fix group's atoms by molecule ID; molecule 0 (none) is per atom.
+      const com = new Map<number, { m: number; x: number; y: number; z: number }>();
+      for (let i = 0; i < s.n; i++) {
+        const id = s.molecule[i];
+        if (id <= 0) continue;
+        let c = com.get(id);
+        if (!c) { c = { m: 0, x: 0, y: 0, z: 0 }; com.set(id, c); }
+        const m = massOf(s, i);
+        c.m += m;
+        c.x += m * s.x[3 * i]; c.y += m * s.x[3 * i + 1]; c.z += m * s.x[3 * i + 2];
+      }
+      for (let i = 0; i < s.n; i++) {
+        if (!(s.mask[i] & this.groupBit)) continue;
+        const id = s.molecule[i];
+        if (id > 0) {
+          const c = com.get(id)!;
+          if (!inRegion(c.x / c.m, c.y / c.m, c.z / c.m)) continue;
+        } else if (!inRegion(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2])) continue;
+        out.push(i);
+      }
+      return out;
+    }
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      if (reg) {
-        scratchX[0] = s.x[3 * i]; scratchX[1] = s.x[3 * i + 1]; scratchX[2] = s.x[3 * i + 2];
-        this.sys.geom.remap(scratchX, scratchImage, 0);
-        if (!reg.match(scratchX[0], scratchX[1], scratchX[2])) continue;
-      }
+      if (reg && !inRegion(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2])) continue;
       out.push(i);
     }
     return out;
@@ -227,50 +271,75 @@ export class FixEhex extends HeatBase {
     const shake = this.sys.fixes.find((f) => f instanceof FixShake);
     if (!shake) throw new StyleError(`fix ${this.id} (ehex): keyword constrain requires a fix shake or rattle; without one it is not implemented`);
     this.shakeFix = shake;
+    if (this.com && !hasMolecule(this.sys.state)) {
+      throw new StyleError(`fix ${this.id} (ehex): keyword com needs per-atom molecule IDs (atom_style molecular/full or fix property/atom mol)`);
+    }
   }
 
   protected parseKeywords(words: string[], usage: string): void {
-    let com = false;
     for (let k = 0; k < words.length;) {
       const w = words[k];
       if (w === 'region') { k += this.parseRegion(words, k, usage); continue; }
       if (w === 'constrain') { this.constrain = true; k++; continue; }
-      if (w === 'com') { com = true; k++; continue; }
+      if (w === 'com') { this.com = true; k++; continue; }
       if (w === 'hex') { this.hex = true; k++; continue; }
       throw new StyleError(`fix ${this.id} (ehex): unknown keyword '${w}' (${usage})`);
     }
-    if (com && !this.constrain) throw new StyleError(`fix ${this.id} (ehex): You can only use the keyword 'com' together with the keyword 'constrain'`);
-    if (com) throw new StyleError(`fix ${this.id} (ehex): keyword com is not implemented in this engine; constrain without com is supported`);
+    if (this.com && !this.constrain) throw new StyleError(`fix ${this.id} (ehex): You can only use the keyword 'com' together with the keyword 'constrain'`);
   }
 
   endOfStep(): void {
     super.endOfStep();
     // docs.lammps.org/fix_ehex.html: constrain re-applies SHAKE/RATTLE after the
     // thermostat rescaling, which otherwise introduces velocity components along
-    // the fixed bonds.
-    this.shakeFix?.applyConstraint();
+    // the fixed bonds. The extra solve predicts with only dt^2/2, so a distance
+    // residual at the user SHAKE tolerance is amplified by 1/(dt^2/2 ftm2v) in
+    // the multiplier; it must converge well below that to match native LAMMPS
+    // (measured with native LAMMPS (black box): the constrain term agrees once
+    // the multiplier is converged to ~1e-12).
+    const shake = this.shakeFix;
+    if (!shake) return;
+    const priv = shake as unknown as { tol: number };
+    const saved = priv.tol;
+    priv.tol = Math.min(saved, 1e-12);
+    try {
+      shake.applyConstraint();
+    } finally {
+      priv.tol = saved;
+    }
   }
 
   protected correctPositions(idx: number[], vc: number[], eps: number, ke: number, power: number): void {
     if (this.hex) return;
     const s = this.sys.state;
     const dt = s.dt;
-    // Measured with native LAMMPS (black box), 108-atom LJ fluid, one step, nevery 1,
-    // with and without pair forces, F = 5, 20, 80 (fit residual 1e-4 relative):
-    //   dx_i = -(dt/96) eps^2 r_i + (dt^2 eps/12) [ a_i - (P/K) r_i ]
+    // Measured with native LAMMPS (black box), 108-atom LJ fluid and rigid water,
+    // one step, nevery 1, with and without pair forces, atom- and molecule-grouped
+    // reservoirs (fit residual at the 1e-15 level):
+    //   dx_i = -(dt/96) eps^2 r_i + (dt^2 eps/12) [ a_i - a_R - (P/K) r_i ]
     // r_i = v_i - v_cm (before the scaling), a_i = ftm2v f_i / m_i, P = sum_j f_j . r_j,
-    // K = ke (before the scaling). The first term is the pure-thermostat correction;
-    // the bracket is the force on the member minus its part that changes K.
+    // K = ke (before the scaling), and a_R = ftm2v (sum_j f_j) / (sum_j m_j) is the
+    // centre-of-mass acceleration of the reservoir: the correction must not translate
+    // its centre of mass ("The thermostatting force does not affect the center of mass
+    // velocities of the individual reservoirs", docs.lammps.org/fix_ehex.html). The
+    // first term is the pure-thermostat correction; the bracket is the acceleration of
+    // the member relative to the reservoir minus its part that changes K.
     const ftm2v = s.units.ftm2v;
     const ca = -(dt * eps * eps) / 96;
     const cb = (dt * dt * eps) / 12;
     const cp = power / ke;
+    let mtot = 0, fnx = 0, fny = 0, fnz = 0;
+    for (const i of idx) {
+      mtot += massOf(s, i);
+      fnx += s.f[3 * i]; fny += s.f[3 * i + 1]; fnz += s.f[3 * i + 2];
+    }
+    const acm = [ftm2v * fnx / mtot, ftm2v * fny / mtot, ftm2v * fnz / mtot];
     for (const i of idx) {
       const m = massOf(s, i);
       for (let c = 0; c < 3; c++) {
         const r = s.v[3 * i + c] - vc[c];
         const a = ftm2v * s.f[3 * i + c] / m;
-        s.x[3 * i + c] += ca * r + cb * (a - cp * r);
+        s.x[3 * i + c] += ca * r + cb * (a - cp * r - acm[c]);
       }
     }
   }

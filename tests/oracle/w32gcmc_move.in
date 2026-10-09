@@ -1,0 +1,18 @@
+# oracle: fix gcmc translation moves with displace 0 (X=0 M=1) - every move has dU=0 and is accepted, so f[1]=f[2]=step and atoms/pe are unchanged
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12
+units lj
+atom_style atomic
+pair_style lj/cut 3.0
+pair_modify tail no
+region box block 0 5 0 5 0 5
+create_box 1 box
+pair_coeff * * 1.0 1.0
+mass 1 1.0
+create_atoms 1 single 1.0 1.0 1.0 units box
+create_atoms 1 single 2.2 1.0 1.0 units box
+group gcmcgroup type 1
+fix mygcmc gcmcgroup gcmc 1 0 1 1 29494 2.0 -1.0 0.0
+thermo_style custom step atoms pe f_mygcmc[1] f_mygcmc[2] f_mygcmc[3] f_mygcmc[4] f_mygcmc[5] f_mygcmc[6] f_mygcmc[7] f_mygcmc[8]
+thermo 1
+thermo_modify format float %.15g
+run 5

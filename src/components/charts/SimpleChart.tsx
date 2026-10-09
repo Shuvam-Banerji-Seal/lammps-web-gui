@@ -1,5 +1,5 @@
 import React from 'react';
-import { getThemeTokens, Theme } from '../../theme';
+import { getThemeTokens, isDarkTheme, Theme } from '../../theme';
 
 export interface Point { x: number; y: number; }
 
@@ -83,7 +83,7 @@ export const LineChart: React.FC<LineChartProps> = ({
   data, xLabel, yLabel, color, fillColor, theme, height = 160, yMin, yMax,
 }) => {
   const ct = getThemeTokens(theme);
-  const isDark = theme === 'dark';
+  const isDark = isDarkTheme(theme);
   if (data.length === 0) {
     return <div className={`flex h-[160px] items-center justify-center text-xs ${ct.muted}`}>No data</div>;
   }
@@ -175,7 +175,7 @@ interface HistogramProps {
 
 export const Histogram: React.FC<HistogramProps> = ({ bins, xLabel, yLabel, color, theme, height = 160 }) => {
   const ct = getThemeTokens(theme);
-  const isDark = theme === 'dark';
+  const isDark = isDarkTheme(theme);
   if (bins.length === 0) {
     return <div className={`flex h-[160px] items-center justify-center text-xs ${ct.muted}`}>No data</div>;
   }

@@ -33,7 +33,7 @@ import { SCRIPT_TEMPLATES, buildTemplate } from '../../lammps/templates';
 import { downloadFlowchart } from '../../lammps/flowchartSvg';
 import { useUndoableState } from '../../hooks/useUndoableState';
 import { browserStore, loadJson, saveJson } from '../../services/persistence';
-import { getThemeTokens, ThemeTokens, Theme } from '../../theme';
+import { getThemeTokens, isDarkTheme, ThemeTokens, Theme } from '../../theme';
 import {
   Plus, Trash2, Copy, Download, Eye, EyeOff, Upload,
   FileCode2, Workflow, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, Search,
@@ -262,7 +262,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
   const exportFlowchart = useCallback(async (format: 'svg' | 'png') => {
     setExporting(format);
     try {
-      await downloadFlowchart(model, format, { theme });
+      await downloadFlowchart(model, format, { theme: isDarkTheme(theme) ? 'dark' : 'light' });
     } catch {
       /* download failed — non-fatal */
     } finally {

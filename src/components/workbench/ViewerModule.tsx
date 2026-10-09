@@ -13,7 +13,7 @@ import { encodeViewState, viewStateFromSearch } from '../../services/viewState';
 import { measureSelection, measurementGlyph, MeasurementResult } from '../../services/measure';
 import { startCanvasRecording, RecordingHandle } from '../../services/recorder';
 import { captureActiveCanvas } from '../../services/glRegistry';
-import { getThemeTokens, initialTheme, Theme as UITheme } from '../../theme';
+import { getThemeTokens, initialTheme, isDarkTheme, nextTheme, Theme as UITheme } from '../../theme';
 import {
   Upload, RotateCw, AlertCircle, Info, Settings, Eye, EyeOff, Palette, Box,
   Sun, Moon, Menu, X, Camera, Atom, Keyboard, Layers, Lightbulb,
@@ -32,7 +32,6 @@ const GithubIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
   </svg>
 );
 
-type Theme = 'light' | 'dark';
 type Tab = 'data' | 'view' | 'scene' | 'elements' | 'analysis';
 
 const VIZ_MODES: { value: VisualizationMode; label: string; desc: string; key: string }[] = [
@@ -158,8 +157,8 @@ const ViewerModule: React.FC<{
       return;
     }
     setLocalTheme(currentTheme => {
-      const next = currentTheme === 'dark' ? 'light' : 'dark';
-      updateConfig('backgroundColor', next === 'dark' ? '#151515' : '#f4f5f7');
+      const next = nextTheme(currentTheme);
+      updateConfig('backgroundColor', isDarkTheme(next) ? '#151515' : '#f4f5f7');
       return next;
     });
   }, [themeProp, onToggleTheme]);
@@ -237,7 +236,7 @@ const ViewerModule: React.FC<{
   const lastThemeRef = useRef(theme);
   useEffect(() => {
     if (lastThemeRef.current === theme) return;
-    const defaultFor = (t: UITheme) => (t === 'dark' ? '#151515' : '#f4f5f7');
+    const defaultFor = (t: UITheme) => (isDarkTheme(t) ? '#151515' : '#f4f5f7');
     const prevDefault = defaultFor(lastThemeRef.current);
     lastThemeRef.current = theme;
     setVizConfig(prev =>
@@ -762,7 +761,7 @@ const ViewerModule: React.FC<{
               className={`flex flex-col items-center gap-1.5 py-3 text-xs font-semibold tracking-wide transition-colors ${
                 activeTab === tab.id
                   ? `${ct.active} border-b-2`
-                  : `${ct.muted} hover:${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`
+                  : `${ct.muted} hover:${isDarkTheme(theme) ? 'text-gray-200' : 'text-gray-700'}`
               }`}
             >
               {tab.icon}
@@ -787,10 +786,10 @@ const ViewerModule: React.FC<{
                 </div>
                 <ul className="space-y-1.5 leading-relaxed">
                   <li><span className={`font-semibold ${ct.accentText}`}>.data / .lmp</span> — LAMMPS (atomic·charge·molecular·full)</li>
-                  <li><span className={`font-semibold ${theme === 'dark' ? 'text-[#e4b877]' : 'text-[#7a5716]'}`}>.xyz</span> — XYZ structures and multi-frame trajectories (playback)</li>
-                  <li><span className={`font-semibold ${theme === 'dark' ? 'text-[#e4b877]' : 'text-[#7a5716]'}`}>.lammpstrj / .dump</span> — LAMMPS dump trajectories (playback)</li>
-                  <li><span className={`font-semibold ${theme === 'dark' ? "text-[#c9a9d4]" : "text-[#7d5a8c]"}`}>.pdb</span> — Protein Data Bank (+CONECT, CRYST1)</li>
-                  <li><span className={`font-semibold ${theme === 'dark' ? "text-[#cf8b76]" : "text-[#a4502f]"}`}>.cif</span> — Crystallographic Information Framework</li>
+                  <li><span className={`font-semibold ${isDarkTheme(theme) ? 'text-[#e4b877]' : 'text-[#7a5716]'}`}>.xyz</span> — XYZ structures and multi-frame trajectories (playback)</li>
+                  <li><span className={`font-semibold ${isDarkTheme(theme) ? 'text-[#e4b877]' : 'text-[#7a5716]'}`}>.lammpstrj / .dump</span> — LAMMPS dump trajectories (playback)</li>
+                  <li><span className={`font-semibold ${isDarkTheme(theme) ? "text-[#c9a9d4]" : "text-[#7d5a8c]"}`}>.pdb</span> — Protein Data Bank (+CONECT, CRYST1)</li>
+                  <li><span className={`font-semibold ${isDarkTheme(theme) ? "text-[#cf8b76]" : "text-[#a4502f]"}`}>.cif</span> — Crystallographic Information Framework</li>
                 </ul>
               </section>
 
@@ -933,7 +932,7 @@ const ViewerModule: React.FC<{
                       type="range" min="0.1" max="3" step="0.05"
                       value={vizConfig[sl.key]}
                       onChange={e => updateConfig(sl.key, parseFloat(e.target.value))}
-                      className={`w-full ${theme === 'dark' ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
+                      className={`w-full ${isDarkTheme(theme) ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
                       aria-label={sl.label}
                     />
                   </div>
@@ -1044,7 +1043,7 @@ const ViewerModule: React.FC<{
                     type="range" min="0.1" max="6" step="0.1"
                     value={vizConfig.autoRotateSpeed}
                     onChange={e => updateConfig('autoRotateSpeed', parseFloat(e.target.value))}
-                    className={`w-full ${theme === 'dark' ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
+                    className={`w-full ${isDarkTheme(theme) ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
                     aria-label="Auto-rotate speed"
                   />
                 </div>
@@ -1056,7 +1055,7 @@ const ViewerModule: React.FC<{
                     type="range" min="15" max="90" step="1"
                     value={vizConfig.fov}
                     onChange={e => updateConfig('fov', parseInt(e.target.value, 10))}
-                    className={`w-full ${theme === 'dark' ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
+                    className={`w-full ${isDarkTheme(theme) ? "accent-[#7fa66b]" : "accent-[#4e7a41]"}`}
                     aria-label="Field of view"
                   />
                 </div>
@@ -1077,11 +1076,11 @@ const ViewerModule: React.FC<{
                   onClick={toggleTheme}
                   className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-xs font-medium transition-colors ${ct.button}`}
                 >
-                  {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
-                  Switch to {theme === 'dark' ? 'light' : 'dark'} mode <kbd className={`px-1 rounded text-[9px] ${ct.chip}`}>T</kbd>
+                  {isDarkTheme(theme) ? <Sun size={14} /> : <Moon size={14} />}
+                  Next color theme <kbd className={`px-1 rounded text-[9px] ${ct.chip}`}>T</kbd>
                 </button>
                 <div className="flex gap-2 flex-wrap pt-1">
-                  {(theme === 'dark'
+                  {(isDarkTheme(theme)
                     ? ['#151515', '#000000', '#10141c', '#1a1e26']
                     : ['#f4f5f7', '#ffffff', '#eef2f7', '#e8ecef']
                   ).map(color => (
@@ -1089,7 +1088,7 @@ const ViewerModule: React.FC<{
                       key={color}
                       onClick={() => updateConfig('backgroundColor', color)}
                       className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
-                        vizConfig.backgroundColor === color ? (theme === 'dark' ? 'border-[#7fa66b] scale-110' : 'border-[#4e7a41] scale-110') : 'border-transparent'
+                        vizConfig.backgroundColor === color ? (isDarkTheme(theme) ? 'border-[#7fa66b] scale-110' : 'border-[#4e7a41] scale-110') : 'border-transparent'
                       }`}
                       style={{ backgroundColor: color }}
                       title={color}
@@ -1287,7 +1286,7 @@ const ViewerModule: React.FC<{
                           <LineChart
                             data={analysis.result.msd.map(pt => ({ x: pt.t, y: pt.msd }))}
                             xLabel="lag (frames)" yLabel="MSD (Å²)" theme={theme} height={150} yMin={0}
-                            color={theme === 'dark' ? '#d9a05b' : '#b97f3e'}
+                            color={isDarkTheme(theme) ? '#d9a05b' : '#b97f3e'}
                           />
                         </div>
                         <p className={`text-[10px] leading-relaxed ${ct.muted}`}>
@@ -1339,7 +1338,7 @@ const ViewerModule: React.FC<{
                           <div className={`rounded-lg border p-2 ${ct.card}`}>
                             <Histogram
                               bins={analysis.speeds} xLabel="|v| (LJ)" yLabel="count" theme={theme}
-                              height={140} color={theme === 'dark' ? '#c9a9d4' : '#7d5a8c'}
+                              height={140} color={isDarkTheme(theme) ? '#c9a9d4' : '#7d5a8c'}
                             />
                           </div>
                           <p className={`text-[10px] ${ct.muted}`}>
@@ -1501,7 +1500,7 @@ const ViewerModule: React.FC<{
           {/* Trajectory playback bar (P5) */}
           {frameCount > 1 && (
             <div className={`pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-full border px-2 py-1 shadow-2xl backdrop-blur @lg:gap-2 @lg:px-3 @lg:py-1.5 ${
-              theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
+              isDarkTheme(theme) ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
             }`}>
               <button
                 onClick={() => setFrameIdx(i => (i - 1 + frameCount) % frameCount)}
@@ -1533,7 +1532,7 @@ const ViewerModule: React.FC<{
                 max={frameCount - 1}
                 value={Math.min(frameIdx, frameCount - 1)}
                 onChange={e => { setTrajPlaying(false); setFrameIdx(parseInt(e.target.value, 10)); }}
-                className={`w-20 min-w-16 flex-1 @md:w-32 @2xl:w-48 ${theme === 'dark' ? 'accent-[#7fa66b]' : 'accent-[#4e7a41]'}`}
+                className={`w-20 min-w-16 flex-1 @md:w-32 @2xl:w-48 ${isDarkTheme(theme) ? 'accent-[#7fa66b]' : 'accent-[#4e7a41]'}`}
                 aria-label="Trajectory frame"
               />
               <span className={`shrink-0 text-[10px] font-mono tabular-nums ${ct.muted}`}>
@@ -1553,7 +1552,7 @@ const ViewerModule: React.FC<{
 
           {/* Tool dock */}
           <div className={`pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border px-1 py-1 shadow-2xl backdrop-blur @xl:gap-1 @xl:px-2 @xl:py-1.5 ${
-            theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
+            isDarkTheme(theme) ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
           }`}>
             <button
               onClick={() => setAutoRotate(v => !v)}
@@ -1566,7 +1565,7 @@ const ViewerModule: React.FC<{
               {autoRotate ? <Pause size={16} /> : <Play size={16} />}
               <span className="hidden @2xl:inline">Rotate</span>
             </button>
-            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+            <div className={`h-5 w-px shrink-0 ${isDarkTheme(theme) ? 'bg-gray-700' : 'bg-gray-300'}`} />
             <button
               onClick={() => emitCameraCommand({ type: 'fit' })}
               className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${ct.muted}`}
@@ -1576,7 +1575,7 @@ const ViewerModule: React.FC<{
               <Maximize2 size={16} />
               <span className="hidden @2xl:inline">Fit</span>
             </button>
-            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+            <div className={`h-5 w-px shrink-0 ${isDarkTheme(theme) ? 'bg-gray-700' : 'bg-gray-300'}`} />
             <button
               onClick={() => updateConfig('showBox', !vizConfig.showBox)}
               disabled={!moleculeData?.box}
@@ -1589,7 +1588,7 @@ const ViewerModule: React.FC<{
               <Box size={16} />
               <span className="hidden @2xl:inline">Box</span>
             </button>
-            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+            <div className={`h-5 w-px shrink-0 ${isDarkTheme(theme) ? 'bg-gray-700' : 'bg-gray-300'}`} />
             <button
               onClick={() => updateConfig('showLabels', !vizConfig.showLabels)}
               className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${
@@ -1601,7 +1600,7 @@ const ViewerModule: React.FC<{
               <Layers size={16} />
               <span className="hidden @2xl:inline">Labels</span>
             </button>
-            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+            <div className={`h-5 w-px shrink-0 ${isDarkTheme(theme) ? 'bg-gray-700' : 'bg-gray-300'}`} />
             <button
               onClick={() => (isRecording ? stopRecording() : startRecording())}
               disabled={savingVideo}
@@ -1626,7 +1625,7 @@ const ViewerModule: React.FC<{
                 </>
               )}
             </button>
-            <div className={`h-5 w-px shrink-0 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'}`} />
+            <div className={`h-5 w-px shrink-0 ${isDarkTheme(theme) ? 'bg-gray-700' : 'bg-gray-300'}`} />
             <button
               onClick={doScreenshot}
               className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${ct.muted}`}
@@ -1642,7 +1641,7 @@ const ViewerModule: React.FC<{
         {/* Measurement panel (P4) */}
         {selectedIds.length > 0 && activeData && (
           <div className={`absolute top-16 left-3 z-10 px-3 py-2.5 rounded-xl border shadow-xl backdrop-blur text-xs space-y-1.5 ${
-            theme === 'dark' ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
+            isDarkTheme(theme) ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
           }`} role="status">
             <div className="flex items-center gap-1.5 font-semibold">
               <Ruler size={13} className={ct.accentText} /> Measurement

@@ -13,7 +13,7 @@ import {
 } from '../../lammps/compiler';
 import { downloadTextFile } from '../../lammps/exporter';
 import { usePersistentState } from '../../hooks/usePersistentState';
-import { getThemeTokens, ThemeTokens, Theme } from '../../theme';
+import { getThemeTokens, isDarkTheme, ThemeTokens, Theme } from '../../theme';
 import { Copy, Download, Terminal, Monitor, Cpu, Package, Zap, Settings, ChevronDown, ChevronUp, X, Info, SlidersHorizontal } from 'lucide-react';
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -299,7 +299,7 @@ const CompilerHelper: React.FC<{ theme: Theme }> = ({ theme }) => {
                             type="checkbox"
                             checked={opts.manualPackages.includes(pkg.name)}
                             onChange={() => togglePackage(pkg.name)}
-                            className={theme === 'dark' ? "mt-0.5 accent-[#7fa66b]" : "mt-0.5 accent-[#4e7a41]"}
+                            className={isDarkTheme(theme) ? "mt-0.5 accent-[#7fa66b]" : "mt-0.5 accent-[#4e7a41]"}
                           />
                           <div>
                             <span className={`font-mono text-[11px] ${ct.text}`}>{pkg.name}</span>

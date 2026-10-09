@@ -4,6 +4,7 @@ import { StyleError } from '../force/types';
 import { FIX_STYLES, COMPUTE_STYLES } from '../styles';
 import { Dump, type DumpStyle } from '../output/dump';
 import { initRun, runVerlet } from '../run/verlet';
+import { parseRunStyleRespa, runRespa } from '../run/respa';
 import { RunCancelled } from '../errors';
 import { DYNAMIC_GROUP_FIXES, NO_DYNAMIC_GROUP_FIXES } from '../group';
 import type { System } from '../system';
@@ -134,19 +135,24 @@ const thermoModify: Handler = ({ sys }, a) => {
 
 /**
  * run_style style args — docs.lammps.org/run_style.html: "*style* = *verlet* or *verlet/split* or
- * *respa* or *respa/omp*"; "*verlet* args = none". The engine integrates with velocity Verlet, so
- * run_style verlet changes nothing; the other styles split the force computation across levels or
- * partitions, which the engine does not do. Measured with native LAMMPS (black box): before a box
- * exists the command stops with Run_style command before simulation box is defined.
+ * *respa* or *respa/omp*"; "*verlet* args = none". run_style verlet selects the plain velocity-Verlet
+ * path; run_style respa selects the rRESPA integrator (run/respa.ts). verlet/split and respa/omp are
+ * refused. Measured with native LAMMPS (black box): before a box exists the command stops with
+ * Run_style command before simulation box is defined.
  */
 const runStyle: Handler = ({ sys }, a) => {
   if (!sys.hasBox) throw new StyleError('Run_style command before simulation box is defined');
   const style = a[0];
   if (style === 'verlet') {
     if (a.length > 1) throw new StyleError('run_style verlet takes no arguments');
+    sys.respa = null;
     return;
   }
-  if (style === 'verlet/split' || style === 'respa' || style === 'respa/omp') {
+  if (style === 'respa') {
+    sys.respa = parseRunStyleRespa(a);
+    return;
+  }
+  if (style === 'verlet/split' || style === 'respa/omp') {
     throw new StyleError(`run_style ${style} is not supported by the browser engine (it runs velocity Verlet only)`);
   }
   throw new StyleError(`unknown run_style '${style ?? ''}' (verlet, verlet/split, respa or respa/omp)`);
@@ -278,7 +284,8 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
     const dumped = writeDumps(sys, false);
     if (dumped || (frameEvery > 0 && step % frameEvery === 0)) emitFrame(sys);
   };
-  const { accel, reason } = accelerator(sys, session.forceBackend);
+  // run_style respa runs on the CPU engine (the GPU paths step plain velocity Verlet only)
+  const { accel, reason } = sys.respa ? { accel: null, reason: null } : accelerator(sys, session.forceBackend);
   if (reason) sys.log(`${session.backendLabel}: this run uses the general fp64 CPU engine (${reason})`);
   const threadCalls0 = sys.ff.pairThreads?.calls ?? 0;
   const taken = accel
@@ -290,13 +297,15 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
         || sys.dumps.some((d) => step >= d.delay && (d.everyVar ? true : step % d.every === 0))
         || (frameEvery > 0 && step % frameEvery === 0) || restartDue(sys, step),
     })
-    : await runVerlet(sys, n, {
-      cancelled: () => session.isCancelled,
-      afterSetup,
-      afterStep,
-      // keep the page responsive: yield about every 30 ms
-      yieldMs: 30,
-    });
+    : sys.respa
+      ? await runRespa(sys, n, { cancelled: () => session.isCancelled, afterSetup, afterStep, yieldMs: 30 })
+      : await runVerlet(sys, n, {
+        cancelled: () => session.isCancelled,
+        afterSetup,
+        afterStep,
+        // keep the page responsive: yield about every 30 ms
+        yieldMs: 30,
+      });
   // a cancelled run still reports its last step
   if (lastThermo !== s.step) emitThermo();
   emitPerf(s.step, true);

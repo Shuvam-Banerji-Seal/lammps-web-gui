@@ -1,3 +1,4 @@
+import type { RespaSettings } from './run/respa';
 import type { AtomStyle, EngineEvent, SimState, UnitSystem } from './types';
 import type { MoleculeTemplate } from './molecule';
 import { UNIT_SYSTEMS } from './units';
@@ -71,6 +72,8 @@ export class System {
   readonly regions = new Map<string, Region>();
   readonly computes: Compute[] = [];
   readonly fixes: Fix[] = [];
+  /** run_style respa settings (run/respa.ts); null for run_style verlet. */
+  respa: RespaSettings | null = null;
   readonly vars: Variables;
   readonly thermo: Thermo;
   readonly dumps: Dump[] = [];

@@ -88,6 +88,8 @@ interface Sub {
 
 export class PairHybrid extends Pair {
   readonly name: string;
+  /** Sub-style selector for one run_style respa level (set by ForceField.compute); null computes all. */
+  subSelect: ((k: number) => boolean) | null = null;
   subs: Sub[] = [];
   /** Sub-style indices per type pair ((ntypes+1)^2, symmetric); null = never assigned. */
   private map: (number[] | null)[] = [];
@@ -366,9 +368,12 @@ export class PairHybrid extends Pair {
       this.lastFull = pc.full;
     }
     const scaled = this.mode === 'hybrid/scaled';
-    for (const s of this.subs) {
-      s.style.gEwald = this.gEwald;
+    for (let k = 0; k < this.subs.length; k++) {
+      const s = this.subs[k];
       s.evaluated = false;
+      // run_style respa: a level evaluation computes only the sub-styles assigned to it (run/respa.ts)
+      if (this.subSelect && !this.subSelect(k)) continue;
+      s.style.gEwald = this.gEwald;
       const sub: PairCompute = {
         ...pc, half: s.half, full: s.full,
         specialLJ: s.specialLJ ?? pc.specialLJ,

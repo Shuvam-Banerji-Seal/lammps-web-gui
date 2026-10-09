@@ -39,6 +39,17 @@ export interface ComputeFlags {
 /** The force-field terms compute pe/atom and stress/atom can select. */
 export type PerAtomTerm = 'pair' | 'bond' | 'angle' | 'dihedral' | 'improper' | 'kspace';
 
+/**
+ * Which force-field terms one evaluation covers, for run_style respa (run/respa.ts): each rRESPA
+ * level is evaluated with only the terms assigned to it. has('pair') is true when the pair term
+ * (or any hybrid sub-style of it) belongs to the level; subPair(k) selects hybrid sub-style k.
+ * Without a selector compute() evaluates every term (the verlet path).
+ */
+export interface LevelSelect {
+  has(term: PerAtomTerm): boolean;
+  subPair?: (k: number) => boolean;
+}
+
 export class ForceField {
   pair: Pair | null = null;
   /**
@@ -180,7 +191,7 @@ export class ForceField {
   }
 
   /** Forces on every owned atom into s.f; energies and virial into this.acc. */
-  compute(s: SimState, nb: Neighbor, geom: Geometry, flags: ComputeFlags = {}): Accum {
+  compute(s: SimState, nb: Neighbor, geom: Geometry, flags: ComputeFlags = {}, sel?: LevelSelect): Accum {
     const acc = this.acc;
     clearAccum(acc);
     s.f.fill(0, 0, 3 * s.n);
@@ -190,14 +201,19 @@ export class ForceField {
     const eatomAll = flags.eatom ? new Float64Array(nall) : null;
     const vatomAll = flags.vatom ? new Float64Array(6 * nall) : null;
     const qqrd2e = s.units.qqr2e * (this.pair?.coulConstScale ?? 1) / this.dielectric;
-    if (this.pair) {
+    const want = (t: PerAtomTerm): boolean => !sel || sel.has(t);
+    if (this.pair && want('pair')) {
       const pc: PairCompute = {
         s, nb, geom, x: nb.xall, f: nb.fall, type: nb.typeall, q: nb.qall,
         nlocal: nb.nlocal, nall, half: nb.half, full: nb.full,
         specialLJ: this.specialLJ, specialCoul: this.specialCoul, qqrd2e, acc, historyUpdate: !!flags.step,
         eatom: eatomAll, vatom: vatomAll,
       };
-      if (!this.pairThreads?.run(this.pair, pc)) this.pair.compute(pc);
+      if (sel) {
+        // a level evaluation runs the pair term directly (the threaded path has no sub-style selection)
+        if (this.pair instanceof PairHybrid) this.pair.subSelect = sel.subPair ?? null;
+        try { this.pair.compute(pc); } finally { if (this.pair instanceof PairHybrid) this.pair.subSelect = null; }
+      } else if (!this.pairThreads?.run(this.pair, pc)) this.pair.compute(pc);
       if (this.pair.virialFdotr) {
         const xa = nb.xall, fa = nb.fall;
         let v0 = 0, v1 = 0, v2 = 0, v3 = 0, v4 = 0, v5 = 0;
@@ -227,7 +243,7 @@ export class ForceField {
         : s;
       const bc = { s: sb, geom, map: this.map, f: s.f, acc, eatom: null as Float64Array | null, vatom: null as Float64Array | null, virial: acc.vbond, warn: this.warn };
       const run = (style: Bonded | null, t: PerAtomTerm, virial: Float64Array) => {
-        if (!style) return;
+        if (!style || !want(t)) return;
         Object.assign(bc, termArrays(t));
         bc.virial = virial;
         style.compute(bc);
@@ -237,14 +253,15 @@ export class ForceField {
       run(this.dihedral, 'dihedral', acc.vdihed);
       run(this.improper, 'improper', acc.vimp);
     }
-    if (this.kspace) this.kspace.compute({ s, geom, f: s.f, qqrd2e, acc, ...termArrays('kspace') });
+    if (this.kspace && want('kspace')) this.kspace.compute({ s, geom, f: s.f, qqrd2e, acc, ...termArrays('kspace') });
     nb.reverseComm(s.f);
     if (this.pair && (eatomAll || vatomAll)) {
       const pt = termArrays('pair');
       if (eatomAll && pt.eatom) nb.reverseSum(eatomAll, 1, pt.eatom);
       if (vatomAll && pt.vatom) nb.reverseSum(vatomAll, 6, pt.vatom);
     }
-    if (this.etailV !== 0) acc.evdwl += this.etailV / geom.volume(s.dimension);
+    // the tail correction is added once per run_style respa step by the integrator, not per level
+    if (this.etailV !== 0 && !sel) acc.evdwl += this.etailV / geom.volume(s.dimension);
     const sum = (terms: Partial<Record<PerAtomTerm, Float64Array>>, len: number): Float64Array => {
       const out = new Float64Array(len);
       for (const arr of Object.values(terms)) for (let k = 0; k < len; k++) out[k] += arr![k];

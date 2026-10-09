@@ -410,6 +410,11 @@ export abstract class Bonded {
   abstract compute(bc: BondedCompute): void;
   /** Lines of the "<Kind> Coeffs" data-file section, or null. */
   dataCoeffs(): string[] | null { return null; }
+  /**
+   * Extra data-file sections written right after this style's Coeffs section (write_data), e.g. the
+   * class 2 cross terms; read_data reads them back (output/data.ts CLASS2_SECTIONS).
+   */
+  dataCrossSections(): { title: string; lines: string[] }[] { return []; }
   /** Equilibrium length (bond) or angle in degrees (angle), for fix shake. */
   equilibrium(_type: number): number { return Number.NaN; }
 }

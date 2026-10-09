@@ -1,0 +1,26 @@
+# oracle: angle_style class2 with the plain, bb and ba lines in the input (bond_style class2)
+# oracle-inputs: w35c2angle_coeff.data
+# oracle-compare: rel=1e-9 atoms=all
+units lj
+atom_style molecular
+bond_style class2
+angle_style class2
+pair_style lj/cut 2.5
+read_data w35c2angle_coeff.data
+pair_coeff * * 0.5 0.9
+bond_coeff 1 1.02 95.0 -25.0 6.0
+bond_coeff 2 1.08 88.0 18.0 -4.0
+angle_coeff 1 108.0 22.0 2.5 -0.4
+angle_coeff 1 bb 11.0 1.02 1.08
+angle_coeff 1 ba 3.0 -1.8 1.02 1.08
+angle_coeff 2 118.0 28.0 -1.5 0.6
+angle_coeff 2 bb 8.5 1.08 1.02
+angle_coeff 2 ba -1.2 3.5 1.08 1.02
+special_bonds lj 0.0 0.5 0.8
+timestep 0.002
+fix 1 all nve
+thermo_style custom step temp pe ebond eangle edihed eimp evdwl etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify format float %.15g
+thermo 10
+run 0
+run 50

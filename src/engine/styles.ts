@@ -107,6 +107,7 @@ import * as w17fixmisc17 from './registry/fix_misc17';
 import * as w18pairmisc18 from './registry/pair_misc18';
 import * as w18computemisc18 from './registry/compute_misc18';
 import * as w18angle18 from './registry/angle18';
+import * as w35class2 from './registry/class2_35';
 import * as w18dipole from './registry/pair_dipole18';
 import * as w19asphere from './registry/asphere19';
 import * as w19pairasphere from './registry/pair_asphere19';
@@ -163,17 +164,20 @@ export const ANGLE_STYLES: Record<string, () => Bonded> = {
   harmonic: () => new AngleHarmonic(),
   hybrid: () => new BondedHybrid('angle', ANGLE_STYLES),
   ...bondedA.ANGLES, ...lepton.ANGLES, ...w17angle17.ANGLES, ...w18angle18.ANGLES,
+  ...w35class2.ANGLES,
 };
 export const DIHEDRAL_STYLES: Record<string, () => Bonded> = {
   harmonic: () => new DihedralHarmonic(),
   hybrid: () => new BondedHybrid('dihedral', DIHEDRAL_STYLES),
   ...bondedB.DIHEDRALS,
   ...dihedralCharmm.DIHEDRALS, ...lepton.DIHEDRALS, ...w17dihimp17.DIHEDRALS,
+  ...w35class2.DIHEDRALS,
 };
 export const IMPROPER_STYLES: Record<string, () => Bonded> = {
   harmonic: () => new ImproperHarmonic(),
   hybrid: () => new BondedHybrid('improper', IMPROPER_STYLES),
   ...bondedB.IMPROPERS, ...bondedC.IMPROPERS, ...w17dihimp17.IMPROPERS,
+  ...w35class2.IMPROPERS,
 };
 export const KSPACE_STYLES: Record<string, () => KSpace> = {
   ewald: () => new KSpaceEwald(),

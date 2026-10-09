@@ -196,6 +196,8 @@ export class FixRigid extends Fix {
   private built = false;
   /** bodystyle custom: name of the atom-style variable (v_name) that gives each atom's body ID. */
   private customVar: string | null = null;
+  /** bodystyle custom i_name: the fix property/atom integer vector name. */
+  private customProp: string | null = null;
   /** keyword mol: molecule template-ID whose molecules may be added during the run (fix deposit rigid). */
   private molTemplateId: string | null = null;
   /** keyword infile: per-body attributes keyed by body ID (see parseInfile). */
@@ -228,20 +230,26 @@ export class FixRigid extends Fix {
       for (const gname of this.groupList) sys.groups.bit(gname);
       k = 2 + n;
     } else if (this.bodystyle === 'custom') {
-      /* docs.lammps.org/fix_rigid.html: "*custom* args = *i_propname* or *v_varname*" and
+      /* docs.lammps.org/fix_rigid.html: "*custom* args = *i_propname* or *v_varname*",
+       * "i_propname = a custom integer vector defined via fix property/atom" and
        * "v_varname = an atom-style or atomfile-style variable"; "the floating-point value
        * produced by the variable is rounded to an integer". */
       const w = args[1] ?? '';
-      if (w.startsWith('i_')) {
-        throw new StyleError(`fix ${style} custom ${w}: integer per-atom properties (i_name) need fix property/atom, which the browser engine does not have; use v_name with an atom-style variable`);
+      if (w.startsWith('i_') && w.length > 2) {
+        const c = sys.state.custom.get(w.slice(2));
+        if (!c || !c.int || c.cols !== 0) throw new StyleError(`fix ${style} custom: ${w} is not a custom integer vector (define it with fix property/atom ${w})`);
+        this.customProp = w.slice(2);
+        k = 2;
+      } else if (!w.startsWith('v_') || w.length < 3) {
+        throw new StyleError(`fix ${style} custom: expected i_name or v_name, got '${w}'`);
+      } else {
+        const vname = w.slice(2);
+        const v = sys.vars.get(vname);
+        if (!v) throw new StyleError(`fix ${style} custom: variable ${vname} does not exist`);
+        if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`fix ${style} custom: variable ${vname} must be atom-style or atomfile-style, not ${v.style}`);
+        this.customVar = vname;
+        k = 2;
       }
-      if (!w.startsWith('v_') || w.length < 3) throw new StyleError(`fix ${style} custom: expected v_name (or i_name), got '${w}'`);
-      const vname = w.slice(2);
-      const v = sys.vars.get(vname);
-      if (!v) throw new StyleError(`fix ${style} custom: variable ${vname} does not exist`);
-      if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`fix ${style} custom: variable ${vname} must be atom-style or atomfile-style, not ${v.style}`);
-      this.customVar = vname;
-      k = 2;
     } else throw new StyleError(`fix ${style}: unknown bodystyle '${this.bodystyle ?? ''}' (single, molecule or group)`);
     const onoff = (w: string | undefined) => {
       if (w !== 'on' && w !== 'off') throw new StyleError(`fix ${style}: force/torque flags must be on or off`);
@@ -294,10 +302,10 @@ export class FixRigid extends Fix {
   private buildBodies(): void {
     const sys = this.sys;
     const s = sys.state;
-    const g = sys.geom;
     const members = new Map<string, number[]>();
     // bodystyle custom: the atom-style variable's value, rounded to an integer (per-atom, all atoms)
-    const custom = this.customVar ? sys.atomVariable(this.customVar) : null;
+    const custom = this.customVar ? sys.atomVariable(this.customVar)
+      : this.customProp ? s.custom.get(this.customProp)!.data : null;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
       let key: string | null = null;
@@ -318,7 +326,7 @@ export class FixRigid extends Fix {
     // infile body IDs: the molecule/group/single ID, or for bodystyle custom the value minus the
     // smallest body value plus 1. Measured with native LAMMPS (black box): custom values 0,1,3,4 take
     // infile IDs 1,2,4,5, and infile ID 3 (no body with value 2) is an error.
-    const infileId = (key: string) => (this.customVar ? String(Number(key) - Number(keys[0]) + 1) : key);
+    const infileId = (key: string) => (this.customVar || this.customProp ? String(Number(key) - Number(keys[0]) + 1) : key);
     for (const key of keys) bodies.push(this.constructBody(key, members.get(key)!, infileId(key)));
     if (this.infile) {
       const valid = new Set(keys.map(infileId));

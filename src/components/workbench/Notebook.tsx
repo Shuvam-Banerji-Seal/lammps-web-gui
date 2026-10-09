@@ -325,7 +325,8 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const addInputFiles = async (list: FileList | null) => {
     if (!list) return;
     for (const file of Array.from(list)) {
-      const text = await file.text();
+      // gzipped inputs (read_data foo.gz) travel as one character per byte; the engine inflates them
+      const text = file.name.endsWith('.gz') ? bytesToLatin1(new Uint8Array(await file.arrayBuffer())) : await file.text();
       client().addFile(file.name, text);
       setInputs((prev) => ({ ...prev, [file.name]: file.size }));
     }
@@ -643,6 +644,13 @@ const THERMO_ROWS_SHOWN = 200;
  * 20,000-step run with thermo 50 made 398 rows and a 143,000-character accessibility tree. Now the first row and the
  * latest THERMO_ROWS_SHOWN - 1 are shown, with a row that says how many are hidden and shows them all on request.
  */
+
+/** Bytes as a string of one character per byte (chunked to stay under the argument limit). */
+const bytesToLatin1 = (b: Uint8Array): string => {
+  let out = '';
+  for (let k = 0; k < b.length; k += 0x8000) out += String.fromCharCode(...b.subarray(k, k + 0x8000));
+  return out;
+};
 export const ThermoRows: React.FC<{ ct: ReturnType<typeof getThemeTokens>; keywords: ThermoKeyword[]; rows: ThermoRow[] }> = ({ ct, keywords, rows }) => {
   const [all, setAll] = useState(false);
   const hidden = all ? 0 : Math.max(0, rows.length - THERMO_ROWS_SHOWN);

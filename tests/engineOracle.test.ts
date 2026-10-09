@@ -81,7 +81,8 @@ describe('oracle parity with native LAMMPS', () => {
         emit: (e) => events.push(e),
         writeFile: (n, t, ap) => files.set(n, (ap ? files.get(n) ?? '' : '') + t),
       });
-      for (const f of directive(text, 'oracle-inputs')) session.addFile(f, readFileSync(join(CASES, f), 'utf8'));
+      // a gzipped input travels as one character per byte, as the notebook uploads it (System.readFile inflates it)
+      for (const f of directive(text, 'oracle-inputs')) session.addFile(f, readFileSync(join(CASES, f), f.endsWith('.gz') ? 'latin1' : 'utf8'));
       for (const f of directive(text, 'oracle-potentials')) session.addFile(f, readFileSync(join(POTENTIALS, f), 'utf8'));
       try {
         await session.execute(`${text}\n${FINAL_DUMP}\n`);

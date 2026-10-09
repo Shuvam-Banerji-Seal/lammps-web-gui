@@ -1,0 +1,37 @@
+# oracle: dihedral_style class2 coefficients given by dihedral_coeff mbt/ebt/at/aat/bb13 lines
+# oracle-inputs: w35c2dih_coeff.data
+# oracle-compare: rel=1e-9 atoms=all
+units lj
+atom_style molecular
+bond_style class2
+angle_style harmonic
+dihedral_style class2
+pair_style lj/cut 2.5
+read_data w35c2dih_coeff.data
+pair_coeff * * 0.5 0.9
+special_bonds lj 0.0 0.5 0.8
+dihedral_coeff 1 100.0 75.0 70.0 100.0 80.0 60.0
+dihedral_coeff 1 mbt 3.5 0.17 -0.55 1.02
+dihedral_coeff 1 ebt 0.34 0.33 -0.90 0.14 0.0 -0.81 0.95 1.03
+dihedral_coeff 1 at 0.0 -0.185 -0.796 -2.02 0.0 -0.399 110.2 105.1
+dihedral_coeff 1 aat -13.5 110.2 105.1
+dihedral_coeff 1 bb13 0.5 0.95 1.03
+dihedral_coeff 2 -50.0 40.0 40.0 180.0 -30.0 90.0
+dihedral_coeff 2 mbt 1.1 -0.7 0.4 1.5
+dihedral_coeff 2 ebt 0.5 0.2 -0.3 -0.6 0.35 0.25 1.2 0.9
+dihedral_coeff 2 at 0.3 -0.4 0.55 0.6 -0.2 0.45 100.0 120.0
+dihedral_coeff 2 aat 8.0 100.0 120.0
+dihedral_coeff 2 bb13 -0.3 1.2 0.9
+dihedral_coeff 3 10.0 30.0 -20.0 60.0 15.0 120.0
+dihedral_coeff 3 mbt 0.2 0.3 0.4 1.0
+dihedral_coeff 3 ebt 0.1 0.2 0.3 0.4 0.5 0.6 0.9 1.1
+dihedral_coeff 3 at 0.5 0.4 0.3 0.2 0.1 0.0 95.0 115.0
+dihedral_coeff 3 aat -4.0 95.0 115.0
+dihedral_coeff 3 bb13 0.7 0.9 1.1
+timestep 0.002
+fix 1 all nve
+thermo_style custom step temp pe ebond eangle edihed eimp evdwl etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify format float %.15g
+thermo 10
+run 0
+run 50

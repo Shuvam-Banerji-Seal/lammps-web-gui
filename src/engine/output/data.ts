@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
-import { appendAtoms, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isSphereStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel } from '../atoms';
+import { appendAtoms, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel } from '../atoms';
 import { expandTemplateTopology } from '../template';
 import { makeBox } from '../domain';
 import { generalBoxFromRestricted, generalFrame, rotateVector, toGeneralPoint, toRestrictedPoint, unrotateVector, type GeneralFrame, type Mat3, type V3 } from '../triclinic_general';
@@ -85,6 +85,25 @@ const SECTIONS = new Set([
   'BondBond Coeffs', 'BondAngle Coeffs', 'MiddleBondTorsion Coeffs', 'EndBondTorsion Coeffs', 'AngleTorsion Coeffs',
   'AngleAngleTorsion Coeffs', 'BondBond13 Coeffs', 'AngleAngle Coeffs',
 ]);
+
+/*
+ * class 2 force-field sections (docs.lammps.org/read_data.html: "*BondBond Coeffs, BondAngle Coeffs,
+ * MiddleBondTorsion Coeffs, EndBondTorsion Coeffs, AngleTorsion Coeffs, AngleAngleTorsion Coeffs,
+ * BondBond13 Coeffs, AngleAngle Coeffs* = class 2 force field sections"). Each line is "ID coeffs" with
+ * "coeffs = list of coeffs (see class 2 section of angle_coeff)" (dihedral_coeff, improper_coeff for the
+ * others), so a line is the style's coeff command with the cross-term keyword of angle_class2.html
+ * (bb, ba), dihedral_class2.html (mbt, ebt, at, aat, bb13) and improper_class2.html (aa) put after the ID.
+ */
+const CLASS2_SECTIONS: Record<string, ['angle' | 'dihedral' | 'improper', string]> = {
+  'BondBond Coeffs': ['angle', 'bb'],
+  'BondAngle Coeffs': ['angle', 'ba'],
+  'MiddleBondTorsion Coeffs': ['dihedral', 'mbt'],
+  'EndBondTorsion Coeffs': ['dihedral', 'ebt'],
+  'AngleTorsion Coeffs': ['dihedral', 'at'],
+  'AngleAngleTorsion Coeffs': ['dihedral', 'aat'],
+  'BondBond13 Coeffs': ['dihedral', 'bb13'],
+  'AngleAngle Coeffs': ['improper', 'aa'],
+};
 
 export interface ReadDataOptions {
   add: 'none' | 'append' | 'merge' | { id: number; mol: number };
@@ -298,6 +317,10 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         case 'Angle Coeffs': return h['angle types'] ?? 0;
         case 'Dihedral Coeffs': return h['dihedral types'] ?? 0;
         case 'Improper Coeffs': return h['improper types'] ?? 0;
+        case 'BondBond Coeffs': case 'BondAngle Coeffs': return h['angle types'] ?? 0;
+        case 'MiddleBondTorsion Coeffs': case 'EndBondTorsion Coeffs': case 'AngleTorsion Coeffs':
+        case 'AngleAngleTorsion Coeffs': case 'BondBond13 Coeffs': return h['dihedral types'] ?? 0;
+        case 'AngleAngle Coeffs': return h['improper types'] ?? 0;
         case 'Ellipsoids':
           if (!s.shape) throw new StyleError('data file section Ellipsoids needs atom_style ellipsoid');
           return h.ellipsoids ?? 0;
@@ -518,6 +541,12 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const shiftT = (t: string) => String(Number(t) + toff);
         const args = c.section === 'Pair Coeffs' ? [shiftT(w[0]), shiftT(w[0]), ...w.slice(1)] : [shiftT(w[0]), shiftT(w[1]), ...w.slice(2)];
         sys.ff.pair.coeff(args, ctx);
+      } else if (CLASS2_SECTIONS[c.section]) {
+        const [kind, kw] = CLASS2_SECTIONS[c.section];
+        const st = sys.ff[kind];
+        if (!st) throw new StyleError(`data file has ${c.section} but no ${kind}_style is defined (define it before read_data, or use nocoeff)`);
+        const off = kind === 'angle' ? aoff : kind === 'dihedral' ? doff : ioff;
+        st.coeff([String(Number(w[0]) + off), kw, ...w.slice(1)], ctx);
       } else {
         const kind = c.section.split(' ')[0].toLowerCase() as 'bond' | 'angle' | 'dihedral' | 'improper';
         const st = sys.ff[kind];
@@ -593,10 +622,14 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
       [t.bonds.n, t.nbondtypes, 'bond'], [t.angles.n, t.nangletypes, 'angle'],
       [t.dihedrals.n, t.ndihedraltypes, 'dihedral'], [t.impropers.n, t.nimpropertypes, 'improper'],
     ];
+    // Measured with native LAMMPS (black box): a kind with no types is left out (a molecular box with
+    // bond and angle types only writes no dihedral or improper lines), while a kind with types but no
+    // topology still writes both lines (0 angles, 2 angle types).
     for (const [n, nt, name] of lines) {
       const lv = topologyLevel(s.atomStyle);
       if (name === 'angle' && lv < 2) continue;
       if ((name === 'dihedral' || name === 'improper') && lv < 3) continue;
+      if (nt === 0) continue;
       out.push(`${n} ${name}s`, `${nt} ${name} types`);
     }
   }
@@ -631,7 +664,14 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
     for (const [kind, title] of [['bond', 'Bond'], ['angle', 'Angle'], ['dihedral', 'Dihedral'], ['improper', 'Improper']] as const) {
       const st = sys.ff[kind];
       const lines = st?.dataCoeffs();
-      if (st && lines) out.push('', `${title} Coeffs # ${st.name}`, '', ...lines);
+      if (st && lines) {
+        out.push('', `${title} Coeffs # ${st.name}`, '', ...lines);
+        // Measured with native LAMMPS (black box): write_data puts the class 2 cross-term sections right
+        // after the style's Coeffs section (BondBond, BondAngle after Angle Coeffs; AngleAngleTorsion,
+        // EndBondTorsion, MiddleBondTorsion, BondBond13, AngleTorsion after Dihedral Coeffs; AngleAngle
+        // after Improper Coeffs), titles without a style comment.
+        for (const sec of st.dataCrossSections()) out.push('', sec.title, '', ...sec.lines);
+      }
     }
   }
   // measured with native write_data: a hybrid style is labelled Atoms # hybrid

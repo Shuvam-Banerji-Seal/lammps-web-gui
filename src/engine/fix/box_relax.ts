@@ -138,25 +138,29 @@ export class FixBoxRelax extends Fix {
     const yesno = (w: string, what: string): void => {
       if (w !== 'yes' && w !== 'no') throw new StyleError(`fix box/relax: ${what} must be yes or no, got '${w}'`);
     };
+    // fix_box_relax.html: "*z*, *xz*, and *yz*, are not available for 2D simulations" and "*Couple xyz* can
+    // be used for a 2d simulation; the *z* dimension is simply ignored", so in 2d iso, aniso and tri set
+    // the x, y (and xy) targets only (examples/min/in.min.box: box/relax iso 1.5 in 2d).
+    const flat = sys.dimension === 2;
     for (let k = 0; k < args.length;) {
       const key = args[k];
       switch (key) {
         case 'iso': {
           const p = num(need(k + 1, key), 'iso Ptarget');
-          this.pDiag = [p, p, p];
+          this.pDiag = [p, p, flat ? null : p];
           this.couple = 'xyz';
           k += 2; any = true; break;
         }
         case 'aniso': {
           const p = num(need(k + 1, key), 'aniso Ptarget');
-          this.pDiag = [p, p, p];
+          this.pDiag = [p, p, flat ? null : p];
           this.couple = 'none';
           k += 2; any = true; break;
         }
         case 'tri': {
           const p = num(need(k + 1, key), 'tri Ptarget');
-          this.pDiag = [p, p, p];
-          this.pTilt = [0, 0, 0];
+          this.pDiag = [p, p, flat ? null : p];
+          this.pTilt = flat ? [0, null, null] : [0, 0, 0];
           this.couple = 'none';
           k += 2; any = true; break;
         }
@@ -210,7 +214,8 @@ export class FixBoxRelax extends Fix {
     }
     if (!any) throw new StyleError('fix box/relax: no pressure keyword (iso, aniso, tri, x, y, z, xy, xz, yz) given');
     if (this.couple !== 'none') {
-      const dims = COUPLE_DIMS[this.couple];
+      // z is ignored for coupling in 2d (see the note above the keyword loop)
+      const dims = COUPLE_DIMS[this.couple].filter((d) => !(flat && d === 2));
       for (const d of dims) if (this.pDiag[d] === null) throw new StyleError(`fix box/relax: couple ${this.couple} needs a ${DIAG_NAME[d]} target`);
       const vals = dims.map((d) => this.pDiag[d]);
       if (vals.some((v) => v !== vals[0])) throw new StyleError(`fix box/relax: couple ${this.couple} needs identical Ptarget values for the coupled dimensions`);
@@ -265,7 +270,7 @@ export class FixBoxRelax extends Fix {
     const s = this.sys.state;
     this.lRef = this.currentLengths();
     this.tRef = [...s.box.tilt];
-    this.vRef = this.lRef[0] * this.lRef[1] * this.lRef[2];
+    this.vRef = this.volumeOf(this.lRef);
   }
 
   private currentLengths(): number[] {
@@ -324,6 +329,15 @@ export class FixBoxRelax extends Fix {
     }
   }
 
+  /**
+   * Volume of box lengths l: the area lx ly in 2d. Measured with native LAMMPS (black box): a 2d
+   * box/relax run gives the same iterates for z extents 1 and 3 lattice units (w35boxrelax_2d), so the
+   * z length does not enter; with lx ly lz the atom part of the line-search step was off by 1e-6.
+   */
+  private volumeOf(l: readonly number[]): number {
+    return this.sys.dimension === 2 ? l[0] * l[1] : l[0] * l[1] * l[2];
+  }
+
   /** Box energy and force at the current state (virial from compute pressure). */
   private evaluateBox(force: Float64Array): number {
     const energy = this.boxEnergy();
@@ -331,7 +345,7 @@ export class FixBoxRelax extends Fix {
     const v = this.pc.vectorValues();
     const l = this.currentLengths();
     const t = [...this.sys.state.box.tilt];
-    const vol = l[0] * l[1] * l[2];
+    const vol = this.volumeOf(l);
     const pv2e = this.pv2e();
     // stress in pressure units; coupled dims use the group average (doc: "the instantaneous stress will be computed as an average of the corresponding diagonal components")
     const sig: Mat3 = [[v[0], v[3], v[4]], [v[3], v[1], v[5]], [v[4], v[5], v[2]]];
@@ -374,7 +388,7 @@ export class FixBoxRelax extends Fix {
     if (!this.ready) return 0;
     const l = this.currentLengths();
     const t = this.sys.state.box.tilt;
-    const vol = l[0] * l[1] * l[2];
+    const vol = this.volumeOf(l);
     let e = this.ph * (vol - this.vRef);
     for (let d = 0; d < 3; d++) {
       const p = this.pDiag[d];

@@ -1,0 +1,24 @@
+# oracle: fix box/relax iso and aniso in a 2d simulation (z ignored, as in examples/min/in.min.box), lj/cut on a displaced hex lattice, min_modify line backtrack
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-9
+units           lj
+atom_style      atomic
+dimension       2
+lattice         hex 0.8
+region          box block 0 6 0 4 -0.5 0.5
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        dx atom 0.05*sin(1.3*x+0.7*y)
+variable        dy atom 0.05*sin(0.9*y+1.1*x)
+displace_atoms  all move v_dx v_dy 0.0 units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+thermo_style    custom step pe press pxx pyy lx ly vol
+thermo_modify   format float %.15g
+thermo          1
+min_modify      line backtrack
+fix             3 all box/relax iso 1.5 vmax 1.0e-3
+minimize        0.0 1.0e-6 20 100
+unfix           3
+fix             3 all box/relax aniso 1.0 vmax 1.0e-3
+minimize        0.0 1.0e-6 20 100

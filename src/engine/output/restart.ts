@@ -11,6 +11,7 @@ import { BondedHybrid, type HybridKind } from '../force/bonded_hybrid';
 /** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
 type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart };
 import { hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isTemplateStyle, templateStyleId } from '../atoms';
+import { ErfcTableCache } from '../force/erfc';
 
 /*
  * The browser engine's restart file (write_restart / read_restart).
@@ -161,7 +162,10 @@ const encodeValue = (v: unknown, path: string, stack: object[]): Json => {
     if (v instanceof Map) {
       return { $map: [...v].map(([k, x]) => [encodeValue(k, path, stack), encodeValue(x, `${path}{key}`, stack)]) };
     }
-    const entries = Object.entries(v).map(([k, x]) => [k, encodeValue(x, `${path}.${k}`, stack)] as const);
+    // derived caches (the erfc tables of the coul/long family) are rebuilt by the restored style
+    const entries = Object.entries(v)
+      .filter(([, x]) => !(x instanceof ErfcTableCache))
+      .map(([k, x]) => [k, encodeValue(x, `${path}.${k}`, stack)] as const);
     const proto = Object.getPrototypeOf(v);
     const fields = Object.fromEntries(entries) as { [k: string]: Json };
     if (proto === Object.prototype || proto === null) return fields;

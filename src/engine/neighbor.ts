@@ -45,8 +45,10 @@ export const NEIGHMASK = (1 << SBBITS) - 1;
 export const sbOf = (j: number): number => j >>> SBBITS;
 
 export interface NeighList {
-  /** Number of owned atoms with lists. */
+  /** Number of owned atoms with lists (a kernel loops over atoms [ilo, inum)). */
   inum: number;
+  /** First atom a kernel computes (default 0): the pair threads hand each thread chunks [ilo, inum) of one list. */
+  ilo?: number;
   numneigh: Int32Array;
   firstneigh: Int32Array;
   /** Encoded neighbors: index into the owned+ghost arrays | (order << SBBITS). */

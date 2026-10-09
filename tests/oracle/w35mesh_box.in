@@ -1,0 +1,11 @@
+# oracle: create_atoms mesh bisect over the open_box STL (atom order, positions and radii)
+# oracle-inputs: w35mesh_open_box.stl
+# oracle-compare: atoms=all thermo=all rel=1e-9
+units           real
+atom_style      sphere
+region          box block 50 250 50 250 50 250 units box
+create_box      1 box
+create_atoms    1 mesh w35mesh_open_box.stl meshmode bisect 4.0 units box
+thermo_style    custom step atoms
+thermo_modify   format float %.15g
+run             0

@@ -1,0 +1,9 @@
+solid t
+  facet normal 0 0 1
+    outer loop
+      vertex 1.0 1.0 1.0
+      vertex 7.3 1.4 1.2
+      vertex 2.1 6.6 1.7
+    endloop
+  endfacet
+endsolid t

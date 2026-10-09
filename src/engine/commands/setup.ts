@@ -1,9 +1,10 @@
 import type { Handler } from './args';
-import { int, num, yesno, latticeScale, keywords, numOrVar } from './args';
+import { int, num, yesno, latticeScale, keywords } from './args';
 import { StyleError, typeBounds } from '../force/types';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, atomSubStyles } from '../atoms';
+import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId } from '../atoms';
+import { parseStl } from '../stl';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import { generalAtomSites, generalBoxFromRestricted, generalCreateBox } from '../triclinic_general';
 import {
@@ -499,6 +500,7 @@ const createAtoms: Handler = ({ sys }, a) => {
   let regionId: string | null = null;
   let single: number[] | null = null;
   let random: { count: number; seed: number } | null = null;
+  let meshFile: string | null = null;
   if (style === 'box') rest = a.slice(2);
   else if (style === 'region') { regionId = a[2]; sys.region(regionId ?? ''); rest = a.slice(3); } else if (style === 'single') {
     single = [num(a[2], 'x'), num(a[3], 'y'), num(a[4], 'z')];
@@ -511,13 +513,15 @@ const createAtoms: Handler = ({ sys }, a) => {
     if (regionId) sys.region(regionId);
     rest = a.slice(5);
   } else if (style === 'mesh') {
-    throw new StyleError('create_atoms mesh (STL files) is not supported by the browser engine');
+    meshFile = a[2];
+    if (!meshFile) throw new StyleError('usage: create_atoms type mesh STL-file keyword values ...');
+    rest = a.slice(3);
   } else throw new StyleError(`unknown create_atoms style '${style ?? ''}'`);
   const kw = new Map<string, string[]>();
   const basisType = new Map<number, number>();
   for (let k = 0; k < rest.length;) {
     const key = rest[k];
-    const nv: Record<string, number> = { basis: 2, ratio: 2, subset: 2, group: 1, remap: 1, var: 1, set: 2, overlap: 1, maxtry: 1, units: 1, rotate: 4, mol: 2, radscale: 1 };
+    const nv: Record<string, number> = { basis: 2, ratio: 2, subset: 2, group: 1, remap: 1, var: 1, set: 2, overlap: 1, maxtry: 1, units: 1, rotate: 4, mol: 2, radscale: 1, meshmode: 2 };
     if (!(key in nv)) throw new StyleError(`unknown create_atoms keyword '${key}'`);
     const vals = rest.slice(k + 1, k + 1 + nv[key]);
     if (vals.length < nv[key]) throw new StyleError(`create_atoms ${key} needs ${nv[key]} value(s)`);
@@ -594,6 +598,8 @@ const createAtoms: Handler = ({ sys }, a) => {
   };
   let pts: number[] = [];
   let types: number[] = [];
+  let rad: number[] | null = null;
+  let meshMol = 0;
   if (single) {
     const sc = latticeScale(sys, unitsW, 'create_atoms');
     const p = single.map((v, d) => v * sc[d]);
@@ -654,6 +660,110 @@ const createAtoms: Handler = ({ sys }, a) => {
       if (!placed) failed++;
     }
     if (failed) sys.warn(`create_atoms random: only ${random.count - failed} of ${random.count} atoms could be inserted`);
+  } else if (meshFile) {
+    // create_atoms.html: "For the *mesh* style, a file with a triangle mesh in"
+    // STL format "is read and one or more particles are placed into the area of
+    // each triangle." "The use of the *units box* option is required."
+    if (unitsW !== 'box') throw new StyleError('create_atoms mesh must use the "units box" option (create_atoms.html: "The use of the units box option is required.")');
+    if (molKw) throw new StyleError('create_atoms mesh does not support the mol keyword');
+    const tris = parseStl(sys.readFile(meshFile), meshFile);
+    const mm = kw.get('meshmode');
+    const mode = mm ? mm[0] : 'bisect';
+    const radscale = kw.has('radscale') ? num(kw.get('radscale')![0], 'radscale') : 1.0;
+    // create_atoms.html: "Its value is a prefactor (must be > 0.0, default is 1.0)"
+    if (radscale <= 0) throw new StyleError('create_atoms mesh: radscale must be > 0.0');
+    const dist3 = (p: number[], q: number[]) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+    // create_atoms.html: "You cannot use this command to create atoms that are
+    // outside the simulation box; they will just be ignored by LAMMPS." The
+    // *var* and *set* keywords "apply to all styles except *single*".
+    rad = [];
+    const emit = (p: number[], r: number) => {
+      if (!insideBox(p[0], p[1], p[2]) || !varOk(p)) return;
+      pts.push(p[0], p[1], p[2]);
+      types.push(type);
+      rad!.push(r);
+    };
+    // create_atoms.html: "If the atom style allows it, the radius will be set
+    // to a value depending on the algorithm and the value of the *radscale*
+    // parameter ... and the atoms created from the mesh are assigned a new
+    // molecule ID."
+    let maxMol = 0;
+    for (let i = 0; i < s.n; i++) if (s.molecule[i] > maxMol) maxMol = s.molecule[i];
+    meshMol = Math.max(1, maxMol + 1);
+    if (mode === 'bisect') {
+      // create_atoms.html: "In *bisect* mode a particle is created at the
+      // center of each triangle unless the average distance of the triangle
+      // vertices from its center is larger than the *radthresh* value ... In
+      // case the average distance is over the threshold, the triangle is
+      // recursively split into two halves along the the longest side until the
+      // threshold is reached. There will be at least one sphere per triangle."
+      // Measured with native LAMMPS (black box): with the required units box
+      // the default radthresh is 1.0 (it does not depend on any lattice), the
+      // center is the centroid, and the average distance sets the radius.
+      const radthresh = mm ? num(mm[1], 'radthresh') : 1.0;
+      for (const tri of tris) {
+        const stack: [number, number, number][][] = [tri.v];
+        while (stack.length) {
+          const t = stack.pop()!;
+          const c = [0, 1, 2].map((d) => (t[0][d] + t[1][d] + t[2][d]) / 3);
+          const avg = (dist3(t[0], c) + dist3(t[1], c) + dist3(t[2], c)) / 3;
+          if (avg > radthresh) {
+            const e = [dist3(t[0], t[1]), dist3(t[1], t[2]), dist3(t[2], t[0])];
+            let idx = 0;
+            if (e[1] > e[idx]) idx = 1;
+            if (e[2] > e[idx]) idx = 2;
+            const i = idx, j = (idx + 1) % 3, k = (idx + 2) % 3;
+            const mid = [0, 1, 2].map((d) => (t[i][d] + t[j][d]) / 2) as [number, number, number];
+            // children of the split edge (i,j), the shared vertex k; the
+            // second child is popped (created) first, matching native's order
+            stack.push([t[i], mid, t[k]]);
+            stack.push([mid, t[j], t[k]]);
+          } else emit(c, avg * radscale);
+        }
+      }
+    } else if (mode === 'qrand') {
+      if (!mm) throw new StyleError('create_atoms mesh meshmode qrand needs a density value');
+      // create_atoms.html: "In *qrand* mode a quasi-random sequence is used to
+      // distribute particles on mesh triangles using an approach by (Roberts).
+      // Particles are added to the triangle until the minimum number density is
+      // met or exceeded such that every triangle will have at least one
+      // particle." "The radius will be set so that the sum of the area of the
+      // radius of the particles created in place of a triangle will be equal to
+      // the area of that triangle."
+      const density = num(mm[1], 'density');
+      // (Roberts) R. Roberts (2019) "Evenly Distributing Points in a Triangle":
+      // the R2 sequence from the plastic number rho (x^3 = x + 1), mapped into
+      // the triangle and folded. Measured with native LAMMPS (black box): the
+      // barycentric sequence (u,w) is triangle-independent,
+      // u=frac(frac(i alpha2)+0.5), w=frac(frac(i alpha1)+0.5), reflected through
+      // (0.5,0.5) when u+w>1, with alpha1 = 1/rho and alpha2 = 1/rho^2 rounded to
+      // 7 decimals: solving native's points for (u,w) gives 0.0698403, 0.2548777
+      // at i = 1 and 0.6396806, 0.0097554 at i = 2 (w35mesh_qrand matches).
+      const alpha1 = 0.7548777, alpha2 = 0.5698403;
+      const frac = (x: number) => x - Math.floor(x);
+      for (const tri of tris) {
+        // Measured with native LAMMPS (black box, every point of w35mesh_qrand): the sequence starts at
+        // the vertex opposite the longest edge, u runs towards the lower-numbered other vertex and w
+        // towards the higher one (equal longest edges, not measured, take the first).
+        const v = tri.v;
+        const opp = [dist3(v[1], v[2]), dist3(v[2], v[0]), dist3(v[0], v[1])];
+        let o = 0;
+        if (opp[1] > opp[o]) o = 1;
+        if (opp[2] > opp[o]) o = 2;
+        const a = v[o], b = v[o === 0 ? 1 : 0], cc = v[o === 2 ? 1 : 2];
+        const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+        const wx = cc[0] - a[0], wy = cc[1] - a[1], wz = cc[2] - a[2];
+        const area = 0.5 * Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx);
+        const n = Math.max(1, Math.ceil(density * area));
+        const r = Math.sqrt(area / (n * Math.PI)) * radscale;
+        for (let i = 1; i <= n; i++) {
+          let u = frac(frac(i * alpha2) + 0.5);
+          let w = frac(frac(i * alpha1) + 0.5);
+          if (u + w > 1) { u = 1 - u; w = 1 - w; }
+          emit([a[0] + u * ux + w * wx, a[1] + u * uy + w * wy, a[2] + u * uz + w * wz], r);
+        }
+      }
+    } else throw new StyleError(`create_atoms mesh: unknown meshmode '${mode}' (bisect or qrand)`);
   } else {
     const lat = sys.lattice;
     if (!lat || lat.style === 'none') throw new StyleError(`create_atoms ${style} needs a lattice (lattice command)`);
@@ -693,7 +803,10 @@ const createAtoms: Handler = ({ sys }, a) => {
     return;
   }
   for (const t of types) if (t < 1 || t > s.ntypes) throw new StyleError(`create_atoms basis type ${t} is outside 1..${s.ntypes}`);
-  const added = appendAtoms(s, { x: Float64Array.from(pts), type: Int32Array.from(types), mask: gbit });
+  const added = appendAtoms(s, {
+    x: Float64Array.from(pts), type: Int32Array.from(types), mask: gbit,
+    radius: rad ? Float64Array.from(rad) : undefined, molecule: meshMol || undefined,
+  });
   type = 0;
   sys.atomsChanged();
   sys.log(`Created ${added} atoms`);

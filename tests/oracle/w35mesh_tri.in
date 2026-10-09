@@ -1,0 +1,11 @@
+# oracle: create_atoms mesh bisect splits a single triangle recursively (sphere radius from each triangle)
+# oracle-inputs: w35mesh_tri.stl
+# oracle-compare: atoms=all thermo=all rel=1e-9
+units           lj
+atom_style      sphere
+region          box block 0 10 0 10 0 10 units box
+create_box      1 box
+create_atoms    1 mesh w35mesh_tri.stl meshmode bisect 1.0 units box
+thermo_style    custom step atoms
+thermo_modify   format float %.15g
+run             0

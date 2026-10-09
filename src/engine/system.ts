@@ -4,6 +4,7 @@ import { UNIT_SYSTEMS } from './units';
 import { Geometry, shrinkWrap } from './domain';
 import { Neighbor } from './neighbor';
 import { ForceField, type ComputeFlags } from './force/forcefield';
+import { gunzip } from './gunzip';
 import { StyleError, type Accum, type StyleContext } from './force/types';
 import { Groups } from './group';
 import type { Region, RegionEnv } from './region';
@@ -176,6 +177,13 @@ export class System {
     const f = this.files.get(name);
     if (f === undefined) {
       throw new StyleError(`cannot open file ${name}: add it to the notebook's files (upload) or write it earlier in the session`);
+    }
+    // A gzipped file arrives one character per byte (the notebook reads .gz uploads as bytes); read_data
+    // takes a file that "can be ASCII text or a gzipped text file (detected by a .gz suffix)" (docs.lammps.org/read_data.html).
+    if (name.endsWith('.gz') && f.charCodeAt(0) === 0x1f && f.charCodeAt(1) === 0x8b) {
+      const bytes = new Uint8Array(f.length);
+      for (let k = 0; k < f.length; k++) bytes[k] = f.charCodeAt(k) & 0xff;
+      return new TextDecoder().decode(gunzip(bytes));
     }
     return f;
   }

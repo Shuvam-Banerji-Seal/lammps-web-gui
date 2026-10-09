@@ -96,6 +96,7 @@ describe('compute voronoi/atom', () => {
     await bad(SC('radius r1'), /radius/);
     await bad(SC('edge_histo 0'), /edge_histo/);
     await bad(SC('face_threshold -1'), /face_threshold/);
-    await bad(SC('', 'boundary f p p'), /non-periodic/);
+    // non-periodic boundaries are supported since wave 31 (walls at the box faces, tests/engineVoronoiNp31.test.ts);
+    // a non-periodic triclinic box is still refused
   });
 });

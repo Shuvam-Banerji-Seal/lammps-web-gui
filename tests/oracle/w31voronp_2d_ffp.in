@@ -1,0 +1,21 @@
+# oracle: compute voronoi/atom in 2d with non-periodic x and y (f f p) — x/y cells are clipped by the box walls, the periodic z direction stays a column with two caps, and the edge histogram counts the rectangular wall faces
+# oracle-files: w31voronp_2d_ffp.dump
+units           lj
+dimension       2
+atom_style      atomic
+boundary        f f p
+lattice         sq 1.0 origin 0.5 0.5 0.0
+region          box block 0 5 0 5 -0.5 0.5 units box
+region          atoms block 0 3 0 3 0.0 0.0 units box
+create_box      1 box
+create_atoms    1 region atoms
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.0 1.0
+neighbor        0.3 nsq
+compute         v all voronoi/atom edge_histo 8
+thermo_style    custom step c_v[1] c_v[2] c_v[3] c_v[4] c_v[5] c_v[6] c_v[7] c_v[8] c_v[9]
+thermo_modify   format float %.15g
+dump            d all custom 1 w31voronp_2d_ffp.dump id x y z c_v[1] c_v[2]
+dump_modify     d sort id format float %.17g
+run             0

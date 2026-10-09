@@ -1,0 +1,24 @@
+# oracle: compute voronoi/atom surface keyword at non-periodic walls — wall faces count towards surface all but not towards a named group
+# oracle-files: w31voronp_surface_all.dump w31voronp_surface_grp.dump
+units           lj
+atom_style      atomic
+boundary        f f f
+lattice         sc 1.0 origin 0.5 0.5 0.5
+region          box block 0 3 0 3 0 3 units box
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.0 1.0
+neighbor        0.3 nsq
+group           g type 1
+compute         v all voronoi/atom surface all
+dump            dall all custom 1 w31voronp_surface_all.dump id type x y z c_v[1] c_v[2] c_v[3]
+dump_modify     dall sort id format float %.17g
+run             0
+uncompute       v
+undump          dall
+compute         v all voronoi/atom surface g
+dump            dgrp all custom 1 w31voronp_surface_grp.dump id type x y z c_v[1] c_v[2] c_v[3]
+dump_modify     dgrp sort id format float %.17g
+run             0

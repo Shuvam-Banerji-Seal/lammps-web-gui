@@ -1,0 +1,20 @@
+# oracle: compute voronoi/atom with shrink-wrapped (s), bounded shrink-wrapped (m) and fixed (f) boundaries — the box is refit around the atoms before the tessellation
+# oracle-files: w31voronp_sm.dump
+units           lj
+atom_style      atomic
+boundary        s m f
+lattice         sc 1.0 origin 0.5 0.5 0.5
+region          box block 0 8 0 8 0 8 units box
+region          atoms block 0 4 0 4 0 4 units box
+create_box      1 box
+create_atoms    1 region atoms
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.0 1.0
+neighbor        0.3 nsq
+compute         v all voronoi/atom
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+dump            d all custom 1 w31voronp_sm.dump id type x y z c_v[1] c_v[2]
+dump_modify     d sort id format float %.17g
+run             0

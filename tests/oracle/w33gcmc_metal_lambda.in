@@ -1,0 +1,19 @@
+# oracle: fix gcmc in units metal, Lambda at the first-insertion threshold: the same insertion into an empty box is rejected with mu just below and accepted just above the native threshold (mu* = -0.16210844608182 eV; the 2019 SI h would move it up by 5.5e-9 eV)
+# oracle-compare: thermo=all atoms=none rel=1e-8
+units metal
+atom_style atomic
+pair_style lj/cut 3.0
+pair_modify tail no
+region box block 0 5 0 5 0 5
+create_box 1 box
+pair_coeff * * 0.0 1.0
+mass 1 1.0
+group gcmcgroup type 1
+thermo_style custom step atoms
+thermo 1
+thermo_modify format float %.15g
+fix below gcmcgroup gcmc 1 1 0 1 29494 300.0 -0.1621084485 1.0
+run 1
+unfix below
+fix above gcmcgroup gcmc 1 1 0 1 29494 300.0 -0.1621084435 1.0
+run 1

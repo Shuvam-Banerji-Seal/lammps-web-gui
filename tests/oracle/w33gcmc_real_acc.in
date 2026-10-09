@@ -1,0 +1,18 @@
+# oracle: fix gcmc in units real with interacting argon and intermediate acceptance: Lambda from the native Planck constant, dU, accept/reject decisions and inserted velocities follow native's random streams
+# oracle-compare: thermo=all atoms=none rel=1e-8
+units real
+atom_style atomic
+pair_style lj/cut 8.0
+pair_modify tail no
+region box block 0 20 0 20 0 20
+create_box 1 box
+pair_coeff * * 0.238 3.405
+mass 1 39.948
+group gcmcgroup type 1
+fix mygcmc gcmcgroup gcmc 1 2 0 1 7311 300.0 -6.9 1.0
+compute k all ke/atom
+compute ks all reduce sum c_k
+thermo_style custom step atoms pe c_ks f_mygcmc[3] f_mygcmc[4] f_mygcmc[5] f_mygcmc[6]
+thermo 1
+thermo_modify format float %.15g
+run 150

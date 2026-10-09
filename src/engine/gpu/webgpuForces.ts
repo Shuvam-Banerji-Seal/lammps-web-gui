@@ -147,6 +147,39 @@ export const webgpuAdapterKind = async (): Promise<'hardware' | 'software' | 'no
   return software ? 'software' : 'none';
 };
 
+/** What the resource monitor shows about the WebGPU adapter the engine would use (no device is created). */
+export interface WebGpuAdapterInfo {
+  kind: 'hardware' | 'software' | 'none';
+  /** e.g. "nvidia ampere", from GPUAdapterInfo vendor and architecture (may be empty: browsers hide them). */
+  name: string;
+  /** Exposed only through WebGPU compatibility mode (e.g. NVIDIA through ANGLE on Linux). */
+  compatibility: boolean;
+  /** Largest storage buffer one binding may hold, in MB (bounds the atoms the GPU path can take). */
+  maxStorageBufferMB: number;
+}
+
+export const webgpuAdapterInfo = async (): Promise<WebGpuAdapterInfo> => {
+  const none: WebGpuAdapterInfo = { kind: 'none', name: '', compatibility: false, maxStorageBufferMB: 0 };
+  const gpu = navigatorGpu();
+  if (!gpu) return none;
+  let software: WebGpuAdapterInfo | null = null;
+  for (const o of [{ powerPreference: 'high-performance' }, { powerPreference: 'high-performance', featureLevel: 'compatibility' }] as AdapterRequest[]) {
+    let a: GPUAdapter | null = null;
+    try { a = await gpu.requestAdapter(o); } catch { a = null; }
+    if (!a) continue;
+    const info = a.info;
+    const r: WebGpuAdapterInfo = {
+      kind: isFallback(a) ? 'software' : 'hardware',
+      name: [info?.vendor, info?.architecture].filter(Boolean).join(' ') || info?.description || '',
+      compatibility: o.featureLevel === 'compatibility',
+      maxStorageBufferMB: Math.round((a.limits?.maxStorageBufferBindingSize ?? 0) / 2 ** 20),
+    };
+    if (r.kind === 'hardware') return r;
+    software ??= r;
+  }
+  return software ?? none;
+};
+
 /**
  * A WebGPU backend on the best adapter: a hardware core-WebGPU adapter, else
  * a hardware compatibility-mode adapter (how e.g. NVIDIA GPUs are exposed

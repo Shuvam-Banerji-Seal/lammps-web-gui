@@ -280,8 +280,13 @@ export type EngineEvent =
   /** labels: header text per column where thermo_modify colname renamed it (else the keyword). */
   | { kind: 'thermo-header'; keywords: ThermoKeyword[]; labels?: string[]; units?: UnitStyle }
   | { kind: 'thermo'; row: ThermoRow }
-  /** A run (or rerun/minimize-free MD run) starts: it goes from step `from` to step `to` (for progress display). */
-  | { kind: 'run'; from: number; to: number }
+  /**
+   * An MD run starts: it goes from step `from` to step `to` (progress display), with timestep dt in the
+   * units style (simulated time per wall-clock day in the resource monitor).
+   */
+  | { kind: 'run'; from: number; to: number; dt: number; units: UnitStyle }
+  /** Run speed, about twice a second and at the end of a run: steps per second over the last interval. */
+  | { kind: 'perf'; step: number; atoms: number; stepsPerSec: number; elapsed: number; threaded: boolean }
   | { kind: 'frame'; step: number; x: Float64Array; image: Int32Array; type: Int32Array; id: Int32Array; box: SimBox }
   | { kind: 'error'; message: string; line: number; command: string }
   | { kind: 'done'; steps: number; seconds: number; backend: string };

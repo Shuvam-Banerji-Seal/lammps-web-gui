@@ -215,6 +215,9 @@ export const emitFrame = (sys: System): void => {
   });
 };
 
+/** How often (wall-clock ms) a run reports its speed (EngineEvent 'perf'). */
+const PERF_EVERY_MS = 500;
+
 const writeDumps = (sys: System, firstOfRun: boolean): boolean => {
   let any = false;
   for (const d of sys.dumps) {
@@ -238,7 +241,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   if (opts.stop !== null && opts.stop < first + n) throw new StyleError('run stop cannot be before the last timestep of the run');
   const th = sys.thermo;
   sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels(), units: sys.units.style });
-  sys.io.emit({ kind: 'run', from: first, to: first + n });
+  sys.io.emit({ kind: 'run', from: first, to: first + n, dt: s.dt, units: sys.units.style });
   const frameEvery = session.frameEvery;
   let nextThermoVar = th.everyVar ? th.nextVariableStep() : -1;
   let lastThermo = -1;
@@ -252,7 +255,22 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
     if (dumped || frameEvery > 0) emitFrame(sys);
   };
   startRestarts(sys);
+  // run speed for the resource monitor: steps per second over the last ~0.5 s of wall time
+  const perf = { t: performance.now(), step: first, calls: sys.ff.pairThreads?.calls ?? 0 };
+  const emitPerf = (step: number, force = false) => {
+    const now = performance.now();
+    if (!force && now - perf.t < PERF_EVERY_MS) return;
+    const dtWall = (now - perf.t) / 1000;
+    if (dtWall <= 0 || step === perf.step) return;
+    const calls = sys.ff.pairThreads?.calls ?? 0;
+    sys.io.emit({
+      kind: 'perf', step, atoms: s.n, stepsPerSec: (step - perf.step) / dtWall,
+      elapsed: (now - sys.run.t0) / 1000, threaded: calls > perf.calls,
+    });
+    perf.t = now; perf.step = step; perf.calls = calls;
+  };
   const afterStep = (step: number) => {
+    emitPerf(step);
     writeRestarts(sys, step);
     let due = th.due(step, first, first + n);
     if (th.everyVar && step >= nextThermoVar) { due = true; nextThermoVar = th.nextVariableStep(); }
@@ -281,6 +299,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
     });
   // a cancelled run still reports its last step
   if (lastThermo !== s.step) emitThermo();
+  emitPerf(s.step, true);
   sys.run.inRun = false;
   emitFrame(sys);
   const seconds = (performance.now() - sys.run.t0) / 1000;

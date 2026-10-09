@@ -2,6 +2,8 @@ import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
 import type { System } from '../system';
 import { massOf } from '../atoms';
+import { RanMars } from '../rng';
+import { parseNumOrVar, ramp, valueOf, type NumOrVar } from './util';
 
 /*
  * fix ID group rigid|rigid/nve|rigid/small|rigid/nve/small bodystyle ... —
@@ -204,6 +206,12 @@ export class FixRigid extends Fix {
   private infile: Map<string, InfileBody> | null = null;
   /** fix_modify bodyforces early: forces and torques are summed in post_force, not final_integrate. */
   private early = false;
+  /** keyword langevin: Langevin thermostat on the 4 NVE rigid styles. */
+  private langevin = false;
+  private langTStart: NumOrVar = 0;
+  private langTStop = 0;
+  private langDamp = 0;
+  private langRng: RanMars | null = null;
   constructor(sys: System, id: string, group: string, args: string[], style: string) {
     super(sys, id, group, args);
     this.style = style;
@@ -281,8 +289,33 @@ export class FixRigid extends Fix {
         if (!t) throw new StyleError(`fix ${style}: keyword mol needs a molecule template-ID`);
         this.molTemplateId = t;
         k += 2;
+      } else if (key === 'langevin') {
+        /* docs.lammps.org/fix_rigid.html: "langevin values = Tstart Tstop Tperiod
+         * seed"; "The *langevin* keyword applies a Langevin thermostat to the
+         * constant NVE time integration performed by any of the 4 NVE rigid
+         * styles: rigid, rigid/nve, rigid/small, rigid/small/nve. It cannot be
+         * used with the 2 NVT rigid styles". "The desired temperature at each
+         * timestep is a ramped value during the run from Tstart to Tstop." "The
+         * random # seed must be a positive integer." */
+        const tStart = args[k + 1], tStop = args[k + 2], tPeriod = args[k + 3], seed = args[k + 4];
+        if (tStart === undefined || tStop === undefined || tPeriod === undefined || seed === undefined) {
+          throw new StyleError(`fix ${style} langevin: expected Tstart Tstop Tperiod seed`);
+        }
+        this.langTStart = parseNumOrVar(tStart, 'Tstart');
+        this.langTStop = Number(tStop);
+        this.langDamp = Number(tPeriod);
+        const sd = Number(seed);
+        if (!Number.isFinite(this.langTStop)) throw new StyleError(`fix ${style} langevin: Tstop must be a number, got '${tStop}'`);
+        if (!(this.langDamp > 0)) throw new StyleError(`fix ${style} langevin: Tperiod must be > 0, got '${tPeriod}'`);
+        if (!Number.isInteger(sd) || sd <= 0) throw new StyleError(`fix ${style} langevin: seed must be a positive integer, got '${seed}'`);
+        this.langevin = true;
+        this.langRng = new RanMars(sd);
+        // Measured with native LAMMPS (black box): the stream starts one draw in,
+        // so the first draw is discarded (the draw is taken here, at fix creation).
+        this.langRng.uniform();
+        k += 5;
       } else {
-        throw new StyleError(`fix ${style}: keyword '${key}' is not supported by the browser engine (supported: force, torque, reinit, infile, mol)`);
+        throw new StyleError(`fix ${style}: keyword '${key}' is not supported by the browser engine (supported: force, torque, reinit, infile, mol, langevin)`);
       }
     }
     if (this.molTemplateId && this.bodystyle !== 'molecule') {
@@ -570,13 +603,81 @@ export class FixRigid extends Fix {
 
   /** Early bodyforces: the forces are summed right after the per-atom forces (before later fixes' post_force). */
   postForce(): void {
-    if (this.early) this.sumForces();
+    if (this.early) { this.sumForces(); this.applyLangevin(); }
+  }
+
+  /**
+   * The langevin keyword: a drag plus a random force on each body's
+   * center-of-mass velocity and a drag plus a random torque on its angular
+   * velocity. docs.lammps.org/fix_rigid.html: "The *langevin* keyword applies a
+   * Langevin thermostat ... The way that Langevin thermostatting operates is
+   * explained on the fix langevin doc page." fix_langevin.html: F_f "is a
+   * frictional drag or viscous damping term proportional to the particle's
+   * velocity" with constant m/damp, F_r "is a force due to solvent atoms at a
+   * temperature" T "randomly bumping into the particle" with a magnitude
+   * proportional to sqrt(k_B T m / (dt damp)), and "a uniform random number is
+   * used (instead of a Gaussian random number) for speed", so the uniform
+   * amplitude is sqrt(24 k_B T m / (dt damp)).
+   * Measured with native LAMMPS (black box) on one tetrahedron and one dimer,
+   * thermo 1: with seed s the first RanMars(s) uniform is discarded, then each
+   * body draws its three COM force components and its three body-frame torque
+   * components as uniform()-0.5, body by body, force before torque (six draws,
+   * also in 2d, where only the in-plane force and the rotation about the plane
+   * normal are applied); the force is sqrt(24 k_B T M/(dt damp)) per component
+   * and the body-frame torque about principal axis k is
+   * sqrt(24 k_B T I_k/(dt damp)), the axes taken in increasing moment of inertia
+   * and made right-handed. The drag is -(M/damp) v_cm and, in the space frame,
+   * -(1/damp) L - dt (omega x L), evaluated after the first half kick and used
+   * for the second half kick (final integrate).
+   */
+  private applyLangevin(): void {
+    if (!this.langevin) return;
+    const s = this.sys.state;
+    const u = s.units;
+    const tt = typeof this.langTStart === 'number' ? ramp(this.sys, this.langTStart, this.langTStop) : valueOf(this.sys, this.langTStart);
+    if (tt < 0) throw new StyleError(`fix ${this.id} rigid langevin: target temperature is negative`);
+    const rng = this.langRng!;
+    const damp = this.langDamp;
+    const dim2 = s.dimension === 2;
+    const c = Math.sqrt((24 * u.boltz * tt) / (u.mvv2e * s.dt * damp)) / u.ftm2v;
+    for (const b of this.bodies) {
+      const fr = [0, 1, 2].map(() => rng.uniform() - 0.5);
+      const tr = [0, 1, 2].map(() => rng.uniform() - 0.5);
+      for (let d = 0; d < 3; d++) {
+        // 2d: native LAMMPS draws the z force but applies none of it (measured).
+        if (dim2 && d === 2) continue;
+        b.fcm[d] += c * Math.sqrt(b.mass) * fr[d] - (b.mass / damp) * b.vcm[d] / u.ftm2v;
+      }
+      // Measured with native LAMMPS (black box): the body-frame random torque is
+      // drawn about the principal axes ordered by increasing moment of inertia
+      // (draw j = torque draw, k = ascending principal axis), and the axes are
+      // made right-handed by negating the third, so the torque is
+      // sum_j sqrt(24 k_B T I_j/(dt damp)) (u_j - 0.5) p_j. In 2d only the
+      // rotation about the plane normal is active; it is the largest moment
+      // (perpendicular-axis theorem), i.e. ascending index 2, and native draws
+      // all three torque components but applies only that one.
+      const R = qmat(b.q);
+      const idx = [0, 1, 2].sort((a, e) => b.inertia[a] - b.inertia[e]);
+      const p = idx.map((k) => [R[0][k], R[1][k], R[2][k]]);
+      const p0 = cross(p[0], p[1]);
+      if (p0[0] * p[2][0] + p0[1] * p[2][1] + p0[2] * p[2][2] < 0) p[2] = p[2].map((x) => -x);
+      for (let j = dim2 ? 2 : 0; j < 3; j++) {
+        const tau = c * Math.sqrt(b.inertia[idx[j]]) * tr[j];
+        for (let d = 0; d < 3; d++) b.torque[d] += tau * p[j][d];
+      }
+      // Measured with native LAMMPS (black box) on the axes body and the tetrahedron:
+      // the COM drag is -(M/damp) v_cm and the angular drag is
+      // -(1/damp) L - dt (omega x L) (space frame, omega = the angular velocity).
+      this.omegaFromAngmom(b);
+      const wxL = cross(b.omega, b.angmom);
+      for (let d = 0; d < 3; d++) b.torque[d] -= b.angmom[d] / (damp * u.ftm2v) + s.dt * wxL[d];
+    }
   }
 
   finalIntegrate(): void {
     const s = this.sys.state;
     const dtf = 0.5 * s.dt * s.units.ftm2v;
-    if (!this.early) this.sumForces();
+    if (!this.early) { this.sumForces(); this.applyLangevin(); }
     for (const b of this.bodies) {
       for (let d = 0; d < 3; d++) {
         if (b.fflag[d]) b.vcm[d] += (dtf * b.fcm[d]) / b.mass;

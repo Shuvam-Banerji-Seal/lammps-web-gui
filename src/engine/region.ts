@@ -351,6 +351,31 @@ export class PlaneRegion extends Region {
     const [nx, ny, nz] = this.nrm.map((p) => this.val(p));
     return (x - px) * nx + (y - py) * ny + (z - pz) * nz >= 0;
   }
+  /**
+   * The single flat face of the plane.  "For style *plane*, a plane is defined
+   * which contain the point (px,py,pz) and has a normal vector (nx,ny,nz).  The
+   * normal vector does not have to be of unit length.  The "inside" of the
+   * plane is the half-space in the direction of the normal vector"
+   * (docs.lammps.org/region.html).  The distance to the surface is the signed
+   * distance of the atom from the plane, (x-p) . n / |n|, and the normal
+   * pointing into the interior is n / |n|.  The wall is flat, so its radius of
+   * curvature is 0: "For a flat wall, delta = radius - r = overlap of particle
+   * with wall, m_eff = mass of particle, and the effective radius of contact is
+   * just the radius of the particle." (docs.lammps.org/fix_wall_gran_region.html)
+   * Measured with native LAMMPS (black box, single atom at (1.6,1.5,1.7) and
+   * region plane 1 1 1 1 1 1 side in, fix wall/region harmonic 1.0 0.0 2.5):
+   * r = 1.8/sqrt(3) = 1.0392304845413265 and the force is
+   * 2(2.5 - r) n_hat = (1.68675134594813, 1.68675134594813, 1.68675134594813),
+   * i.e. the projection onto the unit normal.
+   */
+  protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
+    const [px, py, pz] = this.pt.map((p) => this.val(p));
+    const [nx, ny, nz] = this.nrm.map((p) => this.val(p));
+    const n = Math.hypot(nx, ny, nz);
+    const dist = ((x - px) * nx + (y - py) * ny + (z - pz) * nz) / n;
+    if (dist < 0) return;
+    out.push({ key: 'plane', dist, nx: nx / n, ny: ny / n, nz: nz / n, curvature: 0, source: this });
+  }
 }
 
 /** prism: origin (xlo, ylo, zlo), edges A = (xhi-xlo,0,0), B = (xy,yhi-ylo,0), C = (xz,yz,zhi-zlo). */

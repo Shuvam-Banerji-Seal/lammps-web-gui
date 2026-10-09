@@ -215,12 +215,14 @@ export class FixVector extends Fix {
  * same way.
  *
  * Supported here: block, sphere, cylinder (radlo = radhi), cone (side in),
- * compound (union/intersect) regions and dynamic (move/rotate) regions.  A
- * side-in region contributes one force per face within the cutoff (region.ts
- * filters the faces of a compound region as documented on region.html); a
- * side-out region contributes the nearest point of the solid only.  Not
- * supported (StyleError): a side-out union/intersect region, and style colloid
- * (rejected in the constructor).
+ * plane (side in), compound (union/intersect) regions and dynamic (move/rotate)
+ * regions.  A side-in region contributes one force per face within the cutoff
+ * (region.ts filters the faces of a compound region as documented on
+ * region.html); a side-out region contributes the nearest point of the solid
+ * only.  The plane's single flat face is returned by region.ts (curvature 0);
+ * a side-out plane is rejected (the nearest-point path below only knows block,
+ * sphere and cylinder).  Not supported (StyleError): a side-out union/intersect
+ * region, a side-out plane, and style colloid (rejected in the constructor).
  */
 const WR_STYLES = ['lj93', 'lj126', 'lj1043', 'colloid', 'harmonic', 'morse'];
 
@@ -276,8 +278,11 @@ export class FixWallRegion extends Fix {
   /** The region, which may be a primitive or a compound (union/intersect). */
   private regionOf() {
     const r = this.sys.region(this.regionId);
-    if (!['block', 'sphere', 'cylinder', 'cone', 'union', 'intersect'].includes(r.style)) {
-      throw new StyleError(`fix ${this.id} (wall/region): region style ${r.style} is not supported (block, sphere, cylinder, cone, union and intersect are)`);
+    if (!['block', 'sphere', 'cylinder', 'cone', 'plane', 'union', 'intersect'].includes(r.style)) {
+      throw new StyleError(`fix ${this.id} (wall/region): region style ${r.style} is not supported (block, sphere, cylinder, cone, plane, union and intersect are)`);
+    }
+    if (r.style === 'plane' && !r.interior) {
+      throw new StyleError(`fix ${this.id} (wall/region): a side-out plane region is not supported`);
     }
     if (r.hasSideOutSubRegion()) {
       throw new StyleError(`fix ${this.id} (wall/region): region style ${r.style} is not supported (a side-out sub-region is not supported)`);

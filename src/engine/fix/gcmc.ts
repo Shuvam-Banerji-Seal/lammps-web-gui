@@ -31,30 +31,47 @@ import type { SimState, Topology, TopoList } from '../types';
  * naming them (they need a fix rigid/small, fix shake, or the per-unit
  * pressure/fugacity conversion the browser engine does not implement).
  *
- * Random stream: measured with native LAMMPS (black box) that the number of
- * attempts per event is exactly X exchanges and M moves (not a Poisson draw),
- * that the move type of each exchange is a fixed random draw, and that an
- * inserted atom's velocity comes from a separate generator. The engine does
- * NOT reproduce native's stream byte for byte (the choice/deletion draw order
- * depends on the occupied state in a way this work could not pin down); it
- * draws the documented algorithm from its own RanPark (seed, no discarded
- * draws) and is checked statistically (acceptance ratios, <N> vs mu) by
- * tests/engineGcmc32.test.ts. The one exact oracle, w32gcmc_move, uses
- * displace 0 so every translation has dU = 0 and is accepted regardless of the
- * stream: measured with native LAMMPS (black box) with X = 0, M = 1,
- * displace = 0, the vector counts one translation attempt and success every
- * step and the atoms and pe are unchanged.
- *
  * Acceptance (muVT detailed balance). Insertion with N particles and volume V
  * (the region volume with the region keyword, else the box volume) and thermal
- * de Broglie length Lambda (Lambda = 1 for units lj): the engine accepts with
- * probability min(1, V / ((N+1) Lambda^3) exp(beta (mu - dU))), deletion with
+ * de Broglie length Lambda: the engine accepts with probability
+ * min(1, V / ((N+1) Lambda^3) exp(beta (mu - dU))), deletion with
  * min(1, N Lambda^3 / V exp(-beta (mu + dU))), where dU is the potential-energy
  * change of the proposed move. u is the user chemical potential (docs:
  * "mu = chemical potential of the ideal gas reservoir (energy units)").
  *
- * Only units lj are accepted: for the other unit styles Lambda needs Planck's
- * constant, which the browser engine does not carry.
+ * Lambda is from docs.lammps.org/fix_gcmc.html: "For all unit styles except
+ * *lj* it is defined as the thermal de Broglie wavelength" Lambda =
+ * sqrt(h^2 / (2 pi m k_B T)) "where *h* is Planck's constant, and *m* is the
+ * mass of the exchanged atom or molecule. For unit style *lj*, Lambda is
+ * simply set to unity." h is the style's Planck constant (units.ts hplanck),
+ * m the exchanged particle's mass (atom mass, or the molecule's total mass).
+ *
+ * Random streams, measured with native LAMMPS (black box). The number of
+ * attempts per event is exactly X exchanges and M moves (not a Poisson draw).
+ * There are two Park-Miller streams, both seeded with the fix's seed:
+ *  - the exchange stream skips one draw at creation; each exchange then takes
+ *    the choice draw (insertion when u >= 0.5, deletion otherwise), then for
+ *    an insertion three position draws, for a deletion the candidate-index
+ *    draw (only when there is a candidate), and in both cases one more draw
+ *    where the decision is made (also for a deletion with no candidate);
+ *  - the second stream holds the decisions: one uniform per accept/reject
+ *    test (accepted when u < min(1, P)), none for a deletion with no
+ *    candidate, and after an accepted insertion the three velocity
+ *    components, each insertion starting a new polar pair.
+ * Evidence: bisecting mu at the first insertion into an empty box puts the
+ * threshold exactly at the first draw of the second stream (units real and
+ * metal, see units.ts hplanck); the first four inserted atoms' velocities in
+ * w33gcmc_lj_acc are Gaussians starting at its draws 1, 6, 11 and 16,
+ * times sqrt(k_B T / (m mvv2e)); and w33gcmc_lj_acc (lj, dU = 0) and
+ * w33gcmc_real_acc (real, interacting argon) match native's atom count,
+ * energy and kinetic energy at every step, through 120 and 150 exchanges with
+ * both acceptances and rejections. Translations and molecule moves use the
+ * same decision rule but are checked exactly only by w32gcmc_move, which uses
+ * displace 0 so every translation has dU = 0 and is accepted: measured with
+ * native LAMMPS (black box) with X = 0, M = 1, displace = 0, the vector counts
+ * one translation attempt and success every step and the atoms and pe are
+ * unchanged. tests/engineGcmc32.test.ts checks acceptance ratios and <N> vs mu
+ * statistically.
  */
 
 type Vec3 = [number, number, number];
@@ -116,6 +133,8 @@ export class FixGcmc extends Fix {
   private readonly mu: number;
   private readonly displace: number;
   private readonly rng: RanPark;
+  /** Second stream with the same seed: acceptance numbers and inserted velocities (see header). */
+  private readonly accRng: RanPark;
   private readonly molTemplateId: string | null;
   private molTemplate: MoleculeTemplate | null = null;
   private readonly regionId: string | null;
@@ -148,14 +167,17 @@ export class FixGcmc extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (sys.dimension !== 3) throw new StyleError('fix gcmc: only 3d simulations are supported');
-    if (sys.state.units.style !== 'lj') {
-      throw new StyleError('fix gcmc: only the lj unit style is supported by the browser engine (the thermal de Broglie length for other units needs Planck\u2019s constant)');
-    }
     if (args.length < 8) throw new StyleError('usage: fix ID group-ID gcmc N X M type seed T mu displace keyword values ...');
     this.N = posInt(args[0], 'N');
     this.X = nonNegInt(args[1], 'X');
     this.M = nonNegInt(args[2], 'M');
-    this.rng = new RanPark(posInt(args[4], 'seed'));
+    const seed = posInt(args[4], 'seed');
+    this.rng = new RanPark(seed);
+    // Measured with native LAMMPS (black box): the fix consumes one draw before its first
+    // exchange choice; consuming it here keeps the choice and insertion-position stream aligned
+    // with native (see the header).
+    this.rng.uniform();
+    this.accRng = new RanPark(seed);
     this.T = num(args[5], 'T');
     if (!(this.T > 0)) throw new StyleError('fix gcmc: T must be > 0');
     this.mu = num(args[6], 'mu');
@@ -354,12 +376,33 @@ export class FixGcmc extends Fix {
   }
 
   private drawVelocity(mass: number): Vec3 {
-    const sd = Math.sqrt((this.sys.state.units.boltz * this.T * this.tfacInsert) / mass);
-    return [sd * this.rng.gaussian(), sd * this.rng.gaussian(), sd * this.rng.gaussian()];
+    const u = this.sys.state.units;
+    // kT / m is energy per mass; mvv2e turns it into the style's velocity^2
+    const sd = Math.sqrt((u.boltz * this.T * this.tfacInsert) / (mass * u.mvv2e));
+    const v: Vec3 = [sd * this.accRng.gaussian(), sd * this.accRng.gaussian(), sd * this.accRng.gaussian()];
+    // Measured with native LAMMPS (black box): each insertion starts a new polar pair, so the
+    // unused second value of the last pair is dropped.
+    this.accRng.discardGaussian();
+    return v;
+  }
+
+  /**
+   * Thermal de Broglie length Lambda of an exchanged particle of the given mass
+   * (docs.lammps.org/fix_gcmc.html): sqrt(h^2 / (2 pi m k_B T)) for every style
+   * but lj, where it is set to unity. hplanck is stored in the style's energy *
+   * time units; mvv2e brings the style's energy unit back to mass*length^2/time^2
+   * so the result is in the style's length unit (see units.ts).
+   */
+  private deBroglie(mass: number): number {
+    const u = this.sys.state.units;
+    if (u.style === 'lj') return 1;
+    return Math.sqrt((u.hplanck * u.hplanck) / (2 * Math.PI * mass * u.boltz * this.T * u.mvv2e));
   }
 
   private metropolis(exponent: number): boolean {
-    return this.rng.uniform() < Math.exp(Math.min(0, exponent));
+    // the exchange stream still advances by one draw here (see the header)
+    this.rng.uniform();
+    return this.accRng.uniform() < Math.exp(Math.min(0, exponent));
   }
 
   private insertion(): void {
@@ -387,21 +430,26 @@ export class FixGcmc extends Fix {
         coords[3 * a + 2] = p[2] + rot[2][0] * rx + rot[2][1] * ry + rot[2][2] * rz;
       }
       for (const ty of t.type) mass += s.massByType[ty];
-      const vel = this.drawVelocity(mass);
-      appendMolecule(sys, t, 0, coords, vel, maxMoleculeId(s) + 1, this.extraMask());
+      appendMolecule(sys, t, 0, coords, [0, 0, 0], maxMoleculeId(s) + 1, this.extraMask());
       sys.atomsChanged();
     } else {
-      const vel = this.drawVelocity(s.massByType[this.type]);
-      appendAtoms(s, { x: Float64Array.from(p), type: this.type, v: Float64Array.from(vel), q: this.charge ?? undefined, mask: this.extraMask() });
+      mass = s.massByType[this.type];
+      appendAtoms(s, { x: Float64Array.from(p), type: this.type, v: new Float64Array(3), q: this.charge ?? undefined, mask: this.extraMask() });
       sys.atomsChanged();
     }
     let dU = this.potentialEnergy() - eBefore;
     if (!this.fullEnergy) dU -= this.molTemplate ? this.intraMolEnergy : 0;
     dU -= this.intraEnergy;
     const overlap = this.overlapCutoff > 0 && this.hasOverlap(snap.n, this.overlapCutoff);
-    const exponent = (this.mu - dU) / kT + Math.log(this.volume / (nPart + 1));
+    const l3 = this.deBroglie(mass) ** 3;
+    const exponent = (this.mu - dU) / kT + Math.log(this.volume / ((nPart + 1) * l3));
     if (!overlap && this.metropolis(exponent)) {
       this.ninsSucc++;
+      // the velocity is drawn after the acceptance number, from the same stream (see the header)
+      const vel = this.drawVelocity(mass);
+      for (let i = snap.n; i < s.n; i++) {
+        s.v[3 * i] = vel[0]; s.v[3 * i + 1] = vel[1]; s.v[3 * i + 2] = vel[2];
+      }
       this.applyGroupTypes(snap.n);
     } else {
       restore(s, snap);
@@ -413,22 +461,29 @@ export class FixGcmc extends Fix {
     const sys = this.sys;
     const s = sys.state;
     this.ndelAtt++;
-    let idx: number[];
+    let idx: number[] = [];
     if (this.molTemplate) {
       const mols = this.eligibleMolecules();
-      if (!mols.length) return;
-      const mid = mols[Math.floor(this.rng.uniform() * mols.length)];
-      idx = [];
-      for (let i = 0; i < s.n; i++) if (s.molecule[i] === mid) idx.push(i);
+      if (mols.length) {
+        const mid = mols[Math.floor(this.rng.uniform() * mols.length)];
+        for (let i = 0; i < s.n; i++) if (s.molecule[i] === mid) idx.push(i);
+      }
     } else {
       const cands = this.eligibleAtoms();
-      if (!cands.length) return;
-      idx = [cands[Math.floor(this.rng.uniform() * cands.length)]];
+      if (cands.length) idx = [cands[Math.floor(this.rng.uniform() * cands.length)]];
+    }
+    const blocked = this.minAtoms !== null && this.groupAtomCount() - idx.length < this.minAtoms;
+    if (!idx.length || blocked) {
+      // No candidate: native still advances the exchange stream by its decision draw but takes
+      // nothing from the second stream (w33gcmc_lj_empty). The min bound is assumed to act the same.
+      this.rng.uniform();
+      return;
     }
     const nPart = this.particleCount();
-    if (this.minAtoms !== null && this.groupAtomCount() - idx.length < this.minAtoms) return;
     const eBefore = this.potentialEnergy();
     const snap = capture(s);
+    let mass = 0;
+    for (const i of idx) mass += s.massByType[s.type[i]];
     const flags = new Uint8Array(s.n);
     for (const i of idx) flags[i] = 1;
     deleteAtoms(s, flags);
@@ -437,7 +492,8 @@ export class FixGcmc extends Fix {
     if (!this.fullEnergy) dU -= this.molTemplate ? this.intraMolEnergy : 0;
     dU -= this.intraEnergy;
     const kT = s.units.boltz * this.T;
-    const exponent = -(this.mu + dU) / kT + Math.log(nPart / this.volume);
+    const l3 = this.deBroglie(mass) ** 3;
+    const exponent = -(this.mu + dU) / kT + Math.log((nPart * l3) / this.volume);
     if (this.metropolis(exponent)) {
       this.ndelSucc++;
     } else {

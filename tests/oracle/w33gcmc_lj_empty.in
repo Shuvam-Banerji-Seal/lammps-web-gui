@@ -1,0 +1,18 @@
+# oracle: fix gcmc in units lj starting with deletion attempts on an empty box (seed 1006), then intermediate acceptance: an empty deletion does not consume a decision draw of the second stream
+# oracle-compare: thermo=all atoms=none rel=1e-8
+units lj
+atom_style atomic
+pair_style lj/cut 1.0
+pair_modify tail no
+region box block 0 5 0 5 0 5
+create_box 1 box
+pair_coeff * * 0.0 1.0
+mass 1 1.0
+group gcmcgroup type 1
+fix mygcmc gcmcgroup gcmc 1 1 0 1 1006 1.5 -2.7 0.5
+compute k all ke/atom
+compute ks all reduce sum c_k
+thermo_style custom step atoms c_ks f_mygcmc[3] f_mygcmc[4] f_mygcmc[5] f_mygcmc[6]
+thermo 1
+thermo_modify format float %.15g
+run 80

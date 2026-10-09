@@ -61,6 +61,8 @@ export type UnitStyle = 'lj' | 'real' | 'metal' | 'si' | 'cgs' | 'electron' | 'm
  *  qqr2e   q_i q_j / r -> energy (Coulomb constant)
  *  qe2f    charge * electric field -> force
  *  mv2d    mass / volume -> density
+ *  hplanck Planck's constant in energy * time units (1 for lj, where the
+ *          thermal de Broglie length is defined to be 1; see units.ts)
  *  dt      the style's default timestep;  skin  the default neighbor skin
  */
 export interface UnitSystem {
@@ -72,6 +74,7 @@ export interface UnitSystem {
   qqr2e: number;
   qe2f: number;
   mv2d: number;
+  hplanck: number;
   dt: number;
   skin: number;
   /** thermo_modify norm default: yes for lj, no otherwise. */

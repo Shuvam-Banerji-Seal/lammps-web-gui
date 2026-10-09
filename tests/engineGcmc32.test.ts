@@ -77,11 +77,6 @@ run 4
     expect(bad.error).toContain('nonsense');
   });
 
-  it('rejects a non-lj unit style naming the restriction', async () => {
-    const { error } = await run('units real\natom_style atomic\nregion box block 0 5 0 5 0 5\ncreate_box 1 box\nmass 1 1.0\npair_style lj/cut 2.5\npair_coeff * * 0.1 3.0\nfix g all gcmc 1 1 1 1 29494 300.0 -5.0 0.5\nrun 1\n');
-    expect(error).toMatch(/lj unit style/);
-  });
-
   it('follows the reservoir chemical potential (N grows with mu)', async () => {
     const meanN = async (mu: number): Promise<number> => {
       const script = `units lj

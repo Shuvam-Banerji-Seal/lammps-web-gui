@@ -114,6 +114,11 @@ export class RanPark {
     this.saved = v1 * fac;
     return v2 * fac;
   }
+
+  /** Drop the kept second value of a polar pair, so the next gaussian() starts a new pair. */
+  discardGaussian(): void {
+    this.saved = null;
+  }
 }
 
 const PM_A = 16807, PM_M = 2147483647, PM_Q = 127773, PM_R = 2836;

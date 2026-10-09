@@ -1,0 +1,23 @@
+# dimer with Diameters and Masses (w36mol_diam)
+
+2 atoms
+
+Coords
+
+1 0.0 0.0 0.0
+2 1.0 0.0 0.0
+
+Types
+
+1 1
+2 1
+
+Diameters
+
+1 1.0
+2 2.0
+
+Masses
+
+1 0.5
+2 1.5

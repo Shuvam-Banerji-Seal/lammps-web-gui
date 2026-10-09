@@ -17,10 +17,21 @@ import { StyleError } from './force/types';
  * Molecules ("ID molecule-ID"), Charges ("ID q"), Bonds ("ID type atom1
  * atom2"), Angles, Dihedrals, Impropers, Special Bond Counts ("ID N1 N2
  * N3"), Special Bonds ("ID a b c d ..."), Shake Flags, Shake Atoms, Shake
- * Bond Types (kept for fix shake). Masses and Diameters need per-atom masses
- * and radii, which the browser engine's atom styles do not have: they are
- * rejected with an error naming them. Fragments, Dipoles and Body sections
- * are rejected too.
+ * Bond Types (kept for fix shake). Diameters and Masses are read as per-atom
+ * arrays and carried into created atoms by the insertion paths (create_atoms
+ * mol, fix pour mol, fix deposit mol). "This section is only allowed for
+ * atom styles that support finite-size spherical particles, e.g. atom_style
+ * sphere. If not listed, the default diameter of each atom in the molecule
+ * is 1.0." (Diameters) and "This section is only allowed for atom styles
+ * that support per-atom mass, as opposed to per-type mass. See the mass
+ * command for details. If this section is not included, the default mass for
+ * each atom is derived from its volume (see Diameters section) and a default
+ * density of 1.0, in units of mass/volume." (Masses). The scale keyword
+ * applies to both: "The scale factor is applied to each of these properties
+ * in the molecule file, if they are defined: the individual particle
+ * coordinates (...), the individual mass of each particle (Masses ...), the
+ * individual diameters of each particle (Diameters ...)". Fragments, Dipoles
+ * and Body sections are rejected.
  * Keywords: offset (all five type offsets), toff / boff / aoff / doff / ioff
  * (one each), and scale: "The scale factor is applied to each of these
  * properties in the molecule file, if they are defined: the individual
@@ -44,6 +55,10 @@ export interface MoleculeTemplate {
   /** Explicit special lists (template-local IDs per atom: [1-2], [1-3], [1-4]), or null. */
   special: number[][][] | null;
   shake: { flags: Int32Array; atoms: number[][]; types: number[][] } | null;
+  /** Per-atom diameters (Diameters section, scaled), or null (default 1.0). */
+  diam: Float64Array | null;
+  /** Per-atom masses (Masses section, scaled), or null (default from the diameter and density 1.0). */
+  mass: Float64Array | null;
 }
 
 export interface MoleculeOptions {
@@ -80,7 +95,7 @@ export const parseMoleculeFile = (id: string, name: string, text: string, o: Mol
   const count = (h: string) => head[h]?.[0] ?? 0;
   const t: MoleculeTemplate = {
     id, natoms, x: new Float64Array(3 * natoms), type: new Int32Array(natoms), q: null, mol: null,
-    bonds: [], angles: [], dihedrals: [], impropers: [], special: null, shake: null,
+    bonds: [], angles: [], dihedrals: [], impropers: [], special: null, shake: null, diam: null, mass: null,
   };
   const seen = new Set<string>();
   let specialCounts: number[][] | null = null;
@@ -154,8 +169,16 @@ export const parseMoleculeFile = (id: string, name: string, text: string, o: Mol
         for (const r of rows(natoms, 1)) (sec === 'Shake Atoms' ? t.shake.atoms : t.shake.types)[atomIndex(r[0], 'atom ID') - 1] = r.slice(1);
         break;
       }
-      case 'Masses': case 'Diameters':
-        throw new StyleError(`molecule ${id}: the ${sec} section needs per-atom ${sec === 'Masses' ? 'masses' : 'diameters'}, which the browser engine's atom styles do not have`);
+      case 'Masses': {
+        t.mass = new Float64Array(natoms);
+        for (const r of rows(natoms, 2)) t.mass[atomIndex(r[0], 'atom ID') - 1] = r[1] * o.scale;
+        break;
+      }
+      case 'Diameters': {
+        t.diam = new Float64Array(natoms);
+        for (const r of rows(natoms, 2)) t.diam[atomIndex(r[0], 'atom ID') - 1] = r[1] * o.scale;
+        break;
+      }
       default:
         throw new StyleError(`molecule ${id}: section '${sec}' in ${name} is not supported by the browser engine`);
     }

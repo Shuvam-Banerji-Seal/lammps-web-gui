@@ -542,11 +542,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
                         <thead>
                           <tr>{t.keywords.map((kw, c) => <th key={kw} title={thermoUnit(t.units, kw) ?? undefined} className={`px-2 font-semibold ${ct.headerText}`}>{t.labels?.[c] ?? kw}</th>)}</tr>
                         </thead>
-                        <tbody>
-                          {t.rows.map((r, j) => (
-                            <tr key={j}>{t.keywords.map((kw) => <td key={kw} className="px-2">{fmtCell(kw, r[kw])}</td>)}</tr>
-                          ))}
-                        </tbody>
+                        <ThermoRows ct={ct} keywords={t.keywords} rows={t.rows} />
                       </table>
                     </div>
                   ))}
@@ -636,6 +632,38 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
         </div>
       </div>
     </div>
+  );
+};
+
+/** Rows kept in the page per thermo table; long runs show the first row and the latest ones, the rest on demand. */
+const THERMO_ROWS_SHOWN = 200;
+
+/**
+ * Thermo table body. A long run (thermo every few steps over many steps) used to put every row in the page: a
+ * 20,000-step run with thermo 50 made 398 rows and a 143,000-character accessibility tree. Now the first row and the
+ * latest THERMO_ROWS_SHOWN - 1 are shown, with a row that says how many are hidden and shows them all on request.
+ */
+export const ThermoRows: React.FC<{ ct: ReturnType<typeof getThemeTokens>; keywords: ThermoKeyword[]; rows: ThermoRow[] }> = ({ ct, keywords, rows }) => {
+  const [all, setAll] = useState(false);
+  const hidden = all ? 0 : Math.max(0, rows.length - THERMO_ROWS_SHOWN);
+  const row = (r: ThermoRow, j: number) => (
+    <tr key={j}>{keywords.map((kw) => <td key={kw} className="px-2">{fmtCell(kw, r[kw])}</td>)}</tr>
+  );
+  return (
+    <tbody>
+      {hidden > 0 ? (
+        <>
+          {row(rows[0], 0)}
+          <tr>
+            <td colSpan={keywords.length} className={`px-2 py-0.5 text-center font-sans ${ct.muted}`}>
+              … {hidden} earlier rows hidden{' '}
+              <button className="underline" onClick={() => setAll(true)}>show all {rows.length}</button>
+            </td>
+          </tr>
+          {rows.slice(hidden + 1).map((r, j) => row(r, hidden + 1 + j))}
+        </>
+      ) : rows.map(row)}
+    </tbody>
   );
 };
 

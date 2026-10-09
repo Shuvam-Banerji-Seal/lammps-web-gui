@@ -483,13 +483,21 @@ export class FixRigid extends Fix {
     if (!this.built || this.reinit) { this.buildBodies(); this.built = true; }
   }
 
+  /**
+   * Degrees of freedom a body takes away from a temperature compute: its atoms' translational dof
+   * (dimension per atom) minus the body's own (3 in 2d). Measured with native LAMMPS (black box): two
+   * 3-atom bodies in 2d give temp 0.796366300611291 with ke 0.265455433537097 per atom, i.e.
+   * 2 * 3 * 2 - 2 - 2 * (6 - 3) = 4 dof (w37rigid_temp2d, fix rigid and rigid/small); counting 3 dof per
+   * atom in 2d left -2 and a temperature of 0.
+   */
   dofRemoved(groupBit: number): number {
     const s = this.sys.state;
     const idx = this.index();
+    const d = this.sys.dimension;
     let n = 0;
     for (const b of this.bodies) {
       if (!b.atoms.every((id) => (s.mask[idx.get(id)!] & groupBit) !== 0)) continue;
-      n += 3 * b.atoms.length - b.dof;
+      n += d * b.atoms.length - b.dof;
     }
     return n;
   }

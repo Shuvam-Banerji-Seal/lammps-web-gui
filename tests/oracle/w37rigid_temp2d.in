@@ -1,0 +1,30 @@
+# oracle: temperature of rigid bodies in 2d (fix rigid group, then fix rigid/small molecule): each body removes dimension * natoms - 3 dof, so two 3-atom bodies leave 4 dof
+# oracle-compare: thermo=all atoms=all rel=1e-9
+units lj
+atom_style molecular
+dimension 2
+region box block 0 20 0 20 -0.5 0.5
+create_box 1 box
+create_atoms 1 single 5 5 0
+create_atoms 1 single 6 5 0
+create_atoms 1 single 5.5 5.9 0
+create_atoms 1 single 12 12 0
+create_atoms 1 single 13 12 0
+create_atoms 1 single 12.5 12.9 0
+mass 1 1.0
+pair_style lj/cut 1.0
+pair_coeff 1 1 0.0 1.0
+velocity all create 1.0 4321
+group b1 id 1:3
+group b2 id 4:6
+fix 1 all rigid group 2 b1 b2
+fix 2 all enforce2d
+thermo_style custom step temp ke pe
+thermo_modify format float %.15g
+thermo 10
+run 20
+unfix 1
+set group b1 mol 1
+set group b2 mol 2
+fix 1 all rigid/small molecule
+run 20

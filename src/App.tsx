@@ -2,8 +2,8 @@ import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 
 import ViewerModule from './components/workbench/ViewerModule';
 import ScriptBuilder from './components/workbench/ScriptBuilder';
 import CompilerHelper from './components/workbench/CompilerHelper';
-import { FlaskConical, FileCode2, Hammer, Atom as AtomIcon, NotebookPen, Sun, Moon, Info, X, ExternalLink } from 'lucide-react';
-import { getThemeTokens, initialTheme, Theme, THEME_STORAGE_KEY } from './theme';
+import { FlaskConical, FileCode2, Hammer, Atom as AtomIcon, NotebookPen, Info, X, ExternalLink } from 'lucide-react';
+import { getThemeTokens, initialTheme, isDarkTheme, nextTheme, THEMES, THEME_STORAGE_KEY, themeColor, Theme } from './theme';
 import { browserStore } from './services/persistence';
 import type { BuilderIncoming } from './lammps/notebookBridge';
 
@@ -89,13 +89,23 @@ const App: React.FC = () => {
     try { localStorage.setItem(MODULE_KEY, m); } catch { /* non-fatal */ }
   };
 
-  const toggleTheme = () => {
-    setTheme(t => {
-      const next: Theme = t === 'dark' ? 'light' : 'dark';
-      try { localStorage.setItem(THEME_STORAGE_KEY, next); } catch { /* non-fatal */ }
-      return next;
-    });
-  };
+  const chooseTheme = useCallback((next: Theme) => {
+    setTheme(next);
+    try { localStorage.setItem(THEME_STORAGE_KEY, next); } catch { /* non-fatal */ }
+  }, []);
+
+  /** Next theme in THEMES order (the ViewerModule shortcut and sidebar item). */
+  const cycleTheme = useCallback(() => chooseTheme(nextTheme(theme)), [theme, chooseTheme]);
+
+  // Keep the browser UI colour (mobile address bar, etc.) in step with the page.
+  useEffect(() => {
+    try {
+      document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content', themeColor(theme));
+      // the page behind the app (seen on overscroll / mobile bounce) follows the theme too
+      document.body.style.backgroundColor = themeColor(theme);
+      document.documentElement.style.colorScheme = isDarkTheme(theme) ? 'dark' : 'light';
+    } catch { /* non-fatal */ }
+  }, [theme]);
 
   return (
     <div className={`flex h-dvh w-full flex-col overflow-hidden font-sans ${ct.bg} ${ct.text}`}>
@@ -141,14 +151,17 @@ const App: React.FC = () => {
               </button>
             ))}
           </nav>
-          <button
-            onClick={toggleTheme}
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            aria-label="Toggle color theme"
-            className={`rounded-lg p-1.5 transition-colors sm:p-2 ${ct.button}`}
+          <select
+            aria-label="Color theme"
+            title="Color theme"
+            value={theme}
+            onChange={e => chooseTheme(e.target.value as Theme)}
+            className={`max-w-[8.5rem] cursor-pointer rounded-lg px-2 py-1.5 text-xs transition-colors sm:max-w-none ${ct.button} ${ct.text}`}
           >
-            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-          </button>
+            {THEMES.map(t => (
+              <option key={t.id} value={t.id}>{t.label}</option>
+            ))}
+          </select>
         </div>
       </header>
 
@@ -159,7 +172,7 @@ const App: React.FC = () => {
             incoming={builderInbox} onIncomingTaken={() => setBuilderInbox(null)} />
         )}
         {module === 'compiler' && <CompilerHelper theme={theme} />}
-        {module === 'viewer' && <ViewerModule theme={theme} onToggleTheme={toggleTheme} />}
+        {module === 'viewer' && <ViewerModule theme={theme} onToggleTheme={cycleTheme} />}
         {module === 'notebook' && (
           <Suspense fallback={<div className={`p-6 text-sm ${ct.muted}`}>Loading the notebook…</div>}>
             <Notebook theme={theme} incoming={notebookInbox} onIncomingTaken={() => setNotebookInbox(null)}

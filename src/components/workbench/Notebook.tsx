@@ -4,7 +4,7 @@ import ResourceMonitor from './ResourceMonitor';
 import { cellsToScript } from '../../lammps/notebookBridge';
 import { explainEngineError } from './engineError';
 import { thermoUnit, unitsCaption } from '../../lammps/thermoUnits';
-import { getThemeTokens, Theme } from '../../theme';
+import { getThemeTokens, isDarkTheme, Theme } from '../../theme';
 import { usePersistentState } from '../../hooks/usePersistentState';
 import MoleculeCanvas from '../MoleculeCanvas';
 import { LineChart } from '../charts/SimpleChart';
@@ -298,12 +298,12 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
 
   const data = useMemo(() => (frame ? frameToMoleculeData(frame) : null), [frame]);
   const config = useMemo(() => {
-    if (!frame || !data) return vizConfig(1, 1, theme === 'dark');
+    if (!frame || !data) return vizConfig(1, 1, isDarkTheme(theme));
     const { lo, hi } = frame.box;
     const dims = hi[2] - lo[2] > 0 && frame.x.some((_, k) => k % 3 === 2 && frame.x[k] !== 0) ? 3 : 2;
     const vol = (hi[0] - lo[0]) * (hi[1] - lo[1]) * (dims === 3 ? hi[2] - lo[2] : 1);
     const spacing = Math.pow(vol / Math.max(1, data.atoms.length), 1 / dims);
-    return vizConfig(spacing, Math.max(1, ...Object.keys(data.atomTypes).map(Number)), theme === 'dark');
+    return vizConfig(spacing, Math.max(1, ...Object.keys(data.atomTypes).map(Number)), isDarkTheme(theme));
   }, [frame, data, theme]);
 
   const chart = useMemo(() => {

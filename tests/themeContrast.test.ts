@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getThemeTokens, type Theme } from '../src/theme';
+import { getThemeTokens, THEMES, type Theme } from '../src/theme';
 
 /**
  * WCAG 2.1 SC 1.4.3 (Contrast, Minimum): normal-size text needs 4.5:1.
@@ -32,23 +32,45 @@ const SURFACES: Record<Theme, string[]> = {
   light: ['#f4efe6', '#fbf8f1', '#fffdf8', '#ffffff', '#efe9dc', '#e5ddcb', '#e7efdf'],
   // input, bg, surface
   dark: ['#14110c', '#16130f', '#1e1913'],
+  // input, bg, surface, raised, button, hover, accentSoft
+  midnight: ['#0a1020', '#0c1322', '#121b2d', '#1a2539', '#1d2a42', '#22314b', '#16353d'],
+  // bg, surface, card, input, button, hover, accentSoft, warn
+  solarized: ['#fdf6e3', '#eee8d5', '#fffbf0', '#e4dcc8', '#dbd2bb', '#dfeaf0', '#f6e3cf'],
+  // bg, surface, card, button, hover, accentSoft, warn
+  'high-contrast': ['#000000', '#0a0a0a', '#111111', '#1a1a1a', '#262626', '#1a1a00', '#1a1600'],
 };
 
-describe('theme text contrast (WCAG AA 4.5:1)', () => {
-  for (const theme of ['light', 'dark'] as Theme[]) {
+/** Minimum text contrast per theme: AAA (7:1) for high contrast, AA (4.5:1) otherwise. */
+const MIN_RATIO: Record<Theme, number> = {
+  dark: 4.5,
+  light: 4.5,
+  midnight: 4.5,
+  solarized: 4.5,
+  'high-contrast': 7,
+};
+
+/** Text tokens checked on every surface of a theme. */
+const TEXT_KEYS = ['muted', 'accentText', 'text', 'headerText', 'accentCode'] as const;
+/** The high-contrast theme also checks the status and error text tokens. */
+const STRICT_TEXT_KEYS = [...TEXT_KEYS, 'danger', 'invalidText'] as const;
+
+describe('theme text contrast (WCAG AA 4.5:1; high contrast AAA 7:1)', () => {
+  for (const theme of THEMES.map(x => x.id)) {
     const t = getThemeTokens(theme);
-    for (const key of ['muted', 'accentText', 'text'] as const) {
-      it(`${theme} ${key} clears 4.5:1 on every surface`, () => {
+    const min = MIN_RATIO[theme];
+    const keys = theme === 'high-contrast' ? STRICT_TEXT_KEYS : TEXT_KEYS;
+    for (const key of keys) {
+      it(`${theme} ${key} clears ${min}:1 on every surface`, () => {
         const fg = textHex(t[key]);
         for (const bg of SURFACES[theme]) {
-          expect(ratio(fg, bg), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+          expect(ratio(fg, bg), `${fg} on ${bg}`).toBeGreaterThanOrEqual(min);
         }
       });
     }
-    it(`${theme} input placeholder clears 4.5:1 on the input background`, () => {
+    it(`${theme} input placeholder clears ${min}:1 on the input background`, () => {
       const fg = textHex(t.input, 'placeholder:text-');
       const inputBg = t.input.match(/bg-\[(#[0-9a-fA-F]{6})\]/)![1];
-      expect(ratio(fg, inputBg), `${fg} on ${inputBg}`).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(fg, inputBg), `${fg} on ${inputBg}`).toBeGreaterThanOrEqual(min);
     });
   }
 

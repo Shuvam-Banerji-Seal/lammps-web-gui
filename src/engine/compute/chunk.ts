@@ -21,7 +21,7 @@ import { parseRef, peratomValues, type Ref } from '../refs';
  * Styles: bin/1d, bin/2d, bin/3d, type, molecule, c_ID, c_ID[I], f_ID,
  * f_ID[I], v_name. bin/sphere and bin/cylinder throw a StyleError.
  * Keywords: region, nchunk, limit, ids (once|every), compress, discard,
- * bound, pbc (only "no": "The *pbc* keyword only applies to the *bin/sphere*
+ * bound, pbc (only no: "The *pbc* keyword only applies to the *bin/sphere*
  * and *bin/cylinder* styles."), units.
  *
  * Measured with native LAMMPS (black box): with box 0..10 and bin/1d delta 3,
@@ -30,7 +30,7 @@ import { parseRef, peratomValues, type Ref } from '../refs';
  * extend in both directions from the origin and are kept when they intersect
  * the bounds. An atom exactly on an edge belongs to the bin above it (x = 3.0
  * with delta 3 from 0 is bin 2). bin/2d and bin/3d number the last dimension
- * fastest ("numbering varies fastest in the last dimension"). Density values
+ * fastest (the last dimension varies fastest). Density values
  * use the full bin volume (delta^dims), also for the last bin.
  */
 
@@ -471,7 +471,7 @@ export const chunkCompute = (sys: System, id: string, what: string): ComputeChun
  * Mass-weighted, unwrapped centre of mass of each chunk: atoms in the group
  * with chunk ID > 0 (shared by com/chunk and msd/chunk).
  */
-const chunkCom = (sys: System, groupBit: number, chunk: ComputeChunkAtom): Float64Array => {
+const chunkCom = (sys: System, groupBit: number, chunk: ComputeChunkAtom, wrap = false): Float64Array => {
   chunk.ensure();
   const s = sys.state;
   const N = chunk.nchunk;
@@ -487,7 +487,39 @@ const chunkCom = (sys: System, groupBit: number, chunk: ComputeChunkAtom): Float
     mass[c - 1] += m;
   }
   for (let c = 0; c < N; c++) for (let d = 0; d < 3; d++) sums[3 * c + d] = mass[c] > 0 ? sums[3 * c + d] / mass[c] : 0;
+  if (wrap) {
+    // Measured with native LAMMPS (black box): a chunk with no atoms keeps its zero centre, also with wrap yes.
+    const p = [0, 0, 0];
+    for (let c = 0; c < N; c++) {
+      if (!(mass[c] > 0)) continue;
+      p[0] = sums[3 * c]; p[1] = sums[3 * c + 1]; p[2] = sums[3 * c + 2];
+      sys.geom.remapPoint(p);
+      sums[3 * c] = p[0]; sums[3 * c + 1] = p[1]; sums[3 * c + 2] = p[2];
+    }
+  }
   return sums;
+};
+
+/**
+ * Words after the chunk ID of com/chunk: optional wrap with a logical value.
+ * docs.lammps.org/compute_com_chunk.html: "wrap center of mass back to cell if
+ * argument is *yes*, *true*, *on* or *1*, otherwise do not (default)". The
+ * logical words are accepted in lower case only, and a repeated keyword keeps
+ * the last value (measured with native LAMMPS, black box: wrap yes wrap no
+ * leaves the centre unwrapped, wrap no wrap yes wraps it; the upper-case word YES
+ * is refused with a message that a boolean parameter is expected).
+ */
+export const parseComChunkWrap = (id: string, words: string[]): boolean => {
+  let wrap = false;
+  for (let k = 0; k < words.length; k++) {
+    if (words[k] !== 'wrap') throw new StyleError(`compute ${id} (com/chunk): unknown keyword '${words[k]}'`);
+    if (k + 1 >= words.length) throw new StyleError(`compute ${id} (com/chunk): wrap needs a logical value (yes, true, on, 1, no, false, off or 0)`);
+    const v = words[++k];
+    if (v === 'yes' || v === 'true' || v === 'on' || v === '1') wrap = true;
+    else if (v === 'no' || v === 'false' || v === 'off' || v === '0') wrap = false;
+    else throw new StyleError(`compute ${id} (com/chunk): expected a boolean value for wrap, got '${v}'`);
+  }
+  return wrap;
 };
 
 /*
@@ -502,17 +534,19 @@ const chunkCom = (sys: System, groupBit: number, chunk: ComputeChunkAtom): Float
 export class ComputeComChunk extends Compute {
   readonly style = 'com/chunk';
   private readonly chunk: ComputeChunkAtom;
+  private readonly wrap: boolean;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (args.length !== 1) throw new StyleError(`usage: compute ${id} group-ID com/chunk chunkID`);
+    if (!args.length) throw new StyleError(`usage: compute ${id} group-ID com/chunk chunkID [wrap yes|no]`);
     this.chunk = chunkCompute(sys, args[0], `compute ${id} (com/chunk)`);
+    this.wrap = parseComChunkWrap(id, args.slice(1));
     this.arrayFlag = true;
     this.sizeArrayCols = 3;
   }
 
   protected computeArray(): void {
-    const sums = chunkCom(this.sys, this.groupBit, this.chunk);
+    const sums = chunkCom(this.sys, this.groupBit, this.chunk, this.wrap);
     this.sizeArrayRows = this.chunk.nchunk;
     this.array = new Float64Array(sums);
   }

@@ -2,6 +2,8 @@ import type { System } from './system';
 import { StyleError } from './force/types';
 import type { Mode, Value } from './formula';
 import { hasCharge, hasMolecule, massOf } from './atoms';
+import { finiteSpin } from './compute/finiteSpin';
+import type { SimState } from './types';
 
 /*
  * Group, region, special and feature functions of variable formulas —
@@ -22,8 +24,8 @@ import { hasCharge, hasMolecule, massOf } from './atoms';
  * its center of mass." Region forms add a final region ID: "The function is
  * computed for all atoms that are in both the group and the region."
  * Positions for xcm, gyration, angmom, torque, inertia and omega are
- * unwrapped with the image flags. Special functions: "sum(), min(), max(),
- * ave(), trap(), slope(), sort(), rsort()" over a global vector; "gmask(x)
+ * unwrapped with the image flags. Special functions sum(x), min(x), max(x),
+ * ave(x), trap(x), slope(x), sort(x), rsort(x) work on a global vector; "gmask(x)
  * ... returns a 1 for atoms that are in the group"; rmask, grmask; next().
  * "slope() ... If the line has a single point or is vertical, it returns
  * 1.0e20."
@@ -145,7 +147,7 @@ const groupFn = (sys: System, fn: string, args: string[]): number => {
       for (const i of idx) k += m(i) * (s.v[3 * i] ** 2 + s.v[3 * i + 1] ** 2 + s.v[3 * i + 2] ** 2);
       return 0.5 * s.units.mvv2e * k;
     }
-    case 'angmom': return angmom(idx, pos, com(), m, s.v)[dim(args[1])];
+    case 'angmom': return angmom(s, idx, pos, com(), m, true)[dim(args[1])];
     case 'torque': {
       const c = com();
       const t = [0, 0, 0];
@@ -158,34 +160,47 @@ const groupFn = (sys: System, fn: string, args: string[]): number => {
       return t[dim(args[1])];
     }
     case 'inertia': {
-      const I = inertia(idx, pos, com(), m);
+      const I = inertia(s, idx, pos, com(), m, true);
       const k = ['xx', 'yy', 'zz', 'xy', 'yz', 'xz'].indexOf(args[1]);
       if (k < 0) throw new StyleError(`inertia(): component must be xx, yy, zz, xy, yz or xz, got '${args[1]}'`);
       return [I[0][0], I[1][1], I[2][2], I[0][1], I[1][2], I[0][2]][k];
     }
     case 'omega': {
       const c = com();
-      const L = angmom(idx, pos, c, m, s.v);
-      const I = inertia(idx, pos, c, m);
+      // omega() keeps the point-mass L and I: measured with native LAMMPS (black box), omega(all,x) equals the pseudo-inverse of the point-mass inertia times the point-mass angmom, also with finite spheres and ellipsoids.
+      const L = angmom(s, idx, pos, c, m, false);
+      const I = inertia(s, idx, pos, c, m, false);
       return omegaFrom(I, L)[dim(args[1])];
     }
   }
   throw new StyleError(`unknown group function ${fn}()`);
 };
 
-const angmom = (idx: number[], pos: (i: number) => number[], c: number[], m: (i: number) => number, v: Float64Array): number[] => {
+/*
+ * docs.lammps.org/variable.html (versionchanged 2Sep2026): "The inertia() and angmom() functions now include the
+ * contributions of finite-size particles; previously all atoms were treated as point masses." omega() is not
+ * listed there and keeps the point-mass values (measured with native LAMMPS, black box).
+ */
+/** Angular momentum about c; with finite = true the spin of finite-size particles is added (compute/finiteSpin.ts). */
+const angmom = (s: SimState, idx: number[], pos: (i: number) => number[], c: number[], m: (i: number) => number, finite: boolean): number[] => {
   const L = [0, 0, 0];
+  const v = s.v;
   for (const i of idx) {
     const p = pos(i);
     const dx = p[0] - c[0], dy = p[1] - c[1], dz = p[2] - c[2];
     const mi = m(i);
     const vx = v[3 * i], vy = v[3 * i + 1], vz = v[3 * i + 2];
     L[0] += mi * (dy * vz - dz * vy); L[1] += mi * (dz * vx - dx * vz); L[2] += mi * (dx * vy - dy * vx);
+    if (finite) {
+      const f = finiteSpin(s, i);
+      if (f) { L[0] += f.L[0]; L[1] += f.L[1]; L[2] += f.L[2]; }
+    }
   }
   return L;
 };
 
-const inertia = (idx: number[], pos: (i: number) => number[], c: number[], m: (i: number) => number): number[][] => {
+/** Inertia tensor about c; with finite = true each finite-size particle's own tensor is added (parallel-axis theorem, compute/finiteSpin.ts). */
+const inertia = (s: SimState, idx: number[], pos: (i: number) => number[], c: number[], m: (i: number) => number, finite: boolean): number[][] => {
   const I = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
   for (const i of idx) {
     const p = pos(i);
@@ -197,6 +212,13 @@ const inertia = (idx: number[], pos: (i: number) => number[], c: number[], m: (i
     I[0][1] -= mi * d[0] * d[1];
     I[1][2] -= mi * d[1] * d[2];
     I[0][2] -= mi * d[0] * d[2];
+    if (finite) {
+      const f = finiteSpin(s, i);
+      if (f) {
+        I[0][0] += f.T[0]; I[1][1] += f.T[1]; I[2][2] += f.T[2];
+        I[0][1] += f.T[3]; I[1][2] += f.T[4]; I[0][2] += f.T[5];
+      }
+    }
   }
   I[1][0] = I[0][1]; I[2][1] = I[1][2]; I[2][0] = I[0][2];
   return I;

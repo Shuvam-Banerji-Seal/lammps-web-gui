@@ -6,6 +6,7 @@ import { expandWildcards, globalVector, parseRef, peratomValues, type Ref } from
 import { ComputeChunkAtom, chunkCompute } from './chunk';
 import { ComputeGyration } from './global';
 import { pinvSolve3, shapeOf } from './chunk17_math';
+import { finiteSpin } from './finiteSpin';
 
 /*
  * Wave-17 chunk and shape computes, implemented from the cited
@@ -114,8 +115,11 @@ const centres = (mem: Members): Centres => {
   return { M, com, geo };
 };
 
-/** Angular momentum about each chunk's centre of mass: sum m (r - r_cm) x v. */
-const angmomOf = (sys: System, mem: Members, cen: Centres): Float64Array<ArrayBuffer> => {
+/**
+ * Angular momentum about each chunk's centre of mass: sum m (r - r_cm) x v.
+ * With finite = true the spin of finite-size particles is added (finiteSpin.ts).
+ */
+const angmomOf = (sys: System, mem: Members, cen: Centres, finite: boolean): Float64Array<ArrayBuffer> => {
   const s = sys.state;
   const L = new Float64Array(3 * mem.N);
   for (let k = 0; k < mem.n; k++) {
@@ -129,6 +133,10 @@ const angmomOf = (sys: System, mem: Members, cen: Centres): Float64Array<ArrayBu
     L[3 * c] += m * (dy * vz - dz * vy);
     L[3 * c + 1] += m * (dz * vx - dx * vz);
     L[3 * c + 2] += m * (dx * vy - dy * vx);
+    if (finite) {
+      const f = finiteSpin(s, i);
+      if (f) for (let d = 0; d < 3; d++) L[3 * c + d] += f.L[d];
+    }
   }
   return L;
 };
@@ -139,7 +147,7 @@ const angmomOf = (sys: System, mem: Members, cen: Centres): Float64Array<ArrayBu
  * m dx dy and so on; measured with native LAMMPS (black box) on a 3-atom chunk:
  * Ixy = +1 where sum m x y = -1.
  */
-const inertiaOf = (mem: Members, cen: Centres): Float64Array<ArrayBuffer> => {
+const inertiaOf = (sys: System, mem: Members, cen: Centres, finite: boolean): Float64Array<ArrayBuffer> => {
   const I = new Float64Array(6 * mem.N);
   for (let k = 0; k < mem.n; k++) {
     const c = mem.chunk[k];
@@ -153,6 +161,10 @@ const inertiaOf = (mem: Members, cen: Centres): Float64Array<ArrayBuffer> => {
     I[6 * c + 3] -= m * dx * dy;
     I[6 * c + 4] -= m * dy * dz;
     I[6 * c + 5] -= m * dx * dz;
+    if (finite) {
+      const f = finiteSpin(sys.state, mem.atom[k]);
+      if (f) for (let j = 0; j < 6; j++) I[6 * c + j] += f.T[j];
+    }
   }
   return I;
 };
@@ -247,7 +259,7 @@ export class ComputeAngmomChunk extends Compute {
   protected computeArray(): void {
     const mem = members(this.sys, this.groupBit, this.chunk);
     this.sizeArrayRows = mem.N;
-    this.array = angmomOf(this.sys, mem, centres(mem));
+    this.array = angmomOf(this.sys, mem, centres(mem), true);
   }
 }
 
@@ -274,8 +286,9 @@ export class ComputeOmegaChunk extends Compute {
   protected computeArray(): void {
     const mem = members(this.sys, this.groupBit, this.chunk);
     const cen = centres(mem);
-    const L = angmomOf(this.sys, mem, cen);
-    const I = inertiaOf(mem, cen);
+    // omega/chunk keeps the point-mass L and I (measured with native LAMMPS, black box, spheres and ellipsoids: the pseudo-inverse of the point-mass values).
+    const L = angmomOf(this.sys, mem, cen, false);
+    const I = inertiaOf(this.sys, mem, cen, false);
     const out = new Float64Array(3 * mem.N);
     for (let c = 0; c < mem.N; c++) {
       const w = pinvSolve3(full3(I, c), [L[3 * c], L[3 * c + 1], L[3 * c + 2]]);
@@ -308,7 +321,7 @@ export class ComputeInertiaChunk extends Compute {
   protected computeArray(): void {
     const mem = members(this.sys, this.groupBit, this.chunk);
     this.sizeArrayRows = mem.N;
-    this.array = inertiaOf(mem, centres(mem));
+    this.array = inertiaOf(this.sys, mem, centres(mem), true);
   }
 }
 

@@ -1,0 +1,96 @@
+# oracle: angmom/chunk, inertia/chunk and omega/chunk of a mix of finite spheres (type 1) and radius-0 point particles (type 2, mass set by density) with spin, under fix nve/sphere, 50 steps
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      sphere
+lattice         sc 0.3
+region          box block 0 3 0 3 0 2
+create_box      2 box
+create_atoms    1 box
+set             atom 1 type 1
+set             atom 1 diameter 1
+set             atom 1 density 0.75
+set             atom 2 type 1
+set             atom 2 diameter 1.2
+set             atom 2 density 0.9
+set             atom 3 type 2
+set             atom 3 diameter 0
+set             atom 3 density 1
+set             atom 4 type 1
+set             atom 4 diameter 1
+set             atom 4 density 1.2
+set             atom 5 type 1
+set             atom 5 diameter 1.2
+set             atom 5 density 0.6
+set             atom 6 type 2
+set             atom 6 diameter 0
+set             atom 6 density 0.9
+set             atom 7 type 1
+set             atom 7 diameter 1
+set             atom 7 density 0.9
+set             atom 8 type 1
+set             atom 8 diameter 1.2
+set             atom 8 density 1.05
+set             atom 9 type 2
+set             atom 9 diameter 0
+set             atom 9 density 0.8
+set             atom 10 type 1
+set             atom 10 diameter 1
+set             atom 10 density 0.6
+set             atom 11 type 1
+set             atom 11 diameter 1.2
+set             atom 11 density 0.75
+set             atom 12 type 2
+set             atom 12 diameter 0
+set             atom 12 density 0.7
+set             atom 13 type 1
+set             atom 13 diameter 1
+set             atom 13 density 1.05
+set             atom 14 type 1
+set             atom 14 diameter 1.2
+set             atom 14 density 1.2
+set             atom 15 type 2
+set             atom 15 diameter 0
+set             atom 15 density 1
+set             atom 16 type 1
+set             atom 16 diameter 1
+set             atom 16 density 0.75
+set             atom 17 type 1
+set             atom 17 diameter 1.2
+set             atom 17 density 0.9
+set             atom 18 type 2
+set             atom 18 diameter 0
+set             atom 18 density 0.9
+set             atom 1 omega 0.385423 0.382421 -0.25
+set             atom 2 omega 0.206201 0.0849836 -0.2
+set             atom 3 omega -0.275106 -0.252423 -0.15
+set             atom 4 omega -0.353382 -0.471111 -0.1
+set             atom 5 omega 0.086048 -0.468228 -0.05
+set             atom 6 omega 0.399417 -0.24513 5.55112e-17
+set             atom 7 omega 0.127639 0.0932562 0.05
+set             atom 8 omega -0.331131 0.387783 0.1
+set             atom 9 omega -0.304793 0.499929 0.15
+set             atom 10 omega 0.168067 0.376951 0.2
+set             atom 11 omega 0.394709 0.0766869 0.25
+set             atom 12 omega 0.0431015 -0.259644 0.3
+set             atom 13 omega -0.37165 -0.473861 0.35
+set             atom 14 omega -0.241933 -0.465213 0.4
+set             atom 15 omega 0.242216 -0.237768 0.45
+set             atom 16 omega 0.371518 0.101502 0.5
+set             atom 17 omega -0.0434546 0.393035 0.55
+set             atom 18 omega -0.394766 0.499717 0.6
+velocity        all create 0.8 4928 mom yes rot no dist gaussian
+pair_style      lj/cut 2.5
+pair_coeff      * * 0.05 0.8
+timestep        0.001
+group           fin type 1
+group           pts type 2
+fix             1 fin nve/sphere
+fix             2 pts nve
+compute         cc all chunk/atom type
+compute         L all angmom/chunk cc
+compute         I all inertia/chunk cc
+compute         W all omega/chunk cc
+thermo_style    custom step c_L[1][1] c_L[1][2] c_L[1][3] c_L[2][1] c_L[2][2] c_L[2][3] c_I[1][1] c_I[1][2] c_I[1][3] c_I[1][4] c_I[1][5] c_I[1][6] c_I[2][1] c_I[2][2] c_I[2][3] c_I[2][4] c_I[2][5] c_I[2][6] c_W[1][1] c_W[1][2] c_W[1][3] c_W[2][1] c_W[2][2] c_W[2][3]
+thermo_modify   format float %.15g norm no
+thermo          10
+run             50

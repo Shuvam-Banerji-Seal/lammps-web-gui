@@ -1,0 +1,26 @@
+# oracle: compute gaussian/grid/local in a triclinic prism box with displaced atoms, grid 4 3 3
+# oracle-compare: thermo=first atoms=all rel=1e-9 abs=1e-12
+units metal
+atom_modify map hash
+region box prism 0 6 0 6 0 6 2 -1 1.5
+create_box 2 box
+create_atoms 1 single 0.5 0.7 0.3 units box
+create_atoms 1 single 3.1 2.4 2.2 units box
+create_atoms 2 single 1.7 4.2 5.1 units box
+create_atoms 2 single 4.4 1.1 4.6 units box
+mass * 180.88
+displace_atoms all move 0.05 -0.04 0.03 units box
+pair_style zero 3.5
+pair_coeff * *
+compute mygl all gaussian/grid/local grid 4 3 3 1.1 0.8 0.7 0.35 0.45
+compute s1 all reduce sum c_mygl[7] inputs local
+compute s2 all reduce sum c_mygl[8] inputs local
+compute m1 all reduce max c_mygl[7] inputs local
+compute m2 all reduce max c_mygl[8] inputs local
+compute n1 all reduce min c_mygl[7] inputs local
+compute n2 all reduce min c_mygl[8] inputs local
+compute zx all reduce sum c_mygl[4] inputs local
+compute zy all reduce sum c_mygl[5] inputs local
+thermo_style custom step c_s1 c_s2 c_m1 c_m2 c_n1 c_n2 c_zx c_zy
+thermo_modify format float %.15g
+run 0

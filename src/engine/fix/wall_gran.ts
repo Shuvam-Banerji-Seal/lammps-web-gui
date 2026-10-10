@@ -92,11 +92,17 @@ interface Motion {
   vshear: number;
 }
 
-/** One plane: the axis, the side and its position (undefined = NULL). */
+/**
+ * One plane: the axis, the side and its position (undefined = NULL). A position given as v_name
+ * (fix_wall_gran.html, versionadded 2Sep2026) is re-evaluated every timestep: `variable` is the
+ * equal-style variable name and `prev` the position of its last evaluation (undefined before the first).
+ */
 interface Plane {
   dim: Dim;
   lo: boolean;
   coord: number;
+  variable?: string;
+  prev?: number;
 }
 
 export class FixWallGran extends Fix {
@@ -158,8 +164,20 @@ export class FixWallGran extends Fix {
     const lo = args[k++], hi = args[k++];
     if (lo === undefined || hi === undefined) throw new StyleError(`fix ${id} wall/gran ${ws} needs lo and hi (either may be NULL)`);
     if (lo === 'NULL' && hi === 'NULL') throw new StyleError(`fix ${id} wall/gran ${ws}: lo and hi are both NULL, no wall is defined`);
-    if (lo !== 'NULL') this.planes.push({ dim, lo: true, coord: parseNum(lo, `${ws} lo`) });
-    if (hi !== 'NULL') this.planes.push({ dim, lo: false, coord: parseNum(hi, `${ws} hi`) });
+    // fix_wall_gran.html (versionadded 2Sep2026): "The *lo* and *hi* wall positions can also be set by an equal-style
+    // :doc:`variable <variable>`, specified as v_name" -- the value is read as a variable name, not parsed
+    const wallPos = (w: string, what: string): Plane['variable'] | number => {
+      if (!w.startsWith('v_') || w.length < 3) return parseNum(w, what);
+      return w.slice(2);
+    };
+    if (lo !== 'NULL') {
+      const c = wallPos(lo, `${ws} lo`);
+      this.planes.push(typeof c === 'number' ? { dim, lo: true, coord: c } : { dim, lo: true, coord: NaN, variable: c });
+    }
+    if (hi !== 'NULL') {
+      const c = wallPos(hi, `${ws} hi`);
+      this.planes.push(typeof c === 'number' ? { dim, lo: false, coord: c } : { dim, lo: false, coord: NaN, variable: c });
+    }
 
     // keyword values
     while (k < args.length) {
@@ -187,6 +205,10 @@ export class FixWallGran extends Fix {
       }
     }
     this.step0 = sys.state.step;
+    if (this.planes.some((p) => p.variable !== undefined)) {
+      // "A wall position set by a variable cannot be combined with the *wiggle* or *shear* keyword."
+      if (this.motion) throw new StyleError(`fix ${id} wall/gran: a wall position set by a variable cannot be combined with wiggle or shear`);
+    }
   }
 
   private setMotion(m: Motion, id: string): void {
@@ -228,6 +250,36 @@ export class FixWallGran extends Fix {
     } else if (m?.kind === 'shear') {
       mv[m.dim] = m.vshear;
     }
+    // planes set by a variable: the position is evaluated now (setup and every timestep), and the wall
+    // velocity is the difference to the previous evaluation over dt (zero at the first one).
+    // Measured with native LAMMPS (black box, one sphere of diameter 1 and density 1 at z = 1.7 under a zplane
+    // hi wall v_zhi with zhi = 2.0 - 0.001 step, dt = 0.001, hooke, Kn 2000, gamma_n 50): the setup force is
+    // -400 (wall velocity zero at the first evaluation), the post_force force of step 1 is -417.416, which needs
+    // the wall velocity -1 = (zhi(1) - zhi(0)) / dt, so the setup evaluation is the previous value; vz after
+    // steps 1 and 2 is -0.78057477705 and -1.5575082544 (a dump of vz, two steps).
+    const planeMv: number[][] = this.planes.map(() => mv);
+    const planeCoord = this.planes.map((p) => p.coord);
+    this.planes.forEach((p, k) => {
+      if (p.variable === undefined) return;
+      const cur = this.sys.equalVariable(p.variable);
+      if (!Number.isFinite(cur)) throw new StyleError(`fix ${id} wall/gran: variable ${p.variable} gave a non-finite wall position`);
+      const vw = p.prev === undefined ? 0 : (cur - p.prev) / dt;
+      p.prev = cur;
+      p.coord = cur;
+      planeCoord[k] = cur;
+      const pm = [0, 0, 0];
+      pm[p.dim] = vw;
+      planeMv[k] = pm;
+    });
+    // "LAMMPS stops with an error if the *lo* wall position does not remain below the *hi* wall position during a run."
+    this.planes.forEach((p, k) => {
+      if (!p.lo || p.variable === undefined) return;
+      this.planes.forEach((q, j) => {
+        if (!q.lo && q.dim === p.dim && !(planeCoord[k] < planeCoord[j])) {
+          throw new StyleError(`fix ${id} wall/gran: the lo wall position must remain below the hi wall position`);
+        }
+      });
+    });
     const { kn, kt, gn, gt, xmu } = this;
     const bit = this.groupBit;
     for (let i = 0; i < s.n; i++) {
@@ -237,7 +289,8 @@ export class FixWallGran extends Fix {
       for (let k = 0; k < this.planes.length; k++) {
         const p = this.planes[k];
         const d = p.dim;
-        const c = p.coord + (m?.kind === 'wiggle' && m.dim === d ? off : 0);
+        const mv = planeMv[k];
+        const c = planeCoord[k] + (m?.kind === 'wiggle' && m.dim === d && p.variable === undefined ? off : 0);
         const sd = x[3 * i + d] - c;
         const key = `${k}:${id[i]}`;
         const dist = Math.abs(sd);

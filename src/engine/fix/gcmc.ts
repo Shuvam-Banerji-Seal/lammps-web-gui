@@ -548,7 +548,7 @@ export class FixGcmc extends Fix {
         coords[3 * a + 2] = p[2] + rot[2][0] * rx + rot[2][1] * ry + rot[2][2] * rz;
       }
       for (const ty of t.type) mass += s.massByType[ty];
-      appendMolecule(sys, t, 0, coords, [0, 0, 0], maxMoleculeId(s) + 1, this.extraMask());
+      appendMolecule(sys, t, 0, coords, [0, 0, 0], maxMoleculeId(s) + 1, this.extraMask(), undefined, rot);
       sys.atomsChanged();
     } else {
       mass = s.massByType[this.type];

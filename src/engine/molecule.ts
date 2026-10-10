@@ -30,8 +30,10 @@ import { StyleError } from './force/types';
  * applies to both: "The scale factor is applied to each of these properties
  * in the molecule file, if they are defined: the individual particle
  * coordinates (...), the individual mass of each particle (Masses ...), the
- * individual diameters of each particle (Diameters ...)". Fragments, Dipoles
- * and Body sections are rejected.
+ * individual diameters of each particle (Diameters ...)". Dipoles: "This
+ * section is only allowed for atom styles that support particles with point
+ * dipoles, e.g. atom_style dipole." (checked where the atoms are inserted,
+ * see templateDipoles). Fragments and Body sections are rejected.
  * Keywords: offset (all five type offsets), toff / boff / aoff / doff / ioff
  * (one each), and scale: "The scale factor is applied to each of these
  * properties in the molecule file, if they are defined: the individual
@@ -59,6 +61,8 @@ export interface MoleculeTemplate {
   diam: Float64Array | null;
   /** Per-atom masses (Masses section, scaled), or null (default from the diameter and density 1.0). */
   mass: Float64Array | null;
+  /** Per-atom point dipoles (Dipoles section: "ID mux muy muz", scaled), flat 3N, or null (default 0). */
+  mu: Float64Array | null;
 }
 
 export interface MoleculeOptions {
@@ -95,7 +99,7 @@ export const parseMoleculeFile = (id: string, name: string, text: string, o: Mol
   const count = (h: string) => head[h]?.[0] ?? 0;
   const t: MoleculeTemplate = {
     id, natoms, x: new Float64Array(3 * natoms), type: new Int32Array(natoms), q: null, mol: null,
-    bonds: [], angles: [], dihedrals: [], impropers: [], special: null, shake: null, diam: null, mass: null,
+    bonds: [], angles: [], dihedrals: [], impropers: [], special: null, shake: null, diam: null, mass: null, mu: null,
   };
   const seen = new Set<string>();
   let specialCounts: number[][] | null = null;
@@ -179,6 +183,13 @@ export const parseMoleculeFile = (id: string, name: string, text: string, o: Mol
         for (const r of rows(natoms, 2)) t.diam[atomIndex(r[0], 'atom ID') - 1] = r[1] * o.scale;
         break;
       }
+      case 'Dipoles': {
+        // molecule.html, Dipoles section: "one line per atom"; "line syntax: ID mux muy muz";
+        // "mux,muy,muz = x-, y-, and z-component of point dipole vector of atom"
+        t.mu = new Float64Array(3 * natoms);
+        for (const r of rows(natoms, 4)) { const i = atomIndex(r[0], 'atom ID') - 1; for (let d = 0; d < 3; d++) t.mu[3 * i + d] = r[1 + d] * o.scale; }
+        break;
+      }
       default:
         throw new StyleError(`molecule ${id}: section '${sec}' in ${name} is not supported by the browser engine`);
     }
@@ -190,6 +201,43 @@ export const parseMoleculeFile = (id: string, name: string, text: string, o: Mol
   }
   if (t.special) checkSpecial(t);
   return t;
+};
+
+/**
+ * The dipoles of a template turned by the rotation `rot` (3x3, about the molecule center; the dipole
+ * vectors turn with the molecule, see create_atoms in setup.ts), flat 3N, or undefined without a Dipoles section.
+ */
+export const rotateDipoles = (t: MoleculeTemplate, rot: number[][]): number[] | undefined => {
+  if (!t.mu) return undefined;
+  const out: number[] = [];
+  for (let i = 0; i < t.natoms; i++) {
+    const m = [t.mu[3 * i], t.mu[3 * i + 1], t.mu[3 * i + 2]];
+    for (let d = 0; d < 3; d++) out.push(rot[d][0] * m[0] + rot[d][1] * m[1] + rot[d][2] * m[2]);
+  }
+  return out;
+};
+
+/**
+ * Point dipoles of `copies` copies of a template as the atom_style dipole storage (4 per atom:
+ * mux, muy, muz and the length |mu|), or undefined without a Dipoles section. `rotated` (optional) holds
+ * the dipoles of the copies after their rotation (3 per atom, copy-major). The caller checks that
+ * the atom style has dipoles (molecule.html: "This section is only allowed for atom styles that
+ * support particles with point dipoles, e.g. atom_style dipole.").
+ */
+export const templateDipoles = (t: MoleculeTemplate, copies: number, rotated?: number[]): Float64Array | undefined => {
+  if (!t.mu) return undefined;
+  const out = new Float64Array(4 * copies * t.natoms);
+  for (let c = 0; c < copies; c++) {
+    for (let i = 0; i < t.natoms; i++) {
+      const k = 4 * (c * t.natoms + i), j = 3 * i;
+      // rotated: the per-copy dipoles already turned with the molecule (3 per atom of every copy)
+      const src = rotated ? 3 * (c * t.natoms + i) : j;
+      const mu = rotated ?? t.mu;
+      const mx = mu[src], my = mu[src + 1], mz = mu[src + 2];
+      out[k] = mx; out[k + 1] = my; out[k + 2] = mz; out[k + 3] = Math.hypot(mx, my, mz);
+    }
+  }
+  return out;
 };
 
 /** 1-2, 1-3, 1-4 neighbors from the bonds (sorted template-local IDs). */

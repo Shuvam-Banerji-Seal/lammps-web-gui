@@ -283,7 +283,7 @@ export class FixDeposit extends Fix {
     const zlo = reg.zlo + shift, zhi = reg.zhi + shift;
     const t = this.molTemplate;
     const center = t ? geometricCenter(t) : [0, 0, 0];
-    let placed: { p: Vec3; v: Vec3; atoms: Float64Array | null } | null = null;
+    let placed: { p: Vec3; v: Vec3; atoms: Float64Array | null; rot: number[][] | null } | null = null;
     for (let a = 0; a < this.attempt && !placed; a++) {
       const x = reg.xlo + this.rng.uniform() * (reg.xhi - reg.xlo);
       const y = reg.ylo + this.rng.uniform() * (reg.yhi - reg.ylo);
@@ -296,6 +296,7 @@ export class FixDeposit extends Fix {
         z = top + this.localRange[0] + this.rng.uniform() * (this.localRange[1] - this.localRange[0]);
       }
       let atoms: Float64Array | null = null;
+      let rot0: number[][] | null = null;
       if (t) {
         // one draw samples the molfrac list; a single-molecule template always takes molecule 0
         const sel = this.rng.uniform();
@@ -307,6 +308,7 @@ export class FixDeposit extends Fix {
             return rotationMatrix(2 * Math.PI * u4, u1 - 0.5, u2 - 0.5, u3 - 0.5);
           })();
         atoms = this.moleculeCoords(t, center, rot, [x, y, z]);
+        rot0 = rot;
       }
       if (this.near > 0 && this.tooNear(atoms ?? Float64Array.of(x, y, z), t !== null)) continue;
       let v: Vec3 = [
@@ -315,7 +317,7 @@ export class FixDeposit extends Fix {
         this.vz[0] + this.rng.uniform() * (this.vz[1] - this.vz[0]),
       ];
       if (this.target) v = this.aimAt([x, y, z], v);
-      placed = { p: [x, y, z], v, atoms };
+      placed = { p: [x, y, z], v, atoms, rot: t ? rot0 : null };
     }
     if (!placed) {
       sys.warn('Particle deposition was unsuccessful');
@@ -326,7 +328,7 @@ export class FixDeposit extends Fix {
       const ids = this.idNext ? new Int32Array(n) : undefined;
       if (ids) for (let k = 0; k < n; k++) ids[k] = ++this.nextId;
       const molId = this.idNext ? ++this.nextMolId : maxMoleculeId(s) + 1;
-      const firstId = appendMolecule(sys, t, this.type, placed.atoms, placed.v, molId, this.groupBit, ids);
+      const firstId = appendMolecule(sys, t, this.type, placed.atoms, placed.v, molId, this.groupBit, ids, placed.rot ?? undefined);
       sys.atomsChanged();
       sys.setupNeighbors();
       if (this.rigidFix) (this.rigidFix as unknown as RigidAdder).addMolecule(Array.from({ length: n }, (_, k) => firstId + k));

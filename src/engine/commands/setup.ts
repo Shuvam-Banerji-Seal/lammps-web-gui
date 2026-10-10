@@ -3,7 +3,7 @@ import { int, num, yesno, latticeScale, keywords } from './args';
 import { StyleError, typeBounds } from '../force/types';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId } from '../atoms';
+import { HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId } from '../atoms';
 import { parseStl } from '../stl';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import { generalAtomSites, generalBoxFromRestricted, generalCreateBox } from '../triclinic_general';
@@ -19,7 +19,7 @@ import type { AtomStyle, SimState } from '../types';
 import type { System } from '../system';
 import { bitOfIndex, type DynamicGroup } from '../group';
 import { parseBalanceWeight, applyBalanceWeights, balanceNeighFactor, balanceUsesNeigh, type BalanceWeightAction } from '../fix/balance';
-import { parseMoleculeFile, geometricCenter, rotationMatrix, type MoleculeTemplate, type MoleculeOptions } from '../molecule';
+import { parseMoleculeFile, geometricCenter, rotationMatrix, templateDipoles, type MoleculeTemplate, type MoleculeOptions } from '../molecule';
 
 /*
  * System setup commands. Each handler cites its docs.lammps.org page.
@@ -436,7 +436,7 @@ const createBox: Handler = ({ sys }, a) => {
  * Atoms are wrapped into periodic dimensions with image flags, so each
  * molecule stays whole when unwrapped.
  */
-export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[], toff: number, gbit: number): void => {
+export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[], toff: number, gbit: number, rotMu?: number[]): void => {
   const s = sys.state;
   const copies = pts.length / (3 * t.natoms);
   if (copies === 0) { sys.log('Created 0 atoms'); return; }
@@ -458,6 +458,7 @@ export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[],
     for (const e of list) if (e[0] < 1 || e[0] > ntypes) throw new StyleError(`molecule ${t.id}: ${what.slice(0, -1)} type ${e[0]} is outside 1..${ntypes}`);
   }
   if (t.q && !hasChargeStyle(sys.atomStyle)) throw new StyleError(`molecule ${t.id} has charges, which atom_style ${sys.atomStyle} cannot store`);
+  if (t.mu && !hasDipoleStyle(sys.atomStyle)) throw new StyleError(`molecule ${t.id} has dipoles, which atom_style ${sys.atomStyle} cannot store`);
   const x = Float64Array.from(pts);
   const image = new Int32Array(x.length);
   const g = sys.geom;
@@ -497,7 +498,8 @@ export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[],
     rmass = new Float64Array(copies * t.natoms);
     for (let c = 0; c < copies; c++) for (let i = 0; i < t.natoms; i++) rmass[c * t.natoms + i] = t.mass ? t.mass[i] : sphereMass(radius![c * t.natoms + i], 1);
   }
-  const added = appendAtoms(s, { x, image, type: types, molecule: mol, q, mask: gbit, tmplIndex: tIdx, tmplAtom: tAt, radius, rmass });
+  const mu = templateDipoles(t, copies, rotMu);
+  const added = appendAtoms(s, { x, image, type: types, molecule: mol, q, mask: gbit, tmplIndex: tIdx, tmplAtom: tAt, radius, rmass, mu });
   for (let c = 0; c < copies; c++) {
     const id0 = base + c * t.natoms;
     for (const [what, list] of [['bonds', t.bonds], ['angles', t.angles], ['dihedrals', t.dihedrals], ['impropers', t.impropers]] as const) {
@@ -583,12 +585,23 @@ const createAtoms: Handler = ({ sys }, a) => {
       }
     }
     const out: number[] = [];
+    // the point dipoles turn with the molecule (create_atoms.html rotates the molecule about its center; the
+    // dipole vectors are rotated with it): measured with native LAMMPS (black box, a 3-atom dipole molecule
+    // rotated 20 deg about x: mu = (0, 0.5, 0) became (0, 0.4698, 0.1710), i.e. R mu)
+    lastMu = [];
     for (let i = 0; i < tmpl!.natoms; i++) {
       const r = [0, 1, 2].map((d) => tmpl!.x[3 * i + d] - molCenter[d]);
       for (let d = 0; d < 3; d++) out.push(p[d] + R[d][0] * r[0] + R[d][1] * r[1] + R[d][2] * r[2]);
+      if (tmpl!.mu) {
+        const m = [0, 1, 2].map((d) => tmpl!.mu![3 * i + d]);
+        for (let d = 0; d < 3; d++) lastMu.push(R[d][0] * m[0] + R[d][1] * m[1] + R[d][2] * m[2]);
+      }
     }
     return out;
   };
+  /** Rotated dipoles of the molecules placed so far (3 per atom, in the order of pts); lastMu is the latest placement. */
+  const molMu: number[] = [];
+  let lastMu: number[] = [];
   const unitsW = kw.get('units')?.[0] ?? 'lattice';
   const g = sys.geom;
   const box = s.box;
@@ -630,7 +643,7 @@ const createAtoms: Handler = ({ sys }, a) => {
     const inside = [0, 1, 2].every((d) => (d === 2 && sys.dimension === 2) || (lam[d] >= 0 && (box.boundary[d][1] === 's' || box.boundary[d][1] === 'm' ? lam[d] <= 1 : lam[d] < 1)));
     if (!inside) {
       sys.warn('create_atoms single: the point is outside the box; no atom created');
-    } else if (varOk(p)) { pts = tmpl ? placeMol(p) : p; types = [type]; }
+    } else if (varOk(p)) { pts = tmpl ? placeMol(p) : p; molMu.push(...lastMu); types = [type]; }
   } else if (random) {
     // Measured with native LAMMPS (black box, create_atoms 2 random 800 495437 box, and 3 or 5 atoms with
     // seeds 12345 and 777, with and without molecules): the coordinates are consecutive Park-Miller draws
@@ -670,6 +683,7 @@ const createAtoms: Handler = ({ sys }, a) => {
         for (let j = 0; j < atoms.length && !close; j += 3) close = tooClose([atoms[j], atoms[j + 1], atoms[j + 2]]);
         if (close) { if (t >= maxtry - 1) break; continue; }
         pts.push(...atoms);
+        molMu.push(...lastMu);
         types.push(type);
         placed = true;
       }
@@ -813,9 +827,12 @@ const createAtoms: Handler = ({ sys }, a) => {
     if (!single && !random) {
       const centers = pts;
       pts = [];
-      for (let c = 0; c < centers.length; c += 3) pts.push(...placeMol([centers[c], centers[c + 1], centers[c + 2]]));
+      for (let c = 0; c < centers.length; c += 3) {
+        pts.push(...placeMol([centers[c], centers[c + 1], centers[c + 2]]));
+        molMu.push(...lastMu);
+      }
     }
-    insertMolecules(sys, tmpl, pts, type, gbit);
+    insertMolecules(sys, tmpl, pts, type, gbit, molMu);
     return;
   }
   for (const t of types) if (t < 1 || t > s.ntypes) throw new StyleError(`create_atoms basis type ${t} is outside 1..${s.ntypes}`);

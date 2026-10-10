@@ -1,7 +1,7 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
 import type { System } from '../system';
-import { massOf } from '../atoms';
+import { isEllipsoid, massOf } from '../atoms';
 import { RanMars } from '../rng';
 import { parseNumOrVar, ramp, valueOf, type NumOrVar } from './util';
 import { FixGravity } from './force_ext';
@@ -403,6 +403,26 @@ export class FixRigid extends Fix {
     const g = sys.geom;
     const u = [0, 0, 0];
     if (idx.length < 2) throw new StyleError(`fix ${this.style}: "Each rigid body must have two or more atoms." (body ${key})`);
+    // Point dipoles in a body: native fix rigid turns each dipole with the body (measured with native LAMMPS,
+    // black box, in.rigid.dipoles: mu_i(t) = Q(t) mu_i(0) to 1e-12, where Q is the body rotation fitted to the
+    // unwrapped positions). The engine does not do that yet, and the torque of the pair forces on the dipoles
+    // is not added to the body either, so a body with a dipole is refused rather than integrated wrongly.
+    if (s.mu) {
+      for (const i of idx) {
+        if (s.mu[4 * i] || s.mu[4 * i + 1] || s.mu[4 * i + 2]) {
+          throw new StyleError(`fix ${this.style}: rigid bodies with point dipoles (atom ${s.id[i]}) are not supported by the browser engine (the dipoles must turn with the body and the torque on them must be added to it)`);
+        }
+      }
+    }
+    // docs.lammps.org/fix_rigid.html: "Finite-size particles contribute differently to the moment of inertia of
+    // a rigid body than do point particles." and "These contributions are accounted for by these fixes." This
+    // engine treats every constituent as a point mass (no particle inertia, torque or orientation), so a body
+    // with finite-size spheres or ellipsoids is refused rather than integrated with the wrong inertia.
+    for (const i of idx) {
+      if ((s.radius && s.radius[i] > 0) || isEllipsoid(s, i)) {
+        throw new StyleError(`fix ${this.style}: rigid bodies of finite-size particles (atom ${s.id[i]} has a radius or an ellipsoid shape) are not supported by the browser engine (their own moments of inertia, torques and orientations are not included)`);
+      }
+    }
     for (const i of idx) for (let d = 0; d < 3; d++) if (!s.box.periodic[d] && s.image[3 * i + d] !== 0) throw new StyleError(`fix ${this.style}: an atom of body ${key} has a non-zero image flag in a non-periodic dimension`);
     let M = 0;
     const xcm = [0, 0, 0], vcm = [0, 0, 0];

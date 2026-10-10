@@ -46,6 +46,19 @@ import { massOf } from '../atoms';
  *    (a compute on the 6 central atoms of 4 water-like and 2 CH3-like
  *    clusters stops with "degrees of freedom < 0": 15 - 18).
  * Minimization (restraints with kbond) is not implemented: it is an error.
+ *
+ * Measured with native LAMMPS (black box, 2 Sep 2026 probes: a 30-atom water/methyl/chain
+ * box and a two-atom bond stretched from 1.2 to 1.0 with mass 12, dt 1 fs):
+ *  - the stored array is the 3-column per-atom array f_ID[1..3]; compute reduce on f_ID[k]
+ *    with store no stops with the native message: does not calculate per-atom values;
+ *  - the values are set at setup only: they do not change during the run (the sumsq of the
+ *    stored forces is the same at every step of a 6-step run);
+ *  - a second run starting from satisfied constraints stores ~1e-12 (the setup correction is
+ *    zero there);
+ *  - the setup correction stored in the dimer is m dx / (0.5 dt^2 ftm2v) per atom (5736.1 for
+ *    dx = 0.1, m = 12, dt = 1 fs, real units), equal and opposite on the two atoms, and the
+ *    velocity-driven setup constraint (velocity along the bond, positions satisfied) stores zero;
+ *  - the stored forces of each cluster sum to zero (internal forces).
  */
 
 interface Cluster {
@@ -55,6 +68,11 @@ interface Cluster {
   cons: { a: number; b: number; d2: number }[];
 }
 
+/*
+ * keyword store (docs.lammps.org/fix_shake.html): "The *store* keyword controls whether the fix stores the constraint
+ * (or restraint) forces as a per-atom property." "By using *store yes* the original
+ * constraint forces on all atoms can be accessed as a per-atom array of the fix."
+ */
 export class FixShake extends Fix {
   readonly style: 'shake' | 'rattle';
   private tol: number;
@@ -69,6 +87,8 @@ export class FixShake extends Fix {
   private keepAngles: boolean[] = [];
   /** keyword mol: molecule template-ID whose molecules may be added during the run (fix deposit shake). */
   private molTemplateId: string | null = null;
+  /** keyword store yes: per-atom constraint forces (f_ID[1..3]) set at setup (see the header). */
+  private storeForces = false;
 
   constructor(sys: System, id: string, group: string, args: string[], style: 'shake' | 'rattle') {
     super(sys, id, group, args);
@@ -89,6 +109,12 @@ export class FixShake extends Fix {
         continue;
       }
       if (w === 'kbond') { num(args[++k], 'kbond'); continue; }
+      if (w === 'store') {
+        const v = args[++k];
+        if (v !== 'yes' && v !== 'no') throw new StyleError(`fix ${style}: store must be yes or no, got '${v ?? ''}'`);
+        this.storeForces = v === 'yes';
+        continue;
+      }
       if (!mode) throw new StyleError(`fix ${style}: '${w}' must follow a constraint keyword b, a, t or m`);
       if (mode === 'm') this.masses.push(num(w, 'mass'));
       else (mode === 'b' ? this.bondTypes : mode === 'a' ? this.angleTypes : this.atomTypes).add(int(w, `${mode} type`));
@@ -96,6 +122,10 @@ export class FixShake extends Fix {
     if (sys.fixes.some((f) => f instanceof FixShake && f.id !== id)) throw new StyleError('"there can only be one shake or rattle fix defined in a simulation"');
     this.virialGlobal = true;
     this.thermoVirial = true;
+    if (this.storeForces) {
+      this.peratomFlag = true;
+      this.sizePeratomCols = 3;
+    }
   }
 
   // ---------------------------------------------------------------- clusters
@@ -245,6 +275,10 @@ export class FixShake extends Fix {
 
   setup(): void {
     // measured: after setup the coordinates satisfy the constraints exactly (velocities unchanged)
+    if (this.storeForces) {
+      if (this.arrayAtom.length !== 3 * this.sys.state.n) this.arrayAtom = new Float64Array(3 * this.sys.state.n);
+      this.arrayAtom.fill(0);
+    }
     this.correctCoordinates();
     if (this.style === 'rattle') this.rattleVelocities();
     this.shake(0.5);
@@ -252,6 +286,10 @@ export class FixShake extends Fix {
 
   /** Moves each cluster onto its constraints along the current bond vectors, displacements weighted by 1/m. */
   private correctCoordinates(): void {
+    // store yes: the correction displacement m dx of each atom, expressed as the force that moves it
+    // by dx in the half-step kinematics 0.5 dt^2 ftm2v (see the header; measured 5736.1 for dx 0.1, m 12)
+    const st = this.sys.state;
+    const toForce = 1 / (0.5 * st.dt * st.dt * st.units.ftm2v);
     this.solveClusters((at, m, r, cons) => {
       const s0 = cons.map((_k, j) => r[j].slice());
       return { s0, factor: 1 };
@@ -262,6 +300,10 @@ export class FixShake extends Fix {
         for (let q = 0; q < 3; q++) {
           s.x[3 * at[k.a] + q] += (lam[j] * r[j][q]) / m[k.a];
           s.x[3 * at[k.b] + q] -= (lam[j] * r[j][q]) / m[k.b];
+          if (this.storeForces) {
+            this.arrayAtom[3 * at[k.a] + q] += lam[j] * r[j][q] * toForce;
+            this.arrayAtom[3 * at[k.b] + q] -= lam[j] * r[j][q] * toForce;
+          }
         }
       }
     });

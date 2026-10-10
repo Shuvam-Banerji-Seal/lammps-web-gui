@@ -41,11 +41,18 @@ import { parseNum } from '../util';
 export const ANGSTROM: Record<string, number> = { lj: 1, real: 1, metal: 1, si: 1e-10, cgs: 1e-8, electron: 1.88972612, micro: 1e-4, nano: 0.1 };
 export const QELECTRON: Record<string, number> = { lj: 1, real: 1, metal: 1, si: 1.6021765e-19, cgs: 4.8032044e-10, electron: 1, micro: 1.6021765e-7, nano: 1 };
 
+/** kspace_modify yes/no keywords: a value other than yes or no is refused (native message, measured). */
+const yesNoValue = (w: string | undefined, key: string): void => {
+  if (w !== 'yes' && w !== 'no') throw new StyleError(`Expected boolean parameter instead of '${w ?? ''}' for kspace_modify ${key}`);
+};
+
 export abstract class KSpaceBase extends KSpace {
   /** kspace_modify force: absolute accuracy (force units), or -1. */
   forceAbs = -1;
   gewaldUser = 0;
   slab = 1;
+  /** kspace_modify slab auto: the volfactor follows from the tolerance and the box (see autoSlabVolfactor). */
+  slabAuto = false;
   qsum = 0;
   qsqsum = 0;
   protected natoms = 0;
@@ -64,10 +71,33 @@ export abstract class KSpaceBase extends KSpace {
       case 'force': this.forceAbs = parseNum(values[0], 'force'); return 1;
       case 'slab':
         if (values[0] === 'nozforce') throw new StyleError('kspace_modify slab nozforce is not supported by the browser engine');
+        if (values[0] === 'auto') { this.slabAuto = true; this.slab = 1; return 1; }
+        this.slabAuto = false;
         this.slab = parseNum(values[0], 'slab volfactor');
         if (this.slab < 1) throw new StyleError('kspace_modify slab volfactor must be >= 1.0');
+        // native LAMMPS refuses a volfactor of exactly 1.0 with Bad kspace_modify slab parameter (measured)
+        if (this.slab === 1) throw new StyleError('Bad kspace_modify slab parameter (volfactor 1.0 is refused; omit slab for no slab correction)');
         return 1;
-      case 'pressure/scalar': case 'collective': case 'overlap': case 'fftbench': case 'cutoff/adjust': return 1;
+      // kspace_modify.html: "The *collective* keyword applies only to PPPM." and "The *nonblocking* keyword
+      // applies only to PPPM."; the keywords choose the MPI communication pattern of the 3d FFT remap, which
+      // this single-process engine does not use, so they are accepted with no effect. The doc sentence that
+      // says so: "to remap data for 3d-FFT operations instead of the default" (nonblocking) and
+      // "instead of the default point-to-point communication" (collective). Native LAMMPS accepts both with
+      // ewald as well (measured), and its thermo output is identical with and without them (measured).
+      case 'collective':
+        yesNoValue(values[0], 'collective');
+        return 1;
+      case 'nonblocking':
+        yesNoValue(values[0], 'nonblocking');
+        return 1;
+      // kspace_modify.html (4Jul2026): "It controls whether data remapped to the" same MPI rank is handled by a
+      // direct copy; this engine has no MPI remap, so the value is checked and has no effect.
+      case 'collective/self/copy':
+        if (values[0] !== 'yes' && values[0] !== 'no' && values[0] !== 'onerank') {
+          throw new StyleError(`Unknown kspace_modify collective/self/copy flag ${values[0] ?? ''}`);
+        }
+        return 1;
+      case 'pressure/scalar': case 'overlap': case 'fftbench': case 'cutoff/adjust': return 1;
       case 'minorder': return 1;
       case 'tol': return 1;
       default: return 0;
@@ -92,13 +122,46 @@ export abstract class KSpaceBase extends KSpace {
     if (q2 === 0) ctx.log(`WARNING: kspace_style ${this.name}: no atoms are charged`);
     if (Math.abs(qs) > 1e-5) ctx.log(`WARNING: kspace_style ${this.name}: the system is not charge neutral (net charge ${qs}); a uniform neutralizing background is assumed`);
     const p = s.box.periodic;
+    if (this.slabAuto) {
+      this.slab = this.autoSlabVolfactor(s, geom);
+      ctx.log(`  auto slab volfactor = ${this.slab}\n  auto slab extended z = ${geom.lz * this.slab}`);
+    }
     if (this.slab > 1) {
       if (!p[0] || !p[1] || p[2]) throw new StyleError('kspace_modify slab needs boundary p p f (or p p s/m)');
-      if (s.box.triclinic) throw new StyleError('kspace_modify slab is not supported with a triclinic box');
+      // "Because the slab normal must be the Cartesian z axis, only an *xy* tilt is allowed" (kspace_modify.html)
+      if (s.box.triclinic && (geom.xz !== 0 || geom.yz !== 0)) {
+        throw new StyleError('Triclinic slab (EW3DC) correction requires xz = yz = 0 (the slab normal must be the z axis); xy tilt is allowed');
+      }
     } else if (!p[0] || !p[1] || !p[2]) {
       throw new StyleError(`kspace_style ${this.name} needs a fully periodic box (or kspace_modify slab for p p f)`);
     }
     this.volume = geom.volume(3) * this.slab;
+  }
+
+  /**
+   * kspace_modify slab auto. kspace_modify.html: "*auto* chooses the extended z dimension from the
+   * current normalized force tolerance, lateral box dimensions, and G-ewald". Measured with native
+   * LAMMPS (black box, real and metal units): the volfactor equals
+   *   1 + ln(1/T) max(Lx, Ly) / (2 pi Lz)
+   * with T the normalized tolerance (the accuracy, or force / (qqr2e q^2 / a^2) for a force value),
+   * Lz the box length before the slab extension. G-ewald did not change it (0.2, 0.4 and 0.8 gave
+   * the same volfactor), nor did the charges. The same formula was measured for ewald and pppm.
+   * The formula is measured exact for T from 0.01 to 0.35 (and for T = 1e-5 .. 1e-20); above
+   * about 0.4 the native value departs from it and is not reproduced, so such T are refused.
+   * In lj units the native value did not follow the same T mapping, so only real and metal are
+   * accepted. Native refusal: kspace_modify slab auto requires a normalized force tolerance between 0 and 1.
+   */
+  protected autoSlabVolfactor(s: SimState, geom: Geometry): number {
+    const style = s.units.style;
+    if (style !== 'real' && style !== 'metal') {
+      throw new StyleError(`kspace_modify slab auto is measured for units real and metal only (units ${style} are not reproduced)`);
+    }
+    const unit = s.units.qqr2e * QELECTRON[style] * QELECTRON[style] / (ANGSTROM[style] * ANGSTROM[style]);
+    const T = this.forceAbs > 0 ? this.forceAbs / unit : this.accuracy;
+    if (!(T > 0 && T < 1)) throw new StyleError('kspace_modify slab auto requires a normalized force tolerance between 0 and 1');
+    if (T > 0.35) throw new StyleError(`kspace_modify slab auto is reproduced only for a normalized force tolerance up to 0.35 (got ${T})`);
+    const lateral = Math.max(geom.lx, geom.ly);
+    return 1 + Math.log(1 / T) * lateral / (2 * Math.PI * geom.lz);
   }
 
   /** g from the real-space estimate (Kolafa-Perram eq. 18) unless set by the user. */
@@ -300,6 +363,50 @@ export class KSpaceEwald extends KSpaceBase {
     // the neutralizing-background energy has no virial term here: native LAMMPS pressures
     // of a non-neutral system (oracle case ewald_tri_charged) leave it out
     this.slabCorrection(kc);
+  }
+}
+
+/**
+ * kspace_style zero accuracy — kspace_style.html: "The *zero* style does not do any calculations, but is
+ * compatible with all pair styles that require some version of a kspace style." The accuracy only sets
+ * G-ewald (the real-space splitting of the pair style). Measured with native LAMMPS (black box, real
+ * units, lj/cut/coul/long 6.0, 75 charged atoms in a 16 x 16 x 12.8 box, no slab): with kspace_style zero
+ * 1.0e-5 and no gewald, E_coul was -110.249089294577 and E_long 0, which is the G-ewald of the Kolafa-Perram
+ * estimate with the box volume (g = 0.4724443323721925); with kspace_modify gewald 0.4 the E_coul was
+ * -223.471826518548, the same as kspace_style ewald. Measured: kspace_style zero 0.0 without gewald gives
+ * KSpace accuracy must be > 0; with gewald 0.4 it is accepted. Measured: kspace_style zero with no
+ * argument gives Illegal kspace_style zero command. The pressure with zero is the real-space virial only.
+ */
+export class KSpaceZero extends KSpaceBase {
+  readonly name = 'zero';
+
+  settings(args: string[]): void {
+    if (args.length !== 1) throw new StyleError('Illegal kspace_style zero command');
+    this.accuracy = parseNum(args[0], 'accuracy');
+  }
+
+  modify(key: string, values: string[]): number {
+    // slab and force change the volume or the accuracy that G-ewald uses; their effect with zero was not measured
+    if (key === 'slab' || key === 'force') throw new StyleError(`kspace_modify ${key} is not supported by kspace_style zero`);
+    return super.modify(key, values);
+  }
+
+  init(s: SimState, geom: Geometry, cutCoul: number, qqrd2e: number, ctx: StyleContext): void {
+    this.cutCoul = cutCoul;
+    let qs = 0, q2 = 0;
+    for (let i = 0; i < s.n; i++) { qs += s.q[i]; q2 += s.q[i] * s.q[i]; }
+    this.qsum = qs;
+    this.qsqsum = q2;
+    this.natoms = s.n;
+    this.volume = geom.volume(3);
+    if (!(this.gewaldUser > 0) && !(this.accuracy > 0)) throw new StyleError('KSpace accuracy must be > 0');
+    this.gEwald = this.chooseGEwald(s, qqrd2e);
+    ctx.log(`  G vector (1/distance) = ${this.gEwald}`);
+  }
+
+  /** No wave-space sum: the energy, forces and virial stay zero. */
+  compute(_kc: KSpaceCompute): void {
+    // "does not do any calculations"
   }
 }
 

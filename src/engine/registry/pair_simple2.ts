@@ -1,5 +1,5 @@
 import type { Pair } from '../force/types';
-import { PairSoft, PairYukawa, PairGauss, PairZero } from '../force/pair/simple2';
+import { PairSoft, PairYukawa, PairGauss, PairZero, PairZeroCoul } from '../force/pair/simple2';
 
 /** Pair styles added by the wave-1 rerun (pair_simple2); merged into styles.ts. Style name -> factory. */
 export const PAIRS: Record<string, () => Pair> = {
@@ -7,4 +7,5 @@ export const PAIRS: Record<string, () => Pair> = {
   yukawa: () => new PairYukawa(),
   gauss: () => new PairGauss(),
   zero: () => new PairZero(),
+  'zero/coul': () => new PairZeroCoul(),
 };

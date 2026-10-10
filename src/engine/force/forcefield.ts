@@ -163,6 +163,11 @@ export class ForceField {
       if (!this.pair) throw new StyleError('kspace_style needs a pair style with a long-range Coulomb part');
       const cutCoul = this.pair.extract('cut_coul');
       if (typeof cutCoul !== 'number') throw new StyleError(`kspace_style ${this.kspace.name} is not compatible with pair style ${this.pair.name}`);
+      // pair_zero.html: "pair style *zero/coul* cannot be used with kspace styles that require a pair style
+      // providing dispersion or TIP4P support (e.g. *pppm/disp* or *pppm/tip4p*)"; the refusal text is native's (measured)
+      if (this.pair.name === 'zero/coul' && /disp|tip4p/.test(this.kspace.name)) {
+        throw new StyleError(`KSpace style ${this.kspace.name} is incompatible with Pair style zero/coul`);
+      }
       this.kspace.linkPair?.(this.pair);
       this.kspace.init(s, geom, cutCoul, s.units.qqr2e * this.pair.coulConstScale / this.dielectric, ctx);
       this.pair.gEwald = this.kspace.gEwald;

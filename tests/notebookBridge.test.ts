@@ -46,3 +46,16 @@ describe('notebook <-> script builder bridge', () => {
     expect(await thermoOf(generated)).toEqual(direct);
   });
 });
+
+describe('markdown cells stay out of the script', () => {
+  it('skips markdown cells (object form) and keeps code cells, including ones without a kind', () => {
+    const cells = [
+      { text: '# Title\n\n- a list', kind: 'markdown' as const },
+      { text: 'units lj', kind: 'code' as const },
+      { text: 'run 0' },
+      { text: 'prose with run 5 in it', kind: 'markdown' as const },
+    ];
+    expect(cellsToScript(cells)).toBe('units lj\n\nrun 0\n');
+    expect(cellsToScript([{ text: 'only prose', kind: 'markdown' }])).toBe('\n');
+  });
+});

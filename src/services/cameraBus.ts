@@ -9,7 +9,8 @@ export type CameraCommand =
   | { type: 'fit' }
   | { type: 'preset'; preset: CameraPreset }
   | { type: 'zoom'; delta: number }        // +1 zoom in, -1 zoom out
-  | { type: 'orbit'; dx: number; dy: number }; // radians
+  | { type: 'orbit'; dx: number; dy: number }  // radians
+  | { type: 'pose'; position: [number, number, number] }; // camera position (the target stays): restores a view
 
 type Listener = (cmd: CameraCommand) => void;
 

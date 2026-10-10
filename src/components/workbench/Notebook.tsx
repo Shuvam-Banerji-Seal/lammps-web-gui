@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Square, Plus, Trash2, RotateCcw, Cpu, Gpu, Gauge, HelpCircle, FileUp, X, Workflow, Atom } from 'lucide-react';
+import { Play, Square, RotateCcw, Cpu, Gpu, Gauge, HelpCircle, FileUp, X, Workflow, Atom } from 'lucide-react';
 import ResourceMonitor from './ResourceMonitor';
 import { cellsToScript } from '../../lammps/notebookBridge';
+import { Cell, duplicateCell, insertAfter, isMarkdownCell, moveCell, reviveCells, runnableCells, withKind } from './notebook/cells';
+import MarkdownView from './notebook/MarkdownView';
+import CellToolbar, { AddCellRow } from './notebook/CellToolbar';
+import CellFlowchart from './notebook/CellFlowchart';
 import { explainEngineError } from './engineError';
 import { thermoUnit, unitsCaption } from '../../lammps/thermoUnits';
 import { getThemeTokens, isDarkTheme, Theme } from '../../theme';
@@ -18,6 +22,10 @@ import { filesReadBy, formatNumber } from '../../engine/script';
 import { useInputFiles, type ImportSource } from './notebook/useInputFiles';
 import { InputFilesPanel } from './notebook/InputFilesPanel';
 import { ImportStructureDialog } from './notebook/ImportStructureDialog';
+import { TrajectoryBuffer, dumpToRecords, type TrajectoryRecord } from './notebook/trajectory';
+import TrajectoryPlayer from './notebook/TrajectoryPlayer';
+import RenderPanel from './notebook/RenderPanel';
+import ViewControls, { DEFAULT_RECORD_EVERY, reviveBool, reviveRadius, reviveRecordEvery } from './notebook/ViewControls';
 
 /**
  * MD Notebook: LAMMPS-style input in cells, run by the in-browser engine
@@ -25,7 +33,8 @@ import { ImportStructureDialog } from './notebook/ImportStructureDialog';
  * It runs a documented subset of LAMMPS input; it is not LAMMPS.
  */
 
-interface Cell { id: string; text: string }
+/** Per-cell view state: collapsed output, flowchart shown, Markdown in the editor. */
+interface CellUi { collapsed?: boolean; flow?: boolean; editing?: boolean }
 
 type Status = 'idle' | 'running' | 'ok' | 'error' | 'cancelled';
 
@@ -68,6 +77,9 @@ const STARTER: Cell[] = [
 const STORAGE_KEY = 'm3d.notebook.v1';
 const BACKEND_KEY = 'm3d.notebook.backend';
 const THREADS_KEY = 'm3d.notebook.threads';
+const RECORD_KEY = 'm3d.notebook.recordEvery';
+const RADIUS_KEY = 'm3d.notebook.atomRadius';
+const BOX_KEY = 'm3d.notebook.showBox';
 
 /** Logical cores the browser reports (at least 1). */
 const browserCores = (): number =>
@@ -76,13 +88,6 @@ const browserCores = (): number =>
 const AUTO_THREADS = 0;
 const reviveThreads = (raw: unknown): number | null =>
   typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 ? Math.min(raw, browserCores()) : null;
-
-const reviveCells = (raw: unknown): Cell[] | null => {
-  if (!Array.isArray(raw)) return null;
-  const cells = raw.filter((c): c is Cell =>
-    !!c && typeof (c as Cell).id === 'string' && typeof (c as Cell).text === 'string');
-  return cells.length ? cells : null;
-};
 
 const reviveBackend = (raw: unknown): BackendChoice | null => (raw === 'auto' || raw === 'cpu' || raw === 'webgpu' ? raw : null);
 
@@ -118,7 +123,7 @@ interface NotebookProps {
   onIncomingTaken?: () => void;
   /** Opens the notebook's cells in the Script Builder (as a new tab). */
   onOpenInBuilder?: (script: string) => void;
-  /** Opens a trajectory or structure file written by the run in the Molecule 3D Viewer. */
+  /** Opens a file written by the run, or the recorded trajectory as a dump, in the Molecule 3D Viewer. */
   onOpenInViewer?: (file: { name: string; text: string }) => void;
 }
 
@@ -135,6 +140,21 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const [ready, setReady] = useState<Extract<FromEngine, { type: 'ready' }> | null>(null);
   const [running, setRunning] = useState<string | null>(null);
   const [frame, setFrame] = useState<FrameEvent | null>(null);
+  /** Engine frames kept during runs (cleared on reset), the recorded frame shown (null = the live frame), view settings. */
+  const [traj] = useState(() => new TrajectoryBuffer());
+  const [trajVersion, setTrajVersion] = useState(0);
+  const [viewIndex, setViewIndex] = useState<number | null>(null);
+  const [videoActive, setVideoActive] = useState(false);
+  /** Render panel: open, the dump file loaded into the player for it (null = the run's frames), and a load error. */
+  const [renderOpen, setRenderOpen] = useState(false);
+  const [renderSource, setRenderSource] = useState<{ name: string } | null>(null);
+  const [renderNotice, setRenderNotice] = useState<string | null>(null);
+  /** The run's own frames, set aside while a file is loaded for rendering. */
+  const renderBackup = useRef<{ records: TrajectoryRecord[]; stride: number } | null>(null);
+  const [recordEvery, setRecordEvery] = usePersistentState<number>(RECORD_KEY, DEFAULT_RECORD_EVERY, reviveRecordEvery);
+  const [atomRadius, setAtomRadius] = usePersistentState<number>(RADIUS_KEY, 1, reviveRadius);
+  const [showBox, setShowBox] = usePersistentState<boolean>(BOX_KEY, true, reviveBool);
+  const canvasHost = useRef<HTMLDivElement>(null);
   /** The MD run in progress (engine 'run' event): its cell and its first and last step, for the progress bar. */
   const [runSpan, setRunSpan] = useState<{ cell: string; from: number; to: number } | null>(null);
   const [files, setFiles] = useState<Record<string, string>>({});
@@ -149,6 +169,9 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const [confirmReset, setConfirmReset] = useState(false);
   /** The last deleted cell and its place, for Undo (offered for 10 s). */
   const [deleted, setDeleted] = useState<{ cell: Cell; index: number } | null>(null);
+  /** View state per cell id (see CellUi). */
+  const [cellUi, setCellUi] = useState<Record<string, CellUi>>({});
+  const patchUi = (id: string, patch: CellUi) => setCellUi((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
   useEffect(() => {
     if (!confirmReset) return;
     const t = setTimeout(() => setConfirmReset(false), 4000);
@@ -175,13 +198,19 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const resetSession = useCallback(async (choice: BackendChoice, nThreads: number) => {
     setReady(null);
     setFrame(null);
+    traj.clear();
+    renderBackup.current = null;
+    setRenderSource(null);
+    setRenderNotice(null);
+    setTrajVersion((v) => v + 1);
+    setViewIndex(null);
     setFiles({});
     setSeries([]);
     setRuns({});
-    const info = await client().reset(choice, 25, nThreads);
+    const info = await client().reset(choice, recordEvery, nThreads);
     sendInputs();
     setReady(info);
-  }, [client, sendInputs]);
+  }, [client, recordEvery, traj, sendInputs]);
 
   useEffect(() => {
     void resetSession(backend, threads);
@@ -201,6 +230,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     frameTimer.current = window.setTimeout(() => {
       frameTimer.current = null;
       if (pendingFrame.current) setFrame(pendingFrame.current);
+      setTrajVersion((v) => v + 1);
     }, 120);
   }, []);
 
@@ -236,10 +266,19 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           setSeries((s) => [...s, ev.row]);
           break;
         case 'frame':
+          traj.append(ev);
           showFrame(ev);
           break;
         case 'run':
           setRunSpan({ cell: cell.id, from: ev.from, to: ev.to });
+          // a run records into the player: a loaded file's frames make way for it
+          if (renderBackup.current) {
+            renderBackup.current = null;
+            traj.clear();
+            setRenderSource(null);
+            setTrajVersion((v) => v + 1);
+          }
+          setViewIndex(null);
           setRunInfo({ dt: ev.dt, units: ev.units });
           setPerfHistory([]);
           break;
@@ -256,12 +295,12 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     setRunning(null);
     setRunSpan(null);
     return result.ok;
-  }, [client, showFrame]);
+  }, [client, showFrame, traj]);
 
   const runAll = useCallback(async () => {
     stopAll.current = false;
     await resetSession(backend, threads);
-    for (const cell of cells) {
+    for (const cell of runnableCells(cells)) {
       if (stopAll.current) break;
       const ok = await runCell(cell);
       if (!ok) break;
@@ -284,8 +323,23 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const updateText = (id: string, text: string) =>
     setCells((prev) => prev.map((c) => (c.id === id ? { ...c, text } : c)));
 
-  const addBelow = (index: number) =>
-    setCells((prev) => [...prev.slice(0, index + 1), { id: newId(), text: '' }, ...prev.slice(index + 1)]);
+  /** Insert an empty cell of `kind` after the cell at `index`. */
+  const addBelow = (index: number, kind: 'code' | 'markdown') => {
+    const cell = withKind({ id: newId(), text: '' }, kind);
+    setCells((prev) => insertAfter(prev, index, cell));
+    if (kind === 'markdown') patchUi(cell.id, { editing: true });
+  };
+
+  const moveBy = (id: string, delta: number) => {
+    setCells((prev) => moveCell(prev, prev.findIndex((c) => c.id === id), delta));
+    // keep keyboard focus on the moved cell
+    window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-cell-id="${id}"]`)?.focus());
+  };
+
+  const duplicateAt = (index: number) => setCells((prev) => duplicateCell(prev, index, newId()));
+
+  const toggleKind = (id: string) =>
+    setCells((prev) => prev.map((c) => (c.id === id ? withKind(c, isMarkdownCell(c) ? 'code' : 'markdown') : c)));
 
   const removeCell = (index: number) => {
     if (cells.length <= 1) return;
@@ -300,15 +354,57 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     setDeleted(null);
   };
 
-  const data = useMemo(() => (frame ? frameToMoleculeData(frame) : null), [frame]);
+  /** Loads a dump the run wrote into the player (the run's frames are set aside) and opens the Render panel on it. */
+  const loadFileForRender = useCallback((file: { name: string; text: string }) => {
+    setRenderOpen(true);
+    // a run writes its dump as it goes: a partial file would render a partial trajectory
+    if (running !== null) {
+      setRenderNotice(`${file.name} is still being written. Render it when the run finishes.`);
+      return;
+    }
+    let records: TrajectoryRecord[];
+    try {
+      records = dumpToRecords(file.text);
+    } catch (e) {
+      setRenderNotice(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    if (records.length === 0) { setRenderNotice(`${file.name} has no frames.`); return; }
+    if (!renderBackup.current) renderBackup.current = { records: traj.list(), stride: traj.stride };
+    traj.restore(records);
+    setTrajVersion((v) => v + 1);
+    setViewIndex(null);
+    setRenderSource({ name: file.name });
+    setRenderNotice(null);
+  }, [traj, running]);
+
+  const restoreRunFrames = () => {
+    const backup = renderBackup.current;
+    if (!backup) return;
+    renderBackup.current = null;
+    traj.restore(backup.records, backup.stride);
+    setTrajVersion((v) => v + 1);
+    setViewIndex(null);
+    setRenderSource(null);
+    setRenderNotice(null);
+  };
+
+  /** The frame the view draws: the recorded frame picked in the player, else the live frame. */
+  const shownFrame = useMemo(
+    () => (viewIndex !== null ? traj.toFrameEvent(viewIndex) : frame),
+    // trajVersion: the buffer is mutable, and its version changes with every recorded frame
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [viewIndex, trajVersion, frame, traj],
+  );
+  const data = useMemo(() => (shownFrame ? frameToMoleculeData(shownFrame) : null), [shownFrame]);
   const config = useMemo(() => {
-    if (!frame || !data) return vizConfig(1, 1, isDarkTheme(theme));
-    const { lo, hi } = frame.box;
-    const dims = hi[2] - lo[2] > 0 && frame.x.some((_, k) => k % 3 === 2 && frame.x[k] !== 0) ? 3 : 2;
+    if (!shownFrame || !data) return vizConfig(1, 1, isDarkTheme(theme));
+    const { lo, hi } = shownFrame.box;
+    const dims = hi[2] - lo[2] > 0 && shownFrame.x.some((_, k) => k % 3 === 2 && shownFrame.x[k] !== 0) ? 3 : 2;
     const vol = (hi[0] - lo[0]) * (hi[1] - lo[1]) * (dims === 3 ? hi[2] - lo[2] : 1);
     const spacing = Math.pow(vol / Math.max(1, data.atoms.length), 1 / dims);
-    return vizConfig(spacing, Math.max(1, ...Object.keys(data.atomTypes).map(Number)), isDarkTheme(theme));
-  }, [frame, data, theme]);
+    return { ...vizConfig(spacing * atomRadius, Math.max(1, ...Object.keys(data.atomTypes).map(Number)), isDarkTheme(theme)), showBox };
+  }, [shownFrame, data, theme, atomRadius, showBox]);
 
   const chart = useMemo(() => {
     const pick = (k: ThermoKeyword) => series.filter((r) => r.step !== undefined && r[k] !== undefined)
@@ -409,8 +505,8 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
             if (f) setImportFrom(await inputFiles.readForImport(f));
           }} />
         {onOpenInBuilder && (
-          <button className={`${btn} ${ct.button}`} disabled={cells.every((c) => c.text.trim() === '')}
-            onClick={() => onOpenInBuilder(cellsToScript(cells.map((c) => c.text)))}
+          <button className={`${btn} ${ct.button}`} disabled={cells.every((c) => isMarkdownCell(c) || c.text.trim() === '')}
+            onClick={() => onOpenInBuilder(cellsToScript(cells))}
             title="Open these cells in the Script Builder as a new tab (flowchart, validator, export)"
             aria-label="Open these cells in the Script Builder">
             <Workflow size={13} aria-hidden="true" />Open in Script Builder
@@ -483,18 +579,34 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
 
       {/* phone: one scrolling column (view, cells, charts); desktop: cells left, view + charts right */}
       <div className="min-h-0 flex-1 overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_42%] lg:grid-rows-[minmax(0,55%)_minmax(0,1fr)] lg:overflow-hidden">
-        <div className={`relative h-56 border-b lg:col-start-2 lg:row-start-1 lg:h-auto lg:border-b-0 lg:border-l ${ct.divider}`}>
-          {data ? (
-            <MoleculeCanvas data={data} autoRotate={false} config={config} />
-          ) : (
-            <div className={`flex h-full items-center justify-center p-4 text-center text-xs ${ct.muted}`}>
-              Run a cell with create_atoms to see the system here.
-            </div>
-          )}
-          {frame && (
-            <span className={`absolute left-2 top-2 rounded px-1.5 py-0.5 text-[11px] ${ct.chip}`}>
-              {frame.id.length} atoms · step {frame.step}
-            </span>
+        <div className={`flex flex-col border-b lg:col-start-2 lg:row-start-1 lg:min-h-0 lg:border-b-0 lg:border-l ${ct.divider}`}>
+          <div ref={canvasHost} className="relative h-56 lg:h-auto lg:min-h-0 lg:flex-1">
+            {data ? (
+              <MoleculeCanvas data={data} autoRotate={false} config={config} forceContinuousRender={videoActive} />
+            ) : (
+              <div className={`flex h-full items-center justify-center p-4 text-center text-xs ${ct.muted}`}>
+                Run a cell with create_atoms to see the system here.
+              </div>
+            )}
+            {shownFrame && (
+              <span className={`absolute left-2 top-2 rounded px-1.5 py-0.5 text-[11px] ${ct.chip}`}>
+                {shownFrame.id.length} atoms · step {shownFrame.step}
+              </span>
+            )}
+          </div>
+          <div className="shrink-0 px-2 pt-2">
+            <ViewControls ct={ct} recordEvery={recordEvery} onRecordEvery={setRecordEvery} radius={atomRadius} onRadius={setAtomRadius}
+              showBox={showBox} onShowBox={setShowBox} />
+          </div>
+          <TrajectoryPlayer ct={ct} btn={btn} buffer={traj} version={trajVersion} index={viewIndex} live={running !== null}
+            onShow={setViewIndex} canvasHost={canvasHost} onVideoActive={setVideoActive} onOpenInViewer={onOpenInViewer}
+            onRender={() => setRenderOpen(true)} />
+          {renderOpen && (
+            <RenderPanel ct={ct} btn={btn} buffer={traj} version={trajVersion} index={viewIndex}
+              dt={runInfo?.dt ?? null} units={runInfo?.units} live={running !== null}
+              source={renderSource} canRestore={renderSource !== null} onRestore={restoreRunFrames}
+              notice={renderNotice} canvasHost={canvasHost} onShow={setViewIndex} onVideoActive={setVideoActive}
+              onClose={() => setRenderOpen(false)} />
           )}
         </div>
 
@@ -503,61 +615,103 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           {cells.map((cell, i) => {
             const run = runs[cell.id] ?? emptyRun();
             const n = i + 1;
+            const ui = cellUi[cell.id] ?? {};
+            const md = isMarkdownCell(cell);
+            // a Markdown cell is rendered until Edit (or double-click); new empty ones open in the editor
+            const editing = md && ui.editing === true;
+            const hasOutput = run.logs.length > 0 || run.error !== null || run.tables.length > 0;
             return (
-              <section key={cell.id} data-cell="" data-status={run.status}
+              <section key={cell.id} data-cell="" data-cell-id={cell.id} data-kind={md ? 'markdown' : 'code'} data-status={run.status}
+                tabIndex={-1}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+                    e.preventDefault();
+                    moveBy(cell.id, e.key === 'ArrowUp' ? -1 : 1);
+                  }
+                }}
                 className={`rounded-lg border p-2 ${ct.card} ${run.status === 'error' ? ct.errorAccent : ''}`} aria-label={`Cell ${n}`}>
-                <div className="mb-1 flex items-center gap-1">
-                  <span className={`font-mono text-[11px] ${ct.muted}`}>In [{n}]</span>
-                  <button className={`${btn} ${ct.button}`} aria-label={`Run cell ${n}`} title="Run this cell (Shift+Enter)"
-                    disabled={busy} onClick={() => void runCell(cell)}>
-                    <Play size={12} aria-hidden="true" />
-                  </button>
-                  <span aria-live="polite" className={`text-[11px] ${run.status === 'error' ? ct.danger : ct.muted}`}>
-                    {run.status === 'idle' ? '' : run.status}
-                  </span>
+                <CellToolbar ct={ct} n={n} kind={md ? 'markdown' : 'code'} busy={busy} isFirst={i === 0} isLast={i === cells.length - 1}
+                  canDelete={cells.length > 1} status={run.status === 'idle' ? '' : run.status} statusError={run.status === 'error'}
+                  collapsed={!!ui.collapsed} flowOpen={!!ui.flow} editing={editing}
+                  onRun={() => void runCell(cell)}
+                  onToggleKind={() => {
+                    toggleKind(cell.id);
+                    if (!md && cell.text.trim() === '') patchUi(cell.id, { editing: true });
+                  }}
+                  onToggleEdit={() => patchUi(cell.id, { editing: !editing })}
+                  onMoveUp={() => moveBy(cell.id, -1)}
+                  onMoveDown={() => moveBy(cell.id, 1)}
+                  onDuplicate={() => duplicateAt(i)}
+                  onToggleCollapse={() => patchUi(cell.id, { collapsed: !ui.collapsed })}
+                  onToggleFlow={() => patchUi(cell.id, { flow: !ui.flow })}
+                  onDelete={() => removeCell(i)}>
                   {running === cell.id && runSpan?.cell === cell.id && runSpan.to > runSpan.from && (
                     <RunProgress ct={ct} from={runSpan.from} to={runSpan.to} step={frame?.step ?? runSpan.from} />
                   )}
-                  <button className={`${btn} ml-auto ${ct.button}`} aria-label={`Delete cell ${n}`} title="Delete this cell"
-                    disabled={busy || cells.length <= 1} onClick={() => removeCell(i)}>
-                    <Trash2 size={12} aria-hidden="true" />
-                  </button>
-                </div>
-                <textarea
-                  aria-label={`Cell ${n} input`}
-                  placeholder="LAMMPS input, e.g. run 100 (Shift+Enter runs this cell)"
-                  value={cell.text}
-                  spellCheck={false}
-                  rows={Math.max(2, cell.text.split('\n').length + 1)}
-                  onChange={(e) => updateText(cell.id, e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && e.shiftKey) {
-                      e.preventDefault();
-                      if (!busy) void runCell(cell);
-                    }
-                  }}
-                  className={`block w-full resize-y rounded border px-2 py-1 font-mono text-xs leading-relaxed ${ct.input}`}
-                />
-                <div role="log" aria-label={`Cell ${n} output`} className="mt-1 space-y-1 font-mono text-[11px]">
-                  {run.logs.map((l, k) => <p key={k} className={ct.muted}>{l}</p>)}
-                  {run.error && <EngineErrorText ct={ct} message={run.error} />}
-                  {run.tables.map((t, k) => (
-                    <div key={k} className="max-h-64 overflow-auto">
-                      {unitsCaption(t.units) && <p className={`mb-0.5 font-sans ${ct.muted}`}>{unitsCaption(t.units)}</p>}
-                      <table className="border-collapse text-right">
-                        <thead>
-                          <tr>{t.keywords.map((kw, c) => <th key={kw} title={thermoUnit(t.units, kw) ?? undefined} className={`px-2 font-semibold ${ct.headerText}`}>{t.labels?.[c] ?? kw}</th>)}</tr>
-                        </thead>
-                        <ThermoRows ct={ct} keywords={t.keywords} rows={t.rows} />
-                      </table>
+                </CellToolbar>
+                {md ? (
+                  editing ? (
+                    <textarea
+                      aria-label={`Cell ${n} text`}
+                      placeholder="Markdown: # heading, **bold**, - list, [link](https://...). Shift+Enter renders."
+                      value={cell.text}
+                      spellCheck
+                      rows={Math.max(3, cell.text.split('\n').length + 1)}
+                      onChange={(e) => updateText(cell.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && e.shiftKey) {
+                          e.preventDefault();
+                          patchUi(cell.id, { editing: false });
+                        }
+                      }}
+                      className={`block w-full resize-y rounded border px-2 py-1 font-mono text-xs leading-relaxed ${ct.input}`}
+                    />
+                  ) : (
+                    <div onDoubleClick={() => patchUi(cell.id, { editing: true })} aria-label={`Cell ${n} rendered text`}
+                      className="cursor-text px-1 py-1">
+                      <MarkdownView ct={ct} source={cell.text} />
                     </div>
-                  ))}
-                </div>
-                <div className="mt-1 flex">
-                  <button className={`${btn} ${ct.button}`} aria-label={`Add a cell below cell ${n}`} onClick={() => addBelow(i)}>
-                    <Plus size={12} aria-hidden="true" />cell
-                  </button>
-                </div>
+                  )
+                ) : (
+                  <>
+                    <textarea
+                    aria-label={`Cell ${n} input`}
+                    placeholder="LAMMPS input, e.g. run 100 (Shift+Enter runs this cell)"
+                    value={cell.text}
+                    spellCheck={false}
+                    rows={Math.max(2, cell.text.split('\n').length + 1)}
+                    onChange={(e) => updateText(cell.id, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && e.shiftKey) {
+                        e.preventDefault();
+                        if (!busy) void runCell(cell);
+                      }
+                    }}
+                    className={`block w-full resize-y rounded border px-2 py-1 font-mono text-xs leading-relaxed ${ct.input}`}
+                  />
+                  {ui.flow && <CellFlowchart theme={theme} n={n} text={cell.text} />}
+                  {ui.collapsed ? (
+                    hasOutput && <p className={`mt-1 font-sans text-[11px] ${ct.muted}`}>Output hidden.</p>
+                  ) : (
+                  <div role="log" aria-label={`Cell ${n} output`} className="mt-1 space-y-1 font-mono text-[11px]">
+                    {run.logs.map((l, k) => <p key={k} className={ct.muted}>{l}</p>)}
+                    {run.error && <EngineErrorText ct={ct} message={run.error} />}
+                    {run.tables.map((t, k) => (
+                      <div key={k} className="max-h-64 overflow-auto">
+                        {unitsCaption(t.units) && <p className={`mb-0.5 font-sans ${ct.muted}`}>{unitsCaption(t.units)}</p>}
+                        <table className="border-collapse text-right">
+                          <thead>
+                            <tr>{t.keywords.map((kw, c) => <th key={kw} title={thermoUnit(t.units, kw) ?? undefined} className={`px-2 font-semibold ${ct.headerText}`}>{t.labels?.[c] ?? kw}</th>)}</tr>
+                          </thead>
+                          <ThermoRows ct={ct} keywords={t.keywords} rows={t.rows} />
+                        </table>
+                      </div>
+                    ))}
+                  </div>
+                  )}
+                  </>
+                )}
+                <AddCellRow ct={ct} n={n} onAdd={(kind) => addBelow(i, kind)} />
               </section>
             );
           })}
@@ -580,7 +734,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           <InputFilesPanel theme={theme} inputs={inputs} totalBytes={inputFiles.totalBytes} error={inputFiles.error}
             busy={busy} onRemove={removeInputFile} onClearAll={() => void inputFiles.clearAll()}
             onDismissError={inputFiles.dismissError} />
-          <RunFiles ct={ct} files={files} cells={cells} runs={runs} onOpenInViewer={onOpenInViewer} />
+          <RunFiles ct={ct} files={files} cells={cells} runs={runs} onOpenInViewer={onOpenInViewer} onRenderFile={loadFileForRender} />
           {chart.temp.length <= 1 && Object.keys(files).length === 0 && Object.keys(inputs).length === 0 && (
             <p className={`text-xs ${ct.muted}`}>
               Thermo charts, files written by dump / write_data, and the files you add with Add files appear here.

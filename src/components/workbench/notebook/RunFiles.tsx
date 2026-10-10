@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Download, Eye, EyeOff, ExternalLink, Archive, ScrollText, Table2 } from 'lucide-react';
+import { Download, Eye, EyeOff, ExternalLink, Archive, ScrollText, Table2, Clapperboard } from 'lucide-react';
 import type { getThemeTokens } from '../../../theme';
 import { downloadFile, downloadTextFile } from '../../../lammps/exporter';
 import { buildZip } from '../../../lammps/zip';
@@ -33,7 +33,13 @@ interface RunFilesProps {
   runs: Record<string, RunOutput | undefined>;
   /** Opens a structure or trajectory file in the Molecule 3D Viewer. */
   onOpenInViewer?: (file: { name: string; text: string }) => void;
+  /** Loads a LAMMPS dump the run wrote into the notebook's player and opens the Render panel on it. */
+  onRenderFile?: (file: { name: string; text: string }) => void;
 }
+
+/** A LAMMPS dump text (ITEM: TIMESTEP blocks), the trajectories the Render panel can load. */
+const isDumpText = (kind: FileKind, text: string): boolean =>
+  kind === 'trajectory' && /^ITEM: TIMESTEP/m.test(text.slice(0, 200));
 
 interface Entry {
   name: string;
@@ -43,7 +49,7 @@ interface Entry {
   frames: number | null;
 }
 
-const RunFiles: React.FC<RunFilesProps> = ({ ct, files, cells, runs, onOpenInViewer }) => {
+const RunFiles: React.FC<RunFilesProps> = ({ ct, files, cells, runs, onOpenInViewer, onRenderFile }) => {
   const [imagePick, setImagePick] = useState<number | null>(null);
   const [preview, setPreview] = useState<{ name: string; full: boolean } | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -143,6 +149,13 @@ const RunFiles: React.FC<RunFilesProps> = ({ ct, files, cells, runs, onOpenInVie
                           title="Open in the Molecule 3D Viewer"
                           onClick={() => onOpenInViewer({ name: e.name, text: e.text })}>
                           <ExternalLink size={12} aria-hidden="true" />Open in 3D Viewer
+                        </button>
+                      )}
+                      {onRenderFile && isDumpText(e.kind, e.text) && (
+                        <button className={`${btn} ${ct.button}`} aria-label={`Render video from ${e.name}`}
+                          title="Load this dump into the player and open the Render panel to make a video of it"
+                          onClick={() => onRenderFile({ name: e.name, text: e.text })}>
+                          <Clapperboard size={12} aria-hidden="true" />Render video
                         </button>
                       )}
                       <button className={`${btn} ${ct.button}`} aria-label={`Download ${e.name}`}

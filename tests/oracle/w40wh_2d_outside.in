@@ -1,0 +1,35 @@
+# oracle: 2d LJ solute and solvent, wall/harmonic/outside on xlo and xhi with pbc yes (cut-down of examples/wall in.wall.harmonic.outside.2d)
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+dimension       2
+boundary        p p p
+atom_style      atomic
+neigh_modify    delay 0 every 1
+variable        x equal 12
+variable        y equal 12
+variable        rc equal 2.5
+variable        wall_x_lo equal 4.0
+variable        wall_x_hi equal 8.0
+variable        rcw equal 2.0
+lattice         sq2 0.6
+region          simbox block 0 $x 0 $y -0.1 0.1
+create_box      2 simbox
+create_atoms    1 box
+group           solute id 1:200:3
+set             group solute type 2
+group           solvent type 1
+mass            1 1.0
+mass            2 1.0
+pair_style      lj/cut ${rc}
+pair_coeff      1 1 1.0 1.0 ${rc}
+pair_coeff      1 2 1.0 1.0 ${rc}
+pair_coeff      2 2 1.0 1.0 ${rc}
+velocity        all create 1.0 97287
+fix             w2 solute wall/harmonic/outside xlo ${wall_x_lo} 5.0 1.0 ${rcw} xhi ${wall_x_hi} 5.0 1.0 ${rcw} pbc yes
+fix_modify      w2 energy yes
+fix             1 all nvt temp 1.0 1.0 0.1
+timestep        0.01
+thermo_style    custom step temp pe etotal press f_w2 f_w2[1] f_w2[2]
+thermo_modify   format float %.15g
+thermo          20
+run             200

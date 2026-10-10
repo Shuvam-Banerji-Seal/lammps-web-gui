@@ -80,6 +80,8 @@ export class Neighbor {
   delay = 0;
   check = true;
   once = false;
+  /** neighbor style multi (neighbor.html); neigh_modify bin/hash needs it. */
+  multiStyle = false;
   /** neigh_modify binsize (0 = half the largest neighbor cutoff). */
   binsize = 0;
   /** comm_modify cutoff: ghost cutoff at least this large. */

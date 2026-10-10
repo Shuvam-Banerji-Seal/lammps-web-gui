@@ -225,6 +225,7 @@ const neighbor: Handler = ({ sys }, a) => {
   if (skin < 0) throw new StyleError('neighbor skin must be >= 0');
   if (!['bin', 'nsq', 'multi', 'multi/old'].includes(a[1] ?? '')) throw new StyleError('usage: neighbor skin bin|nsq|multi');
   sys.nb.skin = skin;
+  sys.nb.multiStyle = a[1] === 'multi';
   sys.nb.lastBuild = -1;
   sys.bump();
 };
@@ -239,6 +240,16 @@ const neighModify: Handler = ({ sys }, a) => {
       case 'every': nb.every = int(a[k + 1], 'every'); if (nb.every < 1) throw new StyleError('neigh_modify every must be >= 1'); k += 2; break;
       case 'check': nb.check = yesno(a[k + 1], 'check'); k += 2; break;
       case 'once': nb.once = yesno(a[k + 1], 'once'); k += 2; break;
+      case 'bin/hash': {
+        // neigh_modify.html: "The *bin/hash* option toggles whether the atoms in a bin are stored in" a linked list
+        // (default) or a hash table; "The hash option is only available for the" multi neighbor mode. The engine
+        // keeps its own bin storage: the setting is checked and accepted. Native LAMMPS refuses yes without
+        // multi (measured) and its result differs from the default only by roundoff (measured, 1.7e-15 relative).
+        const on = yesno(a[k + 1], 'bin/hash');
+        if (on && !nb.multiStyle) throw new StyleError('Cannot use bin/hash command without multi setting');
+        k += 2;
+        break;
+      }
       case 'cluster': yesno(a[k + 1], 'cluster'); k += 2; break;
       case 'page': case 'one': int(a[k + 1], key); k += 2; break;
       case 'binsize': nb.binsize = num(a[k + 1], 'binsize'); k += 2; break;

@@ -497,3 +497,32 @@ export class PairZero extends Pair {
     // "but do not compute any pairwise forces or energies"
   }
 }
+
+/*
+ * pair_style zero/coul cutoff [nocoeff] [full] — docs.lammps.org/pair_zero.html: "Pair style *zero/coul*
+ * behaves exactly like pair style *zero*, but additionally presents itself as a Coulombic pair style: it
+ * declares compatibility with kspace styles and provides its cutoff as the real-space Coulomb cutoff, while
+ * still computing no pairwise interactions." Its kspace compatibility is also limited: "pair style *zero/coul*
+ * cannot be used with kspace styles that require a pair style providing dispersion or TIP4P support".
+ * Measured with native LAMMPS (black box): pair_style zero/coul 6.0 with kspace_style ewald (gewald 0.4)
+ * gives E_coul 0 and E_long -1288.45251918596, the same E_long as lj/cut/coul/long with the same kspace;
+ * with kspace_style pppm (slab 3.0) E_long was -1416.87452190853, again the pppm value of the lj/cut/coul/long
+ * case. pair_modify shift yes and tail yes were accepted with no effect (no energy change). Measured: with
+ * kspace_style pppm/disp or pppm/tip4p the error is KSpace style pppm/disp is incompatible with Pair style zero/coul.
+ * pair_style zero with kspace_style zero is refused, KSpace style is incompatible with Pair style, because
+ * pair style zero is not Coulombic (measured).
+ */
+export class PairZeroCoul extends PairZero {
+  readonly name: string = 'zero/coul';
+
+  /** The global cutoff is the real-space Coulomb cutoff that kspace styles read (cut_coul). */
+  extract(name: string): unknown {
+    if (name === 'cut_coul') return this.cutGlobal;
+    return super.extract(name);
+  }
+
+  /** shift and tail are accepted with no effect (measured); zero interactions have nothing to shift. */
+  initStyle(_ctx: StyleContext): void {
+    // no-op: see the header comment
+  }
+}

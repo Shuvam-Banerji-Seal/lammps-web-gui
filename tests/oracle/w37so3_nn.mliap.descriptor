@@ -1,0 +1,9 @@
+# synthetic so3 descriptor for oracle w37so3_nn (not a LAMMPS potential)
+rcutfac 4.0
+nmax 3
+lmax 2
+alpha 1.5
+nelems 2
+elems A B
+radelems 0.9 1.1
+welems 1.0 0.8

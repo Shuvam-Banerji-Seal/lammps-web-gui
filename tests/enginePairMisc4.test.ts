@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { PAIR_STYLES } from '../src/engine/styles';
+import { describe, expect, it, beforeAll } from 'vitest';
+import { PAIR_STYLES, loadAllStyles } from '../src/engine/styles';
 import {
   PairBornCoulLongCS, PairBuckCoulLongCS, PairCoulLongCS, csCoulPair, erfAcc, hOverX3,
 } from '../src/engine/force/pair/coul_cs';
@@ -37,6 +37,10 @@ const forceOk = (fpair: number, e: (r: number) => number, r: number): boolean =>
   const d = dEdr(e, r);
   return Math.abs(fpair * r + d) <= 1e-7 * Math.abs(e(r)) / r + 1e-12;
 };
+
+
+// the lazily loaded style registries (src/engine/lazyStyles.ts) are read directly here
+beforeAll(() => loadAllStyles());
 
 describe('lj/sf: an alias of lj/smooth/linear', () => {
   it('gives the lj/smooth/linear energy and force (measured with native LAMMPS: identical to the last digit)', () => {

@@ -19,7 +19,7 @@ npm test             # vitest run — the whole suite (~2250 tests, a few minute
 npx vitest run tests/<file>.test.ts   # one file
 npm run typecheck    # tsc --noEmit — must be clean
 npm run build        # tsc && vite build
-npm run check:size   # gzip budgets: 420 KB initial JS, 120 KB lazy (notebook UI, small workers), 400 KB engine worker
+npm run check:size   # gzip budgets: 420 KB initial JS, 120 KB lazy (notebook UI, small workers), 400 KB engine worker (+ its static engine-* chunks), 60 KB per lazy style chunk
 ```
 
 There is no linter configured; `typecheck` is the static gate.
@@ -49,7 +49,7 @@ comments as "Measured with native LAMMPS (black box): ..." without quote marks; 
 | `src/services/trajectoryAnalysis.ts` | RDF (cell list), MSD, density, speeds |
 | `src/services/instanceMatrix.ts` | Direct instanced-matrix writes |
 | `src/components/workbench/` | The four modules: `ScriptBuilder`, `CompilerHelper`, `ViewerModule`, `Notebook` (lazy-loaded) |
-| `src/engine/` | In-browser MD engine for the notebook: `types.ts` (contracts), `units`, `rng`, `lattice`, `pairs`, `cpu/forces.ts` (fp64 reference), `cpu/parallel.ts` + `cpu/rangeKernel.ts` (lj/cut-only threaded forces via `src/workers/force.worker.ts`, used without cross-origin isolation), `cpu/pairThreads.ts` + `cpu/pairThreadsCore.ts` + `cpu/threadedPairs.ts` (shared-memory threads for the general engine's pair term via `src/workers/pair.worker.ts`), `force/` (pair, bond, angle, dihedral, improper, kspace styles), `fix/`, `compute/`, `commands/`, `registry/` (style factories merged in `styles.ts`), `neighbor.ts`, `gpu/webgpuForces.ts` (WGSL forces) + `gpu/resident.ts` (whole NVE steps on the GPU), `integrate`, `velocity`, `observables`, `md` (run loop), `script` + `expr` (input parsing), `interpreter.ts` (LAMMPS subset), `fixes.ts`, `host`/`client`/`protocol` (worker plumbing), `view.ts` |
+| `src/engine/` | In-browser MD engine for the notebook: `types.ts` (contracts), `units`, `rng`, `lattice`, `pairs`, `cpu/forces.ts` (fp64 reference), `cpu/parallel.ts` + `cpu/rangeKernel.ts` (lj/cut-only threaded forces via `src/workers/force.worker.ts`, used without cross-origin isolation), `cpu/pairThreads.ts` + `cpu/pairThreadsCore.ts` + `cpu/threadedPairs.ts` (shared-memory threads for the general engine's pair term via `src/workers/pair.worker.ts`), `force/` (pair, bond, angle, dihedral, improper, kspace styles), `fix/`, `compute/`, `commands/`, `registry/` (style factories merged in `styles.ts`; the registries listed in `lazyStyles.ts` are loaded on first use instead — a style added to one of those modules must also be added to its name list there, `tests/engineLazyStyles.test.ts` checks it), `neighbor.ts`, `gpu/webgpuForces.ts` (WGSL forces) + `gpu/resident.ts` (whole NVE steps on the GPU), `integrate`, `velocity`, `observables`, `md` (run loop), `script` + `expr` (input parsing), `interpreter.ts` (LAMMPS subset), `fixes.ts`, `host`/`client`/`protocol` (worker plumbing), `view.ts` |
 | `docs/design/notebook.md` | Notebook design: scope, supported subset, acceptance test (LAMMPS `examples/melt` log) |
 | `src/components/*.tsx` | three.js scene pieces (instanced meshes, camera, box, labels) |
 | `src/workers/` | Parser and analysis Web Workers |

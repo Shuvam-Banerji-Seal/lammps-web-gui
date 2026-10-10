@@ -1,7 +1,7 @@
 import type { Handler } from './args';
 import { int, num, yesno } from './args';
 import { StyleError, type Bonded } from '../force/types';
-import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES, KSPACE_STYLES } from '../styles';
+import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES, KSPACE_STYLES, styleNames } from '../styles';
 import type { System } from '../system';
 import type { MixRule, Pair } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
@@ -13,7 +13,7 @@ import { isMolecularStyle } from '../atoms';
  */
 
 const unsupported = (kind: string, name: string, list: Record<string, unknown>) =>
-  new StyleError(`${kind} '${name}' is not supported by the browser engine; supported: ${Object.keys(list).sort().join(', ') || 'none yet'}`);
+  new StyleError(`${kind} '${name}' is not supported by the browser engine; supported: ${(styleNames()[kind] ?? Object.keys(list).sort()).join(', ') || 'none yet'}`);
 
 /** pair_style style args — pair_style.html; "pair_style none" removes it. */
 const pairStyle: Handler = ({ sys }, a) => {

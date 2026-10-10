@@ -1107,8 +1107,8 @@ export const parseMeamParams = (text: string, name: string, nelem = 1): MeamPara
           pairOf(i, j).lattce = val;
           if (nelem === 1) out.lattce = val;
         } else {
-          if (val !== 'b1' && val !== 'dia') {
-            throw new StyleError(`MEAM lattce(${i},${j}) = ${val} is not supported (only b1 and dia for an I-J pair; ${name})`);
+          if (val !== 'b1' && val !== 'dia' && val !== 'b2' && val !== 'l12') {
+            throw new StyleError(`MEAM lattce(${i},${j}) = ${val} is not supported (only b1, dia, b2 and l12 for an I-J pair; ${name})`);
           }
           pairOf(i, j).lattce = val;
         }
@@ -1261,7 +1261,7 @@ export class PairMeam extends Pair {
     this.typeElem = [];
   }
 
-  /** Multi-element pair_coeff: fcc/dia elements, b1/dia pairs, default screening, erose_form 0/1/2 (see meam_alloy.ts). */
+  /** Multi-element pair_coeff: fcc/dia elements, b1/dia/b2/l12 pairs, default screening, erose_form 0/1/2 (see meam_alloy.ts). */
   private coeffAlloy(args: string[], elems: string[], maps: string[], ctx: StyleContext): void {
     const libFile = args[2], paramFile = args[3 + elems.length];
     const libs = elems.map((elt) => {
@@ -1324,10 +1324,10 @@ export class PairMeam extends Pair {
         if (p.Ec === undefined || p.re === undefined || p.alpha === undefined) {
           throw new StyleError(`multi-element MEAM: parameter file ${paramFile} must set Ec(${a + 1},${b + 1}), re(${a + 1},${b + 1}) and alpha(${a + 1},${b + 1})`);
         }
-        if (p.lattce !== 'b1' && p.lattce !== 'dia') {
-          throw new StyleError(`multi-element MEAM: lattce(${a + 1},${b + 1}) must be set to b1 or dia (${p.lattce ?? 'not set'} is not supported)`);
+        if (p.lattce !== 'b1' && p.lattce !== 'dia' && p.lattce !== 'b2' && p.lattce !== 'l12') {
+          throw new StyleError(`multi-element MEAM: lattce(${a + 1},${b + 1}) must be set to b1, dia, b2 or l12 (${p.lattce ?? 'not set'} is not supported)`);
         }
-        pairs[i].push({ Ec: p.Ec, re: p.re, alpha: p.alpha, lat: p.lattce, attrac: p.attrac, repuls: p.repuls });
+        pairs[i].push({ Ec: p.Ec, re: p.re, alpha: p.alpha, lat: p.lattce as AlloyPair['lat'], attrac: p.attrac, repuls: p.repuls, cornerEl: b });
       }
     }
     // Per-triplet screening limits: key "min(c,j),max(c,j),k" (1-based), the pair sorted as measured

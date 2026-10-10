@@ -1,0 +1,36 @@
+# oracle: cut-down examples/VISCOSITY/in.nemd.2d (2d LJ, 8x8 box; equilibration with NVE, then NEMD xy erate 2.7/ly with fix nvt/sllod and flip no; compute temp/deform as thermo temperature); the Langevin equilibration and the ave/chunk output are dropped
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+dimension       2
+atom_style      atomic
+neigh_modify    delay 0 every 1
+
+lattice         sq2 0.6
+region          simbox prism 0 8 0 8 -0.1 0.1 0.0 0.0 0.0
+create_box      1 simbox
+create_atoms    1 box
+
+pair_style      lj/cut 2.5
+pair_coeff      * * 1 1
+
+mass            * 1.0
+velocity        all create 1.0 97287
+
+fix             1 all nve
+fix             3 all enforce2d
+
+compute         usual all temp
+thermo_style    custom step temp c_usual epair etotal press pxy
+thermo_modify   temp usual format float %.15g
+thermo          100
+run             200
+
+unfix           1
+velocity        all scale 1.0
+
+variable        xyrate equal 2.7/8.0
+fix             1 all nvt/sllod temp 1.0 1.0 0.1
+fix             2 all deform 0 xy erate ${xyrate} remap v flip no
+compute         tilt all temp/deform
+thermo_modify   temp tilt
+run             200

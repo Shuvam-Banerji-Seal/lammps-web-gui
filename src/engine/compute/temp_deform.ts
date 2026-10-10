@@ -1,4 +1,5 @@
 import { ComputeTemp } from './temp';
+import type { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { massOf } from '../atoms';
@@ -67,14 +68,59 @@ export class ComputeTempDeform extends ComputeTemp {
   private saved = new Float64Array(0);
   private biasOn = new Uint8Array(0);
 
+  /** ID of the internal temperature compute (keyword temp), or null for compute temp. */
+  private tempId: string | null = null;
+  private internal: Compute | null = null;
+  private thermalSaved = new Float64Array(0);
+
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, []);
-    if (args.length) throw new StyleError(`compute temp/deform takes no arguments (got ${args.join(' ')})`);
+    // compute_temp_deform.rst: "keyword = *temp*" with "*temp* value = compute ID that calculates a temperature"
+    for (let k = 0; k < args.length;) {
+      if (args[k] !== 'temp') throw new StyleError(`Unknown compute temp/deform keyword: ${args[k]} (compute temp/deform takes no arguments other than the keyword temp)`);
+      if (args[k + 1] === undefined) throw new StyleError('compute temp/deform keyword temp needs a compute ID');
+      this.tempId = args[k + 1];
+      k += 2;
+    }
   }
 
   init(): void {
     this.deform = this.findDeform();
+    this.internal = null;
+    if (this.tempId !== null) {
+      // Native messages (own words here): the compute must exist, must compute a temperature and must share the group.
+      const c = this.sys.computes.find((x) => x.id === this.tempId);
+      if (!c) throw new StyleError(`Temperature ID ${this.tempId} for compute temp/deform does not exist`);
+      if (!c.tempFlag) throw new StyleError(`Temperature ID ${this.tempId} for compute temp/deform does not compute temperature`);
+      if (c.groupBit !== this.groupBit) throw new StyleError(`Group of temperature compute with ID ${this.tempId} for compute temp/deform does not match`);
+      this.internal = c;
+    }
     super.init();
+  }
+
+  /**
+   * With keyword temp, the internal compute evaluates the thermal velocities: the streaming
+   * velocity is subtracted from the group's velocities for the duration of the call.
+   */
+  private withThermal<T>(fn: () => T): T {
+    const s = this.sys.state;
+    const df = this.deformFix();
+    if (this.thermalSaved.length < 3 * s.n) this.thermalSaved = new Float64Array(3 * s.n);
+    const vs = this.vs;
+    for (let i = 0; i < s.n; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      this.thermalSaved[3 * i] = s.v[3 * i]; this.thermalSaved[3 * i + 1] = s.v[3 * i + 1]; this.thermalSaved[3 * i + 2] = s.v[3 * i + 2];
+      this.streaming(df, i, vs);
+      s.v[3 * i] -= vs[0]; s.v[3 * i + 1] -= vs[1]; s.v[3 * i + 2] -= vs[2];
+    }
+    try {
+      return fn();
+    } finally {
+      for (let i = 0; i < s.n; i++) {
+        if (!(s.mask[i] & this.groupBit)) continue;
+        s.v[3 * i] = this.thermalSaved[3 * i]; s.v[3 * i + 1] = this.thermalSaved[3 * i + 1]; s.v[3 * i + 2] = this.thermalSaved[3 * i + 2];
+      }
+    }
   }
 
   private findDeform(): FixDeform {
@@ -88,6 +134,10 @@ export class ComputeTempDeform extends ComputeTemp {
   }
 
   protected computeScalar(): number {
+    if (this.internal) {
+      const c = this.internal as unknown as { computeScalar(): number };
+      return this.withThermal(() => c.computeScalar());
+    }
     if (this.dynamicDof) this.dofCompute();
     const df = this.deformFix();
     const s = this.sys.state;
@@ -105,6 +155,13 @@ export class ComputeTempDeform extends ComputeTemp {
   }
 
   protected computeVector(): void {
+    if (this.internal) {
+      const c = this.internal as unknown as { computeVector(): void };
+      const src = this.internal.vector;
+      this.withThermal(() => c.computeVector());
+      for (let k = 0; k < 6; k++) this.vector[k] = src[k];
+      return;
+    }
     const df = this.deformFix();
     const s = this.sys.state;
     const vs = this.vs;

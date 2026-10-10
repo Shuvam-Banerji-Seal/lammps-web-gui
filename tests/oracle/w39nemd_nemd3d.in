@@ -1,0 +1,31 @@
+# oracle: cut-down examples/nemd/in.nemd (2d LJ, sq2 lattice, 6x4 box, 300 steps; velocity create uses loop all because the engine does not reproduce loop geom): fix nvt/sllod + fix deform 0 xy erate remap v, compute temp/deform via thermo
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+dimension       2
+
+lattice         sq2 0.8442
+region          box prism 0 6 0 4 -0.5 0.5 0 0 0
+create_box      2 box
+create_atoms    1 box
+mass            * 1.0
+
+velocity        all create 1.44 87287
+
+region          slice block 2 3 INF INF INF INF
+set             region slice type 2
+
+pair_style      lj/cut 4.0
+pair_coeff      * * 1.0 1.0
+
+neighbor        0.3 bin
+neigh_modify    delay 0 every 1
+
+fix             1 all nvt/sllod temp 1.0 1.0 1.0 tchain 1
+fix             2 all deform 0 xy erate 0.01 remap v
+
+thermo_style    custom step temp pe press pxy xy
+thermo_modify   format float %.15g
+thermo          50
+
+run             300

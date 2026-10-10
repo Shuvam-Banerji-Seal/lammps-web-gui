@@ -1,0 +1,34 @@
+# oracle: fix_modify kick yes queues a kick for run 0 after the deform rate changed (fix_nvt_sllod.rst doc sequence: unfix/fix deform, run 0, run 2)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box prism 0 4 0 4 0 4 0.3 0.0 0.0
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        vx atom 0.8*sin(0.9*x+0.4*z)
+variable        vy atom 0.8*cos(0.6*y+0.8*x)
+variable        vz atom 0.8*sin(0.7*z-0.3*y)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+timestep        0.002
+neigh_modify    every 1 delay 0 check no
+fix             2 all deform 0 xy erate 0.05 remap v
+fix             3 all nvt/sllod temp 1.0 1.0 0.1 kick no
+compute         tt all temp/deform
+thermo_style    custom step c_3_temp c_tt pe press pxy xy
+thermo_modify   format float %.15g
+thermo          1
+run             2
+fix_modify      3 kick yes
+run             0
+run             0
+unfix           2
+fix             2 all deform 0 xy erate -0.05 remap v
+fix_modify      3 kick yes
+run             0
+run             2
+

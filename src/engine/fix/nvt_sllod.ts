@@ -47,8 +47,9 @@ import { massOf } from '../atoms';
  * - The term is added to the lab velocity just before the thermostat scales the
  *   thermal velocity, in both thermostat calls of a step (half a timestep each).
  * - Native warns for N = 1 (fix deform should update positions every step) and
- *   for x erate (trate recommended). The engine's fix deform has no N = 0, so
- *   the oracle cases set neigh_modify every 1 delay 0 check no.
+ *   for x erate (trate recommended). The w7sllod cases use N = 1 with
+ *   neigh_modify every 1 delay 0 check no; the w39nemd cases use N = 0 (see
+ *   fix/deform.ts) with the default neighbor settings.
  *
  * Known residual (not fixed): with a diagonal rate, a ~1e-10 per-step velocity
  * difference is amplified by the thermostat to ~4e-7 relative in temperature
@@ -171,11 +172,29 @@ export class FixNVTSllod extends FixNH {
   constructor(sys: System, id: string, group: string, args: string[]) {
     const rest: string[] = [];
     let psllod = false;
+    let peculiar = false;
+    let kick = true;
     for (let k = 0; k < args.length;) {
       if (args[k] === 'psllod') {
         const v = args[k + 1];
         if (v !== 'yes' && v !== 'no') throw new StyleError(`fix nvt/sllod psllod must be yes or no (got '${v ?? ''}')`);
         psllod = v === 'yes';
+        k += 2;
+      } else if (args[k] === 'peculiar') {
+        const v = args[k + 1];
+        if (v !== 'yes' && v !== 'no') throw new StyleError(`fix nvt/sllod peculiar must be yes or no (got '${v ?? ''}')`);
+        peculiar = v === 'yes';
+        k += 2;
+      } else if (args[k] === 'kick') {
+        const v = args[k + 1];
+        if (v !== 'yes' && v !== 'no') throw new StyleError(`fix nvt/sllod kick must be yes or no (got '${v ?? ''}')`);
+        kick = v === 'yes';
+        k += 2;
+      } else if (args[k] === 'integrator') {
+        const v = args[k + 1];
+        // fix_nvt_sllod.rst: "*integrator* value = *reversible* or *legacy*"; only reversible is implemented
+        if (v === 'legacy') throw new StyleError('fix nvt/sllod integrator legacy is not supported by the browser engine (only integrator reversible, the default, is implemented)');
+        if (v !== 'reversible') throw new StyleError(`fix nvt/sllod integrator must be reversible or legacy (got '${v ?? ''}')`);
         k += 2;
       } else {
         rest.push(args[k]);
@@ -184,8 +203,11 @@ export class FixNVTSllod extends FixNH {
     }
     // Default: "Same as :doc:`fix nvt <fix_nh>`, except *tchain* = 1, psllod = *no*." (fix_nvt_sllod.rst)
     if (!rest.includes('tchain')) rest.push('tchain', '1');
+    // fix_nvt_sllod.rst: "*peculiar* = *yes*" stores the velocity relative to the flow; not implemented here
+    if (peculiar) throw new StyleError('fix nvt/sllod peculiar yes is not supported by the browser engine (only peculiar no, the default, is implemented)');
     super(sys, id, group, rest, 'nvt');
     this.psllod = psllod;
+    this.kickPending = kick;
     // FixNH's chain calls this.scaleVelocities(factor): the SLLOD term goes in
     // just before the thermal velocity is scaled.
     const base = (FixNH.prototype as unknown as { scaleVelocities: (f: number | number[]) => void }).scaleVelocities;
@@ -212,19 +234,37 @@ export class FixNVTSllod extends FixNH {
     }
   }
 
-  /** The box streaming velocity has been added (once per fix instance, see setup). */
-  private profileAdded = false;
+  /**
+   * A kick (superimposing the box streaming velocity) is queued: at the first run (kick yes,
+   * the default for peculiar no), or by fix_modify kick yes. The kick is applied once per queue.
+   */
+  private kickPending = true;
 
   /**
-   * At the first run of this fix the velocities present are thermal: add the box streaming
-   * velocity. Measured with native LAMMPS (black box): later runs leave the velocities alone
-   * (after run 50 with xy erate 0.2, two more run 0 keep temp/deform at 0.154967), while an
-   * unfix and a new fix nvt/sllod adds the profile again at its first run (temp/deform becomes
-   * the previous plain temperature, 0.320004).
+   * fix_modify kick: "*kick* value = *yes* or *no*" (fix_modify.html). Queues a kick for the
+   * next run. fix_modify.html: "The *kick* keyword can only be used with fix nvt/sllod".
+   */
+  modify(key: string, values: string[]): number {
+    if (key !== 'kick') return super.modify(key, values);
+    const v = values[0];
+    if (v !== 'yes' && v !== 'no') throw new StyleError(`fix_modify kick must be yes or no (got '${v ?? ''}')`);
+    if (v === 'yes') this.kickPending = true;
+    return 1;
+  }
+
+  /**
+   * kick yes (fix_nvt_sllod.rst): "The kick will only be applied ONCE." The run setup adds the
+   * box streaming velocity to the velocities present, so they are taken as thermal.
+   * Measured with native LAMMPS (black box; tests/oracle/w39nemd_kick*.in): kick no leaves the
+   * velocities alone at the first run (temp/deform subtracts the streaming velocity from them),
+   * kick yes adds it. A later fix_modify kick yes adds the streaming velocity of the current
+   * fix deform on top of the lab velocities without first removing the old one (after the
+   * rate changed from +0.05 to -0.05 with unfix/fix deform the lab velocities carry both).
+   * The queued kick is applied with run 0 too.
    */
   setup(): void {
-    if (!this.profileAdded) {
-      this.profileAdded = true;
+    if (this.kickPending) {
+      this.kickPending = false;
       const df = findDeform(this.sys);
       const s = this.sys.state;
       const vs = [0, 0, 0];

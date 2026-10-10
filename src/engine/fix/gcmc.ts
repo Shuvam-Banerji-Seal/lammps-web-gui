@@ -26,10 +26,26 @@ import type { SimState, Topology, TopoList } from '../types';
  * insertions, with equal probability."
  *
  * Supported keywords: mol, mcmoves, region, maxangle, full_energy, charge,
- * group, grouptype, intra_energy, tfac_insert, overlap_cutoff, max, min, shake.
- * rigid, pressure and fugacity_coeff are rejected with a StyleError naming
- * them (they need a fix rigid/small or the per-unit pressure/fugacity
- * conversion the browser engine does not implement).
+ * group, grouptype, intra_energy, tfac_insert, overlap_cutoff, max, min, shake,
+ * rigid. pressure and fugacity_coeff are rejected with a StyleError naming
+ * them (they need the per-unit pressure/fugacity conversion the browser
+ * engine does not implement).
+ *
+ * rigid (docs.lammps.org/fix_gcmc.html, plans/lammps-docs-live/fix_gcmc.rst): "If you wish to insert
+ * molecules using the *mol* keyword that will be treated as rigid bodies, use the *rigid* keyword,
+ * specifying as its value the ID of a separate fix rigid/small command which also appears in your input
+ * script." "When using fix gcmc in combination with fix shake or fix rigid, only GCMC exchange moves are
+ * supported, so the argument *M* must be zero." "When using fix gcmc in combination with fix rigid,
+ * deletion of the last remaining molecule is not allowed for technical reasons, and so the molecule count
+ * will never drop below 1, regardless of the specified chemical potential."
+ * Measured with native LAMMPS (black box): rigid without mol stops with Cannot use fix gcmc rigid and not
+ * molecule; rigid with shake stops with Cannot use fix gcmc rigid and shake; rigid with M > 0 stops with
+ * Cannot use fix gcmc rigid with MC moves; a rigid fix ID that is not defined stops with Fix gcmc rigid
+ * fix ID nosuch does not exist; a rigid/small fix whose template differs from the mol keyword (or that has
+ * none) stops with Fix gcmc and fix rigid/small not using same molecule template ID. No full_energy is
+ * needed for rigid (the lj/cut run with rigid did not switch it on). The rigid fix adds the inserted body
+ * from its atoms, so its velocities are the atom velocities and its centre of mass is the mass-weighted
+ * centre (w38gcr_ins). Body registration, the removal of a deleted body and its dof are in the code below.
  *
  * shake (docs.lammps.org/fix_gcmc.html, plans/lammps-docs/fix_gcmc.rst): "If
  * you wish to insert molecules via the *mol* keyword, that will have their
@@ -112,6 +128,16 @@ interface ShakeClusters {
   style: string;
 }
 
+/** What fix gcmc needs from a fix rigid/small (its molecule bodies and its template ID). */
+interface RigidBodies {
+  addMolecule(atomIds: readonly number[]): void;
+  removeMolecule(atomIds: readonly number[]): void;
+  snapshotBodies(): object[];
+  restoreBodies(snap: object[]): void;
+  moleculeTemplateId(): string | null;
+  style: string;
+}
+
 /** A non-negative integer keyword value (X, M and the max/min bounds allow 0). */
 const nonNegInt = (w: string | undefined, what: string): number => {
   const v = num(w, what);
@@ -175,6 +201,10 @@ export class FixGcmc extends Fix {
   private molTemplate: MoleculeTemplate | null = null;
   private readonly shakeId: string | null;
   private shakeFix: ShakeClusters | null = null;
+  private readonly rigidId: string | null;
+  private rigidFix: RigidBodies | null = null;
+  /** a region-restricted translation that found no trial inside the region is rejected; the warning is printed once */
+  private regionWarned = false;
   /** An accepted insertion waits for fix shake to register it at the next step (see postIntegrate). */
   private shakePending = false;
   private readonly regionId: string | null;
@@ -234,6 +264,7 @@ export class FixGcmc extends Fix {
     let minAtoms: number | null = null;
     let groupId: string | null = null;
     let shakeId: string | null = null;
+    let rigidId: string | null = null;
     let sawMcmoves = false;
     let i = 8;
     while (i < args.length) {
@@ -262,7 +293,8 @@ export class FixGcmc extends Fix {
       else if (key === 'group') { groupId = v(1); i += 2; }
       else if (key === 'grouptype') { this.groupTypes.push({ type: nonNegInt(v(1), 'grouptype type'), group: v(2) }); i += 3; }
       else if (key === 'shake') { shakeId = v(1); i += 2; }
-      else if (key === 'rigid' || key === 'pressure' || key === 'fugacity_coeff') {
+      else if (key === 'rigid') { rigidId = v(1); i += 2; }
+      else if (key === 'pressure' || key === 'fugacity_coeff') {
         throw new StyleError(`fix gcmc keyword '${key}' is not supported by the browser engine`);
       } else throw new StyleError(`fix gcmc: unknown keyword '${key}'`);
     }
@@ -270,6 +302,12 @@ export class FixGcmc extends Fix {
       if (!molTemplateId) throw new StyleError('fix gcmc: Cannot use fix gcmc shake and not molecule (shake needs the mol keyword)');
       // docs fix_gcmc.html: "When using fix gcmc in combination with fix shake or fix rigid, only GCMC exchange moves are supported, so the argument *M* must be zero."
       if (this.M !== 0) throw new StyleError('fix gcmc: Cannot use fix gcmc shake with MC moves (M must be zero with shake)');
+    }
+    if (rigidId) {
+      // Measured with native LAMMPS (black box): these three refusals, in this order for rigid with shake.
+      if (shakeId) throw new StyleError('fix gcmc: Cannot use fix gcmc rigid and shake');
+      if (!molTemplateId) throw new StyleError('fix gcmc: Cannot use fix gcmc rigid and not molecule (rigid needs the mol keyword)');
+      if (this.M !== 0) throw new StyleError('fix gcmc: Cannot use fix gcmc rigid with MC moves (M must be zero with rigid)');
     }
     const typeInt = num(args[3], 'type');
     if (!Number.isInteger(typeInt)) throw new StyleError(`fix gcmc: type must be an integer, got '${args[3]}'`);
@@ -288,6 +326,7 @@ export class FixGcmc extends Fix {
     this.minAtoms = minAtoms;
     this.groupId = groupId;
     this.shakeId = shakeId;
+    this.rigidId = rigidId;
     // docs fix_gcmc.html defaults: "(Patomtrans, Pmoltrans, Pmolrotate) = (1, 0, 0) for mol = no and (0, 1, 1) for mol = yes"
     if (!sawMcmoves && molTemplateId) { this.patomtrans = 0; this.pmoltrans = 1; this.pmolrotate = 1; }
     if (!molTemplateId && (this.pmoltrans !== 0 || this.pmolrotate !== 0)) {
@@ -337,6 +376,18 @@ export class FixGcmc extends Fix {
         throw new StyleError('fix gcmc: Fix gcmc and fix shake not using same molecule template ID');
       }
       this.shakeFix = sf as ShakeClusters;
+    }
+    if (this.rigidId) {
+      const rf = this.sys.fixes.find((x) => x.id === this.rigidId) as unknown as Partial<RigidBodies> | undefined;
+      if (!rf) throw new StyleError(`fix gcmc rigid: fix ID ${this.rigidId} does not exist`);
+      if (typeof rf.addMolecule !== 'function' || typeof rf.removeMolecule !== 'function' || typeof rf.snapshotBodies !== 'function'
+        || typeof rf.restoreBodies !== 'function' || typeof rf.moleculeTemplateId !== 'function' || !rf.style?.includes('small')) {
+        throw new StyleError(`fix gcmc rigid: fix ${this.rigidId} (${rf.style ?? ''}) is not a fix rigid/small`);
+      }
+      if (rf.moleculeTemplateId!() !== this.molTemplateId) {
+        throw new StyleError('fix gcmc: Fix gcmc and fix rigid/small not using same molecule template ID');
+      }
+      this.rigidFix = rf as RigidBodies;
     }
     for (const g of this.groupTypes) if (g.type < 1 || g.type > s.ntypes) throw new StyleError(`fix gcmc grouptype: type ${g.type} is outside 1..${s.ntypes}`);
     if (this.regionId) {
@@ -517,7 +568,11 @@ export class FixGcmc extends Fix {
       // Measured with native LAMMPS (black box): an accepted molecule's velocities are the Gaussians
       // that start at draw 11 of the second stream, for the water and the dimer of the w37 cases (the
       // acceptance number is draw 1), so nine more draws come first; the atom path starts at draw 2.
-      if (this.molTemplate) for (let k = 0; k < 9; k++) this.accRng.uniform();
+      // Measured with native LAMMPS (black box, w38gcr_one_ins and w38gcr_one_full, insertion velocities
+      // with timestep 0): the partial-energy insertion starts its Gaussians after 9 extra draws; with
+      // full_energy the velocities are the Gaussians of 10 extra draws (one more than partial; eight give
+      // the same velocities, which is not separable from the velocities alone).
+      if (this.molTemplate) for (let k = 0; k < (this.fullEnergy ? 10 : 9); k++) this.accRng.uniform();
       // the velocity is drawn after the acceptance number, from the same stream (see the header)
       const vel = this.drawVelocity(mass);
       for (let i = snap.n; i < s.n; i++) {
@@ -525,6 +580,11 @@ export class FixGcmc extends Fix {
       }
       this.applyGroupTypes(snap.n);
       if (this.shakeFix) this.shakePending = true;
+      if (this.rigidFix) {
+        const ids: number[] = [];
+        for (let i = snap.n; i < s.n; i++) ids.push(s.id[i]);
+        this.rigidFix.addMolecule(ids);
+      }
     } else {
       restore(s, snap);
       sys.atomsChanged();
@@ -548,7 +608,9 @@ export class FixGcmc extends Fix {
       if (cands.length) idx = [cands[Math.floor(this.rng.uniform() * cands.length)]];
     }
     const blocked = this.minAtoms !== null && this.groupAtomCount() - idx.length < this.minAtoms;
-    if (!idx.length || blocked) {
+    // docs fix_gcmc.html: "deletion of the last remaining molecule is not allowed" with fix rigid
+    const lastRigid = this.rigidFix !== null && this.particleCount() <= 1;
+    if (!idx.length || blocked || lastRigid) {
       // No candidate: native still advances the exchange stream by its decision draw but takes
       // nothing from the second stream (w33gcmc_lj_empty). The min bound is assumed to act the same.
       this.rng.uniform();
@@ -557,6 +619,8 @@ export class FixGcmc extends Fix {
     const nPart = this.particleCount();
     const eBefore = this.potentialEnergy();
     const snap = capture(s);
+    const bodySnap = this.rigidFix?.snapshotBodies();
+    const delIds = idx.map((i) => s.id[i]);
     let mass = 0;
     for (const i of idx) mass += s.massByType[s.type[i]];
     const flags = new Uint8Array(s.n);
@@ -564,6 +628,7 @@ export class FixGcmc extends Fix {
     deleteAtoms(s, flags);
     sys.atomsChanged();
     this.shakeFix?.rebuildClusters();
+    this.rigidFix?.removeMolecule(delIds);
     let dU = this.potentialEnergy() - eBefore;
     if (!this.fullEnergy) dU -= this.molTemplate ? this.intraMolEnergy : 0;
     dU -= this.intraEnergy;
@@ -576,6 +641,7 @@ export class FixGcmc extends Fix {
       restore(s, snap);
       sys.atomsChanged();
       this.shakeFix?.rebuildClusters();
+      if (this.rigidFix && bodySnap) this.rigidFix.restoreBodies(bodySnap);
     }
   }
 
@@ -637,9 +703,12 @@ export class FixGcmc extends Fix {
     const old: Vec3 = [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]];
     let nw: Vec3;
     let tries = 0;
+    let inside = false;
     do {
       nw = [old[0] + (2 * this.rng.uniform() - 1) * this.displace, old[1] + (2 * this.rng.uniform() - 1) * this.displace, old[2] + (2 * this.rng.uniform() - 1) * this.displace];
-    } while (this.region && !this.region.match(nw[0], nw[1], nw[2]) && ++tries < 1000);
+      inside = !this.region || this.region.match(nw[0], nw[1], nw[2]);
+    } while (!inside && ++tries < 1000);
+    if (!inside) { this.regionMoveRejected(); return; }
     const eBefore = this.potentialEnergy();
     for (let d = 0; d < 3; d++) s.x[3 * i + d] = nw[d];
     sys.bump();
@@ -664,9 +733,12 @@ export class FixGcmc extends Fix {
     const com = this.moleculeCom(idx);
     let nw: Vec3;
     let tries = 0;
+    let inside = false;
     do {
       nw = [com[0] + (2 * this.rng.uniform() - 1) * this.displace, com[1] + (2 * this.rng.uniform() - 1) * this.displace, com[2] + (2 * this.rng.uniform() - 1) * this.displace];
-    } while (this.region && !this.region.match(nw[0], nw[1], nw[2]) && ++tries < 1000);
+      inside = !this.region || this.region.match(nw[0], nw[1], nw[2]);
+    } while (!inside && ++tries < 1000);
+    if (!inside) { this.regionMoveRejected(); return; }
     const shift: Vec3 = [nw[0] - com[0], nw[1] - com[1], nw[2] - com[2]];
     const old = this.snapshotCoords(idx);
     const eBefore = this.potentialEnergy();
@@ -679,6 +751,17 @@ export class FixGcmc extends Fix {
       for (let k = 0; k < idx.length; k++) for (let d = 0; d < 3; d++) s.x[3 * idx[k] + d] = old[3 * k + d];
       sys.bump();
     }
+  }
+
+  /**
+   * docs.lammps.org/fix_gcmc.html: "This process is repeated up to 1000 times; if no trial position with the
+   * center-of-mass inside the region is found, the move is rejected (but still counted as an attempted move)
+   * and a warning is printed once." The caller has counted the attempt and changed no position.
+   */
+  private regionMoveRejected(): void {
+    if (this.regionWarned) return;
+    this.regionWarned = true;
+    this.sys.warn('fix gcmc: could not place a region-restricted trial move inside the region after 1000 attempts; rejecting the move (reduce displace or enlarge the region)');
   }
 
   private rotateMolecule(): void {

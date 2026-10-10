@@ -1,0 +1,32 @@
+# oracle: w38gcr_one_ins: rigid CO2 (rigid/small molecule, fix_modify dynamic/dof yes) with one forced insertion at step 1 (N 1000 so no second event, mu 5 so the molecule is accepted); the accepted body is registered and its rigid motion is checked for 40 steps
+# oracle-inputs: w38gcr_co2.txt
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      full
+boundary        p p p
+pair_style      lj/cut 8.0
+bond_style      harmonic
+angle_style     harmonic
+lattice         sc 5.0
+region          box block 0 10 0 10 0 10 units box
+create_box      2 box bond/types 1 angle/types 1 extra/bond/per/atom 2 extra/angle/per/atom 1 extra/special/per/atom 2
+molecule        co2mol w38gcr_co2.txt
+create_atoms    0 single 2.5 2.5 2.5 units box mol co2mol 464563
+pair_coeff      1 1 0.053649 2.8
+pair_coeff      2 2 0.156973 3.05
+bond_coeff      1 0 1.16
+angle_coeff     1 0 180
+mass 1 12.0107
+mass 2 15.9994
+group           co2 type 1 2
+velocity        all create 338.0 54654
+timestep        1.0
+fix             myrigid co2 rigid/small molecule mol co2mol
+fix_modify      myrigid dynamic/dof yes
+variable        tfac equal 5.0/3.0
+fix             mygcmc co2 gcmc 1000 1 0 0 54341 338.0 5.0 0.5 mol co2mol tfac_insert ${tfac} group co2 rigid myrigid
+compute_modify  thermo_temp dynamic/dof yes
+thermo_style    custom step temp pe ke atoms f_mygcmc[1] f_mygcmc[2] f_mygcmc[3] f_mygcmc[4] f_mygcmc[5] f_mygcmc[6] f_mygcmc[7] f_mygcmc[8]
+thermo_modify   format float %.15g
+thermo          1
+run             40

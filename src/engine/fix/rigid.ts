@@ -68,6 +68,14 @@ interface InfileBody {
   image: number[];
 }
 
+const cloneBody = (b: Body): Body => ({
+  ...b,
+  atoms: b.atoms.slice(), xcm: b.xcm.slice(), vcm: b.vcm.slice(), image: b.image.slice(),
+  inertia: b.inertia.slice(), q: b.q.slice(), angmom: b.angmom.slice(), omega: b.omega.slice(),
+  displace: b.displace.map((r) => r.slice()), fcm: b.fcm.slice(), torque: b.torque.slice(),
+  fflag: b.fflag.slice(), tflag: b.tflag.slice(),
+});
+
 const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const qnorm = (q: number[]) => { const n = Math.hypot(q[0], q[1], q[2], q[3]); return q.map((v) => v / n); };
 /** Rotation matrix (columns = body axes in the space frame) of a unit quaternion. */
@@ -216,6 +224,8 @@ export class FixRigid extends Fix {
   private langTStop = 0;
   private langDamp = 0;
   private langRng: RanMars | null = null;
+  /** fix_modify dynamic/dof (stored; see modify). */
+  dynamicDofSet = false;
   constructor(sys: System, id: string, group: string, args: string[], style: string) {
     super(sys, id, group, args);
     this.style = style;
@@ -443,6 +453,32 @@ export class FixRigid extends Fix {
     return b;
   }
 
+  /** The mol template-ID of this fix (null without the mol keyword); fix gcmc rigid must name the same one. */
+  moleculeTemplateId(): string | null { return this.molTemplateId; }
+
+  /**
+   * Removes the rigid body that holds the given atom IDs (fix gcmc deletes a molecule with the rigid keyword).
+   * Deleted atoms have no entry any more, so the body is found by its atom IDs.
+   * docs.lammps.org/fix_gcmc.html: "use the *rigid* keyword, specifying as its value the ID of a separate
+   * fix rigid/small command which also appears in your input script."
+   */
+  removeMolecule(atomIds: readonly number[]): void {
+    if (this.bodystyle !== 'molecule') throw new StyleError(`fix ${this.style}: the mol keyword needs bodystyle molecule`);
+    const gone = new Set(atomIds);
+    const before = this.bodies.length;
+    this.bodies = this.bodies.filter((b) => !b.atoms.some((id) => gone.has(id)));
+    if (this.bodies.length !== before - 1) throw new StyleError(`fix ${this.style}: expected one rigid body for the deleted molecule, found ${before - this.bodies.length}`);
+    this.sizeArrayRows = this.bodies.length;
+  }
+
+  /** Copies of the body list, to undo a rejected deletion (see removeMolecule). */
+  snapshotBodies(): Body[] { return this.bodies.map(cloneBody); }
+
+  restoreBodies(snap: Body[]): void {
+    this.bodies = snap.map(cloneBody);
+    this.sizeArrayRows = this.bodies.length;
+  }
+
   /**
    * Adds a rigid body for the molecule given by its new atom IDs (fix deposit with the rigid keyword).
    * docs.lammps.org/fix_rigid.html: "It must be used when other commands, such as fix deposit or fix pour,
@@ -626,6 +662,15 @@ export class FixRigid extends Fix {
     if (key === 'bodyforces') {
       if (values[0] !== 'early' && values[0] !== 'late') throw new StyleError(`fix_modify bodyforces must be early or late, got '${values[0] ?? ''}'`);
       this.early = values[0] === 'early';
+      return 1;
+    }
+    // docs.lammps.org/fix_modify.html: "*dynamic/dof* value = *yes* or *no*", "yes/no = do or do not re-compute
+    // the number of degrees of freedom (DOF) contributing to the temperature". Measured with native LAMMPS
+    // (black box, w38gcr_co2 with and without compute_modify thermo_temp dynamic/dof): fix_modify dynamic/dof
+    // yes on fix rigid/small alone leaves the thermo temperature unchanged, so the flag is only stored.
+    if (key === 'dynamic/dof') {
+      if (values[0] !== 'yes' && values[0] !== 'no') throw new StyleError(`fix_modify dynamic/dof must be yes or no, got '${values[0] ?? ''}'`);
+      this.dynamicDofSet = values[0] === 'yes';
       return 1;
     }
     return super.modify(key, values);

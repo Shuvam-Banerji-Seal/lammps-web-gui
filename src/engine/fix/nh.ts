@@ -32,8 +32,7 @@ import { massOf } from '../atoms';
  * "If a thermostat is not defined, :math:`T_\mathrm{target}` is set to the
  * current temperature of the system when the barostat is initialized." "The
  * *mtk* keyword controls whether or not the correction terms due to Martyna,
- * Tuckerman, and Klein are included in the equations of motion". The MTK terms are measured below with
- * the 3N denominator (3 N = dimension times atoms).
+ * Tuckerman, and Klein are included in the equations of motion". The MTK terms are measured below.
  * Keywords: temp, iso, aniso, tri, x, y, z, xy, yz, xz, couple, tchain,
  * pchain, mtk, tloop, ploop, nreset, drag, ptemp, dilate, scalexy/yz/xz,
  * flip, fixedpoint. Defaults "tchain = 3, pchain = 3, mtk = yes, tloop = 1,
@@ -56,12 +55,24 @@ import { massOf } from '../atoms';
  *     PE_omega, KE_omega_dot, PE_etap, KE_etap_dot (no PE_strain entry for iso).
  *   - barostat velocity scaling: both scalings of a half step come before the
  *     kick in the initial step and after it in the final step.
- *   - the MTK terms use sum p^2/m / (3N) per barostat dimension and per trace.
+ *   - the MTK force term (per barostatted dimension) is the sum over the barostatted diagonal
+ *     dimensions of sum m v^2, divided by (number of barostatted dimensions) * N. The iso
+ *     barostat (couple xyz) uses the temperature compute's dof * k_B T instead (rotational dof
+ *     included, the sphere/asphere cases). The MTK trace term in the velocity update is the sum
+ *     of omega_dot over the barostatted dimensions, divided by (number of barostatted dimensions) * N.
+ *   - the barostat thermostat chain force counts the barostatted dimensions (couple none).
+ *   - the step-0 scalar is -(3 - nbaro)/2 * P_mean * V0 / nktv2p (nbaro = barostatted diagonal
+ *     dimensions): x only -P V0, x and y -P V0/2, iso and xyz 0. The 3 is used in 2d too (2d x only
+ *     -P V0, 2d x and y -P V0/2), so the 2d form is this same rule.
  *   - the first barostat-chain potential term counts the barostatted
  *     dimensions, while the chain mass uses n_dim = 1 for couple xyz.
  *   - tilts: the xy-only barostat is exact (xy += ly * omega_xy); with the
  *     diagonal and tilt couplings together, the box is within ~3e-8 of the
  *     exact flow at dt = 0.02 (not reproduced; see the w7nh_npt_tri notes).
+ * Not resolved: the scalar (f_ID, ecouple) when the diagonal barostat targets differ between
+ * dimensions (e.g. x 1, y 3, z 2): the dynamics match native at 1e-15, but the scalar is off by a
+ * term that grows with the strain (about 1.6 % at step 1 for a 3d nph case, measured). Not
+ * refused: the dynamics are exact and the scalar form has not been identified.
  * Not implemented (StyleError): dilate with a partial group's strain-energy
  * reference cell (nreset > 0 is accepted; the reference cell is the current
  * one), box flips (flip yes stops with an error when a tilt passes 0.6 of the
@@ -497,7 +508,7 @@ export class FixNH extends Fix {
       kecurrent += this.omegaMass[d] * this.omegaDot[d] * this.omegaDot[d];
       pfreqMax = Math.max(pfreqMax, 1 / this.pPeriod[d]);
     }
-    const ndims = this.ndofDims().length;
+    const ndims = this.chainDims();
     const q = new Float64Array(M);
     q[0] = kt / (pfreqMax * pfreqMax);
     for (let k = 1; k < M; k++) q[k] = kt / (pfreqMax * pfreqMax);
@@ -557,9 +568,18 @@ export class FixNH extends Fix {
     const vol = this.sys.geom.volume(s.dimension);
     let mtkTerm1 = 0;
     if (this.mtk) {
-      const { dof, kT } = this.dofKT();
-      // MTK term per barostat dimension: sum p^2/m / (3 N), with sum p^2/m = dof k_B T
-      if (dof > 0) mtkTerm1 = (dof * kT) / (s.dimension * s.n);
+      // MTK term per barostat dimension: sum over the barostatted dimensions of sum m v^2, divided by
+      // (number of barostatted dimensions) * N (measured, see the header comment)
+      const nb = this.nbaroDiag();
+      if (nb > 0) {
+        if (this.couple === 'xyz') {
+          // isotropic barostat: the temperature compute's full dof * kT (rotational dof included)
+          const { dof, kT } = this.dofKT();
+          if (dof > 0) mtkTerm1 = (dof * kT) / (nb * s.n);
+        } else {
+          mtkTerm1 = this.keBaro() / (nb * s.n);
+        }
+      }
     }
     const drag = this.drag > 0 ? 1 - this.dtv / this.pPeriod.reduce((a, b) => Math.max(a, b), 0) * this.drag : 1;
     for (let d = 0; d < 6; d++) {
@@ -572,6 +592,46 @@ export class FixNH extends Fix {
   }
 
   /** Velocity scaling by the strain rate over dt/4 (with the MTK trace term). */
+  /**
+   * 2 KE of the barostatted diagonal dimensions in energy units: the diagonal of the temperature compute's
+   * kinetic energy tensor (its group and velocity bias apply), summed over the barostatted dimensions. With
+   * every dimension barostatted it equals dof * kT, the iso form. Checked against native LAMMPS (black box)
+   * with fix_modify temp of a compute temp/partial (case w41nptp_bias) and in metal units (w41nptp_metal_*).
+   */
+  private keBaro(): number {
+    const tc = this.tempCompute;
+    if (!tc.vectorFlag) return this.sys.state.units.mvv2e * this.mvvBaro();
+    const ke = tc.vectorValues();
+    let acc = 0;
+    for (let d = 0; d < 3; d++) if (this.pFlag[d]) acc += ke[d];
+    return acc;
+  }
+
+  /** Sum over the barostatted diagonal dimensions of sum_i m_i v_i^2 over all atoms (a temperature compute without a vector). */
+  private mvvBaro(): number {
+    const s = this.sys.state;
+    let acc = 0;
+    for (let i = 0; i < s.n; i++) {
+      const m = massOf(s, i);
+      for (let d = 0; d < 3; d++) if (this.pFlag[d]) acc += m * s.v[3 * i + d] * s.v[3 * i + d];
+    }
+    return acc;
+  }
+
+  /**
+   * Degrees of freedom in the barostat chain force. Measured for independent diagonal dimensions
+   * (couple none): the barostatted dimensions. Other couplings and tilts keep the ndof of the vector.
+   */
+  private chainDims(): number {
+    if (this.couple === 'none' && !(this.pFlag[3] || this.pFlag[4] || this.pFlag[5])) return this.nbaroDiag();
+    return this.ndofDims().length;
+  }
+
+  /** Number of diagonal dimensions that are barostatted (the MTK terms divide by this times N). */
+  private nbaroDiag(): number {
+    return (this.pFlag[0] ? 1 : 0) + (this.pFlag[1] ? 1 : 0) + (this.pFlag[2] ? 1 : 0);
+  }
+
   private velocityPress(): void {
     const s = this.sys.state;
     let mtkTerm2 = 0;
@@ -580,7 +640,7 @@ export class FixNH extends Fix {
       if (dof > 0) {
         let tr = 0;
         for (let d = 0; d < (s.dimension === 2 ? 2 : 3); d++) if (this.pFlag[d]) tr += this.omegaDot[d];
-        mtkTerm2 = tr / (s.dimension * s.n);
+        mtkTerm2 = tr / (this.nbaroDiag() * s.n);
       }
     }
     // each call advances the strain-rate scaling by dt/4: diagonal factors split
@@ -689,7 +749,12 @@ export class FixNH extends Fix {
       const ndims = this.ndofDims().length;
       let nflag = 0;
       for (let d = 0; d < 6; d++) if (this.pFlag[d]) nflag++;
-      if (nhyd) e += (pHydro / nhyd) * (vol - this.vol0) / s.units.nktv2p;
+      if (nhyd) {
+        const pMean = pHydro / nhyd;
+        e += pMean * (vol - this.vol0) / s.units.nktv2p;
+        // step-0 reference term -(3 - nbaro)/2 * P V0 (measured, see the header comment)
+        e -= ((3 - nhyd) / 2) * pMean * this.vol0 / s.units.nktv2p;
+      }
       if (this.pchain > 0) {
         const kt = kB * this.baroTemp();
         const q0 = kt / (pfreqMax * pfreqMax), qk = kt / (pfreqMax * pfreqMax);

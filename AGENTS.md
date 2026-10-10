@@ -96,6 +96,9 @@ comments as "Measured with native LAMMPS (black box): ..." without quote marks; 
 
   The page must be a secure context (`http://127.0.0.1:…`); on `about:blank`
   `navigator.gpu` is absent. SwiftShader proves correctness, not speed.
+  If the shell has `DISPLAY` set without a reachable X server, SwiftShader's
+  ANGLE backend fails (`xcb_connect() failed`) and both WebGL2 and WebGPU look
+  unavailable: run the script as `env -u DISPLAY -u WAYLAND_DISPLAY node script.cjs`.
 - **Serve the app** from the production build — `vite` dev crashes here with
   `ENOSPC` (inotify limit):
   `npm run build && ln -sfn . dist/lammps-web-gui && python3 -m http.server <port> --bind 127.0.0.1 --directory dist`,

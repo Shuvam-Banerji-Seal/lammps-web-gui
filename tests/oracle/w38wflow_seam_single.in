@@ -1,0 +1,22 @@
+# oracle: one atom crossing the periodic seam and two walls (box units), neigh_modify every 20 check no: reassignment at the unwrapped crossing, 300 steps
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      atomic
+region          box block 0 10 0 10 0 10
+boundary        p p p
+create_box      1 box
+create_atoms    1 single 9.0 5.0 5.0 units box
+create_atoms    1 single 2.0 6.0 5.0 units box
+mass            1 1.0
+velocity        all set 3.0 0.2 -0.1 sum no units box
+pair_style      zero 2.5
+pair_coeff      * *
+neighbor        0.3 bin
+neigh_modify    every 20 delay 0 check no
+fix             1 all nve
+fix             2 all wall/flow x 0.5 1.0 12345 2 3.0 7.0 units box
+thermo_style    custom step ke etotal
+thermo_modify   format float %.15g
+timestep        0.005
+thermo          1
+run             300

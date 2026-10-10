@@ -1,0 +1,35 @@
+# oracle: example in.wall.flow shortened (16x8x4 fcc cells, 200 steps, 4 walls in lattice units): LJ fluid with a type-2 cylinder obstacle, flow along x
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+variable        nrun equal 200
+variable        nwall equal 4
+variable        TEMP  equal 0.4
+variable        VFLOW equal 0.5
+units           lj
+atom_style      atomic
+lattice         fcc 0.3
+region          sim_box block 0 16 0 8 0 4
+boundary        p p p
+create_box      2 sim_box
+region          reg_cylinder cylinder z 8 4 2 EDGE EDGE
+create_atoms    1 box
+group           g_obst region reg_cylinder
+group           g_flow subtract all g_obst
+set             group g_obst type 2
+mass            1 1.0
+mass            2 1.0
+velocity        g_flow create ${TEMP} 4928459 rot yes dist gaussian
+velocity        g_obst set 0.0 0.0 0.0
+pair_style      lj/cut 1.122462
+pair_coeff      1 1 1.0 1.0
+pair_coeff      1 2 1.0 1.0
+pair_coeff      2 2 1.0 1.0
+pair_modify     shift yes
+neighbor        0.3 bin
+neigh_modify    delay 0 every 20 check no
+fix             1 g_flow nve
+fix             2 g_flow wall/flow x ${VFLOW} ${TEMP} 123 ${nwall} 4 6 8 10
+thermo_style    custom step temp epair etotal
+thermo_modify   format float %.15g
+timestep        0.005
+thermo          50
+run             ${nrun}

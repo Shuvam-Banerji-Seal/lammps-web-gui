@@ -3,7 +3,7 @@ import { StyleError } from '../force/types';
 import { RanPark } from '../rng';
 import { appendAtoms, deleteAtoms, hasChargeStyle, isMolecularStyle } from '../atoms';
 import { appendMolecule, num, posInt } from './pour';
-import { geometricCenter, rotationMatrix, type MoleculeTemplate } from '../molecule';
+import { rotationMatrix, type MoleculeTemplate } from '../molecule';
 import { regionBox, maxMoleculeId, topoList } from './widom';
 import { BlockRegion, type Region } from '../region';
 import { newAccum, type Bonded, type BondedCompute } from '../force/types';
@@ -26,10 +26,38 @@ import type { SimState, Topology, TopoList } from '../types';
  * insertions, with equal probability."
  *
  * Supported keywords: mol, mcmoves, region, maxangle, full_energy, charge,
- * group, grouptype, intra_energy, tfac_insert, overlap_cutoff, max, min.
- * rigid, shake, pressure and fugacity_coeff are rejected with a StyleError
- * naming them (they need a fix rigid/small, fix shake, or the per-unit
- * pressure/fugacity conversion the browser engine does not implement).
+ * group, grouptype, intra_energy, tfac_insert, overlap_cutoff, max, min, shake.
+ * rigid, pressure and fugacity_coeff are rejected with a StyleError naming
+ * them (they need a fix rigid/small or the per-unit pressure/fugacity
+ * conversion the browser engine does not implement).
+ *
+ * shake (docs.lammps.org/fix_gcmc.html, plans/lammps-docs/fix_gcmc.rst): "If
+ * you wish to insert molecules via the *mol* keyword, that will have their
+ * bonds or angles constrained via SHAKE, use the *shake* keyword, specifying
+ * as its value the ID of a separate fix shake command which also appears in
+ * your input script." "When using fix gcmc in combination with fix shake or
+ * fix rigid, only GCMC exchange moves are supported, so the argument *M* must
+ * be zero." Measured with native LAMMPS (black box): with shake, M > 0 stops
+ * with Cannot use fix gcmc shake with MC moves; without mol, with Cannot use
+ * fix gcmc shake and not molecule; a fix shake whose mol template differs (or
+ * has none) gives Fix gcmc and fix shake not using same molecule template ID.
+ * Registration (measured with native LAMMPS, black box, w37gcmc_shake_ins and
+ * w37gcmc_shake_rej): the trial insertion's energy includes the new molecule's
+ * bonds (with full_energy and a stretched template at mu 0 every trial is
+ * rejected); the accepted molecule keeps its bonds in the thermo energy of
+ * the inserting step and is constrained from the next step on, so the engine
+ * registers it in postIntegrate of that step; a deletion rebuilds the clusters
+ * at once; a rejected trial restores them. Molecule placement (measured,
+ * w37gcmc_* water and dimer, which match native to 1e-12): the centre of mass
+ * (mass weighted) is placed at the insertion point, and the velocities of an
+ * accepted molecule are the Gaussians of the second stream from its draw 11
+ * (nine draws follow the acceptance draw). Not matched: the exchange stream of
+ * a second molecule event (native's choice sequence differs from the engine's
+ * after the first insertion of a mol run), so multi-event mol runs with shake
+ * (and without) are not oracle-checked. Native's mid-run SHAKE for a
+ * three-atom water cluster inserted by gcmc or fix deposit collapses the H-H
+ * distance (it is not constrained as a rigid angle); the engine constrains it
+ * as the documented SHAKE does, so water inserted mid-run differs from native.
  *
  * Acceptance (muVT detailed balance). Insertion with N particles and volume V
  * (the region volume with the region keyword, else the box volume) and thermal
@@ -75,6 +103,14 @@ import type { SimState, Topology, TopoList } from '../types';
  */
 
 type Vec3 = [number, number, number];
+
+/** What fix gcmc needs from a fix shake (its mol template and its cluster rebuild). */
+interface ShakeClusters {
+  rebuildClusters(): void;
+  extendTopology(): void;
+  moleculeTemplateId(): string | null;
+  style: string;
+}
 
 /** A non-negative integer keyword value (X, M and the max/min bounds allow 0). */
 const nonNegInt = (w: string | undefined, what: string): number => {
@@ -137,6 +173,10 @@ export class FixGcmc extends Fix {
   private readonly accRng: RanPark;
   private readonly molTemplateId: string | null;
   private molTemplate: MoleculeTemplate | null = null;
+  private readonly shakeId: string | null;
+  private shakeFix: ShakeClusters | null = null;
+  /** An accepted insertion waits for fix shake to register it at the next step (see postIntegrate). */
+  private shakePending = false;
   private readonly regionId: string | null;
   private reg: { lo: Vec3; hi: Vec3; volume: number } | null = null;
   private region: Region | null = null;
@@ -193,6 +233,7 @@ export class FixGcmc extends Fix {
     let maxAtoms: number | null = null;
     let minAtoms: number | null = null;
     let groupId: string | null = null;
+    let shakeId: string | null = null;
     let sawMcmoves = false;
     let i = 8;
     while (i < args.length) {
@@ -220,9 +261,15 @@ export class FixGcmc extends Fix {
       else if (key === 'min') { minAtoms = nonNegInt(v(1), 'min'); i += 2; }
       else if (key === 'group') { groupId = v(1); i += 2; }
       else if (key === 'grouptype') { this.groupTypes.push({ type: nonNegInt(v(1), 'grouptype type'), group: v(2) }); i += 3; }
-      else if (key === 'rigid' || key === 'shake' || key === 'pressure' || key === 'fugacity_coeff') {
+      else if (key === 'shake') { shakeId = v(1); i += 2; }
+      else if (key === 'rigid' || key === 'pressure' || key === 'fugacity_coeff') {
         throw new StyleError(`fix gcmc keyword '${key}' is not supported by the browser engine`);
       } else throw new StyleError(`fix gcmc: unknown keyword '${key}'`);
+    }
+    if (shakeId) {
+      if (!molTemplateId) throw new StyleError('fix gcmc: Cannot use fix gcmc shake and not molecule (shake needs the mol keyword)');
+      // docs fix_gcmc.html: "When using fix gcmc in combination with fix shake or fix rigid, only GCMC exchange moves are supported, so the argument *M* must be zero."
+      if (this.M !== 0) throw new StyleError('fix gcmc: Cannot use fix gcmc shake with MC moves (M must be zero with shake)');
     }
     const typeInt = num(args[3], 'type');
     if (!Number.isInteger(typeInt)) throw new StyleError(`fix gcmc: type must be an integer, got '${args[3]}'`);
@@ -240,6 +287,7 @@ export class FixGcmc extends Fix {
     this.maxAtoms = maxAtoms;
     this.minAtoms = minAtoms;
     this.groupId = groupId;
+    this.shakeId = shakeId;
     // docs fix_gcmc.html defaults: "(Patomtrans, Pmoltrans, Pmolrotate) = (1, 0, 0) for mol = no and (0, 1, 1) for mol = yes"
     if (!sawMcmoves && molTemplateId) { this.patomtrans = 0; this.pmoltrans = 1; this.pmolrotate = 1; }
     if (!molTemplateId && (this.pmoltrans !== 0 || this.pmolrotate !== 0)) {
@@ -280,6 +328,16 @@ export class FixGcmc extends Fix {
     }
     if (this.maxAtoms !== null && this.minAtoms !== null && this.minAtoms > this.maxAtoms) throw new StyleError('fix gcmc: min cannot be larger than max');
     if (this.groupId) this.sys.groups.bit(this.groupId);
+    if (this.shakeId) {
+      const sf = this.sys.fix(this.shakeId) as unknown as Partial<ShakeClusters> & { style: string };
+      if (typeof sf.rebuildClusters !== 'function' || typeof sf.extendTopology !== 'function' || typeof sf.moleculeTemplateId !== 'function') {
+        throw new StyleError(`fix gcmc shake: fix ${this.shakeId} (${sf.style}) is not a fix shake`);
+      }
+      if (sf.moleculeTemplateId() !== this.molTemplateId) {
+        throw new StyleError('fix gcmc: Fix gcmc and fix shake not using same molecule template ID');
+      }
+      this.shakeFix = sf as ShakeClusters;
+    }
     for (const g of this.groupTypes) if (g.type < 1 || g.type > s.ntypes) throw new StyleError(`fix gcmc grouptype: type ${g.type} is outside 1..${s.ntypes}`);
     if (this.regionId) {
       const r = this.sys.region(this.regionId);
@@ -296,6 +354,13 @@ export class FixGcmc extends Fix {
   preExchange(): void { /* MC changes are done in postIntegrate */ }
 
   postIntegrate(): void {
+    // an accepted insertion is registered with fix shake at the next step, before its forces
+    // (measured with native LAMMPS, black box: the bonds of the step that inserted the molecule are
+    // still counted in its thermo energy, and they are constrained from the next step on)
+    if (this.shakePending) {
+      this.shakeFix!.rebuildClusters();
+      this.shakePending = false;
+    }
     if (this.sys.state.step !== this.nextStep) return;
     this.event();
     this.nextStep += this.N;
@@ -421,7 +486,9 @@ export class FixGcmc extends Fix {
     if (this.molTemplate) {
       const t = this.molTemplate;
       const rot = this.randomRotation(Math.PI * 2);
-      const center = geometricCenter(t);
+      // docs fix_gcmc.rst: "The center of mass of the molecule is placed at the insertion point. The
+      // orientation of the molecule is chosen at random by rotating about this point."
+      const center = this.templateCenterOfMass(t);
       const coords = new Float64Array(3 * t.natoms);
       for (let a = 0; a < t.natoms; a++) {
         const rx = t.x[3 * a] - center[0], ry = t.x[3 * a + 1] - center[1], rz = t.x[3 * a + 2] - center[2];
@@ -437,6 +504,8 @@ export class FixGcmc extends Fix {
       appendAtoms(s, { x: Float64Array.from(p), type: this.type, v: new Float64Array(3), q: this.charge ?? undefined, mask: this.extraMask() });
       sys.atomsChanged();
     }
+    // the trial molecule's bonds stay in the energy until it is accepted (see the header)
+    this.shakeFix?.extendTopology();
     let dU = this.potentialEnergy() - eBefore;
     if (!this.fullEnergy) dU -= this.molTemplate ? this.intraMolEnergy : 0;
     dU -= this.intraEnergy;
@@ -445,15 +514,21 @@ export class FixGcmc extends Fix {
     const exponent = (this.mu - dU) / kT + Math.log(this.volume / ((nPart + 1) * l3));
     if (!overlap && this.metropolis(exponent)) {
       this.ninsSucc++;
+      // Measured with native LAMMPS (black box): an accepted molecule's velocities are the Gaussians
+      // that start at draw 11 of the second stream, for the water and the dimer of the w37 cases (the
+      // acceptance number is draw 1), so nine more draws come first; the atom path starts at draw 2.
+      if (this.molTemplate) for (let k = 0; k < 9; k++) this.accRng.uniform();
       // the velocity is drawn after the acceptance number, from the same stream (see the header)
       const vel = this.drawVelocity(mass);
       for (let i = snap.n; i < s.n; i++) {
         s.v[3 * i] = vel[0]; s.v[3 * i + 1] = vel[1]; s.v[3 * i + 2] = vel[2];
       }
       this.applyGroupTypes(snap.n);
+      if (this.shakeFix) this.shakePending = true;
     } else {
       restore(s, snap);
       sys.atomsChanged();
+      this.shakeFix?.extendTopology();
     }
   }
 
@@ -488,6 +563,7 @@ export class FixGcmc extends Fix {
     for (const i of idx) flags[i] = 1;
     deleteAtoms(s, flags);
     sys.atomsChanged();
+    this.shakeFix?.rebuildClusters();
     let dU = this.potentialEnergy() - eBefore;
     if (!this.fullEnergy) dU -= this.molTemplate ? this.intraMolEnergy : 0;
     dU -= this.intraEnergy;
@@ -499,6 +575,7 @@ export class FixGcmc extends Fix {
     } else {
       restore(s, snap);
       sys.atomsChanged();
+      this.shakeFix?.rebuildClusters();
     }
   }
 
@@ -633,11 +710,30 @@ export class FixGcmc extends Fix {
     }
   }
 
+  /** Mass-weighted centre of an inserted molecule's atoms (docs fix_gcmc.rst: "center-of-mass"). */
   private moleculeCom(idx: number[]): Vec3 {
     const s = this.sys.state;
     const c: Vec3 = [0, 0, 0];
-    for (const i of idx) for (let d = 0; d < 3; d++) c[d] += s.x[3 * i + d];
-    return [c[0] / idx.length, c[1] / idx.length, c[2] / idx.length];
+    let mtot = 0;
+    for (const i of idx) {
+      const m = s.massByType[s.type[i]];
+      mtot += m;
+      for (let d = 0; d < 3; d++) c[d] += m * s.x[3 * i + d];
+    }
+    return [c[0] / mtot, c[1] / mtot, c[2] / mtot];
+  }
+
+  /** Mass-weighted centre of a molecule template (the point the insertion places). */
+  private templateCenterOfMass(t: MoleculeTemplate): Vec3 {
+    const s = this.sys.state;
+    const c: Vec3 = [0, 0, 0];
+    let mtot = 0;
+    for (let a = 0; a < t.natoms; a++) {
+      const m = s.massByType[t.type[a]];
+      mtot += m;
+      for (let d = 0; d < 3; d++) c[d] += m * t.x[3 * a + d];
+    }
+    return [c[0] / mtot, c[1] / mtot, c[2] / mtot];
   }
 
   private snapshotCoords(idx: number[]): Float64Array {

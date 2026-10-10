@@ -22,6 +22,18 @@ const CANDIDATES: RecordingFormat[] = [
   { mime: 'video/webm', ext: 'webm', label: 'WebM' },
 ];
 
+/** Every candidate the injected `isSupported` predicate accepts, best first (the Render panel's format list). */
+export const recordingFormats = (
+  isSupported: (mime: string) => boolean
+): RecordingFormat[] =>
+  CANDIDATES.filter(c => {
+    try {
+      return isSupported(c.mime);
+    } catch {
+      return false;
+    }
+  });
+
 /** Pure negotiation over an injected `isSupported` predicate — unit-testable. */
 export const negotiateRecordingFormat = (
   isSupported: (mime: string) => boolean
@@ -38,6 +50,13 @@ export interface CanvasRecordingOptions {
   fps?: number;
   /** Target bitrate in bits/second. Default ~24 Mbps ("high quality"). */
   videoBitsPerSecond?: number;
+  /** Use this format instead of negotiating one (the caller checked it is supported). */
+  format?: RecordingFormat;
+  /**
+   * Capture only when `capture()` is called (one frame per call), so every drawn frame is recorded once and
+   * none is repeated. Without it the canvas is sampled at `fps`.
+   */
+  manualFrames?: boolean;
 }
 
 export interface RecordingResult {
@@ -50,6 +69,8 @@ export interface RecordingResult {
 export interface RecordingHandle {
   format: RecordingFormat;
   stop: () => Promise<RecordingResult>;
+  /** With `manualFrames`: record the canvas's current content as one frame. */
+  capture?: () => void;
 }
 
 /**
@@ -63,13 +84,17 @@ export const startCanvasRecording = (
   if (typeof MediaRecorder === 'undefined') {
     throw new Error('MediaRecorder is not supported in this browser.');
   }
-  const format = negotiateRecordingFormat(
+  const format = options.format ?? negotiateRecordingFormat(
     m => MediaRecorder.isTypeSupported(m)
   );
   if (!format) throw new Error('No supported video codec found.');
 
   const fps = options.fps ?? 60;
-  const stream = canvas.captureStream(fps);
+  const manual = options.manualFrames === true;
+  const stream = canvas.captureStream(manual ? 0 : fps);
+  const track = manual
+    ? (stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined)
+    : undefined;
   let recorder: MediaRecorder;
   try {
     recorder = new MediaRecorder(stream, {
@@ -109,6 +134,7 @@ export const startCanvasRecording = (
 
   return {
     format,
+    capture: manual ? () => track?.requestFrame() : undefined,
     stop: () => {
       return new Promise<RecordingResult>(resolve => {
         if (recorder.state === 'inactive') {

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight, Video, Download, Box } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight, Video, Download, Box, Clapperboard } from 'lucide-react';
 import type { getThemeTokens } from '../../../theme';
 import { downloadFile } from '../../../lammps/exporter';
 import { startCanvasRecording, type RecordingHandle } from '../../../services/recorder';
@@ -30,6 +30,8 @@ export interface TrajectoryPlayerProps {
   onVideoActive: (on: boolean) => void;
   /** Opens the trajectory in the Molecule 3D Viewer as a dump file. */
   onOpenInViewer?: (file: { name: string; text: string }) => void;
+  /** Opens the Render panel (snapshot, frame export, video options). */
+  onRender?: () => void;
 }
 
 /**
@@ -37,7 +39,7 @@ export interface TrajectoryPlayerProps {
  * frames (start to end, through recorder.ts) and export (extended XYZ or LAMMPS dump text).
  */
 const TrajectoryPlayer: React.FC<TrajectoryPlayerProps> = ({
-  ct, btn, buffer, version, index, live, onShow, canvasHost, onVideoActive, onOpenInViewer,
+  ct, btn, buffer, version, index, live, onShow, canvasHost, onVideoActive, onOpenInViewer, onRender,
 }) => {
   const count = buffer.length;
   const shown = count === 0 ? -1 : Math.min(count - 1, index ?? count - 1);
@@ -247,6 +249,12 @@ const TrajectoryPlayer: React.FC<TrajectoryPlayerProps> = ({
           title="Download every recorded frame">
           <Download size={13} aria-hidden="true" />Download trajectory
         </button>
+        {onRender && (
+          <button className={`${btn} ${ct.button}`} disabled={live || busy} onClick={onRender}
+            title="Render panel: snapshot, frame range as PNG files, or a video with size, overlay and orbit options">
+            <Clapperboard size={13} aria-hidden="true" />Render
+          </button>
+        )}
         {onOpenInViewer && (
           <button className={`${btn} ${ct.button}`} disabled={count === 0 || live || busy} onClick={openInViewer}
             title="Open the recorded frames in the Molecule 3D Viewer (RDF, MSD and measurements there)">

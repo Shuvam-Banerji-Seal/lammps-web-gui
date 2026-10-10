@@ -6,6 +6,8 @@
  */
 import type { SimBox } from '../../../engine/types';
 import type { FrameEvent } from '../../../engine/view';
+import type { BoxBounds } from '../../../types';
+import { parseDumpFile } from '../../../services/dumpParser';
 
 /** Default memory cap for recorded positions and topology (bytes). */
 export const DEFAULT_CAP_BYTES = 256 * 1024 * 1024;
@@ -84,6 +86,21 @@ export class TrajectoryBuffer {
     this.bytesValue = 0;
     this.topoBytes = 0;
     this.topoCounted = new Map();
+  }
+
+  /**
+   * Replaces the contents with the given records (their positions are shared, not copied) and the recording
+   * stride. Used to show a loaded file's frames and to put the run's recorded frames back.
+   */
+  restore(records: readonly TrajectoryRecord[], stride = 1): void {
+    this.clear();
+    this.strideValue = Math.max(1, Math.floor(stride));
+    for (const r of records) {
+      this.frames.push(r);
+      this.bytesValue += r.x.byteLength + FRAME_OVERHEAD;
+      this.countTopo(r.topo, 1);
+    }
+    while (this.bytes > this.capBytes && this.frames.length > 1) this.thin();
   }
 
   /**
@@ -171,6 +188,59 @@ export class TrajectoryBuffer {
     this.thinnings++;
   }
 }
+
+const sameTopo = (a: Topology, b: Topology): boolean => sameInts(a.id, b.id) && sameInts(a.type, b.type);
+
+/** A dump cell (BOX BOUNDS, tilts as the file's bounding box is converted by dumpParser) as the buffer's SimBox. */
+const simBoxOf = (b: BoxBounds): SimBox => {
+  const xy = b.xy ?? 0;
+  const xz = b.xz ?? 0;
+  const yz = b.yz ?? 0;
+  const tilt: [number, number, number] = [xy, xz, yz];
+  return {
+    lo: [b.xlo, b.ylo, b.zlo],
+    hi: [b.xhi, b.yhi, b.zhi],
+    periodic: [true, true, true],
+    tilt,
+    triclinic: tilt.some((t) => t !== 0),
+    boundary: [['p', 'p'], ['p', 'p'], ['p', 'p']],
+    minLo: [b.xlo, b.ylo, b.zlo],
+    minHi: [b.xhi, b.yhi, b.zhi],
+  };
+};
+
+/**
+ * Frames of a LAMMPS dump text as buffer records, in file order, through the same parser as the File import
+ * (dumpParser: triclinic bounds, scaled and unwrapped coordinates). The steps come from the ITEM: TIMESTEP lines.
+ * Throws the parser's error for a file it cannot read.
+ */
+export const dumpToRecords = (text: string): TrajectoryRecord[] => {
+  const data = parseDumpFile(text);
+  const steps = Array.from(text.matchAll(/^ITEM: TIMESTEP[ \t]*\r?\n[ \t]*(-?\d+)/gm), (m) => Number(m[1]));
+  const blocks = data.frames ?? [{ atoms: data.atoms, box: data.box }];
+  const out: TrajectoryRecord[] = [];
+  for (let k = 0; k < blocks.length; k++) {
+    const atoms = blocks[k].atoms;
+    const n = atoms.length;
+    const x = new Float32Array(3 * n);
+    const id = new Int32Array(n);
+    const type = new Int32Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = atoms[i];
+      x[3 * i] = a.x;
+      x[3 * i + 1] = a.y;
+      x[3 * i + 2] = a.z;
+      id[i] = a.id;
+      type[i] = a.type;
+    }
+    const last = out[out.length - 1];
+    const topo: Topology = last && sameTopo(last.topo, { id, type }) ? last.topo : { id, type };
+    const box = blocks[k].box ?? data.box;
+    if (!box) throw new Error('Invalid LAMMPS dump: a frame has no box');
+    out.push({ step: Number.isFinite(steps[k]) ? steps[k] : k, x, box: simBoxOf(box), topo });
+  }
+  return out;
+};
 
 /** Shortest decimal that reads back the float32 value (keeps files small). */
 const num = (v: number): string => String(Number(v.toPrecision(9)));

@@ -79,6 +79,13 @@ const CameraRig: React.FC<CameraRigProps> = ({
           invalidate();
           break;
         }
+        case 'pose': {
+          if (!controlsRef.current) return;
+          camera.position.set(cmd.position[0], cmd.position[1], cmd.position[2]);
+          controlsRef.current.update();
+          invalidate();
+          break;
+        }
         case 'orbit': {
           if (!controlsRef.current) return;
           // Rotate around the target via spherical coords (no private APIs)

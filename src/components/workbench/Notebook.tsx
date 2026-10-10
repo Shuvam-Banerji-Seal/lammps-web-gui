@@ -22,8 +22,9 @@ import { filesReadBy, formatNumber } from '../../engine/script';
 import { useInputFiles, type ImportSource } from './notebook/useInputFiles';
 import { InputFilesPanel } from './notebook/InputFilesPanel';
 import { ImportStructureDialog } from './notebook/ImportStructureDialog';
-import { TrajectoryBuffer } from './notebook/trajectory';
+import { TrajectoryBuffer, dumpToRecords, type TrajectoryRecord } from './notebook/trajectory';
 import TrajectoryPlayer from './notebook/TrajectoryPlayer';
+import RenderPanel from './notebook/RenderPanel';
 import ViewControls, { DEFAULT_RECORD_EVERY, reviveBool, reviveRadius, reviveRecordEvery } from './notebook/ViewControls';
 
 /**
@@ -144,6 +145,12 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const [trajVersion, setTrajVersion] = useState(0);
   const [viewIndex, setViewIndex] = useState<number | null>(null);
   const [videoActive, setVideoActive] = useState(false);
+  /** Render panel: open, the dump file loaded into the player for it (null = the run's frames), and a load error. */
+  const [renderOpen, setRenderOpen] = useState(false);
+  const [renderSource, setRenderSource] = useState<{ name: string } | null>(null);
+  const [renderNotice, setRenderNotice] = useState<string | null>(null);
+  /** The run's own frames, set aside while a file is loaded for rendering. */
+  const renderBackup = useRef<{ records: TrajectoryRecord[]; stride: number } | null>(null);
   const [recordEvery, setRecordEvery] = usePersistentState<number>(RECORD_KEY, DEFAULT_RECORD_EVERY, reviveRecordEvery);
   const [atomRadius, setAtomRadius] = usePersistentState<number>(RADIUS_KEY, 1, reviveRadius);
   const [showBox, setShowBox] = usePersistentState<boolean>(BOX_KEY, true, reviveBool);
@@ -192,6 +199,9 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     setReady(null);
     setFrame(null);
     traj.clear();
+    renderBackup.current = null;
+    setRenderSource(null);
+    setRenderNotice(null);
     setTrajVersion((v) => v + 1);
     setViewIndex(null);
     setFiles({});
@@ -261,6 +271,13 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           break;
         case 'run':
           setRunSpan({ cell: cell.id, from: ev.from, to: ev.to });
+          // a run records into the player: a loaded file's frames make way for it
+          if (renderBackup.current) {
+            renderBackup.current = null;
+            traj.clear();
+            setRenderSource(null);
+            setTrajVersion((v) => v + 1);
+          }
           setViewIndex(null);
           setRunInfo({ dt: ev.dt, units: ev.units });
           setPerfHistory([]);
@@ -335,6 +352,41 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     const { cell, index } = deleted;
     setCells((prev) => [...prev.slice(0, index), cell, ...prev.slice(index)]);
     setDeleted(null);
+  };
+
+  /** Loads a dump the run wrote into the player (the run's frames are set aside) and opens the Render panel on it. */
+  const loadFileForRender = useCallback((file: { name: string; text: string }) => {
+    setRenderOpen(true);
+    // a run writes its dump as it goes: a partial file would render a partial trajectory
+    if (running !== null) {
+      setRenderNotice(`${file.name} is still being written. Render it when the run finishes.`);
+      return;
+    }
+    let records: TrajectoryRecord[];
+    try {
+      records = dumpToRecords(file.text);
+    } catch (e) {
+      setRenderNotice(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    if (records.length === 0) { setRenderNotice(`${file.name} has no frames.`); return; }
+    if (!renderBackup.current) renderBackup.current = { records: traj.list(), stride: traj.stride };
+    traj.restore(records);
+    setTrajVersion((v) => v + 1);
+    setViewIndex(null);
+    setRenderSource({ name: file.name });
+    setRenderNotice(null);
+  }, [traj, running]);
+
+  const restoreRunFrames = () => {
+    const backup = renderBackup.current;
+    if (!backup) return;
+    renderBackup.current = null;
+    traj.restore(backup.records, backup.stride);
+    setTrajVersion((v) => v + 1);
+    setViewIndex(null);
+    setRenderSource(null);
+    setRenderNotice(null);
   };
 
   /** The frame the view draws: the recorded frame picked in the player, else the live frame. */
@@ -547,7 +599,15 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
               showBox={showBox} onShowBox={setShowBox} />
           </div>
           <TrajectoryPlayer ct={ct} btn={btn} buffer={traj} version={trajVersion} index={viewIndex} live={running !== null}
-            onShow={setViewIndex} canvasHost={canvasHost} onVideoActive={setVideoActive} onOpenInViewer={onOpenInViewer} />
+            onShow={setViewIndex} canvasHost={canvasHost} onVideoActive={setVideoActive} onOpenInViewer={onOpenInViewer}
+            onRender={() => setRenderOpen(true)} />
+          {renderOpen && (
+            <RenderPanel ct={ct} btn={btn} buffer={traj} version={trajVersion} index={viewIndex}
+              dt={runInfo?.dt ?? null} units={runInfo?.units} live={running !== null}
+              source={renderSource} canRestore={renderSource !== null} onRestore={restoreRunFrames}
+              notice={renderNotice} canvasHost={canvasHost} onShow={setViewIndex} onVideoActive={setVideoActive}
+              onClose={() => setRenderOpen(false)} />
+          )}
         </div>
 
         {/* cells */}
@@ -674,7 +734,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           <InputFilesPanel theme={theme} inputs={inputs} totalBytes={inputFiles.totalBytes} error={inputFiles.error}
             busy={busy} onRemove={removeInputFile} onClearAll={() => void inputFiles.clearAll()}
             onDismissError={inputFiles.dismissError} />
-          <RunFiles ct={ct} files={files} cells={cells} runs={runs} onOpenInViewer={onOpenInViewer} />
+          <RunFiles ct={ct} files={files} cells={cells} runs={runs} onOpenInViewer={onOpenInViewer} onRenderFile={loadFileForRender} />
           {chart.temp.length <= 1 && Object.keys(files).length === 0 && Object.keys(inputs).length === 0 && (
             <p className={`text-xs ${ct.muted}`}>
               Thermo charts, files written by dump / write_data, and the files you add with Add files appear here.

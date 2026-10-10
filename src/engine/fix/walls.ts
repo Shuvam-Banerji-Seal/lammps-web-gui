@@ -240,6 +240,20 @@ export abstract class FixWallBase extends Fix {
       for (let k = 0; k < walls.length; k++) {
         const w = walls[k];
         const d = w.dim;
+        if (this.outside) {
+          // wall/harmonic/outside: distance of the atom beyond the wall; atoms on the inner side
+          // (dOut <= 0) are not an error for this style and feel no force.
+          const dOut = w.lo ? coord[k] - s.x[3 * i + d] : s.x[3 * i + d] - coord[k];
+          if (dOut <= 0 || dOut >= w.cutoff) continue;
+          const sign = w.lo ? 1 : -1;
+          const f = this.forceAt(dOut, w);
+          s.f[3 * i + d] += sign * f;
+          this.wallEnergy += this.energyAt(dOut, w);
+          this.wallForce[k] -= sign * f;
+          if (this.thermoVirial) this.virial[d] += dOut * f;
+          this.vAtom[6 * i + d] += dOut * f;
+          continue;
+        }
         const r = w.lo ? s.x[3 * i + d] - coord[k] : coord[k] - s.x[3 * i + d];
         if (r <= 0) throw new StyleError(`Particle on or inside fix ${this.id} ${this.wallStyle} surface`);
         if (r >= w.cutoff) continue;
@@ -255,6 +269,9 @@ export abstract class FixWallBase extends Fix {
       }
     }
   }
+
+  /** True for styles whose distance is measured on the outside of the wall (wall/harmonic/outside). */
+  protected get outside(): boolean { return false; }
 
   /** E(r) of the unshifted wall potential with the wall's current parameters. */
   protected abstract energyAt(r: number, w: Wall): number;
@@ -460,5 +477,61 @@ export class FixWallMorse extends FixWallBase {
     const r0 = valueOf(this.sys, w.params[2]);
     const a = Math.exp(-alpha * (r - r0));
     return 2 * alpha * d0 * (a * a - a);
+  }
+}
+
+/**
+ * fix wall/harmonic/outside — docs.lammps.org/fix_wall.html (current docs), args and formula verbatim:
+ *
+ *   args = coord epsilon sigma cutoff
+ *
+ *   E = \epsilon \quad (r - w_0)^2 \qquad r < r_c
+ *
+ * "For style *wall/harmonic/outside*, the energy E is given by an attractive-only harmonic spring potential for
+ * selected atoms group passing outside the wall placed at :math:`w_0` up to a cutoff distance :math:`r_c`"
+ * "For the *wall/harmonic* and *wall/harmonic/outside* style, :math:`\epsilon` is effectively the spring constant K,
+ * and has units (energy/distance^2). The input parameter :math:`\sigma` is ignored."
+ * "For style *wall/harmonic/outside*, the formulation avoids the presence of repulsive bands inside a controlled
+ * volume preventing the definition of a precise volumetric concentration"
+ * "For all of the styles (except wall/harmonic/outside), you must ensure that r is always > 0 for all particles
+ * in the group, or LAMMPS will generate an error."
+ *
+ * Measured with native LAMMPS (black box), one atom, lj units, boundary f f f, 3d:
+ * - the distance is d = (wall - x) for an lo wall and (x - wall) for a hi wall, i.e. the atom's distance
+ *   beyond the wall; E = epsilon d^2 (sigma ignored), no shift at the cutoff (d = 0.99 with rc = 1 gives 0.9801).
+ * - atoms with d >= rc (checked at 2.5 and 1.0 with rc = 2.5 and 1.0) have E = 0 and F = 0; the cutoff is exclusive.
+ * - atoms on the inner side of the wall, including d = 0 (x = 0 for an lo wall at 0), give E = 0 and F = 0 and
+ *   no error, so the r > 0 requirement quoted above does not apply to this style.
+ * - the force on the atom points towards the wall with magnitude 2 epsilon d (x = -2, epsilon 1: f_w[1] = -4 for an
+ *   lo wall; hi wall at 0 with x = 2: f_w[1] = +4); the scalar energy f_w is 4.
+ * - the lattice keyword scales only the wall position: with lattice none 2.0, an lo wall given as 1.0 sits at 2.0 and
+ *   the cutoff 1.5 is taken as 1.5 distance units (x = 0.6 gives E = 1.96, x = 0.0 gives 0).
+ * - a variable wall position v_name is evaluated (wall 0.5 with x = 0.0 gives E = 0.25).
+ * - fix_modify energy yes adds the energy to PotEng (PotEng = 1 with energy yes and 0 without).
+ * - fix_modify virial yes adds d times the force magnitude to the virial: for one atom at d = 1 with epsilon 1 in a
+ *   20 x 20 x 20 box, Pxx = 0.00025 = 2/8000.
+ * - cutoff 0.0 errors with the native message Fix wall/harmonic/outside cutoff <= 0.0 for xlo wall, and a
+ *   periodic dimension without pbc errors with Cannot use xlo wall in periodic x dimension; the refusals here
+ *   use the messages of the base class.
+ */
+export class FixWallHarmonicOutside extends FixWallBase {
+  readonly style = 'wall/harmonic/outside';
+
+  constructor(sys: System, id: string, group: string, args: string[]) {
+    super(sys, id, group, args, 'wall/harmonic/outside', 4);
+  }
+
+  protected get outside(): boolean { return true; }
+
+  /** E = epsilon d^2 for d = distance beyond the wall (unshifted). */
+  protected energyAt(d: number, w: Wall): number {
+    const eps = valueOf(this.sys, w.params[0]);
+    return eps * d * d;
+  }
+
+  /** Magnitude of the attractive force 2 epsilon d, directed towards the wall. */
+  protected forceAt(d: number, w: Wall): number {
+    const eps = valueOf(this.sys, w.params[0]);
+    return 2 * eps * d;
   }
 }

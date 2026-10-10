@@ -352,6 +352,48 @@ export class FixNH extends Fix {
     if (this.tstat) this.nhcTemp();
   }
 
+  // ------------------------------------------------------------------ run_style respa (run/respa.ts)
+
+  /**
+   * Only the plain thermostat (fix nvt, no barostat, not the sphere/asphere variants) has a respa
+   * factorization: the thermostat half steps sit at the outermost level (fix_nh.rst: "the barostat
+   * is only updated at the outermost rRESPA level"; the barostat is not implemented under respa).
+   */
+  get respaOK(): boolean { return this.constructor === FixNH && this.tstat && !this.pstat; }
+
+  /** Outer step start: thermostat dt/2 (exp(i L_Tpart dt/2) at the outermost level). */
+  respaBegin(): void {
+    this.tTarget = ramp(this.sys, this.tStart, this.tStop);
+    this.nhcTemp();
+  }
+
+  /** Outer step end: the matching thermostat dt/2. */
+  respaEnd(): void {
+    this.nhcTemp();
+  }
+
+  /** Level kick v += h F/m over the group, with that level's force array f. */
+  respaKick(f: Float64Array, h: number): void {
+    const s = this.sys.state;
+    const { v, mask } = s;
+    const ftm2v = h * s.units.ftm2v;
+    for (let i = 0; i < s.n; i++) {
+      if (!(mask[i] & this.groupBit)) continue;
+      const c = ftm2v / massOf(s, i);
+      v[3 * i] += c * f[3 * i]; v[3 * i + 1] += c * f[3 * i + 1]; v[3 * i + 2] += c * f[3 * i + 2];
+    }
+  }
+
+  /** Innermost drift x += dt v over the group. */
+  respaDrift(dt: number): void {
+    const s = this.sys.state;
+    const { x, v, mask } = s;
+    for (let i = 0; i < s.n; i++) {
+      if (!(mask[i] & this.groupBit)) continue;
+      x[3 * i] += dt * v[3 * i]; x[3 * i + 1] += dt * v[3 * i + 1]; x[3 * i + 2] += dt * v[3 * i + 2];
+    }
+  }
+
   // ------------------------------------------------------------------ pieces
 
   private kick(): void {

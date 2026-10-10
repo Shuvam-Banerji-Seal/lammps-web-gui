@@ -55,4 +55,34 @@ export class FixNVE extends Fix {
       v[3 * i] += c * f[3 * i]; v[3 * i + 1] += c * f[3 * i + 1]; v[3 * i + 2] += c * f[3 * i + 2];
     }
   }
+
+  /**
+   * run_style respa (run/respa.ts): true only for plain fix nve; the sphere and asphere variants
+   * also integrate rotation, which the respa level kicks do not cover.
+   */
+  get respaOK(): boolean { return this.constructor === FixNVE; }
+
+  /** Level kick v += h F/m over the group, with that level's force array f (h = half the level's timestep). */
+  respaKick(f: Float64Array, h: number): void {
+    const s = this.sys.state;
+    const { v, mask } = s;
+    const bit = this.groupBit;
+    const ftm2v = h * s.units.ftm2v;
+    for (let i = 0; i < s.n; i++) {
+      if (!(mask[i] & bit)) continue;
+      const c = ftm2v / massOf(s, i);
+      v[3 * i] += c * f[3 * i]; v[3 * i + 1] += c * f[3 * i + 1]; v[3 * i + 2] += c * f[3 * i + 2];
+    }
+  }
+
+  /** Innermost drift x += dt v over the group (run_style respa). */
+  respaDrift(dt: number): void {
+    const s = this.sys.state;
+    const { x, v, mask } = s;
+    const bit = this.groupBit;
+    for (let i = 0; i < s.n; i++) {
+      if (!(mask[i] & bit)) continue;
+      x[3 * i] += dt * v[3 * i]; x[3 * i + 1] += dt * v[3 * i + 1]; x[3 * i + 2] += dt * v[3 * i + 2];
+    }
+  }
 }

@@ -1,0 +1,23 @@
+# oracle: LJ hex 2d, fix npt temp, barostat x only (y free), pchain 3, mtk yes
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+dimension       2
+atom_style      atomic
+lattice         hex 0.7
+region          box block 0 8 0 8 -0.5 0.5
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        vx atom 1.4*sin(1.7*x+2.3*y)
+variable        vy atom 1.4*cos(2.1*x-1.1*y)
+velocity        all set v_vx v_vy NULL units box
+velocity        all zero linear
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+fix             1 all npt temp 1.5 1.5 0.5 x 2.0 0.5 2.0
+thermo_style    custom step temp press pxx pyy pzz lx ly lz pe etotal vol f_1
+thermo_modify   format float %.15g
+thermo          1
+run             100

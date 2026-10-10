@@ -1,0 +1,18 @@
+# oracle: fix npt aniso in metal units: the MTK terms in energy units (mvv2e), Cu-like LJ crystal, 60 steps
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           metal
+atom_style      atomic
+lattice         fcc 3.61
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 63.546
+pair_style      lj/cut 6.0
+pair_coeff      1 1 0.4 2.3
+velocity        all create 300.0 4928459 loop all
+fix             1 all npt temp 300.0 300.0 0.1 aniso 1.0 1.0 1.0
+thermo_style    custom step temp pe press pxx pyy pzz lx ly lz f_1
+thermo_modify   format float %.15g
+thermo          10
+timestep        0.002
+run             60

@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Square, Plus, Trash2, RotateCcw, Cpu, Gpu, Gauge, HelpCircle, FileUp, X, Workflow, Atom } from 'lucide-react';
+import { Play, Square, RotateCcw, Cpu, Gpu, Gauge, HelpCircle, FileUp, X, Workflow, Atom } from 'lucide-react';
 import ResourceMonitor from './ResourceMonitor';
 import { cellsToScript } from '../../lammps/notebookBridge';
+import { Cell, duplicateCell, insertAfter, isMarkdownCell, moveCell, reviveCells, runnableCells, withKind } from './notebook/cells';
+import MarkdownView from './notebook/MarkdownView';
+import CellToolbar, { AddCellRow } from './notebook/CellToolbar';
+import CellFlowchart from './notebook/CellFlowchart';
 import { explainEngineError } from './engineError';
 import { thermoUnit, unitsCaption } from '../../lammps/thermoUnits';
 import { getThemeTokens, isDarkTheme, Theme } from '../../theme';
@@ -25,7 +29,8 @@ import { ImportStructureDialog } from './notebook/ImportStructureDialog';
  * It runs a documented subset of LAMMPS input; it is not LAMMPS.
  */
 
-interface Cell { id: string; text: string }
+/** Per-cell view state: collapsed output, flowchart shown, Markdown in the editor. */
+interface CellUi { collapsed?: boolean; flow?: boolean; editing?: boolean }
 
 type Status = 'idle' | 'running' | 'ok' | 'error' | 'cancelled';
 
@@ -76,13 +81,6 @@ const browserCores = (): number =>
 const AUTO_THREADS = 0;
 const reviveThreads = (raw: unknown): number | null =>
   typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 ? Math.min(raw, browserCores()) : null;
-
-const reviveCells = (raw: unknown): Cell[] | null => {
-  if (!Array.isArray(raw)) return null;
-  const cells = raw.filter((c): c is Cell =>
-    !!c && typeof (c as Cell).id === 'string' && typeof (c as Cell).text === 'string');
-  return cells.length ? cells : null;
-};
 
 const reviveBackend = (raw: unknown): BackendChoice | null => (raw === 'auto' || raw === 'cpu' || raw === 'webgpu' ? raw : null);
 
@@ -149,6 +147,9 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const [confirmReset, setConfirmReset] = useState(false);
   /** The last deleted cell and its place, for Undo (offered for 10 s). */
   const [deleted, setDeleted] = useState<{ cell: Cell; index: number } | null>(null);
+  /** View state per cell id (see CellUi). */
+  const [cellUi, setCellUi] = useState<Record<string, CellUi>>({});
+  const patchUi = (id: string, patch: CellUi) => setCellUi((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
   useEffect(() => {
     if (!confirmReset) return;
     const t = setTimeout(() => setConfirmReset(false), 4000);
@@ -261,7 +262,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const runAll = useCallback(async () => {
     stopAll.current = false;
     await resetSession(backend, threads);
-    for (const cell of cells) {
+    for (const cell of runnableCells(cells)) {
       if (stopAll.current) break;
       const ok = await runCell(cell);
       if (!ok) break;
@@ -284,8 +285,23 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const updateText = (id: string, text: string) =>
     setCells((prev) => prev.map((c) => (c.id === id ? { ...c, text } : c)));
 
-  const addBelow = (index: number) =>
-    setCells((prev) => [...prev.slice(0, index + 1), { id: newId(), text: '' }, ...prev.slice(index + 1)]);
+  /** Insert an empty cell of `kind` after the cell at `index`. */
+  const addBelow = (index: number, kind: 'code' | 'markdown') => {
+    const cell = withKind({ id: newId(), text: '' }, kind);
+    setCells((prev) => insertAfter(prev, index, cell));
+    if (kind === 'markdown') patchUi(cell.id, { editing: true });
+  };
+
+  const moveBy = (id: string, delta: number) => {
+    setCells((prev) => moveCell(prev, prev.findIndex((c) => c.id === id), delta));
+    // keep keyboard focus on the moved cell
+    window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-cell-id="${id}"]`)?.focus());
+  };
+
+  const duplicateAt = (index: number) => setCells((prev) => duplicateCell(prev, index, newId()));
+
+  const toggleKind = (id: string) =>
+    setCells((prev) => prev.map((c) => (c.id === id ? withKind(c, isMarkdownCell(c) ? 'code' : 'markdown') : c)));
 
   const removeCell = (index: number) => {
     if (cells.length <= 1) return;
@@ -409,8 +425,8 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
             if (f) setImportFrom(await inputFiles.readForImport(f));
           }} />
         {onOpenInBuilder && (
-          <button className={`${btn} ${ct.button}`} disabled={cells.every((c) => c.text.trim() === '')}
-            onClick={() => onOpenInBuilder(cellsToScript(cells.map((c) => c.text)))}
+          <button className={`${btn} ${ct.button}`} disabled={cells.every((c) => isMarkdownCell(c) || c.text.trim() === '')}
+            onClick={() => onOpenInBuilder(cellsToScript(cells))}
             title="Open these cells in the Script Builder as a new tab (flowchart, validator, export)"
             aria-label="Open these cells in the Script Builder">
             <Workflow size={13} aria-hidden="true" />Open in Script Builder
@@ -503,61 +519,118 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           {cells.map((cell, i) => {
             const run = runs[cell.id] ?? emptyRun();
             const n = i + 1;
+            const ui = cellUi[cell.id] ?? {};
+            const md = isMarkdownCell(cell);
+            // a Markdown cell is rendered until Edit (or double-click); new empty ones open in the editor
+            const editing = md && ui.editing === true;
+            const hasOutput = run.logs.length > 0 || run.error !== null || run.tables.length > 0;
             return (
-              <section key={cell.id} data-cell="" data-status={run.status}
+              <section key={cell.id} data-cell="" data-cell-id={cell.id} data-kind={md ? 'markdown' : 'code'} data-status={run.status}
+                tabIndex={-1}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+                    e.preventDefault();
+                    moveBy(cell.id, e.key === 'ArrowUp' ? -1 : 1);
+                  }
+                }}
                 className={`rounded-lg border p-2 ${ct.card} ${run.status === 'error' ? ct.errorAccent : ''}`} aria-label={`Cell ${n}`}>
-                <div className="mb-1 flex items-center gap-1">
-                  <span className={`font-mono text-[11px] ${ct.muted}`}>In [{n}]</span>
-                  <button className={`${btn} ${ct.button}`} aria-label={`Run cell ${n}`} title="Run this cell (Shift+Enter)"
-                    disabled={busy} onClick={() => void runCell(cell)}>
-                    <Play size={12} aria-hidden="true" />
-                  </button>
-                  <span aria-live="polite" className={`text-[11px] ${run.status === 'error' ? ct.danger : ct.muted}`}>
-                    {run.status === 'idle' ? '' : run.status}
-                  </span>
+                <CellToolbar ct={ct} n={n} kind={md ? 'markdown' : 'code'} busy={busy} isFirst={i === 0} isLast={i === cells.length - 1}
+                  canDelete={cells.length > 1} status={run.status === 'idle' ? '' : run.status} statusError={run.status === 'error'}
+                  collapsed={!!ui.collapsed} flowOpen={!!ui.flow} editing={editing}
+                  onRun={() => void runCell(cell)}
+                  onToggleKind={() => {
+                    toggleKind(cell.id);
+                    if (!md && cell.text.trim() === '') patchUi(cell.id, { editing: true });
+                  }}
+                  onToggleEdit={() => patchUi(cell.id, { editing: !editing })}
+                  onMoveUp={() => moveBy(cell.id, -1)}
+                  onMoveDown={() => moveBy(cell.id, 1)}
+                  onDuplicate={() => duplicateAt(i)}
+                  onToggleCollapse={() => patchUi(cell.id, { collapsed: !ui.collapsed })}
+                  onToggleFlow={() => patchUi(cell.id, { flow: !ui.flow })}
+                  onDelete={() => removeCell(i)}>
                   {running === cell.id && runSpan?.cell === cell.id && runSpan.to > runSpan.from && (
                     <RunProgress ct={ct} from={runSpan.from} to={runSpan.to} step={frame?.step ?? runSpan.from} />
                   )}
-                  <button className={`${btn} ml-auto ${ct.button}`} aria-label={`Delete cell ${n}`} title="Delete this cell"
-                    disabled={busy || cells.length <= 1} onClick={() => removeCell(i)}>
-                    <Trash2 size={12} aria-hidden="true" />
-                  </button>
-                </div>
-                <textarea
-                  aria-label={`Cell ${n} input`}
-                  placeholder="LAMMPS input, e.g. run 100 (Shift+Enter runs this cell)"
-                  value={cell.text}
-                  spellCheck={false}
-                  rows={Math.max(2, cell.text.split('\n').length + 1)}
-                  onChange={(e) => updateText(cell.id, e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && e.shiftKey) {
-                      e.preventDefault();
-                      if (!busy) void runCell(cell);
-                    }
-                  }}
-                  className={`block w-full resize-y rounded border px-2 py-1 font-mono text-xs leading-relaxed ${ct.input}`}
-                />
-                <div role="log" aria-label={`Cell ${n} output`} className="mt-1 space-y-1 font-mono text-[11px]">
-                  {run.logs.map((l, k) => <p key={k} className={ct.muted}>{l}</p>)}
-                  {run.error && <EngineErrorText ct={ct} message={run.error} />}
-                  {run.tables.map((t, k) => (
-                    <div key={k} className="max-h-64 overflow-auto">
-                      {unitsCaption(t.units) && <p className={`mb-0.5 font-sans ${ct.muted}`}>{unitsCaption(t.units)}</p>}
-                      <table className="border-collapse text-right">
-                        <thead>
-                          <tr>{t.keywords.map((kw, c) => <th key={kw} title={thermoUnit(t.units, kw) ?? undefined} className={`px-2 font-semibold ${ct.headerText}`}>{t.labels?.[c] ?? kw}</th>)}</tr>
-                        </thead>
-                        <ThermoRows ct={ct} keywords={t.keywords} rows={t.rows} />
-                      </table>
+                </CellToolbar>
+                {md ? (
+                  editing ? (
+                    <textarea
+                      aria-label={`Cell ${n} text`}
+                      placeholder="Markdown: # heading, **bold**, - list, [link](https://...). Shift+Enter renders."
+                      value={cell.text}
+                      spellCheck
+                      rows={Math.max(3, cell.text.split('\n').length + 1)}
+                      onChange={(e) => updateText(cell.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && e.shiftKey) {
+                          e.preventDefault();
+                          patchUi(cell.id, { editing: false });
+                        }
+                      }}
+                      className={`block w-full resize-y rounded border px-2 py-1 font-mono text-xs leading-relaxed ${ct.input}`}
+                    />
+                  ) : (
+                    <div onDoubleClick={() => patchUi(cell.id, { editing: true })} aria-label={`Cell ${n} rendered text`}
+                      className="cursor-text px-1 py-1">
+                      <MarkdownView ct={ct} source={cell.text} />
                     </div>
-                  ))}
-                </div>
-                <div className="mt-1 flex">
-                  <button className={`${btn} ${ct.button}`} aria-label={`Add a cell below cell ${n}`} onClick={() => addBelow(i)}>
-                    <Plus size={12} aria-hidden="true" />cell
-                  </button>
-                </div>
+                  )
+                ) : (
+                  <>
+                    <textarea
+                    aria-label={`Cell ${n} input`}
+                    placeholder="LAMMPS input, e.g. run 100 (Shift+Enter runs this cell)"
+                    value={cell.text}
+                    spellCheck={false}
+                    rows={Math.max(2, cell.text.split('\n').length + 1)}
+                    onChange={(e) => updateText(cell.id, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && e.shiftKey) {
+                        e.preventDefault();
+                        if (!busy) void runCell(cell);
+                      }
+                    }}
+                    className={`block w-full resize-y rounded border px-2 py-1 font-mono text-xs leading-relaxed ${ct.input}`}
+                  />
+                  <div role="log" aria-label={`Cell ${n} output`} className="mt-1 space-y-1 font-mono text-[11px]">
+                    {run.logs.map((l, k) => <p key={k} className={ct.muted}>{l}</p>)}
+                    {run.error && <EngineErrorText ct={ct} message={run.error} />}
+                    {run.tables.map((t, k) => (
+                      <div key={k} className="max-h-64 overflow-auto">
+                        {unitsCaption(t.units) && <p className={`mb-0.5 font-sans ${ct.muted}`}>{unitsCaption(t.units)}</p>}
+                        <table className="border-collapse text-right">
+                          <thead>
+                            <tr>{t.keywords.map((kw, c) => <th key={kw} title={thermoUnit(t.units, kw) ?? undefined} className={`px-2 font-semibold ${ct.headerText}`}>{t.labels?.[c] ?? kw}</th>)}</tr>
+                          </thead>
+                          <ThermoRows ct={ct} keywords={t.keywords} rows={t.rows} />
+                        </table>
+                      </div>
+                    ))}
+                  </div>
+                  {ui.flow && <CellFlowchart theme={theme} n={n} text={cell.text} />}
+                  {ui.collapsed ? (
+                    hasOutput && <p className={`mt-1 font-sans text-[11px] ${ct.muted}`}>Output hidden.</p>
+                  ) : (
+                  <div role="log" aria-label={`Cell ${n} output`} className="mt-1 space-y-1 font-mono text-[11px]">
+                    {run.logs.map((l, k) => <p key={k} className={ct.muted}>{l}</p>)}
+                    {run.error && <EngineErrorText ct={ct} message={run.error} />}
+                    {run.tables.map((t, k) => (
+                      <div key={k} className="max-h-64 overflow-auto">
+                        {unitsCaption(t.units) && <p className={`mb-0.5 font-sans ${ct.muted}`}>{unitsCaption(t.units)}</p>}
+                        <table className="border-collapse text-right">
+                          <thead>
+                            <tr>{t.keywords.map((kw, c) => <th key={kw} title={thermoUnit(t.units, kw) ?? undefined} className={`px-2 font-semibold ${ct.headerText}`}>{t.labels?.[c] ?? kw}</th>)}</tr>
+                          </thead>
+                          <ThermoRows ct={ct} keywords={t.keywords} rows={t.rows} />
+                        </table>
+                      </div>
+                    ))}
+                  </div>
+                  )}
+                  </>
+                )}
+                <AddCellRow ct={ct} n={n} onAdd={(kind) => addBelow(i, kind)} />
               </section>
             );
           })}

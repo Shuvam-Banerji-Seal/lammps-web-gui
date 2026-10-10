@@ -107,6 +107,8 @@ export class ComputeReduce extends Compute {
   protected readonly mode: ReduceMode;
   protected readonly inputs: Ref[];
   private readonly replaces: Array<readonly [number, number]> = [];
+  /** The input words as written (after wildcard expansion), for the thermo column names. */
+  private inputWords: string[] = [];
   private readonly regionId: string | null;
   /** True when the *inputs local* keyword selected local quantities (default peratom). */
   private localInputs = false;
@@ -148,7 +150,8 @@ export class ComputeReduce extends Compute {
     if (!words.length) throw new StyleError(`compute ${id} (reduce): at least one input value is required`);
     // "The compute reduce/region command can only be used with per-atom inputs."
     if (regionId !== null && this.localInputs) throw new StyleError(`compute ${id} (reduce/region): cannot use local data as input`);
-    this.inputs = (this.localInputs ? expandLocalWildcards(sys, words) : expandWildcards(sys, words, 'peratom')).map((w) => this.parseInput(w));
+    this.inputWords = this.localInputs ? expandLocalWildcards(sys, words) : expandWildcards(sys, words, 'peratom');
+    this.inputs = this.inputWords.map((w) => this.parseInput(w));
     const n = this.inputs.length;
     if (n === 1) {
       this.scalarFlag = true;
@@ -165,6 +168,23 @@ export class ComputeReduce extends Compute {
   }
 
   /** One input: must be a producer of the selected kind ("must all be of the same kind (per-atom or local)"). */
+
+  /**
+   * thermo_modify colname auto names (compute_reduce.rst, versionadded 10Dec2025): the compute ID, a colon, the
+   * mode, then the input in parentheses; with the replace keyword, the replaced input, a left arrow, the mode and
+   * the second input. Measured with native LAMMPS (black box): compute r all reduce min x y gives c_r:min(x) and
+   * c_r:min(y) for c_r[1] and c_r[2].
+   */
+  autoColumnNames(): { scalar?: string; vector?: string[] } {
+    const names = this.inputWords.map((w) => `${this.mode}(${w})`);
+    for (const [v1, v2] of this.replaces) {
+      const first = this.inputWords[v1 - 1], second = this.inputWords[v2 - 1];
+      if (first !== undefined && second !== undefined) names[v1 - 1] = `${first}<-${this.mode}(${second})`;
+    }
+    if (names.length === 1) return { scalar: names[0] };
+    return { vector: names };
+  }
+
   private parseInput(w: string): Ref {
     const r = parseRef(w, true);
     if (this.localInputs) {

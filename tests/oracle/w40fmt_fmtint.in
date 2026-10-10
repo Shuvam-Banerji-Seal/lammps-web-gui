@@ -1,0 +1,17 @@
+# oracle: thermo_modify format with %d on step and atoms (ID and int formats) and a line format; the values are compared by keyword
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.44 87287 loop all
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+fix             1 all nve
+thermo_style    custom step atoms temp pe press
+thermo_modify   format line "%d %d %g %g %g" format int %d format 1 %5d format float %.15g
+thermo          3
+run             9

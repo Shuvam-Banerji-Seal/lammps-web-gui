@@ -84,6 +84,18 @@ export const isImageDataUrl = (text: string): boolean => /^data:image\/[\w.+-]+;
 
 /** Download an engine file: data URLs as their binary content, everything else as text. */
 export const downloadFile = (filename: string, content: string): void => {
+  // A .gz file from the engine is a string with one character per byte (gzip.ts); save its bytes, not UTF-8 text.
+  if (filename.endsWith('.gz')) {
+    const bytes = new Uint8Array(content.length);
+    for (let k = 0; k < content.length; k++) bytes[k] = content.charCodeAt(k) & 0xff;
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/gzip' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+    return;
+  }
   const bin = dataUrlBytes(content);
   if (!bin) { downloadTextFile(filename, content); return; }
   const url = URL.createObjectURL(new Blob([bin.bytes], { type: bin.mime }));

@@ -191,8 +191,9 @@ describe('fix lineforce (docs.lammps.org/fix_lineforce.html)', () => {
     const r = await runScript(withGravity('fix l all lineforce 0.0 0.0 1.0'));
     expect(r.error).toBeNull();
     const a = dumpAtoms(r, 'ext.dump').get(1)!;
-    expect(a.fx).toBe(0);
-    expect(a.fy).toBe(0);
+    // native LAMMPS writes these zeros as -0 (black box), so compare numerically
+    expect(a.fx === 0).toBe(true);
+    expect(a.fy === 0).toBe(true);
     expect(a.fz).toBeCloseTo(-1, 14);
   });
 
@@ -200,8 +201,9 @@ describe('fix lineforce (docs.lammps.org/fix_lineforce.html)', () => {
     const r = await runScript(withGravity('fix l all lineforce 1.0 0.0 0.0'));
     expect(r.error).toBeNull();
     const a = dumpAtoms(r, 'ext.dump').get(1)!;
-    expect(a.fx).toBe(0);
-    expect(a.fy).toBe(0);
+    // native LAMMPS writes these zeros as -0 (black box), so compare numerically
+    expect(a.fx === 0).toBe(true);
+    expect(a.fy === 0).toBe(true);
     expect(a.fz).toBe(0);
   });
 
@@ -210,7 +212,7 @@ describe('fix lineforce (docs.lammps.org/fix_lineforce.html)', () => {
     expect(r.error).toBeNull();
     const a = dumpAtoms(r, 'ext.dump').get(1)!;
     // F=(0,0,-1); n=(0,0.6,0.8); F' = (F.n)n = -0.8*n = (0,-0.48,-0.64)
-    expect(a.fx).toBe(0);
+    expect(a.fx === 0).toBe(true);
     expect(a.fy).toBeCloseTo(-0.48, 14);
     expect(a.fz).toBeCloseTo(-0.64, 14);
   });
@@ -230,8 +232,9 @@ describe('fix planeforce (docs.lammps.org/fix_planeforce.html)', () => {
     const r = await runScript(withGravity('fix p all planeforce 0.0 0.0 1.0'));
     expect(r.error).toBeNull();
     const a = dumpAtoms(r, 'ext.dump').get(1)!;
-    expect(a.fx).toBe(0);
-    expect(a.fy).toBe(0);
+    // native LAMMPS writes these zeros as -0 (black box), so compare numerically
+    expect(a.fx === 0).toBe(true);
+    expect(a.fy === 0).toBe(true);
     expect(a.fz).toBe(0);
   });
 
@@ -305,7 +308,7 @@ run 0
     const r = await runScript(script);
     expect(r.error).toBeNull();
     const a = dumpAtoms(r, 'ext.dump').get(1)!;
-    expect(a.fx).toBe(0); // atom at x=5 is outside the region
+    expect(a.fx === 0).toBe(true); // atom at x=5 is outside the region
   });
 
   it('variable components are evaluated each step', async () => {

@@ -5,6 +5,7 @@ import { StyleError } from '../force/types';
 import { totalVirial } from '../force/types';
 import { massOf } from '../atoms';
 import { generalBoxFromRestricted, rotateTensorToGeneral, type GeneralBox } from '../triclinic_general';
+import { checkCFormat, type ValueKind } from '../cformat';
 
 /*
  * Thermodynamic output — docs.lammps.org/thermo_style.html and
@@ -77,6 +78,8 @@ export class Thermo {
   formatCol = new Map<number, string>();
   /** thermo_modify colname: header text per column index (0-based). */
   colname = new Map<number, string>();
+  /** thermo_modify colname auto: fix nvt/npt/nph and compute reduce columns get their generated names. */
+  autoNames = false;
   lineStyle: 'one' | 'multi' | 'yaml' = 'one';
   /** thermo_modify triclinic/general: edge vectors and the pressure tensor in the general triclinic frame. */
   triclinicGeneral = false;
@@ -115,6 +118,7 @@ export class Thermo {
     this.formatLine = this.formatInt = this.formatFloat = null;
     this.formatCol.clear();
     this.colname.clear();
+    this.autoNames = false;
   }
 
   /** c_ID[*] / f_ID[*] wildcards expand to every component. */
@@ -152,6 +156,7 @@ export class Thermo {
       else if (m[1] === 'f') this.sys.fix(m[2]);
       else if (!this.sys.vars.has(m[2])) throw new StyleError(`thermo keyword ${k}: variable ${m[2]} is not defined`);
     }
+    this.checkFormats();
     const t = this.sys.compute(this.tempId);
     if (!t.tempFlag) throw new StyleError(`thermo_modify temp: compute ${this.tempId} does not compute a temperature`);
     const p = this.sys.compute(this.pressId);
@@ -161,11 +166,75 @@ export class Thermo {
 
   /** Column labels for the notebook table when thermo_modify colname renamed a column (else undefined). */
   labels(): string[] | undefined {
-    return this.colname.size ? this.keywords.map((k, c) => this.colname.get(c) ?? k) : undefined;
+    return this.colname.size || this.autoNames ? this.header() : undefined;
   }
 
   header(): string[] {
-    return this.keywords.map((k, c) => this.colname.get(c) ?? HEADER[k] ?? k);
+    return this.keywords.map((k, c) => this.autoName(k) ?? this.colname.get(c) ?? HEADER[k] ?? k);
+  }
+
+  /**
+   * thermo_modify colname auto: "certain fixes or computes will generate more descriptive strings as their
+   * thermo keywords" (thermo_modify.html, versionadded 10Dec2025); the auto name overrides a user string
+   * for those styles only. The fix and compute classes supply the names (autoColumnNames).
+   */
+  private autoName(k: string): string | undefined {
+    if (!this.autoNames) return undefined;
+    const m = /^([fc])_([A-Za-z0-9_]+)(?:\[(\d+)\])?$/.exec(k);
+    if (!m) return undefined;
+    const obj = (m[1] === 'f' ? this.sys.fix(m[2]) : this.sys.compute(m[2])) as unknown as { autoColumnNames?: () => { scalar?: string; vector?: string[] } };
+    const names = obj.autoColumnNames?.();
+    if (!names) return undefined;
+    const prefix = `${m[1]}_${m[2]}:`;
+    if (m[3] === undefined) return names.scalar === undefined ? undefined : prefix + names.scalar;
+    const v = names.vector?.[Number(m[3]) - 1];
+    return v === undefined ? undefined : prefix + v;
+  }
+
+  /** thermo_modify format ID: a column number (negative counts from the right), a range "N*M", "N*", "*M" or "*", or a keyword. */
+  private columnsOf(id: string): number[] {
+    const n = this.keywords.length;
+    const bad = (): never => { throw new StyleError(`Invalid thermo_modify format argument: ${id}`); };
+    if (/^\d*\*\d*$/.test(id)) {
+      const star = id.indexOf('*');
+      const lo = star > 0 ? Number(id.slice(0, star)) : 1;
+      const hi = star < id.length - 1 ? Number(id.slice(star + 1)) : n;
+      if (lo < 1 || hi > n || lo > hi) bad();
+      return Array.from({ length: hi - lo + 1 }, (_, i) => lo - 1 + i);
+    }
+    if (/^-?\d+$/.test(id)) {
+      const v = Number(id);
+      if (v >= 1 && v <= n) return [v - 1];
+      if (v <= -1 && v >= -n) return [n + v];
+      return bad();
+    }
+    const c = this.keywords.indexOf(id);
+    return c < 0 ? bad() : [c];
+  }
+
+  /** The thermo format of column c for its kind: ID, then int/float, then the line (thermo_modify.html precedence). */
+  private columnFormat(c: number): string | undefined {
+    return this.formatCol.get(c) ?? (kindOf(this.keywords[c]) === 'int' ? this.formatInt ?? undefined : this.formatFloat ?? undefined);
+  }
+
+  /**
+   * Checks the formats when the thermo output is set up (run), as thermo_modify.html says: "Format strings are
+   * checked when the thermo output is set up and LAMMPS will stop with an error if a format string does not match
+   * the kind of value it is applied to". Measured with native LAMMPS (black box): a line format with fewer
+   * formats than columns is an error (only for columns that take their format from the line).
+   */
+  checkFormats(): void {
+    const toks = this.formatLine === null ? null : this.formatLine.trim().split(/\s+/);
+    this.keywords.forEach((k, c) => {
+      const kind = kindOf(k);
+      let f = this.columnFormat(c);
+      if (f === undefined) {
+        if (!toks) return;
+        if (c >= toks.length) throw new StyleError(`thermo_modify format line has ${toks.length} format(s) for ${this.keywords.length} thermo columns (No more tokens)`);
+        f = toks[c];
+      }
+      checkCFormat(f, kind, `Invalid thermo format for column ${c + 1} (${HEADER[k] ?? k})`);
+    });
   }
 
   /** The current row (fresh compute values). */
@@ -418,10 +487,9 @@ export class Thermo {
           if (which === 'none') { this.formatLine = this.formatInt = this.formatFloat = null; this.formatCol.clear(); k += 2; break; }
           if (fmt === undefined) throw new StyleError('thermo_modify format needs a format string');
           if (which === 'line') this.formatLine = fmt;
-          else if (which === 'int') this.formatInt = fmt;
-          else if (which === 'float') this.formatFloat = fmt;
-          else if (/^\d+$/.test(which)) this.formatCol.set(Number(which), fmt);
-          else throw new StyleError(`thermo_modify format: '${which}' must be line, int, float, a column number, or none`);
+          else if (which === 'int') { checkCFormat(fmt, 'int', 'Invalid thermo_modify int format'); this.formatInt = fmt; }
+          else if (which === 'float') { checkCFormat(fmt, 'float', 'Invalid thermo_modify float format'); this.formatFloat = fmt; }
+          else for (const c of this.columnsOf(which)) this.formatCol.set(c, fmt);
           k += 3;
           break;
         }
@@ -434,7 +502,8 @@ export class Thermo {
           // box): a column number out of range, 0, or a keyword not in the thermo style stop with
           // Invalid thermo_modify colname argument: <ID>.
           const id = need(val);
-          if (id === 'default') { this.colname.clear(); k += 2; break; }
+          if (id === 'default') { this.colname.clear(); this.autoNames = false; k += 2; break; }
+          if (id === 'auto') { this.autoNames = true; k += 2; break; }
           const name = args[k + 2];
           if (name === undefined) throw new StyleError('thermo_modify colname needs an ID and a string');
           const n = this.keywords.length;
@@ -495,3 +564,7 @@ const yesno = (w: string, key: string): boolean => {
   if (w !== 'yes' && w !== 'no') throw new StyleError(`thermo_modify ${key} must be yes or no`);
   return w === 'yes';
 };
+
+/** Thermo keywords whose value is an integer (the thermo_style keyword list; measured with native LAMMPS: a "%g" format on these is an error). */
+const THERMO_INT = new Set(['step', 'elapsed', 'elaplong', 'atoms', 'nbuild', 'ndanger', 'bonds', 'angles', 'dihedrals', 'impropers', 'part']);
+const kindOf = (k: string): ValueKind => (THERMO_INT.has(k) ? 'int' : 'float');

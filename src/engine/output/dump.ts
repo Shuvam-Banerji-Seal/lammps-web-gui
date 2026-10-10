@@ -1,6 +1,6 @@
 import type { System } from '../system';
 import { StyleError } from '../force/types';
-import { formatNumber } from '../script';
+import { compileCFormat, checkCFormat, formatNumber, type ValueKind } from '../cformat';
 import { localDumpColumns, localColumnSource } from '../compute/local_dump';
 import { generalBoxFromRestricted, toGeneralPoint, unrotateVector, type V3 } from '../triclinic_general';
 import { fillWildcard } from '../commands/restart';
@@ -48,18 +48,12 @@ const TORQUE_COLS = new Set(['tqx', 'tqy', 'tqz']);
 const ANGMOM_COLS = new Set(['angmomx', 'angmomy', 'angmomz']);
 const DIPOLE_COLS = new Set(['mux', 'muy', 'muz', 'mu']);
 
-/** Compiled C formats (parsing a format per value is slow for large dumps). */
-const fmtCache = new Map<string, (v: number) => string>();
-export const fmt = (f: string): ((v: number) => string) => {
-  let h = fmtCache.get(f);
-  if (!h) {
-    if (f === '%g') h = (v) => formatNumber(v, '%g');
-    else if (f === '%d') h = (v) => String(Math.trunc(v));
-    else h = (v) => formatNumber(v, f);
-    fmtCache.set(f, h);
-  }
-  return h;
-};
+/**
+ * A compiled format for one value kind. dump_modify.html: "Format strings are checked when they are set and LAMMPS
+ * will stop with an error if a format string does not match the kind of value it is applied to". The compile
+ * cache keeps this cheap for large dumps.
+ */
+export const fmt = (f: string): ((v: number) => string) => compileCFormat(f, 'float', 'Invalid dump format');
 
 export type DumpStyle = 'atom' | 'custom' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image';
 
@@ -87,8 +81,9 @@ export class Dump {
   sort: 'off' | 'id' | { col: number; desc: boolean };
   element: string[] = [];
   formatLine: string | null = null;
-  formatInt = '%d';
-  formatFloat = '%g';
+  /** dump_modify format int / float; null keeps the default ("%d" for integers, "%g" for floats). */
+  formatInt: string | null = null;
+  formatFloat: string | null = null;
   formatCol = new Map<number, string>();
   colnames = new Map<number, string>();
   region: string | null = null;
@@ -104,6 +99,9 @@ export class Dump {
   readonly columns: string[];
 
   constructor(private sys: System, readonly id: string, readonly group: string, readonly style: DumpStyle, every: number | string, readonly file: string, cols: string[]) {
+    // dump.html: "if the filename ends with ".gz" ... the dump file (or files, if "*" or "%" is also used) is written in
+    // compressed format". The browser engine writes no compressed dumps yet, so a .gz name is an error, not plain text.
+    if (/\.gz$/.test(file)) throw new StyleError(`dump ${id}: a compressed (.gz) dump file is not supported by the browser engine; use a plain file name`);
     this.groupBit = sys.groupBit(group);
     if (typeof every === 'string') this.everyVar = every;
     this.every = typeof every === 'number' ? every : 0;
@@ -234,14 +232,18 @@ export class Dump {
           break;
         }
         case 'format': {
-          if (v === 'none') { this.formatLine = null; this.formatInt = '%d'; this.formatFloat = '%g'; this.formatCol.clear(); k += 2; break; }
+          if (v === 'none') { this.formatLine = null; this.formatInt = null; this.formatFloat = null; this.formatCol.clear(); k += 2; break; }
           const f = args[k + 2];
           if (f === undefined) throw new StyleError('dump_modify format needs a format string');
           if (v === 'line') this.formatLine = f;
-          else if (v === 'int') this.formatInt = f;
-          else if (v === 'float') this.formatFloat = f;
+          else if (v === 'int') { checkCFormat(f, 'int', 'Invalid dump_modify int format'); this.formatInt = f; }
+          else if (v === 'float') { checkCFormat(f, 'float', 'Invalid dump_modify float format'); this.formatFloat = f; }
           else {
+            // dump_modify.rst: the format keyword takes an integer column M; a column name is not accepted.
+            // Measured with native LAMMPS (black box): a column name stops with the message Expected integer parameter.
+            if (!/^-?\d+$/.test(v ?? '')) throw new StyleError(`Expected integer parameter instead of '${v ?? ''}' in input script or data file`);
             const col = this.columnIndex(v ?? '');
+            checkCFormat(f, this.kindOfCol(this.columns[col]), `Invalid dump_modify format for column ${col + 1}`);
             this.formatCol.set(col, f);
           }
           k += 3;
@@ -279,6 +281,27 @@ export class Dump {
     const c = this.scale ? ['id', 'type', 'xs', 'ys', 'zs'] : ['id', 'type', 'x', 'y', 'z'];
     if (this.image) c.push('ix', 'iy', 'iz');
     (this as unknown as { columns: string[] }).columns = c;
+  }
+
+  /** Kind of a dump column for format checks: integer columns take an integer conversion. */
+  private kindOfCol(c: string): ValueKind {
+    const isInt = this.style === 'local' ? c === 'index' : this.isInt(c);
+    return isInt ? 'int' : 'float';
+  }
+
+  /**
+   * One formatter per column. Precedence (dump_modify.html): the column's own format, then the int or float
+   * setting, then the line. Measured with native LAMMPS (black box): a line with fewer formats than columns is an
+   * error, reported as "too short"; a format that does not match its column is an error when the line is written.
+   */
+  private columnFormatters(): ((v: number) => string)[] {
+    const toks = this.formatLine ? this.formatLine.split(/\s+/).filter(Boolean) : null;
+    if (toks && toks.length < this.columns.length) throw new StyleError(`Dump_modify format line is too short: ${this.formatLine}`);
+    return this.columns.map((c, k) => {
+      const kind = this.kindOfCol(c);
+      const spec = this.formatCol.get(k) ?? (kind === 'int' ? this.formatInt : this.formatFloat) ?? toks?.[k] ?? (kind === 'int' ? '%d' : '%g');
+      return compileCFormat(spec, kind, `Invalid dump ${this.id} format for column ${k + 1}`);
+    });
   }
 
   private columnIndex(w: string): number {
@@ -373,7 +396,7 @@ export class Dump {
       if (this.style === 'extxyz') {
         lines.push(`Lattice="${g.lx} 0 0 ${g.xy} ${g.ly} 0 ${g.xz} ${g.yz} ${g.lz}" Origin="${s.box.lo.join(' ')}" Properties=species:S:1:pos:R:3 Timestep=${step}${this.time ? ` Time=${time}` : ''}`);
       } else lines.push(` Atoms. Timestep: ${step}${this.time ? ` Time: ${formatNumber(time, '%g')}` : ''}`);
-      const fx = fmt(this.formatFloat);
+      const fx = fmt(this.formatFloat ?? '%g');
       for (const i of keep) {
         const t = s.type[i];
         const el = this.element.length ? this.element[t - 1] : String(t);
@@ -408,13 +431,12 @@ export class Dump {
         }
         lines.push(`ITEM: ATOMS ${this.columns.map((c, k) => this.colnames.get(k) ?? c).join(' ')}`);
       }
-      const formatters = this.columns.map((c, k) => fmt(this.formatCol.get(k) ?? (this.isInt(c) ? this.formatInt : this.formatFloat)));
-      const line = this.formatLine ? this.formatLine.split(/\s+/).filter(Boolean) : null;
+      const formatters = this.columnFormatters();
       // dump_modify.html, Default section: the element name is C for every atom type without dump_modify element
       // (measured the same with native LAMMPS for dump custom ... element); the column is the name of the atom's type
       const elementName = (i: number): string => (this.element.length ? this.element[s.type[i] - 1] : 'C');
       for (const i of keep) {
-        lines.push(this.columns.map((c, k) => (c === 'element' ? elementName(i) : line?.[k] ? fmt(line[k])(values[k][i]) : formatters[k](values[k][i]))).join(' '));
+        lines.push(this.columns.map((c, k) => (c === 'element' ? elementName(i) : formatters[k](values[k][i]))).join(' '));
       }
     }
     const multi = this.file.includes('*');
@@ -461,14 +483,13 @@ export class Dump {
       }
       lines.push(`ITEM: ${this.label} ${this.columns.map((c, k) => this.colnames.get(k) ?? c).join(' ')}`);
     }
-    const formatters = this.columns.map((c, k) => fmt(this.formatCol.get(k) ?? (c === 'index' ? this.formatInt : this.formatFloat)));
-    const line = this.formatLine ? this.formatLine.split(/\s+/).filter(Boolean) : null;
+    const formatters = this.columnFormatters();
     for (let r = 0; r < nrows; r++) {
       let text = '';
       this.columns.forEach((_, k) => {
         const src = srcs[k];
         const v = src ? src.data[r * src.ncol + src.col] : r + 1;
-        text += (line?.[k] ? fmt(line[k])(v) : formatters[k](v)) + ' ';
+        text += formatters[k](v) + ' ';
       });
       lines.push(text);
     }

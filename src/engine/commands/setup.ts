@@ -13,6 +13,7 @@ import {
 } from '../region';
 import { readData, writeData, defaultReadOptions, type ReadDataOptions } from '../output/data';
 import { RanMars, RanPark, Rng } from '../rng';
+import { gzipText } from '../gzip';
 import { ComputeTemp } from '../compute/temp';
 import type { AtomStyle, SimState } from '../types';
 import type { System } from '../system';
@@ -952,7 +953,10 @@ const writeDataCmd: Handler = ({ sys }, a) => {
   sys.nb.lastBuild = -1;
   sys.bump();
   if (wasCurrent) sys.forcesCurrent(); else sys.forces();
-  sys.writeFile(a[0], writeData(sys, { nocoeff, pairStyle, nofix, triclinicGeneral }), false);
+  // write_data.html: "The file may also be a compressed text file (detected by its suffix)"; the browser
+  // engine writes stored (uncompressed) gzip members, see gzip.ts.
+  const text = writeData(sys, { nocoeff, pairStyle, nofix, triclinicGeneral });
+  sys.writeFile(a[0], a[0].endsWith('.gz') ? gzipText(text) : text, false);
   sys.log(`Wrote ${sys.state.n} atoms to ${a[0]}`);
 };
 

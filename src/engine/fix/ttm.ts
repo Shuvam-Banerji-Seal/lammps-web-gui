@@ -76,7 +76,7 @@ const fmt16g = (x: number): string => {
 /** Stability: sub-steps needed for explicit FTCS, from the measured rule (see header). */
 export const substepCount = (C: number): number => (C <= 0.5 + 1e-12 ? 1 : Math.floor(2 * C + 1e-9) + 1);
 
-interface TtmParams {
+export interface TtmParams {
   seed: number;
   Ce: number;
   rhoE: number;
@@ -124,9 +124,14 @@ export const parseTtmArgs = (id: string, style: string, args: string[]): TtmPara
   return p;
 };
 
+/** A style-specific keyword: returns the number of arguments it consumed, or 0 when the key is not its own. */
+export type TtmKeywordHandler = (key: string, args: string[], i: number) => number;
+
 /**
  * Keywords after the required arguments. Returns the initial grid spec.
- * Shared with fix ttm/mod. `outfileAllowed` is false for ttm/grid.
+ * Shared with fix ttm/mod, ttm/thermal and ttm/cascade; `extra` takes the keywords of the
+ * subclass styles. `outfileAllowed` is false for ttm/grid and ttm/cascade (the doc of fix ttm
+ * says: "The fix ttm/grid and fix ttm/cascade commands do not support the *outfile* keyword.").
  */
 export interface TtmKeywords {
   setT: number | null;
@@ -135,11 +140,14 @@ export interface TtmKeywords {
   outfile: string | null;
 }
 
-export const parseTtmKeywords = (id: string, style: string, args: string[], outfileAllowed: boolean): TtmKeywords => {
+export const parseTtmKeywords = (id: string, style: string, args: string[], outfileAllowed: boolean, extra?: TtmKeywordHandler): TtmKeywords => {
   const k: TtmKeywords = { setT: null, infile: null, outNevery: 0, outfile: null };
   for (let i = 0; i < args.length;) {
     const key = args[i];
-    if (key === 'set') {
+    const used = extra ? extra(key, args, i) : 0;
+    if (used > 0) {
+      i += used;
+    } else if (key === 'set') {
       const t = Number(args[i + 1]);
       if (args[i + 1] === undefined || !Number.isFinite(t)) throw new StyleError(`fix ${id} ${style}: keyword set needs a temperature`);
       // Measured with native LAMMPS (black box): set Tinit = 0 stops the run with an error that requires Tinit > 0.
@@ -200,18 +208,56 @@ export const parseTtmInfile = (text: string, id: string, style: string, nx: numb
   return out;
 };
 
+/** Grid and seed of a ttm-family fix (every style has them). */
+export interface TtmGrid {
+  seed: number;
+  nx: number;
+  ny: number;
+  nz: number;
+}
+
 /**
- * fix ttm (and ttm/grid, identical in a serial run: the grid is simply
- * stored once, see the header). Uses the cell-averaged electron temperature
- * of each atom's cell for the coupling.
+ * The positional part of a ttm-family command: the grid and seed, the scalar parameters of fix ttm
+ * (null for ttm/thermal, whose per-cell properties come from its properties file), how many arguments
+ * it took, and `data`, the style's own keyword results (filled by the keyword handler before the fix
+ * object is built).
+ */
+export interface TtmPositional extends TtmGrid {
+  consumed: number;
+  scalar: TtmParams | null;
+}
+
+/** The ttm positional arguments (ttm, ttm/grid, ttm/cascade): seed C_e rho_e kappa_e gamma_p gamma_s v_0 Nx Ny Nz. */
+export const ttmPositional = (id: string, style: string, args: string[]): TtmPositional => {
+  const scalar = parseTtmArgs(id, style, args);
+  return { seed: scalar.seed, nx: scalar.nx, ny: scalar.ny, nz: scalar.nz, consumed: 10, scalar };
+};
+
+export type TtmStyle = 'ttm' | 'ttm/grid' | 'ttm/thermal' | 'ttm/cascade';
+
+/**
+ * fix ttm and fix ttm/grid (identical in a serial run: the grid is simply stored once, see the header),
+ * and the base of fix ttm/thermal and fix ttm/cascade (ttm/thermal.ts, ttm/cascade.ts). The style supplies
+ * the per-cell electron properties through the hooks below; the defaults are the uniform ttm model.
+ *
+ * Hooks, all per grid cell c with electron temperature T (the cell's current value):
+ *  - cvolAt: volumetric heat capacity (energy / (temperature volume));
+ *  - energyAt: energy of the cell's electrons (the total the vector output sums);
+ *  - kappaAt: electron thermal conductivity; pairKappa: the conductance used for the flow between
+ *    cell c (conductivity kc) and a neighbour (conductivity kj);
+ *  - gammaPFor / gammaSFor: the friction coefficients of an atom in cell c with speed `speed`;
+ *  - vacuum: a cell whose electrons are absent (it exchanges no energy and holds no coupling);
+ *  - sourceAt: volumetric heating of the electrons (energy / (time volume)), per cell.
  */
 export class FixTTM extends Fix {
-  readonly style: string;
+  readonly style: TtmStyle;
   vectorFlag = true;
   sizeVector = 2;
   extvector = 1;
 
-  protected readonly p: TtmParams;
+  protected readonly p: TtmGrid;
+  /** The scalar ttm parameters (null for ttm/thermal). */
+  protected readonly scalar: TtmParams | null;
   protected readonly kw: TtmKeywords;
   protected Te: Float64Array;
   protected readonly cellVolume: number;
@@ -222,15 +268,22 @@ export class FixTTM extends Fix {
   protected flOrder = new Int32Array(0);
   protected lastTransfer = 0;
 
-  constructor(sys: System, id: string, group: string, args: string[], style: 'ttm' | 'ttm/grid' = 'ttm') {
+  /**
+   * `pos` lets a subclass parse its own positional arguments (before this constructor runs, from the
+   * same args); `keywords` handles the subclass keywords. Subclasses read what their handlers collected
+   * only after super() returns.
+   */
+  constructor(sys: System, id: string, group: string, args: string[], style: TtmStyle = 'ttm', pos?: TtmPositional, keywords?: TtmKeywordHandler) {
     super(sys, id, group, args);
     this.style = style;
     const s = sys.state;
     if (s.dimension !== 3) throw new StyleError(`fix ${id} ${style} requires a 3d simulation`);
     if (s.box.triclinic) throw new StyleError(`fix ${id} ${style} requires an orthogonal box (triclinic boxes are not supported)`);
     if (!s.box.periodic.every(Boolean)) throw new StyleError(`fix ${id} ${style} requires periodic boundaries in all dimensions`);
-    this.p = parseTtmArgs(id, style, args);
-    this.kw = parseTtmKeywords(id, style, args.slice(10), style === 'ttm');
+    const P = pos ?? ttmPositional(id, style, args);
+    this.p = { seed: P.seed, nx: P.nx, ny: P.ny, nz: P.nz };
+    this.scalar = P.scalar;
+    this.kw = parseTtmKeywords(id, style, args.slice(P.consumed), style === 'ttm' || style === 'ttm/thermal', keywords);
     const nGrid = this.p.nx * this.p.ny * this.p.nz;
     const lx = s.box.hi[0] - s.box.lo[0], ly = s.box.hi[1] - s.box.lo[1], lz = s.box.hi[2] - s.box.lo[2];
     this.cellVolume = (lx / this.p.nx) * (ly / this.p.ny) * (lz / this.p.nz);
@@ -244,6 +297,51 @@ export class FixTTM extends Fix {
     this.rng = new RanMars(this.p.seed);
     this.rng.uniform();
     this.fl = new Float64Array(0);
+  }
+
+  // ---- per-cell hooks (uniform ttm model) -------------------------------------------------------
+
+  /** Volumetric heat capacity C_e rho_e of the uniform ttm model. */
+  protected cvolAt(_c: number, _T: number): number {
+    return this.uniform().Ce * this.uniform().rhoE;
+  }
+
+  /** Energy of one cell: volume times the integral of the volumetric heat capacity from 0 to T. */
+  protected energyAt(c: number, T: number): number {
+    return this.cellVolume * this.cvolAt(c, T) * T;
+  }
+
+  protected kappaAt(_c: number, _T: number): number {
+    return this.uniform().kappa;
+  }
+
+  /** The uniform model has one conductivity, so both ends of a pair give the same value. */
+  protected pairKappa(kc: number, _kj: number): number {
+    return kc;
+  }
+
+  protected gammaPFor(_c: number, _speed: number): number {
+    return this.uniform().gammaP;
+  }
+
+  /** Electronic stopping friction coefficient for an atom of the given speed (0 when it does not apply). */
+  protected gammaSFor(speed: number): number {
+    const u = this.uniform();
+    return speed > u.v0 ? u.gammaS : 0;
+  }
+
+  /** Cells without electrons: none in the uniform model. */
+  protected vacuum(_c: number): boolean {
+    return false;
+  }
+
+  protected sourceAt(_c: number): number {
+    return 0;
+  }
+
+  protected uniform(): TtmParams {
+    if (this.scalar === null) throw new StyleError(`fix ${this.id} ${this.style}: internal error (no scalar parameters)`);
+    return this.scalar;
   }
 
   /** Grid index of an atom (periodic wrap, x fastest). */
@@ -260,9 +358,6 @@ export class FixTTM extends Fix {
     const iz = cell(s.x[3 * i + 2], s.box.lo[2], s.box.hi[2] - s.box.lo[2], nz);
     return ix + nx * (iy + ny * iz);
   }
-
-  /** Heat capacity times volume of one cell: energy per kelvin. */
-  protected get heatPerCell(): number { return this.p.Ce * this.p.rhoE * this.cellVolume; }
 
   /**
    * Native LAMMPS adds no new fix force on the setup step (measured: step 0 forces are zero). A later run
@@ -291,18 +386,26 @@ export class FixTTM extends Fix {
     const s = this.sys.state;
     const u = s.units;
     const { f, v, mask } = s;
-    const { gammaP, gammaS, v0 } = this.p;
     if (this.fl.length !== 3 * s.n) this.fl = new Float64Array(3 * s.n);
     this.flOrder = Int32Array.from(nativeOrder(s));
     for (const i of nativeOrder(s)) {
       if (!(mask[i] & this.groupBit)) continue;
-      const T = this.Te[this.cellOf(i)];
+      const cell = this.cellOf(i);
+      // Measured with native LAMMPS (black box): an atom in a cell without electrons gets no force and draws no random number
+      // (the next atom takes the draws the empty-cell atom would have used).
+      if (this.vacuum(cell)) {
+        this.fl[3 * i] = 0; this.fl[3 * i + 1] = 0; this.fl[3 * i + 2] = 0;
+        continue;
+      }
+      const T = this.Te[cell];
+      const vx = v[3 * i], vy = v[3 * i + 1], vz = v[3 * i + 2];
+      const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
+      const gammaP = this.gammaPFor(cell, speed);
       // g1 multiplies v (friction), g2 scales the uniform deviate (see header)
       const g1 = -gammaP / u.ftm2v;
       const g2 = Math.sqrt((24 * gammaP * u.boltz * T) / (u.mvv2e * s.dt)) / u.ftm2v;
-      const vx = v[3 * i], vy = v[3 * i + 1], vz = v[3 * i + 2];
-      const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
-      const stop = speed > v0 ? -gammaS / u.ftm2v : 0;
+      const gammaS = this.gammaSFor(speed);
+      const stop = gammaS !== 0 ? -gammaS / u.ftm2v : 0;
       const rx = g2 * (this.rng.uniform() - 0.5);
       const ry = g2 * (this.rng.uniform() - 0.5);
       const rz = g2 * (this.rng.uniform() - 0.5);
@@ -316,8 +419,7 @@ export class FixTTM extends Fix {
 
   endOfStep(): void {
     const s = this.sys.state;
-    const { nx, ny, nz } = this.p;
-    const cells = nx * ny * nz;
+    const cells = this.p.nx * this.p.ny * this.p.nz;
     // energy handed to the atoms this step: sum F . v dt over the group, per cell
     const transfer = new Float64Array(cells);
     for (let i = 0; i < s.n; i++) {
@@ -332,35 +434,76 @@ export class FixTTM extends Fix {
     if (this.kw.outfile !== null && s.step % this.kw.outNevery === 0) this.writeGrid(s.step);
   }
 
+  /** Wrapped grid index of cell (ix, iy, iz) (periodic in each direction). */
+  protected wrapIndex(ix: number, iy: number, iz: number): number {
+    const { nx, ny, nz } = this.p;
+    return ((ix + nx) % nx) + nx * (((iy + ny) % ny) + ny * ((iz + nz) % nz));
+  }
+
+  /**
+   * The diffusion term of one cell, the sum over its six face neighbours of the conductance times the
+   * temperature difference over dx^2 (the pairwise form used by fix ttm and ttm/thermal). `kc` is the
+   * conductivity of the cell, `t` its electron temperature. Empty cells (see vacuum) exchange nothing.
+   */
+  protected flowInto(ix: number, iy: number, iz: number, t: number, kc: number): number {
+    const { nx, ny, nz } = this.p;
+    const s = this.sys.state;
+    const lx = (s.box.hi[0] - s.box.lo[0]) / nx, ly = (s.box.hi[1] - s.box.lo[1]) / ny, lz = (s.box.hi[2] - s.box.lo[2]) / nz;
+    const nb: [number, number][] = [
+      [this.wrapIndex(ix + 1, iy, iz), 1 / (lx * lx)], [this.wrapIndex(ix - 1, iy, iz), 1 / (lx * lx)],
+      [this.wrapIndex(ix, iy + 1, iz), 1 / (ly * ly)], [this.wrapIndex(ix, iy - 1, iz), 1 / (ly * ly)],
+      [this.wrapIndex(ix, iy, iz + 1), 1 / (lz * lz)], [this.wrapIndex(ix, iy, iz - 1), 1 / (lz * lz)],
+    ];
+    let flux = 0;
+    for (const [j, w] of nb) {
+      if (this.vacuum(j)) continue;
+      const tj = this.Te[j];
+      flux += this.pairKappa(kc, this.kappaAt(j, tj)) * (tj - t) * w;
+    }
+    return flux;
+  }
+
   /**
    * One end-of-step update of the electron grid: the heat diffusion equation solved explicitly (FTCS,
    * periodic), split into k sub-steps when needed (see header). Each sub-step also removes its share
    * transfer/k of the energy handed to the atoms. Measured with native LAMMPS (black box, a k = 2 step
    * with coupling on, outfile compared cell by cell): the share goes in every sub-step; putting the whole
    * transfer before or after the diffusion does not reproduce the native grid.
+   *
+   * The sub-step count uses the largest kappa/C_v over all cells (vacuum cells included), with the
+   * values at the start of the step: measured with native LAMMPS (black box, ttm/thermal with per-cell
+   * properties and ttm/cascade with tables), the count is the one of this rule with that maximum.
+   * The source of ttm/thermal enters each sub-step with the sub-step length (measured: the source term is
+   * added in every sub-step, not once with the full step).
    */
   protected advance(transfer: Float64Array): void {
-    const { nx, ny, nz, kappa } = this.p;
+    const { nx, ny, nz } = this.p;
     const s = this.sys.state;
     const lx = (s.box.hi[0] - s.box.lo[0]) / nx, ly = (s.box.hi[1] - s.box.lo[1]) / ny, lz = (s.box.hi[2] - s.box.lo[2]) / nz;
-    const D = kappa / (this.p.Ce * this.p.rhoE);
-    const C = s.dt * D * (1 / (lx * lx) + 1 / (ly * ly) + 1 / (lz * lz));
-    const k = substepCount(C);
-    const h = s.dt / k;
     const cells = nx * ny * nz;
+    let Dmax = 0;
+    for (let c = 0; c < cells; c++) {
+      const T = this.Te[c];
+      const D = this.kappaAt(c, T) / this.cvolAt(c, T);
+      if (D > Dmax) Dmax = D;
+    }
+    const C = s.dt * Dmax * (1 / (lx * lx) + 1 / (ly * ly) + 1 / (lz * lz));
+    const k = substepCount(C);
+    // a diffusion number this large cannot be stepped in reasonable time (it arises for vanishing heat capacity)
+    if (!(k <= 1e6)) throw new StyleError(`fix ${this.id} ${this.style}: the electron diffusion needs ${k} sub-steps per step (a heat capacity or conductivity is too extreme for the timestep)`);
+    const h = s.dt / k;
     const next = new Float64Array(cells);
-    const heat = this.heatPerCell * k;
-    const idx = (ix: number, iy: number, iz: number) => ((ix + nx) % nx) + nx * (((iy + ny) % ny) + ny * ((iz + nz) % nz));
     for (let sub = 0; sub < k; sub++) {
       for (let iz = 0; iz < nz; iz++) {
         for (let iy = 0; iy < ny; iy++) {
           for (let ix = 0; ix < nx; ix++) {
-            const c = idx(ix, iy, iz);
+            const c = this.wrapIndex(ix, iy, iz);
             const t = this.Te[c];
-            const lap = (this.Te[idx(ix + 1, iy, iz)] - 2 * t + this.Te[idx(ix - 1, iy, iz)]) / (lx * lx)
-              + (this.Te[idx(ix, iy + 1, iz)] - 2 * t + this.Te[idx(ix, iy - 1, iz)]) / (ly * ly)
-              + (this.Te[idx(ix, iy, iz + 1)] - 2 * t + this.Te[idx(ix, iy, iz - 1)]) / (lz * lz);
-            next[c] = t + h * D * lap - transfer[c] / heat;
+            if (this.vacuum(c)) { next[c] = t; continue; }
+            const kc = this.kappaAt(c, t);
+            const cv = this.cvolAt(c, t);
+            const flux = this.flowInto(ix, iy, iz, t, kc);
+            next[c] = t + h * flux / cv + h * this.sourceAt(c) / cv - transfer[c] / (this.cellVolume * cv * k);
             // the coupling needs sqrt(T_e): a cell that cools below zero has no defined amplitude (native not measured)
             if (!(next[c] >= 0)) throw new StyleError(`fix ${this.id} ${this.style}: electron temperature of grid cell ${c + 1} became negative`);
           }
@@ -386,7 +529,7 @@ export class FixTTM extends Fix {
   computeVector(i: number): number {
     if (i === 0) {
       let e = 0;
-      for (let c = 0; c < this.Te.length; c++) e += this.heatPerCell * this.Te[c];
+      for (let c = 0; c < this.Te.length; c++) e += this.energyAt(c, this.Te[c]);
       return e;
     }
     if (i === 1) return this.lastTransfer;

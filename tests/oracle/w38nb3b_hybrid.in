@@ -1,0 +1,22 @@
+# oracle: pair_style hybrid/overlay nb3b/screened with NULL type 2 (the mapping of the pair_nb3b example) plus lj/cut on all pairs, random 60-atom box, NVE 30 steps
+# oracle-potentials: PSiO.nb3b.screened
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+region          box block 0 12 0 12 0 12
+create_box      3 box
+create_atoms    1 random 20 808 box overlap 1.6 maxtry 200
+create_atoms    2 random 20 4242 box overlap 1.6 maxtry 200
+create_atoms    3 random 20 6060 box overlap 1.6 maxtry 200
+mass            * 28.0
+pair_style      hybrid/overlay nb3b/screened lj/cut 2.6
+pair_coeff      * * nb3b/screened PSiO.nb3b.screened P NULL O
+pair_coeff      * * lj/cut 0.004 2.2
+timestep        0.0005
+fix             1 all nve
+thermo_style    custom step temp pe evdwl etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             30

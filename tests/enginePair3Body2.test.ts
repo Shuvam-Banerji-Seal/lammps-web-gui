@@ -278,7 +278,8 @@ describe('pair_style nb3b/harmonic', () => {
     expect(() => p2.coeff(['*', '*', 'partial.nb3b', 'Mg', 'O', 'H'], ctx2)).toThrow(/missing an entry for: Mg Mg Mg/);
   });
 
-  it('nb3b/screened is refused with a StyleError (its file layout is not in the docs)', () => {
-    expect(() => new PairNB3BScreened().settings([], ctxWith())).toThrow(/pair_style nb3b\/screened is not supported/);
+  it('nb3b/screened runs: it takes no settings arguments (its tests are in enginePairNb3bScreened.test.ts)', () => {
+    expect(() => new PairNB3BScreened().settings([], ctxWith())).not.toThrow();
+    expect(() => new PairNB3BScreened().settings(['1'], ctxWith())).toThrow(/takes no arguments/);
   });
 });

@@ -1,4 +1,4 @@
-import { referenceVectors, type ReferenceLattice } from './meam_lattice';
+import { PAIR_SHELL_RATIO, referenceVectors, type ReferenceLattice } from './meam_lattice';
 
 /*
  * Multi-element MEAM (pair_style meam, two or more elements). Energy and analytic forces for the
@@ -73,8 +73,15 @@ import { referenceVectors, type ReferenceLattice } from './meam_lattice';
  *    phi_KF = (4 erose - F_K - 3 F_F - 12 phi_FF)/12, with phi_FF the elemental F-F pair term of the face
  *    element's own fcc reference (l12List: 12 unlike neighbours for a corner atom; 4 unlike and 8 like for a
  *    face atom). Dimers and perfect L12 crystals agree to 1e-12 (eV) for either species order.
- *  - Not verified (rejected with a StyleError in meam.ts): other lattce names, bcc/hcp/sc elements in an
- *    alloy, delta, nn2 = 1 with alloy pairs, and erose_form 0 with nonzero attrac/repuls.
+ *  - nn2 = 1 with b1 and b2 pairs (nn2Pair, selfNn2): measured with native LAMMPS (black box) on the synthetic
+ *    w38m2nn entries (fcc A and B, Cmin(1,1,1) = Cmin(2,2,2) = 0.7): the B1 and B2 dimers agree to 1e-9 (eV) and the
+ *    B1 and B2 crystals to 1e-6 over 50 and 30 nve steps (tests/oracle/w38m2nn_*). The reference energy of the I-J
+ *    structure is E_u = sum_s w_s [F_s + (1/2) sum_m S_sm phi(r_m)] over its sites, the second shell (like neighbours
+ *    at sqrt2 r for B1, 2/sqrt3 r for B2) entering through the self pair terms phi_II(r_m), and the self pair with
+ *    nn2 = 1 summing the single-element recurrence. The reference density of an nn2 element uses the raw rho0.
+ *  - Refused with a StyleError: nn2 = 1 with lattce l12 (native parity not reached: the native L12 reference with
+ *    nn2 = 0 already depends on Cmin(1,1,1), which the nn2 = 0 path does not reproduce), other lattce names, hcp
+ *    and bcc elements and ibar = 3 in an alloy, delta, and erose_form 0 with nonzero attrac/repuls.
  *
  * Per-triplet Cmin/Cmax (docs.lammps.org/pair_meam.html "Cmin(I,J,K) = Cmin screening parameter when
  * I-J pair is screened by K (I<=J)"). Measured with native LAMMPS (black box) on a three-element
@@ -163,6 +170,8 @@ export interface AlloyPair {
    * element sits on the three face sites. Measured with native LAMMPS (black box): see alloyPair.
    */
   cornerEl?: number;
+  /** nn2(I,J) = 1: second-nearest-neighbour formulation for this pair (nn2Pair; self pairs use selfNn2) */
+  nn2?: boolean;
 }
 
 export interface AlloyOptions {
@@ -515,11 +524,11 @@ const embedFp = (el: AlloyElement, rhoRef: number, rb: number): number => {
  * Element-i density terms for a neighbour list at distance scale: W = fc S, A_n = exp(-beta_n (r/re_e - 1)).
  * radial = false gives the reference-structure weights W = S (no radial cutoff; see the reference note in meam.ts).
  */
-const termsOf = (model: AlloyModel, list: AlloyNeighbor[], central: number, radial = true): Term[] => {
-  const sc = screenAll(list, central, model.opts);
+const termsOf = (model: AlloyModel, list: AlloyNeighbor[], central: number, radial = true, S?: Float64Array): Term[] => {
+  const Sv = S ?? screenAll(list, central, model.opts).S;
   return list.map((p, m) => {
     const el = model.elements[p.e];
-    const W = (radial ? fcW(p.r, model.opts) : 1) * sc.S[m];
+    const W = (radial ? fcW(p.r, model.opts) : 1) * Sv[m];
     // The neighbour's atomic electron density is scaled by its own rozero / rho0(I) (see AlloyElement.rozero).
     const rz = el.rozero ?? 1;
     const A: [number, number, number, number] = [0, 0, 0, 0];
@@ -536,17 +545,18 @@ const scaledRho = (
   ibar: number,
   central: number,
   radial = true,
+  S?: Float64Array,
 ): { rho: number; drho: number; rho0: number } => {
-  const terms = termsOf(model, list, central, radial);
+  const terms = termsOf(model, list, central, radial, S);
   const part = densityPartials(terms, 1, ibar, model.opts.ialloy ?? 0);
   let drho = 0;
-  const sc = screenAll(list, central, model.opts);
+  const Sv = S ?? screenAll(list, central, model.opts).S;
   for (let m = 0; m < list.length; m++) {
     const p = list[m];
     const el = model.elements[p.e];
     const sm = p.r / r;
     // d(fc S)/dr = fc'(r_m) s_m S_m (screening depends on ratios only); d a_n/dr = -(beta_n/re) a_n s_m
-    if (radial) drho += part.gW[m] * fcP(p.r, model.opts) * sc.S[m] * sm;
+    if (radial) drho += part.gW[m] * fcP(p.r, model.opts) * Sv[m] * sm;
     for (let n = 0; n < 4; n++) drho += part.gA[4 * m + n] * (-(el.beta[n] / el.re)) * terms[m].A[n] * sm;
   }
   return { rho: part.rb, drho, rho0: part.rho0 };
@@ -556,11 +566,21 @@ const scaledRho = (
 const firstShell = (r: number): number => r * (1 + 1e-6);
 
 /** Neighbour list of the element c's own reference lattice at nearest-neighbour distance r (all neighbours are c). */
-const ownList = (model: AlloyModel, c: number, r: number): AlloyNeighbor[] =>
-  referenceVectors(model.elements[c].lat, r, firstShell(r)).map((v) => ({ e: c, j: -1, dx: v.dx, dy: v.dy, dz: v.dz, r: v.r }));
+const ownList = (model: AlloyModel, c: number, r: number, nn2 = false): AlloyNeighbor[] => {
+  const lat = model.elements[c].lat;
+  const cut = nn2 ? PAIR_SHELL_RATIO[lat] * r * (1 + 1e-6) : firstShell(r);
+  return referenceVectors(lat, r, cut).map((v) => ({ e: c, j: -1, dx: v.dx, dy: v.dy, dz: v.dz, r: v.r }));
+};
 
-/** B1 (rock salt) list for central element c with partner p at nearest-neighbour distance r. */
-const b1List = (model: AlloyModel, c: number, p: number, r: number): AlloyNeighbor[] => {
+/**
+ * Distance ratio r2/r1 of the second shell of the I-J reference lattices (nn2(I,J) = 1). The second shell of
+ * each lattice holds like-element neighbours only (I-I around an I atom, J-J around a J atom), so it enters the
+ * I-J pair term through the pair terms phi_II and phi_JJ (see nn2Pair).
+ */
+const PAIR_RATIO2 = { b1: Math.SQRT2, b2: 2 / Math.sqrt(3), dia: Math.sqrt(8 / 3), l12: Math.SQRT2 } as const;
+
+/** B1 (rock salt) list for central element c with partner p at nearest-neighbour distance r; cut = outer radius. */
+const b1List = (model: AlloyModel, c: number, p: number, r: number, cut = firstShell(r)): AlloyNeighbor[] => {
   const out: AlloyNeighbor[] = [];
   const m = Math.ceil(model.opts.rc / r) + 2;
   for (let i = -m; i <= m; i++)
@@ -568,7 +588,7 @@ const b1List = (model: AlloyModel, c: number, p: number, r: number): AlloyNeighb
       for (let k = -m; k <= m; k++) {
         if (!i && !j && !k) continue;
         const dx = i * r, dy = j * r, dz = k * r, rr = Math.hypot(dx, dy, dz);
-        if (rr > firstShell(r)) continue;
+        if (rr > cut) continue;
         const e = (i + j + k) & 1 ? p : c;
         out.push({ e, j: -1, dx, dy, dz, r: rr });
       }
@@ -581,19 +601,20 @@ const b1List = (model: AlloyModel, c: number, p: number, r: number): AlloyNeighb
  * neighbours on the p sublattice (the diamond reference of the I-J pair, "dia = diamond (interlaced fcc for
  * alloy)" on docs.lammps.org/pair_meam.html). Geometry as in referenceVectors('dia') of meam_lattice.ts.
  */
-const diaList = (model: AlloyModel, c: number, p: number, r: number): AlloyNeighbor[] => {
+const diaList = (model: AlloyModel, c: number, p: number, r: number, cut = firstShell(r)): AlloyNeighbor[] => {
   const out: AlloyNeighbor[] = [];
   const a = (4 * r) / Math.sqrt(3);
   const h = a / 2;
   const s = a / 4;
   const m = Math.ceil(model.opts.rc / h) + 1;
+  // same-sublattice (c) shell at a/sqrt2 = sqrt(8/3) r is inside cut only for nn2 = 1
   for (let i = -m; i <= m; i++)
     for (let j = -m; j <= m; j++)
       for (let k = -m; k <= m; k++) {
         if (((i + j + k) & 1) !== 0 || (i === 0 && j === 0 && k === 0)) continue;
         const dx = i * h, dy = j * h, dz = k * h;
         const rr = Math.hypot(dx, dy, dz);
-        if (rr <= firstShell(r)) out.push({ e: c, j: -1, dx, dy, dz, r: rr });
+        if (rr <= cut) out.push({ e: c, j: -1, dx, dy, dz, r: rr });
       }
   for (let i = -m; i <= m; i++)
     for (let j = -m; j <= m; j++)
@@ -611,12 +632,19 @@ const diaList = (model: AlloyModel, c: number, p: number, r: number): AlloyNeigh
  * neighbours (+-a/2, +-a/2, +-a/2) of the two interpenetrating simple cubic sublattices, a = 2 r / sqrt(3).
  * The six like neighbours at a are outside the first shell and are not included (nn2 = 0).
  */
-const b2List = (p: number, r: number): AlloyNeighbor[] => {
+const b2List = (c: number, p: number, r: number, nn2 = false): AlloyNeighbor[] => {
   const out: AlloyNeighbor[] = [];
   const h = r / Math.sqrt(3);
   for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
     const dx = sx * h, dy = sy * h, dz = sz * h;
     out.push({ e: p, j: -1, dx, dy, dz, r: Math.hypot(dx, dy, dz) });
+  }
+  if (nn2) {
+    // second shell: six like neighbours of the same simple cubic sublattice at a = 2h = 2 r/sqrt3
+    const a = 2 * h;
+    for (const [dx, dy, dz] of [[a, 0, 0], [-a, 0, 0], [0, a, 0], [0, -a, 0], [0, 0, a], [0, 0, -a]]) {
+      out.push({ e: c, j: -1, dx, dy, dz, r: a });
+    }
   }
   return out;
 };
@@ -627,7 +655,7 @@ const b2List = (p: number, r: number): AlloyNeighbor[] => {
  * z face) has four unlike neighbours in its own z plane (dz = 0; partner p) and eight like neighbours (c).
  * Only the first shell is used (nn2 = 0).
  */
-const l12List = (c: number, p: number, r: number, corner: boolean): AlloyNeighbor[] => {
+const l12List = (c: number, p: number, r: number, corner: boolean, nn2 = false): AlloyNeighbor[] => {
   const out: AlloyNeighbor[] = [];
   const h = (r * Math.SQRT2) / 2;
   const signs: [number, number, number][] = [
@@ -639,6 +667,13 @@ const l12List = (c: number, p: number, r: number, corner: boolean): AlloyNeighbo
     const dx = x * h, dy = y * h, dz = z * h;
     const e = corner || z === 0 ? p : c;
     out.push({ e, j: -1, dx, dy, dz, r: Math.hypot(dx, dy, dz) });
+  }
+  if (nn2) {
+    // second shell: six like neighbours at a = 2h = sqrt2 r along the cube axes (corner and face sites alike)
+    const a = 2 * h;
+    for (const [dx, dy, dz] of [[a, 0, 0], [-a, 0, 0], [0, a, 0], [0, -a, 0], [0, 0, a], [0, 0, -a]]) {
+      out.push({ e: c, j: -1, dx, dy, dz, r: a });
+    }
   }
   return out;
 };
@@ -675,9 +710,145 @@ export const pairErose = (pr: AlloyPair, form: number, r: number): { E: number; 
   return { E: -pr.Ec * (1 + s + T) * Math.exp(-s), dE: -pr.Ec * Math.exp(-s) * (Tp - (s + T) * sp) };
 };
 
-/** Pair term phi_ij(r) and its derivative (homonuclear: fcc/bcc/dia reference; heteronuclear: B1 or dia). */
+/**
+ * Reference sites of an I-J pair with nn2 = 1: the element c of the site, its share of the reference cell (weights
+ * sum to 1), a key naming its neighbour shape, and a builder of the unit-scale neighbour list (both shells).
+ */
+interface RefSite {
+  c: number;
+  w: number;
+  key: string;
+  build: () => AlloyNeighbor[];
+}
+
+/** The reference sites of the I-J lattice (pr.lat), for a nearest-neighbour distance of 1 (scaled later). */
+const pairRefSites = (model: AlloyModel, i: number, j: number, pr: AlloyPair): RefSite[] => {
+  const tag = `${pr.lat}:${i}:${j}`;
+  if (pr.lat === 'b1') {
+    return [
+      { c: i, w: 0.5, key: `${tag}:${i}`, build: () => b1List(model, i, j, 1, PAIR_RATIO2.b1 * (1 + 1e-6)) },
+      { c: j, w: 0.5, key: `${tag}:${j}`, build: () => b1List(model, j, i, 1, PAIR_RATIO2.b1 * (1 + 1e-6)) },
+    ];
+  }
+  if (pr.lat === 'b2') {
+    return [
+      { c: i, w: 0.5, key: `${tag}:${i}`, build: () => b2List(i, j, 1, true) },
+      { c: j, w: 0.5, key: `${tag}:${j}`, build: () => b2List(j, i, 1, true) },
+    ];
+  }
+  if (pr.lat === 'dia') {
+    return [
+      { c: i, w: 0.5, key: `${tag}:${i}`, build: () => diaList(model, i, j, 1, PAIR_RATIO2.dia * (1 + 1e-6)) },
+      { c: j, w: 0.5, key: `${tag}:${j}`, build: () => diaList(model, j, i, 1, PAIR_RATIO2.dia * (1 + 1e-6)) },
+    ];
+  }
+  if (pr.lat === 'l12') throw new Error('MEAM nn2 = 1 with lattce l12 is not supported (native parity not reached)');
+  throw new Error(`MEAM nn2 = 1 with lattce '${pr.lat}' is not supported`);
+};
+
+/** Unit-scale neighbour shape of one reference site: its list at r = 1 and the screening weights (scale invariant). */
+interface Shape {
+  list1: AlloyNeighbor[];
+  S: Float64Array;
+}
+const shapeCache = new WeakMap<AlloyModel, Map<string, Shape>>();
+const shapeOf = (model: AlloyModel, key: string, c: number, build: () => AlloyNeighbor[]): Shape => {
+  let per = shapeCache.get(model);
+  if (!per) shapeCache.set(model, (per = new Map()));
+  let sh = per.get(key);
+  if (!sh) {
+    const list1 = build();
+    per.set(key, (sh = { list1, S: screenAll(list1, c, model.opts).S }));
+  }
+  return sh;
+};
+/** The list of a shape at nearest-neighbour distance r (positions and distances scale with r). */
+const scaleList = (list1: AlloyNeighbor[], r: number): AlloyNeighbor[] =>
+  list1.map((p) => ({ e: p.e, j: p.j, dx: p.dx * r, dy: p.dy * r, dz: p.dz * r, r: p.r * r }));
+
+/*
+ * 2NN (nn2 = 1) pair term of an I-J pair, generalised from the single-element recurrence (meam.ts nn2Phi).
+ * Reference energy per atom of the I-J structure, averaged over its sites (weights w_s):
+ *   E_u(r) = sum_s w_s [ F_s(rho_bar_s(r)) + (1/2) sum_m S_sm phi_{s,m}(r_m) ],
+ * where S_sm is the screening weight of neighbour m in the reference list of site s (no radial cutoff), r_m
+ * the neighbour distance, and phi_{s,m} the pair term of the site element with the neighbour element. The
+ * first-shell unlike bonds carry the unknown phi_IJ(r); first-shell like bonds carry phi_II(r) and the
+ * second-shell bonds (like neighbours only) carry phi_II(r_m) at the scaled distance. Solving for phi_IJ(r):
+ *   phi_IJ(r) = [E_u - sum_s w_s F_s - (1/2) sum_s w_s sum_{like} S phi(r_m)] / [(1/2) sum_s w_s sum_{unlike, 1st} S].
+ */
+const nn2Pair = (model: AlloyModel, i: number, j: number, r: number): { phi: number; dphi: number } => {
+  const pr = model.pairs[i][j];
+  const { E: Eu, dE: dEu } = pairErose(pr, model.opts.eroseForm ?? 0, r);
+  const first = firstShell(r);
+  let num = Eu, dnum = dEu, den = 0;
+  for (const s of pairRefSites(model, i, j, pr)) {
+    const el = model.elements[s.c];
+    const sh = shapeOf(model, s.key, s.c, s.build);
+    const list = scaleList(sh.list1, r);
+    const { rho, drho } = scaledRho(model, list, r, el.ibar ?? 0, s.c, false, sh.S);
+    num -= s.w * embedF(el, model.rhoRef[s.c], rho);
+    dnum -= s.w * embedFp(el, model.rhoRef[s.c], rho) * drho;
+    for (let m = 0; m < list.length; m++) {
+      const p = list[m];
+      const wm = 0.5 * s.w * sh.S[m];
+      if (p.e !== s.c) {
+        if (p.r <= first) {
+          den += wm;
+          continue;
+        }
+        throw new Error('MEAM nn2 = 1: unlike neighbour in the second shell is not supported');
+      }
+      const q = alloyPair(model, s.c, s.c, p.r);
+      num -= wm * q.phi;
+      dnum -= wm * q.dphi * (p.r / r);
+    }
+  }
+  if (den === 0) throw new Error(`MEAM nn2 = 1 pair ${i + 1}-${j + 1}: the reference structure has no unscreened unlike bond`);
+  return { phi: num / den, dphi: dnum / den };
+};
+
+/*
+ * Self (i = j) pair term with nn2 = 1: the single-element recurrence phi(r) = (2/z1)(E(r) - F(r)) - (z2/z1) phi(ar),
+ * unrolled as phi(r) = sum_n (-z2/z1)^n (2/z1)(E(a^n r) - F(a^n r)) with F the embedding of the two-shell reference
+ * (the same sum as nn2Phi in meam.ts; the 2NN shell of an element is its own element).
+ */
+const selfNn2 = (model: AlloyModel, i: number, r: number): { phi: number; dphi: number } => {
+  const el = model.elements[i];
+  const pr = model.pairs[i][i];
+  const form = model.opts.eroseForm ?? 0;
+  const sh = shapeOf(model, `self2:${i}`, i, () => ownList(model, i, 1, true));
+  // z1, z2: screened first and second shell weights of the own reference (scale invariant)
+  let z1 = 0, z2 = 0;
+  for (let m = 0; m < sh.list1.length; m++) {
+    if (sh.list1[m].r <= firstShell(1)) z1 += sh.S[m];
+    else z2 += sh.S[m];
+  }
+  const a = PAIR_SHELL_RATIO[el.lat];
+  const q = z2 / z1;
+  let phi = 0, dphi = 0, ar = r, sign = 1, scale = 1;
+  for (let n = 0; n < 500; n++) {
+    const { E, dE } = pairErose(pr, form, ar);
+    const rho = scaledRho(model, scaleList(sh.list1, ar), ar, el.ibar ?? 0, i, false, sh.S);
+    const F = embedF(el, model.rhoRef[i], rho.rho);
+    const Fp = embedFp(el, model.rhoRef[i], rho.rho);
+    // far terms of the series: the reference density underflows (rho0 ~ 1e-24 at ar ~ 50 A) and the
+    // Gamma ratio is 0/0; the term is then below 1e-20 eV and the sum stops there
+    const t = sign * (2 / z1) * (E - F), dt = sign * (2 / z1) * scale * (dE - Fp * rho.drho);
+    if (!Number.isFinite(t) || !Number.isFinite(dt)) break;
+    phi += t;
+    dphi += dt;
+    sign *= -q;
+    ar *= a;
+    scale *= a;
+    if (ar > 60) break;
+  }
+  return { phi, dphi };
+};
+
+/** Pair term phi_ij(r) and its derivative (homonuclear: fcc/bcc/dia reference; heteronuclear: B1, dia, B2 or L12). */
 export const alloyPair = (model: AlloyModel, i: number, j: number, r: number): { phi: number; dphi: number } => {
   const pr = model.pairs[i][j];
+  if (pr.nn2) return pr.lat === 'self' ? selfNn2(model, i, r) : nn2Pair(model, i, j, r);
   const { E: Eu, dE: dEu } = pairErose(pr, model.opts.eroseForm ?? 0, r);
   if (pr.lat === 'self') {
     const el = model.elements[i];
@@ -688,8 +859,8 @@ export const alloyPair = (model: AlloyModel, i: number, j: number, r: number): {
   }
   if (pr.lat === 'b2') {
     // Eight unlike neighbours: phi = (2/8)(Eu - (F_i + F_j)/2), the B1 form with z = 8 (measured, see the header).
-    const ri = scaledRho(model, b2List(j, r), r, model.elements[i].ibar ?? 0, i, false);
-    const rj = scaledRho(model, b2List(i, r), r, model.elements[j].ibar ?? 0, j, false);
+    const ri = scaledRho(model, b2List(i, j, r), r, model.elements[i].ibar ?? 0, i, false);
+    const rj = scaledRho(model, b2List(j, i, r), r, model.elements[j].ibar ?? 0, j, false);
     const Fi = embedF(model.elements[i], model.rhoRef[i], ri.rho), Fj = embedF(model.elements[j], model.rhoRef[j], rj.rho);
     const Fip = embedFp(model.elements[i], model.rhoRef[i], ri.rho), Fjp = embedFp(model.elements[j], model.rhoRef[j], rj.rho);
     return {
@@ -747,8 +918,10 @@ export const makeAlloyModel = (elements: AlloyElement[], pairs: AlloyPair[][], o
   // Embedding normalisation at re; same rule as meam.ts referenceBackground: the full reference
   // background rho0*G(Gamma_ref) for ibar = 1 and 3, the raw rho0 for ibar = 0 (see the note there).
   model.rhoRef = elements.map((el, c) => {
-    const ref = scaledRho({ ...model, rhoRef: [] }, ownList(model, c, el.re), el.re, el.ibar ?? 0, c);
-    return el.ibar === 1 || el.ibar === 3 ? ref.rho : ref.rho0;
+    // nn2 = 1 elements: the two-shell reference with the raw rho0 (the 2NN rule of meam.ts referenceBackground)
+    const nn2 = pairs[c][c].nn2 === true;
+    const ref = scaledRho({ ...model, rhoRef: [] }, ownList(model, c, el.re, nn2), el.re, el.ibar ?? 0, c);
+    return !nn2 && (el.ibar === 1 || el.ibar === 3) ? ref.rho : ref.rho0;
   });
   return model;
 };

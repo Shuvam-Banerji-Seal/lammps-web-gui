@@ -446,12 +446,17 @@ describe('multi-element pair_coeff: supported subset and StyleErrors', () => {
     expect(() => coeffWith(PAR2.replace('b1', 'c11'), ARGS)).toThrow(StyleError);
   });
 
-  it('missing pair parameters, unknown elements, delta and nn2 are StyleErrors; per-triplet screening is accepted', () => {
+  it('missing pair parameters, unknown elements and delta are StyleErrors; per-triplet screening and nn2 (b1) are accepted', () => {
     expect(() => coeffWith(PAR2.replace('Ec(1,2) = 3.8\n', ''), ARGS)).toThrow(/Ec\(1,2\)/);
     expect(() => coeffWith(PAR2, ['*', '*', 'lib.meam', 'A', 'C', 'par.meam', 'A', 'C'])).toThrow(/multi-element/);
     expect(() => coeffWith(PAR2 + 'delta(1,2) = 0.1\n', ARGS)).toThrow(/delta/);
     expect(() => coeffWith(PAR2 + 'Cmax(1,1,2) = 3.0\n', ARGS)).not.toThrow();
-    expect(() => coeffWith(PAR2 + 'nn2(1,2) = 1\n', ARGS)).toThrow(/nn2/);
+    // nn2 = 1 for an alloy pair is supported for b1/b2 references (wave 38); l12 with nn2 = 1 stays refused
+    expect(() => coeffWith(PAR2 + 'nn2(1,2) = 1\n', ARGS)).not.toThrow();
+    expect(() => coeffWith(PAR2.replace('b1', 'l12') + 'nn2(1,2) = 1\n', ARGS)).toThrow(/nn2/);
+    // l12 with a partly screened face-face second shell (Cmin(1,1,1) < 2) is refused (not reproduced natively)
+    expect(() => coeffWith(PAR2.replace('b1', 'l12') + 'Cmin(1,1,1) = 0.7\n', ARGS)).toThrow(/Cmin\(1,1,1\)/);
+    expect(() => coeffWith(PAR2.replace('b1', 'l12'), ARGS)).not.toThrow();
   });
 
   it('an element with a non-fcc reference lattice is not supported in an alloy', () => {

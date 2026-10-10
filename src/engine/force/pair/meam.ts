@@ -1272,7 +1272,6 @@ export class PairMeam extends Pair {
       }
     });
     const par = parseMeamParams(ctx.readFile(paramFile), paramFile, elems.length);
-    for (const [, p] of par.pair) if (p.nn2 === 1) throw new StyleError(`multi-element MEAM: nn2 = 1 is not supported (${paramFile})`);
     const n = elems.length;
     // masses of the mapped types from the library atomic weights (same rule as the single-element style)
     if (ctx.s && !ctx.s.rmass) {
@@ -1316,7 +1315,7 @@ export class PairMeam extends Pair {
       for (let j = 0; j < n; j++) {
         if (i === j) {
           const own = par.pair.get(`${i + 1},${i + 1}`) ?? {};
-          pairs[i].push({ Ec: elements[i].Ec, re: elements[i].re, alpha: elements[i].alpha, lat: 'self', attrac: own.attrac, repuls: own.repuls });
+          pairs[i].push({ Ec: elements[i].Ec, re: elements[i].re, alpha: elements[i].alpha, lat: 'self', attrac: own.attrac, repuls: own.repuls, nn2: own.nn2 === 1 });
           continue;
         }
         const a = Math.min(i, j), b = Math.max(i, j);
@@ -1324,10 +1323,26 @@ export class PairMeam extends Pair {
         if (p.Ec === undefined || p.re === undefined || p.alpha === undefined) {
           throw new StyleError(`multi-element MEAM: parameter file ${paramFile} must set Ec(${a + 1},${b + 1}), re(${a + 1},${b + 1}) and alpha(${a + 1},${b + 1})`);
         }
+        if (p.nn2 === 1 && p.lattce === 'l12') {
+          // nn2 = 1 with the Cu3Au reference is refused: the 2NN recurrence does not match native (black box) yet
+          throw new StyleError(`multi-element MEAM: nn2(${a + 1},${b + 1}) = 1 with lattce(${a + 1},${b + 1}) = l12 is not supported (${paramFile})`);
+        }
         if (p.lattce !== 'b1' && p.lattce !== 'dia' && p.lattce !== 'b2' && p.lattce !== 'l12') {
           throw new StyleError(`multi-element MEAM: lattce(${a + 1},${b + 1}) must be set to b1, dia, b2 or l12 (${p.lattce ?? 'not set'} is not supported)`);
         }
-        pairs[i].push({ Ec: p.Ec, re: p.re, alpha: p.alpha, lat: p.lattce as AlloyPair['lat'], attrac: p.attrac, repuls: p.repuls, cornerEl: b });
+        if (p.lattce === 'l12') {
+          // The face atoms (element a; b = cornerEl is on the corners) of the Cu3Au reference have face neighbours
+          // in their second shell, screened by shared first neighbours with C = 2; the engine's L12 reference
+          // leaves that shell out, which holds only when it is fully screened (C <= Cmin, so Cmin(a,a,a) >= 2).
+          // Measured with native LAMMPS (black box, w38 meam2nn worker): an L12 dimer at 2.2 A changes from
+          // -3.30605723516086 to -3.30626553307685 eV when Cmin(1,1,1) goes from the default to 0.7, and the
+          // engine does not follow; the other Cmin triplets made no difference.
+          const cminFace = par.cmin3.get(`${a + 1},${a + 1},${a + 1}`) ?? par.opts.Cmin;
+          if (cminFace < 2) {
+            throw new StyleError(`multi-element MEAM: lattce(${a + 1},${b + 1}) = l12 with Cmin(${a + 1},${a + 1},${a + 1}) = ${cminFace} < 2 is not supported (the partly screened second shell of the Cu3Au reference is not reproduced; ${paramFile})`);
+          }
+        }
+        pairs[i].push({ Ec: p.Ec, re: p.re, alpha: p.alpha, lat: p.lattce as AlloyPair['lat'], attrac: p.attrac, repuls: p.repuls, cornerEl: b, nn2: p.nn2 === 1 });
       }
     }
     // Per-triplet screening limits: key "min(c,j),max(c,j),k" (1-based), the pair sorted as measured

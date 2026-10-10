@@ -1,0 +1,23 @@
+# oracle: compute gaussian/grid/local on a 2x2x2 bcc with random displacements (positions written by native displace_atoms random 0.3 0.3 0.3 4711), grid 5 4 3; reduce sum/max/min of columns 4..8
+# oracle-inputs: w38gauss_random.data
+# oracle-compare: thermo=first atoms=all rel=1e-9 abs=1e-12
+units metal
+atom_modify map hash
+read_data       w38gauss_random.data
+pair_style zero 3.0
+pair_coeff * *
+compute mygl all gaussian/grid/local grid 5 4 3 1.0 0.9 0.6 0.4 0.5
+compute cx all reduce sum c_mygl[4] inputs local
+compute cy all reduce sum c_mygl[5] inputs local
+compute cz all reduce sum c_mygl[6] inputs local
+compute v1 all reduce sum c_mygl[7] inputs local
+compute v2 all reduce sum c_mygl[8] inputs local
+compute m1 all reduce max c_mygl[7] inputs local
+compute m2 all reduce max c_mygl[8] inputs local
+compute n1 all reduce min c_mygl[7] inputs local
+compute n2 all reduce min c_mygl[8] inputs local
+compute mx all reduce max c_mygl[4] inputs local
+compute mz all reduce max c_mygl[6] inputs local
+thermo_style custom step c_cx c_cy c_cz c_v1 c_v2 c_m1 c_m2 c_n1 c_n2 c_mx c_mz
+thermo_modify format float %.15g
+run 0

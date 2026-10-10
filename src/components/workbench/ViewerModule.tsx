@@ -136,12 +136,21 @@ const initialConfig = (): VisualizationConfig => ({
   fov: 40,
 });
 
+/** A file handed over from another module (the MD Notebook's run output), loaded like an upload. */
+export interface ViewerIncomingFile {
+  name: string;
+  text: string;
+}
+
 const ViewerModule: React.FC<{
   embedded?: boolean;
   /** Owned by App when mounted in the workbench; standalone otherwise. */
   theme?: UITheme;
   onToggleTheme?: () => void;
-}> = ({ embedded = false, theme: themeProp, onToggleTheme }) => {
+  /** A file to load on arrival (App's inbox); onIncomingFileTaken clears it. */
+  incomingFile?: ViewerIncomingFile | null;
+  onIncomingFileTaken?: () => void;
+}> = ({ embedded = false, theme: themeProp, onToggleTheme, incomingFile = null, onIncomingFileTaken }) => {
   const [inputText, setInputText] = useState<string>('');
   const [moleculeData, setMoleculeData] = useState<MoleculeData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -300,12 +309,16 @@ const ViewerModule: React.FC<{
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  /** The incoming file last taken from App's inbox (see the effect that loads it). */
+  const takenFile = useRef<ViewerIncomingFile | null>(null);
+
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
         const response = await fetch(`${import.meta.env.BASE_URL}c60.data`);
         if (!response.ok) throw new Error(String(response.status));
         const text = await response.text();
+        if (takenFile.current) return; // a file from another module arrived first: keep it
         handleVisualize(text, 'lammps');
       } catch {
         setError('Failed to load the built-in C60 example.');
@@ -379,19 +392,29 @@ const ViewerModule: React.FC<{
     }
   }, [handleVisualize]);
 
+  /** The one path for a file's text: uploads, drops and incoming files all come through here. */
+  const handleFileText = useCallback((name: string, content: string) => {
+    setInputText(content);
+    // Known extensions keep their mapping; generic ones (.txt) are detected
+    // from the content so an XYZ file named *.txt parses as XYZ.
+    const detectedFormat = chooseUploadFormat(name, content);
+    setFileFormat(detectedFormat);
+    handleVisualize(content, detectedFormat);
+  }, [handleVisualize]);
+
   const handleFileUpload = useCallback((file: File) => {
     const reader = new FileReader();
-    reader.onload = e => {
-      const content = (e.target?.result as string) ?? '';
-      setInputText(content);
-      // Known extensions keep their mapping; generic ones (.txt) are detected
-      // from the content so an XYZ file named *.txt parses as XYZ.
-      const detectedFormat = chooseUploadFormat(file.name, content);
-      setFileFormat(detectedFormat);
-      handleVisualize(content, detectedFormat);
-    };
+    reader.onload = e => handleFileText(file.name, (e.target?.result as string) ?? '');
     reader.readAsText(file);
-  }, [handleVisualize]);
+  }, [handleFileText]);
+
+  // A file another module sent over (once per object; the callback clears the inbox)
+  useEffect(() => {
+    if (!incomingFile || takenFile.current === incomingFile) return;
+    takenFile.current = incomingFile;
+    handleFileText(incomingFile.name, incomingFile.text);
+    onIncomingFileTaken?.();
+  }, [incomingFile, handleFileText, onIncomingFileTaken]);
 
   // Drag & drop anywhere on the window
   useEffect(() => {

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Square, Plus, Trash2, RotateCcw, Download, Cpu, Gpu, Gauge, HelpCircle, FileUp, X, Workflow } from 'lucide-react';
+import { Play, Square, Plus, Trash2, RotateCcw, Cpu, Gpu, Gauge, HelpCircle, FileUp, X, Workflow } from 'lucide-react';
 import ResourceMonitor from './ResourceMonitor';
 import { cellsToScript } from '../../lammps/notebookBridge';
 import { explainEngineError } from './engineError';
@@ -8,7 +8,7 @@ import { getThemeTokens, isDarkTheme, Theme } from '../../theme';
 import { usePersistentState } from '../../hooks/usePersistentState';
 import MoleculeCanvas from '../MoleculeCanvas';
 import { LineChart } from '../charts/SimpleChart';
-import { downloadFile, isImageDataUrl } from '../../lammps/exporter';
+import RunFiles from './notebook/RunFiles';
 import type { VisualizationConfig } from '../../types';
 import { EngineClient } from '../../engine/client';
 import type { BackendChoice, FromEngine } from '../../engine/protocol';
@@ -118,9 +118,11 @@ interface NotebookProps {
   onIncomingTaken?: () => void;
   /** Opens the notebook's cells in the Script Builder (as a new tab). */
   onOpenInBuilder?: (script: string) => void;
+  /** Opens a trajectory or structure file written by the run in the Molecule 3D Viewer. */
+  onOpenInViewer?: (file: { name: string; text: string }) => void;
 }
 
-const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingTaken, onOpenInBuilder }) => {
+const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingTaken, onOpenInBuilder, onOpenInViewer }) => {
   const ct = getThemeTokens(theme);
   const [cells, setCells] = usePersistentState<Cell[]>(STORAGE_KEY, STARTER, reviveCells);
   const [backend, setBackend] = usePersistentState<BackendChoice>(BACKEND_KEY, 'auto', reviveBackend);
@@ -136,9 +138,6 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   /** The MD run in progress (engine 'run' event): its cell and its first and last step, for the progress bar. */
   const [runSpan, setRunSpan] = useState<{ cell: string; from: number; to: number } | null>(null);
   const [files, setFiles] = useState<Record<string, string>>({});
-  /** Images written by dump image (data URLs), in write order; the preview follows the newest unless one is picked. */
-  const imageNames = useMemo(() => Object.keys(files).filter((n) => isImageDataUrl(files[n])), [files]);
-  const [imagePick, setImagePick] = useState<number | null>(null);
   /** Files the user added for read_data / include / potential files: name -> size in bytes. */
   const [inputs, setInputs] = useState<Record<string, number>>({});
   const fileInput = useRef<HTMLInputElement>(null);
@@ -589,42 +588,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
               </ul>
             </div>
           )}
-          {imageNames.length > 0 && (() => {
-            const i = Math.min(imagePick ?? imageNames.length - 1, imageNames.length - 1);
-            const name = imageNames[i];
-            return (
-              <div>
-                <p className={`text-[11px] font-semibold ${ct.muted}`}>Images written ({imageNames.length})</p>
-                <img src={files[name]} alt={`dump image ${name}`} className={`mt-1 max-h-80 max-w-full rounded border ${ct.divider}`} />
-                {imageNames.length > 1 && (
-                  <input type="range" min={0} max={imageNames.length - 1} value={i} className="mt-1 w-full"
-                    aria-label={`Image ${i + 1} of ${imageNames.length}`}
-                    onChange={(e) => { const k = Number(e.target.value); setImagePick(k === imageNames.length - 1 ? null : k); }} />
-                )}
-                <div className="mt-1 flex items-center gap-2 text-[11px]">
-                  <span className="font-mono">{name}</span>
-                  <button className={`${btn} ${ct.button}`} aria-label={`Download ${name}`} onClick={() => downloadFile(name, files[name])}>
-                    <Download size={12} aria-hidden="true" />Download
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
-          {Object.keys(files).some((n) => !isImageDataUrl(files[n])) && (
-            <div>
-              <p className={`text-[11px] font-semibold ${ct.muted}`}>Files written</p>
-              <ul className="mt-1 flex flex-wrap gap-1">
-                {Object.entries(files).filter(([, text]) => !isImageDataUrl(text)).map(([name, text]) => (
-                  <li key={name}>
-                    <button className={`${btn} ${ct.button}`} aria-label={`Download ${name}`}
-                      onClick={() => downloadFile(name, text)}>
-                      <Download size={12} aria-hidden="true" />{name}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <RunFiles ct={ct} files={files} cells={cells} runs={runs} onOpenInViewer={onOpenInViewer} />
           {chart.temp.length <= 1 && Object.keys(files).length === 0 && Object.keys(inputs).length === 0 && (
             <p className={`text-xs ${ct.muted}`}>
               Thermo charts, files written by dump / write_data, and the files you add with Add files appear here.

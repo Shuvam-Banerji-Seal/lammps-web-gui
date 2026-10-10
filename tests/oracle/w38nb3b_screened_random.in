@@ -1,0 +1,21 @@
+# oracle: pair_style nb3b/screened with the real PSiO.nb3b.screened file (P, O, Si all mapped) on a random 60-atom P/O/Si box, NVE 30 steps
+# oracle-potentials: PSiO.nb3b.screened
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+region          box block 0 12 0 12 0 12
+create_box      3 box
+create_atoms    1 random 20 4711 box overlap 1.6 maxtry 200
+create_atoms    2 random 20 1357 box overlap 1.6 maxtry 200
+create_atoms    3 random 20 9133 box overlap 1.6 maxtry 200
+mass            * 28.0
+pair_style      nb3b/screened
+pair_coeff      * * PSiO.nb3b.screened P O Si
+timestep        0.0005
+fix             1 all nve
+thermo_style    custom step temp pe etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             30

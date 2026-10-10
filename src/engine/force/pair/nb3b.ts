@@ -1,9 +1,5 @@
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
-import { NEIGHMASK } from '../../neighbor';
-import { parseNum, joinPotentialEntries } from '../util';
-
 /*
- * pair_style nb3b/harmonic (and nb3b/screened, refused) — docs.lammps.org/pair_nb3b.html
+ * pair_style nb3b/harmonic and nb3b/screened — docs.lammps.org/pair_nb3b.html
  * (source: plans/lammps-docs/pair_nb3b.rst)
  *
  * Syntax (verbatim): "pair_style style", with "style = *nb3b/harmonic* or *nb3b/screened*".
@@ -62,19 +58,62 @@ import { parseNum, joinPotentialEntries } from '../util';
  * types."  "If a mapping value is specified as NULL, the mapping is not
  * performed."  NULL types take no part in the three-body term.
  *
- * nb3b/screened (verbatim formula): "E = K (\theta - \theta_0)^2 \exp \left(-
- * \frac{r_{ij}}{\rho_{ij}} - \frac{r_{ik}}{\rho_{ik}} \right)".  The document
- * does not define the potential-file columns for this style (the screening
- * lengths rho are not given a column), and a native run of the nb3b/harmonic
- * file layout fails with Not a valid floating-point number: 'Mg' when read by
- * nb3b/screened.  The style is therefore refused, not guessed.
+ * nb3b/screened: the energy is the harmonic term times exp(-r_ij/rho_ij - r_ik/rho_ik),
+ * with the bond lengths of the two legs of the angle (doc, verbatim: "where
+ * :math:`\rho_ij` and :math:`\rho_ik` are the screening factors along the two bonds").
+ * The potential file has one more column than the harmonic file: the README
+ * (examples/nb3b/README.nb3b.screened) lists the column header # i j k K theta0 rho cutoff,
+ * and the rho column is the screening factor of the (i j j) entry; the README says
+ * the rho value must be higher than 0.0  The cutoff and rho of a leg
+ * come from the (i j j) entry, and K and theta0 from the (i j k) entry.
+ *
+ * Measured with native LAMMPS (black box), nb3b/screened, on 3-atom and 4-atom
+ * clusters with a hand-written file of the same layout (center O, neighbours P):
+ *   - the first argument i is the central (vertex) atom: O-centred angles give
+ *     energy, P-centred ones with K = 0 give 0.
+ *   - E = K (theta - theta0)^2 exp(-r_ij/rho_ij - r_ik/rho_ik) with rho_ij from the
+ *     (i j j) entry (the P leg uses (O P P), the O leg uses (O O O)); changing one
+ *     bond length at fixed angle changed the energy exactly as this formula gives
+ *     (checked on several geometries against the formula).
+ *   - a leg is kept while r <= cut of its (i j j) entry: r = 3.3 with cut 3.3 is kept,
+ *     r = 3.300001 is not. The energy is not shifted at the cutoff (the value at
+ *     r = 3.29 equals the unshifted formula). A cut of the (i j k) entry, e.g. (O O P)
+ *     with cut 1.0, did not remove an O leg of length 1.5 whose (O O O) cut is 2.8.
+ *   - each unordered neighbour pair is counted once: three P neighbours of O gave
+ *     the sum over the three pairs (the twice-counted value was exactly double).
+ *   - theta0 is in degrees and K multiplies (theta - theta0)^2 directly.
+ *   - with K and theta0 symmetric in the two orders (PSiO: O P Si and O Si P both
+ *     60.0 and 109.47) the energy is fixed by the parameters alone.
+ *   - when (i j k) and (i k j) have different K or theta0 and one K is nonzero, the
+ *     native energy equals the single-entry value of one of the two entries, and
+ *     which one changes with the geometry: with the default atom sort the creation
+ *     order and the mirror image did not change the choice, but the neighbour list
+ *     method did (neighbor nsq instead of bin), and the choice switched within a
+ *     scan of one bond angle. Such a potential is refused by this engine, because
+ *     the choice is not a property of the parameters.
+ *   - errors (native text, paraphrased): a missing (i j k) combination is reported as
+ *     Potential file ... is missing an entry for: O P P; an element count that does
+ *     not match the atom types is an error; a 6-column entry line reads the next word
+ *     as a number and fails (Not a valid floating-point number); rho = 0 fails
+ *     (Incorrect value for potential parameter: 'rho'); a negative cutoff fails
+ *     (Illegal nb3b/screened parameter). An entry line with more words than 7
+ *     is accepted and the extra words are ignored.
+ *   - a NULL-mapped type is neither centre nor neighbour: a hybrid/overlay run with
+ *     a NULL neighbour gave the same energy as the run without that atom; a NULL
+ *     centre gave 0. Standalone (no other style filling the NULL pairs) a NULL type
+ *     fails with All pair coeffs are not set.
  *
  * Forces: the angle derivative uses d theta/d c = -1/sin(theta) with the
  * cosine clamped to [-1, 1]; sin(theta) is floored at 1e-8 (an engine guard
  * for exactly collinear triplets, where the force stays finite because the
- * perpendicular part of dc/du vanishes).  The global virial comes from
- * virialFdotr; per-atom energy and virial are split evenly over the three atoms.
+ * perpendicular part of dc/du vanishes). For nb3b/screened, dE/du also has the
+ * radial part -K (theta - theta0)^2 exp(...) / rho_ij along the leg. The global
+ * virial comes from virialFdotr; per-atom energy and virial are split evenly
+ * over the three atoms.
  */
+import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
+import { NEIGHMASK } from '../../neighbor';
+import { parseNum, joinPotentialEntries } from '../util';
 
 interface NB3BEntry {
   e1: string;
@@ -83,14 +122,20 @@ interface NB3BEntry {
   K: number;
   /** theta0 in degrees, as in the file. */
   theta0: number;
+  /** Screening length rho (nb3b/screened file only; 0 in a harmonic file). */
+  rho: number;
   cut: number;
 }
 
 const key3 = (a: string, b: string, c: string): string => `${a} ${b} ${c}`;
 
-/** Parses a .nb3b.harmonic file: entries of 3 element names + K, theta0, cutoff. */
-const parseNB3BFile = (text: string, fileName: string): Map<string, NB3BEntry> => {
-  const lines = joinPotentialEntries(text.split(/\r?\n/), 6);
+/**
+ * Parses an nb3b file. A harmonic file has 6 columns (i j k K theta0 cutoff), a screened
+ * file 7 (i j k K theta0 rho cutoff). Lines are joined to ncols words, as the reader does.
+ */
+const parseNB3BFile = (text: string, fileName: string, ncols: number): Map<string, NB3BEntry> => {
+  const layout = ncols === 7 ? 'element1 element2 element3 K theta0 rho cutoff' : 'element1 element2 element3 K theta0 cutoff';
+  const lines = joinPotentialEntries(text.split(/\r?\n/), ncols);
   const entries = new Map<string, NB3BEntry>();
   for (let ln = 0; ln < lines.length; ln++) {
     const raw = lines[ln];
@@ -98,24 +143,30 @@ const parseNB3BFile = (text: string, fileName: string): Map<string, NB3BEntry> =
     const line = (hash >= 0 ? raw.slice(0, hash) : raw).trim();
     if (line === '') continue;
     const t = line.split(/\s+/);
-    if (t.length !== 6) {
+    if (t.length !== ncols) {
       throw new StyleError(
-        `nb3b potential file ${fileName} line ${ln + 1}: expected 'element1 element2 element3 K theta0 cutoff' (6 values), got ${t.length}`,
+        `nb3b potential file ${fileName} line ${ln + 1}: expected '${layout}' (${ncols} values), got ${t.length}`,
       );
     }
     const k = key3(t[0], t[1], t[2]);
     if (entries.has(k)) throw new StyleError(`nb3b potential file ${fileName} line ${ln + 1}: duplicate entry for elements ${k}`);
     const K = parseNum(t[3], `K of the nb3b file entry ${k}`);
     const theta0 = parseNum(t[4], `theta0 of the nb3b file entry ${k}`);
-    const cut = parseNum(t[5], `cutoff of the nb3b file entry ${k}`);
+    const rho = ncols === 7 ? parseNum(t[5], `rho of the nb3b file entry ${k}`) : 0;
+    const cut = parseNum(t[ncols - 1], `cutoff of the nb3b file entry ${k}`);
     if (cut < 0) throw new StyleError(`nb3b potential file ${fileName} entry ${k}: cutoff must be >= 0`);
-    entries.set(k, { e1: t[0], e2: t[1], e3: t[2], K, theta0, cut });
+    // the rho value must be higher than 0.0 (examples/nb3b/README.nb3b.screened)
+    if (ncols === 7 && !(rho > 0)) throw new StyleError(`nb3b potential file ${fileName} entry ${k}: rho must be > 0 (got ${t[5]})`);
+    entries.set(k, { e1: t[0], e2: t[1], e3: t[2], K, theta0, rho, cut });
   }
   if (entries.size === 0) throw new StyleError(`nb3b potential file ${fileName} contains no parameter entries`);
   return entries;
 };
 
-/** pair_style nb3b/harmonic: E = K (theta - theta0)^2 over the angles of neighbour pairs. */
+/**
+ * pair_style nb3b/harmonic: E = K (theta - theta0)^2 over the angles of neighbour pairs.
+ * nb3b/screened (subclass below) multiplies each angle by exp(-r_ij/rho_ij - r_ik/rho_ik).
+ */
 export class PairNB3BHarmonic extends Pair {
   readonly name: string = 'nb3b/harmonic';
   manybody = true;
@@ -123,6 +174,8 @@ export class PairNB3BHarmonic extends Pair {
   needsHalf = false;
   virialFdotr = true;
 
+  /** true for nb3b/screened: the 7-column file and the screening factor. */
+  protected screened = false;
   protected fileName = '';
   protected fileRead = false;
   /** type -> element index, -1 for NULL types. */
@@ -132,6 +185,8 @@ export class PairNB3BHarmonic extends Pair {
   protected thTab = new Float64Array(0);
   /** Leg cutoff of center c to neighbour type t: the cutoff of the (c, t, t) entry. */
   protected legCut = new Float64Array(0);
+  /** Leg screening length of center c to neighbour type t: the rho of the (c, t, t) entry (screened only). */
+  protected legRho = new Float64Array(0);
 
   // scratch for the gathered neighbours of one center
   private cap = 0;
@@ -154,6 +209,7 @@ export class PairNB3BHarmonic extends Pair {
     this.kTab = new Float64Array(nt * nt * nt);
     this.thTab = new Float64Array(nt * nt * nt);
     this.legCut = new Float64Array(nt * nt);
+    this.legRho = new Float64Array(nt * nt);
     this.fileRead = false;
     this.fileName = '';
   }
@@ -170,7 +226,7 @@ export class PairNB3BHarmonic extends Pair {
     if (elems.length !== this.ntypes) {
       throw new StyleError(`pair_coeff for style ${this.name} needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
     }
-    const entries = parseNB3BFile(ctx.readFile(filename), filename);
+    const entries = parseNB3BFile(ctx.readFile(filename), filename, this.screened ? 7 : 6);
     this.fileName = filename;
     const names: string[] = [];
     const nt = this.ntypes + 1;
@@ -196,12 +252,30 @@ export class PairNB3BHarmonic extends Pair {
         throw new StyleError(`Potential file ${filename} is missing an entry for: ${a} ${b} ${c}`);
       }
     }
+    if (this.screened) {
+      // Measured with native LAMMPS (black box): for (i j k) and (i k j) with different K or theta0 the
+      // energy follows one of the two entries, chosen by the neighbour-list order, so it is not a
+      // function of the parameters. Only pairs with a zero K on both sides are order-independent.
+      for (let p = 0; p < names.length; p++) for (let q = p + 1; q < names.length; q++) {
+        for (const c of names) {
+          const e1 = entries.get(key3(c, names[p], names[q]))!, e2 = entries.get(key3(c, names[q], names[p]))!;
+          if ((e1.K !== e2.K || e1.theta0 !== e2.theta0) && (e1.K !== 0 || e2.K !== 0)) {
+            throw new StyleError(
+              `nb3b/screened: entries ${key3(c, names[p], names[q])} and ${key3(c, names[q], names[p])} have different K or theta0; ` +
+                'native LAMMPS picks one of them by neighbour order for such a pair, which this engine does not reproduce',
+            );
+          }
+        }
+      }
+    }
     const DEG = Math.PI / 180;
     for (let tc = 1; tc <= this.ntypes; tc++) {
       if (this.elemOf[tc] < 0) continue;
       for (let ta = 1; ta <= this.ntypes; ta++) {
         if (this.elemOf[ta] < 0) continue;
-        this.legCut[tc * nt + ta] = entries.get(key3(names[this.elemOf[tc]], names[this.elemOf[ta]], names[this.elemOf[ta]]))!.cut;
+        const leg = entries.get(key3(names[this.elemOf[tc]], names[this.elemOf[ta]], names[this.elemOf[ta]]))!;
+        this.legCut[tc * nt + ta] = leg.cut;
+        this.legRho[tc * nt + ta] = leg.rho;
         for (let tb = ta; tb <= this.ntypes; tb++) {
           if (this.elemOf[tb] < 0) continue;
           const e = entries.get(key3(names[this.elemOf[tc]], names[this.elemOf[ta]], names[this.elemOf[tb]]))!;
@@ -233,9 +307,10 @@ export class PairNB3BHarmonic extends Pair {
     const { x, f, type } = pc;
     const nlocal = pc.nlocal;
     const nt = this.ntypes + 1;
-    const legCut = this.legCut;
+    const legCut = this.legCut, legRho = this.legRho;
     const kTab = this.kTab, thTab = this.thTab;
     const elemOf = this.elemOf;
+    const screened = this.screened;
     const eatom = pc.eatom, vatom = pc.vatom;
     let evdwl = 0;
 
@@ -288,20 +363,31 @@ export class PairNB3BHarmonic extends Pair {
           // u = x_j - x_i, v = x_k - x_i (the neighbours of the center)
           const ux = gDx[p1], uy = gDy[p1], uz = gDz[p1], ru = gR[p1];
           const vx = gDx[p2], vy = gDy[p2], vz = gDz[p2], rv = gR[p2];
+          // screening exp(-r_ij/rho_ij - r_ik/rho_ik) with the rho of each leg; 1 for the harmonic style
+          let F = 1, radJ = 0, radK = 0;
+          if (screened) {
+            const rhoJ = legRho[ti * nt + tj], rhoK = legRho[ti * nt + tk];
+            F = Math.exp(-ru / rhoJ - rv / rhoK);
+          }
           const dot = ux * vx + uy * vy + uz * vz;
           const c = Math.min(1, Math.max(-1, dot / (ru * rv)));
           const theta = Math.acos(c);
           const s = Math.max(Math.sqrt(1 - c * c), 1e-8);
           const dth = theta - th0;
-          const e = K * dth * dth;
+          const e = K * dth * dth * F;
           evdwl += e;
           // dE/dtheta = 2K(theta - theta0); dtheta/dc = -1/s; forces f_j = -dE/dx_j
-          const g = (2 * K * dth) / s;
+          const g = ((2 * K * dth) / s) * F;
+          if (screened) {
+            // radial part of -dE/du and -dE/dv from the exponential: K dth^2 F / (rho r) along the leg
+            radJ = (K * dth * dth * F) / (legRho[ti * nt + tj] * ru);
+            radK = (K * dth * dth * F) / (legRho[ti * nt + tk] * rv);
+          }
           // dc/du = v/(ru rv) - c u/ru^2 ; dc/dv = u/(ru rv) - c v/rv^2
           const inv = 1 / (ru * rv);
           const cu = c / (ru * ru), cv = c / (rv * rv);
-          const fjx = g * (vx * inv - cu * ux), fjy = g * (vy * inv - cu * uy), fjz = g * (vz * inv - cu * uz);
-          const fkx = g * (ux * inv - cv * vx), fky = g * (uy * inv - cv * vy), fkz = g * (uz * inv - cv * vz);
+          const fjx = g * (vx * inv - cu * ux) + radJ * ux, fjy = g * (vy * inv - cu * uy) + radJ * uy, fjz = g * (vz * inv - cu * uz) + radJ * uz;
+          const fkx = g * (ux * inv - cv * vx) + radK * vx, fky = g * (uy * inv - cv * vy) + radK * vy, fkz = g * (uz * inv - cv * vz) + radK * vz;
           f[3 * j] += fjx; f[3 * j + 1] += fjy; f[3 * j + 2] += fjz;
           f[3 * k] += fkx; f[3 * k + 1] += fky; f[3 * k + 2] += fkz;
           f[3 * i] -= fjx + fkx; f[3 * i + 1] -= fjy + fky; f[3 * i + 2] -= fjz + fkz;
@@ -327,13 +413,8 @@ export class PairNB3BHarmonic extends Pair {
   }
 }
 
-/** pair_style nb3b/screened is recognised but refused (its file layout is not in the docs). */
+/** pair_style nb3b/screened: E = K (theta - theta0)^2 exp(-r_ij/rho_ij - r_ik/rho_ik), 7-column file. */
 export class PairNB3BScreened extends PairNB3BHarmonic {
   override readonly name = 'nb3b/screened';
-
-  override settings(_args: string[], _ctx: StyleContext): void {
-    throw new StyleError(
-      'pair_style nb3b/screened is not supported: docs.lammps.org/pair_nb3b.html gives its energy formula but not the potential-file columns for the screening lengths',
-    );
-  }
+  protected override screened = true;
 }

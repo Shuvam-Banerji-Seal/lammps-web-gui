@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Square, Plus, Trash2, RotateCcw, Cpu, Gpu, Gauge, HelpCircle, FileUp, X, Workflow } from 'lucide-react';
+import { Play, Square, Plus, Trash2, RotateCcw, Cpu, Gpu, Gauge, HelpCircle, FileUp, X, Workflow, Atom } from 'lucide-react';
 import ResourceMonitor from './ResourceMonitor';
 import { cellsToScript } from '../../lammps/notebookBridge';
 import { explainEngineError } from './engineError';
@@ -15,6 +15,9 @@ import type { BackendChoice, FromEngine } from '../../engine/protocol';
 import type { EngineEvent, ThermoKeyword, ThermoRow } from '../../engine/types';
 import { frameToMoleculeData, typeColors, type FrameEvent } from '../../engine/view';
 import { filesReadBy, formatNumber } from '../../engine/script';
+import { useInputFiles, type ImportSource } from './notebook/useInputFiles';
+import { InputFilesPanel } from './notebook/InputFilesPanel';
+import { ImportStructureDialog } from './notebook/ImportStructureDialog';
 
 /**
  * MD Notebook: LAMMPS-style input in cells, run by the in-browser engine
@@ -108,9 +111,6 @@ const vizConfig = (spacing: number, ntypes: number, dark: boolean): Visualizatio
   fov: 40,
 });
 
-const formatBytes = (n: number): string =>
-  n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`;
-
 interface NotebookProps {
   theme: Theme;
   /** A script sent from the Script Builder, waiting for the user to place it. */
@@ -138,9 +138,10 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   /** The MD run in progress (engine 'run' event): its cell and its first and last step, for the progress bar. */
   const [runSpan, setRunSpan] = useState<{ cell: string; from: number; to: number } | null>(null);
   const [files, setFiles] = useState<Record<string, string>>({});
-  /** Files the user added for read_data / include / potential files: name -> size in bytes. */
-  const [inputs, setInputs] = useState<Record<string, number>>({});
   const fileInput = useRef<HTMLInputElement>(null);
+  const importInput = useRef<HTMLInputElement>(null);
+  /** The file the structure import dialog converts (null when closed). */
+  const [importFrom, setImportFrom] = useState<ImportSource | null>(null);
   const [series, setSeries] = useState<ThermoRow[]>([]);
   const [showHelp, setShowHelp] = useState(false);
   const helpButton = useRef<HTMLButtonElement>(null);
@@ -167,6 +168,9 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     if (!clientRef.current) clientRef.current = new EngineClient();
     return clientRef.current;
   }, []);
+  const inputFiles = useInputFiles(client);
+  const { inputs } = inputFiles;
+  const sendInputs = inputFiles.sendToEngine;
 
   const resetSession = useCallback(async (choice: BackendChoice, nThreads: number) => {
     setReady(null);
@@ -175,8 +179,9 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     setSeries([]);
     setRuns({});
     const info = await client().reset(choice, 25, nThreads);
+    sendInputs();
     setReady(info);
-  }, [client]);
+  }, [client, sendInputs]);
 
   useEffect(() => {
     void resetSession(backend, threads);
@@ -322,22 +327,12 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const incomingNeeds = incoming === null ? [] : filesReadBy(incoming).filter((f) => !(f in inputs));
 
   const addInputFiles = async (list: FileList | null) => {
-    if (!list) return;
-    for (const file of Array.from(list)) {
-      // gzipped inputs (read_data foo.gz) travel as one character per byte; the engine inflates them
-      const text = file.name.endsWith('.gz') ? bytesToLatin1(new Uint8Array(await file.arrayBuffer())) : await file.text();
-      client().addFile(file.name, text);
-      setInputs((prev) => ({ ...prev, [file.name]: file.size }));
-    }
+    const candidate = await inputFiles.addPicked(list);
+    if (candidate) setImportFrom(candidate);
   };
-  const removeInputFile = (name: string) => {
-    client().removeFile(name);
-    setInputs((prev) => {
-      const next = { ...prev };
-      delete next[name];
-      return next;
-    });
-  };
+  const removeInputFile = (name: string) => void inputFiles.remove(name);
+  /** Appends a code cell (the suggestion of the structure import dialog). */
+  const insertCell = (text: string) => setCells((prev) => [...prev, { id: newId(), text }]);
   const webgpuAvailable = ready?.webgpuAvailable ?? (typeof navigator !== 'undefined' && 'gpu' in navigator);
   const cores = ready?.cores ?? browserCores();
   const btn = `inline-flex min-h-6 min-w-6 items-center justify-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${ct.hoverSurface}`;
@@ -402,6 +397,17 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
         </button>
         <input ref={fileInput} type="file" multiple hidden aria-label="Add input files"
           onChange={(e) => { void addInputFiles(e.target.files); e.target.value = ''; }} />
+        <button className={`${btn} ${ct.button}`} onClick={() => importInput.current?.click()}
+          title="Convert a PDB, CIF, XYZ or LAMMPS data file into LAMMPS input files (data file or molecule template)">
+          <Atom size={13} aria-hidden="true" />Import structure…
+        </button>
+        <input ref={importInput} type="file" hidden aria-label="Import structure file"
+          accept=".pdb,.ent,.cif,.mmcif,.xyz,.data,.lmp,.lammps"
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) setImportFrom(await inputFiles.readForImport(f));
+          }} />
         {onOpenInBuilder && (
           <button className={`${btn} ${ct.button}`} disabled={cells.every((c) => c.text.trim() === '')}
             onClick={() => onOpenInBuilder(cellsToScript(cells.map((c) => c.text)))}
@@ -571,28 +577,18 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
               <LineChart data={chart.etotal} xLabel="step" yLabel="etotal" theme={theme} height={120} />
             </div>
           )}
-          {Object.keys(inputs).length > 0 && (
-            <div>
-              <p className={`text-[11px] font-semibold ${ct.muted}`}>Input files</p>
-              <ul className="mt-1 flex flex-wrap gap-1" aria-label="Input files">
-                {Object.entries(inputs).map(([name, size]) => (
-                  <li key={name} className={`inline-flex items-center rounded text-xs ${ct.chip}`}>
-                    <span className="px-2 py-1 font-mono">{name}</span>
-                    <span className={`pr-1 ${ct.muted}`}>{formatBytes(size)}</span>
-                    <button className={`${btn} ${ct.hoverSurface}`} aria-label={`Remove ${name}`} title={`Remove ${name}`}
-                      disabled={busy} onClick={() => removeInputFile(name)}>
-                      <X size={12} aria-hidden="true" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <InputFilesPanel theme={theme} inputs={inputs} totalBytes={inputFiles.totalBytes} error={inputFiles.error}
+            busy={busy} onRemove={removeInputFile} onClearAll={() => void inputFiles.clearAll()}
+            onDismissError={inputFiles.dismissError} />
           <RunFiles ct={ct} files={files} cells={cells} runs={runs} onOpenInViewer={onOpenInViewer} />
           {chart.temp.length <= 1 && Object.keys(files).length === 0 && Object.keys(inputs).length === 0 && (
             <p className={`text-xs ${ct.muted}`}>
               Thermo charts, files written by dump / write_data, and the files you add with Add files appear here.
             </p>
+          )}
+          {importFrom && (
+            <ImportStructureDialog theme={theme} source={importFrom} onClose={() => setImportFrom(null)}
+              onAddText={inputFiles.addText} onInsertCell={insertCell} />
           )}
         </div>
       </div>
@@ -609,12 +605,6 @@ const THERMO_ROWS_SHOWN = 200;
  * latest THERMO_ROWS_SHOWN - 1 are shown, with a row that says how many are hidden and shows them all on request.
  */
 
-/** Bytes as a string of one character per byte (chunked to stay under the argument limit). */
-const bytesToLatin1 = (b: Uint8Array): string => {
-  let out = '';
-  for (let k = 0; k < b.length; k += 0x8000) out += String.fromCharCode(...b.subarray(k, k + 0x8000));
-  return out;
-};
 export const ThermoRows: React.FC<{ ct: ReturnType<typeof getThemeTokens>; keywords: ThermoKeyword[]; rows: ThermoRow[] }> = ({ ct, keywords, rows }) => {
   const [all, setAll] = useState(false);
   const hidden = all ? 0 : Math.max(0, rows.length - THERMO_ROWS_SHOWN);

@@ -10,7 +10,7 @@ import { BondedHybrid, type HybridKind } from '../force/bonded_hybrid';
 
 /** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
 type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart };
-import { hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isTemplateStyle, templateStyleId } from '../atoms';
+import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isTemplateStyle, templateStyleId } from '../atoms';
 import { ErfcTableCache } from '../force/erfc';
 
 /*
@@ -249,6 +249,7 @@ export const writeRestartText = (sys: System): string => {
       if (p.kind === 'mol') data.mol = Array.from(s.molecule.subarray(0, s.n));
       else if (p.kind === 'q') data.q = Array.from(s.q.subarray(0, s.n));
       else if (p.kind === 'rmass') data.rmass = Array.from(s.rmass!.subarray(0, s.n));
+      else if (p.kind === 'temperature' || p.kind === 'heatflow') data[p.kind] = Array.from(s.custom.get(p.kind === 'temperature' ? HEAT_TEMPERATURE : HEAT_FLOW)!.data.subarray(0, s.n));
       else data[`${p.kind}_${p.name}`] = Array.from(s.custom.get(p.name)!.data);
     }
     fixes.push({ id: f.id, props: f.props.map((p) => ({ ...p })), data });

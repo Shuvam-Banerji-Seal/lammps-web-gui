@@ -1,7 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid } from '../atoms';
+import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid, HEAT_FLOW, HEAT_TEMPERATURE } from '../atoms';
 
 /*
  * Per-atom computes: ke/atom, pe/atom, stress/atom and property/atom.
@@ -269,6 +269,11 @@ const TORQUE_ATTRS = new Set(['tqx', 'tqy', 'tqz']);
 const ELLIPSOID_ATTRS = new Set(['angmomx', 'angmomy', 'angmomz', 'shapex', 'shapey', 'shapez', 'quatw', 'quati', 'quatj', 'quatk']);
 /** compute_property_atom.html: "*mux,muy,muz* = orientation of dipole moment of atom" (and mu, its magnitude). */
 const DIPOLE_ATTRS = new Set(['mux', 'muy', 'muz', 'mu']);
+/**
+ * compute_property_atom.html: "*temperature* = internal temperature of spherical particle" and "*heatflow* = internal
+ * heat flow of spherical particle" (values from fix property/atom temperature heatflow).
+ */
+const HEAT_ATTRS: Record<string, string> = { temperature: HEAT_TEMPERATURE, heatflow: HEAT_FLOW };
 
 export class ComputePropertyAtom extends Compute {
   readonly style = 'property/atom';
@@ -280,7 +285,8 @@ export class ComputePropertyAtom extends Compute {
     for (const a of args) {
       // compute_property_atom.html also lists "i_name, d_name, i2_name[I], d2_name[I]" (fix
       // property/atom) and the finite-size sphere attributes radius, diameter, omega*, tq*
-      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !CUSTOM_ATTR.test(a)) {
+      if (HEAT_ATTRS[a] && !sys.state.custom.has(HEAT_ATTRS[a])) throw new StyleError(`compute property/atom ${a} needs fix property/atom temperature heatflow`);
+      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a]) {
         throw new StyleError(`compute property/atom: attribute '${a}' is not supported by the browser engine`);
       }
       if (SPHERE_ATTRS.has(a) && !sys.state.radius) throw new StyleError(`compute property/atom ${a} needs atom_style sphere`);
@@ -308,9 +314,11 @@ export class ComputePropertyAtom extends Compute {
       if (d < 0) d = 'xyz'.indexOf(attr[0]);
       const set = (i: number, val: number) => { out[m > 1 ? m * i + k : i] = val; };
       const custom = customAttr(s, attr);
+      const heat = HEAT_ATTRS[attr] ? s.custom.get(HEAT_ATTRS[attr])!.data : null;
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & this.groupBit)) continue;
         if (custom) { set(i, custom(i)); continue; }
+        if (heat) { set(i, heat[i]); continue; }
         switch (attr) {
           case 'radius': set(i, s.radius![i]); break;
           case 'diameter': set(i, 2 * s.radius![i]); break;

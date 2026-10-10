@@ -3,6 +3,25 @@ import type { SimState } from '../../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
 import { mdrCheckTriangles, mdrDampCoeff, mdrElastic } from './granular_mdr';
+import { HEAT_FLOW, HEAT_TEMPERATURE } from '../../atoms';
+
+/*
+ * pair_style granular heat keyword (heat conduction) — docs.lammps.org/pair_granular.html:
+ *   "The optional *heat* keyword enables heat conduction." The options currently supported are none, radius (k_s) and area (h_s).
+ *   "If the *heat* keyword is not specified, the model defaults to *none*."
+ *   "For *heat* *radius*, the heat Q conducted between two particles is given by" Q = 2 k_s a dT (formula outside quotes),
+ *   "For *heat* *area*, the heat Q conducted between two particles is given by" Q = h_s A dT, A = pi a^2.
+ *   dT is "the difference in the two particles' temperature" and "a is the radius of the contact and depends on the
+ *   normal force model" (a = contactA of granularContact: sqrt(R_eff delta) for hooke, hertz and hertz/material).
+ * Sign: heat flows into particle i with Q_i = 2 k_s a (T_j - T_i) (or h_s A (T_j - T_i)); j receives -Q_i.
+ * Measured with native LAMMPS (black box): the step-0 setup value on atom 1 (T 1) against atom 2 (T 3) is +0.4472 for
+ * radius 0.5 and +0.1571 for area 0.5 at contact delta 0.2, i.e. the sign above and a = sqrt(R_eff delta).
+ * Measured with native LAMMPS (black box): mixed coefficients take the geometric mean of the heat coefficient
+ * (1-1 area 0.5 and 2-2 area 1.5, no 1-2 line: Q matches h_12 = sqrt(0.5 * 1.5)).
+ * Measured with native LAMMPS (black box): heat none on one type pair and heat area on another is accepted when
+ * the cross pair is given explicitly; mixing two different heat models is refused.
+ * Heatflow accumulates over the pair force evaluations and is zeroed by fix heat/flow (fix_heat_flow.ts): see that file.
+ */
 
 /*
  * pair_style granular — docs.lammps.org/pair_granular.html (plans/lammps-docs/pair_granular.rst).
@@ -81,6 +100,18 @@ export interface Spec {
   twist: TwistKind; kw: number; gw: number; mw: number;
   limit: boolean;
   cutoff: number | null;
+  /** heat conduction model and its coefficient (k_s for radius, h_s for area). */
+  heat: HeatKind; hk: number;
+}
+
+/** Heat conduction model of pair_coeff (pair_granular.html "heat" keyword). */
+export type HeatKind = 'none' | 'radius' | 'area';
+
+/** Heat flowing into particle i from particle j (or from a wall at temperature Tw): Q = 2 k_s a dT or h_s pi a^2 dT. */
+export function heatFlowOf(heat: HeatKind, hk: number, a: number, dT: number): number {
+  if (heat === 'radius') return 2 * hk * a * dT;
+  if (heat === 'area') return hk * Math.PI * a * a * dT;
+  return 0;
 }
 
 /** Resolved parameters for one type pair (i <= j), after mixing. */
@@ -101,6 +132,7 @@ export interface Pm {
   twist: TwistKind; kw: number; gw: number; mw: number;
   limit: boolean;
   cutoff: number;
+  heat: HeatKind; hk: number;
   /** Compatibility key: pairs of types are mixed only when the model choices agree. */
   sig: string;
 }
@@ -128,6 +160,7 @@ export function parseGranularSpec(args: string[]): Spec {
     normal, kn: 0, E: 0, nu: 0, gamma: 0, eta: 0, Y: 0, psib: 0, dtype: 0,
     damp: 'viscoelastic', tang: 'linear_nohistory', kt: 0, ktNull: false, xgt: 0, mu: 0,
     roll: 'none', kr: 0, gr: 0, mr: 0, twist: 'none', kw: 0, gw: 0, mw: 0, limit: false, cutoff: null,
+    heat: 'none', hk: 0,
   };
   if (normal === 'hooke' || normal === 'hertz') {
     sp.kn = num[0];
@@ -227,7 +260,17 @@ export function parseGranularSpec(args: string[]): Spec {
       need(1, 'cutoff');
       sp.cutoff = parseNum(next(), 'cutoff');
     } else if (kw === 'heat') {
-      throw new StyleError("pair_style granular: the 'heat' keyword is not implemented in this engine");
+      // pair_granular.html: the heat models are none, radius and area (see the header of this file)
+      need(1, 'heat');
+      const hm = next();
+      if (hm === 'none') sp.heat = 'none';
+      else if (hm === 'radius' || hm === 'area') {
+        need(1, `heat ${hm}`);
+        sp.heat = hm;
+        sp.hk = parseNum(next(), `heat ${hm} coefficient`);
+        // native refuses a negative coefficient (measured: heat area -0.5 stops with Illegal area heat model)
+        if (!(sp.hk >= 0)) throw new StyleError(`pair_coeff granular: heat ${hm} coefficient must be >= 0 (got ${sp.hk})`);
+      } else throw new StyleError(`pair_coeff granular: unknown heat model '${hm}' (none, radius, area)`);
     } else {
       throw new StyleError(`pair_coeff granular: unknown keyword '${kw}'`);
     }
@@ -332,9 +375,11 @@ export interface ContactOut {
   tjx: number; tjy: number; tjz: number;
   /** The contact keeps a history record (the caller stores sh and marks the key as seen). */
   hist: boolean;
+  /** Contact radius a of the normal model (the heat models use it). */
+  a: number;
 }
 
-export const newContactOut = (): ContactOut => ({ fx: 0, fy: 0, fz: 0, tix: 0, tiy: 0, tiz: 0, tjx: 0, tjy: 0, tjz: 0, hist: false });
+export const newContactOut = (): ContactOut => ({ fx: 0, fy: 0, fz: 0, tix: 0, tiy: 0, tiz: 0, tjx: 0, tjy: 0, tjz: 0, hist: false, a: 0 });
 
 /**
  * One granular contact: normal (hooke/hertz/hertz-material/dmt/jkr), damping, tangential (linear, mindlin),
@@ -343,7 +388,7 @@ export const newContactOut = (): ContactOut => ({ fx: 0, fy: 0, fz: 0, tix: 0, t
  * the frame given by sg. Returns false when there is no contact (the caller drops the history record).
  */
 export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut, hadHistory: boolean): boolean {
-  const { pm, nx, ny, nz, r, delta, Rf, ri, rj, meff, dt, update, sg } = c;
+  const { pm, nx, ny, nz, delta, Rf, ri, rj, meff, dt, update, sg } = c;
   const jkr = pm.normal === 'jkr';
   const mdr = pm.normal === 'mdr';
   // jkr hysteresis (doc): the tensile range delta < 0 applies only once the pair has been in contact
@@ -562,6 +607,7 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
     out.tjx -= twq * nx; out.tjy -= twq * ny; out.tjz -= twq * nz;
   }
   out.hist = hist;
+  out.a = contactA;
   return true;
 }
 
@@ -578,6 +624,8 @@ export class PairGranular extends Pair {
   private freezeBit = 0;
   /** Contact history per atom-ID pair "lo:hi": [sx, sy, sz] in the frame of the lower ID. */
   private shear = new Map<string, Float64Array>();
+  /** Some pair_coeff has a heat model (the temperature and heatflow properties are then needed). */
+  private heatOn = false;
 
   settings(args: string[]): void {
     if (args.length > 1) throw new StyleError('usage: pair_style granular [cutoff]');
@@ -616,6 +664,10 @@ export class PairGranular extends Pair {
     // LAMMPS, black box: mdr with the default newton on stops with an error)
     if (ctx.newtonPair !== false && this.specs.some((sp) => sp?.normal === 'mdr')) {
       throw new StyleError("pair_style granular: normal model 'mdr' requires newton off");
+    }
+    this.heatOn = this.specs.some((sp) => sp && sp.heat !== 'none');
+    if (this.heatOn && (!s || !s.custom.has(HEAT_TEMPERATURE) || !s.custom.has(HEAT_FLOW))) {
+      throw new StyleError('pair_style granular: heat conduction (heat radius or area) needs fix property/atom temperature heatflow');
     }
     this.resolve();
   }
@@ -660,7 +712,7 @@ export class PairGranular extends Pair {
           : g(a.kt, b.kt);
         const mixed: Spec = { ...a, kn: g(a.kn, b.kn), E: a.E, nu: a.nu, gamma: g(a.gamma, b.gamma), eta: g(a.eta, b.eta),
           kt, ktNull: false, xgt: g(a.xgt, b.xgt), mu: g(a.mu, b.mu), kr: g(a.kr, b.kr), gr: g(a.gr, b.gr), mr: g(a.mr, b.mr),
-          kw: g(a.kw, b.kw), gw: g(a.gw, b.gw), mw: g(a.mw, b.mw), cutoff: null };
+          kw: g(a.kw, b.kw), gw: g(a.gw, b.gw), mw: g(a.mw, b.mw), cutoff: null, hk: g(a.hk, b.hk) };
         const p = this.pmOf(mixed, Eeff, a, b);
         this.pm[i * nt + j] = p;
       }
@@ -686,13 +738,13 @@ export class PairGranular extends Pair {
       if (!(gi > 0) || !(gj > 0)) throw new StyleError('pair_style granular: tangential k_t NULL needs E and nu for the types');
       kt = 8 / ((2 - si.nu) / gi + (2 - sj.nu) / gj);
     }
-    const sig = [sp.normal, sp.damp, sp.tang, sp.roll, sp.twist, sp.limit ? 1 : 0].join('|');
+    const sig = [sp.normal, sp.damp, sp.tang, sp.roll, sp.twist, sp.limit ? 1 : 0, sp.heat].join('|');
     return {
       normal: sp.normal, kn: sp.kn, Eeff: eff, gamma: sp.gamma, eta: sp.eta, Y: sp.Y, psib: sp.psib, dtype: sp.dtype,
       damp: sp.damp, tang: sp.tang,
       kt, xgt: sp.xgt, mu: sp.mu, roll: sp.roll, kr: sp.kr, gr: sp.gr, mr: sp.mr,
       twist: sp.twist, kw: sp.kw, gw: sp.gw, mw: sp.mw, limit: sp.limit,
-      cutoff: sp.cutoff ?? this.globalCut ?? -1, sig,
+      cutoff: sp.cutoff ?? this.globalCut ?? -1, heat: sp.heat, hk: sp.hk, sig,
     };
   }
 
@@ -735,6 +787,9 @@ export class PairGranular extends Pair {
     // mdr: the active contacts (atom-ID pairs), checked for closed triangles after the loop
     const mdrPairs: Array<[number, number]> = [];
     const out = newContactOut();
+    // heat conduction: heatflow accumulates (zeroed by fix heat/flow), Q_i = heat(a, T_j - T_i) and Q_j = -Q_i
+    const T = this.heatOn ? s.custom.get(HEAT_TEMPERATURE)!.data : null;
+    const HF = this.heatOn ? s.custom.get(HEAT_FLOW)!.data : null;
     for (let i = 0; i < list.inum; i++) {
       const oi = owner[i];
       const ri = radius[oi], mi = rmass[oi];
@@ -781,6 +836,13 @@ export class PairGranular extends Pair {
         if (out.hist) {
           seen.add(key);
           this.shear.set(key, sh);
+        }
+        if (T && pm.heat !== 'none') {
+          const q = heatFlowOf(pm.heat, pm.hk, out.a, T[oj] - T[oi]);
+          HF![oi] += q;
+          // measured with native LAMMPS (black box): a periodic image partner (j >= the owned atom count) does not get
+          // its share back, so the heat of a contact across a periodic boundary is counted once, on the owned side
+          if (j < s.n) HF![oj] -= q;
         }
         if (pm.normal === 'mdr') mdrPairs.push([a, b]);
         f[3 * i] += out.fx; f[3 * i + 1] += out.fy; f[3 * i + 2] += out.fz;

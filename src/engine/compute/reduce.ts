@@ -233,9 +233,11 @@ export class ComputeReduce extends Compute {
     }
     switch (this.mode) {
       case 'sum': return sum;
-      case 'min': return count ? mn : 0;
+      // per-atom input with no atom selected: min and max keep their 1e20 start values (measured with native
+      // LAMMPS, black box: the pour thermo row at step 0 has no atoms and reports c_tmin 1e+20 and c_tmax -1e+20)
+      case 'min': return count ? mn : 1e20;
       case 'minabs': return count ? mnabs : 0;
-      case 'max': return count ? mx : 0;
+      case 'max': return count ? mx : -1e20;
       case 'maxabs': return count ? mxabs : 0;
       case 'ave': return count ? sum / count : 0;
       case 'sumsq': return sumsq;

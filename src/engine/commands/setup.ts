@@ -3,7 +3,7 @@ import { int, num, yesno, latticeScale, keywords } from './args';
 import { StyleError, typeBounds } from '../force/types';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId } from '../atoms';
+import { HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId } from '../atoms';
 import { parseStl } from '../stl';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import { generalAtomSites, generalBoxFromRestricted, generalCreateBox } from '../triclinic_general';
@@ -1455,6 +1455,22 @@ const set: Handler = ({ sys }, a) => {
           for (let w = 0; w < list.width; w++) if (!ids.has(list.atoms[e * list.width + w])) { all = false; break; }
           if (all) { list.type[e] = t; changed++; }
         }
+        k += 2;
+        break;
+      }
+      // set.html: "Keyword *temperature* sets the temperature of a finite-size particle." "The temperature must be
+      // added using an instance of fix property/atom". Measured with native LAMMPS (black box): a negative value stops
+      // with Invalid temperature -1 in set command; zero is accepted.
+      case 'temperature': {
+        const cp = s.custom.get(HEAT_TEMPERATURE);
+        if (!cp) throw new StyleError('set temperature needs fix property/atom temperature heatflow (GRANULAR heat conduction)');
+        const v = value(a[k + 1], key);
+        for (const i of atoms) {
+          const x = v(i);
+          if (x < 0) throw new StyleError(`Invalid temperature ${x} in set command`);
+          cp.data[i] = x;
+        }
+        changed = atoms.length;
         k += 2;
         break;
       }

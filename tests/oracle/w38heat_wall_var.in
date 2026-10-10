@@ -1,0 +1,33 @@
+# oracle: fix wall/gran granular heat radius with temperature v_tw, an equal-style variable that grows with the step; 27 slightly overlapping spheres on a lattice fall onto a zplane wall, fix heat/flow constant 2.0, 100 steps
+units           lj
+atom_style      sphere
+atom_modify     map array
+comm_modify     vel yes
+boundary        p p f
+lattice         sc 0.9
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+set             type 1 diameter 1.05 density 1.0
+displace_atoms  all move 0 0 0.5 units box
+fix             pa all property/atom temperature heatflow
+set             group all temperature 1.0
+variable        tw equal 1.0+0.02*step
+pair_style      granular
+pair_coeff      * * hertz/material 1e4 0.1 0.3 tangential linear_nohistory 0.0 0.0 heat radius 0.5
+timestep        0.002
+fix             1 all nve/sphere
+fix             2 all heat/flow constant 2.0
+fix             grav all gravity 0.5 vector 0 0 -1
+fix             3 all wall/gran granular hertz/material 1e4 0.1 0.3 tangential linear_nohistory 0.0 0.0 damping tsuji heat radius 0.5 zplane 0.0 NULL temperature v_tw
+compute         pa all property/atom temperature heatflow
+compute         tsum all reduce sum c_pa[1]
+compute         tmax all reduce max c_pa[1]
+compute         tmin all reduce min c_pa[1]
+compute         hsum all reduce sum c_pa[2]
+compute         hmax all reduce max c_pa[2]
+compute         hmin all reduce min c_pa[2]
+thermo_style    custom step ke c_tsum c_tmax c_tmin c_hsum c_hmax c_hmin
+thermo_modify   format float %.15g
+thermo          10
+run             100

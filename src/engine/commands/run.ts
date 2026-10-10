@@ -1,7 +1,7 @@
 import type { Ctx, Handler } from './args';
 import { int, num } from './args';
 import { StyleError } from '../force/types';
-import { FIX_STYLES, COMPUTE_STYLES } from '../styles';
+import { FIX_STYLES, COMPUTE_STYLES, styleNames } from '../styles';
 import { Dump, type DumpStyle } from '../output/dump';
 import { initRun, runVerlet } from '../run/verlet';
 import { parseRunStyleRespa, runRespa } from '../run/respa';
@@ -33,7 +33,7 @@ const fix: Handler = ({ sys }, a) => {
   if (!/^[A-Za-z0-9_]+$/.test(id)) throw new StyleError(`fix ID '${id}' must be alphanumeric or underscore`);
   const make = FIX_STYLES[style];
   if (!make) {
-    throw new StyleError(`fix style '${style}' is not supported by the browser engine; supported: ${Object.keys(FIX_STYLES).sort().join(', ')}`);
+    throw new StyleError(`fix style '${style}' is not supported by the browser engine; supported: ${styleNames().fix.join(', ')}`);
   }
   // the style is checked first, so a fix the engine lacks is named even before the box exists;
   // fix_property_atom.html: "This fix is one of a small number that can be defined in an input
@@ -81,7 +81,7 @@ const compute: Handler = ({ sys }, a) => {
   if (sys.computes.some((c) => c.id === id)) throw new StyleError(`reuse of compute ID '${id}' (uncompute it first)`);
   const make = COMPUTE_STYLES[style];
   if (!make) {
-    throw new StyleError(`compute style '${style}' is not supported by the browser engine; supported: ${Object.keys(COMPUTE_STYLES).sort().join(', ')}`);
+    throw new StyleError(`compute style '${style}' is not supported by the browser engine; supported: ${styleNames().compute.join(', ')}`);
   }
   ensureThermoComputes(sys);
   if (style === 'msd' && sys.groups.isDynamic(sys.groupBit(group))) throw new StyleError('Compute msd is not compatible with dynamic groups');

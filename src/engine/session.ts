@@ -5,7 +5,7 @@ import { StyleError } from './force/types';
 import { mapUnquoted, splitCommands, substituteVariables, tokenize, formatNumber, type RawCommand } from './script';
 import { evaluateScalar } from './formula';
 import { COMMANDS, UNAVAILABLE_COMMANDS, type Ctx } from './commands';
-import { styleNames } from './styles';
+import { ensureStyles, styleNames } from './styles';
 import { evaluateBoolean } from './boolean';
 import { CpuForceBackend } from './cpu/forces';
 import { RunCancelled, QuitSignal } from './errors';
@@ -211,6 +211,10 @@ export class Session {
         return;
     }
     const handler = COMMANDS[cmd];
+    // styles of the lazily loaded registries (lazyStyles.ts) are loaded before a command that names one;
+    // read_restart restores the styles named in its file
+    await ensureStyles(a);
+    if (cmd === 'read_restart' && a.length && this.sys.files.has(a[0])) await ensureStyles(this.sys.files.get(a[0])!.split(/[\s"',:\[\]{}]+/));
     if (!handler) {
       throw new StyleError(`'${cmd}' is not supported by the in-browser engine (it is not LAMMPS). Supported commands: ${SUPPORTED_COMMANDS.join(', ')}`);
     }

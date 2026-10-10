@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeAll } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Session } from '../src/engine/interpreter';
 import type { EngineEvent } from '../src/engine/types';
-import { PAIR_STYLES } from '../src/engine/styles';
+import { PAIR_STYLES, loadAllStyles } from '../src/engine/styles';
 
 /*
  * Pair styles through write_restart / read_restart (output/restart.ts).
@@ -109,6 +109,10 @@ const DOC_STORED = [
 
 /** Doc-declared styles that the restore cannot rebuild yet (see restart.ts, HOOKS NEEDED). */
 const DOC_STORED_PENDING = ['lepton', 'lepton/coul', 'lepton/sphere'];
+
+
+// the lazily loaded style registries (src/engine/lazyStyles.ts) are read directly here
+beforeAll(() => loadAllStyles());
 
 describe('pair styles through write_restart / read_restart', () => {
   const setups = oracleSetups();

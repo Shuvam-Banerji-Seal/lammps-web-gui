@@ -1,0 +1,31 @@
+# oracle: compute hbond/local on a periodic chain of four waters (the last H-bond wraps across the box face at 45.9 degrees) plus two spectator waters: count, columns and reductions
+# oracle: the rows are order-free aggregates (native's row order is not reproduced); count = global scalar; ecut and the no-value form are separate computes
+# oracle-inputs: w41hb_chain.data
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           real
+atom_style      full
+boundary        p p p
+read_data       w41hb_chain.data
+pair_style      lj/cut/coul/cut 4.5
+pair_coeff      1 1 0.15535 3.166
+pair_coeff      1 2 0.0 1.0
+pair_coeff      2 2 0.0 1.0
+pair_modify     mix arithmetic
+bond_style      harmonic
+bond_coeff      1 1000.0 1.0
+angle_style     harmonic
+angle_coeff     1 100.0 109.47
+special_bonds   lj/coul 0.0 0.0 0.0
+group           ogroup type 1
+group           hgroup type 2
+compute         hb all hbond/local 3.3 60.0 ogroup ogroup hgroup dist hdist angle ehb
+compute         hc all hbond/local 3.3 60.0 ogroup ogroup hgroup dist ehb ecut 0.0
+compute         hd all hbond/local 3.3 60.0 ogroup ogroup hgroup
+compute         rs all reduce sum c_hb[4] c_hb[5] c_hb[6] c_hb[7] inputs local
+compute         rx all reduce max c_hb[4] c_hb[5] c_hb[6] c_hb[7] inputs local
+compute         rn all reduce min c_hb[4] c_hb[5] c_hb[6] c_hb[7] inputs local
+fix             dh all ave/histo 1 1 1 2.0 3.5 15 c_hb[4] mode vector kind local file w41hb_chain_dist.histo
+fix             ah all ave/histo 1 1 1 0.0 60.0 12 c_hb[6] mode vector kind local file w41hb_chain_angle.histo
+thermo_style    custom step c_hb c_hc c_hd c_rs[1] c_rs[2] c_rs[3] c_rs[4] c_rx[1] c_rx[2] c_rx[3] c_rx[4] c_rn[1] c_rn[2] c_rn[3] c_rn[4] f_dh[1] f_ah[1]
+thermo_modify   format float %.15g
+run             0

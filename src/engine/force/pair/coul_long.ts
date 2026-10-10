@@ -142,6 +142,8 @@ export class PairLJCutCoulLong extends PairLJCut {
   readonly name: string = 'lj/cut/coul/long';
   coulLong = true;
   cutCoul = 0;
+  /** Coulomb prefactor of the last force evaluation (single() reads it). */
+  private qqrd2eLast = 1;
   private readonly erfcTables = new ErfcTableCache();
   /** pair_modify table N (null for 0): erfc.ts makeErfcTable. */
   private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul); }
@@ -158,7 +160,28 @@ export class PairLJCutCoulLong extends PairLJCut {
     return Math.max(cutLJ, this.cutCoul);
   }
 
+  /**
+   * Pair energy and force-over-r of one pair (single(), used by compute pair/local and hbond/local): the
+   * LJ term inside its cutoff plus the real-space Coulomb term inside the Coulomb cutoff, with the given
+   * special weights (the caller's; 1 for an unweighted pair).
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    let eng = 0, fforce = 0;
+    if (rsq < this.p.get('cut', itype, jtype) ** 2) {
+      const b = super.single(_i, _j, itype, jtype, rsq, factorCoul, factorLJ);
+      eng = b.eng;
+      fforce = b.fforce;
+    }
+    if (rsq < this.cutCoul * this.cutCoul && qi !== 0 && qj !== 0) {
+      const r = coulLongPair(rsq, qi, qj, this.gEwald, this.qqrd2eLast, factorCoul, this.table === 0, this.erfcTable(this.gEwald));
+      eng += r.e;
+      fforce += r.f;
+    }
+    return { eng, fforce };
+  }
+
   compute(pc: PairCompute): void {
+    this.qqrd2eLast = pc.qqrd2e;
     const list = pc.half!;
     const { x, f, type, q } = pc;
     const nt = this.ntypes + 1;

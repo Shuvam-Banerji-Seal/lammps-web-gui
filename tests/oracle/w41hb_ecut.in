@@ -1,0 +1,29 @@
+# oracle: compute hbond/local ehb with an energy cutoff (ecut) on a water donor with two acceptors on the H1 side: the pair energies are attractive (ehb positive) and the ecut keyword drops the weaker bond; ehb sign and the ecut comparison are checked
+# oracle: the acceptor at 16 Angstrom in y is outside rcut and never counts (the acceptors at 12.0 and 12.6 Angstrom give ehb 119.3 and 74.6, so ecut 100 keeps one and ecut 50 keeps both); the O-O Lennard-Jones term is zero (epsilon 0), so ehb is the Coulomb sum only
+# oracle-inputs: w41hb_ecut.data
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           real
+atom_style      full
+boundary        p p p
+read_data       w41hb_ecut.data
+pair_style      lj/cut/coul/cut 6.0
+pair_coeff      1 1 0.0 3.166
+pair_coeff      1 2 0.0 1.0
+pair_coeff      2 2 0.0 1.0
+pair_modify     mix arithmetic
+bond_style      harmonic
+bond_coeff      1 1000.0 1.0
+angle_style     harmonic
+angle_coeff     1 100.0 109.47
+special_bonds   lj/coul 0.0 0.0 0.0
+group           ogroup type 1
+group           hgroup type 2
+compute         ha all hbond/local 3.3 30.0 ogroup ogroup hgroup dist ehb
+compute         hb all hbond/local 3.3 30.0 ogroup ogroup hgroup dist ehb ecut 50.0
+compute         hc all hbond/local 3.3 30.0 ogroup ogroup hgroup dist ehb ecut 100.0
+compute         hd all hbond/local 3.3 30.0 ogroup ogroup hgroup dist hdist angle ehb ecut 0.0
+compute         ra all reduce sum c_ha[4] c_ha[5] inputs local
+compute         rb all reduce max c_hb[5] inputs local
+thermo_style    custom step c_ha c_hb c_hc c_hd c_ra[1] c_ra[2] c_rb
+thermo_modify   format float %.15g
+run             0

@@ -95,6 +95,14 @@ const coulShort = (
 
 export class PairLJLongCoulLong extends PairLJCutCoulLong {
   readonly name: string = 'lj/long/coul/long';
+  /**
+   * single() would give the plain lj/cut term for the LJ part, which is not the dispersion real-space term
+   * of this style, so the pairwise energy used by pair/local and hbond/local is refused (an EngineError
+   * names it) rather than returned wrong.
+   */
+  single(): { eng: number; fforce: number } {
+    throw new StyleError(`pairwise energies (compute pair/local, hbond/local ehb) are not supported for pair style lj/long/coul/long: its dispersion real-space term is not in single()`);
+  }
   /** flag_lj long: the dispersion real-space term; the k-space part is kspace ewald/disp. */
   ljLong = false;
   /** Dispersion G-ewald set by kspace ewald/disp at init (gewald/disp). */

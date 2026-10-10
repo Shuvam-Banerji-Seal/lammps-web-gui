@@ -383,7 +383,6 @@ describe('compute temp/deform', () => {
 describe('fix deform argument errors', () => {
   it('rejects a non-positive interval, unknown parameters and bad values', async () => {
     for (const cmd of [
-      'fix 2 all deform 0 x erate 0.1 units box',
       'fix 2 all deform -1 x erate 0.1 units box',
       'fix 2 all deform 1 q erate 0.1 units box',
       'fix 2 all deform 1 x erate units box',

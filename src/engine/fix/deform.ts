@@ -113,6 +113,8 @@ interface DimSpec {
   dim: number;
   tilt: boolean;
   style: DimStyle;
+  /** erate/rescale (tilt only). */
+  rescale?: boolean;
   lo?: number; hi?: number;   // final targets (box units)
   dlo?: number; dhi?: number; // delta amounts (box units)
   factor?: number;            // scale
@@ -159,7 +161,8 @@ export class FixDeform extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     const n = int(args[0], 'fix deform N');
-    if (n <= 0) throw new StyleError(`fix deform: N must be a positive step interval (got '${args[0]}')`);
+    // fix_deform.rst: "For N > 0, the box is updated at the end of the time step every N steps. For N = 0, the box is updated immediately after position updates on every time step."
+    if (n < 0) throw new StyleError(`fix deform: N must be zero or a positive step interval (got '${args[0]}')`);
     this.nevery = n;
     let units: string | null = null;
     // first pass: keywords (they may follow any parameter sequence)
@@ -185,6 +188,21 @@ export class FixDeform extends Fix {
       k += this.parseParam(args, k);
     }
     if (!this.specs.length) throw new StyleError('fix deform: at least one parameter (x, y, z, xy, xz, yz) is required');
+    // fix_deform.rst (live docs): for N = 0 the box update is not compatible with the variable style. Native error (black box), no quote marks:
+    // Fix deform cannot use the variable style with nevery = 0
+    if (n === 0 && this.specs.some((sp) => sp.style === 'variable')) {
+      throw new StyleError('fix deform cannot use the variable style with nevery = 0');
+    }
+    // erate/rescale: Measured with native LAMMPS (black box): with no length change the tilt
+    // equals the erate result (xy erate/rescale 0.05 and xy erate 0.05 print identical xy at steps 0-2 with
+    // Lx = 6.71838476553003). With x trate 0.02 the two differ (step 1: xy 0.504570858167162 for rescale
+    // against 0.504550695891306 for erate), because dT/dt = L_beta erate + (dL_alpha/dt)/L_alpha T.
+    // Only the lone-tilt case is implemented; the mixed-flow half-step scheme is refused.
+    if (this.specs.some((sp) => sp.rescale)) {
+      if (this.specs.length !== 1) {
+        throw new StyleError('fix deform: erate/rescale together with other parameters is not supported by the browser engine (only a lone xy, xz or yz erate/rescale)');
+      }
+    }
     if (sys.dimension === 2) {
       for (const sp of this.specs) {
         if (sp.name === 'z' || sp.name === 'xz' || sp.name === 'yz') {
@@ -224,14 +242,19 @@ export class FixDeform extends Fix {
     if (PRESSURE_STYLES.includes(style)) {
       throw new StyleError(`fix deform: style '${style}' belongs to fix deform/pressure, which is not supported by the browser engine`);
     }
+    // fix_deform.rst: "The *erate/rescale* style operates similarly to the *erate* style with a specified strain rate"
+    // The rescale variant is implemented only for a lone tilt parameter (see the check after the parse loop).
+    const rescale = style === 'erate/rescale';
+    if (rescale && !tilt) throw new StyleError(`fix deform: style 'erate/rescale' is only valid for tilt parameters (got ${name})`);
+    const st = rescale ? 'erate' : style;
     const allowed = tilt ? TILT_STYLES : LEN_STYLES;
-    if (!allowed.includes(style as DimStyle)) {
-      throw new StyleError(`fix deform: style '${style}' is not valid for parameter ${name} (allowed: ${allowed.join(' ')})`);
+    if (!allowed.includes(st as DimStyle)) {
+      throw new StyleError(`fix deform: style '${style}' is not valid for parameter ${name} (allowed: ${allowed.join(' ')}${tilt ? ' erate/rescale' : ''})`);
     }
-    const spec: DimSpec = { name, dim: tilt ? ['xy', 'xz', 'yz'].indexOf(name) : ['x', 'y', 'z'].indexOf(name), tilt, style: style as DimStyle };
+    const spec: DimSpec = { name, dim: tilt ? ['xy', 'xz', 'yz'].indexOf(name) : ['x', 'y', 'z'].indexOf(name), tilt, style: st as DimStyle, rescale };
     const numAt = (j: number, what: string): number => num(a[j], `fix deform ${name} ${style} ${what}`);
     let used = 2;
-    switch (style) {
+    switch (st) {
       case 'final':
         if (tilt) {
           spec.lo = numAt(k + 2, 'tilt');
@@ -314,8 +337,9 @@ export class FixDeform extends Fix {
   }
 
   setup(): void {
-    // LAMMPS calls end_of_step() from the fix's setup() as well
-    this.endOfStep();
+    // LAMMPS calls end_of_step() from the fix's setup() as well (also for N = 0)
+    if (this.nevery === 0) this.deform(true);
+    else this.endOfStep();
     // remap v: the first remap window starts at the run setup (the positions
     // and box the setup pbc and this deformation left behind)
     const s = this.sys.state;
@@ -328,7 +352,7 @@ export class FixDeform extends Fix {
 
   endOfStep(): void {
     const s = this.sys.state;
-    if (s.step % this.nevery !== 0) return;
+    if (this.nevery === 0 || s.step % this.nevery !== 0) return;
     this.deform(true);
   }
 
@@ -507,7 +531,7 @@ export class FixDeform extends Fix {
     // thermo output and dumps after end_of_step keep reporting this step's
     // force evaluation (energies, virial and per-atom forces), as LAMMPS does
     // when fix deform changes the box after final_integrate
-    sys.forcesCurrent();
+    if (this.nevery > 0) sys.forcesCurrent();
   }
 
   /** Streaming velocity the deforming box imposes at atom i's position. */
@@ -572,6 +596,13 @@ export class FixDeform extends Fix {
   }
 
   postIntegrate(): void {
+    // N = 0: the box is updated right after the position update, before the
+    // neighbour decision and the force evaluation of this step.
+    // Measured with native LAMMPS (black box; tests/oracle/w39nemd_n0_xy.in, w39nemd_n0_nocheck.in): the
+    // tilt printed after each step is the same for N = 0 and N = 1 (xy 0.504550695891306 at step 1, both),
+    // while the temperature differs from step 1 on (0.305927635580199 for N = 0, 0.305922908247966 for N = 1),
+    // so the box is changed before this step's neighbour wraps and kicks, not after the final half kick.
+    if (this.nevery === 0 && this.captured) this.deform(true);
     if (this.remapMode !== 'v' || !this.sys.hasBox) return;
     const s = this.sys.state;
     const g = this.sys.geom;

@@ -4,6 +4,7 @@ import type { System } from '../system';
 import { massOf } from '../atoms';
 import { RanMars } from '../rng';
 import { parseNumOrVar, ramp, valueOf, type NumOrVar } from './util';
+import { FixGravity } from './force_ext';
 
 /*
  * fix ID group rigid|rigid/nve|rigid/small|rigid/nve/small bodystyle ... —
@@ -202,6 +203,9 @@ export class FixRigid extends Fix {
   private customProp: string | null = null;
   /** keyword mol: molecule template-ID whose molecules may be added during the run (fix deposit rigid). */
   private molTemplateId: string | null = null;
+  /** keyword gravity: ID of the fix gravity whose acceleration is applied to each body's centre of mass. */
+  private gravityId: string | null = null;
+  private gravityFix: FixGravity | null = null;
   /** keyword infile: per-body attributes keyed by body ID (see parseInfile). */
   private infile: Map<string, InfileBody> | null = null;
   /** fix_modify bodyforces early: forces and torques are summed in post_force, not final_integrate. */
@@ -314,8 +318,14 @@ export class FixRigid extends Fix {
         // so the first draw is discarded (the draw is taken here, at fix creation).
         this.langRng.uniform();
         k += 5;
+      } else if (key === 'gravity') {
+        // docs.lammps.org/fix_rigid.html: "*gravity* values = gravity-ID", "gravity-ID = ID of fix gravity command to add gravitational forces"
+        const gid = args[k + 1];
+        if (!gid) throw new StyleError(`fix ${style}: keyword gravity needs a gravity-ID (Illegal fix ${style} gravity command: missing argument(s))`);
+        this.gravityId = gid;
+        k += 2;
       } else {
-        throw new StyleError(`fix ${style}: keyword '${key}' is not supported by the browser engine (supported: force, torque, reinit, infile, mol, langevin)`);
+        throw new StyleError(`fix ${style}: keyword '${key}' is not supported by the browser engine (supported: force, torque, reinit, infile, mol, langevin, gravity)`);
       }
     }
     if (this.molTemplateId && this.bodystyle !== 'molecule') {
@@ -480,6 +490,12 @@ export class FixRigid extends Fix {
     if (this.molTemplateId && !this.sys.molecules.has(this.molTemplateId)) {
       throw new StyleError(`fix ${this.style}: mol molecule template '${this.molTemplateId}' does not exist`);
     }
+    if (this.gravityId) {
+      const f = this.sys.fixes.find((x) => x.id === this.gravityId);
+      if (!f) throw new StyleError(`fix ${this.style} gravity: fix ID ${this.gravityId} does not exist`);
+      if (!(f instanceof FixGravity)) throw new StyleError(`fix ${this.style} gravity: fix ID ${this.gravityId} is not a gravity fix style`);
+      this.gravityFix = f;
+    }
     if (!this.built || this.reinit) { this.buildBodies(); this.built = true; }
   }
 
@@ -509,6 +525,9 @@ export class FixRigid extends Fix {
     const g = this.sys.geom;
     const idx = this.index();
     const u = [0, 0, 0];
+    // keyword gravity: the fix gravity's acceleration (force/mass units, internal) times the body mass
+    const acc = new Float64Array(3);
+    this.gravityFix?.accel(acc);
     for (const b of this.bodies) {
       const F = [0, 0, 0], T = [0, 0, 0];
       for (const id of b.atoms) {
@@ -519,6 +538,9 @@ export class FixRigid extends Fix {
         const t = cross(r, f);
         for (let d = 0; d < 3; d++) { F[d] += f[d]; T[d] += t[d]; }
       }
+      // docs.lammps.org/fix_rigid.html: "A gravity force will then be applied to each rigid body at its
+      // center-of-mass position using its total mass." The force has no torque.
+      if (this.gravityFix) for (let d = 0; d < 3; d++) F[d] += b.mass * acc[d];
       // stored unflagged (the global array reports them so, measured); the flags act on the kicks
       for (let d = 0; d < 3; d++) { b.fcm[d] = F[d]; b.torque[d] = T[d]; }
     }

@@ -1,0 +1,18 @@
+# oracle: fix rigid/small molecule gravity gravfix WITHOUT disable — atoms and bodies both get the force (double counted)
+# oracle-inputs: w37grav_six.data
+# oracle-compare: thermo=all atoms=all rel=1e-8
+units           lj
+atom_style      molecular
+boundary        f f f
+read_data       w37grav_six.data
+pair_style      lj/cut 1.0
+pair_coeff      * * 0.0 1.0
+comm_modify     cutoff 3.0
+timestep        0.001
+fix             gravfix all gravity 9.8 vector 0 0 -1
+fix             rigidfix all rigid/small molecule gravity gravfix
+fix_modify      gravfix energy yes
+thermo_style    custom step atoms ke pe etotal f_gravfix
+thermo_modify   format float %.15g
+thermo          50
+run             200

@@ -117,9 +117,19 @@ export class FixGravity extends Fix {
   private a1: NumOrVar;
   private a2: NumOrVar | null = null;
   private a3: NumOrVar | null = null;
+  /**
+   * Keyword "disable" (a trailing flag with no value). The docs copy this engine is written from
+   * (docs.lammps.org/fix_gravity.html) does not describe it, so the behaviour is measured with native
+   * LAMMPS (black box): the atoms get no force (their forces stay 0), while fix rigid/small ... gravity
+   * still reads the acceleration through accel(); the scalar and the fix_modify energy term are 0.
+   */
+  private disabled = false;
 
-  constructor(sys: System, id: string, group: string, args: string[]) {
-    super(sys, id, group, args);
+  constructor(sys: System, id: string, group: string, argsIn: string[]) {
+    super(sys, id, group, argsIn);
+    // trailing keyword "disable" (no value) may follow the style arguments
+    const args = argsIn.slice();
+    while (args.length > 0 && args[args.length - 1] === 'disable') { args.pop(); this.disabled = true; }
     if (args.length < 2) throw new StyleError('usage: fix ID group gravity magnitude style args');
     this.magnitude = parseNumOrVar(args[0], 'gravity magnitude');
     const style = args[1];
@@ -139,8 +149,9 @@ export class FixGravity extends Fix {
       this.a3 = parseNumOrVar(args[4], 'gravity vector z');
       this.kind = 'vector';
       // a constant zero direction is rejected when the fix is defined; a
-      // variable that evaluates to zero at some step is caught in gvec()
-      if (typeof this.a1 === 'number' && typeof this.a2 === 'number' && typeof this.a3 === 'number'
+      // variable that evaluates to zero at some step is caught in gvec().
+      // A disabled fix never evaluates its direction for the atoms, so it is not rejected here.
+      if (!this.disabled && typeof this.a1 === 'number' && typeof this.a2 === 'number' && typeof this.a3 === 'number'
         && this.a1 === 0 && this.a2 === 0 && this.a3 === 0) {
         throw new StyleError(`fix ${id} gravity: the vector direction must be non-zero`);
       }
@@ -188,8 +199,20 @@ export class FixGravity extends Fix {
     }
   }
 
+  /**
+   * Acceleration this fix imposes, in internal force/mass units (magnitude * direction / ftm2v), whether
+   * or not the fix is disabled: fix rigid ... gravity reads it for each body. Measured with native
+   * LAMMPS (black box): with the gravity keyword the body force is the body mass times this acceleration.
+   */
+  accel(out: Float64Array): void {
+    this.gvec(out);
+    const c = valueOf(this.sys, this.magnitude) / this.sys.state.units.ftm2v;
+    out[0] *= c; out[1] *= c; out[2] *= c;
+  }
+
   /** F = mass * magnitude * direction; "the same acceleration to each atom". */
   postForce(): void {
+    if (this.disabled) return;
     const s = this.sys.state;
     const g = new Float64Array(3);
     this.gvec(g);
@@ -214,6 +237,8 @@ export class FixGravity extends Fix {
    * w2fdamp_gravity / w2fdamp_gravity_chute).
    */
   private energyNow(): number {
+    // Measured with native LAMMPS (black box): with disable the scalar and the fix_modify energy term are 0.
+    if (this.disabled) return 0;
     const s = this.sys.state;
     const g = new Float64Array(3);
     this.gvec(g);

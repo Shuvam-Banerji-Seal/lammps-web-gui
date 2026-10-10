@@ -423,7 +423,7 @@ export class FixWidom extends Fix {
         coords[3 * a + 1] = p[1] + rot[1][0] * rx + rot[1][1] * ry + rot[1][2] * rz;
         coords[3 * a + 2] = p[2] + rot[2][0] * rx + rot[2][1] * ry + rot[2][2] * rz;
       }
-      appendMolecule(sys, t, 0, coords, [0, 0, 0], maxMoleculeId(s) + 1, this.groupBit);
+      appendMolecule(sys, t, 0, coords, [0, 0, 0], maxMoleculeId(s) + 1, this.groupBit, undefined, rot);
       sys.atomsChanged();
       dU = this.potentialEnergy() - eBefore;
       if (!this.fullEnergy) dU -= this.intraMolEnergy;

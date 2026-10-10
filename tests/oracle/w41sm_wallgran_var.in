@@ -1,0 +1,25 @@
+# oracle: fix wall/gran hooke/history with hi = v_zhi, a zplane wall position set by an equal-style variable evaluated every step (velocity from the position change over dt, zero at the first evaluation); 150 spheres falling onto a fixed floor under the moving ceiling, 200 steps
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      sphere
+atom_modify     map array
+comm_modify     vel yes
+boundary        p p f
+lattice         sc 0.9
+region          b block 0 5 0 5 0 6
+create_box      1 b
+create_atoms    1 box
+set             type 1 diameter 1.0 density 1.0
+displace_atoms  all move 0 0 0.6 units box
+velocity        all set 0 0 -0.6 units box
+pair_style      none
+timestep        0.0005
+variable        zhi equal 5.4-0.5*step*0.0005
+fix             1 all nve/sphere
+fix             2 all gravity 1.0 vector 0 0 -1
+fix             3 all wall/gran hooke/history 2000.0 NULL 50.0 NULL 0.5 0 zplane 0.0 v_zhi
+compute         er all erotate/sphere
+thermo_style    custom step ke c_er pe press
+thermo_modify   format float %.15g
+thermo          25
+run             200

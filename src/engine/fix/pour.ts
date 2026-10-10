@@ -1,9 +1,9 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { RanPark } from '../rng';
-import { appendAtoms, maxAtomId, pushTopo, sphereMass, isSphereStyle, hasChargeStyle, SPHERE_DEFAULT_RADIUS } from '../atoms';
+import { appendAtoms, maxAtomId, pushTopo, sphereMass, isSphereStyle, hasChargeStyle, hasDipoleStyle, SPHERE_DEFAULT_RADIUS } from '../atoms';
 import { BlockRegion, ConeRegion, type Param, type Region } from '../region';
-import { geometricCenter, rotationMatrix, type MoleculeTemplate } from '../molecule';
+import { geometricCenter, rotationMatrix, rotateDipoles, templateDipoles, type MoleculeTemplate } from '../molecule';
 import type { System } from '../system';
 
 /*
@@ -220,7 +220,7 @@ export const gravityMagnitude = (sys: System, what: string): number => {
  */
 export const appendMolecule = (
   sys: System, t: MoleculeTemplate, toff: number, pos: Float64Array,
-  vel: readonly number[], molId: number, gbit: number, ids?: Int32Array,
+  vel: readonly number[], molId: number, gbit: number, ids?: Int32Array, rot?: number[][],
 ): number => {
   const s = sys.state;
   const n = t.natoms;
@@ -228,6 +228,7 @@ export const appendMolecule = (
   for (let i = 0; i < n; i++) types[i] = t.type[i] + toff;
   for (const ty of types) if (ty < 1 || ty > s.ntypes) throw new StyleError(`molecule ${t.id}: atom type ${ty} is outside 1..${s.ntypes}`);
   if (t.q && !hasChargeStyle(s.atomStyle)) throw new StyleError(`molecule ${t.id} has charges, which atom_style ${s.atomStyle} cannot store`);
+  if (t.mu && !hasDipoleStyle(s.atomStyle)) throw new StyleError(`molecule ${t.id} has dipoles, which atom_style ${s.atomStyle} cannot store`);
   const image = new Int32Array(3 * n);
   for (let i = 0; i < n; i++) sys.geom.remap(pos, image, i);
   const v = new Float64Array(3 * n);
@@ -245,7 +246,9 @@ export const appendMolecule = (
     for (let i = 0; i < n; i++) rmass[i] = t.mass ? t.mass[i] : sphereMass(radius![i], 1);
   }
   const base = ids && ids.length ? ids[0] - 1 : maxAtomId(s);
-  appendAtoms(s, { x: pos, type: types, v, image, molecule, q, mask: gbit, id: ids, radius, rmass });
+  // the dipoles turn with the molecule's random orientation (rot); fix pour and fix deposit pass it
+  const mu = templateDipoles(t, 1, rot && t.mu ? rotateDipoles(t, rot) : undefined);
+  appendAtoms(s, { x: pos, type: types, v, image, molecule, q, mask: gbit, id: ids, radius, rmass, mu });
   for (const [what, list] of [['bonds', t.bonds], ['angles', t.angles], ['dihedrals', t.dihedrals], ['impropers', t.impropers]] as const) {
     if (!list.length) continue;
     for (const e of list) pushTopo(s.topo[what], e[0], e.slice(1).map((k) => base + k));
@@ -537,13 +540,13 @@ export class FixPour extends Fix {
     // accepted atoms (no mol) and molecules
     const ax: number[] = [], ay: number[] = [], az: number[] = [], ar: number[] = [], am: number[] = [];
     const avx: number[] = [], avy: number[] = [], avz: number[] = [];
-    const mols: { pos: Float64Array; v: [number, number, number] }[] = [];
+    const mols: { pos: Float64Array; v: [number, number, number]; rot: number[][] }[] = [];
     for (let k = 0; k < nnew; k++) {
       // the fall coordinate is drawn once per particle; overlap retries keep it
       const uz = this.rng.uniform();
       const f = fLo + H * (1 - uz * uz);
       if (t) {
-        let placed = false, pos: Float64Array | null = null;
+        let placed = false, pos: Float64Array | null = null, placedRot: number[][] | null = null;
         while (tries < budget) {
           tries++;
           const x = reg.xlo + this.rng.uniform() * (reg.xhi - reg.xlo);
@@ -567,7 +570,7 @@ export class FixPour extends Fix {
             hit = overlaps(cand[3 * a], cand[3 * a + 1], cand[3 * a + 2], rad, nOld + cx.length);
           }
           if (hit) continue;
-          placed = true; pos = cand; break;
+          placed = true; pos = cand; placedRot = R; break;
         }
         if (!placed) break;
         const vx = this.vel[0] + this.rng.uniform() * (this.vel[1] - this.vel[0]);
@@ -578,7 +581,7 @@ export class FixPour extends Fix {
           cx.push(pos![3 * a]); cy.push(pos![3 * a + 1]); cz.push(pos![3 * a + 2]);
           cr.push(t.diam ? t.diam[a] / 2 : SPHERE_DEFAULT_RADIUS);
         }
-        mols.push({ pos: pos!, v });
+        mols.push({ pos: pos!, v, rot: placedRot! });
       } else {
         const rad = this.drawRadius() / 2;
         let x = 0, y = 0, z = 0, found = false;
@@ -612,7 +615,7 @@ export class FixPour extends Fix {
           const ids = this.idNext ? new Int32Array(t.natoms) : undefined;
           if (ids) for (let k = 0; k < t.natoms; k++) ids[k] = ++this.nextId;
           const molId = this.idNext ? ++this.nextMolId : maxMoleculeId(s) + 1;
-          const firstId = appendMolecule(sys, t, this.type, m.pos, m.v, molId, this.groupBit, ids);
+          const firstId = appendMolecule(sys, t, this.type, m.pos, m.v, molId, this.groupBit, ids, m.rot);
           if (this.rigidFix) (this.rigidFix as unknown as RigidAdder).addMolecule(Array.from({ length: t.natoms }, (_, k) => firstId + k));
           if (this.shakeFix) (this.shakeFix as unknown as ClusterRebuilder).rebuildClusters();
         }

@@ -60,7 +60,8 @@ export class Variables {
   /** Guards against self-referencing formulas. */
   private depth = 0;
 
-  constructor(private readFile: (name: string) => string) {}
+  /** warn: prints a WARNING line (the session's log). */
+  constructor(private readFile: (name: string) => string, private warn: (text: string) => void = () => undefined) {}
 
   has(name: string): boolean { return this.vars.has(name); }
   get(name: string): Variable | undefined { return this.vars.get(name); }
@@ -202,14 +203,26 @@ export class Variables {
         if (v.which >= v.values.length) { exhausted = true; this.vars.delete(nm); }
       } else if (v.style === 'file') {
         const line = v.lines!.shift();
-        if (line === undefined) { exhausted = true; this.vars.delete(nm); } else v.values = [line];
+        if (line === undefined) { exhausted = true; this.autoDelete(nm); } else v.values = [line];
       } else if (v.style === 'atomfile') {
-        if (!this.nextAtomfile(v)) { exhausted = true; this.vars.delete(nm); }
+        if (!this.nextAtomfile(v)) { exhausted = true; this.autoDelete(nm); }
       } else {
         throw new StyleError(`variable ${nm} (style ${v.style}) cannot be used with next`);
       }
     }
     return exhausted;
+  }
+
+  /**
+   * variable.html (versionchanged 4Jul2026): "LAMMPS prints a warning when a file or atomfile style
+   * variable is exhausted and auto-deleted." Measured with native LAMMPS (black box): the warning
+   * is printed once, by the next command that exhausts the variable, as Auto-deleting variable a;
+   * exhausted index and loop variables print nothing. A deleted variable is then undefined here, so
+   * a later reference throws.
+   */
+  private autoDelete(nm: string): void {
+    this.warn(`Auto-deleting variable ${nm}`);
+    this.vars.delete(nm);
   }
 
   /** Text of a variable for $name / ${name} substitution. */

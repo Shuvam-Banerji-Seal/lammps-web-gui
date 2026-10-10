@@ -1107,28 +1107,64 @@ const group: Handler = ({ sys }, a) => {
 /*
  * group ID dynamic parent-ID keyword value ... — docs.lammps.org/group.html:
  *   *dynamic* args = parent-ID keyword value ...
- *     keyword = *region* or *var* or *property* or *every*
+ *     keyword = *region* or *var* or *property* or *every* or *within* or *include* or *exclude*
  * "A group with the ID all is predefined. All atoms belong to this group.
  * This group cannot be deleted, or made dynamic." "If the *var* keyword is
  * used, the variable name must be an atom-style or atomfile-style variable."
  * "Note that the name of the custom per-atom vector is specified just as
  * *name*, not as *i_name* or *d_name*".
+ * "The optional *within* keyword with its *cutoff* argument adds atoms to a
+ * dynamic group that are within the given cutoff distance from any of the
+ * atoms selected for the dynamic group."
+ * "The optional *include* keyword with its argument *molecule* adds atoms
+ * to a dynamic group that have the same molecule ID as atoms already in the
+ * group." "Atoms with the molecule ID = 0 are ignored in this operation"
+ * "The optional *exclude* keyword has a group ID as argument and after all
+ * other atom selections for the dynamic group have been performed, it
+ * removes selected atoms that are in the specified group from the dynamic
+ * group."
  * Measured with native LAMMPS (black box): the group keeps its atoms until the
  * next run assigns them; the command logs "dynamic group ID defined"; a
  * missing region, variable or property and a non-positive every stop at the
- * command, the variable style and a dynamic parent at the next run; the
- * error texts below are native's.
+ * command, the variable style and a dynamic parent at the next run; a within
+ * cutoff of 0 or below stops at the command (Illegal within cutoff value 0
+ * for dynamic group d); a non-numeric within value stops with the input
+ * parser's floating point error; a missing argument of within, include or
+ * exclude stops at the command; include with anything other than molecule
+ * stops with Unknown include setting atom in dynamic group command; a
+ * repeated within keeps the last cutoff; the error texts below are native's.
  */
 const groupDynamic = (sys: System, id: string, args: string[]): void => {
   const parent = args[0];
-  if (!parent || args.length < 3) throw new StyleError('Illegal group command: usage group ID dynamic parent-ID keyword value ...');
+  if (!parent || args.length < 2) throw new StyleError('Illegal group command: usage group ID dynamic parent-ID keyword value ...');
   if (parent === id) throw new StyleError('Group dynamic cannot reference itself');
   if (sys.groups.find(parent) < 0) throw new StyleError(`Group dynamic parent group ${parent} does not exist`);
   if (id === 'all') throw new StyleError('Group all cannot be made dynamic');
-  const g: DynamicGroup = { parent, region: null, variable: null, property: null, every: 1 };
+  const g: DynamicGroup = {
+    parent, region: null, variable: null, property: null, every: 1, within: null, includeMolecule: false, exclude: null,
+  };
   for (let k = 1; k < args.length; k += 2) {
     const key = args[k], val = args[k + 1];
-    if (!['region', 'var', 'property', 'every'].includes(key)) throw new StyleError(`Unknown keyword ${key} in dynamic group command`);
+    if (!['region', 'var', 'property', 'every', 'within', 'include', 'exclude'].includes(key)) throw new StyleError(`Unknown keyword ${key} in dynamic group command`);
+    if (key === 'within') {
+      if (val === undefined) throw new StyleError('Illegal group dynamic within command: missing argument(s)');
+      const c = Number(val);
+      if (val.trim() === '' || !Number.isFinite(c)) throw new StyleError(`Expected floating point parameter instead of '${val}' in input script or data file`);
+      if (c <= 0) throw new StyleError(`Illegal within cutoff value ${c} for dynamic group ${id}`);
+      g.within = c;
+      continue;
+    }
+    if (key === 'include') {
+      if (val === undefined) throw new StyleError('Illegal group dynamic include command: missing argument(s)');
+      if (val !== 'molecule') throw new StyleError(`Unknown include setting ${val} in dynamic group command`);
+      g.includeMolecule = true;
+      continue;
+    }
+    if (key === 'exclude') {
+      if (val === undefined) throw new StyleError('Illegal group dynamic exclude command: missing argument(s)');
+      g.exclude = val;
+      continue;
+    }
     if (val === undefined) throw new StyleError(`Illegal group dynamic command: missing value for ${key}`);
     if (key === 'region') {
       if (!sys.regions.has(val)) throw new StyleError(`Region ${val} for dynamic group ${id} does not exist`);
@@ -2154,6 +2190,7 @@ const changeBox: Handler = ({ sys }, a) => {
   }
   b.minLo = [...b.lo]; b.minHi = [...b.hi];
   sys.geom.update();
+  sys.checkLostBoxChange();
   for (const f of sys.fixes) f.boxChanged?.();
   sys.nb.lastBuild = -1;
   sys.bump();

@@ -1,0 +1,22 @@
+# oracle: a file-style loop reads its values with next and jump, then reads past the end (auto-deleted, the jump is skipped)
+# oracle-inputs: w40core_vals.txt
+# oracle-compare: thermo=all atoms=none rel=1e-12 abs=1e-14
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            * 1.0
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+variable        a file w40core_vals.txt
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+label           loop
+variable        b equal v_a*2+1
+print           "value $b"
+run             0 post no
+next            a
+jump            SELF loop
+print           "loop finished"

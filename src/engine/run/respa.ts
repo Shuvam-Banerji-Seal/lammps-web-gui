@@ -4,6 +4,7 @@ import type { LevelSelect, PerAtomTerm } from '../force/forcefield';
 import { PairHybrid } from '../force/pair/hybrid';
 import { clearAccum, newAccum, StyleError, type Accum } from '../force/types';
 import { yieldNow, type RunHooks } from './verlet';
+import { restartDue } from '../commands/restart';
 
 /*
  * run_style respa (rRESPA, Tuckerman, Berne and Martyna, J Chem Phys 97, 1990 (1992)).
@@ -260,6 +261,7 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
     sys.bump();
     // the neighbor decision and any sorting happen on the outer step only; cached level forces are
     // recomputed after a rebuild (the sort changes the atom order)
+    nb.forceBuildStep = restartDue(sys, s.step) ? s.step : -1;
     if (nb.decide(s.step, s, geom)) {
       sys.pbc();
       sys.sortAtoms(false);

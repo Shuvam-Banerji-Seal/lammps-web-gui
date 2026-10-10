@@ -52,6 +52,15 @@ export const topologyLevel = (st: AtomStyle): number => {
 /** Per-atom charges exist: from the atom style or from fix property/atom q. */
 export const hasCharge = (s: SimState): boolean => hasChargeStyle(s.atomStyle) || s.propQ;
 /** A custom property attribute name (fix property/atom). */
+/**
+ * fix property/atom temperature and heatflow (GRANULAR heat conduction) are stored in the custom per-atom map
+ * under these keys. The '#' cannot start an i_name / d_name, so no user property can clash with them.
+ * fix_property_atom.html: "For finite-size particles, an internal temperature and heat flow can be used to
+ * model heat conduction as in the GRANULAR package."
+ */
+export const HEAT_TEMPERATURE = '#temperature';
+export const HEAT_FLOW = '#heatflow';
+
 export const CUSTOM_ATTR = /^(i|d)(2?)_([A-Za-z0-9_]+)(?:\[(\d+|\*)\])?$/;
 
 /**

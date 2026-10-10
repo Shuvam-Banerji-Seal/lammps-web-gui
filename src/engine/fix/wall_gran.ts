@@ -2,7 +2,8 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { parseNum } from '../force/util';
 import type { System } from '../system';
-import { granularContact, newContactOut, parseGranularSpec, PairGranular, type ContactOut, type Pm } from '../force/pair/granular';
+import { granularContact, heatFlowOf, newContactOut, parseGranularSpec, PairGranular, type ContactOut, type Pm } from '../force/pair/granular';
+import { HEAT_FLOW, HEAT_TEMPERATURE } from '../atoms';
 
 /** The classic fstyles of fix wall/gran/region (hooke, hooke/history, hertz/history). */
 const CLASSIC_FSTYLES = ['hooke', 'hooke/history', 'hertz/history'] as const;
@@ -344,6 +345,8 @@ export class FixWallGranGranular extends Fix {
   private readonly regionId: string | null;
   private readonly step0: number;
   private shear = new Map<string, Float64Array>();
+  /** keyword temperature: a number, or the name of an equal-style variable (v_name); null when not given. */
+  private wallT: number | string | null = null;
   private readonly out: ContactOut = newContactOut();
   /** Previous move/rotate state of every sub-region, for the surface velocity. */
   private readonly prevStates = new Map<Region, { d: [number, number, number]; theta: number }>();
@@ -379,7 +382,7 @@ export class FixWallGranGranular extends Fix {
       pmOut = {
         normal: 'hooke', kn, Eeff: 0, gamma: 0, eta: gn, damp: 'mass_velocity',
         tang: hist ? 'linear_history' : 'linear_nohistory', kt, xgt: gn > 0 ? gtEff / gn : 0, mu: xmu,
-        roll: 'none', kr: 0, gr: 0, mr: 0, twist: 'none', kw: 0, gw: 0, mw: 0, limit, cutoff: -1, sig: 'legacy',
+        roll: 'none', kr: 0, gr: 0, mr: 0, twist: 'none', kw: 0, gw: 0, mw: 0, limit, cutoff: -1, heat: 'none', hk: 0, sig: 'legacy',
       };
     } else {
       while (k < args.length && !(WALL_WORDS as readonly string[]).includes(args[k])) k++;
@@ -426,11 +429,19 @@ export class FixWallGranGranular extends Fix {
       } else if (w === 'contacts') {
         throw new StyleError(`fix ${id} ${this.style} keyword contacts is not supported yet`);
       } else if (w === 'temperature') {
-        throw new StyleError(`fix ${id} ${this.style} keyword temperature is not supported yet (needs a heat model)`);
+        // fix_wall_gran.html: "The following value can either be a numeric value or an equal-style variable. If the value is a variable, it should be specified as v_name"
+        const tw = args[k + 1];
+        if (tw === undefined) throw new StyleError(`fix ${id} ${this.style} temperature needs a value`);
+        this.wallT = tw.startsWith('v_') ? tw.slice(2) : parseNum(tw, 'wall temperature');
+        k += 2;
       } else {
         throw new StyleError(`fix ${id} ${this.style}: unknown keyword or argument '${w}'`);
       }
     }
+    // heat conduction: the wall temperature and the heat model go together (measured with native LAMMPS: a heat model
+    // without the temperature keyword, and the keyword with heat none, both stop with Must define wall temperature with heat model)
+    if (this.pm.heat !== 'none' && this.wallT === null) throw new StyleError(`fix ${id} ${this.style}: heat ${this.pm.heat} needs the temperature keyword (wall temperature)`);
+    if (this.pm.heat === 'none' && this.wallT !== null) throw new StyleError(`fix ${id} ${this.style}: temperature needs a heat model (heat radius or heat area)`);
     if (this.motion && this.planes.length) {
       for (const p of this.planes) {
         if (this.motion.kind === 'shear' && this.motion.dim === p.dim) throw new StyleError('Invalid shear direction for fix wall/gran (shear must be tangential to the wall)');
@@ -443,6 +454,9 @@ export class FixWallGranGranular extends Fix {
     for (const p of this.planes) {
       if (s.dimension === 2 && p.dim === 2) throw new StyleError('fix wall/gran: cannot use a z wall in a 2d simulation');
       if (s.box.periodic[p.dim]) throw new StyleError('Cannot use wall in periodic dimension');
+    }
+    if (this.pm.heat !== 'none' && (!s.custom.has(HEAT_TEMPERATURE) || !s.custom.has(HEAT_FLOW))) {
+      throw new StyleError(`fix ${this.id} ${this.style}: heat conduction needs fix property/atom temperature heatflow`);
     }
   }
 
@@ -523,6 +537,12 @@ export class FixWallGranGranular extends Fix {
     const jkr = pm.normal === 'jkr';
     const vel = new Map<Region, { ddot: number[]; omega: number[]; d: number[] }>();
     if (this.regionId) this.updateVelocities(dt, vel);
+    // heat conduction (fix_wall_gran.html, temperature keyword): the wall temperature of this step, from a constant or an
+    // equal-style variable evaluated now
+    const heat = pm.heat !== 'none';
+    const T = heat ? s.custom.get(HEAT_TEMPERATURE)!.data : null;
+    const HF = heat ? s.custom.get(HEAT_FLOW)!.data : null;
+    const Tw = typeof this.wallT === 'string' ? this.sys.equalVariable(this.wallT) : (this.wallT ?? 0);
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & bit)) continue;
       const R = radius[i];
@@ -583,6 +603,7 @@ export class FixWallGranGranular extends Fix {
         if (this.out.hist) this.shear.set(key, sh);
         f[3 * i] += this.out.fx; f[3 * i + 1] += this.out.fy; f[3 * i + 2] += this.out.fz;
         torque[3 * i] += this.out.tix; torque[3 * i + 1] += this.out.tiy; torque[3 * i + 2] += this.out.tiz;
+        if (HF) HF[i] += heatFlowOf(pm.heat, pm.hk, this.out.a, Tw - T![i]);
       }
     }
   }

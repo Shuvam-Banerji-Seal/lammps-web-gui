@@ -2,7 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { SimState } from '../types';
-import { hasChargeStyle, isMolecularStyle } from '../atoms';
+import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle } from '../atoms';
 import { shortest } from '../output/data';
 
 /*
@@ -33,11 +33,17 @@ import { shortest } from '../output/data';
  * (likewise q / charge, rmass) and Invalid array columns number N in fix
  * property/atom. The ghost
  * keyword only changes communication, which a single-process engine does
- * not need. temperature and heatflow (GRANULAR heat conduction) are not
- * supported here.
+ * not need.
+ * temperature and heatflow (GRANULAR heat conduction) are one value per atom, stored under HEAT_TEMPERATURE and
+ * HEAT_FLOW (atoms.ts). fix_property_atom.html: "If the atom style does not define molecule IDs, per-atom charge,
+ * per-atom mass, internal temperature, or internal heat flow, they can be added using the mol, q, rmass,
+ * temperature, or heatflow keywords."
  */
 
-interface PropSpec { kind: 'mol' | 'q' | 'rmass' | 'i' | 'd'; name: string; cols: number }
+interface PropSpec { kind: 'mol' | 'q' | 'rmass' | 'i' | 'd' | 'temperature' | 'heatflow'; name: string; cols: number }
+
+/** The custom-map key of a temperature / heatflow property. */
+const heatKey = (kind: 'temperature' | 'heatflow'): string => (kind === 'temperature' ? HEAT_TEMPERATURE : HEAT_FLOW);
 
 /** The fix's per-atom values as a restart file keeps them (output/restart.ts). */
 export interface PropertyAtomRestart { id: string; props: PropSpec[]; data: Record<string, number[]> }
@@ -61,9 +67,8 @@ export class FixPropertyAtom extends Fix {
       }
       let spec: PropSpec;
       if (w === 'mol' || w === 'q' || w === 'rmass') spec = { kind: w, name: w, cols: 0 };
-      else if (w === 'temperature' || w === 'heatflow') {
-        throw new StyleError(`fix property/atom ${w} (GRANULAR heat conduction) is not supported by the browser engine`);
-      } else {
+      else if (w === 'temperature' || w === 'heatflow') spec = { kind: w, name: w, cols: 0 };
+      else {
         const m = /^(i|d)(2?)_([A-Za-z0-9_]+)$/.exec(w);
         if (!m) throw new StyleError(`Illegal fix property/atom command: unknown property '${w}'`);
         let cols = 0;
@@ -102,12 +107,13 @@ export class FixPropertyAtom extends Fix {
       && saved.props.every((p, k) => p.kind === this.props[k].kind && p.name === this.props[k].name && p.cols === this.props[k].cols);
     if (!same) throw new StyleError(`fix ${this.id} property/atom does not define the same properties as the fix that wrote the restart file`);
     for (const p of this.props) {
-      const key = p.kind === 'mol' || p.kind === 'q' || p.kind === 'rmass' ? p.kind : `${p.kind}_${p.name}`;
+      const key = p.kind === 'mol' || p.kind === 'q' || p.kind === 'rmass' || p.kind === 'temperature' || p.kind === 'heatflow' ? p.kind : `${p.kind}_${p.name}`;
       const v = saved.data[key];
       if (!v) continue;
       if (p.kind === 'mol') s.molecule.set(v.slice(0, s.n));
       else if (p.kind === 'q') s.q.set(v.slice(0, s.n));
       else if (p.kind === 'rmass') s.rmass!.set(v.slice(0, s.n));
+      else if (p.kind === 'temperature' || p.kind === 'heatflow') s.custom.get(heatKey(p.kind))!.data.set(v.slice(0, s.n));
       else s.custom.get(p.name)!.data.set(v.slice(0, s.custom.get(p.name)!.data.length));
     }
   }
@@ -120,11 +126,13 @@ export class FixPropertyAtom extends Fix {
       if (p.kind === 'q' && (hasChargeStyle(s.atomStyle) || s.propQ)) throw new StyleError('Fix property/atom q when atom_style already has charge attribute');
       if (p.kind === 'rmass' && s.rmass) throw new StyleError('Fix property/atom rmass when atom_style already has rmass attribute');
       if ((p.kind === 'i' || p.kind === 'd') && s.custom.has(p.name)) throw new StyleError(`Fix property/atom ${p.cols ? 'array' : 'vector'} name already exists`);
+      if ((p.kind === 'temperature' || p.kind === 'heatflow') && s.custom.has(heatKey(p.kind))) throw new StyleError(`Fix property/atom ${p.name} already exists`);
     }
     for (const p of this.props) {
       if (p.kind === 'mol') s.propMol = true;
       else if (p.kind === 'q') s.propQ = true;
       else if (p.kind === 'rmass') s.rmass = new Float64Array(s.n);
+      else if (p.kind === 'temperature' || p.kind === 'heatflow') s.custom.set(heatKey(p.kind), { int: false, cols: 0, data: new Float64Array(s.n) });
       else s.custom.set(p.name, { int: p.kind === 'i', cols: p.cols, data: new Float64Array(s.n * Math.max(p.cols, 1)) });
     }
     this.attached = s;
@@ -138,6 +146,7 @@ export class FixPropertyAtom extends Fix {
       if (p.kind === 'mol') s.propMol = false;
       else if (p.kind === 'q') s.propQ = false;
       else if (p.kind === 'rmass') s.rmass = null;
+      else if (p.kind === 'temperature' || p.kind === 'heatflow') s.custom.delete(heatKey(p.kind));
       else s.custom.delete(p.name);
     }
     this.attached = null;
@@ -163,6 +172,7 @@ export class FixPropertyAtom extends Fix {
       if (p.kind === 'mol') s.molecule[i] = Math.trunc(num(w[k++]));
       else if (p.kind === 'q') s.q[i] = num(w[k++]);
       else if (p.kind === 'rmass') s.rmass![i] = num(w[k++]);
+      else if (p.kind === 'temperature' || p.kind === 'heatflow') s.custom.get(heatKey(p.kind))!.data[i] = num(w[k++]);
       else {
         const c = s.custom.get(p.name)!;
         const width = Math.max(c.cols, 1);
@@ -186,6 +196,7 @@ export class FixPropertyAtom extends Fix {
       if (p.kind === 'mol') out.push(String(s.molecule[i]));
       else if (p.kind === 'q') out.push(shortest(s.q[i]));
       else if (p.kind === 'rmass') out.push(shortest(s.rmass![i]));
+      else if (p.kind === 'temperature' || p.kind === 'heatflow') out.push(shortest(s.custom.get(heatKey(p.kind))!.data[i]));
       else {
         const c = s.custom.get(p.name)!;
         const width = Math.max(c.cols, 1);

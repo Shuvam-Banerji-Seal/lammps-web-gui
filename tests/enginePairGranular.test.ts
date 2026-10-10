@@ -57,7 +57,9 @@ describe('pair_style granular argument errors', () => {
   });
   it('names the unimplemented damping and tangential options', () => {
     expect(() => parseGranularSpec(['hooke', '1000', '50', 'tangential', 'linear_nohistory', '1', '0.4', 'damping', 'coeff_restitution'])).toThrow(/coeff_restitution/);
-    expect(() => parseGranularSpec(['hooke', '1000', '50', 'tangential', 'linear_nohistory', '1', '0.4', 'heat', 'area', '0.1'])).toThrow(/heat/);
+    // heat area is implemented (wave 38); a bad heat model is still named
+    expect(() => parseGranularSpec(['hooke', '1000', '50', 'tangential', 'linear_nohistory', '1', '0.4', 'heat', 'area', '0.1'])).not.toThrow();
+    expect(() => parseGranularSpec(['hooke', '1000', '50', 'tangential', 'linear_nohistory', '1', '0.4', 'heat', 'volume', '0.1'])).toThrow(/heat/);
   });
   it('rejects NULL k_t for linear_history', () => {
     expect(() => parseGranularSpec(['hooke', '1000', '50', 'tangential', 'linear_history', 'NULL', '1', '0.4'])).toThrow(/NULL/);

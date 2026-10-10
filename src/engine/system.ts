@@ -17,7 +17,7 @@ import type { Lattice } from './lattice';
 import { Rng } from './rng';
 import { Thermo } from './output/thermo';
 import type { Dump } from './output/dump';
-import { buildAtomMap, deleteAtoms as deleteAtomsImpl, massOf, customAttr, nativeOrder } from './atoms';
+import { buildAtomMap, deleteAtoms as deleteAtomsImpl, massOf, customAttr, nativeOrder, hasMolecule } from './atoms';
 import { groupFunction } from './groupfn';
 import { defaultMinSettings, type MinSettings } from './run/min';
 
@@ -97,7 +97,7 @@ export class System {
 
   constructor(readonly io: SessionIO) {
     this.nb = new Neighbor(this.units.skin);
-    this.vars = new Variables((name) => this.readFile(name));
+    this.vars = new Variables((name) => this.readFile(name), (text) => this.warn(text));
     this.thermo = new Thermo(this);
   }
 
@@ -215,6 +215,7 @@ export class System {
     this.ff.init(s, this.nb, this.geom, this.styleContext());
     this.pbc();
     this.nb.build(s, this.geom, s.step);
+    this.checkDynamicWithin();
   }
 
   /** domain->pbc() and reset_box(): wrap periodic coordinates, shrink-wrap, drop lost atoms. */
@@ -261,10 +262,40 @@ export class System {
 
   /** Atoms outside a fixed (f) boundary: "it will be deleted on the next timestep that reneighboring occurs" (boundary.html). */
   private checkLost(): void {
+    const lost = this.lostFlags();
+    if (!lost) return;
+    const mode = this.thermo.lost;
+    if (mode === 'error') throw new StyleError(`lost atoms: ${lost.nlost} atom(s) left the box through a fixed (f) boundary (thermo_modify lost ignore/warn allows this)`);
+    if (mode === 'warn') this.warn(`lost ${lost.nlost} atom(s) through a fixed boundary`);
+    this.deleteAtoms(lost.flags);
+  }
+
+  /**
+   * change_box: atoms left outside a fixed boundary follow the thermo_modify lost setting.
+   * change_box.html: "Atoms that end up outside of non-periodic boundaries as a result of this
+   * command are now handled according to the thermo_modify lost setting". Measured with native
+   * LAMMPS (black box, boundary f p p, 20 atoms, change_box all x final 0 5 without remap): the
+   * default error stops the command with Lost atoms via change_box: original 20 current 9; warn
+   * prints the same text as a WARNING and deletes the atoms; ignore deletes them silently; with
+   * remap no atom is lost.
+   */
+  checkLostBoxChange(): void {
+    const lost = this.lostFlags();
+    if (!lost) return;
+    const s = this.state;
+    const mode = this.thermo.lost;
+    const text = `Lost atoms via change_box: original ${s.n} current ${s.n - lost.nlost}`;
+    if (mode === 'error') throw new StyleError(text);
+    if (mode === 'warn') this.warn(text);
+    this.deleteAtoms(lost.flags);
+  }
+
+  /** Flags the atoms outside a fixed (f) boundary; null when none is lost. */
+  private lostFlags(): { flags: Uint8Array; nlost: number } | null {
     const s = this.state;
     const g = this.geom;
     const fixed = [0, 1, 2].filter((d) => s.box.boundary[d][0] === 'f' || s.box.boundary[d][1] === 'f');
-    if (!fixed.length) return;
+    if (!fixed.length) return null;
     const lam = [0, 0, 0];
     const lost = new Uint8Array(s.n);
     let nlost = 0;
@@ -277,11 +308,7 @@ export class System {
         }
       }
     }
-    if (!nlost) return;
-    const mode = this.thermo.lost;
-    if (mode === 'error') throw new StyleError(`lost atoms: ${nlost} atom(s) left the box through a fixed (f) boundary (thermo_modify lost ignore/warn allows this)`);
-    if (mode === 'warn') this.warn(`lost ${nlost} atom(s) through a fixed boundary`);
-    this.deleteAtoms(lost);
+    return nlost ? { flags: lost, nlost } : null;
   }
 
   /** Deletes flagged atoms and keeps every dependent structure consistent. */
@@ -453,6 +480,24 @@ export class System {
         if (v.style !== 'atom' && v.style !== 'atomfile') throw new StyleError(`Variable '${g.variable}' for dynamic group ${name} is of incompatible style`);
       }
       if (g.property && !this.state.custom.has(g.property)) throw new StyleError(`Custom per-atom vector ${g.property} for dynamic group ${name} does not exist`);
+      if (g.exclude && this.groups.find(g.exclude) < 0) throw new StyleError(`Group ID ${g.exclude} requested by group dynamic exclude does not exist`);
+      if (g.includeMolecule && !hasMolecule(this.state)) throw new StyleError('Dynamic Group include molecule setting requires atom attribute molecule');
+    }
+  }
+
+  /**
+   * A within cutoff is a custom neighbor list cutoff (cutoff + skin), which must fit in the
+   * communication cutoff. Measured with native LAMMPS (black box, lj/cut 2.5 with the default skin
+   * 0.3): within 2.9 stops with Custom neighbor list cutoff 3.1999999999999997 is too large for
+   * communication cutoff 2.8"; within 2.5 runs.
+   */
+  private checkDynamicWithin(): void {
+    for (const g of this.groups.dynamic.values()) {
+      if (g.within === null) continue;
+      const custom = g.within + this.nb.skin;
+      if (custom > this.nb.cutghost) {
+        throw new StyleError(`Custom neighbor list cutoff ${custom} is too large for communication cutoff ${this.nb.cutghost}`);
+      }
     }
   }
 
@@ -470,21 +515,99 @@ export class System {
     for (const [bit, g] of this.groups.dynamic) {
       if (!setup && s.step % g.every !== 0) continue;
       changed = true;
-      const parent = this.groups.bit(g.parent);
+      const parentBit = this.groups.bit(g.parent);
       const region = g.region ? this.region(g.region) : null;
       const vals = g.variable ? this.atomVariable(g.variable) : null;
       const prop = g.property ? this.state.custom.get(g.property)! : null;
-      const clear = ~bit;
+      // the parent atoms that pass region, variable and property are the selection
+      const member = new Uint8Array(s.n);
       for (let i = 0; i < s.n; i++) {
-        let keep = (s.mask[i] & parent) !== 0;
+        let keep = (s.mask[i] & parentBit) !== 0;
         if (keep && region) keep = region.match(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]);
         if (keep && vals) keep = vals[i] !== 0;
         if (keep && prop) keep = prop.data[i] !== 0;
-        s.mask[i] = keep ? s.mask[i] | bit : s.mask[i] & clear;
+        member[i] = keep ? 1 : 0;
       }
+      if (g.within !== null) this.addWithin(member, parentBit, g.within);
+      if (g.includeMolecule) this.addMolecules(member);
+      if (g.exclude) {
+        const exBit = this.groups.bit(g.exclude);
+        for (let i = 0; i < s.n; i++) if (s.mask[i] & exBit) member[i] = 0;
+      }
+      const clear = ~bit;
+      for (let i = 0; i < s.n; i++) s.mask[i] = member[i] ? s.mask[i] | bit : s.mask[i] & clear;
     }
     // compute values cached earlier in this step belong to the old membership
     if (changed) this.refreshComputes();
+  }
+
+  /**
+   * within: adds the atoms that are not in the parent group and lie within the cutoff of a selected
+   * atom (periodic images count, the distance test is inclusive). Measured with native LAMMPS
+   * (black box): see group.ts. Orthogonal boxes use a cell grid of cell width at least the cutoff;
+   * triclinic boxes test all pairs.
+   */
+  private addWithin(member: Uint8Array, parentBit: number, cutoff: number): void {
+    const s = this.state, g = this.geom;
+    const cut2 = cutoff * cutoff;
+    const srcs: number[] = [];
+    for (let i = 0; i < s.n; i++) if (member[i]) srcs.push(i);
+    if (!srcs.length) return;
+    const d = [0, 0, 0];
+    const near = (j: number, i: number): boolean => {
+      d[0] = s.x[3 * j] - s.x[3 * i]; d[1] = s.x[3 * j + 1] - s.x[3 * i + 1]; d[2] = s.x[3 * j + 2] - s.x[3 * i + 2];
+      g.minimumImage(d);
+      return d[0] * d[0] + d[1] * d[1] + d[2] * d[2] <= cut2;
+    };
+    if (s.box.triclinic) {
+      for (let j = 0; j < s.n; j++) {
+        if (s.mask[j] & parentBit) continue;
+        for (const i of srcs) if (near(j, i)) { member[j] = 1; break; }
+      }
+      return;
+    }
+    const lo = g.lo, len = [g.lx, g.ly, g.lz];
+    const nc = [0, 0, 0], w = [cutoff, cutoff, cutoff];
+    for (let k = 0; k < 3; k++) {
+      if (g.periodic[k]) { nc[k] = Math.max(1, Math.floor(len[k] / cutoff)); w[k] = len[k] / nc[k]; }
+    }
+    const cell = (x: number, k: number): number => {
+      const c = Math.floor((x - lo[k]) / w[k]);
+      return g.periodic[k] ? ((c % nc[k]) + nc[k]) % nc[k] : c;
+    };
+    const buckets = new Map<string, number[]>();
+    for (const i of srcs) {
+      const key = `${cell(s.x[3 * i], 0)},${cell(s.x[3 * i + 1], 1)},${cell(s.x[3 * i + 2], 2)}`;
+      const b = buckets.get(key);
+      if (b) b.push(i); else buckets.set(key, [i]);
+    }
+    for (let j = 0; j < s.n; j++) {
+      if (s.mask[j] & parentBit) continue;
+      const cx = cell(s.x[3 * j], 0), cy = cell(s.x[3 * j + 1], 1), cz = cell(s.x[3 * j + 2], 2);
+      let found = false;
+      for (let ox = -1; ox <= 1 && !found; ox++) {
+        for (let oy = -1; oy <= 1 && !found; oy++) {
+          for (let oz = -1; oz <= 1 && !found; oz++) {
+            let ix = cx + ox, iy = cy + oy, iz = cz + oz;
+            if (g.periodic[0]) ix = ((ix % nc[0]) + nc[0]) % nc[0];
+            if (g.periodic[1]) iy = ((iy % nc[1]) + nc[1]) % nc[1];
+            if (g.periodic[2]) iz = ((iz % nc[2]) + nc[2]) % nc[2];
+            const b = buckets.get(`${ix},${iy},${iz}`);
+            if (!b) continue;
+            for (const i of b) if (near(j, i)) { found = true; break; }
+          }
+        }
+      }
+      if (found) member[j] = 1;
+    }
+  }
+
+  /** include molecule: adds the atoms that share a molecule ID (0 is ignored) with a member. */
+  private addMolecules(member: Uint8Array): void {
+    const s = this.state;
+    const ids = new Set<number>();
+    for (let i = 0; i < s.n; i++) if (member[i] && s.molecule[i] !== 0) ids.add(s.molecule[i]);
+    for (let i = 0; i < s.n; i++) if (!member[i] && s.molecule[i] !== 0 && ids.has(s.molecule[i])) member[i] = 1;
   }
 
   // ---------------------------------------------------------------- formulas

@@ -1,5 +1,6 @@
 import type { System } from '../system';
 import { StyleError } from '../force/types';
+import { restartDue } from '../commands/restart';
 
 /*
  * The velocity-Verlet run loop — docs.lammps.org/Developer_flow.html:
@@ -118,6 +119,7 @@ export const runVerlet = async (sys: System, nsteps: number, hooks: RunHooks): P
     for (const f of fInitial) f.initialIntegrate!();
     for (const f of fPostInt) f.postIntegrate!();
     sys.bump();
+    nb.forceBuildStep = restartDue(sys, s.step) ? s.step : -1;
     if (nb.decide(s.step, s, sys.geom)) {
       for (const f of fPreEx) f.preExchange!();
       sys.pbc();

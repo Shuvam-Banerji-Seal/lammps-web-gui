@@ -1,0 +1,23 @@
+# oracle: dynamic groups with within, include molecule, region and exclude over an MD run (member counts in thermo)
+# oracle-inputs: w40core_peptide.data
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      full
+read_data       w40core_peptide.data
+pair_style      lj/cut 2.5
+pair_coeff      * * 0.001 1.0
+timestep        0.005
+group           solute type 2
+group           solv type 1
+region          left block 0 5 0 10 0 10 units box
+group           near dynamic solute within 2.5 include molecule every 5
+group           left2 dynamic all region left within 2.0 exclude solute every 3
+group           ns dynamic solv within 1.5 exclude solute
+variable        n1 equal count(near)
+variable        n2 equal count(left2)
+variable        n3 equal count(ns)
+fix             1 all nve
+thermo_style    custom step pe v_n1 v_n2 v_n3
+thermo_modify   format float %.15g
+thermo          5
+run             100

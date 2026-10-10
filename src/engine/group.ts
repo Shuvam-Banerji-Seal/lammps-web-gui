@@ -21,6 +21,15 @@ export const MAX_GROUPS = 32;
  * keyword (:math:`N = 1` is the default)." "The *static* style removes the
  * setting for a dynamic group, converting it to a static group (the default).
  * The atoms in the static group are those currently in the dynamic group."
+ *
+ * Keyword semantics (group.html, dynamic section). Measured with native LAMMPS (black box, a
+ * per-atom probe of the members of each dynamic group after run 0): the region, var and property
+ * keywords select the parent atoms first; within then adds every atom that is not in the parent
+ * group and lies within the cutoff of one of those selected atoms (the test is inclusive, so an
+ * atom at exactly the cutoff is added, and periodic images count); include molecule then adds
+ * every atom that shares a molecule ID with a member; exclude removes last. With a region and
+ * the parent group all, the atoms outside the region are not added by within even when they
+ * are within the cutoff of a selected atom.
  */
 export interface DynamicGroup {
   parent: string;
@@ -28,6 +37,12 @@ export interface DynamicGroup {
   variable: string | null;
   property: string | null;
   every: number;
+  /** within keyword: cutoff distance (null = not set). */
+  within: number | null;
+  /** include molecule keyword. */
+  includeMolecule: boolean;
+  /** exclude keyword: group ID (null = not set). */
+  exclude: string | null;
 }
 
 /*

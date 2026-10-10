@@ -87,6 +87,13 @@ export class Neighbor {
   /** comm_modify cutoff: ghost cutoff at least this large. */
   commCutoff = 0;
   /**
+   * The step whose neighbor decision is forced by a restart file being written on it (set by the
+   * run loop before decide(); -1 = none). restart.html: "Writing a restart file forces a neighbor
+   * list rebuild on that timestep" and this "happens regardless of the neigh_modify every, delay,
+   * and check settings".
+   */
+  forceBuildStep = -1;
+  /**
    * neigh_modify exclude (neigh_modify.html): "type M N = exclude if one atom
    * in pair is type M, other is type N"; "group group1-ID group2-ID = exclude
    * if one atom is in 1st group, other in 2nd"; "molecule/intra group-ID =
@@ -137,7 +144,9 @@ export class Neighbor {
 
   /** Whether lists must be rebuilt on this step (neighbor->decide()). */
   decide(step: number, s: SimState, g: Geometry): boolean {
+    this.forcedDecision = false;
     if (this.once) return false;
+    if (step === this.forceBuildStep) { this.forcedDecision = true; return true; }
     const ago = step - this.lastBuild;
     if (ago < this.delay) return false;
     if (this.every > 1 && step % this.every !== 0) return false;
@@ -168,7 +177,20 @@ export class Neighbor {
     return false;
   }
 
-  /** Rebuilds ghosts and lists from the current (already remapped) positions. */
+  /**
+   * True when the last decide() returned true only because of forceBuildStep. Such a build does
+   * not move the check reference positions (see build()).
+   */
+  private forcedDecision = false;
+
+  /**
+   * Rebuilds ghosts and lists from the current (already remapped) positions. A build forced by a
+   * restart file leaves the reference positions and box of the check setting alone, so the next
+   * check still measures the motion since the last build of its own schedule.
+   * Measured with native LAMMPS (black box, LJ melt 500 atoms, restart 25 and neigh_modify every 10
+   * check yes): the builds at steps 30, 70 and 130 still happen after the forced builds at 25, 75
+   * and 125 (the engine without this rule skipped them), and the trajectories agree after that.
+   */
   build(s: SimState, g: Geometry, step: number): void {
     const needs = this.needs;
     if (!needs) throw new Error('neighbor lists used before init');
@@ -182,8 +204,11 @@ export class Neighbor {
       this.half = needs.half ? emptyList(s.n) : null;
       this.full = needs.full ? emptyList(s.n) : null;
     }
-    this.xhold = Float64Array.from(s.x.subarray(0, 3 * s.n));
-    this.boxhold = [g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2], g.xy, g.xz, g.yz];
+    if (!this.forcedDecision || this.xhold.length !== 3 * s.n) {
+      this.xhold = Float64Array.from(s.x.subarray(0, 3 * s.n));
+      this.boxhold = [g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2], g.xy, g.xz, g.yz];
+    }
+    this.forcedDecision = false;
     this.lastBuild = step;
     this.nbuild++;
   }

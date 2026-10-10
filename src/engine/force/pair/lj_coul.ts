@@ -222,6 +222,34 @@ abstract class PairLJCutCoul extends PairLJCut {
  */
 export class PairLJCutCoulCut extends PairLJCutCoul {
   readonly name: string = 'lj/cut/coul/cut';
+  /** Coulomb prefactor of the last force evaluation (single() reads it, as the long-range styles do). */
+  private qqrd2eLast = 1;
+
+  compute(pc: PairCompute): void {
+    this.qqrd2eLast = pc.qqrd2e;
+    super.compute(pc);
+  }
+
+  /**
+   * Pair energy and force-over-r of one pair (single(), used by compute pair/local and hbond/local): the
+   * LJ term inside its cutoff plus the Coulomb term inside the per-pair Coulomb cutoff, each with its
+   * special weight. The weights are the caller's (1 for an unweighted pair).
+   */
+  single(_i: number, _j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi = 0, qj = 0): { eng: number; fforce: number } {
+    let eng = 0, fforce = 0;
+    if (rsq < this.p.get('cut', itype, jtype) ** 2) {
+      const b = super.single(_i, _j, itype, jtype, rsq, factorCoul, factorLJ);
+      eng = b.eng;
+      fforce = b.fforce;
+    }
+    const rc = this.p.get('cut_coul', itype, jtype);
+    if (rsq < rc * rc && qi !== 0 && qj !== 0) {
+      const c = this.coulPair(itype * (this.ntypes + 1) + jtype, rsq, qi, qj, this.qqrd2eLast);
+      eng += factorCoul * c.e;
+      fforce += factorCoul * c.f;
+    }
+    return { eng, fforce };
+  }
 
   settings(args: string[]): void {
     if (args.length !== 1 && args.length !== 2) throw new StyleError('usage: pair_style lj/cut/coul/cut cutoff (cutoff2)');

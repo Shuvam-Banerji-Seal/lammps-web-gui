@@ -629,21 +629,6 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
                     }}
                     className={`block w-full resize-y rounded border px-2 py-1 font-mono text-xs leading-relaxed ${ct.input}`}
                   />
-                  <div role="log" aria-label={`Cell ${n} output`} className="mt-1 space-y-1 font-mono text-[11px]">
-                    {run.logs.map((l, k) => <p key={k} className={ct.muted}>{l}</p>)}
-                    {run.error && <EngineErrorText ct={ct} message={run.error} />}
-                    {run.tables.map((t, k) => (
-                      <div key={k} className="max-h-64 overflow-auto">
-                        {unitsCaption(t.units) && <p className={`mb-0.5 font-sans ${ct.muted}`}>{unitsCaption(t.units)}</p>}
-                        <table className="border-collapse text-right">
-                          <thead>
-                            <tr>{t.keywords.map((kw, c) => <th key={kw} title={thermoUnit(t.units, kw) ?? undefined} className={`px-2 font-semibold ${ct.headerText}`}>{t.labels?.[c] ?? kw}</th>)}</tr>
-                          </thead>
-                          <ThermoRows ct={ct} keywords={t.keywords} rows={t.rows} />
-                        </table>
-                      </div>
-                    ))}
-                  </div>
                   {ui.flow && <CellFlowchart theme={theme} n={n} text={cell.text} />}
                   {ui.collapsed ? (
                     hasOutput && <p className={`mt-1 font-sans text-[11px] ${ct.muted}`}>Output hidden.</p>

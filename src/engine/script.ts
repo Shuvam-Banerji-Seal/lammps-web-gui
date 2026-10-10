@@ -198,54 +198,9 @@ export const tokenize = (text: string): string[] => {
 /**
  * C-style number formatting for "$(expr:%fmt)" and print: %[flags][width]
  * [.precision](f|e|g|d|i). Anything else is an error — a format must
- * consume one floating-point value (Commands_parse.html).
+ * consume one floating-point value (Commands_parse.html). The implementation is in cformat.ts.
  */
-export const formatNumber = (value: number, format: string): string => {
-  const m = /^%([-+ 0#]*)(\d*)(?:\.(\d+))?([feEgGdi])$/.exec(format.trim());
-  if (!m) throw new Error(`unsupported number format '${format}'`);
-  const [, flags, width, precStr, conv] = m;
-  const prec = precStr === undefined ? 6 : Number(precStr);
-  let s: string;
-  if (!Number.isFinite(value)) s = Number.isNaN(value) ? 'nan' : value > 0 ? 'inf' : '-inf';
-  else if (conv === 'f') s = value.toFixed(prec);
-  else if (conv === 'e' || conv === 'E') s = cExp(value, prec, conv === 'E');
-  else if (conv === 'd' || conv === 'i') s = Math.trunc(value).toString();
-  else s = cGeneral(value, prec === 0 ? 1 : prec, conv === 'G', flags.includes('#'));
-  if (flags.includes('+') && value >= 0) s = '+' + s;
-  else if (flags.includes(' ') && value >= 0) s = ' ' + s;
-  const w = Number(width || 0);
-  if (s.length < w) {
-    if (flags.includes('-')) s = s.padEnd(w);
-    else if (flags.includes('0') && Number.isFinite(value)) {
-      const sign = /^[+\- ]/.test(s) ? s[0] : '';
-      s = sign + s.slice(sign.length).padStart(w - sign.length, '0');
-    } else s = s.padStart(w);
-  }
-  return s;
-};
-
-/** C's %e: mantissa with `prec` decimals and an at-least-two-digit exponent. */
-const cExp = (v: number, prec: number, upper: boolean): string => {
-  const [mant, exp] = v.toExponential(prec).split('e');
-  const e = Number(exp);
-  const s = `${mant}e${e < 0 ? '-' : '+'}${String(Math.abs(e)).padStart(2, '0')}`;
-  return upper ? s.toUpperCase() : s;
-};
-
-/** C's %g: shortest of %e/%f at `prec` significant digits, trailing zeros removed. */
-const cGeneral = (v: number, prec: number, upper: boolean, keepZeros: boolean): string => {
-  if (v === 0) return '0';
-  const exp = Math.floor(Math.log10(Math.abs(Number(v.toPrecision(prec)))));
-  let s: string;
-  if (exp < -4 || exp >= prec) {
-    s = cExp(v, prec - 1, upper);
-    if (!keepZeros) s = s.replace(/\.?0+(e|E)/, '$1');
-  } else {
-    s = v.toFixed(Math.max(0, prec - 1 - exp));
-    if (!keepZeros && s.includes('.')) s = s.replace(/\.?0+$/, '');
-  }
-  return s;
-};
+export { formatNumber } from './cformat';
 
 /**
  * Files a script reads by name — read_data, read_dump and include take the

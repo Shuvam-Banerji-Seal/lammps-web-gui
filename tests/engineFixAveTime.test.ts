@@ -168,7 +168,7 @@ describe('fix print (fix_print.html)', () => {
   it('prints at setup and every N steps with $-substitution, honoring title and screen', async () => {
     const { logs, files, error } = await runScript(`${SYS}
 variable t equal step
-fix 1 all print 5 "at ${'${t}'} $(step:%d)" file pr.txt screen no title "# hello"
+fix 1 all print 5 "at ${'${t}'} $(step:%.0f)" file pr.txt screen no title "# hello"
 run 12`);
     expect(error).toBeNull();
     expect(files.get('pr.txt')).toBe('# hello\nat 0 0\nat 5 5\nat 10 10\n');

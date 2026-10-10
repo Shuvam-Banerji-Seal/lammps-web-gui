@@ -721,6 +721,19 @@ export class FixNH extends Fix {
     return 0;
   }
 
+  /**
+   * thermo_modify colname auto names (fix_nh.rst, versionadded 10Dec2025): the scalar is ecouple, and each vector
+   * entry is its documented keyword with an index, for example eta[1] or PE_omega[2]. The order follows vectorLayout.
+   */
+  autoColumnNames(): { scalar: string; vector: string[] } {
+    const keywords = ['eta', 'eta_dot', 'omega', 'omega_dot', 'etap', 'etap_dot', 'PE_eta', 'KE_eta_dot', 'PE_omega', 'KE_omega_dot', 'PE_etap', 'KE_etap_dot'];
+    const vector: string[] = [];
+    this.vectorLayout().forEach((seg, s) => {
+      for (let j = 1; j <= seg.n; j++) vector.push(`${keywords[s]}[${j}]`);
+    });
+    return { scalar: 'ecouple', vector };
+  }
+
   /** Barostat dimensions reported in the vector (ndof of the docs). */
   private ndofDims(): number[] {
     if (!this.pstat) return [];

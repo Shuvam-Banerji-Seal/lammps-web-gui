@@ -93,7 +93,8 @@ describe('input splitting (Commands_parse.html rules)', () => {
     expect(formatNumber(0.0001234, '%g')).toBe('0.0001234');
     expect(formatNumber(123456789, '%g')).toBe('1.23457e+08');
     expect(formatNumber(2, '%.15g')).toBe('2');
-    expect(formatNumber(-7.9, '%d')).toBe('-7');
+    // an integer conversion needs an integer value; native rejects %d for a floating-point value
+    expect(() => formatNumber(-7.9, '%d')).toThrow();
     expect(() => formatNumber(1, '%.3f%d')).toThrow();
   });
 });

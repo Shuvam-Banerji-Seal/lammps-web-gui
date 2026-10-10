@@ -22,6 +22,9 @@ import { filesReadBy, formatNumber } from '../../engine/script';
 import { useInputFiles, type ImportSource } from './notebook/useInputFiles';
 import { InputFilesPanel } from './notebook/InputFilesPanel';
 import { ImportStructureDialog } from './notebook/ImportStructureDialog';
+import { TrajectoryBuffer } from './notebook/trajectory';
+import TrajectoryPlayer from './notebook/TrajectoryPlayer';
+import ViewControls, { DEFAULT_RECORD_EVERY, reviveBool, reviveRadius, reviveRecordEvery } from './notebook/ViewControls';
 
 /**
  * MD Notebook: LAMMPS-style input in cells, run by the in-browser engine
@@ -73,6 +76,9 @@ const STARTER: Cell[] = [
 const STORAGE_KEY = 'm3d.notebook.v1';
 const BACKEND_KEY = 'm3d.notebook.backend';
 const THREADS_KEY = 'm3d.notebook.threads';
+const RECORD_KEY = 'm3d.notebook.recordEvery';
+const RADIUS_KEY = 'm3d.notebook.atomRadius';
+const BOX_KEY = 'm3d.notebook.showBox';
 
 /** Logical cores the browser reports (at least 1). */
 const browserCores = (): number =>
@@ -116,7 +122,7 @@ interface NotebookProps {
   onIncomingTaken?: () => void;
   /** Opens the notebook's cells in the Script Builder (as a new tab). */
   onOpenInBuilder?: (script: string) => void;
-  /** Opens a trajectory or structure file written by the run in the Molecule 3D Viewer. */
+  /** Opens a file written by the run, or the recorded trajectory as a dump, in the Molecule 3D Viewer. */
   onOpenInViewer?: (file: { name: string; text: string }) => void;
 }
 
@@ -133,6 +139,15 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const [ready, setReady] = useState<Extract<FromEngine, { type: 'ready' }> | null>(null);
   const [running, setRunning] = useState<string | null>(null);
   const [frame, setFrame] = useState<FrameEvent | null>(null);
+  /** Engine frames kept during runs (cleared on reset), the recorded frame shown (null = the live frame), view settings. */
+  const [traj] = useState(() => new TrajectoryBuffer());
+  const [trajVersion, setTrajVersion] = useState(0);
+  const [viewIndex, setViewIndex] = useState<number | null>(null);
+  const [videoActive, setVideoActive] = useState(false);
+  const [recordEvery, setRecordEvery] = usePersistentState<number>(RECORD_KEY, DEFAULT_RECORD_EVERY, reviveRecordEvery);
+  const [atomRadius, setAtomRadius] = usePersistentState<number>(RADIUS_KEY, 1, reviveRadius);
+  const [showBox, setShowBox] = usePersistentState<boolean>(BOX_KEY, true, reviveBool);
+  const canvasHost = useRef<HTMLDivElement>(null);
   /** The MD run in progress (engine 'run' event): its cell and its first and last step, for the progress bar. */
   const [runSpan, setRunSpan] = useState<{ cell: string; from: number; to: number } | null>(null);
   const [files, setFiles] = useState<Record<string, string>>({});
@@ -176,13 +191,16 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const resetSession = useCallback(async (choice: BackendChoice, nThreads: number) => {
     setReady(null);
     setFrame(null);
+    traj.clear();
+    setTrajVersion((v) => v + 1);
+    setViewIndex(null);
     setFiles({});
     setSeries([]);
     setRuns({});
-    const info = await client().reset(choice, 25, nThreads);
+    const info = await client().reset(choice, recordEvery, nThreads);
     sendInputs();
     setReady(info);
-  }, [client, sendInputs]);
+  }, [client, recordEvery, traj, sendInputs]);
 
   useEffect(() => {
     void resetSession(backend, threads);
@@ -202,6 +220,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     frameTimer.current = window.setTimeout(() => {
       frameTimer.current = null;
       if (pendingFrame.current) setFrame(pendingFrame.current);
+      setTrajVersion((v) => v + 1);
     }, 120);
   }, []);
 
@@ -237,10 +256,12 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           setSeries((s) => [...s, ev.row]);
           break;
         case 'frame':
+          traj.append(ev);
           showFrame(ev);
           break;
         case 'run':
           setRunSpan({ cell: cell.id, from: ev.from, to: ev.to });
+          setViewIndex(null);
           setRunInfo({ dt: ev.dt, units: ev.units });
           setPerfHistory([]);
           break;
@@ -257,7 +278,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     setRunning(null);
     setRunSpan(null);
     return result.ok;
-  }, [client, showFrame]);
+  }, [client, showFrame, traj]);
 
   const runAll = useCallback(async () => {
     stopAll.current = false;
@@ -316,15 +337,22 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     setDeleted(null);
   };
 
-  const data = useMemo(() => (frame ? frameToMoleculeData(frame) : null), [frame]);
+  /** The frame the view draws: the recorded frame picked in the player, else the live frame. */
+  const shownFrame = useMemo(
+    () => (viewIndex !== null ? traj.toFrameEvent(viewIndex) : frame),
+    // trajVersion: the buffer is mutable, and its version changes with every recorded frame
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [viewIndex, trajVersion, frame, traj],
+  );
+  const data = useMemo(() => (shownFrame ? frameToMoleculeData(shownFrame) : null), [shownFrame]);
   const config = useMemo(() => {
-    if (!frame || !data) return vizConfig(1, 1, isDarkTheme(theme));
-    const { lo, hi } = frame.box;
-    const dims = hi[2] - lo[2] > 0 && frame.x.some((_, k) => k % 3 === 2 && frame.x[k] !== 0) ? 3 : 2;
+    if (!shownFrame || !data) return vizConfig(1, 1, isDarkTheme(theme));
+    const { lo, hi } = shownFrame.box;
+    const dims = hi[2] - lo[2] > 0 && shownFrame.x.some((_, k) => k % 3 === 2 && shownFrame.x[k] !== 0) ? 3 : 2;
     const vol = (hi[0] - lo[0]) * (hi[1] - lo[1]) * (dims === 3 ? hi[2] - lo[2] : 1);
     const spacing = Math.pow(vol / Math.max(1, data.atoms.length), 1 / dims);
-    return vizConfig(spacing, Math.max(1, ...Object.keys(data.atomTypes).map(Number)), isDarkTheme(theme));
-  }, [frame, data, theme]);
+    return { ...vizConfig(spacing * atomRadius, Math.max(1, ...Object.keys(data.atomTypes).map(Number)), isDarkTheme(theme)), showBox };
+  }, [shownFrame, data, theme, atomRadius, showBox]);
 
   const chart = useMemo(() => {
     const pick = (k: ThermoKeyword) => series.filter((r) => r.step !== undefined && r[k] !== undefined)
@@ -499,19 +527,27 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
 
       {/* phone: one scrolling column (view, cells, charts); desktop: cells left, view + charts right */}
       <div className="min-h-0 flex-1 overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_42%] lg:grid-rows-[minmax(0,55%)_minmax(0,1fr)] lg:overflow-hidden">
-        <div className={`relative h-56 border-b lg:col-start-2 lg:row-start-1 lg:h-auto lg:border-b-0 lg:border-l ${ct.divider}`}>
-          {data ? (
-            <MoleculeCanvas data={data} autoRotate={false} config={config} />
-          ) : (
-            <div className={`flex h-full items-center justify-center p-4 text-center text-xs ${ct.muted}`}>
-              Run a cell with create_atoms to see the system here.
-            </div>
-          )}
-          {frame && (
-            <span className={`absolute left-2 top-2 rounded px-1.5 py-0.5 text-[11px] ${ct.chip}`}>
-              {frame.id.length} atoms · step {frame.step}
-            </span>
-          )}
+        <div className={`flex flex-col border-b lg:col-start-2 lg:row-start-1 lg:min-h-0 lg:border-b-0 lg:border-l ${ct.divider}`}>
+          <div ref={canvasHost} className="relative h-56 lg:h-auto lg:min-h-0 lg:flex-1">
+            {data ? (
+              <MoleculeCanvas data={data} autoRotate={false} config={config} forceContinuousRender={videoActive} />
+            ) : (
+              <div className={`flex h-full items-center justify-center p-4 text-center text-xs ${ct.muted}`}>
+                Run a cell with create_atoms to see the system here.
+              </div>
+            )}
+            {shownFrame && (
+              <span className={`absolute left-2 top-2 rounded px-1.5 py-0.5 text-[11px] ${ct.chip}`}>
+                {shownFrame.id.length} atoms · step {shownFrame.step}
+              </span>
+            )}
+          </div>
+          <div className="shrink-0 px-2 pt-2">
+            <ViewControls ct={ct} recordEvery={recordEvery} onRecordEvery={setRecordEvery} radius={atomRadius} onRadius={setAtomRadius}
+              showBox={showBox} onShowBox={setShowBox} />
+          </div>
+          <TrajectoryPlayer ct={ct} btn={btn} buffer={traj} version={trajVersion} index={viewIndex} live={running !== null}
+            onShow={setViewIndex} canvasHost={canvasHost} onVideoActive={setVideoActive} onOpenInViewer={onOpenInViewer} />
         </div>
 
         {/* cells */}

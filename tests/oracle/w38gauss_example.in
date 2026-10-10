@@ -1,0 +1,19 @@
+# oracle: compute gaussian/grid/local on the 2-atom bcc cell of examples/snap/in.gaussian.grid (grid 2 2 2, two types, reduce max and sum)
+# oracle-compare: thermo=first atoms=all rel=1e-9 abs=1e-12
+units metal
+atom_modify map hash
+lattice custom 3.316 a1 1 0 0 a2 0 1 0 a3 0 0 1 basis 0 0 0 basis 0.5 0.5 0.5
+region box block 0 1 0 1 0 1
+create_box 2 box
+create_atoms 1 box basis 1 1 basis 2 2
+mass * 180.88
+pair_style zero 4.67637
+pair_coeff * *
+compute mygridlocal all gaussian/grid/local grid 2 2 2 4.67637 0.5 0.5 0.1355 0.2
+compute val1 all reduce max c_mygridlocal[7] inputs local
+compute val2 all reduce max c_mygridlocal[8] inputs local
+compute sum1 all reduce sum c_mygridlocal[7] inputs local
+compute sum2 all reduce sum c_mygridlocal[8] inputs local
+thermo_style custom step c_val1 c_val2 c_sum1 c_sum2
+thermo_modify format float %.15g
+run 0

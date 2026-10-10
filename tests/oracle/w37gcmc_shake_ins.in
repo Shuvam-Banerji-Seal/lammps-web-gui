@@ -1,0 +1,26 @@
+# oracle: fix gcmc shake: one forced insertion (mu 5, N 1000 so the only event is at step 1) of a bonded pair stretched to 1.2 (r0 1.0); the trial energy holds the new bond (full_energy off subtracts only the template bond energy), the accepted pair is registered with fix shake mol and its bond is held from step 2 on
+# oracle-inputs: w37gcmc_dimer_shake.mol
+# oracle-compare: thermo=all atoms=all rel=1e-8
+units           real
+atom_style      molecular
+boundary        p p p
+pair_style      lj/cut 8.0
+pair_modify     mix arithmetic
+bond_style      harmonic
+region          box block 0 10 0 10 0 10 units box
+create_box      2 box bond/types 1 extra/bond/per/atom 2 extra/special/per/atom 2
+molecule        dpair w37gcmc_dimer_shake.mol
+pair_coeff      1 1 0.15535 3.166
+pair_coeff      * 2 0.0 0.0
+bond_coeff      1 1000 1.0
+mass            1 15.9994
+mass            2 1.0
+group           pair type 1 2
+fix             wshake pair shake 0.0001 50 0 b 1 mol dpair
+fix             2 pair nve
+fix             mygcmc pair gcmc 1000 1 0 0 54341 338 5.0 0.5 mol dpair tfac_insert 1.6667 group pair shake wshake
+thermo_style    custom step atoms pe ebond f_mygcmc[1] f_mygcmc[2] f_mygcmc[3] f_mygcmc[4] f_mygcmc[5] f_mygcmc[6] f_mygcmc[7] f_mygcmc[8]
+thermo_modify   format float %.15g
+thermo          1
+timestep        1.0
+run             6

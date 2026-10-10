@@ -1,0 +1,29 @@
+# oracle: cut-down examples/streitz/in.streitz.wolf: the 2160-atom alpha-Al2O3 data cut to the atoms in a corner block (about 260 atoms), hybrid/overlay coul/streitz wolf 0.31 with eam/alloy, fix qeq/slater 1 12.0 1.0e-6 100 coul/streitz, NVE 20 steps
+# oracle-inputs: w40qslat_alo.data
+# oracle-potentials: AlO.streitz AlO.eam.alloy
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      charge
+boundary        p p p
+read_data       w40qslat_alo.data
+region          keep block 0 12 0 14 0 13
+group           keep region keep
+group           drop subtract all keep
+delete_atoms    group drop
+pair_style      hybrid/overlay coul/streitz 12.0 wolf 0.31 eam/alloy
+pair_coeff      * * coul/streitz AlO.streitz Al O
+pair_coeff      * * eam/alloy AlO.eam.alloy Al O
+neighbor        1.0 bin
+neigh_modify    every 10 delay 0 check yes
+timestep        0.0004
+velocity        all set 0.0 0.0 0.0
+variable        vx atom 0.01*sin(id)
+variable        vy atom 0.01*cos(2*id)
+variable        vz atom 0.01*sin(3*id)
+velocity        all set v_vx v_vy v_vz
+fix             1 all qeq/slater 1 12.0 1.0e-12 500 coul/streitz
+fix             2 all nve
+thermo_style    custom step pe evdwl ecoul elong ke
+thermo_modify   format float %.15g norm no
+thermo          5
+run             20

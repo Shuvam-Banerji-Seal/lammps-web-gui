@@ -1,0 +1,32 @@
+# oracle: pair coul/streitz 12.0 wolf 0.31, fix qeq/slater with keyword alpha 0.31 dsf 0.0, 48 atoms, NVE 20 steps
+# oracle-potentials: AlO.streitz
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      charge
+lattice         fcc 4.2
+region          box block 0 2 0 2 0 3
+create_box      2 box
+create_atoms    1 box
+group           o id 2:48:2
+set             group o type 2
+mass            1 26.981539
+mass            2 15.9994
+set             type 1 charge 1.0
+set             type 2 charge -1.0
+variable        dx atom 0.08*sin(1.3*x+0.7*y)
+variable        dy atom 0.08*cos(0.9*y-0.4*z)
+variable        dz atom 0.08*sin(1.1*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.01*sin(id)
+variable        vy atom 0.01*cos(2*id)
+variable        vz atom 0.01*sin(3*id)
+pair_style      coul/streitz 12.0 wolf 0.31
+pair_coeff      * * AlO.streitz Al O
+velocity        all set v_vx v_vy v_vz
+timestep        0.0005
+fix             1 all qeq/slater 1 12.0 1.0e-12 500 coul/streitz alpha 0.31 dsf 0.0
+fix             2 all nve
+thermo_style    custom step pe evdwl ecoul elong ke
+thermo_modify   format float %.15g norm no
+thermo          5
+run             20

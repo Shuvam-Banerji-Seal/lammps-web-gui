@@ -118,7 +118,7 @@ const seriesS = (R: number, m: number, d: number): { s: number; ds: number } => 
 };
 
 /** Point-charge short-range potential U_b(R) = -(zeta_b + 1/R) exp(-2 zeta_b R) and dU/dR. */
-const pointU = (R: number, z: number): { u: number; du: number } => {
+export const pointU = (R: number, z: number): { u: number; du: number } => {
   const E = Math.exp(-2 * z * R);
   return { u: -(z + 1 / R) * E, du: E * (1 / (R * R) + 2 * z * (z + 1 / R)) };
 };

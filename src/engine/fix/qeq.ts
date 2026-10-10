@@ -1,5 +1,7 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
+import { erfcExact } from '../force/erfc';
+import { PairCoulStreitz, pointU, slaterShort } from '../force/pair/coul_streitz';
 import type { System } from '../system';
 
 /*
@@ -89,15 +91,41 @@ import type { System } from '../system';
  * Not reproduced: with a kspace style, native's charge sums at the setup of
  * the first run lag the solve (see the end of solve).
  *
+ * qeq/slater (docs.lammps.org/fix_qeq.html, section qeq/slater): the page describes the Slater 1s charge
+ * densities, the parameters chi, eta, zeta and qcore from the qfile, the coul/streitz qfile word (parameters taken from
+ * an active coul/streitz pair style) and the keyword alpha, documented as the Slater type orbital exponent.
+ * Measured with native LAMMPS (black box), this contradicts that description: alpha is the damping of the
+ * Wolf-type self term and erfc(alpha r)/r pair term, and the zeta of the file is used unchanged
+ * (the default alpha is 0.2 when the keyword is absent). The model that reproduces native to 1e-15:
+ *   E(q) = sum_i [chi_i q_i + 1/2 eta_i q_i^2 + C selfW q_i^2]
+ *        + sum_{i<j, r<rc} [C q_i q_j erfc(alpha r)/r + C G_ij(r)],
+ *   G_ij = (q_i q_j - Z_i q_j - Z_j q_i) S_ij(r) + Z_i q_j U_j(r) + Z_j q_i U_i(r)
+ * with C = 14.399645, selfW = -(erfc(alpha rc)/(2 rc) + alpha/sqrt(pi)), S and U as in pair coul/streitz,
+ * eta = J of the pair style (or the qfile eta), rc = the fix cutoff (it sets the pair range and selfW;
+ * a pair cutoff of the pair style does not), and sum q = 0 over the group. Measured: no shifts of the
+ * erfc term and of G (the coul/streitz wolf shift is absent), no kspace term with pair ewald (real space only).
+ * Keyword dsf 0.0 (Fennell-Gezelter form, taper width zero) adds (r - rc) K to the erfc term with
+ * K = erfc(alpha rc)/rc^2 + 2 alpha exp(-alpha^2 rc^2)/(sqrt(pi) rc); it matches native to 1e-16.
+ * Keyword wolf and dsf with a taper width above zero are not reproduced and throw a StyleError
+ * (the wolf keyword charges differ from every form tried by about 2e-6 at 2 A).
+ * Solver (measured with native LAMMPS, black box): two conjugate-gradient solves with the Jacobi
+ * preconditioner 1/eta (not the shifted diagonal), H s = -chi_eff and H t = -1, both from zero, the
+ * stop test sqrt(r.p)/|b|_2 > tolerance inside the loop test i < maxiter (so maxiter 1 leaves s = t = 0, a NaN
+ * charge as native gives), and q = s - (sum s / sum t) t. It reproduces native charges to 1e-15 at
+ * tolerances 1e-2 ... 1e-6 and maxiter 3 ... 100 on a 40-atom cluster.
+ *
  * Unsupported qeq styles and qfile keywords throw a StyleError naming them.
  */
 
-type QeqKind = 'point' | 'shielded' | 'dynamic' | 'fire';
+type QeqKind = 'point' | 'shielded' | 'dynamic' | 'fire' | 'slater';
 
 interface Params {
   chi: Float64Array;
   eta: Float64Array;
   gamma: Float64Array;
+  /** Slater exponent and nucleus charge (qeq/slater only; from the qfile columns zeta and qcore). */
+  zeta: Float64Array;
+  qcore: Float64Array;
 }
 
 const COUL = 14.4; // hard-coded Coulomb constant of fix qeq (measured with native LAMMPS, black box)
@@ -124,6 +152,10 @@ export class FixQeq extends Fix {
   private qstep: number;
   private params: Params | null = null;
   private iterations = 0;
+  /** qeq/slater: wolf-type damping alpha (keyword alpha, default 0.2), dsf 0.0 form, qfile coul/streitz. */
+  private alpha = 0.2;
+  private dsf = false;
+  private fromPair = false;
   scalarFlag = true;
   extscalar = 0;
 
@@ -157,6 +189,24 @@ export class FixQeq extends Fix {
         if (val !== 'yes' && val !== 'no') throw new StyleError(`fix ${this.style}: warn must be yes or no`);
         this.warn = val === 'yes';
         k += 2;
+      } else if (kind === 'slater' && key === 'alpha') {
+        this.alpha = numArg(val, 'alpha');
+        if (!(this.alpha > 0)) throw new StyleError(`fix ${this.style}: alpha must be > 0`);
+        k += 2;
+        // fix_qeq.html: "wolf value = width of taper to terminate Coulomb integrals for the Wolf summation"
+        // (only taper width zero is reproduced here; see the header comment)
+        const sub = a[k];
+        if (sub === 'wolf' || sub === 'dsf') {
+          const width = numArg(a[k + 1], `${sub} taper width`);
+          if (sub === 'wolf') {
+            throw new StyleError(`fix ${this.style}: keyword wolf (Wolf-summation charges) is not reproduced by the browser engine`);
+          }
+          if (width !== 0) {
+            throw new StyleError(`fix ${this.style}: keyword dsf with taper width ${width} is not reproduced (only dsf 0.0)`);
+          }
+          this.dsf = true;
+          k += 2;
+        }
       } else if (damped && key === 'qdamp') {
         this.qdamp = numArg(val, 'qdamp');
         k += 2;
@@ -170,10 +220,16 @@ export class FixQeq extends Fix {
     if (damped && !(this.qstep > 0)) throw new StyleError(`fix ${this.style}: qstep must be > 0`);
     // The qfile may be the literal word reaxff / coul/streitz / coul/ctip to
     // pull the parameters from an active pair style; the engine has none.
-    if (qfileSpecial(this.qfile)) {
-      throw new StyleError(`fix ${this.style}: qfile '${this.qfile}' (parameters from a pair style) is not supported by the browser engine`);
+    if (kind === 'slater' && this.qfile === 'coul/streitz') {
+      // the parameters come from the active pair style (resolved at each solve)
+      this.fromPair = true;
+    } else {
+      if (qfileSpecial(this.qfile)) {
+        throw new StyleError(`fix ${this.style}: qfile '${this.qfile}' (parameters from a pair style) is not supported by the browser engine`);
+      }
+      this.parseQfile(sys.readFile(this.qfile));
     }
-    this.parseQfile(sys.readFile(this.qfile));
+
   }
 
   private parseQfile(text: string): void {
@@ -181,6 +237,8 @@ export class FixQeq extends Fix {
     const chi = new Float64Array(n + 1).fill(NaN);
     const eta = new Float64Array(n + 1).fill(NaN);
     const gamma = new Float64Array(n + 1);
+    const zeta = new Float64Array(n + 1);
+    const qcore = new Float64Array(n + 1);
     const lines = text.split('\n');
     for (let ln = 0; ln < lines.length; ln++) {
       const line = lines[ln].replace(/#.*/, '').trim();
@@ -200,6 +258,8 @@ export class FixQeq extends Fix {
         chi[t] = vals[0];
         eta[t] = vals[1];
         gamma[t] = vals[2];
+        zeta[t] = vals[3];
+        qcore[t] = vals[4];
       }
     }
     for (let t = 1; t <= n; t++) {
@@ -207,8 +267,30 @@ export class FixQeq extends Fix {
         throw new StyleError(`Invalid param file for fix ${this.style} (${this.qfile}): no parameters for atom type ${t}`);
       }
     }
-    this.params = { chi, eta, gamma };
+    this.params = { chi, eta, gamma, zeta, qcore };
   }
+
+  /** qeq/slater: parameters of the active coul/streitz pair style (qfile coul/streitz); chi, eta = J, zeta, qcore = Z. */
+  private slaterParams(): Params {
+    if (!this.fromPair) return this.params!;
+    const n = this.sys.state.ntypes;
+    const pair = this.sys.ff.pair;
+    let cs: PairCoulStreitz | null = null;
+    if (pair instanceof PairCoulStreitz) cs = pair;
+    else {
+      const subs = (pair as unknown as { subs?: { style: unknown }[] } | null)?.subs ?? [];
+      for (const sub of subs) if (sub.style instanceof PairCoulStreitz) cs = sub.style;
+    }
+    if (!cs) throw new StyleError(`fix ${this.style}: qfile coul/streitz needs an active pair_style coul/streitz`);
+    const chi = new Float64Array(n + 1), eta = new Float64Array(n + 1), gamma = new Float64Array(n + 1);
+    const zeta = new Float64Array(n + 1), qcore = new Float64Array(n + 1);
+    for (let t = 1; t <= n; t++) {
+      const tp = cs.typeParams(t);
+      chi[t] = tp.chi; eta[t] = tp.J; gamma[t] = tp.gamma; zeta[t] = tp.zeta; qcore[t] = tp.Z;
+    }
+    return { chi, eta, gamma, zeta, qcore };
+  }
+
 
   /** Charges must be equilibrated before the first force computation of a run. */
   setup(): void { this.solve(); }
@@ -222,7 +304,7 @@ export class FixQeq extends Fix {
 
   private solve(): void {
     const s = this.sys.state;
-    const p = this.params!;
+    const p = this.kind === 'slater' ? this.slaterParams() : this.params!;
     const bit = this.groupBit;
     const shielded = this.kind === 'shielded';
     // group atoms (owned)
@@ -278,7 +360,9 @@ export class FixQeq extends Fix {
     }
 
     let q: Float64Array;
-    if (this.kind === 'point' || this.kind === 'shielded') {
+    if (this.kind === 'slater') {
+      q = this.solveSlater(s, p, idx, ng);
+    } else if (this.kind === 'point' || this.kind === 'shielded') {
       q = this.solveMatrix(s, p, idx, pairs, row, etaRow, fixedTerm, ng);
     } else {
       const gradient = (qq: Float64Array, out: Float64Array): void => {
@@ -321,6 +405,144 @@ export class FixQeq extends Fix {
       this.sys.nb.refreshCharges(s);
     }
     this.sys.bump();
+  }
+
+  /**
+   * qeq/slater (see the header comment): H_ii = eta_i + 2 C selfW, H_ij = C (cc_ij(r) + S_ij(r)), with
+   * cc = erfc(alpha r)/r (dsf 0.0: minus erfc(alpha rc)/rc plus (r - rc) K); the right-hand side is
+   * -chi_eff, chi_eff_i = chi_i + sum_j C [q_j (cc + S) + Z_j (U_i - S)] over the group partners j and
+   * the fixed atoms. The Jacobi preconditioner is 1/eta_i.
+   */
+  private solveSlater(s: System['state'], p: Params, idx: number[], ng: number): Float64Array {
+    const C = 14.399645; // qqrd2e of units metal, as the pair style uses it (measured with native LAMMPS, black box)
+    const a = this.alpha, rc = this.cutoff;
+    const erc = erfcExact(a * rc);
+    const selfW = -(erc / (2 * rc) + a / Math.sqrt(Math.PI));
+    const kd = this.dsf ? erc / (rc * rc) + (2 * a / Math.sqrt(Math.PI)) * Math.exp(-a * a * rc * rc) / rc : 0;
+    const cc = (r: number): number => {
+      const e = erfcExact(a * r) / r;
+      return this.dsf ? e - erc / rc + (r - rc) * kd : e;
+    };
+    const cut2 = rc * rc;
+    const bit = this.groupBit;
+    const row = new Int32Array(s.n).fill(-1);
+    for (let k = 0; k < ng; k++) row[idx[k]] = k;
+    for (const i of idx) {
+      if (!(p.zeta[s.type[i]] > 0)) throw new StyleError(`fix ${this.style}: zeta of type ${s.type[i]} must be > 0`);
+      if (p.eta[s.type[i]] === 0) throw new StyleError(`fix ${this.style}: eta of type ${s.type[i]} is zero (preconditioner 1/eta)`);
+    }
+    const diag = new Float64Array(ng);
+    const chi = new Float64Array(ng);
+    const precond = new Float64Array(ng);
+    for (let k = 0; k < ng; k++) {
+      const t = s.type[idx[k]];
+      diag[k] = p.eta[t] + 2 * C * selfW;
+      precond[k] = 1 / p.eta[t];
+      chi[k] = p.chi[t];
+    }
+    const pairs: { a: number; c: number; h: number }[] = [];
+    // Every periodic image within the cutoff counts (the pair style sums its ghost atoms the same way), so the
+    // shifts are enumerated, not only the minimum image. A pair of an atom with its own image is counted once
+    // (shift s and -s are the same pair); its quadratic term 2 C (cc + S) q^2 goes on the diagonal.
+    const box = this.sys.geom as unknown as { lx: number; ly: number; lz: number; xy: number; xz: number; yz: number; periodic: boolean[] };
+    const nmax = [0, 1, 2].map((dd) => (box.periodic[dd] ? Math.ceil(rc / [box.lx, box.ly, box.lz][dd]) + 1 : 0));
+    const shifts: number[][] = [];
+    const ax = [box.lx, 0, 0], bx = [box.xy, box.ly, 0], cx = [box.xz, box.yz, box.lz];
+    for (let nx = -nmax[0]; nx <= nmax[0]; nx++)
+      for (let ny = -nmax[1]; ny <= nmax[1]; ny++)
+        for (let nz = -nmax[2]; nz <= nmax[2]; nz++) {
+          const sh = [nx * ax[0] + ny * bx[0] + nz * cx[0], nx * ax[1] + ny * bx[1] + nz * cx[1], nx * ax[2] + ny * bx[2] + nz * cx[2]];
+          shifts.push([sh[0], sh[1], sh[2], nx, ny, nz]);
+        }
+    const positive = (nx: number, ny: number, nz: number): boolean => (nx > 0) || (nx === 0 && (ny > 0 || (ny === 0 && nz > 0)));
+    const d = [0, 0, 0];
+    for (let u = 0; u < ng; u++) {
+      const i = idx[u];
+      const ti = s.type[i];
+      for (let v = 0; v < s.n; v++) {
+        const inGroup = (s.mask[v] & bit) !== 0;
+        if (inGroup && v < i) continue; // each group pair once
+        const tv = s.type[v];
+        const zi = p.zeta[ti], zv = p.zeta[tv];
+        for (const [shx, shy, shz, nx, ny, nz] of shifts) {
+          if (v === i && !positive(nx, ny, nz)) continue;
+          d[0] = s.x[3 * i] - s.x[3 * v] - shx;
+          d[1] = s.x[3 * i + 1] - s.x[3 * v + 1] - shy;
+          d[2] = s.x[3 * i + 2] - s.x[3 * v + 2] - shz;
+          const r2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+          if (!(r2 > 0) || r2 >= cut2) continue;
+          const r = Math.sqrt(r2);
+          const S = slaterShort(r, zi, zv).s;
+          const Ui = pointU(r, zi).u;
+          const Uv = pointU(r, zv).u;
+          const H = C * (cc(r) + S);
+          if (v === i) {
+            diag[u] += 2 * H;
+            chi[u] += 2 * C * p.qcore[ti] * (Ui - S);
+          } else if (inGroup) {
+            const w = row[v];
+            chi[u] += C * p.qcore[tv] * (Ui - S);
+            chi[w] += C * p.qcore[ti] * (Uv - S);
+            if (H !== 0) pairs.push({ a: u, c: w, h: H });
+          } else {
+            // fixed atom: its charge enters the right-hand side of group atom u
+            chi[u] += C * (s.q[v] * (cc(r) + S) + p.qcore[tv] * (Ui - S));
+          }
+        }
+      }
+    }
+    const matvec = (x: Float64Array, out: Float64Array): void => {
+      for (let k = 0; k < ng; k++) out[k] = diag[k] * x[k];
+      for (const { a: u, c: w, h } of pairs) {
+        out[u] += h * x[w];
+        out[w] += h * x[u];
+      }
+    };
+    // reaxff-style preconditioned CG from zero (measured, see the header comment)
+    const solveOne = (b: Float64Array, x0: Float64Array | null): { x: Float64Array; it: number; ok: boolean } => {
+      const x = x0 ? Float64Array.from(x0) : new Float64Array(ng);
+      const hx = new Float64Array(ng);
+      matvec(x, hx);
+      const r = new Float64Array(ng);
+      for (let k = 0; k < ng; k++) r[k] = b[k] - hx[k];
+      let bn = 0;
+      for (let k = 0; k < ng; k++) bn += b[k] * b[k];
+      bn = Math.sqrt(bn);
+      const pre = new Float64Array(ng);
+      const dv = new Float64Array(ng);
+      const qv = new Float64Array(ng);
+      let sigNew = 0;
+      for (let k = 0; k < ng; k++) { pre[k] = precond[k] * r[k]; dv[k] = pre[k]; sigNew += r[k] * pre[k]; }
+      let it = 1;
+      while (it < this.maxiter && Math.sqrt(sigNew) / bn > this.tol) {
+        matvec(dv, qv);
+        let dq = 0;
+        for (let k = 0; k < ng; k++) dq += dv[k] * qv[k];
+        const alpha = sigNew / dq;
+        for (let k = 0; k < ng; k++) { x[k] += alpha * dv[k]; r[k] -= alpha * qv[k]; }
+        const sigOld = sigNew;
+        sigNew = 0;
+        for (let k = 0; k < ng; k++) { pre[k] = precond[k] * r[k]; sigNew += r[k] * pre[k]; }
+        const beta = sigNew / sigOld;
+        for (let k = 0; k < ng; k++) dv[k] = pre[k] + beta * dv[k];
+        it++;
+      }
+      return { x, it, ok: Math.sqrt(sigNew) / bn <= this.tol };
+    };
+    const bS = new Float64Array(ng);
+    const bT = new Float64Array(ng).fill(-1);
+    for (let k = 0; k < ng; k++) bS[k] = -chi[k];
+    const sRes = solveOne(bS, null);
+    const tRes = solveOne(bT, null);
+    this.iterations = sRes.it;
+    if (this.warn && (!sRes.ok || !tRes.ok)) {
+      this.sys.warn(`Fix ${this.style} CG convergence failed after ${this.maxiter} iterations (maxiter reached)`);
+    }
+    let sumS = 0, sumT = 0;
+    for (let k = 0; k < ng; k++) { sumS += sRes.x[k]; sumT += tRes.x[k]; }
+    const q = new Float64Array(ng);
+    for (let k = 0; k < ng; k++) q[k] = sRes.x[k] - (sumS / sumT) * tRes.x[k];
+    return q;
   }
 
   /** Point (qeq/point, qeq/dynamic, qeq/fire) or shielded (qeq/shielded) pair interaction. */

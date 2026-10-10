@@ -260,9 +260,9 @@ set atom 2 charge -1.0
     expect(out.error).toMatch(/element 'Fe' is not in coul\/streitz potential file/);
   });
 
-  it('fix qeq/slater stays unsupported and the error names it', async () => {
+  it('fix qeq/slater with qfile coul/streitz runs on this pair style (wave 40; parity in w40qslat_*)', async () => {
     const out = await run(`${head}pair_style coul/streitz 12.0 wolf 0.31\npair_coeff * * AlO.streitz Al O\nfix 1 all qeq/slater 1 12.0 1.0e-6 100 coul/streitz\nrun 0\n`, { 'AlO.streitz': streitzFile });
-    expect(out.error).toMatch(/qeq\/slater/);
+    expect(out.error).toBeFalsy();
   });
 
   it('the potential file parser rejects short lines and reads the five columns', () => {

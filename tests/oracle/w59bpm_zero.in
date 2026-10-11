@@ -1,0 +1,32 @@
+# oracle: bpm/zero breaks a bond stretched beyond ecrit (set after the setup run)
+# oracle-inputs: w59bpm_pair.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+newton on off
+atom_style bpm/sphere
+read_data w59bpm_pair.data
+comm_modify vel yes cutoff 2.6
+pair_style zero 2.0
+pair_coeff * *
+neighbor 0.3 bin
+special_bonds lj 0 1 1 coul 1 1 1
+compute nb all nbond/atom
+compute tb all reduce sum c_nb
+compute om all property/atom omegax omegay omegaz
+compute oms all reduce sum c_om[1] c_om[2] c_om[3]
+compute q all property/atom quatw quati quatj quatk
+compute qs all reduce sum c_q[1] c_q[2] c_q[3] c_q[4]
+group a2 id 2
+compute o2 a2 reduce sum c_om[1] c_om[2] c_om[3]
+compute q2 a2 reduce sum c_q[1] c_q[2] c_q[3] c_q[4]
+fix 1 all nve/bpm/sphere
+bond_style bpm/zero
+bond_coeff 1 0.2
+timestep 0.01
+thermo_style custom step pe ebond ke c_tb c_oms[1] c_oms[2] c_oms[3] c_qs[1] c_qs[2] c_qs[3] c_qs[4] c_o2[1] c_o2[2] c_o2[3] c_q2[1] c_q2[2] c_q2[3] c_q2[4]
+thermo_modify format float %.15g norm no
+thermo 10
+run 0
+set atom 2 x 1.4
+run 0
+run 30

@@ -1,0 +1,25 @@
+# oracle: fix nve/bpm/sphere update dipole: the dipole of each sphere follows its spin (atom_style hybrid bpm/sphere dipole)
+# oracle-inputs: w59bpm_dipole.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+newton on off
+atom_style hybrid bpm/sphere dipole
+read_data w59bpm_dipole.data
+comm_modify vel yes cutoff 2.6
+pair_style zero 2.0
+pair_coeff * *
+neighbor 0.3 bin
+special_bonds lj 0 1 1 coul 1 1 1
+bond_style bpm/rotational
+bond_coeff 1 1.0 0.5 0.4 0.3 2.0 1.0 1.0 1.0 0.1 0.05 0.02 0.03
+compute nb all nbond/atom
+compute tb all reduce sum c_nb
+compute mu all property/atom mux muy muz mu
+compute mus all reduce sum c_mu[1] c_mu[2] c_mu[3] c_mu[4]
+fix 1 all nve/bpm/sphere update dipole
+timestep 0.01
+thermo_style custom step pe ebond ke c_tb c_mus[1] c_mus[2] c_mus[3] c_mus[4]
+thermo_modify format float %.15g norm no
+thermo 10
+run 0
+run 60

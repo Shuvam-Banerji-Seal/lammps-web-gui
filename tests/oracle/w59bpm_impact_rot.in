@@ -1,0 +1,23 @@
+# oracle: cut-down examples/bpm/impact/in.bpm.impact.rotational (LAMMPS b332f28, GPL-2.0 example input): the 2 x 12 x 12 plate and the 3 x 3 x 3 projectile of w53bpm_impact_cut.data, bpm/rotational with the example's four stiffnesses, critical values and damping (store/local dropped: no fix store/local in the engine), 120 steps
+# oracle-inputs: w53bpm_impact_cut.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+dimension 3
+newton on off
+atom_style bpm/sphere
+comm_modify vel yes cutoff 2.6
+read_data w53bpm_impact_cut.data
+pair_style gran/hooke/history 1.0 NULL 0.5 NULL 0.1 1
+pair_coeff 1 1
+neighbor 0.3 bin
+special_bonds lj 0 1 1 coul 1 1 1
+bond_style bpm/rotational
+bond_coeff 1 1.0 0.2 0.02 0.02 0.05 0.01 0.01 0.01 0.1 0.2 0.002 0.002
+fix 1 all nve/bpm/sphere
+compute nb all nbond/atom
+compute tb all reduce sum c_nb
+thermo_style custom step ke pe ebond c_tb
+thermo_modify format float %.15g norm no lost ignore lost/bond ignore
+timestep 0.01
+thermo 20
+run 120

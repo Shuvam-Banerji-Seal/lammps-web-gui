@@ -1,0 +1,18 @@
+# oracle: fix nve/body on one body (inertia tensor with off-diagonal terms, three sub-particles, non-trivial angular momentum) next to one fixed point particle that gives it a torque through body/nparticle, 200 steps; thermo ke, temp, pe and the final atom state
+# oracle-inputs: w48bd_one_body.data
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+dimension       3
+atom_style      body nparticle 1 4
+read_data       w48bd_one_body.data
+group           bodies type 1
+set             atom 1 angmom 0.4 -0.3 0.7
+velocity        bodies set 0.1 -0.05 0.2
+pair_style      body/nparticle 4.0
+pair_coeff      * * 1.0 1.0
+pair_coeff      1 2 0.8 1.1
+fix             1 bodies nve/body
+thermo_style    custom step pe ke temp etotal press
+thermo_modify   format float %.15g
+thermo          20
+run             200

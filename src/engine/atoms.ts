@@ -1,6 +1,7 @@
-import type { AtomStyle, SimBox, SimState, TopoList, Topology, UnitSystem } from './types';
+import type { AtomStyle, CustomProp, SimBox, SimState, TopoList, Topology, UnitSystem } from './types';
 import { makeBox, type BoxInit } from './domain';
 import { StyleError } from './force/types';
+import { BODY_RECORD, bodyRecordStride, parseBodyStyle } from './bodies';
 
 /*
  * Per-atom storage: creating the state, appending and deleting atoms, the
@@ -20,7 +21,7 @@ import { StyleError } from './force/types';
  * hybrid style is used, atoms store and communicate the union of all quantities implied by the
  * individual styles."
  */
-export const atomSubStyles = (st: AtomStyle): string[] => (st.startsWith('hybrid ') ? st.slice(7).trim().split(/\s+/) : [st])
+export const atomSubStyles = (st: AtomStyle): string[] => (st.startsWith('body ') ? ['body'] : st.startsWith('hybrid ') ? st.slice(7).trim().split(/\s+/) : [st])
   .map((x) => (x.startsWith('template:') ? 'template' : x));
 /** atom_style template ID of a style (the ID after the template keyword), or null when there is no template sub-style. */
 export const templateStyleId = (st: AtomStyle): string | null => {
@@ -41,10 +42,14 @@ export const hasDipoleStyle = (st: AtomStyle): boolean => atomSubStyles(st).incl
 export const hasSpinStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('spin');
 /** Styles with ellipsoidal particles (shape, quat, angmom). */
 export const isEllipsoidStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('ellipsoid');
+/** Styles with body particles (atom_style body nparticle Nmin Nmax; see bodies.ts). */
+export const isBodyStyle = (st: AtomStyle): boolean => st.startsWith('body ');
+/** Styles with a per-atom orientation quaternion and angular momentum (ellipsoids and bodies). */
+export const hasQuatStyle = (st: AtomStyle): boolean => isEllipsoidStyle(st) || isBodyStyle(st);
 /** Styles with peridynamic particles (vfrac, x0): atom_style.html lists peri as atomic plus rmass, vfrac, s0 and x0. */
 export const isPeriStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('peri');
 /** Styles with a per-atom mass (rmass): sphere, ellipsoid and peri. */
-export const hasRmassStyle = (st: AtomStyle): boolean => isSphereStyle(st) || isEllipsoidStyle(st) || isPeriStyle(st);
+export const hasRmassStyle = (st: AtomStyle): boolean => isSphereStyle(st) || isEllipsoidStyle(st) || isPeriStyle(st) || isBodyStyle(st);
 /** Bonded topology a style stores: 0 none, 1 bonds, 2 bonds and angles, 3 also dihedrals and impropers. */
 export const topologyLevel = (st: AtomStyle): number => {
   let lv = 0;
@@ -122,6 +127,14 @@ export const emptyTopology = (): Topology => ({
 
 const isFullBox = (b: BoxInit | SimBox): b is SimBox => 'minLo' in b;
 
+/** The per-atom body record of an atom_style body (bodies.ts), empty; no entry for other styles. */
+const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
+  const b = parseBodyStyle(st);
+  const m = new Map<string, CustomProp>();
+  if (b) m.set(BODY_RECORD, { int: false, cols: bodyRecordStride(b.nmax), data: new Float64Array(0) });
+  return m;
+};
+
 export const emptyState = (
   units: UnitSystem, dimension: 2 | 3, box: BoxInit | SimBox, ntypes: number, atomStyle: AtomStyle = 'atomic',
 ): SimState => ({
@@ -138,16 +151,16 @@ export const emptyState = (
   x0: isPeriStyle(atomStyle) ? new Float64Array(0) : null,
   radius: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
   omega: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
-  torque: isSphereStyle(atomStyle) || isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
+  torque: isSphereStyle(atomStyle) || hasQuatStyle(atomStyle) ? new Float64Array(0) : null,
   tmplIndex: isTemplateStyle(atomStyle) ? new Int32Array(0) : null,
   tmplAtom: isTemplateStyle(atomStyle) ? new Int32Array(0) : null,
   mu: hasDipoleStyle(atomStyle) ? new Float64Array(0) : null,
   sp: hasSpinStyle(atomStyle) ? new Float64Array(0) : null,
   fm: hasSpinStyle(atomStyle) ? new Float64Array(0) : null,
   shape: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
-  quat: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
-  angmom: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
-  custom: new Map(),
+  quat: hasQuatStyle(atomStyle) ? new Float64Array(0) : null,
+  angmom: hasQuatStyle(atomStyle) ? new Float64Array(0) : null,
+  custom: bodyCustom(atomStyle),
   propMol: false,
   propQ: false,
   x: new Float64Array(0),

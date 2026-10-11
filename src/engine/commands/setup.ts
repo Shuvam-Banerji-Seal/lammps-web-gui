@@ -3,7 +3,7 @@ import { int, num, yesno, latticeScale, keywords } from './args';
 import { StyleError, typeBounds } from '../force/types';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId } from '../atoms';
+import { HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle } from '../atoms';
 import { parseStl } from '../stl';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import { generalAtomSites, generalBoxFromRestricted, generalCreateBox } from '../triclinic_general';
@@ -66,7 +66,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template'];
+const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -96,6 +96,7 @@ const atomStyle: Handler = ({ sys }, a) => {
     for (let k = 1; k < a.length; k++) {
       const w = a[k];
       if (w === 'hybrid') throw new StyleError('atom_style hybrid cannot have hybrid as a sub-style');
+      if (w === 'body') throw new StyleError('atom_style hybrid with a body sub-style is not supported by the browser engine');
       if (w === 'template') {
         if (subs.some((x) => x.startsWith('template:'))) throw new StyleError('atom_style hybrid lists template twice');
         subs.push(templateArg(a[k + 1]));
@@ -119,6 +120,18 @@ const atomStyle: Handler = ({ sys }, a) => {
   if (a[0] === 'template') {
     if (a.length !== 2) throw new StyleError('usage: atom_style template template-ID');
     sys.atomStyle = templateArg(a[1]) as AtomStyle;
+    return;
+  }
+  // atom_style.html: "body args = bstyle bstyle-args"; the engine implements the nparticle body style only
+  // (Howto_body.rst: "atom_style body nparticle Nmin Nmax"). Nmin and Nmax only size the internal arrays (bodies.ts).
+  // rounded/polygon and rounded/polyhedron are refused by name.
+  if (a[0] === 'body') {
+    if (a[1] !== 'nparticle') throw new StyleError(`atom_style body ${a[1] ?? ''} is not supported by the browser engine; only atom_style body nparticle Nmin Nmax is (rounded/polygon and rounded/polyhedron are not implemented)`);
+    const nmin = Number(a[2]), nmax = Number(a[3]);
+    if (a.length !== 4 || !Number.isInteger(nmin) || !Number.isInteger(nmax) || nmin < 0 || nmax < 0) {
+      throw new StyleError('usage: atom_style body nparticle Nmin Nmax (non-negative integers)');
+    }
+    sys.atomStyle = `body nparticle ${nmin} ${nmax}`;
     return;
   }
   known(a[0]);
@@ -511,6 +524,8 @@ export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[],
 };
 
 const createAtoms: Handler = ({ sys }, a) => {
+  // atom_style body: a body needs its Bodies entry from read_data (bodies.ts); create_atoms cannot make one
+  if (isBodyStyle(sys.atomStyle)) throw new StyleError(`create_atoms is not supported for atom_style ${sys.atomStyle}: body particles come from read_data`);
   const s = sys.state;
   let type = int(a[0], 'atom type');
   const style = a[1];
@@ -881,7 +896,7 @@ const mass: Handler = ({ sys }, a) => {
   // Measured with native LAMMPS (black box): mass is refused for atom style sphere and for atom style ellipsoid
   // (Cannot set per-type atom mass for atom style sphere, and the same with ellipsoid)
   // Measured with native LAMMPS (black box): mass is refused for atom style peri too (Cannot set per-type atom mass for atom style peri)
-  if (s.atomStyle === 'sphere' || s.atomStyle === 'ellipsoid' || s.atomStyle === 'peri') throw new StyleError(`Cannot set per-type atom mass for atom style ${s.atomStyle}`);
+  if (s.atomStyle === 'sphere' || s.atomStyle === 'ellipsoid' || s.atomStyle === 'peri' || isBodyStyle(s.atomStyle)) throw new StyleError(`Cannot set per-type atom mass for atom style ${s.atomStyle}`);
   const m = num(a[1], 'mass');
   if (!(m > 0)) throw new StyleError('mass must be > 0');
   const [lo, hi] = typeBounds(a[0], s.ntypes);

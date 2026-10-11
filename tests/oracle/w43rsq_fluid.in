@@ -1,0 +1,88 @@
+# oracle: mixed fluid of two ellipsoid species (explicit velocities and angular momenta, no RNG) (prolate and sphere-like, two epsilon triples) with pair resquared, fix nve/asphere for 50 steps; pe, ke, erotate/asphere through compute temp/asphere, and the per-atom forces and torques at the end (written to a dump)
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+# oracle-files: w43rsq_fluid_tq.dump
+units           lj
+atom_style      ellipsoid
+boundary        p p p
+region          box block 0 14 0 14 0 14
+create_box      2 box
+create_atoms  1 single 5.843732 12.343630 10.592248 units box
+create_atoms  2 single 1.276872 2.496057 8.695615 units box
+create_atoms  1 single 3.153243 1.528840 6.141020 units box
+create_atoms  2 single 5.722335 7.588272 6.504372 units box
+create_atoms  1 single 10.313182 3.133034 3.557667 units box
+create_atoms  2 single 7.320158 10.824792 6.324189 units box
+create_atoms  1 single 2.072707 4.215504 11.184450 units box
+create_atoms  2 single 9.403221 12.207949 9.534320 units box
+create_atoms  1 single 11.540996 1.298786 11.798982 units box
+create_atoms  2 single 9.939216 6.373841 1.706325 units box
+create_atoms  1 single 11.767158 6.048489 11.522247 units box
+create_atoms  2 single 3.875079 8.826475 12.384601 units box
+create_atoms  1 single 1.415666 10.360788 12.368806 units box
+create_atoms  2 single 6.908573 9.363605 2.856207 units box
+create_atoms  1 single 2.556936 8.341806 6.476347 units box
+create_atoms  2 single 8.328489 9.270721 10.240137 units box
+create_atoms  1 single 12.170150 6.420160 3.308616 units box
+create_atoms  2 single 4.105625 6.824141 9.493525 units box
+create_atoms  1 single 4.890895 4.340797 7.756947 units box
+create_atoms  2 single 2.198758 1.501947 2.443090 units box
+set             atom * mass 1.0
+set             atom 1 shape 1.5 1.0 1.0
+set             atom 1 quat -0.1066772347 -0.5403109417 0.8346760173 137.6540568
+set             atom 2 shape 1.0 1.0 1.0
+set             atom 2 quat 0.9451542782 -0.2023799924 -0.2563702968 161.2440201
+set             atom 3 shape 1.5 1.0 1.0
+set             atom 3 quat -0.6850126043 -0.3420855726 -0.6432225066 168.7848548
+set             atom 4 shape 1.0 1.0 1.0
+set             atom 4 quat 0.512254422 0.8480075891 0.1359357787 97.20526211
+set             atom 5 shape 1.5 1.0 1.0
+set             atom 5 quat 0.813613112 -0.2689275016 -0.5154723104 131.9392075
+set             atom 6 shape 1.0 1.0 1.0
+set             atom 6 quat 0.9195519873 -0.3224126624 0.2246646785 172.9461023
+set             atom 7 shape 1.5 1.0 1.0
+set             atom 7 quat -0.2014192262 -0.05231557804 -0.9781070369 142.0666946
+set             atom 8 shape 1.0 1.0 1.0
+set             atom 8 quat 0.6956756224 -0.6254415531 0.3533529284 85.76020523
+set             atom 9 shape 1.5 1.0 1.0
+set             atom 9 quat 0.2499646433 0.211253632 0.9449283465 142.3976414
+set             atom 10 shape 1.0 1.0 1.0
+set             atom 10 quat 0.02580463125 0.735125667 -0.6774395728 175.8455277
+set             atom 11 shape 1.5 1.0 1.0
+set             atom 11 quat 0.1686579109 0.07026088614 0.9831672884 161.1087583
+set             atom 12 shape 1.0 1.0 1.0
+set             atom 12 quat 0.1906981256 -0.2016547118 0.9607130696 133.8085134
+set             atom 13 shape 1.5 1.0 1.0
+set             atom 13 quat 0.8043802015 0.320799322 -0.5000602828 105.7076187
+set             atom 14 shape 1.0 1.0 1.0
+set             atom 14 quat -0.6957495358 0.7001840422 0.1602338619 90.33113203
+set             atom 15 shape 1.5 1.0 1.0
+set             atom 15 quat -0.6832456977 -0.07544721137 -0.7262802729 140.0627745
+set             atom 16 shape 1.0 1.0 1.0
+set             atom 16 quat -0.6119553827 0.7741132211 -0.1620473093 78.65199765
+set             atom 17 shape 1.5 1.0 1.0
+set             atom 17 quat 0.3219315344 -0.9206383468 0.2208735419 109.7959712
+set             atom 18 shape 1.0 1.0 1.0
+set             atom 18 quat 0.1688610649 -0.1572887843 0.9730088279 91.00575553
+set             atom 19 shape 1.5 1.0 1.0
+set             atom 19 quat 0.8275120536 -0.2130338479 -0.5194616259 140.4522359
+set             atom 20 shape 1.0 1.0 1.0
+set             atom 20 quat -0.5138716976 0.5491488835 -0.6590685717 162.7886665
+pair_style      resquared 4.5
+pair_coeff      1 1 1.0 1.0 1.0 0.5 1.0 1.2 0.5 1.0
+pair_coeff      2 2 0.7 1.1 0.5 0.5 0.5 1.0 0.5 2.0
+pair_coeff      1 2 0.9 1.0 1.0 0.5 0.5 1.0 0.5 2.0
+variable        vxa atom 0.7*sin(1.1*id)+0.2*cos(0.3*id)
+variable        vya atom 0.6*cos(0.9*id)
+variable        vza atom 0.5*sin(1.7*id)
+variable        lxa atom 0.2*sin(0.7*id)
+variable        lya atom 0.3*cos(1.3*id)
+variable        lza atom 0.25*sin(0.5*id+1.0)
+velocity        all set v_vxa v_vya v_vza sum no units box
+set             group all angmom v_lxa v_lya v_lza
+compute         rot all temp/asphere
+thermo_style    custom step pe ke etotal c_rot
+thermo_modify   format float %.15g
+timestep        0.001
+fix             1 all nve/asphere
+run             50
+write_dump all custom w43rsq_fluid_tq.dump id fx fy fz tqx tqy tqz modify format float %.15g sort id

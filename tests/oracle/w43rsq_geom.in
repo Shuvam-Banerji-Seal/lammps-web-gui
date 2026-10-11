@@ -1,0 +1,62 @@
+# oracle: pair resquared between ellipsoids of three shapes (anisotropic, sphere-like and prolate) in random positions and orientations with a 5.0 cutoff; run 0 gives pe, per-atom forces and torques (written to a dump and compared as a file)
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+# oracle-files: w43rsq_geom_tq.dump
+units           lj
+atom_style      ellipsoid
+boundary        f f f
+region          box block 0 13 0 13 0 13
+create_box      3 box
+create_atoms  1 single 3.797091 5.482696 1.698910 units box
+create_atoms  2 single 2.946552 5.019702 10.957001 units box
+create_atoms  3 single 1.466399 3.044915 1.583289 units box
+create_atoms  1 single 4.198768 7.631144 5.412797 units box
+create_atoms  2 single 11.370493 5.775582 11.079044 units box
+create_atoms  3 single 5.951860 2.253156 2.694786 units box
+create_atoms  1 single 3.576819 10.406053 3.890386 units box
+create_atoms  2 single 7.475491 9.992510 7.175199 units box
+create_atoms  3 single 5.780859 3.415853 7.584107 units box
+create_atoms  1 single 5.669829 2.183795 9.572493 units box
+create_atoms  2 single 3.825150 3.147658 4.782057 units box
+create_atoms  3 single 8.555949 9.058488 5.346557 units box
+create_atoms  1 single 11.704010 2.054900 1.998439 units box
+create_atoms  2 single 11.991741 7.897159 1.480943 units box
+set             atom * mass 1.0
+set             atom 1 shape 1.6 1.0 1.2
+set             atom 1 quat 0.916975196 -0.3924345977 -0.07177448323 148.4560997
+set             atom 2 shape 1.2 1.4 0.9
+set             atom 2 quat 0.3956810105 -0.7244370386 -0.5644710047 78.42158249
+set             atom 3 shape 1.1 1.1 1.1
+set             atom 3 quat -0.8177561884 0.1879183495 -0.5440234464 67.0210471
+set             atom 4 shape 1.6 1.0 1.2
+set             atom 4 quat -0.6145281934 0.5591280359 -0.5565347599 139.8087508
+set             atom 5 shape 1.2 1.4 0.9
+set             atom 5 quat -0.5798957182 -0.227171522 0.7823771824 85.5544713
+set             atom 6 shape 1.1 1.1 1.1
+set             atom 6 quat 0.8923112742 0.364785444 -0.2659175997 128.2433758
+set             atom 7 shape 1.6 1.0 1.2
+set             atom 7 quat -0.2296450682 0.6356174982 0.737057351 120.1984249
+set             atom 8 shape 1.2 1.4 0.9
+set             atom 8 quat -0.4465319568 -0.5009380406 -0.7413975256 150.2425133
+set             atom 9 shape 1.1 1.1 1.1
+set             atom 9 quat 0.4121768841 -0.4132064155 0.8120164249 84.32802243
+set             atom 10 shape 1.6 1.0 1.2
+set             atom 10 quat 0.3711935887 -0.7692207769 0.5201102922 48.70029409
+set             atom 11 shape 1.2 1.4 0.9
+set             atom 11 quat 0.4637770289 -0.851386003 -0.2450566086 133.7136721
+set             atom 12 shape 1.1 1.1 1.1
+set             atom 12 quat -0.3900447849 0.92078377 -0.004723842775 157.0741093
+set             atom 13 shape 1.6 1.0 1.2
+set             atom 13 quat 0.01890051098 0.3437271083 -0.9388793563 125.4389498
+set             atom 14 shape 1.2 1.4 0.9
+set             atom 14 quat 0.5388092895 0.6686337575 0.5124582402 115.9249134
+pair_style      resquared 5.0
+pair_coeff      1 1 1.0 1.0 1.0 0.6 0.5 1.0 0.5 1.0
+pair_coeff      2 2 0.8 1.1 2.0 0.5 1.0 1.5 1.0 1.0
+pair_coeff      3 3 1.2 1.0 2.0 0.5 1.0 2.0 0.5 1.0
+pair_coeff      1 2 1.1 0.9 1.0 1.0 1.0 2.0 0.5 1.0
+pair_coeff      1 3 0.9 1.2 1.0 0.7 1.0 1.0 1.0 1.0 4.5
+pair_coeff      2 3 1.4 1.0 0.5 0.5 1.0 1.0 1.0 1.5
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+write_dump all custom w43rsq_geom_tq.dump id fx fy fz tqx tqy tqz modify format float %.15g sort id

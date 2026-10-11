@@ -147,10 +147,10 @@ describe('Session: examples/melt (LAMMPS log.8Apr21.melt.g++.1)', () => {
 
 describe('Session: errors are explicit and carry the line', () => {
   it('rejects an unsupported command with its line number and the supported list', async () => {
-    const { error, events } = await runScript('units lj\n\nneb 0.1 0.0 1000 100 10 final coords.final\n');
+    const { error, events } = await runScript('units lj\n\nprd 1000 100 10 10 100 2.0 54982\n');
     expect(error).toBeInstanceOf(EngineError);
     expect(error!.line).toBe(3);
-    expect(error!.command).toBe('neb');
+    expect(error!.command).toBe('prd');
     expect(error!.message).toMatch(/not supported/);
     expect(error!.message).toContain(SUPPORTED_COMMANDS.join(', '));
     expect(events.some((e) => e.kind === 'error' && e.line === 3)).toBe(true);

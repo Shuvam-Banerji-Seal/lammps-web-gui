@@ -15,6 +15,8 @@ import type { EngineEvent, ThermoRow } from '../src/engine/types';
  *   # oracle-potentials: unmodified LAMMPS potential files from third_party/lammps/potentials
  *   # oracle-files: files it writes that are compared token by token
  *   # oracle-compare: thermo=all|first|first-last atoms=all|none rel=1e-8 abs=1e-10 skip=kw1,kw2
+ *   # oracle-partitions: N   the case runs on N replicas (partitions); its fixture holds the NEB table
+ *                            rows and the "Climbing replica" lines, compared with the same rel/abs
  */
 
 const CASES = join(__dirname, 'oracle');
@@ -27,6 +29,10 @@ interface Fixture {
   thermo: ThermoRow[];
   atoms: Record<string, number>[];
   files: Record<string, string>;
+  /** partitioned (NEB) cases: the table rows and the climbing lines */
+  partitions?: number;
+  neb?: ThermoRow[];
+  climbing?: { replica: number; row: number }[];
 }
 
 const directive = (text: string, key: string): string[] => {
@@ -77,18 +83,40 @@ describe('oracle parity with native LAMMPS', () => {
       const o = options(text);
       const events: EngineEvent[] = [];
       const files = new Map<string, string>();
+      const partitions = Number(directive(text, 'oracle-partitions')[0] ?? 1);
       const session = new Session({
         emit: (e) => events.push(e),
         writeFile: (n, t, ap) => files.set(n, (ap ? files.get(n) ?? '' : '') + t),
-      });
+      }, undefined, 0, partitions);
       // a gzipped input travels as one character per byte, as the notebook uploads it (System.readFile inflates it)
       for (const f of directive(text, 'oracle-inputs')) session.addFile(f, readFileSync(join(CASES, f), f.endsWith('.gz') ? 'latin1' : 'utf8'));
       for (const f of directive(text, 'oracle-potentials')) session.addFile(f, readFileSync(join(POTENTIALS, f), 'utf8'));
       try {
-        await session.execute(`${text}\n${FINAL_DUMP}\n`);
+        await session.execute(partitions > 1 ? `${text}\n` : `${text}\n${FINAL_DUMP}\n`);
       } catch (e) {
         const err = events.find((ev) => ev.kind === 'error');
         throw new Error(`engine failed: ${err && 'message' in err ? err.message : String(e)}`);
+      }
+      if (partitions > 1) {
+        // NEB table rows are the thermo rows that carry the RD and PE columns; the minimize rows before them do not
+        const nebRows: ThermoRow[] = [];
+        const climbing: { replica: number; row: number }[] = [];
+        for (const e of events) {
+          if (e.kind === 'thermo' && 'RD1' in e.row) nebRows.push(e.row);
+          if (e.kind !== 'log') continue;
+          const m = /^Climbing replica = (\d+)$/.exec(e.text);
+          if (m) climbing.push({ replica: Number(m[1]), row: nebRows.length });
+        }
+        expect(nebRows.length, 'NEB table rows').toBe(fx.neb!.length);
+        for (let r = 0; r < fx.neb!.length; r++) {
+          for (const [k, v] of Object.entries(fx.neb![r])) {
+            if (o.skip.has(k)) continue;
+            const g = nebRows[r][k];
+            if (!close(g, v, o.rel, o.abs)) throw new Error(`${name}: NEB row ${r} (step ${fx.neb![r].Step}) ${k}: engine ${g} vs LAMMPS ${v}`);
+          }
+        }
+        expect(climbing, 'climbing lines').toEqual(fx.climbing ?? []);
+        return;
       }
       // thermo
       const rows = events.filter((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo').map((e) => e.row);

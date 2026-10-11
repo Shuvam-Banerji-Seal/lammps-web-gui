@@ -1,0 +1,25 @@
+# oracle: w46neb_tiny — 3 replicas of 3 atoms in a 2d lj/cut box, the NEB table of a neb final run (quickmin, fix neb parallel ideal)
+# oracle-partitions: 3
+# oracle-inputs: w46neb_tiny.final
+# oracle-compare: rel=1e-5 abs=1e-6
+dimension 2
+boundary p s p
+units lj
+atom_style atomic
+atom_modify map array
+region box block 0 6 0 6 -0.5 0.5
+create_box 1 box
+create_atoms 1 single 1.5 1.5 0
+create_atoms 1 single 3.0 1.7 0
+create_atoms 1 single 4.5 1.5 0
+mass 1 1.0
+pair_style lj/cut 2.5
+pair_coeff * * 1.0 1.0 2.5
+pair_modify shift yes
+variable u uloop 3
+fix 1 all enforce2d
+fix 2 all neb 1.0 parallel ideal
+timestep 0.1
+thermo 10
+min_style quickmin
+neb 0.0 0.01 20 20 10 final w46neb_tiny.final

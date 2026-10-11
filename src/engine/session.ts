@@ -1,4 +1,4 @@
-import { EngineError, type ForceBackend } from './types';
+import { EngineError, type EngineEvent, type ForceBackend } from './types';
 import type { ForceField } from './force/forcefield';
 import { System, type SessionIO } from './system';
 import { StyleError } from './force/types';
@@ -49,10 +49,27 @@ interface Frame {
 const pairThreadsOf = (b: ForceBackend): ForceField['pairThreads'] =>
   (b as { pairThreads?: ForceField['pairThreads'] }).pairThreads ?? null;
 
+/**
+ * Commands that run once for the session rather than on every replica (partitions): control flow, `clear`,
+ * `echo`, and `neb`, which drives all replicas together (neb.html: "a NEB calculation performs a damped
+ * dynamics minimization across all the replicas").
+ */
+const SESSION_LEVEL = new Set(['label', 'jump', 'next', 'include', 'if', 'quit', 'clear', 'echo', 'neb']);
+
+/** The I/O of a replica other than the first: its output is dropped (the first replica's log and screen speak for the session). */
+const QUIET_IO: SessionIO = { emit: () => undefined };
+
 export class Session {
+  /** The active system: replica 0 between commands, the replica being run while a command runs on all of them. */
   sys: System;
+  /** One System per partition (replica); a single entry unless partitions > 1. */
+  private replicas: System[] = [];
   private frames: Frame[] = [];
   private skipJump = false;
+  /** True while a command runs on the replicas one by one. */
+  private onReplica = false;
+  /** The words of the neb command being run, as each replica parsed them. */
+  private nebWords: string[][] | null = null;
   private cancelled = false;
   private line = 0;
   private command = '';
@@ -63,16 +80,33 @@ export class Session {
     private backend: ForceBackend = new CpuForceBackend(),
     /** Also emit a 'frame' every this many steps during a run (0 = only at dumps and at the end). */
     readonly frameEvery = 0,
+    /**
+     * Number of partitions (replicas, as with lammps -partition N): every command runs on each replica in turn,
+     * variables of style world/universe/uloop take the replica's value, and `neb` runs the replicas together.
+     */
+    readonly partitions = 1,
   ) {
-    this.sys = this.newSystem();
+    if (!Number.isInteger(partitions) || partitions < 1) throw new EngineError(`partitions must be an integer >= 1 (got ${partitions})`, 0, '');
+    for (let k = 0; k < partitions; k++) this.replicas.push(this.newSystem(k));
+    this.sys = this.replicas[0];
   }
 
-  private newSystem(): System {
-    const sys = new System(this.io);
+  private newSystem(k = 0): System {
+    const sys = new System(k === 0 ? this.io : QUIET_IO);
     sys.registries = { ...styleNames(), command: SUPPORTED_COMMANDS.slice() };
     sys.ff.pairThreads = pairThreadsOf(this.backend);
+    sys.vars.partition = k;
     return sys;
   }
+
+  /** The systems of all partitions, replica 0 first (the neb command reads and drives them). */
+  get replicaSystems(): readonly System[] { return this.replicas; }
+
+  /** Sends an event through the session's output (the neb command's table and log lines). */
+  emit(ev: EngineEvent): void { this.io.emit(ev); }
+
+  /** The arguments of the running neb command as replica r parsed them (after $-substitution with its variables). */
+  argsOf(r: number): readonly string[] | undefined { return this.nebWords?.[r]?.slice(1); }
 
   /** The current system (null before create_box). */
   get system() { return this.sys.hasBox ? this.sys.state : null; }
@@ -82,8 +116,10 @@ export class Session {
   /** Swaps the force backend between runs; the system and settings stay. */
   setBackend(backend: ForceBackend): void {
     this.backend = backend;
-    this.sys.ff.pairThreads = pairThreadsOf(backend);
-    this.sys.bump();
+    for (const sys of this.replicas) {
+      sys.ff.pairThreads = pairThreadsOf(backend);
+      sys.bump();
+    }
   }
 
   /** Requests that a running `run` stop after its current step. */
@@ -92,22 +128,25 @@ export class Session {
 
   /** Makes a file available to read_data, include, jump, potential files. */
   addFile(name: string, text: string): void {
-    this.sys.files.set(name, text);
+    for (const sys of this.replicas) sys.files.set(name, text);
   }
 
   /** Forgets a file added with addFile (or written by the session). */
   removeFile(name: string): void {
-    this.sys.files.delete(name);
+    for (const sys of this.replicas) sys.files.delete(name);
   }
 
-  /** clear: a fresh system; "input script variables" survive (clear.html). */
+  /** clear: a fresh system per replica; "input script variables" survive (clear.html). */
   clear(): void {
-    const vars = this.sys.vars;
-    const files = this.sys.files;
-    this.sys = this.newSystem();
-    for (const [k, v] of vars.vars) this.sys.vars.vars.set(k, v);
-    this.sys.vars.clear();
-    for (const [k, v] of files) this.sys.files.set(k, v);
+    const old = this.replicas;
+    this.replicas = old.map((prev, k) => {
+      const sys = this.newSystem(k);
+      for (const [name, v] of prev.vars.vars) sys.vars.vars.set(name, v);
+      sys.vars.clear();
+      for (const [name, text] of prev.files) sys.files.set(name, text);
+      return sys;
+    });
+    this.sys = this.replicas[0];
   }
 
   /**
@@ -138,8 +177,34 @@ export class Session {
     }
   }
 
-  /** Runs one command (from the stream or from an if / run every). */
+  /**
+   * Runs one command (from the stream or from an if / run every). With partitions, an ordinary command runs on
+   * every replica in turn, each parsed with its own variables (the same input runs on every partition).
+   */
   async runCommand(text: string, line: number, frame: Frame | null = this.frames[this.frames.length - 1] ?? null): Promise<void> {
+    // a command nested in one replica's run (run ... every) runs on that replica only
+    if (this.replicas.length === 1 || this.onReplica) return this.runOne(text, line, frame);
+    const first = this.parse(text)[0];
+    if (first === 'neb') {
+      // neb runs once, but its arguments are read per replica ($u gives each partition its own value)
+      this.nebWords = this.replicas.map((sys) => { this.sys = sys; return this.parse(text); });
+      this.sys = this.replicas[0];
+      try { return await this.runOne(text, line, frame); } finally { this.nebWords = null; }
+    }
+    if (first === undefined || SESSION_LEVEL.has(first)) return this.runOne(text, line, frame);
+    this.onReplica = true;
+    try {
+      for (const sys of this.replicas) {
+        this.sys = sys;
+        await this.runOne(text, line, frame);
+      }
+    } finally {
+      this.onReplica = false;
+      this.sys = this.replicas[0];
+    }
+  }
+
+  private async runOne(text: string, line: number, frame: Frame | null): Promise<void> {
     this.line = line;
     this.command = '';
     try {
@@ -183,6 +248,11 @@ export class Session {
   }
 
   private async dispatch(cmd: string, a: string[], frame: Frame | null): Promise<void> {
+    // a jump or next moves one stream for all partitions; with partitions each replica's variables could
+    // differ, so the loop controls are refused rather than guessed
+    if (this.replicas.length > 1 && (cmd === 'jump' || cmd === 'next')) {
+      throw new StyleError(`'${cmd}' is not supported with partitions yet (the replicas share one input stream)`);
+    }
     switch (cmd) {
       case 'label':
         if (a.length !== 1) throw new StyleError('usage: label ID');

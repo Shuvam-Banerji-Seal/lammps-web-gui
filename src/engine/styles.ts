@@ -72,6 +72,7 @@ import { ComputeERotateSphere, ComputeTempSphere } from './compute/sphere';
 import { FixShake } from './fix/shake';
 import { FixRigid } from './fix/rigid';
 import { FixEnforce2d } from './fix/enforce2d';
+import { FixNeb } from './fix/neb';
 import { FixNH } from './fix/nh';
 import { FixLangevin, FixTempBerendsen, FixTempCSVR, FixTempRescale } from './fix/thermostats';
 import { ComputeTemp } from './compute/temp';
@@ -132,6 +133,7 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   'property/atom': (s, i, g, a) => new FixPropertyAtom(s, i, g, a),
   balance: (s, i, g, a) => new FixBalance(s, i, g, a),
   enforce2d: (s, i, g, a) => new FixEnforce2d(s, i, g, a),
+  neb: (s, i, g, a) => new FixNeb(s, i, g, a),
   nvt: (s, i, g, a) => new FixNH(s, i, g, a, 'nvt'),
   npt: (s, i, g, a) => new FixNH(s, i, g, a, 'npt'),
   nph: (s, i, g, a) => new FixNH(s, i, g, a, 'nph'),

@@ -1,0 +1,24 @@
+# oracle: compute hma (u p) on a displaced fcc crystal (32 atoms, pair lj/smooth/linear 3) defined before the displacement, then 20 steps of fix nvt
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           lj
+atom_style      atomic
+lattice         fcc 1.0
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/smooth/linear 3
+pair_coeff      * * 1.0 1.0
+compute         p all pressure NULL pair
+fix             settemp all nvt temp 1.0 1.0 0.5
+compute         hma all hma settemp u p 0.9
+variable        dx atom 0.04*sin(0.9*x+0.4*y)
+variable        dy atom 0.04*cos(0.7*y-0.5*z)
+variable        dz atom 0.04*sin(1.1*z+0.3*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+velocity        all create 0.3 12345 mom yes rot no
+timestep        0.002
+thermo_style    custom step pe temp c_hma[1] c_hma[2] c_p
+thermo_modify   format float %.15g
+thermo          5
+run             20

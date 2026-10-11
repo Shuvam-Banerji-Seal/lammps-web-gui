@@ -1,0 +1,23 @@
+# oracle: compute cnp/atom on a cut-down fcc Cu slab from examples/PACKAGES/cnp (eam/alloy, 3.086 cutoff): a plane removed for a partial dislocation, then run 0
+# oracle-potentials: Cu_mishin1.eam.alloy
+# oracle-files: w48cb_cnp_fcc.dump
+# oracle-compare: thermo=all atoms=none
+units           metal
+boundary        p p p
+atom_style      atomic
+lattice         fcc 3.615 origin 0.01 0.01 0.01 orient x -1 -1 2 orient y 1 1 1 orient z -1 1 0
+region          mdbox block 0 2 0.0 3.0 0 12 units lattice
+region          system block 0 2 0.0 3.0 0 12 units lattice
+create_box      2 mdbox
+create_atoms    1 region system
+mass            *  63.54
+pair_style      eam/alloy
+pair_coeff      * * Cu_mishin1.eam.alloy Cu Cu
+region          dislocation_atoms block 0 2 1.5 3 5.9 6.1 units lattice
+delete_atoms    region dislocation_atoms
+compute         1 all cnp/atom 3.086
+dump            d all custom 1 w48cb_cnp_fcc.dump id c_1
+dump_modify     d sort id format float %.12g
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0

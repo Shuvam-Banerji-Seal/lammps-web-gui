@@ -1,0 +1,26 @@
+# oracle: compute stress/cartesian 1d along z (keyword ke) on an lj slab between two lj93 walls (non-periodic z), after 20 nve steps
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+boundary        p p f
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        dxa atom 0.05*sin(2.3*y+0.4*z)
+variable        dya atom 0.04*cos(1.7*z)
+variable        dza atom 0.03*sin(1.3*z+0.5)
+displace_atoms  all move v_dxa v_dya v_dza units box
+variable        vxa atom 0.7*sin(2.3*y+0.4*z)+0.3*cos(1.1*x)
+variable        vya atom 0.6*cos(1.7*z-0.9*x)
+variable        vza atom 0.5*sin(1.3*x+0.8*y)
+velocity        all set v_vxa v_vya v_vza units box
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+fix             1 all nve
+fix             w1 all wall/lj93 zlo -0.5 1.0 1.0 2.5 zhi 7.2 1.0 1.0 2.5
+compute         p all stress/cartesian z 1.6 NULL 0 ke
+thermo_style    custom step c_p[1][1] c_p[1][2] c_p[1][3] c_p[1][4] c_p[1][5] c_p[1][6] c_p[1][7] c_p[1][8] c_p[2][1] c_p[2][2] c_p[2][3] c_p[2][4] c_p[2][5] c_p[2][6] c_p[2][7] c_p[2][8] c_p[3][1] c_p[3][2] c_p[3][3] c_p[3][4] c_p[3][5] c_p[3][6] c_p[3][7] c_p[3][8] c_p[4][1] c_p[4][2] c_p[4][3] c_p[4][4] c_p[4][5] c_p[4][6] c_p[4][7] c_p[4][8]
+thermo_modify   format float %.15g
+run             20

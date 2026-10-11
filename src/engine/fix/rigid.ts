@@ -55,6 +55,8 @@ interface Body {
   fflag: boolean[];
   tflag: boolean[];
   dof: number;
+  /** finite-size spheres (radius > 0) among the body's atoms; each adds its own rotational dof and inertia */
+  nsph: number;
 }
 
 /** One line of an infile (fix rigid infile): attributes that override the computed ones. */
@@ -391,6 +393,7 @@ export class FixRigid extends Fix {
     for (const [spec, flags] of this.forceSpecs) { const [lo, hi] = typeBounds(spec, nb); for (let k = lo; k <= hi; k++) bodies[k - 1].fflag = flags.slice(); }
     for (const [spec, flags] of this.torqueSpecs) { const [lo, hi] = typeBounds(spec, nb); for (let k = lo; k <= hi; k++) bodies[k - 1].tflag = flags.slice(); }
     this.bodies = bodies;
+    this.publishBodyMass();
     this.sizeArrayRows = nb;
     for (const b of bodies) this.omegaFromAngmom(b);
     sys.log(`fix ${this.id} ${this.style}: ${nb} rigid bodies with ${bodies.reduce((a, b) => a + b.atoms.length, 0)} atoms`);
@@ -403,26 +406,6 @@ export class FixRigid extends Fix {
     const g = sys.geom;
     const u = [0, 0, 0];
     if (idx.length < 2) throw new StyleError(`fix ${this.style}: "Each rigid body must have two or more atoms." (body ${key})`);
-    // Point dipoles in a body: native fix rigid turns each dipole with the body (measured with native LAMMPS,
-    // black box, in.rigid.dipoles: mu_i(t) = Q(t) mu_i(0) to 1e-12, where Q is the body rotation fitted to the
-    // unwrapped positions). The engine does not do that yet, and the torque of the pair forces on the dipoles
-    // is not added to the body either, so a body with a dipole is refused rather than integrated wrongly.
-    if (s.mu) {
-      for (const i of idx) {
-        if (s.mu[4 * i] || s.mu[4 * i + 1] || s.mu[4 * i + 2]) {
-          throw new StyleError(`fix ${this.style}: rigid bodies with point dipoles (atom ${s.id[i]}) are not supported by the browser engine (the dipoles must turn with the body and the torque on them must be added to it)`);
-        }
-      }
-    }
-    // docs.lammps.org/fix_rigid.html: "Finite-size particles contribute differently to the moment of inertia of
-    // a rigid body than do point particles." and "These contributions are accounted for by these fixes." This
-    // engine treats every constituent as a point mass (no particle inertia, torque or orientation), so a body
-    // with finite-size spheres or ellipsoids is refused rather than integrated with the wrong inertia.
-    for (const i of idx) {
-      if ((s.radius && s.radius[i] > 0) || isEllipsoid(s, i)) {
-        throw new StyleError(`fix ${this.style}: rigid bodies of finite-size particles (atom ${s.id[i]} has a radius or an ellipsoid shape) are not supported by the browser engine (their own moments of inertia, torques and orientations are not included)`);
-      }
-    }
     for (const i of idx) for (let d = 0; d < 3; d++) if (!s.box.periodic[d] && s.image[3 * i + d] !== 0) throw new StyleError(`fix ${this.style}: an atom of body ${key} has a non-zero image flag in a non-periodic dimension`);
     let M = 0;
     const xcm = [0, 0, 0], vcm = [0, 0, 0];
@@ -435,6 +418,7 @@ export class FixRigid extends Fix {
     for (let d = 0; d < 3; d++) { xcm[d] /= M; vcm[d] /= M; }
     const I = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
     const angmom = [0, 0, 0];
+    let nsph = 0;
     idx.forEach((i, n) => {
       const m = massOf(s, i);
       const r = [pos[n][0] - xcm[0], pos[n][1] - xcm[1], pos[n][2] - xcm[2]];
@@ -442,6 +426,19 @@ export class FixRigid extends Fix {
       for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) I[a][b] += m * ((a === b ? r2 : 0) - r[a] * r[b]);
       const L = cross(r, [s.v[3 * i], s.v[3 * i + 1], s.v[3 * i + 2]]);
       for (let d = 0; d < 3; d++) angmom[d] += m * L[d];
+      this.refuseUnsupportedParticle(key, i);
+      const rad = s.radius ? s.radius[i] : 0;
+      if (rad > 0) {
+        // docs.lammps.org/fix_rigid.html: "Finite-size particles contribute differently to the moment of
+        // inertia of a rigid body than do point particles." A solid sphere adds 2/5 m r^2 about its own centre
+        // (textbook), and its spin omega_i adds I_s omega_i to the body angular momentum. Measured with native
+        // LAMMPS (black box): a two-sphere body with spin 0.3 about z has omega_z = 0.0857142857 = L/I with
+        // both terms included.
+        const Is = 0.4 * m * rad * rad;
+        for (let a = 0; a < 3; a++) I[a][a] += Is;
+        if (s.omega) for (let d = 0; d < 3; d++) angmom[d] += Is * s.omega[3 * i + d];
+        nsph++;
+      }
     });
     // infile attributes replace the computed ones; the atoms keep their positions relative to the body
     const over = this.infile?.get(infileKey) ?? null;
@@ -468,9 +465,23 @@ export class FixRigid extends Fix {
       displace,
       fcm: [0, 0, 0], torque: [0, 0, 0], fflag: [true, true, true], tflag: [true, true, true],
       dof: sys.dimension === 2 ? 3 : ncollinear >= 1 ? 5 : 6,
+      nsph,
     };
     this.wrapCom(b);
     return b;
+  }
+
+  /**
+   * Particles this fix cannot yet integrate as finite-size bodies are refused, never treated as points.
+   * Ellipsoids (their orientation quaternion and angular momentum must follow the body) and point dipoles
+   * (their vectors must rotate with the body and receive dipole torques) are not implemented.
+   */
+  private refuseUnsupportedParticle(key: string, i: number): void {
+    const s = this.sys.state;
+    const id = s.id[i];
+    if (s.shape && s.shape[3 * i] > 0) throw new StyleError(`fix ${this.style}: finite-size ellipsoid atom ${id} in rigid body ${key} is not supported by the browser engine (ellipsoidal particles in rigid bodies need their orientation to follow the body)`);
+    if (s.mu && s.mu[4 * i + 3] !== 0) throw new StyleError(`fix ${this.style}: point dipole atom ${id} in rigid body ${key} is not supported by the browser engine (dipole vectors must rotate with the body and feel dipole torques)`);
+    if (s.radius && s.radius[i] > 0 && this.sys.dimension === 2) throw new StyleError(`fix ${this.style}: finite-size particle ${id} in rigid body ${key} is not supported in 2d by the browser engine`);
   }
 
   /** The mol template-ID of this fix (null without the mol keyword); fix gcmc rigid must name the same one. */
@@ -486,9 +497,21 @@ export class FixRigid extends Fix {
     if (this.bodystyle !== 'molecule') throw new StyleError(`fix ${this.style}: the mol keyword needs bodystyle molecule`);
     const gone = new Set(atomIds);
     const before = this.bodies.length;
+    for (const b of this.bodies) if (b.atoms.some((id) => gone.has(id))) for (const id of b.atoms) this.sys.state.rigidBodyMass?.delete(id);
     this.bodies = this.bodies.filter((b) => !b.atoms.some((id) => gone.has(id)));
     if (this.bodies.length !== before - 1) throw new StyleError(`fix ${this.style}: expected one rigid body for the deleted molecule, found ${before - this.bodies.length}`);
     this.sizeArrayRows = this.bodies.length;
+  }
+
+  /**
+   * Publishes each body's mass for its atoms (SimState.rigidBodyMass), read by the granular contact styles.
+   * docs.lammps.org/pair_gran.html: "If either particle is part of a rigid body, its mass is replaced by the
+   * mass of the rigid body in the formula above."
+   */
+  private publishBodyMass(): void {
+    const s = this.sys.state;
+    if (!s.rigidBodyMass) s.rigidBodyMass = new Map();
+    for (const b of this.bodies) for (const id of b.atoms) s.rigidBodyMass.set(id, b.mass);
   }
 
   /** Copies of the body list, to undo a rejected deletion (see removeMolecule). */
@@ -496,6 +519,7 @@ export class FixRigid extends Fix {
 
   restoreBodies(snap: Body[]): void {
     this.bodies = snap.map(cloneBody);
+    this.publishBodyMass();
     this.sizeArrayRows = this.bodies.length;
   }
 
@@ -517,6 +541,7 @@ export class FixRigid extends Fix {
     const key = String(this.sys.state.molecule[ii[0]]);
     const b = this.constructBody(key, ii, key);
     this.bodies.push(b);
+    this.publishBodyMass();
     this.sizeArrayRows = this.bodies.length;
     this.omegaFromAngmom(b);
   }
@@ -569,7 +594,9 @@ export class FixRigid extends Fix {
     let n = 0;
     for (const b of this.bodies) {
       if (!b.atoms.every((id) => (s.mask[idx.get(id)!] & groupBit) !== 0)) continue;
-      n += d * b.atoms.length - b.dof;
+      // finite-size spheres take their 3 rotational dof away too: measured with native LAMMPS (black box),
+      // a body of n spheres removes 6n - 6 from a temperature compute (sphere-spin oracle w42rfs_sphere_spin)
+      n += d * b.atoms.length - b.dof + 3 * b.nsph;
     }
     return n;
   }
@@ -593,6 +620,8 @@ export class FixRigid extends Fix {
         const r = [u[0] - b.xcm[0], u[1] - b.xcm[1], u[2] - b.xcm[2]];
         const t = cross(r, f);
         for (let d = 0; d < 3; d++) { F[d] += f[d]; T[d] += t[d]; }
+        // per-atom torques of finite-size particles (granular contacts, fix addtorque) add to the body torque
+        if (s.torque) for (let d = 0; d < 3; d++) T[d] += s.torque[3 * i + d];
       }
       // docs.lammps.org/fix_rigid.html: "A gravity force will then be applied to each rigid body at its
       // center-of-mass position using its total mass." The force has no torque.
@@ -631,6 +660,8 @@ export class FixRigid extends Fix {
         const xold = [0, 0, 0];
         g.unwrap(s.x, s.image, i, xold);
         for (let d = 0; d < 3; d++) s.v[3 * i + d] = b.vcm[d] + w[d];
+        // finite-size spheres rotate with the body: their angular velocity is the body's (measured with native LAMMPS, black box)
+        if (s.omega && s.radius && s.radius[i] > 0) for (let d = 0; d < 3; d++) s.omega[3 * i + d] = b.omega[d];
         if (setX) {
           // unwrapped position, written back as wrapped position + image flags
           for (let d = 0; d < 3; d++) {

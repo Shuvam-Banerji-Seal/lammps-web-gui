@@ -126,6 +126,8 @@ export interface SimState {
   massByType: Float64Array;
   /** Per-atom masses (atom styles with a per-atom mass, e.g. sphere), else null: use massOf(). */
   rmass: Float64Array | null;
+  /** Rigid-body masses by atom ID (set by fix rigid for its atoms; null or empty without rigid bodies). */
+  rigidBodyMass?: Map<number, number> | null;
   /** atom_style sphere: per-atom radius (0 = point particle), angular velocity and torque (3N); else null. */
   radius: Float64Array | null;
   omega: Float64Array | null;

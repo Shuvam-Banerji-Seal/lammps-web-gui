@@ -176,6 +176,24 @@ export const countEllipsoids = (s: SimState): number => {
 /** Mass of atom i: the per-atom mass when the atom style has one (rmass), else its type's mass. */
 export const massOf = (s: SimState, i: number): number => (s.rmass ? s.rmass[i] : s.massByType[s.type[i]]);
 
+/**
+ * Mass each atom contributes to contact (granular) forces: its own mass, or for an atom of a rigid body the
+ * mass of that body. docs.lammps.org/pair_gran.html: "If either particle is part of a rigid body, its mass is
+ * replaced by the mass of the rigid body in the formula above." fix_wall_gran.html: "If the particle is part of
+ * a rigid body, its mass is replaced by the mass of the rigid body in those formulas."
+ */
+export const contactMassArray = (s: SimState): Float64Array => {
+  const m = s.rmass!;
+  const map = s.rigidBodyMass;
+  if (!map || map.size === 0) return m;
+  const out = Float64Array.from(m);
+  for (let i = 0; i < s.n; i++) {
+    const b = map.get(s.id[i]);
+    if (b !== undefined) out[i] = b;
+  }
+  return out;
+};
+
 export const maxAtomId = (s: SimState): number => {
   let m = 0;
   for (let i = 0; i < s.n; i++) if (s.id[i] > m) m = s.id[i];

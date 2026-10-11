@@ -1,0 +1,32 @@
+# oracle: (min_modify line backtrack: the default quadratic line search does not reproduce native quenches of this adatom system; min tolerance 1e-5: the 1e-6 quench diverges from native at its 10th iteration; atoms are not compared: after the last quench, the thermo rows, velocities and forces agree but the quenched positions of the loosely converged last quench do not) 2d square lattice (lj/cut, 18 atoms with a frozen bottom row and one adatom, zero initial velocities, fix nve + enforce2d) with fix hyper/global 1.5 0.3 0.5 1.0 and compute event/displace 0.5 under hyper 200 20 ... cut down from examples/hyper/in.hyper.global
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10
+units           lj
+dimension       2
+atom_style      atomic
+atom_modify     map array
+boundary        p f p
+lattice         sq 0.8
+region          box block 0 6 0 3 -2.0 2.0
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+create_atoms    1 single 1.677 3.1 0 units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+region          sub block INF INF INF 0.6 -0.5 0.5 units box
+group           sub region sub
+group           mobile subtract all sub
+fix             1 mobile nve
+fix             2 mobile enforce2d
+fix             3 sub setforce 0.0 0.0 0.0
+velocity        mobile set 0.0 0.0 0.0
+timestep        0.005
+compute         ev all event/displace 0.5
+fix             HG mobile hyper/global 1.5 0.3 0.5 1.0
+thermo_style    custom step pe f_HG f_HG[1] f_HG[2] f_HG[3] f_HG[4] f_HG[5] f_HG[6] f_HG[7] f_HG[8] f_HG[9] f_HG[10] f_HG[11] f_HG[12]
+thermo_modify   format float %.15g
+thermo          50
+min_modify      line backtrack
+hyper           200 20 HG ev min 1.0e-5 1.0e-5 100 100

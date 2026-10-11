@@ -1,0 +1,47 @@
+# oracle: fix halt (fix_halt.html) with each operator on v_s = step, checked every 2 steps (absolute timesteps), error soft and message no; each halted run is followed by timer timeout off and unfix, so the next run starts at the halt step; 2d-free 1-atom lj system with nve (no forces of interest)
+# oracle-compare: thermo=all atoms=none rel=1e-10 abs=1e-12
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+displace_atoms  all move 0.05 0.02 0.01 units box
+velocity        all set 0.3 0.1 -0.2
+fix             1 all nve
+timestep        0.005
+variable        s equal step
+thermo_style    custom step pe v_s
+thermo_modify   format float %.15g
+thermo          1
+fix             h all halt 2 v_s < 5 error soft message no
+run             10
+timer           timeout off
+unfix           h
+fix             h all halt 2 v_s <= 7 error soft message no
+run             10
+timer           timeout off
+unfix           h
+fix             h all halt 2 v_s > 15 error soft message no
+run             10
+timer           timeout off
+unfix           h
+fix             h all halt 2 v_s >= 17 error soft message no
+run             10
+timer           timeout off
+unfix           h
+fix             h all halt 2 v_s == 25 error soft message no
+run             10
+timer           timeout off
+unfix           h
+fix             h all halt 2 v_s != 27 error soft message no
+run             10
+timer           timeout off
+unfix           h
+fix             h all halt 2 v_s |^ 0 error soft message no
+run             10
+timer           timeout off
+unfix           h

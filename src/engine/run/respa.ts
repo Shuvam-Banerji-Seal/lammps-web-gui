@@ -5,6 +5,7 @@ import { PairHybrid } from '../force/pair/hybrid';
 import { clearAccum, newAccum, StyleError, type Accum } from '../force/types';
 import { yieldNow, type RunHooks } from './verlet';
 import { restartDue } from '../commands/restart';
+import { haltRequested } from './halt';
 
 /*
  * run_style respa (rRESPA, Tuckerman, Berne and Martyna, J Chem Phys 97, 1990 (1992)).
@@ -277,6 +278,7 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
     sys.refreshComputes();
     taken++;
     hooks.afterStep(s.step);
+    if (haltRequested(sys)) break;
     if (hooks.yieldMs >= 0 && performance.now() - lastYield > hooks.yieldMs) {
       await yieldNow();
       lastYield = performance.now();

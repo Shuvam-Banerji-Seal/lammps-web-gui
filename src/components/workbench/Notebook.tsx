@@ -420,6 +420,17 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     setCells((prev) => (mode === 'replace' ? [cell] : [...prev, cell]));
     onIncomingTaken?.();
   };
+  // A script sent from the Script Builder is placed at once when nothing would be lost: the notebook is empty or
+  // still holds only the untouched starter cells, and no run is going. Otherwise the banner below asks first.
+  const [placedFromBuilder, setPlacedFromBuilder] = useState(false);
+  useEffect(() => {
+    if (incoming === null || busy) return;
+    const untouched = cells.every((c) => !c.text.trim())
+      || (cells.length === STARTER.length && cells.every((c, i) => c.text === STARTER[i].text && isMarkdownCell(c) === isMarkdownCell(STARTER[i])));
+    if (!untouched) return;
+    takeIncoming('replace');
+    setPlacedFromBuilder(true);
+  }, [incoming, busy, cells]);
   const incomingNeeds = incoming === null ? [] : filesReadBy(incoming).filter((f) => !(f in inputs));
 
   const addInputFiles = async (list: FileList | null) => {
@@ -520,7 +531,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
       {incoming !== null && (
         <div role="region" aria-label="Script from the Script Builder"
           className={`flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 text-xs ${ct.divider} ${ct.panel}`}>
-          <span className="font-medium">Script from the Script Builder ({incoming.split('\n').length} lines)</span>
+          <span className="font-medium">Script from the Script Builder ({incoming.split('\n').length} lines), not placed yet: your cells would change</span>
           <button className={`${btn} ${ct.accent}`} disabled={busy} onClick={() => takeIncoming('replace')}
             title="Replace every cell, and its output, with this script">
             Replace {cells.length === 1 ? 'the cell' : `all ${cells.length} cells`}
@@ -536,6 +547,12 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
               {' '}— add {incomingNeeds.length === 1 ? 'it' : 'them'} with Add files.
             </span>
           )}
+        </div>
+      )}
+      {placedFromBuilder && incoming === null && (
+        <div role="status" className={`flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-xs ${ct.divider} ${ct.panel}`}>
+          <span>The script from the Script Builder is in the notebook. It has not run yet: press Run all.</span>
+          <button className={`${btn} ${ct.button}`} aria-label="Dismiss" onClick={() => setPlacedFromBuilder(false)}><X size={12} aria-hidden="true" /></button>
         </div>
       )}
       {deleted && (

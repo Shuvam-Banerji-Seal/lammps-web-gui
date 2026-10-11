@@ -352,7 +352,18 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
     typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   const [editorOpenMobile, setEditorOpenMobile] = useState(false);
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
+    // Crossing into phone width (e.g. a desktop window narrowed or a tablet
+    // rotated) must close the palette drawer: it was opened at desktop width,
+    // and its full-screen backdrop otherwise covers the whole toolbar, so
+    // "Run in Notebook" and the rest cannot be clicked. Only the flip
+    // desktop -> phone closes it, so mobile address-bar resizes do not.
+    const check = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(prev => {
+        if (mobile && !prev) setPaletteOpen(false);
+        return mobile;
+      });
+    };
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
@@ -1043,10 +1054,12 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
               {isManual ? 'manual' : `${model.steps.length} steps · ${generated.emitted.length} lines`}
             </span>
           </div>
-          {/* min-w-0 + (below md) horizontal scroll keeps every button
-              reachable at phone widths; overflow stays visible at md+ so the
-              templates dropdown is never clipped by a scroll container. */}
-          <div className="flex min-w-0 items-center gap-0.5 max-md:overflow-x-auto sm:gap-1.5">
+          {/* Below md: one scrollable row keeps every button reachable at phone
+              widths. At md+ the group wraps its own buttons inside the editor
+              column. Before, its nowrap buttons overflowed the column and the
+              inspector sidebar painted over the right-hand ones (Run in
+              Notebook was unclickable at ~768-1200px). */}
+          <div className="flex min-w-0 items-center gap-0.5 max-md:overflow-x-auto md:ml-auto md:flex-wrap md:justify-end sm:gap-1.5">
             <button
               onClick={undo}
               disabled={!canUndo}

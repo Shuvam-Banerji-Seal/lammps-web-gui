@@ -1,0 +1,519 @@
+# oracle: pair_style buck6d/coul/gauss/long (MOF-FF pair terms: Buckingham with D/r^14 damping, smoothing, Gaussian-smeared Coulomb), dimer scan of three type pairs at 9 distances, per-pair cutoff on 2-2
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 1.9 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.6 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 3.4 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 4.6 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 6.2 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 7.6 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 9.0 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 10.9 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 11.6 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 1.9 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 2.6 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 3.4 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 4.6 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 6.2 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 7.6 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 9.0 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 10.9 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 11.6 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 1.9 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 2.6 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 3.4 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 4.6 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 6.2 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 7.6 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 9.0 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 10.9 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        p p p
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 11.6 0 0 units box
+mass            * 1.0
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+pair_style      buck6d/coul/gauss/long 0.9 0.8 12.0 10.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 2 1000 2.5 200 3.0 0.5 8.0
+kspace_style ewald 1.0e-6
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0

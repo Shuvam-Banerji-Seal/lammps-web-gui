@@ -1,0 +1,820 @@
+# oracle: pair_style momb 12.0 0.75 20.0, dimer scan of three type pairs at eight distances, pair_modify shift yes in the second block
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           metal
+atom_style      atomic
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 1.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 3.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 4.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 6.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 9.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 11.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 1.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 2.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 2.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 3.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 4.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 6.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 9.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 11.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 1.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 2.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 2.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 3.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 4.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 6.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 9.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 11.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift no
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 1.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 3.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 4.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 6.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 9.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 11.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 1.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 2.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 2.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 3.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 4.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 6.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 9.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 11.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 1.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 2.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 2.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 3.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 4.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 6.0 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 9.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 11.5 0 0 units box
+mass            * 1.0
+pair_style      momb 12.0 0.75 20.0
+pair_coeff      1 1 0.3 1.2 2.5 10.2847 2.361
+pair_coeff      1 2 0.12 1.6 2.9 22.9973 2.702
+pair_coeff      2 2 0.5 1.0 3.0 30.4846 2.757
+pair_modify     shift yes
+thermo_style    custom step pe evdwl fmax
+thermo_modify   format float %.15g norm no
+run             0

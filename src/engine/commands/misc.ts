@@ -3,6 +3,7 @@ import { yesno } from './args';
 import { StyleError } from '../force/types';
 import { formatNumber, substituteVariables } from '../script';
 import { evaluateScalar } from '../formula';
+import { clearSoftHalt } from '../run/halt';
 
 /*
  * General-purpose input commands.
@@ -52,6 +53,9 @@ const timer: Handler = ({ sys }, a) => {
   for (let k = 0; k < a.length; k++) {
     const w = a[k];
     if (['off', 'loop', 'normal', 'full', 'sync', 'nosync'].includes(w)) continue;
+    // timer.html: "timer timeout off" and "timer timeout unlimited" clear a timeout; a fix halt with error soft
+    // stops later runs until one of them is given (fix_halt.html). Other timeouts need the wall clock: refused.
+    if (w === 'timeout' && (a[k + 1] === 'off' || a[k + 1] === 'unlimited')) { clearSoftHalt(sys); k++; continue; }
     if (w === 'timeout' || w === 'every') throw new StyleError(`timer ${w} is not supported by the browser engine (use the Stop button)`);
     throw new StyleError(`unknown timer keyword '${w}'`);
   }

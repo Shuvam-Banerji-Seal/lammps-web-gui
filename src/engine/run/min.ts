@@ -2,6 +2,7 @@ import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { massOf } from '../atoms';
 import type { BoxDof } from '../fix/box_relax';
+import { checkMinHalt } from './halt';
 
 /*
  * Energy minimization — docs.lammps.org/minimize.html, min_style.html,
@@ -263,6 +264,7 @@ export const minimize = async (
       ePrev = e;
       e = eTry;
       s.step++;
+      checkMinHalt(sys);
       hooks.thermo(false);
       // convergence checks (the force test uses the atoms only: a box that is still moving does not hold the minimizer)
       if (Math.abs(e - ePrev) < p.etol * 0.5 * (Math.abs(e) + Math.abs(ePrev) + EPS_ENERGY)) { reason = 'energy tolerance'; break; }
@@ -394,6 +396,7 @@ export const minimize = async (
       ePrev = e;
       e = evaluate();
       s.step++;
+      checkMinHalt(sys);
       hooks.thermo(false);
       // "For the damped dynamics minimizers this check is not performed for a few steps after velocities are reset to 0"
       if (iter - lastNeg > delaystep && Math.abs(e - ePrev) < p.etol * 0.5 * (Math.abs(e) + Math.abs(ePrev) + EPS_ENERGY)) { reason = 'energy tolerance'; break; }

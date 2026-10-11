@@ -11,6 +11,7 @@ import type { System } from '../system';
 import { minimize, MIN_STYLES } from '../run/min';
 import { accelerator, runAccelerated } from '../run/accel';
 import { restartDue, startRestarts, writeRestarts } from './restart';
+import { clearHaltRequest, haltRequested, softHalted } from '../run/halt';
 
 /*
  * fix / compute / thermo / dump / run commands.
@@ -235,6 +236,9 @@ const writeDumps = (sys: System, firstOfRun: boolean): boolean => {
 /** One run of n steps with output; returns steps taken. */
 const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => {
   const { sys, session } = ctx;
+  // fix_halt.html: after a soft halt "additional run or minimize commands will be skipped" (no output)
+  if (softHalted(sys)) return 0;
+  clearHaltRequest(sys);
   const s = sys.state;
   ensureThermoComputes(sys);
   initRun(sys);
@@ -306,8 +310,9 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
         // keep the page responsive: yield about every 30 ms
         yieldMs: 30,
       });
-  // a cancelled run still reports its last step
-  if (lastThermo !== s.step) emitThermo();
+  // a cancelled run still reports its last step; a run stopped by fix halt does not print a row for a step
+  // that is not on the thermo interval (measured with native LAMMPS, black box)
+  if (lastThermo !== s.step && !haltRequested(sys)) emitThermo();
   emitPerf(s.step, true);
   sys.run.inRun = false;
   emitFrame(sys);
@@ -378,6 +383,8 @@ const minimizeCmd: Handler = async (ctx, a) => {
   const etol = num(a[0], 'etol'), ftol = num(a[1], 'ftol');
   const maxiter = int(a[2], 'maxiter'), maxeval = int(a[3], 'maxeval');
   if (etol < 0 || ftol < 0) throw new StyleError('minimize tolerances must be >= 0');
+  if (softHalted(sys)) return;
+  clearHaltRequest(sys);
   ensureThermoComputes(sys);
   initRun(sys);
   const s = sys.state;
@@ -392,7 +399,7 @@ const minimizeCmd: Handler = async (ctx, a) => {
   // prints the step-0 row once)
   let lastThermo = -1;
   const result = await minimize(sys, { etol, ftol, maxiter, maxeval }, {
-    cancelled: () => session.isCancelled,
+    cancelled: () => session.isCancelled || haltRequested(sys),
     thermo: (iterDone) => {
       if ((iterDone || th.due(s.step, first, Number.MAX_SAFE_INTEGER)) && s.step !== lastThermo) {
         sys.io.emit({ kind: 'thermo', row: th.row() });

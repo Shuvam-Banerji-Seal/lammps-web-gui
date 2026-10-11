@@ -1,6 +1,7 @@
 import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { restartDue } from '../commands/restart';
+import { haltRequested } from './halt';
 
 /*
  * The velocity-Verlet run loop — docs.lammps.org/Developer_flow.html:
@@ -141,6 +142,8 @@ export const runVerlet = async (sys: System, nsteps: number, hooks: RunHooks): P
     sys.refreshComputes();
     taken++;
     hooks.afterStep(s.step);
+    // fix halt (fix_halt.html): the run ends after the step on which the condition was met
+    if (haltRequested(sys)) break;
     if (hooks.yieldMs >= 0 && performance.now() - lastYield > hooks.yieldMs) {
       await yieldNow();
       lastYield = performance.now();

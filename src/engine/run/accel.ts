@@ -5,6 +5,7 @@ import { newPairTable } from '../pairs';
 import { clearAccum } from '../force/types';
 import { isResident, MAX_CHUNK, type ResidentBackend } from '../md';
 import { yieldNow } from './verlet';
+import { haltRequested } from './halt';
 import { CpuForceBackend } from '../cpu/forces';
 
 /*
@@ -149,6 +150,7 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
     sys.refreshComputes();
     taken++;
     hooks.afterStep(s.step);
+    if (haltRequested(sys)) break;
     if (performance.now() - lastYield > 30) { await yieldNow(); lastYield = performance.now(); }
   }
   for (const f of fixes) f.postRun?.();

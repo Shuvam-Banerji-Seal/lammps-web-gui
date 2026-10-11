@@ -1,0 +1,16 @@
+# oracle: min_style cg (line quadratic, default dmax) on a perturbed Cu crystal with eam: per-iteration energies and the force-evaluation count
+# oracle-inputs: w47ls_cu.data
+# oracle-potentials: Cu_u3.eam
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-6
+# (press falls to about 0.02 bar near the minimum, where 4e-9 bar is round-off: hence abs 1e-6)
+units           metal
+atom_style      atomic
+read_data       w47ls_cu.data
+pair_style      eam
+pair_coeff      1 1 Cu_u3.eam
+neighbor        1.0 bin
+thermo_style    custom step pe fnorm fmax press
+thermo_modify   format float %.15g
+thermo          1
+min_style       cg
+minimize        0 0 25 1000

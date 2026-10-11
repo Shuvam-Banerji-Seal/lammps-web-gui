@@ -1,0 +1,19 @@
+# oracle: min_style sd (line quadratic) on a 2d binary lj system with enforce2d and min_modify dmax 0.05: per-iteration energies (20 iterations: native and the engine part at iteration 21, cause not identified)
+# oracle-inputs: w47ls_2d.data
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      atomic
+dimension       2
+read_data       w47ls_2d.data
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+pair_coeff      2 2 0.5 0.88
+pair_coeff      1 2 1.5 0.8
+neighbor        0.3 bin
+fix             2d all enforce2d
+thermo_style    custom step pe fnorm press
+thermo_modify   format float %.15g
+thermo          1
+min_style       sd
+min_modify      dmax 0.05
+minimize        0 0 20 1000

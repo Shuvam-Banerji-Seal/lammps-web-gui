@@ -68,6 +68,8 @@ const ALPHA_ARMIJO = 1e-4;
 /** native min_modify line backtrack: Armijo slope 0.4 and halving (measured, see the backtrack branch) */
 const BACKTRACK_SLOPE = 0.4;
 const BACKTRACK = 0.5;
+/** native min_modify line quadratic: largest first trial alpha (measured, see the quadratic branch) */
+const LS_ALPHA_MAX = 1.0;
 const EPS_ENERGY = 1e-8;
 const EMACH = 1e-8;
 /** Energy resolution in units of the machine epsilon (sums of ~N terms). */
@@ -216,36 +218,40 @@ export const minimize = async (
           alpha *= BACKTRACK;
           if (alpha * Math.max(hmax, hbox) < EMACH) break;
         }
-      } else
-      for (;;) {
-        moveTo(alpha);
-        eTry = evaluate();
-        if (evaluations >= p.maxeval) break;
-        packForce(gNew);
-        const slopeNew = dot(gNew, h);
-        // quadratic refinement near the minimum: zero of the interpolated directional force
-        // E(a) ~ E0 - slope a + c a^2 through the trial: its minimum a0 = slope / (2 c) is the estimated zero of the gradient
-        if (set.line === 'quadratic' && Math.abs(eTry - eStart) < 1e-6 * Math.max(1, Math.abs(eStart))) {
-          const c2 = (eTry - eStart + slope * alpha) / (alpha * alpha);
-          const a0 = c2 > 0 ? slope / (2 * c2) : -1;
-          if (a0 > 0 && a0 <= alphaMax) {
-            moveTo(a0);
-            const eq = evaluate();
-            if (eq <= eStart + ROUNDOFF * (Math.abs(eStart) + 1)) { eTry = eq; alpha = a0; accepted = true; packForce(gNew); break; }
-            moveTo(alpha);
-            eTry = evaluate();
-            packForce(gNew);
+      } else {
+        // Measured with native LAMMPS (black box, tests/oracle/w47ls_*.in, 108-atom LJ crystal, dmax 0.1): the
+        // quadratic line search starts at alpha0 = min(dmax/max|h|, 1). Its first trial is accepted when it is
+        // downhill and still descending (F.h > 0 at the trial). When the directional derivative F.h changes sign
+        // between the previous point and the trial, the next trial is the zero of the interpolated derivative
+        // (the secant step: alpha = a1 F1.h / (F1.h - F2.h) with the previous point's F.h), and that secant point
+        // is accepted when it is downhill. Otherwise alpha is halved. Native's first trial is an overshoot
+        // (energy rises) only in the large-dmax runs; there native halves before it takes the secant, and this
+        // rule does not reproduce that yet.
+        let a = Math.min(alphaMax, LS_ALPHA_MAX);
+        let prevA = 0, prevS = slope;
+        let fromSecant = false;
+        for (;;) {
+          moveTo(a);
+          eTry = evaluate();
+          packForce(gNew);
+          if (evaluations >= p.maxeval) break;
+          const sA = dot(gNew, h);
+          if (fromSecant && eTry <= eStart + ROUNDOFF * (Math.abs(eStart) + 1)) { accepted = true; break; }
+          if (prevS * sA < 0) {
+            // bracketed: the zero of the linear interpolation of F.h between the two points
+            const z = prevA + prevS * (a - prevA) / (prevS - sA);
+            prevA = a; prevS = sA; a = z; fromSecant = true;
+            continue;
           }
+          if (!fromSecant && eTry <= eStart - ALPHA_ARMIJO * a * slope && sA > 0) { accepted = true; break; }
+          // round-off floor: when the predicted decrease is below the energy's resolution, the energy cannot
+          // decide the step. Then the forces decide it: a step that does not raise the energy beyond that
+          // resolution and that flattens the directional force (strong Wolfe curvature, |F1.h| <= 0.9 |F0.h|)
+          // is accepted, so the search does not stall at a tiny force
+          if (slope > 0 && eTry <= eStart + ROUNDOFF * (Math.abs(eStart) + 1) && Math.abs(sA) <= 0.9 * slope) { accepted = true; break; }
+          prevA = a; prevS = sA; a *= BACKTRACK; fromSecant = false;
+          if (a * Math.max(hmax, hbox) < EMACH) break;
         }
-        // Armijo sufficient decrease: E(alpha) <= E(0) - c alpha (F . h)
-        if (eTry <= eStart - ALPHA_ARMIJO * alpha * slope) { accepted = true; break; }
-        // round-off floor: when the predicted decrease is below the energy's resolution, the energy cannot
-        // decide the step. Then the forces decide it: a step that does not raise the energy beyond that
-        // resolution and that flattens the directional force (strong Wolfe curvature, |F1.h| <= 0.9 |F0.h|)
-        // is accepted, so the search does not stall at a tiny force
-        if (slope > 0 && eTry <= eStart + ROUNDOFF * (Math.abs(eStart) + 1) && Math.abs(slopeNew) <= 0.9 * slope) { accepted = true; break; }
-        alpha *= BACKTRACK;
-        if (alpha * Math.max(hmax, hbox) < EMACH) break;
       }
       if (!accepted) {
         // restore the starting point
@@ -290,6 +296,9 @@ export const minimize = async (
       if (iter === p.maxiter) reason = 'max iterations';
     }
     if (iter > p.maxiter) iter = p.maxiter;
+    // Measured with native LAMMPS (black box, tests/engineLineSearch.test.ts): the cg/sd summary counts only the
+    // line-search trials, not the setup evaluation (minimize 0 0 1 with line quadratic: 1 force evaluation)
+    evaluations--;
   } else {
     // damped dynamics: quickmin or fire
     const fp = set.fire;

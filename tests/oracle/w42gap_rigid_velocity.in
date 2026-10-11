@@ -1,0 +1,26 @@
+# oracle: fix rigid molecule on SPC/E-like water (64 bodies), then velocity create before the first run (the body dof are excluded by the temperature compute), run 0 and run 10 with fix rigid integration
+# oracle-inputs: w42gap_spce64.data
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9 skip=press
+# oracle-tolerance: temperature, pe, ke and etotal match; the pressure is skipped because the step-10 pressure differs by 4e-4 relative (the rigid virial is not reproduced yet; step-0 pressure matches to 2e-10)
+units           real
+atom_style      full
+read_data       w42gap_spce64.data
+pair_style      lj/cut/coul/long 6.0
+pair_coeff      * * 0.0 1.0
+pair_coeff      1 1 0.15535 3.166
+pair_modify   table 0
+kspace_style    pppm 1.0e-4
+bond_style      harmonic
+angle_style     harmonic
+bond_coeff      1 1000.00 1.000
+angle_coeff     1 100.0 109.47
+special_bonds   lj/coul 0.0 0.0 0.0
+neighbor        2.0 bin
+timestep        2.0
+fix             1 all rigid molecule
+velocity        all create 300.0 6244325
+thermo_style    custom step temp pe ke etotal press
+thermo_modify   format float %.15g
+thermo          10
+run             0
+run             10

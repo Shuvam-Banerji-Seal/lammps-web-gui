@@ -403,8 +403,13 @@ export class FixAveTime extends Fix {
 
   setup(): void { this.endOfStep(); }
 
+  /** Step of the last end-of-step call: a run that starts where the previous one ended must not sample it again. */
+  private lastEndStep = -1;
+
   endOfStep(): void {
     const step = this.sys.state.step;
+    if (step === this.lastEndStep) return; // a run that starts where the previous one ended
+    this.lastEndStep = step;
     if (step % this.nevery !== 0) return;
     if (step < this.startStep) return;
     const rem = step % this.nFreq;

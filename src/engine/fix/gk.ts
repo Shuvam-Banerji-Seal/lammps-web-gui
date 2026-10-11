@@ -231,8 +231,11 @@ export class FixAveCorrelate extends Fix {
     this.extvector = 1; // "The array values calculated by this fix are treated as extensive."
     this.sizeArrayRows = this.nRepeat;
     this.sizeArrayCols = npair + 2;
-    this.sums = new Float64Array(this.nRepeat * npair);
-    this.counts = new Float64Array(this.nRepeat);
+    // The correlation sums and counts carry over a run boundary (measured with native LAMMPS, black box: a
+    // `run 10` then `run 40` with ave/correlate 5 4 20 gives the same lag counts and sums as one `run 50`),
+    // so only a change of their size reallocates them.
+    if (this.sums.length !== this.nRepeat * npair) this.sums = new Float64Array(this.nRepeat * npair);
+    if (this.counts.length !== this.nRepeat) this.counts = new Float64Array(this.nRepeat);
     this.out = new Float64Array(this.nRepeat * (npair + 2));
   }
 

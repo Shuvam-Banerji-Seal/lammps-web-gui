@@ -157,7 +157,9 @@ const posInt = (w: string | undefined, what: string): number => {
 };
 
 const fmtG = (v: number): string => formatNumber(v, '%g');
-const fmt16 = (v: number): string => formatNumber(v, '%.16g');
+// min and max of ave/histo are written with 17 significant digits (measured with native LAMMPS, black box: the file
+// holds -2.0800551807377268 and 2.0859149625104054)
+const fmt17 = (v: number): string => formatNumber(v, '%.17g');
 
 export class FixAveAtom extends Fix {
   readonly style = 'ave/atom';
@@ -243,8 +245,13 @@ export class FixAveAtom extends Fix {
     this.endOfStep();
   }
 
+  /** Step of the last end-of-step call: a run that starts where the previous one ended must not sample it again. */
+  private lastEndStep = -1;
+
   endOfStep(): void {
     const step = this.sys.state.step;
+    if (step === this.lastEndStep) return; // a run that starts where the previous one ended
+    this.lastEndStep = step;
     if (step % this.nevery !== 0) return;
     // samples only within the next output's window ("cannot overlap")
     const rem = step % this.nFreq;
@@ -554,12 +561,23 @@ export class FixAveHisto extends Fix {
     return { ref: r, peratom };
   }
 
+  /**
+   * Runs once per run. A run that starts on the step where the previous run ended has already sampled
+   * (and possibly written) that step, so it is not repeated. Measured with native LAMMPS (black box):
+   * `fix h all ave/histo 1 1 100 ... file h.txt` followed by `run 100` and `run 100` writes the
+   * TimeStep 100 block once, and `ave/histo 10 2 20` with `run 20` twice samples step 20 once (512 = 2 x 256
+   * counts in the block at 20).
+   */
   setup(): void {
+    if (this.sys.state.step === this.lastEndStep) return;
     this.endOfStep();
   }
 
+  private lastEndStep = -1;
+
   endOfStep(): void {
     const step = this.sys.state.step;
+    this.lastEndStep = step;
     if (step % this.nevery !== 0) return;
     if (step < this.startStep) return;
     const rem = step % this.nFreq;
@@ -692,7 +710,7 @@ export class FixAveHisto extends Fix {
   private writeSection(step: number): void {
     const total = this.total();
     const lines = [
-      `${step} ${this.outBins.length} ${fmtG(total)} ${fmtG(this.outMissing)} ${fmt16(this.outMin)} ${fmt16(this.outMax)}`,
+      `${step} ${this.outBins.length} ${fmtG(total)} ${fmtG(this.outMissing)} ${fmt17(this.outMin)} ${fmt17(this.outMax)}`,
     ];
     for (let i = 0; i < this.outBins.length; i++) {
       const c = this.outBins[i];

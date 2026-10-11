@@ -92,9 +92,15 @@ const bspline = (p: number, x: number): number => {
  *    a finite-difference derivative (step 1e-6) and the stop |f| < 1e-5 in
  *    absolute force units (the stop is measured: the native g is off the exact
  *    root by up to 4e-3 when the stop is loose). Matched to the 8 digits native
- *    prints in all cubic cases. For non-cubic edges the k-space term is the
- *    largest per-edge dF_k; this is NOT the native rule (measured g differs
- *    by 1e-3 to 2e-2), so non-cubic g is an approximation.
+ *    prints in all cubic cases.
+ *  - non-cubic edges: dF_k is the root mean square of the three per-edge
+ *    values, sqrt((dF_x^2 + dF_y^2 + dF_z^2) / 3), each per-edge value with its
+ *    own L_d and h_d = L_d / n_d. Measured with native LAMMPS (black box) on
+ *    the orthorhombic boxes 6x8x10, 12x6x6 and 10x12x14 (lj units, 2 atoms per
+ *    cell, meshes 32x40x45, 60x36x36, 16x18x24): g = 1.2504352, 0.98484711 and
+ *    0.60009333, reproduced to 2e-9 relative. The largest per-edge value (the
+ *    earlier rule), the sum, the mean and the volume-based forms differ from
+ *    these by 1e-3 to 5e-2.
  *  - kspace_modify gewald set: the mesh is chosen with that g; mesh set: g is
  *    solved with that mesh (both measured on a cubic 10-box).
  */
@@ -174,9 +180,13 @@ export function selectPppmAuto(inp: PppmAutoInput): PppmAutoResult {
   }
   if (inp.gUser > 0) return { g: inp.gUser, mesh, g0 };
   const kspace = (g: number) => {
-    let worst = 0;
-    for (let d = 0; d < 3; d++) worst = Math.max(worst, pppmKspaceError(g, L[d] / mesh[d], P, inp.q2, N, L[d]));
-    return worst;
+    // root mean square over the edges (see the comment above; equal to the single-edge value for a cube)
+    let sum = 0;
+    for (let d = 0; d < 3; d++) {
+      const e = pppmKspaceError(g, L[d] / mesh[d], P, inp.q2, N, L[d]);
+      sum += e * e;
+    }
+    return Math.sqrt(sum / 3);
   };
   const f = (g: number) => pppmRealError(g, rc, inp.q2, N, V) - kspace(g);
   let g = g0;

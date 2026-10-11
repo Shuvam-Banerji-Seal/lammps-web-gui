@@ -235,7 +235,10 @@ export class FixAveChunk extends Fix {
     this.wantTemp = this.vals.some((v) => v.t === 'temp');
     // ave running / window: Nchunk must stay constant for the whole run (docs)
     if (this.aveMode !== 'one') this.chunk.holdNchunk();
-    this.clearWindow();
+    // The window (samples taken since the last output) carries over a run boundary: native keeps it
+    // (measured with native LAMMPS, black box: `run 15` then `run 25` with ave/chunk 5 2 20 gives the same
+    // step-20 block as one `run 30`). Only a change of the value list restarts it.
+    if (this.sumAll.length !== this.vals.length || this.acc.length !== this.vals.length) this.clearWindow();
     this.runSum = [];
     this.runN = 0;
     this.runTotal = 0;
@@ -268,8 +271,13 @@ export class FixAveChunk extends Fix {
 
   setup(): void { this.endOfStep(); }
 
+  /** Step of the last end-of-step call: a run that starts where the previous one ended must not sample it again. */
+  private lastEndStep = -1;
+
   endOfStep(): void {
     const step = this.sys.state.step;
+    if (step === this.lastEndStep) return; // a run that starts where the previous one ended
+    this.lastEndStep = step;
     if (step % this.nevery !== 0) return;
     const rem = step % this.nFreq;
     const nextOut = rem === 0 ? step : step + (this.nFreq - rem);

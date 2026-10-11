@@ -13,7 +13,6 @@ import { thermoUnit, unitsCaption } from '../../lammps/thermoUnits';
 import { getThemeTokens, isDarkTheme, Theme } from '../../theme';
 import { usePersistentState } from '../../hooks/usePersistentState';
 import MoleculeCanvas from '../MoleculeCanvas';
-import { LineChart } from '../charts/SimpleChart';
 import RunFiles from './notebook/RunFiles';
 import type { VisualizationConfig } from '../../types';
 import { EngineClient } from '../../engine/client';
@@ -28,6 +27,10 @@ import { TrajectoryBuffer, dumpToRecords, type TrajectoryRecord } from './notebo
 import TrajectoryPlayer from './notebook/TrajectoryPlayer';
 import RenderPanel from './notebook/RenderPanel';
 import ViewControls, { DEFAULT_RECORD_EVERY, reviveBool, reviveRadius, reviveRecordEvery } from './notebook/ViewControls';
+import { ThermoCharts } from './notebook/charts/ThermoCharts';
+import { ThermoStats } from './notebook/charts/ThermoStats';
+import { TrajectoryAnalysis } from './notebook/charts/TrajectoryAnalysis';
+import { ensembleOf, type ThermoSegment } from './notebook/chartData';
 
 /**
  * MD Notebook: LAMMPS-style input in cells, run by the in-browser engine
@@ -434,11 +437,20 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     return { ...vizConfig(spacing * atomRadius, Math.max(1, ...Object.keys(data.atomTypes).map(Number)), isDarkTheme(theme)), showBox };
   }, [shownFrame, data, theme, atomRadius, showBox]);
 
+  /** The thermo tables of every cell, in cell order, for the graphs and statistics; the ensemble comes from the cell's fixes. */
   const chart = useMemo(() => {
-    const pick = (k: ThermoKeyword) => series.filter((r) => r.step !== undefined && r[k] !== undefined)
-      .map((r) => ({ x: r.step as number, y: r[k] as number }));
-    return { temp: pick('temp'), etotal: pick('etotal') };
-  }, [series]);
+    const segments: ThermoSegment[] = [];
+    cells.forEach((c, i) => {
+      for (const t of runs[c.id]?.tables ?? []) {
+        if (t.rows.length === 0) continue;
+        segments.push({ label: `cell ${i + 1}`, keywords: t.keywords, labels: t.labels, units: t.units ?? runInfo?.units, rows: t.rows, dt: runInfo?.dt ?? null, ensemble: ensembleOf(c.text) });
+      }
+    });
+    return segments;
+  }, [cells, runs, runInfo]);
+  /** The recorded frames the trajectory analyses read, and the atom count (from the first recorded frame or the live one). */
+  const trajRecords = useMemo(() => traj.list(), [traj, trajVersion]);
+  const atomCount = trajRecords.length > 0 ? trajRecords[0].topo.id.length : frame ? frame.id.length : null;
 
   const busy = running !== null;
 
@@ -765,24 +777,15 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
 
         <div className={`space-y-2 border-t p-3 lg:col-start-2 lg:row-start-2 lg:overflow-y-auto lg:border-l lg:border-t-0 ${ct.divider}`}>
           <ResourceMonitor ct={ct} ready={ready} perf={perf} history={perfHistory} runInfo={runInfo} running={running !== null} />
-          {chart.temp.length > 1 && (
-            <div>
-              <p className={`text-[11px] font-semibold ${ct.muted}`}>Temperature</p>
-              <LineChart data={chart.temp} xLabel="step" yLabel="temp" theme={theme} height={120} />
-            </div>
-          )}
-          {chart.etotal.length > 1 && (
-            <div>
-              <p className={`text-[11px] font-semibold ${ct.muted}`}>Total energy</p>
-              <LineChart data={chart.etotal} xLabel="step" yLabel="etotal" theme={theme} height={120} />
-            </div>
-          )}
+          <ThermoCharts segments={chart} theme={theme} />
+          <ThermoStats segments={chart} theme={theme} atomCount={atomCount} />
+          <TrajectoryAnalysis records={trajRecords} dt={runInfo?.dt ?? null} units={runInfo?.units} theme={theme} stride={traj.stride} />
           <InputFilesPanel theme={theme} inputs={inputs} totalBytes={inputFiles.totalBytes} error={inputFiles.error}
             busy={busy} onRemove={removeInputFile} onClearAll={() => void inputFiles.clearAll()}
             onDismissError={inputFiles.dismissError} libraryNames={inputFiles.libraryNames} onAddLibrary={inputFiles.addLibrary}
             pairStyles={ready?.styles.pair_style ?? null} />
           <RunFiles ct={ct} files={files} cells={cells} runs={runs} onOpenInViewer={onOpenInViewer} onRenderFile={loadFileForRender} />
-          {chart.temp.length <= 1 && Object.keys(files).length === 0 && Object.keys(inputs).length === 0 && (
+          {chart.length === 0 && Object.keys(files).length === 0 && Object.keys(inputs).length === 0 && (
             <p className={`text-xs ${ct.muted}`}>
               Thermo charts, files written by dump / write_data, and the files you add with Add files appear here.
             </p>

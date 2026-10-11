@@ -365,6 +365,8 @@ export interface BondedCompute {
   vatom: Float64Array | null;
   /** Emits a "WARNING: ..." line in the run log (e.g. FENE bond too long). */
   warn?: (text: string) => void;
+  /** False during setup (run start, run 0, between runs); true inside a timestep (bpm bonds break only then). */
+  historyUpdate?: boolean;
 }
 
 /**
@@ -408,6 +410,8 @@ export abstract class Bonded {
    */
   linkForceField?(link: { pair: Pair | null; special: { lj: readonly number[]; coul: readonly number[] } }): void;
   abstract compute(bc: BondedCompute): void;
+  /** Bonds broken by the last compute() (bond_style bpm/spring): true once, then cleared. */
+  takeTopologyChange?(): boolean;
   /** Lines of the "<Kind> Coeffs" data-file section, or null. */
   dataCoeffs(): string[] | null { return null; }
   /**

@@ -246,7 +246,7 @@ export class ForceField {
       const sb = ov && ov.bondsN === s.topo.bonds.n && ov.anglesN === s.topo.angles.n
         ? { ...s, topo: { ...s.topo, bonds: ov.bonds, angles: ov.angles } }
         : s;
-      const bc = { s: sb, geom, map: this.map, f: s.f, acc, eatom: null as Float64Array | null, vatom: null as Float64Array | null, virial: acc.vbond, warn: this.warn };
+      const bc = { s: sb, geom, map: this.map, f: s.f, acc, eatom: null as Float64Array | null, vatom: null as Float64Array | null, virial: acc.vbond, warn: this.warn, historyUpdate: !!flags.step };
       const run = (style: Bonded | null, t: PerAtomTerm, virial: Float64Array) => {
         if (!style || !want(t)) return;
         Object.assign(bc, termArrays(t));
@@ -254,6 +254,11 @@ export class ForceField {
         style.compute(bc);
       };
       run(this.bond, 'bond', acc.vbond);
+      // bpm bonds that broke this step (type set to 0): their 1-2 special entries go, so the next neighbor build uses the new lists
+      if (this.bond?.takeTopologyChange?.()) {
+        this.topologyChanged(s);
+        nb.setSpecial(this.specialList);
+      }
       run(this.angle, 'angle', acc.vangle);
       run(this.dihedral, 'dihedral', acc.vdihed);
       run(this.improper, 'improper', acc.vimp);

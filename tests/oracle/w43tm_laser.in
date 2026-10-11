@@ -1,0 +1,29 @@
+# Wave 43: fix ttm/mod laser source (I_0 2, l_skin 2, tau 0.002) on a 4x4x4 electron grid with the coupling and the source
+# restricted to lsurface 1 <= ix < rsurface 3, one vacuum cell (T_e = 0) at the far corner; the timestep changes after
+# two steps so the fix clock (sum of timesteps) is tested; tau equals the clock at the end of step 2 (on at the tie).
+# oracle-inputs: w43tm_laser.par w43tm_laser.init
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           metal
+atom_style      atomic
+lattice         sc 3.0
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 10.0
+displace_atoms  all move 0.5 0.5 0.5 units box
+variable        vx atom 3.0*sin(0.9*x+0.4*y)
+variable        vy atom 2.5*cos(0.7*y-0.5*z)
+variable        vz atom 2.0*sin(1.1*z+0.3*x)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      lj/cut 3.0
+pair_coeff      1 1 0.0 2.0
+fix             1 all nve
+fix             2 all ttm/mod 4242 w43tm_laser.par 4 4 4 infile w43tm_laser.init
+timestep        0.001
+thermo_style    custom step temp pe f_2[1] f_2[2]
+thermo_modify   format float %.15g
+thermo          1
+run             2
+timestep        0.0005
+run             3

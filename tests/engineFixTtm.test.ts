@@ -164,16 +164,10 @@ describe('fix ttm/mod parameter file', () => {
     expect(() => parseTtmModParams(file({ lsurface: '0.5' }), 'f', 'p.txt')).toThrow(/lsurface/);
   });
 
-  it('names the unsupported physics of an input (laser, pressure, diffusion, vacuum)', () => {
-    const p = parseTtmModParams(file({ D_e: '0.0', I_0: '2.0', B: '0.5' }), 'f', 'p.txt');
-    expect(ttmModBlockers(p, 4)).toEqual(['I_0 != 0 (laser source)', 'B != 0 (electronic pressure force)']);
-    const q = parseTtmModParams(file({ rsurface: '3' }), 'f', 'p.txt');
-    expect(ttmModBlockers(q, 4).join(' ')).toMatch(/vacuum/);
-  });
-
-  it('is an unsupported style in the engine (not registered)', async () => {
-    await expect(runWithFiles(`${BOX}
-fix 2 all ttm/mod 5 m.txt 2 2 2 infile g.init
-run 1`, { 'm.txt': file(), 'g.init': INIT })).rejects.toThrow(/fix style 'ttm\/mod' is not supported/);
+  it('refuses the electronic pressure and the moving surface by name (not reproduced)', () => {
+    const p = parseTtmModParams(file({ B: '0.5' }), 'f', 'p.txt');
+    expect(ttmModBlockers(p)).toEqual(['B != 0 (electronic pressure force)']);
+    const q = parseTtmModParams(file({ surface_movement: '1' }), 'f', 'p.txt');
+    expect(ttmModBlockers(q)).toEqual(['surface_movement 1 (moving vacuum surface)']);
   });
 });

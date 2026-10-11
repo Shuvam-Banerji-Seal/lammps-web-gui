@@ -58,6 +58,22 @@ validation rules in this repository were derived from the public LAMMPS
 documentation; that documentation is the authority, and generated scripts
 must always be verified against it.
 
+Two directories of this repository come from LAMMPS (commit b332f28) and are
+distributed under the GNU General Public License, version 2 (GPL-2.0), NOT
+under the licence above:
+
+  third_party/lammps/ ......... unmodified LAMMPS potential files, example
+                                inputs and benchmark data; see its LICENSE
+                                and README.md
+  src/engine-gpl/ ............. engine styles ported from the LAMMPS C++
+                                source; see its LICENSE and README.md. Each
+                                file names the LAMMPS source file it was
+                                ported from
+
+The rest of the in-browser engine (src/engine/) is written independently
+from the documentation and loads src/engine-gpl/ only when an input uses
+one of its styles.
+
 --------------------------------------------------------------------------
 PRIOR RELEASES
 --------------------------------------------------------------------------

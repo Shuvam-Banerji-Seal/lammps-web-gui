@@ -158,7 +158,14 @@ export class FixShake extends Fix {
     this.buildClusters();
   }
 
-  private buildClusters(): void {
+  /** Whether clusters exist for the current topology (set by the first build). */
+  private clustersBuilt = false;
+
+  /**
+   * @param report false for the early build of dofRemoved: no log line and no force-field override yet
+   *   (run setup builds again and does both).
+   */
+  private buildClusters(report = true): void {
     const sys = this.sys;
     const s = sys.state;
     const ff = sys.ff;
@@ -218,6 +225,8 @@ export class FixShake extends Fix {
       clusters.push(c);
     }
     this.clusters = clusters;
+    this.clustersBuilt = true;
+    if (!report) return;
     // constrained bonds and angles are switched off in the force field
     const keepB: boolean[] = constrained.map((on) => !on);
     this.keepBonds = keepB;
@@ -259,6 +268,11 @@ export class FixShake extends Fix {
   }
 
   dofRemoved(groupBit: number): number {
+    // Native LAMMPS finds the clusters when the fix is defined, so a temperature compute used before the
+    // first run (velocity create, velocity scale) already excludes the constraints. Measured with native
+    // LAMMPS (black box): 64 SPC/E waters (192 atoms, fix shake on bonds and angles, velocity create 300.0)
+    // give temp 300 at run 0, i.e. dof = 3 N - 3 - 3 * 64 = 381; the engine's first build was run setup.
+    if (!this.clustersBuilt && this.sys.ff.bond) this.buildClusters(false);
     const s = this.sys.state;
     let n = 0;
     const index = new Map<number, number>();

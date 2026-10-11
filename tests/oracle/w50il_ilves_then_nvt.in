@@ -1,0 +1,19 @@
+# oracle: fix ilves on the dimer lattice of w50il_dimer (64 dimers, tol 1e-4 iter 25) with fix nvt (temp 300 K, Tdamp 100 fs), fix ilves defined BEFORE fix nvt: the first thermostat update after the setup velocity projection; thermo and every per-atom position, velocity and force after 50 steps
+# oracle-inputs: w50il_dimer.data
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           real
+atom_style      bond
+read_data       w50il_dimer.data
+pair_style      lj/cut 8.0
+pair_coeff      * * 0.1 2.0
+bond_style      harmonic
+bond_coeff      1 100.0 1.0
+special_bonds   lj 0.0 1.0 1.0
+neighbor        2.0 bin
+timestep        1.0
+fix             cons all ilves 1.0e-4 25 0 b 1
+fix             1 all nvt temp 300.0 300.0 100.0
+thermo_style    custom step temp pe ebond press
+thermo_modify   format float %.15g
+thermo          10
+run             50

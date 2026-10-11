@@ -325,6 +325,20 @@ export class FixNH extends Fix {
     return this.tstat ? this.tTarget : this.pTempFixed;
   }
 
+  /**
+   * Temperature at this fix's own setup. The first thermostat evaluation after setup uses it and then clears it; every
+   * later evaluation uses the current temperature (subclasses such as nvt/sllod override the hooks, so the clearing
+   * is done at the use, not in finalIntegrate).
+   * Measured with native LAMMPS (black box; dimer of w50il_dimer.data, temp 300 300 100, lj/cut pair, 10 steps, f_1[1..4]
+   * of the fix): with fix nvt defined before fix ilves, the setup projection of ilves is not seen by the first
+   * thermostat update (f_1[1] at step 1 is 0.000284299502599865, the value of the setup-time temperature; the current
+   * temperature gives 0.000250618774807639); with fix ilves defined before fix nvt, nvt's setup already sees the
+   * projected velocities and the current temperature is the right one (step 10: f_1[1] 0.0247325814526837). Without
+   * ilves both orders are the current temperature. The end-of-step alternatives (caching the temperature after the
+   * final kick or after its thermostat scaling) do not reproduce the 10-step values, so later updates stay current.
+   */
+  private tSetup: number | null = null;
+
   private currentTemp(): number {
     this.sys.refreshComputes();
     return this.tempCompute.scalarValue();
@@ -339,6 +353,7 @@ export class FixNH extends Fix {
   // ------------------------------------------------------------------ hooks
 
   setup(): void {
+    this.tSetup = this.currentTemp();
     if (this.tstat) this.tTarget = ramp(this.sys, this.tStart, this.tStop);
     if (this.pstat) {
       this.computePressTarget();
@@ -466,7 +481,11 @@ export class FixNH extends Fix {
     const s = this.sys.state;
     const kB = s.units.boltz;
     const M = this.tchain;
-    const { dof, kT: kTcur } = this.dofKT();
+    const { dof, kT: kTfresh } = this.dofKT();
+    // native: the first thermostat update uses the setup-time temperature (before later fixes' setup changes velocities)
+    const tSetup = this.tSetup;
+    this.tSetup = null;
+    const kTcur = tSetup !== null ? kB * tSetup : kTfresh;
     if (dof <= 0) return;
     const kt = kB * this.tTarget;
     if (!(kt > 0)) return;

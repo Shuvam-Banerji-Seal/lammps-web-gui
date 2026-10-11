@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { getThemeTokens, type Theme } from '../../../theme';
+import { PotentialLibraryPanel } from './PotentialLibraryPanel';
 
 export const formatBytes = (n: number): string =>
   n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`;
@@ -14,11 +15,20 @@ export interface InputFilesPanelProps {
   onRemove: (name: string) => void;
   onClearAll: () => void;
   onDismissError: () => void;
+  /** Names of the stored files that came from the LAMMPS potential library (marked in the list). */
+  libraryNames?: ReadonlySet<string>;
+  /** Adds one file of the potential library to the inputs. */
+  onAddLibrary?: (name: string) => Promise<void>;
+  /** The browser engine's pair_style names, from its ready message (null until ready). */
+  pairStyles?: readonly string[] | null;
 }
 
-/** The "Input files" block of the notebook's right panel: the stored files, their total size, Clear all. */
+/**
+ * The "Input files" block of the notebook's right panel: the stored files, their total size, Clear all, and the
+ * potential library browser (always shown, so a library file can be added before any input exists).
+ */
 export const InputFilesPanel: React.FC<InputFilesPanelProps> = ({
-  theme, inputs, totalBytes, error, busy, onRemove, onClearAll, onDismissError,
+  theme, inputs, totalBytes, error, busy, onRemove, onClearAll, onDismissError, libraryNames, onAddLibrary, pairStyles,
 }) => {
   const ct = getThemeTokens(theme);
   /** Clear all asks for a second click (within 4 s). */
@@ -31,7 +41,10 @@ export const InputFilesPanel: React.FC<InputFilesPanelProps> = ({
   const names = Object.keys(inputs);
   const btn = `inline-flex min-h-6 min-w-6 items-center justify-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${ct.hoverSurface}`;
 
-  if (names.length === 0 && !error) return null;
+  const library = onAddLibrary
+    ? <PotentialLibraryPanel theme={theme} inputs={inputs} onAdd={onAddLibrary} pairStyles={pairStyles ?? null} />
+    : null;
+  if (names.length === 0 && !error) return <>{library}</>;
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
@@ -63,6 +76,11 @@ export const InputFilesPanel: React.FC<InputFilesPanelProps> = ({
           {names.map((name) => (
             <li key={name} className={`inline-flex items-center rounded text-xs ${ct.chip}`}>
               <span className="px-2 py-1 font-mono">{name}</span>
+              {libraryNames?.has(name) && (
+                <span className={`pr-1 text-[10px] ${ct.muted}`} title="A file of the LAMMPS potential library">
+                  LAMMPS potential library (GPL-2.0)
+                </span>
+              )}
               <span className={`pr-1 ${ct.muted}`}>{formatBytes(inputs[name])}</span>
               <button className={`${btn} ${ct.hoverSurface}`} aria-label={`Remove ${name}`} title={`Remove ${name}`}
                 disabled={busy} onClick={() => onRemove(name)}>
@@ -72,6 +90,7 @@ export const InputFilesPanel: React.FC<InputFilesPanelProps> = ({
           ))}
         </ul>
       )}
+      {library}
     </div>
   );
 };

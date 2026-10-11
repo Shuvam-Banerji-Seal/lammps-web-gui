@@ -1,0 +1,131 @@
+# oracle: pair_style meam, single-element hcp reference (Ti of FeTiClibrary.meam, nn2(1,1) = 1, w47mn_ti.meam, zbl 0, Cmin(1,1,1) = 1, Cmax(1,1,1) = 1.44), non-periodic dimers at 2.2, 2.5, 2.7, 2.92, 3.2, 3.5, 3.8, 4.2 and 4.5 A (one clear/run 0 block per distance)
+# oracle: the hcp 2NN shell enters the pair term through the reference structure; the dimer energies are native values (black box): -1.84730458099145, -2.39157544625346, -2.45472709420057, -2.38541715171305, -2.17757451094947, -1.86490900513837, -1.51903398500094, -1.10709245104215, -0.863837835051403 eV
+# oracle-potentials: FeTiClibrary.meam
+# oracle-inputs: w47mn_ti.meam
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.2 0 0 units box
+mass            1 47.88
+pair_style      meam
+pair_coeff      * * FeTiClibrary.meam Ti w47mn_ti.meam Ti
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.5 0 0 units box
+mass            1 47.88
+pair_style      meam
+pair_coeff      * * FeTiClibrary.meam Ti w47mn_ti.meam Ti
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.7 0 0 units box
+mass            1 47.88
+pair_style      meam
+pair_coeff      * * FeTiClibrary.meam Ti w47mn_ti.meam Ti
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.92 0 0 units box
+mass            1 47.88
+pair_style      meam
+pair_coeff      * * FeTiClibrary.meam Ti w47mn_ti.meam Ti
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 3.2 0 0 units box
+mass            1 47.88
+pair_style      meam
+pair_coeff      * * FeTiClibrary.meam Ti w47mn_ti.meam Ti
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 3.5 0 0 units box
+mass            1 47.88
+pair_style      meam
+pair_coeff      * * FeTiClibrary.meam Ti w47mn_ti.meam Ti
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 3.8 0 0 units box
+mass            1 47.88
+pair_style      meam
+pair_coeff      * * FeTiClibrary.meam Ti w47mn_ti.meam Ti
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 4.2 0 0 units box
+mass            1 47.88
+pair_style      meam
+pair_coeff      * * FeTiClibrary.meam Ti w47mn_ti.meam Ti
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 4.5 0 0 units box
+mass            1 47.88
+pair_style      meam
+pair_coeff      * * FeTiClibrary.meam Ti w47mn_ti.meam Ti
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0

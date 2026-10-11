@@ -933,10 +933,10 @@ export const makeAlloyModel = (elements: AlloyElement[], pairs: AlloyPair[][], o
   // Embedding normalisation at re; same rule as meam.ts referenceBackground: the full reference
   // background rho0*G(Gamma_ref) for ibar = 1 and 3, the raw rho0 for ibar = 0 (see the note there).
   model.rhoRef = elements.map((el, c) => {
-    // nn2 = 1 elements: the two-shell reference with the raw rho0 (the 2NN rule of meam.ts referenceBackground)
+    // nn2 = 1 elements: the two-shell reference (the same G_ref rule as meam.ts referenceBackground)
     const nn2 = pairs[c][c].nn2 === true;
     const ref = scaledRho({ ...model, rhoRef: [] }, ownList(model, c, el.re, nn2), el.re, el.ibar ?? 0, c);
-    return !nn2 && (el.ibar === 1 || el.ibar === 3) ? ref.rho : ref.rho0;
+    return el.ibar === 1 || el.ibar === 3 ? ref.rho : ref.rho0;
   });
   return model;
 };

@@ -41,8 +41,11 @@ export const PAIR_SHELL_RATIO: Readonly<Record<ReferenceLattice, number>> = {
   bcc: 2 / Math.sqrt(3),
   sc: Math.SQRT2,
   dia: Math.sqrt(8 / 3),
-  // hcp with nn2 = 1 is refused by the caller (meam.ts), so this entry is never used for the 2NN shell.
-  hcp: 1,
+  // hcp: the ideal-hcp second-shell distance (six neighbours at sqrt2 a, the 2NN shell of the recurrence). Native
+  // parity is shown only for the fully screened case (Cmin = 1, z2 = 0, tests/oracle/w47mn_ti_*): there the second
+  // shell does not contribute, so the ratio itself is not measured. With partial screening (z2 > 0) the engine does
+  // not reproduce native; see the refusal in meam.ts.
+  hcp: Math.SQRT2,
 };
 
 /** Ideal c/a of the hcp reference structure. */

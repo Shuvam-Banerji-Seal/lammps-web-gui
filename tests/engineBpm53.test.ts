@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
 
-// BPM wave 53: atom_style bpm/sphere, fix nve/bpm/sphere, bond_style bpm/rotational (radial term), and the
+// BPM wave 53: atom_style bpm/sphere, fix nve/bpm/sphere, bond_style bpm/rotational (ported to src/engine-gpl/bpm), and the
 // special-bond weight of granular contacts. The numbers checked here were measured with native LAMMPS (black box);
 // the oracle cases tests/oracle/w53bpm_*.in compare every thermo row and the final atom state with native LAMMPS.
 
@@ -69,7 +69,7 @@ run 0
 });
 
 describe('fix nve/bpm/sphere', () => {
-  it('refuses the update keyword and disc in 3d, and needs atom_style bpm/sphere', async () => {
+  it('refuses update dipole without a dipole moment, disc in 3d, and needs atom_style bpm/sphere', async () => {
     const up = await run(`${DIMER()}${TH}fix 1 all nve/bpm/sphere update dipole\nrun 0\n`);
     expect(up.errors.join(' ')).toMatch(/update/);
     const disc = await run(`${DIMER()}${TH}fix 1 all nve/bpm/sphere disc\nrun 0\n`);
@@ -99,9 +99,9 @@ describe('bond_style bpm/rotational', () => {
     expect(ok.errors).toEqual([]);
   });
 
-  it('refuses the shear, twisting and bending terms (not implemented) and zero critical values', async () => {
+  it('accepts the shear, twisting and bending terms (full bpm/rotational, see engineBpmGpl.test.ts) and refuses zero critical values', async () => {
     const shear = await run(`${DIMER()}bond_style bpm/rotational\nbond_coeff 1 1.0 0.2 0 0 1.0 1.0 1.0 1.0 0.1 0.1 0.1 0.1\nrun 0\n`);
-    expect(shear.errors.join(' ')).toMatch(/shear, twisting and bending terms/);
+    expect(shear.errors).toEqual([]);
     const zero = await run(`${DIMER()}bond_style bpm/rotational\nbond_coeff 1 1.0 0 0 0 1.0 0.0 1.0 1.0 0.1 0 0 0\nrun 0\n`);
     expect(zero.errors.join(' ')).toMatch(/must be > 0/);
   });

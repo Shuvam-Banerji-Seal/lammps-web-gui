@@ -24,8 +24,13 @@ import type { System } from '../system';
  * q_half2 = q_half + h/4 d(q_half), q_new = normalise(2 q_half2 - q_full), with d(q) = (0, omega) q and every
  * stage normalised; omega is the lab-frame angular velocity (a sphere's inertia is isotropic).
  *
- * Errors: the update keyword is refused (the dipole orientation needs a dipole moment, which atom_style
- * bpm/sphere does not store), and so is a point particle in the group (native stops with the same requirement).
+ * The doc (fix_nve_bpm_sphere.html) says: "If the *update* keyword is used with the *dipole* value, then the
+ * orientation of the dipole moment of each particle is also updated during the time integration, similar to the
+ * fix nve/sphere command." The dipole follows the lab-frame angular velocity as in fix nve/sphere (see
+ * rotateDipoles; the rule is measured for nve/sphere and the same form is checked for nve/bpm/sphere in
+ * oracle case w59bpm_dipole). The dipole needs atom_style hybrid bpm/sphere dipole (the mu attribute).
+ * The dipole/dlm integrator (the doc's Dullweber-Leimkuhler-McLachlan scheme) is refused by name.
+ * Errors: a point particle in the group (native stops with the same requirement).
  */
 
 /** One Richardson step of the orientation quaternion q (w i j k) over the full time step h, lab-frame omega. */
@@ -53,6 +58,8 @@ export const orientStep = (q: Float64Array, off: number, w: [number, number, num
 export class FixNVEBpmSphere extends FixNVE {
   readonly style: string = 'nve/bpm/sphere';
   private inertia = 0.4;
+  /** update dipole: the dipole orientation follows the angular velocity after the quaternion step. */
+  private updateDipole = false;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -61,11 +68,36 @@ export class FixNVEBpmSphere extends FixNVE {
         if (sys.dimension !== 2) throw new StyleError('Fix nve/bpm/sphere disc requires 2d simulation');
         this.inertia = 0.5;
       } else if (args[k] === 'update') {
-        throw new StyleError('Fix nve/bpm/sphere keyword update (dipole orientation) is not supported by the browser engine');
+        const v = args[k + 1];
+        if (v === 'dipole') this.updateDipole = true;
+        else if (v === 'dipole/dlm') throw new StyleError('Fix nve/bpm/sphere update dipole/dlm is not supported (the DLM orientation integrator is not implemented)');
+        else throw new StyleError(`Illegal fix nve/bpm/sphere update value: ${v ?? '(missing)'}`);
+        k++;
       } else throw new StyleError(`Unknown keyword in fix nve/bpm/sphere command: ${args[k]}`);
     }
     const s = sys.state;
     if (!s.omega || !s.quat || !s.torque || !s.radius) throw new StyleError('Fix nve/bpm/sphere requires atom style bpm/sphere');
+    if (this.updateDipole && !s.mu) throw new StyleError('Fix nve/bpm/sphere update dipole requires atom attribute mu');
+  }
+
+  /**
+   * Orientation update of update dipole (the same rule as fix nve/sphere, measured there with native LAMMPS):
+   * mu <- |mu| (mu + dt w x mu) / |mu + dt w x mu| with the lab-frame omega w and the full timestep.
+   */
+  private rotateDipoles(): void {
+    const s = this.sys.state;
+    const mu = s.mu!, omega = s.omega!;
+    const dt = this.dtv;
+    for (let i = 0; i < s.n; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      const px = mu[4 * i], py = mu[4 * i + 1], pz = mu[4 * i + 2], len = mu[4 * i + 3];
+      const wx = omega[3 * i], wy = omega[3 * i + 1], wz = omega[3 * i + 2];
+      const nx = px + dt * (wy * pz - wz * py);
+      const ny = py + dt * (wz * px - wx * pz);
+      const nz = pz + dt * (wx * py - wy * px);
+      const sc = len / Math.sqrt(nx * nx + ny * ny + nz * nz);
+      mu[4 * i] = nx * sc; mu[4 * i + 1] = ny * sc; mu[4 * i + 2] = nz * sc;
+    }
   }
 
   init(): void {
@@ -99,6 +131,7 @@ export class FixNVEBpmSphere extends FixNVE {
       if (!(s.mask[i] & this.groupBit)) continue;
       orientStep(s.quat!, 4 * i, [omega[3 * i], omega[3 * i + 1], omega[3 * i + 2]], this.dtv);
     }
+    if (this.updateDipole) this.rotateDipoles();
   }
 
   finalIntegrate(): void {

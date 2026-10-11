@@ -32,7 +32,7 @@ import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, TABLE_INNER_RSQ, type Erfc
  */
 
 /** Coulomb long-range real-space loop shared by both styles. */
-const coulLongPair = (
+export const coulLongPair = (
   rsq: number, qi: number, qj: number, g: number, qqrd2e: number, fc: number, poly: boolean, table: ErfcTable | null = null,
 ): { e: number; f: number } => {
   if (table && rsq >= TABLE_INNER_RSQ) {

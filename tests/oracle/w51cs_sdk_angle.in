@@ -1,0 +1,19 @@
+# oracle: angle_style sdk (backward-compatible name of spica) with the same triples
+# oracle-inputs: w51cs_angle_triples.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      angle
+read_data       w51cs_angle_triples.data
+pair_style      lj/sdk 9.0
+pair_coeff      1 1 lj12_6 1.0 1.1 9.0
+pair_coeff      1 2 lj9_6 0.8 1.05 8.0
+pair_coeff      2 2 lj12_4 0.5 1.2 7.0
+pair_modify     shift no
+bond_style      harmonic
+bond_coeff      1 0.0 1.0
+angle_style     sdk
+angle_coeff     1 0.0 180.0
+angle_coeff     2 300.0 107.0
+thermo_style    custom step pe evdwl eangle ebond
+thermo_modify   format float %.15g
+run             0

@@ -1,0 +1,40 @@
+# oracle: lj/sdk dimer scan (backward-compatible name of lj/spica): same types as w51cs_spica_dimer
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      charge
+boundary        p p p
+region          box block 0 240 0 40 0 40 units box
+create_box      2 box
+create_atoms  1 single 10 20 20 units box
+create_atoms  1 single 10.9 20 20 units box
+create_atoms  1 single 30 20 20 units box
+create_atoms  2 single 31.1 20 20 units box
+create_atoms  2 single 50 20 20 units box
+create_atoms  2 single 51.3 20 20 units box
+create_atoms  2 single 70 20 20 units box
+create_atoms  1 single 71.6 20 20 units box
+create_atoms  1 single 90 20 20 units box
+create_atoms  2 single 92.0 20 20 units box
+create_atoms  2 single 110 20 20 units box
+create_atoms  2 single 112.5 20 20 units box
+create_atoms  1 single 130 20 20 units box
+create_atoms  1 single 133.0 20 20 units box
+create_atoms  2 single 150 20 20 units box
+create_atoms  1 single 154.0 20 20 units box
+create_atoms  1 single 170 20 20 units box
+create_atoms  2 single 175.0 20 20 units box
+create_atoms  2 single 190 20 20 units box
+create_atoms  2 single 196.5 20 20 units box
+create_atoms  1 single 210 20 20 units box
+create_atoms  1 single 218.0 20 20 units box
+mass            * 1.0
+set             type 1 charge 0.0
+set             type 2 charge 0.0
+pair_style      lj/sdk 9.0
+pair_coeff      1 1 lj9_6 1.0 1.1 9.0
+pair_coeff      1 2 lj12_4 0.8 1.05 8.0
+pair_coeff      2 2 lj12_6 0.5 1.2 7.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul elong press
+thermo_modify   format float %.15g
+run             0

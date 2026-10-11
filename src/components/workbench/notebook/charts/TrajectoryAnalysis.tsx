@@ -120,7 +120,6 @@ export const TrajectoryAnalysis: React.FC<TrajectoryAnalysisProps> = ({ records,
   const dens = current?.result.density;
   const volumeSeries: ChartSeries[] = [{ name: 'box volume', points: volSeries.map((p) => ({ x: p.x, y: p.volume })) }];
   const atomsNow = volSeries.length ? volSeries[volSeries.length - 1].atoms : 0;
-  const pct = (n: number) => Number(n.toPrecision(3)).toString();
   const inputCls = `w-14 rounded border px-1 py-0.5 text-[11px] ${ct.input}`;
 
   return (

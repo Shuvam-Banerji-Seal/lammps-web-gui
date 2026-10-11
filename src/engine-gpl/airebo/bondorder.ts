@@ -14,7 +14,7 @@ import { TOL, kron, gSpline, PijSpline, piRCSpline, TijSpline, type ReboCore, ne
 const v3 = (): Float64Array => new Float64Array(3);
 
 // scratch vectors of the C++ locals (the function is not re-entered)
-const rik = v3(), rjl = v3(), rkn = v3(), rji = v3(), rki = v3(), rlj = v3();
+const rik = v3(), rjl = v3(), rkn = v3();
 const rln = v3(), r32 = v3(), r23 = v3(), r21 = v3(), r34 = v3(), rjk = v3(), ril = v3();
 const dcosjikdri = v3(), dcosijldri = v3(), dcosjikdrk = v3(), dcosjikdrj = v3();
 const dcosijldrj = v3(), dcosijldrl = v3();
@@ -85,7 +85,6 @@ export const bondorder = (
     cosjik = Math.max(cosjik, -1.0);
     // evaluate splines g and derivatives dg
     const g = gSpline(core, cosjik, NijC + NijH, itype, rdgdc, rdgdN);
-    dgdc = rdgdc.v;
     dgdN = rdgdN.v;
     Etmp = Etmp + (wik * g * Math.exp(lamdajik));
     tmp3 = tmp3 + (wik * dgdN * Math.exp(lamdajik));
@@ -122,7 +121,6 @@ export const bondorder = (
     dcosjikdrj[2] = (-rik[2] / (rijmag * rikmag)) + (cosjik * (rij[2] / (rijmag * rijmag)));
     const g = gSpline(core, cosjik, NijC + NijH, itype, rdgdc, rdgdN);
     dgdc = rdgdc.v;
-    dgdN = rdgdN.v;
     tmp2 = VA * .5 * (tmp * wik * dgdc * Math.exp(lamdajik));
     fj[0] = -tmp2 * dcosjikdrj[0];
     fj[1] = -tmp2 * dcosjikdrj[1];
@@ -193,7 +191,6 @@ export const bondorder = (
     cosijl = Math.max(cosijl, -1.0);
     // evaluate splines g and derivatives dg
     const g = gSpline(core, cosijl, NjiC + NjiH, jtype, rdgdc, rdgdN);
-    dgdc = rdgdc.v;
     dgdN = rdgdN.v;
     Etmp = Etmp + (wjl * g * Math.exp(lamdaijl));
     tmp3 = tmp3 + (wjl * dgdN * Math.exp(lamdaijl));
@@ -229,7 +226,6 @@ export const bondorder = (
     // evaluate splines g and derivatives dg
     const g = gSpline(core, cosijl, NjiC + NjiH, jtype, rdgdc, rdgdN);
     dgdc = rdgdc.v;
-    dgdN = rdgdN.v;
     tmp2 = VA * .5 * (tmp * wjl * dgdc * Math.exp(lamdaijl));
     fi[0] = -tmp2 * dcosijldri[0];
     fi[1] = -tmp2 * dcosijldri[1];

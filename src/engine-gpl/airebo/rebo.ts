@@ -55,9 +55,6 @@ export interface ReboCore {
   dS: Ref;
 }
 
-/** Cutoff function Sp of element pair (ii, jj) at distance r (rcmin .. rcmax of the pair). */
-const spPair = (P: AireboParams, ii: number, jj: number, r: number, d: Ref): number =>
-  sp(r, P.rcmin[ii * 2 + jj], P.rcmax[ii * 2 + jj], d);
 
 /** PijSpline: the P_ij correction of the bond order; dN2 receives its derivatives. */
 export const PijSpline = (

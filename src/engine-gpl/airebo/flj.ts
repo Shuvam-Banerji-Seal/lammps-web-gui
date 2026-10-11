@@ -44,7 +44,7 @@ const dN3 = new Float64Array(3);
 const dN2PIJ = new Float64Array(2), dN2PJI = new Float64Array(2), dN3piRC = new Float64Array(3), dN3Tij = new Float64Array(3);
 const rdgdc = newRef(), rdgdN = newRef();
 const rwik = newRef(), rwjl = newRef(), rdw21 = newRef(), rdw34 = newRef(), rdNki = newRef(), rdNlj = newRef();
-const rdwkn = newRef(), rdwln = newRef(), rdStb = newRef(), rdStr = newRef(), rdts = newRef(), rdtl = newRef(), rdcut = newRef();
+const rdwkn = newRef(), rdwln = newRef(), rdStb = newRef(), rdStr = newRef(), rdts = newRef(), rdtl = newRef();
 const rik = v3(), rjl = v3(), rkn = v3(), rln = v3(), r32 = v3(), r23 = v3(), r21 = v3(), r34 = v3(), rjk = v3(), ril = v3();
 const dcosjikdri = v3(), dcosijldri = v3(), dcosjikdrk = v3(), dcosjikdrj = v3(), dcosijldrj = v3(), dcosijldrl = v3();
 const fi = v3(), fj = v3(), fk = v3(), fl = v3();
@@ -102,7 +102,6 @@ export const bondorderLJ = (
     cosjik = Math.min(cosjik, 1.0);
     cosjik = Math.max(cosjik, -1.0);
     const g = gSpline(core, cosjik, NijC + NijH, itype, rdgdc, rdgdN);
-    dgdc = rdgdc.v;
     dgdN = rdgdN.v;
     Etmp += (wik * g * Math.exp(lamdajik));
     tmp3 += (wik * dgdN * Math.exp(lamdajik));
@@ -133,7 +132,6 @@ export const bondorderLJ = (
     cosijl = Math.min(cosijl, 1.0);
     cosijl = Math.max(cosijl, -1.0);
     const g = gSpline(core, cosijl, NjiC + NjiH, jtype, rdgdc, rdgdN);
-    dgdc = rdgdc.v;
     dgdN = rdgdN.v;
     Etmp += (wjl * g * Math.exp(lamdaijl));
     tmp3 += (wjl * dgdN * Math.exp(lamdaijl));
@@ -245,7 +243,6 @@ export const bondorderLJ = (
       dcosjikdrj[2] = (-rik[2] / (rijmag * rikmag)) + (cosjik * (rij[2] / (rijmag * rijmag)));
       const g = gSpline(core, cosjik, NijC + NijH, itype, rdgdc, rdgdN);
       dgdc = rdgdc.v;
-      dgdN = rdgdN.v;
       tmp2 = VA * .5 * (tmp * wik * dgdc * Math.exp(lamdajik));
       fj[0] = -tmp2 * dcosjikdrj[0];
       fj[1] = -tmp2 * dcosjikdrj[1];
@@ -318,7 +315,6 @@ export const bondorderLJ = (
       dcosijldrl[2] = (rij[2] / (rijmag * rjlmag)) + (cosijl * rjl[2] / (rjlmag * rjlmag));
       const g = gSpline(core, cosijl, NjiC + NjiH, jtype, rdgdc, rdgdN);
       dgdc = rdgdc.v;
-      dgdN = rdgdN.v;
       tmp2 = VA * .5 * (tmp * wjl * dgdc * Math.exp(lamdaijl));
       fi[0] = -tmp2 * dcosijldri[0];
       fi[1] = -tmp2 * dcosijldri[1];
@@ -812,7 +808,6 @@ export const flj = (core: LJCore, nlocal: number): void => {
                 wkjS = wkj;
                 dwkjS = dwkj.v;
                 if (best === 1.0) {
-                  done = 1;
                   break;
                 }
               }

@@ -6,6 +6,9 @@ distribution:
 - upstream: <https://github.com/lammps/lammps>
 - commit: `9792f6a9a32517780a8276c8ab201f17cae37d6b`
 - 256 files, copied byte for byte (checked with `diff -rq`)
+- one further file from the `examples/fire/` directory of the same distribution, copied byte for byte:
+  `FeTiClibrary.meam` (the MEAM library file of the `in.meam.fire` example; it is not in `potentials/`). It is read
+  by the native-parity case `tests/oracle/w47mn_ti_crystal` and `tests/engineMeamNn2Hcp47.test.ts`.
 
 These files are part of LAMMPS and are distributed under the **GNU General
 Public License, version 2** (see `LICENSE` in this directory). Many of them

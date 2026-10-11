@@ -252,12 +252,14 @@ const refBackground = (el: MeamElement, o: MeamOptions, r: number): number => re
  * matches native to 1e-13 at 2.0, 2.4 and 3.0 A only with the G_ref factor; an fcc reference has
  * Gamma_ref = 0 and cannot tell the two apart), while the ibar = 0 form sqrt(1+Gamma) keeps the raw rho0
  * (the diamond A-atom dimers at 2.2, 2.4 and 2.6 A of tests/enginePairMeam15.test.ts agree to 1e-10 eV
- * only without the G_ref factor). The 2NN form (nn2 = 1) keeps the raw rho0 as before. The pair term
+ * only without the G_ref factor). The 2NN form (nn2 = 1) uses the same full-G rule: measured with native LAMMPS
+ * (black box, tests/oracle/w47mn_ti_dimer and w47mn_ti_crystal) the Ti hcp reference (ibar 3, nn2 = 1; its Gamma_ref is
+ * nonzero because the hcp site has no inversion symmetry) matches native to 1e-9 only with the G_ref factor. The pair term
  * always keeps the full background rho0 G(Gamma) of the reference at distance r. See tests/engineMeamRho35.test.ts.
  */
 export const referenceBackground = (el: MeamElement, o: MeamOptions): number => {
   const r = refRhoBarPrime(el, o, el.re, el.nn2 ? nn2Vectors(el.lat ?? 'fcc', el.re) : undefined);
-  return !el.nn2 && (el.ibar === 1 || el.ibar === 3) ? r.rho : r.rho0;
+  return (el.ibar === 1 || el.ibar === 3) ? r.rho : r.rho0;
 };
 
 /*
@@ -1220,8 +1222,12 @@ export class PairMeam extends Pair {
     if (lib.ibar !== 0 && !nn2 && lib.lat !== 'fcc' && lib.lat !== 'bcc' && lib.lat !== 'dia') {
       throw new StyleError(`MEAM ibar = ${lib.ibar} with the ${lib.lat} reference of ${elem} is not supported (only fcc, bcc and dia are verified for ibar != 0 without nn2)`);
     }
-    if (nn2 && lib.lat === 'hcp') {
-      throw new StyleError(`MEAM nn2 = 1 with the hcp reference of ${elem} is not supported (no c/a parameter for the second-neighbour shell)`);
+    if (nn2 && lib.lat === 'hcp' && nn2RefData('hcp', par.opts).z2 > 1e-12) {
+      // Measured with native LAMMPS (black box, tests/oracle/w47mn_ti2_* during this work, not kept as oracle cases):
+      // with Cmin(1,1,1) = 0.36 the six second neighbours of the hcp reference are partly screened (S = 0.06 each),
+      // and the engine's 2NN pair term differs from native by 0.002 to 0.006 eV per dimer and by 1.0 eV in a 108-atom
+      // crystal. The fully screened case (Cmin = 1, z2 = 0) agrees to 1e-9. The partly screened hcp case is refused.
+      throw new StyleError(`MEAM nn2 = 1 with the hcp reference of ${elem} and a partly screened second shell (z2 > 0) is not supported (native parity not reached; ${paramFile})`);
     }
     if (par.lattce !== undefined && par.lattce !== lib.lat) {
       throw new StyleError(`MEAM lattce(1,1) = ${par.lattce} differs from the library lattice '${lib.lat}' of ${elem}; not supported`);
@@ -1296,7 +1302,7 @@ export class PairMeam extends Pair {
       }
       const own = par.pair.get(`${c + 1},${c + 1}`) ?? {};
       if (own.lattce !== undefined && own.lattce !== lib.lat) throw new StyleError(`multi-element MEAM: lattce(${c + 1},${c + 1}) = ${own.lattce} for ${elt} differs from the library lattice '${lib.lat}'`);
-      // nn2 = 1 with the hcp reference is refused (no c/a for the second-neighbour shell; see the single-element style)
+      // nn2 = 1 with the hcp reference is refused in multi-element potentials (not measured; see the single-element style)
       if (own.nn2 === 1 && lib.lat === 'hcp') throw new StyleError(`multi-element MEAM: nn2(${c + 1},${c + 1}) = 1 with the hcp reference of ${elt} is not supported (${paramFile})`);
       // rho0(I) of the parameter file overwrites the library rozero (docs quote in MeamParams.rho0).
       const rozero = par.rho0.get(c + 1) ?? lib.rozero;

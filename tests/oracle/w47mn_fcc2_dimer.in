@@ -1,0 +1,129 @@
+# oracle: pair_style meam, single-element fcc (element A of w38m2nn_lib.meam, nn2(1,1) = 1, ibar 0), Cmin(1,1,1) = 0.36 so the 2NN shell is partly screened (S = 0.06 per second neighbour); dimers at 2.2 to 4.5 A
+# oracle-inputs: w38m2nn_lib.meam w47mn_fcc2.meam
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.2 0 0 units box
+mass            1 63.5
+pair_style      meam
+pair_coeff      * * w38m2nn_lib.meam A w47mn_fcc2.meam A
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.5 0 0 units box
+mass            1 63.5
+pair_style      meam
+pair_coeff      * * w38m2nn_lib.meam A w47mn_fcc2.meam A
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.7 0 0 units box
+mass            1 63.5
+pair_style      meam
+pair_coeff      * * w38m2nn_lib.meam A w47mn_fcc2.meam A
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.92 0 0 units box
+mass            1 63.5
+pair_style      meam
+pair_coeff      * * w38m2nn_lib.meam A w47mn_fcc2.meam A
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 3.2 0 0 units box
+mass            1 63.5
+pair_style      meam
+pair_coeff      * * w38m2nn_lib.meam A w47mn_fcc2.meam A
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 3.5 0 0 units box
+mass            1 63.5
+pair_style      meam
+pair_coeff      * * w38m2nn_lib.meam A w47mn_fcc2.meam A
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 3.8 0 0 units box
+mass            1 63.5
+pair_style      meam
+pair_coeff      * * w38m2nn_lib.meam A w47mn_fcc2.meam A
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 4.2 0 0 units box
+mass            1 63.5
+pair_style      meam
+pair_coeff      * * w38m2nn_lib.meam A w47mn_fcc2.meam A
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+clear
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      1 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 4.5 0 0 units box
+mass            1 63.5
+pair_style      meam
+pair_coeff      * * w38m2nn_lib.meam A w47mn_fcc2.meam A
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0

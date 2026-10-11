@@ -1,7 +1,7 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
 import { erfcExact } from '../force/erfc';
-import { PairCoulStreitz, pointU, pointUval, slaterS, slaterShort } from '../force/pair/coul_streitz';
+import { PairCoulStreitz, pointUval, slaterS } from '../force/pair/coul_streitz';
 import type { System } from '../system';
 
 /*

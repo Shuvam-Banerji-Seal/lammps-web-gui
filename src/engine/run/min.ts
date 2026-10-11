@@ -236,19 +236,19 @@ export const minimize = async (
           packForce(gNew);
           if (evaluations >= p.maxeval) break;
           const sA = dot(gNew, h);
-          if (fromSecant && eTry <= eStart + ROUNDOFF * (Math.abs(eStart) + 1)) { accepted = true; alpha = a; break; }
+          if (fromSecant && eTry <= eStart + ROUNDOFF * (Math.abs(eStart) + 1)) { accepted = true; break; }
           if (prevS * sA < 0) {
             // bracketed: the zero of the linear interpolation of F.h between the two points
             const z = prevA + prevS * (a - prevA) / (prevS - sA);
             prevA = a; prevS = sA; a = z; fromSecant = true;
             continue;
           }
-          if (!fromSecant && eTry <= eStart - ALPHA_ARMIJO * a * slope && sA > 0) { accepted = true; alpha = a; break; }
+          if (!fromSecant && eTry <= eStart - ALPHA_ARMIJO * a * slope && sA > 0) { accepted = true; break; }
           // round-off floor: when the predicted decrease is below the energy's resolution, the energy cannot
           // decide the step. Then the forces decide it: a step that does not raise the energy beyond that
           // resolution and that flattens the directional force (strong Wolfe curvature, |F1.h| <= 0.9 |F0.h|)
           // is accepted, so the search does not stall at a tiny force
-          if (slope > 0 && eTry <= eStart + ROUNDOFF * (Math.abs(eStart) + 1) && Math.abs(sA) <= 0.9 * slope) { accepted = true; alpha = a; break; }
+          if (slope > 0 && eTry <= eStart + ROUNDOFF * (Math.abs(eStart) + 1) && Math.abs(sA) <= 0.9 * slope) { accepted = true; break; }
           prevA = a; prevS = sA; a *= BACKTRACK; fromSecant = false;
           if (a * Math.max(hmax, hbox) < EMACH) break;
         }

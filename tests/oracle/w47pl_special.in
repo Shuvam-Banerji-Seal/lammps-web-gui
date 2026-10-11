@@ -1,0 +1,20 @@
+# oracle: compute pair/local eng and force with different special weights for LJ and Coulomb (special_bonds lj 0 0 0.5 coul 0 0.5 0.5): single() must get the Coulomb factor for the Coulomb part
+# oracle-inputs: w10charmmfsw_chains.data
+# oracle-compare: thermo=all atoms=none
+units           real
+atom_style      full
+read_data       w10charmmfsw_chains.data
+special_bonds   lj 0.0 0.0 0.5 coul 0.0 0.5 0.5
+bond_style      harmonic
+angle_style     harmonic
+pair_style      lj/cut/coul/cut 8.0
+pair_coeff      * * 0.1 3.2
+bond_coeff      * 300.0 1.5
+angle_coeff     * 50.0 109.5
+compute         pl all pair/local eng force
+compute         se all reduce sum c_pl[1] inputs local
+compute         sf all reduce sum c_pl[2] inputs local
+compute         mx all reduce max c_pl[2] inputs local
+thermo_style    custom step pe evdwl ecoul c_se c_sf c_mx
+thermo_modify   format float %.15g
+run             0

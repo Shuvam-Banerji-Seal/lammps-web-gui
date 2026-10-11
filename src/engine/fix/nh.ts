@@ -792,7 +792,6 @@ export class FixNH extends Fix {
         pfreqMax = Math.max(pfreqMax, 1 / this.pPeriod[d]);
         if (d < 3) { pHydro += this.pTarget[d]; nhyd++; }
       }
-      const ndims = this.ndofDims().length;
       let nflag = 0;
       for (let d = 0; d < 6; d++) if (this.pFlag[d]) nflag++;
       if (nhyd) {

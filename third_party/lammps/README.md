@@ -9,6 +9,7 @@ distribution:
 - one further file from the `examples/fire/` directory of the same distribution, copied byte for byte:
   `FeTiClibrary.meam` (the MEAM library file of the `in.meam.fire` example; it is not in `potentials/`). It is read
   by the native-parity case `tests/oracle/w47mn_ti_crystal` and `tests/engineMeamNn2Hcp47.test.ts`.
+- added later for the SPIN oracle cases: `potentials/Fe_Mishin2006.eam.alloy`, copied byte for byte from `examples/SPIN/iron/` of the same LAMMPS tree (`cmp` checked)
 
 These files are part of LAMMPS and are distributed under the **GNU General
 Public License, version 2** (see `LICENSE` in this directory). Many of them

@@ -38,6 +38,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'kspace_dipole44', names: { KSPACES: ['ewald/dipole'] }, load: () => import('./registry/kspace_dipole44') as Promise<StyleModule> },
   { id: 'pair_dipole18', names: { PAIRS: ['lj/cut/dipole/cut', 'lj/cut/dipole/long', 'lj/long/dipole/long', 'lj/sf/dipole/sf'] }, load: () => import('./registry/pair_dipole18') as Promise<StyleModule> },
   { id: 'fix_ttm', names: { FIXES: ['ttm', 'ttm/grid', 'ttm/mod', 'ttm/thermal', 'ttm/cascade'] }, load: () => import('./registry/fix_ttm') as Promise<StyleModule> },
+  { id: 'spin', names: { PAIRS: ['spin/exchange'], COMPUTES: ['spin'], FIXES: ['nve/spin', 'precession/spin'] }, load: () => import('./registry/spin') as Promise<StyleModule> },
   { id: 'fix_numdiff', names: { FIXES: ['numdiff', 'numdiff/virial'] }, load: () => import('./registry/fix_numdiff') as Promise<StyleModule> },
   { id: 'fix_qeq', names: { FIXES: ['qeq/dynamic', 'qeq/fire', 'qeq/point', 'qeq/shielded', 'qeq/slater'] }, load: () => import('./registry/fix_qeq') as Promise<StyleModule> },
   { id: 'fix_cmap', names: { FIXES: ['cmap'] }, load: () => import('./registry/fix_cmap') as Promise<StyleModule> },

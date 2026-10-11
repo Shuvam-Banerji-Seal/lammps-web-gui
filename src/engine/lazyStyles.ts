@@ -51,6 +51,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'pair_ycolloid', names: { PAIRS: ['yukawa/colloid'] }, load: () => import('./registry/pair_ycolloid') as Promise<StyleModule> },
   { id: 'pair_relres', names: { PAIRS: ['lj/relres'] }, load: () => import('./registry/pair_relres') as Promise<StyleModule> },
   { id: 'pair_hbond', names: { PAIRS: ['hbond/dreiding/lj', 'hbond/dreiding/lj/angleoffset', 'hbond/dreiding/morse', 'hbond/dreiding/morse/angleoffset'] }, load: () => import('./registry/pair_hbond') as Promise<StyleModule> },
+  { id: 'body48', names: { FIXES: ['nve/body'], PAIRS: ['body/nparticle'] }, load: () => import('./registry/body48') as Promise<StyleModule> },
   { id: 'asphere19', names: { COMPUTES: ['erotate/asphere', 'temp/asphere'], FIXES: ['nph/asphere', 'npt/asphere', 'nve/asphere', 'nve/asphere/noforce', 'nvt/asphere'] }, load: () => import('./registry/asphere19') as Promise<StyleModule> },
   { id: 'pair_asphere19', names: { PAIRS: ['gayberne', 'resquared'] }, load: () => import('./registry/pair_asphere19') as Promise<StyleModule> },
   { id: 'compute_struct', names: { COMPUTES: ['aggregate/atom', 'centro/atom', 'cluster/atom', 'cna/atom', 'fragment/atom', 'hexorder/atom'] }, load: () => import('./registry/compute_struct') as Promise<StyleModule> },

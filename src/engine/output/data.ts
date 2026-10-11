@@ -3,6 +3,7 @@ import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
 import { appendAtoms, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel } from '../atoms';
 import { expandTemplateTopology } from '../template';
+import { BODY_RECORD, bodyRecordStride, parseBodyStyle, principalFrame } from '../bodies';
 import { makeBox } from '../domain';
 import { generalBoxFromRestricted, generalFrame, rotateVector, toGeneralPoint, toRestrictedPoint, unrotateVector, type GeneralFrame, type Mat3, type V3 } from '../triclinic_general';
 
@@ -55,6 +56,8 @@ const BASE_COLS: Record<string, string[]> = {
   // the column order is atom-ID molecule-ID template-index template-atom atom-type x y z (the docs row
   // lists atom-type before molecule-ID; native rejects that order: Invalid atom type)
   template: ['id', 'mol', 'tindex', 'tatom', 'type', 'x', 'y', 'z'],
+  // read_data.html, the Atoms-section table, row body: "atom-ID atom-type bodyflag mass x y z"
+  body: ['id', 'type', 'bodyflag', 'mass', 'x', 'y', 'z'],
 };
 
 /**
@@ -76,7 +79,7 @@ const HEADER_KEYS: [RegExp, string][] = [
   [/^atom types$/, 'atom types'], [/^bond types$/, 'bond types'], [/^angle types$/, 'angle types'],
   [/^dihedral types$/, 'dihedral types'], [/^improper types$/, 'improper types'],
   [/^extra (bond|angle|dihedral|improper|special) per atom$/, 'extra'],
-  [/^ellipsoids$/, 'ellipsoids'],
+  [/^ellipsoids$/, 'ellipsoids'], [/^bodies$/, 'bodies'],
 ];
 
 const SECTIONS = new Set([
@@ -147,6 +150,44 @@ const isDataFix = (f: unknown): f is DataFix => {
 export const defaultReadOptions = (): ReadDataOptions => ({
   add: 'none', offset: [0, 0, 0, 0, 0], shift: [0, 0, 0], extraTypes: [0, 0, 0, 0, 0], group: null, nocoeff: false, fixSections: new Map(),
 });
+
+/**
+ * The Bodies section (read_data.html): "Lines are read one at a time until Ninteger values are read." The
+ * header line of each body is atom-ID Ninteger Ndouble, followed by the integer and then the double values.
+ */
+const readBodyLines = (lines: string[], k0: number, nbodies: number): { bodies: { id: number; ints: number[]; dbls: number[]; at: number }[]; k: number } => {
+  let k = k0;
+  const next = (): { w: string[]; at: number } | null => {
+    while (k < lines.length) {
+      const t = lines[k].replace(/#.*/, '').trim();
+      k++;
+      if (t) return { w: t.split(/\s+/), at: k };
+    }
+    return null;
+  };
+  const bodies: { id: number; ints: number[]; dbls: number[]; at: number }[] = [];
+  for (let b = 0; b < nbodies; b++) {
+    const h = next();
+    if (!h) throw new StyleError(`data file section Bodies: expected ${nbodies} bodies, found ${b}`);
+    if (h.w.length !== 3) throw new StyleError(`data file line ${h.at}: Bodies header needs atom-ID Ninteger Ndouble`);
+    const id = intOf(h.w[0], 'atom-ID', h.at), nint = intOf(h.w[1], 'Ninteger', h.at), ndbl = intOf(h.w[2], 'Ndouble', h.at);
+    const ints: number[] = [], dbls: number[] = [];
+    while (ints.length < nint) {
+      const l = next();
+      if (!l) throw new StyleError(`data file line ${h.at}: body ${id} lists ${ints.length} of ${nint} integers`);
+      for (const t of l.w) ints.push(intOf(t, 'body integer', l.at));
+      if (ints.length > nint) throw new StyleError(`data file line ${l.at}: body ${id} has more than ${nint} integers`);
+    }
+    while (dbls.length < ndbl) {
+      const l = next();
+      if (!l) throw new StyleError(`data file line ${h.at}: body ${id} lists ${dbls.length} of ${ndbl} doubles`);
+      for (const t of l.w) dbls.push(numOf(t, 'body double', l.at));
+      if (dbls.length > ndbl) throw new StyleError(`data file line ${l.at}: body ${id} has more than ${ndbl} doubles`);
+    }
+    bodies.push({ id, ints, dbls, at: h.at });
+  }
+  return { bodies, k };
+};
 
 const intOf = (w: string | undefined, what: string, line: number): number => {
   const n = Number(w);
@@ -260,6 +301,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   const cols = atomStyleCols(style);
   // atom_style template: read_data.html "set the *bonds*, *angles*, etc header keywords in the data file," (see template.ts)
   const tmplId = templateStyleId(style);
+  if ((h.bodies ?? 0) > 0 && !parseBodyStyle(style)) throw new StyleError(`data file header bodies needs atom_style body (current: ${style})`);
+  if (parseBodyStyle(style) && genFrame) throw new StyleError('read_data: body particles in a general triclinic box are not supported by the browser engine');
   if (tmplId !== null) {
     for (const k of ['bonds', 'angles', 'dihedrals', 'impropers'] as const) {
       if ((h[k] ?? 0) > 0) throw new StyleError(`data file header ${k}: the topology of atom_style template comes from the molecule templates`);
@@ -273,6 +316,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   const vel = new Map<number, number[]>();
   /** Atoms with ellipsoidflag 1 waiting for their Ellipsoids line: atom ID -> density. */
   const ellPending = new Map<number, number>();
+  /** atom_style body: atoms with bodyflag 1 waiting for their Bodies entry. */
+  const bodyPending = new Set<number>();
   const coeffLines: { section: string; line: string; at: number }[] = [];
   const topo: { kind: 'bonds' | 'angles' | 'dihedrals' | 'impropers'; type: number; ids: number[] }[] = [];
   const fixRows: { fx: DataFix; rows: { w: string[]; at: number }[] }[] = [];
@@ -308,6 +353,47 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
       continue;
     }
     if (!SECTIONS.has(title)) throw new StyleError(`unknown data file section '${title}' (line ${k})`);
+    // read_data.html: "The *Bodies* section must appear if atom_style body is used"; its entries have no fixed
+    // line count (Ninteger and Ndouble values per body, read line by line), so it is read here.
+    if (title === 'Bodies') {
+      if (!parseBodyStyle(style)) throw new StyleError('data file section Bodies needs atom_style body');
+      const r = readBodyLines(lines, k, h.bodies ?? 0);
+      k = r.k;
+      // Measured with native LAMMPS (black box): read_data accepts bodies with fewer sub-particles than Nmin or more
+      // than Nmax (the two values only size internal arrays), so the record widens to the largest body read here.
+      let maxN = 0;
+      for (const b of r.bodies) if (b.ints.length === 1) maxN = Math.max(maxN, b.ints[0]);
+      const rec0 = s.custom.get(BODY_RECORD)!;
+      if (bodyRecordStride(maxN) > rec0.cols) {
+        const cols = bodyRecordStride(maxN), data = new Float64Array(s.n * cols);
+        for (let i = 0; i < s.n; i++) data.set(rec0.data.subarray(rec0.cols * i, rec0.cols * (i + 1)), cols * i);
+        rec0.data = data;
+        rec0.cols = cols;
+      }
+      for (const b of r.bodies) {
+        if (b.ints.length !== 1) throw new StyleError(`data file line ${b.at}: body style nparticle has one integer (the number of sub-particles)`);
+        const nsub = b.ints[0];
+        if (b.dbls.length !== 6 + 3 * nsub) throw new StyleError(`data file line ${b.at}: body nparticle needs 6 + 3N = ${6 + 3 * nsub} doubles (N = ${nsub}), got ${b.dbls.length}`);
+        if (!bodyPending.has(b.id)) throw new StyleError(`data file line ${b.at}: atom ${b.id} has no bodyflag 1 in the Atoms section`);
+        const i = (() => { for (let q = n0; q < s.n; q++) if (s.id[q] === b.id) return q; return -1; })();
+        if (i < 0) throw new StyleError(`data file line ${b.at}: atom ${b.id} is not in the Atoms section`);
+        bodyPending.delete(b.id);
+        // read_data.html: the sub-particle coordinates are displacements from the center of mass in the box
+        // frame; the engine stores them in the body frame of the principal axes (bodies.ts)
+        const pf = principalFrame(b.dbls.slice(0, 6));
+        const rec = s.custom.get(BODY_RECORD)!;
+        const B = rec.cols, base = B * i;
+        rec.data[base] = nsub;
+        for (let d = 0; d < 3; d++) rec.data[base + 1 + d] = pf.moments[d];
+        for (let q = 0; q < nsub; q++) {
+          const ds = [b.dbls[6 + 3 * q], b.dbls[7 + 3 * q], b.dbls[8 + 3 * q]];
+          for (let d = 0; d < 3; d++) rec.data[base + 4 + 3 * q + d] = pf.E[d] * ds[0] + pf.E[3 + d] * ds[1] + pf.E[6 + d] * ds[2];
+        }
+        for (let d = 0; d < 4; d++) s.quat![4 * i + d] = pf.quat[d];
+      }
+      if (bodyPending.size) throw new StyleError(`data file: ${bodyPending.size} atoms have bodyflag 1 but no Bodies entry`);
+      continue;
+    }
     // count of lines expected
     const count = (() => {
       switch (title) {
@@ -352,6 +438,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const spin = s.sp ? new Float64Array(4 * count) : null;
         const eflag = s.shape ? new Uint8Array(count) : null;
         const tIdx = new Int32Array(count), tAt = new Int32Array(count);
+        const bflag = parseBodyStyle(style) ? new Uint8Array(count) : null;
         body.forEach(({ w, at }, a) => {
           if (w.length !== cols.length && w.length !== cols.length + 3) {
             throw new StyleError(`data file line ${at}: Atoms # ${style} expects ${cols.length} values (+3 image flags), got ${w.length}`);
@@ -380,6 +467,13 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
                 eflag![a] = f;
                 break;
               }
+              case 'bodyflag': {
+                const f = intOf(v, 'bodyflag', at);
+                if (f !== 0 && f !== 1) throw new StyleError(`data file line ${at}: bodyflag must be 0 or 1`);
+                bflag![a] = f;
+                break;
+              }
+              case 'mass': density[a] = numOf(v, 'mass', at); break;
               case 'tindex': tIdx[a] = intOf(v, 'template-index', at); break;
               case 'tatom': tAt[a] = intOf(v, 'template-atom', at); break;
               case 'mux': mu![4 * a] = numOf(v, 'mux', at); break;
@@ -414,7 +508,9 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         // ellipsoids: the density becomes a mass once the Ellipsoids section gives the volume; a point
         // particle (ellipsoidflag 0) takes the density as its mass
         // atom_style peri. Measured with native LAMMPS (black box): read_data gives mass = density (volume is kept apart)
-        const rmass = s.radius ? radius.map((r, a) => sphereMass(r, density[a])) : s.shape || s.vfrac ? Float64Array.from(density) : undefined;
+        const rmass = s.radius ? radius.map((r, a) => sphereMass(r, density[a])) : s.shape || s.vfrac || bflag ? Float64Array.from(density) : undefined;
+        // atom_style body: the mass column is the body's mass (read_data.html); a bodyflag 1 atom needs a Bodies entry
+        if (bflag) for (let a = 0; a < count; a++) if (bflag[a]) bodyPending.add(id[a]);
         if (eflag) for (let a = 0; a < count; a++) if (eflag[a]) ellPending.set(id[a], density[a]);
         if (genFrame) {
           // read_data.html: coordinates "should be inside the general triclinic simulation box"; the
@@ -497,6 +593,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   }
   if (natoms > 0 && !sawAtoms) throw new StyleError('data file: an Atoms section is required when atoms > 0');
   if (ellPending.size) throw new StyleError(`data file: ${ellPending.size} atoms have ellipsoidflag 1 but no Ellipsoids line`);
+  if (bodyPending.size) throw new StyleError(`data file: ${bodyPending.size} atoms have bodyflag 1 but no Bodies entry (read_data.html: the Bodies section must appear)`);
   // velocities
   if (vel.size) {
     for (let i = n0; i < s.n; i++) {
@@ -610,6 +707,7 @@ const generalOutput = (s: SimState): { Q: Mat3; origin: V3; header: string[] } =
 
 export const writeData = (sys: System, opts: WriteDataOptions): string => {
   const s = sys.state;
+  if (parseBodyStyle(s.atomStyle)) throw new StyleError(`write_data is not supported for atom_style ${s.atomStyle} by the browser engine (body records are not written)`);
   const t = s.topo;
   const gen = opts.triclinicGeneral ? generalOutput(s) : null;
   const out: string[] = [

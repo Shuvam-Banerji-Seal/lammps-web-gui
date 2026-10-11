@@ -49,30 +49,43 @@ import { massOf } from '../atoms';
  * Global scalar: "The scalar is the same cumulative energy change due to this
  * fix described in the previous paragraph", reported by thermo ecouple.
  *
- * Measured with native LAMMPS (black box, tests/oracle/w7nh_*.in):
- *   - the global vector (f_ID[k]) layout: eta, eta_dot (tchain), omega,
- *     omega_dot (ndof), etap, etap_dot (pchain), PE_eta, KE_eta_dot,
- *     PE_omega, KE_omega_dot, PE_etap, KE_etap_dot (no PE_strain entry for iso).
- *   - barostat velocity scaling: both scalings of a half step come before the
- *     kick in the initial step and after it in the final step.
+ * Measured with native LAMMPS (black box, tests/oracle/w7nh_*.in and w42nhm_*.in):
+ *   - the global vector (f_ID[k]) layout: eta, eta_dot (tchain), omega, omega_dot (ndof), etap, etap_dot
+ *     (pchain), PE_eta, KE_eta_dot, PE_omega, KE_omega_dot, PE_etap, KE_etap_dot, and PE_strain[1] for the
+ *     diagonal couplings (couple none; 25 entries for nph with pchain 3, 13 with pchain 0; npt adds the tchain
+ *     blocks). Iso has no PE_strain entry (12 entries for nph with pchain 3).
+ *   - PE_etap[k] = k_B T_p etap[k] for every k (T_p the barostat temperature); no count of barostatted dims.
+ *   - PE_omega per barostatted diagonal dimension = Pbar (V - V0) / (nbaro nktv2p), with Pbar the mean
+ *     target over the barostatted dimensions and free dimensions 0. Native for x only: P_x (V - V0) (one entry).
+ *   - the scalar is the sum of the KE_omega_dot, PE_omega, PE_strain, and barostat-chain entries (equal
+ *     to ecouple with the thermo normalisation: lj units divide an extensive scalar by the atom count).
+ *   - PE_strain = [ -(3 - nbaro)/2 * Pbar * V0 + sum_d (P_d - Pbar) V0 (r_d^2 - 1)/2 ] / nktv2p, with
+ *     r_d = L_d / L_d(0) over the barostatted diagonal dimensions. The first term is the step-0 reference
+ *     (x only: -P V0; x and y: -P V0/2). The second term was fitted to native (least squares over the 100 steps
+ *     of nph x 1 y 3 z 2 and npt x 2 y 3, z free) with residual 1e-12. Under a ramp the current targets are used.
+ *   - the barostat velocity update, the MTK terms and the thermostat chain for the cases with equal
+ *     targets (or one barostatted dimension) match native to rel 1e-9 over 100 steps (w42nhm_*).
  *   - the MTK force term (per barostatted dimension) is the sum over the barostatted diagonal
  *     dimensions of sum m v^2, divided by (number of barostatted dimensions) * N. The iso
  *     barostat (couple xyz) uses the temperature compute's dof * k_B T instead (rotational dof
  *     included, the sphere/asphere cases). The MTK trace term in the velocity update is the sum
  *     of omega_dot over the barostatted dimensions, divided by (number of barostatted dimensions) * N.
- *   - the barostat thermostat chain force counts the barostatted dimensions (couple none).
+ *   - barostat velocity scaling: both scalings of a half step come before the kick in the initial step and
+ *     after it in the final step.
+ *   - the barostat chain force counts the barostatted dimensions (couple none).
  *   - the step-0 scalar is -(3 - nbaro)/2 * P_mean * V0 / nktv2p (nbaro = barostatted diagonal
  *     dimensions): x only -P V0, x and y -P V0/2, iso and xyz 0. The 3 is used in 2d too (2d x only
  *     -P V0, 2d x and y -P V0/2), so the 2d form is this same rule.
- *   - the first barostat-chain potential term counts the barostatted
- *     dimensions, while the chain mass uses n_dim = 1 for couple xyz.
  *   - tilts: the xy-only barostat is exact (xy += ly * omega_xy); with the
  *     diagonal and tilt couplings together, the box is within ~3e-8 of the
  *     exact flow at dt = 0.02 (not reproduced; see the w7nh_npt_tri notes).
- * Not resolved: the scalar (f_ID, ecouple) when the diagonal barostat targets differ between
- * dimensions (e.g. x 1, y 3, z 2): the dynamics match native at 1e-15, but the scalar is off by a
- * term that grows with the strain (about 1.6 % at step 1 for a 3d nph case, measured). Not
- * refused: the dynamics are exact and the scalar form has not been identified.
+ * Not resolved (unequal diagonal targets, e.g. x 1, y 3, z 2): the barostat velocities differ from native
+ * by a small term proportional to (P_d - Pbar) (about 1e-5 relative after one step, 9 % in the box after
+ * 100 steps for nph x 1, y 3, z 2 with pchain 0; measured with w42nhm cases generated and checked, not
+ * committed). The term is linear in (P_d - Pbar) and its coefficient depends on the state (it grows as the
+ * kinetic energy falls). Its form has not been identified. The strain energy and the vector formulas above
+ * were fitted to native values from the same state, so they hold; the scalar matches native only for the
+ * cases with equal targets.
  * Not implemented (StyleError): dilate with a partial group's strain-energy
  * reference cell (nreset > 0 is accepted; the reference cell is the current
  * one), box flips (flip yes stops with an error when a tilt passes 0.6 of the
@@ -115,6 +128,7 @@ export class FixNH extends Fix {
   private pressId: string | null = null;
   private dthalf = 0; private dt4 = 0; private dt8 = 0; private dtf = 0; private dtv = 0;
   private vol0 = 0;
+  private len0: number[] = [1, 1, 1];   // box lengths at the start of the run (strain reference)
   private ecoupleCum = 0;
   private scaleTilt = [true, true, true];   // yz xz xy with their second dimension
 
@@ -279,6 +293,7 @@ export class FixNH extends Fix {
     if (this.pressId) this.pressCompute = this.sys.compute(this.pressId);
     this.resetDt();
     this.vol0 = this.sys.geom.volume(s.dimension);
+    this.len0 = [this.sys.geom.lx, this.sys.geom.ly, this.sys.geom.lz];
     // barostat target temperature
     this.tTarget = this.tstat ? ramp(this.sys, this.tStart, this.tStop) : this.currentTemp();
     if (this.pstat) {
@@ -723,6 +738,37 @@ export class FixNH extends Fix {
 
   // ------------------------------------------------------------------ output
 
+  /** Mean target pressure over the barostatted diagonal dimensions (0 when none). */
+  private pbarDiag(): number {
+    const nb = this.nbaroDiag();
+    if (nb === 0) return 0;
+    let acc = 0;
+    for (let d = 0; d < 3; d++) if (this.pFlag[d]) acc += this.pTarget[d];
+    return acc / nb;
+  }
+
+  /**
+   * Strain energy of the diagonal barostat (the scalar's PE_strain entry), in energy units:
+   *   [ -(3 - nbaro)/2 * Pbar * V0 + sum_d (P_d - Pbar) * V0 * (r_d^2 - 1)/2 ] / nktv2p,
+   * over the barostatted diagonal dimensions d, with r_d = L_d / L_d(0) and Pbar the mean target
+   * (see the header comment for the measurements behind it).
+   */
+  private strainEnergy(): number {
+    const s = this.sys.state;
+    const nb = this.nbaroDiag();
+    if (nb === 0) return 0;
+    const pbar = this.pbarDiag();
+    const g = this.sys.geom;
+    const len = [g.lx, g.ly, g.lz];
+    let e = -((3 - nb) / 2) * pbar * this.vol0;
+    for (let d = 0; d < 3; d++) {
+      if (!this.pFlag[d]) continue;
+      const r = len[d] / this.len0[d];
+      e += (this.pTarget[d] - pbar) * this.vol0 * (r * r - 1) / 2;
+    }
+    return e / s.units.nktv2p;
+  }
+
   /** Energy exchanged with the reservoirs (extended-system terms). */
   ecouple(): number {
     const s = this.sys.state;
@@ -752,8 +798,7 @@ export class FixNH extends Fix {
       if (nhyd) {
         const pMean = pHydro / nhyd;
         e += pMean * (vol - this.vol0) / s.units.nktv2p;
-        // step-0 reference term -(3 - nbaro)/2 * P V0 (measured, see the header comment)
-        e -= ((3 - nhyd) / 2) * pMean * this.vol0 / s.units.nktv2p;
+        e += this.strainEnergy();
       }
       if (this.pchain > 0) {
         const kt = kB * this.baroTemp();
@@ -791,7 +836,7 @@ export class FixNH extends Fix {
    * entry is its documented keyword with an index, for example eta[1] or PE_omega[2]. The order follows vectorLayout.
    */
   autoColumnNames(): { scalar: string; vector: string[] } {
-    const keywords = ['eta', 'eta_dot', 'omega', 'omega_dot', 'etap', 'etap_dot', 'PE_eta', 'KE_eta_dot', 'PE_omega', 'KE_omega_dot', 'PE_etap', 'KE_etap_dot'];
+    const keywords = ['eta', 'eta_dot', 'omega', 'omega_dot', 'etap', 'etap_dot', 'PE_eta', 'KE_eta_dot', 'PE_omega', 'KE_omega_dot', 'PE_etap', 'KE_etap_dot', 'PE_strain'];
     const vector: string[] = [];
     this.vectorLayout().forEach((seg, s) => {
       for (let j = 1; j <= seg.n; j++) vector.push(`${keywords[s]}[${j}]`);
@@ -813,15 +858,24 @@ export class FixNH extends Fix {
     const nT = this.tstat ? this.tchain : 0;
     const nP = this.pstat ? this.pchain : 0;
     const dims = this.ndofDims();
+    const tilt = this.pFlag[3] || this.pFlag[4] || this.pFlag[5];
+    const nb = this.nbaroDiag();
+    const dV = this.sys.geom.volume(s.dimension) - this.vol0;
+    // barostat potential energy: a single entry (iso, 2d xy) holds Pbar dV; otherwise each barostatted
+    // dimension holds an equal share of Pbar dV (tilt keywords keep the earlier group form)
+    const peOmega = (j: number): number => {
+      if (tilt) return this.omegaGroupSum(j) * dV / (3 * s.units.nktv2p);
+      if (dims.length === 1) return this.pbarDiag() * dV / s.units.nktv2p;
+      return this.pFlag[dims[j]] ? this.pbarDiag() * dV / (nb * s.units.nktv2p) : 0;
+    };
     const kt = kB * this.tTarget;
     const ktP = kB * this.baroTemp();
     const tfreq = this.tstat ? 1 / this.tPeriod : 0;
     const dof = this.tstat ? this.tempCompute.dof : 0;
     const qT = (k: number) => (k === 0 ? dof * kt / (tfreq * tfreq) : kt / (tfreq * tfreq));
     let pfreq = 0;
-    for (const d of dims) pfreq = Math.max(pfreq, 1 / this.pPeriod[d]);
+    for (const d of dims) if (this.pFlag[d]) pfreq = Math.max(pfreq, 1 / this.pPeriod[d]);
     const qP = (k: number) => ktP / (pfreq * pfreq);
-    const omegaGroup = (j: number) => (dims.length === 1 ? [0, 1, 2] : [dims[j]]);
     return [
       { n: nT, value: (k) => this.eta[k] },
       { n: nT, value: (k) => this.etaDot[k] },
@@ -831,11 +885,21 @@ export class FixNH extends Fix {
       { n: nP, value: (k) => this.etapDot[k] },
       { n: nT, value: (k) => (k === 0 ? dof * kt : kt) * this.eta[k] },
       { n: nT, value: (k) => 0.5 * qT(k) * this.etaDot[k] * this.etaDot[k] },
-      { n: dims.length, value: (j) => omegaGroup(j).reduce((acc, d) => acc + this.pTarget[d], 0) * (this.sys.geom.volume(s.dimension) - this.vol0) / (3 * s.units.nktv2p) },
-      { n: dims.length, value: (j) => omegaGroup(j).reduce((a, d) => a + 0.5 * this.omegaMass[d] * this.omegaDot[d] * this.omegaDot[d], 0) },
-      { n: nP, value: (k) => (k === 0 ? dims.length * ktP : ktP) * this.etap[k] },
+      { n: dims.length, value: (j) => peOmega(j) },
+      { n: dims.length, value: (j) => (dims.length === 1 ? [0, 1, 2] : [dims[j]]).reduce((a, d) => a + 0.5 * this.omegaMass[d] * this.omegaDot[d] * this.omegaDot[d], 0) },
+      { n: nP, value: (k) => ktP * this.etap[k] },
       { n: nP, value: (k) => 0.5 * qP(k) * this.etapDot[k] * this.etapDot[k] },
+      // "PE_strain[1] = scalar strain energy (energy units)" (fix_nh.rst): the diagonal barostat's strain energy
+      // (diagonal couplings only; the measured iso layout has no such entry)
+      { n: this.pstat && !tilt && this.couple === 'none' ? 1 : 0, value: () => this.strainEnergy() },
     ];
+  }
+
+  /** Sum of target pressures over the group of a tilt-keyword vector entry (the earlier form, kept for tilts). */
+  private omegaGroupSum(j: number): number {
+    const dims = this.ndofDims();
+    const group = dims.length === 1 ? [0, 1, 2] : [dims[j]];
+    return group.reduce((acc, d) => acc + this.pTarget[d], 0);
   }
 
 }

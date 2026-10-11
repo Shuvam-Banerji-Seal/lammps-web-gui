@@ -178,7 +178,7 @@ describe('Session: errors are explicit and carry the line', () => {
     ['a file the notebook does not have', 'read_data system.data', /cannot open file system.data/],
     ['units after the box', 'lattice sc 1\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nunits real', /cannot be used after the simulation box/],
     ['2d with a non-periodic z', 'dimension 2\nboundary p p f', /z dimension must be periodic/],
-    ['an unsupported pair style', 'pair_style reaxff NULL', /pair_style 'reaxff' is not supported/],
+    ['an unsupported pair style', 'pair_style lcbop', /pair_style 'lcbop' is not supported/],
     ['an undefined group', 'lattice sc 1\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nfix 1 mobile nve', /unknown group 'mobile'/],
     ['missing mass before run', 'lattice sc 1\nregion b block 0 3 0 3 0 3\ncreate_box 1 b\ncreate_atoms 1 box\npair_style lj/cut 1.1\npair_coeff * * 1 1\nrun 1', /masses are set \(type 1\)/],
     ['missing pair coeffs', 'lattice sc 1\nregion b block 0 3 0 3 0 3\ncreate_box 2 b\nmass * 1\npair_style lj/cut 1.1\npair_coeff 1 1 1 1\nrun 1', /all pair coeffs are not set/],

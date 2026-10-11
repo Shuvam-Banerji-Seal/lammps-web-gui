@@ -1,7 +1,7 @@
 # oracle: SPC/E water box (4500 atoms, tally example data): fix shake tol 1e-4 iter 20 on the O-H bonds and H-O-H angle, run 0 (setup only): step-0 temp, pe, ecoul, evdwl, elong and press, and every per-atom position, velocity and force after setup
 # oracle-inputs: w48sh_spce.data
 # oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
-# oracle-tolerance: the setup solve (fix shake 0.0001 20 0 b 1 a 1 on the 4500 SPC/E waters) matches native to 1e-7 relative for every thermo value and every per-atom position, velocity and force at step 0 (the setup is a global sweep of the coordinate correction and a frozen-Jacobian force solve, see fix shake header)
+# oracle-tolerance: the setup solve (fix shake 0.0001 20 0 b 1 a 1 on the 4500 SPC/E waters) matches native to 1e-7 relative for every thermo value and every per-atom position, velocity and force at step 0 (each setup solve is per cluster with the update-size stop, the coordinate correction and a frozen-Jacobian force solve; see the fix shake header)
 units		real
 atom_style	full
 read_data	w48sh_spce.data

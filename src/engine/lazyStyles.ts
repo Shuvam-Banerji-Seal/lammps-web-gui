@@ -71,4 +71,5 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'compute_misc14', names: { COMPUTES: ['temp/chunk', 'temp/cs', 'temp/ramp'] }, load: () => import('./registry/compute_misc14') as Promise<StyleModule> },
   { id: 'compute_misc14b', names: { COMPUTES: ['viscosity/cos'] }, load: () => import('./registry/compute_misc14b') as Promise<StyleModule> },
   { id: 'compute_misc15', names: { COMPUTES: ['pair'] }, load: () => import('./registry/compute_misc15') as Promise<StyleModule> },
+  { id: 'compute_stressprof', names: { COMPUTES: ['stress/cartesian', 'stress/cylinder', 'stress/mop', 'stress/mop/profile', 'stress/spherical'] }, load: () => import('./registry/compute_stressprof') as Promise<StyleModule> },
 ];

@@ -31,11 +31,16 @@ export const templateStyleId = (st: AtomStyle): string | null => {
 /** Styles with molecule templates (atom_style template): topology comes from the template, per-atom template index and atom. */
 export const isTemplateStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('template');
 /** Styles with bond topology and molecule IDs (template styles too: their topology is expanded from the template). */
-export const isMolecularStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'bond' || x === 'angle' || x === 'molecular' || x === 'full' || x === 'template');
+export const isMolecularStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'bond' || x === 'angle' || x === 'molecular' || x === 'full' || x === 'template' || x === 'bpm/sphere');
 /** Styles that store a per-atom charge. */
 export const hasChargeStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'charge' || x === 'full' || x === 'dipole');
-/** Styles with finite-size spheres (radius, rmass, omega, torque). */
-export const isSphereStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('sphere');
+/** Styles with finite-size spheres (radius, rmass, omega, torque). atom_style bpm/sphere is a bonded sphere style. */
+export const isSphereStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'sphere' || x === 'bpm/sphere');
+/**
+ * atom_style bpm/sphere: "bond + radius, rmass, omega, torque, quat" (atom_style.html, the table row bpm/sphere).
+ * The quaternion is the only per-atom field of this style that the other sphere styles lack.
+ */
+export const isBpmSphereStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('bpm/sphere');
 /** Styles with point dipoles (mu). */
 export const hasDipoleStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('dipole');
 /** Styles with magnetic spins (sp: unit vector and magnitude; atom_style.html lists spin as atomic plus magnetic moment data). */
@@ -158,7 +163,7 @@ export const emptyState = (
   sp: hasSpinStyle(atomStyle) ? new Float64Array(0) : null,
   fm: hasSpinStyle(atomStyle) ? new Float64Array(0) : null,
   shape: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
-  quat: hasQuatStyle(atomStyle) ? new Float64Array(0) : null,
+  quat: hasQuatStyle(atomStyle) || isBpmSphereStyle(atomStyle) ? new Float64Array(0) : null,
   angmom: hasQuatStyle(atomStyle) ? new Float64Array(0) : null,
   custom: bodyCustom(atomStyle),
   propMol: false,

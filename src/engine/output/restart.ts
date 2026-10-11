@@ -10,7 +10,7 @@ import { BondedHybrid, type HybridKind } from '../force/bonded_hybrid';
 
 /** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
 type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart };
-import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isTemplateStyle, templateStyleId } from '../atoms';
+import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId } from '../atoms';
 import { ErfcTableCache } from '../force/erfc';
 
 /*
@@ -340,7 +340,12 @@ export const readRestartText = (sys: System, text: string, name: string): void =
   if (!hasChargeStyle(state.atomStyle)) state.q.fill(0);
   if (!hasRmassStyle(state.atomStyle)) state.rmass = null;
   if (!hasDipoleStyle(state.atomStyle)) state.mu = null;
-  if (!isEllipsoidStyle(state.atomStyle)) { state.shape = null; state.quat = null; state.angmom = null; }
+  if (!isEllipsoidStyle(state.atomStyle)) {
+    state.shape = null;
+    // atom_style bpm/sphere keeps its quaternion (atoms.ts isBpmSphereStyle)
+    if (!isBpmSphereStyle(state.atomStyle)) state.quat = null;
+    state.angmom = null;
+  }
   sys.pendingFixData = new Map((doc.fixes ?? []).map((f) => [f.id, f]));
 
   sys.units = state.units;

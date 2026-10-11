@@ -1,0 +1,25 @@
+# oracle: bond bpm/rotational at a setup strain of 1.01 (B = 1.01 >= 1): the bond breaks at the first force evaluation of
+# the run (zero force, zero energy, compute nbond/atom reports it gone), unlike bpm/spring whose setup keeps the bond
+# oracle-inputs: w53bpm_dimer.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+newton on off
+atom_style bpm/sphere
+read_data w53bpm_dimer.data
+comm_modify vel yes cutoff 2.6
+pair_style zero 2.0
+pair_coeff * *
+neighbor 0.3 bin
+special_bonds lj 0 1 1 coul 1 1 1
+bond_style bpm/rotational
+bond_coeff 1 1.0 0 0 0 1.0 1.0 1.0 1.0 0.5 0.0 0.0 0.0
+compute nb all nbond/atom
+compute tb all reduce sum c_nb
+fix 1 all nve/bpm/sphere
+thermo_style custom step pe ebond c_tb
+thermo_modify format float %.15g norm no
+timestep 0.01
+run 0
+set atom 2 x 2.01
+run 0
+run 3

@@ -1,6 +1,6 @@
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
 import type { SimState } from '../../types';
-import { NEIGHMASK } from '../../neighbor';
+import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { contactMassArray } from '../../atoms';
 import { parseNum } from '../util';
 
@@ -154,7 +154,8 @@ export class PairGran extends Pair {
       const ri = radius[oi], mi = rmass[oi];
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       for (let k = list.firstneigh[i], k1 = k + list.numneigh[i]; k < k1; k++) {
-        const j = list.neighbors[k] & NEIGHMASK;
+        const jj = list.neighbors[k];
+        const j = jj & NEIGHMASK;
         const oj = owner[j];
         const rj = radius[oj];
         const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
@@ -170,6 +171,13 @@ export class PairGran extends Pair {
           if (this.history) this.shear.delete(key);
           continue;
         }
+        // special_bonds.html: "The LJ factors are applied to the remaining terms that the potential calculates, whether
+        // they represent LJ interactions or not." A 1-2 partner with lj weight 0 (bpm bonds: special_bonds lj 0 1 1) gets no
+        // contact force. Measured with native LAMMPS (black box): two overlapping bonded spheres (diameter 1, 0.8 apart)
+        // stay at rest with pair gran/hooke, the same pair without the bond moves (ke 11.48 after 20 steps).
+        const fsp = pc.specialLJ[jj >>> SBBITS];
+        if (fsp === 0) continue;
+        if (fsp !== 1) throw new StyleError(`pair gran: special_bonds LJ weight ${fsp} for a 1-2 partner is not measured (only 0 and 1 are supported)`);
         const r = Math.sqrt(rsq), rinv = 1 / r, rsqinv = 1 / rsq;
         const mj = rmass[oj];
         // relative translational velocity and its normal part

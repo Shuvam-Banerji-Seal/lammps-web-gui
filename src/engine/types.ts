@@ -87,7 +87,7 @@ export interface UnitSystem {
  * `template:<ID>` is atom_style template ID: the molecule template ID is part of the style string so that
  * it survives write_restart / read_restart (atoms.ts templateStyleId reads it back).
  */
-export type AtomStyle = 'atomic' | 'charge' | 'bond' | 'angle' | 'molecular' | 'full' | 'sphere' | 'dipole' | 'spin' | 'ellipsoid' | 'peri' | `template:${string}` | `body ${string}` | `hybrid ${string}`;
+export type AtomStyle = 'atomic' | 'charge' | 'bond' | 'angle' | 'molecular' | 'full' | 'sphere' | 'bpm/sphere' | 'dipole' | 'spin' | 'ellipsoid' | 'peri' | `template:${string}` | `body ${string}` | `hybrid ${string}`;
 
 /**
  * Bonded topology entries of one kind, stored by atom ID (not index) so that

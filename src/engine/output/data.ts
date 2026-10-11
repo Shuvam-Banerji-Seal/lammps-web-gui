@@ -44,6 +44,8 @@ const BASE_COLS: Record<string, string[]> = {
   full: ['id', 'mol', 'type', 'q', 'x', 'y', 'z'],
   // read_data.html: "sphere | atom-ID atom-type diameter density x y z"
   sphere: ['id', 'type', 'diameter', 'density', 'x', 'y', 'z'],
+  // read_data.html, the Atoms-section table, row bpm/sphere: "atom-ID molecule-ID atom-type diameter density x y z"
+  'bpm/sphere': ['id', 'mol', 'type', 'diameter', 'density', 'x', 'y', 'z'],
   // read_data.html: "dipole | atom-ID atom-type q x y z mux muy muz"
   dipole: ['id', 'type', 'q', 'x', 'y', 'z', 'mux', 'muy', 'muz'],
   // read_data.html, Atoms-section table, row spin: atom-ID atom-type x y z spx spy spz sp
@@ -576,7 +578,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         break;
       case 'Masses':
         // measured with native LAMMPS (atom_style sphere): "Cannot set mass for atom style sphere"
-        if (s.atomStyle === 'sphere') throw new StyleError(`Cannot set mass for atom style ${s.atomStyle}`);
+        if (s.atomStyle === 'sphere' || s.atomStyle === 'bpm/sphere') throw new StyleError(`Cannot set mass for atom style ${s.atomStyle}`);
         for (const { w, at } of body) {
           const t = intOf(w[0], 'atom type', at) + toff;
           if (t < 1 || t > s.ntypes) throw new StyleError(`data file line ${at}: atom type ${t} is outside 1..${s.ntypes}`);
@@ -772,7 +774,7 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   // measured with native write_data: atom_style sphere (per-atom masses) writes no Masses section; a
   // hybrid style with sphere writes it (per-type and per-atom masses both exist there)
   // measured with native write_data: atom_style peri writes no Masses section either
-  if (s.atomStyle !== 'sphere' && s.atomStyle !== 'ellipsoid' && s.atomStyle !== 'peri') {
+  if (s.atomStyle !== 'sphere' && s.atomStyle !== 'bpm/sphere' && s.atomStyle !== 'ellipsoid' && s.atomStyle !== 'peri') {
     out.push('', 'Masses', '');
     for (let k = 1; k <= s.ntypes; k++) out.push(`${k} ${shortest(s.massByType[k])}`);
   }

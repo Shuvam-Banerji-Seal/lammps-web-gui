@@ -67,7 +67,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body'];
+const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -107,7 +107,7 @@ const atomStyle: Handler = ({ sys }, a) => {
       known(w);
       if (subs.includes(w)) throw new StyleError(`atom_style hybrid lists ${w} twice`);
       subs.push(w);
-      if (w === 'sphere' && sphereArg(a[k + 1])) k++;
+      if ((w === 'sphere' || w === 'bpm/sphere') && sphereArg(a[k + 1])) k++;
     }
     if (!subs.length) throw new StyleError('usage: atom_style hybrid sub-style1 sub-style2 ...');
     // atom_style.html: "When using the *hybrid* style, you cannot combine the *template* style"
@@ -137,8 +137,8 @@ const atomStyle: Handler = ({ sys }, a) => {
     return;
   }
   known(a[0]);
-  if (a[0] === 'sphere') {
-    if (a.length > 2 || (a.length === 2 && !sphereArg(a[1]))) throw new StyleError('usage: atom_style sphere [0|1]');
+  if (a[0] === 'sphere' || a[0] === 'bpm/sphere') {
+    if (a.length > 2 || (a.length === 2 && !sphereArg(a[1]))) throw new StyleError(`usage: atom_style ${a[0]} [0|1]`);
   } else if (a.length > 1) throw new StyleError(`atom_style ${a[0]} takes no arguments`);
   sys.atomStyle = a[0] as AtomStyle;
 };
@@ -919,7 +919,8 @@ const mass: Handler = ({ sys }, a) => {
   // Measured with native LAMMPS (black box): mass is refused for atom style sphere and for atom style ellipsoid
   // (Cannot set per-type atom mass for atom style sphere, and the same with ellipsoid)
   // Measured with native LAMMPS (black box): mass is refused for atom style peri too (Cannot set per-type atom mass for atom style peri)
-  if (s.atomStyle === 'sphere' || s.atomStyle === 'ellipsoid' || s.atomStyle === 'peri' || isBodyStyle(s.atomStyle)) throw new StyleError(`Cannot set per-type atom mass for atom style ${s.atomStyle}`);
+  // Measured with native LAMMPS (black box): the same for bpm/sphere (Cannot set per-type atom mass for atom style bpm/sphere)
+  if (s.atomStyle === 'sphere' || s.atomStyle === 'bpm/sphere' || s.atomStyle === 'ellipsoid' || s.atomStyle === 'peri' || isBodyStyle(s.atomStyle)) throw new StyleError(`Cannot set per-type atom mass for atom style ${s.atomStyle}`);
   const m = num(a[1], 'mass');
   if (!(m > 0)) throw new StyleError('mass must be > 0');
   const [lo, hi] = typeBounds(a[0], s.ntypes);

@@ -1,7 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid, HEAT_FLOW, HEAT_TEMPERATURE } from '../atoms';
+import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid, isBpmSphereStyle, HEAT_FLOW, HEAT_TEMPERATURE } from '../atoms';
 
 /*
  * Per-atom computes: ke/atom, pe/atom, stress/atom and property/atom.
@@ -297,7 +297,8 @@ export class ComputePropertyAtom extends Compute {
       }
       if (SPHERE_ATTRS.has(a) && !sys.state.radius) throw new StyleError(`compute property/atom ${a} needs atom_style sphere`);
       if (TORQUE_ATTRS.has(a) && !sys.state.torque) throw new StyleError(`compute property/atom ${a} needs atom_style sphere or ellipsoid`);
-      if (ELLIPSOID_ATTRS.has(a) && !sys.state.shape) throw new StyleError(`compute property/atom ${a} needs atom_style ellipsoid`);
+      // atom_style bpm/sphere stores a quaternion (atoms.ts isBpmSphereStyle) but no shape
+      if (ELLIPSOID_ATTRS.has(a) && !sys.state.shape && !(isBpmSphereStyle(sys.atomStyle) && /^quat[wijk]$/.test(a))) throw new StyleError(`compute property/atom ${a} needs atom_style ellipsoid`);
       if (DIPOLE_ATTRS.has(a) && !sys.state.mu) throw new StyleError(`compute property/atom ${a} needs atom_style dipole`);
       if (SPIN_ATTRS.has(a) && !sys.state.sp) throw new StyleError(`compute property/atom ${a} needs atom_style spin`);
       if (CUSTOM_ATTR.test(a)) customAttr(sys.state, a);
@@ -334,7 +335,7 @@ export class ComputePropertyAtom extends Compute {
           case 'angmomx': case 'angmomy': case 'angmomz': set(i, s.angmom![3 * i + d]); break;
           case 'shapex': case 'shapey': case 'shapez': set(i, isEllipsoid(s, i) ? 2 * s.shape![3 * i + d] : 1); break;
           case 'quatw': case 'quati': case 'quatj': case 'quatk':
-            set(i, isEllipsoid(s, i) ? s.quat![4 * i + 'wijk'.indexOf(attr[4])] : attr === 'quatw' ? 1 : 0);
+            set(i, (isEllipsoid(s, i) || (s.quat && isBpmSphereStyle(s.atomStyle))) ? s.quat![4 * i + 'wijk'.indexOf(attr[4])] : attr === 'quatw' ? 1 : 0);
             break;
           case 'mux': case 'muy': case 'muz': set(i, s.mu![4 * i + 'xyz'.indexOf(attr[2])]); break;
           case 'mu': set(i, s.mu![4 * i + 3]); break;

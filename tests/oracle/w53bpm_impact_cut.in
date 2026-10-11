@@ -1,0 +1,25 @@
+# oracle: cut-down impact (not the full example): a 2 x 12 x 12 plate of bonded spheres hit by a 3 x 3 x 3 bonded projectile
+# that comes in at speed 1; bpm/rotational radial term only (the shear, twist and bend coefficients of the example are
+# zero here), pair gran/hooke/history contacts, fix nve/bpm/sphere. 315 atoms, 726 bonds, 120 steps.
+# oracle-inputs: w53bpm_impact_cut.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+dimension 3
+newton on off
+atom_style bpm/sphere
+comm_modify vel yes cutoff 2.6
+read_data w53bpm_impact_cut.data
+pair_style gran/hooke/history 1.0 NULL 0.5 NULL 0.1 1
+pair_coeff 1 1
+neighbor 0.3 bin
+special_bonds lj 0 1 1 coul 1 1 1
+bond_style bpm/rotational
+bond_coeff 1 1.0 0 0 0 0.02 1.0 1.0 1.0 0.1 0.0 0.0 0.0
+fix 1 all nve/bpm/sphere
+compute nb all nbond/atom
+compute tb all reduce sum c_nb
+thermo_style custom step ke pe ebond c_tb
+thermo_modify format float %.15g norm no lost ignore lost/bond ignore
+timestep 0.01
+thermo 20
+run 120

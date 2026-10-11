@@ -1,0 +1,25 @@
+# oracle: radial damping with normalize yes (r0 = 2), smooth no, and frame particle damping dem (the radial term is
+# frame-independent); the relative velocity damps the stretched dimer
+# oracle-inputs: w53bpm_dimer_r2.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+newton on off
+atom_style bpm/sphere
+read_data w53bpm_dimer_r2.data
+comm_modify vel yes cutoff 2.6
+pair_style zero 2.0
+pair_coeff * *
+neighbor 0.3 bin
+special_bonds lj 0 1 1 coul 1 1 1
+bond_style bpm/rotational normalize yes smooth no frame particle damping dem
+bond_coeff 1 1.0 0 0 0 1.0 1.0 1.0 1.0 0.5 0.0 0.0 0.0
+compute nb all nbond/atom
+compute tb all reduce sum c_nb
+fix 1 all nve/bpm/sphere
+thermo_style custom step pe ebond c_tb
+thermo_modify format float %.15g norm no
+timestep 0.01
+run 0
+set atom 2 x 2.4 vx 0.5
+run 0
+run 10

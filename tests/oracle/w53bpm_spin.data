@@ -1,0 +1,18 @@
+one sphere spinning with a lab-frame angular velocity (fix nve/bpm/sphere, no torque)
+
+1 atoms
+0 bonds
+1 atom types
+0 bond types
+
+-10 10 xlo xhi
+-10 10 ylo yhi
+-10 10 zlo zhi
+
+Atoms # bpm/sphere
+
+1 1 1 1.0 1.0 0.0 0.0 0.0
+
+Velocities
+
+1 0 0 0 0.3 0.4 1.0

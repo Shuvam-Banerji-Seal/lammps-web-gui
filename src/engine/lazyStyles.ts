@@ -18,6 +18,7 @@ export interface LazyGroup {
 
 export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'pair_meam', names: { PAIRS: ['meam'] }, load: () => import('./registry/pair_meam') as Promise<StyleModule> },
+  { id: 'pair_meam_spline', names: { PAIRS: ['meam/spline', 'meam/sw/spline'] }, load: () => import('./registry/pair_meam_spline') as Promise<StyleModule> },
   { id: 'pair_snap', names: { PAIRS: ['snap'] }, load: () => import('./registry/pair_snap') as Promise<StyleModule> },
   { id: 'compute_sna', names: { COMPUTES: ['sna/atom', 'snad/atom', 'snav/atom'] }, load: () => import('./registry/compute_sna') as Promise<StyleModule> },
   { id: 'compute_snap15', names: { COMPUTES: ['gaussian/grid/local', 'sna/grid', 'sna/grid/local', 'snap'] }, load: () => import('./registry/compute_snap15') as Promise<StyleModule> },

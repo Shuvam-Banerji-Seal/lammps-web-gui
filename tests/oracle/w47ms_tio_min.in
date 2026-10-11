@@ -1,0 +1,34 @@
+# oracle: pair_style meam/spline TiO.meam.spline, the same cell as w47ms_tio_run but one unit cell (6 atoms in a periodic cell smaller than the cutoff) with displaced atoms, relaxed by fix box/relax tri and cg minimize; final pe and pressure compared
+# oracle-potentials: TiO.meam.spline
+# oracle-compare: thermo=first-last atoms=all rel=1e-6 abs=1e-8 skip=fnorm,fmax,press,pxx,pyy,pzz
+# Measured with native LAMMPS (black box): the converged pressure components are about 1e-5 bar (noise of the stopped relaxation) and are not compared; pe and the box lengths agree to 1e-6 relative.
+units           metal
+atom_style      atomic
+dimension       3
+boundary        p p p
+variable        a equal 4.5937
+variable        c equal 2.9587
+variable        ca equal ${c}/${a}
+variable        bx equal ${a}*1
+variable        by equal ${a}*1
+variable        bz equal ${c}*1
+lattice         sc 1.0
+region          box_vide prism 0 ${bx} 0 ${by} 0 ${bz} 0.0 0.0 0.0
+create_box      2 box_vide
+lattice         custom ${a} origin 0.0 0.0 0.0 orient x 1 0 0 orient y 0 1 0 orient z 0 0 1 a1 1.0 0.0 0.0 a2 0.0 1.0 0.0 a3 0.0 0.0 ${ca} basis 0.0 0.0 0.0 basis 0.5 0.5 0.5
+create_atoms    2 region box_vide
+lattice         custom ${a} origin 0.0 0.0 0.0 orient x 1 0 0 orient y 0 1 0 orient z 0 0 1 a1 1.0 0.0 0.0 a2 0.0 1.0 0.0 a3 0.0 0.0 ${ca} basis 0.30478 0.30478 0.0 basis 0.69522 0.69522 0.0 basis 0.19522 0.80478 0.5 basis 0.80478 0.19522 0.5
+create_atoms    1 region box_vide
+mass            1 16.00
+mass            2 47.867
+variable        dx atom 0.03*sin(1.3*x+0.7*y)
+variable        dy atom 0.03*cos(0.9*y-0.4*z)
+variable        dz atom 0.03*sin(1.1*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      meam/spline
+pair_coeff      * * TiO.meam.spline O Ti
+thermo_style    custom step pe fnorm fmax press pxx pyy pzz vol lx ly lz
+thermo_modify   format float %.15g norm no
+fix             1 all box/relax tri 0.0 vmax 0.001
+min_style       cg
+minimize        0.0 1.0e-8 2000 20000

@@ -1,0 +1,40 @@
+# oracle: pair_style meam/spline with the two-element TiO.meam.spline file (rutile-like cell cut to 2x2x2 unit cells, O and Ti types as in the TiO2 example), displaced atoms, 30 steps of nve
+# oracle-potentials: TiO.meam.spline
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      atomic
+dimension       3
+boundary        p p p
+variable        a equal 4.5937
+variable        c equal 2.9587
+variable        ca equal ${c}/${a}
+variable        bx equal ${a}*2
+variable        by equal ${a}*2
+variable        bz equal ${c}*2
+lattice         sc 1.0
+region          box_vide prism 0 ${bx} 0 ${by} 0 ${bz} 0.0 0.0 0.0
+create_box      2 box_vide
+lattice         custom ${a} origin 0.0 0.0 0.0 orient x 1 0 0 orient y 0 1 0 orient z 0 0 1 a1 1.0 0.0 0.0 a2 0.0 1.0 0.0 a3 0.0 0.0 ${ca} basis 0.0 0.0 0.0 basis 0.5 0.5 0.5
+create_atoms    2 region box_vide
+lattice         custom ${a} origin 0.0 0.0 0.0 orient x 1 0 0 orient y 0 1 0 orient z 0 0 1 a1 1.0 0.0 0.0 a2 0.0 1.0 0.0 a3 0.0 0.0 ${ca} basis 0.30478 0.30478 0.0 basis 0.69522 0.69522 0.0 basis 0.19522 0.80478 0.5 basis 0.80478 0.19522 0.5
+create_atoms    1 region box_vide
+mass            1 16.00
+mass            2 47.867
+variable        dx atom 0.03*sin(1.3*x+0.7*y)
+variable        dy atom 0.03*cos(0.9*y-0.4*z)
+variable        dz atom 0.03*sin(1.1*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.01*sin(id)
+variable        vy atom 0.01*cos(2*id)
+variable        vz atom 0.01*sin(3*id)
+velocity        all set v_vx v_vy v_vz
+pair_style      meam/spline
+pair_coeff      * * TiO.meam.spline O Ti
+neighbor        0.5 bin
+neigh_modify    every 2 delay 0 check yes
+timestep        0.0002
+thermo_style    custom step temp press pe ke etotal lx ly lz vol
+thermo_modify   format float %.15g norm no
+thermo          10
+fix             3 all nve
+run             30

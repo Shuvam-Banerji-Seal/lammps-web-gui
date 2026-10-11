@@ -1,0 +1,27 @@
+# oracle: fix tmd on eight atoms with pair forces (positions, velocities and thermo after a targeted run)
+# oracle-inputs: w48fb_tmd_target.txt
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           lj
+atom_style      atomic
+atom_modify     map array
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 single 0.997619 1.002989 1.021211 units box
+create_atoms    1 single 0.998283 1.000392 3.004369 units box
+create_atoms    1 single 0.984233 3.000595 1.006494 units box
+create_atoms    1 single 1.014649 2.979706 2.990170 units box
+create_atoms    1 single 2.979534 1.015482 1.009672 units box
+create_atoms    1 single 2.977094 1.024110 3.023238 units box
+create_atoms    1 single 3.007696 3.005778 0.982875 units box
+create_atoms    1 single 2.975750 3.001419 2.977978 units box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.3 1.0 2.5
+velocity        all create 0.1 4928 loop all
+timestep        0.005
+fix             1 all nve
+fix             2 all tmd 0.5 w48fb_tmd_target.txt 0
+thermo_style    custom step pe ke
+thermo_modify   format float %.15g
+thermo          2
+run             10

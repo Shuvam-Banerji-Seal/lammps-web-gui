@@ -1,0 +1,28 @@
+# oracle: fix rhok in metal units (force conversion to internal units), eight atoms, energy yes
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           metal
+atom_style      atomic
+atom_modify     map array
+boundary        p p p
+region          box block 0 9 0 9 0 9
+create_box      1 box
+create_atoms    1 single 0.9 0.6 0.3 units box
+create_atoms    1 single 4.2 0.3 1.8 units box
+create_atoms    1 single 0.6 5.1 2.7 units box
+create_atoms    1 single 3.3 3.6 4.2 units box
+create_atoms    1 single 6.9 1.2 5.7 units box
+create_atoms    1 single 8.7 4.5 0.6 units box
+create_atoms    1 single 6.3 7.8 3.3 units box
+create_atoms    1 single 2.1 8.7 7.2 units box
+mass            1 58.69
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.01 2.2 2.5
+velocity        all create 300.0 4928 loop all
+timestep        0.001
+fix             1 all nve
+fix             B all rhok 1 0 0 0.5 2.0
+fix_modify      B energy yes
+thermo_style    custom step pe ke f_B f_B[1] f_B[2] f_B[3]
+thermo_modify   format float %.15g
+thermo          4
+run             12

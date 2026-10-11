@@ -1,0 +1,29 @@
+# oracle: fix addtorque/group in metal units (torque, vector and energy conversions), five atoms, energy yes
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           metal
+atom_style      atomic
+atom_modify     map array
+boundary        p p p
+region          box block -6 6 -6 6 -6 6
+create_box      1 box
+create_atoms    1 single 0.0 0.0 0.0 units box
+create_atoms    1 single 2.4 0.0 0.0 units box
+create_atoms    1 single 3.0 2.2 0.4 units box
+create_atoms    1 single -0.8 2.0 0.6 units box
+create_atoms    1 single 0.6 -2.2 -1.0 units box
+mass            1 58.69
+pair_style      lj/cut 4.0
+pair_coeff      1 1 0.01 2.2 4.0
+set             atom 1 vx 0.03 vy -0.02 vz 0.05
+set             atom 2 vx -0.01 vy 0.04 vz 0.02
+set             atom 3 vx 0.02 vy 0.01 vz -0.03
+set             atom 4 vx 0.05 vy 0.00 vz 0.01
+set             atom 5 vx -0.04 vy -0.03 vz 0.02
+timestep        0.001
+fix             1 all nve
+fix             4 all addtorque/group 0.0 0.0 0.02
+fix_modify      4 energy yes
+thermo_style    custom step pe ke f_4 f_4[1] f_4[2] f_4[3]
+thermo_modify   format float %.15g
+thermo          4
+run             12

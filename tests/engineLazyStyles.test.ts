@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LAZY_GROUPS, type StyleKind } from '../src/engine/lazyStyles';
 import { COMPUTE_STYLES, PAIR_STYLES, ensureStyles, styleNames } from '../src/engine/styles';
 import { Session } from '../src/engine/interpreter';
+import { isRefusedStyle } from '../src/engine/refusedStyles';
 
 // src/engine/lazyStyles.ts lists the style names of the registries the engine loads on first use; the lists
 // are written by hand when a group is added, so they are checked against the modules here.
@@ -19,9 +20,10 @@ describe('lazily loaded style registries', () => {
   it('keeps every lazy name out of the static registries and in the style lists', () => {
     const names = styleNames();
     for (const g of LAZY_GROUPS) {
-      for (const n of g.names.PAIRS ?? []) expect(names.pair_style).toContain(n);
-      for (const n of g.names.FIXES ?? []) expect(names.fix).toContain(n);
-      for (const n of g.names.COMPUTES ?? []) expect(names.compute).toContain(n);
+      // refusal-only styles (src/engine/refusedStyles.ts) are registered but not listed as supported
+      for (const n of g.names.PAIRS ?? []) if (!isRefusedStyle('PAIRS', n)) expect(names.pair_style).toContain(n);
+      for (const n of g.names.FIXES ?? []) if (!isRefusedStyle('FIXES', n)) expect(names.fix).toContain(n);
+      for (const n of g.names.COMPUTES ?? []) if (!isRefusedStyle('COMPUTES', n)) expect(names.compute).toContain(n);
     }
     // nothing is loaded yet in this file: a lazy pair style is absent from the registry object itself
     expect('colloid' in PAIR_STYLES).toBe(false);

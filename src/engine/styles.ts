@@ -3,6 +3,7 @@ import type { Bonded, KSpace, Pair } from './force/types';
 import type { Fix } from './fix/fix';
 import type { Compute } from './compute/compute';
 import { LAZY_GROUPS, type LazyGroup, type StyleKind, type StyleModule } from './lazyStyles';
+import { isRefusedStyle } from './refusedStyles';
 import { PairLJCut } from './force/pair/lj_cut';
 import { PairHybrid } from './force/pair/hybrid';
 import { BondHarmonic } from './force/bond/harmonic';
@@ -164,11 +165,14 @@ const REGISTRY_OF: Record<StyleKind, Record<string, unknown>> = {
 };
 
 /** Registered names of one kind, including the lazy groups that are not loaded yet. */
-const namesOf = (kind: StyleKind): string[] => {
+export const registeredNamesOf = (kind: StyleKind): string[] => {
   const set = new Set(Object.keys(REGISTRY_OF[kind]));
   for (const g of LAZY_GROUPS) for (const n of g.names[kind] ?? []) set.add(n);
   return [...set].sort();
 };
+
+/** Supported names of one kind: the registered ones without the refusal-only styles (refusedStyles.ts). */
+const namesOf = (kind: StyleKind): string[] => registeredNamesOf(kind).filter((n) => !isRefusedStyle(kind, n));
 
 /** Lists for messages and is_available(). */
 export const styleNames = (): Record<string, string[]> => ({

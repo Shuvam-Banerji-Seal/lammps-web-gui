@@ -22,12 +22,20 @@ import { StyleError } from './force/types';
 export const BODY_RECORD = '#body';
 
 /**
- * Record layout per atom, stride 4 + 3 Nmax: [nsub, I1, I2, I3, then per sub-particle k the body-frame
- * displacement (dx, dy, dz) at 4 + 3k]. Point particles (bodyflag 0) have nsub 0.
+ * Record layout per atom. nparticle, stride 4 + 3 Nmax: [nsub, I1, I2, I3, then per sub-particle k the body-frame
+ * displacement (dx, dy, dz) at 4 + 3k]. rounded/polygon, stride 5 + 3 Nmax: [nvert, I1, I2, I3, diameter, then per
+ * vertex k the body-frame displacement (dx, dy, dz) at 5 + 3k]. Point particles (bodyflag 0) have a zero count.
  */
-export const bodyRecordStride = (nmax: number): number => 4 + 3 * nmax;
+export const bodyRecordStride = (nmax: number, bstyle: string = 'nparticle'): number => bodyRecordOffset(bstyle) + 3 * nmax;
 
-/** atom_style body nparticle Nmin Nmax: the body style and its sub-particle bounds, or null for other styles. */
+/** Index of the first sub-particle (vertex) displacement in the record of a body style. */
+export const bodyRecordOffset = (bstyle: string): number => (bstyle === 'rounded/polygon' ? 5 : 4);
+
+/**
+ * atom_style body nparticle Nmin Nmax | rounded/polygon Nmin Nmax: the body style and its bounds, or null for
+ * other styles. Howto_body.rst: "atom_style body rounded/polygon Nmin Nmax" with "Nmin = minimum # of vertices in
+ * any body in the system".
+ */
 export const parseBodyStyle = (st: string): { bstyle: string; nmin: number; nmax: number } | null => {
   if (!st.startsWith('body ')) return null;
   const w = st.split(/\s+/);

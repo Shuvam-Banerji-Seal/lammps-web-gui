@@ -189,6 +189,17 @@ export class PairBuck6dCoulGauss extends Pair {
     return Math.max(rcv, this.cutCoul);
   }
 
+  /**
+   * Smoothed vdW energy and dE/dr of the pair of types ti, tj at distance r, or null beyond the pair's
+   * Buckingham cutoff. angle_style cosine/buck6d adds this term between the end atoms of each angle.
+   */
+  vdwEnergy(ti: number, tj: number, r: number): { e: number; de: number } | null {
+    const k = ti * (this.ntypes + 1) + tj;
+    const rc = this.cutVdw[k];
+    if (!(r < rc)) return null;
+    return vdwTerm(this.aA[k], this.aRho[k], this.aC[k], this.aD[k], this.cutSmooth[k], rc, r);
+  }
+
   /** Coulomb energy and dE/dr at distance r for pair type t (qq = qqrd2e qi qj). */
   private coulTerm(t: number, r: number, qq: number, g: number): { e: number; de: number } {
     const alpha = this.aAlpha[t];

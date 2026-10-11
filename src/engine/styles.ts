@@ -14,7 +14,7 @@ import { ImproperHarmonic } from './force/improper/harmonic';
 import * as pairCoul from './registry/pair_coul';
 import { PairCoulLong, PairLJCutCoulLong } from './force/pair/coul_long';
 import { KSpaceEwald } from './force/kspace/ewald';
-import { KSpacePPPM } from './force/kspace/pppm';
+import { KSpacePPPM, KSpacePPPMCG } from './force/kspace/pppm';
 import * as pairSimple from './registry/pair_simple';
 import * as pairLJ from './registry/pair_lj';
 import * as pairLJCoul from './registry/pair_ljcoul';
@@ -126,6 +126,7 @@ export const IMPROPER_STYLES: Record<string, () => Bonded> = {
 export const KSPACE_STYLES: Record<string, () => KSpace> = {
   ewald: () => new KSpaceEwald(),
   pppm: () => new KSpacePPPM(),
+  'pppm/cg': () => new KSpacePPPMCG(),
   };
 
 export const FIX_STYLES: Record<string, FixFactory> = {

@@ -25,12 +25,16 @@ import { fmtCoeff, parseNum } from '../util';
  * the bb line under BondBond Coeffs and the ba line under BondAngle Coeffs (dataCrossSections).
  */
 export class AngleClass2 extends Bonded {
-  readonly name = 'class2';
+  /** true for class2/p6 (six E_a coefficients); see AngleClass2P6 */
+  protected readonly p6: boolean = false;
+  readonly name: string = 'class2';
   readonly kind = 'angle' as const;
   private th0!: Float64Array;
   private K2!: Float64Array;
   private K3!: Float64Array;
   private K4!: Float64Array;
+  private K5!: Float64Array;
+  private K6!: Float64Array;
   private M!: Float64Array;
   private r1bb!: Float64Array;
   private r2bb!: Float64Array;
@@ -53,6 +57,8 @@ export class AngleClass2 extends Bonded {
     this.K2 = new Float64Array(n);
     this.K3 = new Float64Array(n);
     this.K4 = new Float64Array(n);
+    this.K5 = new Float64Array(n);
+    this.K6 = new Float64Array(n);
     this.M = new Float64Array(n);
     this.r1bb = new Float64Array(n);
     this.r2bb = new Float64Array(n);
@@ -78,6 +84,14 @@ export class AngleClass2 extends Bonded {
       const N1 = parseNum(args[2], 'N1'), N2 = parseNum(args[3], 'N2');
       const r1 = parseNum(args[4], 'r1'), r2 = parseNum(args[5], 'r2');
       for (let t = lo; t <= hi; t++) { this.N1[t] = N1; this.N2[t] = N2; this.r1ba[t] = r1; this.r2ba[t] = r2; this.setBa[t] = 1; }
+    } else if (this.p6) {
+      // class2/p6: "theta0 K2 K3 K4 K5 K6" (docs.lammps.org/angle_class2.html, class2/p6 coefficients)
+      if (args.length !== 7) throw new StyleError('angle_coeff class2/p6 needs theta0 K2 K3 K4 K5 K6');
+      const th = (parseNum(args[1], 'theta0') * Math.PI) / 180;
+      const K = args.slice(2).map((v, k) => parseNum(v, `K${k + 2}`));
+      for (let t = lo; t <= hi; t++) {
+        this.th0[t] = th; this.K2[t] = K[0]; this.K3[t] = K[1]; this.K4[t] = K[2]; this.K5[t] = K[3]; this.K6[t] = K[4]; this.setA[t] = 1;
+      }
     } else {
       if (args.length !== 5) throw new StyleError('angle_coeff class2 needs theta0 K2 K3 K4');
       const th = (parseNum(args[1], 'theta0') * Math.PI) / 180;
@@ -97,7 +111,8 @@ export class AngleClass2 extends Bonded {
   dataCoeffs(): string[] {
     const out: string[] = [];
     for (let t = 1; t <= this.ntypes; t++) {
-      out.push(`${t} ${fmtCoeff((this.th0[t] * 180) / Math.PI)} ${fmtCoeff(this.K2[t])} ${fmtCoeff(this.K3[t])} ${fmtCoeff(this.K4[t])}`);
+      const ks = this.p6 ? [this.K2[t], this.K3[t], this.K4[t], this.K5[t], this.K6[t]] : [this.K2[t], this.K3[t], this.K4[t]];
+      out.push(`${t} ${[fmtCoeff((this.th0[t] * 180) / Math.PI), ...ks.map((v) => fmtCoeff(v))].join(' ')}`);
     }
     return out;
   }
@@ -132,13 +147,15 @@ export class AngleClass2 extends Bonded {
       if (c < -1) c = -1;
       const theta = Math.acos(c);
       const dth = theta - this.th0[t];
-      const ea = this.K2[t] * dth * dth + this.K3[t] * dth ** 3 + this.K4[t] * dth ** 4;
+      const ea = this.K2[t] * dth * dth + this.K3[t] * dth ** 3 + this.K4[t] * dth ** 4
+        + this.K5[t] * dth ** 5 + this.K6[t] * dth ** 6;
       const ebb = this.M[t] * (r1n - this.r1bb[t]) * (r2n - this.r2bb[t]);
       const eba = (this.N1[t] * (r1n - this.r1ba[t]) + this.N2[t] * (r2n - this.r2ba[t])) * dth;
       const e1 = ea + ebb + eba;
       e += e1;
       // dE/dtheta and dE/dr
       const dEdth = 2 * this.K2[t] * dth + 3 * this.K3[t] * dth * dth + 4 * this.K4[t] * dth ** 3
+        + 5 * this.K5[t] * dth ** 4 + 6 * this.K6[t] * dth ** 5
         + this.N1[t] * (r1n - this.r1ba[t]) + this.N2[t] * (r2n - this.r2ba[t]);
       const dEdr1 = this.M[t] * (r2n - this.r2bb[t]) + this.N1[t] * dth;
       const dEdr2 = this.M[t] * (r1n - this.r1bb[t]) + this.N2[t] * dth;
@@ -166,4 +183,10 @@ export class AngleClass2 extends Bonded {
     }
     bc.acc.eangle += e;
   }
+}
+
+/** angle_style class2/p6 — docs.lammps.org/angle_class2.html: "The *class2/p6* angle style uses the *class2* potential expanded to sixth order". Bond-bond and bond-angle terms are those of class2. */
+export class AngleClass2P6 extends AngleClass2 {
+  override readonly name: string = 'class2/p6';
+  protected override readonly p6: boolean = true;
 }

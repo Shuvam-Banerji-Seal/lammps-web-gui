@@ -1,6 +1,7 @@
 import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral, delta } from '../bonded_util';
 import { parseNum, parseInt_ } from '../util';
 import { StyleError, type BondedCompute, type Pair, type StyleContext } from '../types';
+import { PairHybrid } from '../pair/hybrid';
 
 /*
  * dihedral_style charmm and charmmfsw (wave 13).
@@ -61,6 +62,9 @@ export interface CharmmLink {
 /** Coulomb form used for the 1-4 term; fixed by the linked pair style. */
 type Coul14 = 'plain' | 'fsh';
 
+/** hybrid/overlay sub-styles measured not to add 1-4 terms next to the lj/charmm sub-style (see resolveLjPair). */
+const NO_14_SUBSTYLES = new Set(['momb', 'morse', 'eam/fs']);
+
 const LJ_PLAIN_PAIRS = new Set([
   'lj/charmm/coul/charmm', 'lj/charmm/coul/long',
   'lj/charmmfsw/coul/charmmfsh', 'lj/charmmfsw/coul/long',
@@ -93,6 +97,32 @@ export class DihedralCharmm extends SimpleBonded {
     return [K, n, d, w];
   }
 
+  /** The lj/charmm pair whose epsilon14/sigma14 and cutoffs the 1-4 terms use (see resolveLjPair). */
+  protected ljPair: Pair | null = null;
+  /** True when the lj/charmm pair is a sub-style of a hybrid pair (1-4 pairs need their own coefficients). */
+  private hybridLj = false;
+
+  /**
+   * The pair style itself, or for pair_style hybrid/overlay the one lj/charmm sub-style (with momb sub-styles).
+   * Measured with native LAMMPS (black box): with pair_style hybrid/overlay lj/charmm/coul/long 8.0 10.0 momb 12.0 0.75 20.0
+   * and pair_coeff * * momb 0.0 1.0 1.0 0.0 2.3 (zero dispersion), the energies (edihed, evdwl, ecoul, elong, press) equal those
+   * of pair_style lj/charmm/coul/long 8.0 10.0 with the same lj/charmm coefficients, for both sub-style orders (momb listed
+   * first or second). Changing the epsilon14 of the lj/charmm coefficient of pair 1 1 changed evdwl the same way in both runs.
+   * Measured with native LAMMPS (black box), the same way: the change of evdwl between the dihedral weights 1.0 and 0.0
+   * (1-4 terms only) is the pure lj/charmm/coul/long change (2.965357069230) when the hybrid also holds momb with C6 10
+   * (2.965357069230), morse (D0 0.05, alpha 1.6, r0 2.9; 2.965357069230) or eam/fs with momb (2.965357069230): none of
+   * these sub-styles adds a 1-4 term. The engine accepts the lj/charmm sub-style with any of momb, morse or eam/fs.
+   */
+  protected resolveLjPair(pair: Pair): Pair {
+    if (!(pair instanceof PairHybrid)) return pair;
+    const ljSubs = pair.subs.filter((s) => LJ_PLAIN_PAIRS.has(s.style.name) || s.style.name.startsWith('lj/charmmfsw/'));
+    const others = pair.subs.filter((s) => !ljSubs.includes(s));
+    if (ljSubs.length !== 1 || others.some((s) => !NO_14_SUBSTYLES.has(s.style.name))) {
+      throw new StyleError(`dihedral_style ${this.name} is not measured with pair style ${pair.name} (measured: hybrid/overlay with one lj/charmm sub-style and momb, morse or eam/fs sub-styles)`);
+    }
+    return ljSubs[0].style;
+  }
+
   init(ctx?: StyleContext): void {
     super.init(ctx);
     const link = this.link;
@@ -102,11 +132,19 @@ export class DihedralCharmm extends SimpleBonded {
     const pair = link.pair;
     if (!pair) throw new StyleError(`dihedral_style ${this.name} needs a pair style of the lj/charmm family`);
     const pn = pair.name;
+    const lj = this.resolveLjPair(pair);
+    this.ljPair = lj;
+    this.hybridLj = lj !== pair;
+    const ljn = lj.name;
+    if (this.forceSwitched && lj !== pair) {
+      throw new StyleError(`dihedral_style ${this.name} is not measured with pair style ${pn}`);
+    }
     if (this.forceSwitched) {
-      if (!pn.startsWith('lj/charmmfsw/')) throw new StyleError(`Dihedral charmmfsw is incompatible with Pair style ${pn}`);
-    } else if (!LJ_PLAIN_PAIRS.has(pn)) {
+      if (!ljn.startsWith('lj/charmmfsw/')) throw new StyleError(`Dihedral charmmfsw is incompatible with Pair style ${pn}`);
+    } else if (!LJ_PLAIN_PAIRS.has(ljn)) {
       throw new StyleError(`dihedral_style ${this.name} is not measured with pair style ${pn} (supported: ${[...LJ_PLAIN_PAIRS].join(', ')})`);
     }
+
     const anyWeight = this.params.p('w').some((w, t) => t > 0 && this.params.set[t] === 1 && w !== 0);
     if (anyWeight && (link.special.lj[2] !== 0 || link.special.coul[2] !== 0)) {
       throw new StyleError(`Must use 'special_bonds charmm' (1-4 lj and coul = 0) with dihedral style ${this.name} for use with CHARMM pair styles`);
@@ -121,9 +159,9 @@ export class DihedralCharmm extends SimpleBonded {
   compute(bc: BondedCompute): void {
     const D = bc.s.topo.dihedrals;
     const K = this.params.p('K'), nn = this.params.p('n'), dd = this.params.p('d'), ww = this.params.p('w');
-    const pair = this.link?.pair as unknown as PairCuts | null;
-    if (!pair || !this.link?.pair) throw new StyleError(`dihedral_style ${this.name}: no pair style`);
-    const pn = this.link.pair.name;
+    const pair = this.ljPair as unknown as PairCuts | null;
+    if (!pair || !this.ljPair) throw new StyleError(`dihedral_style ${this.name}: no pair style`);
+    const pn = this.ljPair.name;
     const form = this.coul14Form(pn);
     const C = bc.s.units.qqr2e * pair.coulConstScale;
     const a = pair.inner, b = pair.outer, bCoul = pair.cutCoul;
@@ -154,6 +192,10 @@ export class DihedralCharmm extends SimpleBonded {
   ): void {
     const { pair, form, C, a, b, bCoul, a3b3, a6b6, rvec } = c;
     const ti = bc.s.type[i], tl = bc.s.type[l];
+    // a hybrid sub-style has coefficients only for the type pairs assigned to it (its pair_coeff I J lines)
+    if (this.hybridLj && !(pair.p as unknown as { isSet(i: number, j: number): boolean }).isSet(ti, tl)) {
+      throw new StyleError(`dihedral_style ${this.name}: the lj/charmm sub-style of the hybrid pair style has no pair_coeff ${ti} ${tl} for a 1-4 pair`);
+    }
     const eps = pair.p.get('epsilon14', ti, tl), sig = pair.p.get('sigma14', ti, tl);
     const qq = bc.s.q[i] * bc.s.q[l];
     delta(bc, i, l, rvec);

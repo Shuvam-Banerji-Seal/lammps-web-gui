@@ -1,0 +1,32 @@
+# oracle: dihedral_style charmm with pair_style hybrid/overlay lj/charmm/coul/long 8.0 10.0 momb (momb with C6 10, D0 0), special_bonds charmm, 30 NVE steps
+# oracle-inputs: w13dihcharmm_chains.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      full
+read_data       w13dihcharmm_chains.data
+special_bonds   charmm
+bond_style      harmonic
+bond_coeff      1 300.0 1.5
+angle_style     harmonic
+angle_coeff     1 50.0 110.0
+dihedral_style  charmm
+dihedral_coeff  1 0.2 1 180 1.0
+dihedral_coeff  2 1.8 1 0 1.0
+dihedral_coeff  3 3.1 2 180 0.5
+pair_style      hybrid/overlay lj/charmm/coul/long 8.0 10.0 momb 12.0 0.75 20.0
+pair_coeff      * * momb 0.0 1.0 1.0 10.0 2.3
+pair_coeff      1 1 lj/charmm/coul/long 0.1 3.0 0.05 3.5
+pair_coeff      2 2 lj/charmm/coul/long 0.15 3.2 0.1 3.1
+pair_coeff      3 3 lj/charmm/coul/long 0.12 3.1 0.08 3.3
+pair_coeff      1 2 lj/charmm/coul/long 0.12 3.1 0.07 3.3
+pair_coeff      1 3 lj/charmm/coul/long 0.11 3.05 0.06 3.4
+pair_coeff      2 3 lj/charmm/coul/long 0.13 3.15 0.09 3.2
+kspace_style    pppm 1.0e-5
+kspace_modify   gewald 0.3 mesh 32 32 32 order 5
+thermo_style    custom step pe edihed evdwl ecoul elong press
+thermo_modify   format float %.15g
+timestep        0.5
+velocity        all create 300.0 4928459 units box
+fix             1 all nve
+thermo          10
+run             30

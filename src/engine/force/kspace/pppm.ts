@@ -201,7 +201,7 @@ export function selectPppmAuto(inp: PppmAutoInput): PppmAutoResult {
 }
 
 export class KSpacePPPM extends KSpaceBase {
-  readonly name = 'pppm';
+  readonly name: string = 'pppm';
   meshUser: [number, number, number] | null = null;
   order = 5;
   private mesh: [number, number, number] = [0, 0, 0];
@@ -333,6 +333,11 @@ export class KSpacePPPM extends KSpaceBase {
     this.green = green;
   }
 
+  /** Charges that enter the mesh (and so the mesh forces and energy). pppm: every charge. */
+  protected gridCharges(s: SimState): ArrayLike<number> {
+    return s.q;
+  }
+
   compute(kc: KSpaceCompute): void {
     const s = kc.s;
     const geom = kc.geom;
@@ -362,8 +367,9 @@ export class KSpacePPPM extends KSpaceBase {
     }
     const mod = (a: number, m: number) => ((a % m) + m) % m;
     const rho = new Float64Array(2 * ng);
+    const qg = this.gridCharges(s);
     for (let i = 0; i < n; i++) {
-      const q = s.q[i];
+      const q = qg[i];
       if (q === 0) continue;
       const fx = first[3 * i], fy = first[3 * i + 1], fz = first[3 * i + 2];
       for (let c = 0; c < P; c++) {
@@ -417,7 +423,7 @@ export class KSpacePPPM extends KSpaceBase {
     fft3d(ez, nx, ny, nz, 1);
     // interpolate the field back and apply F = C q E / V
     for (let i = 0; i < n; i++) {
-      const q = s.q[i];
+      const q = qg[i];
       if (q === 0) continue;
       const fx0 = first[3 * i], fy0 = first[3 * i + 1], fz0 = first[3 * i + 2];
       let Ex = 0, Ey = 0, Ez = 0;
@@ -442,5 +448,56 @@ export class KSpacePPPM extends KSpaceBase {
     kc.acc.elong += pref * e + this.constantEnergy(C);
     for (let c = 0; c < 6; c++) kc.acc.vlong[c] += pref * w[c];
     this.slabCorrection(kc);
+  }
+}
+
+/*
+ * kspace_style pppm/cg accuracy (smallq) — docs.lammps.org/kspace_style.html: "The *pppm/cg* style is identical to the
+ * *pppm* style except that it has an optimization for systems where most particles are uncharged." "The optional
+ * *smallq* argument defines the cutoff for the absolute charge value which determines whether a particle is considered
+ * charged or not. Its default value is 1.0e-5."
+ *
+ * Measured with native LAMMPS (black box), 64-atom simple-cubic charge test (pos/neg charges +-0.4 on 2/6 of the atoms,
+ * the rest 0, displaced; kspace_modify gewald 0.4 mesh 16 16 16 order 5):
+ *  - with every nonzero charge above smallq, pppm/cg equals pppm bitwise (energy and all forces);
+ *  - atoms with |q| <= smallq are left out of the mesh: no mesh force on them and no mesh energy from them. Tested with
+ *    charge 3e-6 (default smallq 1e-5) and 0.05 (smallq 0.1); the boundary is strict: |q| = smallq (0.1 with smallq 0.1)
+ *    is excluded as well, and 0.10000001 with smallq 0.10000001 excludes it too;
+ *  - the self-energy and the neutralising term still use all atoms: with 10 atoms of charge 0.05 excluded the energy
+ *    shift relative to the same run with those charges set to 0 was -2.262094 (= -(g qqrd2e/sqrt(pi)) sum q^2
+ *    - (pi qqrd2e/(2 V g^2)) Q^2 with Q the net charge of all atoms), the forces were identical;
+ *  - the automatic G-ewald and mesh estimate use the charges of all atoms (identical G and mesh when every charge is
+ *    excluded by a large smallq);
+ *  - with every charge excluded the energy is the self-energy term of all atoms (-297.748580 with the automatic G 0.45150291
+ *    for the +-0.4 charges), pressure 0.
+ * The engine: the mesh charges are the charges with |q| > smallq (others zero); energy constants are those of pppm.
+ * kspace_modify slab is refused for pppm/cg (the slab correction was not measured with the optimisation).
+ */
+export class KSpacePPPMCG extends KSpacePPPM {
+  override readonly name: string = 'pppm/cg';
+  smallq = 1e-5;
+
+  settings(args: string[]): void {
+    if (args.length !== 1 && args.length !== 2) throw new StyleError('Illegal kspace_style pppm/cg command: usage: kspace_style pppm/cg accuracy (smallq)');
+    super.settings([args[0]]);
+    if (args.length === 2) {
+      this.smallq = parseNum(args[1], 'smallq');
+      if (!(this.smallq >= 0)) throw new StyleError('kspace_style pppm/cg smallq must be >= 0');
+    }
+  }
+
+  modify(key: string, values: string[]): number {
+    if (key === 'slab') throw new StyleError('kspace_modify slab is not supported by kspace_style pppm/cg (the slab correction was not measured with it)');
+    return super.modify(key, values);
+  }
+
+  /** Mesh charges: atoms with |q| > smallq keep their charge; the rest contribute nothing to the mesh. */
+  protected override gridCharges(s: SimState): ArrayLike<number> {
+    const out = new Float64Array(s.n);
+    for (let i = 0; i < s.n; i++) {
+      const q = s.q[i];
+      out[i] = Math.abs(q) > this.smallq ? q : 0;
+    }
+    return out;
   }
 }

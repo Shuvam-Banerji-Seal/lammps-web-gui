@@ -227,3 +227,155 @@ export const Histogram: React.FC<HistogramProps> = ({ bins, xLabel, yLabel, colo
     </div>
   );
 };
+
+/* ---------- multi-series line chart (notebook graphs) ---------- */
+
+export interface ChartSeries {
+  name: string;
+  points: Point[];
+  /** Overrides the palette colour for this series. */
+  color?: string;
+}
+
+const SERIES_LIGHT = ['#4e7a41', '#b5652b', '#3f6f9e', '#8a5fa8', '#b08a1e', '#2f8c83', '#9c3f5d', '#6b6053'];
+const SERIES_DARK = ['#7fa66b', '#e09a5b', '#7fb0dc', '#b99ad6', '#d9b65a', '#6fc2b8', '#dc8fa6', '#b9a88f'];
+
+/** Nearest point index by x in an x-sorted array (binary search). */
+const nearestIndex = (sorted: Point[], x: number): number => {
+  let lo = 0, hi = sorted.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sorted[mid].x < x) lo = mid + 1; else hi = mid;
+  }
+  if (lo > 0 && Math.abs(sorted[lo - 1].x - x) <= Math.abs(sorted[lo].x - x)) return lo - 1;
+  return lo;
+};
+
+interface MultiLineChartProps {
+  series: ChartSeries[];
+  xLabel?: string;
+  yLabel?: string;
+  theme: Theme;
+  height?: number;
+  /** The rendered <svg>, for SVG / PNG download. */
+  svgRef?: React.Ref<SVGSVGElement>;
+  emptyText?: string;
+}
+
+/**
+ * Several named series on one set of axes, with a legend and a hover readout (the nearest x of the first series,
+ * and each series' value there). Same drawing rules as LineChart: decimated paths, axes from the full data.
+ */
+export const MultiLineChart: React.FC<MultiLineChartProps> = ({
+  series, xLabel, yLabel, theme, height = 160, svgRef, emptyText = 'No data',
+}) => {
+  const ct = getThemeTokens(theme);
+  const isDark = isDarkTheme(theme);
+  const [hover, setHover] = React.useState<{ x: number; frac: number } | null>(null);
+  const live = series.filter((s) => s.points.length > 0);
+  const sorted = React.useMemo(
+    () => series.map((s) => (s.points.every((p, i, a) => i === 0 || a[i - 1].x <= p.x) ? s.points : s.points.slice().sort((a, b) => a.x - b.x))),
+    [series],
+  );
+  if (live.length === 0) {
+    return <div className={`flex h-[160px] items-center justify-center text-xs ${ct.muted}`}>{emptyText}</div>;
+  }
+  const allX: number[] = [];
+  const allY: number[] = [];
+  for (const s of live) for (const p of s.points) { allX.push(p.x); allY.push(p.y); }
+  const xe = extent(allX);
+  const ye = extent(allY);
+  const xMin = xe.lo, xMax = xe.hi;
+  const pad = (ye.hi - ye.lo) * 0.04 || 1;
+  const yLo = ye.lo - pad, yHi = ye.hi + pad;
+  const yRange = yHi - yLo;
+  const xRange = xMax - xMin || 1;
+  const W = PLOT_PX, H = height, padL = 44, padR = 12, padT = 10, padB = 22;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const sx = (x: number) => padL + ((x - xMin) / xRange) * plotW;
+  const sy = (y: number) => padT + (1 - (y - yLo) / yRange) * plotH;
+  const palette = isDark ? SERIES_DARK : SERIES_LIGHT;
+  const gridColor = isDark ? '#332a1f' : '#e0d7c6';
+  const textColor = isDark ? '#a3937f' : '#6b6053';
+  const colorOf = (i: number) => series[i].color ?? palette[i % palette.length];
+
+  let hoverX: number | null = null;
+  const readout: { name: string; y: number; color: string }[] = [];
+  if (hover) {
+    const ref = sorted.find((pts) => pts.length > 0);
+    if (ref) {
+      hoverX = ref[nearestIndex(ref, hover.x)].x;
+      series.forEach((s, i) => {
+        const pts = sorted[i];
+        if (pts.length === 0) return;
+        readout.push({ name: s.name, y: pts[nearestIndex(pts, hoverX as number)].y, color: colorOf(i) });
+      });
+    }
+  }
+
+  const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const px = ((e.clientX - rect.left) / rect.width) * W;
+    const frac = Math.min(1, Math.max(0, (px - padL) / plotW));
+    setHover({ x: xMin + frac * xRange, frac });
+  };
+
+  return (
+    <div className="relative w-full">
+      <div className={`mb-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] ${ct.muted}`}>
+        {series.map((s, i) => (
+          <span key={`${s.name}-${i}`} className="inline-flex items-center gap-1">
+            <span aria-hidden="true" className="inline-block h-2 w-2 rounded-sm" style={{ background: colorOf(i) }} />
+            {s.name}
+          </span>
+        ))}
+      </div>
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img"
+        aria-label={`${series.map((s) => s.name).join(', ')} against ${xLabel ?? 'x'}`}
+        onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
+        <rect x={0} y={0} width={W} height={H} fill="none" />
+        {Array.from({ length: 5 }).map((_, i) => {
+          const y = padT + (i / 4) * plotH;
+          return <line key={`y${i}`} x1={padL} x2={W - padR} y1={y} y2={y} stroke={gridColor} strokeWidth={0.5} opacity={0.7} />;
+        })}
+        <line x1={padL} x2={padL} y1={padT} y2={H - padB} stroke={gridColor} strokeWidth={1} />
+        <line x1={padL} x2={W - padR} y1={H - padB} y2={H - padB} stroke={gridColor} strokeWidth={1} />
+        {live.map((s) => {
+          const i = series.indexOf(s);
+          const plotted = decimate(s.points);
+          const d = plotted.map((p, k) => `${k === 0 ? 'M' : 'L'} ${sx(p.x).toFixed(1)} ${sy(p.y).toFixed(1)}`).join(' ');
+          return <path key={`p${i}`} d={d} fill="none" stroke={colorOf(i)} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />;
+        })}
+        {hoverX !== null && (
+          <line x1={sx(hoverX)} x2={sx(hoverX)} y1={padT} y2={H - padB} stroke={textColor} strokeWidth={0.8} strokeDasharray="2 2" />
+        )}
+        {Array.from({ length: 5 }).map((_, i) => {
+          const v = yHi - (i / 4) * yRange;
+          const y = padT + (i / 4) * plotH;
+          return <text key={`yl${i}`} x={padL - 4} y={y + 3} textAnchor="end" fontSize={8} fill={textColor}>{tickLabel(v, yRange / 4)}</text>;
+        })}
+        {Array.from({ length: 5 }).map((_, i) => {
+          const v = xMin + (i / 4) * xRange;
+          const x = padL + (i / 4) * plotW;
+          return <text key={`xl${i}`} x={x} y={H - 4} textAnchor="middle" fontSize={8} fill={textColor}>{tickLabel(v, xRange / 4)}</text>;
+        })}
+      </svg>
+      {hover && readout.length > 0 && hoverX !== null && (
+        <div className={`pointer-events-none absolute right-1 top-0 rounded border px-1.5 py-0.5 text-[10px] shadow ${ct.divider} ${ct.bg} ${ct.text}`}>
+          <div className="font-semibold">{xLabel ?? 'x'} {Number(hoverX.toPrecision(6))}</div>
+          {readout.map((r) => (
+            <div key={r.name}><span style={{ color: r.color }}>■</span> {r.name}: {Number(r.y.toPrecision(6))}</div>
+          ))}
+        </div>
+      )}
+      {(xLabel || yLabel) && (
+        <div className={`flex justify-between text-[10px] ${ct.muted} -mt-1 px-1`}>
+          <span>{yLabel ?? ''}</span>
+          <span>{xLabel ?? ''}</span>
+        </div>
+      )}
+    </div>
+  );
+};

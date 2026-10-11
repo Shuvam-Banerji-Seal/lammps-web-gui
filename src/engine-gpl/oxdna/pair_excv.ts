@@ -14,7 +14,7 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_5P, OXDNA_3P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
-import { F3, backboneSite, baseSite, lrfOf, oxdnaConstants } from './common';
+import { type OxdnaConstants, F3, backboneOxdna1, baseSite, lrfOf, oxdnaConstants } from './common';
 
 /** The three site kinds of the excluded volume: bk-bk, bk-bs (both orders) and bs-bs. */
 interface SiteTable {
@@ -51,7 +51,11 @@ const derived = (sigma: number, cutAst: number): { b: number; cutC: number } => 
 };
 
 export class PairOxdnaExcv extends Pair {
-  readonly name = 'oxdna/excv';
+  readonly name: string = 'oxdna/excv';
+  /** backbone site rule of the nucleotide model (the oxDNA2 subclass overrides it) */
+  protected backbone(c: OxdnaConstants, e1: ArrayLike<number>, e2: ArrayLike<number>, e3: ArrayLike<number>, out: number[]): void {
+    backboneOxdna1(c, e1, e2, e3, out);
+  }
   // the global virial is the dot product of positions and forces (pair_oxdna_excv.cpp: virial_fdotr_compute)
   virialFdotr = true;
   /**
@@ -181,7 +185,7 @@ export class PairOxdnaExcv extends Pair {
     const nlocal = pc.nlocal;
     const nt = this.nt;
     const constants = oxdnaConstants(s.units.style);
-    const dxCbk = constants.dx_cbk_oxdna1, dxCbs = constants.dx_cbs_oxdna1;
+    const dxCbs = constants.dx_cbs_oxdna1;
     const id5p = s.custom.get(OXDNA_5P)!.data, id3p = s.custom.get(OXDNA_3P)!.data;
     const special = pc.specialLJ;
     const tq = new Float64Array(3 * nall);
@@ -197,7 +201,7 @@ export class PairOxdnaExcv extends Pair {
     const tmp = [0, 0, 0];
     for (let k = 0; k < nall; k++) {
       const e = L.subarray(9 * k, 9 * k + 3);
-      backboneSite(dxCbk, e, tmp); rbk[3 * k] = tmp[0]; rbk[3 * k + 1] = tmp[1]; rbk[3 * k + 2] = tmp[2];
+      this.backbone(constants, e, L.subarray(9 * k + 3, 9 * k + 6), L.subarray(9 * k + 6, 9 * k + 9), tmp); rbk[3 * k] = tmp[0]; rbk[3 * k + 1] = tmp[1]; rbk[3 * k + 2] = tmp[2];
       baseSite(dxCbs, e, tmp); rbs[3 * k] = tmp[0]; rbs[3 * k + 1] = tmp[1]; rbs[3 * k + 2] = tmp[2];
     }
     // identities by atom ID for the tetramer lookup; tag of a ghost is the tag of its owner

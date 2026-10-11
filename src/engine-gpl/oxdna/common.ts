@@ -15,6 +15,16 @@ export interface OxdnaConstants {
   readonly dx_cbk_oxdna1: number;
   readonly dx_cstk_oxdna1: number;
   readonly dx_cbs_oxdna1: number;
+  /** oxDNA2 backbone site offsets along e1 and e2 */
+  readonly dx_cbk_oxdna2: number;
+  readonly dy_cbk_oxdna2: number;
+  /** oxRNA2 backbone site offsets along e1 and e3, and the stacking offsets of the 3' and 5' nucleotides */
+  readonly dx_cbk_oxrna2: number;
+  readonly dz_cbk_oxrna2: number;
+  readonly dx_cstk_3p_oxrna2: number;
+  readonly dy_cstk_3p_oxrna2: number;
+  readonly dx_cstk_5p_oxrna2: number;
+  readonly dy_cstk_5p_oxrna2: number;
   /** electrostatic prefactors (constants_oxdna.cpp, "electrostatic parameters") */
   readonly lambda_dh_one_prefactor: number;
   readonly qeff_dh_pf_one_prefactor: number;
@@ -25,6 +35,14 @@ const LJ: OxdnaConstants = {
   dx_cbk_oxdna1: -0.4,
   dx_cstk_oxdna1: +0.34,
   dx_cbs_oxdna1: +0.4,
+  dx_cbk_oxdna2: -0.34,
+  dy_cbk_oxdna2: +0.3408,
+  dx_cbk_oxrna2: -0.4,
+  dz_cbk_oxrna2: +0.2,
+  dx_cstk_3p_oxrna2: +0.4,
+  dy_cstk_3p_oxrna2: +0.1,
+  dx_cstk_5p_oxrna2: +0.124906078525,
+  dy_cstk_5p_oxrna2: -0.00866274917473,
   lambda_dh_one_prefactor: +0.3616455075438555,
   qeff_dh_pf_one_prefactor: +0.08173808693529228,
 };
@@ -34,6 +52,14 @@ const REAL: OxdnaConstants = {
   dx_cbk_oxdna1: -3.4072,
   dx_cstk_oxdna1: +2.89612,
   dx_cbs_oxdna1: +3.4072,
+  dx_cbk_oxdna2: -2.89612,
+  dy_cbk_oxdna2: +2.9029344,
+  dx_cbk_oxrna2: -3.4072,
+  dz_cbk_oxrna2: +1.7036,
+  dx_cstk_3p_oxrna2: +3.4072,
+  dy_cstk_3p_oxrna2: +0.8518,
+  dx_cstk_5p_oxrna2: +1.063949977,
+  dy_cstk_5p_oxrna2: -0.07378929747,
   lambda_dh_one_prefactor: +0.05624154892,
   qeff_dh_pf_one_prefactor: +4.15079634587587,
 };
@@ -47,6 +73,22 @@ export const oxdnaConstants = (unitStyle: string): OxdnaConstants => (/^real/.te
 /** NucleotideOxdna1::backbone_site: rbk = dx_cbk * e1 (e1 is the local x axis). */
 export const backboneSite = (dxCbk: number, e1: ArrayLike<number>, out: number[]): void => {
   out[0] = dxCbk * e1[0]; out[1] = dxCbk * e1[1]; out[2] = dxCbk * e1[2];
+};
+
+/** A backbone site rule: out = site(e1, e2, e3) with the constants of the unit style (the C++ nucleotide classes). */
+export type BackboneRule = (c: OxdnaConstants, e1: ArrayLike<number>, e2: ArrayLike<number>, e3: ArrayLike<number>, out: number[]) => void;
+
+/** NucleotideOxdna1::backbone_site. */
+export const backboneOxdna1: BackboneRule = (c, e1, _e2, _e3, out) => backboneSite(c.dx_cbk_oxdna1, e1, out);
+
+/** NucleotideOxdna2::backbone_site: rbk = dx_cbk e1 + dy_cbk e2. */
+export const backboneOxdna2: BackboneRule = (c, e1, e2, _e3, out) => {
+  for (let k = 0; k < 3; k++) out[k] = c.dx_cbk_oxdna2 * e1[k] + c.dy_cbk_oxdna2 * e2[k];
+};
+
+/** NucleotideOxrna2::backbone_site: rbk = dx_cbk e1 + dz_cbk e3. */
+export const backboneOxrna2: BackboneRule = (c, e1, _e2, e3, out) => {
+  for (let k = 0; k < 3; k++) out[k] = c.dx_cbk_oxrna2 * e1[k] + c.dz_cbk_oxrna2 * e3[k];
 };
 
 /** NucleotideOxdna1::base_site<0>: rbs = dx_cbs * e1. */
@@ -179,4 +221,9 @@ export const DF6 = (theta: number, a: number, b: number): number => (theta < b ?
 export const is3pto5p = (delr: readonly number[], n: readonly number[]): number => {
   const d = delr[0] * n[0] + delr[1] * n[1] + delr[2] * n[2];
   return Object.is(d, -0) || d < 0 ? -1 : 1;
+};
+
+/** NucleotideOxrna2 dh site as written in pair_oxrna2_dh.cpp: dx_cbk_oxdna1 e1 + dz_cbk_oxrna2 e3 (the oxDNA1 x offset). */
+export const backboneOxrna2Dh: BackboneRule = (c, e1, _e2, e3, out) => {
+  for (let k = 0; k < 3; k++) out[k] = c.dx_cbk_oxdna1 * e1[k] + c.dz_cbk_oxrna2 * e3[k];
 };

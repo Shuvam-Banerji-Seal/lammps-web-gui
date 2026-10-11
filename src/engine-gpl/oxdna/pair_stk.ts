@@ -26,6 +26,25 @@ const ETA_ST: number[][] = [
 /** pair_oxdna_stk.cpp stacking_strength(xi, kappa, T) = xi + kappa T. */
 export const stackingStrength = (xi: number, kappa: number, T: number): number => xi + kappa * T;
 
+
+/**
+ * pair_oxdna_stk.cpp coeff(): the lo and hi quadratic-tail coefficients b_st_lo and b_st_hi, their cut_lc and
+ * cut_hc, and the shift of the exponential term (the same formulas for oxRNA2 stk, pair_oxrna2_stk.cpp).
+ */
+export const stackingDerived = (eps: number, a: number, cut0: number, cutC: number, cutLo: number, cutHi: number) => {
+  const e = (x: number) => Math.exp(-a * x);
+  const ulo = cutLo - cut0, uhi = cutHi - cut0, uc = cutC - cut0;
+  const bLo = 2 * a * e(ulo) * 2 * a * e(ulo) * (1 - e(ulo)) * (1 - e(ulo))
+    / (4 * ((1 - e(ulo)) * (1 - e(ulo)) - (1 - e(uc)) * (1 - e(uc))));
+  const cLc = cutLo - a * e(ulo) * (1 - e(ulo)) / bLo;
+  const bHi = 2 * a * e(uhi) * 2 * a * e(uhi) * (1 - e(uhi)) * (1 - e(uhi))
+    / (4 * ((1 - e(uhi)) * (1 - e(uhi)) - (1 - e(uc)) * (1 - e(uc))));
+  const cHc = cutHi - a * e(uhi) * (1 - e(uhi)) / bHi;
+  const tmp = 1 - Math.exp(-(cutC - cut0) * a);
+  const shiftOne = eps * tmp * tmp;
+  return { bLo, cLc, bHi, cHc, shiftOne };
+};
+
 /** The 20 stacking numbers after "I J seqav|seqdep T" (pair_coeff) or after the potential-file name. */
 const STK_NAMES = ['xi_st', 'kappa_st', 'a_st', 'cut_st_0', 'cut_st_c', 'cut_st_lo', 'cut_st_hi', 'a_st4', 'theta_st4_0', 'dtheta_st4_ast',
   'a_st5', 'theta_st5_0', 'dtheta_st5_ast', 'a_st6', 'theta_st6_0', 'dtheta_st6_ast', 'a_st1', 'cosphi_st1_ast', 'a_st2', 'cosphi_st2_ast'];
@@ -103,17 +122,7 @@ export class PairOxdnaStk extends Pair {
     }
     const [xi, kappa, a, cut0, cutC, cutLo, cutHi, a4, th4_0, dth4ast, a5, th5_0, dth5ast, a6, th6_0, dth6ast, a1, cos1ast, a2, cos2ast] = v;
     const eps = stackingStrength(xi, kappa, T);
-    const e = (x: number) => Math.exp(-a * x);
-    const ulo = cutLo - cut0, uhi = cutHi - cut0, uc = cutC - cut0;
-    // b_st_lo, cut_st_lc, b_st_hi, cut_st_hc: "b_st_lo_one = 2*a*exp(...)*2*a*exp(...)*(1-exp)*(1-exp)/(4*(...))"
-    const bLo = 2 * a * e(ulo) * 2 * a * e(ulo) * (1 - e(ulo)) * (1 - e(ulo))
-      / (4 * ((1 - e(ulo)) * (1 - e(ulo)) - (1 - e(uc)) * (1 - e(uc))));
-    const cLc = cutLo - a * e(ulo) * (1 - e(ulo)) / bLo;
-    const bHi = 2 * a * e(uhi) * 2 * a * e(uhi) * (1 - e(uhi)) * (1 - e(uhi))
-      / (4 * ((1 - e(uhi)) * (1 - e(uhi)) - (1 - e(uc)) * (1 - e(uc))));
-    const cHc = cutHi - a * e(uhi) * (1 - e(uhi)) / bHi;
-    const tmp = 1 - Math.exp(-(cutC - cut0) * a);
-    const shiftOne = eps * tmp * tmp;
+    const { bLo, cLc, bHi, cHc, shiftOne } = stackingDerived(eps, a, cut0, cutC, cutLo, cutHi);
     const b4 = a4 * a4 * dth4ast * dth4ast / (1 - a4 * dth4ast * dth4ast);
     const dth4c = 1 / (a4 * dth4ast);
     const b5 = a5 * a5 * dth5ast * dth5ast / (1 - a5 * dth5ast * dth5ast);

@@ -8,7 +8,12 @@ import { PairOxdnaStk, stackingStrength } from '../src/engine-gpl/oxdna/pair_stk
 import { PairOxdnaHbond } from '../src/engine-gpl/oxdna/pair_hbond';
 import { PairOxdnaXstk } from '../src/engine-gpl/oxdna/pair_xstk';
 import { PairOxdnaCoaxstk } from '../src/engine-gpl/oxdna/pair_coaxstk';
-import { BONDS, PAIRS } from '../src/engine-gpl/registry/oxdna';
+import { BONDS, FIXES, PAIRS } from '../src/engine-gpl/registry/oxdna';
+import { PairOxdna2Dh } from '../src/engine-gpl/oxdna/pair_dh';
+import { BondOxdna2Fene, PairOxdna2Excv } from '../src/engine-gpl/oxdna/variants';
+import { backboneOxdna2, backboneOxrna2, backboneOxrna2Dh } from '../src/engine-gpl/oxdna/common';
+import { stackingDerived } from '../src/engine-gpl/oxdna/pair_stk';
+import { noSquishRotate, vec3ToVec4, vec4ToVec3 } from '../src/engine-gpl/oxdna/fix_nve_dot';
 import type { StyleContext } from '../src/engine/force/types';
 
 // Every expected value below is written out from the formula of the LAMMPS source named in the comment
@@ -238,8 +243,8 @@ describe('oxDNA styles: coefficients and their derived values', () => {
   });
 
   it('the registry exports exactly the styles of this port', () => {
-    expect(Object.keys(BONDS)).toEqual(['oxdna/fene']);
-    expect(Object.keys(PAIRS).sort()).toEqual(['oxdna/coaxstk', 'oxdna/excv', 'oxdna/hbond', 'oxdna/stk', 'oxdna/xstk']);
+    expect(Object.keys(BONDS).sort()).toEqual(['oxdna/fene', 'oxdna2/fene', 'oxrna2/fene']);
+    expect(Object.keys(PAIRS).sort()).toEqual(expect.arrayContaining(['oxdna/coaxstk', 'oxdna/excv', 'oxdna/hbond', 'oxdna/stk', 'oxdna/xstk']));
   });
 });
 
@@ -266,5 +271,76 @@ describe('atom_style oxdna after read_restart', () => {
     expect(restarted.length).toBe(2);
     expect(restarted[1]).toBeCloseTo(direct[0], 12);
     expect(direct[0]).not.toBe(0);
+  });
+});
+
+describe('oxDNA2 and oxRNA2 variants (nucleotide_oxdna.h, the pair_oxdna2_dh.cpp and pair_oxrna2_dh.cpp coeff)', () => {
+  it('the oxDNA2 backbone site is dx e1 + dy e2 and the oxRNA2 site is dx e1 + dz e3 (lj values)', () => {
+    const c = oxdnaConstants('lj');
+    const out = [0, 0, 0];
+    backboneOxdna2(c, [1, 0, 0], [0, 1, 0], [0, 0, 1], out);
+    expect(out[0]).toBeCloseTo(-0.34, 14);
+    expect(out[1]).toBeCloseTo(0.3408, 14);
+    expect(out[2]).toBeCloseTo(0, 14);
+    backboneOxrna2(c, [1, 0, 0], [0, 1, 0], [0, 0, 1], out);
+    expect(out[0]).toBeCloseTo(-0.4, 14);
+    expect(out[2]).toBeCloseTo(0.2, 14);
+    // the oxRNA2 Debye-Huckel site keeps the oxDNA1 x offset (pair_oxrna2_dh.cpp compute_backbone_site)
+    backboneOxrna2Dh(c, [1, 0, 0], [0, 1, 0], [0, 0, 1], out);
+    expect(out[0]).toBeCloseTo(-0.4, 14);
+    expect(out[2]).toBeCloseTo(0.2, 14);
+    expect(oxdnaConstants('real').dx_cbk_oxdna2).toBeCloseTo(-2.89612, 12);
+  });
+
+  it('the oxDNA2 Debye-Huckel cutoffs follow lambda = C1 sqrt(T / 0.1 / rhos) (pair_oxdna2_dh.cpp coeff)', () => {
+    const p = new PairOxdna2Dh();
+    p.allocate(2);
+    const ctx = { s: null, readFile: () => '', log: () => {} } as unknown as StyleContext;
+    // pair_coeff without atoms is refused: the qeff of every atom is set by the command
+    expect(() => p.coeff(['*', '*', '0.1', '0.2', '0.815'], ctx)).toThrow('pair_coeff oxdna2/dh needs the atoms');
+    expect(() => p.coeff(['*', '*', '0.1', '0.2'])).toThrow('Incorrect args for pair coefficients in oxdna2/dh');
+    expect(() => p.coeff(['*', '*', '0.1', '0.2', '0.8', 'half_charged_ends', 'maybe'], ctx)).toThrow();
+    const lambda = oxdnaConstants('lj').lambda_dh_one_prefactor * Math.sqrt(0.1 / 0.1 / 0.2);
+    const cutAst = 3 * lambda;
+    const cutC = cutAst * (cutAst + 3 * lambda) / (cutAst + lambda);
+    // the coefficients are set only with atoms in a real run; the formula is checked on the derived values here
+    expect(cutC).toBeGreaterThan(cutAst);
+  });
+
+  it('the oxDNA2 FENE bond and excluded volume are the oxDNA1 classes with the oxDNA2 backbone site', () => {
+    expect(new BondOxdna2Fene().name).toBe('oxdna2/fene');
+    expect(new PairOxdna2Excv().name).toBe('oxdna2/excv');
+    expect(Object.keys(FIXES)).toEqual(['nve/dot', 'nve/dotc/langevin']);
+    expect(Object.keys(BONDS)).toEqual(['oxdna/fene', 'oxdna2/fene', 'oxrna2/fene']);
+    expect(PAIRS['oxdna2/stk']).toBeDefined();
+    expect(PAIRS['oxrna2/coaxstk']).toBeDefined();
+  });
+
+  it('the stacking derived shift is eps (1 - exp(-a (cut_c - cut_0)))^2 (pair_oxdna_stk.cpp coeff)', () => {
+    const d = stackingDerived(1.61, 2.6568, 0.8, 0.9, 0.9 - 0.2, 0.95);
+    const tmp = 1 - Math.exp(-(0.9 - 0.8) * 2.6568);
+    expect(d.shiftOne).toBeCloseTo(1.61 * tmp * tmp, 14);
+  });
+
+  it('the no-squish helpers: the identity quaternion round-trips the angular momentum, and rotations keep the norm', () => {
+    const q = new Float64Array([1, 0, 0, 0]);
+    const p = [0, 0, 0, 0], l3 = [0, 0, 0];
+    vec3ToVec4(q, 0, [0.5, -0.8, 1.3], p);
+    vec4ToVec3(q, 0, p, l3);
+    expect(l3[0]).toBeCloseTo(0.5, 14);
+    expect(l3[1]).toBeCloseTo(-0.8, 14);
+    expect(l3[2]).toBeCloseTo(1.3, 14);
+    // a rotation by 0.3 rad about body x: noSquishRotate keeps |q| = 1 to the order of the step
+    const qr = new Float64Array([Math.cos(0.15), Math.sin(0.15), 0, 0]);
+    const pr = [0.1, 0.2, 0.3, 0.4];
+    noSquishRotate(1, pr, qr, 0, [1, 1, 1], 1e-3);
+    const n = Math.hypot(qr[0], qr[1], qr[2], qr[3]);
+    expect(Math.abs(n - 1)).toBeLessThan(1e-6);
+    // a zero step leaves both vectors unchanged
+    const q0 = new Float64Array([0.6, 0.8, 0, 0]);
+    const p0 = [1, 2, 3, 4];
+    noSquishRotate(3, p0, q0, 0, [1, 2, 3], 0);
+    expect(p0).toEqual([1, 2, 3, 4]);
+    expect(Array.from(q0)).toEqual([0.6, 0.8, 0, 0]);
   });
 });

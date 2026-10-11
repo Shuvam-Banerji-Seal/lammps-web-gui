@@ -24,7 +24,9 @@ const PI = Math.PI;
 type Tab = Float64Array;
 
 export class PairOxdnaXstk extends Pair {
-  readonly name = 'oxdna/xstk';
+  readonly name: string = 'oxdna/xstk';
+  /** the oxDNA model has the theta4 factor (a4, theta4_0, dtheta4); the oxRNA2 subclass drops it */
+  protected withTheta4 = true;
   virialFdotr = true;
   private nt = 0;
   private t!: Record<string, Tab>;
@@ -52,12 +54,15 @@ export class PairOxdnaXstk extends Pair {
    * b_xst_lo = 0.25 (lo - 0)^2 / (0.5 (lo - 0)^2 - k 0.5 (0 - c)^2 / k), cut_lc = lo - 0.5 (lo - 0) / b_lo.
    */
   coeff(args: string[], ctx?: StyleContext): void {
-    if (args.length !== 25 && args.length !== 3) throw new StyleError('Incorrect args for pair coefficients in oxdna/xstk');
+    const nNum = this.withTheta4 ? 23 : 20;
+    if (args.length !== nNum + 2 && args.length !== 3) throw new StyleError('Incorrect args for pair coefficients in oxdna/xstk');
     const [ilo, ihi] = typeBounds(args[0], this.ntypes);
     const [jlo, jhi] = typeBounds(args[1], this.ntypes);
     let v: number[];
-    if (args.length === 25) {
+    if (args.length === nNum + 2) {
       v = args.slice(2).map((w, k) => parseNum(w, XST_NAMES[k]));
+      // oxRNA2 has no a4 group: its 20 numbers are placed in the 23-number layout with zeros for it
+      if (!this.withTheta4) v = [...v.slice(0, 14), 0, 0, 0, ...v.slice(14)];
     } else {
       const text = ctx?.readFile(args[2]) ?? '';
       let found: number[] | null = null;
@@ -178,12 +183,16 @@ export class PairOxdnaXstk extends Pair {
         const theta3 = Math.acos(cost3);
         const f4t3 = F4(theta3, T.a3[ij], T.th3[ij], T.dth3ast[ij], T.b3[ij], T.dth3c[ij]);
         if (f4t3 === 0.0) continue;
-        let cost4 = dot(az, bz); cost4 = clamp(cost4);
-        const theta4 = Math.acos(cost4);
-        const theta4p = PI - theta4;
-        const f4t4 = F4(theta4, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])
-          + F4(theta4p, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij]);
-        if (f4t4 === 0.0) continue;
+        // the theta4 factor (oxDNA only): f4t4 = 1 otherwise, and the product with 1 leaves every bit unchanged
+        let f4t4 = 1.0, theta4 = 0.0, theta4p = 0.0;
+        if (this.withTheta4) {
+          const cost4 = clamp(dot(az, bz));
+          theta4 = Math.acos(cost4);
+          theta4p = PI - theta4;
+          f4t4 = F4(theta4, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])
+            + F4(theta4p, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij]);
+          if (f4t4 === 0.0) continue;
+        }
         let cost7 = -dot(az, drn); cost7 = clamp(cost7);
         const theta7 = Math.acos(cost7);
         const theta7p = PI - theta7;
@@ -201,8 +210,10 @@ export class PairOxdnaXstk extends Pair {
         const df4t1 = DF4(theta1, T.a1[ij], T.th1[ij], T.dth1ast[ij], T.b1[ij], T.dth1c[ij]) / Math.sin(theta1);
         const df4t2 = DF4(theta2, T.a2[ij], T.th2[ij], T.dth2ast[ij], T.b2[ij], T.dth2c[ij]) / Math.sin(theta2);
         const df4t3 = DF4(theta3, T.a3[ij], T.th3[ij], T.dth3ast[ij], T.b3[ij], T.dth3c[ij]) / Math.sin(theta3);
-        const df4t4 = (DF4(theta4, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])
-          - DF4(theta4p, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])) / Math.sin(theta4);
+        const df4t4 = this.withTheta4
+          ? (DF4(theta4, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])
+            - DF4(theta4p, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])) / Math.sin(theta4)
+          : 0.0;
         const df4t7 = (DF4(theta7, T.a7[ij], T.th7[ij], T.dth7ast[ij], T.b7[ij], T.dth7c[ij])
           - DF4(theta7p, T.a7[ij], T.th7[ij], T.dth7ast[ij], T.b7[ij], T.dth7c[ij])) / Math.sin(theta7);
         const df4t8 = (DF4(theta8, T.a8[ij], T.th8[ij], T.dth8ast[ij], T.b8[ij], T.dth8c[ij])
@@ -279,4 +290,10 @@ export class PairOxdnaXstk extends Pair {
     pc.nb.reverseSum(tq, 3, s.torque);
     pc.acc.evdwl += evdwl;
   }
+}
+
+/** pair_style oxrna2/xstk (PairOxrna2Xstk): the cross-stacking term without the theta4 factor (pair_oxrna2_xstk.cpp). */
+export class PairOxrna2Xstk extends PairOxdnaXstk {
+  override readonly name: string = 'oxrna2/xstk';
+  protected override withTheta4 = false;
 }

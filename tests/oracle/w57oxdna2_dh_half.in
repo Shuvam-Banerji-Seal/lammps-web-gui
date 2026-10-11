@@ -1,0 +1,26 @@
+# oracle: oxDNA2 excluded volume and Debye-Huckel electrostatics (hybrid/overlay oxdna2/excv oxdna2/dh, T 0.1, salt 0.2, qeff 0.815, half_charged_ends yes) with the oxDNA2 FENE bond on the oxDNA2 duplex1 example compressed to 0.85 (change_box remap); lj units, fix nve/asphere, 200 steps at timestep 1e-4
+# oracle-inputs: w57oxdna2_duplex1.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+units           lj
+dimension       3
+newton          on
+boundary        p p p
+atom_style      hybrid bond ellipsoid oxdna
+atom_modify     sort 0 1.0
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+read_data       w57oxdna2_duplex1.data
+set             atom * mass 3.1575
+change_box      all x scale 0.85 y scale 0.85 z scale 0.85 remap
+bond_style      oxdna2/fene
+bond_coeff      * 2.0 0.25 0.7564
+special_bonds   lj 0 1 1
+pair_style      hybrid/overlay oxdna2/excv oxdna2/dh
+pair_coeff      * * oxdna2/excv 2.0 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32
+pair_coeff      * * oxdna2/dh 0.1 0.2 0.815 half_charged_ends yes
+fix             1 all nve/asphere
+timestep        1e-4
+thermo_style    custom step temp pe ebond evdwl ke etotal
+thermo_modify   format float %.15g
+thermo          20
+run             200

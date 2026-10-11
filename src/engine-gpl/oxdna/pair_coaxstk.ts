@@ -301,7 +301,7 @@ export class PairOxdnaCoaxstk extends Pair {
         if (cosphi3 !== 0.0) {
           const rinvBkCub = rinvBk * rinvBk * rinvBk;
           const aybx = dot(ay, bx), azbx = dot(az, bx);
-          const rax = dot(drn, ax), ray = dot(drn, ay), raz = dot(drn, az), rbx = dot(drn, bx);
+          const ray = dot(drn, ay), raz = dot(drn, az);
           const fac = raz * aybx - ray * azbx;
           const dcdaxbx = gammacub * fac * rinvBkCub;
           const dcdaybx = gamma * raz * rinvBk;

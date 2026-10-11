@@ -141,6 +141,7 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
   if (isOxdnaStyle(st)) {
     m.set(OXDNA_5P, { int: true, cols: 0, data: new Float64Array(0) });
     m.set(OXDNA_3P, { int: true, cols: 0, data: new Float64Array(0) });
+    m.set(OXDNA_QEFF, { int: false, cols: 0, data: new Float64Array(0) });
   }
   return m;
 };
@@ -148,6 +149,8 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
 /** atom_style oxdna: the 5' and 3' partner atom IDs of each atom, internal per-atom props (0 = none). */
 export const OXDNA_5P = '#id5p';
 export const OXDNA_3P = '#id3p';
+/** atom_style oxdna: the per-atom effective charge of pair oxdna2/dh, set by its pair_coeff (pair_oxdna2.html: "qeff = 0.815 (effective charge in elementary charges)"). */
+export const OXDNA_QEFF = '#qeff';
 /** Styles with the oxDNA partners (atom_style.html: "The *oxdna* style is for coarse-grained nucleotides"). */
 export const isOxdnaStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('oxdna');
 

@@ -1,5 +1,5 @@
 /*
- * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28): src/CG-DNA/pair_oxdna_hbond.cpp and
+ * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28): src/CG-DNA/pair_oxdna_hbond.cpp (and pair_oxrna2_hbond.cpp, the oxRNA2 alpha table) and
  * pair_oxdna_hbond.h (class PairOxdnaHbond, pair_style oxdna/hbond): the oxDNA hydrogen-bonding interaction
  * between the base sites of two nucleotides, with the angular factors f4 of the base-pairing geometry.
  * Original authors (from the headers): Oliver Henrich (University of Strathclyde, Glasgow) and Kierran Falloon
@@ -17,8 +17,8 @@ import { OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, F1, F4, baseSite, lrfOf, oxdnaConstants } from './common';
 
-/** pair_oxdna_hbond.cpp constructor: alpha_hb[i][j] (sequence dependence of the hydrogen bonds). */
-const ALPHA_HB: number[][] = [
+/** pair_oxdna_hbond.cpp constructor: alpha_hb[i][j] (sequence dependence of the hydrogen bonds, oxDNA). */
+const ALPHA_HB_OXDNA: number[][] = [
   [1.00000, 1.00000, 1.00000, 0.82915],
   [1.00000, 1.00000, 1.15413, 1.00000],
   [1.00000, 1.15413, 1.00000, 1.00000],
@@ -35,8 +35,10 @@ const HB_NAMES = ['epsilon_hb', 'a_hb', 'cut_hb_0', 'cut_hb_c', 'cut_hb_lo', 'cu
 type Tab = Float64Array;
 
 export class PairOxdnaHbond extends Pair {
-  readonly name = 'oxdna/hbond';
+  readonly name: string = 'oxdna/hbond';
   virialFdotr = true;
+  /** alpha_hb[i][j] of the model (the oxRNA2 subclass sets its own table) */
+  protected alpha: number[][] = ALPHA_HB_OXDNA;
   private nt = 0;
   private seqdep = false;
   private t!: Record<string, Tab>;
@@ -115,11 +117,11 @@ export class PairOxdnaHbond extends Pair {
         const jm = mod4(j);
         const q = i * nt + j;
         T.epsilon[q] = eps;
-        if (this.seqdep) T.epsilon[q] *= ALPHA_HB[im - 1][jm - 1];
+        if (this.seqdep) T.epsilon[q] *= this.alpha[im - 1][jm - 1];
         T.a[q] = a; T.cut0[q] = cut0; T.cutc[q] = cutC; T.cutlo[q] = cutLo; T.cuthi[q] = cutHi;
         T.cutlc[q] = cLc; T.cuthc[q] = cHc; T.blo[q] = bLo; T.bhi[q] = bHi;
         T.shift[q] = shiftOne;
-        if (this.seqdep) T.shift[q] *= ALPHA_HB[im - 1][jm - 1];
+        if (this.seqdep) T.shift[q] *= this.alpha[im - 1][jm - 1];
         T.a1[q] = a1; T.th1[q] = th1; T.dth1ast[q] = dth1; T.b1[q] = b1; T.dth1c[q] = c1;
         T.a2[q] = a2; T.th2[q] = th2; T.dth2ast[q] = dth2; T.b2[q] = b2; T.dth2c[q] = c2;
         T.a3[q] = a3; T.th3[q] = th3; T.dth3ast[q] = dth3; T.b3[q] = b3; T.dth3c[q] = c3;
@@ -143,8 +145,8 @@ export class PairOxdnaHbond extends Pair {
       T[k][r] = T[k][q];
     }
     if (this.seqdep) {
-      T.epsilon[r] = T.epsilon[q] / ALPHA_HB[im - 1][jm - 1] * ALPHA_HB[jm - 1][im - 1];
-      T.shift[r] = T.shift[q] / ALPHA_HB[im - 1][jm - 1] * ALPHA_HB[jm - 1][im - 1];
+      T.epsilon[r] = T.epsilon[q] / this.alpha[im - 1][jm - 1] * this.alpha[jm - 1][im - 1];
+      T.shift[r] = T.shift[q] / this.alpha[im - 1][jm - 1] * this.alpha[jm - 1][im - 1];
     } else {
       T.epsilon[r] = T.epsilon[q];
       T.shift[r] = T.shift[q];
@@ -324,4 +326,16 @@ export class PairOxdnaHbond extends Pair {
     pc.nb.reverseSum(tq, 3, s.torque);
     pc.acc.evdwl += evdwl;
   }
+}
+
+/** pair_style oxrna2/hbond (PairOxrna2Hbond): the oxRNA2 base-pairing strengths alpha_hb (pair_oxrna2_hbond.cpp). */
+export class PairOxrna2Hbond extends PairOxdnaHbond {
+  override readonly name: string = 'oxrna2/hbond';
+  // A:0 C:1 G:2 U:3, 5'- [i][j] -3'
+  protected override alpha: number[][] = [
+    [1.00000, 1.00000, 1.00000, 0.94253],
+    [1.00000, 1.00000, 1.22288, 1.00000],
+    [1.00000, 1.22288, 1.00000, 0.58655],
+    [0.94253, 1.00000, 0.58655, 1.00000],
+  ];
 }

@@ -13,7 +13,7 @@ import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext }
 import { atomIndex } from '../../engine/force/bonded_util';
 import { OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
-import { backboneSite, lrfOf, oxdnaConstants } from './common';
+import { type OxdnaConstants, backboneOxdna1, lrfOf, oxdnaConstants } from './common';
 
 /** bond_oxdna_fene.cpp: "const double rlogarg_min = 0.2;" */
 const RLOGARG_MIN = 0.2;
@@ -21,7 +21,11 @@ const RLOGARG_MIN = 0.2;
 interface Pair2 { k: number; delta: number; r0: number }
 
 export class BondOxdnaFene extends Bonded {
-  readonly name = 'oxdna/fene';
+  readonly name: string = 'oxdna/fene';
+  /** backbone site of the nucleotide model (oxDNA1 here; the oxDNA2 and oxRNA2 subclasses override it) */
+  protected backbone(c: OxdnaConstants, e1: ArrayLike<number>, e2: ArrayLike<number>, e3: ArrayLike<number>, out: number[]): void {
+    backboneOxdna1(c, e1, e2, e3, out);
+  }
   readonly kind = 'bond' as const;
   private par: (Pair2 | null)[] = [];
   private special: readonly number[] | null = null;
@@ -94,7 +98,6 @@ export class BondOxdnaFene extends Bonded {
     const s = bc.s;
     const bonds = s.topo.bonds;
     const constants = oxdnaConstants(s.units.style);
-    const dxCbk = constants.dx_cbk_oxdna1;
     const f = bc.f, x = s.x;
     const torque = s.torque!;
     const id5p = s.custom.get(OXDNA_5P)!.data;
@@ -123,10 +126,10 @@ export class BondOxdnaFene extends Bonded {
         b = a;
         a = tmp;
       }
-      const ax = lrf.subarray(9 * a, 9 * a + 3);
-      const bx = lrf.subarray(9 * b, 9 * b + 3);
-      backboneSite(dxCbk, ax, ra);
-      backboneSite(dxCbk, bx, rb);
+      const ax = lrf.subarray(9 * a, 9 * a + 3), ay = lrf.subarray(9 * a + 3, 9 * a + 6), az = lrf.subarray(9 * a + 6, 9 * a + 9);
+      const bx = lrf.subarray(9 * b, 9 * b + 3), by = lrf.subarray(9 * b + 3, 9 * b + 6), bz = lrf.subarray(9 * b + 6, 9 * b + 9);
+      this.backbone(constants, ax, ay, az, ra);
+      this.backbone(constants, bx, by, bz, rb);
       // closest image of b relative to a (the C++ reads the ghost image of b that is nearest to a)
       d[0] = x[3 * b] - x[3 * a]; d[1] = x[3 * b + 1] - x[3 * a + 1]; d[2] = x[3 * b + 2] - x[3 * a + 2];
       bc.geom.minimumImage(d);

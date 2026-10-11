@@ -1,0 +1,33 @@
+# oracle: the full oxRNA2 lj-unit set of the duplex2 example (hybrid/overlay oxrna2/excv oxrna2/stk oxrna2/hbond oxrna2/xstk oxrna2/coaxstk oxrna2/dh, seqdep stacking and hydrogen bonding with the 1-4, 2-3 and 3-4 overrides, T 0.1, salt 0.5, qeff 1.02455) with the oxRNA2 FENE bond, on the duplex2 example compressed to 0.85 (change_box remap); lj units, fix nve/asphere, 200 steps at timestep 1e-4
+# oracle-inputs: w57oxrna2_duplex2.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+units           lj
+dimension       3
+newton          on
+boundary        p p p
+atom_style      hybrid bond ellipsoid oxdna
+atom_modify     sort 0 1.0
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+read_data       w57oxrna2_duplex2.data
+set             atom * mass 3.1575
+change_box      all x scale 0.85 y scale 0.85 z scale 0.85 remap
+bond_style      oxrna2/fene
+bond_coeff      * 2.0 0.25 0.761070781051
+special_bonds   lj 0 1 1
+pair_style      hybrid/overlay oxrna2/excv oxrna2/stk oxrna2/hbond oxrna2/xstk oxrna2/coaxstk oxrna2/dh
+pair_coeff      * * oxrna2/excv 2.0 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32
+pair_coeff      * * oxrna2/stk seqdep 0.1 1.40206 2.77 6.0 0.43 0.93 0.35 0.78 0.9 0 0.95 0.9 0 0.95 1.3 0 0.8 1.3 0 0.8 2.0 0.65 2.0 0.65
+pair_coeff      * * oxrna2/hbond seqdep 0.0 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45
+pair_coeff      1 4 oxrna2/hbond seqdep 0.870439 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45
+pair_coeff      2 3 oxrna2/hbond seqdep 0.870439 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45
+pair_coeff      3 4 oxrna2/hbond seqdep 0.870439 8.0 0.4 0.75 0.34 0.7 1.5 0 0.7 1.5 0 0.7 1.5 0 0.7 0.46 3.141592653589793 0.7 4.0 1.5707963267948966 0.45 4.0 1.5707963267948966 0.45
+pair_coeff      * * oxrna2/xstk 59.9626 0.5 0.6 0.42 0.58 2.25 0.505 0.58 1.7 1.266 0.68 1.7 1.266 0.68 1.7 0.309 0.68 1.7 0.309 0.68
+pair_coeff      * * oxrna2/coaxstk 80 0.5 0.6 0.42 0.58 2.0 2.592 0.65 1.3 0.151 0.8 0.9 0.685 0.95 0.9 0.685 0.95 2.0 -0.65 2.0 -0.65
+pair_coeff      * * oxrna2/dh 0.1 0.5 1.02455
+fix             1 all nve/asphere
+timestep        1e-4
+thermo_style    custom step temp pe ebond evdwl ke etotal
+thermo_modify   format float %.15g
+thermo          20
+run             200

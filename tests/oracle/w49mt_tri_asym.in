@@ -1,0 +1,20 @@
+# oracle: threebody/table with the spce2.3b tables (1-1-1 and asymmetric 1-1-2), 4-atom cluster with two types
+# oracle-inputs: w49mt_spce2.3b w49mt_1-1-1.table w49mt_1-1-2.table
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units real
+atom_style atomic
+boundary f f f
+lattice none 1.0
+region b block -60 60 -60 60 -60 60
+create_box 2 b
+create_atoms 1 single 0.0 0.0 0.0 units box
+create_atoms 2 single -0.553648 2.782738 -0.471523 units box
+create_atoms 1 single 3.29634 -0.775735 -0.17193 units box
+create_atoms 2 single 1.473214 5.393115 -0.951134 units box
+mass 1 18.0
+mass 2 18.0
+pair_style threebody/table
+pair_coeff * * w49mt_spce2.3b type1 type2
+thermo_style custom step pe
+thermo_modify format float %.15g
+run 0

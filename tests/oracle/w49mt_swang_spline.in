@@ -1,0 +1,20 @@
+# oracle: sw/angle/table spline style with a 5-point angle table (N of the sw entry = N of the table), 5-atom cluster
+# oracle-inputs: w49mt_spl5.sw w49mt_ang5.txt
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units real
+atom_style atomic
+boundary f f f
+lattice none 1.0
+region b block -60 60 -60 60 -60 60
+create_box 1 b
+create_atoms 1 single 0.0 0.0 0.0 units box
+create_atoms 1 single 0.382259 -0.270434 2.691464 units box
+create_atoms 1 single -2.284456 -1.193941 3.851775 units box
+create_atoms 1 single 3.274287 -0.100736 4.485563 units box
+create_atoms 1 single -1.772576 0.592223 4.835865 units box
+mass 1 18.0
+pair_style sw/angle/table
+pair_coeff * * w49mt_spl5.sw type
+thermo_style custom step pe
+thermo_modify format float %.15g
+run 0

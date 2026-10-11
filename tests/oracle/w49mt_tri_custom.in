@@ -1,0 +1,20 @@
+# oracle: threebody/table with a custom symmetric table (N = 4, energies nonzero, cut 3.7), 5-atom cluster
+# oracle-inputs: w49mt_custom37.3b w49mt_custom.table
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units real
+atom_style atomic
+boundary f f f
+lattice none 1.0
+region b block -60 60 -60 60 -60 60
+create_box 1 b
+create_atoms 1 single 0.0 0.0 0.0 units box
+create_atoms 1 single 3.207047 1.00399 -0.723076 units box
+create_atoms 1 single -1.278957 -0.059797 -2.421129 units box
+create_atoms 1 single 0.139002 2.366658 -0.393287 units box
+create_atoms 1 single -1.22789 -2.696974 0.359748 units box
+mass 1 18.0
+pair_style threebody/table
+pair_coeff * * w49mt_custom37.3b type
+thermo_style custom step pe
+thermo_modify format float %.15g
+run 0

@@ -145,6 +145,8 @@ interface SWEntry {
   p: number;
   q: number;
   tol: number;
+  /** sw/angle/table only: the tabulated angular potential of the entry (keyword, file, style, N). */
+  tab?: { filename: string; keyword: string; style: string; n: number };
 }
 
 /** 1 eV in kcal/mol (NIST thermochemical calorie; src/engine/units.ts real qe2f). */
@@ -152,9 +154,13 @@ const EV_TO_KCAL = 23.060549;
 
 const key3 = (e1: string, e2: string, e3: string): string => `${e1} ${e2} ${e3}`;
 
-/** Parses a .sw potential file: entry lines of 3 element names + 11 numbers. */
-const parseSWFile = (text: string, fileName: string): { entries: Map<string, SWEntry>; elems: Set<string>; unitTag: string | null } => {
-  const lines = joinPotentialEntries(text.split(/\r?\n/), 14);
+/**
+ * Parses a .sw potential file: entry lines of 3 element names + 11 numbers. With tabulated (sw/angle/table)
+ * each entry also carries the angular table as filename, keyword, style and N (four more words).
+ */
+const parseSWFile = (text: string, fileName: string, tabulated = false): { entries: Map<string, SWEntry>; elems: Set<string>; unitTag: string | null } => {
+  const nwords = tabulated ? 18 : 14;
+  const lines = joinPotentialEntries(text.split(/\r?\n/), nwords);
   let unitTag: string | null = null;
   let start = 0;
   if (lines.length > 0) {
@@ -172,9 +178,9 @@ const parseSWFile = (text: string, fileName: string): { entries: Map<string, SWE
     const line = (hash >= 0 ? raw.slice(0, hash) : raw).trim();
     if (line === '') continue;
     const t = line.split(/\s+/);
-    if (t.length !== 14) {
+    if (t.length !== nwords) {
       throw new StyleError(
-        `SW potential file ${fileName} line ${ln + 1}: expected 'element1 element2 element3 epsilon sigma a lambda gamma costheta0 A B p q tol' (14 values), got ${t.length}`,
+        `SW potential file ${fileName} line ${ln + 1}: expected 'element1 element2 element3 epsilon sigma a lambda gamma costheta0 A B p q tol${tabulated ? ' filename keyword style N' : ''}' (${nwords} values), got ${t.length}`,
       );
     }
     const k = key3(t[0], t[1], t[2]);
@@ -186,6 +192,9 @@ const parseSWFile = (text: string, fileName: string): { entries: Map<string, SWE
       eps: nums[0], sigma: nums[1], a: nums[2], lambda: nums[3], gamma: nums[4],
       costheta0: nums[5], A: nums[6], B: nums[7], p: nums[8], q: nums[9], tol: nums[10],
     };
+    if (tabulated) {
+      e.tab = { filename: t[14], keyword: t[15], style: t[16], n: parseNum(t[17], `table N of the SW file entry ${k}`) };
+    }
     // Measured with native LAMMPS (black box): entries with sigma = 0 or a = 0 are accepted (the GaN.sw and
     // tmd.sw.mod files of the LAMMPS distribution carry them for three-body-only or unused triplets); such an
     // entry has a zero cutoff, so it contributes nothing. Negative values are refused.
@@ -219,7 +228,7 @@ const unitScaleOf = (tag: string | null, ctx: StyleContext, fileName: string): n
  * visited); the three-body term runs per owned center atom over unordered
  * neighbor pairs of the gathered list, once per triplet.
  */
-abstract class PairSWBase extends Pair {
+export abstract class PairSWBase extends Pair {
   manybody = true;
   needsFull = true;
   needsHalf = false;
@@ -233,6 +242,11 @@ abstract class PairSWBase extends Pair {
   protected constructor(isMod: boolean) {
     super();
     this.isMod = isMod;
+  }
+
+  /** sw/angle/table reads the angular table of each entry (four more words per entry). */
+  protected get tabulatedAngle(): boolean {
+    return false;
   }
 
   protected fileName = '';
@@ -301,6 +315,27 @@ abstract class PairSWBase extends Pair {
   }
 
   protected setDeltas(_d1: number, _d2: number): void {}
+
+  /**
+   * Angular factor of the triplet t3 (center, neighbour, neighbour) at cos(theta) = c, without the screening
+   * exponentials: sets this.aE (energy) and this.aD (dE/dcos). Returns false when the triplet has no
+   * three-body term. The plain sw styles use lambda (cos - cos0)^2 scaled by epsilon.
+   */
+  protected angular(t3: number, c: number): boolean {
+    const lam = this.lam3[t3];
+    if (lam === 0) return false;
+    const dc = c - this.c03[t3];
+    const fc = this.angleScale(dc);
+    const zeta = fc * dc;
+    const P = lam * this.eps3[t3];
+    this.aE = P * zeta * zeta;
+    this.aD = P * 2 * zeta * (fc + dc * this.angleScaleDeriv(dc));
+    return true;
+  }
+
+  /** Output of angular(): energy and dE/dcos (see there). */
+  protected aE = 0;
+  protected aD = 0;
 
   /** f_C(delta) of sw/mod; the plain sw style returns 1 (no angle scaling). */
   protected angleScale(_dc: number): number {
@@ -394,7 +429,7 @@ abstract class PairSWBase extends Pair {
 
   private readSWFile(filename: string, ctx: StyleContext): void {
     const text = ctx.readFile(filename);
-    const parsed = parseSWFile(text, filename);
+    const parsed = parseSWFile(text, filename, this.tabulatedAngle);
     const scale = unitScaleOf(parsed.unitTag, ctx, filename);
     if (scale !== 1) ctx.log(`WARNING: converting SW potential file ${filename} from ${parsed.unitTag} to ${ctx.s?.units.style} units`);
     this.entries = parsed.entries;
@@ -604,23 +639,19 @@ abstract class PairSWBase extends Pair {
           for (let p2 = p1 + 1; p2 < m; p2++) {
             const k = nIdx[p2];
             const t3 = base1 + type[k];
-            const lam = this.lam3[t3];
-            if (lam === 0) continue;
             const d2x = nDx[p2], d2y = nDy[p2], d2z = nDz[p2];
             const invrk = nInvR[p2], esk = nES[p2], wk = nW[p2];
             const c = (d1x * d2x + d1y * d2y + d1z * d2z) * invrj * invrk;
-            const dc = c - this.c03[t3];
-            const fc = this.angleScale(dc);
-            const zeta = fc * dc;
-            const zeta2 = zeta * zeta;
-            const P = lam * this.eps3[t3] * esj * esk;
-            const e3v = P * zeta2;
+            if (!this.angular(t3, c)) continue;
+            // energy e3 = angular energy * exp(screening j) * exp(screening k); de3/dcos = aD * screening
+            const esPair = esj * esk;
+            const e3v = this.aE * esPair;
             evdwl += e3v;
             // fj = aj*ej - bk*ek, fk = ak*ek - bk*ej, fi = -(fj + fk)
-            const zf = 2 * zeta * (fc + dc * this.angleScaleDeriv(dc));
-            const bk = P * zf * invrj * invrk;
-            const aj = P * (zf * c * invrj * invrj + zeta2 * wj * invrj);
-            const ak = P * (zf * c * invrk * invrk + zeta2 * wk * invrk);
+            const dEdc = this.aD * esPair;
+            const bk = dEdc * invrj * invrk;
+            const aj = dEdc * c * invrj * invrj + e3v * wj * invrj;
+            const ak = dEdc * c * invrk * invrk + e3v * wk * invrk;
             const fxj = aj * d1x - bk * d2x;
             const fyj = aj * d1y - bk * d2y;
             const fzj = aj * d1z - bk * d2z;

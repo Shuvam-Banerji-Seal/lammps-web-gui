@@ -3,11 +3,12 @@ import { PAIR_SHELL_RATIO, referenceVectors, type ReferenceLattice } from './mea
 /*
  * Multi-element MEAM (pair_style meam, two or more elements). Energy and analytic forces for the
  * subset verified against native LAMMPS (black box):
- *   - fcc and dia single-element references (the homonuclear pair term phi_ii and the embedding
- *     reference rho_ref,i use the element's own lattice, as in meam.ts; z is the library coordination);
+ *   - fcc, bcc, hcp and dia element references (bcc and hcp: see the w42mb note below; the homonuclear pair term
+ *     phi_ii and the embedding reference rho_ref,i use the element's own lattice, as in meam.ts; z is the library
+ *     coordination);
  *   - heteronuclear pairs with lattce(I,J) = b1 (rock salt), dia (diamond/zincblende), b2 (CsCl) or
  *     l12 (Cu3Au), nn2 = 0 (see the b2 and l12 notes below);
- *   - ibar = 0 and 1, t0 = 1, zbl = 0, per-triplet Cmin/Cmax, no nn2/delta;
+ *   - ibar = 0, 1 and 3, t0 = 1, zbl = 0, per-triplet Cmin/Cmax, no delta;
  *   - ialloy = 0, 1 and 2 (docs.lammps.org/pair_meam.html); see densityPartials1 and effT;
  *   - erose_form 0 (with attrac = repuls = 0), 1 and 2 with per-pair attrac(I,J)/repuls(I,J)
  *     (pairErose below; erose_form 0 with nonzero attrac/repuls is refused by the parser).
@@ -80,8 +81,22 @@ import { PAIR_SHELL_RATIO, referenceVectors, type ReferenceLattice } from './mea
  *    at sqrt2 r for B1, 2/sqrt3 r for B2) entering through the self pair terms phi_II(r_m), and the self pair with
  *    nn2 = 1 summing the single-element recurrence. The reference density of an nn2 element uses the raw rho0.
  *  - Refused with a StyleError: nn2 = 1 with lattce l12 (native parity not reached: the native L12 reference with
- *    nn2 = 0 already depends on Cmin(1,1,1), which the nn2 = 0 path does not reproduce), other lattce names, hcp
- *    and bcc elements and ibar = 3 in an alloy, delta, and erose_form 0 with nonzero attrac/repuls.
+ *    nn2 = 0 already depends on Cmin(1,1,1), which the nn2 = 0 path does not reproduce), nn2 = 1 with an hcp element
+ *    (no c/a for the second shell), other lattce names, sc elements, ibar = 2 (docs.lammps.org/pair_meam.html lists
+ *    2 => not implemented), delta, and erose_form 0 with nonzero attrac/repuls.
+ *
+ * Measured with native LAMMPS (black box) for the w42mb entries (synthetic library with a bcc element A and an fcc
+ * element B, lattce(1,2) = b1; tests/oracle/w42mb_*):
+ *  - bcc element, nn2 = 0: the self pair uses the bcc reference (z = 8, re = alat sqrt(3)/2 when re is not set),
+ *    and the A-A, A-B and B-A dimers and the 54-atom periodic bcc crystal agree to 1e-9 (eV) and rel 1e-6 over 30
+ *    nve steps including the forces.
+ *  - bcc element, nn2 = 1 (nn2(1,1) = nn2(1,2) = nn2(2,2) = 1): the dimers and crystal agree at the same tolerances,
+ *    so the second shell of the bcc reference enters through the self pair as for fcc.
+ *  - hcp element, nn2 = 0 (library z = 12, ideal c/a, re = alat): the dimers and the 108-atom periodic hcp crystal
+ *    agree at the same tolerances (the crystal uses the four-atom orthorhombic cell with the hcp basis).
+ *  - ibar = 3 on both elements (G = 2/(1+exp(-Gamma)), the form listed for ibar 3 on docs.lammps.org/pair_meam.html): the dimers and the bcc
+ *    crystal agree at the same tolerances with ialloy = 0 (the t-averaging forms with ialloy 1 and 2 are not
+ *    measured with ibar 3).
  *
  * Per-triplet Cmin/Cmax (docs.lammps.org/pair_meam.html "Cmin(I,J,K) = Cmin screening parameter when
  * I-J pair is screened by K (I<=J)"). Measured with native LAMMPS (black box) on a three-element

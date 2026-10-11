@@ -1,6 +1,7 @@
 import { hasChargeStyle, isSphereStyle } from '../atoms';
 import { Fix } from './fix';
 import { Pair, PairParams, StyleError, typeBounds } from '../force/types';
+import { PairHybrid } from '../force/pair/hybrid';
 import type { System } from '../system';
 import type { SimState } from '../types';
 
@@ -52,24 +53,63 @@ import type { SimState } from '../types';
  * - atom_style sphere without the dynamic flag errors in native LAMMPS; this engine does
  *   not track that flag and accepts it.
  *
+ * Sub-style selection (fix_adapt.rst): "If there are multiple sub-styles using the same pair
+ * style, then *pstyle* should be specified as "style:N", where *N* is which instance of the
+ * pair style you wish to adapt (e.g., the first or second)." The engine numbers the instances
+ * in pair_style order, as the hybrid style does.
+ *
+ * Measured with native LAMMPS (black box), 2x2x2 fcc Ni (32 atoms, random displacements), pair_style
+ * hybrid/overlay snap snap with the bundled Ni_Zuo_JPCA2020 linear and quadratic files:
+ * - snap:1 scale * * 0.3 gives the energy 0.3 E1 + E2 (E1 = the linear sub-style alone, E2 = the
+ *   quadratic sub-style alone), and snap:2 scale * * 0.7 gives E1 + 0.7 E2; the pressure follows the
+ *   same factors (the virial of the sub-style scales with its energy).
+ * - two types, scale 1 1 0.5 scales the energy of the type-1 atoms only; scale 2 2 0.5 the type-2
+ *   atoms only; scale * * 0.5 both; scale 1 2 0.5 has no effect at all (energy, pressure and
+ *   off-diagonal pressure are unchanged). So only the diagonal entry of the central atom's type is used.
+ *
  * Not supported (StyleError): bond, angle, dihedral, improper, kspace attributes; pair
  * styles and parameters other than those listed in ADAPTABLE (a cutoff is never adaptable:
- * the neighbor list would not follow it); hybrid pair styles and pstyle:N; mixed type
- * pairs; diameter/disc; hybrid sub-style selection.
+ * the neighbor list would not follow it); mixed type pairs; diameter/disc; sub-style
+ * selection for a sub-style name that is not in the hybrid style.
  *
  */
 
-/** Pair styles and parameters (lower-case) this engine can adapt; "cut" names are not adaptable. */
-const ADAPTABLE: Record<string, string[]> = {
-  'lj/cut': ['epsilon', 'sigma'],
-  'lj/cut/coul/cut': ['epsilon', 'sigma'],
-  soft: ['a'],
-  morse: ['d0', 'alpha', 'r0'],
+/**
+ * Pair styles and parameters (lower-case, as the fix_adapt.rst table names them) this engine can
+ * adapt; "cut" names are not adaptable. The engine's table name is matched case-insensitively
+ * (a -> A, c -> C, d -> D). reinit: the style derives tables from the parameter at init() and must
+ * be re-initialized after a change; false when compute() reads the parameter table directly.
+ */
+interface Adaptable {
+  params: string[];
+  reinit: boolean;
+  /** Parameters that are listed by the doc table but refused, with the reason (measured below). */
+  refused?: Record<string, string>;
+}
+const ADAPTABLE: Record<string, Adaptable> = {
+  'lj/cut': { params: ['epsilon', 'sigma'], reinit: true },
+  'lj/cut/coul/cut': { params: ['epsilon', 'sigma'], reinit: true },
+  'lj/class2': { params: ['epsilon', 'sigma'], reinit: true },
+  'lj/expand': {
+    params: ['epsilon', 'sigma', 'delta'],
+    reinit: true,
+    // Measured with native LAMMPS (black box): with pair_coeff 1 1 1.0 1.0 0.5 and fix adapt delta 1 1 0.14
+    // the pe is 92.7189 (the energy uses delta 0.14 but the force cutoff stays cut + 0.5 = 3.0); with
+    // pair_coeff delta 0.1 and an adapted 0.14 it is 92.7497 (cutoff 2.6); static delta 0.14 gives 92.7420.
+    // The cutoff cut + delta is frozen at the value the run started with, which this engine does not model.
+    refused: { delta: 'changes the force cutoff cut + delta, which native LAMMPS keeps at its run-start value (not modelled by this engine)' },
+  },
+  buck: { params: ['a', 'c'], reinit: true },
+  born: { params: ['a', 'c', 'd'], reinit: true },
+  soft: { params: ['a'], reinit: true },
+  morse: { params: ['d0', 'alpha', 'r0'], reinit: true },
+  snap: { params: ['scale'], reinit: false },
 };
 
 const USAGE = 'usage: fix ID group-ID adapt N attribute args ... keyword value ...';
 
 interface PairTarget {
+  /** Sub-style name (or the pair style name), as given without the ":N" instance. */
   pstyle: string;
   /** Lower-case parameter name from the input, and the engine's name for it. */
   pparam: string;
@@ -82,7 +122,11 @@ interface PairTarget {
   pairs: Array<[number, number]>;
   orig: Float64Array;
   table: PairParams;
-  pair: Pair;
+  /** The (sub-)style that owns the table. */
+  style: Pair;
+  /** The defined pair style: a hybrid style when the sub-style is in one; init() runs on it. */
+  owner: Pair;
+  reinit: boolean;
 }
 
 type AtomKind = 'charge' | 'diameter';
@@ -101,6 +145,12 @@ const yesNo = (key: string, w: string | undefined): boolean => {
 };
 
 const TYPE_WORD = /^(\*|\d+|\d*\*\d*)$/;
+
+/** True when the style or one of its hybrid sub-styles applies a tail correction. */
+const hasTail = (p: Pair): boolean => {
+  if (p.tail) return true;
+  return p instanceof PairHybrid && p.subs.some((x) => x.style.tail);
+};
 
 export class FixAdapt extends Fix {
   readonly style: string = 'adapt';
@@ -171,32 +221,54 @@ export class FixAdapt extends Fix {
     if (pstyle === undefined || pparam === undefined || iw === undefined || jw === undefined) {
       throw new StyleError(`fix ${id} (adapt): pair needs pstyle pparam I J v_name (${USAGE})`);
     }
-    if (pstyle.includes(':')) throw new StyleError(`fix ${id} (adapt): pair sub-style selection '${pstyle}' (style:N) requires hybrid, which fix adapt does not support in this engine`);
-    if (!ADAPTABLE[pstyle]) {
-      throw new StyleError(`fix ${id} (adapt): pair style '${pstyle}' is not supported by fix adapt in this engine (supported: ${Object.keys(ADAPTABLE).join(', ')})`);
+    const m = /^([^:]+)(?::(\d+))?$/.exec(pstyle);
+    if (!m) throw new StyleError(`fix ${id} (adapt): pair style selection '${pstyle}' must be style or style:N (${USAGE})`);
+    const base = m[1];
+    const inst = m[2] === undefined ? undefined : Number(m[2]);
+    if (inst !== undefined && (!Number.isInteger(inst) || inst < 1)) {
+      throw new StyleError(`fix ${id} (adapt): instance N of pair style selection '${pstyle}' must be 1 or more`);
+    }
+    const entry = ADAPTABLE[base];
+    if (!entry) {
+      throw new StyleError(`fix ${id} (adapt): pair style '${base}' is not supported by fix adapt in this engine (supported: ${Object.keys(ADAPTABLE).join(', ')})`);
     }
     const lname = pparam.toLowerCase();
-    if (!ADAPTABLE[pstyle].includes(lname)) {
-      throw new StyleError(`fix ${id} (adapt): pair style ${pstyle} parameter '${pparam}' cannot be adapted (supported: ${ADAPTABLE[pstyle].join(', ')})`);
+    if (entry.refused?.[lname]) throw new StyleError(`fix ${id} (adapt): pair style ${base} parameter '${pparam}' is not supported: ${entry.refused[lname]}`);
+    if (!entry.params.includes(lname)) {
+      throw new StyleError(`fix ${id} (adapt): pair style ${base} parameter '${pparam}' cannot be adapted (supported: ${entry.params.join(', ')})`);
     }
     if (!TYPE_WORD.test(iw) || !TYPE_WORD.test(jw)) throw new StyleError(`fix ${id} (adapt): invalid type pair '${iw} ${jw}' (${USAGE})`);
     this.checkVariable(id, vw);
     // the type ranges and the pair table are resolved at run start (resolve())
-    this.pending.push({ pstyle, pparam: lname, vname: vw.slice(2), iw, jw });
+    this.pending.push({ pstyle: base, inst, pparam: lname, vname: vw.slice(2), iw, jw, reinit: entry.reinit });
   }
 
   /** Pair attributes as given; resolve() turns them into PairTarget. */
-  private readonly pending: Array<{ pstyle: string; pparam: string; vname: string; iw: string; jw: string }> = [];
+  private readonly pending: Array<{ pstyle: string; inst: number | undefined; pparam: string; vname: string; iw: string; jw: string; reinit: boolean }> = [];
 
-  /** Resolves pair targets against the defined pair style and the box (run start). */
+  /** Resolves pair targets against the defined pair style (or its hybrid sub-styles) and the box (run start). */
   private resolve(): void {
     const s = this.sys.state;
-    const pair = this.sys.ff.pair;
+    const owner = this.sys.ff.pair;
     this.pairs = [];
     for (const p of this.pending) {
-      if (!pair) throw new StyleError(`fix ${this.id} (adapt): no pair style is defined (pair ${p.pstyle})`);
-      if (pair.name !== p.pstyle) throw new StyleError(`fix ${this.id} (adapt): pair style ${p.pstyle} is not the defined pair style (${pair.name})`);
-      const table = Object.values(pair).find((v): v is PairParams => v instanceof PairParams && v.names.some((n) => n.toLowerCase() === p.pparam));
+      if (!owner) throw new StyleError(`fix ${this.id} (adapt): no pair style is defined (pair ${p.pstyle})`);
+      let style: Pair;
+      if (owner instanceof PairHybrid) {
+        const subs = owner.subs.filter((x) => x.name === p.pstyle);
+        if (!subs.length) throw new StyleError(`fix ${this.id} (adapt): pair sub-style ${p.pstyle} is not in pair_style ${owner.name}`);
+        if (p.inst === undefined && subs.length > 1) {
+          throw new StyleError(`fix ${this.id} (adapt): pair sub-style ${p.pstyle} is used ${subs.length} times; select one with ${p.pstyle}:N`);
+        }
+        const sub = p.inst === undefined ? subs[0] : subs.find((x) => x.instance === p.inst);
+        if (!sub) throw new StyleError(`fix ${this.id} (adapt): pair sub-style ${p.pstyle}:${p.inst} does not exist (it is used ${subs.length} times)`);
+        style = sub.style;
+      } else {
+        if (owner.name !== p.pstyle) throw new StyleError(`fix ${this.id} (adapt): pair style ${p.pstyle} is not the defined pair style (${owner.name})`);
+        if (p.inst !== undefined && p.inst !== 1) throw new StyleError(`fix ${this.id} (adapt): pair style ${p.pstyle}:${p.inst} does not exist (the pair style is not a hybrid style)`);
+        style = owner;
+      }
+      const table = Object.values(style).find((v): v is PairParams => v instanceof PairParams && v.names.some((n) => n.toLowerCase() === p.pparam));
       if (!table) throw new StyleError(`fix ${this.id} (adapt): pair style ${p.pstyle} has no parameter ${p.pparam}`);
       const name = table.names.find((n) => n.toLowerCase() === p.pparam)!;
       const [ilo, ihi] = typeBounds(p.iw, s.ntypes);
@@ -211,7 +283,7 @@ export class FixAdapt extends Fix {
       }
       this.pairs.push({
         pstyle: p.pstyle, pparam: p.pparam, name, vname: p.vname, iw: p.iw, jw: p.jw,
-        pairs, orig: new Float64Array(pairs.length), table, pair,
+        pairs, orig: new Float64Array(pairs.length), table, style, owner, reinit: p.reinit,
       });
     }
     for (const a of this.atoms) {
@@ -266,20 +338,33 @@ export class FixAdapt extends Fix {
       });
       pairChanged = true;
     }
-    if (pairChanged && reinitPair) {
-      // the style re-derives its tables and re-mixes the non-explicit pairs from the new values
-      const pair = this.pairs[0].pair;
-      pair.init(sys.styleContext());
-      if (pair.tail) sys.ff.updateTail(s);
-    }
-    // copies of the style in force threads (cpu/pairThreads.ts) must be refreshed
-    if (pairChanged) this.pairs[0].pair.version++;
+    if (pairChanged) this.refreshPairs(reinitPair);
     for (const a of this.atoms) {
       const v = sys.equalVariable(a.vname);
       if (a.kind === 'charge') this.setCharges(a, v, s);
       else this.setDiameter(a, v, s);
     }
     if (!this.inInit && this.atoms.some((a) => a.kind === 'charge')) sys.nb.refreshCharges(s);
+  }
+
+  /**
+   * After the tables changed: re-initializes each defined pair style that derives tables from the
+   * changed parameters (the style re-mixes its non-explicit pairs), updates the tail corrections,
+   * and bumps the version so that copies of the style in force threads are refreshed.
+   */
+  private refreshPairs(reinitPair: boolean): void {
+    const s = this.sys.state;
+    const owners = new Set<Pair>();
+    for (const t of this.pairs) owners.add(t.owner);
+    if (reinitPair) {
+      const reinit = new Set<Pair>();
+      for (const t of this.pairs) if (t.reinit) reinit.add(t.owner);
+      for (const owner of reinit) {
+        owner.init(this.sys.styleContext());
+        if (hasTail(owner)) this.sys.ff.updateTail(s);
+      }
+    }
+    for (const owner of owners) owner.version++;
   }
 
   private setCharges(a: AtomTarget, v: number, s: SimState): void {
@@ -329,12 +414,7 @@ export class FixAdapt extends Fix {
       });
       pairChanged = true;
     }
-    if (pairChanged) {
-      const pair = this.pairs[0].pair;
-      pair.init(this.sys.styleContext());
-      if (pair.tail) this.sys.ff.updateTail(s);
-      pair.version++;
-    }
+    if (pairChanged) this.refreshPairs(true);
     for (const a of this.atoms) {
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & this.groupBit)) continue;

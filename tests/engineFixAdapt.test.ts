@@ -287,9 +287,9 @@ variable e equal 2.0
     expect(r.message).toMatch(/pair style 'eam' is not supported by fix adapt/);
   });
 
-  it('hybrid sub-style selection (style:N) is refused', async () => {
-    const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 pair lj/cut:1 epsilon 1 1 v_e\n`);
-    expect(r.message).toMatch(/requires hybrid/);
+  it('style:N on a plain pair style: only instance 1 exists (hybrid sub-style selection is in w43ad tests)', async () => {
+    const r = await runScript(`${pairSetup}\nfix 1 all adapt 1 pair lj/cut:2 epsilon 1 1 v_e\nrun 0\n`);
+    expect(r.message).toMatch(/lj\/cut:2 does not exist/);
   });
 
   it('the pair style must be the defined one', async () => {

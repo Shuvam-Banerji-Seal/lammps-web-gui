@@ -1,0 +1,33 @@
+# oracle: fix adapt pair buck a (A) and c (C) on type pairs, scale no, ramped (N=1)
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      atomic
+lattice         sc 0.8
+region          b block 0 4 0 4 0 4
+create_box      2 b
+create_atoms    1 box
+mass            * 1.0
+set             group all type 1
+group           odd id 1:64:2
+set             group odd type 2
+variable        dx atom 0.1*sin(1.3*x+0.7*y)
+variable        dy atom 0.1*cos(0.9*y-1.1*z)
+variable        dz atom 0.1*sin(1.7*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.5*sin(1.7*x+2.3*y+0.7*z)
+variable        vy atom 0.5*cos(2.1*x-1.1*y+0.3*z)
+variable        vz atom 0.5*sin(0.5*x+1.9*z+1.3*y)
+velocity        all set v_vx v_vy v_vz units box
+timestep        0.002
+thermo_style    custom step temp pe ke etotal press pxx pyy pzz
+thermo_modify   format float %.15g
+thermo          10
+pair_style      buck 2.5
+pair_coeff      1 1 20.0 0.4 0.5
+pair_coeff      2 2 10.0 0.35 0.3
+pair_coeff      1 2 15.0 0.38 0.4
+variable        A equal ramp(20.0,30.0)
+variable        C equal ramp(0.5,0.2)
+fix             1 all adapt 1 pair buck a 1 1 v_A pair buck c 1 2 v_C
+fix             2 all nve
+run             100

@@ -55,7 +55,7 @@ export interface DynamicGroup {
  * accepts one too. A fix style in neither list has not been measured.
  */
 export const DYNAMIC_GROUP_FIXES = new Set([
-  'addforce', 'ave/histo', 'ave/moments', 'ave/time', 'aveforce', 'dt/reset', 'efield', 'gravity', 'langevin', 'lineforce',
+  'addforce', 'addtorque/group', 'ave/histo', 'ave/moments', 'ave/time', 'aveforce', 'dt/reset', 'efield', 'gravity', 'langevin', 'lineforce',
   'momentum', 'nph', 'nph/sphere', 'npt', 'npt/sphere', 'nve', 'nve/limit', 'nve/sphere', 'nvt',
   'nvt/sllod', 'nvt/sphere', 'planeforce', 'recenter', 'setforce', 'spring', 'temp/berendsen',
   'temp/csld', 'temp/csvr', 'temp/rescale', 'viscous', 'wall/harmonic', 'wall/lj1043', 'wall/lj126',

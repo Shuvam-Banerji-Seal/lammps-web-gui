@@ -1,0 +1,28 @@
+# oracle: fix tmd with unequal masses (types of mass 1 and 12, lj units): the constraint and its correction after 5 steps
+# oracle-inputs: w48fb_tmd_mass_target.txt
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units lj
+atom_style atomic
+atom_modify map array
+region box block 0 4 0 4 0 4
+create_box 2 box
+create_atoms 1 single 0.964426 0.961779 0.980848 units box
+create_atoms 2 single 1.03161 0.968073 3.00816 units box
+create_atoms 1 single 1.01389 2.98724 1.00477 units box
+create_atoms 2 single 0.956279 2.95596 2.9706 units box
+create_atoms 1 single 3.01804 0.992759 0.981415 units box
+create_atoms 2 single 3.00856 0.995318 2.97998 units box
+create_atoms 1 single 3.02944 3.0199 0.97441 units box
+create_atoms 2 single 3.00744 3.00252 3.03751 units box
+mass 1 1.0
+mass 2 12.0
+pair_style lj/cut 2.5
+pair_coeff * * 0.0 1.0 2.5
+velocity all create 0.1 4928 loop all
+timestep 0.005
+fix 1 all nve
+fix 2 all tmd 0.5 w48fb_tmd_mass_target.txt 0
+thermo_style custom step pe ke
+thermo_modify format float %.15g
+thermo 1
+run 5

@@ -1,0 +1,20 @@
+# oracle: fix ti/spring in metal units (the harmonic force is converted to internal units), switching and holds
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           metal
+atom_style      atomic
+lattice         fcc 3.621
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 63.55
+pair_style      lj/cut 4.0
+pair_coeff      1 1 0.01 2.2 4.0
+velocity        all create 200.0 9999 loop all
+timestep        0.001
+fix             1 all nve
+fix             f2 all ti/spring 0.3 4 3 function 2
+fix_modify      f2 energy yes
+thermo_style    custom step pe f_f2 f_f2[1] f_f2[2]
+thermo_modify   format float %.15g norm no
+thermo          2
+run             16

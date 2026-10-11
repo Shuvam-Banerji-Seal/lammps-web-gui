@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Play, Square, RotateCcw, Cpu, Gpu, Gauge, HelpCircle, FileUp, X, Workflow, Atom } from 'lucide-react';
 import ResourceMonitor from './ResourceMonitor';
 import { cellsToScript } from '../../lammps/notebookBridge';
-import { Cell, duplicateCell, insertAfter, isMarkdownCell, moveCell, reviveCells, runnableCells, withKind } from './notebook/cells';
+import { Cell, duplicateCell, insertAfter, isMarkdownCell, moveCell, runnableCells, withKind } from './notebook/cells';
+import { useNotebookSession } from './notebook/useNotebookSession';
+import NotebookMenu from './notebook/NotebookMenu';
 import MarkdownView from './notebook/MarkdownView';
 import CellToolbar, { AddCellRow } from './notebook/CellToolbar';
 import CellFlowchart from './notebook/CellFlowchart';
@@ -74,7 +76,6 @@ const STARTER: Cell[] = [
   { id: 'c3', text: 'run             250' },
 ];
 
-const STORAGE_KEY = 'm3d.notebook.v1';
 const BACKEND_KEY = 'm3d.notebook.backend';
 const THREADS_KEY = 'm3d.notebook.threads';
 const RECORD_KEY = 'm3d.notebook.recordEvery';
@@ -129,7 +130,9 @@ interface NotebookProps {
 
 const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingTaken, onOpenInBuilder, onOpenInViewer }) => {
   const ct = getThemeTokens(theme);
-  const [cells, setCells] = usePersistentState<Cell[]>(STORAGE_KEY, STARTER, reviveCells);
+  /** The open notebook's cells, autosaved to the notebook library (notebook/useNotebookSession.ts). */
+  const session = useNotebookSession(STARTER);
+  const { cells, setCells } = session;
   const [backend, setBackend] = usePersistentState<BackendChoice>(BACKEND_KEY, 'auto', reviveBackend);
   const [threads, setThreads] = usePersistentState<number>(THREADS_KEY, AUTO_THREADS, reviveThreads);
   /** Run speed (engine 'perf' events) for the resource monitor, and the run's timestep/units. */
@@ -212,6 +215,22 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     sendInputs();
     setReady(info);
   }, [client, recordEvery, traj, sendInputs]);
+
+  // A notebook replaced from the library (New, Open, Import, Close): the engine starts over and imported output shows.
+  const lastGeneration = useRef(session.generation);
+  useEffect(() => {
+    if (session.generation === lastGeneration.current) return;
+    lastGeneration.current = session.generation;
+    void (async () => {
+      await resetSession(backend, threads);
+      const outputs = session.loadedOutputs?.outputs;
+      if (outputs) {
+        setRuns(Object.fromEntries(Object.entries(outputs).map(([id, o]) => [id, { status: o.error ? 'error' : 'ok', logs: o.logs, error: o.error, tables: o.tables }])) as Record<string, CellRun>);
+      }
+    })();
+    // runs when the notebook is replaced; the session values are the ones of that render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.generation]);
 
   useEffect(() => {
     void resetSession(backend, threads);
@@ -454,10 +473,11 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const btn = `inline-flex min-h-6 min-w-6 items-center justify-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${ct.hoverSurface}`;
 
   return (
-    <div className={`flex h-full min-h-0 flex-col ${ct.bg} ${ct.text}`}>
+    <div data-notebook-root="" className={`flex h-full min-h-0 flex-col ${ct.bg} ${ct.text}`}>
       {/* toolbar */}
       <div className={`flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 ${ct.divider}`}>
         <h2 className={`mr-1 text-sm font-semibold ${ct.headerText}`}>MD Notebook</h2>
+        <NotebookMenu theme={theme} btn={btn} session={session} inputFiles={inputFiles} busy={busy} onStop={stop} runs={runs} />
         <button className={`${btn} ${ct.accent}`} onClick={() => void runAll()} disabled={busy}
           title="Restart the session and run every cell in order">
           <Play size={13} aria-hidden="true" />Run all

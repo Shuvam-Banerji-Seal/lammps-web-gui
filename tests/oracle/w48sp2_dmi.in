@@ -1,0 +1,28 @@
+# oracle: spin/dmi energy, precession and mechanical forces (D given with a non-unit direction) and 3 moving steps
+# oracle-files: w48sp2_dmi.dump
+units           metal
+atom_style      spin
+boundary        f f f
+atom_modify     map array
+region          box block -10 10 -10 10 -10 10
+create_box      1 box
+create_atoms    1 single 0.0 0.0 0.0
+create_atoms    1 single 2.0 0.0 0.0
+create_atoms    1 single 1.0 1.7 0.3
+mass            1 55.845
+set             atom 1 spin/atom 2.0 0.6 0.48 0.64
+set             atom 2 spin/atom 3.0 -0.2 0.9 0.4
+set             atom 3 spin/atom 1.5 0.5 -0.4 0.9
+compute         p all property/atom spx spy spz sp fmx fmy fmz fx fy fz
+compute         s all spin
+thermo_style    custom step pe c_s[1] c_s[2] c_s[3] c_s[4] c_s[5] c_s[6]
+thermo_modify   format float %.15g
+timestep        0.0005
+pair_style      spin/dmi 4.0
+pair_coeff      * * dmi 4.0 0.001 1.0 2.0 -0.5
+fix             1 all nve/spin lattice moving
+run             0
+pair_coeff      1 1 dmi 3.5 0.0021 0.0 0.0 2.0
+run             0
+run             3
+write_dump      all custom w48sp2_dmi.dump id c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] c_p[7] c_p[8] c_p[9] c_p[10] modify format float %.15g

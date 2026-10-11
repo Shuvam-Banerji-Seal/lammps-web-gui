@@ -1,0 +1,24 @@
+# oracle: hybrid/overlay of spin/exchange, spin/magelec and spin/dmi as in examples/SPIN/bfo (three atoms, explicit spins, frozen lattice, 20 steps)
+# oracle-files: w48sp2_bfo_hybrid.dump
+units           metal
+atom_style      spin
+boundary        f f f
+atom_modify     map array
+region          box block -10 10 -10 10 -10 10
+create_box      1 box
+create_atoms    1 single 0.0 0.0 0.0
+create_atoms    1 single 2.0 0.0 0.0
+create_atoms    1 single 1.0 1.7 0.3
+mass            1 55.845
+set             atom 1 spin/atom 2.0 0.6 0.48 0.64
+set             atom 2 spin/atom 3.0 -0.2 0.9 0.4
+set             atom 3 spin/atom 1.5 0.5 -0.4 0.9
+pair_style      hybrid/overlay spin/exchange 6.0 spin/magelec 4.5 spin/dmi 4.5
+pair_coeff      * * spin/exchange exchange 6.0 -0.01575 0.0 1.965
+pair_coeff      * * spin/magelec magelec 4.5 0.000109 1.0 1.0 1.0
+pair_coeff      * * spin/dmi dmi 4.5 0.00005 1.0 1.0 1.0
+fix             1 all nve/spin lattice frozen
+timestep        0.0005
+compute         p all property/atom spx spy spz sp fmx fmy fmz fx fy fz
+run             20
+write_dump      all custom w48sp2_bfo_hybrid.dump id c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] c_p[7] c_p[8] c_p[9] c_p[10] modify format float %.15g

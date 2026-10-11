@@ -1,7 +1,8 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { SPIN_HBAR, findSpinPair } from '../force/pair/spin_exchange';
+import { SPIN_HBAR } from '../force/pair/spin_exchange';
+import { spinContribute } from '../force/spin_book';
 
 /*
  * fix ID group-ID precession/spin style args — docs.lammps.org/fix_precession_spin.html: "This fix applies a
@@ -129,21 +130,20 @@ export class FixPrecessionSpin extends Fix {
     this.term(i, sp, out);
   }
 
-  /** Adds the precession vectors of the group to fm and sets the energy (called after the force evaluation). */
+  /** Sets this fix's contribution to the precession vectors of the group (after each force evaluation). */
   postForce(): void {
     const s = this.sys.state;
     const sp = s.sp!;
     const bit = this.groupBit;
     const mask = s.mask;
-    // the spin pair style zeroes fm on each evaluation; without one nothing else would
-    if (!findSpinPair(this.sys.ff.pair)) s.fm!.fill(0);
+    const vals = new Float64Array(3 * s.n);
     const w = [0, 0, 0];
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & bit)) continue;
       w[0] = 0; w[1] = 0; w[2] = 0;
       this.term(i, sp, w);
-      const fm = s.fm!;
-      fm[3 * i] += w[0]; fm[3 * i + 1] += w[1]; fm[3 * i + 2] += w[2];
+      vals[3 * i] = w[0]; vals[3 * i + 1] = w[1]; vals[3 * i + 2] = w[2];
     }
+    spinContribute(s, this, vals, 0);
   }
 }

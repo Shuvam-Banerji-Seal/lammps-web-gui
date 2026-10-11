@@ -59,8 +59,8 @@ describe('SPIN core', () => {
   });
 
   it('refuses an unknown spin pair style with its name', async () => {
-    const r = await run(`${header}pair_style spin/dmi 4.0\n`);
-    expect(r.error).toMatch(/spin\/dmi/);
+    const r = await run(`${header}pair_style spin/bogus 4.0\n`);
+    expect(r.error).toMatch(/spin\/bogus/);
   });
 
   it('runs nve/spin lattice moving (spin and lattice energy conserved over a short run)', async () => {

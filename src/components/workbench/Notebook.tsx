@@ -30,7 +30,7 @@ import ViewControls, { DEFAULT_RECORD_EVERY, reviveBool, reviveRadius, reviveRec
 import { ThermoCharts } from './notebook/charts/ThermoCharts';
 import { ThermoStats } from './notebook/charts/ThermoStats';
 import { TrajectoryAnalysis } from './notebook/charts/TrajectoryAnalysis';
-import { ensembleOf, type ThermoSegment } from './notebook/chartData';
+import { ensembleOfRun, type ThermoSegment } from './notebook/chartData';
 
 /**
  * MD Notebook: LAMMPS-style input in cells, run by the in-browser engine
@@ -440,10 +440,15 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   /** The thermo tables of every cell, in cell order, for the graphs and statistics; the ensemble comes from the cell's fixes. */
   const chart = useMemo(() => {
     const segments: ThermoSegment[] = [];
+    // The fixes a run inherits are the ones earlier code cells defined (a fix lives until unfix), so the ensemble
+    // is read from the code cells up to and including the run's own cell, not from the run's cell alone.
+    const scripts: string[] = [];
     cells.forEach((c, i) => {
+      if (isMarkdownCell(c)) return;
+      scripts.push(c.text);
       for (const t of runs[c.id]?.tables ?? []) {
         if (t.rows.length === 0) continue;
-        segments.push({ label: `cell ${i + 1}`, keywords: t.keywords, labels: t.labels, units: t.units ?? runInfo?.units, rows: t.rows, dt: runInfo?.dt ?? null, ensemble: ensembleOf(c.text) });
+        segments.push({ label: `cell ${i + 1}`, keywords: t.keywords, labels: t.labels, units: t.units ?? runInfo?.units, rows: t.rows, dt: runInfo?.dt ?? null, ensemble: ensembleOfRun(scripts) });
       }
     });
     return segments;

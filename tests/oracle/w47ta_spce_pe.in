@@ -1,0 +1,31 @@
+# oracle: compute group/group (pair, kspace no) and pe/tally on the cut-down SPC/E water of the TALLY example (lj/cut/coul/long + pppm)
+# oracle-inputs: w47ta_spce_cut.data
+units           real
+atom_style      full
+read_data       w47ta_spce_cut.data
+pair_style      lj/cut/coul/long 12.0 12.0
+kspace_style    pppm 1.0e-4
+pair_coeff      1 1 0.15535 3.166
+pair_coeff      * 2 0.0000 0.0000
+bond_style      harmonic
+angle_style     harmonic
+bond_coeff      1 1000.00 1.000
+angle_coeff     1 100.0 109.47
+special_bonds   lj/coul 0.0 0.0 1.0
+neighbor        2.0 bin
+group           oxy type 1
+group           hyd type 2
+compute         epa oxy group/group hyd pair yes kspace no boundary no
+compute         epb hyd group/group oxy pair yes kspace no boundary no
+compute         c1 oxy pe/tally hyd
+compute         c2 all pe/tally all
+compute         c3 all pe/atom pair
+compute         ox oxy reduce sum c_c1[1] c_c1[2]
+compute         red all reduce sum c_c2[1] c_c2[2] c_c3
+variable        epa equal 2.0*(c_ox[1]+c_ox[2])
+variable        vdwl equal c_red[1]
+variable        coul equal c_red[2]
+variable        pe equal c_red[3]
+thermo_style    custom step c_epa v_epa c_epb c_c2 v_vdwl v_coul v_pe
+thermo_modify   format float %.15g
+run             0

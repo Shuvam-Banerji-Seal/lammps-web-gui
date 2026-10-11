@@ -1,0 +1,27 @@
+# oracle: compute stress/tally and stress/atom sums on the cut-down SPC/E water of the TALLY example (lj/cut/coul/long + pppm)
+# oracle-compare: thermo=all rel=1e-7 abs=1e-10
+# oracle-inputs: w47ta_spce_cut.data
+units           real
+atom_style      full
+read_data       w47ta_spce_cut.data
+pair_style      lj/cut/coul/long 12.0 12.0
+kspace_style    pppm 1.0e-4
+pair_coeff      1 1 0.15535 3.166
+pair_coeff      * 2 0.0000 0.0000
+bond_style      harmonic
+angle_style     harmonic
+bond_coeff      1 1000.00 1.000
+angle_coeff     1 100.0 109.47
+special_bonds   lj/coul 0.0 0.0 1.0
+neighbor        2.0 bin
+group           one molecule 1 2
+compute         c1 one stress/tally all
+compute         c2 all stress/tally all
+compute         spa all stress/atom NULL pair
+compute         press all pressure NULL pair
+compute         one one reduce sum c_c1[1] c_c1[2] c_c1[3] c_c1[4] c_c1[5] c_c1[6]
+compute         red all reduce sum c_spa[1] c_spa[2] c_spa[3] c_spa[4] c_spa[5] c_spa[6]
+variable        vol equal vol
+thermo_style    custom step c_press c_c1 c_c2 c_one[1] c_one[4] c_red[1] c_red[4] v_vol
+thermo_modify   format float %.15g
+run             0

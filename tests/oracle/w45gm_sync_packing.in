@@ -1,0 +1,33 @@
+# oracle: pair_style granular hooke tangential linear_history damping coeff_restitution synchronized_verlet — a small polydisperse packing of spheres falling under gravity onto a fix wall/gran zplane floor, fix nve/sphere (150 steps)
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      sphere
+atom_modify     map array
+comm_modify     vel yes
+newton          off
+boundary        p p f
+lattice         sc 0.25
+region          b block 0 3 0 3 0 4
+create_box      2 b
+create_atoms    1 box
+group           odd id 1:36:2
+set group odd type 2
+set type 1 diameter 1.0 density 1.0
+set type 2 diameter 1.3 density 1.0
+variable dx atom 0.1*sin(1.3*x+0.7*y)
+variable dy atom 0.1*cos(0.9*y-1.1*z)
+variable dz atom 1.0+0.1*sin(1.7*z+0.5*x)
+displace_atoms all move v_dx v_dy v_dz units box
+variable vz atom -0.2*(0.5+0.5*sin(0.7*id))
+velocity        all set 0.0 0.0 v_vz units box
+set group all omega 0.1 -0.1 0.2
+pair_style granular
+pair_coeff * * hooke 2000.0 0.6 tangential linear_history 500.0 0.0 0.5 damping coeff_restitution synchronized_verlet
+timestep 0.0005
+fix 1 all nve/sphere
+fix 2 all gravity 1.0 vector 0 0 -1
+fix 3 all wall/gran granular hooke 2000.0 0.6 tangential linear_history 500.0 0.0 0.5 damping coeff_restitution zplane 0.0 NULL
+thermo_style custom step ke
+thermo_modify format float %.15g
+thermo 30
+run 150

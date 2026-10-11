@@ -1,0 +1,26 @@
+# oracle: pair_style granular hertz/material tsuji synchronized_verlet — the first contact steps of two oblique spheres with spin, timestep 0.01 (amplified half-step effects)
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      sphere
+atom_modify     map array
+comm_modify     vel yes
+newton          off
+boundary        f f f
+region          b block -10 10 -10 10 -10 10
+create_box      1 b
+create_atoms    1 single 0.0 0.0 0.0
+create_atoms    1 single 0.95 0.0 0.0
+set type 1 diameter 1.0 density 1.0
+velocity        all set 0.0 0.0 0.0 units box
+set atom 1 vx 0.4 vy -0.25 vz 0.0
+set atom 2 vx -0.5 vy 0.15 vz 0.1
+set atom 1 omega 0.0 0.0 0.6
+set atom 2 omega 0.3 -0.2 0.0
+pair_style granular
+pair_coeff * * hertz/material 1000.0 0.3 0.3 tangential linear_history 200.0 0.5 0.4 damping tsuji synchronized_verlet
+timestep 0.01
+fix 1 all nve/sphere
+thermo_style custom step ke
+thermo_modify format float %.15g
+thermo 1
+run 3

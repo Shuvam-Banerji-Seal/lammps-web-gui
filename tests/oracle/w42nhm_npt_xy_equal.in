@@ -1,0 +1,23 @@
+# oracle: LJ fcc 3x3x3, fix npt temp, barostat x and y with equal targets (z free), pchain 3, vector entries
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        vx atom 1.4*sin(1.7*x+2.3*y+0.7*z)
+variable        vy atom 1.4*cos(2.1*x-1.1*y+0.3*z)
+variable        vz atom 1.4*sin(0.5*x+1.9*z+1.3*y)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+fix             1 all npt temp 1.5 1.5 0.5 x 2.0 2.0 0.5 y 2.0 2.0 0.5
+thermo_style    custom step temp press pxx pyy pzz lx ly lz pe etotal vol f_1 f_1[1] f_1[2] f_1[3] f_1[4] f_1[5] f_1[6] f_1[7] f_1[8] f_1[9] f_1[10] f_1[11] f_1[12] f_1[13] f_1[14] f_1[15] f_1[16] f_1[17] f_1[18] f_1[19] f_1[20] f_1[21] f_1[22] f_1[23] f_1[24] f_1[25] f_1[26] f_1[27] f_1[28] f_1[29] f_1[30] f_1[31] f_1[32] f_1[33] f_1[34] f_1[35] f_1[36] f_1[37]
+thermo_modify   format float %.15g
+thermo          1
+run             100

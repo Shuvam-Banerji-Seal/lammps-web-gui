@@ -258,7 +258,7 @@ export class ForceField {
       run(this.dihedral, 'dihedral', acc.vdihed);
       run(this.improper, 'improper', acc.vimp);
     }
-    if (this.kspace && want('kspace')) this.kspace.compute({ s, geom, f: s.f, qqrd2e, acc, ...termArrays('kspace') });
+    if (this.kspace && want('kspace')) this.kspace.compute({ s, geom, f: s.f, qqrd2e, acc, torque: s.torque, ...termArrays('kspace') });
     nb.reverseComm(s.f);
     if (this.pair && (eatomAll || vatomAll)) {
       const pt = termArrays('pair');

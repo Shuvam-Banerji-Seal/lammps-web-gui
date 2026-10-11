@@ -1,6 +1,7 @@
 import type { KSpace, Pair } from '../force/types';
 import { StyleError } from '../force/types';
 import { PairLJCutDipoleCut, PairLJSFDipoleSF } from '../force/pair/dipole';
+import { PairLJCutDipoleLong } from '../force/pair/dipole_long';
 
 /** dipole pair styles and kspace (wave 18); merged into styles.ts. Style name -> factory. */
 const longUnsupported = (name: string) => (): Pair => {
@@ -10,7 +11,7 @@ const longUnsupported = (name: string) => (): Pair => {
 export const PAIRS: Record<string, () => Pair> = {
   'lj/cut/dipole/cut': () => new PairLJCutDipoleCut(),
   'lj/sf/dipole/sf': () => new PairLJSFDipoleSF(),
-  'lj/cut/dipole/long': longUnsupported('lj/cut/dipole/long'),
+  'lj/cut/dipole/long': () => new PairLJCutDipoleLong(),
   'lj/long/dipole/long': longUnsupported('lj/long/dipole/long'),
 };
 export const KSPACES: Record<string, () => KSpace> = {};

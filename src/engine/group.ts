@@ -55,14 +55,14 @@ export interface DynamicGroup {
  * accepts one too. A fix style in neither list has not been measured.
  */
 export const DYNAMIC_GROUP_FIXES = new Set([
-  'addforce', 'ave/histo', 'ave/time', 'aveforce', 'efield', 'gravity', 'langevin', 'lineforce',
+  'addforce', 'ave/histo', 'ave/moments', 'ave/time', 'aveforce', 'dt/reset', 'efield', 'gravity', 'langevin', 'lineforce',
   'momentum', 'nph', 'nph/sphere', 'npt', 'npt/sphere', 'nve', 'nve/limit', 'nve/sphere', 'nvt',
   'nvt/sllod', 'nvt/sphere', 'planeforce', 'recenter', 'setforce', 'spring', 'temp/berendsen',
   'temp/csld', 'temp/csvr', 'temp/rescale', 'viscous', 'wall/harmonic', 'wall/lj1043', 'wall/lj126',
   'wall/lj93', 'wall/morse', 'wall/reflect', 'wall/reflect/stochastic', 'wall/region',
 ]);
 export const NO_DYNAMIC_GROUP_FIXES = new Set([
-  'ave/atom', 'ave/chunk', 'balance', 'deform', 'deposit', 'ehex', 'enforce2d', 'freeze', 'heat', 'indent',
+  'ave/atom', 'ave/chunk', 'balance', 'deform', 'deposit', 'ehex', 'electron/stopping', 'enforce2d', 'freeze', 'heat', 'indent',
   'nve/noforce', 'pour', 'print',
   'property/atom', 'rattle', 'rigid', 'rigid/nve', 'rigid/nve/small', 'rigid/nvt', 'rigid/nvt/small',
   'rigid/small', 'shake', 'spring/self', 'vector', 'wall/gran', 'wall/gran/region',

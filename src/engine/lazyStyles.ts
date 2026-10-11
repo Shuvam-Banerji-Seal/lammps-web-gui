@@ -55,6 +55,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'compute_orient', names: { COMPUTES: ['orientorder/atom'] }, load: () => import('./registry/compute_orient') as Promise<StyleModule> },
   { id: 'class2_35', names: { ANGLES: ['class2'], DIHEDRALS: ['class2'], IMPROPERS: ['class2'] }, load: () => import('./registry/class2_35') as Promise<StyleModule> },
   { id: 'fix_ehex', names: { FIXES: ['ehex', 'heat'] }, load: () => import('./registry/fix_ehex') as Promise<StyleModule> },
+  { id: 'fix_pkgsmall47', names: { FIXES: ['dt/reset', 'electron/stopping', 'ave/moments'] }, load: () => import('./registry/fix_pkgsmall47') as Promise<StyleModule> },
   { id: 'fix_gk', names: { FIXES: ['ave/correlate', 'thermal/conductivity', 'viscosity'] }, load: () => import('./registry/fix_gk') as Promise<StyleModule> },
   { id: 'compute_gk', names: { COMPUTES: ['heat/flux'] }, load: () => import('./registry/compute_gk') as Promise<StyleModule> },
   { id: 'fix_boxrelax', names: { FIXES: ['box/relax'] }, load: () => import('./registry/fix_boxrelax') as Promise<StyleModule> },

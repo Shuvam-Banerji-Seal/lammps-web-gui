@@ -1,4 +1,4 @@
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { buildTriples, WignerTables, rawBispectrum, adjointBispectrum, bispectrumComponent, adjointComponentChem, type Triple, type Cmat, type Grad } from '../../compute/sna';
 import { parseNum } from '../util';
@@ -198,6 +198,12 @@ export class PairSnap extends Pair {
   private normOf: Float64Array = new Float64Array(0);
   private setupDone = false;
   private tables: WignerTables | null = null;
+  /**
+   * Per type pair 'scale' (fix adapt pair snap:N scale). Only the diagonal entry scale[t][t] of the
+   * central atom's type multiplies its atomic energy and every force and virial term it generates
+   * (measured with native LAMMPS, black box: see tests/oracle/w43ad_snap_scale.in).
+   */
+  scaleP: PairParams = new PairParams(0, ['scale']);
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError(`pair_style snap takes no arguments (got ${args.length})`);
@@ -238,6 +244,8 @@ export class PairSnap extends Pair {
       if (used.size !== this.nelem) throw new StyleError(`pair_coeff for style snap with chemflag 1: ${used.size} unique elements in pair_coeff but the coefficient file has ${this.nelem}`);
     }
     this.nbase = this.K * (this.chem ? this.nelem * this.nelem * this.nelem : 1);
+    this.scaleP = new PairParams(this.ntypes, ['scale']);
+    for (let i = 1; i <= this.ntypes; i++) for (let j = i; j <= this.ntypes; j++) this.scaleP.set(i, j, [1]);
     this.setupDone = false;
   }
 
@@ -267,6 +275,11 @@ export class PairSnap extends Pair {
     this.normOf = new Float64Array(K);
     for (let c = 0; c < K; c++) this.normOf[c] = p.bnormflag ? this.triples[c].J + 1 : 1;
     this.setupDone = true;
+  }
+
+  /** The fix adapt 'scale' factor of atoms of type t (diagonal entry; 1 when no table exists). */
+  private atomScale(t: number): number {
+    return this.scaleP.ntypes === 0 ? 1 : this.scaleP.p('scale')[this.scaleP.idx(t, t)];
   }
 
   override compute(pc: PairCompute): void {
@@ -384,6 +397,8 @@ export class PairSnap extends Pair {
           }
         }
       }
+      const sc = this.atomScale(type[i]);
+      if (sc !== 1) { E *= sc; for (let c = 0; c < K; c++) gam[c] *= sc; }
       evdwl += E;
       if (pc.eatom) pc.eatom[i] += E;
       if (m === 0) continue;
@@ -585,6 +600,8 @@ export class PairSnap extends Pair {
         E += coef[1 + q] * Bf[q];
         gam[q] = coef[1 + q];
       }
+      const sc = this.atomScale(type[i]);
+      if (sc !== 1) { E *= sc; for (let q = 0; q < nbase; q++) gam[q] *= sc; }
       evdwl += E;
       if (pc.eatom) pc.eatom[i] += E;
       if (m === 0) continue;

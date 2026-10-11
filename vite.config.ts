@@ -1,7 +1,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildIndex } from './scripts/potential-index.mjs';
@@ -32,9 +32,16 @@ const potentialLibrary = (): Plugin => {
     apply: 'build' as const,
     generateBundle(this: { emitFile: (f: { type: 'asset'; fileName: string; source: string | Uint8Array }) => string }) {
       for (const name of readdirSync(dir)) {
-        const path = join(dir, name);
-        if (name.startsWith('.') || !statSync(path).isFile()) continue;
-        this.emitFile({ type: 'asset', fileName: `potentials/${name}`, source: readFileSync(path) });
+        if (name.startsWith('.')) continue;
+        // read directly (no stat-then-read race); a subdirectory is skipped
+        let source: Buffer;
+        try {
+          source = readFileSync(join(dir, name));
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code === 'EISDIR') continue;
+          throw e;
+        }
+        this.emitFile({ type: 'asset', fileName: `potentials/${name}`, source });
       }
       this.emitFile({ type: 'asset', fileName: 'potentials/LICENSE', source: readFileSync(join(root, 'LICENSE')) });
       this.emitFile({ type: 'asset', fileName: 'potentials/README.md', source: readFileSync(join(root, 'README.md')) });

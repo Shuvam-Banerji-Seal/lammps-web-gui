@@ -12,7 +12,7 @@
  *
  * Usage: node scripts/potential-index.mjs [potentialsDir] [outFile]
  */
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -105,7 +105,7 @@ const stylesFor = (name, kind) => {
  */
 export const kindOf = (name, text = '') => {
   const n = name;
-  if (n.startsWith('.') || n === 'README' || /^README[.\s]|\.(md|txt)$/i.test(n)) return 'doc';
+  if (n.startsWith('.') || n === 'README' || /^README[.\s]/i.test(n) || /\.(md|txt)$/i.test(n)) return 'doc';
   if (/\.eam\.alloy$/.test(n)) return 'eam/alloy';
   if (/\.eam\.fs$/.test(n)) return 'eam/fs';
   if (/\.eam\.he$/.test(n)) return 'eam/he';
@@ -170,7 +170,7 @@ export const indexEntry = (name, text, bytes) => {
 
 /** The whole index for a directory: every regular file that is not a dotfile, sorted by name. */
 export const buildIndex = (dir) => {
-  const files = readdirSync(dir).filter((f) => !f.startsWith('.') && statSync(join(dir, f)).isFile()).sort();
+  const files = readdirSync(dir, { withFileTypes: true }).filter((d) => !d.name.startsWith('.') && d.isFile()).map((d) => d.name).sort();
   return {
     format: 1,
     source: {
@@ -181,9 +181,10 @@ export const buildIndex = (dir) => {
     },
     files: files.map((name) => {
       const path = join(dir, name);
-      const bytes = statSync(path).size;
-      const head = readFileSync(path, 'latin1').slice(0, 1 << 20);
-      return indexEntry(name, head, bytes);
+      // one read: the size comes from the same bytes as the header (no stat-then-read race)
+      const buf = readFileSync(path);
+      const head = buf.toString('latin1', 0, Math.min(buf.length, 1 << 20));
+      return indexEntry(name, head, buf.length);
     }),
   };
 };

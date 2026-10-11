@@ -346,8 +346,8 @@ describe('IDs and command order measured against native LAMMPS', () => {
     expect(logs).toContain('N 3');
   });
   it('an unsupported fix style is named even before the box exists', async () => {
-    const { error } = await runScript('units real\nfix tt all ttm/mod 1 2 3\n');
-    expect(error?.message).toMatch(/fix style 'ttm\/mod' is not supported/);
+    const { error } = await runScript('units real\nfix tt all ttm/bogus 1 2 3\n');
+    expect(error?.message).toMatch(/fix style 'ttm\/bogus' is not supported/);
   });
 
   it('fix property/atom may be defined before the box (fix_property_atom.html)', async () => {

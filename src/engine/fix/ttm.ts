@@ -233,7 +233,7 @@ export const ttmPositional = (id: string, style: string, args: string[]): TtmPos
   return { seed: scalar.seed, nx: scalar.nx, ny: scalar.ny, nz: scalar.nz, consumed: 10, scalar };
 };
 
-export type TtmStyle = 'ttm' | 'ttm/grid' | 'ttm/thermal' | 'ttm/cascade';
+export type TtmStyle = 'ttm' | 'ttm/grid' | 'ttm/mod' | 'ttm/thermal' | 'ttm/cascade';
 
 /**
  * fix ttm and fix ttm/grid (identical in a serial run: the grid is simply stored once, see the header),
@@ -267,6 +267,8 @@ export class FixTTM extends Fix {
   /** Native storage order (physical atom index per slot) when fl was computed. */
   protected flOrder = new Int32Array(0);
   protected lastTransfer = 0;
+  /** Outfile line order: the base styles write x fastest; fix ttm/mod writes z fastest (measured with native LAMMPS). */
+  protected outfileZFastest = false;
 
   /**
    * `pos` lets a subclass parse its own positional arguments (before this constructor runs, from the
@@ -283,7 +285,7 @@ export class FixTTM extends Fix {
     const P = pos ?? ttmPositional(id, style, args);
     this.p = { seed: P.seed, nx: P.nx, ny: P.ny, nz: P.nz };
     this.scalar = P.scalar;
-    this.kw = parseTtmKeywords(id, style, args.slice(P.consumed), style === 'ttm' || style === 'ttm/thermal', keywords);
+    this.kw = parseTtmKeywords(id, style, args.slice(P.consumed), style === 'ttm' || style === 'ttm/thermal' || style === 'ttm/mod', keywords);
     const nGrid = this.p.nx * this.p.ny * this.p.nz;
     const lx = s.box.hi[0] - s.box.lo[0], ly = s.box.hi[1] - s.box.lo[1], lz = s.box.hi[2] - s.box.lo[2];
     this.cellVolume = (lx / this.p.nx) * (ly / this.p.ny) * (lz / this.p.nz);
@@ -337,6 +339,11 @@ export class FixTTM extends Fix {
 
   protected sourceAt(_c: number): number {
     return 0;
+  }
+
+  /** Cells whose atoms take no electron-ion coupling (no force, no random draw). Defaults to the empty cells. */
+  protected uncoupled(c: number): boolean {
+    return this.vacuum(c);
   }
 
   protected uniform(): TtmParams {
@@ -393,7 +400,7 @@ export class FixTTM extends Fix {
       const cell = this.cellOf(i);
       // Measured with native LAMMPS (black box): an atom in a cell without electrons gets no force and draws no random number
       // (the next atom takes the draws the empty-cell atom would have used).
-      if (this.vacuum(cell)) {
+      if (this.uncoupled(cell)) {
         this.fl[3 * i] = 0; this.fl[3 * i + 1] = 0; this.fl[3 * i + 2] = 0;
         continue;
       }
@@ -513,15 +520,26 @@ export class FixTTM extends Fix {
     }
   }
 
+  /** The text after COMMENT: in the outfile header line. */
+  protected outfileComment(step: number): string {
+    const { nx, ny, nz } = this.p;
+    return `Electron temperature on ${nx}x${ny}x${nz} grid at step ${step} - created by fix ${this.style}`;
+  }
+
   /** Writes the grid in the infile layout (outfile "T.out.<step>"). */
   protected writeGrid(step: number): void {
     const { nx, ny, nz } = this.p;
     const s = this.sys.state;
     const date = new Date().toISOString().slice(0, 10);
-    const head = `# DATE: ${date} UNITS: ${s.units.style} COMMENT: Electron temperature on ${nx}x${ny}x${nz} grid at step ${step} - created by fix ${this.style}\n`;
+    const head = `# DATE: ${date} UNITS: ${s.units.style} COMMENT: ${this.outfileComment(step)}\n`;
     const lines: string[] = [];
-    for (let iz = 0; iz < nz; iz++) for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++) {
+    const put = (ix: number, iy: number, iz: number): void => {
       lines.push(`${ix + 1} ${iy + 1} ${iz + 1} ${fmt16g(this.Te[ix + nx * (iy + ny * iz)])}`);
+    };
+    if (this.outfileZFastest) {
+      for (let ix = 0; ix < nx; ix++) for (let iy = 0; iy < ny; iy++) for (let iz = 0; iz < nz; iz++) put(ix, iy, iz);
+    } else {
+      for (let iz = 0; iz < nz; iz++) for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++) put(ix, iy, iz);
     }
     this.sys.writeFile(`${this.kw.outfile}.${step}`, head + lines.join('\n') + '\n', false);
   }

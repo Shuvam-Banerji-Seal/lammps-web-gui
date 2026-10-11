@@ -1,0 +1,44 @@
+a_0, comment
+0.3
+a_1, comment
+0.2
+a_2, comment
+0
+a_3, comment
+0
+a_4, comment
+0
+C_0, comment
+1.0
+A, comment
+0.2
+rho_e, comment
+1.0
+D_e, comment
+0.4
+gamma_p, comment
+15
+gamma_s, comment
+3
+v_0, comment
+1
+I_0, comment
+0
+lsurface, comment
+0
+rsurface, comment
+2
+l_skin, comment
+1
+tau, comment
+0
+B, comment
+0
+lambda, comment
+0
+n_ion, comment
+1
+surface_movement, comment
+0
+T_e_min, comment
+0

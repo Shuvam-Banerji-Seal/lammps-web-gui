@@ -1,0 +1,29 @@
+# Wave 43: fix ttm/mod on an eight-atom sc crystal, 2x2x2 electron grid: every temperature-dependent
+# coefficient (a_0..a_4, C_0, A) nonzero, rho_e 1.5, D_e 0.3 (two sub-steps), gamma_p 20 with electronic
+# stopping (gamma_s 5 above v_0 2), lambda 2 (no effect without B), n_ion 1, seed 4242; two runs, the second with a new timestep.
+# oracle-inputs: w43tm_coupled.par w43tm_coupled.init
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           metal
+atom_style      atomic
+lattice         sc 3.0
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 10.0
+displace_atoms  all move 0.5 0.5 0.5 units box
+variable        vx atom 9.0*sin(0.9*x+0.4*y)
+variable        vy atom 7.0*cos(0.7*y-0.5*z)
+variable        vz atom 6.0*sin(1.1*z+0.3*x)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      lj/cut 3.0
+pair_coeff      1 1 0.0 2.0
+fix             1 all nve
+fix             2 all ttm/mod 4242 w43tm_coupled.par 2 2 2 infile w43tm_coupled.init
+timestep        0.001
+thermo_style    custom step temp pe f_2[1] f_2[2]
+thermo_modify   format float %.15g
+thermo          1
+run             4
+timestep        0.002
+run             3

@@ -1,0 +1,19 @@
+# oracle: fix ilves on the four-atom chain of w50il_chain (run 0 only): the setup velocity projection, the setup constraint force and the virial, every per-atom position, velocity and force after setup
+# oracle-inputs: w50il_chain.data
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           real
+atom_style      bond
+read_data       w50il_chain.data
+pair_style      lj/cut 3.0
+pair_coeff      * * 0.05 0.8
+bond_style      harmonic
+bond_coeff      1 100.0 1.0
+special_bonds   lj 1.0 1.0 1.0
+neighbor        0.3 bin
+timestep        1.0
+fix             1 all nve
+fix             cons all ilves 1.0e-4 25 0 b 1
+thermo_style    custom step pe ebond press
+thermo_modify   format float %.15g
+thermo          10
+run             0

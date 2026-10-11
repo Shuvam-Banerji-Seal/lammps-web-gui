@@ -1,0 +1,8 @@
+# Electronic stopping for Cu (own test table, not a LAMMPS file)
+# eV    eV/Ang
+# energy columns must be ascending
+  10      0
+ 100     25
+ 250     60
+ 500     90
+1000    110

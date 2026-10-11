@@ -1,0 +1,19 @@
+# oracle: fix ave/moments of the total energy (mean stddev variance skew kurtosis), cut down from examples/PACKAGES/moments/in.simple (nve instead of npt, 300 steps)
+# oracle-potentials: AlCu.eam.alloy
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units metal
+lattice fcc 3.75
+region box block 0 4 0 4 0 4
+create_box 1 box
+timestep 0.002
+create_atoms 1 box
+pair_style eam/alloy
+pair_coeff * * AlCu.eam.alloy Cu
+velocity all create 1000.0 6567345
+fix 1 all nve
+variable toteng equal "etotal"
+fix 2 all ave/moments 5 60 30 v_toteng mean stddev variance skew kurtosis
+thermo_style custom step temp etotal f_2[1] f_2[2] f_2[3] f_2[4] f_2[5]
+thermo_modify format float %.15g
+thermo 30
+run 300

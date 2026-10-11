@@ -1,0 +1,20 @@
+# oracle: fix dt/reset on an LJ melt: the timestep is recomputed every 5 steps from Xmax and emax; thermo dt, time, pe, ke over 60 steps
+# (a 200-step run of this hot melt with dt up to 0.05 amplifies round-off to about 1e-3 in the forces; 60 steps keep it near round-off)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+atom_style atomic
+lattice fcc 0.8442
+region box block 0 4 0 4 0 4
+create_box 1 box
+create_atoms 1 box
+mass 1 1.0
+velocity all create 3.0 87287
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0 2.5
+fix 1 all nve
+timestep 0.005
+fix 5 all dt/reset 5 NULL 0.05 0.1 units box emax 20
+thermo_style custom step dt time pe ke f_5
+thermo_modify format float %.15g
+thermo 5
+run 60

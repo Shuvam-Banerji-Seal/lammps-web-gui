@@ -161,6 +161,9 @@ export class FixGJF extends Fix {
 
   init(): void { this.resetCoef(); }
 
+  /** A changed timestep (fix dt/reset, timestep) changes the cached coefficients. */
+  resetDt(): void { this.resetCoef(); }
+
   private resetCoef(): void {
     this.coef = gjCoefficients(this.method, this.sys.state.dt / this.damp);
   }

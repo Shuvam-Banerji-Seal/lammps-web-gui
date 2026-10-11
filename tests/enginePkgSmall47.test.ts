@@ -239,6 +239,8 @@ variable s equal step
     await expect(session().s.execute(base + 'fix 2 all ave/moments 0 4 4 v_s mean\n')).rejects.toThrow(/Nevery/);
     await expect(session().s.execute(base + 'fix 2 all ave/moments 1 4 4 v_s mean history 0\n')).rejects.toThrow(/history/);
     await expect(session().s.execute(base + 'fix 2 all ave/moments 1 4 4 v_s mean foo 1\n')).rejects.toThrow(/unknown keyword 'foo'/);
+    // Nevery 1 with Nrepeat > Nfreq: native output differs from the documented window (file comment)
+    await expect(session().s.execute(base + 'fix 2 all ave/moments 1 5 4 v_s mean\n')).rejects.toThrow(/Nrepeat > Nfreq/);
   });
 
   it('computes the moments of the window with the doc definitions (values measured with native LAMMPS)', async () => {
@@ -257,8 +259,8 @@ variable s equal step
 
   it('outputs zero for windows with fewer than three samples and NaN kurtosis at n = 3', async () => {
     const { s, ev } = session();
-    await s.execute(base + 'fix 2 all ave/moments 1 2 1 v_s mean stddev skew\n'
-      + 'fix 3 all ave/moments 1 3 1 v_s mean skew kurtosis\n'
+    await s.execute(base + 'fix 2 all ave/moments 1 2 2 v_s mean stddev skew\n'
+      + 'fix 3 all ave/moments 1 3 3 v_s mean skew kurtosis\n'
       + 'thermo_style custom step f_2[1] f_2[3] f_3[1] f_3[2] f_3[3]\nthermo_modify format float %.15g\nthermo 1\nrun 3\n');
     const rows = thermoRows(ev);
     // two samples (steps 1, 2) are too few: the output is zero for every moment
@@ -273,10 +275,10 @@ variable s equal step
   it('starts output after the start step and keeps history columns (most recent first)', async () => {
     const { s, ev } = session();
     await s.execute(base + 'variable q equal "step*step + 1"\n'
-      + 'fix 2 all ave/moments 1 4 2 v_q mean start 4 history 3\n'
+      + 'fix 2 all ave/moments 1 4 4 v_q mean start 4 history 3\n'
       + 'thermo_style custom step f_2[1] f_2[1][1] f_2[1][2]\nthermo_modify format float %.15g\nthermo 1\nrun 8\n');
     const rows = thermoRows(ev);
-    expect(rows[6]['f_2[1]']).toBeCloseTo(22.5, 12);   // window steps 3..6: 10, 17, 26, 37
+    expect(rows[6]['f_2[1]']).toBeCloseTo(8.5, 12);    // held from step 4, window steps 1..4: 2, 5, 10, 17
     expect(rows[8]['f_2[1]']).toBeCloseTo(44.5, 12);   // window steps 5..8: 26, 37, 50, 65
     expect(rows[8]['f_2[1][1]']).toBe(rows[8]['f_2[1]']);
     expect(rows[8]['f_2[1][2]']).toBe(rows[6]['f_2[1]']);

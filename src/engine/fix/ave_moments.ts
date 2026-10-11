@@ -28,8 +28,7 @@ import { expandWildcards, globalScalar, parseRef, type Ref } from '../refs';
  * Not reproduced (measured): with Nrepeat > Nfreq and Nevery 1, native outputs
  * were measured to freeze after the first output when Nrepeat = Nfreq + 1, and
  * the first window can include step 0 (Nfreq 3, Nrepeat 4 gives the mean of
- * steps 0-3). The engine follows the documented window (last Nrepeat samples
- * of steps >= 1); the oracle cases avoid those windows.
+ * steps 0-3). The engine refuses Nevery 1 with Nrepeat > Nfreq with an EngineError.
  */
 
 const MOMENTS = ['mean', 'stddev', 'variance', 'skew', 'kurtosis'] as const;
@@ -94,6 +93,11 @@ export class FixAveMoments extends Fix {
     this.nRepeat = posInt(args[1], 'Nrepeat');
     const nFreq = posInt(args[2], 'Nfreq');
     this.nFreq = nFreq;
+    // Nevery 1 with Nrepeat > Nfreq is not reproduced (see the file comment): refuse it. Longer windows with
+    // Nevery > 1 match native (tests/oracle/w47pkg_moments_simple: Nevery 5, Nrepeat 60, Nfreq 30).
+    if (this.nevery === 1 && this.nRepeat > nFreq) {
+      throw new StyleError(`${what}: Nevery 1 with Nrepeat > Nfreq (${this.nRepeat} > ${nFreq}) is not supported by the browser engine: native output there differs from the documented window`);
+    }
     const isValue = (w: string) => /^[cfv]_/.test(w);
     const isMoment = (w: string) => (MOMENTS as readonly string[]).includes(w);
     let k = 3;

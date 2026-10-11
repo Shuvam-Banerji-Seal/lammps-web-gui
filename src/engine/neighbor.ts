@@ -133,6 +133,15 @@ export class Neighbor {
     this.skin = skin;
   }
 
+  /** Set when the special list changed (bonds broke): the next decide() rebuilds the lists. */
+  private specialStale = false;
+
+  /** Replaces the special list of the needs (bonds broke or were created during a run). */
+  setSpecial(special: SpecialList | null): void {
+    if (this.needs) this.needs.special = special;
+    this.specialStale = true;
+  }
+
   /** Records what the force field needs; call before every run (setup). */
   init(needs: NeighborNeeds): void {
     this.needs = needs;
@@ -149,6 +158,7 @@ export class Neighbor {
     if (step === this.forceBuildStep) { this.forcedDecision = true; return true; }
     const ago = step - this.lastBuild;
     if (ago < this.delay) return false;
+    if (this.specialStale) { this.specialStale = false; return true; }
     if (this.every > 1 && step % this.every !== 0) return false;
     if (!this.check) return true;
     const moved = this.movedTooFar(s, g);

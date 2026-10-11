@@ -533,6 +533,7 @@ export const buildSpecial = (s: SimState, opts: { angle?: boolean; dihedral?: bo
   const adj = new Map<number, number[]>();
   const b = s.topo.bonds;
   for (let e = 0; e < b.n; e++) {
+    if (b.type[e] === 0) continue; // a broken bpm bond (type 0) is no 1-2 neighbor
     const i = b.atoms[2 * e], j = b.atoms[2 * e + 1];
     if (!adj.has(i)) adj.set(i, []);
     if (!adj.has(j)) adj.set(j, []);

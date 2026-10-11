@@ -1,0 +1,15 @@
+# oracle: min_style sd with the default min_modify line quadratic: 30 iterations (min_modify.html)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# oracle-inputs: w47ls_lj.data
+units           lj
+atom_style      atomic
+read_data       w47ls_lj.data
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+min_style       sd
+
+thermo_style    custom step pe fnorm
+thermo_modify   format float %.15g
+thermo          1
+minimize        0 0 30 1000

@@ -79,6 +79,7 @@ export class PairBodyNParticle extends Pair {
     const s = pc.s;
     const rec = s.custom.get(BODY_RECORD);
     if (!rec || !s.quat || !s.torque) throw new StyleError('Pair body/nparticle requires atom style body');
+    if (!s.atomStyle.startsWith('body nparticle')) throw new StyleError(`pair_style body/nparticle requires atom_style body nparticle (current: ${s.atomStyle})`);
     const B = rec.cols, bd = rec.data;
     const list = pc.half!;
     const { x, f, type } = pc;

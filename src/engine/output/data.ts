@@ -3,7 +3,7 @@ import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
 import { appendAtoms, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel } from '../atoms';
 import { expandTemplateTopology } from '../template';
-import { BODY_RECORD, bodyRecordStride, parseBodyStyle, principalFrame } from '../bodies';
+import { BODY_RECORD, bodyRecordOffset, bodyRecordStride, parseBodyStyle, principalFrame } from '../bodies';
 import { makeBox } from '../domain';
 import { generalBoxFromRestricted, generalFrame, rotateVector, toGeneralPoint, toRestrictedPoint, unrotateVector, type GeneralFrame, type Mat3, type V3 } from '../triclinic_general';
 
@@ -302,6 +302,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   // atom_style template: read_data.html "set the *bonds*, *angles*, etc header keywords in the data file," (see template.ts)
   const tmplId = templateStyleId(style);
   if ((h.bodies ?? 0) > 0 && !parseBodyStyle(style)) throw new StyleError(`data file header bodies needs atom_style body (current: ${style})`);
+  if (parseBodyStyle(style)?.bstyle === 'rounded/polygon' && s.dimension !== 2) throw new StyleError('atom_style body rounded/polygon can only be used in 2d simulations (dimension 2)');
   if (parseBodyStyle(style) && genFrame) throw new StyleError('read_data: body particles in a general triclinic box are not supported by the browser engine');
   if (tmplId !== null) {
     for (const k of ['bonds', 'angles', 'dihedrals', 'impropers'] as const) {
@@ -363,17 +364,21 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
       // than Nmax (the two values only size internal arrays), so the record widens to the largest body read here.
       let maxN = 0;
       for (const b of r.bodies) if (b.ints.length === 1) maxN = Math.max(maxN, b.ints[0]);
+      const bstyle = parseBodyStyle(style)!.bstyle;
       const rec0 = s.custom.get(BODY_RECORD)!;
-      if (bodyRecordStride(maxN) > rec0.cols) {
-        const cols = bodyRecordStride(maxN), data = new Float64Array(s.n * cols);
+      if (bodyRecordStride(maxN, bstyle) > rec0.cols) {
+        const cols = bodyRecordStride(maxN, bstyle), data = new Float64Array(s.n * cols);
         for (let i = 0; i < s.n; i++) data.set(rec0.data.subarray(rec0.cols * i, rec0.cols * (i + 1)), cols * i);
         rec0.data = data;
         rec0.cols = cols;
       }
       for (const b of r.bodies) {
-        if (b.ints.length !== 1) throw new StyleError(`data file line ${b.at}: body style nparticle has one integer (the number of sub-particles)`);
+        if (b.ints.length !== 1) throw new StyleError(`data file line ${b.at}: body style ${bstyle} has one integer (the number of ${bstyle === 'rounded/polygon' ? 'vertices' : 'sub-particles'})`);
         const nsub = b.ints[0];
-        if (b.dbls.length !== 6 + 3 * nsub) throw new StyleError(`data file line ${b.at}: body nparticle needs 6 + 3N = ${6 + 3 * nsub} doubles (N = ${nsub}), got ${b.dbls.length}`);
+        // Howto_body.rst (rounded/polygon): "where M = 6 + 3\*N + 1, and N is the number of vertices in the body"; the last value is the diameter
+        const extra = bstyle === 'rounded/polygon' ? 1 : 0;
+        if (bstyle === 'rounded/polygon' && nsub < 1) throw new StyleError(`data file line ${b.at}: body rounded/polygon needs at least one vertex`);
+        if (b.dbls.length !== 6 + 3 * nsub + extra) throw new StyleError(`data file line ${b.at}: body ${bstyle} needs 6 + 3N${extra ? ' + 1' : ''} = ${6 + 3 * nsub + extra} doubles (N = ${nsub}), got ${b.dbls.length}`);
         if (!bodyPending.has(b.id)) throw new StyleError(`data file line ${b.at}: atom ${b.id} has no bodyflag 1 in the Atoms section`);
         const i = (() => { for (let q = n0; q < s.n; q++) if (s.id[q] === b.id) return q; return -1; })();
         if (i < 0) throw new StyleError(`data file line ${b.at}: atom ${b.id} is not in the Atoms section`);
@@ -385,9 +390,17 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const B = rec.cols, base = B * i;
         rec.data[base] = nsub;
         for (let d = 0; d < 3; d++) rec.data[base + 1 + d] = pf.moments[d];
+        if (bstyle === 'rounded/polygon') {
+          // Howto_body.rst: "with z = 0.0 for each" vertex (the diameter is the value after the vertices)
+          for (let q = 0; q < nsub; q++) {
+            if (b.dbls[8 + 3 * q] !== 0) throw new StyleError(`data file line ${b.at}: body rounded/polygon vertices must have z = 0 (2d bodies)`);
+          }
+          rec.data[base + 4] = b.dbls[6 + 3 * nsub];
+        }
+        const o0 = bodyRecordOffset(bstyle);
         for (let q = 0; q < nsub; q++) {
           const ds = [b.dbls[6 + 3 * q], b.dbls[7 + 3 * q], b.dbls[8 + 3 * q]];
-          for (let d = 0; d < 3; d++) rec.data[base + 4 + 3 * q + d] = pf.E[d] * ds[0] + pf.E[3 + d] * ds[1] + pf.E[6 + d] * ds[2];
+          for (let d = 0; d < 3; d++) rec.data[base + o0 + 3 * q + d] = pf.E[d] * ds[0] + pf.E[3 + d] * ds[1] + pf.E[6 + d] * ds[2];
         }
         for (let d = 0; d < 4; d++) s.quat![4 * i + d] = pf.quat[d];
       }

@@ -131,7 +131,7 @@ const isFullBox = (b: BoxInit | SimBox): b is SimBox => 'minLo' in b;
 const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
   const b = parseBodyStyle(st);
   const m = new Map<string, CustomProp>();
-  if (b) m.set(BODY_RECORD, { int: false, cols: bodyRecordStride(b.nmax), data: new Float64Array(0) });
+  if (b) m.set(BODY_RECORD, { int: false, cols: bodyRecordStride(b.nmax, b.bstyle), data: new Float64Array(0) });
   return m;
 };
 

@@ -1,0 +1,17 @@
+# oracle: atom_style body rounded/polygon (2d squares, N = 4 vertices, rounded diameter 0.5, Izz 2.67 as given) with fix nve/body and no contact (pair zero); the bodies move with initial velocities and angular momenta, 100 steps; thermo pe ke etotal and the atom state (COM positions and velocities)
+# oracle-inputs: w49bp_squares.data
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+dimension       2
+atom_style      body rounded/polygon 1 6
+read_data       w49bp_squares.data
+velocity        all set 0.1 -0.05 0.0
+set             atom 2 angmom 0 0 0.5
+pair_style      zero 1.0
+pair_coeff      * *
+fix             1 all nve/body
+fix             2 all enforce2d
+thermo_style    custom step pe ke etotal
+thermo_modify   format float %.15g
+thermo          20
+run             100

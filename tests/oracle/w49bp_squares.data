@@ -1,0 +1,33 @@
+two rounded squares (rounded/polygon bodies, 2d), edge 4 with Izz 2.67 (second one turned by 45 degrees)
+
+2 atoms
+2 bodies
+1 atom types
+
+-10 10 xlo xhi
+-10 10 ylo yhi
+-0.5 0.5 zlo zhi
+
+Atoms
+
+1 1 1 1 -1.5 0.5 0
+2 1 1 1 2.5 -0.5 0
+
+Bodies
+
+1 1 19
+4
+1 1 2.67 0 0 0
+-2 -2 0
+-2 2 0
+2 2 0
+2 -2 0
+0.5
+2 1 19
+4
+1 1 2.67 0 0 0
+-2 0 0
+0 2 0
+2 0 0
+0 -2 0
+0.5

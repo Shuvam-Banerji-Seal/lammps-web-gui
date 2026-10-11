@@ -71,6 +71,11 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
   const [toast, setToast] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  /** The element that had focus when a dialog opened; focus goes back there when it closes. */
+  const opener = useRef<HTMLElement | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   /** The action to run after an unsaved-changes dialog is answered with Save (or Discard). */
   const pendingAction = useRef<(() => void) | null>(null);
@@ -107,6 +112,37 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
     queuedAction.current = () => guard(fn);
     onStop();
   };
+
+  // A press outside the menu closes it (the menu stays open otherwise, until its own button is pressed again).
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && e.target instanceof Node && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  // Opening the menu moves focus into it, so the keyboard reaches its items.
+  useEffect(() => {
+    if (open) menuRef.current?.querySelector<HTMLElement>('[role=menuitem]')?.focus();
+  }, [open]);
+
+  // Dialogs: focus goes back to what opened them when they close (the notebook's menu button when the opener is gone).
+  const dialogOpen = dialog !== null;
+  const wasDialogOpen = useRef(false);
+  useEffect(() => {
+    if (dialogOpen && !wasDialogOpen.current) {
+      const active = document.activeElement;
+      opener.current = active instanceof HTMLElement && active !== document.body ? active : menuButton.current;
+    }
+    if (!dialogOpen && wasDialogOpen.current) {
+      const target = opener.current?.isConnected ? opener.current : menuButton.current;
+      opener.current = null;
+      target?.focus();
+    }
+    wasDialogOpen.current = dialogOpen;
+  }, [dialogOpen]);
 
   useEffect(() => {
     if (busy || !queuedAction.current) return;
@@ -281,7 +317,10 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
     }
     // focus the first field of the dialog
     window.setTimeout(() => {
-      const el = document.querySelector<HTMLElement>('[data-nb-dialog] [autofocus]');
+      // React's autoFocus has usually focused the first field already; the dialog itself gets focus only when
+      // nothing inside it has (a dialog with no field, such as Export), so keys reach it.
+      if (dialogRef.current?.contains(document.activeElement)) return;
+      const el = document.querySelector<HTMLElement>('[data-nb-dialog] [autofocus]') ?? dialogRef.current;
       el?.focus();
     }, 0);
   }, [dialog]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -477,11 +516,36 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
     }
   };
 
+  /** Tab stays inside the open dialog (it is modal): it wraps from the last field to the first and back. */
+  const trapTab = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab' || !dialogRef.current) return;
+    const items = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+    if (items.length === 0) {
+      e.preventDefault();
+      dialogRef.current.focus();
+      return;
+    }
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement;
+    if (!dialogRef.current.contains(active)) {
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+    } else if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+
   const dialogNode = dialog && typeof document !== 'undefined' ? createPortal(
     <div className="fixed inset-0 z-40 bg-black/40" onMouseDown={(e) => { if (e.target === e.currentTarget && dialog.kind !== 'unsaved') closeDialog(); }}
       onKeyDown={(e) => { if (e.key === 'Escape' && dialog.kind !== 'unsaved') closeDialog(); }}>
-      <div role="dialog" aria-modal="true" data-nb-dialog="" aria-label={dialog.kind === 'open' ? 'Open a notebook' : 'Notebook dialog'}
-        className={dialogCls} onMouseDown={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" data-nb-dialog="" aria-label={dialog.kind === 'open' ? 'Open a notebook' : 'Notebook dialog'}
+        className={`${dialogCls} outline-none`} onMouseDown={(e) => e.stopPropagation()} onKeyDown={trapTab}>
         {dialog.kind === 'name' && (
           <button className="absolute right-2 top-2 rounded p-1" aria-label="Close" onClick={closeDialog}><X size={14} aria-hidden="true" /></button>
         )}
@@ -508,7 +572,7 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
   const label = session.name || UNTITLED;
 
   return (
-    <div className="relative flex items-center gap-1">
+    <div ref={rootRef} className="relative flex items-center gap-1">
       <button ref={menuButton} className={`${btn} ${ct.button} max-w-[14rem]`} aria-haspopup="true" aria-expanded={open}
         onClick={() => setOpen((v) => !v)} title={`Notebook: ${label}${unsavedMark ? ' (unsaved changes)' : ''}`}>
         <span className="truncate" data-testid="notebook-name">{label}</span>
@@ -516,8 +580,20 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
         <ChevronDown size={13} aria-hidden="true" />
       </button>
       {open && (
-        <div role="menu" aria-label="Notebook actions" className={`absolute left-0 top-full z-30 mt-1 w-60 rounded-lg border p-1 shadow-lg ${ct.card} ${ct.text}`}
-          onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); menuButton.current?.focus(); } }}>
+        <div ref={menuRef} role="menu" aria-label="Notebook actions" className={`absolute left-0 top-full z-30 mt-1 w-60 rounded-lg border p-1 shadow-lg ${ct.card} ${ct.text}`}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') { setOpen(false); menuButton.current?.focus(); return; }
+            if (e.key === 'Tab') { setOpen(false); return; }
+            const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role=menuitem]') ?? []);
+            const at = items.indexOf(document.activeElement as HTMLElement);
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+              e.preventDefault();
+              if (items.length === 0) return;
+              const next = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1
+                : e.key === 'ArrowDown' ? (at + 1) % items.length : (at <= 0 ? items.length - 1 : at - 1);
+              items[next].focus();
+            }
+          }}>
           <button role="menuitem" className={itemCls} onClick={() => act(() => session.newNotebook())}>
             <FilePlus size={13} aria-hidden="true" />New notebook
           </button>

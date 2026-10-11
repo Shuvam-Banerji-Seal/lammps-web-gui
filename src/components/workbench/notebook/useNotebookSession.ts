@@ -168,7 +168,8 @@ export const useNotebookSession = (starter: Cell[], library: NotebookLibrary = d
         setWork({ ...w, baseId: null, savedFingerprint: null });
         return false;
       }
-      setWork((cur) => ({ ...cur, savedFingerprint: fingerprint(cur.name, cur.cells) }));
+      // the fingerprint of what was written: edits made while the save was in flight stay unsaved
+      setWork((cur) => ({ ...cur, savedFingerprint: fingerprint(rec.name, w.cells) }));
       await refresh();
       return true;
     } catch (e) {
@@ -181,7 +182,8 @@ export const useNotebookSession = (starter: Cell[], library: NotebookLibrary = d
     const w = workRef.current;
     try {
       const rec = await library.create(name, w.cells, w.inputFiles);
-      setWork((cur) => ({ ...cur, baseId: rec.id, name: rec.name, savedFingerprint: fingerprint(rec.name, cur.cells) }));
+      // the fingerprint of the snapshot that was written: edits made while the save was in flight stay unsaved
+      setWork((cur) => ({ ...cur, baseId: rec.id, name: rec.name, savedFingerprint: fingerprint(rec.name, w.cells) }));
       await refresh();
       return true;
     } catch (e) {

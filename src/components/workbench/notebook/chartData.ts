@@ -63,13 +63,34 @@ export const timeUnitLabel = (units: string | undefined): string =>
   units === undefined || units === 'lj' ? 'time (lj units)' : `time [${timeUnitName(units)}]`;
 
 /** Which ensemble a cell's fix commands imply: fix <id> <group> nve|nvt|npt|nph, or a thermostat fix. */
-export const ensembleOf = (script: string): Ensemble => {
-  const fixes = Array.from(script.matchAll(/^\s*fix\s+\S+\s+\S+\s+(\S+)/gm), (m) => m[1].toLowerCase());
+export const ensembleOf = (script: string): Ensemble => ensembleOfFixes(fixStyles([script]));
+
+/** The fix styles a sequence of scripts leaves defined: `fix ID group style` adds or replaces, `unfix ID` removes. */
+const fixStyles = (scripts: readonly string[]): string[] => {
+  const active = new Map<string, string>();
+  for (const script of scripts) {
+    for (const line of script.split(/\r?\n/)) {
+      const fix = /^\s*fix\s+(\S+)\s+\S+\s+(\S+)/.exec(line);
+      if (fix) { active.set(fix[1], fix[2].toLowerCase()); continue; }
+      const unfix = /^\s*unfix\s+(\S+)/.exec(line);
+      if (unfix) active.delete(unfix[1]);
+    }
+  }
+  return [...active.values()];
+};
+
+const ensembleOfFixes = (fixes: readonly string[]): Ensemble => {
   if (fixes.some((s) => s.startsWith('npt') || s.startsWith('nph'))) return 'NPT';
   if (fixes.some((s) => s.startsWith('nvt') || s === 'langevin' || s.startsWith('temp/'))) return 'NVT';
   if (fixes.some((s) => s === 'nve')) return 'NVE';
   return 'unknown';
 };
+
+/**
+ * The ensemble a run is in: the fixes the cells defined up to and including the run's own cell (a fix stays
+ * defined until unfix). `scripts` are the code cells' texts in the order they ran, ending with the run's cell.
+ */
+export const ensembleOfRun = (scripts: readonly string[]): Ensemble => ensembleOfFixes(fixStyles(scripts));
 
 /* ---------- series ---------- */
 

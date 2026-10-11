@@ -1,0 +1,25 @@
+# oracle: spin/exchange energy, spin compute and precession vector for three non-periodic atoms (offset yes, then no)
+# oracle-files: spin.dump
+units           metal
+atom_style      spin
+boundary        f f f
+atom_modify     map array
+region          box block -10 10 -10 10 -10 10
+create_box      1 box
+create_atoms    1 single 0.0 0.0 0.0
+create_atoms    1 single 2.0 0.0 0.0
+create_atoms    1 single 1.0 1.7 0.3
+mass            1 55.845
+set             atom 1 spin/atom 2.0 0.0 0.0 1.0
+set             atom 2 spin/atom 3.0 0.6 0.8 1.0
+set             atom 3 spin/atom 1.5 -0.4 0.9 0.2
+pair_style      spin/exchange 4.0
+pair_coeff      * * exchange 4.0 0.02726 0.2171 1.841 offset yes
+compute         s all spin
+compute         p all property/atom spx spy spz sp fmx fmy fmz
+thermo_style    custom step pe c_s[1] c_s[2] c_s[3] c_s[4] c_s[5] c_s[6]
+thermo_modify   format float %.15g
+run             0
+pair_coeff      * * exchange 4.0 0.02726 0.2171 1.841 offset no
+run             0
+write_dump      all custom spin.dump id c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] c_p[7] modify format float %.15g

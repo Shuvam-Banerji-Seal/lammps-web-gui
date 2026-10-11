@@ -37,6 +37,8 @@ export const hasChargeStyle = (st: AtomStyle): boolean => atomSubStyles(st).some
 export const isSphereStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('sphere');
 /** Styles with point dipoles (mu). */
 export const hasDipoleStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('dipole');
+/** Styles with magnetic spins (sp: unit vector and magnitude; atom_style.html lists spin as atomic plus magnetic moment data). */
+export const hasSpinStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('spin');
 /** Styles with ellipsoidal particles (shape, quat, angmom). */
 export const isEllipsoidStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('ellipsoid');
 /** Styles with peridynamic particles (vfrac, x0): atom_style.html lists peri as atomic plus rmass, vfrac, s0 and x0. */
@@ -140,6 +142,8 @@ export const emptyState = (
   tmplIndex: isTemplateStyle(atomStyle) ? new Int32Array(0) : null,
   tmplAtom: isTemplateStyle(atomStyle) ? new Int32Array(0) : null,
   mu: hasDipoleStyle(atomStyle) ? new Float64Array(0) : null,
+  sp: hasSpinStyle(atomStyle) ? new Float64Array(0) : null,
+  fm: hasSpinStyle(atomStyle) ? new Float64Array(0) : null,
   shape: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
   quat: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
   angmom: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
@@ -161,6 +165,19 @@ export const emptyState = (
   time: 0,
   timeStep: 0,
 });
+
+/**
+ * Stores a spin of atom i in the flat 4N array: the direction (x, y, z) normalized to a unit vector and the
+ * magnitude g. set.html: "Keyword *spin/atom* uses the specified g value to set the magnitude of the magnetic
+ * spin vectors, and the x,y,z values as components of a vector to set as the orientation". Native LAMMPS
+ * (black box): a zero direction fails with At least one spin vector component must be non-zero, and a
+ * magnitude of 0 fails with Invalid spin magnitude 0 in set spin/atom command.
+ */
+export const setSpinVector = (sp: Float64Array, i: number, x: number, y: number, z: number, g: number, where = 'spin'): void => {
+  const n = Math.hypot(x, y, z);
+  if (!(n > 0)) throw new StyleError(`${where}: At least one spin vector component must be non-zero`);
+  sp[4 * i] = x / n; sp[4 * i + 1] = y / n; sp[4 * i + 2] = z / n; sp[4 * i + 3] = g;
+};
 
 /** Atom i is a finite-size ellipsoid (atom_style ellipsoid; 0 half-axes mean a point particle). */
 export const isEllipsoid = (s: SimState, i: number): boolean => !!s.shape && s.shape[3 * i] > 0;
@@ -219,6 +236,8 @@ export interface NewAtoms {
   omega?: Float64Array;
   /** atom_style dipole: flat 4N dipoles (mux, muy, muz, length; default 0). */
   mu?: Float64Array;
+  /** atom_style spin: flat 4N spins (sx, sy, sz unit vector, sp magnitude; default 0 0 1 0... see spinOf) */
+  sp?: Float64Array;
   /** atom_style ellipsoid: flat 3N half-axes (default 0, a point particle), 4N quaternions (default 1 0 0 0), 3N angular momenta. */
   shape?: Float64Array;
   quat?: Float64Array;
@@ -298,6 +317,8 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
   if (s.omega) { s.omega = growF(s.omega, 3 * n); if (a.omega) s.omega.set(a.omega, 3 * n0); }
   if (s.torque) s.torque = growF(s.torque, 3 * n);
   if (s.mu) { s.mu = growF(s.mu, 4 * n); if (a.mu) s.mu.set(a.mu, 4 * n0); }
+  if (s.sp) { s.sp = growF(s.sp, 4 * n); if (a.sp) s.sp.set(a.sp, 4 * n0); }
+  if (s.fm) s.fm = growF(s.fm, 3 * n);
   if (s.shape) { s.shape = growF(s.shape, 3 * n); if (a.shape) s.shape.set(a.shape, 3 * n0); }
   if (s.quat) {
     s.quat = growF(s.quat, 4 * n);
@@ -334,7 +355,7 @@ export const gatherAtoms = (s: SimState, idx: ArrayLike<number>): NewAtoms => {
     molecule: pickI(s.molecule, 1), q: pick(s.q, 1),
     tmplIndex: s.tmplIndex ? pickI(s.tmplIndex, 1) : undefined, tmplAtom: s.tmplAtom ? pickI(s.tmplAtom, 1) : undefined,
     rmass: s.rmass ? pick(s.rmass, 1) : undefined, radius: s.radius ? pick(s.radius, 1) : undefined,
-    omega: s.omega ? pick(s.omega, 3) : undefined, mu: s.mu ? pick(s.mu, 4) : undefined,
+    omega: s.omega ? pick(s.omega, 3) : undefined, mu: s.mu ? pick(s.mu, 4) : undefined, sp: s.sp ? pick(s.sp, 4) : undefined,
     shape: s.shape ? pick(s.shape, 3) : undefined, quat: s.quat ? pick(s.quat, 4) : undefined, angmom: s.angmom ? pick(s.angmom, 3) : undefined, custom,
     vfrac: s.vfrac ? pick(s.vfrac, 1) : undefined, x0: s.x0 ? pick(s.x0, 3) : undefined,
   };
@@ -392,6 +413,8 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
         if (s.torque) s.torque[3 * k + d] = s.torque[3 * i + d];
       }
       if (s.mu) for (let d = 0; d < 4; d++) s.mu[4 * k + d] = s.mu[4 * i + d];
+      if (s.sp) for (let d = 0; d < 4; d++) s.sp[4 * k + d] = s.sp[4 * i + d];
+      if (s.fm) for (let d = 0; d < 3; d++) s.fm[3 * k + d] = s.fm[3 * i + d];
       if (s.shape) for (let d = 0; d < 3; d++) s.shape[3 * k + d] = s.shape[3 * i + d];
       if (s.quat) for (let d = 0; d < 4; d++) s.quat[4 * k + d] = s.quat[4 * i + d];
       if (s.angmom) for (let d = 0; d < 3; d++) s.angmom[3 * k + d] = s.angmom[3 * i + d];
@@ -418,6 +441,8 @@ export const deleteAtoms = (s: SimState, del: Uint8Array): number => {
   if (s.omega) s.omega = s.omega.slice(0, 3 * k);
   if (s.torque) s.torque = s.torque.slice(0, 3 * k);
   if (s.mu) s.mu = s.mu.slice(0, 4 * k);
+  if (s.sp) s.sp = s.sp.slice(0, 4 * k);
+  if (s.fm) s.fm = s.fm.slice(0, 3 * k);
   if (s.shape) s.shape = s.shape.slice(0, 3 * k);
   if (s.quat) s.quat = s.quat.slice(0, 4 * k);
   if (s.angmom) s.angmom = s.angmom.slice(0, 3 * k);

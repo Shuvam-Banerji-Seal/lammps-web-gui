@@ -3,7 +3,7 @@ import { int, num, yesno, latticeScale, keywords } from './args';
 import { StyleError, typeBounds } from '../force/types';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId } from '../atoms';
+import { HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId } from '../atoms';
 import { parseStl } from '../stl';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import { generalAtomSites, generalBoxFromRestricted, generalCreateBox } from '../triclinic_general';
@@ -66,7 +66,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'dipole', 'ellipsoid', 'peri', 'template'];
+const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -1387,6 +1387,30 @@ const set: Handler = ({ sys }, a) => {
         k += 4;
         break;
       }
+      // set.html: "Keyword *spin/atom* uses the specified g value to set the magnitude of the magnetic spin
+      // vectors, and the x,y,z values as components of a vector to set as the orientation of the magnetic spin
+      // vectors of the selected atoms." Errors as measured with native LAMMPS (black box): a zero magnitude
+      // ("Invalid spin magnitude 0 in set spin/atom command") and a zero direction.
+      // set.html: "This keyword was previously called *spin*."
+      case 'spin':
+      case 'spin/atom': {
+        if (!s.sp) throw new StyleError(`Cannot set attribute spin/atom for atom style ${s.atomStyle}`);
+        const vg = value(a[k + 1], 'spin/atom g'), vx = value(a[k + 2], 'spin/atom x'), vy = value(a[k + 3], 'spin/atom y'), vz = value(a[k + 4], 'spin/atom z');
+        for (const i of atoms) {
+          const g = vg(i);
+          if (!(g !== 0)) throw new StyleError(`Invalid spin magnitude ${g} in set spin/atom command`);
+          setSpinVector(s.sp, i, vx(i), vy(i), vz(i), g, 'set spin/atom');
+        }
+        changed = atoms.length;
+        k += 5;
+        break;
+      }
+      // set.html: "Keyword *spin/atom/random* randomizes the orientation of the magnetic spin vectors", and
+      // "spin/random" (the older name). The random stream of native LAMMPS is not reproduced by the engine, so the
+      // keywords are refused rather than run with other random orientations.
+      case 'spin/random':
+      case 'spin/atom/random':
+        throw new StyleError(`set ${a[k]}: the random spin orientations of native LAMMPS are not reproduced by the browser engine (use set spin/atom with explicit orientations)`);
       // set.html: "Keyword *shape* sets the size and shape of the selected atoms.  The particles must be
       // ellipsoids as defined by the :doc:`atom_style ellipsoid <atom_style>` command.  The *Sx*, *Sy*, *Sz*
       // settings are the 3 diameters of the ellipsoid in each direction."; "They can also all be set to 0.0

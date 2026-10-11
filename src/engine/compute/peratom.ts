@@ -270,6 +270,12 @@ const ELLIPSOID_ATTRS = new Set(['angmomx', 'angmomy', 'angmomz', 'shapex', 'sha
 /** compute_property_atom.html: "*mux,muy,muz* = orientation of dipole moment of atom" (and mu, its magnitude). */
 const DIPOLE_ATTRS = new Set(['mux', 'muy', 'muz', 'mu']);
 /**
+ * compute_property_atom.html: "*spx, spy, spz* = direction of the atomic magnetic spin", "*sp* = magintude of
+ * atomic magnetic spin moment", the fmx, fmy, fmz columns of the page (magnetic force acting on the atomic spin) (the precession
+ * vector of the spin pair style). The magnitude is in Bohr magnetons.
+ */
+const SPIN_ATTRS = new Set(['spx', 'spy', 'spz', 'sp', 'fmx', 'fmy', 'fmz']);
+/**
  * compute_property_atom.html: "*temperature* = internal temperature of spherical particle" and "*heatflow* = internal
  * heat flow of spherical particle" (values from fix property/atom temperature heatflow).
  */
@@ -286,13 +292,14 @@ export class ComputePropertyAtom extends Compute {
       // compute_property_atom.html also lists "i_name, d_name, i2_name[I], d2_name[I]" (fix
       // property/atom) and the finite-size sphere attributes radius, diameter, omega*, tq*
       if (HEAT_ATTRS[a] && !sys.state.custom.has(HEAT_ATTRS[a])) throw new StyleError(`compute property/atom ${a} needs fix property/atom temperature heatflow`);
-      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a]) {
+      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !SPIN_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a]) {
         throw new StyleError(`compute property/atom: attribute '${a}' is not supported by the browser engine`);
       }
       if (SPHERE_ATTRS.has(a) && !sys.state.radius) throw new StyleError(`compute property/atom ${a} needs atom_style sphere`);
       if (TORQUE_ATTRS.has(a) && !sys.state.torque) throw new StyleError(`compute property/atom ${a} needs atom_style sphere or ellipsoid`);
       if (ELLIPSOID_ATTRS.has(a) && !sys.state.shape) throw new StyleError(`compute property/atom ${a} needs atom_style ellipsoid`);
       if (DIPOLE_ATTRS.has(a) && !sys.state.mu) throw new StyleError(`compute property/atom ${a} needs atom_style dipole`);
+      if (SPIN_ATTRS.has(a) && !sys.state.sp) throw new StyleError(`compute property/atom ${a} needs atom_style spin`);
       if (CUSTOM_ATTR.test(a)) customAttr(sys.state, a);
     }
     this.attrs = [...args];
@@ -331,6 +338,9 @@ export class ComputePropertyAtom extends Compute {
             break;
           case 'mux': case 'muy': case 'muz': set(i, s.mu![4 * i + 'xyz'.indexOf(attr[2])]); break;
           case 'mu': set(i, s.mu![4 * i + 3]); break;
+          case 'spx': case 'spy': case 'spz': set(i, s.sp![4 * i + 'xyz'.indexOf(attr[2])]); break;
+          case 'sp': set(i, s.sp![4 * i + 3]); break;
+          case 'fmx': case 'fmy': case 'fmz': set(i, s.fm ? s.fm[3 * i + 'xyz'.indexOf(attr[2])] : 0); break;
           case 'id': set(i, s.id[i]); break;
           case 'mol': set(i, s.molecule[i]); break;
           case 'proc': set(i, 0); break;

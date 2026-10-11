@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
-import { appendAtoms, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel } from '../atoms';
+import { appendAtoms, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel } from '../atoms';
 import { expandTemplateTopology } from '../template';
 import { makeBox } from '../domain';
 import { generalBoxFromRestricted, generalFrame, rotateVector, toGeneralPoint, toRestrictedPoint, unrotateVector, type GeneralFrame, type Mat3, type V3 } from '../triclinic_general';
@@ -45,6 +45,8 @@ const BASE_COLS: Record<string, string[]> = {
   sphere: ['id', 'type', 'diameter', 'density', 'x', 'y', 'z'],
   // read_data.html: "dipole | atom-ID atom-type q x y z mux muy muz"
   dipole: ['id', 'type', 'q', 'x', 'y', 'z', 'mux', 'muy', 'muz'],
+  // read_data.html, Atoms-section table, row spin: atom-ID atom-type x y z spx spy spz sp
+  spin: ['id', 'type', 'x', 'y', 'z', 'spx', 'spy', 'spz', 'sp'],
   // read_data.html, the Atoms-section table, row ellipsoid: "atom-ID atom-type ellipsoidflag density x y z"
   ellipsoid: ['id', 'type', 'ellipsoidflag', 'density', 'x', 'y', 'z'],
   // read_data.html, the Atoms-section table, row peri: "atom-ID atom-type volume density x y z"
@@ -347,6 +349,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const mol = new Int32Array(count), q = new Float64Array(count), image = new Int32Array(3 * count);
         const radius = new Float64Array(count), density = new Float64Array(count), vol = new Float64Array(count);
         const mu = s.mu ? new Float64Array(4 * count) : null;
+        const spin = s.sp ? new Float64Array(4 * count) : null;
         const eflag = s.shape ? new Uint8Array(count) : null;
         const tIdx = new Int32Array(count), tAt = new Int32Array(count);
         body.forEach(({ w, at }, a) => {
@@ -382,9 +385,14 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
               case 'mux': mu![4 * a] = numOf(v, 'mux', at); break;
               case 'muy': mu![4 * a + 1] = numOf(v, 'muy', at); break;
               case 'muz': mu![4 * a + 2] = numOf(v, 'muz', at); break;
+              case 'spx': spin![4 * a] = numOf(v, 'spx', at); break;
+              case 'spy': spin![4 * a + 1] = numOf(v, 'spy', at); break;
+              case 'spz': spin![4 * a + 2] = numOf(v, 'spz', at); break;
+              case 'sp': spin![4 * a + 3] = numOf(v, 'sp', at); break;
             }
           }
           if (mu) mu[4 * a + 3] = Math.hypot(mu[4 * a], mu[4 * a + 1], mu[4 * a + 2]);
+          if (spin) setSpinVector(spin, a, spin[4 * a], spin[4 * a + 1], spin[4 * a + 2], spin[4 * a + 3], `data file line ${at}`);
           if (w.length === cols.length + 3) {
             for (let d = 0; d < 3; d++) {
               const f = intOf(w[cols.length + d], 'image flag', at);
@@ -418,7 +426,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
           }
         }
         const firstNew = s.n;
-        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined, vfrac: s.vfrac ? vol : undefined, tmplIndex: tmplId !== null ? tIdx : undefined, tmplAtom: tmplId !== null ? tAt : undefined });
+        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined, sp: spin ?? undefined, vfrac: s.vfrac ? vol : undefined, tmplIndex: tmplId !== null ? tIdx : undefined, tmplAtom: tmplId !== null ? tAt : undefined });
         // periodic remap of the new atoms
         for (let i = n0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);
         if (tmplId !== null) expandTemplateTopology(s, sys.molecules.get(tmplId) ?? [], tmplId, firstNew, s.n);
@@ -716,6 +724,10 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
         case 'mux': return shortest(mu![4 * i]);
         case 'muy': return shortest(mu![4 * i + 1]);
         case 'muz': return shortest(mu![4 * i + 2]);
+        case 'spx': return shortest(s.sp![4 * i]);
+        case 'spy': return shortest(s.sp![4 * i + 1]);
+        case 'spz': return shortest(s.sp![4 * i + 2]);
+        case 'sp': return shortest(s.sp![4 * i + 3]);
         default: return shortest(xo[3 * i + 'xyz'.indexOf(c)]);
       }
     });

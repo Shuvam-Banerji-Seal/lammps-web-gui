@@ -87,7 +87,7 @@ export interface UnitSystem {
  * `template:<ID>` is atom_style template ID: the molecule template ID is part of the style string so that
  * it survives write_restart / read_restart (atoms.ts templateStyleId reads it back).
  */
-export type AtomStyle = 'atomic' | 'charge' | 'bond' | 'angle' | 'molecular' | 'full' | 'sphere' | 'dipole' | 'ellipsoid' | 'peri' | `template:${string}` | `hybrid ${string}`;
+export type AtomStyle = 'atomic' | 'charge' | 'bond' | 'angle' | 'molecular' | 'full' | 'sphere' | 'dipole' | 'spin' | 'ellipsoid' | 'peri' | `template:${string}` | `hybrid ${string}`;
 
 /**
  * Bonded topology entries of one kind, stored by atom ID (not index) so that
@@ -134,6 +134,16 @@ export interface SimState {
   torque: Float64Array | null;
   /** atom_style dipole: point dipole per atom as mux, muy, muz and its length (4N); else null. */
   mu: Float64Array | null;
+  /**
+   * atom_style spin: magnetic moment per atom as the unit vector sx, sy, sz and the magnitude sp (4N, atom_style.html: "magnetic moment data"); else null.
+   */
+  sp: Float64Array | null;
+  /** atom_style spin: precession vector fm (3N) of each atom, recomputed by the spin pair style; else null. */
+  fm: Float64Array | null;
+  /** atom_style spin: magnetic energy (eV) of the spin pair style at its last force evaluation (compute spin). */
+  spinEnergy?: number;
+  /** atom_style spin: the spin pair style adds its mechanical forces only while fix nve/spin lattice moving is defined. */
+  spinLattice?: boolean;
   /**
    * atom_style ellipsoid: half-axes (3N; all 0 for a point particle), orientation quaternion w i j k
    * (4N) and angular momentum (3N); else null.

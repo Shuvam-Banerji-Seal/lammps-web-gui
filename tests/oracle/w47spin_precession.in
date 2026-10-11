@@ -1,0 +1,30 @@
+# oracle: precession/spin zeeman + anisotropy + cubic with nve/spin lattice frozen (eight periodic spins, no pair style, 30 steps)
+# oracle-files: spin_precession.dump
+units           metal
+atom_style      spin
+boundary        p p p
+atom_modify     map array
+lattice         sc 2.5
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 55.845
+set             atom 1 spin/atom 1.952 0.12 0.848 0.573
+set             atom 2 spin/atom 2.008 0.175 -0.631 0.61
+set             atom 3 spin/atom 2.13 0.586 -0.812 0.443
+set             atom 4 spin/atom 1.591 0.619 0.387 0.234
+set             atom 5 spin/atom 2.482 0.93 0.308 0.692
+set             atom 6 spin/atom 1.657 -0.97 0.057 0.248
+set             atom 7 spin/atom 1.69 -0.516 -0.94 0.571
+set             atom 8 spin/atom 1.941 0.685 0.038 0.712
+fix             2 all precession/spin zeeman 10.0 0.1 0.2 1.0 anisotropy 0.01 0.0 0.0 1.0 cubic 0.001 0.0005 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0
+fix_modify      2 energy yes
+fix             1 all nve/spin lattice frozen
+timestep        0.0002
+compute         s all spin
+compute         p all property/atom spx spy spz sp fmx fmy fmz
+thermo_style    custom step pe c_s[1] c_s[2] c_s[3] c_s[4] c_s[5] c_s[6]
+thermo_modify   format float %.15g
+thermo          10
+run             30
+write_dump      all custom spin_precession.dump id c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] c_p[7] modify format float %.15g

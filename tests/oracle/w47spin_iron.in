@@ -1,0 +1,32 @@
+# oracle: cut-down SPIN/iron: eam/alloy + spin/exchange through hybrid/overlay, nve/spin lattice moving, 54 bcc atoms, 20 steps
+# oracle-compare: thermo=all rel=1e-8 atoms=all
+# oracle-potentials: Fe_Mishin2006.eam.alloy
+# oracle-files: spin_iron.dump
+units           metal
+atom_style      spin
+dimension       3
+boundary        p p p
+atom_modify     map array
+lattice         bcc 2.8665
+region          box block 0.0 3.0 0.0 3.0 0.0 3.0
+create_box      1 box
+create_atoms    1 box
+mass            1 55.845
+set             group all spin/atom 2.2 0.3 0.5 0.8
+set             atom 1 spin/atom 2.2 -0.6 0.2 0.5
+set             atom 7 spin/atom 2.2 0.1 -0.9 0.4
+set             atom 20 spin/atom 2.2 0.0 0.0 1.0
+pair_style      hybrid/overlay eam/alloy spin/exchange 3.5
+pair_coeff      * * eam/alloy Fe_Mishin2006.eam.alloy Fe
+pair_coeff      * * spin/exchange exchange 3.4 0.02726 0.2171 1.841 offset yes
+neighbor        0.1 bin
+neigh_modify    every 10 check yes delay 20
+fix             1 all nve/spin lattice moving
+timestep        0.0001
+compute         s all spin
+compute         p all property/atom spx spy spz sp fmx fmy fmz
+thermo_style    custom step pe c_s[1] c_s[2] c_s[3] c_s[4] c_s[5] c_s[6]
+thermo_modify   format float %.15g
+thermo          5
+run             20
+write_dump      all custom spin_iron.dump id c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] c_p[7] modify format float %.15g

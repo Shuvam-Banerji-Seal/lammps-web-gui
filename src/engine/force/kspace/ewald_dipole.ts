@@ -2,6 +2,7 @@ import { KSpace, StyleError, type KSpaceCompute, type StyleContext } from '../ty
 import type { SimState } from '../../types';
 import type { Geometry } from '../../domain';
 import { parseNum } from '../util';
+import { modifyNoEffect } from './ewald';
 
 /*
  * kspace_style ewald/dipole — docs.lammps.org/kspace_style.html: "The *ewald/dipole* style adds
@@ -94,7 +95,7 @@ export class KSpaceEwaldDipole extends KSpace {
       case 'force': case 'slab': case 'mesh': case 'order': case 'diff':
         throw new StyleError(`kspace_modify ${key} is not supported by kspace_style ewald/dipole`);
       default:
-        return 0;
+        return modifyNoEffect(key, values);
     }
   }
 

@@ -46,6 +46,74 @@ const yesNoValue = (w: string | undefined, key: string): void => {
   if (w !== 'yes' && w !== 'no') throw new StyleError(`Expected boolean parameter instead of '${w ?? ''}' for kspace_modify ${key}`);
 };
 
+/** kspace_modify minorder value: an integer of at least 2 (native message, measured: Kspace_modify minorder must be at least 2). */
+export const minorderValue = (w: string | undefined): number => {
+  if (w === undefined || !/^[+-]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w ?? ''}' for kspace_modify minorder`);
+  const m = Number(w);
+  if (m < 2) throw new StyleError('Kspace_modify minorder must be at least 2');
+  return m;
+};
+
+/**
+ * kspace_modify keywords that native LAMMPS accepts for the kspace styles of this engine and whose output
+ * this engine reproduces with no effect (each one measured against native, see the comments below).
+ * Returns the number of values used, or 0 when the keyword is not one of them. A keyword that changes
+ * results, or that native rejects, is refused here with an EngineError naming it.
+ */
+export const modifyNoEffect = (key: string, values: string[]): number => {
+  switch (key) {
+    // kspace_modify.html: "to remap data for 3d-FFT operations instead of the default" (nonblocking) and
+    // "instead of the default point-to-point communication" (collective). They choose the MPI communication
+    // pattern of the 3d FFT remap, which this single-process engine does not use. Native LAMMPS accepts both
+    // with ewald and pppm (measured) and its thermo output is identical with and without them (measured).
+    case 'collective': yesNoValue(values[0], 'collective'); return 1;
+    case 'nonblocking': yesNoValue(values[0], 'nonblocking'); return 1;
+    // kspace_modify.html (4Jul2026): "It controls whether data remapped to the" same MPI rank is handled by a
+    // direct copy; this engine has no MPI remap, so the value is checked and has no effect.
+    case 'collective/self/copy':
+      if (values[0] !== 'yes' && values[0] !== 'no' && values[0] !== 'onerank') {
+        throw new StyleError(`Unknown kspace_modify collective/self/copy flag ${values[0] ?? ''}`);
+      }
+      return 1;
+    // kspace_modify.html: "The *fftbench* keyword applies only to PPPM." It adds a timing benchmark to the log
+    // and nothing to the forces. Measured with native LAMMPS (black box): with fftbench yes the thermo rows of
+    // ewald, pppm, ewald/disp and ewald/dipole are identical to the run without it (pppm/tip4p: identical up to
+    // the last bit, which two runs of the same unchanged input do not reproduce either).
+    case 'fftbench': yesNoValue(values[0], 'fftbench'); return 1;
+    // kspace_modify.html: "If the *overlap* keyword is set to *yes* then this communication is allowed to extend
+    // beyond nearest-neighbor processors". With one process the ghost communication is always to nearest
+    // neighbours, so overlap yes and no give the same result. Measured with native LAMMPS (black box): overlap yes
+    // and overlap no leave the thermo rows of ewald and pppm unchanged.
+    case 'overlap': yesNoValue(values[0], 'overlap'); return 1;
+    // kspace_modify.html: "The *minorder* keyword is not currently supported in MSM." and "The minimum allowed
+    // value for PPPM is 2". The order is reduced only when the ghost communication overlaps beyond the nearest
+    // neighbours, which a single process never does. The pppm solver checks minorder <= order at init (measured:
+    // order 5 with minorder 6 stops with PPPM order < minimum allowed order). Native ewald accepts minorder 2 to 8
+    // with no effect (measured).
+    case 'minorder': minorderValue(values[0]); return 1;
+    // kspace_modify.html: "The *cutoff/adjust* keyword applies only to MSM." Measured with native LAMMPS (black
+    // box): cutoff/adjust yes leaves the thermo rows (energies, pressure tensor) of ewald, pppm, ewald/disp,
+    // ewald/dipole and pppm/tip4p unchanged.
+    case 'cutoff/adjust': yesNoValue(values[0], 'cutoff/adjust'); return 1;
+    // kspace_modify.html: "The *pressure/scalar* keyword applies only to MSM." Measured with native LAMMPS (black
+    // box): pressure/scalar yes with only press in thermo_style gives the same numbers, but with the pxx..pyz
+    // components in thermo_style it stops with (measured): Must use kspace_modify pressure/scalar no for tensor
+    // components. The engine does not reproduce that path, so yes is refused rather than half done.
+    case 'pressure/scalar':
+      yesNoValue(values[0], 'pressure/scalar');
+      if (values[0] === 'yes') {
+        throw new StyleError('kspace_modify pressure/scalar yes is not supported by the browser engine (it applies only to MSM, which the engine does not have)');
+      }
+      return 1;
+    // tol is not a kspace_modify keyword: the keyword list in kspace_modify.html does not contain it, and native
+    // LAMMPS stops with an illegal kspace_modify command error for ewald, pppm, ewald/disp, pppm/tip4p and
+    // ewald/dipole (measured).
+    case 'tol':
+      throw new StyleError('kspace_modify tol is not a kspace_modify keyword (native LAMMPS rejects it as an illegal kspace_modify command)');
+    default: return 0;
+  }
+};
+
 export abstract class KSpaceBase extends KSpace {
   /** kspace_modify force: absolute accuracy (force units), or -1. */
   forceAbs = -1;
@@ -58,6 +126,8 @@ export abstract class KSpaceBase extends KSpace {
   protected natoms = 0;
   protected volume = 0;
   protected cutCoul = 0;
+  /** kspace_modify minorder (PPPM: the smallest order the grid stencil may be reduced to; 2 by default). */
+  minorder = 2;
 
   settings(args: string[]): void {
     if (args.length !== 1) throw new StyleError(`usage: kspace_style ${this.name} accuracy`);
@@ -78,29 +148,8 @@ export abstract class KSpaceBase extends KSpace {
         // native LAMMPS refuses a volfactor of exactly 1.0 with Bad kspace_modify slab parameter (measured)
         if (this.slab === 1) throw new StyleError('Bad kspace_modify slab parameter (volfactor 1.0 is refused; omit slab for no slab correction)');
         return 1;
-      // kspace_modify.html: "The *collective* keyword applies only to PPPM." and "The *nonblocking* keyword
-      // applies only to PPPM."; the keywords choose the MPI communication pattern of the 3d FFT remap, which
-      // this single-process engine does not use, so they are accepted with no effect. The doc sentence that
-      // says so: "to remap data for 3d-FFT operations instead of the default" (nonblocking) and
-      // "instead of the default point-to-point communication" (collective). Native LAMMPS accepts both with
-      // ewald as well (measured), and its thermo output is identical with and without them (measured).
-      case 'collective':
-        yesNoValue(values[0], 'collective');
-        return 1;
-      case 'nonblocking':
-        yesNoValue(values[0], 'nonblocking');
-        return 1;
-      // kspace_modify.html (4Jul2026): "It controls whether data remapped to the" same MPI rank is handled by a
-      // direct copy; this engine has no MPI remap, so the value is checked and has no effect.
-      case 'collective/self/copy':
-        if (values[0] !== 'yes' && values[0] !== 'no' && values[0] !== 'onerank') {
-          throw new StyleError(`Unknown kspace_modify collective/self/copy flag ${values[0] ?? ''}`);
-        }
-        return 1;
-      case 'pressure/scalar': case 'overlap': case 'fftbench': case 'cutoff/adjust': return 1;
-      case 'minorder': return 1;
-      case 'tol': return 1;
-      default: return 0;
+      case 'minorder': this.minorder = minorderValue(values[0]); return 1;
+      default: return modifyNoEffect(key, values);
     }
   }
 

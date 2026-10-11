@@ -60,6 +60,13 @@ export class Variables {
   /** Guards against self-referencing formulas. */
   private depth = 0;
 
+  /**
+   * The partition (replica) this table belongs to. A world-style variable gives each partition one of its N
+   * values (variable.rst); uloop and universe values are handed out per partition as well. A single-partition
+   * run uses partition 0, which is the first value (as before).
+   */
+  partition = 0;
+
   /** warn: prints a WARNING line (the session's log). */
   constructor(private readFile: (name: string) => string, private warn: (text: string) => void = () => undefined) {}
 
@@ -87,7 +94,8 @@ export class Variables {
     switch (style) {
       case 'index': case 'world': case 'universe':
         if (args.length < 1) throw new StyleError(`variable ${style} needs at least one value`);
-        v = { style, values: [...args], which: 0 };
+        // world/universe: partition k takes value k (the first partition takes the first value)
+        v = { style, values: [...args], which: style === 'index' ? 0 : Math.min(this.partition, args.length - 1) };
         break;
       case 'loop': case 'uloop': {
         let pad = false;
@@ -106,7 +114,7 @@ export class Variables {
         const values: string[] = [];
         for (let k = n1; k <= n2; k++) values.push(pad ? String(k).padStart(width, '0') : String(k));
         if (values.length === 0) throw new StyleError(`variable ${style} has no values`);
-        v = { style, values, which: 0 };
+        v = { style, values, which: style === 'uloop' ? Math.min(this.partition, values.length - 1) : 0 };
         break;
       }
       case 'string': v = { style, values: [one()], which: 0 }; break;

@@ -1,0 +1,21 @@
+# oracle: sw/angle/table with two element types (8 entries, 1-1-1 and 2-2-2 with a 5-point angle table, the rest with the 1001-point table), 5-atom cluster
+# oracle-inputs: w49mt_sw2.sw w49mt_ang5.txt w49mt_angle1001.txt
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units real
+atom_style atomic
+boundary f f f
+lattice none 1.0
+region b block -60 60 -60 60 -60 60
+create_box 2 b
+create_atoms 1 single 0.0 0.0 0.0 units box
+create_atoms 2 single 1.565308 1.912969 1.536584 units box
+create_atoms 2 single 0.178792 1.556876 -1.922511 units box
+create_atoms 1 single -1.145051 -1.859799 1.199243 units box
+create_atoms 2 single -0.706485 1.537488 2.745169 units box
+mass 1 18.0
+mass 2 18.0
+pair_style sw/angle/table
+pair_coeff * * w49mt_sw2.sw type1 type2
+thermo_style custom step pe
+thermo_modify format float %.15g
+run 0

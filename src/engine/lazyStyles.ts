@@ -69,6 +69,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'pair_batch49', names: { PAIRS: ['buck6d/coul/gauss/dsf', 'buck6d/coul/gauss/long', 'gauss/cut', 'coul/diel', 'momb'] }, load: () => import('./registry/pair_batch49') as Promise<StyleModule> },
   { id: 'pair_potbatch48', names: { PAIRS: ['pedone', 'smatb', 'smatb/single', 'edip', 'edip/multi'] }, load: () => import('./registry/pair_potbatch48') as Promise<StyleModule> },
   { id: 'pair_sw', names: { PAIRS: ['sw', 'sw/mod'] }, load: () => import('./registry/pair_sw') as Promise<StyleModule> },
+  { id: 'pair_mbtable49', names: { PAIRS: ['threebody/table', 'sw/angle/table'] }, load: () => import('./registry/pair_mbtable49') as Promise<StyleModule> },
   { id: 'pair_misc4', names: { PAIRS: ['born/coul/long/cs', 'buck/coul/long/cs', 'coul/long/cs', 'lj/sf'] }, load: () => import('./registry/pair_misc4') as Promise<StyleModule> },
   { id: 'pair_misc5', names: { PAIRS: ['atm', 'nb3b/harmonic', 'nb3b/screened'] }, load: () => import('./registry/pair_misc5') as Promise<StyleModule> },
   { id: 'pair_misc13', names: { PAIRS: ['vashishta/table'] }, load: () => import('./registry/pair_misc13') as Promise<StyleModule> },

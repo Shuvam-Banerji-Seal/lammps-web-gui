@@ -1,0 +1,26 @@
+# oracle: cut-down of the in.spce_sw example (sw/angle/table with the 1001-point angle table and the hybrid/overlay pair table): 205 molecules, 20 steps of nve/nvt, original velocity create line
+# oracle-inputs: w49mt_spce.data w49mt_spce.sw w49mt_angle1001.txt w49mt_table_CG_CG.txt
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           real
+atom_style      atomic
+boundary        f f f
+
+read_data       w49mt_spce.data
+
+pair_style      hybrid/overlay table linear 1200 sw/angle/table
+
+pair_coeff      1 1 table w49mt_table_CG_CG.txt VOTCA
+pair_coeff      * * sw/angle/table w49mt_spce.sw type
+
+fix             1 all nvt temp 300.0 300.0 200.0
+
+velocity        all create 300 432567 dist uniform mom yes
+
+timestep        2.0
+
+thermo          5
+thermo_style    custom step temp pe etotal press
+thermo_modify   format float %.15g
+#dump            2 all custom 10 spce_sw.dump id type x y z fx fy fz
+
+run             20

@@ -117,6 +117,21 @@ const seriesS = (R: number, m: number, d: number): { s: number; ds: number } => 
   return { s, ds };
 };
 
+/** Slater integral S(R) alone (no derivative, no allocation): the same value as slaterShort(R, za, zb).s. */
+export const slaterS = (R: number, za: number, zb: number): number => {
+  const m = 0.5 * (za + zb), d = 0.5 * (za - zb);
+  if (Math.abs(d) * R < SERIES_DR) return seriesS(R, m, d).s;
+  const D1 = za * za - zb * zb;
+  const XA = Math.exp(-2 * za * R), XB = Math.exp(-2 * zb * R);
+  const zb2 = zb * zb, za2 = za * za;
+  const cA = -(zb2 * zb2) * (za * R * D1 + (3 * za2 - zb2));
+  const cB = -(za2 * za2) * (zb * R * D1 + (za2 - 3 * zb2));
+  return (XA * cA + XB * cB) / (R * D1 * D1 * D1);
+};
+
+/** Point-charge short-range potential U_b(R) alone (no allocation): the value of pointU(R, z).u. */
+export const pointUval = (R: number, z: number): number => -(z + 1 / R) * Math.exp(-2 * z * R);
+
 /** Point-charge short-range potential U_b(R) = -(zeta_b + 1/R) exp(-2 zeta_b R) and dU/dR. */
 export const pointU = (R: number, z: number): { u: number; du: number } => {
   const E = Math.exp(-2 * z * R);
@@ -162,7 +177,7 @@ export class PairCoulStreitz extends Pair {
   virialFdotr = true;
   /** Excluded pairs stay in the list so a special weight can be rejected (see compute). */
   keepExcluded = true;
-  mode: 'wolf' | 'ewald' = 'wolf';
+  mode: 'wolf' | 'dsf' | 'ewald' = 'wolf';
   cutGlobal = 0;
   alpha = 0;
   private fileName = '';
@@ -193,10 +208,13 @@ export class PairCoulStreitz extends Pair {
     this.cutGlobal = parseNum(args[0], 'cutoff');
     if (!(this.cutGlobal > 0)) throw new StyleError('pair_style coul/streitz cutoff must be > 0');
     const kw = args[1];
-    if (kw === 'wolf') {
-      if (args.length !== 3) throw new StyleError('pair_style coul/streitz with keyword wolf needs a damping parameter: pair_style coul/streitz cutoff wolf alpha');
+    if (kw === 'wolf' || kw === 'dsf') {
+      if (args.length !== 3 && args.length !== 4) throw new StyleError(`pair_style coul/streitz with keyword ${kw} needs a damping parameter: pair_style coul/streitz cutoff ${kw} alpha [taper]`);
       this.alpha = parseNum(args[2], 'alpha');
-      this.mode = 'wolf';
+      // pair_coul.rst: "the optional arguments *wolf* and *dsf* with the value representing the width of taper" (default 0)
+      const taper = args.length === 4 ? parseNum(args[3], 'taper width') : 0;
+      if (taper !== 0) throw new StyleError(`pair_style coul/streitz ${kw} taper width ${taper} is not reproduced by the browser engine (only width 0)`);
+      this.mode = kw;
       this.coulLong = false;
     } else if (kw === 'ewald') {
       if (args.length !== 2) throw new StyleError('pair_style coul/streitz with keyword ewald takes no damping parameter (it needs a kspace_style ewald or pppm)');
@@ -249,7 +267,7 @@ export class PairCoulStreitz extends Pair {
       if (!this.tp[t]) throw new StyleError(`pair_coeff for style coul/streitz does not set atom type ${t}`);
     }
     const rc = this.cutGlobal;
-    if (this.mode === 'wolf') {
+    if (this.mode !== 'ewald') {
       const arc = this.alpha * rc;
       this.eShiftW = erfcExact(arc) / rc;
       this.fShiftW = -(this.eShiftW + TWO_OVER_SQRTPI * this.alpha * Math.exp(-arc * arc)) / rc;
@@ -295,7 +313,12 @@ export class PairCoulStreitz extends Pair {
     const sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;
     const rc = this.cutGlobal;
-    const wolf = this.mode === 'wolf';
+    const wolf = this.mode !== 'ewald';
+    const dsf = this.mode === 'dsf';
+    // dsf: the Fennell-Gezelter energy adds K (r - rc) to the wolf energy (its force is the wolf force)
+    const dsfK = dsf ? -this.fShiftW : 0;
+    // Measured with native LAMMPS (black box): the dsf force carries the force shift twice (2 K), while its energy has K (r - rc).
+    const forceScale = dsf ? 2 : 1;
     const alpha = this.alpha, g = this.gEwald;
     let ecoul = 0;
     // per owned atom: chi q + J q^2 / 2 (and the wolf self term)
@@ -346,8 +369,8 @@ export class PairCoulStreitz extends Pair {
           const Gc = cS * this.rcS[t] + pI.Z * qj * this.rcUj[t] + pJ.Z * qi * this.rcUi[t];
           const dGc = cS * this.rcDS[t] + pI.Z * qj * this.rcDUj[t] + pJ.Z * qi * this.rcDUi[t];
           const Gsf = G - Gc - (r - rc) * dGc;
-          e = pref * (erfcc / r - this.eShiftW) + C * Gsf;
-          fpair = (pref * (erfcc / (rsq * r) + (TWO_OVER_SQRTPI * alpha * ex) / rsq + this.fShiftW / r)
+          e = pref * (erfcc / r - this.eShiftW + dsfK * (r - rc)) + C * Gsf;
+          fpair = (pref * (erfcc / (rsq * r) + (TWO_OVER_SQRTPI * alpha * ex) / rsq + forceScale * this.fShiftW / r)
             - C * (dG - dGc) / r);
         } else {
           const grij = g * r;

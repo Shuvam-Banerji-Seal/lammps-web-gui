@@ -1,7 +1,7 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
 import { erfcExact } from '../force/erfc';
-import { PairCoulStreitz, pointU, slaterShort } from '../force/pair/coul_streitz';
+import { PairCoulStreitz, pointU, pointUval, slaterS, slaterShort } from '../force/pair/coul_streitz';
 import type { System } from '../system';
 
 /*
@@ -138,6 +138,18 @@ const taper = (x: number): number => {
 
 /** Constant of the qeq/dynamic charge dynamics (measured with native LAMMPS, black box). */
 const DYNAMIC_SCALE = 31.25;
+
+/**
+ * erfc for the qeq/slater matrix (same values as erfcExact to 2.5e-16 relative). erfcExact's continued fraction runs
+ * 400 terms for x >= 2, which made every image of the periodic matrix cost microseconds; 60 terms converge to the
+ * same double (checked on x in [2, 8] against 400 terms).
+ */
+const erfcSlater = (x: number): number => {
+  if (x < 2) return erfcExact(x);
+  let f = x;
+  for (let k = 60; k >= 1; k--) f = x + (k / 2) / f;
+  return Math.exp(-x * x) / Math.sqrt(Math.PI) / f;
+};
 
 export class FixQeq extends Fix {
   readonly style: string;
@@ -317,7 +329,8 @@ export class FixQeq extends Fix {
     const pairs: { i: number; j: number; int: number }[] = [];
     const d = [0, 0, 0];
     const cut2 = this.cutoff * this.cutoff;
-    for (let a = 0; a < ng; a++) {
+    // qeq/slater builds its own image list in solveSlater (this O(ng^2) loop would only feed the other kinds)
+    for (let a = 0; a < (this.kind === 'slater' ? 0 : ng); a++) {
       const i = idx[a];
       for (let b = a + 1; b < ng; b++) {
         const j = idx[b];
@@ -342,7 +355,7 @@ export class FixQeq extends Fix {
 
     // fixed (non-group) charges contribute a constant to each group atom's gradient
     const fixedTerm = new Float64Array(ng);
-    if (ng < s.n) {
+    if (ng < s.n && this.kind !== 'slater') {
       const inGroup = (i: number) => (s.mask[i] & bit) !== 0;
       for (let a = 0; a < ng; a++) {
         const i = idx[a];
@@ -416,11 +429,11 @@ export class FixQeq extends Fix {
   private solveSlater(s: System['state'], p: Params, idx: number[], ng: number): Float64Array {
     const C = 14.399645; // qqrd2e of units metal, as the pair style uses it (measured with native LAMMPS, black box)
     const a = this.alpha, rc = this.cutoff;
-    const erc = erfcExact(a * rc);
+    const erc = erfcSlater(a * rc);
     const selfW = -(erc / (2 * rc) + a / Math.sqrt(Math.PI));
     const kd = this.dsf ? erc / (rc * rc) + (2 * a / Math.sqrt(Math.PI)) * Math.exp(-a * a * rc * rc) / rc : 0;
     const cc = (r: number): number => {
-      const e = erfcExact(a * r) / r;
+      const e = erfcSlater(a * r) / r;
       return this.dsf ? e - erc / rc + (r - rc) * kd : e;
     };
     const cut2 = rc * rc;
@@ -440,22 +453,43 @@ export class FixQeq extends Fix {
       precond[k] = 1 / p.eta[t];
       chi[k] = p.chi[t];
     }
-    const pairs: { a: number; c: number; h: number }[] = [];
+    // the off-diagonal pairs (row a, row c, H) as typed arrays: the CG matvec runs over them every iteration
+    const pairA: number[] = [], pairC: number[] = [], pairH: number[] = [];
     // Every periodic image within the cutoff counts (the pair style sums its ghost atoms the same way), so the
     // shifts are enumerated, not only the minimum image. A pair of an atom with its own image is counted once
     // (shift s and -s are the same pair); its quadratic term 2 C (cc + S) q^2 goes on the diagonal.
+    // Orthogonal boxes: per dimension only the integer shifts n with |dx - n L| < rc are visited (the range is
+    // computed from dx, so a pair costs a few integer tests instead of the full (2 nmax + 1)^3 image list).
+    // Triclinic boxes keep the enumeration of the image list.
     const box = this.sys.geom as unknown as { lx: number; ly: number; lz: number; xy: number; xz: number; yz: number; periodic: boolean[] };
-    const nmax = [0, 1, 2].map((dd) => (box.periodic[dd] ? Math.ceil(rc / [box.lx, box.ly, box.lz][dd]) + 1 : 0));
+    const ortho = box.xy === 0 && box.xz === 0 && box.yz === 0;
+    const Ld = [box.lx, box.ly, box.lz];
+    const nmax = [0, 1, 2].map((dd) => (box.periodic[dd] ? Math.ceil(rc / Ld[dd]) + 1 : 0));
     const shifts: number[][] = [];
-    const ax = [box.lx, 0, 0], bx = [box.xy, box.ly, 0], cx = [box.xz, box.yz, box.lz];
-    for (let nx = -nmax[0]; nx <= nmax[0]; nx++)
-      for (let ny = -nmax[1]; ny <= nmax[1]; ny++)
-        for (let nz = -nmax[2]; nz <= nmax[2]; nz++) {
-          const sh = [nx * ax[0] + ny * bx[0] + nz * cx[0], nx * ax[1] + ny * bx[1] + nz * cx[1], nx * ax[2] + ny * bx[2] + nz * cx[2]];
-          shifts.push([sh[0], sh[1], sh[2], nx, ny, nz]);
-        }
+    if (!ortho) {
+      const ax = [box.lx, 0, 0], bx = [box.xy, box.ly, 0], cx = [box.xz, box.yz, box.lz];
+      for (let nx = -nmax[0]; nx <= nmax[0]; nx++)
+        for (let ny = -nmax[1]; ny <= nmax[1]; ny++)
+          for (let nz = -nmax[2]; nz <= nmax[2]; nz++) {
+            const sh = [nx * ax[0] + ny * bx[0] + nz * cx[0], nx * ax[1] + ny * bx[1] + nz * cx[1], nx * ax[2] + ny * bx[2] + nz * cx[2]];
+            shifts.push([sh[0], sh[1], sh[2], nx, ny, nz]);
+          }
+    }
     const positive = (nx: number, ny: number, nz: number): boolean => (nx > 0) || (nx === 0 && (ny > 0 || (ny === 0 && nz > 0)));
     const d = [0, 0, 0];
+    // images of one (u, v) pair: the shift vector and its integer index, collected before the pair body runs
+    // per dimension at most 2 ceil(rc / L) + 2 integer shifts can be within the cutoff (a small box needs more than 3)
+    const perDim = [0, 1, 2].map((dd) => (box.periodic[dd] ? 2 * Math.ceil(rc / Ld[dd]) + 2 : 1));
+    const maxImg = ortho ? perDim[0] * perDim[1] * perDim[2] : shifts.length;
+    const iSx = new Float64Array(maxImg), iSy = new Float64Array(maxImg), iSz = new Float64Array(maxImg);
+    const iN = new Int32Array(3 * maxImg);
+    const dimRange = (dv: number, dd: number, out: Int32Array, o: number): number => {
+      if (!box.periodic[dd]) { out[o] = 0; out[o + 1] = 0; return 1; }
+      out[o] = Math.floor((dv - rc) / Ld[dd]);
+      out[o + 1] = Math.ceil((dv + rc) / Ld[dd]);
+      return 1;
+    };
+    const rng = new Int32Array(6);
     for (let u = 0; u < ng; u++) {
       const i = idx[u];
       const ti = s.type[i];
@@ -463,19 +497,41 @@ export class FixQeq extends Fix {
         const inGroup = (s.mask[v] & bit) !== 0;
         if (inGroup && v < i) continue; // each group pair once
         const tv = s.type[v];
+        // collect the images of this pair that lie within the cutoff range
+        let ni = 0;
+        if (ortho) {
+          dimRange(s.x[3 * i] - s.x[3 * v], 0, rng, 0);
+          dimRange(s.x[3 * i + 1] - s.x[3 * v + 1], 1, rng, 2);
+          dimRange(s.x[3 * i + 2] - s.x[3 * v + 2], 2, rng, 4);
+          for (let nx = rng[0]; nx <= rng[1]; nx++)
+            for (let ny = rng[2]; ny <= rng[3]; ny++)
+              for (let nz = rng[4]; nz <= rng[5]; nz++) {
+                if (v === i && !positive(nx, ny, nz)) continue;
+                iSx[ni] = nx * Ld[0]; iSy[ni] = ny * Ld[1]; iSz[ni] = nz * Ld[2];
+                iN[3 * ni] = nx; iN[3 * ni + 1] = ny; iN[3 * ni + 2] = nz;
+                ni++;
+              }
+        } else {
+          for (const [shx, shy, shz, nx, ny, nz] of shifts) {
+            if (v === i && !positive(nx, ny, nz)) continue;
+            iSx[ni] = shx; iSy[ni] = shy; iSz[ni] = shz;
+            iN[3 * ni] = nx; iN[3 * ni + 1] = ny; iN[3 * ni + 2] = nz;
+            ni++;
+          }
+        }
         const zi = p.zeta[ti], zv = p.zeta[tv];
-        for (const [shx, shy, shz, nx, ny, nz] of shifts) {
-          if (v === i && !positive(nx, ny, nz)) continue;
-          d[0] = s.x[3 * i] - s.x[3 * v] - shx;
-          d[1] = s.x[3 * i + 1] - s.x[3 * v + 1] - shy;
-          d[2] = s.x[3 * i + 2] - s.x[3 * v + 2] - shz;
+        for (let k = 0; k < ni; k++) {
+          d[0] = s.x[3 * i] - s.x[3 * v] - iSx[k];
+          d[1] = s.x[3 * i + 1] - s.x[3 * v + 1] - iSy[k];
+          d[2] = s.x[3 * i + 2] - s.x[3 * v + 2] - iSz[k];
           const r2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
           if (!(r2 > 0) || r2 >= cut2) continue;
           const r = Math.sqrt(r2);
-          const S = slaterShort(r, zi, zv).s;
-          const Ui = pointU(r, zi).u;
-          const Uv = pointU(r, zv).u;
-          const H = C * (cc(r) + S);
+          const S = slaterS(r, zi, zv);
+          const Ui = pointUval(r, zi);
+          const Uv = pointUval(r, zv);
+          const ccr = cc(r);
+          const H = C * (ccr + S);
           if (v === i) {
             diag[u] += 2 * H;
             chi[u] += 2 * C * p.qcore[ti] * (Ui - S);
@@ -483,17 +539,20 @@ export class FixQeq extends Fix {
             const w = row[v];
             chi[u] += C * p.qcore[tv] * (Ui - S);
             chi[w] += C * p.qcore[ti] * (Uv - S);
-            if (H !== 0) pairs.push({ a: u, c: w, h: H });
+            if (H !== 0) { pairA.push(u); pairC.push(w); pairH.push(H); }
           } else {
             // fixed atom: its charge enters the right-hand side of group atom u
-            chi[u] += C * (s.q[v] * (cc(r) + S) + p.qcore[tv] * (Ui - S));
+            chi[u] += C * (s.q[v] * (ccr + S) + p.qcore[tv] * (Ui - S));
           }
         }
       }
     }
+    const npair = pairA.length;
+    const PA = Int32Array.from(pairA), PC = Int32Array.from(pairC), PH = Float64Array.from(pairH);
     const matvec = (x: Float64Array, out: Float64Array): void => {
       for (let k = 0; k < ng; k++) out[k] = diag[k] * x[k];
-      for (const { a: u, c: w, h } of pairs) {
+      for (let e = 0; e < npair; e++) {
+        const u = PA[e], w = PC[e], h = PH[e];
         out[u] += h * x[w];
         out[w] += h * x[u];
       }

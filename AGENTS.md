@@ -55,6 +55,7 @@ comments as "Measured with native LAMMPS (black box): ..." without quote marks; 
 | `src/workers/` | Parser and analysis Web Workers |
 | `tests/*.test.ts` | Vitest suites, one per module |
 | `third_party/lammps/` | Unmodified LAMMPS potential files (GPL-2.0, own `LICENSE` and `README.md`; not under this project's licence). Data only: rule 7 still forbids LAMMPS source code |
+| `src/engine-gpl/` | Styles ported from the LAMMPS C++ source (GPL-2.0, own `LICENSE` and `README.md`; each file names its LAMMPS source file and commit). Registered through `src/engine/lazyStyles.ts` only (rule 7) |
 
 ## Rules that are enforced
 
@@ -72,11 +73,20 @@ comments as "Measured with native LAMMPS (black box): ..." without quote marks; 
 5. No `Math.min(...arr)` / `Math.max(...arr)` on data-sized arrays — it throws
    `RangeError` past the engine's argument limit. Loop instead.
 6. Rendering keeps O(1) draw calls (instancing). Do not add per-atom meshes.
-7. **The engine contains no LAMMPS source code** (LAMMPS is GPL-2.0, this
-   project is not). Write engine code from textbook physics and the
-   documented behaviour on docs.lammps.org, citing the page as in rule 1.
-   An unsupported command must be an `EngineError` naming it — never a
-   silent no-op.
+7. **LAMMPS source code goes only into `src/engine-gpl/`** (LAMMPS is GPL-2.0,
+   this project is not). You may READ the LAMMPS source
+   (github.com/lammps/lammps, commit `b332f28`, the native binary's commit) to
+   compare behaviour. Code PORTED or translated from it lives only in
+   `src/engine-gpl/`, which is licensed GPL-2.0 (its own `LICENSE` and
+   `README.md`); every file there starts with a header naming the LAMMPS
+   source file(s) and the commit it was ported from. Everything else in `src/`
+   (including `src/engine/`) stays independently written from textbook physics
+   and the documented behaviour on docs.lammps.org, citing the page as in
+   rule 1. Core code reaches `src/engine-gpl/` only through the lazy registries
+   in `src/engine/lazyStyles.ts` (`tests/engineGplBoundary.test.ts` checks the
+   import boundary and the headers). Ported styles still need native-parity
+   oracle cases. An unsupported command must be an `EngineError` naming it —
+   never a silent no-op.
 
 ## Environment notes
 

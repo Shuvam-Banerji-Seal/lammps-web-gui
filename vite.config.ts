@@ -3,13 +3,13 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 /**
- * Chunk names of engine code (src/engine): in the engine worker build, the lazily loaded style registries
+ * Chunk names of engine code (src/engine, and the GPL-2.0 ports in src/engine-gpl): in the engine worker build, the lazily loaded style registries
  * (src/engine/lazyStyles.ts) and their shared modules are engine-*.js; in the page build, chunks made only of
  * engine code belong to the main-thread fallback copy of the engine and are host-*.js.
  * scripts/check-bundle-size.mjs budgets them by these prefixes.
  */
 const engineOnly = (chunk: { moduleIds: readonly string[] }): boolean =>
-  chunk.moduleIds.length > 0 && chunk.moduleIds.every((id) => id.includes('/src/engine/'));
+  chunk.moduleIds.length > 0 && chunk.moduleIds.every((id) => id.includes('/src/engine/') || id.includes('/src/engine-gpl/'));
 const workerChunkName = (chunk: { moduleIds: readonly string[] }): string =>
   engineOnly(chunk) ? 'assets/engine-[name]-[hash].js' : 'assets/[name]-[hash].js';
 const pageChunkName = (chunk: { moduleIds: readonly string[] }): string =>

@@ -69,6 +69,7 @@ export class ComputeMliap extends Compute {
       }
     }
     if (kind === null || desc === null) throw new StyleError(`compute ${id} (mliap) needs the keywords model and descriptor`);
+    if (desc.chem) throw new StyleError(`compute ${id} (mliap): descriptor sna with chemflag 1 is not implemented in this engine (pair_style mliap is)`);
     if (desc.elems.length !== nt) {
       throw new StyleError(`compute ${id} (mliap): nelems ${desc.elems.length} of the descriptor must match the ${nt} atom types`);
     }

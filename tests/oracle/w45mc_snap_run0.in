@@ -1,0 +1,21 @@
+# oracle: pair_style snap chemflag 1 with the InP_JCPA2020 snapcoeff/snapparam on the same displaced 64-atom cell as w45mc_run0 (the mliap chem descriptor must agree with it)
+# oracle-potentials: InP_JCPA2020.mliap InP_JCPA2020.mliap.model InP_JCPA2020.mliap.descriptor InP_JCPA2020.snapcoeff InP_JCPA2020.snapparam
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units metal
+boundary p p p
+atom_style atomic
+lattice diamond 5.83
+region box block 0 2 0 2 0 2
+create_box 2 box
+create_atoms 1 box basis 5 2 basis 6 2 basis 7 2 basis 8 2
+mass 1 114.76
+mass 2 30.98
+variable dx atom 0.05*sin(1.3*x+0.7*y)
+variable dy atom 0.05*cos(0.9*y-1.1*z)
+variable dz atom 0.05*sin(1.7*z+0.5*x)
+displace_atoms all move v_dx v_dy v_dz units box
+pair_style snap
+pair_coeff * * InP_JCPA2020.snapcoeff InP_JCPA2020.snapparam In P
+thermo_style custom step pe press
+thermo_modify format float %.15g
+run 0

@@ -13,12 +13,21 @@ import { buildTriples, rawBispectrum, type Triple, type Cmat } from '../compute/
  * (the same bispectrum, cutoff, switching and normalisation code is used here, see sna.ts).
  *
  * Keywords accepted (measured with native LAMMPS, black box): rfac0, rmin0, switchflag, bzeroflag,
- * bnormflag and wselfallflag (no effect without chem). Measured to change the energy: bzeroflag 0
- * and switchflag 0 and bnormflag 1. Keywords the native reader refuses for this descriptor and
- * that are reported here as StyleError: quadraticflag (the quadratic terms belong to the model),
- * chemflag, chunksize, parallelthresh and switchinnerflag 1.
+ * bnormflag, wselfallflag and chemflag. Measured to change the energy: bzeroflag 0 and switchflag 0
+ * and bnormflag 1. Keywords the native reader refuses for this descriptor and that are reported here
+ * as StyleError: quadraticflag (the quadratic terms belong to the model), chunksize, parallelthresh
+ * and switchinnerflag 1.
+ *
+ * chemflag 1 (explicit multi-element bispectrum, shared with pair_style snap in src/engine/compute/snapChem.ts).
+ * The doc sentence is in the block comment above the interface. The
+ * descriptor then has K N_elem^3 columns per element block (nmodel), and the model file has nparams = 1 + K N_elem^3
+ * (measured with native LAMMPS, black box, InP_JCPA2020.mliap.model: 2 241).
  */
 
+/*
+ * Doc (docs.lammps.org/pair_snap.html, plans/lammps-docs-live/pair_snap.rst), the chemflag keyword that the sna
+ * descriptor shares with pair_style snap: "If *chemflag* is set to 1, then the energy expression is written in terms of explicit multi-element bispectrum components indexed on ordered triplets of elements".
+ */
 export interface MliapSnaDescriptor {
   elems: string[];
   /** Radius and weight per element (index = element index in the descriptor's elems list). */
@@ -31,6 +40,11 @@ export interface MliapSnaDescriptor {
   switchflag: boolean;
   bzeroflag: boolean;
   bnormflag: boolean;
+  /** chemflag 1: the explicit multi-element bispectrum (K N_elem^3 model columns). */
+  chem: boolean;
+  wselfall: boolean;
+  /** Number of model columns per element: K, or K N_elem^3 with chem. */
+  nmodel: number;
   triples: Triple[];
   /** Number of bispectrum components K. */
   K: number;
@@ -58,7 +72,7 @@ export const parseMliapSnaDescriptor = (text: string, filename: string): MliapSn
     return v === '1';
   };
   for (const kw of kv.keys()) {
-    if (!['nelems', 'elems', 'radelems', 'welems', 'rcutfac', 'twojmax', 'rfac0', 'rmin0', 'switchflag', 'bzeroflag', 'bnormflag', 'wselfallflag'].includes(kw)) {
+    if (!['nelems', 'elems', 'radelems', 'welems', 'rcutfac', 'twojmax', 'rfac0', 'rmin0', 'switchflag', 'bzeroflag', 'bnormflag', 'wselfallflag', 'chemflag'].includes(kw)) {
       throw new StyleError(`mliap sna descriptor ${filename}: keyword '${kw}' is not implemented in this engine`);
     }
   }
@@ -82,9 +96,11 @@ export const parseMliapSnaDescriptor = (text: string, filename: string): MliapSn
   const switchflag = flag('switchflag', true);
   const bzeroflag = flag('bzeroflag', true);
   const bnormflag = flag('bnormflag', false);
-  flag('wselfallflag', false); // no effect without chem (doc)
+  const chem = flag('chemflag', false);
+  const wselfall = flag('wselfallflag', false); // acts only with chem
   const triples = buildTriples(twojmax);
   const K = triples.length;
+  const nmodel = chem ? K * nelems * nelems * nelems : K;
   const norm = new Float64Array(K);
   for (let c = 0; c < K; c++) norm[c] = bnormflag ? triples[c].J + 1 : 1;
   const b0 = new Float64Array(K);
@@ -100,6 +116,6 @@ export const parseMliapSnaDescriptor = (text: string, filename: string): MliapSn
   }
   return {
     elems, radius: Float64Array.from(rad), weight: Float64Array.from(wt), rcutfac, twojmax, rfac0, rmin0,
-    switchflag, bzeroflag, bnormflag, triples, K, norm, b0,
+    switchflag, bzeroflag, bnormflag, chem, wselfall, nmodel, triples, K, norm, b0,
   };
 };

@@ -1,0 +1,1084 @@
+# oracle: pair_style coul/diel 3.5, explicit pair coefficients for all pairs, dimer scan at dielectric 1 and 2 (the dielectric command) with pair_modify shift yes in the last block
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           real
+atom_style      full
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 0.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 1.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 1.6 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 3.4 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 0.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 1.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 1.6 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 2.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 2.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 3.4 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 0.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 1.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 1.6 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 2.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 2.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 3.4 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 0.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 1.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 1.6 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 3.4 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 0.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 1.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 1.6 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 2.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 2.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 3.4 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 0.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 1.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 1.6 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 2.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 2.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 3.4 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      2.0
+pair_modify     shift no
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 0.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 1.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 1.6 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 3.4 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge 0.8
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 0.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 1.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 1.6 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 2.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 2.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    2 single 3.4 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge 0.8
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 0.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 1.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 1.6 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 2.2 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 2.9 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0
+clear
+units           real
+atom_style      full
+boundary        f f f
+region          box block -60 60 -60 60 -60 60
+create_box      2 box
+create_atoms    2 single 0 0 0 units box
+create_atoms    2 single 3.4 0 0 units box
+mass            * 1.0
+pair_style      coul/diel 3.5
+pair_coeff      1 1 78.0 1.375 0.112
+pair_coeff      1 2 20.0 1.6 0.2
+pair_coeff      2 2 78.0 1.2 0.112
+set             type 1 charge -0.4
+set             type 2 charge -0.4
+dielectric      1.0
+pair_modify     shift yes
+thermo_style    custom step pe evdwl ecoul fmax
+thermo_modify   format float %.15g norm no
+run             0

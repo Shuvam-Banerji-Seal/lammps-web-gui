@@ -1,0 +1,64 @@
+# oracle: pair_style buck6d/coul/gauss/dsf, periodic 12-atom cell of the MOF-FF pair table of in.hkust1 (6 types, charges neutral per type pair of types), 50 steps of nve
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           real
+atom_style      full
+boundary        p p p
+lattice         sc 4.4
+region          box block 0 3 0 2 0 2
+create_box      6 box
+create_atoms    1 box
+mass            * 1.0
+group           g1 id 1:12:6
+set             group g1 type 1
+set             group g1 charge 0.5
+group           g2 id 2:12:6
+set             group g2 type 2
+set             group g2 charge -0.5
+group           g3 id 3:12:6
+set             group g3 type 3
+set             group g3 charge 0.3
+group           g4 id 4:12:6
+set             group g4 type 4
+set             group g4 charge -0.3
+group           g5 id 5:12:6
+set             group g5 type 5
+set             group g5 charge 0.2
+group           g6 id 6:12:6
+set             group g6 type 6
+set             group g6 charge -0.2
+variable        dx atom 0.15*sin(1.3*x+0.7*y)
+variable        dy atom 0.15*cos(0.9*y-0.4*z)
+variable        dz atom 0.15*sin(1.1*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.01*sin(id)
+variable        vy atom 0.01*cos(2*id)
+variable        vz atom 0.01*sin(3*id)
+velocity        all set v_vx v_vy v_vz
+timestep        0.5
+pair_style      buck6d/coul/gauss/dsf 0.9 12.0
+pair_coeff      1 1 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 2 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      1 3 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      1 4 23689.598 2.8436019 1636.052 12.696549 0.42066711
+pair_coeff      1 5 10576.399 3.1746032 377.27092 2.7176691 0.61999948
+pair_coeff      1 6 10304 3.0769231 443.36171 4.2093581 0.60800971
+pair_coeff      2 2 10304 3.0612245 457.17971 4.5218516 0.60800971
+pair_coeff      2 3 6157.8178 3.4682081 129.19572 0.78772886 0.73006542
+pair_coeff      2 4 23689.598 2.8436019 1636.052 12.696549 0.42066711
+pair_coeff      2 5 10576.399 3.1746032 377.27092 2.7176691 0.61999948
+pair_coeff      2 6 10304 3.0769231 443.36171 4.2093581 0.60800971
+pair_coeff      3 3 3680 4 32.805 0.10690769 0.9771554
+pair_coeff      3 4 14157.243 3.1914894 489.18197 2.5231391 0.45538909
+pair_coeff      3 5 6320.6076 3.6144578 103.50278 0.44181916 0.75109952
+pair_coeff      3 6 6157.8178 3.4883721 124.7792 0.72632262 0.73006542
+pair_coeff      4 4 54464 2.6548673 5679.4311 33.208515 0.34105936
+pair_coeff      4 5 24315.863 2.9411765 1371.5617 7.9168726 0.42457748
+pair_coeff      4 6 23689.598 2.8571429 1590.0769 11.87959 0.42066711
+pair_coeff      5 5 10856 3.2967033 308.7755 1.6022517 0.63272774
+pair_coeff      5 6 10576.399 3.1914894 365.45138 2.5231391 0.61999948
+pair_coeff      6 6 10304 3.0927835 429.89352 3.9170177 0.60800971
+fix             1 all nve
+thermo_style    custom step pe evdwl ecoul
+thermo_modify   format float %.15g norm no
+thermo          10
+run             50

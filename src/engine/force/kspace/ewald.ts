@@ -105,10 +105,13 @@ export abstract class KSpaceBase extends KSpace {
   }
 
   /** Absolute force accuracy: user 'force', or accuracy times the force of two unit charges 1 Angstrom apart. */
-  protected absAccuracy(s: SimState, qqrd2e: number): number {
+  protected absAccuracy(s: SimState, _qqrd2e: number): number {
     if (this.forceAbs > 0) return this.forceAbs;
+    // Measured with native LAMMPS (black box): the dielectric command does not change this reference force. With
+    // dielectric 0.4255, 0.5, 1 and 2 the G-ewald estimate gives (g rc)^2 = L0 - ln(dielectric) (L0 from dielectric 1),
+    // i.e. only the pre-factor 2 qqrd2e Q2 carries 1/dielectric; the reference uses qqr2e.
     const a = ANGSTROM[s.units.style], q = QELECTRON[s.units.style];
-    return (this.accuracy * qqrd2e * q * q) / (a * a);
+    return (this.accuracy * s.units.qqr2e * q * q) / (a * a);
   }
 
   /** Charges, neutrality and the box checks shared by Ewald and PPPM. */

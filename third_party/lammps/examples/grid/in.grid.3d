@@ -1,0 +1,56 @@
+# 3d Lennard-Jones melt
+
+units		lj
+atom_style	atomic
+
+lattice		fcc 0.8442
+region		box block 0 10 0 10 0 10
+create_box	1 box
+create_atoms	1 box
+mass		1 1.0
+
+velocity	all create 1.44 87287 loop geom
+
+pair_style	lj/cut 2.5
+pair_coeff	1 1 1.0 1.0 2.5
+
+neighbor	0.3 bin
+neigh_modify	delay 0 every 20 check no
+
+fix		1 all nve
+
+# load balancing
+
+variable dumpfreq index 100
+comm_style      tiled
+fix             100 all balance ${dumpfreq} 0.9 rcb
+
+# fix ave/grid
+
+fix             ave all ave/grid 10 10 ${dumpfreq} 5 5 5 vx vy vz
+
+# dump grid
+
+#compute         ave all property/grid 5 5 5 id ix iy
+#dump            ave all grid ${dumpfreq} tmp.dump.3d &
+#                c_ave:grid:data[*] f_ave:grid:count f_ave:grid:data[*]
+#dump_modify     ave sort 1
+
+#dump            vtk1 all grid/vtk ${dumpfreq} tmp.dump1.3d.*.vtr f_ave:grid:count
+
+#dump            vtk2 all grid/vtk ${dumpfreq} tmp.dump2.3d.*.vtr f_ave:grid:data[*]
+
+# visualize grid with transparency and using a color scale map
+#fix             map all graphics/labels ${dumpfreq} colorscale viz "count / bin" 40 400 0 &
+#                     map grid vertical length 600 size 24
+#dump            viz all image ${dumpfreq} grid.3d-*.ppm type type zoom 1.2 &
+#                grid f_ave:grid:count view 60 -30 shiny 0.1 fsaa yes &
+#                subbox yes 0.01 size 800 800 center s 0.5 0.4 0.5 fix map const 1 0
+#dump_modify     viz pad 6 gtrans 0.75 acolor 1 gray backcolor2 white boxcolor midnightblue &
+#                gmap 26 38 cf 0.0 5 min cyan 0.2 magenta 0.4 red 0.6 gold max forestgreen
+
+# run
+
+thermo          100
+
+run		500

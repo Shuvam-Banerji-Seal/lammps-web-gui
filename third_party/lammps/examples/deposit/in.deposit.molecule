@@ -1,0 +1,62 @@
+# sample surface deposition script for molecules
+
+units		lj
+atom_style      bond
+boundary        p p f
+
+lattice		fcc 1.0
+region          box block 0 5 0 5 0 10
+create_box      3 box bond/types 1 extra/bond/per/atom 1
+
+region		substrate block INF INF INF INF INF 3
+create_atoms	1 region substrate
+
+pair_style	lj/cut 2.5
+pair_coeff	* * 1.0 1.0
+pair_coeff	1 2 1.0 1.0 5.0
+mass		* 1.0
+
+bond_style	harmonic
+bond_coeff      1 5.0 1.0
+
+neigh_modify	delay 0
+
+group		addatoms type 2
+region          mobile block 0 5 0 5 2 INF
+group		mobile region mobile
+
+compute		add addatoms temp
+compute_modify	add dynamic/dof yes extra/dof 0
+
+fix		1 addatoms nve
+fix		2 mobile langevin 0.1 0.1 0.1 587283
+fix		3 mobile nve
+
+molecule        dimer molecule.dimer
+region          slab block 0 5 0 5 8 9
+fix		4 addatoms deposit 100 0 100 12345 region slab near 1.0 &
+                mol dimer vz -1.0 -1.0
+fix		5 addatoms wall/reflect zhi EDGE
+
+thermo_style	custom step atoms temp epair etotal press
+thermo          100
+thermo_modify	temp add lost/bond ignore lost warn
+
+#dump		1 all atom 50 dump.deposit.atom
+
+#dump            viz all image 50 deposit_molecule-*.ppm type type bond atom type &
+#                size 600 800 zoom 1.6 view 80 -30  center s 0.5 0.4 0.48 &
+#                shiny 0.4 fsaa yes axes yes 0.5 0.1
+#dump_modify     viz pad 6 backcolor black backcolor2 white adiam * 0.75 adiam 1 1.5 &
+#                color myred 0.9 0.05 0.05 acolor 1 myred acolor 2 forestgreen boxcolor gold
+#
+
+#dump            viz all movie 50 deposit_molecule.mp4 type type bond atom type &
+#                size 600 800 zoom 1.6 view 80 -30  center s 0.5 0.4 0.48 &
+#                shiny 0.4 fsaa yes axes yes 0.5 0.1
+#dump_modify     viz backcolor black backcolor2 white adiam * 0.75 adiam 1 1.5 &
+#                color myred 0.9 0.05 0.05 acolor 1 myred acolor 2 forestgreen boxcolor gold
+#
+
+
+run             10000

@@ -4,12 +4,15 @@
 distribution:
 
 - upstream: <https://github.com/lammps/lammps>
-- commit: `9792f6a9a32517780a8276c8ab201f17cae37d6b`
-- 256 files, copied byte for byte (checked with `diff -rq`)
+- commit: `b332f28` (the commit of the native binary used for the parity cases, `lmp -h`: "Git info (develop / b332f28)");
+  every file of that commit's `potentials/` (274 files) is here, copied byte for byte (checked with `cmp`)
+- nine further files from the earlier copy (commit `9792f6a9a32517780a8276c8ab201f17cae37d6b`) that the later commit
+  no longer ships: `Al_Batra_2019.agni`, `Al_jpc.agni`, `Al_prb.agni`, `Cu_Huan_2019_fp1.agni`, `Cu_Huan_2019_fp2.agni`,
+  `Pt_Chapman_2020.agni`, `MgAl.rann`, `Ti.rann`, `TiZr_2.rann`, `Zn.rann`, `Zr.rann` (kept unmodified)
 - one further file from the `examples/fire/` directory of the same distribution, copied byte for byte:
   `FeTiClibrary.meam` (the MEAM library file of the `in.meam.fire` example; it is not in `potentials/`). It is read
   by the native-parity case `tests/oracle/w47mn_ti_crystal` and `tests/engineMeamNn2Hcp47.test.ts`.
-- added later for the SPIN oracle cases: `potentials/Fe_Mishin2006.eam.alloy`, copied byte for byte from `examples/SPIN/iron/` of the same LAMMPS tree (`cmp` checked)
+- added for the SPIN oracle cases: `potentials/Fe_Mishin2006.eam.alloy`, copied byte for byte from `examples/SPIN/iron/` of the same LAMMPS tree (`cmp` checked)
 
 These files are part of LAMMPS and are distributed under the **GNU General
 Public License, version 2** (see `LICENSE` in this directory). Many of them

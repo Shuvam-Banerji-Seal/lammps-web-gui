@@ -1,0 +1,18 @@
+# oracle: pair_style airebo 3.0 1 1 - polyethylene cell 2x2x1 (240 atoms), 20 NVE steps
+# oracle-inputs: w52airebo_polyethylene.data
+# oracle-potentials: CH.airebo
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      atomic
+read_data       w52airebo_polyethylene.data
+replicate       2 2 1
+timestep        0.0005
+pair_style      airebo 3.0 1 1
+pair_coeff      * * CH.airebo C H
+thermo_style    custom step temp pe etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             0
+velocity        all create 300.0 761341 loop all
+fix             1 all nve
+run             20

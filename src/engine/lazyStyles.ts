@@ -68,6 +68,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'compute_restrain', names: { COMPUTES: ['msd/nongauss'] }, load: () => import('./registry/compute_restrain') as Promise<StyleModule> },
   { id: 'fix_pour', names: { FIXES: ['deposit', 'pour'] }, load: () => import('./registry/fix_pour') as Promise<StyleModule> },
   { id: 'pair_3body', names: { PAIRS: ['tersoff'] }, load: () => import('./registry/pair_3body') as Promise<StyleModule> },
+  { id: 'pair_airebo', names: { PAIRS: ['airebo', 'airebo/morse', 'rebo'] }, load: () => import('../engine-gpl/registry/pair_airebo') as Promise<StyleModule> },
   { id: 'pair_batch49', names: { PAIRS: ['buck6d/coul/gauss/dsf', 'buck6d/coul/gauss/long', 'gauss/cut', 'coul/diel', 'momb'] }, load: () => import('./registry/pair_batch49') as Promise<StyleModule> },
   { id: 'pair_potbatch48', names: { PAIRS: ['pedone', 'smatb', 'smatb/single', 'edip', 'edip/multi'] }, load: () => import('./registry/pair_potbatch48') as Promise<StyleModule> },
   { id: 'pair_batch49', names: { PAIRS: ['buck6d/coul/gauss/dsf', 'buck6d/coul/gauss/long', 'gauss/cut', 'coul/diel', 'momb'] }, load: () => import('./registry/pair_batch49') as Promise<StyleModule> },

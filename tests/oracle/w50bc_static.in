@@ -1,0 +1,15 @@
+# oracle: pair_style body/rounded/polygon (two tilted rounded squares, cohesion and elastic normal law with delta_ua scaling; the contact torques), run 0: thermo pe and the forces of both bodies
+# oracle-inputs: w50bc_static.data
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+dimension       2
+atom_style      body rounded/polygon 1 6
+atom_modify     map array
+read_data       w50bc_static.data
+pair_style      body/rounded/polygon 0 0 0 0.01 1.0
+pair_coeff      * * 100 2
+comm_modify     vel yes
+fix             2 all enforce2d
+thermo_style    custom step pe ke etotal press pxx pyy pxy
+thermo_modify   format float %.15g
+run             0

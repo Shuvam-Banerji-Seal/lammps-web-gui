@@ -424,6 +424,8 @@ export interface KSpaceCompute {
   s: SimState;
   geom: Geometry;
   f: Float64Array;
+  /** Per-atom torque (3N), accumulated by styles with point dipoles (ewald/dipole); null otherwise. */
+  torque?: Float64Array | null;
   qqrd2e: number;
   acc: Accum;
   eatom: Float64Array | null;

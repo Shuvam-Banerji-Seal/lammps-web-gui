@@ -1,0 +1,28 @@
+# oracle: lj/cut/dipole/long + kspace ewald/dipole automatic G-ewald and kmax in a non-cubic 10 x 12 x 14 box (lj units LJ term, five dipoles)
+# oracle-files: w44dl_noncubic_mu.dump
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           lj
+atom_style      hybrid charge sphere dipole
+boundary        p p p
+region          box block -5 5 -6 6 -7 7
+create_box      1 box
+create_atoms    1 single -3.1 -2.0 -4.0
+create_atoms    1 single 1.5 0.3 -0.2
+create_atoms    1 single -1.2 2.2 1.1
+create_atoms    1 single 3.1 -2.0 0.7
+create_atoms    1 single 0.4 4.6 -3.3
+mass            1 1.0
+set             group all charge 0.0
+set             group all diameter 1.0
+set             atom 1 dipole 0.3 0.5 0.7
+set             atom 2 dipole -0.2 0.9 0.4
+set             atom 3 dipole 0.6 -0.4 0.1
+set             atom 4 dipole -0.5 0.2 0.8
+set             atom 5 dipole 0.1 -0.7 0.3
+pair_style      lj/cut/dipole/long 3.0
+pair_coeff      * * 1.0 1.0
+kspace_style    ewald/dipole 1.0e-4
+thermo_style    custom step pe ecoul elong evdwl press
+thermo_modify   format float %.15g norm no
+run             0
+write_dump      all custom w44dl_noncubic_mu.dump id tqx tqy tqz modify format float %.15g sort id

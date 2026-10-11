@@ -23,10 +23,10 @@ import { parseNum } from '../util';
  * (Measured with native LAMMPS, black box: the scale keyword is rejected by lj/cut/dipole/cut, and for
  * lj/sf/dipole/sf it scales only the Coulomb terms; an I J pair without its own pair_coeff gets scale 1.)
  * Torques need per-atom torque, e.g. "atom_style hybrid sphere dipole" (page text, Description).
- * lj/cut/dipole/long and lj/long/dipole/long are not implemented (they need kspace ewald/dipole).
+ * lj/cut/dipole/long is in pair/dipole_long.ts (kspace ewald/dipole); lj/long/dipole/long is not implemented.
  */
 
-abstract class PairDipoleBase extends Pair {
+export abstract class PairDipoleBase extends Pair {
   virialFdotr = true;
   cutLJGlobal = 0;
   cutCGlobal = 0;

@@ -34,6 +34,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'pair_tip4p', names: { PAIRS: ['lj/cut/tip4p/cut', 'lj/cut/tip4p/long', 'tip4p/cut', 'tip4p/long'] }, load: () => import('./registry/pair_tip4p') as Promise<StyleModule> },
   { id: 'kspace_tip4p', names: { KSPACES: ['pppm/tip4p', 'zero'] }, load: () => import('./registry/kspace_tip4p') as Promise<StyleModule> },
   { id: 'kspace_disp', names: { KSPACES: ['ewald/disp'] }, load: () => import('./registry/kspace_disp') as Promise<StyleModule> },
+  { id: 'kspace_dipole44', names: { KSPACES: ['ewald/dipole'] }, load: () => import('./registry/kspace_dipole44') as Promise<StyleModule> },
   { id: 'pair_dipole18', names: { PAIRS: ['lj/cut/dipole/cut', 'lj/cut/dipole/long', 'lj/long/dipole/long', 'lj/sf/dipole/sf'] }, load: () => import('./registry/pair_dipole18') as Promise<StyleModule> },
   { id: 'fix_ttm', names: { FIXES: ['ttm', 'ttm/grid', 'ttm/thermal', 'ttm/cascade'] }, load: () => import('./registry/fix_ttm') as Promise<StyleModule> },
   { id: 'fix_numdiff', names: { FIXES: ['numdiff', 'numdiff/virial'] }, load: () => import('./registry/fix_numdiff') as Promise<StyleModule> },

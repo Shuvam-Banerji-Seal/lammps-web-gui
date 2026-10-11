@@ -1,0 +1,14 @@
+# oracle: min_style quickmin on a perturbed lj crystal (damped dynamics minimizer, min_style.html)
+# oracle-inputs: w47qm_lj.data
+units           lj
+atom_style      atomic
+read_data       w47qm_lj.data
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+min_style       quickmin
+timestep        0.005
+thermo_style    custom step pe fnorm fmax press
+thermo_modify   format float %.15g
+thermo          1
+minimize        0 0 25 1000

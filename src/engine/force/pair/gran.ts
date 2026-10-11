@@ -1,6 +1,7 @@
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
 import type { SimState } from '../../types';
 import { NEIGHMASK } from '../../neighbor';
+import { contactMassArray } from '../../atoms';
 import { parseNum } from '../util';
 
 /*
@@ -142,7 +143,7 @@ export class PairGran extends Pair {
     const nb = pc.nb;
     const nall = pc.nall;
     const owner = nb.owner;
-    const radius = s.radius!, rmass = s.rmass!, omega = s.omega!, v = s.v, id = s.id;
+    const radius = s.radius!, rmass = contactMassArray(s), omega = s.omega!, v = s.v, id = s.id;
     const dt = s.dt;
     const update = pc.historyUpdate === true;
     const tq = new Float64Array(3 * nall);

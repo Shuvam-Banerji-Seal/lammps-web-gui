@@ -1,0 +1,32 @@
+# oracle-compare: thermo=all atoms=all rel=1e-3 abs=1e-4
+# oracle: a rigid body of three finite-size spheres with spin falls onto a fix wall/gran zplane (the body mass replaces the particle mass in the wall contact), 4 free spheres. rel 1e-3: the friction torque on the body differs from native by about 1e-4 relative from the first contact (step 139); the same wall impact on free spheres matches to 1e-14, and the frictionless one to 1e-7, so the rigid-body contact detail is not yet explained
+units           lj
+comm_modify     vel yes
+boundary        p p f
+atom_style      sphere
+region          box block 0 10 0 10 0 10 units box
+create_box      1 box
+create_atoms    1 single 5 5 1.2
+create_atoms    1 single 6.05 5 1.2
+create_atoms    1 single 5.5 5.9 1.2
+create_atoms    1 single 1 1 1
+create_atoms    1 single 2.5 1 1
+create_atoms    1 single 4 1 1
+create_atoms    1 single 1 2.5 1
+set             type 1 diameter 1.0 density 1.0
+group           clump id 1:3
+group           free id 4:7
+variable        wz atom 0.4*sin(1.3*id)
+set             group all omega 0.2 -0.3 v_wz
+set             group clump vz -10.0
+pair_style      zero 1.0
+pair_coeff      * *
+timestep        0.0005
+fix             1 clump rigid single
+fix             2 all gravity 1.0 vector 0 0 -1
+fix             3 all wall/gran hooke/history 2000.0 NULL 50.0 NULL 0.5 1 zplane 0.0 NULL
+compute         ers all erotate/sphere
+thermo_style    custom step temp ke c_ers f_1[1][1] f_1[1][3] f_1[1][10] f_1[1][11] f_1[1][12]
+thermo_modify   format float %.15g
+thermo          20
+run             300

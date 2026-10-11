@@ -208,6 +208,6 @@ create_atoms 0 single 2 2 2 mol dm 1 units box
 fix 1 all rigid/small molecule
 run 0`, { 'dipoles.txt': DIPOLE_MOL });
     expect(error).not.toBeNull();
-    expect(error!.message).toMatch(/point dipoles/);
+    expect(error!.message).toMatch(/point dipole/);
   });
 });

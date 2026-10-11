@@ -3,7 +3,7 @@ import { StyleError } from '../force/types';
 import { parseNum } from '../force/util';
 import type { System } from '../system';
 import { granularContact, heatFlowOf, newContactOut, parseGranularSpec, PairGranular, type ContactOut, type Pm } from '../force/pair/granular';
-import { HEAT_FLOW, HEAT_TEMPERATURE } from '../atoms';
+import { contactMassArray, HEAT_FLOW, HEAT_TEMPERATURE } from '../atoms';
 
 /** The classic fstyles of fix wall/gran/region (hooke, hooke/history, hertz/history). */
 const CLASSIC_FSTYLES = ['hooke', 'hooke/history', 'hertz/history'] as const;
@@ -237,6 +237,7 @@ export class FixWallGran extends Fix {
   private apply(update: boolean): void {
     const s = this.sys.state;
     const { x, v, f, id, mask, radius, rmass, omega, torque } = s;
+    const cmass = contactMassArray(s);
     if (!radius || !rmass || !omega || !torque) throw new StyleError('fix wall/gran requires atom_style sphere');
     const dt = s.dt;
     const delta = (s.step - this.step0) * dt;
@@ -285,7 +286,7 @@ export class FixWallGran extends Fix {
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & bit)) continue;
       const R = radius[i];
-      const mi = rmass[i];
+      const mi = cmass[i];
       for (let k = 0; k < this.planes.length; k++) {
         const p = this.planes[k];
         const d = p.dim;
@@ -573,6 +574,7 @@ export class FixWallGranGranular extends Fix {
   private apply(update: boolean): void {
     const s = this.sys.state;
     const { x, v, f, id, mask, radius, rmass, omega, torque } = s;
+    const cmass = contactMassArray(s);
     if (!radius || !rmass || !omega || !torque) throw new StyleError('fix wall/gran requires atom_style sphere');
     const dt = s.dt;
     const delta = (s.step - this.step0) * dt;
@@ -599,7 +601,7 @@ export class FixWallGranGranular extends Fix {
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & bit)) continue;
       const R = radius[i];
-      const mi = rmass[i];
+      const mi = cmass[i];
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       const cand: WallElement[] = [];
       if (this.regionId) {

@@ -773,6 +773,12 @@ export class PairGranular extends Pair {
 
   compute(pc: PairCompute): void {
     const s = pc.s;
+    // pair_style gran/* and fix wall/gran replace the mass of an atom in a rigid body by the body mass
+    // (docs.lammps.org/pair_gran.html, see atoms.ts contactMassArray); pair_granular.html states no such rule
+    // and it was not measured for this style, so a rigid body with pair_style granular is refused.
+    if (s.rigidBodyMass && s.rigidBodyMass.size > 0) {
+      throw new StyleError('pair_style granular with atoms in rigid bodies is not supported by the browser engine (the contact mass rule for rigid bodies is not documented for this style and was not measured)');
+    }
     const list = pc.half!;
     const { x, f } = pc;
     const nb = pc.nb;

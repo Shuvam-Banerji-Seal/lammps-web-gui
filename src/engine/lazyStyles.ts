@@ -6,7 +6,8 @@
  * statically imported engine code needs it.
  */
 
-export type StyleKind = 'PAIRS' | 'BONDS' | 'ANGLES' | 'DIHEDRALS' | 'IMPROPERS' | 'KSPACES' | 'FIXES' | 'COMPUTES';
+/** HOOKS: not styles but helpers that core commands call (nativeRandom.ts), named by the command words that need them. */
+export type StyleKind = 'PAIRS' | 'BONDS' | 'ANGLES' | 'DIHEDRALS' | 'IMPROPERS' | 'KSPACES' | 'FIXES' | 'COMPUTES' | 'HOOKS';
 export type StyleModule = Partial<Record<StyleKind, Record<string, unknown>>>;
 
 export interface LazyGroup {
@@ -17,6 +18,7 @@ export interface LazyGroup {
 }
 
 export const LAZY_GROUPS: readonly LazyGroup[] = [
+  { id: 'gpl_random', names: { HOOKS: ['dipole/random', 'geom', 'quat/random', 'random', 'spin/atom/random', 'spin/random', 'theta/random', 'type/fraction', 'type/ratio', 'type/subset'] }, load: () => import('../engine-gpl/registry/random') as Promise<StyleModule> },
   { id: 'pair_meam', names: { PAIRS: ['meam'] }, load: () => import('./registry/pair_meam') as Promise<StyleModule> },
   { id: 'pair_meam_spline', names: { PAIRS: ['meam/spline', 'meam/sw/spline'] }, load: () => import('./registry/pair_meam_spline') as Promise<StyleModule> },
   { id: 'pair_snap', names: { PAIRS: ['snap'] }, load: () => import('./registry/pair_snap') as Promise<StyleModule> },

@@ -1,0 +1,19 @@
+# oracle: set spin/atom/random (3d, magnitude 1.3) on a 256-atom fcc lattice; the spins are summed in thermo, run 0
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      spin
+lattice         fcc 3.52
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 58.9
+set             group all spin/atom/random 4321 1.3
+compute         sp all property/atom spx spy spz sp
+compute         ssq all reduce sumsq c_sp[1] c_sp[2] c_sp[3] c_sp[4]
+compute         ssum all reduce sum c_sp[1] c_sp[2] c_sp[3] c_sp[4]
+pair_style      zero 2.5
+pair_coeff      * *
+thermo_style    custom step pe c_ssq[1] c_ssq[2] c_ssq[3] c_ssq[4] c_ssum[1] c_ssum[2] c_ssum[3] c_ssum[4]
+thermo_modify   format float %.15g
+thermo          1
+run             0

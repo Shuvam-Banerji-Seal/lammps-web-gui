@@ -1,0 +1,25 @@
+# oracle: set quat/random (2d) on 128 ellipsoids of a square lattice; the quaternions are summed in thermo, run 0
+# oracle-compare: thermo=all atoms=all
+# lj/cut 2.4 (not 2.5): on this lattice pairs lie at exactly r = 2.5, where the cutoff test is decided by round-off
+dimension       2
+units           lj
+atom_style      ellipsoid
+boundary        p p p
+lattice         sq2 0.8
+region          box block 0 8 0 8 -0.5 0.5
+create_box      1 box
+create_atoms    1 box
+set             group all shape 0.5 0.6 0.8
+set             group all density 1.0
+set             group all quat/random 999
+compute         q all property/atom quatw quati quatj quatk
+compute         qsq all reduce sumsq c_q[1] c_q[2] c_q[3] c_q[4]
+compute         qsum all reduce sum c_q[1] c_q[2] c_q[3] c_q[4]
+pair_style      lj/cut 2.4
+pair_coeff      1 1 1.0 1.0 2.4
+neighbor        0.3 bin
+neigh_modify    every 20 delay 0 check no
+thermo_style    custom step pe c_qsq[1] c_qsq[2] c_qsq[3] c_qsq[4] c_qsum[1] c_qsum[2] c_qsum[3] c_qsum[4]
+thermo_modify   format float %.15g
+thermo          1
+run             0

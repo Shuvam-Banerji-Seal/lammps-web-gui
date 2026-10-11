@@ -1,0 +1,22 @@
+# oracle: velocity create loop geom dist gaussian on a 256-atom fcc LJ lattice with two masses (type 2 is 2.5x heavier), run 0
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+region          half block 0 2 0 4 0 4
+create_box      2 box
+create_atoms    1 box
+mass            1 1.0
+mass            2 2.5
+group           left region half
+set             group left type 2
+velocity        all create 1.2 4321 loop geom dist gaussian
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 20 delay 0 check no
+thermo_style    custom step temp pe ke etotal press
+thermo_modify   format float %.15g
+thermo          1
+run             0

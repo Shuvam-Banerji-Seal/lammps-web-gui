@@ -1,8 +1,9 @@
 import type { System } from './system';
-import type { Bonded, KSpace, Pair } from './force/types';
+import { StyleError, type Bonded, type KSpace, type Pair } from './force/types';
 import type { Fix } from './fix/fix';
 import type { Compute } from './compute/compute';
 import { LAZY_GROUPS, type LazyGroup, type StyleKind, type StyleModule } from './lazyStyles';
+import type { NativeRandom, NativeRandomWord } from './nativeRandom';
 import { isRefusedStyle } from './refusedStyles';
 import { PairLJCut } from './force/pair/lj_cut';
 import { PairHybrid } from './force/pair/hybrid';
@@ -159,10 +160,24 @@ export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
   'temp/sphere': (s, i, g, a) => new ComputeTempSphere(s, i, g, a),
   ...computeAtom.COMPUTES, ...computeGlobal.COMPUTES, ...computeRed.COMPUTES, ...computeTemp.COMPUTES, ...computeDeform.COMPUTES, ...computeChunk.COMPUTES, ...computeLocal.COMPUTES, ...w17computechunk17.COMPUTES, ...w17computemisc17.COMPUTES, ...w18computemisc18.COMPUTES, };
 
+/** Helpers that core commands call, by the command word that needs them (lazy groups only; lazyStyles.ts HOOKS). */
+const HOOKS: Record<string, unknown> = {};
+
 /** The registry object of each style kind (lazy groups are merged into these when loaded). */
 const REGISTRY_OF: Record<StyleKind, Record<string, unknown>> = {
   PAIRS: PAIR_STYLES, BONDS: BOND_STYLES, ANGLES: ANGLE_STYLES, DIHEDRALS: DIHEDRAL_STYLES,
-  IMPROPERS: IMPROPER_STYLES, KSPACES: KSPACE_STYLES, FIXES: FIX_STYLES, COMPUTES: COMPUTE_STYLES,
+  IMPROPERS: IMPROPER_STYLES, KSPACES: KSPACE_STYLES, FIXES: FIX_STYLES, COMPUTES: COMPUTE_STYLES, HOOKS,
+};
+
+/**
+ * The native per-atom random streams (nativeRandom.ts) for a command word such as geom or type/fraction. The
+ * session loads them before a command that contains the word; a caller that runs outside Session.dispatch
+ * gets an error naming the word, never a different stream.
+ */
+export const nativeRandom = (word: NativeRandomWord): NativeRandom => {
+  const h = HOOKS[word] as NativeRandom | undefined;
+  if (!h) throw new StyleError(`${word}: the native random streams are not loaded (run the command through the session)`);
+  return h;
 };
 
 /** Registered names of one kind, including the lazy groups that are not loaded yet. */

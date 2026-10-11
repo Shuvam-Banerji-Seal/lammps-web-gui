@@ -1,0 +1,24 @@
+# oracle: set dipole/random (2d, Dlen 1.2) on a 128-atom square lattice; the moments are summed in thermo, run 0
+# oracle-compare: thermo=all atoms=all
+# lj/cut 2.4 (not 2.5): on this lattice pairs lie at exactly r = 2.5, where the cutoff test is decided by round-off
+dimension       2
+units           lj
+atom_style      dipole
+boundary        p p p
+lattice         sq2 0.8
+region          box block 0 8 0 8 -0.5 0.5
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+set             group all dipole/random 777 1.2
+compute         mu all property/atom mux muy muz
+compute         msq all reduce sumsq c_mu[1] c_mu[2] c_mu[3]
+compute         msum all reduce sum c_mu[1] c_mu[2] c_mu[3]
+pair_style      lj/cut 2.4
+pair_coeff      1 1 1.0 1.0 2.4
+neighbor        0.3 bin
+neigh_modify    every 20 delay 0 check no
+thermo_style    custom step pe c_msq[1] c_msq[2] c_msq[3] c_msum[1] c_msum[2] c_msum[3]
+thermo_modify   format float %.15g
+thermo          1
+run             0

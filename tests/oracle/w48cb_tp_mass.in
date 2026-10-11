@@ -1,0 +1,25 @@
+# oracle: compute temp/profile 1 1 1 x 3 with two masses (every other atom has mass 3): the bin velocity is a centre-of-mass velocity, static state
+# oracle-compare: thermo=all atoms=none
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      2 box
+create_atoms    1 box
+set             group all type 1
+group           heavy id 2:64:2
+set             group heavy type 2
+mass            1 1.0
+mass            2 3.0
+velocity        all create 1.5 87287 mom yes rot no
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+compute         tp all temp/profile 1 1 1 x 3
+compute         tpb all temp/profile 1 1 1 x 3 out bin
+variable        n1 equal c_tpb[1][1]
+variable        t1 equal c_tpb[1][2]
+variable        t2 equal c_tpb[2][2]
+variable        t3 equal c_tpb[3][2]
+thermo_style    custom step temp c_tp c_tp[1] c_tp[2] c_tp[4] v_n1 v_t1 v_t2 v_t3
+thermo_modify   format float %.15g
+run             0

@@ -1,0 +1,27 @@
+# oracle: compute cnp/atom on a 2x2x2 fcc crystal (32 atoms) with a vacancy, displaced atoms and a 4-atom pair cutoff; periodic
+# oracle-files: w48cb_cnp_tiny.dump
+# oracle-compare: thermo=all atoms=none
+units           metal
+atom_style      atomic
+lattice         fcc 4.05
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 63.5
+group           vac id 1
+delete_atoms    group vac
+group           few id 5 17 30 52
+displace_atoms  few move 0.35 -0.25 0.20 units box
+variable        dx atom 0.10*sin(0.9*x+0.4*y)
+variable        dy atom 0.10*cos(0.7*y-0.5*z)
+variable        dz atom 0.10*sin(1.1*z+0.3*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      lj/cut 4.0
+pair_coeff      * * 0.01 2.5
+compute         cnp all cnp/atom 3.0
+compute         cnpfull all cnp/atom 3.6
+dump            d all custom 1 w48cb_cnp_tiny.dump id c_cnp c_cnpfull
+dump_modify     d sort id format float %.12g
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0

@@ -1,0 +1,25 @@
+# oracle: compute temp/profile 1 1 1 x 3 on an LJ fcc crystal with random-looking velocities: scalar, tensor and bin temperatures (dof = dim N - Ns Nb - extra)
+# oracle-compare: thermo=all atoms=none
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.5 87287 mom yes rot no
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+compute         tp all temp/profile 1 1 1 x 3
+compute         tpb all temp/profile 1 1 1 x 3 out bin
+compute         tpt all temp/profile 1 0 1 x 3
+compute         tpz all temp/profile 1 1 1 xyz 2 2 2
+variable        n1 equal c_tpb[1][1]
+variable        n2 equal c_tpb[2][1]
+variable        n3 equal c_tpb[3][1]
+variable        t1 equal c_tpb[1][2]
+variable        t2 equal c_tpb[2][2]
+variable        t3 equal c_tpb[3][2]
+thermo_style    custom step temp c_tp c_tpt c_tpz c_tp[1] c_tp[2] c_tp[3] c_tp[4] c_tp[5] c_tp[6] v_n1 v_n2 v_n3 v_t1 v_t2 v_t3
+thermo_modify   format float %.15g
+run             0

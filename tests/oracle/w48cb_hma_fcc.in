@@ -1,0 +1,20 @@
+# oracle: compute hma (u p) on a cut-down example (examples/PACKAGES/hma: fcc lj/smooth/linear 3, nvt at 1.0), 108 atoms, 200 steps, sites at the start
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           lj
+atom_style      atomic
+lattice         fcc 1.0
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/smooth/linear 3
+pair_coeff      * * 1.0 1.0
+compute         p all pressure NULL pair
+velocity        all create 0.1 45678 dist gaussian
+fix             settemp all nvt temp 1.0 1.0 0.5
+compute         hma all hma settemp u p 9.579586686264458
+timestep        0.005
+thermo_style    custom step pe temp c_hma[1] c_hma[2] c_p
+thermo_modify   format float %.15g
+thermo          50
+run             200

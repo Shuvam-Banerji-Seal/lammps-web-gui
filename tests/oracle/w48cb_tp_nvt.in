@@ -1,0 +1,21 @@
+# oracle: fix nvt thermostatting the profile temperature of compute temp/profile with one bin (the flow along x is removed as a velocity bias, restored after the thermostat)
+# oracle-compare: thermo=all atoms=none
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.0 4321 mom yes rot no
+velocity        all ramp vx 0.0 1.0 x 0.5 6.5 units box
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+compute         tp all temp/profile 1 1 0 x 1
+fix             1 all nvt temp 1.0 1.0 0.5
+fix_modify      1 temp tp
+thermo_style    custom step temp c_tp c_tp[1] c_tp[2] c_tp[4]
+thermo_modify   format float %.15g
+thermo          20
+timestep        0.002
+run             200

@@ -1,0 +1,33 @@
+# oracle: pair_style meam, two-element alloy with a bcc element A (library z = 8, re(1,1) = 2.5 A) and an fcc element B, nn2 = 0, lattce(1,2) = b1 (w42mb_lib.meam + w42mb_bcc1.meam, zbl 0), non-periodic clusters: A-A dimers at 2.3, 2.5 and 2.9 A, an A-B dimer at 2.6 A, a B-A dimer at 2.2 A, and an A-B-A chain with bonds 2.5 and 2.7 A
+# oracle: the bcc element uses its own 8-neighbour reference (self pair with z = 8) and the first shell only (nn2 = 0); the cluster energies are native values (black box)
+# oracle-inputs: w42mb_lib.meam w42mb_bcc1.meam
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+units           metal
+atom_style      atomic
+boundary        f f f
+region          box block -40 40 -40 40 -40 40
+create_box      2 box
+create_atoms    1 single 0 0 0 units box
+create_atoms    1 single 2.3 0 0 units box
+create_atoms    1 single 20 0 0 units box
+create_atoms    1 single 22.5 0 0 units box
+create_atoms    1 single 0 20 0 units box
+create_atoms    1 single 0 22.9 0 units box
+create_atoms    2 single 36 0 0 units box
+create_atoms    1 single 36 2.6 0 units box
+create_atoms    2 single 50 0 0 units box
+create_atoms    1 single 50 2.2 0 units box
+create_atoms    1 single -30 0 0 units box
+create_atoms    2 single -30 2.5 0 units box
+create_atoms    1 single -30 5.2 0 units box
+mass            1 55.845
+mass            2 58.69
+velocity        all set 0.0 0.0 0.0 units box
+pair_style      meam
+pair_coeff      * * w42mb_lib.meam A B w42mb_bcc1.meam A B
+timestep        0.001
+fix             1 all nve
+thermo          10
+thermo_style    custom step pe press
+thermo_modify   format float %.15g
+run             0

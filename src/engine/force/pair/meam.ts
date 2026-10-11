@@ -1282,24 +1282,29 @@ export class PairMeam extends Pair {
     }
     const elements: AlloyElement[] = libs.map((lib, c) => {
       const elt = elems[c];
-      if (lib.lat !== 'fcc' && lib.lat !== 'dia') {
-        throw new StyleError(`multi-element MEAM: reference lattice '${lib.lat}' of ${elt} is not supported (only fcc and dia)`);
+      // bcc elements (own 8-neighbour reference, nn2 = 0 and 1) and hcp elements (ideal c/a, nn2 = 0) are measured in tests/oracle/w42mb_*; sc is refused.
+      if (lib.lat !== 'fcc' && lib.lat !== 'dia' && lib.lat !== 'bcc' && lib.lat !== 'hcp') {
+        throw new StyleError(`multi-element MEAM: reference lattice '${lib.lat}' of ${elt} is not supported (only fcc, bcc, hcp and dia)`);
       }
       if (lib.t[0] !== 1) throw new StyleError('only MEAM parameters normalized to t0 = 1.0 are supported');
       // ibar = 1 ("1 => G = exp(Gamma/2)") is verified for the alloy density by the real SiC potential
       // (tests/oracle/w35meamrho_sic, library.meam + SiC.meam); ibar = 0 is the existing alloy subset.
-      if (lib.ibar !== 0 && lib.ibar !== 1) {
-        throw new StyleError(`multi-element MEAM: ibar = ${lib.ibar} is not supported (only ibar = 0 and 1; ${paramFile})`);
+      // ibar = 3 (G = 2/(1+exp(-Gamma))) is measured on bcc and fcc alloy elements (tests/oracle/w42mb_ibar3*);
+      // ibar = 2 is refused: the docs list it as not implemented.
+      if (lib.ibar !== 0 && lib.ibar !== 1 && lib.ibar !== 3) {
+        throw new StyleError(`multi-element MEAM: ibar = ${lib.ibar} is not supported (only ibar = 0, 1 and 3; ${paramFile})`);
       }
       const own = par.pair.get(`${c + 1},${c + 1}`) ?? {};
       if (own.lattce !== undefined && own.lattce !== lib.lat) throw new StyleError(`multi-element MEAM: lattce(${c + 1},${c + 1}) = ${own.lattce} for ${elt} differs from the library lattice '${lib.lat}'`);
+      // nn2 = 1 with the hcp reference is refused (no c/a for the second-neighbour shell; see the single-element style)
+      if (own.nn2 === 1 && lib.lat === 'hcp') throw new StyleError(`multi-element MEAM: nn2(${c + 1},${c + 1}) = 1 with the hcp reference of ${elt} is not supported (${paramFile})`);
       // rho0(I) of the parameter file overwrites the library rozero (docs quote in MeamParams.rho0).
       const rozero = par.rho0.get(c + 1) ?? lib.rozero;
       // Ec and re of the element default as in the single-element style (measured: the same energies as the explicit values)
       return {
         z: lib.z,
         lat: lib.lat as ReferenceLattice,
-        re: own.re ?? (lib.lat === 'dia' ? (lib.alat * Math.sqrt(3)) / 4 : lib.alat / Math.SQRT2),
+        re: own.re ?? (lib.lat === 'dia' ? (lib.alat * Math.sqrt(3)) / 4 : lib.lat === 'bcc' ? (lib.alat * Math.sqrt(3)) / 2 : lib.lat === 'hcp' ? lib.alat : lib.alat / Math.SQRT2),
         alpha: own.alpha ?? lib.alpha,
         Ec: own.Ec ?? lib.esub,
         A: lib.asub,
@@ -1322,6 +1327,9 @@ export class PairMeam extends Pair {
         const p = par.pair.get(`${a + 1},${b + 1}`) ?? {};
         if (p.Ec === undefined || p.re === undefined || p.alpha === undefined) {
           throw new StyleError(`multi-element MEAM: parameter file ${paramFile} must set Ec(${a + 1},${b + 1}), re(${a + 1},${b + 1}) and alpha(${a + 1},${b + 1})`);
+        }
+        if (p.nn2 === 1 && (libs[a].lat === 'hcp' || libs[b].lat === 'hcp')) {
+          throw new StyleError(`multi-element MEAM: nn2(${a + 1},${b + 1}) = 1 with an hcp element is not supported (${paramFile})`);
         }
         if (p.nn2 === 1 && p.lattce === 'l12') {
           // nn2 = 1 with the Cu3Au reference is refused: the 2NN recurrence does not match native (black box) yet

@@ -1,0 +1,4 @@
+# w42mb: synthetic two-element library for the bcc-alloy oracle (not a LAMMPS potential file); element A is bcc (z = 8), element B is fcc; same B entry as w37meam_lib.meam.
+# Field order: elt, lat, z, ielement, atwt, alpha, b0, b1, b2, b3, alat, esub, asub, t0, t1, t2, t3, rozero, ibar
+'A' 'bcc' 8 26 55.845 5.0 2.0 1.5 2.5 4.0 2.8867513 3.5 1.0 1.0 2.0 1.0 1.0 1.0 0
+'B' 'fcc' 12 28 58.69 4.0 3.0 1.0 2.0 3.0 3.5 4.0 1.0 1.0 1.5 0.5 2.0 1.0 0

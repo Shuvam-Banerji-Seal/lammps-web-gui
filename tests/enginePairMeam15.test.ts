@@ -459,9 +459,9 @@ describe('multi-element pair_coeff: supported subset and StyleErrors', () => {
     expect(() => coeffWith(PAR2.replace('b1', 'l12'), ARGS)).not.toThrow();
   });
 
-  it('an element with a non-fcc reference lattice is not supported in an alloy', () => {
-    const libBcc = LIB2.replace("'A' 'fcc'", "'A' 'bcc'");
-    expect(() => coeffWith(PAR2, ARGS, 2, libBcc)).toThrow(StyleError);
+  it('an element with an sc reference lattice is not supported in an alloy (bcc and hcp are accepted since meam42)', () => {
+    const libSc = LIB2.replace("'A' 'fcc'", "'A' 'sc'");
+    expect(() => coeffWith(PAR2, ARGS, 2, libSc)).toThrow(StyleError);
     expect(() => coeffWith(PAR2 + 'lattce(1,1) = bcc\n', ARGS)).toThrow(StyleError);
   });
 

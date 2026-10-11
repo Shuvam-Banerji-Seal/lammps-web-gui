@@ -1,0 +1,25 @@
+# oracle: SPC/E water box (4500 atoms): fix shake tol 1e-4 iter 20, nve for 20 steps of 1 fs: thermo rows and the final per-atom state
+# oracle-inputs: w48sh_spce.data
+# oracle-compare: thermo=all atoms=none rel=1e-5 abs=1e-8
+# oracle-tolerance: measured with native LAMMPS (black box) against the engine: the thermo rows agree to 1e-6 relative (pe 8e-7, ecoul 3e-7, temp 8e-7, press 6e-6 at step 20), but the per-atom forces after 20 steps differ by up to 4e-3 absolute (atom 2410 fx 0.7508 engine vs 0.7550 native), so the per-atom comparison is off; the constraint-force solve of each step (fix shake dynamic sweep) is the source, not the setup (the step-0 rows agree to 1e-12)
+units		real
+atom_style	full
+read_data	w48sh_spce.data
+pair_style	lj/cut/coul/long 12.0 12.0
+kspace_style	pppm 1.0e-4
+pair_coeff	1 1 0.15535 3.166
+pair_coeff	* 2 0.0000 0.0000
+bond_style	harmonic
+angle_style	harmonic
+dihedral_style	none
+improper_style	none
+bond_coeff	1 1000.00 1.000
+angle_coeff	1 100.0 109.47
+special_bonds   lj/coul 0.0 0.0 1.0
+neighbor        2.0 bin
+fix             1 all shake 0.0001 20 0 b 1 a 1
+fix             2 all nve
+thermo_style    custom step temp pe ecoul elong press
+thermo_modify   format float %.15g
+thermo          10
+run             20

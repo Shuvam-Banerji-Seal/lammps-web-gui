@@ -1,0 +1,14 @@
+# oracle: read_data skips the line after each section keyword even when it is not blank (column legends)
+# oracle-inputs: w47ds_legend.data
+units           lj
+atom_style      atomic
+read_data       w47ds_legend.data
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+neighbor        0.3 bin
+timestep        0.002
+fix             1 all nve
+thermo_style    custom step temp pe ke press
+thermo_modify   format float %.15g
+thermo          10
+run             50

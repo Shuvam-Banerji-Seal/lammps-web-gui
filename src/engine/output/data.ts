@@ -280,6 +280,9 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
     const hint = (lines[k].split('#')[1] ?? '').trim();
     k++;
     if (!title) continue;
+    // read_data.html: "The *next* line is *always* skipped." Measured with native LAMMPS (black box): a
+    // non-blank line there (e.g. a column legend) is ignored, and with no blank line the first value line is lost.
+    k++;
     // read_data.html: "fix values = fix-ID header-string section-string" — a section named
     // section-string carries one line per atom for that fix
     const fixEntry = opts.fixSections.get(title);
@@ -329,7 +332,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
     })();
     if (title === 'Atoms' && hint && hint !== style) sys.warn(`atom style in data file (${hint}) differs from the current atom style (${style})`);
     const body: { w: string[]; at: number }[] = [];
-    // skip the blank line after the title, then read `count` non-blank lines
+    // read `count` non-blank lines (the line after the title was skipped above)
     while (body.length < count && k < lines.length) {
       const t = lines[k].replace(/#.*/, '').trim();
       k++;

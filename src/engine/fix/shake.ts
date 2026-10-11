@@ -19,12 +19,14 @@ import { massOf } from '../atoms';
  * x + dt v + dt^2 (f + G)/m; at setup v is the full-step velocity and they are
  * x + dt v + dt^2/2 (f + G)/m. The constraint force G acts along the current
  * bond vectors (Ryckaert, Ciccotti and Berendsen 1977) and is solved per
- * cluster by iteration to the requested tolerance. All clusters are swept
- * together while the largest residual is above tol (a cluster whose residual is
- * already inside tol is still swept), each sweep solving the linearised system
- * for lambda. The setup force solve freezes the Jacobian at the predicted
- * separations and sums a cluster's relative squared-length errors; the other
- * solves re-linearise each sweep and use the largest relative error of a constraint.
+ * cluster by iteration to the requested tolerance. The setup solves sweep all
+ * clusters together while the largest residual is above tol (a cluster whose
+ * residual is already inside tol is still swept), each sweep solving the
+ * linearised system for lambda with the Jacobian frozen at the predicted
+ * separations. The setup force solve sums a cluster's relative squared-length
+ * errors. The per-step solve works cluster by cluster: a cluster stops after the
+ * sweep whose largest lambda update, times dt^2 ftm2v, is within tol (see
+ * solveClusters).
  * "A cluster is defined as a central atom connected to others in the cluster
  * by constrained bonds. LAMMPS allows for the following kinds of clusters to
  * be constrained: one central atom bonded to 1 or 2 or 3 atoms, or one
@@ -80,6 +82,19 @@ import { massOf } from '../atoms';
  *    correction takes at least one sweep; the setup force solve takes at least two when its first residual is above
  *    tol (none when it is not); otherwise both stop at the first residual inside tol. This reproduces all three; it
  *    is an empirical rule (tests/oracle/w48sh_run0, w48sh_loose, w26shake_molb).
+ *
+ * Measured with native LAMMPS (black box, per-atom dumps of tests/oracle/w48sh_run20 after steps 1 to 3, with
+ * the iteration limit set to k so that the native solve stops after exactly k sweeps at tol 1e-12):
+ *  - the per-step solve is per cluster: at tol 1e-4 the 1500 water clusters split into 868 that are already
+ *    converged after two sweeps and 632 that need three, so a global sweep (every cluster swept while any is
+ *    above tol) gives the wrong forces;
+ *  - the Jacobian is frozen at the predicted separations (the sweep-k native results match the engine's
+ *    frozen-Jacobian sweeps to 1e-7 relative, and the re-linearised ones do not);
+ *  - the stop test is on the lambda update: a cluster stops after the sweep whose largest update |lambda|
+ *    times dt^2 ftm2v is within tol; the largest update of the second sweep separates the 868 from the 632
+ *    clusters exactly (0.23899 against 0.23918 in lambda units, which is 1e-4 / ftm2v dt^2 at 1 fs);
+ *  - the residual of the constraints after the same sweep does not separate them (a relative or absolute,
+ *    squared or linear, max or sum measure all overlap), so the residual is not the stop test.
  */
 
 interface Cluster {
@@ -383,15 +398,21 @@ export class FixShake extends Fix {
 
   /**
    * Solves every cluster for multipliers lambda_j such that the separations s0_k + sum_j C_kj lambda_j r_j
-   * have the target lengths, then hands them to apply(). All clusters are swept together while the largest
-   * residual is above the tolerance (see the header). mode 'setup' is the force solve of the setup step: its
-   * Jacobian stays frozen at the predicted separations and a cluster's residual is the sum of its relative
-   * constraint errors; the other modes re-linearise every sweep and use the largest relative constraint error.
+   * have the target lengths, then hands them to apply(). Modes:
+   *  - 'coordinate' and 'setup': all clusters are swept together while the largest residual is above the
+   *    tolerance (the setup force solve sums a cluster's relative squared-length errors, the coordinate
+   *    correction takes its largest);
+   *  - 'step' (the per-step SHAKE solve): each cluster on its own, the Jacobian frozen at the predicted
+   *    separations s0, stopping after the sweep whose largest lambda update times stepScale (dt^2 ftm2v)
+   *    is within the tolerance;
+   *  - 'dynamic' (RATTLE positions): all clusters swept together, re-linearised each sweep, largest
+   *    relative constraint error.
    */
   private solveClusters(
     start: (at: number[], m: number[], r: number[][], cons: Cluster['cons']) => { s0: number[][]; factor: number },
     apply: (at: number[], m: number[], r: number[][], lam: number[]) => void,
-    mode: 'coordinate' | 'setup' | 'dynamic' = 'dynamic',
+    mode: 'coordinate' | 'setup' | 'step' | 'dynamic' = 'dynamic',
+    stepScale = 0,
   ): void {
     if (!this.clusters.length) return;
     const sys = this.sys;
@@ -435,11 +456,41 @@ export class FixShake extends Fix {
       return v;
     }));
     const jacobian = (t: Solve, sep: number[][]) => {
-      const base = mode === 'setup' ? t.s0 : sep;
+      const base = mode === 'setup' || mode === 'step' ? t.s0 : sep;
       return Array.from({ length: t.c.cons.length }, (_, k) => Array.from({ length: t.c.cons.length }, (_, j) =>
         2 * t.C[k][j] * (base[k][0] * t.r[j][0] + base[k][1] * t.r[j][1] + base[k][2] * t.r[j][2])));
     };
-    const frozenJ = mode === 'setup' ? todo.map((t) => jacobian(t, t.s0)) : null;
+    const frozenJ = mode === 'setup' || mode === 'step' ? todo.map((t) => jacobian(t, t.s0)) : null;
+    if (mode === 'step') {
+      // Per-step solve (native LAMMPS, black box): each cluster iterates on its own. Every pass solves
+      // the linearised system for the multiplier update with the Jacobian frozen at the predicted
+      // separations, applies it, and the cluster stops once its largest multiplier update times
+      // dt^2 ftm2v is within the tolerance, so the last applied update is the one that met it.
+      for (const t of todo) {
+        for (let k = 0; ; k++) {
+          const sep = sepOf(t);
+          const F = sep.map((v, q) => v[0] * v[0] + v[1] * v[1] + v[2] * v[2] - t.c.cons[q].d2);
+          const delta = solve(frozenJ![todo.indexOf(t)], F.map((x) => -x));
+          if (!delta) { sys.warn(`fix ${this.style}: singular SHAKE system for cluster at atom ${t.c.ids[0]}`); break; }
+          let big = 0;
+          for (let j = 0; j < t.c.cons.length; j++) {
+            t.lam[j] += delta[j];
+            big = Math.max(big, Math.abs(delta[j]) * stepScale);
+          }
+          if (big <= this.tol) break;
+          if (k + 1 >= this.maxIter) {
+            sys.warn(`fix ${this.style}: SHAKE did not converge in ${this.maxIter} iterations for the cluster at atom ${t.c.ids[0]}`);
+            break;
+          }
+        }
+      }
+      for (const t of todo) {
+        this.current = t.c;
+        apply(t.at, t.m, t.r, t.lam);
+      }
+      this.current = null;
+      return;
+    }
     let worst = { dev: 0, cluster: todo[0] };
     let prevDev = Infinity;
     let it = 0;
@@ -508,7 +559,7 @@ export class FixShake extends Fix {
         vir[0] += lam[j] * rr[0] * rr[0]; vir[1] += lam[j] * rr[1] * rr[1]; vir[2] += lam[j] * rr[2] * rr[2];
         vir[3] += lam[j] * rr[0] * rr[1]; vir[4] += lam[j] * rr[0] * rr[2]; vir[5] += lam[j] * rr[1] * rr[2];
       }
-    }, mode);
+    }, mode === 'setup' ? 'setup' : 'step', dtfsq);
   }
 
   /**

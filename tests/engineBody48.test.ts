@@ -173,7 +173,7 @@ describe('atom_style body and the refused styles', () => {
 describe('free rotation of one body with fix nve/body', () => {
   it('keeps the angular momentum and the translation of a torque-free body', async () => {
     const ONE_BODY = ONE.replace('2 atoms', '1 atoms').replace('2 atom types', '1 atom types').replace('2 2 0 1.0 2.0 0.5 0.3 0 0 0\n', '');
-    const script = `${HEAD.replace('read_data one.data', 'read_data one.data')}set atom 1 angmom 0.4 -0.3 0.7
+    const script = `${HEAD}set atom 1 angmom 0.4 -0.3 0.7
 velocity all set 0.1 -0.05 0.2
 pair_style body/nparticle 4.0
 pair_coeff * * 1.0 1.0

@@ -90,8 +90,9 @@ describe('pair_style granular mdr: parsing', () => {
     expect(() => parseGranularSpec(['hooke', '1', '0', 'tangential', 'linear_nohistory', '0', '0', 'damping', 'mdr', '1'])).toThrow(/needs the normal model 'mdr'/);
   });
 
-  it('keeps synchronized_verlet as a StyleError', () => {
-    expect(() => parseGranularSpec(['hooke', '1', '0', 'tangential', 'linear_history', '300', '0.5', '0.4', 'damping', 'velocity', 'synchronized_verlet'])).toThrow(/synchronized_verlet/);
+  it('accepts synchronized_verlet with linear tangential models and refuses it with mindlin', () => {
+    expect(parseGranularSpec(['hooke', '1', '0', 'tangential', 'linear_history', '300', '0.5', '0.4', 'damping', 'velocity', 'synchronized_verlet']).sync).toBe(true);
+    expect(() => parseGranularSpec(['hertz', '1', '0', 'tangential', 'mindlin', '300', '0.5', '0.4', 'damping', 'velocity', 'synchronized_verlet'])).toThrow(/synchronized_verlet with tangential mindlin/);
   });
 });
 

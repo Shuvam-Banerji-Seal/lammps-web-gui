@@ -71,7 +71,19 @@ import { HEAT_FLOW, HEAT_TEMPERATURE } from '../../atoms';
  * equal radii, the damping mdr 1 and mdr 2, and the tangential linear models. The plastic branch (overlap at or
  * beyond the yield displacement), adhesion (surface energy > 0), unequal radii, mindlin tangential models and
  * the marshall twisting model throw a StyleError.
- * Not implemented (StyleError): damping coeff_restitution with mdr, heat, synchronized_verlet.
+ * Not implemented (StyleError): rolling or twisting with synchronized_verlet; synchronized_verlet with mdr or mindlin.
+ * synchronized_verlet (docs.lammps.org/pair_granular.html): "The *synchronized_verlet* flag implements an alternate
+ * Velocity-Verlet integration scheme", as detailed in Vyas et al. (2025; arXiv 2410.14798, section 5, Improved
+ * velocity-Verlet integration). Its contact uses the half-step separation n' = normalize(r n - (dt/2) v_r) (formula ours, from the paper's
+ * half-step normal from x(t+dt) and v(t+dt/2)) for the normal force direction, the normal damping velocity v_r.n' and the
+ * tangential velocity in the plane n' (the rotation term uses the same n'). The tangential history is kept in the plane n:
+ * the stored history is moved to the plane n', advanced by the half-step tangential velocity times dt, and returned to the
+ * plane n with its magnitude; the tangential damping velocity is the half-step tangential velocity rotated to n with its
+ * magnitude, on history steps only. Measured with native LAMMPS (black box, two spheres, hooke and hertz/material, dt 0.001
+ * and 0.01): the step-0 setup force is along n' with the setup velocities (no half kick) and the setup tangential damping
+ * uses the unrotated n'-plane velocity; the contact torque arm uses n'; the step-1 force matches these rules to 1e-14.
+ * Measured with native LAMMPS (black box): the synchronized and standard forces differ by about 2e-5 relative at step 1
+ * of the hooke pair (dt 0.01), so the flag changes the result.
  */
 
 type NormalKind = 'hooke' | 'hertz' | 'hertz/material' | 'dmt' | 'jkr' | 'mdr';
@@ -99,6 +111,8 @@ export interface Spec {
   roll: RollKind; kr: number; gr: number; mr: number;
   twist: TwistKind; kw: number; gw: number; mw: number;
   limit: boolean;
+  /** synchronized_verlet keyword (pair_granular.html): the half-step tangential update of the contact. */
+  sync: boolean;
   cutoff: number | null;
   /** heat conduction model and its coefficient (k_s for radius, h_s for area). */
   heat: HeatKind; hk: number;
@@ -131,6 +145,8 @@ export interface Pm {
   roll: RollKind; kr: number; gr: number; mr: number;
   twist: TwistKind; kw: number; gw: number; mw: number;
   limit: boolean;
+  /** synchronized_verlet: the contact uses the half-step plane for the tangential history and damping. */
+  sync?: boolean;
   cutoff: number;
   heat: HeatKind; hk: number;
   /** Compatibility key: pairs of types are mixed only when the model choices agree. */
@@ -159,7 +175,7 @@ export function parseGranularSpec(args: string[]): Spec {
   const sp: Spec = {
     normal, kn: 0, E: 0, nu: 0, gamma: 0, eta: 0, Y: 0, psib: 0, dtype: 0,
     damp: 'viscoelastic', tang: 'linear_nohistory', kt: 0, ktNull: false, xgt: 0, mu: 0,
-    roll: 'none', kr: 0, gr: 0, mr: 0, twist: 'none', kw: 0, gw: 0, mw: 0, limit: false, cutoff: null,
+    roll: 'none', kr: 0, gr: 0, mr: 0, twist: 'none', kw: 0, gw: 0, mw: 0, limit: false, sync: false, cutoff: null,
     heat: 'none', hk: 0,
   };
   if (normal === 'hooke' || normal === 'hertz') {
@@ -213,7 +229,6 @@ export function parseGranularSpec(args: string[]): Spec {
     } else if (kw === 'tangential') {
       need(1, 'tangential');
       const t = next();
-      if (t === 'synchronized_verlet') throw new StyleError("pair_style granular: 'synchronized_verlet' is not implemented in this engine");
       if (!(t in TANGS)) throw new StyleError(`pair_style granular: unknown tangential model '${t}'`);
       sp.tang = TANGS[t];
       tangSeen = true;
@@ -256,6 +271,8 @@ export function parseGranularSpec(args: string[]): Spec {
       } else throw new StyleError(`pair_style granular: unknown twisting model '${w}' (none, sds, marshall)`);
     } else if (kw === 'limit_damping') {
       sp.limit = true;
+    } else if (kw === 'synchronized_verlet') {
+      sp.sync = true;
     } else if (kw === 'cutoff') {
       need(1, 'cutoff');
       sp.cutoff = parseNum(next(), 'cutoff');
@@ -296,6 +313,13 @@ export function parseGranularSpec(args: string[]): Spec {
   if ((normal === 'dmt' || normal === 'jkr') && sp.limit) {
     throw new StyleError(`pair_style granular: limit_damping cannot be used with the ${normal} model`);
   }
+  if (sp.sync && (sp.roll !== 'none' || sp.twist !== 'none')) {
+    throw new StyleError('pair_style granular: synchronized_verlet with rolling or twisting is not implemented in this engine');
+  }
+  if (sp.sync && normal === 'mdr') throw new StyleError("pair_style granular: synchronized_verlet with normal model 'mdr' is not implemented in this engine");
+  if (sp.sync && sp.tang !== 'linear_nohistory' && sp.tang !== 'linear_history') {
+    throw new StyleError(`pair_style granular: synchronized_verlet with tangential ${sp.tang} is not implemented in this engine`);
+  }
   if (sp.damp === 'tsuji' && sp.eta < 0) throw new StyleError('pair_style granular: restitution coefficient e must be >= 0');
   return sp;
 }
@@ -329,6 +353,19 @@ export function jklContact(delta: number, R: number, E: number, gamma: number): 
   const a = 0.5 * (lo + hi);
   const f = (4 * E * a ** 3) / (3 * R) - 2 * Math.PI * a * a * Math.sqrt((4 * gamma * E) / (Math.PI * a));
   return { a, f };
+}
+
+/**
+ * Projects v onto the plane normal to the unit vector m and rescales the projection to the magnitude mag; the zero
+ * vector when the projection vanishes.
+ */
+function planeMap(vx: number, vy: number, vz: number, mx: number, my: number, mz: number, mag: number): [number, number, number] {
+  const d = vx * mx + vy * my + vz * mz;
+  const px = vx - d * mx, py = vy - d * my, pz = vz - d * mz;
+  const pn = Math.hypot(px, py, pz);
+  if (!(pn > 0)) return [0, 0, 0];
+  const sc = mag / pn;
+  return [px * sc, py * sc, pz * sc];
 }
 
 /** Inputs of one contact (pair or wall): unit normal n from j to i, overlap, effective and per-particle radii. */
@@ -395,13 +432,23 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
   if (jkr && delta < 0 && !hadHistory) return false;
   const sqrtR = Math.sqrt(Rf);
   const vrx = c.vrx, vry = c.vry, vrz = c.vrz;
-  const vn = vrx * nx + vry * ny + vrz * nz; // (v_i - v_j) . n
-  const vnx = nx * vn, vny = ny * vn, vnz = nz * vn;
+  // synchronized_verlet (see the header): the normal force direction, the normal damping velocity and the tangential
+  // velocity use the half-step plane n' built from the half-step separation (also at setup, where the measured setup force
+  // is along n' with the setup velocities); the elastic normal magnitude keeps delta at the full step.
+  const sync = pm.sync === true;
+  let hx = nx, hy = ny, hz = nz;
+  if (sync) {
+    const ex = c.r * nx - 0.5 * dt * vrx, ey = c.r * ny - 0.5 * dt * vry, ez = c.r * nz - 0.5 * dt * vrz;
+    const el = Math.hypot(ex, ey, ez);
+    if (el > 0) { hx = ex / el; hy = ey / el; hz = ez / el; }
+  }
+  const vn = vrx * hx + vry * hy + vrz * hz; // (v_i - v_j) . n (n' when synchronized)
+  const vnx = hx * vn, vny = hy * vn, vnz = hz * vn;
   // (R_i w_i + R_j w_j) x n
   const Ax = ri * c.oix + rj * c.ojx;
   const Ay = ri * c.oiy + rj * c.ojy;
   const Az = ri * c.oiz + rj * c.ojz;
-  const wnx = Ay * nz - Az * ny, wny = Az * nx - Ax * nz, wnz = Ax * ny - Ay * nx;
+  const wnx = Ay * hz - Az * hy, wny = Az * hx - Ax * hz, wnz = Ax * hy - Ay * hx;
   const vtx = vrx - vnx - wnx, vty = vry - vny - wny, vtz = vrz - vnz - wnz;
   // normal force along n (positive repulsive): elastic part, then damping
   let fne = 0;
@@ -460,13 +507,17 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
   if (pm.limit && fn < 0) return false;
   // F_n0 for the Coulomb cap: |F_ne| for non-cohesive models, |F_ne + 2 F_pulloff| for dmt and jkr (doc)
   const fnAbs = pm.normal === 'dmt' || jkr ? Math.abs(fne + 2 * fPull) : Math.abs(fn);
-  const fnx = fn * nx, fny = fn * ny, fnz = fn * nz;
+  // synchronized: the normal force acts along the half-step normal n' (measured with native LAMMPS, see the header)
+  const fnx = fn * hx, fny = fn * hy, fnz = fn * hz;
   // tangential force: damping from eta_t = x_gamma_t eta_n; the spring is -k_t xi (linear_history),
   // -k_t a xi with a = sqrt(R delta) (mindlin), or the stored elastic force F_te (mindlin/force)
   const etaT = pm.xgt * etaN;
   // the poly factor scales the forces (not the displacement update, and not the history-cap coefficient)
   const etaTf = etaT * poly;
-  const dampx = -etaTf * vtx, dampy = -etaTf * vty, dampz = -etaTf * vtz;
+  // synchronized, history steps: the half-step tangential velocity is rotated to the full-step plane n and keeps its magnitude
+  // (at setup it is used unrotated, measured with native LAMMPS)
+  const [vdx, vdy, vdz] = sync && update ? planeMap(vtx, vty, vtz, nx, ny, nz, Math.hypot(vtx, vty, vtz)) : [vtx, vty, vtz];
+  const dampx = -etaTf * vdx, dampy = -etaTf * vdy, dampz = -etaTf * vdz;
   const kind = pm.tang;
   // jkr keeps a contact record too, so the tensile branch can be recognised (see hysteresis above)
   const hist = kind !== 'linear_nohistory' || pm.roll !== 'none' || pm.twist !== 'none' || jkr;
@@ -477,7 +528,13 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
   let shx = 0, shy = 0, shz = 0;
   if (hist) {
     shx = sg * sh[0]; shy = sg * sh[1]; shz = sg * sh[2];
-    if (update) {
+    if (sync && update) {
+      // synchronized history: the prior history is kept in the plane n' with its magnitude, advanced by the half-step
+      // tangential velocity, and returned to the plane n with the same magnitude
+      const [px, py, pz] = planeMap(shx, shy, shz, hx, hy, hz, Math.hypot(shx, shy, shz));
+      const ux = px + vtx * dt, uy = py + vty * dt, uz = pz + vtz * dt;
+      [shx, shy, shz] = planeMap(ux, uy, uz, nx, ny, nz, Math.hypot(ux, uy, uz));
+    } else if (update) {
       // keep the prior displacement (or elastic force) in the tangent plane, rescaled to its previous magnitude
       const mag0 = Math.hypot(shx, shy, shz);
       const sn = shx * nx + shy * ny + shz * nz;
@@ -519,9 +576,9 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
           shz = scale * (shz + dampz) - dampz;
         } else {
           const cr = etaT / keff;
-          shx = scale * (shx + cr * vtx) - cr * vtx;
-          shy = scale * (shy + cr * vty) - cr * vty;
-          shz = scale * (shz + cr * vtz) - cr * vtz;
+          shx = scale * (shx + cr * vdx) - cr * vdx;
+          shy = scale * (shy + cr * vdy) - cr * vdy;
+          shz = scale * (shz + cr * vdz) - cr * vdz;
         }
       }
     }
@@ -592,7 +649,7 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
   }
   out.fx = fnx + ftx; out.fy = fny + fty; out.fz = fnz + ftz;
   // torques: -(R - delta/2) n x F_t on each particle (contact point at the centre of the overlap)
-  const cx = ny * ftz - nz * fty, cy = nz * ftx - nx * ftz, cz = nx * fty - ny * ftx;
+  const cx = hy * ftz - hz * fty, cy = hz * ftx - hx * ftz, cz = hx * fty - hy * ftx;
   const ci = c.surfaceArm ? ri : ri - 0.5 * delta, cj = rj - 0.5 * delta;
   out.tix = -ci * cx; out.tiy = -ci * cy; out.tiz = -ci * cz;
   out.tjx = -cj * cx; out.tjy = -cj * cy; out.tjz = -cj * cz;
@@ -724,9 +781,13 @@ export class PairGranular extends Pair {
    * Resolved parameters of a wall/particle pair (fix wall/gran granular): the particle's own material
    * against a flat wall; E_eff = E / (2 (1 - nu^2)) as in the doc note for fix wall/gran.
    */
-  wallParams(sp: Spec): Pm {
+  wallParams(sp: Spec, region = false): Pm {
     // doc: "The *mdr* model currently only supports *fix wall/gran/region*, not *fix wall/gran*."
-    if (sp.normal === 'mdr') throw new StyleError("fix wall/gran with normal model 'mdr' is not implemented in this engine (the doc supports fix wall/gran/region only)");
+    if (sp.normal === 'mdr' && !region) throw new StyleError("fix wall/gran with normal model 'mdr' is not implemented in this engine (the doc supports fix wall/gran/region only)");
+    // Measured with native LAMMPS (black box): a sphere of radius 0.5 (E 1, nu 0.3, Y 1000, eta 0.2, damping mdr 1) on a plane
+    // region has the elastic force of the sphere-on-plane law times a constant 1.0000454 at overlaps 0.04, 0.05, 0.1 and
+    // 0.2; the constant is not identified, so the wall mdr contact is refused rather than approximated.
+    if (sp.normal === 'mdr') throw new StyleError("fix wall/gran/region with normal model 'mdr' is not implemented in this engine (the native wall force differs from the sphere-plane elastic law by a constant factor 1.0000454)");
     return this.pmOf(sp, sp.E ? effModulus(sp.E, sp.nu) : 0, sp, sp);
   }
 
@@ -738,12 +799,12 @@ export class PairGranular extends Pair {
       if (!(gi > 0) || !(gj > 0)) throw new StyleError('pair_style granular: tangential k_t NULL needs E and nu for the types');
       kt = 8 / ((2 - si.nu) / gi + (2 - sj.nu) / gj);
     }
-    const sig = [sp.normal, sp.damp, sp.tang, sp.roll, sp.twist, sp.limit ? 1 : 0, sp.heat].join('|');
+    const sig = [sp.normal, sp.damp, sp.tang, sp.roll, sp.twist, sp.limit ? 1 : 0, sp.sync ? 1 : 0, sp.heat].join('|');
     return {
       normal: sp.normal, kn: sp.kn, Eeff: eff, gamma: sp.gamma, eta: sp.eta, Y: sp.Y, psib: sp.psib, dtype: sp.dtype,
       damp: sp.damp, tang: sp.tang,
       kt, xgt: sp.xgt, mu: sp.mu, roll: sp.roll, kr: sp.kr, gr: sp.gr, mr: sp.mr,
-      twist: sp.twist, kw: sp.kw, gw: sp.gw, mw: sp.mw, limit: sp.limit,
+      twist: sp.twist, kw: sp.kw, gw: sp.gw, mw: sp.mw, limit: sp.limit, sync: sp.sync,
       cutoff: sp.cutoff ?? this.globalCut ?? -1, heat: sp.heat, hk: sp.hk, sig,
     };
   }

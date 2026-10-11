@@ -442,7 +442,7 @@ export class FixWallGranGranular extends Fix {
       while (k < args.length && !(WALL_WORDS as readonly string[]).includes(args[k])) k++;
       if (k >= args.length) throw new StyleError(`fix ${id} ${this.style} granular: missing wallstyle`);
       const sp = parseGranularSpec(args.slice(1, k));
-      pmOut = new PairGranular().wallParams(sp);
+      pmOut = new PairGranular().wallParams(sp, regionMode);
     }
     this.pm = pmOut;
     const ws = args[k];

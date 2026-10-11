@@ -116,8 +116,9 @@ describe('atom_style body rounded/polygon (bodies.ts, output/data.ts)', () => {
 });
 
 describe('refused body styles are named (registry/body48.ts)', () => {
-  it('pair body/rounded/polygon, fix wall/body/polygon, nvt/body and npt/body', async () => {
-    await expect(run(`${HEAD}pair_style body/rounded/polygon 20.0 5.0 0.0 1.0 0.5\n`, { 'sq.data': SQUARE })).rejects.toThrow(/pair_style 'body\/rounded\/polygon' is not supported/);
+  it('pair body/rounded/polygon with friction, fix wall/body/polygon, nvt/body and npt/body', async () => {
+    // wave 50 registers pair body/rounded/polygon for c_n, c_t (tests/engineBodyContact50.test.ts); mu != 0 is refused
+    await expect(run(`${HEAD}pair_style body/rounded/polygon 20.0 5.0 0.1 1.0 0.5\n`, { 'sq.data': SQUARE })).rejects.toThrow(/friction \(mu != 0\)/);
     await expect(run(`${HEAD}fix 1 all wall/body/polygon 2000 50 50 yplane -5 5\n`, { 'sq.data': SQUARE })).rejects.toThrow(/wall\/body\/polygon'/);
     await expect(run(`${HEAD}fix 1 all nvt/body temp 0.5 0.5 1.0\n`, { 'sq.data': SQUARE })).rejects.toThrow(/nvt\/body'/);
     await expect(run(`${HEAD}fix 1 all npt/body temp 0.5 0.5 1.0 x 0.001 0.1 1.0\n`, { 'sq.data': SQUARE })).rejects.toThrow(/npt\/body'/);

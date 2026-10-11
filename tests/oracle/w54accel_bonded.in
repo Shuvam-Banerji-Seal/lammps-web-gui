@@ -1,0 +1,26 @@
+# oracle: four bent triatomic chains with harmonic/omp bond and angle styles after package omp 1
+# oracle-inputs: w54accel_bonded.data
+# oracle-compare: thermo=all atoms=all
+package         omp 1
+units           lj
+atom_style      molecular
+read_data       w54accel_bonded.data
+variable        vx atom 0.3*sin(1.1*x+0.7*z)
+variable        vy atom 0.3*cos(0.9*y-0.4*x)
+variable        vz atom 0.3*sin(0.8*z+0.5*y)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      lj/cut/omp 2.5
+pair_coeff      * * 0.05 1.0
+bond_style      harmonic/omp
+bond_coeff      1 80.0 1.1
+bond_coeff      2 60.0 1.0
+angle_style     harmonic/omp
+angle_coeff     1 30.0 110.0
+angle_coeff     2 25.0 115.0
+fix             1 all nve
+timestep        0.002
+thermo_style    custom step temp pe ebond eangle evdwl etotal press
+thermo_modify   format float %.15g
+thermo          10
+run             100

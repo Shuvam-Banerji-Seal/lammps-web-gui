@@ -9,6 +9,7 @@ import { ensureStyles, styleNames } from './styles';
 import { evaluateBoolean } from './boolean';
 import { CpuForceBackend } from './cpu/forces';
 import { RunCancelled, QuitSignal } from './errors';
+import { ACCEL_ALIASES } from './accelAliases';
 
 /*
  * The notebook's LAMMPS input interpreter (engine v2). It reads input as a
@@ -56,6 +57,23 @@ const pairThreadsOf = (b: ForceBackend): ForceField['pairThreads'] =>
  */
 const SESSION_LEVEL = new Set(['label', 'jump', 'next', 'include', 'if', 'quit', 'clear', 'echo', 'neb']);
 
+/**
+ * The commands whose words can name a style, with the index of the first such word. fix and compute take an
+ * ID and a group before the style; every other word of the commands below is a style name, a sub-style of a
+ * hybrid style, or a number (pair_coeff's type ranges). suffix and package name accelerator packages, not
+ * styles, and the other commands take no style name, so they are not rewritten.
+ * *_write (pair_write, bond_write, ...) takes a style name too; the engine does not implement those commands yet.
+ */
+const STYLE_WORDS_FROM: Record<string, number> = {
+  pair_style: 0, pair_coeff: 0, pair_modify: 0, pair_write: 0,
+  bond_style: 0, bond_coeff: 0, bond_write: 0,
+  angle_style: 0, angle_coeff: 0, angle_write: 0,
+  dihedral_style: 0, dihedral_coeff: 0, dihedral_write: 0,
+  improper_style: 0, improper_coeff: 0, improper_write: 0,
+  kspace_style: 0,
+  fix: 2, compute: 2,
+};
+
 /** The I/O of a replica other than the first: its output is dropped (the first replica's log and screen speak for the session). */
 const QUIET_IO: SessionIO = { emit: () => undefined };
 
@@ -74,6 +92,8 @@ export class Session {
   private line = 0;
   private command = '';
   echo: 'none' | 'screen' | 'log' | 'both' = 'none';
+  /** Accelerator names already reported in this session (each is logged once). */
+  private accelNoted = new Set<string>();
 
   constructor(
     private io: SessionIO,
@@ -280,6 +300,9 @@ export class Session {
         this.echo = a[0] as Session['echo'];
         return;
     }
+    // an accelerator alias (lj/cut/omp, nve/kk, ...) runs as its base style: the names are replaced here, before
+    // the styles load, so every object is created with the base name and the fast paths see the base style
+    a = this.baseStyleNames(cmd, a);
     const handler = COMMANDS[cmd];
     // styles of the lazily loaded registries (lazyStyles.ts) are loaded before a command that names one;
     // read_restart restores the styles named in its file
@@ -289,6 +312,24 @@ export class Session {
       throw new StyleError(`'${cmd}' is not supported by the in-browser engine (it is not LAMMPS). Supported commands: ${SUPPORTED_COMMANDS.join(', ')}`);
     }
     await handler(this.ctx(frame), a);
+  }
+
+  /** The words of a command with each accelerator alias replaced by its base style (ACCEL_ALIASES). */
+  private baseStyleNames(cmd: string, a: string[]): string[] {
+    if (!Object.hasOwn(STYLE_WORDS_FROM, cmd)) return a;
+    const from = STYLE_WORDS_FROM[cmd];
+    let out = a;
+    for (let k = from; k < a.length; k++) {
+      const base = ACCEL_ALIASES.get(a[k]);
+      if (base === undefined) continue;
+      if (out === a) out = a.slice();
+      out[k] = base;
+      if (!this.accelNoted.has(a[k])) {
+        this.accelNoted.add(a[k]);
+        this.io.emit({ kind: 'log', text: `${a[k]}: runs as ${base} (the browser engine picks CPU threads or the GPU itself)` });
+      }
+    }
+    return out;
   }
 
   /** jump file [label] */

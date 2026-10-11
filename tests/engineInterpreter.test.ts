@@ -157,12 +157,15 @@ describe('Session: errors are explicit and carry the line', () => {
   });
 
   it('explains commands a browser cannot run, and does not list them as supported', async () => {
-    for (const [cmd, why] of [['python', /no Python interpreter/], ['package', /accelerator packages/]] as const) {
+    for (const [cmd, why] of [['python', /no Python interpreter/]] as const) {
       expect(SUPPORTED_COMMANDS).not.toContain(cmd);
       const { error } = await runScript(`units lj\n${cmd} gpu 1\n`);
       expect(error?.command).toBe(cmd);
       expect(error!.message).toMatch(why);
     }
+    // package and suffix are accepted: the accelerator names they set are aliases of the base styles (engineAccelAliases.test.ts)
+    expect(SUPPORTED_COMMANDS).toEqual(expect.arrayContaining(['package', 'suffix']));
+    expect((await runScript('units lj\npackage gpu 1\n')).error).toBeNull();
     // shell runs its file built-ins (rm, mv) on the session files; an external command is refused, naming it
     expect(SUPPORTED_COMMANDS).toContain('shell');
     const { error } = await runScript('units lj\nshell gpu 1\n');

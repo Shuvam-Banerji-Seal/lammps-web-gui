@@ -93,7 +93,7 @@ const info: Handler = ({ sys }, a) => {
 };
 
 /** Commands that are recognized only to explain why the browser engine cannot run them. */
-export const UNAVAILABLE_COMMANDS = new Set<string>(['package']);
+export const UNAVAILABLE_COMMANDS = new Set<string>();
 
 const browserOnly = (name: string, why: string): Handler => {
   UNAVAILABLE_COMMANDS.add(name);

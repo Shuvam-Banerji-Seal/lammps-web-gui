@@ -170,11 +170,32 @@ const atomModify: Handler = ({ sys }, a) => {
 
 /** Single-process / no-accelerator commands: accepted, with what they mean here. */
 const parallelOnly = (name: string): Handler => (({ sys }, a) => {
-  if (name === 'suffix' && a[0] && a[0] !== 'off') {
-    throw new StyleError(`suffix ${a[0]}: accelerator packages (gpu, kk, omp, opt, intel) are not part of the browser engine; remove the suffix command`);
+  // suffix.html: "style = *off* or *on* or *gpu* or *intel* or *kk* or *omp* or *opt* or *hybrid*"; the
+  // accelerator names are aliases here (accelAliases.ts), so a suffix changes no style and the words are only checked
+  if (name === 'suffix') {
+    const suffixes = ['gpu', 'intel', 'kk', 'omp', 'opt'];
+    const style = a[0];
+    if (style === undefined || !['off', 'on', 'hybrid', ...suffixes].includes(style)) {
+      throw new StyleError(`suffix style must be off, on, gpu, intel, kk, omp, opt or hybrid (got '${style ?? ''}')`);
+    }
+    if (style === 'hybrid') {
+      if (a.length !== 3 || !suffixes.includes(a[1]) || !suffixes.includes(a[2])) {
+        throw new StyleError('usage: suffix hybrid default-suffix alternative-suffix (each of gpu, intel, kk, omp, opt)');
+      }
+    } else if (a.length !== 1) {
+      throw new StyleError(`suffix ${style} takes no arguments (only suffix hybrid takes two suffixes)`);
+    }
+    sys.log(`suffix ${a.join(' ')}: accepted; styles named later run as their base styles (the browser engine picks CPU threads or the GPU itself)`);
+    return;
   }
+  // package.html: "style = *gpu* or *intel* or *kokkos* or *omp*"; the package settings do not change the engine
   if (name === 'package') {
-    throw new StyleError(`package ${a[0] ?? ''}: accelerator packages are not part of the browser engine; choose CPU threads or the GPU in the notebook toolbar instead`);
+    const packages = ['gpu', 'intel', 'kokkos', 'omp'];
+    if (a[0] === undefined || !packages.includes(a[0])) {
+      throw new StyleError(`package style must be gpu, intel, kokkos or omp (got '${a[0] ?? ''}')`);
+    }
+    sys.log(`package ${a.join(' ')}: accepted; the browser engine chooses CPU threads or the GPU in the notebook toolbar, so the settings have no effect`);
+    return;
   }
   sys.log(`${name}: accepted (the browser engine runs one process; this setting has no effect)`);
 }) as Handler;

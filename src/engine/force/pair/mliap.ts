@@ -4,6 +4,7 @@ import { WignerTables, rawBispectrum, adjointBispectrum, type Cmat, type Grad } 
 import { parseMliapSnaDescriptor, type MliapSnaDescriptor } from '../../mliap/descriptor';
 import { parseMliapModel, type MliapModel, type ModelKind } from '../../mliap/model';
 import { parseMliapSo3Descriptor, So3Engine, type So3Descriptor } from '../../mliap/so3';
+import { ChemSna } from '../../compute/snapChem';
 
 /*
  * pair_style mliap (wave 16) — docs.lammps.org/pair_mliap.html (plans/lammps-docs/pair_mliap.rst).
@@ -32,8 +33,27 @@ import { parseMliapSo3Descriptor, So3Engine, type So3Descriptor } from '../../ml
  *
  * "This pair style does not support the pair_modify shift, table, and tail options." Per-atom
  * virial (stress/atom) is a StyleError, as for pair_style snap.
+ *
+ * chemflag 1 in the sna descriptor (explicit multi-element SNAP, Cusentino, Wood, Thompson 2020): the
+ * descriptor is the multi-element bispectrum of src/engine/compute/snapChem.ts, shared with pair_style snap,
+ * and the model is linear with nparams = 1 + K N_elem^3 per element. Doc (docs.lammps.org/compute_mliap.html,
+ * plans/lammps-docs-live/compute_mliap.rst, see the block comment above DESCRIPTOR_STYLES): the SNAP descriptor
+ * style sna is the same as that used by pair_style snap, including the linear, quadratic, and chem variants.
+ * Measured with native LAMMPS (black box):
+ * with the InP_JCPA2020 mliap model and descriptor files and the pair_coeff line that maps type 1 to In and
+ * type 2 to P, energy and forces equal pair_style snap with the InP_JCPA2020 snapcoeff and snapparam files to
+ * the last printed digit. With the same files and the pair_coeff line that maps type 1 to P and type 2 to In,
+ * native gives an energy of -370.904 for the 64-atom displaced cell where pair_style snap gives -163.032, and
+ * the pair_coeff line that maps both types to In runs natively where pair_style snap refuses it (unique element
+ * count). The engine therefore accepts chem only when the pair_coeff names are the descriptor's elements in the
+ * descriptor's order, one per atom type (the measured case); the other mappings are StyleErrors. Model quadratic
+ * and nn with chem are StyleErrors (not measured), and compute mliap refuses chem.
  */
 
+/*
+ * Doc (docs.lammps.org/compute_mliap.html, plans/lammps-docs-live/compute_mliap.rst), the sna descriptor of
+ * compute mliap: "The SNAP descriptor style *sna* is the same as that used by :doc:`pair_style snap <pair_snap>`, including the linear, quadratic, and chem variants."
+ */
 const DESCRIPTOR_STYLES = ['sna', 'so3'];
 
 export class PairMliap extends Pair {
@@ -55,6 +75,8 @@ export class PairMliap extends Pair {
   /** Per atom type: element index in the descriptor, or -1 for NULL. */
   private elemOf = new Int32Array(0);
   private tables: WignerTables | null = null;
+  /** chemflag 1 bispectrum (created on the first compute after pair_coeff). */
+  private chemEng: ChemSna | null = null;
 
   settings(args: string[], ctx: StyleContext): void {
     if (args[0] === 'unified') throw new StyleError(`pair_style mliap: keyword 'unified' (serialized Python object) is not implemented in this engine`);
@@ -119,7 +141,12 @@ export class PairMliap extends Pair {
     const elems = args.slice(2);
     if (elems.length < this.ntypes) throw new StyleError(`pair_coeff for style mliap needs one element name per atom type (${this.ntypes}), got ${elems.length}`);
     const d = base;
-    this.model = parseMliapModel(this.modelKind, this.modelText, this.modelFile, d.K, d.elems.length);
+    const chem = this.desc !== null && this.desc.chem;
+    if (chem && this.modelKind !== 'linear') {
+      throw new StyleError(`pair_style mliap: descriptor sna with chemflag 1 is implemented for model linear only (got model ${this.modelKind})`);
+    }
+    const nmodel = this.desc ? this.desc.nmodel : d.K;
+    this.model = parseMliapModel(this.modelKind, this.modelText, this.modelFile, nmodel, d.elems.length);
     const nt = this.ntypes + 1;
     this.elemOf = new Int32Array(nt).fill(-1);
     for (let t = 1; t <= this.ntypes; t++) {
@@ -129,6 +156,15 @@ export class PairMliap extends Pair {
       if (idx < 0) throw new StyleError(`element '${name}' is not in the mliap descriptor file ${this.descFile} (elements: ${d.elems.join(' ')})`);
       this.elemOf[t] = idx;
     }
+    if (chem) {
+      // Measured with native LAMMPS (black box): see the header. The chem index follows the descriptor order.
+      for (let t = 1; t <= this.ntypes; t++) {
+        if (this.elemOf[t] !== t - 1 || this.ntypes !== d.elems.length) {
+          throw new StyleError(`pair_style mliap with descriptor sna chemflag 1: pair_coeff must name the ${d.elems.length} descriptor elements (${d.elems.join(' ')}) in that order, one per atom type (got ${elems.slice(0, this.ntypes).join(' ')})`);
+        }
+      }
+    }
+    this.chemEng = null;
   }
 
   /** Cutoff rcutfac (R_i + R_j) between mapped types. */
@@ -147,6 +183,10 @@ export class PairMliap extends Pair {
       return;
     }
     if (!this.desc || !this.model) throw new StyleError('pair_coeff for style mliap has not been given');
+    if (this.desc.chem) {
+      this.computeChem(pc, this.desc, this.model);
+      return;
+    }
     const d = this.desc, model = this.model;
     const list = pc.full;
     if (!list) throw new Error('pair style mliap needs a full neighbor list');
@@ -293,6 +333,72 @@ export class PairMliap extends Pair {
         f[3 * i + 1] += G0[1];
         f[3 * i + 2] += G0[2];
         if (va) {
+          const w0 = -0.5 * dx * G0[0], w1 = -0.5 * dy * G0[1], w2 = -0.5 * dz * G0[2];
+          const w3 = -0.5 * dx * G0[1], w4 = -0.5 * dx * G0[2], w5 = -0.5 * dy * G0[2];
+          va[6 * i] += w0; va[6 * i + 1] += w1; va[6 * i + 2] += w2; va[6 * i + 3] += w3; va[6 * i + 4] += w4; va[6 * i + 5] += w5;
+          va[6 * j] += w0; va[6 * j + 1] += w1; va[6 * j + 2] += w2; va[6 * j + 3] += w3; va[6 * j + 4] += w4; va[6 * j + 5] += w5;
+        }
+      }
+    }
+    pc.acc.evdwl += evdwl;
+  }
+
+  /**
+   * Descriptor sna with chemflag 1: the multi-element bispectrum of src/engine/compute/snapChem.ts (the code
+   * of pair_style snap's chemflag path), and the same energy and force conventions as the non-chem sna path.
+   * The model gives E_i and gam = dE_i/dB (linear: beta_0 + beta . B, as in the pair_style snap chem energy).
+   */
+  private computeChem(pc: PairCompute, d: MliapSnaDescriptor, model: MliapModel): void {
+    const list = pc.full;
+    if (!list) throw new Error('pair style mliap needs a full neighbor list');
+    const { x, f, type } = pc;
+    const nbase = d.nmodel;
+    if (!this.chemEng) {
+      this.chemEng = new ChemSna({
+        triples: d.triples, twojmax: d.twojmax, nelem: d.elems.length, rfac0: d.rfac0, rmin0: d.rmin0,
+        switchflag: d.switchflag, wselfall: d.wselfall, normOf: d.norm, b0: d.b0,
+      }, this.tables ?? (this.tables = new WignerTables(d.twojmax)));
+    }
+    const chem = this.chemEng;
+    const Bf = new Float64Array(nbase), gam = new Float64Array(nbase);
+    const G0 = [0, 0, 0];
+    let evdwl = 0;
+    let mx = 0;
+    for (let i = 0; i < list.inum; i++) if (list.numneigh[i] > mx) mx = list.numneigh[i];
+    chem.reserve(mx);
+    const va = pc.vatom;
+    for (let i = 0; i < pc.nlocal; i++) {
+      const ei = this.elemOf[type[i]];
+      if (ei < 0) continue;
+      const k0 = list.firstneigh[i];
+      const k1 = k0 + list.numneigh[i];
+      const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
+      chem.m = 0;
+      for (let k = k0; k < k1; k++) {
+        const j = list.neighbors[k] & NEIGHMASK;
+        const ej = this.elemOf[type[j]];
+        if (ej < 0) continue;
+        const dx = x[3 * j] - xi, dy = x[3 * j + 1] - yi, dz = x[3 * j + 2] - zi;
+        chem.add(j, ej, dx, dy, dz, d.rcutfac * (d.radius[ei] + d.radius[ej]), d.weight[ej]);
+      }
+      chem.bispectrum(ei, Bf);
+      const E = model.energy(ei, Bf, gam);
+      evdwl += E;
+      if (pc.eatom) pc.eatom[i] += E;
+      const m = chem.m;
+      if (m === 0) continue;
+      chem.adjoint(gam);
+      for (let a = 0; a < m; a++) {
+        const j = chem.j[a];
+        chem.force(a, G0);
+        f[3 * j] -= G0[0];
+        f[3 * j + 1] -= G0[1];
+        f[3 * j + 2] -= G0[2];
+        f[3 * i] += G0[0];
+        f[3 * i + 1] += G0[1];
+        f[3 * i + 2] += G0[2];
+        if (va) {
+          const dx = chem.dx[a], dy = chem.dy[a], dz = chem.dz[a];
           const w0 = -0.5 * dx * G0[0], w1 = -0.5 * dy * G0[1], w2 = -0.5 * dz * G0[2];
           const w3 = -0.5 * dx * G0[1], w4 = -0.5 * dx * G0[2], w5 = -0.5 * dy * G0[2];
           va[6 * i] += w0; va[6 * i + 1] += w1; va[6 * i + 2] += w2; va[6 * i + 3] += w3; va[6 * i + 4] += w4; va[6 * i + 5] += w5;

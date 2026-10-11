@@ -1,6 +1,7 @@
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
-import { buildTriples, WignerTables, rawBispectrum, adjointBispectrum, bispectrumComponent, adjointComponentChem, type Triple, type Cmat, type Grad } from '../../compute/sna';
+import { buildTriples, WignerTables, rawBispectrum, adjointBispectrum, type Triple, type Cmat, type Grad } from '../../compute/sna';
+import { ChemSna } from '../../compute/snapChem';
 import { parseNum } from '../util';
 
 /*
@@ -204,6 +205,8 @@ export class PairSnap extends Pair {
    * (measured with native LAMMPS, black box: see tests/oracle/w43ad_snap_scale.in).
    */
   scaleP: PairParams = new PairParams(0, ['scale']);
+  /** Explicit multi-element bispectrum (chemflag 1), created on first compute after coeff(). */
+  private chemEng: ChemSna | null = null;
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError(`pair_style snap takes no arguments (got ${args.length})`);
@@ -247,6 +250,7 @@ export class PairSnap extends Pair {
     this.scaleP = new PairParams(this.ntypes, ['scale']);
     for (let i = 1; i <= this.ntypes; i++) for (let j = i; j <= this.ntypes; j++) this.scaleP.set(i, j, [1]);
     this.setupDone = false;
+    this.chemEng = null;
   }
 
   /** Cutoff rcutfac (R_i + R_j) between mapped types; 0 for NULL-mapped types. */
@@ -494,29 +498,20 @@ export class PairSnap extends Pair {
     if (!list) throw new Error('pair style snap needs a full neighbor list');
     const { x, f, type } = pc;
     const nlocal = pc.nlocal;
-    const K = this.K, tj = p.twojmax, triples = this.triples;
-    const Ne = this.nelem, nbase = this.nbase;
-    const rfac0 = p.rfac0, rmin0 = p.rmin0, rcutfac = p.rcutfac;
-    const WT = this.tables ?? (this.tables = new WignerTables(tj));
+    const nbase = this.nbase;
+    if (!this.chemEng) {
+      this.chemEng = new ChemSna({
+        triples: this.triples, twojmax: p.twojmax, nelem: this.nelem, rfac0: p.rfac0, rmin0: p.rmin0,
+        switchflag: p.switchflag, wselfall: this.wselfall, normOf: this.normOf, b0: this.b0,
+      }, this.tables ?? (this.tables = new WignerTables(p.twojmax)));
+    }
+    const chem = this.chemEng;
     const Bf = new Float64Array(nbase), gam = new Float64Array(nbase);
+    const G0 = [0, 0, 0];
     let evdwl = 0;
     let mx = 0;
     for (let i = 0; i < list.inum; i++) if (list.numneigh[i] > mx) mx = list.numneigh[i];
-    const nJ = new Int32Array(mx), nEle = new Int32Array(mx);
-    const nDx = new Float64Array(mx), nDy = new Float64Array(mx), nDz = new Float64Array(mx);
-    const nR = new Float64Array(mx), nRc = new Float64Array(mx), nTh = new Float64Array(mx);
-    const nSc = new Float64Array(mx), nDsc = new Float64Array(mx);
-    const dp = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]];
-    const ue: Cmat[][] = [], gd: Cmat[][] = [];
-    for (let e = 0; e < Ne; e++) {
-      const um: Cmat[] = [], gm: Cmat[] = [];
-      for (let J = 0; J <= tj; J++) {
-        const nn = (J + 1) * (J + 1);
-        um.push({ re: new Float64Array(nn), im: new Float64Array(nn) });
-        gm.push({ re: new Float64Array(nn), im: new Float64Array(nn) });
-      }
-      ue.push(um); gd.push(gm);
-    }
+    chem.reserve(mx);
     const va = pc.vatom;
 
     for (let i = 0; i < nlocal; i++) {
@@ -526,73 +521,15 @@ export class PairSnap extends Pair {
       const k0 = list.firstneigh[i];
       const k1 = k0 + list.numneigh[i];
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
-      let m = 0;
+      chem.m = 0;
       for (let k = k0; k < k1; k++) {
         const j = list.neighbors[k] & NEIGHMASK;
         const ej = this.elemOf[type[j]];
         if (ej < 0) continue;
         const dx = x[3 * j] - xi, dy = x[3 * j + 1] - yi, dz = x[3 * j + 2] - zi;
-        const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        const Rii = rcutfac * (file.radius[ei] + file.radius[ej]);
-        if (!(r < Rii) || r === 0) continue;
-        const span = Rii - rmin0;
-        const th = (rfac0 * Math.PI * (r - rmin0)) / span;
-        const sw = p.switchflag && r >= rmin0;
-        const fc = sw ? 0.5 * (Math.cos((Math.PI * (r - rmin0)) / span) + 1) : 1;
-        const dfc = sw ? -0.5 * Math.sin((Math.PI * (r - rmin0)) / span) * (Math.PI / span) : 0;
-        nJ[m] = j; nEle[m] = ej; nDx[m] = dx; nDy[m] = dy; nDz[m] = dz;
-        nR[m] = r; nRc[m] = Rii; nTh[m] = th;
-        nSc[m] = fc * file.weight[ej];
-        nDsc[m] = dfc * file.weight[ej];
-        m++;
+        chem.add(j, ej, dx, dy, dz, p.rcutfac * (file.radius[ei] + file.radius[ej]), file.weight[ej]);
       }
-
-      // self term per element: identity times wself_{μ_i,e}
-      for (let e = 0; e < Ne; e++) {
-        const wself = this.wselfall || e === ei ? 1 : 0;
-        for (let J = 0; J <= tj; J++) {
-          const nn = J + 1;
-          ue[e][J].re.fill(0); ue[e][J].im.fill(0);
-          if (wself !== 0) for (let q = 0; q < nn; q++) ue[e][J].re[q * nn + q] = 1;
-        }
-      }
-      for (let a = 0; a < m; a++) {
-        const r = nR[a];
-        const sn = Math.sin(nTh[a]), cs = Math.cos(nTh[a]);
-        const sg = sn < 0 ? -1 : 1;
-        const S = sg * sn, C = sg * cs;
-        const g = S / r;
-        const ar = C, ai = g * nDz[a], br = g * nDy[a], bi = g * nDx[a];
-        const sc = nSc[a];
-        WT.compute(ar, ai, br, bi, false);
-        const um = ue[nEle[a]];
-        for (let J = 0; J <= tj; J++) {
-          const Ur = WT.ur[J], Ui = WT.ui[J];
-          const uj = um[J];
-          for (let q = 0; q < Ur.length; q++) {
-            uj.re[q] += sc * Ur[q];
-            uj.im[q] += sc * Ui[q];
-          }
-        }
-      }
-
-      // raw multi-element bispectrum, blocks (κ,λ,μ) with μ fastest
-      let b = 0;
-      for (let k1e = 0; k1e < Ne; k1e++) {
-        for (let k2e = 0; k2e < Ne; k2e++) {
-          for (let k3e = 0; k3e < Ne; k3e++) {
-            const bo = b * K;
-            const useB0 = this.wselfall || (k1e === ei && k2e === ei && k3e === ei);
-            for (let c = 0; c < K; c++) {
-              const t = triples[c];
-              let v = bispectrumComponent(t, ue[k1e][t.J1], ue[k2e][t.J2], ue[k3e][t.J]);
-              if (useB0) v -= this.b0[c];
-              Bf[bo + c] = v / this.normOf[c];
-            }
-            b++;
-          }
-        }
-      }
+      chem.bispectrum(ei, Bf);
 
       // energy E_i = beta_0 + sum over the K*N_elem^3 multi-element components
       let E = coef[0];
@@ -604,71 +541,15 @@ export class PairSnap extends Pair {
       if (sc !== 1) { E *= sc; for (let q = 0; q < nbase; q++) gam[q] *= sc; }
       evdwl += E;
       if (pc.eatom) pc.eatom[i] += E;
+      const m = chem.m;
       if (m === 0) continue;
 
-      // adjoint of E_i w.r.t. every element's u entries
-      for (let e = 0; e < Ne; e++) {
-        for (let J = 0; J <= tj; J++) { gd[e][J].re.fill(0); gd[e][J].im.fill(0); }
-      }
-      b = 0;
-      for (let k1e = 0; k1e < Ne; k1e++) {
-        for (let k2e = 0; k2e < Ne; k2e++) {
-          for (let k3e = 0; k3e < Ne; k3e++) {
-            const bo = b * K;
-            for (let c = 0; c < K; c++) {
-              const g = gam[bo + c] / this.normOf[c];
-              if (g === 0) continue;
-              const t = triples[c];
-              adjointComponentChem(t, ue[k1e][t.J1], ue[k2e][t.J2], ue[k3e][t.J], g, gd[k1e], gd[k2e], gd[k3e]);
-            }
-            b++;
-          }
-        }
-      }
-
-      // pass 2: dE_i/dd for every neighbour (d = x_j - x_i); F_j = -G, F_i = +G
+      // adjoint of E_i w.r.t. every element's u entries, then dE_i/dd for every neighbour (d = x_j - x_i);
+      // F_j = -G, F_i = +G
+      chem.adjoint(gam);
       for (let a = 0; a < m; a++) {
-        const j = nJ[a];
-        const dx = nDx[a], dy = nDy[a], dz = nDz[a];
-        const r = nR[a], Rii = nRc[a];
-        const sn = Math.sin(nTh[a]), cs = Math.cos(nTh[a]);
-        const sg = sn < 0 ? -1 : 1;
-        const S = sg * sn, C = sg * cs;
-        const g = S / r;
-        const nx = dx / r, ny = dy / r, nz = dz / r;
-        const nm = [nx, ny, nz];
-        const thp = (rfac0 * Math.PI) / (Rii - rmin0);
-        const gp = (C * thp * r - S) / (r * r);
-        const vz = [0, 0, 1], vy = [0, 1, 0], vx = [1, 0, 0];
-        for (let mm = 0; mm < 3; mm++) {
-          dp[0][mm] = -S * thp * nm[mm];
-          dp[1][mm] = gp * nm[mm] * dz + g * vz[mm];
-          dp[2][mm] = gp * nm[mm] * dy + g * vy[mm];
-          dp[3][mm] = gp * nm[mm] * dx + g * vx[mm];
-        }
-        const ar = C, ai = g * dz, br = g * dy, bi = g * dx;
-        const sc = nSc[a], dsc = nDsc[a];
-        const G0 = [0, 0, 0];
-        WT.compute(ar, ai, br, bi, true);
-        const gm = gd[nEle[a]];
-        for (let J = 0; J <= tj; J++) {
-          const nn = (J + 1) * (J + 1);
-          const Ur = WT.ur[J], Ui = WT.ui[J];
-          const Dr = WT.dur[J], Di = WT.dui[J];
-          const GR = gm[J].re, GI = gm[J].im;
-          for (let q = 0; q < nn; q++) {
-            const gR = GR[q], gI = GI[q];
-            if (gR === 0 && gI === 0) continue;
-            for (let mm = 0; mm < 3; mm++) {
-              let dre = dsc * nm[mm] * Ur[q], dim = dsc * nm[mm] * Ui[q];
-              for (let pp = 0; pp < 4; pp++) {
-                dre += sc * Dr[pp][q] * dp[pp][mm];
-                dim += sc * Di[pp][q] * dp[pp][mm];
-              }
-              G0[mm] += gR * dre + gI * dim;
-            }
-          }
-        }
+        const j = chem.j[a];
+        chem.force(a, G0);
         f[3 * j] -= G0[0];
         f[3 * j + 1] -= G0[1];
         f[3 * j + 2] -= G0[2];
@@ -676,6 +557,7 @@ export class PairSnap extends Pair {
         f[3 * i + 1] += G0[1];
         f[3 * i + 2] += G0[2];
         if (va) {
+          const dx = chem.dx[a], dy = chem.dy[a], dz = chem.dz[a];
           const w0 = -0.5 * dx * G0[0], w1 = -0.5 * dy * G0[1], w2 = -0.5 * dz * G0[2];
           const w3 = -0.5 * dx * G0[1], w4 = -0.5 * dx * G0[2], w5 = -0.5 * dy * G0[2];
           va[6 * i] += w0; va[6 * i + 1] += w1; va[6 * i + 2] += w2; va[6 * i + 3] += w3; va[6 * i + 4] += w4; va[6 * i + 5] += w5;

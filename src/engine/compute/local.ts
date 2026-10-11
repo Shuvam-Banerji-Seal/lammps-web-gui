@@ -338,7 +338,7 @@ export class ComputePairLocal extends Compute {
     const list = nb.half;
     if (!list) throw new StyleError(`compute ${this.id} pair/local: no half neighbour list is available`);
     // special-bond factors of the last force evaluation (index = special bits of the neighbour)
-    const sLJ = (sys.ff as unknown as { specialLJ: Float64Array }).specialLJ;
+    const { specialLJ: sLJ, specialCoul: sCoul } = sys.ff as unknown as { specialLJ: Float64Array; specialCoul: Float64Array };
     const nt = pair.ntypes + 1;
     const ncol = this.values.length;
     const rows: number[] = [];
@@ -359,8 +359,9 @@ export class ComputePairLocal extends Compute {
         const ti = nb.typeall[i], tj = nb.typeall[j];
         if (rsq >= pair.cutsq[ti * nt + tj]) continue;
         const factorLJ = sb === 0 ? 1 : sLJ[sb];
+        const factorCoul = sb === 0 ? 1 : sCoul[sb];
         const r = Math.sqrt(rsq);
-        const res = pair.single(nb.owner[i], nb.owner[j], ti, tj, rsq, factorLJ, factorLJ, nb.qall[i], nb.qall[j]);
+        const res = pair.single(nb.owner[i], nb.owner[j], ti, tj, rsq, factorCoul, factorLJ, nb.qall[i], nb.qall[j]);
         const force = res.fforce * r;
         const fx = res.fforce * dx, fy = res.fforce * dy, fz = res.fforce * dz;
         const vals: Record<string, number> = { dist: r, dx, dy, dz, eng: res.eng, force, fx, fy, fz };

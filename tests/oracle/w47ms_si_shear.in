@@ -1,0 +1,21 @@
+# oracle: pair_style meam/spline Si_1.meam.spline on a sheared triclinic fcc cell (xy 0.3 with remap) with displaced atoms; the pressure tensor and pe after a zero-step run
+# oracle-potentials: Si_1.meam.spline
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      atomic
+lattice         fcc 3.98
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 28.085
+variable        dx atom 0.05*sin(1.3*x+0.7*y)
+variable        dy atom 0.05*cos(0.9*y-0.4*z)
+variable        dz atom 0.05*sin(1.1*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+change_box      all triclinic
+change_box      all xy final 1.2 remap
+pair_style      meam/spline
+pair_coeff      * * Si_1.meam.spline Si
+thermo_style    custom step pe press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g norm no
+run             0

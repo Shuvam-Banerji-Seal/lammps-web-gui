@@ -12,7 +12,6 @@
  * applies -f). Per-atom energy and virial tallies are not made (compute pe/atom and stress/atom
  * are refused by the pair style).
  */
-import { StyleError } from '../../engine/force/types';
 import { DEG2RAD, MIN_SINE, type RxSystem, type ThreeBodyList } from './core';
 
 const SQR = (x: number) => x * x;

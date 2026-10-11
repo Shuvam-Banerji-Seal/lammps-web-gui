@@ -1,0 +1,14 @@
+# oracle: ReaxFF water molecule (H, O) from the data file, fixed charges, run 0 and 20 NVE steps (real units, dt 0.1)
+# oracle-inputs: w55reax_water.data
+# oracle-potentials: ffield.reax.rdx
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-12
+units           real
+atom_style      charge
+boundary        p p p
+read_data       w55reax_water.data
+pair_style      reaxff NULL checkqeq no
+pair_coeff      * * ffield.reax.rdx H O
+timestep        0.1
+thermo_style    custom step pe ebond evdwl ecoul ke etotal press
+thermo_modify   format float %.15g
+run             0

@@ -1,0 +1,19 @@
+# oracle: ReaxFF water molecule with fix qeq/reaxff (charges from the pair extract, keyword reaxff; as the LAMMPS water example), 10 NVE steps
+# oracle-inputs: w55reax_water.data
+# oracle-potentials: ffield.reax.rdx
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-8
+units           real
+atom_style      charge
+boundary        p p p
+read_data       w55reax_water.data
+pair_style      reaxff NULL checkqeq yes
+pair_coeff      * * ffield.reax.rdx H O
+fix             1 all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check no
+timestep        0.1
+fix             2 all nve
+thermo_style    custom step pe ebond evdwl ecoul ke etotal press
+thermo_modify   format float %.15g
+thermo          5
+run             10

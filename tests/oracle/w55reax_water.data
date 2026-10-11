@@ -1,0 +1,25 @@
+water molecule for ReaxFF (generated for the w55reax oracle cases)
+
+3 atoms
+2 atom types
+
+0.0 20.0 xlo xhi
+0.0 20.0 ylo yhi
+0.0 20.0 zlo zhi
+
+Masses
+
+1 1.0080
+2 15.9994
+
+Atoms # charge
+
+1 2 -0.40 10.000000 10.000000 10.000000
+2 1 0.20 10.956000 10.000000 10.000000
+3 1 0.20 9.680000 10.930000 10.000000
+
+Velocities
+
+1 0.0 0.0 0.0
+2 0.001 0.002 -0.001
+3 -0.002 0.001 0.0

@@ -1,0 +1,40 @@
+/*
+ * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
+ * Source: src/REAXFF/pair_reaxff.cpp and src/REAXFF/fix_qeq_reaxff.cpp (style registration), at
+ * commit b332f28. Authors credited in the C++ file headers: Hasan Metin Aktulga (Michigan State
+ * University / Purdue University); Ray Shan (Sandia). Copyright (2003) Sandia Corporation (GNU General
+ * Public License). This file is GPL-2.0 (see src/engine-gpl/LICENSE).
+ */
+import type { Fix } from '../../engine/fix/fix';
+import { StyleError } from '../../engine/force/types';
+import type { ComputeFactory } from '../../engine/styles';
+import type { Pair } from '../../engine/force/types';
+import type { System } from '../../engine/system';
+import { PairReaxFF } from '../reaxff/pair';
+import { FixQEqReaxFF } from '../reaxff/qeq';
+
+/** ReaxFF styles ported from LAMMPS (src/REAXFF); merged into styles.ts through lazyStyles.ts. */
+export const PAIRS: Record<string, () => Pair> = {
+  reaxff: () => new PairReaxFF(),
+};
+
+const qeqFactory = (sys: System, id: string, group: string, args: string[]): Fix =>
+  new FixQEqReaxFF(sys, id, group, args, () => (sys.ff.pair instanceof PairReaxFF ? sys.ff.pair : null));
+
+/** Stage 3 of the ReaxFF port: refused by name (the factories throw; listed in refusedStyles.ts). */
+const refuse = (name: string) => (): never => {
+  throw new StyleError(`${name} is not ported to the browser engine (ReaxFF output fixes and computes are not supported)`);
+};
+
+/** fix qeq/reaxff (and its alias qeq/reax, both in LAMMPS' FixStyle list); reaxff/bonds and reaxff/species refused. */
+export const FIXES: Record<string, typeof qeqFactory> = {
+  'qeq/reaxff': qeqFactory,
+  'qeq/reax': qeqFactory,
+  'reaxff/bonds': refuse('fix reaxff/bonds') as unknown as typeof qeqFactory,
+  'reaxff/species': refuse('fix reaxff/species') as unknown as typeof qeqFactory,
+};
+
+/** compute reaxff/atom: refused by name. */
+export const COMPUTES: Record<string, ComputeFactory> = {
+  'reaxff/atom': refuse('compute reaxff/atom') as unknown as ComputeFactory,
+};

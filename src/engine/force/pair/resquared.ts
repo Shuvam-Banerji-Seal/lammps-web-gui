@@ -1,4 +1,4 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, typeBounds, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { parseNum } from '../util';
 

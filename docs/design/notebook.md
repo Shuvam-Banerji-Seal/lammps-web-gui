@@ -43,7 +43,8 @@ thermo output — no install, no server, no account.
 
 `tests/oracle/*.in` are deterministic inputs: positions from lattices plus
 analytic displacements, velocities from atom-style variables, no random
-seeds. `scripts/oracle/run-oracle.mjs` runs each one through a native `lmp`
+seeds (the `w52rng_*` cases use native's per-atom random streams, see below).
+`scripts/oracle/run-oracle.mjs` runs each one through a native `lmp`
 binary (`LMP=/path/to/lmp node scripts/oracle/run-oracle.mjs [case ...]`) and
 stores in `tests/fixtures/oracle/<case>.json`:
 - every thermo row;
@@ -62,8 +63,12 @@ data and potential files written for this project.
 
 The original acceptance check still holds: the documented `examples/melt` run
 reproduces LAMMPS's published step-0 line (Temp 3, E_pair −6.7733681,
-TotEng −2.2744931, Press −3.7033504) exactly. Later steps differ only because
-`velocity create` uses our own documented RNG.
+TotEng −2.2744931, Press −3.7033504) exactly. The per-atom streams of
+`velocity create ... loop geom`, `displace_atoms random` and the random `set`
+keywords are native's (`src/engine-gpl/`, reached through `src/engine/nativeRandom.ts`),
+so the whole melt run matches native: `tests/oracle/w52rng_melt.in` runs its 250 steps
+with thermo every 50 and agrees to about 1e-14 relative in thermo and 6e-10 in positions.
+`velocity create ... loop all` and `loop local` keep the Park stream of `src/engine/rng.ts`.
 
 ## Supported subset
 

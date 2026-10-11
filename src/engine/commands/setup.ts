@@ -13,6 +13,7 @@ import {
 } from '../region';
 import { readData, writeData, defaultReadOptions, type ReadDataOptions } from '../output/data';
 import { RanMars, RanPark, Rng } from '../rng';
+import { nativeRandom } from '../styles';
 import { gzipText } from '../gzip';
 import { ComputeTemp } from '../compute/temp';
 import type { AtomStyle, SimState } from '../types';
@@ -1253,8 +1254,8 @@ const selected = (sys: System, style: string, id: string): number[] => {
 
 /**
  * set style ID keyword values — set.html. Values may be atom-style variables
- * (v_name). type/fraction, type/ratio and type/subset choose atoms randomly
- * with our own generator (the chosen atoms differ from LAMMPS for a seed).
+ * (v_name). type/fraction, type/ratio and type/subset choose atoms with the
+ * per-atom and subset streams of native LAMMPS (nativeRandom.ts).
  */
 const set: Handler = ({ sys }, a) => {
   const s = sys.state;
@@ -1286,16 +1287,22 @@ const set: Handler = ({ sys }, a) => {
       case 'type/fraction': case 'type/ratio': case 'type/subset': {
         const t = int(a[k + 1], 'type');
         const amount = num(a[k + 2], key);
-        const rng = new Rng(int(a[k + 3], 'seed'));
+        const seed = int(a[k + 3], 'seed');
         if (t < 1 || t > s.ntypes) throw new StyleError(`set type ${t} is outside 1..${s.ntypes}`);
+        const rnd = nativeRandom(key);
         if (key === 'type/fraction') {
-          for (const i of atoms) if (rng.uniform() < amount) { s.type[i] = t; changed++; }
+          // set.html: "Random numbers are used in such a way that a particular atom is changed or not changed,
+          // regardless of how many processors are being used."
+          for (const i of atoms) {
+            if (rnd.typeFraction(seed, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], amount)) { s.type[i] = t; changed++; }
+          }
         } else {
-          const want = key === 'type/ratio' ? Math.floor(amount * atoms.length) : Math.trunc(amount);
+          // Measured with native LAMMPS (black box): type/ratio 0.5 on 27 selected atoms changes 13 (the product is
+          // truncated); type/subset changes exactly Nsubset.
+          const want = key === 'type/ratio' ? Math.trunc(amount * atoms.length) : Math.trunc(amount);
           if (want > atoms.length) throw new StyleError(`${key}: ${want} is more than the ${atoms.length} selected atoms`);
-          const idx = atoms.slice();
-          for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(rng.uniform() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
-          for (const i of idx.slice(0, want)) s.type[i] = t;
+          const flag = rnd.selectSubset(seed, want, atoms.length);
+          for (let e = 0; e < atoms.length; e++) if (flag[e]) s.type[atoms[e]] = t;
           changed = want;
         }
         k += 4;
@@ -1422,11 +1429,26 @@ const set: Handler = ({ sys }, a) => {
         break;
       }
       // set.html: "Keyword *spin/atom/random* randomizes the orientation of the magnetic spin vectors", and
-      // "spin/random" (the older name). The random stream of native LAMMPS is not reproduced by the engine, so the
-      // keywords are refused rather than run with other random orientations.
+      // "spin/random" (the older name). Set spin/atom/random seed Dlen: the magnitude is Dlen, the direction is
+      // random. Measured with native LAMMPS (black box): Dlen <= 0 stops with Invalid spin magnitude 0 in set
+      // spin/atom/random command (and the same with spin/random).
       case 'spin/random':
-      case 'spin/atom/random':
-        throw new StyleError(`set ${a[k]}: the random spin orientations of native LAMMPS are not reproduced by the browser engine (use set spin/atom with explicit orientations)`);
+      case 'spin/atom/random': {
+        if (!s.sp) throw new StyleError(`Cannot set attribute ${a[k]} for atom style ${s.atomStyle}`);
+        const seed = int(a[k + 1], 'seed');
+        const g = num(a[k + 2], 'spin magnitude');
+        if (seed <= 0) throw new StyleError(`Invalid random number seed ${seed} in set ${a[k]} command`);
+        if (!(g > 0)) throw new StyleError(`Invalid spin magnitude ${g} in set ${a[k]} command`);
+        const rnd = nativeRandom('spin/atom/random');
+        const dir = new Float64Array(3);
+        for (const i of atoms) {
+          rnd.spinRandom(seed, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], sys.dimension, dir);
+          s.sp[4 * i] = dir[0]; s.sp[4 * i + 1] = dir[1]; s.sp[4 * i + 2] = dir[2]; s.sp[4 * i + 3] = g;
+        }
+        changed = atoms.length;
+        k += 3;
+        break;
+      }
       // set.html: "Keyword *shape* sets the size and shape of the selected atoms.  The particles must be
       // ellipsoids as defined by the :doc:`atom_style ellipsoid <atom_style>` command.  The *Sx*, *Sy*, *Sz*
       // settings are the 3 diameters of the ellipsoid in each direction."; "They can also all be set to 0.0
@@ -1472,28 +1494,19 @@ const set: Handler = ({ sys }, a) => {
       }
       // set.html: "Keyword *quat/random* randomizes the orientation of the quaternion for the selected atoms."; "As with
       // keyword *quat*, for ellipsoidal particles, the 3 shape values must be non-zero for each particle set by this
-      // command."; "For 2d systems, only orientations in the xy plane are generated." Native seeds each atom from its
-      // coordinates in a way the page does not give, so the engine seeds each atom from the user seed and its
-      // coordinates (geomSeed, as velocity loop geom does): uniformly random orientations, not native's values.
+      // command."; "For 2d systems, only orientations in the xy plane are generated." The per-atom streams are
+      // native's (nativeRandom.ts).
       case 'quat/random': {
         if (!s.quat) throw new StyleError(`Cannot set attribute quat/random for atom style ${s.atomStyle}`);
         const seed = int(a[k + 1], 'seed');
         if (seed <= 0) throw new StyleError('set quat/random: seed must be a positive integer');
+        const rnd = nativeRandom('quat/random');
+        const q = new Float64Array(4);
         for (const i of atoms) {
           if (!isEllipsoid(s, i)) throw new StyleError('Cannot set quaternion for atom that has none');
-          const rng = new Rng(geomSeed(seed, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]));
-          if (sys.dimension === 2) {
-            const h = Math.PI * rng.uniform();
-            s.quat[4 * i] = Math.cos(h); s.quat[4 * i + 1] = 0; s.quat[4 * i + 2] = 0; s.quat[4 * i + 3] = Math.sin(h);
-          } else {
-            // uniform random rotation (Shoemake's subgroup algorithm)
-            const u1 = rng.uniform(), u2 = 2 * Math.PI * rng.uniform(), u3 = 2 * Math.PI * rng.uniform();
-            const r1 = Math.sqrt(1 - u1), r2 = Math.sqrt(u1);
-            s.quat[4 * i] = r2 * Math.cos(u3); s.quat[4 * i + 1] = r1 * Math.sin(u2);
-            s.quat[4 * i + 2] = r1 * Math.cos(u2); s.quat[4 * i + 3] = r2 * Math.sin(u3);
-          }
+          rnd.quatRandom(seed, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], sys.dimension, q);
+          for (let d = 0; d < 4; d++) s.quat[4 * i + d] = q[d];
         }
-        sys.warn('set quat/random: orientations are random but differ from native LAMMPS (its per-atom seeding is not documented)');
         changed = atoms.length;
         k += 2;
         break;
@@ -1511,26 +1524,19 @@ const set: Handler = ({ sys }, a) => {
       }
       // set.html: "Keyword *dipole/random* randomizes the orientation of the dipole moment vectors for the selected
       // atoms and sets the magnitude of each to the specified *Dlen* value.  For 2d systems, the z component of the
-      // orientation is set to 0.0." Seeded per atom like quat/random above (not native's values).
+      // orientation is set to 0.0." The per-atom streams are native's (nativeRandom.ts).
       case 'dipole/random': {
         if (!s.mu) throw new StyleError(`Cannot set attribute dipole/random for atom style ${s.atomStyle}`);
         const seed = int(a[k + 1], 'seed');
         const dlen = num(a[k + 2], 'Dlen');
         if (seed <= 0) throw new StyleError('set dipole/random: seed must be a positive integer');
         if (!(dlen > 0)) throw new StyleError('set dipole/random: Dlen must be > 0');
+        const rnd = nativeRandom('dipole/random');
+        const mu = new Float64Array(3);
         for (const i of atoms) {
-          const rng = new Rng(geomSeed(seed, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]));
-          let dx: number, dy: number, dz: number;
-          if (sys.dimension === 2) {
-            const ph = 2 * Math.PI * rng.uniform();
-            dx = Math.cos(ph); dy = Math.sin(ph); dz = 0;
-          } else {
-            const cz = 2 * rng.uniform() - 1, ph = 2 * Math.PI * rng.uniform(), sz = Math.sqrt(1 - cz * cz);
-            dx = sz * Math.cos(ph); dy = sz * Math.sin(ph); dz = cz;
-          }
-          s.mu[4 * i] = dlen * dx; s.mu[4 * i + 1] = dlen * dy; s.mu[4 * i + 2] = dlen * dz; s.mu[4 * i + 3] = dlen;
+          rnd.dipoleRandom(seed, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], dlen, sys.dimension, mu);
+          s.mu[4 * i] = mu[0]; s.mu[4 * i + 1] = mu[1]; s.mu[4 * i + 2] = mu[2]; s.mu[4 * i + 3] = dlen;
         }
-        sys.warn('set dipole/random: orientations are random but differ from native LAMMPS (its per-atom seeding is not documented)');
         changed = atoms.length;
         k += 3;
         break;
@@ -1707,10 +1713,10 @@ const velocity: Handler = ({ sys }, a) => {
       // on each processor." — on one processor: group members in storage
       // order, after 100 discarded uniform draws. loop geom seeds every atom
       // from its coordinates ("For each atom a unique random number seed is
-      // created, based on the atom's xyz coordinates"); the docs leave the
-      // seeding unspecified and say it "will not necessarily assign identical
-      // velocities for two simulations run on different machines", so the
-      // engine's coordinate hash gives valid but different velocities.
+      // created, based on the atom's xyz coordinates"); the docs do not
+      // promise identical velocities across machines ("will not necessarily
+      // assign identical velocities for two simulations run on different
+      // machines"), and the per-atom streams here are native's (nativeRandom.ts).
       const draw = (rng: { uniform(): number; gaussian(): number }, i: number) => {
         const c = 1 / Math.sqrt(massOf(s, i));
         for (let d = 0; d < 3; d++) {
@@ -1735,7 +1741,13 @@ const velocity: Handler = ({ sys }, a) => {
         for (let k = 0; k < 100; k++) rng.uniform();
         for (const i of members) draw(rng, i);
       } else {
-        for (const i of members) draw(new Rng(geomSeed(seed, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2])), i);
+        const geom = nativeRandom('geom');
+        const r = new Float64Array(3);
+        for (const i of members) {
+          geom.velocityGeom(seed, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], dist === 'gaussian', r);
+          const c = 1 / Math.sqrt(massOf(s, i));
+          for (let d = 0; d < 3; d++) s.v[3 * i + d] = d === 2 && s.dimension === 2 ? 0 : r[d] * c;
+        }
       }
       if (mom) zeroMomentum(sys, members);
       if (rot) zeroRotation(sys, members);
@@ -2019,9 +2031,18 @@ const displaceAtoms: Handler = ({ sys }, a) => {
       break;
     }
     case 'random': {
+      // displace_atoms.html: "Random numbers are used in such a way that the displacement of a particular atom is the
+      // same, regardless of how many processors are being used." The per-atom streams are native's (nativeRandom.ts).
       const dx = [0, 1, 2].map((d) => num(args[d], 'magnitude') * sc[d]);
-      const rng = new Rng(int(args[3], 'seed'));
-      for (const i of members) for (let d = 0; d < 3; d++) s.x[3 * i + d] += dx[d] * 2 * (rng.uniform() - 0.5);
+      const seed = int(args[3], 'seed');
+      if (seed <= 0) throw new StyleError(`Illegal displace_atoms random seed ${args[3]}`);
+      if (s.dimension === 2 && dx[2] !== 0) throw new StyleError('Must not displace atoms in z-direction with 2d system');
+      const rnd = nativeRandom('random');
+      const disp = new Float64Array(3);
+      for (const i of members) {
+        rnd.displaceRandom(seed, s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], dx[0], dx[1], dx[2], s.dimension, disp);
+        for (let d = 0; d < 3; d++) s.x[3 * i + d] += disp[d];
+      }
       break;
     }
     case 'rotate': {
@@ -2439,10 +2460,3 @@ export const SETUP_COMMANDS: Record<string, Handler> = {
 
 void ALL_GROUP_BIT;
 
-/** velocity loop geom: a seed from the user seed and the coordinate bits (engine-defined hash). */
-const geomSeed = (seed: number, x: number, y: number, z: number): number => {
-  const b = new Uint32Array(new Float64Array([x, y, z]).buffer);
-  let h = seed | 0;
-  for (let k = 0; k < b.length; k++) h = Math.imul(h ^ b[k], 0x9e3779b1) ^ (h >>> 15);
-  return h;
-};

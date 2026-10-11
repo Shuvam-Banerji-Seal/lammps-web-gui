@@ -1,0 +1,15 @@
+# oracle: velocity create loop geom (gaussian) on a read_data system (256 atoms written by native write_data), run 0
+# oracle-inputs: w52rng_geom.data
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      atomic
+read_data       w52rng_geom.data
+velocity        all create 1.1 13579 loop geom dist gaussian
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 20 delay 0 check no
+thermo_style    custom step temp pe ke etotal press
+thermo_modify   format float %.15g
+thermo          1
+run             0

@@ -232,6 +232,9 @@ export class KSpacePPPM extends KSpaceBase {
   }
 
   init(s: SimState, geom: Geometry, cutCoul: number, qqrd2e: number, ctx: StyleContext): void {
+    // kspace_modify minorder: the order may not be reduced below M, so M above the order is refused (measured:
+    // order 5 with minorder 6 stops with PPPM order < minimum allowed order; order 7 with minorder 7 runs).
+    if (this.minorder > this.order) throw new StyleError(`PPPM order < minimum allowed order (kspace_modify minorder ${this.minorder} > order ${this.order})`);
     this.cutCoul = cutCoul;
     this.setupCharges(s, geom, ctx);
     const orthoNoSlab = !s.box.triclinic && this.slab === 1 && geom.xy === 0 && geom.xz === 0 && geom.yz === 0;

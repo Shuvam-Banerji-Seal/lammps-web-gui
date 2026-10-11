@@ -1,0 +1,96 @@
+import { describe, expect, it } from 'vitest';
+import { Session } from '../src/engine/interpreter';
+import type { EngineEvent } from '../src/engine/types';
+
+/**
+ * kspace_modify keywords that the engine refuses (rule 7: an unsupported keyword is an EngineError naming it,
+ * never a silent no-op), and the run_style refusals. The accepted keywords are checked against native LAMMPS
+ * in tests/oracle/w51km_*.in.
+ */
+
+/** Runs input text in a fresh session and returns the error message (null when it runs). */
+const run = async (text: string): Promise<string | null> => {
+  const events: EngineEvent[] = [];
+  const session = new Session({ emit: (ev) => events.push(ev), writeFile: () => {} });
+  try {
+    await session.execute(text);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+};
+
+/** Two charged atoms in a periodic box; the kspace style and kspace_modify line are given by the caller. */
+const system = (kspace: string, modify: string, extra = '') => `
+units lj
+atom_style charge
+region box block -6 6 -6 6 -6 6
+create_box 1 box
+create_atoms 1 single 0 0 0
+create_atoms 1 single 1.5 0.5 -0.5
+set atom 1 charge 1.0
+set atom 2 charge -1.0
+mass 1 1.0
+pair_style lj/cut/coul/long 2.5
+pair_coeff 1 1 0.0 1.0
+kspace_style ${kspace}
+kspace_modify ${modify}
+${extra}
+thermo_style custom step pe
+run 0
+`;
+
+describe('kspace_modify keywords refused by the engine', () => {
+  it('refuses tol, which is not a kspace_modify keyword (native rejects it for ewald and pppm)', async () => {
+    for (const style of ['ewald 1e-4', 'pppm 1e-4']) {
+      const err = await run(system(style, 'gewald 0.4 tol 1e-3'));
+      expect(err).toMatch(/kspace_modify tol/);
+    }
+  });
+
+  it('refuses pressure/scalar yes (it applies only to MSM)', async () => {
+    const err = await run(system('ewald 1e-4', 'gewald 0.4 kmax/ewald 5 5 5 pressure/scalar yes'));
+    expect(err).toMatch(/kspace_modify pressure\/scalar yes is not supported/);
+  });
+
+  it('accepts pressure/scalar no and the no-effect keywords without error', async () => {
+    const err = await run(system('ewald 1e-4', 'gewald 0.4 kmax/ewald 5 5 5 pressure/scalar no collective yes nonblocking no fftbench no overlap yes cutoff/adjust no minorder 2'));
+    expect(err).toBeNull();
+  });
+
+  it('rejects a non-boolean value of the yes/no keywords by name', async () => {
+    for (const kw of ['collective maybe', 'nonblocking maybe', 'overlap maybe', 'fftbench maybe', 'cutoff/adjust maybe', 'pressure/scalar maybe']) {
+      const err = await run(system('ewald 1e-4', `gewald 0.4 kmax/ewald 5 5 5 ${kw}`));
+      expect(err, kw).toMatch(new RegExp(`Expected boolean parameter instead of 'maybe' for kspace_modify ${kw.split(' ')[0].replace('/', '\\/')}`));
+    }
+  });
+
+  it('rejects minorder below 2 and a non-integer minorder', async () => {
+    expect(await run(system('ewald 1e-4', 'gewald 0.4 kmax/ewald 5 5 5 minorder 1'))).toMatch(/minorder must be at least 2/);
+    expect(await run(system('ewald 1e-4', 'gewald 0.4 kmax/ewald 5 5 5 minorder abc'))).toMatch(/Expected integer parameter instead of 'abc' for kspace_modify minorder/);
+  });
+
+  it('refuses pppm minorder above the order at init (native: PPPM order < minimum allowed order)', async () => {
+    const err = await run(system('pppm 1e-4', 'gewald 0.4 mesh 8 8 8 order 5 minorder 6'));
+    expect(err).toMatch(/PPPM order < minimum allowed order/);
+    const ok = await run(system('pppm 1e-4', 'gewald 0.4 mesh 8 8 8 order 7 minorder 7'));
+    expect(ok).toBeNull();
+  });
+});
+
+describe('run_style refusals name the keyword and say why', () => {
+  it('names verlet/split and says it needs two partitions', async () => {
+    const err = await run('units lj\natom_style atomic\nregion box block 0 5 0 5 0 5\ncreate_box 1 box\nrun_style verlet/split\n');
+    expect(err).toMatch(/run_style verlet\/split needs two partitions/);
+  });
+
+  it('names verlet/split/rk and says it needs two partitions', async () => {
+    const err = await run('units lj\natom_style atomic\nregion box block 0 5 0 5 0 5\ncreate_box 1 box\nrun_style verlet/split/rk\n');
+    expect(err).toMatch(/run_style verlet\/split\/rk needs two partitions/);
+  });
+
+  it('keeps the unknown run_style message for a style that does not exist', async () => {
+    const err = await run('units lj\natom_style atomic\nregion box block 0 5 0 5 0 5\ncreate_box 1 box\nrun_style foo\n');
+    expect(err).toMatch(/unknown run_style 'foo'/);
+  });
+});

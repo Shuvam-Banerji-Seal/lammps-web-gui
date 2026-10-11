@@ -153,7 +153,14 @@ const runStyle: Handler = ({ sys }, a) => {
     sys.respa = parseRunStyleRespa(a);
     return;
   }
-  if (style === 'verlet/split' || style === 'respa/omp') {
+  // run_style verlet/split and verlet/split/rk need two partitions (-partition 2x1, one for the pair forces and one
+  // for the kspace forces; the doc says the force calculation is split "over 2 partitions of processors"). Measured
+  // with native LAMMPS (black box): verlet/split on one partition stops with Verlet/split requires 2 partitions.
+  // The browser engine runs a single partition, so both are refused and named here.
+  if (style === 'verlet/split' || style === 'verlet/split/rk') {
+    throw new StyleError(`run_style ${style} needs two partitions (native LAMMPS: Verlet/split requires 2 partitions); the browser engine runs one partition, so it is refused`);
+  }
+  if (style === 'respa/omp') {
     throw new StyleError(`run_style ${style} is not supported by the browser engine (it runs velocity Verlet only)`);
   }
   throw new StyleError(`unknown run_style '${style ?? ''}' (verlet, verlet/split, respa or respa/omp)`);

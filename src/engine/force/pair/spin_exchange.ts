@@ -2,15 +2,17 @@ import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, type Neighbor } from '../../neighbor';
 import { parseNum } from '../util';
 import { PairHybrid } from './hybrid';
+import { spinContribute, type SpinPairStyle } from '../spin_book';
 
 /*
  * pair_style spin/exchange cutoff and pair_style spin/exchange/biquadratic —
- * docs.lammps.org/pair_spin_exchange.html. This file implements plain
- * spin/exchange.
+ * docs.lammps.org/pair_spin_exchange.html.
  *
  *   pair_style spin/exchange cutoff
  *   pair_coeff * * exchange 4.0 0.0446928 0.003496 1.4885
  *   pair_coeff 1 2 exchange 6.0 -0.01575 0.0 1.965 offset yes
+ *   pair_style spin/exchange/biquadratic cutoff
+ *   pair_coeff * * biquadratic 4.0 0.05 0.03 1.48 0.05 0.03 1.48 offset no
  *
  * "Style *spin/exchange* computes the exchange interaction between pairs of
  * magnetic spins" with "H_{ex} = -\sum_{i,j}^N J_{ij} (r_{ij}) \,\vec{s}_i
@@ -21,8 +23,16 @@ import { PairHybrid } from './hybrid';
  * coefficients defined in the associated \"pair_coeff\" command, and :math:`R_c`
  * is the radius cutoff".
  *
- * The torque and force: "\vec{\omega}_{i} = \frac{1}{\hbar} \sum_{j}^{Neighb}
- * {J} \left(r_{ij} \right)\,\vec{s}_{j}" and "\vec{F}_{i} = \sum_{j}^{Neighb}
+ * Biquadratic: "H_{bi} = -\sum_{i, j}^{N} {J}_{ij} \left(r_{ij} \right)\,". The page then adds a K term with
+ * "\left(\vec{s}_{i}\cdot \vec{s}_{j}\right)^2" and K(r) given by the same function f(r) with its own (a, b, d)
+ * triple. "When a *spin/exchange/biquadratic* pair style is defined, six coefficients" are needed.
+ * Measured with native LAMMPS (black box, two atoms, offset no and yes, two geometries): energy
+ * -J (s1.s2) - K (s1.s2)^2 (offset yes subtracts 1 from each bracket), precession
+ * vector of atom i (J + 2 K s1.s2) s_j / hbar, mechanical force
+ * (dJ/dr (s1.s2 - off) + dK/dr ((s1.s2)^2 - off)) e_ij with e_ij = (r_i - r_j)/r.
+ *
+ * The torque and force of the plain style: "\vec{\omega}_{i} = \frac{1}{\hbar} \sum_{j}^{Neighb} {J}
+ * \left(r_{ij} \right)\,\vec{s}_{j}" and "\vec{F}_{i} = \sum_{j}^{Neighb}
  * \frac{\partial {J} \left(r_{ij} \right)}{ \partial r_{ij}} \left(
  * \vec{s}_{i}\cdot \vec{s}_{j} \right) \vec{e}_{ij}" with "\hbar the Planck
  * constant (in metal units)". Measured with native LAMMPS (black box): the
@@ -41,7 +51,9 @@ import { PairHybrid } from './hybrid';
  * Spins are read as unit vectors from atom_style spin (sp[0..2]); ghost spins
  * are the spins of their owners (nb.owner). The pair needs a full neighbor
  * list; each owned atom accumulates its own precession vector and force from
- * its full list, and the energy is halved per directed pair.
+ * its full list, and the energy is halved per directed pair. The precession
+ * vectors are contributed through spin_book.ts, so several spin pair styles
+ * can overlay.
  */
 
 /** Planck constant in metal units (eV ps), measured as described above. */
@@ -57,48 +69,69 @@ export const exchangeJ = (a: number, b: number, d: number, r: number): { j: numb
   return { j, dj };
 };
 
-export class PairSpinExchange extends Pair {
+const PARAM_NAMES = ['rc', 'a', 'b', 'd', 'ak', 'bk', 'dk', 'offset'];
+
+export class PairSpinExchange extends Pair implements SpinPairStyle {
   readonly name: string = 'spin/exchange';
   virialFdotr = true;
   needsFull = true;
   needsHalf = false;
-  /** Global cutoff of pair_style spin/exchange. */
+  readonly spinForce = true;
+  /** Global cutoff of pair_style spin/exchange (or spin/exchange/biquadratic). */
   cutGlobal = 0;
-  /** Per type pair: a, b, d, offset (1 = yes). Cutoff is the pair_coeff Rc. */
+  /** True for pair_style spin/exchange/biquadratic (adds the K(r) term). */
+  readonly biquadratic: boolean = false;
+  /** Per type pair: a, b, d (J), ak, bk, dk (K, biquadratic only), offset (1 = yes). Cutoff is the pair_coeff Rc. */
   p!: PairParams;
+  private fmBuf = new Float64Array(0);
+
+  constructor(biquadratic = false) {
+    super();
+    this.biquadratic = biquadratic;
+    if (biquadratic) this.name = 'spin/exchange/biquadratic';
+  }
 
   settings(args: string[]): void {
-    if (args.length !== 1) throw new StyleError('usage: pair_style spin/exchange cutoff');
+    const style = this.biquadratic ? 'spin/exchange/biquadratic' : 'spin/exchange';
+    if (args.length !== 1) throw new StyleError(`usage: pair_style ${style} cutoff`);
     this.cutGlobal = parseNum(args[0], 'cutoff');
-    if (!(this.cutGlobal > 0)) throw new StyleError('spin/exchange: cutoff must be > 0');
+    if (!(this.cutGlobal > 0)) throw new StyleError(`${style}: cutoff must be > 0`);
   }
 
   allocate(ntypes: number): void {
     super.allocate(ntypes);
-    this.p = new PairParams(ntypes, ['rc', 'a', 'b', 'd', 'offset']);
+    this.p = new PairParams(ntypes, PARAM_NAMES);
   }
 
   coeff(args: string[]): void {
-    // docs.lammps.org/pair_spin_exchange.html: the coefficients are R_c (distance units), a (energy units),
-    // b (adim parameter) and d (distance units), in that order; the examples put the keyword exchange
-    // first (a hybrid sub-style name is removed by pair hybrid before the call, so the keyword may be present).
-    const k = args[2] === 'exchange' ? 3 : 2;
-    if (args.length < k + 4) throw new StyleError('usage: pair_coeff I J [exchange] R_c a b d [offset yes|no]');
-    const v = args.slice(k, k + 4).map((w, n) => parseNum(w, ['Rc', 'a', 'b', 'd'][n]));
-    if (!(v[0] > 0)) throw new StyleError('spin/exchange: R_c must be > 0');
-    if (!(v[3] > 0)) throw new StyleError('spin/exchange: d must be > 0');
+    // docs.lammps.org/pair_spin_exchange.html: "R_c (distance units)", "a (energy units)", "b (adim parameter)",
+    // "d (distance units)" for spin/exchange; biquadratic adds a second triple (a_k, b_k, d_k) for K(r_ij).
+    // The examples put the keyword exchange or biquadratic first.
+    const style = this.biquadratic ? 'biquadratic' : 'exchange';
+    const k = args[2] === style ? 3 : 2;
+    const nv = this.biquadratic ? 7 : 4;
+    const usage = this.biquadratic
+      ? 'usage: pair_coeff I J [biquadratic] R_c a_j b_j d_j a_k b_k d_k [offset yes|no]'
+      : 'usage: pair_coeff I J [exchange] R_c a b d [offset yes|no]';
+    if (args.length < k + nv) throw new StyleError(usage);
+    const names = this.biquadratic ? ['Rc', 'a_j', 'b_j', 'd_j', 'a_k', 'b_k', 'd_k'] : ['Rc', 'a', 'b', 'd'];
+    const v = args.slice(k, k + nv).map((w, n) => parseNum(w, names[n]));
+    if (!(v[0] > 0)) throw new StyleError(`${this.name}: R_c must be > 0`);
+    if (!(v[3] > 0)) throw new StyleError(`${this.name}: d must be > 0`);
+    if (this.biquadratic && !(v[6] > 0)) throw new StyleError(`${this.name}: d_k must be > 0`);
     let offset = 0;
-    for (let m = k + 4; m < args.length; m += 2) {
-      if (args[m] !== 'offset') throw new StyleError(`pair_coeff spin/exchange: unknown keyword ${args[m]}`);
+    for (let m = k + nv; m < args.length; m += 2) {
+      if (args[m] !== 'offset') throw new StyleError(`pair_coeff ${this.name}: unknown keyword ${args[m]}`);
       if (args[m + 1] === 'yes') offset = 1;
       else if (args[m + 1] === 'no') offset = 0;
-      else throw new StyleError(`pair_coeff spin/exchange: offset must be yes or no`);
+      else throw new StyleError(`pair_coeff ${this.name}: offset must be yes or no`);
     }
-    this.p.setRange(args[0], args[1], [v[0], v[1], v[2], v[3], offset]);
+    const ak = this.biquadratic ? v[4] : 0, bk = this.biquadratic ? v[5] : 0, dk = this.biquadratic ? v[6] : 1;
+    this.p.setRange(args[0], args[1], [v[0], v[1], v[2], v[3], ak, bk, dk, offset]);
   }
 
   initStyle(_ctx: StyleContext): void {
-    if (this.shift || this.tail) throw new StyleError('pair_modify shift/tail is not supported for pair style spin/exchange');
+    if (this.shift || this.tail) throw new StyleError(`pair_modify shift/tail is not supported for pair style ${this.name}`);
   }
 
   initOne(i: number, j: number): number {
@@ -107,9 +140,8 @@ export class PairSpinExchange extends Pair {
   }
 
   /**
-   * Precession vector of owned atom i (out[0..2] = (J/hbar) sum_j s_j over its full-list neighbors) from the
-   * current spins of the state; the same sum the compute uses. Also returns the energy and force sum when
-   * `forces` is given (not used by the integrator).
+   * Precession vector of owned atom i (out[0..2] = (J/hbar) sum_j s_j over its full-list neighbors; biquadratic:
+   * ((J + 2 K s_i.s_j)/hbar) s_j) from the current spins of the state.
    */
   omegaOf(i: number, nb: Neighbor, sp: Float64Array, type: Int32Array, x: Float64Array, list: { firstneigh: Int32Array; numneigh: Int32Array; neighbors: Int32Array }, out: Float64Array): void {
     out[0] = 0; out[1] = 0; out[2] = 0;
@@ -117,6 +149,7 @@ export class PairSpinExchange extends Pair {
     const owner = nb.owner;
     const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
     const ti = type[i] * nt;
+    const si0 = sp[4 * i], si1 = sp[4 * i + 1], si2 = sp[4 * i + 2];
     for (let k = k0; k < k1; k++) {
       const j = list.neighbors[k] & NEIGHMASK;
       const dx = x[3 * j] - x[3 * i], dy = x[3 * j + 1] - x[3 * i + 1], dz = x[3 * j + 2] - x[3 * i + 2];
@@ -125,29 +158,40 @@ export class PairSpinExchange extends Pair {
       if (rsq >= this.cutsq[t]) continue;
       const r = Math.sqrt(rsq);
       const o = owner[j];
-      const { j: J } = exchangeJ(this.p.get('a', type[i], type[j]), this.p.get('b', type[i], type[j]), this.p.get('d', type[i], type[j]), r);
-      const c = J / SPIN_HBAR;
-      out[0] += c * sp[4 * o]; out[1] += c * sp[4 * o + 1]; out[2] += c * sp[4 * o + 2];
+      const { j: J } = this.pairJK(type[i], type[j], r);
+      const kk = this.biquadratic ? this.pairK(type[i], type[j], r) : 0;
+      const sj0 = sp[4 * o], sj1 = sp[4 * o + 1], sj2 = sp[4 * o + 2];
+      const ss = si0 * sj0 + si1 * sj1 + si2 * sj2;
+      const c = (J + 2 * kk * ss) / SPIN_HBAR;
+      out[0] += c * sj0; out[1] += c * sj1; out[2] += c * sj2;
     }
+  }
+
+  private pairJK(ti: number, tj: number, r: number): { j: number; dj: number } {
+    return exchangeJ(this.p.get('a', ti, tj), this.p.get('b', ti, tj), this.p.get('d', ti, tj), r);
+  }
+
+  private pairK(ti: number, tj: number, r: number): number {
+    return exchangeJ(this.p.get('ak', ti, tj), this.p.get('bk', ti, tj), this.p.get('dk', ti, tj), r).j;
   }
 
   compute(pc: PairCompute): void {
     const list = pc.full;
-    if (!list) throw new Error('pair style spin/exchange needs a full neighbor list');
+    if (!list) throw new Error(`pair style ${this.name} needs a full neighbor list`);
     const s = pc.s;
-    if (!s.sp || !s.fm) throw new StyleError('pair style spin/exchange requires atom_style spin');
+    if (!s.sp || !s.fm) throw new StyleError(`pair style ${this.name} requires atom_style spin`);
     const { x, f, type } = pc;
     const nb = pc.nb;
     const owner = nb.owner;
-    const sp = s.sp, fm = s.fm;
+    const sp = s.sp;
     const nt = this.ntypes + 1;
     const cutsq = this.cutsq;
     let evdwl = 0;
+    if (this.fmBuf.length < 3 * pc.nlocal) this.fmBuf = new Float64Array(3 * pc.nlocal);
+    const fmv = this.fmBuf;
+    fmv.fill(0, 0, 3 * pc.nlocal);
     // Measured with native LAMMPS (black box): with pair spin/exchange alone (no fix nve/spin) the atom forces stay 0.
     const lattice = s.spinLattice === true;
-    for (let i = 0; i < pc.nlocal; i++) {
-      fm[3 * i] = 0; fm[3 * i + 1] = 0; fm[3 * i + 2] = 0;
-    }
     for (let i = 0; i < pc.nlocal; i++) {
       const ti = type[i] * nt;
       const si0 = sp[4 * i], si1 = sp[4 * i + 1], si2 = sp[4 * i + 2];
@@ -160,36 +204,55 @@ export class PairSpinExchange extends Pair {
         const rsq = dx * dx + dy * dy + dz * dz;
         if (rsq >= cutsq[t]) continue;
         const r = Math.sqrt(rsq);
-        const ti2 = type[i], a = this.p.get('a', ti2, tj), b = this.p.get('b', ti2, tj), d = this.p.get('d', ti2, tj);
-        const { j: J, dj } = exchangeJ(a, b, d, r);
+        const { j: J, dj } = this.pairJK(type[i], tj, r);
+        const kk = this.biquadratic ? exchangeJ(this.p.get('ak', type[i], tj), this.p.get('bk', type[i], tj), this.p.get('dk', type[i], tj), r) : null;
         const o = owner[j];
         const sj0 = sp[4 * o], sj1 = sp[4 * o + 1], sj2 = sp[4 * o + 2];
         const sij = si0 * sj0 + si1 * sj1 + si2 * sj2;
-        const off = this.p.get('offset', ti2, tj) === 1 ? 1 : 0;
-        // Energy -J (s_i.s_j - offset) per unordered pair: each pair is in both full lists, so half per directed pair.
-        evdwl += 0.5 * (-J * (sij - off));
-        // precession vector of i: (J / hbar) s_j
-        const c = J / SPIN_HBAR;
-        fm[3 * i] += c * sj0; fm[3 * i + 1] += c * sj1; fm[3 * i + 2] += c * sj2;
-        // mechanical force on i: F_i = dJ/dr (s_i.s_j - offset) e_ij, e_ij = (r_i - r_j)/r
+        const off = this.p.get('offset', type[i], tj) === 1 ? 1 : 0;
+        // Energy -J (s_i.s_j - offset) [- K ((s_i.s_j)^2 - offset)] per unordered pair: half per directed pair.
+        let pe = -J * (sij - off);
+        let c = J;
+        let fpair = dj * (sij - off);
+        if (kk) {
+          pe += -kk.j * (sij * sij - off);
+          c += 2 * kk.j * sij;
+          fpair += kk.dj * (sij * sij - off);
+        }
+        evdwl += 0.5 * pe;
+        // precession vector of i: (J / hbar) s_j (biquadratic: plus 2 K (s_i.s_j) s_j / hbar)
+        const cw = c / SPIN_HBAR;
+        fmv[3 * i] += cw * sj0; fmv[3 * i + 1] += cw * sj1; fmv[3 * i + 2] += cw * sj2;
+        // mechanical force on i: F_i = dH-term/dr e_ij, e_ij = (r_i - r_j)/r
         if (lattice) {
-          const fpair = dj * (sij - off) / r;
-          f[3 * i] += fpair * dx; f[3 * i + 1] += fpair * dy; f[3 * i + 2] += fpair * dz;
+          const fp = fpair / r;
+          f[3 * i] += fp * dx; f[3 * i + 1] += fp * dy; f[3 * i + 2] += fp * dz;
         }
       }
     }
     pc.acc.evdwl += evdwl;
     // the magnetic energy alone (compute spin reports it; the pair energy may include other styles)
-    s.spinEnergy = evdwl;
+    spinContribute(s, this, fmv, evdwl);
   }
 }
 
-/** The spin/exchange pair style of the force field: the style itself or a hybrid sub-style (null if none). */
-export const findSpinPair = (p: Pair | null): PairSpinExchange | null => {
-  if (!p) return null;
-  if (p instanceof PairSpinExchange) return p;
+/** The spin pair styles of the force field: the style itself or the sub-styles of pair hybrid (empty if none). */
+export const findSpinPairs = (p: Pair | null): SpinPairStyle[] => {
+  if (!p) return [];
+  if (isSpinStyle(p)) return [p];
   if (p instanceof PairHybrid) {
-    for (const sub of p.subs) if (sub.style instanceof PairSpinExchange) return sub.style;
+    const out: SpinPairStyle[] = [];
+    for (const sub of p.subs) if (isSpinStyle(sub.style)) out.push(sub.style);
+    return out;
   }
+  return [];
+};
+
+/** A pair style that contributes precession vectors (spin/exchange, spin/dmi, spin/magelec). */
+export const isSpinStyle = (p: unknown): p is SpinPairStyle => typeof (p as SpinPairStyle).omegaOf === 'function' && 'spinForce' in (p as object);
+
+/** The first spin/exchange pair style of the force field (null if none). */
+export const findSpinPair = (p: Pair | null): PairSpinExchange | null => {
+  for (const sp of findSpinPairs(p)) if (sp instanceof PairSpinExchange) return sp;
   return null;
 };

@@ -1,7 +1,9 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { findSpinPair, type PairSpinExchange } from '../force/pair/spin_exchange';
+import { findSpinPairs } from '../force/pair/spin_exchange';
+import type { SpinPairStyle } from '../force/spin_book';
+import { FixLangevinSpin } from './langevin_spin';
 import { massOf, nativeOrder } from '../atoms';
 import { FixPrecessionSpin } from './precession_spin';
 
@@ -50,10 +52,11 @@ export class FixNVESpin extends Fix {
   readonly style: string = 'nve/spin';
   readonly integrates = true;
   private lattice: 'moving' | 'frozen' = 'moving';
-  private pair: PairSpinExchange | null = null;
+  private pairs: SpinPairStyle[] = [];
   private w = [0, 0, 0];
   private wbuf = new Float64Array(3);
   private fields: FixPrecessionSpin[] = [];
+  private damping: FixLangevinSpin[] = [];
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -70,8 +73,9 @@ export class FixNVESpin extends Fix {
   }
 
   init(): void {
-    this.pair = findSpinPair(this.sys.ff.pair);
+    this.pairs = findSpinPairs(this.sys.ff.pair);
     this.fields = this.sys.fixes.filter((f): f is FixPrecessionSpin => f instanceof FixPrecessionSpin);
+    this.damping = this.sys.fixes.filter((f): f is FixLangevinSpin => f instanceof FixLangevinSpin);
     this.sys.state.spinLattice = this.lattice === 'moving';
   }
 
@@ -80,17 +84,32 @@ export class FixNVESpin extends Fix {
    * one) plus the precession/spin fixes of the system (fix/precession_spin.ts). Native LAMMPS runs nve/spin
    * without a spin pair style too (measured: a zeeman-only spin rotates).
    */
-  private omega(i: number): void {
+  private omega(i: number, damped: boolean): void {
     const nb = this.sys.nb;
     const sp = this.sys.state.sp!;
     this.w[0] = 0; this.w[1] = 0; this.w[2] = 0;
-    if (this.pair) {
-      this.pair.omegaOf(i, nb, sp, nb.typeall, nb.xall, nb.full!, this.wbuf);
-      this.w[0] = this.wbuf[0]; this.w[1] = this.wbuf[1]; this.w[2] = this.wbuf[2];
+    for (const p of this.pairs) {
+      p.omegaOf(i, nb, sp, nb.typeall, nb.xall, nb.full!, this.wbuf);
+      this.w[0] += this.wbuf[0]; this.w[1] += this.wbuf[1]; this.w[2] += this.wbuf[2];
     }
     for (const f of this.fields) {
       f.omegaOf(i, sp, this.wbuf);
       this.w[0] += this.wbuf[0]; this.w[1] += this.wbuf[1]; this.w[2] += this.wbuf[2];
+    }
+    // fix langevin/spin (transverse damping, tdamp = lambda, eta = 0): ds/dt = w x s + lambda s x (w x s) is the
+    // rotation with w' = w - lambda (w x s), since (w' x s) = w x s - lambda (w x s) x s = w x s + lambda s x (w x s).
+    // Measured with native LAMMPS (black box, one spin, field along z, 20 steps of 0.001): the damped spin equals this
+    // ODE (no 1/(1+lambda^2) factor) to 7e-7 for lambda 0.1 and 1e-5 for lambda 1. The precession vector (fm) is undamped.
+    if (damped) {
+      for (const d of this.damping) {
+        const lam = d.damp;
+        const sx = sp[4 * i], sy = sp[4 * i + 1], sz = sp[4 * i + 2];
+        const w = this.w;
+        const cx = w[1] * sz - w[2] * sy, cy = w[2] * sx - w[0] * sz, cz = w[0] * sy - w[1] * sx;
+        this.w[0] = w[0] - lam * cx;
+        this.w[1] = w[1] - lam * cy;
+        this.w[2] = w[2] - lam * cz;
+      }
     }
   }
 
@@ -105,7 +124,7 @@ export class FixNVESpin extends Fix {
     for (let m = 0; m < s.n; m++) {
       const i = ord[reverse ? s.n - 1 - m : m];
       if (!(mask[i] & bit)) continue;
-      this.omega(i);
+      this.omega(i, true);
       omelyan(sp, i, this.w, dt);
     }
   }
@@ -115,7 +134,7 @@ export class FixNVESpin extends Fix {
     const s = this.sys.state;
     const fm = s.fm!;
     for (let i = 0; i < s.n; i++) {
-      this.omega(i);
+      this.omega(i, false);
       fm[3 * i] = this.w[0]; fm[3 * i + 1] = this.w[1]; fm[3 * i + 2] = this.w[2];
     }
   }

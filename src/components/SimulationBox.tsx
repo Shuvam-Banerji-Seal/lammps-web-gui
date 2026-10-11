@@ -94,7 +94,7 @@ const SimulationBox: React.FC<SimulationBoxProps> = ({
   useEffect(() => () => { faceGeometry?.dispose(); }, [faceGeometry]);
 
   return (
-    <group>
+    <group name="simulation-box">
       <lineSegments geometry={lineGeometry} raycast={() => null}>
         <lineBasicMaterial color={color} transparent opacity={0.75} depthWrite={false} />
       </lineSegments>

@@ -5,6 +5,7 @@ import { Atom, VisualizationConfig } from '../types';
 import { DEFAULT_ATOM_COLOR } from '../constants';
 import { atomDisplayRadius } from '../services/atomStyle';
 import { writeInstanceTransform } from '../services/instanceMatrix';
+import { getAtomRenderOverride, onAtomRenderOverride } from './workbench/notebook/render/atomOverride';
 
 interface InstancedAtomMeshProps {
   atoms: Atom[];
@@ -29,6 +30,48 @@ export const PICKING_MAX_ATOMS = 50_000;
  *  - Bounding sphere is recomputed after writes so frustum culling stays
  *    correct (three.js cannot infer instance extents from a unit sphere).
  */
+/** Writes every instance's matrix: a translation and a uniform radius (times the render radius scale). */
+const writeMatrices = (mesh: THREE.InstancedMesh, atoms: Atom[], config: VisualizationConfig, scale: number): void => {
+  // An instance is only ever a translation plus a UNIFORM scale, so the
+  // matrix is known in closed form. Writing the 16 floats straight into the
+  // instance buffer skips Object3D.updateMatrix()'s quaternion compose and
+  // the setMatrixAt copy for every atom — which matters when a trajectory
+  // rewrites 60k instances on every frame.
+  const m = mesh.instanceMatrix.array as Float32Array;
+  for (let i = 0; i < atoms.length; i++) {
+    const atom = atoms[i];
+    writeInstanceTransform(m, i, atom.x, atom.y, atom.z, atomDisplayRadius(atom, config) * scale);
+  }
+};
+
+/**
+ * Writes every instance's colour: the override's sRGB colours when they cover the atoms, else the view's type
+ * colours. Colour depends only on atom TYPE, of which there are a handful, so the type colours are parsed once.
+ */
+const writeColours = (mesh: THREE.InstancedMesh, atoms: Atom[], config: VisualizationConfig, override: Float32Array | null): void => {
+  if (override && override.length >= 3 * atoms.length) {
+    const c = new THREE.Color();
+    for (let i = 0; i < atoms.length; i++) {
+      c.setRGB(override[3 * i], override[3 * i + 1], override[3 * i + 2], THREE.SRGBColorSpace);
+      mesh.setColorAt(i, c);
+    }
+  } else {
+    const byType = new Map<number, THREE.Color>();
+    const colorFor = (type: number): THREE.Color => {
+      let c = byType.get(type);
+      if (!c) {
+        c = new THREE.Color(config.customColors[type] || DEFAULT_ATOM_COLOR);
+        byType.set(type, c);
+      }
+      return c;
+    };
+    for (let i = 0; i < atoms.length; i++) {
+      mesh.setColorAt(i, colorFor(atoms[i].type));
+    }
+  }
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+};
+
 const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, onHover, onSelectAtom }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const invalidate = useThree((s) => s.invalidate);
@@ -59,23 +102,19 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
   // is loaded.
   useEffect(() => () => geometry.dispose(), [geometry]);
 
+  // latest props for the render-override listener (which runs outside React's render)
+  const latest = useRef({ atoms, config });
+  useEffect(() => { latest.current = { atoms, config }; }, [atoms, config]);
+  // what the mesh currently shows, so an override is cleared (and re-applied) only when it changes
+  const applied = useRef({ scale: 1, colours: false });
+
   // --- Matrices: positions + radius inputs only ---
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
-
-    // An instance is only ever a translation plus a UNIFORM scale, so the
-    // matrix is known in closed form. Writing the 16 floats straight into the
-    // instance buffer skips Object3D.updateMatrix()'s quaternion compose and
-    // the setMatrixAt copy for every atom — which matters when a trajectory
-    // rewrites 60k instances on every frame.
-    const m = mesh.instanceMatrix.array as Float32Array;
-    for (let i = 0; i < atoms.length; i++) {
-      const atom = atoms[i];
-      writeInstanceTransform(
-        m, i, atom.x, atom.y, atom.z, atomDisplayRadius(atom, config),
-      );
-    }
+    const scale = getAtomRenderOverride().radiusScale;
+    writeMatrices(mesh, atoms, config, scale);
+    applied.current.scale = scale;
     mesh.instanceMatrix.needsUpdate = true;
     // the canvas renders on demand: the effect runs after React's commit, so request the frame that shows these
     // matrices (without it the last trajectory/engine frame could stay unpainted until the next interaction)
@@ -89,25 +128,31 @@ const InstancedAtomMesh: React.FC<InstancedAtomMeshProps> = ({ atoms, config, on
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
-    // Colour depends only on atom TYPE, of which there are a handful. The
-    // previous version called color.set(hexString) once per ATOM, re-parsing
-    // the same few strings tens of thousands of times per trajectory frame.
-    const byType = new Map<number, THREE.Color>();
-    const colorFor = (type: number): THREE.Color => {
-      let c = byType.get(type);
-      if (!c) {
-        c = new THREE.Color(config.customColors[type] || DEFAULT_ATOM_COLOR);
-        byType.set(type, c);
-      }
-      return c;
-    };
-    for (let i = 0; i < atoms.length; i++) {
-      mesh.setColorAt(i, colorFor(atoms[i].type));
-    }
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    const colours = getAtomRenderOverride().colours;
+    writeColours(mesh, atoms, config, colours);
+    applied.current.colours = colours !== null;
     invalidate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [atoms, colorKey]);
+
+  // --- Render overrides (the notebook's Render panel): applied at once, without a React render ---
+  useEffect(() => onAtomRenderOverride(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const o = getAtomRenderOverride();
+    const { atoms: a, config: c } = latest.current;
+    if (o.radiusScale !== applied.current.scale) {
+      writeMatrices(mesh, a, c, o.radiusScale);
+      applied.current.scale = o.radiusScale;
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
+    }
+    if (o.colours !== null || applied.current.colours) {
+      writeColours(mesh, a, c, o.colours);
+      applied.current.colours = o.colours !== null;
+    }
+    invalidate();
+  }), [invalidate]);
 
   const pickingEnabled = atoms.length <= PICKING_MAX_ATOMS && !!(onHover || onSelectAtom);
 

@@ -313,42 +313,75 @@ export const minimize = async (
       const f = s.f;
       let P = 0;
       for (let k = 0; k < n3; k++) P += f[k] * v[k];
+      // fire mixes with the length of v from before this iteration's kick and with alpha from before this
+      // iteration's alphashrink (below)
+      let vNorm = 0, fNorm = 0;
+      const mixAlpha = alpha;
       if (style === 'quickmin') {
-        // project v onto F per atom ("related to the projection of the velocity vector along the current force")
+        // "the damping parameter is related to the projection of the velocity vector along the current force
+        // vector" (min_style.html). Measured with native LAMMPS (black box): one projection of the whole 3N vector,
+        // v = (v.F / F.F) F, or v = 0 when v.F <= 0; the atoms then move with that v and only afterwards
+        // v += dt F/m, so the first iteration does not move any atom (pe at step 1 equals step 0). When dmax limits
+        // the step (largest velocity component times dt above dmax), the limited dt is used for the move AND the kick.
+        let ff = 0;
+        for (let k = 0; k < n3; k++) ff += f[k] * f[k];
+        const sc = P > 0 && ff > 0 ? P / ff : 0;
+        for (let k = 0; k < n3; k++) v[k] = sc * f[k];
+        let vmax = 0;
+        for (let k = 0; k < n3; k++) vmax = Math.max(vmax, Math.abs(v[k]));
+        const dtx = vmax * dt > set.dmax ? set.dmax / vmax : dt;
+        for (let k = 0; k < n3; k++) s.x[k] += dtx * v[k];
         for (let i = 0; i < s.n; i++) {
-          const fx = f[3 * i], fy = f[3 * i + 1], fz = f[3 * i + 2];
-          const vdotf = v[3 * i] * fx + v[3 * i + 1] * fy + v[3 * i + 2] * fz;
-          const ff = fx * fx + fy * fy + fz * fz;
-          const sc = vdotf > 0 && ff > 0 ? vdotf / ff : 0;
-          v[3 * i] = sc * fx; v[3 * i + 1] = sc * fy; v[3 * i + 2] = sc * fz;
+          const c = dtx * ftm2v / massOf(s, i);
+          v[3 * i] += c * f[3 * i]; v[3 * i + 1] += c * f[3 * i + 1]; v[3 * i + 2] += c * f[3 * i + 2];
         }
+        if (s.dimension === 2) for (let i = 0; i < s.n; i++) v[3 * i + 2] = 0;
       } else if (P > 0) {
+        for (let k = 0; k < n3; k++) { vNorm += v[k] * v[k]; fNorm += f[k] * f[k]; }
         npos++;
         if (npos > delaystep) { dt = Math.min(dt * dtgrow, dtMax); alpha *= alphashrink; }
       } else {
         lastNeg = iter;
         npos = 0;
         if (!(initialdelay && iter < delaystep)) { dt = Math.max(dt * dtshrink, dtMin); alpha = alpha0; }
-        if (halfstepback) for (let k = 0; k < n3; k++) s.x[k] -= 0.5 * dt * v[k];
-        v.fill(0, 0, n3);
-      }
-      // semi-implicit Euler: v += dt F/m, mix, x += dt v (limited by dmax)
-      for (let i = 0; i < s.n; i++) {
-        const c = dt * ftm2v / massOf(s, i);
-        v[3 * i] += c * f[3 * i]; v[3 * i + 1] += c * f[3 * i + 1]; v[3 * i + 2] += c * f[3 * i + 2];
+        // Measured with native LAMMPS (black box): after the half step back the forces are evaluated again at the
+        // new positions (one more force evaluation per reset, also on iteration 1 where v = 0: 150 iterations with 7
+        // resets report 157 force evaluations), and this iteration's kick uses those forces.
+        if (halfstepback) {
+          for (let k = 0; k < n3; k++) s.x[k] -= 0.5 * dt * v[k];
+          v.fill(0, 0, n3);
+          e = evaluate();
+        } else v.fill(0, 0, n3);
       }
       if (style === 'fire') {
-        let vv = 0, ff = 0;
-        for (let k = 0; k < n3; k++) { vv += v[k] * v[k]; ff += f[k] * f[k]; }
-        const sc = ff > 0 ? alpha * Math.sqrt(vv / ff) : 0;
-        for (let k = 0; k < n3; k++) v[k] = (1 - alpha) * v[k] + sc * f[k];
+        // semi-implicit Euler: v += dt F/m, mix, x += dt v (limited by dmax). Measured with native LAMMPS (black
+        // box): the mixing v = (1 - alpha) v + alpha (|v|/|F|) F happens only on iterations with P > 0, and |v| is
+        // the length before this iteration's kick (iteration 2 gives v = 0.75 (v1 + dt F1) + 0.25 |v1|/|F1| F1).
+        // On the first iteration with npos > delaystep the grown dt is already used but alpha is still alpha0
+        // (dt 0.0055 with 1 - alpha = 0.75 at iteration 22 of a timestep-0.005 run; 1 - alpha = 0.7525 at 23).
+        // The dmax limit: on an iteration with P > 0 the largest component of the velocity BEFORE the kick sets it,
+        // dtx = dmax / max|v| when max|v| dt > dmax; after a reset (v = 0) the largest component of the kick dt F/m
+        // sets it. dtx is then used for both the kick and the move (measured: dt 0.03, dmax 0.02 matches native to
+        // 1e-16 in x and v over 7 iterations, and iteration 1 kicks with dmax / (dt max|F|)).
+        const ff = s.f;
+        let vmax = 0;
+        if (P > 0) for (let k = 0; k < n3; k++) vmax = Math.max(vmax, Math.abs(v[k]));
+        else for (let i = 0; i < s.n; i++) {
+          const c = dt * ftm2v / massOf(s, i);
+          vmax = Math.max(vmax, Math.abs(c * ff[3 * i]), Math.abs(c * ff[3 * i + 1]), Math.abs(c * ff[3 * i + 2]));
+        }
+        const dtx = vmax * dt > set.dmax ? set.dmax / vmax : dt;
+        for (let i = 0; i < s.n; i++) {
+          const c = dtx * ftm2v / massOf(s, i);
+          v[3 * i] += c * ff[3 * i]; v[3 * i + 1] += c * ff[3 * i + 1]; v[3 * i + 2] += c * ff[3 * i + 2];
+        }
+        if (fNorm > 0) {
+          const sc = mixAlpha * Math.sqrt(vNorm / fNorm);
+          for (let k = 0; k < n3; k++) v[k] = (1 - mixAlpha) * v[k] + sc * ff[k];
+        }
+        for (let k = 0; k < n3; k++) s.x[k] += dtx * v[k];
+        if (s.dimension === 2) for (let i = 0; i < s.n; i++) v[3 * i + 2] = 0;
       }
-      let vmax = 0;
-      for (let k = 0; k < n3; k++) vmax = Math.max(vmax, Math.abs(v[k]));
-      let dtx = dt;
-      if (vmax * dtx > set.dmax) dtx = set.dmax / vmax;
-      for (let k = 0; k < n3; k++) s.x[k] += dtx * v[k];
-      if (s.dimension === 2) for (let i = 0; i < s.n; i++) v[3 * i + 2] = 0;
       ePrev = e;
       e = evaluate();
       s.step++;
@@ -356,11 +389,14 @@ export const minimize = async (
       // "For the damped dynamics minimizers this check is not performed for a few steps after velocities are reset to 0"
       if (iter - lastNeg > delaystep && Math.abs(e - ePrev) < p.etol * 0.5 * (Math.abs(e) + Math.abs(ePrev) + EPS_ENERGY)) { reason = 'energy tolerance'; break; }
       if (fnormOf() < p.ftol) { reason = 'force tolerance'; break; }
-      if (evaluations >= p.maxeval) { reason = 'max force evaluations'; break; }
+      // Measured with native LAMMPS (black box): quickmin and fire never stop on maxeval (minimize 0 0 1000 12 runs
+      // 1000 iterations with 1000 / 1037 force evaluations), and the setup evaluation is not in their count.
       if (performance.now() - lastYield > 30) { await yieldNow(); lastYield = performance.now(); }
     }
     if (iter > p.maxiter) iter = p.maxiter;
-    v.fill(0, 0, n3);
+    evaluations--;
+    // Measured with native LAMMPS (black box): quickmin and fire leave the damped-dynamics velocities in place when
+    // the minimization ends (they are only zeroed at its start).
   }
   nb.every = saved.every; nb.delay = saved.delay; nb.check = saved.check;
   hooks.thermo(true);

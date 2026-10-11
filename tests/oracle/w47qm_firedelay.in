@@ -1,0 +1,15 @@
+# oracle: min_style fire with initialdelay no: dt shrinks at the first reset (iteration 1), resets re-evaluate forces after the half step back
+# oracle-inputs: w47qm_lj.data
+units           lj
+atom_style      atomic
+read_data       w47qm_lj.data
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+min_style       fire
+timestep        0.1
+min_modify      dmax 0.005 initialdelay no
+thermo_style    custom step pe fnorm fmax press
+thermo_modify   format float %.15g
+thermo          5
+minimize        0 0 120 1000

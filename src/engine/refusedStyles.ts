@@ -11,6 +11,7 @@ export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[
     'lj/cut/tip4p/long/soft', 'tip4p/long/soft', 'morse/soft', // registry/pair_soft17.ts
     'lj/long/dipole/long', // registry/pair_dipole18.ts
     'spin/neel', // registry/spin.ts (lazy)
+    'lj/spica/coul/msm', 'lj/sdk/coul/msm', // registry/pair_class2spica51.ts (lazy): msm kspace is not in the engine
   ],
   FIXES: ['rigid/nvt', 'rigid/nvt/small'], // registry/fix_rigid2.ts
   COMPUTES: [

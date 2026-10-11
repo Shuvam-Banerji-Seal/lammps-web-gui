@@ -85,5 +85,6 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'fix_batch48', names: { FIXES: ['addtorque/group', 'ti/spring', 'tmd', 'rhok'] }, load: () => import('./registry/fix_batch48') as Promise<StyleModule> },
   { id: 'fix_hyper49', names: { FIXES: ['halt', 'hyper/global'] }, load: () => import('./registry/fix_hyper49') as Promise<StyleModule> },
   { id: 'fix_ilves50', names: { FIXES: ['ilves'] }, load: () => import('./registry/fix_ilves50') as Promise<StyleModule> },
+  { id: 'pair_class2spica51', names: { ANGLES: ['spica', 'sdk'], PAIRS: ['lj/class2/coul/cut', 'lj/class2/coul/long', 'lj/spica', 'lj/spica/coul/long', 'lj/sdk', 'lj/sdk/coul/long', 'lj/spica/coul/msm', 'lj/sdk/coul/msm'] }, load: () => import('./registry/pair_class2spica51') as Promise<StyleModule> },
   { id: 'compute_stressprof', names: { COMPUTES: ['stress/cartesian', 'stress/cylinder', 'stress/mop', 'stress/mop/profile', 'stress/spherical'] }, load: () => import('./registry/compute_stressprof') as Promise<StyleModule> },
 ];

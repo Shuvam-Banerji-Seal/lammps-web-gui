@@ -193,6 +193,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   }, []);
   const inputFiles = useInputFiles(client);
   const { inputs } = inputFiles;
+  const fetchLibraryFor = inputFiles.fetchLibraryFor;
   const sendInputs = inputFiles.sendToEngine;
 
   const resetSession = useCallback(async (choice: BackendChoice, nThreads: number) => {
@@ -244,6 +245,14 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     }
     setRunning(cell.id);
     setRuns((prev) => ({ ...prev, [cell.id]: { ...emptyRun(), status: 'running' } }));
+    // potential files the cell names (pair_coeff etc.) that the inputs lack come from the LAMMPS potential library
+    const libraryFetch = await fetchLibraryFor(cell.text);
+    if (libraryFetch.added.length > 0) {
+      patchRun(cell.id, (r) => ({ ...r, logs: [...r.logs, `Added from the LAMMPS potential library (GPL-2.0): ${libraryFetch.added.join(', ')}`] }));
+    }
+    if (libraryFetch.failed.length > 0) {
+      patchRun(cell.id, (r) => ({ ...r, logs: [...r.logs, `Could not fetch from the LAMMPS potential library: ${libraryFetch.failed.join(', ')}`] }));
+    }
     const onEvent = (ev: EngineEvent) => {
       switch (ev.kind) {
         case 'log':
@@ -295,7 +304,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     setRunning(null);
     setRunSpan(null);
     return result.ok;
-  }, [client, showFrame, traj]);
+  }, [client, showFrame, traj, fetchLibraryFor]);
 
   const runAll = useCallback(async () => {
     stopAll.current = false;
@@ -750,7 +759,8 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
           )}
           <InputFilesPanel theme={theme} inputs={inputs} totalBytes={inputFiles.totalBytes} error={inputFiles.error}
             busy={busy} onRemove={removeInputFile} onClearAll={() => void inputFiles.clearAll()}
-            onDismissError={inputFiles.dismissError} />
+            onDismissError={inputFiles.dismissError} libraryNames={inputFiles.libraryNames} onAddLibrary={inputFiles.addLibrary}
+            pairStyles={ready?.styles.pair_style ?? null} />
           <RunFiles ct={ct} files={files} cells={cells} runs={runs} onOpenInViewer={onOpenInViewer} onRenderFile={loadFileForRender} />
           {chart.temp.length <= 1 && Object.keys(files).length === 0 && Object.keys(inputs).length === 0 && (
             <p className={`text-xs ${ct.muted}`}>

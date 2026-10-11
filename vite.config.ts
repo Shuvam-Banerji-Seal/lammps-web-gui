@@ -1,6 +1,10 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildIndex } from './scripts/potential-index.mjs';
 
 /**
  * Chunk names of engine code (src/engine, and the GPL-2.0 ports in src/engine-gpl): in the engine worker build, the lazily loaded style registries
@@ -15,8 +19,39 @@ const workerChunkName = (chunk: { moduleIds: readonly string[] }): string =>
 const pageChunkName = (chunk: { moduleIds: readonly string[] }): string =>
   engineOnly(chunk) ? 'assets/host-[name]-[hash].js' : 'assets/[name]-[hash].js';
 
+/**
+ * Ships the LAMMPS potential files as static assets (not bundled into JS): at build time every file of
+ * third_party/lammps/potentials goes to dist/potentials/, with the LAMMPS LICENSE and README.md beside them and
+ * an index.json (scripts/potential-index.mjs) that the notebook's potential library reads on demand.
+ */
+const potentialLibrary = (): Plugin => {
+  const root = fileURLToPath(new URL('./third_party/lammps', import.meta.url));
+  const dir = join(root, 'potentials');
+  return {
+    name: 'lammps-potential-library',
+    apply: 'build' as const,
+    generateBundle(this: { emitFile: (f: { type: 'asset'; fileName: string; source: string | Uint8Array }) => string }) {
+      for (const name of readdirSync(dir)) {
+        if (name.startsWith('.')) continue;
+        // read directly (no stat-then-read race); a subdirectory is skipped
+        let source: Buffer;
+        try {
+          source = readFileSync(join(dir, name));
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code === 'EISDIR') continue;
+          throw e;
+        }
+        this.emitFile({ type: 'asset', fileName: `potentials/${name}`, source });
+      }
+      this.emitFile({ type: 'asset', fileName: 'potentials/LICENSE', source: readFileSync(join(root, 'LICENSE')) });
+      this.emitFile({ type: 'asset', fileName: 'potentials/README.md', source: readFileSync(join(root, 'README.md')) });
+      this.emitFile({ type: 'asset', fileName: 'potentials/index.json', source: JSON.stringify(buildIndex(dir)) });
+    },
+  };
+};
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), potentialLibrary()],
   base: process.env.NODE_ENV === 'production'
     ? '/lammps-web-gui/'   // GitHub Pages project path
     : '/',                         // local dev

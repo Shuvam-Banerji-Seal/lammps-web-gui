@@ -367,7 +367,6 @@ export const determineContactPoint = (pi: ContactParticle, pj: ContactParticle, 
       A2[0] += dw; A2[5] += dw; A2[10] += dw;
       if (solve4x4(A2, b2)) {
         for (let k = 0; k < 4; k++) rhs[k] = b2[k];
-        solved = true;
       }
     }
     // backtracking line search
@@ -378,8 +377,8 @@ export const determineContactPoint = (pi: ContactParticle, pj: ContactParticle, 
       rhs[0] *= s; rhs[1] *= s; rhs[2] *= s;
     }
     let iterLs = 0;
-    let gi: V3 = [0, 0, 0], gj: V3 = [0, 0, 0];
-    let hi: M3 = zero3(), hj: M3 = zero3();
+    let gi: V3, gj: V3;
+    let hi: M3, hj: M3;
     for (iterLs = 0; iterLs < ITERMAX_LS; iterLs++) {
       const XL = [X0[0] + a * rhs[0], X0[1] + a * rhs[1], X0[2] + a * rhs[2], X0[3] + a * rhs[3]];
       const di = derivGlobal(pi.x, pi.R, pi.shape, pi.block, pi.flag, XL, formulation, avgI);

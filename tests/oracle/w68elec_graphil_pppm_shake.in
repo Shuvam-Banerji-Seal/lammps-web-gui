@@ -1,0 +1,31 @@
+# oracle: ELECTRODE graph-il in.graph-il-conp cut to run 0 (settings.mod inlined, with the example's fix shake on the BMI bonds and angle): pppm/electrode slab 3.0, fix electrode/conp mat_inv, symm on
+# Compared at the tolerance of w68elec_graphil_pppm_inv (rel 1e-6); fix shake setup forces match since #166
+# Measured with native LAMMPS (black box): G vector 0.20904498, grid 32 32 200, order 5 (pppm/electrode 1e-7, slab 3.0); the engine chooses the same G and grid itself (no kspace_modify gewald/mesh)
+# oracle-inputs: w68elec_graphil.data
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+units           real
+atom_style      full
+boundary        p p f
+kspace_style    pppm/electrode 1e-7
+kspace_modify   slab 3.0
+pair_style      lj/cut/coul/long 16
+bond_style      harmonic
+angle_style     harmonic
+read_data       w68elec_graphil.data
+variable        zpos atom "z > 0"
+group           zpos variable zpos
+group           ele type 5
+group           top intersect ele zpos
+group           bot subtract ele top
+group           electrolyte type 1 2 3 4
+group           bmi type 1 2 3
+fix             nvt electrolyte nvt temp 500.0 500.0 100
+variable        q atom q
+compute         qtop top reduce sum v_q
+compute         qbot bot reduce sum v_q
+compute         ctemp electrolyte temp
+fix             shake bmi shake 1e-4 20 0 b 1 2 a 1
+fix             conp bot electrode/conp -1.0 1.979 couple top 1.0 symm on
+thermo_style    custom step temp c_ctemp epair etotal c_qbot c_qtop f_conp
+thermo_modify   format float %.15g
+run             0

@@ -97,6 +97,10 @@ export class FixQtpieReaxFF extends Fix {
     for (let i = 0; i < st.n; i++) if (st.mask[i] & this.groupBit) count++;
     if (count === 0) throw new StyleError(`Fix ${this.style} group has no atoms`);
     if (this.swb < 0) throw new StyleError(`Fix ${this.style} has negative upper Taper radius cutoff`);
+    // the net charge of the group, with a warning when it is not neutral (init of the source)
+    let qsum = 0;
+    for (let i = 0; i < st.n; i++) if (st.mask[i] & this.groupBit) qsum += st.q[i];
+    if (Math.abs(qsum) > QSUMSMALL) this.sys.warn(`Fix ${this.style} group is not charge neutral, net charge = ${Number(qsum.toPrecision(8))}`);
     this.efieldFix = findEfield(this.sys, this.style);
     if (this.efieldFix) efieldForModel(this.sys, this.efieldFix, this.style, { allGroup: true, periodicCheck: false });
     this.ntypes = st.ntypes;

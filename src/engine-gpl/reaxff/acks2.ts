@@ -370,7 +370,7 @@ const bicgstab = (w: BiWork, b: Float64Array, x: Float64Array, o: { tolerance: n
   if (bnorm === 0.0) bnorm = 1.0;
   copy(rHat, r);
   let omega = 1.0, rho = 1.0, rhoOld = 0.0, alpha = 0.0;
-  let i = 1;
+  let i: number;
   for (i = 1; i < o.imax && rnorm / bnorm > o.tolerance; ++i) {
     rho = dot(rHat, r);
     if (rho === 0.0) break;

@@ -1,6 +1,6 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28): src/random_mars.cpp and
- * src/random_mars.h (class RanMars: the constructor, uniform(), select_subset()).
+ * src/random_mars.h (class RanMars: the constructor, uniform(), gaussian(), select_subset()).
  * LAMMPS is Copyright (2003) Sandia Corporation and distributed under the GNU General Public License,
  * version 2 (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
@@ -17,6 +17,8 @@ export class RanMars {
   private i97 = 97;
   private j97 = 33;
   private c: number;
+  private save = 0;
+  private second = 0;
   private readonly cd = 7654321.0 / 16777216.0;
   private readonly cm = 16777213.0 / 16777216.0;
 
@@ -61,6 +63,29 @@ export class RanMars {
     uni -= this.c;
     if (uni < 0.0) uni += 1.0;
     return uni;
+  }
+
+  /**
+   * RanMars::gaussian(): a standard normal deviate, polar (Marsaglia) method on pairs of uniform() draws; the second
+   * deviate of each pair is kept for the next call (save / second, as in the source).
+   */
+  gaussian(): number {
+    if (!this.save) {
+      let v1: number;
+      let v2: number;
+      let rsq: number;
+      do {
+        v1 = 2.0 * this.uniform() - 1.0;
+        v2 = 2.0 * this.uniform() - 1.0;
+        rsq = v1 * v1 + v2 * v2;
+      } while (rsq >= 1.0 || rsq === 0.0);
+      const fac = Math.sqrt((-2.0 * Math.log(rsq)) / rsq);
+      this.second = v1 * fac;
+      this.save = 1;
+      return v2 * fac;
+    }
+    this.save = 0;
+    return this.second;
   }
 
   /**

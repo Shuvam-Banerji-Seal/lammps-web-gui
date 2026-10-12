@@ -1,0 +1,19 @@
+# oracle: fix brownian, 3d, gaussian rng with gamma_t 2.0 and temp 5.0 on a 4x4x4 simple cubic lattice
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      atomic
+boundary        p p p
+lattice         sc 0.4
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            * 1.0
+velocity        all create 1.0 1 loop geom
+pair_style      none
+fix             1 all brownian 5.0 198098 rng gaussian gamma_t 2.0
+compute         msd all msd
+thermo_style    custom step ke pe c_msd[1] c_msd[2] c_msd[3] c_msd[4]
+thermo_modify   format float %.15g
+timestep        0.00001
+thermo          50
+run             200

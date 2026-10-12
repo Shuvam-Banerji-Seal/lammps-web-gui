@@ -1,0 +1,23 @@
+# oracle: fix propel/self velocity with fix_modify virial yes on fix brownian in a triclinic 2d box (xy tilt): atoms cross the
+# periodic boundaries, so the propel virial needs the tilt-aware unwrapped positions (domain unmap)
+# oracle-compare: thermo=all atoms=all
+dimension       2
+units           lj
+atom_style      atomic
+boundary        p p p
+lattice         sq 0.4
+region          box prism 0 6 0 6 -0.2 0.2 2.0 0 0
+create_box      1 box
+create_atoms    1 box
+mass            * 1.0
+velocity        all create 1.0 1 loop geom
+pair_style      none
+fix             1 all brownian 1.0 4321 gamma_t 1.0
+fix             2 all propel/self velocity 4.0
+fix_modify      2 virial yes
+compute         press all pressure NULL virial
+thermo_style    custom step ke pe c_press
+thermo_modify   format float %.15g
+timestep        0.001
+thermo          200
+run             2000

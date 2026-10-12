@@ -7,7 +7,8 @@ import { isRefusedStyle } from '../src/engine/refusedStyles';
 // src/engine/lazyStyles.ts lists the style names of the registries the engine loads on first use; the lists
 // are written by hand when a group is added, so they are checked against the modules here.
 describe('lazily loaded style registries', () => {
-  it('lists exactly the names each registry module registers', async () => {
+  // loads every lazy registry module (the GPL ports are large): give it more than the default 5 s on a busy machine
+  it('lists exactly the names each registry module registers', { timeout: 60_000 }, async () => {
     for (const g of LAZY_GROUPS) {
       const mod = await g.load();
       for (const [kind, reg] of Object.entries(mod)) {

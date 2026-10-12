@@ -10,7 +10,7 @@ import { BondedHybrid, type HybridKind } from '../force/bonded_hybrid';
 
 /** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
 type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart };
-import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId } from '../atoms';
+import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners } from '../atoms';
 import { ErfcTableCache } from '../force/erfc';
 
 /*
@@ -323,6 +323,13 @@ export const readRestartText = (sys: System, text: string, name: string): void =
   // forces are not stored: the next run computes them
   state.f = new Float64Array(3 * n);
   state.custom = new Map();
+  // atom_style oxdna: the strand partners are not stored; they follow from the stored bonds, as after read_data
+  if (isOxdnaStyle(state.atomStyle)) {
+    state.custom.set(OXDNA_5P, { int: true, cols: 0, data: new Float64Array(n) });
+    state.custom.set(OXDNA_3P, { int: true, cols: 0, data: new Float64Array(n) });
+    const b = state.topo.bonds;
+    setOxdnaPartners(state, Array.from({ length: b.n }, (_, e) => [b.atoms[2 * e], b.atoms[2 * e + 1]] as const));
+  }
   state.propMol = false;
   state.propQ = false;
   // per-atom values of fix property/atom wait for the fix to be re-specified (FixPropertyAtom);

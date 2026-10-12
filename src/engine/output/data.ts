@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
-import { appendAtoms, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel } from '../atoms';
+import { appendAtoms, setOxdnaPartners, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel } from '../atoms';
 import { expandTemplateTopology } from '../template';
 import { BODY_RECORD, bodyRecordOffset, bodyRecordStride, parseBodyStyle, principalFrame } from '../bodies';
 import { makeBox } from '../domain';
@@ -60,6 +60,8 @@ const BASE_COLS: Record<string, string[]> = {
   template: ['id', 'mol', 'tindex', 'tatom', 'type', 'x', 'y', 'z'],
   // read_data.html, the Atoms-section table, row body: "atom-ID atom-type bodyflag mass x y z"
   body: ['id', 'type', 'bodyflag', 'mass', 'x', 'y', 'z'],
+  // atom_style.html, oxdna: "*atomic* + id5p" (the 5'/3' partners come from the Bonds section): no Atoms-line column of its own
+  oxdna: ['id', 'type', 'x', 'y', 'z'],
 };
 
 /**
@@ -653,6 +655,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
       for (const id of e.ids) if (!ids.has(id)) throw new StyleError(`data file: ${e.kind.slice(0, -1)} references atom ${id}, which does not exist`);
       pushTopo(s.topo[e.kind] as TopoList, e.type, e.ids);
     }
+    // atom_style oxdna: each bond sets the 5'/3' partners (atoms.ts setOxdnaPartners)
+    setOxdnaPartners(s, topo.filter((e) => e.kind === 'bonds').map((e) => [e.ids[0], e.ids[1]] as const));
   }
   // force-field coefficients
   if (!opts.nocoeff) {

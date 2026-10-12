@@ -1,0 +1,17 @@
+# oracle: oxDNA excluded volume (pair oxdna/excv) between two free nucleotides (identity orientations, no bonds), 2 atoms 0.2 apart along x; run 0
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+units           lj
+dimension       3
+atom_style      hybrid bond ellipsoid oxdna
+boundary        p p p
+region          box block -10 10 -10 10 -10 10
+create_box      1 box
+create_atoms    1 single 0 0 0
+create_atoms    1 single 0.2 0 0
+set             atom * shape 1.0 1.0 1.0
+set             atom * mass 3.1575
+pair_style      oxdna/excv
+pair_coeff      * * 2.0 0.7 0.675 2.0 0.515 0.5 2.0 0.33 0.32
+thermo_style    custom step pe evdwl
+thermo_modify   format float %.15g
+run             0

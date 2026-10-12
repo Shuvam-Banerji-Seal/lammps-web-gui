@@ -137,7 +137,37 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
   const b = parseBodyStyle(st);
   const m = new Map<string, CustomProp>();
   if (b) m.set(BODY_RECORD, { int: false, cols: bodyRecordStride(b.nmax, b.bstyle), data: new Float64Array(0) });
+  // atom_style.html, oxdna: "*atomic* + id5p" (the 3'-partner, id3p, is kept with it, as the CG-DNA bond styles read both).
+  if (isOxdnaStyle(st)) {
+    m.set(OXDNA_5P, { int: true, cols: 0, data: new Float64Array(0) });
+    m.set(OXDNA_3P, { int: true, cols: 0, data: new Float64Array(0) });
+    m.set(OXDNA_QEFF, { int: false, cols: 0, data: new Float64Array(0) });
+  }
   return m;
+};
+
+/** atom_style oxdna: the 5' and 3' partner atom IDs of each atom, internal per-atom props (0 = none). */
+export const OXDNA_5P = '#id5p';
+export const OXDNA_3P = '#id3p';
+/** atom_style oxdna: the per-atom effective charge of pair oxdna2/dh, set by its pair_coeff (pair_oxdna2.html: "qeff = 0.815 (effective charge in elementary charges)"). */
+export const OXDNA_QEFF = '#qeff';
+/** Styles with the oxDNA partners (atom_style.html: "The *oxdna* style is for coarse-grained nucleotides"). */
+export const isOxdnaStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('oxdna');
+
+/**
+ * atom_style oxdna: the strand partners from the bonds. atom_style.html: "The first (second) atom in a bond
+ * definition is understood to point towards the 3'-end (5'-end) of the strand." So for a bond of atoms a1, a2:
+ * id5p[a1] = a2 and id3p[a2] = a1 (used after read_data and read_restart).
+ */
+export const setOxdnaPartners = (s: SimState, bonds: readonly (readonly [number, number])[]): void => {
+  const p5 = s.custom.get(OXDNA_5P), p3 = s.custom.get(OXDNA_3P);
+  if (!p5 || !p3 || !bonds.length) return;
+  const map = buildAtomMap(s);
+  for (const [a1, a2] of bonds) {
+    const n1 = a1 < map.length ? map[a1] : -1, n2 = a2 < map.length ? map[a2] : -1;
+    if (n1 >= 0) p5.data[n1] = a2;
+    if (n2 >= 0) p3.data[n2] = a1;
+  }
 };
 
 export const emptyState = (

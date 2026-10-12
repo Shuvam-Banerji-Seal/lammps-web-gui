@@ -1,0 +1,23 @@
+# oracle: fix langevin omega yes on finite-size spheres in real units (the unit conversions of the rotational
+# damping and random torques; the lj case cannot see them), fix nve/sphere, erotate/sphere every step
+# oracle-compare: thermo=all atoms=all
+units           real
+atom_style      sphere
+atom_modify     map array sort 0 0.0
+lattice         sc 4.0
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+set             group all diameter 3.0 density 1.0
+velocity        all create 300.0 4928 loop all
+pair_style      lj/cut 8.0
+pair_coeff      * * 0.2 3.2
+pair_modify     table 0
+timestep        2.0
+fix             1 all nve/sphere
+fix             2 all langevin 300.0 300.0 100.0 9182 omega yes
+compute         er all erotate/sphere
+thermo_style    custom step temp pe c_er
+thermo_modify   format float %.15g
+thermo          5
+run             20

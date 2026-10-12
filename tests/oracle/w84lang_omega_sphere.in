@@ -1,0 +1,22 @@
+# oracle: fix langevin omega yes on finite-size spheres with fix nve/sphere; the rotational kinetic energy (erotate/sphere) is compared every step
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      sphere
+atom_modify     map array sort 0 0.0
+lattice         sc 0.6
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+set             group all diameter 1.0 density 1.0
+velocity        all create 1.0 4928 loop all
+pair_style      lj/cut 2.5
+pair_coeff      * * 0.2 0.8
+pair_modify     table 0
+timestep        0.002
+fix             1 all nve/sphere
+fix             2 all langevin 1.0 1.0 1.0 9182 omega yes
+compute         er all erotate/sphere
+thermo_style    custom step temp pe c_er
+thermo_modify   format float %.15g
+thermo          5
+run             20

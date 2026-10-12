@@ -458,6 +458,8 @@ export abstract class KSpace {
   /** Relative accuracy target from kspace_style. */
   accuracy = 1e-4;
   gEwald = 0;
+  /** kspace_modify compute: false skips the kspace force, energy and virial (setup still runs; kspace_modify.html). */
+  computeOn = true;
   abstract settings(args: string[], ctx: StyleContext): void;
   /** kspace_modify keyword handler; returns the number of values consumed. */
   abstract modify(key: string, values: string[]): number;

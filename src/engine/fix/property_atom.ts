@@ -5,6 +5,9 @@ import type { SimState } from '../types';
 import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle } from '../atoms';
 import { shortest } from '../output/data';
 
+/** The words native takes for a boolean keyword value (measured, see the ghost keyword below). */
+const BOOL_WORDS = new Set(['yes', 'no', 'on', 'off', 'true', 'false', '1', '0']);
+
 /*
  * fix ID group-ID property/atom name1 name2 ... keyword value ... —
  * docs.lammps.org/fix_property_atom.html:
@@ -60,8 +63,11 @@ export class FixPropertyAtom extends Fix {
     for (let k = 0; k < args.length; k++) {
       const w = args[k];
       if (w === 'ghost') {
+        // fix_property_atom.html: "ghost value = no or yes for whether ghost atom info in communicated".
+        // Measured with native LAMMPS (black box): ghost also takes on, off, true, false, 1 and 0 (lower case only);
+        // On or YES stops with Expected boolean parameter instead of 'On'.
         const v = args[k + 1];
-        if (v !== 'yes' && v !== 'no') throw new StyleError('fix property/atom ghost value must be yes or no');
+        if (!BOOL_WORDS.has(v)) throw new StyleError(`Expected boolean parameter instead of '${v ?? ''}' for fix property/atom ghost`);
         k++;
         continue;
       }

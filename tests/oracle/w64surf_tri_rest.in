@@ -1,0 +1,27 @@
+# oracle: one sphere rests on a flat triangle under gravity (3d, surf/granular)
+# oracle-inputs: w64surf_tri_rest.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+dimension       3
+atom_style      tri
+atom_modify     map array
+boundary        f f f
+comm_modify     vel yes cutoff 12.5
+read_data       w64surf_tri_rest.data
+set             type 1 diameter 1.0
+pair_style      hybrid granular surf/granular
+pair_coeff      1 1 granular hooke 4000.0 100.0 tangential linear_history 1000.0 1.0 0.5 damping mass_velocity
+pair_coeff      1 2 surf/granular hooke 4000.0 100.0 tangential linear_history 1000.0 1.0 0.5 damping mass_velocity
+pair_coeff      2 2 none
+group           sphere type 1
+group           tri type 2
+fix             fsl all surface/local
+neighbor        0.3 bin
+neigh_modify    delay 0 every 1 check yes
+fix             2 sphere nve/sphere
+fix             3 sphere gravity 1.0 vector 0 0 -1
+timestep        0.001
+thermo_style    custom step atoms ke
+thermo_modify   format float %.15g
+thermo          100
+run             2000

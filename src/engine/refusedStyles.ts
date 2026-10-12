@@ -13,7 +13,7 @@ export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[
     'spin/neel', // registry/spin.ts (lazy)
     'lj/spica/coul/msm', 'lj/sdk/coul/msm', // registry/pair_class2spica51.ts (lazy): msm kspace is not in the engine
   ],
-  FIXES: ['reaxff/bonds', 'reaxff/species'], // engine-gpl/registry/reaxff.ts (stage 3, not ported)
+  FIXES: ['reaxff/bonds', 'reaxff/species', 'surface/global'], // engine-gpl/registry/reaxff.ts (stage 3, not ported); engine-gpl/registry/gransurf.ts
   COMPUTES: [
     'dipole/tip4p', 'dipole/tip4p/chunk', // registry/compute_chunk17.ts
     'stress/cylinder', 'stress/spherical', // registry/compute_stressprof.ts

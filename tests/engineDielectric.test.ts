@@ -179,6 +179,6 @@ pair_coeff * * 0.5 1.0
 kspace_style pppm/dielectric 0.001
 kspace_modify slab auto
 run 0
-`, { 'd.data': dielData(1).replace(/0 20 zlo zhi/, '0 20 zlo zhi') })).rejects.toThrow(/slab auto is not supported by kspace_style pppm\/dielectric/);
+`, { 'd.data': dielData(1) })).rejects.toThrow(/slab auto is not supported by kspace_style pppm\/dielectric/);
   });
 });

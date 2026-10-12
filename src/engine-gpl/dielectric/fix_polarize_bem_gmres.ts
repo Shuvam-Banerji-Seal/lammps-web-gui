@@ -200,13 +200,13 @@ export class FixPolarizeBEMGMRES extends Fix {
     const rhoTol = rho * this.tolRel;
     let itr = 1;
     let kCopy = 0;
-    for (itr = 1; itr <= this.itrMax; itr++) {
+    for (; itr <= this.itrMax; itr++) {
       for (let i = 0; i < n; i++) v[i] = r[i] / rho;
       g[0] = rho;
       for (let i = 1; i <= mr; i++) g[i] = 0;
       h.fill(0);
       let k = 1;
-      for (k = 1; k <= mr; k++) {
+      for (; k <= mr; k++) {
         kCopy = k;
         this.applyOperator(e0, d, col(k - 1), col(k));
         const vk = col(k);

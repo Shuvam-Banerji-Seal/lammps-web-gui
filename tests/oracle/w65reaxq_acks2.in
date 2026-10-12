@@ -3,7 +3,9 @@
 # Measured (engine vs native, max relative error over the 11 rows): pe 1.7e-6, ecoul 1.2e-5, ke 1.5e-6, press 2.8e-3.
 # The BiCGStab iteration counts of the two codes separate after step 1 (native 59 66.5 63 56 36.5, engine 60 63 62 57 30,
 # matvec halves): rounding order inside the iterative solve, so this case is compared at rel=3e-3.
-# oracle-compare: thermo=all atoms=all rel=3e-3 abs=1e-8
+# Across JS engines (example solver tol 1e-6): press differs from native by 2.8e-3 (Node 24) and 7.0e-3 (Node 20, as
+# Node 22 CI); every other column within 1.2e-5. The tight variant (tol 1e-12) is the strict check.
+# oracle-compare: thermo=all atoms=all rel=2e-2 abs=1e-8
 units           real
 atom_style      charge
 boundary        p p p

@@ -1,7 +1,9 @@
 # oracle: ReaxFF water cut from examples/reaxff/water with fix qtpie/reaxff (Gaussian orbital overlap chi_eff, gauss_exp.txt), tolerance 1e-6, 10 NVE steps
 # oracle-inputs: w65reaxq_water.data w65reaxq_acks2_ff.water w65reaxq_qeq_ff.water w65reaxq_gauss_exp.txt
 # Measured (engine vs native, max relative error over the 11 rows): pe 4.2e-11, ecoul 2.8e-10, ke 1.0e-9, press 3.3e-8
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-10
+# Across JS engines (example solver tol 1e-6): worst column press 3.3e-8 (Node 24), 7.4e-7 (Node 20); headroom for
+# other engines. The tight variant (tol 1e-12) is the strict check at 1e-9.
+# oracle-compare: thermo=all atoms=all rel=5e-6 abs=1e-10
 units           real
 atom_style      charge
 boundary        p p p

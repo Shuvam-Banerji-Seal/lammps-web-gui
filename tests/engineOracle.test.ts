@@ -14,7 +14,7 @@ import type { EngineEvent, ThermoRow } from '../src/engine/types';
  *   # oracle-inputs: files the input reads (data, potentials), next to the .in file
  *   # oracle-potentials: unmodified LAMMPS potential files from third_party/lammps/potentials
  *   # oracle-files: files it writes that are compared token by token
- *   # oracle-compare: thermo=all|first|first-last atoms=all|none rel=1e-8 abs=1e-10 skip=kw1,kw2
+ *   # oracle-compare: thermo=all|first|first-last atoms=all|none rel=1e-8 abs=1e-10 skip=kw1,kw2 atomskip=c1,c2
  *   # oracle-partitions: N   the case runs on N replicas (partitions); its fixture holds the NEB table
  *                            rows and the "Climbing replica" lines, compared with the same rel/abs
  */
@@ -41,7 +41,7 @@ const directive = (text: string, key: string): string[] => {
 };
 
 const options = (text: string) => {
-  const o = { thermo: 'all', atoms: 'all', rel: 1e-8, abs: 1e-10, skip: new Set<string>() };
+  const o = { thermo: 'all', atoms: 'all', rel: 1e-8, abs: 1e-10, skip: new Set<string>(), atomskip: new Set<string>() };
   for (const w of directive(text, 'oracle-compare')) {
     const [k, v] = w.split('=');
     if (k === 'thermo') o.thermo = v;
@@ -49,6 +49,7 @@ const options = (text: string) => {
     else if (k === 'rel') o.rel = Number(v);
     else if (k === 'abs') o.abs = Number(v);
     else if (k === 'skip') for (const s of v.split(',')) o.skip.add(s);
+    else if (k === 'atomskip') for (const s of v.split(',')) o.atomskip.add(s);
   }
   return o;
 };
@@ -119,7 +120,12 @@ describe('oracle parity with native LAMMPS', () => {
         return;
       }
       // thermo
-      const rows = events.filter((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo').map((e) => e.row);
+      // rows of an earlier thermo_style (another column set) are not part of this fixture
+      const keys = fx.thermo.length ? Object.keys(fx.thermo[0]) : [];
+      const rows = events
+        .filter((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo')
+        .map((e) => e.row)
+        .filter((row) => keys.every((k) => k in row));
       const pick = (r: ThermoRow[]) => (o.thermo === 'first' ? r.slice(0, 1) : o.thermo === 'first-last' ? [r[0], r[r.length - 1]] : r);
       const want = pick(fx.thermo), got = pick(rows);
       expect(got.length, 'thermo row count').toBe(want.length);
@@ -152,6 +158,7 @@ describe('oracle parity with native LAMMPS', () => {
           expect(a.id).toBe(b.id);
           expect(a.type).toBe(b.type);
           for (const c of ['xu', 'yu', 'zu', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz']) {
+            if (o.atomskip.has(c)) continue;
             const scale = Math.max(1, Math.abs(b[c]));
             const d = Math.abs(a[c] - b[c]) / scale;
             if (d > worst) { worst = d; where = `atom ${b.id} ${c}: engine ${a[c]} vs LAMMPS ${b[c]}`; }

@@ -41,15 +41,44 @@ const errorOf = async (script: string): Promise<string> => {
 };
 
 describe('fix srd refusals name the keyword', () => {
-  it('refuses collision noslip', async () => {
-    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision noslip'))).toMatch(/noslip/);
+  it('refuses collision noslip for a big group without torque (atomic style)', async () => {
+    expect(await errorOf(bath('fix 1 all srd 1 all 1.0 0.25 49894 collision noslip'))).toMatch(/no-slip requires atom attribute torque/);
   });
-  it('refuses shift yes and shift possible', async () => {
-    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip shift yes 54979'))).toMatch(/shift/);
-    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip shift possible 54979'))).toMatch(/shift/);
+  it('accepts shift yes and shift possible (point particles run; the shift seed must be positive)', async () => {
+    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip shift yes 54979'))).toBe('');
+    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip shift possible 54979'))).toBe('');
+    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip shift yes 0'))).toMatch(/Invalid seed for Park/);
   });
-  it('refuses tstat yes and overlap yes', async () => {
-    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes'))).toMatch(/tstat/);
+  it('accepts tstat yes without box deformation, and refuses it with fix deform', async () => {
+    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes'))).toBe('');
+    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes\nfix 3 all deform 1 x scale 1.0'))).toMatch(/tstat yes with fix deform/);
+  });
+  it('refuses big particles that belong to a rigid body', async () => {
+    const script = `units lj
+atom_style sphere
+atom_modify first big
+region box block 0 6 0 6 0 6
+create_box 2 box
+create_atoms 2 single 2 3 3
+create_atoms 2 single 4 3 3
+group big type 2
+set group big diameter 1.0
+set group big mass 1.0
+lattice sc 2.0
+create_atoms 1 box
+group small type 1
+set group small diameter 0.0
+set group small mass 0.01
+velocity small create 1.0 593849 loop geom
+neighbor 0.3 bin
+timestep 0.02
+fix 3 big rigid single
+fix 1 small srd 1 big 1.0 0.25 49894 collision slip
+run 1
+`;
+    expect(await errorOf(script)).toMatch(/big particles in rigid bodies \(fix 3 rigid\)/);
+  });
+  it('refuses overlap yes', async () => {
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip overlap yes'))).toMatch(/overlap/);
   });
   it('names an unknown keyword', async () => {
@@ -72,7 +101,7 @@ describe('fix srd setup checks (fix_srd.cpp)', () => {
   });
   it('refuses a big particle that is a point particle', async () => {
     // every atom of the bath is a point particle (atom_style atomic), so using "all" as the big group must fail
-    expect(await errorOf(bath('fix 1 all srd 1 all 1.0 0.25 49894'))).toMatch(/Big particle in fix srd cannot be point particle/);
+    expect(await errorOf(bath('fix 1 all srd 1 all 1.0 0.25 49894 collision slip'))).toMatch(/Big particle in fix srd cannot be point particle/);
   });
   it('runs the default SRD bath (point particles, slip) without error', async () => {
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip'))).toBe('');

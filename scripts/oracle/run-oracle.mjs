@@ -56,6 +56,8 @@ const parseLog = (log, keywords) => {
   for (let i = 0; i < lines.length; i++) {
     if (!/^\s*Step\s/.test(lines[i]) && !/^\s*(Step|Elapsed|Time)\b/.test(lines[i])) continue;
     const ncol = lines[i].trim().split(/\s+/).length;
+    // a table with another column count is an earlier thermo_style (keywords of the last style do not apply)
+    if (ncol !== keywords.length) continue;
     for (let j = i + 1; j < lines.length; j++) {
       // warnings (e.g. "FENE bond too long") are printed between thermo rows, some followed by a
       // "For more information see https://docs.lammps.org/err...." line

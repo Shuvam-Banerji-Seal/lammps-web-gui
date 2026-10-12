@@ -4,7 +4,7 @@ import { StyleError, typeBounds } from '../force/types';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle } from '../atoms';
+import { DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle } from '../atoms';
 import { parseStl } from '../stl';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import { generalAtomSites, generalBoxFromRestricted, generalCreateBox } from '../triclinic_general';
@@ -68,7 +68,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron'];
+const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -1344,6 +1344,10 @@ const set: Handler = ({ sys }, a) => {
         if (!hasCharge(s)) throw new StyleError(`set charge needs atom_style charge or full, or fix property/atom q (current: ${s.atomStyle})`);
         const v = value(a[k + 1], 'charge');
         for (const i of atoms) s.q[i] = v(i);
+        // Measured with native LAMMPS (black box), atom_style dielectric: after set epsilon 2.0, set charge 3.0 gives
+        // q 3 and q_scaled 1.5 (the scaled charge follows the new charge)
+        const qsc = s.custom.get(DIEL_QSCALED), epc = s.custom.get(DIEL_EPSILON);
+        if (qsc && epc) for (const i of atoms) qsc.data[i] = s.q[i] / epc.data[i];
         changed = atoms.length;
         sys.nb.refreshCharges(s);
         k += 2;
@@ -1403,6 +1407,26 @@ const set: Handler = ({ sys }, a) => {
           const x = v(i);
           if (!(x > 0)) throw new StyleError(`Invalid volume in set command`);
           s.vfrac[i] = x;
+        }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
+      // set.html: "Keyword epsilon sets the dielectric constant of a particle to be that of the medium where the
+      // particle resides as defined by the DIELECTRIC package." and "Note that the set command with this keyword will
+      // rescale the particle charge accordingly so that the real charge (e.g., as read from a data file) stays
+      // intact." The page says "The value for the dielectric constant must be >= 0.0"; measured with native LAMMPS
+      // (black box): 0 and -2 stop with Invalid epsilon value 0 in set command, 2.0 gives q 1 and q_scaled 0.5.
+      case 'epsilon': {
+        if (!isDielectricStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute epsilon for atom style ${s.atomStyle}`);
+        if (!String(a[k + 1]).startsWith('v_') && !(Number(a[k + 1]) > 0)) throw new StyleError(`Invalid epsilon value ${a[k + 1]} in set command`);
+        const v = value(a[k + 1], key);
+        const eps = s.custom.get(DIEL_EPSILON)!.data, qsc = s.custom.get(DIEL_QSCALED)!.data;
+        for (const i of atoms) {
+          const e = v(i);
+          if (!(e > 0)) throw new StyleError('Invalid epsilon in set command');
+          eps[i] = e;
+          qsc[i] = s.q[i] / e;
         }
         changed = atoms.length;
         k += 2;

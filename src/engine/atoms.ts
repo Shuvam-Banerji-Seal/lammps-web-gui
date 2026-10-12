@@ -31,9 +31,9 @@ export const templateStyleId = (st: AtomStyle): string | null => {
 /** Styles with molecule templates (atom_style template): topology comes from the template, per-atom template index and atom. */
 export const isTemplateStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('template');
 /** Styles with bond topology and molecule IDs (template styles too: their topology is expanded from the template). */
-export const isMolecularStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'bond' || x === 'angle' || x === 'molecular' || x === 'full' || x === 'template' || x === 'bpm/sphere');
+export const isMolecularStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'bond' || x === 'angle' || x === 'molecular' || x === 'full' || x === 'template' || x === 'bpm/sphere' || x === 'dielectric');
 /** Styles that store a per-atom charge. */
-export const hasChargeStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'charge' || x === 'full' || x === 'dipole' || x === 'electron');
+export const hasChargeStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'charge' || x === 'full' || x === 'dipole' || x === 'electron' || x === 'dielectric');
 /** Styles with finite-size spheres (radius, rmass, omega, torque). atom_style bpm/sphere is a bonded sphere style. */
 export const isSphereStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'sphere' || x === 'bpm/sphere');
 /**
@@ -42,7 +42,7 @@ export const isSphereStyle = (st: AtomStyle): boolean => atomSubStyles(st).some(
  */
 export const isBpmSphereStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('bpm/sphere');
 /** Styles with point dipoles (mu). */
-export const hasDipoleStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('dipole');
+export const hasDipoleStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('dipole') || atomSubStyles(st).includes('dielectric');
 /** Styles with magnetic spins (sp: unit vector and magnitude; atom_style.html lists spin as atomic plus magnetic moment data). */
 export const hasSpinStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('spin');
 /** Styles with ellipsoidal particles (shape, quat, angmom). */
@@ -70,7 +70,7 @@ export const hasRmassStyle = (st: AtomStyle): boolean => isSphereStyle(st) || is
 /** Bonded topology a style stores: 0 none, 1 bonds, 2 bonds and angles, 3 also dihedrals and impropers. */
 export const topologyLevel = (st: AtomStyle): number => {
   let lv = 0;
-  for (const x of atomSubStyles(st)) lv = Math.max(lv, x === 'bond' ? 1 : x === 'angle' ? 2 : x === 'molecular' || x === 'full' ? 3 : 0);
+  for (const x of atomSubStyles(st)) lv = Math.max(lv, x === 'bond' ? 1 : x === 'angle' ? 2 : x === 'molecular' || x === 'full' || x === 'dielectric' ? 3 : 0);
   return lv;
 };
 /** Per-atom charges exist: from the atom style or from fix property/atom q. */
@@ -167,6 +167,10 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
   if (isElectronStyle(st)) {
     for (const name of Object.keys(ELECTRON_DEFAULTS)) m.set(name, { int: name === ELECTRON_SPIN, cols: 0, data: new Float64Array(0) });
   }
+  // atom_style.html, dielectric: "area, ed, em, epsilon, curvature" per atom, plus the scaled charge q/epsilon (DIELECTRIC_PROPS)
+  if (isDielectricStyle(st)) {
+    for (const name of Object.keys(DIELECTRIC_DEFAULTS)) m.set(name, { int: false, cols: 0, data: new Float64Array(0) });
+  }
   return m;
 };
 
@@ -206,6 +210,24 @@ export const electronProp = (s: SimState, name: string, keyword: string): Float6
   if (!c || !isElectronStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute ${keyword} for atom style ${s.atomStyle}`);
   return c.data;
 };
+
+/**
+ * atom_style dielectric (atom_style.html): "area/patch", "ed", "em", "epsilon" and "curvature" of each atom, stored as
+ * internal per-atom props ('#' cannot start an i_name or d_name). q_scaled is the charge the dielectric pair styles use
+ * (q divided by epsilon for a real charge, the induced surface charge times the area for an interface patch); the
+ * values are the ones the dielectric pair and fix styles read and write (src/engine-gpl/dielectric).
+ * Defaults of an atom created without them (create_atoms): area 1, em 1, epsilon 1 (measured with native LAMMPS, black
+ * box: compute property/atom after create_atoms); ed and curvature 0.
+ */
+export const DIEL_AREA = '#area';
+export const DIEL_ED = '#ed';
+export const DIEL_EM = '#em';
+export const DIEL_EPSILON = '#epsilon';
+export const DIEL_CURVATURE = '#curvature';
+export const DIEL_QSCALED = '#qscaled';
+export const DIELECTRIC_DEFAULTS: Record<string, number> = { [DIEL_AREA]: 1, [DIEL_ED]: 0, [DIEL_EM]: 1, [DIEL_EPSILON]: 1, [DIEL_CURVATURE]: 0, [DIEL_QSCALED]: 0 };
+/** Styles with the dielectric properties (atom_style.html: "atom_style dielectric"). */
+export const isDielectricStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('dielectric');
 
 /** atom_style oxdna: the 5' and 3' partner atom IDs of each atom, internal per-atom props (0 = none). */
 export const OXDNA_5P = '#id5p';
@@ -443,6 +465,12 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     const src = a.custom?.get(name);
     if (src) c.data.set(src, w * n0);
     else if (name in ELECTRON_DEFAULTS) c.data.fill(ELECTRON_DEFAULTS[name], w * n0, w * n);
+    else if (name in DIELECTRIC_DEFAULTS) c.data.fill(DIELECTRIC_DEFAULTS[name], w * n0, w * n);
+  }
+  // a created dielectric atom starts with q_scaled = q / epsilon (LAMMPS: the scaled charge of a point charge)
+  if (isDielectricStyle(s.atomStyle) && !(a.custom?.has(DIEL_QSCALED))) {
+    const qs = s.custom.get(DIEL_QSCALED), eps = s.custom.get(DIEL_EPSILON);
+    if (qs && eps) for (let i = n0; i < n; i++) qs.data[i] = s.q[i] / eps.data[i];
   }
   s.n = n;
   return add;

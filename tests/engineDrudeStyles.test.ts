@@ -59,8 +59,15 @@ describe('DRUDE styles in a script', () => {
     expect(await run(script)).toBeNull();
   });
 
-  it('names the DRUDE thermostats that are not ported yet (refused, not ignored)', async () => {
-    const msg = await run(BOX + 'fix F all drude C D\nfix N all tgnvt/drude temp 1 1 100 1 20\n');
-    expect(msg).toMatch(/tgnvt\/drude/);
+  it('tgnvt/drude runs with fix drude; its argument errors are named', async () => {
+    expect(await run(BOX + 'fix F all drude C D\nfix N all tgnvt/drude temp 1 1 100 1 20\nrun 0\n')).toBeNull();
+    expect(await run(BOX + 'fix F all drude C D\nfix N all tgnvt/drude temp 1 1 100 1 20 iso 1 1 100\n')).toMatch(/Pressure control can not be used with fix tgnvt\/drude/);
+    expect(await run(BOX + 'fix N all tgnvt/drude temp 1 1 100 1 20\n')).toMatch(/requires fix drude/);
+  });
+
+  it('tgnpt/drude refuses the barostat shapes it does not implement, by name', async () => {
+    const msg = await run(BOX + 'fix F all drude C D\nfix N all tgnpt/drude temp 1 1 100 1 20 aniso 1 1 100\n');
+    expect(msg).toMatch(/aniso/);
+    expect(await run(BOX + 'fix F all drude C D\nfix N all tgnpt/drude temp 1 1 100 1 20\n')).toMatch(/Pressure control must be used/);
   });
 });

@@ -82,6 +82,8 @@ export class FixElectrodeConp extends Fix {
   /** Styles that accept the temp and qtotal keywords (overridden by electrode/thermo and electrode/conq). */
   protected allowsTemp(): boolean { return false; }
   protected allowsQtotal(): boolean { return true; }
+  /** The style name for messages (a method, so subclasses answer during the base constructor). */
+  protected styleName(): string { return 'electrode/conp'; }
   /** etypes yes: the electrode and electrolyte types must not overlap (checked at init). */
   protected etypes = false;
   /** write_inv / write_mat / write_vec file names (null = not written). */
@@ -184,7 +186,7 @@ export class FixElectrodeConp extends Fix {
         case 'read_inv': case 'read_mat':
           throw new StyleError(`fix electrode/conp ${key} (reading matrices from files) is not supported by the browser engine`);
         case 'qtotal': {
-          if (!this.allowsQtotal()) throw new StyleError(`qtotal keyword not available for ${this.style}`);
+          if (!this.allowsQtotal()) throw new StyleError(`qtotal keyword not available for ${this.styleName()}`);
           if (iarg + 1 >= args.length) throw new StyleError('Need one argument after qtotal keyword');
           if (args[iarg + 1].startsWith('v_')) this.qtotalVar = args[iarg + 1].slice(2);
           else this.qtotal = parseNum(args[iarg + 1], 'qtotal');
@@ -193,7 +195,7 @@ export class FixElectrodeConp extends Fix {
           break;
         }
         case 'temp': {
-          if (!this.allowsTemp()) throw new StyleError(`temp keyword not available for fix ${this.style}`);
+          if (!this.allowsTemp()) throw new StyleError(`temp keyword not available for fix ${this.styleName()}`);
           if (iarg + 3 >= args.length) throw new StyleError('Need three arguments after temp command');
           // force->boltz / force->qe2f * T (units: kB in energy per kelvin, qe2f: charge * field -> force)
           this.thermoTemp = sys.state.units.boltz / sys.state.units.qe2f * parseNum(args[iarg + 1], 'temp');

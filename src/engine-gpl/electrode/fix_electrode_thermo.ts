@@ -32,6 +32,7 @@ export class FixElectrodeThermo extends FixElectrodeConp {
   }
 
   protected allowsTemp(): boolean { return true; }
+  protected styleName(): string { return 'electrode/thermo'; }
 
   /** Vacuum capacitance between the two electrodes from the macro capacitance. */
   protected computeMacroMatrices(): void {

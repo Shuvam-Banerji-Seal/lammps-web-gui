@@ -32,6 +32,7 @@ export class FixElectrodeConq extends FixElectrodeConp {
   }
 
   protected allowsQtotal(): boolean { return false; }
+  protected styleName(): string { return 'electrode/conq'; }
 
   private groupCount(): number[] {
     const count = new Array<number>(this.groupBits.length).fill(0);

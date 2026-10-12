@@ -1,6 +1,7 @@
 # oracle: ELECTRODE madelung in.madelung-ewald-ew3dc with etypes yes and the pressure tensor (virial of the fix and k-space): ewald/electrode EW3DC, fix electrode/conp mat_inv, symm on
 # oracle-inputs: w68elec_au_elyt.data
 # oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# Measured with native LAMMPS (black box): step 0: pe=144.888615783 c_qbot=-0.274733361365 c_qtop=0.274733361365 f_conp=-6.3355021417 press=124407.766135 pxx=1089683.88668 pyy=1089683.88668 pzz=-1806144.47496 pxy=-2.13458581183e-12 pxz=5.73761295618e-13 pyz=3.12466186346e-11
 boundary        p p f
 kspace_style    ewald/electrode 1.0e-8
 kspace_modify   slab 8.0

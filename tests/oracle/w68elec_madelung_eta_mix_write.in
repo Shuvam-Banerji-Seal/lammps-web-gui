@@ -1,0 +1,23 @@
+# oracle: ELECTRODE madelung in.madelung-eta_mix: d_eta 0.5 and 3.0, NULL eta, fix electrode/conp mat_inv, symm on, write_inv and write_vec files
+# oracle-inputs: w68elec_au_elyt.data
+# oracle-files: inv.csv vec.csv
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+boundary        p p f
+kspace_style    ewald/electrode 1.0e-8
+kspace_modify   slab 8.0
+units           real
+atom_style      full
+pair_style      lj/cut/coul/long 12
+read_data       w68elec_au_elyt.data
+group           bot type 1
+group           top type 2
+variable        q atom q
+compute         qbot bot reduce sum v_q
+compute         qtop top reduce sum v_q
+fix             feta all property/atom d_eta ghost yes
+set             group bot d_eta 0.5
+set             group top d_eta 3.0
+fix             conp bot electrode/conp 0 NULL couple top 1 symm on eta d_eta write_inv inv.csv write_vec vec.csv
+thermo_style    custom step pe c_qbot c_qtop f_conp
+thermo_modify   format float %.15g
+run             0

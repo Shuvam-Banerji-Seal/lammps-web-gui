@@ -1,0 +1,135 @@
+# oracle-compare: thermo=all rel=1e-6 (the pressure of the LJ case differs from native at 1.5e-8 relative; energies agree to 1e-9; the no-LJ w69fep_tip4p case agrees at 1e-8)
+# oracle: lj/cut/tip4p/long/soft (O-O soft lambda 0.5, H with zero epsilon), 18 waters, pppm/tip4p, NVE 40 steps
+units           real
+atom_style      full
+boundary        p p p
+region          box block 0 10.5 0 10.5 0 7.0 units box
+create_box      2 box bond/types 1 angle/types 1 extra/bond/per/atom 2 extra/angle/per/atom 1 extra/special/per/atom 2
+create_atoms  1 single 1.000000 1.050000 1.019471
+create_atoms  2 single 1.957200 1.050000 1.019471
+create_atoms  2 single 0.760013 1.976627 1.019471
+create_atoms  1 single 1.048178 1.038242 4.529924
+create_atoms  2 single 2.005378 1.038242 4.529924
+create_atoms  2 single 0.808191 1.964869 4.529924
+create_atoms  1 single 1.025775 4.508498 0.950315
+create_atoms  2 single 1.982975 4.508498 0.950315
+create_atoms  2 single 0.785788 5.435126 0.950315
+create_atoms  1 single 0.965612 4.474758 4.520242
+create_atoms  2 single 1.922812 4.474758 4.520242
+create_atoms  2 single 0.725624 5.401385 4.520242
+create_atoms  1 single 0.955827 7.952889 1.029246
+create_atoms  2 single 1.913027 7.952889 1.029246
+create_atoms  2 single 0.715840 8.879516 1.029246
+create_atoms  1 single 1.010756 7.953177 4.450228
+create_atoms  2 single 1.967956 7.953177 4.450228
+create_atoms  2 single 0.770769 8.879804 4.450228
+create_atoms  1 single 4.549927 0.975487 1.021008
+create_atoms  2 single 5.507127 0.975487 1.021008
+create_atoms  2 single 4.309940 1.902114 1.021008
+create_atoms  1 single 4.515955 1.009326 4.528560
+create_atoms  2 single 5.473155 1.009326 4.528560
+create_atoms  2 single 4.275968 1.935953 4.528560
+create_atoms  1 single 4.458609 4.538778 0.950155
+create_atoms  2 single 5.415809 4.538778 0.950155
+create_atoms  2 single 4.218621 5.465406 0.950155
+create_atoms  1 single 4.461901 4.549993 4.521768
+create_atoms  2 single 5.419101 4.549993 4.521768
+create_atoms  2 single 4.221914 5.476620 4.521768
+create_atoms  1 single 4.521008 8.037695 1.027866
+create_atoms  2 single 5.478208 8.037695 1.027866
+create_atoms  2 single 4.281021 8.964322 1.027866
+create_atoms  1 single 4.549339 8.007669 4.450096
+create_atoms  2 single 5.506539 8.007669 4.450096
+create_atoms  2 single 4.309351 8.934296 4.450096
+create_atoms  1 single 8.005388 0.974036 1.022522
+create_atoms  2 single 8.962588 0.974036 1.022522
+create_atoms  2 single 7.765400 1.900663 1.022522
+create_atoms  1 single 7.953544 0.952614 4.527164
+create_atoms  2 single 8.910744 0.952614 4.527164
+create_atoms  2 single 7.713557 1.879241 4.527164
+create_atoms  1 single 7.969758 4.453479 0.950051
+create_atoms  2 single 8.926958 4.453479 0.950051
+create_atoms  2 single 7.729771 5.380106 0.950051
+create_atoms  1 single 8.030277 4.476223 4.523269
+create_atoms  2 single 8.987477 4.476223 4.523269
+create_atoms  2 single 7.790290 5.402850 4.523269
+create_atoms  1 single 8.046440 8.010150 1.026454
+create_atoms  2 single 9.003640 8.010150 1.026454
+create_atoms  2 single 7.806453 8.936777 1.026454
+create_atoms  1 single 7.994568 8.039304 4.450020
+create_atoms  2 single 8.951768 8.039304 4.450020
+create_atoms  2 single 7.754581 8.965931 4.450020
+create_bonds single/bond 1 1 2
+create_bonds single/bond 1 1 3
+create_bonds single/angle 1 2 1 3
+create_bonds single/bond 1 4 5
+create_bonds single/bond 1 4 6
+create_bonds single/angle 1 5 4 6
+create_bonds single/bond 1 7 8
+create_bonds single/bond 1 7 9
+create_bonds single/angle 1 8 7 9
+create_bonds single/bond 1 10 11
+create_bonds single/bond 1 10 12
+create_bonds single/angle 1 11 10 12
+create_bonds single/bond 1 13 14
+create_bonds single/bond 1 13 15
+create_bonds single/angle 1 14 13 15
+create_bonds single/bond 1 16 17
+create_bonds single/bond 1 16 18
+create_bonds single/angle 1 17 16 18
+create_bonds single/bond 1 19 20
+create_bonds single/bond 1 19 21
+create_bonds single/angle 1 20 19 21
+create_bonds single/bond 1 22 23
+create_bonds single/bond 1 22 24
+create_bonds single/angle 1 23 22 24
+create_bonds single/bond 1 25 26
+create_bonds single/bond 1 25 27
+create_bonds single/angle 1 26 25 27
+create_bonds single/bond 1 28 29
+create_bonds single/bond 1 28 30
+create_bonds single/angle 1 29 28 30
+create_bonds single/bond 1 31 32
+create_bonds single/bond 1 31 33
+create_bonds single/angle 1 32 31 33
+create_bonds single/bond 1 34 35
+create_bonds single/bond 1 34 36
+create_bonds single/angle 1 35 34 36
+create_bonds single/bond 1 37 38
+create_bonds single/bond 1 37 39
+create_bonds single/angle 1 38 37 39
+create_bonds single/bond 1 40 41
+create_bonds single/bond 1 40 42
+create_bonds single/angle 1 41 40 42
+create_bonds single/bond 1 43 44
+create_bonds single/bond 1 43 45
+create_bonds single/angle 1 44 43 45
+create_bonds single/bond 1 46 47
+create_bonds single/bond 1 46 48
+create_bonds single/angle 1 47 46 48
+create_bonds single/bond 1 49 50
+create_bonds single/bond 1 49 51
+create_bonds single/angle 1 50 49 51
+create_bonds single/bond 1 52 53
+create_bonds single/bond 1 52 54
+create_bonds single/angle 1 53 52 54
+mass            1 15.9994
+mass            2 1.008
+set             type 1 charge -0.8476
+set             type 2 charge 0.4238
+bond_style      harmonic
+bond_coeff      1 450.0 0.9572
+angle_style     harmonic
+angle_coeff     1 55.0 104.52
+pair_style      lj/cut/tip4p/long/soft 1 2 1 1 0.15 1 0.5 0.5 4.0 4.0
+pair_coeff      1 1 0.1554 3.1655 0.5
+pair_coeff      2 2 0.0 1.0 1.0
+pair_coeff      1 2 0.0 1.0 1.0
+kspace_style    pppm/tip4p 1.0e-4
+timestep        0.5
+velocity        all create 300.0 12345
+fix             1 all nve
+thermo_style    custom step temp pe ke etotal press evdwl ecoul elong
+thermo_modify   format float %.15g
+thermo          10
+run             40

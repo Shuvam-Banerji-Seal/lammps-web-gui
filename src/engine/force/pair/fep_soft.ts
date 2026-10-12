@@ -419,22 +419,3 @@ export class PairLJCharmmSoftCoulLong extends PairFepSoft {
     this.kE *= S;
   }
 }
-
-/**
- * Soft-core styles the page indexes but this engine does not implement: a StyleError names
- * the style at pair_style time (rule 3: no silent approximation).
- */
-export class PairSoftUnsupported extends Pair {
-  readonly name: string;
-  constructor(name: string, private readonly why: string) {
-    super();
-    this.name = name;
-  }
-  private fail(): never {
-    throw new StyleError(`pair_style ${this.name} is not supported by the engine: ${this.why}`);
-  }
-  settings(): void { this.fail(); }
-  coeff(): void { this.fail(); }
-  initOne(): number { return this.fail(); }
-  compute(): void { this.fail(); }
-}

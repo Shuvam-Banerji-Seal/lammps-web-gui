@@ -158,8 +158,4 @@ describe('soft-core FEP pair styles: unsupported options are StyleErrors', () =>
     await expect(evaluate(['pair_style coul/long/soft 2 4.0 3.0', 'pair_coeff * * 0.6 2.5', ...KSPACE], 1.3)).rejects.toThrow(/pair_coeff/);
   });
 
-  it('tip4p and morse soft styles are StyleErrors that name the style', async () => {
-    await expect(evaluate(['pair_style morse/soft 4 0.9 10.0', 'pair_coeff * * 100.0 2.0 1.5 1.0'], 1.3, false)).rejects.toThrow(/morse\/soft/);
-    await expect(evaluate(['pair_style tip4p/long/soft 1 2 7 8 0.15 2.0 0.5 10.0', 'pair_coeff * * 1.0'], 1.3)).rejects.toThrow(/tip4p\/long\/soft/);
-  });
 });

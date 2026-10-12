@@ -8,7 +8,6 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildIndex } from '../scripts/potential-index.mjs';
 import {

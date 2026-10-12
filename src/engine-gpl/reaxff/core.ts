@@ -100,6 +100,8 @@ export interface RxSystem {
   Hindex: Int32Array;
   numH: number;
   Tap: Float64Array<ArrayBufferLike>;
+  /** ACKS2: the solution s of fix acks2/reaxff (X part at N + i), or null when no acks2 fix is defined. */
+  acks2s: Float64Array | null;
   far: FarList;
   bonds: BondList;
   ws: Workspace;

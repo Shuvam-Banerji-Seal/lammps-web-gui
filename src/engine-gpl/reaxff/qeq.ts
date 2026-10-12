@@ -63,8 +63,6 @@ export class FixQEqReaxFF extends Fix {
   private hist: HistoryMap = new Map();
   private efieldFix: FixEfield | null = null;
   private matvecs = 0;
-  private matvecsS = 0;
-  private matvecsT = 0;
 
   constructor(sys: System, id: string, group: string, args: string[], private pairRef: () => PairReaxFF | null) {
     super(sys, id, group, args);
@@ -128,8 +126,10 @@ export class FixQEqReaxFF extends Fix {
     this.params = parsePertypeFile(this.sys.readFile(this.pertype), this.ntypes, 'qeq/reaxff');
   }
 
-  /** setup_pre_force: the storage of the solve, then one pre_force. */
-  override setup(): void { this.preForce(); }
+  /** setup_pre_force: one pre_force before the setup force evaluation. */
+  override setupPreForce(): void { this.preForce(); }
+  /** min_pre_force: the solve before every minimization evaluation (the same step rule). */
+  override minPreForce(): void { this.preForce(); }
 
   override preForce(): void {
     if (this.sys.state.step % this.nevery !== 0) return;
@@ -159,8 +159,6 @@ export class FixQEqReaxFF extends Fix {
       eta: p.eta, chiEff, hist: this.hist,
       opts: { tolerance: this.tolerance, imax: this.imax, maxwarn: this.maxwarn, warn: (t) => this.sys.warn(t), step: s.step, name: 'qeq/reaxff' },
     });
-    this.matvecsS = r.matvecsS;
-    this.matvecsT = r.matvecsT;
     this.matvecs = r.matvecsS + r.matvecsT;
   }
 

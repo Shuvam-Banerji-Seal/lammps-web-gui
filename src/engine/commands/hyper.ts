@@ -78,6 +78,7 @@ const restoreState = (sys: System, k: Saved): void => {
 /** Forces and fix setup for the current positions (a run's setup, used after a restore). */
 const setupForces = (sys: System): void => {
   sys.setupNeighbors();
+  for (const f of sys.fixes) f.setupPreForce?.();
   sys.computeForcesInRun(sys.computeFlags());
   sys.forcesCurrent();
   for (const f of sys.fixes) f.setup();

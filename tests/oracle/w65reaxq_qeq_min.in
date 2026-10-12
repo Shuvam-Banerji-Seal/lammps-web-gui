@@ -1,0 +1,18 @@
+# oracle: ReaxFF water (55 molecules cut from examples/reaxff/water data.water) with fix qeq/reaxff (pertype reaxff, tolerance 1e-8), energy minimization (cg, 20 iterations), thermo at every iteration, atoms at the end
+# oracle-inputs: w65reaxq_water.data w65reaxq_qeq_ff.water
+# Measured with native LAMMPS (20 CG iterations, 21 rows, max relative error): Node 24 press 3.0e-6 (last row), atoms 6.7e-6 (fx); Node 20 press 6.6e-7, atoms 3.0e-6 (fx); pe 5e-11 and 1.5e-11.
+# Press is small near the end of the minimization, so its error is the largest column; compared at rel=1e-5.
+# oracle-compare: thermo=all atoms=all rel=1e-5 abs=1e-8
+units           real
+atom_style      charge
+boundary        p p p
+read_data       w65reaxq_water.data
+pair_style      reaxff NULL safezone 3.0 mincap 150
+pair_coeff      * * w65reaxq_qeq_ff.water O H
+fix             1 all qeq/reaxff 1 0.0 10.0 1e-8 reaxff maxiter 400
+neighbor        0.5 bin
+neigh_modify    every 1 delay 0 check yes
+thermo_style    custom step pe ebond evdwl ecoul press
+thermo_modify   format float %.15g
+thermo          1
+minimize        1.0e-8 1.0e-8 20 100

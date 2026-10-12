@@ -530,7 +530,7 @@ export class FixEfield extends Fix {
     const [rx, ry, rz] = [this.resolve(this.comp[0]), this.resolve(this.comp[1]), this.resolve(this.comp[2])];
     // F = q E qe2f in LAMMPS force units (fix_efield page: F = qE; the qe2f factor converts the field units)
     const k = s.units.qe2f;
-    const { f, q, mask, x } = s;
+    const { f, q, mask } = s;
     const bit = this.groupBit;
     const fadd = this.fadd;
     fadd.fill(0);

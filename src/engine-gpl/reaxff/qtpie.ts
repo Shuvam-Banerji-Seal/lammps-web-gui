@@ -182,8 +182,10 @@ export class FixQtpieReaxFF extends Fix {
     }
   }
 
-  /** setup_pre_force: the storage of the solve, then one pre_force (same step rule as fix qeq/reaxff). */
-  override setup(): void { this.preForce(); }
+  /** setup_pre_force: one pre_force before the setup force evaluation (same step rule as fix qeq/reaxff). */
+  override setupPreForce(): void { this.preForce(); }
+  /** min_pre_force: the solve before every minimization evaluation (the same step rule). */
+  override minPreForce(): void { this.preForce(); }
 
   override preForce(): void {
     if (this.sys.state.step % this.nevery !== 0) return;

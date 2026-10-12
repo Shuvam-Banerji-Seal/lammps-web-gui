@@ -669,7 +669,7 @@ export const allocBondList = (N: number, far: FarList, bondCount: Int32Array): B
   return b;
 };
 
-export const ensureHBondList = (N: number, hbCount: Int32Array, numH: number): HBondList => {
+export const ensureHBondList = (hbCount: Int32Array, numH: number): HBondList => {
   const start = new Int32Array(Math.max(numH, 1));
   const end = new Int32Array(Math.max(numH, 1));
   let top = 0;

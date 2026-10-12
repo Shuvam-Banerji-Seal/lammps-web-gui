@@ -1,6 +1,6 @@
-# oracle (setup only, run 0: the field term of the charge equilibrium at step 0; see the efield note in the report): ReaxFF water cut from examples/reaxff/water (in.water.qeqr.field (boundary p p p, efield 0 0 0.05)), tolerance 1e-12 (tight variant), 10 NVE steps, with fix efield 0 0 0.05 (group all)
+# oracle (setup only, run 0: the field term of the charge equilibrium and the fix efield force at setup): ReaxFF water cut from examples/reaxff/water (in.water.qeqr.field (boundary p p p, efield 0 0 0.05)), tolerance 1e-12 (tight variant), 10 NVE steps, with fix efield 0 0 0.05 (group all)
 # oracle-inputs: w65reaxq_water.data w65reaxq_qeq_ff.water w65reaxq_gauss_exp.txt
-# oracle-compare: thermo=all atoms=none rel=1e-9 abs=1e-10
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-10
 units           real
 atom_style      charge
 boundary        p p p

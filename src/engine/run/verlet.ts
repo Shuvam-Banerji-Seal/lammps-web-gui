@@ -73,6 +73,7 @@ export const initRun = (sys: System): void => {
 export const setupRun = (sys: System): void => {
   sys.setupNeighbors();
   sys.sortAtoms(true);
+  for (const f of sys.fixes) f.setupPreForce?.();
   sys.computeForcesInRun(sys.computeFlags());
   sys.forcesCurrent();
   sys.assignDynamicGroups(true);

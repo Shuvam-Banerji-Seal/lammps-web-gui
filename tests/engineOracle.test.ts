@@ -163,8 +163,10 @@ describe('oracle parity with native LAMMPS', () => {
       for (const [f, ref] of Object.entries(fx.files)) {
         const mine = files.get(f);
         expect(mine, `file ${f}`).toBeDefined();
-        // the data-file title line names the writing program
-        const strip = (t: string) => (f.endsWith('.data') ? t.split('\n').slice(1).join('\n') : t);
+        // the data-file title line names the writing program; a "DATE: YYYY-MM-DD" header field (fix ttm grid files,
+        // potential files written by the engine) is the day of the run, so it is not compared
+        const strip = (t: string) => (f.endsWith('.data') ? t.split('\n').slice(1).join('\n') : t)
+          .replace(/\bDATE: \d{4}-\d{2}-\d{2}\b/g, 'DATE: <date>');
         const diff = sameText(strip(mine!), strip(ref), 1e-6);
         if (diff) throw new Error(`${name}: file ${f} differs at ${diff}`);
       }

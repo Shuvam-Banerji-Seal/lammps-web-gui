@@ -23,6 +23,11 @@ const KEYS = ['ke', 'pair', 'bond', 'angle', 'dihedral', 'improper', 'kspace', '
 export class ComputePressure extends Compute {
   readonly style = 'pressure';
   tempId: string | null;
+  /**
+   * Kinetic tensor used in place of the temperature compute's current one (fix nh sets it, see fix/nh.ts
+   * computePressCurrent). null = the temperature compute's current tensor.
+   */
+  keOverride: Float64Array | null = null;
   private terms: Set<string>;
   private w = new Float64Array(6);
 
@@ -88,7 +93,7 @@ export class ComputePressure extends Compute {
     const d = this.sys.dimension;
     const vol = this.sys.geom.volume(d);
     const w = this.virial();
-    const ke = this.terms.has('ke') && this.tempId ? this.sys.compute(this.tempId).vectorValues() : null;
+    const ke = this.keOverride ?? (this.terms.has('ke') && this.tempId ? this.sys.compute(this.tempId).vectorValues() : null);
     const tail = this.terms.has('pair') ? this.sys.ff.ptail(vol) : 0;
     for (let c = 0; c < 6; c++) {
       let p = w[c] + (ke ? ke[c] : 0);

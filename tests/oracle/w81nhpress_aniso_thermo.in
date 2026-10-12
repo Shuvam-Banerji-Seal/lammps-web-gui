@@ -1,0 +1,28 @@
+# oracle: LJ fcc 3x3x3 split in two groups: fix npt on group ATOMS (id 1:54) with , fix nvt on group DRUDES (id 55:108), 30 steps; thermo every step and per-atom state at the end
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+group           atoms id 1:54
+group           drudes id 55:108
+variable        vx atom 1.4*sin(1.7*x+2.3*y+0.7*z)
+variable        vy atom 1.4*cos(2.1*x-1.1*y+0.3*z)
+variable        vz atom 1.4*sin(0.5*x+1.9*z+1.3*y)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check no
+compute         TATOM atoms temp
+fix             1 atoms npt temp 1.5 1.5 0.5 aniso 2.0 0.5 2.0
+fix_modify 1 temp TATOM press thermo_press
+fix             2 drudes nvt temp 1.2 1.2 0.7
+thermo_style    custom step temp pe etotal press pxx pyy pzz vol lx ly lz f_1 f_2
+thermo_modify   format float %.15g
+thermo          1
+run             30

@@ -68,7 +68,7 @@ const g6kernel = (x2: number): number => Math.exp(-x2) * (1 + x2 + x2 * x2 / 2);
 const coulShort = (
   rsq: number, qi: number, qj: number, g: number, qqrd2e: number, fc: number, poly: boolean, table: ErfcTable | null,
 ): { e: number; f: number } => {
-  if (table && rsq >= TABLE_INNER_RSQ) {
+  if (table && rsq > TABLE_INNER_RSQ) {
     const qq = qqrd2e * qi * qj;
     let forcecoul = qq * table.force(rsq);
     let e = qq * table.energy(rsq);

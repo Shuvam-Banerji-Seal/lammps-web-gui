@@ -91,7 +91,7 @@ const nonCoulCut = (raw: number, cutGlobal: number): number => (Number.isNaN(raw
 const coulLongPair = (
   rsq: number, qi: number, qj: number, g: number, qqrd2e: number, fc: number, poly: boolean, table: ErfcTable | null = null,
 ): { e: number; f: number } => {
-  if (table && rsq >= TABLE_INNER_RSQ) {
+  if (table && rsq > TABLE_INNER_RSQ) {
     // pair_modify table N > 0 (erfc.ts makeErfcTable): native interpolates erfc/r, the force kernel
     // and the bare 1/r of the special-bond correction from its tables
     const qq = qqrd2e * qi * qj;

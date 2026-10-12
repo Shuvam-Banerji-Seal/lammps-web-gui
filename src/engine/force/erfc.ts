@@ -83,7 +83,11 @@ export const erfcPoly = (x: number, ex: number): number => {
  * forces and energies are computed directly, using a polynomial fit for the
  * needed erfc() function evaluation".
  * pair_modify.html (tabinner): "The default cutoff value is sqrt(2.0) distance
- * units", i.e. table lookup is used for rsq >= 2 and the polynomial below.
+ * units", and the table is used for pairs "above" that cutoff. Measured with
+ * native LAMMPS (black box, 2026-10-13): at rsq exactly 2 (atoms at (1,1,0)) the
+ * energy, the force and the special-bond 1/r correction equal the table-0
+ * polynomial values for pair_modify table 12, so the table is used only for
+ * rsq > 2 (strict); the engine's TABLE_INNER_RSQ tests are strict for that reason.
  *
  * Measured with native LAMMPS (black box, 2 atoms, coul/long, gewald 0.3, real
  * units, 2026-10): the table nodes are the rsq values whose float32 mantissa is
@@ -93,18 +97,29 @@ export const erfcPoly = (x: number, ex: number): number => {
  * at the node, and the value between nodes is linear in rsq using the float32
  * rounding of rsq. Energy kernel: the table of erfc(g r)/r; agreement with the
  * native table-12 energies is 1e-14 absolute on the points tested. Force kernel:
- * (erfc + EWALD_F g r exp(-g^2 r^2))/r with the same node structure; the native
- * force difference (table 12 minus table 0) agrees with this to ~3e-6 absolute
- * (a few per cent of the table error itself, ~1e-8 of the total force).
- * The octave exponent is not checked beyond e = 5 (Wolff bit-mapping with 3
- * exponent bits); N other than 12 is not measured.
+ * (erfc + TWO_OVER_SQRTPI g r exp(-g^2 r^2))/r with the same node structure,
+ * where TWO_OVER_SQRTPI is the exact 2/sqrt(pi), not EWALD_F. Measured with
+ * native LAMMPS (black box, 2026-10-13): two atoms, charges +1 and -1, pair
+ * coul/long 12.0, kspace ewald 1e-8, gewald 0.3, real units, separations
+ * r = 1.41 to 11.3 (1035 points: random in octaves rsq = 2..128, rsq at the node
+ * grid 2^e (1 + k/512), and sqrt(2) + {0, 1e-12, 1e-9, 1e-6, 1e-4}), force on
+ * atom 2 with %.17g. The difference table 12 minus table 0 (the kspace part
+ * cancels) equals the emulation's difference to 7e-14 absolute at worst (the
+ * native output precision). The same difference with EWALD_F in the node values
+ * misses by up to 1.7e-7; with float32-rounded node radii r the miss is 6e-6.
+ * So the table nodes carry the exact constant, the node radius is the double
+ * sqrt of the node rsq, and the interpolation is linear in float32(rsq). The
+ * direct (table 0) branch keeps EWALD_F, which the same native difference
+ * confirms.
+ * The octave exponent is checked for e = 1..6 by the force scan above (and 2..5,
+ * 16 for the node spacing); N other than 12 is not measured.
  */
 export const TABLE_INNER_RSQ = 2.0;
 
 export interface ErfcTable {
   /** erfc(g r)/r at rsq (no charge or unit prefactor). */
   energy(rsq: number): number;
-  /** (erfc(g r) + EWALD_F g r exp(-g^2 r^2))/r; the force is qq * force(rsq) / rsq. */
+  /** (erfc(g r) + 2/sqrt(pi) g r exp(-g^2 r^2))/r; the force is qq * force(rsq) / rsq. */
   force(rsq: number): number;
   /**
    * 1/r, for the special-bond correction -(1 - f_coul) C q_i q_j / r. Measured with native LAMMPS
@@ -139,7 +154,7 @@ export const makeErfcTable = (N: number, g: number, cutsq: number): ErfcTable =>
     const x = g * r;
     const ec = x >= 6.25 ? 0 : erfcExact(x);
     eTab[k] = ec / r;
-    fTab[k] = (ec + EWALD_F * x * Math.exp(-x * x)) / r;
+    fTab[k] = (ec + TWO_OVER_SQRTPI * x * Math.exp(-x * x)) / r;
     cTab[k] = 1 / r;
   }
   const shift = 23 - M;
@@ -150,7 +165,7 @@ export const makeErfcTable = (N: number, g: number, cutsq: number): ErfcTable =>
     return which === 0 ? ec / r : (ec + EWALD_F * x * ex) / r;
   };
   const interp = (rsq: number, tab: Float64Array, which: 0 | 1 | 2): number => {
-    if (rsq < TABLE_INNER_RSQ) return direct(rsq, which);
+    if (rsq <= TABLE_INNER_RSQ) return direct(rsq, which);
     f32[0] = rsq;
     const bits = u32[0];
     const e = bits >>> 23;

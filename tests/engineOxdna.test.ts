@@ -243,8 +243,8 @@ describe('oxDNA styles: coefficients and their derived values', () => {
   });
 
   it('the registry exports exactly the styles of this port', () => {
-    expect(Object.keys(BONDS).sort()).toEqual(['oxdna/fene', 'oxdna2/fene', 'oxrna2/fene']);
-    expect(Object.keys(PAIRS).sort()).toEqual(expect.arrayContaining(['oxdna/coaxstk', 'oxdna/excv', 'oxdna/hbond', 'oxdna/stk', 'oxdna/xstk']));
+    expect(Object.keys(BONDS).sort()).toEqual(['oxdna/fene', 'oxdna2/fene', 'oxdna3/fene', 'oxrna2/fene']);
+    expect(Object.keys(PAIRS).sort()).toEqual(expect.arrayContaining(['oxdna/coaxstk', 'oxdna/excv', 'oxdna/hbond', 'oxdna/stk', 'oxdna/xstk', 'oxdna3/coaxstk', 'oxdna3/dh', 'oxdna3/excv', 'oxdna3/hbond', 'oxdna3/stk', 'oxdna3/xstk']));
   });
 });
 
@@ -312,7 +312,7 @@ describe('oxDNA2 and oxRNA2 variants (nucleotide_oxdna.h, the pair_oxdna2_dh.cpp
     expect(new BondOxdna2Fene().name).toBe('oxdna2/fene');
     expect(new PairOxdna2Excv().name).toBe('oxdna2/excv');
     expect(Object.keys(FIXES)).toEqual(['nve/dot', 'nve/dotc/langevin']);
-    expect(Object.keys(BONDS)).toEqual(['oxdna/fene', 'oxdna2/fene', 'oxrna2/fene']);
+    expect(Object.keys(BONDS)).toEqual(['oxdna/fene', 'oxdna2/fene', 'oxrna2/fene', 'oxdna3/fene']);
     expect(PAIRS['oxdna2/stk']).toBeDefined();
     expect(PAIRS['oxrna2/coaxstk']).toBeDefined();
   });

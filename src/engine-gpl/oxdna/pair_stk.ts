@@ -13,10 +13,10 @@
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { OXDNA_5P, OXDNA_3P, buildAtomMap, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
-import { DF1, DF4, DF5, F1, F4, F5, lrfOf, oxdnaConstants, stackingSite, backboneSite } from './common';
+import { DF1, DF4, DF5, F1, F4, F5, lrfOf, oxdnaConstants, stackingSiteOxdna1, backboneSite, type StackRule, potentialLines } from './common';
 
 /** pair_oxdna_stk.cpp constructor: the sequence-dependence factors eta_st[i][j] (indexed by 1-based base types mod 4). */
-const ETA_ST: number[][] = [
+export const ETA_ST: number[][] = [
   [1.11960, 1.01889, 0.98169, 0.94694],
   [1.00852, 0.97804, 1.05913, 0.98169],
   [0.96950, 1.02681, 0.97804, 1.01889],
@@ -52,22 +52,26 @@ const STK_NAMES = ['xi_st', 'kappa_st', 'a_st', 'cut_st_0', 'cut_st_c', 'cut_st_
 type Tab2 = Float64Array;
 
 export class PairOxdnaStk extends Pair {
-  readonly name = 'oxdna/stk';
+  readonly name: string = 'oxdna/stk';
+  /** the stacking site rule of the nucleotide model (the oxDNA3 subclass has its own offset) */
+  protected stackSite: StackRule = stackingSiteOxdna1;
   // the global virial is the dot product of positions and forces (pair_oxdna_stk.cpp: virial_fdotr_compute)
   virialFdotr = true;
   /** the bond list is the loop; no pair list is needed (pair_oxdna_stk.cpp init_style adds no request) */
   needsHalf = false;
-  private nt = 0;
-  private seqdep = false;
-  private eps!: Tab2; private aSt!: Tab2; private bLo!: Tab2; private bHi!: Tab2;
-  private th4!: Tab2; private a5!: Tab2; private th5!: Tab2; private dth5ast!: Tab2; private b5!: Tab2; private dth5c!: Tab2;
-  private a6!: Tab2; private th6!: Tab2; private dth6ast!: Tab2; private b6!: Tab2; private dth6c!: Tab2;
-  private a1!: Tab2; private cos1ast!: Tab2; private b1!: Tab2; private cos1c!: Tab2;
-  private a2!: Tab2; private cos2ast!: Tab2; private b2!: Tab2; private cos2c!: Tab2;
-  private set!: Uint8Array;
+  protected nt = 0;
+  /** eta_st[i][j] of the C++ (the oxDNA table; the oxDNA3 subclass has its own sequence table) */
+  protected etaSt: number[][] = ETA_ST;
+  protected seqdep = false;
+  protected eps!: Tab2; protected aSt!: Tab2; protected bLo!: Tab2; protected bHi!: Tab2;
+  protected th4!: Tab2; protected a5!: Tab2; protected th5!: Tab2; protected dth5ast!: Tab2; protected b5!: Tab2; protected dth5c!: Tab2;
+  protected a6!: Tab2; protected th6!: Tab2; protected dth6ast!: Tab2; protected b6!: Tab2; protected dth6c!: Tab2;
+  protected a1!: Tab2; protected cos1ast!: Tab2; protected b1!: Tab2; protected cos1c!: Tab2;
+  protected a2!: Tab2; protected cos2ast!: Tab2; protected b2!: Tab2; protected cos2c!: Tab2;
+  protected set!: Uint8Array;
   // tetramer tables [i][j][k][l]
-  private c0!: Float64Array; private clc!: Float64Array; private chc!: Float64Array; private clo!: Float64Array; private chi!: Float64Array;
-  private shiftSt!: Float64Array; private a4!: Float64Array; private dth4ast!: Float64Array; private b4!: Float64Array; private dth4c!: Float64Array;
+  protected c0!: Float64Array; protected clc!: Float64Array; protected chc!: Float64Array; protected clo!: Float64Array; protected chi!: Float64Array;
+  protected shiftSt!: Float64Array; protected a4!: Float64Array; protected dth4ast!: Float64Array; protected b4!: Float64Array; protected dth4c!: Float64Array;
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError('Illegal pair_style command');
@@ -108,10 +112,9 @@ export class PairOxdnaStk extends Pair {
     } else {
       const text = ctx?.readFile(args[4]) ?? '';
       let found: number[] | null = null;
-      for (const line of text.split(/\r?\n/)) {
-        const w = line.replace(/#.*$/, '').trim().split(/\s+/).filter((x) => x.length);
+      for (const w of potentialLines(text, [args[0], args[1]], 'stk')) {
         if (w.length < 3) continue;
-        if (w[0] === args[0] && w[1] === args[1] && w[2] === 'stk') {
+        if (w[2] === 'stk') {
           if (w.length < 23) throw new StyleError(`Problem parsing oxDNA potential file: stk needs 20 values in ${args[4]}`);
           found = w.slice(3, 23).map((x, k) => parseNum(x, STK_NAMES[k]));
           break;
@@ -141,7 +144,7 @@ export class PairOxdnaStk extends Pair {
         const jm = mod4(j);
         const q = i * nt + j;
         this.eps[q] = eps;
-        if (this.seqdep) this.eps[q] *= ETA_ST[im - 1][jm - 1];
+        if (this.seqdep) this.eps[q] *= this.etaSt[im - 1][jm - 1];
         this.aSt[q] = a; this.bLo[q] = bLo; this.bHi[q] = bHi;
         this.th4[q] = th4_0;
         this.a5[q] = a5; this.th5[q] = th5_0; this.dth5ast[q] = dth5ast; this.b5[q] = b5; this.dth5c[q] = dth5c;
@@ -160,7 +163,7 @@ export class PairOxdnaStk extends Pair {
             const q = ((i * nt + j) * nt + k) * nt + l;
             this.c0[q] = cut0; this.chc[q] = cHc; this.clc[q] = cLc; this.clo[q] = cutLo; this.chi[q] = cutHi;
             this.shiftSt[q] = shiftOne;
-            if (this.seqdep) this.shiftSt[q] *= ETA_ST[jm - 1][km - 1];
+            if (this.seqdep) this.shiftSt[q] *= this.etaSt[jm - 1][km - 1];
             this.a4[q] = a4; this.dth4ast[q] = dth4ast; this.b4[q] = b4; this.dth4c[q] = dth4c;
           }
         }
@@ -198,7 +201,7 @@ export class PairOxdnaStk extends Pair {
     const x = pc.x, f = pc.f, type = pc.type;
     const nt = this.nt;
     const constants = oxdnaConstants(s.units.style);
-    const dxCbk = constants.dx_cbk_oxdna1, dxCstk = constants.dx_cstk_oxdna1;
+    const dxCbk = constants.dx_cbk_oxdna1;
     const torque = s.torque;
     const map = buildAtomMap(s);
     // local reference frames of the owned atoms (fix OXDNA/LRF)
@@ -237,7 +240,7 @@ export class PairOxdnaStk extends Pair {
       xb[0] = x[3 * a] + d[0]; xb[1] = x[3 * a + 1] + d[1]; xb[2] = x[3 * a + 2] + d[2];
       // stacking sites
       backboneSite(dxCbk, ax, rab); backboneSite(dxCbk, bx, rbb);
-      stackingSite(dxCstk, ax, rac); stackingSite(dxCstk, bx, rbc);
+      this.stackSite(constants, ax, ay, az, rac); this.stackSite(constants, bx, by, bz, rbc);
       dStk[0] = xb[0] + rbc[0] - x[3 * a] - rac[0];
       dStk[1] = xb[1] + rbc[1] - x[3 * a + 1] - rac[1];
       dStk[2] = xb[2] + rbc[2] - x[3 * a + 2] - rac[2];

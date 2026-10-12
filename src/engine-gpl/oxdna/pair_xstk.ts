@@ -12,7 +12,7 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
-import { DF2, DF4, F2, F4, baseSite, lrfOf, oxdnaConstants } from './common';
+import { DF2, DF4, F2, F4, baseSite, lrfOf, oxdnaConstants, potentialLines } from './common';
 
 /** The 23 numbers after "I J" (pair_coeff) or after the potential-file name, in order. */
 const XST_NAMES = ['k_xst', 'cut_xst_0', 'cut_xst_c', 'cut_xst_lo', 'cut_xst_hi',
@@ -66,10 +66,9 @@ export class PairOxdnaXstk extends Pair {
     } else {
       const text = ctx?.readFile(args[2]) ?? '';
       let found: number[] | null = null;
-      for (const line of text.split(/\r?\n/)) {
-        const w = line.replace(/#.*$/, '').trim().split(/\s+/).filter((x) => x.length);
+      for (const w of potentialLines(text, [args[0], args[1]], 'xstk')) {
         if (w.length < 3) continue;
-        if (w[0] === args[0] && w[1] === args[1] && w[2] === 'xstk') {
+        if (w[2] === 'xstk') {
           if (w.length < 26) throw new StyleError(`Problem parsing oxdna potential file: xstk needs 23 values in ${args[2]}`);
           found = w.slice(3, 26).map((x, k) => parseNum(x, XST_NAMES[k]));
           break;

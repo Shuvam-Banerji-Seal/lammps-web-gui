@@ -14,7 +14,7 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_5P, OXDNA_3P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
-import { type OxdnaConstants, F3, backboneOxdna1, baseSite, lrfOf, oxdnaConstants } from './common';
+import { type OxdnaConstants, F3, backboneOxdna1, baseSiteOxdna1, lrfOf, oxdnaConstants, potentialLines } from './common';
 
 /** The three site kinds of the excluded volume: bk-bk, bk-bs (both orders) and bs-bs. */
 interface SiteTable {
@@ -38,7 +38,7 @@ const newTable = (n: number): SiteTable => ({
  * pair_oxdna_excv.cpp coeff(): b and the cutoff cut_c follow from sigma and cut_ast by the formulas written
  * there (the tail of the LJ at cut_ast is continued by a quadratic that reaches zero at cut_c).
  */
-const derived = (sigma: number, cutAst: number): { b: number; cutC: number } => {
+export const derived = (sigma: number, cutAst: number): { b: number; cutC: number } => {
   const x = sigma / cutAst;
   const b = 4.0 / sigma
     * (6.0 * Math.pow(x, 7) - 12.0 * Math.pow(x, 13))
@@ -64,14 +64,16 @@ export class PairOxdnaExcv extends Pair {
    * neighbour list with their special bits. Only the bkbk term multiplies by the special factor.
    */
   keepExcluded = true;
-  private nt = 0;
-  private set: Uint8Array = new Uint8Array(0);
-  private bk!: SiteTable;
-  private bs!: SiteTable;
-  private bb!: SiteTable;
+  /** base site rule of the nucleotide model (the oxDNA3 subclass takes the base type into account) */
+  protected baseSiteOf: (c: OxdnaConstants, type: number, e1: ArrayLike<number>, out: number[]) => void = baseSiteOxdna1;
+  protected nt = 0;
+  protected set: Uint8Array = new Uint8Array(0);
+  protected bk!: SiteTable;
+  protected bs!: SiteTable;
+  protected bb!: SiteTable;
   /** tetramer tables (pair_oxdna_excv.cpp sigma4_bsbs, cut4..., lj14, lj24, b4), indexed [i][j][k][l] */
-  private t4!: { sigma: Float64Array; cutAst: Float64Array; cutsqAst: Float64Array; cutC: Float64Array; cutsqC: Float64Array; b: Float64Array; lj14: Float64Array; lj24: Float64Array };
-  private tEps = new Float64Array(0);
+  protected t4!: { sigma: Float64Array; cutAst: Float64Array; cutsqAst: Float64Array; cutC: Float64Array; cutsqC: Float64Array; b: Float64Array; lj14: Float64Array; lj24: Float64Array };
+  protected tEps = new Float64Array(0);
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError('Illegal pair_style command');
@@ -94,7 +96,7 @@ export class PairOxdnaExcv extends Pair {
   }
 
   /** Fills one table entry (i, j) from the sigma, cut_ast and epsilon of a site kind. */
-  private fill(t: SiteTable, idx: number, eps: number, sigma: number, cutAst: number, b: number, cutC: number): void {
+  protected fill(t: SiteTable, idx: number, eps: number, sigma: number, cutAst: number, b: number, cutC: number): void {
     t.eps[idx] = eps; t.sigma[idx] = sigma; t.cutAst[idx] = cutAst; t.b[idx] = b; t.cutC[idx] = cutC;
     t.lj1[idx] = 4.0 * eps * Math.pow(sigma, 12.0);
     t.lj2[idx] = 4.0 * eps * Math.pow(sigma, 6.0);
@@ -116,10 +118,9 @@ export class PairOxdnaExcv extends Pair {
     } else {
       const text = ctx?.readFile(args[2]) ?? '';
       let found: number[] | null = null;
-      for (const line of text.split(/\r?\n/)) {
-        const w = line.replace(/#.*$/, '').trim().split(/\s+/).filter((x) => x.length);
+      for (const w of potentialLines(text, [args[0], args[1]], 'excv')) {
         if (w.length < 3) continue;
-        if (w[0] === args[0] && w[1] === args[1] && w[2] === 'excv') {
+        if (w[2] === 'excv') {
           if (w.length < 12) throw new StyleError(`Problem parsing oxdna potential file: excv needs 9 values in ${args[2]}`);
           found = w.slice(3, 12).map((x) => parseNum(x, 'excv'));
           break;
@@ -128,20 +129,10 @@ export class PairOxdnaExcv extends Pair {
       if (!found) throw new StyleError(`No corresponding excv potential found in file ${args[2]} for pair type ${args[0]} ${args[1]}`);
       v = found;
     }
-    const [epsBk, sigBk, cutBkAst, epsBs, sigBs, cutBsAst, epsBb, sigBb, cutBbAst] = v;
+    this.fillSites(ilo, ihi, v);
+    const [, , , , , , , sigBb, cutBbAst] = v;
     const nt = this.nt;
-    // bkbk, then bkbs, then bsbs: every (i, j) of the range gets the same values
-    const d1 = derived(sigBk, cutBkAst), d2 = derived(sigBs, cutBsAst), d3 = derived(sigBb, cutBbAst);
-    for (let i = ilo; i <= ihi; i++) {
-      for (let j = ilo; j <= ihi; j++) {
-        const idx = i * nt + j;
-        this.fill(this.bk, idx, epsBk, sigBk, cutBkAst, d1.b, d1.cutC);
-        this.fill(this.bs, idx, epsBs, sigBs, cutBsAst, d2.b, d2.cutC);
-        this.fill(this.bb, idx, epsBb, sigBb, cutBbAst, d3.b, d3.cutC);
-        this.tEps[idx] = epsBb;
-        this.set[idx] = 1;
-      }
-    }
+    const d3 = derived(sigBb, cutBbAst);
     // tetramer tables: entries [i][j][k][l] with i and l from 0 (terminal type) and j, k in the range
     for (let i = 0; i <= ihi; i++) {
       for (let j = ilo; j <= ihi; j++) {
@@ -159,6 +150,26 @@ export class PairOxdnaExcv extends Pair {
             t.lj24[q] = 4.0 * this.tEps[j * nt + k] * Math.pow(t.sigma[q], 6.0);
           }
         }
+      }
+    }
+  }
+
+  /**
+   * The bkbk, bkbs and bsbs site tables of the range ilo..ihi from the nine values (epsilon, sigma, cut_ast of each
+   * kind): every (i, j) of the range gets the same values (pair_oxdna_excv.cpp coeff()).
+   */
+  protected fillSites(ilo: number, ihi: number, v: number[]): void {
+    const [epsBk, sigBk, cutBkAst, epsBs, sigBs, cutBsAst, epsBb, sigBb, cutBbAst] = v;
+    const nt = this.nt;
+    const d1 = derived(sigBk, cutBkAst), d2 = derived(sigBs, cutBsAst), d3 = derived(sigBb, cutBbAst);
+    for (let i = ilo; i <= ihi; i++) {
+      for (let j = ilo; j <= ihi; j++) {
+        const idx = i * nt + j;
+        this.fill(this.bk, idx, epsBk, sigBk, cutBkAst, d1.b, d1.cutC);
+        this.fill(this.bs, idx, epsBs, sigBs, cutBsAst, d2.b, d2.cutC);
+        this.fill(this.bb, idx, epsBb, sigBb, cutBbAst, d3.b, d3.cutC);
+        this.tEps[idx] = epsBb;
+        this.set[idx] = 1;
       }
     }
   }
@@ -185,7 +196,6 @@ export class PairOxdnaExcv extends Pair {
     const nlocal = pc.nlocal;
     const nt = this.nt;
     const constants = oxdnaConstants(s.units.style);
-    const dxCbs = constants.dx_cbs_oxdna1;
     const id5p = s.custom.get(OXDNA_5P)!.data, id3p = s.custom.get(OXDNA_3P)!.data;
     const special = pc.specialLJ;
     const tq = new Float64Array(3 * nall);
@@ -202,7 +212,7 @@ export class PairOxdnaExcv extends Pair {
     for (let k = 0; k < nall; k++) {
       const e = L.subarray(9 * k, 9 * k + 3);
       this.backbone(constants, e, L.subarray(9 * k + 3, 9 * k + 6), L.subarray(9 * k + 6, 9 * k + 9), tmp); rbk[3 * k] = tmp[0]; rbk[3 * k + 1] = tmp[1]; rbk[3 * k + 2] = tmp[2];
-      baseSite(dxCbs, e, tmp); rbs[3 * k] = tmp[0]; rbs[3 * k + 1] = tmp[1]; rbs[3 * k + 2] = tmp[2];
+      this.baseSiteOf(constants, type[k], e, tmp); rbs[3 * k] = tmp[0]; rbs[3 * k + 1] = tmp[1]; rbs[3 * k + 2] = tmp[2];
     }
     // identities by atom ID for the tetramer lookup; tag of a ghost is the tag of its owner
     const tagOf = (k: number): number => s.id[owner[k]];

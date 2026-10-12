@@ -22,6 +22,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_rigid_nh', names: { FIXES: ['rigid/nph', 'rigid/nph/small', 'rigid/npt', 'rigid/npt/small', 'rigid/nvt', 'rigid/nvt/small'] }, load: () => import('../engine-gpl/registry/fix_rigid_nh') as Promise<StyleModule> },
   { id: 'gpl_electrode', names: { FIXES: ['electrode/conp', 'electrode/conq', 'electrode/thermo'], KSPACES: ['ewald/electrode', 'pppm/electrode'] }, load: () => import('../engine-gpl/registry/electrode') as Promise<StyleModule> },
   { id: 'gpl_dpd', names: { PAIRS: ['dpd', 'dpd/ext', 'dpd/ext/tstat', 'dpd/tstat'] }, load: () => import('../engine-gpl/registry/dpd') as Promise<StyleModule> },
+  { id: 'gpl_srd', names: { FIXES: ['srd'] }, load: () => import('../engine-gpl/registry/srd') as Promise<StyleModule> },
   { id: 'pair_meam', names: { PAIRS: ['meam'] }, load: () => import('./registry/pair_meam') as Promise<StyleModule> },
   { id: 'pair_meam_spline', names: { PAIRS: ['meam/spline', 'meam/sw/spline'] }, load: () => import('./registry/pair_meam_spline') as Promise<StyleModule> },
   { id: 'pair_snap', names: { PAIRS: ['snap'] }, load: () => import('./registry/pair_snap') as Promise<StyleModule> },

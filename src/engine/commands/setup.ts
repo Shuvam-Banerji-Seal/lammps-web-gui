@@ -155,6 +155,13 @@ const atomModify: Handler = ({ sys }, a) => {
   if (kw.has('first')) {
     const g = kw.get('first')![0];
     sys.log(`atom_modify first ${g}: accepted; the browser engine does not reorder its atom storage (results are unchanged, only the internal order differs)`);
+    // atom_modify.html: "Since sorting is on by default, it will be turned off if the first keyword is used with a
+    // group-ID that is not “all”." and "The first and sort options cannot be used together." Measured with native
+    // LAMMPS (black box): with a first group, dumps before and after run 0 list the atoms in the same order
+    if (g !== 'all') {
+      if (kw.has('sort')) throw new StyleError('Atom_modify sort and first options cannot be used together');
+      sys.sortEvery = 0;
+    }
   }
   if (kw.get('map') && !['array', 'hash', 'yes'].includes(kw.get('map')![0])) throw new StyleError('atom_modify map must be array, hash or yes');
   if (kw.get('map')) sys.atomMapSet = true;

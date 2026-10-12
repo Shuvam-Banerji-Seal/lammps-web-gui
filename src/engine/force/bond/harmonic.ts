@@ -1,4 +1,4 @@
-import { SimpleBonded, atomIndex, delta } from '../bonded_util';
+import { SimpleBonded, atomIndex, bondDelta } from '../bonded_util';
 import type { BondedCompute } from '../types';
 
 /*
@@ -23,7 +23,7 @@ export class BondHarmonic extends SimpleBonded {
       const i = atomIndex(bc, b.atoms[2 * k], 'bond');
       const j = atomIndex(bc, b.atoms[2 * k + 1], 'bond');
       const t = b.type[k];
-      delta(bc, j, i, d);   // r_i - r_j
+      bondDelta(bc, i, j, d);   // r_i - r_j
       const r = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
       const dr = r - r0[t];
       const rk = K[t] * dr;

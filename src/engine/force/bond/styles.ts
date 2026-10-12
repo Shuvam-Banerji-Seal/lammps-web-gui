@@ -1,4 +1,4 @@
-import { SimpleBonded, atomIndex, delta } from '../bonded_util';
+import { SimpleBonded, atomIndex, bondDelta } from '../bonded_util';
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
 import { fmtCoeff, parseNum } from '../util';
 
@@ -31,7 +31,7 @@ export const bondLoop = (
     const i = atomIndex(bc, b.atoms[2 * k], 'bond');
     const j = atomIndex(bc, b.atoms[2 * k + 1], 'bond');
     const t = b.type[k];
-    delta(bc, j, i, d); // r_i - r_j
+    bondDelta(bc, i, j, d); // r_i - r_j
     const r = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
     const term = r > 0 ? pot(r, t, k) : { e: 0, dEdr: 0 };
     const fmag = r > 0 ? -term.dEdr / r : 0;

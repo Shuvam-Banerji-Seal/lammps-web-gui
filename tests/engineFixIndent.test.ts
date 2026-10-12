@@ -190,20 +190,35 @@ write_dump      all custom sph_out.dump id fx fy fz
     expect(a.fx).toBeCloseTo(0, 12);
   });
 
-  it('side in reverses the action: a containing wall, energy -K/3 (R - r)^3', async () => {
+  it('side in acts on atoms outside the sphere: a containing wall, energy +K/3 (r - R)^3', async () => {
+    // Measured with native LAMMPS (black box): side in acts on r > R (pushed toward the centre, energy K/3 (r-R)^3);
+    // an atom inside the sphere feels nothing.
     const { thermo, files } = await runScript(`
 ${INDENT_SYS}
-create_atoms    1 single 6 5 5
+create_atoms    1 single 8 5 5
 fix             1 all indent 10.0 sphere 5 5 5 2.0 units box side in
 ${THERMO_F}
 run             0
 write_dump      all custom sph_in.dump id fx fy fz
 `);
     const r = thermo[thermo.length - 1];
-    expect(r.f_1).toBeCloseTo(-10 / 3, 12);
+    expect(r.f_1).toBeCloseTo(10 / 3, 12);     // K/3 (r - R)^3 with r - R = 1
     expect(r['f_1[1]']).toBeCloseTo(10, 12);
     const a = dumpAtoms(files.get('sph_in.dump') ?? '').get(1)!;
     expect(a.fx).toBeCloseTo(-10, 12);          // pushed back toward the center
+  });
+
+  it('side in ignores atoms inside the sphere', async () => {
+    const { thermo } = await runScript(`
+${INDENT_SYS}
+create_atoms    1 single 6 5 5
+fix             1 all indent 10.0 sphere 5 5 5 2.0 units box side in
+${THERMO_F}
+run             0
+`);
+    const r = thermo[thermo.length - 1];
+    expect(r.f_1).toBeCloseTo(0, 12);
+    expect(r['f_1[1]']).toBeCloseTo(0, 12);
   });
 
   it('accounts for periodic boundaries when measuring the distance to the center', async () => {
@@ -272,17 +287,17 @@ write_dump      all custom cyl.dump id fx fy fz
     expect(a.fz).toBeCloseTo(0, 12);
   });
 
-  it('side in pushes atoms inside the cylinder toward the axis', async () => {
+  it('side in pushes atoms outside the cylinder toward the axis (native: r > R acts, energy K/3 (r-R)^3)', async () => {
     const { thermo, files } = await runScript(`
 ${INDENT_SYS}
-create_atoms    1 single 6 5 9
+create_atoms    1 single 8 5 9
 fix             1 all indent 8.0 cylinder z 5 5 2.0 units box side in
 ${THERMO_F}
 run             0
 write_dump      all custom cylin.dump id fx fy fz
 `);
     const r = thermo[thermo.length - 1];
-    expect(r.f_1).toBeCloseTo(-8 / 3, 12);
+    expect(r.f_1).toBeCloseTo(8 / 3, 12);
     expect(r['f_1[1]']).toBeCloseTo(8, 12);
     const a = dumpAtoms(files.get('cylin.dump') ?? '').get(1)!;
     expect(a.fx).toBeCloseTo(-8, 12);

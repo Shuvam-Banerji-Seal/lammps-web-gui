@@ -246,7 +246,7 @@ export class ForceField {
       const sb = ov && ov.bondsN === s.topo.bonds.n && ov.anglesN === s.topo.angles.n
         ? { ...s, topo: { ...s.topo, bonds: ov.bonds, angles: ov.angles } }
         : s;
-      const bc = { s: sb, geom, map: this.map, f: s.f, acc, eatom: null as Float64Array | null, vatom: null as Float64Array | null, virial: acc.vbond, warn: this.warn, historyUpdate: !!flags.step };
+      const bc = { s: sb, geom, map: this.map, f: s.f, acc, eatom: null as Float64Array | null, vatom: null as Float64Array | null, virial: acc.vbond, warn: this.warn, ghostCut: nb.cutghost, historyUpdate: !!flags.step };
       const run = (style: Bonded | null, t: PerAtomTerm, virial: Float64Array) => {
         if (!style || !want(t)) return;
         Object.assign(bc, termArrays(t));

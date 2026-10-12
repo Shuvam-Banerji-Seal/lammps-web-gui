@@ -102,6 +102,56 @@ export const delta = (bc: BondedCompute, a: number, b: number, out: number[], o 
   out[o] = d[0]; out[o + 1] = d[1]; out[o + 2] = d[2];
 };
 
+/*
+ * Bond displacement r_i - r_j for a bond stored on atom i (its first atom)
+ * with partner j, into out[o..o+2]. The partner is the periodic image of j
+ * closest to i among the ghost copies, where ghost copies exist only within
+ * the ghost cutoff of the box (neighbor cutghost, passed as bc.ghostCut).
+ *
+ * docs.lammps.org/Errors_details.html, warning "Bond/angle/dihedral extent >
+ * half of periodic box length": "LAMMPS will still compute bonded interactions
+ * based on the closest periodic images of the atoms and thus in most cases
+ * the results will be correct." Measured with native LAMMPS (black box): two
+ * atoms in a periodic x box of length 12, bond "create_bonds single/bond 1 1 2"
+ * (atom 1 at x = 0.5, atom 2 at x = x2), comm cutoff at its default 2.3 (pair
+ * cutoff 2.0 + skin 0.3). Bond energy K (r - r0)^2 with K = 1, r0 = 1:
+ *   x2 = 11.0 (image -1.0, a ghost): 0.25;  x2 = 10.0 (image -2.0): 2.25
+ *   x2 = 9.0 (image -3.0, not a ghost): 56.25 (r = 8.5, the atom as stored)
+ *   x2 = 8.0: 42.25 (r = 7.5);  x2 = 7.0: 30.25 (r = 6.5)
+ * and with the bond written "create_bonds single/bond 1 2 1" (owner at 9.0,
+ * partner at 0.5, image 12.5 a ghost): 6.25 (r = 3.5). So the owner is the
+ * first atom of the bond and the partner's images are tested against the
+ * ghost region of the box: an image p = x_j + nL is a ghost when
+ * lo - cut <= p <= hi + cut (periodic dimensions, orthogonal box). The atom
+ * as stored is always a candidate.
+ */
+export const bondDelta = (bc: BondedCompute, i: number, j: number, out: number[], o = 0): void => {
+  const x = bc.s.x;
+  const g = bc.geom;
+  const cut = bc.ghostCut ?? Number.POSITIVE_INFINITY;
+  if (bc.ghostCut === undefined || g.triclinic) {
+    delta(bc, j, i, out, o);
+    return;
+  }
+  for (let k = 0; k < 3; k++) {
+    const xi = x[3 * i + k];
+    const xj = x[3 * j + k];
+    let disp = xj - xi;
+    if (g.periodic[k]) {
+      const len = k === 0 ? g.lx : k === 1 ? g.ly : g.lz;
+      let best = Number.POSITIVE_INFINITY;
+      for (let n = -2; n <= 2; n++) {
+        const p = xj + n * len;
+        if (p < g.lo[k] - cut || p > g.hi[k] + cut) continue;
+        const dd = p - xi;
+        if (Math.abs(dd) < Math.abs(best)) best = dd;
+      }
+      if (Number.isFinite(best)) disp = best;
+    }
+    out[o + k] = -disp;
+  }
+};
+
 /** Dihedral angle and its gradient for atoms i, j, k, l (all four as 3-vectors in grad). */
 export const dihedralGeometry = (bc: BondedCompute, i: number, j: number, k: number, l: number, grad: number[], rel: number[]): number => {
   const b = [0, 0, 0, 0, 0, 0, 0, 0, 0];

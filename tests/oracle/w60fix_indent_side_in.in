@@ -1,0 +1,24 @@
+# oracle: fix indent side in (w60fix_indent_side_in): a sphere of radius 3.5 lattice units centred in an LJ sc solid pulls
+# the atoms outside it back toward the centre (side in acts on atoms with r > R, energy K/3 (r - R)^3); the centre is a
+# moving variable (equal-style, evaluated each step), units lattice. Measured against native LAMMPS (black box) per step.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+dimension 3
+boundary f f f
+atom_style atomic
+lattice sc 1.0
+region box block -6 6 -6 6 -6 6 units lattice
+create_box 1 box
+create_atoms 1 box
+mass * 1.0
+pair_style lj/cut 1.5
+pair_coeff * * 1.0 1.0
+velocity all set 0.0 0.0 0.0 sum no units box
+fix 1 all nve
+variable yc equal "0.02*sin(0.3*step)"
+fix 2 all indent 2.0 sphere 0.0 v_yc 0.0 3.5 units lattice side in
+timestep 0.005
+thermo_style custom step atoms pe ke
+thermo_modify format float %.15g lost ignore
+thermo 10
+run 60

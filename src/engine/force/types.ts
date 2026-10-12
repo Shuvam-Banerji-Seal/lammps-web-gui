@@ -365,6 +365,8 @@ export interface BondedCompute {
   vatom: Float64Array | null;
   /** Emits a "WARNING: ..." line in the run log (e.g. FENE bond too long). */
   warn?: (text: string) => void;
+  /** Ghost cutoff (neighbor cutghost): bonded partners use the closest image among the ghost copies (bonded_util delta). */
+  ghostCut?: number;
   /** False during setup (run start, run 0, between runs); true inside a timestep (bpm bonds break only then). */
   historyUpdate?: boolean;
 }

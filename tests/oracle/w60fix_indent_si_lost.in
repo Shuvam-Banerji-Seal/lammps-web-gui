@@ -1,0 +1,28 @@
+# oracle: fix indent sphere with a moving centre (variable v_y, equal-style, evaluated each step) on an LJ sc solid in SI units,
+# the geometry and force constant of examples/bpm/peri (in.bpm.peri.pmb) with a plain lj/cut pair in place of bpm/peri (not
+# in this engine). Atoms that leave the fixed box are counted by thermo_modify lost ignore (3486, 3482, 3478 atoms at steps 7, 15, 24).
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units si
+dimension 3
+boundary f f f
+atom_style atomic
+atom_modify map array
+lattice sc 0.0005
+region box block -0.006 0.006 -0.006 0.002 -0.006 0.006 units box
+create_box 1 box
+region target cylinder y 0.0 0.0 0.0050 -0.0050 0.0 units box
+create_atoms 1 region target
+mass * 2.75e-7
+pair_style lj/cut 0.0015001
+pair_coeff * * 1.0e-9 0.0005
+velocity all set 0.0 0.0 0.0 sum no units box
+fix 1 all nve
+variable y0 equal 0.00155
+variable vy equal -100
+variable y equal "v_y0 + step*dt*v_vy"
+fix 2 all indent 1e17 sphere 0.0000 v_y 0.0000 0.0015 units box
+timestep 1.0e-7
+thermo_style custom step atoms pe ke
+thermo_modify format float %.15g lost ignore
+thermo 1
+run 30

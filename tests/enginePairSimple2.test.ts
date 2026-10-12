@@ -161,8 +161,6 @@ run             0
 
 describe('pair simple2: unsupported options are rejected', () => {
   const cases: [string, string, RegExp][] = [
-    ['soft rejects shift', 'pair_style soft 2.5\npair_coeff * * 10.0\npair_modify shift yes', /shift is not supported/],
-    ['yukawa rejects tail', 'pair_style yukawa 2.0 2.5\npair_coeff * * 20.0\npair_modify tail yes', /tail is not supported/],
     ['gauss rejects shift', 'pair_style gauss 2.5\npair_coeff * * 1.0 0.9\npair_modify shift yes', /shift is not supported/],
     ['gauss rejects sixthpower mix', 'pair_style gauss 2.5\npair_coeff * * 1.0 0.9\npair_modify mix sixthpower', /sixthpower is not supported/],
     ['zero rejects tail', 'pair_style zero 2.5\npair_coeff * *\npair_modify tail yes', /tail is not supported/],

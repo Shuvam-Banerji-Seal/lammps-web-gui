@@ -2,7 +2,7 @@ import { StyleError, type BondedEquilibria, type PairCompute } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairLJCut } from './lj_cut';
 import { parseNum } from '../util';
-import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, TABLE_INNER_RSQ, type ErfcTable } from '../erfc';
+import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../erfc';
 import { buildOwnedSites, tip4pAlpha, type OwnedSites, type Tip4pModel } from './tip4p_sites';
 
 /*
@@ -51,7 +51,7 @@ import { buildOwnedSites, tip4pAlpha, type OwnedSites, type Tip4pModel } from '.
 
 /** Real-space long-range Coulomb kernel, as coul_long.ts coulLongPair (qq = C qi qj). */
 const coulLong = (rsq: number, qq: number, g: number, fc: number, poly: boolean, table: ErfcTable | null): { e: number; f: number } => {
-  if (table && rsq > TABLE_INNER_RSQ) {
+  if (table && rsq > table.inner) {
     let forcecoul = qq * table.force(rsq);
     let e = qq * table.energy(rsq);
     if (fc < 1) {
@@ -100,7 +100,7 @@ export class PairTIP4PBase extends PairLJCut {
     return { otype: this.otype, htype: this.htype, alpha: this.alpha };
   }
 
-  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul); }
+  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq); }
 
   /** Parses otype htype btype atype qdist cutoff [cutoff2]; the Coulomb-only styles take no cutoff2. */
   settings(args: string[]): void {

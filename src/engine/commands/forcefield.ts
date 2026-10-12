@@ -58,6 +58,8 @@ const pairModify: Handler = ({ sys }, a) => {
   const p = sys.ff.pair;
   if (!p) throw new StyleError('pair_modify needs a pair_style first');
   let targets: Pair[] = [p];
+  // the sub-style named by the pair keyword: compute and compute/tally apply to it alone
+  let only: Pair | null = null;
   let k = 0;
   if (p instanceof PairHybrid) {
     targets = [p, ...p.subs.map((x) => x.style)];
@@ -66,6 +68,7 @@ const pairModify: Handler = ({ sys }, a) => {
       // the selected sub-style first (style-specific keywords go to it); the hybrid's own
       // shift / tail flags follow, as native LAMMPS rejects shift on one sub-style with tail on another
       targets = [sub.style, p];
+      only = sub.style;
       k = 1 + used;
       for (;;) {
         if (a[k] === 'special') {
@@ -73,7 +76,10 @@ const pairModify: Handler = ({ sys }, a) => {
           p.setSpecial(sub, a[k + 1] ?? '', w);
           k += 5;
         } else if (a[k] === 'compute/tally') {
-          yesno(a[k + 1], 'compute/tally');
+          // pair_modify.html: "disables or enables registering compute */tally computes for the sub-style". The
+          // engine always registers them (yes); no is refused. Measured with native LAMMPS (black box): a
+          // compute group/group pair sum is the same with compute/tally no and yes (the lj/cut energy stays in it).
+          if (!yesno(a[k + 1], 'compute/tally')) throw new StyleError('pair_modify pair compute/tally no is not supported by the browser engine');
           k += 2;
         } else break;
       }
@@ -92,15 +98,35 @@ const pairModify: Handler = ({ sys }, a) => {
       case 'tail': { const y = yesno(v, 'tail'); for (const t of targets) t.tail = y; k += 2; break; }
       case 'table': { const n = int(v, 'table'); for (const t of targets) t.table = n; k += 2; break; }
       case 'table/disp': { const n = int(v, 'table/disp'); for (const t of targets) (t as Pair & { tableDisp?: number }).tableDisp = n; k += 2; break; }
-      case 'tabinner': case 'tabinner/disp': {
-        // pair_modify.html: "The default cutoff value is sqrt(2.0) distance units"; the engine's tables
-        // (force/erfc.ts) are built for that inner cutoff only
+      case 'tabinner': {
+        // pair_modify.html: "The *tabinner* and *tabinner/disp* keywords set an inner cutoff above which the
+        // pairwise computation is done by table lookup"; the default is sqrt(2.0). The erfc tables take it from here.
         const c = num(v, key);
-        if (Math.abs(c - Math.SQRT2) > 1e-12) throw new StyleError(`pair_modify ${key} ${v}: only the default sqrt(2.0) is supported by the browser engine`);
+        if (!(c > 0)) throw new StyleError(`pair_modify tabinner must be > 0 (got ${v})`);
+        // sqrt(2) squared is 2 exactly (the default table boundary of erfc.ts)
+        for (const t of targets) t.tabinnerRsq = Math.abs(c - Math.SQRT2) < 1e-15 ? 2 : c * c;
         k += 2;
         break;
       }
-      case 'compute': if (!yesno(v, 'compute')) throw new StyleError('pair_modify compute no is not supported'); k += 2; break;
+      case 'tabinner/disp': {
+        // the dispersion tables are not in the engine: only the default cutoff is accepted
+        const c = num(v, key);
+        if (Math.abs(c - Math.SQRT2) > 1e-12) throw new StyleError(`pair_modify ${key} ${v}: only the default sqrt(2.0) is supported by the browser engine (no dispersion tables)`);
+        k += 2;
+        break;
+      }
+      case 'compute': {
+        // pair_modify.html: "The compute keyword allows pairwise computations to be turned off"
+        const y = yesno(v, 'compute');
+        for (const t of only ? [only] : targets) t.computeOn = y;
+        k += 2;
+        break;
+      }
+      case 'nofdotr':
+        // pair_modify.html: "The nofdotr keyword allows to disable an optimization that computes the global stress
+        // tensor from the total forces ..." The engine's virial is the same sum; only roundoff can differ (no value)
+        k += 1;
+        break;
       case 'neigh/trim': yesno(v, key); k += 2; break;
       case 'pair':
         throw new StyleError(p instanceof PairHybrid
@@ -159,7 +185,9 @@ const specialBonds: Handler = ({ sys }, a) => {
   };
   for (let k = 0; k < a.length;) {
     switch (a[k]) {
-      case 'amber': sp.lj = [0, 0, 0.5]; sp.coul = [0, 0, 0.8333]; k++; break;
+      // special_bonds.html: "The amber keyword sets the 3 coefficients to 0.0, 0.0, 0.5 for LJ interactions and to
+      // 0.0, 0.0, 0.8333 for Coulombic interactions ... where the last value is really 5/6."
+      case 'amber': sp.lj = [0, 0, 0.5]; sp.coul = [0, 0, 5 / 6]; k++; break;
       case 'charmm': sp.lj = [0, 0, 0]; sp.coul = [0, 0, 0]; k++; break;
       case 'dreiding': sp.lj = [0, 0, 1]; sp.coul = [0, 0, 1]; k++; break;
       case 'fene': sp.lj = [0, 1, 1]; sp.coul = [0, 1, 1]; k++; break;
@@ -169,7 +197,10 @@ const specialBonds: Handler = ({ sys }, a) => {
       case 'angle': sp.angle = yesno(a[k + 1], 'angle'); k += 2; break;
       case 'dihedral': sp.dihedral = yesno(a[k + 1], 'dihedral'); k += 2; break;
       case 'one/five':
-        if (yesno(a[k + 1], 'one/five')) throw new StyleError('special_bonds one/five yes is not supported');
+        // special_bonds.html: "required by some pair styles, such as pair_style amoeba and hippo". Measured with
+        // native LAMMPS (black box): atom_style full refuses it ("Cannot set special_bonds one/five if atom style does
+        // not support it"); the engine has no atom style with the 1-5 list, so yes stays refused.
+        if (yesno(a[k + 1], 'one/five')) throw new StyleError('special_bonds one/five yes is not supported (the browser engine has no atom style with the 1-5 neighbour list)');
         k += 2;
         break;
       default: throw new StyleError(`unknown special_bonds keyword '${a[k]}'`);

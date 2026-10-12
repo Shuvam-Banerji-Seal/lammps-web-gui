@@ -48,8 +48,8 @@ export class PairSoft extends Pair {
     this.p.setRange(args[0], args[1], [a, cut]);
   }
 
-  initStyle(_ctx: StyleContext): void {
-    if (this.shift) throw new StyleError("pair_modify shift is not supported for pair style soft (the pair interaction goes to 0.0 at the cutoff)");
+  initStyle(ctx: StyleContext): void {
+    this.noTermLog(ctx, 'shift');
   }
 
   initOne(i: number, j: number): number {
@@ -175,8 +175,8 @@ export class PairYukawa extends Pair {
     this.p.setRange(args[0], args[1], [a, cut]);
   }
 
-  initStyle(_ctx: StyleContext): void {
-    if (this.tail) throw new StyleError('pair_modify tail is not supported for pair style yukawa');
+  initStyle(ctx: StyleContext): void {
+    this.noTermLog(ctx, 'tail');
   }
 
   initOne(i: number, j: number): number {

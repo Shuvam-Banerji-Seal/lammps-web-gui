@@ -385,10 +385,9 @@ abstract class PairEAMBase extends Pair {
     throw new StyleError(`pair_modify ${key} is not supported for pair style ${this.name}`);
   }
 
-  override initStyle(_ctx: StyleContext): void {
-    if (this.shift || this.tail) {
-      throw new StyleError(`pair_style ${this.name} does not support the pair_modify shift and tail options`);
-    }
+  override initStyle(ctx: StyleContext): void {
+    this.noTermLog(ctx, 'shift');
+    this.noTermLog(ctx, 'tail');
     if (this.table !== 12) {
       throw new StyleError(`pair_style ${this.name} does not support the pair_modify table option`);
     }

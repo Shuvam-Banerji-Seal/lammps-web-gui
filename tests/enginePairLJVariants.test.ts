@@ -108,15 +108,20 @@ describe('pair style lj/expand', () => {
     checkFD(st, 1, 2, [1.25, 2.1, 2.5]);
   });
 
-  it('force cutoff is rc + delta and shift zeroes the energy there', () => {
+  it('force cutoff is rc + delta; shift offset is at rc + delta (not at rc)', () => {
     const st = make(new PairLJExpand(), ['2.5'], [
       ['1', '1', '1.0', '1.0', '0.0'], ['2', '2', '0.9', '0.9', '0.15'], ['1', '2', '1.0', '0.95', '0.08'],
     ]);
     near(st.cut[1 * 3 + 2], 2.5 + 0.08);
     st.shift = true;
     st.init(CTX);
-    const rc = 2.5 + 0.15;
-    near(st.single(0, 0, 2, 2, rc * rc, 1, 1).eng, 0);
+    // Measured with native LAMMPS (black box, lj/expand Delta 0.1 and 0.5): the offset is evaluated at the force
+    // cutoff rc + delta, so the energy at that distance is not zero: u(x) = 4 eps ((sig/x)^12 - (sig/x)^6) and
+    // E(rc + delta) = u(rc) - u(rc + delta) (tests/oracle/w88pair_expand_shift*.in).
+    const rcut = 2.5, dl = 0.15, eps = 0.9, sig = 0.9;
+    const u = (x: number) => 4 * eps * ((sig / x) ** 12 - (sig / x) ** 6);
+    const rc = rcut + dl;
+    near(st.single(0, 0, 2, 2, rc * rc, 1, 1).eng, u(rcut) - u(rc));
     checkFD(st, 2, 2, [1.3, 2.0, 2.5]);
   });
 
@@ -178,14 +183,15 @@ describe('pair style lj/smooth', () => {
     void st;
   });
 
-  it('throws on pair_modify tail yes (unsupported)', () => {
+  it('pair_modify tail yes is accepted with no tail term (native ignores it)', () => {
     const st = new PairLJSmooth();
     st.settings(['2.0', '2.5'], CTX);
     st.allocate(2);
     st.coeff(['1', '1', '1.0', '1.0'], CTX);
     st.coeff(['2', '2', '1.0', '1.0'], CTX);
     st.tail = true;
-    expect(() => st.init(CTX)).toThrow(/tail/);
+    expect(() => st.init(CTX)).not.toThrow();
+    expect(st.tailSums().etail).toBe(0);
   });
 });
 
@@ -206,14 +212,14 @@ describe('pair style lj/smooth/linear', () => {
     near(at.fforce, 0);
   });
 
-  it('throws on pair_modify shift yes (unsupported)', () => {
+  it('pair_modify shift yes is accepted with no shift term (native ignores it)', () => {
     const st = new PairLJSmoothLinear();
     st.settings(['2.5'], CTX);
     st.allocate(2);
     st.coeff(['1', '1', '1.0', '1.0'], CTX);
     st.coeff(['2', '2', '1.0', '1.0'], CTX);
     st.shift = true;
-    expect(() => st.init(CTX)).toThrow(/shift/);
+    expect(() => st.init(CTX)).not.toThrow();
   });
 
   it('throws on missing cross coefficients', () => {

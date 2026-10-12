@@ -1,0 +1,23 @@
+# oracle: atom_style dielectric, pair lj/cut/coul/cut/dielectric, fix polarize/bem/gmres (nopbc sphere, run 0, examples/PACKAGES/dielectric in.nopbc.gmres)
+# Measured with native LAMMPS (black box): the engine agrees to 2e-15 relative (ecoul, all forces) under Node 24 and Node 20; the BEM/GMRES solve (tol 1e-4) stops after 2 outer iterations with residual 5.06e-5 (f_3 of native).
+# oracle-inputs: w71diel_sphere.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+newton off
+units       lj
+atom_style  dielectric
+atom_modify map array
+dimension   3
+boundary    f f f
+read_data   w71diel_sphere.data
+group interface type 1
+group ions type 2 3
+pair_style      lj/cut/coul/cut/dielectric 1.122 20.0
+pair_coeff      * * 1.0 1.0
+pair_coeff      1 1 0.0 1.0
+neigh_modify    one 5000
+fix             1 ions nve
+fix             3 interface polarize/bem/gmres 1 1.0e-4
+thermo          1000
+thermo_style    custom step evdwl ecoul elong epair
+thermo_modify   flush yes format float %.15g
+run             0

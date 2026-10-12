@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
-import { appendAtoms, setOxdnaPartners, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, TRI_BONUS_COLS, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_SPIN, isElectronStyle } from '../atoms';
+import { appendAtoms, setOxdnaPartners, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, TRI_BONUS_COLS, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_SPIN, isElectronStyle, isDielectricStyle, DIEL_AREA, DIEL_ED, DIEL_EM, DIEL_EPSILON, DIEL_CURVATURE, DIEL_QSCALED } from '../atoms';
 import { lineFromEnds, lineEnds, triangleCorner, triangleAreaOfBody, type LineBonus } from '../lineTri';
 import { triBodyHook } from '../styles';
 import type { TriBody } from '../triBonus';
@@ -72,6 +72,10 @@ const BASE_COLS: Record<string, string[]> = {
   tri: ['id', 'mol', 'type', 'triangleflag', 'density', 'x', 'y', 'z'],
   // read_data.html, the Atoms-section table, row electron: "atom-ID atom-type q espin eradius x y z"
   electron: ['id', 'type', 'q', 'espin', 'eradius', 'x', 'y', 'z'],
+  // read_data.html, Atoms section, dielectric: "atom-ID atom-type q x y z mux muy muz area ed em epsilon curvature";
+  // atom_style.html: "full + mu, area, ed, em, epsilon, curvature, q_scaled". Measured with native LAMMPS (black box): a
+  // dielectric data line has a molecule ID after the atom ID (15 columns, as the examples/PACKAGES/dielectric data files)
+  dielectric: ['id', 'mol', 'type', 'q', 'x', 'y', 'z', 'mux', 'muy', 'muz', 'area', 'ed', 'em', 'epsilon', 'curvature'],
 };
 
 /**
@@ -562,6 +566,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const lflag = isLineStyle(style) || isTriStyle(style) ? new Uint8Array(count) : null;
         const tIdx = new Int32Array(count), tAt = new Int32Array(count);
         const espin = new Float64Array(count), eradius = new Float64Array(count);
+        const diel = isDielectricStyle(style) ? { area: new Float64Array(count), ed: new Float64Array(count), em: new Float64Array(count), epsilon: new Float64Array(count), curvature: new Float64Array(count) } : null;
         const bflag = parseBodyStyle(style) ? new Uint8Array(count) : null;
         body.forEach(({ w, at }, a) => {
           if (w.length !== cols.length && w.length !== cols.length + 3) {
@@ -617,6 +622,11 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
               case 'espin': espin[a] = intOf(v, 'espin', at); break;
               // read_data.html: "eradius = electron radius (or fixed-core radius)"
               case 'eradius': eradius[a] = numOf(v, 'eradius', at); break;
+              case 'area': case 'ed': case 'em': case 'epsilon': case 'curvature': {
+                const dk = cols[c] as 'area' | 'ed' | 'em' | 'epsilon' | 'curvature';
+                diel![dk][a] = numOf(v, dk, at);
+                break;
+              }
             }
           }
           if (mu) mu[4 * a + 3] = Math.hypot(mu[4 * a], mu[4 * a + 1], mu[4 * a + 2]);
@@ -660,7 +670,12 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         }
         const firstNew = s.n;
         const electronCustom = isElectronStyle(s.atomStyle) ? new Map([[ELECTRON_SPIN, espin], [ELECTRON_RADIUS, eradius]]) : undefined;
-        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined, sp: spin ?? undefined, vfrac: s.vfrac ? vol : undefined, tmplIndex: tmplId !== null ? tIdx : undefined, tmplAtom: tmplId !== null ? tAt : undefined, custom: electronCustom });
+        // Measured with native LAMMPS (black box): a data line with q 2.0 and epsilon 4.0 reads as q_scaled 0.5 (q / epsilon)
+        const dielCustom = diel ? new Map<string, Float64Array>([
+          [DIEL_AREA, diel.area], [DIEL_ED, diel.ed], [DIEL_EM, diel.em], [DIEL_EPSILON, diel.epsilon], [DIEL_CURVATURE, diel.curvature],
+          [DIEL_QSCALED, Float64Array.from(q, (qq, a) => qq / diel.epsilon[a])],
+        ]) : undefined;
+        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined, sp: spin ?? undefined, vfrac: s.vfrac ? vol : undefined, tmplIndex: tmplId !== null ? tIdx : undefined, tmplAtom: tmplId !== null ? tAt : undefined, custom: electronCustom ?? dielCustom });
         // periodic remap of the new atoms
         for (let i = n0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);
         if (tmplId !== null) expandTemplateTopology(s, sys.molecules.get(tmplId) ?? [], tmplId, firstNew, s.n);
@@ -1040,6 +1055,11 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
         // atom_style.html, electron: espin is an integer (native write_data), eradius a distance
         case 'espin': return String(s.custom.get(ELECTRON_SPIN)!.data[i]);
         case 'eradius': return shortest(s.custom.get(ELECTRON_RADIUS)!.data[i]);
+        case 'area': return shortest(s.custom.get(DIEL_AREA)!.data[i]);
+        case 'ed': return shortest(s.custom.get(DIEL_ED)!.data[i]);
+        case 'em': return shortest(s.custom.get(DIEL_EM)!.data[i]);
+        case 'epsilon': return shortest(s.custom.get(DIEL_EPSILON)!.data[i]);
+        case 'curvature': return shortest(s.custom.get(DIEL_CURVATURE)!.data[i]);
         default: return shortest(xo[3 * i + 'xyz'.indexOf(c)]);
       }
     });

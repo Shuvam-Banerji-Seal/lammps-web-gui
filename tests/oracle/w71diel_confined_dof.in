@@ -1,0 +1,29 @@
+# oracle: pppm/dielectric with fix polarize/functional (confined: two ions between two dielectric interfaces, PPPM/dielectric; examples/PACKAGES/dielectric in.confined.dof)
+# Measured with native LAMMPS (black box): G 0.24260797 and grid 12 12 36 match; the engine agrees to 3e-9 relative (elong, forces) under Node 24 and Node 20; the functional CG solve is iterative (tol 1e-4).
+# oracle-inputs: w71diel_confined.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+units           lj
+atom_style      dielectric
+atom_modify     map array
+dimension       3
+boundary        p p f
+read_data       w71diel_confined.data
+group interface type 1
+group ions type 2 3
+group cations type 2
+group anions type 3
+set group cations epsilon 10
+set group anions epsilon 10
+pair_style      lj/cut/coul/long/dielectric 1.122 10.0
+pair_coeff      * * 1.0 1.0
+pair_coeff      1 1 0.0 1.0
+kspace_style    pppm/dielectric 0.0001
+kspace_modify   slab 3.0
+neigh_modify    every 1 delay 0 check yes one 5000
+fix             1 ions nve
+fix             3 interface polarize/functional 1 0.0001
+fix_modify      3 dielectrics -10 15 1.0 0.866 NULL
+thermo          1000
+thermo_style    custom step evdwl ecoul elong epair
+thermo_modify   flush yes format float %.15g
+run             0

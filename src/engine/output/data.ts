@@ -1,7 +1,10 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
-import { appendAtoms, setOxdnaPartners, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel } from '../atoms';
+import { appendAtoms, setOxdnaPartners, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { lineFromEnds, lineEnds, triangleCorner, triangleAreaOfBody, type LineBonus } from '../lineTri';
+import { triBodyHook } from '../styles';
+import type { TriBody } from '../triBonus';
 import { expandTemplateTopology } from '../template';
 import { BODY_RECORD, bodyRecordOffset, bodyRecordStride, parseBodyStyle, principalFrame } from '../bodies';
 import { makeBox } from '../domain';
@@ -62,6 +65,10 @@ const BASE_COLS: Record<string, string[]> = {
   body: ['id', 'type', 'bodyflag', 'mass', 'x', 'y', 'z'],
   // atom_style.html, oxdna: "*atomic* + id5p" (the 5'/3' partners come from the Bonds section): no Atoms-line column of its own
   oxdna: ['id', 'type', 'x', 'y', 'z'],
+  // read_data.html, the Atoms-section table, row line: "atom-ID molecule-ID atom-type lineflag density x y z"
+  line: ['id', 'mol', 'type', 'lineflag', 'density', 'x', 'y', 'z'],
+  // read_data.html, the Atoms-section table, row tri: "atom-ID molecule-ID atom-type triangleflag density x y z"
+  tri: ['id', 'mol', 'type', 'triangleflag', 'density', 'x', 'y', 'z'],
 };
 
 /**
@@ -83,7 +90,7 @@ const HEADER_KEYS: [RegExp, string][] = [
   [/^atom types$/, 'atom types'], [/^bond types$/, 'bond types'], [/^angle types$/, 'angle types'],
   [/^dihedral types$/, 'dihedral types'], [/^improper types$/, 'improper types'],
   [/^extra (bond|angle|dihedral|improper|special) per atom$/, 'extra'],
-  [/^ellipsoids$/, 'ellipsoids'], [/^bodies$/, 'bodies'],
+  [/^ellipsoids$/, 'ellipsoids'], [/^bodies$/, 'bodies'], [/^lines$/, 'lines'], [/^triangles$/, 'triangles'],
 ];
 
 const SECTIONS = new Set([
@@ -191,6 +198,64 @@ const readBodyLines = (lines: string[], k0: number, nbodies: number): { bodies: 
     bodies.push({ id, ints, dbls, at: h.at });
   }
   return { bodies, k };
+};
+
+/** Number of atoms whose line or triangle flag (LINE_FLAG or TRI_FLAG) is 1. */
+const flagCount = (s: SimState, key: string): number => {
+  const f = s.custom.get(key)!.data;
+  let n = 0;
+  for (let i = 0; i < s.n; i++) if (f[i]) n++;
+  return n;
+};
+
+/** The body-frame corners of triangle i (TRI_BONUS, 9 values). */
+const triCorners = (s: SimState, i: number): Float64Array => s.custom.get(TRI_BONUS)!.data.subarray(TRI_BONUS_COLS * i, TRI_BONUS_COLS * i + 9);
+
+/** Point q moved by whole periodic box lengths so that it is the image nearest to r (domain.cpp remap_near, orthogonal box). */
+const remapNear3 = (s: SimState, q: [number, number, number], r: [number, number, number]): [number, number, number] => {
+  const out: [number, number, number] = [q[0], q[1], q[2]];
+  for (let d = 0; d < 3; d++) {
+    if (!s.box.periodic[d]) continue;
+    const L = s.box.hi[d] - s.box.lo[d];
+    while (out[d] - r[d] > 0.5 * L) out[d] -= L;
+    while (out[d] - r[d] < -0.5 * L) out[d] += L;
+  }
+  return out;
+};
+
+/** The two end points of a line segment, each moved to the periodic image nearest atom i's position (2d: x and y). */
+const remapEndsNear = (s: SimState, i: number, ends: [number, number][]): [number, number][] => {
+  const r: [number, number, number] = [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]];
+  return ends.map(([x, y]) => { const q = remapNear3(s, [x, y, 0], r); return [q[0], q[1]] as [number, number]; });
+};
+
+/** read_data.html: the segment or triangle centre must be within 0.001 of the atom's x (atom_vec_line.cpp EPSILON), relative to its size. */
+const checkCentre = (s: SimState, i: number, c: readonly number[], size: number, msg: string, at: number): void => {
+  const d = Math.hypot(c[0] - s.x[3 * i], c[1] - s.x[3 * i + 1], c[2] - s.x[3 * i + 2]);
+  if (d / size > 0.001) throw new StyleError(`data file line ${at}: ${msg}`);
+  // the stored position becomes the exact centre (atom_vec_line.cpp and atom_vec_tri.cpp reset atom x to the centre)
+  s.x[3 * i] = c[0]; s.x[3 * i + 1] = c[1]; s.x[3 * i + 2] = c[2];
+};
+
+/** atom_vec_line.cpp data_atom_bonus: length, theta, radius = half length, rmass = density * length. */
+const setLineBonus = (s: SimState, i: number, lb: LineBonus, density: number): void => {
+  s.custom.get(LINE_FLAG)!.data[i] = 1;
+  const bonus = s.custom.get(LINE_BONUS)!.data;
+  bonus[2 * i] = lb.length;
+  bonus[2 * i + 1] = lb.theta;
+  s.radius![i] = 0.5 * lb.length;
+  s.rmass![i] = density * lb.length;
+};
+
+/** atom_vec_tri.cpp data_atom_bonus: radius = circumradius, rmass = density * area, orientation quat and principal moments. */
+const setTriBonus = (s: SimState, i: number, tb: TriBody): void => {
+  s.custom.get(TRI_FLAG)!.data[i] = 1;
+  const bonus = s.custom.get(TRI_BONUS)!.data;
+  for (let k = 0; k < 9; k++) bonus[TRI_BONUS_COLS * i + k] = tb.corners[k];
+  for (let d = 0; d < 3; d++) bonus[TRI_BONUS_COLS * i + 9 + d] = tb.moments[d];
+  s.radius![i] = tb.radius;
+  s.rmass![i] = s.rmass![i] * tb.area;
+  for (let d = 0; d < 4; d++) s.quat![4 * i + d] = tb.quat[d];
 };
 
 const intOf = (w: string | undefined, what: string, line: number): number => {
@@ -303,6 +368,10 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   const natoms = h.atoms ?? 0;
   const style = s.atomStyle;
   const cols = atomStyleCols(style);
+  // atom_style line and tri: the dimension is fixed (atom_vec_line.cpp init, atom_vec_tri.cpp init)
+  if (isLineStyle(style) && s.dimension !== 2) throw new StyleError('Atom_style line can only be used in 2d simulations');
+  if (isTriStyle(style) && s.dimension !== 3) throw new StyleError('Atom_style tri can only be used in 3d simulations');
+  if ((isLineStyle(style) || isTriStyle(style)) && (genFrame || s.box.triclinic)) throw new StyleError(`read_data: ${isLineStyle(style) ? 'line' : 'tri'} particles in a triclinic box are not supported by the browser engine`);
   // atom_style template: read_data.html "set the *bonds*, *angles*, etc header keywords in the data file," (see template.ts)
   const tmplId = templateStyleId(style);
   if ((h.bodies ?? 0) > 0 && !parseBodyStyle(style)) throw new StyleError(`data file header bodies needs atom_style body (current: ${style})`);
@@ -321,6 +390,9 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   const vel = new Map<number, number[]>();
   /** Atoms with ellipsoidflag 1 waiting for their Ellipsoids line: atom ID -> density. */
   const ellPending = new Map<number, number>();
+  /** atom_style line / tri: atoms with lineflag 1 (triangleflag 1) waiting for their Lines (Triangles) line: atom ID -> density. */
+  const linePending = new Map<number, number>();
+  const triPending = new Map<number, number>();
   /** atom_style body: atoms with bodyflag 1 waiting for their Bodies entry. */
   const bodyPending = new Set<number>();
   const coeffLines: { section: string; line: string; at: number }[] = [];
@@ -432,6 +504,13 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         case 'Ellipsoids':
           if (!s.shape) throw new StyleError('data file section Ellipsoids needs atom_style ellipsoid');
           return h.ellipsoids ?? 0;
+        // read_data.html: "The *Lines* section must appear if atom_style line is used and any atoms are listed in the *Atoms* section with a lineflag = 1"
+        case 'Lines':
+          if (!isLineStyle(style)) throw new StyleError('data file section Lines needs atom_style line');
+          return h.lines ?? 0;
+        case 'Triangles':
+          if (!isTriStyle(style)) throw new StyleError('data file section Triangles needs atom_style tri');
+          return h.triangles ?? 0;
         default: throw new StyleError(`data file section '${title}' needs features the browser engine does not support (type labels, class2 cross terms or finite-size particles)`);
       }
     })();
@@ -454,6 +533,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const mu = s.mu ? new Float64Array(4 * count) : null;
         const spin = s.sp ? new Float64Array(4 * count) : null;
         const eflag = s.shape ? new Uint8Array(count) : null;
+        // atom_style line: lineflag; atom_style tri: triangleflag (read_data.html: 1 for line segment or triangular particles, 0 for point particles)
+        const lflag = isLineStyle(style) || isTriStyle(style) ? new Uint8Array(count) : null;
         const tIdx = new Int32Array(count), tAt = new Int32Array(count);
         const bflag = parseBodyStyle(style) ? new Uint8Array(count) : null;
         body.forEach(({ w, at }, a) => {
@@ -482,6 +563,12 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
                 const f = intOf(v, 'ellipsoidflag', at);
                 if (f !== 0 && f !== 1) throw new StyleError(`data file line ${at}: ellipsoidflag must be 0 or 1`);
                 eflag![a] = f;
+                break;
+              }
+              case 'lineflag': case 'triangleflag': {
+                const f = intOf(v, cols[c], at);
+                if (f !== 0 && f !== 1) throw new StyleError(`data file line ${at}: ${cols[c]} must be 0 or 1`);
+                lflag![a] = f;
                 break;
               }
               case 'bodyflag': {
@@ -529,6 +616,9 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         // atom_style body: the mass column is the body's mass (read_data.html); a bodyflag 1 atom needs a Bodies entry
         if (bflag) for (let a = 0; a < count; a++) if (bflag[a]) bodyPending.add(id[a]);
         if (eflag) for (let a = 0; a < count; a++) if (eflag[a]) ellPending.set(id[a], density[a]);
+        // atom_style line / tri: the density is per length or per area; the mass is set when the Lines or Triangles entry gives the size
+        if (lflag && isLineStyle(style)) for (let a = 0; a < count; a++) if (lflag[a]) linePending.set(id[a], density[a]);
+        if (lflag && isTriStyle(style)) for (let a = 0; a < count; a++) if (lflag[a]) triPending.set(id[a], density[a]);
         if (genFrame) {
           // read_data.html: coordinates "should be inside the general triclinic simulation box"; the
           // general -> restricted rotation is about the box origin (Howto_triclinic.html)
@@ -568,19 +658,66 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         }
         break;
       }
-      case 'Velocities':
-        // read_data.html: "sphere | atom-ID vx vy vz wx wy wz"
-        if (s.omega && s.angmom) throw new StyleError('data file Velocities: hybrid styles with both sphere and ellipsoid sub-styles are not supported by the browser engine');
+      // read_data.html, Lines section: "atom-ID x1 y1 x2 y2" (the end points of a line segment, centred on the atom's x)
+      case 'Lines': {
+        const where = new Map<number, number>();
+        for (let i = n0; i < s.n; i++) where.set(s.id[i], i);
         for (const { w, at } of body) {
-          // read_data.html: "ellipsoid | atom-ID vx vy vz lx ly lz"
-          const need = s.omega || s.angmom ? 7 : 4;
+          if (w.length !== 5) throw new StyleError(`data file line ${at}: Lines needs atom-ID x1 y1 x2 y2`);
+          const aid = intOf(w[0], 'atom-ID', at) + (idBase || 0);
+          const i = where.get(aid);
+          const dens = linePending.get(aid);
+          if (i === undefined || dens === undefined) throw new StyleError(`data file line ${at}: atom ${aid} is not a line segment (lineflag 1) of this data file`);
+          const e = [1, 2, 3, 4].map((c) => numOf(w[c], 'end point', at));
+          const ends = remapEndsNear(s, i, [[e[0], e[1]], [e[2], e[3]]]);
+          const lb = lineFromEnds(ends[0][0], ends[0][1], ends[1][0], ends[1][1]);
+          if (!(lb.length > 0)) throw new StyleError(`data file line ${at}: line segment has zero length`);
+          checkCentre(s, i, [0.5 * (ends[0][0] + ends[1][0]), 0.5 * (ends[0][1] + ends[1][1]), 0], lb.length, 'Inconsistent line segment in data file', at);
+          setLineBonus(s, i, lb, dens);
+          linePending.delete(aid);
+        }
+        break;
+      }
+      // read_data.html, Triangles section: "atom-ID x1 y1 z1 x2 y2 z2 x3 y3 z3" (the corner points, centred on the atom's x)
+      case 'Triangles': {
+        const where = new Map<number, number>();
+        for (let i = n0; i < s.n; i++) where.set(s.id[i], i);
+        for (const { w, at } of body) {
+          if (w.length !== 10) throw new StyleError(`data file line ${at}: Triangles needs atom-ID x1 y1 z1 x2 y2 z2 x3 y3 z3`);
+          const aid = intOf(w[0], 'atom-ID', at) + (idBase || 0);
+          const i = where.get(aid);
+          const dens = triPending.get(aid);
+          if (i === undefined || dens === undefined) throw new StyleError(`data file line ${at}: atom ${aid} is not a triangle (triangleflag 1) of this data file`);
+          const c0 = [1, 2, 3].map((c) => numOf(w[c], 'corner', at));
+          const c1 = [4, 5, 6].map((c) => numOf(w[c], 'corner', at));
+          const c2 = [7, 8, 9].map((c) => numOf(w[c], 'corner', at));
+          const r: [number, number, number] = [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]];
+          const cr = [c0, c1, c2].map((p) => remapNear3(s, p as [number, number, number], r)) as [V3, V3, V3];
+          const size = Math.max(
+            Math.hypot(cr[1][0] - cr[0][0], cr[1][1] - cr[0][1], cr[1][2] - cr[0][2]),
+            Math.hypot(cr[2][0] - cr[0][0], cr[2][1] - cr[0][1], cr[2][2] - cr[0][2]),
+          );
+          const tb = triBodyHook().triBody(cr, dens);
+          checkCentre(s, i, tb.centroid, size, 'Inconsistent triangle in data file', at);
+          setTriBonus(s, i, tb);
+          triPending.delete(aid);
+        }
+        break;
+      }
+      case 'Velocities':
+        // read_data.html: "sphere | atom-ID vx vy vz wx wy wz"; "ellipsoid | atom-ID vx vy vz lx ly lz"; tri has both
+        // (atom_vec_tri.cpp fields_data_vel: id v omega angmom)
+        if (s.omega && s.angmom && !isTriStyle(style)) throw new StyleError('data file Velocities: hybrid styles with both sphere and ellipsoid sub-styles are not supported by the browser engine');
+        for (const { w, at } of body) {
+          const need = isTriStyle(style) ? 10 : s.omega || s.angmom ? 7 : 4;
           if (w.length < need) throw new StyleError(`data file line ${at}: Velocities needs atom-ID vx vy vz${s.omega ? ' wx wy wz' : s.angmom ? ' lx ly lz' : ''}`);
-          vel.set(intOf(w[0], 'atom-ID', at) + (idBase || 0), w.slice(1, need).map((t, c) => numOf(t, ['vx', 'vy', 'vz', 'wx', 'wy', 'wz'][c], at)));
+          vel.set(intOf(w[0], 'atom-ID', at) + (idBase || 0), w.slice(1, need).map((t, c) => numOf(t, ['vx', 'vy', 'vz', 'wx', 'wy', 'wz', 'lx', 'ly', 'lz'][c], at)));
         }
         break;
       case 'Masses':
         // measured with native LAMMPS (atom_style sphere): "Cannot set mass for atom style sphere"
-        if (s.atomStyle === 'sphere' || s.atomStyle === 'bpm/sphere') throw new StyleError(`Cannot set mass for atom style ${s.atomStyle}`);
+        // read_data.html: "This section cannot be used for atom styles that define a mass for individual atoms - e.g. atom_style sphere"
+        if (s.atomStyle === 'sphere' || s.atomStyle === 'bpm/sphere' || isLineStyle(s.atomStyle) || isTriStyle(s.atomStyle)) throw new StyleError(`Cannot set mass for atom style ${s.atomStyle}`);
         for (const { w, at } of body) {
           const t = intOf(w[0], 'atom type', at) + toff;
           if (t < 1 || t > s.ntypes) throw new StyleError(`data file line ${at}: atom type ${t} is outside 1..${s.ntypes}`);
@@ -610,6 +747,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   }
   if (natoms > 0 && !sawAtoms) throw new StyleError('data file: an Atoms section is required when atoms > 0');
   if (ellPending.size) throw new StyleError(`data file: ${ellPending.size} atoms have ellipsoidflag 1 but no Ellipsoids line`);
+  if (linePending.size) throw new StyleError(`data file: ${linePending.size} atoms have lineflag 1 but no Lines line`);
+  if (triPending.size) throw new StyleError(`data file: ${triPending.size} atoms have triangleflag 1 but no Triangles line`);
   if (bodyPending.size) throw new StyleError(`data file: ${bodyPending.size} atoms have bodyflag 1 but no Bodies entry (read_data.html: the Bodies section must appear)`);
   // velocities
   if (vel.size) {
@@ -625,7 +764,9 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         }
         if (s.angmom) {
           if (genFrame) throw new StyleError('read_data: ellipsoid angular momenta with a general triclinic box are not supported by the browser engine');
-          for (let d = 0; d < 3; d++) s.angmom[3 * i + d] = v[3 + d];
+          // tri: the angular momentum follows the angular velocity (fields_data_vel id v omega angmom)
+          const l0 = isTriStyle(style) ? 6 : 3;
+          for (let d = 0; d < 3; d++) s.angmom[3 * i + d] = v[l0 + d];
         }
       }
     }
@@ -738,6 +879,9 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   // measured with native write_data: N ellipsoids follows the atom types
   const nEll = s.shape ? countEllipsoids(s) : 0;
   if (s.shape) out.push(`${nEll} ellipsoids`);
+  // measured with native write_data (write_data.cpp): "N lines" and "N triangles" follow the ellipsoid count (the atom style's flag, N = number of such atoms)
+  if (isLineStyle(s.atomStyle)) out.push(`${flagCount(s, LINE_FLAG)} lines`);
+  if (isTriStyle(s.atomStyle)) out.push(`${flagCount(s, TRI_FLAG)} triangles`);
   const mol = isMolecularStyle(s.atomStyle);
   if (mol && isTemplateStyle(s.atomStyle)) {
     // measured with native write_data: a template style writes no bond, angle, dihedral or improper
@@ -778,7 +922,7 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   // measured with native write_data: atom_style sphere (per-atom masses) writes no Masses section; a
   // hybrid style with sphere writes it (per-type and per-atom masses both exist there)
   // measured with native write_data: atom_style peri writes no Masses section either
-  if (s.atomStyle !== 'sphere' && s.atomStyle !== 'bpm/sphere' && s.atomStyle !== 'ellipsoid' && s.atomStyle !== 'peri') {
+  if (s.atomStyle !== 'sphere' && s.atomStyle !== 'bpm/sphere' && s.atomStyle !== 'ellipsoid' && s.atomStyle !== 'peri' && !isLineStyle(s.atomStyle) && !isTriStyle(s.atomStyle)) {
     out.push('', 'Masses', '');
     for (let k = 1; k <= s.ntypes; k++) out.push(`${k} ${shortest(s.massByType[k])}`);
   }
@@ -813,6 +957,7 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   // is native's (SimState.order, including its spatial sort at run setup).
   const order = nativeOrder(s);
   const cols = atomStyleCols(s.atomStyle);
+  if ((isLineStyle(s.atomStyle) || isTriStyle(s.atomStyle)) && gen) throw new StyleError('write_data: line and tri particles in a general triclinic box are not supported by the browser engine');
   // general output: positions, dipole directions and velocities rotated to the general frame
   const xo = gen ? mapVectors(s.x, (p) => toGeneralPoint(gen.Q, gen.origin, p)) : s.x;
   const mu = gen && s.mu ? Float64Array.from(s.mu) : s.mu;
@@ -832,10 +977,15 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
         case 'q': return shortest(s.q[i]);
         // measured with native write_data: diameter 2r, and density = mass / volume (mass itself for r = 0)
         case 'diameter': return shortest(2 * s.radius![i]);
+        // atom_vec_line.cpp pack_data_pre: a line's density is its mass per unit length; atom_vec_tri.cpp: per unit area
         case 'density':
+          if (isLineAtom(s, i)) return shortest(s.rmass![i] / s.custom.get(LINE_BONUS)!.data[2 * i]);
+          if (isTriAtom(s, i)) return shortest(s.rmass![i] / triangleAreaOfBody(triCorners(s, i)));
           if (s.radius) return shortest(s.radius[i] > 0 ? s.rmass![i] / sphereMass(s.radius[i], 1) : s.rmass![i]);
           return shortest(isEllipsoid(s, i) ? s.rmass![i] / ellipsoidVolume(s, i) : s.rmass![i]);
         case 'ellipsoidflag': return isEllipsoid(s, i) ? '1' : '0';
+        case 'lineflag': return isLineAtom(s, i) ? '1' : '0';
+        case 'triangleflag': return isTriAtom(s, i) ? '1' : '0';
         // measured with native write_data: atom_style peri writes its volume and the density (= mass) column
         case 'volume': return shortest(s.vfrac![i]);
         case 'mux': return shortest(mu![4 * i]);
@@ -853,8 +1003,11 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   out.push('', 'Velocities', '');
   const angRaw = s.omega ?? s.angmom;
   const ang = angRaw && gen ? mapVectors(angRaw, (w) => unrotateVector(gen.Q, w)) : angRaw;
+  // atom_vec_tri.cpp fields_data_vel: "id v omega angmom"; the tri style writes its angular momentum after the angular velocity
+  const triL = isTriStyle(s.atomStyle) ? s.angmom : null;
   for (const i of order) {
-    const w = ang ? ` ${shortest(ang[3 * i])} ${shortest(ang[3 * i + 1])} ${shortest(ang[3 * i + 2])}` : '';
+    let w = ang ? ` ${shortest(ang[3 * i])} ${shortest(ang[3 * i + 1])} ${shortest(ang[3 * i + 2])}` : '';
+    if (triL) w += ` ${shortest(triL[3 * i])} ${shortest(triL[3 * i + 1])} ${shortest(triL[3 * i + 2])}`;
     out.push(`${s.id[i]} ${shortest(vo[3 * i])} ${shortest(vo[3 * i + 1])} ${shortest(vo[3 * i + 2])}${w}`);
   }
   // measured with native write_data: an Ellipsoids section (diameters and quaternion) after Velocities
@@ -865,6 +1018,27 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
       const sh = [0, 1, 2].map((d) => shortest(2 * s.shape![3 * i + d]));
       const q = [0, 1, 2, 3].map((d) => shortest(s.quat![4 * i + d]));
       out.push(`${s.id[i]} ${sh.join(' ')} ${q.join(' ')}`);
+    }
+  }
+  // measured with native write_data (atom_vec_line.cpp write_data_bonus, atom_vec_tri.cpp): Lines and Triangles
+  // sections after the Ellipsoids one; a line's end points are its centre -/+ half its length along theta
+  if (isLineStyle(s.atomStyle) && flagCount(s, LINE_FLAG) > 0) {
+    out.push('', 'Lines', '');
+    const bonus = s.custom.get(LINE_BONUS)!.data;
+    for (const i of order) {
+      if (!isLineAtom(s, i)) continue;
+      const e = lineEnds(s.x[3 * i], s.x[3 * i + 1], bonus[2 * i], bonus[2 * i + 1]);
+      out.push(`${s.id[i]} ${e.map(shortest).join(' ')}`);
+    }
+  }
+  if (isTriStyle(s.atomStyle) && flagCount(s, TRI_FLAG) > 0) {
+    out.push('', 'Triangles', '');
+    for (const i of order) {
+      if (!isTriAtom(s, i)) continue;
+      const cen = [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]];
+      const q = [0, 1, 2, 3].map((d) => s.quat![4 * i + d]);
+      const pts = [0, 1, 2].flatMap((k) => triangleCorner(cen, q, triCorners(s, i), k));
+      out.push(`${s.id[i]} ${pts.map(shortest).join(' ')}`);
     }
   }
   let maxId = 0;

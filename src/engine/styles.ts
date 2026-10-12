@@ -4,6 +4,7 @@ import type { Fix } from './fix/fix';
 import type { Compute } from './compute/compute';
 import { LAZY_GROUPS, type LazyGroup, type StyleKind, type StyleModule } from './lazyStyles';
 import type { NativeRandom, NativeRandomWord } from './nativeRandom';
+import type { TriBonusHook } from './triBonus';
 import { isRefusedStyle } from './refusedStyles';
 import { PairLJCut } from './force/pair/lj_cut';
 import { PairHybrid } from './force/pair/hybrid';
@@ -177,6 +178,16 @@ const REGISTRY_OF: Record<StyleKind, Record<string, unknown>> = {
 export const nativeRandom = (word: NativeRandomWord): NativeRandom => {
   const h = HOOKS[word] as NativeRandom | undefined;
   if (!h) throw new StyleError(`${word}: the native random streams are not loaded (run the command through the session)`);
+  return h;
+};
+
+/**
+ * The triangle body frame (triBonus.ts) from the lazy HOOKS entry 'tri', loaded by the session before atom_style tri
+ * (its command word is tri). Outside Session.dispatch the hook is not loaded, and the caller gets an error naming it.
+ */
+export const triBodyHook = (): TriBonusHook => {
+  const h = HOOKS.tri as TriBonusHook | undefined;
+  if (!h) throw new StyleError('tri: the triangle body-frame hook is not loaded (run the command through the session)');
   return h;
 };
 

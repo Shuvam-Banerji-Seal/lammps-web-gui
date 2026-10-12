@@ -1,4 +1,4 @@
-import type { SimState } from '../types';
+import type { CustomProp, SimState } from '../types';
 import type { System } from '../system';
 import type { SpecialBonds } from '../force/forcefield';
 import type { DynamicGroup } from '../group';
@@ -10,7 +10,7 @@ import { BondedHybrid, type HybridKind } from '../force/bonded_hybrid';
 
 /** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
 type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart };
-import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners } from '../atoms';
+import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS } from '../atoms';
 import { ErfcTableCache } from '../force/erfc';
 
 /*
@@ -268,6 +268,8 @@ export const writeRestartText = (sys: System): string => {
     }
   }
   const { f: _f, custom: _c, ...rest } = s;
+  // atom_style line and tri: the per-atom line/triangle flags and bonus data (atoms.ts LINE_FLAG ... TRI_BONUS) are stored with the atoms
+  const lineTri = new Map([...s.custom].filter(([k]) => k === LINE_FLAG || k === LINE_BONUS || k === TRI_FLAG || k === TRI_BONUS));
   const styleEntry = (name: string, obj: unknown) => ({ name, data: encodeValue(obj, name, []) });
   styles.pair = pairStored
     ? styleEntry(pairStored.name, pairStored.name in PAIR_SETTINGS_ONLY ? withoutFields(pairStored, PAIR_SETTINGS_ONLY[pairStored.name]) : pairStored)
@@ -282,6 +284,7 @@ export const writeRestartText = (sys: System): string => {
     version: VERSION,
     step: s.step,
     state: encodeValue(rest, 'state', []),
+    lineTri: encodeValue(lineTri, 'lineTri', []),
     comm: { style: sys.commStyle, vel: sys.ghostVelocity, cutoff: sys.nb.commCutoff },
     groups: encodeValue({ names: sys.groups.names, dynamic: sys.groups.dynamic }, 'groups', []),
     special: encodeValue(sys.ff.special, 'special', []),
@@ -308,7 +311,7 @@ export const readRestartText = (sys: System, text: string, name: string): void =
     if (header.startsWith('LAMMPS-WEB-RESTART')) throw new StyleError(`${name}: restart format '${header}' is not supported (this engine reads '${RESTART_MAGIC}')`);
     throw new StyleError(`${name} is not a restart file written by this browser engine. Native LAMMPS binary restart files cannot be read in the browser: their format is platform-specific. Convert the native file with the lmp -restart2data command-line flag and use read_data, or write the state here with write_restart (or write_data)`);
   }
-  let doc: { format: string; version: number; step: number; state: Json; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: FixRestart[] };
+  let doc: { format: string; version: number; step: number; state: Json; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: FixRestart[]; lineTri?: Json };
   try {
     doc = JSON.parse(text.slice(nl + 1));
   } catch {
@@ -323,6 +326,14 @@ export const readRestartText = (sys: System, text: string, name: string): void =
   // forces are not stored: the next run computes them
   state.f = new Float64Array(3 * n);
   state.custom = new Map();
+  // atom_style line and tri: their flags and bonus data are read back from the file (restart.ts writer)
+  if (doc.lineTri !== undefined) {
+    const lt = decodeValue(doc.lineTri, 'lineTri') as Map<string, CustomProp>;
+    for (const [k, c] of lt) {
+      need(c.data.length === (c.cols > 0 ? c.cols : 1) * n, `${k} has the wrong length for ${n} atoms`);
+      state.custom.set(k, c);
+    }
+  }
   // atom_style oxdna: the strand partners are not stored; they follow from the stored bonds, as after read_data
   if (isOxdnaStyle(state.atomStyle)) {
     state.custom.set(OXDNA_5P, { int: true, cols: 0, data: new Float64Array(n) });
@@ -350,8 +361,8 @@ export const readRestartText = (sys: System, text: string, name: string): void =
   if (!isEllipsoidStyle(state.atomStyle)) {
     state.shape = null;
     // atom_style bpm/sphere keeps its quaternion (atoms.ts isBpmSphereStyle)
-    if (!isBpmSphereStyle(state.atomStyle)) state.quat = null;
-    state.angmom = null;
+    if (!isBpmSphereStyle(state.atomStyle) && !isTriStyle(state.atomStyle)) state.quat = null;
+    if (!isTriStyle(state.atomStyle)) state.angmom = null;
   }
   sys.pendingFixData = new Map((doc.fixes ?? []).map((f) => [f.id, f]));
 

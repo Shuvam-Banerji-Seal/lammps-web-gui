@@ -1,0 +1,21 @@
+# oracle: atom_style line, read_data Atoms (lineflag, density) and Lines and Velocities (omega z) sections; pair_style line/lj (line-line, line-point and point-point pairs, sub-particle discretization); fix nve/line on the segments and fix nve on the points; thermo, per-atom state and write_data (Lines end points, omega)
+# oracle-inputs: w61line_pair.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# oracle-files: w61line_pair_out.data
+units           lj
+dimension       2
+atom_style      line
+read_data       w61line_pair.data
+pair_style      line/lj 3.0
+pair_coeff      * * 0.25 0.3 1.0 0.3 2.2
+group           lns id 1 2 3 5
+group           pts id 4 6
+neighbor        0.3 bin
+timestep        0.001
+fix             1 lns nve/line
+fix             2 pts nve
+thermo_style    custom step pe ke
+thermo_modify   format float %.15g
+thermo          20
+run             200
+write_data      w61line_pair_out.data

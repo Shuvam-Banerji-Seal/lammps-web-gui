@@ -47,6 +47,18 @@ export const hasDipoleStyle = (st: AtomStyle): boolean => atomSubStyles(st).incl
 export const hasSpinStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('spin');
 /** Styles with ellipsoidal particles (shape, quat, angmom). */
 export const isEllipsoidStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('ellipsoid');
+/**
+ * atom_style line: "*atomic* + molecule, radius, rmass, omega, torque, line" (atom_style.html). Its line
+ * segments store the length and orientation theta (LINE_BONUS) and a flag (LINE_FLAG).
+ */
+export const isLineStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('line');
+/**
+ * atom_style tri: "*sphere* + molecule, angmom, tri" (atom_style.html). Its triangles store the corner points
+ * in the principal frame, the principal moments (TRI_BONUS) and a flag (TRI_FLAG); quat and angmom are per atom.
+ */
+export const isTriStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('tri');
+/** Styles with a per-atom radius, angular velocity and torque: the sphere styles, and line and tri particles (their radius is the half length or circumradius). */
+export const hasRadiusStyle = (st: AtomStyle): boolean => isSphereStyle(st) || isLineStyle(st) || isTriStyle(st);
 /** Styles with body particles (atom_style body nparticle Nmin Nmax; see bodies.ts). */
 export const isBodyStyle = (st: AtomStyle): boolean => st.startsWith('body ');
 /** Styles with a per-atom orientation quaternion and angular momentum (ellipsoids and bodies). */
@@ -54,7 +66,7 @@ export const hasQuatStyle = (st: AtomStyle): boolean => isEllipsoidStyle(st) || 
 /** Styles with peridynamic particles (vfrac, x0): atom_style.html lists peri as atomic plus rmass, vfrac, s0 and x0. */
 export const isPeriStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('peri');
 /** Styles with a per-atom mass (rmass): sphere, ellipsoid and peri. */
-export const hasRmassStyle = (st: AtomStyle): boolean => isSphereStyle(st) || isEllipsoidStyle(st) || isPeriStyle(st) || isBodyStyle(st);
+export const hasRmassStyle = (st: AtomStyle): boolean => isSphereStyle(st) || isEllipsoidStyle(st) || isPeriStyle(st) || isBodyStyle(st) || isLineStyle(st) || isTriStyle(st);
 /** Bonded topology a style stores: 0 none, 1 bonds, 2 bonds and angles, 3 also dihedrals and impropers. */
 export const topologyLevel = (st: AtomStyle): number => {
   let lv = 0;
@@ -99,7 +111,7 @@ export const customAttr = (s: SimState, attr: string): ((i: number) => number) |
 };
 
 /** Molecule IDs exist: from the atom style or from fix property/atom mol. */
-export const hasMolecule = (s: SimState): boolean => isMolecularStyle(s.atomStyle) || s.propMol;
+export const hasMolecule = (s: SimState): boolean => isMolecularStyle(s.atomStyle) || isLineStyle(s.atomStyle) || isTriStyle(s.atomStyle) || s.propMol;
 
 /**
  * Mass of a sphere of the given radius and density: "If the atom has a
@@ -143,8 +155,33 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
     m.set(OXDNA_3P, { int: true, cols: 0, data: new Float64Array(0) });
     m.set(OXDNA_QEFF, { int: false, cols: 0, data: new Float64Array(0) });
   }
+  if (isLineStyle(st)) {
+    m.set(LINE_FLAG, { int: true, cols: 0, data: new Float64Array(0) });
+    m.set(LINE_BONUS, { int: false, cols: 2, data: new Float64Array(0) });
+  }
+  if (isTriStyle(st)) {
+    m.set(TRI_FLAG, { int: true, cols: 0, data: new Float64Array(0) });
+    m.set(TRI_BONUS, { int: false, cols: TRI_BONUS_COLS, data: new Float64Array(0) });
+  }
   return m;
 };
+
+/**
+ * atom_style line and tri: the per-atom line/triangle flag (1 = line or triangle, 0 = point particle) and the
+ * per-atom bonus data. Line bonus = [length, theta] (atom_vec_line.cpp Bonus: length, theta; theta is the angle of
+ * the segment from the +x axis). Triangle bonus = corners c1, c2, c3 (3 each, displacements from the centroid in the
+ * basis of the principal axes) then the 3 principal moments of inertia (atom_vec_tri.cpp Bonus: c1, c2, c3, inertia).
+ * Internal keys ('#' cannot start an i_name or d_name, so no user property clashes with them).
+ */
+export const LINE_FLAG = '#lineflag';
+export const LINE_BONUS = '#linebonus';
+export const TRI_FLAG = '#triflag';
+export const TRI_BONUS = '#tribonus';
+export const TRI_BONUS_COLS = 12;
+/** Atom i is a line segment (atom_style line, lineflag 1). */
+export const isLineAtom = (s: SimState, i: number): boolean => !!s.custom.get(LINE_FLAG)?.data[i];
+/** Atom i is a triangle (atom_style tri, triangleflag 1). */
+export const isTriAtom = (s: SimState, i: number): boolean => !!s.custom.get(TRI_FLAG)?.data[i];
 
 /** atom_style oxdna: the 5' and 3' partner atom IDs of each atom, internal per-atom props (0 = none). */
 export const OXDNA_5P = '#id5p';
@@ -184,17 +221,17 @@ export const emptyState = (
   rmass: hasRmassStyle(atomStyle) ? new Float64Array(0) : null,
   vfrac: isPeriStyle(atomStyle) ? new Float64Array(0) : null,
   x0: isPeriStyle(atomStyle) ? new Float64Array(0) : null,
-  radius: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
-  omega: isSphereStyle(atomStyle) ? new Float64Array(0) : null,
-  torque: isSphereStyle(atomStyle) || hasQuatStyle(atomStyle) ? new Float64Array(0) : null,
+  radius: hasRadiusStyle(atomStyle) ? new Float64Array(0) : null,
+  omega: hasRadiusStyle(atomStyle) ? new Float64Array(0) : null,
+  torque: hasRadiusStyle(atomStyle) || hasQuatStyle(atomStyle) ? new Float64Array(0) : null,
   tmplIndex: isTemplateStyle(atomStyle) ? new Int32Array(0) : null,
   tmplAtom: isTemplateStyle(atomStyle) ? new Int32Array(0) : null,
   mu: hasDipoleStyle(atomStyle) ? new Float64Array(0) : null,
   sp: hasSpinStyle(atomStyle) ? new Float64Array(0) : null,
   fm: hasSpinStyle(atomStyle) ? new Float64Array(0) : null,
   shape: isEllipsoidStyle(atomStyle) ? new Float64Array(0) : null,
-  quat: hasQuatStyle(atomStyle) || isBpmSphereStyle(atomStyle) ? new Float64Array(0) : null,
-  angmom: hasQuatStyle(atomStyle) ? new Float64Array(0) : null,
+  quat: hasQuatStyle(atomStyle) || isBpmSphereStyle(atomStyle) || isTriStyle(atomStyle) ? new Float64Array(0) : null,
+  angmom: hasQuatStyle(atomStyle) || isTriStyle(atomStyle) ? new Float64Array(0) : null,
   custom: bodyCustom(atomStyle),
   propMol: false,
   propQ: false,
@@ -345,7 +382,7 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     if (a.rmass instanceof Float64Array) s.rmass.set(a.rmass, n0);
     // measured with native LAMMPS: create_atoms gives ellipsoid-style atoms (point particles) mass 1
     // measured with native LAMMPS: atom_style peri gives mass 1 (its density and volume defaults are 1)
-    else s.rmass.fill(a.rmass ?? (isSphereStyle(s.atomStyle) ? SPHERE_DEFAULT_MASS : isEllipsoidStyle(s.atomStyle) || isPeriStyle(s.atomStyle) ? 1 : 0), n0, n);
+    else s.rmass.fill(a.rmass ?? (isSphereStyle(s.atomStyle) ? SPHERE_DEFAULT_MASS : isEllipsoidStyle(s.atomStyle) || isPeriStyle(s.atomStyle) || isLineStyle(s.atomStyle) || isTriStyle(s.atomStyle) ? 1 : 0), n0, n);
   }
   if (s.vfrac) {
     s.vfrac = growF(s.vfrac, n);
@@ -360,7 +397,8 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
   if (s.radius) {
     s.radius = growF(s.radius, n);
     if (a.radius instanceof Float64Array) s.radius.set(a.radius, n0);
-    else s.radius.fill(a.radius ?? SPHERE_DEFAULT_RADIUS, n0, n);
+    // create_atom_post (atom_vec_line.cpp, atom_vec_tri.cpp): a point particle has radius 0; the sphere styles default to SPHERE_DEFAULT_RADIUS
+    else s.radius.fill(a.radius ?? (isSphereStyle(s.atomStyle) ? SPHERE_DEFAULT_RADIUS : 0), n0, n);
   }
   if (s.omega) { s.omega = growF(s.omega, 3 * n); if (a.omega) s.omega.set(a.omega, 3 * n0); }
   if (s.torque) s.torque = growF(s.torque, 3 * n);

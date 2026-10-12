@@ -110,6 +110,22 @@ import { massOf } from '../atoms';
  *    dumped forces); the step-2 forces of that ordering do not follow this rule and are not matched;
  *  - with fix rattle defined before nve the native run loses atoms at about step 12 on this box (temperature
  *    grows to 265 K at step 11), so that ordering cannot be checked over 20 steps.
+ *
+ * Measured with native LAMMPS (black box, tests/oracle/w73shake_gil: the graph-il ionic liquid, 320 BMI three-atom
+ * clusters with a stretched start, fix shake 1e-4 20 0 b 1 2 a 1, run 0, the pppm mesh and g_ewald pinned):
+ *  - the setup force solve runs for every cluster. Skipping the clusters whose residual was already inside the
+ *    tolerance after the coordinate correction (residuals 1e-6 to 1e-4 here) moved the step-0 press by 555 bar
+ *    (45953131 against 45953686.037) and the forces of the electrolyte by up to 12.7 (forces up to 4e4); with every
+ *    cluster solved, press is 45953686.03704 (native 45953686.03705) and the forces agree to 2e-8;
+ *  - the one-sweep solve of a two-atom cluster is exact: on the stretched bond of tests/oracle/w26shake_molb (tol
+ *    1e-12) native gives the same converged positions at iteration limits 1 to 8, so one sweep of the quadratic in
+ *    the multiplier (the separation is quadratic in lambda) is the native solve. The frozen-Jacobian step needed
+ *    about 8 sweeps for those positions, and its 6e-14 residual made the setup force solve give press -2.5e-9
+ *    where native gives -1.4e-11;
+ *  - tests/oracle/w73shake_eth: 250 ethanol molecules of examples/PACKAGES/drude/ethanol without the drude atoms and
+ *    dihedrals (2-, 3- and 4-atom clusters, fix shake 1e-4 20 0 b 2 3 5, cutoff Coulomb): the frozen-Jacobian
+ *    two-atom solve left per-atom forces off by 0.0155 on a force of 1069 (1.4e-5 relative) and press 7467535.02
+ *    against 7467534.5656; the solve as above matches the forces to 4e-12 and press to 1e-9 relative.
  */
 
 interface Cluster {
@@ -352,7 +368,7 @@ export class FixShake extends Fix {
     }
     this.correctCoordinates();
     if (this.style === 'rattle') this.rattleVelocities();
-    this.shake(0.5, true);
+    this.shake(0.5);
   }
 
   /** Moves each cluster onto its constraints along the current bond vectors, displacements weighted by 1/m. */
@@ -424,14 +440,14 @@ export class FixShake extends Fix {
    * and applies it. The cluster stops after the sweep whose largest update times stepScale is within the
    * tolerance (at least one sweep). stepScale is the prefactor of C: dt^2 ftm2v for the per-step SHAKE solve,
    * 0.5 dt^2 ftm2v for the setup force solve and RATTLE positions, 1 for the setup coordinate correction.
-   * skipInside leaves a cluster untouched when its residual is already inside the tolerance (the setup force
-   * solve; the coordinate correction always takes one sweep).
+   * A cluster with one constraint (a two-atom bond) is solved exactly in one sweep, since its separation is
+   * quadratic in the multiplier; every cluster takes its first sweep, even when its residual is already inside the
+   * tolerance (see the header).
    */
   private solveClusters(
     start: (at: number[], m: number[], r: number[][], cons: Cluster['cons']) => { s0: number[][]; factor: number },
     apply: (at: number[], m: number[], r: number[][], lam: number[]) => void,
     stepScale: number,
-    skipInside = false,
   ): void {
     if (!this.clusters.length) return;
     const sys = this.sys;
@@ -481,16 +497,18 @@ export class FixShake extends Fix {
           return v;
         }));
         const F = sep.map((v, q) => v[0] * v[0] + v[1] * v[1] + v[2] * v[2] - t.c.cons[q].d2);
-        // setup force solve: a cluster that already satisfies its constraints gets no correction
-        if (k === 0 && skipInside && F.every((f, q) => Math.abs(f) / t.c.cons[q].d2 <= this.tol)) break;
-        const delta = solve(t.J, F.map((x) => -x));
+        let delta: number[] | null;
+        if (nc === 1) {
+          const x = quadraticRoot(t.C[0][0] * t.C[0][0] * dot3(t.r[0], t.r[0]), 2 * t.C[0][0] * dot3(t.s0[0], t.r[0]), F[0]);
+          delta = x === null ? null : [x];
+        } else delta = solve(t.J, F.map((x) => -x));
         if (!delta) { sys.warn(`fix ${this.style}: singular SHAKE system for cluster at atom ${t.c.ids[0]}`); break; }
         let big = 0;
         for (let j = 0; j < nc; j++) {
           t.lam[j] += delta[j];
           big = Math.max(big, Math.abs(delta[j]) * stepScale);
         }
-        if (big <= this.tol) break;
+        if (nc === 1 || big <= this.tol) break;
         if (k + 1 >= this.maxIter) {
           sys.warn(`fix ${this.style}: SHAKE did not converge in ${this.maxIter} iterations for the cluster at atom ${t.c.ids[0]}`);
           break;
@@ -505,7 +523,7 @@ export class FixShake extends Fix {
   }
 
   /** Adds constraint forces so the next positions satisfy the constraints; the prediction uses factor * dt^2. */
-  private shake(dtfFactor: number, skipInside = false): void {
+  private shake(dtfFactor: number): void {
     const s = this.sys.state;
     const dt = s.dt;
     const dtfsq = dtfFactor * dt * dt * s.units.ftm2v;
@@ -526,7 +544,7 @@ export class FixShake extends Fix {
         vir[0] += lam[j] * rr[0] * rr[0]; vir[1] += lam[j] * rr[1] * rr[1]; vir[2] += lam[j] * rr[2] * rr[2];
         vir[3] += lam[j] * rr[0] * rr[1]; vir[4] += lam[j] * rr[0] * rr[2]; vir[5] += lam[j] * rr[1] * rr[2];
       }
-    }, dtfsq, skipInside);
+    }, dtfsq);
   }
 
   /**
@@ -693,6 +711,20 @@ export class FixShake extends Fix {
     }
   }
 }
+
+const dot3 = (a: number[], b: number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+/**
+ * Small root of a x^2 + b x + c = 0 (the root that vanishes with c), by the cancellation-free form; a = 0 gives
+ * the linear root. Returns null when the equation has no real root.
+ */
+const quadraticRoot = (a: number, b: number, c: number): number | null => {
+  if (a === 0) return b === 0 ? null : -c / b;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return null;
+  const q = -0.5 * (b + (b >= 0 ? 1 : -1) * Math.sqrt(disc));
+  return q === 0 ? 0 : c / q;
+};
 
 const filterList = (l: TopoList, keep: boolean[]): TopoList => {
   const n = keep.filter(Boolean).length;

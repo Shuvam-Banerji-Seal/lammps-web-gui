@@ -158,7 +158,7 @@ export const jacobi3 = (mat: number[][]): { eval: V3; evec: number[][] } => {
   };
   for (let i = 0; i < n - 1; i++) maxIdx[i] = maxEntryRow(i);
   const maxIters = 50 * n * (n - 1) / 2;
-  let c = 1, s = 0, t = 0;
+  let c: number, s = 0, t = 0;
   let converged = false;
   for (let it = 0; it < maxIters; it++) {
     // MaxEntry: the largest off-diagonal entry, scanned through the stored row maxima

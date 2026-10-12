@@ -62,6 +62,12 @@ export class System {
   // ---- settings that precede the box
   units: UnitSystem = UNIT_SYSTEMS.lj;
   dimension: 2 | 3 = 3;
+  /**
+   * extra/bond/per/atom (create_box, read_data): the bonds per atom the storage holds. A read_data after the box
+   * exists may not bring more bonds on an atom than this (create_box.html and read_data.html describe the keyword;
+   * the rule is measured with native LAMMPS, see data.ts).
+   */
+  extraBondPerAtom = 0;
   boundary: SimState['box']['boundary'] = [['p', 'p'], ['p', 'p'], ['p', 'p']];
   atomStyle: AtomStyle = 'atomic';
   lattice: Lattice | null = null;

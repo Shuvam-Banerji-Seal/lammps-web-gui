@@ -1,0 +1,12 @@
+# oracle: create_atoms random with a region: every attempt that a region rejects counts against maxtry
+units           lj
+atom_style      atomic
+lattice         none 1.0
+region          box block 0 4 0 4 0 4
+create_box      1 box
+region          sph sphere 2 2 2 0.4 units box
+create_atoms    1 random 10 12345 sph maxtry 3
+mass            1 1.0
+thermo_style    custom step atoms
+thermo_modify   format float %.15g
+run             0

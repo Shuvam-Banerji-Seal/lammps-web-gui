@@ -429,6 +429,12 @@ const createBox: Handler = ({ sys }, a) => {
     'bond/types': 1, 'angle/types': 1, 'dihedral/types': 1, 'improper/types': 1,
     'extra/bond/per/atom': 1, 'extra/angle/per/atom': 1, 'extra/dihedral/per/atom': 1, 'extra/improper/per/atom': 1, 'extra/special/per/atom': 1,
   }, 'create_box');
+  // create_box.html, keyword extra/bond/per/atom: the bonds per atom the storage holds for later reads (data.ts)
+  if (kw.has('extra/bond/per/atom')) {
+    const nb = int(kw.get('extra/bond/per/atom')![0], 'extra/bond/per/atom');
+    if (nb < 0) throw new StyleError('create_box extra/bond/per/atom must be >= 0');
+    sys.extraBondPerAtom = nb;
+  }
   let lo: [number, number, number], hi: [number, number, number];
   let tilt: [number, number, number] | undefined;
   let genQ: [[number, number, number], [number, number, number], [number, number, number]] | undefined;
@@ -705,8 +711,17 @@ const createAtoms: Handler = ({ sys }, a) => {
     // does not use for any atom
     const rng = new RanPark(random.seed);
     for (let k = 0; k < 30; k++) rng.uniform();
-    const overlap = kw.has('overlap') ? num(kw.get('overlap')![0], 'overlap') : 0;
+    // create_atoms.html, keyword units (default lattice) "lattice means the distance units are in lattice spacings",
+    // and the overlap distance is one of the values it scales (x lattice spacing; box leaves it unscaled).
+    // Native rejects an explicit overlap that is not > 0 ("Illegal create_atoms overlap value", measured with
+    // native LAMMPS, black box: overlap 0.0 and -0.5 both stop the run).
+    const overlapW = kw.has('overlap') ? num(kw.get('overlap')![0], 'overlap') : 0;
+    if (kw.has('overlap') && !(overlapW > 0)) throw new StyleError(`Illegal create_atoms overlap value: ${kw.get('overlap')![0]}`);
+    const overlap = overlapW * latticeScale(sys, unitsW, 'create_atoms')[0];
+    // create_atoms.html, keyword maxtry: "It limits the number of attempts to generate valid coordinates for a
+    // single new particle." Native stops with "Illegal create_atoms maxtry value 0" (measured, black box).
     const maxtry = kw.has('maxtry') ? int(kw.get('maxtry')![0], 'maxtry') : 10;
+    if (maxtry < 1) throw new StyleError(`Illegal create_atoms maxtry value ${maxtry}`);
     // sample in the region's bounding box clipped to the box, accept points inside both
     const bb = reg?.bbox();
     const blo = [0, 1, 2].map((d) => Math.max(box.lo[d] + Math.min(0, d === 0 ? Math.min(box.tilt[0], box.tilt[1], box.tilt[0] + box.tilt[1]) : d === 1 ? box.tilt[2] : 0), bb ? bb.lo[d] : -Infinity));
@@ -727,7 +742,8 @@ const createAtoms: Handler = ({ sys }, a) => {
     let failed = 0;
     for (let c = 0; c < random.count; c++) {
       let placed = false;
-      for (let t = 0; t < maxtry * 1000 && !placed; t++) {
+      // every attempt counts against maxtry, whichever test rejects it (create_atoms.html, maxtry: "limits the number of attempts")
+      for (let t = 0; t < maxtry && !placed; t++) {
         // Measured with native LAMMPS (black box, dimension 2, create_atoms 1 random 5 12345 NULL): every attempt
         // draws x, y and z; in 2d the z draw is discarded and z = 0 (native's second atom has x equal to the y the
         // engine gave it when it skipped the z draw)
@@ -741,7 +757,7 @@ const createAtoms: Handler = ({ sys }, a) => {
         const atoms = tmpl ? placeMol(p) : p;
         let close = false;
         for (let j = 0; j < atoms.length && !close; j += 3) close = tooClose([atoms[j], atoms[j + 1], atoms[j + 2]]);
-        if (close) { if (t >= maxtry - 1) break; continue; }
+        if (close) continue;
         pts.push(...atoms);
         molMu.push(...lastMu);
         types.push(type);
@@ -866,6 +882,11 @@ const createAtoms: Handler = ({ sys }, a) => {
       ? generalAtomSites(lat.general, generalBoxFromRestricted(lat.general.Q, box.lo as [number, number, number], box.hi as [number, number, number], box.tilt as [number, number, number]), accept)
       : latticeSites(lat, [xlo, ylo, box.lo[2]], [xhi, yhi, box.hi[2]], sys.dimension, accept);
     pts = site.x;
+    // create_atoms.html: basis "M = which basis atom"; the lattice defines lat.basis.length of them. Native stops
+    // with "Out of range basis setting '2 2' in create_atoms command" (measured, black box: lattice sc, basis 2 2).
+    for (const [b, t] of basisType) {
+      if (!(b >= 1 && b <= lat.basis.length)) throw new StyleError(`Out of range basis setting '${b} ${t}' in create_atoms command`);
+    }
     types = site.basis.map((b) => basisType.get(b + 1) ?? type);
     // ratio / subset: choose a random subset of the sites
     const pick = kw.get('ratio') ?? kw.get('subset');
@@ -955,8 +976,11 @@ const readDataCmd: Handler = ({ sys }, a) => {
   if (!a[0]) throw new StyleError('usage: read_data file [keywords]');
   const text = sys.readFile(a[0]);
   const o: ReadDataOptions = defaultReadOptions();
+  // the keywords that need the add keyword (checked after the loop, since add may come later)
+  const needsAdd: string[] = [];
   for (let k = 1; k < a.length;) {
     const key = a[k];
+    if (key === 'offset' || key === 'shift') needsAdd.push(key);
     switch (key) {
       case 'add':
         if (a[k + 1] === 'append') { o.add = 'append'; k += 2; } else if (a[k + 1] === 'merge') { o.add = 'merge'; k += 2; } else {
@@ -973,7 +997,10 @@ const readDataCmd: Handler = ({ sys }, a) => {
       case 'extra/angle/types': o.extraTypes[2] = int(a[k + 1], key); k += 2; break;
       case 'extra/dihedral/types': o.extraTypes[3] = int(a[k + 1], key); k += 2; break;
       case 'extra/improper/types': o.extraTypes[4] = int(a[k + 1], key); k += 2; break;
-      case 'extra/bond/per/atom': case 'extra/angle/per/atom': case 'extra/dihedral/per/atom':
+      // read_data.html: extra/bond/per/atom sets the bonds per atom the storage holds (bonds only are enforced; the
+      // angle, dihedral, improper and special limits are read and not enforced: audit-setup.md RD-1)
+      case 'extra/bond/per/atom': o.extraBondPerAtom = int(a[k + 1], key); k += 2; break;
+      case 'extra/angle/per/atom': case 'extra/dihedral/per/atom':
       case 'extra/improper/per/atom': case 'extra/special/per/atom': int(a[k + 1], key); k += 2; break;
       case 'group': o.group = a[k + 1]; k += 2; break;
       case 'nocoeff': o.nocoeff = true; k += 1; break;
@@ -993,6 +1020,9 @@ const readDataCmd: Handler = ({ sys }, a) => {
       default: throw new StyleError(`unknown read_data keyword '${key}'`);
     }
   }
+  // read_data.html, keywords offset and shift: they need the add keyword. Measured with native LAMMPS (black box):
+  // "Cannot use read_data shift without add keyword" (the same for offset) stops the run.
+  if (o.add === 'none' && needsAdd.length) throw new StyleError(`Cannot use read_data ${needsAdd[0]} without add keyword`);
   readData(sys, text, o);
   const s = sys.state;
   sys.log(`Read ${s.n} atoms${s.topo.bonds.n ? `, ${s.topo.bonds.n} bonds` : ''}${s.topo.angles.n ? `, ${s.topo.angles.n} angles` : ''}${s.topo.dihedrals.n ? `, ${s.topo.dihedrals.n} dihedrals` : ''}${s.topo.impropers.n ? `, ${s.topo.impropers.n} impropers` : ''} from ${a[0]}`);
@@ -1041,7 +1071,10 @@ const writeDataCmd: Handler = ({ sys }, a) => {
 /** timestep dt — timestep.html; also keeps the elapsed time ("time") cumulative. */
 const timestep: Handler = ({ sys }, a) => {
   const dt = num(a[0], 'timestep');
-  if (!(dt > 0)) throw new StyleError('timestep must be > 0');
+  // timestep.html sets the time step; "timestep 0" is accepted by native LAMMPS and runs without motion (measured
+  // with native LAMMPS, black box: the script continues after timestep 0 and the run prints its thermo rows).
+  // A negative step is kept as an error here (not measured against native).
+  if (!(dt >= 0)) throw new StyleError('timestep must be >= 0');
   if (!sys.hasBox) { sys.pendingDt = dt; return; }
   const s = sys.state;
   s.time += (s.step - s.timeStep) * s.dt;
@@ -1058,9 +1091,17 @@ const resetTimestep: Handler = ({ sys }, a) => {
   let t: number | null = null;
   if (a[1] === 'time') t = num(a[2], 'time');
   else if (a.length > 1) throw new StyleError('usage: reset_timestep N [time T]');
-  s.time = t ?? s.time + (s.step - s.timeStep) * s.dt;
+  // reset_timestep.html: "The optional time keyword allows to also set the accumulated simulation time." Without the
+  // time keyword the clock is not restarted
+  // unless the step goes down: measured with native LAMMPS (black box, LJ 32 atoms, dt 0.005): after run 2
+  // (time 0.01), reset_timestep 100 and run 1 give step 100 time 0.5 and step 101 time 0.505; reset_timestep 50
+  // (below step 101) gives time 0 at step 50; reset_timestep 7 time 3.5 then reset_timestep 10 gives time 3.515.
+  if (t !== null) { s.time = t; s.timeStep = n; } else if (n < s.step) { s.time = 0; s.timeStep = n; } else {
+    // the time of the current step carries on from its anchor (timeStep) to the new step
+    s.time += (s.step - s.timeStep) * s.dt;
+    s.timeStep = s.step;
+  }
   s.step = n;
-  s.timeStep = n;
   sys.nb.lastBuild = -1;
 };
 
@@ -1888,7 +1929,9 @@ const velocity: Handler = ({ sys }, a) => {
         const x = num(w, 'velocity') * sc[d];
         return () => x;
       });
-      for (const i of members) for (let d = 0; d < 3; d++) { const f = comp[d]; if (f) s.v[3 * i + d] = f(i); }
+      // velocity.html, keyword sum: "The new velocities will be added to the existing ones if sum = yes". Only the
+      // components the style sets are added; a NULL component keeps its old value (old is only set when sum is yes).
+      for (const i of members) for (let d = 0; d < 3; d++) { const f = comp[d]; if (f) s.v[3 * i + d] = (old ? old[3 * i + d] : 0) + f(i); }
       break;
     }
     case 'ramp': {
@@ -1901,7 +1944,8 @@ const velocity: Handler = ({ sys }, a) => {
       for (const i of members) {
         let frac = (s.x[3 * i + cd] - clo) / (chi - clo);
         frac = Math.max(0, Math.min(1, frac));
-        s.v[3 * i + vd] = vlo + frac * (vhi - vlo);
+        // sum yes adds the ramp to the old velocity of the ramped component only
+        s.v[3 * i + vd] = (old ? old[3 * i + vd] : 0) + (vlo + frac * (vhi - vlo));
       }
       break;
     }
@@ -1911,7 +1955,11 @@ const velocity: Handler = ({ sys }, a) => {
       else throw new StyleError('usage: velocity group zero linear|angular');
       break;
   }
-  if (old) for (const i of members) for (let d = 0; d < 3; d++) s.v[3 * i + d] += old[3 * i + d];
+  // velocity.html says sum "is used by all styles, except zero", but native's scale (measured with native LAMMPS,
+  // black box: velocity scale 2.0 sum yes reaches temperature 2.0, and zero linear sum yes leaves ~0 momentum) does not
+  // add the old velocities, so the engine follows the measurement: create adds them after the new ones are made, set and
+  // ramp add them component by component above, and scale and zero do not add them
+  if (old && style === 'create') for (const i of members) for (let d = 0; d < 3; d++) s.v[3 * i + d] += old[3 * i + d];
   sys.refreshComputes();
 };
 
@@ -2051,7 +2099,13 @@ const deleteAtomsCmd: Handler = ({ sys }, a) => {
           const want = Math.round(f * elig.length);
           for (let i = elig.length - 1; i > 0; i--) { const j = Math.floor(rng.uniform() * (i + 1)); [elig[i], elig[j]] = [elig[j], elig[i]]; }
           for (const i of elig.slice(0, want)) del[i] = 1;
-        } else for (const i of elig) if (rng.uniform() < f) del[i] = 1;
+        } else {
+          // delete_atoms.html, eflag: "If eflag is set to no, then the number of deleted atoms will be approximate, but
+          // the operation will be fast." One draw per eligible atom; the stream is native's (nativeRandom.ts), which
+          // the measured run with native LAMMPS (fcc 80 atoms, seed 4321, 0.3) matches
+          const mark = nativeRandom('random').deleteFraction(int(seed, 'seed'), f, elig.length);
+          elig.forEach((i, k) => { if (mark[k]) del[i] = 1; });
+        }
       } else if (ranstyle === 'count') {
         let want = int(value, 'count');
         if (want > elig.length) {

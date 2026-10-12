@@ -329,6 +329,11 @@ export abstract class Pair {
     }
   }
 
+  /**
+   * A reason the style cannot run minimize (min.ts refuses with it), for styles whose minimization degrees of freedom go
+   * beyond the atom positions (pair eff/cut: the electron radii). Undefined when the style minimizes normally.
+   */
+  minimizeRefusal?(): string;
   /** Long-range tail energy/pressure need per-type counts; override when tail is supported. */
   tailSums(_counts: Float64Array): { etail: number; ptail: number } { return { etail: 0, ptail: 0 }; }
 

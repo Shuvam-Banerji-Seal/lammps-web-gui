@@ -10,7 +10,7 @@ import { BondedHybrid, type HybridKind } from '../force/bonded_hybrid';
 
 /** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
 type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart };
-import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS } from '../atoms';
+import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, isElectronStyle, ELECTRON_DEFAULTS, ELECTRON_SPIN } from '../atoms';
 import { ErfcTableCache } from '../force/erfc';
 
 /*
@@ -279,12 +279,17 @@ export const writeRestartText = (sys: System): string => {
     const st = sys.ff[kind];
     styles[kind] = st instanceof BondedHybrid ? { name: 'hybrid', data: { subs: st.subNames } } : st ? styleEntry(st.name, st) : null;
   }
+  // atom_style electron: the electron properties are internal custom props, not part of the state, so they are stored apart
+  const electron = isElectronStyle(s.atomStyle)
+    ? encodeValue(Object.fromEntries(Object.keys(ELECTRON_DEFAULTS).map((k) => [k, s.custom.get(k)!.data])), 'electron', [])
+    : null;
   const doc = {
     format: FORMAT,
     version: VERSION,
     step: s.step,
     state: encodeValue(rest, 'state', []),
     lineTri: encodeValue(lineTri, 'lineTri', []),
+    electron,
     comm: { style: sys.commStyle, vel: sys.ghostVelocity, cutoff: sys.nb.commCutoff },
     groups: encodeValue({ names: sys.groups.names, dynamic: sys.groups.dynamic }, 'groups', []),
     special: encodeValue(sys.ff.special, 'special', []),
@@ -311,7 +316,7 @@ export const readRestartText = (sys: System, text: string, name: string): void =
     if (header.startsWith('LAMMPS-WEB-RESTART')) throw new StyleError(`${name}: restart format '${header}' is not supported (this engine reads '${RESTART_MAGIC}')`);
     throw new StyleError(`${name} is not a restart file written by this browser engine. Native LAMMPS binary restart files cannot be read in the browser: their format is platform-specific. Convert the native file with the lmp -restart2data command-line flag and use read_data, or write the state here with write_restart (or write_data)`);
   }
-  let doc: { format: string; version: number; step: number; state: Json; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: FixRestart[]; lineTri?: Json };
+  let doc: { format: string; version: number; step: number; state: Json; electron?: Json | null; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: FixRestart[]; lineTri?: Json };
   try {
     doc = JSON.parse(text.slice(nl + 1));
   } catch {
@@ -332,6 +337,15 @@ export const readRestartText = (sys: System, text: string, name: string): void =
     for (const [k, c] of lt) {
       need(c.data.length === (c.cols > 0 ? c.cols : 1) * n, `${k} has the wrong length for ${n} atoms`);
       state.custom.set(k, c);
+    }
+  }
+  // atom_style electron: the stored electron properties (espin, eradius, ervel, erforce) come back as they were written
+  if (isElectronStyle(state.atomStyle)) {
+    const ep = doc.electron ? decodeValue(doc.electron, 'electron') as Record<string, Float64Array> : {};
+    for (const [name, def] of Object.entries(ELECTRON_DEFAULTS)) {
+      const data = ep[name] ?? new Float64Array(n).fill(def);
+      need(data.length === n, `electron ${name} has the wrong length for ${n} atoms`);
+      state.custom.set(name, { int: name === ELECTRON_SPIN, cols: 0, data: Float64Array.from(data) });
     }
   }
   // atom_style oxdna: the strand partners are not stored; they follow from the stored bonds, as after read_data

@@ -82,6 +82,9 @@ export const minimize = async (
   const s = sys.state;
   const set = sys.minSettings;
   const style = sys.minStyle;
+  // a pair style with degrees of freedom beyond the positions refuses here, rather than minimizing only the positions
+  const pairRefusal = sys.ff.pair?.minimizeRefusal?.();
+  if (pairRefusal) throw new StyleError(pairRefusal);
   if (!(MIN_STYLES as readonly string[]).includes(style)) throw new StyleError(`min_style ${style} is not supported`);
   // measured with native LAMMPS (black box): min_modify line forcezero gives different energies from quadratic
   // (chain, dmax 0.1: 13.4795499709744 vs 13.4813750335936 after one iteration); not reproduced yet

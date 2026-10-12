@@ -33,7 +33,7 @@ export const isTemplateStyle = (st: AtomStyle): boolean => atomSubStyles(st).inc
 /** Styles with bond topology and molecule IDs (template styles too: their topology is expanded from the template). */
 export const isMolecularStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'bond' || x === 'angle' || x === 'molecular' || x === 'full' || x === 'template' || x === 'bpm/sphere');
 /** Styles that store a per-atom charge. */
-export const hasChargeStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'charge' || x === 'full' || x === 'dipole');
+export const hasChargeStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'charge' || x === 'full' || x === 'dipole' || x === 'electron');
 /** Styles with finite-size spheres (radius, rmass, omega, torque). atom_style bpm/sphere is a bonded sphere style. */
 export const isSphereStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'sphere' || x === 'bpm/sphere');
 /**
@@ -163,6 +163,10 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
     m.set(TRI_FLAG, { int: true, cols: 0, data: new Float64Array(0) });
     m.set(TRI_BONUS, { int: false, cols: TRI_BONUS_COLS, data: new Float64Array(0) });
   }
+  // atom_style.html, electron: "*charge* + espin, eradius, ervel, erforce"
+  if (isElectronStyle(st)) {
+    for (const name of Object.keys(ELECTRON_DEFAULTS)) m.set(name, { int: name === ELECTRON_SPIN, cols: 0, data: new Float64Array(0) });
+  }
   return m;
 };
 
@@ -182,6 +186,25 @@ export const TRI_BONUS_COLS = 12;
 export const isLineAtom = (s: SimState, i: number): boolean => !!s.custom.get(LINE_FLAG)?.data[i];
 /** Atom i is a triangle (atom_style tri, triangleflag 1). */
 export const isTriAtom = (s: SimState, i: number): boolean => !!s.custom.get(TRI_FLAG)?.data[i];
+/** atom_style electron: the per-atom electron properties, stored as internal custom props (see ELECTRON_DEFAULTS). */
+export const ELECTRON_SPIN = '#espin';
+export const ELECTRON_RADIUS = '#eradius';
+export const ELECTRON_RVEL = '#ervel';
+export const ELECTRON_RFORCE = '#erforce';
+/**
+ * Value of each electron property of an atom that is created without one (create_atoms and the other atom
+ * creators). Measured with native LAMMPS (black box): after create_atoms, compute property/atom gives spin 1,
+ * eradius 1 and ervel 0.
+ */
+export const ELECTRON_DEFAULTS: Record<string, number> = { [ELECTRON_SPIN]: 1, [ELECTRON_RADIUS]: 1, [ELECTRON_RVEL]: 0, [ELECTRON_RFORCE]: 0 };
+/** Styles with the electron properties (atom_style.html: "For the *electron* style, the particles representing electrons are 3d Gaussians"). */
+export const isElectronStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('electron');
+/** The per-atom values of one electron property (ELECTRON_SPIN ...); a set keyword on another style is an error. */
+export const electronProp = (s: SimState, name: string, keyword: string): Float64Array => {
+  const c = s.custom.get(name);
+  if (!c || !isElectronStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute ${keyword} for atom style ${s.atomStyle}`);
+  return c.data;
+};
 
 /** atom_style oxdna: the 5' and 3' partner atom IDs of each atom, internal per-atom props (0 = none). */
 export const OXDNA_5P = '#id5p';
@@ -417,6 +440,7 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     c.data = growF(c.data, w * n);
     const src = a.custom?.get(name);
     if (src) c.data.set(src, w * n0);
+    else if (name in ELECTRON_DEFAULTS) c.data.fill(ELECTRON_DEFAULTS[name], w * n0, w * n);
   }
   s.n = n;
   return add;

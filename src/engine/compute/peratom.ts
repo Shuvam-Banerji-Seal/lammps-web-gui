@@ -1,7 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid, isBpmSphereStyle, HEAT_FLOW, HEAT_TEMPERATURE } from '../atoms';
+import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid, isBpmSphereStyle, HEAT_FLOW, HEAT_TEMPERATURE, ELECTRON_SPIN, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_RFORCE } from '../atoms';
 
 /*
  * Per-atom computes: ke/atom, pe/atom, stress/atom and property/atom.
@@ -23,6 +23,13 @@ const STRESS_KEYWORDS = ['ke', ...VIRIAL_TERMS, 'virial'] as const;
  * specified compute group." "This compute calculates a per-atom vector" and
  * "The per-atom vector values will be in energy units." Default: none.
  */
+/**
+ * atom_style electron attributes of compute property/atom: compute_property_atom.html lists "espin = electron spin",
+ * "eradius = electron radius", "ervel = electron radial velocity" and "erforce = electron radial force". Measured with
+ * native LAMMPS (black box): spin is accepted as well and gives the electron spin.
+ */
+const ELECTRON_ATTRS = new Map<string, string>([['spin', ELECTRON_SPIN], ['espin', ELECTRON_SPIN], ['eradius', ELECTRON_RADIUS], ['ervel', ELECTRON_RVEL], ['erforce', ELECTRON_RFORCE]]);
+
 export class ComputeKEAtom extends Compute {
   readonly style = 'ke/atom';
 
@@ -292,7 +299,10 @@ export class ComputePropertyAtom extends Compute {
       // compute_property_atom.html also lists "i_name, d_name, i2_name[I], d2_name[I]" (fix
       // property/atom) and the finite-size sphere attributes radius, diameter, omega*, tq*
       if (HEAT_ATTRS[a] && !sys.state.custom.has(HEAT_ATTRS[a])) throw new StyleError(`compute property/atom ${a} needs fix property/atom temperature heatflow`);
-      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !SPIN_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a]) {
+      // compute_property_atom.html: "espin, eradius, ervel, erforce" (atom_style electron; "spin" is the older name of espin)
+      const ek = ELECTRON_ATTRS.get(a);
+      if (ek && !sys.state.custom.has(ek)) throw new StyleError(`compute property/atom ${a} needs atom_style electron`);
+      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !SPIN_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a] && !ELECTRON_ATTRS.has(a)) {
         throw new StyleError(`compute property/atom: attribute '${a}' is not supported by the browser engine`);
       }
       if (SPHERE_ATTRS.has(a) && !sys.state.radius) throw new StyleError(`compute property/atom ${a} needs atom_style sphere`);
@@ -323,10 +333,13 @@ export class ComputePropertyAtom extends Compute {
       const set = (i: number, val: number) => { out[m > 1 ? m * i + k : i] = val; };
       const custom = customAttr(s, attr);
       const heat = HEAT_ATTRS[attr] ? s.custom.get(HEAT_ATTRS[attr])!.data : null;
+      const ek = ELECTRON_ATTRS.get(attr);
+      const electron = ek ? s.custom.get(ek)!.data : null;
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & this.groupBit)) continue;
         if (custom) { set(i, custom(i)); continue; }
         if (heat) { set(i, heat[i]); continue; }
+        if (electron) { set(i, electron[i]); continue; }
         switch (attr) {
           case 'radius': set(i, s.radius![i]); break;
           case 'diameter': set(i, 2 * s.radius![i]); break;

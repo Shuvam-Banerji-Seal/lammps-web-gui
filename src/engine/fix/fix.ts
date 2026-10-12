@@ -40,6 +40,8 @@ export abstract class Fix {
   sizeArrayCols = 0;
   extscalar = 0;
   extvector = 0;
+  /** Per-element extensive (1) or intensive (0) flags of a global vector, when they differ (fix ave/time). */
+  extlist: number[] | null = null;
   /** Per-atom outputs. */
   peratomFlag = false;
   sizePeratomCols = 0;
@@ -47,6 +49,8 @@ export abstract class Fix {
   arrayAtom = new Float64Array(0);
   /** Steps between end_of_step calls (and output validity for averaging fixes). */
   nevery = 1;
+  /** Steps on which the global output is valid (0: any step); thermo output must use compatible steps. */
+  globalFreq = 0;
   /** Virial contribution (xx yy zz xy xz yz) when thermoVirial is on. */
   virial = new Float64Array(6);
   /** Ramp parameters use the current run's start and stop. */

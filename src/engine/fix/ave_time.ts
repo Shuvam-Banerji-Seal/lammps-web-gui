@@ -244,6 +244,7 @@ export class FixAveTime extends Fix {
     if (this.nFreq % this.nEvery !== 0) {
       throw new StyleError(`${what}: Nfreq must be a multiple of Nevery`);
     }
+    this.globalFreq = this.nFreq;
     if (this.nRepeat * this.nEvery > this.nFreq) {
       throw new StyleError(`${what}: Nrepeat x Nevery cannot exceed Nfreq (the time steps contributing to the average cannot overlap)`);
     }
@@ -251,6 +252,12 @@ export class FixAveTime extends Fix {
     let k = 3;
     while (k < args.length && !AVE_TIME_KEYWORDS.has(args[k])) { words.push(args[k]); k++; }
     if (!words.length) throw new StyleError(`${what}: no input values were given`);
+    // A malformed value word is an error of the fix line (native: "Illegal fix ave/time command"), not of the first run.
+    for (const w of words) {
+      if (w.includes('*')) {
+        if (!/^[cfv]_[A-Za-z0-9_\-/]+\[\d*\*\d*\]$/.test(w)) throw new StyleError(`${what}: illegal value '${w}' (expected c_ID[*], f_ID[*] or v_name)`);
+      } else parseRef(w);
+    }
     this.valueWords = words;
     this.mode = 'scalar';
     this.aveMode = 'one';
@@ -345,6 +352,7 @@ export class FixAveTime extends Fix {
     this.scalarFlag = false;
     this.vectorFlag = false;
     this.arrayFlag = false;
+    this.extlist = null;
     if (this.mode === 'scalar') {
       this.len = 1;
       this.lenSet = true;
@@ -355,6 +363,8 @@ export class FixAveTime extends Fix {
         this.vectorFlag = true;
         this.sizeVector = this.inputs.length;
         this.extvector = allExt ? 1 : 0;
+        // each element carries its own flag (thermo normalises the extensive ones)
+        this.extlist = exts;
       }
     } else if (this.inputs.length === 1) {
       this.vectorFlag = true;

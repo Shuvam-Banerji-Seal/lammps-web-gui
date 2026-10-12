@@ -371,6 +371,8 @@ export class FixPour extends Fix {
         i += 3;
       } else if (key === 'vel') {
         // "vel values (3d) = vxlo vxhi vylo vyhi vz"; "vel values (2d) = vxlo vxhi vy"
+        // Measured with native LAMMPS (black box): "vel 0.0 0.0 0.0" in 3d is "ERROR: Illegal fix pour vel command: missing argument(s)".
+        if (i + (twoD ? 4 : 6) > args.length) throw new StyleError('Illegal fix pour vel command: missing argument(s)');
         if (twoD) { this.vel = [num(args[i + 1], 'vel vxlo'), num(args[i + 2], 'vel vxhi'), 0, 0, num(args[i + 3], 'vel vy')]; i += 4; }
         else { this.vel = [num(args[i + 1], 'vel vxlo'), num(args[i + 2], 'vel vxhi'), num(args[i + 3], 'vel vylo'), num(args[i + 4], 'vel vyhi'), num(args[i + 5], 'vel vz')]; i += 6; }
       } else if (key === 'ignore') {

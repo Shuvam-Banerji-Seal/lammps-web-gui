@@ -201,6 +201,8 @@ const parseInfileText = (text: string, style: string, fname: string): Map<string
 export class FixRigid extends Fix {
   readonly style: string;
   private bodies: Body[] = [];
+  /** rigid/small: the largest body extent (see constructBody), checked against the ghost cutoff at setup. */
+  private maxExtent = 0;
   private bodystyle: string;
   private groupList: string[] = [];
   private forceSpecs: [string, boolean[]][] = [];
@@ -357,6 +359,7 @@ export class FixRigid extends Fix {
   private buildBodies(): void {
     const sys = this.sys;
     const s = sys.state;
+    this.maxExtent = 0;
     const members = new Map<string, number[]>();
     // bodystyle custom: the atom-style variable's value, rounded to an integer (per-atom, all atoms)
     const custom = this.customVar ? sys.atomVariable(this.customVar)
@@ -416,6 +419,16 @@ export class FixRigid extends Fix {
       for (let d = 0; d < 3; d++) { xcm[d] += m * pos[n][d]; vcm[d] += m * s.v[3 * i + d]; }
     });
     for (let d = 0; d < 3; d++) { xcm[d] /= M; vcm[d] /= M; }
+    // Body extent: the largest distance of a body atom from the atom nearest the centre of mass (measured with
+    // native LAMMPS, black box: chains of 2, 3, 4, 5 and 8 atoms spaced 1 apart give extents 1, 1, 2, 2 and 4).
+    let ref = 0, refD2 = Infinity;
+    pos.forEach((p, n) => {
+      const d2 = (p[0] - xcm[0]) ** 2 + (p[1] - xcm[1]) ** 2 + (p[2] - xcm[2]) ** 2;
+      if (d2 < refD2) { refD2 = d2; ref = n; }
+    });
+    let ext2 = 0;
+    for (const p of pos) ext2 = Math.max(ext2, (p[0] - pos[ref][0]) ** 2 + (p[1] - pos[ref][1]) ** 2 + (p[2] - pos[ref][2]) ** 2);
+    this.maxExtent = Math.max(this.maxExtent, Math.sqrt(ext2));
     const I = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
     const angmom = [0, 0, 0];
     let nsph = 0;
@@ -693,6 +706,10 @@ export class FixRigid extends Fix {
   }
 
   setup(): void {
+    // Measured with native LAMMPS (black box): a rigid/small body whose extent exceeds the ghost cutoff is an error at the run.
+    if (this.style.includes('small') && this.maxExtent > this.sys.nb.cutghost) {
+      throw new StyleError(`Rigid body extent ${this.maxExtent} > ghost atom cutoff - use comm_modify cutoff`);
+    }
     this.sumForces();
     for (const b of this.bodies) this.omegaFromAngmom(b);
     // atom velocities become those of the rigid motion

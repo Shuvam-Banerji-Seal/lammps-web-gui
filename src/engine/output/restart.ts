@@ -6,10 +6,11 @@ import { StyleError, type Bonded, type Pair } from '../force/types';
 import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES } from '../styles';
 import { FixPropertyAtom, type PropertyAtomRestart } from '../fix/property_atom';
 import { FixCmap, type CmapRestart } from '../fix/cmap';
+import { FixNH, type NHRestart } from '../fix/nh';
 import { BondedHybrid, type HybridKind } from '../force/bonded_hybrid';
 
 /** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
-type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart };
+type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart; nh?: NHRestart };
 import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, isElectronStyle, ELECTRON_DEFAULTS, ELECTRON_SPIN, isDielectricStyle, DIELECTRIC_DEFAULTS, isSphStyle, SPH_DEFAULTS, SPH_WIDTH } from '../atoms';
 import { ErfcTableCache } from '../force/erfc';
 
@@ -243,6 +244,8 @@ export const writeRestartText = (sys: System): string => {
   for (const f of sys.fixes) {
     // fix_cmap.html: "This fix writes the list of CMAP cross-terms to binary restart files"
     if (f instanceof FixCmap) { fixes.push({ id: f.id, props: [], data: {}, cmap: f.restartState() }); continue; }
+    // fix_nh.html: the thermostat and barostat variables go to the binary restart file
+    if (f instanceof FixNH) { fixes.push({ id: f.id, props: [], data: {}, nh: f.restartState() }); continue; }
     if (!(f instanceof FixPropertyAtom)) continue;
     const data: Record<string, number[]> = {};
     for (const p of f.props) {

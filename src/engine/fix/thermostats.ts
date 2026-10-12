@@ -2,13 +2,13 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { Compute } from '../compute/compute';
-import { RanMars, Rng } from '../rng';
+import { RanMars } from '../rng';
 import { ownCompute, parseNumOrVar, ramp, removeCompute, valueOf, type NumOrVar } from './util';
 import { massOf, nativeOrder } from '../atoms';
 
 /*
  * Velocity thermostats that do not integrate (use them with fix nve):
- * langevin, temp/berendsen, temp/rescale, temp/csvr, temp/csld. Written from
+ * langevin, temp/berendsen, temp/rescale. (temp/csvr and temp/csld are in src/engine-gpl/thermostat.) Written from
  * the cited papers and the documented behaviour, not from LAMMPS code.
  *
  * Shared documented rules: "The desired temperature at each timestep is a
@@ -29,19 +29,7 @@ import { massOf, nativeOrder } from '../atoms';
 const target = (sys: System, tStart: NumOrVar, tStop: number): number =>
   (typeof tStart === 'number' ? ramp(sys, tStart, tStop) : valueOf(sys, tStart));
 
-/** 2 * kinetic energy (mvv2e units) of the group, with any bias removed. */
-const twoKE = (sys: System, bit: number): number => {
-  const s = sys.state;
-  let t = 0;
-  for (let i = 0; i < s.n; i++) {
-    if (!(s.mask[i] & bit)) continue;
-    const m = massOf(s, i);
-    t += m * (s.v[3 * i] ** 2 + s.v[3 * i + 1] ** 2 + s.v[3 * i + 2] ** 2);
-  }
-  return t * s.units.mvv2e;
-};
-
-abstract class RescaleFix extends Fix {
+export abstract class RescaleFix extends Fix {
   protected tStart: NumOrVar = 0;
   protected tStop = 0;
   protected tempId: string;
@@ -119,6 +107,9 @@ export class FixTempBerendsen extends RescaleFix {
 
   endOfStep(): void {
     const t = this.current();
+    // Measured with native LAMMPS (black box): with fewer than one degree of freedom in the temperature group
+    // (a one-atom group) the fix returns without rescaling and without an error, whatever the temperature.
+    if (this.temp.dof < 1) return;
     if (t === 0) throw new StyleError(`fix ${this.id} temp/berendsen: cannot rescale a zero temperature`);
     const tt = target(this.sys, this.tStart, this.tStop);
     const lambda = Math.sqrt(1 + (this.sys.state.dt / this.damp) * (tt / t - 1));
@@ -154,94 +145,12 @@ export class FixTempRescale extends RescaleFix {
   endOfStep(): void {
     const t = this.current();
     const tt = target(this.sys, this.tStart, this.tStop);
+    // Measured with native LAMMPS (black box): fewer than one degree of freedom in the group means no rescaling.
+    if (this.temp.dof < 1) return;
     if (Math.abs(t - tt) <= this.window) return;
     if (t === 0) throw new StyleError(`fix ${this.id} temp/rescale: cannot rescale a zero temperature`);
     const tnew = t - this.fraction * (t - tt);
     this.rescale(Math.sqrt(tnew / t), t);
-  }
-}
-
-/**
- * fix ID group temp/csvr|temp/csld Tstart Tstop Tdamp seed —
- * fix_temp_csvr.html: temp/csvr is "global velocity rescaling with
- * Hamiltonian dynamics (Bussi1)" that "chooses the actual scaling factor from
- * a suitably chosen (gaussian) distribution"; temp/csld "the velocities are
- * updated to a linear combination of the current velocities with a gaussian
- * distribution of velocities at the desired temperature. Both thermostats are
- * applied every timestep." Bussi, Donadio, Parrinello, J Chem Phys 126,
- * 014101 (2007), eq. (A7): K' = K + (1-c)(K_t (R1^2 + sum_{i>=2} Ri^2)/Nf - K)
- * + 2 R1 sqrt(c (1-c) K K_t / Nf), c = exp(-dt/Tdamp).
- */
-export class FixTempCSVR extends RescaleFix {
-  readonly style: string;
-  private damp: number;
-  private rng: Rng;
-
-  constructor(sys: System, id: string, group: string, args: string[], style: 'temp/csvr' | 'temp/csld') {
-    super(sys, id, group, args);
-    this.style = style;
-    if (args.length !== 4) throw new StyleError(`usage: fix ID group ${style} Tstart Tstop Tdamp seed`);
-    this.tStart = parseNumOrVar(args[0], 'Tstart');
-    this.tStop = Number(args[1]);
-    this.damp = Number(args[2]);
-    const seed = Number(args[3]);
-    if (!(this.damp > 0) || !Number.isInteger(seed) || seed <= 0) throw new StyleError(`fix ${style}: Tdamp must be > 0 and seed a positive integer`);
-    this.rng = new Rng(seed);
-  }
-
-  /** Sum of n squared standard normals (a chi-squared variate). */
-  private sumNoises(n: number): number {
-    if (n <= 0) return 0;
-    // chi^2_n = 2 Gamma(n/2): Marsaglia-Tsang for shape >= 1, boost for < 1
-    const gamma = (a: number): number => {
-      if (a < 1) return gamma(a + 1) * Math.pow(this.rng.uniform(), 1 / a);
-      const d = a - 1 / 3, c = 1 / Math.sqrt(9 * d);
-      for (;;) {
-        let x: number, v: number;
-        do { x = this.rng.gaussian(); v = 1 + c * x; } while (v <= 0);
-        v = v * v * v;
-        const u = this.rng.uniform();
-        if (u < 1 - 0.0331 * x * x * x * x || Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v;
-      }
-    };
-    return 2 * gamma(n / 2);
-  }
-
-  endOfStep(): void {
-    const sys = this.sys;
-    const s = sys.state;
-    const t = this.current();
-    const tt = target(sys, this.tStart, this.tStop);
-    const c = Math.exp(-s.dt / this.damp);
-    if (this.style === 'temp/csld') {
-      // v' = c v + sqrt((1 - c^2) kT/m) xi  (velocities mixed with fresh Maxwell-Boltzmann ones)
-      const ke0 = twoKE(sys, this.groupBit);
-      const comp = this.temp;
-      const bias = comp.hasBias();
-      if (bias) { comp.computeBias(); comp.removeBiasAll(); }
-      const kt = s.units.boltz * tt / s.units.mvv2e;
-      const c2 = Math.sqrt(1 - c * c);
-      for (let i = 0; i < s.n; i++) {
-        if (!(s.mask[i] & this.groupBit)) continue;
-        const sd = Math.sqrt(kt / massOf(s, i));
-        for (let d = 0; d < 3; d++) {
-          if (d === 2 && s.dimension === 2) continue;
-          s.v[3 * i + d] = c * s.v[3 * i + d] + c2 * sd * this.rng.gaussian();
-        }
-      }
-      if (bias) comp.restoreBiasAll();
-      this.exchanged += 0.5 * (ke0 - twoKE(sys, this.groupBit));
-      sys.refreshComputes();
-      return;
-    }
-    if (t === 0) return;
-    const nf = this.temp.dof;
-    const kin = 0.5 * nf * s.units.boltz * t;
-    const kt = 0.5 * nf * s.units.boltz * tt;
-    const r1 = this.rng.gaussian();
-    const r2 = this.sumNoises(nf - 1);
-    const knew = kin + (1 - c) * (kt * (r1 * r1 + r2) / nf - kin) + 2 * r1 * Math.sqrt(c * (1 - c) * kin * kt / nf);
-    this.rescale(Math.sqrt(Math.max(0, knew) / kin), t);
   }
 }
 

@@ -153,7 +153,14 @@ export class Thermo {
       const m = /^([cfv])_([A-Za-z0-9_]+)/.exec(k);
       if (!m) continue;
       if (m[1] === 'c') this.sys.compute(m[2]);
-      else if (m[1] === 'f') this.sys.fix(m[2]);
+      else if (m[1] === 'f') {
+        const f = this.sys.fix(m[2]);
+        // Measured with native LAMMPS (black box): thermo 2 with a fix ave/time of Nfreq 4 is "ERROR: Thermo and fix
+        // a not computed at compatible times"; thermo 4 is accepted.
+        if (this.every > 0 && f.globalFreq > 0 && this.every % f.globalFreq !== 0) {
+          throw new StyleError(`Thermo and fix ${m[2]} not computed at compatible times`);
+        }
+      }
       else if (!this.sys.vars.has(m[2])) throw new StyleError(`thermo keyword ${k}: variable ${m[2]} is not defined`);
     }
     this.checkFormats();
@@ -419,7 +426,7 @@ export class Thermo {
     }
     const f = sys.fix(id);
     if (i === null) return this.normalize(f.computeScalar(), f.extscalar === 1);
-    if (j === null) return this.normalize(f.computeVector(i - 1), f.extvector === 1);
+    if (j === null) return this.normalize(f.computeVector(i - 1), f.extlist ? f.extlist[i - 1] === 1 : f.extvector === 1);
     return f.computeArray(i - 1, j - 1);
   }
 

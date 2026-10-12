@@ -144,7 +144,13 @@ export class System {
     this.epoch++;
   }
 
-  /** Compute values must be re-evaluated (velocities changed, thermo output). */
+  /**
+   * Compute values must be re-evaluated (velocities changed, thermo output). Rule for readers (fixes that read a
+   * compute between the integrator steps): call refreshComputes() before reading. The epoch is only bumped by
+   * bump() after positions or the box change, and by this call; a value read after finalIntegrate (velocities
+   * changed) and before endOfStep is stale unless refreshed. All readers in fix/ do refresh first (thermostats
+   * current(), nh currentTemp(), valueOf() in fix/util.ts, box_relax).
+   */
   refreshComputes(): void {
     this.epoch++;
   }
@@ -296,7 +302,9 @@ export class System {
     const lost = this.lostFlags();
     if (!lost) return;
     const mode = this.thermo.lost;
-    if (mode === 'error') throw new StyleError(`lost atoms: ${lost.nlost} atom(s) left the box through a fixed (f) boundary (thermo_modify lost ignore/warn allows this)`);
+    // Measured with native LAMMPS (black box, boundary f f f, 256 lj atoms, run 10): "ERROR: Lost atoms: original 256
+    // current 215" after the step whose reneighboring lost 41 atoms; the same step is the first one that fails here.
+    if (mode === 'error') throw new StyleError(`Lost atoms: original ${this.state.n} current ${this.state.n - lost.nlost}`);
     if (mode === 'warn') this.warn(`lost ${lost.nlost} atom(s) through a fixed boundary`);
     this.deleteAtoms(lost.flags);
   }

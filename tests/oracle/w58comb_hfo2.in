@@ -1,0 +1,26 @@
+# oracle: pair_style comb + fix qeq/comb - monoclinic HfO2 (LAMMPS examples/comb in.comb.HfO2: over-coordination correction, cor_flag; qeq every step with precision 0.1 to keep the solve within the test time budget, 2 steps, no file keyword)
+# oracle-inputs: w58comb_hfo2.data
+# oracle-potentials: ffield.comb
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# precision 0.1 (the example uses 0.003): native needs 85 iterations at the setup solve for 0.003 and 31 for 0.1
+# (measured with native LAMMPS, black box); the engine spends about 60 ms per iteration on 1500 atoms, so 0.003
+# would exceed the 5 s vitest timeout. Measured engine error: thermo max rel 2.7e-13, atoms max abs 2.0e-13.
+units		metal
+atom_style	charge
+dimension       3
+boundary        p p p
+read_data	w58comb_hfo2.data
+mass		1 178.0
+mass		2 16.00
+velocity	all create 300.1 2398378
+pair_style	comb
+pair_coeff	* * ffield.comb Hf O
+neighbor	0.5 bin
+neigh_modify	every 10 delay 10 check yes
+timestep        0.00020
+thermo_style	custom step temp etotal pe evdwl ecoul press vol lx ly lz xz
+thermo_modify	norm yes format float %.15g
+thermo		1
+fix		1 all nve
+fix		2 all qeq/comb 1 0.1
+run		2

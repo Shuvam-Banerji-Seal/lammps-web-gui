@@ -1,0 +1,26 @@
+# oracle: ReaxFF water (55 molecules cut from examples/reaxff/water data.water) with the field of the matching in.water.*.field example, 10 NVE steps, atoms and thermo at every step (the dynamic check of the field force)
+# oracle-inputs: w65reaxq_water.data w65reaxq_acks2_ff.water w65reaxq_gauss_exp.txt
+# Measured (engine vs native, step 0 pe): tight solve 3.8e-8 relative (-13549.71186 vs -13549.71191); the ACKS2
+# press 2.6e-7 relative (-546.45873 vs -546.45858); the ACKS2 solve at 1e-12 is conditioning-limited (w65reaxq_acks2_tight),
+# so this case is compared at rel=1e-6.
+# Measured with native LAMMPS (solver tolerance 1e-12, 11 rows, max relative error): Node 24 thermo 4.7e-7 (press), atoms 5.3e-6 (fx);
+# Node 20 thermo 7.5e-7 (press), atoms 3.3e-6 (fx). Not 1e-9: the ACKS2 solve at 1e-12 is conditioning-limited.
+# Compared at rel=1e-6.
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-10
+units           real
+atom_style      charge
+boundary        p p s
+read_data       w65reaxq_water.data
+pair_style      reaxff NULL safezone 3.0 mincap 150
+pair_coeff      * * w65reaxq_acks2_ff.water O H
+fix             1 all acks2/reaxff 1 0.0 10.0 1e-12 reaxff maxiter 1000
+fix             3 all efield 0.0 0.0 1.0
+neighbor        0.5 bin
+neigh_modify    every 1 delay 0 check yes
+velocity        all create 300.0 4928459 rot yes dist gaussian
+timestep        0.5
+fix             2 all nve
+thermo_style    custom step temp pe ebond evdwl ecoul ke etotal press
+thermo_modify   format float %.15g
+thermo          1
+run             10

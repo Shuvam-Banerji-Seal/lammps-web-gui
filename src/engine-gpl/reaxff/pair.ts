@@ -206,7 +206,7 @@ export class PairReaxFF extends Pair {
       ws: newWorkspace(N),
       en: newEnergies(),
       thb: { start: new Int32Array(0), end: new Int32Array(0), thb: new Int32Array(0), pthb: new Int32Array(0), theta: new Float64Array(0), dcos_di: new Float64Array(0), dcos_dj: new Float64Array(0), dcos_dk: new Float64Array(0), count: 0 },
-      hb: ensureHBondList(N, counts.hbCount, numH),
+      hb: ensureHBondList(counts.hbCount, numH),
     };
     resetWorkspace(sys.ws);
     initForces(sys);

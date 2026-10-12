@@ -140,7 +140,9 @@ export class FixACKS2ReaxFF extends Fix {
     this.params = parsed;
   }
 
-  override setup(): void { this.preForce(); }
+  override setupPreForce(): void { this.preForce(); }
+  /** min_pre_force: the solve before every minimization evaluation (the same step rule). */
+  override minPreForce(): void { this.preForce(); }
 
   override preForce(): void {
     if (this.sys.state.step % this.nevery !== 0) return;

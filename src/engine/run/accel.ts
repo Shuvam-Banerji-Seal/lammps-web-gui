@@ -102,6 +102,7 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
   sys.ff.init(s, sys.nb, g, sys.styleContext());
   remap();
   sys.sortAtoms(true);
+  for (const f of sys.fixes) f.setupPreForce?.();
   sys.bump();
   store(sys, await a.backend.compute(s, a.table));
   for (const f of sys.fixes) f.setup();

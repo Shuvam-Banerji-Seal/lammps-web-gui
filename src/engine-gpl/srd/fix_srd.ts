@@ -11,10 +11,10 @@
  * advected ... the SRD velocities are rotated ... in each bin".
  *
  * Supported here: lj or other unit styles through the unit table, 2d and 3d boxes, point SRD particles of one mass,
- * big particles that are spheres, collision slip, exact and inexact (exact yes/no), bounce N, inside
- * error/warn/ignore, lamda, radius, search, cubic, rescale, and the default shift no, tstat no, overlap no.
- * Refused with a StyleError naming the keyword: collision noslip, shift yes/possible, tstat yes, unbiased yes,
- * overlap yes, ellipsoid/line/tri big particles, and fix wall/srd.
+ * big particles that are spheres, collision slip or noslip, exact and inexact (exact yes/no), bounce N, inside
+ * error/warn/ignore, lamda, radius, search, cubic, rescale, shift no/yes/possible (RanPark bin shifts, periodic
+ * boxes), and tstat yes without box deformation. Refused with a StyleError naming the keyword: unbiased yes,
+ * overlap yes, tstat yes with fix deform, ellipsoid/line/tri big particles, and fix wall/srd.
  *
  * Browser-engine difference: native processes SRD atoms in its own local order; the engine keeps that order in
  * SimState.order (nativeOrder), and every loop over SRD particles goes through it, so the random draws happen in
@@ -27,6 +27,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { isLineAtom, isTriAtom, massOf, nativeOrder } from '../../engine/atoms';
 import { RanMars } from '../random_mars';
+import { RanPark } from '../random_park';
 
 /** enum { INSIDE_ERROR, INSIDE_WARN, INSIDE_IGNORE } */
 const INSIDE_ERROR = 0;
@@ -66,6 +67,7 @@ export class FixSRD extends Fix {
   private cubictol = 0.01;
   private rescaleRotate = true;
   private rescaleCollide = true;
+  private shiftuser = 'no';
 
   private initflag = false;
   private dtBig = 0;
@@ -128,12 +130,12 @@ export class FixSRD extends Fix {
   private readonly statsAll = new Float64Array(12);
 
   /** reset_velocities scratch, one entry per velocity bin */
-  private binhead = new Int32Array(0);
-  private binnext = new Int32Array(0);
-  private binVsum = new Float64Array(0);
-  private binCount = new Int32Array(0);
-  private binRandom = new Float64Array(0);
-  private binValue = new Float64Array(0);
+  /** shift no/yes/possible: shiftflag = bins move with a random corner (shifts[1] in fix_srd.cpp) */
+  private shiftflag = false;
+  private readonly randomShift: RanPark | null;
+  /** collision noslip (true) or slip (false) with big spheres */
+  private readonly noslipflag: boolean;
+  private readonly tstat: boolean;
 
   /** collision scratch vectors */
   private readonly xs = new Float64Array(3);
@@ -144,6 +146,8 @@ export class FixSRD extends Fix {
   private readonly norm = new Float64Array(3);
   private readonly vsnew = new Float64Array(3);
   private readonly tangent = new Float64Array(3);
+  private readonly tangent1 = new Float64Array(3);
+  private readonly tangent2 = new Float64Array(3);
   private readonly vsurf = new Float64Array(3);
 
   constructor(sys: System, id: string, group: string, args: string[]) {
@@ -175,9 +179,8 @@ export class FixSRD extends Fix {
     this.gridsearch = this.gridsrd;
 
     let collide = 'noslip';
-    let collideSet = false;
-    let shift = 'no';
-    let tstat = false;
+    let shiftSeed = 0;
+    let tstatUser = false;
     let unbias = false;
     let overlap = false;
     let iarg = 5;
@@ -196,7 +199,6 @@ export class FixSRD extends Fix {
         need(2, key);
         collide = args[iarg + 1];
         if (collide !== 'slip' && collide !== 'noslip') throw new StyleError(`Unknown fix srd collision argument ${collide}`);
-        collideSet = true;
         iarg += 2;
       } else if (key === 'overlap') {
         need(2, key);
@@ -240,18 +242,20 @@ export class FixSRD extends Fix {
         iarg += 3;
       } else if (key === 'shift') {
         need(3, key);
-        shift = args[iarg + 1];
-        if (shift !== 'no' && shift !== 'yes' && shift !== 'possible') throw new StyleError(`Unknown fix srd shift argument ${shift}`);
-        intArg(args[iarg + 2], 'shift seed');
+        this.shiftuser = args[iarg + 1];
+        if (this.shiftuser !== 'no' && this.shiftuser !== 'yes' && this.shiftuser !== 'possible') {
+          throw new StyleError(`Unknown fix srd shift argument ${this.shiftuser}`);
+        }
+        shiftSeed = intArg(args[iarg + 2], 'shift seed');
         iarg += 3;
       } else if (key === 'tstat') {
         need(2, key);
-        tstat = logicalArg(args[iarg + 1], 'tstat');
+        tstatUser = logicalArg(args[iarg + 1], 'tstat');
         iarg += 2;
       } else if (key === 'unbiased') {
         need(2, key);
         unbias = logicalArg(args[iarg + 1], 'unbiased');
-        if (unbias && !tstat) throw new StyleError('Must use SRD thermostat when enabling unbiased thermostatting');
+        if (unbias && !tstatUser) throw new StyleError('Must use SRD thermostat when enabling unbiased thermostatting');
         iarg += 2;
       } else if (key === 'rescale') {
         need(2, key);
@@ -268,14 +272,20 @@ export class FixSRD extends Fix {
     }
 
     // the refusals: keywords whose physics is not ported yet (named, never ignored)
-    if (collideSet && collide === 'noslip') throw new StyleError('fix srd collision noslip is not supported by this engine yet (only collision slip)');
-    if (shift !== 'no') throw new StyleError(`fix srd shift ${shift} is not supported by this engine yet (only shift no)`);
-    if (tstat) throw new StyleError('fix srd tstat yes is not supported by this engine yet');
     if (unbias) throw new StyleError('fix srd unbiased yes is not supported by this engine yet');
     if (overlap) throw new StyleError('fix srd overlap yes is not supported by this engine yet (only overlap no)');
 
+    this.noslipflag = collide === 'noslip';
+    this.tstat = tstatUser;
     // initialize Marsaglia RNG with processor-unique seed (one processor: seed + 0)
     this.random = new RanMars(seed);
+    // shift yes/possible: RanPark with the shift seed (fix_srd.cpp: "randomshift = new RanPark(lmp, shiftseed)")
+    if (this.shiftuser !== 'no') {
+      if (shiftSeed <= 0) throw new StyleError('Invalid seed for Park random # generator');
+      this.randomShift = new RanPark(shiftSeed);
+    } else {
+      this.randomShift = null;
+    }
   }
 
   /** fix_srd.cpp setmask(): PRE_NEIGHBOR and POST_FORCE (the engine calls preNeighbor and postForce). */
@@ -290,6 +300,25 @@ export class FixSRD extends Fix {
     if (s.box.triclinic) throw new StyleError('Fix srd does not support triclinic boxes');
     if (this.initflag && s.dt !== this.dtBig) throw new StyleError('Cannot change timestep once fix srd is set up');
     if (this.bigExist) this.checkBig();
+    // fix_srd.cpp init(): "Fix srd no-slip requires atom attribute torque"
+    if (this.bigExist && this.noslipflag && !s.torque) throw new StyleError('Fix srd no-slip requires atom attribute torque');
+    // fix_srd.cpp init(): a box deformation with the SRD thermostat needs the streaming velocity, not supported here
+    if (this.tstat && this.sys.fixes.some((f) => f.style === 'deform')) {
+      throw new StyleError('fix srd tstat yes with fix deform is not supported by this engine yet');
+    }
+    // big particles that belong to rigid bodies (examples dimer, star, tri .mp) take native's rigid-body collision
+    // path, which is not ported: refused rather than run unverified
+    if (this.bigExist) {
+      const rigid = this.sys.fixes.find((f) => f.style.startsWith('rigid') && (f.groupBit & this.bigBit) !== 0);
+      if (rigid) {
+        const { mask } = s;
+        for (let i = 0; i < s.n; i++) {
+          if ((mask[i] & this.bigBit) && (mask[i] & rigid.groupBit)) {
+            throw new StyleError(`fix srd with big particles in rigid bodies (fix ${rigid.id} ${rigid.style}) is not supported by this engine yet`);
+          }
+        }
+      }
+    }
 
     this.parameterize();
 
@@ -406,10 +435,18 @@ export class FixSRD extends Fix {
     if (dim === 3 && (b3[2] / g > 1.0 + this.cubictol || g / b3[2] > 1.0 + this.cubictol)) tolflag = true;
     if (tolflag) this.cubicCheck('SRD bin size for fix srd differs from user request');
 
-    // lamda must be at least 0.6 of the SRD grid size (shifting is refused, so no fallback to it)
+    // lamda must be at least 0.6 of the SRD grid size; shift possible turns on bin shifting in that case
     let maxgridsrd = Math.max(b3[0], b3[1]);
     if (dim === 3) maxgridsrd = Math.max(maxgridsrd, b3[2]);
-    if (this.lamda < 0.6 * maxgridsrd) throw new StyleError('Fix srd lamda must be >= 0.6 of SRD grid size');
+    this.shiftflag = false;
+    if (this.lamda < 0.6 * maxgridsrd && this.shiftuser === 'no') {
+      throw new StyleError('Fix srd lamda must be >= 0.6 of SRD grid size');
+    } else if (this.lamda < 0.6 * maxgridsrd && this.shiftuser === 'possible') {
+      this.shiftflag = true;
+      this.sys.warn('SRD bin shifting turned on due to small lamda');
+    } else if (this.shiftuser === 'yes') {
+      this.shiftflag = true;
+    }
   }
 
   private cubicCheck(msg: string): void {
@@ -431,14 +468,6 @@ export class FixSRD extends Fix {
       this.bininv1[d] = 1.0 / this.binsize1[d];
     }
     this.nbins1 = this.nbin1[0] * this.nbin1[1] * this.nbin1[2];
-    const nb = this.nbins1;
-    if (this.binhead.length !== nb) {
-      this.binhead = new Int32Array(nb);
-      this.binVsum = new Float64Array(3 * nb);
-      this.binCount = new Int32Array(nb);
-      this.binRandom = new Float64Array(nb);
-      this.binValue = new Float64Array(nb);
-    }
   }
 
   /** fix_srd.cpp setup_bounds(): bounds for SRD movement and reneighboring (one processor, box = subdomain). */
@@ -657,66 +686,127 @@ export class FixSRD extends Fix {
 
   /**
    * fix_srd.cpp reset_velocities(): SRD velocities are rotated about one of six random axes inside each bin,
-   * relative to the bin's average velocity; too-large velocities are rescaled. Draws one uniform per bin.
+   * relative to the bin's average velocity; too-large velocities are rescaled. With shift yes or possible, the
+   * bin grid is first moved by a random corner (RanPark, shift seed), and the bins that duplicate a periodic
+   * image are merged into their partner bin (the upper ghost bins are not owners and draw no random number).
+   * Draws one uniform per owner bin, in bin order.
    */
   private resetVelocities(): void {
     const s = this.sys.state;
     const { x, v, mask } = s;
     const order = nativeOrder(s);
     const dim = s.dimension;
-    const [nbx, nby, nbz] = this.nbin1;
-    const nbins = this.nbins1;
-    this.binhead.fill(-1);
-    this.binnext = new Int32Array(s.n);
+    const per = s.box.periodic;
+
+    // the shifted grid corner (fix_srd.cpp: shifts[1].corner, drawn x, y, then z in 3d)
+    const corner = [s.box.lo[0], s.box.lo[1], s.box.lo[2]];
+    if (this.shiftflag && this.randomShift) {
+      corner[0] = s.box.lo[0] - this.binsize1[0] * this.randomShift.uniform();
+      corner[1] = s.box.lo[1] - this.binsize1[1] * this.randomShift.uniform();
+      if (dim === 3) corner[2] = s.box.lo[2] - this.binsize1[2] * this.randomShift.uniform();
+    }
+    // bin range per dimension: [0, nb-1]; the shifted grid runs to the bin holding the upper box face
+    const nb = [1, 1, 1];
+    for (let d = 0; d < 3; d++) {
+      let hi = this.nbin1[d] - 1;
+      if (this.shiftflag) hi = Math.trunc((s.box.hi[d] - corner[d]) * this.bininv1[d]);
+      if (d === 2 && dim === 2) hi = 0;
+      nb[d] = hi + 1;
+    }
+    const [nbx, nby, nbz] = nb;
+    const nbins = nbx * nby * nbz;
+    const strides = [1, nbx, nbx * nby];
+    const binOf = (i: number): number => {
+      const ix = clampInt(Math.trunc((x[3 * i] - corner[0]) * this.bininv1[0]), 0, nbx - 1);
+      const iy = clampInt(Math.trunc((x[3 * i + 1] - corner[1]) * this.bininv1[1]), 0, nby - 1);
+      const iz = clampInt(Math.trunc((x[3 * i + 2] - corner[2]) * this.bininv1[2]), 0, nbz - 1);
+      return iz * nby * nbx + iy * nbx + ix;
+    };
 
     // binhead = first SRD particle in each bin, binnext = next particle in the same bin
+    const binhead = new Int32Array(nbins).fill(-1);
+    const binnext = new Int32Array(s.n);
     for (let k = 0; k < s.n; k++) {
       const i = order[k];
       if (!(mask[i] & this.groupBit)) continue;
-      const ix = clampInt(Math.trunc((x[3 * i] - s.box.lo[0]) * this.bininv1[0]), 0, nbx - 1);
-      const iy = clampInt(Math.trunc((x[3 * i + 1] - s.box.lo[1]) * this.bininv1[1]), 0, nby - 1);
-      const iz = clampInt(Math.trunc((x[3 * i + 2] - s.box.lo[2]) * this.bininv1[2]), 0, nbz - 1);
-      const ibin = iz * nby * nbx + iy * nbx + ix;
-      this.binnext[i] = this.binhead[ibin];
-      this.binhead[ibin] = i;
+      const ibin = binOf(i);
+      binnext[i] = binhead[ibin];
+      binhead[ibin] = i;
     }
 
-    // per bin: summed velocity and count; one random number per bin (every bin is owned on one processor)
+    // owners: with shifting, the last bin of a periodic dimension duplicates the first one (not an owner)
+    const owner = new Uint8Array(nbins).fill(1);
+    if (this.shiftflag) {
+      for (let b = 0; b < nbins; b++) {
+        const ix = b % nbx;
+        const iy = Math.trunc(b / nbx) % nby;
+        const iz = Math.trunc(b / (nbx * nby));
+        if ((per[0] && ix === nbx - 1) || (per[1] && iy === nby - 1) || (dim === 3 && per[2] && iz === nbz - 1)) owner[b] = 0;
+      }
+    }
+
+    // per bin: count, summed velocity and one random number for owners (bin order)
+    const cnt = new Int32Array(nbins);
+    const vsum = new Float64Array(3 * nbins);
+    const rnd = new Float64Array(nbins);
+    const value = new Float64Array(nbins);
     for (let b = 0; b < nbins; b++) {
       let n = 0;
       let s0 = 0;
       let s1 = 0;
       let s2 = 0;
-      for (let j = this.binhead[b]; j >= 0; j = this.binnext[j]) {
+      for (let j = binhead[b]; j >= 0; j = binnext[j]) {
         s0 += v[3 * j];
         s1 += v[3 * j + 1];
         s2 += v[3 * j + 2];
         n++;
       }
-      this.binVsum[3 * b] = s0;
-      this.binVsum[3 * b + 1] = s1;
-      this.binVsum[3 * b + 2] = s2;
-      this.binCount[b] = n;
-      this.binRandom[b] = this.random.uniform();
+      vsum[3 * b] = s0;
+      vsum[3 * b + 1] = s1;
+      vsum[3 * b + 2] = s2;
+      cnt[b] = n;
+      if (owner[b]) rnd[b] = this.random.uniform();
     }
 
+    // sum the bins that are periodic images of each other (fix_srd.cpp vbin_comm / xbin_comm, one processor)
+    const combine = (arrs: Array<{ a: Float64Array | Int32Array; w: number }>): void => {
+      for (let d = 0; d < dim; d++) {
+        if (!this.shiftflag || !per[d]) continue;
+        for (let b = 0; b < nbins; b++) {
+          const coord = Math.trunc(b / strides[d]) % nb[d];
+          if (coord !== 0) continue;
+          const p = b + (nb[d] - 1) * strides[d];
+          for (const { a, w } of arrs) {
+            for (let c = 0; c < w; c++) {
+              const t = a[w * b + c];
+              a[w * b + c] = t + a[w * p + c];
+              a[w * p + c] = a[w * p + c] + t;
+            }
+          }
+        }
+      }
+    };
+    combine([{ a: cnt, w: 1 }, { a: vsum, w: 3 }, { a: rnd, w: 1 }]);
+
     // rotate the thermal velocity of each particle around one of six random axes, then add the average back
-    const dofTemp = 1;
+    const tfactor = s.units.mvv2e * this.massSrd / (dim * s.units.boltz);
     this.srdBinTemp = 0.0;
     this.srdBinCount = 0;
     let axis = 2;
     for (let b = 0; b < nbins; b++) {
-      this.binValue[b] = 0.0;
-      const n = this.binCount[b];
+      const n = cnt[b];
       if (n === 0) continue;
-      const vx = this.binVsum[3 * b] / n;
-      const vy = this.binVsum[3 * b + 1] / n;
-      const vz = this.binVsum[3 * b + 2] / n;
-      const irandom = Math.trunc(6.0 * this.binRandom[b]);
+      const vx = vsum[3 * b] / n;
+      const vy = vsum[3 * b + 1] / n;
+      const vz = vsum[3 * b + 2] / n;
+      vsum[3 * b] = vx;
+      vsum[3 * b + 1] = vy;
+      vsum[3 * b + 2] = vz;
+      const irandom = Math.trunc(6.0 * rnd[b]);
       const sign = irandom % 2;
       if (dim === 3) axis = Math.trunc(irandom / 2);
       let vsq = 0.0;
-      for (let j = this.binhead[b]; j >= 0; j = this.binnext[j]) {
+      for (let j = binhead[b]; j >= 0; j = binnext[j]) {
         let u0 = 0;
         let u1 = 0;
         let u2 = 0;
@@ -741,14 +831,39 @@ export class FixSRD extends Fix {
         v[3 * j + 1] = u1 + vy;
         v[3 * j + 2] = u2 + vz;
       }
-      if (n > 1) this.binValue[b] = vsq;
+      if (n > 1) value[b] = vsq;
+    }
+    combine([{ a: value, w: 1 }]);
+
+    // thermostat: rescale the thermal velocities of each bin to the SRD temperature (no box deformation)
+    if (this.tstat) {
+      for (let b = 0; b < nbins; b++) {
+        const n = cnt[b];
+        if (n <= 1) continue;
+        const vx = vsum[3 * b];
+        const vy = vsum[3 * b + 1];
+        const vz = vsum[3 * b + 2];
+        const tbin = (value[b] / (n - 1)) * tfactor;
+        const scale = Math.sqrt(this.temperatureSrd / tbin);
+        let vsq = 0.0;
+        for (let j = binhead[b]; j >= 0; j = binnext[j]) {
+          const u0 = (v[3 * j] - vx) * scale;
+          const u1 = (v[3 * j + 1] - vy) * scale;
+          const u2 = (v[3 * j + 2] - vz) * scale;
+          vsq += u0 * u0 + u1 * u1 + u2 * u2;
+          v[3 * j] = u0 + vx;
+          v[3 * j + 1] = u1 + vy;
+          v[3 * j + 2] = u2 + vz;
+        }
+        value[b] = vsq;
+      }
+      combine([{ a: value, w: 1 }]);
     }
 
-    // SRD temperature from the thermal velocities of the bins with more than one particle
-    const tfactor = s.units.mvv2e * this.massSrd / (dim * s.units.boltz);
+    // SRD temperature from the thermal velocities of the owner bins with more than one particle
     for (let b = 0; b < nbins; b++) {
-      if (this.binCount[b] > 1) {
-        this.srdBinTemp += this.binValue[b] / (this.binCount[b] - dofTemp);
+      if (owner[b] && cnt[b] > 1) {
+        this.srdBinTemp += value[b] / (cnt[b] - 1);
         this.srdBinCount++;
       }
     }
@@ -835,7 +950,7 @@ export class FixSRD extends Fix {
    */
   private collisionsSingle(): void {
     const s = this.sys.state;
-    const { x, v, f } = s;
+    const { x, v } = s;
     const order = nativeOrder(s);
     const { xs, vs, xb, xscoll, xbcoll, norm, vsnew } = this;
 
@@ -888,8 +1003,9 @@ export class FixSRD extends Fix {
             break;
           }
 
-          // slip collision (fix_srd.cpp slip())
-          this.slip(vs, vb, xb, this.bigOmega(j), xscoll, norm, vsnew);
+          // slip or no-slip collision (fix_srd.cpp slip() / noslip())
+          if (this.noslipflag) this.noslip(vs, vb, xb, this.bigOmega(j), xscoll, norm, vsnew);
+          else this.slip(vs, vb, xb, this.bigOmega(j), xscoll, norm, vsnew);
           vsnew[2] = s.dimension === 2 ? 0.0 : vsnew[2];
 
           // check on rescaling of vsnew
@@ -904,12 +1020,8 @@ export class FixSRD extends Fix {
             }
           }
 
-          // big particle gets the momentum change (sphere with slip: no torque)
-          const factor = this.massSrd / this.dtBig / s.units.ftm2v;
-          for (let d = 0; d < 3; d++) {
-            const dpdt = factor * (vsnew[d] - v[3 * i + d]);
-            f[3 * j + d] -= dpdt;
-          }
+          // big particle gets the momentum change (fix_srd.cpp force_torque(): a torque with no-slip only)
+          this.forceTorque(v, i, vsnew, xscoll, xbcoll, j);
 
           // update_srd(): SRD velocity, position from the collision point, and its bin
           for (let d = 0; d < 3; d++) {
@@ -946,6 +1058,67 @@ export class FixSRD extends Fix {
         return;
       }
     }
+  }
+
+  /**
+   * fix_srd.cpp noslip(): the SRD leaves the surface with a Gaussian normal velocity and two Gaussian tangential
+   * velocities (four draws per trial, rejected above vmax), plus the surface velocity of the big particle.
+   */
+  private noslip(
+    vs: Float64Array, vb: Float64Array, xb: Float64Array, omega: Float64Array, xsurf: Float64Array,
+    norm: Float64Array, vsnew: Float64Array,
+  ): void {
+    const vsDotN = vs[0] * norm[0] + vs[1] * norm[1] + vs[2] * norm[2];
+    const t1 = this.tangent1;
+    t1[0] = vs[0] - vsDotN * norm[0];
+    t1[1] = vs[1] - vsDotN * norm[1];
+    t1[2] = vs[2] - vsDotN * norm[2];
+    const scale = 1.0 / Math.sqrt(t1[0] * t1[0] + t1[1] * t1[1] + t1[2] * t1[2]);
+    t1[0] *= scale;
+    t1[1] *= scale;
+    t1[2] *= scale;
+    const t2 = this.tangent2;
+    t2[0] = norm[1] * t1[2] - norm[2] * t1[1];
+    t2[1] = norm[2] * t1[0] - norm[0] * t1[2];
+    t2[2] = norm[0] * t1[1] - norm[1] * t1[0];
+    let vnmag = 0;
+    let vtmag1 = 0;
+    let vtmag2 = 0;
+    for (;;) {
+      const r1 = this.sigma * this.random.gaussian();
+      const r2 = this.sigma * this.random.gaussian();
+      vnmag = Math.sqrt(r1 * r1 + r2 * r2);
+      vtmag1 = this.sigma * this.random.gaussian();
+      vtmag2 = this.sigma * this.random.gaussian();
+      if (vnmag * vnmag + vtmag1 * vtmag1 + vtmag2 * vtmag2 <= this.vmaxsq) break;
+    }
+    for (let d = 0; d < 3; d++) vsnew[d] = vnmag * norm[d] + vtmag1 * t1[d] + vtmag2 * t2[d];
+    vsnew[0] += vb[0] + omega[1] * (xsurf[2] - xb[2]) - omega[2] * (xsurf[1] - xb[1]);
+    vsnew[1] += vb[1] + omega[2] * (xsurf[0] - xb[0]) - omega[0] * (xsurf[2] - xb[2]);
+    vsnew[2] += vb[2] + omega[0] * (xsurf[1] - xb[1]) - omega[1] * (xsurf[0] - xb[0]);
+  }
+
+  /**
+   * fix_srd.cpp force_torque(): the big particle gets -dp/dt of the SRD as a force, and as a torque about its
+   * centre (xs - xb cross -dp/dt) when the collision is no-slip.
+   */
+  private forceTorque(v: Float64Array, i: number, vsnew: Float64Array, xs: Float64Array, xb: Float64Array, j: number): void {
+    const f = this.sys.state.f;
+    const factor = this.massSrd / this.dtBig / this.sys.state.units.ftm2v;
+    const dp0 = factor * (vsnew[0] - v[3 * i]);
+    const dp1 = factor * (vsnew[1] - v[3 * i + 1]);
+    const dp2 = factor * (vsnew[2] - v[3 * i + 2]);
+    f[3 * j] -= dp0;
+    f[3 * j + 1] -= dp1;
+    f[3 * j + 2] -= dp2;
+    if (!this.noslipflag) return;
+    const tq = this.sys.state.torque!;
+    const r0 = xs[0] - xb[0];
+    const r1 = xs[1] - xb[1];
+    const r2 = xs[2] - xb[2];
+    tq[3 * j] -= r1 * dp2 - r2 * dp1;
+    tq[3 * j + 1] -= r2 * dp0 - r0 * dp2;
+    tq[3 * j + 2] -= r0 * dp1 - r1 * dp0;
   }
 
   private bigVelocity(j: number): Float64Array {

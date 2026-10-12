@@ -1970,6 +1970,23 @@ const deleteAtomsCmd: Handler = ({ sys }, a) => {
       const b1 = sys.groupBit(a[2] ?? ''), b2 = sys.groupBit(a[3] ?? '');
       const g = sys.geom;
       const d = [0, 0, 0];
+      // delete_atoms.html: "Since a neighbor list is used to find overlapping atom pairs, it also means that you must
+      // define a pair style with the minimum force cutoff distance between any pair of atoms types (plus the neighbor
+      // skin) >= the specified overlap cutoff." Only pairs within their own pair cutoff plus the skin
+      // are seen (measured below).
+      const pc = sys.ff.pair;
+      if (!pc) throw new StyleError('Delete_atoms requires a pair style be defined');
+      // the cutoff table is set when a pair style is initialized (native delete_atoms initializes its pair style too)
+      if (pc.ntypes !== s.ntypes) pc.allocate(s.ntypes);
+      pc.init(sys.styleContext());
+      const nt = s.ntypes + 1;
+      const skin = sys.nb.skin;
+      // Measured with native LAMMPS (black box): an overlap cutoff above the largest pair cutoff plus the skin stops
+      // with Delete_atoms cutoff > max neighbor cutoff (lj/cut 2.5 with pair_coeff 1 1 cutoff 0.5, skin 0.3, overlap
+      // 1.0); with a type pair of cutoff 0.5 among larger ones, that pair is seen at 0.79 apart but not at 0.81.
+      let maxReach = 0;
+      for (let ti = 1; ti < nt; ti++) for (let tj = 1; tj < nt; tj++) maxReach = Math.max(maxReach, pc.cut[ti * nt + tj] + skin);
+      if (cut > maxReach) throw new StyleError('Delete_atoms cutoff > max neighbor cutoff');
       for (let i = 0; i < s.n; i++) {
         if (del[i]) continue;
         for (let j = 0; j < s.n; j++) {
@@ -1978,7 +1995,10 @@ const deleteAtomsCmd: Handler = ({ sys }, a) => {
           if (!pair) continue;
           d[0] = s.x[3 * i] - s.x[3 * j]; d[1] = s.x[3 * i + 1] - s.x[3 * j + 1]; d[2] = s.x[3 * i + 2] - s.x[3 * j + 2];
           g.minimumImage(d);
-          if (d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < cut * cut) {
+          const rsq = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+          const reach = pc.cut[s.type[i] * nt + s.type[j]] + skin;
+          if (rsq > reach * reach) continue;
+          if (rsq < cut * cut) {
             // delete the atom with the larger ID
             if (s.id[i] > s.id[j]) { del[i] = 1; break; }
             del[j] = 1;

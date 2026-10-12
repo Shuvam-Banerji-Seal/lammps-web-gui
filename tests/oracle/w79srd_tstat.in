@@ -1,0 +1,37 @@
+# oracle: fix srd with point SRD particles and tstat yes (SRD thermostat per bin), 2d (cut-down of examples/srd/in.srd.pure: 3x3 box, 200 steps)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS (black box): the thermo rows and the per-atom state agree at relative and absolute tolerance 1e-13 (the SRD thermostat rescales the thermal velocity of each bin to the SRD temperature; the SRD temperature counts one degree of freedom less per bin).
+units		lj
+atom_style	atomic
+atom_modify	first empty
+dimension	2
+
+lattice		sq 0.4
+region		box block 0 3 0 3 -0.5 0.5
+create_box	1 box
+
+lattice		sq 0.4
+region		plane block 0 3 0 3 -0.001 0.001
+lattice		sq 85.0
+create_atoms	1 region plane
+
+group		empty type 2
+
+mass		1 0.01
+velocity	all create 1.0 593849 loop geom
+
+neighbor	0.3 bin
+neigh_modify	delay 1 every 1 check no
+
+comm_modify	group empty
+
+timestep	0.02
+
+fix		1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes
+fix		2 all enforce2d
+
+thermo_style	custom step temp f_1[7] etotal press f_1[3] f_1[4] f_1[6]
+thermo_modify	format float %.15g
+thermo		20
+
+run		200

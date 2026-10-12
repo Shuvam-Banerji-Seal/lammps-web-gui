@@ -63,3 +63,25 @@ describe('delete_atoms compress / condense (native measurements)', () => {
       .toEqual(['1:0.5', '2:9.5', '3:8.5', '4:3.5', '5:4.5', '6:5.5', '7:7.5']);
   });
 });
+
+describe('delete_atoms overlap reach (neighbor list)', () => {
+  const run = async (pairLines: string, types: number, d: number): Promise<string> => {
+    const events: EngineEvent[] = [];
+    const s = new Session({ emit: (e) => events.push(e), writeFile: () => {} });
+    try {
+      await s.execute(`units lj\nregion b block 0 10 0 10 0 10\ncreate_box ${types} b\ncreate_atoms 1 single 5 5 5\ncreate_atoms ${types} single ${5 + d} 5 5\nmass * 1\n${pairLines}\nneighbor 0.3 bin\ndelete_atoms overlap 1.0 all all\nprint "N $(atoms)"\n`);
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    return events.flatMap((e) => (e.kind === 'log' ? [e.text] : [])).join('\n').split('\n').find((l) => l.startsWith('N ')) ?? '';
+  };
+  // Measured with native LAMMPS (black box) on the same inputs
+  it('sees a type pair only within its pair cutoff plus the skin', async () => {
+    const pairs = 'pair_style lj/cut 2.0\npair_coeff 1 1 1 1\npair_coeff 2 2 1 1\npair_coeff 1 2 1 1 0.5';
+    expect(await run(pairs, 2, 0.79)).toBe('N 1');
+    expect(await run(pairs, 2, 0.81)).toBe('N 2');
+  });
+  it('stops when the overlap cutoff exceeds every pair cutoff plus the skin', async () => {
+    expect(await run('pair_style lj/cut 2.5\npair_coeff 1 1 1 1 0.5', 1, 0.79)).toMatch(/Delete_atoms cutoff > max neighbor cutoff/);
+  });
+});

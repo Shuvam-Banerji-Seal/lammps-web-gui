@@ -302,6 +302,12 @@ export type EngineEvent =
   | { kind: 'run'; from: number; to: number; dt: number; units: UnitStyle }
   /** Run speed, about twice a second and at the end of a run: steps per second over the last interval. */
   | { kind: 'perf'; step: number; atoms: number; stepsPerSec: number; elapsed: number; threaded: boolean }
-  | { kind: 'frame'; step: number; x: Float64Array; image: Int32Array; type: Int32Array; id: Int32Array; box: SimBox }
+  /**
+   * A snapshot of the system at `step`: x, image, type, id (atom order as the engine stores it) and box.
+   * Only when the session was asked for velocities (protocol reset frameVelocities, the notebook's default):
+   * v holds the velocities (3 per atom, the same order as x, length units per time unit as the units style),
+   * mass the mass of each atom (1 per atom, same order). Both absent otherwise.
+   */
+  | { kind: 'frame'; step: number; x: Float64Array; image: Int32Array; type: Int32Array; id: Int32Array; box: SimBox; v?: Float64Array; mass?: Float64Array }
   | { kind: 'error'; message: string; line: number; command: string }
   | { kind: 'done'; steps: number; seconds: number; backend: string };

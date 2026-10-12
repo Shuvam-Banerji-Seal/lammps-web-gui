@@ -214,7 +214,7 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
     setFiles({});
     setSeries([]);
     setRuns({});
-    const info = await client().reset(choice, recordEvery, nThreads);
+    const info = await client().reset(choice, recordEvery, nThreads, true);
     sendInputs();
     setReady(info);
   }, [client, recordEvery, traj, sendInputs]);

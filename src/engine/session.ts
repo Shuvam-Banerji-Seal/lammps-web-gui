@@ -122,6 +122,11 @@ export class Session {
   /** The systems of all partitions, replica 0 first (the neb command reads and drives them). */
   get replicaSystems(): readonly System[] { return this.replicas; }
 
+  /** Whether frames carry velocities and masses (EngineEvent 'frame', v and mass); off by default. */
+  setFrameVelocities(on: boolean): void {
+    for (const sys of this.replicas) sys.frameVelocities = on;
+  }
+
   /** Sends an event through the session's output (the neb command's table and log lines). */
   emit(ev: EngineEvent): void { this.io.emit(ev); }
 

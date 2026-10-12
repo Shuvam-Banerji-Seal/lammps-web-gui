@@ -27,7 +27,21 @@ export interface TrajectoryRecord {
   x: Float32Array;
   box: SimBox;
   topo: Topology;
+  /**
+   * Velocities, vx0 vy0 vz0 vx1 ... (float32), when the engine sent them (frameVelocities) or a dump file has
+   * vx vy vz columns. Absent otherwise: the speed views then fall back to displacements or say so.
+   */
+  v?: Float32Array;
+  /**
+   * Mass of each atom (float32, one per atom), with v; one array is shared by the records that follow the frame that
+   * sent it. Absent for a dump file: its masses are not in the file.
+   */
+  mass?: Float32Array;
 }
+
+/** Bytes a record holds: positions, velocities when present, and the bookkeeping (the shared masses are not counted). */
+const recordBytes = (r: TrajectoryRecord): number =>
+  r.x.byteLength + (r.v?.byteLength ?? 0) + FRAME_OVERHEAD;
 
 const sameInts = (a: Int32Array, b: Int32Array): boolean => {
   if (a.length !== b.length) return false;
@@ -47,6 +61,8 @@ export class TrajectoryBuffer {
   private topoBytes = 0;
   private topoCounted = new Map<Topology, number>();
   private bytesValue = 0;
+  /** The masses of the latest frame that carried them (shared by the records that follow). */
+  private lastMass: Float32Array | null = null;
   private readonly capBytes: number;
 
   constructor(options: TrajectoryBufferOptions = {}) {
@@ -80,6 +96,7 @@ export class TrajectoryBuffer {
   /** Empties the buffer and restores the full recording rate. */
   clear(): void {
     this.frames = [];
+    this.lastMass = null;
     this.seen = 0;
     this.strideValue = 1;
     this.thinnings = 0;
@@ -97,7 +114,7 @@ export class TrajectoryBuffer {
     this.strideValue = Math.max(1, Math.floor(stride));
     for (const r of records) {
       this.frames.push(r);
-      this.bytesValue += r.x.byteLength + FRAME_OVERHEAD;
+      this.bytesValue += recordBytes(r);
       this.countTopo(r.topo, 1);
     }
     while (this.bytes > this.capBytes && this.frames.length > 1) this.thin();
@@ -108,6 +125,8 @@ export class TrajectoryBuffer {
    * The engine's arrays are copied, so the engine may reuse them.
    */
   append(frame: FrameEvent): boolean {
+    // a frame repeats the masses only when they change: keep the last ones, also from frames the stride skips
+    if (frame.mass) this.lastMass = Float32Array.from(frame.mass);
     const idx = this.seen;
     this.seen++;
     if (idx % this.strideValue !== 0) return false;
@@ -116,8 +135,11 @@ export class TrajectoryBuffer {
       ? last.topo
       : { id: Int32Array.from(frame.id), type: Int32Array.from(frame.type) };
     const x = Float32Array.from(frame.x);
-    this.frames.push({ step: frame.step, x, box: frame.box, topo });
-    this.bytesValue += x.byteLength + FRAME_OVERHEAD;
+    const record: TrajectoryRecord = { step: frame.step, x, box: frame.box, topo };
+    if (frame.v) record.v = Float32Array.from(frame.v);
+    if (frame.v && this.lastMass && this.lastMass.length === frame.id.length) record.mass = this.lastMass;
+    this.frames.push(record);
+    this.bytesValue += recordBytes(record);
     this.countTopo(topo, 1);
     if (this.bytes > this.capBytes && this.frames.length > 1) this.thin();
     return true;
@@ -151,7 +173,7 @@ export class TrajectoryBuffer {
   toFrameEvent(i: number): FrameEvent | null {
     const r = this.frames[i];
     if (!r) return null;
-    return {
+    const ev: FrameEvent = {
       kind: 'frame',
       step: r.step,
       x: Float64Array.from(r.x),
@@ -160,6 +182,9 @@ export class TrajectoryBuffer {
       id: r.topo.id,
       box: r.box,
     };
+    if (r.v) ev.v = Float64Array.from(r.v);
+    if (r.mass) ev.mass = Float64Array.from(r.mass);
+    return ev;
   }
 
   private countTopo(topo: Topology, delta: number): void {
@@ -180,7 +205,7 @@ export class TrajectoryBuffer {
     for (let k = 0; k < this.frames.length; k += 2) {
       const r = this.frames[k];
       kept.push(r);
-      this.bytesValue += r.x.byteLength + FRAME_OVERHEAD;
+      this.bytesValue += recordBytes(r);
       this.countTopo(r.topo, 1);
     }
     this.frames = kept;
@@ -225,6 +250,9 @@ export const dumpToRecords = (text: string): TrajectoryRecord[] => {
     const x = new Float32Array(3 * n);
     const id = new Int32Array(n);
     const type = new Int32Array(n);
+    // velocities only when every atom of the frame has vx vy vz (a dump written with them)
+    const hasV = n > 0 && atoms.every((a) => a.vx !== undefined && a.vy !== undefined && a.vz !== undefined);
+    const v = hasV ? new Float32Array(3 * n) : undefined;
     for (let i = 0; i < n; i++) {
       const a = atoms[i];
       x[3 * i] = a.x;
@@ -232,12 +260,19 @@ export const dumpToRecords = (text: string): TrajectoryRecord[] => {
       x[3 * i + 2] = a.z;
       id[i] = a.id;
       type[i] = a.type;
+      if (v) {
+        v[3 * i] = a.vx ?? 0;
+        v[3 * i + 1] = a.vy ?? 0;
+        v[3 * i + 2] = a.vz ?? 0;
+      }
     }
     const last = out[out.length - 1];
     const topo: Topology = last && sameTopo(last.topo, { id, type }) ? last.topo : { id, type };
     const box = blocks[k].box ?? data.box;
     if (!box) throw new Error('Invalid LAMMPS dump: a frame has no box');
-    out.push({ step: Number.isFinite(steps[k]) ? steps[k] : k, x, box: simBoxOf(box), topo });
+    const record: TrajectoryRecord = { step: Number.isFinite(steps[k]) ? steps[k] : k, x, box: simBoxOf(box), topo };
+    if (v) record.v = v;
+    out.push(record);
   }
   return out;
 };
@@ -314,4 +349,60 @@ export const framesToDump = (frames: readonly TrajectoryRecord[]): string => {
     }
   }
   return out.join('\n') + '\n';
+};
+
+/** Speeds and masses of the atoms of one record (null when the record has no velocities). */
+export const recordSpeeds = (r: TrajectoryRecord): { speed: Float64Array; mass: Float64Array } | null => {
+  if (!r.v) return null;
+  const n = r.topo.id.length;
+  const speed = new Float64Array(n);
+  const mass = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const vx = r.v[3 * i], vy = r.v[3 * i + 1], vz = r.v[3 * i + 2];
+    speed[i] = Math.sqrt(vx * vx + vy * vy + vz * vz);
+    mass[i] = r.mass ? r.mass[i] : 1; // a dump file has no masses: every atom has mass 1
+  }
+  return { speed, mass };
+};
+
+/**
+ * Temperature from the kinetic energy of the atoms: T = sum(m v^2) / (3 N k_B) (three degrees of freedom per atom,
+ * no centre-of-mass correction). Null for no atoms or a non-positive k_B.
+ */
+export const kineticTemperature = (speed: Float64Array, mass: Float64Array, kB: number): number | null => {
+  const n = speed.length;
+  if (n === 0 || !(kB > 0)) return null;
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += mass[i] * speed[i] * speed[i];
+  return sum / (3 * n * kB);
+};
+
+/**
+ * Maxwell-Boltzmann speed density f(v) = 4 pi (m / (2 pi k T))^(3/2) v^2 exp(-m v^2 / (2 k T)); integrates to 1 over
+ * v in [0, inf). Zero for T <= 0.
+ */
+export const maxwellBoltzmannDensity = (v: number, m: number, T: number, kB: number): number => {
+  if (!(T > 0) || !(m > 0) || !(kB > 0) || v < 0) return 0;
+  const a = m / (2 * Math.PI * kB * T);
+  return 4 * Math.PI * a * Math.sqrt(a) * v * v * Math.exp(-m * v * v / (2 * kB * T));
+};
+
+/**
+ * Speed histogram as a probability density: bins from 0 to the largest speed, density = count / (N * width), so
+ * the bins sum to 1 (density times width). Null for no speeds.
+ */
+export const speedHistogram = (speed: Float64Array, bins: number): { x0: number; x1: number; count: number; density: number }[] | null => {
+  const n = speed.length;
+  if (n === 0 || bins < 1) return null;
+  let max = 0;
+  for (let i = 0; i < n; i++) if (speed[i] > max) max = speed[i];
+  const width = max > 0 ? max / bins : 1;
+  const counts = new Array<number>(bins).fill(0);
+  for (let i = 0; i < n; i++) {
+    const b = Math.min(bins - 1, Math.max(0, Math.floor(speed[i] / width)));
+    counts[b]++;
+  }
+  return counts.map((count, i) => ({
+    x0: i * width, x1: (i + 1) * width, count, density: count / (n * width),
+  }));
 };

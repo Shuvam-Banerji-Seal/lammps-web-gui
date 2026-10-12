@@ -238,8 +238,10 @@ const RenderPanel: React.FC<RenderPanelProps> = ({
   const format = formats[formatIdx] ?? null;
   const blocked = busy || live || count === 0;
   const scalarColour = SCALAR_MODES.includes(colourBy);
-  // speed and kinetic energy need the timestep (the displacement between recorded frames is divided by it)
-  const speedUsable = dt !== null && Number.isFinite(dt) && dt !== 0;
+  // speed and kinetic energy come from the frames' velocities when they have them; otherwise from the displacement
+  // between recorded frames, which needs the timestep (it divides the displacement)
+  const hasVelocities = count > 0 && buffer.get(0)?.v !== undefined;
+  const speedUsable = hasVelocities || (dt !== null && Number.isFinite(dt) && dt !== 0);
 
   /** The view's renderer and camera, if the registered 3D view is the one in this notebook. */
   const liveView = () => {
@@ -751,7 +753,7 @@ const RenderPanel: React.FC<RenderPanelProps> = ({
                 const needsDt = m === 'speed' || m === 'ke';
                 return (
                   <option key={m} value={m} disabled={needsDt && !speedUsable}>
-                    {COLOUR_LABEL[m]}{needsDt && !speedUsable ? ' (needs a timestep)' : ''}
+                    {COLOUR_LABEL[m]}{needsDt && !speedUsable ? ' (needs velocities or a timestep)' : ''}
                   </option>
                 );
               })}

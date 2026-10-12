@@ -1,17 +1,20 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { getThemeTokens, Theme } from '../../../../theme';
+import { getThemeTokens, isDarkTheme, Theme } from '../../../../theme';
 import { thermoUnit } from '../../../../lammps/thermoUnits';
 import { analyzeTrajectory, type AnalysisResult } from '../../../../services/analysisClient';
 import type { RDFPoint } from '../../../../services/trajectoryAnalysis';
 import { Histogram, MultiLineChart, type ChartSeries } from '../../../charts/SimpleChart';
 import { fitDiffusion, timeUnitName, toCsv, type XY } from '../chartData';
-import type { TrajectoryRecord } from '../trajectory';
+import { kineticTemperature, maxwellBoltzmannDensity, recordSpeeds, speedHistogram, type TrajectoryRecord } from '../trajectory';
+import { boltzmannConstant } from '../chartData';
 import { boxAndCountSeries, emptyPrepared, prepareTrajectory, type PreparedTrajectory } from './trajectoryData';
 import { ChartActions } from './ChartActions';
 
 /** Work caps: frames and atoms beyond these are sampled uniformly, and the panel says so. */
 const MAX_FRAMES = 120;
 const MAX_ATOMS = 1500;
+/** Bins of the speed histogram. */
+const SPEED_BINS = 30;
 
 interface TrajectoryAnalysisProps {
   records: TrajectoryRecord[];
@@ -44,6 +47,40 @@ export const TrajectoryAnalysis: React.FC<TrajectoryAnalysisProps> = ({ records,
   const msdRef = useRef<SVGSVGElement>(null);
   const rdfRef = useRef<SVGSVGElement>(null);
   const volRef = useRef<HTMLDivElement>(null);
+  const speedRef = useRef<SVGSVGElement>(null);
+
+  /**
+   * Speed distribution of the last recorded frame, from its velocities (null when the frame has none). The
+   * Maxwell-Boltzmann curve is drawn at the temperature of that frame, T = sum(m v^2) / (3 N k_B), with the
+   * mean mass for the curve (exact when all atoms share one mass).
+   */
+  const speedInfo = useMemo(() => {
+    const last = records[records.length - 1];
+    const sp = last ? recordSpeeds(last) : null;
+    if (!sp || sp.speed.length === 0) return null;
+    const n = sp.speed.length;
+    let mSum = 0;
+    let mMin = Infinity;
+    let mMax = -Infinity;
+    for (let i = 0; i < n; i++) {
+      mSum += sp.mass[i];
+      if (sp.mass[i] < mMin) mMin = sp.mass[i];
+      if (sp.mass[i] > mMax) mMax = sp.mass[i];
+    }
+    const kB = boltzmannConstant(units) ?? null;
+    const T = kB !== null ? kineticTemperature(sp.speed, sp.mass, kB) : null;
+    return {
+      step: last.step,
+      atoms: n,
+      bins: speedHistogram(sp.speed, SPEED_BINS),
+      kB,
+      T,
+      mean: mSum / n,
+      meanSpeed: sp.speed.reduce((a, b) => a + b, 0) / n,
+      massesDiffer: mMax > mMin,
+      massesFromFile: !last.mass,
+    };
+  }, [records, units]);
   const densRef = useRef<HTMLDivElement>(null);
 
   const prepared = useMemo(
@@ -219,13 +256,89 @@ export const TrajectoryAnalysis: React.FC<TrajectoryAnalysisProps> = ({ records,
       </section>
 
       <section aria-label="Speed distribution" className={`rounded border p-2 ${ct.divider}`}>
-        <p className={`font-semibold ${ct.headerText}`}>Speed distribution (not available)</p>
-        <p className={ct.muted}>The recorded frames hold positions only: the engine&apos;s frame stream carries no velocities, so the Maxwell-Boltzmann comparison cannot be drawn from them.</p>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-1">
+          <p className={`font-semibold ${ct.headerText}`}>Speed distribution</p>
+          {speedInfo?.bins && (
+            <ChartActions name="speed_distribution" theme={theme} svgRef={speedRef}
+              csv={() => toCsv(['speed_low', 'speed_high', 'count', 'density', 'maxwell_boltzmann'],
+                speedInfo.bins!.map((b) => [b.x0, b.x1, b.count, b.density,
+                  speedInfo.T !== null ? maxwellBoltzmannDensity((b.x0 + b.x1) / 2, speedInfo.mean, speedInfo.T, speedInfo.kB ?? 1) : '']))} />
+          )}
+        </div>
+        {!speedInfo && (
+          <p className={ct.muted}>
+            No velocities in the recorded frames. Recording frames from a run sends velocities (the notebook asks the engine for them);
+            a dump file shows its speeds when it has vx vy vz columns.
+          </p>
+        )}
+        {speedInfo && (
+          <>
+            <div data-speed-temperature={speedInfo.T ?? undefined} data-speed-mean={speedInfo.meanSpeed} data-speed-atoms={speedInfo.atoms} hidden />
+            <SpeedPlot bins={speedInfo.bins ?? []} svgRef={speedRef} theme={theme}
+              curve={speedInfo.T !== null && speedInfo.bins
+                ? speedInfo.bins.map((b) => ({ v: (b.x0 + b.x1) / 2, f: maxwellBoltzmannDensity((b.x0 + b.x1) / 2, speedInfo.mean, speedInfo.T as number, speedInfo.kB ?? 1) }))
+                : []} />
+            <p className={`mt-1 text-[10px] ${ct.muted}`}>
+              {speedInfo.atoms} atoms in the last recorded frame (step {speedInfo.step}).
+              {speedInfo.T !== null
+                ? ` Mean temperature ${speedInfo.T.toPrecision(4)} (k_B from units ${units ?? 'unset'}); curve: Maxwell-Boltzmann at that temperature.`
+                : speedInfo.kB === null
+                  ? ` Units ${units ?? 'unset'} have no Boltzmann constant here: the curve is not drawn.`
+                  : ''}
+              {speedInfo.massesFromFile ? ' Masses taken as 1 (a dump file has none).' : ''}
+              {speedInfo.massesDiffer ? ' Masses differ: the curve uses the mean mass.' : ''}
+            </p>
+          </>
+        )}
       </section>
 
       <button type="button" className={`rounded px-2 py-0.5 text-[11px] ${ct.hoverSurface}`} onClick={() => setVersion((v) => v + 1)}>
         Recompute
       </button>
     </div>
+  );
+};
+
+/** Speed histogram (probability density bars) with the Maxwell-Boltzmann curve over it. */
+const SpeedPlot: React.FC<{
+  bins: { x0: number; x1: number; density: number }[];
+  curve: { v: number; f: number }[];
+  svgRef: React.RefObject<SVGSVGElement | null>;
+  theme: Theme;
+}> = ({ bins, curve, svgRef, theme }) => {
+  const ct = getThemeTokens(theme);
+  const isDark = isDarkTheme(theme);
+  if (bins.length === 0) return <div className={`flex h-[140px] items-center justify-center text-xs ${ct.muted}`}>No data</div>;
+  const W = 320, H = 140, padL = 40, padR = 12, padT = 10, padB = 22;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const xMax = bins[bins.length - 1].x1 || 1;
+  let yMax = 0;
+  for (const b of bins) yMax = Math.max(yMax, b.density);
+  for (const p of curve) yMax = Math.max(yMax, p.f);
+  yMax = yMax || 1;
+  const X = (v: number) => padL + (v / xMax) * plotW;
+  const Y = (f: number) => padT + plotH - (f / yMax) * plotH;
+  const gridColor = isDark ? '#332a1f' : '#e0d7c6';
+  const textColor = isDark ? '#a3937f' : '#6b6053';
+  const barColor = isDark ? '#7aa6d8' : '#4d7fb3';
+  const curveColor = isDark ? '#e07a5f' : '#b2503a';
+  return (
+    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Speed distribution histogram with Maxwell-Boltzmann curve"
+      className="block max-w-full" style={{ height: H }}>
+      <line x1={padL} x2={W - padR} y1={padT + plotH} y2={padT + plotH} stroke={gridColor} />
+      <line x1={padL} x2={padL} y1={padT} y2={padT + plotH} stroke={gridColor} />
+      {bins.map((b, i) => (
+        <rect key={i} x={X(b.x0)} y={Y(b.density)} width={Math.max(0, X(b.x1) - X(b.x0) - 0.5)} height={Math.max(0, padT + plotH - Y(b.density))} fill={barColor} opacity={0.75} />
+      ))}
+      {curve.length > 1 && (
+        <polyline fill="none" stroke={curveColor} strokeWidth={1.5}
+          points={curve.map((p) => `${X(p.v).toFixed(2)},${Y(p.f).toFixed(2)}`).join(' ')} />
+      )}
+      <text x={padL} y={H - 6} fontSize={10} fill={textColor}>0</text>
+      <text x={W - padR} y={H - 6} fontSize={10} fill={textColor} textAnchor="end">{xMax.toPrecision(3)}</text>
+      <text x={W / 2} y={H - 6} fontSize={10} fill={textColor} textAnchor="middle">speed</text>
+      <text x={padL - 4} y={padT + 8} fontSize={10} fill={textColor} textAnchor="end">{yMax.toPrecision(2)}</text>
+    </svg>
   );
 };

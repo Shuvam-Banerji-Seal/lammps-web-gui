@@ -60,9 +60,9 @@ export class EngineClient {
   }
 
   /** Starts a fresh session; resolves with the backend actually in use. */
-  reset(backend: BackendChoice, frameEvery = 0, threads = 1): Promise<Extract<FromEngine, { type: 'ready' }>> {
+  reset(backend: BackendChoice, frameEvery = 0, threads = 1, frameVelocities = false): Promise<Extract<FromEngine, { type: 'ready' }>> {
     const p = new Promise<Extract<FromEngine, { type: 'ready' }>>((r) => this.readyWaiters.push(r));
-    this.send({ type: 'reset', backend, threads, frameEvery });
+    this.send({ type: 'reset', backend, threads, frameEvery, frameVelocities });
     return p;
   }
 

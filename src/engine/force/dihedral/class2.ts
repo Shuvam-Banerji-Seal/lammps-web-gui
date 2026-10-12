@@ -220,9 +220,15 @@ export class DihedralClass2 extends SimpleBonded {
       const dEdrIJ2 = N[t] * (rKL - BR3[t]);
       const dEdrKL2 = N[t] * (rIJ - BR1[t]);
 
-      // forces
+      // forces. At exactly planar geometry (sin(phi) = 0: cis, or trans up to round-off) every dihedral
+      // gradient vector points along the plane normal, and native's force from the phi-dependent terms is
+      // zero there (measured with native LAMMPS, black box: with phi = 0 exactly, every atom's z force is 0,
+      // while the energy changes linearly with z on atom 2, so the native force is not its gradient there).
+      // The in-plane forces from the bond and angle terms are unchanged. Away from planarity the force is
+      // the energy gradient (to 2e-8 relative at |sin phi| = 6.6e-5, measured).
+      const phiForce = Math.abs(s1) < PLANAR_SIN ? 0 : dEdphi;
       fk.fill(0);
-      for (let a = 0; a < 4; a++) for (let d = 0; d < 3; d++) fk[3 * a + d] = -dEdphi * grad[3 * a + d];
+      for (let a = 0; a < 4; a++) for (let d = 0; d < 3; d++) fk[3 * a + d] = -phiForce * grad[3 * a + d];
       // bond lengths
       addBond(fk, 0, 1, b1, rIJ, dEdrIJ);
       addBond(fk, 1, 2, b2, rJK, dEdrJK);
@@ -241,6 +247,9 @@ export class DihedralClass2 extends SimpleBonded {
     bc.acc.edihed += e;
   }
 }
+
+/** |sin(phi)| below this is exactly planar for the force rule in compute (see the comment there). */
+const PLANAR_SIN = 1e-10;
 
 /** Angle between vectors A and B (both 3-vectors). */
 const angleOf = (a: number[], b: number[]): number => {

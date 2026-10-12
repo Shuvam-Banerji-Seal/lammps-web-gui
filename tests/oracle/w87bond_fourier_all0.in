@@ -1,0 +1,22 @@
+# oracle: improper_style fourier with all = 0 given explicitly (single permutation), improper 1 and 2 (B-02)
+# oracle-inputs: w87bond_chain3d.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS (black box): engine thermo agrees to a max relative error of 7.3e-16 (forces to the 1e-8 test tolerance)
+units real
+atom_style full
+boundary f f f
+read_data w87bond_chain3d.data
+pair_style zero 5.0
+pair_coeff * *
+bond_style harmonic
+bond_coeff * 0 1.5
+angle_style harmonic
+angle_coeff * 0 110
+dihedral_style harmonic
+dihedral_coeff * 0 1 1
+improper_style fourier
+improper_coeff 1 20 1 1 0 0
+improper_coeff 2 15 0.3 -0.2 0.1 0
+thermo_style custom step ebond eangle edihed eimp pe
+thermo_modify format float %.15g
+run 0

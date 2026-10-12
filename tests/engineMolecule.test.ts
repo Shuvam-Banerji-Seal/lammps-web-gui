@@ -63,6 +63,17 @@ describe('molecule templates', () => {
     expect(() => parseMoleculeFile('c', 'm.txt', CHAIN.replace('4 2\n\nBonds', '\nBonds'), O)).toThrow(/bad line 'Bonds' in the Types section/);
   });
 
+  it('refuses a bonded entry that names one atom twice (native: Invalid atom ID in <section>)', () => {
+    // native LAMMPS (black box): "1 1 1 2 2" in Angles and "1 1 1 1" in Bonds each stop with
+    // "Invalid atom ID in ... section of molecule file"; "1 1 2 1 3" in Angles is accepted
+    const tpl = (sec: 'Bonds' | 'Angles', line: string) => [
+      '# two-atom test', '', '4 atoms', `1 ${sec.toLowerCase()}`, '', 'Coords', '',
+      '1 0 0 0', '2 1 0 0', '3 1 1 0', '4 0 1 0', '', 'Types', '', '1 1', '2 1', '3 1', '4 1', '', sec, '', line, '',
+    ].join('\n');
+    expect(() => parseMoleculeFile('h', 'h.txt', tpl('Angles', '1 1 1 2 2'), O)).toThrow(/Invalid atom ID in Angles section/);
+    expect(() => parseMoleculeFile('h', 'h.txt', tpl('Bonds', '1 1 1 1'), O)).toThrow(/Invalid atom ID in Bonds section/);
+    expect(parseMoleculeFile('h', 'h.txt', tpl('Angles', '1 1 2 1 3'), O).angles).toEqual([[1, 2, 1, 3]]);
+  });
   it('rotation follows the right-hand rule', () => {
     const R = rotationMatrix(Math.PI / 2, 0, 0, 1);
     expect(R[1][0]).toBeCloseTo(1, 15); // x -> y

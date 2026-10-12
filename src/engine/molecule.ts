@@ -144,7 +144,14 @@ export const parseMoleculeFile = (id: string, name: string, text: string, o: Mol
         const width = { Bonds: 2, Angles: 3, Dihedrals: 4, Impropers: 4 }[sec];
         const off = { Bonds: o.boff, Angles: o.aoff, Dihedrals: o.doff, Impropers: o.ioff }[sec];
         const list = { Bonds: t.bonds, Angles: t.angles, Dihedrals: t.dihedrals, Impropers: t.impropers }[sec];
-        for (const r of rows(count(sec.toLowerCase()), 2 + width)) list.push([r[1] + off, ...r.slice(2, 2 + width).map((v) => atomIndex(v, 'atom ID'))]);
+        for (const r of rows(count(sec.toLowerCase()), 2 + width)) {
+          // native refuses a bonded entry that names one atom twice (measured with native LAMMPS, black box:
+          // "1 1 1 2 2" in Angles, "1 1 1 1" in Bonds and "1 1 1 2 3 1" in Dihedrals all stop with
+          // "Invalid atom ID in <section> section of molecule file")
+          const ids = r.slice(2, 2 + width);
+          if (new Set(ids).size !== ids.length) throw new StyleError(`molecule ${id}: Invalid atom ID in ${sec} section of ${name}: ${r.join(' ')}`);
+          list.push([r[1] + off, ...ids.map((v) => atomIndex(v, 'atom ID'))]);
+        }
         break;
       }
       case 'Special Bond Counts':

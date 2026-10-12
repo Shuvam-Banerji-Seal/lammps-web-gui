@@ -84,6 +84,27 @@ const umbrellaC = (bc: BondedCompute, atoms: readonly number[], grad: number[]):
 };
 
 /**
+ * Sign of cos(omega) for the umbrella angle. The docs define omega only as "the angle between the IL axis and the
+ * IJK plane", which fixes cos(omega) up to sign. Measured with native LAMMPS (black box, units real, 200 random
+ * four-atom geometries, one improper, K = 1, omega0 = 0 and 30 degrees): the native energy equals the one with
+ * cos(omega) = +sqrt(1 - c) when the unit vectors I->J and I->K project to a negative sum on I->L, and with
+ * cos(omega) = -sqrt(1 - c) when that sum is positive (the energy then is K (1 - cos omega) with the negative value).
+ *   sum = (r_L - r_I) . [ (r_J - r_I)/|r_J - r_I| + (r_K - r_I)/|r_K - r_I| ]
+ * Returns -1 when sum > 0 and +1 otherwise.
+ */
+const umbrellaSide = (bc: BondedCompute, atoms: readonly number[]): number => {
+  const b1 = [0, 0, 0], b2 = [0, 0, 0], v = [0, 0, 0];
+  delta(bc, atoms[0], atoms[1], b1);
+  delta(bc, atoms[0], atoms[2], b2);
+  delta(bc, atoms[0], atoms[3], v);
+  const l1 = Math.sqrt(b1[0] * b1[0] + b1[1] * b1[1] + b1[2] * b1[2]);
+  const l2 = Math.sqrt(b2[0] * b2[0] + b2[1] * b2[1] + b2[2] * b2[2]);
+  if (l1 * l2 === 0) return 1;
+  const sum = (v[0] * b1[0] + v[1] * b1[1] + v[2] * b1[2]) / l1 + (v[0] * b2[0] + v[1] * b2[1] + v[2] * b2[2]) / l2;
+  return sum > 0 ? -1 : 1;
+};
+
+/**
  * Out-of-plane coordinate for improper_style distance: with the central atom
  * atoms[0] and plane atoms atoms[1..3], d is the distance between the central
  * atom and the plane, d^2 = a^2 / n^2 with n = (r_k - r_j) x (r_l - r_j) and
@@ -220,7 +241,8 @@ export class ImproperCvff extends SimpleBonded {
  *
  * "where K is the force constant and omega is the angle between the IL axis
  * and the IJK plane". "If :math:`\omega_0 = 0` the potential term has a minimum for
- * the planar structure." omega in [0, 90 degrees], so cos(omega) >= 0.
+ * the planar structure." The sign of cos(omega) is not fixed by that sentence;
+ * see umbrellaSide for the measured sign rule.
  * * :math:`K` (energy)
  * * :math:`\omega_0` (degrees)
  */
@@ -250,7 +272,7 @@ export class ImproperUmbrella extends SimpleBonded {
       const atoms = [0, 1, 2, 3].map((w) => atomIndex(bc, I.atoms[4 * q + w], 'improper'));
       const t = I.type[q];
       const c = umbrellaC(bc, atoms, grad);
-      const cw = Math.sqrt(Math.max(0, 1 - c));
+      const cw = umbrellaSide(bc, atoms) * Math.sqrt(Math.max(0, 1 - c));
       let ei: number, dEdc: number;
       if (w0[t] === 0) {
         ei = K[t] * (1 - cw);
@@ -377,12 +399,13 @@ export class ImproperFourier extends SimpleBonded {
 
   override coeff(args: string[], ctx?: StyleContext): void {
     if (args.length !== 5 && args.length !== 6) throw new StyleError('improper_coeff fourier needs type K C0 C1 C2 [all]');
-    if (args.length === 6) {
-      const all = parseInt_(args[5], 'all');
-      if (all !== 0 && all !== 1) throw new StyleError(`improper fourier all must be 0 or 1, got '${args[5]}'`);
-      const [lo, hi] = typeBounds(args[0], this.ntypes);
-      for (let t = lo; t <= hi; t++) this.all[t] = all;
-    }
+    // Without the optional `all` value native uses all = 1: measured with native LAMMPS (black box), the case
+    // with no sixth value matches the engine with all = 1 (oracle w87bond_fourier_default) and the explicit 0
+    // case matches all = 0 (oracle w87bond_fourier_all0).
+    const all = args.length === 6 ? parseInt_(args[5], 'all') : 1;
+    if (all !== 0 && all !== 1) throw new StyleError(`improper fourier all must be 0 or 1, got '${args[5]}'`);
+    const [lo, hi] = typeBounds(args[0], this.ntypes);
+    for (let t = lo; t <= hi; t++) this.all[t] = all;
     super.coeff([args[0], ...args.slice(1, 5)], ctx);
   }
 
@@ -409,7 +432,7 @@ export class ImproperFourier extends SimpleBonded {
       for (const ord of axes) {
         const a4 = ord.map((w) => atoms[w]);
         const c = umbrellaC(bc, a4, grad);
-        const cw = Math.sqrt(Math.max(0, 1 - c));
+        const cw = umbrellaSide(bc, a4) * Math.sqrt(Math.max(0, 1 - c));
         const term = K[t] * (C0[t] + C1[t] * cw + C2[t] * (1 - 2 * c));
         const dEdc = K[t] * (-C1[t] / (2 * cw) - 2 * C2[t]);
         ei += term;

@@ -1,0 +1,33 @@
+a90
+
+6 atoms
+0 bonds
+1 angles
+0 dihedrals
+0 impropers
+1 atom types
+0 bond types
+1 angle types
+0 dihedral types
+0 improper types
+
+-10 20 xlo xhi
+-10 20 ylo yhi
+-10 20 zlo zhi
+
+Masses
+
+1 12.0
+
+Atoms # full
+
+1 1 1 0.0 0.0 0.0 0.0
+2 1 1 0.0 1.5 0.0 0.0
+3 1 1 0.0 3.0 0.0000001 0.0
+4 1 1 0.0 10 10 10
+5 1 1 0.0 12 10 10
+6 1 1 0.0 12 12 10
+
+Angles
+
+1 1 1 2 3

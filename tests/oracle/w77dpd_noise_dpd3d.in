@@ -1,0 +1,23 @@
+# oracle: pair dpd with its random force on, 60 atoms in 3d (many interacting pairs; the per-pair draws follow native's neighbor-list order)
+# Measured with native LAMMPS (black box): engine vs native max error 4.6e-15 (thermo), 2.9e-14 (per-atom), scale max(1,|x|). Random force ON (T=1), 60 atoms, many interacting pairs: the per-pair draws follow native neighbor-list order (step by step).
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=0
+units        lj
+boundary     p p p
+atom_style   atomic
+dimension    3
+newton       on
+comm_modify  vel yes
+region       simBox block 0 5 0 5 0 5
+create_box   1 simBox
+create_atoms 1 random 60 4321 simBox
+mass         * 1.0
+pair_style   dpd 1.0 1.0 3854262
+pair_coeff   * * 25.0 4.5
+timestep     0.01
+run_style    verlet
+velocity all create 1.0 68768932
+thermo_style custom step time temp press pe ke
+thermo_modify format float %.15g
+thermo       10
+fix 1 all    nve
+run          50

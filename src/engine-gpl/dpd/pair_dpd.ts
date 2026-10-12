@@ -10,14 +10,16 @@
  * from a Marsaglia RanMars stream seeded by the pair_style seed. "dpd/tstat" has no conservative term; its sigma
  * follows the temperature of the pair_style (ramped in the source; only t_start == t_stop is supported here).
  *
- * Random numbers are drawn per pair inside the cutoff in the order of this engine's half neighbor list. Native
- * LAMMPS draws them in its own neighbor-list order, so per-step random forces match native only when a pair list
- * holds one interacting pair (see the oracle cases in tests/oracle/w77dpd_*.in).
+ * Random numbers are drawn once per pair inside the cutoff, in native LAMMPS's neighbor-list order: the pair
+ * order comes from src/engine-gpl/neighbor/nativeOrder.ts (native local order, ghost atoms, bins and the half
+ * stencil), so the random forces match native step by step (oracle cases tests/oracle/w77dpd_*.in). Triclinic
+ * boxes keep the engine's list order (the native enumeration is not ported for them).
  */
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { RanMars } from '../random_mars';
+import { NativePairOrder } from '../neighbor/nativeOrder';
 
 /**
  * ev_tally_xyz (src/pair.cpp) for a pair with force components (fx, fy, fz) on i and the energy e: per-atom energy
@@ -52,6 +54,9 @@ export class PairDPD extends Pair {
   private boltz = 1;
   private sigma = new Float64Array(0);
   private nt = 0;
+  private readonly order = new NativePairOrder();
+  private logFn: ((text: string) => void) | null = null;
+  private triWarned = false;
 
   constructor(tstat = false) {
     super();
@@ -100,9 +105,9 @@ export class PairDPD extends Pair {
   }
 
   initStyle(ctx: StyleContext): void {
-    // the per-pair random deviates are drawn in the engine's pair order, not native's neighbor-list order: with a
-    // nonzero temperature the trajectories agree with native LAMMPS statistically, not step by step
-    if (this.temperature > 0) ctx.log('WARNING: pair_style ' + this.name + ': random forces are drawn in the browser engine\'s pair order; with T > 0 the run matches native LAMMPS only statistically');
+    // the random deviates follow native's pair order for orthogonal boxes (nativeOrder.ts); triclinic boxes keep the
+    // engine's list order, so with T > 0 they match native LAMMPS only statistically (warned once in compute)
+    this.logFn = (text) => ctx.log(text);
     // pair_dpd.cpp init_style(): "Pair dpd requires ghost atoms store velocity"
     if (ctx.ghostVelocity !== true) throw new StyleError('Pair dpd requires ghost atoms store velocity (use comm_modify vel yes)');
     // pair_dpd.cpp: "Pair dpd needs newton pair on for momentum conservation" (a warning natively; this port
@@ -127,7 +132,11 @@ export class PairDPD extends Pair {
   compute(pc: PairCompute): void {
     const rng = this.rng;
     if (!rng) throw new StyleError('pair dpd used before pair_style');
-    const list = pc.half!;
+    if (pc.geom.triclinic && this.temperature > 0 && !this.triWarned) {
+      this.triWarned = true;
+      this.logFn?.('WARNING: pair_style ' + this.name + ': triclinic box: random forces are drawn in the browser engine\'s pair order (native\'s enumeration is not ported for triclinic boxes); with T > 0 the run matches native LAMMPS only statistically');
+    }
+    const pairs = this.order.pairs(pc.s, pc.nb, pc.geom, pc.half);
     const { x, f, type } = pc;
     const s = pc.s;
     const vel = s.v;
@@ -140,54 +149,50 @@ export class PairDPD extends Pair {
     const sqrtS = [Math.sqrt(sLJ[0]), Math.sqrt(sLJ[1]), Math.sqrt(sLJ[2]), Math.sqrt(sLJ[3])];
     const dtinvsqrt = 1.0 / Math.sqrt(s.dt);
     const tally = pc.eatom !== null || pc.vatom !== null;
-    const nb = list.neighbors;
     let evdwl = 0;
-    for (let i = 0; i < list.inum; i++) {
+    for (let p = 0; p < pairs.length; p += 2) {
+      const i = pairs[p];
+      const jj = pairs[p + 1];
+      const j = jj & NEIGHMASK;
+      const m = jj >>> SBBITS;
+      const factorDpd = sLJ[m];
+      const factorSqrt = sqrtS[m];
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       const vxi = vel[3 * i], vyi = vel[3 * i + 1], vzi = vel[3 * i + 2];
-      const ti = type[i] * nt;
-      const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
-      for (let k = k0; k < k1; k++) {
-        const jj = nb[k];
-        const j = jj & NEIGHMASK;
-        const m = jj >>> SBBITS;
-        const factorDpd = sLJ[m];
-        const factorSqrt = sqrtS[m];
-        const delx = xi - x[3 * j], dely = yi - x[3 * j + 1], delz = zi - x[3 * j + 2];
-        const rsq = delx * delx + dely * dely + delz * delz;
-        const t = ti + type[j];
-        if (rsq >= cutsq[t]) continue;
-        const r = Math.sqrt(rsq);
-        if (r < EPSILON) continue;
-        const rinv = 1.0 / r;
-        const oj = owner[j];
-        const delvx = vxi - vel[3 * oj], delvy = vyi - vel[3 * oj + 1], delvz = vzi - vel[3 * oj + 2];
-        const dot = delx * delvx + dely * delvy + delz * delvz;
-        const wd = 1.0 - r / cut[t];
-        const randnum = rng.gaussian();
-        let fpair: number;
-        let e = 0;
-        if (this.tstat) {
-          // pair_dpd_tstat.cpp compute(): "fpair = -factor_dpd*gamma*wd*wd*dot*rinv;"
-          fpair = -factorDpd * gArr[t] * wd * wd * dot * rinv;
-          fpair += factorSqrt * sigma[t] * wd * randnum * dtinvsqrt;
-        } else {
-          const a0 = aArr![t];
-          fpair = a0 * wd;
-          fpair -= gArr[t] * wd * wd * dot * rinv;
-          fpair *= factorDpd;
-          fpair += factorSqrt * sigma[t] * wd * randnum * dtinvsqrt;
-          // unshifted conservative energy is 0.5 a0 rc wd^2 (eng shifted to 0 at the cutoff), times factor_dpd
-          e = 0.5 * a0 * cut[t] * wd * wd;
-          e *= factorDpd;
-        }
-        fpair *= rinv;
-        const fx = delx * fpair, fy = dely * fpair, fz = delz * fpair;
-        f[3 * i] += fx; f[3 * i + 1] += fy; f[3 * i + 2] += fz;
-        f[3 * j] -= fx; f[3 * j + 1] -= fy; f[3 * j + 2] -= fz;
-        evdwl += e;
-        if (tally) tallyXYZ(pc, i, j, e, fx, fy, fz, delx, dely, delz);
+      const delx = xi - x[3 * j], dely = yi - x[3 * j + 1], delz = zi - x[3 * j + 2];
+      const rsq = delx * delx + dely * dely + delz * delz;
+      const t = type[i] * nt + type[j];
+      if (rsq >= cutsq[t]) continue;
+      const r = Math.sqrt(rsq);
+      if (r < EPSILON) continue;
+      const rinv = 1.0 / r;
+      const oj = owner[j];
+      const delvx = vxi - vel[3 * oj], delvy = vyi - vel[3 * oj + 1], delvz = vzi - vel[3 * oj + 2];
+      const dot = delx * delvx + dely * delvy + delz * delvz;
+      const wd = 1.0 - r / cut[t];
+      const randnum = rng.gaussian();
+      let fpair: number;
+      let e = 0;
+      if (this.tstat) {
+        // pair_dpd_tstat.cpp compute(): "fpair = -factor_dpd*gamma*wd*wd*dot*rinv;"
+        fpair = -factorDpd * gArr[t] * wd * wd * dot * rinv;
+        fpair += factorSqrt * sigma[t] * wd * randnum * dtinvsqrt;
+      } else {
+        const a0 = aArr![t];
+        fpair = a0 * wd;
+        fpair -= gArr[t] * wd * wd * dot * rinv;
+        fpair *= factorDpd;
+        fpair += factorSqrt * sigma[t] * wd * randnum * dtinvsqrt;
+        // unshifted conservative energy is 0.5 a0 rc wd^2 (eng shifted to 0 at the cutoff), times factor_dpd
+        e = 0.5 * a0 * cut[t] * wd * wd;
+        e *= factorDpd;
       }
+      fpair *= rinv;
+      const fx = delx * fpair, fy = dely * fpair, fz = delz * fpair;
+      f[3 * i] += fx; f[3 * i + 1] += fy; f[3 * i + 2] += fz;
+      f[3 * j] -= fx; f[3 * j + 1] -= fy; f[3 * j + 2] -= fz;
+      evdwl += e;
+      if (tally) tallyXYZ(pc, i, j, e, fx, fy, fz, delx, dely, delz);
     }
     pc.acc.evdwl += evdwl;
   }

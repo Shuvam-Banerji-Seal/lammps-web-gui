@@ -117,3 +117,97 @@ describe('PPPM automatic G-ewald and mesh (native-measured)', () => {
     expect(Math.abs(got.g / 0.31380752 - 1)).toBeLessThan(1e-7);
   });
 });
+
+/*
+ * Slab boxes (kspace_modify slab V): the reciprocal-space estimate uses the extended z edge V lz, the
+ * real-space estimate and the initial G use the box volume. Measured with native LAMMPS (black box): 66
+ * boxes, orthorhombic, V 2..8 (2.5 included), lj, real and metal, net charge and neutral, cutoffs 4..9,
+ * order 5, accuracy 1e-3 to 1e-10 (the 1e-2 rows are not in the table: see pppm.ts). Native printed G (8 digits)
+ * and grid. Not in the table, because the rule
+ * does not reproduce native's grid there: the 4x4x8 box with V 3 and accuracy 1e-3 (native z 25, this rule
+ * 24), the madelung 1x1x20 box with V 8 at accuracy 1e-2, 1e-3 and 1e-4, and the 3x3x12 box with V 8 at 1e-4.
+ */
+interface SlabRow { name: string; box: number[]; natoms: number; q2: number; rc: number; accE: number; slab: number; g: number; grid: number[] }
+
+const SLAB: SlabRow[] = [
+  { name: 'real_5x5x4_s2_a1e-5', box: [16, 16, 12.8], natoms: 100, q2: 8301.59275, rc: 6, accE: 0.0033206371, slab: 2, g: 0.48868171, grid: [20, 20, 27] },
+  { name: 'real_5x5x4_s3_a1e-5', box: [16, 16, 12.8], natoms: 100, q2: 8301.59275, rc: 6, accE: 0.0033206371, slab: 3, g: 0.49282579, grid: [20, 20, 40] },
+  { name: 'real_5x5x4_s5_a1e-5', box: [16, 16, 12.8], natoms: 100, q2: 8301.59275, rc: 6, accE: 0.0033206371, slab: 5, g: 0.48682758, grid: [20, 20, 54] },
+  { name: 'real_5x5x4_s8_a1e-5', box: [16, 16, 12.8], natoms: 100, q2: 8301.59275, rc: 6, accE: 0.0033206371, slab: 8, g: 0.48845825, grid: [20, 20, 80] },
+  { name: 'real_4x4x8_s2_a1e-5', box: [12.8, 12.8, 25.6], natoms: 128, q2: 10626.03872, rc: 6, accE: 0.0033206371, slab: 2, g: 0.49234622, grid: [18, 18, 48] },
+  { name: 'real_4x4x8_s3_a1e-5', box: [12.8, 12.8, 25.6], natoms: 128, q2: 10626.03872, rc: 6, accE: 0.0033206371, slab: 3, g: 0.48946179, grid: [18, 18, 64] },
+  { name: 'real_4x4x8_s5_a1e-5', box: [12.8, 12.8, 25.6], natoms: 128, q2: 10626.03872, rc: 6, accE: 0.0033206371, slab: 5, g: 0.48934404, grid: [18, 18, 96] },
+  { name: 'real_4x4x8_s8_a1e-5', box: [12.8, 12.8, 25.6], natoms: 128, q2: 10626.03872, rc: 6, accE: 0.0033206371, slab: 8, g: 0.4921069, grid: [18, 18, 144] },
+  { name: 'real_6x6x5_s2_a1e-5', box: [19.2, 19.2, 16], natoms: 180, q2: 14942.86695, rc: 6, accE: 0.0033206371, slab: 2, g: 0.49219605, grid: [24, 24, 36] },
+  { name: 'real_6x6x5_s3_a1e-5', box: [19.2, 19.2, 16], natoms: 180, q2: 14942.86695, rc: 6, accE: 0.0033206371, slab: 3, g: 0.48685485, grid: [24, 24, 45] },
+  { name: 'real_6x6x5_s5_a1e-5', box: [19.2, 19.2, 16], natoms: 180, q2: 14942.86695, rc: 6, accE: 0.0033206371, slab: 5, g: 0.49133648, grid: [24, 24, 72] },
+  { name: 'real_6x6x5_s8_a1e-5', box: [19.2, 19.2, 16], natoms: 180, q2: 14942.86695, rc: 6, accE: 0.0033206371, slab: 8, g: 0.48523508, grid: [24, 24, 96] },
+  { name: 'real_3x5x9_s2_a1e-5', box: [9.6, 16, 28.8], natoms: 135, q2: 11207.15021, rc: 6, accE: 0.0033206371, slab: 2, g: 0.49186337, grid: [15, 20, 54] },
+  { name: 'real_3x5x9_s3_a1e-5', box: [9.6, 16, 28.8], natoms: 135, q2: 11207.15021, rc: 6, accE: 0.0033206371, slab: 3, g: 0.48973653, grid: [15, 20, 72] },
+  { name: 'real_3x5x9_s5_a1e-5', box: [9.6, 16, 28.8], natoms: 135, q2: 11207.15021, rc: 6, accE: 0.0033206371, slab: 5, g: 0.48964463, grid: [15, 20, 108] },
+  { name: 'real_3x5x9_s8_a1e-5', box: [9.6, 16, 28.8], natoms: 135, q2: 11207.15021, rc: 6, accE: 0.0033206371, slab: 8, g: 0.48502548, grid: [15, 20, 150] },
+  { name: 'real_5x5x12_s2_a1e-5', box: [16, 16, 38.4], natoms: 300, q2: 24904.77825, rc: 6, accE: 0.0033206371, slab: 2, g: 0.49692324, grid: [24, 24, 72] },
+  { name: 'real_5x5x12_s3_a1e-5', box: [16, 16, 38.4], natoms: 300, q2: 24904.77825, rc: 6, accE: 0.0033206371, slab: 3, g: 0.49364475, grid: [24, 24, 96] },
+  { name: 'real_5x5x12_s5_a1e-5', box: [16, 16, 38.4], natoms: 300, q2: 24904.77825, rc: 6, accE: 0.0033206371, slab: 5, g: 0.49348973, grid: [24, 24, 144] },
+  { name: 'real_5x5x12_s8_a1e-5', box: [16, 16, 38.4], natoms: 300, q2: 24904.77825, rc: 6, accE: 0.0033206371, slab: 8, g: 0.48755835, grid: [24, 24, 200] },
+  { name: 'real_8x8x6_s2_a1e-5', box: [25.6, 25.6, 19.2], natoms: 384, q2: 31878.11616, rc: 6, accE: 0.0033206371, slab: 2, g: 0.4832344, grid: [30, 30, 40] },
+  { name: 'real_8x8x6_s3_a1e-5', box: [25.6, 25.6, 19.2], natoms: 384, q2: 31878.11616, rc: 6, accE: 0.0033206371, slab: 3, g: 0.48665315, grid: [30, 30, 60] },
+  { name: 'real_8x8x6_s5_a1e-5', box: [25.6, 25.6, 19.2], natoms: 384, q2: 31878.11616, rc: 6, accE: 0.0033206371, slab: 5, g: 0.48256994, grid: [30, 30, 81] },
+  { name: 'real_8x8x6_s8_a1e-5', box: [25.6, 25.6, 19.2], natoms: 384, q2: 31878.11616, rc: 6, accE: 0.0033206371, slab: 8, g: 0.48377505, grid: [30, 30, 120] },
+  { name: 'real_5x5x4_s3_a1e-3', box: [16, 16, 12.8], natoms: 100, q2: 8301.59275, rc: 6, accE: 0.33206371, slab: 3, g: 0.35330821, grid: [8, 8, 15] },
+  { name: 'real_5x5x4_s3_a1e-4', box: [16, 16, 12.8], natoms: 100, q2: 8301.59275, rc: 6, accE: 0.033206371, slab: 3, g: 0.42177002, grid: [12, 12, 24] },
+  { name: 'real_5x5x4_s3_a1e-6', box: [16, 16, 12.8], natoms: 100, q2: 8301.59275, rc: 6, accE: 0.00033206371, slab: 3, g: 0.54741758, grid: [32, 32, 60] },
+  { name: 'real_5x5x4_s3_a1e-10', box: [16, 16, 12.8], natoms: 100, q2: 8301.59275, rc: 6, accE: 3.3206371e-8, slab: 3, g: 0.74012104, grid: [243, 243, 450] },
+  { name: 'real_4x4x8_s3_a1e-4', box: [12.8, 12.8, 25.6], natoms: 128, q2: 10626.03872, rc: 6, accE: 0.033206371, slab: 3, g: 0.42157226, grid: [12, 12, 40] },
+  { name: 'real_4x4x8_s3_a1e-6', box: [12.8, 12.8, 25.6], natoms: 128, q2: 10626.03872, rc: 6, accE: 0.00033206371, slab: 3, g: 0.54362038, grid: [27, 27, 100] },
+  { name: 'real_4x4x8_s3_a1e-10', box: [12.8, 12.8, 25.6], natoms: 128, q2: 10626.03872, rc: 6, accE: 3.3206371e-8, slab: 3, g: 0.74082279, grid: [216, 216, 750] },
+  { name: 'real_6x6x5_s3_a1e-3', box: [19.2, 19.2, 16], natoms: 180, q2: 14942.86695, rc: 6, accE: 0.33206371, slab: 3, g: 0.34550755, grid: [9, 9, 18] },
+  { name: 'real_6x6x5_s3_a1e-4', box: [19.2, 19.2, 16], natoms: 180, q2: 14942.86695, rc: 6, accE: 0.033206371, slab: 3, g: 0.42540128, grid: [15, 15, 30] },
+  { name: 'real_6x6x5_s3_a1e-6', box: [19.2, 19.2, 16], natoms: 180, q2: 14942.86695, rc: 6, accE: 0.00033206371, slab: 3, g: 0.54742917, grid: [40, 40, 72] },
+  { name: 'real_6x6x5_s3_a1e-10', box: [19.2, 19.2, 16], natoms: 180, q2: 14942.86695, rc: 6, accE: 3.3206371e-8, slab: 3, g: 0.74217722, grid: [300, 300, 576] },
+  { name: 'lj_5x5x4_s3_a1e-4', box: [4.27493986669, 4.27493986669, 3.41995189335], natoms: 100, q2: 100, rc: 2.5, accE: 0.0001, slab: 3, g: 1.2659986, grid: [18, 18, 32] },
+  { name: 'lj_4x4x8_s3_a1e-4', box: [3.41995189335, 3.41995189335, 6.83990378671], natoms: 128, q2: 128, rc: 2.5, accE: 0.0001, slab: 3, g: 1.2685636, grid: [15, 15, 60] },
+  { name: 'lj_6x6x5_s3_a1e-4', box: [5.12992784003, 5.12992784003, 4.27493986669], natoms: 180, q2: 180, rc: 2.5, accE: 0.0001, slab: 3, g: 1.2727602, grid: [24, 24, 40] },
+  { name: 'metal_5x5x4_s3_a1e-4', box: [16, 16, 12.8], natoms: 100, q2: 1439.9645, rc: 2.5, accE: 0.0014399645, slab: 3, g: 1.1248389, grid: [40, 40, 80] },
+  { name: 'metal_4x4x8_s3_a1e-4', box: [12.8, 12.8, 25.6], natoms: 128, q2: 1843.15456, rc: 2.5, accE: 0.0014399645, slab: 3, g: 1.1372812, grid: [36, 36, 144] },
+  { name: 'metal_6x6x5_s3_a1e-4', box: [19.2, 19.2, 16], natoms: 180, q2: 2591.9361, rc: 2.5, accE: 0.0014399645, slab: 3, g: 1.1196077, grid: [48, 48, 96] },
+  { name: 'real_4x4x10_s4_a1e-5_q0.5v0.3', box: [12.8, 12.8, 32], natoms: 160, q2: 9032.132912, rc: 6, accE: 0.0033206371, slab: 4, g: 0.47579148, grid: [16, 16, 90] },
+  { name: 'real_5x5x6_s4_a1e-5_q0.5v0.3', box: [16, 16, 19.2], natoms: 150, q2: 8467.624605, rc: 6, accE: 0.0033206371, slab: 4, g: 0.47320006, grid: [18, 18, 60] },
+  { name: 'real_3x4x12_s4_a1e-5_q0.5v0.3', box: [9.6, 12.8, 38.4], natoms: 144, q2: 8128.919621, rc: 6, accE: 0.0033206371, slab: 4, g: 0.48222013, grid: [15, 16, 108] },
+  { name: 'real_6x6x3_s4_a1e-5_q0.5v0.3', box: [19.2, 19.2, 9.6], natoms: 108, q2: 6096.689716, rc: 6, accE: 0.0033206371, slab: 4, g: 0.47477929, grid: [20, 20, 36] },
+  { name: 'real_4x6x8_s4_a1e-5_q0.5v0.3', box: [12.8, 19.2, 25.6], natoms: 192, q2: 10838.55949, rc: 6, accE: 0.0033206371, slab: 4, g: 0.47521726, grid: [16, 24, 75] },
+  { name: 'real_8x8x4_s4_a1e-5_q0.5v0.3', box: [25.6, 25.6, 12.8], natoms: 256, q2: 14451.41266, rc: 6, accE: 0.0033206371, slab: 4, g: 0.47314423, grid: [27, 27, 45] },
+  { name: 'real_4x4x10_s6_a1e-6', box: [12.8, 12.8, 32], natoms: 160, q2: 13282.5484, rc: 9, accE: 0.00033206371, slab: 6, g: 0.36055315, grid: [18, 18, 135] },
+  { name: 'real_5x5x6_s6_a1e-6', box: [16, 16, 19.2], natoms: 150, q2: 12452.38912, rc: 9, accE: 0.00033206371, slab: 6, g: 0.36434601, grid: [24, 24, 90] },
+  { name: 'real_3x4x12_s6_a1e-6', box: [9.6, 12.8, 38.4], natoms: 144, q2: 11954.29356, rc: 9, accE: 0.00033206371, slab: 6, g: 0.36321582, grid: [15, 18, 160] },
+  { name: 'real_6x6x3_s6_a1e-6', box: [19.2, 19.2, 9.6], natoms: 108, q2: 8965.72017, rc: 9, accE: 0.00033206371, slab: 6, g: 0.36342684, grid: [24, 24, 54] },
+  { name: 'real_4x4x10_s2_a1e-4', box: [12.8, 12.8, 32], natoms: 160, q2: 13282.5484, rc: 4, accE: 0.033206371, slab: 2, g: 0.63155959, grid: [16, 16, 54] },
+  { name: 'real_5x5x6_s2_a1e-4', box: [16, 16, 19.2], natoms: 150, q2: 12452.38912, rc: 4, accE: 0.033206371, slab: 2, g: 0.6371964, grid: [20, 20, 36] },
+  { name: 'real_3x4x12_s2_a1e-4', box: [9.6, 12.8, 38.4], natoms: 144, q2: 11954.29356, rc: 4, accE: 0.033206371, slab: 2, g: 0.63992505, grid: [15, 16, 64] },
+  { name: 'real_6x6x3_s2_a1e-4', box: [19.2, 19.2, 9.6], natoms: 108, q2: 8965.72017, rc: 4, accE: 0.033206371, slab: 2, g: 0.66307948, grid: [24, 24, 24] },
+  { name: 'lj_3x4x12_s5_a1e-3', box: [2.56496392002, 3.41995189335, 10.2598556801], natoms: 144, q2: 144, rc: 3, accE: 0.001, slab: 5, g: 0.92899422, grid: [8, 8, 60] },
+  { name: 'lj_6x6x3_s5_a1e-3', box: [5.12992784003, 5.12992784003, 2.56496392002], natoms: 108, q2: 108, rc: 3, accE: 0.001, slab: 5, g: 0.93997517, grid: [12, 12, 20] },
+  { name: 'lj_4x6x8_s5_a1e-3', box: [3.41995189335, 5.12992784003, 6.83990378671], natoms: 192, q2: 192, rc: 3, accE: 0.001, slab: 5, g: 0.93204107, grid: [8, 12, 45] },
+  { name: 'lj_8x8x4_s5_a1e-3', box: [6.83990378671, 6.83990378671, 3.41995189335], natoms: 256, q2: 256, rc: 3, accE: 0.001, slab: 5, g: 0.94000507, grid: [15, 15, 27] },
+  { name: 'metal_4x4x10_s2.5_a1e-5_q1v0.7', box: [12.8, 12.8, 32], natoms: 160, q2: 1716.437684, rc: 5, accE: 0.00014399645, slab: 2.5, g: 0.6201127, grid: [27, 27, 100] },
+  { name: 'metal_5x5x6_s2.5_a1e-5_q1v0.7', box: [16, 16, 19.2], natoms: 150, q2: 1609.160329, rc: 5, accE: 0.00014399645, slab: 2.5, g: 0.61986213, grid: [30, 30, 72] },
+  { name: 'metal_3x4x12_s2.5_a1e-5_q1v0.7', box: [9.6, 12.8, 38.4], natoms: 144, q2: 1544.793916, rc: 5, accE: 0.00014399645, slab: 2.5, g: 0.6253902, grid: [24, 27, 120] },
+  { name: 'metal_6x6x3_s2.5_a1e-5_q1v0.7', box: [19.2, 19.2, 9.6], natoms: 108, q2: 1158.595437, rc: 5, accE: 0.00014399645, slab: 2.5, g: 0.62362441, grid: [36, 36, 40] },
+  { name: 'real_5x5x6_s3_a1e-8', box: [16, 16, 19.2], natoms: 150, q2: 12452.38912, rc: 6, accE: 0.0000033206371, slab: 3, g: 0.64970779, grid: [90, 90, 225] },
+  { name: 'real_3x4x12_s3_a1e-8', box: [9.6, 12.8, 38.4], natoms: 144, q2: 11954.29356, rc: 6, accE: 0.0000033206371, slab: 3, g: 0.65192309, grid: [64, 80, 375] },
+  { name: 'real_6x6x3_s3_a1e-8', box: [19.2, 19.2, 9.6], natoms: 108, q2: 8965.72017, rc: 6, accE: 0.0000033206371, slab: 3, g: 0.6505766, grid: [100, 100, 135] },
+  { name: 'madelung_s8_a1.0e-5', box: [1, 1, 20], natoms: 4, q2: 166.031855, rc: 12, accE: 0.0033206371, slab: 8, g: 0.24434577, grid: [3, 3, 40] },
+  { name: 'madelung_s8_a1.0e-6', box: [1, 1, 20], natoms: 4, q2: 166.031855, rc: 12, accE: 0.00033206371, slab: 8, g: 0.27904188, grid: [3, 3, 64] },
+  { name: 'madelung_s8_a1.0e-8', box: [1, 1, 20], natoms: 4, q2: 166.031855, rc: 12, accE: 0.0000033206371, slab: 8, g: 0.32744238, grid: [5, 5, 144] },
+  { name: 'madelung_s8_a1.0e-10', box: [1, 1, 20], natoms: 4, q2: 166.031855, rc: 12, accE: 3.3206371e-8, slab: 8, g: 0.37216302, grid: [12, 12, 375] },
+];
+
+describe('PPPM automatic G-ewald and mesh, slab boxes (native-measured)', () => {
+  for (const r of SLAB) {
+    it(`matches native grid and G for slab ${r.name}`, () => {
+      const got = selectPppmAuto({ lx: r.box[0], ly: r.box[1], lz: r.box[2], natoms: r.natoms, q2: r.q2, rc: r.rc, accE: r.accE, order: 5, gUser: 0, meshUser: null, slab: r.slab });
+      expect(got.mesh).toEqual(r.grid);
+      expect(Math.abs(got.g / r.g - 1)).toBeLessThan(1e-7);
+    });
+  }
+});

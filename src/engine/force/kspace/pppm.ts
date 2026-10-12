@@ -34,7 +34,7 @@ import { fft3d, isFFTSize, nextFFTSize } from '../fft';
  *          weights; F_j = C q_j E(r_j),
  *   W_ab = C / (2 V) sum_k G |rho|^2 (delta_ab - 2 k_a k_b (1/k^2 + 1/(4g^2))).
  * Automatic g_ewald, mesh and order: see selectPppmAuto below (orthorhombic
- * boxes without slab). Triclinic and slab boxes keep the older estimate and
+ * boxes, with or without slab). Triclinic boxes keep the older estimate and
  * log a warning, because their native choice is not reproduced yet.
  */
 
@@ -60,7 +60,7 @@ const bspline = (p: number, x: number): number => {
 };
 
 /*
- * Automatic g_ewald, mesh (orthorhombic boxes, no slab).
+ * Automatic g_ewald, mesh (orthorhombic boxes, with or without slab).
  *
  * docs.lammps.org/kspace_modify.html: "this setting, LAMMPS chooses the
  * parameter automatically as a function" (the gewald keyword); "must be
@@ -103,6 +103,32 @@ const bspline = (p: number, x: number): number => {
  *    these by 1e-3 to 5e-2.
  *  - kspace_modify gewald set: the mesh is chosen with that g; mesh set: g is
  *    solved with that mesh (both measured on a cubic 10-box).
+ *  - kspace_modify slab V (slab box): the reciprocal-space estimate uses the
+ *    extended z edge L_z = V lz (and its mesh spacing L_z / n_z), while the
+ *    real-space estimate and the initial G keep the volume of the simulation
+ *    domain V = lx ly lz. The docs say: kspace_modify.html, slab: "The volfactor
+ *    value sets the ratio of the extended dimension in z divided by the actual
+ *    dimension in z."; kspace_style.html: "The specified accuracy determines the
+ *    relative RMS error in per-atom forces calculated by the long-range solver."
+ *    Measured with native LAMMPS (black box): the printed "estimated absolute RMS
+ *    force accuracy" equals sqrt(dF_r^2 + dF_k^2) with that rule (dF_k the root
+ *    mean square over the three edges) to 0.1 percent on the slab boxes with
+ *    accuracy 1e-2 to 1e-6 (madelung 1x1x20 box and 3x3x12 to 8x8x6 cell boxes; lj,
+ *    real and metal; net charge and neutral). The boxes at accuracy 1e-8 and 1e-10
+ *    print about 1e-5 whatever the grid, which this formula does not give; their G
+ *    and grid still match.
+ *    G and grid match native (8 digits) on 129 of 170 measured slab boxes (slab
+ *    factors 2, 2.5, 3, 4, 5, 6, 8): all 58 at accuracy 1e-5 and all at 1e-6, 1e-8
+ *    and 1e-10; at 1e-4 36 of 38 (misses: the madelung box and the 3x3x12 box with slab 8); at 1e-3 15 of 32; at 1e-2 3 of 25.
+ *    At 1e-2 and 1e-3 the native z (and x, y) grid is not reproduced by any rule
+ *    tested: factorable(ceil(n*)+1) with n* from the initial G, from the native G,
+ *    the smallest factorable size, a fixed point of G and mesh, a slab-scaled error,
+ *    and the box length or spacing with lz or lz*slab swapped (the initial-G window
+ *    that gives each native grid is not common to the three edges). The native
+ *    grid there looks path dependent (not a function of G alone).
+ *    Measured on the 400 Angstrom z box of the SDS monolayer (non-neutral, order 3,
+ *    cutoff 15, no slab): native G 0.015838529 on mesh 2 1 3, which this rule does
+ *    not produce (engine 0.0195 on 3 3 3); that case stays pinned.
  */
 const IK_COEF: Record<number, number[]> = {
   1: [2 / 3],
@@ -146,6 +172,8 @@ export interface PppmAutoInput {
   order: number;
   gUser: number;
   meshUser: [number, number, number] | null;
+  /** kspace_modify slab volfactor (1 for no slab): the z edge of the reciprocal-space estimate is lz times this */
+  slab?: number;
 }
 
 export interface PppmAutoResult {
@@ -156,7 +184,8 @@ export interface PppmAutoResult {
 
 /** Native-matched automatic choice of g_ewald and mesh (see the comment above). */
 export function selectPppmAuto(inp: PppmAutoInput): PppmAutoResult {
-  const L = [inp.lx, inp.ly, inp.lz];
+  const slab = inp.slab ?? 1;
+  const L = [inp.lx, inp.ly, inp.lz * slab];
   const V = inp.lx * inp.ly * inp.lz;
   const N = Math.max(1, inp.natoms);
   const P = inp.order;
@@ -238,17 +267,22 @@ export class KSpacePPPM extends KSpaceBase {
     if (this.minorder > this.order) throw new StyleError(`PPPM order < minimum allowed order (kspace_modify minorder ${this.minorder} > order ${this.order})`);
     this.cutCoul = cutCoul;
     this.setupCharges(s, geom, ctx);
-    const orthoNoSlab = !s.box.triclinic && this.slab === 1 && geom.xy === 0 && geom.xz === 0 && geom.yz === 0;
-    if (orthoNoSlab && this.qsqsum > 0 && this.natoms > 0) {
+    const ortho = !s.box.triclinic && geom.xy === 0 && geom.xz === 0 && geom.yz === 0;
+    if (ortho && this.qsqsum > 0 && this.natoms > 0) {
       const r = selectPppmAuto({
         lx: geom.lx, ly: geom.ly, lz: geom.lz, natoms: this.natoms, q2: qqrd2e * this.qsqsum, rc: cutCoul,
-        accE: this.absAccuracy(s, qqrd2e), order: this.order, gUser: this.gewaldUser, meshUser: this.meshUser,
+        accE: this.absAccuracy(s, qqrd2e), order: this.order, gUser: this.gewaldUser, meshUser: this.meshUser, slab: this.slab,
       });
       this.gEwald = r.g;
       this.mesh = r.mesh;
+      // see the slab paragraph of the header: at accuracy 1e-5 and finer every measured slab box matches native; at
+      // coarser accuracy some do not (36 of 38 at 1e-4, 15 of 32 at 1e-3, 3 of 25 at 1e-2)
+      if (this.slab > 1 && (this.gewaldUser <= 0 || !this.meshUser) && this.accuracy > 1e-5) {
+        ctx.log(`WARNING: kspace_style pppm: with kspace_modify slab, the automatic G-ewald and mesh match native LAMMPS only at accuracy 1e-5 or finer; set kspace_modify gewald and mesh to native's values for an exact match`);
+      }
     } else {
       if (this.gewaldUser <= 0 || !this.meshUser) {
-        ctx.log(`WARNING: kspace_style pppm: automatic G-ewald and mesh for triclinic or slab boxes are not reproduced; using the older estimate`);
+        ctx.log(`WARNING: kspace_style pppm: automatic G-ewald and mesh for triclinic boxes are not reproduced; using the older estimate`);
       }
       this.gEwald = this.chooseGEwald(s, qqrd2e);
       this.legacyMesh(geom);
@@ -257,7 +291,7 @@ export class KSpacePPPM extends KSpaceBase {
     ctx.log(`  G vector (1/distance) = ${this.gEwald}\n  grid = ${this.mesh.join(' ')}\n  stencil order = ${this.order}`);
   }
 
-  /** Mesh of the older estimate (triclinic and slab boxes). */
+  /** Mesh of the older estimate (triclinic boxes). */
   private legacyMesh(geom: Geometry): void {
     if (this.meshUser) this.mesh = [...this.meshUser];
     else {

@@ -24,8 +24,9 @@ export interface LineBonus { length: number; theta: number }
 
 /**
  * Line segment from its end points (2d). read_data.html fixes the end-point order: the normal (c2 - c1) x (0, 0, 1)
- * points outward; the orientation theta is the direction of c2 - c1 (atom_vec_line.cpp data_atom_bonus: theta is
- * acos(dx / length) for dy >= 0 and minus that otherwise, which is atan2(dy, dx)).
+ * points outward. The orientation theta is the direction of c2 - c1, theta = atan2(dy, dx) (measured with native
+ * write_data: the segment with end points (2, 7) and (1, 6) is written back with (2, 7) first, which is the centre
+ * minus half the length along theta, with theta = -3 pi / 4 for c2 - c1 = (-1, -1)).
  */
 export const lineFromEnds = (x1: number, y1: number, x2: number, y2: number): LineBonus => {
   const dx = x2 - x1, dy = y2 - y1;

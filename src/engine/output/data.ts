@@ -214,7 +214,11 @@ const flagCount = (s: SimState, key: string): number => {
 /** The body-frame corners of triangle i (TRI_BONUS, 9 values). */
 const triCorners = (s: SimState, i: number): Float64Array => s.custom.get(TRI_BONUS)!.data.subarray(TRI_BONUS_COLS * i, TRI_BONUS_COLS * i + 9);
 
-/** Point q moved by whole periodic box lengths so that it is the image nearest to r (domain.cpp remap_near, orthogonal box). */
+/**
+ * Point q moved by whole periodic box lengths so that it is the image nearest to r (orthogonal box). read_data.html:
+ * "even if individual end points are outside the simulation box"; measured with native read_data (box 0 to 10, atom at
+ * x 0.5, end points 9.5 and 11.5 are read as -0.5 and 1.5; refused with a non-periodic x boundary).
+ */
 const remapNear3 = (s: SimState, q: [number, number, number], r: [number, number, number]): [number, number, number] => {
   const out: [number, number, number] = [q[0], q[1], q[2]];
   for (let d = 0; d < 3; d++) {
@@ -232,15 +236,26 @@ const remapEndsNear = (s: SimState, i: number, ends: [number, number][]): [numbe
   return ends.map(([x, y]) => { const q = remapNear3(s, [x, y, 0], r); return [q[0], q[1]] as [number, number]; });
 };
 
-/** read_data.html: the segment or triangle centre must be within 0.001 of the atom's x (atom_vec_line.cpp EPSILON), relative to its size. */
+/**
+ * read_data.html: the centre of the end points or corners "should be values close to the center point" of the atom.
+ * Measured with native read_data: the tolerance is 0.001 of the size, not an absolute distance. For a segment the
+ * size is its length (offset 0.0015 on length 2 accepted, 0.0025 refused; 0.05 on length 100 accepted). For a
+ * triangle the size is its largest edge from the first corner (offset 0.0049 accepted, 0.0051 refused, for a
+ * triangle with edges 5 and 5.001 from its first corner and 7 between the other two corners).
+ */
 const checkCentre = (s: SimState, i: number, c: readonly number[], size: number, msg: string, at: number): void => {
   const d = Math.hypot(c[0] - s.x[3 * i], c[1] - s.x[3 * i + 1], c[2] - s.x[3 * i + 2]);
   if (d / size > 0.001) throw new StyleError(`data file line ${at}: ${msg}`);
-  // the stored position becomes the exact centre (atom_vec_line.cpp and atom_vec_tri.cpp reset atom x to the centre)
+  // the stored position becomes the exact centre (measured with native read_data: an atom at x 5.0015 on a segment
+  // centred at 5 is written back at x 5)
   s.x[3 * i] = c[0]; s.x[3 * i + 1] = c[1]; s.x[3 * i + 2] = c[2];
 };
 
-/** atom_vec_line.cpp data_atom_bonus: length, theta, radius = half length, rmass = density * length. */
+/**
+ * Line bonus: length, theta, radius = half the length, rmass = density * length. Measured with native read_data and
+ * compute property/atom: length 2 with density 3 gives radius 1 and mass 6; length 4 with density 1 gives radius 2
+ * and mass 4; a point particle (lineflag 0) has radius 0 and mass = density.
+ */
 const setLineBonus = (s: SimState, i: number, lb: LineBonus, density: number): void => {
   s.custom.get(LINE_FLAG)!.data[i] = 1;
   const bonus = s.custom.get(LINE_BONUS)!.data;
@@ -250,7 +265,12 @@ const setLineBonus = (s: SimState, i: number, lb: LineBonus, density: number): v
   s.rmass![i] = density * lb.length;
 };
 
-/** atom_vec_tri.cpp data_atom_bonus: radius = circumradius, rmass = density * area, orientation quat and principal moments. */
+/**
+ * Triangle bonus: rmass = density * area, radius = the largest distance from the centroid to a corner, orientation
+ * quaternion and principal moments (the engine's own layout). Measured with native compute property/atom: a right
+ * isoceles triangle with legs 2 (centroid (2/3, 2/3)) has radius 1.49071, not its circumradius sqrt(2); corners
+ * (0,0), (5,0), (0.1,5) have radius 3.69745 and area 12.5; density 1.5 on area 2 gives mass 3.
+ */
 const setTriBonus = (s: SimState, i: number, tb: TriBody): void => {
   s.custom.get(TRI_FLAG)!.data[i] = 1;
   const bonus = s.custom.get(TRI_BONUS)!.data;
@@ -371,7 +391,9 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   const natoms = h.atoms ?? 0;
   const style = s.atomStyle;
   const cols = atomStyleCols(style);
-  // atom_style line and tri: the dimension is fixed (atom_vec_line.cpp init, atom_vec_tri.cpp init)
+  // atom_style line and tri: the dimension is fixed. Measured with native read_data: a line style in a 3d box fails with
+  // an error that says atom_style line can only be used in 2d simulations, and a tri style in a 2d box with an error that
+  // says atom_style tri can only be used in 3d simulations.
   if (isLineStyle(style) && s.dimension !== 2) throw new StyleError('Atom_style line can only be used in 2d simulations');
   if (isTriStyle(style) && s.dimension !== 3) throw new StyleError('Atom_style tri can only be used in 3d simulations');
   if ((isLineStyle(style) || isTriStyle(style)) && (genFrame || s.box.triclinic)) throw new StyleError(`read_data: ${isLineStyle(style) ? 'line' : 'tri'} particles in a triclinic box are not supported by the browser engine`);
@@ -896,7 +918,8 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   // measured with native write_data: N ellipsoids follows the atom types
   const nEll = s.shape ? countEllipsoids(s) : 0;
   if (s.shape) out.push(`${nEll} ellipsoids`);
-  // measured with native write_data (write_data.cpp): "N lines" and "N triangles" follow the ellipsoid count (the atom style's flag, N = number of such atoms)
+  // measured with native write_data: the header gives N lines (atom_style line) and N triangles (atom_style tri), where
+  // N counts the atoms with lineflag or triangleflag 1 (three flagged atoms give 3 lines, and none gives 0 lines)
   if (isLineStyle(s.atomStyle)) out.push(`${flagCount(s, LINE_FLAG)} lines`);
   if (isTriStyle(s.atomStyle)) out.push(`${flagCount(s, TRI_FLAG)} triangles`);
   const mol = isMolecularStyle(s.atomStyle);
@@ -994,7 +1017,9 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
         case 'q': return shortest(s.q[i]);
         // measured with native write_data: diameter 2r, and density = mass / volume (mass itself for r = 0)
         case 'diameter': return shortest(2 * s.radius![i]);
-        // atom_vec_line.cpp pack_data_pre: a line's density is its mass per unit length; atom_vec_tri.cpp: per unit area
+        // set.rst: density is "for a triangle (mass/distance^2 units) or line (mass/distance units) particle", so a line's
+        // written density is its mass per unit length and a triangle's its mass per unit area (measured: density 3 on a
+        // length-2 segment is written back as 3; density 1.5 on a triangle of area 2 as 1.5)
         case 'density':
           if (isLineAtom(s, i)) return shortest(s.rmass![i] / s.custom.get(LINE_BONUS)!.data[2 * i]);
           if (isTriAtom(s, i)) return shortest(s.rmass![i] / triangleAreaOfBody(triCorners(s, i)));
@@ -1043,8 +1068,10 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
       out.push(`${s.id[i]} ${sh.join(' ')} ${q.join(' ')}`);
     }
   }
-  // measured with native write_data (atom_vec_line.cpp write_data_bonus, atom_vec_tri.cpp): Lines and Triangles
-  // sections after the Ellipsoids one; a line's end points are its centre -/+ half its length along theta
+  // read_data.html: "one line per line segment" with the line syntax atom-ID x1 y1 x2 y2, and "one line per triangle" with
+  // the line syntax atom-ID x1 y1 z1 x2 y2 z2 x3 y3 z3. The sections must appear after the Atoms section. Measured with
+  // native write_data: a line's end points are written as its centre -/+ half its length along theta, and the triangle
+  // corners as their coordinates (the atom's position is the corner centroid)
   if (isLineStyle(s.atomStyle) && flagCount(s, LINE_FLAG) > 0) {
     out.push('', 'Lines', '');
     const bonus = s.custom.get(LINE_BONUS)!.data;

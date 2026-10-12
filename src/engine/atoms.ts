@@ -57,7 +57,7 @@ export const isLineStyle = (st: AtomStyle): boolean => atomSubStyles(st).include
  * in the principal frame, the principal moments (TRI_BONUS) and a flag (TRI_FLAG); quat and angmom are per atom.
  */
 export const isTriStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('tri');
-/** Styles with a per-atom radius, angular velocity and torque: the sphere styles, and line and tri particles (their radius is the half length or circumradius). */
+/** Styles with a per-atom radius, angular velocity and torque: the sphere styles, and line and tri particles (their radius is the half length, or the largest centroid-to-corner distance). */
 export const hasRadiusStyle = (st: AtomStyle): boolean => isSphereStyle(st) || isLineStyle(st) || isTriStyle(st);
 /** Styles with body particles (atom_style body nparticle Nmin Nmax; see bodies.ts). */
 export const isBodyStyle = (st: AtomStyle): boolean => st.startsWith('body ');
@@ -172,9 +172,10 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
 
 /**
  * atom_style line and tri: the per-atom line/triangle flag (1 = line or triangle, 0 = point particle) and the
- * per-atom bonus data. Line bonus = [length, theta] (atom_vec_line.cpp Bonus: length, theta; theta is the angle of
- * the segment from the +x axis). Triangle bonus = corners c1, c2, c3 (3 each, displacements from the centroid in the
- * basis of the principal axes) then the 3 principal moments of inertia (atom_vec_tri.cpp Bonus: c1, c2, c3, inertia).
+ * per-atom bonus data. Line bonus = [length, theta], theta being the angle of the segment from the +x axis (measured
+ * with native write_data: the written end points are the centre -/+ half the length along theta). Triangle bonus =
+ * corners c1, c2, c3 (3 each, displacements from the centroid in the principal axes) then the 3 principal moments of
+ * inertia. This is the engine's own storage layout; the moments are not a native output checked here.
  * Internal keys ('#' cannot start an i_name or d_name, so no user property clashes with them).
  */
 export const LINE_FLAG = '#lineflag';
@@ -420,7 +421,8 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
   if (s.radius) {
     s.radius = growF(s.radius, n);
     if (a.radius instanceof Float64Array) s.radius.set(a.radius, n0);
-    // create_atom_post (atom_vec_line.cpp, atom_vec_tri.cpp): a point particle has radius 0; the sphere styles default to SPHERE_DEFAULT_RADIUS
+    // create_atoms.html: "the *sphere* atom style sets the default particle diameter to 1.0" (radius 0.5; measured with
+    // native create_atoms single). A point particle in atom_style line or tri has radius 0 (measured the same way).
     else s.radius.fill(a.radius ?? (isSphereStyle(s.atomStyle) ? SPHERE_DEFAULT_RADIUS : 0), n0, n);
   }
   if (s.omega) { s.omega = growF(s.omega, 3 * n); if (a.omega) s.omega.set(a.omega, 3 * n0); }

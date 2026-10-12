@@ -232,3 +232,110 @@ Triangles
     await expect(run('units lj\ndimension 2\natom_style tri\nread_data tri.data\n', { 'tri.data': 'x\n\n1 atoms\n1 atom types\n\n0 1 xlo xhi\n0 1 ylo yhi\n-0.5 0.5 zlo zhi\n\nAtoms\n\n1 1 1 1 1.0 0.5 0.5 0\n' })).rejects.toThrow(/Atom_style tri can only be used in 3d simulations/);
   });
 });
+
+/*
+ * Checks measured with the native binary (black box) on small data files: a segment's radius is half its length and
+ * its mass is density * length; a point particle has radius 0; the stored position becomes the exact centre; the
+ * centre tolerance is 0.001 of the segment length (line) or of the largest edge from the first corner (tri); end
+ * points are moved to the periodic image nearest the atom; a triangle's radius is its largest centroid-to-corner
+ * distance and its mass is density * area; write_data writes the N lines / N triangles counts.
+ */
+const lineData2d = (box: number, ax: number, ay: number, dens: number, e1: string, e2: string): string =>
+  `line\n\n1 atoms\n1 lines\n1 atom types\n\n0 ${box} xlo xhi\n0 ${box} ylo yhi\n-0.5 0.5 zlo zhi\n\nAtoms # line\n\n1 1 1 1 ${dens} ${ax} ${ay} 0\n\nLines\n\n1 ${e1} ${e2}\n`;
+
+const triData3d = (ax: number, ay: number, az: number, dens: number, corners: string): string =>
+  `tri\n\n1 atoms\n1 triangles\n1 atom types\n\n0 10 xlo xhi\n0 10 ylo yhi\n0 10 zlo zhi\n\nAtoms # tri\n\n1 1 1 1 ${dens} ${ax} ${ay} ${az}\n\nTriangles\n\n1 ${corners}\n`;
+
+const readLine2d = (text: string, boundary = 'p p p') => run(`units lj\ndimension 2\natom_style line\nboundary ${boundary}\nread_data l.data\n`, { 'l.data': text });
+const readTri3d = (text: string, boundary = 'p p p') => run(`units lj\natom_style tri\nboundary ${boundary}\nread_data t.data\n`, { 't.data': text });
+
+describe('measured with native LAMMPS (black box): line and tri data', () => {
+  it('a segment has radius = half its length and mass = density * length; a point particle has radius 0', async () => {
+    const horiz = (await readLine2d(lineData2d(10, 5, 5, 3, '4 5', '6 5'))).sys.state;
+    expect(horiz.radius![0]).toBeCloseTo(1, 12);
+    expect(horiz.rmass![0]).toBeCloseTo(6, 12);
+    const vert = (await readLine2d(lineData2d(10, 7, 5, 1, '7 3', '7 7'))).sys.state;
+    expect(vert.radius![0]).toBeCloseTo(2, 12);
+    expect(vert.rmass![0]).toBeCloseTo(4, 12);
+    const diag = (await readLine2d(lineData2d(10, 1.5, 6.5, 1, '2 7', '1 6'))).sys.state;
+    expect(diag.radius![0]).toBeCloseTo(Math.SQRT1_2, 12);
+    expect(diag.rmass![0]).toBeCloseTo(Math.SQRT2, 12);
+    const point = `pt\n\n1 atoms\n0 lines\n1 atom types\n\n0 10 xlo xhi\n0 10 ylo yhi\n-0.5 0.5 zlo zhi\n\nAtoms # line\n\n1 1 1 0 2.5 5 5 0\n`;
+    const p = (await readLine2d(point)).sys.state;
+    expect(p.radius![0]).toBe(0);
+    expect(p.rmass![0]).toBeCloseTo(2.5, 12);
+  });
+
+  it('a segment written back keeps theta (end 1 = centre - half length along theta) and density = mass per length', async () => {
+    const written = new Map<string, string>();
+    await run(`units lj\ndimension 2\natom_style line\nboundary p p p\nread_data l.data\nwrite_data o.data\n`, { 'l.data': lineData2d(10, 1.5, 6.5, 3, '2 7', '1 6') }, written);
+    const text = written.get('o.data')!;
+    expect(text).toMatch(/\n1 lines\n/);
+    const atomLine = text.split('\n').find((l) => /^1 1 1 1 /.test(l))!.split(' ');
+    // native wrote the density column back as 3 (mass 3 * sqrt2 over length sqrt2)
+    expect(Number(atomLine[4])).toBeCloseTo(3, 9);
+    const endLine = text.split('\n').find((l) => /^1 [-0-9.e]+ [-0-9.e]+ [-0-9.e]+ [-0-9.e]+$/.test(l))!.split(' ').slice(1).map(Number);
+    // native wrote "1 2 7 1 6": the first end point is the input's first end point
+    expect(endLine[0]).toBeCloseTo(2, 9);
+    expect(endLine[1]).toBeCloseTo(7, 9);
+    expect(endLine[2]).toBeCloseTo(1, 9);
+    expect(endLine[3]).toBeCloseTo(6, 9);
+  });
+
+  it('the stored position becomes the exact centre (native: 5.0015 is written back as 5)', async () => {
+    const s = (await readLine2d(lineData2d(10, 5.0015, 5, 1, '4 5', '6 5'))).sys.state;
+    expect(s.x[0]).toBe(5);
+  });
+
+  it('the centre tolerance is 0.001 of the segment length, not an absolute distance', async () => {
+    await readLine2d(lineData2d(10, 5.0015, 5, 1, '4 5', '6 5'));
+    await expect(readLine2d(lineData2d(10, 5.0025, 5, 1, '4 5', '6 5'))).rejects.toThrow(/Inconsistent line segment/);
+    // length 100 with a 0.05 offset (ratio 0.0005) is accepted; with an absolute 0.001 tolerance it would be refused
+    await readLine2d(lineData2d(200, 50.05, 50, 1, '0 50', '100 50'));
+    await expect(readLine2d(lineData2d(200, 50.15, 50, 1, '0 50', '100 50'))).rejects.toThrow(/Inconsistent line segment/);
+    // length 0.5 with a 0.0006 offset (ratio 0.0012) is refused
+    await expect(readLine2d(lineData2d(10, 5.25 + 0.0006, 5, 1, '5 5', '5.5 5'))).rejects.toThrow(/Inconsistent line segment/);
+  });
+
+  it('end points outside a periodic box are moved to the image nearest the atom; a non-periodic box refuses them', async () => {
+    const s = (await readLine2d(lineData2d(10, 0.5, 5, 1, '9.5 5', '11.5 5'))).sys.state;
+    expect(s.x[0]).toBe(0.5);
+    const written = new Map<string, string>();
+    await run('units lj\ndimension 2\natom_style line\nboundary p p p\nread_data l.data\nwrite_data o.data\n', { 'l.data': lineData2d(10, 0.5, 5, 1, '9.5 5', '11.5 5') }, written);
+    expect(written.get('o.data')!).toMatch(/\n1 -0\.5 5 1\.5 5\n/);
+    await expect(readLine2d(lineData2d(10, 0.5, 5, 1, '9.5 5', '11.5 5'), 'f f p')).rejects.toThrow(/Inconsistent line segment/);
+  });
+
+  it('write_data counts the flagged atoms in the header ("3 lines", and "0 lines" with none)', async () => {
+    const written = new Map<string, string>();
+    await run('units lj\ndimension 2\natom_style line\nboundary p p p\nread_data l.data\nwrite_data o.data\n', { 'l.data': lineData2d(10, 5, 5, 1, '4 5', '6 5') }, written);
+    expect(written.get('o.data')!).toMatch(/\n1 lines\n/);
+    const none = `pt\n\n1 atoms\n1 atom types\n\n0 10 xlo xhi\n0 10 ylo yhi\n-0.5 0.5 zlo zhi\n\nAtoms # line\n\n1 1 1 0 1.0 5 5 0\n`;
+    const w2 = new Map<string, string>();
+    await run('units lj\ndimension 2\natom_style line\nboundary p p p\nread_data l.data\nwrite_data o.data\n', { 'l.data': none }, w2);
+    expect(w2.get('o.data')!).toMatch(/\n0 lines\n/);
+  });
+
+  it('a triangle has radius = largest centroid-to-corner distance (not the circumradius) and mass = density * area', async () => {
+    // right isoceles, legs 2: area 2, centroid (2/3, 2/3); largest centroid-corner distance sqrt(20)/3 = 1.4907 (circumradius sqrt 2 = 1.4142)
+    const a = (await readTri3d(triData3d(2 / 3, 2 / 3, 0, 1.5, '0 0 0 2 0 0 0 2 0'))).sys.state;
+    expect(a.radius![0]).toBeCloseTo(1.4907119849998598, 9);
+    expect(a.rmass![0]).toBeCloseTo(3, 10);
+    // equilateral, side 1: radius 1/sqrt(3), area sqrt(3)/4
+    const e = (await readTri3d(triData3d(0.5, 0.28867513459481287, 0, 2, '0 0 0 1 0 0 0.5 0.86602540378443865 0'))).sys.state;
+    expect(e.radius![0]).toBeCloseTo(0.57735026918962573, 9);
+    expect(e.rmass![0]).toBeCloseTo(0.8660254037844386, 9);
+    // corners (0,0), (5,0), (0.1,5): area 12.5, largest centroid-corner distance 3.6974...
+    const c = (await readTri3d(triData3d(1.7, 5 / 3, 0, 1, '0 0 0 5 0 0 0.1 5 0'))).sys.state;
+    expect(c.radius![0]).toBeCloseTo(3.6974465663632126, 9);
+    expect(c.rmass![0]).toBeCloseTo(12.5, 9);
+  });
+
+  it('the triangle centre tolerance is 0.001 of its largest edge from the first corner (native: 0.0049 accepted, 0.0051 refused)', async () => {
+    const corners = '0 0 0 5 0 0 0.1 5 0';
+    await readTri3d(triData3d(1.7049, 5 / 3, 0, 1, corners));
+    await expect(readTri3d(triData3d(1.7051, 5 / 3, 0, 1, corners))).rejects.toThrow(/Inconsistent triangle/);
+    // scaled by 100 (edges about 500), an offset of 0.3 (ratio 0.0006) is accepted
+    await readTri3d(triData3d(170.3, 500 / 3, 0, 1, '0 0 0 500 0 0 10 500 0').replace(/\n0 10 /g, '\n0 1000 '), 'p p p');
+  });
+});

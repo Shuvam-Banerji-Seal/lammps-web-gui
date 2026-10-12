@@ -33,13 +33,25 @@ const files = {
 const head = 'units real\natom_style charge\nboundary p p p\nread_data w65reaxq_water.data\npair_style reaxff NULL safezone 3.0 mincap 150\npair_coeff * * w65reaxq_qeq_ff.water O H\n';
 
 describe('ReaxFF charge models: refusals', () => {
-  it('refuses fix qtpie/reaxff, fix qeq/rel/reaxff and fix acks2/reaxff together with fix efield', async () => {
-    await expect(runScript(`${head}fix 2 all qtpie/reaxff 1 0.0 10.0 1e-6 reaxff w65reaxq_gauss_exp.txt\nfix 3 all efield 0.0 0.0 0.05\nrun 0\n`, files))
-      .rejects.toThrow(/fix qtpie\/reaxff with fix efield/);
-    await expect(runScript(`${head}fix 2 all qeq/rel/reaxff 1 0.0 10.0 1e-6 reaxff w65reaxq_gauss_exp.txt\nfix 3 all efield 0.0 0.0 0.05\nrun 0\n`, files))
-      .rejects.toThrow(/fix qeq\/rel\/reaxff with fix efield/);
+  it('fix efield: qeq/reaxff and acks2/reaxff refuse a field along a periodic direction (boundary p p p)', async () => {
     await expect(runScript(`${head}fix 2 all acks2/reaxff 1 0.0 10.0 1e-6 reaxff\nfix 3 all efield 0.0 0.0 0.05\nrun 0\n`, files))
-      .rejects.toThrow(/fix acks2\/reaxff with fix efield/);
+      .rejects.toThrow(/Must not have electric field component in direction of periodic boundary/);
+  });
+
+  it('fix efield: qtpie/reaxff and qeq/rel/reaxff accept a field along a periodic direction (no such check in their init)', async () => {
+    await expect(runScript(`${head}fix 2 all qtpie/reaxff 1 0.0 10.0 1e-6 reaxff w65reaxq_gauss_exp.txt\nfix 3 all efield 0.0 0.0 0.05\nrun 0\n`, files)).resolves.toBeDefined();
+    await expect(runScript(`${head}fix 2 all qeq/rel/reaxff 1 0.0 10.0 1e-6 reaxff w65reaxq_gauss_exp.txt\nfix 3 all efield 0.0 0.0 0.05\nrun 0\n`, files)).resolves.toBeDefined();
+  });
+
+  it('fix efield: a non-periodic z (boundary p p s) lets acks2/reaxff take the field', async () => {
+    await expect(runScript(`${head.replace('boundary p p p', 'boundary p p s')}fix 2 all acks2/reaxff 1 0.0 10.0 1e-6 reaxff\nfix 3 all efield 0.0 0.0 1.0\nrun 0\n`, files)).resolves.toBeDefined();
+  });
+
+  it('fix efield: region and atom-style field variables are refused by name', async () => {
+    await expect(runScript(`${head}region r block 0 31 0 31 0 31 units box\nfix 2 all qtpie/reaxff 1 0.0 10.0 1e-6 reaxff w65reaxq_gauss_exp.txt\nfix 3 all efield 0.0 0.0 0.05 region r\nrun 0\n`, files))
+      .rejects.toThrow(/region/);
+    await expect(runScript(`${head}variable ez atom 0.05\nfix 2 all qtpie/reaxff 1 0.0 10.0 1e-6 reaxff w65reaxq_gauss_exp.txt\nfix 3 all efield 0.0 0.0 v_ez\nrun 0\n`, files))
+      .rejects.toThrow(/Atom-style/);
   });
 
   it('refuses the dual and matfree variants of fix acks2/reaxff by name', async () => {

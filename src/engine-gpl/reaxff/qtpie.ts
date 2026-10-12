@@ -21,6 +21,8 @@ import type { System } from '../../engine/system';
 import { type HistoryMap, solveFictitious, taperFix } from './charge';
 import { parsePertypeFile, type QeqParams } from './qeq';
 import type { PairReaxFF } from './pair';
+import type { FixEfield } from '../../engine/fix/force_ext';
+import { efieldForModel, fieldOf, findEfield, fieldPotential } from './efield';
 
 /** ANGSTROM_TO_BOHRRADIUS_SQ of fix_qtpie_reaxff.cpp: an exponent in 1/bohr^2 is this many 1/Angstrom^2. */
 const ANGSTROM_TO_BOHRRADIUS_SQ = 3.571064831;
@@ -55,6 +57,8 @@ export class FixQtpieReaxFF extends Fix {
   protected ntypes = 0;
   protected hist: HistoryMap = new Map();
   protected matvecs = 0;
+  /** fix efield (the field term of the electronegativity), or null. */
+  protected efieldFix: FixEfield | null = null;
   protected matvecsS = 0;
   protected matvecsT = 0;
 
@@ -93,10 +97,8 @@ export class FixQtpieReaxFF extends Fix {
     for (let i = 0; i < st.n; i++) if (st.mask[i] & this.groupBit) count++;
     if (count === 0) throw new StyleError(`Fix ${this.style} group has no atoms`);
     if (this.swb < 0) throw new StyleError(`Fix ${this.style} has negative upper Taper radius cutoff`);
-    // LAMMPS takes the efield potential of fix efield into chi_eff; that coupling is not ported (see the header)
-    if (this.sys.fixes.some((f) => f.style.startsWith('efield'))) {
-      throw new StyleError(`fix ${this.style} with fix efield is not supported by the browser engine (the field term of the overlap-weighted electronegativity is not ported)`);
-    }
+    this.efieldFix = findEfield(this.sys, this.style);
+    if (this.efieldFix) efieldForModel(this.sys, this.efieldFix, this.style, { allGroup: true, periodicCheck: false });
     this.ntypes = st.ntypes;
     this.Tap = taperFix(this.swa, this.swb);
     this.pertypeParameters();
@@ -190,7 +192,7 @@ export class FixQtpieReaxFF extends Fix {
   protected solve(): void {
     if (!this.params) this.init();
     const s = this.sys.state;
-    const chiEff = this.calcChiEff();
+    const chiEff = this.calcChiEff(this.efieldFix ? fieldOf(this.sys, this.efieldFix) : null);
     const r = solveFictitious({
       sys: this.sys, groupBit: this.groupBit, swb: this.swb, ntypes: this.ntypes, shld: this.shld, Tap: this.Tap,
       eta: this.params!.eta, chiEff, hist: this.hist,
@@ -202,19 +204,22 @@ export class FixQtpieReaxFF extends Fix {
   }
 
   /**
-   * calc_chi_eff (no efield): for each owned atom, the overlap-weighted mean of chi_i - chi_j over the
-   * atoms j (owned or ghost) within the distance cutoff; the self overlap is 1 so the sum is never empty.
+   * calc_chi_eff: for each owned atom, the overlap-weighted mean of chi_i - chi_j over the atoms j (owned
+   * or ghost) within the distance cutoff; with the field E, the difference includes scale (phi_i - phi_j).
+   * The self overlap is 1 so the sum is never empty.
    */
-  protected calcChiEff(): Float64Array {
+  protected calcChiEff(E: [number, number, number] | null): Float64Array {
     const nb = this.sys.nb;
     const n = nb.nlocal, N = nb.nall;
     const x = nb.xall;
     const typeAll = nb.typeall;
     const p = this.params!;
     const nt1 = this.ntypes + 1;
+    const qe2f = this.sys.state.units.qe2f;
     const chiEff = new Float64Array(n);
     for (let i = 0; i < n; i++) {
       const chia = p.chi[typeAll[i]];
+      const phia = E ? fieldPotential(x, i, E, qe2f) : 0;
       let sumN = 0, sumD = 0;
       for (let j = 0; j < N; j++) {
         const dx = x[3 * i] - x[3 * j], dy = x[3 * i + 1] - x[3 * j + 1], dz = x[3 * i + 2] - x[3 * j + 2];
@@ -222,7 +227,12 @@ export class FixQtpieReaxFF extends Fix {
         if (distSq < this.distCutSq) {
           const chib = p.chi[typeAll[j]];
           const overlap = this.prefactor[typeAll[i] * nt1 + typeAll[j]] * Math.exp(-this.expfactor[typeAll[i] * nt1 + typeAll[j]] * distSq);
-          sumN += (chia - chib) * overlap;
+          if (E) {
+            const phib = fieldPotential(x, j, E, qe2f);
+            sumN += (chia - chib + this.scale * (phia - phib)) * overlap;
+          } else {
+            sumN += (chia - chib) * overlap;
+          }
           sumD += overlap;
         }
       }
@@ -241,11 +251,35 @@ export class FixQEqRelReaxFF extends FixQtpieReaxFF {
     super(sys, id, group, args, pairRef, 'qeq/rel/reaxff');
   }
 
-  /** Warned by LAMMPS init when there is no fix efield ("Use fix qeq/reaxff instead"); numerically the same chi. */
-  protected override calcChiEff(): Float64Array {
+  /**
+   * calc_chi_eff of fix qeq/rel/reaxff: without the field, chi_eff = chi of the type. With the field,
+   * chi_eff = chi_i + scale (phi_i - sum_j phi_j S_ij / sum_j S_ij), the sums over the atoms j within the cutoff.
+   */
+  protected override calcChiEff(E: [number, number, number] | null): Float64Array {
     const nb = this.sys.nb;
-    const chiEff = new Float64Array(nb.nlocal);
-    for (let i = 0; i < nb.nlocal; i++) chiEff[i] = this.params!.chi[nb.typeall[i]];
+    const n = nb.nlocal, N = nb.nall;
+    const p = this.params!;
+    const chiEff = new Float64Array(n);
+    if (!E) {
+      for (let i = 0; i < n; i++) chiEff[i] = p.chi[nb.typeall[i]];
+      return chiEff;
+    }
+    const x = nb.xall, typeAll = nb.typeall, nt1 = this.ntypes + 1, qe2f = this.sys.state.units.qe2f;
+    for (let i = 0; i < n; i++) {
+      const chia = p.chi[typeAll[i]];
+      const phia = fieldPotential(x, i, E, qe2f);
+      let sumN = 0, sumD = 0;
+      for (let j = 0; j < N; j++) {
+        const dx = x[3 * i] - x[3 * j], dy = x[3 * i + 1] - x[3 * j + 1], dz = x[3 * i + 2] - x[3 * j + 2];
+        const distSq = dx * dx + dy * dy + dz * dz;
+        if (distSq < this.distCutSq) {
+          const overlap = this.prefactor[typeAll[i] * nt1 + typeAll[j]] * Math.exp(-this.expfactor[typeAll[i] * nt1 + typeAll[j]] * distSq);
+          sumN += fieldPotential(x, j, E, qe2f) * overlap;
+          sumD += overlap;
+        }
+      }
+      chiEff[i] = sumD !== 0.0 ? chia + this.scale * (phia - sumN / sumD) : chia;
+    }
     return chiEff;
   }
 }

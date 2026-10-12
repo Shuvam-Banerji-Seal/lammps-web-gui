@@ -114,11 +114,11 @@ describe('pair_style reaxff in the engine', () => {
     await expect(runScript(`${head}compute c all reaxff/atom bonds yes\nrun 0\n`, files)).rejects.toThrow(/reaxff\/atom/);
   });
 
-  it('refuses fix qeq/reaxff together with fix efield (the field term is not ported)', async () => {
+  it('refuses fix qeq/reaxff with a field along a periodic direction (the fix_qeq_reaxff.cpp check)', async () => {
     const ff = readFileSync(join(POTENTIALS, 'ffield.reax.rdx'), 'utf8');
     const head = `units real\natom_style charge\nread_data water.data\npair_style reaxff NULL\npair_coeff * * ffield.reax.rdx H O\n`;
     await expect(runScript(`${head}fix 2 all qeq/reaxff 1 0.0 10.0 1e-6 reaxff\nfix 3 all efield 0.0 0.0 0.1\nrun 0\n`,
-      { 'ffield.reax.rdx': ff, 'water.data': water })).rejects.toThrow(/fix qeq\/reaxff with fix efield/);
+      { 'ffield.reax.rdx': ff, 'water.data': water })).rejects.toThrow(/Must not have electric field component in direction of periodic boundary/);
   });
 
   it('checkqeq yes (the default) without a fix qeq/reaxff is refused', async () => {

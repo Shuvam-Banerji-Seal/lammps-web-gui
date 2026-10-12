@@ -13,8 +13,8 @@
  * terms), and two Lagrange rows at 2N, 2N+1 that enforce the charge constraints. N = nlocal + nghost,
  * as in LAMMPS NN. The matrix-vector product, the BiCGStab and the preconditioners follow the C++
  * functions one for one; the ghost contributions are folded to their owners after each product.
- * Refused: the fix efield coupling (chi_field) and the dual and matfree variants; the parameter file
- * form of pertype is ported (see parseAcks2File).
+ * The fix efield coupling (chi_field, efield.ts) is ported; the dual and matfree variants are refused. The
+ * parameter file form of pertype is ported (see parseAcks2File).
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
@@ -22,6 +22,8 @@ import type { System } from '../../engine/system';
 import { buildRows, calcHValue, forwardGhosts, historyOf, NPREV, type HistoryMap, type SparseRows, taperFix } from './charge';
 import type { PairReaxFF } from './pair';
 import type { QeqParams } from './qeq';
+import type { FixEfield } from '../../engine/fix/force_ext';
+import { efieldForModel, fieldOf, findEfield, qeqChiField } from './efield';
 
 /** The per-type ACKS2 parameters: chi, eta, gamma (QeqParams) and the bond cutoff bcut_acks2 (1-based). */
 interface Acks2Params extends QeqParams { bcut: Float64Array<ArrayBufferLike> }
@@ -64,6 +66,8 @@ export class FixACKS2ReaxFF extends Fix {
   private histLast: Float64Array<ArrayBufferLike>[] = [new Float64Array(NPREV), new Float64Array(NPREV)];
   /** the solution of the last solve (2N + 2 entries), read by the pair style (ACKS2 terms). */
   private sVec: Float64Array<ArrayBufferLike> = new Float64Array(2);
+  /** fix efield (the chi_field term), or null. */
+  private efieldFix: FixEfield | null = null;
   private matvecs = 0;
 
   constructor(sys: System, id: string, group: string, args: string[], private pairRef: () => PairReaxFF | null) {
@@ -100,10 +104,8 @@ export class FixACKS2ReaxFF extends Fix {
     for (let i = 0; i < st.n; i++) if (st.mask[i] & this.groupBit) count++;
     if (count === 0) throw new StyleError('Fix acks2/reaxff group has no atoms');
     if (this.swb < 0) throw new StyleError('Fix acks2/reaxff has negative upper Taper radius cutoff');
-    // LAMMPS adds the electric field of fix efield to the electronegativities (chi_field); that coupling is not ported
-    if (this.sys.fixes.some((f) => f.style.startsWith('efield'))) {
-      throw new StyleError('fix acks2/reaxff with fix efield is not supported by the browser engine (the field term of the ACKS2 charge equilibration is not ported)');
-    }
+    this.efieldFix = findEfield(this.sys, 'acks2/reaxff');
+    if (this.efieldFix) efieldForModel(this.sys, this.efieldFix, 'acks2/reaxff', { allGroup: false, periodicCheck: true });
     this.ntypes = st.ntypes;
     this.Tap = taperFix(this.swa, this.swb);
     this.pertypeParameters();
@@ -187,9 +189,12 @@ export class FixACKS2ReaxFF extends Fix {
     // init_matvec: preconditioner, sources and extrapolated starting guesses
     const Hdia_inv = new Float64Array(N);
     const b = new Float64Array(L), sv = new Float64Array(L);
+    // chi_field of fix efield (zero outside its group): b = -chi, then b -= chi_field
+    const chiField = this.efieldFix ? qeqChiField(this.sys, this.efieldFix, fieldOf(this.sys, this.efieldFix)) : null;
     for (const i of grp) {
       Hdia_inv[i] = 1.0 / p.eta[typeAll[i]];
       b[i] = -p.chi[typeAll[i]];
+      if (chiField) b[i] -= chiField[i];
       b[N + i] = 0.0;
       const h = historyOf(this.hist, orig[i], 2 * NPREV);
       sv[i] = 4 * (h[0] + h[2]) - (6 * h[1] + h[3]);

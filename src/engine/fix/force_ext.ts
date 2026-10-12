@@ -481,6 +481,22 @@ export class FixEfield extends Fix {
     return name;
   }
 
+  /**
+   * Read-only view of the field for the current step: each component's value (a number for a constant
+   * or equal-style variable, one value per atom for an atom-style variable, evaluated at the call),
+   * whether it is a constant and whether it is atom-style; plus the region keyword's ID (or null).
+   */
+  fieldState(): { comp: { value: number | Float64Array; constant: boolean; atomStyle: boolean }[]; region: string | null } {
+    return {
+      comp: this.comp.map((c) => ({
+        value: this.resolve(c),
+        constant: 'const' in c,
+        atomStyle: !('const' in c) && c.atom,
+      })),
+      region: this.regionId,
+    };
+  }
+
   /** Resolves one component now: a number, or per-atom values. */
   private resolve(c: EComp): number | Float64Array {
     if ('const' in c) return c.const;

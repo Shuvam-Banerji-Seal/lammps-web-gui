@@ -7,7 +7,7 @@
  * National Laboratory); hybrid and sub-group capabilities: Ray Shan (Sandia). Copyright (2003)
  * Sandia Corporation (GNU General Public License). This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  *
- * Refused (StyleError): the dual, matfree and efield couplings. The fictitious-charge histories
+ * Refused (StyleError): the dual and matfree variants. The fix efield term is in efield.ts. The fictitious-charge histories
  * are keyed by atom id (the engine sorts atoms at reneighboring; LAMMPS keeps them with the atoms
  * through the Atom callbacks). The H matrix is built from the owned and ghost positions of the
  * engine (a binned-free O(n N) scan over the owned i and the j after i), with the same flag rule
@@ -18,6 +18,8 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { PairReaxFF } from './pair';
 import { type HistoryMap, solveFictitious, taperFix } from './charge';
+import { efieldForModel, fieldOf, findEfield, qeqChiField } from './efield';
+import type { FixEfield } from '../../engine/fix/force_ext';
 
 /** Per-type QEq parameters, 1-based (chi, eta, gamma). */
 export interface QeqParams { chi: Float64Array; eta: Float64Array; gamma: Float64Array }
@@ -59,6 +61,7 @@ export class FixQEqReaxFF extends Fix {
   private ntypes = 0;
   /** fictitious-charge histories keyed by atom id: [s_hist 0..3, t_hist 4..7] (most recent first). */
   private hist: HistoryMap = new Map();
+  private efieldFix: FixEfield | null = null;
   private matvecs = 0;
   private matvecsS = 0;
   private matvecsT = 0;
@@ -98,11 +101,8 @@ export class FixQEqReaxFF extends Fix {
     for (let i = 0; i < st.n; i++) if (st.mask[i] & this.groupBit) count++;
     if (count === 0) throw new StyleError('Fix qeq/reaxff group has no atoms');
     if (this.swb < 0) throw new StyleError('Fix qeq/reaxff has negative upper Taper radius cutoff');
-    // LAMMPS adds the electric field of fix efield to the electronegativities (chi_field); that coupling is not
-    // ported, so the combination is refused rather than run without the field
-    if (this.sys.fixes.some((f) => f.style.startsWith('efield'))) {
-      throw new StyleError('fix qeq/reaxff with fix efield is not supported by the browser engine (the field term of the charge equilibration is not ported)');
-    }
+    this.efieldFix = findEfield(this.sys, 'qeq/reaxff');
+    if (this.efieldFix) efieldForModel(this.sys, this.efieldFix, 'qeq/reaxff', { allGroup: false, periodicCheck: true });
     this.ntypes = s.ntypes;
     this.Tap = taperFix(this.swa, this.swb);
     this.pertypeParameters();
@@ -149,6 +149,11 @@ export class FixQEqReaxFF extends Fix {
     const p = this.params!;
     const chiEff = new Float64Array(nb.nlocal);
     for (let i = 0; i < nb.nlocal; i++) chiEff[i] = p.chi[nb.typeall[i]];
+    // chi_eff = chi + chi_field (b_s = -chi, then b_s -= chi_field in the C++ init_matvec)
+    if (this.efieldFix) {
+      const chiField = qeqChiField(this.sys, this.efieldFix, fieldOf(this.sys, this.efieldFix));
+      for (let i = 0; i < nb.nlocal; i++) chiEff[i] += chiField[i];
+    }
     const r = solveFictitious({
       sys: this.sys, groupBit: this.groupBit, swb: this.swb, ntypes: this.ntypes, shld: this.shld, Tap: this.Tap,
       eta: p.eta, chiEff, hist: this.hist,

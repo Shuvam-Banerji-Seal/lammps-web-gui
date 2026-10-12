@@ -127,6 +127,12 @@ export class ComputePair extends Compute {
     this.sys.forces();
     const { style, rec } = this.source();
     if (rec && !rec.evaluated) throw new StyleError(`compute ${this.id} pair: sub-style ${style.name} did not run in the last evaluation (hybrid/scaled factor 0 is not supported here)`);
+    // a pair style that keeps its own vector (LAMMPS pvector, e.g. pair reaxff) returns it from extract('pvector')
+    const pvector = style.extract('pvector');
+    if (pvector instanceof Float64Array || Array.isArray(pvector)) {
+      this.vector = Float64Array.from(pvector as ArrayLike<number>);
+      return;
+    }
     if (!ENGINE_VECTOR.has(this.pstyle)) {
       throw new StyleError(`compute ${this.id} pair: the global vector of pair style ${this.pstyle} (${this.sizeVector} values) is not provided by the browser engine`);
     }

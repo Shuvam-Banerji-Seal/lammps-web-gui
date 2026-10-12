@@ -1,0 +1,52 @@
+# oracle: DRUDE swm4-ndp water, Langevin variant with rigid/nph/small (examples/PACKAGES/drude/swm4-ndp/in.swm4-ndp.lang) cut down to 10 molecules, 40 steps; langevin/drude, rigid/nph/small, delete_bonds
+# oracle-inputs: w72drude_data.swm4-ndp_10
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-10
+# Measured with native LAMMPS (black box): max relative error 6.3e-8 (thermo pe, step 40); per-atom forces 3e-8. delete_bonds without remove keeps the bonds in the special lists (native: the 1-2 exclusion stays after delete_bonds).
+units real
+boundary p p p
+
+atom_style full
+bond_style harmonic
+angle_style harmonic
+special_bonds lj/coul 0.0 0.0 0.5
+
+pair_style lj/cut/coul/long 12.0 12.0
+kspace_style pppm 1.0e-3
+
+comm_modify vel yes
+read_data w72drude_data.swm4-ndp_10
+
+pair_coeff    1    1      0.210939     3.183950  # ODw ODw
+pair_coeff    *   2*      0.000000     0.0
+
+group ATOMS type 1:3
+group CORES type 1
+group DRUDES type 4
+
+variable TK equal 300.0
+variable TDK equal 1.0
+variable PBAR equal 1.0
+
+neighbor 2.0 bin
+
+timestep 1.0
+
+fix DRUDE all drude C N N D
+
+velocity ATOMS create ${TK} 12345
+velocity DRUDES create ${TDK} 12345
+
+delete_bonds ATOMS multi
+
+fix TEMP all langevin/drude ${TK} 100. 1256 ${TDK} 20. 13977 zero yes
+fix NPH ATOMS rigid/nph/small molecule iso ${PBAR} ${PBAR} 500.
+fix NVE DRUDES nve
+
+compute TEMP all temp/drude
+
+thermo_style custom step etotal ke pe ebond eangle evdwl ecoul elong press vol temp c_TEMP[1] c_TEMP[2]
+thermo_modify   format float %.15g
+thermo 10
+
+run 40
+

@@ -1,7 +1,7 @@
 import type { SimState, TopoList } from '../types';
 import type { Geometry } from '../domain';
 import type { Neighbor, SpecialSettings } from '../neighbor';
-import { buildAtomMap, buildSpecial, type SpecialList } from '../atoms';
+import { buildAtomMap, buildSpecial, filterTopo, type SpecialList } from '../atoms';
 import { clearAccum, newAccum, StyleError, type Accum, type Bonded, type KSpace, type Pair, type PairCompute, type StyleContext } from './types';
 import { PairHybrid } from './pair/hybrid';
 
@@ -25,6 +25,24 @@ export interface SpecialBonds {
   angle: boolean;
   dihedral: boolean;
 }
+
+/**
+ * delete_bonds without remove (delete_bonds.html) switches an interaction off by negating its type: the bonded
+ * styles skip such entries, while the special lists still see them (they are topology, not interactions).
+ */
+const switchedOff = (t: SimState['topo']): boolean => {
+  for (const l of [t.bonds, t.angles, t.dihedrals, t.impropers]) for (let e = 0; e < l.n; e++) if (l.type[e] < 0) return true;
+  return false;
+};
+
+const withoutSwitchedOff = (t: SimState['topo']): SimState['topo'] => {
+  const copy = (l: TopoList): TopoList => {
+    const out: TopoList = { ...l, type: Int32Array.from(l.type.subarray(0, l.n)), atoms: Int32Array.from(l.atoms.subarray(0, l.n * l.width)) };
+    filterTopo(out, (_ids, type) => type >= 0);
+    return out;
+  };
+  return { ...t, bonds: copy(t.bonds), angles: copy(t.angles), dihedrals: copy(t.dihedrals), impropers: copy(t.impropers) };
+};
 
 export const defaultSpecial = (): SpecialBonds => ({ lj: [0, 0, 0], coul: [0, 0, 0], angle: false, dihedral: false });
 
@@ -83,6 +101,11 @@ export class ForceField {
   etailV = 0;
   ptailV = 0;
   private specialList: SpecialList | null = null;
+  /**
+   * Rewrites the special lists after they are built from the bonds (a fix may set it and must clear it on unfix).
+   * Used by fix drude, whose Drude particles take their core's special neighbors (fix_drude.html).
+   */
+  specialHook: ((list: SpecialList, s: SimState) => SpecialList) | null = null;
   private map: Int32Array = new Int32Array(0);
   private specialLJ = new Float64Array([1, 0, 0, 0]);
   private specialCoul = new Float64Array([1, 0, 0, 0]);
@@ -142,7 +165,7 @@ export class ForceField {
     this.specialCoul = new Float64Array([1, ...this.special.coul]);
     const manybody = this.pair?.manybody ?? false;
     const hasTopo = s.topo.bonds.n > 0;
-    this.specialList = hasTopo && !manybody ? buildSpecial(s, { angle: this.special.angle, dihedral: this.special.dihedral }) : null;
+    this.specialList = hasTopo && !manybody ? this.buildSpecialList(s) : null;
     const nt = s.ntypes + 1;
     const cutoff = this.pair ? this.pair.cut : new Float64Array(nt * nt);
     const settings: SpecialSettings = {
@@ -191,8 +214,16 @@ export class ForceField {
   /** The topology changed or atoms were added/removed: rebuild special lists before the next build. */
   topologyChanged(s: SimState): void {
     const manybody = this.pair?.manybody ?? false;
-    this.specialList = s.topo.bonds.n > 0 && !manybody
-      ? buildSpecial(s, { angle: this.special.angle, dihedral: this.special.dihedral }) : null;
+    this.specialList = s.topo.bonds.n > 0 && !manybody ? this.buildSpecialList(s) : null;
+  }
+
+  /**
+   * Special lists from the bond topology, passed through specialHook when a fix has set one (fix drude
+   * changes them for Drude particles, docs.lammps.org/fix_drude.html).
+   */
+  private buildSpecialList(s: SimState): SpecialList {
+    const list = buildSpecial(s, { angle: this.special.angle, dihedral: this.special.dihedral });
+    return this.specialHook ? this.specialHook(list, s) : list;
   }
 
   /** Forces on every owned atom into s.f; energies and virial into this.acc. */
@@ -243,9 +274,10 @@ export class ForceField {
     if (this.bond || this.angle || this.dihedral || this.improper) {
       if (this.map.length === 0 || this.mapStale(s)) this.map = buildAtomMap(s);
       const ov = this.topoOverride;
-      const sb = ov && ov.bondsN === s.topo.bonds.n && ov.anglesN === s.topo.angles.n
+      const sb0 = ov && ov.bondsN === s.topo.bonds.n && ov.anglesN === s.topo.angles.n
         ? { ...s, topo: { ...s.topo, bonds: ov.bonds, angles: ov.angles } }
         : s;
+      const sb = switchedOff(sb0.topo) ? { ...sb0, topo: withoutSwitchedOff(sb0.topo) } : sb0;
       const bc = { s: sb, geom, map: this.map, f: s.f, acc, eatom: null as Float64Array | null, vatom: null as Float64Array | null, virial: acc.vbond, warn: this.warn, historyUpdate: !!flags.step };
       const run = (style: Bonded | null, t: PerAtomTerm, virial: Float64Array) => {
         if (!style || !want(t)) return;

@@ -1,0 +1,20 @@
+# oracle: eFF H2 minimization (examples/PACKAGES/eff/H2 in.h2, minimize step cut down to 30 iterations, line quadratic): electron radii as minimizer DOF
+# oracle-inputs: w63eff_h2.data
+# oracle-files: w63eff_h2_min_er.dump
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           electron
+newton          on
+boundary        p p p
+atom_style      electron
+read_data       w63eff_h2.data
+pair_style      eff/cut 6.447968 pressure/evirials
+pair_coeff      * *
+comm_modify     vel yes
+compute         er all property/atom spin eradius erforce
+thermo          5
+thermo_style    custom step etotal pe ke temp press
+thermo_modify   format float %.15g
+min_style       cg
+min_modify      line quadratic
+minimize        0 1.0e-6 30 60
+write_dump      all custom w63eff_h2_min_er.dump id c_er[1] c_er[2] c_er[3] modify format float %.15g

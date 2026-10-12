@@ -1,0 +1,24 @@
+# oracle: eFF CH4 minimization (examples/PACKAGES/eff/CH4 in.ch4.min, cut down to 30 iterations): cg, electron radii as minimizer DOF
+# oracle-inputs: w63eff_ch4.data
+# oracle-files: w63eff_ch4_min_er.dump
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           electron
+newton          on
+boundary        f f f
+atom_style      electron
+read_data       w63eff_ch4.data
+pair_style      eff/cut 100.0
+pair_coeff      * *
+comm_modify     vel yes
+compute         energies all pair eff/cut
+variable        eke equal c_energies[1]
+variable        epauli equal c_energies[2]
+variable        ecoul equal c_energies[3]
+variable        erres equal c_energies[4]
+thermo          1
+thermo_style    custom step etotal pe ke v_eke v_epauli v_ecoul v_erres
+thermo_modify   format float %.15g
+min_style       cg
+compute         er all property/atom spin eradius erforce
+minimize        0 1e-6 30 300
+write_dump      all custom w63eff_ch4_min_er.dump id c_er[1] c_er[2] c_er[3] modify format float %.15g

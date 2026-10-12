@@ -164,11 +164,15 @@ describe('pair eff/cut, fix nve/eff, compute temp/eff and ke/eff', () => {
       .rejects.toThrow(/Check your units/);
   });
 
-  it('refuses minimize with eff/cut and the fixes and computes with arguments', async () => {
-    const { session } = newSession();
+  it('minimizes the electron radii with cg and refuses the damped dynamics styles (native: per-atom DOF)', async () => {
+    const { session, events } = newSession();
     session.addFile('h2.data', H2_DATA);
-    await expect(session.execute(`${HEAD}read_data h2.data\npair_style eff/cut 1.0\npair_coeff * *\nminimize 0 1e-6 10 10\n`))
-      .rejects.toThrow(/minimize with pair_style eff\/cut/);
+    await session.execute(`${HEAD}read_data h2.data\npair_style eff/cut 1.0\npair_coeff * *\nthermo_style custom step pe\nminimize 0 1e-6 5 20\n`);
+    expect(thermoRows(events).length).toBeGreaterThan(1);
+    const second = newSession();
+    second.session.addFile('h2.data', H2_DATA);
+    await expect(second.session.execute(`${HEAD}read_data h2.data\npair_style eff/cut 1.0\npair_coeff * *\nmin_style quickmin\nminimize 0 1e-6 5 20\n`))
+      .rejects.toThrow(/damped dynamics min style with per-atom DOF/);
     const withData = () => { const n = newSession(); n.session.addFile('h2.data', H2_DATA); return n.session; };
     await expect(withData().execute(`${HEAD}read_data h2.data\nfix f all nve/eff 1\n`)).rejects.toThrow(/takes no arguments/);
     await expect(withData().execute(`${HEAD}read_data h2.data\ncompute t all temp/eff 1\n`)).rejects.toThrow(/takes no arguments/);
@@ -178,6 +182,23 @@ describe('pair eff/cut, fix nve/eff, compute temp/eff and ke/eff', () => {
     await expect(newSession().session.execute('units lj\natom_style atomic\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nmass 1 1.0\ncreate_atoms 1 single 0 0 0\nfix f all nve/eff\nrun 0\n'))
       .rejects.toThrow(/requires atom style electron/);
     await expect(newSession().session.execute('units lj\natom_style atomic\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nmass 1 1.0\ncreate_atoms 1 single 0 0 0\ncompute t all temp/eff\n'))
+      .rejects.toThrow(/requires atom style electron/);
+  });
+
+  it('ke/atom/eff sums to the kinetic energy of compute ke/eff', async () => {
+    const { session, events } = newSession();
+    session.addFile('h2.data', H2_DATA);
+    await session.execute(`${HEAD}read_data h2.data\ncompute k all ke/eff\ncompute ka all ke/atom/eff\ncompute kr all reduce sum c_ka\nvariable a equal c_k\nvariable b equal c_kr\nthermo_style custom step v_a v_b\nrun 0\n`);
+    const row = thermoRows(events).at(-1)!;
+    expect(row.v_b).toBeCloseTo(row.v_a, 12);
+  });
+
+  it('refuses the eFF thermostat and rescale fixes without their arguments, and nvt/eff without electrons', async () => {
+    const withData = () => { const n = newSession(); n.session.addFile('h2.data', H2_DATA); return n.session; };
+    await expect(withData().execute(`${HEAD}read_data h2.data\nfix f all nvt/eff temp 300 300 0.1 iso 1 1 1\n`)).rejects.toThrow(/Pressure control can not be used with fix nvt\/eff/);
+    await expect(withData().execute(`${HEAD}read_data h2.data\nfix f all nvt/eff tchain 0 temp 300 300 0.1\n`)).rejects.toThrow(/Invalid fix nvt\/eff tchain/);
+    await expect(withData().execute(`${HEAD}read_data h2.data\nfix f all temp/rescale/eff 10 0 300\n`)).rejects.toThrow(/Illegal fix temp\/rescale\/eff/);
+    await expect(newSession().session.execute('units lj\natom_style atomic\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nmass 1 1.0\ncreate_atoms 1 single 0 0 0\nfix f all nvt/eff temp 1 1 1\n'))
       .rejects.toThrow(/requires atom style electron/);
   });
 });

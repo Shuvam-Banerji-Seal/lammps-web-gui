@@ -235,6 +235,18 @@ export interface BondedEquilibria {
 }
 
 /** Base for pair styles. */
+/**
+ * Per-atom minimizer degrees of freedom a pair style adds. pull(s, x, f) writes the minimizer's coordinate x and its
+ * force f for every owned atom from the current state (called after each force evaluation); push(s, x) writes the
+ * state from the coordinates (called before each energy evaluation of a line search trial). maxStep caps the change
+ * of any coordinate in one iteration.
+ */
+export interface PairMinPerAtom {
+  readonly maxStep: number;
+  pull(s: SimState, x: Float64Array, f: Float64Array): void;
+  push(s: SimState, x: Float64Array): void;
+}
+
 export abstract class Pair {
   abstract readonly name: string;
   ntypes = 0;
@@ -330,10 +342,10 @@ export abstract class Pair {
   }
 
   /**
-   * A reason the style cannot run minimize (min.ts refuses with it), for styles whose minimization degrees of freedom go
-   * beyond the atom positions (pair eff/cut: the electron radii). Undefined when the style minimizes normally.
+   * Per-atom minimizer degrees of freedom of this style (one value per owned atom), or
+   * undefined when the style adds none. The minimizer appends them after the box DOF in cg and sd.
    */
-  minimizeRefusal?(): string;
+  minPerAtom?(): PairMinPerAtom;
   /** Long-range tail energy/pressure need per-type counts; override when tail is supported. */
   tailSums(_counts: Float64Array): { etail: number; ptail: number } { return { etail: 0, ptail: 0 }; }
 

@@ -30,6 +30,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'compute_snap15', names: { COMPUTES: ['gaussian/grid/local', 'sna/grid', 'sna/grid/local', 'snap'] }, load: () => import('./registry/compute_snap15') as Promise<StyleModule> },
   { id: 'mliap', names: { COMPUTES: ['mliap'], PAIRS: ['mliap'] }, load: () => import('./registry/mliap') as Promise<StyleModule> },
   { id: 'pair_granular', names: { PAIRS: ['granular'] }, load: () => import('./registry/pair_granular') as Promise<StyleModule> },
+  { id: 'superellipsoid', names: { PAIRS: ['granular/superellipsoid'] }, load: () => import('../engine-gpl/registry/superellipsoid') as Promise<StyleModule> },
   { id: 'pair_gran', names: { PAIRS: ['gran/hertz/history', 'gran/hooke', 'gran/hooke/history'] }, load: () => import('./registry/pair_gran') as Promise<StyleModule> },
   { id: 'fix_wallgran', names: { FIXES: ['freeze', 'heat/flow', 'wall/gran', 'wall/gran/region'] }, load: () => import('./registry/fix_wallgran') as Promise<StyleModule> },
   { id: 'fix_gcmc', names: { FIXES: ['gcmc'] }, load: () => import('./registry/fix_gcmc') as Promise<StyleModule> },

@@ -234,7 +234,8 @@ export class ImageDump {
         }
         // The remaining keyword/value pairs are accepted by the grammar but need renderers the engine does not
         // have (or only change image quality). Named so the stop is never silent (dump_image.html keyword list).
-        case 'autobond': case 'grid': case 'line': case 'tri': case 'body': case 'fix': case 'region':
+        // ellipsoid draws ellipsoids (and superellipsoids, atom_style ellipsoid superellipsoid): no renderer here
+        case 'ellipsoid': case 'autobond': case 'grid': case 'line': case 'tri': case 'body': case 'fix': case 'region':
         case 'axes': case 'subbox': case 'shiny': case 'fsaa': case 'ssao': case 'persp':
           throw new StyleError(`dump ${this.id}: dump image keyword '${key}' is not supported by the browser engine`);
         default:

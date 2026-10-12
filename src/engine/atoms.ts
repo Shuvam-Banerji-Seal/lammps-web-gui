@@ -2,6 +2,7 @@ import type { AtomStyle, CustomProp, SimBox, SimState, TopoList, Topology, UnitS
 import { makeBox, type BoxInit } from './domain';
 import { StyleError } from './force/types';
 import { BODY_RECORD, bodyRecordStride, parseBodyStyle } from './bodies';
+import { SUPER_BLOCK, SUPER_DEFAULTS, SUPER_INERTIA } from './superellipsoid';
 
 /*
  * Per-atom storage: creating the state, appending and deleting atoms, the
@@ -21,7 +22,7 @@ import { BODY_RECORD, bodyRecordStride, parseBodyStyle } from './bodies';
  * hybrid style is used, atoms store and communicate the union of all quantities implied by the
  * individual styles."
  */
-export const atomSubStyles = (st: AtomStyle): string[] => (st.startsWith('body ') ? ['body'] : st.startsWith('hybrid ') ? st.slice(7).trim().split(/\s+/) : [st])
+export const atomSubStyles = (st: AtomStyle): string[] => (st.startsWith('body ') ? ['body'] : st === 'ellipsoid superellipsoid' ? ['ellipsoid', 'superellipsoid'] : st.startsWith('hybrid ') ? st.slice(7).trim().split(/\s+/) : [st])
   .map((x) => (x.startsWith('template:') ? 'template' : x));
 /** atom_style template ID of a style (the ID after the template keyword), or null when there is no template sub-style. */
 export const templateStyleId = (st: AtomStyle): string | null => {
@@ -47,6 +48,8 @@ export const hasDipoleStyle = (st: AtomStyle): boolean => atomSubStyles(st).incl
 export const hasSpinStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('spin');
 /** Styles with ellipsoidal particles (shape, quat, angmom). */
 export const isEllipsoidStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('ellipsoid');
+/** atom_style ellipsoid superellipsoid (atom_style.html: "*ellipsoid* arg = superellipsoid (optional) for superellipsoids"). */
+export const isSuperEllipsoidStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('superellipsoid');
 /**
  * atom_style line: "*atomic* + molecule, radius, rmass, omega, torque, line" (atom_style.html). Its line
  * segments store the length and orientation theta (LINE_BONUS) and a flag (LINE_FLAG).
@@ -170,6 +173,11 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
   // atom_style.html, dielectric: "area, ed, em, epsilon, curvature" per atom, plus the scaled charge q/epsilon (DIELECTRIC_PROPS)
   if (isDielectricStyle(st)) {
     for (const name of Object.keys(DIELECTRIC_DEFAULTS)) m.set(name, { int: false, cols: 0, data: new Float64Array(0) });
+  }
+  // atom_style.html, superellipsoid: the blockiness exponents and the principal moments of inertia (superellipsoid.ts)
+  if (isSuperEllipsoidStyle(st)) {
+    m.set(SUPER_BLOCK, { int: false, cols: 2, data: new Float64Array(0) });
+    m.set(SUPER_INERTIA, { int: false, cols: 3, data: new Float64Array(0) });
   }
   return m;
 };
@@ -466,6 +474,7 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     if (src) c.data.set(src, w * n0);
     else if (name in ELECTRON_DEFAULTS) c.data.fill(ELECTRON_DEFAULTS[name], w * n0, w * n);
     else if (name in DIELECTRIC_DEFAULTS) c.data.fill(DIELECTRIC_DEFAULTS[name], w * n0, w * n);
+    else if (name in SUPER_DEFAULTS) c.data.fill(SUPER_DEFAULTS[name], w * n0, w * n);
   }
   // a created dielectric atom starts with q_scaled = q / epsilon (LAMMPS: the scaled charge of a point charge)
   if (isDielectricStyle(s.atomStyle) && !(a.custom?.has(DIEL_QSCALED))) {

@@ -1,0 +1,16 @@
+# oracle: dihedral_style helix, window 1e-5 <= |sin phi| < 1e-4 (native exact-branch rounding about 1e-6 relative) on a phi scan (one dihedral per molecule, w76dih_edge.data), forces and energy
+# oracle-inputs: w76dih_edge.data
+# oracle-compare: thermo=first atoms=all rel=1e-5 abs=1e-10
+units           real
+atom_style      molecular
+bond_style      zero
+angle_style     zero
+dihedral_style  helix
+improper_style  zero
+pair_style      lj/cut 8.0
+read_data       w76dih_edge.data
+pair_coeff      * * 0.0 1.0
+dihedral_coeff  1 0.9 0.4 -0.6
+thermo_style    custom step pe edihed press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+run             0

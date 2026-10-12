@@ -12,6 +12,43 @@ import { StyleError, typeBounds, type BondedCompute, type StyleContext } from '.
 
 const DEG2RAD = Math.PI / 180;
 
+/*
+ * Near-planar regularisation of the force (measured with native LAMMPS, black
+ * box: fine phi scans at |sin(phi)| from 1e-12 to 1e-3 rad, one fixture per
+ * style in tests/oracle/w76dih_*). For the terms listed below, native's force
+ * is the exact one times a factor r that is 1 while |sin(phi)| >= SMALL_SIN and
+ * goes linearly to zero with sin(phi) below it, so the force vanishes at exactly
+ * planar geometry. The energies are not affected. Measured forms:
+ *   opls n >= 2 terms and helix B term: r = -/+ sign(sin) sqrt(1 - cos^2) / SMALL_SIN
+ *     (the sqrt form, not |sin|, is what native's quantised values follow);
+ *   quadratic (whole term) and helix C term: r = sin / SMALL_SIN (exact sine).
+ * The opls K1 term, helix A term, and the harmonic, charmm, fourier,
+ * multi/harmonic, nharmonic and cosine/shift/exp styles are exact (measured).
+ * SMALL_SIN = 1e-5 (measured: r = 0.999 at 0.999 SMALL_SIN and r = 1 at 1.001).
+ * Native's exact branch carries a rounding of about 3e-16 / sin^2 relative
+ * (up to ~5e-6 absolute at |sin| = 1e-5 for quadratic and helix); the engine
+ * does not reproduce it (see the w76dih_edge cases).
+ */
+const SMALL_SIN = 1e-5;
+
+/** Wraps an angle into [-pi, pi] (measured: quadratic uses wrapped phi - phi0). */
+const wrapPi = (x: number): number => x - 2 * Math.PI * Math.round(x / (2 * Math.PI));
+
+/** sqrt(1 - cos^2) of phi from its cosine, never negative (rounding of 1 - c^2). */
+const sinFromCos = (c: number): number => Math.sqrt(Math.max(0, 1 - c * c));
+
+/** Exact-sine factor: sin/SMALL_SIN below SMALL_SIN, else 1. */
+const nearPlanarSine = (s: number): number => (Math.abs(s) < SMALL_SIN ? s / SMALL_SIN : 1);
+
+/**
+ * sqrt-based factor: sign * sign(sin) * sqrt(1-c^2) / SMALL_SIN below SMALL_SIN, else 1.
+ * sign = -1 for the opls n >= 2 terms, +1 for the helix B term (both measured).
+ */
+const rSqrt = (s: number, c: number, sign: 1 | -1): number => {
+  const sc = sinFromCos(c);
+  return sc < SMALL_SIN ? (sign * Math.sign(s) * sc) / SMALL_SIN : 1;
+};
+
 /** Shared compute loop: phi and its analytic gradient per dihedral, energy into edihed. */
 const eachDihedral = (bc: BondedCompute, term: (t: number, phi: number) => { e: number; dEdphi: number }): void => {
   const D = bc.s.topo.dihedrals;
@@ -52,9 +89,10 @@ export class DihedralOpls extends SimpleBonded {
       const c2 = Math.cos(2 * phi), s2 = Math.sin(2 * phi);
       const c3 = Math.cos(3 * phi), s3 = Math.sin(3 * phi);
       const c4 = Math.cos(4 * phi), s4 = Math.sin(4 * phi);
+      // the n >= 2 terms take the sqrt-based near-planar factor (measured; the K1 term is exact)
       return {
         e: 0.5 * (K1[t] * (1 + c) + K2[t] * (1 - c2) + K3[t] * (1 + c3) + K4[t] * (1 - c4)),
-        dEdphi: -0.5 * K1[t] * s + K2[t] * s2 - 1.5 * K3[t] * s3 + 2 * K4[t] * s4,
+        dEdphi: -0.5 * K1[t] * s + rSqrt(s, c, -1) * (K2[t] * s2 - 1.5 * K3[t] * s3 + 2 * K4[t] * s4),
       };
     });
   }
@@ -225,8 +263,12 @@ export class DihedralQuadratic extends SimpleBonded {
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), phi0 = this.params.p('phi0');
     eachDihedral(bc, (t, phi) => {
-      const d = phi - phi0[t];
-      return { e: K[t] * d * d, dEdphi: 2 * K[t] * d };
+      // measured with native LAMMPS: the energy uses phi - phi0 wrapped into [-pi, pi]
+      const d = wrapPi(phi - phi0[t]);
+      // whole term: exact-sine factor (see SMALL_SIN)
+      const s = Math.sin(phi);
+      const r = nearPlanarSine(s);
+      return { e: K[t] * d * d, dEdphi: 2 * K[t] * d * r };
     });
   }
 }
@@ -346,9 +388,13 @@ export class DihedralHelix extends SimpleBonded {
   compute(bc: BondedCompute): void {
     const A = this.params.p('A'), B = this.params.p('B'), C = this.params.p('C');
     eachDihedral(bc, (t, phi) => {
+      const c = Math.cos(phi), s = Math.sin(phi);
+      // B term: sqrt-based factor; C term: exact-sine factor; A term: exact (see SMALL_SIN)
+      const rB = rSqrt(s, c, 1);
+      const rC = nearPlanarSine(s);
       return {
-        e: A[t] * (1 - Math.cos(phi)) + B[t] * (1 + Math.cos(3 * phi)) + C[t] * (1 + Math.cos(phi + Math.PI / 4)),
-        dEdphi: A[t] * Math.sin(phi) - 3 * B[t] * Math.sin(3 * phi) - C[t] * Math.sin(phi + Math.PI / 4),
+        e: A[t] * (1 - c) + B[t] * (1 + Math.cos(3 * phi)) + C[t] * (1 + Math.cos(phi + Math.PI / 4)),
+        dEdphi: A[t] * s - 3 * B[t] * Math.sin(3 * phi) * rB - C[t] * Math.sin(phi + Math.PI / 4) * rC,
       };
     });
   }

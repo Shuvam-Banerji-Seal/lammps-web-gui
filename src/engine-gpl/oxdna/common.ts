@@ -28,6 +28,10 @@ export interface OxdnaConstants {
   /** electrostatic prefactors (constants_oxdna.cpp, "electrostatic parameters") */
   readonly lambda_dh_one_prefactor: number;
   readonly qeff_dh_pf_one_prefactor: number;
+  /** oxDNA3 stacking offset and base-site offsets of the purines and pyrimidines (constants_oxdna.cpp, "oxDNA3 parameters") */
+  readonly dx_cstk_oxdna3: number;
+  readonly dx_cbs_pur_oxdna3: number;
+  readonly dx_cbs_pyr_oxdna3: number;
 }
 
 /** constants_oxdna.cpp: "default to lj units" (the values without set_real_units). */
@@ -45,6 +49,9 @@ const LJ: OxdnaConstants = {
   dy_cstk_5p_oxrna2: -0.00866274917473,
   lambda_dh_one_prefactor: +0.3616455075438555,
   qeff_dh_pf_one_prefactor: +0.08173808693529228,
+  dx_cstk_oxdna3: +0.37,
+  dx_cbs_pur_oxdna3: +0.43,
+  dx_cbs_pyr_oxdna3: +0.37,
 };
 
 /** constants_oxdna.cpp, set_real_units(): "oxDNA1 parameters in real units" and the electrostatic prefactors. */
@@ -62,6 +69,9 @@ const REAL: OxdnaConstants = {
   dy_cstk_5p_oxrna2: -0.07378929747,
   lambda_dh_one_prefactor: +0.05624154892,
   qeff_dh_pf_one_prefactor: +4.15079634587587,
+  dx_cstk_oxdna3: +3.15166,
+  dx_cbs_pur_oxdna3: +3.66274,
+  dx_cbs_pyr_oxdna3: +3.15166,
 };
 
 /**
@@ -226,4 +236,87 @@ export const is3pto5p = (delr: readonly number[], n: readonly number[]): number 
 /** NucleotideOxrna2 dh site as written in pair_oxrna2_dh.cpp: dx_cbk_oxdna1 e1 + dz_cbk_oxrna2 e3 (the oxDNA1 x offset). */
 export const backboneOxrna2Dh: BackboneRule = (c, e1, _e2, e3, out) => {
   for (let k = 0; k < 3; k++) out[k] = c.dx_cbk_oxdna1 * e1[k] + c.dz_cbk_oxrna2 * e3[k];
+};
+
+/** NucleotideOxdna3::stacking_site: rstk = dx_cstk_oxdna3 * e1. */
+export const stackingSiteOxdna3: StackRule = (c, e1, _e2, _e3, out) => stackingSite(c.dx_cstk_oxdna3, e1, out);
+
+/** NucleotideOxdna1::stacking_site (the rule of the oxDNA and oxDNA2 styles): rstk = dx_cstk_oxdna1 * e1. */
+export const stackingSiteOxdna1: StackRule = (c, e1, _e2, _e3, out) => stackingSite(c.dx_cstk_oxdna1, e1, out);
+
+/**
+ * NucleotideOxdna3::base_site<N> with N = type % 4 (the C++ callers pass atype % 4): N = 1 and 3 (A, G) are the
+ * purines (dx_cbs_pur), N = 0 and 2 (T, C) the pyrimidines (dx_cbs_pyr).
+ */
+export const baseSiteOxdna3 = (c: OxdnaConstants, type: number, e1: ArrayLike<number>, out: number[]): void => {
+  const dx = type % 2 === 1 ? c.dx_cbs_pur_oxdna3 : c.dx_cbs_pyr_oxdna3;
+  out[0] = dx * e1[0]; out[1] = dx * e1[1]; out[2] = dx * e1[2];
+};
+
+/** NucleotideOxdna1::base_site<0> as a type-indexed rule (the oxDNA and oxDNA2 styles ignore the type). */
+export const baseSiteOxdna1 = (c: OxdnaConstants, _type: number, e1: ArrayLike<number>, out: number[]): void => baseSite(c.dx_cbs_oxdna1, e1, out);
+
+/**
+ * A stacking-site rule: out = site(constants, e1). The oxDNA3 base-site rule also takes the nucleotide type.
+ */
+export type StackRule = (c: OxdnaConstants, e1: ArrayLike<number>, e2: ArrayLike<number>, e3: ArrayLike<number>, out: number[]) => void;
+
+/**
+ * The C++ sequence-dependent tables (Delta, r0, sigma4, cut4, cut_st_0, ... in the oxDNA3 styles) are four-index
+ * arrays [i][j][k][l] with i, j, k, l = 0..n, where type 0 stands for "no neighbour" (the terminal base). The file
+ * gives the n^4 values for 1 <= i, j, k, l <= n in the order i, j, k, l (l fastest). The C++ coeff() then fills
+ *   T[i][j][k][0] += T[i][j][k][l]      (sum over the 5' neighbour l)
+ *   T[0][j][k][l] += T[i][j][k][l]      (sum over the 3' neighbour i)
+ *   T[0][j][k][0] += T[i][j][k][l]      (sum over both)
+ * and then divides the sums by n, n and n^2 ("calculate sequence-averaged parameters for terminal base step j-k").
+ * The result is returned flat with the index (((i * m + j) * m + k) * m + l), m = n + 1.
+ */
+export const tetramerTable = (vals: ArrayLike<number>, n: number): Float64Array => {
+  const m = n + 1;
+  const t = new Float64Array(m * m * m * m);
+  const at = (i: number, j: number, k: number, l: number) => ((i * m + j) * m + k) * m + l;
+  let v = 0;
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= n; j++) {
+      for (let k = 1; k <= n; k++) {
+        for (let l = 1; l <= n; l++) {
+          const x = vals[v++];
+          t[at(i, j, k, l)] = x;
+          t[at(i, j, k, 0)] += x;
+          t[at(0, j, k, l)] += x;
+          t[at(0, j, k, 0)] += x;
+        }
+      }
+    }
+  }
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= n; j++) for (let k = 1; k <= n; k++) t[at(i, j, k, 0)] /= n;
+  for (let j = 1; j <= n; j++) for (let k = 1; k <= n; k++) for (let l = 1; l <= n; l++) t[at(0, j, k, l)] /= n;
+  for (let j = 1; j <= n; j++) for (let k = 1; k <= n; k++) t[at(0, j, k, 0)] /= n * n;
+  return t;
+};
+
+/** Flat index of tetramerTable's layout for m = n + 1 entries per axis. */
+export const tetIndex = (m: number, i: number, j: number, k: number, l: number): number => ((i * m + j) * m + k) * m + l;
+
+/**
+ * The word lists of the lines of a potential file whose key words match the coefficient words and whose name word
+ * (the word after the keys) is `name`. A key word matches when it is equal to the coefficient word or is the
+ * wildcard "*": the C++ compares with the words of the command, and the engine's hybrid styles pass each type
+ * number where the command had "*", so a "*" line must match every type. Lines that match exactly come first, so
+ * an explicit "1 4 hbond" line is used for the pair 1 4 before a "* * hbond" line of the same file.
+ */
+export const potentialLines = (text: string, keys: readonly string[], name: string): string[][] => {
+  const exact: string[][] = [], wild: string[][] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const w = line.replace(/#.*$/, '').trim().split(/\s+/).filter((x) => x.length);
+    if (w.length < keys.length + 1 || w[keys.length] !== name) continue;
+    let isExact = true, isWild = true;
+    for (let k = 0; k < keys.length; k++) {
+      if (w[k] !== keys[k]) isExact = false;
+      if (w[k] !== keys[k] && w[k] !== '*') isWild = false;
+    }
+    if (isExact) exact.push(w);
+    else if (isWild) wild.push(w);
+  }
+  return [...exact, ...wild];
 };

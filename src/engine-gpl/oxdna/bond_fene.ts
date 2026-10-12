@@ -11,14 +11,14 @@
  */
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { atomIndex } from '../../engine/force/bonded_util';
-import { OXDNA_5P, isEllipsoid } from '../../engine/atoms';
+import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
-import { type OxdnaConstants, backboneOxdna1, lrfOf, oxdnaConstants } from './common';
+import { type OxdnaConstants, backboneOxdna1, lrfOf, oxdnaConstants, potentialLines } from './common';
 
 /** bond_oxdna_fene.cpp: "const double rlogarg_min = 0.2;" */
 const RLOGARG_MIN = 0.2;
 
-interface Pair2 { k: number; delta: number; r0: number }
+export interface Pair2 { k: number; delta: number; r0: number }
 
 export class BondOxdnaFene extends Bonded {
   readonly name: string = 'oxdna/fene';
@@ -26,8 +26,17 @@ export class BondOxdnaFene extends Bonded {
   protected backbone(c: OxdnaConstants, e1: ArrayLike<number>, e2: ArrayLike<number>, e3: ArrayLike<number>, out: number[]): void {
     backboneOxdna1(c, e1, e2, e3, out);
   }
+  /**
+   * The parameters of a bond of type `type` between a (the 3' side, atom type atype, 3' neighbour type a3p) and b
+   * (5' side, type btype, 5' neighbour type b5p); a neighbour type 0 means "none". Here one set per bond type.
+   */
+  protected params(type: number, _a3p: number, _atype: number, _btype: number, _b5p: number): Pair2 {
+    return this.par[type]!;
+  }
   readonly kind = 'bond' as const;
-  private par: (Pair2 | null)[] = [];
+  protected par: (Pair2 | null)[] = [];
+  /** true for the per-tetramer parameters of oxdna3/fene (Delta and r0 depend on the neighbour types) */
+  protected tetramer = false;
   private special: readonly number[] | null = null;
   private lrf = new Float64Array(0);
 
@@ -58,14 +67,11 @@ export class BondOxdnaFene extends Bonded {
       // bond_oxdna_fene.cpp: "No corresponding fene potential found in file {} for bond type {}"
       const text = ctx?.readFile(args[1]) ?? '';
       let found: number[] | null = null;
-      for (const line of text.split(/\r?\n/)) {
-        const w = line.replace(/#.*$/, '').trim().split(/\s+/).filter((v) => v.length);
+      for (const w of potentialLines(text, [args[0]], 'fene')) {
         if (w.length < 2) continue;
-        if (w[0] === args[0] && w[1] === 'fene') {
-          if (w.length < 5) throw new StyleError(`Problem parsing oxdna, oxdna2 or oxrna2 potential file: fene needs K Delta r0 in ${args[1]}`);
-          found = [parseNum(w[2], 'K'), parseNum(w[3], 'Delta'), parseNum(w[4], 'r0')];
-          break;
-        }
+        if (w.length < 5) throw new StyleError(`Problem parsing oxdna, oxdna2 or oxrna2 potential file: fene needs K Delta r0 in ${args[1]}`);
+        found = [parseNum(w[2], 'K'), parseNum(w[3], 'Delta'), parseNum(w[4], 'r0')];
+        break;
       }
       if (!found) throw new StyleError(`No corresponding fene potential found in file ${args[1]} for bond type ${args[0]}`);
       [k, delta, r0] = found;
@@ -101,6 +107,10 @@ export class BondOxdnaFene extends Bonded {
     const f = bc.f, x = s.x;
     const torque = s.torque!;
     const id5p = s.custom.get(OXDNA_5P)!.data;
+    // tetramer types: the type of the atom with a given tag (0 = no neighbour), built once per call
+    const id3p = this.tetramer ? s.custom.get(OXDNA_3P)!.data : null;
+    const tagType = this.tetramer ? new Map<number, number>() : null;
+    if (tagType) for (let i = 0; i < s.n; i++) tagType.set(s.id[i], s.type[i]);
     if (!s.custom.has('#id5p') || !s.quat || !s.torque) throw new StyleError('bond_style oxdna/fene requires atom_style hybrid bond ellipsoid oxdna');
     const ntotal = s.n;
     // local reference frames of all atoms (fix OXDNA/LRF, compute_lrf); index by atom index
@@ -139,7 +149,9 @@ export class BondOxdnaFene extends Bonded {
       dbb[2] = x[3 * a + 2] + ra[2] - image[2] - rb[2];
       const rsqBkbk = dbb[0] * dbb[0] + dbb[1] * dbb[1] + dbb[2] * dbb[2];
       const rBkbk = Math.sqrt(rsqBkbk);
-      const p = this.par[type]!;
+      let a3p = 0, b5p = 0;
+      if (tagType && id3p) { a3p = tagType.get(id3p[a]) ?? 0; b5p = tagType.get(id5p[b]) ?? 0; }
+      const p = this.params(type, a3p, s.type[a], s.type[b], b5p);
       const delta = p.delta, r0 = p.r0, kk = p.k;
       let rr0 = rBkbk - r0;
       const rr0sq = rr0 * rr0;

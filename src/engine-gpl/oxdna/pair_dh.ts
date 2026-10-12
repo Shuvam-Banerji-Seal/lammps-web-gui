@@ -15,7 +15,7 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, OXDNA_QEFF, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
-import { type OxdnaConstants, backboneOxdna2, backboneOxrna2Dh, lrfOf, oxdnaConstants } from './common';
+import { type OxdnaConstants, backboneOxdna2, backboneOxrna2Dh, lrfOf, oxdnaConstants, potentialLines } from './common';
 
 /** utils::logical of LAMMPS for the half_charged_ends keyword. */
 const logical = (w: string): boolean => {
@@ -65,10 +65,9 @@ export class PairOxdna2Dh extends Pair {
     if (/^[a-zA-Z0-9_]*\.cgdna$/.test(args[4])) {
       const text = ctx?.readFile(args[4]) ?? '';
       let found: number | null = null;
-      for (const line of text.split(/\r?\n/)) {
-        const w = line.replace(/#.*$/, '').trim().split(/\s+/).filter((x) => x.length);
+      for (const w of potentialLines(text, [args[0], args[1]], 'dh')) {
         if (w.length < 4) continue;
-        if (w[0] === args[0] && w[1] === args[1] && w[2] === 'dh') { found = parseNum(w[3], 'qeff'); break; }
+        if (w[2] === 'dh') { found = parseNum(w[3], 'qeff'); break; }
       }
       if (found === null) throw new StyleError(`No corresponding dh potential found in file ${args[4]} for pair type ${args[0]} ${args[1]}`);
       qeffOne = found;

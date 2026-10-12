@@ -15,7 +15,7 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
-import { DF1, DF4, F1, F4, baseSite, lrfOf, oxdnaConstants } from './common';
+import { DF1, DF4, F1, F4, baseSiteOxdna1, lrfOf, oxdnaConstants, type OxdnaConstants, potentialLines } from './common';
 
 /** pair_oxdna_hbond.cpp constructor: alpha_hb[i][j] (sequence dependence of the hydrogen bonds, oxDNA). */
 const ALPHA_HB_OXDNA: number[][] = [
@@ -39,10 +39,12 @@ export class PairOxdnaHbond extends Pair {
   virialFdotr = true;
   /** alpha_hb[i][j] of the model (the oxRNA2 subclass sets its own table) */
   protected alpha: number[][] = ALPHA_HB_OXDNA;
-  private nt = 0;
-  private seqdep = false;
-  private t!: Record<string, Tab>;
-  private set!: Uint8Array;
+  /** base site rule of the nucleotide model (the oxDNA3 subclass takes the base type into account) */
+  protected baseSiteOf: (c: OxdnaConstants, type: number, e1: ArrayLike<number>, out: number[]) => void = baseSiteOxdna1;
+  protected nt = 0;
+  protected seqdep = false;
+  protected t!: Record<string, Tab>;
+  protected set!: Uint8Array;
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError('Illegal pair_style command');
@@ -77,10 +79,9 @@ export class PairOxdnaHbond extends Pair {
     } else {
       const text = ctx?.readFile(args[3]) ?? '';
       let found: number[] | null = null;
-      for (const line of text.split(/\r?\n/)) {
-        const w = line.replace(/#.*$/, '').trim().split(/\s+/).filter((x) => x.length);
+      for (const w of potentialLines(text, [args[0], args[1]], 'hbond')) {
         if (w.length < 3) continue;
-        if (w[0] === args[0] && w[1] === args[1] && w[2] === 'hbond') {
+        if (w[2] === 'hbond') {
           if (w.length < 27) throw new StyleError(`Problem parsing oxDNA potential file: hbond needs 24 values in ${args[3]}`);
           found = w.slice(3, 27).map((x, k) => parseNum(x, HB_NAMES[k]));
           break;
@@ -167,7 +168,6 @@ export class PairOxdnaHbond extends Pair {
     const nt = this.nt;
     const T = this.t;
     const constants = oxdnaConstants(s.units.style);
-    const dxCbs = constants.dx_cbs_oxdna1;
     const special = pc.specialLJ;
     const tq = new Float64Array(3 * nall);
     const eatom = pc.eatom, vatom = pc.vatom;
@@ -180,12 +180,12 @@ export class PairOxdnaHbond extends Pair {
     const rbs = new Float64Array(3 * nall);
     const tmp = [0, 0, 0];
     for (let k = 0; k < nall; k++) {
-      baseSite(dxCbs, L.subarray(9 * k, 9 * k + 3), tmp);
+      this.baseSiteOf(constants, type[k], L.subarray(9 * k, 9 * k + 3), tmp);
       rbs[3 * k] = tmp[0]; rbs[3 * k + 1] = tmp[1]; rbs[3 * k + 2] = tmp[2];
     }
-    // pair_oxdna_hbond.cpp init_style(): unique base pairing (the idc vector) needs a fix named Basepairs; the
-    // browser engine has no such fix, so a user idc vector is refused rather than applied or ignored.
-    if (s.custom.has('idc')) throw new StyleError('pair_style oxdna/hbond: unique base pairing (custom idc with fix Basepairs) is not supported by the browser engine');
+    // unique base pairing (pair_oxdna_hbond.cpp compute, the idc vector of fix Basepairs, i_idc): a pair is skipped
+    // unless one atom's complement ID is the other atom's tag, or one of the two IDs is not positive
+    const idc = s.custom.get('idc')?.data ?? null;
     let evdwl = 0;
     const delr = [0, 0, 0], drn = [0, 0, 0], delf = [0, 0, 0], delta = [0, 0, 0], deltb = [0, 0, 0], dir = [0, 0, 0];
     const ax = [0, 0, 0], ay = [0, 0, 0], az = [0, 0, 0], bx = [0, 0, 0], by = [0, 0, 0], bz = [0, 0, 0];
@@ -206,6 +206,10 @@ export class PairOxdnaHbond extends Pair {
         const factorLJ = special[jj >>> SBBITS];
         const b = jj & NEIGHMASK;
         const btype = type[b];
+        if (idc) {
+          const ida = idc[a], idb = idc[owner[b]];
+          if (ida !== s.id[owner[b]] && idb !== s.id[a] && ida > 0 && idb > 0) continue;
+        }
         for (let c = 0; c < 3; c++) {
           bx[c] = L[9 * b + c]; by[c] = L[9 * b + 3 + c]; bz[c] = L[9 * b + 6 + c];
         }

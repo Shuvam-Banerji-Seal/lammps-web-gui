@@ -16,7 +16,7 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
-import { DF2, DF4, DF6, F2, F4, F6, lrfOf, oxdnaConstants, stackingSite } from './common';
+import { DF2, DF4, DF6, F2, F4, F6, lrfOf, oxdnaConstants, stackingSiteOxdna1, type StackRule, potentialLines } from './common';
 
 const CX2_NAMES = ['k_cxst', 'cut_cxst_0', 'cut_cxst_c', 'cut_cxst_lo', 'cut_cxst_hi',
   'a_cxst1', 'theta_cxst1_0', 'dtheta_cxst1_ast', 'a_cxst4', 'theta_cxst4_0', 'dtheta_cxst4_ast',
@@ -29,6 +29,10 @@ type Tab = Float64Array;
 export class PairOxdna2Coaxstk extends Pair {
   readonly name: string = 'oxdna2/coaxstk';
   virialFdotr = true;
+  /** stacking site rule of the nucleotide model (the oxDNA3 subclass has its own offset) */
+  protected stackSite: StackRule = stackingSiteOxdna1;
+  /** eta_cxst[i][j] of the C++ (1 for oxDNA2; the oxDNA3 subclass sets its sequence table): k_cxst[i][j] = k eta[i%4][j%4] */
+  protected etaCxst: number[][] = [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]];
   private nt = 0;
   private t!: Record<string, Tab>;
   private set!: Uint8Array;
@@ -64,10 +68,9 @@ export class PairOxdna2Coaxstk extends Pair {
     } else {
       const text = ctx?.readFile(args[2]) ?? '';
       let found: number[] | null = null;
-      for (const line of text.split(/\r?\n/)) {
-        const w = line.replace(/#.*$/, '').trim().split(/\s+/).filter((x) => x.length);
+      for (const w of potentialLines(text, [args[0], args[1]], 'coaxstk')) {
         if (w.length < 3) continue;
-        if (w[0] === args[0] && w[1] === args[1] && w[2] === 'coaxstk') {
+        if (w[2] === 'coaxstk') {
           if (w.length < 22) throw new StyleError(`Problem parsing oxdna potential file: coaxstk needs 19 values in ${args[2]}`);
           found = w.slice(3, 22).map((x, k) => parseNum(x, CX2_NAMES[k]));
           break;
@@ -91,11 +94,16 @@ export class PairOxdna2Coaxstk extends Pair {
     const b6 = bang(a6, dth6), c6 = cang(a6, dth6);
     const T = this.t;
     const nt = this.nt;
+    // k_cxst[i][j] = k eta_cxst[imod4-1][jmod4-1] for every ordered pair of the range (pair_oxdna2_coaxstk.cpp coeff)
+    const mod4 = (t: number) => (t % 4 === 0 ? 4 : t % 4);
+    for (let i = ilo; i <= ihi; i++) {
+      for (let j = jlo; j <= jhi; j++) T.k[i * nt + j] = k * this.etaCxst[mod4(i) - 1][mod4(j) - 1];
+    }
     for (let i = ilo; i <= ihi; i++) {
       for (let j = Math.max(jlo, i); j <= jhi; j++) {
         const q = i * nt + j;
         const set = (key: string, val: number) => { T[key][q] = val; };
-        set('k', k); set('cut0', cut0); set('cutc', cutC); set('cutlo', cutLo); set('cuthi', cutHi);
+        set('cut0', cut0); set('cutc', cutC); set('cutlo', cutLo); set('cuthi', cutHi);
         set('cutlc', cLc); set('cuthc', cHc); set('blo', bLo); set('bhi', bHi);
         set('a1', a1); set('th1', th1); set('dth1ast', dth1); set('b1', b1); set('dth1c', c1);
         set('a4', a4); set('th4', th4); set('dth4ast', dth4); set('b4', b4); set('dth4c', c4);
@@ -112,7 +120,8 @@ export class PairOxdna2Coaxstk extends Pair {
     const nt = this.nt;
     if (!this.set[i * nt + j]) throw new StyleError('Coefficient mixing not defined in oxDNA');
     const q = i * nt + j, r = j * nt + i;
-    for (const key of Object.keys(this.t)) this.t[key][r] = this.t[key][q];
+    // k_cxst is not symmetric in the C++ (eta_cxst is not): it is set for every ordered pair in coeff()
+    for (const key of Object.keys(this.t)) if (key !== 'k') this.t[key][r] = this.t[key][q];
     return this.t.cuthc[q];
   }
 
@@ -127,7 +136,6 @@ export class PairOxdna2Coaxstk extends Pair {
     const nt = this.nt;
     const T = this.t;
     const constants = oxdnaConstants(s.units.style);
-    const dxCstk = constants.dx_cstk_oxdna1;
     const special = pc.specialLJ;
     const tq = new Float64Array(3 * nall);
     const L = new Float64Array(9 * nall);
@@ -138,7 +146,7 @@ export class PairOxdna2Coaxstk extends Pair {
     const rst = new Float64Array(3 * nall);
     const tmp = [0, 0, 0];
     for (let k = 0; k < nall; k++) {
-      stackingSite(dxCstk, L.subarray(9 * k, 9 * k + 3), tmp);
+      this.stackSite(constants, L.subarray(9 * k, 9 * k + 3), L.subarray(9 * k + 3, 9 * k + 6), L.subarray(9 * k + 6, 9 * k + 9), tmp);
       rst[3 * k] = tmp[0]; rst[3 * k + 1] = tmp[1]; rst[3 * k + 2] = tmp[2];
     }
     const interior = (o: number) => id3p.data[o] !== 0 && id5p.data[o] !== 0;

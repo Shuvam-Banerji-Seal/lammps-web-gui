@@ -24,12 +24,19 @@ import { PairOxdna2Coaxstk } from '../oxdna/pair_oxdna2_coaxstk';
 import { PairOxrna2Stk } from '../oxdna/pair_oxrna2_stk';
 import { PairOxrna2Hbond } from '../oxdna/pair_hbond';
 import { PairOxrna2Xstk } from '../oxdna/pair_xstk';
+import { BondOxdna3Fene } from '../oxdna/bond_oxdna3_fene';
+import { PairOxdna3Excv } from '../oxdna/pair_oxdna3_excv';
+import { PairOxdna3Stk } from '../oxdna/pair_oxdna3_stk';
+import { PairOxdna3Hbond } from '../oxdna/pair_oxdna3_hbond';
+import { PairOxdna3Xstk } from '../oxdna/pair_oxdna3_xstk';
+import { PairOxdna3Coaxstk } from '../oxdna/pair_oxdna3_coaxstk';
 
 /** bond_style names. */
 export const BONDS: Record<string, () => Bonded> = {
   'oxdna/fene': () => new BondOxdnaFene(),
   'oxdna2/fene': () => new BondOxdna2Fene(),
   'oxrna2/fene': () => new BondOxrna2Fene(),
+  'oxdna3/fene': () => new BondOxdna3Fene(),
 };
 
 /** pair_style names. */
@@ -41,6 +48,13 @@ export const PAIRS: Record<string, () => Pair> = {
   'oxdna2/coaxstk': () => new PairOxdna2Coaxstk(),
   'oxrna2/hbond': () => new PairOxrna2Hbond(),
   'oxrna2/stk': () => new PairOxrna2Stk(),
+  // oxDNA3 (pair_oxdna3_*.cpp; oxdna3/dh is the oxDNA2 Debye-Huckel class, PairOxdna2Dh, in pair_oxdna2_dh.cpp)
+  'oxdna3/excv': () => new PairOxdna3Excv(),
+  'oxdna3/stk': () => new PairOxdna3Stk(),
+  'oxdna3/hbond': () => new PairOxdna3Hbond(),
+  'oxdna3/xstk': () => new PairOxdna3Xstk(),
+  'oxdna3/coaxstk': () => new PairOxdna3Coaxstk(),
+  'oxdna3/dh': () => new PairOxdna2Dh(),
   'oxrna2/xstk': () => new PairOxrna2Xstk(),
   'oxrna2/dh': () => new PairOxrna2Dh(),
   // the oxDNA2 stacking, hydrogen-bond and cross-stacking styles and the oxRNA2 coaxial style are the oxDNA1 classes (pair_oxdna_stk.h etc. register them so)

@@ -30,7 +30,7 @@ export class BondOxrna2Fene extends BondOxdnaFene {
 
 /** pair_style oxdna2/excv (PairOxdna2Excv). */
 export class PairOxdna2Excv extends PairOxdnaExcv {
-  override readonly name = 'oxdna2/excv';
+  override readonly name: string = 'oxdna2/excv';
   protected override backbone(c: OxdnaConstants, e1: ArrayLike<number>, e2: ArrayLike<number>, e3: ArrayLike<number>, out: number[]): void {
     backboneOxdna2(c, e1, e2, e3, out);
   }

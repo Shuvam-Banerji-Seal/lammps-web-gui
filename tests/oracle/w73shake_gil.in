@@ -1,0 +1,19 @@
+# oracle: graph-il ionic liquid (BMI/PF6 electrolyte, 3776 atoms, slab, lj/cut/coul/long) with fix shake 1e-4 on the BMI bonds and angle, run 0: step-0 thermo and per-atom forces
+# oracle-inputs: w73shake_gil.data
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units real
+atom_style full
+boundary p p f
+pair_style lj/cut/coul/long 16
+bond_style harmonic
+angle_style harmonic
+kspace_style pppm 1e-7
+read_data w73shake_gil.data
+kspace_modify slab 3.0 gewald 0.20904498 mesh 32 32 200 order 5
+group bmi type 1 2 3
+group electrolyte type 1 2 3 4
+fix nve electrolyte nve
+fix shake bmi shake 1e-4 20 0 b 1 2 a 1
+thermo_style custom step temp pe ebond eangle ecoul elong evdwl press
+thermo_modify format float %.15g
+run 0

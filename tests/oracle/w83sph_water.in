@@ -1,0 +1,45 @@
+# oracle: w83sph_water, cut-down of examples/PACKAGES/sph/water_collapse/water_collapse.lmp (490 atoms of data.initial, 300 steps). Measured max relative error vs native LAMMPS (black box): 3.4e-14 thermo, 2.3e-12 per atom.
+# oracle-inputs: w83sph_water.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+processors         * 1 1
+atom_style         sph
+dimension          2
+newton             on
+boundary           f f p
+units              lj
+read_data          w83sph_water.data
+
+variable           h equal 0.03
+variable           c equal 10.0
+variable           dt equal 0.1*${h}/${c}
+
+group              bc    type 2
+group              water type 1
+
+pair_style         hybrid/overlay sph/rhosum 1 sph/taitwater
+pair_coeff         * * sph/taitwater 1000.0 ${c} 1.0 ${h}
+pair_coeff         1 1 sph/rhosum ${h}
+
+fix                gfix water gravity -9.81 vector 0 1 0
+fix                2d_fix all enforce2d
+
+compute            rho_peratom all sph/rho/atom
+compute            e_peratom all sph/e/atom
+compute            esph all reduce sum c_e_peratom
+compute            ke all ke
+variable           etot equal c_esph+c_ke+f_gfix
+
+fix                dtfix all dt/reset 1 NULL ${dt} 0.0005 units box
+
+fix                integrate_water_fix water sph
+fix                integrate_bc_fix bc sph/stationary
+
+thermo             20
+thermo_style       custom step ke c_esph v_etot f_gfix press time f_dtfix
+thermo_modify      norm no format float %.15g
+
+neigh_modify       every 5 delay 0 check no
+variable           skin equal 0.3*${h}
+neighbor           ${skin} bin
+
+run                300

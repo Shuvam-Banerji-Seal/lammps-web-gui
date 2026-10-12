@@ -4,7 +4,7 @@ import { StyleError, typeBounds } from '../force/types';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle } from '../atoms';
+import { isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle } from '../atoms';
 import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
 import { parseStl } from '../stl';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
@@ -69,7 +69,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric'];
+const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -1489,6 +1489,19 @@ const set: Handler = ({ sys }, a) => {
           eps[i] = e;
           qsc[i] = s.q[i] / e;
         }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
+      // set.html: "Keywords sph/cv, sph/e, and sph/rho set the heat capacity, energy, and density of smoothed particle
+      // hydrodynamics (SPH) particles."; measured with native LAMMPS (black box):
+      // a negative density is accepted, and the keyword on atom_style atomic stops with Cannot set attribute sph/e for
+      // atom style atomic
+      case 'sph/cv': case 'sph/e': case 'sph/rho': {
+        if (!isSphStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute ${key} for atom style ${s.atomStyle}`);
+        const arr = s.custom.get(key === 'sph/cv' ? SPH_CV : key === 'sph/e' ? SPH_ESPH : SPH_RHO)!.data;
+        const v = value(a[k + 1], key);
+        for (const i of atoms) arr[i] = v(i);
         changed = atoms.length;
         k += 2;
         break;

@@ -179,6 +179,9 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
     m.set(SUPER_BLOCK, { int: false, cols: 2, data: new Float64Array(0) });
     m.set(SUPER_INERTIA, { int: false, cols: 3, data: new Float64Array(0) });
   }
+  if (isSphStyle(st)) {
+    for (const name of Object.keys(SPH_DEFAULTS)) m.set(name, { int: false, cols: SPH_WIDTH[name] ?? 0, data: new Float64Array(0) });
+  }
   return m;
 };
 
@@ -236,6 +239,30 @@ export const DIEL_QSCALED = '#qscaled';
 export const DIELECTRIC_DEFAULTS: Record<string, number> = { [DIEL_AREA]: 1, [DIEL_ED]: 0, [DIEL_EM]: 1, [DIEL_EPSILON]: 1, [DIEL_CURVATURE]: 0, [DIEL_QSCALED]: 0 };
 /** Styles with the dielectric properties (atom_style.html: "atom_style dielectric"). */
 export const isDielectricStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('dielectric');
+
+/**
+ * atom_style sph (atom_style.html: "The sph style is for smoothed particle hydrodynamics (SPH) particles which store a
+ * density (rho), energy (esph), and heat capacity (cv)."). The velocity estimate vest (3 per atom, the velocity the SPH
+ * pair styles use) and the rates of change drho and desph are internal per-atom props as well. Defaults of an atom
+ * created by create_atoms (measured with native LAMMPS, black box: write_data after create_atoms): rho 0, esph 0, cv 1.
+ */
+export const SPH_RHO = '#rho';
+export const SPH_DRHO = '#drho';
+export const SPH_ESPH = '#esph';
+export const SPH_DESPH = '#desph';
+export const SPH_CV = '#cv';
+export const SPH_VEST = '#vest';
+export const SPH_DEFAULTS: Record<string, number> = { [SPH_RHO]: 0, [SPH_DRHO]: 0, [SPH_ESPH]: 0, [SPH_DESPH]: 0, [SPH_CV]: 1, [SPH_VEST]: 0 };
+/** Values per atom of the sph props (vest is a 3-vector). */
+export const SPH_WIDTH: Record<string, number> = { [SPH_VEST]: 3 };
+/** Styles with SPH particles (the sph sub-style of atom_style). */
+export const isSphStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('sph');
+/** The sph props of a state, or a StyleError naming the command's style when the atom style has none. */
+export const sphProp = (s: SimState, name: string, what: string): Float64Array => {
+  const c = s.custom.get(name);
+  if (!c || !isSphStyle(s.atomStyle)) throw new StyleError(`${what} requires atom style sph`);
+  return c.data;
+};
 
 /** atom_style oxdna: the 5' and 3' partner atom IDs of each atom, internal per-atom props (0 = none). */
 export const OXDNA_5P = '#id5p';
@@ -475,6 +502,7 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     else if (name in ELECTRON_DEFAULTS) c.data.fill(ELECTRON_DEFAULTS[name], w * n0, w * n);
     else if (name in DIELECTRIC_DEFAULTS) c.data.fill(DIELECTRIC_DEFAULTS[name], w * n0, w * n);
     else if (name in SUPER_DEFAULTS) c.data.fill(SUPER_DEFAULTS[name], w * n0, w * n);
+    else if (name in SPH_DEFAULTS) c.data.fill(SPH_DEFAULTS[name], w * n0, w * n);
   }
   // a created dielectric atom starts with q_scaled = q / epsilon (LAMMPS: the scaled charge of a point charge)
   if (isDielectricStyle(s.atomStyle) && !(a.custom?.has(DIEL_QSCALED))) {

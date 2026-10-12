@@ -485,7 +485,9 @@ export class System {
     for (let i = 0; i < s.n; i++) {
       let key = 0;
       for (let d = 2; d >= 0; d--) {
-        let c = Math.floor((s.x[3 * i + d] - lo[d]) * nb[d] / len[d]);
+        // bin = (x - lo) times the inverse bin width: the rounding decides the bin of atoms on a bin edge
+        // (measured with native write_data: the order of the w83sph_shock2d atoms matches only with this form)
+        let c = Math.floor((s.x[3 * i + d] - lo[d]) * (nb[d] / len[d]));
         if (c < 0) c = 0; else if (c >= nb[d]) c = nb[d] - 1;
         key = key * nb[d] + c;
       }

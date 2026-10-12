@@ -326,7 +326,8 @@ export class FixEfieldLepton extends Fix {
 
   postForce(): void {
     const s = this.sys.state;
-    const k = s.units.qe2f / s.units.ftm2v;
+    // F = -q grad V qe2f in LAMMPS force units (no ftm2v: the force is not a velocity change)
+    const k = s.units.qe2f;
     const kt = s.units.qe2f;
     const { f, q, mask } = s;
     const bit = this.groupBit;
@@ -363,7 +364,7 @@ export class FixEfieldLepton extends Fix {
       ep[0] = this.unwrapped[0] + ox; ep[1] = this.unwrapped[1] + oy; ep[2] = this.unwrapped[2] + oz;
       em[0] = this.unwrapped[0] - ox; em[1] = this.unwrapped[1] - oy; em[2] = this.unwrapped[2] - oz;
       ep.set(vals, nb); em.set(vals, nb);
-      const c = (len / (2 * h)) * kt / s.units.ftm2v;
+      const c = (len / (2 * h)) * kt;
       const gx2 = c * (-this.prog.deriv[0](ep) + this.prog.deriv[0](em));
       const gy2 = c * (-this.prog.deriv[1](ep) + this.prog.deriv[1](em));
       const gz2 = c * (-this.prog.deriv[2](ep) + this.prog.deriv[2](em));

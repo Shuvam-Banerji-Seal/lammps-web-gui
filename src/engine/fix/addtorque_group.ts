@@ -58,10 +58,13 @@ import { parseNumOrVar, valueOf, type NumOrVar } from './util';
 const symEigen3 = (a: number[]): { vals: number[]; vecs: number[][] } => {
   const m = [a.slice(0, 3), a.slice(3, 6), a.slice(6, 9)];
   const v = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  let scale2 = 0;
+  for (let k = 0; k < 9; k++) scale2 = Math.max(scale2, m[Math.floor(k / 3)][k % 3] * m[Math.floor(k / 3)][k % 3]);
   for (let sweep = 0; sweep < 50; sweep++) {
     let off = 0;
     for (let p = 0; p < 3; p++) for (let q = p + 1; q < 3; q++) off += m[p][q] * m[p][q];
-    if (off < 1e-30) break;
+    // relative to the matrix scale (an SI inertia tensor is ~1e-43, so an absolute threshold would stop at once)
+    if (off <= 1e-30 * scale2) break;
     for (let p = 0; p < 3; p++) {
       for (let q = p + 1; q < 3; q++) {
         if (Math.abs(m[p][q]) < 1e-300) continue;

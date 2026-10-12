@@ -8,10 +8,9 @@ import { parseNumOrVar, valueOf, type NumOrVar } from './util';
 /*
  * Wave-18 external / constraint fixes: addtorque, drag, oneway. Written from
  * the LAMMPS documentation (docs.lammps.org pages cited per class), never
- * from LAMMPS source. Forces are stored in internal units exactly like the
- * other force fixes (src/engine/fix/force_ext.ts): F_internal = F_lammps /
- * ftm2v is applied by the integrator, so a fix that wants a LAMMPS force F
- * adds F / ftm2v to state.f.
+ * from LAMMPS source. Forces are stored in LAMMPS force units exactly like the
+ * other force fixes (src/engine/fix/force_ext.ts): the integrator applies
+ * ftm2v, so a fix that wants a LAMMPS force F adds F to state.f.
  */
 
 /**
@@ -30,9 +29,12 @@ const solve3 = (I: Float64Array, b: Float64Array, out: Float64Array): void => {
   ];
   const used = [false, false, false];
   const row = [-1, -1, -1];
+  // the singularity test is relative to the tensor's scale: an inertia tensor in SI units is ~1e-43 kg m^2
+  let scale = 0;
+  for (let k = 0; k < 6; k++) scale = Math.max(scale, Math.abs(I[k]));
   for (let col = 0; col < 3; col++) {
     let best = -1;
-    let bestVal = 1e-12;
+    let bestVal = 1e-12 * scale;
     for (let r = 0; r < 3; r++) {
       if (!used[r] && Math.abs(a[r][col]) > bestVal) { bestVal = Math.abs(a[r][col]); best = r; }
     }
@@ -100,6 +102,13 @@ const solve3 = (I: Float64Array, b: Float64Array, out: Float64Array): void => {
  *   U = sum_i m_i |omega x r_i|^2 = -sum_i F_i . r_i
  *
  * (LAMMPS computes it as -sum_i F_i . r_i). Default: "none".
+ *
+ * Units: T is a LAMMPS torque, so alpha = I^-1 T is in force/(mass dist) and m alpha x r is a LAMMPS force
+ * as it is. omega is built from velocities, so omega and the Euler term omega x (I omega) are kinematic
+ * (1/time, dist/time^2): their LAMMPS force is that term divided by ftm2v (the integrators apply
+ * v += dt ftm2v F / m). Measured with native LAMMPS (black box), units metal and real, 4 atoms with unequal
+ * velocities: the force on each atom is the torque term alone to 1e-6 relative (the velocity terms are
+ * 1/ftm2v of their lj-unit size in those units; the oracle cases in lj, where ftm2v = 1, cover them).
  */
 export class FixAddTorque extends Fix {
   readonly style = 'addtorque';
@@ -171,10 +180,15 @@ export class FixAddTorque extends Fix {
       omega[2] * iwx - omega[0] * iwz,
       omega[0] * iwy - omega[1] * iwx,
     ]);
-    const alpha = new Float64Array(3);
-    solve3(I, new Float64Array([T[0] - gyro[0], T[1] - gyro[1], T[2] - gyro[2]]), alpha);
-    const invF = 1 / s.units.ftm2v; // LAMMPS force -> internal
-    const [ax, ay, az] = alpha;
+    // Euler equation I alpha = ftm2v T - omega x L in kinematic units; the torque part I^-1 T is in LAMMPS
+    // units (the ftm2v cancels against the 1/ftm2v of the force), the velocity-dependent part is kinematic.
+    const alphaT = new Float64Array(3);
+    solve3(I, T, alphaT);
+    const alphaW = new Float64Array(3);
+    solve3(I, new Float64Array([-gyro[0], -gyro[1], -gyro[2]]), alphaW);
+    const invF = 1 / s.units.ftm2v;
+    const [ax, ay, az] = alphaT;
+    const [qx, qy, qz] = alphaW;
     const [wx, wy, wz] = omega;
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & bit)) continue;
@@ -182,23 +196,27 @@ export class FixAddTorque extends Fix {
       const rx = x[3 * i] - cx, ry = x[3 * i + 1] - cy, rz = x[3 * i + 2] - cz;
       // "The vector is the total torque on the group of atoms before the forces on
       // individual atoms are changed by the fix." Existing internal forces -> LAMMPS.
-      this.vec[0] += (ry * f[3 * i + 2] - rz * f[3 * i + 1]) * s.units.ftm2v;
-      this.vec[1] += (rz * f[3 * i] - rx * f[3 * i + 2]) * s.units.ftm2v;
-      this.vec[2] += (rx * f[3 * i + 1] - ry * f[3 * i]) * s.units.ftm2v;
-      // alpha x r
-      let gx = ay * rz - az * ry;
-      let gy = az * rx - ax * rz;
-      let gz = ax * ry - ay * rx;
-      // omega x r, then omega x (omega x r)
+      this.vec[0] += ry * f[3 * i + 2] - rz * f[3 * i + 1];
+      this.vec[1] += rz * f[3 * i] - rx * f[3 * i + 2];
+      this.vec[2] += rx * f[3 * i + 1] - ry * f[3 * i];
+      // alpha_T x r: I^-1 T is in force/(mass dist), so m alpha_T x r is a LAMMPS force
+      const gx = ay * rz - az * ry;
+      const gy = az * rx - ax * rz;
+      const gz = ax * ry - ay * rx;
+      // velocity-dependent kinematic accelerations: alpha_W x r (the gyroscopic part) and omega x (omega x r);
+      // their LAMMPS force is m a / ftm2v (the integrators apply v += dt ftm2v F / m). Measured with native LAMMPS
+      // (black box), units metal, 4 atoms with unequal velocities: the force on atom 1 is the torque term alone
+      // to 1e-7 relative (the velocity terms are 1/ftm2v of their size there).
+      const hx = qy * rz - qz * ry;
+      const hy = qz * rx - qx * rz;
+      const hz = qx * ry - qy * rx;
       const bx = wy * rz - wz * ry;
       const by = wz * rx - wx * rz;
       const bz = wx * ry - wy * rx;
-      gx += wy * bz - wz * by;
-      gy += wz * bx - wx * bz;
-      gz += wx * by - wy * bx;
-      f[3 * i] += m * gx * invF;
-      f[3 * i + 1] += m * gy * invF;
-      f[3 * i + 2] += m * gz * invF;
+      const wcf = m * invF;
+      f[3 * i] += m * gx + wcf * (hx + wy * bz - wz * by);
+      f[3 * i + 1] += m * gy + wcf * (hy + wz * bx - wx * bz);
+      f[3 * i + 2] += m * gz + wcf * (hz + wx * by - wy * bx);
       // energies are in LAMMPS energy units (m v^2 -> energy is mvv2e)
       this.energyVal += m * (bx * bx + by * by + bz * bz) * s.units.mvv2e;
     }
@@ -268,19 +286,24 @@ export class FixDrag extends Fix {
     const { x, f, mask } = s;
     const bit = this.groupBit;
     const d2 = this.delta * this.delta;
-    const invF = 1 / s.units.ftm2v; // LAMMPS force -> internal
     this.vec.fill(0);
+    const g = this.sys.geom;
+    const d = [0, 0, 0];
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & bit)) continue;
-      const dx = this.target[0] === null ? 0 : this.target[0] - x[3 * i];
-      const dy = this.target[1] === null ? 0 : this.target[1] - x[3 * i + 1];
-      const dz = this.target[2] === null ? 0 : this.target[2] - x[3 * i + 2];
+      // the separation to the target uses the minimum image (measured with native LAMMPS, black box: an atom
+      // at x = 8 in a periodic box of length 10 dragged to x = 0 gets a force along +x, dx = 2)
+      d[0] = this.target[0] === null ? 0 : this.target[0] - x[3 * i];
+      d[1] = this.target[1] === null ? 0 : this.target[1] - x[3 * i + 1];
+      d[2] = this.target[2] === null ? 0 : this.target[2] - x[3 * i + 2];
+      g.minimumImage(d);
+      const [dx, dy, dz] = d;
       const r2 = dx * dx + dy * dy + dz * dz;
       if (r2 <= d2) continue;
       const c = this.fmag / Math.sqrt(r2);
-      if (this.target[0] !== null) { const F = c * dx; f[3 * i] += F * invF; this.vec[0] += F; }
-      if (this.target[1] !== null) { const F = c * dy; f[3 * i + 1] += F * invF; this.vec[1] += F; }
-      if (this.target[2] !== null) { const F = c * dz; f[3 * i + 2] += F * invF; this.vec[2] += F; }
+      if (this.target[0] !== null) { const F = c * dx; f[3 * i] += F; this.vec[0] += F; }
+      if (this.target[1] !== null) { const F = c * dy; f[3 * i + 1] += F; this.vec[1] += F; }
+      if (this.target[2] !== null) { const F = c * dz; f[3 * i + 2] += F; this.vec[2] += F; }
     }
   }
 

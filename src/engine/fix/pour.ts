@@ -188,14 +188,15 @@ export const gravityMagnitude = (sys: System, what: string): number => {
   const fx = sys.fixes.find((f) => f.style === 'gravity');
   const fb = fallAxis(sys);
   if (!fx) throw new StyleError(`fix ${what} requires a fix gravity in the -${'xyz'[fb]} direction`);
-  // accel() is magnitude * direction (the unit direction alone would give g = 1 for gravity 10 vector ...)
+  // accel() is magnitude * direction in force/mass units (the unit direction alone would give g = 1 for gravity 10 vector ...)
   const out = new Float64Array(3);
   (fx as unknown as { accel(o: Float64Array): void }).accel(out);
   const horiz = [0, 1, 2].filter((d) => d !== fb);
   if (horiz.some((d) => Math.abs(out[d]) > 1e-12) || !(out[fb] < 0)) {
     throw new StyleError(`fix ${what}: the gravity fix must point in the -${'xyz'[fb]} direction`);
   }
-  return -out[fb];
+  // the fall formulas below are velocity/time kinematics: the acceleration is ftm2v times the force/mass value
+  return -out[fb] * sys.state.units.ftm2v;
 };
 
 /**

@@ -7,8 +7,8 @@ import { parseNumOrVar, valueOf, type NumOrVar } from './util';
  * fix wall/reflect and fix indent — implemented only from the cited
  * docs.lammps.org pages (never from LAMMPS source code).
  *
- * The engine stores per-atom forces in internal units, F_internal =
- * F_lammps / ftm2v (see fix/force_ext.ts); energies are in LAMMPS energy
+ * The engine stores per-atom forces in LAMMPS force units (see fix/force_ext.ts,
+ * the integrators apply ftm2v); energies are in LAMMPS energy
  * units, positions and velocities in LAMMPS units. Global fix outputs
  * (f_ID) are reported in LAMMPS units.
  */
@@ -388,7 +388,6 @@ export class FixIndent extends Fix {
     const g = sys.geom;
     const bit = this.groupBit;
     const k = this.k;
-    const ftm2v = s.units.ftm2v;
     const { x, f, mask } = s;
     const fInd = this.fInd;
     fInd[0] = 0; fInd[1] = 0; fInd[2] = 0;
@@ -404,7 +403,7 @@ export class FixIndent extends Fix {
         if (depth <= 0) continue;
         const mag = k * depth * depth;
         energy += (k / 3) * depth * depth * depth;
-        f[3 * i + d] += (sign * mag) / ftm2v;
+        f[3 * i + d] += sign * mag;
         fInd[d] -= sign * mag;
       }
     } else if (gm.kind === 'sphere') {
@@ -427,9 +426,9 @@ export class FixIndent extends Fix {
         energy += (k / 3) * depth * depth * depth;
         if (r > 0) {
           const ux = delta[0] / r, uy = delta[1] / r, uz = delta[2] / r;
-          f[3 * i] += (sgn * mag * ux) / ftm2v;
-          f[3 * i + 1] += (sgn * mag * uy) / ftm2v;
-          f[3 * i + 2] += (sgn * mag * uz) / ftm2v;
+          f[3 * i] += sgn * mag * ux;
+          f[3 * i + 1] += sgn * mag * uy;
+          f[3 * i + 2] += sgn * mag * uz;
           fInd[0] -= sgn * mag * ux;
           fInd[1] -= sgn * mag * uy;
           fInd[2] -= sgn * mag * uz;
@@ -458,8 +457,8 @@ export class FixIndent extends Fix {
         energy += (k / 3) * depth * depth * depth;
         if (r > 0) {
           const ua = a / r, ub = b / r;
-          f[3 * i + dims[0]] += (sgn * mag * ua) / ftm2v;
-          f[3 * i + dims[1]] += (sgn * mag * ub) / ftm2v;
+          f[3 * i + dims[0]] += sgn * mag * ua;
+          f[3 * i + dims[1]] += sgn * mag * ub;
           fInd[dims[0]] -= sgn * mag * ua;
           fInd[dims[1]] -= sgn * mag * ub;
         }

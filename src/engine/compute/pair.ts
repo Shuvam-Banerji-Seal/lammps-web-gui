@@ -43,6 +43,9 @@ const VECTOR_LENGTH: Record<string, number> = {
   'kolmogorov/crespi/full': 2,
   'saip/metal': 2,
   'aip/water/2dm': 2,
+  // pair eff/cut: [KE, Pauli, ecoul, radius restraint] (the pair's own vector, extract('pvector')). Measured with native
+  // LAMMPS (black box): compute pair eff/cut has 4 values; c_ID[5] is out of range.
+  'eff/cut': 4,
 };
 const ENGINE_VECTOR = new Set(['hbond/dreiding/lj', 'hbond/dreiding/morse', 'hbond/dreiding/lj/angleoffset', 'hbond/dreiding/morse/angleoffset']);
 const EVALUES = ['epair', 'evdwl', 'ecoul'];

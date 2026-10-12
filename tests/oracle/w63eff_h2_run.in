@@ -1,0 +1,25 @@
+# oracle: eFF H2 (128 electrons and nuclei): eff/cut with pressure/evirials, pressure and per-atom stress, nve/eff for 10 steps from rest
+# oracle-inputs: w63eff_h2.data
+# oracle-files: w63eff_h2_er.dump
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           electron
+newton          on
+boundary        p p p
+atom_style      electron
+read_data       w63eff_h2.data
+pair_style      eff/cut 6.447968 pressure/evirials
+pair_coeff      * *
+comm_modify     vel yes
+compute         effTemp all temp/eff
+compute         effPress all pressure effTemp
+compute         peratom all stress/atom NULL
+compute         p all reduce sum c_peratom[1] c_peratom[2] c_peratom[3]
+compute         er all property/atom spin eradius ervel erforce
+variable        press equal -(c_p[1]+c_p[2]+c_p[3])/(3*vol)
+thermo          2
+thermo_style    custom step etotal pe ke temp press v_press
+thermo_modify   temp effTemp press effPress
+thermo_modify   format float %.15g
+fix             1 all nve/eff
+run             10
+write_dump      all custom w63eff_h2_er.dump id c_er[1] c_er[2] c_er[3] c_er[4] modify format float %.15g

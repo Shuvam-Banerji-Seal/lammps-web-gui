@@ -1,0 +1,25 @@
+# oracle: eFF H atom single point (units electron): eff/cut energy terms, temp/eff, the electron radius, its velocity and radial force
+# oracle-inputs: w63eff_h_atom.data
+# oracle-files: w63eff_h_er.dump
+# oracle-compare: thermo=all atoms=all
+units           electron
+newton          on
+boundary        p p p
+atom_style      electron
+read_data       w63eff_h_atom.data
+pair_style      eff/cut 1.0
+pair_coeff      * *
+comm_modify     vel yes
+compute         energies all pair eff/cut
+variable        eke equal c_energies[1]
+variable        epauli equal c_energies[2]
+variable        estatics equal c_energies[3]
+variable        errestrain equal c_energies[4]
+compute         effTemp all temp/eff
+compute         er all property/atom spin eradius ervel erforce
+thermo          1
+thermo_style    custom step etotal pe ke v_eke v_epauli v_estatics v_errestrain temp
+thermo_modify   temp effTemp
+thermo_modify   format float %.15g
+run             0
+write_dump      all custom w63eff_h_er.dump id c_er[1] c_er[2] c_er[3] c_er[4] modify format float %.15g

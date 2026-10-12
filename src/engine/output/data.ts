@@ -1,10 +1,11 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
-import { appendAtoms, setOxdnaPartners, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { appendAtoms, setOxdnaPartners, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, TRI_BONUS_COLS, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_SPIN, isElectronStyle } from '../atoms';
 import { lineFromEnds, lineEnds, triangleCorner, triangleAreaOfBody, type LineBonus } from '../lineTri';
 import { triBodyHook } from '../styles';
 import type { TriBody } from '../triBonus';
+
 import { expandTemplateTopology } from '../template';
 import { BODY_RECORD, bodyRecordOffset, bodyRecordStride, parseBodyStyle, principalFrame } from '../bodies';
 import { makeBox } from '../domain';
@@ -69,6 +70,8 @@ const BASE_COLS: Record<string, string[]> = {
   line: ['id', 'mol', 'type', 'lineflag', 'density', 'x', 'y', 'z'],
   // read_data.html, the Atoms-section table, row tri: "atom-ID molecule-ID atom-type triangleflag density x y z"
   tri: ['id', 'mol', 'type', 'triangleflag', 'density', 'x', 'y', 'z'],
+  // read_data.html, the Atoms-section table, row electron: "atom-ID atom-type q espin eradius x y z"
+  electron: ['id', 'type', 'q', 'espin', 'eradius', 'x', 'y', 'z'],
 };
 
 /**
@@ -536,6 +539,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         // atom_style line: lineflag; atom_style tri: triangleflag (read_data.html: 1 for line segment or triangular particles, 0 for point particles)
         const lflag = isLineStyle(style) || isTriStyle(style) ? new Uint8Array(count) : null;
         const tIdx = new Int32Array(count), tAt = new Int32Array(count);
+        const espin = new Float64Array(count), eradius = new Float64Array(count);
         const bflag = parseBodyStyle(style) ? new Uint8Array(count) : null;
         body.forEach(({ w, at }, a) => {
           if (w.length !== cols.length && w.length !== cols.length + 3) {
@@ -587,6 +591,10 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
               case 'spy': spin![4 * a + 1] = numOf(v, 'spy', at); break;
               case 'spz': spin![4 * a + 2] = numOf(v, 'spz', at); break;
               case 'sp': spin![4 * a + 3] = numOf(v, 'sp', at); break;
+              // read_data.html: "espin = electron spin (+1/-1), 0 = nuclei, 2 = fixed-core, 3 = pseudo-cores (i.e. ECP)"
+              case 'espin': espin[a] = intOf(v, 'espin', at); break;
+              // read_data.html: "eradius = electron radius (or fixed-core radius)"
+              case 'eradius': eradius[a] = numOf(v, 'eradius', at); break;
             }
           }
           if (mu) mu[4 * a + 3] = Math.hypot(mu[4 * a], mu[4 * a + 1], mu[4 * a + 2]);
@@ -629,7 +637,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
           }
         }
         const firstNew = s.n;
-        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined, sp: spin ?? undefined, vfrac: s.vfrac ? vol : undefined, tmplIndex: tmplId !== null ? tIdx : undefined, tmplAtom: tmplId !== null ? tAt : undefined });
+        const electronCustom = isElectronStyle(s.atomStyle) ? new Map([[ELECTRON_SPIN, espin], [ELECTRON_RADIUS, eradius]]) : undefined;
+        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined, sp: spin ?? undefined, vfrac: s.vfrac ? vol : undefined, tmplIndex: tmplId !== null ? tIdx : undefined, tmplAtom: tmplId !== null ? tAt : undefined, custom: electronCustom });
         // periodic remap of the new atoms
         for (let i = n0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);
         if (tmplId !== null) expandTemplateTopology(s, sys.molecules.get(tmplId) ?? [], tmplId, firstNew, s.n);
@@ -704,16 +713,22 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         }
         break;
       }
-      case 'Velocities':
-        // read_data.html: "sphere | atom-ID vx vy vz wx wy wz"; "ellipsoid | atom-ID vx vy vz lx ly lz"; tri has both
-        // (atom_vec_tri.cpp fields_data_vel: id v omega angmom)
-        if (s.omega && s.angmom && !isTriStyle(style)) throw new StyleError('data file Velocities: hybrid styles with both sphere and ellipsoid sub-styles are not supported by the browser engine');
+      case 'Velocities': {
+        // read_data.html: "sphere | atom-ID vx vy vz wx wy wz"; "ellipsoid | atom-ID vx vy vz lx ly lz"; the tri style
+        // has both (atom-ID vx vy vz wx wy wz lx ly lz); "electron | atom-ID vx vy vz ervel" ("ervel = electron radial
+        // velocity (0 for fixed-core)")
+        const tri = isTriStyle(style);
+        const electron = isElectronStyle(s.atomStyle);
+        if (s.omega && s.angmom && !tri) throw new StyleError('data file Velocities: hybrid styles with both sphere and ellipsoid sub-styles are not supported by the browser engine');
+        if (electron && (s.omega || s.angmom)) throw new StyleError('data file Velocities: atom_style electron with a sphere or ellipsoid sub-style is not supported by the browser engine');
+        const labels = electron ? ['vx', 'vy', 'vz', 'ervel'] : ['vx', 'vy', 'vz', 'wx', 'wy', 'wz', 'lx', 'ly', 'lz'];
         for (const { w, at } of body) {
-          const need = isTriStyle(style) ? 10 : s.omega || s.angmom ? 7 : 4;
-          if (w.length < need) throw new StyleError(`data file line ${at}: Velocities needs atom-ID vx vy vz${s.omega ? ' wx wy wz' : s.angmom ? ' lx ly lz' : ''}`);
-          vel.set(intOf(w[0], 'atom-ID', at) + (idBase || 0), w.slice(1, need).map((t, c) => numOf(t, ['vx', 'vy', 'vz', 'wx', 'wy', 'wz', 'lx', 'ly', 'lz'][c], at)));
+          const need = tri ? 10 : s.omega || s.angmom ? 7 : electron ? 5 : 4;
+          if (w.length < need) throw new StyleError(`data file line ${at}: Velocities needs atom-ID vx vy vz${tri ? ' wx wy wz lx ly lz' : s.omega ? ' wx wy wz' : s.angmom ? ' lx ly lz' : electron ? ' ervel' : ''}`);
+          vel.set(intOf(w[0], 'atom-ID', at) + (idBase || 0), w.slice(1, need).map((t, c) => numOf(t, labels[c], at)));
         }
         break;
+      }
       case 'Masses':
         // measured with native LAMMPS (atom_style sphere): "Cannot set mass for atom style sphere"
         // read_data.html: "This section cannot be used for atom styles that define a mass for individual atoms - e.g. atom_style sphere"
@@ -768,6 +783,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
           const l0 = isTriStyle(style) ? 6 : 3;
           for (let d = 0; d < 3; d++) s.angmom[3 * i + d] = v[l0 + d];
         }
+        const rvel = isElectronStyle(s.atomStyle) ? s.custom.get(ELECTRON_RVEL) : undefined;
+        if (rvel) rvel.data[i] = v[3];
       }
     }
   }
@@ -995,6 +1012,9 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
         case 'spy': return shortest(s.sp![4 * i + 1]);
         case 'spz': return shortest(s.sp![4 * i + 2]);
         case 'sp': return shortest(s.sp![4 * i + 3]);
+        // atom_style.html, electron: espin is an integer (native write_data), eradius a distance
+        case 'espin': return String(s.custom.get(ELECTRON_SPIN)!.data[i]);
+        case 'eradius': return shortest(s.custom.get(ELECTRON_RADIUS)!.data[i]);
         default: return shortest(xo[3 * i + 'xyz'.indexOf(c)]);
       }
     });
@@ -1003,12 +1023,15 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   out.push('', 'Velocities', '');
   const angRaw = s.omega ?? s.angmom;
   const ang = angRaw && gen ? mapVectors(angRaw, (w) => unrotateVector(gen.Q, w)) : angRaw;
-  // atom_vec_tri.cpp fields_data_vel: "id v omega angmom"; the tri style writes its angular momentum after the angular velocity
+  // the tri style writes its angular momentum after the angular velocity; electron writes ervel after v
+  // (read_data.html, Velocities of electron: "atom-ID vx vy vz ervel")
   const triL = isTriStyle(s.atomStyle) ? s.angmom : null;
+  const rvelOut = isElectronStyle(s.atomStyle) ? s.custom.get(ELECTRON_RVEL) : undefined;
   for (const i of order) {
     let w = ang ? ` ${shortest(ang[3 * i])} ${shortest(ang[3 * i + 1])} ${shortest(ang[3 * i + 2])}` : '';
     if (triL) w += ` ${shortest(triL[3 * i])} ${shortest(triL[3 * i + 1])} ${shortest(triL[3 * i + 2])}`;
-    out.push(`${s.id[i]} ${shortest(vo[3 * i])} ${shortest(vo[3 * i + 1])} ${shortest(vo[3 * i + 2])}${w}`);
+    const er = rvelOut ? ` ${shortest(rvelOut.data[i])}` : '';
+    out.push(`${s.id[i]} ${shortest(vo[3 * i])} ${shortest(vo[3 * i + 1])} ${shortest(vo[3 * i + 2])}${er}${w}`);
   }
   // measured with native write_data: an Ellipsoids section (diameters and quaternion) after Velocities
   if (s.shape && nEll > 0) {

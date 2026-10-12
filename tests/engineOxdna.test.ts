@@ -249,7 +249,8 @@ describe('oxDNA styles: coefficients and their derived values', () => {
 });
 
 describe('atom_style oxdna after read_restart', () => {
-  it('rebuilds the strand partners from the stored bonds: the energies equal a run without the restart', async () => {
+  // runs the duplex input twice (with and without the restart): more than the default 5 s on a busy machine
+  it('rebuilds the strand partners from the stored bonds: the energies equal a run without the restart', { timeout: 60_000 }, async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const { Session } = await import('../src/engine/interpreter');

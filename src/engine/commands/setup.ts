@@ -3,7 +3,7 @@ import { int, num, yesno, latticeScale, keywords } from './args';
 import { StyleError, typeBounds } from '../force/types';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle } from '../atoms';
+import { ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle } from '../atoms';
 import { parseStl } from '../stl';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import { generalAtomSites, generalBoxFromRestricted, generalCreateBox } from '../triclinic_general';
@@ -67,7 +67,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri'];
+const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -1402,6 +1402,35 @@ const set: Handler = ({ sys }, a) => {
           const x = v(i);
           if (!(x > 0)) throw new StyleError(`Invalid volume in set command`);
           s.vfrac[i] = x;
+        }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
+      // set.html: "Keyword *radius/electron* uses the specified value to set the radius of electrons or fixed cores."
+      // Measured with native LAMMPS (black box): the value becomes the electron radius; a negative one stops with
+      // Invalid electron radius -1 in set radius/electron command.
+      case 'radius/electron': {
+        const er = electronProp(s, ELECTRON_RADIUS, 'radius/electron');
+        const v = value(a[k + 1], key);
+        for (const i of atoms) {
+          const r = v(i);
+          if (r < 0.0) throw new StyleError(`Invalid electron radius ${r} in set radius/electron command`);
+          er[i] = r;
+        }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
+      // set.html: "Keyword *spin/electron* sets the spin of an electron (+/- 1) or indicates nuclei (=0), fixed-cores (=2), or pseudo-cores (= 3)."
+      // Measured with native LAMMPS (black box): spin 4 or -2 stops with Invalid electron spin 4 in set command.
+      case 'spin/electron': {
+        const es = electronProp(s, ELECTRON_SPIN, 'spin/electron');
+        const v = value(a[k + 1], key);
+        for (const i of atoms) {
+          const sp = v(i);
+          if (sp < -1 || sp > 3) throw new StyleError(`Invalid electron spin ${sp} in set command`);
+          es[i] = sp;
         }
         changed = atoms.length;
         k += 2;

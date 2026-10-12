@@ -1,6 +1,7 @@
 import type { Handler } from './args';
 import { int, num, yesno, latticeScale, keywords } from './args';
 import { StyleError, typeBounds } from '../force/types';
+import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
 import { ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle } from '../atoms';
@@ -2469,33 +2470,94 @@ const createBonds: Handler = ({ sys }, a) => {
   sys.atomsChanged();
 };
 
-/** delete_bonds group style ... (a subset: multi / bond|angle|... type with remove). */
+/**
+ * delete_bonds group-ID style arg keyword ... — docs.lammps.org/delete_bonds.html:
+ *   "style = multi or atom or bond or angle or dihedral or improper or stats"
+ *   "atom arg = an atom type or range of types (see below)" (bond, angle, dihedral and improper alike)
+ *   "keyword = any or undo or remove or special"
+ *   "The default behavior of the delete_bonds command is to turn off interactions by toggling their type to a
+ *   negative value, but not to permanently remove the interaction."
+ *   "Style atom is the same as style multi except that in addition, one or more of the atoms involved in the
+ *   bond, angle, dihedral, or improper interaction must also be of the specified atom type."
+ *   "The remove keyword is invoked at the end of the delete_bonds operation.  It causes turned-off bonds (angles,
+ *   etc.) to be removed from each atom's data structure"; "Removal does not alter the pairwise 1–2, 1–3, or 1–4
+ *   weighting list."; "The weighting list computation treats turned-off bonds the same as turned-on."
+ * Measured with native LAMMPS (black box), 4 atoms, 3 bonds, 2 angles: any turns off an interaction with at least
+ * one atom in the group; undo turns matching negative types back on; style atom and multi need every atom in the
+ * group; a type range 1*2 works and a bare * stops with Invalid range string: *; remove drops every turned-off
+ * interaction of every kind (a bond turned off before goes with a later delete_bonds g angle 1 remove); stats
+ * changes nothing.
+ */
 const deleteBonds: Handler = ({ sys }, a) => {
   const s = sys.state;
   const bit = sys.groupBit(a[0] ?? '');
   const style = a[1];
-  const remove = a.includes('remove');
-  if (!remove) throw new StyleError("delete_bonds without 'remove' turns interactions off by negating types; only 'remove' is supported");
+  const kinds = ['bond', 'angle', 'dihedral', 'improper'] as const;
+  const styles = ['multi', 'atom', 'stats', ...kinds];
+  if (!styles.includes(style)) throw new StyleError(`Illegal delete_bonds command: unknown style '${style ?? ''}'`);
+  const typed = style === 'atom' || (kinds as readonly string[]).includes(style);
+  let lo = 0, hi = 0;
+  if (typed) {
+    const tok = a[2];
+    if (tok === undefined) throw new StyleError(`delete_bonds ${style} needs a type or range of types`);
+    if (tok === '*') throw new StyleError('Invalid range string: *');
+    const ntypes = style === 'atom' ? s.ntypes : { bond: s.topo.nbondtypes, angle: s.topo.nangletypes, dihedral: s.topo.ndihedraltypes, improper: s.topo.nimpropertypes }[style as typeof kinds[number]];
+    // a type of 0 selects bonds broken by a bond-breaking style ("you can set the type to 0 to delete bonds that
+    // have been previously broken")
+    if (tok === '0' && style !== 'atom') { lo = 0; hi = 0; } else [lo, hi] = typeRange(tok, ntypes);
+  }
+  const flags = { any: false, undo: false, remove: false, special: false };
+  for (const w of a.slice(typed ? 3 : 2)) {
+    if (!(w in flags)) throw new StyleError(`Illegal delete_bonds command: unknown keyword '${w}'`);
+    flags[w as keyof typeof flags] = true;
+  }
+  if (style === 'stats') return;
   const inGroup = new Set<number>();
-  for (let i = 0; i < s.n; i++) if (s.mask[i] & bit) inGroup.add(s.id[i]);
-  const lists: Record<string, [keyof SimState['topo'], number | null]> = {
-    multi: ['bonds', null], bond: ['bonds', null], angle: ['angles', null], dihedral: ['dihedrals', null], improper: ['impropers', null], atom: ['bonds', null],
-  };
-  if (!(style in lists)) throw new StyleError(`delete_bonds style '${style}' is not supported`);
-  const type = ['bond', 'angle', 'dihedral', 'improper'].includes(style) ? int(a[2], 'type') : null;
-  const targets = style === 'multi' ? (['bonds', 'angles', 'dihedrals', 'impropers'] as const) : ([lists[style][0]] as const);
-  for (const key of targets) {
-    const l = s.topo[key as 'bonds'];
-    let k = 0;
+  const typeOfId = new Map<number, number>();
+  for (let i = 0; i < s.n; i++) {
+    if (s.mask[i] & bit) inGroup.add(s.id[i]);
+    if (style === 'atom') typeOfId.set(s.id[i], s.type[i]);
+  }
+  const lists = { bond: s.topo.bonds, angle: s.topo.angles, dihedral: s.topo.dihedrals, improper: s.topo.impropers };
+  const targets = style === 'multi' || style === 'atom' ? kinds : [style as typeof kinds[number]];
+  for (const kind of targets) {
+    const l = lists[kind];
     for (let e = 0; e < l.n; e++) {
-      let all = true;
-      for (let w = 0; w < l.width; w++) if (!inGroup.has(l.atoms[e * l.width + w])) { all = false; break; }
-      if (all && (type === null || l.type[e] === type)) continue;
-      l.type[k] = l.type[e];
-      for (let w = 0; w < l.width; w++) l.atoms[k * l.width + w] = l.atoms[e * l.width + w];
-      k++;
+      const t = l.type[e];
+      if (flags.undo ? t >= 0 : t < 0) continue;
+      let all = true, some = false, ofType = style !== 'atom';
+      for (let w = 0; w < l.width; w++) {
+        const id = l.atoms[e * l.width + w];
+        if (inGroup.has(id)) some = true; else all = false;
+        if (style === 'atom') { const at = typeOfId.get(id) ?? 0; if (at >= lo && at <= hi) ofType = true; }
+      }
+      if (!(flags.any ? some : all) || !ofType) continue;
+      if (style !== 'multi' && style !== 'atom' && (Math.abs(t) < lo || Math.abs(t) > hi)) continue;
+      l.type[e] = -t;
     }
-    l.n = k;
+  }
+  if (flags.remove) {
+    // the engine rebuilds the 1-2/1-3/1-4 lists after every topology change, which is what the special keyword
+    // asks for; without it native keeps the old lists, so a removal that changes them is refused
+    const sp = sys.ff.special;
+    const changesSpecial = (kind: typeof kinds[number]) => kind === 'bond' || (kind === 'angle' && sp.angle) || (kind === 'dihedral' && sp.dihedral);
+    for (const kind of kinds) {
+      const l = lists[kind];
+      let k = 0;
+      for (let e = 0; e < l.n; e++) {
+        const t = l.type[e];
+        if (t < 0 || (t === 0 && kind === 'bond')) {
+          if (!flags.special && t < 0 && changesSpecial(kind)) {
+            throw new StyleError(`delete_bonds remove without special would keep the old 1-2/1-3/1-4 lists; the browser engine always rebuilds them: add the special keyword`);
+          }
+          continue;
+        }
+        l.type[k] = t;
+        for (let w = 0; w < l.width; w++) l.atoms[k * l.width + w] = l.atoms[e * l.width + w];
+        k++;
+      }
+      l.n = k;
+    }
   }
   sys.atomsChanged();
 };

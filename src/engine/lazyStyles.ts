@@ -102,5 +102,6 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'compute_stressprof', names: { COMPUTES: ['stress/cartesian', 'stress/cylinder', 'stress/mop', 'stress/mop/profile', 'stress/spherical'] }, load: () => import('./registry/compute_stressprof') as Promise<StyleModule> },
   { id: 'brownian', names: { FIXES: ['align/self', 'brownian', 'brownian/asphere', 'brownian/sphere', 'propel/self'] }, load: () => import('../engine-gpl/registry/brownian') as Promise<StyleModule> },
   { id: 'gpl_fep', names: { FIXES: ['adapt/fep'], PAIRS: ['morse/soft', 'lj/cut/soft/gapsys', 'coul/cut/soft/gapsys', 'lj/cut/tip4p/long/soft', 'tip4p/long/soft'], COMPUTES: ['fep'] }, load: () => import('../engine-gpl/registry/fep') as Promise<StyleModule> },
+  { id: 'gpl_drude', names: { FIXES: ['drude', 'drude/transform/direct', 'drude/transform/inverse', 'langevin/drude'], COMPUTES: ['temp/drude'], PAIRS: ['thole', 'coul/tt'] }, load: () => import('../engine-gpl/registry/drude') as Promise<StyleModule> },
   { id: 'pair_reaxff', names: { PAIRS: ['reaxff'], FIXES: ['qeq/reaxff', 'qeq/reax', 'acks2/reaxff', 'acks2/reax', 'qtpie/reaxff', 'qeq/rel/reaxff', 'reaxff/bonds', 'reaxff/species'], COMPUTES: ['reaxff/atom'] }, load: () => import('../engine-gpl/registry/reaxff') as Promise<StyleModule> },
 ];

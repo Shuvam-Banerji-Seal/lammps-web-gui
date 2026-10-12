@@ -1105,7 +1105,9 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
       .sort((a, b) => slot(list.atoms[a * w + owner]) - slot(list.atoms[b * w + owner]) || a - b);
     rows.forEach((e, k) => {
       const ids = Array.from(list.atoms.subarray(e * w, (e + 1) * w));
-      out.push(`${k + 1} ${list.type[e]} ${ids.join(' ')}`);
+      // Measured with native LAMMPS (black box): an interaction turned off by delete_bonds (negative type) is
+      // written with its positive type
+      out.push(`${k + 1} ${Math.abs(list.type[e])} ${ids.join(' ')}`);
     });
   }
   // fix cmap: the N crossterms header and a CMAP section after the topology (measured with native

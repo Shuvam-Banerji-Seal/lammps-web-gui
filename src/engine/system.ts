@@ -219,6 +219,7 @@ export class System {
     this.ff.init(s, this.nb, this.geom, this.styleContext());
     this.pbc();
     this.nb.build(s, this.geom, s.step);
+    for (const f of this.fixes) f.afterForceInit?.();
     this.checkDynamicWithin();
   }
 

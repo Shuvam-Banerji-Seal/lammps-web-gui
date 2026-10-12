@@ -57,8 +57,9 @@ const parseLog = (log, keywords) => {
     if (!/^\s*Step\s/.test(lines[i]) && !/^\s*(Step|Elapsed|Time)\b/.test(lines[i])) continue;
     const ncol = lines[i].trim().split(/\s+/).length;
     for (let j = i + 1; j < lines.length; j++) {
-      // warnings (e.g. "FENE bond too long") are printed between thermo rows
-      if (/^WARNING/.test(lines[j])) continue;
+      // warnings (e.g. "FENE bond too long") are printed between thermo rows, some followed by a
+      // "For more information see https://docs.lammps.org/err...." line
+      if (/^WARNING/.test(lines[j]) || /^For more information see/.test(lines[j])) continue;
       const w = lines[j].trim().split(/\s+/);
       if (w.length !== ncol || !w.every((x) => /^[-+0-9.eE]+$/.test(x) || /^-?(nan|inf)$/i.test(x))) break;
       const row = {};

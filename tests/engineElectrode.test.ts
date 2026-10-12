@@ -185,3 +185,65 @@ describe('fix electrode/conp results', () => {
     expect(Math.abs(row!.row.c_qbot)).toBeGreaterThan(0.1);
   });
 });
+
+describe('fix electrode/conq, electrode/thermo and qtotal refusals', () => {
+  const conqCases: [string, RegExp][] = [
+    ['fix q bot electrode/conq -0.2 2 couple top 0.2 qtotal 0.1', /qtotal keyword not available for electrode\/conq/],
+    ['fix q bot electrode/conq -0.2 2 symm on', /symm on not allowed in electrode\/conq with only one electrode/],
+    ['fix conp bot electrode/conp 0 2 couple top 1 symm on qtotal 1 qtotal 2', /qtotal/],
+  ];
+  for (const [line, re] of conqCases) {
+    it(`rejects: ${line}`, async () => {
+      const r = await run(`${MADELUNG}${line}\nrun 0`);
+      expect(r.message).toMatch(re);
+    });
+  }
+
+  const thermoCases: [string, RegExp][] = [
+    ['fix th bot electrode/thermo 0 2 temp 300 1 1234', /Number of electrodes != two in electrode\/thermo/],
+    ['fix th bot electrode/thermo 0 2 couple top 1 algo cg 1e-6 temp 300 1 1234', /Algorithm not allowed in electrode\/thermo/],
+    ['fix th bot electrode/thermo 0 2 couple top 1', /Keyword temp not set or zero in electrode\/thermo/],
+    ['fix th bot electrode/thermo 0 2 couple top 1 temp 300 0 1234', /Keyword temp not set or zero in electrode\/thermo/],
+  ];
+  for (const [line, re] of thermoCases) {
+    it(`rejects: ${line}`, async () => {
+      const r = await run(`${MADELUNG}${line}\nrun 0`);
+      expect(r.message).toMatch(re);
+    });
+  }
+
+  it('accepts a constant qtotal with symm off (the total charge follows the target)', async () => {
+    const r = await run(`${MADELUNG}fix conp bot electrode/conp 0 2 couple top 1 qtotal 0.1\nthermo_style custom step c_qbot c_qtop\nrun 0`);
+    expect(r.message).toBeNull();
+    const row = r.events.find((e) => e.kind === 'thermo') as { row: ThermoRow } | undefined;
+    expect(row!.row.c_qbot + row!.row.c_qtop).toBeCloseTo(0.1, 8);
+  });
+});
+
+describe('kspace_style pppm/electrode', () => {
+  const PPPM = MADELUNG.replace('ewald/electrode 1.0e-8', 'pppm/electrode 1.0e-8');
+  const CONP = 'fix conp bot electrode/conp 0 2 couple top 1 symm on\nrun 0';
+
+  it('refuses the slab and wire options the port does not cover', async () => {
+    const ew2d = await run(PPPM.replace('slab 8.0', 'slab ew2d') + CONP);
+    expect(ew2d.message).toMatch(/ew2d/);
+    const auto = await run(PPPM.replace('slab 8.0', 'slab auto') + CONP);
+    expect(auto.message).toMatch(/slab auto/);
+    const nozforce = await run(PPPM.replace('slab 8.0', 'slab nozforce') + CONP);
+    expect(nozforce.message).toMatch(/nozforce/);
+    const wire = await run(PPPM.replace('kspace_modify   slab 8.0', 'kspace_modify   wire 1') + CONP);
+    expect(wire.message).toMatch(/wire/);
+  });
+
+  it('refuses diff ad (the port uses ik) and meshes that do not factor into 2, 3 and 5', async () => {
+    const ad = await run(PPPM.replace('slab 8.0', 'slab 8.0 diff ad') + CONP);
+    expect(ad.message).toMatch(/diff ad/);
+    const mesh = await run(PPPM.replace('slab 8.0', 'slab 8.0 mesh 5 5 7') + CONP);
+    expect(mesh.message).toMatch(/2, 3 and 5/);
+  });
+
+  it('runs the conp fix with an explicit mesh, g_ewald and order', async () => {
+    const r = await run(PPPM.replace('slab 8.0', 'slab 8.0 gewald 0.32744238 mesh 5 5 144 order 4') + CONP);
+    expect(r.message).toBeNull();
+  });
+});

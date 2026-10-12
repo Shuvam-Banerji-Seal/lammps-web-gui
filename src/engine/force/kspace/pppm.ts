@@ -204,9 +204,10 @@ export class KSpacePPPM extends KSpaceBase {
   readonly name: string = 'pppm';
   meshUser: [number, number, number] | null = null;
   order = 5;
-  private mesh: [number, number, number] = [0, 0, 0];
-  private green = new Float64Array(0);
-  private greenBox = '';
+  /** Visibility: the electrode subclass (src/engine-gpl) reads the mesh, the influence function and the weights. */
+  protected mesh: [number, number, number] = [0, 0, 0];
+  protected green = new Float64Array(0);
+  protected greenBox = '';
 
   modify(key: string, values: string[]): number {
     switch (key) {
@@ -270,7 +271,7 @@ export class KSpacePPPM extends KSpaceBase {
   }
 
   /** Optimal influence function for the current box. */
-  private buildGreen(geom: Geometry): void {
+  protected buildGreen(geom: Geometry): void {
     const [nx, ny, nz] = this.mesh;
     const lz = geom.lz * this.slab;
     const key = [geom.lx, geom.ly, lz, geom.xy, geom.xz, geom.yz, nx, ny, nz, this.order, this.gEwald].join(',');
@@ -336,6 +337,31 @@ export class KSpacePPPM extends KSpaceBase {
     this.green = green;
   }
 
+  /**
+   * Charge assignment: the grid index of the first stencil point and the P B-spline weights per dimension for every
+   * atom (the weights are shared by the charge spreading and the field interpolation).
+   */
+  protected assignWeights(s: SimState, geom: Geometry): { first: Int32Array; wts: Float64Array } {
+    const [nx, ny, nz] = this.mesh;
+    const P = this.order;
+    const n = s.n;
+    const first = new Int32Array(3 * n);
+    const wts = new Float64Array(3 * n * P);
+    const lam = [0, 0, 0];
+    const N = [nx, ny, nz];
+    for (let i = 0; i < n; i++) {
+      geom.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
+      lam[2] /= this.slab;
+      for (let d = 0; d < 3; d++) {
+        const u = lam[d] * N[d];
+        const i0 = P % 2 === 1 ? Math.round(u) - (P - 1) / 2 : Math.floor(u) - P / 2 + 1;
+        first[3 * i + d] = i0;
+        for (let k = 0; k < P; k++) wts[(3 * i + d) * P + k] = bspline(P, u - (i0 + k) + P / 2);
+      }
+    }
+    return { first, wts };
+  }
+
   /** Charges that enter the mesh (and so the mesh forces and energy). pppm: every charge. */
   protected gridCharges(s: SimState): ArrayLike<number> {
     return s.q;
@@ -354,21 +380,7 @@ export class KSpacePPPM extends KSpaceBase {
     const V = this.volume;
     this.buildGreen(geom);
     const ng = nx * ny * nz;
-    // charge assignment: grid index and P weights per dimension per atom
-    const first = new Int32Array(3 * n);
-    const wts = new Float64Array(3 * n * P);
-    const lam = [0, 0, 0];
-    const N = [nx, ny, nz];
-    for (let i = 0; i < n; i++) {
-      geom.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
-      lam[2] /= this.slab;
-      for (let d = 0; d < 3; d++) {
-        const u = lam[d] * N[d];
-        const i0 = P % 2 === 1 ? Math.round(u) - (P - 1) / 2 : Math.floor(u) - P / 2 + 1;
-        first[3 * i + d] = i0;
-        for (let k = 0; k < P; k++) wts[(3 * i + d) * P + k] = bspline(P, u - (i0 + k) + P / 2);
-      }
-    }
+    const { first, wts } = this.assignWeights(s, geom);
     const mod = (a: number, m: number) => ((a % m) + m) % m;
     const rho = new Float64Array(2 * ng);
     const qg = this.gridCharges(s);

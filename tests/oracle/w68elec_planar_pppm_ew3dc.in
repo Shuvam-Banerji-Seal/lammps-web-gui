@@ -1,0 +1,31 @@
+# oracle: ELECTRODE planar in.planar-pppm-ew3dc: ramping potential with v_v, pppm/electrode EW3DC, fix electrode/conp symm on, 10 steps
+# oracle-inputs: w68elec_au_vac.data
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# Measured with native LAMMPS (black box): thermo max relative error 5.2e-8 over the 11 rows, per-atom 3.1e-12
+# Measured with native LAMMPS (black box): G vector 0.16696028, grid 8 8 25, order 5 (pppm/electrode 1.0e-7, slab 3.0); the engine takes them from kspace_modify gewald and mesh (its slab grid choice is not reproduced)
+# Measured with native LAMMPS (black box): step 1: v_v=0.2 c_qbot=-0.0309127689794015 c_qtop=0.0309127689794015 v_qtheory=0.031376826194199 v_percdev=-1.47898068828092; step 10: c_qbot=-0.309127689794015 v_percdev=-1.4789807307034
+boundary        p p f
+kspace_style    pppm/electrode 1.0e-7
+kspace_modify   slab 3.0 gewald 0.16696028 mesh 8 8 25
+units           real
+atom_style      full
+pair_style      lj/cut/coul/long 14
+read_data       w68elec_au_vac.data
+group           bot molecule 1
+group           top molecule 2
+variable        v equal ramp(0,2)
+variable        q atom q
+compute         qbot bot reduce sum v_q
+compute         qtop top reduce sum v_q
+compute         zbot bot reduce max z
+compute         ztop top reduce min z
+variable        dz equal c_ztop-c_zbot
+variable        eps0 equal 55.26349406/10000
+variable        capac equal "v_eps0 * lx * ly / v_dz"
+variable        qtheory equal "v_capac * v_v"
+variable        percdev equal "100 * (c_qtop - v_qtheory) / (v_qtheory + 1e-9)"
+fix             conp bot electrode/conp 0 1.979 couple top v_v symm on
+thermo          1
+thermo_style    custom step v_v c_qbot c_qtop v_qtheory v_percdev
+thermo_modify   format float %.15g
+run             10

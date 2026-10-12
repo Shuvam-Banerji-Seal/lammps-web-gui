@@ -1,6 +1,7 @@
 # oracle: ELECTRODE madelung in.madelung-ewald-ew3dc: ewald/electrode with the EW3DC slab correction, fix electrode/conp mat_inv, symm on
 # oracle-inputs: w68elec_au_elyt.data
 # oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# Measured with native LAMMPS (black box): step 0: pe=139.943952357 c_qbot=-0.279214485147 c_qtop=0.279214485147 f_conp=-6.43883931625
 boundary        p p f
 kspace_style    ewald/electrode 1.0e-8
 kspace_modify   slab 8.0

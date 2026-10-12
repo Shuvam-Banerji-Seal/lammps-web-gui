@@ -130,7 +130,7 @@ export class PairOxdnaExcv extends Pair {
       v = found;
     }
     this.fillSites(ilo, ihi, v);
-    const [, , , , , , epsBb, sigBb, cutBbAst] = v;
+    const [, , , , , , , sigBb, cutBbAst] = v;
     const nt = this.nt;
     const d3 = derived(sigBb, cutBbAst);
     // tetramer tables: entries [i][j][k][l] with i and l from 0 (terminal type) and j, k in the range

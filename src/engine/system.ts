@@ -55,6 +55,10 @@ export interface RunInfo {
 }
 
 export class System {
+  /** Frames carry the velocities and masses of the atoms (EngineEvent 'frame', v and mass). */
+  frameVelocities = false;
+  /** The per-atom masses last sent with a frame; a frame repeats them only when they change (or at a run's start). */
+  frameMassSent: Float64Array | null = null;
   // ---- settings that precede the box
   units: UnitSystem = UNIT_SYSTEMS.lj;
   dimension: 2 | 3 = 3;

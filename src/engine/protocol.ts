@@ -8,7 +8,11 @@ export type BackendChoice = 'auto' | 'cpu' | 'webgpu';
 
 export type ToEngine =
   /** (Re)creates the session; drops every atom, fix and variable. threads 0 = the engine's choice (device.ts autoThreads). */
-  | { type: 'reset'; backend: BackendChoice; threads: number; frameEvery: number }
+  /**
+   * frameVelocities: frames carry the atoms' velocities and masses (EngineEvent 'frame', v and mass); off by default.
+   * Takes effect at the reset (the session's frames from then on).
+   */
+  | { type: 'reset'; backend: BackendChoice; threads: number; frameEvery: number; frameVelocities?: boolean }
   /** Switches the force backend of the current session, keeping its system. */
   | { type: 'backend'; backend: BackendChoice; threads: number }
   /** Runs one cell's text in the current session. */

@@ -25,6 +25,7 @@ export class EngineHost {
   private backend: ForceBackend | null = null;
   private current = 0;
   private frameEvery = 0;
+  private frameVelocities = false;
   /** Files added by the notebook; kept across session resets. */
   private files = new Map<string, string>();
   private device: DeviceProfile | null = null;
@@ -40,7 +41,7 @@ export class EngineHost {
   constructor(private post: (msg: FromEngine, transfer?: Transferable[]) => void) {}
 
   async handle(msg: ToEngine): Promise<void> {
-    if (msg.type === 'reset') return this.reset(msg.backend, msg.threads, msg.frameEvery);
+    if (msg.type === 'reset') return this.reset(msg.backend, msg.threads, msg.frameEvery, msg.frameVelocities ?? false);
     if (msg.type === 'backend') return this.switchBackend(msg.backend, msg.threads);
     if (msg.type === 'cancel') { this.session?.cancel(); return; }
     if (msg.type === 'exec') return this.exec(msg.id, msg.text, msg.firstLine);
@@ -116,27 +117,32 @@ export class EngineHost {
     });
   }
 
-  private async reset(choice: BackendChoice, threads: number, frameEvery: number): Promise<void> {
+  private async reset(choice: BackendChoice, threads: number, frameEvery: number, frameVelocities = false): Promise<void> {
     this.backend?.dispose();
     this.frameEvery = frameEvery;
+    this.frameVelocities = frameVelocities;
     const { backend, note } = await this.makeBackend(choice, threads);
     this.backend = backend;
     this.session = new Session({
       emit: (event) => {
         if (event.kind === 'frame') {
-          this.post({ type: 'event', id: this.current, event }, [event.x.buffer, event.image.buffer, event.type.buffer, event.id.buffer]);
+          const transfer = [event.x.buffer, event.image.buffer, event.type.buffer, event.id.buffer];
+          if (event.v) transfer.push(event.v.buffer);
+          if (event.mass) transfer.push(event.mass.buffer);
+          this.post({ type: 'event', id: this.current, event }, transfer);
         } else {
           this.post({ type: 'event', id: this.current, event });
         }
       },
       writeFile: (name, text, append) => this.post({ type: 'file', id: this.current, name, text, append }),
     }, backend, this.frameEvery);
+    this.session.setFrameVelocities(this.frameVelocities);
     for (const [name, text] of this.files) this.session.addFile(name, text);
     this.ready(backend, note);
   }
 
   private async switchBackend(choice: BackendChoice, threads: number): Promise<void> {
-    if (!this.session) return this.reset(choice, threads, this.frameEvery);
+    if (!this.session) return this.reset(choice, threads, this.frameEvery, this.frameVelocities);
     const { backend, note } = await this.makeBackend(choice, threads);
     const old = this.backend;
     this.backend = backend;

@@ -8,6 +8,8 @@ import { parseRunStyleRespa, runRespa } from '../run/respa';
 import { RunCancelled } from '../errors';
 import { DYNAMIC_GROUP_FIXES, NO_DYNAMIC_GROUP_FIXES } from '../group';
 import type { System } from '../system';
+import type { EngineEvent } from '../types';
+import { massOf } from '../atoms';
 import { minimize, MIN_STYLES } from '../run/min';
 import { accelerator, runAccelerated } from '../run/accel';
 import { restartDue, startRestarts, writeRestarts } from './restart';
@@ -222,12 +224,29 @@ interface RunOpts {
 export const emitFrame = (sys: System): void => {
   if (!sys.hasBox) return;
   const s = sys.state;
-  sys.io.emit({
+  const ev: FrameEventOut = {
     kind: 'frame', step: s.step, x: Float64Array.from(s.x.subarray(0, 3 * s.n)), image: Int32Array.from(s.image.subarray(0, 3 * s.n)),
     type: Int32Array.from(s.type.subarray(0, s.n)), id: Int32Array.from(s.id.subarray(0, s.n)),
     box: { ...s.box, lo: [...s.box.lo], hi: [...s.box.hi], periodic: [...s.box.periodic], tilt: [...s.box.tilt], boundary: s.box.boundary.map((f) => [f[0], f[1]]) as typeof s.box.boundary, minLo: [...s.box.minLo], minHi: [...s.box.minHi] },
-  });
+  };
+  if (sys.frameVelocities) {
+    ev.v = Float64Array.from(s.v.subarray(0, 3 * s.n));
+    const mass = new Float64Array(s.n);
+    for (let i = 0; i < s.n; i++) mass[i] = massOf(s, i);
+    // the masses rarely change: they go with the first frame of a run and then only when they differ (index by index,
+    // so a re-sorted atom order with different masses is sent again); the notebook keeps the last ones it received
+    const prev = sys.frameMassSent;
+    let same = prev !== null && prev.length === mass.length;
+    for (let i = 0; same && i < mass.length; i++) same = prev![i] === mass[i];
+    if (!same) {
+      sys.frameMassSent = mass.slice();
+      ev.mass = mass;
+    }
+  }
+  sys.io.emit(ev);
 };
+
+type FrameEventOut = Extract<EngineEvent, { kind: 'frame' }>;
 
 /** How often (wall-clock ms) a run reports its speed (EngineEvent 'perf'). */
 const PERF_EVERY_MS = 500;
@@ -343,6 +362,7 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
  * between chunks".
  */
 const run: Handler = async (ctx, a) => {
+  ctx.sys.frameMassSent = null; // the first frame of the run carries the masses again
   const { sys } = ctx;
   const s = sys.state;
   let n = int(a[0], 'number of steps');

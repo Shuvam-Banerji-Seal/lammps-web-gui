@@ -9,7 +9,7 @@ export type ColourMode = 'type' | 'speed' | 'ke' | 'x' | 'y' | 'z' | 'id' | 'sin
 export const COLOUR_LABEL: Record<ColourMode, string> = {
   type: 'Type (view colours)',
   speed: 'Speed',
-  ke: 'Kinetic energy (m = 1)',
+  ke: 'Kinetic energy (1/2 m v²)',
   x: 'Height along x',
   y: 'Height along y',
   z: 'Height along z',
@@ -26,6 +26,8 @@ export interface ColourFrame {
   x: ArrayLike<number>;
   /** Velocities (x, y, z per atom) when the frame carries them; optional. */
   v?: ArrayLike<number>;
+  /** Mass per atom when the frame carries it (kinetic energy uses it); absent: every atom has mass 1. */
+  mass?: ArrayLike<number>;
   box: { lo: readonly number[]; hi: readonly number[] };
   topo: { id: Int32Array };
 }
@@ -124,7 +126,11 @@ export const scalarValues = (
     const sp = frameSpeeds(prev, cur, next, dt);
     if (!sp) return null;
     if (mode === 'speed') return sp;
-    for (let i = 0; i < n; i++) sp[i] = 0.5 * sp[i] * sp[i];
+    // kinetic energy 1/2 m v^2 per atom (mass 1 when the frame has no masses)
+    for (let i = 0; i < n; i++) {
+      const m = cur.mass && i < cur.mass.length ? Number(cur.mass[i]) : 1;
+      sp[i] = 0.5 * m * sp[i] * sp[i];
+    }
     return sp;
   }
   return null;

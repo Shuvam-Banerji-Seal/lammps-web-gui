@@ -1,0 +1,19 @@
+# oracle: ELECTRODE conq with symm on and algo cg: the last electrode charge is -(the first)
+# oracle-inputs: w68elec_au_elyt.data
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+boundary        p p f
+kspace_style    ewald/electrode 1.0e-8
+kspace_modify   slab 8.0
+units           real
+atom_style      full
+pair_style      lj/cut/coul/long 12
+read_data       w68elec_au_elyt.data
+group           bot type 1
+group           top type 2
+variable        q atom q
+compute         qbot bot reduce sum v_q
+compute         qtop top reduce sum v_q
+thermo_style    custom step pe c_qbot c_qtop
+thermo_modify   format float %.15g
+fix             q bot electrode/conq -0.2 2 couple top 0.2 symm on algo cg 1e-6
+run             0

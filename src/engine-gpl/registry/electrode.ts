@@ -12,10 +12,14 @@ import type { FixFactory } from '../../engine/styles';
 import type { KSpace } from '../../engine/force/types';
 import { KSpaceEwaldElectrode } from '../electrode/ewald_electrode';
 import { FixElectrodeConp } from '../electrode/fix_electrode_conp';
+import { FixElectrodeConq } from '../electrode/fix_electrode_conq';
+import { FixElectrodeThermo } from '../electrode/fix_electrode_thermo';
 
 /** Fix style name -> factory. */
 export const FIXES: Record<string, FixFactory> = {
   'electrode/conp': (sys, id, group, args) => new FixElectrodeConp(sys, id, group, args),
+  'electrode/conq': (sys, id, group, args) => new FixElectrodeConq(sys, id, group, args),
+  'electrode/thermo': (sys, id, group, args) => new FixElectrodeThermo(sys, id, group, args),
 };
 
 /** KSpace style name -> factory. */

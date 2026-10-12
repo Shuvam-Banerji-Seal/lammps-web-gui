@@ -1,4 +1,5 @@
 import type { UnitSystem } from './types';
+import { powExact } from './powExact';
 import { StyleError } from './force/types';
 import { rotationFromEdges, type GeneralLattice, type Mat3 } from './triclinic_general';
 
@@ -185,7 +186,8 @@ export const makeLattice = (style: LatticeStyle, scale: number, units: UnitSyste
     const vol = dimension === 3
       ? Math.abs(dot(a[0], cross(a[1], a[2])))
       : Math.abs(a[0][0] * a[1][1] - a[0][1] * a[1][0]);
-    factor = Math.pow((basis.length / vol) / scale, 1 / dimension);
+    // correctly rounded (powExact.ts): engines differ in Math.pow's last bit, and positions seed per-atom random streams
+    factor = powExact((basis.length / vol) / scale, 1 / dimension);
   }
   // general triclinic: the rotation of the scaled cell (triclinic_general.ts); the orient rows are unused
   let Rot: Mat3 = [R[0], R[1], R[2]];

@@ -4,6 +4,7 @@ import type { System } from '../system';
 import type { Compute } from '../compute/compute';
 import { ownCompute, ramp, removeCompute } from './util';
 import { massOf } from '../atoms';
+import type { ComputePressure } from '../compute/pressure';
 
 /*
  * fix nvt / npt / nph — docs.lammps.org/fix_nh.html.
@@ -134,6 +135,8 @@ export class FixNH extends Fix {
   private pTempFixed = 0;
   private tempCompute!: Compute;
   private pressCompute: Compute | null = null;
+  /** kinetic tensor of the pressure's temperature compute at the initial step's pressure (see computePressCurrent). */
+  private keInitial: Float64Array | null = null;
   private tempId: string;
   private pressId: string | null = null;
   private dthalf = 0; private dt4 = 0; private dt8 = 0; private dtf = 0; private dtv = 0;
@@ -389,7 +392,7 @@ export class FixNH extends Fix {
     if (this.pstat) {
       this.computePressTarget();
       if (this.pchain > 0) this.nhcPress();
-      this.computePressCurrent();
+      this.computePressCurrent('init');
       this.omegaUpdate(true);
       // barostat velocity scaling (dt/4 each) on both sides of the half kick is applied before it
       this.velocityPress();
@@ -406,7 +409,7 @@ export class FixNH extends Fix {
     if (this.pstat) {
       this.velocityPress();
       this.velocityPress();
-      this.computePressCurrent();
+      this.computePressCurrent('final');
       this.omegaUpdate();
       if (this.pchain > 0) this.nhcPress();
     }
@@ -606,10 +609,32 @@ export class FixNH extends Fix {
     }
   }
 
-  /** Current pressure (tensor), averaged over coupled dimensions. */
-  private computePressCurrent(): void {
-    const pc = this.pressCompute!;
+  /**
+   * Current pressure (tensor), averaged over coupled dimensions.
+   *
+   * Kinetic part, measured with native LAMMPS (black box, tests/oracle/w81nhpress_*). When the barostat's
+   * pressure compute takes a temperature compute other than the fix's own (fix_modify press thermo_press, or
+   * a pressure compute on another temperature), the final-step pressure uses the kinetic tensor of the initial
+   * step's pressure evaluation (before the final half kick and the velocity scalings), not the current one.
+   * The fix's own pressure compute (the fix's temperature) uses the current tensor, as do the initial step and
+   * the thermo output for couple xyz. For couple none the thermo output keeps the initial-step tensor too
+   * (diagonal components press_xx, press_yy, press_zz; the scalar stays current). The mechanism is not identified.
+   * Measured with this rule (w81nhpress_iso_* and w81nhpress_aniso_*, 30 steps): relative error below 1e-12 in
+   * the thermo press, pxx, pyy, pzz and the ecouple scalar (f_1), and in the box lengths.
+   */
+  private computePressCurrent(stage: 'setup' | 'init' | 'final' = 'setup'): void {
+    const pc = this.pressCompute! as ComputePressure;
+    pc.keOverride = null;
     this.sys.refreshComputes();
+    const pressTemp = pc.tempId;
+    const kt = pressTemp !== null && pressTemp !== this.tempId ? this.sys.compute(pressTemp) : null;
+    if (kt && kt.vectorFlag) {
+      if (stage === 'init') this.keInitial = Float64Array.from(kt.vectorValues());
+      else if (stage === 'final' && this.keInitial) {
+        pc.keOverride = this.keInitial;
+        this.sys.refreshComputes();
+      }
+    }
     const v = pc.vectorValues();
     // tensor Voigt order of compute pressure: xx yy zz xy xz yz -> ours x y z yz xz xy
     const cur = [v[0], v[1], v[2], v[5], v[4], v[3]];
@@ -621,6 +646,10 @@ export class FixNH extends Fix {
       for (const d of coupled) cur[d] = avg;
     }
     for (let d = 0; d < 6; d++) this.pCurrent[d] = cur[d];
+    if (stage === 'final' && this.couple !== 'none') {
+      pc.keOverride = null;
+      this.sys.refreshComputes();
+    }
   }
 
   /**

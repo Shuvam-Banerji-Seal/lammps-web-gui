@@ -1,0 +1,22 @@
+# oracle: ELECTRODE madelung in.madelung-pppm-ew3dc: pppm/electrode with the EW3DC slab correction, fix electrode/conp mat_inv, symm on
+# oracle-inputs: w68elec_au_elyt.data
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# Measured with native LAMMPS (black box): thermo max relative error 4.1e-8, per-atom 1.3e-7 (engine minus native, step 0)
+# Measured with native LAMMPS (black box): G vector 0.32744238, grid 5 5 144, order 5 (pppm/electrode 1.0e-8, slab 8.0); the engine takes them from kspace_modify gewald and mesh (its slab grid choice is not reproduced)
+# Measured with native LAMMPS (black box): step 0: pe=139.968952013466 c_qbot=-0.279217154714766 c_qtop=0.279217154714766 f_conp=-6.43890087794045
+boundary        p p f
+kspace_style    pppm/electrode 1.0e-8
+kspace_modify   slab 8.0 gewald 0.32744238 mesh 5 5 144
+units           real
+atom_style      full
+pair_style      lj/cut/coul/long 12
+read_data       w68elec_au_elyt.data
+group           bot type 1
+group           top type 2
+variable        q atom q
+compute         qbot bot reduce sum v_q
+compute         qtop top reduce sum v_q
+fix             conp bot electrode/conp 0 2 couple top 1 symm on
+thermo_style    custom step pe c_qbot c_qtop f_conp
+thermo_modify   format float %.15g
+run             0

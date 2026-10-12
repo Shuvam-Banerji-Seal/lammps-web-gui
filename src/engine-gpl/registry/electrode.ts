@@ -6,11 +6,12 @@
  * GPL-2.0 (see src/engine-gpl/LICENSE).
  *
  * Registered for the core through src/engine/lazyStyles.ts (group gpl_electrode): kspace_style ewald/electrode and
- * fix electrode/conp. The names listed there must match these keys.
+ * pppm/electrode, and the fixes electrode/conp, conq and thermo. The names listed there must match these keys.
  */
 import type { FixFactory } from '../../engine/styles';
 import type { KSpace } from '../../engine/force/types';
 import { KSpaceEwaldElectrode } from '../electrode/ewald_electrode';
+import { KSpacePPPMElectrode } from '../electrode/pppm_electrode';
 import { FixElectrodeConp } from '../electrode/fix_electrode_conp';
 import { FixElectrodeConq } from '../electrode/fix_electrode_conq';
 import { FixElectrodeThermo } from '../electrode/fix_electrode_thermo';
@@ -25,4 +26,5 @@ export const FIXES: Record<string, FixFactory> = {
 /** KSpace style name -> factory. */
 export const KSPACES: Record<string, () => KSpace> = {
   'ewald/electrode': () => new KSpaceEwaldElectrode(),
+  'pppm/electrode': () => new KSpacePPPMElectrode(),
 };

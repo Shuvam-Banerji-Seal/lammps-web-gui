@@ -8,7 +8,7 @@
  * LAMMPS is Copyright (2003) Sandia Corporation and distributed under the GNU General Public License, version 2
  * (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
-import { Pair, PairParams, StyleError, mixDistance, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, PairParams, StyleError, mixDistance, type PairCompute, type PairMinPerAtom, type StyleContext } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { ELECTRON_RADIUS, ELECTRON_RFORCE, ELECTRON_SPIN, isElectronStyle } from '../../engine/atoms';
@@ -104,9 +104,31 @@ export class PairEffCut extends Pair {
     return this.p.get('cut', i, j);
   }
 
-  /** minimize moves the electron radii too (pair_eff_cut.cpp init_style: update->minimize->request); not ported yet. */
-  minimizeRefusal(): string {
-    return 'minimize with pair_style eff/cut is not supported by the browser engine yet (the electron radii are minimization degrees of freedom in LAMMPS)';
+  /**
+   * The minimizer's per-atom degrees of freedom are the logarithm of each electron radius (pair_eff_cut.cpp
+   * min_xf_get and min_x_set); the force on that coordinate is eradius erforce. Nuclei and fixed cores with
+   * spin 0 have no radius to move: their coordinate and force are 0. extra_max is the 0.01 of init_style.
+   */
+  minPerAtom(): PairMinPerAtom {
+    return {
+      maxStep: 0.01,
+      pull: (st, x, f) => {
+        const spin = electronArray(st, ELECTRON_SPIN), er = electronArray(st, ELECTRON_RADIUS), rf = electronArray(st, ELECTRON_RFORCE);
+        for (let i = 0; i < st.n; i++) {
+          if (spin[i]) {
+            x[i] = Math.log(er[i]);
+            f[i] = er[i] * rf[i];
+          } else {
+            x[i] = 0;
+            f[i] = 0;
+          }
+        }
+      },
+      push: (st, x) => {
+        const spin = electronArray(st, ELECTRON_SPIN), er = electronArray(st, ELECTRON_RADIUS);
+        for (let i = 0; i < st.n; i++) if (spin[i]) er[i] = Math.exp(x[i]);
+      },
+    };
   }
 
   extract(name: string): unknown {

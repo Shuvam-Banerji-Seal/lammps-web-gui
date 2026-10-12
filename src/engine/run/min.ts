@@ -82,10 +82,18 @@ export const minimize = async (
   const s = sys.state;
   const set = sys.minSettings;
   const style = sys.minStyle;
-  // a pair style with degrees of freedom beyond the positions refuses here, rather than minimizing only the positions
-  const pairRefusal = sys.ff.pair?.minimizeRefusal?.();
-  if (pairRefusal) throw new StyleError(pairRefusal);
   if (!(MIN_STYLES as readonly string[]).includes(style)) throw new StyleError(`min_style ${style} is not supported`);
+  // a pair style's per-atom degrees of freedom cannot be carried by the damped dynamics styles (quickmin, fire).
+  // Measured with native LAMMPS (black box): pair eff/cut with min_style fire or quickmin stops with
+  // Cannot use a damped dynamics min style with per-atom DOF.
+  const perAtom = sys.ff.pair?.minPerAtom?.() ?? null;
+  if (perAtom && style !== 'cg' && style !== 'sd') throw new StyleError('Cannot use a damped dynamics min style with per-atom DOF');
+  // with per-atom DOF native's max norm groups the extra values differently from the atoms' per-atom vector norm;
+  // that grouping is not reproduced, so norm max is refused rather than giving a different stopping point
+  if (perAtom && set.norm === 'max') throw new StyleError('min_modify norm max with per-atom degrees of freedom (e.g. pair eff/cut) is not supported by the browser engine; use norm two or inf');
+  const K = perAtom ? s.n : 0;
+  const xe = new Float64Array(K);
+  const eF = new Float64Array(K);
   // measured with native LAMMPS (black box): min_modify line forcezero gives different energies from quadratic
   // (chain, dmax 0.1: 13.4795499709744 vs 13.4813750335936 after one iteration); not reproduced yet
   if (set.line === 'forcezero') throw new StyleError('min_modify line forcezero is not supported by the browser engine yet; use line quadratic or backtrack');
@@ -118,6 +126,8 @@ export const minimize = async (
     for (const f of fixesPre) f.minPreForce!();
     sys.computeForcesInRun(sys.computeFlags());
     sys.forcesCurrent();
+    // the pair's per-atom coordinates and forces follow the forces of this evaluation
+    if (perAtom) perAtom.pull(s, xe, eF);
     // group.html: "For an energy minimization, via the :doc:`minimize <minimize>` command, an
     // assignment is made at the beginning of the minimization, but not during the iterations of
     // the minimizer."
@@ -137,6 +147,8 @@ export const minimize = async (
       mx = Math.max(mx, Math.sqrt(a2));
       inf = Math.max(inf, Math.abs(fx), Math.abs(fy), Math.abs(fz));
     }
+    // the force norms include the per-atom forces (one value per atom)
+    for (let k = 0; k < K; k++) { two += eF[k] * eF[k]; inf = Math.max(inf, Math.abs(eF[k])); mx = Math.max(mx, Math.abs(eF[k])); }
     // the box degrees of freedom are part of the global force vector (native: "Force two-norm initial" of a
     // box-only system equals the box gradient)
     for (let k = 0; k < M; k++) { two += boxForce[k] * boxForce[k]; inf = Math.max(inf, Math.abs(boxForce[k])); mx = Math.max(mx, Math.abs(boxForce[k])); }
@@ -164,14 +176,17 @@ export const minimize = async (
   let lastYield = performance.now();
 
   if (style === 'cg' || style === 'sd') {
-    const L = n3 + M;
+    // vector: atoms, then box DOF, then the pair's per-atom DOF; the cg restart period counts all of them
+    const L = n3 + M + K;
+    const eOff = n3 + M;
     const x0 = new Float64Array(n3);
+    const xe0 = new Float64Array(K);
     const u0 = new Float64Array(M);
     const uTry = new Float64Array(M);
-    const g = new Float64Array(L);   // force = -gradient: atoms, then box DOF
+    const g = new Float64Array(L);   // force = -gradient: atoms, then box DOF, then per-atom DOF
     const h = new Float64Array(L);   // search direction
     const gNew = new Float64Array(L);
-    const packForce = (out: Float64Array) => { out.set(s.f.subarray(0, n3)); if (M) out.set(boxForce, n3); };
+    const packForce = (out: Float64Array) => { out.set(s.f.subarray(0, n3)); if (M) out.set(boxForce, n3); if (K) out.set(eF, eOff); };
     packForce(g);
     h.set(g);
     let gg = dot(g, g);
@@ -179,16 +194,20 @@ export const minimize = async (
       if (hooks.cancelled()) { reason = 'cancelled'; break; }
       // line search along h, starting with the step that moves the farthest atom by dmax
       // (and the box DOF by at most vmax per iteration, as documented for fix box/relax)
-      let hmax = 0, hbox = 0;
+      let hmax = 0, hbox = 0, hext = 0;
       for (let k = 0; k < n3; k++) hmax = Math.max(hmax, Math.abs(h[k]));
-      for (let k = n3; k < L; k++) hbox = Math.max(hbox, Math.abs(h[k]));
-      if (hmax === 0 && hbox === 0) { reason = 'forces are zero'; break; }
+      for (let k = n3; k < eOff; k++) hbox = Math.max(hbox, Math.abs(h[k]));
+      for (let k = eOff; k < L; k++) hext = Math.max(hext, Math.abs(h[k]));
+      if (hmax === 0 && hbox === 0 && hext === 0) { reason = 'forces are zero'; break; }
       const fh0 = dot(g, h);
       if (fh0 <= 0) { h.set(g); }
       const slope = dot(g, h);
       let alphaMax = hmax > 0 ? set.dmax / hmax : Infinity;
       if (box && hbox > 0) alphaMax = Math.min(alphaMax, box.vmax / hbox);
+      // no per-atom DOF changes by more than the pair style's maxStep in one iteration
+      if (perAtom && hext > 0) alphaMax = Math.min(alphaMax, perAtom.maxStep / hext);
       x0.set(s.x.subarray(0, n3));
+      xe0.set(xe);
       const img0 = Int32Array.from(s.image.subarray(0, n3));
       if (box) { box.begin(); box.dof(u0); }
       const eStart = e;
@@ -205,6 +224,10 @@ export const minimize = async (
           for (let k = 0; k < n3; k++) s.x[k] = x0[k] + al * h[k];
         }
         if (s.dimension === 2) for (let k = 2; k < n3; k += 3) s.x[k] = x0[k];
+        if (perAtom) {
+          for (let k = 0; k < K; k++) xe[k] = xe0[k] + al * h[eOff + k];
+          perAtom.push(s, xe);
+        }
       };
       if (set.line === 'backtrack') {
         // Measured with native LAMMPS (black box, tests/oracle/w16min_backtrack.in): line backtrack accepts the
@@ -220,7 +243,7 @@ export const minimize = async (
           packForce(gNew);
           if (armijo(eTry, alpha)) { accepted = true; break; }
           alpha *= BACKTRACK;
-          if (alpha * Math.max(hmax, hbox) < EMACH) break;
+          if (alpha * Math.max(hmax, hbox, hext) < EMACH) break;
         }
       } else {
         // Measured with native LAMMPS (black box, tests/oracle/w47ls_*.in, 108-atom LJ crystal, dmax 0.1): the
@@ -254,7 +277,7 @@ export const minimize = async (
           // is accepted, so the search does not stall at a tiny force
           if (slope > 0 && eTry <= eStart + ROUNDOFF * (Math.abs(eStart) + 1) && Math.abs(sA) <= 0.9 * slope) { accepted = true; break; }
           prevA = a; prevS = sA; a *= BACKTRACK; fromSecant = false;
-          if (a * Math.max(hmax, hbox) < EMACH) break;
+          if (a * Math.max(hmax, hbox, hext) < EMACH) break;
         }
       }
       if (!accepted) {

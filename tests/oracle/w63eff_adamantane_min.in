@@ -1,0 +1,27 @@
+# oracle: eFF adamantane (ionized) minimization (examples/PACKAGES/eff/Auger-Adamantane in.adamantane_ionized.nve, minimize step cut down to 30 iterations, line quadratic)
+# oracle-inputs: w63eff_adamantane_ion.data
+# oracle-files: w63eff_adamantane_min_er.dump
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           electron
+newton          on
+boundary        f f f
+atom_style      electron
+read_data       w63eff_adamantane_ion.data
+pair_style      eff/cut 100.0
+pair_coeff      * *
+comm_modify     vel yes
+compute         energies all pair eff/cut
+variable        eke equal c_energies[1]
+variable        epauli equal c_energies[2]
+variable        estatics equal c_energies[3]
+variable        errestrain equal c_energies[4]
+compute         effTemp all temp/eff
+compute         er all property/atom spin eradius erforce
+thermo          1
+thermo_style    custom step pe temp v_eke v_epauli v_estatics v_errestrain
+thermo_modify   temp effTemp
+thermo_modify   format float %.15g
+min_style       cg
+min_modify      line quadratic
+minimize        0.0 1.0e-5 30 300
+write_dump      all custom w63eff_adamantane_min_er.dump id c_er[1] c_er[2] c_er[3] modify format float %.15g

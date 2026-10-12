@@ -1,0 +1,22 @@
+# oracle: eFF H2 under nve/eff with compute temp/region/eff for the atoms of a region (examples/PACKAGES/eff/H2 cut down to 10 steps from rest, the region and group of the example)
+# oracle-inputs: w63eff_h2.data
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           electron
+newton          on
+boundary        p p p
+atom_style      electron
+read_data       w63eff_h2.data
+pair_style      eff/cut 6.447968 pressure/evirials
+pair_coeff      * *
+comm_modify     vel yes
+region          part block INF 2.0 INF 2.0 INF 5.0 units box
+group           sub id < 32
+compute         effTemp all temp/eff
+compute         regionT sub temp/region/eff part
+velocity        all create 300.0 4928459 dist gaussian rot yes mom yes
+thermo          2
+thermo_style    custom step pe ke temp c_regionT
+thermo_modify   temp effTemp
+thermo_modify   format float %.15g
+fix             1 all nve/eff
+run             10

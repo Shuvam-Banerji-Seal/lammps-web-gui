@@ -1,0 +1,18 @@
+# oracle: eFF H2 (128 electrons and nuclei, periodic) under fix npt/eff with an isotropic barostat (target pressure 0, period 1): barostat velocities, box remap and chains, 10 steps from velocity create 300 K (examples/PACKAGES/eff/H2 box, cut down)
+# oracle-inputs: w63eff_h2.data
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units           electron
+newton          on
+boundary        p p p
+atom_style      electron
+read_data       w63eff_h2.data
+pair_style      eff/cut 6.447968 pressure/evirials
+pair_coeff      * *
+comm_modify     vel yes
+thermo          2
+thermo_style    custom step pe ke temp press vol
+thermo_modify   format float %.15g
+velocity        all create 300.0 4928459 dist gaussian rot yes mom yes
+timestep        0.0005
+fix             1 all npt/eff temp 300.0 300.0 0.5 iso 0.0 0.0 1.0
+run             10

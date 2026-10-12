@@ -1,5 +1,5 @@
 # oracle: ELECTRODE graph-il in.graph-il-conp cut to run 0 (settings.mod inlined; fix shake dropped: its setup constraint forces are not reproduced): pppm/electrode slab 3.0, fix electrode/conp mat_inv, symm on
-# Measured with native LAMMPS (black box): G vector 0.20904498, grid 32 32 200, order 5 (pppm/electrode 1e-7, slab 3.0): the engine takes them from kspace_modify gewald and mesh (its slab grid choice is not reproduced)
+# Measured with native LAMMPS (black box): G vector 0.20904498, grid 32 32 200, order 5 (pppm/electrode 1e-7, slab 3.0); the engine chooses the same G and grid itself (no kspace_modify gewald/mesh)
 # Measured with native LAMMPS (black box): step 0: Temp=0 c_ctemp=0 E_pair=25137190.1566282 TotEng=25137569.1591892 c_qbot=0.00851429117507881 c_qtop=-0.00851429117507945 f_conp=0.392688457686357
 # oracle-inputs: w68elec_graphil.data
 # oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
@@ -8,7 +8,7 @@ units           real
 atom_style      full
 boundary        p p f
 kspace_style    pppm/electrode 1e-7
-kspace_modify   slab 3.0 gewald 0.20904498 mesh 32 32 200
+kspace_modify   slab 3.0
 pair_style      lj/cut/coul/long 16
 bond_style      harmonic
 angle_style     harmonic

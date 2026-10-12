@@ -1,13 +1,13 @@
 # oracle: ELECTRODE piston in.piston cut to run 0 (dynamics, rigid wall and drag removed): pppm/electrode 1e-4 slab 3.0, fix electrode/conp algo cg 1e-4, symm on; atoms not compared (the wall forces of the cut-down fixes are not in the case)
 # oracle-inputs: w68elec_piston.data
-# Measured with native LAMMPS (black box): G vector 0.32814871, grid 12 15 36, order 5 (pppm/electrode 1e-4, slab 3.0): the engine takes them from kspace_modify gewald and mesh (its slab grid choice is not reproduced); step 0: c_qwa=-0.0429634836159958 c_qau=0.0429634836159957 f_fxele=0 (the thermo row of the cut-down run)
+# Measured with native LAMMPS (black box): G vector 0.32814871, grid 12 15 36, order 5 (pppm/electrode 1e-4, slab 3.0); the engine chooses the same G and grid itself (no kspace_modify gewald/mesh); step 0: c_qwa=-0.0429634836159958 c_qau=0.0429634836159957 f_fxele=0 (the thermo row of the cut-down run)
 # oracle-compare: thermo=all atoms=none rel=1e-6 abs=1e-9
 # Measured with native LAMMPS (black box): thermo max relative error 8.1e-12 (step 0); per-atom not compared
 boundary        p p f
 atom_style      full
 units           real
 kspace_style    pppm/electrode 1e-4
-kspace_modify   slab 3.0 gewald 0.32814871 mesh 12 15 36
+kspace_modify   slab 3.0
 pair_style      lj/cut/coul/long 8 8
 bond_style      harmonic
 angle_style     harmonic

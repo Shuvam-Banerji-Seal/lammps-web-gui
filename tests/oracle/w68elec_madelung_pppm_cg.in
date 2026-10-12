@@ -6,7 +6,7 @@
 # Measured with native LAMMPS (black box): step 0: pe=139.968952013467 c_qbot=-0.279217154714784 c_qtop=0.279217154714784 f_conp=-6.43890087794087
 boundary        p p f
 kspace_style    pppm/electrode 1.0e-8
-kspace_modify   slab 8.0 gewald 0.32744238 mesh 5 5 144
+kspace_modify   slab 8.0
 units           real
 atom_style      full
 pair_style      lj/cut/coul/long 12

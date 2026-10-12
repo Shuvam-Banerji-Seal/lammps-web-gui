@@ -68,6 +68,11 @@ export abstract class Fix {
   postIntegrate?(): void;
   preExchange?(): void;
   preNeighbor?(): void;
+  /**
+   * Forces a neighbor list rebuild on this step (a fix that moves atoms outside the integrator asks for one, as fix
+   * srd does after its SRD steps). Checked before the neighbor decision, like a restart file.
+   */
+  reneighborDue?(step: number): boolean;
   postNeighbor?(): void;
   preForce?(): void;
   /** Run once at the start of a run, before the setup force evaluation (the solve of a charge model that

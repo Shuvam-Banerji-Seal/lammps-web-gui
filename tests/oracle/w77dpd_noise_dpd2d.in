@@ -1,0 +1,83 @@
+# oracle: pair dpd with its random force on, 60 atoms in 2d (enforce2d; 60 explicit positions (measured with native LAMMPS: the create_atoms random positions of this engine in 2d differ from native, the step-0 energy differs); the per-pair draws follow native neighbor-list order)
+# Measured with native LAMMPS (black box): engine vs native max error 2.2e-15 (thermo), 1.6e-14 (per-atom), scale max(1,|x|). Random force ON (T=1), 2d (enforce2d), explicit positions (this engine's create_atoms random in 2d gives other positions than native, measured at step 0).
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=0
+units        lj
+boundary     p p p
+atom_style   atomic
+dimension    2
+newton       on
+comm_modify  vel yes
+region       simBox block 0 5 0 5 -0.5 0.5
+create_box   1 simBox
+create_atoms 1 single 0.006058 3.853699 0.0
+create_atoms 1 single 2.167847 1.054890 0.0
+create_atoms 1 single 3.717187 1.576490 0.0
+create_atoms 1 single 4.701492 1.311859 0.0
+create_atoms 1 single 4.843604 0.115032 0.0
+create_atoms 1 single 4.255087 3.962440 0.0
+create_atoms 1 single 1.171419 1.782908 0.0
+create_atoms 1 single 0.268015 3.586797 0.0
+create_atoms 1 single 2.331639 2.549246 0.0
+create_atoms 1 single 3.007913 1.983359 0.0
+create_atoms 1 single 1.079703 1.181000 0.0
+create_atoms 1 single 0.917981 3.858630 0.0
+create_atoms 1 single 2.857306 4.570162 0.0
+create_atoms 1 single 1.085951 1.082347 0.0
+create_atoms 1 single 0.643577 2.233845 0.0
+create_atoms 1 single 3.063168 3.363177 0.0
+create_atoms 1 single 0.086402 1.964571 0.0
+create_atoms 1 single 4.774722 1.868421 0.0
+create_atoms 1 single 3.000311 0.139729 0.0
+create_atoms 1 single 1.674928 2.428510 0.0
+create_atoms 1 single 3.515252 1.739513 0.0
+create_atoms 1 single 1.161236 3.279178 0.0
+create_atoms 1 single 3.062340 3.694383 0.0
+create_atoms 1 single 2.594382 4.742576 0.0
+create_atoms 1 single 3.414799 2.512800 0.0
+create_atoms 1 single 2.444369 0.432178 0.0
+create_atoms 1 single 1.052109 3.722819 0.0
+create_atoms 1 single 1.196976 1.681318 0.0
+create_atoms 1 single 1.513783 3.556184 0.0
+create_atoms 1 single 3.525288 4.150471 0.0
+create_atoms 1 single 3.148753 0.093078 0.0
+create_atoms 1 single 0.993006 3.659267 0.0
+create_atoms 1 single 1.865789 0.154814 0.0
+create_atoms 1 single 1.093823 1.455409 0.0
+create_atoms 1 single 3.950086 1.617593 0.0
+create_atoms 1 single 4.687370 2.235011 0.0
+create_atoms 1 single 4.344362 4.412564 0.0
+create_atoms 1 single 1.829494 2.162093 0.0
+create_atoms 1 single 2.870916 4.539384 0.0
+create_atoms 1 single 0.486816 2.714480 0.0
+create_atoms 1 single 0.086070 4.505833 0.0
+create_atoms 1 single 0.533867 1.191767 0.0
+create_atoms 1 single 0.836699 0.716702 0.0
+create_atoms 1 single 1.124489 3.559354 0.0
+create_atoms 1 single 0.261354 3.216908 0.0
+create_atoms 1 single 2.239248 0.342051 0.0
+create_atoms 1 single 2.197505 2.967981 0.0
+create_atoms 1 single 3.066483 3.516405 0.0
+create_atoms 1 single 3.164602 0.322192 0.0
+create_atoms 1 single 2.326937 3.841519 0.0
+create_atoms 1 single 3.059134 3.868051 0.0
+create_atoms 1 single 3.226428 0.120625 0.0
+create_atoms 1 single 3.673110 4.536676 0.0
+create_atoms 1 single 1.602249 3.356123 0.0
+create_atoms 1 single 2.130909 4.759340 0.0
+create_atoms 1 single 2.024956 0.036612 0.0
+create_atoms 1 single 1.300259 1.674685 0.0
+create_atoms 1 single 0.785375 4.841705 0.0
+create_atoms 1 single 1.960222 3.582758 0.0
+create_atoms 1 single 1.429192 2.724447 0.0
+mass         * 1.0
+pair_style   dpd 1.0 1.0 3854262
+pair_coeff   * * 25.0 4.5
+timestep     0.01
+run_style    verlet
+velocity all create 1.0 68768932
+thermo_style custom step time temp press pe ke
+thermo_modify format float %.15g
+thermo       10
+fix 1 all    nve
+fix 2 all    enforce2d
+run          50

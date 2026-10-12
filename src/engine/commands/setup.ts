@@ -67,7 +67,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna'];
+const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -98,6 +98,7 @@ const atomStyle: Handler = ({ sys }, a) => {
       const w = a[k];
       if (w === 'hybrid') throw new StyleError('atom_style hybrid cannot have hybrid as a sub-style');
       if (w === 'body') throw new StyleError('atom_style hybrid with a body sub-style is not supported by the browser engine');
+      if (w === 'line' || w === 'tri') throw new StyleError(`atom_style hybrid with a ${w} sub-style is not supported by the browser engine (use atom_style ${w} alone)`);
       if (w === 'template') {
         if (subs.some((x) => x.startsWith('template:'))) throw new StyleError('atom_style hybrid lists template twice');
         subs.push(templateArg(a[k + 1]));

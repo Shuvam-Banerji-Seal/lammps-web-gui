@@ -1,0 +1,22 @@
+# oracle: (triangles 1-3 start with nonzero angular momentum (0.01 -0.02 0.03); the point particles do not rotate) atom_style tri, read_data Atoms (triangleflag, density) and Triangles (corner points) and Velocities (omega, angmom) sections; pair_style tri/lj (triangle-triangle, triangle-point and point-point pairs, recursive discretization); fix nve/tri on the triangles and fix nve on the points; thermo, per-atom state and write_data (Triangles corners, angmom)
+# oracle-inputs: w61tri_pair.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# oracle-files: w61tri_pair_in.data
+units           lj
+dimension       3
+atom_style      tri
+read_data       w61tri_pair.data
+pair_style      tri/lj 4.0
+pair_coeff      * * 1.0 0.3 4.0
+group           tris type 1 2
+group           pts id 4 5
+group           tri3 id 1 2 3
+neighbor        0.3 bin
+timestep        0.002
+fix             1 tri3 nve/tri
+fix             2 pts nve
+thermo_style    custom step pe ke
+thermo_modify   format float %.15g
+thermo          20
+write_data      w61tri_pair_in.data
+run             100

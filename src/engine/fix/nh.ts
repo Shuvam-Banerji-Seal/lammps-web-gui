@@ -76,6 +76,16 @@ import { massOf } from '../atoms';
  *   - the step-0 scalar is -(3 - nbaro)/2 * P_mean * V0 / nktv2p (nbaro = barostatted diagonal
  *     dimensions): x only -P V0, x and y -P V0/2, iso and xyz 0. The 3 is used in 2d too (2d x only
  *     -P V0, 2d x and y -P V0/2), so the 2d form is this same rule.
+ *   - two Nose-Hoover fixes in one run, npt on a group that is a subset of the temperature group (npt's
+ *     temperature compute is group all) with nvt on the other atoms (w74nhsub_*): the first thermostat update of
+ *     a step and the iso barostat's MTK term use the kinetic energy tracked through the previous thermostat update
+ *     of the same fix, not the current kinetic energy. The tracked value multiplies 2 KE by the square of every
+ *     velocity factor the chain applies, although only the fix group is scaled, so it differs from the current
+ *     value only when atoms outside the fix group have kinetic energy (zero-velocity drudes: exact; npt on all
+ *     atoms: exact). Measured residual with this rule: 5e-9 relative in the barostat velocity at step 1 (iso),
+ *     3e-9 in the pressure at step 30; aniso (no MTK iso term) 1e-13. The tracked value is not used after setup.
+ *     fix nph (no thermostat) with nve on the other atoms: its MTK term uses the all-atom kinetic energy at the end
+ *     of the previous step (w74nhsub_nph_drudes, same 1e-8 tolerance); the current value differs by 4e-7 at step 2.
  *   - tilts: the xy-only barostat is exact (xy += ly * omega_xy); with the
  *     diagonal and tilt couplings together, the box is within ~3e-8 of the
  *     exact flow at dt = 0.02 (not reproduced; see the w7nh_npt_tri notes).
@@ -338,6 +348,15 @@ export class FixNH extends Fix {
    * final kick or after its thermostat scaling) do not reproduce the 10-step values, so later updates stay current.
    */
   private tSetup: number | null = null;
+  /**
+   * Kinetic energy 2 KE (energy units, = dof k_B T) tracked through the chain's last update of the previous step
+   * (null after setup). The chain multiplies it by the square of each velocity factor it applies, as its own
+   * update does, even though only the fix group is scaled (see the measurement in the header comment). For fix nph
+   * (no chain) it is the all-atom kinetic energy at the end of the final step.
+   */
+  private trackKE: number | null = null;
+  /** Product of the squared velocity factors of the current initial-step chain update (1 outside it). */
+  private nhcScale2 = 1;
 
   private currentTemp(): number {
     this.sys.refreshComputes();
@@ -354,6 +373,7 @@ export class FixNH extends Fix {
 
   setup(): void {
     this.tSetup = this.currentTemp();
+    this.trackKE = null;
     if (this.tstat) this.tTarget = ramp(this.sys, this.tStart, this.tStop);
     if (this.pstat) {
       this.computePressTarget();
@@ -364,13 +384,13 @@ export class FixNH extends Fix {
   initialIntegrate(): void {
     if (this.tstat) {
       this.tTarget = ramp(this.sys, this.tStart, this.tStop);
-      this.nhcTemp();
+      this.nhcTemp(true);
     }
     if (this.pstat) {
       this.computePressTarget();
       if (this.pchain > 0) this.nhcPress();
       this.computePressCurrent();
-      this.omegaUpdate();
+      this.omegaUpdate(true);
       // barostat velocity scaling (dt/4 each) on both sides of the half kick is applied before it
       this.velocityPress();
       this.velocityPress();
@@ -391,6 +411,12 @@ export class FixNH extends Fix {
       if (this.pchain > 0) this.nhcPress();
     }
     if (this.tstat) this.nhcTemp();
+    else if (this.pstat) {
+      // fix nph has no thermostat chain to track the kinetic energy: the next initial MTK term uses the value at the
+      // end of this step (see trackKE and the measurement in the header comment)
+      const d = this.dofKT();
+      this.trackKE = d.dof * d.kT;
+    }
   }
 
   // ------------------------------------------------------------------ run_style respa (run/respa.ts)
@@ -477,7 +503,7 @@ export class FixNH extends Fix {
    * in tloop sub-steps: sweep the chain velocities top-down, scale particle
    * velocities by exp(-etaDot_1 dt), advance eta, sweep back up.
    */
-  private nhcTemp(): void {
+  private nhcTemp(initial = false): void {
     const s = this.sys.state;
     const kB = s.units.boltz;
     const M = this.tchain;
@@ -485,7 +511,9 @@ export class FixNH extends Fix {
     // native: the first thermostat update uses the setup-time temperature (before later fixes' setup changes velocities)
     const tSetup = this.tSetup;
     this.tSetup = null;
-    const kTcur = tSetup !== null ? kB * tSetup : kTfresh;
+    // the first update of a step uses the tracked value (see trackKE), not the current kinetic energy
+    if (initial) this.nhcScale2 = 1;
+    const kTcur = tSetup !== null ? kB * tSetup : initial && this.trackKE !== null ? this.trackKE / dof : kTfresh;
     if (dof <= 0) return;
     const kt = kB * this.tTarget;
     if (!(kt > 0)) return;
@@ -514,6 +542,7 @@ export class FixNH extends Fix {
       const factor = Math.exp(-dthalf * ed[0]);
       this.scaleVelocities(factor);
       ke2 *= factor * factor;
+      this.nhcScale2 *= factor * factor;
       for (let k = 0; k < M; k++) this.eta[k] += dthalf * ed[k];
       // back up the chain
       for (let k = 0; k < M - 1; k++) {
@@ -524,6 +553,7 @@ export class FixNH extends Fix {
       }
       ed[M - 1] += (M === 1 ? (ke2 - dof * kt) / q[0] : (q[M - 2] * ed[M - 2] * ed[M - 2] - kt) / q[M - 1]) * dt4;
     }
+    if (!initial) this.trackKE = ke2;
     this.sys.refreshComputes();
   }
 
@@ -597,7 +627,7 @@ export class FixNH extends Fix {
    * Barostat velocities over dt/2: W domega/dt = V (P - P_target) / nktv2p
    * + (MTK) k_B T_current-like term 2 KE / N_f on the diagonal.
    */
-  private omegaUpdate(): void {
+  private omegaUpdate(initial = false): void {
     const s = this.sys.state;
     const vol = this.sys.geom.volume(s.dimension);
     let mtkTerm1 = 0;
@@ -609,7 +639,9 @@ export class FixNH extends Fix {
         if (this.couple === 'xyz') {
           // isotropic barostat: the temperature compute's full dof * kT (rotational dof included)
           const { dof, kT } = this.dofKT();
-          if (dof > 0) mtkTerm1 = (dof * kT) / (nb * s.n);
+          // the first update of a step: the tracked kinetic energy, after the chain's own scaling
+          const ke2 = initial && this.trackKE !== null ? this.trackKE * this.nhcScale2 : dof * kT;
+          if (dof > 0) mtkTerm1 = ke2 / (nb * s.n);
         } else {
           mtkTerm1 = this.keBaro() / (nb * s.n);
         }

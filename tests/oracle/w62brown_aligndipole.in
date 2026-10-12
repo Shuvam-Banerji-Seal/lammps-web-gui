@@ -1,0 +1,22 @@
+# oracle: fix align/self dipole 0.6 with propel/self dipole 2.0 and brownian/sphere (2d): the self-alignment torque enters the rotational noise and drift
+# oracle-compare: thermo=all atoms=all
+dimension       2
+units           lj
+atom_style      hybrid dipole sphere
+boundary        p p p
+lattice         sq 0.4
+region          box block 0 6 0 6 -0.2 0.2
+create_box      1 box
+create_atoms    1 box
+mass            * 1.0
+set             type * dipole/random 12345 1.0
+pair_style      none
+fix             1 all brownian/sphere 0.0001 12345 gamma_t 1.0 gamma_r 1.0
+fix             2 all propel/self dipole 2.0
+fix             3 all align/self dipole 0.6
+fix             4 all enforce2d
+thermo_style    custom step pe ke
+thermo_modify   format float %.15g
+timestep        0.001
+thermo          50
+run             200

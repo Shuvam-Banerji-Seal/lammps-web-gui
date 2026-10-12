@@ -1,0 +1,20 @@
+# oracle: fix brownian/sphere, 3d, uniform rng with planar_rotation (the rotation is in the xy plane)
+# oracle-compare: thermo=all atoms=all
+units           lj
+atom_style      hybrid dipole sphere
+boundary        p p p
+lattice         sc 0.4
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            * 1.0
+set             type * dipole/random 77 1.0
+velocity        all create 1.0 1 loop geom
+pair_style      none
+fix             1 all brownian/sphere 1.0 77 rng uniform gamma_t 3.0 gamma_r 1.0 planar_rotation
+compute         msd all msd
+thermo_style    custom step ke pe c_msd[1] c_msd[2] c_msd[3] c_msd[4]
+thermo_modify   format float %.15g
+timestep        0.00001
+thermo          50
+run             200

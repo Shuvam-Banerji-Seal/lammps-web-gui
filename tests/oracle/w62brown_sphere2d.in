@@ -1,0 +1,21 @@
+# oracle: fix brownian/sphere, 2d, uniform rng, projection rotation (default), dipoles from set dipole/random
+# oracle-compare: thermo=all atoms=all
+dimension       2
+units           lj
+atom_style      hybrid dipole sphere
+boundary        p p p
+lattice         sq 0.4
+region          box block 0 6 0 6 -0.2 0.2
+create_box      1 box
+create_atoms    1 box
+mass            * 1.0
+set             type * dipole/random 1974 1.0
+velocity        all create 1.0 1 loop geom
+pair_style      none
+fix             1 all brownian/sphere 1.0 1974 rng uniform gamma_t 5.0 gamma_r 0.7
+compute         msd all msd
+thermo_style    custom step ke pe c_msd[1] c_msd[2] c_msd[3] c_msd[4]
+thermo_modify   format float %.15g
+timestep        0.00001
+thermo          50
+run             200

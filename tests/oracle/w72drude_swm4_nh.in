@@ -1,0 +1,53 @@
+# oracle: DRUDE swm4-ndp water, Nose-Hoover variant (examples/PACKAGES/drude/swm4-ndp/in.swm4-ndp.nh) cut down to 10 molecules, 40 steps; rigid/npt/small with fix_modify temp (TATOM, temp/com) and press (thermo_press), fix nvt on the Drude particles, drude/transform, delete_bonds (the example's press keyword is kept)
+# oracle-inputs: w72drude_data.swm4-ndp_10
+# oracle-compare: thermo=all atoms=all rel=2e-8 abs=1e-10
+# Measured with native LAMMPS (black box): max relative error 1.1e-8 (thermo pe, step 10, Node 24; not yet re-measured under Node 20), the tolerance is 2e-8. The Langevin variant (w72drude_swm4_lang) is 6.3e-8 at 1e-6 tolerance.
+units real
+boundary p p p
+
+atom_style full
+bond_style harmonic
+angle_style harmonic
+special_bonds lj/coul 0.0 0.0 0.5
+
+pair_style lj/cut/coul/long 12.0 12.0
+kspace_style pppm 1.0e-3
+
+comm_modify vel yes
+read_data w72drude_data.swm4-ndp_10
+
+pair_coeff    1    1      0.210939     3.183950  # ODw ODw
+pair_coeff    *   2*      0.000000     0.0
+
+group ATOMS type 1:3
+group CORES type 1
+group DRUDES type 4
+
+variable TK equal 300.0
+variable TDK equal 1.0
+variable PBAR equal 1.0
+
+neighbor 2.0 bin
+
+timestep 1.0
+
+fix DRUDE all drude C N N D
+
+velocity ATOMS create ${TK} 12345
+velocity DRUDES create ${TDK} 12345
+
+delete_bonds ATOMS multi
+
+fix NVT DRUDES nvt temp ${TDK} ${TDK} 100.0
+compute TATOM ATOMS temp/com
+fix NPH ATOMS rigid/npt/small molecule temp ${TK} ${TK} 100 iso ${PBAR} ${PBAR} 500
+fix_modify NPH temp TATOM press thermo_press
+
+compute TEMP all temp/drude
+
+thermo_style custom step etotal ke pe ebond eangle evdwl ecoul elong press vol temp c_TEMP[1] c_TEMP[2]
+thermo_modify   format float %.15g
+thermo 10
+
+run 40
+

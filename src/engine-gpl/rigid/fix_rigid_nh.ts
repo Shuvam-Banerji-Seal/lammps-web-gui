@@ -679,6 +679,31 @@ export class FixRigidNH extends FixRigidBase {
     this.pressId = pressId;
   }
 
+  /**
+   * fix_modify temp / press (fix_rigid_nh.cpp modify_param): the compute of the thermostat temperature and of the
+   * barostat pressure. The pressure compute reads the temperature of the fix (as the nh fix does), and the new
+   * temperature compute is used from the next init on. The computes of fix_modify are not deleted by unfix.
+   */
+  override modify(key: string, values: string[]): number {
+    if (key === 'temp') {
+      const c = this.sys.compute(values[0] ?? '');
+      if (!c.tempFlag) throw new StyleError(`fix_modify temp: compute ${values[0]} does not compute a temperature`);
+      this.tempId = values[0];
+      this.tempCompute = c;
+      if (this.pressCompute) (this.pressCompute as unknown as { tempId: string }).tempId = values[0];
+      return 1;
+    }
+    if (key === 'press') {
+      if (!this.pstat) throw new StyleError(`fix_modify press: fix ${this.id} has no barostat`);
+      const c = this.sys.compute(values[0] ?? '');
+      if (!c.pressFlag) throw new StyleError(`fix_modify press: compute ${values[0]} does not compute a pressure`);
+      this.pressId = values[0];
+      this.pressCompute = c;
+      return 1;
+    }
+    return super.modify(key, values);
+  }
+
   /** unfix: deletes the computes this fix created (not those fix_modify pointed it to). */
   destroy(): void {
     if (this.computesOwned) {

@@ -1,0 +1,15 @@
+# oracle: dihedral_style opls on one ethanol molecule (drude atoms removed), real units, all other terms only bonds and angles
+# oracle-inputs: w76dih_ethanol1.data
+# oracle-compare: thermo=first atoms=all rel=1e-9 abs=1e-10
+units           real
+atom_style      full
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  opls
+pair_style      lj/cut 8.0
+special_bonds   lj/coul 0.0 0.0 0.5
+read_data       w76dih_ethanol1.data
+pair_coeff      * * 0.0 1.0
+thermo_style    custom step pe ebond eangle edihed evdwl press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+run             0

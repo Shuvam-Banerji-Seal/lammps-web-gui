@@ -1,0 +1,16 @@
+# oracle: dihedral_style opls (all four harmonics) on a phi scan (one dihedral per molecule, w76dih_fine.data), forces and energy
+# oracle-inputs: w76dih_fine.data
+# oracle-compare: thermo=first atoms=all rel=1e-9 abs=1e-10
+units           real
+atom_style      molecular
+bond_style      zero
+angle_style     zero
+dihedral_style  opls
+improper_style  zero
+pair_style      lj/cut 8.0
+read_data       w76dih_fine.data
+pair_coeff      * * 0.0 1.0
+dihedral_coeff  1 1.2 -0.3 0.6 0.1
+thermo_style    custom step pe edihed press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+run             0

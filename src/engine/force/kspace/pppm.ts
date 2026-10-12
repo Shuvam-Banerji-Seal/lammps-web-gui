@@ -343,6 +343,7 @@ export class KSpacePPPM extends KSpaceBase {
 
   compute(kc: KSpaceCompute): void {
     const s = kc.s;
+    this.refreshChargeSums(s);
     const geom = kc.geom;
     const n = s.n;
     const C = kc.qqrd2e;

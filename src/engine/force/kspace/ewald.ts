@@ -228,6 +228,18 @@ export abstract class KSpaceBase extends KSpace {
     return Math.sqrt(Math.log(pre / acc)) / rc;
   }
 
+  /**
+   * qsum and qsqsum follow the current charges at every compute (the self and background terms use them),
+   * while G-ewald, the kmax and the mesh stay as chosen at init. Measured with native LAMMPS (black box): with
+   * fix adapt changing the charges each step, the elong self and background terms follow the charges of that step.
+   */
+  protected refreshChargeSums(s: SimState): void {
+    let qs = 0, q2 = 0;
+    for (let i = 0; i < s.n; i++) { qs += s.q[i]; q2 += s.q[i] * s.q[i]; }
+    this.qsum = qs;
+    this.qsqsum = q2;
+  }
+
   /** Self and background energies (added to elong). */
   protected constantEnergy(qqrd2e: number): number {
     const g = this.gEwald;
@@ -346,6 +358,7 @@ export class KSpaceEwald extends KSpaceBase {
 
   compute(kc: KSpaceCompute): void {
     const s = kc.s;
+    this.refreshChargeSums(s);
     const g = kc.geom;
     const n = s.n;
     const C = kc.qqrd2e;

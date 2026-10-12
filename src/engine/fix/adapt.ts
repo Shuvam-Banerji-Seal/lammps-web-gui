@@ -317,14 +317,35 @@ export class FixAdapt extends Fix {
     }
     this.inInit = true;
     try {
-      this.apply(false);
+      this.apply(false, false);
     } finally {
       this.inInit = false;
     }
+    // Measured with native LAMMPS (black box): the kspace style chooses g_ewald and its grid or kmax from the
+    // charges present at its init, and fix adapt changes the charges only at setup, after that init. The
+    // charges are therefore written by afterForceInit, once the force field is initialized.
+    this.chargesPending = this.atoms.some((a) => a.kind === 'charge');
   }
 
-  /** Writes the variable values into the pair tables and the atoms (scale yes multiplies the originals). */
-  private apply(reinitPair: boolean): void {
+  /** Charges that init() has not written yet (see afterForceInit). */
+  private chargesPending = false;
+
+  /** Setup: the charges of this run's setup are written after the force field's init (kspace init). */
+  afterForceInit(): void {
+    if (!this.chargesPending) return;
+    this.chargesPending = false;
+    const s = this.sys.state;
+    for (const a of this.atoms) {
+      if (a.kind === 'charge') this.setCharges(a, this.sys.equalVariable(a.vname), s);
+    }
+    this.sys.nb.refreshCharges(s);
+  }
+
+  /**
+   * Writes the variable values into the pair tables, the diameters and (when charges is set) the charges
+   * (scale yes multiplies the originals).
+   */
+  private apply(reinitPair: boolean, charges = true): void {
     const sys = this.sys;
     const s = sys.state;
     let pairChanged = false;
@@ -340,11 +361,11 @@ export class FixAdapt extends Fix {
     }
     if (pairChanged) this.refreshPairs(reinitPair);
     for (const a of this.atoms) {
-      const v = sys.equalVariable(a.vname);
-      if (a.kind === 'charge') this.setCharges(a, v, s);
-      else this.setDiameter(a, v, s);
+      if (a.kind === 'charge') {
+        if (charges) this.setCharges(a, sys.equalVariable(a.vname), s);
+      } else this.setDiameter(a, sys.equalVariable(a.vname), s);
     }
-    if (!this.inInit && this.atoms.some((a) => a.kind === 'charge')) sys.nb.refreshCharges(s);
+    if (!this.inInit && charges && this.atoms.some((a) => a.kind === 'charge')) sys.nb.refreshCharges(s);
   }
 
   /**

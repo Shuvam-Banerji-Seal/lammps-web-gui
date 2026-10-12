@@ -56,6 +56,12 @@ export abstract class Fix {
   }
 
   init?(): void;
+  /**
+   * Called by System.setupNeighbors after the force field is initialized (kspace init) and the neighbor
+   * lists are built, before the first force evaluation of a run. A fix that must change per-atom data only
+   * after the force styles read the init-time values (fix adapt charges) does it here.
+   */
+  afterForceInit?(): void;
   setup(): void { this.postForce?.(); }
   minSetup?(): void;
   initialIntegrate?(): void;

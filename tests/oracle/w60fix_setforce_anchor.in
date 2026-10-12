@@ -1,0 +1,47 @@
+# oracle: fix setforce 0 0 0 on an anchor group with bonds (bond_style harmonic, atom_style bond), fix addforce on the far end,
+# fix viscous, a cut-down examples/bpm/plasticity cantilever (in.bpm.plasticity, bpm/spring/plastic replaced by harmonic).
+# Shrink-wrapped boundaries: the anchored atoms drift ballistically and bonds stay short of any periodic image; with boundary p
+# in x the same system diverges from native once an anchored atom crosses the x boundary (see w60fix_bond_image for the bond image rule).
+# oracle-compare: thermo=all atoms=all rel=1e-5 abs=1e-9
+units lj
+newton on off
+dimension 3
+boundary s s s
+atom_style bond
+special_bonds lj 0.0 1.0 1.0 coul 0.0 1.0 1.0
+comm_modify vel yes cutoff 2.6
+lattice fcc 1.41
+region box block 0 12 -1 9 -5 5 units box
+create_box 1 box bond/types 1 extra/bond/per/atom 20
+mass * 1.0
+region cantilever block 3.0 9.0 0 8 -2.5 2.5 units box
+create_atoms 1 region cantilever
+velocity all create 0.1 345910 loop geom
+pair_style lj/cut 1.0
+pair_coeff * * 0.0 1.0
+fix 1 all nve
+compute zmin1 all reduce min z
+region anchor block 3.0 3.6 EDGE EDGE EDGE EDGE units box
+group anchor region anchor
+fix 5 anchor setforce 0.0 0.0 0.0
+thermo_style custom step ke pe c_zmin1 f_5[1] f_5[2] f_5[3]
+thermo_modify format float %.15g norm no
+thermo 20
+timestep 0.1
+run 60
+neighbor 1.0 bin
+create_bonds many all all 1 0.0 1.5
+neighbor 0.3 bin
+special_bonds lj 0.0 1.0 1.0 coul 1.0 1.0 1.0
+bond_style harmonic
+bond_coeff 1 1.0 1.0
+region load block EDGE EDGE 7.0 EDGE EDGE EDGE units box
+group load region load
+variable fload equal ramp(0.0,-0.0005)
+fix 3 load addforce 0.0 0.0 v_fload
+thermo 1
+fix 4 all viscous 0.0016
+run 200
+unfix 3
+fix 3 load addforce 0.0 0.0 -0.0005
+run 200

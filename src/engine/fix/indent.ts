@@ -235,8 +235,15 @@ export class FixWallReflect extends Fix {
  * indenter is K/3 (r - R)\^3." — for side out the interacting atom sits at
  * r < R, so the interaction energy per atom is K/3 (R - r)^3 (positive), the
  * value consistent with the repulsive force and with the plane (where r-R is
- * the atom's distance from the plane, positive on the indented side); side in
- * reverses the action, so the energy per atom is -K/3 (R - r)^3.
+ * the atom's distance from the plane, positive on the indented side).
+ * Measured with native LAMMPS (black box), one atom at the origin, sphere
+ * K = 1, R = 1: centre at x = 2.0 with side in gives energy 0.333333 and a
+ * force +1 on the atom along x (toward the centre); centre at x = 0.5 with
+ * side in gives energy 0 and no force; side out at x = 0.5 gives energy
+ * 0.0416667 = K/3 (R - r)^3 and a force -0.25 along x (away from the centre),
+ * and side out at x = 2.0 gives nothing. So with side in the indenter acts on
+ * atoms outside the sphere (r > R), pushes them toward the centre, and the
+ * energy per atom is +K/3 (r - R)^3, the doc formula with its own r - R.
  * "The :doc:`fix_modify <fix_modify>` *energy* option is supported by"
  * this fix (default "fix_modify energy no"). "This fix computes a global
  * scalar energy and a global 3-vector of" "forces (on the indenter), which
@@ -413,10 +420,11 @@ export class FixIndent extends Fix {
         delta[2] = x[3 * i + 2] - c[2];
         g.minimumImage(delta);
         const r = Math.sqrt(delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]);
-        if (r >= r0) continue;
-        const depth = r0 - r;
+        // side out acts on atoms inside the sphere (r < R), side in on atoms outside it (r > R)
+        if (this.sideOut ? r >= r0 : r <= r0) continue;
+        const depth = this.sideOut ? r0 - r : r - r0;
         const mag = k * depth * depth;
-        energy += (this.sideOut ? 1 : -1) * (k / 3) * depth * depth * depth;
+        energy += (k / 3) * depth * depth * depth;
         if (r > 0) {
           const ux = delta[0] / r, uy = delta[1] / r, uz = delta[2] / r;
           f[3 * i] += (sgn * mag * ux) / ftm2v;
@@ -444,10 +452,10 @@ export class FixIndent extends Fix {
         g.minimumImage(delta);
         const a = delta[dims[0]], b = delta[dims[1]];
         const r = Math.sqrt(a * a + b * b);
-        if (r >= r0) continue;
-        const depth = r0 - r;
+        if (this.sideOut ? r >= r0 : r <= r0) continue;
+        const depth = this.sideOut ? r0 - r : r - r0;
         const mag = k * depth * depth;
-        energy += (this.sideOut ? 1 : -1) * (k / 3) * depth * depth * depth;
+        energy += (k / 3) * depth * depth * depth;
         if (r > 0) {
           const ua = a / r, ub = b / r;
           f[3 * i + dims[0]] += (sgn * mag * ua) / ftm2v;

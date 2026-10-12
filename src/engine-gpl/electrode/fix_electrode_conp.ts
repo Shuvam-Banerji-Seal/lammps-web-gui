@@ -18,6 +18,7 @@ import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { parseNum } from '../../engine/force/util';
+import { FixEfield } from '../../engine/fix/force_ext';
 import { invertDense } from './electrode_math';
 import { MY_2PI, safeDerfcr } from './electrode_math';
 import { eachImagePair, matrixPairTerms, matrixSelfTerms, vectorPairTerms, vectorSelfTerms } from './electrode_pairs';
@@ -40,7 +41,7 @@ const isElectrodeKSpace = (k: unknown): k is ElectrodeKSpace =>
   && typeof (k as ElectrodeKSpace).computeVector === 'function';
 
 export class FixElectrodeConp extends Fix {
-  readonly style = 'electrode/conp';
+  readonly style: string = 'electrode/conp';
   scalarFlag = true;
   vectorFlag = true;
   arrayFlag = false;
@@ -52,46 +53,61 @@ export class FixElectrodeConp extends Fix {
   thermoEnergy = true;
 
   /** Electrode group bits: the fix group first, then the couple groups; elecBit = their union. */
-  private readonly groupBits: number[] = [];
-  private elecBit = 0;
-  private readonly psiConst: number[] = [];
+  protected readonly groupBits: number[] = [];
+  protected elecBit = 0;
+  protected readonly psiConst: number[] = [];
   /** Equal-style variable name of each group potential (null = constant psiConst). */
-  private readonly psiVar: (string | null)[] = [];
-  private readonly groupPsi: number[] = [];
-  private readonly sbCharges: number[] = [];
-  private eta = 0;
-  private etaNull = false;
-  private etaName: string | null = null;
-  private algo: Algo = 'mat_inv';
-  private cgThreshold = 0;
-  private symm = false;
-  private nCgStep = 0;
+  protected readonly psiVar: (string | null)[] = [];
+  protected readonly groupPsi: number[] = [];
+  protected readonly sbCharges: number[] = [];
+  protected eta = 0;
+  protected etaNull = false;
+  protected etaName: string | null = null;
+  protected algo: Algo = 'mat_inv';
+  protected cgThreshold = 0;
+  protected symm = false;
+  /** ffield yes: the finite-field method (see setupFfield) and the electrode that is the top one. */
+  protected ffield = false;
+  protected topGroup = 0;
+  protected nCgStep = 0;
+  /** qtotal keyword: the total electrode charge (constant or equal-style variable). */
+  protected qtotalSet = false;
+  protected qtotal = 0;
+  protected qtotalVar: string | null = null;
+  protected macroCapacitanceSum = 0;
+  /** temp keyword (electrode/thermo only): kB T in the charge units, relaxation time, RNG seed. */
+  protected thermoTemp = 0;
+  protected thermoTime = 0;
+  protected thermoInit = 0;
+  /** Styles that accept the temp and qtotal keywords (overridden by electrode/thermo and electrode/conq). */
+  protected allowsTemp(): boolean { return false; }
+  protected allowsQtotal(): boolean { return true; }
   /** etypes yes: the electrode and electrolyte types must not overlap (checked at init). */
-  private etypes = false;
+  protected etypes = false;
   /** write_inv / write_mat / write_vec file names (null = not written). */
-  private writeInv: string | null = null;
-  private writeMat: string | null = null;
-  private writeVec: string | null = null;
-  private nCall = 0;
+  protected writeInv: string | null = null;
+  protected writeMat: string | null = null;
+  protected writeVec: string | null = null;
+  protected nCall = 0;
 
   // matrix state, rebuilt on every setup (positions change only between runs)
-  private elec: Int32Array = new Int32Array(0);     // atom indices of the electrode atoms, in atom order
-  private ieleOfElec: Int32Array = new Int32Array(0);  // matrix index (tag order) of each electrode atom
-  private groupOfElec: Int32Array = new Int32Array(0);  // coupling group of each electrode atom
-  private ieleToGroup: Int32Array = new Int32Array(0);  // coupling group of each matrix index
-  private imat: Int32Array = new Int32Array(0);     // per atom: matrix index or -1
-  private ngroup = 0;
-  private elastance: Float64Array = new Float64Array(0);
-  private capacitance: Float64Array = new Float64Array(0);
-  private sdVectors: Float64Array[] = [];
-  private macroCapacitance: number[][] = [];
-  private macroElastance: number[][] = [];
-  private evscale = 1;
+  protected elec: Int32Array = new Int32Array(0);     // atom indices of the electrode atoms, in atom order
+  protected ieleOfElec: Int32Array = new Int32Array(0);  // matrix index (tag order) of each electrode atom
+  protected groupOfElec: Int32Array = new Int32Array(0);  // coupling group of each electrode atom
+  protected ieleToGroup: Int32Array = new Int32Array(0);  // coupling group of each matrix index
+  protected imat: Int32Array = new Int32Array(0);     // per atom: matrix index or -1
+  protected ngroup = 0;
+  protected elastance: Float64Array = new Float64Array(0);
+  protected capacitance: Float64Array = new Float64Array(0);
+  protected sdVectors: Float64Array[] = [];
+  protected macroCapacitance: number[][] = [];
+  protected macroElastance: number[][] = [];
+  protected evscale = 1;
 
   /** Energy and virial of the fix from the last force evaluation (the Gaussian correction and self energy). */
-  private eCorr = 0;
-  private readonly virialSum = new Float64Array(6);
-  private kspaceOf: ElectrodeKSpace | null = null;
+  protected eCorr = 0;
+  protected readonly virialSum = new Float64Array(6);
+  protected kspaceOf: ElectrodeKSpace | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -155,7 +171,7 @@ export class FixElectrodeConp extends Fix {
           iarg += 2;
           break;
         case 'ffield':
-          if (this.yesNo(args[iarg + 1], 'ffield')) throw new StyleError('fix electrode/conp ffield yes (finite-field electrolyte) is not supported by the browser engine');
+          this.ffield = this.yesNo(args[iarg + 1], 'ffield');
           iarg += 2;
           break;
         case 'write_inv': case 'write_mat': case 'write_vec':
@@ -167,10 +183,25 @@ export class FixElectrodeConp extends Fix {
           break;
         case 'read_inv': case 'read_mat':
           throw new StyleError(`fix electrode/conp ${key} (reading matrices from files) is not supported by the browser engine`);
-        case 'qtotal':
-          throw new StyleError('fix electrode/conp qtotal is not supported by the browser engine');
-        case 'temp':
-          throw new StyleError('temp keyword not available for fix electrode/conp');
+        case 'qtotal': {
+          if (!this.allowsQtotal()) throw new StyleError(`qtotal keyword not available for ${this.style}`);
+          if (iarg + 1 >= args.length) throw new StyleError('Need one argument after qtotal keyword');
+          if (args[iarg + 1].startsWith('v_')) this.qtotalVar = args[iarg + 1].slice(2);
+          else this.qtotal = parseNum(args[iarg + 1], 'qtotal');
+          this.qtotalSet = true;
+          iarg += 2;
+          break;
+        }
+        case 'temp': {
+          if (!this.allowsTemp()) throw new StyleError(`temp keyword not available for fix ${this.style}`);
+          if (iarg + 3 >= args.length) throw new StyleError('Need three arguments after temp command');
+          // force->boltz / force->qe2f * T (units: kB in energy per kelvin, qe2f: charge * field -> force)
+          this.thermoTemp = sys.state.units.boltz / sys.state.units.qe2f * parseNum(args[iarg + 1], 'temp');
+          this.thermoTime = parseNum(args[iarg + 2], 'temp time');
+          this.thermoInit = parseNum(args[iarg + 3], 'temp seed');
+          iarg += 4;
+          break;
+        }
         default:
           throw new StyleError(`Unknown keyword ${key} for fix electrode/conp command`);
       }
@@ -191,6 +222,8 @@ export class FixElectrodeConp extends Fix {
       if (matches > 1) throw new StyleError('Groups may not overlap');
     }
     this.elecBit = this.groupBits.reduce((a, b) => a | b, 0);
+    if (this.qtotalSet && this.symm) throw new StyleError(`${this.style} cannot use qtotal keyword with symm on`);
+    if (this.ffield) this.setupFfield(sys);
     if (this.algo !== 'mat_inv' && this.writeInv !== null) {
       throw new StyleError('Selected algorithm does not use inverted matrix. Cannot read/write inverted matrix.');
     }
@@ -199,8 +232,48 @@ export class FixElectrodeConp extends Fix {
     }
   }
 
+  /**
+   * post_constructor() with ffield yes: the two electrode potentials are read back from the fix's vector output and an
+   * efield fix applies the resulting field along z (the finite-field method, docs fix_electrode).
+   */
+  protected setupFfield(sys: System): void {
+    if (this.groupBits.length !== 2) throw new StyleError('Number of electrodes must be two with ffield yes');
+    if (!this.symm) throw new StyleError('Keyword symm off not allowed with ffield yes');
+    if (!sys.geom.periodic[2]) throw new StyleError('Periodic z boundaries required with ffield yes');
+    // get_top_group(): the electrode with the highest atom
+    const zmax = [sys.geom.lo[2], sys.geom.lo[2]];
+    for (let i = 0; i < sys.state.n; i++) {
+      for (let g = 0; g < 2; g++) if (sys.state.mask[i] & this.groupBits[g] && sys.state.x[3 * i + 2] > zmax[g]) zmax[g] = sys.state.x[3 * i + 2];
+    }
+    this.topGroup = zmax[1] > zmax[0] ? 1 : 0;
+    const vbot = `${this.id}_ffield_vbot`, vtop = `${this.id}_ffield_vtop`, zfield = `${this.id}_ffield_zfield`;
+    // fix electrode/conp: the potentials are the vector outputs, 1-based in the variable formulas
+    sys.vars.define(vbot, 'equal', [`f_${this.id}[${2 - this.topGroup}]`]);
+    sys.vars.define(vtop, 'equal', [`f_${this.id}[${1 + this.topGroup}]`]);
+    sys.vars.define(zfield, 'equal', [`(v_${vbot}-v_${vtop})/lz`]);
+    if (sys.fixes.some((f) => f.style.startsWith('efield'))) sys.warn('Other efield fixes found -- please make sure this is intended!');
+    // fix [fixname]_efield all efield 0.0 0.0 v_zfield
+    sys.fixes.push(new FixEfield(sys, `${this.id}_efield`, 'all', ['0.0', '0.0', `v_${zfield}`]));
+  }
+
+  /** compute_sd_vectors_ffield(): the response per electrode with the position-dependent z offset of the finite field. */
+  protected computeSdVectorsFfield(): void {
+    const s = this.sys.state, ng = this.ngroup, C = this.capacitance, ev = this.evscale;
+    const zprd = this.sys.geom.lz;
+    this.sdVectors = this.groupBits.map(() => new Float64Array(ng));
+    for (let k = 0; k < this.elec.length; k++) {
+      const i = this.elec[k], iele = this.ieleOfElec[k];
+      const zprdOffset = (s.mask[i] & this.groupBits[this.topGroup]) ? 0.0 : 1.0;
+      const evscaleElez = ev * (s.x[3 * i + 2] / zprd + zprdOffset);
+      for (let g = 0; g < this.groupBits.length; g++) {
+        const gmult = g === this.topGroup ? -1.0 : 1.0;
+        for (let j = 0; j < ng; j++) this.sdVectors[g][j] += gmult * C[j * ng + iele] * evscaleElez;
+      }
+    }
+  }
+
   /** utils::logical: yes/on/true/1 and no/off/false/0. */
-  private yesNo(w: string | undefined, key: string): boolean {
+  protected yesNo(w: string | undefined, key: string): boolean {
     if (w === 'yes' || w === 'on' || w === 'true' || w === '1') return true;
     if (w === 'no' || w === 'off' || w === 'false' || w === '0') return false;
     throw new StyleError(`Expected yes or no after ${key}`);
@@ -234,7 +307,7 @@ export class FixElectrodeConp extends Fix {
   }
 
   /** Tag-sorted matrix index per electrode atom and the coupling group of each atom (fix_electrode_conp.cpp create_taglist). */
-  private buildLists(): void {
+  protected buildLists(): void {
     const s = this.sys.state;
     const n = s.n;
     const elecIdx: number[] = [];
@@ -261,10 +334,10 @@ export class FixElectrodeConp extends Fix {
   }
 
   /** eta of atom i: the constant, or the per-atom property. */
-  private etaOf = (i: number): number => (this.etaName !== null ? this.sys.state.custom.get(this.etaName)!.data[i] : this.eta);
+  protected etaOf = (i: number): number => (this.etaName !== null ? this.sys.state.custom.get(this.etaName)!.data[i] : this.eta);
 
   /** Elastance matrix (Coulomb between electrode atoms, with the k-space part and boundary corrections). */
-  private computeElastance(): void {
+  protected computeElastance(): void {
     const s = this.sys.state, ks = this.kspaceOf!;
     const ng = this.ngroup;
     this.elastance = new Float64Array(ng * ng);
@@ -279,7 +352,7 @@ export class FixElectrodeConp extends Fix {
   }
 
   /** Dense symmetrisation: C -= (C 1)(C 1)^T / (1^T C 1) (fix_electrode_conp.cpp symmetrize). */
-  private symmetrize(): void {
+  protected symmetrize(): void {
     const ng = this.ngroup, C = this.capacitance;
     const AinvE = new Float64Array(ng);
     let EAinvE = 0;
@@ -296,7 +369,7 @@ export class FixElectrodeConp extends Fix {
   }
 
   /** compute_sd_vectors(): the response of the electrode charges to each group potential. */
-  private computeSdVectors(): void {
+  protected computeSdVectors(): void {
     const ng = this.ngroup, C = this.capacitance, ev = this.evscale;
     this.sdVectors = [];
     for (let g = 0; g < this.groupBits.length; g++) {
@@ -310,7 +383,7 @@ export class FixElectrodeConp extends Fix {
   }
 
   /** compute_macro_matrices(): the group-group capacitance and its inverse (fix_electrode_conp.cpp). */
-  private computeMacroMatrices(): void {
+  protected computeMacroMatrices(): void {
     const G = this.groupBits.length;
     const mc: number[][] = Array.from({ length: G }, () => new Array(G).fill(0));
     for (let g = 0; g < G; g++) {
@@ -340,10 +413,15 @@ export class FixElectrodeConp extends Fix {
       for (let i = 0; i < G; i++) for (let j = 0; j < G; j++) me[i][j] = flat[i * G + j];
     }
     this.macroElastance = me;
+    this.macroCapacitanceSum = 0;
+    for (let i = 0; i < G; i++) for (let j = 0; j < G; j++) this.macroCapacitanceSum += mc[i][j];
   }
 
-  /** Charges, b vector and matrices at the start of a run (setup_post_neighbor), then the fix's energy and forces. */
-  setup(): void {
+  /**
+   * The charge solve of a run start (setup_post_neighbor in the C++): matrices, the first charges and the write_*
+   * files. It runs before the setup force evaluation, so the forces use the new charges.
+   */
+  setupPreForce(): void {
     this.buildLists();
     const s = this.sys.state;
     const ks = this.kspaceOf!;
@@ -355,7 +433,8 @@ export class FixElectrodeConp extends Fix {
         this.capacitance = Float64Array.from(this.elastance);
         if (!invertDense(this.capacitance, this.ngroup)) throw new StyleError('CONP matrix inversion failed!');
         if (this.symm) this.symmetrize();
-        this.computeSdVectors();
+        if (this.ffield) this.computeSdVectorsFfield();
+        else this.computeSdVectors();
         this.computeMacroMatrices();
       }
     }
@@ -370,17 +449,19 @@ export class FixElectrodeConp extends Fix {
       this.writeTable(this.writeVec, vec);
     }
     if (this.writeInv !== null) this.writeTable(this.writeInv, this.orderMatrix(this.capacitance));
-    this.sys.computeForcesInRun(this.sys.computeFlags());
-    this.sys.forcesCurrent();
+  }
+
+  /** setup_pre_reverse: the Gaussian correction and the self energy of the setup forces (after the force evaluation). */
+  setup(): void {
     this.preReverseTerms();
   }
 
   /** Atom IDs by coupling group (each group sorted by ID) and the matrix index of each of them (group_idx). */
-  private groupIdx: number[] = [];
-  private taglistBygroup: number[] = [];
+  protected groupIdx: number[] = [];
+  protected taglistBygroup: number[] = [];
 
   /** fix_electrode_conp.cpp order_matrix(): the matrix re-indexed by the group-sorted ID list. */
-  private orderMatrix(mat: Float64Array): number[][] {
+  protected orderMatrix(mat: Float64Array): number[][] {
     const ng = this.ngroup;
     const ordered: number[][] = Array.from({ length: ng }, () => new Array(ng).fill(0));
     for (let i = 0; i < ng; i++) {
@@ -391,7 +472,7 @@ export class FixElectrodeConp extends Fix {
   }
 
   /** write_to_file(): the tag header and one row per matrix row, C-style %20 and %20.11e columns. */
-  private writeTable(name: string, rows: number[][]): void {
+  protected writeTable(name: string, rows: number[][]): void {
     let out = this.taglistBygroup.map((t) => String(t).padStart(20)).join('') + '\n';
     for (const r of rows) out += r.map((x) => cExp(x).padStart(20)).join('') + '\n';
     this.sys.writeFile(name, out, false);
@@ -407,7 +488,7 @@ export class FixElectrodeConp extends Fix {
     this.preReverseTerms();
   }
 
-  private preReverseTerms(): void {
+  protected preReverseTerms(): void {
     this.virialSum.fill(0);
     const eSr = this.gausscorr();
     const eSelf = this.selfEnergy();
@@ -416,8 +497,9 @@ export class FixElectrodeConp extends Fix {
   }
 
   /** The charge update of the chosen algorithm (fix_electrode_conp.cpp update_charges). */
-  private updateCharges(): void {
+  protected updateCharges(): void {
     this.nCall++;
+    this.preUpdate();
     const s = this.sys.state;
     const ng = this.ngroup, n = this.elec.length;
     const qLocal = new Float64Array(n);
@@ -435,6 +517,7 @@ export class FixElectrodeConp extends Fix {
         this.sbCharges[this.ieleToGroup[iele]] += qtmp;
       }
       this.updatePsi();
+      if (this.qtotalSet) this.updatePsiQtotal();
       for (let g = 0; g < this.groupBits.length; g++) {
         for (let k = 0; k < n; k++) qLocal[k] += this.sdVectors[g][this.ieleOfElec[k]] * this.groupPsi[g];
       }
@@ -472,6 +555,7 @@ export class FixElectrodeConp extends Fix {
         delta = this.dot(r, d);
         dotOld = dotNew;
       }
+      this.recomputePotential(b, q);
       if (delta > this.cgThreshold) this.sys.warn('CG threshold not reached');
       for (let k = 0; k < n; k++) qLocal[k] = q[k];
     }
@@ -482,7 +566,7 @@ export class FixElectrodeConp extends Fix {
    * electrode_vector: the potential at every atom from the source charges (pair term, self term, k-space, correction).
    * electrodeOnly: the electrode-electrode list of the CG algorithm (elec_vector), which etypes restricts to equal types.
    */
-  private electrodeVector(sensorBit: number, sourceBit: number, invert: boolean, electrodeOnly = false): Float64Array {
+  protected electrodeVector(sensorBit: number, sourceBit: number, invert: boolean, electrodeOnly = false): Float64Array {
     const s = this.sys.state, ks = this.kspaceOf!;
     const pot = new Float64Array(s.n);
     const sameType = electrodeOnly && this.etypes;
@@ -494,7 +578,7 @@ export class FixElectrodeConp extends Fix {
   }
 
   /** ele_ele_interaction(): A q at the electrode atoms (the electrode vector with the charges set, or the elastance). */
-  private eleEle(q: Float64Array): Float64Array {
+  protected eleEle(q: Float64Array): Float64Array {
     if (this.algo === 'cg') {
       this.setCharges(q);
       const pot = this.electrodeVector(this.elecBit, this.elecBit, false, true);
@@ -516,9 +600,25 @@ export class FixElectrodeConp extends Fix {
     return out;
   }
 
-  /** constraint_correction and constraint_projection (symm on: total electrode charge 0). */
-  private constraintCorrection(x: Float64Array): Float64Array {
-    if (!this.symm) return x;
+  /**
+   * constraint_correction (symm on or qtotal: the total electrode charge is set to qtotal, 0 for symm without qtotal,
+   * by subtracting a uniform charge). The C++ updates qtotal from its variable here.
+   */
+  protected constraintCorrection(x: Float64Array): Float64Array {
+    if (!(this.symm || this.qtotalSet)) return x;
+    if (this.qtotalVar !== null) this.qtotal = this.sys.vars.scalar(this.qtotalVar, this.sys.formulaEnv);
+    let sum = 0;
+    for (let k = 0; k < x.length; k++) sum += x[k];
+    if (this.qtotalSet) sum -= this.qtotal;
+    sum /= this.ngroup;
+    const out = Float64Array.from(x);
+    for (let k = 0; k < out.length; k++) out[k] -= sum;
+    return out;
+  }
+
+  /** constraint_projection: the direction that conserves the total charge (cf. Gingrich master thesis). */
+  protected constraintProjection(x: Float64Array): Float64Array {
+    if (!(this.symm || this.qtotalSet)) return x;
     let sum = 0;
     for (let k = 0; k < x.length; k++) sum += x[k];
     sum /= this.ngroup;
@@ -527,37 +627,51 @@ export class FixElectrodeConp extends Fix {
     return out;
   }
 
-  private constraintProjection(x: Float64Array): Float64Array {
-    return this.constraintCorrection(x);
+  /** Hook before the charges are updated (electrode/thermo: the charges after the last step). */
+  protected preUpdate(): void {}
+
+  /** Hook after the conjugate-gradient solve (electrode/conq: the average group potentials). */
+  protected recomputePotential(_b: Float64Array, _q: Float64Array): void {}
+
+  /** update_psi_qtotal(): the group potentials that bring the total charge to qtotal. */
+  protected updatePsiQtotal(): void {
+    if (this.qtotalVar !== null) this.qtotal = this.sys.vars.scalar(this.qtotalVar, this.sys.formulaEnv);
+    let qCurrent = 0;
+    for (let i = 0; i < this.groupBits.length; i++) {
+      qCurrent += this.sbCharges[i];
+      for (let j = 0; j < this.groupBits.length; j++) qCurrent += this.macroCapacitance[i][j] * this.groupPsi[j];
+    }
+    const addPsi = (this.qtotal - qCurrent) / this.macroCapacitanceSum;
+    for (let i = 0; i < this.groupBits.length; i++) this.groupPsi[i] += addPsi;
   }
 
-  private add(a: Float64Array, b: Float64Array): Float64Array {
+  protected add(a: Float64Array, b: Float64Array): Float64Array {
     const out = Float64Array.from(a);
     for (let k = 0; k < out.length; k++) out[k] += b[k];
     return out;
   }
 
-  private scale(alpha: number, x: Float64Array): Float64Array {
+  protected scale(alpha: number, x: Float64Array): Float64Array {
     const out = Float64Array.from(x);
     for (let k = 0; k < out.length; k++) out[k] *= alpha;
     return out;
   }
 
-  private dot(a: Float64Array, b: Float64Array): number {
+  protected dot(a: Float64Array, b: Float64Array): number {
     let out = 0;
     for (let k = 0; k < a.length; k++) out += a[k] * b[k];
     return out;
   }
 
   /** set_charges(): writes the electrode charges and refreshes the ghost copies the pair style reads (comm->forward_comm). */
-  private setCharges(q: Float64Array): void {
+  protected setCharges(q: Float64Array): void {
     const s = this.sys.state;
     for (let k = 0; k < this.elec.length; k++) s.q[this.elec[k]] = q[k];
     this.sys.nb.refreshCharges(s);
   }
 
   /** update_psi(): the constant potentials, or the current value of their equal-style variables. */
-  private updatePsi(): void {
+  protected updatePsi(): void {
     for (let g = 0; g < this.groupBits.length; g++) {
       const v = this.psiVar[g];
       this.groupPsi[g] = v === null ? this.psiConst[g] : this.sys.vars.scalar(v, this.sys.formulaEnv);
@@ -565,7 +679,7 @@ export class FixElectrodeConp extends Fix {
   }
 
   /** gausscorr(): the short-range correction to the Coulomb pair term, for electrode-containing pairs (ordered pairs, half weight). */
-  private gausscorr(): number {
+  protected gausscorr(): number {
     const s = this.sys.state, ks = this.kspaceOf!;
     const qqrd2e = ks.qqrd2e;
     const f = s.f, q = s.q, mask = s.mask;
@@ -610,7 +724,7 @@ export class FixElectrodeConp extends Fix {
   }
 
   /** self_energy(): the eta-dependent self interaction of every electrode atom. */
-  private selfEnergy(): number {
+  protected selfEnergy(): number {
     const s = this.sys.state, ks = this.kspaceOf!;
     const qqrd2e = ks.qqrd2e;
     const pre = 1.0 / Math.sqrt(MY_2PI) * qqrd2e;

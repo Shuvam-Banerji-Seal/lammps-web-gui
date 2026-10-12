@@ -18,6 +18,40 @@ import type { LookupTables } from './lookup';
 
 const SMALL = 0.0001;
 
+/**
+ * ACKS2 kinetic-energy terms of the far pairs (the block of vdW_Coulomb_Energy and of
+ * Tabulated_vdW_Coulomb_Energy under "if (system->acks2_flag)"): the bond softness of each pair with
+ * the cutoff xcut = (bcut_i + bcut_j)/2 gives an energy -1/2 k bs (s_i - s_j)^2 and its forces.
+ */
+const acks2Pairs = (sys: RxSystem): void => {
+  const s = sys.acks2s;
+  if (!s) return;
+  const { far, ws, en, n, N } = sys;
+  const gp34 = sys.param.gpL[34];
+  for (let i = 0; i < n; i++) {
+    if (sys.type[i] < 0) continue;
+    for (let pj = far.start[i]; pj < far.end[i]; pj++) {
+      const j = far.nbr[pj];
+      if (sys.type[j] < 0) continue;
+      const xcut = 0.5 * (sys.param.sbp[sys.type[i]].bcut_acks2 + sys.param.sbp[sys.type[j]].bcut_acks2);
+      if (!pairFlag(sys, i, j, pj, xcut)) continue;
+      const d = far.d[pj] / xcut;
+      const bond_softness = gp34 * Math.pow(d, 3.0) * Math.pow(1.0 - d, 6.0);
+      if (!(bond_softness > 0.0)) continue;
+      const effpot_diff = s[N + i] - s[N + j];
+      const e_ele = -0.5 * KCALpMOL_to_EV * bond_softness * effpot_diff * effpot_diff;
+      en.e_ele += e_ele;
+      let d_bond_softness = gp34 * (3.0 / xcut) * Math.pow(d, 2.0) * Math.pow(1.0 - d, 5.0) * (1.0 - 3.0 * d);
+      d_bond_softness = -0.5 * d_bond_softness * effpot_diff * effpot_diff;
+      d_bond_softness = (KCALpMOL_to_EV * d_bond_softness) / far.d[pj];
+      for (let k = 0; k < 3; k++) {
+        ws.f[3 * i + k] += -d_bond_softness * far.dvec[3 * pj + k];
+        ws.f[3 * j + k] += d_bond_softness * far.dvec[3 * pj + k];
+      }
+    }
+  }
+};
+
 /** Compute_Polarization_Energy: the charge-dependent electronegativity energy of each owned atom. */
 export const polarizationEnergy = (sys: RxSystem): void => {
   sys.en.e_pol = 0.0;
@@ -26,7 +60,11 @@ export const polarizationEnergy = (sys: RxSystem): void => {
     if (ti < 0) continue;
     const q = sys.q[i];
     const s = sys.param.sbp[ti];
-    const en_tmp = KCALpMOL_to_EV * (s.chi * q + (s.eta / 2.0) * q * q);
+    let en_tmp = KCALpMOL_to_EV * (s.chi * q + (s.eta / 2.0) * q * q);
+    if (sys.acks2s) {
+      // energy due to coupling with kinetic energy potential (ACKS2)
+      en_tmp += KCALpMOL_to_EV * q * sys.acks2s[sys.N + i];
+    }
     sys.en.e_pol += en_tmp;
   }
 };
@@ -146,6 +184,7 @@ export const vdwCoulombEnergy = (sys: RxSystem): void => {
       ws.f[3 * j + 2] += coef * far.dvec[3 * pj + 2];
     }
   }
+  acks2Pairs(sys);
   polarizationEnergy(sys);
 };
 
@@ -192,6 +231,7 @@ export const tabulatedVdwCoulombEnergy = (sys: RxSystem, LR: LookupTables): void
       }
     }
   }
+  acks2Pairs(sys);
   polarizationEnergy(sys);
 };
 

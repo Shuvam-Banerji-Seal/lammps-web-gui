@@ -12,6 +12,8 @@ import type { Pair } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { PairReaxFF } from '../reaxff/pair';
 import { FixQEqReaxFF } from '../reaxff/qeq';
+import { FixACKS2ReaxFF } from '../reaxff/acks2';
+import { FixQEqRelReaxFF, FixQtpieReaxFF } from '../reaxff/qtpie';
 
 /** ReaxFF styles ported from LAMMPS (src/REAXFF); merged into styles.ts through lazyStyles.ts. */
 export const PAIRS: Record<string, () => Pair> = {
@@ -26,10 +28,26 @@ const refuse = (name: string) => (): never => {
   throw new StyleError(`${name} is not ported to the browser engine (ReaxFF output fixes and computes are not supported)`);
 };
 
-/** fix qeq/reaxff (and its alias qeq/reax, both in LAMMPS' FixStyle list); reaxff/bonds and reaxff/species refused. */
+const qtpieFactory = (sys: System, id: string, group: string, args: string[]): Fix =>
+  new FixQtpieReaxFF(sys, id, group, args, () => (sys.ff.pair instanceof PairReaxFF ? sys.ff.pair : null));
+
+const qeqRelFactory = (sys: System, id: string, group: string, args: string[]): Fix =>
+  new FixQEqRelReaxFF(sys, id, group, args, () => (sys.ff.pair instanceof PairReaxFF ? sys.ff.pair : null));
+
+const acks2Factory = (sys: System, id: string, group: string, args: string[]): Fix =>
+  new FixACKS2ReaxFF(sys, id, group, args, () => (sys.ff.pair instanceof PairReaxFF ? sys.ff.pair : null));
+
+/**
+ * fix qeq/reaxff (and its alias qeq/reax), fix acks2/reaxff (alias acks2/reax), fix qtpie/reaxff and
+ * fix qeq/rel/reaxff, all in LAMMPS' FixStyle lists; reaxff/bonds and reaxff/species refused.
+ */
 export const FIXES: Record<string, typeof qeqFactory> = {
   'qeq/reaxff': qeqFactory,
   'qeq/reax': qeqFactory,
+  'acks2/reaxff': acks2Factory,
+  'acks2/reax': acks2Factory,
+  'qtpie/reaxff': qtpieFactory,
+  'qeq/rel/reaxff': qeqRelFactory,
   'reaxff/bonds': refuse('fix reaxff/bonds') as unknown as typeof qeqFactory,
   'reaxff/species': refuse('fix reaxff/species') as unknown as typeof qeqFactory,
 };

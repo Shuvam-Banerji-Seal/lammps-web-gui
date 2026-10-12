@@ -1,0 +1,20 @@
+# oracle (setup only, run 0: the field term of the charge equilibrium at step 0; see the efield note in the report): ReaxFF water cut from examples/reaxff/water (in.water.qtpie.field (boundary p p p, efield 0 0 0.05)), tolerance 1e-6 as the example, 10 NVE steps, with fix efield 0 0 0.05 (group all)
+# oracle-inputs: w65reaxq_water.data w65reaxq_qeq_ff.water w65reaxq_gauss_exp.txt
+# oracle-compare: thermo=all atoms=none rel=1e-6 abs=1e-10
+units           real
+atom_style      charge
+boundary        p p p
+read_data       w65reaxq_water.data
+pair_style      reaxff NULL safezone 3.0 mincap 150
+pair_coeff      * * w65reaxq_qeq_ff.water O H
+fix             1 all qtpie/reaxff 1 0.0 10.0 1.0e-6 reaxff w65reaxq_gauss_exp.txt
+fix             3 all efield 0.0 0.0 0.05
+neighbor        0.5 bin
+neigh_modify    every 1 delay 0 check yes
+velocity        all create 300.0 4928459 rot yes dist gaussian
+timestep        0.5
+fix             2 all nve
+thermo_style    custom step temp pe ebond evdwl ecoul ke etotal press
+thermo_modify   format float %.15g
+thermo          1
+run             0

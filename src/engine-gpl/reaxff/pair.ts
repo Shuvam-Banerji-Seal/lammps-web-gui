@@ -40,6 +40,8 @@ export class PairReaxFF extends Pair {
   protected qeqflag = 1;
   /** set by fix qeq/reaxff (attachQeqFix): the charges of checkqeq yes come from it. */
   protected qeqAttached = false;
+  /** set by fix acks2/reaxff (attachAcks2): its solution s feeds the ACKS2 bond-softness terms. */
+  protected acks2Source: (() => Float64Array) | null = null;
   protected fileRead = false;
   protected param: ReaxParam | null = null;
   /** element index (into param.sbp) per LAMMPS atom type; -1 for NULL. */
@@ -199,6 +201,7 @@ export class PairReaxFF extends Pair {
     const counts = regionCounts(far, N, n, type, Hindex, numH, param, ctrl.hbondCut);
     const sys: RxSystem = {
       ctrl, param, n, N, type, orig, x, q, Hindex, numH, Tap: this.Tap, far,
+      acks2s: this.acks2Source ? this.acks2Source() : null,
       bonds: allocBondList(N, far, counts.bondCount),
       ws: newWorkspace(N),
       en: newEnergies(),
@@ -249,6 +252,21 @@ export class PairReaxFF extends Pair {
   /** extract('pvector') for compute pair (the 14 terms of pair_reaxff.cpp compute). */
   override extract(name: string): unknown {
     return name === 'pvector' ? this.pvector : undefined;
+  }
+
+  /** Called by fix acks2/reaxff: the solution s of the fix (read at each evaluation). */
+  attachAcks2(source: () => Float64Array): void { this.acks2Source = source; this.qeqAttached = true; }
+
+  /** pair_style reaxff extract() of fix acks2/reaxff: bcut_acks2 per type (1-based) and gp.l[34] (bond softness). */
+  acks2Parameters(ntypes: number): { bcut: Float64Array; bondSoftness: number } {
+    if (!this.param) throw new StyleError('pair_style reaxff has no force field');
+    const bcut = new Float64Array(ntypes + 1);
+    for (let t = 1; t <= ntypes; t++) {
+      const k = this.map[t];
+      if (k >= 0) bcut[t] = this.param.sbp[k].bcut_acks2;
+    }
+    if (this.param.gpL.length <= 34) throw new StyleError('pair_style reaxff: the force field has no bond softness parameter (gp.l[34])');
+    return { bcut, bondSoftness: this.param.gpL[34] };
   }
 
   /** Called by fix qeq/reaxff when it is defined or initialised. */

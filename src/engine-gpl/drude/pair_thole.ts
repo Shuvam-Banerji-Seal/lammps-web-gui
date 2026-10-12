@@ -167,7 +167,7 @@ export class PairThole extends Pair {
 }
 
 /** pair_coeff I J bounds (wildcards as pair_coeff.html; I <= J is enforced by the caller). */
-const bounds = (w: string, n: number): [number, number] => {
+export const bounds = (w: string, n: number): [number, number] => {
   if (w === '*') return [1, n];
   const star = w.indexOf('*');
   if (star < 0) {

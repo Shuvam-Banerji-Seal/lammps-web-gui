@@ -14,12 +14,17 @@ import { FixLangevinDrude } from '../drude/fix_langevin_drude';
 import { ComputeTempDrude } from '../drude/compute_temp_drude';
 import { PairThole } from '../drude/pair_thole';
 import { PairCoulTT } from '../drude/pair_coul_tt';
+import { FixTGNVTDrude } from '../drude/fix_tgnvt_drude';
+import { FixTGNPTDrude } from '../drude/fix_tgnpt_drude';
+import { PairLJCutTholeLong } from '../drude/pair_lj_cut_thole_long';
 
 export const FIXES: Record<string, FixFactory> = {
   drude: (sys, id, group, args) => new FixDrude(sys, id, group, args),
   'drude/transform/direct': (sys, id, group, args) => new FixDrudeTransform(sys, id, group, args, false),
   'drude/transform/inverse': (sys, id, group, args) => new FixDrudeTransform(sys, id, group, args, true),
   'langevin/drude': (sys, id, group, args) => new FixLangevinDrude(sys, id, group, args),
+  'tgnvt/drude': (sys, id, group, args) => new FixTGNVTDrude(sys, id, group, args),
+  'tgnpt/drude': (sys, id, group, args) => new FixTGNPTDrude(sys, id, group, args),
 };
 
 export const COMPUTES: Record<string, ComputeFactory> = {
@@ -29,4 +34,5 @@ export const COMPUTES: Record<string, ComputeFactory> = {
 export const PAIRS: Record<string, () => Pair> = {
   thole: () => new PairThole(),
   'coul/tt': () => new PairCoulTT(),
+  'lj/cut/thole/long': () => new PairLJCutTholeLong(),
 };

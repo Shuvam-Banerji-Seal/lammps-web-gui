@@ -7,9 +7,13 @@ import { massOf, hasChargeStyle } from '../atoms';
 /*
  * Force-style fixes from wave "force_ext", written only from the LAMMPS
  * documentation (docs.lammps.org pages cited per class). The engine stores
- * forces in internal units: F_internal = F_lammps / ftm2v (integrators apply
- * v += dt * ftm2v * F / m), energies in LAMMPS energy units, velocities and
- * positions in LAMMPS units.
+ * forces in LAMMPS force units, the same as the pair styles write them into
+ * state.f (the integrators apply v += dt * ftm2v * F / m, see fix/nve.ts), so
+ * a fix force needs no ftm2v factor; energies in LAMMPS energy units, velocities
+ * and positions in LAMMPS units. Measured with native LAMMPS (black box) in
+ * units real and metal: fix viscous 0.5 gives F = -0.5 v, fix gravity 1.0 gives
+ * F = m * 1.0 (m = 12: fz = -12), fix efield 0 0 0.5 with q = 2 gives F = q E qe2f
+ * (fz = 23.060549 in real, 1 in metal).
  */
 
 /**
@@ -59,7 +63,7 @@ export class FixViscous extends Fix {
   postForce(): void {
     const s = this.sys.state;
     const { f, v, type, mask } = s;
-    const k = -this.gamma / s.units.ftm2v;
+    const k = -this.gamma;
     const bit = this.groupBit;
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & bit)) continue;
@@ -200,13 +204,14 @@ export class FixGravity extends Fix {
   }
 
   /**
-   * Acceleration this fix imposes, in internal force/mass units (magnitude * direction / ftm2v), whether
-   * or not the fix is disabled: fix rigid ... gravity reads it for each body. Measured with native
-   * LAMMPS (black box): with the gravity keyword the body force is the body mass times this acceleration.
+   * Acceleration this fix imposes, in LAMMPS force/mass units (magnitude * direction; the page says the
+   * magnitude "is specified in force/mass units"), whether or not the fix is disabled: fix rigid ...
+   * gravity reads it for each body. Measured with native LAMMPS (black box): with the gravity keyword
+   * the body force is the body mass times this acceleration.
    */
   accel(out: Float64Array): void {
     this.gvec(out);
-    const c = valueOf(this.sys, this.magnitude) / this.sys.state.units.ftm2v;
+    const c = valueOf(this.sys, this.magnitude);
     out[0] *= c; out[1] *= c; out[2] *= c;
   }
 
@@ -216,7 +221,7 @@ export class FixGravity extends Fix {
     const s = this.sys.state;
     const g = new Float64Array(3);
     this.gvec(g);
-    const c = valueOf(this.sys, this.magnitude) / s.units.ftm2v;
+    const c = valueOf(this.sys, this.magnitude);
     const { f, mask } = s;
     const bit = this.groupBit;
     for (let i = 0; i < s.n; i++) {
@@ -230,11 +235,15 @@ export class FixGravity extends Fix {
 
   /**
    * Potential energy of the field: -mass * (g dot x) for each particle in the
-   * group, in energy units. The doc names the expression "mass \* (g dot x)";
-   * the potential energy of the field is its negative, so that -Grad(U) =
-   * F = +mass * g (the same -x.qE convention the fix_efield page states
-   * explicitly), which is also what native LAMMPS outputs (oracle cases
-   * w2fdamp_gravity / w2fdamp_gravity_chute).
+   * group. The doc names the expression "mass \* (g dot x)"; the potential
+   * energy of the field is its negative, so that -Grad(U) = F = +mass * g (the
+   * same -x.qE convention the fix_efield page states explicitly), which is also
+   * what native LAMMPS outputs (oracle cases w2fdamp_gravity /
+   * w2fdamp_gravity_chute). The mass times the force/mass-unit acceleration is
+   * already an energy (force times distance), so no mvv2e factor: measured with
+   * native LAMMPS (black box), units real, mass 12 at (5,5,5) with
+   * gravity 1.0 vector 0 0 -1 and fix_modify energy yes gives pe = 60, the same
+   * as in metal.
    */
   private energyNow(): number {
     // Measured with native LAMMPS (black box): with disable the scalar and the fix_modify energy term are 0.
@@ -242,7 +251,7 @@ export class FixGravity extends Fix {
     const s = this.sys.state;
     const g = new Float64Array(3);
     this.gvec(g);
-    const k = valueOf(this.sys, this.magnitude) * s.units.mvv2e;
+    const k = valueOf(this.sys, this.magnitude);
     const { x, mask } = s;
     const bit = this.groupBit;
     let e = 0;
@@ -409,7 +418,7 @@ export class FixEfield extends Fix {
   private regionId: string | null = null;
   private energyVar: string | null = null;
   private potentialVar: string | null = null;
-  /** Per-atom force added by the last postForce, in internal units. */
+  /** Per-atom force added by the last postForce, in LAMMPS force units. */
   private fadd: Float64Array = new Float64Array(0);
 
   constructor(sys: System, id: string, group: string, args: string[]) {
@@ -519,7 +528,8 @@ export class FixEfield extends Fix {
     const sys = this.sys;
     const s = sys.state;
     const [rx, ry, rz] = [this.resolve(this.comp[0]), this.resolve(this.comp[1]), this.resolve(this.comp[2])];
-    const k = s.units.qe2f / s.units.ftm2v;
+    // F = q E qe2f in LAMMPS force units (fix_efield page: F = qE; the qe2f factor converts the field units)
+    const k = s.units.qe2f;
     const { f, q, mask, x } = s;
     const bit = this.groupBit;
     const fadd = this.fadd;
@@ -631,7 +641,7 @@ export class FixEfield extends Fix {
     const fadd = this.fadd;
     let sum = 0;
     for (let a = 0; a < s.n; a++) sum += fadd[3 * a + i];
-    return sum * s.units.ftm2v;
+    return sum;
   }
 
   minPostForce(): void { this.postForce(); }

@@ -8,8 +8,8 @@ import { massOf } from '../atoms';
  * Motion-style fixes written only from the LAMMPS documentation (the
  * docs.lammps.org page is cited per class and the implemented lines are
  * quoted character for character from plans/lammps-docs/<page>.rst).
- * Velocities are stored in LAMMPS velocity units, forces in internal units
- * (F_internal = F_lammps / ftm2v), so velocity updates use dt * ftm2v.
+ * Velocities are stored in LAMMPS velocity units, forces in LAMMPS force units
+ * (the same as the pair styles write them), so velocity updates use dt * ftm2v.
  */
 
 /**

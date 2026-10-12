@@ -102,9 +102,9 @@ describe('fix_modify bodyforces', () => {
 });
 
 describe('fix rigid/nvt and rigid/nvt/small', () => {
-  it('names the style it does not support', async () => {
-    expect(msg(await run('fix 1 all rigid/nvt molecule temp 1.0 1.0 1.0'))).toMatch(/fix rigid\/nvt is not supported by the browser engine/);
-    expect(msg(await run('fix 1 all rigid/nvt/small molecule temp 1.0 1.0 1.0'))).toMatch(/fix rigid\/nvt\/small is not supported/);
+  it('runs fix rigid/nvt and rigid/nvt/small (native-parity ports, tests/engineRigidNH.test.ts)', async () => {
+    expect(msg(await run('fix 1 all rigid/nvt molecule temp 1.0 1.0 1.0'))).toBe('');
+    expect(msg(await run('fix 1 all rigid/nvt/small molecule temp 1.0 1.0 1.0'))).toBe('');
   });
 
   it('keeps temp and tparam out of the NVE styles', async () => {

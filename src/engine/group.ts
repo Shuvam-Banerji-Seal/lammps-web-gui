@@ -64,7 +64,7 @@ export const DYNAMIC_GROUP_FIXES = new Set([
 export const NO_DYNAMIC_GROUP_FIXES = new Set([
   'ave/atom', 'ave/chunk', 'balance', 'deform', 'deposit', 'ehex', 'electron/stopping', 'enforce2d', 'freeze', 'heat', 'indent',
   'nve/noforce', 'pour', 'print',
-  'property/atom', 'rattle', 'rigid', 'rigid/nve', 'rigid/nve/small', 'rigid/nvt', 'rigid/nvt/small',
+  'property/atom', 'rattle', 'rigid', 'rigid/nph', 'rigid/nph/small', 'rigid/npt', 'rigid/npt/small', 'rigid/nve', 'rigid/nve/small', 'rigid/nvt', 'rigid/nvt/small',
   'rigid/small', 'shake', 'spring/self', 'vector', 'wall/gran', 'wall/gran/region',
 ]);
 

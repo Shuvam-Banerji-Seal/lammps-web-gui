@@ -1,0 +1,23 @@
+# oracle data for w64surf_line_rest (hand-written: 2d sphere and line segments, atom_style line)
+
+2 atoms
+2 atom types
+1 lines
+
+-10 10 xlo xhi
+-10 10 ylo yhi
+-0.5 0.5 zlo zhi
+
+Atoms # line
+
+1 1 1 0 1.0 0.0 0.6 0
+2 1 2 1 1.0 0.0 0.0 0
+
+Velocities
+
+1 0 0 0 0 0 0
+2 0 0 0 0 0 0
+
+Lines
+
+2 -5.0 0.0 5.0 0.0

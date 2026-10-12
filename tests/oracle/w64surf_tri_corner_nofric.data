@@ -1,0 +1,23 @@
+# oracle data for w64surf_tri_corner (hand-written: one flat triangle and one sphere, atom_style tri)
+
+2 atoms
+2 atom types
+1 triangles
+
+-10 10 xlo xhi
+-10 10 ylo yhi
+-10 10 zlo zhi
+
+Atoms # tri
+
+1 1 1 0 1.0 3.3 -3.2 2.0
+2 1 2 1 1.0 -1.0 -1.0 0.0
+
+Velocities
+
+1 0 0 -1.0 0 0 0 0 0 0
+2 0 0 0 0 0 0 0 0 0
+
+Triangles
+
+2 -3 -3 0 3 -3 0 -3 3 0

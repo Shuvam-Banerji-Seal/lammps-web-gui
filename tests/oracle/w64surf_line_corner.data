@@ -1,0 +1,26 @@
+# oracle data for w64surf_line_corner (hand-written: 2d sphere and line segments, atom_style line)
+
+3 atoms
+2 atom types
+2 lines
+
+-10 10 xlo xhi
+-10 10 ylo yhi
+-0.5 0.5 zlo zhi
+
+Atoms # line
+
+1 1 1 0 1.0 0.0 2.0 0
+2 1 2 1 1.0 -2.5 0.0 0
+3 1 2 1 1.0 2.5 1.5 0
+
+Velocities
+
+1 0 -1 0 0 0 0
+2 0 0 0 0 0 0
+3 0 0 0 0 0 0
+
+Lines
+
+2 -5.0 0.0 0.0 0.0
+3 0.0 0.0 5.0 3.0

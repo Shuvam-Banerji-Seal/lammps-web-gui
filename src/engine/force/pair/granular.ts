@@ -757,7 +757,9 @@ export class PairGranular extends Pair {
           continue;
         }
         const a = self(i), b = self(j);
-        if (!a || !b) throw new StyleError(`all pair coeffs are not set (pair ${i} ${j})`);
+        // a pair that cannot be mixed stays unset: initOne throws for it when this style is used for the pair, and a
+        // hybrid sub-style never asks for the pairs of other sub-styles (pair_style hybrid granular surf/granular)
+        if (!a || !b) continue;
         const sa = this.pmOf(a, a.E ? effModulus(a.E, a.nu) : 0, a, a);
         const sb = this.pmOf(b, b.E ? effModulus(b.E, b.nu) : 0, b, b);
         if (sa.sig !== sb.sig) throw new StyleError(`all pair coeffs are not set (pair ${i} ${j}): models of types ${i} and ${j} differ and cannot be mixed`);

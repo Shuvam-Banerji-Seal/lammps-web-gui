@@ -92,6 +92,9 @@ export class Dump {
   /** dump_modify label (dump local): the word in the header lines, default ENTRIES. */
   label = 'ENTRIES';
   lastStep = -1;
+  /** dump_modify maxfiles Fmax: with a "*" file name, the number of snapshot files kept (0 keeps all). */
+  maxfiles = 0;
+  private written: string[] = [];
   private opened = false;
   private nextStep = -1;
   /** dump image: the image renderer (dump_image.ts); null for every other style. */
@@ -267,7 +270,27 @@ export class Dump {
           break;
         }
         case 'label': if (!v) throw new StyleError('dump_modify label needs a string'); this.label = v; k += 2; break;
-        case 'precision': case 'sfactor': case 'tfactor': case 'maxfiles': case 'nfile': case 'fileper': case 'at': numArg(v, key); k += 2; break;
+        case 'maxfiles': {
+          // dump_modify.html: "The specified Fmax is how many snapshots will be kept. Once this number is reached, the
+          // file(s) containing the oldest snapshot is deleted before a new dump file is written." Measured with native
+          // LAMMPS (black box): with a name without * the keyword stops with "Cannot use dump_modify maxfiles without *
+          // in dump file name"; 5 snapshots of "snap.*.dump" with maxfiles 2 leave snap.3.dump and snap.4.dump.
+          if (!this.file.includes('*')) throw new StyleError('Cannot use dump_modify maxfiles without * in dump file name');
+          if (this.imageDump) throw new StyleError('dump_modify maxfiles is not supported for dump image by the browser engine');
+          this.maxfiles = intArg(v, key);
+          k += 2;
+          break;
+        }
+        case 'nfile': case 'fileper': {
+          // Measured with native LAMMPS (black box): without % in the file name the keyword stops with
+          // "Cannot use dump_modify nfile without % in dump file name"; the % split is not written by the engine.
+          if (!this.file.includes('%')) throw new StyleError(`Cannot use dump_modify ${key} without % in dump file name`);
+          throw new StyleError(`dump_modify ${key} with a % file name is not supported by the browser engine`);
+        }
+        // dump_modify precision / sfactor / tfactor / at belong to other dump styles (xtc, netcdf). Measured with native
+        // LAMMPS (black box): for dump atom, custom, xyz and extxyz each stops with "Unknown dump_modify keyword".
+        case 'precision': case 'sfactor': case 'tfactor': case 'at':
+          throw new StyleError(`Unknown dump_modify keyword: ${key}`);
         case 'triclinic/general': this.triclinicGeneral = yesno(v, key); k += 2; break;
         case 'types': if (v !== 'numeric') throw new StyleError('dump_modify types labels needs type labels (not supported)'); k += 2; break;
         default:
@@ -314,6 +337,20 @@ export class Dump {
     const k = this.columns.indexOf(w);
     if (k < 0) throw new StyleError(`dump_modify: '${w}' is not a column of dump ${this.id}`);
     return k;
+  }
+
+  /**
+   * Writes one snapshot file. With dump_modify maxfiles, a "*" dump keeps only the last Fmax files: the oldest
+   * are removed from the file store once a newer one is written (dump_modify.html).
+   */
+  private writeSnapshot(name: string, text: string, append: boolean): void {
+    this.sys.writeFile(name, text, append);
+    if (this.maxfiles <= 0) return;
+    if (!this.written.includes(name)) this.written.push(name);
+    while (this.written.length > this.maxfiles) {
+      const old = this.written.shift();
+      if (old !== undefined) this.sys.files.delete(old);
+    }
   }
 
   /** Should a snapshot be written on this step? */
@@ -443,7 +480,7 @@ export class Dump {
     const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
     const name = multi ? fillWildcard(this.file, stepText) : this.file;
     const appendNow = multi ? false : this.opened || this.append;
-    sys.writeFile(name, lines.join('\n') + '\n', appendNow);
+    this.writeSnapshot(name, lines.join('\n') + '\n', appendNow);
     this.opened = true;
   }
 
@@ -497,7 +534,7 @@ export class Dump {
     const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
     const name = multi ? fillWildcard(this.file, stepText) : this.file;
     const appendNow = multi ? false : this.opened || this.append;
-    sys.writeFile(name, lines.join('\n') + '\n', appendNow);
+    this.writeSnapshot(name, lines.join('\n') + '\n', appendNow);
     this.opened = true;
   }
 

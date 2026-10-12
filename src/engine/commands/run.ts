@@ -216,6 +216,8 @@ const writeDump: Handler = ({ sys }, a) => {
 interface RunOpts {
   start: number | null;
   stop: number | null;
+  /** run.html "pre": yes (default) creates the neighbor lists and computes the forces before the run. */
+  pre: boolean;
   every: number;
   commands: string[];
 }
@@ -248,6 +250,14 @@ export const emitFrame = (sys: System): void => {
 
 type FrameEventOut = Extract<EngineEvent, { kind: 'frame' }>;
 
+/** One thermo row: the thermo event and, with a log file open, its lines in the log (thermo.ts logRow). */
+const emitThermoRow = (sys: System): number => {
+  const row = sys.thermo.row();
+  sys.io.emit({ kind: 'thermo', row });
+  if (sys.logOpen) sys.logTable(sys.thermo.logRow(row));
+  return sys.state.step;
+};
+
 /** How often (wall-clock ms) a run reports its speed (EngineEvent 'perf'). */
 const PERF_EVERY_MS = 500;
 
@@ -259,6 +269,19 @@ const writeDumps = (sys: System, firstOfRun: boolean): boolean => {
   return any;
 };
 
+/**
+ * What a run with pre no depends on: the atoms, the box, the fixes, the computes and the pair style that the previous
+ * run set up. run.html: "it is an error to use the pre no option" after such a change.
+ */
+const setupSignature = (sys: System): string => {
+  const s = sys.state;
+  const box = `${s.box.lo.join(',')}/${s.box.hi.join(',')}/${s.box.tilt.join(',')}`;
+  return [s.n, box, sys.fixes.map((f) => `${f.id}:${f.style}`).join(','), sys.computes.map((c) => c.id).join(','), sys.ff.pair?.name ?? ''].join('|');
+};
+
+/** The setup signature at the end of the last run of each system (WeakMap: a clear makes a new system). */
+const lastSetup = new WeakMap<System, string>();
+
 /** One run of n steps with output; returns steps taken. */
 const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => {
   const { sys, session } = ctx;
@@ -266,24 +289,36 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
   if (softHalted(sys)) return 0;
   clearHaltRequest(sys);
   const s = sys.state;
-  ensureThermoComputes(sys);
-  initRun(sys);
   const first = s.step;
+  // run.html: start and stop are checked before anything changes, so a rejected run leaves the system as it was
+  // (measured with native LAMMPS, black box: the checks come before the setup)
+  if (opts.start !== null && opts.start > first) throw new StyleError('run start cannot be after the current timestep');
+  if (opts.stop !== null && opts.stop < first + n) throw new StyleError('run stop cannot be before the last timestep of the run');
+  // run.html: "if pre is specified as no then the initial setup is skipped, except for printing thermodynamic info.
+  // Note that if pre is set to no for the very first run LAMMPS performs, then it is overridden". The run starts from the
+  // neighbor lists, forces and energies the previous run left (measured with native LAMMPS, black box: after a
+  // displacement, the setup row of a pre no run still shows the energy of the old positions; a pre yes run shows the new one).
+  const reuse = !opts.pre && sys.run.ranOnce;
+  if (reuse && sys.respa) throw new StyleError("Run flag 'pre no' not compatible with r-RESPA");
+  if (reuse && lastSetup.get(sys) !== setupSignature(sys)) {
+    throw new StyleError('run pre no after a change of the atoms, box, fixes, computes or pair style: use pre yes (run.html: it is an error to use pre no after such a change)');
+  }
+  ensureThermoComputes(sys);
+  if (!reuse) initRun(sys);
+  if (reuse) sys.forcesCurrent();
   sys.run = {
     inRun: true, firstStep: first, lastStep: first + n,
     beginStep: opts.start ?? first, endStep: opts.stop ?? first + n, t0: performance.now(), ranOnce: true,
   };
-  if (opts.start !== null && opts.start > first) throw new StyleError('run start cannot be after the current timestep');
-  if (opts.stop !== null && opts.stop < first + n) throw new StyleError('run stop cannot be before the last timestep of the run');
   const th = sys.thermo;
   sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels(), units: sys.units.style });
+  if (sys.logOpen) sys.logTable(th.logHeader());
   sys.io.emit({ kind: 'run', from: first, to: first + n, dt: s.dt, units: sys.units.style });
   const frameEvery = session.frameEvery;
   let nextThermoVar = th.everyVar ? th.nextVariableStep() : -1;
   let lastThermo = -1;
   const emitThermo = () => {
-    sys.io.emit({ kind: 'thermo', row: th.row() });
-    lastThermo = s.step;
+    lastThermo = emitThermoRow(sys);
   };
   const afterSetup = () => {
     emitThermo();
@@ -315,7 +350,9 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
     if (dumped || (frameEvery > 0 && step % frameEvery === 0)) emitFrame(sys);
   };
   // run_style respa runs on the CPU engine (the GPU paths step plain velocity Verlet only)
-  const { accel, reason } = sys.respa ? { accel: null, reason: null } : accelerator(sys, session.forceBackend);
+  const { accel, reason } = sys.respa ? { accel: null, reason: null }
+    : reuse ? { accel: null, reason: 'run pre no continues from the CPU forces of the previous run' }
+      : accelerator(sys, session.forceBackend);
   if (reason) sys.log(`${session.backendLabel}: this run uses the general fp64 CPU engine (${reason})`);
   const threadCalls0 = sys.ff.pairThreads?.calls ?? 0;
   const taken = accel
@@ -333,12 +370,15 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
         cancelled: () => session.isCancelled,
         afterSetup,
         afterStep,
+        skipSetup: reuse,
         // keep the page responsive: yield about every 30 ms
         yieldMs: 30,
       });
   // a cancelled run still reports its last step; a run stopped by fix halt does not print a row for a step
   // that is not on the thermo interval (measured with native LAMMPS, black box)
   if (lastThermo !== s.step && !haltRequested(sys)) emitThermo();
+  if (sys.logOpen) sys.logTable(th.logEnd());
+  lastSetup.set(sys, setupSignature(sys));
   emitPerf(s.step, true);
   sys.run.inRun = false;
   emitFrame(sys);
@@ -366,7 +406,7 @@ const run: Handler = async (ctx, a) => {
   const { sys } = ctx;
   const s = sys.state;
   let n = int(a[0], 'number of steps');
-  const opts: RunOpts = { start: null, stop: null, every: 0, commands: [] };
+  const opts: RunOpts = { start: null, stop: null, pre: true, every: 0, commands: [] };
   for (let k = 1; k < a.length;) {
     switch (a[k]) {
       case 'upto': n -= s.step; k++; break;
@@ -374,6 +414,9 @@ const run: Handler = async (ctx, a) => {
       case 'stop': opts.stop = int(a[k + 1], 'stop'); k += 2; break;
       case 'pre': case 'post':
         if (a[k + 1] !== 'yes' && a[k + 1] !== 'no') throw new StyleError(`run ${a[k]} must be yes or no`);
+        // run.html: "If post is specified as no, the full timing summary is skipped; only a one-line summary timing is
+        // printed." The engine prints only the one-line summary, so post is accepted and has no further effect.
+        if (a[k] === 'pre') opts.pre = a[k + 1] === 'yes';
         k += 2;
         break;
       case 'every':
@@ -394,10 +437,12 @@ const run: Handler = async (ctx, a) => {
   const begin = s.step;
   if (opts.start === null) opts.start = begin;
   if (opts.stop === null) opts.stop = begin + n;
+  // run.html: "If the pre and post options are set to no when used with the every keyword, then the first run will do
+  // the full setup and ... these operations will be skipped for intermediate runs."
   let left = n;
-  while (left > 0) {
+  for (let chunk = 0; left > 0; chunk++) {
     const m = Math.min(opts.every, left);
-    await runSteps(ctx, m, opts);
+    await runSteps(ctx, m, { ...opts, pre: opts.pre || chunk === 0 });
     left -= m;
     for (const c of opts.commands) await ctx.session.runCommand(c, 0);
   }
@@ -418,6 +463,7 @@ const minimizeCmd: Handler = async (ctx, a) => {
   const th = sys.thermo;
   sys.run = { inRun: true, firstStep: s.step, lastStep: s.step + maxiter, beginStep: s.step, endStep: s.step + maxiter, t0: performance.now(), ranOnce: true };
   sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels(), units: sys.units.style });
+  if (sys.logOpen) sys.logTable(th.logHeader());
   const first = s.step;
   startRestarts(sys);
   let lastRestart = -1;
@@ -429,8 +475,7 @@ const minimizeCmd: Handler = async (ctx, a) => {
     cancelled: () => session.isCancelled || haltRequested(sys),
     thermo: (iterDone) => {
       if ((iterDone || th.due(s.step, first, Number.MAX_SAFE_INTEGER)) && s.step !== lastThermo) {
-        sys.io.emit({ kind: 'thermo', row: th.row() });
-        lastThermo = s.step;
+        lastThermo = emitThermoRow(sys);
       }
       writeDumps(sys, s.step === first);
       if (s.step !== first && s.step !== lastRestart && restartDue(sys, s.step)) { writeRestarts(sys, s.step); lastRestart = s.step; }
@@ -442,6 +487,7 @@ const minimizeCmd: Handler = async (ctx, a) => {
   if (converged && sys.restartOut.length && s.step !== lastRestart) writeRestarts(sys, s.step, true);
   sys.run.inRun = false;
   emitFrame(sys);
+  if (sys.logOpen) sys.logTable(th.logEnd());
   const seconds = (performance.now() - sys.run.t0) / 1000;
   sys.log([
     `Minimization stats:`,
@@ -471,7 +517,11 @@ const minModify: Handler = ({ sys }, a) => {
     switch (key) {
       case 'dmax': sys.minSettings.dmax = num(v, 'dmax'); k += 2; break;
       case 'line':
-        if (!['backtrack', 'quadratic', 'forcezero', 'spin_cubic', 'spin_none'].includes(v ?? '')) throw new StyleError('min_modify line must be backtrack, quadratic or forcezero');
+        // min_modify.html: spin_cubic and spin_none are line searches of the spin packages. Measured with native LAMMPS
+        // (black box): on a non-spin minimization both stop with a segmentation fault, so the browser engine (no spin
+        // atoms) refuses them by name instead.
+        if (v === 'spin_cubic' || v === 'spin_none') throw new StyleError(`min_modify line ${v} needs spin atoms (the spin packages), which the browser engine does not provide`);
+        if (!['backtrack', 'quadratic', 'forcezero'].includes(v ?? '')) throw new StyleError('min_modify line must be backtrack, quadratic or forcezero');
         sys.minSettings.line = v as 'backtrack' | 'quadratic' | 'forcezero';
         k += 2;
         break;

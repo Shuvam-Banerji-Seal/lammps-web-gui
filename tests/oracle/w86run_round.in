@@ -1,0 +1,21 @@
+# oracle: round() halves go toward +infinity: round(-2.5) = -2 (black box); variable.html "Round() is the nearest integer"
+# oracle-compare: thermo=all rel=1e-12 abs=1e-14
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+variable        a equal round(-2.5)
+variable        b equal round(2.5)
+variable        c equal round(-0.5)
+variable        d equal round(-1.4)
+variable        e equal round(-2.5000001)
+variable        f equal round(0.49999999999999994)
+variable        g equal round(-7.5)
+thermo_style    custom step v_a v_b v_c v_d v_e v_f v_g
+thermo_modify   format float %.15g
+run             0

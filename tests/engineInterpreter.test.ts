@@ -114,7 +114,11 @@ describe('equal-style formulas (variable.html)', () => {
     expect(ev('ln(exp(2))')).toBeCloseTo(2, 14);
     expect(ev('log(1000)')).toBeCloseTo(3, 14);
     expect(ev('sign(0)')).toBe(1);
-    expect(ev('round(-2.5)')).toBe(-3);
+    // Measured with native LAMMPS (black box): round(-2.5) = -2, round(2.5) = 3, round(-0.5) = 0, round(-1.4) = -1
+    expect(ev('round(-2.5)')).toBe(-2);
+    expect(ev('round(2.5)')).toBe(3);
+    expect(ev('round(-0.5)')).toBe(0);
+    expect(ev('round(-1.4)')).toBe(-1);
     expect(ev('atan2(1,1)')).toBeCloseTo(Math.PI / 4, 14);
     expect(() => ev('1/0')).toThrow(/division/);
     expect(() => ev('foo + 1')).toThrow(/unknown name/);

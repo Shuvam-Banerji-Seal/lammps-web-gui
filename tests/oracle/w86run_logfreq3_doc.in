@@ -1,0 +1,16 @@
+# oracle: logfreq3 points are ceil(x*ratio^k): the variable.html example logfreq3(10,25,1000) (steps 0..998, the last point is at 1000)
+# oracle-compare: thermo=all rel=1e-12 abs=1e-14
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+variable        d equal logfreq3(10,25,1000)
+thermo_style    custom step v_d
+thermo_modify   format float %.15g
+thermo          1
+run             999

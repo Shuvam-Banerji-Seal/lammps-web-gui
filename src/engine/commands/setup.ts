@@ -721,7 +721,13 @@ const createAtoms: Handler = ({ sys }, a) => {
     for (let c = 0; c < random.count; c++) {
       let placed = false;
       for (let t = 0; t < maxtry * 1000 && !placed; t++) {
-        const p = [0, 1, 2].map((d) => (d === 2 && sys.dimension === 2 ? 0 : blo[d] + rng.uniform() * (bhi[d] - blo[d])));
+        // Measured with native LAMMPS (black box, dimension 2, create_atoms 1 random 5 12345 NULL): every attempt
+        // draws x, y and z; in 2d the z draw is discarded and z = 0 (native's second atom has x equal to the y the
+        // engine gave it when it skipped the z draw)
+        const p = [0, 1, 2].map((d) => {
+          const u = rng.uniform();
+          return d === 2 && sys.dimension === 2 ? 0 : blo[d] + u * (bhi[d] - blo[d]);
+        });
         if (!insideBox(p[0], p[1], p[2])) continue;
         if (reg && !reg.match(p[0], p[1], p[2])) continue;
         if (!varOk(p)) continue;

@@ -916,6 +916,22 @@ const PAIR_POPULAR: { style: string; coeffHelp: string }[] = [
   { style: 'hybrid', coeffHelp: 'sub-style args… (advanced)' },
 ];
 
+/**
+ * Pair styles whose `pair_style` line takes no cutoff argument, so the cutoff the builder keeps from an
+ * earlier style (e.g. `2.5` from lj/cut) must not be written. Each line quotes the page's Syntax section:
+ * - pair_eam.html Syntax: "pair_style eam/alloy" (the same page also covers eam, eam/fs, eam/cd and eam/he).
+ * - pair_tersoff.html Syntax: "pair_style style keywords values"
+ * - pair_sw.html Syntax: "pair_style style keyword values"
+ * - pair_edip.html Syntax: "pair_style edip"
+ * - pair_meam.html Syntax: "pair_style meam"
+ * - pair_meam_spline.html Syntax: "pair_style meam/spline"
+ * - pair_snap.html Syntax: "pair_style snap"
+ * - pair_adp.html Syntax: "pair_style adp"
+ */
+const PAIR_STYLE_NO_ARGS = new Set([
+  'eam', 'eam/alloy', 'eam/fs', 'eam/he', 'eam/cd', 'tersoff', 'sw', 'edip', 'meam', 'meam/spline', 'snap', 'adp',
+]);
+
 export const INTERACTION_COMMANDS: CommandDef[] = [
   {
     id: 'pair_style_popular',
@@ -932,7 +948,7 @@ export const INTERACTION_COMMANDS: CommandDef[] = [
         'Full catalog (~280 styles) linked in docs'),
       str('args', 'pair_style args', '10.0', 'e.g. global cutoff / hybrid substyles'),
     ],
-    build: v => [line('pair_style', v.style, v.args)],
+    build: v => [line('pair_style', v.style, PAIR_STYLE_NO_ARGS.has(v.style) ? '' : v.args)],
   },
   {
     id: 'pair_coeff',

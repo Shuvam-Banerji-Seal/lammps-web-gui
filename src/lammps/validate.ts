@@ -23,6 +23,7 @@
  */
 
 import { scriptStatementsDetailed, tokenizeLine } from './scriptParser';
+import { unitsDocFor, type PotentialEntry, type PotentialIndex } from './potentialIndex';
 
 export type DiagnosticLevel = 'error' | 'warning' | 'info';
 
@@ -125,6 +126,45 @@ const ATOM_CREATING_FIXES = ['pour', 'deposit', 'gcmc', 'widom', 'append/atoms']
 /** kspace solvers need a matching long-range pair style. */
 const LONG_RANGE_PAIR = /(coul\/long|coul\/msm|coul\/wolf\/cs|long\/long|coul\/esp|tip4p\/long|dsf)/;
 
+export interface ValidateOptions {
+  /** The potential library index (potentialIndex.ts), or null/absent when it is not loaded. */
+  potentials?: PotentialIndex | null;
+}
+
+/**
+ * The `units` style a script runs in: its last `units` command, or lj. docs.lammps.org/units.html,
+ * Default section: "units lj".
+ */
+const scriptUnitsOf = (statements: { text: string }[]): string => {
+  let units = 'lj';
+  for (const { text } of statements) {
+    const tok = tokenizeLine(text);
+    if (tok[0] === 'units' && tok[1]) units = tok[1];
+  }
+  return units;
+};
+
+/**
+ * The first library file a pair_coeff names, when its stated units differ from the script's units and the
+ * pair style's doc page states the units of its files. Null otherwise.
+ */
+const unitsMismatch = (
+  coeffTokens: string[],
+  pairStyleTokens: string[],
+  index: PotentialIndex,
+  scriptUnits: string,
+): { entry: PotentialEntry; sentence: string; page: string } | null => {
+  for (const tok of coeffTokens) {
+    const entry = index.files.find((f) => f.name === tok);
+    if (!entry || !entry.units || entry.units === scriptUnits) continue;
+    const style = entry.styles.find((s) => pairStyleTokens.includes(s)) ?? entry.styles[0];
+    const doc = style ? unitsDocFor(style) : null;
+    if (!doc) return null;
+    return { entry, sentence: doc.sentence, page: doc.page };
+  }
+  return null;
+};
+
 interface State {
   boxDefined: boolean;
   qeqFix: boolean;
@@ -153,8 +193,11 @@ interface State {
  * Returns diagnostics ordered by source line. `error` = LAMMPS will refuse to
  * run (or silently do the wrong thing); `warning` = runs but very likely not
  * what was intended; `info` = style nudges.
+ *
+ * `options.potentials` is the LAMMPS potential library index (src/lammps/potentialIndex.ts), when loaded:
+ * it lets the units rule know what units a library file is stated in.
  */
-export const validateScript = (text: string): Diagnostic[] => {
+export const validateScript = (text: string, options: ValidateOptions = {}): Diagnostic[] => {
   const out: Diagnostic[] = [];
   const add = (
     level: DiagnosticLevel,
@@ -189,6 +232,7 @@ export const validateScript = (text: string): Diagnostic[] => {
 
   const statements = scriptStatementsDetailed(text);
   let sawRunOrMinimize = false;
+  const scriptUnits = scriptUnitsOf(statements);
 
   for (const { text: stmt, line } of statements) {
     const tok = tokenizeLine(stmt);
@@ -320,7 +364,7 @@ export const validateScript = (text: string): Diagnostic[] => {
         st.pairStyle = tok.slice(1).join(' ');
         break;
 
-      case 'pair_coeff':
+      case 'pair_coeff': {
         st.pairCoeffSeen = true;
         if (!st.pairStyle && !st.readData) {
           add('error', line, cmd, 'order/pair_coeff-without-pair_style',
@@ -328,7 +372,18 @@ export const validateScript = (text: string): Diagnostic[] => {
               '`pair_style` has been declared.',
             'pair_coeff.html');
         }
+        const hit = options.potentials
+          ? unitsMismatch(tok.slice(1), (st.pairStyle ?? '').split(/\s+/), options.potentials, scriptUnits)
+          : null;
+        if (hit) {
+          add('warning', line, cmd, 'units/potential-file-units',
+            `\`${hit.entry.name}\` is a LAMMPS library file stated in \`${hit.entry.units}\` units, but this ` +
+              `script runs in \`${scriptUnits}\` units. The pair style's doc page says: "${hit.sentence}" ` +
+              'Check the file header or set `units` to match.',
+            hit.page);
+        }
         break;
+      }
 
       case 'kspace_style':
         if (tok[1] && tok[1] !== 'none') st.kspaceLine = line;

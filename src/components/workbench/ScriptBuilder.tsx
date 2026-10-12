@@ -26,6 +26,8 @@ import {
   duplicateStepInModel, updateStepInModel, updateParamInModel, freshUid,
 } from '../../lammps/model';
 import { validateScript, Diagnostic, diagnosticCounts } from '../../lammps/validate';
+import { loadPotentialIndex, pairStyleWords, type PotentialIndex } from '../../lammps/potentialIndex';
+import { PotentialPicker } from './builder/PotentialPicker';
 import { parseScript, ImportResult } from '../../lammps/scriptParser';
 import type { BuilderIncoming } from '../../lammps/notebookBridge';
 import { downloadTextFile } from '../../lammps/exporter';
@@ -418,14 +420,24 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
   /** The text currently shown/copied/downloaded. */
   const activeText = isManual ? (model.manualText ?? '') : generated.text;
 
+  /** The LAMMPS potential library index, once loaded (the lint's units rule and the file picker use it). */
+  const [potentialIndex, setPotentialIndex] = useState<PotentialIndex | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadPotentialIndex()
+      .then((i) => { if (live) setPotentialIndex(i); })
+      .catch(() => { /* offline or missing: the lint runs without the library */ });
+    return () => { live = false; };
+  }, []);
+
   /** Doc-grounded LAMMPS lint over the EXACT text the user will run. */
   const diagnostics = useMemo<Diagnostic[]>(() => {
     try {
-      return validateScript(activeText);
+      return validateScript(activeText, { potentials: potentialIndex });
     } catch {
       return [];
     }
-  }, [activeText]);
+  }, [activeText, potentialIndex]);
   const lintCounts = useMemo(() => diagnosticCounts(diagnostics), [diagnostics]);
   const [lintOpen, setLintOpen] = useState(false);
 
@@ -1634,6 +1646,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
             ct={ct}
             step={selectedStep}
             def={selectedDef}
+            pairWords={pairWordsAbove(model.steps, selectedStep.uid)}
             onUpdateParam={(k, v) => updateParam(selectedStep.uid, k, v)}
             onUpdateNote={(note) => updateStep(selectedStep.uid, { note })}
             onToggle={() => updateStep(selectedStep.uid, { enabled: !selectedStep.enabled })}
@@ -2105,10 +2118,27 @@ interface StepEditorProps {
   onRemove: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  /** The pair_style words above this step (see pairWordsAbove). */
+  pairWords: string[];
 }
 
+/**
+ * The words of the pair_style that is in force above a step: the last enabled pair_style step before it
+ * in the trunk, as `[style]` or, for hybrid, `[mode, ...sub-styles]`. [] when there is none.
+ */
+const pairWordsAbove = (steps: ScriptStep[], uid: string): string[] => {
+  let words: string[] = [];
+  for (const s of steps) {
+    if (s.uid === uid) break;
+    if (!s.enabled) continue;
+    if (s.defId === 'pair_style_popular' && s.params.style) words = [s.params.style];
+    if (s.defId === 'pair_style_hybrid') words = [s.params.mode || 'hybrid', ...pairStyleWords(s.params.substyles ?? '')];
+  }
+  return words;
+};
+
 const StepEditor: React.FC<StepEditorProps> = ({
-  ct, step, def, onUpdateParam, onUpdateNote, onToggle, onDuplicate, onRemove, onMoveUp, onMoveDown,
+  ct, step, def, pairWords, onUpdateParam, onUpdateNote, onToggle, onDuplicate, onRemove, onMoveUp, onMoveDown,
 }) => {
   const missing = useMemo(() => new Set(missingParams(def, step.params).map(p => p.key)), [def, step.params]);
   return (
@@ -2153,6 +2183,14 @@ const StepEditor: React.FC<StepEditorProps> = ({
           <ParamControl key={pd.key} ct={ct} def={pd} id={`${step.uid}-${pd.key}`} missing={missing.has(pd.key)}
             value={step.params[pd.key] ?? ''} onChange={v => onUpdateParam(pd.key, v)} />
         ))}
+        {def.id === 'pair_coeff' && (
+          <PotentialPicker
+            ct={ct}
+            idPrefix={step.uid}
+            pairWords={pairWords}
+            onChoose={coeffs => onUpdateParam('coeffs', coeffs)}
+          />
+        )}
       </div>
 
       <div className={`flex flex-wrap items-center gap-2 border-t pt-3 ${ct.divider}`}>

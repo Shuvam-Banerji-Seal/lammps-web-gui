@@ -73,6 +73,17 @@ export interface SpinPairStyle {
   readonly name: string;
   /** Precession vector of owned atom i from the current spins (out[0..2]). */
   omegaOf(i: number, nb: Neighbor, sp: Float64Array, type: Int32Array, x: Float64Array, list: { firstneigh: Int32Array; numneigh: Int32Array; neighbors: Int32Array }, out: Float64Array): void;
+  /**
+   * Optional: native compute_single_pair of the sweep (fix nve/spin), which accumulates into fmi and may reset it. When
+   * defined, the sweep calls it on the shared accumulator instead of omegaOf (the pair order of a hybrid then matters).
+   */
+  singlePair?(i: number, nb: Neighbor, sp: Float64Array, type: Int32Array, x: Float64Array, list: { firstneigh: Int32Array; numneigh: Int32Array; neighbors: Int32Array }, fmi: number[]): void;
+  /**
+   * Optional: the precession vector that the force evaluation stores in fm (native compute of the pair style, which
+   * sums over all neighbours and carries no kspace field), when it differs from the sweep vector omegaOf (native
+   * compute_single_pair of fix nve/spin). Used for the fm of the output after a step (fix nve/spin refreshFm).
+   */
+  outputOf?(i: number, nb: Neighbor, sp: Float64Array, type: Int32Array, x: Float64Array, list: { firstneigh: Int32Array; numneigh: Int32Array; neighbors: Int32Array }, out: Float64Array): void;
   /** True when the style adds mechanical forces (only with fix nve/spin lattice moving). */
   readonly spinForce: boolean;
 }

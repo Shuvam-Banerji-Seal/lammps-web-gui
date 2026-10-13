@@ -108,28 +108,45 @@ export const nativeGhosts = (xn: Float64Array, n: number, g: Geometry, cut: numb
  * own bin after it in the chain (ghosts only when above and to the right), then the partners of the upper stencil.
  * A candidate is kept only when the engine's half list holds the same pair (its cutoff, special bonds, exclusions).
  */
-export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighList): Int32Array => {
+/** The native layout of one step (one processor, orthogonal box): native order, ghosts, bins, bin chains. */
+export interface NativeLayout {
+  /** native local order: native atom k is engine atom order[k] */
+  order: Int32Array;
+  n: number;
+  two: boolean;
+  /** native positions of the owned atoms and of the ghosts (3 per atom) */
+  X: Float64Array;
+  /** the bin coordinates of each native atom (3 per atom) */
+  binOf: Int32Array;
+  /** the bin chains: native indices in ascending order inside each bin */
+  chains: Map<number, number[]>;
+  /** position of each native atom in its bin chain */
+  posInBin: Int32Array;
+  binsize: number[];
+  bininv: number[];
+  /** nstencil.cpp sx, sy, sz: the bin reach of the stencil */
+  sx: number;
+  sy: number;
+  sz: number;
+  cutmaxsq: number;
+  /** nstencil_bin.cpp bin_distance: squared minimum distance from the central bin to bin (i, j, k) */
+  binDist: (i: number, j: number, k: number) => number;
+  /** engine index of native atom k (owned or ghost), or -1 when the engine holds no such image */
+  engineIndex: (k: number) => number;
+  /** the engine's neighbor-list index of each (owned engine atom, engine atom) membership key */
+  engByKey: Map<number, number>;
+  NA: number;
+}
+
+const nativeLayout = (s: SimState, nb: Neighbor, g: Geometry): NativeLayout => {
   const order = nativeOrder(s);
   const n = s.n;
   const two = s.dimension === 2;
-  // the engine's neighbor list, keyed by (engine owned i, engine atom k) in both orientations: the mirror of
-  // the pair (i, k) with image shift d is the pair (owner(k), the image of i with shift -d)
+  // the engine's neighbor list keys (owned engine i, engine atom k) by their periodic image
   const NA = nb.nall;
   const gi = nb.gimage;
   const engByKey = new Map<number, number>();
   for (let k = 0; k < NA; k++) engByKey.set(imgKey(nb.owner[k], gi[3 * k], gi[3 * k + 1], gi[3 * k + 2]), k);
-  const memb = new Map<number, number>();
-  for (let i = 0; i < nb.nlocal; i++) {
-    const k0 = half.firstneigh[i], k1 = k0 + half.numneigh[i];
-    for (let q = k0; q < k1; q++) {
-      const jj = half.neighbors[q];
-      const k = jj & NEIGHMASK;
-      const m = jj >>> SBBITS;
-      if (!memb.has(i * NA + k)) memb.set(i * NA + k, m);
-      const kr = engByKey.get(imgKey(i, -gi[3 * k], -gi[3 * k + 1], -gi[3 * k + 2]));
-      if (kr !== undefined && !memb.has(nb.owner[k] * NA + kr)) memb.set(nb.owner[k] * NA + kr, m);
-    }
-  }
   // native positions and ghosts (native local order: atom k of the native list is engine atom order[k])
   const xn = new Float64Array(3 * n);
   for (let k = 0; k < n; k++) {
@@ -175,21 +192,51 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
     chain.push(k);
   }
 
-  // half newton stencil (nstencil.cpp sx, sy, sz; nstencil_bin.cpp create)
+  // stencil reach (nstencil.cpp sx, sy, sz) and bin_distance (nstencil_bin.cpp)
   const cutmax = nb.cutneighmax;
   const reach = (d: number): number => {
     const r = Math.trunc(cutmax * bininv[d]);
     return r * binsize[d] < cutmax ? r + 1 : r;
   };
-  const sx = reach(0), sy = reach(1);
-  const sz = two ? 0 : reach(2);
   const binDist = (i: number, j: number, k: number): number => {
     const dx = i > 0 ? (i - 1) * binsize[0] : i === 0 ? 0 : (i + 1) * binsize[0];
     const dy = j > 0 ? (j - 1) * binsize[1] : j === 0 ? 0 : (j + 1) * binsize[1];
     const dz = k > 0 ? (k - 1) * binsize[2] : k === 0 ? 0 : (k + 1) * binsize[2];
     return dx * dx + dy * dy + dz * dz;
   };
-  const cutmaxsq = cutmax * cutmax;
+  /** Engine index of native atom k (owned or ghost), or -1 when the engine holds no such image. */
+  const engineIndex = (k: number): number => {
+    const r = gh.root[k];
+    const e = order[r];
+    if (k < n) return e;
+    const hit = engByKey.get(imgKey(e, gh.img[3 * k], gh.img[3 * k + 1], gh.img[3 * k + 2]));
+    return hit === undefined ? -1 : hit;
+  };
+  return {
+    order, n, two, X, binOf, chains, posInBin, binsize, bininv,
+    sx: reach(0), sy: reach(1), sz: two ? 0 : reach(2), cutmaxsq: cutmax * cutmax,
+    binDist, engineIndex, engByKey, NA,
+  };
+};
+
+export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighList): Int32Array => {
+  const L = nativeLayout(s, nb, g);
+  const { order, n, two, X, binOf, chains, posInBin, sx, sy, sz, cutmaxsq, binDist, engineIndex, engByKey, NA } = L;
+  const gi = nb.gimage;
+  const memb = new Map<number, number>();
+  for (let i = 0; i < nb.nlocal; i++) {
+    const k0 = half.firstneigh[i], k1 = k0 + half.numneigh[i];
+    for (let q = k0; q < k1; q++) {
+      const jj = half.neighbors[q];
+      const k = jj & NEIGHMASK;
+      const m = jj >>> SBBITS;
+      if (!memb.has(i * NA + k)) memb.set(i * NA + k, m);
+      // the mirror of the pair (i, k) with image shift d is the pair (owner(k), the image of i with shift -d)
+      const kr = engByKey.get(imgKey(i, -gi[3 * k], -gi[3 * k + 1], -gi[3 * k + 2]));
+      if (kr !== undefined && !memb.has(nb.owner[k] * NA + kr)) memb.set(nb.owner[k] * NA + kr, m);
+    }
+  }
+  // half newton stencil (nstencil.cpp sx, sy, sz; nstencil_bin.cpp create)
   const stencil: number[] = [];
   if (!two) {
     for (let k = 0; k <= sz; k++) {
@@ -208,15 +255,6 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
       }
     }
   }
-
-  /** Engine index of native atom k (owned or ghost), or -1 when the engine holds no such image. */
-  const engineIndex = (k: number): number => {
-    const r = gh.root[k];
-    const e = order[r];
-    if (k < n) return e;
-    const hit = engByKey.get(imgKey(e, gh.img[3 * k], gh.img[3 * k + 1], gh.img[3 * k + 2]));
-    return hit === undefined ? -1 : hit;
-  };
   // npair_bin.cpp build(): own bin after i (ghosts above and to the right only), then the stencil bins
   const out: number[] = [];
   for (let i = 0; i < n; i++) {
@@ -250,6 +288,48 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
     }
   }
   return Int32Array.from(out);
+};
+
+/**
+ * npair_bin.cpp build() for a FULL list (HALF = 0, orthogonal box, one processor): for each owned atom, the engine index
+ * of the partner that native's full list stores LAST (-1 when there is none). The full stencil of nstencil_bin.cpp create
+ * (HALF = 0) is visited k, j, i ascending over the bins with bin_distance < cutneighmax^2, and each bin chain in order;
+ * a candidate is kept when the engine's full list holds the pair. Native's compute_single_pair of pair spin/dipole/long
+ * keeps the term of this partner only (see pair_spin_dipole_long.ts).
+ */
+export const nativeFullLast = (s: SimState, nb: Neighbor, g: Geometry, full: NeighList): Int32Array => {
+  const L = nativeLayout(s, nb, g);
+  const { order, n, binOf, chains, sx, sy, sz, cutmaxsq, binDist, engineIndex, NA } = L;
+  const memb = new Set<number>();
+  for (let i = 0; i < nb.nlocal; i++) {
+    const k0 = full.firstneigh[i], k1 = k0 + full.numneigh[i];
+    for (let q = k0; q < k1; q++) memb.add(i * NA + (full.neighbors[q] & NEIGHMASK));
+  }
+  const stencil: number[] = [];
+  for (let k = -sz; k <= sz; k++) {
+    for (let j = -sy; j <= sy; j++) {
+      for (let i = -sx; i <= sx; i++) {
+        if (binDist(i, j, k) < cutmaxsq) stencil.push(i, j, k);
+      }
+    }
+  }
+  const last = new Int32Array(n).fill(-1);
+  for (let i = 0; i < n; i++) {
+    const ei = order[i];
+    const bx = binOf[3 * i], by = binOf[3 * i + 1], bz = binOf[3 * i + 2];
+    let found = -1;
+    for (let st = 0; st < stencil.length; st += 3) {
+      const chain = chains.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+      if (!chain) continue;
+      for (const j of chain) {
+        if (j === i) continue;
+        const ek = engineIndex(j);
+        if (ek >= 0 && memb.has(ei * NA + ek)) found = ek;
+      }
+    }
+    last[ei] = found;
+  }
+  return last;
 };
 
 /**

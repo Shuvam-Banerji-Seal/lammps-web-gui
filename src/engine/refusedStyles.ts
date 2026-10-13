@@ -12,7 +12,6 @@ export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[
     'lj/spica/coul/msm', 'lj/sdk/coul/msm', // registry/pair_class2spica51.ts (lazy): msm kspace is not in the engine
     'smd/tri_surface', // engine-gpl/registry/machdyn.ts (lazy): the wall contact is not matched to native (contact order)
   ],
-  KSPACES: ['pppm/dipole/spin'], // engine-gpl/registry/spin.ts (lazy): pppm_dipole_spin.cpp is not ported
   FIXES: ['filter/corotate', 'surface/global'], // engine-gpl/registry/filtercorotate.ts (refused: respa fix hooks missing); engine-gpl/registry/gransurf.ts
   COMPUTES: [
     'dipole/tip4p', 'dipole/tip4p/chunk', // registry/compute_chunk17.ts

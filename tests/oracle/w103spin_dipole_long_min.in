@@ -1,5 +1,5 @@
 # oracle: pair spin/dipole/long 8.0 with kspace_style ewald/dipole/spin 1.0e-4 (hybrid/overlay with spin/exchange 3.5), bcc iron 6x6x6 cells (432 random spins; the dipole_spin example without eam), cubic precession/spin anisotropy, min_style spin, 30 iterations
-# measured with native LAMMPS (black box), engine vs native fixture: thermo and spin dump max relative error 4.2e-10 (absolute 7.9e-8, on a value of about 1e3); re-measured under Node 20: not yet. The nve/spin dynamics with this pair are refused (src/engine-gpl/spin/pair_spin_dipole_long.ts), so only min_style spin is compared.
+# measured with native LAMMPS (black box), engine vs native fixture: thermo and spin dump max relative error 4.2e-10 (absolute 7.9e-8, on a value of about 1e3); re-measured under Node 20: not yet. The nve/spin dynamics with this pair are compared in w103spin_dipole_long_frozen and w103spin_iron_*_nve, so only min_style spin is compared here.
 # oracle-files: w103spin_dipole_long_min.dump
 # oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
 units           metal

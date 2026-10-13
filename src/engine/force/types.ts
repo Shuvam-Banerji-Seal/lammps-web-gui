@@ -511,6 +511,15 @@ export abstract class KSpace {
    * kept where the refreshed sum is 6.97503, and the energy is 5.69 kcal/mol lower than the refreshed one.
    */
   chargeSumsFrozen = false;
+  /**
+   * When true, ForceField.init keeps the parameters chosen at the last full init (G-ewald, kmax, mesh) and only
+   * refreshes the charge sums (updateChargeSums). A fix that changes charges between MD steps sets it while it runs
+   * (fix charge/regulation). Measured with native LAMMPS (black box): its trial moves change the charges and the
+   * atom count, and the Ewald or PPPM parameters stay those of the run's init (native KSpace::qsum_qsq).
+   */
+  paramsFrozen = false;
+  /** Recomputes qsum and qsqsum (and the atom count) from the current charges (native KSpace::qsum_qsq). */
+  updateChargeSums(_s: SimState): void { /* styles without charge sums need nothing */ }
   abstract settings(args: string[], ctx: StyleContext): void;
   /** kspace_modify keyword handler; returns the number of values consumed. */
   abstract modify(key: string, values: string[]): number;

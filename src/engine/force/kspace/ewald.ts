@@ -234,6 +234,7 @@ export abstract class KSpaceBase extends KSpace {
    * fix adapt changing the charges each step, the elong self and background terms follow the charges of that step.
    */
   protected refreshChargeSums(s: SimState): void {
+    if (this.chargeSumsFrozen) return;
     let qs = 0, q2 = 0;
     for (let i = 0; i < s.n; i++) { qs += s.q[i]; q2 += s.q[i] * s.q[i]; }
     this.qsum = qs;

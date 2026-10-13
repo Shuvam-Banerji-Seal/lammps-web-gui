@@ -1,0 +1,37 @@
+# oracle: fix bond/react stabilized, tiny epoxy (examples/PACKAGES/reaction/tiny_epoxy.stabilized) cut to 50 steps (rxn1_stp1 is the only reaction in that window)
+# oracle-inputs: w94react_epoxy_tiny_epoxy.data w94react_epoxy_rxn1_stp1.map w94react_epoxy_rxn1_stp1_post.molecule_template w94react_epoxy_rxn1_stp1_pre.molecule_template w94react_epoxy_rxn1_stp2.map w94react_epoxy_rxn1_stp2_post.molecule_template w94react_epoxy_rxn2_stp1.map w94react_epoxy_rxn2_stp1_post.molecule_template w94react_epoxy_rxn2_stp1_pre.molecule_template w94react_epoxy_rxn2_stp2.map w94react_epoxy_rxn2_stp2_post.molecule_template
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Engine vs this fixture (Node 24): thermo max rel 1.6e-9 (temp, step 50), f_rxns exact; atoms max abs 8.6e-9 (fz).
+# Not run past step 50: after it the nvt chain on the statted group (reassigned after the forces) differs from native:
+# temp 1.7e-7 relative at step 100, 3.5e-5 at step 250 in the 300-step run. That is the open item in src/engine/fix/nh.ts;
+# without that nvt the 300-step run agrees to print precision.
+units real
+boundary p p p
+atom_style full
+pair_style lj/class2 8
+angle_style class2
+bond_style class2
+dihedral_style class2
+improper_style class2
+special_bonds lj/coul 0 0 1
+pair_modify tail yes mix sixthpower
+read_data w94react_epoxy_tiny_epoxy.data &
+  extra/special/per/atom 25
+velocity all create 300.0 4928459 dist gaussian
+molecule mol1 w94react_epoxy_rxn1_stp1_pre.molecule_template
+molecule mol2 w94react_epoxy_rxn1_stp1_post.molecule_template
+molecule mol3 w94react_epoxy_rxn1_stp2_post.molecule_template
+molecule mol4 w94react_epoxy_rxn2_stp1_pre.molecule_template
+molecule mol5 w94react_epoxy_rxn2_stp1_post.molecule_template
+molecule mol6 w94react_epoxy_rxn2_stp2_post.molecule_template
+thermo 50
+fix rxns all bond/react stabilization yes statted_grp .03 &
+  react rxn1_stp1 all 1 0.0 5 mol1 mol2 w94react_epoxy_rxn1_stp1.map &
+  react rxn1_stp2 all 1 0.0 5 mol2 mol3 w94react_epoxy_rxn1_stp2.map &
+  react rxn2_stp1 all 1 0.0 5 mol4 mol5 w94react_epoxy_rxn2_stp1.map &
+  react rxn2_stp2 all 1 0.0 5 mol5 mol6 w94react_epoxy_rxn2_stp2.map
+fix 1 statted_grp_REACT nvt temp 300 300 100
+# thermo_style lists f_rxns[1..4] (the runner counts columns; same values as f_rxns[*]).
+thermo_style custom step temp f_rxns[1] f_rxns[2] f_rxns[3] f_rxns[4]
+thermo_modify colname auto
+run 50

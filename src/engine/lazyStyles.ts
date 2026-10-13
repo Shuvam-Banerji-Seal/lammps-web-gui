@@ -113,5 +113,6 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_drude', names: { FIXES: ['drude', 'drude/transform/direct', 'drude/transform/inverse', 'langevin/drude', 'tgnvt/drude', 'tgnpt/drude'], COMPUTES: ['temp/drude'], PAIRS: ['thole', 'coul/tt', 'lj/cut/thole/long'] }, load: () => import('../engine-gpl/registry/drude') as Promise<StyleModule> },
   { id: 'gpl_sph', names: { PAIRS: ['sph/rhosum', 'sph/idealgas', 'sph/taitwater', 'sph/taitwater/morris', 'sph/heatconduction'], FIXES: ['sph', 'sph/stationary'], COMPUTES: ['sph/rho/atom', 'sph/e/atom'] }, load: () => import('../engine-gpl/registry/sph') as Promise<StyleModule> },
   { id: 'interlayer', names: { PAIRS: ['coul/shield', 'ilp/graphene/hbn', 'kolmogorov/crespi/full', 'kolmogorov/crespi/z', 'lebedeva/z'] }, load: () => import('../engine-gpl/registry/interlayer') as Promise<StyleModule> },
+  { id: 'gpl_react', names: { FIXES: ['bond/react'] }, load: () => import('../engine-gpl/registry/react') as Promise<StyleModule> },
   { id: 'pair_reaxff', names: { PAIRS: ['reaxff'], FIXES: ['qeq/reaxff', 'qeq/reax', 'acks2/reaxff', 'acks2/reax', 'qtpie/reaxff', 'qeq/rel/reaxff', 'reaxff/bonds', 'reaxff/species'], COMPUTES: ['reaxff/atom'] }, load: () => import('../engine-gpl/registry/reaxff') as Promise<StyleModule> },
 ];

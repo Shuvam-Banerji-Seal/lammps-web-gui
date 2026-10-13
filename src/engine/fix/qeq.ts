@@ -46,8 +46,8 @@ import { gplHook } from '../gplHooks';
  *    parameters given for every atom type." Wildcard type ranges work as for the
  *    coeff commands; "Later entries will overwrite previous ones."
  *
- * The QEq matrix is H_ii = eta_i, H_ij = pair interaction, solved together
- * with the charge-neutrality Lagrange multiplier.  Measured with native
+ * The QEq matrix of qeq/point and qeq/shielded is H_ii = eta_i (plus the self images), H_ij = pair
+ * interaction over every periodic image within the cutoff. Measured with native
  * LAMMPS (black box, not part of the doc text):
  *   - qeq/point off-diagonal is exactly 1/r inside the cutoff (no units
  *     constant, no taper), independent of the cutoff;
@@ -55,12 +55,14 @@ import { gplHook } from '../gplHooks';
  *     7th-order taper T(r/cutoff) = 1 - 35x^4 + 84x^5 - 70x^6 + 20x^7 for
  *     r < cutoff (0 beyond), with gamma_ij = sqrt(gamma_i*gamma_j); the 14.4
  *     is the fix's hard-coded A/eV/charge Coulomb constant;
- *   - the charges match those of a Jacobi-preconditioned conjugate-gradient
- *     solve (preconditioner 1/diag, last diagonal 1; stop when
- *     max|residual| / max|rhs| < tolerance), and the fix global scalar is the
- *     iteration count of that solve (measured: 2-8 atoms give N+1 iterations
- *     at tight tolerance), although the doc says these fixes store no global
- *     scalar;
+ * *   - qeq/point and qeq/shielded solve native's two conjugate-gradient
+ *     systems H s = -chi and H t = -1 (src/QEQ/fix_qeq.cpp CG), each from the
+ *     history extrapolation of the last five solutions, with the Jacobi
+ *     preconditioner 1/eta and the stop test sqrt(r.d)/|b| > tolerance; the
+ *     charges are q = s - (sum s / sum t) t. The fix global scalar is
+ *     (iterations of s + iterations of t) / 2 (w123q_point_fixed, w123q_shield_fixed:
+ *     matches native to 1e-15 including the scalar), although the doc says these
+ *     fixes store no global scalar;
  *   - qeq/dynamic and qeq/fire also expose the iteration count as the fix
  *     global scalar (measured with native LAMMPS, black box), again despite
  *     the doc's "no global scalar" sentence.
@@ -127,15 +129,51 @@ const isReaxQeqSource = (o: unknown): o is ReaxQeqSource => typeof (o as ReaxQeq
 
 type QeqKind = 'point' | 'shielded' | 'dynamic' | 'fire' | 'slater';
 
-/** The charge history of the qeq/slater solves (src/engine-gpl/qeq/history.ts, the lazy HOOKS entry 'qeq/slater'). */
-export interface QeqHistory {
-  readonly n: number;
-  initialGuesses(idx: number[]): { s: Float64Array; t: Float64Array };
-  shift(idx: number[], sx: Float64Array, tx: Float64Array): void;
-  matvecCount(sIt: number, tIt: number): number;
+/**
+ * The charge matrix of one qeq/point, qeq/shielded or qeq/slater solve, built here from the matrix elements: H_aa = diag[a]
+ * (the eta plus the self terms), H_ab = pairH over pairA/pairB (each pair once; the solver applies it both ways), the
+ * Jacobi preconditioner precond = 1/eta, the right-hand side bS = -chi (qeq/slater: -chi_eff with the fixed atoms), and
+ * fixed, a constant added to H s of the first residual only (qeq/point, qeq/shielded; null for qeq/slater).
+ */
+export interface QeqLinearSystem {
+  readonly ng: number;
+  readonly diag: Float64Array;
+  readonly precond: Float64Array;
+  readonly pairA: Int32Array;
+  readonly pairB: Int32Array;
+  readonly pairH: Float64Array;
+  readonly bS: Float64Array;
+  readonly fixed: Float64Array | null;
 }
-export interface QeqHistoryHook {
-  create(n: number, q: Float64Array): QeqHistory;
+/** One solve: the group's local indices and atom ids (group order), the atom count and the current charges. */
+export interface QeqSolveInput {
+  readonly sys: QeqLinearSystem;
+  readonly idx: number[];
+  readonly ids: number[];
+  readonly n: number;
+  readonly q: Float64Array;
+}
+export interface QeqSolveResult {
+  readonly q: Float64Array;
+  readonly iterations: number;
+}
+/** The solver of one fix (src/engine-gpl/qeq/native_solver.ts): it owns the charge history of the fix. */
+export interface QeqSolver {
+  /** qeq/point and qeq/shielded: every atom's history starts at its charge (the fix constructor). */
+  seed(ids: ArrayLike<number>, q: Float64Array, n: number): void;
+  solve(input: QeqSolveInput): QeqSolveResult;
+}
+export interface QeqSolverOptions {
+  readonly kind: 'point' | 'shielded' | 'slater';
+  readonly style: string;
+  readonly maxiter: number;
+  readonly tol: number;
+  readonly warn: boolean;
+  readonly warnFn: (message: string) => void;
+}
+/** The lazy HOOKS entries 'qeq/point', 'qeq/shielded' and 'qeq/slater' (lazyStyles.ts group gpl_qeq). */
+export interface QeqSolverHook {
+  create(o: QeqSolverOptions): QeqSolver;
 }
 
 interface Params {
@@ -145,6 +183,13 @@ interface Params {
   /** Slater exponent and nucleus charge (qeq/slater only; from the qfile columns zeta and qcore). */
   zeta: Float64Array;
   qcore: Float64Array;
+}
+
+/** Matrix terms of qeq/point and qeq/shielded (see matrixTerms). */
+interface MatrixTerms {
+  pairs: { a: number; b: number; h: number }[];
+  selfDiag: Float64Array;
+  fixedTerm: Float64Array;
 }
 
 const COUL = 14.4; // hard-coded Coulomb constant of fix qeq (measured with native LAMMPS, black box)
@@ -183,14 +228,14 @@ export class FixQeq extends Fix {
   private qstep: number;
   private params: Params | null = null;
   private iterations = 0;
+  /** The CG solver (qeq/point, qeq/shielded, qeq/slater: src/engine-gpl/qeq/native_solver.ts), set by the constructor. */
+  private solver: QeqSolver | null = null;
   /** qeq/slater: wolf-type damping alpha (keyword alpha, default 0.2), dsf 0.0 form, qfile coul/streitz. */
   private alpha = 0.2;
   private dsf = false;
   private fromPair = false;
   /** qeq/shielded with qfile reaxff: chi, eta, gamma of the active pair_style reaxff, read at each solve. */
   private fromReax = false;
-  /** qeq/slater: the charge history of the CG solves (created at the first solve, see QeqHistory). */
-  private history: QeqHistory | null = null;
   scalarFlag = true;
   extscalar = 0;
 
@@ -271,7 +316,13 @@ export class FixQeq extends Fix {
         this.parseQfile(sys.readFile(this.qfile));
       }
     }
-
+    if (kind === 'point' || kind === 'shielded' || kind === 'slater') {
+      this.solver = gplHook<QeqSolverHook>(this.style).create({
+        kind, style: this.style, maxiter: this.maxiter, tol: this.tol, warn: this.warn, warnFn: (m) => this.sys.warn(m),
+      });
+      // native constructor: every atom's history starts at its charge
+      if (kind !== 'slater') this.solver.seed(sys.state.id, sys.state.q, sys.state.n);
+    }
   }
 
   private parseQfile(text: string): void {
@@ -360,8 +411,18 @@ export class FixQeq extends Fix {
   }
 
 
-  /** Charges must be equilibrated before the first force computation of a run. */
-  setup(): void { this.solve(); }
+  /**
+   * Charges must be equilibrated before the first force computation of a run. Native qeq/point and qeq/shielded solve in
+   * setup_pre_force (before the setup force evaluation, with the same nevery rule as pre_force); the other styles keep
+   * their solve after it.
+   */
+  setupPreForce(): void {
+    if ((this.kind === 'point' || this.kind === 'shielded') && this.sys.state.step % this.nEvery === 0) this.solve();
+  }
+
+  setup(): void {
+    if (this.kind !== 'point' && this.kind !== 'shielded') this.solve();
+  }
 
   /** fix_qeq.html: Nevery = "perform charge equilibration every this many steps". */
   preForce(): void {
@@ -381,12 +442,13 @@ export class FixQeq extends Fix {
     const ng = idx.length;
     if (ng === 0) { this.iterations = 0; return; }
 
-    // pair interactions within the cutoff: point 1/r, shielded 14.4*(r^3+g^-3)^-1/3*Taper
+    // pair interactions within the cutoff: point 1/r, shielded 14.4*(r^3+g^-3)^-1/3*Taper. qeq/point and qeq/shielded
+    // build their matrix over all images (matrixTerms); qeq/slater builds its own image list in solveSlater.
+    const matrix = this.kind === 'point' || this.kind === 'shielded';
     const pairs: { i: number; j: number; int: number }[] = [];
     const d = [0, 0, 0];
     const cut2 = this.cutoff * this.cutoff;
-    // qeq/slater builds its own image list in solveSlater (this O(ng^2) loop would only feed the other kinds)
-    for (let a = 0; a < (this.kind === 'slater' ? 0 : ng); a++) {
+    for (let a = 0; a < (this.kind === 'slater' || matrix ? 0 : ng); a++) {
       const i = idx[a];
       for (let b = a + 1; b < ng; b++) {
         const j = idx[b];
@@ -395,7 +457,7 @@ export class FixQeq extends Fix {
         d[2] = s.x[3 * i + 2] - s.x[3 * j + 2];
         this.sys.geom.minimumImage(d);
         const r2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
-        if (!(r2 > 0) || r2 >= cut2) continue;
+        if (!(r2 > 0) || r2 > cut2) continue;
         const int = this.interaction(s, p, i, j, Math.sqrt(r2), shielded);
         if (int !== 0) pairs.push({ i, j, int });
       }
@@ -411,7 +473,7 @@ export class FixQeq extends Fix {
 
     // fixed (non-group) charges contribute a constant to each group atom's gradient
     const fixedTerm = new Float64Array(ng);
-    if (ng < s.n && this.kind !== 'slater') {
+    if (ng < s.n && this.kind !== 'slater' && !matrix) {
       const inGroup = (i: number) => (s.mask[i] & bit) !== 0;
       for (let a = 0; a < ng; a++) {
         const i = idx[a];
@@ -422,7 +484,7 @@ export class FixQeq extends Fix {
           d[2] = s.x[3 * i + 2] - s.x[3 * k + 2];
           this.sys.geom.minimumImage(d);
           const r2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
-          if (!(r2 > 0) || r2 >= cut2) continue;
+          if (!(r2 > 0) || r2 > cut2) continue;
           fixedTerm[a] += this.interaction(s, p, i, k, Math.sqrt(r2), shielded) * s.q[k];
         }
       }
@@ -432,7 +494,7 @@ export class FixQeq extends Fix {
     if (this.kind === 'slater') {
       q = this.solveSlater(s, p, idx, ng);
     } else if (this.kind === 'point' || this.kind === 'shielded') {
-      q = this.solveMatrix(s, p, idx, pairs, row, etaRow, fixedTerm, ng);
+      q = this.solveMatrix(s, p, idx, this.matrixTerms(s, p, idx, row, shielded), etaRow, ng);
     } else {
       const gradient = (qq: Float64Array, out: Float64Array): void => {
         for (let a = 0; a < ng; a++) out[a] = p.chi[s.type[idx[a]]] + etaRow[a] * qq[a] + fixedTerm[a];
@@ -463,12 +525,10 @@ export class FixQeq extends Fix {
       // A kspace style caches the charge sums its self/background energy uses
       // (the engine refreshes them in setupNeighbors); a fix that changes
       // charges mid-run must re-run it or the long-range energy goes stale.
-      // Not reproduced (measured with native LAMMPS, black box, coul/long +
-      // pppm): at the setup of a run native's sums keep the values of the
-      // kspace initialisation, i.e. the charges before this solve, so the
-      // step-0 pe of the first run is -6.42425038262653 where the engine (and
-      // native's next run, re-initialised) gives -6.42424993275209; during the
-      // steps the sums follow the charges in both.
+      // The engine refreshes the sums in setupNeighbors. Not reproduced (measured with native LAMMPS, black box,
+      // w36qeq_point): native's step-0 pe of the first run is -6.4223085227782 while its step-0 pe of the next run,
+      // with the same charges, is -6.4223080743197 (the engine gives the latter for both; forces agree to 2e-10).
+      // Freezing the sums at the pre-solve charges moves the pe by 0.4, so the difference is not the sums alone.
       this.sys.setupNeighbors();
     } else {
       this.sys.nb.refreshCharges(s);
@@ -603,66 +663,13 @@ export class FixQeq extends Fix {
         }
       }
     }
-    const npair = pairA.length;
-    const PA = Int32Array.from(pairA), PC = Int32Array.from(pairC), PH = Float64Array.from(pairH);
-    const matvec = (x: Float64Array, out: Float64Array): void => {
-      for (let k = 0; k < ng; k++) out[k] = diag[k] * x[k];
-      for (let e = 0; e < npair; e++) {
-        const u = PA[e], w = PC[e], h = PH[e];
-        out[u] += h * x[w];
-        out[w] += h * x[u];
-      }
-    };
-    // reaxff-style preconditioned CG from zero (measured, see the header comment)
-    const solveOne = (b: Float64Array, x0: Float64Array | null): { x: Float64Array; it: number; ok: boolean } => {
-      const x = x0 ? Float64Array.from(x0) : new Float64Array(ng);
-      const hx = new Float64Array(ng);
-      matvec(x, hx);
-      const r = new Float64Array(ng);
-      for (let k = 0; k < ng; k++) r[k] = b[k] - hx[k];
-      let bn = 0;
-      for (let k = 0; k < ng; k++) bn += b[k] * b[k];
-      bn = Math.sqrt(bn);
-      const pre = new Float64Array(ng);
-      const dv = new Float64Array(ng);
-      const qv = new Float64Array(ng);
-      let sigNew = 0;
-      for (let k = 0; k < ng; k++) { pre[k] = precond[k] * r[k]; dv[k] = pre[k]; sigNew += r[k] * pre[k]; }
-      let it = 1;
-      while (it < this.maxiter && Math.sqrt(sigNew) / bn > this.tol) {
-        matvec(dv, qv);
-        let dq = 0;
-        for (let k = 0; k < ng; k++) dq += dv[k] * qv[k];
-        const alpha = sigNew / dq;
-        for (let k = 0; k < ng; k++) { x[k] += alpha * dv[k]; r[k] -= alpha * qv[k]; }
-        const sigOld = sigNew;
-        sigNew = 0;
-        for (let k = 0; k < ng; k++) { pre[k] = precond[k] * r[k]; sigNew += r[k] * pre[k]; }
-        const beta = sigNew / sigOld;
-        for (let k = 0; k < ng; k++) dv[k] = pre[k] + beta * dv[k];
-        it++;
-      }
-      return { x, it, ok: Math.sqrt(sigNew) / bn <= this.tol };
-    };
     const bS = new Float64Array(ng);
-    const bT = new Float64Array(ng).fill(-1);
     for (let k = 0; k < ng; k++) bS[k] = -chi[k];
-    // the history (src/engine-gpl/qeq/history.ts) gives the initial guesses and the iteration count
-    const n = this.sys.state.n;
-    if (!this.history || this.history.n !== n) this.history = gplHook<QeqHistoryHook>('qeq/slater').create(n, s.q);
-    const guess = this.history.initialGuesses(idx);
-    const sRes = solveOne(bS, guess.s);
-    const tRes = solveOne(bT, guess.t);
-    this.iterations = this.history.matvecCount(sRes.it, tRes.it);
-    if (this.warn && (!sRes.ok || !tRes.ok)) {
-      this.sys.warn(`Fix ${this.style} CG convergence failed after ${this.maxiter} iterations (maxiter reached)`);
-    }
-    let sumS = 0, sumT = 0;
-    for (let k = 0; k < ng; k++) { sumS += sRes.x[k]; sumT += tRes.x[k]; }
-    const q = new Float64Array(ng);
-    for (let k = 0; k < ng; k++) q[k] = sRes.x[k] - (sumS / sumT) * tRes.x[k];
-    this.history.shift(idx, sRes.x, tRes.x);
-    return q;
+    const sys: QeqLinearSystem = {
+      ng, diag, precond, bS, fixed: null,
+      pairA: Int32Array.from(pairA), pairB: Int32Array.from(pairC), pairH: Float64Array.from(pairH),
+    };
+    return this.runSolver(s, idx, sys);
   }
 
   /** Point (qeq/point, qeq/dynamic, qeq/fire) or shielded (qeq/shielded) pair interaction. */
@@ -672,77 +679,99 @@ export class FixQeq extends Fix {
     return g > 0 ? COUL * (r * r * r + 1 / (g * g * g)) ** (-1 / 3) * taper(r / this.cutoff) : 0;
   }
 
-  /** qeq/point and qeq/shielded: matrix inversion (Jacobi-preconditioned CG; measured with native LAMMPS, black box). */
-  private solveMatrix(
-    s: System['state'], p: Params, idx: number[], pairs: { i: number; j: number; int: number }[],
-    row: Int32Array, etaRow: Float64Array, fixedTerm: Float64Array, ng: number,
-  ): Float64Array {
-    // rhs: -chi_i - sum over non-group neighbors of H_ij * q_j (fixed charges)
-    const n1 = ng + 1;
-    const b = new Float64Array(n1);
-    for (let a = 0; a < ng; a++) b[a] = -p.chi[s.type[idx[a]]] - fixedTerm[a];
-
-    const diag = new Float64Array(n1);
-    for (let a = 0; a < ng; a++) diag[a] = etaRow[a] || 1;
-    diag[ng] = 1;
-
-    const matvec = (x: Float64Array, out: Float64Array): void => {
-      for (let a = 0; a < n1; a++) out[a] = 0;
-      for (let a = 0; a < ng; a++) out[a] += etaRow[a] * x[a];
-      for (const { i, j, int } of pairs) {
-        const a = row[i], c = row[j];
-        out[a] += int * x[c];
-        out[c] += int * x[a];
-      }
-      for (let a = 0; a < ng; a++) out[a] += x[ng];
-      let sum = 0;
-      for (let a = 0; a < ng; a++) sum += x[a];
-      out[ng] += sum;
+  /**
+   * Matrix terms of qeq/point and qeq/shielded over every periodic image within the cutoff (native's full neighbour
+   * list, fix_qeq_point.cpp compute_H, and H.val = 0.5 f(r) in each list entry of a group atom):
+   *  - a pair of two group atoms, one term per image f(r) (both directions of the matvec);
+   *  - an image of a group atom with itself adds f(r) to its diagonal (both of its list entries count);
+   *  - a neighbour outside the group contributes 0.5 f(r) q_k to the first residual only: its own list is not
+   *    visited, so the coupling is half (the stored charge is the fixed value).
+   */
+  private matrixTerms(s: System['state'], p: Params, idx: number[], row: Int32Array, shielded: boolean): MatrixTerms {
+    const ng = idx.length;
+    const rc = this.cutoff, cut2 = rc * rc;
+    const bit = this.groupBit;
+    const geom = this.sys.geom as unknown as { lx: number; ly: number; lz: number; xy: number; xz: number; yz: number; periodic: boolean[] };
+    const Ld = [geom.lx, geom.ly, geom.lz];
+    const ortho = geom.xy === 0 && geom.xz === 0 && geom.yz === 0;
+    const nmax = [0, 1, 2].map((dd) => (geom.periodic[dd] ? Math.ceil(rc / Ld[dd]) + 1 : 0));
+    const triShifts: number[][] = [];
+    if (!ortho) {
+      const ax = [geom.lx, 0, 0], bx = [geom.xy, geom.ly, 0], cx = [geom.xz, geom.yz, geom.lz];
+      for (let nx = -nmax[0]; nx <= nmax[0]; nx++)
+        for (let ny = -nmax[1]; ny <= nmax[1]; ny++)
+          for (let nz = -nmax[2]; nz <= nmax[2]; nz++)
+            triShifts.push([nx * ax[0] + ny * bx[0] + nz * cx[0], nx * ax[1] + ny * bx[1] + nz * cx[1], nx * ax[2] + ny * bx[2] + nz * cx[2]]);
+    }
+    const pairs: { a: number; b: number; h: number }[] = [];
+    const selfDiag = new Float64Array(ng);
+    const fixedTerm = new Float64Array(ng);
+    const dv = [0, 0, 0];
+    const range = (dd: number, lo: number[], hi: number[]): void => {
+      if (!geom.periodic[dd]) { lo[dd] = 0; hi[dd] = 0; return; }
+      lo[dd] = Math.floor((dv[dd] - rc) / Ld[dd]);
+      hi[dd] = Math.ceil((dv[dd] + rc) / Ld[dd]);
     };
-
-    // Jacobi-preconditioned conjugate gradient (measured with native LAMMPS).
-    const x = new Float64Array(n1);
-    const r = new Float64Array(b);
-    const z = new Float64Array(n1);
-    const pp = new Float64Array(n1);
-    const Ap = new Float64Array(n1);
-    let bn = 0;
-    for (let a = 0; a < n1; a++) bn = Math.max(bn, Math.abs(b[a]));
-    if (bn === 0) bn = 1;
-    for (let a = 0; a < n1; a++) { z[a] = r[a] / diag[a]; pp[a] = z[a]; }
-    let rz = 0;
-    for (let a = 0; a < n1; a++) rz += r[a] * z[a];
-    let iter = 0;
-    for (iter = 1; iter <= this.maxiter; iter++) {
-      matvec(pp, Ap);
-      let pAp = 0;
-      for (let a = 0; a < n1; a++) pAp += pp[a] * Ap[a];
-      const alpha = rz / pAp;
-      let rmax = 0;
-      for (let a = 0; a < n1; a++) {
-        x[a] += alpha * pp[a];
-        r[a] -= alpha * Ap[a];
-        if (Math.abs(r[a]) > rmax) rmax = Math.abs(r[a]);
-      }
-      if (rmax / bn < this.tol) break;
-      for (let a = 0; a < n1; a++) z[a] = r[a] / diag[a];
-      let rz2 = 0;
-      for (let a = 0; a < n1; a++) rz2 += r[a] * z[a];
-      const beta = rz2 / rz;
-      for (let a = 0; a < n1; a++) pp[a] = z[a] + beta * pp[a];
-      rz = rz2;
-    }
-    this.iterations = iter > this.maxiter ? this.maxiter : iter;
-
-    if (this.iterations >= this.maxiter && this.warn) {
-      // fix_qeq.html: warn when not equilibrated within tolerance by maxiter
-      const qmax = maxAbs(x.subarray(0, ng));
-      const rmax = maxAbs(r);
-      if (rmax / bn >= this.tol) {
-        this.sys.warn(`Fix ${this.style} charge equilibration did not converge; qmax = ${qmax} (iteration ${this.maxiter}, maxiter reached)`);
+    const lo = [0, 0, 0], hi = [0, 0, 0];
+    for (let a = 0; a < ng; a++) {
+      const i = idx[a];
+      for (let v = 0; v < s.n; v++) {
+        const vg = (s.mask[v] & bit) !== 0;
+        if (vg && row[v] < a) continue; // a group pair is one term: counted from its lower row
+        dv[0] = s.x[3 * i] - s.x[3 * v];
+        dv[1] = s.x[3 * i + 1] - s.x[3 * v + 1];
+        dv[2] = s.x[3 * i + 2] - s.x[3 * v + 2];
+        const visit = (dx: number, dy: number, dz: number): void => {
+          const r2 = dx * dx + dy * dy + dz * dz;
+          if (!(r2 > 0) || r2 > cut2) return;
+          const f = this.interaction(s, p, i, v, Math.sqrt(r2), shielded);
+          if (vg) {
+            if (v === i) selfDiag[a] += f;
+            else pairs.push({ a, b: row[v], h: f });
+          } else fixedTerm[a] += 0.5 * f * s.q[v];
+        };
+        if (ortho) {
+          range(0, lo, hi); range(1, lo, hi); range(2, lo, hi);
+          for (let nx = lo[0]; nx <= hi[0]; nx++)
+            for (let ny = lo[1]; ny <= hi[1]; ny++)
+              for (let nz = lo[2]; nz <= hi[2]; nz++) {
+                const dx = dv[0] - nx * Ld[0], dy = dv[1] - ny * Ld[1], dz = dv[2] - nz * Ld[2];
+                visit(dx, dy, dz);
+              }
+        } else {
+          for (const sh of triShifts) visit(dv[0] - sh[0], dv[1] - sh[1], dv[2] - sh[2]);
+        }
       }
     }
-    return x.subarray(0, ng);
+    return { pairs, selfDiag, fixedTerm };
+  }
+
+  /**
+   * qeq/point and qeq/shielded: the matrix elements of matrixTerms in the solver's terms (diagonal eta + self terms,
+   * off-diagonal pairs, Jacobi preconditioner 1/eta, right-hand side -chi, the fixed-atom term of the s residual); the
+   * two conjugate-gradient solves, the history and the charge sums are in src/engine-gpl/qeq/native_solver.ts.
+   */
+  private solveMatrix(s: System['state'], p: Params, idx: number[], mt: MatrixTerms, etaRow: Float64Array, ng: number): Float64Array {
+    const precond = new Float64Array(ng), diag = new Float64Array(ng), bS = new Float64Array(ng);
+    for (let a = 0; a < ng; a++) {
+      precond[a] = 1 / etaRow[a];
+      diag[a] = etaRow[a] + mt.selfDiag[a];
+      bS[a] = -p.chi[s.type[idx[a]]];
+    }
+    const sys: QeqLinearSystem = {
+      ng, diag, precond, bS, fixed: mt.fixedTerm,
+      pairA: Int32Array.from(mt.pairs, (e) => e.a),
+      pairB: Int32Array.from(mt.pairs, (e) => e.b),
+      pairH: Float64Array.from(mt.pairs, (e) => e.h),
+    };
+    return this.runSolver(s, idx, sys);
+  }
+
+  /** The gpl CG solver of this fix (gplHook 'qeq/point', 'qeq/shielded' or 'qeq/slater'): new charges, iteration scalar. */
+  private runSolver(s: System['state'], idx: number[], sys: QeqLinearSystem): Float64Array {
+    const r = this.solver!.solve({ sys, idx, ids: idx.map((i) => s.id[i]), n: s.n, q: s.q });
+    this.iterations = r.iterations;
+    return r.q;
   }
 
   /**
@@ -844,12 +873,6 @@ const meanAbs = (f: Float64Array): number => {
   let s = 0;
   for (let k = 0; k < f.length; k++) s += Math.abs(f[k]);
   return f.length ? s / f.length : 0;
-};
-
-const maxAbs = (a: Float64Array): number => {
-  let m = 0;
-  for (let i = 0; i < a.length; i++) if (Math.abs(a[i]) > m) m = Math.abs(a[i]);
-  return m;
 };
 
 const numArg = (w: string, what: string): number => {

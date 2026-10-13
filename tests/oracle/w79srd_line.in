@@ -1,0 +1,67 @@
+# oracle: fix srd with big line particles (rigid bodies of four line segments each, fix rigid molecule, noslip, overlap yes, shift yes, cubic warn, search 0.2), 2d (cut-down of examples/ASPHERE/line/in.line.srd: the first SRD run only, with timestep 0.001 instead of 0.0001 and 1000 steps instead of 10000; the fix deform of that run and the change_box triclinic phase are left out)
+# oracle-inputs: w79srd_line.data
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-13 skip=f_2[5]
+# Measured with native LAMMPS (black box): the engine agrees with every thermo column (temperatures, energies, press, the erotate of the big bodies and the SRD counts f_2[1..4] and f_2[6..12]) and with the positions, velocities and forces of every atom to a relative error of 1e-13 (it fails at 1e-14: the largest difference is press at step 100, about 2e-14). Skipped: f_2[5] (the count of rescaled SRD velocities). At the end about 10 SRD particles sit within 1e-9 of vmax (rescaled to |v| = vmax); a particle alone in its velocity bin is tested again at the next SRD rotation, where rounding decides the test, so native and engine count 2 to 3 rescales per SRD step differently (engine 90, native 82 at step 200), while the positions still agree.
+# The example's compute temp/deform is replaced by temp: with no fix deform the streaming term is zero (native warns and gives the same value).
+units		lj
+atom_style	line
+atom_modify	first big
+dimension	2
+
+read_data	w79srd_line.data
+
+lattice		sq 0.4
+region		plane block INF INF INF INF -0.001 0.001
+lattice		sq 10.0
+create_atoms	2 region plane
+
+group		big type 1
+group		small type 2
+set		group small mass 0.01
+
+pair_style	lj/cut 1.5
+pair_coeff	1 1 1.0 1.0
+pair_coeff	2 2 0.0 1.0 0.0
+pair_coeff	1 2 1.0 1.0
+
+delete_atoms	overlap 1.5 small big
+
+reset_timestep	0
+
+velocity	small create 1.44 87287 loop geom
+
+neighbor	0.8 multi
+neigh_modify	delay 0 every 1 check yes
+neigh_modify	exclude molecule/intra big include big
+
+comm_modify	mode multi group big vel yes
+neigh_modify	include big
+
+pair_style	line/lj 2.5
+pair_coeff	1 1 1.0  1.0 1.0 1.0 2.5
+pair_coeff	2 2 0.0  0.0 0.0 1.0 0.0
+pair_coeff	1 2 1.0  0.2 1.0 0.2 2.5
+
+timestep	0.001
+
+fix		1 big rigid molecule
+fix		2 small srd 20 big 1.0 0.25 49894 search 0.2 cubic warn 0.0001 shift yes 49829 overlap yes collision noslip
+fix		4 all enforce2d
+
+compute		tsmall small temp
+compute		tbig big temp
+variable	pebig equal pe*atoms/count(big)
+variable	ebig equal etotal*atoms/count(big)
+
+compute_modify	tbig extra/dof -350
+
+compute		1 big erotate/asphere
+compute		2 all ke
+compute		3 all pe
+
+thermo_style	custom step c_tsmall f_2[1] f_2[2] f_2[3] f_2[4] f_2[5] f_2[6] f_2[7] f_2[8] f_2[9] f_2[10] f_2[11] f_2[12] c_1 etotal v_pebig v_ebig press
+thermo_modify	temp tbig
+thermo_modify	format float %.15g
+thermo		100
+
+run		1000

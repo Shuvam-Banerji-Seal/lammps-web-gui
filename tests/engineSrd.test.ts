@@ -53,6 +53,9 @@ describe('fix srd refusals name the keyword', () => {
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes'))).toBe('');
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes\nfix 3 all deform 1 x scale 1.0'))).toMatch(/tstat yes with fix deform/);
   });
+  it('refuses fix deform without the thermostat too (the SRD streaming velocity is not ported)', async () => {
+    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip\nfix 3 all deform 1 x scale 1.0'))).toMatch(/fix srd with fix deform is not supported/);
+  });
   it('runs big particles that belong to a rigid body (fix rigid with sphere atoms)', async () => {
     const script = `units lj
 atom_style sphere

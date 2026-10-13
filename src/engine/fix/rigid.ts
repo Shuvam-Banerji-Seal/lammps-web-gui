@@ -1,7 +1,7 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
 import type { System } from '../system';
-import { massOf } from '../atoms';
+import { isLineAtom, isTriAtom, LINE_BONUS, massOf } from '../atoms';
 import { RanMars } from '../rng';
 import { parseNumOrVar, ramp, valueOf, type NumOrVar } from './util';
 import { FixGravity } from './force_ext';
@@ -55,8 +55,13 @@ interface Body {
   fflag: boolean[];
   tflag: boolean[];
   dof: number;
-  /** finite-size spheres (radius > 0) among the body's atoms; each adds its own rotational dof and inertia */
+  /** finite-size spheres (radius > 0) and line segments among the body's atoms; each adds its own rotational dof and inertia */
   nsph: number;
+  /**
+   * line atoms (atom_style line): the angle of each atom's segment relative to the body (theta minus the body angle),
+   * per atom in body order, 0 for other atoms. fix_rigid.cpp setup_bodies_static: "orient[i][0] = lbonus[line[i]].theta - theta_body".
+   */
+  orient: number[];
 }
 
 /** One line of an infile (fix rigid infile): attributes that override the computed ones. */
@@ -75,8 +80,18 @@ const cloneBody = (b: Body): Body => ({
   atoms: b.atoms.slice(), xcm: b.xcm.slice(), vcm: b.vcm.slice(), image: b.image.slice(),
   inertia: b.inertia.slice(), q: b.q.slice(), angmom: b.angmom.slice(), omega: b.omega.slice(),
   displace: b.displace.map((r) => r.slice()), fcm: b.fcm.slice(), torque: b.torque.slice(),
-  fflag: b.fflag.slice(), tflag: b.tflag.slice(),
+  fflag: b.fflag.slice(), tflag: b.tflag.slice(), orient: b.orient.slice(),
 });
+
+/** Angle of a body's z-rotation quaternion (w, x, y, z), as fix_rigid.cpp: "theta_body = 2.0*acos(quat[ibody][0])", signed by z. */
+const bodyTheta = (q: number[]): number => (q[3] >= 0 ? 2.0 * Math.acos(Math.min(1, q[0])) : -2.0 * Math.acos(Math.min(1, q[0])));
+/** Wraps an angle to (-pi, pi] as fix_rigid.cpp does for line orientations. */
+const wrapAngle = (t: number): number => {
+  let a = t;
+  while (a <= -Math.PI) a += 2 * Math.PI;
+  while (a > Math.PI) a -= 2 * Math.PI;
+  return a;
+};
 
 const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const qnorm = (q: number[]) => { const n = Math.hypot(q[0], q[1], q[2], q[3]); return q.map((v) => v / n); };
@@ -143,14 +158,29 @@ const jacobi = (A: number[][]): { values: number[]; vectors: number[][] } => {
  * not with respect to the principal axes of the rigid body itself. LAMMPS performs the latter
  * calculation internally."
  */
-const principalFrame = (I: number[][]): { inertia: number[]; q: number[] } => {
-  const { values, vectors } = jacobi(I);
+const principalFrame = (I: number[][], twoD = false): { inertia: number[]; q: number[] } => {
+  const jac = jacobi(I);
+  let order = [0, 1, 2];
+  if (twoD) {
+    // fix_rigid.cpp setup_bodies_static (2d): "for 2d, ensure that evector along z axis is last ... so that quaternion
+    // is a simple rotation around +z axis"; the line-orientation bookkeeping (theta_body) relies on it.
+    let zc = 0;
+    for (let c = 1; c < 3; c++) if (Math.abs(jac.vectors[2][c]) > Math.abs(jac.vectors[2][zc])) zc = c;
+    order = [0, 1, 2].filter((c) => c !== zc).concat([zc]);
+  }
+  const values = order.map((c) => jac.values[c]);
+  const vectors = jac.vectors;
   const maxI = Math.max(values[0], values[1], values[2]);
   const inertia = values.map((v) => (v < 1e-7 * maxI ? 0 : v));
   // right-handed axes
-  const e = [0, 1, 2].map((c) => [vectors[0][c], vectors[1][c], vectors[2][c]]);
+  const e = order.map((c) => [vectors[0][c], vectors[1][c], vectors[2][c]]);
   const e3 = cross(e[0], e[1]);
   if (e3[0] * e[2][0] + e3[1] * e[2][1] + e3[2] * e[2][2] < 0) e[2] = e[2].map((x) => -x);
+  // 2d: "negate both ey and ez to keep the eigenbasis right-handed" so that ez points along +z (fix_rigid.cpp)
+  if (twoD && e[2][2] < 0) {
+    e[1] = e[1].map((x) => -x);
+    e[2] = e[2].map((x) => -x);
+  }
   const R = [[e[0][0], e[1][0], e[2][0]], [e[0][1], e[1][1], e[2][1]], [e[0][2], e[1][2], e[2][2]]];
   return { inertia, q: matq(R) };
 };
@@ -441,7 +471,24 @@ export class FixRigid extends Fix {
       for (let d = 0; d < 3; d++) angmom[d] += m * L[d];
       this.refuseUnsupportedParticle(key, i);
       const rad = s.radius ? s.radius[i] : 0;
-      if (rad > 0) {
+      if (isLineAtom(s, i)) {
+        // fix_rigid.cpp setup_bodies_static (LINE): the segment's own inertia, inertia_line(length, theta, mass), which
+        // is mass L^2/12 times (1 - u u^T) with u the segment direction (cos theta, sin theta, 0); its spin adds
+        // LINERTIA m L^2 omega_z to the body angular momentum (only the z component, as native)
+        if (sys.dimension !== 2) throw new StyleError(`fix ${this.style}: line atom ${s.id[i]} in rigid body ${key} is supported only in 2d by the browser engine`);
+        const bonus = s.custom.get(LINE_BONUS)!.data;
+        const len = bonus[2 * i];
+        const th = bonus[2 * i + 1];
+        const a = (m * len * len) / 12.0;
+        const ux = Math.cos(th), uy = Math.sin(th);
+        I[0][0] += a * (1 - ux * ux);
+        I[1][1] += a * (1 - uy * uy);
+        I[2][2] += a;
+        I[0][1] -= a * ux * uy;
+        I[1][0] -= a * ux * uy;
+        if (s.omega) angmom[2] += a * s.omega[3 * i + 2];
+        nsph++;
+      } else if (rad > 0) {
         // docs.lammps.org/fix_rigid.html: "Finite-size particles contribute differently to the moment of
         // inertia of a rigid body than do point particles." A solid sphere adds 2/5 m r^2 about its own centre
         // (textbook), and its spin omega_i adds I_s omega_i to the body angular momentum. Measured with native
@@ -466,12 +513,15 @@ export class FixRigid extends Fix {
     const over = this.infile?.get(infileKey) ?? null;
     const L = (d: number) => s.box.hi[d] - s.box.lo[d];
     const xcmB = over ? over.xcm.map((c, d) => c + (s.box.periodic[d] ? over.image[d] * L(d) : 0)) : xcm;
-    const frame = principalFrame(over ? over.I : I);
+    const frame = principalFrame(over ? over.I : I, sys.dimension === 2);
     const Rq = qmat(frame.q);
     const displace = pos.map((p) => {
       const r = [p[0] - xcmB[0], p[1] - xcmB[1], p[2] - xcmB[2]];
       return [0, 1, 2].map((c) => Rq[0][c] * r[0] + Rq[1][c] * r[1] + Rq[2][c] * r[2]);
     });
+    // line orientations relative to the body (fix_rigid.cpp setup_bodies_static, LINE branch)
+    const thetaBody = bodyTheta(frame.q);
+    const orient = idx.map((i) => (isLineAtom(s, i) ? wrapAngle(s.custom.get(LINE_BONUS)!.data[2 * i + 1] - thetaBody) : 0));
     const inertia = frame.inertia;
     const ncollinear = inertia.filter((v) => v === 0).length;
     const b: Body = {
@@ -488,6 +538,7 @@ export class FixRigid extends Fix {
       fcm: [0, 0, 0], torque: [0, 0, 0], fflag: [true, true, true], tflag: [true, true, true],
       dof: sys.dimension === 2 ? 3 : ncollinear >= 1 ? 5 : 6,
       nsph,
+      orient,
     };
     this.wrapCom(b);
     return b;
@@ -501,6 +552,7 @@ export class FixRigid extends Fix {
   private refuseUnsupportedParticle(key: string, i: number): void {
     const s = this.sys.state;
     const id = s.id[i];
+    if (isTriAtom(s, i)) throw new StyleError(`fix ${this.style}: triangle atom ${id} in rigid body ${key} is not supported by the browser engine (triangles need their corner points to follow the body)`);
     if (s.shape && s.shape[3 * i] > 0) throw new StyleError(`fix ${this.style}: finite-size ellipsoid atom ${id} in rigid body ${key} is not supported by the browser engine (ellipsoidal particles in rigid bodies need their orientation to follow the body)`);
     if (s.mu && s.mu[4 * i + 3] !== 0) throw new StyleError(`fix ${this.style}: point dipole atom ${id} in rigid body ${key} is not supported by the browser engine (dipole vectors must rotate with the body and feel dipole torques)`);
   }
@@ -684,6 +736,8 @@ export class FixRigid extends Fix {
         for (let d = 0; d < 3; d++) s.v[3 * i + d] = b.vcm[d] + w[d];
         // finite-size spheres rotate with the body: their angular velocity is the body's (measured with native LAMMPS, black box)
         if (s.omega && s.radius && s.radius[i] > 0) for (let d = 0; d < 3; d++) s.omega[3 * i + d] = b.omega[d];
+        // fix_rigid.cpp set_xv(): the segment angle follows the body, theta = orient + theta_body (set_v does not)
+        if (setX && isLineAtom(s, i)) s.custom.get(LINE_BONUS)!.data[2 * i + 1] = wrapAngle(b.orient[n] + bodyTheta(b.q));
         if (setX) {
           // unwrapped position, written back as wrapped position + image flags
           for (let d = 0; d < 3; d++) {

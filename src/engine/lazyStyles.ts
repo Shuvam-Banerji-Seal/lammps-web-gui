@@ -134,4 +134,5 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_extrafix', names: { FIXES: ['gle', 'grem', 'electron/stopping/fit'] }, load: () => import('../engine-gpl/registry/extrafix') as Promise<StyleModule> },
   { id: 'gpl_mc', names: { FIXES: ['charge/regulation'] }, load: () => import('../engine-gpl/registry/mc') as Promise<StyleModule> },
   { id: 'gpl_filtercorotate', names: { FIXES: ['filter/corotate'] }, load: () => import('../engine-gpl/registry/filtercorotate') as Promise<StyleModule> },
+  { id: 'gpl_yaff', names: { ANGLES: ['cross'], BONDS: ['mm3'], PAIRS: ['lj/switch3/coulgauss/long'] }, load: () => import('../engine-gpl/registry/yaff') as Promise<StyleModule> },
 ];

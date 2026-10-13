@@ -1,0 +1,28 @@
+# oracle: YAFF MOF-5 example with the lj/switch3/coulgauss/long pair (the example uses mm3/switch3/coulgauss/long, not in the engine yet), table 16, pppm 1e-7, bonded mm3/cross, NPT as in the example, 30 steps.
+# measured 2026-10-13 (engine vs native, max relative error per value, no absolute floor): thermo 6.4e-11, per-atom 1.3e-7; the compare passes at rel 1e-8 abs 1e-10.
+# oracle-inputs: w118yaff_mof5.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      full
+boundary        p p p
+dielectric      1
+special_bonds   lj 0.000000 0.000000 1.000000 coul 1.000000 1.000000 1.000000
+pair_style      lj/switch3/coulgauss/long 12.0000 4.0000
+pair_modify     table 16
+pair_modify     mix arithmetic
+pair_modify     tail no
+bond_style      mm3
+angle_style     hybrid cross mm3
+dihedral_style  fourier
+improper_style  distharm
+read_data       w118yaff_mof5.data
+kspace_style    pppm 0.0000001
+neighbor        2.0 bin
+neigh_modify    every 2 delay 4 check yes
+timestep        0.5
+velocity        all create 0.0 5
+fix             1 all npt temp 300.0 300.0 100.0 tri 1.0 1.0 1000.0 tchain 3 mtk yes nreset 1000
+thermo_style    custom step etotal ke temp pe emol evdwl ecoul elong etail vol press
+thermo_modify   format float %.15g norm no
+thermo          10
+run             30

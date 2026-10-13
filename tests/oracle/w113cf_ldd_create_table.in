@@ -1,0 +1,25 @@
+# oracle: pair_style table spline 3000 on the bocs 4_sites_LD_SG create_atoms random ... mol system (table term only, run 0); the previous spline end slope gave 5.25e-2 per-atom error on atom 136 (fy)
+# oracle-inputs: w113cf_nb_ACA_ACA.table w113cf_ABCD.mol w113cf_ff_bonded_params.lammps
+# measured max error vs native (run 0): per-atom 2.6e-13 relative, thermo 1.5e-15 (the derivative end-slope build gave 5.25e-2 on atom 136)
+# oracle-compare: rel=1e-8 abs=1e-10
+units           real
+dimension       3
+boundary        p p p
+atom_style      full
+timestep        0.5
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  harmonic
+improper_style  none
+region my_box block 0 40 0 40 0 40
+create_box      4 my_box bond/types 1 angle/types 1 dihedral/types 1 extra/bond/per/atom 12 extra/angle/per/atom 12 extra/dihedral/per/atom 8 extra/special/per/atom 30
+mass            * 59.0448
+pair_style      table spline 3000
+molecule        CHAIN w113cf_ABCD.mol
+create_atoms    0 random 60 885401 my_box mol CHAIN 454756
+include         w113cf_ff_bonded_params.lammps
+pair_coeff      * * w113cf_nb_ACA_ACA.table nb_ACA_ACA 15.0
+thermo_style    custom step temp pe evdwl press
+thermo_modify   format float %.15g
+thermo          1
+run             0

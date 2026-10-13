@@ -275,18 +275,6 @@ const evalSpline = (x: Float64Array, y: Float64Array, M: Float64Array, xq: numbe
   return a * y[lo] + b * y[hi] + ((a * a * a - a) * M[lo] + (b * b * b - b) * M[hi]) * h * h / 6;
 };
 
-/** Derivative dS/dx of the complete spline (x, y, M) at xq. */
-const evalSplineDeriv = (x: Float64Array, y: Float64Array, M: Float64Array, xq: number): number => {
-  let lo = 0, hi = x.length - 1;
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1;
-    if (x[mid] > xq) hi = mid; else lo = mid;
-  }
-  const h = x[hi] - x[lo];
-  const a = (x[hi] - xq) / h, b = (xq - x[lo]) / h;
-  return (y[hi] - y[lo]) / h + ((3 * b * b - 1) * M[hi] - (3 * a * a - 1) * M[lo]) * h / 6;
-};
-
 /**
  * Cubic spline in r^2 on uniform nodes: value at table position p (in units of
  * the node spacing), nodes y, second derivatives y2, h2_6 = spacing^2 / 6.
@@ -424,7 +412,8 @@ export class PairTable extends Pair {
       throw new StyleError(`pair_coeff cutoff ${cut} exceeds the outer table cutoff ${rLast}`);
     }
     if (cut < r[0]) throw new StyleError(`pair_coeff cutoff ${cut} is below the inner table distance ${r[0]}`);
-    const rsq1 = r[0] * r[0];
+    // inner = rlo for R/RSQ tables, else the first file r (native: innersq = inner*inner)
+    const rsq1 = sec.spacing === 'none' ? r[0] * r[0] : sec.rlo * sec.rlo;
     // direct copy for linear: "you should set Ntable = Nfile, and use the "RSQ"
     // or "BITMAP" parameter" — the Ntable sample points coincide with the
     // tabulated values ("effectively no preliminary interpolation").
@@ -457,17 +446,35 @@ export class PairTable extends Pair {
       // "cubic spline coefficients are computed and stored for each of the N values
       // in the table, one set of splines for energy, another for force" (measured,
       // see the header): complete splines in r^2 through the Ntable samples.
-      // End slopes come from the preliminary interpolant: dE/d(r^2) = -F/(2r) and
-      // d(F/r)/d(r^2) = (F'/r - F/r^2)/(2r) at the first and last table distances.
+      // End slopes as native LAMMPS sets them (src/pair_table.cpp, compute_table,
+      // tabstyle SPLINE, read at b332f28): dh/dg with h = e or f/r and g = r^2.
+      //   energy:  dE/d(r^2) = -F/(2r) at both ends;
+      //   force:   with FPRIME, fp = (dF/dr/r - F/r^2)/(2r) from the given slope
+      //            (at the outer end only when cut is the last tabulated distance);
+      //            otherwise the secant of f/r over 0.1 table spacings inside the
+      //            ends, using the preliminary force spline (native's factor 0.1).
       const nt = this.ntable;
+      const delta = (rsqN - rsq1) / (nt - 1);
       const xs = new Float64Array(nt);
-      for (let k = 0; k < nt; k++) xs[k] = rsq1 + ((rsqN - rsq1) * k) / (nt - 1);
+      for (let k = 0; k < nt; k++) xs[k] = rsq1 + k * delta;
       const rLo = Math.sqrt(rsq1), rHi = cut;
-      const fLo = evalSpline(r, sec.f, mf, rLo), fHi = evalSpline(r, sec.f, mf, rHi);
-      const dfLo = evalSplineDeriv(r, sec.f, mf, rLo), dfHi = evalSplineDeriv(r, sec.f, mf, rHi);
+      const secant = 0.1;
+      const fLo = evalSpline(r, sec.f, mf, rLo);
+      const fHi = evalSpline(r, sec.f, mf, Math.sqrt(xs[nt - 1]));
       const dE0 = -fLo / (2 * rLo), dEN = -fHi / (2 * rHi);
-      const dG0 = (dfLo / rLo - fLo / (rLo * rLo)) / (2 * rLo);
-      const dGN = (dfHi / rHi - fHi / (rHi * rHi)) / (2 * rHi);
+      let dG0: number, dGN: number;
+      if (sec.fplo !== null) {
+        dG0 = (sec.fplo / rLo - fLo / rsq1) / (2 * rLo);
+      } else {
+        const rsq2 = rsq1 + secant * delta;
+        dG0 = (evalSpline(r, sec.f, mf, Math.sqrt(rsq2)) / Math.sqrt(rsq2) - fLo / rLo) / (secant * delta);
+      }
+      if (sec.fphi !== null && cut === r[n - 1]) {
+        dGN = (sec.fphi / cut - fHi / (cut * cut)) / (2 * cut);
+      } else {
+        const rsq2 = rsqN, rsq1b = rsq2 - secant * delta;
+        dGN = (fHi / Math.sqrt(rsq2) - evalSpline(r, sec.f, mf, Math.sqrt(rsq1b)) / Math.sqrt(rsq1b)) / (secant * delta);
+      }
       const e2 = completeSpline(xs, eT, dE0, dEN);
       const g2 = completeSpline(xs, gT, dG0, dGN);
       return { rsq1, invDelta: (nt - 1) / (rsqN - rsq1), e: eT, g: gT, e2, g2 };

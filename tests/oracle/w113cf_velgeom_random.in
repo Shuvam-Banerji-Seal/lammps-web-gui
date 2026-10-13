@@ -1,0 +1,17 @@
+# oracle: velocity create dist gaussian loop geom on create_atoms random positions (orthogonal 40^3 box, 60 atoms), run 0; the same ulp-level position bug as w113cf_velgeom_unif moved every atom velocity (global momentum and scale)
+# measured max error vs native (run 0): per-atom velocity 8.7e-19 relative, thermo temp 3.8e-16 (before the fix: 3.9e-3 on atom 18 and every other atom, from one 1-ulp position difference)
+units           real
+dimension       3
+boundary        p p p
+atom_style      full
+region          my_box block 0 40 0 40 0 40
+create_box      4 my_box bond/types 1 angle/types 1 dihedral/types 1 extra/bond/per/atom 12 extra/angle/per/atom 12 extra/dihedral/per/atom 8 extra/special/per/atom 30
+mass            * 59.0448
+pair_style      zero 10.0
+pair_coeff      * *
+create_atoms    1 random 60 885401 my_box
+velocity        all create 300.0 22345 dist gaussian loop geom
+thermo_style    custom step temp pe
+thermo_modify   format float %.15g
+thermo          1
+run             0

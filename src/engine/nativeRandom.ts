@@ -26,6 +26,8 @@ export interface NativeRandom {
   velocityGeom(seed: number, x: number, y: number, z: number, gaussian: boolean, out: Float64Array): void;
   /** displace_atoms random dx dy dz seed: the displacement of one atom (out[2] = 0 in 2d). */
   displaceRandom(seed: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, dimension: number, out: Float64Array): void;
+  /** delete_atoms random fraction F seed (eflag no): which of `count` eligible atoms (storage order) are deleted (1 = yes). */
+  deleteFraction(seed: number, fraction: number, count: number): Uint8Array;
   /** set type/fraction: true when the atom takes the new type. */
   typeFraction(seed: number, x: number, y: number, z: number, fraction: number): boolean;
   /** set type/ratio and type/subset: which of `count` eligible atoms (storage order, one processor) take the new type (1 = yes). */

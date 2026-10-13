@@ -213,6 +213,10 @@ export const makeLattice = (style: LatticeStyle, scale: number, units: UnitSyste
     const p = genRaw(f);
     return [dot(Rot[0], p), dot(Rot[1], p), dot(Rot[2], p)];
   };
+  // lattice.html, keyword spacing: "The specified values are multiplied by the multiplicative factor described
+  // above that is associated with the scale factor. Thus a spacing of 1.0 means one unit cell edge length
+  // independent of the scale factor." (the derived spacings below already include the factor)
+  if (spacing) spacing = [spacing[0] * factor, spacing[1] * factor, spacing[2] * factor];
   // spacings from the 8 (4 in 2d) corners of the transformed unit cell
   if (!spacing) {
     const mn: V3 = [Infinity, Infinity, Infinity], mx: V3 = [-Infinity, -Infinity, -Infinity];

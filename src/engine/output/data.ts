@@ -137,6 +137,8 @@ export interface ReadDataOptions {
   nocoeff: boolean;
   /** read_data fix fix-ID header-string section-string (section name -> fix ID and header-string; NULL = no header lines). */
   fixSections: Map<string, { fixId: string; header: string }>;
+  /** read_data extra/bond/per/atom (null = keyword not given); used only by the read that creates the box. */
+  extraBondPerAtom: number | null;
 }
 
 /**
@@ -167,6 +169,7 @@ const isDataFix = (f: unknown): f is DataFix => {
 
 export const defaultReadOptions = (): ReadDataOptions => ({
   add: 'none', offset: [0, 0, 0, 0, 0], shift: [0, 0, 0], extraTypes: [0, 0, 0, 0, 0], group: null, nocoeff: false, fixSections: new Map(),
+  extraBondPerAtom: null,
 });
 
 /**
@@ -299,6 +302,8 @@ const numOf = (w: string | undefined, what: string, line: number): number => {
 /** read_data file [keywords] into the system. */
 export const readData = (sys: System, text: string, opts: ReadDataOptions): void => {
   const lines = text.split('\n');
+  // a read after the box exists (add keyword) is a subsequent read: its bonds are limited by the storage
+  const subsequentRead = sys.hasBox;
   // header: skip the first line (title)
   const h: Record<string, number> = {};
   let orthoLines = false;
@@ -850,6 +855,22 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
       for (const id of e.ids) if (!ids.has(id)) throw new StyleError(`data file: ${e.kind.slice(0, -1)} references atom ${id}, which does not exist`);
       pushTopo(s.topo[e.kind] as TopoList, e.type, e.ids);
     }
+    // a bond is stored with its first atom, so the bonds per atom of this file count the bonds that start at each atom.
+    // Measured with native LAMMPS (black box, 6 atoms, 2 bonds starting at each of atoms 1, 2 and 3): a read after
+    // create_box bond/types 2 with extra/bond/per/atom 0 or 1 stops with "Subsequent read data induced too many bonds
+    // per atom", and with 2 it reads; the same read as the first (box-making) read is accepted and sets the storage.
+    const perAtom = new Map<number, number>();
+    let most = 0;
+    for (const e of topo) {
+      if (e.kind !== 'bonds') continue;
+      const n = (perAtom.get(e.ids[0]) ?? 0) + 1;
+      perAtom.set(e.ids[0], n);
+      if (n > most) most = n;
+    }
+    if (subsequentRead) {
+      if (most > sys.extraBondPerAtom) throw new StyleError('Subsequent read data induced too many bonds per atom');
+    } else sys.extraBondPerAtom = Math.max(opts.extraBondPerAtom ?? 0, most);
+
     // atom_style oxdna: each bond sets the 5'/3' partners (atoms.ts setOxdnaPartners)
     setOxdnaPartners(s, topo.filter((e) => e.kind === 'bonds').map((e) => [e.ids[0], e.ids[1]] as const));
   }

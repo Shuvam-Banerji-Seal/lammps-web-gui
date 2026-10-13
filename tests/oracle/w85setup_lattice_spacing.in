@@ -1,0 +1,13 @@
+# oracle: lattice spacing keyword with a scale factor != 1 (lj, fcc 0.9): spacings are multiplied by the factor
+units           lj
+atom_style      atomic
+lattice         fcc 0.9 spacing 2 3 4
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+thermo_style    custom step atoms xlat ylat zlat lx ly lz
+thermo_modify   format float %.15g
+run             0

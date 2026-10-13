@@ -35,6 +35,14 @@ export const NATIVE: NativeRandom = {
     out[1] = dy * 2.0 * (rp.uniform() - 0.5);
     out[2] = dimension === 3 ? dz * 2.0 * (rp.uniform() - 0.5) : 0;
   },
+  // delete_atoms.cpp, approximate fraction: RanMars(seed + me) with me = 0, one draw per eligible atom, deleted when
+  // the draw is at or below the fraction (measured with native LAMMPS, black box: 24 of 80 atoms, seed 4321, 0.3)
+  deleteFraction(seed, fraction, count) {
+    const mark = new Uint8Array(count);
+    const rm = new RanMars(seed);
+    for (let k = 0; k < count; k++) if (rm.uniform() <= fraction) mark[k] = 1;
+    return mark;
+  },
   // set.cpp, TYPE_FRACTION: "if (ranpark->uniform() > fraction) continue;"
   typeFraction(seed, x, y, z, fraction) {
     return !(atomStream(seed, x, y, z).uniform() > fraction);

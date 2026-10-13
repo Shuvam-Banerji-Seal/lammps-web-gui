@@ -371,6 +371,16 @@ export class SphereRegion extends Region {
     if (rho === 0) { out.push({ key: 'sphere', dist: R, nx: 0, ny: 0, nz: 0, curvature: -R, source: this }); return; }
     out.push({ key: 'sphere', dist: R - rho, nx: -dx / rho, ny: -dy / rho, nz: -dz / rho, curvature: -R, source: this });
   }
+  /**
+   * Bounding box of an interior sphere: the centre plus or minus the radius on each axis. create_atoms random
+   * draws its points in this box (clipped to the simulation box), so the box decides which draws are accepted.
+   */
+  bbox(): { lo: number[]; hi: number[] } | null {
+    if (!this.interior || this.dynamic) return null;
+    const [cx, cy, cz] = this.c.map((p) => this.val(p));
+    const r = Math.abs(this.val(this.r));
+    return { lo: [cx - r, cy - r, cz - r], hi: [cx + r, cy + r, cz + r] };
+  }
 }
 
 export class EllipsoidRegion extends Region {
@@ -380,6 +390,13 @@ export class EllipsoidRegion extends Region {
     const [a, b, c] = this.ax.map((p) => this.val(p));
     const dx = (x - cx) / a, dy = (y - cy) / b, dz = (z - cz) / c;
     return dx * dx + dy * dy + dz * dz <= 1;
+  }
+  /** Bounding box of an interior ellipsoid: the centre plus or minus each semi-axis (see SphereRegion.bbox). */
+  bbox(): { lo: number[]; hi: number[] } | null {
+    if (!this.interior || this.dynamic) return null;
+    const [cx, cy, cz] = this.c.map((p) => this.val(p));
+    const [a, b, c] = this.ax.map((p) => Math.abs(this.val(p)));
+    return { lo: [cx - a, cy - b, cz - c], hi: [cx + a, cy + b, cz + c] };
   }
 }
 

@@ -1,0 +1,41 @@
+# oracle: pair spin/dipole/long 8.0 with kspace_style pppm/dipole/spin 1.0e-4 (hybrid/overlay with spin/exchange 3.5), bcc iron 6x6x6 cells (432 random spins; the dipole_spin example without eam), cubic precession/spin anisotropy, min_style spin, 30 iterations
+# measured with native LAMMPS (black box), engine vs native fixture: thermo max relative error 5.1e-12 (absolute 2.8e-8, v_tmag); spin dump (c_outsp columns, file compare) max relative 4.3e-10 (absolute 7.9e-8). G-ewald 0.0705, grid 2 2 2, order 5. min_style spin only (the nve/spin sweep is not used); re-measured under Node 20: the same numbers.
+# oracle-files: w103spin_pppm_dipole_min.dump
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      spin
+dimension       3
+boundary        p p p
+atom_modify     map array
+lattice         bcc 2.8665
+region          box block 0.0 6.0 0.0 6.0 0.0 6.0
+create_box      1 box
+create_atoms    1 box
+mass            1 55.845
+set             group all spin/random 11 2.2
+pair_style      hybrid/overlay spin/exchange 3.5 spin/dipole/long 8.0
+pair_coeff      * * spin/exchange exchange 3.4 0.02726 0.2171 1.841
+pair_coeff      * * spin/dipole/long 8.0
+neighbor        0.1 bin
+neigh_modify    every 10 check yes delay 20
+kspace_style    pppm/dipole/spin 1.0e-4
+fix             1 all precession/spin cubic 0.001 0.0005 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0
+fix_modify      1 energy yes
+compute         out_mag    all spin
+compute         out_pe     all pe
+compute         out_ke     all ke
+compute         out_temp   all temp
+variable        magx      equal c_out_mag[1]
+variable        magy      equal c_out_mag[2]
+variable        magz      equal c_out_mag[3]
+variable        magnorm   equal c_out_mag[4]
+variable        emag      equal c_out_mag[5]
+variable        tmag      equal c_out_mag[6]
+thermo_style    custom step time v_magx v_magy v_magz v_magnorm v_tmag v_emag pe etotal
+thermo_modify   format float %.15g
+thermo          5
+compute         outsp all property/atom spx spy spz sp fmx fmy fmz
+min_style       spin
+min_modify      alpha_damp 1.0 discrete_factor 10.0
+minimize        1.0e-10 1.0e-10 30 1000
+write_dump      all custom w103spin_pppm_dipole_min.dump id c_outsp[1] c_outsp[2] c_outsp[3] c_outsp[4] c_outsp[5] c_outsp[6] c_outsp[7] modify format float %.15g sort id

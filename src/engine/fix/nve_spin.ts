@@ -85,12 +85,19 @@ export class FixNVESpin extends Fix {
    * one) plus the precession/spin fixes of the system (fix/precession_spin.ts). Native LAMMPS runs nve/spin
    * without a spin pair style too (measured: a zeeman-only spin rotates).
    */
-  private omega(i: number, damped: boolean): void {
+  private omega(i: number, damped: boolean, output = false): void {
     const nb = this.sys.nb;
     const sp = this.sys.state.sp!;
     this.w[0] = 0; this.w[1] = 0; this.w[2] = 0;
     for (const p of this.pairs) {
-      p.omegaOf(i, nb, sp, nb.typeall, nb.xall, nb.full!, this.wbuf);
+      // the sweep accumulates the pair terms into one vector in pair order (native compute_single_pair on fmi), which a
+      // pair style may reset (Pair.singlePair); the output vector of a pair style may differ (Pair.outputOf)
+      if (!output && p.singlePair) {
+        p.singlePair(i, nb, sp, nb.typeall, nb.xall, nb.full!, this.w);
+        continue;
+      }
+      const f = output && p.outputOf ? p.outputOf.bind(p) : p.omegaOf.bind(p);
+      f(i, nb, sp, nb.typeall, nb.xall, nb.full!, this.wbuf);
       this.w[0] += this.wbuf[0]; this.w[1] += this.wbuf[1]; this.w[2] += this.wbuf[2];
     }
     for (const f of this.fields) {
@@ -130,7 +137,7 @@ export class FixNVESpin extends Fix {
     const s = this.sys.state;
     const fm = s.fm!;
     for (let i = 0; i < s.n; i++) {
-      this.omega(i, false);
+      this.omega(i, false, true);
       fm[3 * i] = this.w[0]; fm[3 * i + 1] = this.w[1]; fm[3 * i + 2] = this.w[2];
     }
   }

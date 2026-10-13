@@ -18,6 +18,9 @@ import { NEIGHMASK, type Neighbor } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { spinContribute, type SpinPairStyle } from '../../engine/force/spin_book';
 import { HBAR, MUB2MU0, MUB2MU0HBINV } from './pair_spin_dipole_cut';
+import { fmLongOf } from './dipole_long_field';
+import { nativeFullLast } from '../neighbor/nativeOrder';
+import type { SimState } from '../../engine/types';
 
 /** ewald_const.h: EWALD_P and the coefficients of the erfc approximation (LAMMPS src/ewald_const.h, b332f28). */
 const EWALD_P = 0.3275911;
@@ -44,6 +47,13 @@ export class PairSpinDipoleLong extends Pair implements SpinPairStyle {
   p!: PairParams;
   private fmBuf = new Float64Array(0);
   private bbuf = new Float64Array(4);
+  /** The state of the last compute: the kspace field fm_long is kept per atom id in it (dipole_long_field.ts). */
+  private state: SimState | null = null;
+  /** Per owned atom: the engine index of the partner that native's full list stores last (nativeFullLast), or -1. */
+  private lastPartner: Int32Array = new Int32Array(0);
+  private lastBuild = -1;
+  private lastOrder: Int32Array | null = null;
+  private lastList: object | null = null;
 
   settings(args: string[], _ctx?: StyleContext): void {
     if (args.length !== 1) throw new StyleError('usage: pair_style spin/dipole/long cutoff');
@@ -120,13 +130,77 @@ export class PairSpinDipoleLong extends Pair implements SpinPairStyle {
   }
 
   /**
-   * Precession vector of owned atom i (compute_single_pair of the source) for fix nve/spin. Not matched to native yet:
-   * a 432-spin random configuration with nve/spin (frozen lattice, one step) gives a magnetization change that differs
-   * from native by about 10% (the energies and the precession vectors of compute match native to 1e-8, and so does
-   * min_style spin), so the spin dynamics are refused by name rather than reproduced approximately.
+   * Precession vector of owned atom i for fix nve/spin (compute_single_pair of the source) and fm_long of atom i (the
+   * kspace field of the last force evaluation, native: fmi += fm_long[ii]). The source resets its accumulator inside
+   * the neighbour loop ("fmi[0] = fmi[1] = fmi[2] = 0.0;" before each j in compute_single_pair, src/SPIN/
+   * pair_spin_dipole_long.cpp at b332f28), so the sweep keeps only the term of the last neighbour of the list, and that
+   * term only when the last neighbour lies inside the cutoff. This is reproduced as measured against native (the
+   * min_style path, compute(), accumulates over all neighbours and is unaffected).
    */
-  omegaOf(_i: number, _nb: Neighbor, _sp: Float64Array, _type: Int32Array, _x: Float64Array, _list: List, _out: Float64Array): void {
-    throw new StyleError("pair style spin/dipole/long with fix nve/spin is not supported by the browser engine yet (the spin dynamics do not match native LAMMPS; min_style spin with this pair does)");
+  /**
+   * compute_single_pair of the source, for fix nve/spin: fmi is reset inside the neighbour loop, so the term that survives
+   * is the one of the last neighbour of the list (when it lies inside the cutoff), and fm_long of atom i is added to it
+   * (native: fmi[0] += fm_long[ii][0]). The reset overwrites whatever the spin pair styles before this one added to fmi,
+   * which is why the order of the hybrid sub-styles changes the native dynamics (measured with native LAMMPS, frozen
+   * lattice, bcc iron 432 spins: spin/exchange before spin/dipole/long gives no spin motion, after it the exchange motion).
+   */
+  singlePair(i: number, nb: Neighbor, sp: Float64Array, type: Int32Array, x: Float64Array, _list: List, fmi: number[]): void {
+    let lx = 0, ly = 0, lz = 0;
+    const j = i < this.lastPartner.length ? this.lastPartner[i] : -1;
+    if (j >= 0) {
+      const si = 4 * i;
+      const dx = x[3 * j] - x[3 * i], dy = x[3 * j + 1] - x[3 * i + 1], dz = x[3 * j + 2] - x[3 * i + 2];
+      const rsq = dx * dx + dy * dy + dz * dz;
+      const rc = this.p.get('rc', type[i], type[j]);
+      if (rsq < rc * rc) {
+        const rinv = 1 / Math.sqrt(rsq);
+        const eij: Vec = [dx * rinv, dy * rinv, dz * rinv];
+        const b = this.bbuf;
+        this.bterms(rsq, b);
+        const term: Vec = [0, 0, 0];
+        this.longTerm(eij, b, term, sp, si, sp, 4 * nb.owner[j], rsq);
+        lx = term[0]; ly = term[1]; lz = term[2];
+      }
+    }
+    fmi[0] = lx; fmi[1] = ly; fmi[2] = lz;
+    const s = this.state;
+    if (s && s.fm) {
+      const fl = fmLongOf(s, false);
+      const id = 3 * s.id[i];
+      fmi[0] += fl[id]; fmi[1] += fl[id + 1]; fmi[2] += fl[id + 2];
+    }
+  }
+
+  /** The sweep vector of atom i alone (singlePair from zero). */
+  omegaOf(i: number, nb: Neighbor, sp: Float64Array, type: Int32Array, x: Float64Array, list: List, out: Float64Array): void {
+    const fmi = [0, 0, 0];
+    this.singlePair(i, nb, sp, type, x, list, fmi);
+    out[0] = fmi[0]; out[1] = fmi[1]; out[2] = fmi[2];
+  }
+
+  /**
+   * The precession vector stored by the force evaluation (native compute(): fm[i] += fmi summed over all neighbours of i
+   * inside the cutoff, from the current spins; the kspace field fm_long is not in it). Used for the output fm after a step.
+   */
+  outputOf(i: number, nb: Neighbor, sp: Float64Array, type: Int32Array, x: Float64Array, list: List, out: Float64Array): void {
+    out[0] = 0; out[1] = 0; out[2] = 0;
+    const owner = nb.owner;
+    const b = this.bbuf;
+    const si = 4 * i;
+    const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
+    for (let k = k0; k < k1; k++) {
+      const j = list.neighbors[k] & NEIGHMASK;
+      const dx = x[3 * j] - x[3 * i], dy = x[3 * j + 1] - x[3 * i + 1], dz = x[3 * j + 2] - x[3 * i + 2];
+      const rsq = dx * dx + dy * dy + dz * dz;
+      const rc = this.p.get('rc', type[i], type[j]);
+      if (!(rsq < rc * rc)) continue;
+      const rinv = 1 / Math.sqrt(rsq);
+      const eij: Vec = [dx * rinv, dy * rinv, dz * rinv];
+      this.bterms(rsq, b);
+      const fmi: Vec = [0, 0, 0];
+      this.longTerm(eij, b, fmi, sp, si, sp, 4 * owner[j], rsq);
+      out[0] += fmi[0]; out[1] += fmi[1]; out[2] += fmi[2];
+    }
   }
 
   compute(pc: PairCompute): void {
@@ -135,6 +209,13 @@ export class PairSpinDipoleLong extends Pair implements SpinPairStyle {
     const s = pc.s;
     if (!s.sp || !s.fm) throw new StyleError(`pair style ${this.name} requires atom_style spin`);
     if (s.units.style !== 'metal') throw new StyleError('Spin pair styles require metal units');
+    this.state = s;
+    if (this.lastBuild !== pc.nb.nbuild || this.lastOrder !== s.order || this.lastList !== list) {
+      this.lastPartner = nativeFullLast(s, pc.nb, pc.geom, list);
+      this.lastBuild = pc.nb.nbuild;
+      this.lastOrder = s.order;
+      this.lastList = list;
+    }
     if (!(this.gEwald > 0)) throw new StyleError(`pair style ${this.name} requires a kspace style (kspace_style ewald/dipole/spin or pppm/dipole/spin)`);
     const { x, f, type } = pc;
     const owner = pc.nb.owner;

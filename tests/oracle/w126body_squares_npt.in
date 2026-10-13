@@ -1,0 +1,22 @@
+# oracle: fix npt/body (couple xy, fixedpoint 0 0 0) with pair body/rounded/polygon, from examples/body/in.squares cut down: 2x2 replicate of data.squares (8 rounded squares), velocity create 0.5 with rot yes, mu 0.1, c_n 1, c_t 1, delta_ua 0.5, temp 0.5 Tdamp 1, x and y Pdamp 1, 60 steps (the example runs 100000). Measured with native LAMMPS (black box): engine vs native max relative error 4.2e-8 (pxx, step 60); the coupled barostat departs from native faster than the uncoupled one (w126body_squares_npt_xy, 7e-12 over 600 steps); not isolated, the 2d nvt (roundoff) and the uncoupled x/y cases agree.
+# oracle-inputs: w111body_squares.data
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-12
+units           lj
+dimension       2
+atom_style      body rounded/polygon 1 6
+atom_modify     map array
+read_data       w111body_squares.data
+replicate       2 2 1
+velocity        all create 0.5 980411 dist gaussian mom yes rot yes
+pair_style      body/rounded/polygon 1 1 0.1 0.5 0.5
+pair_coeff      * * 100 2
+comm_modify     vel yes
+neighbor        0.5 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        0.001
+fix             1 all npt/body temp 0.5 0.5 1.0 x 0.001 0.1 1.0 y 0.001 0.1 1.0 couple xy fixedpoint 0 0 0
+fix             2 all enforce2d
+thermo_style    custom step pe ke etotal press pxx pyy pxy
+thermo_modify   format float %.15g
+thermo          20
+run             60

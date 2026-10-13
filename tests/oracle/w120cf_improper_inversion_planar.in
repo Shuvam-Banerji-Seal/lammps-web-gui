@@ -1,0 +1,15 @@
+# oracle: improper_style inversion/harmonic (K omega0 = 150 10) on the same chains held near planar, static forces and energy after run 0 (checks the inversion gradient near planar)
+# oracle-inputs: w120cf_improper_planar.data
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12 atomrel=1e-9
+units           real
+atom_style      molecular
+bond_style      harmonic
+improper_style  inversion/harmonic
+pair_style      zero 5.0
+read_data       w120cf_improper_planar.data
+pair_coeff      * *
+bond_coeff      1 300.0 1.1
+improper_coeff  1 150.0 10.0
+thermo_style    custom step pe ebond eimp etotal pxx pyy pzz
+thermo_modify   format float %.15g
+run             0

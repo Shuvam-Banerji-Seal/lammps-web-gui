@@ -1,0 +1,13 @@
+# oracle: create_atoms box with lattice points one lamda-epsilon outside the periodic faces (region edges at 0.0000003 and 3.00000003 lattice units): native keeps the lower image (lamda >= -1e-6) and drops the upper one (lamda >= 1 - 2e-6); per-atom positions by ID after run 0
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0.0000003 3.00000003 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      zero 2.5
+pair_coeff      * *
+thermo_style    custom step atoms pe
+thermo_modify   format float %.15g
+run             0

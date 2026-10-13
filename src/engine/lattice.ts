@@ -227,26 +227,38 @@ export const makeLattice = (style: LatticeStyle, scale: number, units: UnitSyste
     }
     spacing = [mx[0] - mn[0], mx[1] - mn[1], dimension === 2 ? factor * Math.sqrt(dot(a[2], a[2])) : mx[2] - mn[2]];
   }
-  // origin: fractions of a unit cell
-  const toBox = (f: V3): V3 => toBoxRaw([f[0] + origin[0], f[1] + origin[1], f[2] + origin[2]]);
+  // origin: "x,y,z = fractions of a unit cell (0 <= x,y,z < 1)" (lattice.html). Native LAMMPS shifts the point in
+  // box space by the box-space spacing times the origin fraction, not along the lattice vectors: x = xnew +
+  // xlattice*origin[0], and likewise y and z (src/lattice.cpp lattice2box at b332f28). The two agree for an
+  // orthogonal cell and differ for a tilted one, so the shift is applied in box coordinates here.
+  const shift: V3 = [spacing[0] * origin[0], spacing[1] * origin[1], spacing[2] * origin[2]];
+  const toBox = (f: V3): V3 => {
+    const p = toBoxRaw(f);
+    return [p[0] + shift[0], p[1] + shift[1], p[2] + shift[2]];
+  };
   // inverse: undo the rotation, then solve with the unit cell
   const M = [0, 1, 2].map((d) => [a[0][d] * factor, a[1][d] * factor, a[2][d] * factor]);
   const inv = invert3(M);
-  const fromBox = (x: V3): V3 => {
+  const fromBox = (x0: V3): V3 => {
+    const x: V3 = [x0[0] - shift[0], x0[1] - shift[1], x0[2] - shift[2]];
     const p: V3 = [Rot[0][0] * x[0] + Rot[1][0] * x[1] + Rot[2][0] * x[2], Rot[0][1] * x[0] + Rot[1][1] * x[1] + Rot[2][1] * x[2], Rot[0][2] * x[0] + Rot[1][2] * x[1] + Rot[2][2] * x[2]];
     const f: V3 = [0, 0, 0];
     for (let r = 0; r < 3; r++) f[r] = inv[r][0] * p[0] + inv[r][1] * p[1] + inv[r][2] * p[2];
-    return [f[0] - origin[0], f[1] - origin[1], f[2] - origin[2]];
+    return f;
   };
   const sc3 = (v: V3): V3 => [v[0] * factor, v[1] * factor, v[2] * factor];
   let gen: GeneralLattice | undefined;
   if (general) {
     // lattice points in general coordinates; fromGeneral undoes toGeneral (inv of factor * [a1 a2 a3])
-    const toGeneral = (f: V3): V3 => genRaw([f[0] + origin[0], f[1] + origin[1], f[2] + origin[2]]);
-    const fromGeneral = (x: V3): V3 => {
+    const toGeneral = (f: V3): V3 => {
+      const p = genRaw(f);
+      return [p[0] + shift[0], p[1] + shift[1], p[2] + shift[2]];
+    };
+    const fromGeneral = (x0: V3): V3 => {
+      const x: V3 = [x0[0] - shift[0], x0[1] - shift[1], x0[2] - shift[2]];
       const f: V3 = [0, 0, 0];
       for (let r = 0; r < 3; r++) f[r] = inv[r][0] * x[0] + inv[r][1] * x[1] + inv[r][2] * x[2];
-      return [f[0] - origin[0], f[1] - origin[1], f[2] - origin[2]];
+      return f;
     };
     gen = { basis, cell: [sc3(a[0]), sc3(a[1]), sc3(a[2])], Q: Rot, toGeneral, fromGeneral };
   }

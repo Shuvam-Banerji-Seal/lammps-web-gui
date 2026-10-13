@@ -1,0 +1,39 @@
+# oracle: fix lb/fluid (D3Q15, trilinear stencil, z walls with wall velocity) with fix lb/viscous and a rigid sphere in a channel (examples/PACKAGES/latboltz/planewall/in.planewall, cut down: dx 8 instead of 4, 100 steps)
+# native: b332f28 built with -D PKG_LATBOLTZ=on -D PKG_MOLECULE=on -D PKG_RIGID=on (serial, 1 process; the installed lmp lacks LATBOLTZ)
+# measured (relative): per-atom 7.4e-9 (vx of atom 218), thermo 3.0e-9 (v_tx); dx 8 instead of 4 (60x60x61 grid too slow for the budget), 100 steps
+# oracle-inputs: w132lb_planewall.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units          micro
+dimension      3
+boundary       p p f
+atom_style     atomic
+neighbor       1.0 bin
+neigh_modify   delay 0 every 1
+comm_modify cutoff 10.0
+read_data      w132lb_planewall.data
+pair_style     lj/cut 2.45
+pair_coeff     * * 0.0 0.0 2.45
+neigh_modify   exclude type 1 1
+mass           * 1.0
+timestep       4.0
+group          sphere1 id <> 1 320
+velocity       all set 0.0 0.0 0.0 units box
+fix   1 all lb/fluid 1 1.0 1.0 dx 8.0 zwall_velocity 0.0 0.0001
+fix   2 all lb/viscous
+fix   3 all rigid group 1 sphere1
+variable vx equal vcm(all,x)
+variable vy equal vcm(all,y)
+variable vz equal vcm(all,z)
+variable omegax equal omega(all,x)
+variable omegay equal omega(all,y)
+variable omegaz equal omega(all,z)
+variable fx equal fcm(all,x)
+variable fy equal fcm(all,y)
+variable fz equal fcm(all,z)
+variable tx equal torque(all,x)
+variable ty equal torque(all,y)
+variable tz equal torque(all,z)
+thermo_style   custom step v_vx v_vy v_vz v_omegax v_omegay v_omegaz v_fx v_fy v_fz v_tx v_ty v_tz
+thermo_modify  format float %.15g
+thermo         10
+run   100

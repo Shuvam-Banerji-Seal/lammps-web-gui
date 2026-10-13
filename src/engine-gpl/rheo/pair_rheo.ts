@@ -26,6 +26,7 @@ import { massOf, nativeOrder, RHEO_COND, RHEO_DRHO, RHEO_HEATFLOW, RHEO_PRESSURE
 import { parseNum } from '../../engine/force/util';
 import { tallyXYZ } from '../dpd/pair_dpd';
 import { PHASECHECK, rheoModelOf, rheoProp, type RheoModel } from './model';
+import { NativePairOrder } from '../neighbor/nativeOrder';
 
 /** pair_rheo.cpp: "static constexpr double EPSILON = 1e-2;" (softening of the artificial viscosity). */
 const EPSILON = 1e-2;
@@ -44,6 +45,8 @@ export class PairRHEO extends Pair {
   private listCache: Int32Array | null = null;
   private listBuild = -1;
   private listFor: unknown = null;
+  /** newton off: the native half-list pair order (npair_bin.cpp, full stencil, own pairs from the lower index) */
+  private readonly nativeOff = new NativePairOrder(false);
   /** newton pair (pair_rheo.cpp newton_pair): off keeps both images of a ghost pair, each acting on its owned atom only. */
   private newtonPair = true;
   /** pair_style rheo harmonic/means: the thermal diffusivity and viscosity means are harmonic. */
@@ -301,6 +304,11 @@ export class PairRHEO extends Pair {
    */
   private pairList(pc: PairCompute, cutksq: number): Int32Array {
     const nb = pc.nb;
+    if (!this.newtonPair) {
+      // the native newton-off order: the sums of the pair loop (forces, density rate, heat flow) add in native's order
+      if (!pc.half) throw new StyleError('pair rheo needs a half neighbor list');
+      return this.nativeOff.pairs(pc.s, nb, pc.geom, pc.half);
+    }
     if (this.listBuild === nb.nbuild && this.listCache && this.listFor === pc.half) return this.listCache;
     const half = pc.half;
     const full = pc.full;

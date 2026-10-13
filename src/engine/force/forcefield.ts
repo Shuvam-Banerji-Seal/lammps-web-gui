@@ -2,7 +2,7 @@ import type { SimState, TopoList } from '../types';
 import type { Geometry } from '../domain';
 import type { Neighbor, SpecialSettings } from '../neighbor';
 import { buildAtomMap, buildSpecial, filterTopo, type SpecialList } from '../atoms';
-import { clearAccum, newAccum, StyleError, type Accum, type Bonded, type KSpace, type Pair, type PairCompute, type StyleContext } from './types';
+import { BOND_REMOVED, clearAccum, newAccum, StyleError, type Accum, type Bonded, type KSpace, type Pair, type PairCompute, type StyleContext } from './types';
 import { PairHybrid } from './pair/hybrid';
 
 /*
@@ -228,7 +228,9 @@ export class ForceField {
    * changes them for Drude particles, docs.lammps.org/fix_drude.html).
    */
   private buildSpecialList(s: SimState): SpecialList {
-    const list = buildSpecial(s, { angle: this.special.angle, dihedral: this.special.dihedral });
+    const bond = this.bond;
+    const ignoreBond = bond?.ignoresSpecial ? (t: number) => bond.ignoresSpecial!(t) : undefined;
+    const list = buildSpecial(s, { angle: this.special.angle, dihedral: this.special.dihedral, ignoreBond });
     return this.specialHook ? this.specialHook(list, s) : list;
   }
 
@@ -295,6 +297,8 @@ export class ForceField {
       run(this.bond, 'bond', acc.vbond);
       // bpm bonds that broke this step (type set to 0): their 1-2 special entries go, so the next neighbor build uses the new lists
       if (this.bond?.takeTopologyChange?.()) {
+        // bonds a style deleted (BOND_REMOVED) leave the topology (native removes them from the atoms' bond lists)
+        filterTopo(s.topo.bonds, (_ids, type) => type !== BOND_REMOVED);
         this.topologyChanged(s, nb);
       }
       run(this.angle, 'angle', acc.vangle);

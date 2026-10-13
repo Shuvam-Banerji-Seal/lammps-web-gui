@@ -34,6 +34,20 @@ export const STATUS_FREEZING = 1 << 8;
 export const STATUS_MELTING = 1 << 9;
 export const PHASEMASK = 0xFFFFFFFC;
 
+/**
+ * Internal per-atom property: the number of formed shell bonds of each atom (native fix property/atom i_shell_nbond,
+ * named "shell_nbond" by bond_rheo_shell.cpp). Created on first use, grown with the atoms like the other custom props.
+ */
+export const SHELL_NBOND = '#rheoshellnbond';
+export const shellNbond = (s: SimState): Float64Array => {
+  let c = s.custom.get(SHELL_NBOND);
+  if (!c) {
+    c = { int: true, cols: 0, data: new Float64Array(s.n) };
+    s.custom.set(SHELL_NBOND, c);
+  }
+  return c.data;
+};
+
 /** The thermal part of fix rheo/thermal as the other RHEO styles use it (cv per type, see rheo/thermal.ts). */
 export interface RheoThermal {
   calcCv(itype: number): number;
@@ -82,6 +96,14 @@ export class RheoModel {
   zminSplash = 0;
   nsurface = new Float64Array(0);
   gradC = new Float64Array(0);
+  /**
+   * Surface distance per owned atom (compute_rheo_surface.cpp rsurface): 0 for a surface or splash atom, the kernel cutoff
+   * for a bulk group atom, and the smallest distance to a surface atom for a fluid neighbor of one. Set by the surface
+   * detection (pre_force); fix rheo/oxidation and bond rheo/shell read it.
+   */
+  rsurface = new Float64Array(0);
+  /** fix rheo/oxidation settings (bond cutoff, bond type, surface distance), null without the fix. */
+  oxidation: { cut: number; btype: number; rsurf: number } | null = null;
   /** fix rheo rho/sum: density by kernel summation; selfMass uses the own mass in the sum (self/mass). */
   rhosumFlag = false;
   rhosumSelfMass = false;
@@ -201,12 +223,16 @@ export class RheoModel {
   readonly H = new Float64Array(4);
 }
 
-const models = new WeakMap<SimState, RheoModel>();
+/*
+ * Keyed by the custom-property map of the state, not the state object: a style that works on a copy of the state (the
+ * bonded hybrid hands each sub-style its own topology) keeps the same map, and the map is only replaced by a restart.
+ */
+const models = new WeakMap<SimState['custom'], RheoModel>();
 
 /** Registers the shared state of the simulation (fix rheo's constructor). */
-export const setRheoModel = (s: SimState, m: RheoModel): void => { models.set(s, m); };
+export const setRheoModel = (s: SimState, m: RheoModel): void => { models.set(s.custom, m); };
 /** The shared state of the simulation, or undefined when no fix rheo is defined. */
-export const rheoModelOf = (s: SimState): RheoModel | undefined => models.get(s);
+export const rheoModelOf = (s: SimState): RheoModel | undefined => models.get(s.custom);
 
 /** Per-atom property arrays of the RHEO atom style (throws when the style is not atom_style rheo). */
 export const rheoProp = (s: SimState, name: string): Float64Array => {

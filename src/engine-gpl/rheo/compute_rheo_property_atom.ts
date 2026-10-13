@@ -10,7 +10,9 @@
  * vector"). The surface values are 1 for a surface atom, 2 for a splash atom and 0 otherwise, on the group atoms.
  * phase (status & PHASECHECK) and coordination are supported; the thermal attributes (temperature, heatflow,
  * conductivity, energy on atom_style rheo/thermal, cv with fix rheo/thermal) read the RHEO thermal props.
- * Other attributes (chi, surface/r, surface/divr, nbond/shell, shift/v, grad/v, stress/v, stress/t) are not supported
+ * surface/r (the surface distance, compute_rheo_surface.cpp) and nbond/shell (the formed shell bonds, needs fix
+ * rheo/oxidation) are supported too: "surface/r" and "nbond/shell" are the native attribute names.
+ * Other attributes (chi, surface/divr, shift/v, grad/v, stress/v, stress/t) are not supported
  * by the browser engine yet and are refused by name.
  */
 import { PHASECHECK, rheoModelOf } from './model';
@@ -19,6 +21,7 @@ import type { System } from '../../engine/system';
 import { StyleError } from '../../engine/force/types';
 import { RHEO_COND, RHEO_ESPH, RHEO_HEATFLOW, RHEO_PRESSURE, RHEO_RHO, RHEO_STATUS, RHEO_TEMP, RHEO_VISC, isRheoStyle, isRheoThermalStyle } from '../../engine/atoms';
 import { STATUS_SPLASH, STATUS_SURFACE } from './compute_rheo_surface';
+import { shellNbond } from './model';
 
 /** Keyword -> per-atom internal property (status is the short name of rheo_status). */
 const KEYWORDS = new Map<string, string>([
@@ -36,7 +39,7 @@ const NORMAL = new Map<string, number>([['surface/n/x', 0], ['surface/n/y', 1], 
 export class ComputeRHEOPropertyAtom extends Compute {
   readonly style: string = 'rheo/property/atom';
   /** Per attribute: an internal property name, 'surface', 'phase', 'coordination', 'cv' or a surface normal component index. */
-  private readonly names: (string | 'surface' | 'cv' | 'phase' | 'coordination' | number)[];
+  private readonly names: (string | 'surface' | 'cv' | 'phase' | 'coordination' | 'surface/r' | 'nbond/shell' | number)[];
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -44,15 +47,22 @@ export class ComputeRHEOPropertyAtom extends Compute {
     if (args.length < 1) throw new StyleError('Illegal compute rheo/property/atom command');
     for (const a of args) {
       const thermalOk = THERMAL_KEYWORDS.has(a) && isRheoThermalStyle(sys.atomStyle);
-      if (!KEYWORDS.has(a) && a !== 'surface' && !NORMAL.has(a) && !thermalOk && a !== 'cv' && a !== 'phase' && a !== 'coordination') {
-        throw new StyleError(`Invalid keyword ${a} for atom style ${sys.atomStyle} in compute rheo/property/atom command (the browser engine supports ${[...KEYWORDS.keys(), ...(isRheoThermalStyle(sys.atomStyle) ? [...THERMAL_KEYWORDS.keys(), 'cv'] : []), 'surface', 'surface/n/x', 'surface/n/y', 'surface/n/z'].join(', ')})`);
+      if (!KEYWORDS.has(a) && a !== 'surface' && a !== 'surface/r' && a !== 'nbond/shell' && !NORMAL.has(a) && !thermalOk && a !== 'cv' && a !== 'phase' && a !== 'coordination') {
+        throw new StyleError(`Invalid keyword ${a} for atom style ${sys.atomStyle} in compute rheo/property/atom command (the browser engine supports ${[...KEYWORDS.keys(), ...(isRheoThermalStyle(sys.atomStyle) ? [...THERMAL_KEYWORDS.keys(), 'cv'] : []), 'surface', 'surface/r', 'nbond/shell', 'surface/n/x', 'surface/n/y', 'surface/n/z'].join(', ')})`);
       }
     }
     // compute_rheo_property_atom.cpp: the thermal attributes need fix rheo/thermal (checked at init in native; the cv
     // keyword is the specific heat of the type, read from the thermal fix when the values are computed)
-    this.names = args.map((a) => (a === 'surface' || a === 'phase' || a === 'coordination' || a === 'cv' ? a : NORMAL.has(a) ? NORMAL.get(a)! : KEYWORDS.get(a) ?? THERMAL_KEYWORDS.get(a)!));
+    this.names = args.map((a) => (a === 'surface' || a === 'surface/r' || a === 'nbond/shell' || a === 'phase' || a === 'coordination' || a === 'cv' ? a : NORMAL.has(a) ? NORMAL.get(a)! : KEYWORDS.get(a) ?? THERMAL_KEYWORDS.get(a)!));
     this.peratomFlag = true;
     this.sizePeratomCols = args.length > 1 ? args.length : 0;
+  }
+
+  /** compute_rheo_property_atom.cpp init(): the attributes need their fixes (checked at each run, as native). */
+  init(): void {
+    const model = rheoModelOf(this.sys.state);
+    // compute_rheo_property_atom.cpp: "Cannot request nbond/shell without fix rheo/oxidation"
+    if (this.names.includes('nbond/shell') && !(model && model.oxidation)) throw new StyleError('Cannot request nbond/shell without fix rheo/oxidation');
   }
 
   protected computePeratom(): void {
@@ -62,7 +72,9 @@ export class ComputeRHEOPropertyAtom extends Compute {
     const out = new Float64Array(m > 1 ? m * n : n);
     const model = rheoModelOf(s);
     if (this.names.includes('cv') && !(model && model.thermal)) throw new StyleError('Cannot request thermal property without fix rheo/thermal');
-    if (this.names.some((k) => typeof k === 'number' || k === 'surface')) {
+    // compute_rheo_property_atom.cpp: "Cannot request nbond/shell without fix rheo/oxidation"
+    if (this.names.includes('nbond/shell') && !(model && model.oxidation)) throw new StyleError('Cannot request nbond/shell without fix rheo/oxidation');
+    if (this.names.some((k) => typeof k === 'number' || k === 'surface' || k === 'surface/r')) {
       // fix rheo surface/detection must be defined, as native (the surface values come from its status)
       if (!model || !model.surfaceFlag) throw new StyleError('Cannot request surface property without corresponding option in fix rheo');
     }
@@ -74,6 +86,12 @@ export class ComputeRHEOPropertyAtom extends Compute {
           if (name === 'surface') {
             const st = s.custom.get(RHEO_STATUS)!.data[i];
             val = (st & STATUS_SURFACE) ? 1.0 : (st & STATUS_SPLASH) ? 2.0 : 0.0;
+          } else if (name === 'surface/r') {
+            // pack_surface_r: the surface distance of the group atoms (compute_rheo_surface.cpp rsurface)
+            val = model!.rsurface[i];
+          } else if (name === 'nbond/shell') {
+            // pack_nbond_shell: the formed shell bonds (the internal per-atom property of bond rheo/shell)
+            val = shellNbond(s)[i];
           } else if (name === 'cv') {
             val = model!.thermal!.calcCv(s.type[i]);
           } else if (name === 'phase') {

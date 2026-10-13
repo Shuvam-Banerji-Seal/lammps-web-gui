@@ -1,0 +1,6 @@
+# UNITS: real
+# type chi eta gamma zeta qcore: the ReaxFF C H O N values the reaxff pair gives fix qeq (chi, eta = 2 x EEM eta, gamma), spelled out
+1 5.7254 13.847 0.8712 0.0 0.0
+2 3.8446 20.1678 0.8910 0.0 0.0
+3 8.5 14.2824 0.8712 0.0 0.0
+4 6.7768 13.607 1.0512 0.0 0.0

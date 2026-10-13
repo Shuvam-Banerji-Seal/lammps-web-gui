@@ -69,6 +69,20 @@ export interface MoleculeTemplate {
    * the name and the 1-based atom IDs of each fragment, in file order. Empty when the file has none.
    */
   fragments: { name: string; atoms: number[] }[];
+  /**
+   * Surface templates (no atoms): the Lines section of a "lines" molecule (2d) or the Triangles section of a
+   * "triangles" molecule (3d). p holds the end points x1 y1 x2 y2 (lines) or the corners x1 y1 z1 ... (triangles),
+   * scaled. null for atom templates.
+   */
+  lines: SurfaceEntry[] | null;
+  tris: SurfaceEntry[] | null;
+}
+
+/** One line segment or triangle of a surface template: molecule-ID, type (offset applied) and corner coordinates. */
+export interface SurfaceEntry {
+  mol: number;
+  type: number;
+  p: number[];
 }
 
 export interface MoleculeOptions {
@@ -84,7 +98,7 @@ export interface MoleculeOptions {
   improperSymmatoms?: readonly number[] | null;
 }
 
-const HEADER: Record<string, number> = { atoms: 1, bonds: 1, angles: 1, dihedrals: 1, impropers: 1, fragments: 1, body: 2, mass: 1, com: 3, inertia: 6 };
+const HEADER: Record<string, number> = { atoms: 1, bonds: 1, angles: 1, dihedrals: 1, impropers: 1, fragments: 1, body: 2, mass: 1, com: 3, inertia: 6, lines: 1, triangles: 1 };
 
 const strip = (line: string): string => {
   // "There must be at least one blank between any valid content and the comment."
@@ -107,14 +121,23 @@ const parseMoleculeText = (id: string, name: string, text: string, o: MoleculeOp
     if (vals.length !== HEADER[key] || vals.some((v) => !Number.isFinite(v))) throw new StyleError(`molecule ${id}: bad header line '${l}' in ${name}`);
     head[key] = vals;
   }
-  const natoms = head.atoms?.[0];
-  if (!natoms || natoms < 1 || !Number.isInteger(natoms)) throw new StyleError(`molecule ${id}: ${name} needs an "N atoms" header line`);
+  // molecule.html, header keywords: "A molecule file can contain only either the *atoms*, *lines*, or *triangles*
+  // keyword." The surface templates (lines, triangles) have no atoms, so their atom count is 0.
+  const hasAtoms = head.atoms !== undefined;
+  if (!hasAtoms && !head.lines && !head.triangles) throw new StyleError(`molecule ${id}: ${name} needs an "N atoms" header line`);
+  if (hasAtoms && (head.lines || head.triangles)) throw new StyleError(`molecule ${id}: ${name} has both an atoms and a lines or triangles header keyword; a molecule file can contain only one of them`);
+  if (head.lines && head.triangles) throw new StyleError(`molecule ${id}: ${name} has both lines and triangles header keywords; a molecule file can contain only one of them`);
+  const natoms = hasAtoms ? head.atoms[0] : 0;
+  if (hasAtoms && (natoms < 1 || !Number.isInteger(natoms))) throw new StyleError(`molecule ${id}: ${name} needs an "N atoms" header line`);
+  if (head.lines && (!Number.isInteger(head.lines[0]) || head.lines[0] < 1)) throw new StyleError(`molecule ${id}: ${name} has no lines or an invalid line count`);
+  if (head.triangles && (!Number.isInteger(head.triangles[0]) || head.triangles[0] < 1)) throw new StyleError(`molecule ${id}: ${name} has no triangles or an invalid triangle count`);
   if (head.body && head.body.some((v) => v !== 0)) throw new StyleError(`molecule ${id}: 'body' molecules are not supported by the browser engine`);
   const count = (h: string) => head[h]?.[0] ?? 0;
   const t: MoleculeTemplate = {
     id, natoms, x: new Float64Array(3 * natoms), type: new Int32Array(natoms), q: null, mol: null,
     bonds: [], angles: [], dihedrals: [], impropers: [], special: null, shake: null, diam: null, mass: null, mu: null,
     fragments: [],
+    lines: null, tris: null,
   };
   const seen = new Set<string>();
   let specialCounts: number[][] | null = null;
@@ -233,6 +256,30 @@ const parseMoleculeText = (id: string, name: string, text: string, o: MoleculeOp
         for (const r of rows(natoms, 2)) t.diam[atomIndex(r[0], 'atom ID') - 1] = r[1] * o.scale;
         break;
       }
+      case 'Lines': case 'Triangles': {
+        // molecule.html, Lines: "line syntax: ID molecule-ID type x1 y1 x2 y2"; Triangles: "line syntax: ID molecule-ID
+        // type x1 y1 z1 x2 y2 z2 x3 y3 z3". Each entry is listed once and the IDs run 1..N.
+        const surf = sec === 'Lines' ? 'lines' : 'triangles';
+        if (!head[surf]) throw new StyleError(`molecule ${id}: the ${sec} section of ${name} needs the "${surf}" header keyword`);
+        const n = count(surf), width = sec === 'Lines' ? 4 : 9;
+        const out: (SurfaceEntry | null)[] = new Array(n).fill(null);
+        for (const w of wordRows(n, 3 + width)) {
+          if (w.length !== 3 + width) throw new StyleError(`molecule ${id}: bad line '${w.join(' ')}' in the ${sec} section of ${name}`);
+          const v = w.map(Number);
+          if (v.some((x) => !Number.isFinite(x))) throw new StyleError(`molecule ${id}: bad line '${w.join(' ')}' in the ${sec} section of ${name}`);
+          const i = v[0];
+          if (!Number.isInteger(i) || i < 1 || i > n) throw new StyleError(`molecule ${id}: invalid index ${i} in the ${sec} section of ${name}`);
+          // molecule.cpp (line_segments, triangles): "Invalid line molecule ID" for a molecule-ID < 0 and
+          // "Invalid line type" for a type <= 0; the type offset is added after the check
+          if (v[1] < 0) throw new StyleError(`molecule ${id}: invalid molecule ID ${v[1]} in the ${sec} section of ${name}`);
+          if (v[2] <= 0) throw new StyleError(`molecule ${id}: invalid type ${v[2]} in the ${sec} section of ${name}`);
+          out[i - 1] = { mol: v[1], type: v[2] + o.toff, p: v.slice(3).map((x) => x * o.scale) };
+        }
+        const missing = out.findIndex((e) => e === null);
+        if (missing >= 0) throw new StyleError(`molecule ${id}: ${sec === 'Lines' ? 'line' : 'triangle'} ${missing + 1} missing in the ${sec} section of ${name}`);
+        if (sec === 'Lines') t.lines = out as SurfaceEntry[]; else t.tris = out as SurfaceEntry[];
+        break;
+      }
       case 'Dipoles': {
         // molecule.html, Dipoles section: "one line per atom"; "line syntax: ID mux muy muz";
         // "mux,muy,muz = x-, y-, and z-component of point dipole vector of atom"
@@ -244,8 +291,10 @@ const parseMoleculeText = (id: string, name: string, text: string, o: MoleculeOp
         throw new StyleError(`molecule ${id}: section '${sec}' in ${name} is not supported by the browser engine`);
     }
   }
-  if (!seen.has('Coords')) throw new StyleError(`molecule ${id}: ${name} has no Coords section`);
-  if (!seen.has('Types')) throw new StyleError(`molecule ${id}: ${name} has no Types section`);
+  if (hasAtoms && !seen.has('Coords')) throw new StyleError(`molecule ${id}: ${name} has no Coords section`);
+  if (hasAtoms && !seen.has('Types')) throw new StyleError(`molecule ${id}: ${name} has no Types section`);
+  if (head.lines && !seen.has('Lines')) throw new StyleError(`molecule ${id}: ${name} has no Lines section`);
+  if (head.triangles && !seen.has('Triangles')) throw new StyleError(`molecule ${id}: ${name} has no Triangles section`);
   for (const [h, list] of [['bonds', t.bonds], ['angles', t.angles], ['dihedrals', t.dihedrals], ['impropers', t.impropers]] as const) {
     if (count(h) !== list.length) throw new StyleError(`molecule ${id}: the header says ${count(h)} ${h} but no ${h[0].toUpperCase()}${h.slice(1)} section was read`);
   }
@@ -326,7 +375,7 @@ export const parseMoleculeJson = (id: string, name: string, text: string, o: Mol
   const t: MoleculeTemplate = {
     id, natoms, x: new Float64Array(3 * natoms), type: new Int32Array(natoms), q: null, mol: null,
     bonds: [], angles: [], dihedrals: [], impropers: [], special: null, shake: null, diam: null, mass: null, mu: null,
-    fragments: [],
+    lines: null, tris: null, fragments: [],
   };
   const atomIndex = (v: unknown, what: string): number => {
     need(typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= natoms, `invalid ${what} ${String(v)} in molecule JSON data (1..${natoms})`);

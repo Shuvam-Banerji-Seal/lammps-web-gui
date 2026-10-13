@@ -997,8 +997,12 @@ const molecule: Handler = ({ sys }, a) => {
     }
     // molecule.html: type words may be type labels, resolved through the label map at read time
     const t = parseMoleculeFile(id, file, sys.readFile(file), o, sys.labels);
+    // molecule.cpp (read_molecule): "Molecule file with lines must be for 2d simulation" and "... with triangles must be for 3d simulation"
+    if (t.lines && sys.dimension !== 2) throw new StyleError('Molecule file with lines must be for 2d simulation');
+    if (t.tris && sys.dimension !== 3) throw new StyleError('Molecule file with triangles must be for 3d simulation');
     sets.push(t);
-    sys.log(`Read molecule template ${id}: ${t.natoms} atoms, ${t.bonds.length} bonds, ${t.angles.length} angles, ${t.dihedrals.length} dihedrals, ${t.impropers.length} impropers (${file})`);
+    const surf = t.lines ? `, ${t.lines.length} lines` : t.tris ? `, ${t.tris.length} triangles` : '';
+    sys.log(`Read molecule template ${id}: ${t.natoms} atoms, ${t.bonds.length} bonds, ${t.angles.length} angles, ${t.dihedrals.length} dihedrals, ${t.impropers.length} impropers${surf} (${file})`);
   }
   sys.molecules.set(id, sets);
 };

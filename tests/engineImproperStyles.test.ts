@@ -88,8 +88,20 @@ describe('improper styles: f = -dE/dx by central finite differences', () => {
     ];
     for (let k = 0; k < 12; k++) expect(bc.f[k]).toBeCloseTo(native[k], 7);
   });
-  it('fourier', () => checkStyle(() => new ImproperFourier(), ['2.5', '0.3', '0.7', '-0.4']));
+  it('fourier with all = 0', () => checkStyle(() => new ImproperFourier(), ['2.5', '0.3', '0.7', '-0.4', '0']));
   it('fourier with all = 1', () => checkStyle(() => new ImproperFourier(), ['2.5', '0.3', '0.7', '-0.4', '1']));
+  it('fourier without the all value is all = 1 (native default, not 0)', () => {
+    const eimpWith = (args: string[]): number => {
+      const st = new ImproperFourier();
+      st.allocate(1);
+      st.coeff(args);
+      st.init();
+      return energy(st, make(st, GEOMS[0]).bc);
+    };
+    const dflt = eimpWith(['1', '2.5', '0.3', '0.7', '-0.4']);
+    expect(dflt).toBe(eimpWith(['1', '2.5', '0.3', '0.7', '-0.4', '1']));
+    expect(dflt).not.toBeCloseTo(eimpWith(['1', '2.5', '0.3', '0.7', '-0.4', '0']), 6);
+  });
   it('distance', () => checkStyle(() => new ImproperDistance(), ['1.5', '0.8']));
   it('zero computes no energy and no force', () => {
     const style = new ImproperZero();

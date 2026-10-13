@@ -1,0 +1,15 @@
+# oracle: angle_style cosine/delta at s = 0.002 (above the 0.001 clamp, 179.7 deg) (B-07)
+# oracle-inputs: w87bond_ay002.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS (black box): engine thermo agrees to a max relative error of 2.2e-15 (forces to the 1e-8 test tolerance)
+units real
+atom_style full
+boundary f f f
+read_data w87bond_ay002.data
+pair_style zero 5.0
+pair_coeff * *
+angle_style cosine/delta
+angle_coeff * 20 110
+thermo_style custom step ebond eangle edihed eimp pe
+thermo_modify format float %.15g
+run 0

@@ -94,6 +94,14 @@ export class AngleCosineSquared extends SimpleBonded {
   }
 }
 
+/** Chebyshev polynomial of the second kind U_m(c) = sin((m+1) theta) / sin(theta), by recurrence. */
+const chebyshevU = (m: number, c: number): number => {
+  let u0 = 1, u1 = 2 * c;
+  if (m === 0) return u0;
+  for (let q = 1; q < m; q++) { const u2 = 2 * c * u1 - u0; u0 = u1; u1 = u2; }
+  return u1;
+};
+
 /*
  * angle_style cosine/periodic — docs.lammps.org/angle_cosine_periodic.html:
  *   E = (2.0/n^2) * C [ 1 - B (-1)^n cos( n theta ) ]
@@ -122,11 +130,11 @@ export class AngleCosinePeriodic extends SimpleBonded {
       const k = atomIndex(bc, A.atoms[3 * a + 2], 'angle');
       const t = A.type[a];
       const nt = n[t], sign = nt % 2 === 0 ? 1 : -1;
-      angleTerm(bc, i, j, k, d1, d2, (theta) => {
+      angleTerm(bc, i, j, k, d1, d2, (theta, c) => {
         const ea = ((2 / (nt * nt)) * C[t]) * (1 - B[t] * sign * Math.cos(nt * theta));
         e += ea;
-        // dE/dtheta = (2C/n) B (-1)^n sin(n theta)
-        return { e: ea, dEdtheta: ((2 * C[t]) / nt) * B[t] * sign * Math.sin(nt * theta) };
+        // dE/dc = -(2C/n) B (-1)^n U_{n-1}(c), with U_{n-1}(c) = sin(n theta)/sin(theta) (a polynomial, no 1/sin)
+        return { e: ea, dEdc: -((2 * C[t]) / nt) * B[t] * sign * chebyshevU(nt - 1, c) };
       });
     }
     bc.acc.eangle += e;
@@ -140,6 +148,14 @@ export class AngleCosinePeriodic extends SimpleBonded {
  *   -Umin and zero." coefficients: "Umin (energy)", "theta (angle)".
  * theta0 is given in degrees (verified against the native binary:
  * theta = 120 deg, theta0 = 45 deg gives E = -5(1 + cos 75 deg) per angle).
+ * Measured with native LAMMPS (black box, Umin = 20, theta0 = 110 deg, one angle
+ * from exactly 180 to 179.9998 deg): the energy is evaluated with the expansion
+ * cos(theta - theta0) = c cos(theta0) + s sin(theta0), where s = sqrt(1 - c^2) is
+ * clamped below at 0.001 (the same clamp as the harmonic angle). Exactly linear,
+ * native gives -13.4295983594645 and the unclamped formula gives -13.4208278874.
+ * The force uses dE/dc = -Umin/2 [cos(theta0) - (c/s) sin(theta0)] with the same
+ * clamped s (measured: agrees with native to 1e-10 relative at exactly 180 degrees
+ * and at near-linear geometries with s on both sides of the clamp).
  */
 export class AngleCosineShift extends SimpleBonded {
   readonly name = 'cosine/shift';
@@ -167,10 +183,11 @@ export class AngleCosineShift extends SimpleBonded {
       const j = atomIndex(bc, A.atoms[3 * a + 1], 'angle');
       const k = atomIndex(bc, A.atoms[3 * a + 2], 'angle');
       const t = A.type[a];
-      angleTerm(bc, i, j, k, d1, d2, (theta) => {
-        const ea = -0.5 * U[t] * (1 + Math.cos(theta - th0[t]));
+      angleTerm(bc, i, j, k, d1, d2, (_theta, c) => {
+        const s = Math.max(Math.sqrt(1 - c * c), 0.001);
+        const ea = -0.5 * U[t] * (1 + c * Math.cos(th0[t]) + s * Math.sin(th0[t]));
         e += ea;
-        return { e: ea, dEdtheta: 0.5 * U[t] * Math.sin(theta - th0[t]) };
+        return { e: ea, dEdc: -0.5 * U[t] * (Math.cos(th0[t]) - (c / s) * Math.sin(th0[t])) };
       });
     }
     bc.acc.eangle += e;
@@ -210,10 +227,11 @@ export class AngleCosineDelta extends SimpleBonded {
       const j = atomIndex(bc, A.atoms[3 * a + 1], 'angle');
       const k = atomIndex(bc, A.atoms[3 * a + 2], 'angle');
       const t = A.type[a];
-      angleTerm(bc, i, j, k, d1, d2, (theta) => {
+      angleTerm(bc, i, j, k, d1, d2, (theta, c) => {
         const ea = K[t] * (1 - Math.cos(theta - th0[t]));
         e += ea;
-        return { e: ea, dEdtheta: K[t] * Math.sin(theta - th0[t]) };
+        const s = Math.max(Math.sqrt(1 - c * c), 0.001);
+        return { e: ea, dEdc: K[t] * (-Math.cos(th0[t]) + (c / s) * Math.sin(th0[t])) };
       });
     }
     bc.acc.eangle += e;
@@ -357,7 +375,8 @@ export class AngleFourier extends SimpleBonded {
       angleTerm(bc, i, j, k, d1, d2, (theta, c) => {
         const ea = K[t] * (C0[t] + C1[t] * c + C2[t] * Math.cos(2 * theta));
         e += ea;
-        return { e: ea, dEdtheta: -K[t] * (C1[t] + 4 * C2[t] * c) * Math.sin(theta) };
+        // cos(2 theta) = 2c^2 - 1 is a polynomial in c, so dE/dc is exact
+        return { e: ea, dEdc: K[t] * (C1[t] + 4 * C2[t] * c) };
       });
     }
     bc.acc.eangle += e;

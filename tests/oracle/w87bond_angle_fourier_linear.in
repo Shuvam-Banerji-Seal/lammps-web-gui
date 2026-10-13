@@ -1,0 +1,15 @@
+# oracle: angle_style fourier at 179.99997 deg (B-03)
+# oracle-inputs: w87bond_near180.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS (black box): engine thermo agrees to a max relative error of 3.8e-29 (forces to the 1e-8 test tolerance)
+units real
+atom_style full
+boundary f f f
+read_data w87bond_near180.data
+pair_style zero 5.0
+pair_coeff * *
+angle_style fourier
+angle_coeff * 20 1 1 0
+thermo_style custom step ebond eangle edihed eimp pe
+thermo_modify format float %.15g
+run 0

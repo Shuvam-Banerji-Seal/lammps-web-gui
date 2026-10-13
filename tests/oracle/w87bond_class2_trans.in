@@ -1,0 +1,26 @@
+# oracle: dihedral_style class2 at exactly trans (phi = 180): native force zero on the phi terms (B-05)
+# oracle-inputs: w87bond_dtrans0.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS (black box): engine thermo agrees to a max relative error of 7.3e-16 (forces to the 1e-8 test tolerance)
+units real
+atom_style full
+boundary f f f
+read_data w87bond_dtrans0.data
+pair_style zero 5.0
+pair_coeff * *
+bond_style harmonic
+bond_coeff * 0 1.5
+angle_style harmonic
+angle_coeff * 0 110
+dihedral_style class2
+dihedral_coeff * 100 75 100 70 80 60
+dihedral_coeff * mbt 3.5945 0.1704 -0.5490 1.5228
+dihedral_coeff * ebt 0.3417 0.3264 -0.9036 0.1368 0.0 -0.8080 1.0119 1.1010
+dihedral_coeff * at 0.0 -0.1850 -0.7963 -2.0220 0.0 -0.3991 110.2453 105.1270
+dihedral_coeff * aat -13.5271 110.2453 105.1270
+dihedral_coeff * bb13 0.0 1.0119 1.1010
+improper_style harmonic
+improper_coeff * 0 0
+thermo_style custom step ebond eangle edihed eimp pe
+thermo_modify format float %.15g
+run 0

@@ -126,4 +126,5 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'interlayer', names: { PAIRS: ['coul/shield', 'ilp/graphene/hbn', 'ilp/tmd', 'kolmogorov/crespi/full', 'kolmogorov/crespi/z', 'lebedeva/z', 'saip/metal', 'saip/metal/tmd', 'aip/water/2dm', 'drip'] }, load: () => import('../engine-gpl/registry/interlayer') as Promise<StyleModule> },
   { id: 'gpl_react', names: { FIXES: ['bond/react'] }, load: () => import('../engine-gpl/registry/react') as Promise<StyleModule> },
   { id: 'pair_reaxff', names: { PAIRS: ['reaxff'], FIXES: ['qeq/reaxff', 'qeq/reax', 'acks2/reaxff', 'acks2/reax', 'qtpie/reaxff', 'qeq/rel/reaxff', 'reaxff/bonds', 'reaxff/species'], COMPUTES: ['reaxff/atom'] }, load: () => import('../engine-gpl/registry/reaxff') as Promise<StyleModule> },
+  { id: 'gpl_extrafix', names: { FIXES: ['gle', 'grem', 'electron/stopping/fit'] }, load: () => import('../engine-gpl/registry/extrafix') as Promise<StyleModule> },
 ];

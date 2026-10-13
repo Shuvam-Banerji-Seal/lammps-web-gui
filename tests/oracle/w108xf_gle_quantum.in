@@ -1,0 +1,22 @@
+# oracle: fix gle with a noneq C matrix (GPL port of EXTRA-FIX/fix_gle.cpp), 64-water tip4p box, cut down to 40 steps.
+# oracle-measured: thermo max rel 1.3e-8 (pe abs 5.3e-6); atoms max abs 2.0e-6 (fx), max rel 1.2e-6 (fx), velocities abs 7e-7. The error is the pppm/tip4p base noise: a pure fix nve probe of the same box shows the same size. Re-measured under Node 20 with a rolldown bundle: thermo rel 9.4e-8, atoms rel 1.2e-6 (same as Node 24).
+# oracle-inputs: data.h2o-quantum qt-300k.A qt-300k.C
+# oracle-compare: rel=1e-6 abs=1e-5
+units           real
+atom_style      full
+pair_style      lj/cut/tip4p/long 1 2 1 1 0.14714951 8
+bond_style      class2
+angle_style     harmonic
+kspace_style    pppm/tip4p 0.0001
+read_data       data.h2o-quantum
+pair_coeff      * 2  0.0     0.0
+pair_coeff      1 1  0.1852  3.1589022
+bond_coeff      1 0.9419 607.19354  -1388.6516 1852.577
+angle_coeff     1 43.93  107.4
+timestep        0.5
+velocity        all create 800.0 1112 dist gaussian mom yes
+fix             1 all gle 6 300.0 300.0 31415 qt-300k.A noneq qt-300k.C
+thermo_style    custom step temp pe ke etotal
+thermo_modify   format float %.15g
+thermo          10
+run             40

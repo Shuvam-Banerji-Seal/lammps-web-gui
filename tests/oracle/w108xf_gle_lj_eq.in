@@ -1,0 +1,20 @@
+# oracle: fix gle, equilibrium C matrix with a Tstart..Tstop ramp (GPL port of EXTRA-FIX/fix_gle.cpp), 256-atom lj fcc.
+# oracle-measured: thermo max rel 3.0e-13; atoms max rel 2.1e-10 (vy, abs 3.8e-14), forces max rel 3.5e-11.
+# oracle-inputs: gle_lj.A
+# oracle-compare: rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.2 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+timestep        0.005
+fix             1 all gle 6 1.2 1.4 31415 gle_lj.A
+thermo_style    custom step temp pe ke etotal press
+thermo_modify   format float %.15g
+thermo          10
+run             100

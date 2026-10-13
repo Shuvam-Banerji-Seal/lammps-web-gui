@@ -150,9 +150,10 @@ run 2
     expect(() => parseStoppingTable('10 1\n', 1, 'tab')).toThrow(/at least two/);
   });
 
-  it('refuses the fit variant and bad arguments', async () => {
-    await expect(session().s.execute('units metal\natom_style atomic\nlattice fcc 0.8442\nregion box block 0 3 0 3 0 3\ncreate_box 1 box\ncreate_atoms 1 box\nmass 1 1.0\nfix 3 all electron/stopping/fit 4.63 3.3e-3 4.0e-8\n'))
-      .rejects.toThrow(/electron\/stopping\/fit/);
+  it('refuses a still-unsupported style and bad arguments', async () => {
+    // electron/stopping/fit is a GPL port now (src/engine-gpl/extrafix); pimd/langevin is still refused
+    await expect(session().s.execute('units metal\natom_style atomic\nlattice fcc 0.8442\nregion box block 0 3 0 3 0 3\ncreate_box 1 box\ncreate_atoms 1 box\nmass 1 1.0\nfix 3 all pimd/langevin\n'))
+      .rejects.toThrow(/pimd/);
     await expect(session({ 'tab2.txt': TABLE2 }).s.execute(es(1388, 0, 'tab2.txt'))).rejects.toThrow(/Ecut must be a positive energy/);
     await expect(session({ 'tab2.txt': TABLE2 }).s.execute(es(1388, 1, 'tab2.txt', 'region nowhere'))).rejects.toThrow(/nowhere/);
   });

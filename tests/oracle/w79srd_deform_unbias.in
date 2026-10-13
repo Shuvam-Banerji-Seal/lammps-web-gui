@@ -1,0 +1,38 @@
+# oracle: fix srd with a fix deform that scales the box, tstat yes with unbiased yes (the SRD thermostat keeps the bin average: no streaming velocity, dof 1), 2d (cut-down of examples/ASPHERE/line/in.line.srd deform phase on point SRD particles, 3x3 box, 200 steps)
+# oracle-compare: thermo=all atoms=all rel=1e-13 abs=1e-14
+# Measured with native LAMMPS (black box): the engine agrees with every thermo column to a relative error of 1e-13 (also at abs 1e-14) and with the positions and velocities of every atom to an absolute error of 3e-14 (the largest, a velocity of about 12). With unbiased yes the bins stream with their average velocity, so the thermostat does not use the box rate; the same thermostat with the biased streaming velocity (tstat yes alone) is refused, see fix_srd.ts.
+units		lj
+atom_style	atomic
+atom_modify	first empty
+dimension	2
+
+lattice		sq 0.4
+region		box block 0 3 0 3 -0.5 0.5
+create_box	1 box
+
+lattice		sq 0.4
+region		plane block 0 3 0 3 -0.001 0.001
+lattice		sq 85.0
+create_atoms	1 region plane
+
+group		empty type 2
+
+mass		1 0.01
+velocity	all create 1.0 593849 loop geom
+
+neighbor	0.3 bin
+neigh_modify	delay 1 every 1 check no
+
+comm_modify	group empty
+
+timestep	0.02
+
+fix		1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes unbiased yes
+fix		2 all enforce2d
+fix		3 all deform 1 x scale 1.25 y scale 1.25
+
+thermo_style	custom step temp f_1[7] etotal press f_1[3] f_1[4] f_1[6]
+thermo_modify	format float %.15g
+thermo		20
+
+run		200

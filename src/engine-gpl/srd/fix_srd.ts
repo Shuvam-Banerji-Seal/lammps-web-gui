@@ -14,9 +14,13 @@
  * big particles that are spheres, ellipsoids (a sphere or line of a rigid body included) or 2d lines (overlap yes
  * only: inside_line, collision_line_exact, newton_raphson, lineside), collision slip or noslip, exact and inexact
  * (exact yes/no), overlap yes (collisions_multi), bounce N, inside error/warn/ignore, lamda, radius,
- * search, cubic, rescale, shift no/yes/possible (RanPark bin shifts, periodic boxes), and tstat yes without box
- * deformation. Refused with a StyleError naming the keyword: unbiased yes, any fix deform (the SRD streaming
- * velocity h_rate, with or without tstat), tri big particles, and fix wall/srd.
+ * search, cubic, rescale, shift no/yes/possible (RanPark bin shifts, periodic boxes), tstat yes without box
+ * deformation, and a fix deform that changes orthogonal box lengths with a constant rate (final, delta, scale, vel,
+ * erate): the SRD streaming velocity h_rate / h_ratelo of reset_velocities, the last-bin correction and its undo,
+ * the bins that follow the box (change_size), and unbiased yes with tstat yes (the bins keep their average velocity).
+ * Refused with a StyleError naming the keyword: tstat yes with a fix deform and no unbiased yes (the biased
+ * streaming bins do not match native yet), a fix deform with tilt or with a time-varying rate (trate, wiggle,
+ * variable, volume), tri big particles, and fix wall/srd.
  *
  * Browser-engine difference: native processes SRD atoms in its own local order; the engine keeps that order in
  * SimState.order (nativeOrder), and every loop over SRD particles goes through it, so the random draws happen in
@@ -25,6 +29,7 @@
  * (same bins, same stencil, same counts), and forces on a copy are added to its owner.
  */
 import { Fix } from '../../engine/fix/fix';
+import { FixDeform } from '../../engine/fix/deform';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { isEllipsoid, isLineAtom, isTriAtom, LINE_BONUS, massOf, nativeOrder } from '../../engine/atoms';
@@ -94,6 +99,10 @@ export class FixSRD extends Fix {
   private readonly binsize1 = [0, 0, 0];
   private readonly bininv1 = [0, 0, 0];
   private nbins1 = 1;
+  /** fix deform (native deformflag): its box rates give the SRD streaming velocity (h_rate, h_ratelo) */
+  private deformFix: FixDeform | null = null;
+  /** native change_size: a fix with BOX_CHANGE_SIZE, so the velocity bins are rebuilt at every pre-neighbor */
+  private changeSize = false;
 
   private distGhost = 0;
   private distSrd = 0;
@@ -145,6 +154,8 @@ export class FixSRD extends Fix {
   /** collision noslip (true) or slip (false) with big spheres */
   private readonly noslipflag: boolean;
   private readonly tstat: boolean;
+  /** unbiased yes: with a box deformation the thermostat keeps the bin average (no streaming velocity) */
+  private readonly unbiasflag: boolean;
 
   /** overlap yes: every overlapping big particle is considered, the first collision applied (collisions_multi) */
   private readonly overlapflag: boolean;
@@ -305,11 +316,11 @@ export class FixSRD extends Fix {
     }
 
     // the refusals: keywords whose physics is not ported yet (named, never ignored)
-    if (unbias) throw new StyleError('fix srd unbiased yes is not supported by this engine yet');
 
     this.noslipflag = collide === 'noslip';
     this.overlapflag = overlap;
     this.tstat = tstatUser;
+    this.unbiasflag = unbias;
     // initialize Marsaglia RNG with processor-unique seed (one processor: seed + 0)
     this.random = new RanMars(seed);
     // shift yes/possible: RanPark with the shift seed (fix_srd.cpp: "randomshift = new RanPark(lmp, shiftseed)")
@@ -338,11 +349,23 @@ export class FixSRD extends Fix {
     }
     // fix_srd.cpp init(): "Fix srd no-slip requires atom attribute torque"
     if (this.bigExist && this.noslipflag && !s.torque) throw new StyleError('Fix srd no-slip requires atom attribute torque');
-    // fix_srd.cpp init() and reset_velocities(): with a box deformation the SRD velocities are corrected by the box
-    // streaming rate h_rate (with or without the thermostat); not ported, so refused rather than run without it
-    if (this.sys.fixes.some((f) => f.style === 'deform')) {
-      throw new StyleError(`fix srd${this.tstat ? ' tstat yes' : ''} with fix deform is not supported by this engine yet (the SRD streaming velocity h_rate)`);
+    // fix_srd.cpp init(): "deformflag = 1" for a fix deform, and "change_size" for a fix that changes a box length
+    // (the velocity bins then follow the box, see preNeighbor). The streaming correction itself is in resetVelocities.
+    this.deformFix = null;
+    this.changeSize = false;
+    for (const f of this.sys.fixes) {
+      if (!(f instanceof FixDeform)) continue;
+      if (this.deformFix) throw new StyleError('More than one fix deform');
+      this.deformFix = f;
+      this.changeSize = true;
     }
+    // the thermostatted streaming bins (tstat yes with a deforming box) are not matched to native yet: with the
+    // same input, the per-atom state drifts to about 3e-6 relative at step 200 while the thermo rows agree to 1e-12
+    // up to step 150 (measured with native LAMMPS, black box)
+    if (this.deformFix && this.tstat && !this.unbiasflag) {
+      throw new StyleError('fix srd tstat yes with fix deform is not supported by this engine yet (the thermostatted streaming bins drift from native)');
+    }
+    if (this.deformFix) this.deformFix.streamingRates();
     this.parameterize();
 
     // limit initial SRD velocities if necessary
@@ -695,8 +718,18 @@ export class FixSRD extends Fix {
   preNeighbor(): void {
     const s = this.sys.state;
     if (this.binsrd.length < s.n) this.binsrd = new Int32Array(s.n);
+    if (this.bigExist) this.bigStatic();
+    // fix_srd.cpp pre_neighbor(): "if simulation box size changes, reset velocity bins" (change_size, set by a fix
+    // deform that changes a length); the search bins follow the box as well when big particles exist
+    if (this.changeSize) {
+      this.setupBounds();
+      this.setupVelocityBins();
+      if (this.bigExist) {
+        this.setupSearchBins();
+        this.setupSearchStencil();
+      }
+    }
     if (this.bigExist) {
-      this.bigStatic();
       this.buildCopies();
       this.registerCopies();
     }
@@ -833,12 +866,15 @@ export class FixSRD extends Fix {
     const [nbx, nby, nbz] = nb;
     const nbins = nbx * nby * nbz;
     const strides = [1, nbx, nbx * nby];
-    const binOf = (i: number): number => {
-      const ix = clampInt(Math.trunc((x[3 * i] - corner[0]) * this.bininv1[0]), 0, nbx - 1);
-      const iy = clampInt(Math.trunc((x[3 * i + 1] - corner[1]) * this.bininv1[1]), 0, nby - 1);
-      const iz = clampInt(Math.trunc((x[3 * i + 2] - corner[2]) * this.bininv1[2]), 0, nbz - 1);
-      return iz * nby * nbx + iy * nbx + ix;
-    };
+    const cellOf = (i: number): [number, number, number] => [
+      clampInt(Math.trunc((x[3 * i] - corner[0]) * this.bininv1[0]), 0, nbx - 1),
+      clampInt(Math.trunc((x[3 * i + 1] - corner[1]) * this.bininv1[1]), 0, nby - 1),
+      clampInt(Math.trunc((x[3 * i + 2] - corner[2]) * this.bininv1[2]), 0, nbz - 1),
+    ];
+    // fix_srd.cpp reset_velocities(): h_rate and h_ratelo of fix deform (orthogonal box: the tilt rates are zero)
+    const deformRates = this.deformFix ? this.deformFix.streamingRates() : null;
+    const hRate = deformRates ? deformRates.rate : [0, 0, 0];
+    const hRateLo = deformRates ? deformRates.ratelo : [0, 0, 0];
 
     // binhead = first SRD particle in each bin, binnext = next particle in the same bin
     const binhead = new Int32Array(nbins).fill(-1);
@@ -846,7 +882,15 @@ export class FixSRD extends Fix {
     for (let k = 0; k < s.n; k++) {
       const i = order[k];
       if (!(mask[i] & this.groupBit)) continue;
-      const ibin = binOf(i);
+      const [ix, iy, iz] = cellOf(i);
+      // native "shift velocities in last bins": a particle in the extra bin (ix == nbin1x) of a periodic dimension
+      // loses the box rate of that dimension
+      if (deformRates) {
+        if (per[0] && ix === this.nbin1[0]) v[3 * i] -= hRate[0];
+        if (per[1] && iy === this.nbin1[1]) v[3 * i + 1] -= hRate[1];
+        if (per[2] && iz === this.nbin1[2]) v[3 * i + 2] -= hRate[2];
+      }
+      const ibin = iz * nby * nbx + iy * nbx + ix;
       binnext[i] = binhead[ibin];
       binhead[ibin] = i;
     }
@@ -907,6 +951,10 @@ export class FixSRD extends Fix {
 
     // rotate the thermal velocity of each particle around one of six random axes, then add the average back
     const tfactor = s.units.mvv2e * this.massSrd / (dim * s.units.boltz);
+    // fix_srd.cpp reset_velocities(): "no deformation, no tstat: dof_temp = 1; yes deformation, yes tstat:
+    // dof_temp = dof_tstat = 0" (unbiased yes: the biased deformation case does not apply, dof 1)
+    const dofTemp = this.tstat && deformRates && !this.unbiasflag ? 0 : 1;
+    const dofTstat = dofTemp;
     this.srdBinTemp = 0.0;
     this.srdBinCount = 0;
     let axis = 2;
@@ -952,25 +1000,38 @@ export class FixSRD extends Fix {
     }
     combine([{ a: value, w: 1 }]);
 
-    // thermostat: rescale the thermal velocities of each bin to the SRD temperature (no box deformation)
+    // thermostat: rescale the thermal velocities of each bin to the SRD temperature. With a box deformation the
+    // bin streams with the box: vstream = h_rate * xctr + h_ratelo, where xctr is the bin centre as
+    // setup_velocity_shift() sets it (corner + (i + 0.5) / nbin1 per dimension, "in lamda units")
     if (this.tstat) {
       for (let b = 0; b < nbins; b++) {
         const n = cnt[b];
         if (n <= 1) continue;
-        const vx = vsum[3 * b];
-        const vy = vsum[3 * b + 1];
-        const vz = vsum[3 * b + 2];
-        const tbin = (value[b] / (n - 1)) * tfactor;
+        let sx = vsum[3 * b];
+        let sy = vsum[3 * b + 1];
+        let sz = vsum[3 * b + 2];
+        if (deformRates && !this.unbiasflag) {
+          const bx = b % nbx;
+          const by = Math.trunc(b / nbx) % nby;
+          const bz = Math.trunc(b / (nbx * nby));
+          const xc0 = corner[0] + (bx + 0.5) / this.nbin1[0];
+          const xc1 = corner[1] + (by + 0.5) / this.nbin1[1];
+          const xc2 = corner[2] + (bz + 0.5) / this.nbin1[2];
+          sx = hRate[0] * xc0 + hRateLo[0];
+          sy = hRate[1] * xc1 + hRateLo[1];
+          sz = hRate[2] * xc2 + hRateLo[2];
+        }
+        const tbin = (value[b] / (n - dofTstat)) * tfactor;
         const scale = Math.sqrt(this.temperatureSrd / tbin);
         let vsq = 0.0;
         for (let j = binhead[b]; j >= 0; j = binnext[j]) {
-          const u0 = (v[3 * j] - vx) * scale;
-          const u1 = (v[3 * j + 1] - vy) * scale;
-          const u2 = (v[3 * j + 2] - vz) * scale;
+          const u0 = (v[3 * j] - vsum[3 * b]) * scale;
+          const u1 = (v[3 * j + 1] - vsum[3 * b + 1]) * scale;
+          const u2 = (v[3 * j + 2] - vsum[3 * b + 2]) * scale;
           vsq += u0 * u0 + u1 * u1 + u2 * u2;
-          v[3 * j] = u0 + vx;
-          v[3 * j + 1] = u1 + vy;
-          v[3 * j + 2] = u2 + vz;
+          v[3 * j] = u0 + sx;
+          v[3 * j + 1] = u1 + sy;
+          v[3 * j + 2] = u2 + sz;
         }
         value[b] = vsq;
       }
@@ -980,7 +1041,7 @@ export class FixSRD extends Fix {
     // SRD temperature from the thermal velocities of the owner bins with more than one particle
     for (let b = 0; b < nbins; b++) {
       if (owner[b] && cnt[b] > 1) {
-        this.srdBinTemp += value[b] / (cnt[b] - 1);
+        this.srdBinTemp += value[b] / (cnt[b] - dofTemp);
         this.srdBinCount++;
       }
     }
@@ -996,6 +1057,18 @@ export class FixSRD extends Fix {
           this.nrescale++;
           scale3(v, 3 * i, this.vmax / Math.sqrt(vsq));
         }
+      }
+    }
+
+    // "undo velocity remap (only if using PUT or tstat no)": the box-rate correction of the last bins is added back
+    if (deformRates && (this.unbiasflag || !this.tstat)) {
+      for (let k = 0; k < s.n; k++) {
+        const i = order[k];
+        if (!(mask[i] & this.groupBit)) continue;
+        const [ix, iy, iz] = cellOf(i);
+        if (per[0] && ix === this.nbin1[0]) v[3 * i] += hRate[0];
+        if (per[1] && iy === this.nbin1[1]) v[3 * i + 1] += hRate[1];
+        if (per[2] && iz === this.nbin1[2]) v[3 * i + 2] += hRate[2];
       }
     }
   }

@@ -1,0 +1,33 @@
+# oracle: fix qeq/ctip with maxrepeat 10 where charges cross the qmin/qmax limits (w140ct_limits.ctip: Ni qmax 0.45, O qmin -0.45; charges set to +-0.2, the first pass crosses the limits and maxrepeat 10 runs 8 passes; NiO 64-atom subset, 2x2x2 cells), NVE 6 steps
+# native: installed /home/roy/.local/bin/lmp (b332f28). Measured max relative error vs native: thermo 5.3e-14, positions 4e-16,
+#   forces 2e-14 and velocities 8e-14 (scaled), per-atom charges 1.3e-14. The first solve crosses qmax/qmin (charges start at
+#   +-0.2, limits +-0.45) and the 8 maxrepeat passes run; maxrepeat 1 is refused by name ("charges not bound").
+# oracle-potentials: NiO.eam.fs
+# oracle-inputs: w140ct_small.data w140ct_limits.ctip
+# oracle-files: w140ct_limits_q.dump
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 filerel=1e-8
+units           metal
+atom_style      charge
+boundary        p p p
+read_data       w140ct_small.data
+set             type 1 charge 0.2
+set             type 2 charge -0.2
+pair_style      hybrid/overlay eam/fs coul/ctip 0.30 12.0
+pair_coeff      * * eam/fs NiO.eam.fs Ni O
+pair_coeff      * * coul/ctip w140ct_limits.ctip Ni O
+fix             1 all qeq/ctip 1 12.0 1.0e-8 100 coul/ctip cdamp 0.30 maxrepeat 10
+variable        dx atom 0.05*sin(1.3*x+0.7*y)
+variable        dy atom 0.05*cos(0.9*y-0.4*z)
+variable        dz atom 0.05*sin(1.1*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.01*sin(id)
+variable        vy atom 0.01*cos(2*id)
+variable        vz atom 0.01*sin(3*id)
+velocity        all set v_vx v_vy v_vz
+timestep        0.001
+fix             2 all nve
+thermo_style    custom step pe ecoul evdwl ke f_1
+thermo_modify   format float %.15g norm no
+thermo          2
+run             6
+write_dump      all custom w140ct_limits_q.dump id q modify format float %.15g sort id

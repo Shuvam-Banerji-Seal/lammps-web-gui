@@ -7,7 +7,7 @@ import { FixQeq } from '../fix/qeq';
  * docs.lammps.org/fix_qeq.html: style = *qeq/point* or *qeq/shielded* or
  * *qeq/slater* or *qeq/ctip* or *qeq/dynamic* or *qeq/fire*. qeq/point,
  * qeq/shielded, qeq/slater, qeq/dynamic and qeq/fire are implemented here; qeq/ctip is
- * left unregistered so the fix command's generic error names it.
+ * provided by the lazy gpl_ctip group (src/engine/lazyStyles.ts, src/engine-gpl/registry/ctip.ts).
  */
 export const FIXES: Record<string, FixFactory> = {
   'qeq/point': (sys, id, group, args) => new FixQeq(sys, id, group, args, 'point'),

@@ -1,7 +1,7 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
 import { erfcExact } from '../force/erfc';
-import { PairCoulStreitz, pointUval, slaterS } from '../force/pair/coul_streitz';
+import { PairCoulStreitz, mdfTaper, pointUval, slaterS } from '../force/pair/coul_streitz';
 import type { System } from '../system';
 import { gplHook } from '../gplHooks';
 
@@ -109,8 +109,11 @@ import { gplHook } from '../gplHooks';
  * erfc term and of G (the coul/streitz wolf shift is absent), no kspace term with pair ewald (real space only).
  * Keyword dsf 0.0 (Fennell-Gezelter form, taper width zero) adds (r - rc) K to the erfc term with
  * K = erfc(alpha rc)/rc^2 + 2 alpha exp(-alpha^2 rc^2)/(sqrt(pi) rc); it matches native to 1e-16.
- * Keyword wolf and dsf with a taper width above zero are not reproduced and throw a StyleError
- * (the wolf keyword charges differ from every form tried by about 2e-6 at 2 A).
+ * Keyword dsf with a taper width (docs.lammps.org/fix_qeq.html: "*dsf* value = width of taper to terminate Coulomb
+ * integrals for the Fennell-Gezelter summation") multiplies the Slater integrals of the matrix by the taper over
+ * [rc - width, rc] and leaves the erfc part alone, as native calculate_H_dsf does (src/QEQ/fix_qeq_slater.cpp at
+ * b332f28); measured with w140ct_gan_taper to 4e-13. Keyword wolf with any taper width is not reproduced and throws a
+ * StyleError (the wolf keyword charges differ from every form tried by about 2e-6 at 2 A).
  * Solver (measured with native LAMMPS, black box): two conjugate-gradient solves with the Jacobi
  * preconditioner 1/eta (not the shifted diagonal), H s = -chi_eff and H t = -1, both from zero, the
  * stop test sqrt(r.p)/|b|_2 > tolerance inside the loop test i < maxiter (so maxiter 1 leaves s = t = 0, a NaN
@@ -233,6 +236,8 @@ export class FixQeq extends Fix {
   /** qeq/slater: wolf-type damping alpha (keyword alpha, default 0.2), dsf 0.0 form, qfile coul/streitz. */
   private alpha = 0.2;
   private dsf = false;
+  /** dsf taper width (keyword dsf width; 0 when none): the Slater part of the matrix is tapered over [rc - width, rc]. */
+  private drtap = 0;
   private fromPair = false;
   /** qeq/shielded with qfile reaxff: chi, eta, gamma of the active pair_style reaxff, read at each solve. */
   private fromReax = false;
@@ -274,18 +279,24 @@ export class FixQeq extends Fix {
         if (!(this.alpha > 0)) throw new StyleError(`fix ${this.style}: alpha must be > 0`);
         k += 2;
         // fix_qeq.html: "wolf value = width of taper to terminate Coulomb integrals for the Wolf summation"
-        // (only taper width zero is reproduced here; see the header comment)
+        // (the wolf taper is not reproduced here; see the header comment)
         const sub = a[k];
-        if (sub === 'wolf' || sub === 'dsf') {
-          const width = numArg(a[k + 1], `${sub} taper width`);
-          if (sub === 'wolf') {
-            throw new StyleError(`fix ${this.style}: keyword wolf (Wolf-summation charges) is not reproduced by the browser engine`);
+        if (sub === 'wolf') {
+          throw new StyleError(`fix ${this.style}: keyword wolf (Wolf-summation charges) is not reproduced by the browser engine`);
+        }
+        if (sub === 'dsf') {
+          // docs.lammps.org/fix_qeq.html: "*dsf* value = width of taper to terminate Coulomb integrals for the Fennell-Gezelter
+          // summation (default value is zero)". fix_qeq_slater.cpp (b332f28): "optional taper width; do not treat following
+          // keyword (e.g. "warn") as numeric"
+          k += 1;
+          let width = 0;
+          if (k < a.length && !Number.isNaN(Number(a[k]))) {
+            width = numArg(a[k], 'dsf taper width');
+            k += 1;
           }
-          if (width !== 0) {
-            throw new StyleError(`fix ${this.style}: keyword dsf with taper width ${width} is not reproduced (only dsf 0.0)`);
-          }
+          if (!(width >= 0)) throw new StyleError(`fix ${this.style}: dsf taper width must be >= 0`);
           this.dsf = true;
-          k += 2;
+          this.drtap = width;
         }
       } else if (damped && key === 'qdamp') {
         this.qdamp = numArg(val, 'qdamp');
@@ -556,6 +567,14 @@ export class FixQeq extends Fix {
     const bit = this.groupBit;
     const row = new Int32Array(s.n).fill(-1);
     for (let k = 0; k < ng; k++) row[idx[k]] = k;
+    // dsf taper (mdftaper over [rc - drtap, rc]): 1 without a taper width. fix_qeq_slater.cpp calculate_H_dsf multiplies
+    // the Slater integrals ci_jfi and ci_fifj by ftap; the erfc part edsf is not tapered.
+    const TAP = { f: 1, df: 0 };
+    const taperAt = (r: number): number => {
+      if (!this.dsf || this.drtap === 0) return 1;
+      mdfTaper(r, rc, this.drtap, TAP);
+      return TAP.f;
+    };
     for (const i of idx) {
       if (!(p.zeta[s.type[i]] > 0)) throw new StyleError(`fix ${this.style}: zeta of type ${s.type[i]} must be > 0`);
       if (p.eta[s.type[i]] === 0) throw new StyleError(`fix ${this.style}: eta of type ${s.type[i]} is zero (preconditioner 1/eta)`);
@@ -643,9 +662,10 @@ export class FixQeq extends Fix {
           const r2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
           if (!(r2 > 0) || r2 >= cut2) continue;
           const r = Math.sqrt(r2);
-          const S = slaterS(r, zi, zv);
-          const Ui = pointUval(r, zi);
-          const Uv = pointUval(r, zv);
+          const tf = taperAt(r);
+          const S = slaterS(r, zi, zv) * tf;
+          const Ui = pointUval(r, zi) * tf;
+          const Uv = pointUval(r, zv) * tf;
           const ccr = cc(r);
           const H = C * (ccr + S);
           if (v === i) {

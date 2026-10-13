@@ -30,8 +30,8 @@ describe('fix qeq/point and qeq/shielded', () => {
     expect(q[0] + q[1]).toBeCloseTo(0, 12);
   });
 
-  it('qeq/ctip is refused by name (qeq/dynamic and qeq/fire: tests/engineQeq36.test.ts; qeq/slater: tests/engineQeqSlater40.test.ts)', async () => {
-    for (const style of ['qeq/ctip']) {
+  it('an unknown qeq style is refused by name (qeq/ctip is supported: tests/engineCtip.test.ts)', async () => {
+    for (const style of ['qeq/nosuchstyle']) {
       await expect(session().execute(pairOf(`fix q all ${style} 1 20 1.0e-6 200 w32qeq_point.params`))).rejects.toThrow(style);
     }
   });

@@ -46,9 +46,11 @@ describe('pair coul/streitz dsf keyword', () => {
     expect(out.error).toBeFalsy();
   });
 
-  it('a nonzero taper width is refused by name', async () => {
-    const out = await run(`${head}pair_style coul/streitz 12.0 dsf 0.3 2.0\npair_coeff * * AlO.streitz Al O\nrun 0\n`, { 'AlO.streitz': streitzFile });
-    expect(out.error).toMatch(/dsf taper width 2 is not reproduced/);
+  it('a taper width with dsf runs (the Slater part is tapered); wolf with a taper width is refused by name', async () => {
+    const dsf = await run(`${head}pair_style coul/streitz 12.0 dsf 0.3 2.0\npair_coeff * * AlO.streitz Al O\nrun 0\n`, { 'AlO.streitz': streitzFile });
+    expect(dsf.error).toBeFalsy();
+    const wolf = await run(`${head}pair_style coul/streitz 12.0 wolf 0.3 2.0\npair_coeff * * AlO.streitz Al O\nrun 0\n`, { 'AlO.streitz': streitzFile });
+    expect(wolf.error).toMatch(/wolf taper width 2 is not reproduced/);
   });
 
   it('dsf without its damping parameter names it', async () => {
@@ -56,9 +58,9 @@ describe('pair coul/streitz dsf keyword', () => {
     expect(out.error).toMatch(/keyword dsf needs a damping parameter/);
   });
 
-  it('qeq/slater with dsf and a taper width above zero is refused by name', async () => {
+  it('qeq/slater with dsf and a taper width runs', async () => {
     const out = await run(`${head}pair_style coul/streitz 12.0 dsf 0.3\npair_coeff * * AlO.streitz Al O\nfix 1 all qeq/slater 1 12.0 1.0e-6 100 coul/streitz alpha 0.3 dsf 2.0\nrun 0\n`, { 'AlO.streitz': streitzFile });
-    expect(out.error).toMatch(/keyword dsf with taper width 2 is not reproduced/);
+    expect(out.error).toBeFalsy();
   });
 });
 

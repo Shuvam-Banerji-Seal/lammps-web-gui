@@ -107,8 +107,8 @@ describe('fix qeq/slater: parsing and refusals', () => {
     await expect(newSession().execute(cluster(WOLF, 'fix 1 all qeq/slater 1 12.0 1.0e-6 100 coul/streitz alpha 0.2 wolf 0.0'))).rejects.toThrow(/wolf/);
   });
 
-  it('refuses dsf with a taper width above zero', async () => {
-    await expect(newSession().execute(cluster(WOLF, 'fix 1 all qeq/slater 1 12.0 1.0e-6 100 coul/streitz alpha 0.2 dsf 2.0'))).rejects.toThrow(/dsf/);
+  it('accepts dsf with a taper width (the wolf keyword stays refused)', async () => {
+    await newSession().execute(cluster(WOLF, 'fix 1 all qeq/slater 1 12.0 1.0e-6 100 coul/streitz alpha 0.2 dsf 2.0'));
   });
 
   it('refuses dsf at the top level (only alpha takes it as a sub-keyword)', async () => {

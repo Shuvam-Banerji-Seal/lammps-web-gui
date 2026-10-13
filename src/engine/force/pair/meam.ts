@@ -22,6 +22,7 @@ import {
   type AlloyPair,
 } from './meam_alloy';
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
+import { gplHook } from '../../gplHooks';
 
 /*
  * MEAM, single element: energy, analytic forces and pair_style meam (see the sections below).
@@ -1150,6 +1151,18 @@ export const parseMeamParams = (text: string, name: string, nelem = 1): MeamPara
   return out;
 };
 
+/**
+ * The refusals of coeffCore that are handed to the port: the partly screened hcp second shell (z2 > 0) and the L12
+ * second shell (nn2 = 1 with lattce l12, or a face Cmin below 2). Every other refusal stays an error of the core.
+ */
+const DELEGATED_REFUSALS = [
+  'partly screened second shell (z2 > 0)',
+  '= l12 is not supported',
+  'the partly screened second shell of the Cu3Au reference',
+];
+/** The lazy 'meam' hook (src/engine-gpl/registry/meam_hook.ts): the standard MEAM pair style of the GPL port. */
+type MeamGplFactory = () => Pair;
+
 /** pair_style meam: energy and analytic forces, full neighbour list; one element or several (meam_alloy.ts). */
 export class PairMeam extends Pair {
   readonly name = 'meam';
@@ -1167,6 +1180,8 @@ export class PairMeam extends Pair {
   private opts: MeamOptions = { ...DEFAULT_MEAM_OPTIONS };
   private rhoRef = 0;
   private t: [number, number, number, number] = [1, 1, 1, 1];
+  /** the standard MEAM of src/engine-gpl/meam, when the parameter set is one the core model refuses (coeff) */
+  private delegate: Pair | null = null;
 
   override settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 0) throw new StyleError('usage: pair_style meam (no arguments)');
@@ -1176,7 +1191,30 @@ export class PairMeam extends Pair {
     throw new StyleError(`pair_modify ${key} is not supported for pair style meam`);
   }
 
+  /**
+   * pair_coeff. A parameter set the core model refuses for a partly screened hcp second shell or an L12 second shell
+   * (DELEGATED_REFUSALS) is handed, as a whole, to the standard MEAM of src/engine-gpl/meam (the lazy 'meam' hook, a
+   * native port of src/MEAM/pair_meam.cpp with msmeamflag = 0). Every other configuration stays on the core path.
+   */
   override coeff(args: string[], ctx: StyleContext): void {
+    this.delegate = null;
+    try {
+      this.coeffCore(args, ctx);
+    } catch (e) {
+      if (!(e instanceof StyleError) || !DELEGATED_REFUSALS.some((r) => e.message.includes(r))) throw e;
+      const d = gplHook<MeamGplFactory>('meam')();
+      d.allocate(this.ntypes);
+      d.coeff(args, ctx);
+      this.delegate = d;
+      // the flags the force field reads at init: the port needs the half and the full neighbour lists
+      this.needsHalf = d.needsHalf;
+      this.needsFull = d.needsFull;
+      this.manybody = d.manybody;
+      this.virialFdotr = d.virialFdotr;
+    }
+  }
+
+  private coeffCore(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
     if (args[0] !== '*' || args[1] !== '*') {
       throw new StyleError('the first 2 arguments of pair_coeff for style meam must be * *');
@@ -1394,7 +1432,12 @@ export class PairMeam extends Pair {
     }
   }
 
-  override initStyle(_ctx: StyleContext): void {
+  override initStyle(ctx: StyleContext): void {
+    if (this.delegate) {
+      if (this.shift || this.tail) throw new StyleError('pair_style meam does not support the pair_modify shift and tail options');
+      this.delegate.initStyle(ctx);
+      return;
+    }
     if (!this.el && !this.alloy) throw new StyleError('pair_coeff for style meam must be set before the run');
     if (this.shift || this.tail) throw new StyleError('pair_style meam does not support the pair_modify shift and tail options');
     if (this.table !== 12) throw new StyleError('pair_style meam does not support the pair_modify table option');
@@ -1404,12 +1447,17 @@ export class PairMeam extends Pair {
     this.t = [1, t1, this.el!.t[2], this.el!.t[3]];
   }
 
-  override initOne(_i: number, _j: number): number {
+  override initOne(i: number, j: number): number {
+    if (this.delegate) return this.delegate.initOne(i, j);
     if (!this.el && !this.alloy) throw new StyleError('pair_coeff for style meam must be set before the run');
     return this.opts.rc;
   }
 
   override compute(pc: PairCompute): void {
+    if (this.delegate) {
+      this.delegate.compute(pc);
+      return;
+    }
     const list = pc.full;
     if (!list) throw new Error('pair style meam needs a full neighbor list');
     if (!this.el && !this.alloy) throw new StyleError('pair_coeff for style meam must be set before the run');

@@ -8,7 +8,9 @@
  * meam.h): Greg Wagner (Sandia), Sungkwang Mun, Stephen Foiles, Michael I. Baskes; MS-MEAM: Steve Valone (LANL),
  * Sergei Rudin, Mikhail Baskes, Mark Baskes.
  *
- * The model is MS-MEAM only (pair_style meam/ms sets msmeamflag = 1, ialloy = 1 by meam_setup_global).
+ * msmeamflag selects the model: 1 for pair_style meam/ms (ialloy = 1 by meam_setup_global), 0 for pair_style meam
+ * (the default ialloy of meam_setup_global is 0; the t weights of the non-MS model enter through the averages of
+ * meamNonMs.ts and phi_meam). The two branches are the msmeamflag branches of the routines above.
  */
 import { fmExp, getShpfcn, getZij, getZij2, getZij2b2nn, iszero, fcut, erosePot, zblPot, powint, type Lattice } from './meamMath';
 
@@ -63,6 +65,8 @@ export const toLattice = (s: string, single: boolean): Lattice | null => {
 
 /** Pair index a <= b in MEAM::eltind (row-major over the upper triangle). */
 export class MeamModel {
+  /** msmeamflag of pair_meam.cpp: 1 for MS-MEAM (meam/ms), 0 for the standard MEAM (meam) */
+  readonly msmeam: boolean;
   neltypes = 0;
   cutforce = 0;
   cutforcesq = 0;
@@ -121,6 +125,10 @@ export class MeamModel {
   phirar5: Float64Array[] = [];
   phirar6: Float64Array[] = [];
 
+  constructor(msmeam = true) {
+    this.msmeam = msmeam;
+  }
+
   /** meam_setup_global: element parameters (msmeam set). */
   setupGlobal(lib: LibEntry[]): void {
     this.neltypes = lib.length;
@@ -169,7 +177,7 @@ export class MeamModel {
     this.zbl = mat2(MAXELT, 1);
     this.gsmooth = 99.0;
     this.augt1 = 1;
-    this.ialloy = 1;
+    this.ialloy = this.msmeam ? 1 : 0; // meam_setup_global: ialloy = 0, or 1 with msmeamflag
     this.mixRefT = 0;
     this.embLinNeg = 0;
     this.bkgdDyn = 0;
@@ -515,11 +523,20 @@ export class MeamModel {
         rho0_1 = this.rho0[a] * Z1 * G1;
         rho0_2 = this.rho0[b] * Z2 * G2;
       }
-      // MS-MEAM: Gamma uses the difference of the full and the m densities (msmeamflag)
-      let Gam1 = rho11 + rho21 + rho31 - (d.rho1m1 + d.rho2m1 + d.rho3m1);
-      Gam1 = rho01 < 1.0e-14 ? 0.0 : Gam1 / (rho01 * rho01);
-      let Gam2 = rho12 + rho22 + rho32 - (d.rho1m2 + d.rho2m2 + d.rho3m2);
-      Gam2 = rho02 < 1.0e-14 ? 0.0 : Gam2 / (rho02 * rho02);
+      let Gam1: number, Gam2: number;
+      if (this.msmeam) {
+        // MS-MEAM: Gamma uses the difference of the full and the m densities (msmeamflag)
+        Gam1 = rho11 + rho21 + rho31 - (d.rho1m1 + d.rho2m1 + d.rho3m1);
+        Gam1 = rho01 < 1.0e-14 ? 0.0 : Gam1 / (rho01 * rho01);
+        Gam2 = rho12 + rho22 + rho32 - (d.rho1m2 + d.rho2m2 + d.rho3m2);
+        Gam2 = rho02 < 1.0e-14 ? 0.0 : Gam2 / (rho02 * rho02);
+      } else {
+        // standard MEAM: the averaged t weights multiply the densities (phi_meam, msmeamflag = 0)
+        Gam1 = t11av * rho11 + t21av * rho21 + t31av * rho31;
+        Gam1 = rho01 < 1.0e-14 ? 0.0 : Gam1 / (rho01 * rho01);
+        Gam2 = t12av * rho12 + t22av * rho22 + t32av * rho32;
+        Gam2 = rho02 < 1.0e-14 ? 0.0 : Gam2 / (rho02 * rho02);
+      }
       G1 = this.gGam(Gam1, this.ibar[a]);
       G2 = this.gGam(Gam2, this.ibar[b]);
       let rhoBkgd1: number, rhoBkgd2: number;
@@ -622,13 +639,15 @@ export class MeamModel {
     const a1 = r / this.re[a][a] - 1.0;
     const a2 = r / this.re[b][b] - 1.0;
     const rhoa01 = this.rho0[a] * fmExp(-this.beta0[a] * a1);
-    const rhoa11 = this.rho0[a] * this.t1[a] * fmExp(-this.beta1[a] * a1);
-    const rhoa21 = this.rho0[a] * this.t2[a] * fmExp(-this.beta2[a] * a1);
-    const rhoa31 = this.rho0[a] * this.t3[a] * fmExp(-this.beta3[a] * a1);
+    // msmeam: the t's are in the rho's (ialloy is not used); standard MEAM: the t's enter through the averages
+    const tf = (t: number): number => (this.msmeam ? t : 1);
+    const rhoa11 = this.rho0[a] * tf(this.t1[a]) * fmExp(-this.beta1[a] * a1);
+    const rhoa21 = this.rho0[a] * tf(this.t2[a]) * fmExp(-this.beta2[a] * a1);
+    const rhoa31 = this.rho0[a] * tf(this.t3[a]) * fmExp(-this.beta3[a] * a1);
     const rhoa02 = this.rho0[b] * fmExp(-this.beta0[b] * a2);
-    const rhoa12 = this.rho0[b] * this.t1[b] * fmExp(-this.beta1[b] * a2);
-    const rhoa22 = this.rho0[b] * this.t2[b] * fmExp(-this.beta2[b] * a2);
-    const rhoa32 = this.rho0[b] * this.t3[b] * fmExp(-this.beta3[b] * a2);
+    const rhoa12 = this.rho0[b] * tf(this.t1[b]) * fmExp(-this.beta1[b] * a2);
+    const rhoa22 = this.rho0[b] * tf(this.t2[b]) * fmExp(-this.beta2[b] * a2);
+    const rhoa32 = this.rho0[b] * tf(this.t3[b]) * fmExp(-this.beta3[b] * a2);
     const rhoa1m1 = this.rho0[a] * this.t1m[a] * fmExp(-this.beta1m[a] * a1);
     const rhoa2m1 = this.rho0[a] * this.t2m[a] * fmExp(-this.beta2m[a] * a1);
     const rhoa3m1 = this.rho0[a] * this.t3m[a] * fmExp(-this.beta3m[a] * a1);
@@ -683,9 +702,16 @@ export class MeamModel {
       case 'l12':
         d.rho01 = 8 * rhoa01 + 4 * rhoa02;
         d.rho02 = 12 * rhoa01;
-        // msmeam: the t's are already in the rho's (ialloy not used)
-        d.rho21 = (8 / 3) * (rhoa21 - rhoa22) * (rhoa21 - rhoa22);
-        d.rho2m1 = (8 / 3) * (rhoa2m1 - rhoa2m2) * (rhoa2m1 - rhoa2m2);
+        if (this.msmeam || this.ialloy !== 1) {
+          // msmeam: the t's are already in the rho's (ialloy not used); standard MEAM with ialloy != 1 (get_densref)
+          d.rho21 = (8 / 3) * (rhoa21 - rhoa22) * (rhoa21 - rhoa22);
+        } else {
+          // standard MEAM, ialloy = 1: the t2 weights enter the L12 density (get_densref, L12 case)
+          d.rho21 = (8 / 3) * (rhoa21 * this.t2[a] - rhoa22 * this.t2[b]) * (rhoa21 * this.t2[a] - rhoa22 * this.t2[b]);
+          const denom = 8 * rhoa01 * this.t2[a] * this.t2[a] + 4 * rhoa02 * this.t2[b] * this.t2[b];
+          if (denom > 0) d.rho21 = (d.rho21 / denom) * d.rho01;
+        }
+        if (this.msmeam) d.rho2m1 = (8 / 3) * (rhoa2m1 - rhoa2m2) * (rhoa2m1 - rhoa2m2);
         break;
       case 'b2': d.rho01 = 8.0 * rhoa02; d.rho02 = 8.0 * rhoa01; break;
       default:

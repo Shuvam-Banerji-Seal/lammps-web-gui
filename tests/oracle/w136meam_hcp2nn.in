@@ -1,0 +1,31 @@
+# oracle: pair_style meam, single hcp element Ti (FeTiClibrary.meam entry) with nn2(1,1) = 1 and a partly screened second shell (Cmin(1,1,1) = 0.36, w136meam_hcp2nn.meam): a 3x3x3 periodic hcp crystal (4-atom orthorhombic cell, 108 atoms, a = 2.92 A, c = 4.7683 A) with a sinusoidal displacement, velocities from atom-style variables, fix nve, 10 steps of 0.001 ps, thermo pe and press every step
+# oracle: the six second neighbours at sqrt2 a = 4.13 A (inside rc = 4.8) enter the pair sum through the partly screened 2NN term; first-shell distances stay inside the cutoff with no pair at the cutoff window
+# oracle-potentials: FeTiClibrary.meam
+# oracle-inputs: w136meam_hcp2nn.meam
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-14 atomrel=1e-12
+# oracle-measured: the case passes at rel 1e-12 (abs 1e-14) for every thermo row and the 108 final atoms; at rel 1e-14 the press of step 6 differs by 1.1e-14 relative (native 1567.53465328581, engine 1567.534653285826), so the agreement is about 1e-14 relative; target 1e-8 met
+units           metal
+atom_style      atomic
+variable        a equal 2.92
+lattice         custom 1.0 a1 ${a} 0 0 a2 0 5.057588358101 0 a3 0 0 4.768340032618 &
+                basis 0 0 0 basis 0.5 0.5 0 basis 0 0.333333333333333333 0.5 basis 0.5 0.833333333333333333 0.5
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 47.88
+variable        dx atom 0.03*sin(2.3*x+1.1*y+0.4*z)
+variable        dy atom 0.03*cos(1.9*y-0.7*x+0.3*z)
+variable        dz atom 0.03*sin(1.3*z+0.8*x-0.5*y)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.4*cos(1.7*y-0.6*z)
+variable        vy atom 0.4*sin(1.2*z+0.9*x)
+variable        vz atom 0.3*cos(2.1*x-0.8*y+0.2)
+velocity        all set v_vx v_vy v_vz units box
+pair_style      meam
+pair_coeff      * * FeTiClibrary.meam Ti w136meam_hcp2nn.meam Ti
+timestep        0.001
+fix             1 all nve
+thermo          1
+thermo_style    custom step pe press
+thermo_modify   format float %.15g
+run             10

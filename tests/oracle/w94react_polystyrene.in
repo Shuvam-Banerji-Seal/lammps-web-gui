@@ -1,0 +1,42 @@
+# oracle: fix bond/react stabilized, tiny polystyrene (examples/PACKAGES/reaction/tiny_polystyrene.stabilized) cut to 50 steps
+# oracle-inputs: w94react_ps_tiny_polystyrene.data w94react_ps_M-M_post.mol w94react_ps_M-M_pre.mol w94react_ps_M-M.rxnmap w94react_ps_M-P_post.mol w94react_ps_M-P_pre.mol w94react_ps_M-P.rxnmap w94react_ps_P-P_post.mol w94react_ps_P-P_pre.mol w94react_ps_P-P.rxnmap
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# thermo_style lists f_rxn1[1..3] (the runner counts columns; same values as f_rxn1[*]).
+# Engine vs this fixture (Node 24): thermo max rel 4.6e-10 (press), temp 1.1e-12; atoms max abs 1.9e-9 (fz). Setup (the
+# Ewald G and the mesh, pair tail) matches native at the first row. Not run past step 50 on purpose: the first reaction is
+# at step 284, and the error starts there (9.6e-9 at 285, 3.3e-6 at 300 in the 300-step run), with fix nvt and temp/rescale
+# on the dynamic groups (the open item in src/engine/fix/nh.ts). No reaction happens in this cut.
+units real
+boundary p p p
+atom_style full
+kspace_style pppm 1.0e-4
+pair_style lj/class2/coul/long 8.5
+angle_style class2
+bond_style class2
+dihedral_style class2
+improper_style class2
+special_bonds lj/coul 0 0 1
+pair_modify tail yes mix sixthpower
+variable T equal 530
+read_data w94react_ps_tiny_polystyrene.data  &
+  extra/bond/per/atom 5 &
+  extra/angle/per/atom 15 &
+  extra/dihedral/per/atom 15 &
+  extra/improper/per/atom 25 &
+  extra/special/per/atom 25
+molecule mol1 w94react_ps_M-M_pre.mol
+molecule mol2 w94react_ps_M-M_post.mol
+molecule mol3 w94react_ps_M-P_pre.mol
+molecule mol4 w94react_ps_M-P_post.mol
+molecule mol5 w94react_ps_P-P_pre.mol
+molecule mol6 w94react_ps_P-P_post.mol
+fix rxn1 all bond/react stabilization yes statted_grp .03 &
+ react M-M all 1 0 3.0 mol1 mol2 w94react_ps_M-M.rxnmap stabilize_steps 100 &
+ react M-P all 1 0 3.0 mol3 mol4 w94react_ps_M-P.rxnmap stabilize_steps 100 &
+ react P-P all 1 0 5.0 mol5 mol6 w94react_ps_P-P.rxnmap stabilize_steps 100
+fix 1 statted_grp_REACT nvt temp $T $T 100
+fix 4 bond_react_MASTER_group temp/rescale 1 $T $T 1 1
+thermo 10
+thermo_style custom step temp press density f_rxn1[1] f_rxn1[2] f_rxn1[3]
+thermo_modify colname auto format float %.15g
+run 50

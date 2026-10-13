@@ -491,6 +491,14 @@ export abstract class KSpace {
   gEwald = 0;
   /** kspace_modify compute: false skips the kspace force, energy and virial (setup still runs; kspace_modify.html). */
   computeOn = true;
+  /**
+   * When true, the charge sums of the self and background energies keep the values of the last refresh instead of
+   * following the charges at each compute. A fix that changes charges without changing the atom count sets it (the
+   * browser port of fix bond/react does). Measured with native LAMMPS (black box): after a reaction changes the
+   * charges and deletes no atom, the elong self term keeps the sum of squares of the earlier charges: 7.10488 was
+   * kept where the refreshed sum is 6.97503, and the energy is 5.69 kcal/mol lower than the refreshed one.
+   */
+  chargeSumsFrozen = false;
   abstract settings(args: string[], ctx: StyleContext): void;
   /** kspace_modify keyword handler; returns the number of values consumed. */
   abstract modify(key: string, values: string[]): number;

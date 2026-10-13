@@ -197,13 +197,20 @@ export function selectPppmAuto(inp: PppmAutoInput): PppmAutoResult {
   let mesh: [number, number, number];
   if (inp.meshUser) mesh = [...inp.meshUser];
   else {
+    // Measured with native LAMMPS (black box): the mesh starts at h = 1/G with n = int(L/h) + 1 and gains a point
+    // while the error of the previous spacing is above the target (polystyrene box 16.5147 A, 320 atoms: 6 6 6 with
+    // G 0.25561147; the start at n = 2 gave 5 and G 0.23512). The point is compared before it is added.
     const m = L.map((len) => {
-      let n = 2;
-      while (pppmKspaceError(gGrid, len / n, P, inp.q2, N, len) > inp.accE) {
+      let h = 1 / gGrid;
+      let n = Math.trunc(len / h) + 1;
+      let err = pppmKspaceError(gGrid, h, P, inp.q2, N, len);
+      while (err > inp.accE) {
+        err = pppmKspaceError(gGrid, h, P, inp.q2, N, len);
         n++;
+        h = len / n;
         if (n > 100000) throw new StyleError('kspace_style pppm: no mesh meets the accuracy');
       }
-      return factorableAtLeast(n + 1);
+      return factorableAtLeast(n);
     });
     mesh = [m[0], m[1], m[2]];
   }

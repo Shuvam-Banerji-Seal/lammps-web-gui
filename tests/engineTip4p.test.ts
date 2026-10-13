@@ -124,6 +124,19 @@ describe('TIP4P force projection and Coulomb cutoff', () => {
     expect(bad3.error).toMatch(/usage: pair_style lj\/cut\/tip4p\/cut/);
   });
 
+  it('rejects a nonzero water H epsilon on lj/cut/tip4p/long (native: "Water H epsilon must be 0.0 ...")', async () => {
+    // Measured with native LAMMPS (black box, 27 TIP4P waters): pair_coeff 2 2 0.1 1.0 on this style
+    // stops at init with "Water H epsilon must be 0.0 for pair style lj/cut/tip4p/long"; the same
+    // H-H coefficient on a lj/cut sub-style of a hybrid runs (the engine refuses that hybrid itself).
+    const script = [
+      'units real', 'atom_style full', 'boundary f f f', 'read_data w.data',
+      'pair_style lj/cut/tip4p/long 1 2 1 1 0.15 8.0', 'pair_coeff * * 0.0 1.0', 'pair_coeff 2 2 0.1 1.0', bondedScript,
+      'run 0',
+    ].join('\n');
+    const r = await run(script, { 'w.data': waterIonData([0, 8, 0]) });
+    expect(r.error).toMatch(/Water H epsilon must be 0\.0 for pair style lj\/cut\/tip4p\/long/);
+  });
+
   it('refuses to run without the bond and angle equilibria (the force-field hook)', () => {
     // the pair style cannot place M without r0 and theta0; the error names the missing piece
     const pair = new (PairTIP4PBase as unknown as new () => PairTIP4PBase)();

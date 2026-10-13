@@ -91,8 +91,9 @@ export const erfcPoly = (x: number, ex: number): number => {
  *
  * Measured with native LAMMPS (black box, 2 atoms, coul/long, gewald 0.3, real
  * units, 2026-10): the table nodes are the rsq values whose float32 mantissa is
- * truncated to N-3 bits within each octave, i.e. with s in [2^e, 2^(e+1)) the
- * node spacing is 2^(e-(N-3)) (N = 12: spacing 2^(e-9); checked in octaves
+ * truncated to M bits (M = N - nexpbits, see below) within each octave, i.e. with s in [2^e, 2^(e+1)) the
+ * node spacing is 2^(e-M), M = N - nexpbits with nexpbits set by the cutoff (makeErfcTable; N = 12 and cut 12
+ * give M = 9, spacing 2^(e-9); checked in octaves
  * e = 2, 3, 4, 5 and 16); the node values are the exact kernel
  * at the node, and the value between nodes is linear in rsq using the float32
  * rounding of rsq. Energy kernel: the table of erfc(g r)/r; agreement with the
@@ -112,7 +113,7 @@ export const erfcPoly = (x: number, ex: number): number => {
  * direct (table 0) branch keeps EWALD_F, which the same native difference
  * confirms.
  * The octave exponent is checked for e = 1..6 by the force scan above (and 2..5,
- * 16 for the node spacing); N other than 12 is not measured.
+ * 16 for the node spacing); N other than 12 is not measured. The cut-26.5 case (M = 8) is checked by w117cf_coul_long_table12_cut26.
  */
 export const TABLE_INNER_RSQ = 2.0;
 
@@ -141,7 +142,26 @@ const u32 = new Uint32Array(f32.buffer);
  */
 export const makeErfcTable = (N: number, g: number, cutsq: number, inner: number = TABLE_INNER_RSQ): ErfcTable => {
   if (!(N > 3 && N <= 24)) throw new RangeError('pair_modify table N must be 4..24 for the emulation');
-  const M = N - 3;
+  // Mantissa bits per octave: native Pair::init_bitmap (src/pair.cpp at b332f28) takes nexpbits, the
+  // exponent bits the table spans, from the outer cutoff: nlowermin is the power of two at or below
+  // inner^2, required_range = outer^2 / 2^nlowermin, and nexpbits is the least value with
+  // 2^(2^nexpbits) >= required_range; nmantbits = ntablebits - nexpbits. With cut_coul 12 that is
+  // nexpbits 3 (9 mantissa bits, the spacing measured above); with cut_coul 26.5 it is 4 (8 bits),
+  // measured with native LAMMPS (black box, w104cf_sds_coul_alone: the table-12 minus table-0 ecoul
+  // differs from the 9-bit emulation by 1.2e-8).
+  let nlowermin = 1;
+  while (2 ** nlowermin > inner || 2 ** (nlowermin + 1) <= inner) {
+    if (2 ** nlowermin <= inner) nlowermin++;
+    else nlowermin--;
+  }
+  const required = cutsq / 2 ** nlowermin;
+  let nexp = 0, available = 2;
+  while (available < required) {
+    nexp++;
+    available = 2 ** (2 ** nexp);
+  }
+  const M = N - nexp;
+  if (M < 3) throw new RangeError('pair_modify table N is too small for this cutoff');
   const perOctave = 1 << M;
   f32[0] = inner;
   const eMin = u32[0] >>> 23;

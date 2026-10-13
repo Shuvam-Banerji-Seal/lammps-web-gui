@@ -1,0 +1,13 @@
+# oracle: triclinic single-layer MoS2 data (768 atoms, xy 25.58, boundary p p f): read_data converts every atom to lamda and back (native remap), then velocity create loop geom hashes the bits; step-0 temperature and per-atom velocities
+# oracle-inputs: w117cf_mos2_loopgeom.data
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-14
+units           metal
+boundary        p p f
+atom_style      atomic
+read_data       w117cf_mos2_loopgeom.data
+mass            * 32.065
+mass            1 95.94
+velocity        all create 300.0 12345 loop geom
+thermo_style    custom step temp ke
+thermo_modify   format float %.17g norm no
+run 0

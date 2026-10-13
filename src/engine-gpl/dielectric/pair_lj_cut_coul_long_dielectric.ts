@@ -27,7 +27,7 @@ const MY_PIS = Math.sqrt(Math.PI);
  * term, eo = erfc(g r) / r (energy), co = 1 / r (the bare term of the special-bond correction).
  */
 const kernels = (rsq: number, g: number, table: ErfcTable | null): { fo: number; eo: number; co: number } => {
-  if (table && rsq >= TABLE_INNER_RSQ) return { fo: table.force(rsq), eo: table.energy(rsq), co: table.coul(rsq) };
+  if (table && rsq > TABLE_INNER_RSQ) return { fo: table.force(rsq), eo: table.energy(rsq), co: table.coul(rsq) };
   const r = Math.sqrt(rsq);
   const grij = g * r;
   const ex = Math.exp(-grij * grij);

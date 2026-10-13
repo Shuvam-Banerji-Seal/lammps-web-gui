@@ -1,0 +1,53 @@
+# oracle: charged pairs at scanned separations (table-12 interpolation, rsq from 2 to 104), coul/long + ewald
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-12
+units           real
+atom_style      charge
+atom_modify     map array
+region          box block 0 75 0 75 0 75
+create_box      2 box
+mass            1 1.0
+mass            2 1.0
+create_atoms    1 single 12.00000000000000 12.00000000000000 37.50000000000000 units box
+create_atoms    2 single 13.00000000000000 13.00000000000000 37.50000000000000 units box
+create_atoms    1 single 11.50000000000000 37.50000000000000 37.50000000000000 units box
+create_atoms    2 single 13.50000000000000 37.50000000000000 37.50000000000000 units box
+create_atoms    1 single 11.35000000000000 62.50000000000000 37.50000000000000 units box
+create_atoms    2 single 13.65000000000000 62.50000000000000 37.50000000000000 units box
+create_atoms    1 single 36.90000000000000 11.30000000000000 36.70000000000000 units box
+create_atoms    2 single 38.10000000000000 13.70000000000000 38.30000000000000 units box
+create_atoms    1 single 35.95000000000000 37.50000000000000 37.50000000000000 units box
+create_atoms    2 single 39.05000000000000 37.50000000000000 37.50000000000000 units box
+create_atoms    1 single 36.05000000000000 60.95000000000000 36.65000000000000 units box
+create_atoms    2 single 38.95000000000000 64.05000000000000 38.35000000000000 units box
+create_atoms    1 single 60.15000000000000 12.50000000000000 37.50000000000000 units box
+create_atoms    2 single 64.84999999999999 12.50000000000000 37.50000000000000 units box
+create_atoms    1 single 59.75000000000000 36.50000000000000 35.85000000000000 units box
+create_atoms    2 single 65.25000000000000 38.50000000000000 39.15000000000000 units box
+create_atoms    1 single 58.95000000000000 59.45000000000000 35.50000000000000 units box
+create_atoms    2 single 66.05000000000000 65.55000000000000 39.50000000000000 units box
+set            atom 1 charge 0.2000000000000000
+set            atom 2 charge -0.2000000000000000
+set            atom 3 charge 0.3100000000000000
+set            atom 4 charge -0.3100000000000000
+set            atom 5 charge 0.4200000000000000
+set            atom 6 charge -0.4200000000000000
+set            atom 7 charge 0.5300000000000000
+set            atom 8 charge -0.5300000000000000
+set            atom 9 charge 0.6400000000000000
+set            atom 10 charge -0.6400000000000000
+set            atom 11 charge 0.7500000000000000
+set            atom 12 charge -0.7500000000000000
+set            atom 13 charge 0.8600000000000001
+set            atom 14 charge -0.8600000000000001
+set            atom 15 charge 0.9700000000000000
+set            atom 16 charge -0.9700000000000000
+set            atom 17 charge 1.080000000000000
+set            atom 18 charge -1.080000000000000
+pair_style      coul/long 12.0
+pair_coeff      * *
+pair_modify     table 12
+kspace_style    ewald 1.0e-10
+kspace_modify   gewald 0.3 kmax/ewald 30 30 30
+thermo_style    custom step pe ecoul elong press
+thermo_modify   format float %.15g
+run             0

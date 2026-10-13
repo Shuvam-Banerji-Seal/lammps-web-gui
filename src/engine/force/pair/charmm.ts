@@ -412,7 +412,7 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
     // > 0: native's tables above r^2 = 2 (erfc.ts makeErfcTable), the polynomial below; measured with
     // native LAMMPS (black box): table 0 and 12 agree at r = 1.2 and differ at 3.1 and 4.7
     const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul);
-    if (tab && rsq >= TABLE_INNER_RSQ) {
+    if (tab && rsq > TABLE_INNER_RSQ) {
       const qq = qqrd2e * qi * qj;
       return { e: qq * tab.energy(rsq), f: qq * tab.force(rsq) / rsq };
     }
@@ -433,7 +433,7 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
     const fc = pc.specialCoul[sb];
     if (fc < 1) {
       const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul);
-      const inv = tab && rsq >= TABLE_INNER_RSQ ? tab.coul(rsq) : 1 / Math.sqrt(rsq);
+      const inv = tab && rsq > TABLE_INNER_RSQ ? tab.coul(rsq) : 1 / Math.sqrt(rsq);
       const bare = pc.qqrd2e * qi * qj * inv;
       return { e: c.e - (1 - fc) * bare, f: c.f - (1 - fc) * bare / rsq };
     }
@@ -639,7 +639,7 @@ export class PairLJCharmmfswCoulLong extends PairLJCharmmfswBase {
   protected coulFswPair(rsq: number, sb: number, qi: number, qj: number, qqr: number, pc: PairCompute): { e: number; f: number } {
     // pair_modify table N as in PairLJCharmmCoulLong (measured the same way for this style)
     const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul);
-    const useTab = tab !== null && rsq >= TABLE_INNER_RSQ;
+    const useTab = tab !== null && rsq > TABLE_INNER_RSQ;
     let e: number, f: number;
     const qq = qqr * qi * qj;
     if (useTab) {

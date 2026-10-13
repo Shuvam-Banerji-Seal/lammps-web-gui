@@ -51,7 +51,7 @@ import { buildOwnedSites, tip4pAlpha, type OwnedSites, type Tip4pModel } from '.
 
 /** Real-space long-range Coulomb kernel, as coul_long.ts coulLongPair (qq = C qi qj). */
 const coulLong = (rsq: number, qq: number, g: number, fc: number, poly: boolean, table: ErfcTable | null): { e: number; f: number } => {
-  if (table && rsq >= TABLE_INNER_RSQ) {
+  if (table && rsq > TABLE_INNER_RSQ) {
     let forcecoul = qq * table.force(rsq);
     let e = qq * table.energy(rsq);
     if (fc < 1) {

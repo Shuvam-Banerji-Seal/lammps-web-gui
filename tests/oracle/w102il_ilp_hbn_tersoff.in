@@ -1,0 +1,35 @@
+# oracle: pair_style hybrid/overlay tersoff ilp/graphene/hbn 16.0 coul/shield 16.0 1 - hBN bilayer (1360 atoms, the example's data file), 10 NVE steps; compute pair c_0 (tersoff), c_1 (coul/shield ecoul), c_2[1], c_2[2]
+# measured (engine vs native, black box; rel over |value| >= 1e-6; per-atom scale max(1,|value|)): thermo max abs 1.0e-10, max rel 4.0e-13; per-atom max scaled 1.6e-12
+# oracle-inputs: w102il_ilp_hbn.data
+# oracle-potentials: BNC.tersoff BNCH.ILP
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+boundary        p p p
+atom_style      full
+read_data       w102il_ilp_hbn.data
+mass            1 10.8110
+mass            2 14.0067
+mass            3 10.8110
+mass            4 14.0067
+group           layer1 molecule 1
+group           layer2 molecule 2
+pair_style      hybrid/overlay tersoff ilp/graphene/hbn 16.0 coul/shield 16.0 1
+pair_coeff      * * tersoff BNC.tersoff B N B N
+pair_coeff      * * ilp/graphene/hbn BNCH.ILP B N B N
+pair_coeff      1 3 coul/shield 0.70
+pair_coeff      1 4 coul/shield 0.69498201415576216335
+pair_coeff      2 3 coul/shield 0.69498201415576216335
+pair_coeff      2 4 coul/shield 0.69
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+compute         0 all pair tersoff
+compute         1 all pair coul/shield ecoul
+compute         2 all pair ilp/graphene/hbn
+timestep        0.001
+thermo_style    custom step pe etotal press c_0 c_1 c_2[1] c_2[2]
+thermo_modify   format float %.15g
+thermo          5
+run             0
+velocity        all create 300.0 12345 dist gaussian mom yes rot yes
+fix             1 all nve
+run             10

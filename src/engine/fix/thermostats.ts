@@ -256,11 +256,20 @@ export class FixLangevin extends Fix {
   // forces, so the setup force evaluation includes this fix.
   setup(): void { this.postForce(); }
 
+  /**
+   * The current target temperature (native fix langevin's t_target). fix charge/regulation reads it through its
+   * tempfixid keyword: "Using *tempfixid* overrides any fixed temperature set by *temp*" (docs.lammps.org/
+   * fix_charge_regulation.html).
+   */
+  targetTemperature(): number {
+    return typeof this.tStart === 'number' ? ramp(this.sys, this.tStart, this.tStop) : valueOf(this.sys, this.tStart);
+  }
+
   postForce(): void {
     const sys = this.sys;
     const s = sys.state;
     const u = s.units;
-    const tt = typeof this.tStart === 'number' ? ramp(sys, this.tStart, this.tStop) : valueOf(sys, this.tStart);
+    const tt = this.targetTemperature();
     if (tt < 0) throw new StyleError(`fix ${this.id} langevin: target temperature is negative`);
     const bias = this.temp?.hasBias() ?? false;
     if (bias) { this.temp!.computeBias(); this.temp!.removeBiasAll(); }

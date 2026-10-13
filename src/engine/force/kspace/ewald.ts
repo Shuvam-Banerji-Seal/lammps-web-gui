@@ -228,6 +228,15 @@ export abstract class KSpaceBase extends KSpace {
     return Math.sqrt(Math.log(pre / acc)) / rc;
   }
 
+  /** KSpace::qsum_qsq: the charge sums of the current charges; G-ewald, kmax and the mesh stay (see paramsFrozen). */
+  updateChargeSums(s: SimState): void {
+    let qs = 0, q2 = 0;
+    for (let i = 0; i < s.n; i++) { qs += s.q[i]; q2 += s.q[i] * s.q[i]; }
+    this.qsum = qs;
+    this.qsqsum = q2;
+    this.natoms = s.n;
+  }
+
   /**
    * qsum and qsqsum follow the current charges at every compute (the self and background terms use them),
    * while G-ewald, the kmax and the mesh stay as chosen at init. Measured with native LAMMPS (black box): with

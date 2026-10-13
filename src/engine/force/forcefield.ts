@@ -192,7 +192,9 @@ export class ForceField {
         throw new StyleError(`KSpace style ${this.kspace.name} is incompatible with Pair style zero/coul`);
       }
       this.kspace.linkPair?.(this.pair);
-      this.kspace.init(s, geom, cutCoul, s.units.qqr2e * this.pair.coulConstScale / this.dielectric, ctx);
+      // paramsFrozen: a charge-changing fix (fix charge/regulation) keeps the init-time G-ewald, kmax and mesh
+      if (this.kspace.paramsFrozen && this.kspace.gEwald > 0) this.kspace.updateChargeSums(s);
+      else this.kspace.init(s, geom, cutCoul, s.units.qqr2e * this.pair.coulConstScale / this.dielectric, ctx);
       this.pair.gEwald = this.kspace.gEwald;
     }
     if (this.pair) this.pair.version++;

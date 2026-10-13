@@ -171,9 +171,9 @@ export class PairFepSoft extends Pair {
   }
 
   initStyle(_ctx: StyleContext): void {
-    // pair_modify.html is the source of the shift/tail rules; fep_soft.rst gives the tail for lj/cut/soft only
-    if (this.tail && this.lj !== 'lj12') {
-      throw new StyleError(`pair_modify tail yes is not supported for pair style ${this.name} (only the lj/cut/soft styles have a tail correction)`);
+    // pair_modify.html is the source of the shift/tail rules (the soft tail of the 9-6 class2 styles is measured, see tailSums)
+    if (this.tail && this.lj === 'none') {
+      throw new StyleError(`pair_modify tail yes is not applicable to pair style ${this.name} (it has no Lennard-Jones portion)`);
     }
     if (this.shift && this.lj === 'none') {
       throw new StyleError(`pair_modify shift yes is not applicable to pair style ${this.name} (it has no Lennard-Jones portion)`);
@@ -336,9 +336,19 @@ export class PairFepSoft extends Pair {
     pc.acc.ecoul += ecoul;
   }
 
-  /** Standard 12-6 tail per type pair scaled by lambda^n (fep_soft.rst, pair_modify tail). */
+  /**
+   * Long-range tail per type pair scaled by lambda^n. The 12-6 form is the standard one (fep_soft.rst, pair_modify
+   * tail). For the class2 9-6 form, V = lambda^n eps (2 (sigma/r)^9 - 3 (sigma/r)^6) beyond the cutoff: the integrals
+   * of r^2 V and r^3 V' from rc to infinity give e = eps (sigma^9/(3 rc^6) - sigma^6/rc^3) and
+   * pr = eps (-3 sigma^9/rc^6 + 6 sigma^6/rc^3), with etail = 2 pi e and ptail = -(2 pi/3) pr.
+   * The docs (pair_fep_soft.html) say of the tail: "The analytical form of the tail corrections for energy and
+   * pressure used in the lj/cut/soft potentials are approximate, being identical to that of the corresponding
+   * non-soft potentials scaled by a factor \lambda^n." Measured with native LAMMPS (black box): the class2 styles
+   * give the same tail as the 9-6 form above with lambda^n, to about 1e-13 relative (w104cf_class2soft_tail,
+   * w104cf_class2soft_coulcut_tail, w104cf_class2soft_coullong_tail, w104cf_class2soft_tail_lambdas).
+   */
   tailSums(count: Float64Array): { etail: number; ptail: number } {
-    if (!this.tail || this.lj !== 'lj12') return { etail: 0, ptail: 0 };
+    if (!this.tail || this.lj === 'none') return { etail: 0, ptail: 0 };
     let e = 0, pr = 0;
     const nt = this.ntypes + 1;
     for (let i = 1; i < nt; i++) {
@@ -346,10 +356,17 @@ export class PairFepSoft extends Pair {
         const eps = this.p.get('epsilon', i, j), sig = this.p.get('sigma', i, j);
         const rc = this.cutLJT[i * nt + j];
         if (!(rc > 0)) continue;
-        const s6 = sig ** 6, s12 = s6 * s6, rc3 = rc ** 3, rc9 = rc3 ** 3;
+        const s6 = sig ** 6, rc3 = rc ** 3;
         const nn = count[i] * count[j] * this.lamN[i * nt + j];
-        e += nn * 4 * eps * (s12 / (9 * rc9) - s6 / (3 * rc3));
-        pr += nn * 4 * eps * (-4 * s12 / (3 * rc9) + 2 * s6 / rc3);
+        if (this.lj === 'lj12') {
+          const s12 = s6 * s6, rc9 = rc3 ** 3;
+          e += nn * 4 * eps * (s12 / (9 * rc9) - s6 / (3 * rc3));
+          pr += nn * 4 * eps * (-4 * s12 / (3 * rc9) + 2 * s6 / rc3);
+        } else {
+          const s9 = s6 * sig ** 3, rc6 = rc3 * rc3;
+          e += nn * eps * (s9 / (3 * rc6) - s6 / rc3);
+          pr += nn * eps * (-3 * s9 / rc6 + 6 * s6 / rc3);
+        }
       }
     }
     return { etail: 2 * Math.PI * e, ptail: (-2 * Math.PI / 3) * pr };

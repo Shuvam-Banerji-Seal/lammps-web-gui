@@ -139,8 +139,7 @@ describe('soft-core FEP pair styles: limits and mixing', () => {
 });
 
 describe('soft-core FEP pair styles: unsupported options are StyleErrors', () => {
-  it('tail yes is rejected for the class2 and Coulomb-only styles', async () => {
-    await expect(evaluate(['pair_style lj/class2/soft 2 0.5 3.0', 'pair_modify tail yes', ...LJ_COEFFS], 1.3, false)).rejects.toThrow(/tail/);
+  it('tail yes is rejected for the Coulomb-only styles (the class2 9-6 styles accept it: w104cf_class2soft_*_tail oracle cases, measured with native LAMMPS)', async () => {
     await expect(evaluate(['pair_style coul/cut/soft 2 4.0 3.0', 'pair_modify tail yes', ...COUL_LAM], 1.3)).rejects.toThrow(/tail/);
   });
 

@@ -336,6 +336,10 @@ export class FixAveTime extends Fix {
     if (this.overwriteFile && this.aveMode !== 'running') {
       throw new StyleError(`${what}: the overwrite keyword can only be used with the ave running setting`);
     }
+    // the output shape is known when the fix is defined (native LAMMPS sets scalar_flag, vector_flag and
+    // array_flag and expands the wildcards in the constructor), so thermo_style and variables can use it before
+    // the first run; init() repeats this at each run
+    this.init();
   }
 
   /** Resolves wildcards (needs the referenced computes) and sets the output shape. */

@@ -101,8 +101,8 @@ export class BondBpmRotational extends BondBPMBase {
   coeff(args: string[], _ctx?: StyleContext): void {
     if (!args.length) throw new StyleError('usage: bond_coeff N coefficients');
     const v = this.parse(args.slice(1));
-    const [, , , , fcr, fcs, tct, tcb] = v;
-    if (!(fcr > 0) || !(fcs > 0) || !(tct > 0) || !(tcb > 0)) throw new StyleError('bond_style bpm/rotational: the critical values fcr, fcs, tct and tcb must be > 0');
+    // no range check on fcr, fcs, tct, tcb: native BondBPMRotational::coeff (bond_bpm_rotational.cpp at b332f28)
+    // takes them as given; zero or negative values are used in the breaking sum (see the oracle cases)
     this.params.setRange(args[0], v);
   }
 

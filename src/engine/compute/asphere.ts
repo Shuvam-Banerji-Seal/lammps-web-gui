@@ -2,7 +2,7 @@ import { Compute } from './compute';
 import { ComputeTemp } from './temp';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { isEllipsoid, massOf } from '../atoms';
+import { isEllipsoid, isLineAtom, isLineStyle, isTriAtom, isTriStyle, LINE_BONUS, massOf, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
 import type { SimState } from '../types';
 import { SUPER_INERTIA } from '../superellipsoid';
 
@@ -49,6 +49,17 @@ import { SUPER_INERTIA } from '../superellipsoid';
  * - a point particle in the group stops the run for both computes (native
  *   messages, paraphrased: the temp/asphere one asks for all extended particles,
  *   the erotate/asphere one for extended particles).
+ *
+ * compute erotate/asphere also takes atom_style line and tri particles
+ * (src/ASPHERE/compute_erotate_asphere.cpp at b332f28, compute_scalar; the
+ * init message there is "Compute erotate/asphere requires atom style ellipsoid
+ * or line or tri"):
+ * - a line segment of length l and mass m contributes |omega|^2 l^2 m / 12
+ *   (the omega of the atom, the same sum over all three components);
+ * - a triangle contributes the body-frame sum I_k wb_k^2 with the principal
+ *   moments I of its triangle bonus and wb = R^T L / I, the same form as the
+ *   ellipsoid. The orientation is the atom's quaternion, which the engine keeps
+ *   for tri particles (atoms.ts: the triangle bonus stores corners and moments only).
  */
 
 /** Row-major rotation matrix (9 entries) of the unit quaternion w i j k: space = R body. */
@@ -83,13 +94,22 @@ export const ellipsoidInertia = (s: SimState, i: number): [number, number, numbe
   return [m * (b * b + c * c), m * (a * a + c * c), m * (a * a + b * b)];
 };
 
-/** Body-frame angular momentum Lb = R^T L and angular velocity wb = Lb / I of ellipsoid i. */
-export const bodyMotion = (s: SimState, i: number): { I: [number, number, number]; Lb: [number, number, number]; wb: [number, number, number] } => {
+/** Body-frame angular momentum Lb = R^T L and angular velocity wb = Lb / I of particle i with principal moments I. */
+export const bodyMotionWith = (s: SimState, i: number, I: [number, number, number]): { I: [number, number, number]; Lb: [number, number, number]; wb: [number, number, number] } => {
   const q = s.quat!, L = s.angmom!;
   const R = quatToMatrix(q[4 * i], q[4 * i + 1], q[4 * i + 2], q[4 * i + 3]);
   const Lb = rotateTransposeVec(R, L[3 * i], L[3 * i + 1], L[3 * i + 2]);
-  const I = ellipsoidInertia(s, i);
   return { I, Lb, wb: [Lb[0] / I[0], Lb[1] / I[1], Lb[2] / I[2]] };
+};
+
+/** Body-frame angular momentum Lb = R^T L and angular velocity wb = Lb / I of ellipsoid i. */
+export const bodyMotion = (s: SimState, i: number): { I: [number, number, number]; Lb: [number, number, number]; wb: [number, number, number] } =>
+  bodyMotionWith(s, i, ellipsoidInertia(s, i));
+
+/** Principal moments of triangle i (the triangle bonus, read_data Triangles; atoms.ts TRI_BONUS columns 9..11). */
+const triMoments = (s: SimState, i: number): [number, number, number] => {
+  const b = s.custom.get(TRI_BONUS)!.data;
+  return [b[TRI_BONUS_COLS * i + 9], b[TRI_BONUS_COLS * i + 10], b[TRI_BONUS_COLS * i + 11]];
 };
 
 /** Every atom of the group must be a finite-size ellipsoid (all three half-axes positive). */
@@ -101,19 +121,33 @@ const allExtended = (s: SimState, groupBit: number): boolean => {
   return true;
 };
 
+/** A group atom must be a finite-size ellipsoid (all three half-axes positive), a line or a triangle. */
+const extended = (s: SimState, i: number): boolean => {
+  if (isEllipsoid(s, i)) return s.shape![3 * i + 1] > 0 && s.shape![3 * i + 2] > 0;
+  return isLineAtom(s, i) || isTriAtom(s, i);
+};
+
 export class ComputeERotateAsphere extends Compute {
   readonly style = 'erotate/asphere';
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length) throw new StyleError(`Illegal compute erotate/asphere keyword ${args[0]}`);
-    if (!sys.state.shape || !sys.state.quat || !sys.state.angmom) throw new StyleError('Compute erotate/asphere requires atom style ellipsoid');
+    const st = sys.state;
+    const ellipsoidStyle = !!st.shape && !!st.quat && !!st.angmom;
+    if (!ellipsoidStyle && !isLineStyle(st.atomStyle) && !isTriStyle(st.atomStyle)) {
+      throw new StyleError('Compute erotate/asphere requires atom style ellipsoid or line or tri');
+    }
     this.scalarFlag = true;
     this.extscalar = 1;
   }
 
   init(): void {
-    if (!allExtended(this.sys.state, this.groupBit)) throw new StyleError('Compute erotate/asphere requires extended particles');
+    const s = this.sys.state;
+    for (let i = 0; i < s.n; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      if (!extended(s, i)) throw new StyleError('Compute erotate/asphere requires extended particles');
+    }
   }
 
   protected computeScalar(): number {
@@ -121,8 +155,17 @@ export class ComputeERotateAsphere extends Compute {
     let e = 0;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      const { Lb, wb } = bodyMotion(s, i);
-      e += Lb[0] * wb[0] + Lb[1] * wb[1] + Lb[2] * wb[2];
+      if (isEllipsoid(s, i)) {
+        const { Lb, wb } = bodyMotion(s, i);
+        e += Lb[0] * wb[0] + Lb[1] * wb[1] + Lb[2] * wb[2];
+      } else if (isLineAtom(s, i)) {
+        // native: (omega . omega) length^2 rmass / 12
+        const w = s.omega!, len = s.custom.get(LINE_BONUS)!.data[2 * i];
+        e += (w[3 * i] * w[3 * i] + w[3 * i + 1] * w[3 * i + 1] + w[3 * i + 2] * w[3 * i + 2]) * len * len * s.rmass![i] / 12;
+      } else {
+        const { Lb, wb } = bodyMotionWith(s, i, triMoments(s, i));
+        e += Lb[0] * wb[0] + Lb[1] * wb[1] + Lb[2] * wb[2];
+      }
     }
     return 0.5 * e * s.units.mvv2e;
   }

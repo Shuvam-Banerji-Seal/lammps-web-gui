@@ -28,9 +28,9 @@ import { FixPrecessionSpin } from './precession_spin';
  * SPIN_HBAR = 6.5821191e-4 eV ps. After the step, compute property/atom fmx fmy fmz
  * shows the precession vector of the new spins.
  *
- * Frozen lattice: this fix applies the first half of the spin sequence in initial_integrate
- * and the second half in final_integrate (the forces of the step are not used). Moving
- * lattice is not implemented yet and is refused.
+ * Frozen lattice: all four sweeps run in initial_integrate (native order; see initialIntegrate), so the
+ * energy of the step is the energy of the end-of-step spins. Moving lattice: the first half of the spin
+ * sequence in initialIntegrate, the second half in preForce (after the ghosts follow the drifted positions).
  */
 
 const omelyan = (s: Float64Array, i: number, w: number[], dt: number): void => {
@@ -54,6 +54,7 @@ export class FixNVESpin extends Fix {
   private lattice: 'moving' | 'frozen' = 'moving';
   private pairs: SpinPairStyle[] = [];
   private w = [0, 0, 0];
+  private wlist: number[] = [0, 0, 0];
   private wbuf = new Float64Array(3);
   private fields: FixPrecessionSpin[] = [];
   private damping: FixLangevinSpin[] = [];
@@ -101,15 +102,10 @@ export class FixNVESpin extends Fix {
     // Measured with native LAMMPS (black box, one spin, field along z, 20 steps of 0.001): the damped spin equals this
     // ODE (no 1/(1+lambda^2) factor) to 7e-7 for lambda 0.1 and 1e-5 for lambda 1. The precession vector (fm) is undamped.
     if (damped) {
-      for (const d of this.damping) {
-        const lam = d.damp;
-        const sx = sp[4 * i], sy = sp[4 * i + 1], sz = sp[4 * i + 2];
-        const w = this.w;
-        const cx = w[1] * sz - w[2] * sy, cy = w[2] * sx - w[0] * sz, cz = w[0] * sy - w[1] * sx;
-        this.w[0] = w[0] - lam * cx;
-        this.w[1] = w[1] - lam * cy;
-        this.w[2] = w[2] - lam * cz;
-      }
+      const w = this.wlist;
+      w[0] = this.w[0]; w[1] = this.w[1]; w[2] = this.w[2];
+      for (const d of this.damping) d.torque(i, w, sp);
+      this.w[0] = w[0]; this.w[1] = w[1]; this.w[2] = w[2];
     }
   }
 
@@ -164,6 +160,13 @@ export class FixNVESpin extends Fix {
       }
       return;
     }
+    // frozen lattice: all four sweeps run here (native initial_integrate: the spin sweeps before and after the
+    // position update are both in it). Measured with native LAMMPS (black box, bcc iron with pair spin/neel, 128
+    // spins, lattice frozen, dt 1e-4, thermo every step): the pair energy printed after step 1 is the energy of the
+    // spins at the end of that step (its change per step is the full-step change); evaluating it after two sweeps
+    // gave half of that change.
+    this.sweep(dt / 4, false);
+    this.sweep(dt / 4, true);
     this.sweep(dt / 4, false);
     this.sweep(dt / 4, true);
   }
@@ -187,9 +190,6 @@ export class FixNVESpin extends Fix {
         const c = h / massOf(s, i);
         v[3 * i] += c * f[3 * i]; v[3 * i + 1] += c * f[3 * i + 1]; v[3 * i + 2] += c * f[3 * i + 2];
       }
-    } else {
-      this.sweep(dt / 4, false);
-      this.sweep(dt / 4, true);
     }
     this.refreshFm();
   }

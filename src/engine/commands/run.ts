@@ -11,6 +11,7 @@ import type { System } from '../system';
 import type { EngineEvent } from '../types';
 import { massOf } from '../atoms';
 import { minimize, MIN_STYLES } from '../run/min';
+import { MINIMIZERS } from '../run/minimizers';
 import { accelerator, runAccelerated } from '../run/accel';
 import { restartDue, startRestarts, writeRestarts } from './restart';
 import { clearHaltRequest, haltRequested, softHalted } from '../run/halt';
@@ -503,6 +504,7 @@ const minimizeCmd: Handler = async (ctx, a) => {
 
 /** min_style cg|sd|fire|quickmin|hftn — min_style.html. */
 const minStyle: Handler = ({ sys }, a) => {
+  if (a[0] && Object.prototype.hasOwnProperty.call(MINIMIZERS, a[0])) { sys.minStyle = a[0]; return; }
   if (!a[0] || !(MIN_STYLES as readonly string[]).includes(a[0])) {
     throw new StyleError(`min_style '${a[0] ?? ''}' is not supported by the browser engine; supported: ${MIN_STYLES.join(', ')}`);
   }
@@ -517,10 +519,14 @@ const minModify: Handler = ({ sys }, a) => {
     switch (key) {
       case 'dmax': sys.minSettings.dmax = num(v, 'dmax'); k += 2; break;
       case 'line':
-        // min_modify.html: spin_cubic and spin_none are line searches of the spin packages. Measured with native LAMMPS
-        // (black box): on a non-spin minimization both stop with a segmentation fault, so the browser engine (no spin
-        // atoms) refuses them by name instead.
-        if (v === 'spin_cubic' || v === 'spin_none') throw new StyleError(`min_modify line ${v} needs spin atoms (the spin packages), which the browser engine does not provide`);
+        // min_modify.html: spin_cubic and spin_none are line searches of the spin minimizers (min_style spin/cg, run/
+        // minimizers.ts); they are kept in the minimizer settings and refused by the other minimizers in minimize().
+        if (v === 'spin_cubic' || v === 'spin_none') {
+          if (!sys.state?.sp) throw new StyleError(`min_modify line ${v} needs spin atoms (atom_style spin)`);
+          sys.minSettings.fire.line = v;
+          k += 2;
+          break;
+        }
         if (!['backtrack', 'quadratic', 'forcezero'].includes(v ?? '')) throw new StyleError('min_modify line must be backtrack, quadratic or forcezero');
         sys.minSettings.line = v as 'backtrack' | 'quadratic' | 'forcezero';
         k += 2;

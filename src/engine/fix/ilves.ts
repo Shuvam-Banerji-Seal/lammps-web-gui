@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { TopoList } from '../types';
 import { int, num } from '../commands/args';
+import { typeWord } from '../labelmap';
 import { massOf } from '../atoms';
 
 /*
@@ -51,7 +52,8 @@ import { massOf } from '../atoms';
  * temp 300 300 100: f_1[1] 0.00028430 native against 0.00025062 engine); the engine matches native with the setup-time
  * temperature in fix nh (checked by a temporary change that was reverted). Oracle cases therefore use fix nve.
  *
- * Refused: minimization (the restraint substitute with kbond is not implemented), a second fix ilves, type labels.
+ * Refused: minimization (the restraint substitute with kbond is not implemented), a second fix ilves.
+ * Type words of the b, a and t keywords may be type labels (fix_ilves.html: "may use type labels"), resolved through the label map.
  */
 
 /** Atom-mass match fudge of the b/t/m selectors (fix_ilves.html, MASSDELTA). */
@@ -202,7 +204,7 @@ export class FixIlves extends Fix {
       if (w === 'b' || w === 'a' || w === 't' || w === 'm') { mode = w; continue; }
       if (!mode) throw new StyleError(`fix ilves: '${w}' must follow a constraint keyword b, a, t or m`);
       if (mode === 'm') this.masses.push(num(w, 'mass'));
-      else (mode === 'b' ? this.bondTypes : mode === 'a' ? this.angleTypes : this.atomTypes).add(int(w, `${mode} type`));
+      else (mode === 'b' ? this.bondTypes : mode === 'a' ? this.angleTypes : this.atomTypes).add(int(typeWord(sys.labels, mode === 'b' ? 'bond' : mode === 'a' ? 'angle' : 'atom', w), `${mode} type`));
     }
     if (!this.bondTypes.size && !this.angleTypes.size && !this.atomTypes.size && !this.masses.length) {
       throw new StyleError('fix ilves: no bond, angle, atom type or mass selected');

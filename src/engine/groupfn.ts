@@ -4,6 +4,7 @@ import type { Mode, Value } from './formula';
 import { hasCharge, hasMolecule, massOf } from './atoms';
 import { finiteSpin } from './compute/finiteSpin';
 import type { SimState } from './types';
+import { isLabelKind } from './labelmap';
 
 /*
  * Group, region, special and feature functions of variable formulas —
@@ -63,10 +64,27 @@ export const groupFunction = (sys: System, fn: string, args: string[], mode: Mod
     case 'is_defined': return isDefined(sys, args[0], args[1]);
     case 'is_active': return isActive(sys, args[0], args[1]);
     case 'is_available': return isAvailable(sys, args[0], args[1]);
-    case 'label2type': case 'is_typelabel':
-      throw new StyleError(`${fn}() needs type labels (labelmap), which the browser engine does not support`);
+    case 'label2type': case 'is_typelabel': return labelFunction(sys, fn, args);
   }
   throw new StyleError(`unknown function ${fn}()`);
+};
+
+/**
+ * label2type(kind,label) and is_typelabel(kind,label) — variable.html: "The label2type(kind,label) function
+ * converts type labels into numeric types, using label maps created by the labelmap or read_data commands ...
+ * or triggers an error if the queried label does not exist." "is_typelabel ... returns 1 if the type label has
+ * been assigned, otherwise it returns 0." Native messages: "Invalid kind foo in label2type() in variable",
+ * "Invalid atom type label ZZ in label2type() in variable", "Cannot use label2type() function without a labelmap".
+ */
+const labelFunction = (sys: System, fn: string, args: string[]): number => {
+  const kind = args[0] ?? '';
+  if (!isLabelKind(kind)) throw new StyleError(`Invalid kind ${kind} in ${fn}() in variable`);
+  if (!sys.labels.defined) throw new StyleError(`Cannot use ${fn}() function without a labelmap`);
+  const label = args[1] ?? '';
+  const t = sys.labels.typeOf(kind, label);
+  if (fn === 'is_typelabel') return t === undefined ? 0 : 1;
+  if (t === undefined) throw new StyleError(`Invalid ${kind} type label ${label} in ${fn}() in variable`);
+  return t;
 };
 
 /** Atoms in group (and region, if given), unwrapped positions available. */

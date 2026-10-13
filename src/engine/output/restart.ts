@@ -1,5 +1,6 @@
 import type { CustomProp, SimState } from '../types';
 import type { System } from '../system';
+import { LABEL_KINDS, LabelMap } from '../labelmap';
 import type { SpecialBonds } from '../force/forcefield';
 import type { DynamicGroup } from '../group';
 import { StyleError, type Bonded, type Pair } from '../force/types';
@@ -306,6 +307,8 @@ export const writeRestartText = (sys: System): string => {
     comm: { style: sys.commStyle, vel: sys.ghostVelocity, cutoff: sys.nb.commCutoff },
     groups: encodeValue({ names: sys.groups.names, dynamic: sys.groups.dynamic }, 'groups', []),
     special: encodeValue(sys.ff.special, 'special', []),
+    // Howto_type_labels.html: "This map is also written to and read from restart files, by the write_restart and read_restart commands."
+    labels: { defined: sys.labels.defined, maps: Object.fromEntries(LABEL_KINDS.map((k) => [k, sys.labels.entries(k)])) },
     styles,
     fixes,
   };
@@ -429,6 +432,13 @@ export const readRestartText = (sys: System, text: string, name: string): void =
   for (const [bit, dg] of g.dynamic) sys.groups.dynamic.set(bit, dg);
 
   sys.ff.special = decodeValue(doc.special, 'special') as SpecialBonds;
+  // the label map (files written before type labels existed have none: an empty map)
+  const lab = (doc as { labels?: { defined: boolean; maps: Record<string, [number, string][]> } }).labels;
+  sys.labels = new LabelMap();
+  if (lab) {
+    for (const k of LABEL_KINDS) for (const [t, l] of lab.maps[k] ?? []) sys.labels.set(k, t, l);
+    sys.labels.defined = lab.defined;
+  }
 
   const restoreStyle = <T extends Pair | Bonded>(
     kind: string, registry: Record<string, () => T>, entry: { name: string; data: Json } | null | undefined, ntypes: number,

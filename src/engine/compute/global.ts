@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { massOf } from '../atoms';
 import { parseInt_, parseNum } from '../force/util';
+import { isNumericTypeWord, typeWord } from '../labelmap';
 
 /*
  * Global computes of wave 2c: com, gyration, msd, vacf, rdf. Each class cites
@@ -331,8 +332,8 @@ export class ComputeVACF extends Compute {
  *   g*shell*density product of the prose, which differs whenever shared > 0):
  *   coord(bin) = sum_{b<=bin} hist(b) / countI;
  * - bin centers are (b + 0.5) * delr with delr = cutmax / Nbin.
- * Type labels (docs: "itypeN ... integer, type label, or asterisk form") are
- * not supported by the engine and throw; wildcard ranges are.
+ * Type labels (docs: "itypeN ... integer, type label, or asterisk form") resolve through the label map;
+ * wildcard ranges are as before.
  */
 export class ComputeRDF extends Compute {
   readonly style = 'rdf';
@@ -358,7 +359,9 @@ export class ComputeRDF extends Compute {
         const t = Number(w);
         return [t, t];
       }
-      throw new StyleError(`compute rdf: invalid atom type '${w}' (number, asterisk range, or type label; type labels are not supported by this engine)`);
+      // compute_rdf.rst: "itype ... integer, type label, or asterisk form": a label is its numeric type (labelmap.ts)
+      if (!isNumericTypeWord(w)) { const t = Number(typeWord(sys.labels, 'atom', w)); return [t, t]; }
+      throw new StyleError(`compute rdf: invalid atom type '${w}' (number or asterisk range)`);
     };
     for (let k = 1; k < args.length;) {
       if (args[k] === 'cutoff') {

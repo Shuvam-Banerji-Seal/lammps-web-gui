@@ -1,0 +1,26 @@
+# oracle: molecule template whose Types, Bonds and Angles name types by label (labelmap), inserted with create_atoms mol
+# oracle-inputs: w90label_mol.txt
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      full
+region          b block 0 10 0 10 0 10
+create_box      2 b bond/types 1 angle/types 1 extra/bond/per/atom 2 extra/angle/per/atom 2 extra/special/per/atom 2
+labelmap        atom 1 C 2 H
+labelmap        bond 1 CH
+labelmap        angle 1 HCH
+molecule        w w90label_mol.txt
+bond_style      harmonic
+angle_style     harmonic
+pair_style      lj/cut 4.0
+pair_coeff      * * 0.01 2.0
+bond_coeff      CH 300.0 1.1
+angle_coeff     HCH 40.0 109.5
+mass            * 1.0
+create_atoms    0 single 5.0 5.0 5.0 mol w 4711
+create_atoms    0 single 2.0 7.0 6.0 mol w 4712
+timestep        0.5
+fix             1 all nve
+thermo_style    custom step temp pe ebond eangle evdwl etotal
+thermo_modify   format float %.15g
+thermo          5
+run             10

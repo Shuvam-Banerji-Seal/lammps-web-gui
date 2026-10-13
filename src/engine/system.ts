@@ -19,6 +19,7 @@ import { Thermo } from './output/thermo';
 import type { Dump } from './output/dump';
 import { buildAtomMap, deleteAtoms as deleteAtomsImpl, massOf, customAttr, nativeOrder, hasMolecule } from './atoms';
 import { groupFunction } from './groupfn';
+import { LabelMap } from './labelmap';
 import { defaultMinSettings, type MinSettings } from './run/min';
 
 /*
@@ -79,6 +80,8 @@ export class System {
   readonly nb: Neighbor;
   readonly ff = new ForceField();
   readonly groups = new Groups();
+  /** type labels (labelmap.ts): the labelmap command and the Type Labels sections of read_data */
+  labels = new LabelMap();
   readonly regions = new Map<string, Region>();
   readonly computes: Compute[] = [];
   readonly fixes: Fix[] = [];
@@ -136,6 +139,7 @@ export class System {
   /** Drops everything (clear). */
   reset(): void {
     this._state = null;
+    this.labels = new LabelMap();
   }
 
   /** Positions, atoms, box or force field changed. */

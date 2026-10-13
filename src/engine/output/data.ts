@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
-import { isSphStyle, SPH_CV, SPH_DESPH, SPH_DRHO, SPH_ESPH, SPH_RHO, SPH_VEST, appendAtoms, setOxdnaPartners, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, TRI_BONUS_COLS, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_SPIN, isElectronStyle, isDielectricStyle, DIEL_AREA, DIEL_ED, DIEL_EM, DIEL_EPSILON, DIEL_CURVATURE, DIEL_QSCALED, isEdpdStyle, isMdpdStyle, tdpdSpecies, EDPD_TEMP, EDPD_CV, MDPD_RHO, TDPD_CC, RHEO_RHO, RHEO_STATUS, isRheoStyle } from '../atoms';
+import { isSphStyle, SPH_CV, SPH_DESPH, SPH_DRHO, SPH_ESPH, SPH_RHO, SPH_VEST, appendAtoms, setOxdnaPartners, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, TRI_BONUS_COLS, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_SPIN, isElectronStyle, isDielectricStyle, DIEL_AREA, DIEL_ED, DIEL_EM, DIEL_EPSILON, DIEL_CURVATURE, DIEL_QSCALED, isEdpdStyle, isMdpdStyle, tdpdSpecies, EDPD_TEMP, EDPD_CV, MDPD_RHO, TDPD_CC, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH } from '../atoms';
 import { lineFromEnds, lineEnds, triangleCorner, triangleAreaOfBody, type LineBonus } from '../lineTri';
 import { triBodyHook } from '../styles';
 import type { TriBody } from '../triBonus';
@@ -87,6 +87,8 @@ const BASE_COLS: Record<string, string[]> = {
   tdpd: ['id', 'type', 'x', 'y', 'z'],
   // read_data.html, the Atoms-section table, row rheo: "atom-ID atom-type status rho x y z" (atom_style.html: "atomic + rho, status")
   rheo: ['id', 'type', 'rheo_status', 'rho', 'x', 'y', 'z'],
+  // read_data.html, the Atoms-section table, row rheo/thermal: "atom-ID atom-type status rho energy x y z"
+  'rheo/thermal': ['id', 'type', 'rheo_status', 'rho', 'energy', 'x', 'y', 'z'],
 };
 
 /**
@@ -619,6 +621,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const tIdx = new Int32Array(count), tAt = new Int32Array(count);
         const espin = new Float64Array(count), eradius = new Float64Array(count);
         const rheoStatus = isRheoStyle(style) ? new Float64Array(count) : null, rheoRho = isRheoStyle(style) ? new Float64Array(count) : null;
+        const rheoEsph = isRheoThermalStyle(style) ? new Float64Array(count) : null;
         const diel = isDielectricStyle(style) ? { area: new Float64Array(count), ed: new Float64Array(count), em: new Float64Array(count), epsilon: new Float64Array(count), curvature: new Float64Array(count) } : null;
         const sph = isSphStyle(style) ? { rho: new Float64Array(count), esph: new Float64Array(count), cv: new Float64Array(count) } : null;
         const bflag = parseBodyStyle(style) ? new Uint8Array(count) : null;
@@ -683,6 +686,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
               case 'eradius': eradius[a] = numOf(v, 'eradius', at); break;
               // read_data.html, row rheo: "status = status or phase of RHEO particles (unitless)", "rho = density"
               case 'rheo_status': rheoStatus![a] = intOf(v, 'status', at); break;
+              // read_data.html, rheo/thermal: "energy = energy of RHEO particles (need units)"
+              case 'energy': rheoEsph![a] = numOf(v, 'energy', at); break;
               case 'area': case 'ed': case 'em': case 'epsilon': case 'curvature': {
                 const dk = cols[c] as 'area' | 'ed' | 'em' | 'epsilon' | 'curvature';
                 diel![dk][a] = numOf(v, dk, at);
@@ -751,7 +756,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const firstNew = s.n;
         const electronCustom = isElectronStyle(s.atomStyle) ? new Map([[ELECTRON_SPIN, espin], [ELECTRON_RADIUS, eradius]]) : undefined;
         // Measured with native LAMMPS (black box): a data line with q 2.0 and epsilon 4.0 reads as q_scaled 0.5 (q / epsilon)
-        const rheoCustom = rheoStatus && rheoRho ? new Map<string, Float64Array>([[RHEO_STATUS, rheoStatus], [RHEO_RHO, rheoRho]]) : undefined;
+        const rheoCustom = rheoStatus && rheoRho ? new Map<string, Float64Array>([[RHEO_STATUS, rheoStatus], [RHEO_RHO, rheoRho], ...(rheoEsph ? [[RHEO_ESPH, rheoEsph] as [string, Float64Array]] : [])]) : undefined;
         const dielCustom = diel ? new Map<string, Float64Array>([
           [DIEL_AREA, diel.area], [DIEL_ED, diel.ed], [DIEL_EM, diel.em], [DIEL_EPSILON, diel.epsilon], [DIEL_CURVATURE, diel.curvature],
           [DIEL_QSCALED, Float64Array.from(q, (qq, a) => qq / diel.epsilon[a])],
@@ -1211,6 +1216,8 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
         case 'edpd_cv': return shortest(s.custom.get(EDPD_CV)!.data[i]);
         // read_data.html, rheo: the status is an integer, rho a density (sph and mdpd share their rho prop)
         case 'rheo_status': return String(s.custom.get(RHEO_STATUS)!.data[i]);
+        // read_data.html, rheo/thermal: energy (the RHEO energy prop)
+        case 'energy': return shortest(s.custom.get(RHEO_ESPH)!.data[i]);
         case 'rho': return shortest(s.custom.get(isRheoStyle(s.atomStyle) ? RHEO_RHO : MDPD_RHO)!.data[i]);
         default: {
           const k = /^cc(\d+)$/.exec(c);

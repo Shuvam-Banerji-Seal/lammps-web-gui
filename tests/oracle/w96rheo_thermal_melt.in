@@ -1,0 +1,39 @@
+# oracle: RHEO melting and freezing with fix rheo/thermal (Tfreeze and latent/heat), fix rheo thermal shift: solid particles above the freezing temperature melt and fluid particles below it freeze, 40 velocity-Verlet steps; per-atom temperature, energy and status dumped
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+# oracle-files: d.melt
+units        lj
+dimension    2
+atom_style   rheo/thermal
+boundary     p p p
+comm_modify  vel yes
+newton       off
+region       box block 0 6 0 6 -0.01 0.01
+create_box   1 box
+lattice      sq 0.9
+create_atoms 1 box
+mass         * 1.0
+region       hot block 0 3 0 3 -1 1
+region       cool block 3 6 3 6 -1 1
+set          group all rheo/rho 1.0
+set          group all rheo/status 0
+set          group all sph/e 0.6
+set          region hot sph/e 1.5
+set          region hot rheo/status 1
+set          region cool rheo/status 0
+velocity     all set 0.1 -0.05 0.0 units box
+timestep     0.005
+pair_style   rheo 3.0
+pair_coeff   * *
+fix          1 all rheo 3.0 quintic 0 thermal shift
+fix          2 all rheo/viscosity * constant 0.05
+fix          3 all rheo/pressure * linear
+fix          4 all rheo/thermal conductivity * constant 0.1 specific/heat * constant 1.0 Tfreeze * constant 1.0 latent/heat * constant 0.2
+fix          5 all enforce2d
+fix          6 all nve
+compute      P all rheo/property/atom temperature energy status
+dump         1 all custom 10 d.melt id x y c_P[1] c_P[2] c_P[3]
+dump_modify  1 format float %.15g
+thermo       10
+thermo_style custom step ke pe
+thermo_modify format float %.15g
+run          40

@@ -4,7 +4,7 @@ import { StyleError, typeBounds } from '../force/types';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle } from '../atoms';
+import { EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH } from '../atoms';
 import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
 import { parseStl } from '../stl';
 import { typeWord, parseLabelPairs, labelmapText, isLabelKind, type LabelKind } from '../labelmap';
@@ -73,7 +73,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph', 'edpd', 'mdpd', 'tdpd', 'rheo'];
+const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph', 'edpd', 'mdpd', 'tdpd', 'rheo', 'rheo/thermal'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -1629,6 +1629,16 @@ const set: Handler = ({ sys }, a) => {
       // a negative density is accepted, and the keyword on atom_style atomic stops with Cannot set attribute sph/e for
       // atom style atomic
       case 'sph/cv': case 'sph/e': case 'sph/rho': {
+        // set.html (sph/e on atom_style rheo/thermal, the energy column of the RHEO thermal particles, as native
+        // LAMMPS sets esph for any style with an energy: examples/rheo/ice-cubes uses set sph/e with rheo/thermal)
+        if (key === 'sph/e' && isRheoThermalStyle(s.atomStyle)) {
+          const earr = s.custom.get(RHEO_ESPH)!.data;
+          const ev = value(a[k + 1], key);
+          for (const i of atoms) earr[i] = ev(i);
+          changed = atoms.length;
+          k += 2;
+          break;
+        }
         if (!isSphStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute ${key} for atom style ${s.atomStyle}`);
         const arr = s.custom.get(key === 'sph/cv' ? SPH_CV : key === 'sph/e' ? SPH_ESPH : SPH_RHO)!.data;
         const v = value(a[k + 1], key);

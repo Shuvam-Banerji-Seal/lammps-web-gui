@@ -6,7 +6,7 @@
  *
  * Docs (docs.lammps.org/pair_rheo.html): "pair_style rheo cutoff keyword values" and "keyword = rho/damp or
  * artificial/visc or harmonic/means"; "rho/damp args = density damping prefactor" and "artificial/visc args = artificial
- * viscosity prefactor". harmonic/means and the thermal pair terms are not supported by the browser engine yet and are
+ * viscosity prefactor". harmonic/means is not supported by the browser engine yet and is
  * refused by name. "pair_coeff * *" sets all type pairs. The cutoff must match fix rheo's cutoff.
  *
  * Forces: the hydrostatic pressure and the artificial pressure (Pi + Pj + Q) along the kernel gradient, the viscous
@@ -19,7 +19,7 @@
  */
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
-import { massOf, nativeOrder, RHEO_DRHO, RHEO_PRESSURE, RHEO_RHO, RHEO_VISC, RHEO_STATUS } from '../../engine/atoms';
+import { massOf, nativeOrder, RHEO_COND, RHEO_DRHO, RHEO_HEATFLOW, RHEO_PRESSURE, RHEO_RHO, RHEO_TEMP, RHEO_VISC, RHEO_STATUS } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { tallyXYZ } from '../dpd/pair_dpd';
 import { PHASECHECK, rheoModelOf, rheoProp, type RheoModel } from './model';
@@ -127,6 +127,12 @@ export class PairRHEO extends Pair {
     const av = this.av, rhoDamp = this.rhoDamp;
     const tally = pc.vatom !== null || pc.eatom !== null;
     drho.fill(0, 0, nlocal);
+    // thermal terms (pair_rheo.cpp thermal_flag): the temperature, conductivity and heat flow of fix rheo/thermal
+    const thermal = m.thermalFlag ? m.thermal : null;
+    if (m.thermalFlag && !thermal) throw new StyleError('Must have one and only one instance of fix rheo/thermal defined');
+    const temp = m.thermalFlag ? rheoProp(s, RHEO_TEMP) : null, cond = m.thermalFlag ? rheoProp(s, RHEO_COND) : null;
+    const heatflow = m.thermalFlag ? rheoProp(s, RHEO_HEATFLOW) : null;
+    if (heatflow) heatflow.fill(0, 0, nlocal);
     const pairs = this.pairList(pc, cutksq);
     // native local order (the atom sort): rank[i] is the position of owned atom i
     const rank = new Int32Array(nlocal);
@@ -163,10 +169,26 @@ export class PairRHEO extends Pair {
       m.calcDw(oj, -dx[0], -dx[1], -dx[2], r, m.dWj);
       const dWij = m.dW, dWji = m.dWj;
       const rhoi = rho[i], rhoj = rho[oj];
-      const rho0j = rho0[jtype];
+      const rho0i = rho0[itype], rho0j = rho0[jtype];
       const Pi = pressure[i], Pj = pressure[oj];
       const voli = imass / rhoi;
       const volj = jmass / rhoj;
+      if (thermal && temp && cond && heatflow) {
+        // pair_rheo.cpp thermal evolution (harmonic means off): alpha = kappa / (rho0 cv), dT = 2 alpha_ave (Ti - Tj) / r^2,
+        // heatflow_i += (dx . dWij) dT volj and heatflow_j += (dx . dWji) dT voli (newton on or the other end owned)
+        const alphai = cond[i] / (rho0i * thermal.calcCv(itype));
+        const alphaj = cond[oj] / (rho0j * thermal.calcCv(jtype));
+        const alphaAve = 0.5 * (alphai + alphaj);
+        const dTPrefactor = 2.0 * alphaAve * (temp[i] - temp[oj]) * rinvsq;
+        let dot = 0;
+        for (let a = 0; a < dim; a++) dot += dx[a] * dWij[a];
+        heatflow[i] += dot * dTPrefactor * volj;
+        if (this.newtonPair || j < nlocal) {
+          let dotj = 0;
+          for (let a = 0; a < dim; a++) dotj += dx[a] * dWji[a];
+          heatflow[oj] += dotj * dTPrefactor * voli;
+        }
+      }
       if (pairForce) {
         // hydrostatic pressure, then the artificial pressure of the approaching pair
         let fpPrefactor = Pj + Pi;

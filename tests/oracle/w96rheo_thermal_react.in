@@ -1,0 +1,47 @@
+# oracle: RHEO reactive bonds with fix rheo/thermal react: cold fluid particles freeze (Tfreeze 1) and bond to their solid neighbors within 1.5 (react bond type 1), hot solid particles melt and lose their type-1 bonds (create_bonds many gives the initial bonds of the hot block), 30 velocity-Verlet steps; per-atom temperature, energy, status and bond count dumped
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+# oracle-files: d.react
+units        lj
+dimension    2
+atom_style   hybrid rheo/thermal bond
+boundary     f f p
+comm_modify  vel yes
+newton       off
+special_bonds lj 0.0 1.0 1.0 coul 1.0 1.0 1.0
+region       box block 0 6 0 6 -0.01 0.01
+create_box   1 box bond/types 1 extra/bond/per/atom 8 extra/special/per/atom 20
+lattice      sq 0.9
+create_atoms 1 box
+mass         * 1.0
+region       hot block 0 3 0 6 -1 1
+region       cold block 3 6 0 6 -1 1
+set          group all rheo/rho 1.0
+set          group all rheo/status 0
+set          group all sph/e 0.3
+set          region hot rheo/status 1
+set          region hot sph/e 1.5
+pair_style   hybrid/overlay rheo 3.0 artificial/visc 0.05 rheo/solid
+pair_coeff   * * rheo
+pair_coeff   * * rheo/solid 1.0 1.0 1.0
+group        hotg region hot
+special_bonds lj 0.0 1.0 1.0 coul 0.0 1.0 1.0
+create_bonds many hotg hotg 1 0.0 1.0
+special_bonds lj 0.0 1.0 1.0 coul 1.0 1.0 1.0
+bond_style   bpm/spring
+bond_coeff   1 1.0 1.0 1.0
+velocity     all set 0.05 0.02 0.0 units box
+timestep     0.005
+fix          1 all rheo 3.0 quintic 0 thermal
+fix          2 all rheo/viscosity * constant 0.05
+fix          3 all rheo/pressure * linear
+fix          4 all rheo/thermal conductivity * constant 0.1 specific/heat * constant 1.0 Tfreeze * constant 1.0 latent/heat * constant 0.2 react 1.5 1
+fix          5 all enforce2d
+fix          6 all nve
+compute      P all rheo/property/atom temperature energy status
+compute      nb all nbond/atom
+dump         1 all custom 5 d.react id x y c_P[1] c_P[2] c_P[3] c_nb
+dump_modify  1 format float %.15g
+thermo       5
+thermo_style custom step ke bonds
+thermo_modify format float %.15g
+run          30

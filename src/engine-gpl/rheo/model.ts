@@ -17,7 +17,7 @@
 import type { SimState } from '../../engine/types';
 import type { Neighbor } from '../../engine/neighbor';
 import { NEIGHMASK } from '../../engine/neighbor';
-import { massOf, RHEO_RHO, RHEO_STATUS } from '../../engine/atoms';
+import { massOf, RHEO_ESPH, RHEO_RHO, RHEO_STATUS } from '../../engine/atoms';
 
 /** fix_rheo.h, RHEO_NS: "PHASECHECK = 0x00000003" (solid or future phase bits) and the temporary option bits. */
 export const PHASECHECK = 0x3;
@@ -29,6 +29,15 @@ export const STATUS_SURFACE = 1 << 4;
 export const STATUS_SPLASH = 1 << 5;
 /** fix_rheo.h: "OPTIONSMASK = 0xFFFFFC3F" (clears the temporary options, bits 6 to 9). */
 export const OPTIONSMASK = 0xFFFFFC3F;
+/** fix_rheo.h: "STATUS_FREEZING = 1 << 8", "STATUS_MELTING = 1 << 9" and "PHASEMASK = 0xFFFFFFFC" (clears bits 0 and 1). */
+export const STATUS_FREEZING = 1 << 8;
+export const STATUS_MELTING = 1 << 9;
+export const PHASEMASK = 0xFFFFFFFC;
+
+/** The thermal part of fix rheo/thermal as the other RHEO styles use it (cv per type, see rheo/thermal.ts). */
+export interface RheoThermal {
+  calcCv(itype: number): number;
+}
 
 /** Shared RHEO state for one simulation (one fix rheo). */
 export class RheoModel {
@@ -76,6 +85,13 @@ export class RheoModel {
   /** fix rheo rho/sum: density by kernel summation; selfMass uses the own mass in the sum (self/mass). */
   rhosumFlag = false;
   rhosumSelfMass = false;
+  /**
+   * fix rheo thermal keyword: the energy gradient (grade, dim per owned atom) is computed and fix rheo/thermal is the
+   * thermal fix the pair and compute styles read (null without a fix rheo/thermal).
+   */
+  thermalFlag = false;
+  thermal: RheoThermal | null = null;
+  grade = new Float64Array(0);
   coord = new Int32Array(0);
   corrOK = new Uint8Array(0);
   C = new Float64Array(0);
@@ -211,10 +227,16 @@ export const computeRheoGrad = (s: SimState, nb: Neighbor, m: RheoModel): void =
   const gradv = m.gradv, gradr = m.gradr;
   gradv.fill(0, 0, n * dd);
   gradr.fill(0, 0, n * dim);
+  const energyGrad = m.thermalFlag;
+  if (energyGrad) {
+    if (m.grade.length < n * dim) m.grade = new Float64Array(n * dim);
+    m.grade.fill(0, 0, n * dim);
+  }
   const full = nb.full;
   if (!full) throw new Error('rheo grad needs a full neighbor list');
   const x = nb.xall, owner = nb.owner, nbr = full.neighbors;
   const v = s.v, rho = rheoProp(s, RHEO_RHO);
+  const energy = energyGrad ? rheoProp(s, RHEO_ESPH) : null;
   const vij = [0, 0, 0];
   for (let i = 0; i < n; i++) {
     const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
@@ -230,11 +252,14 @@ export const computeRheoGrad = (s: SimState, nb: Neighbor, m: RheoModel): void =
       const Volj = massOf(s, o) / rhoj;
       for (let a = 0; a < dim; a++) vij[a] = v[3 * i + a] - v[3 * o + a];
       const drho = rhoi - rhoj;
+      const de = energy ? energy[i] - energy[o] : 0;
       m.calcDw(i, delx, dely, delz, Math.sqrt(rsq), m.dW);
       const dW = m.dW;
       for (let a = 0; a < dim; a++) {
         for (let b = 0; b < dim; b++) gradv[i * dd + a * dim + b] -= vij[a] * Volj * dW[b];
         gradr[i * dim + a] -= drho * Volj * dW[a];
+        // compute_rheo_grad.cpp: "grade[i][a] -= de * Volj * dWij[a]" (energy keyword, fix rheo thermal)
+        if (energy) m.grade[i * dim + a] -= de * Volj * dW[a];
       }
     }
   }

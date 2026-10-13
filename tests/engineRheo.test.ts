@@ -121,4 +121,99 @@ run 2
       expect(Number.isFinite(rows[2].press as number)).toBe(true);
     }
   });
+
+  it('atom_style rheo/thermal: set sph/e writes the energy column of write_data (read_data.html: "atom-ID atom-type status rho energy x y z")', async () => {
+    const { files } = await run(`
+units lj
+dimension 2
+atom_style rheo/thermal
+boundary p p p
+region box block 0 4 0 4 -0.01 0.01
+create_box 1 box
+create_atoms 1 single 1.0 1.0 0
+create_atoms 1 single 2.0 1.0 0
+set atom 1 sph/e 2.5
+set atom 2 rheo/status 1
+write_data t.data
+`);
+    const lines = (files.get('t.data') ?? '').split('\n');
+    const k = lines.indexOf('Atoms # atomic') >= 0 ? lines.indexOf('Atoms # atomic') : lines.findIndex((l) => l.startsWith('Atoms'));
+    // the Atoms section lines come first; the Velocities section repeats the IDs
+    const rows = lines.slice(k + 2).filter((l) => /^\d/.test(l)).slice(0, 2).map((l) => l.trim().split(/\s+/));
+    expect(rows.length).toBe(2);
+    // id type status rho energy x y z image...
+    expect(Number(rows[0][4])).toBeCloseTo(2.5, 12);
+    expect(Number(rows[1][2])).toBe(1);
+    expect(Number(rows[1][4])).toBe(0);
+  });
+
+  it('refuses the RHEO thermal parts that the browser engine lacks, and fix rheo/thermal without its fix rheo, by name', async () => {
+    await expect(run(`
+units lj
+dimension 2
+atom_style hybrid rheo/thermal bond
+region box block 0 4 0 4 -0.01 0.01
+create_box 1 box bond/types 1 extra/bond/per/atom 4
+create_atoms 1 single 1.0 1.0 0
+bond_style hybrid bpm/spring rheo/shell t/form 100
+`)).rejects.toThrow(/rheo\/shell/);
+    await expect(run(`
+units lj
+dimension 2
+atom_style rheo/thermal
+region box block 0 4 0 4 -0.01 0.01
+create_box 1 box
+create_atoms 1 single 1.0 1.0 0
+mass * 1.0
+pair_style rheo 3.0
+pair_coeff * *
+fix 4 all rheo/thermal conductivity * constant 0.1 specific/heat * constant 1.0
+run 1
+`)).rejects.toThrow(/Need to define fix rheo/);
+  });
+
+  it('atom_style rheo/thermal: the energy, temperature and conductivity survive write_restart / read_restart', async () => {
+    const { files } = await run(`
+units lj
+dimension 2
+atom_style rheo/thermal
+boundary p p p
+comm_modify vel yes
+region box block 0 4 0 4 -0.01 0.01
+create_box 1 box
+create_atoms 1 single 1.0 1.0 0
+create_atoms 1 single 2.0 1.0 0
+set atom 1 sph/e 2.5
+set atom 2 sph/e 0.75
+set atom 2 rheo/status 1
+mass * 1.0
+pair_style rheo 3.0
+pair_coeff * *
+fix 1 all rheo 3.0 quintic 0 thermal
+fix 2 all rheo/viscosity * constant 0.05
+fix 3 all rheo/pressure * linear
+fix 4 all rheo/thermal conductivity * constant 0.1 specific/heat * constant 1.0
+run 0
+write_data before.data
+write_restart rt.restart
+clear
+read_restart rt.restart
+mass * 1.0
+pair_style rheo 3.0
+pair_coeff * *
+fix 1 all rheo 3.0 quintic 0 thermal
+fix 2 all rheo/viscosity * constant 0.05
+fix 3 all rheo/pressure * linear
+fix 4 all rheo/thermal conductivity * constant 0.1 specific/heat * constant 1.0
+run 0
+write_data after.data
+`);
+    const atoms = (t: string | undefined) => {
+      const lines = (t ?? '').split('\n');
+      const k = lines.findIndex((l) => l.startsWith('Atoms'));
+      return lines.slice(k + 2, k + 4);
+    };
+    expect(atoms(files.get('after.data'))).toEqual(atoms(files.get('before.data')));
+    expect(Number(atoms(files.get('after.data'))[0].trim().split(/\s+/)[4])).toBeCloseTo(2.5, 12);
+  });
 });

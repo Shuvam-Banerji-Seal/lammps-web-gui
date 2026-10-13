@@ -8,14 +8,16 @@
  * with the attributes "viscosity, pressure, rho" (the browser engine also accepts status and rheo_status for the phase
  * status) and "surface, surface/n/a" (surface: "atom surface status"; surface/n/a: "a-component of surface normal
  * vector"). The surface values are 1 for a surface atom, 2 for a splash atom and 0 otherwise, on the group atoms.
- * Other attributes (phase, surface/r, surface/divr, coordination, energy, temperature, cv and the tensors) are not
- * supported by the browser engine yet and are refused by name.
+ * phase (status & PHASECHECK) and coordination are supported; the thermal attributes (temperature, heatflow,
+ * conductivity, energy on atom_style rheo/thermal, cv with fix rheo/thermal) read the RHEO thermal props.
+ * Other attributes (chi, surface/r, surface/divr, nbond/shell, shift/v, grad/v, stress/v, stress/t) are not supported
+ * by the browser engine yet and are refused by name.
  */
-import { rheoModelOf } from './model';
+import { PHASECHECK, rheoModelOf } from './model';
 import { Compute } from '../../engine/compute/compute';
 import type { System } from '../../engine/system';
 import { StyleError } from '../../engine/force/types';
-import { RHEO_PRESSURE, RHEO_RHO, RHEO_STATUS, RHEO_VISC, isRheoStyle } from '../../engine/atoms';
+import { RHEO_COND, RHEO_ESPH, RHEO_HEATFLOW, RHEO_PRESSURE, RHEO_RHO, RHEO_STATUS, RHEO_TEMP, RHEO_VISC, isRheoStyle, isRheoThermalStyle } from '../../engine/atoms';
 import { STATUS_SPLASH, STATUS_SURFACE } from './compute_rheo_surface';
 
 /** Keyword -> per-atom internal property (status is the short name of rheo_status). */
@@ -23,25 +25,32 @@ const KEYWORDS = new Map<string, string>([
   ['rho', RHEO_RHO], ['viscosity', RHEO_VISC], ['rheo_status', RHEO_STATUS], ['status', RHEO_STATUS],
   ['pressure', RHEO_PRESSURE],
 ]);
+/** The thermal keywords (atom_style rheo/thermal): their internal property, and the energy keyword (esph of native). */
+const THERMAL_KEYWORDS = new Map<string, string>([
+  ['temperature', RHEO_TEMP], ['heatflow', RHEO_HEATFLOW], ['conductivity', RHEO_COND], ['energy', RHEO_ESPH],
+]);
 
 /** The normal component of the surface attribute ("surface/n/a", a = x, y, z). */
 const NORMAL = new Map<string, number>([['surface/n/x', 0], ['surface/n/y', 1], ['surface/n/z', 2]]);
 
 export class ComputeRHEOPropertyAtom extends Compute {
   readonly style: string = 'rheo/property/atom';
-  /** Per attribute: an internal property name, 'surface' or a surface normal component index. */
-  private readonly names: (string | 'surface' | number)[];
+  /** Per attribute: an internal property name, 'surface', 'phase', 'coordination', 'cv' or a surface normal component index. */
+  private readonly names: (string | 'surface' | 'cv' | 'phase' | 'coordination' | number)[];
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (!isRheoStyle(sys.atomStyle)) throw new StyleError('compute rheo/property/atom requires atom_style rheo');
     if (args.length < 1) throw new StyleError('Illegal compute rheo/property/atom command');
     for (const a of args) {
-      if (!KEYWORDS.has(a) && a !== 'surface' && !NORMAL.has(a)) {
-        throw new StyleError(`Invalid keyword ${a} for atom style rheo in compute rheo/property/atom command (the browser engine supports ${[...KEYWORDS.keys(), 'surface', 'surface/n/x', 'surface/n/y', 'surface/n/z'].join(', ')})`);
+      const thermalOk = THERMAL_KEYWORDS.has(a) && isRheoThermalStyle(sys.atomStyle);
+      if (!KEYWORDS.has(a) && a !== 'surface' && !NORMAL.has(a) && !thermalOk && a !== 'cv' && a !== 'phase' && a !== 'coordination') {
+        throw new StyleError(`Invalid keyword ${a} for atom style ${sys.atomStyle} in compute rheo/property/atom command (the browser engine supports ${[...KEYWORDS.keys(), ...(isRheoThermalStyle(sys.atomStyle) ? [...THERMAL_KEYWORDS.keys(), 'cv'] : []), 'surface', 'surface/n/x', 'surface/n/y', 'surface/n/z'].join(', ')})`);
       }
     }
-    this.names = args.map((a) => (a === 'surface' ? 'surface' : NORMAL.has(a) ? NORMAL.get(a)! : KEYWORDS.get(a)!));
+    // compute_rheo_property_atom.cpp: the thermal attributes need fix rheo/thermal (checked at init in native; the cv
+    // keyword is the specific heat of the type, read from the thermal fix when the values are computed)
+    this.names = args.map((a) => (a === 'surface' || a === 'phase' || a === 'coordination' || a === 'cv' ? a : NORMAL.has(a) ? NORMAL.get(a)! : KEYWORDS.get(a) ?? THERMAL_KEYWORDS.get(a)!));
     this.peratomFlag = true;
     this.sizePeratomCols = args.length > 1 ? args.length : 0;
   }
@@ -52,6 +61,7 @@ export class ComputeRHEOPropertyAtom extends Compute {
     const n = s.n;
     const out = new Float64Array(m > 1 ? m * n : n);
     const model = rheoModelOf(s);
+    if (this.names.includes('cv') && !(model && model.thermal)) throw new StyleError('Cannot request thermal property without fix rheo/thermal');
     if (this.names.some((k) => typeof k === 'number' || k === 'surface')) {
       // fix rheo surface/detection must be defined, as native (the surface values come from its status)
       if (!model || !model.surfaceFlag) throw new StyleError('Cannot request surface property without corresponding option in fix rheo');
@@ -64,6 +74,14 @@ export class ComputeRHEOPropertyAtom extends Compute {
           if (name === 'surface') {
             const st = s.custom.get(RHEO_STATUS)!.data[i];
             val = (st & STATUS_SURFACE) ? 1.0 : (st & STATUS_SPLASH) ? 2.0 : 0.0;
+          } else if (name === 'cv') {
+            val = model!.thermal!.calcCv(s.type[i]);
+          } else if (name === 'phase') {
+            // compute_rheo_property_atom.cpp pack_phase: "buf[n] = (status[i] & PHASECHECK)"
+            val = s.custom.get(RHEO_STATUS)!.data[i] & PHASECHECK;
+          } else if (name === 'coordination') {
+            // pack_coordination: the neighbor count of the kernel (fix rheo computes it with RK1 or surface detection)
+            val = model!.coord[i];
           } else if (typeof name === 'number') {
             val = model!.nsurface[i * model!.dim + name];
           } else {

@@ -153,3 +153,113 @@ export const labelmapText = (map: LabelMap): string => {
   }
   return out;
 };
+
+/**
+ * Type inference from labels (Howto_type_labels.html and the Symmetry convention of the bonded styles).
+ * The bond, angle, dihedral and improper type labels are "a-b", "a-b-c", "a-b-c-d" lists of atom type labels.
+ * A bonded type is found from the labels of the constituent atom types; the result is the numeric type, or
+ * its negative when the labels match only in reverse order (as native LAMMPS does: "returns negative of
+ * numeric type if constituent atoms types in reverse order"). 0 means no type matches.
+ *
+ * Howto_type_labels.html (and the molecule.html auto keyword): "Type labels for bonds, angles, and dihedrals
+ * are assumed to be equivalent to those written in reverse order." Improper labels follow the symmetry of the
+ * improper style: "For the *class2* improper style, the second atom in the quadruplet is the atom of symmetry;
+ * all other atoms are considered interchangeable." (improper_class2.html, Symmetry convention).
+ */
+
+/** The atom type labels of a bonded type label, or null when it has another number of parts. */
+const splitTypeLabel = (label: string | undefined, n: number): string[] | null => {
+  if (!label) return null;
+  const parts = label.split('-').filter((p) => p.length > 0);
+  return parts.length === n ? parts : null;
+};
+
+/** Numeric atom type's label, or '' when the type has none. */
+const atomLabel = (map: LabelMap, t: number): string => map.labelOf('atom', t) ?? '';
+
+/** The signed bond type of two atom types (labels "a-b"; reverse order gives the negative). */
+export const inferBondType = (map: LabelMap, t1: number, t2: number): number => {
+  const a = atomLabel(map, t1), b = atomLabel(map, t2);
+  if (!a || !b) return 0;
+  let out = 0;
+  for (const [ty, label] of map.entries('bond')) {
+    const bt = splitTypeLabel(label, 2);
+    if (!bt) continue;
+    if (a === bt[0] && b === bt[1]) return ty;
+    if (a === bt[1] && b === bt[0]) out = -ty;
+  }
+  return out;
+};
+
+/** The signed angle type of three atom types (labels "a-b-c"; the centre b must match, ends in either order). */
+export const inferAngleType = (map: LabelMap, t1: number, t2: number, t3: number): number => {
+  const a = atomLabel(map, t1), b = atomLabel(map, t2), c = atomLabel(map, t3);
+  if (!a || !b || !c) return 0;
+  let out = 0;
+  for (const [ty, label] of map.entries('angle')) {
+    const at = splitTypeLabel(label, 3);
+    if (!at || b !== at[1]) continue;
+    if (a === at[0] && c === at[2]) return ty;
+    if (a === at[2] && c === at[0]) out = -ty;
+  }
+  return out;
+};
+
+/** The signed dihedral type of four atom types (labels "a-b-c-d"; the whole chain may be reversed). */
+export const inferDihedralType = (map: LabelMap, t1: number, t2: number, t3: number, t4: number): number => {
+  const m = [atomLabel(map, t1), atomLabel(map, t2), atomLabel(map, t3), atomLabel(map, t4)];
+  if (m.some((x) => !x)) return 0;
+  let out = 0;
+  for (const [ty, label] of map.entries('dihedral')) {
+    const dt = splitTypeLabel(label, 4);
+    if (!dt) continue;
+    if (m[0] === dt[0] && m[1] === dt[1] && m[2] === dt[2] && m[3] === dt[3]) return ty;
+    if (m[3] === dt[0] && m[2] === dt[1] && m[1] === dt[2] && m[0] === dt[3]) out = -ty;
+  }
+  return out;
+};
+
+/**
+ * The signed improper type of four atom types and the atom order that maps the improper's labels onto the
+ * atoms (iorder[j] = index of the atom that plays label j). `symmatoms[j] === 1` marks the atom of symmetry,
+ * which must match its label exactly; the others may be permuted. Native: improper labels are matched with
+ * the symmetry of the improper style (infer_impropertype); iorder is returned as native sets it.
+ */
+export const inferImproperType = (
+  map: LabelMap, t: [number, number, number, number], symmatoms: readonly number[],
+): { type: number; iorder: [number, number, number, number] } => {
+  const m = t.map((x) => atomLabel(map, x));
+  let iorder: [number, number, number, number] = [0, 1, 2, 3];
+  if (m.some((x) => !x)) return { type: 0, iorder };
+  let out = 0;
+  for (const [ty, label] of map.entries('improper')) {
+    const it = splitTypeLabel(label, 4);
+    if (!it) continue;
+    if (m[0] === it[0] && m[1] === it[1] && m[2] === it[2] && m[3] === it[3]) return { type: ty, iorder };
+    const avail: string[] = [...m];
+    let navail = 4;
+    let ok = true;
+    for (let j = 0; j < 4; j++) {
+      if (symmatoms[j] === 1) {
+        if (m[j] !== it[j]) { ok = false; break; }
+        avail[j] = '';
+        navail--;
+      }
+    }
+    if (!ok) continue;
+    iorder = [0, 1, 2, 3];
+    for (let j = 0; j < 4; j++) {
+      if (symmatoms[j] === 1) continue;
+      for (let k = 0; k < 4; k++) {
+        if (it[j] === avail[k]) {
+          avail[k] = '';
+          navail--;
+          iorder[j] = k;
+          break;
+        }
+      }
+    }
+    if (navail === 0) out = -ty;
+  }
+  return { type: out, iorder };
+};

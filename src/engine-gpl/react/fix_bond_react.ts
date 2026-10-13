@@ -2,15 +2,18 @@
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28): src/REACTION/fix_bond_react.cpp and
  * src/REACTION/fix_bond_react.h (fix bond/react, Jacob Gissinger, Stevens Institute of Technology; the
  * superimpose algorithm, the map file sections, the topology update and the stabilization groups), and
- * src/reset_atoms_mol.cpp (the reset_mol_ids option). LAMMPS is Copyright Sandia Corporation and distributed
+ * src/reset_atoms_mol.cpp (the reset_mol_ids option), src/REACTION/superpose3d.h (Superpose3D, used for the
+ * created atoms' fit) and src/math_eigen_impl.h (the Jacobi eigen-solver that Superpose3D calls). LAMMPS is Copyright Sandia Corporation and distributed
  * under the GNU General Public License, version 2 (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
  * Scope of this port (everything else is a StyleError naming the keyword): react blocks with map files that
- * have InitiatorIDs, EdgeIDs, Equivalences and DeleteIDs sections; keywords stabilization, stabilize_steps,
- * prob, rescale_charges, molecule (off/inter/intra), max_rxn and rate_limit with one reaction, reset_mol_ids
- * yes/no, shuffle_seed (used only with multi-reaction limits). Refused by name: constraints, wildcards,
- * CreateIDs / modify_create, ChiralIDs, custom_charges, v_ variables, JSON templates, file, vizsteps and
- * reset_mol_ids molmap.
+ * have InitiatorIDs, EdgeIDs, Equivalences, DeleteIDs, CreateIDs and Wildcards sections; keywords stabilization,
+ * stabilize_steps, prob, rescale_charges, molecule (off/inter/intra), modify_create (fit with a fragment or all,
+ * overlap), max_rxn and rate_limit with one reaction, reset_mol_ids yes/no, shuffle_seed (used only with
+ * multi-reaction limits). Wildcard atoms take their bonded types from the type labels (inferBondType and the
+ * other labelmap inferences in src/engine/labelmap.ts). The site fit of created atoms is superpose() (a port of
+ * Superpose3D with the Jacobi eigen-solver). Refused by name: constraints, ChiralIDs, custom_charges, v_ variables,
+ * file, vizsteps, reset_mol_ids molmap, and created atoms with a per-atom mass style.
  *
  * Engine representation: topology lists are global (by atom ID) instead of per-atom storage, so the
  * bond, angle, dihedral and improper updates are written as set operations (remove the entries that touch a
@@ -23,12 +26,13 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import type { MoleculeTemplate } from '../../engine/molecule';
 import { specialFromBonds } from '../../engine/molecule';
-import { buildSpecial, nativeOrder } from '../../engine/atoms';
+import { appendAtoms, buildSpecial, massOf, nativeOrder } from '../../engine/atoms';
 import { bitOfIndex } from '../../engine/group';
 import { FixNVELimit } from '../../engine/fix/motion';
 import type { CustomProp, TopoList } from '../../engine/types';
 import type { FixFactory } from '../../engine/styles';
 import { RanMars } from '../random_mars';
+import { inferAngleType, inferBondType, inferDihedralType, inferImproperType } from '../../engine/labelmap';
 
 const BIG = 1.0e20;
 const MAXGUESS = 20;
@@ -85,7 +89,16 @@ interface Rxn {
   localCount: number;
   nlocalkeep: number;
   reactionCountTotal: number;
+  /** CreateIDs in the map file: the reaction creates atoms (native create_atoms_flag). */
+  createFlag: boolean;
+  /** modify_create overlap R, squared (native overlapsq; 0 = no overlap check). */
+  overlapsq: number;
+  /** modify_create fit fragment: index in the post-reaction template, or -1 for all atoms (native modify_create_fragid). */
+  fitFragment: number;
 }
+
+/** A created atom waiting for the insertion (native addatoms entry). */
+interface PendingAtom { x: number[]; type: number; tag: number; image: number[]; v: number[]; mask: number }
 
 /** One reaction instance (native mega_glove column): reaction ID, total charge of the reactant atoms, and the tags. */
 interface Mega {
@@ -162,10 +175,11 @@ const readMap = (rxn: Rxn, text: string, name: string): void => {
     rd.advance();
   }
   if (nchiral > 0) throw new StyleError(`fix bond/react: ChiralIDs in map file ${name} is not supported by the browser engine`);
-  if (nwild > 0) throw new StyleError(`fix bond/react: Wildcards in map file ${name} need labelmap wildcard inference, which the browser engine does not support`);
+  if (nwild < 0 || nwild > rxn.reactant.n) throw new StyleError('Fix bond/react: Invalid number of wildcards in map file');
   if (nconstr > 0) throw new StyleError(`fix bond/react: Constraints in map file ${name} are not supported by the browser engine`);
-  if (ncreate > 0) throw new StyleError(`fix bond/react: CreateIDs in map file ${name} (created atoms, modify_create) are not supported by the browser engine`);
+  if (ncreate < 0 || ncreate > rxn.product.n) throw new StyleError('Fix bond/react: Invalid number of createIDs in map file');
   if (ncreate === 0 && rxn.reactant.n !== rxn.product.n) throw new StyleError('Fix bond/react: Reaction templates must contain the same number of atoms');
+  if (ncreate > 0 && rxn.reactant.n + ncreate !== rxn.product.n) throw new StyleError('Fix bond/react: Incorrect number of created atoms');
   if (nequiv !== rxn.reactant.n) throw new StyleError('Fix bond/react: Number of equivalences in map file must equal number of atoms in reaction templates');
   if (nedge < 0 || nedge > rxn.reactant.n) throw new StyleError('Fix bond/react: Invalid number of edgeIDs in map file');
   if (ndelete < 0 || ndelete > rxn.reactant.n) throw new StyleError('Fix bond/react: Invalid number of deleteIDs in map file');
@@ -218,6 +232,21 @@ const readMap = (rxn: Rxn, text: string, name: string): void => {
             throw new StyleError('Fix bond/react: Repeated atoms IDs in Equivalences section');
           }
         }
+      }
+    } else if (kw === 'CreateIDs') {
+      // CreateAtoms: the post-reaction IDs of the atoms to create (a created atom is not in the pre-reaction template)
+      rxn.createFlag = true;
+      for (let i = 0; i < ncreate; i++) {
+        const v = rd.int('CreateIDs section is incorrectly formatted');
+        if (v < 1 || v > rxn.product.n) throw new StyleError('Fix bond/react: Invalid atom ID in CreateIDs section of map file');
+        rxn.atoms[v - 1].created = 1;
+      }
+    } else if (kw === 'Wildcards') {
+      // ReadWildcards: a wildcard reactant atom matches any type, and bonded entries that name it take their type from labels
+      for (let i = 0; i < nwild; i++) {
+        const v = rd.int('Wildcards section is incorrectly formatted');
+        if (v < 1 || v > rxn.reactant.n) throw new StyleError('Bond/react: Invalid template atom ID in map file');
+        rxn.atoms[v - 1].wildcard = true;
       }
     } else if (kw === 'DeleteIDs') {
       for (let i = 0; i < ndelete; i++) {
@@ -280,6 +309,151 @@ const findLandlocked = (rxn: Rxn): void => {
   for (let i = 0; i < P.n; i++) {
     if (rxn.atoms[i].created === 1 && rxn.atoms[i].landlocked === 0) throw new StyleError('Fix bond/react: Created atom too close to template edge');
   }
+};
+
+/** Minimum-image displacement along one dimension (domain->minimum_image); periodic dimensions only. */
+const minImage = (dx: number, L: number, periodic: boolean): number => (periodic ? dx - L * Math.round(dx / L) : dx);
+
+/**
+ * Jacobi::Diagonalize for a symmetric 4x4 matrix (src/math_eigen_impl.h at b332f28, the cyclic Jacobi with the
+ * max-entry-per-row bookkeeping, sorted by decreasing eigenvalue). The eigenvectors are the rows of the result.
+ * Degenerate eigenvalues (two atoms in the fit) make the chosen eigenvector depend on these steps, so they are kept.
+ */
+const jacobiDiagonalize4 = (mat: number[][]): { eval: number[]; evec: number[][] } => {
+  const n = 4;
+  const M: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
+  const evec: number[][] = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j): number => (i === j ? 1 : 0)));
+  for (let i = 0; i < n; i++) for (let j = i; j < n; j++) M[i][j] = mat[i][j];
+  const maxIdx = new Array<number>(n).fill(0);
+  const maxEntryRow = (i: number): number => {
+    let jmax = i + 1;
+    for (let j = i + 2; j < n; j++) if (Math.abs(M[i][j]) > Math.abs(M[i][jmax])) jmax = j;
+    return jmax;
+  };
+  for (let i = 0; i < n - 1; i++) maxIdx[i] = maxEntryRow(i);
+  const maxIters = 50 * n * (n - 1) / 2;
+  for (let iter = 0; iter < maxIters; iter++) {
+    // MaxEntry: the largest entry among the row maxima
+    let i = 0, j = maxIdx[0];
+    let maxEntry = Math.abs(M[i][j]);
+    for (let k = 1; k < n - 1; k++) {
+      const jk = maxIdx[k];
+      if (Math.abs(M[k][jk]) > maxEntry) { maxEntry = Math.abs(M[k][jk]); i = k; j = jk; }
+    }
+    if (M[i][i] + M[i][j] === M[i][i] && M[j][j] + M[i][j] === M[j][j]) {
+      M[i][j] = 0.0;
+      maxIdx[i] = maxEntryRow(i);
+    }
+    if (M[i][j] === 0.0) break;
+    // CalcRot
+    let t = 1.0;
+    const mjjii = M[j][j] - M[i][i];
+    if (mjjii !== 0.0) {
+      let kappa = mjjii;
+      t = 0.0;
+      const mij = M[i][j];
+      if (mij !== 0.0) {
+        kappa /= 2.0 * mij;
+        t = 1.0 / (Math.sqrt(1 + kappa * kappa) + Math.abs(kappa));
+        if (kappa < 0.0) t = -t;
+      }
+    }
+    const c = 1.0 / Math.sqrt(1 + t * t);
+    const s = c * t;
+    // ApplyRot
+    M[i][i] -= t * M[i][j];
+    M[j][j] += t * M[i][j];
+    M[i][j] = 0.0;
+    for (let w = 0; w < i; w++) {
+      M[i][w] = M[w][i];
+      M[w][i] = c * M[w][i] - s * M[w][j];
+      if (i === maxIdx[w]) maxIdx[w] = maxEntryRow2(M, w, n);
+      else if (Math.abs(M[w][i]) > Math.abs(M[w][maxIdx[w]])) maxIdx[w] = i;
+    }
+    for (let w = i + 1; w < j; w++) {
+      M[w][i] = M[i][w];
+      M[i][w] = c * M[i][w] - s * M[w][j];
+    }
+    for (let w = j + 1; w < n; w++) {
+      M[w][i] = M[i][w];
+      M[i][w] = c * M[i][w] - s * M[j][w];
+    }
+    maxIdx[i] = maxEntryRow(i);
+    for (let w = 0; w < i; w++) {
+      M[w][j] = s * M[i][w] + c * M[w][j];
+      if (j === maxIdx[w]) maxIdx[w] = maxEntryRow2(M, w, n);
+      else if (Math.abs(M[w][j]) > Math.abs(M[w][maxIdx[w]])) maxIdx[w] = j;
+    }
+    for (let w = i + 1; w < j; w++) {
+      M[w][j] = s * M[w][i] + c * M[w][j];
+      if (j === maxIdx[w]) maxIdx[w] = maxEntryRow2(M, w, n);
+      else if (Math.abs(M[w][j]) > Math.abs(M[w][maxIdx[w]])) maxIdx[w] = j;
+    }
+    for (let w = j + 1; w < n; w++) M[j][w] = s * M[w][i] + c * M[j][w];
+    maxIdx[j] = maxEntryRow(j);
+    // ApplyRotLeft
+    for (let v = 0; v < n; v++) {
+      const eiv = evec[i][v];
+      evec[i][v] = c * evec[i][v] - s * evec[j][v];
+      evec[j][v] = s * eiv + c * evec[j][v];
+    }
+  }
+  const eval_ = Array.from({ length: n }, (_, k) => M[k][k]);
+  // SortRows (decreasing eigenvalues, selection sort swapping the rows of evec)
+  for (let a = 0; a < n - 1; a++) {
+    let imax = a;
+    for (let b = a + 1; b < n; b++) if (eval_[b] > eval_[imax]) imax = b;
+    [eval_[a], eval_[imax]] = [eval_[imax], eval_[a]];
+    [evec[a], evec[imax]] = [evec[imax], evec[a]];
+  }
+  return { eval: eval_, evec };
+};
+
+/** MaxEntryRow on a 4x4 working matrix (row w: the column of the largest entry right of the diagonal). */
+const maxEntryRow2 = (M: number[][], w: number, n: number): number => {
+  let jmax = w + 1;
+  for (let j = w + 2; j < n; j++) if (Math.abs(M[w][j]) > Math.abs(M[w][jmax])) jmax = j;
+  return jmax;
+};
+
+/**
+ * Least-squares rigid superposition with unit weights: the rotation R and translation T that map the mobile points
+ * onto the frozen ones (frozen_i ~ R mobile_i + T). A port of Superpose3D::Superpose (src/REACTION/superpose3d.h at
+ * b332f28; Jewett's quaternion form of Theobald's method, with the eigen-solver of jacobiDiagonalize4) without
+ * rescaling. fix bond/react uses it to fit the post-reaction template onto the reaction site.
+ */
+export const superpose = (frozen: number[][], mobile: number[][]): { R: number[][]; T: number[] } => {
+  const n = frozen.length;
+  const cf = [0, 0, 0], cm = [0, 0, 0];
+  for (let i = 0; i < n; i++) for (let d = 0; d < 3; d++) { cf[d] += frozen[i][d]; cm[d] += mobile[i][d]; }
+  for (let d = 0; d < 3; d++) { cf[d] /= n; cm[d] /= n; }
+  const sf = frozen.map((r) => [0, 1, 2].map((d) => r[d] - cf[d]));
+  const sm = mobile.map((r) => [0, 1, 2].map((d) => r[d] - cm[d]));
+  // M (equation 16): M[i][j] = sum_n sm[n][i] * sf[n][j]
+  const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (let k = 0; k < n; k++) for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) M[i][j] += sm[k][i] * sf[k][j];
+  const traceM = M[0][0] + M[1][1] + M[2][2];
+  const Q = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { Q[i][j] = M[i][j] + M[j][i]; if (i === j) Q[i][j] -= 2.0 * traceM; }
+  const V = [M[1][2] - M[2][1], M[2][0] - M[0][2], M[0][1] - M[1][0]];
+  // P (equation 22)
+  const P: number[][] = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) P[i][j] = Q[i][j];
+  P[0][3] = V[0]; P[3][0] = V[0];
+  P[1][3] = V[1]; P[3][1] = V[1];
+  P[2][3] = V[2]; P[3][2] = V[2];
+  P[3][3] = 0.0;
+  // principal eigenvector (the eigenvalues come sorted in decreasing order); a single point is not rotated
+  const p = n < 2 ? [0, 0, 0, 1] : jacobiDiagonalize4(P).evec[0].slice();
+  const pnorm = Math.sqrt(p.reduce((a, x) => a + x * x, 0));
+  for (let i = 0; i < 4; i++) p[i] /= pnorm;
+  const R = [
+    [(p[0] * p[0]) - (p[1] * p[1]) - (p[2] * p[2]) + (p[3] * p[3]), 2 * (p[0] * p[1] - p[2] * p[3]), 2 * (p[0] * p[2] + p[1] * p[3])],
+    [2 * (p[0] * p[1] + p[2] * p[3]), -(p[0] * p[0]) + (p[1] * p[1]) - (p[2] * p[2]) + (p[3] * p[3]), 2 * (p[1] * p[2] - p[0] * p[3])],
+    [2 * (p[0] * p[2] - p[1] * p[3]), 2 * (p[1] * p[2] + p[0] * p[3]), -(p[0] * p[0]) - (p[1] * p[1]) + (p[2] * p[2]) + (p[3] * p[3])],
+  ];
+  const T = [0, 1, 2].map((i) => cf[i] - (R[i][0] * cm[0] + R[i][1] * cm[1] + R[i][2] * cm[2]));
+  return { R, T };
 };
 
 /** Counts of the multiset `b` contained in the multiset `a` (std::includes on sorted ranges). */
@@ -640,6 +814,7 @@ const buildReaction = (sys: System, id: number, r: ReactArgs, stabilization: boo
     closeneigh: -1, fraction: 1.0, seed: 12345, random: new RanMars(12345), limitDuration: 60,
     rescaleFlag: false, rescaleCount: 0, molTotalCharge: 0, moleculeKeyword: 'off', atoms: [], attempts: [],
     localCount: 0, nlocalkeep: Number.MAX_SAFE_INTEGER, reactionCountTotal: 0,
+    createFlag: false, overlapsq: 0, fitFragment: -1,
   };
   const o = r.opts;
   for (let k = 0; k < o.length;) {
@@ -675,7 +850,27 @@ const buildReaction = (sys: System, id: number, r: ReactArgs, stabilization: boo
       if (o[k + 1] !== 'no') throw new StyleError('fix bond/react custom_charges (fragments) is not supported by the browser engine');
       k += 2;
     } else if (key === 'modify_create') {
-      throw new StyleError('fix bond/react modify_create is not supported by the browser engine');
+      // modify_create (fix_bond_react.cpp): sub-keywords fit (all or a fragment name) and overlap R, until another keyword
+      let j = k + 1;
+      while (j < o.length && (o[j] === 'fit' || o[j] === 'overlap')) {
+        if (o[j] === 'fit') {
+          const frag = o[j + 1];
+          if (frag === undefined) throw new StyleError("Illegal fix bond/react command: 'modify_create' has too few arguments");
+          if (frag === 'all') rxn.fitFragment = -1;
+          else {
+            const idx = product.t.fragments.findIndex((x) => x.name === frag);
+            if (idx < 0) throw new StyleError("Fix bond/react: Molecule fragment for 'modify_create' keyword does not exist");
+            rxn.fitFragment = idx;
+          }
+          j += 2;
+        } else {
+          const r = Number(o[j + 1]);
+          if (!Number.isFinite(r)) throw new StyleError("Illegal fix bond/react command: 'modify_create' overlap is not a number");
+          rxn.overlapsq = r * r;
+          j += 2;
+        }
+      }
+      k = j;
     } else {
       throw new StyleError(`Illegal fix bond/react command: unknown keyword '${key}' in reaction ${r.name}`);
     }
@@ -1130,6 +1325,97 @@ export class FixBondReact extends Fix {
     return q;
   }
 
+  /**
+   * insert_atoms_setup (fix_bond_react.cpp): the post-reaction template is fitted onto the reaction site (a
+   * least-squares rotation and translation over the atoms that are neither created nor deleted; the modify_create
+   * fit fragment limits them). Created atoms are placed at the fitted coordinates unless one of them lies within
+   * the overlap distance of an atom of the system or of an atom accepted earlier in this step. Accepted atoms are
+   * queued in `pending`, their tags are appended to the instance's glove and the template maps are set.
+   * Velocities: a random direction (three uniform draws of the reaction's stream) with the site temperature.
+   */
+  private createAtoms(rxn: Rxn, m: Mega, pending: PendingAtom[], nextTag: () => number): boolean {
+    const s = this.sys.state, P = rxn.product, R = rxn.reactant;
+    if (s.rmass) throw new StyleError('fix bond/react: created atoms with a per-atom mass style are not supported by the browser engine');
+    const box = s.box;
+    const L = [box.hi[0] - box.lo[0], box.hi[1] - box.lo[1], box.hi[2] - box.lo[2]];
+    const units = this.sys.units;
+    const inFit = (j: number): boolean => rxn.fitFragment < 0 || P.t.fragments[rxn.fitFragment].atoms.includes(j + 1);
+    const fit: number[] = [];
+    for (let j = 0; j < P.n; j++) {
+      if (!inFit(j)) continue;
+      const ipre = rxn.atoms[j].amap[1] - 1;
+      if (!rxn.atoms[j].created && !rxn.atoms[ipre].deleted) fit.push(j);
+    }
+    if (fit.length === 0) throw new StyleError('Fix bond/react: no atoms of the post-reaction template to fit the created atoms to');
+    const local = (k: number): number => {
+      const i = this.map(m.glove[k]);
+      if (i < 0) throw new StyleError('Bond/react: Fix bond/react needs ghost atoms from further away');
+      return i;
+    };
+    // site temperature over the reactant atoms (get_temperature; the types are not updated yet)
+    let ke = 0;
+    for (let j = 0; j < R.n; j++) {
+      const i = local(j);
+      ke += (s.v[3 * i] * s.v[3 * i] + s.v[3 * i + 1] * s.v[3 * i + 1] + s.v[3 * i + 2] * s.v[3 * i + 2]) * massOf(s, i);
+    }
+    const dim = s.dimension;
+    const t = ke * (units.mvv2e / (dim * R.n * units.boltz));
+    // fit: reference atom first, the others at their closest images to it (closest_image)
+    const ref = local(rxn.atoms[fit[0]].amap[1] - 1);
+    const ifit = local(rxn.ibonding - 1);
+    const xfrozen = fit.map((j) => {
+      const i = local(rxn.atoms[j].amap[1] - 1);
+      return [0, 1, 2].map((d) => s.x[3 * ref + d] + minImage(s.x[3 * i + d] - s.x[3 * ref + d], L[d], box.periodic[d]));
+    });
+    const xmobile = fit.map((j) => [P.t.x[3 * j], P.t.x[3 * j + 1], P.t.x[3 * j + 2]]);
+    const { R: rot, T } = superpose(xfrozen, xmobile);
+    const created: number[] = [];
+    for (let j = 0; j < P.n; j++) if (rxn.atoms[j].created === 1) created.push(j);
+    const coords = created.map((j) => [0, 1, 2].map((a) => rot[a][0] * P.t.x[3 * j] + rot[a][1] * P.t.x[3 * j + 1] + rot[a][2] * P.t.x[3 * j + 2] + T[a]));
+    // image flags: those of the reference atom, shifted by the remap into the box
+    const base = [s.image[3 * ifit], s.image[3 * ifit + 1], s.image[3 * ifit + 2]];
+    const images = coords.map((c) => {
+      const img = base.slice();
+      for (let d = 0; d < 3; d++) {
+        if (!box.periodic[d]) continue;
+        const shift = Math.floor((c[d] - box.lo[d]) / L[d]);
+        c[d] -= shift * L[d];
+        img[d] += shift;
+      }
+      return img;
+    });
+    if (rxn.overlapsq > 0) {
+      const near = (c: number[], o: number[]): boolean => {
+        let r = 0;
+        for (let d = 0; d < 3; d++) {
+          const dx = minImage(c[d] - o[d], L[d], box.periodic[d]);
+          r += dx * dx;
+        }
+        return r < rxn.overlapsq;
+      };
+      for (const c of coords) {
+        for (let i = 0; i < s.n; i++) if (near(c, [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]])) return false;
+        for (const p of pending) if (near(c, p.x)) return false;
+      }
+    }
+    for (let c = 0; c < created.length; c++) {
+      const j = created[c];
+      const tag = nextTag();
+      const preID = R.n + c + 1;
+      const vtnorm = Math.sqrt(t / (units.mvv2e / (dim * units.boltz)) / s.massByType[P.t.type[j]]);
+      const myv = [rxn.random.uniform(), rxn.random.uniform(), rxn.random.uniform()];
+      const vnorm = Math.sqrt(myv[0] * myv[0] + myv[1] * myv[1] + myv[2] * myv[2]);
+      pending.push({
+        x: coords[c], type: P.t.type[j], tag, image: images[c], mask: rxn.groupbit,
+        v: myv.map((x) => (x / vnorm) * vtnorm),
+      });
+      m.glove[preID - 1] = tag;
+      rxn.atoms[j].amap = [j + 1, preID];
+      rxn.atoms[preID - 1].ramap = [preID, j + 1];
+    }
+    return true;
+  }
+
   /** update_everything: types, charges, stabilization flags, topology, deletions. */
   private applyUpdate(megas: Mega[]): void {
     const s = this.sys.state;
@@ -1137,12 +1423,23 @@ export class FixBondReact extends Fix {
     // per reaction: instances applied (native noccur / nlocalkeep)
     const applied: Mega[] = [];
     const occur = this.rxns.map(() => 0);
+    // created atoms take the IDs after the largest ID of the system (native addatomtag), in the order they are accepted
+    let addTag = 0;
+    for (let i = 0; i < s.n; i++) addTag = Math.max(addTag, s.id[i]);
+    const pending: PendingAtom[] = [];
     for (const m of megas) {
       const rxn = this.rxns[m.rxn];
       if (occur[rxn.ID] >= rxn.nlocalkeep) continue;
+      // a reaction whose created atoms would overlap is skipped and does not count (native insert_atoms_setup)
+      if (rxn.createFlag && !this.createAtoms(rxn, m, pending, () => ++addTag)) continue;
       occur[rxn.ID]++;
       applied.push(m);
     }
+    // insert all created atoms at once (native update_everything), before the types, charges and topology update
+    for (const p of pending) {
+      appendAtoms(s, { x: Float64Array.from(p.x), type: Int32Array.of(p.type), id: Int32Array.of(p.tag), v: Float64Array.from(p.v), image: Int32Array.from(p.image), mask: p.mask });
+    }
+    if (pending.length) this.sys.atomsChanged();
     for (const rxn of this.rxns) rxn.reactionCountTotal += occur[rxn.ID];
     // types, charges and stabilization bookkeeping of the atoms of every instance
     for (const m of applied) {
@@ -1177,13 +1474,18 @@ export class FixBondReact extends Fix {
       const landed = (idx: number[]) => idx.some((j) => rxn.atoms[j - 1].landlocked === 1);
       const P = rxn.product.t;
       // template entries are 1-based product atom IDs; the landed test and the tags both use them
-      const adds = (entries: number[][]) => entries
+      const adds = (kind: 'bonds' | 'angles' | 'dihedrals' | 'impropers', entries: number[][]) => entries
         .filter((e) => landed(e.slice(1)))
-        .map((e) => ({ ty: e[0], at: e.slice(1).map((a) => tagOf(a - 1)) }));
-      this.rewriteTopo('bonds', (e) => touchOld(e), adds(P.bonds));
-      this.rewriteTopo('angles', (e) => touchOld(e), adds(P.angles));
-      this.rewriteTopo('dihedrals', (e) => touchOld(e), adds(P.dihedrals));
-      this.rewriteTopo('impropers', (e) => touchOld(e), adds(P.impropers));
+        .map((e) => {
+          const at = e.slice(1).map((a) => tagOf(a - 1));
+          // a wildcard atom (any type in the pre-reaction template) makes the type come from the labels
+          const wild = e.slice(1).some((a) => rxn.atoms[rxn.atoms[a - 1].amap[1] - 1].wildcard);
+          return wild ? this.inferWildcardEntry(kind, at) : { ty: e[0], at };
+        });
+      this.rewriteTopo('bonds', (e) => touchOld(e), adds('bonds', P.bonds));
+      this.rewriteTopo('angles', (e) => touchOld(e), adds('angles', P.angles));
+      this.rewriteTopo('dihedrals', (e) => touchOld(e), adds('dihedrals', P.dihedrals));
+      this.rewriteTopo('impropers', (e) => touchOld(e), adds('impropers', P.impropers));
     }
     // dead atoms may not keep any topology
     if (deadTags.size) {
@@ -1210,6 +1512,52 @@ export class FixBondReact extends Fix {
     // at run setup: hand it the new lists so this step's neighbour build excludes the right pairs
     const sp = this.sys.ff.special;
     this.sys.nb.setSpecial(buildSpecial(this.sys.state, { angle: sp.angle, dihedral: sp.dihedral }));
+  }
+
+  /**
+   * A post-reaction entry with wildcard atoms (fix_bond_react.cpp update_everything): the type is inferred from the
+   * labels of the current types of its atoms, and a reversed match reverses the atom order. Native messages:
+   * "Bond/react: Unable to infer bond type from wildcard atoms" and the same for angle, dihedral and improper.
+   */
+  private inferWildcardEntry(kind: 'bonds' | 'angles' | 'dihedrals' | 'impropers', at: number[]): { ty: number; at: number[] } {
+    const L = this.sys.labels;
+    const s = this.sys.state;
+    const types = at.map((t) => {
+      const i = this.map(t);
+      if (i < 0) throw new StyleError('Bond/react: Fix bond/react needs ghost atoms from further away');
+      return s.type[i];
+    });
+    const fail = (what: string) => new StyleError(`Bond/react: Unable to infer ${what} type from wildcard atoms`);
+    if (kind === 'bonds') {
+      const v = inferBondType(L, types[0], types[1]);
+      if (!v) throw fail('bond');
+      return { ty: Math.abs(v), at };
+    }
+    if (kind === 'angles') {
+      const v = inferAngleType(L, types[0], types[1], types[2]);
+      if (!v) throw fail('angle');
+      return { ty: Math.abs(v), at: v > 0 ? at : [at[2], at[1], at[0]] };
+    }
+    if (kind === 'dihedrals') {
+      const v = inferDihedralType(L, types[0], types[1], types[2], types[3]);
+      if (!v) throw fail('dihedral');
+      return { ty: Math.abs(v), at: v > 0 ? at : [at[3], at[2], at[1], at[0]] };
+    }
+    const r = inferImproperType(L, [types[0], types[1], types[2], types[3]], this.improperSymmetry());
+    if (!r.type) throw fail('improper');
+    return { ty: Math.abs(r.type), at: r.type > 0 ? at : r.iorder.map((k) => at[k]) };
+  }
+
+  /**
+   * The symmatoms of the improper style (improper_class2.html, Symmetry convention: "the second atom in the
+   * quadruplet is the atom of symmetry; all other atoms are considered interchangeable"). No improper style
+   * gives no symmetry, as in native (improper_style none).
+   */
+  private improperSymmetry(): number[] {
+    const name = this.sys.ff.improper?.name;
+    if (name === undefined) return [0, 0, 0, 0];
+    if (name === 'class2') return [0, 1, 0, 0];
+    throw new StyleError(`fix bond/react: wildcard impropers need the symmetry of improper style ${name}, which the browser engine does not provide`);
   }
 
   /**

@@ -1,5 +1,5 @@
 import { StyleError } from './force/types';
-import type { LabelKind, LabelMap } from './labelmap';
+import { LabelMap, inferAngleType, inferDihedralType, inferImproperType, type LabelKind } from './labelmap';
 
 /*
  * Molecule templates — docs.lammps.org/molecule.html: "Define a molecule
@@ -34,7 +34,7 @@ import type { LabelKind, LabelMap } from './labelmap';
  * individual diameters of each particle (Diameters ...)". Dipoles: "This
  * section is only allowed for atom styles that support particles with point
  * dipoles, e.g. atom_style dipole." (checked where the atoms are inserted,
- * see templateDipoles). Fragments and Body sections are rejected.
+ * see templateDipoles). Fragments ("name atom-IDs" lines, read for the fix bond/react modify_create fit) are read; Body sections are rejected.
  * Keywords: offset (all five type offsets), toff / boff / aoff / doff / ioff
  * (one each), and scale: "The scale factor is applied to each of these
  * properties in the molecule file, if they are defined: the individual
@@ -64,10 +64,24 @@ export interface MoleculeTemplate {
   mass: Float64Array | null;
   /** Per-atom point dipoles (Dipoles section: "ID mux muy muz", scaled), flat 3N, or null (default 0). */
   mu: Float64Array | null;
+  /**
+   * Fragments (molecule.html, Fragments section: "one line per fragment"; "a,b,c,d,... = IDs of atoms in fragment"):
+   * the name and the 1-based atom IDs of each fragment, in file order. Empty when the file has none.
+   */
+  fragments: { name: string; atoms: number[] }[];
 }
 
 export interface MoleculeOptions {
   toff: number; boff: number; aoff: number; doff: number; ioff: number; scale: number;
+  /** auto keyword: the letters 'a', 'd', 'i' (generate angles, dihedrals, impropers), or '' */
+  auto?: string;
+  /** the system's unit style, checked against a JSON file's "units" entry */
+  units?: string;
+  /**
+   * The symmetry of the system's improper style (symmatoms of the style, see inferImproperType), or null when
+   * the style does not provide one. Undefined means no improper style is defined.
+   */
+  improperSymmatoms?: readonly number[] | null;
 }
 
 const HEADER: Record<string, number> = { atoms: 1, bonds: 1, angles: 1, dihedrals: 1, impropers: 1, fragments: 1, body: 2, mass: 1, com: 3, inertia: 6 };
@@ -78,8 +92,7 @@ const strip = (line: string): string => {
   return (k < 0 ? line : line.slice(0, k)).trim();
 };
 
-export const parseMoleculeFile = (id: string, name: string, text: string, o: MoleculeOptions, labels?: LabelMap): MoleculeTemplate => {
-  if (/\.json$/i.test(name)) throw new StyleError(`molecule ${id}: JSON molecule files (${name}) are not supported by the browser engine; use the native format`);
+const parseMoleculeText = (id: string, name: string, text: string, o: MoleculeOptions, labels?: LabelMap): MoleculeTemplate => {
   const lines = text.split('\n');
   const head: Record<string, number[]> = {};
   let k = 1;
@@ -96,11 +109,12 @@ export const parseMoleculeFile = (id: string, name: string, text: string, o: Mol
   }
   const natoms = head.atoms?.[0];
   if (!natoms || natoms < 1 || !Number.isInteger(natoms)) throw new StyleError(`molecule ${id}: ${name} needs an "N atoms" header line`);
-  for (const h of ['fragments', 'body']) if (head[h] && head[h].some((v) => v !== 0)) throw new StyleError(`molecule ${id}: '${h}' molecules are not supported by the browser engine`);
+  if (head.body && head.body.some((v) => v !== 0)) throw new StyleError(`molecule ${id}: 'body' molecules are not supported by the browser engine`);
   const count = (h: string) => head[h]?.[0] ?? 0;
   const t: MoleculeTemplate = {
     id, natoms, x: new Float64Array(3 * natoms), type: new Int32Array(natoms), q: null, mol: null,
     bonds: [], angles: [], dihedrals: [], impropers: [], special: null, shake: null, diam: null, mass: null, mu: null,
+    fragments: [],
   };
   const seen = new Set<string>();
   let specialCounts: number[][] | null = null;
@@ -177,6 +191,12 @@ export const parseMoleculeFile = (id: string, name: string, text: string, o: Mol
         }
         break;
       }
+      case 'Fragments':
+        // molecule.html: "The fragment-ID is a name; the atom IDs are the atoms of the fragment"
+        for (const w of wordRows(count('fragments'), 1)) {
+          t.fragments.push({ name: w[0], atoms: w.slice(1).map((v) => atomIndex(Number(v), 'atom ID in fragment')) });
+        }
+        break;
       case 'Special Bond Counts':
         specialCounts = rows(natoms, 4).map((r) => [atomIndex(r[0], 'atom ID'), r[1], r[2], r[3]]);
         break;
@@ -230,6 +250,299 @@ export const parseMoleculeFile = (id: string, name: string, text: string, o: Mol
     if (count(h) !== list.length) throw new StyleError(`molecule ${id}: the header says ${count(h)} ${h} but no ${h[0].toUpperCase()}${h.slice(1)} section was read`);
   }
   if (t.special) checkSpecial(t);
+  return t;
+};
+
+/*
+ * JSON molecule files — docs.lammps.org/molecule.html, "Format of a JSON molecule file": "The format of a JSON
+ * format individual molecule file must follow the JSON format, ..."; "Unlike with the native molecule file
+ * format, there are no header or body sections, just a list of keywords with associated data."; "Data for
+ * keywords is either provided directly following the keyword or as a *data block*. A *data block* is a list
+ * that has to include two keywords, "format" and "data", where the former lists keywords of the properties
+ * that are stored in the columns of the "data" lists. The names and order of entries in the "format" list
+ * (and thus how the data is interpreted) are currently fixed."
+ *
+ * The keywords map onto the same template fields as the native sections (the table of molecule.html): coords,
+ * types, molecules, charges, diameters, masses, dipoles, bonds, angles, dihedrals, impropers, special (counts,
+ * bonds) and shake (flags, atoms, bonds). A type given as a number is offset like the native type words; a
+ * type given as a string is a type label (molecule.html: "Offsets are ignored on lines using type labels").
+ * Keywords that describe the template as a whole (title, schema, units, com, masstotal, inertia) do not change
+ * the template as the native text reader does not use them either.
+ */
+const JSON_IGNORED = new Set(['application', 'format', 'revision', 'title', 'schema', 'units', 'com', 'masstotal', 'inertia']);
+const JSON_SECTIONS = new Set(['coords', 'types', 'molecules', 'fragments', 'charges', 'diameters', 'masses', 'dipoles', 'bonds', 'angles', 'dihedrals', 'impropers', 'special', 'shake']);
+
+type JsonRow = unknown[];
+interface JsonBlock { format: string[]; data: JsonRow[] }
+
+/** The units a JSON file may name for a system: "real" and "metal" are interchangeable (molecule.html "units"). */
+const unitsCompatible = (json: string, system: string): boolean => {
+  if (json === 'real' || json === 'metal') return system === 'real' || system === 'metal';
+  return json === system;
+};
+
+export const parseMoleculeJson = (id: string, name: string, text: string, o: MoleculeOptions, labels?: LabelMap): MoleculeTemplate => {
+  let doc: unknown;
+  try {
+    doc = JSON.parse(text);
+  } catch (e) {
+    throw new StyleError(`molecule ${id}: Error parsing JSON file ${name}: ${(e as Error).message}`);
+  }
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new StyleError(`molecule ${id}: JSON molecule data in ${name} is not an object`);
+  const top = doc as Record<string, unknown>;
+  const need = (ok: boolean, msg: string) => { if (!ok) throw new StyleError(`molecule ${id}: ${msg}`); };
+  need('application' in top, 'JSON data does not contain required "application" field');
+  need(top.application === 'LAMMPS', `JSON data is for incompatible application: ${String(top.application)}`);
+  need('format' in top, 'JSON data does not contain required "format" field');
+  need(top.format === 'molecule', `JSON data is not for a molecule: ${String(top.format)}`);
+  need('revision' in top, 'JSON data does not contain required "revision" field');
+  need(top.revision === 1, `JSON molecule data with unsupported revision ${String(top.revision)}`);
+  if ('units' in top && o.units !== undefined) {
+    need(unitsCompatible(String(top.units), o.units), `Incompatible units in JSON molecule data: current = ${o.units}, JSON = ${String(top.units)}`);
+  }
+  for (const key of Object.keys(top)) {
+    if (JSON_IGNORED.has(key) || JSON_SECTIONS.has(key)) continue;
+    if (key === 'body') throw new StyleError(`molecule ${id}: '${key}' molecules are not supported by the browser engine`);
+    throw new StyleError(`molecule ${id}: JSON section '${key}' in ${name} is not supported by the browser engine`);
+  }
+
+  /** A data block: {format, data} with the expected format list (native checks the entries of the format list). */
+  const block = (key: string, expect: string[] | null): JsonBlock | null => {
+    const b = top[key];
+    if (b === undefined) return null;
+    need(!!b && typeof b === 'object' && !Array.isArray(b), `JSON data for '${key}' must be a data block`);
+    const blk = b as Record<string, unknown>;
+    need(Array.isArray(blk.format), `JSON molecule data does not contain required "format" field for '${key}'`);
+    need(Array.isArray(blk.data), `JSON molecule data does not contain required "data" field for '${key}'`);
+    const format = (blk.format as unknown[]).map(String);
+    if (expect) need(format.length === expect.length && format.every((f, i) => f === expect[i]),
+      `Expected "${key}" format [${expect.map((x) => `"${x}"`).join(',')}] but found [${format.map((x) => `"${x}"`).join(',')}]`);
+    return { format, data: blk.data as JsonRow[] };
+  };
+  const typesBlock = block('types', ['atom-id', 'type']);
+  need(typesBlock !== null, 'JSON data does not contain required "types" field');
+  const natoms = typesBlock!.data.length;
+  need(natoms > 0, 'No types entries in JSON data for molecule');
+  const t: MoleculeTemplate = {
+    id, natoms, x: new Float64Array(3 * natoms), type: new Int32Array(natoms), q: null, mol: null,
+    bonds: [], angles: [], dihedrals: [], impropers: [], special: null, shake: null, diam: null, mass: null, mu: null,
+    fragments: [],
+  };
+  const atomIndex = (v: unknown, what: string): number => {
+    need(typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= natoms, `invalid ${what} ${String(v)} in molecule JSON data (1..${natoms})`);
+    return v as number;
+  };
+  const num = (v: unknown, what: string): number => {
+    need(typeof v === 'number' && Number.isFinite(v), `non-numeric ${what} ${String(v)} in molecule JSON data`);
+    return v as number;
+  };
+  const scale = o.scale;
+
+  // types: a number is offset by toff, a string is a type label of the atom kind
+  const seenType = new Set<number>();
+  for (const r of typesBlock!.data) {
+    need(Array.isArray(r) && r.length >= 2, `missing data in "types" section of molecule JSON data: ${JSON.stringify(r)}`);
+    const i = atomIndex(r[0], 'atom-id') - 1;
+    need(!seenType.has(i), `atom ${i + 1} has more than one entry in "types"`);
+    seenType.add(i);
+    t.type[i] = typeOfJson(id, r[1], 'atom', o.toff, labels, 'types');
+  }
+  need(seenType.size === natoms, 'Molecule template: some atoms have no type');
+
+  const coords = block('coords', ['atom-id', 'x', 'y', 'z']);
+  for (const r of coords?.data ?? []) {
+    const i = atomIndex(r[0], 'atom-id') - 1;
+    for (let d = 0; d < 3; d++) t.x[3 * i + d] = num(r[1 + d], 'coordinate') * scale;
+  }
+  const mols = block('molecules', ['atom-id', 'molecule-id']);
+  if (mols) {
+    t.mol = new Int32Array(natoms);
+    for (const r of mols.data) t.mol[atomIndex(r[0], 'atom-id') - 1] = num(r[1], 'molecule-id');
+  }
+  const charges = block('charges', ['atom-id', 'charge']);
+  if (charges) {
+    t.q = new Float64Array(natoms);
+    for (const r of charges.data) t.q[atomIndex(r[0], 'atom-id') - 1] = num(r[1], 'charge');
+  }
+  const masses = block('masses', ['atom-id', 'mass']);
+  if (masses) {
+    t.mass = new Float64Array(natoms);
+    for (const r of masses.data) t.mass[atomIndex(r[0], 'atom-id') - 1] = num(r[1], 'mass') * scale;
+  }
+  const frags = block('fragments', ['fragment-id', 'atom-id-list']);
+  for (const r of frags?.data ?? []) {
+    need(Array.isArray(r) && r.length === 2 && Array.isArray(r[1]), 'invalid format of JSON data for fragments');
+    t.fragments.push({ name: String(r[0]), atoms: (r[1] as unknown[]).map((v) => atomIndex(v, 'atom ID in fragment')) });
+  }
+  const diams = block('diameters', ['atom-id', 'diameter']);
+  if (diams) {
+    t.diam = new Float64Array(natoms);
+    for (const r of diams.data) t.diam[atomIndex(r[0], 'atom-id') - 1] = num(r[1], 'diameter') * scale;
+  }
+  const dips = block('dipoles', ['atom-id', 'mux', 'muy', 'muz']);
+  if (dips) {
+    t.mu = new Float64Array(3 * natoms);
+    for (const r of dips.data) {
+      const i = atomIndex(r[0], 'atom-id') - 1;
+      for (let d = 0; d < 3; d++) t.mu[3 * i + d] = num(r[1 + d], 'dipole') * scale;
+    }
+  }
+
+  // topology: the same entries and checks as the native sections (no ID repeated within an entry)
+  const topo: [string, 'bonds' | 'angles' | 'dihedrals' | 'impropers', number, number, LabelKind, string[]][] = [
+    ['bonds', 'bonds', 2, o.boff, 'bond', ['bond-type', 'atom1', 'atom2']],
+    ['angles', 'angles', 3, o.aoff, 'angle', ['angle-type', 'atom1', 'atom2', 'atom3']],
+    ['dihedrals', 'dihedrals', 4, o.doff, 'dihedral', ['dihedral-type', 'atom1', 'atom2', 'atom3', 'atom4']],
+    ['impropers', 'impropers', 4, o.ioff, 'improper', ['improper-type', 'atom1', 'atom2', 'atom3', 'atom4']],
+  ];
+  for (const [key, field, width, off, kind, format] of topo) {
+    const b = block(key, format);
+    if (!b) continue;
+    for (const r of b.data) {
+      need(Array.isArray(r) && r.length >= 1 + width, `invalid format of JSON data for ${kind} ${JSON.stringify(r)}`);
+      const ids = r.slice(1, 1 + width).map((v) => atomIndex(v, 'atom ID'));
+      if (new Set(ids).size !== ids.length) throw new StyleError(`molecule ${id}: Invalid atom ID in ${key} section of ${name}: ${JSON.stringify(r)}`);
+      t[field].push([typeOfJson(id, r[0], kind, off, labels, key), ...ids]);
+    }
+  }
+
+  // special: counts (n12, n13, n14 per atom) and the neighbour lists, as the Special Bond sections
+  const special = top.special;
+  if (special !== undefined) {
+    need(!!special && typeof special === 'object' && !Array.isArray(special), 'JSON data for \'special\' must be an object');
+    const sp = special as Record<string, unknown>;
+    need('counts' in sp, 'JSON molecule data does not contain required \'counts\' field for "special"');
+    need('bonds' in sp, 'JSON molecule data does not contain required "bonds" field for "special"');
+    const cblk = { format: ['atom-id', 'n12', 'n13', 'n14'], data: (sp.counts as { data?: JsonRow[] } | undefined)?.data ?? [] };
+    need(Array.isArray((sp.counts as { data?: unknown })?.data), 'JSON molecule data does not contain required "data" field for \'special:counts\'');
+    need(cblk.data.length === natoms, `Found ${cblk.data.length} instead of ${natoms} data entries for 'special:counts'`);
+    const counts = cblk.data.map((r) => {
+      need(Array.isArray(r) && r.length === 4, `Found ${Array.isArray(r) ? r.length : 0} instead of 4 data entries for 'special:counts'`);
+      return [atomIndex(r[0], 'atom-id'), num(r[1], 'count'), num(r[2], 'count'), num(r[3], 'count')];
+    });
+    const sb = (sp.bonds as { data?: unknown[] } | undefined)?.data;
+    need(Array.isArray(sb), 'JSON molecule data does not contain required "data" field for "special:bonds"');
+    need(sb!.length === natoms, `Found ${sb!.length} instead of ${natoms} data entries for "special:bonds"`);
+    const byAtom = new Map(counts.map((c) => [c[0], c]));
+    t.special = Array.from({ length: natoms }, () => [[], [], []] as number[][]);
+    for (const r of sb as unknown[][]) {
+      need(Array.isArray(r) && r.length === 2 && Array.isArray(r[1]), '"special:bonds" is incorrectly formatted');
+      const i = atomIndex(r[0], 'atom-id');
+      const c = byAtom.get(i)!;
+      const ids = (r[1] as unknown[]).map((v) => atomIndex(v, 'special neighbor'));
+      need(ids.length === c[1] + c[2] + c[3], `atom ${i} lists ${ids.length} special neighbors, the counts say ${c[1] + c[2] + c[3]}`);
+      t.special[i - 1] = [ids.slice(0, c[1]), ids.slice(c[1], c[1] + c[2]), ids.slice(c[1] + c[2])];
+    }
+  }
+
+  // shake: flags, atom lists and type lists (Shake Flags, Shake Atoms, Shake Bond Types)
+  const shake = top.shake;
+  if (shake !== undefined) {
+    need(!!shake && typeof shake === 'object', 'JSON data for \'shake\' must be an object');
+    const sk = shake as Record<string, unknown>;
+    const sub = (k: string, fmt: string[]): JsonRow[] => {
+      const b = sk[k] as { format?: unknown; data?: unknown } | undefined;
+      need(!!b && Array.isArray(b.format) && Array.isArray(b.data), `JSON molecule data does not contain required "data" field for "shake:${k}"`);
+      need(JSON.stringify((b!.format as unknown[]).map(String)) === JSON.stringify(fmt), `Expected "shake:${k}" format [${fmt.join(',')}]`);
+      need((b!.data as unknown[]).length === natoms, `Found ${(b!.data as unknown[]).length} instead of ${natoms} data entries for "shake:${k}"`);
+      return b!.data as JsonRow[];
+    };
+    const fl = sub('flags', ['atom-id', 'flag']), at = sub('atoms', ['atom-id', 'atom-id-list']), ty = sub('bonds', ['atom-id', 'type-list']);
+    t.shake = { flags: new Int32Array(natoms), atoms: Array.from({ length: natoms }, () => []), types: Array.from({ length: natoms }, () => []) };
+    for (const r of fl) t.shake.flags[atomIndex(r[0], 'atom-id') - 1] = num(r[1], 'shake flag');
+    for (const r of at) t.shake.atoms[atomIndex(r[0], 'atom-id') - 1] = (r[1] as unknown[]).map((v) => num(v, 'shake atom'));
+    for (const r of ty) t.shake.types[atomIndex(r[0], 'atom-id') - 1] = (r[1] as unknown[]).map((v) => num(v, 'shake type'));
+  }
+  if (t.special) checkSpecial(t);
+  return t;
+};
+
+/** A type of a JSON entry: a number (offset) or a label of the kind (no offset). */
+const typeOfJson = (id: string, v: unknown, kind: LabelKind, off: number, labels: LabelMap | undefined, where: string): number => {
+  if (typeof v === 'number') {
+    if (!Number.isInteger(v)) throw new StyleError(`molecule ${id}: bad ${kind} type ${String(v)} in the ${where} section of a JSON molecule file`);
+    return v + off;
+  }
+  if (typeof v === 'string') {
+    const n = labels?.typeOf(kind, v);
+    if (n === undefined) throw new StyleError(`molecule ${id}: ${kind} type label ${v} is not defined (${where} section of a JSON molecule file)`);
+    return n;
+  }
+  throw new StyleError(`molecule ${id}: invalid ${kind} type ${JSON.stringify(v)} in the ${where} section of a JSON molecule file`);
+};
+
+/**
+ * The auto keyword (molecule.html): "The *auto* keyword allows the molecule command to generate new angles,
+ * dihedrals, and/or impropers, and assign their angle types, dihedral types, and/or improper types. New
+ * interactions are discovered by traversing the bond graph defined in the *Bonds* section, and new types are
+ * inferred using type label". "Angles are generated from all unique 1-2-3 paths through the bond graph.
+ * Dihedrals are generated from all unique 1-2-3-4 paths through the bond graph, as long as there are no
+ * duplicate atoms in the dihedral. Impropers are generated from all atoms bonded to exactly three neighbors."
+ * The generated entries replace the ones in the file (native: "Generating angles will overwrite angle data from
+ * molecule template.").
+ */
+const autoGenerate = (t: MoleculeTemplate, auto: string, labels: LabelMap | undefined, impSym: readonly number[] | null | undefined): void => {
+  if (t.bonds.length === 0) throw new StyleError(`molecule ${t.id}: Unable to generate angles without special bonds.`);
+  const map = labels ?? new LabelMap();
+  const sp = specialFromBonds(t).map((s) => s[0]);
+  const n = t.natoms;
+  const type = (i: number) => t.type[i - 1];
+  if (auto.includes('a')) {
+    t.angles = [];
+    for (let b = 1; b <= n; b++) {
+      const nb = sp[b - 1];
+      for (let i = 0; i < nb.length; i++) {
+        for (let j = i + 1; j < nb.length; j++) {
+          let a1 = nb[i], a3 = nb[j];
+          const s = inferAngleType(map, type(a1), type(b), type(a3));
+          if (!s) throw new StyleError(`molecule ${t.id}: Unable to infer angle type from bonds.`);
+          if (s < 0) [a1, a3] = [a3, a1];
+          t.angles.push([Math.abs(s), a1, b, a3]);
+        }
+      }
+    }
+  }
+  if (auto.includes('d')) {
+    t.dihedrals = [];
+    for (let b = 1; b <= n; b++) {
+      for (const c of sp[b - 1]) {
+        if (c <= b) continue;
+        for (const a of sp[b - 1]) {
+          if (a === c || a === b) continue;
+          for (const d of sp[c - 1]) {
+            if (d === c || d === b || d === a) continue;
+            const s = inferDihedralType(map, type(a), type(b), type(c), type(d));
+            if (!s) throw new StyleError(`molecule ${t.id}: Unable to infer dihedral type from bonds.`);
+            t.dihedrals.push(s < 0 ? [-s, d, c, b, a] : [s, a, b, c, d]);
+          }
+        }
+      }
+    }
+  }
+  if (auto.includes('i')) {
+    t.impropers = [];
+    if (impSym === null) throw new StyleError(`molecule ${t.id}: auto impropers need the symmetry of the improper style, which the browser engine does not provide for this style`);
+    const sym = impSym ?? [0, 0, 0, 0];
+    for (let b = 1; b <= n; b++) {
+      const nb = sp[b - 1];
+      if (nb.length !== 3) continue;
+      const [a1, a3, a4] = nb;
+      const r = inferImproperType(map, [type(a1), type(b), type(a3), type(a4)], sym);
+      if (!r.type) throw new StyleError(`molecule ${t.id}: Unable to infer improper type from bonds.`);
+      const tags = [a1, b, a3, a4];
+      const ord = r.type < 0 ? r.iorder.map((k) => tags[k]) : tags;
+      t.impropers.push([Math.abs(r.type), ord[0], ord[1], ord[2], ord[3]]);
+    }
+  }
+};
+
+/**
+ * A molecule file, native or JSON (by its .json name), with its auto keyword applied. The reader is chosen by
+ * the file name: "JSON format filenames must have the extension .json".
+ */
+export const parseMoleculeFile = (id: string, name: string, text: string, o: MoleculeOptions, labels?: LabelMap): MoleculeTemplate => {
+  const t = /\.json$/i.test(name) ? parseMoleculeJson(id, name, text, o, labels) : parseMoleculeText(id, name, text, o, labels);
+  if (o.auto) autoGenerate(t, o.auto, labels, o.improperSymmatoms);
   return t;
 };
 

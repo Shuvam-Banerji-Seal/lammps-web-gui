@@ -10,7 +10,7 @@
  *
  * The model is MS-MEAM only (pair_style meam/ms sets msmeamflag = 1, ialloy = 1 by meam_setup_global).
  */
-import { fmExp, getShpfcn, getZij, getZij2, getZij2b2nn, iszero, isone, fcut, erosePot, zblPot, powint, type Lattice } from './meamMath';
+import { fmExp, getShpfcn, getZij, getZij2, getZij2b2nn, iszero, fcut, erosePot, zblPot, powint, type Lattice } from './meamMath';
 
 export const MAXELT = 8;
 const NR = 1000;
@@ -332,7 +332,7 @@ export class MeamModel {
                 Z1 = getZij(lab);
                 {
                   const g = getZij2(lab, this.Cmin[a][a][b], this.Cmax[a][a][b], this.stheta[a][b]);
-                  Z2 = g.z; arat = g.a; scrn = g.S;
+                  Z2 = g.z; scrn = g.S;
                 }
                 phir[j] = phir[j] - (Z2 * scrn) / (2 * Z1) * phiaa;
                 {

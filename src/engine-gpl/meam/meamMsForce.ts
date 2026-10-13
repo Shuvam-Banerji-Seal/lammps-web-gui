@@ -8,11 +8,9 @@
  * One half pair (i, j) per call of the inner body, as in native LAMMPS: the energy of the pair term phi * S, the
  * density derivatives of i and j, and the three-body screening forces on the full-list neighbours k of i.
  */
-import { MeamModel } from './meamModel';
 import { fmExp, dfcut, dCfunc2, iszero, isone } from './meamMath';
 import { MeamWork, ComputeInput, V2D, V3D, VIND2D, VIND3D } from './meamMsCompute';
 
-const sq = (v: number): number => v * v;
 
 /** meam_force for every owned atom: forces into c.f and energy (pair term) returned. */
 export const forceAll = (c: ComputeInput, w: MeamWork, rdrar: number): number => {

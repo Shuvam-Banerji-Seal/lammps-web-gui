@@ -710,6 +710,23 @@ const createAtoms: Handler = ({ sys }, a) => {
     }
     return true;
   };
+  // Lattice fill (create_atoms box | region): the insertion window of native add_lattice (src/create_atoms.cpp at
+  // b332f28): "if periodic and style = BOX or REGION ... if I am lo proc, decrement lower bound by EPSILON ...
+  // if I am hi proc, decrement upper bound by 2.0*EPSILON" with EPSILON = 1.0e-6 in lamda units (triclinic) or
+  // prd*1e-6 (orthogonal, the same in lamda). So a periodic lower face accepts lamda >= -1e-6 and a periodic upper
+  // face rejects lamda >= 1 - 2e-6: exactly one of two periodic images is created. Non-periodic faces keep the
+  // rounding tolerance of insideBox, and a shrink-wrapped upper face stays inclusive.
+  const insideLatticeBox = (x: number, y: number, z: number) => {
+    g.toLamda(x, y, z, lam);
+    const EPSL = 1e-6;
+    for (let d = 0; d < (sys.dimension === 2 ? 2 : 3); d++) {
+      const periodicLo = box.boundary[d][0] === 'p', periodicHi = box.boundary[d][1] === 'p';
+      if (lam[d] < (periodicLo ? -EPSL : -1e-9)) return false;
+      if (box.boundary[d][1] === 's') { if (lam[d] > 1 + 1e-9) return false; }
+      else if (lam[d] >= (periodicHi ? 1 - 2 * EPSL : 1 - 1e-9)) return false;
+    }
+    return true;
+  };
   let pts: number[] = [];
   let types: number[] = [];
   let rad: number[] | null = null;
@@ -902,7 +919,7 @@ const createAtoms: Handler = ({ sys }, a) => {
     const xlo = box.lo[0] + Math.min(0, box.tilt[0], box.tilt[1], box.tilt[0] + box.tilt[1]);
     const xhi = box.hi[0] + Math.max(0, box.tilt[0], box.tilt[1], box.tilt[0] + box.tilt[1]);
     const ylo = box.lo[1] + Math.min(0, box.tilt[2]), yhi = box.hi[1] + Math.max(0, box.tilt[2]);
-    const accept = (x: number, y: number, z: number) => insideBox(x, y, z) && (!reg || reg.match(x, y, z)) && varOk([x, y, z]);
+    const accept = (x: number, y: number, z: number) => insideLatticeBox(x, y, z) && (!reg || reg.match(x, y, z)) && varOk([x, y, z]);
     const site = lat.general
       ? generalAtomSites(lat.general, generalBoxFromRestricted(lat.general.Q, box.lo as [number, number, number], box.hi as [number, number, number], box.tilt as [number, number, number]), accept)
       : latticeSites(lat, [xlo, ylo, box.lo[2]], [xhi, yhi, box.hi[2]], sys.dimension, accept);

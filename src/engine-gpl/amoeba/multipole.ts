@@ -14,10 +14,13 @@
  * and T. A. Darden, J. Chem. Phys. 120, 73 (2004).
  */
 import { StyleError } from '../../engine/force/types';
+import { erfcExact } from '../../engine/force/erfc';
 import type { AxisKind, MultipoleFrame } from './params';
 
 /** Coulomb constant of AMOEBA (pair_amoeba.cpp: electric = 332.063713). */
 export const ELECTRIC = 332.063713;
+/** sqrt(pi) (amoeba_multipole.cpp MY_PIS). */
+const MY_PIS = Math.sqrt(Math.PI);
 
 /** Topology queries kmpole needs; atom IDs, not local indices. */
 export interface MpoleTopo {
@@ -138,12 +141,12 @@ export const kmpole = (
  * find_multipole_neighbors: local indices of the axis atoms (the site itself when the axis is unused). `localOf` maps
  * an atom ID to a local index; a missing axis atom is an error (amoeba_utils.cpp: "multipole neighbors missing").
  */
-export const mapAxes = (sites: MpoleSites, localOf: (id: number) => number): void => {
+export const mapAxes = (sites: MpoleSites, localOf: (site: number, id: number) => number): void => {
   let nmissing = 0;
   for (let i = 0; i < sites.n; i++) {
     const pick = (id: number): number => {
       if (!id) return i;
-      const li = localOf(id);
+      const li = localOf(i, id);
       if (li < 0) nmissing++;
       return li < 0 ? i : li;
     };
@@ -359,11 +362,13 @@ export const multipoleReal = (
   sites: MpoleSites, x: Float64Array, f: Float64Array,
   pi: Int32Array, pj: Int32Array, ps: Int8Array, npairs: number,
   factor: readonly number[], dielectric: number, mpolecut: number,
+  own: Int32Array, aewald: number,
 ): MpoleResult => {
   const felec = ELECTRIC / dielectric;
   const off2 = mpolecut * mpolecut;
   const rp = sites.rpole;
   const n = sites.n;
+  // torques are summed on the owners (reverse communication of tq in native); own[k] is the owned atom of copy k
   const tq = new Float64Array(3 * n);
   const vir = new Float64Array(6);
   let e_tot = 0;
@@ -376,7 +381,7 @@ export const multipoleReal = (
     const r2 = xr * xr + yr * yr + zr * zr;
     if (r2 > off2) continue;
     const r = Math.sqrt(r2);
-    const oi = 13 * i, ok = 13 * j;
+    const oi = 13 * own[i], ok = 13 * own[j];
     const ci = rp[oi], dix = rp[oi + 1], diy = rp[oi + 2], diz = rp[oi + 3];
     const qixx = rp[oi + 4], qixy = rp[oi + 5], qixz = rp[oi + 6], qiyy = rp[oi + 8], qiyz = rp[oi + 9], qizz = rp[oi + 12];
     const ck = rp[ok], dkx = rp[ok + 1], dky = rp[ok + 2], dkz = rp[ok + 3];
@@ -433,8 +438,18 @@ export const multipoleReal = (
     let rr7 = (5.0 * rr5) / r2;
     let rr9 = (7.0 * rr7) / r2;
     let rr11 = (9.0 * rr9) / r2;
-    const bn = [1.0 / r, 0, 0, 0, 0, 0];
-    for (let k = 1; k < 6; k++) bn[k] = ((2 * k - 1) * bn[k - 1]) / r2;
+    // Ewald real-space damping (amoeba_multipole.cpp multipole_real): bn[0] = erfc(aewald r)/r and the recursion
+    // bn[k] = ((2k-1) bn[k-1] + alsq2n exp(-(aewald r)^2)) / r^2 with alsq2n = (2 aewald^2)^k / (sqrt(pi) aewald);
+    // with aewald = 0 this is 1/r, (2k-1) bn[k-1] / r^2 as before
+    const ralpha = aewald * r;
+    const bn = [erfcExact(ralpha) / r, 0, 0, 0, 0, 0];
+    const alsq2 = 2.0 * aewald * aewald;
+    let alsq2n = aewald > 0.0 ? 1.0 / (MY_PIS * aewald) : 0.0;
+    const exp2a = Math.exp(-ralpha * ralpha);
+    for (let k = 1; k < 6; k++) {
+      alsq2n = alsq2 * alsq2n;
+      bn[k] = ((2 * k - 1) * bn[k - 1] + alsq2n * exp2a) / r2;
+    }
     for (let k = 0; k < 6; k++) bn[k] *= felec;
     // standard multipole intermediates and energy (the AMOEBA branch)
     const term1 = ci * ck;
@@ -473,15 +488,15 @@ export const multipoleReal = (
     f[3 * i] -= frcx;
     f[3 * i + 1] -= frcy;
     f[3 * i + 2] -= frcz;
-    tq[3 * i] += ttmi0;
-    tq[3 * i + 1] += ttmi1;
-    tq[3 * i + 2] += ttmi2;
+    tq[3 * own[i]] += ttmi0;
+    tq[3 * own[i] + 1] += ttmi1;
+    tq[3 * own[i] + 2] += ttmi2;
     f[3 * j] += frcx;
     f[3 * j + 1] += frcy;
     f[3 * j + 2] += frcz;
-    tq[3 * j] += ttmk0;
-    tq[3 * j + 1] += ttmk1;
-    tq[3 * j + 2] += ttmk2;
+    tq[3 * own[j]] += ttmk0;
+    tq[3 * own[j] + 1] += ttmk1;
+    tq[3 * own[j] + 2] += ttmk2;
     // pairwise Cartesian virial (amoeba_multipole.cpp: virmpole -= v)
     const vxx = -xr * frcx;
     const vxy = -0.5 * (yr * frcx + xr * frcy);

@@ -35,7 +35,7 @@ const buildSites = (): MpoleSites => {
   const ids = Int32Array.from([1, 2, 3, 4, 5, 6]);
   const amt = Int32Array.from([1, 2, 2, 1, 2, 2].map((t) => t));
   const sites = kmpole((t) => prm.multipoles.get(t) ?? [], ids, amt, (id) => amtypeOf[id], topo);
-  mapAxes(sites, (id) => ids.indexOf(id));
+  mapAxes(sites, (_i, id) => ids.indexOf(id));
   for (let i = 0; i < 6; i++) {
     rotmat(sites, x, i);
     rotsite(sites, i);
@@ -113,12 +113,13 @@ describe('AMOEBA multipole energy and torques (amoeba_multipole.cpp multipole_re
     const xy = Float64Array.from([0, 0, 0, 0, 0, 2]);
     const f = new Float64Array(6);
     const pi = Int32Array.from([0]), pj = Int32Array.from([1]);
-    const full = multipoleReal(sites, xy, f, pi, pj, Int8Array.from([0]), 1, [1, 1, 1, 1, 1], 1.0, 10);
+    const own = Int32Array.from([0, 1]);
+    const full = multipoleReal(sites, xy, f, pi, pj, Int8Array.from([0]), 1, [1, 1, 1, 1, 1], 1.0, 10, own, 0.0);
     expect(full.e).toBeCloseTo((332.063713 * 0.5 * -0.25) / 2, 10);
     // the force on atom 1 (at z = 2) is attractive for opposite charges: along -z
     expect(f[5]).toBeLessThan(0);
     const f2 = new Float64Array(6);
-    const none = multipoleReal(sites, xy, f2, pi, pj, Int8Array.from([1]), 1, [1, 0, 0, 0, 0], 1.0, 10);
+    const none = multipoleReal(sites, xy, f2, pi, pj, Int8Array.from([1]), 1, [1, 0, 0, 0, 0], 1.0, 10, own, 0.0);
     expect(none.e).toBe(0);
     expect(f2.every((v) => v === 0)).toBe(true);
   });

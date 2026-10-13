@@ -1,0 +1,25 @@
+# Measured with native LAMMPS (black box): the engine agrees with native to rel 1e-10 (abs floor 1e-10) in every thermo value and per-atom force and position; 1e-10 is the tightest tolerance measured on these cases.
+# oracle: the AMOEBA water box of examples/amoeba as in w119amoeba_full_box (648 atoms, ewald, pme-grid 24, cutoff 7 taper 6, polar-eps 1e-5), with 10 NVE steps (fix nve, dt 1 fs in real units) after the step-0 state; thermo every 5 steps and the atom forces and positions at step 10 are compared.
+# oracle-inputs: w119amoeba_box.data w119amoeba_water.prm w119amoeba_box_full.key
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-10
+units           real
+boundary        p p p
+atom_style      amoeba
+bond_style      class2
+angle_style     amoeba
+dihedral_style  none
+fix             amtype all property/atom i_amtype ghost yes
+fix             extra all property/atom i_amgroup d_redID d_pval ghost yes
+fix             extra2 all property/atom i_polaxe d2_xyzaxis 3
+read_data       w119amoeba_box.data fix amtype NULL "Tinker Types"
+special_bonds   lj/coul 0.5 0.5 0.5 one/five yes
+pair_style      amoeba
+pair_coeff      * * w119amoeba_water.prm w119amoeba_box_full.key
+compute         p all pair amoeba
+compute         virial all pressure NULL virial
+fix             nve all nve
+timestep        1.0
+thermo_style    custom step pe evdwl c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] press c_virial[1] c_virial[2] c_virial[3] c_virial[4] c_virial[5] c_virial[6]
+thermo_modify   format float %.15g
+thermo          5
+run             10

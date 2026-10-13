@@ -1,0 +1,22 @@
+# Measured with native LAMMPS (black box): the engine agrees with native within rel 1e-12 (abs floor 1e-9) in every thermo value and in the forces; c_virial[4] differs by 1.6e-10 absolute (3e-12 relative), the only value near the tolerance.
+# oracle: pair amoeba real-space Ewald damping and the Ewald self terms (multipole and polarization, no reciprocal sum: pair_style amoeba exclude mpole/kspace polar/kspace) on the periodic AMOEBA water box (w119amoeba_box.data, boundary p p p) with ewald, ewald-alpha 0.4, pewald-alpha 0.5 (w119amoeba_ewald.key, cutoff 7 taper 6) and the polarization test parameters w119amoeba_polar.prm, on the AMOEBA water box (data.water_box.amoeba, boundary p p p, 216 waters) with the polarization test parameters w119amoeba_polar.prm (nonzero multipoles, alpha 0.837 and 0.496 A^3, Thole 0.39) and the cutoff 7 (taper 6) key w119amoeba_ewald.key; the buffered 14-7, permanent multipole and polarization terms are all included, every image within the cutoff counts.
+# oracle-inputs: w119amoeba_box.data w119amoeba_polar.prm w119amoeba_ewald.key
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-9
+units           real
+boundary        p p p
+atom_style      amoeba
+bond_style      class2
+angle_style     amoeba
+dihedral_style  none
+fix             amtype all property/atom i_amtype ghost yes
+fix             extra all property/atom i_amgroup d_redID d_pval ghost yes
+fix             extra2 all property/atom i_polaxe d2_xyzaxis 3
+read_data       w119amoeba_box.data fix amtype NULL "Tinker Types"
+special_bonds   lj/coul 0.5 0.5 0.5 one/five yes
+pair_style      amoeba exclude mpole/kspace polar/kspace
+pair_coeff      * * w119amoeba_polar.prm w119amoeba_ewald.key
+compute         p all pair amoeba
+compute         virial all pressure NULL virial
+thermo_style    custom step pe evdwl c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] press c_virial[1] c_virial[2] c_virial[3] c_virial[4] c_virial[5] c_virial[6]
+thermo_modify   format float %.15g
+run             0

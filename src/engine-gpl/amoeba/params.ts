@@ -84,6 +84,15 @@ export interface AmoebaKey {
   pcgprec: boolean;
   pcgguess: boolean;
   pcgpeek: number;
+  /** key "ewald": the Ewald summation of the permanent multipoles and the induced dipoles (amoeba_file.cpp use_ewald). */
+  useEwald: boolean;
+  /** ewald-alpha and pewald-alpha values (amoeba_file.cpp aeewald_key, apewald_key); null when not given. */
+  aeewaldKey: number | null;
+  apewaldKey: number | null;
+  /** pme-grid (1 or 3 values; null when not given) and pme-order (bseorder) / ppme-order (bsporder). */
+  pmeGrid: number[] | null;
+  bseorder: number;
+  bsporder: number;
 }
 
 /** Words of a PRM/key line, with quoted strings kept as one word (without the quotes). */
@@ -299,6 +308,10 @@ export const parseAmoebaKey = (text: string, prm: AmoebaPrm): AmoebaKey => {
   let pcgprec = true;
   let pcgguess = true;
   let pcgpeek = 1.0;
+  let useEwald = false;
+  let aeewaldKey: number | null = null, apewaldKey: number | null = null;
+  let pmeGrid: number[] | null = null;
+  let bseorder = 5, bsporder = 5;
   for (const line of text.split(/\r?\n/)) {
     const t = line.trim();
     if (t === '' || t.startsWith('!') || t.startsWith('#')) continue;
@@ -347,12 +360,33 @@ export const parseAmoebaKey = (text: string, prm: AmoebaPrm): AmoebaKey => {
         mpoleCutSet = true;
         break;
       case 'ewald':
-        throw new StyleError('pair amoeba: the Ewald summation (key "ewald") is not ported yet; the multipole term is the direct sum only');
+        // amoeba_file.cpp: "ewald" sets use_ewald; the reciprocal sums are checked in pair_amoeba.ts
+        if (w.length !== 1) throw new StyleError('AMOEBA keyfile line "ewald" takes no value');
+        useEwald = true;
+        break;
+      case 'dewald':
+        throw new StyleError('pair amoeba: the dispersion Ewald summation (key "dewald") is not ported yet');
+      case 'ewald-alpha': aeewaldKey = num(w[1], key); break;
+      case 'pewald-alpha': apewaldKey = num(w[1], key); break;
+      case 'pme-order': bseorder = num(w[1], key); break;
+      case 'ppme-order': bsporder = num(w[1], key); break;
+      case 'pme-grid': {
+        // amoeba_file.cpp: "pme-grid" takes one value (all three directions) or three
+        if (w.length === 2) pmeGrid = [num(w[1], key), num(w[1], key), num(w[1], key)];
+        else if (w.length === 4) pmeGrid = [num(w[1], key), num(w[2], key), num(w[3], key)];
+        else throw new StyleError('AMOEBA keyfile line "pme-grid" takes 1 or 3 values');
+        break;
+      }
       case 'delta-halgren': prm.dhal = num(w[1], key); break;
       case 'gamma-halgren': prm.ghal = num(w[1], key); break;
       default:
         break;
     }
   }
-  return { vdwcut, vdwtaper, mpolecut, ewaldcut, usolvcut, udiag, poleps, politer, pcgprec, pcgguess, pcgpeek };
+  // amoeba_file.cpp: "if (use_ewald) mpolecut = ewaldcut;"
+  if (useEwald) mpolecut = ewaldcut;
+  return {
+    vdwcut, vdwtaper, mpolecut, ewaldcut, usolvcut, udiag, poleps, politer, pcgprec, pcgguess, pcgpeek,
+    useEwald, aeewaldKey, apewaldKey, pmeGrid, bseorder, bsporder,
+  };
 };

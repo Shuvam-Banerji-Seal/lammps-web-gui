@@ -30,11 +30,11 @@ export interface HalTables {
 }
 
 export interface HalInput {
-  /** Owned positions (3 per atom). */
-  x: Float64Array;
-  /** Owned atom classes (1-based). */
+  /** Reduced positions of owned and ghost atoms (3 per copy; xred of pair_amoeba.ts). */
+  xred: Float64Array;
+  /** Atom classes (1-based) of owned and ghost copies. */
   cls: Int32Array;
-  /** Index of the atom whose position the atom is reduced toward (itself when it is not a hydrogen). */
+  /** Index of the copy whose position the atom is reduced toward (itself when it is not a hydrogen). */
   red2local: Int32Array;
   /** Pair list: i, j, and the special code of the pair. */
   pi: Int32Array;
@@ -76,14 +76,7 @@ export const taperCoeffs = (off: number, cut: number): number[] => {
  * f[3*atom + k]; native sign: f[i] -= dedx for the pair (i, j) with dedx = dE/dr along x_ij / r.
  */
 export const halTerm = (t: HalTables, inp: HalInput, f: Float64Array): HalResult => {
-  const n = inp.cls.length;
-  const xred = new Float64Array(3 * n);
-  for (let i = 0; i < n; i++) {
-    const iclass = inp.cls[i];
-    const j = inp.red2local[i];
-    const rdn = t.kred[iclass];
-    for (let k = 0; k < 3; k++) xred[3 * i + k] = rdn * (inp.x[3 * i + k] - inp.x[3 * j + k]) + inp.x[3 * j + k];
-  }
+  const xred = inp.xred;
   const off2 = t.off * t.off, cut2 = t.cut * t.cut;
   const c = taperCoeffs(t.off, t.cut);
   const [c0, c1, c2, c3, c4, c5] = c;

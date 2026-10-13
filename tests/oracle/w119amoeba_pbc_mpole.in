@@ -1,0 +1,22 @@
+# Measured with native LAMMPS (black box): pe and c_p[5] are NaN (zero polarizability), so they are not compared.
+# oracle: pair amoeba permanent multipole term (mpole, direct sum with periodic images, no Ewald) on the AMOEBA water box (data.water_box.amoeba, 216 waters in an 18.643 A cube, Tinker Types into i_amtype, boundary p p p). The force field has the non-zero multipoles of w119amoeba_mpole.prm, polarizabilities zero, cutoff 7 (taper 6) from w119amoeba_box.key, which is below half the box, so every interaction is one minimum image or an image within the cutoff. The buffered 14-7 term (c_p[1]), the multipole term (c_p[4]) and the forces are compared.
+# oracle-inputs: w119amoeba_box.data w119amoeba_mpole.prm w119amoeba_box.key
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-10 skip=pe,c_p[5]
+units           real
+boundary        p p p
+atom_style      amoeba
+bond_style      class2
+angle_style     amoeba
+dihedral_style  none
+fix             amtype all property/atom i_amtype ghost yes
+fix             extra all property/atom i_amgroup d_redID d_pval ghost yes
+fix             extra2 all property/atom i_polaxe d2_xyzaxis 3
+read_data       w119amoeba_box.data fix amtype NULL "Tinker Types"
+special_bonds   lj/coul 0.5 0.5 0.5 one/five yes
+pair_style      amoeba
+pair_coeff      * * w119amoeba_mpole.prm w119amoeba_box.key
+compute         p all pair amoeba
+compute         virial all pressure NULL virial
+thermo_style    custom step pe evdwl c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] press c_virial[1] c_virial[2] c_virial[3] c_virial[4] c_virial[5] c_virial[6]
+thermo_modify   format float %.15g
+run             0

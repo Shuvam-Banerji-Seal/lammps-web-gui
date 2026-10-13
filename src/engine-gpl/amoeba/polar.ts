@@ -1,28 +1,36 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
- * Source: src/AMOEBA/pair_amoeba.cpp (assign_groups, precond_neigh, choose(POLAR) without Ewald),
- * src/AMOEBA/amoeba_induce.cpp (induce() with poltyp MUTUAL, udirect2b and umutual2b for the AMOEBA branch, uscale0b
- * for the AMOEBA branch), src/AMOEBA/amoeba_polar.cpp (polar(), polar_energy(), polar_real() for the AMOEBA branch
- * with no Ewald) and src/AMOEBA/amoeba_file.cpp (file_dippolar) at commit b332f28. AMOEBA package authors: the LAMMPS
+ * Source: src/AMOEBA/pair_amoeba.cpp (assign_groups, precond_neigh, choose(POLAR)), src/AMOEBA/amoeba_induce.cpp
+ * (induce() with poltyp MUTUAL, udirect2b, umutual2b, dfield0c, ufield0c, uscale0b for the AMOEBA branch), and
+ * src/AMOEBA/amoeba_polar.cpp (polar(), polar_energy(), polar_real() for the AMOEBA branch) at commit b332f28; the
+ * reciprocal parts are in kspace.ts (udirect1, umutual1, polar_kspace). AMOEBA package authors: the LAMMPS
  * developers (Sandia Corporation, GNU General Public License). This file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
- * Induced dipoles of pair amoeba for the non-periodic case (no Ewald, no ghost atoms): the permanent field with Thole
- * damping, the mutual solver (preconditioned conjugate gradient, convergence on polar-eps), the polarization energy and
- * the polarization forces and torques. Polarization groups are the connected sets of atoms joined through a 1-2 bond
- * whose partner type is in the polarize line of the atom (docs.lammps.org/pair_amoeba.html, "polarize").
- * Not ported here: DIRECT and OPT polarization, polar-predict and the Ewald (long-range) parts.
+ * Induced dipoles of pair amoeba: the permanent field with Thole damping and the Ewald real-space damping (aewald),
+ * the mutual solver (preconditioned conjugate gradient, convergence on polar-eps), the polarization energy and the
+ * polarization forces and torques. Polarization groups are the connected sets of atoms joined through a 1-2 bond
+ * whose partner type is in the polarize line of the atom (docs.lammps.org/pair_amoeba.html, "polarize"). Periodic
+ * images enter through the copies of the neighbor list: `own` maps a copy to its owned atom, and the dipoles, fields
+ * and per-site data are indexed by owner while the geometry uses the copy. Not ported here: DIRECT and OPT
+ * polarization and polar-predict.
  */
+import { erfcExact } from '../../engine/force/erfc';
 import { ELECTRIC, type MpoleSites, torque2force } from './multipole';
 
 /** Constant converting q-Angstrom to Debye, used by the convergence test (amoeba_induce.cpp DEBYE). */
 const DEBYE = 4.80321;
+/** sqrt(pi) (amoeba_polar.cpp MY_PIS). */
+const MY_PIS = Math.sqrt(Math.PI);
 /** Lower bound of the polarizability in the solver (amoeba_induce.cpp polmin). */
 const POLMIN = 0.00000001;
 
 /** The per-atom inputs of the polarization terms (arrays indexed by local atom index). */
 export interface PolarAtoms {
   n: number;
+  /** Owned + image positions (3 per copy); pi, pj index them. */
   x: Float64Array;
+  /** Owned atom of each copy: per-atom and dipole data are indexed by owner, positions by copy. */
+  own: Int32Array;
   /** Rotated permanent multipoles, 13 per atom (MpoleSites.rpole). */
   rpole: Float64Array;
   /** polarity (alpha), its sixth root (pdamp) and the Thole width of each atom's type. */
@@ -39,6 +47,12 @@ export interface PolarAtoms {
 
 /** The scalars of the polarization settings (key file and PRM file). */
 export interface PolarSettings {
+  /** Ewald coefficient of the induced-dipole terms (pair_amoeba apewald; 0 without Ewald). */
+  aewald: number;
+  /** Reciprocal-space permanent field (udirect1), 3 per atom, or null: it starts the direct field (dfield0c). */
+  recipDirect: Float64Array | null;
+  /** Reciprocal-space mutual field (umutual1) of uind and uinp, the amounts to add to the fields, or null. */
+  recipMutual: ((uind: Float64Array, uinp: Float64Array) => { field: Float64Array; fieldp: Float64Array }) | null;
   /** polarization scale factors per special code (index 0 = no special, always 1). */
   pscale: readonly number[];
   piscale: readonly number[];
@@ -117,19 +131,25 @@ const tholeDamp = (a: PolarAtoms, i: number, j: number, r: number): number => {
 const directField = (a: PolarAtoms, s: PolarSettings, pairs: readonly number[], off2: number) => {
   const n = a.n;
   const field = new Float64Array(3 * n), fieldp = new Float64Array(3 * n);
+  // dfield0c: the reciprocal permanent field starts both fields, then the real-space pairs add to them
+  if (s.recipDirect) {
+    field.set(s.recipDirect);
+    fieldp.set(s.recipDirect);
+  }
   const tdip = new Float64Array(6 * pairs.length);
   const inRange: boolean[] = new Array<boolean>(pairs.length).fill(false);
   const x = a.x, rp = a.rpole;
   for (let q = 0; q < pairs.length; q++) {
     const p = pairs[q];
     const i = a.pi[p], j = a.pj[p];
+    const I = a.own[i], J = a.own[j];
     const xr = x[3 * j] - x[3 * i], yr = x[3 * j + 1] - x[3 * i + 1], zr = x[3 * j + 2] - x[3 * i + 2];
     const r2 = xr * xr + yr * yr + zr * zr;
     if (r2 > off2) continue;
     inRange[q] = true;
     const sb = a.ps[p];
     let pscale: number, dscale: number, uscale: number;
-    if (a.group[i] === a.group[j]) {
+    if (a.group[I] === a.group[J]) {
       pscale = s.piscale[sb];
       dscale = s.dscale;
       uscale = s.uscale;
@@ -145,11 +165,18 @@ const directField = (a: PolarAtoms, s: PolarSettings, pairs: readonly number[], 
     const rr5 = 3.0 * rr2 * rr3;
     const rr7 = 5.0 * rr2 * rr5;
     // reciprocal distance terms without Ewald (bn[m] = (2m-1) bn[m-1] / r^2, bn[0] = 1/r)
-    const bn = [rr1, 0, 0, 0];
-    bn[1] = (1 * bn[0]) * rr2;
-    bn[2] = (3 * bn[1]) * rr2;
-    bn[3] = (5 * bn[2]) * rr2;
-    const oi = 13 * i, ok = 13 * j;
+    // Ewald damping of the reciprocal distance terms (amoeba_induce.cpp udirect2b): bn[0] = erfc(aewald r)/r and
+    // bn[m] = ((2m-1) bn[m-1] + aesq2n exp(-(aewald r)^2)) / r^2 with aesq2n = (2 aewald^2)^m / (sqrt(pi) aewald)
+    const ralpha = s.aewald * r;
+    const bn = [erfcExact(ralpha) * rr1, 0, 0, 0];
+    const aesq2 = 2.0 * s.aewald * s.aewald;
+    let aesq2n = s.aewald > 0.0 ? 1.0 / (MY_PIS * s.aewald) : 0.0;
+    const exp2a = Math.exp(-ralpha * ralpha);
+    for (let m = 1; m <= 3; m++) {
+      aesq2n = aesq2 * aesq2n;
+      bn[m] = ((2 * m - 1) * bn[m - 1] + aesq2n * exp2a) * rr2;
+    }
+    const oi = 13 * I, ok = 13 * J;
     const ci = rp[oi], dix = rp[oi + 1], diy = rp[oi + 2], diz = rp[oi + 3];
     const qixx = rp[oi + 4], qixy = rp[oi + 5], qixz = rp[oi + 6], qiyy = rp[oi + 8], qiyz = rp[oi + 9], qizz = rp[oi + 12];
     const ck = rp[ok], dkx = rp[ok + 1], dky = rp[ok + 2], dkz = rp[ok + 3];
@@ -166,8 +193,8 @@ const directField = (a: PolarAtoms, s: PolarSettings, pairs: readonly number[], 
     const qkr = qkx * xr + qky * yr + qkz * zr;
     // Thole damping scale factors (the same for the direct, p and mutual terms)
     let scale3 = 1.0, scale5 = 1.0, scale7 = 1.0;
-    const damp = tholeDamp(a, i, j, r);
-    if (a.pdamp[i] * a.pdamp[j] !== 0) {
+    const damp = tholeDamp(a, I, J, r);
+    if (a.pdamp[I] * a.pdamp[J] !== 0) {
       if (damp < 50.0) {
         const expdamp = Math.exp(-damp);
         scale3 = 1.0 - expdamp;
@@ -206,7 +233,7 @@ const directField = (a: PolarAtoms, s: PolarSettings, pairs: readonly number[], 
     ];
     // mutual dipole-dipole tensor (uscale), built with the 3- and 5-term damping only
     let mscale3 = 1.0, mscale5 = 1.0;
-    if (a.pdamp[i] * a.pdamp[j] !== 0 && damp < 50.0) {
+    if (a.pdamp[I] * a.pdamp[J] !== 0 && damp < 50.0) {
       const expdamp = Math.exp(-damp);
       mscale3 = 1.0 - expdamp;
       mscale5 = 1.0 - expdamp * (1.0 + damp);
@@ -221,10 +248,18 @@ const directField = (a: PolarAtoms, s: PolarSettings, pairs: readonly number[], 
     tdip[6 * q + 4] = mb1 * yr * zr;
     tdip[6 * q + 5] = -mb0 + mb1 * zr * zr;
     for (let m = 0; m < 3; m++) {
-      field[3 * i + m] += fid[m];
-      field[3 * j + m] += fkd[m];
-      fieldp[3 * i + m] += fip[m];
-      fieldp[3 * j + m] += fkp[m];
+      field[3 * I + m] += fid[m];
+      field[3 * J + m] += fkd[m];
+      fieldp[3 * I + m] += fip[m];
+      fieldp[3 * J + m] += fkp[m];
+    }
+  }
+  // the self-energy portion of the permanent field (amoeba_induce.cpp dfield0c): term times the dipole of the atom
+  const term = (4.0 / 3.0) * s.aewald * s.aewald * s.aewald / MY_PIS;
+  for (let i = 0; i < n; i++) {
+    for (let m = 0; m < 3; m++) {
+      field[3 * i + m] += term * rp[13 * i + 1 + m];
+      fieldp[3 * i + m] += term * rp[13 * i + 1 + m];
     }
   }
   return { field, fieldp, tdip, inRange };
@@ -235,7 +270,7 @@ const directField = (a: PolarAtoms, s: PolarSettings, pairs: readonly number[], 
  * Each pair adds T.u of the other atom to both atoms (the half list).
  */
 const mutualField = (
-  a: PolarAtoms, pairs: readonly number[], tdip: Float64Array, inRange: readonly boolean[],
+  a: PolarAtoms, aewald: number, recip: PolarSettings['recipMutual'], pairs: readonly number[], tdip: Float64Array, inRange: readonly boolean[],
   uind: Float64Array, uinp: Float64Array,
 ): { field: Float64Array; fieldp: Float64Array } => {
   const field = new Float64Array(3 * a.n), fieldp = new Float64Array(3 * a.n);
@@ -243,6 +278,7 @@ const mutualField = (
     if (!inRange[q]) continue;
     const p = pairs[q];
     const i = a.pi[p], j = a.pj[p];
+    const I = a.own[i], J = a.own[j];
     const t = 6 * q;
     const T = (v: Float64Array, k: number, m: number): number => (m === 0
       ? tdip[t] * v[3 * k] + tdip[t + 1] * v[3 * k + 1] + tdip[t + 2] * v[3 * k + 2]
@@ -250,10 +286,26 @@ const mutualField = (
         ? tdip[t + 1] * v[3 * k] + tdip[t + 3] * v[3 * k + 1] + tdip[t + 4] * v[3 * k + 2]
         : tdip[t + 2] * v[3 * k] + tdip[t + 4] * v[3 * k + 1] + tdip[t + 5] * v[3 * k + 2]);
     for (let m = 0; m < 3; m++) {
-      field[3 * i + m] += T(uind, j, m);
-      field[3 * j + m] += T(uind, i, m);
-      fieldp[3 * i + m] += T(uinp, j, m);
-      fieldp[3 * j + m] += T(uinp, i, m);
+      field[3 * I + m] += T(uind, J, m);
+      field[3 * J + m] += T(uind, I, m);
+      fieldp[3 * I + m] += T(uinp, J, m);
+      fieldp[3 * J + m] += T(uinp, I, m);
+    }
+  }
+  // reciprocal-space mutual field (ufield0c: umutual1 after umutual2b)
+  if (recip) {
+    const r = recip(uind, uinp);
+    for (let k = 0; k < 3 * a.n; k++) {
+      field[k] += r.field[k];
+      fieldp[k] += r.fieldp[k];
+    }
+  }
+  // the self-energy portion of the mutual field (amoeba_induce.cpp ufield0c): term times the induced dipole
+  const term = (4.0 / 3.0) * aewald * aewald * aewald / MY_PIS;
+  for (let i = 0; i < a.n; i++) {
+    for (let m = 0; m < 3; m++) {
+      field[3 * i + m] += term * uind[3 * i + m];
+      fieldp[3 * i + m] += term * uinp[3 * i + m];
     }
   }
   return { field, fieldp };
@@ -287,15 +339,16 @@ export const buildPrecondTensors = (a: PolarAtoms, pc: PrecondPairs, s: PolarSet
   const x = a.x;
   for (let q = 0; q < pc.pi.length; q++) {
     const i = pc.pi[q], j = pc.pj[q];
+    const I = a.own[i], J = a.own[j];
     const xr = x[3 * j] - x[3 * i], yr = x[3 * j + 1] - x[3 * i + 1], zr = x[3 * j + 2] - x[3 * i + 2];
     const r2 = xr * xr + yr * yr + zr * zr;
     const r = Math.sqrt(r2);
-    const poli = a.alpha[i];
-    const factorUscale = a.group[i] === a.group[j] ? s.uscale : 1.0;
+    const poli = a.alpha[I];
+    const factorUscale = a.group[I] === a.group[J] ? s.uscale : 1.0;
     let scale3 = factorUscale, scale5 = factorUscale;
-    const damp0 = a.pdamp[i] * a.pdamp[j];
+    const damp0 = a.pdamp[I] * a.pdamp[J];
     if (damp0 !== 0) {
-      const pgamma = Math.min(a.thole[i], a.thole[j]);
+      const pgamma = Math.min(a.thole[I], a.thole[J]);
       const damp = -pgamma * (r / damp0) * (r / damp0) * (r / damp0);
       if (damp > -50.0) {
         const expdamp = Math.exp(damp);
@@ -303,7 +356,7 @@ export const buildPrecondTensors = (a: PolarAtoms, pc: PrecondPairs, s: PolarSet
         scale5 *= 1.0 - expdamp * (1.0 - damp);
       }
     }
-    const polik = poli * a.alpha[j];
+    const polik = poli * a.alpha[J];
     const rr3 = (scale3 * polik) / (r * r2);
     const rr5 = (3.0 * scale5 * polik) / (r * r2 * r2);
     out[6 * q] = rr5 * xr * xr - rr3;
@@ -327,16 +380,17 @@ const applyPrecond = (
   }
   for (let q = 0; q < pc.pi.length; q++) {
     const i = pc.pi[q], j = pc.pj[q];
+    const I = a.own[i], J = a.own[j];
     const m1 = tens[6 * q], m2 = tens[6 * q + 1], m3 = tens[6 * q + 2];
     const m4 = tens[6 * q + 3], m5 = tens[6 * q + 4], m6 = tens[6 * q + 5];
-    const ri = [rsd[3 * i], rsd[3 * i + 1], rsd[3 * i + 2]];
-    const rj = [rsd[3 * j], rsd[3 * j + 1], rsd[3 * j + 2]];
-    z[3 * i] += m1 * rj[0] + m2 * rj[1] + m3 * rj[2];
-    z[3 * i + 1] += m2 * rj[0] + m4 * rj[1] + m5 * rj[2];
-    z[3 * i + 2] += m3 * rj[0] + m5 * rj[1] + m6 * rj[2];
-    z[3 * j] += m1 * ri[0] + m2 * ri[1] + m3 * ri[2];
-    z[3 * j + 1] += m2 * ri[0] + m4 * ri[1] + m5 * ri[2];
-    z[3 * j + 2] += m3 * ri[0] + m5 * ri[1] + m6 * ri[2];
+    const ri = [rsd[3 * I], rsd[3 * I + 1], rsd[3 * I + 2]];
+    const rj = [rsd[3 * J], rsd[3 * J + 1], rsd[3 * J + 2]];
+    z[3 * I] += m1 * rj[0] + m2 * rj[1] + m3 * rj[2];
+    z[3 * I + 1] += m2 * rj[0] + m4 * rj[1] + m5 * rj[2];
+    z[3 * I + 2] += m3 * rj[0] + m5 * rj[1] + m6 * rj[2];
+    z[3 * J] += m1 * ri[0] + m2 * ri[1] + m3 * ri[2];
+    z[3 * J + 1] += m2 * ri[0] + m4 * ri[1] + m5 * ri[2];
+    z[3 * J + 2] += m3 * ri[0] + m5 * ri[1] + m6 * ri[2];
   }
   return z;
 };
@@ -374,7 +428,7 @@ export const induceDipoles = (
     uinp = Float64Array.from(udirp);
   }
   // residuals of the initial guess
-  let mf = mutualField(a, pairs, tdip, inRange, uind, uinp);
+  let mf = mutualField(a, s.aewald, s.recipMutual, pairs, tdip, inRange, uind, uinp);
   const rsd = new Float64Array(3 * n), rsdp = new Float64Array(3 * n);
   for (let i = 0; i < n; i++) {
     for (let m = 0; m < 3; m++) {
@@ -401,7 +455,7 @@ export const induceDipoles = (
   while (!done) {
     iter++;
     // field of the conjugate vector (ufield0c with uind = conj)
-    mf = mutualField(a, pairs, tdip, inRange, conj, conjp);
+    mf = mutualField(a, s.aewald, s.recipMutual, pairs, tdip, inRange, conj, conjp);
     const vec = new Float64Array(3 * n), vecp = new Float64Array(3 * n);
     for (let k = 0; k < 3 * n; k++) {
       const pi = poli[Math.floor(k / 3)];
@@ -489,12 +543,13 @@ export const polarReal = (
   const vir = new Float64Array(6);
   for (const p of pairs) {
     const i = a.pi[p], j = a.pj[p];
+    const I = a.own[i], J = a.own[j];
     const xr = x[3 * j] - x[3 * i], yr = x[3 * j + 1] - x[3 * i + 1], zr = x[3 * j + 2] - x[3 * i + 2];
     const r2 = xr * xr + yr * yr + zr * zr;
     if (r2 > off2) continue;
     const sb = a.ps[p];
     let pscale: number, dscale: number, uscale: number;
-    if (a.group[i] === a.group[j]) {
+    if (a.group[I] === a.group[J]) {
       pscale = s.piscale[sb];
       dscale = s.dscale;
       uscale = s.uscale;
@@ -504,15 +559,15 @@ export const polarReal = (
       uscale = 1.0;
     }
     const r = Math.sqrt(r2);
-    const oi = 13 * i, ok = 13 * j;
+    const oi = 13 * I, ok = 13 * J;
     const ci = rp[oi], dix = rp[oi + 1], diy = rp[oi + 2], diz = rp[oi + 3];
     const qixx = rp[oi + 4], qixy = rp[oi + 5], qixz = rp[oi + 6], qiyy = rp[oi + 8], qiyz = rp[oi + 9], qizz = rp[oi + 12];
     const ck = rp[ok], dkx = rp[ok + 1], dky = rp[ok + 2], dkz = rp[ok + 3];
     const qkxx = rp[ok + 4], qkxy = rp[ok + 5], qkxz = rp[ok + 6], qkyy = rp[ok + 8], qkyz = rp[ok + 9], qkzz = rp[ok + 12];
-    const uix = uind[3 * i], uiy = uind[3 * i + 1], uiz = uind[3 * i + 2];
-    const uixp = uinp[3 * i], uiyp = uinp[3 * i + 1], uizp = uinp[3 * i + 2];
-    const ukx = uind[3 * j], uky = uind[3 * j + 1], ukz = uind[3 * j + 2];
-    const ukxp = uinp[3 * j], ukyp = uinp[3 * j + 1], ukzp = uinp[3 * j + 2];
+    const uix = uind[3 * I], uiy = uind[3 * I + 1], uiz = uind[3 * I + 2];
+    const uixp = uinp[3 * I], uiyp = uinp[3 * I + 1], uizp = uinp[3 * I + 2];
+    const ukx = uind[3 * J], uky = uind[3 * J + 1], ukz = uind[3 * J + 2];
+    const ukxp = uinp[3 * J], ukyp = uinp[3 * J + 1], ukzp = uinp[3 * J + 2];
     const dir = dix * xr + diy * yr + diz * zr;
     const qix = qixx * xr + qixy * yr + qixz * zr;
     const qiy = qixy * xr + qiyy * yr + qiyz * zr;
@@ -533,8 +588,16 @@ export const polarReal = (
     const rr5 = (3.0 * rr3) / r2;
     const rr7 = (5.0 * rr5) / r2;
     const rr9 = (7.0 * rr7) / r2;
-    const bn = [1.0 / r, 0, 0, 0, 0];
-    for (let m = 1; m <= 4; m++) bn[m] = ((2 * m - 1) * bn[m - 1]) / r2;
+    // Ewald damping (amoeba_polar.cpp polar_real): bn[0] = erfc(aewald r)/r, the recursion of the multipole term
+    const ralpha = s.aewald * r;
+    const bn = [erfcExact(ralpha) / r, 0, 0, 0, 0];
+    const alsq2 = 2.0 * s.aewald * s.aewald;
+    let alsq2n = s.aewald > 0.0 ? 1.0 / (MY_PIS * s.aewald) : 0.0;
+    const exp2a = Math.exp(-ralpha * ralpha);
+    for (let m = 1; m <= 4; m++) {
+      alsq2n = alsq2 * alsq2n;
+      bn[m] = ((2 * m - 1) * bn[m - 1] + alsq2n * exp2a) / r2;
+    }
     for (let m = 0; m < 5; m++) bn[m] *= felec;
     // Thole damping (AMOEBA branch): scale factors and the derivative terms rc3, rc5, rc7
     let sc3 = 1.0, sc5 = 1.0, sc7 = 1.0;
@@ -544,8 +607,8 @@ export const polarReal = (
     const prc3 = [0, 0, 0], prc5 = [0, 0, 0], prc7 = [0, 0, 0];
     const drc3 = [0, 0, 0], drc5 = [0, 0, 0], drc7 = [0, 0, 0];
     const urc3 = [0, 0, 0], urc5 = [0, 0, 0];
-    const damp = tholeDamp(a, i, j, r);
-    if (a.pdamp[i] * a.pdamp[j] !== 0) {
+    const damp = tholeDamp(a, I, J, r);
+    if (a.pdamp[I] * a.pdamp[J] !== 0) {
       if (damp < 50.0) {
         const expdamp = Math.exp(-damp);
         sc3 = 1.0 - expdamp;
@@ -592,18 +655,18 @@ export const polarReal = (
     const tkx3 = psr3 * uix + dsr3 * uixp, tky3 = psr3 * uiy + dsr3 * uiyp, tkz3 = psr3 * uiz + dsr3 * uizp;
     let tuir = -psr5 * ukr - dsr5 * ukrp;
     let tukr = -psr5 * uir - dsr5 * uirp;
-    ufld[3 * i] += tix3 + xr * tuir;
-    ufld[3 * i + 1] += tiy3 + yr * tuir;
-    ufld[3 * i + 2] += tiz3 + zr * tuir;
-    ufld[3 * j] += tkx3 + xr * tukr;
-    ufld[3 * j + 1] += tky3 + yr * tukr;
-    ufld[3 * j + 2] += tkz3 + zr * tukr;
+    ufld[3 * I] += tix3 + xr * tuir;
+    ufld[3 * I + 1] += tiy3 + yr * tuir;
+    ufld[3 * I + 2] += tiz3 + zr * tuir;
+    ufld[3 * J] += tkx3 + xr * tukr;
+    ufld[3 * J + 1] += tky3 + yr * tukr;
+    ufld[3 * J + 2] += tkz3 + zr * tukr;
     // gradient of the induced field for the quadrupole torques
     const tix5 = 2.0 * (psr5 * ukx + dsr5 * ukxp), tiy5 = 2.0 * (psr5 * uky + dsr5 * ukyp), tiz5 = 2.0 * (psr5 * ukz + dsr5 * ukzp);
     const tkx5 = 2.0 * (psr5 * uix + dsr5 * uixp), tky5 = 2.0 * (psr5 * uiy + dsr5 * uiyp), tkz5 = 2.0 * (psr5 * uiz + dsr5 * uizp);
     tuir = -psr7 * ukr - dsr7 * ukrp;
     tukr = -psr7 * uir - dsr7 * uirp;
-    const di = 6 * i, dj = 6 * j;
+    const di = 6 * I, dj = 6 * J;
     dufld[di] += xr * tix5 + xr * xr * tuir;
     dufld[di + 1] += xr * tiy5 + yr * tix5 + 2.0 * xr * yr * tuir;
     dufld[di + 2] += yr * tiy5 + yr * yr * tuir;
@@ -672,6 +735,16 @@ export const polarReal = (
       dix * u(2) - diz * u(0) - qiyz * d(1) + qixy * d(4) + 2.0 * qixz * (d(5) - d(0)) + (qixx - qizz) * d(3),
       diy * u(0) - dix * u(1) + qiyz * d(3) - qixz * d(4) + 2.0 * qixy * (d(0) - d(2)) + (qiyy - qixx) * d(1),
     ]);
+    // the self torque of the induced dipoles (amoeba_polar.cpp polar(): tep = term (d x u), u = (uind + uinp)/2,
+    // term = (4/3) felec aewald^3 / sqrt(pi) with felec = electric / dielectric)
+    const tterm = ((4.0 / 3.0) * (ELECTRIC / s.dielectric) * s.aewald * s.aewald * s.aewald) / MY_PIS;
+    if (tterm !== 0.0) {
+      const uix = 0.5 * (uind[3 * i] + uinp[3 * i]), uiy = 0.5 * (uind[3 * i + 1] + uinp[3 * i + 1]);
+      const uiz = 0.5 * (uind[3 * i + 2] + uinp[3 * i + 2]);
+      tep[0] += tterm * (diy * uiz - diz * uiy);
+      tep[1] += tterm * (diz * uix - dix * uiz);
+      tep[2] += tterm * (dix * uiy - diy * uix);
+    }
     const { fx, fy, fz } = torque2force(sites, i, tep, x, f);
     if (sites.axis[i] === 'NOFRAME') continue;
     const iz = sites.zl[i], ix = sites.xl[i], iy = sites.yl[i];

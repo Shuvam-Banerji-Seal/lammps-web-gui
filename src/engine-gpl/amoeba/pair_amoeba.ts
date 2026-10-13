@@ -1,24 +1,31 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
- * Source: src/AMOEBA/pair_amoeba.cpp (settings, coeff, mix(), choose(), compute(), the pvector energies) and
- * src/AMOEBA/amoeba_utils.cpp (add_onefive_neighbors, find_hydrogen_neighbors) at commit b332f28. AMOEBA package
- * authors: the LAMMPS developers (Sandia Corporation, GNU General Public License). This file is GPL-2.0 too
- * (src/engine-gpl/LICENSE).
+ * Source: src/AMOEBA/pair_amoeba.cpp (settings, coeff, mix(), choose(), compute(), kewald(), ewaldcof(), the pvector
+ * energies) and src/AMOEBA/amoeba_utils.cpp (add_onefive_neighbors, find_hydrogen_neighbors, find_multipole_neighbors)
+ * at commit b332f28. AMOEBA package authors: the LAMMPS developers (Sandia Corporation, GNU General Public License). This
+ * file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
- * pair_style amoeba: the buffered 14-7 van der Waals term (hal), the permanent multipole term (mpole, direct sum;
- * src/engine-gpl/amoeba/multipole.ts) and the induced-dipole polarization (mutual solver, polarization energy, forces
- * and torques; src/engine-gpl/amoeba/polar.ts), for the non-periodic case with no Ewald summation. DIRECT and OPT
- * polarization, polar-predict, periodic images (ghost atoms) and the Ewald summation are refused by name. An all-zero
- * term contributes exactly zero energy and force, so it does not block the run.
+ * pair_style amoeba: the buffered 14-7 van der Waals term (hal), the permanent multipole term (mpole; direct sum and the
+ * PME reciprocal sum, kspace.ts), the induced-dipole polarization (mutual solver, polarization energy, forces and torques;
+ * polar.ts, with the reciprocal fields and polar_kspace of kspace.ts) on periodic boxes (ghost images, closest-image
+ * frame and hydrogen maps as native's neighbor-build copies), with the Ewald real-space damping and self terms.
+ * `pair_style amoeba exclude mpole/kspace polar/kspace` drops the reciprocal parts (native). Refused by name: the
+ * dispersion Ewald (dewald), polar-predict, polarization DIRECT and OPT, the vdwpr overrides, the triclinic box, per-atom
+ * energy and virial, and the other pair_style components (include, hal/repulse/qxfer off).
  * docs.lammps.org/pair_amoeba.html: "pair_style amoeba" takes no arguments and "pair_coeff * * file.prm file.key"
  * reads the Tinker PRM and key files.
  */
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, sbOf } from '../../engine/neighbor';
 import { buildOneFive } from '../../engine/atoms';
+import { erfcExact } from '../../engine/force/erfc';
+import {
+  checkPmeOrder, cmpFromRpole, defaultGridSize, factorable, influence, makePmeGrid, mutualRecipField, multipoleKspace,
+  permanentRecipField, pmeFill, polarKspaceForces, type PmeFill, type PmeGrid,
+} from './kspace';
 import { halTerm, powint, type HalTables, type HalInput } from './hal';
 import { parseAmoebaKey, parseAmoebaPrm, type AmoebaKey, type AmoebaPrm } from './params';
-import { chkpole, kmpole, mapAxes, multipoleReal, rotmat, rotsite, type MpoleSites, type MpoleTopo } from './multipole';
+import { chkpole, ELECTRIC, kmpole, mapAxes, multipoleReal, rotmat, rotsite, type MpoleSites, type MpoleTopo } from './multipole';
 import {
   assignPolarGroups, buildPrecondTensors, induceDipoles, polarEnergy, polarReal, precondPairs,
   type PolarAtoms, type PolarSettings, type PrecondPairs,
@@ -26,6 +33,35 @@ import {
 
 /** pvector order of pair amoeba (pair_amoeba.cpp): hal, repulse, disp, mpole, polar, qxfer. */
 const NVECTOR = 6;
+/** sqrt(pi) (pair_amoeba.cpp MY_PIS). */
+const MY_PIS = Math.sqrt(Math.PI);
+
+/**
+ * ewaldcof (amoeba_kspace.cpp): the Ewald coefficient for which erfc(a cutoff)/cutoff falls below 1e-8, found by
+ * doubling and then a bisection of 60 + the doubling count steps.
+ */
+export const ewaldcof = (cutoff: number): number => {
+  const eps = 1.0e-8;
+  let ratio = eps + 1.0;
+  let x = 0.5;
+  let i = 0;
+  while (ratio >= eps) {
+    i++;
+    x *= 2.0;
+    const y = x * cutoff;
+    ratio = erfcExact(y) / cutoff;
+  }
+  const k = i + 60;
+  let xlo = 0.0, xhi = x;
+  for (let m = 0; m < k; m++) {
+    x = (xlo + xhi) / 2.0;
+    const y = x * cutoff;
+    ratio = erfcExact(y) / cutoff;
+    if (ratio >= eps) xlo = x;
+    else xhi = x;
+  }
+  return x;
+};
 
 export class PairAmoeba extends Pair {
   readonly name: string = 'amoeba';
@@ -47,9 +83,31 @@ export class PairAmoeba extends Pair {
   private precondBuild = -1;
   /** pvector of the last compute (energies per term, native order). */
   private pvec = new Float64Array(NVECTOR);
+  /** Reciprocal-space switches (pair_style amoeba exclude mpole/kspace polar/kspace; both on by default). */
+  private mpoleKspace = true;
+  private polarKspace = true;
+  /** Copy choices of the current neighbor build (closest images), and the build they belong to. */
+  private memo = new Map<string, number>();
+  private memoBuild = -1;
+  /** Ewald coefficients of the current step: aeew for the permanent multipoles, apew for the induced dipoles (0 without key ewald). */
+  private aeew = 0;
+  private apew = 0;
 
+  /**
+   * pair_style amoeba [exclude mpole/kspace polar/kspace]: native takes the component switches (pair_amoeba.cpp
+   * settings). Only the reciprocal-space switches are accepted here; the real-space and bonded components are not ported.
+   */
   override settings(args: string[], _ctx: StyleContext): void {
-    if (args.length !== 0) throw new StyleError('usage: pair_style amoeba (no arguments)');
+    if (args.length === 0) return;
+    if (args[0] !== 'exclude') {
+      throw new StyleError('pair amoeba: only "pair_style amoeba exclude mpole/kspace polar/kspace" is accepted (include and the other components are not ported)');
+    }
+    if (args.length === 1) throw new StyleError('pair amoeba: exclude needs a component (mpole/kspace or polar/kspace)');
+    for (const c of args.slice(1)) {
+      if (c === 'mpole/kspace') this.mpoleKspace = false;
+      else if (c === 'polar/kspace') this.polarKspace = false;
+      else throw new StyleError(`pair amoeba: exclude ${c} is not ported (only mpole/kspace and polar/kspace)`);
+    }
   }
 
   override coeff(args: string[], ctx: StyleContext): void {
@@ -141,25 +199,74 @@ export class PairAmoeba extends Pair {
     if (!this.prm || !this.tables || !this.key) throw new StyleError('pair_coeff * * file.prm file.key is required for pair style amoeba');
     const prm = this.prm;
     const s = pc.s;
-    if (pc.nall > pc.nlocal) throw new StyleError('pair amoeba: periodic images (ghost atoms) are not ported yet (stage 2a: hal only)');
     if (pc.eatom || pc.vatom) throw new StyleError('pair amoeba: per-atom energy and virial are not ported yet');
     if (prm.hasPolarity && prm.poltyp !== 'mutual') {
       throw new StyleError(`pair amoeba: polarization ${prm.poltyp} is not ported yet (only mutual)`);
     }
+    if (pc.geom.triclinic) throw new StyleError('pair amoeba: triclinic boxes are not ported yet');
+    // kewald (amoeba_kspace.cpp): aeewald is the key value or ewaldcof(ewaldcut); apewald is the key value or aeewald,
+    // raised for boxes smaller than 6 A
+    this.aeew = 0;
+    this.apew = 0;
+    if (this.key.useEwald) {
+      this.aeew = this.key.aeewaldKey ?? ewaldcof(this.key.ewaldcut);
+      this.apew = this.key.apewaldKey ?? this.aeew;
+      if (this.key.apewaldKey === null) {
+        const size = Math.min(pc.geom.lx, pc.geom.ly, pc.geom.lz);
+        if (size < 6.0) this.apew += ((1.0 - this.apew) / 2.0) * (6.0 - size);
+      }
+    }
     const amtype = s.custom.get('amtype');
     if (!amtype) throw new StyleError('pair amoeba needs the per-atom amtype (fix property/atom i_amtype with read_data fix ... "Tinker Types")');
-    const n = pc.nlocal;
-    const cls = new Int32Array(n);
-    for (let i = 0; i < n; i++) {
-      const c = prm.typeToClass.get(amtype.data[i]);
-      if (c === undefined) throw new StyleError(`pair amoeba: no atom class for amtype ${amtype.data[i]}`);
-      cls[i] = c;
+    const n = pc.nlocal, nall = pc.nall;
+    // copies: own[k] is the owned atom of copy k (owned atoms are their own copies; ghosts are periodic images)
+    const own = new Int32Array(nall);
+    const cls = new Int32Array(nall);
+    for (let k = 0; k < nall; k++) {
+      own[k] = k < n ? k : pc.nb.owner[k];
+      const c = prm.typeToClass.get(amtype.data[own[k]]);
+      if (c === undefined) throw new StyleError(`pair amoeba: no atom class for amtype ${amtype.data[own[k]]}`);
+      cls[k] = c;
     }
-    // hydrogen reduction: an atom with kred > 0 and one 1-2 partner is reduced toward it (amoeba_utils/pair_amoeba init)
+    const idOf = (k: number): number => s.id[own[k]];
     const idIndex = new Map<number, number>();
     for (let i = 0; i < n; i++) idIndex.set(s.id[i], i);
-    const oneTwo = new Map<number, number[]>();
+    // every copy (owned and ghost) of each atom ID; closest(id, ref) is native domain->closest_image(ref, map(id))
+    const copies = new Map<number, number[]>();
+    for (let k = 0; k < nall; k++) {
+      const id = idOf(k);
+      const list = copies.get(id);
+      if (list) list.push(k);
+      else copies.set(id, [k]);
+    }
+    const x = pc.x;
+    // The copy choices (red2local, the axis atoms) are made on reneighboring steps and kept until the next one
+    // (neighbor->ago == 0 in find_hydrogen_neighbors and find_multipole_neighbors), so they are memoized per build.
+    if (this.memoBuild !== pc.nb.nbuild) {
+      this.memo.clear();
+      this.memoBuild = pc.nb.nbuild;
+    }
+    const closest = (id: number, ref: number): number => {
+      const memoKey = `${ref}|${id}`;
+      const known = this.memo.get(memoKey);
+      if (known !== undefined) return known;
+      const list = copies.get(id);
+      if (!list) throw new StyleError(`pair amoeba: atom ${id} is not in the system`);
+      let best = list[0], bd = Infinity;
+      for (const c of list) {
+        const dx = x[3 * c] - x[3 * ref], dy = x[3 * c + 1] - x[3 * ref + 1], dz = x[3 * c + 2] - x[3 * ref + 2];
+        const d = dx * dx + dy * dy + dz * dz;
+        if (d < bd) {
+          bd = d;
+          best = c;
+        }
+      }
+      this.memo.set(memoKey, best);
+      return best;
+    };
+    // 1-2 partners by ID (the bonds of the topology)
     const bonds = s.topo.bonds;
+    const oneTwo = new Map<number, number[]>();
     for (let e = 0; e < bonds.n; e++) {
       if (bonds.type[e] === 0) continue;
       const a = bonds.atoms[2 * e], b = bonds.atoms[2 * e + 1];
@@ -168,14 +275,38 @@ export class PairAmoeba extends Pair {
       if (!oneTwo.get(a)!.includes(b)) oneTwo.get(a)!.push(b);
       if (!oneTwo.get(b)!.includes(a)) oneTwo.get(b)!.push(a);
     }
-    const red2local = new Int32Array(n);
-    for (let i = 0; i < n; i++) {
-      red2local[i] = i;
-      const partners = oneTwo.get(s.id[i]) ?? [];
-      if (this.tables.kred[cls[i]] === 0.0 || partners.length !== 1) continue;
-      const p = idIndex.get(partners[0]);
-      if (p === undefined) throw new StyleError('pair amoeba: a hydrogen partner is not a local atom (periodic images are not ported yet)');
-      red2local[i] = p;
+    // hydrogen reduction (find_hydrogen_neighbors): a copy with kred > 0 and one 1-2 partner is reduced toward the
+    // copy of that partner nearest to it (native red2local = domain->closest_image(i, map(id)))
+    const red2 = new Int32Array(nall);
+    for (let k = 0; k < nall; k++) {
+      red2[k] = k;
+      const partners = oneTwo.get(idOf(k)) ?? [];
+      if (this.tables.kred[cls[k]] === 0.0 || partners.length !== 1) continue;
+      red2[k] = closest(partners[0], k);
+    }
+    // reduced positions (amoeba xred): owned atoms from their partner copy; a ghost is its owner's xred moved by the
+    // image offset, then wrapped to within half a box of the ghost (pbc_xred), as native does
+    const xred = new Float64Array(3 * nall);
+    for (let k = 0; k < n; k++) {
+      const j = red2[k];
+      const rdn = this.tables.kred[cls[k]];
+      for (let d = 0; d < 3; d++) xred[3 * k + d] = rdn * (x[3 * k + d] - x[3 * j + d]) + x[3 * j + d];
+    }
+    const prd = [pc.geom.lx, pc.geom.ly, pc.geom.lz];
+    for (let k = n; k < nall; k++) {
+      const o = own[k];
+      for (let d = 0; d < 3; d++) {
+        let v = xred[3 * o + d] + pc.nb.gimage[3 * k + d] * prd[d];
+        const half = 0.5 * prd[d];
+        if (pc.geom.periodic[d]) {
+          let delta = v - x[3 * k + d];
+          while (Math.abs(delta) > half) {
+            v += delta < 0.0 ? prd[d] : -prd[d];
+            delta = v - x[3 * k + d];
+          }
+        }
+        xred[3 * k + d] = v;
+      }
     }
     // 1-5 neighbours by ID (special.cpp onefive); the list codes them as special 4
     const fifth = buildOneFive(s);
@@ -196,7 +327,7 @@ export class PairAmoeba extends Pair {
         const enc = list.neighbors[start + k];
         const j = enc & NEIGHMASK;
         let sb = sbOf(enc);
-        if (sb === 0 && fifthOf.get(i)?.has(s.id[j])) sb = 4;
+        if (sb === 0 && fifthOf.get(i)?.has(idOf(j))) sb = 4;
         pi.push(i);
         pj.push(j);
         ps.push(sb);
@@ -204,8 +335,7 @@ export class PairAmoeba extends Pair {
     }
     const pairsArr = { pi: Int32Array.from(pi), pj: Int32Array.from(pj), ps: Int8Array.from(ps) };
     const inp: HalInput = {
-      x: Float64Array.from(pc.x.subarray(0, 3 * n)),
-      cls, red2local,
+      xred, cls, red2local: red2,
       pi: pairsArr.pi, pj: pairsArr.pj, pspecial: pairsArr.ps,
       npairs: pi.length,
     };
@@ -216,15 +346,38 @@ export class PairAmoeba extends Pair {
     this.pvec[0] = r.e;
     const needSites = prm.hasMultipoles || prm.hasPolarity;
     if (!needSites) return;
-    const sites = this.mpoleSites(pc, prm, idIndex, oneTwo, amtype, n);
+    const sites = this.mpoleSites(pc, prm, oneTwo, idIndex, amtype, n, closest);
     if (prm.hasMultipoles) {
-      const rr = multipoleReal(sites, pc.x, pc.f, pairsArr.pi, pairsArr.pj, pairsArr.ps, pairsArr.pi.length, prm.specialMpole, prm.dielectric, this.mpolecut);
+      const rr = multipoleReal(sites, x, pc.f, pairsArr.pi, pairsArr.pj, pairsArr.ps, pairsArr.pi.length, prm.specialMpole, prm.dielectric, this.mpolecut, own, this.aeew);
       for (let k = 0; k < 6; k++) pc.acc.virial[k] += rr.virial[k];
+      // the Ewald self-energy of the permanent multipoles (amoeba_multipole.cpp multipole(), over the owned atoms)
+      const felec = ELECTRIC / prm.dielectric;
+      const term = 2.0 * this.aeew * this.aeew;
+      const fterm = -felec * this.aeew / MY_PIS;
+      const rp = sites.rpole;
+      let eself = 0.0;
+      for (let i = 0; i < n; i++) {
+        const o = 13 * i;
+        const ci = rp[o], dix = rp[o + 1], diy = rp[o + 2], diz = rp[o + 3];
+        const qixx = rp[o + 4], qixy = rp[o + 5], qixz = rp[o + 6], qiyy = rp[o + 8], qiyz = rp[o + 9], qizz = rp[o + 12];
+        const cii = ci * ci;
+        const dii = dix * dix + diy * diy + diz * diz;
+        const qii = 2.0 * (qixy * qixy + qixz * qixz + qiyz * qiyz) + qixx * qixx + qiyy * qiyy + qizz * qizz;
+        eself += fterm * (cii + term * (dii / 3.0 + 2.0 * term * qii / 5.0));
+      }
+      rr.e += eself;
+      // the PME reciprocal sum (multipole_kspace), with the grid of kewald: pme-grid or the box size, pme-order
+      if (this.key.useEwald && this.mpoleKspace) {
+        const grid = this.pmeGridOf(pc, this.key.bseorder);
+        const ks = multipoleKspace(sites, n, x, pc.f, grid, this.aeew, prm.dielectric);
+        rr.e += ks.e;
+        for (let k = 0; k < 6; k++) pc.acc.virial[k] += ks.virial[k];
+      }
       pc.acc.ecoul += rr.e;
       this.pvec[3] = rr.e;
     }
     if (prm.hasPolarity) {
-      const e = this.polarizationTerm(pc, prm, sites, pairsArr, oneTwo, idIndex, amtype, n);
+      const e = this.polarizationTerm(pc, prm, sites, pairsArr, oneTwo, idIndex, amtype, n, own);
       pc.acc.ecoul += e;
       this.pvec[4] = e;
     }
@@ -239,6 +392,7 @@ export class PairAmoeba extends Pair {
     pc: PairCompute, prm: AmoebaPrm, sites: MpoleSites,
     pairsArr: { pi: Int32Array; pj: Int32Array; ps: Int8Array },
     oneTwo: Map<number, number[]>, idIndex: Map<number, number>, amtype: { data: ArrayLike<number> }, n: number,
+    own: Int32Array,
   ): number {
     const key = this.key!;
     const types = new Int32Array(n);
@@ -257,12 +411,25 @@ export class PairAmoeba extends Pair {
       oneTwoLocal.push((oneTwo.get(pc.s.id[i]) ?? []).map((id) => idIndex.get(id) ?? -1));
     }
     const group = assignPolarGroups(n, oneTwoLocal, types, (t) => prm.polar.get(t)?.group ?? []);
-    const x = Float64Array.from(pc.x.subarray(0, 3 * n));
     const atoms: PolarAtoms = {
-      n, x, rpole: sites.rpole, alpha, pdamp, thole, group,
+      n, x: pc.x, own, rpole: sites.rpole, alpha, pdamp, thole, group,
       pi: pairsArr.pi, pj: pairsArr.pj, ps: pairsArr.ps,
     };
+    // the reciprocal-space polarization (kewald: the grid of bsporder; udirect1, umutual1, polar_kspace)
+    const useRecip = this.key!.useEwald && this.polarKspace && this.apew >= 1.0e-6;
+    let gP: PmeGrid | null = null, fillP: PmeFill | null = null, wP: Float64Array | null = null, cmpP: Float64Array | null = null;
+    if (useRecip) {
+      gP = this.pmeGridOf(pc, this.key!.bsporder);
+      fillP = pmeFill(pc.x, n, gP);
+      wP = influence(gP, this.apew);
+      cmpP = cmpFromRpole(sites.rpole, n);
+    }
+    const gridP = gP, fillPole = fillP, wPole = wP, cmpPole = cmpP;
+    const recipOn = gridP !== null && fillPole !== null && wPole !== null && cmpPole !== null;
     const settings: PolarSettings = {
+      aewald: this.apew,
+      recipDirect: recipOn ? permanentRecipField(cmpPole!, n, fillPole!, gridP!, wPole!) : null,
+      recipMutual: recipOn ? (u, up) => mutualRecipField(u, up, n, fillPole!, gridP!, wPole!) : null,
       pscale: prm.polarScale.p, piscale: prm.polarScale.pi,
       dscale: prm.polarScale.direct11, uscale: prm.polarScale.mutual11, dielectric: prm.dielectric,
       ewaldcut: key.ewaldcut, usolvcut: key.usolvcut, udiag: key.udiag, poleps: key.poleps, politer: key.politer,
@@ -280,14 +447,32 @@ export class PairAmoeba extends Pair {
     const e = polarEnergy(atoms, settings, ind);
     const vir = polarReal(atoms, settings, sites, ind, pc.f, pairs).virial;
     for (let k = 0; k < 6; k++) pc.acc.virial[k] += vir[k];
+    if (recipOn) {
+      const vpol = polarKspaceForces(sites, n, pc.x, pc.f, gridP, wPole, fillPole, cmpPole, ind.uind, ind.uinp, prm.dielectric, this.apew);
+      for (let k = 0; k < 6; k++) pc.acc.virial[k] += vpol[k];
+    }
     return e;
+  }
+
+  /** The PME grid of kewald: pme-grid or the box-size default, the B-spline order given (bseorder or bsporder). */
+  private pmeGridOf(pc: PairCompute, order: number): PmeGrid {
+    const lo: [number, number, number] = [pc.geom.lo[0], pc.geom.lo[1], pc.geom.lo[2]];
+    const prd: [number, number, number] = [pc.geom.lx, pc.geom.ly, pc.geom.lz];
+    const key = this.key!;
+    const nfft: [number, number, number] = key.pmeGrid
+      ? [key.pmeGrid[0], key.pmeGrid[1], key.pmeGrid[2]]
+      : [defaultGridSize(prd[0]), defaultGridSize(prd[1]), defaultGridSize(prd[2])];
+    for (let d = 0; d < 3; d++) if (!factorable(nfft[d])) throw new StyleError('pair amoeba: pme-grid must factor into 2, 3 and 5');
+    checkPmeOrder(order, Math.min(nfft[0], nfft[1], nfft[2]));
+    return makePmeGrid(nfft, order, lo, prd);
   }
 
   /** Per-atom multipole sites of one step: frames (kmpole), axis atoms, rotated moments (rpole) and rotation matrices. */
   private mpoleSites(
     pc: PairCompute, prm: AmoebaPrm,
-    idIndex: Map<number, number>, oneTwo: Map<number, number[]>,
+    oneTwo: Map<number, number[]>, idIndex: Map<number, number>,
     amtype: { data: ArrayLike<number> }, n: number,
+    closest: (id: number, ref: number) => number,
   ): MpoleSites {
     const s = pc.s;
     const ids = new Int32Array(n);
@@ -306,7 +491,7 @@ export class PairAmoeba extends Pair {
     }
     const typeOfId = (id: number): number => {
       const li = idIndex.get(id);
-      if (li === undefined) throw new StyleError(`pair amoeba: multipole neighbor ${id} is not a local atom (periodic images are not ported yet)`);
+      if (li === undefined) throw new StyleError(`pair amoeba: multipole neighbor ${id} is not a local atom`);
       return amt[li];
     };
     const topo: MpoleTopo = {
@@ -315,7 +500,8 @@ export class PairAmoeba extends Pair {
       bonded: (a, b) => (oneTwo.get(a) ?? []).includes(b),
     };
     const sites = kmpole((t) => prm.multipoles.get(t) ?? [], ids, amt, typeOfId, topo);
-    mapAxes(sites, (id) => idIndex.get(id) ?? -1);
+    // axis atoms: the copy (owned or image) nearest to the site (native closest_image)
+    mapAxes(sites, (i, id) => closest(id, i));
     chkpole(sites, pc.x);
     for (let i = 0; i < n; i++) {
       rotmat(sites, pc.x, i);

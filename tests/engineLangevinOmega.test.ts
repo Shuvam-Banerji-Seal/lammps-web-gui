@@ -47,8 +47,8 @@ describe('fix langevin omega and angmom', () => {
     expect(errs.join('\n')).toMatch(/omega yes with tally or zero/);
   });
 
-  it('refuses angmom yes with its reason', async () => {
+  it('refuses angmom on particles that are not ellipsoids (fix_langevin.cpp)', async () => {
     const errs = await run(`${sphereSetup}fix 2 all langevin 1.0 1.0 1.0 9182 angmom 10\nrun 0\n`);
-    expect(errs.join('\n')).toMatch(/angmom is not supported/);
+    expect(errs.join('\n')).toMatch(/angmom requires atom style ellipsoid/);
   });
 });

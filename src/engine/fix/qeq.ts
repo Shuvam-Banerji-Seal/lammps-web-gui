@@ -117,6 +117,13 @@ import type { System } from '../system';
  * Unsupported qeq styles and qfile keywords throw a StyleError naming them.
  */
 
+/** pair_style reaxff as qeq/shielded sees it: its extract() of chi, eta, gamma (duck-typed; the pair lives in engine-gpl). */
+interface ReaxQeqSource {
+  qeqParameters(ntypes: number): { chi: Float64Array; eta: Float64Array; gamma: Float64Array };
+  attachQeqFix(): void;
+}
+const isReaxQeqSource = (o: unknown): o is ReaxQeqSource => typeof (o as ReaxQeqSource | null)?.qeqParameters === 'function';
+
 type QeqKind = 'point' | 'shielded' | 'dynamic' | 'fire' | 'slater';
 
 interface Params {
@@ -168,6 +175,16 @@ export class FixQeq extends Fix {
   private alpha = 0.2;
   private dsf = false;
   private fromPair = false;
+  /** qeq/shielded with qfile reaxff: chi, eta, gamma of the active pair_style reaxff, read at each solve. */
+  private fromReax = false;
+  /**
+   * Charge history of the CG solves (fix_qeq.cpp at b332f28: nprev = 5, s_hist and t_hist set to atom->q at creation;
+   * after each solve the solution of the atom shifts in). Atom i has entries 5i .. 5i+4. The next solve starts from
+   * the extrapolations of init_matvec (fix_qeq_shielded.cpp, fix_qeq_point.cpp): s = 4(h0 + h2) - (6 h1 + h3) and
+   * t = h2 + 3 (h0 - h1).
+   */
+  private sHist = new Float64Array(0);
+  private tHist = new Float64Array(0);
   scalarFlag = true;
   extscalar = 0;
 
@@ -236,10 +253,17 @@ export class FixQeq extends Fix {
       // the parameters come from the active pair style (resolved at each solve)
       this.fromPair = true;
     } else {
-      if (qfileSpecial(this.qfile)) {
-        throw new StyleError(`fix ${this.style}: qfile '${this.qfile}' (parameters from a pair style) is not supported by the browser engine`);
+      if (kind === 'shielded' && this.qfile === 'reaxff') {
+        // fix_qeq_shielded.cpp (b332f28) extract_reax: "pair->extract("chi", tmp)", "eta", "gamma" of pair reaxff
+        this.fromReax = true;
+        // the pair must know of the fix (pair reaxff checkqeq yes, pair_reaxff.cpp init_style)
+        this.reaxSource()?.attachQeqFix();
+      } else {
+        if (qfileSpecial(this.qfile)) {
+          throw new StyleError(`fix ${this.style}: qfile '${this.qfile}' (parameters from a pair style) is not supported by the browser engine`);
+        }
+        this.parseQfile(sys.readFile(this.qfile));
       }
-      this.parseQfile(sys.readFile(this.qfile));
     }
 
   }
@@ -282,6 +306,32 @@ export class FixQeq extends Fix {
     this.params = { chi, eta, gamma, zeta, qcore };
   }
 
+  /**
+   * qeq/shielded with qfile reaxff: chi, eta and gamma of each type from the pair_style reaxff (its extract()). The pair
+   * is found directly or among the sub-styles of pair hybrid. The fix is attached to the pair (checkqeq yes requires it).
+   */
+  private reaxSource(): ReaxQeqSource | null {
+    const pair = this.sys.ff.pair as unknown as { subs?: { style: unknown }[] } | null;
+    let src: ReaxQeqSource | null = isReaxQeqSource(pair) ? pair : null;
+    for (const sub of pair?.subs ?? []) if (!src && isReaxQeqSource(sub.style)) src = sub.style;
+    return src;
+  }
+
+  private reaxParams(): Params {
+    const n = this.sys.state.ntypes;
+    const src = this.reaxSource();
+    if (!src) throw new StyleError('No reaxff pair style for fix qeq/shielded');
+    const q = src.qeqParameters(n);
+    const zero = new Float64Array(n + 1);
+    const s = this.sys.state;
+    for (let i = 0; i < s.n; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      const t = s.type[i];
+      if (q.chi[t] === 0 && q.eta[t] === 0 && q.gamma[t] === 0) throw new StyleError(`No QEq parameters for atom type ${t} provided by pair reaxff`);
+    }
+    return { chi: q.chi, eta: q.eta, gamma: q.gamma, zeta: zero, qcore: zero };
+  }
+
   /** qeq/slater: parameters of the active coul/streitz pair style (qfile coul/streitz); chi, eta = J, zeta, qcore = Z. */
   private slaterParams(): Params {
     if (!this.fromPair) return this.params!;
@@ -316,7 +366,7 @@ export class FixQeq extends Fix {
 
   private solve(): void {
     const s = this.sys.state;
-    const p = this.kind === 'slater' ? this.slaterParams() : this.params!;
+    const p = this.kind === 'slater' ? this.slaterParams() : this.fromReax ? this.reaxParams() : this.params!;
     const bit = this.groupBit;
     const shielded = this.kind === 'shielded';
     // group atoms (owned)
@@ -591,9 +641,24 @@ export class FixQeq extends Fix {
     const bS = new Float64Array(ng);
     const bT = new Float64Array(ng).fill(-1);
     for (let k = 0; k < ng; k++) bS[k] = -chi[k];
-    const sRes = solveOne(bS, null);
-    const tRes = solveOne(bT, null);
-    this.iterations = sRes.it;
+    // init_matvec: the initial guesses are the extrapolated history (fix_qeq_point.cpp and fix_qeq_shielded.cpp)
+    const n5 = 5 * this.sys.state.n;
+    if (this.sHist.length !== n5) {
+      this.sHist = new Float64Array(n5);
+      this.tHist = new Float64Array(n5);
+      for (let i = 0; i < this.sys.state.n; i++) for (let k = 0; k < 5; k++) { this.sHist[5 * i + k] = s.q[i]; this.tHist[5 * i + k] = s.q[i]; }
+    }
+    const sh = this.sHist, th = this.tHist;
+    const sInit = new Float64Array(ng), tInit = new Float64Array(ng);
+    for (let a = 0; a < ng; a++) {
+      const i = idx[a];
+      sInit[a] = 4 * (sh[5 * i] + sh[5 * i + 2]) - (6 * sh[5 * i + 1] + sh[5 * i + 3]);
+      tInit[a] = th[5 * i + 2] + 3 * (th[5 * i] - th[5 * i + 1]);
+    }
+    const sRes = solveOne(bS, sInit);
+    const tRes = solveOne(bT, tInit);
+    // matvecs = (CG(s) + CG(t)) / 2 with integer division (fix_qeq.cpp / fix_qeq_shielded.cpp at b332f28)
+    this.iterations = Math.trunc((sRes.it + tRes.it) / 2);
     if (this.warn && (!sRes.ok || !tRes.ok)) {
       this.sys.warn(`Fix ${this.style} CG convergence failed after ${this.maxiter} iterations (maxiter reached)`);
     }
@@ -601,6 +666,13 @@ export class FixQeq extends Fix {
     for (let k = 0; k < ng; k++) { sumS += sRes.x[k]; sumT += tRes.x[k]; }
     const q = new Float64Array(ng);
     for (let k = 0; k < ng; k++) q[k] = sRes.x[k] - (sumS / sumT) * tRes.x[k];
+    // calculate_Q: the history shifts in the new solution of each group atom
+    for (let a = 0; a < ng; a++) {
+      const i = idx[a];
+      for (let k = 4; k > 0; k--) { sh[5 * i + k] = sh[5 * i + k - 1]; th[5 * i + k] = th[5 * i + k - 1]; }
+      sh[5 * i] = sRes.x[a];
+      th[5 * i] = tRes.x[a];
+    }
     return q;
   }
 

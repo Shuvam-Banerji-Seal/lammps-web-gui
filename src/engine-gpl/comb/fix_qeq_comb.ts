@@ -5,11 +5,12 @@
  * the C++ file headers: Ray Shan (Sandia). Copyright (2003) Sandia Corporation (GNU General Public
  * License). This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  *
- * Refused (StyleError): the file keyword (the diagnostic log is not written by the browser engine),
- * and respa. The charge force comes from PairComb.chargeForces, which uses the neighbor data of the
+ * The file keyword writes the same diagnostic lines as the C++ fix (fopen "w" at creation, then the
+ * per-step messages through the engine's file output). Refused (StyleError): respa. The charge force comes from PairComb.chargeForces, which uses the neighbor data of the
  * last force evaluation of this step (the fix runs in postForce, after the forces, as in LAMMPS).
  */
 import { Fix } from '../../engine/fix/fix';
+import { formatNumber } from '../../engine/cformat';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { PairComb } from './comb';
@@ -24,6 +25,8 @@ export class FixQeqComb extends Fix {
   private readonly precision: number;
   /** firstflag: set during setup, where the iteration limit is 200 instead of 100. */
   private firstflag = false;
+  /** file keyword: the diagnostic log (src/MANYBODY/fix_qeq_comb.cpp at b332f28), or null. */
+  private readonly fileName: string | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -31,10 +34,13 @@ export class FixQeqComb extends Fix {
     this.nEvery = Math.trunc(Number(args[0]));
     this.precision = Number(args[1]);
     if (!(this.nEvery > 0) || !(this.precision > 0)) throw new StyleError('Illegal fix qeq/comb command: Nevery and precision must be positive');
-    for (let k = 2; k < args.length; k++) {
-      if (args[k] === 'file') throw new StyleError("fix qeq/comb keyword 'file' is not supported by the browser engine (no diagnostic file is written)");
-      throw new StyleError(`Illegal fix qeq/comb command: unknown keyword '${args[k]}' (the browser engine supports only Nevery and precision)`);
+    // fix_qeq_comb.cpp (b332f28): "file" takes a file name; the file is opened with "w" when the fix is created
+    for (let k = 2; k < args.length;) {
+      if (args[k] !== 'file' || k + 1 >= args.length) throw new StyleError(`Illegal fix qeq/comb command: unknown keyword '${args[k]}'`);
+      this.fileName = args[k + 1];
+      k += 2;
     }
+    if (this.fileName !== null) sys.writeFile(this.fileName, '', false);
   }
 
   /** The pair style: pair_style comb. */
@@ -76,6 +82,9 @@ export class FixQeqComb extends Fix {
       sys.warn(`Fix ${this.style} group is not charge neutral, net charge = ${qsum.toPrecision(8)}`);
     }
     const loopmax = this.firstflag ? 200 : 100;
+    const log = (text: string): void => { if (this.fileName !== null) sys.writeFile(this.fileName, text, true); };
+    const g6 = (v: number): string => formatNumber(v, '%.6g');
+    log(`Charge equilibration on step ${s.step}\n`);
     const heatpq = 0.05;
     const qmass = 0.016;
     const dtq = 0.01;
@@ -84,7 +93,9 @@ export class FixQeqComb extends Fix {
     const q2 = new Float64Array(n);
     const qf = new Float64Array(nall);
     for (let i = 0; i < n; i++) if (inGroup(i)) { q1[i] = 0; q2[i] = 0; }
-    for (let iloop = 0; iloop < loopmax; iloop++) {
+    let iloop = 0;
+    let enegchkLast = 0;
+    for (; iloop < loopmax; iloop++) {
       for (let i = 0; i < n; i++) {
         if (inGroup(i)) {
           q1[i] += qf[i] * dtq2 - heatpq * q1[i];
@@ -104,10 +115,14 @@ export class FixQeqComb extends Fix {
         }
       }
       enegchk = enegchk / ngroup;
+      enegchkLast = enegchk;
       if (enegchk <= this.precision && enegmax <= 100.0 * this.precision) break;
+      log(`  iteration: ${iloop}, enegtot ${g6(enegtot)}, enegmax ${g6(enegmax)}, fq deviation: ${g6(enegchk)}\n`);
       for (let i = 0; i < n; i++) {
         if (inGroup(i)) q1[i] += qf[i] * dtq2 - heatpq * q1[i];
       }
     }
+    if (iloop === loopmax) log(`Charges did not converge in ${iloop} iterations\n`);
+    else log(`Charges converged in ${iloop} iterations to ${formatNumber(enegchkLast, '%.10f')} tolerance\n`);
   }
 }

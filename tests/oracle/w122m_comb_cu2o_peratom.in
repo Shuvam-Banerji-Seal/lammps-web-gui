@@ -1,0 +1,36 @@
+# oracle: pair_style comb with compute stress/atom NULL pair on the Cu2O 3x3x3-cell data of examples/comb in.comb.Cu2O.elastic (5 steps of nve with fix qeq/comb every step after 0.08 A random displacements, so the per-atom stress is not symmetry-cancelled, then a 0.1% strain in x and 5 more steps); per-atom virial columns weighted by id are compared through thermo
+# oracle-inputs: w58comb_cu2o.data
+# oracle-potentials: ffield.comb
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS (black box): the per-atom virial sums agree to about 1e-10 relative at the worst row (step 10, c_sr[4]); the case fails at rel=1e-11 there.
+units		metal
+atom_style	charge
+dimension       3
+boundary        p p p
+read_data	w58comb_cu2o.data
+mass		1 63.54
+mass		2 16.00
+displace_atoms  all random 0.08 0.08 0.08 4417 units box
+velocity	all create 1.0 277387
+pair_style	comb
+pair_coeff	* * ffield.comb Cu O
+neighbor	0.5 bin
+neigh_modify	every 1 delay 1 check yes
+compute		s all stress/atom NULL pair
+compute		sr all reduce sum c_s[1] c_s[2] c_s[3] c_s[4] c_s[5] c_s[6]
+variable	a1 atom c_s[1]*(1+0.1*id)
+variable	a2 atom c_s[2]*(1+0.1*id)
+variable	a3 atom c_s[3]*(1+0.1*id)
+variable	a4 atom c_s[4]*(1+0.2*id)
+variable	a5 atom c_s[5]*(1+0.3*id)
+variable	a6 atom c_s[6]*(1+0.4*id)
+compute		ar all reduce sum v_a1 v_a2 v_a3 v_a4 v_a5 v_a6
+timestep        0.00020
+thermo_style	custom step temp pe evdwl ecoul c_sr[1] c_sr[2] c_sr[3] c_sr[4] c_sr[5] c_sr[6] c_ar[1] c_ar[2] c_ar[3] c_ar[4] c_ar[5] c_ar[6]
+thermo_modify	norm yes format float %.15g
+thermo		1
+fix   		1 all nve
+fix   	 	2 all qeq/comb 1 0.0001
+run		5
+change_box	all x scale 1.001 remap
+run		5

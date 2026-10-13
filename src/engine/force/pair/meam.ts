@@ -1302,8 +1302,15 @@ export class PairMeam extends Pair {
       }
       const own = par.pair.get(`${c + 1},${c + 1}`) ?? {};
       if (own.lattce !== undefined && own.lattce !== lib.lat) throw new StyleError(`multi-element MEAM: lattce(${c + 1},${c + 1}) = ${own.lattce} for ${elt} differs from the library lattice '${lib.lat}'`);
-      // nn2 = 1 with the hcp reference is refused in multi-element potentials (not measured; see the single-element style)
-      if (own.nn2 === 1 && lib.lat === 'hcp') throw new StyleError(`multi-element MEAM: nn2(${c + 1},${c + 1}) = 1 with the hcp reference of ${elt} is not supported (${paramFile})`);
+      // nn2 = 1 with the hcp reference: only the fully screened second shell (z2 = 0 for the element's own Cmin triplet)
+      // is measured with native LAMMPS (black box, tests/oracle/w107meam_ti_hcp: pe and forces to 1e-8, and
+      // tests/oracle/w107meam_fetibr). A partly screened hcp second shell is refused as in the single-element style.
+      if (own.nn2 === 1 && lib.lat === 'hcp') {
+        const cminSelf = par.cmin3.get(`${c + 1},${c + 1},${c + 1}`) ?? par.opts.Cmin;
+        if (nn2RefData('hcp', { ...par.opts, Cmin: cminSelf }).z2 > 1e-12) {
+          throw new StyleError(`multi-element MEAM: nn2(${c + 1},${c + 1}) = 1 with the hcp reference of ${elt} and a partly screened second shell (z2 > 0) is not supported (${paramFile})`);
+        }
+      }
       // rho0(I) of the parameter file overwrites the library rozero (docs quote in MeamParams.rho0).
       const rozero = par.rho0.get(c + 1) ?? lib.rozero;
       // Ec and re of the element default as in the single-element style (measured: the same energies as the explicit values)
@@ -1334,8 +1341,10 @@ export class PairMeam extends Pair {
         if (p.Ec === undefined || p.re === undefined || p.alpha === undefined) {
           throw new StyleError(`multi-element MEAM: parameter file ${paramFile} must set Ec(${a + 1},${b + 1}), re(${a + 1},${b + 1}) and alpha(${a + 1},${b + 1})`);
         }
-        if (p.nn2 === 1 && (libs[a].lat === 'hcp' || libs[b].lat === 'hcp')) {
-          throw new StyleError(`multi-element MEAM: nn2(${a + 1},${b + 1}) = 1 with an hcp element is not supported (${paramFile})`);
+        // nn2 = 1 with an hcp element is measured for the b2 pair only (tests/oracle/w107meam_fetibr: the Fe-Ti pair of
+        // a Ti hcp crystal with five Fe atoms matches native to 1e-8); the b1 and dia pairs with an hcp element are refused.
+        if (p.nn2 === 1 && (libs[a].lat === 'hcp' || libs[b].lat === 'hcp') && p.lattce !== 'b2') {
+          throw new StyleError(`multi-element MEAM: nn2(${a + 1},${b + 1}) = 1 with an hcp element and lattce(${a + 1},${b + 1}) = ${p.lattce ?? 'not set'} is not supported (${paramFile})`);
         }
         if (p.nn2 === 1 && p.lattce === 'l12') {
           // nn2 = 1 with the Cu3Au reference is refused: the 2NN recurrence does not match native (black box) yet

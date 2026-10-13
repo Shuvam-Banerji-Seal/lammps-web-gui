@@ -149,9 +149,9 @@ run 1
     expect(Math.abs(last.pe - 5364.00000002935) / 5364).toBeLessThan(1e-9);
   });
 
-  it('refuses the unknown peridynamic styles by name and a pair_coeff with missing values', async () => {
+  it('refuses an unknown peridynamic style by name and a pair_coeff with missing values', async () => {
     const { session } = newSession();
-    await expect(session.execute(`${BOX}pair_style peri/ves\n`)).rejects.toThrow('peri/ves');
+    await expect(session.execute(`${BOX}pair_style peri/bogus\n`)).rejects.toThrow('peri/bogus');
     const second = newSession();
     await expect(second.session.execute(`${BOX}pair_style peri/pmb\npair_coeff * * 1.6863e22 0.0015001\n`)).rejects.toThrow('usage: pair_coeff');
   });
@@ -190,5 +190,64 @@ run 1
     const rows = thermoRows(events);
     expect(rows.at(-1)!.pe).toBe(0);
     expect(rows.at(-1)!.c_2).toBe(0);
+  });
+});
+
+/*
+ * peri/ves and peri/eps (src/engine-gpl/peri, ported from src/PERI/pair_peri_ves.cpp and pair_peri_eps.cpp at b332f28):
+ * the coefficient counts, the damage and dilatation computes, and the first-timestep rule (no bond breaks in the
+ * first step of a run, as native LAMMPS). The full runs are tests/oracle/w107peri_*.in.
+ */
+describe('pair_style peri/ves and peri/eps', () => {
+  it('pair_coeff takes the viscoelastic and elastic-plastic coefficients and a usage error names them', async () => {
+    const ves = newSession();
+    await expect(ves.session.execute(`${BOX}pair_style peri/ves\npair_coeff * * 14.9e9 14.9e9 0.0015001 0.0005 0.25\n`))
+      .rejects.toThrow('usage: pair_coeff I J K G cut s00 alpha lambdai taubi');
+    const eps = newSession();
+    await expect(eps.session.execute(`${BOX}pair_style peri/eps\npair_coeff * * 14.9e9 14.9e9 0.0015001 0.0005 0.25\n`))
+      .rejects.toThrow('usage: pair_coeff I J K G cut s00 alpha yield');
+  });
+
+  it('peri/ves runs with damage/atom and dilatation/atom, and the first step breaks no bond', async () => {
+    const { session, events } = newSession();
+    await session.execute(`${BOX}pair_style peri/ves
+pair_coeff * * 14.9e9 14.9e9 0.0015001 0.0005 0.25 0.5 0.001
+set group all density 2200
+set group all volume 1.25e-10
+velocity all set 0.0 0.0 0.0 sum no units box
+fix 1 all nve
+compute 1 all damage/atom
+compute 2 all reduce sum c_1
+compute 3 all dilatation/atom
+compute 4 all reduce sum c_3
+timestep 1.0e-7
+thermo_style custom step pe c_2 c_4
+thermo 1
+run 1
+`);
+    const rows = thermoRows(events);
+    expect(rows.length).toBe(2);
+    expect(rows[0].pe).toBe(0);
+    expect(rows[1].c_2).toBe(0);
+  });
+
+  it('peri/eps runs with the same computes, and the yield stress is a coefficient', async () => {
+    const { session, events } = newSession();
+    await session.execute(`${BOX}pair_style peri/eps
+pair_coeff * * 14.9e9 14.9e9 0.0015001 0.0005 0.25 10.0e8
+set group all density 2200
+set group all volume 1.25e-10
+velocity all set 0.0 0.0 0.0 sum no units box
+fix 1 all nve
+compute 1 all damage/atom
+compute 2 all reduce sum c_1
+timestep 1.0e-7
+thermo_style custom step pe c_2
+thermo 1
+run 1
+`);
+    const rows = thermoRows(events);
+    expect(rows.length).toBe(2);
+    expect(rows[1].c_2).toBe(0);
   });
 });

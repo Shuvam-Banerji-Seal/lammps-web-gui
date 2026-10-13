@@ -49,6 +49,16 @@ interface PeriParams {
   cS: number;
 }
 
+/**
+ * What the peridynamic computes read from a pair style (damage/atom, dilatation/atom): the bond family's
+ * damage and the dilatation of the last evaluation. PairPeri and the GPL viscoelastic and elastic-plastic styles
+ * (src/engine-gpl/peri, registered lazily) implement it.
+ */
+export interface PeriBondSource {
+  damage(vfrac: Float64Array, nlocal: number): Float64Array;
+  dilatation(nlocal: number): Float64Array;
+}
+
 export class PairPeri extends Pair {
   readonly name: string;
   needsHalf = true;

@@ -1,4 +1,4 @@
-import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral, delta } from '../bonded_util';
+import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral, termDelta } from '../bonded_util';
 import { parseNum, parseInt_ } from '../util';
 import { StyleError, type BondedCompute, type Pair, type StyleContext } from '../types';
 import { PairHybrid } from '../pair/hybrid';
@@ -180,7 +180,7 @@ export class DihedralCharmm extends SimpleBonded {
       e += ed;
       applyDihedral(bc, atoms, dEdphi, grad, rel, ed);
       const w = ww[t];
-      if (w !== 0) this.add14(bc, atoms[0], atoms[3], w, { pair, form, C, a, b, bCoul, a3b3, a6b6, rvec });
+      if (w !== 0) this.add14(bc, atoms[0], atoms[3], w, { pair, form, C, a, b, bCoul, a3b3, a6b6, rvec, owner: atoms[1] });
     }
     bc.acc.edihed += e;
   }
@@ -188,9 +188,9 @@ export class DihedralCharmm extends SimpleBonded {
   /** 1-4 LJ and Coulomb of the pair (i, l) with weight w; energies to evdwl/ecoul, forces applied. */
   private add14(
     bc: BondedCompute, i: number, l: number, w: number,
-    c: { pair: PairCuts; form: Coul14; C: number; a: number; b: number; bCoul: number; a3b3: number; a6b6: number; rvec: number[] },
+    c: { pair: PairCuts; form: Coul14; C: number; a: number; b: number; bCoul: number; a3b3: number; a6b6: number; rvec: number[]; owner: number },
   ): void {
-    const { pair, form, C, a, b, bCoul, a3b3, a6b6, rvec } = c;
+    const { pair, form, C, a, b, bCoul, a3b3, a6b6, rvec, owner } = c;
     const ti = bc.s.type[i], tl = bc.s.type[l];
     // a hybrid sub-style has coefficients only for the type pairs assigned to it (its pair_coeff I J lines)
     if (this.hybridLj && !(pair.p as unknown as { isSet(i: number, j: number): boolean }).isSet(ti, tl)) {
@@ -198,7 +198,7 @@ export class DihedralCharmm extends SimpleBonded {
     }
     const eps = pair.p.get('epsilon14', ti, tl), sig = pair.p.get('sigma14', ti, tl);
     const qq = bc.s.q[i] * bc.s.q[l];
-    delta(bc, i, l, rvec);
+    termDelta(bc, owner, i, l, rvec);  // the 1-4 vector, both copies nearest to the owner (atom 2)
     const r2 = rvec[0] * rvec[0] + rvec[1] * rvec[1] + rvec[2] * rvec[2];
     const r = Math.sqrt(r2);
     const sig6 = sig ** 6;

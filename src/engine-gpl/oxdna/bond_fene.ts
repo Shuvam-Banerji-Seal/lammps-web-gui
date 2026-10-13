@@ -10,7 +10,7 @@
  * same value to every entry, so one value per bond type is kept here (the same numbers, the same arithmetic).
  */
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
-import { atomIndex } from '../../engine/force/bonded_util';
+import { atomIndex, delta as nearestCopy } from '../../engine/force/bonded_util';
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { type OxdnaConstants, backboneOxdna1, lrfOf, oxdnaConstants, potentialLines } from './common';
@@ -141,8 +141,7 @@ export class BondOxdnaFene extends Bonded {
       this.backbone(constants, ax, ay, az, ra);
       this.backbone(constants, bx, by, bz, rb);
       // closest image of b relative to a (the C++ reads the ghost image of b that is nearest to a)
-      d[0] = x[3 * b] - x[3 * a]; d[1] = x[3 * b + 1] - x[3 * a + 1]; d[2] = x[3 * b + 2] - x[3 * a + 2];
-      bc.geom.minimumImage(d);
+      nearestCopy(bc, a, b, d);
       image[0] = x[3 * a] + d[0]; image[1] = x[3 * a + 1] + d[1]; image[2] = x[3 * a + 2] + d[2];
       dbb[0] = x[3 * a] + ra[0] - image[0] - rb[0];
       dbb[1] = x[3 * a + 1] + ra[1] - image[1] - rb[1];

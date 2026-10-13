@@ -1,4 +1,4 @@
-import { SimpleBonded, atomIndex, delta } from '../bonded_util';
+import { SimpleBonded, atomIndex, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 import { StyleError, type BondedCompute, type Pair, type StyleContext } from '../types';
 import { angleTerm } from './harmonic';
@@ -77,10 +77,11 @@ export class AngleSpica extends SimpleBonded {
     let er = 0;
     for (let a = 0; a < A.n; a++) {
       const i = atomIndex(bc, A.atoms[3 * a], 'angle');
+      const j = atomIndex(bc, A.atoms[3 * a + 1], 'angle');
       const k = atomIndex(bc, A.atoms[3 * a + 2], 'angle');
       const rep = pair.angleRepulsion(bc.s.type[i], bc.s.type[k]);
       if (!rep) continue;
-      delta(bc, k, i, d);  // r_i - r_k (minimum image)
+      termDelta(bc, j, k, i, d);  // r_i - r_k, both copies nearest to the centre j
       const r = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
       if (!(r < rep.rmin)) continue;
       const rinv = 1 / r;

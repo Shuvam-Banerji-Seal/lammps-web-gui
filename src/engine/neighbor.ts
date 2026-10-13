@@ -1,6 +1,7 @@
 import type { SimState } from './types';
 import type { Geometry } from './domain';
 import type { SpecialList } from './atoms';
+import type { BondedCopies } from './force/types';
 
 /*
  * Ghost atoms and Verlet neighbor lists.
@@ -123,6 +124,10 @@ export class Neighbor {
   owner = new Int32Array(0);
   /** Image offsets (3 per atom) relative to the owner; 0 for owned atoms. */
   gimage = new Int32Array(0);
+  /** Owned atom i's ghosts are the indices ghostStart[i] .. ghostStart[i+1]-1 (length nlocal+1). */
+  ghostStart = new Int32Array(0);
+  /** The periodic copies for the bonded terms (force/types.ts BondedCopies). */
+  bondedCopies(): BondedCopies { return { start: this.ghostStart, image: this.gimage }; }
   xall = new Float64Array(0);
   fall = new Float64Array(0);
   typeall = new Int32Array(0);
@@ -260,7 +265,9 @@ export class Neighbor {
     const owner: number[] = [];
     const img: number[] = [];
     const lam = [0, 0, 0];
+    const gstart = new Int32Array(n + 1);
     for (let i = 0; i < n; i++) {
+      gstart[i] = n + owner.length;
       g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
       const lo = [0, 0, 0], hi = [0, 0, 0];
       for (let d = 0; d < 3; d++) {
@@ -279,6 +286,8 @@ export class Neighbor {
         }
       }
     }
+    gstart[n] = n + owner.length;
+    this.ghostStart = gstart;
     this.nlocal = n;
     this.nghost = owner.length;
     const nall = n + owner.length;

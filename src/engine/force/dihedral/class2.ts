@@ -1,4 +1,4 @@
-import { SimpleBonded, atomIndex, dihedralGeometry, delta, TypeParams } from '../bonded_util';
+import { SimpleBonded, atomIndex, dihedralGeometry, delta, TypeParams, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 import { bondedVirial, StyleError, type BondedCompute, type StyleContext } from '../types';
 
@@ -195,7 +195,7 @@ export class DihedralClass2 extends SimpleBonded {
       // the two angle values and the angle gradients (atoms i-j-k and j-k-l)
       const d1 = [0, 0, 0], d2 = [0, 0, 0], d3 = [0, 0, 0], d4 = [0, 0, 0];
       delta(bc, j, i, d1); delta(bc, j, k, d2);   // r_i - r_j, r_k - r_j
-      delta(bc, k, j, d3); delta(bc, k, l, d4);   // r_j - r_k, r_l - r_k
+      termDelta(bc, j, k, j, d3); termDelta(bc, j, k, l, d4);   // r_j - r_k, r_l - r_k (copies nearest to j)
       const thIJK = angleOf(d1, d2), thJKL = angleOf(d3, d4);
       const g1 = angleGrad(d1, d2, thIJK);        // [g_i, g_j, g_k]
       const g2 = angleGrad(d3, d4, thJKL);        // [g_j, g_k, g_l]

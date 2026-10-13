@@ -383,6 +383,16 @@ export abstract class Pair {
   extract(_name: string): unknown { return undefined; }
 }
 
+/**
+ * Ghost copies of owned atoms: the ghosts of owned atom i are the indices
+ * start[i] .. start[i+1]-1 (absolute, after the owned atoms); ghost k is the
+ * image (image[3k], image[3k+1], image[3k+2]) of its owner, in lattice units.
+ */
+export interface BondedCopies {
+  start: Int32Array;
+  image: Int32Array;
+}
+
 /** What a bonded style sees during compute(). Positions are owned atoms only. */
 export interface BondedCompute {
   s: SimState;
@@ -395,6 +405,12 @@ export interface BondedCompute {
   virial: Float64Array;
   eatom: Float64Array | null;
   vatom: Float64Array | null;
+  /**
+   * The periodic copies of the owned atoms within the ghost cutoff (from the
+   * neighbor build). Bonded terms take the copy nearest to their owning atom
+   * (bonded_util.ts `delta`); without this table the minimum image is used.
+   */
+  copies?: BondedCopies | null;
   /** Emits a "WARNING: ..." line in the run log (e.g. FENE bond too long). */
   warn?: (text: string) => void;
   /** False during setup (run start, run 0, between runs); true inside a timestep (bpm bonds break only then). */
@@ -410,7 +426,7 @@ export interface BondedCompute {
 export const bondedVirial = (
   bc: BondedCompute, atoms: readonly number[], rel: readonly number[], fk: readonly number[], e: number,
 ): void => {
-  // rel and fk: 3 values per atom, rel relative to atom 0 (minimum image)
+  // rel and fk: 3 values per atom, rel relative to atom 0 (the copies used for the forces)
   const v = bc.virial;
   const w = [0, 0, 0, 0, 0, 0];
   for (let k = 0; k < atoms.length; k++) {

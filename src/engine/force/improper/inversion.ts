@@ -1,4 +1,4 @@
-import { SimpleBonded, atomIndex, delta, applyDihedral } from '../bonded_util';
+import { SimpleBonded, atomIndex, applyDihedral, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 import { StyleError, type BondedCompute } from '../types';
 
@@ -67,9 +67,9 @@ export class ImproperInversionHarmonic extends SimpleBonded {
       let eq = 0;
       for (const [c, ax, pb, pc] of COMBOS) {
         const slots = [atoms[c], atoms[ax], atoms[pb], atoms[pc]];
-        delta(bc, slots[0], slots[1], d); p[0] = d[0]; p[1] = d[1]; p[2] = d[2];
-        delta(bc, slots[0], slots[2], d); q[0] = d[0]; q[1] = d[1]; q[2] = d[2];
-        delta(bc, slots[0], slots[3], d); r[0] = d[0]; r[1] = d[1]; r[2] = d[2];
+        termDelta(bc, atoms[1], slots[0], slots[1], d); p[0] = d[0]; p[1] = d[1]; p[2] = d[2];
+        termDelta(bc, atoms[1], slots[0], slots[2], d); q[0] = d[0]; q[1] = d[1]; q[2] = d[2];
+        termDelta(bc, atoms[1], slots[0], slots[3], d); r[0] = d[0]; r[1] = d[1]; r[2] = d[2];
         const N = cross(q, r);
         const P = len(p), M = len(N);
         const D = dot(p, N);

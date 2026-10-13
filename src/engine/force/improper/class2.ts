@@ -1,5 +1,5 @@
 import { Bonded, StyleError, typeBounds, bondedVirial, type BondedCompute, type StyleContext } from '../types';
-import { atomIndex, delta } from '../bonded_util';
+import { atomIndex, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 
 /*
@@ -124,9 +124,9 @@ export class ImproperClass2 extends Bonded {
   private oopOne(bc: BondedCompute, atoms: readonly number[], ci: number, ai: number, p1i: number, p2i: number, grad: number[]): number {
     const C = atoms[ci], Ap = atoms[ai], P1 = atoms[p1i], P2 = atoms[p2i];
     const v = [0, 0, 0], b1 = [0, 0, 0], b2 = [0, 0, 0];
-    delta(bc, C, Ap, v);
-    delta(bc, C, P1, b1);
-    delta(bc, C, P2, b2);
+    termDelta(bc, atoms[1], C, Ap, v);
+    termDelta(bc, atoms[1], C, P1, b1);
+    termDelta(bc, atoms[1], C, P2, b2);
     const nx = b1[1] * b2[2] - b1[2] * b2[1], ny = b1[2] * b2[0] - b1[0] * b2[2], nz = b1[0] * b2[1] - b1[1] * b2[0];
     const a = v[0] * nx + v[1] * ny + v[2] * nz;
     const v2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
@@ -166,8 +166,8 @@ export class ImproperClass2 extends Bonded {
   /** Angle at J of the triplet (p, J, q) in radians. */
   private angleAt(bc: BondedCompute, atoms: readonly number[], pi: number, ji: number, qi: number): number {
     const d1 = [0, 0, 0], d2 = [0, 0, 0];
-    delta(bc, atoms[ji], atoms[pi], d1);
-    delta(bc, atoms[ji], atoms[qi], d2);
+    termDelta(bc, atoms[1], atoms[ji], atoms[pi], d1);
+    termDelta(bc, atoms[1], atoms[ji], atoms[qi], d2);
     const r1 = Math.hypot(d1[0], d1[1], d1[2]), r2 = Math.hypot(d2[0], d2[1], d2[2]);
     let c = (d1[0] * d2[0] + d1[1] * d2[1] + d1[2] * d2[2]) / (r1 * r2);
     if (c > 1) c = 1;
@@ -178,8 +178,8 @@ export class ImproperClass2 extends Bonded {
   /** Adds f = -coef * d(theta)/dx for the triplet to fk (indexed by the positions pi, ji, qi). */
   private addAngleForce(bc: BondedCompute, atoms: readonly number[], pi: number, ji: number, qi: number, coef: number, fk: number[]): void {
     const d1 = [0, 0, 0], d2 = [0, 0, 0];
-    delta(bc, atoms[ji], atoms[pi], d1);
-    delta(bc, atoms[ji], atoms[qi], d2);
+    termDelta(bc, atoms[1], atoms[ji], atoms[pi], d1);
+    termDelta(bc, atoms[1], atoms[ji], atoms[qi], d2);
     const r1 = Math.hypot(d1[0], d1[1], d1[2]), r2 = Math.hypot(d2[0], d2[1], d2[2]);
     let c = (d1[0] * d2[0] + d1[1] * d2[1] + d1[2] * d2[2]) / (r1 * r2);
     if (c > 1) c = 1;
@@ -230,7 +230,7 @@ export class ImproperClass2 extends Bonded {
       e += et;
       const f = bc.f;
       for (let p = 0; p < 4; p++) for (let d = 0; d < 3; d++) f[3 * atoms[p] + d] += fk[3 * p + d];
-      for (let p = 0; p < 4; p++) delta(bc, atoms[0], atoms[p], rel, 3 * p);
+      for (let p = 0; p < 4; p++) termDelta(bc, atoms[1], atoms[0], atoms[p], rel, 3 * p);
       bondedVirial(bc, atoms, rel, fk, et);
     }
     bc.acc.eimp += e;

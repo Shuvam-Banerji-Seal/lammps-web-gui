@@ -1,4 +1,4 @@
-import { SimpleBonded, atomIndex, delta } from '../bonded_util';
+import { SimpleBonded, atomIndex, delta, termDelta } from '../bonded_util';
 import { parseNum } from '../util';
 import { bondedVirial, StyleError, type BondedCompute } from '../types';
 
@@ -110,7 +110,7 @@ const applyGradD = (bc: BondedCompute, atoms: readonly number[], dEdd: number, g
     }
   }
   const rel: number[] = new Array(12);
-  for (let p = 0; p < 4; p++) delta(bc, atoms[0], atoms[p], rel, 3 * p);
+  for (let p = 0; p < 4; p++) termDelta(bc, atoms[1], atoms[0], atoms[p], rel, 3 * p);
   bondedVirial(bc, atoms, rel, fk, e);
 };
 

@@ -1,0 +1,24 @@
+# oracle: fix npt/cauchy (EXTRA-FIX, CauchyStat with alpha 0.001, continue no) on NiAlH_jea eam/alloy, 3x3x3 fcc (108 atoms) in a prism (triclinic, zero tilt) box; x/y/z targets 0 0 0.1 bar, temp 600; 200 steps; thermo every 20 steps. Native: installed lmp (b332f28, EXTRA-FIX included).
+# Measured with native LAMMPS: this engine agrees with the native run to a max relative error of 6.3e-12 (thermo, row 8 pxy) and 1.9e-12 (per-atom xu yu zu vx vy vz fx fy fz, scaled by max(1,|value|)).
+# oracle-potentials: NiAlH_jea.eam.alloy
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      atomic
+atom_modify     map array
+boundary        p p p
+lattice         fcc 4.05
+region          simbox prism 0 3 0 3 0 3 0 0 0 units lattice
+create_box      2 simbox
+create_atoms    2 box
+mass            1 58.69
+mass            2 26.98154
+pair_style      eam/alloy
+pair_coeff      * * NiAlH_jea.eam.alloy Ni Al
+neigh_modify    delay 5
+timestep        0.002
+fix             1 all npt/cauchy temp 600.0 600.0 1.0 x 0.0 0.0 0.1 y 0.0 0.0 0.1 z 0.0 0.0 0.1 couple none alpha 0.001 continue no
+thermo_style    custom step temp pxx pyy pzz pxy pxz pyz lx ly lz xy xz yz pe f_1
+thermo_modify   format float %.15g
+thermo          20
+velocity        all create 1200 4928459 rot yes dist gaussian loop geom
+run             200

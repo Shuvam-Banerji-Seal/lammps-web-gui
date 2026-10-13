@@ -76,9 +76,12 @@ const UNDEFINERS: Record<string, { defines: string; doc: string }> = {
   uncompute: { defines: 'compute', doc: 'uncompute.html' },
 };
 
-/** Time-integration fix styles — `run` without one leaves atoms frozen. */
+/**
+ * Time-integration fix styles — `run` without one leaves atoms frozen. npt/cauchy: docs.lammps.org/fix_npt_cauchy.html,
+ * "This command performs time integration on Nose-Hoover style non-Hamiltonian equations of motion".
+ */
 const INTEGRATORS = [
-  'nve', 'nvt', 'npt', 'nph', 'nvt/sllod', 'npt/sphere', 'nve/limit',
+  'nve', 'nvt', 'npt', 'npt/cauchy', 'nph', 'nvt/sllod', 'npt/sphere', 'nve/limit',
   'nve/sphere', 'nve/noforce', 'nve/asphere', 'nvt/sphere', 'nvt/asphere',
   'nph/sphere', 'npt/asphere', 'nve/body', 'nvt/body', 'rigid/nve',
   'rigid/nvt', 'rigid/npt', 'rigid/nph', 'rigid', 'rigid/small',

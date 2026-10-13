@@ -145,15 +145,17 @@ export class FixNH extends Fix {
   private mtk = true;
   private drag = 0;
   private ptemp: number | null = null;
-  private dilateBit: number;
-  private fixedpoint: number[] | null = null;
-  private omegaDot = new Float64Array(6);
-  private omegaPos = new Float64Array(6);
+  protected dilateBit: number;
+  protected fixedpoint: number[] | null = null;
+  protected omegaDot = new Float64Array(6);
+  protected omegaPos = new Float64Array(6);
   protected omegaMass = new Float64Array(6);
   private etap: Float64Array; private etapDot: Float64Array;
   /** Accelerations of the barostat chain elements k >= 1, stored between updates (used with chainMassTemp only). */
   private etapDotdot: Float64Array;
-  private pTarget = new Float64Array(6);
+  protected pTarget = new Float64Array(6);
+  /** fix_nh.cpp p_hydro: mean of the barostatted diagonal targets (the CauchyStat hook may change it). */
+  protected pHydro = 0;
   private pCurrent = new Float64Array(6);
   protected tTarget = 0;
   private pTempFixed = 0;
@@ -163,15 +165,15 @@ export class FixNH extends Fix {
   private keInitial: Float64Array | null = null;
   private tempId: string;
   private pressId: string | null = null;
-  private dthalf = 0; private dt4 = 0; private dt8 = 0; private dtf = 0; private dtv = 0;
+  protected dthalf = 0; protected dt4 = 0; private dt8 = 0; private dtf = 0; private dtv = 0;
   private vol0 = 0;
   private len0: number[] = [1, 1, 1];   // box lengths at the start of the run (strain reference)
   /** the strain reference came from a restart file: the next init keeps it */
   private refRestored = false;
   private ecoupleCum = 0;
-  private scaleTilt = [true, true, true];   // yz xz xy with their second dimension
+  protected scaleTilt = [true, true, true];   // yz xz xy with their second dimension
 
-  constructor(sys: System, id: string, group: string, args: string[], style: 'nvt' | 'npt' | 'nph' | 'nphug') {
+  constructor(sys: System, id: string, group: string, args: string[], style: 'nvt' | 'npt' | 'nph' | 'nphug' | 'npt/cauchy') {
     super(sys, id, group, args);
     this.style = style;
     this.timeIntegrate = true;
@@ -251,6 +253,9 @@ export class FixNH extends Fix {
     // fix_nphug.cpp: "Temperature control must be used with fix nphug" and "Pressure control must be used with fix nphug"
     if (style === 'nphug' && !this.tstat) throw new StyleError('Temperature control must be used with fix nphug');
     if (style === 'nphug' && !this.pstat) throw new StyleError('Pressure control must be used with fix nphug');
+    // fix_npt_cauchy.cpp (EXTRA-FIX) constructor: "Temperature control must be used with fix npt/cauchy" and "Pressure control must be used with fix npt/cauchy"
+    if (style === 'npt/cauchy' && !this.tstat) throw new StyleError('Temperature control must be used with fix npt/cauchy');
+    if (style === 'npt/cauchy' && !this.pstat) throw new StyleError('Pressure control must be used with fix npt/cauchy');
     if (this.pstat) {
       const s = sys.state;
       for (const d of [0, 1, 2]) if (this.pFlag[d] && !s.box.periodic[d]) throw new StyleError(`fix ${style}: cannot barostat a non-periodic dimension (${KEYS[d]})`);
@@ -521,7 +526,7 @@ export class FixNH extends Fix {
     // As native LAMMPS does (src/fix_nh.cpp initial_integrate at b332f28): the barostat chain runs before the thermostat
     // target is updated, so it sees the previous step's target. Only the subclasses that fix the masses (chainMassTemp,
     // fix nphug) move their target each step, so only they take this order; the others are unchanged.
-    const chainFirst = this.chainMassTemp !== null && this.pstat && this.pchain > 0;
+    const chainFirst = this.barostatChainFirst() && this.pstat && this.pchain > 0;
     if (chainFirst) this.nhcPress();
     if (this.tstat) {
       this.tTarget = this.stepTargetTemp();
@@ -533,8 +538,7 @@ export class FixNH extends Fix {
       this.computePressCurrent('init');
       this.omegaUpdate(true);
       // barostat velocity scaling (dt/4 each) on both sides of the half kick is applied before it
-      this.velocityPress();
-      this.velocityPress();
+      this.barostatVelocityFlow();
     }
     this.kick();
     if (this.pstat) this.remap();
@@ -545,8 +549,7 @@ export class FixNH extends Fix {
   finalIntegrate(): void {
     this.kick();
     if (this.pstat) {
-      this.velocityPress();
-      this.velocityPress();
+      this.barostatVelocityFlow();
       this.computePressCurrent('final');
       this.omegaUpdate();
       if (this.pchain > 0) this.nhcPress();
@@ -758,11 +761,45 @@ export class FixNH extends Fix {
     }
   }
 
-  private computePressTarget(): void {
+  /**
+   * fix_nh.cpp compute_press_target: the ramped targets, then p_hydro as their mean over the barostatted diagonal
+   * dimensions, then the subclass hook (pressTargetSet).
+   */
+  protected computePressTarget(): void {
     for (let d = 0; d < 6; d++) {
       if (this.pFlag[d]) this.pTarget[d] = ramp(this.sys, this.pStart[d], this.pStop[d]);
     }
+    let acc = 0;
+    for (let d = 0; d < 3; d++) if (this.pFlag[d]) acc += this.pTarget[d];
+    const nb = this.nbaroDiag();
+    this.pHydro = nb > 0 ? acc / nb : 0;
+    this.pressTargetSet();
   }
+
+  /** Hook after the targets of a step are set (fix npt/cauchy changes them here). */
+  protected pressTargetSet(): void {}
+
+  /**
+   * Hook: barostat force numerator term of the deviatoric stress on dimension d, in the units of the pressure
+   * difference (fdev[d] / nktv2p, subtracted by omegaUpdate). Zero unless a subclass sets a deviatoric stress.
+   */
+  protected deviatoricStress(_d: number): number { return 0; }
+  /** True when the subclass supplies deviatoricStress and takes native's p_hydro form of the barostat force. */
+  protected nativeDeviatoric(): boolean { return false; }
+
+  /**
+   * Hook: whether the kinetic tensor of the temperature compute is the initial step's one at the final half step. Native
+   * fix npt/cauchy (src/EXTRA-FIX/fix_npt_cauchy.cpp final_integrate at b332f28) calls pressure->compute_vector() but
+   * not temperature->compute_vector() there, so LAMMPS' per-timestep cache of the temperature compute keeps the
+   * vector of the initial step; fix nh (src/fix_nh.cpp final_integrate) refreshes it. Default: refreshed.
+   */
+  protected staleKineticFinal(): boolean { return false; }
+
+  /** Hook: whether the barostat chain runs before the thermostat target update of the step (fix_nh.cpp order). */
+  protected barostatChainFirst(): boolean { return this.chainMassTemp !== null; }
+
+  /** Hook: strain energy term of the scalar (fix_nh.cpp compute_strain_energy; the default is the measured form). */
+  protected strainEnergyValue(): number { return this.strainEnergy(); }
 
   /**
    * Current pressure (tensor), averaged over coupled dimensions.
@@ -782,7 +819,10 @@ export class FixNH extends Fix {
     pc.keOverride = null;
     this.sys.refreshComputes();
     const pressTemp = pc.tempId;
-    const kt = pressTemp !== null && pressTemp !== this.tempId ? this.sys.compute(pressTemp) : null;
+    // A subclass whose kinetic tensor is not refreshed between the initial and the final half step (see
+    // staleKineticFinal) reads the initial step's tensor for the final pressure as well.
+    const stale = this.staleKineticFinal();
+    const kt = pressTemp !== null && pressTemp !== this.tempId ? this.sys.compute(pressTemp) : stale ? this.tempCompute : null;
     if (kt && kt.vectorFlag) {
       if (stage === 'init') this.keInitial = Float64Array.from(kt.vectorValues());
       else if (stage === 'final' && this.keInitial) {
@@ -801,7 +841,7 @@ export class FixNH extends Fix {
       for (const d of coupled) cur[d] = avg;
     }
     for (let d = 0; d < 6; d++) this.pCurrent[d] = cur[d];
-    if (stage === 'final' && this.couple !== 'none') {
+    if (stage === 'final' && this.couple !== 'none' && !stale) {
       pc.keOverride = null;
       this.sys.refreshComputes();
     }
@@ -827,15 +867,20 @@ export class FixNH extends Fix {
           const ke2 = initial && this.trackKE !== null ? this.trackKE * this.nhcScale2 : dof * kT;
           if (dof > 0) mtkTerm1 = ke2 / (nb * s.n);
         } else {
-          mtkTerm1 = this.keBaro() / (nb * s.n);
+          mtkTerm1 = this.keBaro(!initial && this.staleKineticFinal()) / (nb * s.n);
         }
       }
     }
     const drag = this.drag > 0 ? 1 - this.dtv / this.pPeriod.reduce((a, b) => Math.max(a, b), 0) * this.drag : 1;
     for (let d = 0; d < 6; d++) {
       if (!this.pFlag[d]) continue;
-      let force = (this.pCurrent[d] - this.pTarget[d]) * vol / s.units.nktv2p;
+      // A subclass that supplies the deviatoric stress (nativeDeviatoric) takes the form of src/fix_nh.cpp
+      // nh_omega_dot at b332f28: the diagonal force uses the hydrostatic target p_hydro, the tilt force the current
+      // tilt stress alone, and the deviatoric stress enters both. The core styles keep P - P_target per dimension.
+      const dev = this.nativeDeviatoric();
+      let force = (dev ? (d < 3 ? this.pCurrent[d] - this.pHydro : this.pCurrent[d]) : this.pCurrent[d] - this.pTarget[d]) * vol / s.units.nktv2p;
       if (d < 3) force += mtkTerm1;
+      if (dev) force -= this.deviatoricStress(d);
       this.omegaDot[d] += force / this.omegaMass[d] * this.dthalf;
       this.omegaDot[d] *= drag;
     }
@@ -848,10 +893,10 @@ export class FixNH extends Fix {
    * every dimension barostatted it equals dof * kT, the iso form. Checked against native LAMMPS (black box)
    * with fix_modify temp of a compute temp/partial (case w41nptp_bias) and in metal units (w41nptp_metal_*).
    */
-  private keBaro(): number {
+  private keBaro(stale = false): number {
     const tc = this.tempCompute;
     if (!tc.vectorFlag) return this.sys.state.units.mvv2e * this.mvvBaro();
-    const ke = tc.vectorValues();
+    const ke = stale && this.keInitial ? this.keInitial : tc.vectorValues();
     let acc = 0;
     for (let d = 0; d < 3; d++) if (this.pFlag[d]) acc += ke[d];
     return acc;
@@ -886,17 +931,29 @@ export class FixNH extends Fix {
     return (this.pFlag[0] ? 1 : 0) + (this.pFlag[1] ? 1 : 0) + (this.pFlag[2] ? 1 : 0);
   }
 
+  /**
+   * Hook: the barostat velocity flow of a half step (fix nh's two dt/4 sweeps of velocityPress). A subclass whose
+   * native nh_v_press is a single sweep overrides it.
+   */
+  protected barostatVelocityFlow(): void {
+    this.velocityPress();
+    this.velocityPress();
+  }
+
+  /** The MTK velocity term: trace of the barostat velocities over the barostatted diagonal dimensions (0 without mtk). */
+  protected mtkVelocityTerm(): number {
+    const s = this.sys.state;
+    if (!this.mtk) return 0;
+    const dof = this.tempCompute.dof;
+    if (!(dof > 0)) return 0;
+    let tr = 0;
+    for (let d = 0; d < (s.dimension === 2 ? 2 : 3); d++) if (this.pFlag[d]) tr += this.omegaDot[d];
+    return tr / (this.nbaroDiag() * s.n);
+  }
+
   private velocityPress(): void {
     const s = this.sys.state;
-    let mtkTerm2 = 0;
-    if (this.mtk) {
-      const dof = this.tempCompute.dof;
-      if (dof > 0) {
-        let tr = 0;
-        for (let d = 0; d < (s.dimension === 2 ? 2 : 3); d++) if (this.pFlag[d]) tr += this.omegaDot[d];
-        mtkTerm2 = tr / (this.nbaroDiag() * s.n);
-      }
-    }
+    const mtkTerm2 = this.mtkVelocityTerm();
     // each call advances the strain-rate scaling by dt/4: diagonal factors split
     // symmetrically around the off-diagonal (tilt) coupling, x then y then z
     const f8 = [0, 1, 2].map((d) => (s.dimension === 2 && d === 2 ? 1 : Math.exp(-this.dt8 * (this.omegaDot[d] + mtkTerm2))));
@@ -971,7 +1028,7 @@ export class FixNH extends Fix {
    * Box and dilated atoms over dt/2: h <- exp(omega dt/2) h about the fixed
    * point (box centre by default), atoms mapped in fractional coordinates.
    */
-  private remap(): void {
+  protected remap(): void {
     const sys = this.sys;
     const s = sys.state;
     const g = sys.geom;
@@ -1105,9 +1162,9 @@ export class FixNH extends Fix {
       if (nhyd) {
         const pMean = pHydro / nhyd;
         e += pMean * (vol - this.vol0) / s.units.nktv2p;
-        // fix_nh.cpp compute_scalar: "if (deviatoric_flag) energy += compute_strain_energy()"
-        if (this.deviatoric) e += this.strainEnergy();
       }
+      // fix_nh.cpp compute_scalar: "if (deviatoric_flag) energy += compute_strain_energy()" (inside pstat_flag)
+      if (this.deviatoric) e += this.strainEnergyValue();
       if (this.pchain > 0) {
         const kt = kB * this.baroTemp();
         const kM = this.chainMassTemp !== null ? kB * this.chainMassTemp : kt;

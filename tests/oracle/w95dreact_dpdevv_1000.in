@@ -1,0 +1,37 @@
+# oracle: pair dpd/fdt/energy with fix dpd/energy and fix eos/cv (isoenergetic DPD, atom_style dpd, velocity-Verlet) on the first 1000 atoms of examples/PACKAGES/dpd-react/dpde-vv, 100 steps
+# oracle-inputs: w95dreact_dpd_1000.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-15
+# Measured with native LAMMPS (black box): cut-down of the dpde-vv example (same box, cutoff, kappa and seed).
+# Measured against the engine: max relative error 3e-15 for every thermo column and atom state; c_dpdU[1] (uCond sum, about 1e-19) differs by 3e-19 absolute.
+# The earlier 4.5e-7 residual was the alpha = sqrt(2 kB kappa) of pair dpd/fdt/energy computed before the units were known (boltz = 1).
+
+boundary        p p p
+
+units           metal
+atom_style      dpd
+read_data       w95dreact_dpd_1000.data
+
+comm_modify     mode single vel yes
+mass            1 125.9
+
+pair_style      dpd/fdt/energy 8.6 245455
+pair_coeff      1 1 0.075 0.022 3.2E-05 8.60
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check no once no
+
+timestep        0.001
+
+fix             1 all dpd/energy
+fix             2 all nve
+fix             3 all eos/cv 0.00517041
+
+compute         dpdU all dpd
+
+variable        totEnergy equal pe+ke+c_dpdU[1]+c_dpdU[2]
+
+thermo          10
+thermo_style    custom step temp press pe ke c_dpdU[1] c_dpdU[2] v_totEnergy c_dpdU[4]
+thermo_modify   format float %.15g
+
+run             100

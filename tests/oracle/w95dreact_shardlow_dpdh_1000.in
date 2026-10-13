@@ -1,0 +1,35 @@
+# oracle: fix shardlow with pair dpd/fdt/energy, fix nph iso and fix eos/cv (isoenthalpic, atom_style dpd, SSA) on the first 1000 atoms of examples/PACKAGES/dpd-react/dpdh-shardlow, 100 steps
+# oracle-inputs: w95dreact_shardlow_dpdh_1000.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS (black box): cut-down of the dpdh-shardlow example (same box, cutoff, kappa and seed).
+# Measured against the engine: max relative error 1e-14 (thermo), 3e-13 (atoms).
+
+boundary        p p p
+
+units           metal
+atom_style      dpd
+read_data       w95dreact_shardlow_dpdh_1000.data
+
+comm_modify     mode single vel yes
+mass            1 100.0
+
+pair_style      dpd/fdt/energy 10.0 234324
+pair_coeff      1 1 0.075 0.022 3.2E-5 10.0
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check no once no
+
+timestep        0.001
+
+compute         dpdU all dpd
+variable        totEnergy equal pe+ke+c_dpdU[1]+c_dpdU[2]+press*vol
+
+thermo          10
+thermo_style    custom step temp press vol pe ke v_totEnergy cella cellb cellc
+thermo_modify   format float %.15g
+
+fix             1 all shardlow
+fix             0 all nph iso 0.0 0.0 1000.0
+fix             2 all eos/cv 0.0005
+
+run             100

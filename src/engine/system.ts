@@ -511,8 +511,20 @@ export class System {
     const binsize = this.sortBinsize > 0 ? this.sortBinsize : 0.5 * this.nb.cutneighmax;
     if (!(binsize > 0) || s.n < 2) return;
     const b = s.box;
+    // atom.cpp setup_sort_bins: a triclinic box is binned in the bounding box of the tilted cell (domain->bbox of the
+    // lamda box), which is Domain::set_global_box's boxlo_bound / boxhi_bound
     const lo = [b.lo[0], b.lo[1], b.lo[2]];
-    const len = [b.hi[0] - b.lo[0], b.hi[1] - b.lo[1], b.hi[2] - b.lo[2]];
+    const hi = [b.hi[0], b.hi[1], b.hi[2]];
+    if (b.triclinic) {
+      const [xy, xz, yz] = b.tilt;
+      lo[0] = Math.min(lo[0], lo[0] + xy);
+      lo[0] = Math.min(lo[0], lo[0] + xz);
+      lo[1] = Math.min(lo[1], lo[1] + yz);
+      hi[0] = Math.max(hi[0], hi[0] + xy);
+      hi[0] = Math.max(hi[0], hi[0] + xz);
+      hi[1] = Math.max(hi[1], hi[1] + yz);
+    }
+    const len = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
     const nb = len.map((l, d) => (d === 2 && s.dimension === 2 ? 1 : Math.max(1, Math.floor(l / binsize))));
     const bin = new Float64Array(s.n);
     for (let i = 0; i < s.n; i++) {

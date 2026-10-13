@@ -43,7 +43,10 @@ export const richardsonStep = (q: Float64Array, off: number, L: Float64Array, lo
   const omega = (w0: number, w1: number, w2: number, w3: number): [number, number, number] => {
     const R = quatToMatrix(w0, w1, w2, w3);
     const wb = rotateTransposeVec(R, L[lo], L[lo + 1], L[lo + 2]);
-    return rotateVec(R, wb[0] / I[0], wb[1] / I[1], wb[2] / I[2]);
+    // a zero principal moment (a rod body, or a point of a body with no inertia about that axis) gives a zero
+    // angular velocity about it, as native MathExtra::angmom_to_omega does (math_extra.cpp: "if (idiag[0] == 0.0) wbody[0] = 0.0")
+    const om = (k: number): number => (I[k] === 0 ? 0 : wb[k] / I[k]);
+    return rotateVec(R, om(0), om(1), om(2));
   };
   /** (0,w) * q: the quaternion derivative times 2. */
   const wq = (w: [number, number, number], a0: number, a1: number, a2: number, a3: number): [number, number, number, number] => [

@@ -8,7 +8,7 @@ import { triBodyHook } from '../styles';
 import type { TriBody } from '../triBonus';
 
 import { expandTemplateTopology } from '../template';
-import { BODY_RECORD, bodyRecordOffset, bodyRecordStride, parseBodyStyle, principalFrame } from '../bodies';
+import { BODY_RECORD, POLY_OFF, bodyRecordOffset, bodyRecordStride, parseBodyStyle, polyRecordLength, polyStoredCounts, polyhedronFrame, principalFrame } from '../bodies';
 import { makeBox } from '../domain';
 import { LABEL_KINDS, LABEL_SECTION, isValidLabel, labelKindOfSection, type LabelKind } from '../labelmap';
 import { generalBoxFromRestricted, generalFrame, rotateVector, toGeneralPoint, toRestrictedPoint, unrotateVector, type GeneralFrame, type Mat3, type V3 } from '../triclinic_general';
@@ -465,6 +465,94 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   // read_data.html: a Type Labels section must come before any section involving types ("Must read Type Labels before any section involving types")
   let typesRead = false;
   /**
+   * atom_style body rounded/polyhedron: the Bodies entries (native body_rounded_polyhedron.cpp data_body). The
+   * record of each body holds its counts, the principal moments, the enclosing and rounded radii, the body-frame
+   * vertices, edge ends and faces (bodies.ts). Checks as native: the counts, the number of doubles, the edge
+   * vertices (in range, distinct), the face vertices (in range, the first three not on a line), and the two
+   * vertices of a rod (distinct).
+   */
+  const readPolyhedronBodies = (bodies: { id: number; ints: number[]; dbls: number[]; at: number }[]): void => {
+    const parsed = bodies.map((b) => {
+      if (b.ints.length !== 3) throw new StyleError(`data file line ${b.at}: Incorrect # of integer values in Bodies section of data file (body rounded/polyhedron has nvertices nedges nfaces)`);
+      const [nsub, ned, nfac] = b.ints;
+      if (nsub < 1) throw new StyleError(`data file line ${b.at}: Incorrect integer value in Bodies section of data file`);
+      const nentries = nsub < 3 ? 6 + 3 * nsub + 1 : 6 + 3 * nsub + 2 * ned + 4 * nfac + 1;
+      if (b.dbls.length !== nentries) throw new StyleError(`data file line ${b.at}: Incorrect # of floating-point values in Bodies section of data file (needs ${nentries}, got ${b.dbls.length})`);
+      const st = polyStoredCounts(nsub, ned, nfac);
+      return { b, nsub, ...st, need: polyRecordLength(nsub, st.nedge, st.nface) };
+    });
+    let need = 0;
+    for (const p of parsed) need = Math.max(need, p.need);
+    const rec0 = s.custom.get(BODY_RECORD)!;
+    if (need > rec0.cols) {
+      const data = new Float64Array(s.n * need);
+      for (let i = 0; i < s.n; i++) data.set(rec0.data.subarray(rec0.cols * i, rec0.cols * (i + 1)), need * i);
+      rec0.data = data;
+      rec0.cols = need;
+    }
+    for (const { b, nsub, nedge, nface } of parsed) {
+      if (!bodyPending.has(b.id)) throw new StyleError(`data file line ${b.at}: atom ${b.id} has no bodyflag 1 in the Atoms section`);
+      const i = (() => { for (let q = n0; q < s.n; q++) if (s.id[q] === b.id) return q; return -1; })();
+      if (i < 0) throw new StyleError(`data file line ${b.at}: atom ${b.id} is not in the Atoms section`);
+      bodyPending.delete(b.id);
+      const d = b.dbls;
+      const ned = b.ints[1], nfac = b.ints[2];
+      const vfile = (q: number): number[] => [d[6 + 3 * q], d[7 + 3 * q], d[8 + 3 * q]];
+      const dsq = (a: number[], c: number[]): number => (a[0] - c[0]) ** 2 + (a[1] - c[1]) ** 2 + (a[2] - c[2]) ** 2;
+      const diam = nsub < 3 ? d[6 + 3 * nsub] : d[6 + 3 * nsub + 2 * ned + 4 * nfac];
+      if (nsub === 2 && dsq(vfile(0), vfile(1)) === 0) throw new StyleError(`The two vertices of rod body ${b.id} in Bodies section of data file coincide`);
+      // the edges of a body with three or more vertices are data-file entries (a rod's edge is 0-1, not read)
+      for (let e = 0; nsub >= 3 && e < nedge; e++) {
+        const na = d[6 + 3 * nsub + 2 * e], nb = d[7 + 3 * nsub + 2 * e];
+        if (!(na >= 0 && na < nsub && nb >= 0 && nb < nsub) || dsq(vfile(na), vfile(nb)) === 0) {
+          throw new StyleError(`Edge ${e} of body ${b.id} in Bodies section of data file has invalid vertices or zero length`);
+        }
+      }
+      for (let f = 0; f < nface; f++) {
+        const o = 6 + 3 * nsub + 2 * ned + 4 * f;
+        const nv = [d[o], d[o + 1], d[o + 2]];
+        for (const v of nv) if (!(v >= 0 && v < nsub)) throw new StyleError(`Face ${f} of body ${b.id} in Bodies section of data file has invalid vertices`);
+        const u = [vfile(nv[1])[0] - vfile(nv[0])[0], vfile(nv[1])[1] - vfile(nv[0])[1], vfile(nv[1])[2] - vfile(nv[0])[2]];
+        const v2 = [vfile(nv[2])[0] - vfile(nv[0])[0], vfile(nv[2])[1] - vfile(nv[0])[1], vfile(nv[2])[2] - vfile(nv[0])[2]];
+        const n = [u[1] * v2[2] - u[2] * v2[1], u[2] * v2[0] - u[0] * v2[2], u[0] * v2[1] - u[1] * v2[0]];
+        const lsq = (a: number[]): number => a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
+        if (lsq(n) <= 1.0e-24 * lsq(u) * lsq(v2)) throw new StyleError(`The first three vertices of face ${f} of body ${b.id} in Bodies section of data file are on a line`);
+      }
+      const pf = polyhedronFrame(d.slice(0, 6));
+      const rec = s.custom.get(BODY_RECORD)!;
+      const B = rec.cols, base = B * i;
+      rec.data[base] = nsub;
+      for (let c = 0; c < 3; c++) rec.data[base + 1 + c] = pf.moments[c];
+      rec.data[base + 4] = nedge;
+      rec.data[base + 5] = nface;
+      let erad2 = 0;
+      for (let q = 0; q < nsub; q++) {
+        const dl = vfile(q);
+        erad2 = Math.max(erad2, dl[0] * dl[0] + dl[1] * dl[1] + dl[2] * dl[2]);
+        for (let c = 0; c < 3; c++) rec.data[base + POLY_OFF + 3 * q + c] = pf.E[c] * dl[0] + pf.E[3 + c] * dl[1] + pf.E[6 + c] * dl[2];
+      }
+      const rrad = 0.5 * diam;
+      rec.data[base + 7] = rrad;
+      rec.data[base + 6] = nsub === 1 ? rrad : Math.sqrt(erad2);
+      const eo = base + POLY_OFF + 3 * nsub;
+      if (nsub === 2) {
+        rec.data[eo] = 0;
+        rec.data[eo + 1] = 1;
+      } else {
+        for (let e = 0; e < nedge; e++) {
+          rec.data[eo + 2 * e] = d[6 + 3 * nsub + 2 * e];
+          rec.data[eo + 2 * e + 1] = d[7 + 3 * nsub + 2 * e];
+        }
+      }
+      const fo = eo + 2 * nedge;
+      for (let f = 0; f < nface; f++) {
+        for (let m = 0; m < 4; m++) rec.data[fo + 4 * f + m] = d[6 + 3 * nsub + 2 * ned + 4 * f + m];
+      }
+      for (let c = 0; c < 4; c++) s.quat![4 * i + c] = pf.quat[c];
+    }
+    if (bodyPending.size) throw new StyleError(`data file: ${bodyPending.size} atoms have bodyflag 1 but no Bodies entry`);
+  };
+  /**
    * A type column of a data line: a numeric type (plus the offset) or a type label of the kind. Offsets are
    * ignored on a label (read_data.html: "the type labels will determine the actual types directly").
    */
@@ -523,6 +611,10 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
       if (!parseBodyStyle(style)) throw new StyleError('data file section Bodies needs atom_style body');
       const r = readBodyLines(lines, k, h.bodies ?? 0);
       k = r.k;
+      if (parseBodyStyle(style)!.bstyle === 'rounded/polyhedron') {
+        readPolyhedronBodies(r.bodies);
+        continue;
+      }
       // Measured with native LAMMPS (black box): read_data accepts bodies with fewer sub-particles than Nmin or more
       // than Nmax (the two values only size internal arrays), so the record widens to the largest body read here.
       let maxN = 0;

@@ -147,7 +147,8 @@ describe('read_data Bodies (output/data.ts)', () => {
 describe('atom_style body and the refused styles', () => {
   it('names each refused body style', async () => {
     await expect(newSession().execute('atom_style body rounded/polygon 2 6\n')).resolves.toBeUndefined(); // accepted since wave 49 (engineBodyPoly49.test.ts)
-    await expect(newSession().execute('atom_style body rounded/polyhedron 2 6\n')).rejects.toThrow(/rounded\/polyhedron/);
+    await expect(newSession().execute('atom_style body rounded/polyhedron 2 6\n')).resolves.toBeUndefined(); // accepted (engineBodyPolyhedron.test.ts)
+    await expect(newSession().execute('atom_style body dummy 2 6\n')).rejects.toThrow(/body dummy/);
     await expect(newSession().execute('atom_style body nparticle -1 6\n')).rejects.toThrow(/usage: atom_style body/);
     await expect(newSession().execute('atom_style hybrid charge body nparticle 2 6\n')).rejects.toThrow(/body/);
   });

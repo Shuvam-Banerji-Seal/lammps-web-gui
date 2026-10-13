@@ -1,0 +1,22 @@
+# oracle: pair_style body/rounded/polyhedron between a rounded cube and a sphere body (one sub-particle, the sphere-polyhedron route), friction mu 0.3, approach speed 2 with lateral sliding, fix nve/body, 2000 steps: thermo pe ke etotal press and the atom state
+# Measured (engine vs native): thermo max relative error 1.2e-13 (pe), per-atom state (x, v, f) max 1.0e-14. The sphere is a body with one sub-particle (zero moments of inertia), so the sphere-polyhedron route (sphere_against_polyhedron) is exercised with friction mu 0.3.
+# oracle-inputs: w121body_cube_sphere.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+units           lj
+dimension       3
+atom_style      body rounded/polyhedron 1 8
+atom_modify     map array
+read_data       w121body_cube_sphere.data
+set             atom 1 vx 2.0 vy 0.5 vz 0.0
+set             atom 2 vx -2.0 vy 0.0 vz 0.0
+pair_style      body/rounded/polyhedron 20 5 0.3 1 0.5
+pair_coeff      * * 100 1
+comm_modify     vel yes
+neighbor        0.5 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        0.001
+fix             1 all nve/body
+thermo_style    custom step pe ke etotal press
+thermo_modify   format float %.15g
+thermo          50
+run             2000

@@ -16,6 +16,7 @@
  */
 import { erfcExact } from '../../engine/force/erfc';
 import { ELECTRIC, type MpoleSites, torque2force } from './multipole';
+import { hippoDirectField, hippoPolarReal, hippoPrecondTensors, type HippoPolarAtoms } from './hippo_polar';
 
 /** Constant converting q-Angstrom to Debye, used by the convergence test (amoeba_induce.cpp DEBYE). */
 const DEBYE = 4.80321;
@@ -43,6 +44,8 @@ export interface PolarAtoms {
   pi: Int32Array;
   pj: Int32Array;
   ps: Int8Array;
+  /** HIPPO only: core charge, damping exponent and valence charge per copy (pair hippo). */
+  hippo?: HippoPolarAtoms;
 }
 
 /** The scalars of the polarization settings (key file and PRM file). */
@@ -68,6 +71,9 @@ export interface PolarSettings {
   pcgprec: boolean;
   pcgguess: boolean;
   pcgpeek: number;
+  /** pair hippo: the HIPPO polarization (hippo_polar.ts); wscale is induce-1n-scale per special code (index 0 = 1). */
+  hippo: boolean;
+  wscale: readonly number[];
 }
 
 /** Output of the solver: induced dipoles (mutual, Thole-scaled by the pscale, uscale, dscale of the field). */
@@ -315,12 +321,14 @@ const mutualField = (
 export interface PrecondPairs {
   pi: Int32Array;
   pj: Int32Array;
+  /** Special code of each preconditioner pair (for the HIPPO wscale factor). */
+  ps: Int8Array;
 }
 
 /** pair list of the preconditioner (precond_neigh): pairs of the half list with r^2 < usolvcut^2. */
 export const precondPairs = (a: PolarAtoms, usolvcut: number): PrecondPairs => {
   const cut2 = usolvcut * usolvcut;
-  const pi: number[] = [], pj: number[] = [];
+  const pi: number[] = [], pj: number[] = [], ps: number[] = [];
   const x = a.x;
   for (let p = 0; p < a.pi.length; p++) {
     const i = a.pi[p], j = a.pj[p];
@@ -328,13 +336,15 @@ export const precondPairs = (a: PolarAtoms, usolvcut: number): PrecondPairs => {
     if (xr * xr + yr * yr + zr * zr < cut2) {
       pi.push(i);
       pj.push(j);
+      ps.push(a.ps[p]);
     }
   }
-  return { pi: Int32Array.from(pi), pj: Int32Array.from(pj) };
+  return { pi: Int32Array.from(pi), pj: Int32Array.from(pj), ps: Int8Array.from(ps) };
 };
 
 /** uscale0b BUILD: the off-diagonal 3x3 preconditioner of each pair (6 values, no cutoff), at the current positions. */
 export const buildPrecondTensors = (a: PolarAtoms, pc: PrecondPairs, s: PolarSettings): Float64Array => {
+  if (s.hippo) return hippoPrecondTensors(a, requireHippo(a), pc, s);
   const out = new Float64Array(6 * pc.pi.length);
   const x = a.x;
   for (let q = 0; q < pc.pi.length; q++) {
@@ -411,7 +421,7 @@ export const induceDipoles = (
 ): InducedDipoles => {
   const n = a.n;
   const off2 = s.ewaldcut * s.ewaldcut;
-  const direct = directField(a, s, pairs, off2);
+  const direct = s.hippo ? hippoDirectField(a, requireHippo(a), s, pairs, off2) : directField(a, s, pairs, off2);
   const { tdip, inRange } = direct;
   const udir = new Float64Array(3 * n), udirp = new Float64Array(3 * n);
   const poli = new Float64Array(n);
@@ -520,6 +530,65 @@ export const polarEnergy = (a: PolarAtoms, s: PolarSettings, ind: InducedDipoles
   return total;
 };
 
+/** requireHippo: the HIPPO per-copy data of a pair hippo polarization term (set by pair_amoeba.ts). */
+const requireHippo = (a: PolarAtoms): HippoPolarAtoms => {
+  if (!a.hippo) throw new Error('pair hippo: the HIPPO per-atom data are missing');
+  return a.hippo;
+};
+
+/**
+ * The site torques of the induced fields and their conversion to forces (polar() and the tail of polar_real): tep from
+ * ufld and dufld per owned site, the self torque (zero without Ewald), torque2force and the frame virial. Shared by the
+ * AMOEBA and HIPPO polar_real.
+ */
+export const polarSiteTorques = (
+  a: PolarAtoms, s: PolarSettings, sites: MpoleSites, ind: InducedDipoles,
+  ufld: Float64Array, dufld: Float64Array, f: Float64Array, vir: Float64Array,
+): void => {
+  const n = a.n;
+  const x = a.x, rp = a.rpole, uind = ind.uind, uinp = ind.uinp;
+  for (let i = 0; i < n; i++) {
+    const oi = 13 * i;
+    const dix = rp[oi + 1], diy = rp[oi + 2], diz = rp[oi + 3];
+    const qixx = rp[oi + 4], qixy = rp[oi + 5], qixz = rp[oi + 6], qiyy = rp[oi + 8], qiyz = rp[oi + 9], qizz = rp[oi + 12];
+    const u = (k: number): number => ufld[3 * i + k];
+    const d = (k: number): number => dufld[6 * i + k];
+    const tep: Float64Array = Float64Array.from([
+      diz * u(1) - diy * u(2) + qixz * d(1) - qixy * d(3) + 2.0 * qiyz * (d(2) - d(5)) + (qizz - qiyy) * d(4),
+      dix * u(2) - diz * u(0) - qiyz * d(1) + qixy * d(4) + 2.0 * qixz * (d(5) - d(0)) + (qixx - qizz) * d(3),
+      diy * u(0) - dix * u(1) + qiyz * d(3) - qixz * d(4) + 2.0 * qixy * (d(0) - d(2)) + (qiyy - qixx) * d(1),
+    ]);
+    // the self torque of the induced dipoles (amoeba_polar.cpp polar(): tep = term (d x u), u = (uind + uinp)/2,
+    // term = (4/3) felec aewald^3 / sqrt(pi) with felec = electric / dielectric)
+    const tterm = ((4.0 / 3.0) * (ELECTRIC / s.dielectric) * s.aewald * s.aewald * s.aewald) / MY_PIS;
+    if (tterm !== 0.0) {
+      const uix = 0.5 * (uind[3 * i] + uinp[3 * i]), uiy = 0.5 * (uind[3 * i + 1] + uinp[3 * i + 1]);
+      const uiz = 0.5 * (uind[3 * i + 2] + uinp[3 * i + 2]);
+      tep[0] += tterm * (diy * uiz - diz * uiy);
+      tep[1] += tterm * (diz * uix - dix * uiz);
+      tep[2] += tterm * (dix * uiy - diy * uix);
+    }
+    const { fx, fy, fz } = torque2force(sites, i, tep, x, f);
+    if (sites.axis[i] === 'NOFRAME') continue;
+    const iz = sites.zl[i], ix = sites.xl[i], iy = sites.yl[i];
+    const xiz = x[3 * iz] - x[3 * i], yiz = x[3 * iz + 1] - x[3 * i + 1], ziz = x[3 * iz + 2] - x[3 * i + 2];
+    const xix = x[3 * ix] - x[3 * i], yix = x[3 * ix + 1] - x[3 * i + 1], zix = x[3 * ix + 2] - x[3 * i + 2];
+    const xiy = x[3 * iy] - x[3 * i], yiy = x[3 * iy + 1] - x[3 * i + 1], ziy = x[3 * iy + 2] - x[3 * i + 2];
+    const vxx = xix * fx[0] + xiy * fy[0] + xiz * fz[0];
+    const vyy = yix * fx[1] + yiy * fy[1] + yiz * fz[1];
+    const vzz = zix * fx[2] + ziy * fy[2] + ziz * fz[2];
+    const vxy = 0.5 * (yix * fx[0] + yiy * fy[0] + yiz * fz[0] + xix * fx[1] + xiy * fy[1] + xiz * fz[1]);
+    const vxz = 0.5 * (zix * fx[0] + ziy * fy[0] + ziz * fz[0] + xix * fx[2] + xiy * fy[2] + xiz * fz[2]);
+    const vyz = 0.5 * (zix * fx[1] + ziy * fy[1] + ziz * fz[1] + yix * fx[2] + yiy * fy[2] + yiz * fz[2]);
+    vir[0] -= vxx;
+    vir[1] -= vyy;
+    vir[2] -= vzz;
+    vir[3] -= vxy;
+    vir[4] -= vxz;
+    vir[5] -= vyz;
+  }
+};
+
 /** Output of polarReal: the virial (xx, yy, zz, xy, xz, yz). Forces and torques are added to f. */
 export interface PolarResult {
   virial: Float64Array;
@@ -534,6 +603,7 @@ export const polarReal = (
   a: PolarAtoms, s: PolarSettings, sites: MpoleSites, ind: InducedDipoles, f: Float64Array,
   pairs: readonly number[],
 ): PolarResult => {
+  if (s.hippo) return hippoPolarReal(a, requireHippo(a), s, sites, ind, f, pairs, polarSiteTorques);
   const n = a.n;
   const felec = (0.5 * ELECTRIC) / s.dielectric;
   const off2 = s.ewaldcut * s.ewaldcut;
@@ -723,47 +793,7 @@ export const polarReal = (
     vir[4] -= vxz;
     vir[5] -= vyz;
   }
-  // site torques from the induced fields, then conversion to forces (polar() and polar_real tail)
-  for (let i = 0; i < n; i++) {
-    const oi = 13 * i;
-    const dix = rp[oi + 1], diy = rp[oi + 2], diz = rp[oi + 3];
-    const qixx = rp[oi + 4], qixy = rp[oi + 5], qixz = rp[oi + 6], qiyy = rp[oi + 8], qiyz = rp[oi + 9], qizz = rp[oi + 12];
-    const u = (k: number): number => ufld[3 * i + k];
-    const d = (k: number): number => dufld[6 * i + k];
-    const tep: Float64Array = Float64Array.from([
-      diz * u(1) - diy * u(2) + qixz * d(1) - qixy * d(3) + 2.0 * qiyz * (d(2) - d(5)) + (qizz - qiyy) * d(4),
-      dix * u(2) - diz * u(0) - qiyz * d(1) + qixy * d(4) + 2.0 * qixz * (d(5) - d(0)) + (qixx - qizz) * d(3),
-      diy * u(0) - dix * u(1) + qiyz * d(3) - qixz * d(4) + 2.0 * qixy * (d(0) - d(2)) + (qiyy - qixx) * d(1),
-    ]);
-    // the self torque of the induced dipoles (amoeba_polar.cpp polar(): tep = term (d x u), u = (uind + uinp)/2,
-    // term = (4/3) felec aewald^3 / sqrt(pi) with felec = electric / dielectric)
-    const tterm = ((4.0 / 3.0) * (ELECTRIC / s.dielectric) * s.aewald * s.aewald * s.aewald) / MY_PIS;
-    if (tterm !== 0.0) {
-      const uix = 0.5 * (uind[3 * i] + uinp[3 * i]), uiy = 0.5 * (uind[3 * i + 1] + uinp[3 * i + 1]);
-      const uiz = 0.5 * (uind[3 * i + 2] + uinp[3 * i + 2]);
-      tep[0] += tterm * (diy * uiz - diz * uiy);
-      tep[1] += tterm * (diz * uix - dix * uiz);
-      tep[2] += tterm * (dix * uiy - diy * uix);
-    }
-    const { fx, fy, fz } = torque2force(sites, i, tep, x, f);
-    if (sites.axis[i] === 'NOFRAME') continue;
-    const iz = sites.zl[i], ix = sites.xl[i], iy = sites.yl[i];
-    const xiz = x[3 * iz] - x[3 * i], yiz = x[3 * iz + 1] - x[3 * i + 1], ziz = x[3 * iz + 2] - x[3 * i + 2];
-    const xix = x[3 * ix] - x[3 * i], yix = x[3 * ix + 1] - x[3 * i + 1], zix = x[3 * ix + 2] - x[3 * i + 2];
-    const xiy = x[3 * iy] - x[3 * i], yiy = x[3 * iy + 1] - x[3 * i + 1], ziy = x[3 * iy + 2] - x[3 * i + 2];
-    const vxx = xix * fx[0] + xiy * fy[0] + xiz * fz[0];
-    const vyy = yix * fx[1] + yiy * fy[1] + yiz * fz[1];
-    const vzz = zix * fx[2] + ziy * fy[2] + ziz * fz[2];
-    const vxy = 0.5 * (yix * fx[0] + yiy * fy[0] + yiz * fz[0] + xix * fx[1] + xiy * fy[1] + xiz * fz[1]);
-    const vxz = 0.5 * (zix * fx[0] + ziy * fy[0] + ziz * fz[0] + xix * fx[2] + xiy * fy[2] + xiz * fz[2]);
-    const vyz = 0.5 * (zix * fx[1] + ziy * fy[1] + ziz * fz[1] + yix * fx[2] + yiy * fy[2] + yiz * fz[2]);
-    vir[0] -= vxx;
-    vir[1] -= vyy;
-    vir[2] -= vzz;
-    vir[3] -= vxy;
-    vir[4] -= vxz;
-    vir[5] -= vyz;
-  }
+  polarSiteTorques(a, s, sites, ind, ufld, dufld, f, vir);
   return { virial: vir };
 };
 

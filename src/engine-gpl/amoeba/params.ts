@@ -55,14 +55,32 @@ export interface AmoebaPrm {
   hasMultipoles: boolean;
   /** Non-zero polarizability found in the PRM file (the induced-dipole terms run). */
   hasPolarity: boolean;
-  /** vdwpr pair overrides are not ported; their presence is refused. */
-  hasVdwPair: boolean;
+  /** vdwpr pair overrides (file_vdwl_pair): class pair, radius (sigma) and well depth; they replace the mixed values. */
+  vdwPairs: { i: number; j: number; sigma: number; eps: number }[];
   /** Dipole polarizability per atom type (file_dippolar): alpha, Thole width and the polarization group partner types. */
   polar: Map<number, { alpha: number; thole: number; group: number[] }>;
   /** polarization keyword of the PRM file: 'mutual', 'direct' or 'opt...' (only mutual is ported). */
   poltyp: string;
   /** Polarization scale factors (index 1..4 = 1-2..1-5 relations; index 0 unused). */
   polarScale: { p: number[]; pi: number[]; w: number[]; direct11: number; mutual11: number };
+  /** HIPPO: Pauli repulsion per atom type (file_pauli): size, damping exponent and the (negative) valence charge. */
+  repulsion: Map<number, { sizpr: number; dmppr: number; elepr: number }>;
+  /** HIPPO: damped dispersion per class (file_dispersion): C6 coefficient and damping exponent. */
+  dispersion: Map<number, { csix: number; adisp: number }>;
+  /** HIPPO: charge penetration per class (file_charge_penetration): core charge (absolute value) and damping alpha. */
+  chgpen: Map<number, { pcore: number; palpha: number }>;
+  /** HIPPO: charge transfer per class (file_charge_transfer): transferred charge and damping exponent. */
+  chgtrn: Map<number, { chgct: number; dmpct: number }>;
+  /** rep-1n-scale and disp-1n-scale factors (index 1..4; index 0 unused). */
+  specialRepel: number[];
+  specialDisp: number[];
+  /** The force field is HIPPO (pair hippo): the PRM layout differs (polarize has no Thole width; no vdwtype line). */
+  hippo: boolean;
+  /** opbend-cubic, -quartic, -pentic, -sextic (improper amoeba weights; index 0 cubic .. 3 sextic). */
+  opbend: number[];
+  /** atomic number of each atom type (the atom line: its second to last value; bitorsion chirality uses it). */
+  atomicNum: Map<number, number>;
+  /** Torsion coefficients of the PRM file are read by the fixes (amoeba/bitorsion, amoeba/pitorsion), not here. */
 }
 
 export interface AmoebaKey {
@@ -73,6 +91,20 @@ export interface AmoebaKey {
   mpolecut: number;
   /** Cutoff of the induced-dipole terms (amoeba_file.cpp "cutoff" and "ewald-cutoff"; the default is 7). */
   ewaldcut: number;
+  /** HIPPO cutoffs and tapers (amoeba_file.cpp defaults: repulsion 6, dispersion 9, charge transfer 6). */
+  repcut: number;
+  reptaper: number;
+  dispcut: number;
+  disptaper: number;
+  ctrncut: number;
+  ctrntaper: number;
+  mpoletaper: number;
+  /** key "dewald" (dispersion Ewald summation, pair hippo) and dewald-alpha (null when not given). */
+  useDewald: boolean;
+  adewaldKey: number | null;
+  /** dpme-grid (1 or 3 values; null when not given) and dpme-order (bsdorder, default 4). */
+  dpmeGrid: number[] | null;
+  bsdorder: number;
   /** Cutoff of the induced-dipole preconditioner (usolve-cutoff, default 4.5). */
   usolvcut: number;
   /** Diagonal preconditioner factor (usolve-diag, default 2). */
@@ -174,14 +206,17 @@ const parseMultipole = (w: string[], line: string): { type: number; frame: Multi
   return { type, frame, nonzero };
 };
 
-export const parseAmoebaPrm = (text: string): AmoebaPrm => {
+export const parseAmoebaPrm = (text: string, hippo = false): AmoebaPrm => {
   const prm: AmoebaPrm = {
     radiusRule: 'arithmetic', epsilonRule: 'geometric', radiusType: 'r-min', radiusSize: 'radius',
     typeToClass: new Map(), vdw: new Map(), specialHal: [1, 1, 1, 1, 1], specialMpole: [1, 1, 1, 1, 1],
     dhal: 0.07, ghal: 0.12, dielectric: 1.0, multipoles: new Map(),
-    hasMultipoles: false, hasPolarity: false, hasVdwPair: false,
+    hasMultipoles: false, hasPolarity: false, vdwPairs: [],
     polar: new Map(), poltyp: 'mutual',
     polarScale: { p: [1, 1, 1, 1, 1], pi: [1, 1, 1, 1, 1], w: [1, 1, 1, 1, 1], direct11: 0, mutual11: 0 },
+    repulsion: new Map(), dispersion: new Map(), chgpen: new Map(), chgtrn: new Map(),
+    specialRepel: [1, 1, 1, 1, 1], specialDisp: [1, 1, 1, 1, 1], hippo, opbend: [0, 0, 0, 0],
+    atomicNum: new Map(),
   };
   let sawVdwType = false;
   for (const line of logicalLines(text)) {
@@ -218,6 +253,14 @@ export const parseAmoebaPrm = (text: string): AmoebaPrm => {
         break;
       }
       case 'dielectric': prm.dielectric = num(w[1], key); break;
+      case 'opbendtype':
+        // amoeba_file.cpp: only the Allinger out-of-plane bend is ported (improper amoeba and the angle weights)
+        if (w[1]?.toLowerCase() !== 'allinger') throw new StyleError(`pair amoeba: opbendtype ${w[1]} is not ported (only ALLINGER)`);
+        break;
+      case 'opbend-cubic': prm.opbend[0] = num(w[1], key); break;
+      case 'opbend-quartic': prm.opbend[1] = num(w[1], key); break;
+      case 'opbend-pentic': prm.opbend[2] = num(w[1], key); break;
+      case 'opbend-sextic': prm.opbend[3] = num(w[1], key); break;
       case 'vdw-12-scale': prm.specialHal[1] = num(w[1], key); break;
       case 'vdw-13-scale': prm.specialHal[2] = num(w[1], key); break;
       case 'vdw-14-scale': prm.specialHal[3] = num(w[1], key); break;
@@ -231,6 +274,7 @@ export const parseAmoebaPrm = (text: string): AmoebaPrm => {
         if (w.length < 8) throw new StyleError(`pair amoeba: PRM atom line has too few values: ${line}`);
         const itype = num(w[1], 'atom type'), iclass = num(w[2], 'atom class');
         prm.typeToClass.set(itype, iclass);
+        prm.atomicNum.set(itype, num(w[w.length - 3], 'atomic number'));
         break;
       }
       case 'vdw': {
@@ -240,9 +284,46 @@ export const parseAmoebaPrm = (text: string): AmoebaPrm => {
         prm.vdw.set(iclass, { sigma: num(w[2], 'vdw radius'), eps: num(w[3], 'vdw epsilon'), kred: w.length === 5 ? num(w[4], 'vdw reduction') : 0 });
         break;
       }
-      case 'vdwpr':
-        prm.hasVdwPair = true;
+      case 'vdwpr': {
+        // file_vdwl_pair: vdwpr class1 class2 radius epsilon
+        if (w.length !== 5) throw new StyleError(`pair amoeba: PRM vdwpr line has incorrect length: ${line}`);
+        prm.vdwPairs.push({ i: num(w[1], 'vdwpr class'), j: num(w[2], 'vdwpr class'), sigma: num(w[3], 'vdwpr radius'), eps: num(w[4], 'vdwpr epsilon') });
         break;
+      }
+      case 'repulsion': {
+        // file_pauli: repulsion type size damping valence (the valence charge is stored negated)
+        if (w.length < 5) throw new StyleError(`pair hippo: PRM Pauli repulsion line has too few values: ${line}`);
+        prm.repulsion.set(num(w[1], 'repulsion type'), {
+          sizpr: num(w[2], 'repulsion size'), dmppr: num(w[3], 'repulsion damping'), elepr: -Math.abs(num(w[4], 'repulsion charge')),
+        });
+        break;
+      }
+      case 'dispersion': {
+        // file_dispersion: dispersion class csix adisp
+        if (w.length < 4) throw new StyleError(`pair hippo: PRM dispersion line has too few values: ${line}`);
+        prm.dispersion.set(num(w[1], 'dispersion class'), { csix: num(w[2], 'dispersion csix'), adisp: num(w[3], 'dispersion adisp') });
+        break;
+      }
+      case 'chgpen': {
+        // file_charge_penetration: chgpen class core alpha (the core charge is stored as an absolute value)
+        if (w.length < 4) throw new StyleError(`pair hippo: PRM charge penetration line has too few values: ${line}`);
+        prm.chgpen.set(num(w[1], 'chgpen class'), { pcore: Math.abs(num(w[2], 'chgpen core')), palpha: num(w[3], 'chgpen alpha') });
+        break;
+      }
+      case 'chgtrn': {
+        // file_charge_transfer: chgtrn class chgct dmpct
+        if (w.length < 4) throw new StyleError(`pair hippo: PRM charge transfer line has too few values: ${line}`);
+        prm.chgtrn.set(num(w[1], 'chgtrn class'), { chgct: num(w[2], 'chgtrn charge'), dmpct: num(w[3], 'chgtrn alpha') });
+        break;
+      }
+      case 'rep-12-scale': prm.specialRepel[1] = num(w[1], key); break;
+      case 'rep-13-scale': prm.specialRepel[2] = num(w[1], key); break;
+      case 'rep-14-scale': prm.specialRepel[3] = num(w[1], key); break;
+      case 'rep-15-scale': prm.specialRepel[4] = num(w[1], key); break;
+      case 'disp-12-scale': prm.specialDisp[1] = num(w[1], key); break;
+      case 'disp-13-scale': prm.specialDisp[2] = num(w[1], key); break;
+      case 'disp-14-scale': prm.specialDisp[3] = num(w[1], key); break;
+      case 'disp-15-scale': prm.specialDisp[4] = num(w[1], key); break;
       case 'multipole': {
         const m = parseMultipole(w, line);
         const list = prm.multipoles.get(m.type) ?? [];
@@ -253,12 +334,14 @@ export const parseAmoebaPrm = (text: string): AmoebaPrm => {
       }
       case 'polarize': {
         // file_dippolar: polarize type alpha thole [partner types...] (AMOEBA has the Thole width)
-        if (w.length < 4) throw new StyleError(`pair amoeba: PRM dipole polarizability line has too few values: ${line}`);
+        // HIPPO has no Thole width: its polarize line is type alpha [partner types...] (amoeba_file.cpp ndipparams = 3)
+        const ndip = hippo ? 3 : 4;
+        if (w.length < ndip) throw new StyleError(`pair amoeba: PRM dipole polarizability line has too few values: ${line}`);
         const itype = num(w[1], 'polarize type');
         const alpha = num(w[2], 'polarizability');
         if (alpha !== 0) prm.hasPolarity = true;
-        const group = w.slice(4).map((g) => num(g, 'polarization group type'));
-        prm.polar.set(itype, { alpha, thole: num(w[3], 'Thole width'), group });
+        const group = w.slice(ndip).map((g) => num(g, 'polarization group type'));
+        prm.polar.set(itype, { alpha, thole: hippo ? 0 : num(w[3], 'Thole width'), group });
         break;
       }
       case 'polarization': {
@@ -290,16 +373,28 @@ export const parseAmoebaPrm = (text: string): AmoebaPrm => {
         break;
     }
   }
-  if (!sawVdwType) throw new StyleError('pair amoeba: the PRM file has no vdwtype line');
+  if (!hippo && !sawVdwType) throw new StyleError('pair amoeba: the PRM file has no vdwtype line');
   return prm;
 };
 
 /** Key file keywords the AMOEBA terms read (amoeba_file.cpp read_keyfile). */
 export const parseAmoebaKey = (text: string, prm: AmoebaPrm): AmoebaKey => {
+  // amoeba_file.cpp read_keyfile defaults
   let vdwcut = 9.0;
   let vdwtaper = 0.9 * vdwcut;
+  let repcut = 6.0;
+  let reptaper = 0.9 * repcut;
+  let dispcut = 9.0;
+  let disptaper = 0.9 * dispcut;
   let mpolecut = 9.0;
-  let mpoleCutSet = false;
+  let mpoletaper = 0.65 * mpolecut;
+  let ctrncut = 6.0;
+  let ctrntaper = 0.9 * ctrncut;
+  let dewaldcut = 7.0;
+  let useDewald = false;
+  let adewaldKey: number | null = null;
+  let dpmeGrid: number[] | null = null;
+  let bsdorder = 4;
   let ewaldcut = 7.0;
   let usolvcut = 4.5;
   let udiag = 2.0;
@@ -320,14 +415,64 @@ export const parseAmoebaKey = (text: string, prm: AmoebaPrm): AmoebaKey => {
     const key = w[0].toLowerCase();
     switch (key) {
       case 'cutoff': {
-        // amoeba_file.cpp: cutoff sets vdwcut, repcut, dispcut, mpolecut, ctrncut and the Ewald cutoffs
+        // amoeba_file.cpp: cutoff sets all the term cutoffs and their default tapers, in file order
         const cut = num(w[1], 'cutoff');
-        vdwcut = cut;
+        vdwcut = repcut = dispcut = mpolecut = ctrncut = ewaldcut = dewaldcut = cut;
         vdwtaper = 0.9 * vdwcut;
-        if (!mpoleCutSet) mpolecut = cut;
-        ewaldcut = cut;
+        reptaper = 0.9 * repcut;
+        disptaper = 0.9 * dispcut;
+        mpoletaper = 0.65 * mpolecut;
+        ctrntaper = 0.9 * ctrncut;
         break;
       }
+      case 'repulsion-cutoff':
+        repcut = num(w[1], key);
+        reptaper = 0.9 * repcut;
+        break;
+      case 'dispersion-cutoff':
+        dispcut = num(w[1], key);
+        disptaper = 0.9 * dispcut;
+        break;
+      case 'mpole-cutoff':
+        mpolecut = num(w[1], key);
+        mpoletaper = 0.65 * mpolecut;
+        break;
+      case 'ctrn-cutoff':
+        ctrncut = num(w[1], key);
+        ctrntaper = 0.9 * ctrncut;
+        break;
+      case 'dewald-cutoff': dewaldcut = num(w[1], key); break;
+      case 'taper': {
+        // amoeba_file.cpp: taper >= 1 is an absolute distance for every term; below 1 it is a fraction of each cutoff
+        const tp = num(w[1], 'taper');
+        if (tp >= 1.0) {
+          vdwtaper = reptaper = disptaper = mpoletaper = ctrntaper = tp;
+        } else {
+          const f = -tp;
+          vdwtaper = f * vdwcut;
+          reptaper = f * repcut;
+          disptaper = f * dispcut;
+          mpoletaper = f * mpolecut;
+          ctrntaper = f * ctrncut;
+        }
+        break;
+      }
+      case 'repulsion-taper':
+        reptaper = num(w[1], key);
+        if (reptaper < 1.0) reptaper = -reptaper * repcut;
+        break;
+      case 'dispersion-taper':
+        disptaper = num(w[1], key);
+        if (disptaper < 1.0) disptaper = -disptaper * vdwcut;
+        break;
+      case 'mpole-taper':
+        mpoletaper = num(w[1], key);
+        if (mpoletaper < 1.0) mpoletaper = -mpoletaper * vdwcut;
+        break;
+      case 'ctrn-taper':
+        ctrntaper = num(w[1], key);
+        if (ctrntaper < 1.0) ctrntaper = -ctrntaper * vdwcut;
+        break;
       case 'ewald-cutoff': ewaldcut = num(w[1], key); break;
       case 'usolve-cutoff': usolvcut = num(w[1], key); break;
       case 'usolve-diag': udiag = num(w[1], key); break;
@@ -345,19 +490,9 @@ export const parseAmoebaKey = (text: string, prm: AmoebaPrm): AmoebaKey => {
         if (v !== 'mutual') throw new StyleError(`pair amoeba: polarization ${w[1]} in the key file is not ported yet (only mutual)`);
         break;
       }
-      case 'taper': {
-        // taper >= 1 is an absolute distance; below 1 it is a fraction of the cutoff (amoeba_file.cpp "taper")
-        const tp = num(w[1], 'taper');
-        vdwtaper = tp >= 1.0 ? tp : -tp * vdwcut;
-        break;
-      }
       case 'vdw-cutoff':
         vdwcut = num(w[1], 'vdw-cutoff');
         vdwtaper = 0.9 * vdwcut;
-        break;
-      case 'mpole-cutoff':
-        mpolecut = num(w[1], 'mpole-cutoff');
-        mpoleCutSet = true;
         break;
       case 'ewald':
         // amoeba_file.cpp: "ewald" sets use_ewald; the reciprocal sums are checked in pair_amoeba.ts
@@ -365,7 +500,17 @@ export const parseAmoebaKey = (text: string, prm: AmoebaPrm): AmoebaKey => {
         useEwald = true;
         break;
       case 'dewald':
-        throw new StyleError('pair amoeba: the dispersion Ewald summation (key "dewald") is not ported yet');
+        useDewald = true;
+        break;
+      case 'dewald-alpha': adewaldKey = num(w[1], key); break;
+      case 'dpme-order': bsdorder = num(w[1], key); break;
+      case 'dpme-grid': {
+        // amoeba_file.cpp: "dpme-grid" takes one value (all three directions) or three
+        if (w.length === 2) dpmeGrid = [num(w[1], key), num(w[1], key), num(w[1], key)];
+        else if (w.length === 4) dpmeGrid = [num(w[1], key), num(w[2], key), num(w[3], key)];
+        else throw new StyleError('AMOEBA keyfile line "dpme-grid" takes 1 or 3 values');
+        break;
+      }
       case 'ewald-alpha': aeewaldKey = num(w[1], key); break;
       case 'pewald-alpha': apewaldKey = num(w[1], key); break;
       case 'pme-order': bseorder = num(w[1], key); break;
@@ -383,10 +528,12 @@ export const parseAmoebaKey = (text: string, prm: AmoebaPrm): AmoebaKey => {
         break;
     }
   }
-  // amoeba_file.cpp: "if (use_ewald) mpolecut = ewaldcut;"
+  // amoeba_file.cpp: "if (use_ewald) mpolecut = ewaldcut;" and "if (use_dewald) dispcut = dewaldcut;"
   if (useEwald) mpolecut = ewaldcut;
+  if (useDewald) dispcut = dewaldcut;
   return {
     vdwcut, vdwtaper, mpolecut, ewaldcut, usolvcut, udiag, poleps, politer, pcgprec, pcgguess, pcgpeek,
+    repcut, reptaper, dispcut, disptaper, ctrncut, ctrntaper, mpoletaper, useDewald, adewaldKey, dpmeGrid, bsdorder,
     useEwald, aeewaldKey, apewaldKey, pmeGrid, bseorder, bsporder,
   };
 };

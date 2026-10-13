@@ -194,8 +194,9 @@ interface DataFix {
   style: string;
   readValues?(s: SimState, i: number, w: readonly string[], at: number): void;
   readHeader?(line: string, at: number): void;
-  sectionLines?(natoms: number): number;
-  readSection?(rows: { w: string[]; at: number }[]): void;
+  /** title: the section name (a fix with several sections, e.g. fix amoeba/pitorsion, tells them apart by it). */
+  sectionLines?(natoms: number, title?: string): number;
+  readSection?(rows: { w: string[]; at: number }[], title?: string): void;
   sectionHeader?(): string;
   writeValues?(s: SimState, i: number): string;
   dataHeaderLine?(): string | null;
@@ -573,7 +574,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   const bodyPending = new Set<number>();
   const coeffLines: { section: string; line: string; at: number }[] = [];
   const topo: { kind: 'bonds' | 'angles' | 'dihedrals' | 'impropers'; type: number; ids: number[] }[] = [];
-  const fixRows: { fx: DataFix; rows: { w: string[]; at: number }[] }[] = [];
+  const fixRows: { fx: DataFix; rows: { w: string[]; at: number }[]; title: string }[] = [];
   // sections
   while (k < lines.length) {
     const title = lines[k].split('#')[0].trim();
@@ -593,7 +594,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         throw new StyleError(`read_data fix ${fixId}: fix style ${fx.style} does not read data-file sections`);
       }
       // the fix says how many lines its section holds (per-atom fixes: one line per atom)
-      const nlines = fx.sectionLines ? fx.sectionLines(natoms) : natoms;
+      const nlines = fx.sectionLines ? fx.sectionLines(natoms, title) : natoms;
       const rows: { w: string[]; at: number }[] = [];
       while (rows.length < nlines && k < lines.length) {
         const t = lines[k].replace(/#.*/, '').trim();
@@ -602,7 +603,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         rows.push({ w: t.split(/\s+/), at: k });
       }
       if (rows.length < nlines) throw new StyleError(`data file section ${title}: expected ${nlines} lines, found ${rows.length}`);
-      fixRows.push({ fx, rows });
+      fixRows.push({ fx, rows, title });
       continue;
     }
     if (!SECTIONS.has(title)) throw new StyleError(`unknown data file section '${title}' (line ${k})`);
@@ -1069,11 +1070,11 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   if (fixRows.length) {
     const byId = new Map<number, number>();
     for (let i = n0; i < s.n; i++) byId.set(s.id[i], i);
-    for (const { fx, rows } of fixRows) {
+    for (const { fx, rows, title } of fixRows) {
       // whole-section fixes (fix cmap) take their rows as they are; the IDs are checked when the fix acts
       if (fx.readSection) {
         if (adding) throw new StyleError(`read_data fix ${fx.id} (${fx.style}): add append/merge is not supported with this fix's section`);
-        fx.readSection(rows);
+        fx.readSection(rows, title);
         continue;
       }
       for (const { w, at } of rows) {

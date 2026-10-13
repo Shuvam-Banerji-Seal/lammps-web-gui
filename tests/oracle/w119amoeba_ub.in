@@ -1,0 +1,33 @@
+# oracle: solvated ubiquitin (examples/amoeba: in.ubiquitin with data.ubiquitin = w119amoeba_ub.data, 9737 atoms in a 54.99 x 41.91 x 41.91 A periodic box; amoeba_ubiquitin.prm and amoeba_ubiquitin.key: ewald, pme-grid 60 48 48, pme-order 5, cutoff 7 via the key's vdw-cutoff and taper; bond class2, angle amoeba (in-plane anglep terms), dihedral fourier, improper amoeba (opbend), fix amoeba/pitorsion and fix amoeba/bitorsion with bitorsion.ubiquitin.data). The example's dynamics are not part of this case: the energies of every term (pair epair, the bonded terms ebond, eangle, edihed, eimp, the fix energies f_pit and f_bit, the virial) and the forces at step 0 and after two NVE steps (run 0, then run 2; the example runs 10 steps).
+# oracle-inputs: w119amoeba_ub.data w119amoeba_ub.prm w119amoeba_ub.key w119amoeba_ub_bitorsion.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS (black box): the engine agrees with native to 3.9e-13 relative in epair, 4.5e-13 in etotal, 2.6e-15 in f_pit, 2.1e-15 in f_bit, 1.6e-15 in ebond, 2.5e-15 in eangle, 2.0e-15 in edihed, 8.8e-16 in eimp, 1.5e-13 in press, 3.1e-14 to 5.9e-13 in the c_virial components, and the forces after two NVE steps to 6.1e-12 relative.
+units           real
+boundary        p p p
+atom_modify     sort 0 0.0
+atom_style      amoeba
+bond_style      class2
+angle_style     amoeba
+dihedral_style  fourier
+improper_style  amoeba
+fix             amtype all property/atom i_amtype ghost yes
+fix             extra all property/atom i_amgroup d_redID d_pval ghost yes
+fix             extra2 all property/atom i_polaxe d2_xyzaxis 3
+fix             pit all amoeba/pitorsion
+fix_modify      pit energy yes
+fix             bit all amoeba/bitorsion w119amoeba_ub_bitorsion.data
+fix_modify      bit energy yes
+read_data       w119amoeba_ub.data fix amtype NULL "Tinker Types" &
+                fix pit "pitorsion types" "PiTorsion Coeffs" &
+                fix pit pitorsions PiTorsions &
+                fix bit bitorsions BiTorsions
+pair_style      amoeba
+pair_coeff      * * w119amoeba_ub.prm w119amoeba_ub.key
+special_bonds   lj/coul 0.5 0.5 0.5 one/five yes
+compute         virial all pressure NULL virial
+thermo_style    custom step temp epair ebond eangle edihed eimp emol etotal press f_pit f_bit c_virial[1] c_virial[2] c_virial[3] c_virial[4] c_virial[5] c_virial[6]
+thermo_modify   format float %.15g
+fix             1 all nve
+thermo          1
+run             0
+run             2

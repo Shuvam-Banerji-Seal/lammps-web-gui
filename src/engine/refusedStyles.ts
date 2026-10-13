@@ -8,7 +8,6 @@ import type { StyleKind } from './lazyStyles';
  */
 export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[]>>> = {
   PAIRS: [
-    'hippo', // engine-gpl/registry/amoeba.ts (pair hippo is not ported)
     'lj/long/dipole/long', // registry/pair_dipole18.ts
     'lj/spica/coul/msm', 'lj/sdk/coul/msm', // registry/pair_class2spica51.ts (lazy): msm kspace is not in the engine
     'smd/tri_surface', // engine-gpl/registry/machdyn.ts (lazy): the wall contact is not matched to native (contact order)

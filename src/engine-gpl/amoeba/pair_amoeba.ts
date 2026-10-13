@@ -30,6 +30,10 @@ import {
   assignPolarGroups, buildPrecondTensors, induceDipoles, polarEnergy, polarReal, precondPairs,
   type PolarAtoms, type PolarSettings, type PrecondPairs,
 } from './polar';
+import { chargeTransferTerm, dispersionReal, repulsionTerm, type HippoSiteData, type TermPairs } from './hippo_terms';
+import { dispersionGridSize, dispersionKspace, makeDispersionGrid } from './dispersion_pme';
+import { multipoleRealHippo, type HippoMpoleSites } from './hippo_mpole';
+import type { HippoPolarAtoms } from './hippo_polar';
 
 /** pvector order of pair amoeba (pair_amoeba.cpp): hal, repulse, disp, mpole, polar, qxfer. */
 const NVECTOR = 6;
@@ -64,7 +68,10 @@ export const ewaldcof = (cutoff: number): number => {
 };
 
 export class PairAmoeba extends Pair {
-  readonly name: string = 'amoeba';
+  readonly name: string;
+  /** pair hippo (native PairHippo is PairAmoeba with amoeba == false): no hal, HIPPO repulsion, dispersion, charge
+   * transfer and the charge-penetration multipoles. */
+  readonly hippo: boolean;
   needsHalf = true;
   needsFull = false;
   /** Every special pair stays in the list (the force field's own weights apply: pair_amoeba.cpp add_onefive_neighbors). */
@@ -93,6 +100,12 @@ export class PairAmoeba extends Pair {
   private aeew = 0;
   private apew = 0;
 
+  constructor(hippo = false) {
+    super();
+    this.hippo = hippo;
+    this.name = hippo ? 'hippo' : 'amoeba';
+  }
+
   /**
    * pair_style amoeba [exclude mpole/kspace polar/kspace]: native takes the component switches (pair_amoeba.cpp
    * settings). Only the reciprocal-space switches are accepted here; the real-space and bonded components are not ported.
@@ -113,7 +126,7 @@ export class PairAmoeba extends Pair {
   override coeff(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
     if (args.length !== 4 || args[0] !== '*' || args[1] !== '*') throw new StyleError('usage: pair_coeff * * file.prm file.key');
-    const prm = parseAmoebaPrm(ctx.readFile(args[2]));
+    const prm = parseAmoebaPrm(ctx.readFile(args[2]), this.hippo);
     const key = parseAmoebaKey(ctx.readFile(args[3]), prm);
     this.prm = prm;
     this.key = key;
@@ -170,7 +183,13 @@ export class PairAmoeba extends Pair {
         epsilon[i * nt + j] = epsilon[j * nt + i] = eij;
       }
     }
-    if (prm.hasVdwPair) throw new StyleError('pair amoeba: vdwpr pair overrides are not ported yet');
+    // mix() (pair_amoeba.cpp): the vdwpr entries override the mixed radius and well depth of their class pair (the radius
+    // is scaled by 2^(1/6) for radiustype sigma, and no diameter or radius scaling applies)
+    for (const pr of prm.vdwPairs) {
+      const rij = prm.radiusType === 'sigma' ? pr.sigma * TWOSIX : pr.sigma;
+      radmin[pr.j * nt + pr.i] = radmin[pr.i * nt + pr.j] = rij;
+      epsilon[pr.j * nt + pr.i] = epsilon[pr.i * nt + pr.j] = pr.eps;
+    }
     return {
       off: this.vdwcut, cut: this.vdwtaper, dhal, ghal,
       specialHal: [1.0, specialHal[1], specialHal[2], specialHal[3], specialHal[4]],
@@ -182,21 +201,33 @@ export class PairAmoeba extends Pair {
 
   initOne(_i: number, _j: number): number {
     if (!this.prm || !this.key) throw new StyleError('pair_coeff * * file.prm file.key is required for pair style amoeba');
-    return Math.max(this.vdwcut, this.mpolecut, this.key.ewaldcut);
+    if (!this.hippo) return Math.max(this.vdwcut, this.mpolecut, this.key.ewaldcut);
+    // pair_amoeba.cpp init_one (not amoeba): the largest of the repulsion, dispersion, multipole, polarization and
+    // charge transfer cutoffs
+    const k = this.key;
+    return Math.max(k.repcut, k.dispcut, k.mpolecut, k.ewaldcut, k.ctrncut);
   }
 
   override initStyle(_ctx: StyleContext): void {
-    if (!this.prm) return;
+    if (!this.prm || this.hippo) return;
     this.tables = this.mixTables(this.prm, this.prm.specialHal, this.prm.dhal, this.prm.ghal);
   }
 
   extract(name: string): unknown {
     if (name === 'pvector') return this.pvec;
+    // the flags and weights the bonded styles of AMOEBA read from the pair (pair_amoeba.cpp extract)
+    if (name === 'improper_flag' || name === 'angle_flag' || name === 'bond_flag' || name === 'dihedral_flag') return 1;
+    if (name === 'urey_flag' || name === 'pitorsion_flag' || name === 'bitorsion_flag') return 1;
+    if (name === 'opbend_cubic') return this.prm?.opbend[0] ?? 0;
+    if (name === 'opbend_quartic') return this.prm?.opbend[1] ?? 0;
+    if (name === 'opbend_pentic') return this.prm?.opbend[2] ?? 0;
+    if (name === 'opbend_sextic') return this.prm?.opbend[3] ?? 0;
+    if (name === 'atomic_num') return this.prm?.atomicNum;
     return undefined;
   }
 
   compute(pc: PairCompute): void {
-    if (!this.prm || !this.tables || !this.key) throw new StyleError('pair_coeff * * file.prm file.key is required for pair style amoeba');
+    if (!this.prm || (!this.tables && !this.hippo) || !this.key) throw new StyleError('pair_coeff * * file.prm file.key is required for pair style amoeba');
     const prm = this.prm;
     const s = pc.s;
     if (pc.eatom || pc.vatom) throw new StyleError('pair amoeba: per-atom energy and virial are not ported yet');
@@ -204,6 +235,8 @@ export class PairAmoeba extends Pair {
       throw new StyleError(`pair amoeba: polarization ${prm.poltyp} is not ported yet (only mutual)`);
     }
     if (pc.geom.triclinic) throw new StyleError('pair amoeba: triclinic boxes are not ported yet');
+    // dewald is the dispersion Ewald sum, which only the HIPPO dispersion has (native computes no dispersion for AMOEBA)
+    if (this.key.useDewald && !this.hippo) throw new StyleError('pair amoeba: the dispersion Ewald summation (key "dewald") is HIPPO only and is not ported for AMOEBA');
     // kewald (amoeba_kspace.cpp): aeewald is the key value or ewaldcof(ewaldcut); apewald is the key value or aeewald,
     // raised for boxes smaller than 6 A
     this.aeew = 0;
@@ -280,8 +313,9 @@ export class PairAmoeba extends Pair {
     const red2 = new Int32Array(nall);
     for (let k = 0; k < nall; k++) {
       red2[k] = k;
+      if (this.hippo) continue;
       const partners = oneTwo.get(idOf(k)) ?? [];
-      if (this.tables.kred[cls[k]] === 0.0 || partners.length !== 1) continue;
+      if (this.tables!.kred[cls[k]] === 0.0 || partners.length !== 1) continue;
       red2[k] = closest(partners[0], k);
     }
     // reduced positions (amoeba xred): owned atoms from their partner copy; a ghost is its owner's xred moved by the
@@ -289,7 +323,7 @@ export class PairAmoeba extends Pair {
     const xred = new Float64Array(3 * nall);
     for (let k = 0; k < n; k++) {
       const j = red2[k];
-      const rdn = this.tables.kred[cls[k]];
+      const rdn = this.hippo ? 0 : this.tables!.kred[cls[k]];
       for (let d = 0; d < 3; d++) xred[3 * k + d] = rdn * (x[3 * k + d] - x[3 * j + d]) + x[3 * j + d];
     }
     const prd = [pc.geom.lx, pc.geom.ly, pc.geom.lz];
@@ -339,16 +373,24 @@ export class PairAmoeba extends Pair {
       pi: pairsArr.pi, pj: pairsArr.pj, pspecial: pairsArr.ps,
       npairs: pi.length,
     };
-    const r = halTerm(this.tables, inp, pc.f);
-    pc.acc.evdwl += r.e;
-    for (let k = 0; k < 6; k++) pc.acc.virial[k] += r.virial[k];
     this.pvec.fill(0);
-    this.pvec[0] = r.e;
-    const needSites = prm.hasMultipoles || prm.hasPolarity;
+    if (!this.hippo) {
+      const r = halTerm(this.tables!, inp, pc.f);
+      pc.acc.evdwl += r.e;
+      for (let k = 0; k < 6; k++) pc.acc.virial[k] += r.virial[k];
+      this.pvec[0] = r.e;
+    }
+    const needSites = prm.hasMultipoles || prm.hasPolarity || this.hippo;
     if (!needSites) return;
     const sites = this.mpoleSites(pc, prm, oneTwo, idIndex, amtype, n, closest);
-    if (prm.hasMultipoles) {
-      const rr = multipoleReal(sites, x, pc.f, pairsArr.pi, pairsArr.pj, pairsArr.ps, pairsArr.pi.length, prm.specialMpole, prm.dielectric, this.mpolecut, own, this.aeew);
+    if (this.hippo) {
+      this.hippoTerms(pc, prm, sites, { pi: pairsArr.pi, pj: pairsArr.pj, ps: pairsArr.ps, npairs: pi.length }, own, cls, amtype, n);
+    }
+    if (prm.hasMultipoles || this.hippo) {
+      // HIPPO always has the charge-penetration term (the core charges interact even with zero permanent multipoles)
+      const rr = this.hippo
+        ? this.hippoMpoleReal(pc, prm, sites, pairsArr, own, cls)
+        : multipoleReal(sites, x, pc.f, pairsArr.pi, pairsArr.pj, pairsArr.ps, pairsArr.pi.length, prm.specialMpole, prm.dielectric, this.mpolecut, own, this.aeew);
       for (let k = 0; k < 6; k++) pc.acc.virial[k] += rr.virial[k];
       // the Ewald self-energy of the permanent multipoles (amoeba_multipole.cpp multipole(), over the owned atoms)
       const felec = ELECTRIC / prm.dielectric;
@@ -384,6 +426,110 @@ export class PairAmoeba extends Pair {
   }
 
   /**
+   * The HIPPO pair terms (pair_amoeba.cpp compute() for amoeba == false): the Pauli repulsion, the damped dispersion, the
+   * charge-penetration multipoles (core and valence charges of each site) and the charge transfer. Energies go to the
+   * pvector slots of native (repulse 1, disp 2, mpole 3, qxfer 5); the dispersion is evdwl and the rest ecoul.
+   */
+  private hippoTerms(
+    pc: PairCompute, prm: AmoebaPrm, sites: MpoleSites, pairs: TermPairs,
+    own: Int32Array, cls: Int32Array, amtype: { data: ArrayLike<number> }, n: number,
+  ): void {
+    const key = this.key!;
+    const x = pc.x, f = pc.f;
+    // per-type and per-class tables (zero where the PRM file has no entry, as native's zeroed arrays)
+    let maxType = 0, maxClass = 0;
+    const types = new Int32Array(n);
+    for (let i = 0; i < n; i++) {
+      types[i] = amtype.data[i];
+      if (types[i] > maxType) maxType = types[i];
+    }
+    for (let k = 0; k < cls.length; k++) if (cls[k] > maxClass) maxClass = cls[k];
+    const sizpr = new Float64Array(maxType + 1), dmppr = new Float64Array(maxType + 1), elepr = new Float64Array(maxType + 1);
+    for (const [t, r] of prm.repulsion) {
+      if (t > maxType) continue;
+      sizpr[t] = r.sizpr;
+      dmppr[t] = r.dmppr;
+      elepr[t] = r.elepr;
+    }
+    const csix = new Float64Array(maxClass + 1), adisp = new Float64Array(maxClass + 1);
+    for (const [c, d] of prm.dispersion) {
+      if (c > maxClass) continue;
+      csix[c] = d.csix;
+      adisp[c] = d.adisp;
+    }
+    const chgct = new Float64Array(maxClass + 1), dmpct = new Float64Array(maxClass + 1);
+    for (const [c, t] of prm.chgtrn) {
+      if (c > maxClass) continue;
+      chgct[c] = t.chgct;
+      dmpct[c] = t.dmpct;
+    }
+    const sd: HippoSiteData = { own, types, cls };
+    // Pauli repulsion (repulse), damped dispersion (disp), charge transfer (qxfer)
+    const rep = repulsionTerm(sites, x, f, pairs, sd, { sizpr, dmppr, elepr }, prm.specialRepel, key.repcut, key.reptaper);
+    // the Ewald coefficient of the dispersion sum (key dewald-alpha, else ewaldcof(dispcut)); aewald = 0 without dewald
+    const adew = key.useDewald ? (key.adewaldKey ?? ewaldcof(key.dispcut)) : 0.0;
+    const disp = dispersionReal(x, f, pairs, own, cls, n, { csix, adisp }, prm.specialDisp, key.dispcut, adew);
+    if (key.useDewald) {
+      // csixpr (pair_amoeba.cpp): sum over class pairs of csix_i csix_j n_i n_j (first step; the counts do not change)
+      const counts = new Float64Array(maxClass + 1);
+      for (let i = 0; i < n; i++) counts[cls[i]] += 1;
+      let csixpr = 0.0;
+      for (let i = 1; i <= maxClass; i++) {
+        for (let j = i + 1; j <= maxClass; j++) csixpr += csix[i] * csix[j] * counts[i] * counts[j];
+      }
+      csixpr *= 2.0;
+      for (let i = 1; i <= maxClass; i++) csixpr += csix[i] * csix[i] * counts[i] * counts[i];
+      const nfft: [number, number, number] = key.dpmeGrid
+        ? [key.dpmeGrid[0], key.dpmeGrid[1], key.dpmeGrid[2]]
+        : [dispersionGridSize(pc.geom.lx), dispersionGridSize(pc.geom.ly), dispersionGridSize(pc.geom.lz)];
+      for (let d = 0; d < 3; d++) if (!factorable(nfft[d])) throw new StyleError('pair hippo: dpme-grid must factor into 2, 3 and 5');
+      const grid = makeDispersionGrid(nfft, key.bsdorder, [pc.geom.lo[0], pc.geom.lo[1], pc.geom.lo[2]], [pc.geom.lx, pc.geom.ly, pc.geom.lz]);
+      disp.e += dispersionKspace(x, f, n, cls, csix, grid, adew, csixpr);
+    }
+
+    const felec = ELECTRIC / prm.dielectric;
+    const qx = chargeTransferTerm(x, f, pairs, cls, { chgct, dmpct }, prm.specialMpole, key.ctrncut, key.ctrntaper, felec);
+    pc.acc.evdwl += disp.e;
+    pc.acc.ecoul += rep.e + qx.e;
+    for (let k = 0; k < 6; k++) pc.acc.virial[k] += rep.virial[k] + disp.virial[k] + qx.virial[k];
+    this.pvec[1] = rep.e;
+    this.pvec[2] = disp.e;
+    this.pvec[5] = qx.e;
+  }
+
+  /**
+   * The HIPPO multipole real-space term (multipole_real, HIPPO branch) with the charge penetration of each site; its
+   * result has the same shape as multipoleReal. The pval and pcore arrays are per owned atom and per copy.
+   */
+  private hippoMpoleReal(
+    pc: PairCompute, prm: AmoebaPrm, sites: MpoleSites, pairsArr: { pi: Int32Array; pj: Int32Array; ps: Int8Array },
+    own: Int32Array, cls: Int32Array,
+  ): { e: number; virial: Float64Array } {
+    const pcore = new Float64Array(this.maxClassOf(cls) + 1), palpha = new Float64Array(pcore.length);
+    for (const [c, t] of prm.chgpen) {
+      if (c > this.maxClassOf(cls)) continue;
+      pcore[c] = t.pcore;
+      palpha[c] = t.palpha;
+    }
+    const nall = cls.length;
+    const hs: HippoMpoleSites = { core: new Float64Array(nall), alpha: new Float64Array(nall), val: new Float64Array(nall) };
+    for (let k = 0; k < nall; k++) {
+      hs.core[k] = pcore[cls[k]];
+      hs.alpha[k] = palpha[cls[k]];
+    }
+    // pval = pole - pcore per owned atom (pair_amoeba.cpp compute, first call); copies take their owner's value
+    for (let k = 0; k < nall; k++) hs.val[k] = sites.pole[13 * own[k]] - pcore[cls[own[k]]];
+    const mp = multipoleRealHippo(sites, pc.x, pc.f, { pi: pairsArr.pi, pj: pairsArr.pj, ps: pairsArr.ps, npairs: pairsArr.pi.length }, own, hs, prm.specialMpole, prm.dielectric, this.mpolecut, this.aeew);
+    return { e: mp.e, virial: mp.virial };
+  }
+
+  private maxClassOf(cls: Int32Array): number {
+    let m = 0;
+    for (let k = 0; k < cls.length; k++) if (cls[k] > m) m = cls[k];
+    return m;
+  }
+
+  /**
    * The induced-dipole polarization (pair_amoeba.cpp polar(), no Ewald): the polarization groups, the mutual solver
    * (amoeba_induce.cpp induce()), the polarization energy (polar_energy) and the real-space forces and torques (polar_real).
    * The energy goes to ecoul, as native eng_coul = erepulse + empole + epolar + eqxfer.
@@ -411,9 +557,25 @@ export class PairAmoeba extends Pair {
       oneTwoLocal.push((oneTwo.get(pc.s.id[i]) ?? []).map((id) => idIndex.get(id) ?? -1));
     }
     const group = assignPolarGroups(n, oneTwoLocal, types, (t) => prm.polar.get(t)?.group ?? []);
+    // HIPPO (pair hippo): core charge, damping exponent and valence charge of each copy (pcore, palpha of its class;
+    // pval = pole - pcore of the owner, the same as the charge-penetration term)
+    let hippo: HippoPolarAtoms | undefined;
+    if (this.hippo) {
+      const nall = own.length;
+      hippo = { core: new Float64Array(nall), alphaP: new Float64Array(nall), val: new Float64Array(nall) };
+      const pcoreOf = (c: number): number => prm.chgpen.get(c)?.pcore ?? 0;
+      const palphaOf = (c: number): number => prm.chgpen.get(c)?.palpha ?? 0;
+      const clsOf = (t: number): number => prm.typeToClass.get(t) ?? 0;
+      for (let k = 0; k < nall; k++) {
+        const c = clsOf(types[own[k]]);
+        hippo.core[k] = pcoreOf(c);
+        hippo.alphaP[k] = palphaOf(c);
+      }
+      for (let k = 0; k < nall; k++) hippo.val[k] = sites.pole[13 * own[k]] - pcoreOf(clsOf(types[own[k]]));
+    }
     const atoms: PolarAtoms = {
       n, x: pc.x, own, rpole: sites.rpole, alpha, pdamp, thole, group,
-      pi: pairsArr.pi, pj: pairsArr.pj, ps: pairsArr.ps,
+      pi: pairsArr.pi, pj: pairsArr.pj, ps: pairsArr.ps, hippo,
     };
     // the reciprocal-space polarization (kewald: the grid of bsporder; udirect1, umutual1, polar_kspace)
     const useRecip = this.key!.useEwald && this.polarKspace && this.apew >= 1.0e-6;
@@ -434,13 +596,14 @@ export class PairAmoeba extends Pair {
       dscale: prm.polarScale.direct11, uscale: prm.polarScale.mutual11, dielectric: prm.dielectric,
       ewaldcut: key.ewaldcut, usolvcut: key.usolvcut, udiag: key.udiag, poleps: key.poleps, politer: key.politer,
       pcgprec: key.pcgprec, pcgguess: key.pcgguess, pcgpeek: key.pcgpeek,
+      hippo: this.hippo, wscale: prm.polarScale.w,
     };
     // precond_neigh: rebuilt on each neighbor build (neighbor->ago == 0 in native)
     if (settings.pcgprec && (this.precond === null || this.precondBuild !== pc.nb.nbuild)) {
       this.precond = precondPairs(atoms, settings.usolvcut);
       this.precondBuild = pc.nb.nbuild;
     }
-    const pre: PrecondPairs = settings.pcgprec ? this.precond! : { pi: new Int32Array(0), pj: new Int32Array(0) };
+    const pre: PrecondPairs = settings.pcgprec ? this.precond! : { pi: new Int32Array(0), pj: new Int32Array(0), ps: new Int8Array(0) };
     const tens = settings.pcgprec ? buildPrecondTensors(atoms, pre, settings) : new Float64Array(0);
     const pairs = Array.from({ length: pairsArr.pi.length }, (_, k) => k);
     const ind = induceDipoles(atoms, settings, pairs, pre, tens);

@@ -43,7 +43,9 @@ const fix: Handler = ({ sys }, a) => {
   // fix_property_atom.html: "This fix is one of a small number that can be defined in an input
   // script before the simulation box is created or atoms are defined." fix_cmap.html: "To function
   // as expected this fix command must be issued *before* a read_data command".
-  if (style !== 'property/atom' && style !== 'cmap') sys.state;
+  // examples/amoeba/in.ubiquitin defines fix amoeba/pitorsion and fix amoeba/bitorsion before read_data (their sections
+  // are read by that command, like fix cmap), so they are exempt too
+  if (style !== 'property/atom' && style !== 'cmap' && style !== 'amoeba/pitorsion' && style !== 'amoeba/bitorsion') sys.state;
   const k = sys.fixes.findIndex((f) => f.id === id);
   if (k >= 0 && sys.fixes[k].style !== style) throw new StyleError(`replacing fix ${id} with a different style (${sys.fixes[k].style} -> ${style}) is not allowed; unfix it first`);
   ensureThermoComputes(sys);

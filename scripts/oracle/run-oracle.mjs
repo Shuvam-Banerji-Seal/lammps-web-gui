@@ -50,14 +50,32 @@ const thermoKeywords = (text) => {
   return kw;
 };
 
+/**
+ * A wildcard keyword (f_2[*][1]) expands to a run of native header names of the same shape (f_2[1][1], f_2[2][1]):
+ * the count comes from the log header, the other keywords keep their position.
+ */
+const expandWildcardKeywords = (keywords, header) => {
+  if (!keywords.some((k) => k.includes('*'))) return keywords;
+  const out = [];
+  let h = 0;
+  for (const k of keywords) {
+    if (!k.includes('*')) { out.push(k); h++; continue; }
+    const re = new RegExp('^' + k.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace('*', '\\d+') + '$');
+    while (h < header.length && re.test(header[h])) { out.push(header[h]); h++; }
+  }
+  return out;
+};
+
 const parseLog = (log, keywords) => {
   const rows = [];
   const lines = log.split('\n');
   for (let i = 0; i < lines.length; i++) {
     if (!/^\s*Step\s/.test(lines[i]) && !/^\s*(Step|Elapsed|Time)\b/.test(lines[i])) continue;
-    const ncol = lines[i].trim().split(/\s+/).length;
+    const header = lines[i].trim().split(/\s+/);
+    const ncol = header.length;
+    const kws = expandWildcardKeywords(keywords, header);
     // a table with another column count is an earlier thermo_style (keywords of the last style do not apply)
-    if (ncol !== keywords.length) continue;
+    if (ncol !== kws.length) continue;
     for (let j = i + 1; j < lines.length; j++) {
       // warnings (e.g. "FENE bond too long") are printed between thermo rows, some followed by a
       // "For more information see https://docs.lammps.org/err...." line
@@ -65,7 +83,7 @@ const parseLog = (log, keywords) => {
       const w = lines[j].trim().split(/\s+/);
       if (w.length !== ncol || !w.every((x) => /^[-+0-9.eE]+$/.test(x) || /^-?(nan|inf)$/i.test(x))) break;
       const row = {};
-      keywords.forEach((k, c) => { row[k] = Number(w[c]); });
+      kws.forEach((k, c) => { row[k] = Number(w[c]); });
       rows.push(row);
     }
   }

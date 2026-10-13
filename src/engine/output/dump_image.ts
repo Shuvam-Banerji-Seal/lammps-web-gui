@@ -144,8 +144,13 @@ export class ImageDump {
   private userColors = new Map<string, RGB>();
   private bond: { color: string; width: string } | null;
 
-  constructor(private sys: System, readonly id: string, readonly group: string, file: string, args: string[]) {
-    if (!file.includes('*')) throw new StyleError(`dump ${id}: dump image requires a file name with '*' requesting one snapshot per file`);
+  /**
+   * multifileOverride: write_dump only. write_dump.html: "Normally, dump image files require a filename with a "*"
+   * character for the timestep. That is not the case for the write_dump command; no wildcard "*" character is
+   * necessary." (As native LAMMPS does, src/write_dump.cpp at b332f28: dump->multifile_override = 1 for image.)
+   */
+  constructor(private sys: System, readonly id: string, readonly group: string, file: string, args: string[], multifileOverride = false) {
+    if (!multifileOverride && !file.includes('*')) throw new StyleError(`dump ${id}: dump image requires a file name with '*' requesting one snapshot per file`);
     const s = sys.state;
     const color = args[0];
     const diameter = args[1];

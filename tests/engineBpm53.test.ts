@@ -61,6 +61,41 @@ run 0
     expect(row['c_qs[3]']).toBe(0.5);
   });
 
+  it('set quat works on bpm/sphere atoms (hybrid with dipole too), as native sets the per-atom quat array', async () => {
+    // Measured with native LAMMPS (black box, atom_style hybrid bpm/sphere dipole, in.bpm.wires): "set group all quat 1 0 0 0"
+    // is accepted. set.html: the quaternion of a rotation theta about (a,b,c) is (cos(theta/2), a sin, b sin, c sin);
+    // "set group all quat 0 0 1 90" gives (cos 45, 0, 0, sin 45). src/set.cpp process_quat, quat_flag branch, b332f28.
+    const r = await run(`units lj
+atom_style hybrid bpm/sphere dipole
+region box block -10 10 -10 10 -10 10
+create_box 1 box bond/types 1 extra/bond/per/atom 2
+create_atoms 1 single 0.0 0.0 0.0
+compute q all property/atom quatw quati quatj quatk
+compute qs all reduce sum c_q[1] c_q[2] c_q[3] c_q[4]
+thermo_style custom step c_qs[1] c_qs[2] c_qs[3] c_qs[4]
+thermo_modify format float %.15g norm no
+set group all quat 1 0 0 0
+run 0
+`);
+    expect(r.errors).toEqual([]);
+    const r2 = await run(`units lj
+atom_style hybrid bpm/sphere dipole
+region box block -10 10 -10 10 -10 10
+create_box 1 box bond/types 1 extra/bond/per/atom 2
+create_atoms 1 single 0.0 0.0 0.0
+compute q all property/atom quatw quati quatj quatk
+compute qs all reduce sum c_q[1] c_q[2] c_q[3] c_q[4]
+thermo_style custom step c_qs[1] c_qs[2] c_qs[3] c_qs[4]
+thermo_modify format float %.15g norm no
+set group all quat 0 0 1 90
+run 0
+`);
+    expect(r2.errors).toEqual([]);
+    const row = r2.rows[0] as unknown as Record<string, number>;
+    expect(row['c_qs[1]']).toBeCloseTo(Math.SQRT1_2, 12);
+    expect(row['c_qs[4]']).toBeCloseTo(Math.SQRT1_2, 12);
+  });
+
   it('accepts the optional 0/1 argument and rejects a bad one with the usage text', async () => {
     expect((await run('atom_style bpm/sphere 1\n')).errors).toEqual([]);
     const bad = await run('atom_style bpm/sphere 2\n');

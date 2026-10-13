@@ -434,7 +434,8 @@ export class FixEfield extends Fix {
     // variables are not currently supported, since they imply a spatial gradient in the electric field".
     if (s.mu) {
       if (!s.torque) throw new StyleError('fix efield: point dipoles need per-atom torque (use atom_style hybrid sphere dipole)');
-      if (this.comp.some((c) => 'atom' in c)) throw new StyleError('fix efield: atom-style variables are not supported for point dipoles (use an equal-style variable)');
+      // As native LAMMPS does (src/fix_efield.cpp init at b332f28): "Fix {} with dipoles cannot use atom-style variables"
+      if (this.comp.some((c) => 'atom' in c && c.atom)) throw new StyleError('Fix efield with dipoles cannot use atom-style variables');
     }
     for (let k = 3; k < args.length; k += 2) {
       const key = args[k];

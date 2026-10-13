@@ -100,8 +100,10 @@ describe('kspace_style ewald/disp and pair lj/long/coul/long flag_lj long', () =
     expect((await run(FCC.replace('gewald/disp 0.4', 'gewald/disp 0.4 mesh/disp 8 8 8'))).error).toMatch(/mesh\/disp/);
   });
 
-  it('refuses per-type LJ cutoffs and shift with flag_lj long', async () => {
-    expect((await run(FCC.replace('pair_coeff 2 2 0.5 1.1', 'pair_coeff 2 2 0.5 1.1 2.0'))).error).toMatch(/cutoff1|LJ cutoff/);
+  it('accepts per-type LJ cutoffs and refuses shift with flag_lj long', async () => {
+    // Measured with native LAMMPS: pair_coeff 2 2 with a fifth (cutoff1) argument is accepted under flag_lj long
+    // and that pair uses its own LJ cutoff (src/KSPACE/pair_lj_long_coul_long.cpp init_one at b332f28).
+    expect((await run(FCC.replace('pair_coeff 2 2 0.5 1.1', 'pair_coeff 2 2 0.5 1.1 2.0'))).error).toBeNull();
     expect((await run(FCC.replace('table 0 table/disp 0', 'table 0 table/disp 0 shift yes'))).error).toMatch(/shift/);
   });
 

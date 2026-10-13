@@ -222,6 +222,9 @@ export class Neighbor {
   build(s: SimState, g: Geometry, step: number): void {
     const needs = this.needs;
     if (!needs) throw new Error('neighbor lists used before init');
+    // every build uses the current special list, so a list handed over before it (read_data, create_bonds) needs
+    // no extra build at the next step
+    this.specialStale = false;
     this.makeGhosts(s, g);
     if (this.cutneighmax > 0) {
       if (needs.half) this.half = this.buildList(s, needs, false);

@@ -21,7 +21,7 @@ import type { System } from '../system';
 const KEYS = ['ke', 'pair', 'bond', 'angle', 'dihedral', 'improper', 'kspace', 'fix', 'virial'] as const;
 
 export class ComputePressure extends Compute {
-  readonly style = 'pressure';
+  readonly style: string = 'pressure';
   tempId: string | null;
   /**
    * Kinetic tensor used in place of the temperature compute's current one (fix nh sets it, see fix/nh.ts

@@ -1,0 +1,27 @@
+# oracle: UEF nvt/uef uniaxial extension of a WCA fluid (examples/PACKAGES/uef/nvt_uniaxial: 500 atoms, cut to 250 steps in two runs)
+# oracle-inputs: w129uef_data.wca
+# Measured with native LAMMPS (max relative error of the engine, this case): thermo 4e-13; per atom xu 4e-12, vz 1.3e-10,
+# fz 5e-10. Run length: at 1000 steps the forces drift past 1e-7 and one atom diverges by thousands in xu, consistent with its image count
+# passing 512, the native imageint limit (10 bits per dimension; the engine keeps the full count).
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 atomrel=1e-8
+units           lj
+atom_style      atomic
+
+pair_style      lj/cut 1.122562
+read_data       w129uef_data.wca
+pair_coeff      1 1 1.0 1.0
+pair_modify     shift yes
+
+neighbor        0.5 bin
+neigh_modify    delay 0
+
+change_box      all triclinic
+
+fix             1 all nvt/uef temp 0.722 0.722 0.5 erate -0.5 -0.5
+fix             2 all momentum 100 linear 1 1 1
+
+thermo_style    custom step c_1_press[1] c_1_press[2] c_1_press[3] lx ly lz xy xz yz f_1
+thermo_modify   format float %.15g
+thermo          25
+run             125
+run             125

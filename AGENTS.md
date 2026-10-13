@@ -30,8 +30,9 @@ Engine behaviour is checked against native LAMMPS (`/home/roy/.local/bin/lmp`, b
 a case is `tests/oracle/<case>.in` (header lines `# oracle:`, optional `# oracle-inputs:` (files next to the
 case), `# oracle-potentials:` (unmodified LAMMPS potential files from `third_party/lammps/potentials`) and
 `# oracle-compare:`); `LMP=/home/roy/.local/bin/lmp node scripts/oracle/run-oracle.mjs <case>` writes the native
-fixture `tests/fixtures/oracle/<case>.json`, and `npx vitest run tests/engineOracle.test.ts -t <case>` compares the
-engine with it. Put `thermo_modify format float %.15g` after `thermo_style`. Measured native behaviour is written in
+fixture `tests/fixtures/oracle/<case>.json`, and `npx vitest run tests/engineOracle -t <case>` compares the
+engine with it (the cases are split over the shard files tests/engineOracle*.test.ts, run in parallel; the path prefix
+matches all of them). Put `thermo_modify format float %.15g` after `thermo_style`. Measured native behaviour is written in
 comments as "Measured with native LAMMPS: ..." without quote marks; quote marks are for doc text only.
 
 LAMMPS is open source: read its C++ (github.com/lammps/lammps at `b332f28`) to find the exact behaviour before

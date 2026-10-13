@@ -1,0 +1,60 @@
+# oracle: fix qbmsst (z shock, mu artificial viscosity, qtb feedback, fix_modify energy yes) on methane (ReaxFF, qeq/reax) from
+# Native reference: LAMMPS b332f28 built from source with PKG_KSPACE MANYBODY MISC MOLECULE PHONON QEQ QTB REAXFF SHOCK, because the installed binary has no QTB (cmake -D PKG_<name>=on for each; then LMP=<build>/lmp run-oracle.mjs)
+# examples/PACKAGES/qtb/methane_qbmsst (b332f28, GPL-2.0), cut down: 2x2x2 replicas (40 atoms), 100 steps of the example's
+# nve + qtb equilibration (methane_qtb.mod, shortened), then 100 steps of qbmsst (thermo every 20)
+# oracle-inputs: w99phq_methane_ffield.reax
+# oracle-compare: thermo=all atoms=all rel=1e-4 abs=1e-8
+# measured (engine vs native): Node 24 thermo within 2.8e-5 relative (v_dray, a Rayleigh residual of large numbers), per-atom 3.5e-5;
+# Node 20 thermo within 7.3e-5, per-atom 8.2e-5 (the trajectory is chaotic over 100 ReaxFF steps; the tolerance is set to 1e-4);
+# the ReaxFF pressure itself agrees to 2e-6 (w99phq_methane_qtb)
+units                   real
+dimension               3
+boundary                p p p
+atom_style              charge
+lattice                 custom 1.0 &
+                        a1      3.9783624 0 0 &
+                        a2      0 3.9783624 0 &
+                        a3      0 0 3.9783624 &
+                        &
+                        basis   0.5 0.5 0.5 & 
+                        basis   0.663 0.663 0.663 &
+                        basis   0.337 0.337 0.663 &
+                        basis   0.663 0.337 0.337 &
+                        basis   0.337 0.663 0.337
+region                  simbox block 0 3.9783624 0 3.9783624 0 3.9783624 units box
+create_box              2 simbox
+create_atoms            1 box & 
+                        basis   1 1 &
+                        basis   2 2 &
+                        basis   3 2 &
+                        basis   4 2 &
+                        basis   5 2
+replicate               2 2 2
+mass                    1 12.011150
+mass                    2  1.007970
+pair_style              reaxff NULL
+pair_coeff              * * w99phq_methane_ffield.reax C H
+fix                     0 all qeq/reax 1 0.0 10.0 1.0e-6 reaxff
+neighbor                2.5 bin
+neigh_modify            every 10 delay 0 check no
+velocity                all create 110.0 93 dist gaussian sum no mom yes rot yes loop all
+thermo_style            custom step temp press etotal vol
+thermo                  100
+fix                     scapegoat_qtb all nve
+fix                     methane_qtb all qtb temp 110.0 damp 200 seed 35082 f_max 0.3 N_f 50
+timestep                0.25
+run                     100
+unfix                   methane_qtb
+unfix                   scapegoat_qtb
+reset_timestep          0
+fix                     shock all qbmsst z 0.122 q 25.0 mu 0.9 tscale 0.01 damp 200 f_max 0.3 N_f 50 seed 35082 eta 1.0 beta 400 T_init 110.0
+fix_modify              shock energy yes
+variable                dhug equal f_shock[1]
+variable                dray equal f_shock[2]
+variable                lgr_vel equal f_shock[3]
+variable                lgr_pos equal f_shock[4]
+variable                T_qm equal f_shock[5]
+thermo_style            custom step v_T_qm press etotal vol lx ly lz pzz v_dhug v_dray v_lgr_vel v_lgr_pos
+thermo_modify           format float %.15g
+thermo                  20
+run                     100

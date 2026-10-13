@@ -5,7 +5,7 @@ import { StyleError } from './force/types';
 import { mapUnquoted, splitCommands, substituteVariables, tokenize, formatNumber, type RawCommand } from './script';
 import { evaluateScalar } from './formula';
 import { COMMANDS, UNAVAILABLE_COMMANDS, type Ctx } from './commands';
-import { ensureStyles, styleNames } from './styles';
+import { ensureStyles, LAZY_COMMANDS, styleNames } from './styles';
 import { evaluateBoolean } from './boolean';
 import { CpuForceBackend } from './cpu/forces';
 import { RunCancelled, QuitSignal } from './errors';
@@ -308,10 +308,11 @@ export class Session {
     // an accelerator alias (lj/cut/omp, nve/kk, ...) runs as its base style: the names are replaced here, before
     // the styles load, so every object is created with the base name and the fast paths see the base style
     a = this.baseStyleNames(cmd, a);
-    const handler = COMMANDS[cmd];
     // styles of the lazily loaded registries (lazyStyles.ts) are loaded before a command that names one;
     // read_restart restores the styles named in its file
-    await ensureStyles(a);
+    // a lazily loaded command (a COMMANDS name of lazyStyles.ts) is registered by its group before the lookup below
+    await ensureStyles([cmd, ...a]);
+    const handler = COMMANDS[cmd] ?? LAZY_COMMANDS[cmd];
     if (cmd === 'read_restart' && a.length && this.sys.files.has(a[0])) await ensureStyles(this.sys.files.get(a[0])!.split(/[\s"',:\[\]{}]+/));
     if (!handler) {
       throw new StyleError(`'${cmd}' is not supported by the in-browser engine (it is not LAMMPS). Supported commands: ${SUPPORTED_COMMANDS.join(', ')}`);

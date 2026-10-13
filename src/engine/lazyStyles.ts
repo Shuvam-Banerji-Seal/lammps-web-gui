@@ -7,7 +7,8 @@
  */
 
 /** HOOKS: not styles but helpers that core commands call (nativeRandom.ts), named by the command words that need them. */
-export type StyleKind = 'PAIRS' | 'BONDS' | 'ANGLES' | 'DIHEDRALS' | 'IMPROPERS' | 'KSPACES' | 'FIXES' | 'COMPUTES' | 'HOOKS';
+/** COMMANDS: general commands a lazy group adds to the session's command table (styles.ts LAZY_COMMANDS). */
+export type StyleKind = 'PAIRS' | 'BONDS' | 'ANGLES' | 'DIHEDRALS' | 'IMPROPERS' | 'KSPACES' | 'FIXES' | 'COMPUTES' | 'HOOKS' | 'COMMANDS';
 export type StyleModule = Partial<Record<StyleKind, Record<string, unknown>>>;
 
 export interface LazyGroup {
@@ -24,6 +25,8 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_dpd', names: { PAIRS: ['dpd', 'dpd/ext', 'dpd/ext/tstat', 'dpd/tstat'] }, load: () => import('../engine-gpl/registry/dpd') as Promise<StyleModule> },
   { id: 'gpl_thermostat', names: { FIXES: ['temp/csld', 'temp/csvr'] }, load: () => import('../engine-gpl/registry/thermostat') as Promise<StyleModule> },
   { id: 'gpl_srd', names: { FIXES: ['srd'] }, load: () => import('../engine-gpl/registry/srd') as Promise<StyleModule> },
+  { id: 'gpl_phonon', names: { COMMANDS: ['dynamical_matrix'], FIXES: ['phonon'] }, load: () => import('../engine-gpl/registry/phonon') as Promise<StyleModule> },
+  { id: 'gpl_qtb', names: { FIXES: ['qbmsst', 'qtb'] }, load: () => import('../engine-gpl/registry/qtb') as Promise<StyleModule> },
   { id: 'pair_meam', names: { PAIRS: ['meam'] }, load: () => import('./registry/pair_meam') as Promise<StyleModule> },
   { id: 'pair_meam_spline', names: { PAIRS: ['meam/spline', 'meam/sw/spline'] }, load: () => import('./registry/pair_meam_spline') as Promise<StyleModule> },
   { id: 'pair_snap', names: { PAIRS: ['snap'] }, load: () => import('./registry/pair_snap') as Promise<StyleModule> },

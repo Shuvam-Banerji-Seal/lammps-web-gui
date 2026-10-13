@@ -1,0 +1,36 @@
+# oracle: fix phonon on the 1-1D diatomic chain of examples/PACKAGES/phonon/2-1D-diatomic (b332f28, GPL-2.0), two basis atoms per cell
+# Native reference: LAMMPS b332f28 built from source with PKG_KSPACE MANYBODY MISC MOLECULE PHONON QEQ QTB REAXFF SHOCK, because the installed binary has no QTB (cmake -D PKG_<name>=on for each; then LMP=<build>/lmp run-oracle.mjs)
+# (nasr 20 acoustic sum rule on the dynamical matrix); cut down: 20000 steps, measurements every 10 steps after 2000 wait steps,
+# output every 500 measurements. The binary file and the dump of the example are not part of this case.
+# oracle-inputs: w99phq_diat1d_data.pos w99phq_diat1d.map
+# oracle-files: w99phq_diat1d.log
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# measured (engine vs native, Node 24): thermo within 3.6e-17 absolute, per-atom within 4.4e-16; phonon.log within 1e-6 relative for |value| > 1e-3
+dimension   2
+boundary    p f p
+units              lj
+atom_style      bond
+atom_modify sort 0 1.
+bond_style  harmonic
+pair_style  none
+comm_modify cutoff 2.0
+read_data       w99phq_diat1d_data.pos
+neighbor 1.0 nsq
+neigh_modify  delay 0 check no
+variable r equal 571101
+variable t equal 0.005
+variable d equal 0.5
+compute   MyTemp all temp/partial 1 0 0
+velocity  all create $t 28711 mom yes rot yes dist gaussian temp MyTemp
+velocity  all set NULL 0.0 0.0 units box
+fix        1 all langevin $t $t $d $r
+fix_modify 1 temp MyTemp
+fix        2 all setforce NULL 0. 0.
+fix        3 all nve
+fix        4 all phonon 10 500 2000 w99phq_diat1d.map w99phq_diat1d sysdim 1
+fix_modify 4 temp MyTemp
+thermo_style  custom step temp pe etotal
+thermo_modify temp MyTemp
+thermo   100
+thermo_modify format float %.15g
+run              20000

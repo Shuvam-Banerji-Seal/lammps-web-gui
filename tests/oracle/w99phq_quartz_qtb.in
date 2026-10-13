@@ -1,0 +1,73 @@
+# oracle: fix qtb on alpha quartz (BKS buck/coul/long, pppm 1e-4, nph iso barostat, qtb thermostat) from examples/PACKAGES/qtb/alpha_quartz_qtb (b332f28, GPL-2.0),
+# Native reference: LAMMPS b332f28 built from source with PKG_KSPACE MANYBODY MISC MOLECULE PHONON QEQ QTB REAXFF SHOCK, because the installed binary has no QTB (cmake -D PKG_<name>=on for each; then LMP=<build>/lmp run-oracle.mjs)
+# cut down: 2x1x1 replicas of the 9-atom cell (18 atoms), 100 steps (thermo every 20), f_max 120 THz and N_f 100 as in the example
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-8
+# measured (engine vs native, Node 24): thermo within 8.0e-7 relative (pxy), per-atom within 3.7e-7
+variable                x_rep equal 2
+variable                y_rep equal 1
+variable                z_rep equal 1
+variable                cut_off equal 10.0                                                                      #Cut-off distance for the Buckingham term (Angstrom in metal units)
+variable                pressure equal 1.03125                                                                  #Initial state pressure (bar in metal units)
+variable                temperature equal 300.0                                                                 #Initial state quantum temperature (K in metal units)
+variable                delta_t equal 1.0e-3                                                                    #MD timestep length (ps in metal units)
+variable                damp_qtb equal 1                                                                        #1/gamma where gamma is the friction coefficient in quantum thermal bath (ps in metal units)
+
+units                   metal
+dimension               3
+boundary                p p p
+atom_style              charge
+
+lattice                 custom 1.0 &
+                        a1      4.916000 0.000000 0.000000 &
+                        a2      -2.45800 4.257381 0.000000 &
+                        a3      0.000000 0.000000 5.405400 &
+                        &
+                        basis   0.469700 0.000000 0.000000 &
+                        basis   0.000000 0.469700 0.666667 &
+                        basis   0.530300 0.530300 0.333333 &
+                        &
+                        basis   0.413500 0.266900 0.119100 &
+                        basis   0.266900 0.413500 0.547567 &
+                        basis   0.733100 0.146600 0.785767 &
+                        basis   0.586500 0.853400 0.214233 &
+                        basis   0.853400 0.586500 0.452433 &
+                        basis   0.146600 0.733100 0.880900                                                      #American Mineralogist 65 920 1980 (Space Group 154)
+
+region                  orthorhombic_unit_cell block 0 4.916000 0 8.514762 0 5.405400 units box
+create_box              2 orthorhombic_unit_cell
+create_atoms            1 box &
+                        basis   1 1 &
+                        basis   2 1 &
+                        basis   3 1 &
+                        basis   4 2 &
+                        basis   5 2 &
+                        basis   6 2 &
+                        basis   7 2 &
+                        basis   8 2 &
+                        basis   9 2
+replicate               ${x_rep} ${y_rep} ${z_rep}
+
+mass                    1 28.085500
+mass                    2 15.999400
+set                     type 1 charge +2.4
+set                     type 2 charge -1.2
+
+
+pair_style              buck/coul/long ${cut_off}                                                               #BKS interaction, PRL 64 1955 (1990)
+pair_coeff              1 1 0.0 1.0 0.0
+pair_coeff              1 2 18003.757200 0.205205 133.538100
+pair_coeff              2 2 1388.773000  0.362319 175.000000
+pair_modify             shift yes
+kspace_style            pppm 1.0e-4
+
+neighbor                2.0 bin
+neigh_modify            check yes every 1 delay 0 page 100000 one 2000
+
+
+variable                p_damp equal ${delta_t}*1000                                                            #Recommended pressure damping parameter in fix nph
+fix                     scapegoat_qtb all nph iso ${pressure} ${pressure} ${p_damp} ptemp ${temperature}                                #NPH does the time integration
+fix                     quartz_qtb all qtb temp ${temperature} damp ${damp_qtb} seed 35082 f_max 120.00 N_f 100 #Change f_max (THz) if your Debye frequency is higher
+thermo_style            custom step temp press etotal vol lx ly lz pxx pyy pzz pxy pyz pxz
+thermo_modify           format float %.15g
+thermo                  20
+run                     100

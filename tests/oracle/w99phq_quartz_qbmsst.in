@@ -1,0 +1,72 @@
+# oracle: fix qbmsst (z shock, qtb temperature feedback, tscale 0.05) on alpha quartz (hybrid/overlay buck/coul/long + tabulated SiO2 pair,
+# Native reference: LAMMPS b332f28 built from source with PKG_KSPACE MANYBODY MISC MOLECULE PHONON QEQ QTB REAXFF SHOCK, because the installed binary has no QTB (cmake -D PKG_<name>=on for each; then LMP=<build>/lmp run-oracle.mjs)
+# pppm, box dilation) from examples/PACKAGES/qtb/alpha_quartz_qbmsst (b332f28, GPL-2.0), cut down: 1x1x2 replicas (36 atoms) after
+# 100 steps of the example's own nph + qtb equilibration (alpha_quartz_qtb.mod, shortened); the restart and second run are not part of this case
+# oracle-inputs: w99phq_potential_SiO2.TPF
+# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-8
+# measured (engine vs native, Node 24): thermo within 8.6e-7 relative (v_dhug), per-atom within 5.4e-7
+units                   metal
+dimension               3
+boundary                p p p
+atom_style              charge
+lattice                 custom 1.0 &
+                        a1      4.916000 0.000000 0.000000 &
+                        a2      -2.45800 4.257381 0.000000 &
+                        a3      0.000000 0.000000 5.405400 &
+                        &
+                        basis   0.469700 0.000000 0.000000 &
+                        basis   0.000000 0.469700 0.666667 &
+                        basis   0.530300 0.530300 0.333333 &
+                        &
+                        basis   0.413500 0.266900 0.119100 &
+                        basis   0.266900 0.413500 0.547567 &
+                        basis   0.733100 0.146600 0.785767 &
+                        basis   0.586500 0.853400 0.214233 &
+                        basis   0.853400 0.586500 0.452433 &
+                        basis   0.146600 0.733100 0.880900                                                      #American Mineralogist 65 920 1980 (Space Group 154)
+region                  orthorhombic_unit_cell block 0 4.916000 0 8.514762 0 5.405400 units box
+create_box              2 orthorhombic_unit_cell
+create_atoms            1 box &
+                        basis   1 1 &
+                        basis   2 1 &
+                        basis   3 1 &
+                        basis   4 2 &
+                        basis   5 2 &
+                        basis   6 2 &
+                        basis   7 2 &
+                        basis   8 2 &
+                        basis   9 2
+replicate               1 1 2
+mass                    1 28.085500
+mass                    2 15.999400
+set                     type 1 charge +2.4
+set                     type 2 charge -1.2
+pair_style              hybrid/overlay buck/coul/long 10.0 table linear 39901
+pair_coeff              1 1 buck/coul/long 0.0 1.0 0.0
+pair_coeff              1 2 buck/coul/long 18003.757200 0.205205 133.538100
+pair_coeff              2 2 buck/coul/long 1388.773000  0.362319 175.000000
+pair_modify             shift yes
+pair_coeff              1 2 table w99phq_potential_SiO2.TPF Si-O 10.0
+pair_coeff              2 2 table w99phq_potential_SiO2.TPF O-O 10.0
+kspace_style            pppm 1.0e-4
+neighbor                2.0 bin
+neigh_modify            check yes every 1 delay 0 page 100000 one 2000
+timestep                0.001
+thermo_style            custom step temp press etotal vol lx ly lz pxx pyy pzz pxy pyz pxz
+thermo_modify           format float %.15g
+thermo                  50
+fix                     scapegoat_qtb all nph iso 1.03125 1.03125 1.0 ptemp 300.0
+fix                     quartz_qtb all qtb temp 300.0 damp 1 seed 35082 f_max 120.00 N_f 100
+run                     100
+unfix                   quartz_qtb
+unfix                   scapegoat_qtb
+fix                     shock all qbmsst z 78.0 q 40.0 tscale 0.05 damp 1 f_max 120 N_f 100 seed 35082 eta 1.0 beta 5 T_init 300.0
+variable                dhug equal f_shock[1]
+variable                dray equal f_shock[2]
+variable                lgr_vel equal f_shock[3]
+variable                lgr_pos equal f_shock[4]
+variable                T_qm equal f_shock[5]
+thermo_style            custom step v_T_qm press econserve vol lx ly lz pzz v_dhug v_dray v_lgr_vel v_lgr_pos
+thermo_modify           format float %.15g
+thermo                  20
+run                     100

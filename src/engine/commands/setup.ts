@@ -2366,7 +2366,10 @@ const replicate: Handler = ({ sys }, a) => {
   const mol = new Int32Array(n0 * ncopy), q = new Float64Array(n0 * ncopy), image = new Int32Array(3 * n0 * ncopy);
   let c = 0;
   const u = [0, 0, 0];
-  for (let kz = 0; kz < rep[2]; kz++) for (let ky = 0; ky < rep[1]; ky++) for (let kx = 0; kx < rep[0]; kx++) {
+  // Measured with native LAMMPS (black box): right after replicate, a dump with sort off lists the copies with the
+  // x index outermost and z innermost (replicate 2 3 2 gives copies 0, 6, 2, 8, 4, 10, 1, ...), so the copies are
+  // stored in that order; the IDs of each copy are unchanged.
+  for (let kx = 0; kx < rep[0]; kx++) for (let ky = 0; ky < rep[1]; ky++) for (let kz = 0; kz < rep[2]; kz++) {
     const copy = (kz * rep[1] + ky) * rep[0] + kx;
     for (let i = 0; i < n0; i++, c++) {
       g.unwrap(old.x, old.image, i, u);

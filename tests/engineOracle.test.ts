@@ -62,7 +62,8 @@ const sameText = (a: string, b: string, rel: number): string | null => {
   const la = a.trim().split('\n'), lb = b.trim().split('\n');
   if (la.length !== lb.length) return `line count ${la.length} vs ${lb.length}`;
   for (let i = 0; i < la.length; i++) {
-    const ta = la[i].trim().split(/\s+/), tb = lb[i].trim().split(/\s+/);
+    // brackets around a number (the basis vectors of fix phonon's log: "[2.5 0 0]") are not part of the number
+    const ta = la[i].trim().split(/\s+/).map((w) => w.replace(/[[\]]/g, '')), tb = lb[i].trim().split(/\s+/).map((w) => w.replace(/[[\]]/g, ''));
     if (ta.length !== tb.length) return `line ${i + 1}: '${la[i]}' vs '${lb[i]}'`;
     for (let k = 0; k < ta.length; k++) {
       const x = Number(ta[k]), y = Number(tb[k]);

@@ -1,0 +1,27 @@
+# oracle: pair_style hybrid/overlay sw/mod sw/mod ilp/tmd 16.0 - bilayer MoS2 (AA' stacking, a 6 x 6 cell cut from the examples' 16 x 16 cell: 216 atoms), 10 NVE steps; compute pair c_0 (ilp/tmd: [attractive, repulsive]), c_1 and c_2 (the two sw/mod layers)
+# measured (engine vs native, black box; rel over |value| >= 1e-6; per-atom scale max(1,|value|)): thermo max abs 2.3e-12, max rel 1.1e-14; per-atom max scaled 1.1e-13
+# oracle-inputs: w102il_tmd_mos2.data
+# oracle-potentials: TMD.ILP tmd.sw.mod
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+boundary        p p f
+atom_style      full
+read_data       w102il_tmd_mos2.data
+mass            * 32.065
+mass            1 95.94
+mass            4 95.94
+pair_style      hybrid/overlay sw/mod sw/mod ilp/tmd 16.0
+pair_coeff      * * sw/mod 1 tmd.sw.mod Mo S S NULL NULL NULL
+pair_coeff      * * sw/mod 2 tmd.sw.mod NULL NULL NULL Mo S S
+pair_coeff      * * ilp/tmd TMD.ILP Mo S S Mo S S
+compute         0 all pair ilp/tmd
+compute         1 all pair sw/mod 1
+compute         2 all pair sw/mod 2
+timestep        1e-3
+thermo_style    custom step pe etotal press c_0[1] c_0[2] c_1 c_2
+thermo_modify   format float %.15g
+thermo          5
+run             0
+velocity        all create 300.0 12345 dist gaussian mom yes rot yes
+fix             1 all nve
+run             10

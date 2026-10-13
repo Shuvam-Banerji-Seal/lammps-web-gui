@@ -1,0 +1,41 @@
+# oracle: pair_style hybrid/overlay aip/water/2dm 16.0 lj/cut/coul/long 10 8.5 - the examples' graphene under water: the atoms of the example's 936-atom data with x in [27.4, 46) and y < 22.2 (171 C and 11 water molecules, 270 atoms, the example's box), 10 steps with SHAKE; compute pair c_1 (lj/cut/coul/long) and c_2 (aip/water/2dm: [attractive, repulsive]). The example's lj/cut/tip4p/long is replaced by lj/cut/coul/long: the browser engine refuses the TIP4P styles inside hybrid/overlay (virialFdotr is off for them)
+# measured (engine vs native, black box; rel over |value| >= 1e-6; per-atom scale max(1,|value|)): thermo max abs 2.1e-8, max rel 6.8e-11; per-atom max scaled 3.5e-9. The residual is the PPPM Coulomb term: a run-0 variant with lj/cut and no kspace (the aip/water/2dm terms alone) measures thermo max abs 1.7e-13, per-atom 1.9e-12, and the run-0 case with the Coulomb term measures thermo abs 1.0e-9, per-atom 2.5e-10
+# oracle-inputs: w102il_aip_water.data
+# oracle-potentials: COH.DMC.aip.water.2dm
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+boundary        p p p
+atom_style      full
+read_data       w102il_aip_water.data
+mass            1 12.0107
+mass            2 15.9994
+mass            3 1.008
+group           gr molecule 1
+group           water molecule 2
+pair_style      hybrid/overlay aip/water/2dm 16.0 lj/cut/coul/long 10 8.5
+pair_coeff      1 1 none
+pair_coeff      2 2 lj/cut/coul/long 8.0313e-3 3.1589
+pair_coeff      2 3 lj/cut/coul/long 0.0 0.0
+pair_coeff      3 3 lj/cut/coul/long 0.0 0.0
+pair_coeff      * * aip/water/2dm COH.DMC.aip.water.2dm C Ow Hw
+bond_style      harmonic
+bond_coeff      1 0.0 0.9572
+angle_style     harmonic
+angle_coeff     1 0.0 104.52
+kspace_style    pppm 1E-5
+neighbor        2.0 bin
+neigh_modify    every 1 delay 5 check yes page 1000000 one 100000
+compute         1 all pair lj/cut/coul/long
+compute         2 all pair aip/water/2dm
+compute         wt water temp
+thermo_style    custom step pe etotal ke c_1 c_2[1] c_2[2] c_wt
+thermo_modify   format float %.15g
+thermo          5
+thermo_modify   lost error
+fix             subf gr setforce 0.0 0.0 0.0
+fix             1 water shake 0.0001 20 100 b 1 a 1
+timestep        1e-3
+velocity        water create 300.0 12345 dist gaussian mom yes rot yes
+fix             2 water nve
+run             0
+run             10

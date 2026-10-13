@@ -16,7 +16,7 @@ interface FileEntry { ie: number; je: number; nums: number[] }
 const EV_TO_KCAL = 23.060549;
 
 /** Energy scale of a potential file with a UNITS: tag, against the simulation's unit style (metal and real only). */
-const energyScale = (tag: string | null, ctx: StyleContext, style: string, fileName: string): number => {
+export const energyScale = (tag: string | null, ctx: StyleContext, style: string, fileName: string): number => {
   if (!tag) return 1;
   const units = ctx.s?.units.style;
   if (tag === units) return 1;
@@ -26,7 +26,7 @@ const energyScale = (tag: string | null, ctx: StyleContext, style: string, fileN
 };
 
 /** Text of a potential-file line without its comment. */
-const stripComment = (line: string): string => {
+export const stripComment = (line: string): string => {
   const h = line.indexOf('#');
   return (h >= 0 ? line.slice(0, h) : line).trim();
 };

@@ -258,6 +258,8 @@ export abstract class Pair {
   table = 12;
   /** Many-body styles ignore special_bonds and need full lists. */
   manybody = false;
+  /** Set by pair_style hybrid/overlay on its sub-styles (native "^hybrid/overlay" checks; false when the style is alone). */
+  hybridOverlay = false;
   needsFull = false;
   needsHalf = true;
   /** Styles with a long-range Coulomb part (need a kspace style). */

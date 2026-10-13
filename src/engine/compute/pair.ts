@@ -26,8 +26,8 @@ import type { System } from '../system';
  *    extensive: thermo_modify norm yes divides both by the atom count.
  *
  * Vector styles (docs.lammps.org): hbond/dreiding/* [count, energy], gauss [occupancy],
- * reaxff [14 values], ilp/graphene/hbn, ilp/tmd, kolmogorov/crespi/full, saip/metal and
- * aip/water/2dm [2 values]. The engine provides only the hbond/dreiding vector; the others
+ * reaxff [14 values], ilp/graphene/hbn, ilp/tmd, kolmogorov/crespi/full, saip/metal,
+ * saip/metal/tmd and aip/water/2dm [2 values]. The engine provides only the hbond/dreiding vector; the others
  * raise a StyleError when the vector is accessed.
  */
 
@@ -42,6 +42,7 @@ const VECTOR_LENGTH: Record<string, number> = {
   'ilp/tmd': 2,
   'kolmogorov/crespi/full': 2,
   'saip/metal': 2,
+  'saip/metal/tmd': 2,
   'aip/water/2dm': 2,
   // pair eff/cut: [KE, Pauli, ecoul, radius restraint] (the pair's own vector, extract('pvector')). Measured with native
   // LAMMPS (black box): compute pair eff/cut has 4 values; c_ID[5] is out of range.

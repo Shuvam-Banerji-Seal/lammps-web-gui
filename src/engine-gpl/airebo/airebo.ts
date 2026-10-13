@@ -198,8 +198,11 @@ export class PairAIREBO extends Pair {
     const map = new Int32Array(this.ntypes + 1).fill(-1);
     for (let i = 3; i < args.length; i++) {
       const w = args[i];
+      // docs.lammps.org/pair_airebo.html: "If a mapping value is specified as NULL, the mapping is not performed. This can
+      // be used when a airebo potential is used as part of the hybrid pair style." The NULL atoms take no part in the
+      // neighbor lists (the builders skip map < 0) and in no term.
       if (w === 'NULL') {
-        throw new StyleError(`pair_style ${this.name} does not support the NULL element mapping (every atom type needs C or H)`);
+        map[i - 2] = -1;
       } else if (w === 'C') {
         map[i - 2] = 0;
       } else if (w === 'H') {
@@ -275,9 +278,7 @@ export class PairAIREBO extends Pair {
     const nlocal = pc.nlocal;
     const mt = new Int32Array(nall);
     for (let a = 0; a < nall; a++) {
-      const m = this.map[pc.type[a]];
-      if (m < 0) throw new StyleError(`pair_style ${this.name}: atom type ${pc.type[a]} is mapped to NULL`);
-      mt[a] = m;
+      mt[a] = this.map[pc.type[a]];
     }
     const tag = new Int32Array(nall);
     const owner = pc.nb.owner;

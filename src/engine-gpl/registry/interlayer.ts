@@ -7,6 +7,11 @@
 import type { Pair } from '../../engine/force/types';
 import { PairCoulShield } from '../interlayer/coul_shield';
 import { PairILPGrapheneHBN } from '../interlayer/ilp_graphene_hbn';
+import { PairILPTMD } from '../interlayer/ilp_tmd';
+import { PairSAIPMetal } from '../interlayer/saip_metal';
+import { PairSAIPMetalTMD } from '../interlayer/saip_metal_tmd';
+import { PairAIPWater2DM } from '../interlayer/aip_water_2dm';
+import { PairDRIP } from '../interlayer/drip';
 import { PairKolmogorovCrespiFull } from '../interlayer/kolmogorov_crespi_full';
 import { PairKolmogorovCrespiZ } from '../interlayer/kolmogorov_crespi_z';
 import { PairLebedevaZ } from '../interlayer/lebedeva_z';
@@ -16,6 +21,11 @@ export const PAIRS: Record<string, () => Pair> = {
   'kolmogorov/crespi/z': () => new PairKolmogorovCrespiZ(),
   'coul/shield': () => new PairCoulShield(),
   'ilp/graphene/hbn': () => new PairILPGrapheneHBN(),
+  'ilp/tmd': () => new PairILPTMD(),
+  'saip/metal': () => new PairSAIPMetal(),
+  'saip/metal/tmd': () => new PairSAIPMetalTMD(),
+  'aip/water/2dm': () => new PairAIPWater2DM(),
+  drip: () => new PairDRIP(),
   'kolmogorov/crespi/full': () => new PairKolmogorovCrespiFull(),
   'lebedeva/z': () => new PairLebedevaZ(),
 };

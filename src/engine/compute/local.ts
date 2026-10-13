@@ -132,7 +132,7 @@ const bondVec = (bc: BondedCompute, a: number, b: number): number[] => {
   const d = [0, 0, 0];
   bondDelta(bc, a, b, d);
   return d;
-}
+};
 /** r_b' - r_o, the copy of b nearest to the term's owner o (bonded_util delta). */
 const fromOwner = (bc: BondedCompute, o: number, b: number): number[] => {
   const d = [0, 0, 0];

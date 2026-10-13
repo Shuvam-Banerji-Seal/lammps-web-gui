@@ -371,6 +371,8 @@ export class PairHybrid extends Pair {
     for (let k = 0; k < this.subs.length; k++) {
       const s = this.subs[k];
       s.evaluated = false;
+      // pair_modify pair X compute no: the sub-style is skipped (pair_modify.html: "compute ... turned off")
+      if (!s.style.computeOn) continue;
       // run_style respa: a level evaluation computes only the sub-styles assigned to it (run/respa.ts)
       if (this.subSelect && !this.subSelect(k)) continue;
       s.style.gEwald = this.gEwald;

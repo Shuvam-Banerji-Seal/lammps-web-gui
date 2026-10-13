@@ -3,7 +3,7 @@ import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { parseNum } from '../util';
 import { PairLJCutCoulLong } from './coul_long';
 import { tallyAtom } from './lj_cut';
-import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, TABLE_INNER_RSQ, type ErfcTable } from '../erfc';
+import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../erfc';
 
 /*
  * pair_style lj/long/coul/long — docs.lammps.org/pair_lj_long.html
@@ -68,7 +68,7 @@ const g6kernel = (x2: number): number => Math.exp(-x2) * (1 + x2 + x2 * x2 / 2);
 const coulShort = (
   rsq: number, qi: number, qj: number, g: number, qqrd2e: number, fc: number, poly: boolean, table: ErfcTable | null,
 ): { e: number; f: number } => {
-  if (table && rsq > TABLE_INNER_RSQ) {
+  if (table && rsq > table.inner) {
     const qq = qqrd2e * qi * qj;
     let forcecoul = qq * table.force(rsq);
     let e = qq * table.energy(rsq);
@@ -175,7 +175,7 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
     const g = this.gEwald;
     const gd = this.gEwaldDisp;
     const gd6 = gd ** 6;
-    const tab = coul ? this.ljErfcTables.get(this.table, g, cutcsq) : null;
+    const tab = coul ? this.ljErfcTables.get(this.table, g, cutcsq, this.tabinnerRsq) : null;
     const sLJ = pc.specialLJ, sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0, ecoul = 0;

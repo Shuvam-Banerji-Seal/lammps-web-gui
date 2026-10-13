@@ -1,0 +1,15 @@
+# oracle: pair_modify nofdotr (accepted; the virial is the same sum up to roundoff)
+units lj
+atom_style atomic
+lattice fcc 0.8442
+region box block 0 5 0 5 0 5
+create_box 2 box
+create_atoms 1 box
+mass * 1.0
+set group all type/fraction 2 0.3 1234
+pair_style lj/cut 2.5
+pair_coeff * * 1.0 1.0
+pair_modify nofdotr
+thermo_style custom step pe evdwl press pxx pyy pzz pxy
+thermo_modify format float %.15g
+run 0

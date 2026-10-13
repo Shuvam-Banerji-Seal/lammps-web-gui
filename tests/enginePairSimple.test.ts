@@ -139,13 +139,13 @@ describe('simple pair styles: errors', () => {
     expect(() => new PairMorse().coeff(['1', '1', '1.0', '3.0'], ctx)).toThrow(/usage: pair_/);
   });
 
-  it('pair_modify tail yes is rejected by morse (docs: not supported)', () => {
+  it('pair_modify tail yes is accepted by morse with no tail term (docs: none; native ignores it)', () => {
     const s = new PairMorse();
     s.settings(['2.5'], ctx);
     s.allocate(2);
     s.coeff(['*', '*', '1.0', '3.0', '1.12'], ctx);
     s.tail = true;
-    expect(() => s.init(ctx)).toThrow(/tail/);
+    expect(() => s.init(ctx)).not.toThrow();
   });
 
   it('buck/coul/cut exposes its Coulomb cutoff via extract', () => {

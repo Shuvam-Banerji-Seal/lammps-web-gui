@@ -325,7 +325,11 @@ export class PairLJExpand extends PairLJVariant {
     this.lj3[k1] = this.lj3[k2] = 4 * eps * s12;
     this.lj4[k1] = this.lj4[k2] = 4 * eps * s6;
     this.delta[k1] = this.delta[k2] = delta;
-    this.offset[k1] = this.offset[k2] = this.shift && cut > 0 ? 4 * eps * ((sig / cut) ** 12 - (sig / cut) ** 6) : 0;
+    // pair_modify shift: the offset is the unshifted energy at the force cutoff rc + delta, not at rc. Measured
+    // with native LAMMPS (black box): offset = 4 eps ((sig/(rc+delta))^12 - (sig/(rc+delta))^6), see
+    // tests/oracle/w88pair_expand_shift*.in
+    const rs = cut + delta;
+    this.offset[k1] = this.offset[k2] = this.shift ? 4 * eps * ((sig / rs) ** 12 - (sig / rs) ** 6) : 0;
     // "the actual force cutoff is the sum of :math:`r_c + \Delta`"
     return cut + delta;
   }
@@ -538,12 +542,12 @@ export class PairLJSmooth extends PairLJVariant {
     // pair_modify tail option for adding long-range tail corrections to energy and
     // pressure, since the energy of the pair interaction is smoothed to 0.0
     // at the cutoff."
-    if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style lj/smooth (the energy is smoothed to 0.0 at the cutoff)');
+    this.noTermLog(ctx, 'tail');
     super.init(ctx);
   }
 
   tailSums(): { etail: number; ptail: number } {
-    throw new StyleError('pair_modify tail yes is not supported for pair style lj/smooth (the energy is smoothed to 0.0 at the cutoff)');
+    return { etail: 0, ptail: 0 };
   }
 
   // write_data, measured with native LAMMPS: "Pair Coeffs" holds epsilon sigma only; "PairIJ
@@ -626,7 +630,7 @@ export class PairLJSmoothLinear extends PairLJVariant {
     // docs.lammps.org/pair_lj_smooth_linear.html: "This pair style does not support the
     // pair_modify shift option for the energy of the pair interaction, since it goes
     // to 0.0 at the cutoff by construction."
-    if (this.shift) throw new StyleError('pair_modify shift yes is not supported for pair style lj/smooth/linear (it goes to 0.0 at the cutoff by construction)');
+    this.noTermLog(ctx, 'shift');
     super.init(ctx);
   }
 
@@ -666,7 +670,7 @@ export class PairLJSmoothLinear extends PairLJVariant {
   }
 
   tailSums(): { etail: number; ptail: number } {
-    throw new StyleError('pair_modify tail yes is not supported for pair style lj/smooth/linear (the energy is smoothed to 0.0 at the cutoff)');
+    return { etail: 0, ptail: 0 };
   }
 
   // write_data, measured with native LAMMPS: lj/smooth/linear writes no pair coefficient section.

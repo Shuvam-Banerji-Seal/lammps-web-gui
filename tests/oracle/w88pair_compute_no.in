@@ -1,0 +1,19 @@
+# oracle: pair_modify compute no (no pair term; the kspace term remains)
+# oracle-inputs: w88pair_chain.data
+units           real
+atom_style      full
+read_data       w88pair_chain.data
+pair_style      lj/cut/coul/long 8.0
+pair_coeff      * * 0.2 1.1
+bond_style      harmonic
+bond_coeff      1 100.0 1.0
+angle_style     harmonic
+angle_coeff     1 10.0 110.0
+dihedral_style  harmonic
+dihedral_coeff  1 1.0 1 0
+special_bonds   lj 0 0 0.5 coul 0 0 0.5
+kspace_style    pppm 1.0e-4
+pair_modify     compute no
+thermo_style    custom step pe evdwl elong ecoul press
+thermo_modify   format float %.15g
+run 0

@@ -567,8 +567,8 @@ export class PairMorse extends Pair {
     this.p.setRange(args[0], args[1], [d0, alpha, r0, cut]);
   }
 
-  initStyle(_ctx: StyleContext): void {
-    if (this.tail) throw new StyleError('pair style morse does not support the pair_modify tail option');
+  initStyle(ctx: StyleContext): void {
+    this.noTermLog(ctx, 'tail');
   }
 
   initOne(i: number, j: number): number {

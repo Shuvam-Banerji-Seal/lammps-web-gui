@@ -306,6 +306,10 @@ export abstract class Pair {
   /** Long-range tail corrections (energy*V and pressure*V*V... see tailSums). */
   etail = 0;
   ptail = 0;
+  /** pair_modify compute yes|no (pair_modify.html): false skips the pairwise term (energy, force, virial). */
+  computeOn = true;
+  /** Squared inner cutoff of the erfc tables (pair_modify tabinner squared; default sqrt(2)^2 = 2). */
+  tabinnerRsq = 2;
 
   /** pair_style arguments. */
   abstract settings(args: string[], ctx: StyleContext): void;
@@ -346,6 +350,17 @@ export abstract class Pair {
    * undefined when the style adds none. The minimizer appends them after the box DOF in cg and sd.
    */
   minPerAtom?(): PairMinPerAtom;
+  /**
+   * pair_modify shift/tail on a style that has no such term. The style's docs say it "does not support"
+   * the option (pair_morse.rst, pair_soft.rst, pair_yukawa.rst, pair_lj_cubic.rst, pair_lj_smooth.rst,
+   * pair_lj_smooth_linear.rst, pair_eam.rst, pair_sw.rst, pair_tersoff.rst); native LAMMPS accepts it and
+   * gives the unshifted / untailed result (measured for yukawa, morse, lj/cubic, lj/smooth/linear, soft, eam).
+   * The engine does the same and logs one line per init saying the option has no effect for this style.
+   */
+  noTermLog(ctx: StyleContext, key: 'shift' | 'tail'): void {
+    if (this[key]) ctx.log(`pair_modify ${key} yes has no effect for pair style ${this.name} (native LAMMPS ignores it too)`);
+  }
+
   /** Long-range tail energy/pressure need per-type counts; override when tail is supported. */
   tailSums(_counts: Float64Array): { etail: number; ptail: number } { return { etail: 0, ptail: 0 }; }
 

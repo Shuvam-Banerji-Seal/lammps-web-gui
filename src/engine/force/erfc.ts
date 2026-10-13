@@ -117,6 +117,8 @@ export const erfcPoly = (x: number, ex: number): number => {
 export const TABLE_INNER_RSQ = 2.0;
 
 export interface ErfcTable {
+  /** rsq from which the table is used (pair_modify tabinner squared; below it the direct polynomial). */
+  readonly inner: number;
   /** erfc(g r)/r at rsq (no charge or unit prefactor). */
   energy(rsq: number): number;
   /** (erfc(g r) + 2/sqrt(pi) g r exp(-g^2 r^2))/r; the force is qq * force(rsq) / rsq. */
@@ -137,13 +139,13 @@ const u32 = new Uint32Array(f32.buffer);
  * octave e (float32 exponent bits) sits at rsq = 2^(e-127) (1 + k / 2^(N-3)); a value is the
  * linear interpolation between the two nodes around float32(rsq).
  */
-export const makeErfcTable = (N: number, g: number, cutsq: number): ErfcTable => {
+export const makeErfcTable = (N: number, g: number, cutsq: number, inner: number = TABLE_INNER_RSQ): ErfcTable => {
   if (!(N > 3 && N <= 24)) throw new RangeError('pair_modify table N must be 4..24 for the emulation');
   const M = N - 3;
   const perOctave = 1 << M;
-  f32[0] = TABLE_INNER_RSQ;
+  f32[0] = inner;
   const eMin = u32[0] >>> 23;
-  f32[0] = Math.max(cutsq, TABLE_INNER_RSQ);
+  f32[0] = Math.max(cutsq, inner);
   const eMax = (u32[0] >>> 23) + 1;
   const n = (eMax - eMin + 1) * perOctave + 1;
   const eTab = new Float64Array(n), fTab = new Float64Array(n), cTab = new Float64Array(n);
@@ -165,7 +167,7 @@ export const makeErfcTable = (N: number, g: number, cutsq: number): ErfcTable =>
     return which === 0 ? ec / r : (ec + EWALD_F * x * ex) / r;
   };
   const interp = (rsq: number, tab: Float64Array, which: 0 | 1 | 2): number => {
-    if (rsq <= TABLE_INNER_RSQ) return direct(rsq, which);
+    if (rsq <= inner) return direct(rsq, which);
     f32[0] = rsq;
     const bits = u32[0];
     const e = bits >>> 23;
@@ -178,6 +180,7 @@ export const makeErfcTable = (N: number, g: number, cutsq: number): ErfcTable =>
     return tab[k] + (tab[k + 1] - tab[k]) * t;
   };
   return {
+    inner,
     energy: (rsq) => interp(rsq, eTab, 0),
     force: (rsq) => interp(rsq, fTab, 1),
     coul: (rsq) => interp(rsq, cTab, 2),
@@ -190,10 +193,10 @@ export class ErfcTableCache {
   private table: ErfcTable | null = null;
 
   /** null for pair_modify table 0 (direct evaluation). */
-  get(N: number, g: number, cutsq: number): ErfcTable | null {
+  get(N: number, g: number, cutsq: number, inner: number = TABLE_INNER_RSQ): ErfcTable | null {
     if (N <= 0) return null;
-    const key = `${N} ${g} ${cutsq}`;
-    if (key !== this.key) { this.table = makeErfcTable(N, g, cutsq); this.key = key; }
+    const key = `${N} ${g} ${cutsq} ${inner}`;
+    if (key !== this.key) { this.table = makeErfcTable(N, g, cutsq, inner); this.key = key; }
     return this.table;
   }
 }

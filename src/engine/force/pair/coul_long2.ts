@@ -2,7 +2,7 @@ import { StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairBorn, PairBuck, } from './simple';
 import { tallyAtom } from './lj_cut';
-import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, TABLE_INNER_RSQ, type ErfcTable } from '../erfc';
+import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../erfc';
 import { fmtCoeff, parseNum } from '../util';
 
 /*
@@ -91,7 +91,7 @@ const nonCoulCut = (raw: number, cutGlobal: number): number => (Number.isNaN(raw
 const coulLongPair = (
   rsq: number, qi: number, qj: number, g: number, qqrd2e: number, fc: number, poly: boolean, table: ErfcTable | null = null,
 ): { e: number; f: number } => {
-  if (table && rsq > TABLE_INNER_RSQ) {
+  if (table && rsq > table.inner) {
     // pair_modify table N > 0 (erfc.ts makeErfcTable): native interpolates erfc/r, the force kernel
     // and the bare 1/r of the special-bond correction from its tables
     const qq = qqrd2e * qi * qj;
@@ -126,7 +126,7 @@ export class PairBornCoulLong extends PairBorn {
   cutCoul = 0;
   private readonly erfcTables = new ErfcTableCache();
   /** pair_modify table N (null for 0): erfc.ts makeErfcTable. */
-  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul); }
+  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq); }
   /** Coulomb prefactor of the current run (pc.qqrd2e); single() uses the last-seen value. */
   qqrd2e = 1;
 
@@ -256,7 +256,7 @@ export class PairBuckCoulLong extends PairBuck {
   cutCoul = 0;
   private readonly erfcTables = new ErfcTableCache();
   /** pair_modify table N (null for 0): erfc.ts makeErfcTable. */
-  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul); }
+  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq); }
   /** Coulomb prefactor of the current run (pc.qqrd2e); single() uses the last-seen value. */
   qqrd2e = 1;
 

@@ -480,8 +480,8 @@ export class PairLJCubic extends PairLJ2Variant {
     // the cutoff." / "The lj/cubic pair style does not support the pair_modify tail
     // option for adding long-range tail corrections to energy and pressure, since
     // there are no corrections for a potential that goes to 0.0 at the cutoff."
-    if (this.shift) throw new StyleError('pair_modify shift yes is not supported for pair style lj/cubic (the interaction is already smoothed to 0.0 at the cutoff)');
-    if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style lj/cubic (there are no corrections for a potential that goes to 0.0 at the cutoff)');
+    this.noTermLog(ctx, 'shift');
+    this.noTermLog(ctx, 'tail');
     super.init(ctx);
   }
 
@@ -532,7 +532,7 @@ export class PairLJCubic extends PairLJ2Variant {
   }
 
   tailSums(): { etail: number; ptail: number } {
-    throw new StyleError('pair_modify tail yes is not supported for pair style lj/cubic (there are no corrections for a potential that goes to 0.0 at the cutoff)');
+    return { etail: 0, ptail: 0 };
   }
 
   // write_data, measured with native LAMMPS: lj/cubic writes no pair coefficient section.

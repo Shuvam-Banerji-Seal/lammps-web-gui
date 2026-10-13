@@ -238,7 +238,8 @@ export class ForceField {
     const vatomAll = flags.vatom ? new Float64Array(6 * nall) : null;
     const qqrd2e = s.units.qqr2e * (this.pair?.coulConstScale ?? 1) / this.dielectric;
     const want = (t: PerAtomTerm): boolean => !sel || sel.has(t);
-    if (this.pair && want('pair')) {
+    // pair_modify compute no (pair_modify.html): the pair term is skipped; kspace and bonded terms still run
+    if (this.pair && this.pair.computeOn && want('pair')) {
       const pc: PairCompute = {
         s, nb, geom, x: nb.xall, f: nb.fall, type: nb.typeall, q: nb.qall,
         nlocal: nb.nlocal, nall, half: nb.half, full: nb.full,

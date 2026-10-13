@@ -1,0 +1,15 @@
+# oracle: pair_modify tail yes on morse (no tail term: native accepts and ignores it)
+units lj
+atom_style atomic
+lattice fcc 0.8442
+region box block 0 5 0 5 0 5
+create_box 2 box
+create_atoms 1 box
+mass * 1.0
+set group all type/fraction 2 0.3 1234
+pair_style morse 2.5
+pair_coeff * * 1.0 1.2 1.0 2.5
+pair_modify tail yes
+thermo_style custom step pe evdwl etail press
+thermo_modify format float %.15g
+run 0

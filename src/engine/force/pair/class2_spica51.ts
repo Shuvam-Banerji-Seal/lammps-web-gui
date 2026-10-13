@@ -123,7 +123,7 @@ abstract class PairPowerLJ extends Pair {
     return Math.max(t.cutLJ, cutC);
   }
 
-  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul); }
+  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq); }
 
   /** LJ energy (no special factor) and F/r of one pair in table slot t. */
   protected ljPair(t: number, rsq: number): { e: number; f: number } {

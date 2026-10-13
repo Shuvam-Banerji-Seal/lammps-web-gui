@@ -1,0 +1,17 @@
+# oracle: lj/expand shift yes with two types, explicit cross term and per-pair delta
+units lj
+atom_style atomic
+lattice fcc 0.8442
+region box block 0 5 0 5 0 5
+create_box 2 box
+create_atoms 1 box
+mass * 1.0
+set group all type/fraction 2 0.3 1234
+pair_style lj/expand 2.5
+pair_coeff 1 1 1.0 1.0 0.0
+pair_coeff 2 2 0.9 0.95 0.15
+pair_coeff 1 2 1.0 1.05 0.08
+pair_modify shift yes
+thermo_style custom step pe evdwl etail press
+thermo_modify format float %.15g
+run 0

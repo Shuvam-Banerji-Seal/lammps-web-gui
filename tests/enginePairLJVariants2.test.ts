@@ -146,17 +146,18 @@ describe('pair style lj/cubic', () => {
     expect(() => st.init(CTX)).toThrow(/all pair coeffs are not set/);
   });
 
-  it('throws on pair_style args, extra pair_coeff cutoff, shift and tail', () => {
+  it('pair_style args and coeff usage; shift and tail are accepted with no term (native ignores them)', () => {
     const st = new PairLJCubic();
     st.allocate(2);
     expect(() => st.settings(['2.5'])).toThrow(/usage/);
     expect(() => st.coeff(['1', '1', '1.0', '1.0', '2.5'])).toThrow(/usage/);
     const full = make(new PairLJCubic(), null, [['1', '1', '1.0', '1.0'], ['2', '2', '1.0', '1.0']]);
     full.shift = true;
-    expect(() => full.init(CTX)).toThrow(/shift/);
+    expect(() => full.init(CTX)).not.toThrow();
     full.shift = false;
     full.tail = true;
-    expect(() => full.init(CTX)).toThrow(/tail/);
+    expect(() => full.init(CTX)).not.toThrow();
+    expect(full.tailSums(new Float64Array([0, 4, 4])).etail).toBe(0);
   });
 });
 

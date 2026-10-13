@@ -2,7 +2,7 @@ import { Pair, PairParams, StyleError, type PairCompute } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairLJCut, tallyAtom } from './lj_cut';
 import { parseNum } from '../util';
-import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, TABLE_INNER_RSQ, type ErfcTable } from '../erfc';
+import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../erfc';
 
 /*
  * Real-space parts of Ewald/PPPM Coulombics.
@@ -35,7 +35,7 @@ import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, TABLE_INNER_RSQ, type Erfc
 export const coulLongPair = (
   rsq: number, qi: number, qj: number, g: number, qqrd2e: number, fc: number, poly: boolean, table: ErfcTable | null = null,
 ): { e: number; f: number } => {
-  if (table && rsq > TABLE_INNER_RSQ) {
+  if (table && rsq > table.inner) {
     // pair_modify table N > 0 (erfc.ts makeErfcTable): native interpolates erfc/r, the force kernel
     // and the bare 1/r of the special-bond correction from its tables
     const qq = qqrd2e * qi * qj;
@@ -71,7 +71,7 @@ export class PairCoulLong extends Pair {
   cutCoul = 0;
   private readonly erfcTables = new ErfcTableCache();
   /** pair_modify table N (null for 0): erfc.ts makeErfcTable. */
-  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul); }
+  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq); }
   private set!: PairParams;
 
   settings(args: string[]): void {
@@ -146,7 +146,7 @@ export class PairLJCutCoulLong extends PairLJCut {
   private qqrd2eLast = 1;
   private readonly erfcTables = new ErfcTableCache();
   /** pair_modify table N (null for 0): erfc.ts makeErfcTable. */
-  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul); }
+  private erfcTable(g: number): ErfcTable | null { return this.erfcTables.get(this.table, g, this.cutCoul * this.cutCoul, this.tabinnerRsq); }
 
   settings(args: string[]): void {
     if (args.length !== 1 && args.length !== 2) throw new StyleError('usage: pair_style lj/cut/coul/long cutoff (cutoff2)');

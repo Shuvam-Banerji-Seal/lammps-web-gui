@@ -454,9 +454,8 @@ export abstract class PairSWBase extends Pair {
   }
 
   override initStyle(ctx: StyleContext): void {
-    if (this.shift || this.tail) {
-      throw new StyleError(`pair_style ${this.name} does not support the pair_modify shift and tail options`);
-    }
+    this.noTermLog(ctx, 'shift');
+    this.noTermLog(ctx, 'tail');
     if (this.table !== 12) {
       throw new StyleError(`pair_style ${this.name} does not support the pair_modify table option`);
     }

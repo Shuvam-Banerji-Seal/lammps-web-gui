@@ -2,7 +2,7 @@ import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type MixRule, ty
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { parseNum } from '../util';
-import { erfcPoly, EWALD_F, ErfcTableCache, TABLE_INNER_RSQ } from '../erfc';
+import { erfcPoly, EWALD_F, ErfcTableCache } from '../erfc';
 
 /*
  * CHARMM LJ + Coulomb pair styles with the energy switching function:
@@ -411,8 +411,8 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
     // F_std = C q_i q_j (erfc(g r) + EWALD_F g r exp(-g^2 r^2)) / r^3 (coul_long.ts). pair_modify table N
     // > 0: native's tables above r^2 = 2 (erfc.ts makeErfcTable), the polynomial below; measured with
     // native LAMMPS (black box): table 0 and 12 agree at r = 1.2 and differ at 3.1 and 4.7
-    const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul);
-    if (tab && rsq > TABLE_INNER_RSQ) {
+    const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul, this.tabinnerRsq);
+    if (tab && rsq > tab.inner) {
       const qq = qqrd2e * qi * qj;
       return { e: qq * tab.energy(rsq), f: qq * tab.force(rsq) / rsq };
     }
@@ -432,8 +432,8 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
     // the table is in use, as native does).
     const fc = pc.specialCoul[sb];
     if (fc < 1) {
-      const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul);
-      const inv = tab && rsq > TABLE_INNER_RSQ ? tab.coul(rsq) : 1 / Math.sqrt(rsq);
+      const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul, this.tabinnerRsq);
+      const inv = tab && rsq > tab.inner ? tab.coul(rsq) : 1 / Math.sqrt(rsq);
       const bare = pc.qqrd2e * qi * qj * inv;
       return { e: c.e - (1 - fc) * bare, f: c.f - (1 - fc) * bare / rsq };
     }
@@ -638,8 +638,8 @@ export class PairLJCharmmfswCoulLong extends PairLJCharmmfswBase {
 
   protected coulFswPair(rsq: number, sb: number, qi: number, qj: number, qqr: number, pc: PairCompute): { e: number; f: number } {
     // pair_modify table N as in PairLJCharmmCoulLong (measured the same way for this style)
-    const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul);
-    const useTab = tab !== null && rsq > TABLE_INNER_RSQ;
+    const tab = this.erfcTables.get(this.table, this.gEwald, this.cutCoul * this.cutCoul, this.tabinnerRsq);
+    const useTab = tab !== null && rsq > tab.inner;
     let e: number, f: number;
     const qq = qqr * qi * qj;
     if (useTab) {

@@ -1,0 +1,49 @@
+# oracle: RHEO 2d Taylor-Green vortex, cut down from examples/rheo/taylor-green (box 16 x 16 instead of 40 x 40, 400 steps instead of 10000; newton off as the example): atom_style rheo, fix rheo RK1 8 shift (RK1 kernel correction, Cholesky moment matrix), rheo/viscosity constant, rheo/pressure linear, pair rheo artificial/visc and rho/damp (laplacian density damping for RK1), displace_atoms random, velocity set from atom-style variables
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-13
+# Measured with native LAMMPS (black box): engine vs native passes at rel=1e-15 (abs 1e-13) on all 9 thermo rows (ke, press) and all 256 atoms (positions, velocities, forces) with newton off. The newton-off virial follows the native order of the owned pairs (the atom sort), which the engine emulates.
+units        lj
+atom_style   rheo
+dimension    2
+boundary     p p p
+comm_modify  vel yes
+newton       off
+
+region       box block 0 16 0 16 -0.01 0.01
+create_box   1 box
+lattice      sq 1.0
+create_atoms 1 region box
+displace_atoms all random 0.1 0.1 0 135414 units box
+
+variable     rho0 equal 1.0
+variable     mp equal ${rho0}/1.0
+variable     cs equal 1.0
+variable     eta equal 0.05
+variable     zeta equal 1
+variable     dt_max equal 0.1*3.0/${cs}/3
+variable     Dr equal 0.1*3.0*${cs}
+variable     u0 equal 0.05
+variable     uy atom  ${u0}*sin(2*PI*x/lx)*cos(2*PI*y/ly)
+variable     ux atom -${u0}*sin(2*PI*y/ly)*cos(2*PI*x/ly)
+
+mass         * ${mp}
+set          group all rheo/rho ${rho0}
+set          group all rheo/status 0
+velocity     all set v_ux v_uy 0.0 units box
+
+timestep     ${dt_max}
+
+pair_style   rheo 3.0 artificial/visc ${zeta} rho/damp ${Dr}
+pair_coeff   * *
+
+fix          1 all rheo 3.0 RK1 8 shift
+fix          2 all rheo/viscosity * constant ${eta}
+fix          3 all rheo/pressure * linear
+fix          4 all enforce2d
+
+compute      rho all rheo/property/atom rho
+
+thermo       50
+thermo_style custom step time ke press
+thermo_modify format float %.15g
+
+run          400

@@ -174,6 +174,11 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
   if (isDielectricStyle(st)) {
     for (const name of Object.keys(DIELECTRIC_DEFAULTS)) m.set(name, { int: false, cols: 0, data: new Float64Array(0) });
   }
+  // atom_style.html, rheo: "atomic + rho, status" (the per-atom density, phase status and the RHEO fix's pressure,
+  // viscosity and density rate; see RHEO_DEFAULTS)
+  if (isRheoStyle(st)) {
+    for (const name of Object.keys(RHEO_DEFAULTS)) m.set(name, { int: name === RHEO_STATUS, cols: 0, data: new Float64Array(0) });
+  }
   // atom_style.html, superellipsoid: the blockiness exponents and the principal moments of inertia (superellipsoid.ts)
   if (isSuperEllipsoidStyle(st)) {
     m.set(SUPER_BLOCK, { int: false, cols: 2, data: new Float64Array(0) });
@@ -311,6 +316,20 @@ export const dpdMesoProps = (st: AtomStyle): [string, number][] => {
 };
 /** Keys of the DPD-MESO props (restart.ts stores them with the state). */
 export const isDpdMesoKey = (k: string): boolean => k === EDPD_TEMP || k === EDPD_CV || k === EDPD_FLUX || k === EDPD_VEST_TEMP || k === MDPD_RHO || k === MDPD_DRHO || k === TDPD_CC || k === TDPD_CC_FLUX || k === DPD_VEST;
+/*
+ * atom_style rheo (atom_style.html: "atomic + rho, status"): the density, the phase status bits (rheo_status; set
+ * with set rheo/status) and the per-atom pressure, viscosity and density rate that fix rheo and its accessory fixes
+ * and pair rheo use. Internal keys ('#' cannot start an i_name or d_name). Defaults of a created atom: rho 1, status
+ * 0, the others 0 (measured with native LAMMPS, black box: write_data after create_atoms gives rho 1 and status 0).
+ */
+export const RHEO_STATUS = '#rheostatus';
+export const RHEO_RHO = '#rheorho';
+export const RHEO_DRHO = '#rheodrho';
+export const RHEO_PRESSURE = '#rheopressure';
+export const RHEO_VISC = '#rheovisc';
+export const RHEO_DEFAULTS: Record<string, number> = { [RHEO_STATUS]: 0, [RHEO_RHO]: 1, [RHEO_DRHO]: 0, [RHEO_PRESSURE]: 0, [RHEO_VISC]: 0 };
+/** Styles with the RHEO per-atom fields (atom_style rheo). */
+export const isRheoStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('rheo');
 
 /** atom_style oxdna: the 5' and 3' partner atom IDs of each atom, internal per-atom props (0 = none). */
 export const OXDNA_5P = '#id5p';
@@ -552,6 +571,7 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     else if (name in SUPER_DEFAULTS) c.data.fill(SUPER_DEFAULTS[name], w * n0, w * n);
     else if (name in SPH_DEFAULTS) c.data.fill(SPH_DEFAULTS[name], w * n0, w * n);
     else if (name in DPD_MESO_DEFAULTS) c.data.fill(DPD_MESO_DEFAULTS[name], w * n0, w * n);
+    else if (name in RHEO_DEFAULTS) c.data.fill(RHEO_DEFAULTS[name], w * n0, w * n);
   }
   // atom_style edpd: vest_temp starts as the temperature of the atom (measured with native LAMMPS, black box)
   if (isEdpdStyle(s.atomStyle) && !(a.custom?.has(EDPD_VEST_TEMP))) {

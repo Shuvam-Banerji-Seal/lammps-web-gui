@@ -298,6 +298,11 @@ export abstract class Pair {
    * correctly accounted for.").
    */
   virialFdotr = false;
+  /**
+   * The style tallies its global virial into pc.acc.virial itself, pair by pair (as with newton off), and is not covered
+   * by the fdotr sum; a hybrid pair then skips its own fdotr sum (hybrid.ts).
+   */
+  explicitVirial = false;
   /** G-ewald splitting parameter, set from the kspace style at init (coul/long styles). */
   gEwald = 0;
   /** Cutoff per type pair after init: (ntypes+1)^2. */

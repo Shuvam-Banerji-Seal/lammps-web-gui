@@ -1,0 +1,46 @@
+# oracle: fix lb/fluid (D3Q15, IBM 3-point stencil) with fix lb/viscous and a rigid 4-node colloid dragged through the fluid (examples/PACKAGES/latboltz/dragforce/in.dragtest, cut down: box +-12, 200 steps; the rigid body and LB both run in serial)
+# native: b332f28 built with -D PKG_LATBOLTZ=on -D PKG_MOLECULE=on -D PKG_RIGID=on (serial, 1 process; the installed lmp lacks LATBOLTZ)
+# measured (engine vs native, relative): thermo 1.0e-9 (press, row 4), per-atom x/v/f 1.5e-9 (fy of atom 3); the walled D3Q15 lattice with IBM stencil 3 and the rigid body; the first thermo rows agree to 1e-14
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           nano
+dimension       3
+boundary        p p f
+atom_style      molecular
+
+region          mydomain block -12.0 12.0 -12.0 12.0 -12.0 12.0
+
+variable        stpts equal 3
+variable        tstep equal 0.00025
+
+create_box      1 mydomain
+create_atoms    1 single 0.0 0.0 0.204124
+create_atoms    1 single -0.096225 -0.166667 -0.0680414
+create_atoms    1 single -0.096225 0.166667 -0.0680414
+create_atoms    1 single 0.19245 0. -0.0680414
+
+neighbor        0.3 bin
+neigh_modify    delay 0 every 1 check yes
+comm_modify     cutoff 2.5
+
+pair_style      lj/cut 5.88
+pair_coeff      * * 0.0 0.0 5.88
+
+variable        total_mass equal 0.002398
+variable        node_mass equal "v_total_mass / 4"
+mass            * ${node_mass}
+
+variable        total_force equal 1.0
+variable        node_force equal "v_total_force / 4"
+variable        oscillateY equal cos(step*0.0005)/(-0.03+400*v_tstep)/4
+variable        oscillateZ equal cos(step*0.0003)/(-0.03+400*v_tstep)/4
+fix             drag all addforce ${node_force} v_oscillateY v_oscillateZ
+
+timestep        ${tstep}
+fix             FL all lb/fluid 1 1.0 0.0009982071 stencil ${stpts} dx 1.2
+fix             2 all lb/viscous
+fix             3 all rigid group 1 all
+
+thermo_style    custom step temp epair etotal press
+thermo_modify   format float %.15g
+thermo          20
+run             200

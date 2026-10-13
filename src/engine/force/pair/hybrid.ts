@@ -1,4 +1,4 @@
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext, newAccum, clearAccum, type Accum } from '../types';
+import { Pair, StyleError, typeBounds, type BondedEquilibria, type PairCompute, type StyleContext, newAccum, clearAccum, type Accum } from '../types';
 import { NEIGHMASK, type NeighList } from '../../neighbor';
 import { parseNum } from '../util';
 
@@ -86,6 +86,12 @@ interface Sub {
   evaluated: boolean;
 }
 
+/**
+ * A sub-style that tallies its global virial itself: a style without the fdotr virial (TIP4P, from the M-site
+ * displacements) or one that switches to explicit tallies in its init (pair rheo with newton off, Pair.explicitVirial).
+ */
+const explicitSub = (st: Pair): boolean => !st.virialFdotr || st.explicitVirial;
+
 export class PairHybrid extends Pair {
   readonly name: string;
   /** Sub-style selector for one run_style respa level (set by ForceField.compute); null computes all. */
@@ -96,6 +102,8 @@ export class PairHybrid extends Pair {
   private listsBuilt = -1;
   private lastHalf: NeighList | null = null;
   private lastFull: NeighList | null = null;
+  /** Some sub-style tallies its virial explicitly (TIP4P), so the hybrid tallies every virial itself. */
+  private mixedVirial = false;
   /** Equal-style variable evaluation for hybrid/scaled factors. */
   private evalVar: ((name: string) => number) | null = null;
 
@@ -143,7 +151,6 @@ export class PairHybrid extends Pair {
           : '';
         throw new StyleError(`pair_style ${this.mode}: sub-style ${name} ${subArgs.join(' ')}: ${err.message}.${hint}`);
       }
-      if (!style.virialFdotr && !style.explicitVirial) throw new StyleError(`pair_style ${this.mode}: sub-style ${name} cannot be combined by the browser engine`);
       const instance = subs.filter((s) => s.name === name).length + 1;
       subs.push({ style, name, instance, scale, specialLJ: null, specialCoul: null, used: false, half: null, full: null, evdwl: 0, ecoul: 0, evaluated: false });
       k = e;
@@ -153,6 +160,14 @@ export class PairHybrid extends Pair {
       if (subs.some((s) => s.style.manybody)) throw new StyleError('pair_style hybrid/molecular is not compatible with manybody potentials');
     }
     this.subs = subs;
+    // Virial (src/pair_hybrid.cpp at b332f28, PairHybrid::compute): when every sub-style takes the virial as
+    // sum x.f (fdotr), the hybrid does too, once, over the summed forces. When a sub-style cannot (TIP4P
+    // tallies its virial from the M-site displacements), native switches every sub-style to explicit
+    // tallies; here the fdotr sub-styles get their virial from their own force array (see compute) and the
+    // force field skips the global dot product (Pair.virialFdotr false).
+    const anyExplicit = subs.some((q) => explicitSub(q.style));
+    this.mixedVirial = anyExplicit && subs.some((q) => !explicitSub(q.style));
+    this.virialFdotr = !anyExplicit;
     this.needsHalf = subs.some((s) => s.style.needsHalf);
     this.needsFull = subs.some((s) => s.style.needsFull);
     this.coulLong = subs.some((s) => s.style.coulLong);
@@ -239,6 +254,11 @@ export class PairHybrid extends Pair {
     return s ? { style: s.style, evdwl: s.evdwl, ecoul: s.ecoul, evaluated: s.evaluated } : null;
   }
 
+  /** Force-field hook: the bond and angle equilibria reach every sub-style (the TIP4P ones place their M site from them). */
+  linkBonded(link: BondedEquilibria): void {
+    for (const s of this.subs) s.style.linkBonded?.(link);
+  }
+
   /** Sub-styles assigned to the type pair (after init: including mixed pairs). */
   subsOf(i: number, j: number): readonly number[] {
     return this.map[i * (this.ntypes + 1) + j] ?? [];
@@ -265,9 +285,6 @@ export class PairHybrid extends Pair {
     this.cutsq = new Float64Array(nt * nt);
     this.etail = this.ptail = 0;
     let coulCut: number | null = null;
-    // A sub-style with an explicit global virial (pair rheo with newton off) needs the hybrid to skip its own fdotr sum;
-    // then every sub-style must tally its virial explicitly.
-    let explicitVirial = false;
     for (let k = 0; k < this.subs.length; k++) {
       const st = this.subs[k].style;
       // pair.html: shift and tail conflict; tail is not defined in 2d (checked per sub-style)
@@ -275,7 +292,6 @@ export class PairHybrid extends Pair {
       if (st.tail && ctx.s?.dimension === 2) throw new StyleError('cannot use pair_modify tail yes with 2d simulations');
       st.gEwald = this.gEwald;
       st.initStyle(ctx);
-      if (st.explicitVirial) explicitVirial = true;
       st.cut = new Float64Array(nt * nt);
       st.cutsq = new Float64Array(nt * nt);
       for (let i = 1; i <= n; i++) {
@@ -298,10 +314,12 @@ export class PairHybrid extends Pair {
         }
       }
     }
-    if (explicitVirial && this.subs.some((s) => !s.style.explicitVirial)) {
-      throw new StyleError(`pair_style ${this.mode}: a sub-style with an explicit virial cannot be combined with sub-styles that use the fdotr virial`);
-    }
-    this.virialFdotr = !explicitVirial;
+    // The virial mode, once every sub-style is initialized (pair rheo decides explicitVirial in its init): with no
+    // explicit sub-style the force field takes one x.f sum; with only explicit ones each tallies its own; a mix tallies
+    // the fdotr sub-styles from their own force arrays (compute).
+    const anyExplicit = this.subs.some((q) => explicitSub(q.style));
+    this.mixedVirial = anyExplicit && this.subs.some((q) => !explicitSub(q.style));
+    this.virialFdotr = !anyExplicit;
     this.listsBuilt = -1;
   }
 
@@ -390,7 +408,10 @@ export class PairHybrid extends Pair {
         specialLJ: s.specialLJ ?? pc.specialLJ,
         specialCoul: s.specialCoul ?? pc.specialCoul,
       };
-      if (!scaled) {
+      // a sub-style that tallies its own virial (TIP4P) or any unscaled sub-style of an all-fdotr hybrid
+      // runs directly on the shared accumulators; the fast path is unchanged
+      const direct = !scaled && !(this.mixedVirial && !explicitSub(s.style));
+      if (direct) {
         // the sub-style's own energy is the change of the shared accumulator over its call
         const e0 = pc.acc.evdwl, c0 = pc.acc.ecoul;
         s.style.compute(sub);
@@ -399,8 +420,9 @@ export class PairHybrid extends Pair {
         s.evaluated = true;
         continue;
       }
-      const f = this.scaleOf(s);
+      const f = scaled ? this.scaleOf(s) : 1;
       if (f === 0) continue;
+      // separate force array: its virial (fdotr sub-styles of a mixed hybrid) is the dot product of this array
       const fbuf = new Float64Array(pc.f.length);
       const acc: Accum = newAccum();
       clearAccum(acc);
@@ -413,7 +435,19 @@ export class PairHybrid extends Pair {
       for (let q = 0; q < fbuf.length; q++) pc.f[q] += f * fbuf[q];
       pc.acc.evdwl += f * acc.evdwl;
       pc.acc.ecoul += f * acc.ecoul;
-      for (let c = 0; c < 6; c++) pc.acc.virial[c] += f * acc.virial[c];
+      if (this.mixedVirial && !explicitSub(s.style)) {
+        // as force-field fdotr: sum_k x_k . f_k over owned and ghost atoms (forcefield.ts), for this sub-style's forces
+        const xa = pc.x, v = pc.acc.virial;
+        let v0 = 0, v1 = 0, v2 = 0, v3 = 0, v4 = 0, v5 = 0;
+        for (let k3 = 0; k3 < 3 * pc.nall; k3 += 3) {
+          const x = xa[k3], y = xa[k3 + 1], z = xa[k3 + 2];
+          const fx = fbuf[k3], fy = fbuf[k3 + 1], fz = fbuf[k3 + 2];
+          v0 += x * fx; v1 += y * fy; v2 += z * fz; v3 += x * fy; v4 += x * fz; v5 += y * fz;
+        }
+        v[0] += f * v0; v[1] += f * v1; v[2] += f * v2; v[3] += f * v3; v[4] += f * v4; v[5] += f * v5;
+      } else {
+        for (let c = 0; c < 6; c++) pc.acc.virial[c] += f * acc.virial[c];
+      }
       if (eatom) for (let q = 0; q < eatom.length; q++) pc.eatom![q] += f * eatom[q];
       if (vatom) for (let q = 0; q < vatom.length; q++) pc.vatom![q] += f * vatom[q];
     }

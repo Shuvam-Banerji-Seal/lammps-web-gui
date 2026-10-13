@@ -132,3 +132,45 @@ describe('TIP4P force projection and Coulomb cutoff', () => {
     expect(() => pair.init({ s: null, readFile: () => '', log: () => {} } as never)).toThrow(/bond and angle equilibria/);
   });
 });
+
+/*
+ * TIP4P styles as sub-styles of pair_style hybrid and hybrid/overlay. The hybrid tallies the virial of its
+ * TIP4P sub-style explicitly (M-site displacements) and of its fdotr sub-styles from their own forces
+ * (src/pair_hybrid.cpp at b332f28, PairHybrid::compute: when a sub-style cannot use the fdotr virial, every
+ * sub-style computes its own virial and the hybrid sums them). The oracle cases w109tip_* compare with native.
+ */
+const thermoOf = async (script: string, files: Record<string, string>) => {
+  const rows: Record<string, number>[] = [];
+  const session = new Session({
+    emit: (e) => { if (e.kind === 'thermo') rows.push(e.row as unknown as Record<string, number>); },
+    writeFile: () => {},
+  });
+  for (const [n, t] of Object.entries(files)) session.addFile(n, t);
+  await session.execute(script);
+  return rows;
+};
+
+describe('TIP4P as a sub-style of pair_style hybrid/overlay', () => {
+  const head = ['units real', 'atom_style full', 'boundary f f f', 'read_data w.data', bondedScript].join('\n');
+  const tail = 'thermo_style custom step pe evdwl ecoul press\nthermo_modify format float %.15g\nrun 0';
+  const files = { 'w.data': waterIonData([0, 3.5, 0]) };
+
+  it('hybrid/overlay with a zero-epsilon lj/cut sub-style equals the pure TIP4P style (pe and press)', async () => {
+    const pure = await thermoOf([head, 'pair_style lj/cut/tip4p/cut 1 2 1 1 0.15 12.0', 'pair_coeff * * 0.0 1.0', 'pair_coeff 3 3 0.0 1.0', tail].join('\n'), files);
+    const ov = await thermoOf([head, 'pair_style hybrid/overlay lj/cut/tip4p/cut 1 2 1 1 0.15 12.0 lj/cut 12.0',
+      'pair_coeff * * lj/cut/tip4p/cut 0.0 1.0', 'pair_coeff 3 3 lj/cut/tip4p/cut 0.0 1.0', 'pair_coeff 2 3 lj/cut 0.0 1.0', tail].join('\n'), files);
+    expect(ov[0].pe).toBe(pure[0].pe);
+    expect(ov[0].press).toBe(pure[0].press);
+  });
+
+  it('the fdotr sub-style adds its own LJ energy and virial (overlay minus pure equals the LJ-only run)', async () => {
+    const pure = await thermoOf([head, 'pair_style lj/cut/tip4p/cut 1 2 1 1 0.15 12.0', 'pair_coeff * * 0.0 1.0', 'pair_coeff 3 3 0.0 1.0', tail].join('\n'), files);
+    const ov = await thermoOf([head, 'pair_style hybrid/overlay lj/cut/tip4p/cut 1 2 1 1 0.15 12.0 lj/cut 12.0',
+      'pair_coeff * * lj/cut/tip4p/cut 0.0 1.0', 'pair_coeff 3 3 lj/cut/tip4p/cut 0.0 1.0', 'pair_coeff 2 3 lj/cut 0.2 2.5', tail].join('\n'), files);
+    const lj = await thermoOf([head, 'pair_style lj/cut 12.0', 'pair_coeff * * 0.0 1.0', 'pair_coeff 2 3 0.2 2.5', tail].join('\n'), files);
+    expect(Math.abs(lj[0].evdwl)).toBeGreaterThan(1e-3);
+    expect(ov[0].evdwl - pure[0].evdwl).toBeCloseTo(lj[0].evdwl, 9);
+    expect(ov[0].press - pure[0].press).toBeCloseTo(lj[0].press, 6);
+    expect(ov[0].ecoul - pure[0].ecoul).toBeCloseTo(0, 9);
+  });
+});

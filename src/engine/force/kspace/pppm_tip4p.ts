@@ -4,6 +4,7 @@ import type { Geometry } from '../../domain';
 import { KSpacePPPM } from './pppm';
 import { buildOwnedSites, type Tip4pModel } from '../pair/tip4p_sites';
 import { PairTIP4PBase } from '../pair/tip4p';
+import { PairHybrid } from '../pair/hybrid';
 
 /*
  * kspace_style pppm/tip4p accuracy — docs.lammps.org/kspace_style.html:
@@ -20,6 +21,19 @@ import { PairTIP4PBase } from '../pair/tip4p';
  * whose O positions are the M sites; its forces are collected in a scratch
  * array and projected onto the atoms here.
  */
+
+/**
+ * The TIP4P style that defines the M sites: the pair style itself, or inside pair_style hybrid the first
+ * TIP4P sub-style. As native (src/kspace/pppm_tip4p.cpp at b332f28, PPPMTIP4P::init), the qdist, otype and
+ * htype come from pair->extract, which a hybrid answers from its sub-styles in order.
+ */
+const tip4pStyleOf = (pair: Pair | null): PairTIP4PBase | null => {
+  if (pair instanceof PairTIP4PBase) return pair;
+  if (pair instanceof PairHybrid) {
+    for (const sub of pair.subs) if (sub.style instanceof PairTIP4PBase) return sub.style;
+  }
+  return null;
+};
 
 export class KSpacePPPMTIP4P extends KSpace {
   readonly name: string = 'pppm/tip4p';
@@ -40,7 +54,7 @@ export class KSpacePPPMTIP4P extends KSpace {
   }
 
   /** Force-field hook (forcefield.ts init): the pair style that defines the M sites. */
-  linkPair(pair: Pair | null): void { this.pair = pair instanceof PairTIP4PBase ? pair : null; }
+  linkPair(pair: Pair | null): void { this.pair = tip4pStyleOf(pair); }
 
   private model(): Tip4pModel {
     const m = this.pair?.siteModel() ?? null;

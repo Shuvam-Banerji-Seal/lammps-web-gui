@@ -10,15 +10,17 @@
 import type { FixFactory, ComputeFactory } from '../../engine/styles';
 import type { Pair } from '../../engine/force/types';
 import { PairSMDTlsph } from '../machdyn/pair_smd_tlsph';
+import { PairSMDHertz } from '../machdyn/pair_smd_hertz';
 import { FixSMDAdjustDt, FixSMDIntegrateTlsph, FixSMDSetVel } from '../machdyn/fix_smd';
 import {
   ComputeSMDTLSPHNumNeighs, ComputeSMDTLSPHShape, ComputeSMDTLSPHStrain, ComputeSMDTLSPHStrainRate, ComputeSMDTLSPHStress,
-  makeSmdDamage, makeSmdPlasticStrain, makeSmdPlasticStrainRate, makeSmdTlsphDt,
+  makeSmdContactRadius, makeSmdDamage, makeSmdInternalEnergy, makeSmdPlasticStrain, makeSmdPlasticStrainRate, makeSmdRho, makeSmdTlsphDt,
 } from '../machdyn/compute_smd';
 
 /** pair_style names. */
 export const PAIRS: Record<string, () => Pair> = {
   'smd/tlsph': () => new PairSMDTlsph(),
+  'smd/hertz': () => new PairSMDHertz(),
 };
 
 /** fix styles. */
@@ -39,4 +41,7 @@ export const COMPUTES: Record<string, ComputeFactory> = {
   'smd/plastic/strain': makeSmdPlasticStrain,
   'smd/plastic/strain/rate': makeSmdPlasticStrainRate,
   'smd/damage': makeSmdDamage,
+  'smd/contact/radius': makeSmdContactRadius,
+  'smd/internal/energy': makeSmdInternalEnergy,
+  'smd/rho': makeSmdRho,
 };

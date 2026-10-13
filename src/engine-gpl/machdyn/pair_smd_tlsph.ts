@@ -59,7 +59,9 @@ interface TypeParams {
   eos: 'linear' | 'polynomial' | 'none';
   /** *EOS_POLYNOMIAL C0 .. C6 (pair_smd.html, the polynomial equation of state). */
   eosC: number[];
-  strength: 'linear' | 'johnson_cook' | 'none';
+  strength: 'linear' | 'linear_plastic' | 'johnson_cook' | 'none';
+  /** *STRENGTH_LINEAR_PLASTIC yield stress and hardening parameter (yield = sigma_y + H ep). */
+  yieldStress: number; hardening: number;
   /** *JOHNSON_COOK A B a C epdot0 T0 Tmelt M (the temperature factor of the source is not applied, see johnsonCook). */
   jc: { A: number; B: number; a: number; C: number; epdot0: number; T0: number; Tmelt: number; M: number };
   /** *FAILURE_MAX_PLASTIC_STRAIN threshold, or null (no failure): the failure is an integration-point-wise model. */
@@ -87,6 +89,14 @@ const johnsonCook = (P: TypeParams, dt: number, ep: number, epdot: number, sigma
   const { A, B, a, C, epdot0 } = P.jc;
   const epdotRatio = Math.max(epdot / epdot0, 1.0);
   const yieldStress = (A + B * Math.pow(ep, a)) * (1.0 + C * Math.log(epdotRatio));
+  return linearPlasticReturn(P, dt, yieldStress, sigmaInitialDev, dDev);
+};
+
+/**
+ * LinearPlasticStrength (smd_material_models.cpp): elastic trial deviator, and where its norm sqrt(3/2)|s| exceeds the yield
+ * stress, the deviator is scaled back to it and the plastic strain increment is (J2 - sigma_y) / (3 G).
+ */
+const linearPlasticReturn = (P: TypeParams, dt: number, yieldStress: number, sigmaInitialDev: Mat3, dDev: Mat3): { final: Mat3; inc: number } => {
   const devRate = scale3(dDev, 2.0 * P.G);
   const trial = add3(sigmaInitialDev, scale3(devRate, dt));
   const J2 = Math.sqrt(3.0 / 2.0) * norm3(trial);
@@ -147,8 +157,9 @@ const newWork = (n: number): Work => ({
 
 export class PairSMDTlsph extends Pair {
   readonly name = 'smd/tlsph';
-  /** Global virial from the explicit sums (ev_tally_xyz), not fdotr. */
+  /** Global virial from the explicit sums (ev_tally_xyz), not fdotr; a hybrid sub-style takes it from pc.acc.virial. */
   virialFdotr = false;
+  explicitVirial = true;
   private setflag = new Uint8Array(0);
   private params: (TypeParams | null)[] = [];
   private maxrad = new Float64Array(0);
@@ -196,7 +207,7 @@ export class PairSMDTlsph extends Pair {
     const K = lambda + 2 * G / 3;
     const p: TypeParams = {
       rho0, E, nu, q1, q2, hgAmp, cp, lambda, G, M, c, K, eos: 'none', eosC: [0, 0, 0, 0, 0, 0, 0],
-      strength: 'none', jc: { A: 0, B: 0, a: 0, C: 0, epdot0: 1, T0: 0, Tmelt: 1, M: 1 }, failMaxPlastic: null,
+      strength: 'none', yieldStress: 0, hardening: 0, jc: { A: 0, B: 0, a: 0, C: 0, epdot0: 1, T0: 0, Tmelt: 1, M: 1 }, failMaxPlastic: null,
     };
     let k = 10;
     for (;;) {
@@ -223,9 +234,17 @@ export class PairSMDTlsph extends Pair {
           p.jc = { A, B, a, C, epdot0, T0, Tmelt, M };
           break;
         }
+        // LAMMPS: "*STRENGTH_LINEAR_PLASTIC yield_stress hardening_parameter" (the source reads 2 arguments)
+        case '*STRENGTH_LINEAR_PLASTIC': {
+          const [sigmaY, H] = need(2);
+          p.strength = 'linear_plastic';
+          p.yieldStress = sigmaY;
+          p.hardening = H;
+          break;
+        }
         case '*FAILURE_MAX_PLASTIC_STRAIN': p.failMaxPlastic = need(1)[0]; break;
         default:
-          throw new StyleError(`pair smd/tlsph material keyword ${kw} is not supported by the browser engine yet (supported: *STRENGTH_LINEAR, *EOS_LINEAR, *EOS_POLYNOMIAL, *JOHNSON_COOK, *FAILURE_MAX_PLASTIC_STRAIN)`);
+          throw new StyleError(`pair smd/tlsph material keyword ${kw} is not supported by the browser engine yet (supported: *STRENGTH_LINEAR, *STRENGTH_LINEAR_PLASTIC, *EOS_LINEAR, *EOS_POLYNOMIAL, *JOHNSON_COOK, *FAILURE_MAX_PLASTIC_STRAIN)`);
       }
       k = e;
     }
@@ -497,6 +516,11 @@ export class PairSMDTlsph extends Pair {
         if (P.strength === 'linear') {
           const rate = scale3(dDev, 2 * P.G);
           sigmaFinalDev = add3(sigmaInitialDev, scale3(rate, dt));
+        } else if (P.strength === 'linear_plastic') {
+          // native: yieldStress = Lookup[YIELD_STRESS] + Lookup[HARDENING_PARAMETER] * eff_plastic_strain[i]
+          const jc = linearPlasticReturn(P, dt, P.yieldStress + P.hardening * epsPl[i], sigmaInitialDev, dDev);
+          sigmaFinalDev = jc.final;
+          plasticInc = jc.inc;
         } else if (P.strength === 'johnson_cook') {
           const jc = johnsonCook(P, dt, epsPl[i], epsRate[i], sigmaInitialDev, dDev);
           sigmaFinalDev = jc.final;

@@ -13,7 +13,7 @@
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { SMD_CONTACT, SMD_DAMAGE, SMD_DEFGRAD, SMD_EPS, SMD_EPSRATE } from '../../engine/smd';
+import { SMD_CONTACT, SMD_DAMAGE, SMD_DEFGRAD, SMD_EPS, SMD_EPSRATE, SMD_ESPH } from '../../engine/smd';
 import { PairSMDTlsph } from './pair_smd_tlsph';
 import { deviator3, identity3, mul3, norm3, scale3, sub3, transpose3, type Mat3 } from './smd_math';
 
@@ -211,3 +211,33 @@ export class ComputeSMDTLSPHShape extends Compute {
     this.arrayAtom = out;
   }
 }
+
+/**
+ * Per-atom values of the SMD atom props (native compute_smd_contact_radius.cpp, compute_smd_internal_energy.cpp,
+ * compute_smd_rho.cpp, compute_smd_vol.cpp): zero outside the group, as the native computes check the mask.
+ */
+class SmdAtomProp extends Compute {
+  constructor(sys: System, id: string, group: string, args: string[], readonly style: string, private readonly value: (i: number) => number) {
+    super(sys, id, group, args);
+    if (args.length) throw new StyleError(`Illegal compute ${style} command`);
+    this.peratomFlag = true;
+    this.sizePeratomCols = 0;
+  }
+
+  protected computePeratom(): void {
+    const s = this.sys.state;
+    const out = new Float64Array(s.n);
+    for (let i = 0; i < s.n; i++) if (s.mask[i] & this.groupBit) out[i] = this.value(i);
+    this.vectorAtom = out;
+  }
+}
+
+/** compute ID group-ID smd/contact/radius (docs.lammps.org/compute_smd_contact_radius.html): the contact radius of each atom. */
+export const makeSmdContactRadius = (sys: System, id: string, group: string, args: string[]): Compute =>
+  new SmdAtomProp(sys, id, group, args, 'smd/contact/radius', (i) => sys.state.custom.get(SMD_CONTACT)!.data[i]);
+/** compute ID group-ID smd/internal/energy: the internal energy per unit mass (esph) of each atom. */
+export const makeSmdInternalEnergy = (sys: System, id: string, group: string, args: string[]): Compute =>
+  new SmdAtomProp(sys, id, group, args, 'smd/internal/energy', (i) => sys.state.custom.get(SMD_ESPH)!.data[i]);
+/** compute ID group-ID smd/rho: the mass density rmass / vfrac of each atom. */
+export const makeSmdRho = (sys: System, id: string, group: string, args: string[]): Compute =>
+  new SmdAtomProp(sys, id, group, args, 'smd/rho', (i) => sys.state.rmass![i] / sys.state.vfrac![i]);

@@ -1,0 +1,16 @@
+# oracle: compute erotate/asphere with tri particles (four triangles, 3d): the body-frame sum I_k wb_k^2 with the
+#   principal moments of each triangle, wb = R^T L / I (src/ASPHERE/compute_erotate_asphere.cpp at b332f28, the tri
+#   branch of compute_scalar). Measured with native LAMMPS (black box); angular momenta set with set (group all angmom).
+# oracle-inputs: w105cf_erotate_tri.data
+# oracle-compare: thermo=all rel=1e-12 abs=1e-14
+units           lj
+atom_style      tri
+read_data       w105cf_erotate_tri.data
+group           all type 1
+pair_style      lj/cut 1.5
+pair_coeff      1 1 1.0 1.0
+set             group all angmom 0.4 -0.3 0.8
+compute         1 all erotate/asphere
+thermo_style    custom step c_1
+thermo_modify   format float %.15g
+run             0

@@ -83,7 +83,9 @@ describe('read_dump field and keyword parsing', () => {
   });
 
   it('names unsupported fields and formats instead of ignoring them', () => {
-    expect(() => parseDumpSpec(['fx', 'fy', 'fz'], 'read_dump')).toThrow(/field fx is not supported/);
+    // read_dump.html: "fx,fy,fz = force components"; the forces of replaced atoms are set (read_dump.cpp, case Reader::FX)
+    expect(parseDumpSpec(['x', 'fx', 'fy', 'fz'], 'read_dump').fields).toEqual(['x', 'fx', 'fy', 'fz']);
+    expect(() => parseDumpSpec(['apip_lambda'], 'read_dump')).toThrow(/field apip_lambda is not supported/);
     expect(() => parseDumpSpec(['x', 'format', 'xyz'], 'read_dump')).toThrow(/dump format 'xyz' is not supported/);
     expect(() => parseDumpSpec(['x', 'format', 'molfile', 'dcd'], 'read_dump')).toThrow(/molfile/);
     expect(() => parseDumpSpec(['x', 'format', 'native', 'box', 'no'], 'read_dump')).toThrow(/must be the last keyword/);
@@ -99,7 +101,7 @@ describe('read_dump field and keyword parsing', () => {
   it('checks yes/no and add values and the label field', () => {
     expect(() => parseDumpSpec(['x', 'box', 'maybe'], 'read_dump')).toThrow(/box must be yes or no/);
     expect(() => parseDumpSpec(['x', 'add', 'sometimes'], 'read_dump')).toThrow(/add must be yes, keep or no/);
-    expect(() => parseDumpSpec(['x', 'label', 'fx', 'fx'], 'read_dump')).toThrow(/label field must be one of/);
+    expect(() => parseDumpSpec(['x', 'label', 'apip_lambda', 'fx'], 'read_dump')).toThrow(/label field must be one of/);
     expect(() => parseDumpSpec(['x', 'label', 'id'], 'read_dump')).toThrow(/keyword label needs a field and a column/);
   });
 

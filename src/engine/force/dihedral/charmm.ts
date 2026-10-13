@@ -129,6 +129,15 @@ export class DihedralCharmm extends SimpleBonded {
     if (!link) {
       throw new StyleError(`dihedral_style ${this.name} needs its pair style linked (the force field must call linkForceField)`);
     }
+    // native DihedralCharmm::init_style checks the pair style only "if (weightflag)" (src/MOLECULE/dihedral_charmm.cpp
+    // at b332f28; weightflag is set by a coefficient weight > 0): with every weight 0 there is no 1-4 term, and the
+    // pair style is not looked at (oracle w105cf_charmm_w0_lj, the bucky-plus-cnt example with lj/cut)
+    const anyWeight = this.params.p('w').some((w, t) => t > 0 && this.params.set[t] === 1 && w !== 0);
+    if (!anyWeight) {
+      this.ljPair = null;
+      this.hybridLj = false;
+      return;
+    }
     const pair = link.pair;
     if (!pair) throw new StyleError(`dihedral_style ${this.name} needs a pair style of the lj/charmm family`);
     const pn = pair.name;
@@ -142,11 +151,11 @@ export class DihedralCharmm extends SimpleBonded {
     if (this.forceSwitched) {
       if (!ljn.startsWith('lj/charmmfsw/')) throw new StyleError(`Dihedral charmmfsw is incompatible with Pair style ${pn}`);
     } else if (!LJ_PLAIN_PAIRS.has(ljn)) {
-      throw new StyleError(`dihedral_style ${this.name} is not measured with pair style ${pn} (supported: ${[...LJ_PLAIN_PAIRS].join(', ')})`);
+      // native text (dihedral_charmm.cpp:384 at b332f28); the 1-4 terms need the lj14 arrays of a CHARMM pair style
+      throw new StyleError(`Dihedral ${this.name} is incompatible with Pair style ${pn} (1-4 terms need a CHARMM pair style: ${[...LJ_PLAIN_PAIRS].join(', ')})`);
     }
 
-    const anyWeight = this.params.p('w').some((w, t) => t > 0 && this.params.set[t] === 1 && w !== 0);
-    if (anyWeight && (link.special.lj[2] !== 0 || link.special.coul[2] !== 0)) {
+    if (link.special.lj[2] !== 0 || link.special.coul[2] !== 0) {
       throw new StyleError(`Must use 'special_bonds charmm' (1-4 lj and coul = 0) with dihedral style ${this.name} for use with CHARMM pair styles`);
     }
   }
@@ -159,12 +168,12 @@ export class DihedralCharmm extends SimpleBonded {
   compute(bc: BondedCompute): void {
     const D = bc.s.topo.dihedrals;
     const K = this.params.p('K'), nn = this.params.p('n'), dd = this.params.p('d'), ww = this.params.p('w');
+    // no pair style is needed when every weight is 0 (init): the 1-4 terms below are skipped then
     const pair = this.ljPair as unknown as PairCuts | null;
-    if (!pair || !this.ljPair) throw new StyleError(`dihedral_style ${this.name}: no pair style`);
-    const pn = this.ljPair.name;
+    const pn = this.ljPair?.name ?? '';
     const form = this.coul14Form(pn);
-    const C = bc.s.units.qqr2e * pair.coulConstScale;
-    const a = pair.inner, b = pair.outer, bCoul = pair.cutCoul;
+    const C = pair ? bc.s.units.qqr2e * pair.coulConstScale : 0;
+    const a = pair ? pair.inner : 0, b = pair ? pair.outer : 0, bCoul = pair ? pair.cutCoul : 0;
     const a3b3 = (a ** 3) * (b ** 3), a6b6 = a3b3 * a3b3;
     const DEG2RAD = Math.PI / 180;
     const grad = new Array(12).fill(0), rel = new Array(12).fill(0);
@@ -180,7 +189,10 @@ export class DihedralCharmm extends SimpleBonded {
       e += ed;
       applyDihedral(bc, atoms, dEdphi, grad, rel, ed);
       const w = ww[t];
-      if (w !== 0) this.add14(bc, atoms[0], atoms[3], w, { pair, form, C, a, b, bCoul, a3b3, a6b6, rvec, owner: atoms[1] });
+      if (w !== 0) {
+        if (!pair) throw new StyleError(`dihedral_style ${this.name}: no pair style for the 1-4 terms`);
+        this.add14(bc, atoms[0], atoms[3], w, { pair, form, C, a, b, bCoul, a3b3, a6b6, rvec, owner: atoms[1] });
+      }
     }
     bc.acc.edihed += e;
   }

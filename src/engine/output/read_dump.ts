@@ -7,7 +7,7 @@ import type { SimState } from '../types';
  * read_dump and the snapshot selection of rerun (Haiku wave 9).
  *
  * Supported: native text dump files (dump atom / dump custom), fields x y z
- * vx vy vz q ix iy iz, keywords box, timestep, replace, purge, trim, add, label,
+ * vx vy vz q ix iy iz fx fy fz, keywords box, timestep, replace, purge, trim, add, label,
  * scaled, wrapped, format native. Everything else is a StyleError naming it.
  *
  * read_dump.rst: "Note that a simulation box must already be defined before
@@ -26,11 +26,13 @@ import type { SimState } from '../types';
  *  - add yes gives the new atoms IDs continuing the largest existing ID in dump
  *    file order (dump IDs 7, 8, 9 with 1..4 present become 5, 6, 7);
  *  - with x y z read and no vx..vz, velocities are not changed.
+ *  - read_dump.cpp (LAMMPS source at b332f28): the fx fy fz fields set the forces of the replaced atoms ("case Reader::FX: f[m][0] = fields[i][ifield]"); added atoms get no force values.
+ *    read_dump.html: "fx,fy,fz = force components".
  */
 
-export const READ_FIELDS = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'q', 'ix', 'iy', 'iz'] as const;
+export const READ_FIELDS = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'q', 'ix', 'iy', 'iz', 'fx', 'fy', 'fz'] as const;
 type ReadField = (typeof READ_FIELDS)[number];
-const UNSUPPORTED_FIELDS = ['fx', 'fy', 'fz', 'apip_lambda'];
+const UNSUPPORTED_FIELDS = ['apip_lambda'];
 const LABEL_FIELDS = new Set<string>([...READ_FIELDS, 'id', 'type']);
 const COORD_CANDIDATES: Record<'x' | 'y' | 'z', string[]> = {
   x: ['x', 'xs', 'xu', 'xsu'], y: ['y', 'ys', 'yu', 'ysu'], z: ['z', 'zs', 'zu', 'zsu'],
@@ -370,6 +372,7 @@ export const readDumpSnapshot = (
         if (f === 'vx' || f === 'vy' || f === 'vz') st.v[3 * idx + (f.charCodeAt(1) - 120)] = fieldVal(r, f);
         else if (f === 'ix' || f === 'iy' || f === 'iz') st.image[3 * idx + (f.charCodeAt(1) - 120)] = fieldVal(r, f);
         else if (f === 'q') st.q[idx] = fieldVal(r, f);
+        else if (f === 'fx' || f === 'fy' || f === 'fz') st.f[3 * idx + (f.charCodeAt(1) - 120)] = fieldVal(r, f);
       }
       sys.geom.remap(st.x, st.image, idx);
     } else if (spec.add !== 'no') {

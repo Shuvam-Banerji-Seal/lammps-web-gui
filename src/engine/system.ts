@@ -780,6 +780,14 @@ export class System {
       return out;
     }
     if (i === null) return f.computeScalar();
+    if (mode === 'vector' && j === null && f.arrayFlag) {
+      // a global array used as a vector: its Ith column, one value per row
+      // docs.lammps.org/variable.html, vector-style table: "vector / f_ID[I] / column of global array"
+      if (i < 1 || i > f.sizeArrayCols) throw new StyleError(`f_${id}[${i}] is out of range (1..${f.sizeArrayCols})`);
+      const out = new Float64Array(f.sizeArrayRows);
+      for (let r = 0; r < f.sizeArrayRows; r++) out[r] = f.computeArray(r, i - 1);
+      return out;
+    }
     if (j === null) {
       if (i < 1 || i > f.sizeVector) throw new StyleError(`f_${id}[${i}] is out of range (1..${f.sizeVector})`);
       return f.computeVector(i - 1);

@@ -1,0 +1,20 @@
+# oracle: compute erotate/asphere with line particles (ASPHERE/line/data.line, 2d): one half times omega^2 l^2 m / 12
+#   per segment (src/ASPHERE/compute_erotate_asphere.cpp at b332f28, compute_scalar, the line branch); the example
+#   file has no Velocities, so the angular velocity is set with set (group all omega). Measured with native LAMMPS.
+# oracle-inputs: w105cf_erotate_line.data
+# oracle-compare: thermo=all rel=1e-12 abs=1e-14
+units           lj
+atom_style      line
+dimension       2
+read_data       w105cf_erotate_line.data
+group           all type 1 2
+set             group all omega 0.3 -0.2 0.7
+pair_style      line/lj 2.5
+pair_coeff      * * 0.25 0.25 1.0 0.25 2.5
+neighbor        0.3 bin
+neigh_modify    delay 0 every 1 check yes
+compute         1 all erotate/asphere
+compute         2 all ke
+thermo_style    custom step c_1 c_2
+thermo_modify   format float %.15g
+run             0

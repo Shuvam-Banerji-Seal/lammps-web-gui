@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DihedralCharmm, DihedralCharmmfsw } from '../src/engine/force/dihedral/charmm';
 import { PairLJCharmmCoulCharmm, PairLJCharmmCoulCharmmImplicit, PairLJCharmmfswCoulCharmmfsh } from '../src/engine/force/pair/charmm';
+import { PairLJCut } from '../src/engine/force/pair/lj_cut';
 
 import { Geometry, makeBox } from '../src/engine/domain';
 import { emptyState, addAtoms, buildAtomMap, pushTopo } from '../src/engine/atoms';
@@ -170,6 +171,27 @@ describe('dihedral charmm: argument and link errors', () => {
     const implicit = makePair(new PairLJCharmmCoulCharmmImplicit(), ['8.0', '10.0']);
     d.linkForceField({ pair: implicit, special: { lj: [0, 0, 0], coul: [0, 0, 0] } });
     expect(() => d.init(undefined)).toThrow(StyleError);
+  });
+  it('checks the pair style only for a non-zero weight (native: "if (weightflag)" in DihedralCharmm::init_style)', () => {
+    // src/MOLECULE/dihedral_charmm.cpp at b332f28: the lj14 extraction and "Dihedral charmm is incompatible with Pair style"
+    // are inside "if (weightflag)", set by a weight > 0. Measured with native LAMMPS (black box): the bucky-plus-cnt
+    // dihedral (weight 0) runs with pair_style lj/cut (oracle w105cf_charmm_w0_lj); with weight 1.0 it stops with
+    // "Dihedral charmm is incompatible with Pair style lj/cut".
+    const lj = new PairLJCut();
+    lj.settings(['10.0']);
+    lj.allocate(1);
+    lj.coeff(['1', '1', '0.07', '3.55']);
+    lj.init(ctx(emptyState(UNIT_SYSTEMS.real, 3, { lo: [0, 0, 0], hi: [L, L, L] }, 1, 'full')));
+    const zero = new DihedralCharmm();
+    zero.allocate(1);
+    zero.coeff(['1', '3.1', '2', '180', '0.0']);
+    zero.linkForceField({ pair: lj as never, special: { lj: [0, 0, 0], coul: [0, 0, 0] } });
+    expect(() => zero.init(undefined)).not.toThrow();
+    const one = new DihedralCharmm();
+    one.allocate(1);
+    one.coeff(['1', '3.1', '2', '180', '1.0']);
+    one.linkForceField({ pair: lj as never, special: { lj: [0, 0, 0], coul: [0, 0, 0] } });
+    expect(() => one.init(undefined)).toThrow(/Dihedral charmm is incompatible with Pair style lj\/cut/);
   });
   it('charmmfsw needs an lj/charmmfsw pair', () => {
     const d = new DihedralCharmmfsw();

@@ -1,0 +1,28 @@
+# oracle: a fix ave/time over c_born[*] (scalar mode) is a global vector, so "variable B vector f_avborn*..." reads
+#   it with no index (as examples/ELASTIC_T/BORN_MATRIX/Silicon/output.in does); the thermo wildcard v_B[*8] of a
+#   vector-style variable expands to 1..8 without reading B ("[*N]" needs no length: native utils.cpp expand_args);
+#   the thermo columns are written out (the oracle script does not expand wildcards in thermo_style). Measured with native LAMMPS (black box): the fix gives the 21 Born terms.
+# oracle-compare: thermo=all rel=1e-8 abs=1e-10
+units lj
+atom_style atomic
+lattice fcc 0.8442
+region box block 0 2 0 2 0 2
+create_box 1 box
+create_atoms 1 box
+mass 1 1.0
+velocity all create 1.0 87287 loop geom
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0
+neighbor 0.3 bin
+neigh_modify every 1 delay 0 check no
+fix 1 all nve
+compute virial all pressure NULL virial
+compute born all born/matrix numdiff 1e-6 virial
+variable bfac equal 1.0/vol
+run 20
+fix avborn all ave/time 5 4 20 c_born[*] ave running
+variable B vector f_avborn*${bfac}
+thermo 20
+thermo_style custom step temp v_B[1] v_B[2] v_B[3] v_B[4] v_B[5] v_B[6] v_B[7] v_B[8] v_B[12] f_avborn[1]
+thermo_modify format float %.15g
+run 40

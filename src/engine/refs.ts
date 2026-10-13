@@ -163,15 +163,29 @@ export const expandWildcards = (sys: System, words: string[], context: 'scalar' 
     let n: number;
     if (kind === 'v') {
       if (context !== 'scalar') throw new StyleError(`${w}: a variable wildcard needs a vector-style variable in a scalar input list`);
+      // native LAMMPS (src/utils.cpp expand_args, mode 0): a vector-style variable with "[*N]" expands to
+      // 1..N without reading the variable ("Upper bound required to expand vector style variable"); the
+      // variable is not evaluated here, since its fixes may not be initialised yet (thermo_style parse).
+      if (hi !== '') {
+        out.push(...expandRange(kind, id, lo === '' ? 1 : Number(lo), Number(hi)));
+        continue;
+      }
       n = sys.vars.evalVector(id, sys.formulaEnv).length;
     } else {
       const obj = kind === 'c' ? sys.compute(id) : sys.fix(id);
       n = context === 'scalar' ? obj.sizeVector : context === 'vector' ? obj.sizeArrayCols : obj.sizePeratomCols;
-      if (context === 'scalar' && kind === 'c' && obj.vectorFlag) n = sys.compute(id).vectorValues().length;
+      // native LAMMPS reads compute->size_vector (set when the compute is defined); evaluate only when it is unset
+      if (context === 'scalar' && kind === 'c' && obj.vectorFlag && n === 0) n = sys.compute(id).vectorValues().length;
     }
     const a = lo === '' ? 1 : Number(lo), b = hi === '' ? n : Math.min(Number(hi), n);
     if (n < 1) throw new StyleError(`${w}: ${kind === 'c' ? 'compute' : kind === 'f' ? 'fix' : 'variable'} ${id} has no ${context === 'peratom' ? 'per-atom columns' : context === 'vector' ? 'array columns' : 'vector elements'} to expand`);
-    for (let k = a; k <= b; k++) out.push(`${kind}_${id}[${k}]`);
+    out.push(...expandRange(kind, id, a, b));
   }
+  return out;
+};
+
+const expandRange = (kind: string, id: string, a: number, b: number): string[] => {
+  const out: string[] = [];
+  for (let k = a; k <= b; k++) out.push(`${kind}_${id}[${k}]`);
   return out;
 };

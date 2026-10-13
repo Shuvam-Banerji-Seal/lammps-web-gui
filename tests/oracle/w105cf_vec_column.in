@@ -1,0 +1,36 @@
+# oracle: fix vector with several inputs is an array (fix_vector.html: "For multiple specified values, they are
+#   stored as rows in a global array"); a vector-style variable reads its column with f_ID[I] (variable.html:
+#   "vector | f_ID[I] | column of global array"); the native binary accepts it (measured with native LAMMPS, black box)
+# oracle-compare: thermo=all rel=1e-8 abs=1e-10
+units lj
+atom_style atomic
+lattice fcc 0.8442
+region box block 0 2 0 2 0 2
+create_box 1 box
+create_atoms 1 box
+mass 1 1.0
+velocity all create 1.0 87287 loop geom
+velocity all zero linear
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0
+neighbor 0.3 bin
+neigh_modify every 1 delay 0 check no
+fix 1 all nve
+compute VIR all pressure NULL virial
+variable s1 equal "-c_VIR[1]"
+variable s2 equal "-c_VIR[2]"
+variable s3 equal "-c_VIR[3]"
+fix VEC all vector 1 v_s1 v_s2 v_s3
+variable aves1 equal "ave(f_VEC[1])"
+variable aves2 equal "ave(f_VEC[2])"
+variable ds1 vector "f_VEC[1]-v_aves1"
+variable ds2 vector "f_VEC[2]-v_aves2"
+variable dds1 vector "v_ds1*v_ds1"
+variable dds2 vector "v_ds2*v_ds2"
+variable vars1 equal "ave(v_dds1)"
+variable vars2 equal "ave(v_dds2)"
+variable e13 equal "f_VEC[1][3]"
+thermo 10
+thermo_style custom step temp v_aves1 v_aves2 v_vars1 v_vars2 v_e13
+thermo_modify format float %.15g
+run 100

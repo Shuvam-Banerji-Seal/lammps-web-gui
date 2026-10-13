@@ -1,0 +1,23 @@
+# oracle: read_dump reads the fx fy fz force columns of a snapshot (read_dump.html: "fx,fy,fz = force components"),
+#   which replace the forces of the replaced atoms (native read_dump.cpp: case Reader::FX sets f[m][0]); nothing
+#   is computed in between, so the written forces are the ones read. Measured with native LAMMPS (black box).
+# oracle-inputs: w105cf_forces_src.dump
+# oracle-files: w105cf_forces_out.txt
+# oracle-compare: thermo=all atoms=none rel=1e-12 abs=1e-14
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+read_dump       w105cf_forces_src.dump 0 x y z fx fy fz replace yes
+write_dump      all custom w105cf_forces_out.txt id fx fy fz modify format float %.15g sort id
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+thermo          1
+run             0

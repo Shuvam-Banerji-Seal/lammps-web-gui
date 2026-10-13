@@ -226,3 +226,54 @@ run 10`);
     }
   });
 });
+
+describe('global array and vector outputs read before the first run (w105cf)', () => {
+  // The output shape of fix ave/time is set when the fix is defined (native: fix_ave_time.cpp sets vector_flag,
+  // size_vector or array_flag in the constructor), so thermo_style and variables can use it before a run.
+  it('thermo_style f_ID[*] expands a scalar-mode fix with several inputs before the run (thermo_style.html, Wildcards)', async () => {
+    // hbond example (rdf-adf/in.spce.hbond line 66): thermo_style custom ... f_ave[*] with fix ave/time of 5 inputs
+    const { thermo, error } = await runScript(`${SYS}
+variable a equal 2.0
+variable b equal 3.0
+variable c equal 5.0
+fix av all ave/time 1 1 1 v_a v_b v_c ave running
+thermo_style custom step f_av[*]
+thermo 1
+run 0
+`);
+    expect(error).toBeNull();
+    expect(thermo[0]).toMatchObject({ 'f_av[1]': 2, 'f_av[2]': 3, 'f_av[3]': 5 });
+  });
+
+  it('a vector-style variable reads the bounded wildcard v_B[*2] without evaluating B first (native: expand_args needs no length)', async () => {
+    // Silicon elastic example (ELASTIC_T/BORN_MATRIX/Silicon/output.in): thermo_style v_B[*8] of a vector variable
+    // whose fix reads c_born[*]; B used to be evaluated while the thermo_style was parsed, before the fix was set up
+    const { thermo, error } = await runScript(`${SYS}
+variable a equal 2.0
+variable b equal 3.0
+fix av all ave/time 1 1 1 v_a v_b ave running
+variable B vector f_av*2
+thermo_style custom step v_B[*2] v_B[2]
+thermo 1
+run 0
+`);
+    expect(error).toBeNull();
+    expect(thermo[0]).toMatchObject({ 'v_B[1]': 4, 'v_B[2]': 6 });
+  });
+
+  it('a vector-style variable reads column I of a fix vector with several inputs as f_ID[I] (variable.html: "column of global array")', async () => {
+    // ELASTIC_T/BORN_MATRIX/Argon/Analytical/in.ljcov: fix VEC all vector 1 v_s1 v_s2 ... and f_VEC[1] in vector-style formulas
+    const { thermo, error } = await runScript(`${SYS}
+variable a equal 2.0
+variable b equal 3.0
+fix VEC all vector 1 v_a v_b
+variable col1 vector f_VEC[1]*10
+variable e equal f_VEC[1][2]
+thermo_style custom step v_col1[1] v_e
+thermo 1
+run 0
+`);
+    expect(error).toBeNull();
+    expect(thermo[0]).toMatchObject({ 'v_col1[1]': 20, 'v_e': 3 });
+  });
+});

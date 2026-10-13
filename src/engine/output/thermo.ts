@@ -133,6 +133,10 @@ export class Thermo {
     } else if (kind === 'f') {
       const f = this.sys.fix(id);
       n = f.vectorFlag ? f.sizeVector : 0;
+    } else if (hi) {
+      // native LAMMPS (src/utils.cpp expand_args): "[*N]" of a vector-style variable needs no length; the variable
+      // is not read here (its fixes are not initialised before the run)
+      n = Number(hi);
     } else n = this.sys.vars.evalVector(id, this.sys.formulaEnv).length;
     if (!n) throw new StyleError(`${a}: ${kind}_${id} has no vector to expand`);
     const i0 = lo ? Number(lo) : 1, i1 = hi ? Number(hi) : n;

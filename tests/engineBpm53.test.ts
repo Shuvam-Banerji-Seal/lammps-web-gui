@@ -99,11 +99,13 @@ describe('bond_style bpm/rotational', () => {
     expect(ok.errors).toEqual([]);
   });
 
-  it('accepts the shear, twisting and bending terms (full bpm/rotational, see engineBpmGpl.test.ts) and refuses zero critical values', async () => {
+  it('accepts the shear, twisting and bending terms (full bpm/rotational, see engineBpmGpl.test.ts) and accepts zero critical values as native does', async () => {
     const shear = await run(`${DIMER()}bond_style bpm/rotational\nbond_coeff 1 1.0 0.2 0 0 1.0 1.0 1.0 1.0 0.1 0.1 0.1 0.1\nrun 0\n`);
     expect(shear.errors).toEqual([]);
+    // native BondBPMRotational::coeff takes fcr, fcs, tct, tcb as given (no range check); zero is accepted
+    // (oracle w105cf_bpm_rot_zero)
     const zero = await run(`${DIMER()}bond_style bpm/rotational\nbond_coeff 1 1.0 0 0 0 1.0 0.0 1.0 1.0 0.1 0 0 0\nrun 0\n`);
-    expect(zero.errors.join(' ')).toMatch(/must be > 0/);
+    expect(zero.errors).toEqual([]);
   });
 
   it('keeps the bond at a setup strain below the critical value and breaks it at 1.01 (B = 1.01)', async () => {

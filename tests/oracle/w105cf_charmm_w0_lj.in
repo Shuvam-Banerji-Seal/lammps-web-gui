@@ -1,0 +1,24 @@
+# oracle: dihedral_style charmm with weight 0 next to pair_style lj/cut (the imd/bucky-plus-cnt example has
+#   dihedral_coeff 1 3.100 2 180 0.0). Native DihedralCharmm::init_style checks the pair style and special_bonds
+#   only "if (weightflag)" (src/MOLECULE/dihedral_charmm.cpp at b332f28; weightflag is set by a weight > 0), so
+#   the dihedral runs with lj/cut. Measured with native LAMMPS (black box): with a weight 1.0 the same input stops
+#   with "Dihedral charmm is incompatible with Pair style" (not in this case).
+# oracle-inputs: w105cf_charmm_w0_lj.data
+# oracle-compare: thermo=all rel=1e-12 abs=1e-14
+units real
+atom_style molecular
+dimension 3
+boundary f f f
+read_data w105cf_charmm_w0_lj.data
+pair_style lj/cut 10.0
+bond_style harmonic
+angle_style charmm
+dihedral_style charmm
+special_bonds lj/coul 0.0 0.0 0.0
+pair_coeff 1 1 0.07 3.55
+bond_coeff 1 305.0 1.4
+angle_coeff 1 40.000 120.00 35.00 2.41620
+dihedral_coeff 1 3.100 2 180 0.0
+thermo_style custom step pe evdwl ebond eangle edihed
+thermo_modify format float %.15g
+run 0

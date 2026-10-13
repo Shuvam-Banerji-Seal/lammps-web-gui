@@ -14,7 +14,6 @@ export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[
   ],
   FIXES: [
     'filter/corotate', // engine-gpl/registry/filtercorotate.ts (refused: respa fix hooks missing)
-    'surface/global', // engine-gpl/registry/gransurf.ts
     'wall/piston', 'append/atoms', // engine-gpl/registry/shock.ts (SHOCK wall/piston and append/atoms are not ported)
   ],
   COMPUTES: [

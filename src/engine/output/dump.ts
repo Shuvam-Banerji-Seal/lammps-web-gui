@@ -1,3 +1,4 @@
+import { isSmdStyle } from '../smd';
 import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { compileCFormat, checkCFormat, formatNumber, type ValueKind } from '../cformat';
@@ -152,7 +153,8 @@ export class Dump {
       const st = this.sys.atomStyle;
       const sh = this.sys.hasBox ? this.sys.state : null;
       if (c === 'q' && !(sh ? hasCharge(sh) : hasChargeStyle(st))) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (q needs atom_style charge or full)`);
-      if (SPHERE_COLS.has(c) && !isSphereStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style sphere)`);
+      // atom_style.html, smd: "atomic + molecule, radius, rmass + smd data", so radius is allocated for it
+      if (SPHERE_COLS.has(c) && !isSphereStyle(st) && !(c === 'radius' && isSmdStyle(st))) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style sphere)`);
       if (TORQUE_COLS.has(c) && !hasRmassStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style sphere or ellipsoid)`);
       if (ANGMOM_COLS.has(c) && !isEllipsoidStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style ellipsoid)`);
       if (DIPOLE_COLS.has(c) && !hasDipoleStyle(st)) throw new StyleError(`dump ${this.id}: dumping an atom property that isn't allocated (${c} needs atom_style dipole)`);

@@ -6,6 +6,7 @@ import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
 import { EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH } from '../atoms';
 import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
+import { isSmdStyle, SMD_CONTACT } from '../smd';
 import { parseStl } from '../stl';
 import { typeWord, parseLabelPairs, labelmapText, isLabelKind, type LabelKind } from '../labelmap';
 
@@ -73,7 +74,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph', 'edpd', 'mdpd', 'tdpd', 'rheo', 'rheo/thermal', 'dpd'];
+const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph', 'edpd', 'mdpd', 'tdpd', 'rheo', 'rheo/thermal', 'dpd', 'smd'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -1547,6 +1548,22 @@ const set: Handler = ({ sys }, a) => {
       // set.html: "Keyword *volume* sets the volume of all selected particles. Currently, only the atom_style peri
       // command defines particles with a volume attribute. Note that this command does not adjust the particle mass."
       // Measured with native LAMMPS (black box): a volume <= 0 is refused (Invalid volume in set command)
+      // set.html: "Keyword *smd/contact/radius* ... sets an interaction radius for computing short-range interactions"
+      // (atom_style smd only); "Keyword *smd/mass/density* sets the mass of all selected particles ... It assumes that
+      // the particle volume has already been correctly set and calculates particle mass from the provided mass density".
+      case 'smd/contact/radius': case 'smd/mass/density': {
+        const contact = s.custom.get(SMD_CONTACT);
+        if (!isSmdStyle(s.atomStyle) || !contact) throw new StyleError(`Cannot set attribute ${key} for atom style ${s.atomStyle}`);
+        const v = value(a[k + 1], key);
+        for (const i of atoms) {
+          const x = v(i);
+          if (key === 'smd/contact/radius') contact.data[i] = x;
+          else s.rmass![i] = x * s.vfrac![i];
+        }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
       case 'volume': {
         if (!s.vfrac) throw new StyleError(`Cannot set attribute volume for atom style ${s.atomStyle}`);
         const v = value(a[k + 1], key);

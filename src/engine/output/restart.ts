@@ -12,6 +12,7 @@ import { BondedHybrid, type HybridKind } from '../force/bonded_hybrid';
 
 /** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
 type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart; nh?: NHRestart };
+import { SMD_COLS, isSmdStyle } from '../smd';
 import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, isElectronStyle, ELECTRON_DEFAULTS, ELECTRON_SPIN, isDielectricStyle, DIELECTRIC_DEFAULTS, isSphStyle, SPH_DEFAULTS, SPH_WIDTH, isDpdMesoKey, isDpdMesoStyle, dpdMesoProps, RHEO_DEFAULTS, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_THERMAL_DEFAULTS, DPD_DEFAULTS, isDpdStyle } from '../atoms';
 import { ErfcTableCache } from '../force/erfc';
 
@@ -315,6 +316,10 @@ export const writeRestartText = (sys: System): string => {
   const dpd = isDpdStyle(s.atomStyle)
     ? encodeValue(Object.fromEntries(Object.keys(DPD_DEFAULTS).map((k) => [k, s.custom.get(k)!.data])), 'dpd', [])
     : null;
+  // atom_style smd: the SMD data (deformation gradient, stress, estimated velocity, energy, plastic strain, damage, contact radius)
+  const smd = isSmdStyle(s.atomStyle)
+    ? encodeValue(Object.fromEntries(Object.keys(SMD_COLS).map((k) => [k, s.custom.get(k)!.data])), 'smd', [])
+    : null;
   const doc = {
     format: FORMAT,
     version: VERSION,
@@ -327,6 +332,7 @@ export const writeRestartText = (sys: System): string => {
     dpdMeso,
     rheo,
     dpd,
+    smd,
     comm: { style: sys.commStyle, vel: sys.ghostVelocity, cutoff: sys.nb.commCutoff },
     groups: encodeValue({ names: sys.groups.names, dynamic: sys.groups.dynamic }, 'groups', []),
     special: encodeValue(sys.ff.special, 'special', []),
@@ -355,7 +361,7 @@ export const readRestartText = (sys: System, text: string, name: string): void =
     if (header.startsWith('LAMMPS-WEB-RESTART')) throw new StyleError(`${name}: restart format '${header}' is not supported (this engine reads '${RESTART_MAGIC}')`);
     throw new StyleError(`${name} is not a restart file written by this browser engine. Native LAMMPS binary restart files cannot be read in the browser: their format is platform-specific. Convert the native file with the lmp -restart2data command-line flag and use read_data, or write the state here with write_restart (or write_data)`);
   }
-  let doc: { format: string; version: number; step: number; state: Json; electron?: Json | null; dielectric?: Json | null; sph?: Json | null; dpdMeso?: Json | null; rheo?: Json | null; dpd?: Json | null; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: FixRestart[]; lineTri?: Json };
+  let doc: { format: string; version: number; step: number; state: Json; electron?: Json | null; dielectric?: Json | null; sph?: Json | null; dpdMeso?: Json | null; rheo?: Json | null; dpd?: Json | null; smd?: Json | null; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: FixRestart[]; lineTri?: Json };
   try {
     doc = JSON.parse(text.slice(nl + 1));
   } catch {
@@ -431,6 +437,15 @@ export const readRestartText = (sys: System, text: string, name: string): void =
       const data = dp[name] ?? new Float64Array(n).fill(def);
       need(data.length === n, `dpd ${name} has the wrong length for ${n} atoms`);
       state.custom.set(name, { int: false, cols: 0, data: Float64Array.from(data) });
+    }
+  }
+  // atom_style smd: the stored SMD data come back as they were written
+  if (isSmdStyle(state.atomStyle)) {
+    const sp = doc.smd ? decodeValue(doc.smd, 'smd') as Record<string, Float64Array> : {};
+    for (const [name, cols] of Object.entries(SMD_COLS)) {
+      const data = sp[name] ?? new Float64Array(n * Math.max(cols, 1));
+      need(data.length === n * Math.max(cols, 1), `smd ${name} has the wrong length for ${n} atoms`);
+      state.custom.set(name, { int: false, cols, data: Float64Array.from(data) });
     }
   }
   // atom_style oxdna: the strand partners are not stored; they follow from the stored bonds, as after read_data

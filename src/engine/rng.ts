@@ -71,7 +71,7 @@ const rotl = (x: number, k: number): number => (x << k) | (x >>> (32 - k));
 /**
  * The Park-Miller minimal standard generator (S. K. Park and K. W. Miller,
  * Random number generators: good ones are hard to find, Commun. ACM 31,
- * 1192 (1988)): seed <- 16807 seed mod (2^31 - 1), uniform = seed / (2^31 - 1),
+ * 1192 (1988)): seed <- 16807 seed mod (2^31 - 1), uniform = seed * AM with AM = 1 / (2^31 - 1),
  * evaluated without overflow by Schrage's factorisation; gaussian() is the
  * polar (Marsaglia) method in its Numerical Recipes form, which returns
  * v2 * f and keeps v1 * f for the next call.
@@ -95,7 +95,7 @@ export class RanPark {
     const k = Math.floor(this.seed / PM_Q);
     this.seed = PM_A * (this.seed - k * PM_Q) - PM_R * k;
     if (this.seed < 0) this.seed += PM_M;
-    return this.seed / PM_M;
+    return PM_AM * this.seed;
   }
 
   gaussian(): number {
@@ -122,6 +122,8 @@ export class RanPark {
 }
 
 const PM_A = 16807, PM_M = 2147483647, PM_Q = 127773, PM_R = 2836;
+/** AM = 1.0 / IM: the reciprocal is multiplied, not the seed divided (src/random_park.cpp, RanPark::uniform, "double ans = AM * seed;", read at b332f28): the two differ in the last bit for some seeds. */
+const PM_AM = 1.0 / PM_M;
 
 /**
  * Marsaglia-Zaman lagged-Fibonacci generator with carry, in the form published

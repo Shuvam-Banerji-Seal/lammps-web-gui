@@ -1,0 +1,17 @@
+# oracle: pair_style table spline 500 alone on the benzene/water data (PACKAGES/local_density/benzene_water, 1380 atoms, R tables without FPRIME)
+# measured max error vs native (run 0): per-atom force 4.1e-14 relative, thermo 1.3e-14 (the previous spline end slope gave 1.5e-6 per-atom and 1.5e-8 pressure)
+# oracle-inputs: w113cf_benzene_water.data w113cf_benzene_water.pair.table
+# oracle-compare: rel=1e-8 abs=1e-10
+units           real
+dimension       3
+boundary        p p p
+atom_style      molecular
+read_data       w113cf_benzene_water.data
+pair_style      table spline 500
+pair_coeff      1 1 w113cf_benzene_water.pair.table PairBB
+pair_coeff      1 2 w113cf_benzene_water.pair.table PairWW
+pair_coeff      2 2 w113cf_benzene_water.pair.table PairBW
+thermo_style    custom step temp pe evdwl press
+thermo_modify   format float %.15g
+thermo          1
+run             0

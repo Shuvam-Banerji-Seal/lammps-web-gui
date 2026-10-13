@@ -172,7 +172,7 @@ export class FixRHEO extends Fix {
       for (let a = 0; a < 3; a++) v[3 * i + a] += dtfm * f[3 * i + a];
     }
     // gradients of the current velocities and densities (the positions of the neighbor list are the old ones)
-    computeRheoGrad(s, this.sys.nb, m);
+    computeRheoGrad(s, this.sys.nb, m, this.sys.geom);
     // position half-step
     for (let i = 0; i < n; i++) {
       if (!(mask[i] & bit)) continue;
@@ -215,14 +215,14 @@ export class FixRHEO extends Fix {
     if (m.rk1 || m.surfaceFlag) computeRheoCoordination(s, this.sys.nb, m);
     if (m.rhosumFlag) computeRheoRhoSum(s, this.sys.nb, m);
     if (m.rk1) computeRheoCorrections(s, this.sys.nb, m);
-    computeRheoGrad(s, this.sys.nb, m);
-    if (m.shiftFlag) computeRheoVShift(s, this.sys.nb, m, this.groupBit);
+    computeRheoGrad(s, this.sys.nb, m, this.sys.geom);
+    if (m.shiftFlag) computeRheoVShift(s, this.sys.nb, m, this.groupBit, this.sys.geom);
     const status = rheoProp(s, RHEO_STATUS);
     for (let i = 0; i < s.n; i++) {
       if (s.mask[i] & this.groupBit) status[i] = (status[i] & OPTIONSMASK) >>> 0;
     }
     // free-surface detection (last in pre_force, after the status options are cleared)
-    if (m.surfaceFlag) computeRheoSurface(s, this.sys.nb, m, this.groupBit);
+    if (m.surfaceFlag) computeRheoSurface(s, this.sys.nb, m, this.groupBit, this.sys.geom);
     // compute_rheo_vshift.cpp: shift and surface detection together (native: correct_surfaces after the surface update)
     if (m.shiftFlag && m.surfaceFlag) correctRheoSurfaces(s, m, this.groupBit);
   }

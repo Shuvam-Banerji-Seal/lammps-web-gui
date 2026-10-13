@@ -18,6 +18,8 @@ import type { SimState } from '../../engine/types';
 import type { Neighbor } from '../../engine/neighbor';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { massOf, RHEO_ESPH, RHEO_RHO, RHEO_STATUS } from '../../engine/atoms';
+import type { Geometry } from '../../engine/domain';
+import { NativePairOrder } from '../neighbor/nativeOrder';
 
 /** fix_rheo.h, RHEO_NS: "PHASECHECK = 0x00000003" (solid or future phase bits) and the temporary option bits. */
 export const PHASECHECK = 0x3;
@@ -242,11 +244,23 @@ export const rheoProp = (s: SimState, name: string): Float64Array => {
 };
 
 /**
- * compute_rheo_grad.cpp compute_peratom(): gradv_i,ab = -sum_j (v_i - v_j)_a Vj dW_ij,b and gradr_i,a =
- * -sum_j (rho_i - rho_j) Vj dW_ij,a, with Vj = m_j / rho_j, summed over the full neighbor list of each owned atom.
- * Ghost neighbors read the owner's velocity and density; positions come from the neighbor list (xall).
+ * The native newton-off half-list pairs (npair_bin.cpp, newton off, in native order) of the RHEO sums: compute_rheo_grad,
+ * compute_rheo_vshift and compute_rheo_surface are all REQ_DEFAULT (half) requests, and each adds the owned end of a pair
+ * and, for an owned partner, the other end. One list is shared, since every sum reads the same half list.
  */
-export const computeRheoGrad = (s: SimState, nb: Neighbor, m: RheoModel): void => {
+const halfPairs = new NativePairOrder(false);
+export const rheoHalfPairs = (s: SimState, nb: Neighbor, geom: Geometry): Int32Array => {
+  if (!nb.half) throw new Error('rheo sums need a half neighbor list');
+  return halfPairs.pairs(s, nb, geom, nb.half);
+};
+
+/**
+ * compute_rheo_grad.cpp compute_peratom(): gradv_i,ab = -sum_j (v_i - v_j)_a Vj dW_ij,b and gradr_i,a =
+ * -sum_j (rho_i - rho_j) Vj dW_ij,a, with Vj = m_j / rho_j. The native half list (REQ_DEFAULT, newton off) visits each
+ * owned pair once: the owned end i takes -(...) Vj dWij, and an owned partner j takes +(...) Vi dWji. Ghost neighbors
+ * read the owner's velocity, density and mass; positions come from the neighbor list (xall).
+ */
+export const computeRheoGrad = (s: SimState, nb: Neighbor, m: RheoModel, geom: Geometry): void => {
   const n = s.n, dim = m.dim, dd = dim * dim;
   if (m.gradv.length < n * dd) m.gradv = new Float64Array(n * dd);
   if (m.gradr.length < n * dim) m.gradr = new Float64Array(n * dim);
@@ -258,34 +272,38 @@ export const computeRheoGrad = (s: SimState, nb: Neighbor, m: RheoModel): void =
     if (m.grade.length < n * dim) m.grade = new Float64Array(n * dim);
     m.grade.fill(0, 0, n * dim);
   }
-  const full = nb.full;
-  if (!full) throw new Error('rheo grad needs a full neighbor list');
-  const x = nb.xall, owner = nb.owner, nbr = full.neighbors;
+  const x = nb.xall, owner = nb.owner;
   const v = s.v, rho = rheoProp(s, RHEO_RHO);
   const energy = energyGrad ? rheoProp(s, RHEO_ESPH) : null;
+  const pairs = rheoHalfPairs(s, nb, geom);
   const vij = [0, 0, 0];
-  for (let i = 0; i < n; i++) {
-    const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
-    const rhoi = rho[i];
-    const k0 = full.firstneigh[i], k1 = k0 + full.numneigh[i];
-    for (let k = k0; k < k1; k++) {
-      const j = nbr[k] & NEIGHMASK;
-      const delx = xi - x[3 * j], dely = yi - x[3 * j + 1], delz = zi - x[3 * j + 2];
-      const rsq = delx * delx + dely * dely + delz * delz;
-      if (rsq >= m.cutsq) continue;
-      const o = owner[j];
-      const rhoj = rho[o];
-      const Volj = massOf(s, o) / rhoj;
-      for (let a = 0; a < dim; a++) vij[a] = v[3 * i + a] - v[3 * o + a];
-      const drho = rhoi - rhoj;
-      const de = energy ? energy[i] - energy[o] : 0;
-      m.calcDw(i, delx, dely, delz, Math.sqrt(rsq), m.dW);
-      const dW = m.dW;
+  for (let p = 0; p < pairs.length; p += 2) {
+    const i = pairs[p];
+    const j = pairs[p + 1] & NEIGHMASK;
+    const delx = x[3 * i] - x[3 * j], dely = x[3 * i + 1] - x[3 * j + 1], delz = x[3 * i + 2] - x[3 * j + 2];
+    const rsq = delx * delx + dely * dely + delz * delz;
+    if (rsq >= m.cutsq) continue;
+    const oj = owner[j];
+    const rhoi = rho[i], rhoj = rho[oj];
+    const Voli = massOf(s, i) / rhoi, Volj = massOf(s, oj) / rhoj;
+    for (let a = 0; a < dim; a++) vij[a] = v[3 * i + a] - v[3 * oj + a];
+    const drho = rhoi - rhoj;
+    const de = energy ? energy[i] - energy[oj] : 0;
+    const r = Math.sqrt(rsq);
+    m.calcDw(i, delx, dely, delz, r, m.dW);
+    m.calcDw(oj, -delx, -dely, -delz, r, m.dWj);
+    const dWij = m.dW, dWji = m.dWj;
+    for (let a = 0; a < dim; a++) {
+      for (let b = 0; b < dim; b++) gradv[i * dd + a * dim + b] -= vij[a] * Volj * dWij[b];
+      gradr[i * dim + a] -= drho * Volj * dWij[a];
+      // compute_rheo_grad.cpp: "grade[i][a] -= de * Volj * dWij[a]" (energy keyword, fix rheo thermal)
+      if (energy) m.grade[i * dim + a] -= de * Volj * dWij[a];
+    }
+    if (j < n) {
       for (let a = 0; a < dim; a++) {
-        for (let b = 0; b < dim; b++) gradv[i * dd + a * dim + b] -= vij[a] * Volj * dW[b];
-        gradr[i * dim + a] -= drho * Volj * dW[a];
-        // compute_rheo_grad.cpp: "grade[i][a] -= de * Volj * dWij[a]" (energy keyword, fix rheo thermal)
-        if (energy) m.grade[i * dim + a] -= de * Volj * dW[a];
+        for (let b = 0; b < dim; b++) gradv[oj * dd + a * dim + b] += vij[a] * Voli * dWji[b];
+        gradr[oj * dim + a] += drho * Voli * dWji[a];
+        if (energy) m.grade[oj * dim + a] += de * Voli * dWji[a];
       }
     }
   }
@@ -293,49 +311,56 @@ export const computeRheoGrad = (s: SimState, nb: Neighbor, m: RheoModel): void =
 
 /**
  * compute_rheo_vshift.cpp compute_peratom() (orthogonal and triclinic boxes alike, no interface, no cross-type
- * correction): the shifting velocity of each owned atom from its full neighbor list. The pair term of the native
- * half list is split between its two atoms, so the full-list sum gives the same vshift.
+ * correction): the shifting velocity of each owned atom from the native half list. An owned pair adds the i end
+ * vmag_i Vj dr dx and, for an owned partner j, the other end -vmag_j Vi dr dx (dr from the i end, as native does).
  */
-export const computeRheoVShift = (s: SimState, nb: Neighbor, m: RheoModel, groupBit: number): void => {
+export const computeRheoVShift = (s: SimState, nb: Neighbor, m: RheoModel, groupBit: number, geom: Geometry): void => {
   const n = s.n, dim = m.dim;
   if (m.vshift.length < n * dim) m.vshift = new Float64Array(n * dim);
   const vshift = m.vshift;
   vshift.fill(0, 0, n * dim);
-  const full = nb.full;
-  if (!full) throw new Error('rheo vshift needs a full neighbor list');
-  const x = nb.xall, owner = nb.owner, nbr = full.neighbors;
+  const x = nb.xall, owner = nb.owner;
   const v = s.v, rho = rheoProp(s, RHEO_RHO), status = rheoProp(s, RHEO_STATUS), mask = s.mask;
   const cutthird = m.cut / 3.0;
-  for (let i = 0; i < n; i++) {
+  const pairs = rheoHalfPairs(s, nb, geom);
+  for (let p = 0; p < pairs.length; p += 2) {
+    const i = pairs[p];
+    const j = pairs[p + 1] & NEIGHMASK;
+    const oj = owner[j];
     const fluidi = !(status[i] & PHASECHECK);
-    const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
-    const k0 = full.firstneigh[i], k1 = k0 + full.numneigh[i];
-    for (let k = k0; k < k1; k++) {
-      const j = nbr[k] & NEIGHMASK;
-      const o = owner[j];
-      const fluidj = !(status[o] & PHASECHECK);
-      if (!fluidi && !fluidj) continue;
-      if ((status[i] & STATUS_NO_SHIFT) && (status[o] & STATUS_NO_SHIFT)) continue;
-      const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
-      const rsq = dx * dx + dy * dy + dz * dz;
-      if (rsq >= m.cutsq) continue;
-      const r = Math.sqrt(rsq);
-      const rinv = 1 / r;
-      const volj = massOf(s, o) / rho[o];
-      const wp = m.calcDw(i, dx, dy, dz, r, m.dW);
-      const w = m.wQuintic(r);
-      const w0 = m.wQuintic(cutthird);
-      const w4 = w * w * w * w / (w0 * w0 * w0 * w0);
-      const dr = -2 * cutthird * (1 + 0.2 * w4) * wp * rinv;
-      if ((mask[i] & groupBit) && fluidi) {
-        let vmag2 = 0;
-        for (let a = 0; a < dim; a++) vmag2 += v[3 * i + a] * v[3 * i + a];
-        const vmag = Math.sqrt(vmag2);
-        const prefactor = vmag * volj * dr;
-        vshift[i * dim] += prefactor * dx;
-        vshift[i * dim + 1] += prefactor * dy;
-        if (dim === 3) vshift[i * dim + 2] += prefactor * dz;
-      }
+    const fluidj = !(status[oj] & PHASECHECK);
+    if (!fluidi && !fluidj) continue;
+    if ((status[i] & STATUS_NO_SHIFT) && (status[oj] & STATUS_NO_SHIFT)) continue;
+    const dx = x[3 * i] - x[3 * j], dy = x[3 * i + 1] - x[3 * j + 1], dz = x[3 * i + 2] - x[3 * j + 2];
+    const rsq = dx * dx + dy * dy + dz * dz;
+    if (rsq >= m.cutsq) continue;
+    const r = Math.sqrt(rsq);
+    const rinv = 1 / r;
+    const rhoi = rho[i];
+    const voli = massOf(s, i) / rhoi;
+    const volj = massOf(s, oj) / rho[oj];
+    const wp = m.calcDw(i, dx, dy, dz, r, m.dW);
+    const w = m.wQuintic(r);
+    const w0 = m.wQuintic(cutthird);
+    const w4 = w * w * w * w / (w0 * w0 * w0 * w0);
+    const dr = -2 * cutthird * (1 + 0.2 * w4) * wp * rinv;
+    if ((mask[i] & groupBit) && fluidi) {
+      let vmag2 = 0;
+      for (let a = 0; a < dim; a++) vmag2 += v[3 * i + a] * v[3 * i + a];
+      const vmag = Math.sqrt(vmag2);
+      const prefactor = vmag * volj * dr;
+      vshift[i * dim] += prefactor * dx;
+      vshift[i * dim + 1] += prefactor * dy;
+      if (dim === 3) vshift[i * dim + 2] += prefactor * dz;
+    }
+    if (j < n && (mask[j] & groupBit) && fluidj) {
+      let vmag2 = 0;
+      for (let a = 0; a < dim; a++) vmag2 += v[3 * j + a] * v[3 * j + a];
+      const vmag = Math.sqrt(vmag2);
+      const prefactor = vmag * voli * dr;
+      vshift[j * dim] -= prefactor * dx;
+      vshift[j * dim + 1] -= prefactor * dy;
+      if (dim === 3) vshift[j * dim + 2] -= prefactor * dz;
     }
   }
   // compute_rheo_vshift.cpp: "Zero any excluded types" (shift_type 0 for exclude/type)
@@ -373,8 +398,6 @@ export const correctRheoSurfaces = (s: SimState, m: RheoModel, groupBit: number)
         vs[i * dim] -= nx * nz * vz;
         vs[i * dim + 1] -= ny * nz * vz;
         vs[i * dim + 2] = (1 - nz * nz) * vz - nz * ny * vy - nx * nz * vx;
-      } else {
-        vs[i * dim + 2] = 0.0;
       }
     } else if (status[i] & STATUS_SPLASH) {
       for (let a = 0; a < dim; a++) vs[i * dim + a] = 0.0;

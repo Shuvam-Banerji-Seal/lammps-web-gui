@@ -219,7 +219,7 @@ const nativeLayout = (s: SimState, nb: Neighbor, g: Geometry): NativeLayout => {
   };
 };
 
-export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighList): Int32Array => {
+export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighList, newton = true): Int32Array => {
   const L = nativeLayout(s, nb, g);
   const { order, n, two, X, binOf, chains, posInBin, sx, sy, sz, cutmaxsq, binDist, engineIndex, engByKey, NA } = L;
   const gi = nb.gimage;
@@ -237,8 +237,19 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
     }
   }
   // half newton stencil (nstencil.cpp sx, sy, sz; nstencil_bin.cpp create)
+  // newton off: npair_bin.cpp with the full stencil (neighbor.cpp: "request a full stencil if building full neighbor list
+  // or newton is off"), the central bin in its place, every bin in k, j, i order
   const stencil: number[] = [];
-  if (!two) {
+  if (!newton) {
+    const szf = two ? 0 : sz;
+    for (let k = -szf; k <= szf; k++) {
+      for (let j = -sy; j <= sy; j++) {
+        for (let i = -sx; i <= sx; i++) {
+          if (binDist(i, j, k) < cutmaxsq) stencil.push(i, j, k);
+        }
+      }
+    }
+  } else if (!two) {
     for (let k = 0; k <= sz; k++) {
       for (let j = -sy; j <= sy; j++) {
         for (let i = -sx; i <= sx; i++) {
@@ -269,6 +280,15 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
       if (m === undefined) return;
       out.push(ei, ek | (m << SBBITS));
     };
+    if (!newton) {
+      // npair_half_bin_newtoff: "only store pair if i < j" (own/own once), every ghost; the chains start at the bin head
+      for (let st = 0; st < stencil.length; st += 3) {
+        const chain = chains.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+        if (!chain) continue;
+        for (const j of chain) if (j > i) take(j);
+      }
+      continue;
+    }
     for (let q = posInBin[i] + 1; q < own.length; q++) {
       const j = own[q];
       if (j >= n) {
@@ -337,6 +357,8 @@ export const nativeFullLast = (s: SimState, nb: Neighbor, g: Geometry, full: Nei
  * kept between rebuilds (native keeps its pair lists and only tests the cutoff each step).
  */
 export class NativePairOrder {
+  /** newton: the native pair enumeration of newton on (default) or newton off. */
+  constructor(private readonly newton = true) {}
   private nbuild = -1;
   private order: Int32Array | null = null;
   private half: NeighList | null = null;
@@ -346,7 +368,7 @@ export class NativePairOrder {
   pairs(s: SimState, nb: Neighbor, g: Geometry, half: NeighList | null): Int32Array {
     if (!half) throw new Error('native pair order needs a half neighbor list');
     if (this.nbuild === nb.nbuild && this.order === s.order && this.half === half) return this.pairsCache;
-    this.pairsCache = g.triclinic ? engineOrder(half, nb.nlocal) : nativePairs(s, nb, g, half);
+    this.pairsCache = g.triclinic ? engineOrder(half, nb.nlocal) : nativePairs(s, nb, g, half, this.newton);
     this.nbuild = nb.nbuild;
     this.order = s.order;
     this.half = half;

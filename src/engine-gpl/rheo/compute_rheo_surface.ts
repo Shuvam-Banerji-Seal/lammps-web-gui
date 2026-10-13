@@ -11,16 +11,17 @@
  * summation ... optional args = self/mass ... self/mass values = none, a particle uses its own mass in summation".
  * Only the coordination style is supported by the browser engine (divergence is refused by name in fix rheo).
  *
- * The native sums run over the half list and reverse-communicate the ghost contributions; the port sums each owned atom
- * over its full neighbor list (the ghost neighbors read their owner's mass, density and status), which gives the same
- * per-atom sums. Status bits are those of fix_rheo.h (STATUS_BULK 4, LAYER 8, SURFACE 16, SPLASH 32); SURFACEMASK
- * clears the four of them before the new values are set.
+ * The native sums run over the newton-off half list (REQ_DEFAULT; newton off, so no reverse communication of the ghost
+ * contributions). The color gradient and the layer test follow that list in native's pair order (rheoHalfPairs), so the
+ * per-atom sums add in native's order. Status bits are those of fix_rheo.h (STATUS_BULK 4, LAYER 8, SURFACE 16, SPLASH
+ * 32); SURFACEMASK clears the four of them before the new values are set.
  */
 import type { SimState } from '../../engine/types';
 import type { Neighbor } from '../../engine/neighbor';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { massOf, RHEO_RHO, RHEO_STATUS } from '../../engine/atoms';
-import { PHASECHECK, STATUS_SPLASH, STATUS_SURFACE, rheoProp, type RheoModel } from './model';
+import type { Geometry } from '../../engine/domain';
+import { PHASECHECK, STATUS_SPLASH, STATUS_SURFACE, rheoHalfPairs, rheoProp, type RheoModel } from './model';
 
 export const STATUS_BULK = 1 << 2;
 export const STATUS_LAYER = 1 << 3;
@@ -70,35 +71,40 @@ export const computeRheoRhoSum = (s: SimState, nb: Neighbor, m: RheoModel): void
  * coordination is below zmin_surface, a splash atom below zmin_splash, and bulk otherwise; a non-fluid atom is bulk. A
  * bulk fluid atom with a surface neighbor becomes a layer atom. Normals of atoms that are not surface atoms are zero.
  */
-export const computeRheoSurface = (s: SimState, nb: Neighbor, m: RheoModel, groupBit: number): void => {
+export const computeRheoSurface = (s: SimState, nb: Neighbor, m: RheoModel, groupBit: number, geom: Geometry): void => {
   const n = s.n, dim = m.dim;
   ensure(m, n);
   const full = nb.full;
   if (!full) throw new Error('rheo surface needs a full neighbor list');
+  if (!nb.half) throw new Error('rheo surface needs a half neighbor list');
   const x = nb.xall, owner = nb.owner, nbr = full.neighbors;
   const rho = rheoProp(s, RHEO_RHO), status = rheoProp(s, RHEO_STATUS);
   const mask = s.mask;
   const gradC = m.gradC, nsurface = m.nsurface;
   gradC.fill(0, 0, n * dim);
   const dW = [0, 0, 0];
-  for (let i = 0; i < n; i++) {
-    const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
-    const k0 = full.firstneigh[i], k1 = k0 + full.numneigh[i];
-    for (let k = k0; k < k1; k++) {
-      const j = nbr[k] & NEIGHMASK;
-      const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
-      const rsq = dx * dx + dy * dy + dz * dz;
-      if (!(rsq < m.cutsq)) continue;
-      const o = owner[j];
-      const Volj = massOf(s, o) / rho[o];
-      // calc_dw_quintic(dx, r, dWij): dW = del * wp / r
-      const r = Math.sqrt(rsq);
-      const wp = m.dwScalar(r);
-      const wprinv = wp / r;
-      dW[0] = dx * wprinv;
-      dW[1] = dy * wprinv;
-      dW[2] = dz * wprinv;
-      for (let a = 0; a < dim; a++) gradC[i * dim + a] += dW[a] * Volj;
+  // the color gradient in native order: the half pairs of newton off (each owned pair once, from its lower native
+  // index, every ghost image of the owned atom), each pair adding dWij Volj to i and, for an owned j, -dWij Voli to j
+  const pairs = rheoHalfPairs(s, nb, geom);
+  for (let p = 0; p < pairs.length; p += 2) {
+    const i = pairs[p];
+    const j = pairs[p + 1] & NEIGHMASK;
+    const dx = x[3 * i] - x[3 * j], dy = x[3 * i + 1] - x[3 * j + 1], dz = x[3 * i + 2] - x[3 * j + 2];
+    const rsq = dx * dx + dy * dy + dz * dz;
+    if (!(rsq < m.cutsq)) continue;
+    // calc_dw_quintic(dx, r, dWij, dWji): dW = del * wp / r, dWji = -dWij
+    const r = Math.sqrt(rsq);
+    const wp = m.dwScalar(r);
+    const wprinv = wp / r;
+    dW[0] = dx * wprinv;
+    dW[1] = dy * wprinv;
+    dW[2] = dz * wprinv;
+    const o = owner[j];
+    const Volj = massOf(s, o) / rho[o];
+    for (let a = 0; a < dim; a++) gradC[i * dim + a] += dW[a] * Volj;
+    if (j < n) {
+      const Voli = massOf(s, i) / rho[i];
+      for (let a = 0; a < dim; a++) gradC[j * dim + a] += -dW[a] * Voli;
     }
   }
   // normals of the group atoms
@@ -122,18 +128,19 @@ export const computeRheoSurface = (s: SimState, nb: Neighbor, m: RheoModel, grou
       status[i] = (status[i] | STATUS_BULK) >>> 0;
     }
   }
-  // layer atoms: a fluid bulk atom next to a surface atom
-  for (let i = 0; i < n; i++) {
+  // layer atoms (compute_rheo_surface.cpp, the first pair loop): a fluid bulk atom i takes the layer status when a
+  // surface atom is its partner in the native half list, i.e. an owned partner with a higher native index or a ghost
+  // image. The owned-owned pair is visited from its lower index only, and its other end gets no layer status
+  // (native's branch for the partner needs a bulk fluid atom with the PHASECHECK bits set, which never holds), so
+  // the lower-indexed atom alone is tested; measured with native LAMMPS (black box) on the icecubes case.
+  for (let p = 0; p < pairs.length; p += 2) {
+    const i = pairs[p];
+    const j = pairs[p + 1] & NEIGHMASK;
     if (status[i] & PHASECHECK) continue;
-    const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
-    const k0 = full.firstneigh[i], k1 = k0 + full.numneigh[i];
-    for (let k = k0; k < k1; k++) {
-      const j = nbr[k] & NEIGHMASK;
-      const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
-      if (!(dx * dx + dy * dy + dz * dz < m.cutsq)) continue;
-      if ((status[i] & STATUS_BULK) && (status[owner[j]] & STATUS_SURFACE)) {
-        status[i] = ((status[i] & SURFACEMASK) | STATUS_LAYER) >>> 0;
-      }
+    const dx = x[3 * i] - x[3 * j], dy = x[3 * i + 1] - x[3 * j + 1], dz = x[3 * i + 2] - x[3 * j + 2];
+    if (!(dx * dx + dy * dy + dz * dz < m.cutsq)) continue;
+    if ((status[i] & STATUS_BULK) && (status[owner[j]] & STATUS_SURFACE)) {
+      status[i] = ((status[i] & SURFACEMASK) | STATUS_LAYER) >>> 0;
     }
   }
   // surface distance (compute_rheo_surface.cpp): bulk group atoms start at the cutoff, surface and splash atoms at zero,

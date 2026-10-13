@@ -1,0 +1,41 @@
+# oracle: labelmap command, label2type() in variables and expansions, labels in coefficient, group, set, create_atoms and molecule-free commands on a numeric data file; labelmap write
+# oracle-inputs: w90label_num.data
+# oracle-files: w90label_labels.include
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      full
+read_data       w90label_num.data
+labelmap        atom 1 C 2 HX
+labelmap        atom 2 H
+labelmap        bond 1 CH 2 CC
+labelmap        angle 1 HCH
+labelmap        dihedral 1 ddd
+labelmap        improper 1 iii
+variable        tc equal label2type(atom,C)
+variable        th equal label2type(atom,H)
+pair_style      lj/cut 6.0
+pair_coeff      C C 0.001 3.40
+pair_coeff      $(label2type(atom,C)) ${th} 0.001 2.50
+pair_coeff      H H 0.001 2.20
+pair_modify     mix arithmetic
+bond_style      harmonic
+bond_coeff      CH 300.0 1.10
+bond_coeff      $(label2type(bond,CC)) 250.0 1.50
+angle_style     harmonic
+angle_coeff     HCH 40.0 109.5
+dihedral_style  harmonic
+dihedral_coeff  ddd 1.0 1 2
+improper_style  harmonic
+improper_coeff  iii 10.0 0.0
+mass            C 12.011
+mass            H 1.008
+group           hyd type H
+create_atoms    C single 9.0 9.0 9.5
+set             type C type 1
+timestep        0.5
+fix             1 all nve
+thermo_style    custom step temp pe ebond eangle edihed eimp evdwl etotal press
+thermo_modify   format float %.15g
+thermo          5
+run             20
+labelmap        write w90label_labels.include

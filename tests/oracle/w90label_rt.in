@@ -1,0 +1,39 @@
+# oracle: write_data with the type label sections (labels written when a style is defined) and types labels; reading the written file back gives the same run
+# oracle-inputs: w90label_data.data
+# oracle-files: w90label_labels.data w90label_types.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      full
+read_data       w90label_data.data
+pair_style      lj/cut 6.0
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  harmonic
+improper_style  harmonic
+pair_coeff      * * 0.001 2.5
+bond_coeff      * 300.0 1.1
+angle_coeff     * 40.0 109.5
+dihedral_coeff  * 1.0 1 2
+improper_coeff  * 10.0 0.0
+write_data      w90label_labels.data
+write_data      w90label_types.data types labels nocoeff
+clear
+units           real
+atom_style      full
+read_data       w90label_types.data
+pair_style      lj/cut 6.0
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  harmonic
+improper_style  harmonic
+pair_coeff      * * 0.001 2.5
+bond_coeff      * 300.0 1.1
+angle_coeff     * 40.0 109.5
+dihedral_coeff  * 1.0 1 2
+improper_coeff  * 10.0 0.0
+fix             1 all nve
+timestep        0.5
+thermo_style    custom step temp pe ebond eangle evdwl etotal press
+thermo_modify   format float %.15g
+thermo          5
+run             10

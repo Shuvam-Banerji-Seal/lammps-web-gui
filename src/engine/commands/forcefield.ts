@@ -7,6 +7,7 @@ import type { MixRule, Pair } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
 import { isMolecularStyle } from '../atoms';
 import { KSpaceBase } from '../force/kspace/ewald';
+import { typeWord } from '../labelmap';
 
 /*
  * Force-field commands. Styles come from styles.ts; anything else is an
@@ -41,7 +42,9 @@ const pairCoeff: Handler = ({ sys }, a) => {
   if (!p) throw new StyleError('pair_coeff needs a pair_style first');
   if (p.ntypes !== s.ntypes) p.allocate(s.ntypes);
   if (a.length < 2) throw new StyleError('usage: pair_coeff I J args');
-  p.coeff(a, sys.styleContext());
+  // pair_coeff.html: "I,J = numeric atom types (see asterisk form below), or type labels"
+  const args = [typeWord(sys.labels, 'atom', a[0]), typeWord(sys.labels, 'atom', a[1]), ...a.slice(2)];
+  p.coeff(args, sys.styleContext());
   sys.bump();
 };
 
@@ -171,7 +174,9 @@ const bondedCoeff = (kind: keyof typeof bondedKinds): Handler => (({ sys }, a) =
   const n = bondedKinds[kind].types(sys);
   if (n === 0) throw new StyleError(`${kind}_coeff: there are no ${kind} types (create_box ... ${kind}/types N, or the data file header)`);
   if (st.ntypes !== n) st.allocate(n);
-  st.coeff(a, sys.styleContext());
+  // bond_coeff.html etc.: "N = numeric bond type (see asterisk form below), or type label"
+  const args = a.length ? [typeWord(sys.labels, kind, a[0]), ...a.slice(1)] : a;
+  st.coeff(args, sys.styleContext());
   sys.bump();
 }) as Handler;
 

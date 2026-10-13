@@ -2,6 +2,7 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseInt_, parseNum } from '../force/util';
+import { isNumericTypeWord, typeWord } from '../labelmap';
 
 /*
  * compute ID group-ID adf Nbin itype1 jtype1 ktype1 Rjinner1 Rjouter1 Rkinner1 Rkouter1 ...
@@ -85,7 +86,9 @@ export class ComputeADF extends Compute {
         const t = Number(w);
         return [t, t];
       }
-      throw new StyleError(`compute adf: invalid atom type '${w}' (number, asterisk range, or type label; type labels are not supported by this engine)`);
+      // compute_adf.rst: "itype ... integer, type label, or asterisk form": a label is its numeric type (labelmap.ts)
+      if (!isNumericTypeWord(w)) { const t = Number(typeWord(sys.labels, 'atom', w)); return [t, t]; }
+      throw new StyleError(`compute adf: invalid atom type '${w}' (number or asterisk range)`);
     };
 
     const nums: string[] = [];

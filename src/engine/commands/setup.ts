@@ -7,6 +7,10 @@ import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
 import { isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle } from '../atoms';
 import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
 import { parseStl } from '../stl';
+import { typeWord, parseLabelPairs, labelmapText, isLabelKind, type LabelKind } from '../labelmap';
+
+/** group.html and set.html logical operators of the type / id / molecule styles (not type labels) */
+const LOGICAL_OPS = ['<', '<=', '>', '>=', '==', '!=', '<>'];
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import { generalAtomSites, generalBoxFromRestricted, generalCreateBox } from '../triclinic_general';
 import {
@@ -572,7 +576,8 @@ const createAtoms: Handler = ({ sys }, a) => {
   // atom_style body: a body needs its Bodies entry from read_data (bodies.ts); create_atoms cannot make one
   if (isBodyStyle(sys.atomStyle)) throw new StyleError(`create_atoms is not supported for atom_style ${sys.atomStyle}: body particles come from read_data`);
   const s = sys.state;
-  let type = int(a[0], 'atom type');
+  // create_atoms.html: "type = atom type (1-Ntypes or type label)"
+  let type = int(typeLabelWord(sys, 'atom', a[0]), 'atom type');
   const style = a[1];
   let rest: string[];
   let regionId: string | null = null;
@@ -603,7 +608,7 @@ const createAtoms: Handler = ({ sys }, a) => {
     if (!(key in nv)) throw new StyleError(`unknown create_atoms keyword '${key}'`);
     const vals = rest.slice(k + 1, k + 1 + nv[key]);
     if (vals.length < nv[key]) throw new StyleError(`create_atoms ${key} needs ${nv[key]} value(s)`);
-    if (key === 'basis') basisType.set(int(vals[0], 'basis index'), int(vals[1], 'basis type'));
+    if (key === 'basis') basisType.set(int(vals[0], 'basis index'), int(typeLabelWord(sys, 'atom', vals[1]), 'basis type'));
     else if (key === 'set') kw.set(`set_${vals[0]}`, vals);
     else kw.set(key, vals);
     k += 1 + nv[key];
@@ -948,7 +953,8 @@ const molecule: Handler = ({ sys }, a) => {
         k += 6;
       } else if (key === 'scale') { o.scale = num(a[k + 1], 'scale'); k += 2; } else { o[key as 'toff'] = int(a[k + 1], key); k += 2; }
     }
-    const t = parseMoleculeFile(id, file, sys.readFile(file), o);
+    // molecule.html: type words may be type labels, resolved through the label map at read time
+    const t = parseMoleculeFile(id, file, sys.readFile(file), o, sys.labels);
     sets.push(t);
     sys.log(`Read molecule template ${id}: ${t.natoms} atoms, ${t.bonds.length} bonds, ${t.angles.length} angles, ${t.dihedrals.length} dihedrals, ${t.impropers.length} impropers (${file})`);
   }
@@ -966,7 +972,8 @@ const mass: Handler = ({ sys }, a) => {
   if (s.atomStyle === 'sphere' || s.atomStyle === 'bpm/sphere' || s.atomStyle === 'ellipsoid' || s.atomStyle === 'peri' || isBodyStyle(s.atomStyle)) throw new StyleError(`Cannot set per-type atom mass for atom style ${s.atomStyle}`);
   const m = num(a[1], 'mass');
   if (!(m > 0)) throw new StyleError('mass must be > 0');
-  const [lo, hi] = typeBounds(a[0], s.ntypes);
+  // mass.html: "I can be a type label, which is an alphanumeric string defined by the labelmap command"
+  const [lo, hi] = typeBounds(typeWord(sys.labels, 'atom', a[0] ?? ''), s.ntypes);
   for (let t = lo; t <= hi; t++) s.massByType[t] = m;
   sys.bump();
 };
@@ -1028,21 +1035,48 @@ const readDataCmd: Handler = ({ sys }, a) => {
   sys.log(`Read ${s.n} atoms${s.topo.bonds.n ? `, ${s.topo.bonds.n} bonds` : ''}${s.topo.angles.n ? `, ${s.topo.angles.n} angles` : ''}${s.topo.dihedrals.n ? `, ${s.topo.dihedrals.n} dihedrals` : ''}${s.topo.impropers.n ? `, ${s.topo.impropers.n} impropers` : ''} from ${a[0]}`);
 };
 
-/** write_data file [nocoeff] [pair ii|ij] [nofix] [nolabelmap] [types numeric] — write_data.html. */
+/**
+ * labelmap option args — labelmap.html: "atom or bond or angle or dihedral or improper ... args = list of one or
+ * more numeric-type/type-label pairs", "clear = no args", "write arg = filename". The check_labels keyword only
+ * warns about labels that disagree with their atom types, which the browser engine does not do, so it is refused.
+ */
+const labelmapCmd: Handler = ({ sys }, a) => {
+  const opt = a[0];
+  if (!opt) throw new StyleError('usage: labelmap option args');
+  if (opt === 'clear') {
+    if (a.length !== 1) throw new StyleError('Incorrect number of arguments for labelmap clear command');
+    sys.labels.clear();
+    return;
+  }
+  if (opt === 'write') {
+    if (a.length !== 2) throw new StyleError('Incorrect number of arguments for labelmap write command');
+    sys.writeFile(a[1], labelmapText(sys.labels), false);
+    return;
+  }
+  if (opt === 'check_labels') throw new StyleError('labelmap check_labels is not supported by the browser engine (it only warns about inconsistent type labels)');
+  if (!isLabelKind(opt)) throw new StyleError(`Unknown labelmap keyword ${opt}`);
+  if (!sys.hasBox) throw new StyleError('Labelmap command before simulation box is defined');
+  const s = sys.state;
+  const n = opt === 'atom' ? s.ntypes : opt === 'bond' ? s.topo.nbondtypes : opt === 'angle' ? s.topo.nangletypes : opt === 'dihedral' ? s.topo.ndihedraltypes : s.topo.nimpropertypes;
+  for (const [t, label] of parseLabelPairs(a.slice(1), opt, n)) sys.labels.set(opt, t, label);
+  sys.bump();
+};
+
+/** write_data file [nocoeff] [pair ii|ij] [nofix] [nolabelmap] [types numeric|labels] — write_data.html. */
 const writeDataCmd: Handler = ({ sys }, a) => {
   if (!a[0]) throw new StyleError('usage: write_data file [keywords]');
-  let nocoeff = false, nofix = false, triclinicGeneral = false;
+  let nocoeff = false, nofix = false, triclinicGeneral = false, nolabelmap = false, typesLabels = false;
   let pairStyle: 'ii' | 'ij' | null = null;
   for (let k = 1; k < a.length;) {
-    if (a[k] === 'nocoeff') { nocoeff = true; k++; } else if (a[k] === 'nofix') { nofix = true; k++; } else if (a[k] === 'nolabelmap') k++;
+    if (a[k] === 'nocoeff') { nocoeff = true; k++; } else if (a[k] === 'nofix') { nofix = true; k++; } else if (a[k] === 'nolabelmap') { nolabelmap = true; k++; }
     else if (a[k] === 'pair') {
       if (a[k + 1] !== 'ii' && a[k + 1] !== 'ij') throw new StyleError('write_data pair must be ii or ij');
       pairStyle = a[k + 1] as 'ii' | 'ij';
       k += 2;
     } else if (a[k] === 'types') {
-      // write_data.html: "*types* value = *numeric* or *labels*"; the engine has no type labels
-      if (a[k + 1] === 'labels') throw new StyleError('write_data types labels: type labels are not supported by the browser engine');
-      if (a[k + 1] !== 'numeric') throw new StyleError('write_data types must be numeric or labels');
+      // write_data.html: "*types* value = *numeric* or *labels*"
+      if (a[k + 1] !== 'numeric' && a[k + 1] !== 'labels') throw new StyleError('write_data types must be numeric or labels');
+      typesLabels = a[k + 1] === 'labels';
       k += 2;
     } else if (a[k] === 'triclinic/general') {
       // write_data.html: "*triclinic/general* = write data file in general triclinic format"
@@ -1063,7 +1097,7 @@ const writeDataCmd: Handler = ({ sys }, a) => {
   if (wasCurrent) sys.forcesCurrent(); else sys.forces();
   // write_data.html: "The file may also be a compressed text file (detected by its suffix)"; the browser
   // engine writes stored (uncompressed) gzip members, see gzip.ts.
-  const text = writeData(sys, { nocoeff, pairStyle, nofix, triclinicGeneral });
+  const text = writeData(sys, { nocoeff, pairStyle, nofix, triclinicGeneral, nolabelmap, typesLabels });
   sys.writeFile(a[0], a[0].endsWith('.gz') ? gzipText(text) : text, false);
   sys.log(`Wrote ${sys.state.n} atoms to ${a[0]}`);
 };
@@ -1165,10 +1199,12 @@ const group: Handler = ({ sys }, a) => {
     }
     case 'type': case 'id': case 'molecule': {
       const val = (i: number) => (style === 'type' ? s.type[i] : style === 'id' ? s.id[i] : s.molecule[i]);
-      if (['<', '<=', '>', '>=', '==', '!=', '<>'].includes(args[0])) {
-        const op = args[0];
-        const v1 = int(args[1], 'value');
-        const v2 = op === '<>' ? int(args[2], 'value2') : 0;
+      // group.html: for style type "type labels are converted into numeric types before being evaluated"
+      const typed = style === 'type' ? args.map((w) => (LOGICAL_OPS.includes(w) ? w : typeWord(sys.labels, 'atom', w))) : args;
+      if (LOGICAL_OPS.includes(typed[0])) {
+        const op = typed[0];
+        const v1 = int(typed[1], 'value');
+        const v2 = op === '<>' ? int(typed[2], 'value2') : 0;
         set((i) => {
           const v = val(i);
           switch (op) {
@@ -1177,8 +1213,8 @@ const group: Handler = ({ sys }, a) => {
           }
         });
       } else {
-        if (!args.length) throw new StyleError(`group ${style} needs a list of values`);
-        const lists = args.map(parseList);
+        if (!typed.length) throw new StyleError(`group ${style} needs a list of values`);
+        const lists = typed.map(parseList);
         set((i) => {
           const v = val(i);
           return lists.some(([lo, hi, st]) => v >= lo && v <= hi && (v - lo) % st === 0);
@@ -1311,6 +1347,9 @@ const groupDynamic = (sys: System, id: string, args: string[]): void => {
 
 // ----------------------------------------------------------------- set
 
+/** A type word given as a keyword value (set type, set bond ...): a label becomes its numeric type; a missing word stays missing. */
+const typeLabelWord = (sys: System, kind: LabelKind, w: string | undefined): string => (w === undefined ? '' : typeWord(sys.labels, kind, w));
+
 /** Atoms selected by a set style/ID. */
 const selected = (sys: System, style: string, id: string): number[] => {
   const s = sys.state;
@@ -1320,7 +1359,8 @@ const selected = (sys: System, style: string, id: string): number[] => {
     const [lo, hi] = range(id, Math.max(1, maxAtomId(s)));
     for (let i = 0; i < s.n; i++) if (s.id[i] >= lo && s.id[i] <= hi) out.push(i);
   } else if (style === 'type') {
-    const [lo, hi] = range(id, s.ntypes);
+    // set.html: "for style = type, ID = a range of numeric types or a single type label"
+    const [lo, hi] = typeBounds(typeWord(sys.labels, 'atom', id), s.ntypes);
     for (let i = 0; i < s.n; i++) if (s.type[i] >= lo && s.type[i] <= hi) out.push(i);
   } else if (style === 'mol') {
     let mx = 1;
@@ -1359,7 +1399,7 @@ const set: Handler = ({ sys }, a) => {
     const key = a[k];
     switch (key) {
       case 'type': {
-        const v = value(a[k + 1], 'type');
+        const v = value(typeLabelWord(sys, 'atom', a[k + 1]), 'type');
         for (const i of atoms) {
           const t = Math.trunc(v(i));
           if (t < 1 || t > s.ntypes) throw new StyleError(`set type ${t} is outside 1..${s.ntypes}`);
@@ -1370,7 +1410,7 @@ const set: Handler = ({ sys }, a) => {
         break;
       }
       case 'type/fraction': case 'type/ratio': case 'type/subset': {
-        const t = int(a[k + 1], 'type');
+        const t = int(typeLabelWord(sys, 'atom', a[k + 1]), 'type');
         const amount = num(a[k + 2], key);
         const seed = int(a[k + 3], 'seed');
         if (t < 1 || t > s.ntypes) throw new StyleError(`set type ${t} is outside 1..${s.ntypes}`);
@@ -1724,7 +1764,7 @@ const set: Handler = ({ sys }, a) => {
         break;
       }
       case 'bond': case 'angle': case 'dihedral': case 'improper': {
-        const t = int(a[k + 1], `${key} type`);
+        const t = int(typeLabelWord(sys, key as LabelKind, a[k + 1]), `${key} type`);
         const list = s.topo[`${key}s` as 'bonds' | 'angles' | 'dihedrals' | 'impropers'];
         const ids = new Set(atoms.map((i) => s.id[i]));
         for (let e = 0; e < list.n; e++) {
@@ -2723,7 +2763,7 @@ export const SETUP_COMMANDS: Record<string, Handler> = {
   comm_modify: commModify, lattice, region, create_box: createBox, create_atoms: createAtoms, mass, molecule,
   read_data: readDataCmd, write_data: writeDataCmd, timestep, reset_timestep: resetTimestep,
   group, set, velocity, delete_atoms: deleteAtomsCmd, displace_atoms: displaceAtoms, replicate,
-  change_box: changeBox, create_bonds: createBonds, delete_bonds: deleteBonds,
+  change_box: changeBox, create_bonds: createBonds, delete_bonds: deleteBonds, labelmap: labelmapCmd,
 };
 
 void ALL_GROUP_BIT;

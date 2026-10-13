@@ -281,6 +281,6 @@ describe('compute rdf', () => {
     await expect(runScript(`${RDF_SYSTEM}\ncompute r all rdf 1 1 cutoff 5.0`)).rejects.toThrow('in pairs');
     await expect(runScript(`${RDF_SYSTEM}\ncompute r all rdf 1 1 1 cutoff 0`)).rejects.toThrow('cutoff must be > 0');
     await expect(runScript(`${RDF_SYSTEM}\ncompute r all rdf 1 1 1 frobnicate 5.0`)).rejects.toThrow('frobnicate');
-    await expect(runScript(`${RDF_SYSTEM}\ncompute r all rdf 1 C1 1 cutoff 5.0`)).rejects.toThrow('type labels are not supported');
+    await expect(runScript(`${RDF_SYSTEM}\ncompute r all rdf 1 C1 1 cutoff 5.0`)).rejects.toThrow('Atom type string C1 not found in labelmap');
   });
 });

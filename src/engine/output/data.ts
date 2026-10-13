@@ -9,6 +9,7 @@ import type { TriBody } from '../triBonus';
 import { expandTemplateTopology } from '../template';
 import { BODY_RECORD, bodyRecordOffset, bodyRecordStride, parseBodyStyle, principalFrame } from '../bodies';
 import { makeBox } from '../domain';
+import { LABEL_KINDS, LABEL_SECTION, isValidLabel, labelKindOfSection, type LabelKind } from '../labelmap';
 import { generalBoxFromRestricted, generalFrame, rotateVector, toGeneralPoint, toRestrictedPoint, unrotateVector, type GeneralFrame, type Mat3, type V3 } from '../triclinic_general';
 
 /*
@@ -103,6 +104,12 @@ const HEADER_KEYS: [RegExp, string][] = [
   [/^ellipsoids$/, 'ellipsoids'], [/^bodies$/, 'bodies'], [/^lines$/, 'lines'], [/^triangles$/, 'triangles'],
 ];
 
+/** Sections whose lines name atom or molecular types: a Type Labels section must come before them (read_data.html). */
+const TYPE_SECTIONS = new Set([
+  'Atoms', 'Masses', 'Bonds', 'Angles', 'Dihedrals', 'Impropers', 'Pair Coeffs', 'PairIJ Coeffs',
+  'Bond Coeffs', 'Angle Coeffs', 'Dihedral Coeffs', 'Improper Coeffs',
+]);
+
 const SECTIONS = new Set([
   'Atoms', 'Velocities', 'Masses', 'Bonds', 'Angles', 'Dihedrals', 'Impropers',
   'Pair Coeffs', 'PairIJ Coeffs', 'Bond Coeffs', 'Angle Coeffs', 'Dihedral Coeffs', 'Improper Coeffs',
@@ -130,6 +137,8 @@ const CLASS2_SECTIONS: Record<string, ['angle' | 'dihedral' | 'improper', string
   'BondBond13 Coeffs': ['dihedral', 'bb13'],
   'AngleAngle Coeffs': ['improper', 'aa'],
 };
+
+for (const title of Object.keys(CLASS2_SECTIONS)) TYPE_SECTIONS.add(title);
 
 export interface ReadDataOptions {
   add: 'none' | 'append' | 'merge' | { id: number; mol: number };
@@ -430,6 +439,20 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   /** atom_style line / tri: atoms with lineflag 1 (triangleflag 1) waiting for their Lines (Triangles) line: atom ID -> density. */
   const linePending = new Map<number, number>();
   const triPending = new Map<number, number>();
+  // read_data.html: a Type Labels section must come before any section involving types ("Must read Type Labels before any section involving types")
+  let typesRead = false;
+  /**
+   * A type column of a data line: a numeric type (plus the offset) or a type label of the kind. Offsets are
+   * ignored on a label (read_data.html: "the type labels will determine the actual types directly").
+   */
+  const typeCol = (v: string, kind: LabelKind, off: number, at: number, what: string): number => {
+    if (!/^[+-]?\d/.test(v)) {
+      const t = sys.labels.typeOf(kind, v);
+      if (t === undefined) throw new StyleError(`data file line ${at}: Invalid line in ${what} section of data file: ${kind} type label ${v} is not defined`);
+      return t;
+    }
+    return intOf(v, `${kind}-type`, at) + off;
+  };
   /** atom_style body: atoms with bodyflag 1 waiting for their Bodies entry. */
   const bodyPending = new Set<number>();
   const coeffLines: { section: string; line: string; at: number }[] = [];
@@ -467,6 +490,10 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
       continue;
     }
     if (!SECTIONS.has(title)) throw new StyleError(`unknown data file section '${title}' (line ${k})`);
+    const labelKind = labelKindOfSection(title);
+    if (labelKind && typesRead) throw new StyleError('Must read Type Labels before any section involving types');
+    if (labelKind && adding) throw new StyleError(`read_data: ${title} with add append/merge is not supported by the browser engine`);
+    if (TYPE_SECTIONS.has(title)) typesRead = true;
     // read_data.html: "The *Bodies* section must appear if atom_style body is used"; its entries have no fixed
     // line count (Ninteger and Ndouble values per body, read line by line), so it is read here.
     if (title === 'Bodies') {
@@ -524,7 +551,11 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
     const count = (() => {
       switch (title) {
         case 'Atoms': case 'Velocities': return natoms;
-        case 'Masses': case 'Pair Coeffs': return ntypesFile;
+        case 'Masses': case 'Pair Coeffs': case 'Atom Type Labels': return ntypesFile;
+        case 'Bond Type Labels': return h['bond types'] ?? 0;
+        case 'Angle Type Labels': return h['angle types'] ?? 0;
+        case 'Dihedral Type Labels': return h['dihedral types'] ?? 0;
+        case 'Improper Type Labels': return h['improper types'] ?? 0;
         case 'PairIJ Coeffs': return (ntypesFile * (ntypesFile + 1)) / 2;
         case 'Bonds': return h.bonds ?? 0;
         case 'Angles': return h.angles ?? 0;
@@ -587,7 +618,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
               case 'id': id[a] = intOf(v, 'atom-ID', at) + (idBase || 0); break;
               case 'mol': mol[a] = intOf(v, 'molecule-ID', at) + (intOf(v, 'molecule-ID', at) > 0 ? molBase : 0); break;
               case 'type': {
-                const t = intOf(v, 'atom-type', at) + toff;
+                const t = typeCol(v, 'atom', toff, at, 'Atoms');
                 if (t < 1 || t > s.ntypes) throw new StyleError(`data file line ${at}: atom type ${t} is outside 1..${s.ntypes}`);
                 type[a] = t;
                 break;
@@ -791,7 +822,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         // read_data.html: "This section cannot be used for atom styles that define a mass for individual atoms - e.g. atom_style sphere"
         if (s.atomStyle === 'sphere' || s.atomStyle === 'bpm/sphere' || isLineStyle(s.atomStyle) || isTriStyle(s.atomStyle)) throw new StyleError(`Cannot set mass for atom style ${s.atomStyle}`);
         for (const { w, at } of body) {
-          const t = intOf(w[0], 'atom type', at) + toff;
+          const t = typeCol(w[0], 'atom', toff, at, 'Masses');
           if (t < 1 || t > s.ntypes) throw new StyleError(`data file line ${at}: atom type ${t} is outside 1..${s.ntypes}`);
           const m = numOf(w[1], 'mass', at);
           if (!(m > 0)) throw new StyleError(`data file line ${at}: mass must be > 0`);
@@ -804,17 +835,41 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const width = kind === 'bonds' ? 2 : kind === 'angles' ? 3 : 4;
         const off = kind === 'bonds' ? boff : kind === 'angles' ? aoff : kind === 'dihedrals' ? doff : ioff;
         const ntype = kind === 'bonds' ? s.topo.nbondtypes : kind === 'angles' ? s.topo.nangletypes : kind === 'dihedrals' ? s.topo.ndihedraltypes : s.topo.nimpropertypes;
+        const lkind: LabelKind = kind === 'bonds' ? 'bond' : kind === 'angles' ? 'angle' : kind === 'dihedrals' ? 'dihedral' : 'improper';
         for (const { w, at } of body) {
           if (w.length < 2 + width) throw new StyleError(`data file line ${at}: ${title} needs ID type and ${width} atom IDs`);
-          const t = intOf(w[1], 'type', at) + off;
+          const t = typeCol(w[1], lkind, off, at, title);
           if (t < 1 || t > ntype) throw new StyleError(`data file line ${at}: ${title.slice(0, -1).toLowerCase()} type ${t} is outside 1..${ntype}`);
           const ids = w.slice(2, 2 + width).map((v) => intOf(v, 'atom-ID', at) + (idBase || 0));
           topo.push({ kind, type: t, ids });
         }
         break;
       }
+      // read_data.html: the type-label sections give one label per numeric type (ID label); the sections
+      // that follow must name their types numerically
+      case 'Atom Type Labels': case 'Bond Type Labels': case 'Angle Type Labels': case 'Dihedral Type Labels': case 'Improper Type Labels': {
+        const lk = labelKind!;
+        for (const { w, at } of body) {
+          if (w.length !== 2) throw new StyleError(`data file line ${at}: Invalid format in section: ${title}`);
+          const t = intOf(w[0], 'type', at);
+          if (t < 1 || t > count) throw new StyleError(`data file line ${at}: ${title.slice(0, -' Type Labels'.length)} type ${t} is outside 1..${count}`);
+          if (!isValidLabel(w[1])) throw new StyleError(`data file line ${at}: Invalid type label ${w[1]}`);
+          const other = sys.labels.typeOf(lk, w[1]);
+          if (other !== undefined && other !== t) throw new StyleError(`${title} map is incomplete`);
+          sys.labels.set(lk, t, w[1]);
+        }
+        if (!sys.labels.complete(lk, count)) throw new StyleError(`${title} map is incomplete`);
+        break;
+      }
       default:
-        for (const { w, at } of body) coeffLines.push({ section: title, line: w.join(' '), at });
+        for (const { w, at } of body) {
+          // read_data.html: "ID coeffs" with a numeric ID (measured with native read_data: a label there is refused)
+          const nid = title === 'PairIJ Coeffs' ? 2 : 1;
+          for (let c = 0; c < nid; c++) {
+            if (!/^[+-]?\d+$/.test(w[c] ?? '')) throw new StyleError(`Expected integer parameter instead of '${w[c] ?? ''}' in input script or data file`);
+          }
+          coeffLines.push({ section: title, line: w.join(' '), at });
+        }
     }
   }
   if (natoms > 0 && !sawAtoms) throw new StyleError('data file: an Atoms section is required when atoms > 0');
@@ -924,7 +979,7 @@ export const shortest = (v: number): string => {
   return m ? `${m[1]}e${m[2]}${m[3].padStart(2, '0')}` : t;
 };
 
-export interface WriteDataOptions { nocoeff: boolean; pairStyle: 'ii' | 'ij' | null; nofix?: boolean; triclinicGeneral?: boolean }
+export interface WriteDataOptions { nocoeff: boolean; pairStyle: 'ii' | 'ij' | null; nofix?: boolean; triclinicGeneral?: boolean; nolabelmap?: boolean; typesLabels?: boolean }
 
 /** Maps every 3-vector of a flat array (x, v, omega, ...) through f; out is a new array. */
 const mapVectors = (arr: ArrayLike<number>, f: (v: V3) => V3): Float64Array => {
@@ -1010,6 +1065,17 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
     out.push(...[0, 1, 2].map((d) => `${shortest(s.box.lo[d])} ${shortest(s.box.hi[d])} ${'xyz'[d]}lo ${'xyz'[d]}hi`));
     if (s.box.triclinic) out.push(`${shortest(s.box.tilt[0])} ${shortest(s.box.tilt[1])} ${shortest(s.box.tilt[2])} xy xz yz`);
   }
+  // write_data.html: "nolabelmap = do not write out type labels". Measured with native write_data: each kind's
+  // section follows the box and comes before Masses, in the order atom, bond, angle, dihedral, improper; a kind
+  // is written when its label map covers every numeric type and its style is defined (atoms always have one)
+  if (!opts.nolabelmap) {
+    const nOf: Record<LabelKind, number> = { atom: s.ntypes, bond: t.nbondtypes, angle: t.nangletypes, dihedral: t.ndihedraltypes, improper: t.nimpropertypes };
+    for (const k of LABEL_KINDS) {
+      if (k !== 'atom' && !sys.ff[k]) continue;
+      if (nOf[k] === 0 || !sys.labels.complete(k, nOf[k])) continue;
+      out.push('', LABEL_SECTION[k], '', ...sys.labels.entries(k).map(([ty, lb]) => `${ty} ${lb}`));
+    }
+  }
   // measured with native write_data: atom_style sphere (per-atom masses) writes no Masses section; a
   // hybrid style with sphere writes it (per-type and per-atom masses both exist there)
   // measured with native write_data: atom_style peri writes no Masses section either
@@ -1048,6 +1114,9 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   // is native's (SimState.order, including its spatial sort at run setup).
   const order = nativeOrder(s);
   const cols = atomStyleCols(s.atomStyle);
+  // write_data.html: "types value = numeric or labels". Measured with native write_data: a type without a label is
+  // written as an empty field, so the line has two blanks in a row
+  const typeText = (k: LabelKind, ty: number): string => (opts.typesLabels ? sys.labels.labelOf(k, ty) ?? '' : String(ty));
   if ((isLineStyle(s.atomStyle) || isTriStyle(s.atomStyle)) && gen) throw new StyleError('write_data: line and tri particles in a general triclinic box are not supported by the browser engine');
   // general output: positions, dipole directions and velocities rotated to the general frame
   const xo = gen ? mapVectors(s.x, (p) => toGeneralPoint(gen.Q, gen.origin, p)) : s.x;
@@ -1064,7 +1133,7 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
         case 'mol': return String(s.molecule[i]);
         case 'tindex': return String(s.tmplIndex![i]);
         case 'tatom': return String(s.tmplAtom![i]);
-        case 'type': return String(s.type[i]);
+        case 'type': return typeText('atom', s.type[i]);
         case 'q': return shortest(s.q[i]);
         // measured with native write_data: diameter 2r, and density = mass / volume (mass itself for r = 0)
         case 'diameter': return shortest(2 * s.radius![i]);
@@ -1155,7 +1224,7 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
   const local = new Int32Array(maxId + 1).fill(-1);
   order.forEach((i, k) => { local[s.id[i]] = k; });
   const slot = (id: number): number => (id <= maxId ? local[id] : -1);
-  for (const [list, title, owner] of [[t.bonds, 'Bonds', 0], [t.angles, 'Angles', 1], [t.dihedrals, 'Dihedrals', 1], [t.impropers, 'Impropers', 1]] as const) {
+  for (const [list, title, owner, lk] of [[t.bonds, 'Bonds', 0, 'bond'], [t.angles, 'Angles', 1, 'angle'], [t.dihedrals, 'Dihedrals', 1, 'dihedral'], [t.impropers, 'Impropers', 1, 'improper']] as const) {
     // measured with native write_data: no topology sections for atom_style template (the templates hold them)
     if (!list.n || isTemplateStyle(s.atomStyle)) continue;
     out.push('', title, '');
@@ -1166,7 +1235,7 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
       const ids = Array.from(list.atoms.subarray(e * w, (e + 1) * w));
       // Measured with native LAMMPS (black box): an interaction turned off by delete_bonds (negative type) is
       // written with its positive type
-      out.push(`${k + 1} ${Math.abs(list.type[e])} ${ids.join(' ')}`);
+      out.push(`${k + 1} ${typeText(lk, Math.abs(list.type[e]))} ${ids.join(' ')}`);
     });
   }
   // fix cmap: the N crossterms header and a CMAP section after the topology (measured with native

@@ -1,4 +1,5 @@
 import { StyleError } from './force/types';
+import type { LabelKind, LabelMap } from './labelmap';
 
 /*
  * Molecule templates — docs.lammps.org/molecule.html: "Define a molecule
@@ -77,7 +78,7 @@ const strip = (line: string): string => {
   return (k < 0 ? line : line.slice(0, k)).trim();
 };
 
-export const parseMoleculeFile = (id: string, name: string, text: string, o: MoleculeOptions): MoleculeTemplate => {
+export const parseMoleculeFile = (id: string, name: string, text: string, o: MoleculeOptions, labels?: LabelMap): MoleculeTemplate => {
   if (/\.json$/i.test(name)) throw new StyleError(`molecule ${id}: JSON molecule files (${name}) are not supported by the browser engine; use the native format`);
   const lines = text.split('\n');
   const head: Record<string, number[]> = {};
@@ -108,17 +109,37 @@ export const parseMoleculeFile = (id: string, name: string, text: string, o: Mol
     const sec = strip(lines[k]);
     if (!sec) { k++; continue; }
     k += 2; // the keyword line and the skipped line after it
-    const rows = (n: number, width: number): number[][] => {
-      const out: number[][] = [];
+    const wordRows = (n: number, width: number): string[][] => {
+      const out: string[][] = [];
       for (; out.length < n && k < lines.length; k++) {
         const l = strip(lines[k]);
         if (!l) continue;
-        const w = l.split(/\s+/).map(Number);
-        if (w.length < width || w.slice(0, width).some((v) => !Number.isFinite(v))) throw new StyleError(`molecule ${id}: bad line '${l}' in the ${sec} section of ${name}`);
+        const w = l.split(/\s+/);
+        if (w.length < width) throw new StyleError(`molecule ${id}: bad line '${l}' in the ${sec} section of ${name}`);
         out.push(w);
       }
       if (out.length < n) throw new StyleError(`molecule ${id}: the ${sec} section of ${name} has ${out.length} of ${n} lines`);
       return out;
+    };
+    const rows = (n: number, width: number): number[][] => {
+      const out: number[][] = [];
+      for (const w of wordRows(n, width)) {
+        const v = w.map(Number);
+        if (v.slice(0, width).some((x) => !Number.isFinite(x))) throw new StyleError(`molecule ${id}: bad line '${w.join(' ')}' in the ${sec} section of ${name}`);
+        out.push(v);
+      }
+      return out;
+    };
+    /** The numeric type of a type word of this file: a number (plus the offset) or a label of the kind (labels take no offset). */
+    const typeOf = (word: string, kind: LabelKind, off: number): number => {
+      if (/^[+-]?\d/.test(word)) {
+        const v = Number(word);
+        if (!Number.isInteger(v)) throw new StyleError(`molecule ${id}: bad type '${word}' in the ${sec} section of ${name}`);
+        return v + off;
+      }
+      const v = labels?.typeOf(kind, word);
+      if (v === undefined) throw new StyleError(`molecule ${id}: ${kind} type label ${word} is not defined in the ${sec} section of ${name}`);
+      return v;
     };
     const atomIndex = (v: number, what: string) => {
       if (!Number.isInteger(v) || v < 1 || v > natoms) throw new StyleError(`molecule ${id}: ${what} ${v} is outside 1..${natoms} in ${name}`);
@@ -130,7 +151,7 @@ export const parseMoleculeFile = (id: string, name: string, text: string, o: Mol
         for (const r of rows(natoms, 4)) { const i = atomIndex(r[0], 'atom ID') - 1; for (let d = 0; d < 3; d++) t.x[3 * i + d] = r[1 + d] * o.scale; }
         break;
       case 'Types':
-        for (const r of rows(natoms, 2)) t.type[atomIndex(r[0], 'atom ID') - 1] = r[1] + o.toff;
+        for (const w of wordRows(natoms, 2)) t.type[atomIndex(Number(w[0]), 'atom ID') - 1] = typeOf(w[1], 'atom', o.toff);
         break;
       case 'Molecules':
         t.mol = new Int32Array(natoms);
@@ -144,13 +165,15 @@ export const parseMoleculeFile = (id: string, name: string, text: string, o: Mol
         const width = { Bonds: 2, Angles: 3, Dihedrals: 4, Impropers: 4 }[sec];
         const off = { Bonds: o.boff, Angles: o.aoff, Dihedrals: o.doff, Impropers: o.ioff }[sec];
         const list = { Bonds: t.bonds, Angles: t.angles, Dihedrals: t.dihedrals, Impropers: t.impropers }[sec];
-        for (const r of rows(count(sec.toLowerCase()), 2 + width)) {
+        const kind: LabelKind = { Bonds: 'bond', Angles: 'angle', Dihedrals: 'dihedral', Impropers: 'improper' }[sec] as LabelKind;
+        for (const w of wordRows(count(sec.toLowerCase()), 2 + width)) {
           // native refuses a bonded entry that names one atom twice (measured with native LAMMPS, black box:
           // "1 1 1 2 2" in Angles, "1 1 1 1" in Bonds and "1 1 1 2 3 1" in Dihedrals all stop with
           // "Invalid atom ID in <section> section of molecule file")
-          const ids = r.slice(2, 2 + width);
-          if (new Set(ids).size !== ids.length) throw new StyleError(`molecule ${id}: Invalid atom ID in ${sec} section of ${name}: ${r.join(' ')}`);
-          list.push([r[1] + off, ...ids.map((v) => atomIndex(v, 'atom ID'))]);
+          const raw = w.slice(2, 2 + width).map(Number);
+          if (new Set(raw).size !== raw.length) throw new StyleError(`molecule ${id}: Invalid atom ID in ${sec} section of ${name}: ${w.join(' ')}`);
+          const ids = raw.map((v) => atomIndex(v, 'atom ID'));
+          list.push([typeOf(w[1], kind, off), ...ids]);
         }
         break;
       }

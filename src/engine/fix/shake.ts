@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { TopoList } from '../types';
 import { int, num } from '../commands/args';
+import { typeWord } from '../labelmap';
 import { massOf } from '../atoms';
 
 /*
@@ -190,7 +191,8 @@ export class FixShake extends Fix {
       }
       if (!mode) throw new StyleError(`fix ${style}: '${w}' must follow a constraint keyword b, a, t or m`);
       if (mode === 'm') this.masses.push(num(w, 'mass'));
-      else (mode === 'b' ? this.bondTypes : mode === 'a' ? this.angleTypes : this.atomTypes).add(int(w, `${mode} type`));
+      // fix_shake.html: "*b* values = one or more bond types (may use type labels)"
+      else (mode === 'b' ? this.bondTypes : mode === 'a' ? this.angleTypes : this.atomTypes).add(int(typeWord(sys.labels, mode === 'b' ? 'bond' : mode === 'a' ? 'angle' : 'atom', w), `${mode} type`));
     }
     if (sys.fixes.some((f) => f instanceof FixShake && f.id !== id)) throw new StyleError('"there can only be one shake or rattle fix defined in a simulation"');
     this.virialGlobal = true;

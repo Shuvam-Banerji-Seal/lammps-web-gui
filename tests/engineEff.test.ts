@@ -155,9 +155,14 @@ describe('pair eff/cut, fix nve/eff, compute temp/eff and ke/eff', () => {
   it('refuses what is not ported, by name', async () => {
     const run = (text: string) => newSession().session.execute(text);
     const withData = () => { const n = newSession(); n.session.addFile('h2.data', H2_DATA); return n.session; };
-    await expect(withData().execute(`${HEAD}read_data h2.data\npair_style eff/cut 1.0 ecp\n`)).rejects.toThrow(/ecp/);
-    await expect(run('units electron\natom_style electron\nregion b block -1 1 -1 1 -1 1\ncreate_box 2 b\npair_style eff/cut 1.0\npair_coeff 1 2 1.0\n'))
-      .rejects.toThrow(/ECP parameters/);
+    // ecp with an element that has no default ECP parameters (pair_eff_cut.cpp settings: "No default parameters for this atom ECP")
+    await expect(withData().execute(`${HEAD}read_data h2.data\npair_style eff/cut 1.0 ecp 1 Xx\n`)).rejects.toThrow(/ecp/);
+    // an ECP line for a type that has no ecp element is refused (native would index element 0 silently)
+    await expect(run('units electron\natom_style electron\nregion b block -1 1 -1 1 -1 1\ncreate_box 2 b\npair_style eff/cut 1.0\npair_coeff 1 s 0.3 2.2 0.8\n'))
+      .rejects.toThrow(/has no element/);
+    // the ECP lines take 5 (s) or 7 (p) words
+    await expect(run('units electron\natom_style electron\nregion b block -1 1 -1 1 -1 1\ncreate_box 2 b\npair_style eff/cut 1.0 ecp 1 Si\npair_coeff 1 s 0.3 2.2\n'))
+      .rejects.toThrow(/takes A B C/);
     await expect(run('units metal\natom_style atomic\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nmass 1 1.0\ncreate_atoms 1 single 0 0 0\npair_style eff/cut 1.0\npair_coeff * *\nrun 0\n'))
       .rejects.toThrow(/requires atom attributes/);
     await expect(run('units metal\natom_style electron\nregion b block 0 2 0 2 0 2\ncreate_box 1 b\nmass 1 1.0\npair_style eff/cut 1.0\npair_coeff * *\nrun 0\n'))

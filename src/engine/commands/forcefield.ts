@@ -44,6 +44,11 @@ const pairCoeff: Handler = ({ sys }, a) => {
   if (!p) throw new StyleError('pair_coeff needs a pair_style first');
   if (p.ntypes !== s.ntypes) p.allocate(s.ntypes);
   if (a.length < 2) throw new StyleError('usage: pair_coeff I J args');
+  if (p.rawCoeff?.(a)) {
+    p.coeff(a, sys.styleContext());
+    sys.bump();
+    return;
+  }
   // pair_coeff.html: "I,J = numeric atom types (see asterisk form below), or type labels"
   const args = [typeWord(sys.labels, 'atom', a[0]), typeWord(sys.labels, 'atom', a[1]), ...a.slice(2)];
   p.coeff(args, sys.styleContext());

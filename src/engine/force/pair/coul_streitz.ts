@@ -77,6 +77,25 @@ import { erfcExact } from '../erfc';
  */
 
 const TWO_OVER_SQRTPI = 2 / Math.sqrt(Math.PI);
+
+/**
+ * The taper of the shifted-force Slater part with taper width w (dsf only): f = 1 for r <= rc - w, 0 for r >= rc, and in
+ * between with x = (r - (rc - w)) / w: f = (1 - x)^3 (1 + 3x + 6x^2), df/dr its derivative. As native LAMMPS does
+ * (MathSpecial::mdftaper, src/MATH/math_special.cpp at b332f28). The pair's erfc part is not tapered.
+ */
+export const mdfTaper = (r: number, rc: number, width: number, out: { f: number; df: number }): void => {
+  const rmin = rc - width;
+  if (r <= rmin) { out.f = 1; out.df = 0; return; }
+  if (r >= rc) { out.f = 0; out.df = 0; return; }
+  const x = (r - rmin) / (rc - rmin);
+  const dx = 1 / (rc - rmin);
+  const t1 = 1 - x;
+  const t2 = 1 + 3 * x + 6 * x * x;
+  const cube = t1 * t1 * t1;
+  out.f = cube * t2;
+  out.df = (-3 * t1 * t1 * t2 + cube * (3 + 12 * x)) * dx;
+};
+const TAPER_OUT = { f: 1, df: 0 };
 /** Series branch: |za - zb| R below this uses the Taylor expansion in d = (za - zb)/2. */
 const SERIES_DR = 0.2;
 
@@ -178,6 +197,8 @@ export class PairCoulStreitz extends Pair {
   /** Excluded pairs stay in the list so a special weight can be rejected (see compute). */
   keepExcluded = true;
   mode: 'wolf' | 'dsf' | 'ewald' = 'wolf';
+  /** dsf taper width (the optional value after the alpha of pair_style coul/streitz dsf); 0 when none. */
+  taper = 0;
   cutGlobal = 0;
   alpha = 0;
   private fileName = '';
@@ -211,9 +232,12 @@ export class PairCoulStreitz extends Pair {
     if (kw === 'wolf' || kw === 'dsf') {
       if (args.length !== 3 && args.length !== 4) throw new StyleError(`pair_style coul/streitz with keyword ${kw} needs a damping parameter: pair_style coul/streitz cutoff ${kw} alpha [taper]`);
       this.alpha = parseNum(args[2], 'alpha');
-      // pair_coul.rst: "the optional arguments *wolf* and *dsf* with the value representing the width of taper" (default 0)
+      // docs.lammps.org/pair_coul.html: "the optional arguments *wolf* and *dsf* with the value representing the width of
+      // taper that smoothly terminates the Coulomb integrals. ... For backward compatibility, the default taper width is zero."
       const taper = args.length === 4 ? parseNum(args[3], 'taper width') : 0;
-      if (taper !== 0) throw new StyleError(`pair_style coul/streitz ${kw} taper width ${taper} is not reproduced by the browser engine (only width 0)`);
+      if (kw === 'wolf' && taper !== 0) throw new StyleError(`pair_style coul/streitz wolf taper width ${taper} is not reproduced by the browser engine (only width 0)`);
+      if (taper < 0) throw new StyleError('pair_style coul/streitz taper width must be >= 0');
+      this.taper = taper;
       this.mode = kw;
       this.coulLong = false;
     } else if (kw === 'ewald') {
@@ -369,9 +393,12 @@ export class PairCoulStreitz extends Pair {
           const Gc = cS * this.rcS[t] + pI.Z * qj * this.rcUj[t] + pJ.Z * qi * this.rcUi[t];
           const dGc = cS * this.rcDS[t] + pI.Z * qj * this.rcDUj[t] + pJ.Z * qi * this.rcDUi[t];
           const Gsf = G - Gc - (r - rc) * dGc;
-          e = pref * (erfcc / r - this.eShiftW + dsfK * (r - rc)) + C * Gsf;
+          // dsf: the Slater part is multiplied by the taper (native fennell_sum: ftap on the ci terms, not on the erfc part)
+          let tf = 1, dtf = 0;
+          if (dsf && this.taper > 0) { mdfTaper(r, rc, this.taper, TAPER_OUT); tf = TAPER_OUT.f; dtf = TAPER_OUT.df; }
+          e = pref * (erfcc / r - this.eShiftW + dsfK * (r - rc)) + C * tf * Gsf;
           fpair = (pref * (erfcc / (rsq * r) + (TWO_OVER_SQRTPI * alpha * ex) / rsq + forceScale * this.fShiftW / r)
-            - C * (dG - dGc) / r);
+            - C * (tf * (dG - dGc) + dtf * Gsf) / r);
         } else {
           const grij = g * r;
           const ex = Math.exp(-grij * grij);

@@ -143,6 +143,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_mc', names: { FIXES: ['charge/regulation'] }, load: () => import('../engine-gpl/registry/mc') as Promise<StyleModule> },
   { id: 'gpl_langevin_angmom', names: { HOOKS: ['angmom'] }, load: () => import('../engine-gpl/registry/langevin_angmom') as Promise<StyleModule> },
   { id: 'gpl_qeq', names: { HOOKS: ['qeq/point', 'qeq/shielded', 'qeq/slater'] }, load: () => import('../engine-gpl/registry/qeq_native') as Promise<StyleModule> },
+  { id: 'gpl_ctip', names: { PAIRS: ['coul/ctip'], FIXES: ['qeq/ctip'] }, load: () => import('../engine-gpl/registry/ctip') as Promise<StyleModule> },
   { id: 'gpl_deposit', names: { HOOKS: ['deposit'] }, load: () => import('../engine-gpl/registry/deposit') as Promise<StyleModule> },
   { id: 'gpl_shock', names: { FIXES: ['msst', 'nphug', 'wall/piston', 'append/atoms'] }, load: () => import('../engine-gpl/registry/shock') as Promise<StyleModule> },
   { id: 'gpl_filtercorotate', names: { FIXES: ['filter/corotate'] }, load: () => import('../engine-gpl/registry/filtercorotate') as Promise<StyleModule> },

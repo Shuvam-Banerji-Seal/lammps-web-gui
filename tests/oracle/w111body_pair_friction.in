@@ -1,0 +1,21 @@
+# oracle: pair_style body/rounded/polygon with friction (mu 0.3) and tangential and normal damping (c_n 0.1, c_t 0.2, delta_ua 0.5), two tilted rounded squares moving into each other with spin, fix nve/body, 100 steps: thermo pe ke etotal and the atom state
+# Measured (engine vs native, max relative error): thermo 1.5e-12, per-atom state 3.4e-14. Without friction (mu 0) the native atom positions after 100 steps differ by about 1e-3, so the friction term is exercised.
+# oracle-inputs: w50bc_tilted.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+units           lj
+dimension       2
+atom_style      body rounded/polygon 1 6
+atom_modify     map array
+read_data       w50bc_tilted.data
+set             atom 1 vx 0.5 vy 0.0 vz 0.0
+set             atom 2 vx -0.5 vy 0.0 vz 0.0
+pair_style      body/rounded/polygon 0.1 0.2 0.3 0.5 1.0
+pair_coeff      * * 100 2
+comm_modify     vel yes
+fix             1 all nve/body
+fix             2 all enforce2d
+timestep        0.01
+thermo_style    custom step pe ke etotal press pxx pyy pxy
+thermo_modify   format float %.15g
+thermo          10
+run             100

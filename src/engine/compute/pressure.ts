@@ -57,7 +57,7 @@ export class ComputePressure extends Compute {
     }
   }
 
-  private virial(): Float64Array {
+  protected virial(): Float64Array {
     const a = this.sys.forces();
     const w = this.w;
     w.fill(0);

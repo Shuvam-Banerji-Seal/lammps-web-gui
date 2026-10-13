@@ -1,0 +1,15 @@
+# oracle: fix grem on top of fix nvt (GPL port of REPLICA/fix_grem.cpp), single replica, 500-atom lj liquid of examples/PACKAGES/grem/lj-single
+# oracle-measured: thermo max rel 4.9e-14 (press), per-atom max rel 1.4e-9 (vy, abs 9e-16), forces max rel 2.6e-10 (fy)
+# oracle-inputs: grem_lj.data
+# oracle-compare: rel=1e-8 abs=1e-10
+units           real
+atom_style      full
+pair_style      lj/cut 5.0
+read_data       grem_lj.data
+timestep        1.0
+thermo_style    custom step temp pe etotal press vol
+thermo_modify   format float %.15g
+thermo          10
+fix             fxnvt all nvt temp 300.0 300.0 1000.0
+fix             fxgREM all grem 400 -.01 -30000 fxnvt
+run             1000

@@ -1,0 +1,23 @@
+# oracle: fix electron/stopping/fit (GPL port of EXTRA-FIX/fix_electron_stopping_fit.cpp), Si PKA in Si, 6x6x6 diamond cells of examples/PACKAGES/electron_stopping/in.cascade_SiSi, 100 steps
+# oracle-measured: thermo max rel 4.9e-11 (dt), f_3 max rel 3.5e-12; per-atom max rel 4.4e-9 (fz, abs 4.2e-9), vel 2.2e-11
+# oracle-potentials: SiC.tersoff.zbl
+# oracle-compare: rel=1e-8 abs=1e-10
+units            metal
+boundary         p p p
+lattice          diamond 5.431
+region           box block -3 3 -3 3 -3 3
+create_box       1 box
+create_atoms     1 box
+pair_style       tersoff/zbl
+pair_coeff       * * SiC.tersoff.zbl Si
+mass             1 28.0855
+velocity         all create 300 42534 mom yes rot yes loop geom
+group            pka id 1
+velocity         pka set 1120 1620 400
+fix              1 all nve
+fix              2 all dt/reset 1 NULL 0.001 0.05 emax 10.0
+fix              3 all electron/stopping/fit 4.63 3.3e-3 4.0e-8
+thermo_style     custom step dt time temp pe ke f_3
+thermo_modify    format float %.15g
+thermo           5
+run              100

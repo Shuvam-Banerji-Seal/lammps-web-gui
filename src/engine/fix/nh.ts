@@ -309,6 +309,25 @@ export class FixNH extends Fix {
     removeCompute(this.sys, `${this.id}_press`);
   }
 
+  /**
+   * Kinetic tensor of the pressure's temperature compute taken at the initial step's pressure evaluation (null before the
+   * first evaluation). Used by fix grem's PRESSURE/GREM compute, which reads the same stored value for its scalar.
+   */
+  get initialKinetic(): Float64Array | null { return this.keInitial; }
+
+  /**
+   * extract (used by fix grem, docs.lammps.org/fix_nh.html's extract): "t_start" and "t_stop" are the thermostat
+   * targets (null without a temp keyword); "p_start", "p_stop" and "p_flag" are the six barostat entries (null
+   * without a barostat). Other names are null.
+   */
+  extract(name: string): number | number[] | null {
+    if (name === 't_start' || name === 't_stop') return this.tstat ? (name === 't_start' ? this.tStart : this.tStop) : null;
+    if (name === 'p_start') return this.pstat ? Array.from(this.pStart) : null;
+    if (name === 'p_stop') return this.pstat ? Array.from(this.pStop) : null;
+    if (name === 'p_flag') return this.pstat ? this.pFlag.map((b) => (b ? 1 : 0)) : null;
+    return null;
+  }
+
   modify(key: string, values: string[]): number {
     if (key === 'temp') {
       const c = this.sys.compute(values[0] ?? '');

@@ -1,0 +1,20 @@
+# oracle: fix gle with noneq C matrix and every 2 (GPL port of EXTRA-FIX/fix_gle.cpp), 256-atom lj fcc.
+# oracle-measured: thermo max rel 7.5e-15; atoms max rel 6.1e-11 (vx), forces max rel 2.8e-11.
+# oracle-inputs: gle_lj_noneq.A gle_lj.C
+# oracle-compare: rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.2 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+timestep        0.005
+fix             1 all gle 6 1.2 1.2 31415 gle_lj_noneq.A noneq gle_lj.C every 2
+thermo_style    custom step temp pe ke etotal press
+thermo_modify   format float %.15g
+thermo          10
+run             100

@@ -3,7 +3,8 @@ import type { SimState } from '../../types';
 import type { Geometry } from '../../domain';
 import { parseNum } from '../util';
 import { KSpaceBase, invertUpper } from './ewald';
-import { fft3d, isFFTSize, nextFFTSize } from '../fft';
+import { fft3d, isFFTSize } from '../fft';
+import { pppmGplHook } from './pppmHook';
 
 /*
  * kspace_style pppm accuracy — docs.lammps.org/kspace_style.html: "The pppm
@@ -34,8 +35,9 @@ import { fft3d, isFFTSize, nextFFTSize } from '../fft';
  *          weights; F_j = C q_j E(r_j),
  *   W_ab = C / (2 V) sum_k G |rho|^2 (delta_ab - 2 k_a k_b (1/k^2 + 1/(4g^2))).
  * Automatic g_ewald, mesh and order: see selectPppmAuto below (orthorhombic
- * boxes, with or without slab). Triclinic boxes keep the older estimate and
- * log a warning, because their native choice is not reproduced yet.
+ * boxes, with or without slab). Triclinic boxes (and kspace_modify diff ad)
+ * take the native choice from the lazily loaded GPL helper (PppmGplHook, see
+ * src/engine-gpl/pppm), reached through styles.ts pppmGplHook().
  */
 
 /*
@@ -154,6 +156,44 @@ export const pppmKspaceError = (g: number, h: number, P: number, q2: number, n: 
   return (q2 / (L * L)) * Math.pow(ha, P) * Math.sqrt(((g * L) / n) * Math.sqrt(2 * Math.PI) * s);
 };
 
+/** The inputs of the native G-ewald and mesh choice for a triclinic box (or diff ad), see PppmGplHook. */
+export interface PppmGridRequest {
+  lx: number; ly: number; lz: number;
+  /** tilt factors (domain h[5], h[4], h[3]: xy, xz, yz) */
+  xy: number; xz: number; yz: number;
+  natoms: number;
+  /** qqrd2e times the sum of q_i^2 */
+  q2: number;
+  /** absolute force accuracy */
+  accuracy: number;
+  /** real-space cutoff */
+  cutoff: number;
+  order: number;
+  /** kspace_modify gewald (0 when automatic) */
+  gUser: number;
+  /** kspace_modify mesh (null when automatic) */
+  meshUser: [number, number, number] | null;
+  /** kspace_modify slab volfactor (1 for no slab) */
+  slab: number;
+  /** kspace_modify diff ad (orthogonal boxes only) */
+  ad: boolean;
+}
+
+export interface PppmGridResult {
+  g: number;
+  mesh: [number, number, number];
+}
+
+/**
+ * The lazily loaded GPL helper (src/engine-gpl/registry/pppm.ts, HOOKS 'pppm'): native's triclinic and diff ad grid
+ * choice, and the analytic-differentiation solver. Core code reaches it only through styles.ts pppmGplHook().
+ */
+export interface PppmGplHook {
+  grid(request: PppmGridRequest): PppmGridResult;
+  /** kspace_modify diff ad: the analytic-differentiation style built from a kspace_style pppm instance (null when not applicable). */
+  promoteAd(base: KSpacePPPM): KSpacePPPM | null;
+}
+
 /** Smallest size >= n that factors into 2, 3 and 5. */
 const factorableAtLeast = (n: number): number => {
   let m = Math.max(2, n);
@@ -261,7 +301,7 @@ export class KSpacePPPM extends KSpaceBase {
         return 1;
       }
       case 'diff':
-        if (values[0] !== 'ik') throw new StyleError('kspace_modify diff ad is not supported by the browser engine (ik is)');
+        if (values[0] !== 'ik') throw new StyleError(`kspace_modify diff ${values[0]} is not supported here (diff ad is built by the kspace_modify handler through pppmGplHook)`);
         return 1;
       case 'kmax/ewald': throw new StyleError('kspace_modify kmax/ewald applies to ewald, not pppm');
       default: return super.modify(key, values);
@@ -288,27 +328,17 @@ export class KSpacePPPM extends KSpaceBase {
         ctx.log(`WARNING: kspace_style pppm: with kspace_modify slab, the automatic G-ewald and mesh match native LAMMPS only at accuracy 1e-5 or finer; set kspace_modify gewald and mesh to native's values for an exact match`);
       }
     } else {
-      if (this.gewaldUser <= 0 || !this.meshUser) {
-        ctx.log(`WARNING: kspace_style pppm: automatic G-ewald and mesh for triclinic boxes are not reproduced; using the older estimate`);
-      }
-      this.gEwald = this.chooseGEwald(s, qqrd2e);
-      this.legacyMesh(geom);
+      // triclinic box: the GPL helper reproduces native G-ewald and mesh choice, see src/engine-gpl/pppm
+      const r = pppmGplHook().grid({
+        lx: geom.lx, ly: geom.ly, lz: geom.lz, xy: geom.xy, xz: geom.xz, yz: geom.yz, natoms: this.natoms,
+        q2: qqrd2e * this.qsqsum, accuracy: this.absAccuracy(s, qqrd2e), cutoff: cutCoul, order: this.order,
+        gUser: this.gewaldUser, meshUser: this.meshUser, slab: this.slab, ad: false,
+      });
+      this.gEwald = r.g;
+      this.mesh = r.mesh;
     }
     this.greenBox = '';
     ctx.log(`  G vector (1/distance) = ${this.gEwald}\n  grid = ${this.mesh.join(' ')}\n  stencil order = ${this.order}`);
-  }
-
-  /** Mesh of the older estimate (triclinic boxes). */
-  private legacyMesh(geom: Geometry): void {
-    if (this.meshUser) this.mesh = [...this.meshUser];
-    else {
-      // mesh spacing h with (h g)^P ~ relative accuracy, scaled for the smooth part
-      const L = [geom.lx, geom.ly, geom.lz * this.slab];
-      const P = this.order;
-      const hg = Math.pow(Math.max(1e-12, this.accuracy), 1 / P) * 2.0;
-      const h = hg / this.gEwald;
-      this.mesh = L.map((len) => nextFFTSize(Math.max(2 * P, Math.ceil(len / h)))) as [number, number, number];
-    }
   }
 
   /** Optimal influence function for the current box. */

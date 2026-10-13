@@ -94,7 +94,7 @@ The block below is checked against the engine's registries by
 Not supported (an error names each): native binary restart files (`write_restart` / `read_restart`
 use the engine's own format), `atom_style` other than
 atomic / charge / bond / angle / molecular / full / sphere, `pppm/disp`, `msm`,
-`kspace_modify diff ad`, `run_style`, atom-style `hybrid/scaled` factors.
+`run_style`, atom-style `hybrid/scaled` factors.
 
 ## Architecture
 

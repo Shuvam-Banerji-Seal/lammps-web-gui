@@ -1,0 +1,50 @@
+# oracle: pair edpd with fix edpd/source given by regions (the region form of examples/PACKAGES/dpd-meso/edpd/in.edpd-region, cut down to an 8 x 8 x 8 box with 2048 atoms; 50 + 50 steps, the length at which the chaotic divergence from native's rounding stays below 1e-10)
+# Measured with native LAMMPS (black box): engine vs native max error 9.4e-14 (thermo) and 4.5e-10 (per-atom, scale max(1,|x|)) under vitest (Node 24); under Node 20 with a rolldown bundle 7.8e-14 (thermo) and 2.9e-9 (per-atom). The region sources and the per-pair draws follow native's order step by step; 50 + 50 steps for the same chaotic reason as w93meso_edpd.
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=0
+# oracle-files: temp.profile
+units                   lj
+dimension               3
+boundary                p p p
+neighbor                0.2 bin
+neigh_modify        every 1 delay 0 check yes
+
+atom_style              edpd
+comm_modify vel yes
+
+region     edpd     block -4 4 -4 4 -4 4 units box
+create_box          1 edpd
+create_atoms        1 random 2048 276438 NULL
+mass                1 1.0
+set                 atom * edpd/temp 1.0
+set                 atom * edpd/cv 1.0E5
+
+pair_style          edpd 1.58 9872598
+pair_coeff          1 1 18.75 4.5 0.41 1.58 1.41E-5 2.0 1.58 &
+                        power 10.54 -3.66 3.44 -4.10 &
+                        kappa -0.44 -3.21 5.04  0.00
+
+compute             mythermo all temp
+thermo              50
+thermo_style        custom step temp pe ke etotal press
+thermo_modify       temp mythermo
+thermo_modify       flush yes
+thermo_modify       format float %.15g
+
+velocity            all create 1.0 432982 loop local dist gaussian
+
+region upper block -4.0  4.0   0.0 4.0 -4.0 4.0
+region lower block -4.0  4.0  -4.0 0.0 -4.0 4.0
+
+fix         mvv     all mvv/edpd 0.5
+fix         upper   all edpd/source region upper  0.011
+fix         lower   all edpd/source region lower -0.011
+
+timestep            0.01
+run                 50
+reset_timestep      0
+
+compute     temp    all edpd/temp/atom
+compute     ccT     all chunk/atom bin/1d y 0.0 1.0
+fix         stat    all ave/chunk 1 50 50 ccT c_temp density/number norm sample file temp.profile
+
+run                 50

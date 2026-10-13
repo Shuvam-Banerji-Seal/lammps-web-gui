@@ -23,7 +23,7 @@ import { SUPER_BLOCK, SUPER_DEFAULTS, SUPER_INERTIA } from './superellipsoid';
  * individual styles."
  */
 export const atomSubStyles = (st: AtomStyle): string[] => (st.startsWith('body ') ? ['body'] : st === 'ellipsoid superellipsoid' ? ['ellipsoid', 'superellipsoid'] : st.startsWith('hybrid ') ? st.slice(7).trim().split(/\s+/) : [st])
-  .map((x) => (x.startsWith('template:') ? 'template' : x));
+  .map((x) => (x.startsWith('template:') ? 'template' : x.startsWith('tdpd:') ? 'tdpd' : x));
 /** atom_style template ID of a style (the ID after the template keyword), or null when there is no template sub-style. */
 export const templateStyleId = (st: AtomStyle): string | null => {
   const w = (st.startsWith('hybrid ') ? st.slice(7).trim().split(/\s+/) : [st]).find((x) => x.startsWith('template:'));
@@ -182,6 +182,8 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
   if (isSphStyle(st)) {
     for (const name of Object.keys(SPH_DEFAULTS)) m.set(name, { int: false, cols: SPH_WIDTH[name] ?? 0, data: new Float64Array(0) });
   }
+  // atom_style edpd, mdpd, tdpd (DPD-MESO, see dpdMeso below)
+  if (isDpdMesoStyle(st)) for (const [name, cols] of dpdMesoProps(st)) m.set(name, { int: false, cols, data: new Float64Array(0) });
   return m;
 };
 
@@ -263,6 +265,52 @@ export const sphProp = (s: SimState, name: string, what: string): Float64Array =
   if (!c || !isSphStyle(s.atomStyle)) throw new StyleError(`${what} requires atom style sph`);
   return c.data;
 };
+/*
+ * atom_style edpd, mdpd and tdpd (DPD-MESO package; atom_style.html: "The *edpd* style is for energy-conserving dissipative
+ * particle dynamics (eDPD) particles which store a temperature (edpd_temp), and heat capacity (edpd_cv)"; "The *mdpd* style
+ * is for many-body dissipative particle dynamics (mDPD) particles which store a density (rho) for considering density-dependent
+ * many-body interactions"; "The *tdpd* style is for transport dissipative particle dynamics (tDPD) particles which store a
+ * set of chemical concentration. An integer "cc_species" is required to specify the number of chemical species involved in a
+ * tDPD system."). Every style also stores vest (the velocity at the half step of the modified velocity-Verlet fixes, 3 per
+ * atom). Stored as internal per-atom props ('#' cannot start an i_name or d_name). Keys: EDPD_* for edpd (vest_temp is the
+ * temperature at the half step), MDPD_RHO and MDPD_DRHO for mdpd, TDPD_CC and TDPD_CC_FLUX (cc_species columns) for tdpd.
+ */
+export const EDPD_TEMP = '#edpd_temp';
+export const EDPD_CV = '#edpd_cv';
+export const EDPD_FLUX = '#edpd_flux';
+export const EDPD_VEST_TEMP = '#vest_temp';
+export const MDPD_RHO = '#rho';
+export const MDPD_DRHO = '#drho';
+export const TDPD_CC = '#cc';
+export const TDPD_CC_FLUX = '#cc_flux';
+export const DPD_VEST = '#vest';
+/** Defaults of an atom created without them: edpd_temp 1 and edpd_cv 1.0e5 (measured with native LAMMPS, black box: write_data after create_atoms). */
+export const DPD_MESO_DEFAULTS: Record<string, number> = { [EDPD_TEMP]: 1, [EDPD_CV]: 1.0e5 };
+/** atom_style edpd (DPD-MESO). */
+export const isEdpdStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('edpd');
+/** atom_style mdpd (DPD-MESO). */
+export const isMdpdStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('mdpd');
+/** Number of chemical species of atom_style tdpd N (0 without tdpd). */
+export const tdpdSpecies = (st: AtomStyle): number => {
+  const w = (st.startsWith('hybrid ') ? st.slice(7).trim().split(/\s+/) : [st]).find((x) => x.startsWith('tdpd:'));
+  return w ? Number(w.slice('tdpd:'.length)) : 0;
+};
+/** atom_style tdpd (DPD-MESO). */
+export const isTdpdStyle = (st: AtomStyle): boolean => tdpdSpecies(st) > 0;
+/** Styles with the DPD-MESO per-atom properties (edpd, mdpd or tdpd). */
+export const isDpdMesoStyle = (st: AtomStyle): boolean => isEdpdStyle(st) || isMdpdStyle(st) || isTdpdStyle(st);
+/** The DPD-MESO internal props of a style with their number of columns (vest is always stored). */
+export const dpdMesoProps = (st: AtomStyle): [string, number][] => {
+  const out: [string, number][] = [];
+  if (isEdpdStyle(st)) out.push([EDPD_TEMP, 0], [EDPD_CV, 0], [EDPD_FLUX, 0], [EDPD_VEST_TEMP, 0]);
+  if (isMdpdStyle(st)) out.push([MDPD_RHO, 0], [MDPD_DRHO, 0]);
+  const nsp = tdpdSpecies(st);
+  if (nsp) out.push([TDPD_CC, nsp], [TDPD_CC_FLUX, nsp]);
+  out.push([DPD_VEST, 3]);
+  return out;
+};
+/** Keys of the DPD-MESO props (restart.ts stores them with the state). */
+export const isDpdMesoKey = (k: string): boolean => k === EDPD_TEMP || k === EDPD_CV || k === EDPD_FLUX || k === EDPD_VEST_TEMP || k === MDPD_RHO || k === MDPD_DRHO || k === TDPD_CC || k === TDPD_CC_FLUX || k === DPD_VEST;
 
 /** atom_style oxdna: the 5' and 3' partner atom IDs of each atom, internal per-atom props (0 = none). */
 export const OXDNA_5P = '#id5p';
@@ -503,6 +551,12 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     else if (name in DIELECTRIC_DEFAULTS) c.data.fill(DIELECTRIC_DEFAULTS[name], w * n0, w * n);
     else if (name in SUPER_DEFAULTS) c.data.fill(SUPER_DEFAULTS[name], w * n0, w * n);
     else if (name in SPH_DEFAULTS) c.data.fill(SPH_DEFAULTS[name], w * n0, w * n);
+    else if (name in DPD_MESO_DEFAULTS) c.data.fill(DPD_MESO_DEFAULTS[name], w * n0, w * n);
+  }
+  // atom_style edpd: vest_temp starts as the temperature of the atom (measured with native LAMMPS, black box)
+  if (isEdpdStyle(s.atomStyle) && !(a.custom?.has(EDPD_VEST_TEMP))) {
+    const vt = s.custom.get(EDPD_VEST_TEMP), t = s.custom.get(EDPD_TEMP);
+    if (vt && t) for (let i = n0; i < n; i++) vt.data[i] = t.data[i];
   }
   // a created dielectric atom starts with q_scaled = q / epsilon (LAMMPS: the scaled charge of a point charge)
   if (isDielectricStyle(s.atomStyle) && !(a.custom?.has(DIEL_QSCALED))) {

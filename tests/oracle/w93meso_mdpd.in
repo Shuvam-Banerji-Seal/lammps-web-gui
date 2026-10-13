@@ -1,0 +1,37 @@
+# oracle: pair mdpd with mdpd/rhosum (many-body DPD, hybrid/overlay) and fix mvv/dpd, a cut-down of examples/PACKAGES/dpd-meso/mdpd/in.mdpd (a thin fcc film of about 3800 atoms, 200 steps)
+# Measured with native LAMMPS (black box): engine vs native max error 3.2e-11 (thermo) and 3.6e-9 (per-atom, scale max(1,|x|)) under vitest (Node 24) and under Node 20 with a rolldown bundle (3.2e-11 thermo, 3.6e-9 per-atom). The densities of mdpd/rhosum and the per-pair draws follow native's order step by step.
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=0
+units 		        lj
+dimension	        3
+boundary	        p p p
+neighbor	        0.3 bin
+neigh_modify        every 1 delay 0 check yes
+
+atom_style	        mdpd
+comm_modify vel yes
+
+region     mdpd     block -12 12 -6 6 -6 6 units box
+create_box          1 mdpd
+
+lattice             fcc 6
+region     film     block -10 10 -4 4 -2 2 units box
+create_atoms        1 region film
+
+pair_style          hybrid/overlay mdpd/rhosum mdpd 1.0 1.0 9872598
+pair_coeff          1 1 mdpd/rhosum  0.75
+pair_coeff          1 1 mdpd         -40 25 18.0 1.0 0.75
+mass                1 1.0
+
+compute             mythermo all temp
+thermo              100
+thermo_style        custom step temp pe ke etotal press
+thermo_modify       temp mythermo
+thermo_modify       flush yes
+thermo_modify       format float %.15g
+
+velocity            all create 1.0 38497 loop local dist gaussian
+
+fix         mvv     all mvv/dpd
+
+timestep            0.01
+run                 200

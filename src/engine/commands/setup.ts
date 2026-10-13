@@ -4,7 +4,7 @@ import { StyleError, typeBounds } from '../force/types';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle } from '../atoms';
+import { EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle } from '../atoms';
 import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
 import { parseStl } from '../stl';
 import { typeWord, parseLabelPairs, labelmapText, isLabelKind, type LabelKind } from '../labelmap';
@@ -73,7 +73,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph'];
+const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph', 'edpd', 'mdpd', 'tdpd'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -91,6 +91,11 @@ const atomStyle: Handler = ({ sys }, a) => {
   // atom_style.html: "*sphere* arg = 0/1 (optional) for static/dynamic particle radii"; the engine
   // never changes radii during a run, so both values behave the same.
   const sphereArg = (w: string | undefined) => w === '0' || w === '1';
+  // atom_style.html: "tdpd Nspecies": the number of chemical species is a positive integer
+  const tdpdArg = (w: string | undefined): string => {
+    if (!w || !/^[1-9]\d*$/.test(w)) throw new StyleError('Invalid atom_style tdpd command');
+    return `tdpd:${Number(w)}`;
+  };
   // atom_style.html: "*template* arg = template-ID" and "template-ID = ID of molecule template specified in a separate"
   // (the molecule command follows); the ID is kept in the style string (template:ID, see atoms.ts).
   const templateArg = (id: string | undefined): string => {
@@ -105,6 +110,13 @@ const atomStyle: Handler = ({ sys }, a) => {
       if (w === 'hybrid') throw new StyleError('atom_style hybrid cannot have hybrid as a sub-style');
       if (w === 'body') throw new StyleError('atom_style hybrid with a body sub-style is not supported by the browser engine');
       if (w === 'line' || w === 'tri') throw new StyleError(`atom_style hybrid with a ${w} sub-style is not supported by the browser engine (use atom_style ${w} alone)`);
+      // atom_style.html: "tdpd Nspecies" (its argument is the number of chemical species)
+      if (w === 'tdpd') {
+        if (subs.some((x) => x.startsWith('tdpd:'))) throw new StyleError('atom_style hybrid lists tdpd twice');
+        subs.push(tdpdArg(a[k + 1]));
+        k++;
+        continue;
+      }
       if (w === 'template') {
         if (subs.some((x) => x.startsWith('template:'))) throw new StyleError('atom_style hybrid lists template twice');
         subs.push(templateArg(a[k + 1]));
@@ -123,6 +135,13 @@ const atomStyle: Handler = ({ sys }, a) => {
       throw new StyleError('atom_style hybrid: you cannot combine the template style with a bond, angle, molecular or full sub-style');
     }
     sys.atomStyle = `hybrid ${subs.join(' ')}`;
+    return;
+  }
+  // atom_style.html: "tdpd args = Nspecies" with Nspecies the number of chemical species; the count is kept in the style
+  // string (tdpd:N, atoms.ts tdpdSpecies)
+  if (a[0] === 'tdpd') {
+    if (a.length !== 2) throw new StyleError('usage: atom_style tdpd Nspecies');
+    sys.atomStyle = tdpdArg(a[1]) as AtomStyle;
     return;
   }
   if (a[0] === 'template') {
@@ -1518,6 +1537,41 @@ const set: Handler = ({ sys }, a) => {
       // rescale the particle charge accordingly so that the real charge (e.g., as read from a data file) stays
       // intact." The page says "The value for the dielectric constant must be >= 0.0"; measured with native LAMMPS
       // (black box): 0 and -2 stop with Invalid epsilon value 0 in set command, 2.0 gives q 1 and q_scaled 0.5.
+      // set.html: "Keywords *edpd/temp* and *edpd/cv* set the temperature and volumetric heat capacity of an eDPD particle as
+      // defined by the DPD-MESO package. Currently, only atom_style edpd defines particles with these attributes. The values
+      // for the temperature and heat capacity must be positive."
+      case 'edpd/temp': case 'edpd/cv': {
+        if (!isEdpdStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute ${key} for atom style ${s.atomStyle}`);
+        const v = value(a[k + 1], key);
+        const arr = s.custom.get(key === 'edpd/temp' ? EDPD_TEMP : EDPD_CV)!.data;
+        for (const i of atoms) {
+          const x = v(i);
+          if (!(x > 0)) throw new StyleError(`Invalid ${key} value ${x} in set command`);
+          arr[i] = x;
+        }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
+      // set.html: "Keyword *cc* sets the chemical concentration of a tDPD particle for a specified species as defined by the
+      // DPD-MESO package. ... An integer for "index" selects a chemical species (1 to Nspecies) ... The value for the chemical
+      // concentration must be >= 0.0."
+      case 'cc': {
+        const nsp = tdpdSpecies(s.atomStyle);
+        if (!nsp) throw new StyleError(`Cannot set attribute cc for atom style ${s.atomStyle}`);
+        const idx = Number(a[k + 1]);
+        if (!Number.isInteger(idx) || idx < 1 || idx > nsp) throw new StyleError(`Invalid cc species index ${a[k + 1]} in set command (1 to ${nsp})`);
+        const v = value(a[k + 2], key);
+        const cc = s.custom.get(TDPD_CC)!.data;
+        for (const i of atoms) {
+          const x = v(i);
+          if (!(x >= 0)) throw new StyleError(`Invalid cc value ${x} in set command`);
+          cc[nsp * i + idx - 1] = x;
+        }
+        changed = atoms.length;
+        k += 3;
+        break;
+      }
       case 'epsilon': {
         if (!isDielectricStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute epsilon for atom style ${s.atomStyle}`);
         if (!String(a[k + 1]).startsWith('v_') && !(Number(a[k + 1]) > 0)) throw new StyleError(`Invalid epsilon value ${a[k + 1]} in set command`);

@@ -1,0 +1,24 @@
+# oracle: fix wall/body/polygon (yplane walls at y 0 and 24) with fix npt/body (x barostat only) and pair body/rounded/polygon, from examples/body/in.wall2d cut down: 2x2 replicate of data.squares (8 rounded squares, box 24 x 24, boundary p f p), velocity create 0.5 with rot yes, c_n 0.1, c_t 0.1, mu 0.1, delta_ua 0.5, 1000 steps (the example runs 100000 on a 4x4 replicate). Measured with native LAMMPS (black box): engine vs native max relative error 1.0e-11 (pe, step 800) over the thermo rows.
+# oracle-inputs: w111body_squares.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+units           lj
+dimension       2
+atom_style      body rounded/polygon 1 6
+atom_modify     map array
+read_data       w111body_squares.data
+replicate       2 2 1
+velocity        all create 0.5 980411 dist gaussian mom yes rot yes
+change_box      all boundary p f p
+pair_style      body/rounded/polygon 0.1 0.1 0.1 0.5 0.5
+pair_coeff      * * 100 2
+comm_modify     vel yes
+neighbor        0.5 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        0.001
+fix             1 all npt/body temp 0.5 0.5 1.0 x 0.001 0.1 1.0 fixedpoint 0 0 0
+fix             2 all enforce2d
+fix             3 all wall/body/polygon 2000 50 50 yplane 0 24
+thermo_style    custom step pe ke etotal press pxx pyy pxy
+thermo_modify   format float %.15g
+thermo          100
+run             1000

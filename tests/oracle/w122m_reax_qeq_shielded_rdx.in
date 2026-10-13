@@ -1,0 +1,23 @@
+# oracle: ReaxFF with fix qeq/shielded qfile reaxff (chi, eta and gamma extracted from pair reaxff, as in examples/reaxff in.reaxff.rdx-shielded), RDX cell of 21 atoms (the w55reax_rdx data), 10 NVE steps at timestep 0.25 fs
+# oracle-inputs: w55reax_rdx.data w55reax_rdx.control
+# oracle-potentials: ffield.reax.rdx
+# measured: the charges agree with native to about 1e-7 relative (pe row 0 differs by 2e-7, press row 0 by 6e-5), so rel=1e-4 here. v_nqeq is not compared: the engine's point/shielded solve is an augmented-system CG (solveMatrix in src/engine/fix/qeq.ts), native runs two CG solves (s and t) with the history start, and the iteration counts differ (native 22 at setup, engine 28). Not matched: the native two-CG iteration path for qeq/shielded.
+# oracle-compare: thermo=all atoms=all rel=1e-4 abs=1e-6 skip=v_nqeq
+units           real
+atom_style      charge
+boundary        p p p
+read_data       w55reax_rdx.data
+pair_style      reaxff w55reax_rdx.control
+pair_coeff      * * ffield.reax.rdx H C O N
+fix             2 all qeq/shielded 1 10.0 1.0e-6 100 reaxff
+neighbor        2.5 bin
+neigh_modify    every 1 delay 0 check no
+timestep        0.25
+fix             1 all nve
+compute         reax all pair reaxff
+variable        eqeq equal c_reax[14]
+variable        nqeq equal f_2
+thermo_style    custom step pe ebond evdwl ecoul ke etotal press v_eqeq v_nqeq
+thermo_modify   format float %.15g
+thermo          1
+run             10

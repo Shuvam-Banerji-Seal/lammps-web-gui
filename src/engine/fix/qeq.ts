@@ -3,6 +3,7 @@ import { StyleError, typeBounds } from '../force/types';
 import { erfcExact } from '../force/erfc';
 import { PairCoulStreitz, pointUval, slaterS } from '../force/pair/coul_streitz';
 import type { System } from '../system';
+import { gplHook } from '../gplHooks';
 
 /*
  * fix qeq/point, qeq/shielded, qeq/dynamic and qeq/fire — docs.lammps.org/fix_qeq.html
@@ -117,7 +118,25 @@ import type { System } from '../system';
  * Unsupported qeq styles and qfile keywords throw a StyleError naming them.
  */
 
+/** pair_style reaxff as qeq/shielded sees it: its extract() of chi, eta, gamma (duck-typed; the pair lives in engine-gpl). */
+interface ReaxQeqSource {
+  qeqParameters(ntypes: number): { chi: Float64Array; eta: Float64Array; gamma: Float64Array };
+  attachQeqFix(): void;
+}
+const isReaxQeqSource = (o: unknown): o is ReaxQeqSource => typeof (o as ReaxQeqSource | null)?.qeqParameters === 'function';
+
 type QeqKind = 'point' | 'shielded' | 'dynamic' | 'fire' | 'slater';
+
+/** The charge history of the qeq/slater solves (src/engine-gpl/qeq/history.ts, the lazy HOOKS entry 'qeq/slater'). */
+export interface QeqHistory {
+  readonly n: number;
+  initialGuesses(idx: number[]): { s: Float64Array; t: Float64Array };
+  shift(idx: number[], sx: Float64Array, tx: Float64Array): void;
+  matvecCount(sIt: number, tIt: number): number;
+}
+export interface QeqHistoryHook {
+  create(n: number, q: Float64Array): QeqHistory;
+}
 
 interface Params {
   chi: Float64Array;
@@ -168,6 +187,10 @@ export class FixQeq extends Fix {
   private alpha = 0.2;
   private dsf = false;
   private fromPair = false;
+  /** qeq/shielded with qfile reaxff: chi, eta, gamma of the active pair_style reaxff, read at each solve. */
+  private fromReax = false;
+  /** qeq/slater: the charge history of the CG solves (created at the first solve, see QeqHistory). */
+  private history: QeqHistory | null = null;
   scalarFlag = true;
   extscalar = 0;
 
@@ -236,10 +259,17 @@ export class FixQeq extends Fix {
       // the parameters come from the active pair style (resolved at each solve)
       this.fromPair = true;
     } else {
-      if (qfileSpecial(this.qfile)) {
-        throw new StyleError(`fix ${this.style}: qfile '${this.qfile}' (parameters from a pair style) is not supported by the browser engine`);
+      if (kind === 'shielded' && this.qfile === 'reaxff') {
+        // fix_qeq_shielded.cpp (b332f28) extract_reax: "pair->extract("chi", tmp)", "eta", "gamma" of pair reaxff
+        this.fromReax = true;
+        // the pair must know of the fix (pair reaxff checkqeq yes, pair_reaxff.cpp init_style)
+        this.reaxSource()?.attachQeqFix();
+      } else {
+        if (qfileSpecial(this.qfile)) {
+          throw new StyleError(`fix ${this.style}: qfile '${this.qfile}' (parameters from a pair style) is not supported by the browser engine`);
+        }
+        this.parseQfile(sys.readFile(this.qfile));
       }
-      this.parseQfile(sys.readFile(this.qfile));
     }
 
   }
@@ -282,6 +312,32 @@ export class FixQeq extends Fix {
     this.params = { chi, eta, gamma, zeta, qcore };
   }
 
+  /**
+   * qeq/shielded with qfile reaxff: chi, eta and gamma of each type from the pair_style reaxff (its extract()). The pair
+   * is found directly or among the sub-styles of pair hybrid. The fix is attached to the pair (checkqeq yes requires it).
+   */
+  private reaxSource(): ReaxQeqSource | null {
+    const pair = this.sys.ff.pair as unknown as { subs?: { style: unknown }[] } | null;
+    let src: ReaxQeqSource | null = isReaxQeqSource(pair) ? pair : null;
+    for (const sub of pair?.subs ?? []) if (!src && isReaxQeqSource(sub.style)) src = sub.style;
+    return src;
+  }
+
+  private reaxParams(): Params {
+    const n = this.sys.state.ntypes;
+    const src = this.reaxSource();
+    if (!src) throw new StyleError('No reaxff pair style for fix qeq/shielded');
+    const q = src.qeqParameters(n);
+    const zero = new Float64Array(n + 1);
+    const s = this.sys.state;
+    for (let i = 0; i < s.n; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      const t = s.type[i];
+      if (q.chi[t] === 0 && q.eta[t] === 0 && q.gamma[t] === 0) throw new StyleError(`No QEq parameters for atom type ${t} provided by pair reaxff`);
+    }
+    return { chi: q.chi, eta: q.eta, gamma: q.gamma, zeta: zero, qcore: zero };
+  }
+
   /** qeq/slater: parameters of the active coul/streitz pair style (qfile coul/streitz); chi, eta = J, zeta, qcore = Z. */
   private slaterParams(): Params {
     if (!this.fromPair) return this.params!;
@@ -316,7 +372,7 @@ export class FixQeq extends Fix {
 
   private solve(): void {
     const s = this.sys.state;
-    const p = this.kind === 'slater' ? this.slaterParams() : this.params!;
+    const p = this.kind === 'slater' ? this.slaterParams() : this.fromReax ? this.reaxParams() : this.params!;
     const bit = this.groupBit;
     const shielded = this.kind === 'shielded';
     // group atoms (owned)
@@ -591,9 +647,13 @@ export class FixQeq extends Fix {
     const bS = new Float64Array(ng);
     const bT = new Float64Array(ng).fill(-1);
     for (let k = 0; k < ng; k++) bS[k] = -chi[k];
-    const sRes = solveOne(bS, null);
-    const tRes = solveOne(bT, null);
-    this.iterations = sRes.it;
+    // the history (src/engine-gpl/qeq/history.ts) gives the initial guesses and the iteration count
+    const n = this.sys.state.n;
+    if (!this.history || this.history.n !== n) this.history = gplHook<QeqHistoryHook>('qeq/slater').create(n, s.q);
+    const guess = this.history.initialGuesses(idx);
+    const sRes = solveOne(bS, guess.s);
+    const tRes = solveOne(bT, guess.t);
+    this.iterations = this.history.matvecCount(sRes.it, tRes.it);
     if (this.warn && (!sRes.ok || !tRes.ok)) {
       this.sys.warn(`Fix ${this.style} CG convergence failed after ${this.maxiter} iterations (maxiter reached)`);
     }
@@ -601,6 +661,7 @@ export class FixQeq extends Fix {
     for (let k = 0; k < ng; k++) { sumS += sRes.x[k]; sumT += tRes.x[k]; }
     const q = new Float64Array(ng);
     for (let k = 0; k < ng; k++) q[k] = sRes.x[k] - (sumS / sumT) * tRes.x[k];
+    this.history.shift(idx, sRes.x, tRes.x);
     return q;
   }
 

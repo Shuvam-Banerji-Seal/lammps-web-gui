@@ -21,6 +21,7 @@ import { PairCoulLong, PairLJCutCoulLong } from './force/pair/coul_long';
 import { KSpaceEwald } from './force/kspace/ewald';
 import { KSpacePPPM, KSpacePPPMCG, type PppmGplHook } from './force/kspace/pppm';
 import { setPppmGplHook } from './force/kspace/pppmHook';
+import { setGplHook } from './gplHooks';
 import { setBornNumdiffHook } from './compute/bornNumdiffHook';
 import type { BornNumdiffHook } from './compute/born_matrix';
 import * as pairSimple from './registry/pair_simple';
@@ -243,6 +244,8 @@ export const loadStyleGroup = (g: LazyGroup): Promise<void> => {
         const add = mod[kind];
         if (add) Object.assign(REGISTRY_OF[kind], add);
       }
+      // every HOOKS helper is also stored under its command word for gplHook() (gplHooks.ts), read by the core fix or command
+      for (const [word, hook] of Object.entries(mod.HOOKS ?? {})) setGplHook(word, hook);
       // the native PPPM helper (gpl_pppm) is read by the core PPPM through its slot, not through HOOKS
       const pppmHook = mod.HOOKS?.pppm;
       if (pppmHook) setPppmGplHook(pppmHook as PppmGplHook);

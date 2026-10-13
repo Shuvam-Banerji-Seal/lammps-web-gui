@@ -4,7 +4,7 @@ import { appendAtoms, maxAtomId, isMolecularStyle } from '../atoms';
 import type { System } from '../system';
 import { insertionRegion, insertionStream, insertionBox, num, posInt, separation, appendMolecule, type InsertionRegion } from './pour';
 import { geometricCenter, type MoleculeTemplate } from '../molecule';
-import { cosExact, sinExact } from '../trigExact';
+import { gplHook } from '../gplHooks';
 import { latticeScale } from '../commands/args';
 import type { RanPark } from '../rng';
 
@@ -99,31 +99,13 @@ interface ClusterRebuilder { rebuildClusters(): void; }
 /** 2*pi as fix_deposit.cpp's MY_2PI. */
 const TWO_PI = 2 * Math.PI;
 
-/**
- * Rotation matrix of fix_deposit.cpp: norm3(r), axisangle_to_quat(r, theta), quat_to_mat (math_extra.h, b332f28),
- * which gives the rounding of native LAMMPS for the molecule orientation (a molecule's atoms at exactly the cutoff
- * distance are counted the same way only with the same rounding).
- */
-const nativeRotation = (r: number[], theta: number): number[][] => {
-  const v = [r[0], r[1], r[2]];
-  const val = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
-  if (val > 0.0) {
-    const scale = 1.0 / Math.sqrt(val);
-    v[0] *= scale; v[1] *= scale; v[2] *= scale;
-  }
-  const halfa = 0.5 * theta;
-  // C's sin and cos (correctly rounded in practice) rather than the engine's Math.sin / Math.cos (trigExact.ts)
-  const sina = sinExact(halfa);
-  const q = [cosExact(halfa), v[0] * sina, v[1] * sina, v[2] * sina];
-  const w2 = q[0] * q[0], i2 = q[1] * q[1], j2 = q[2] * q[2], k2 = q[3] * q[3];
-  const twoij = 2.0 * q[1] * q[2], twoik = 2.0 * q[1] * q[3], twojk = 2.0 * q[2] * q[3];
-  const twoiw = 2.0 * q[1] * q[0], twojw = 2.0 * q[2] * q[0], twokw = 2.0 * q[3] * q[0];
-  return [
-    [w2 + i2 - j2 - k2, twoij - twokw, twojw + twoik],
-    [twoij + twokw, w2 - i2 + j2 - k2, twojk - twoiw],
-    [twoik - twojw, twojk + twoiw, w2 - i2 - j2 + k2],
-  ];
-};
+/** The rotation of a molecule insertion (the routine is in src/engine-gpl/fix/deposit_rotation.ts). */
+export interface DepositRotationHook {
+  rotation(r: number[], theta: number): number[][];
+}
+
+/** The lazy HOOKS entry 'deposit' (lazyStyles.ts group gpl_deposit): the native rotation of fix_deposit.cpp. */
+const nativeRotation = (r: number[], theta: number): number[][] => gplHook<DepositRotationHook>('deposit').rotation(r, theta);
 
 export class FixDeposit extends Fix {
   readonly style = 'deposit';

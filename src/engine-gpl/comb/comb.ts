@@ -10,7 +10,8 @@
  * Neighbor lists: the engine's full neighbor list (owned and ghost atoms, with the owner of each
  * ghost) replaces the LAMMPS full list with ghost atoms. The half-pair rule of the two-body Coulomb
  * and repulsion terms uses the atom IDs of the owners (LAMMPS uses atom->tag of the ghosts).
- * Per-atom energy is supported; per-atom virial (compute stress/atom) is refused.
+ * Per-atom energy and per-atom virial (compute stress/atom) are tallied as the native ev_tally and v_tally3 calls do
+ * (the global virial stays the fdotr sum, as in the engine's other styles).
  */
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
@@ -236,7 +237,6 @@ export class PairComb extends Pair {
   /** One compute call: the LAMMPS PairComb::compute loop with the engine's full list. */
   compute(pc: PairCompute): void {
     const nmask = NEIGHMASK;
-    if (pc.vatom) throw new StyleError('compute stress/atom is not supported for pair style comb (per-atom virial)');
     const list = pc.full;
     if (!list) throw new Error('pair style comb needs a full neighbor list');
     if (!this.tables) throw new StyleError('pair_style comb needs a pair_coeff command first');
@@ -322,6 +322,7 @@ export class PairComb extends Pair {
         f[3 * i] += delx * fvionij; f[3 * i + 1] += dely * fvionij; f[3 * i + 2] += delz * fvionij;
         f[3 * j] -= delx * fvionij; f[3 * j + 1] -= dely * fvionij; f[3 * j + 2] -= delz * fvionij;
         this.tally(pc, i, j, 0.0, vionij);
+        if (pc.vatom) this.vatomPair(pc, i, j, fvionij, delx, dely, delz);
         // short range q-independent
         if (rsq > pIJ.cutsq) continue;
         const rep = this.repulsive(pIJ, rsq, iq, jq);
@@ -329,6 +330,7 @@ export class PairComb extends Pair {
         f[3 * i] += delx * fpair; f[3 * i + 1] += dely * fpair; f[3 * i + 2] += delz * fpair;
         f[3 * j] -= delx * fpair; f[3 * j + 1] -= dely * fpair; f[3 * j + 2] -= delz * fpair;
         this.tally(pc, i, j, evdwl, 0.0);
+        if (pc.vatom) this.vatomPair(pc, i, j, fpair, delx, dely, delz);
       }
 
       // accumulate coordination number information (over-coordination correction of HfO2)
@@ -389,6 +391,7 @@ export class PairComb extends Pair {
         f[3 * i] += delr1[0] * fpair; f[3 * i + 1] += delr1[1] * fpair; f[3 * i + 2] += delr1[2] * fpair;
         f[3 * j] -= delr1[0] * fpair; f[3 * j + 1] -= delr1[1] * fpair; f[3 * j + 2] -= delr1[2] * fpair;
         this.tally(pc, i, j, evdwl, 0.0);
+        if (pc.vatom) this.vatomPair(pc, i, j, -fpair, -delr1[0], -delr1[1], -delr1[2]);
 
         // attractive term via loop over k (3-body forces)
         for (let kk = s0; kk < s1; kk++) {
@@ -416,6 +419,7 @@ export class PairComb extends Pair {
             f[3 * k + c] += fk[c];
           }
           this.tally(pc, i, j, elpIJ, 0.0);
+          if (pc.vatom) this.vatomTriple(pc, i, j, k, fj, fk, delr1, delr2);
         }
       }
       if (this.cuoFlag) pI.cutsq *= 0.65;
@@ -432,6 +436,33 @@ export class PairComb extends Pair {
       pc.eatom[i] += e;
       pc.eatom[j] += e;
     }
+  }
+
+  /**
+   * Per-atom virial of one pair, ev_tally with newton on (src/pair.cpp at b332f28): the pair virial
+   * dx*dx*fpair ... dy*dz*fpair is split half to each atom. Only pc.vatom is written: the global virial is the fdotr sum.
+   */
+  protected vatomPair(pc: PairCompute, i: number, j: number, fpair: number, dx: number, dy: number, dz: number): void {
+    const va = pc.vatom!;
+    const v = [dx * dx * fpair, dy * dy * fpair, dz * dz * fpair, dx * dy * fpair, dx * dz * fpair, dy * dz * fpair];
+    for (const a of [i, j]) for (let c = 0; c < 6; c++) va[6 * a + c] += 0.5 * v[c];
+  }
+
+  /**
+   * Per-atom virial of one three-body term, Pair::v_tally3 (src/pair.cpp at b332f28): the sum of drik fj and drjk fk
+   * (drik = delr1 from i to j, drjk = delr2 from i to k) is taken in thirds to i, j and k.
+   */
+  protected vatomTriple(pc: PairCompute, i: number, j: number, k: number, fj: V3, fk: V3, drik: V3, drjk: V3): void {
+    const va = pc.vatom!;
+    const v = [
+      drik[0] * fj[0] + drjk[0] * fk[0],
+      drik[1] * fj[1] + drjk[1] * fk[1],
+      drik[2] * fj[2] + drjk[2] * fk[2],
+      drik[0] * fj[1] + drjk[0] * fk[1],
+      drik[0] * fj[2] + drjk[0] * fk[2],
+      drik[1] * fj[2] + drjk[1] * fk[2],
+    ];
+    for (const a of [i, j, k]) for (let c = 0; c < 6; c++) va[6 * a + c] += v[c] / 3;
   }
 
   /** Short_neigh: owned-atom neighbors with rsq <= cutmin (kept in the full list's order). */

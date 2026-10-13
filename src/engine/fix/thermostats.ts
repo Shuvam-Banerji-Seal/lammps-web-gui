@@ -4,7 +4,9 @@ import type { System } from '../system';
 import type { Compute } from '../compute/compute';
 import { RanMars } from '../rng';
 import { ownCompute, parseNumOrVar, ramp, removeCompute, valueOf, type NumOrVar } from './util';
-import { massOf, nativeOrder } from '../atoms';
+import { isEllipsoid, massOf, nativeOrder } from '../atoms';
+import { gplHook } from '../gplHooks';
+import { SUPER_INERTIA } from '../superellipsoid';
 
 /*
  * Velocity thermostats that do not integrate (use them with fix nve):
@@ -154,6 +156,26 @@ export class FixTempRescale extends RescaleFix {
   }
 }
 
+/** The inputs of the angmom torques (the routine is in src/engine-gpl/thermostat/langevin_angmom.ts). */
+export interface LangevinAngmomOptions {
+  groupBit: number;
+  /** the fix's damp (before the per-type ratio) */
+  damp: number;
+  /** per-type ratio of the damping coefficient */
+  ratio: Float64Array;
+  /** keyword angmom factor (nonzero here) */
+  ascale: number;
+  /** target temperature of this step */
+  tt: number;
+  /** the fix's random draws, one per call, in native order */
+  uniform: () => number;
+}
+
+/** The helper of the lazy HOOKS entry 'angmom' (src/engine-gpl/registry/langevin_angmom.ts). */
+export interface LangevinAngmomHook {
+  angmomTorques(s: System['state'], o: LangevinAngmomOptions): void;
+}
+
 /**
  * fix ID group langevin Tstart Tstop damp seed [angmom omega scale tally zero] —
  * fix_langevin.html: "F_f = - (m/damp) v"; "F_r is proportional to
@@ -183,6 +205,8 @@ export class FixLangevin extends Fix {
   private zero = false;
   /** keyword omega yes: rotational thermostat of finite-size spheres (torque from the angular velocity). */
   private omegaOn = false;
+  /** keyword angmom factor (0 = off): rotational thermostat of ellipsoid angular momentum. */
+  private ascale = 0;
   private exchanged = 0;
   private fl = new Float64Array(0);
   private temp: Compute | null = null;
@@ -223,17 +247,21 @@ export class FixLangevin extends Fix {
           this.omegaOn = args[k + 1] === 'yes';
           k += 2;
           break;
-        case 'angmom':
-          // fix_langevin.html: "This can only be done for finite-size particles." The angmom torque on ellipsoids is not
-          // reproduced yet: the damping of a rotated ellipsoid's angular momentum does not match a body-frame formula
-          // (measured with native LAMMPS, black box), so it is refused rather than approximated.
-          if (args[k + 1] !== 'no') throw new StyleError('fix langevin angmom is not supported by the browser engine yet (the rotational damping of rotated ellipsoids is not reproduced)');
+        case 'angmom': {
+          // As native LAMMPS does (src/fix_langevin.cpp at b332f28): "no" gives ascale 0 and any other value is a
+          // numeric factor; a factor of 0 leaves the rotational thermostat off.
+          const v = args[k + 1];
+          const a = v === 'no' ? 0 : Number(v);
+          if (!Number.isFinite(a) || a < 0) throw new StyleError(`fix langevin angmom must be 'no' or a factor >= 0 (got '${v}')`);
+          this.ascale = a;
           k += 2;
           break;
+        }
         case 'gjf': throw new StyleError('fix langevin gjf was removed from LAMMPS (22Jul2025); use fix gjf');
         default: throw new StyleError(`unknown fix langevin keyword '${key}'`);
       }
     }
+    this.checkAngmom();
     if (this.omegaOn) {
       if (!s.omega || !s.torque || !s.radius) throw new StyleError('fix langevin omega yes needs finite-size spheres (atom_style sphere)');
       if (this.tally || this.zero) throw new StyleError('fix langevin omega yes with tally or zero is not supported by the browser engine yet');
@@ -251,6 +279,22 @@ export class FixLangevin extends Fix {
     }
     return super.modify(key, values);
   }
+
+  /**
+   * The ellipsoid checks of keyword angmom (fix_langevin.cpp: "Fix langevin angmom requires atom style ellipsoid" and
+   * "requires extended particles"). Run when the fix is built and again at each run's init, so atoms added later are checked.
+   */
+  private checkAngmom(): void {
+    if (this.ascale === 0) return;
+    const s = this.sys.state;
+    if (!s.quat || !s.angmom || !s.shape || !s.torque) throw new StyleError('Fix langevin angmom requires atom style ellipsoid');
+    if (s.custom.has(SUPER_INERTIA)) throw new StyleError('Fix langevin does not support superellipsoids');
+    for (let i = 0; i < s.n; i++) {
+      if ((s.mask[i] & this.groupBit) && !isEllipsoid(s, i)) throw new StyleError('Fix langevin angmom requires extended particles');
+    }
+  }
+
+  init(): void { this.checkAngmom(); }
 
   // Measured with native LAMMPS (black box): run 0 already dumps the random
   // forces, so the setup force evaluation includes this fix.
@@ -303,6 +347,12 @@ export class FixLangevin extends Fix {
       }
     }
     if (this.omegaOn) this.rotationalTorques(tt);
+    if (this.ascale !== 0) {
+      gplHook<LangevinAngmomHook>('angmom').angmomTorques(s, {
+        groupBit: this.groupBit, damp: this.damp, ratio: this.ratio, ascale: this.ascale, tt,
+        uniform: () => this.rng.uniform(),
+      });
+    }
     if (bias) this.temp!.restoreBiasAll();
   }
 

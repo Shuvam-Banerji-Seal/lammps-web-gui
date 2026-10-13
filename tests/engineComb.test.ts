@@ -114,9 +114,15 @@ describe('fix qeq/comb commands', () => {
     expect(errorOf(ev)).toMatch(/pair_style comb/);
   });
 
-  it('refuses the file keyword, naming it', async () => {
-    const ev = await run(`${box}pair_style comb\npair_coeff * * ffield.comb Si\nfix q all qeq/comb 1 0.001 file fq.out\n`, { 'ffield.comb': ffield });
-    expect(errorOf(ev)).toMatch(/'file'/);
+  it('accepts the file keyword and writes the charge-solve log (fix_qeq_comb.cpp)', async () => {
+    const files = new Map<string, string>();
+    const events: EngineEvent[] = [];
+    const s = new Session({ emit: (e: EngineEvent) => events.push(e), writeFile: (n: string, t: string, ap: boolean) => files.set(n, (ap ? files.get(n) ?? '' : '') + t) } as never, undefined, 0, 1);
+    s.addFile('ffield.comb', ffield);
+    await s.execute(`${box}pair_style comb\npair_coeff * * ffield.comb Si\nfix q all qeq/comb 1 0.001 file fq.out\nrun 0\n`);
+    expect(errorOf(events)).toBe('');
+    expect(files.get('fq.out')?.startsWith('Charge equilibration on step 0\n')).toBe(true);
+    expect(files.get('fq.out')).toMatch(/Charges converged in \d+ iterations to /);
   });
 });
 

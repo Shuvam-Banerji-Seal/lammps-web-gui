@@ -1,0 +1,36 @@
+# oracle: pair_style comb with compute stress/atom NULL pair (per-atom virial of the three-body and Coulomb-field terms, as in examples/comb in.comb.Si.elastic), pure Si diamond 3x3x3 cells with random 0.08 A displacements (so the stress is not a symmetry-cancelled zero) and a random velocity start, 10 steps, then the box strained by 0.1% in x (change_box remap) and 10 more steps; per-atom virial columns weighted by id are compared through thermo
+# oracle-potentials: ffield.comb
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS (black box): the per-atom virial sums agree to about 1e-14 relative (the case passes at rel=1e-12 and fails at rel=1e-14).
+units		metal
+atom_style	charge
+dimension       3
+boundary        p p p
+lattice  	diamond 5.43
+region		box block 0 3 0 3 0 3
+create_box	1 box
+create_atoms	1 box
+displace_atoms all random 0.08 0.08 0.08 4417 units box
+mass		1 29.0
+pair_style	comb
+pair_coeff	* * ffield.comb Si
+neighbor	0.5 bin
+neigh_modify	every 1 delay 1 check yes
+velocity	all create 10.1 2398378
+compute		s all stress/atom NULL pair
+compute		sr all reduce sum c_s[1] c_s[2] c_s[3] c_s[4] c_s[5] c_s[6]
+variable	a1 atom c_s[1]*(1+0.1*id)
+variable	a2 atom c_s[2]*(1+0.1*id)
+variable	a3 atom c_s[3]*(1+0.1*id)
+variable	a4 atom c_s[4]*(1+0.2*id)
+variable	a5 atom c_s[5]*(1+0.3*id)
+variable	a6 atom c_s[6]*(1+0.4*id)
+compute		ar all reduce sum v_a1 v_a2 v_a3 v_a4 v_a5 v_a6
+fix		1 all nve
+timestep        0.00020
+thermo_style	custom step temp pe evdwl ecoul c_sr[1] c_sr[2] c_sr[3] c_sr[4] c_sr[5] c_sr[6] c_ar[1] c_ar[2] c_ar[3] c_ar[4] c_ar[5] c_ar[6]
+thermo_modify	norm yes format float %.15g
+thermo		5
+run		10
+change_box	all x scale 1.001 remap
+run		10

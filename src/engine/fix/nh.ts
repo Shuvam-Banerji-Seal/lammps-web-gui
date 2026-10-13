@@ -358,6 +358,17 @@ export class FixNH extends Fix {
    * (no chain) it is the all-atom kinetic energy at the end of the final step.
    */
   private trackKE: number | null = null;
+  /**
+   * Thermostat dof recorded at the initial update of the current step. A dynamic group is reassigned after the forces,
+   * so the final update of that step must still use the dof that the initial update saw. Measured with native LAMMPS
+   * (black box; 4x4x4 fcc lj/cut 2.5 at T 1.44, fix nvt temp 1 1 0.5 on group region half every 2 with 28 atoms
+   * leaving the group at step 2): the members' velocities after step 2 differ from the engine's by a uniform factor
+   * 1.00000226266, which is the change of the target term when it uses the dof of the step start (381 = 3*128-3) instead
+   * of the dof after the reassignment (297 = 3*100-3); the 84 difference over q0 and dt gives the factor exactly.
+   * Still open: the chain's inner elements after the reassignment (f_ID[2] = eta[1], eta_dot[1]) differ from native by
+   * about 1e-7 and 1e-4 absolute, so the case tests/oracle/w98dyn_nvt_region.in compares the temperatures and PE only.
+   */
+  private tdofStep: number | null = null;
   /** Product of the squared velocity factors of the current initial-step chain update (1 outside it). */
   private nhcScale2 = 1;
 
@@ -511,6 +522,10 @@ export class FixNH extends Fix {
     const kB = s.units.boltz;
     const M = this.tchain;
     const { dof, kT: kTfresh } = this.dofKT();
+    // the target term (dofT * kT) uses the dof of the membership at the start of the step: a dynamic group is
+    // reassigned after the forces, so the final update still sees the old count (see tdofStep)
+    if (initial) this.tdofStep = dof;
+    const dofT = !initial && this.tdofStep !== null ? this.tdofStep : dof;
     // native: the first thermostat update uses the setup-time temperature (before later fixes' setup changes velocities)
     const tSetup = this.tSetup;
     this.tSetup = null;
@@ -531,7 +546,7 @@ export class FixNH extends Fix {
     const drag = this.drag > 0 ? 1 - this.dtv * tfreq * this.drag / nc : 1;
     for (let loop = 0; loop < nc; loop++) {
       // top of chain down
-      const g = (k: number) => (k === 0 ? (ke2 - dof * kt) / q[0] : (q[k - 1] * ed[k - 1] * ed[k - 1] - kt) / q[k]);
+      const g = (k: number) => (k === 0 ? (ke2 - dofT * kt) / q[0] : (q[k - 1] * ed[k - 1] * ed[k - 1] - kt) / q[k]);
       ed[M - 1] += g(M - 1) * dt4;
       ed[M - 1] *= drag;
       for (let k = M - 2; k >= 0; k--) {
@@ -551,10 +566,10 @@ export class FixNH extends Fix {
       for (let k = 0; k < M - 1; k++) {
         const ex = Math.exp(-dt8 * ed[k + 1]);
         ed[k] *= ex;
-        ed[k] += (k === 0 ? (ke2 - dof * kt) / q[0] : (q[k - 1] * ed[k - 1] * ed[k - 1] - kt) / q[k]) * dt4;
+        ed[k] += (k === 0 ? (ke2 - dofT * kt) / q[0] : (q[k - 1] * ed[k - 1] * ed[k - 1] - kt) / q[k]) * dt4;
         ed[k] *= ex;
       }
-      ed[M - 1] += (M === 1 ? (ke2 - dof * kt) / q[0] : (q[M - 2] * ed[M - 2] * ed[M - 2] - kt) / q[M - 1]) * dt4;
+      ed[M - 1] += (M === 1 ? (ke2 - dofT * kt) / q[0] : (q[M - 2] * ed[M - 2] * ed[M - 2] - kt) / q[M - 1]) * dt4;
     }
     if (!initial) this.trackKE = ke2;
     this.sys.refreshComputes();

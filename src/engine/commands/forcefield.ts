@@ -207,7 +207,7 @@ const specialBonds: Handler = ({ sys }, a) => {
     }
   }
   sys.ff.special = sp;
-  if (sys.hasBox) sys.ff.topologyChanged(sys.state);
+  if (sys.hasBox) sys.ff.topologyChanged(sys.state, sys.nb);
   sys.nb.lastBuild = -1;
   sys.bump();
 };

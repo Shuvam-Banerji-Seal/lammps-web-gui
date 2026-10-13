@@ -1,0 +1,24 @@
+# oracle: fix nvt on a dynamic group by region (every 5), membership changes at the reassignment steps (atoms wrap out of the region), two runs
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9 skip=f_1[1],f_1[2]
+# f_1[1..2] (eta[0], eta[1]) are not compared: after the reassignment the engine's chain drifts from native (up to ~1e-6 abs
+# by step 14); see the nh.ts tdofStep comment
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.44 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+timestep        0.004
+region          half block INF 1.5 INF INF INF INF
+group           hot dynamic all region half every 5
+compute         th hot temp
+fix             1 hot nvt temp 1.0 1.0 0.5
+thermo_style    custom step temp c_th pe etotal f_1[1]
+thermo_modify   format float %.15g
+thermo          1
+run             10
+run             10

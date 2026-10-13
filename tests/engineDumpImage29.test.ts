@@ -130,6 +130,14 @@ describe('dump image', () => {
     expect(url?.startsWith('data:image/x-portable-pixmap;base64,')).toBe(true);
   });
 
+  it('write_dump image takes a plain file name (no "*"), while dump image still needs one', async () => {
+    // write_dump.html: "Normally, dump image files require a filename with a "*" character for the timestep. That is
+    // not the case for the write_dump command" (src/write_dump.cpp sets multifile_override for image at b332f28).
+    const files = await run(base('write_dump all image plain.ppm type type size 200 200 box no 0.02 view 90 0'));
+    expect(files.get('plain.ppm')?.startsWith('data:image/x-portable-pixmap;base64,')).toBe(true);
+    await expect(run(base('dump im all image 1 plain.ppm type type size 200 200'))).rejects.toThrow(/requires a file name with '\*'/);
+  });
+
   it('box outline spans exactly the box (8 corners, 12 edges), not twice it', async () => {
     // A 10x10x10 box seen along x (view 90 0) in 200x200: scale = h / (2 L) = 10 px per unit, so the
     // y-z face projects to a 100 px square around the centre. An earlier corner loop over 0..2 drew

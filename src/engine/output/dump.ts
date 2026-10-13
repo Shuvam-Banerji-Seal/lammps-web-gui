@@ -102,7 +102,7 @@ export class Dump {
   private imageDump: ImageDump | null = null;
   readonly columns: string[];
 
-  constructor(private sys: System, readonly id: string, readonly group: string, readonly style: DumpStyle, every: number | string, readonly file: string, cols: string[]) {
+  constructor(private sys: System, readonly id: string, readonly group: string, readonly style: DumpStyle, every: number | string, readonly file: string, cols: string[], multifileOverride = false) {
     // dump.html: "if the filename ends with ".gz" ... the dump file (or files, if "*" or "%" is also used) is written in
     // compressed format". The browser engine writes no compressed dumps yet, so a .gz name is an error, not plain text.
     if (/\.gz$/.test(file)) throw new StyleError(`dump ${id}: a compressed (.gz) dump file is not supported by the browser engine; use a plain file name`);
@@ -111,7 +111,7 @@ export class Dump {
     this.every = typeof every === 'number' ? every : 0;
     this.sort = style === 'xyz' || style === 'extxyz' ? 'id' : 'off';
     if (style === 'image') {
-      this.imageDump = new ImageDump(sys, id, group, file, cols);
+      this.imageDump = new ImageDump(sys, id, group, file, cols, multifileOverride);
       this.columns = [];
     } else if (style === 'atom') {
       if (cols.length) throw new StyleError('dump atom takes no attributes (use dump custom)');

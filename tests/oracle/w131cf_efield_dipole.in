@@ -1,0 +1,33 @@
+# oracle: fix efield on point dipoles with an equal-style ramp variable (the metamaterial example's "fix efield 0.0 0.0 v_bz"), BPM dimer with nve/bpm/sphere update dipole
+# Residual (not in this case): the same system run 15 steps with the field on differs from native by ~1% in the bond torques from step ~15 (no difference without fix efield); 10 steps match.
+# oracle-compare: thermo=all atoms=all
+# oracle-files: w131cf_efield_dipole.dump
+units           lj
+dimension       3
+boundary        f f f
+atom_style      hybrid bpm/sphere dipole
+region          box block -10 10 -10 10 -10 10
+create_box      1 box bond/types 1 extra/bond/per/atom 2
+create_atoms    1 single 0.0 0.0 0.0
+create_atoms    1 single 1.2 0.1 0.0
+create_bonds    single/bond 1 1 2
+set             group all density 1.0
+set             atom 1 dipole 0.0 0.0 1.0
+set             atom 2 dipole 1.0 0.0 0.5
+comm_modify     vel yes cutoff 3.0
+pair_style      zero 2.0
+pair_coeff      * *
+special_bonds   lj 0.0 1.0 1.0 coul 1.0 1.0 1.0
+bond_style      bpm/rotational smooth no break no
+bond_coeff      1 1.0 1.0 0.1 0.5 -1 -1 -1 -1 1e-3 1e-3 1e-3 1e-3
+set             atom 2 vy 0.3
+timestep        1e-4
+variable        bz equal 0.25*ramp(0,1)
+fix             1 all nve/bpm/sphere update dipole
+fix             2 all efield 0.0 0.0 v_bz
+compute         q all property/atom quatw quati quatj quatk
+dump            1 all custom 5 w131cf_efield_dipole.dump id mux muy muz c_q[1] c_q[2] c_q[3] c_q[4] tqx tqy tqz
+thermo_style    custom step ke pe ebond
+thermo_modify   format float %.15g norm no
+thermo          5
+run             10

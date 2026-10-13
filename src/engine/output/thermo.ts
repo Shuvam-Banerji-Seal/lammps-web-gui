@@ -121,15 +121,21 @@ export class Thermo {
     this.autoNames = false;
   }
 
-  /** c_ID[*] / f_ID[*] wildcards expand to every component. */
+  /**
+   * c_ID[*] / f_ID[*] wildcards expand to every component. A second index after the wildcard (f_ID[*][J]) is kept
+   * as a tail on every expanded word: "Using a wildcard is the same as if the individual elements of the vector had
+   * been listed one by one" (thermo_style.html, Wildcards). As native LAMMPS does (src/utils.cpp expand_args at
+   * b332f28, mode 0), the wildcard index ranges over the global vector only, so a tail needs a vector.
+   */
   private expand(a: string): string[] {
-    const m = /^([cfv])_([A-Za-z0-9_]+)\[(\d*)\*(\d*)\]$/.exec(a);
+    const m = /^([cfv])_([A-Za-z0-9_]+)\[(\d*)\*(\d*)\](\[\d+\])?$/.exec(a);
     if (!m) return [a];
-    const [, kind, id, lo, hi] = m;
+    const [, kind, id, lo, hi, tail = ''] = m;
+    if (kind === 'v' && tail) throw new StyleError(`${a}: a variable wildcard takes one index`);
     let n: number;
     if (kind === 'c') {
       const c = this.sys.compute(id);
-      n = c.vectorFlag ? c.sizeVector : c.arrayFlag ? c.sizeArrayCols : 0;
+      n = c.vectorFlag ? c.sizeVector : !tail && c.arrayFlag ? c.sizeArrayCols : 0;
     } else if (kind === 'f') {
       const f = this.sys.fix(id);
       n = f.vectorFlag ? f.sizeVector : 0;
@@ -141,7 +147,7 @@ export class Thermo {
     if (!n) throw new StyleError(`${a}: ${kind}_${id} has no vector to expand`);
     const i0 = lo ? Number(lo) : 1, i1 = hi ? Number(hi) : n;
     const out: string[] = [];
-    for (let i = i0; i <= i1; i++) out.push(`${kind}_${id}[${i}]`);
+    for (let i = i0; i <= i1; i++) out.push(`${kind}_${id}[${i}]${tail}`);
     return out;
   }
 

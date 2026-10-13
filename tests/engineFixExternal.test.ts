@@ -338,6 +338,11 @@ run 0
     expect(errText(await runScript(oneAtom('set group all charge 1.0\nvariable u equal 1.0\nfix e all efield 1 0 0 energy v_u', 'charge')))).toContain('constant vector');
     expect(errText(await runScript(oneAtom('set group all charge 1.0\nvariable exq equal 0.5\nvariable u equal 1.0\nfix e all efield v_exq 0 0 energy v_u', 'charge')))).toContain('atom-style');
     expect(errText(await runScript(oneAtom('set group all charge 1.0\nvariable exq equal 0.5\nvariable uu atom -0.5*q*x\nvariable pp atom 0.5*x\nfix e all efield v_exq 0 0 energy v_uu potential v_pp', 'charge')))).toContain('potential');
+    // As native LAMMPS does (src/fix_efield.cpp init at b332f28): with point dipoles an atom-style variable is refused
+    // by name, an equal-style one is accepted (docs fix_efield.html: "For point-dipoles, equal-style variables can be used")
+    const dip = 'atom_style hybrid sphere dipole\nregion box block 0 10 0 10 0 10\n';
+    expect(errText(await runScript(dip + 'create_box 1 box\ncreate_atoms 1 single 5 5 5 units box\nset atom 1 dipole 0 0 1\nvariable az atom 0.1*x\nfix e all efield 0 0 v_az\nrun 0'))).toContain('Fix efield with dipoles cannot use atom-style variables');
+    expect((await runScript(dip + 'create_box 1 box\ncreate_atoms 1 single 5 5 5 units box\nset atom 1 dipole 0 0 1\nvariable bz equal 0.1\nfix e all efield 0 0 v_bz\nrun 0')).error).toBeNull();
     expect(errText(await runScript(oneAtom('set group all charge 1.0\nfix e all efield 1 0 0 dipole 1 0 0', 'charge')))).toContain('dipole');
     expect(errText(await runScript(oneAtom('set group all charge 1.0\nfix e all efield 1 0', 'charge')))).toContain('usage');
   });

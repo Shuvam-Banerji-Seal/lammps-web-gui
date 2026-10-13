@@ -209,7 +209,8 @@ const writeDump: Handler = ({ sys }, a) => {
   const mi = rest.indexOf('modify');
   const cols = mi >= 0 ? rest.slice(0, mi) : rest;
   if (!(DUMP_STYLES as string[]).includes(style)) throw new StyleError(`write_dump style '${style}' is not supported; supported: ${DUMP_STYLES.join(', ')}`);
-  const d = new Dump(sys, '__write_dump', group, style as DumpStyle, 1, file, cols);
+  // write_dump: a dump image file needs no '*' (multifile_override, see dump_image.ts)
+  const d = new Dump(sys, '__write_dump', group, style as DumpStyle, 1, file, cols, true);
   if (mi >= 0) d.modify(rest.slice(mi + 1));
   d.write();
 };

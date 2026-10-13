@@ -28,6 +28,9 @@ import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../
  *   calculations for both the LJ and Coulombic interactions."
  *   "Note that if you are using *flag_lj* set to *long*, you cannot specify a
  *   LJ cutoff for an atom type pair, since only one global LJ cutoff is allowed."
+ *   This engine follows native LAMMPS instead, which accepts the per-pair cutoff
+ *   (pair_coeff cutoff1) and uses it for the pairs that set it (measured: case
+ *   w131cf_ljlong_pair_cut, src/KSPACE/pair_lj_long_coul_long.cpp at b332f28).
  *   "For atom type pairs I,J and I != J, the epsilon and sigma coefficients and
  *   cutoff distance for all of the lj/long pair styles can be mixed."
  *   "These pair styles support the :doc:`pair_modify <pair_modify>` shift"
@@ -143,9 +146,6 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
     if (args.length === 6) {
       throw new StyleError('pair_coeff cutoff2 (a per-pair Coulomb cutoff) is not implemented for pair style lj/long/coul/long');
     }
-    if (this.ljLong && args.length === 5) {
-      throw new StyleError('pair_coeff cutoff1 (a per-pair LJ cutoff) is not allowed with flag_lj long (one global LJ cutoff)');
-    }
     super.coeff(args);
   }
 
@@ -155,7 +155,12 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
       if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style lj/long/coul/long');
       if (this.tableDisp !== 0) throw new StyleError('pair_style lj/long/coul/long flag_lj long needs pair_modify table/disp 0 (the dispersion table is not implemented)');
     }
-    return super.initOne(i, j);
+    const cut = super.initOne(i, j);
+    if (!this.ljLong || this.p.isSet(i, j)) return cut;
+    // As native LAMMPS does (src/KSPACE/pair_lj_long_coul_long.cpp init_one at b332f28): with dispersion
+    // (EWALD_DISP) a pair without its own pair_coeff cutoff takes the global LJ cutoff, not a mixed one.
+    this.p.setMixed(i, j, 'cut', this.cutGlobal);
+    return Math.max(this.cutGlobal, this.cutCoul);
   }
 
   compute(pc: PairCompute): void {
@@ -169,7 +174,14 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
     const { x, f, type, q } = pc;
     const nt = this.ntypes + 1;
     const { lj3, lj4 } = this;
-    const cutljsq = this.cutGlobal * this.cutGlobal;
+    // Per type pair LJ cutoff (pair_coeff cutoff1; the global one where not set), squared.
+    const cutljsqT = new Float64Array(nt * nt);
+    for (let a = 1; a <= this.ntypes; a++) {
+      for (let b = 1; b <= this.ntypes; b++) {
+        const c = this.p.get('cut', a, b);
+        cutljsqT[a * nt + b] = c * c;
+      }
+    }
     const coul = this.cutCoul > 0;
     const cutcsq = this.cutCoul * this.cutCoul;
     const g = this.gEwald;
@@ -199,7 +211,7 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
           ecoul += r.e;
           e += r.e;
         }
-        if (rsq < cutljsq) {
+        if (rsq < cutljsqT[t]) {
           if (sb !== 0 && sLJ[sb] !== 1) {
             throw new StyleError('special_bonds lj weight other than 1 is not implemented with pair style lj/long/coul/long flag_lj long');
           }

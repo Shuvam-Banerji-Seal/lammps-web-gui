@@ -6,7 +6,7 @@ import { BondOxdnaFene } from '../src/engine-gpl/oxdna/bond_fene';
 import { PairOxdnaExcv } from '../src/engine-gpl/oxdna/pair_excv';
 import { PairOxdnaStk, stackingStrength } from '../src/engine-gpl/oxdna/pair_stk';
 import { PairOxdnaHbond } from '../src/engine-gpl/oxdna/pair_hbond';
-import { PairOxdnaXstk } from '../src/engine-gpl/oxdna/pair_xstk';
+import { PairOxdnaXstk, PairOxrna2Xstk } from '../src/engine-gpl/oxdna/pair_xstk';
 import { PairOxdnaCoaxstk } from '../src/engine-gpl/oxdna/pair_coaxstk';
 import { BONDS, FIXES, PAIRS } from '../src/engine-gpl/registry/oxdna';
 import { PairOxdna2Dh } from '../src/engine-gpl/oxdna/pair_dh';
@@ -240,6 +240,25 @@ describe('oxDNA styles: coefficients and their derived values', () => {
     const c = new PairOxdnaCoaxstk();
     c.allocate(2);
     expect(() => c.coeff(['*', '*', '1', '2'])).toThrow('Incorrect args for pair coefficients in oxdna/coaxstk');
+  });
+
+  it('oxrna2/xstk reads 20 numbers from a potential file line, oxdna/xstk 23 (pair_oxrna2_xstk.cpp coeff)', () => {
+    // The line of oxrna2_lj.cgdna in the duplex2 example: 20 numbers after "* * xstk".
+    const nums = '59.9626 0.5 0.6 0.42 0.58 2.25 0.505 0.58 1.7 1.266 0.68 1.7 1.266 0.68 1.7 0.309 0.68 1.7 0.309 0.68';
+    const fromFile = new PairOxrna2Xstk();
+    fromFile.allocate(2);
+    fromFile.coeff(['*', '*', 'oxrna2_lj.cgdna'], ctx(`* * xstk ${nums}\n`));
+    const fromArgs = new PairOxrna2Xstk();
+    fromArgs.allocate(2);
+    fromArgs.coeff(['*', '*', ...nums.split(' ')]);
+    // the coefficient tables are private; read them through a cast
+    const tabs = (x: PairOxrna2Xstk) => (x as unknown as { t: Record<string, Float64Array> }).t;
+    for (const key of Object.keys(tabs(fromArgs))) {
+      expect(Array.from(tabs(fromFile)[key])).toEqual(Array.from(tabs(fromArgs)[key]));
+    }
+    const oxdna = new PairOxdnaXstk();
+    oxdna.allocate(2);
+    expect(() => oxdna.coeff(['*', '*', 'oxrna2_lj.cgdna'], ctx(`* * xstk ${nums}\n`))).toThrow('xstk needs 23 values');
   });
 
   it('the registry exports exactly the styles of this port', () => {

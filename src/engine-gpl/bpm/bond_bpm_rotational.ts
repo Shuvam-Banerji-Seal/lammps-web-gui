@@ -78,6 +78,13 @@ export class BondBpmRotational extends BondBPMBase {
   frame: 'average' | 'particle' = 'average';
   damping: 'derivative' | 'dem' = 'derivative';
   private readonly hist = new Map<number, Hist>();
+  /**
+   * Per-bond damping priors (gamma, theta, psi) as the atoms hold them: native LAMMPS copies bondstore into the
+   * per-atom fix bond/history storage at each reneighbouring (FixBondHistory::pre_exchange), and single() reads that
+   * copy. Taken at each neighbor-list build (bc.nbuild), before the forces of that step update hist.
+   */
+  private readonly synced = new Map<number, Float64Array>();
+  private syncBuild = -1;
 
   settings(args: string[], _ctx?: StyleContext): void {
     const rest = this.takeCommon(args);
@@ -127,9 +134,55 @@ export class BondBpmRotational extends BondBPMBase {
     return h;
   }
 
+  /** The loads of a bond of type t between atoms i1 and i2 with reference state h (the frame and damping of the style). */
+  private loads(bc: BondedCompute, i1: number, i2: number, t: number, h: Hist): Loads {
+    const P = (name: string): number => this.params.p(name)[t];
+    const r0 = h[0];
+    const ri: Vec3 = [h[1] * r0, h[2] * r0, h[3] * r0];
+    const d = [0, 0, 0];
+    delta(bc, i1, i2, d);
+    const rf: Vec3 = [d[0], d[1], d[2]];
+    const params = {
+      Kr: P('kr'), Ks: P('ks'), Kt: P('kt'), Kb: P('kb'),
+      Fcr: P('fcr'), Fcs: P('fcs'), Tct: P('tct'), Tcb: P('tcb'),
+      gr: P('gr'), gs: P('gs'), gt: P('gt'), gb: P('gb'),
+    };
+    const L = this.frame === 'average' ? this.averageFrame(bc, i1, i2, params, ri, rf, h) : this.particleFrame(bc, i1, i2, params, ri, rf, h);
+    if (this.damping === 'dem') this.demDamping(bc, i1, i2, params, rf, L);
+    return L;
+  }
+
+  /**
+   * compute bond/local bN (native BondBPMRotational::single at b332f28, svector): [ri_norm, ri (3), the smoothed force
+   * on the second atom (3)] of the bond with atom IDs ia, ib (ia first as stored), each vector negated when ia has the
+   * larger ID. The reference state is a copy (native single() copies bondstore), so the history is not changed.
+   */
+  bondExtra(bc: BondedCompute, ia: number, ib: number, t: number): number[] {
+    this.syncHistory(bc);
+    const { i1, i2, a1, a2 } = this.pairOf(bc, ia, ib);
+    const key = bondKey(a1, a2);
+    const h = Float64Array.from(this.reference(bc, i1, i2, key));
+    // the damping priors are the per-atom copy (zero before the first copy: store_bond sets them to 0)
+    const snap = this.synced.get(key);
+    h[4] = snap ? snap[0] : 0; h[5] = snap ? snap[1] : 0; h[6] = snap ? snap[2] : 0;
+    const L = this.loads(bc, i1, i2, t, h);
+    const smooth = this.smooth ? 1 - Math.pow(L.breaking, 4) : 1;
+    const F = scale3(smooth, L.f1on2);
+    const sg = ia > ib ? -1 : 1;
+    const r0 = h[0];
+    return [r0, sg * h[1] * r0, sg * h[2] * r0, sg * h[3] * r0, sg * F[0], sg * F[1], sg * F[2]];
+  }
+
+  /** Copies the damping priors of every bond at a new neighbor-list build (native pre_exchange). */
+  private syncHistory(bc: BondedCompute): void {
+    if (bc.nbuild === undefined || bc.nbuild === this.syncBuild) return;
+    this.syncBuild = bc.nbuild;
+    for (const [key, h] of this.hist) this.synced.set(key, Float64Array.of(h[4], h[5], h[6]));
+  }
+
   compute(bc: BondedCompute): void {
+    this.syncHistory(bc);
     const b = bc.s.topo.bonds;
-    const P = (name: string, t: number): number => this.params.p(name)[t];
     const s = bc.s;
     const d = [0, 0, 0];
     for (let k = 0; k < b.n; k++) {
@@ -138,17 +191,9 @@ export class BondBpmRotational extends BondBPMBase {
       const ia = b.atoms[2 * k], ib = b.atoms[2 * k + 1];
       const { i1, i2, a1, a2 } = this.pairOf(bc, ia, ib);
       const h = this.reference(bc, i1, i2, bondKey(a1, a2));
-      const r0 = h[0];
-      const ri: Vec3 = [h[1] * r0, h[2] * r0, h[3] * r0];
       delta(bc, i1, i2, d);
       const rf: Vec3 = [d[0], d[1], d[2]];
-      const params = {
-        Kr: P('kr', t), Ks: P('ks', t), Kt: P('kt', t), Kb: P('kb', t),
-        Fcr: P('fcr', t), Fcs: P('fcs', t), Tct: P('tct', t), Tcb: P('tcb', t),
-        gr: P('gr', t), gs: P('gs', t), gt: P('gt', t), gb: P('gb', t),
-      };
-      const L = this.frame === 'average' ? this.averageFrame(bc, i1, i2, params, ri, rf, h) : this.particleFrame(bc, i1, i2, params, ri, rf, h);
-      if (this.damping === 'dem') this.demDamping(bc, i1, i2, params, rf, L);
+      const L = this.loads(bc, i1, i2, t, h);
       if (L.breaking >= 1 && this.breakOn) {
         this.breakBond(b.type, k);
         continue;

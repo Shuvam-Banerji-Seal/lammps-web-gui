@@ -142,6 +142,11 @@ const fromOwner = (bc: BondedCompute, o: number, b: number): number[] => {
 
 const norm = (d: number[]): number => Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
 
+/** A bond style with the single() extra outputs of compute bond/local bN (bond_bpm_rotational.ts bondExtra). */
+interface BondExtraProvider {
+  bondExtra(bc: BondedCompute, ia: number, ib: number, btype: number): number[];
+}
+
 /** A local compute over bonds, angles, dihedrals or impropers with value keywords. */
 export class ComputeTermLocal extends Compute {
   readonly style: string;
@@ -156,7 +161,12 @@ export class ComputeTermLocal extends Compute {
       const w = args[a];
       if (w === 'set') throw new StyleError(`compute ${id} ${this.style}: the set keyword is not supported by the browser engine`);
       if (w.startsWith('v_')) throw new StyleError(`compute ${id} ${this.style}: v_name values are not supported by the browser engine`);
-      if (/^b\d+$/.test(w)) throw new StyleError(`compute ${id} ${this.style}: bN bond-style quantities are not supported by the browser engine`);
+      // compute bond/local: "bN" = the Nth extra output of the bond style's single() (compute_bond_local.cpp at b332f28)
+      if (kind === 'bond' && /^b\d+$/.test(w)) {
+        if (Number(w.slice(1)) < 1) throw new StyleError(`compute ${id} ${this.style}: Invalid keyword ${w} in compute bond/local command`);
+        values.push(w);
+        continue;
+      }
       if (!VALUES[kind].includes(w)) {
         const extra = kind === 'bond' && w === 'omega' ? ' (omega is not supported by the browser engine)' : '';
         throw new StyleError(`compute ${id} ${this.style}: unknown value '${w}'${extra}`);
@@ -177,6 +187,13 @@ export class ComputeTermLocal extends Compute {
     const ncol = Math.max(1, nv);
     const rows = termRows(sys, kind, this.groupBit);
     const need = (name: string) => this.values.some((v) => v === name);
+    const bNames = this.values.filter((v) => /^b\d+$/.test(v));
+    // As native LAMMPS does (src/compute_bond_local.cpp init at b332f28): a bN needs a bond style with that extra field
+    const extraStyle = bNames.length ? (sys.ff.bond as unknown as Partial<BondExtraProvider> | null) : null;
+    if (bNames.length && (!extraStyle || typeof extraStyle.bondExtra !== 'function')) {
+      // a style without the bN outputs in the browser engine is named, not reported as a missing field
+      throw new StyleError(`compute ${this.id} bond/local ${bNames.join(' ')}: the bN outputs are not supported by the browser engine for bond style ${sys.ff.bond?.name ?? 'none'} (only bpm/rotational has them)`);
+    }
     const needEnergy = need('engpot') || need('force') || need('fx') || need('fy') || need('fz') || need('eng');
     const style = sys.ff[STYLE_FIELD[kind]];
     if (needEnergy && !style) throw new StyleError(`compute ${this.id} ${this.style} needs a ${kind}_style`);
@@ -186,7 +203,7 @@ export class ComputeTermLocal extends Compute {
     const scratch = new Float64Array(3 * s.n);
     const mvv2e = s.units.mvv2e;
     const out = new Float64Array(rows.length * ncol);
-    const bc: BondedCompute = { s, geom, map, f: scratch, acc: newAccum(), virial: new Float64Array(6), eatom: null, vatom: null, copies: nb.bondedCopies() };
+    const bc: BondedCompute = { s, geom, map, f: scratch, acc: newAccum(), virial: new Float64Array(6), eatom: null, vatom: null, nbuild: nb.nbuild, copies: nb.bondedCopies() };
     rows.forEach(({ k, idx }, r) => {
       const vals: Record<string, number> = {};
       if (kind === 'bond') {
@@ -202,6 +219,14 @@ export class ComputeTermLocal extends Compute {
         if (needEnergy) for (const a of [i, j]) for (let c = 0; c < 3; c++) scratch[3 * a + c] = 0;
         const force = dist > 0 ? (fi[0] * d[0] + fi[1] * d[1] + fi[2] * d[2]) / dist : 0;
         vals.dist = dist; vals.dx = d[0]; vals.dy = d[1]; vals.dz = d[2];
+        if (bNames.length) {
+          const extra = extraStyle!.bondExtra!(bc, list.atoms[2 * k], list.atoms[2 * k + 1], list.type[k]);
+          for (const name of bNames) {
+            const n = Number(name.slice(1));
+            if (n > extra.length) throw new StyleError('Bond style does not have extra field requested by compute bond/local');
+            vals[name] = extra[n - 1];
+          }
+        }
         vals.engpot = e; vals.force = force; vals.fx = fi[0]; vals.fy = fi[1]; vals.fz = fi[2];
         if (need('engvib') || need('engrot') || need('engtrans') || need('velvib')) {
           const mi = massOf(s, i), mj = massOf(s, j), M = mi + mj;

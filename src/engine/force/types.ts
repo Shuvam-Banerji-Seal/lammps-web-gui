@@ -415,6 +415,11 @@ export const BOND_REMOVED = -1;
 export interface BondedCompute {
   s: SimState;
   geom: Geometry;
+  /**
+   * The neighbor-list build count (Neighbor.nbuild) at this evaluation. A bond style that keeps per-bond history
+   * copies it at each rebuild, as native LAMMPS does in fix bond/history pre_exchange (bond_bpm_rotational.ts).
+   */
+  nbuild?: number;
   /** id -> index. */
   map: Int32Array;
   f: Float64Array;

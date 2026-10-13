@@ -69,13 +69,17 @@ export class PairOxdnaXstk extends Pair {
       for (const w of potentialLines(text, [args[0], args[1]], 'xstk')) {
         if (w.length < 3) continue;
         if (w[2] === 'xstk') {
-          if (w.length < 26) throw new StyleError(`Problem parsing oxdna potential file: xstk needs 23 values in ${args[2]}`);
-          found = w.slice(3, 26).map((x, k) => parseNum(x, XST_NAMES[k]));
+          // As native LAMMPS does (src/CG-DNA/pair_oxdna2_xstk.cpp and pair_oxdna_xstk.cpp coeff at b332f28): the
+          // oxRNA2 file line holds 20 numbers (k, cut_0, cut_c, cut_lo, cut_hi and 15 angle values), oxDNA 23.
+          const need = nNum;
+          if (w.length < 3 + need) throw new StyleError(`Problem parsing oxdna potential file: xstk needs ${need} values in ${args[2]}`);
+          found = w.slice(3, 3 + need).map((x, k) => parseNum(x, XST_NAMES[k]));
           break;
         }
       }
       if (!found) throw new StyleError(`No corresponding xstk potential found in file ${args[2]} for pair type ${args[0]} ${args[1]}`);
       v = found;
+      if (!this.withTheta4) v = [...v.slice(0, 14), 0, 0, 0, ...v.slice(14)];
     }
     const [k, cut0, cutC, cutLo, cutHi, a1, th1, dth1, a2, th2, dth2, a3, th3, dth3, a4, th4, dth4, a7, th7, dth7, a8, th8, dth8] = v;
     const dlo = cutLo - cut0, dhi = cutHi - cut0;

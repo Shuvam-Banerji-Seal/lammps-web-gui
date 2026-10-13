@@ -1,0 +1,20 @@
+# oracle: thermo_style custom with f_ID[*][J] (a wildcard index plus a second index) on fix ave/moments
+# oracle-compare: thermo=all atoms=all
+units           lj
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.0 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check no
+fix             1 all nve
+variable        toteng equal etotal
+fix             2 all ave/moments 1 5 5 v_toteng mean stddev history 3
+thermo_style    custom step temp pe f_2[*][1] f_2[*][3]
+thermo_modify   format float %.15g
+thermo          5
+run             20

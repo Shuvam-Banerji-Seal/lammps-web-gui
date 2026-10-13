@@ -75,11 +75,13 @@ const molecule = async (extra: string) => {
 };
 
 describe('local computes: argument errors', () => {
-  it('rejects unknown values, set, v_ names, bN quantities and omega', async () => {
+  it('rejects unknown values, set, v_ names, invalid bN and omega', async () => {
     await expect(molecule('compute c all bond/local bogus')).rejects.toThrow(/unknown value 'bogus'/);
     await expect(molecule('compute c all bond/local dist set dist d')).rejects.toThrow(/set keyword/);
     await expect(molecule('compute c all bond/local v_d')).rejects.toThrow(/v_name/);
-    await expect(molecule('compute c all bond/local b1')).rejects.toThrow(/bN/);
+    // bN is a bond-style extra output (compute bond/local): b0 is an invalid keyword, b1 on angles is an unknown value
+    await expect(molecule('compute c all bond/local b0')).rejects.toThrow(/Invalid keyword b0/);
+    await expect(molecule('compute c all angle/local b1')).rejects.toThrow(/unknown value 'b1'/);
     await expect(molecule('compute c all bond/local omega')).rejects.toThrow(/omega/);
     await expect(molecule('compute c all angle/local dist')).rejects.toThrow(/unknown value 'dist'/);
   });

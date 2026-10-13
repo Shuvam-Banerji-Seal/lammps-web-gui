@@ -1,629 +1,70 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
- * Source: src/SPIN/pppm_dipole_spin.cpp and pppm_dipole_spin.h (PPPMDipoleSpin: kspace_style pppm/dipole/spin, with
- * make_rho_spin, fieldforce_ik_spin, spsum_spsq, the energy and the virial of compute, and the init order), with the
- * dipole solver of src/KSPACE/pppm_dipole.cpp (PPPMDipole: set_grid_global, compute_df_kspace_dipole,
- * compute_qopt_dipole, compute_gf_dipole, find_gewald_dipole, newton_raphson_f_dipole, final_accuracy_dipole's terms,
- * compute_gf_denom, the dipole channel of poisson_ik_dipole, and the vg factors of setup) and with the stencil and
- * G-ewald helpers of src/KSPACE/pppm.cpp (factorable, adjust_gewald, derivf, set_grid_local, particle_map, compute_rho1d,
- * compute_rho_coeff, and MathSpecial::powsinxx of math_special.h) at the same commit. Contributing author of
- * pppm_dipole_spin.cpp: Julien Tranchida (SNL). Copyright (2003) Sandia Corporation, distributed under the GNU General
- * Public License, version 2 (GPL-2.0). This file is GPL-2.0 too (src/engine-gpl/LICENSE).
+ * Source: src/SPIN/pppm_dipole_spin.cpp and pppm_dipole_spin.h (PPPMDipoleSpin, a subclass of PPPMDipole: the spin
+ * moments, the precession field of fieldforce_ik_spin, spsum_spsq and the init and compute overrides) at the same
+ * commit. Contributing author of pppm_dipole_spin.cpp: Julien Tranchida (SNL). Copyright (2003) Sandia Corporation,
+ * distributed under the GNU General Public License, version 2 (GPL-2.0). This file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
- * The moment of atom i is mu_i = sp_i |sp_i| and the energies carry mub2mu0 = mub^2 mu_0 / (4 pi). The charge density
- * is zero for spins, so the charge and charge-dipole channels of pppm_dipole.cpp vanish and only the dipole-dipole
- * influence function (greensfn) and its field terms remain. The precession field of atom i, fm_long_i =
- * (mub2mu0/hbar) |sp_i| E_i (native fieldforce_ik_spin), is stored per atom id (fmLongOf) for fix nve/spin.
+ * The solver (mesh, G-ewald, the influence function, the energy, the virial and the mechanical force) is the shared
+ * PPPMDipole of src/engine-gpl/dipole/pppm_dipole.ts. The moment of atom i is mu_i = sp_i |sp_i| and the energies
+ * carry mub2mu0 = mub^2 mu_0 / (4 pi). The precession field of atom i, fm_long_i = (mub2mu0/hbar) |sp_i| E_i (native
+ * fieldforce_ik_spin), is stored per atom id (fmLongOf) for fix nve/spin, not as a torque.
  *
- * Not ported (refused by name): per-atom energy and virial (compute pe/atom, stress/atom), the slab correction
- * (kspace_modify slab), kspace_modify diff ad (native: not with spins), triclinic boxes, and the minorder reduction
- * (overlap is allowed, as native does by default).
+ * Not ported (refused by name): per-atom energy and virial, the slab correction, kspace_modify diff ad, triclinic boxes.
  */
-import { StyleError, type KSpaceCompute, type StyleContext } from '../../engine/force/types';
-import { KSpaceBase } from '../../engine/force/kspace/ewald';
+import { StyleError, type KSpaceCompute } from '../../engine/force/types';
 import type { SimState } from '../../engine/types';
-import type { Geometry } from '../../engine/domain';
-import { parseNum } from '../../engine/force/util';
-import { modifyNoEffect } from '../../engine/force/kspace/ewald';
-import { fft3d, isFFTSize } from '../../engine/force/fft';
+import { KSpacePPPMDipole } from '../dipole/pppm_dipole';
 import { fmLongOf } from './dipole_long_field';
 import { MUB2MU0, MUB2MU0HBINV } from './pair_spin_dipole_cut';
 
-/** pppm.cpp OFFSET: keeps int() of a negative grid coordinate at the right value. */
-const OFFSET = 16384;
-/** pppm.cpp SMALL and LARGE (adjust_gewald). */
-const SMALL = 0.00001;
-const LARGE = 10000;
-/** pppm_dipole.cpp EPS_HOC: the image sums of the influence function. */
-const EPS_HOC = 1.0e-7;
-/** pppm_dipole_spin.cpp MAXORDER. */
-const MAXORDER = 7;
-const MY_PIS = Math.sqrt(Math.PI);
+export class KSpacePPPMDipoleSpin extends KSpacePPPMDipole {
+  /** The precession buffer of this compute (fm_long per atom id), reset at the start of each pass. */
+  private fmLong: Float64Array = new Float64Array(0);
 
-const square = (x: number): number => x * x;
-
-/** MathSpecial::powsinxx (math_special.h at b332f28): (sin x / x)^n for an integer n >= 0. */
-const powsinxx = (x: number, n: number): number => {
-  if (x === 0) return 1;
-  let ww = Math.sin(x) / x;
-  let yy = 1;
-  for (; n !== 0; n >>= 1, ww *= ww) if (n & 1) yy *= ww;
-  return yy;
-};
-
-/** The periodic image of a mesh index (native: the ghost cells of the brick are summed onto the owned mesh). */
-const wrap = (a: number, n: number): number => ((a % n) + n) % n;
-
-/** The signed mesh index of native setup: per = i - N * (2 i / N) (integer division). */
-const perOf = (i: number, n: number): number => i - n * Math.trunc((2 * i) / n);
-
-/** Dipolar influence-function helper of PPPMDipole::gf_denom: (sx sy sz)^2 from the Gamma-expansion coefficients. */
-const gfDenom = (b: Float64Array, order: number, x: number, y: number, z: number): number => {
-  let sx = 0, sy = 0, sz = 0;
-  for (let l = order - 1; l >= 0; l--) {
-    sx = b[l] + sx * x;
-    sy = b[l] + sy * y;
-    sz = b[l] + sz * z;
-  }
-  const s = sx * sy * sz;
-  return s * s;
-};
-
-/** PPPMDipole::compute_gf_denom: the coefficients of the Gamma(2n) expansion. */
-const gfDenomCoefficients = (order: number): Float64Array => {
-  const b = new Float64Array(order);
-  for (let l = 1; l < order; l++) b[l] = 0;
-  b[0] = 1;
-  for (let m = 1; m < order; m++) {
-    let l = m;
-    for (; l > 0; l--) b[l] = 4.0 * (b[l] * (l - m) * (l - m - 0.5) - b[l - 1] * (l - m - 1) * (l - m - 1));
-    // after the loop l is 0 (native: gf_b[0] = 4.0 * (gf_b[0]*(l-m)*(l-m-0.5)))
-    b[0] = 4.0 * (b[0] * (0 - m) * (0 - m - 0.5));
-  }
-  let ifact = 1;
-  for (let k = 1; k < 2 * order; k++) ifact *= k;
-  const gaminv = 1.0 / ifact;
-  for (let l = 0; l < order; l++) b[l] *= gaminv;
-  return b;
-};
-
-/** Dipolar real-space error estimate of PPPMDipole::newton_raphson_f_dipole (without the accuracy and without charges). */
-const dipoleRspaceError = (g: number, rc: number, natoms: number, vol: number, mu2: number): number => {
-  const a = rc * g;
-  const rg2 = a * a;
-  const rg4 = rg2 * rg2;
-  const rg6 = rg4 * rg2;
-  const Cc = 4.0 * rg4 + 6.0 * rg2 + 3.0;
-  const Dc = 8.0 * rg6 + 20.0 * rg4 + 30.0 * rg2 + 15.0;
-  return (mu2 / Math.sqrt(vol * g ** 4 * rc ** 9 * natoms)) *
-    Math.sqrt((13.0 / 6.0) * Cc * Cc + (2.0 / 15.0) * Dc * Dc - (13.0 / 15.0) * Cc * Dc) * Math.exp(-rg2);
-};
-
-export class KSpacePPPMDipoleSpin extends KSpaceBase {
-  readonly name = 'pppm/dipole/spin';
-  /** kspace_modify order (stencil order of the charge assignment, native default 5). */
-  private order = 5;
-  /** kspace_modify mesh: user grid sizes, or null for the automatic choice. */
-  private meshUser: [number, number, number] | null = null;
-  /** Absolute accuracy in force units (accuracy_relative times two_charge_force, native init). */
-  private acc = 0;
-  private mu2 = 0;
-  private musqsum = 0;
-  private cutoff = 0;
-  private nxyz: [number, number, number] = [0, 0, 0];
-  /** set_grid_local: the assignment shifts and the stencil bounds. */
-  private shift = 0;
-  private shiftone = 0;
-  private nlower = 0;
-  private nupper = 0;
-  /** Gamma-expansion coefficients of the influence function (gf_b). */
-  private gfB: Float64Array = new Float64Array(0);
-  /** compute_rho_coeff, packed as rhoCoeff[l * order + (k - kmin)]. */
-  private rhoCoeff: Float64Array = new Float64Array(0);
-  private kmin = 0;
-  /** The influence function (greensfn) and the virial factors (vg) of the current box, with the mesh wavevectors. */
-  private greenKey = '';
-  private greensfn: Float64Array = new Float64Array(0);
-  private vg: Float64Array = new Float64Array(0);
-  private fk: Float64Array[] = [new Float64Array(0), new Float64Array(0), new Float64Array(0)];
-
-  settings(args: string[]): void {
-    if (args.length !== 1) throw new StyleError('Illegal kspace_style pppm/dipole/spin command');
-    // PPPM::settings: accuracy_relative = fabs(numeric)
-    this.accuracy = Math.abs(parseNum(args[0], 'accuracy'));
+  constructor() {
+    super('pppm/dipole/spin', 'PPPMDipoleSpin');
   }
 
-  modify(key: string, values: string[]): number {
-    switch (key) {
-      case 'gewald': {
-        this.gewaldUser = parseNum(values[0], 'gewald');
-        if (this.gewaldUser < 0) throw new StyleError('kspace_modify gewald must be >= 0');
-        return 1;
-      }
-      case 'mesh': {
-        const m = [0, 1, 2].map((d) => parseNum(values[d], 'mesh'));
-        if (m.some((v) => !Number.isInteger(v) || v < 0)) throw new StyleError('kspace_modify mesh values must be integers >= 0');
-        if (m.every((v) => v === 0)) this.meshUser = null;
-        else if (m.some((v) => v === 0)) throw new StyleError('kspace_modify mesh needs three values > 0, or 0 0 0 for the automatic mesh');
-        else this.meshUser = m as [number, number, number];
-        return 3;
-      }
-      case 'order': {
-        const o = parseNum(values[0], 'order');
-        if (!Number.isInteger(o) || o < 2 || o > MAXORDER) throw new StyleError(`PPPMDipoleSpin order cannot be < 2 or > ${MAXORDER}`);
-        this.order = o;
-        return 1;
-      }
-      case 'slab': case 'force': case 'diff': case 'minorder':
-        throw new StyleError(`kspace_modify ${key} is not supported by kspace_style pppm/dipole/spin`);
-      default:
-        return modifyNoEffect(key, values);
-    }
-  }
-
-  init(s: SimState, geom: Geometry, cutCoul: number, _qqrd2e: number, ctx: StyleContext): void {
+  protected checkMoments(s: SimState): void {
     if (!s.sp) throw new StyleError('Kspace style requires atom attribute sp');
+  }
+
+  protected checkUnits(s: SimState): void {
     if (s.units.style !== 'metal') throw new StyleError("'metal' units have to be used with spins");
-    if (s.dimension === 2) throw new StyleError('Cannot use PPPMDipoleSpin with 2d simulation');
-    const p = s.box.periodic;
-    if (!p[0] || !p[1] || !p[2]) throw new StyleError('Cannot use nonperiodic boundaries with PPPMDipoleSpin');
-    if (s.box.triclinic || geom.xy !== 0 || geom.xz !== 0 || geom.yz !== 0) {
-      throw new StyleError('Cannot yet use triclinic cells with PPPMDipoleSpin');
-    }
-    if (this.order < 2 || this.order > MAXORDER) throw new StyleError(`PPPMDipoleSpin order cannot be < 2 or > ${MAXORDER}`);
-    // PPPM::init: the absolute accuracy is accuracy_relative times two_charge_force (qqr2e in metal units)
-    this.cutoff = cutCoul;
-    this.acc = this.accuracy * s.units.qqr2e;
-    // spsum_spsq: musqsum = sum |sp_i|^2 (direction x norm), mu2 = musqsum * mub2mu0
-    const sp = s.sp;
-    let musq = 0;
+  }
+
+  /** mu_i = sp_i |sp_i|: the direction times the norm (native spsum_spsq and make_rho_spin). */
+  protected moments(s: SimState): Float64Array {
+    const sp = s.sp!, out = new Float64Array(3 * s.n);
     for (let i = 0; i < s.n; i++) {
-      const sx = sp[4 * i] * sp[4 * i + 3], sy = sp[4 * i + 1] * sp[4 * i + 3], sz = sp[4 * i + 2] * sp[4 * i + 3];
-      musq += sx * sx + sy * sy + sz * sz;
-    }
-    this.musqsum = musq;
-    this.mu2 = musq * MUB2MU0;
-    this.natoms = s.n;
-    if (this.mu2 === 0) throw new StyleError('Using kspace solver PPPMDipoleSpin on system with no spins');
-    this.gfB = gfDenomCoefficients(this.order);
-    const lx = geom.lx, ly = geom.ly, lz = geom.lz;
-    this.setGridGlobal(lx, ly, lz, ctx);
-    this.setGridLocal();
-    // pppm.cpp init: if (!gewaldflag) adjust_gewald()
-    if (!(this.gewaldUser > 0)) this.adjustGewald(lx, ly, lz);
-    this.rhoCoeff = this.computeRhoCoeff();
-    this.greenKey = '';
-    this.buildGreen(lx, ly, lz);
-    ctx.log(`  G vector (1/distance) = ${this.gEwald.toPrecision(8)}\n  grid = ${this.nxyz.join(' ')}\n  stencil order = ${this.order}`);
-  }
-
-  /** Estimated dipolar k-space force error of PPPMDipole::compute_df_kspace_dipole for the given G and mesh. */
-  private dfKspace(g: number, lx: number, ly: number, lz: number): number {
-    const qopt = this.qoptDipole(g, lx, ly, lz);
-    return Math.sqrt(qopt / this.natoms) * this.mu2 / (3.0 * lx * ly * lz);
-  }
-
-  /** PPPMDipole::compute_qopt_dipole (ik differentiation, images |n| <= 2). */
-  private qoptDipole(g: number, lx: number, ly: number, lz: number): number {
-    const [nx, ny, nz] = this.nxyz;
-    const unitkx = (2 * Math.PI) / lx, unitky = (2 * Math.PI) / ly, unitkz = (2 * Math.PI) / lz;
-    const twoorder = 2 * this.order;
-    let qopt = 0;
-    for (let m = 0; m < nz; m++) {
-      const mper = perOf(m, nz);
-      const snz = square(Math.sin(0.5 * unitkz * mper * lz / nz));
-      for (let l = 0; l < ny; l++) {
-        const lper = perOf(l, ny);
-        const sny = square(Math.sin(0.5 * unitky * lper * ly / ny));
-        for (let k = 0; k < nx; k++) {
-          const kper = perOf(k, nx);
-          const snx = square(Math.sin(0.5 * unitkx * kper * lx / nx));
-          const sqk = square(unitkx * kper) + square(unitky * lper) + square(unitkz * mper);
-          if (sqk === 0) continue;
-          const denominator = gfDenom(this.gfB, this.order, snx, sny, snz);
-          let sum1 = 0, sum2 = 0;
-          for (let ix = -2; ix <= 2; ix++) {
-            const qx = unitkx * (kper + nx * ix);
-            const sx = Math.exp(-0.25 * square(qx / g));
-            const wx = powsinxx(0.5 * qx * lx / nx, twoorder);
-            for (let iy = -2; iy <= 2; iy++) {
-              const qy = unitky * (lper + ny * iy);
-              const sy = Math.exp(-0.25 * square(qy / g));
-              const wy = powsinxx(0.5 * qy * ly / ny, twoorder);
-              for (let iz = -2; iz <= 2; iz++) {
-                const qz = unitkz * (mper + nz * iz);
-                const sz = Math.exp(-0.25 * square(qz / g));
-                const wz = powsinxx(0.5 * qz * lz / nz, twoorder);
-                const dot1 = unitkx * kper * qx + unitky * lper * qy + unitkz * mper * qz;
-                const dot2 = qx * qx + qy * qy + qz * qz;
-                const u1 = sx * sy * sz;
-                const w2 = wx * wy * wz;
-                const phi = (u1 * 4 * Math.PI) / dot2;
-                const top = dot1 * dot1 * dot1 * w2 * phi;
-                sum1 += phi * phi * dot2 * dot2 * dot2;
-                sum2 += top * top / sqk / sqk / sqk;
-              }
-            }
-          }
-          qopt += sum1 - sum2 / denominator;
-        }
-      }
-    }
-    return qopt;
-  }
-
-  /** PPPMDipole::find_gewald_dipole: Newton-Raphson on the dipolar real-space error (accuracy target). */
-  private findGewald(x0: number, rc: number, natoms: number, vol: number, mu2: number): number {
-    const f = (x: number) => dipoleRspaceError(x, rc, natoms, vol, mu2) - this.acc;
-    const deriv = (x: number) => (f(x + 0.000001) - f(x)) / 0.000001;
-    let x = x0;
-    for (let i = 0; i < 10000; i++) {
-      const dfx = deriv(x);
-      if (dfx === 0 || dfx !== dfx) return -1;
-      let dx = f(x) / dfx;
-      while (x - dx <= 0.0) dx *= 0.5;
-      x -= dx;
-      if (Math.abs(dx) < 0.00001) return x;
-      if (x !== x) return -1;
-    }
-    return -1;
-  }
-
-  /** PPPMDipole::set_grid_global: the G-ewald and the mesh of the accuracy target (or the user values). */
-  private setGridGlobal(lx: number, ly: number, lz: number, ctx: StyleContext): void {
-    const vol = lx * ly * lz;
-    if (!(this.gewaldUser > 0)) {
-      if (!(this.acc > 0)) throw new StyleError('KSpace accuracy must be > 0');
-      let g = (1.35 - 0.15 * Math.log(this.acc)) / this.cutoff;
-      const gNew = this.findGewald(g, this.cutoff, this.natoms, vol, this.mu2);
-      if (gNew > 0) g = gNew;
-      else ctx.log('WARNING: PPPMDipole dipole Newton solver failed, using old method to estimate g_ewald');
-      this.gEwald = g;
-    } else {
-      this.gEwald = this.gewaldUser;
-    }
-    if (!this.meshUser) {
-      let h = 4.0 / this.gEwald;
-      let count = 0;
-      for (;;) {
-        let nx = Math.trunc(lx / h), ny = Math.trunc(ly / h), nz = Math.trunc(lz / h);
-        if (nx <= 1) nx = 2;
-        if (ny <= 1) ny = 2;
-        if (nz <= 1) nz = 2;
-        this.nxyz = [nx, ny, nz];
-        const df = this.dfKspace(this.gEwald, lx, ly, lz);
-        count++;
-        if (df <= this.acc) break;
-        if (count > 500) throw new StyleError('Could not compute grid size');
-        h *= 0.95;
-      }
-    } else {
-      this.nxyz = [this.meshUser[0], this.meshUser[1], this.meshUser[2]];
-    }
-    const n = this.nxyz;
-    for (let d = 0; d < 3; d++) while (!isFFTSize(n[d])) n[d]++;
-  }
-
-  /** PPPM::set_grid_local: the charge-assignment shifts and stencil bounds of the order. */
-  private setGridLocal(): void {
-    const order = this.order;
-    this.shift = order % 2 ? OFFSET + 0.5 : OFFSET;
-    this.shiftone = order % 2 ? 0.0 : 0.5;
-    this.nlower = -Math.trunc((order - 1) / 2);
-    this.nupper = Math.trunc(order / 2);
-    this.kmin = this.nlower;
-  }
-
-  /** PPPM::adjust_gewald with the dipolar newton_raphson_f (the forward-difference derivf of pppm.cpp). */
-  private adjustGewald(lx: number, ly: number, lz: number): void {
-    const vol = lx * ly * lz;
-    const f = (g: number) => dipoleRspaceError(g, this.cutoff, this.natoms, vol, this.mu2) - this.dfKspace(g, lx, ly, lz);
-    const derivf = (g: number) => {
-      const h = 0.000001;
-      const f1 = f(g);
-      const f2 = f(g + h);
-      return (f2 - f1) / h;
-    };
-    let g = this.gEwald;
-    for (let i = 0; i < LARGE; i++) {
-      const dfx = derivf(g);
-      if (dfx === 0.0 || dfx !== dfx) break;
-      let dx = f(g) / dfx;
-      while (g - dx <= 0.0) dx *= 0.5;
-      g -= dx;
-      if (Math.abs(f(g)) < SMALL) {
-        this.gEwald = g;
-        return;
-      }
-    }
-    throw new StyleError('Could not compute g_ewald');
-  }
-
-  /** PPPM::compute_rho_coeff: the coefficients of the weight function of the given order. */
-  private computeRhoCoeff(): Float64Array {
-    const P = this.order;
-    // a[l][k + P] for k in [-P, P]
-    const a: Float64Array[] = [];
-    for (let l = 0; l < P; l++) a.push(new Float64Array(2 * P + 1));
-    a[0][P] = 1.0;
-    for (let j = 1; j < P; j++) {
-      for (let k = -j; k <= j; k += 2) {
-        let s = 0.0;
-        for (let l = 0; l < j; l++) {
-          a[l + 1][k + P] = (a[l][k + 1 + P] - a[l][k - 1 + P]) / (l + 1);
-          s += Math.pow(0.5, l + 1) * (a[l][k - 1 + P] + Math.pow(-1.0, l) * a[l][k + 1 + P]) / (l + 1);
-        }
-        a[0][k + P] = s;
-      }
-    }
-    const rho = new Float64Array(P * P);
-    let m = 0;
-    for (let k = -(P - 1); k < P; k += 2) {
-      for (let l = 0; l < P; l++) rho[l * P + m] = a[l][k + P];
-      m++;
-    }
-    return rho;
-  }
-
-  /** PPPM::compute_rho1d for the three directions: out[d * P + (k - kmin)] for k in [nlower, nupper]. */
-  private rho1dAll(dx: number, dy: number, dz: number, out: Float64Array): void {
-    const P = this.order, rc = this.rhoCoeff;
-    const dd = [dx, dy, dz];
-    for (let d = 0; d < 3; d++) {
-      for (let k = this.nlower; k <= this.nupper; k++) {
-        let r = 0;
-        for (let l = P - 1; l >= 0; l--) r = rc[l * P + (k - this.kmin)] + r * dd[d];
-        out[d * P + (k - this.kmin)] = r;
-      }
-    }
-  }
-
-  /**
-   * PPPMDipole::compute_gf_dipole (the dipole-dipole influence function of the aliasing sums, with the mesh wavevectors
-   * of setup) and the virial factors vg of PPPMDipole::setup, for the current box.
-   */
-  private buildGreen(lx: number, ly: number, lz: number): void {
-    const [nx, ny, nz] = this.nxyz;
-    const N = [nx, ny, nz];
-    const L = [lx, ly, lz];
-    const unit = [0, 1, 2].map((d) => (2 * Math.PI) / L[d]);
-    const g = this.gEwald;
-    const P = this.order;
-    const twoorder = 2 * P;
-    const fk: Float64Array[] = [new Float64Array(nx), new Float64Array(ny), new Float64Array(nz)];
-    for (let d = 0; d < 3; d++) for (let i = 0; i < N[d]; i++) fk[d][i] = unit[d] * perOf(i, N[d]);
-    this.fk = fk;
-    const nb = [0, 1, 2].map((d) => {
-      const c = Math.trunc((g * L[d] / (Math.PI * N[d])) * Math.pow(-Math.log(EPS_HOC), 0.25));
-      return Math.max(c, 2);
-    });
-    const Ng = nx * ny * nz;
-    const G = new Float64Array(Ng);
-    const VG = new Float64Array(6 * Ng);
-    for (let m = 0; m < nz; m++) {
-      const mper = perOf(m, nz);
-      const snz = square(Math.sin(0.5 * unit[2] * mper * lz / nz));
-      for (let l = 0; l < ny; l++) {
-        const lper = perOf(l, ny);
-        const sny = square(Math.sin(0.5 * unit[1] * lper * ly / ny));
-        for (let k = 0; k < nx; k++) {
-          const kper = perOf(k, nx);
-          const snx = square(Math.sin(0.5 * unit[0] * kper * lx / nx));
-          const idx = (m * ny + l) * nx + k;
-          const kx = unit[0] * kper, ky = unit[1] * lper, kz = unit[2] * mper;
-          const sqk = square(unit[0] * kper) + square(unit[1] * lper) + square(unit[2] * mper);
-          if (sqk === 0) continue;
-          const denominator = gfDenom(this.gfB, P, snx, sny, snz);
-          let sum1 = 0;
-          for (let ix = -nb[0]; ix <= nb[0]; ix++) {
-            const qx = unit[0] * (kper + nx * ix);
-            const sx = Math.exp(-0.25 * square(qx / g));
-            const wx = powsinxx(0.5 * qx * lx / nx, twoorder);
-            for (let iy = -nb[1]; iy <= nb[1]; iy++) {
-              const qy = unit[1] * (lper + ny * iy);
-              const sy = Math.exp(-0.25 * square(qy / g));
-              const wy = powsinxx(0.5 * qy * ly / ny, twoorder);
-              for (let iz = -nb[2]; iz <= nb[2]; iz++) {
-                const qz = unit[2] * (mper + nz * iz);
-                const sz = Math.exp(-0.25 * square(qz / g));
-                const wz = powsinxx(0.5 * qz * lz / nz, twoorder);
-                const dot1 = unit[0] * kper * qx + unit[1] * lper * qy + unit[2] * mper * qz;
-                const dot2 = qx * qx + qy * qy + qz * qz;
-                const u1 = sx * sy * sz;
-                const w2 = wx * wy * wz;
-                const phi = u1 * 4 * Math.PI / dot2;
-                const base = w2 * phi;
-                const d1 = dot1;
-                sum1 += d1 * d1 * d1 * base / sqk / sqk / sqk;
-              }
-            }
-          }
-          G[idx] = sum1 / denominator;
-          // PPPMDipole::setup: vg from the wavevector K = (kx, ky, kz)
-          const vterm = -2.0 * (1.0 / sqk + 0.25 / (g * g));
-          VG[6 * idx] = 1.0 + vterm * kx * kx;
-          VG[6 * idx + 1] = 1.0 + vterm * ky * ky;
-          VG[6 * idx + 2] = 1.0 + vterm * kz * kz;
-          VG[6 * idx + 3] = vterm * kx * ky;
-          VG[6 * idx + 4] = vterm * kx * kz;
-          VG[6 * idx + 5] = vterm * ky * kz;
-        }
-      }
-    }
-    this.greensfn = G;
-    this.vg = VG;
-    this.greenKey = [lx, ly, lz, g, nx, ny, nz, P].join(',');
-  }
-
-  /** The Green's function of the box of this call (setup of the source runs on every run). */
-  private ensureGreen(lx: number, ly: number, lz: number): void {
-    const key = [lx, ly, lz, this.gEwald, ...this.nxyz, this.order].join(',');
-    if (key !== this.greenKey) this.buildGreen(lx, ly, lz);
-  }
-
-  compute(kc: KSpaceCompute): void {
-    if (kc.eatom || kc.vatom) {
-      throw new StyleError('compute pe/atom and stress/atom with kspace_style pppm/dipole/spin are not supported by the browser engine');
-    }
-    const s = kc.s, geom = kc.geom, n = s.n;
-    // PPPMDipoleSpin::compute: nothing to do without spins (musqsum is the init-time value, as in native)
-    if (this.musqsum === 0) return;
-    const lx = geom.lx, ly = geom.ly, lz = geom.lz;
-    this.ensureGreen(lx, ly, lz);
-    const [nx, ny, nz] = this.nxyz;
-    const Ng = nx * ny * nz;
-    const V = lx * ly * lz;
-    const P = this.order;
-    const sp = s.sp!, x = s.x, f = kc.f;
-    const lo = s.box.lo;
-    const delinv = [nx / lx, ny / ly, nz / lz];
-    const delvolinv = delinv[0] * delinv[1] * delinv[2];
-    const shift = this.shift, shiftone = this.shiftone;
-    const part = new Int32Array(3 * n);
-    const r = new Float64Array(3 * P);
-    const ds = [0, 0, 0];
-    // make_rho_spin: the three moment densities on the mesh (real parts; the imaginary parts are filled by the FFT)
-    const dens = [new Float64Array(2 * Ng), new Float64Array(2 * Ng), new Float64Array(2 * Ng)];
-    const mom = [0, 0, 0];
-    for (let i = 0; i < n; i++) {
-      for (let d = 0; d < 3; d++) {
-        const u = (x[3 * i + d] - lo[d]) * delinv[d];
-        const p = Math.trunc(u + shift) - OFFSET;
-        part[3 * i + d] = p;
-        ds[d] = p + shiftone - (x[3 * i + d] - lo[d]) * delinv[d];
-      }
-      this.rho1dAll(ds[0], ds[1], ds[2], r);
       const spn = sp[4 * i + 3];
-      mom[0] = sp[4 * i] * spn; mom[1] = sp[4 * i + 1] * spn; mom[2] = sp[4 * i + 2] * spn;
-      const px = part[3 * i], py = part[3 * i + 1], pz = part[3 * i + 2];
-      for (let c = 0; c < 3; c++) {
-        const zc = delvolinv * mom[c];
-        const dc = dens[c];
-        for (let nn = this.nlower; nn <= this.nupper; nn++) {
-          const mz = wrap(nn + pz, nz);
-          const yc = zc * r[2 * P + (nn - this.kmin)];
-          for (let mm = this.nlower; mm <= this.nupper; mm++) {
-            const my = wrap(mm + py, ny);
-            const xc = yc * r[1 * P + (mm - this.kmin)];
-            for (let ll = this.nlower; ll <= this.nupper; ll++) {
-              const mx = wrap(ll + px, nx);
-              dc[2 * ((mz * ny + my) * nx + mx)] += xc * r[ll - this.kmin];
-            }
-          }
-        }
-      }
+      out[3 * i] = sp[4 * i] * spn;
+      out[3 * i + 1] = sp[4 * i + 1] * spn;
+      out[3 * i + 2] = sp[4 * i + 2] * spn;
     }
-    // poisson_ik_dipole: forward transforms of the moment densities, and D = k . M(k) (the charge terms are zero)
-    for (let c = 0; c < 3; c++) fft3d(dens[c], nx, ny, nz, -1);
-    const Dre = new Float64Array(Ng), Dim = new Float64Array(Ng);
-    const fk = this.fk;
-    for (let iz = 0; iz < nz; iz++) {
-      for (let iy = 0; iy < ny; iy++) {
-        for (let ix = 0; ix < nx; ix++) {
-          const idx = (iz * ny + iy) * nx + ix;
-          const kx = fk[0][ix], ky = fk[1][iy], kz = fk[2][iz];
-          const Mx = 2 * idx, Mxi = Mx + 1;
-          Dre[idx] = kx * dens[0][Mx] + ky * dens[1][Mx] + kz * dens[2][Mx];
-          Dim[idx] = kx * dens[0][Mxi] + ky * dens[1][Mxi] + kz * dens[2][Mxi];
-        }
-      }
-    }
-    const scaleinv = 1.0 / Ng;
-    const s2 = scaleinv * scaleinv;
-    const G = this.greensfn, VG = this.vg;
-    // spectra of the fields: ux_a = k_a sgdd D, and v_ab = i k_a k_b sgdd D (sgdd = scaleinv G), real parts are used
-    const spec = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(() => new Float64Array(2 * Ng));
-    let esum = 0;
-    const W = [0, 0, 0, 0, 0, 0];
-    for (let iz = 0; iz < nz; iz++) {
-      for (let iy = 0; iy < ny; iy++) {
-        for (let ix = 0; ix < nx; ix++) {
-          const idx = (iz * ny + iy) * nx + ix;
-          const g0 = G[idx];
-          const kx = fk[0][ix], ky = fk[1][iy], kz = fk[2][iz];
-          const Dr = Dre[idx], Di = Dim[idx];
-          const M0r = dens[0][2 * idx], M0i = dens[0][2 * idx + 1];
-          const M1r = dens[1][2 * idx], M1i = dens[1][2 * idx + 1];
-          const M2r = dens[2][2 * idx], M2i = dens[2][2 * idx + 1];
-          const eng = s2 * g0 * (Dr * Dr + Di * Di);
-          esum += eng;
-          // virial (vflag_global): eng * vg plus the terms of the moment densities
-          for (let jj = 0; jj < 6; jj++) W[jj] += eng * VG[6 * idx + jj];
-          const MxD = M0r * Dr + M0i * Di;
-          const MyD = M1r * Dr + M1i * Di;
-          const MzD = M2r * Dr + M2i * Di;
-          W[0] += 2.0 * s2 * g0 * kx * MxD;
-          W[1] += 2.0 * s2 * g0 * ky * MyD;
-          W[2] += 2.0 * s2 * g0 * kz * MzD;
-          W[3] += 2.0 * s2 * g0 * ky * MxD;
-          W[4] += 2.0 * s2 * g0 * kz * MxD;
-          W[5] += 2.0 * s2 * g0 * kz * MyD;
-          const sgdd = scaleinv * g0;
-          // u_a = k_a sgdd D
-          const ua = [kx * sgdd, ky * sgdd, kz * sgdd];
-          for (let a = 0; a < 3; a++) {
-            spec[a][2 * idx] = ua[a] * Dr;
-            spec[a][2 * idx + 1] = ua[a] * Di;
-          }
-          // v_ab = i (k_a k_b sgdd) D: the real part is -c Di, the imaginary part c Dr
-          const pairs: [number, number, number][] = [[3, kx, kx], [4, ky, ky], [5, kz, kz], [6, kx, ky], [7, kx, kz], [8, ky, kz]];
-          for (const [slot, ka, kb] of pairs) {
-            const c = ka * kb * sgdd;
-            spec[slot][2 * idx] = -c * Di;
-            spec[slot][2 * idx + 1] = c * Dr;
-          }
-        }
-      }
-    }
-    // backward transforms (unnormalized); the real parts are the brick values of native
-    for (let c = 0; c < 9; c++) fft3d(spec[c], nx, ny, nz, 1);
-    const fmLong = fmLongOf(s, true);
-    const spfactor = MUB2MU0;
-    const spfactorh = MUB2MU0HBINV;
-    for (let i = 0; i < n; i++) {
-      for (let d = 0; d < 3; d++) {
-        const u = (x[3 * i + d] - lo[d]) * delinv[d];
-        const p = Math.trunc(u + shift) - OFFSET;
-        part[3 * i + d] = p;
-        ds[d] = p + shiftone - (x[3 * i + d] - lo[d]) * delinv[d];
-      }
-      this.rho1dAll(ds[0], ds[1], ds[2], r);
-      const px = part[3 * i], py = part[3 * i + 1], pz = part[3 * i + 2];
-      let ex = 0, ey = 0, ez = 0;
-      const vv = [0, 0, 0, 0, 0, 0];
-      for (let nn = this.nlower; nn <= this.nupper; nn++) {
-        const mz = wrap(nn + pz, nz);
-        const z0 = r[2 * P + (nn - this.kmin)];
-        for (let mm = this.nlower; mm <= this.nupper; mm++) {
-          const my = wrap(mm + py, ny);
-          const y0 = z0 * r[1 * P + (mm - this.kmin)];
-          for (let ll = this.nlower; ll <= this.nupper; ll++) {
-            const mx = wrap(ll + px, nx);
-            const x0 = y0 * r[ll - this.kmin];
-            const idx2 = 2 * ((mz * ny + my) * nx + mx);
-            ex -= x0 * spec[0][idx2];
-            ey -= x0 * spec[1][idx2];
-            ez -= x0 * spec[2][idx2];
-            for (let c = 0; c < 6; c++) vv[c] -= x0 * spec[3 + c][idx2];
-          }
-        }
-      }
-      // fieldforce_ik_spin: mechanical force and precession field
-      const spn = sp[4 * i + 3];
-      const spx = sp[4 * i] * spn, spy = sp[4 * i + 1] * spn, spz = sp[4 * i + 2] * spn;
-      const vxx = vv[0], vyy = vv[1], vzz = vv[2], vxy = vv[3], vxz = vv[4], vyz = vv[5];
-      f[3 * i] += spfactor * (vxx * spx + vxy * spy + vxz * spz);
-      f[3 * i + 1] += spfactor * (vxy * spx + vyy * spy + vyz * spz);
-      f[3 * i + 2] += spfactor * (vxz * spx + vyz * spy + vzz * spz);
-      const id = 3 * s.id[i];
-      fmLong[id] += spn * spfactorh * ex;
-      fmLong[id + 1] += spn * spfactorh * ey;
-      fmLong[id + 2] += spn * spfactorh * ez;
-    }
-    // energy: 0.5 V sum - the self term, times mub2mu0 (native compute); virial: 0.5 mub2mu0 V sum
-    const g3 = this.gEwald * this.gEwald * this.gEwald;
-    const energy = (0.5 * V * esum - this.musqsum * 2.0 * g3 / 3.0 / MY_PIS) * MUB2MU0;
-    kc.acc.elong += energy;
-    for (let c = 0; c < 6; c++) kc.acc.vlong[c] += 0.5 * MUB2MU0 * V * W[c];
+    return out;
+  }
+
+  protected prefactor(_qqrd2e: number): number {
+    return MUB2MU0;
+  }
+
+  protected noMomentError(): string {
+    return 'Using kspace solver PPPMDipoleSpin on system with no spins';
+  }
+
+  protected beginField(kc: KSpaceCompute): void {
+    this.fmLong = fmLongOf(kc.s, true);
+  }
+
+  /** fieldforce_ik_spin: the precession field fm_long_i = (mub2mu0/hbar) |sp_i| E_i, stored per atom id. */
+  protected applyField(kc: KSpaceCompute, i: number, _C: number, E: Float64Array): void {
+    const s = kc.s;
+    const spn = s.sp![4 * i + 3];
+    const id = 3 * s.id[i];
+    this.fmLong[id] += spn * MUB2MU0HBINV * E[0];
+    this.fmLong[id + 1] += spn * MUB2MU0HBINV * E[1];
+    this.fmLong[id + 2] += spn * MUB2MU0HBINV * E[2];
   }
 }

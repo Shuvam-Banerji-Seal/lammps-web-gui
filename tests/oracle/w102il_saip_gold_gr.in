@@ -1,0 +1,31 @@
+# oracle: pair_style hybrid/overlay eam rebo saip/metal 16.0 - the examples' gold/graphene heterostructure (3 Au layers and 1 graphene layer, 206 atoms, the example's data file), 10 NVE steps; compute pair c_0 (rebo), c_1 (eam) and c_2 (saip/metal: [attractive, repulsive])
+# measured (engine vs native, black box; rel over |value| >= 1e-6; per-atom scale max(1,|value|)): thermo max abs 2.0e-10, max rel 2.8e-14; per-atom max scaled 7.0e-13
+# oracle-inputs: w102il_saip_gold_gr.data
+# oracle-potentials: Au_u3.eam CH.rebo CHAu.ILP
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+boundary        p p f
+atom_style      full
+read_data       w102il_saip_gold_gr.data
+group           gold type 1
+group           gra type 2
+mass            * 12.0107
+mass            1 196.96657
+pair_style      hybrid/overlay eam rebo saip/metal 16.0
+pair_coeff      1 1 eam Au_u3.eam
+pair_coeff      * * rebo CH.rebo NULL C
+pair_coeff      * * saip/metal CHAu.ILP Au C
+compute         0 all pair rebo
+compute         1 all pair eam
+compute         2 all pair saip/metal
+thermo_style    custom step pe etotal press c_0 c_1 c_2[1] c_2[2]
+thermo_modify   format float %.15g
+thermo          5
+velocity        all set 0.0 0.0 0.0
+velocity        gra create 300.0 4928459 mom yes rot yes dist gaussian
+velocity        gold create 300.0 4928459 mom yes rot yes dist gaussian
+fix             intsub gold nve
+fix             intrib gra nve
+timestep        1e-3
+run             0
+run             10

@@ -9,7 +9,7 @@
 import type { PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, type NeighList } from '../../engine/neighbor';
 import { calcDTap, calcTap } from './taper';
-import { KCNormalBase, type NormalParam } from './normals';
+import { KCNormalBase, tallyPairAtoms, tallyXYZAtoms, type NormalParam } from './normals';
 
 export interface ILPParam extends NormalParam {
   epsilon: number; C: number; d: number; seff: number; C6: number;
@@ -106,14 +106,14 @@ export class PairILPGrapheneHBN extends KCNormalBase<ILPParam> {
         const e = vilp * tap;
         evdwlSum += e;
         this.pvector[0] += e;
-        if (pc.eatom) {
-          pc.eatom[i] += 0.5 * e;
-          pc.eatom[j] += 0.5 * e;
-        }
+        tallyPairAtoms(pc, i, j, e, fsum, dx, dy, dz);
       }
     }
     pc.acc.evdwl += evdwlSum;
   }
+
+  /** Element test of the metal repulsion of saip/metal (a metal atom has no transverse term). Default: no metals. */
+  protected metalTest: (element: string) => boolean = () => false;
 
   protected calcFRep(pc: PairCompute, list: NeighList): void {
     const { x, f, type } = pc;
@@ -122,6 +122,8 @@ export class PairILPGrapheneHBN extends KCNormalBase<ILPParam> {
     const owner = pc.nb.owner;
     const mol = pc.s.molecule;
     const tapOn = this.tapFlag !== 0;
+    const metal = new Array<boolean>(nt).fill(false);
+    for (let t = 1; t < nt; t++) metal[t] = this.map[t] >= 0 && this.metalTest(this.elements[this.map[t]]);
     let evdwlSum = 0;
     for (let i = 0; i < list.inum; i++) {
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
@@ -139,6 +141,25 @@ export class PairILPGrapheneHBN extends KCNormalBase<ILPParam> {
         const rc = Math.sqrt(cutsq[t]);
         const tap = tapOn ? calcTap(r, rc) : 1.0;
         const dtap = tapOn ? calcDTap(r, rc) : 0.0;
+        if (metal[ti]) {
+          // saip/metal: a metal atom's repulsion has no transverse dependence (frho1 = C), so no normal terms
+          const exp0m = Math.exp(-p.lambda * (r - p.z0));
+          const erepm = 0.5 * p.epsilon + p.C;
+          const vilpm = exp0m * erepm;
+          const fpairm = p.lambda * exp0m / r * erepm;
+          const filp = fpairm * tap - vilpm * dtap / r;
+          f[3 * i] += delx * filp;
+          f[3 * i + 1] += dely * filp;
+          f[3 * i + 2] += delz * filp;
+          f[3 * j] -= delx * filp;
+          f[3 * j + 1] -= dely * filp;
+          f[3 * j + 2] -= delz * filp;
+          const em = tap * vilpm;
+          evdwlSum += em;
+          this.pvector[1] += em;
+          tallyPairAtoms(pc, i, j, em, filp, delx, dely, delz);
+          continue;
+        }
         const prodnorm1 = ni[0] * delx + ni[1] * dely + ni[2] * delz;
         const rhosq1 = rsq - prodnorm1 * prodnorm1; // rho_ij
         const rdsq1 = rhosq1 * p.delta2inv; // (rho_ij/delta)^2
@@ -166,22 +187,20 @@ export class PairILPGrapheneHBN extends KCNormalBase<ILPParam> {
         // the KC neighbors of i move with the normal
         const del = [delx, dely, delz];
         for (let kk = 0; kk < this.kcN[i]; kk++) {
-          const kidx = this.kcJ[3 * i + kk];
+          const kidx = this.kcJ[this.maxKC * i + kk];
           if (kidx === i) continue;
-          const base = 27 * i + 9 * kk;
+          const base = 9 * this.maxKC * i + 9 * kk;
           const dp = [0, 1, 2].map((b) => this.dnormal[base + b] * del[0] + this.dnormal[base + 3 + b] * del[1] + this.dnormal[base + 6 + b] * del[2]);
           const fk = [0, 1, 2].map((a) => (-prodnorm1 * dp[a] * fpair1) * tap);
           f[3 * kidx] += fk[0];
           f[3 * kidx + 1] += fk[1];
           f[3 * kidx + 2] += fk[2];
+          tallyXYZAtoms(pc, kidx, i, 0, fk[0], fk[1], fk[2], x[3 * kidx] - x[3 * i], x[3 * kidx + 1] - x[3 * i + 1], x[3 * kidx + 2] - x[3 * i + 2]);
         }
         const e = tap * vilp;
         evdwlSum += e;
         this.pvector[1] += e;
-        if (pc.eatom) {
-          pc.eatom[i] += 0.5 * e;
-          pc.eatom[j] += 0.5 * e;
-        }
+        tallyXYZAtoms(pc, i, j, e, fkc[0], fkc[1], fkc[2], delx, dely, delz);
       }
     }
     pc.acc.evdwl += evdwlSum;

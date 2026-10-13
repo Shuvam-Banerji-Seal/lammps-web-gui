@@ -94,10 +94,10 @@ describe('AIREBO pair style errors', () => {
     expect(errors.join('\n')).toMatch(/Element N not supported by pair style airebo/);
   });
 
-  it('rejects NULL in the element map', async () => {
+  it('accepts NULL in the element map (docs.lammps.org/pair_airebo.html: "If a mapping value is specified as NULL, the mapping is not performed")', async () => {
     const script = `units metal\natom_style atomic\nregion box block 0 10 0 10 0 10\ncreate_box 2 box\nmass * 12.0\npair_style rebo\npair_coeff * * CH.rebo C NULL\n`;
     const { errors } = await run(script, ['CH.rebo']);
-    expect(errors.join('\n')).toMatch(/NULL/);
+    expect(errors).toEqual([]);
   });
 
   it('needs one element per atom type', async () => {

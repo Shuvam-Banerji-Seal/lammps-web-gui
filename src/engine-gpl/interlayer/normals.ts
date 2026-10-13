@@ -36,10 +36,12 @@ export abstract class KCNormalBase<P extends NormalParam> extends InterlayerZBas
   protected cap = 0;
   protected kcN = new Int32Array(0);
   protected kcJ = new Int32Array(0);
+  /** Neighbors per atom in the normal arrays (3 here; ilp/tmd uses the 6 ring neighbors). */
+  protected maxKC = 3;
   protected normal = new Float64Array(0);
   /** dnormdri[i][a][b] at 9 i + 3 a + b. */
   protected dnormdri = new Float64Array(0);
-  /** dnormal[i][k][a][b] at 27 i + 9 k + 3 a + b (k = KC neighbor index). */
+  /** dnormal[i][k][a][b] at 9 maxKC i + 9 k + 3 a + b (k = KC neighbor index). */
   protected dnormal = new Float64Array(0);
   protected listInum = 0;
 
@@ -52,6 +54,7 @@ export abstract class KCNormalBase<P extends NormalParam> extends InterlayerZBas
 
   override settings(args: string[], _ctx: StyleContext): void {
     if (args.length < 1 || args.length > 2) throw new StyleError('Illegal pair_style command');
+    if (!this.hybridOverlay) throw new StyleError(`Pair style ${this.name} must be used as sub-style with hybrid/overlay`);
     this.cutGlobal = parseNum(args[0], 'cutoff');
     if (args.length === 2) {
       const t = Number(args[1]);
@@ -94,8 +97,8 @@ export abstract class KCNormalBase<P extends NormalParam> extends InterlayerZBas
   }
 
   override initStyle(ctx: StyleContext): void {
-    if (ctx.newtonPair === false) throw new StyleError(`Pair style ${this.name} requires newton pair on`);
-    if (!ctx.s || !hasMolecule(ctx.s)) throw new StyleError(`Pair style ${this.name} requires atom attribute molecule`);
+    if (ctx.newtonPair === false) throw new StyleError(`Pair style ${this.initName()} requires newton pair on`);
+    if (!ctx.s || !hasMolecule(ctx.s)) throw new StyleError(`Pair style ${this.initName()} requires atom attribute molecule`);
     // rcut per type pair, from the element pair of the two types
     const nt = this.ntypes + 1;
     this.kcCut2 = new Float64Array(nt * nt);
@@ -110,6 +113,11 @@ export abstract class KCNormalBase<P extends NormalParam> extends InterlayerZBas
     }
   }
 
+  /** The style name in the initStyle messages (kolmogorov/crespi/full's native messages misspell it: see its file). */
+  protected initName(): string {
+    return this.name;
+  }
+
   override extract(name: string): unknown {
     return name === 'pvector' ? this.pvector : undefined;
   }
@@ -117,7 +125,6 @@ export abstract class KCNormalBase<P extends NormalParam> extends InterlayerZBas
   override compute(pc: PairCompute): void {
     const list = pc.full;
     if (!list) throw new Error(`pair style ${this.name} needs a full neighbor list`);
-    if (pc.vatom) throw new StyleError(`per-atom virial (compute stress/atom) is not supported for pair style ${this.name} by the browser engine`);
     this.pvector.fill(0);
     this.listInum = list.inum;
     this.ensureScratch(list.inum);
@@ -131,14 +138,14 @@ export abstract class KCNormalBase<P extends NormalParam> extends InterlayerZBas
     if (n <= this.cap) return;
     this.cap = n;
     this.kcN = new Int32Array(n);
-    this.kcJ = new Int32Array(3 * n);
+    this.kcJ = new Int32Array(this.maxKC * n);
     this.normal = new Float64Array(3 * n);
     this.dnormdri = new Float64Array(9 * n);
-    this.dnormal = new Float64Array(27 * n);
+    this.dnormal = new Float64Array(9 * this.maxKC * n);
   }
 
   /** KC neighbors of each owned atom: same molecule, closer than its rcut, excluding the atom itself (KC_neigh). */
-  private buildKCNeighbors(pc: PairCompute, list: NeighList): void {
+  protected buildKCNeighbors(pc: PairCompute, list: NeighList): void {
     const { x, type } = pc;
     const nt = this.ntypes + 1;
     const owner = pc.nb.owner;
@@ -154,7 +161,7 @@ export abstract class KCNormalBase<P extends NormalParam> extends InterlayerZBas
         const rsq = dx * dx + dy * dy + dz * dz;
         if (rsq !== 0 && rsq < this.kcCut2[ti * nt + type[j]] && mol[owner[i]] === mol[owner[j]]) {
           if (n >= 3) throw new StyleError('There are too many neighbors for some atoms, please check your configuration');
-          this.kcJ[3 * i + n] = j;
+          this.kcJ[this.maxKC * i + n] = j;
           n++;
         }
       }
@@ -163,20 +170,20 @@ export abstract class KCNormalBase<P extends NormalParam> extends InterlayerZBas
   }
 
   /** Normal of each owned atom from its KC neighbors and the derivatives of the normal (calc_normal). */
-  private calcNormals(pc: PairCompute): void {
+  protected calcNormals(pc: PairCompute): void {
     const x = pc.x;
     for (let i = 0; i < this.listInum; i++) {
       const cont = this.kcN[i];
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
       const vet: number[][] = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
       for (let c = 0; c < cont; c++) {
-        const j = this.kcJ[3 * i + c];
+        const j = this.kcJ[this.maxKC * i + c];
         vet[c][0] = x[3 * j] - xi;
         vet[c][1] = x[3 * j + 1] - yi;
         vet[c][2] = x[3 * j + 2] - zi;
       }
       this.dnormdri.fill(0, 9 * i, 9 * i + 9);
-      this.dnormal.fill(0, 27 * i, 27 * i + 27);
+      this.dnormal.fill(0, 9 * this.maxKC * i, 9 * this.maxKC * i + 9 * this.maxKC);
       if (cont <= 1) {
         this.normal[3 * i] = 0;
         this.normal[3 * i + 1] = 0;
@@ -234,7 +241,7 @@ export abstract class KCNormalBase<P extends NormalParam> extends InterlayerZBas
       for (let m = 0; m < 3; m++) {
         for (let id = 0; id < 3; id++) {
           for (let ip = 0; ip < 3; ip++) {
-            this.dnormal[27 * i + 9 * m + 3 * id + ip] = dn1[id][ip][m] / nn - n1[id] * dnn[ip][m] / nn2;
+            this.dnormal[9 * this.maxKC * i + 9 * m + 3 * id + ip] = dn1[id][ip][m] / nn - n1[id] * dnn[ip][m] / nn2;
           }
         }
       }
@@ -294,3 +301,39 @@ const cross = (a: readonly number[], b: readonly number[]): number[] => [
   a[2] * b[0] - b[2] * a[0],
   a[0] * b[1] - b[0] * a[1],
 ];
+
+/**
+ * ev_tally of pair.cpp for a pair whose force is fpair along the pair vector (dx, dy, dz): the per-atom energy and
+ * virial are split half to each atom. The global virial is left to the force field (virialFdotr).
+ */
+export const tallyPairAtoms = (pc: PairCompute, i: number, j: number, e: number, fpair: number, dx: number, dy: number, dz: number): void => {
+  if (pc.eatom) {
+    pc.eatom[i] += 0.5 * e;
+    pc.eatom[j] += 0.5 * e;
+  }
+  if (!pc.vatom) return;
+  const va = pc.vatom;
+  const w = [dx * dx * fpair, dy * dy * fpair, dz * dz * fpair, dx * dy * fpair, dx * dz * fpair, dy * dz * fpair];
+  for (let c = 0; c < 6; c++) {
+    va[6 * i + c] += 0.5 * w[c];
+    va[6 * j + c] += 0.5 * w[c];
+  }
+};
+
+/**
+ * ev_tally_xyz of pair.cpp for force components (fx, fy, fz) on i (the pair vector is (dx, dy, dz) = x_i - x_j): the
+ * per-atom energy and virial are split half to each atom.
+ */
+export const tallyXYZAtoms = (pc: PairCompute, i: number, j: number, e: number, fx: number, fy: number, fz: number, dx: number, dy: number, dz: number): void => {
+  if (pc.eatom) {
+    pc.eatom[i] += 0.5 * e;
+    pc.eatom[j] += 0.5 * e;
+  }
+  if (!pc.vatom) return;
+  const va = pc.vatom;
+  const w = [dx * fx, dy * fy, dz * fz, dx * fy, dx * fz, dy * fz];
+  for (let c = 0; c < 6; c++) {
+    va[6 * i + c] += 0.5 * w[c];
+    va[6 * j + c] += 0.5 * w[c];
+  }
+};

@@ -1,0 +1,22 @@
+# oracle: pair_style hybrid/overlay drip rebo - the examples' multilayer graphene (data.C: 400 C atoms, boundary p p s), 10 NVE steps from 300 K instead of the example's minimization; compute pair c_0 (drip) and c_1 (rebo)
+# measured (engine vs native, black box; rel over |value| >= 1e-6; per-atom scale max(1,|value|)): thermo max abs 3.2e-10, max rel 1.2e-14; per-atom max scaled 1.9e-12
+# oracle-inputs: w102il_drip_c.data
+# oracle-potentials: C.drip CH.rebo
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      molecular
+boundary        p p s
+read_data       w102il_drip_c.data
+pair_style      hybrid/overlay drip rebo
+pair_coeff      * * drip C.drip C
+pair_coeff      * * rebo CH.rebo C
+compute         0 all pair drip
+compute         1 all pair rebo
+thermo_style    custom step pe etotal press c_0 c_1
+thermo_modify   format float %.15g
+thermo          5
+run             0
+velocity        all create 300.0 12345 dist gaussian mom yes rot yes
+fix             1 all nve
+timestep        1e-3
+run             10

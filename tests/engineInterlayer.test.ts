@@ -71,8 +71,15 @@ describe('INTERLAYER pair style errors', () => {
     expect(err).toMatch(/requires atom attribute molecule/);
   });
 
+  it('the INTERLAYER styles that native lets only inside hybrid/overlay are refused alone (native settings checks)', async () => {
+    for (const style of ['ilp/graphene/hbn 16.0', 'kolmogorov/crespi/full 16.0', 'ilp/tmd 16.0', 'saip/metal 16.0', 'saip/metal/tmd 16.0', 'aip/water/2dm 16.0', 'drip']) {
+      const err = await errorOf(`units metal\natom_style atomic\nread_data two.dat\nmass * 12\npair_style ${style}\n`, { 'two.dat': twoAtoms });
+      expect(err, style).toContain(`Pair style ${style.split(' ')[0]} must be used as sub-style with hybrid/overlay`);
+    }
+  });
+
   it('styles that are not ported yet stay refused by name', async () => {
-    for (const style of ['drip', 'ilp/tmd', 'saip/metal', 'aip/water/2dm']) {
+    for (const style of ['comb3']) {
       const err = await errorOf(`units metal\natom_style atomic\nread_data two.dat\nmass * 12\npair_style hybrid/overlay ${style} 16.0\n`, { 'two.dat': twoAtoms });
       expect(err, style).toMatch(new RegExp(style.replace('/', '\\/')));
     }

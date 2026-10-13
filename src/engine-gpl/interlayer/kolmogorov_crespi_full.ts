@@ -7,7 +7,7 @@
 import type { PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, type NeighList } from '../../engine/neighbor';
 import { calcDTap, calcTap } from './taper';
-import { KCNormalBase, type NormalParam } from './normals';
+import { KCNormalBase, tallyPairAtoms, tallyXYZAtoms, type NormalParam } from './normals';
 
 export interface KCFullParam extends NormalParam {
   C0: number; C2: number; C4: number; C: number; A: number; z06: number;
@@ -25,6 +25,11 @@ export interface KCFullParam extends NormalParam {
  */
 export class PairKolmogorovCrespiFull extends KCNormalBase<KCFullParam> {
   readonly name: string = 'kolmogorov/crespi/full';
+
+  /** native's initStyle messages misspell the name ("kolmolgorov/crespi/full", pair_kolmogorov_crespi_full.cpp). */
+  protected override initName(): string {
+    return 'kolmolgorov/crespi/full';
+  }
   protected readonly nwords = 12;
 
   protected makeParam(nums: number[], ie: number, je: number, scale: number): KCFullParam {
@@ -99,10 +104,7 @@ export class PairKolmogorovCrespiFull extends KCNormalBase<KCFullParam> {
         const e = vkc * tap;
         evdwlSum += e;
         this.pvector[0] += e;
-        if (pc.eatom) {
-          pc.eatom[i] += 0.5 * e;
-          pc.eatom[j] += 0.5 * e;
-        }
+        tallyPairAtoms(pc, i, j, e, fsum, dx, dy, dz);
       }
     }
     pc.acc.evdwl += evdwlSum;
@@ -164,22 +166,20 @@ export class PairKolmogorovCrespiFull extends KCNormalBase<KCFullParam> {
         // the KC neighbors of i move with the normal
         const del = [delx, dely, delz];
         for (let kk = 0; kk < this.kcN[i]; kk++) {
-          const kidx = this.kcJ[3 * i + kk];
+          const kidx = this.kcJ[this.maxKC * i + kk];
           if (kidx === i) continue;
-          const base = 27 * i + 9 * kk;
+          const base = 9 * this.maxKC * i + 9 * kk;
           const dp = [0, 1, 2].map((b) => this.dnormal[base + b] * del[0] + this.dnormal[base + 3 + b] * del[1] + this.dnormal[base + 6 + b] * del[2]);
           const fk = [0, 1, 2].map((a) => (-prodnorm1 * dp[a] * fpair1) * tap);
           f[3 * kidx] += fk[0];
           f[3 * kidx + 1] += fk[1];
           f[3 * kidx + 2] += fk[2];
+          tallyXYZAtoms(pc, kidx, i, 0, fk[0], fk[1], fk[2], x[3 * kidx] - x[3 * i], x[3 * kidx + 1] - x[3 * i + 1], x[3 * kidx + 2] - x[3 * i + 2]);
         }
         const e = tapOn ? tap * vkc : vkc - this.offset[t];
         evdwlSum += e;
         this.pvector[1] += e;
-        if (pc.eatom) {
-          pc.eatom[i] += 0.5 * e;
-          pc.eatom[j] += 0.5 * e;
-        }
+        tallyXYZAtoms(pc, i, j, e, fkc[0], fkc[1], fkc[2], delx, dely, delz);
       }
     }
     pc.acc.evdwl += evdwlSum;

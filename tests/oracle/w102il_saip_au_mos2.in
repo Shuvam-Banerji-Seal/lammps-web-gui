@@ -1,0 +1,33 @@
+# oracle: pair_style hybrid/overlay eam sw/mod saip/metal/tmd 16.0 1 - the examples' gold/MoS2 heterostructure (3 Au layers and 1 MoS2 layer, 1590 atoms, the example's data file), 10 NVE steps; compute pair c_0 (eam), c_1 (sw/mod) and c_2 (saip/metal/tmd: [attractive, repulsive])
+# measured (engine vs native, black box; rel over |value| >= 1e-6; per-atom scale max(1,|value|)): thermo max abs 5.6e-11, max rel 1.7e-13; per-atom max scaled 7.3e-14
+# oracle-inputs: w102il_saip_au_mos2.data
+# oracle-potentials: Au_u3.eam tmd.sw.mod TMDAu.SAIP
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+boundary        p p p
+atom_style      full
+read_data       w102il_saip_au_mos2.data
+mass            1 196.96657
+mass            2 32.065
+mass            3 95.95
+mass            4 32.065
+group           gold type 1
+group           mos2 type 2 3 4
+pair_style      hybrid/overlay eam sw/mod saip/metal/tmd 16.0 1
+pair_coeff      1 1 eam Au_u3.eam
+pair_coeff      * * sw/mod tmd.sw.mod NULL S Mo S
+pair_coeff      * * saip/metal/tmd TMDAu.SAIP Au S Mo S
+compute         0 all pair eam
+compute         1 all pair sw/mod
+compute         2 all pair saip/metal/tmd
+thermo_style    custom step pe etotal press c_0 c_1 c_2[1] c_2[2]
+thermo_modify   format float %.15g
+thermo          5
+velocity        all set 0.0 0.0 0.0
+velocity        mos2 create 300.0 4928459 mom yes rot yes dist gaussian
+velocity        gold create 300.0 4928459 mom yes rot yes dist gaussian
+fix             intsub gold nve
+fix             intrib mos2 nve
+timestep        1e-3
+run             0
+run             10

@@ -6,8 +6,9 @@
  * GPL-2.0 too (src/engine-gpl/LICENSE).
  *
  * Docs (docs.lammps.org/fix_rheo.html): "fix ID group-ID rheo cut kstyle zmin keyword values..." and "kstyle = quintic
- * or RK0 or RK1 or RK2". The browser engine supports the quintic and RK1 kernels with the shift, density and speed/sound
- * keywords and refuses the others by name (RK0, RK2; thermal, surface/detection, interface/reconstruct, rho/sum).
+ * or RK0 or RK1 or RK2". The browser engine supports the quintic and RK1 kernels with the shift, density, speed/sound,
+ * thermal (energy gradient for fix rheo/thermal), surface/detection and rho/sum keywords and refuses the others by name
+ * (RK0, RK2; interface/reconstruct).
  *
  * Integration (native order): initial_integrate kicks v by dt/2 F/m, computes the gradients, drifts x by dt v, evolves
  * rho by dt/2 (drho - rho div v) on fluid atoms, then applies the shift (x, v, rho) of the previous force evaluation;
@@ -18,7 +19,7 @@ import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { StyleError, typeBounds } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
-import { massOf, RHEO_DRHO, RHEO_RHO, RHEO_STATUS, isRheoStyle } from '../../engine/atoms';
+import { massOf, RHEO_DRHO, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle } from '../../engine/atoms';
 import { computeRheoCoordination, computeRheoCorrections } from './compute_rheo_kernel';
 import { computeRheoRhoSum, computeRheoSurface } from './compute_rheo_surface';
 import {
@@ -41,7 +42,7 @@ export class FixRHEO extends Fix {
     if (!isRheoStyle(s.atomStyle)) throw new StyleError('fix rheo command requires atom_style rheo');
     if (args.length < 3) throw new StyleError('Illegal fix rheo command: needs cutoff, kernel and zmin');
     // fix_rheo.cpp: "Fix RHEO must be defined before all other RHEO fixes" (the accessory fixes check the order at setup)
-    if (sys.fixes.some((f) => f.style === 'rheo/viscosity' || f.style === 'rheo/pressure')) {
+    if (sys.fixes.some((f) => f.style === 'rheo/viscosity' || f.style === 'rheo/pressure' || f.style === 'rheo/thermal')) {
       throw new StyleError('Fix RHEO must be defined before all other RHEO fixes');
     }
     const n = s.ntypes;
@@ -99,7 +100,10 @@ export class FixRHEO extends Fix {
           this.model.rhosumSelfMass = true;
           iarg += 1;
         }
-      } else if (w === 'thermal' || w === 'interface/reconstruct') {
+      } else if (w === 'thermal') {
+        // fix_rheo.cpp: "thermal" sets thermal_flag (energy gradients, and fix rheo/thermal is required in setup)
+        this.model.thermalFlag = true;
+      } else if (w === 'interface/reconstruct') {
         throw new StyleError(`fix rheo keyword ${w} is not supported by the browser engine yet`);
       } else if (w === 'density') {
         if (iarg + n >= args.length) throw new StyleError('Illegal fix rheo density: missing values');
@@ -120,6 +124,10 @@ export class FixRHEO extends Fix {
         throw new StyleError(`Illegal fix rheo command: ${w}`);
       }
       iarg += 1;
+    }
+    // fix_rheo.cpp init(): "fix rheo command requires atom property esph with thermal setting" (and the other thermal properties)
+    if (this.model.thermalFlag && !isRheoThermalStyle(s.atomStyle)) {
+      throw new StyleError('fix rheo command requires atom property esph with thermal setting');
     }
     this.model.shiftFlag = shiftFlag;
     this.model.shiftType = shiftFlag ? shiftType : null;
@@ -144,6 +152,8 @@ export class FixRHEO extends Fix {
   setup(): void {
     if (!this.sys.fixes.some((f) => f.style === 'rheo/viscosity')) throw new StyleError('Missing fix rheo/viscosity');
     if (!this.sys.fixes.some((f) => f.style === 'rheo/pressure')) throw new StyleError('Missing fix rheo/pressure');
+    // fix_rheo.cpp setup(): "Missing fix rheo/thermal" when the thermal keyword has no fix rheo/thermal
+    if (this.model.thermalFlag && !this.sys.fixes.some((f) => f.style === 'rheo/thermal')) throw new StyleError('Missing fix rheo/thermal');
   }
 
   initialIntegrate(): void {

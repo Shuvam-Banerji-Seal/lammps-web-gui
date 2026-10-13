@@ -3,7 +3,8 @@ import { StyleError } from '../force/types';
 import { appendAtoms, maxAtomId, isMolecularStyle } from '../atoms';
 import type { System } from '../system';
 import { insertionRegion, insertionStream, insertionBox, num, posInt, separation, appendMolecule, type InsertionRegion } from './pour';
-import { geometricCenter, rotationMatrix, type MoleculeTemplate } from '../molecule';
+import { geometricCenter, type MoleculeTemplate } from '../molecule';
+import { cosExact, sinExact } from '../trigExact';
 import { latticeScale } from '../commands/args';
 import type { RanPark } from '../rng';
 
@@ -95,6 +96,35 @@ interface RigidAdder { addMolecule(atomIds: readonly number[]): void; }
 /** Interface for the fix shake method deposit calls to rebuild its clusters. */
 interface ClusterRebuilder { rebuildClusters(): void; }
 
+/** 2*pi as fix_deposit.cpp's MY_2PI. */
+const TWO_PI = 2 * Math.PI;
+
+/**
+ * Rotation matrix of fix_deposit.cpp: norm3(r), axisangle_to_quat(r, theta), quat_to_mat (math_extra.h, b332f28),
+ * which gives the rounding of native LAMMPS for the molecule orientation (a molecule's atoms at exactly the cutoff
+ * distance are counted the same way only with the same rounding).
+ */
+const nativeRotation = (r: number[], theta: number): number[][] => {
+  const v = [r[0], r[1], r[2]];
+  const val = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+  if (val > 0.0) {
+    const scale = 1.0 / Math.sqrt(val);
+    v[0] *= scale; v[1] *= scale; v[2] *= scale;
+  }
+  const halfa = 0.5 * theta;
+  // C's sin and cos (correctly rounded in practice) rather than the engine's Math.sin / Math.cos (trigExact.ts)
+  const sina = sinExact(halfa);
+  const q = [cosExact(halfa), v[0] * sina, v[1] * sina, v[2] * sina];
+  const w2 = q[0] * q[0], i2 = q[1] * q[1], j2 = q[2] * q[2], k2 = q[3] * q[3];
+  const twoij = 2.0 * q[1] * q[2], twoik = 2.0 * q[1] * q[3], twojk = 2.0 * q[2] * q[3];
+  const twoiw = 2.0 * q[1] * q[0], twojw = 2.0 * q[2] * q[0], twokw = 2.0 * q[3] * q[0];
+  return [
+    [w2 + i2 - j2 - k2, twoij - twokw, twojw + twoik],
+    [twoij + twokw, w2 - i2 + j2 - k2, twojk - twoiw],
+    [twoik - twojw, twojk + twoiw, w2 - i2 - j2 + k2],
+  ];
+};
+
 export class FixDeposit extends Fix {
   readonly style = 'deposit';
   readonly N: number;
@@ -129,7 +159,11 @@ export class FixDeposit extends Fix {
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (sys.dimension !== 3) throw new StyleError('fix deposit: only 3d simulations are supported');
+    // fix_deposit.cpp: "dimension == 2" inserts in the y direction (the rate offset and the lateral placement) with
+    // a z coordinate drawn but unused, and a molecule rotates about z (the global and local ranges are 3d only)
+    if (sys.dimension === 2 && (args.includes('global') || args.includes('local'))) {
+      throw new StyleError('fix deposit global and local are not supported by the browser engine in 2d');
+    }
     if (args.length < 4) throw new StyleError('usage: fix ID group-ID deposit N type M seed keyword values ...');
     this.N = posInt(args[0], 'N');
     this.M = posInt(args[2], 'M');
@@ -280,13 +314,16 @@ export class FixDeposit extends Fix {
     const reg = this.reg!;
     const step = s.step;
     const shift = this.rateV * (step - this.nfirst + this.M) * s.dt;
-    const zlo = reg.zlo + shift, zhi = reg.zhi + shift;
+    // fix_deposit.cpp: in 2d the rate offset moves the insertion in y (coord[1] += offset), not z
+    const twod = s.dimension === 2;
+    const yOff = twod ? shift : 0;
+    const zlo = twod ? reg.zlo : reg.zlo + shift, zhi = twod ? reg.zhi : reg.zhi + shift;
     const t = this.molTemplate;
     const center = t ? geometricCenter(t) : [0, 0, 0];
     let placed: { p: Vec3; v: Vec3; atoms: Float64Array | null; rot: number[][] | null } | null = null;
     for (let a = 0; a < this.attempt && !placed; a++) {
       const x = reg.xlo + this.rng.uniform() * (reg.xhi - reg.xlo);
-      const y = reg.ylo + this.rng.uniform() * (reg.yhi - reg.ylo);
+      const y = reg.ylo + this.rng.uniform() * (reg.yhi - reg.ylo) + yOff;
       let z = zlo + this.rng.uniform() * (zhi - zlo);
       if (this.globalRange) {
         const top = this.highestZ(null);
@@ -301,12 +338,16 @@ export class FixDeposit extends Fix {
         // one draw samples the molfrac list; a single-molecule template always takes molecule 0
         const sel = this.rng.uniform();
         if (this.molfrac) { let c = 0; for (const f of this.molfrac) { c += f; if (sel < c) break; } }
-        const rot = this.orient
-          ? rotationMatrix(2 * Math.PI * this.rng.uniform(), this.orient[0], this.orient[1], this.orient[2])
-          : (() => {
-            const u1 = this.rng.uniform(), u2 = this.rng.uniform(), u3 = this.rng.uniform(), u4 = this.rng.uniform();
-            return rotationMatrix(2 * Math.PI * u4, u1 - 0.5, u2 - 0.5, u3 - 0.5);
-          })();
+        // fix_deposit.cpp: in 2d the rotation axis is z and only the angle is drawn; in 3d the axis is drawn (unless
+        // orient is given) and then the angle
+        const rot = twod
+          ? nativeRotation([0, 0, 1], this.rng.uniform() * TWO_PI)
+          : this.orient
+            ? nativeRotation([this.orient[0], this.orient[1], this.orient[2]], this.rng.uniform() * TWO_PI)
+            : (() => {
+              const u1 = this.rng.uniform(), u2 = this.rng.uniform(), u3 = this.rng.uniform(), u4 = this.rng.uniform();
+              return nativeRotation([u1 - 0.5, u2 - 0.5, u3 - 0.5], u4 * TWO_PI);
+            })();
         atoms = this.moleculeCoords(t, center, rot, [x, y, z]);
         rot0 = rot;
       }
@@ -344,14 +385,17 @@ export class FixDeposit extends Fix {
     this.inserted++;
   }
 
-  /** Flat 3N coordinates of the molecule rotated by `rot` about its geometric center and placed at p. */
+  /**
+   * Flat 3N coordinates of the molecule rotated by `rot` about its geometric center and placed at p. As fix_deposit.cpp:
+   * coords = rotmat . dx first, then the insertion point is added (the same roundoff as native).
+   */
   private moleculeCoords(t: MoleculeTemplate, center: number[], rot: number[][], p: Vec3): Float64Array {
     const out = new Float64Array(3 * t.natoms);
     for (let i = 0; i < t.natoms; i++) {
       const rx = t.x[3 * i] - center[0], ry = t.x[3 * i + 1] - center[1], rz = t.x[3 * i + 2] - center[2];
-      out[3 * i] = p[0] + rot[0][0] * rx + rot[0][1] * ry + rot[0][2] * rz;
-      out[3 * i + 1] = p[1] + rot[1][0] * rx + rot[1][1] * ry + rot[1][2] * rz;
-      out[3 * i + 2] = p[2] + rot[2][0] * rx + rot[2][1] * ry + rot[2][2] * rz;
+      out[3 * i] = (rot[0][0] * rx + rot[0][1] * ry + rot[0][2] * rz) + p[0];
+      out[3 * i + 1] = (rot[1][0] * rx + rot[1][1] * ry + rot[1][2] * rz) + p[1];
+      out[3 * i + 2] = (rot[2][0] * rx + rot[2][1] * ry + rot[2][2] * rz) + p[2];
     }
     return out;
   }

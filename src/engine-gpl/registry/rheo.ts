@@ -9,6 +9,7 @@
 import type { FixFactory, ComputeFactory } from '../../engine/styles';
 import type { Pair } from '../../engine/force/types';
 import { FixRHEO } from '../rheo/fix_rheo';
+import { FixRHEOThermal } from '../rheo/fix_rheo_thermal';
 import { FixRHEOViscosity, FixRHEOPressure } from '../rheo/accessories';
 import { PairRHEO } from '../rheo/pair_rheo';
 import { PairRHEOSolid } from '../rheo/pair_rheo_solid';
@@ -18,6 +19,7 @@ export const FIXES: Record<string, FixFactory> = {
   rheo: (sys, id, group, args) => new FixRHEO(sys, id, group, args),
   'rheo/pressure': (sys, id, group, args) => new FixRHEOPressure(sys, id, group, args),
   'rheo/viscosity': (sys, id, group, args) => new FixRHEOViscosity(sys, id, group, args),
+  'rheo/thermal': (sys, id, group, args) => new FixRHEOThermal(sys, id, group, args),
 };
 
 export const PAIRS: Record<string, () => Pair> = {

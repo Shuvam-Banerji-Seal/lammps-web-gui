@@ -1,4 +1,4 @@
-import type { CustomProp, SimState } from '../types';
+import type { AtomStyle, CustomProp, SimState } from '../types';
 import type { System } from '../system';
 import { LABEL_KINDS, LabelMap } from '../labelmap';
 import type { SpecialBonds } from '../force/forcefield';
@@ -12,7 +12,7 @@ import { BondedHybrid, type HybridKind } from '../force/bonded_hybrid';
 
 /** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
 type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart; nh?: NHRestart };
-import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, isElectronStyle, ELECTRON_DEFAULTS, ELECTRON_SPIN, isDielectricStyle, DIELECTRIC_DEFAULTS, isSphStyle, SPH_DEFAULTS, SPH_WIDTH, isDpdMesoKey, isDpdMesoStyle, dpdMesoProps, RHEO_DEFAULTS, RHEO_STATUS, isRheoStyle } from '../atoms';
+import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, isElectronStyle, ELECTRON_DEFAULTS, ELECTRON_SPIN, isDielectricStyle, DIELECTRIC_DEFAULTS, isSphStyle, SPH_DEFAULTS, SPH_WIDTH, isDpdMesoKey, isDpdMesoStyle, dpdMesoProps, RHEO_DEFAULTS, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_THERMAL_DEFAULTS } from '../atoms';
 import { ErfcTableCache } from '../force/erfc';
 
 /*
@@ -54,6 +54,9 @@ import { ErfcTableCache } from '../force/erfc';
  */
 
 export const RESTART_MAGIC = 'LAMMPS-WEB-RESTART 1';
+/** The internal RHEO props stored in a restart file for a style (atom_style rheo, or rheo/thermal with its thermal props). */
+const rheoKeys = (st: AtomStyle): string[] => [...Object.keys(RHEO_DEFAULTS), ...(isRheoThermalStyle(st) ? Object.keys(RHEO_THERMAL_DEFAULTS) : [])];
+
 const FORMAT = 'lammps-web-restart';
 const VERSION = 1;
 
@@ -306,7 +309,7 @@ export const writeRestartText = (sys: System): string => {
     : null;
   // atom_style rheo: the density, status and the RHEO fix's per-atom fields are internal custom props (atoms.ts RHEO_DEFAULTS)
   const rheo = isRheoStyle(s.atomStyle)
-    ? encodeValue(Object.fromEntries(Object.keys(RHEO_DEFAULTS).map((k) => [k, s.custom.get(k)!.data])), 'rheo', [])
+    ? encodeValue(Object.fromEntries(rheoKeys(s.atomStyle).map((k) => [k, s.custom.get(k)!.data])), 'rheo', [])
     : null;
   const doc = {
     format: FORMAT,
@@ -410,7 +413,7 @@ export const readRestartText = (sys: System, text: string, name: string): void =
   // atom_style rheo: the stored RHEO per-atom fields come back as they were written
   if (isRheoStyle(state.atomStyle)) {
     const rp = doc.rheo ? decodeValue(doc.rheo, 'rheo') as Record<string, Float64Array> : {};
-    for (const [name, def] of Object.entries(RHEO_DEFAULTS)) {
+    for (const [name, def] of Object.entries({ ...RHEO_DEFAULTS, ...(isRheoThermalStyle(state.atomStyle) ? RHEO_THERMAL_DEFAULTS : {}) })) {
       const data = rp[name] ?? new Float64Array(n).fill(def);
       need(data.length === n, `rheo ${name} has the wrong length for ${n} atoms`);
       state.custom.set(name, { int: name === RHEO_STATUS, cols: 0, data: Float64Array.from(data) });

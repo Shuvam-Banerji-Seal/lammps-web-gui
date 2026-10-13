@@ -179,6 +179,10 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
   if (isRheoStyle(st)) {
     for (const name of Object.keys(RHEO_DEFAULTS)) m.set(name, { int: name === RHEO_STATUS, cols: 0, data: new Float64Array(0) });
   }
+  // atom_style.html, rheo/thermal: "atomic + rho, status, energy, temperature" (the RHEO fields plus the thermal ones)
+  if (isRheoThermalStyle(st)) {
+    for (const name of Object.keys(RHEO_THERMAL_DEFAULTS)) m.set(name, { int: false, cols: 0, data: new Float64Array(0) });
+  }
   // atom_style.html, superellipsoid: the blockiness exponents and the principal moments of inertia (superellipsoid.ts)
   if (isSuperEllipsoidStyle(st)) {
     m.set(SUPER_BLOCK, { int: false, cols: 2, data: new Float64Array(0) });
@@ -328,8 +332,20 @@ export const RHEO_DRHO = '#rheodrho';
 export const RHEO_PRESSURE = '#rheopressure';
 export const RHEO_VISC = '#rheovisc';
 export const RHEO_DEFAULTS: Record<string, number> = { [RHEO_STATUS]: 0, [RHEO_RHO]: 1, [RHEO_DRHO]: 0, [RHEO_PRESSURE]: 0, [RHEO_VISC]: 0 };
-/** Styles with the RHEO per-atom fields (atom_style rheo). */
-export const isRheoStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('rheo');
+/*
+ * atom_style rheo/thermal (atom_style.html: "atomic + rho, status, energy, temperature"; the rheo/thermal style also
+ * stores heatflow and conductivity, atom_vec_rheo_thermal.cpp). The energy is the esph of the native style; the
+ * temperature, heat flow and conductivity start at zero (data_atom_post).
+ */
+export const RHEO_ESPH = '#rheoesph';
+export const RHEO_TEMP = '#rheotemp';
+export const RHEO_HEATFLOW = '#rheoheatflow';
+export const RHEO_COND = '#rheocond';
+export const RHEO_THERMAL_DEFAULTS: Record<string, number> = { [RHEO_ESPH]: 0, [RHEO_TEMP]: 0, [RHEO_HEATFLOW]: 0, [RHEO_COND]: 0 };
+/** Styles with the RHEO per-atom fields (atom_style rheo or rheo/thermal). */
+export const isRheoStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'rheo' || x === 'rheo/thermal');
+/** atom_style rheo/thermal: the RHEO fields plus energy, temperature, heat flow and conductivity. */
+export const isRheoThermalStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('rheo/thermal');
 
 /** atom_style oxdna: the 5' and 3' partner atom IDs of each atom, internal per-atom props (0 = none). */
 export const OXDNA_5P = '#id5p';
@@ -572,6 +588,7 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     else if (name in SPH_DEFAULTS) c.data.fill(SPH_DEFAULTS[name], w * n0, w * n);
     else if (name in DPD_MESO_DEFAULTS) c.data.fill(DPD_MESO_DEFAULTS[name], w * n0, w * n);
     else if (name in RHEO_DEFAULTS) c.data.fill(RHEO_DEFAULTS[name], w * n0, w * n);
+    else if (name in RHEO_THERMAL_DEFAULTS) c.data.fill(RHEO_THERMAL_DEFAULTS[name], w * n0, w * n);
   }
   // atom_style edpd: vest_temp starts as the temperature of the atom (measured with native LAMMPS, black box)
   if (isEdpdStyle(s.atomStyle) && !(a.custom?.has(EDPD_VEST_TEMP))) {

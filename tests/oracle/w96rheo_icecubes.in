@@ -1,0 +1,67 @@
+# oracle: RHEO 2d ice cube pour, cut down from examples/rheo/ice-cubes (the same 50 x 100 box with 588 fluid atoms instead of 1470, 4 deposited 100-atom cubes instead of 8, 1200 steps instead of 30000, thermo every 200): atom_style hybrid rheo/thermal bond, fix rheo thermal shift surface/detection, fix rheo/thermal with conductivity, specific/heat, Tfreeze, latent/heat and react (bond creation on freezing and breaking on melting), pair hybrid/overlay rheo and rheo/solid, bond bpm/spring, create_bonds many, fix deposit mol, wall/region and gravity
+# oracle-inputs: w96rheo_icecubes_square.mol
+# oracle-compare: thermo=all atoms=all rel=1e-3 abs=1e-12
+# Measured with native LAMMPS (black box), engine vs native, NOT at 1e-8: the first 200 steps agree to 1e-15 in positions, forces and every fix rheo/thermal and react quantity checked (the deposited molecules, bonds and freezing agree bit for bit), but from step 2 the surface normals of fix rheo surface/detection differ in the last digits on some surface atoms (the color-gradient sums run in another order than native's half-list reverse communication). Where the normal's tiny components flip sign, the shift branch of correct_surfaces changes, so the trajectories separate. Measured max errors over the run: thermo ke 6.6e-5 and press 1.2e-4 (relative); per-atom scaled errors (max(1,|x|)): x 1.6e-3, y 5.2e-3, vx 1.6e-3, vy 2.9e-4, fx 7.8e-4, fy 2.0e-4. The tolerance is loosened to 1e-3 so the case guards the behaviour; it is not a 1e-8 parity claim.
+units        lj
+dimension    2
+atom_style   hybrid rheo/thermal bond
+boundary     m m p
+comm_modify  vel yes
+newton       off
+special_bonds lj 0.0 1.0 1.0 coul 1.0 1.0 1.0
+
+region       box block -25 25 0 100 -0.01 0.01 units box
+create_box   1 box bond/types 1 extra/bond/per/atom 15 extra/special/per/atom 50
+
+region       fluid block -24 24 1 12 EDGE EDGE units box
+lattice      sq 1.0
+create_atoms 1 region fluid
+
+set          group all sph/e 8.0
+
+variable     cut equal 3.0
+variable     n equal 1.0
+variable     rho0 equal 1.0
+variable     cs equal 1.0
+variable     mp equal ${rho0}/${n}
+variable     zeta equal 0.05
+variable     kappa equal 0.01*${rho0}/${mp}
+variable     eta equal 0.05
+variable     Cv equal 1.0
+variable     L equal 1.0
+variable     Tf equal 1.0
+
+mass         * ${mp}
+timestep     0.1
+
+pair_style   hybrid/overlay rheo ${cut} artificial/visc ${zeta} rheo/solid
+pair_coeff   * * rheo
+pair_coeff   * * rheo/solid 1.0 1.0 1.0
+
+bond_style   bpm/spring
+bond_coeff   1 1.0 1.0 1.0
+
+molecule     my_mol "w96rheo_icecubes_square.mol"
+
+region       wall block EDGE EDGE EDGE EDGE -5 5 side in open 4 units box
+region       drop block -16 16 70 90 EDGE EDGE side in units box
+
+fix          1 all rheo ${cut} quintic 0 thermal shift surface/detection coordination 22 8
+fix          2 all rheo/viscosity * constant ${eta}
+fix          3 all rheo/pressure * linear
+fix          4 all rheo/thermal conductivity * constant ${kappa} specific/heat * constant ${Cv} Tfreeze * constant ${Tf} latent/heat * constant ${L} react 1.5 1
+fix          5 all wall/region wall harmonic 1.0 1.0 1.0
+fix          6 all gravity 2e-4 vector 0 -1 0
+fix          7 all deposit 4 0 300 37241459 mol my_mol region drop near 2.0 vy -0.02 -0.02
+fix          8 all enforce2d
+
+compute      rho all rheo/property/atom rho
+compute      phase all rheo/property/atom phase
+compute      temp all rheo/property/atom temperature
+compute      eng all rheo/property/atom energy
+compute      nbond all nbond/atom
+
+thermo       200
+thermo_style custom step time ke press atoms
+thermo_modify format float %.15g
+run          1200

@@ -1,0 +1,34 @@
+# oracle-inputs: read_data.vesicle1026
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# oracle: pair ylz vesicle (examples/ASPHERE/vesicle/in.vesicle cut down to 80 steps instead of 3000, thermo every 20; read_data.vesicle1026 as in the example)
+# Vesicle demo
+
+variable     T  equal  0.2
+variable     LD equal  1.0
+
+units        lj
+atom_style   ellipsoid
+
+boundary     p p p
+
+read_data    read_data.vesicle1026
+
+compute      ali  all temp/com
+compute      rott all temp/asphere bias ali
+
+velocity     all create ${T} 87287 loop geom
+
+pair_style   ylz  2.6
+pair_coeff   *  *   1.0  1.0  4  3  0.0  2.6
+neighbor     1.0 bin
+
+thermo_style custom step temp press pxx pyy
+thermo_modify format float %.15g
+thermo       20
+
+timestep     0.001
+
+fix          1 all langevin ${T} ${T}  ${LD}  48279
+fix          2 all nve/asphere
+
+run          80

@@ -1,0 +1,26 @@
+# oracle-inputs: w117cf_tip4p_pppm_water.data
+# oracle-compare: thermo=all atoms=all rel=1e-11 abs=1e-11
+# oracle: 27 rigid TIP4P/2005 waters, lj/cut/tip4p/long + pppm/tip4p with the pinned gewald and mesh of w12tip4p_long; the step-0 pe and press were 1.6e-8 and 1.3e-7 relative before the native 4pi constant of compute_gf_ik (pppm.ts)
+units           real
+atom_style      full
+boundary        p p p
+read_data       w117cf_tip4p_pppm_water.data
+pair_style      lj/cut/tip4p/long 1 2 1 1 0.1546 8.5
+pair_coeff      1 1 0.1852 3.1589
+pair_coeff      1 2 0.0 1.0
+pair_coeff      2 2 0.0 1.0
+bond_style      harmonic
+bond_coeff      1 450.0 0.9572
+angle_style     harmonic
+angle_coeff     1 55.0 104.52
+kspace_style    pppm/tip4p 1.0e-5
+kspace_modify   gewald 0.37833912 mesh 12 12 12 order 5
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        1.0
+fix             1 all shake 1.0e-10 200 0 b 1 a 1
+fix             2 all nve
+thermo_style    custom step pe evdwl ecoul elong press
+thermo_modify   format float %.15g
+thermo          10
+run             50

@@ -1,0 +1,16 @@
+# oracle: boundary s s s after read_data (the box is shrink-wrapped from the data box, pad 1e-4 of the data-file length, set once by read_data); 200 LJ steps with moving atoms so the faces are re-fitted at reneighboring; thermo vol, faces and press
+# oracle-inputs: w117cf_shrink_sss.data
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12
+units lj
+atom_style atomic
+boundary s s s
+read_data w117cf_shrink_sss.data
+pair_style lj/cut 2.5
+pair_coeff * * 0.1 1.0
+mass * 1.0
+velocity all create 0.5 4711 dist gaussian
+fix 1 all nve
+thermo_style custom step vol xlo xhi zlo zhi press
+thermo_modify format float %.17g norm no
+thermo 20
+run 200

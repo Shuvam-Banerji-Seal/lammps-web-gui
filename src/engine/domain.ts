@@ -169,10 +169,16 @@ export class Geometry {
       this.i11 * dy + this.i12 * dz,
       this.i22 * dz,
     ];
+    // Domain::remap (src/domain.cpp at b332f28): while (coord < lo) coord += period; while (coord >= hi) coord -= period;
+    // coord = MAX(coord, lo), with lo = 0, hi = period = 1. The loops, not a floor: l = -2.8e-17 (an atom on the x = 0
+    // face of a tilted box) becomes 1.0 after one +1 and must then take the second step to 0.0; a floor shift stops at 1.0
+    // and moves the atom by a whole box length. Measured with native LAMMPS (black box): the MoS2 single layer data
+    // (xy 25.58) keeps those atoms at x = 9.59, not 60.74.
     for (let d = 2; d >= 0; d--) {
       if (!this.periodic[d]) continue;
-      const k = Math.floor(l[d]);
-      if (k !== 0) { l[d] -= k; image[3 * i + d] += k; }
+      while (l[d] < 0) { l[d] += 1; image[3 * i + d] -= 1; }
+      while (l[d] >= 1) { l[d] -= 1; image[3 * i + d] += 1; }
+      l[d] = Math.max(l[d], 0);
     }
     x[3 * i] = this.lx * l[0] + this.xy * l[1] + this.xz * l[2] + this.lo[0];
     x[3 * i + 1] = this.ly * l[1] + this.yz * l[2] + this.lo[1];

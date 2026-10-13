@@ -54,6 +54,16 @@ import { pppmGplHook } from './pppmHook';
  */
 const ALIAS_C = Math.pow(7 * Math.LN10, 0.25);
 
+/**
+ * The numerator 4 pi / k^2 of the ik influence function. As native LAMMPS does (src/KSPACE/pppm.cpp
+ * compute_gf_ik and compute_gf_ik_triclinic at b332f28: "numerator = 12.5663706/sqk;"), it is 4 pi rounded
+ * to 8 digits; the analytic-differentiation Green function (compute_gf_ad) keeps MY_4PI. Measured with
+ * native LAMMPS (black box, 12 charged atoms, real units, pppm 1e-4 with mesh 8 8 8 and G 0.16093073):
+ * with the exact 4 pi the step-0 pe is 7.8e-9 relative off and the pressure 2.4e-9; with this constant
+ * the pe agrees to 1.5e-14 and the pressure to 5e-14.
+ */
+const NATIVE_IK_FOUR_PI = 12.5663706;
+
 /** Cardinal B-spline M_p(x), support [0, p]. */
 const bspline = (p: number, x: number): number => {
   if (p === 1) return x >= 0 && x < 1 ? 1 : 0;
@@ -396,7 +406,7 @@ export class KSpacePPPM extends KSpaceBase {
                 const nzm = mz + az * nz;
                 kvec(nxm, nym, nzm, km);
                 const km2 = km[0] * km[0] + km[1] * km[1] + km[2] * km[2];
-                num += ux * uy * u2(nzm, nz) * ((k[0] * km[0] + k[1] * km[1] + k[2] * km[2]) / km2) * 4 * Math.PI * Math.exp(-km2 / (4 * g * g));
+                num += ux * uy * u2(nzm, nz) * ((k[0] * km[0] + k[1] * km[1] + k[2] * km[2]) / km2) * NATIVE_IK_FOUR_PI * Math.exp(-km2 / (4 * g * g));
               }
             }
           }

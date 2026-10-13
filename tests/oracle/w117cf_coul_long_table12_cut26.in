@@ -1,0 +1,18 @@
+# oracle: coul/long alone with pair_modify table 12 (default) and cut 26.5, the erfc table node spacing from the native init_bitmap rule (8 mantissa bits here); before this the ecoul was 1.2e-8 absolute off (w104cf_sds_coul_alone)
+# oracle-inputs: w117cf_coul_long_table12_cut26.data
+# oracle-compare: thermo=all atoms=all rel=1e-11 abs=1e-12
+units real
+atom_style full
+boundary p p p
+bond_style harmonic
+angle_style harmonic
+special_bonds lj/coul 0.0 0.0 1.0
+read_data w117cf_coul_long_table12_cut26.data
+pair_style coul/long 26.5
+pair_coeff * *
+kspace_style ewald 1e-6
+bond_coeff 1 300.0 3.0
+angle_coeff 1 20.0 100.0
+thermo_style custom step pe evdwl ecoul elong eangle press
+thermo_modify format float %.15g norm no
+run 0

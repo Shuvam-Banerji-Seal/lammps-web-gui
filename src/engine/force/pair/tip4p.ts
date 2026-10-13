@@ -275,6 +275,22 @@ export class PairLJCutTIP4PCut extends PairTIP4PBase {
 export class PairLJCutTIP4PLong extends PairTIP4PBase {
   readonly name: string = 'lj/cut/tip4p/long';
   coulLong = true;
+
+  /**
+   * As native LAMMPS does (src/KSPACE/pair_lj_cut_tip4p_long.cpp init_one at b332f28): a pair that
+   * involves the water H type is an error when this style's H-H epsilon is nonzero, "Water H epsilon
+   * must be 0.0 for pair style lj/cut/tip4p/long". Measured with native LAMMPS (black box, 27 TIP4P
+   * waters): with pair_coeff 2 2 0.1 1.0 on this style the run fails at init; with H-H on a lj/cut
+   * sub-style of a hybrid (the H-H coefficient not on this style) it runs.
+   */
+  initOne(i: number, j: number): number {
+    const cut = super.initOne(i, j);
+    const h = this.htype;
+    if ((i === h || j === h) && this.p.get('epsilon', h, h) !== 0) {
+      throw new StyleError('Water H epsilon must be 0.0 for pair style lj/cut/tip4p/long');
+    }
+    return cut;
+  }
 }
 
 /** tip4p/cut and tip4p/long: Coulomb only (no LJ term, no pair coefficients). */

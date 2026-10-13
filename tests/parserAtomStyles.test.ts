@@ -16,6 +16,7 @@ import { parseDataFile } from '../src/services/parser';
  * are asserted below.
  */
 const STYLE_CASES = [
+  { style: 'amoeba',     row: '1 7 2 -0.5 1.0 2.0 3.0', type: 2, molId: 7, charge: -0.5 },
   { style: 'angle',      row: '1 7 2 1.0 2.0 3.0', type: 2, molId: 7, charge: 0 },
   { style: 'atomic',     row: '1 2 1.0 2.0 3.0', type: 2, molId: 1, charge: 0 },
   { style: 'body',       row: '1 2 1 6.5 1.0 2.0 3.0', type: 2, molId: 1, charge: 0 },

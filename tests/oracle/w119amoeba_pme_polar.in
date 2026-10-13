@@ -1,0 +1,22 @@
+# Measured with native LAMMPS (black box): the engine agrees with native to rel 1e-12 (abs floor 1e-10) in pe, every c_p term, press, c_virial and the forces; c_virial[4] differs by 1.6e-10 absolute (2e-12 relative).
+# oracle: pair amoeba full Ewald summation on the periodic AMOEBA water box (w119amoeba_box.data, boundary p p p, 216 waters) with the polarization test parameters w119amoeba_polar.prm and w119amoeba_ewald.key (ewald, ewald-alpha 0.4, pewald-alpha 0.5, pme-grid 24 24 24, cutoff 7 taper 6): the permanent multipole PME sum (multipole_kspace), the induced-dipole reciprocal fields (udirect1, umutual1) with the self terms, and the polar_kspace forces and torques; c_p[1..6], pe, forces, press and c_virial are compared.
+# oracle-inputs: w119amoeba_box.data w119amoeba_polar.prm w119amoeba_ewald.key
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-10
+units           real
+boundary        p p p
+atom_style      amoeba
+bond_style      class2
+angle_style     amoeba
+dihedral_style  none
+fix             amtype all property/atom i_amtype ghost yes
+fix             extra all property/atom i_amgroup d_redID d_pval ghost yes
+fix             extra2 all property/atom i_polaxe d2_xyzaxis 3
+read_data       w119amoeba_box.data fix amtype NULL "Tinker Types"
+special_bonds   lj/coul 0.5 0.5 0.5 one/five yes
+pair_style      amoeba
+pair_coeff      * * w119amoeba_polar.prm w119amoeba_ewald.key
+compute         p all pair amoeba
+compute         virial all pressure NULL virial
+thermo_style    custom step pe evdwl c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] press c_virial[1] c_virial[2] c_virial[3] c_virial[4] c_virial[5] c_virial[6]
+thermo_modify   format float %.15g
+run             0

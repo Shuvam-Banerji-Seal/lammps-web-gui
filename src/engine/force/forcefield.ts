@@ -25,6 +25,8 @@ export interface SpecialBonds {
   coul: [number, number, number];
   angle: boolean;
   dihedral: boolean;
+  /** special_bonds one/five yes: the 1-5 neighbour list is kept (atom_style amoeba only). */
+  one5?: boolean;
 }
 
 /**

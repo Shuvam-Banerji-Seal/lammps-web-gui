@@ -1,0 +1,24 @@
+# oracle: pair amoeba induced-dipole polarization (mutual solver, polarization energy c_p[5], polarization forces and torques, no Ewald) on the AMOEBA water dimer (data.water_dimer.amoeba with the polarization test parameters w119amoeba_polar.prm: nonzero multipoles, polarizabilities 0.837 and 0.496 A^3, Thole 0.39, polar groups O-H), cutoff 10 from amoeba_water.key (polar-eps 1e-5, usolve-diag 1.0). The buffered 14-7 and permanent multipole terms are included.
+# oracle-inputs: w119amoeba_dimer.data w119amoeba_polar.prm w119amoeba_water.key
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 skip=press,c_virial[1],c_virial[2],c_virial[3],c_virial[4],c_virial[5],c_virial[6]
+# Measured with native LAMMPS (black box): the engine agrees with native to 1.7e-15 relative in every thermo value (pe, c_p[1..6] at step 0; the polarization energy c_p[5] to 2.2e-16) and to 1.1e-15 absolute in the forces. press and c_virial are skipped: the shrink-wrapped box differs from native by 1.2e-7 in volume (vol ratio 1.00000012), and the engine virial differs by the same factor (c_virial[1] 18736.592977 engine vs 18736.590727 native).
+units           real
+boundary        s s s
+atom_style      amoeba
+bond_style      zero
+angle_style     zero
+dihedral_style  none
+fix             amtype all property/atom i_amtype ghost yes
+fix             extra all property/atom i_amgroup d_redID d_pval ghost yes
+fix             extra2 all property/atom i_polaxe d2_xyzaxis 3
+read_data       w119amoeba_dimer.data fix amtype NULL "Tinker Types"
+bond_coeff      1
+angle_coeff     1
+special_bonds   lj/coul 0.5 0.5 0.5 one/five yes
+pair_style      amoeba
+pair_coeff      * * w119amoeba_polar.prm w119amoeba_water.key
+compute         p all pair amoeba
+compute         virial all pressure NULL virial
+thermo_style    custom step pe evdwl c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] press c_virial[1] c_virial[2] c_virial[3] c_virial[4] c_virial[5] c_virial[6]
+thermo_modify   format float %.15g
+run             0

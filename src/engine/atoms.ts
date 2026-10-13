@@ -33,9 +33,9 @@ export const templateStyleId = (st: AtomStyle): string | null => {
 /** Styles with molecule templates (atom_style template): topology comes from the template, per-atom template index and atom. */
 export const isTemplateStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('template');
 /** Styles with bond topology and molecule IDs (template styles too: their topology is expanded from the template). */
-export const isMolecularStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'bond' || x === 'angle' || x === 'molecular' || x === 'full' || x === 'template' || x === 'bpm/sphere' || x === 'dielectric');
+export const isMolecularStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'bond' || x === 'angle' || x === 'molecular' || x === 'full' || x === 'template' || x === 'bpm/sphere' || x === 'dielectric' || x === 'amoeba');
 /** Styles that store a per-atom charge. */
-export const hasChargeStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'charge' || x === 'full' || x === 'dipole' || x === 'electron' || x === 'dielectric');
+export const hasChargeStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'charge' || x === 'full' || x === 'dipole' || x === 'electron' || x === 'dielectric' || x === 'amoeba');
 /** Styles with finite-size spheres (radius, rmass, omega, torque). atom_style bpm/sphere is a bonded sphere style. */
 export const isSphereStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'sphere' || x === 'bpm/sphere');
 /**
@@ -76,7 +76,7 @@ export const hasRmassStyle = (st: AtomStyle): boolean => isSphereStyle(st) || is
 /** Bonded topology a style stores: 0 none, 1 bonds, 2 bonds and angles, 3 also dihedrals and impropers. */
 export const topologyLevel = (st: AtomStyle): number => {
   let lv = 0;
-  for (const x of atomSubStyles(st)) lv = Math.max(lv, x === 'bond' ? 1 : x === 'angle' ? 2 : x === 'molecular' || x === 'full' || x === 'dielectric' ? 3 : 0);
+  for (const x of atomSubStyles(st)) lv = Math.max(lv, x === 'bond' ? 1 : x === 'angle' ? 2 : x === 'molecular' || x === 'full' || x === 'dielectric' || x === 'amoeba' ? 3 : 0);
   return lv;
 };
 /** Per-atom charges exist: from the atom style or from fix property/atom q. */
@@ -792,6 +792,55 @@ export const filterTopo = (list: TopoList, keep: (ids: number[], type: number) =
     k++;
   }
   list.n = k;
+};
+
+/**
+ * The 1-5 neighbours of every atom (atom_style amoeba stores them as nspecial15 / special15). Native LAMMPS
+ * (special.cpp, onefive_build and the dedup against 1-2, 1-3, 1-4 in the combine step) keeps the atoms reached from a
+ * 1-4 partner by one more bond that are not already 1-2, 1-3 or 1-4 partners of the atom and not the atom itself:
+ * that is exactly the atoms whose shortest bond path from the atom has 4 bonds. Returned in the SpecialList form
+ * (order 4); partners are atom IDs, as in buildSpecial. docs.lammps.org/special_bonds.html: "one/five yes" keeps
+ * the 1-5 neighbors for pair styles amoeba and hippo.
+ */
+export const buildOneFive = (s: SimState): SpecialList => {
+  const adj = new Map<number, number[]>();
+  const b = s.topo.bonds;
+  for (let e = 0; e < b.n; e++) {
+    if (b.type[e] === 0) continue;
+    const i = b.atoms[2 * e], j = b.atoms[2 * e + 1];
+    if (!adj.has(i)) adj.set(i, []);
+    if (!adj.has(j)) adj.set(j, []);
+    adj.get(i)!.push(j);
+    adj.get(j)!.push(i);
+  }
+  const offset = new Int32Array(s.n + 1);
+  const partner: number[] = [];
+  const order: number[] = [];
+  for (let i = 0; i < s.n; i++) {
+    offset[i] = partner.length;
+    const me = s.id[i];
+    if (!adj.has(me)) continue;
+    const seen = new Map<number, number>([[me, 0]]);
+    let frontier = [me];
+    for (let o = 1; o <= 4; o++) {
+      const next: number[] = [];
+      for (const a of frontier) {
+        for (const c of adj.get(a) ?? []) {
+          if (seen.has(c)) continue;
+          seen.set(c, o);
+          next.push(c);
+        }
+      }
+      frontier = next;
+    }
+    for (const [id, o] of seen) {
+      if (o !== 4) continue;
+      partner.push(id);
+      order.push(4);
+    }
+  }
+  offset[s.n] = partner.length;
+  return { offset, partner: Int32Array.from(partner), order: Int8Array.from(order) };
 };
 
 /**

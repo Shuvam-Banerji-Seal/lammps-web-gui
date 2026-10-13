@@ -48,6 +48,8 @@ const BASE_COLS: Record<string, string[]> = {
   angle: ['id', 'mol', 'type', 'x', 'y', 'z'],
   molecular: ['id', 'mol', 'type', 'x', 'y', 'z'],
   full: ['id', 'mol', 'type', 'q', 'x', 'y', 'z'],
+  // read_data.html, the Atoms-section table, row amoeba (native: "Atoms # amoeba" lines carry the same 7 columns as full)
+  amoeba: ['id', 'mol', 'type', 'q', 'x', 'y', 'z'],
   // read_data.html: "sphere | atom-ID atom-type diameter density x y z"
   sphere: ['id', 'type', 'diameter', 'density', 'x', 'y', 'z'],
   // read_data.html, the Atoms-section table, row bpm/sphere: "atom-ID molecule-ID atom-type diameter density x y z"
@@ -138,7 +140,7 @@ const SECTIONS = new Set([
   'Pair Coeffs', 'PairIJ Coeffs', 'Bond Coeffs', 'Angle Coeffs', 'Dihedral Coeffs', 'Improper Coeffs',
   'Ellipsoids', 'Lines', 'Triangles', 'Bodies',
   'Atom Type Labels', 'Bond Type Labels', 'Angle Type Labels', 'Dihedral Type Labels', 'Improper Type Labels',
-  'BondBond Coeffs', 'BondAngle Coeffs', 'MiddleBondTorsion Coeffs', 'EndBondTorsion Coeffs', 'AngleTorsion Coeffs',
+  'BondBond Coeffs', 'BondAngle Coeffs', 'UreyBradley Coeffs', 'MiddleBondTorsion Coeffs', 'EndBondTorsion Coeffs', 'AngleTorsion Coeffs',
   'AngleAngleTorsion Coeffs', 'BondBond13 Coeffs', 'AngleAngle Coeffs',
 ]);
 
@@ -153,6 +155,9 @@ const SECTIONS = new Set([
 const CLASS2_SECTIONS: Record<string, ['angle' | 'dihedral' | 'improper', string]> = {
   'BondBond Coeffs': ['angle', 'bb'],
   'BondAngle Coeffs': ['angle', 'ba'],
+  // AMOEBA (angle_style amoeba): "ID k r0" is the angle_coeff N ub k r0 line. Measured with native LAMMPS (black box): the
+  // AMOEBA water data file reads its UreyBradley Coeffs section.
+  'UreyBradley Coeffs': ['angle', 'ub'],
   'MiddleBondTorsion Coeffs': ['dihedral', 'mbt'],
   'EndBondTorsion Coeffs': ['dihedral', 'ebt'],
   'AngleTorsion Coeffs': ['dihedral', 'at'],
@@ -189,8 +194,9 @@ interface DataFix {
   style: string;
   readValues?(s: SimState, i: number, w: readonly string[], at: number): void;
   readHeader?(line: string, at: number): void;
-  sectionLines?(natoms: number): number;
-  readSection?(rows: { w: string[]; at: number }[]): void;
+  /** title: the section name (a fix with several sections, e.g. fix amoeba/pitorsion, tells them apart by it). */
+  sectionLines?(natoms: number, title?: string): number;
+  readSection?(rows: { w: string[]; at: number }[], title?: string): void;
   sectionHeader?(): string;
   writeValues?(s: SimState, i: number): string;
   dataHeaderLine?(): string | null;
@@ -568,7 +574,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   const bodyPending = new Set<number>();
   const coeffLines: { section: string; line: string; at: number }[] = [];
   const topo: { kind: 'bonds' | 'angles' | 'dihedrals' | 'impropers'; type: number; ids: number[] }[] = [];
-  const fixRows: { fx: DataFix; rows: { w: string[]; at: number }[] }[] = [];
+  const fixRows: { fx: DataFix; rows: { w: string[]; at: number }[]; title: string }[] = [];
   // sections
   while (k < lines.length) {
     const title = lines[k].split('#')[0].trim();
@@ -588,7 +594,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         throw new StyleError(`read_data fix ${fixId}: fix style ${fx.style} does not read data-file sections`);
       }
       // the fix says how many lines its section holds (per-atom fixes: one line per atom)
-      const nlines = fx.sectionLines ? fx.sectionLines(natoms) : natoms;
+      const nlines = fx.sectionLines ? fx.sectionLines(natoms, title) : natoms;
       const rows: { w: string[]; at: number }[] = [];
       while (rows.length < nlines && k < lines.length) {
         const t = lines[k].replace(/#.*/, '').trim();
@@ -597,7 +603,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         rows.push({ w: t.split(/\s+/), at: k });
       }
       if (rows.length < nlines) throw new StyleError(`data file section ${title}: expected ${nlines} lines, found ${rows.length}`);
-      fixRows.push({ fx, rows });
+      fixRows.push({ fx, rows, title });
       continue;
     }
     if (!SECTIONS.has(title)) throw new StyleError(`unknown data file section '${title}' (line ${k})`);
@@ -680,7 +686,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         case 'Angle Coeffs': return h['angle types'] ?? 0;
         case 'Dihedral Coeffs': return h['dihedral types'] ?? 0;
         case 'Improper Coeffs': return h['improper types'] ?? 0;
-        case 'BondBond Coeffs': case 'BondAngle Coeffs': return h['angle types'] ?? 0;
+        case 'BondBond Coeffs': case 'BondAngle Coeffs': case 'UreyBradley Coeffs': return h['angle types'] ?? 0;
         case 'MiddleBondTorsion Coeffs': case 'EndBondTorsion Coeffs': case 'AngleTorsion Coeffs':
         case 'AngleAngleTorsion Coeffs': case 'BondBond13 Coeffs': return h['dihedral types'] ?? 0;
         case 'AngleAngle Coeffs': return h['improper types'] ?? 0;
@@ -1064,11 +1070,11 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   if (fixRows.length) {
     const byId = new Map<number, number>();
     for (let i = n0; i < s.n; i++) byId.set(s.id[i], i);
-    for (const { fx, rows } of fixRows) {
+    for (const { fx, rows, title } of fixRows) {
       // whole-section fixes (fix cmap) take their rows as they are; the IDs are checked when the fix acts
       if (fx.readSection) {
         if (adding) throw new StyleError(`read_data fix ${fx.id} (${fx.style}): add append/merge is not supported with this fix's section`);
-        fx.readSection(rows);
+        fx.readSection(rows, title);
         continue;
       }
       for (const { w, at } of rows) {

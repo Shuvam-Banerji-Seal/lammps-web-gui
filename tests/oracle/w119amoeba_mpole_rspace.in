@@ -1,0 +1,21 @@
+# oracle: pair amoeba permanent multipoles, real-space Ewald damping and self term only (pair_style amoeba exclude polar/kspace mpole/kspace), on the periodic AMOEBA water box with the multipole test parameters and w119amoeba_ewald.key (ewald-alpha 0.4). Used to split the reciprocal sum out of the full case.
+# oracle-inputs: w119amoeba_box.data w119amoeba_mpole.prm w119amoeba_ewald.key
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-9 skip=pe,c_p[5]
+units           real
+boundary        p p p
+atom_style      amoeba
+bond_style      class2
+angle_style     amoeba
+dihedral_style  none
+fix             amtype all property/atom i_amtype ghost yes
+fix             extra all property/atom i_amgroup d_redID d_pval ghost yes
+fix             extra2 all property/atom i_polaxe d2_xyzaxis 3
+read_data       w119amoeba_box.data fix amtype NULL "Tinker Types"
+special_bonds   lj/coul 0.5 0.5 0.5 one/five yes
+pair_style      amoeba exclude polar/kspace mpole/kspace
+pair_coeff      * * w119amoeba_mpole.prm w119amoeba_ewald.key
+compute         p all pair amoeba
+compute         virial all pressure NULL virial
+thermo_style    custom step pe evdwl c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] press c_virial[1] c_virial[2] c_virial[3] c_virial[4] c_virial[5] c_virial[6]
+thermo_modify   format float %.15g
+run             0

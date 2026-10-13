@@ -47,6 +47,11 @@ const VECTOR_LENGTH: Record<string, number> = {
   // pair eff/cut: [KE, Pauli, ecoul, radius restraint] (the pair's own vector, extract('pvector')). Measured with native
   // LAMMPS (black box): compute pair eff/cut has 4 values; c_ID[5] is out of range.
   'eff/cut': 4,
+  // pair amoeba: [hal, repulse, disp, mpole, polar, qxfer] energies (pair_amoeba.cpp nextra = 6, pvector order). Measured
+  // with native LAMMPS (black box): compute pair amoeba has 6 values.
+  amoeba: 6,
+  // pair hippo (pair_hippo.cpp is a PairAmoeba): the same six energies, [hal (0), repulse, disp, mpole, polar, qxfer]
+  hippo: 6,
 };
 const ENGINE_VECTOR = new Set(['hbond/dreiding/lj', 'hbond/dreiding/morse', 'hbond/dreiding/lj/angleoffset', 'hbond/dreiding/morse/angleoffset']);
 const EVALUES = ['epair', 'evdwl', 'ecoul'];

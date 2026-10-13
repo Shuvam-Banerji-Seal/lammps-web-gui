@@ -1,6 +1,7 @@
 import type { System } from './system';
 import { StyleError, type Bonded, type KSpace, type Pair } from './force/types';
 import type { Fix } from './fix/fix';
+import type { Handler } from './commands/args';
 import type { Compute } from './compute/compute';
 import { LAZY_GROUPS, type LazyGroup, type StyleKind, type StyleModule } from './lazyStyles';
 import type { NativeRandom, NativeRandomWord } from './nativeRandom';
@@ -167,9 +168,12 @@ export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
 const HOOKS: Record<string, unknown> = {};
 
 /** The registry object of each style kind (lazy groups are merged into these when loaded). */
+/** Commands added by lazy groups (a command word is looked up here when the session has no static handler). */
+export const LAZY_COMMANDS: Record<string, Handler> = {};
+
 const REGISTRY_OF: Record<StyleKind, Record<string, unknown>> = {
   PAIRS: PAIR_STYLES, BONDS: BOND_STYLES, ANGLES: ANGLE_STYLES, DIHEDRALS: DIHEDRAL_STYLES,
-  IMPROPERS: IMPROPER_STYLES, KSPACES: KSPACE_STYLES, FIXES: FIX_STYLES, COMPUTES: COMPUTE_STYLES, HOOKS,
+  IMPROPERS: IMPROPER_STYLES, KSPACES: KSPACE_STYLES, FIXES: FIX_STYLES, COMPUTES: COMPUTE_STYLES, HOOKS, COMMANDS: LAZY_COMMANDS,
 };
 
 /**

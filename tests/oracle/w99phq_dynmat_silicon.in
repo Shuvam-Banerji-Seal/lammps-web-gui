@@ -1,0 +1,17 @@
+# oracle: dynamical_matrix eskm on the 8-atom diamond silicon cell of examples/PACKAGES/phonon/dynamical_matrix_command/Silicon
+# Native reference: LAMMPS b332f28 built from source with PKG_KSPACE MANYBODY MISC MOLECULE PHONON QEQ QTB REAXFF SHOCK, because the installed binary has no QTB (cmake -D PKG_<name>=on for each; then LMP=<build>/lmp run-oracle.mjs)
+# (b332f28, GPL-2.0), tersoff potential (SiCGe.tersoff), displacement 1e-6. The file dynmat.dat is not compared by the oracle
+# harness (its entries are finite differences of forces: the native values carry roundoff up to 1.6e-5 absolute); the unit test
+# tests/enginePhonon.test.ts compares it with the native file in tests/fixtures/phonon/
+# oracle-inputs: w99phq_si_data.lmp w99phq_SiCGe.tersoff
+# oracle-compare: thermo=none atoms=none
+# measured (engine vs native, Node 24): every entry within 1.6e-5 absolute (largest value 862: 1.9e-8 relative)
+atom_style      full
+units           metal
+boundary        p p p
+neighbor        1 bin
+read_data       w99phq_si_data.lmp
+pair_style      tersoff
+pair_coeff      * * w99phq_SiCGe.tersoff Si(D)
+mass            1 28.08550
+dynamical_matrix all eskm 0.000001 file dynmat.dat binary no

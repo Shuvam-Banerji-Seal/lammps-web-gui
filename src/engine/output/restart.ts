@@ -243,6 +243,8 @@ export const writeRestartText = (sys: System): string => {
   // files <restart>`, so that the values can be restored when a simulation is restarted."
   const fixes: FixRestart[] = [];
   for (const f of sys.fixes) {
+    // fix_qbmsst.html (native restart keeps the omega, e0, v0, p0 and T_qm of the fix): not stored by the browser yet
+    if (f.style === 'qbmsst') throw new StyleError(`write_restart: fix ${f.id} (qbmsst) state is not stored in the browser restart file yet; use write_data or re-specify the fix`);
     // fix_cmap.html: "This fix writes the list of CMAP cross-terms to binary restart files"
     if (f instanceof FixCmap) { fixes.push({ id: f.id, props: [], data: {}, cmap: f.restartState() }); continue; }
     // fix_nh.html: the thermostat and barostat variables go to the binary restart file

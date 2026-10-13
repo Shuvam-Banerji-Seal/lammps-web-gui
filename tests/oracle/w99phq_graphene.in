@@ -1,0 +1,33 @@
+# oracle: fix phonon on the 10x10x1 graphene cell of examples/PACKAGES/phonon/4-Graphene (b332f28, GPL-2.0): tersoff, a tilted
+# Native reference: LAMMPS b332f28 built from source with PKG_KSPACE MANYBODY MISC MOLECULE PHONON QEQ QTB REAXFF SHOCK, because the installed binary has no QTB (cmake -D PKG_<name>=on for each; then LMP=<build>/lmp run-oracle.mjs)
+# triclinic box, nasr 50; cut down: 8000 NVE steps (the example's fix langevin zero yes is left out: the engine does not reproduce
+# native's atom sort order in triclinic boxes, which sets the order of the Langevin draws), measurements every 10 steps after 2000 wait steps,
+# output every 300 measurements. The dump, restart and the binary file of the example are not part of this case. The phonon log is not
+# compared by the oracle (its Gamma-point block is set by roundoff: the centre of mass is conserved, so the Gamma correlation matrix is
+# nearly singular); tests/enginePhonon.test.ts compares its other blocks with the native log in tests/fixtures/phonon/.
+# oracle-inputs: w99phq_graphene_data.pos w99phq_graphene.map w99phq_SiC.tersoff
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# measured (engine vs native): Node 24 thermo within 2.0e-11 absolute, per-atom 5.9e-10 relative; the phonon log (tests/enginePhonon.test.ts)
+# q != 0 blocks: 9.5e-6 relative (|Phi| > 1e-3) on Node 24, 1.6e-5 on Node 20
+boundary     p p p
+units        metal
+atom_style   atomic
+read_data	 w99phq_graphene_data.pos
+mass		*   12.0107
+pair_style   tersoff
+pair_coeff   * * w99phq_SiC.tersoff C
+neighbor     2. nsq
+neigh_modify every 1 delay 0 check yes
+variable     dt equal 2e-3
+variable     r  equal 57085
+variable     T  equal 300
+variable     dT equal "v_dt * 100"
+timestep ${dt}
+velocity     all create $T 28459 rot yes dist gaussian mom yes
+reset_timestep 0
+fix          2 all nve
+fix          3 all phonon 10 300 2000 w99phq_graphene.map w99phq_graphene nasr 50
+thermo_style custom step temp pe ke press pxx pyy
+thermo_modify format float %.15g
+thermo       100
+run 	 8000

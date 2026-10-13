@@ -352,7 +352,7 @@ export class System {
   /** Atoms were added, deleted or reordered. */
   atomsChanged(): void {
     this.ff.atomsChanged();
-    this.ff.topologyChanged(this.state);
+    this.ff.topologyChanged(this.state, this.nb);
     this.ff.updateTail(this.state);
     this.nb.lastBuild = -1;
     this.bump();

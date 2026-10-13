@@ -211,10 +211,14 @@ export class ForceField {
     this.ptailV = t.ptail;
   }
 
-  /** The topology changed or atoms were added/removed: rebuild special lists before the next build. */
-  topologyChanged(s: SimState): void {
+  /**
+   * The topology changed or atoms were added/removed: rebuilds the special list and hands it to the neighbor list, so
+   * the next build excludes the pairs of the new topology (the force field and the neighbor list keep one list).
+   */
+  topologyChanged(s: SimState, nb: Neighbor): void {
     const manybody = this.pair?.manybody ?? false;
     this.specialList = s.topo.bonds.n > 0 && !manybody ? this.buildSpecialList(s) : null;
+    nb.setSpecial(this.specialList);
   }
 
   /**
@@ -289,8 +293,7 @@ export class ForceField {
       run(this.bond, 'bond', acc.vbond);
       // bpm bonds that broke this step (type set to 0): their 1-2 special entries go, so the next neighbor build uses the new lists
       if (this.bond?.takeTopologyChange?.()) {
-        this.topologyChanged(s);
-        nb.setSpecial(this.specialList);
+        this.topologyChanged(s, nb);
       }
       run(this.angle, 'angle', acc.vangle);
       run(this.dihedral, 'dihedral', acc.vdihed);

@@ -74,6 +74,16 @@ export interface NeighborNeeds {
   exclude?: ((i: number, j: number) => boolean) | null;
 }
 
+/** Whether two special lists hold the same partners, orders and offsets. */
+const sameSpecial = (a: SpecialList | null, b: SpecialList | null): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.offset.length !== b.offset.length || a.partner.length !== b.partner.length) return false;
+  for (let i = 0; i < a.offset.length; i++) if (a.offset[i] !== b.offset[i]) return false;
+  for (let k = 0; k < a.partner.length; k++) if (a.partner[k] !== b.partner[k] || a.order[k] !== b.order[k]) return false;
+  return true;
+};
+
 export class Neighbor {
   skin: number;
   every = 1;
@@ -138,8 +148,11 @@ export class Neighbor {
 
   /** Replaces the special list of the needs (bonds broke or were created during a run). */
   setSpecial(special: SpecialList | null): void {
+    const old = this.needs?.special ?? null;
     if (this.needs) this.needs.special = special;
-    this.specialStale = true;
+    // an unchanged list (the same pairs in the same order) needs no extra build: a forced build here would move
+    // every later build, and with it the sorting and the random streams of the pair styles that depend on it
+    if (!sameSpecial(old, special)) this.specialStale = true;
   }
 
   /** Records what the force field needs; call before every run (setup). */

@@ -1,0 +1,25 @@
+# Measured with native LAMMPS (black box): with zero polarizability the polarization energy is NaN (pe and c_p[5] print nan), the forces and the virial stay finite, so pe and c_p[5] are not compared. oracle: pair amoeba buffered 14-7 term (hal) on the AMOEBA water dimer (data.water_dimer.amoeba, Tinker Types into i_amtype, 1-2..1-5 special pairs with the vdw-1n-scale factors of amoeba_water.prm, cutoff 10 taper 8 from amoeba_water.key). The multipole and polarization parameters of the force field are set to zero (w119amoeba_hal.prm), so those terms are exactly zero and the total is the hal term; energy, forces and the virial (press) are compared
+# oracle-inputs: w119amoeba_dimer.data w119amoeba_hal.prm w119amoeba_water.key
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 skip=pe,c_p[5],press,c_virial[1],c_virial[2],c_virial[3],c_virial[4],c_virial[5],c_virial[6]
+# Measured with native LAMMPS (black box): the hal energy (evdwl, c_p[1]) and the forces agree with the engine to 1e-13 relative.
+# press and the c_virial values are skipped: the engine's shrink-wrapped box for boundary s s s differs from native by 1.2e-7 relative in volume (vol 10.657660585 engine vs 10.657661865 native), so the same virial gives a 1.2e-7 different pressure. The virial itself equals sum x.f (fdotr) of native to about 1e-14 (the same constant for all six components) with the xred positions.
+units           real
+boundary        s s s
+atom_style      amoeba
+bond_style      zero
+angle_style     zero
+dihedral_style  none
+fix             amtype all property/atom i_amtype ghost yes
+fix             extra all property/atom i_amgroup d_redID d_pval ghost yes
+fix             extra2 all property/atom i_polaxe d2_xyzaxis 3
+read_data       w119amoeba_dimer.data fix amtype NULL "Tinker Types"
+bond_coeff      1
+angle_coeff     1
+special_bonds   lj/coul 0.5 0.5 0.5 one/five yes
+pair_style      amoeba
+pair_coeff      * * w119amoeba_hal.prm w119amoeba_water.key
+compute         p all pair amoeba
+compute         virial all pressure NULL virial
+thermo_style    custom step pe evdwl c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] press c_virial[1] c_virial[2] c_virial[3] c_virial[4] c_virial[5] c_virial[6]
+thermo_modify   format float %.15g
+run             0

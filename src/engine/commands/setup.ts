@@ -74,7 +74,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph', 'edpd', 'mdpd', 'tdpd', 'rheo', 'rheo/thermal', 'dpd', 'smd'];
+const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph', 'edpd', 'mdpd', 'tdpd', 'rheo', 'rheo/thermal', 'dpd', 'smd', 'amoeba'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -527,10 +527,10 @@ export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[],
   const molecular = isMolecularStyle(sys.atomStyle);
   const tmplStyle = isTemplateStyle(sys.atomStyle);
   const needs: [string, number[][], number, string[]][] = [
-    ['bonds', t.bonds, s.topo.nbondtypes, ['bond', 'angle', 'molecular', 'full', 'template']],
-    ['angles', t.angles, s.topo.nangletypes, ['angle', 'molecular', 'full', 'template']],
-    ['dihedrals', t.dihedrals, s.topo.ndihedraltypes, ['molecular', 'full', 'template']],
-    ['impropers', t.impropers, s.topo.nimpropertypes, ['molecular', 'full', 'template']],
+    ['bonds', t.bonds, s.topo.nbondtypes, ['bond', 'angle', 'molecular', 'full', 'amoeba', 'template']],
+    ['angles', t.angles, s.topo.nangletypes, ['angle', 'molecular', 'full', 'amoeba', 'template']],
+    ['dihedrals', t.dihedrals, s.topo.ndihedraltypes, ['molecular', 'full', 'amoeba', 'template']],
+    ['impropers', t.impropers, s.topo.nimpropertypes, ['molecular', 'full', 'amoeba', 'template']],
   ];
   for (const [what, list, ntypes, styles] of needs) {
     if (!list.length) continue;

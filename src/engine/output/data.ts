@@ -48,6 +48,8 @@ const BASE_COLS: Record<string, string[]> = {
   angle: ['id', 'mol', 'type', 'x', 'y', 'z'],
   molecular: ['id', 'mol', 'type', 'x', 'y', 'z'],
   full: ['id', 'mol', 'type', 'q', 'x', 'y', 'z'],
+  // read_data.html, the Atoms-section table, row amoeba (native: "Atoms # amoeba" lines carry the same 7 columns as full)
+  amoeba: ['id', 'mol', 'type', 'q', 'x', 'y', 'z'],
   // read_data.html: "sphere | atom-ID atom-type diameter density x y z"
   sphere: ['id', 'type', 'diameter', 'density', 'x', 'y', 'z'],
   // read_data.html, the Atoms-section table, row bpm/sphere: "atom-ID molecule-ID atom-type diameter density x y z"
@@ -138,7 +140,7 @@ const SECTIONS = new Set([
   'Pair Coeffs', 'PairIJ Coeffs', 'Bond Coeffs', 'Angle Coeffs', 'Dihedral Coeffs', 'Improper Coeffs',
   'Ellipsoids', 'Lines', 'Triangles', 'Bodies',
   'Atom Type Labels', 'Bond Type Labels', 'Angle Type Labels', 'Dihedral Type Labels', 'Improper Type Labels',
-  'BondBond Coeffs', 'BondAngle Coeffs', 'MiddleBondTorsion Coeffs', 'EndBondTorsion Coeffs', 'AngleTorsion Coeffs',
+  'BondBond Coeffs', 'BondAngle Coeffs', 'UreyBradley Coeffs', 'MiddleBondTorsion Coeffs', 'EndBondTorsion Coeffs', 'AngleTorsion Coeffs',
   'AngleAngleTorsion Coeffs', 'BondBond13 Coeffs', 'AngleAngle Coeffs',
 ]);
 
@@ -153,6 +155,9 @@ const SECTIONS = new Set([
 const CLASS2_SECTIONS: Record<string, ['angle' | 'dihedral' | 'improper', string]> = {
   'BondBond Coeffs': ['angle', 'bb'],
   'BondAngle Coeffs': ['angle', 'ba'],
+  // AMOEBA (angle_style amoeba): "ID k r0" is the angle_coeff N ub k r0 line. Measured with native LAMMPS (black box): the
+  // AMOEBA water data file reads its UreyBradley Coeffs section.
+  'UreyBradley Coeffs': ['angle', 'ub'],
   'MiddleBondTorsion Coeffs': ['dihedral', 'mbt'],
   'EndBondTorsion Coeffs': ['dihedral', 'ebt'],
   'AngleTorsion Coeffs': ['dihedral', 'at'],
@@ -680,7 +685,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         case 'Angle Coeffs': return h['angle types'] ?? 0;
         case 'Dihedral Coeffs': return h['dihedral types'] ?? 0;
         case 'Improper Coeffs': return h['improper types'] ?? 0;
-        case 'BondBond Coeffs': case 'BondAngle Coeffs': return h['angle types'] ?? 0;
+        case 'BondBond Coeffs': case 'BondAngle Coeffs': case 'UreyBradley Coeffs': return h['angle types'] ?? 0;
         case 'MiddleBondTorsion Coeffs': case 'EndBondTorsion Coeffs': case 'AngleTorsion Coeffs':
         case 'AngleAngleTorsion Coeffs': case 'BondBond13 Coeffs': return h['dihedral types'] ?? 0;
         case 'AngleAngle Coeffs': return h['improper types'] ?? 0;

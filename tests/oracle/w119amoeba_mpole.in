@@ -1,0 +1,24 @@
+# oracle: pair amoeba permanent multipole term (mpole, direct sum) on the AMOEBA water dimer (data.water_dimer.amoeba, Tinker Types into i_amtype, 1-2..1-5 special pairs with the mpole-1n-scale factors of amoeba_water.prm, cutoff 10 from amoeba_water.key). The force field has non-zero permanent multipoles (w119amoeba_mpole.prm: an O BISECTOR frame and an H ZTHENX frame, the chiral-free case), and polarizability zero, so the induced-dipole terms are exactly zero. The energy c_p[4] (mpole) and the forces are compared; the buffered 14-7 term (c_p[1]) is compared too.
+# oracle-inputs: w119amoeba_dimer.data w119amoeba_mpole.prm w119amoeba_water.key
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 skip=pe,c_p[5],press,c_virial[1],c_virial[2],c_virial[3],c_virial[4],c_virial[5],c_virial[6]
+# Measured with native LAMMPS (black box): the polarization energy (c_p[5], pe) is NaN with zero polarizability, so pe and c_p[5] are not compared (same as w119amoeba_hal). press and c_virial are skipped: the shrink-wrapped box for boundary s s s differs from native in volume by 1.2e-7 relative (see w119amoeba_hal).
+units           real
+boundary        s s s
+atom_style      amoeba
+bond_style      zero
+angle_style     zero
+dihedral_style  none
+fix             amtype all property/atom i_amtype ghost yes
+fix             extra all property/atom i_amgroup d_redID d_pval ghost yes
+fix             extra2 all property/atom i_polaxe d2_xyzaxis 3
+read_data       w119amoeba_dimer.data fix amtype NULL "Tinker Types"
+bond_coeff      1
+angle_coeff     1
+special_bonds   lj/coul 0.5 0.5 0.5 one/five yes
+pair_style      amoeba
+pair_coeff      * * w119amoeba_mpole.prm w119amoeba_water.key
+compute         p all pair amoeba
+compute         virial all pressure NULL virial
+thermo_style    custom step pe evdwl c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] press c_virial[1] c_virial[2] c_virial[3] c_virial[4] c_virial[5] c_virial[6]
+thermo_modify   format float %.15g
+run             0

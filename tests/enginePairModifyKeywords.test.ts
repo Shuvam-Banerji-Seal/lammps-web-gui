@@ -97,6 +97,6 @@ pair_style lj/cut 2.5
 pair_coeff * * 1.0 1.0
 special_bonds one/five yes
 run 0`);
-    expect(error?.message).toMatch(/one\/five yes is not supported/);
+    expect(error?.message).toMatch(/Cannot set special_bonds one\/five if atom style does not support it/);
   });
 });

@@ -1,0 +1,28 @@
+# oracle: atom_style amoeba (full plus the 1-5 list) read_data of the AMOEBA water dimer; the Tinker Types section is read into i_amtype by fix property/atom, special_bonds one/five yes is accepted for this style; per-atom id, type, mol, q, image-free positions and i_amtype/i_amgroup/d_redID/d_pval/i_polaxe/d2_xyzaxis compared (bond and angle styles are zero: their coefficients are not part of this case)
+# oracle-inputs: w119amoeba_dimer.data
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12
+# (the box of a shrink-wrapped dump differs by a 1e-3 offset between the log and the dump, so the per-atom values go through c_r sums)
+# Measured with native LAMMPS (black box): read_data of the Tinker Types section gives i_amtype 1 2 2 1 2 2 for atoms 1-6
+units           real
+boundary        s s s
+atom_style      amoeba
+bond_style      zero
+angle_style     zero
+dihedral_style  none
+fix             amtype all property/atom i_amtype ghost yes
+fix             extra all property/atom i_amgroup d_redID d_pval ghost yes
+fix             extra2 all property/atom i_polaxe d2_xyzaxis 3
+read_data       w119amoeba_dimer.data fix amtype NULL "Tinker Types"
+bond_coeff      1
+angle_coeff     1
+special_bonds   lj/coul 0.5 0.5 0.5 one/five yes
+pair_style      zero 3.0
+pair_coeff      * *
+thermo_modify   format float %.15g
+variable        m atom mol*id
+variable        t atom i_amtype*id
+variable        g atom i_amgroup+d_redID+d_pval+i_polaxe
+variable        a atom q*id
+compute         r all reduce sum v_m v_t v_g v_a
+thermo_style    custom step atoms bonds angles temp pe c_r[1] c_r[2] c_r[3] c_r[4]
+run             0

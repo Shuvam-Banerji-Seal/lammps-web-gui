@@ -5,7 +5,7 @@ import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLE
 import type { System } from '../system';
 import type { MixRule, Pair } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
-import { isMolecularStyle } from '../atoms';
+import { atomSubStyles, isMolecularStyle } from '../atoms';
 import { KSpaceBase } from '../force/kspace/ewald';
 import { typeWord } from '../labelmap';
 import { KSpacePPPM } from '../force/kspace/pppm';
@@ -189,7 +189,7 @@ const bondedCoeff = (kind: keyof typeof bondedKinds): Handler => (({ sys }, a) =
 
 /** special_bonds keyword values — special_bonds.html ("Each time you use this command it sets all the coefficients to default values and only overrides the one you specify"). */
 const specialBonds: Handler = ({ sys }, a) => {
-  const sp = { lj: [0, 0, 0] as [number, number, number], coul: [0, 0, 0] as [number, number, number], angle: false, dihedral: false };
+  const sp = { lj: [0, 0, 0] as [number, number, number], coul: [0, 0, 0] as [number, number, number], angle: false, dihedral: false, one5: false };
   const w3 = (k: number, what: string): [number, number, number] => {
     const v = [num(a[k + 1], what), num(a[k + 2], what), num(a[k + 3], what)] as [number, number, number];
     if (v.some((x) => x < 0 || x > 1)) throw new StyleError('special_bonds weights must be between 0.0 and 1.0');
@@ -209,10 +209,13 @@ const specialBonds: Handler = ({ sys }, a) => {
       case 'angle': sp.angle = yesno(a[k + 1], 'angle'); k += 2; break;
       case 'dihedral': sp.dihedral = yesno(a[k + 1], 'dihedral'); k += 2; break;
       case 'one/five':
-        // special_bonds.html: "required by some pair styles, such as pair_style amoeba and hippo". Measured with
-        // native LAMMPS (black box): atom_style full refuses it ("Cannot set special_bonds one/five if atom style does
-        // not support it"); the engine has no atom style with the 1-5 list, so yes stays refused.
-        if (yesno(a[k + 1], 'one/five')) throw new StyleError('special_bonds one/five yes is not supported (the browser engine has no atom style with the 1-5 neighbour list)');
+        // special_bonds.html: "required by some pair styles, such as pair_style amoeba and hippo". The 1-5 list
+        // is kept only by atom_style amoeba. Measured with native LAMMPS (black box): atom_style full refuses
+        // one/five yes ("Cannot set special_bonds one/five if atom style does not support it").
+        if (yesno(a[k + 1], 'one/five') && !atomSubStyles(sys.atomStyle).includes('amoeba')) {
+          throw new StyleError('Cannot set special_bonds one/five if atom style does not support it');
+        }
+        sp.one5 = yesno(a[k + 1], 'one/five');
         k += 2;
         break;
       default: throw new StyleError(`unknown special_bonds keyword '${a[k]}'`);

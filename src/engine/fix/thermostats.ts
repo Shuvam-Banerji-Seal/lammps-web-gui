@@ -272,6 +272,8 @@ export class FixLangevin extends Fix {
   private ratio: Float64Array;
   private tally = false;
   private zero = false;
+  /** keyword omega yes: rotational thermostat of finite-size spheres (torque from the angular velocity). */
+  private omegaOn = false;
   private exchanged = 0;
   private fl = new Float64Array(0);
   private temp: Compute | null = null;
@@ -307,13 +309,25 @@ export class FixLangevin extends Fix {
           k += 2;
           break;
         }
-        case 'angmom': case 'omega':
-          if (args[k + 1] !== 'no') throw new StyleError(`fix langevin ${key} needs finite-size particles, which the browser engine does not support`);
+        case 'omega':
+          if (args[k + 1] !== 'yes' && args[k + 1] !== 'no') throw new StyleError('fix langevin omega must be yes or no');
+          this.omegaOn = args[k + 1] === 'yes';
+          k += 2;
+          break;
+        case 'angmom':
+          // fix_langevin.html: "This can only be done for finite-size particles." The angmom torque on ellipsoids is not
+          // reproduced yet: the damping of a rotated ellipsoid's angular momentum does not match a body-frame formula
+          // (measured with native LAMMPS, black box), so it is refused rather than approximated.
+          if (args[k + 1] !== 'no') throw new StyleError('fix langevin angmom is not supported by the browser engine yet (the rotational damping of rotated ellipsoids is not reproduced)');
           k += 2;
           break;
         case 'gjf': throw new StyleError('fix langevin gjf was removed from LAMMPS (22Jul2025); use fix gjf');
         default: throw new StyleError(`unknown fix langevin keyword '${key}'`);
       }
+    }
+    if (this.omegaOn) {
+      if (!s.omega || !s.torque || !s.radius) throw new StyleError('fix langevin omega yes needs finite-size spheres (atom_style sphere)');
+      if (this.tally || this.zero) throw new StyleError('fix langevin omega yes with tally or zero is not supported by the browser engine yet');
     }
     this.scalarFlag = this.tally;
     this.extscalar = 1;
@@ -370,7 +384,31 @@ export class FixLangevin extends Fix {
         if (this.tally) { this.fl[3 * i] -= sx; this.fl[3 * i + 1] -= sy; this.fl[3 * i + 2] -= sz; }
       }
     }
+    if (this.omegaOn) this.rotationalTorques(tt);
     if (bias) this.temp!.restoreBiasAll();
+  }
+
+  /**
+   * fix langevin omega: torque = -(I s / damp) omega + random, with I = 0.4 m r^2 and the scale factor s = 10/3 for
+   * spheres. The random amplitude carries sqrt(s). The rotational draws follow all the translational draws, one
+   * uniform deviate per component and atom, in native order (measured with native LAMMPS, black box).
+   */
+  private rotationalTorques(tt: number): void {
+    const s = this.sys.state;
+    const u = s.units;
+    const { torque, omega, mask, type, radius } = s;
+    const sc = 10 / 3;
+    for (const i of nativeOrder(s)) {
+      if (!(mask[i] & this.groupBit)) continue;
+      const r = (radius as Float64Array)[i];
+      const inertia = 0.4 * massOf(s, i) * r * r;
+      const damp = this.damp * this.ratio[type[i]];
+      const g1 = -(inertia * sc / damp) / u.ftm2v;
+      const g2 = Math.sqrt(inertia) * Math.sqrt((24 * u.boltz * tt * sc) / (u.mvv2e * s.dt * damp)) / u.ftm2v;
+      for (let d = 0; d < 3; d++) {
+        torque![3 * i + d] += g1 * omega![3 * i + d] + g2 * (this.rng.uniform() - 0.5);
+      }
+    }
   }
 
   /** Energy added by the Langevin forces over the step (tally yes): -sum F_L . v dt. */

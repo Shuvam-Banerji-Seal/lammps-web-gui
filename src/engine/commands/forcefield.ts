@@ -6,6 +6,7 @@ import type { System } from '../system';
 import type { MixRule, Pair } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
 import { isMolecularStyle } from '../atoms';
+import { KSpaceBase } from '../force/kspace/ewald';
 
 /*
  * Force-field commands. Styles come from styles.ts; anything else is an
@@ -208,7 +209,9 @@ const kspaceModify: Handler = ({ sys }, a) => {
   for (let i = 0; i < a.length;) {
     const key = a[i];
     if (key === 'compute') {
-      if (!yesno(a[i + 1], 'compute')) throw new StyleError('kspace_modify compute no is not supported');
+      // kspace_modify.html: "The compute keyword allows Kspace computations to be turned off, even though a kspace_style is defined."
+      if (!(k instanceof KSpaceBase)) throw new StyleError(`kspace_modify compute is not supported by kspace_style ${k.name}`);
+      k.computeOn = yesno(a[i + 1], 'compute');
       i += 2;
       continue;
     }

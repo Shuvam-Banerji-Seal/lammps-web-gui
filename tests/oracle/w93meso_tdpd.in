@@ -1,0 +1,48 @@
+# oracle: pair tdpd (transport DPD, 2 species) with fix mvv/tdpd and the tdpd/source concentration sources, a cut-down of examples/PACKAGES/dpd-meso/tdpd/in.tdpd (2048 atoms in an 8 x 8 x 8 box, 50 + 50 steps, the length at which the chaotic divergence from native's rounding stays below 1e-10)
+# Measured with native LAMMPS (black box): engine vs native max error 4.1e-14 (thermo) and 4.5e-9 (per-atom, scale max(1,|x|)) under vitest (Node 24); under Node 20 with a rolldown bundle 1.7e-13 (thermo) and 1.0e-8 (per-atom). The species draws follow native's neighbor order step by step; 50 + 50 steps for the same chaotic reason.
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=0
+# oracle-files: cc.profile
+units                   lj
+dimension               3
+boundary                p p p
+neighbor                0.2 bin
+neigh_modify        every 1 delay 0 check yes
+
+atom_style              tdpd 2
+comm_modify  vel yes
+
+region     tdpd     block -4 4 -4 4 -4 4 units box
+create_box          1 tdpd
+create_atoms        1 random 2048 276438 NULL
+mass                1 1.0
+set                 atom * cc 1 1.0
+set                 atom * cc 2 1.0
+
+pair_style          tdpd 1.0 1.58 9872598
+pair_coeff          1 1 18.75 4.5 0.41 1.58 1.58 1.0 1.0E-5 2.0 3.0 1.0E-5 2.0
+
+compute             mythermo all temp
+thermo              50
+thermo_style        custom step temp pe ke etotal press
+thermo_modify       temp mythermo
+thermo_modify       flush yes
+thermo_modify       format float %.15g
+
+velocity            all create 1.0 432982 loop local dist gaussian
+
+fix         mvv     all mvv/tdpd 0.5
+fix         upper1  all tdpd/source 1 cuboid 0.0  2.0 0.0 8.0 4.0 8.0  0.01
+fix         lower1  all tdpd/source 1 cuboid 0.0 -2.0 0.0 8.0 4.0 8.0 -0.01
+fix         upper2  all tdpd/source 2 cuboid 0.0  2.0 0.0 8.0 4.0 8.0 -0.01
+fix         lower2  all tdpd/source 2 cuboid 0.0 -2.0 0.0 8.0 4.0 8.0  0.01
+
+timestep            0.01
+run                 50
+reset_timestep      0
+
+compute     cc1     all tdpd/cc/atom 1
+compute     cc2     all tdpd/cc/atom 2
+compute     bin     all chunk/atom bin/1d y 0.0 1.0
+fix         stat    all ave/chunk 1 50 50 bin c_cc1 c_cc2 norm sample file cc.profile
+
+run                 50

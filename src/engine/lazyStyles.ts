@@ -24,6 +24,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_electrode', names: { FIXES: ['electrode/conp', 'electrode/conq', 'electrode/thermo'], KSPACES: ['ewald/electrode', 'pppm/electrode'] }, load: () => import('../engine-gpl/registry/electrode') as Promise<StyleModule> },
   { id: 'gpl_dpd', names: { PAIRS: ['dpd', 'dpd/ext', 'dpd/ext/tstat', 'dpd/tstat'] }, load: () => import('../engine-gpl/registry/dpd') as Promise<StyleModule> },
   { id: 'gpl_thermostat', names: { FIXES: ['temp/csld', 'temp/csvr'] }, load: () => import('../engine-gpl/registry/thermostat') as Promise<StyleModule> },
+  { id: 'gpl_dpdmeso', names: { COMPUTES: ['edpd/temp/atom', 'tdpd/cc/atom'], FIXES: ['edpd/source', 'mvv/dpd', 'mvv/edpd', 'mvv/tdpd', 'tdpd/source'], PAIRS: ['edpd', 'mdpd', 'mdpd/rhosum', 'tdpd'] }, load: () => import('../engine-gpl/registry/dpdmeso') as Promise<StyleModule> },
   { id: 'gpl_srd', names: { FIXES: ['srd'] }, load: () => import('../engine-gpl/registry/srd') as Promise<StyleModule> },
   { id: 'gpl_phonon', names: { COMMANDS: ['dynamical_matrix'], FIXES: ['phonon'] }, load: () => import('../engine-gpl/registry/phonon') as Promise<StyleModule> },
   { id: 'gpl_qtb', names: { FIXES: ['qbmsst', 'qtb'] }, load: () => import('../engine-gpl/registry/qtb') as Promise<StyleModule> },

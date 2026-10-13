@@ -1,0 +1,23 @@
+# oracle: pair_style extep (BN.extep, elements B N) on the 100-atom BN sample of examples/PACKAGES/extep (in.extep-bn), NVE instead of the example's NPT, 50 steps, 300 K velocities as the example.
+# native: b332f28 (installed /home/roy/.local/bin/lmp)
+# measured 2026-10-14 (engine vs native, max relative error, thermo |a-b|/|b|, per-atom |a-b|/max(1,|b|)): thermo 2.9e-13, per-atom 1.1e-13; passes at rel 1e-8 abs 1e-10.
+# oracle-inputs: w145pr_BN.data
+# w145pr_BN.data is a byte copy of examples/PACKAGES/extep/BN.data (the example data file)
+# oracle-potentials: BN.extep
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+boundary        p p p
+atom_style      atomic
+processors      * * 1
+read_data       w145pr_BN.data
+pair_style      extep
+pair_coeff      * * BN.extep B N
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        0.0001
+velocity        all create 300.0 12345
+fix             1 all nve
+thermo_style    custom step time etotal pe temp lx ly lz pxx pyy pzz
+thermo_modify   format float %.15g norm no
+thermo          10
+run             50

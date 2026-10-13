@@ -26,13 +26,19 @@ There is no linter configured; `typecheck` is the static gate.
 
 ### Native parity (oracle cases)
 
-Engine behaviour is checked against native LAMMPS (`/home/roy/.local/bin/lmp`, run as a black box only, rule 7):
+Engine behaviour is checked against native LAMMPS (`/home/roy/.local/bin/lmp`, built from commit `b332f28`):
 a case is `tests/oracle/<case>.in` (header lines `# oracle:`, optional `# oracle-inputs:` (files next to the
 case), `# oracle-potentials:` (unmodified LAMMPS potential files from `third_party/lammps/potentials`) and
 `# oracle-compare:`); `LMP=/home/roy/.local/bin/lmp node scripts/oracle/run-oracle.mjs <case>` writes the native
 fixture `tests/fixtures/oracle/<case>.json`, and `npx vitest run tests/engineOracle.test.ts -t <case>` compares the
 engine with it. Put `thermo_modify format float %.15g` after `thermo_style`. Measured native behaviour is written in
-comments as "Measured with native LAMMPS (black box): ..." without quote marks; quote marks are for doc text only.
+comments as "Measured with native LAMMPS: ..." without quote marks; quote marks are for doc text only.
+
+LAMMPS is open source: read its C++ (github.com/lammps/lammps at `b332f28`) to find the exact behaviour before
+implementing, in core fixes as well as ports. Native runs are the check, not the way to discover a rule. Where the
+code goes is rule 7: logic translated from the C++ lives in `src/engine-gpl/`; a core fix is written in the engine's
+own terms and may name the LAMMPS source file it was checked against ("As native LAMMPS does (src/X.cpp at
+b332f28): ...").
 
 ## Layout
 

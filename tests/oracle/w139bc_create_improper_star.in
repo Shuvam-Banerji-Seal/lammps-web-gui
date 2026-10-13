@@ -1,0 +1,28 @@
+# oracle: fix bond/create itype/atype/dtype on a four-atom star (w139bc_star.data: central atom 1 with bonds to 3 (listed first) and 2; atom 4 is 1.1 from atom 1, so the new bond 1-4 is the only candidate pair within 1.2). The induced entries are the angles 3-1-4 and 2-1-4 and the improper 1-3-2-4 (native's 1-2 list of atom 1 is 3, 2, then 4, and the improper takes its outer atoms in that order). No periodic image is involved (the box is 30 and nothing reaches a boundary). 20 steps, nevery 1. Native: b332f28 (installed lmp, MC package included).
+# Engine vs this fixture (measured under Node 20 with a rolldown bundle; the vitest run under Node 24 passes at the same tolerance): the bond, the angles and the improper are created on the first step (bonds 2 -> 3, angles 0 -> 2, impropers 0 -> 1). Max errors over the 21 rows: thermo rel 3.7e-15 (pe), atoms rel 8.9e-15 (fy).
+# oracle-inputs: w139bc_star.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+boundary p p p
+atom_style molecular
+read_data w139bc_star.data extra/bond/per/atom 4 extra/angle/per/atom 6 extra/dihedral/per/atom 6 extra/improper/per/atom 6 extra/special/per/atom 8
+pair_style zero 2.5
+pair_coeff * *
+bond_style harmonic
+bond_coeff 1 50.0 1.0
+angle_style harmonic
+angle_coeff 1 10.0 100.0
+dihedral_style harmonic
+dihedral_coeff 1 1.0 1 1
+improper_style harmonic
+improper_coeff 1 3.0 0.0
+special_bonds lj/coul 0.0 1.0 1.0
+neighbor 0.3 bin
+velocity all set 0.0 0.0 0.0
+fix 1 all nve
+fix c all bond/create 1 1 1 1.2 1 atype 1 itype 1
+timestep 0.005
+thermo_style custom step pe ebond eangle eimp bonds angles impropers f_c[1] f_c[2]
+thermo_modify format float %.15g
+thermo 1
+run 20

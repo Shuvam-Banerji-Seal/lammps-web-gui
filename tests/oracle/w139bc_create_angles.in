@@ -1,0 +1,27 @@
+# oracle: fix bond/create atype/dtype (the same melt as w139bc_create_iparam, prob 1): every new bond induces the angles and dihedrals through it, created from the 1-2 neighbors of the new bond's atoms; 500 steps, nevery 5.
+# Engine vs this fixture (Node 24; Node 20 gives the same numbers to the digits shown): 14 bonds made, 28 angles and 42 dihedrals induced at the end (counts identical on every row). Max errors over the 11 rows: thermo rel 2.0e-11 (edihed; the rest below 1e-11), atoms rel 1.3e-8 (vz, abs 1.6e-10 on speeds of order 1e-2), vy 4.1e-9, fy 9.4e-9 (abs 3.4e-9 on forces of order 1). The 1.3e-8 is above 1e-8 relative only on that velocity component; the absolute error is 1.6e-10.
+# Native prints two warnings for this run ("Bond/angle/dihedral extent > half of periodic box length" and "Inconsistent image flags"): the grown network is larger than half the box, so the closest-image choice of the bonded terms is not unique. The engine matches native's per-atom state to the digits above, but a larger box or a smaller network would be a stronger test (a 4-atom improper case with a larger box is w139bc_create_improper_star).
+# oracle-inputs: w139bc_melt_ad.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+boundary p p p
+atom_style molecular
+read_data w139bc_melt_ad.data extra/bond/per/atom 2 extra/angle/per/atom 4 extra/dihedral/per/atom 4
+pair_style lj/cut 2.5
+pair_coeff * * 1.0 1.0
+bond_style harmonic
+bond_coeff 1 100.0 1.0
+angle_style harmonic
+angle_coeff 1 20.0 110.0
+dihedral_style harmonic
+dihedral_coeff 1 2.0 1 2
+special_bonds lj/coul 0.0 1.0 1.0
+neighbor 0.3 bin
+velocity all create 1.0 4928 mom yes rot no dist gaussian
+fix 1 all nve
+fix c all bond/create 5 1 1 1.5 1 iparam 2 2 jparam 2 2 atype 1 dtype 1
+timestep 0.005
+thermo_style custom step temp pe ebond eangle edihed press bonds angles dihedrals f_c[1] f_c[2]
+thermo_modify format float %.15g
+thermo 50
+run 500

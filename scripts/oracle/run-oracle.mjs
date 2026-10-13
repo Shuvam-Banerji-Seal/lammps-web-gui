@@ -60,7 +60,7 @@ const expandWildcardKeywords = (keywords, header) => {
   let h = 0;
   for (const k of keywords) {
     if (!k.includes('*')) { out.push(k); h++; continue; }
-    const re = new RegExp('^' + k.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace('*', '\\d+') + '$');
+    const re = new RegExp('^' + k.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '\\d+') + '$');
     while (h < header.length && re.test(header[h])) { out.push(header[h]); h++; }
   }
   return out;

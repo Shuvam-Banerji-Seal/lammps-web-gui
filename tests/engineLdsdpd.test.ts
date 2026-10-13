@@ -136,7 +136,7 @@ run 2
 });
 
 describe('the DPD-SMOOTH example fixes are not in the engine', () => {
-  it('names fix rigid/meso and fix meso/move in their error', async () => {
+  it('names fix rigid/meso and the variable style of fix meso/move in their error', async () => {
     const { session, events } = newSession();
     const base = `units lj
 atom_style sph
@@ -150,6 +150,6 @@ set group all sph/rho 1.0
 `;
     expect(await errorOf(session, events, `${base}fix 2 all rigid/meso single\n`)).toMatch(/rigid\/meso/);
     const s2 = newSession();
-    expect(await errorOf(s2.session, s2.events, `${base}fix 3 all meso/move linear +0.01 0 0 units box\n`)).toMatch(/meso\/move/);
+    expect(await errorOf(s2.session, s2.events, `${base}fix 3 all meso/move variable v_a NULL NULL NULL NULL NULL\n`)).toMatch(/meso\/move/);
   });
 });

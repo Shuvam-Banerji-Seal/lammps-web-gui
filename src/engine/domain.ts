@@ -145,12 +145,16 @@ export class Geometry {
       const k = Math.floor(lam);
       this.addEdge(x, i, d, -k);
       image[3 * i + d] += k;
-      // floating-point edge: a coordinate that lands exactly on hi goes to lo
-      const lam2 = d === 2 ? this.i22 * (x[3 * i + 2] - this.lo[2])
-        : d === 1 ? this.i11 * (x[3 * i + 1] - this.lo[1]) + this.i12 * (x[3 * i + 2] - this.lo[2])
-          : this.i00 * (x[3 * i] - this.lo[0]) + this.i01 * (x[3 * i + 1] - this.lo[1]) + this.i02 * (x[3 * i + 2] - this.lo[2]);
-      if (lam2 >= 1) { this.addEdge(x, i, d, -1); image[3 * i + d] += 1; }
-      else if (lam2 < 0) { this.addEdge(x, i, d, 1); image[3 * i + d] -= 1; }
+      // floating-point edge, tested on the coordinate itself as native does (domain.cpp Domain::pbc() at b332f28:
+      // "if (x[i][0] >= hi[0]) { x[i][0] -= period[0]; x[i][0] = MAX(x[i][0],lo[0]); ..."). The fractional test
+      // i00 * (x - lo) rounds a wrapped 0.6999999999999998 (from -0.7000000000000001 in the box -0.7..0.7) to 1 and
+      // undid the wrap: the atom then kept its unwrapped position in native's bins and in the pair order.
+      const c = x[3 * i + d];
+      if (c >= this.hi[d]) {
+        this.addEdge(x, i, d, -1);
+        x[3 * i + d] = Math.max(x[3 * i + d], this.lo[d]);
+        image[3 * i + d] += 1;
+      } else if (c < this.lo[d]) { this.addEdge(x, i, d, 1); image[3 * i + d] -= 1; }
     }
   }
 

@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
-import { appendAtoms, setOxdnaPartners, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, TRI_BONUS_COLS, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_SPIN, isElectronStyle, isDielectricStyle, DIEL_AREA, DIEL_ED, DIEL_EM, DIEL_EPSILON, DIEL_CURVATURE, DIEL_QSCALED } from '../atoms';
+import { isSphStyle, SPH_CV, SPH_DESPH, SPH_DRHO, SPH_ESPH, SPH_RHO, SPH_VEST, appendAtoms, setOxdnaPartners, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, TRI_BONUS_COLS, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_SPIN, isElectronStyle, isDielectricStyle, DIEL_AREA, DIEL_ED, DIEL_EM, DIEL_EPSILON, DIEL_CURVATURE, DIEL_QSCALED } from '../atoms';
 import { lineFromEnds, lineEnds, triangleCorner, triangleAreaOfBody, type LineBonus } from '../lineTri';
 import { triBodyHook } from '../styles';
 import type { TriBody } from '../triBonus';
@@ -72,6 +72,9 @@ const BASE_COLS: Record<string, string[]> = {
   tri: ['id', 'mol', 'type', 'triangleflag', 'density', 'x', 'y', 'z'],
   // read_data.html, the Atoms-section table, row electron: "atom-ID atom-type q espin eradius x y z"
   electron: ['id', 'type', 'q', 'espin', 'eradius', 'x', 'y', 'z'],
+  // atom_style.html, sph: "The sph style is for smoothed particle hydrodynamics (SPH) particles which store a density (rho),
+  // energy (esph), and heat capacity (cv)"; read_data.html, the Atoms-section table, row sph: "atom-ID atom-type rho esph cv x y z"
+  sph: ['id', 'type', 'rho', 'esph', 'cv', 'x', 'y', 'z'],
   // read_data.html, Atoms section, dielectric: "atom-ID atom-type q x y z mux muy muz area ed em epsilon curvature";
   // atom_style.html: "full + mu, area, ed, em, epsilon, curvature, q_scaled". Measured with native LAMMPS (black box): a
   // dielectric data line has a molecule ID after the atom ID (15 columns, as the examples/PACKAGES/dielectric data files)
@@ -572,6 +575,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         const tIdx = new Int32Array(count), tAt = new Int32Array(count);
         const espin = new Float64Array(count), eradius = new Float64Array(count);
         const diel = isDielectricStyle(style) ? { area: new Float64Array(count), ed: new Float64Array(count), em: new Float64Array(count), epsilon: new Float64Array(count), curvature: new Float64Array(count) } : null;
+        const sph = isSphStyle(style) ? { rho: new Float64Array(count), esph: new Float64Array(count), cv: new Float64Array(count) } : null;
         const bflag = parseBodyStyle(style) ? new Uint8Array(count) : null;
         body.forEach(({ w, at }, a) => {
           if (w.length !== cols.length && w.length !== cols.length + 3) {
@@ -632,6 +636,12 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
                 diel![dk][a] = numOf(v, dk, at);
                 break;
               }
+              // read_data.html, sph: "rho = density (need units)", "esph = energy (need units) for SPH particles", "cv = heat capacity (need units) for SPH particles"
+              case 'rho': case 'esph': case 'cv': {
+                const sk = cols[c] as 'rho' | 'esph' | 'cv';
+                sph![sk][a] = numOf(v, sk, at);
+                break;
+              }
             }
           }
           if (mu) mu[4 * a + 3] = Math.hypot(mu[4 * a], mu[4 * a + 1], mu[4 * a + 2]);
@@ -680,7 +690,12 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
           [DIEL_AREA, diel.area], [DIEL_ED, diel.ed], [DIEL_EM, diel.em], [DIEL_EPSILON, diel.epsilon], [DIEL_CURVATURE, diel.curvature],
           [DIEL_QSCALED, Float64Array.from(q, (qq, a) => qq / diel.epsilon[a])],
         ]) : undefined;
-        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined, sp: spin ?? undefined, vfrac: s.vfrac ? vol : undefined, tmplIndex: tmplId !== null ? tIdx : undefined, tmplAtom: tmplId !== null ? tAt : undefined, custom: electronCustom ?? dielCustom });
+        // atom_style sph: the velocity estimate and the rates start at zero (LAMMPS data_atom_post: vest, desph and drho are 0)
+        const sphCustom = sph ? new Map<string, Float64Array>([
+          [SPH_RHO, sph.rho], [SPH_ESPH, sph.esph], [SPH_CV, sph.cv], [SPH_DRHO, new Float64Array(count)],
+          [SPH_DESPH, new Float64Array(count)], [SPH_VEST, new Float64Array(3 * count)],
+        ]) : undefined;
+        appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined, sp: spin ?? undefined, vfrac: s.vfrac ? vol : undefined, tmplIndex: tmplId !== null ? tIdx : undefined, tmplAtom: tmplId !== null ? tAt : undefined, custom: electronCustom ?? dielCustom ?? sphCustom });
         // periodic remap of the new atoms
         for (let i = n0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);
         if (tmplId !== null) expandTemplateTopology(s, sys.molecules.get(tmplId) ?? [], tmplId, firstNew, s.n);
@@ -1081,6 +1096,9 @@ export const writeData = (sys: System, opts: WriteDataOptions): string => {
         case 'em': return shortest(s.custom.get(DIEL_EM)!.data[i]);
         case 'epsilon': return shortest(s.custom.get(DIEL_EPSILON)!.data[i]);
         case 'curvature': return shortest(s.custom.get(DIEL_CURVATURE)!.data[i]);
+        case 'rho': return shortest(s.custom.get(SPH_RHO)!.data[i]);
+        case 'esph': return shortest(s.custom.get(SPH_ESPH)!.data[i]);
+        case 'cv': return shortest(s.custom.get(SPH_CV)!.data[i]);
         default: return shortest(xo[3 * i + 'xyz'.indexOf(c)]);
       }
     });

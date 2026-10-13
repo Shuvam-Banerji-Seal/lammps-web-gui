@@ -6,8 +6,9 @@
  *
  * pair_style meam/ms (docs.lammps.org/pair_meam_ms.html): the multi-state MEAM model of the library and parameter
  * files (the msmeam fields b1m..b3m, t1m..t3m in the library file) with the same pair_coeff form as pair meam
- * ("pair_coeff * * library.msmeam elements... params.msmeam elements..."). The engine's pair meam (src/engine) is a
- * separate implementation and is not changed.
+ * ("pair_coeff * * library.msmeam elements... params.msmeam elements..."). The same class with msmeamflag = 0 is
+ * pair_style meam (src/MEAM/pair_meam.cpp, meamModel.ts with msmeam false): the core engine's pair meam hands the
+ * parameter sets it refuses to it (src/engine/force/pair/meam.ts, through the 'meam' hook of registry/meam_hook.ts).
  */
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
@@ -15,6 +16,7 @@ import { MeamModel, MAXELT, LibEntry, meamKeywords, toLattice, latticeCode } fro
 import { getZij } from './meamMath';
 import { newWork, densInit, foldGhosts, densFinal, forwardGhosts, type ComputeInput } from './meamMsCompute';
 import { forceAll } from './meamMsForce';
+import { densFinalNonMs, forwardNonMs, forceNonMs } from './meamNonMs';
 
 /** Lattices whose density and screening terms are ported (meamMsCompute.ts / meamModel.ts getDensref). */
 const SUPPORTED_LATTICES = ['fcc', 'bcc', 'hcp', 'dim', 'dia', 'dia3', 'b1', 'c11', 'l12', 'b2', 'sc'];
@@ -50,7 +52,7 @@ const toNum = (s: string | undefined, what: string): number => {
 };
 
 /** read_global_meam_file for the element list (msmeam fields). Throws StyleError for a bad entry. */
-export const parseLibrary = (text: string, elements: string[], name: string): LibEntry[] => {
+export const parseLibrary = (text: string, elements: string[], name: string, msmeam = true): LibEntry[] => {
   const found = new Map<string, LibEntry>();
   for (const rec of libraryRecords(text)) {
     const element = rec[0];
@@ -73,9 +75,11 @@ export const parseLibrary = (text: string, elements: string[], name: string): Li
     e.b1 = next('b1');
     e.b2 = next('b2');
     e.b3 = next('b3');
-    e.b1m = next('b1m');
-    e.b2m = next('b2m');
-    e.b3m = next('b3m');
+    if (msmeam) {
+      e.b1m = next('b1m');
+      e.b2m = next('b2m');
+      e.b3m = next('b3m');
+    }
     e.alat = next('alat');
     e.esub = next('esub');
     e.asub = next('asub');
@@ -83,9 +87,11 @@ export const parseLibrary = (text: string, elements: string[], name: string): Li
     e.t1 = next('t1');
     e.t2 = next('t2');
     e.t3 = next('t3');
-    e.t1m = next('t1m');
-    e.t2m = next('t2m');
-    e.t3m = next('t3m');
+    if (msmeam) {
+      e.t1m = next('t1m');
+      e.t2m = next('t2m');
+      e.t3m = next('t3m');
+    }
     e.rozero = next('rozero');
     e.ibar = Math.trunc(next('ibar'));
     if (Math.abs(e.t0 - 1) >= 1e-20) throw new StyleError(`Unsupported parameter in MEAM library file: t0 != 1 (${element})`);
@@ -135,7 +141,7 @@ export const parseUserFile = (text: string, name: string): UserSetting[] => {
 };
 
 export class PairMeamMs extends Pair {
-  readonly name = 'meam/ms';
+  readonly name: string;
   manybody = true;
   needsFull = true;
   needsHalf = true;
@@ -145,14 +151,25 @@ export class PairMeamMs extends Pair {
   /** LAMMPS type (index) -> element index, -1 if unmapped (index 0 unused) */
   private typeElem: number[] = [];
 
+  /** msmeam = true: pair_style meam/ms; false: pair_style meam (the standard MEAM, msmeamflag = 0) */
+  constructor(private readonly msmeam = true) {
+    super();
+    this.name = msmeam ? 'meam/ms' : 'meam';
+  }
+
+  /** Name of the model in the messages (MS-MEAM / MEAM). */
+  private get label(): string {
+    return this.msmeam ? 'MS-MEAM' : 'MEAM';
+  }
+
   override settings(args: string[], _ctx: StyleContext): void {
-    if (args.length !== 0) throw new StyleError('usage: pair_style meam/ms (no arguments)');
+    if (args.length !== 0) throw new StyleError(`usage: pair_style ${this.name} (no arguments)`);
   }
 
   override coeff(args: string[], ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
-    if (args.length < 6) throw new StyleError('Illegal pair_coeff command for pair style meam/ms: missing arguments');
-    if (args[0] !== '*' || args[1] !== '*') throw new StyleError('the first 2 arguments of pair_coeff for style meam/ms must be * *');
+    if (args.length < 6) throw new StyleError(`Illegal pair_coeff command for pair style ${this.name}: missing arguments`);
+    if (args[0] !== '*' || args[1] !== '*') throw new StyleError(`the first 2 arguments of pair_coeff for style ${this.name} must be * *`);
     const libFile = args[2];
     // the parameter file is the first word after the element names that is a file or NULL (pair_meam.cpp coeff)
     let paridx = -1;
@@ -171,9 +188,9 @@ export class PairMeamMs extends Pair {
         // not a file: an element name
       }
     }
-    if (paridx < 0) throw new StyleError('No MS-MEAM parameter file in pair coefficients');
+    if (paridx < 0) throw new StyleError(`No ${this.label} parameter file in pair coefficients`);
     if (args.length - paridx - 1 !== this.ntypes) {
-      throw new StyleError(`Expected ${1 + paridx + this.ntypes} but found ${args.length} args for pair style meam/ms coefficients`);
+      throw new StyleError(`Expected ${1 + paridx + this.ntypes} but found ${args.length} args for pair style ${this.name} coefficients`);
     }
     const elements = args.slice(3, paridx);
     if (elements.length < 1) throw new StyleError('Incorrect args for pair coefficients');
@@ -181,8 +198,8 @@ export class PairMeamMs extends Pair {
     for (let i = 0; i < elements.length; i++) {
       if (elements.indexOf(elements[i]) !== i) throw new StyleError('Must not extract the same element from MEAM library twice');
     }
-    const lib = parseLibrary(ctx.readFile(libFile), elements, libFile);
-    const M = new MeamModel();
+    const lib = parseLibrary(ctx.readFile(libFile), elements, libFile, this.msmeam);
+    const M = new MeamModel(this.msmeam);
     M.setupGlobal(lib);
     if (parFile !== 'NULL') {
       for (const s of parseUserFile(parFile, args[paridx])) {
@@ -195,17 +212,18 @@ export class PairMeamMs extends Pair {
     }
     for (let i = 0; i < M.neltypes; i++) {
       const lat = M.lattce[i][i];
-      if (!SUPPORTED_LATTICES.includes(lat)) throw new StyleError(`MS-MEAM reference lattice '${lat}' of ${elements[i]} is not supported by the engine port`);
-      if (!SUPPORTED_IBAR.includes(M.ibar[i])) throw new StyleError(`MS-MEAM ibar = ${M.ibar[i]} of ${elements[i]} is not supported (only 0, 1, 3, 4 and -5)`);
+      if (!SUPPORTED_LATTICES.includes(lat)) throw new StyleError(`${this.label} reference lattice '${lat}' of ${elements[i]} is not supported by the engine port`);
+      if (!SUPPORTED_IBAR.includes(M.ibar[i])) throw new StyleError(`${this.label} ibar = ${M.ibar[i]} of ${elements[i]} is not supported (only 0, 1, 3, 4 and -5)`);
     }
     for (let a = 0; a < M.neltypes; a++) {
       for (let b = a; b < M.neltypes; b++) {
         if (!SUPPORTED_LATTICES.includes(M.lattce[a][b])) {
-          throw new StyleError(`MS-MEAM lattce(${a + 1},${b + 1}) = ${M.lattce[a][b]} is not supported by the engine port`);
+          throw new StyleError(`${this.label} lattce(${a + 1},${b + 1}) = ${M.lattce[a][b]} is not supported by the engine port`);
         }
       }
     }
-    if (M.ialloy !== 1) throw new StyleError(`MS-MEAM ialloy = ${M.ialloy} is not supported (only ialloy = 1, the MS-MEAM default)`);
+    if (this.msmeam && M.ialloy !== 1) throw new StyleError(`MS-MEAM ialloy = ${M.ialloy} is not supported (only ialloy = 1, the MS-MEAM default)`);
+    if (!this.msmeam && ![0, 1, 2].includes(M.ialloy)) throw new StyleError(`MEAM ialloy = ${M.ialloy} is not supported (only 0, 1, 2)`);
     M.setupDone();
     this.model = M;
     const typeElem: number[] = [-1];
@@ -216,21 +234,21 @@ export class PairMeamMs extends Pair {
         typeElem[t] = j;
         if (ctx.s && !ctx.s.rmass) ctx.s.massByType[t] = lib[j].atwt;
       } else if (m === 'NULL') typeElem[t] = -1;
-      else throw new StyleError(`Incorrect element mapping for pair style meam/ms coefficients: ${m}`);
+      else throw new StyleError(`Incorrect element mapping for pair style ${this.name} coefficients: ${m}`);
     }
     this.typeElem = typeElem;
   }
 
   override initOne(_i: number, _j: number): number {
-    if (!this.model) throw new StyleError('pair_coeff for style meam/ms must be set before the run');
+    if (!this.model) throw new StyleError(`pair_coeff for style ${this.name} must be set before the run`);
     return this.model.cutforce;
   }
 
   override compute(pc: PairCompute): void {
     const M = this.model;
-    if (!M) throw new StyleError('pair_coeff for style meam/ms must be set before the run');
+    if (!M) throw new StyleError(`pair_coeff for style ${this.name} must be set before the run`);
     const full = pc.full, half = pc.half;
-    if (!full || !half) throw new Error('pair style meam/ms needs half and full neighbor lists');
+    if (!full || !half) throw new Error(`pair style ${this.name} needs half and full neighbor lists`);
     const nall = pc.nall;
     const w = newWork(nall, half.neighbors.length);
     const c: ComputeInput = {
@@ -239,9 +257,16 @@ export class PairMeamMs extends Pair {
     };
     densInit(c, w);
     foldGhosts(c, w);
-    const eDens = densFinal(c, w);
-    forwardGhosts(c, w);
-    const ePair = forceAll(c, w, 1.0 / M.dr);
-    pc.acc.evdwl += eDens + ePair;
+    if (this.msmeam) {
+      const eDens = densFinal(c, w);
+      forwardGhosts(c, w);
+      const ePair = forceAll(c, w, 1.0 / M.dr);
+      pc.acc.evdwl += eDens + ePair;
+    } else {
+      const eDens = densFinalNonMs(c, w);
+      forwardNonMs(c, w);
+      const ePair = forceNonMs(c, w, 1.0 / M.dr);
+      pc.acc.evdwl += eDens + ePair;
+    }
   }
 }

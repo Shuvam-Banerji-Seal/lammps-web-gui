@@ -1,0 +1,36 @@
+# oracle: pair_style meam, Fe-Ti-C cut-down of examples/fire (in.meam.fire): FeTiClibrary.meam (Fe bcc, Ti hcp, C dia) with FeTiC.meam (ialloy = 2, nn2 = 1 for every pair, lattce(1,2) = b2, lattce(1,3) = l12, lattce(2,3) = b1), a 4x4x3 bcc cell (96 atoms, a = 2.8664 A) with Ti and C placed on slabs (types 2 and 3), a sinusoidal displacement, velocities, fix nve, 10 steps of 0.0005 ps, thermo pe and press every step
+# oracle: the nn2(1,3) = 1 l12 pair (Fe-C) is the pair the core model refuses; the Fe-C 2NN shell (Cmin(1,1,3) = 0.36) is partly screened
+# oracle-potentials: FeTiClibrary.meam
+# oracle-inputs: w136meam_fetic.meam
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-14 atomrel=1e-12
+# oracle-measured: passes at rel 1e-12 (abs 1e-14) for every thermo row and the 96 final atoms; at rel 1e-14 the largest atom deviation is 6.4e-14 relative (fz of atom 32, engine -0.005929421679278402 vs native -0.005929421679342489); target 1e-8 met
+units           metal
+atom_style      atomic
+boundary        p p p
+lattice         bcc 2.8664
+region          box block 0 4 0 4 0 3
+create_box      3 box
+create_atoms    1 box
+region          tirg block 1.5 2.5 INF INF INF INF
+region          cr block INF INF INF INF 1.5 2.5
+set             region tirg type 2
+set             region cr type 3
+mass            1 55.847
+mass            2 47.88
+mass            3 12.011
+variable        dx atom 0.03*sin(2.3*x+1.1*y+0.4*z)
+variable        dy atom 0.03*cos(1.9*y-0.7*x+0.3*z)
+variable        dz atom 0.03*sin(1.3*z+0.8*x-0.5*y)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.3*cos(1.7*y-0.6*z)
+variable        vy atom 0.3*sin(1.2*z+0.9*x)
+variable        vz atom 0.2*cos(2.1*x-0.8*y+0.2)
+velocity        all set v_vx v_vy v_vz units box
+pair_style      meam
+pair_coeff      * * FeTiClibrary.meam Fe Ti C w136meam_fetic.meam Fe Ti C
+timestep        0.0005
+fix             1 all nve
+thermo          1
+thermo_style    custom step pe press
+thermo_modify   format float %.15g
+run             10

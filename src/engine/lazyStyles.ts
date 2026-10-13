@@ -40,6 +40,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_phonon', names: { COMMANDS: ['dynamical_matrix'], FIXES: ['phonon'] }, load: () => import('../engine-gpl/registry/phonon') as Promise<StyleModule> },
   { id: 'gpl_qtb', names: { FIXES: ['qbmsst', 'qtb'] }, load: () => import('../engine-gpl/registry/qtb') as Promise<StyleModule> },
   { id: 'gpl_meam_ms', names: { PAIRS: ['meam/ms'] }, load: () => import('../engine-gpl/registry/meam_ms') as Promise<StyleModule> },
+  { id: 'gpl_meam_hook', names: { HOOKS: ['meam'] }, load: () => import('../engine-gpl/registry/meam_hook') as Promise<StyleModule> },
   { id: 'gpl_pod', names: { PAIRS: ['pod'] }, load: () => import('../engine-gpl/registry/pod') as Promise<StyleModule> },
   { id: 'pair_meam', names: { PAIRS: ['meam'] }, load: () => import('./registry/pair_meam') as Promise<StyleModule> },
   { id: 'pair_meam_spline', names: { PAIRS: ['meam/spline', 'meam/sw/spline'] }, load: () => import('./registry/pair_meam_spline') as Promise<StyleModule> },

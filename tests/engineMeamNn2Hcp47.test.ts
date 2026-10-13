@@ -11,7 +11,8 @@ import { referenceVectors, PAIR_SHELL_RATIO } from '../src/engine/force/pair/mea
  * neighbours at a and 6 second neighbours at sqrt2 a (the 2NN shell used by the recurrence; c/a ideal).
  * docs.lammps.org/pair_meam.html: "nn2(I,J)    = turn on second-nearest neighbor MEAM formulation for". Native
  * values (black box) are in tests/oracle/w47mn_*.in (engineOracle.test.ts): fully screened Ti hcp (Cmin = 1, z2 = 0)
- * dimers and a 108-atom crystal. The partly screened hcp second shell (z2 > 0) is refused: it does not match native.
+ * dimers and a 108-atom crystal. The partly screened hcp second shell (z2 > 0) is not modelled by the core: the core
+ * hands it to the native port (w136meam_hcp2nn, oracle parity).
  */
 
 const LIB = readFileSync(join(__dirname, '..', 'third_party', 'lammps', 'potentials', 'FeTiClibrary.meam'), 'utf8');
@@ -86,7 +87,10 @@ describe('MEAM nn2 = 1 with the hcp reference', () => {
     expect(rows[0].pe).toBeCloseTo(-2.38541715171305, 8);
   });
 
-  it('a partly screened hcp second shell (Cmin = 0.36) is refused with a StyleError naming it', async () => {
-    await expect(runTi(0.36, 2.92)).rejects.toThrow(/hcp reference .* partly screened second shell/);
+  it('a partly screened hcp second shell (Cmin = 0.36) is handed to the standard MEAM port (parity: w136meam_hcp2nn)', async () => {
+    // the core model refuses this set; the pair runs through the native port of src/engine-gpl/meam (pair_meam.cpp, msmeamflag 0)
+    const rows = await runTi(0.36, 2.92);
+    expect(rows.length).toBe(1);
+    expect(Number.isFinite(rows[0].pe)).toBe(true);
   });
 });

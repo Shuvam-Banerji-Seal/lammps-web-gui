@@ -12,6 +12,69 @@ import { fmExp, dfcut, dCfunc2, iszero, isone } from './meamMath';
 import { MeamWork, ComputeInput, V2D, V3D, VIND2D, VIND3D } from './meamMsCompute';
 
 
+/**
+ * The three-body screening forces of one half pair (i, j) on the full-list neighbours k of i (meam_force.cpp, the k loop
+ * after the pair term, shared by the MS-MEAM and the standard MEAM force). dUdsij is the derivative with respect to the
+ * screening of the pair.
+ */
+export const addScreeningForces = (c: ComputeInput, w: MeamWork, f: Float64Array, jn: number, i: number, j: number,
+  elti: number, eltj: number, f0: number, f1: number, rij2: number, dUdsij: number): void => {
+  const M = c.model;
+  const { x, type, typeElem, full, mask } = c;
+  for (let kn = f0; kn < f1; kn++) {
+    const k = full.neighbors[kn] & mask;
+    const eltk = typeElem[type[k]];
+    if (k === j || eltk < 0) continue;
+    let dsij1 = 0.0, dsij2 = 0.0;
+    let dxik = 0, dyik = 0, dzik = 0, dxjk = 0, dyjk = 0, dzjk = 0;
+    const sijk = w.scrfcn[jn] * w.fcpair[jn];
+    const Cmax = M.Cmax[elti][eltj][eltk];
+    const Cmin = M.Cmin[elti][eltj][eltk];
+    if (!iszero(sijk) && !isone(sijk)) {
+      const rbound = rij2 * M.ebound[elti][eltj];
+      const delc = Cmax - Cmin;
+      dxjk = x[3 * k] - x[3 * j];
+      dyjk = x[3 * k + 1] - x[3 * j + 1];
+      dzjk = x[3 * k + 2] - x[3 * j + 2];
+      const rjk2 = dxjk * dxjk + dyjk * dyjk + dzjk * dzjk;
+      if (rjk2 <= rbound) {
+        dxik = x[3 * k] - x[3 * i];
+        dyik = x[3 * k + 1] - x[3 * i + 1];
+        dzik = x[3 * k + 2] - x[3 * i + 2];
+        const rik2 = dxik * dxik + dyik * dyik + dzik * dzik;
+        if (rik2 <= rbound) {
+          const xik = rik2 / rij2;
+          const xjk = rjk2 / rij2;
+          let a = 1 - (xik - xjk) * (xik - xjk);
+          if (!iszero(a)) {
+            let cikj = (2.0 * (xik + xjk) + a - 2.0) / a;
+            if (cikj >= Cmin && cikj <= Cmax) {
+              cikj = (cikj - Cmin) / delc;
+              const sk = dfcut(cikj);
+              const d = dCfunc2(rij2, rik2, rjk2);
+              a = (sijk / delc) * sk.df / sk.f;
+              dsij1 = a * d[0];
+              dsij2 = a * d[1];
+            }
+          }
+        }
+      }
+    }
+    if (!iszero(dsij1) || !iszero(dsij2)) {
+      const force1 = dUdsij * dsij1;
+      const force2 = dUdsij * dsij2;
+      f[3 * i] += force1 * dxik;
+      f[3 * i + 1] += force1 * dyik;
+      f[3 * i + 2] += force1 * dzik;
+      f[3 * j] += force2 * dxjk;
+      f[3 * j + 1] += force2 * dyjk;
+      f[3 * j + 2] += force2 * dzjk;
+      f[3 * k] -= force1 * dxik + force2 * dxjk;
+      f[3 * k + 1] -= force1 * dyik + force2 * dyjk;
+      f[3 * k + 2] -= force1 * dzik + force2 * dzjk;
+    }
+  }};
+
 /** meam_force for every owned atom: forces into c.f and energy (pair term) returned. */
 export const forceAll = (c: ComputeInput, w: MeamWork, rdrar: number): number => {
   const M = c.model;
@@ -293,59 +356,7 @@ export const forceAll = (c: ComputeInput, w: MeamWork, rdrar: number): number =>
         f[3 * j + m] -= forcem;
       }
       if (iszero(sij) || isone(sij)) continue;
-      for (let kn = f0; kn < f1; kn++) {
-        const k = full.neighbors[kn] & mask;
-        const eltk = typeElem[type[k]];
-        if (k === j || eltk < 0) continue;
-        let dsij1 = 0.0, dsij2 = 0.0;
-        let dxik = 0, dyik = 0, dzik = 0, dxjk = 0, dyjk = 0, dzjk = 0;
-        const sijk = w.scrfcn[jn] * w.fcpair[jn];
-        const Cmax = M.Cmax[elti][eltj][eltk];
-        const Cmin = M.Cmin[elti][eltj][eltk];
-        if (!iszero(sijk) && !isone(sijk)) {
-          const rbound = rij2 * M.ebound[elti][eltj];
-          const delc = Cmax - Cmin;
-          dxjk = x[3 * k] - x[3 * j];
-          dyjk = x[3 * k + 1] - x[3 * j + 1];
-          dzjk = x[3 * k + 2] - x[3 * j + 2];
-          const rjk2 = dxjk * dxjk + dyjk * dyjk + dzjk * dzjk;
-          if (rjk2 <= rbound) {
-            dxik = x[3 * k] - x[3 * i];
-            dyik = x[3 * k + 1] - x[3 * i + 1];
-            dzik = x[3 * k + 2] - x[3 * i + 2];
-            const rik2 = dxik * dxik + dyik * dyik + dzik * dzik;
-            if (rik2 <= rbound) {
-              const xik = rik2 / rij2;
-              const xjk = rjk2 / rij2;
-              let a = 1 - (xik - xjk) * (xik - xjk);
-              if (!iszero(a)) {
-                let cikj = (2.0 * (xik + xjk) + a - 2.0) / a;
-                if (cikj >= Cmin && cikj <= Cmax) {
-                  cikj = (cikj - Cmin) / delc;
-                  const sk = dfcut(cikj);
-                  const d = dCfunc2(rij2, rik2, rjk2);
-                  a = (sijk / delc) * sk.df / sk.f;
-                  dsij1 = a * d[0];
-                  dsij2 = a * d[1];
-                }
-              }
-            }
-          }
-        }
-        if (!iszero(dsij1) || !iszero(dsij2)) {
-          const force1 = dUdsij * dsij1;
-          const force2 = dUdsij * dsij2;
-          f[3 * i] += force1 * dxik;
-          f[3 * i + 1] += force1 * dyik;
-          f[3 * i + 2] += force1 * dzik;
-          f[3 * j] += force2 * dxjk;
-          f[3 * j + 1] += force2 * dyjk;
-          f[3 * j + 2] += force2 * dzjk;
-          f[3 * k] -= force1 * dxik + force2 * dxjk;
-          f[3 * k + 1] -= force1 * dyik + force2 * dyjk;
-          f[3 * k + 2] -= force1 * dzik + force2 * dzjk;
-        }
-      }
+      addScreeningForces(c, w, f, jn, i, j, elti, eltj, f0, f1, rij2, dUdsij);
     }
   }
   return eng;

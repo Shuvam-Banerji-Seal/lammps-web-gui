@@ -1,0 +1,15 @@
+# w136meam_hcp2nn: user parameter file for a single hcp element (Ti of FeTiClibrary.meam) with nn2(1,1) = 1 and a partly
+# screened second shell: Cmin(1,1,1) = 0.36 gives S = 0.06 for each of the six second neighbours of the hcp reference
+# (the w47mn partly screened case). ialloy is not set (native default 0 for a single element).
+rc = 4.8
+delr = 0.1
+augt1 = 0
+erose_form = 2
+zbl(1,1) = 0
+nn2(1,1) = 1
+attrac(1,1) = 0
+repuls(1,1) = 0
+Cmin(1,1,1) = 0.36
+Cmax(1,1,1) = 2.8
+Ec(1,1) = 4.87
+re(1,1) = 2.92

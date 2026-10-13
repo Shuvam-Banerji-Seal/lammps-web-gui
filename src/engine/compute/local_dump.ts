@@ -12,6 +12,20 @@ import type { System } from '../system';
  * The dump file layout is in output/dump.ts (writeLocal).
  */
 
+/**
+ * The local output an attribute names: a compute (c_ID) or a fix (f_ID, a fix that calculates local values, as
+ * fix STORE/LOCAL does). dump.html: "The *c_ID* and *c_ID[I]* attributes allow local vectors or arrays calculated
+ * by a compute to be output." The f_ID form is the same for a fix.
+ */
+export interface LocalOutput {
+  localFlag: boolean;
+  sizeLocalCols: number;
+  localRows: number;
+  localValues(): Float64Array;
+}
+
+export const localOutputOf = (sys: System, kind: 'c' | 'f', id: string): LocalOutput => (kind === 'c' ? sys.compute(id) : sys.fix(id));
+
 /** Expands the attributes of a dump local (dump ID group local N file attributes) into column names. */
 export const localDumpColumns = (sys: System, dumpId: string, words: string[]): string[] => {
   if (!words.length) throw new StyleError(`dump ${dumpId} local needs attributes (index, c_ID or c_ID[I])`);
@@ -21,21 +35,23 @@ export const localDumpColumns = (sys: System, dumpId: string, words: string[]): 
       out.push(w);
       continue;
     }
-    const m = /^c_([A-Za-z0-9_]+)(?:\[(\d+|\*)\])?$/.exec(w);
-    if (!m) throw new StyleError(`dump ${dumpId} local: attribute '${w}' is not supported by the browser engine (index and c_ID / c_ID[I] are)`);
-    const comp = sys.compute(m[1]);
-    if (!comp.localFlag) throw new StyleError(`dump ${dumpId} local: compute ${m[1]} does not calculate local values`);
+    const m = /^([cf])_([A-Za-z0-9_]+)(?:\[(\d+|\*)\])?$/.exec(w);
+    if (!m) throw new StyleError(`dump ${dumpId} local: attribute '${w}' is not supported by the browser engine (index, c_ID / c_ID[I] and f_ID / f_ID[I] are)`);
+    const kind = m[1] as 'c' | 'f';
+    const what = kind === 'c' ? 'compute' : 'fix';
+    const comp = localOutputOf(sys, kind, m[2]);
+    if (!comp.localFlag) throw new StyleError(`dump ${dumpId} local: ${what} ${m[2]} does not calculate local values`);
     const cols = comp.sizeLocalCols;
-    if (m[2] === undefined) {
-      if (cols !== 0) throw new StyleError(`dump ${dumpId} local: compute ${m[1]} does not calculate local vector`);
+    if (m[3] === undefined) {
+      if (cols !== 0) throw new StyleError(`dump ${dumpId} local: ${what} ${m[2]} does not calculate local vector`);
       out.push(w);
     } else {
-      if (cols === 0) throw new StyleError(`dump ${dumpId} local: compute ${m[1]} does not calculate local array`);
-      if (m[2] === '*') {
-        for (let k = 1; k <= cols; k++) out.push(`c_${m[1]}[${k}]`);
+      if (cols === 0) throw new StyleError(`dump ${dumpId} local: ${what} ${m[2]} does not calculate local array`);
+      if (m[3] === '*') {
+        for (let k = 1; k <= cols; k++) out.push(`${kind}_${m[2]}[${k}]`);
       } else {
-        const k = Number(m[2]);
-        if (k < 1 || k > cols) throw new StyleError(`dump ${dumpId} local: column ${k} of compute ${m[1]} is out of range 1..${cols}`);
+        const k = Number(m[3]);
+        if (k < 1 || k > cols) throw new StyleError(`dump ${dumpId} local: column ${k} of ${what} ${m[2]} is out of range 1..${cols}`);
         out.push(w);
       }
     }
@@ -46,9 +62,9 @@ export const localDumpColumns = (sys: System, dumpId: string, words: string[]): 
 /** Value source of one local column: the compute's data (null = the index column) and its column (0-based). */
 export const localColumnSource = (sys: System, name: string): { data: Float64Array; ncol: number; col: number } | null => {
   if (name === 'index') return null;
-  const m = /^c_([A-Za-z0-9_]+)(?:\[(\d+)\])?$/.exec(name);
+  const m = /^([cf])_([A-Za-z0-9_]+)(?:\[(\d+)\])?$/.exec(name);
   if (!m) throw new StyleError(`dump local: attribute '${name}' is not supported`);
-  const comp = sys.compute(m[1]);
+  const comp = localOutputOf(sys, m[1] as 'c' | 'f', m[2]);
   const data = comp.localValues();
-  return { data, ncol: Math.max(1, comp.sizeLocalCols), col: m[2] ? Number(m[2]) - 1 : 0 };
+  return { data, ncol: Math.max(1, comp.sizeLocalCols), col: m[3] ? Number(m[3]) - 1 : 0 };
 };

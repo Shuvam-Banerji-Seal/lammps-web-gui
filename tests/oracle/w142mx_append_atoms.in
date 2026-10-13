@@ -1,0 +1,22 @@
+# oracle: fix append/atoms zhi (layers of fcc sites added on the top face every 20 steps, shrink/minimum box) on an LJ fluid (no example input uses it; the fix's docs shape)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# native: b332f28 (installed lmp, package SHOCK)
+# measured: thermo and the final per-atom state agree with native to better than 1e-14 relative (the 1e-8 target holds with margin)
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+boundary        p p m
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+velocity        all create 0.5 4321 loop geom
+timestep        0.002
+fix             1 all nve
+fix             2 all append/atoms zhi freq 20 size 0.5
+thermo_style    custom step atoms temp pe lz
+thermo_modify   format float %.15g
+thermo          20
+run             100

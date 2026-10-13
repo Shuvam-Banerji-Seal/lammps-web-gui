@@ -150,12 +150,11 @@ const atomStyle: Handler = ({ sys }, a) => {
     sys.atomStyle = templateArg(a[1]) as AtomStyle;
     return;
   }
-  // atom_style.html: "body args = bstyle bstyle-args"; the engine implements the nparticle and rounded/polygon body
-  // styles (Howto_body.rst: "atom_style body nparticle Nmin Nmax", "atom_style body rounded/polygon Nmin Nmax").
-  // Nmin and Nmax only size the internal arrays (bodies.ts). rounded/polyhedron is refused by name.
+  // atom_style.html: "body args = bstyle bstyle-args"; the engine implements the nparticle, rounded/polygon and
+  // rounded/polyhedron body styles (Howto_body.rst: "atom_style body rounded/polyhedron Nmin Nmax"). Nmin and Nmax only
+  // size the internal arrays (bodies.ts).
   if (a[0] === 'body') {
-    if (a[1] === 'rounded/polyhedron') throw new StyleError('atom_style body rounded/polyhedron is not supported by the browser engine (3d polyhedra are not implemented)');
-    if (a[1] !== 'nparticle' && a[1] !== 'rounded/polygon') throw new StyleError(`atom_style body ${a[1] ?? ''} is not supported by the browser engine; only atom_style body nparticle and rounded/polygon Nmin Nmax are`);
+    if (a[1] !== 'nparticle' && a[1] !== 'rounded/polygon' && a[1] !== 'rounded/polyhedron') throw new StyleError(`atom_style body ${a[1] ?? ''} is not supported by the browser engine; only atom_style body nparticle, rounded/polygon and rounded/polyhedron Nmin Nmax are`);
     const nmin = Number(a[2]), nmax = Number(a[3]);
     if (a.length !== 4 || !Number.isInteger(nmin) || !Number.isInteger(nmax) || nmin < 0 || nmax < 0) {
       throw new StyleError('usage: atom_style body nparticle Nmin Nmax (non-negative integers)');

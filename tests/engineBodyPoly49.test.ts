@@ -106,8 +106,8 @@ describe('atom_style body rounded/polygon (bodies.ts, output/data.ts)', () => {
     await expect(run(HEAD.replace('dimension 2', 'dimension 3'), { 'sq.data': SQUARE })).rejects.toThrow(/only be used in 2d/);
   });
 
-  it('refuses atom_style body rounded/polyhedron by name', async () => {
-    await expect(run('units lj\ndimension 3\natom_style body rounded/polyhedron 1 6\n', {})).rejects.toThrow(/rounded\/polyhedron/);
+  it('refuses an atom_style body style that is not implemented, by name', async () => {
+    await expect(run('units lj\ndimension 3\natom_style body dummy 1 6\n', {})).rejects.toThrow(/body dummy/);
   });
 
   it('refuses pair body/nparticle on rounded/polygon bodies', async () => {

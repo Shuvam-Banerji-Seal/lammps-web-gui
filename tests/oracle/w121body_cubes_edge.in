@@ -1,0 +1,25 @@
+# oracle: pair_style body/rounded/polyhedron between two rounded cubes, one turned 45 degrees about z (edge and vertex contacts), no friction, approach speed 2 with a lateral velocity, fix nve/body, 2000 steps: thermo pe ke etotal press and the atom state
+# Measured (engine vs native): thermo max relative error 2.5e-12 (press), per-atom state (x, v, f) max 1.9e-13. Cube 1 is turned 45 degrees about z, so the cubes do not touch face to face (no friction). The torque sums of atom 1 (c_r1) are checked in the thermo columns.
+# oracle-inputs: w121body_cubes_edge.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+units           lj
+dimension       3
+atom_style      body rounded/polyhedron 1 8
+atom_modify     map array
+read_data       w121body_cubes_edge.data
+set             atom 1 vx 2.0 vy 0.3 vz 0.0
+set             atom 2 vx -2.0 vy 0.0 vz 0.0
+pair_style      body/rounded/polyhedron 20 5 0 1 0.5
+pair_coeff      * * 100 1
+comm_modify     vel yes
+neighbor        0.5 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        0.001
+fix             1 all nve/body
+group           g1 id 1
+compute         t1 all property/atom tqx tqy tqz angmomx angmomy angmomz
+compute         r1 g1 reduce sum c_t1[1] c_t1[2] c_t1[3] c_t1[4] c_t1[5] c_t1[6]
+thermo_style    custom step pe ke etotal press c_r1[1] c_r1[2] c_r1[3] c_r1[4] c_r1[5] c_r1[6]
+thermo_modify   format float %.15g
+thermo          50
+run             2000

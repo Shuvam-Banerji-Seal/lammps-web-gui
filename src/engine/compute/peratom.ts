@@ -1,5 +1,6 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
+import { parseBodyStyle } from '../bodies';
 import type { System } from '../system';
 import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid, isBpmSphereStyle, HEAT_FLOW, HEAT_TEMPERATURE, ELECTRON_SPIN, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_RFORCE, isSuperEllipsoidStyle } from '../atoms';
 import { SUPER_INERTIA, superBlock } from '../superellipsoid';
@@ -311,7 +312,9 @@ export class ComputePropertyAtom extends Compute {
       if (SPHERE_ATTRS.has(a) && !sys.state.radius) throw new StyleError(`compute property/atom ${a} needs atom_style sphere`);
       if (TORQUE_ATTRS.has(a) && !sys.state.torque) throw new StyleError(`compute property/atom ${a} needs atom_style sphere or ellipsoid`);
       // atom_style bpm/sphere stores a quaternion (atoms.ts isBpmSphereStyle) but no shape
-      if (ELLIPSOID_ATTRS.has(a) && !sys.state.shape && !(isBpmSphereStyle(sys.atomStyle) && /^quat[wijk]$/.test(a))) throw new StyleError(`compute property/atom ${a} needs atom_style ellipsoid`);
+      // atom_style body stores the orientation and the angular momentum of each body (bodies.ts, compute_property_atom.html: "quaternion ... for aspherical or body particles")
+      const bodyQuatOrAngmom = parseBodyStyle(sys.atomStyle) !== null && (/^quat[wijk]$/.test(a) || /^angmom[xyz]$/.test(a));
+      if (ELLIPSOID_ATTRS.has(a) && !sys.state.shape && !bodyQuatOrAngmom && !(isBpmSphereStyle(sys.atomStyle) && /^quat[wijk]$/.test(a))) throw new StyleError(`compute property/atom ${a} needs atom_style ellipsoid`);
       if (SUPER_ATTRS.has(a) && !isSuperEllipsoidStyle(sys.atomStyle)) throw new StyleError(`compute property/atom ${a} requires atom style ellipsoid superellipsoid`);
       if (DIPOLE_ATTRS.has(a) && !sys.state.mu) throw new StyleError(`compute property/atom ${a} needs atom_style dipole`);
       if (SPIN_ATTRS.has(a) && !sys.state.sp) throw new StyleError(`compute property/atom ${a} needs atom_style spin`);
@@ -354,7 +357,7 @@ export class ComputePropertyAtom extends Compute {
           case 'block1': case 'block2': set(i, superBlock(s, i)[attr === 'block1' ? 0 : 1]); break;
           case 'inertiax': case 'inertiay': case 'inertiaz': set(i, s.custom.get(SUPER_INERTIA)!.data[3 * i + d]); break;
           case 'quatw': case 'quati': case 'quatj': case 'quatk':
-            set(i, (isEllipsoid(s, i) || (s.quat && isBpmSphereStyle(s.atomStyle))) ? s.quat![4 * i + 'wijk'.indexOf(attr[4])] : attr === 'quatw' ? 1 : 0);
+            set(i, (isEllipsoid(s, i) || (s.quat && (isBpmSphereStyle(s.atomStyle) || parseBodyStyle(s.atomStyle) !== null))) ? s.quat![4 * i + 'wijk'.indexOf(attr[4])] : attr === 'quatw' ? 1 : 0);
             break;
           case 'mux': case 'muy': case 'muz': set(i, s.mu![4 * i + 'xyz'.indexOf(attr[2])]); break;
           case 'mu': set(i, s.mu![4 * i + 3]); break;

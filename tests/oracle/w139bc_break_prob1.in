@@ -1,0 +1,22 @@
+# oracle: fix bond/break with prob 1 (stretched network: 5x5x5 jittered simple-cubic lattice, x spacing 1.2 so the x bonds start at rmin 1.2 +- jitter, harmonic bonds k 50 r0 1.0, 300 steps, nevery 5; breaks past 1.2 remove the bond and the angles/dihedrals through it). Native: b332f28 (installed lmp, MC package included).
+# Engine vs this fixture (Node 24; Node 20 gives the same numbers to the digits shown): 49 bonds broken (bonds 300 -> 251, f_b[2] = 49, counts identical on every row). Max errors over the 7 rows: thermo rel 4.3e-14 (press), atoms rel 5.1e-8 (fy, abs 5.7e-13: a force of order 1e-8 on a nearly free atom), fx 1.9e-11, all other components below 1e-11 relative.
+# oracle-inputs: w139bc_net.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+boundary p p p
+atom_style bond
+read_data w139bc_net.data extra/bond/per/atom 6
+pair_style zero 1.5
+pair_coeff * *
+bond_style harmonic
+bond_coeff 1 50.0 1.0
+special_bonds lj/coul 0.0 1.0 1.0
+neighbor 0.3 bin
+velocity all create 0.2 2024 mom yes rot no dist gaussian
+fix 1 all nve
+fix b all bond/break 5 1 1.2
+timestep 0.005
+thermo_style custom step temp pe ebond press bonds f_b[1] f_b[2]
+thermo_modify format float %.15g
+thermo 50
+run 300

@@ -12,7 +12,7 @@ import { BondedHybrid, type HybridKind } from '../force/bonded_hybrid';
 
 /** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
 type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart; nh?: NHRestart };
-import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, isElectronStyle, ELECTRON_DEFAULTS, ELECTRON_SPIN, isDielectricStyle, DIELECTRIC_DEFAULTS, isSphStyle, SPH_DEFAULTS, SPH_WIDTH, isDpdMesoKey, isDpdMesoStyle, dpdMesoProps } from '../atoms';
+import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, isElectronStyle, ELECTRON_DEFAULTS, ELECTRON_SPIN, isDielectricStyle, DIELECTRIC_DEFAULTS, isSphStyle, SPH_DEFAULTS, SPH_WIDTH, isDpdMesoKey, isDpdMesoStyle, dpdMesoProps, RHEO_DEFAULTS, RHEO_STATUS, isRheoStyle } from '../atoms';
 import { ErfcTableCache } from '../force/erfc';
 
 /*
@@ -304,6 +304,10 @@ export const writeRestartText = (sys: System): string => {
   const dpdMeso = isDpdMesoStyle(s.atomStyle)
     ? encodeValue(new Map([...s.custom].filter(([k]) => isDpdMesoKey(k))), 'dpdMeso', [])
     : null;
+  // atom_style rheo: the density, status and the RHEO fix's per-atom fields are internal custom props (atoms.ts RHEO_DEFAULTS)
+  const rheo = isRheoStyle(s.atomStyle)
+    ? encodeValue(Object.fromEntries(Object.keys(RHEO_DEFAULTS).map((k) => [k, s.custom.get(k)!.data])), 'rheo', [])
+    : null;
   const doc = {
     format: FORMAT,
     version: VERSION,
@@ -314,6 +318,7 @@ export const writeRestartText = (sys: System): string => {
     dielectric,
     sph,
     dpdMeso,
+    rheo,
     comm: { style: sys.commStyle, vel: sys.ghostVelocity, cutoff: sys.nb.commCutoff },
     groups: encodeValue({ names: sys.groups.names, dynamic: sys.groups.dynamic }, 'groups', []),
     special: encodeValue(sys.ff.special, 'special', []),
@@ -342,7 +347,7 @@ export const readRestartText = (sys: System, text: string, name: string): void =
     if (header.startsWith('LAMMPS-WEB-RESTART')) throw new StyleError(`${name}: restart format '${header}' is not supported (this engine reads '${RESTART_MAGIC}')`);
     throw new StyleError(`${name} is not a restart file written by this browser engine. Native LAMMPS binary restart files cannot be read in the browser: their format is platform-specific. Convert the native file with the lmp -restart2data command-line flag and use read_data, or write the state here with write_restart (or write_data)`);
   }
-  let doc: { format: string; version: number; step: number; state: Json; electron?: Json | null; dielectric?: Json | null; sph?: Json | null; dpdMeso?: Json | null; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: FixRestart[]; lineTri?: Json };
+  let doc: { format: string; version: number; step: number; state: Json; electron?: Json | null; dielectric?: Json | null; sph?: Json | null; dpdMeso?: Json | null; rheo?: Json | null; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: FixRestart[]; lineTri?: Json };
   try {
     doc = JSON.parse(text.slice(nl + 1));
   } catch {
@@ -400,6 +405,15 @@ export const readRestartText = (sys: System, text: string, name: string): void =
       const c = dm.get(name) ?? { int: false, cols, data: new Float64Array((cols > 0 ? cols : 1) * n) };
       need(c.data.length === (c.cols > 0 ? c.cols : 1) * n, `${name} has the wrong length for ${n} atoms`);
       state.custom.set(name, c);
+    }
+  }
+  // atom_style rheo: the stored RHEO per-atom fields come back as they were written
+  if (isRheoStyle(state.atomStyle)) {
+    const rp = doc.rheo ? decodeValue(doc.rheo, 'rheo') as Record<string, Float64Array> : {};
+    for (const [name, def] of Object.entries(RHEO_DEFAULTS)) {
+      const data = rp[name] ?? new Float64Array(n).fill(def);
+      need(data.length === n, `rheo ${name} has the wrong length for ${n} atoms`);
+      state.custom.set(name, { int: name === RHEO_STATUS, cols: 0, data: Float64Array.from(data) });
     }
   }
   // atom_style oxdna: the strand partners are not stored; they follow from the stored bonds, as after read_data

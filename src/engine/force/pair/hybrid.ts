@@ -142,7 +142,7 @@ export class PairHybrid extends Pair {
           : '';
         throw new StyleError(`pair_style ${this.mode}: sub-style ${name} ${subArgs.join(' ')}: ${err.message}.${hint}`);
       }
-      if (!style.virialFdotr) throw new StyleError(`pair_style ${this.mode}: sub-style ${name} cannot be combined by the browser engine`);
+      if (!style.virialFdotr && !style.explicitVirial) throw new StyleError(`pair_style ${this.mode}: sub-style ${name} cannot be combined by the browser engine`);
       const instance = subs.filter((s) => s.name === name).length + 1;
       subs.push({ style, name, instance, scale, specialLJ: null, specialCoul: null, used: false, half: null, full: null, evdwl: 0, ecoul: 0, evaluated: false });
       k = e;
@@ -264,6 +264,9 @@ export class PairHybrid extends Pair {
     this.cutsq = new Float64Array(nt * nt);
     this.etail = this.ptail = 0;
     let coulCut: number | null = null;
+    // A sub-style with an explicit global virial (pair rheo with newton off) needs the hybrid to skip its own fdotr sum;
+    // then every sub-style must tally its virial explicitly.
+    let explicitVirial = false;
     for (let k = 0; k < this.subs.length; k++) {
       const st = this.subs[k].style;
       // pair.html: shift and tail conflict; tail is not defined in 2d (checked per sub-style)
@@ -271,6 +274,7 @@ export class PairHybrid extends Pair {
       if (st.tail && ctx.s?.dimension === 2) throw new StyleError('cannot use pair_modify tail yes with 2d simulations');
       st.gEwald = this.gEwald;
       st.initStyle(ctx);
+      if (st.explicitVirial) explicitVirial = true;
       st.cut = new Float64Array(nt * nt);
       st.cutsq = new Float64Array(nt * nt);
       for (let i = 1; i <= n; i++) {
@@ -293,6 +297,10 @@ export class PairHybrid extends Pair {
         }
       }
     }
+    if (explicitVirial && this.subs.some((s) => !s.style.explicitVirial)) {
+      throw new StyleError(`pair_style ${this.mode}: a sub-style with an explicit virial cannot be combined with sub-styles that use the fdotr virial`);
+    }
+    this.virialFdotr = !explicitVirial;
     this.listsBuilt = -1;
   }
 

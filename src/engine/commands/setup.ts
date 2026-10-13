@@ -4,7 +4,7 @@ import { StyleError, typeBounds } from '../force/types';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle } from '../atoms';
+import { EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle } from '../atoms';
 import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
 import { parseStl } from '../stl';
 import { typeWord, parseLabelPairs, labelmapText, isLabelKind, type LabelKind } from '../labelmap';
@@ -73,7 +73,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph', 'edpd', 'mdpd', 'tdpd'];
+const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph', 'edpd', 'mdpd', 'tdpd', 'rheo'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -1576,6 +1576,20 @@ const set: Handler = ({ sys }, a) => {
         k += 2;
         break;
       }
+      // set.html: "Keywords rheo/rho and rheo/status set the density and the status of rheo particles." and
+      // "rheo/rho value = density of RHEO particles (mass/distance^3)", "rheo/status value = status or phase of RHEO
+      // particles (unitless)". Measured with native LAMMPS (black box): after set rheo/rho 2.5 and rheo/status 1,
+      // write_data gives the density 2.5 and status 1 for every selected atom.
+      case 'rheo/rho': case 'rheo/status': {
+        if (!isRheoStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute ${key} for atom style ${s.atomStyle}`);
+        const name = key === 'rheo/rho' ? RHEO_RHO : RHEO_STATUS;
+        const v = value(a[k + 1], key);
+        const arr = s.custom.get(name)!.data;
+        for (const i of atoms) arr[i] = v(i);
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
       // set.html: "Keyword *cc* sets the chemical concentration of a tDPD particle for a specified species as defined by the
       // DPD-MESO package. ... An integer for "index" selects a chemical species (1 to Nspecies) ... The value for the chemical
       // concentration must be >= 0.0."
@@ -2683,6 +2697,9 @@ const createBondsMany = (sys: System, a: string[]): void => {
     dist.delete(start);
     hops.set(start, dist);
   }
+  // 2d: the z direction has no periodic images, whatever its boundary. Measured with native LAMMPS (black box):
+  // create_bonds many on the 2d RHEO balloon lattice (z periodic) makes 1263 bonds; counting z images made about 132k.
+  const per = [g.periodic[0], g.periodic[1], g.periodic[2] && sys.dimension === 3];
   const lj = ff.special.lj;
   const order = Array.from({ length: s.n }, (_, i) => i).sort((p, q) => s.id[p] - s.id[q]);
   const newBonds: [number, number][] = [];
@@ -2701,15 +2718,15 @@ const createBondsMany = (sys: System, a: string[]): void => {
       const special = h !== undefined && lj[h - 1] === 0;
       const dx = s.x[3 * ib] - s.x[3 * ia], dy = s.x[3 * ib + 1] - s.x[3 * ia + 1], dz = s.x[3 * ib + 2] - s.x[3 * ia + 2];
       const dv = [dx, dy, dz];
-      const kr = [0, 1, 2].map((d) => (g.periodic[d]
+      const kr = [0, 1, 2].map((d) => (per[d]
         ? [Math.ceil((-rmax - dv[d]) / L[d]), Math.floor((rmax - dv[d]) / L[d])]
         : [0, 0]));
-      const closest = [0, 1, 2].map((d) => (g.periodic[d] ? -Math.round(dv[d] / L[d]) : 0));
+      const closest = [0, 1, 2].map((d) => (per[d] ? -Math.round(dv[d] / L[d]) : 0));
       for (let kx = kr[0][0]; kx <= kr[0][1]; kx++) {
         for (let ky = kr[1][0]; ky <= kr[1][1]; ky++) {
           for (let kz = kr[2][0]; kz <= kr[2][1]; kz++) {
             if (special && kx === closest[0] && ky === closest[1] && kz === closest[2]) continue;
-            const ex = dx + kx * (g.periodic[0] ? L[0] : 0), ey = dy + ky * (g.periodic[1] ? L[1] : 0), ez = dz + kz * (g.periodic[2] ? L[2] : 0);
+            const ex = dx + kx * (per[0] ? L[0] : 0), ey = dy + ky * (per[1] ? L[1] : 0), ez = dz + kz * (per[2] ? L[2] : 0);
             const d = Math.sqrt(ex * ex + ey * ey + ez * ez);
             if (d >= rmin && d <= rmax) newBonds.push([s.id[ia], s.id[ib]]);
           }

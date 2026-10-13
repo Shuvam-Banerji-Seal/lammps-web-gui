@@ -1,20 +1,53 @@
 import { describe, expect, it } from 'vitest';
-import { roundedPairForce, roundedContacts, type RoundedBody } from '../src/engine/force/pair/body_rounded_polygon';
-import { PairBodyRoundedPolygon } from '../src/engine/force/pair/body_rounded_polygon';
+import { bodyGeom, roundedPolygonPair, type BodyGeom, type RPParams, type V3 } from '../src/engine-gpl/body/rounded_polygon_law';
+import { PairBodyRoundedPolygon } from '../src/engine-gpl/body/pair_body_rounded_polygon';
 import { StyleError } from '../src/engine/force/types';
 
 /*
- * pair_style body/rounded/polygon, normal law only (src/engine/force/pair/body_rounded_polygon.ts; not registered).
- * Expected values are native LAMMPS measurements (black box): two rounded squares (edge 4, vertices at +-2,
- * diameter 0.5), dimension 2, `pair_style body/rounded/polygon 0 0 0 dua rc`, `pair_coeff * * kn kna`, `run 0`.
- * Forces are on body 2 (the native fx[2]), torques are tqz of body 2, energies are the total pair energy (native thermo pe per atom times the 2 atoms).
+ * pair_style body/rounded/polygon (src/engine-gpl/body/rounded_polygon_law.ts, ported from native src/BODY; the
+ * style in pair_body_rounded_polygon.ts). Expected values are native LAMMPS measurements (black box): two rounded squares
+ * (edge 4, vertices at +-2, diameter 0.5), dimension 2, `pair_style body/rounded/polygon 0 0 0 dua rc`, `pair_coeff * * kn kna`,
+ * `run 0`. Forces are on body 2 (the native fx[2]), torques are tqz of body 2, energies are the total pair energy (native thermo
+ * pe per atom times the 2 atoms).
  * Measured with native LAMMPS (black box): the face contact (two vertex-edge contacts), the vertex-vertex contact
  * (both squares rotated 0.785), a tilted pair with two overlapping contacts (body 2 rotated 0.05 at (4.3, 3.0)),
  * and the delta_ua scaling of the cohesion in that pair.
  */
 
+interface Sq {
+  c: [number, number];
+  /** World-frame vertices (x, y). */
+  v: [number, number][];
+  vel?: [number, number];
+  w?: number;
+}
+interface Pairing {
+  fA: V3;
+  fB: V3;
+  tzA: number;
+  tzB: number;
+  energy: number;
+  ja: number;
+  contacts: { separation: number; n: V3 }[];
+}
+
+/** Bodies of the pair as geometry (identity orientation, the vertices relative to the centre). */
+const geomOf = (b: Sq): BodyGeom => {
+  const I = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  const body = b.v.map(([x, y]) => [x - b.c[0], y - b.c[1], 0] as V3);
+  return bodyGeom([b.c[0], b.c[1], 0], [b.vel?.[0] ?? 0, b.vel?.[1] ?? 0, 0], [0, 0, b.w ?? 0], body, I, 0.5);
+};
+const pairOf = (A: Sq, B: Sq, kn: number, kna: number, dua: number, rc: number, damp = { cn: 0, ct: 0, mu: 0 }): Pairing => {
+  const p: RPParams = { kn, kna, dua, cut: rc, ...damp };
+  const acc = roundedPolygonPair([geomOf(A), geomOf(B)], p);
+  return { fA: acc.f[0], fB: acc.f[1], tzA: acc.t[0][2], tzB: acc.t[1][2], energy: acc.energy, ja: acc.ja, contacts: acc.contacts };
+};
+const roundedPairForce = (A: Sq, B: Sq, _diameter: number, rc: number, kn: number, kna: number, dua: number, damp = { cn: 0, ct: 0, mu: 0 }) =>
+  pairOf(A, B, kn, kna, dua, rc, damp);
+const contactsOf = (A: Sq, B: Sq) => pairOf(A, B, 0, 0, 0.5, 1.0).contacts;
+
 const SQ: [number, number][] = [[-2, -2], [-2, 2], [2, 2], [2, -2]];
-const square = (cx: number, cy: number, t: number): RoundedBody => {
+const square = (cx: number, cy: number, t: number): Sq => {
   const c = Math.cos(t), s = Math.sin(t);
   const v = SQ.map(([x, y]) => [cx + c * x - s * y, cy + s * x + c * y] as [number, number]);
   return { c: [cx, cy], v };
@@ -25,9 +58,9 @@ const rel = (a: number, b: number): number => Math.abs(a - b) / Math.max(1, Math
 describe('body/rounded/polygon contact law (native numbers)', () => {
   it('face contact: two vertex-edge contacts, elastic force k_n ov per contact, energy k_n ov^2 / 2 each (per atom thermo value is half)', () => {
     const A = square(0, 0, 0), B = square(4.4, 3.5, 0);
-    const cs = roundedContacts(A, B, DIAM, 1.0);
-    expect(cs.map((c) => c.kind)).toEqual(['VE', 'VE']);
-    expect(cs.map((c) => +c.g.toFixed(12))).toEqual([-0.1, -0.1]);
+    const cs = contactsOf(A, B);
+    expect(cs.length).toBe(2); // two vertex-edge contacts
+    expect(cs.map((c) => +c.separation.toFixed(12))).toEqual([-0.1, -0.1]);
     const r = roundedPairForce(A, B, DIAM, 1.0, 100, 0, 0.3);
     // native: pair energy 1.0 (k_n 100, ov 0.1; the thermo value 0.5 is per atom), force on body 2 +20 (2 k_n ov)
     expect(rel(r.energy, 1.0)).toBeLessThan(1e-12);
@@ -44,10 +77,9 @@ describe('body/rounded/polygon contact law (native numbers)', () => {
 
   it('vertex-vertex: one contact with cohesion k_na (rc - g), energy -k_na (rc - g)^2 / 2 (native fx 1.9136818078184822944)', () => {
     const A = square(0, 0, 0.785), B = square(6.2, 0, 0.785);
-    const cs = roundedContacts(A, B, DIAM, 1.0);
-    expect(cs.map((c) => c.kind)).toEqual(['VV']);
+    const cs = contactsOf(A, B);
+    expect(cs.length).toBe(0); // a vertex-vertex cohesion without overlap is not a contact (no damping, no friction)
     const r = roundedPairForce(A, B, DIAM, 1.0, 0, 2, 0.5);
-    expect(r.nContacts).toBe(1);
     expect(rel(r.fB[0], -1.9136818078184822944)).toBeLessThan(2e-4); // the 0.785 rotation is not exactly 45 degrees
     expect(rel(r.energy, -0.91556025952136887990)).toBeLessThan(2e-4);
   });
@@ -77,14 +109,14 @@ describe('body/rounded/polygon contact law (native numbers)', () => {
     expect(rel(roundedPairForce(A, B, DIAM, 1.0, 100, 2, 0.3).fB[0], -2.585297595052200581)).toBeLessThan(1e-9);
   });
 
-  it('forces of the pair sum to zero (Newton third law); settings accept c_n and c_t, refuse mu != 0 and the history keyword', () => {
+  it('forces of the pair sum to zero (Newton third law); settings accept c_n and c_t, accept mu, refuse the history keyword', () => {
     const A = square(0, 0, 0), B = square(4.3, 3.0, 0.05);
     const r = roundedPairForce(A, B, DIAM, 1.0, 100, 2, 0.3);
     expect(r.fA[0] + r.fB[0]).toBeCloseTo(0, 12);
     expect(r.fA[1] + r.fB[1]).toBeCloseTo(0, 12);
     const st = new PairBodyRoundedPolygon();
     expect(() => st.settings(['1', '0', '0', '0.5', '1.0'])).not.toThrow();
-    expect(() => st.settings(['0', '0', '0.1', '0.5', '1.0'])).toThrow(StyleError); // friction (mu != 0) is not implemented yet
+    expect(() => st.settings(['0', '0', '0.1', '0.5', '1.0'])).not.toThrow(); // friction (mu != 0) is ported
     expect(() => st.settings(['0', '0', '0', '0.5', '1.0', 'history'])).toThrow(StyleError);
   });
 });
@@ -92,8 +124,8 @@ describe('body/rounded/polygon contact law (native numbers)', () => {
 describe('body/rounded/polygon damping and friction (native numbers, body 2 tilted 0.1 at (4.4, 3.0))', () => {
   // one overlapping contact (delta_n -0.0122) and one separated one: only the overlapping one carries damping
   const A = square(0, 0, 0);
-  const base = (B: RoundedBody) => roundedPairForce(A, B, DIAM, 1.0, 100, 2, 0.3);
-  const Bt = (vel: [number, number], w = 0) => ({ ...square(4.4, 3.0, 0.1), vel, w });
+  const base = (B: Sq) => roundedPairForce(A, B, DIAM, 1.0, 100, 2, 0.3);
+  const Bt = (vel: [number, number], w = 0): Sq => ({ ...square(4.4, 3.0, 0.1), vel, w });
 
   it('c_n: normal relative velocity, -c_n v_n (native d fx2 +0.49502 per c_n at v_x -0.5; 0.99003 at c_n 2)', () => {
     const b0 = base(Bt([0, 0]));
@@ -118,7 +150,7 @@ describe('body/rounded/polygon damping and friction (native numbers, body 2 tilt
     const b0 = roundedPairForce(A, Bt([0, -0.5]), DIAM, 1.0, 100, 2, 0.3, { cn: 0, ct: 1, mu: 0 });
     const n = [-0.995004165278, -0.099833416647];
     const t = [-n[1], n[0]];
-    const along = (r: { fB: [number, number] }): number => (r.fB[0] - b0.fB[0]) * t[0] + (r.fB[1] - b0.fB[1]) * t[1];
+    const along = (r: { fB: V3 }): number => (r.fB[0] - b0.fB[0]) * t[0] + (r.fB[1] - b0.fB[1]) * t[1];
     const r1 = roundedPairForce(A, Bt([0, -0.5]), DIAM, 1.0, 100, 2, 0.3, { cn: 0, ct: 1, mu: 0.01 });
     expect(rel(along(r1), -0.012156)).toBeLessThan(1e-4);
     // the limit is independent of the cohesion: k_na 0 gives the same friction

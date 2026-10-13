@@ -3,6 +3,7 @@ import { makeBox, type BoxInit } from './domain';
 import { StyleError } from './force/types';
 import { BODY_RECORD, bodyRecordStride, parseBodyStyle } from './bodies';
 import { SUPER_BLOCK, SUPER_DEFAULTS, SUPER_INERTIA } from './superellipsoid';
+import { fillSmdDefaults, isSmdStyle, smdCustom, SMD_DEFAULT_MOLECULE } from './smd';
 
 /*
  * Per-atom storage: creating the state, appending and deleting atoms, the
@@ -68,8 +69,10 @@ export const isBodyStyle = (st: AtomStyle): boolean => st.startsWith('body ');
 export const hasQuatStyle = (st: AtomStyle): boolean => isEllipsoidStyle(st) || isBodyStyle(st);
 /** Styles with peridynamic particles (vfrac, x0): atom_style.html lists peri as atomic plus rmass, vfrac, s0 and x0. */
 export const isPeriStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('peri');
+/** Styles with a per-atom volume and reference position (peri, and smd: atom_style smd has vfrac and x0 too). */
+const hasVolumeStyle = (st: AtomStyle): boolean => isPeriStyle(st) || isSmdStyle(st);
 /** Styles with a per-atom mass (rmass): sphere, ellipsoid and peri. */
-export const hasRmassStyle = (st: AtomStyle): boolean => isSphereStyle(st) || isEllipsoidStyle(st) || isPeriStyle(st) || isBodyStyle(st) || isLineStyle(st) || isTriStyle(st);
+export const hasRmassStyle = (st: AtomStyle): boolean => isSphereStyle(st) || isEllipsoidStyle(st) || isPeriStyle(st) || isSmdStyle(st) || isBodyStyle(st) || isLineStyle(st) || isTriStyle(st);
 /** Bonded topology a style stores: 0 none, 1 bonds, 2 bonds and angles, 3 also dihedrals and impropers. */
 export const topologyLevel = (st: AtomStyle): number => {
   let lv = 0;
@@ -189,6 +192,8 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
     for (const name of Object.keys(DPD_DEFAULTS)) m.set(name, { int: false, cols: 0, data: new Float64Array(0) });
   }
   // atom_style.html, superellipsoid: the blockiness exponents and the principal moments of inertia (superellipsoid.ts)
+  // atom_style smd: the SMD data (smd.ts)
+  for (const [name, c] of smdCustom(st)) m.set(name, c);
   if (isSuperEllipsoidStyle(st)) {
     m.set(SUPER_BLOCK, { int: false, cols: 2, data: new Float64Array(0) });
     m.set(SUPER_INERTIA, { int: false, cols: 3, data: new Float64Array(0) });
@@ -405,9 +410,9 @@ export const emptyState = (
   type: new Int32Array(0),
   massByType: new Float64Array(ntypes + 1).fill(Number.NaN),
   rmass: hasRmassStyle(atomStyle) ? new Float64Array(0) : null,
-  vfrac: isPeriStyle(atomStyle) ? new Float64Array(0) : null,
-  x0: isPeriStyle(atomStyle) ? new Float64Array(0) : null,
-  radius: hasRadiusStyle(atomStyle) ? new Float64Array(0) : null,
+  vfrac: hasVolumeStyle(atomStyle) ? new Float64Array(0) : null,
+  x0: hasVolumeStyle(atomStyle) ? new Float64Array(0) : null,
+  radius: hasRadiusStyle(atomStyle) || isSmdStyle(atomStyle) ? new Float64Array(0) : null,
   omega: hasRadiusStyle(atomStyle) ? new Float64Array(0) : null,
   torque: hasRadiusStyle(atomStyle) || hasQuatStyle(atomStyle) ? new Float64Array(0) : null,
   tmplIndex: isTemplateStyle(atomStyle) ? new Int32Array(0) : null,
@@ -551,6 +556,7 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
   s.molecule = growI(s.molecule, n);
   if (typeof a.molecule === 'number') s.molecule.fill(a.molecule, n0, n);
   else if (a.molecule) s.molecule.set(a.molecule, n0);
+  else if (isSmdStyle(s.atomStyle)) s.molecule.fill(SMD_DEFAULT_MOLECULE, n0, n);
   if (s.tmplIndex && s.tmplAtom) {
     s.tmplIndex = growI(s.tmplIndex, n); s.tmplAtom = growI(s.tmplAtom, n);
     for (const [arr, src] of [[s.tmplIndex, a.tmplIndex], [s.tmplAtom, a.tmplAtom]] as const) {
@@ -568,7 +574,7 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     if (a.rmass instanceof Float64Array) s.rmass.set(a.rmass, n0);
     // measured with native LAMMPS: create_atoms gives ellipsoid-style atoms (point particles) mass 1
     // measured with native LAMMPS: atom_style peri gives mass 1 (its density and volume defaults are 1)
-    else s.rmass.fill(a.rmass ?? (isSphereStyle(s.atomStyle) ? SPHERE_DEFAULT_MASS : isEllipsoidStyle(s.atomStyle) || isPeriStyle(s.atomStyle) || isLineStyle(s.atomStyle) || isTriStyle(s.atomStyle) ? 1 : 0), n0, n);
+    else s.rmass.fill(a.rmass ?? (isSphereStyle(s.atomStyle) ? SPHERE_DEFAULT_MASS : isEllipsoidStyle(s.atomStyle) || isPeriStyle(s.atomStyle) || isSmdStyle(s.atomStyle) || isLineStyle(s.atomStyle) || isTriStyle(s.atomStyle) ? 1 : 0), n0, n);
   }
   if (s.vfrac) {
     s.vfrac = growF(s.vfrac, n);
@@ -585,7 +591,7 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     if (a.radius instanceof Float64Array) s.radius.set(a.radius, n0);
     // create_atoms.html: "the *sphere* atom style sets the default particle diameter to 1.0" (radius 0.5; measured with
     // native create_atoms single). A point particle in atom_style line or tri has radius 0 (measured the same way).
-    else s.radius.fill(a.radius ?? (isSphereStyle(s.atomStyle) ? SPHERE_DEFAULT_RADIUS : 0), n0, n);
+    else s.radius.fill(a.radius ?? (isSphereStyle(s.atomStyle) || isSmdStyle(s.atomStyle) ? SPHERE_DEFAULT_RADIUS : 0), n0, n);
   }
   if (s.omega) { s.omega = growF(s.omega, 3 * n); if (a.omega) s.omega.set(a.omega, 3 * n0); }
   if (s.torque) s.torque = growF(s.torque, 3 * n);
@@ -618,6 +624,7 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     const vt = s.custom.get(EDPD_VEST_TEMP), t = s.custom.get(EDPD_TEMP);
     if (vt && t) for (let i = n0; i < n; i++) vt.data[i] = t.data[i];
   }
+  if (isSmdStyle(s.atomStyle)) fillSmdDefaults(s, n0, n, new Set(a.custom?.keys() ?? []));
   // a created dielectric atom starts with q_scaled = q / epsilon (LAMMPS: the scaled charge of a point charge)
   if (isDielectricStyle(s.atomStyle) && !(a.custom?.has(DIEL_QSCALED))) {
     const qs = s.custom.get(DIEL_QSCALED), eps = s.custom.get(DIEL_EPSILON);

@@ -1,0 +1,20 @@
+# oracle: restricted triclinic LJ fcc 3x3x3 (change_box triclinic with tilts 0.25 0.1 -0.15 in lattice units), fix nph with the xz tilt barostat; per-atom state and thermo every step
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.2 4928459 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+change_box      all triclinic
+change_box      all xy final 0.25 xz final 0.1 yz final -0.15 remap
+timestep        0.005
+fix             1 all nph x 1.0 1.0 2.0 y 1.0 1.0 2.0 z 1.0 1.0 2.0 xz 0.0 0.0 2.0 couple none
+thermo_style    custom step temp pe etotal press pxx pyy pzz pxy pxz pyz vol lx ly lz xy xz yz f_1
+thermo_modify   format float %.15g
+thermo          1
+run             20

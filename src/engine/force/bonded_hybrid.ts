@@ -30,7 +30,10 @@ import type { TopoList } from '../types';
  *    that type exist;
  *  - skip in an angle, dihedral or improper coeff line leaves the type's earlier
  *    setting in place (the type stays unset when there was none); bond refuses it;
- *  - re-issuing bond_style hybrid clears every coefficient, as a new style does.
+ *  - re-issuing bond_style hybrid clears every coefficient, as a new style does;
+ *  - several coeff lines for one type and one sub-style are all kept (angle_style class2/p6 takes a plain line plus
+ *    its bb and ba lines per type: "angle_coeff 1 class2/p6 bb ..." after the plain line, measured with native LAMMPS
+ *    (black box) on w104cf_angle_hybrid_p6; the hybrid replays every line of the type's sub-style, in order).
  */
 
 export type HybridKind = 'bond' | 'angle' | 'dihedral' | 'improper';
@@ -63,8 +66,12 @@ export class BondedHybrid extends Bonded {
   subNames: string[] = [];
   /** Per type: sub-style index, UNSET or NONE. */
   private assign = new Int32Array(0);
-  /** Per type: the words after the sub-style name in its last coeff line (null for none). */
-  private words: (string[] | null)[] = [];
+  /**
+   * Per type: the words after the sub-style name of every coeff line that named its current sub-style, in
+   * order (null for none). A style such as class2/p6 takes several lines per type (the plain line, then
+   * its bb and ba lines), so each line is kept and replayed into the sub-style.
+   */
+  private lines: (string[][] | null)[] = [];
   /** Sub-style instances built from the current coefficients (null when they must be rebuilt). */
   private subs: Bonded[] | null = null;
   /** Energy of each sub-style at the last force evaluation. */
@@ -105,7 +112,7 @@ export class BondedHybrid extends Bonded {
   allocate(ntypes: number): void {
     super.allocate(ntypes);
     this.assign = new Int32Array(ntypes + 1).fill(UNSET);
-    this.words = new Array<string[] | null>(ntypes + 1).fill(null);
+    this.lines = new Array<string[][] | null>(ntypes + 1).fill(null);
     this.subs = null;
   }
 
@@ -119,7 +126,7 @@ export class BondedHybrid extends Bonded {
     const rest = args.slice(2);
     if (name === 'none') {
       if (rest.length) throw new StyleError(`${kind}_coeff ${args[0]} none takes no coefficients`);
-      for (let t = lo; t <= hi; t++) { this.assign[t] = NONE; this.words[t] = null; }
+      for (let t = lo; t <= hi; t++) { this.assign[t] = NONE; this.lines[t] = null; }
     } else if (name === 'skip' && kind !== 'bond') {
       // measured: a skip line changes nothing for its types (see the header comment)
       if (rest.length) throw new StyleError(`${kind}_coeff ${args[0]} skip takes no coefficients`);
@@ -131,7 +138,12 @@ export class BondedHybrid extends Bonded {
       const probe = this.make(name, this.ctx);
       probe.allocate(this.ntypes);
       probe.coeff([args[0], ...rest], this.ctx ?? NO_CONTEXT);
-      for (let t = lo; t <= hi; t++) { this.assign[t] = k; this.words[t] = rest; }
+      for (let t = lo; t <= hi; t++) {
+        // a line for the sub-style the type already has adds to its lines; another sub-style starts over
+        const same = this.assign[t] === k;
+        this.lines[t] = same && this.lines[t] ? [...this.lines[t]!, rest] : [rest];
+        this.assign[t] = k;
+      }
     }
     this.subs = null;
   }
@@ -222,19 +234,19 @@ export class BondedHybrid extends Bonded {
       st.allocate(this.ntypes);
       if (this.link) st.linkForceField?.(this.link);
     }
-    const donor: (string[] | null)[] = new Array<string[] | null>(subs.length).fill(null);
+    const donor: (string[][] | null)[] = new Array<string[][] | null>(subs.length).fill(null);
     for (let t = 1; t <= this.ntypes; t++) {
       const a = this.assign[t];
       if (a < 0) continue;
-      const w = this.words[t]!;
-      subs[a].coeff([String(t), ...w], c);
-      donor[a] ??= w;
+      const ls = this.lines[t]!;
+      for (const w of ls) subs[a].coeff([String(t), ...w], c);
+      donor[a] ??= ls;
     }
     for (let k = 0; k < subs.length; k++) {
-      const w = donor[k];
-      if (!w) continue;
+      const ls = donor[k];
+      if (!ls) continue;
       for (let t = 1; t <= this.ntypes; t++) {
-        if (this.assign[t] !== k) subs[k].coeff([String(t), ...w], c);
+        if (this.assign[t] !== k) for (const w of ls) subs[k].coeff([String(t), ...w], c);
       }
     }
     this.subs = subs;

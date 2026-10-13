@@ -19,8 +19,9 @@ export const PAIRS: Record<string, () => Pair> = {
 
 export const FIXES: Record<string, (sys: System, id: string, group: string, args: string[]) => Fix> = {
   'surface/local': (sys, id, group, args) => new FixSurfaceLocal(sys, id, group, args),
-  // fix surface/global (surfaces from molecule files or STL) is not ported: refused with its reason
+  // fix surface/global (surfaces from molecule templates or STL files) is not ported yet: refused with its reason.
+  // The surfaces of a molecule template are available through fix surface/local input mol.
   'surface/global': () => {
-    throw new StyleError('fix surface/global is not supported yet (surfaces from molecule or STL files; use fix surface/local with Lines or Triangles in the data file)');
+    throw new StyleError('fix surface/global is not supported yet (surfaces from molecule templates or STL files; use fix surface/local input mol lines|tris, or the Lines/Triangles section of a data file)');
   },
 };

@@ -8,6 +8,7 @@ import { FIXES } from '../src/engine-gpl/registry/gransurf';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Session } from '../src/engine/interpreter';
+import { parseMoleculeFile } from '../src/engine/molecule';
 
 describe('pair_coeff keywords (pair_granular.html)', () => {
   it('accepts hooke, tangential linear_history and damping mass_velocity', () => {
@@ -164,5 +165,63 @@ describe('pair surf/granular boundaries', () => {
     };
     expect(await run(input)).toBeNull();
     expect(await run(input.replace(/^boundary\s+f f p/m, 'boundary p f p'))).toMatch(/periodic boundaries is not supported/);
+  });
+});
+
+describe('molecule surface templates (molecule.html: Lines and Triangles sections)', () => {
+  const O = { toff: 0, boff: 0, aoff: 0, doff: 0, ioff: 0, scale: 1 };
+  it('reads a lines template without atoms (line syntax ID molecule-ID type x1 y1 x2 y2)', () => {
+    const t = parseMoleculeFile('lines', 'surf.line', 'LAMMPS molecule file\n\n2 lines\n\nLines\n\n1 1 2 7 0 10 10\n2 1 2 10 10 0 7\n', { ...O, toff: 1, scale: 2 });
+    expect(t.natoms).toBe(0);
+    expect(t.lines).toEqual([
+      { mol: 1, type: 3, p: [14, 0, 20, 20] },
+      { mol: 1, type: 3, p: [20, 20, 0, 14] },
+    ]);
+    expect(t.tris).toBeNull();
+  });
+  it('reads a triangles template (line syntax ID molecule-ID type x1 y1 z1 x2 y2 z2 x3 y3 z3)', () => {
+    const t = parseMoleculeFile('tris', 'surf.tri', 'LAMMPS data file\n\n1 triangles\n\nTriangles\n\n1 1 2 -6 -6 0 6 -6 0 0 0 0\n', O);
+    expect(t.tris).toEqual([{ mol: 1, type: 2, p: [-6, -6, 0, 6, -6, 0, 0, 0, 0] }]);
+    expect(t.lines).toBeNull();
+  });
+  it('refuses a missing entry, a bad molecule-ID and a file with both atoms and lines', () => {
+    expect(() => parseMoleculeFile('m', 'f', '#\n2 lines\n\nLines\n\n1 1 2 0 0 1 1\n1 1 2 0 0 1 1\n', O)).toThrow(/line 2 missing/);
+    expect(() => parseMoleculeFile('m', 'f', '#\n1 lines\n\nLines\n\n1 -1 2 0 0 1 1\n', O)).toThrow(/invalid molecule ID/);
+    expect(() => parseMoleculeFile('m', 'f', '#\n1 atoms\n1 lines\n\nLines\n\n1 1 2 0 0 1 1\n', O)).toThrow(/only one/);
+  });
+});
+
+describe('fix surface/local input mol (fix_surface_local.html: input mol)', () => {
+  const run = async (text: string): Promise<{ error: string | null; atoms: number | null }> => {
+    let error: string | null = null;
+    let atoms: number | null = null;
+    const s = new Session({
+      emit: (e: { kind: string; message?: string; row?: { atoms?: number } }) => {
+        if (e.kind === 'error') error ??= e.message ?? '';
+        if (e.kind === 'thermo' && e.row?.atoms !== undefined) atoms = e.row.atoms;
+      },
+      writeFile: () => {},
+    } as never);
+    s.addFile('w106gs_surf.line', readFileSync(join(__dirname, 'oracle', 'w106gs_surf.line'), 'utf8'));
+    try { await s.execute(text); } catch (e) { error ??= String(e); }
+    return { error, atoms };
+  };
+  const head = `units lj
+dimension 2
+atom_style line
+boundary f f p
+region box block -15 15 -15 15 -0.5 0.5 units box
+create_box 2 box
+molecule lines w106gs_surf.line
+`;
+  it('creates one line particle per Lines entry, numbered after the atoms that exist', async () => {
+    const r = await run(`${head}fix 20 all surface/local input mol lines\nthermo_style custom step atoms\nrun 0\n`);
+    expect(r.error).toBeNull();
+    expect(r.atoms).toBe(9);
+  });
+  it('refuses the input stl source and the other keywords by name', async () => {
+    expect((await run(`${head}fix 20 all surface/local input stl 1 1 w106gs_surf.line\n`)).error).toMatch(/input stl/);
+    expect((await run(`${head}fix 20 all surface/local input mol lines flat 10\n`)).error).toMatch(/keyword 'flat' is not supported/);
+    expect((await run(`${head}fix 20 all surface/local input mol nope\n`)).error).toMatch(/does not exist/);
   });
 });

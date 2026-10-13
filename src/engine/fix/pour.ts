@@ -1,7 +1,7 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { RanPark } from '../rng';
-import { appendAtoms, maxAtomId, pushTopo, sphereMass, isSphereStyle, hasChargeStyle, hasDipoleStyle, SPHERE_DEFAULT_RADIUS } from '../atoms';
+import { appendAtoms, maxAtomId, pushTopo, sphereMass, hasChargeStyle, hasDipoleStyle, hasRadiusStyle, hasRmassStyle, isLineStyle, isTriStyle, isLineAtom, isTriAtom, SPHERE_DEFAULT_RADIUS } from '../atoms';
 import { BlockRegion, ConeRegion, type Param, type Region } from '../region';
 import { geometricCenter, rotationMatrix, rotateDipoles, templateDipoles, type MoleculeTemplate } from '../molecule';
 import type { System } from '../system';
@@ -335,10 +335,15 @@ export class FixPour extends Fix {
   private readonly nfirst: number;
   private nextStep: number;
   inserted = 0;
+  /** ignore keyword: the inserted particles skip line (tri) particles in the overlap test (fix_pour.cpp overlap). */
+  private ignoreLine = false;
+  private ignoreTri = false;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    if (!isSphereStyle(sys.atomStyle)) throw new StyleError('fix pour requires atom_style sphere');
+    // fix_pour.cpp: "Fix pour requires atom attributes radius, rmass" (the line and tri styles have both; the inserted
+    // particles are point-like spheres of that style, with the line or triangle flag 0)
+    if (!hasRadiusStyle(sys.atomStyle) || !hasRmassStyle(sys.atomStyle)) throw new StyleError('fix pour requires atom attributes radius, rmass (atom_style sphere, line or tri)');
     if (args.length < 3) throw new StyleError('usage: fix ID group-ID pour N type seed keyword values ...');
     const twoD = sys.dimension === 2;
     this.twoD = twoD;
@@ -376,7 +381,10 @@ export class FixPour extends Fix {
         if (twoD) { this.vel = [num(args[i + 1], 'vel vxlo'), num(args[i + 2], 'vel vxhi'), 0, 0, num(args[i + 3], 'vel vy')]; i += 4; }
         else { this.vel = [num(args[i + 1], 'vel vxlo'), num(args[i + 2], 'vel vxhi'), num(args[i + 3], 'vel vylo'), num(args[i + 4], 'vel vyhi'), num(args[i + 5], 'vel vz')]; i += 6; }
       } else if (key === 'ignore') {
-        // this engine has no line or triangle particles, so there is nothing to skip
+        // fix_pour.html, ignore: "the inserted particles do not overlap line or tri particles" (overlap() of
+        // fix_pour.cpp: "if ignore line/tri set, ignore line or tri particles"); set only for the styles that have them
+        if (isLineStyle(sys.atomStyle)) this.ignoreLine = true;
+        if (isTriStyle(sys.atomStyle)) this.ignoreTri = true;
         i += 1;
       } else if (key === 'mol') { molTemplateId = args[i + 1] ?? null; i += 2; }
       else if (key === 'molfrac') {
@@ -533,6 +541,7 @@ export class FixPour extends Fix {
       : [cx[i - nOld], cy[i - nOld], cz[i - nOld], cr[i - nOld]]);
     const overlaps = (x: number, y: number, z: number, rad: number, n: number): boolean => {
       for (let j = 0; j < n; j++) {
+        if (j < nOld && ((this.ignoreLine && isLineAtom(s, j)) || (this.ignoreTri && isTriAtom(s, j)))) continue;
         const [px, py, pz, pr] = at(j);
         const [dx, dy, dz] = separation(sys, x - px, y - py, z - pz);
         const rs = rad + pr;

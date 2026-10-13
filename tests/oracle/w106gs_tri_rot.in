@@ -1,0 +1,35 @@
+# oracle: triangles alone turned by fix move rotate about z, then unfixed and stopped (in.tri.gran.surf rotation, cut down; no spheres; 3d fix surface/local input mol tris, fix move rotate on tri atoms)
+# oracle-inputs: w106gs_surf.tri
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# oracle-measured: max relative error (native fixture vs engine, scale max(1,|LAMMPS|)): thermo 6.9e-18, per-atom 0 (measured with tests/fixtures/oracle, 2026-10-13)
+units           lj
+atom_style      tri
+atom_modify     map array
+boundary        f f f
+dimension       3
+comm_modify     vel yes cutoff 12.5
+region          box block -7 7 -7 7 0 9 units box
+create_box      2 box
+molecule        tris w106gs_surf.tri
+fix             20 all surface/local input mol tris
+pair_style      hybrid granular surf/granular
+pair_coeff      1 1 granular hooke 4000.0 100.0 &
+                         tangential linear_history 1000.0 1.0 0.5 &
+                         damping mass_velocity
+pair_coeff      1 2 surf/granular hooke 4000.0 100.0 &
+                         tangential linear_history 1000.0 1.0 0.5 &
+                         damping mass_velocity
+pair_coeff      2 2 none
+group           tri type 2
+neighbor        0.3 bin
+neigh_modify    delay 0 every 1 check yes
+fix             1 tri move rotate 0 0 0 0 0 1 25
+timestep        0.005
+thermo_style    custom step atoms press
+thermo_modify   format float %.15g lost ignore
+thermo          100
+run             300
+unfix           1
+set             group tri angmom 0.0 0.0 0.0
+velocity        tri set 0.0 0.0 0.0
+run             100

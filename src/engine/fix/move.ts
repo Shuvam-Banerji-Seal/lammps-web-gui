@@ -1,7 +1,7 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { massOf, isEllipsoid } from '../atoms';
+import { massOf, isEllipsoid, isLineAtom, isTriAtom, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
 
 /*
  * fix ID group-ID move style args keyword values ... —
@@ -133,6 +133,8 @@ export class FixMove extends Fix {
   /** rotate/transrot: dipoles and ellipsoid quaternions when the fix was specified. */
   private muOrig: Float64Array | null = null;
   private quatOrig: Float64Array | null = null;
+  /** rotate/transrot: the orientation (theta) of the line particles when the fix was specified (fix_move.cpp toriginal). */
+  private thetaOrig: Float64Array | null = null;
   /** Timestep at which the fix was specified ("the time the fix is specified"). */
   private readonly initial: number;
   private dtv = 0;
@@ -219,6 +221,11 @@ export class FixMove extends Fix {
     if (st === 'rotate' || st === 'transrot') {
       if (this.updateDipole && s.mu) this.muOrig = s.mu.slice(0, 4 * n);
       if (s.quat) this.quatOrig = s.quat.slice(0, 4 * n);
+      const lb = s.custom.get(LINE_BONUS)?.data;
+      if (lb) {
+        this.thetaOrig = new Float64Array(n);
+        for (let i = 0; i < n; i++) if (this.captured[i] && isLineAtom(s, i)) this.thetaOrig[i] = lb[2 * i + 1];
+      }
     }
   }
 
@@ -306,18 +313,30 @@ export class FixMove extends Fix {
         image[3 * i + d] = 0;
       }
       this.sys.geom.remap(x, image, i);
-      if (s.omega && s.radius) for (let d = 0; d < 3; d++) s.omega[3 * i + d] = w * R[d];
+      // fix_move.cpp: omega is set for spheres with a radius, and for lines and tris ("omega for spheres, lines, tris")
+      const tri = isTriAtom(s, i);
+      if (s.omega && s.radius && (s.radius[i] > 0 || isLineAtom(s, i) || tri)) for (let d = 0; d < 3; d++) s.omega[3 * i + d] = w * R[d];
+      // fix_move.cpp: "theta for lines", theta_new = fmod(toriginal[i] + arg, MY_2PI)
+      const lb = s.custom.get(LINE_BONUS)?.data;
+      if (this.thetaOrig && lb && isLineAtom(s, i)) lb[2 * i + 1] = (this.thetaOrig[i] + th) % (2 * Math.PI);
       if (this.muOrig && s.mu) {
         for (let d = 0; d < 3; d++) u[d] = this.muOrig[4 * i + d];
         rot(u, xr);
         for (let d = 0; d < 3; d++) s.mu[4 * i + d] = xr[d];
       }
-      if (this.quatOrig && s.quat && s.angmom && s.rmass && isEllipsoid(s, i)) {
+      // tris (fix_move.cpp: the tri quaternion and its angular momentum with the principal moments of the tri)
+      if (this.quatOrig && s.quat && s.angmom && (tri || (s.rmass && isEllipsoid(s, i)))) {
         // angular momentum from the orientation before this step's update: A I A^T (omega R)
         quatMatrix(s.quat, 4 * i, A);
-        const m = s.rmass[i];
-        const a = s.shape![3 * i], b = s.shape![3 * i + 1], cc = s.shape![3 * i + 2];
-        const inertia = [m / 5 * (b * b + cc * cc), m / 5 * (a * a + cc * cc), m / 5 * (a * a + b * b)];
+        let inertia: number[];
+        if (tri) {
+          const tb = s.custom.get(TRI_BONUS)!.data;
+          inertia = [tb[TRI_BONUS_COLS * i + 9], tb[TRI_BONUS_COLS * i + 10], tb[TRI_BONUS_COLS * i + 11]];
+        } else {
+          const m = s.rmass![i];
+          const a = s.shape![3 * i], b = s.shape![3 * i + 1], cc = s.shape![3 * i + 2];
+          inertia = [m / 5 * (b * b + cc * cc), m / 5 * (a * a + cc * cc), m / 5 * (a * a + b * b)];
+        }
         const wb = [0, 1, 2].map((k) => A[k] * w * R[0] + A[3 + k] * w * R[1] + A[6 + k] * w * R[2]);
         for (let d = 0; d < 3; d++) s.angmom[3 * i + d] = A[3 * d] * inertia[0] * wb[0] + A[3 * d + 1] * inertia[1] * wb[1] + A[3 * d + 2] * inertia[2] * wb[2];
         const q0 = this.quatOrig.subarray(4 * i, 4 * i + 4);

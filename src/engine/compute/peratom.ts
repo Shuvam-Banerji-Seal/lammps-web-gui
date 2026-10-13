@@ -1,7 +1,8 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
-import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid, isBpmSphereStyle, HEAT_FLOW, HEAT_TEMPERATURE, ELECTRON_SPIN, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_RFORCE } from '../atoms';
+import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid, isBpmSphereStyle, HEAT_FLOW, HEAT_TEMPERATURE, ELECTRON_SPIN, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_RFORCE, isSuperEllipsoidStyle } from '../atoms';
+import { SUPER_INERTIA, superBlock } from '../superellipsoid';
 
 /*
  * Per-atom computes: ke/atom, pe/atom, stress/atom and property/atom.
@@ -274,6 +275,8 @@ const TORQUE_ATTRS = new Set(['tqx', 'tqy', 'tqz']);
  * atom style ellipsoid reports shape 1 1 1 and quaternion 1 0 0 0 (not the zeroes the page describes).
  */
 const ELLIPSOID_ATTRS = new Set(['angmomx', 'angmomy', 'angmomz', 'shapex', 'shapey', 'shapez', 'quatw', 'quati', 'quatj', 'quatk']);
+/** compute_property_atom.html: block1, block2 (superellipsoids) and inertiax, inertiay, inertiaz (superellipsoids). */
+const SUPER_ATTRS = new Set(['block1', 'block2', 'inertiax', 'inertiay', 'inertiaz']);
 /** compute_property_atom.html: "*mux,muy,muz* = orientation of dipole moment of atom" (and mu, its magnitude). */
 const DIPOLE_ATTRS = new Set(['mux', 'muy', 'muz', 'mu']);
 /**
@@ -302,13 +305,14 @@ export class ComputePropertyAtom extends Compute {
       // compute_property_atom.html: "espin, eradius, ervel, erforce" (atom_style electron; "spin" is the older name of espin)
       const ek = ELECTRON_ATTRS.get(a);
       if (ek && !sys.state.custom.has(ek)) throw new StyleError(`compute property/atom ${a} needs atom_style electron`);
-      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !SPIN_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a] && !ELECTRON_ATTRS.has(a)) {
+      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !SUPER_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !SPIN_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a] && !ELECTRON_ATTRS.has(a)) {
         throw new StyleError(`compute property/atom: attribute '${a}' is not supported by the browser engine`);
       }
       if (SPHERE_ATTRS.has(a) && !sys.state.radius) throw new StyleError(`compute property/atom ${a} needs atom_style sphere`);
       if (TORQUE_ATTRS.has(a) && !sys.state.torque) throw new StyleError(`compute property/atom ${a} needs atom_style sphere or ellipsoid`);
       // atom_style bpm/sphere stores a quaternion (atoms.ts isBpmSphereStyle) but no shape
       if (ELLIPSOID_ATTRS.has(a) && !sys.state.shape && !(isBpmSphereStyle(sys.atomStyle) && /^quat[wijk]$/.test(a))) throw new StyleError(`compute property/atom ${a} needs atom_style ellipsoid`);
+      if (SUPER_ATTRS.has(a) && !isSuperEllipsoidStyle(sys.atomStyle)) throw new StyleError(`compute property/atom ${a} requires atom style ellipsoid superellipsoid`);
       if (DIPOLE_ATTRS.has(a) && !sys.state.mu) throw new StyleError(`compute property/atom ${a} needs atom_style dipole`);
       if (SPIN_ATTRS.has(a) && !sys.state.sp) throw new StyleError(`compute property/atom ${a} needs atom_style spin`);
       if (CUSTOM_ATTR.test(a)) customAttr(sys.state, a);
@@ -347,6 +351,8 @@ export class ComputePropertyAtom extends Compute {
           case 'tqx': case 'tqy': case 'tqz': set(i, s.torque![3 * i + d]); break;
           case 'angmomx': case 'angmomy': case 'angmomz': set(i, s.angmom![3 * i + d]); break;
           case 'shapex': case 'shapey': case 'shapez': set(i, isEllipsoid(s, i) ? 2 * s.shape![3 * i + d] : 1); break;
+          case 'block1': case 'block2': set(i, superBlock(s, i)[attr === 'block1' ? 0 : 1]); break;
+          case 'inertiax': case 'inertiay': case 'inertiaz': set(i, s.custom.get(SUPER_INERTIA)!.data[3 * i + d]); break;
           case 'quatw': case 'quati': case 'quatj': case 'quatk':
             set(i, (isEllipsoid(s, i) || (s.quat && isBpmSphereStyle(s.atomStyle))) ? s.quat![4 * i + 'wijk'.indexOf(attr[4])] : attr === 'quatw' ? 1 : 0);
             break;

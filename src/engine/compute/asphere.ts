@@ -4,6 +4,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { isEllipsoid, massOf } from '../atoms';
 import type { SimState } from '../types';
+import { SUPER_INERTIA } from '../superellipsoid';
 
 /*
  * compute erotate/asphere and temp/asphere for atom_style ellipsoid, and the
@@ -73,6 +74,9 @@ export const rotateTransposeVec = (R: number[], x: number, y: number, z: number)
 
 /** Principal moments of inertia of ellipsoid i (body frame): m/5 (b^2+c^2), m/5 (a^2+c^2), m/5 (a^2+b^2). */
 export const ellipsoidInertia = (s: SimState, i: number): [number, number, number] => {
+  // atom_style ellipsoid superellipsoid: the moments stored when the shape or block was set (superellipsoid.ts)
+  const stored = s.custom.get(SUPER_INERTIA);
+  if (stored) return [stored.data[3 * i], stored.data[3 * i + 1], stored.data[3 * i + 2]];
   const m = massOf(s, i) / 5;
   const sh = s.shape!;
   const a = sh[3 * i], b = sh[3 * i + 1], c = sh[3 * i + 2];

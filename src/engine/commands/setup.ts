@@ -4,7 +4,8 @@ import { StyleError, typeBounds } from '../force/types';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle } from '../atoms';
+import { DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle } from '../atoms';
+import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
 import { parseStl } from '../stl';
 import { isLatticeStyle, makeLattice, latticeSites } from '../lattice';
 import { generalAtomSites, generalBoxFromRestricted, generalCreateBox } from '../triclinic_general';
@@ -136,6 +137,12 @@ const atomStyle: Handler = ({ sys }, a) => {
       throw new StyleError('usage: atom_style body nparticle Nmin Nmax (non-negative integers)');
     }
     sys.atomStyle = `body ${a[1]} ${nmin} ${nmax}`;
+    return;
+  }
+  // atom_style.html: "*ellipsoid* arg = superellipsoid (optional) for superellipsoids instead of ellipsoids"
+  if (a[0] === 'ellipsoid' && a[1] === 'superellipsoid') {
+    if (a.length !== 2) throw new StyleError('usage: atom_style ellipsoid superellipsoid');
+    sys.atomStyle = 'ellipsoid superellipsoid';
     return;
   }
   known(a[0]);
@@ -1553,9 +1560,32 @@ const set: Handler = ({ sys }, a) => {
           const zeros = d3.filter((x) => x === 0).length;
           if (d3.some((x) => !(x >= 0)) || (zeros > 0 && zeros < 3)) throw new StyleError('Invalid shape in set command');
           for (let d = 0; d < 3; d++) s.shape[3 * i + d] = d3[d] / 2;
+          if (isSuperEllipsoidStyle(s.atomStyle)) storeSuperInertia(s, i);
         }
         changed = atoms.length;
         k += 4;
+        break;
+      }
+      // set.html: "Keyword *block* sets the blockiness of the selected atoms.  The particles must be ellipsoids as
+      // defined by the atom_style ellipsoid command."; "The *block1*, *block2* settings are the 2 exponents of the
+      // superellipsoid in the vertical and horizontal directions."; "If both parameters are set to a value of 2 (the
+      // default), the atom is a regular ellipsoid."; "If the keyword *block* is given alone, and the *shape* has not been
+      // defined, e.g., in a previous *set* command, the 3 diameters would be set to a value of 1 internally."
+      // The moment of inertia is stored with the new block (superellipsoid.ts).
+      case 'block': {
+        if (!isSuperEllipsoidStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute block for atom style ${s.atomStyle}`);
+        const vs = [1, 2].map((d) => value(a[k + d], 'block'));
+        const blk = s.custom.get(SUPER_BLOCK)!.data;
+        for (const i of atoms) {
+          const [b1, b2] = vs.map((f) => f(i));
+          if (!(b1 > 0) || !(b2 > 0)) throw new StyleError('Invalid block in set command');
+          if (!isEllipsoid(s, i)) for (let d = 0; d < 3; d++) s.shape![3 * i + d] = 0.5;
+          blk[2 * i] = b1;
+          blk[2 * i + 1] = b2;
+          storeSuperInertia(s, i);
+        }
+        changed = atoms.length;
+        k += 3;
         break;
       }
       // set.html: "If this body is rotated (via the right-hand rule) by an angle theta around a unit rotation

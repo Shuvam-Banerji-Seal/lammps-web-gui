@@ -1,0 +1,22 @@
+# oracle: fix wall/ees (cut down from examples/PACKAGES/ees/in.fix_wall, Data_wall): six ellipsoids near the zlo and zhi
+# walls (sigman, the ellipsoid half-length along the normal, is below the wall distance for all but the closest one);
+# the wall force and the torque on each ellipsoid, and the energy and per-wall force sums.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# measured with native LAMMPS: max relative error below 1e-13 (per-atom and thermo)
+# oracle-inputs: w133mf_wall_ees.data
+# native: b332f28 built with the installed lmp (EXTRA-FIX)
+units lj
+atom_style ellipsoid
+boundary p p f
+read_data w133mf_wall_ees.data
+pair_style zero 1.0
+pair_coeff * *
+timestep 0.0002
+compute temp all temp/asphere
+thermo_modify temp temp
+fix EES_substrate all wall/ees zhi EDGE 10 1 10 zlo EDGE 10 1 10
+fix NVE all nve/asphere
+thermo_style custom step temp press etotal f_EES_substrate f_EES_substrate[1] f_EES_substrate[2]
+thermo_modify format float %.15g
+thermo 50
+run 200

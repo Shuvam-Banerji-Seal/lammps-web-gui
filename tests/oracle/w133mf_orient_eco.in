@@ -1,0 +1,21 @@
+# oracle: fix orient/eco (cut down from examples/PACKAGES/orient_eco/in.orient_eco): a 1060-atom slab of the sigma5 bicrystal
+# (data.sigma5 restricted to x in [-90.3, -60], y in [0, 22]), pair zero 3.6 in place of eam (the potential file is not
+# in third_party), nve in place of npt. Per-atom compare of x, v, f and the scalar f_eco with fix_modify energy yes.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# measured with native LAMMPS: max relative error below 1e-13 (per-atom and thermo)
+# oracle-inputs: w133mf_orient_eco.data w133mf_sigma5.ori
+# native: b332f28 built with the installed lmp (ORIENT)
+units metal
+atom_style atomic
+read_data w133mf_orient_eco.data
+pair_style zero 3.6
+pair_coeff * *
+timestep 0.001
+velocity all create 750 18527782
+fix integrator all nve
+fix eco all orient/eco 0.08 0.25 3.6 w133mf_sigma5.ori
+fix_modify eco energy yes
+thermo 5
+thermo_style custom step temp pe etotal f_eco
+thermo_modify format float %.15g
+run 20

@@ -144,5 +144,6 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_deposit', names: { HOOKS: ['deposit'] }, load: () => import('../engine-gpl/registry/deposit') as Promise<StyleModule> },
   { id: 'gpl_shock', names: { FIXES: ['msst', 'nphug', 'wall/piston', 'append/atoms'] }, load: () => import('../engine-gpl/registry/shock') as Promise<StyleModule> },
   { id: 'gpl_filtercorotate', names: { FIXES: ['filter/corotate'] }, load: () => import('../engine-gpl/registry/filtercorotate') as Promise<StyleModule> },
+  { id: 'gpl_extrafix_misc', names: { FIXES: ['viscous/sphere', 'flow/gauss', 'wall/ees', 'wall/region/ees', 'baoab', 'orient/eco'] }, load: () => import('../engine-gpl/registry/extrafix_misc') as Promise<StyleModule> },
   { id: 'gpl_yaff', names: { ANGLES: ['cross'], BONDS: ['mm3'], PAIRS: ['lj/switch3/coulgauss/long'] }, load: () => import('../engine-gpl/registry/yaff') as Promise<StyleModule> },
 ];

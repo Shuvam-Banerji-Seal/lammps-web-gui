@@ -57,16 +57,16 @@ export interface DynamicGroup {
 // add/heat: src/GRANULAR/fix_add_heat.cpp (b332f28) sets dynamic_group_allow = 1 in its constructor.
 export const DYNAMIC_GROUP_FIXES = new Set([
   'add/heat', 'addforce', 'addtorque/group', 'ave/histo', 'ave/moments', 'ave/time', 'aveforce', 'dt/reset', 'efield', 'gravity', 'langevin', 'lineforce',
-  'momentum', 'nph', 'nph/sphere', 'npt', 'npt/sphere', 'nve', 'nve/limit', 'nve/sphere', 'nvt',
+  'baoab', 'momentum', 'nph', 'nph/sphere', 'npt', 'npt/sphere', 'nve', 'nve/limit', 'nve/sphere', 'nvt',
   'nvt/sllod', 'nvt/sphere', 'planeforce', 'recenter', 'setforce', 'spring', 'temp/berendsen',
-  'temp/csld', 'temp/csvr', 'temp/rescale', 'viscous', 'wall/harmonic', 'wall/lj1043', 'wall/lj126',
+  'temp/csld', 'temp/csvr', 'temp/rescale', 'viscous', 'viscous/sphere', 'wall/harmonic', 'wall/lj1043', 'wall/lj126',
   'wall/lj93', 'wall/morse', 'wall/reflect', 'wall/reflect/stochastic', 'wall/region',
 ]);
 export const NO_DYNAMIC_GROUP_FIXES = new Set([
   'ave/atom', 'ave/chunk', 'balance', 'deform', 'deposit', 'ehex', 'electron/stopping', 'enforce2d', 'freeze', 'heat', 'indent',
   'nve/noforce', 'pour', 'print',
   'property/atom', 'rattle', 'rigid', 'rigid/nph', 'rigid/nph/small', 'rigid/npt', 'rigid/npt/small', 'rigid/nve', 'rigid/nve/small', 'rigid/nvt', 'rigid/nvt/small',
-  'rigid/small', 'shake', 'spring/self', 'vector', 'wall/gran', 'wall/gran/region',
+  'rigid/small', 'shake', 'spring/self', 'vector', 'wall/ees', 'wall/region/ees', 'wall/gran', 'wall/gran/region', 'flow/gauss', 'orient/eco',
 ]);
 
 export class Groups {

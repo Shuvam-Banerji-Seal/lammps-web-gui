@@ -1,6 +1,7 @@
 import { Compute } from './compute';
 import { StyleError, newAccum, type Accum, type Bonded, type BondedCompute } from '../force/types';
-import { dihedralGeometry } from '../force/bonded_util';
+import { bondDelta, delta, dihedralGeometry } from '../force/bonded_util';
+import type { BondedCopies } from '../force/types';
 import { buildAtomMap, massOf, nativeOrder } from '../atoms';
 import type { System } from '../system';
 import type { SimState, TopoList } from '../types';
@@ -115,21 +116,27 @@ export const termRows = (sys: System, kind: TermKind, bit: number): { k: number;
  * Energy of one term, from the style's compute() run on a topology holding only this term.
  * The forces of the term's atoms are left in `scratch` (the caller reads and clears them).
  */
-const termEnergy = (s: SimState, geom: Geometry, kind: TermKind, style: Bonded, list: TopoList, k: number, map: Int32Array, scratch: Float64Array): number => {
+const termEnergy = (s: SimState, geom: Geometry, copies: BondedCopies | null, kind: TermKind, style: Bonded, list: TopoList, k: number, map: Int32Array, scratch: Float64Array): number => {
   const w = WIDTH[kind];
   const one: TopoList = { n: 1, width: w as 2 | 3 | 4, type: Int32Array.of(list.type[k]), atoms: list.atoms.slice(w * k, w * k + w) };
   const shadow = Object.create(s) as SimState;
   shadow.topo = { ...s.topo, [FIELD[kind]]: one };
   const acc: Accum = newAccum();
-  const bc: BondedCompute = { s: shadow, geom, map, f: scratch, acc, virial: acc.vbond, eatom: null, vatom: null };
+  const bc: BondedCompute = { s: shadow, geom, map, f: scratch, acc, virial: acc.vbond, eatom: null, vatom: null, copies };
   style.compute(bc);
   return acc[ENERGY[kind]];
 };
 
-/** Minimum-image displacement a - b. */
-const disp = (s: SimState, geom: Geometry, a: number, b: number): number[] => {
-  const d = [s.x[3 * a] - s.x[3 * b], s.x[3 * a + 1] - s.x[3 * b + 1], s.x[3 * a + 2] - s.x[3 * b + 2]];
-  geom.minimumImage(d);
+/** r_a - r_b for a bond (owner a), the copy of b nearest to a (bonded_util bondDelta). */
+const bondVec = (bc: BondedCompute, a: number, b: number): number[] => {
+  const d = [0, 0, 0];
+  bondDelta(bc, a, b, d);
+  return d;
+};
+/** r_b' - r_o, the copy of b nearest to the term's owner o (bonded_util delta). */
+const fromOwner = (bc: BondedCompute, o: number, b: number): number[] => {
+  const d = [0, 0, 0];
+  delta(bc, o, b, d);
   return d;
 };
 
@@ -174,21 +181,22 @@ export class ComputeTermLocal extends Compute {
     const style = sys.ff[STYLE_FIELD[kind]];
     if (needEnergy && !style) throw new StyleError(`compute ${this.id} ${this.style} needs a ${kind}_style`);
     const list = s.topo[FIELD[kind]];
+    const nb = sys.nb;
     const map = buildAtomMap(s);
     const scratch = new Float64Array(3 * s.n);
     const mvv2e = s.units.mvv2e;
     const out = new Float64Array(rows.length * ncol);
-    const bc: BondedCompute = { s, geom, map, f: scratch, acc: newAccum(), virial: new Float64Array(6), eatom: null, vatom: null };
+    const bc: BondedCompute = { s, geom, map, f: scratch, acc: newAccum(), virial: new Float64Array(6), eatom: null, vatom: null, copies: nb.bondedCopies() };
     rows.forEach(({ k, idx }, r) => {
       const vals: Record<string, number> = {};
       if (kind === 'bond') {
         const [i, j] = idx;
-        const d = disp(s, geom, i, j);
+        const d = bondVec(bc, i, j);
         const dist = norm(d);
         const u = dist > 0 ? d.map((c) => c / dist) : [0, 0, 0];
         let e = 0, fi = [0, 0, 0];
         if (needEnergy && list.type[k] > 0) {
-          e = termEnergy(s, geom, kind, style!, list, k, map, scratch);
+          e = termEnergy(s, geom, nb.bondedCopies(), kind, style!, list, k, map, scratch);
           fi = [scratch[3 * i], scratch[3 * i + 1], scratch[3 * i + 2]];
         }
         if (needEnergy) for (const a of [i, j]) for (let c = 0; c < 3; c++) scratch[3 * a + c] = 0;
@@ -214,12 +222,12 @@ export class ComputeTermLocal extends Compute {
         }
       } else if (kind === 'angle') {
         const [i, j, kk] = idx;
-        const d1 = disp(s, geom, i, j), d3 = disp(s, geom, kk, j);
+        const d1 = fromOwner(bc, j, i), d3 = fromOwner(bc, j, kk);
         const r1 = norm(d1), r3 = norm(d3);
         const c = r1 > 0 && r3 > 0 ? Math.max(-1, Math.min(1, (d1[0] * d3[0] + d1[1] * d3[1] + d1[2] * d3[2]) / (r1 * r3))) : 1;
         vals.theta = Math.acos(c) * RAD2DEG;
         if (need('eng')) {
-          vals.eng = list.type[k] > 0 ? termEnergy(s, geom, kind, style!, list, k, map, scratch) : 0;
+          vals.eng = list.type[k] > 0 ? termEnergy(s, geom, nb.bondedCopies(), kind, style!, list, k, map, scratch) : 0;
           for (const a of idx) for (let q = 0; q < 3; q++) scratch[3 * a + q] = 0;
         }
       } else if (kind === 'dihedral') {

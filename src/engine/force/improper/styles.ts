@@ -1,4 +1,4 @@
-import { SimpleBonded, atomIndex, delta, dihedralGeometry, applyDihedral } from '../bonded_util';
+import { SimpleBonded, atomIndex, delta, dihedralGeometry, applyDihedral, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum, parseInt_ } from '../util';
 import { StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext } from '../types';
 
@@ -37,9 +37,9 @@ const DEG2RAD = Math.PI / 180;
  */
 const umbrellaC = (bc: BondedCompute, atoms: readonly number[], grad: number[]): number => {
   const b1 = [0, 0, 0], b2 = [0, 0, 0], v = [0, 0, 0];
-  delta(bc, atoms[0], atoms[1], b1);
-  delta(bc, atoms[0], atoms[2], b2);
-  delta(bc, atoms[0], atoms[3], v);
+  termDelta(bc, atoms[1], atoms[0], atoms[1], b1);
+  termDelta(bc, atoms[1], atoms[0], atoms[2], b2);
+  termDelta(bc, atoms[1], atoms[0], atoms[3], v);
   const n = [
     b1[1] * b2[2] - b1[2] * b2[1],
     b1[2] * b2[0] - b1[0] * b2[2],
@@ -179,7 +179,7 @@ const applyGradC = (bc: BondedCompute, atoms: readonly number[], dEdc: number, g
     }
   }
   const rel: number[] = new Array(atoms.length * 3);
-  for (let p = 0; p < atoms.length; p++) delta(bc, atoms[0], atoms[p], rel, 3 * p);
+  for (let p = 0; p < atoms.length; p++) termDelta(bc, atoms[1], atoms[0], atoms[p], rel, 3 * p);
   bondedVirial(bc, atoms, rel, fk, e);
 };
 
@@ -314,8 +314,8 @@ export class ImproperUmbrella extends SimpleBonded {
  */
 const bondPairCos = (bc: BondedCompute, atoms: readonly number[], grad: number[]): number => {
   const u = [0, 0, 0], w = [0, 0, 0];
-  delta(bc, atoms[0], atoms[1], u);
-  delta(bc, atoms[2], atoms[3], w);
+  termDelta(bc, atoms[1], atoms[0], atoms[1], u);
+  termDelta(bc, atoms[1], atoms[2], atoms[3], w);
   const uu = u[0] * u[0] + u[1] * u[1] + u[2] * u[2];
   const ww = w[0] * w[0] + w[1] * w[1] + w[2] * w[2];
   const inv = 1 / Math.sqrt(uu * ww);

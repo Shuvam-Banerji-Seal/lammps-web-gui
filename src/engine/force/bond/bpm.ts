@@ -1,4 +1,4 @@
-import { SimpleBonded, atomIndex, delta } from '../bonded_util';
+import { SimpleBonded, atomIndex, bondDelta } from '../bonded_util';
 import { StyleError, type BondedCompute, type StyleContext } from '../types';
 
 /*
@@ -79,7 +79,7 @@ export class BondBpmSpring extends SimpleBonded {
       const ia = b.atoms[2 * k], ib = b.atoms[2 * k + 1];
       const i = atomIndex(bc, ia, 'bond');
       const j = atomIndex(bc, ib, 'bond');
-      delta(bc, j, i, d); // r_i - r_j
+      bondDelta(bc, i, j, d); // r_i - r_j (copy of j nearest to i)
       const r = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
       const key = bondKey(ia, ib);
       let r0 = this.ref.get(key);

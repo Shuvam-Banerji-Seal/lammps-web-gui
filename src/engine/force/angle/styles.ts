@@ -1,4 +1,4 @@
-import { SimpleBonded, atomIndex, delta } from '../bonded_util';
+import { SimpleBonded, atomIndex, termDelta } from '../bonded_util';
 import { angleTerm } from './harmonic';
 import { fmtCoeff, parseInt_, parseNum } from '../util';
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
@@ -283,7 +283,7 @@ export class AngleCharmm extends SimpleBonded {
       });
       // Urey-Bradley term on the i-k distance (atoms 1 and 3 of the angle)
       if (Kub[t] !== 0) {
-        delta(bc, k, i, dk); // r_i - r_k
+        termDelta(bc, j, k, i, dk); // r_i - r_k, both copies nearest to the centre j
         const r = Math.sqrt(dk[0] * dk[0] + dk[1] * dk[1] + dk[2] * dk[2]);
         const dr = r - rub[t];
         const eub = Kub[t] * dr * dr;

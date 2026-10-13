@@ -1,0 +1,16 @@
+# oracle: w91bimg pairs: two-atom bonds across the boundary at scanned separations; owner = first atom of the bond line (box 10, pair cutoff 1.0 + skin 0.3)
+# oracle-inputs: w91bimg_pairs.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      molecular
+pair_style      zero 1.0
+bond_style      harmonic
+read_data       w91bimg_pairs.data
+pair_coeff      * *
+bond_coeff      1 4.0 1.0
+timestep        0.001
+fix             1 all nve
+thermo_style    custom step pe ebond eangle edihed eimp
+thermo_modify   format float %.15g
+thermo          10
+run             50

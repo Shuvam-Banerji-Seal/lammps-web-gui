@@ -1,5 +1,5 @@
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
-import { atomIndex, delta } from '../bonded_util';
+import { atomIndex, bondDelta } from '../bonded_util';
 import { parseNum } from '../util';
 import { compileLepton, fillVrefs, type LeptonProgram } from '../../lepton';
 
@@ -98,7 +98,7 @@ export class BondLepton extends Bonded {
       const i = atomIndex(bc, b.atoms[2 * k], 'bond');
       const j = atomIndex(bc, b.atoms[2 * k + 1], 'bond');
       const t = b.type[k];
-      delta(bc, j, i, d);   // r_i - r_j
+      bondDelta(bc, i, j, d);   // r_i - r_j (copy of j nearest to i)
       const r = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
       const env = this.env[t]!;
       const p = this.progs[t]!;

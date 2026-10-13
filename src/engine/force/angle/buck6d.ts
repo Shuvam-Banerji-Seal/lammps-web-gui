@@ -1,4 +1,4 @@
-import { SimpleBonded, atomIndex, delta } from '../bonded_util';
+import { SimpleBonded, atomIndex, termDelta } from '../bonded_util';
 import { angleTerm } from './harmonic';
 import { PairBuck6dCoulGauss } from '../pair/buck6d_gauss';
 import { fmtCoeff, parseInt_, parseNum } from '../util';
@@ -86,7 +86,7 @@ export class AngleCosineBuck6d extends SimpleBonded {
         return { e: ea, dEdtheta: -K[t] * n[t] * Math.sin(arg) };
       });
       // buck6d vdW between the end atoms i and k: dk = r_k - r_i (minimum image)
-      delta(bc, i, k, dk);
+      termDelta(bc, j, i, k, dk);
       const r = Math.sqrt(dk[0] * dk[0] + dk[1] * dk[1] + dk[2] * dk[2]);
       const v = r > 0 ? pair.vdwEnergy(bc.s.type[i], bc.s.type[k], r) : null;
       if (!v) continue;

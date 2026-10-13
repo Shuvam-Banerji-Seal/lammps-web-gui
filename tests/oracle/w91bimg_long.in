@@ -1,0 +1,24 @@
+# oracle: w91bimg long bonds: bonded terms across periodic boundaries (bond, angle, dihedral, improper), 50 steps
+# oracle-inputs: w91bimg_long.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      molecular
+pair_style      zero 1.0
+
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  harmonic
+improper_style  harmonic
+read_data       w91bimg_long.data
+pair_coeff      * *
+bond_coeff      1 4.0 1.0
+angle_coeff     1 3.0 109.0
+dihedral_coeff  1 1.5 1 2
+improper_coeff  1 2.0 0.0
+timestep        0.001
+velocity        all create 0.1 4321 loop geom
+fix             1 all nve
+thermo_style    custom step pe ebond eangle edihed eimp
+thermo_modify   format float %.15g
+thermo          10
+run             50

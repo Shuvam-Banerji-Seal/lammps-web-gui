@@ -903,10 +903,6 @@ export class FixNH extends Fix {
         throw new StyleError(`fix ${this.style}: a tilt factor exceeded 0.6 of the box length; box flips are not supported by the browser engine`);
       }
     }
-    // pressure-driven tilts also scale with the diagonal stretch
-    if (this.pFlag[5]) b.tilt[0] *= Math.exp(this.dthalf * this.omegaDot[0]);
-    if (this.pFlag[4]) b.tilt[1] *= Math.exp(this.dthalf * this.omegaDot[0]);
-    if (this.pFlag[3]) b.tilt[2] *= Math.exp(this.dthalf * this.omegaDot[1]);
     b.minLo = [...b.lo]; b.minHi = [...b.hi];
     g.update();
     for (let i = 0; i < s.n; i++) {

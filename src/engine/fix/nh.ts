@@ -134,6 +134,8 @@ export class FixNH extends Fix {
   private tStart = 0; private tStop = 0; private tPeriod = 0;
   private tchain = 3; private tloop = 1;
   private eta: Float64Array; private etaDot: Float64Array;
+  /** eta_dotdot of the chain (k >= 1 persists across calls, see nhcTemp). */
+  private etaDotdot: Float64Array;
   // barostat
   private pstat = false;
   private pStart = new Float64Array(6); private pStop = new Float64Array(6); private pPeriod = new Float64Array(6);
@@ -264,6 +266,7 @@ export class FixNH extends Fix {
     if (this.tstat && this.pstat && this.ptemp !== null) throw new StyleError(`fix ${id}: thermostat in fix ${this.style} is incompatible with ptemp command`);
     this.eta = new Float64Array(this.tchain);
     this.etaDot = new Float64Array(this.tchain + 1);
+    this.etaDotdot = new Float64Array(this.tchain);
     this.etap = new Float64Array(Math.max(1, this.pchain));
     this.etapDot = new Float64Array(Math.max(1, this.pchain) + 1);
     // a restart file holding this fix's state is applied when the fix is re-specified (restart.ts)
@@ -417,8 +420,11 @@ export class FixNH extends Fix {
    * leaving the group at step 2): the members' velocities after step 2 differ from the engine's by a uniform factor
    * 1.00000226266, which is the change of the target term when it uses the dof of the step start (381 = 3*128-3) instead
    * of the dof after the reassignment (297 = 3*100-3); the 84 difference over q0 and dt gives the factor exactly.
-   * Still open: the chain's inner elements after the reassignment (f_ID[2] = eta[1], eta_dot[1]) differ from native by
-   * about 1e-7 and 1e-4 absolute, so the case tests/oracle/w98dyn_nvt_region.in compares the temperatures and PE only.
+   * The chain's inner elements (eta[1..], eta_dot[1..]) follow the same rule: as native LAMMPS does
+   * (src/fix_nh.cpp nhc_temp_integrate at b332f28), the top sweep reads eta_dotdot[k] for k >= 1 as left by the previous
+   * back sweep (or setup), computed with the eta_mass[0] of that call; only eta_dotdot[0] is recomputed from the
+   * current kinetic energy. With the dof recomputed per call the inner elements drifted (temp 6.7e-5 relative at step
+   * 200 of tests/oracle/w114cf_nylon_stab_long.in); with the stored values they match to about 3e-8 (see the cases).
    */
   private tdofStep: number | null = null;
   /** Product of the squared velocity factors of the current initial-step chain update (1 outside it). */
@@ -440,7 +446,19 @@ export class FixNH extends Fix {
   setup(): void {
     this.tSetup = this.currentTemp();
     this.trackKE = null;
-    if (this.tstat) this.tTarget = ramp(this.sys, this.tStart, this.tStop);
+    if (this.tstat) {
+      this.tTarget = ramp(this.sys, this.tStart, this.tStop);
+      // As native LAMMPS does (src/fix_nh.cpp setup() at b332f28): the chain's inner accelerations are set from the
+      // setup-time masses, eta_dotdot[k] = (eta_mass[k-1] eta_dot[k-1]^2 - k_B T) / eta_mass[k], with
+      // eta_mass[0] = dof k_B T / t_freq^2 (dof at setup).
+      const kt = this.sys.state.units.boltz * this.tTarget;
+      const tf2 = (1 / this.tPeriod) ** 2;
+      const dof = this.tempCompute.dof;
+      const mass = (k: number) => (k === 0 ? dof * kt / tf2 : kt / tf2);
+      for (let k = 1; k < this.tchain; k++) {
+        this.etaDotdot[k] = mass(k) > 0 ? (mass(k - 1) * this.etaDot[k - 1] * this.etaDot[k - 1] - kt) / mass(k) : 0;
+      }
+    }
     if (this.pstat) {
       this.computePressTarget();
       this.computePressCurrent();
@@ -598,13 +616,15 @@ export class FixNH extends Fix {
     const drag = this.drag > 0 ? 1 - this.dtv * tfreq * this.drag / nc : 1;
     for (let loop = 0; loop < nc; loop++) {
       // top of chain down
-      const g = (k: number) => (k === 0 ? (ke2 - dofT * kt) / q[0] : (q[k - 1] * ed[k - 1] * ed[k - 1] - kt) / q[k]);
-      ed[M - 1] += g(M - 1) * dt4;
+      // the inner accelerations (k >= 1) are the stored ones: native reads eta_dotdot[k] as left by the previous back
+      // sweep, computed with the eta_mass[0] of that call (src/fix_nh.cpp nhc_temp_integrate at b332f28)
+      const g0 = () => (ke2 - dofT * kt) / q[0];
+      ed[M - 1] += (M === 1 ? g0() : this.etaDotdot[M - 1]) * dt4;
       ed[M - 1] *= drag;
       for (let k = M - 2; k >= 0; k--) {
         const ex = Math.exp(-dt8 * ed[k + 1]);
         ed[k] *= ex;
-        ed[k] += g(k) * dt4;
+        ed[k] += (k === 0 ? g0() : this.etaDotdot[k]) * dt4;
         ed[k] *= drag;
         ed[k] *= ex;
       }
@@ -618,10 +638,12 @@ export class FixNH extends Fix {
       for (let k = 0; k < M - 1; k++) {
         const ex = Math.exp(-dt8 * ed[k + 1]);
         ed[k] *= ex;
-        ed[k] += (k === 0 ? (ke2 - dofT * kt) / q[0] : (q[k - 1] * ed[k - 1] * ed[k - 1] - kt) / q[k]) * dt4;
+        if (k > 0) this.etaDotdot[k] = (q[k - 1] * ed[k - 1] * ed[k - 1] - kt) / q[k];
+        ed[k] += (k === 0 ? g0() : this.etaDotdot[k]) * dt4;
         ed[k] *= ex;
       }
-      ed[M - 1] += (M === 1 ? (ke2 - dofT * kt) / q[0] : (q[M - 2] * ed[M - 2] * ed[M - 2] - kt) / q[M - 1]) * dt4;
+      if (M > 1) this.etaDotdot[M - 1] = (q[M - 2] * ed[M - 2] * ed[M - 2] - kt) / q[M - 1];
+      ed[M - 1] += (M === 1 ? g0() : this.etaDotdot[M - 1]) * dt4;
     }
     if (!initial) this.trackKE = ke2;
     this.sys.refreshComputes();

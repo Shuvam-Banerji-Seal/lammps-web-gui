@@ -1,0 +1,22 @@
+# oracle: fix nvt on a dynamic group by region half (every 5; the w98dyn_nvt_region setup: 28 atoms leave the group at step 2), two runs of 10 steps; the chain columns f_1[1..2] are compared too (no skip)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.44 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+timestep        0.004
+region          half block INF 1.5 INF INF INF INF
+group           hot dynamic all region half every 5
+compute         th hot temp
+fix             1 hot nvt temp 1.0 1.0 0.5
+thermo_style    custom step temp c_th pe etotal f_1[1]
+thermo_modify   format float %.15g
+thermo          1
+run             10
+run             10

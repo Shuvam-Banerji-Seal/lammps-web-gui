@@ -1,0 +1,30 @@
+# oracle: fix bond/react stabilization, tiny nylon (examples/PACKAGES/reaction/tiny_nylon.stabilized) run 300 steps: rxn2 at step 63 is reached, and the nvt chain on the statted group runs through the reassignments after it
+# oracle-inputs: w94react_nylon.data w94react_nylon_stp1.map w94react_nylon_stp1_unreacted.mol w94react_nylon_stp1_reacted.mol w94react_nylon_stp2.map w94react_nylon_stp2_unreacted.mol w94react_nylon_stp2_reacted.mol
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-5
+# Engine vs this fixture (Node 24 and Node 20 agree, measured with the fix): thermo max rel 2.91e-8 (press, step 240; abs 3.2e-7), temp 1.26e-9;
+# The reaction counters match (rxn2 at step 63 is in the window); the final atoms match at the same tolerance.
+# Before the fix: temp 6.7e-5 relative at step 200 (the drift that kept the 60-step case short).
+units real
+boundary p p p
+atom_style full
+kspace_style pppm 1.0e-4
+pair_style lj/class2/coul/long 8.5
+angle_style class2
+bond_style class2
+dihedral_style class2
+improper_style class2
+special_bonds lj/coul 0 0 1
+pair_modify tail yes mix sixthpower
+read_data w94react_nylon.data extra/bond/per/atom 5 extra/angle/per/atom 15 extra/dihedral/per/atom 15 extra/improper/per/atom 25 extra/special/per/atom 25
+velocity all create 300.0 4928459 dist gaussian
+molecule mol1 w94react_nylon_stp1_unreacted.mol
+molecule mol2 w94react_nylon_stp1_reacted.mol
+molecule mol3 w94react_nylon_stp2_unreacted.mol
+molecule mol4 w94react_nylon_stp2_reacted.mol
+thermo 10
+fix myrxns all bond/react stabilization yes statted_grp .03 react rxn1 all 1 0.0 2.9 mol1 mol2 w94react_nylon_stp1.map react rxn2 all 1 0.0 5.0 mol3 mol4 w94react_nylon_stp2.map rescale_charges yes
+fix 1 statted_grp_REACT nvt temp 300 300 100
+fix 4 bond_react_MASTER_group temp/rescale 1 300 300 10 1
+thermo_style custom step temp press density f_myrxns[1] f_myrxns[2]
+thermo_modify colname auto format float %.15g
+run 300

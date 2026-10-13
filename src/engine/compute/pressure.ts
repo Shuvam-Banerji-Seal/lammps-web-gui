@@ -57,6 +57,11 @@ export class ComputePressure extends Compute {
     }
   }
 
+  /** The raw virial sum of the selected terms (energy units, no volume, kinetic or tail terms), as a copy. */
+  rawVirial(): Float64Array {
+    return Float64Array.from(this.virial());
+  }
+
   protected virial(): Float64Array {
     const a = this.sys.forces();
     const w = this.w;
@@ -88,19 +93,28 @@ export class ComputePressure extends Compute {
     return p * s.units.nktv2p;
   }
 
-  protected computeVector(): void {
+  /**
+   * The pressure tensor for a raw virial w (see rawVirial) in a box of volume vol: the kinetic term and the pair tail
+   * are evaluated at that volume. Used by compute born/matrix numdiff, which evaluates the virial in a strained cell
+   * but keeps the undeformed volume (as native LAMMPS does).
+   */
+  vectorAt(w: Float64Array, vol: number): Float64Array {
     const s = this.sys.state;
     const d = this.sys.dimension;
-    const vol = this.sys.geom.volume(d);
-    const w = this.virial();
     const ke = this.keOverride ?? (this.terms.has('ke') && this.tempId ? this.sys.compute(this.tempId).vectorValues() : null);
     const tail = this.terms.has('pair') ? this.sys.ff.ptail(vol) : 0;
+    const out = new Float64Array(6);
     for (let c = 0; c < 6; c++) {
       let p = w[c] + (ke ? ke[c] : 0);
       p /= vol;
       if (c < 3) p += tail;
-      this.vector[c] = p * s.units.nktv2p;
+      out[c] = p * s.units.nktv2p;
     }
-    if (d === 2) { this.vector[2] = 0; this.vector[4] = 0; this.vector[5] = 0; }
+    if (d === 2) { out[2] = 0; out[4] = 0; out[5] = 0; }
+    return out;
+  }
+
+  protected computeVector(): void {
+    this.vector.set(this.vectorAt(this.virial(), this.sys.geom.volume(this.sys.dimension)));
   }
 }

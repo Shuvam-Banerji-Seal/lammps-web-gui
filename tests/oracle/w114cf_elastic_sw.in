@@ -1,0 +1,33 @@
+# oracle: compute born/matrix numdiff with pair sw (cut-down of examples/ELASTIC_T/BORN_MATRIX/Silicon/in.elastic: the init.in
+# triclinic diamond cell, 2x2x2 replicas = 64 atoms, no thermostat, 10 NVE steps; the numdiff strain delta 1e-6, virial-ID virial)
+# oracle-potentials: Si.sw
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-6
+# Measured under Node 20 (rolldown bundle; the Node 24 test passes at the same tolerance): c_born[1..8] (|value| 6e2..1.2e3) max rel 1.7e-10, abs 1.1e-7;
+# c_born[9..21] (|value| 2.7..16, numdiff roundoff) max rel 1.5e-8 (c_born[20], abs 1.0e-7) and abs 3.9e-8 for the others;
+# pe 6e-15, press 3.5e-14, temp 1.5e-15 relative. Hence rel 1e-8 with abs 1e-6 (the entries near zero need the abs part).
+# Before the change (single() path) the case stopped with a StyleError.
+units           metal
+box             tilt large
+variable        a index 5.457
+variable        l index $a
+lattice         custom ${l} a1 1 0 0 a2 0 1 0 a3 0 0 1 &
+                basis 0 0 0 basis 0.25 0.25 0.25 basis 0 0.5 0.5 basis 0.25 0.75 0.75 &
+                basis 0.5 0 0.5 basis 0.75 0.25 0.75 basis 0.5 0.5 0 basis 0.75 0.75 0.25 spacing 1 1 1
+region          box prism 0 1 0 1 0 1 0 0 0
+create_box      1 box
+create_atoms    1 box
+mass            1 28.06
+replicate       2 2 2
+velocity        all create 1477.0 87287
+pair_style      sw
+pair_coeff      * * Si.sw Si
+neighbor        1.0 nsq
+neigh_modify    once no every 1 delay 0 check yes
+timestep        0.000766
+fix             4 all nve
+compute         virial all pressure NULL virial
+compute         born all born/matrix numdiff 1.0e-6 virial
+thermo_style    custom step temp pe press c_born[1] c_born[2] c_born[3] c_born[4] c_born[5] c_born[6] c_born[7] c_born[8] c_born[9] c_born[10] c_born[11] c_born[12] c_born[13] c_born[14] c_born[15] c_born[16] c_born[17] c_born[18] c_born[19] c_born[20] c_born[21]
+thermo_modify   format float %.15g
+thermo          5
+run             10

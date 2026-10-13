@@ -2,6 +2,13 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import { parseNum } from '../force/util';
 import type { System } from '../system';
+import { bornNumdiffHook } from './bornNumdiffHook';
+
+/**
+ * The numdiff helper (src/engine-gpl/extra_compute/born_matrix.ts): the 21 values of the Born matrix in energy units,
+ * for the numdiff keyword with delta and the pressure compute virialId.
+ */
+export type BornNumdiffHook = (sys: System, id: string, delta: number, virialId: string) => Float64Array;
 
 /*
  * compute ID group-ID born/matrix keyword value ...
@@ -38,15 +45,12 @@ import type { System } from '../system';
  *   two times delta, approximates the corresponding components of the second
  *   derivative, after applying a suitable unit conversion." "The *numdiff*
  *   option cannot be used with any other keyword."
- *   Measured with native LAMMPS (black box): the numdiff output equals the
- *   analytic output for lj/cut to 1e-9, so the engine reproduces the same Born
- *   sum by finite-differencing each pair's radial virial coefficient f(r) =
- *   fforce * r = -u'(r): u'' - u'/r = -r * d f / d r, evaluated by a central
- *   difference. The virial-ID is parsed and required to name a pressure compute
- *   (as the page demands), and the pair sum then uses that compute's group.
+ *   The numdiff routine is the GPL port (src/engine-gpl/extra_compute/born_matrix.ts, from native
+ *   src/EXTRA-COMPUTE/compute_born_matrix.cpp at b332f28): it strains the cell about its centre and evaluates the
+ *   full force field and the virial-ID pressure for each strain, so it works for every pair style (for example sw,
+ *   which has no pairwise single() evaluation). It is reached through the lazy HOOKS entry 'born/matrix'.
  *
- * Any other pair style, or any bonded term, throws a StyleError naming it: the
- * browser engine has no per-style born_matrix method.
+ * Any bonded term throws a StyleError naming it: the browser engine has no per-style born_matrix method for those.
  */
 
 /** The six Voigt components in the field order used for the pair sum. */
@@ -115,17 +119,20 @@ export class ComputeBornMatrix extends Compute {
   protected computeVector(): void {
     this.vector.fill(0);
     const sys = this.sys;
+    if (this.useNumdiff) {
+      this.vector.set(bornNumdiffHook()(sys, this.id, this.delta, this.virialId));
+      return;
+    }
     const pair = sys.ff.pair;
     if (!pair) throw new StyleError(`compute ${this.id} born/matrix: no pair_style is defined`);
-    if (!this.useNumdiff && pair.name !== 'lj/cut') {
+    if (pair.name !== 'lj/cut') {
       throw new StyleError(`compute ${this.id} born/matrix: the analytic Born matrix is only implemented for pair style lj/cut (got '${pair.name}'; use numdiff)`);
     }
-    const eps = this.useNumdiff ? null : pair.extract('epsilon');
-    const sig = this.useNumdiff ? null : pair.extract('sigma');
-    if (!this.useNumdiff && (!(eps instanceof Float64Array) || !(sig instanceof Float64Array))) {
+    const eps = pair.extract('epsilon');
+    const sig = pair.extract('sigma');
+    if (!(eps instanceof Float64Array) || !(sig instanceof Float64Array)) {
       throw new StyleError(`compute ${this.id} born/matrix: pair style lj/cut did not provide epsilon/sigma coefficients`);
     }
-    if (!pair.single) throw new StyleError(`compute ${this.id} born/matrix: pair style '${pair.name}' does not support the engine's pairwise evaluation`);
 
     sys.forces();
     const s = sys.state;
@@ -153,19 +160,10 @@ export class ComputeBornMatrix extends Compute {
         if (rsq >= pair.cutsq[ti * nt + tj]) continue;
         const sb = jj >>> 30;
         const factor = sb === 0 ? 1 : sLJ[sb];
-        const r = Math.sqrt(rsq);
         const t = ti * nt + tj;
-        let coef: number;
-        if (this.useNumdiff) {
-          // u'' - u'/r = -r d(fforce)/dr, central difference of the radial virial coefficient.
-          const h = this.delta * r;
-          const g = (rr: number) => pair.single!(i, j, ti, tj, rr * rr, factor, factor, nb.qall[i], nb.qall[j]).fforce;
-          coef = -r * (g(r + h) - g(r - h)) / (2 * h);
-        } else {
-          const e = (eps as Float64Array)[t], sg = (sig as Float64Array)[t];
-          const q = (sg ** 6) / rsq ** 3;
-          coef = factor * 4 * e * (168 * q * q - 48 * q) / rsq;
-        }
+        const e = (eps as Float64Array)[t], sg = (sig as Float64Array)[t];
+        const q = (sg ** 6) / rsq ** 3;
+        const coef = factor * 4 * e * (168 * q * q - 48 * q) / rsq;
         comp[0] = dx; comp[1] = dy; comp[2] = dz;
         for (let a = 0; a < 6; a++) {
           const [ai, bi] = FIELDS[a];

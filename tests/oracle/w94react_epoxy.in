@@ -2,9 +2,7 @@
 # oracle-inputs: w94react_epoxy_tiny_epoxy.data w94react_epoxy_rxn1_stp1.map w94react_epoxy_rxn1_stp1_post.molecule_template w94react_epoxy_rxn1_stp1_pre.molecule_template w94react_epoxy_rxn1_stp2.map w94react_epoxy_rxn1_stp2_post.molecule_template w94react_epoxy_rxn2_stp1.map w94react_epoxy_rxn2_stp1_post.molecule_template w94react_epoxy_rxn2_stp1_pre.molecule_template w94react_epoxy_rxn2_stp2.map w94react_epoxy_rxn2_stp2_post.molecule_template
 # oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
 # Engine vs this fixture (Node 24): thermo max rel 1.6e-9 (temp, step 50), f_rxns exact; atoms max abs 8.6e-9 (fz).
-# Not run past step 50: after it the nvt chain on the statted group (reassigned after the forces) differs from native:
-# temp 1.7e-7 relative at step 100, 3.5e-5 at step 250 in the 300-step run. That is the open item in src/engine/fix/nh.ts;
-# without that nvt the 300-step run agrees to print precision.
+# Past step 50 (nvt on the statted group after the reassignments) see w114cf_epoxy_long (300 steps, fixed in src/engine/fix/nh.ts).
 units real
 boundary p p p
 atom_style full

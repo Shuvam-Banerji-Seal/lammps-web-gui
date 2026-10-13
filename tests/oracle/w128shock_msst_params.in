@@ -1,0 +1,22 @@
+# oracle: fix msst (shock along x with every reference keyword: p0, v0, e0, mu, tscale 0.5, beta, dftb no), 4x4x4 LJ fcc, 100 steps
+# Native reference: LAMMPS b332f28 (installed binary has SHOCK)
+# measured (engine vs native, Node 24): thermo within 6.6e-15 relative (worst f_msst[1]), per-atom within 1.5e-12
+# oracle-compare: thermo=all atoms=all rel=1e-8
+units           lj
+atom_style      atomic
+boundary        p p p
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 0.8 4928 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+fix             1 all nve
+fix             msst all msst x 1.2 q 5.0 mu 0.3 p0 0.5 v0 300.0 e0 -400.0 tscale 0.5 dftb no beta 0.5
+thermo_style    custom step temp pe ke econserve vol lx pxx f_msst f_msst[1] f_msst[2] f_msst[3] f_msst[4]
+thermo_modify   format float %.15g
+timestep        0.002
+thermo          10
+run             100

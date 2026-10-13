@@ -1,0 +1,21 @@
+# oracle: fix nphug hydrostatic (iso) Hugoniostat on a 3x3x3 LJ fcc crystal with tchain 1 and pchain 0, reference state from the defaults, 100 steps
+# Native reference: LAMMPS b332f28 (installed binary has SHOCK)
+# measured (engine vs native, Node 24): thermo within 9.7e-11 relative (worst f_myhug[1] at step 10), per-atom within 7.5e-13
+# oracle-compare: thermo=all atoms=all rel=1e-8
+units           lj
+atom_style      atomic
+boundary        p p p
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 0.8 4928 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+fix             myhug all nphug temp 1.0 1.0 10.0 iso 1.5 1.5 20.0 tchain 1 pchain 0
+thermo_style    custom step temp ke pe econserve press vol lz f_myhug f_myhug[1] f_myhug[2] f_myhug[3]
+thermo_modify   format float %.15g
+timestep        0.002
+thermo          10
+run             100

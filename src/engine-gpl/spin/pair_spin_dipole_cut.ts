@@ -27,8 +27,8 @@ const MU0 = 784.15;
 /** Metal-unit Planck constant (eV ps; units.ts) and the prefactors of the source. */
 export const HPLANCK_METAL = 4.135667403e-3;
 export const HBAR = HPLANCK_METAL / (2 * Math.PI);
-const MUB2MU0 = MUB * MUB * MU0 / (4 * Math.PI);
-const MUB2MU0HBINV = MUB2MU0 / HBAR;
+export const MUB2MU0 = MUB * MUB * MU0 / (4 * Math.PI);
+export const MUB2MU0HBINV = MUB2MU0 / HBAR;
 
 type Vec = [number, number, number];
 

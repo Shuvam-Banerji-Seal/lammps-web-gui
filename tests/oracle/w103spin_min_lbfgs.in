@@ -1,0 +1,30 @@
+# oracle: min_style spin/lbfgs (default line spin_none, discrete_factor 10, norm max, ftol 1e-10) on bcc iron 3x3x3 cells, 54 random spins, spin/exchange and precession/spin anisotropy, 60 iterations (not converged: the stop is max iterations)
+# measured with native LAMMPS (black box), engine vs native fixture: thermo and spin dump max relative error 3.1e-7 (on a component of magnitude 4.2e-4, absolute 1.3e-10; the largest absolute error is 8.9e-8 on c_s[6], about 1e3); re-measured under Node 20: not yet.
+# oracle-files: w103spin_min_lbfgs.dump
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10
+units           metal
+atom_style      spin
+boundary        p p p
+atom_modify     map array
+lattice         bcc 2.8665
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 55.845
+set             group all spin/atom/random 31 2.2
+pair_style      spin/exchange 3.5
+pair_coeff      * * exchange 3.4 0.02726 0.2171 1.841
+neighbor        0.1 bin
+neigh_modify    every 10 check yes delay 20
+fix             1 all precession/spin anisotropy 0.0001 0.0 0.0 1.0
+fix_modify      1 energy yes
+timestep        0.0001
+compute         s all spin
+compute         p all property/atom spx spy spz sp fmx fmy fmz
+thermo_style    custom step pe c_s[1] c_s[2] c_s[3] c_s[4] c_s[5] c_s[6]
+thermo_modify   format float %.15g
+thermo          10
+min_style       spin/lbfgs
+min_modify      discrete_factor 10.0 norm max
+minimize        1.0e-10 1.0e-10 60 1000
+write_dump      all custom w103spin_min_lbfgs.dump id c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] c_p[7] modify format float %.15g sort id

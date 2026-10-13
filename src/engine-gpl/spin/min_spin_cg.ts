@@ -18,7 +18,7 @@ import { minEnergyForce, type MinimizeParams } from '../../engine/run/minimizers
 import { minSpinEvaluateDt, minSpinTorqueNorm, spinMinSettings, spinMinStop } from './min_spin';
 
 /** Rodrigues' formula for the rotation by the vector p (rot is row-major 3x3 in the source's index order). */
-const rodrigues = (p: Float64Array, off: number, out: Float64Array): void => {
+export const rodrigues = (p: Float64Array, off: number, out: Float64Array): void => {
   const px = p[off], py = p[off + 1], pz = p[off + 2];
   if (Math.abs(px) < 1.0e-40 && Math.abs(py) < 1.0e-40 && Math.abs(pz) < 1.0e-40) {
     out.fill(0);
@@ -42,7 +42,7 @@ const rodrigues = (p: Float64Array, off: number, out: Float64Array): void => {
 };
 
 /** s_new = rot^T s (the source's vm3: out[i] = sum_j m[3j+i] v[j]). */
-const applyRot = (rot: Float64Array, s: Float64Array, off: number): void => {
+export const applyRot = (rot: Float64Array, s: Float64Array, off: number): void => {
   const v0 = s[off], v1 = s[off + 1], v2 = s[off + 2];
   s[off] = rot[0] * v0 + rot[3] * v1 + rot[6] * v2;
   s[off + 1] = rot[1] * v0 + rot[4] * v1 + rot[7] * v2;

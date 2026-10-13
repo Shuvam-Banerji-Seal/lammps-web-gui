@@ -80,7 +80,7 @@ describe('SPIN styles, batch 2', () => {
   it('refuses variables in setforce/spin and min_style spin', async () => {
     const v = await run(`${header}fix 2 all setforce/spin v_x 0.0 0.0\n`);
     expect(v.error).toContain('variables (v_x) are not implemented');
-    const m = await run(`${header}pair_style spin/exchange 4.0\npair_coeff * * exchange 4.0 0.02726 0.2171 1.841\nmin_style spin/lbfgs\nminimize 0 1e-6 10 100\n`);
-    expect(m.error).toContain("min_style 'spin/lbfgs' is not supported");
+    const m = await run(`${header}pair_style spin/exchange 4.0\npair_coeff * * exchange 4.0 0.02726 0.2171 1.841\nmin_style spin/lbfgs\nmin_modify line spin_cubic\nminimize 0 1e-6 10 100\n`);
+    expect(m.error).toContain('min_modify line spin_cubic (the spin/lbfgs line search) is not supported');
   });
 });

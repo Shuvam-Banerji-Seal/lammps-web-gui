@@ -396,9 +396,30 @@ export class System {
     return this.ff.compute(this.state, this.nb, this.geom, flags);
   }
 
+  /**
+   * The fix energies frozen at the last energy evaluation of a minimizer whose spins move after that evaluation
+   * (min_style spin/lbfgs). As native LAMMPS does (src/SPIN/fix_precession_spin.cpp at b332f28, compute_scalar
+   * returns eprec, summed in post_force): a thermo row shows the fix energies of the force evaluation, not of the
+   * spins after the update. null outside such a minimizer.
+   */
+  fixEnergyFrozen: Map<{ energy(): number }, number> | null = null;
+
+  /** Energy of one fix: the value frozen by freezeFixEnergies(), else the live value. */
+  fixEnergyOf(f: { energy(): number }): number {
+    const frozen = this.fixEnergyFrozen?.get(f);
+    return frozen ?? f.energy();
+  }
+
+  /** Freezes every fix energy at the current spins (see fixEnergyFrozen). */
+  freezeFixEnergies(): void {
+    const m = new Map<{ energy(): number }, number>();
+    for (const f of this.fixes) m.set(f, f.energy());
+    this.fixEnergyFrozen = m;
+  }
+
   fixEnergy(): number {
     let e = 0;
-    for (const f of this.fixes) if (f.thermoEnergy) e += f.energy();
+    for (const f of this.fixes) if (f.thermoEnergy) e += this.fixEnergyOf(f);
     return e;
   }
 

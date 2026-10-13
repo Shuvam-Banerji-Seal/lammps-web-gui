@@ -9,23 +9,25 @@ import type { FixFactory } from '../../engine/styles';
 import type { KSpace } from '../../engine/force/types';
 import { PairSpinDipoleCut } from '../spin/pair_spin_dipole_cut';
 import { PairSpinNeel } from '../spin/pair_spin_neel';
+import { PairSpinDipoleLong } from '../spin/pair_spin_dipole_long';
+import { KSpaceEwaldDipoleSpin } from '../spin/ewald_dipole_spin';
 import { minSpin } from '../spin/min_spin';
 import { minSpinCG } from '../spin/min_spin_cg';
+import { minSpinLBFGS } from '../spin/min_spin_lbfgs';
 import { FixLangevinSpinT } from '../spin/fix_langevin_spin';
 
-// Not ported (refused by name, see src/engine/refusedStyles.ts): the long-range dipole pair style and its kspace
-// solvers (pair spin/dipole/long with ewald/dipole/spin and pppm/dipole/spin).
-const DIPOLE_LONG = 'pair_style spin/dipole/long is not implemented in the browser engine (the dipolar kspace styles ewald/dipole/spin and pppm/dipole/spin are not ported)';
+// Not ported (refused by name, see src/engine/refusedStyles.ts): kspace_style pppm/dipole/spin (pppm_dipole_spin.cpp)
+const PPPM_DIPOLE_SPIN = 'kspace_style pppm/dipole/spin is not implemented in the browser engine (the PPPM dipolar solver is not ported; use ewald/dipole/spin)';
 
 export const PAIRS: Record<string, () => Pair> = {
   'spin/dipole/cut': () => new PairSpinDipoleCut(),
   'spin/neel': () => new PairSpinNeel(),
-  'spin/dipole/long': () => { throw new StyleError(DIPOLE_LONG); },
+  'spin/dipole/long': () => new PairSpinDipoleLong(),
 };
 
 export const KSPACES: Record<string, () => KSpace> = {
-  'ewald/dipole/spin': () => { throw new StyleError('kspace_style ewald/dipole/spin is not implemented in the browser engine (the dipolar kspace styles are not ported; see pair spin/dipole/long)'); },
-  'pppm/dipole/spin': () => { throw new StyleError('kspace_style pppm/dipole/spin is not implemented in the browser engine (the dipolar kspace styles are not ported; see pair spin/dipole/long)'); },
+  'ewald/dipole/spin': () => new KSpaceEwaldDipoleSpin(),
+  'pppm/dipole/spin': () => { throw new StyleError(PPPM_DIPOLE_SPIN); },
 };
 
 export const FIXES: Record<string, FixFactory> = {
@@ -35,6 +37,5 @@ export const FIXES: Record<string, FixFactory> = {
 export const MINIMIZERS: Record<string, MinimizerFn> = {
   spin: minSpin,
   'spin/cg': minSpinCG,
-  // min_spin_lbfgs.cpp is not ported (refused by name, see src/engine/refusedStyles.ts)
-  'spin/lbfgs': () => { throw new StyleError("min_style 'spin/lbfgs' is not supported by the browser engine (the L-BFGS spin minimizer is not ported); supported: spin, spin/cg"); },
+  'spin/lbfgs': minSpinLBFGS,
 };

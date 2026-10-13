@@ -1,0 +1,21 @@
+# oracle: fix store/state 0 stores the positions at the definition; compute reduce compares them with the current ones
+# oracle-compare: rel=1e-12 abs=1e-14
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.44 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+timestep        0.005
+fix             1 all nve
+fix             s all store/state 0 x y z
+compute         st all reduce sum f_s[1] f_s[2] f_s[3]
+compute         cu all reduce sum x y z
+thermo_style    custom step temp c_st[1] c_st[2] c_st[3] c_cu[1] c_cu[2] c_cu[3]
+thermo_modify   format float %.15g
+thermo          2
+run             10

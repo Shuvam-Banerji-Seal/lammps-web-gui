@@ -1,0 +1,26 @@
+# oracle: fix nvt chain state survives write_restart/read_restart: the 20-step run equals a 10 + 10 run with a restart in between
+# oracle-compare: rel=1e-12 abs=1e-14
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.44 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+timestep        0.005
+fix             1 all nvt temp 1.44 1.44 0.5 tchain 3
+thermo_style    custom step temp pe f_1
+thermo_modify   format float %.15g
+thermo          10
+run             10
+write_restart   w89fix_nvt.restart
+clear
+read_restart    w89fix_nvt.restart
+fix             1 all nvt temp 1.44 1.44 0.5 tchain 3
+thermo_style    custom step temp pe f_1
+thermo_modify   format float %.15g
+thermo          10
+run             10

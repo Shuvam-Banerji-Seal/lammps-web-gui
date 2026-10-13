@@ -77,7 +77,9 @@ import { FixRigid } from './fix/rigid';
 import { FixEnforce2d } from './fix/enforce2d';
 import { FixNeb } from './fix/neb';
 import { FixNH } from './fix/nh';
-import { FixLangevin, FixTempBerendsen, FixTempCSVR, FixTempRescale } from './fix/thermostats';
+import { FixPressBerendsen } from './fix/press_berendsen';
+import { FixStoreState } from './fix/store_state';
+import { FixLangevin, FixTempBerendsen, FixTempRescale } from './fix/thermostats';
 import { ComputeTemp } from './compute/temp';
 import { ComputeKE } from './compute/ke';
 import { ComputePE } from './compute/pe';
@@ -139,13 +141,13 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   enforce2d: (s, i, g, a) => new FixEnforce2d(s, i, g, a),
   neb: (s, i, g, a) => new FixNeb(s, i, g, a),
   nvt: (s, i, g, a) => new FixNH(s, i, g, a, 'nvt'),
+  'press/berendsen': (s, i, g, a) => new FixPressBerendsen(s, i, g, a),
+  'store/state': (s, i, g, a) => new FixStoreState(s, i, g, a),
   npt: (s, i, g, a) => new FixNH(s, i, g, a, 'npt'),
   nph: (s, i, g, a) => new FixNH(s, i, g, a, 'nph'),
   langevin: (s, i, g, a) => new FixLangevin(s, i, g, a),
   'temp/berendsen': (s, i, g, a) => new FixTempBerendsen(s, i, g, a),
   'temp/rescale': (s, i, g, a) => new FixTempRescale(s, i, g, a),
-  'temp/csvr': (s, i, g, a) => new FixTempCSVR(s, i, g, a, 'temp/csvr'),
-  'temp/csld': (s, i, g, a) => new FixTempCSVR(s, i, g, a, 'temp/csld'),
   shake: (s, i, g, a) => new FixShake(s, i, g, a, 'shake'),
   rattle: (s, i, g, a) => new FixShake(s, i, g, a, 'rattle'),
   ...Object.fromEntries(['rigid', 'rigid/nve', 'rigid/small', 'rigid/nve/small'].map((st) => [st, (s: System, i: string, g: string, a: string[]) => new FixRigid(s, i, g, a, st)])),

@@ -105,7 +105,27 @@ import type { ComputePressure } from '../compute/pressure';
 
 
 type Dim = 0 | 1 | 2 | 3 | 4 | 5;   // x y z yz xz xy (Voigt order as LAMMPS documents for tensors)
+
 const KEYS = ['x', 'y', 'z', 'yz', 'xz', 'xy'];
+
+/**
+ * The thermostat and barostat variables of fix nvt/npt/nph that a binary restart file holds. fix_nh.html: "These
+ * fixes writes the state of all the thermostat and barostat variables to binary restart files. See the read_restart
+ * command for info on how to re-specify a fix in an input script that reads a restart file, so that the operation of
+ * the fix continues in an uninterrupted fashion."
+ */
+export interface NHRestart {
+  eta: number[];
+  etaDot: number[];
+  etap: number[];
+  etapDot: number[];
+  omegaDot: number[];
+  omegaPos: number[];
+  ecoupleCum: number;
+  /** the strain reference (volume and box lengths) of the run that wrote the file */
+  vol0: number;
+  len0: number[];
+}
 
 export class FixNH extends Fix {
   readonly style: string;
@@ -142,6 +162,8 @@ export class FixNH extends Fix {
   private dthalf = 0; private dt4 = 0; private dt8 = 0; private dtf = 0; private dtv = 0;
   private vol0 = 0;
   private len0: number[] = [1, 1, 1];   // box lengths at the start of the run (strain reference)
+  /** the strain reference came from a restart file: the next init keeps it */
+  private refRestored = false;
   private ecoupleCum = 0;
   private scaleTilt = [true, true, true];   // yz xz xy with their second dimension
 
@@ -238,10 +260,18 @@ export class FixNH extends Fix {
       if (this.pFlag[4]) this.scaleTilt[1] = false;
       if (this.pFlag[5]) this.scaleTilt[2] = false;
     }
+    // Measured with native LAMMPS (black box): "ERROR: Thermostat in fix npt is incompatible with ptemp command".
+    if (this.tstat && this.pstat && this.ptemp !== null) throw new StyleError(`fix ${id}: thermostat in fix ${this.style} is incompatible with ptemp command`);
     this.eta = new Float64Array(this.tchain);
     this.etaDot = new Float64Array(this.tchain + 1);
     this.etap = new Float64Array(Math.max(1, this.pchain));
     this.etapDot = new Float64Array(Math.max(1, this.pchain) + 1);
+    // a restart file holding this fix's state is applied when the fix is re-specified (restart.ts)
+    const saved = (sys.pendingFixData.get(id) as { nh?: NHRestart } | undefined)?.nh;
+    if (saved) {
+      sys.pendingFixData.delete(id);
+      this.restoreState(saved);
+    }
     this.tempId = `${id}_temp`;
     this.tempCompute = ownCompute(sys, this.tempId, this.pstat ? 'all' : group, 'temp', []);
     this.vectorFlag = true;
@@ -305,8 +335,11 @@ export class FixNH extends Fix {
     this.tempCompute = this.sys.compute(this.tempId);
     if (this.pressId) this.pressCompute = this.sys.compute(this.pressId);
     this.resetDt();
-    this.vol0 = this.sys.geom.volume(s.dimension);
-    this.len0 = [this.sys.geom.lx, this.sys.geom.ly, this.sys.geom.lz];
+    if (this.refRestored) this.refRestored = false;
+    else {
+      this.vol0 = this.sys.geom.volume(s.dimension);
+      this.len0 = [this.sys.geom.lx, this.sys.geom.ly, this.sys.geom.lz];
+    }
     // barostat target temperature
     this.tTarget = this.tstat ? ramp(this.sys, this.tStart, this.tStop) : this.currentTemp();
     if (this.pstat) {
@@ -479,7 +512,7 @@ export class FixNH extends Fix {
 
   private kick(): void {
     const s = this.sys.state;
-    const { v, f, mask, type } = s;
+    const { v, f, mask } = s;
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & this.groupBit)) continue;
       const c = this.dtf / massOf(s, i);
@@ -914,6 +947,28 @@ export class FixNH extends Fix {
   }
 
   /** Energy exchanged with the reservoirs (extended-system terms). */
+  /** The chain and barostat variables, as the restart file stores them. */
+  restartState(): NHRestart {
+    return {
+      eta: Array.from(this.eta), etaDot: Array.from(this.etaDot), etap: Array.from(this.etap), etapDot: Array.from(this.etapDot),
+      omegaDot: Array.from(this.omegaDot), omegaPos: Array.from(this.omegaPos), ecoupleCum: this.ecoupleCum,
+      vol0: this.vol0, len0: this.len0.slice(),
+    };
+  }
+
+  private restoreState(r: NHRestart): void {
+    const same = (a: Float64Array, b: number[]) => a.length === b.length;
+    if (!same(this.eta, r.eta) || !same(this.etaDot, r.etaDot) || !same(this.etap, r.etap) || !same(this.etapDot, r.etapDot)) {
+      throw new StyleError(`fix ${this.id}: the restart file was written with other tchain or pchain settings`);
+    }
+    this.eta.set(r.eta); this.etaDot.set(r.etaDot); this.etap.set(r.etap); this.etapDot.set(r.etapDot);
+    this.omegaDot.set(r.omegaDot); this.omegaPos.set(r.omegaPos);
+    this.ecoupleCum = r.ecoupleCum;
+    this.vol0 = r.vol0;
+    this.len0 = r.len0.slice();
+    this.refRestored = true;
+  }
+
   ecouple(): number {
     const s = this.sys.state;
     const kB = s.units.boltz;
@@ -1018,7 +1073,7 @@ export class FixNH extends Fix {
     const qT = (k: number) => (k === 0 ? dof * kt / (tfreq * tfreq) : kt / (tfreq * tfreq));
     let pfreq = 0;
     for (const d of dims) if (this.pFlag[d]) pfreq = Math.max(pfreq, 1 / this.pPeriod[d]);
-    const qP = (k: number) => ktP / (pfreq * pfreq);
+    const qP = () => ktP / (pfreq * pfreq);
     return [
       { n: nT, value: (k) => this.eta[k] },
       { n: nT, value: (k) => this.etaDot[k] },
@@ -1031,7 +1086,7 @@ export class FixNH extends Fix {
       { n: dims.length, value: (j) => peOmega(j) },
       { n: dims.length, value: (j) => (dims.length === 1 ? [0, 1, 2] : [dims[j]]).reduce((a, d) => a + 0.5 * this.omegaMass[d] * this.omegaDot[d] * this.omegaDot[d], 0) },
       { n: nP, value: (k) => ktP * this.etap[k] },
-      { n: nP, value: (k) => 0.5 * qP(k) * this.etapDot[k] * this.etapDot[k] },
+      { n: nP, value: (k) => 0.5 * qP() * this.etapDot[k] * this.etapDot[k] },
       // "PE_strain[1] = scalar strain energy (energy units)" (fix_nh.rst): the diagonal barostat's strain energy
       // (diagonal couplings only; the measured iso layout has no such entry)
       { n: this.pstat && !tilt && this.couple === 'none' ? 1 : 0, value: () => this.strainEnergy() },

@@ -55,7 +55,7 @@ export class ComputeSpin extends Compute {
     // the magnetic energy: the spin pair style plus the precession/spin fixes (measured with native LAMMPS: the
     // zeeman, anisotropy and cubic energies are included in the fifth component)
     let e = s.spinEnergy ?? 0;
-    for (const f of this.sys.fixes) if (f.style === 'precession/spin') e += f.energy();
+    for (const f of this.sys.fixes) if (f.style === 'precession/spin') e += this.sys.fixEnergyOf(f);
     out[4] = e;
     out[5] = den !== 0 ? (SPIN_HBAR / KB_METAL) * num / (2 * den) : 0;
     this.vector = out;

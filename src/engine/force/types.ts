@@ -358,6 +358,11 @@ export abstract class Pair {
    */
   minPerAtom?(): PairMinPerAtom;
   /**
+   * True when pair_coeff args are the style's own form rather than "I J" atom types (pair_eff_cut.cpp: an
+   * ECP line "I s A B C" or "I p A B C D E" keeps its words). The command then passes the words unchanged.
+   */
+  rawCoeff?(args: string[]): boolean;
+  /**
    * pair_modify shift/tail on a style that has no such term. The style's docs say it "does not support"
    * the option (pair_morse.rst, pair_soft.rst, pair_yukawa.rst, pair_lj_cubic.rst, pair_lj_smooth.rst,
    * pair_lj_smooth_linear.rst, pair_eam.rst, pair_sw.rst, pair_tersoff.rst); native LAMMPS accepts it and

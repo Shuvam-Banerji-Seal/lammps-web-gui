@@ -216,3 +216,68 @@ export const cutoff = (x: number): number => (((20 * x - 70) * x + 84) * x - 35)
 
 /** pair_eff_inline.h dcutoff: derivative of cutoff. */
 export const dcutoff = (x: number): number => (((140 * x - 420) * x + 420) * x - 140) * x * x * x;
+
+/**
+ * pair_eff_inline.h ElecCoreNuc: the Coulomb interaction of a pseudo-core (espin 3) charge q with a nucleus, the core
+ * being a Gaussian of radius re1 (no radial force on the core). Returns the energy and the pair force term.
+ */
+export const elecCoreNuc = (q: number, rc: number, re1: number): { e: number; f: number } => {
+  const a = 1.4142135623730951 / re1;
+  const arc = a * rc;
+  const { f, df } = ierfoverx1(arc);
+  return { e: q * a * f, f: -q * a * a * df };
+};
+
+/** pair_eff_inline.h ElecCoreCore: pseudo-core (espin 3) to pseudo-core interaction, the size re = sqrt(re1^2 + re2^2). */
+export const elecCoreCore = (q: number, rc: number, re1: number, re2: number): { e: number; f: number } => {
+  const re = Math.sqrt(re1 * re1 + re2 * re2);
+  const a = 1.4142135623730951 / re;
+  const arc = a * rc;
+  const { f, df } = ierfoverx1(arc);
+  return { e: q * a * f, f: -q * a * a * df };
+};
+
+/**
+ * pair_eff_inline.h ElecCoreElec: pseudo-core charge q (its radius re1) with an electron of radius re2. The C++ code
+ * subtracts its derivatives (`*frc -= dEdr; *fre2 -= dEdr2`), so f and f2 are returned already negated.
+ */
+export const elecCoreElec = (q: number, rc: number, re1: number, re2: number): { e: number; f: number; f2: number } => {
+  const re = Math.sqrt(re1 * re1 + re2 * re2);
+  const a = 1.4142135623730951 / re;
+  const arc = a * rc;
+  const { f, df } = ierfoverx1(arc);
+  const E = -q * a * f;
+  const dEdr = -q * a * df * a;
+  const fre = q * a * (f + arc * df) / (re * re);
+  const dEdr2 = fre * re2;
+  return { e: E, f: -dEdr, f2: -dEdr2 };
+};
+
+/**
+ * pair_eff_inline.h PauliCoreElec: the Pauli repulsion of a pseudo-core (s-type ECP, parameters A, B, C) with an
+ * electron of radius re2. Returns the energy and the negated derivatives, as in the C++ `*frc -= ...` form.
+ */
+export const pauliCoreElec = (rc: number, re2: number, A: number, B: number, C: number): { ep: number; f: number; f2: number } => {
+  const rcsq = rc * rc;
+  const ssq = re2 * re2;
+  const E = A * Math.exp((-B * rcsq) / (ssq + C));
+  const dEdrc = -2 * A * B * rc * Math.exp(-B * rcsq / (ssq + C)) / (ssq + C);
+  const dEdre2 = 2 * A * B * re2 * rcsq * Math.exp(-B * rcsq / (ssq + C)) / ((C + ssq) * (C + ssq));
+  return { ep: E, f: -dEdrc, f2: -dEdre2 };
+};
+
+/**
+ * pair_eff_inline.h PauliCorePElec: the Pauli repulsion of a p-type pseudo-core (parameters A..E) with an electron
+ * of radius re2. Same sign convention as pauliCoreElec.
+ */
+export const pauliCorePElec = (rc: number, re2: number, A: number, B: number, C: number, D: number, Ep: number): { ep: number; f: number; f2: number } => {
+  const u = rc - C * re2;
+  const g = Math.pow(2.0 / (B / re2 + re2 / B), 5.0);
+  const en = A * g * Math.pow(u, 2.0) * Math.exp(-D * Math.pow(u, 2.0) / (Ep + re2 * re2));
+  const dEdrc = A * g * 2.0 * u * Math.exp(-D * Math.pow(u, 2.0) / (Ep + re2 * re2)) +
+    en * (-D * 2.0 * u / (Ep + re2 * re2));
+  const dEdre2 = en * (-5.0 / (B / re2 + re2 / B) * (-B / (re2 * re2) + 1.0 / B)) +
+    A * g * 2.0 * u * (-C) * Math.exp(-D * Math.pow(u, 2.0) / (Ep + re2 * re2)) +
+    en * (2.0 * D * u * (C * Ep + rc * re2) / Math.pow((Ep + re2 * re2), 2.0));
+  return { ep: en, f: -dEdrc, f2: -dEdre2 };
+};

@@ -15,6 +15,8 @@ import type { EngineEvent, ThermoRow } from '../src/engine/types';
  *   # oracle-potentials: unmodified LAMMPS potential files from third_party/lammps/potentials
  *   # oracle-files: files it writes that are compared token by token
  *   # oracle-compare: thermo=all|first|first-last atoms=all|none rel=1e-8 abs=1e-10 skip=kw1,kw2 atomskip=c1,c2
+ *                     atomrel=R filerel=R (optional: the per-atom and written-file tolerances, relative, default
+ *                     100*max(rel,1e-9) and 1e-6)
  *   # oracle-partitions: N   the case runs on N replicas (partitions); its fixture holds the NEB table
  *                            rows and the "Climbing replica" lines, compared with the same rel/abs
  */
@@ -41,13 +43,17 @@ const directive = (text: string, key: string): string[] => {
 };
 
 const options = (text: string) => {
-  const o = { thermo: 'all', atoms: 'all', rel: 1e-8, abs: 1e-10, skip: new Set<string>(), atomskip: new Set<string>() };
+  const o: { thermo: string; atoms: string; rel: number; abs: number; atomrel?: number; filerel?: number; skip: Set<string>; atomskip: Set<string> } = {
+    thermo: 'all', atoms: 'all', rel: 1e-8, abs: 1e-10, skip: new Set<string>(), atomskip: new Set<string>(),
+  };
   for (const w of directive(text, 'oracle-compare')) {
     const [k, v] = w.split('=');
     if (k === 'thermo') o.thermo = v;
     else if (k === 'atoms') o.atoms = v;
     else if (k === 'rel') o.rel = Number(v);
     else if (k === 'abs') o.abs = Number(v);
+    else if (k === 'atomrel') o.atomrel = Number(v);
+    else if (k === 'filerel') o.filerel = Number(v);
     else if (k === 'skip') for (const s of v.split(',')) o.skip.add(s);
     else if (k === 'atomskip') for (const s of v.split(',')) o.atomskip.add(s);
   }
@@ -165,7 +171,8 @@ describe('oracle parity with native LAMMPS', () => {
             if (d > worst) { worst = d; where = `atom ${b.id} ${c}: engine ${a[c]} vs LAMMPS ${b[c]}`; }
           }
         }
-        if (worst > Math.max(o.rel, 1e-9) * 100) throw new Error(`${name}: per-atom mismatch ${worst.toExponential(2)} (${where})`);
+        const atomTol = o.atomrel ?? Math.max(o.rel, 1e-9) * 100;
+        if (worst > atomTol) throw new Error(`${name}: per-atom mismatch ${worst.toExponential(2)} (${where})`);
       }
       // written files
       for (const [f, ref] of Object.entries(fx.files)) {
@@ -175,7 +182,7 @@ describe('oracle parity with native LAMMPS', () => {
         // potential files written by the engine) is the day of the run, so it is not compared
         const strip = (t: string) => (f.endsWith('.data') ? t.split('\n').slice(1).join('\n') : t)
           .replace(/\bDATE: \d{4}-\d{2}-\d{2}\b/g, 'DATE: <date>');
-        const diff = sameText(strip(mine!), strip(ref), 1e-6);
+        const diff = sameText(strip(mine!), strip(ref), o.filerel ?? 1e-6);
         if (diff) throw new Error(`${name}: file ${f} differs at ${diff}`);
       }
     }, 120_000);

@@ -1,10 +1,10 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28): src/EFF/pair_eff_cut.cpp and
  * pair_eff_cut.h (class PairEffCut, pair_style eff/cut: the electron force field pair style with the
- * limit/eradius and pressure/evirials keywords, the fixed-core (espin 2) and electron (espin +-1) interactions,
- * the radial electron forces erforce and the radial virial, and the pvector of compute pair: KE, Pauli, Coulomb
- * and the radius restraint). Contributing author (from the source): Andres Jaramillo-Botero (Caltech). The
- * pseudo-core (ECP, espin 3) terms and the pair_coeff ECP parameters are not ported (a StyleError names them).
+ * limit/eradius, pressure/evirials and ecp keywords, the fixed-core (espin 2), electron (espin +-1) and
+ * pseudo-core (ECP, espin 3) interactions, the radial electron forces erforce and the radial virial, the ECP
+ * Pauli parameters of pair_coeff, and the pvector of compute pair: KE, Pauli, Coulomb and the radius restraint).
+ * Contributing author (from the source): Andres Jaramillo-Botero (Caltech). espin 4 pseudo-cores are refused.
  * LAMMPS is Copyright (2003) Sandia Corporation and distributed under the GNU General Public License, version 2
  * (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
@@ -13,12 +13,30 @@ import { parseNum } from '../../engine/force/util';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { ELECTRON_RADIUS, ELECTRON_RFORCE, ELECTRON_SPIN, isElectronStyle } from '../../engine/atoms';
 import type { SimState } from '../../engine/types';
-import { kinElec, elecNucNuc, elecNucElec, elecElecElec, pauliElecElec, smallRForce, cutoff, dcutoff } from './math';
+import {
+  kinElec, elecNucNuc, elecNucElec, elecElecElec, pauliElecElec, smallRForce, cutoff, dcutoff,
+  elecCoreNuc, elecCoreCore, elecCoreElec, pauliCoreElec, pauliCorePElec,
+} from './math';
 
 /** units real: qqr2e and the Hartree/Bohr conversions used by pair eff/cut (initStyle, "Check your units" otherwise). */
 const QQR2E_REAL = 332.06371;
 const QQR2E_ELECTRON = 1.0;
 const HHMSS2E_REAL = 175.72044219620075;
+/** hartree -> kcal/mol (h2e of pair_eff_cut.cpp settings), applied to the ECP Pauli terms. */
+const H2E_REAL = 627.509;
+/** Largest atomic number with ECP parameters (the arrays are indexed by element Z, as in pair_eff_cut.cpp). */
+const ECP_MAX_Z = 100;
+
+/** Default ECP parameters by element Z (pair_eff_cut.cpp settings): s-type (D = E = 0) or p-type (D, E). */
+const ECP_DEFAULTS: Record<number, [number, number, number, number, number]> = {
+  6: [22.721015, 0.728733, 1.103199, 17.695345, 6.693621],
+  7: [16.242367, 0.602818, 1.081856, 7.150803, 5.351936],
+  8: [29.5185, 0.32995, 1.21676, 11.98757, 3.073417],
+  13: [0.486, 1.049, 0.207, 0.0, 0.0],
+  14: [0.320852, 2.283269, 0.814857, 0.0, 0.0],
+};
+/** The element symbols of the ecp keyword and their Z (pair_eff_cut.cpp settings). */
+const ECP_ELEMENTS: Record<string, number> = { C: 6, N: 7, O: 8, Al: 13, Si: 14 };
 
 /** The per-atom electron property stored in the state (created by atom_style electron). */
 const electronArray = (s: SimState, name: string): Float64Array => {
@@ -39,21 +57,52 @@ export class PairEffCut extends Pair {
   pressureEvirials = false;
   /** Unit conversion: hartree -> energy units of the style (1 for units electron, see initStyle). */
   private hhmss2e = 1;
+  /** hartree -> energy units of the ECP Pauli terms (h2e in pair_eff_cut.cpp: 1 for units electron). */
+  private h2e = 1;
   private p!: PairParams;
+  /** ecp keyword: the element Z of each atom type (pair_eff_cut.cpp ecp_type, indexed by type). */
+  private ecpType: number[] = [];
+  /** ECP Pauli parameters A..E indexed by element Z (pair_eff_cut.cpp PAULI_CORE_A..E). */
+  private pauliA = new Float64Array(ECP_MAX_Z);
+  private pauliB = new Float64Array(ECP_MAX_Z);
+  private pauliC = new Float64Array(ECP_MAX_Z);
+  private pauliD = new Float64Array(ECP_MAX_Z);
+  private pauliE = new Float64Array(ECP_MAX_Z);
+  private ecpFound = false;
   /** compute pair vector: [KE, Pauli, ecoul, radial restraint] (pair_eff_cut.cpp pvector). */
   private pvector = new Float64Array(4);
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length < 1) throw new StyleError('Illegal pair_style command');
+    // pair_eff_cut.cpp settings: the default ECP parameters of C, N, O, Al and Si are set on every pair_style
+    for (const z of Object.keys(ECP_DEFAULTS).map(Number)) {
+      const d = ECP_DEFAULTS[z];
+      this.pauliA[z] = d[0]; this.pauliB[z] = d[1]; this.pauliC[z] = d[2]; this.pauliD[z] = d[3]; this.pauliE[z] = d[4];
+    }
     this.cutGlobal = parseNum(args[0], 'cutoff');
     this.limitEradius = false;
     this.pressureEvirials = false;
+    this.ecpFound = false;
+    this.ecpType = [];
     let iarg = 1;
     while (iarg < args.length) {
       const w = args[iarg];
       if (w === 'limit/eradius') { this.limitEradius = true; iarg += 1; }
       else if (w === 'pressure/evirials') { this.pressureEvirials = true; iarg += 1; }
-      else if (w === 'ecp') throw new StyleError('pair_style eff/cut ecp (pseudo-core electrons, espin 3) is not ported yet');
+      else if (w === 'ecp') {
+        // pair_eff_cut.cpp settings: "ecp" takes pairs "atomtype element" up to the end of the command
+        iarg += 1;
+        while (iarg < args.length) {
+          const t = Number(args[iarg]);
+          if (!Number.isInteger(t) || t < 1) throw new StyleError(`Illegal pair_style eff/cut ecp atom type: ${args[iarg]}`);
+          const el = args[iarg + 1];
+          const z = el !== undefined && Object.hasOwn(ECP_ELEMENTS, el) ? ECP_ELEMENTS[el] : undefined;
+          if (z === undefined) throw new StyleError(`No default parameters for this atom ECP (ecp ${args[iarg]} ${el ?? ''})`);
+          this.ecpType[t] = z;
+          iarg += 2;
+          this.ecpFound = true;
+        }
+      }
       else throw new StyleError('Illegal pair style command');
     }
     // pair_eff_cut.cpp settings: the cutoffs that were set explicitly are reset to the new global cutoff
@@ -69,13 +118,43 @@ export class PairEffCut extends Pair {
     this.p = new PairParams(ntypes, ['cut']);
   }
 
+  /** The ECP lines "I s ..." and "I p ..." keep their words (pair_eff_cut.cpp coeff: arg[1] is "s" or "p"). */
+  rawCoeff(args: string[]): boolean {
+    return args.length >= 2 && args[0] !== '*' && args[1] !== '*' && (args[1] === 's' || args[1] === 'p');
+  }
+
   coeff(args: string[], _ctx: StyleContext): void {
     if (this.ntypes === 0) throw new StyleError('pair_coeff needs the simulation box (create_box) first');
-    if (args.length < 2 || args.length > 3) throw new StyleError('Incorrect args for pair coefficients');
-    // pair_coeff I J with I, J numbers are the ECP parameter lines (pair_eff_cut.cpp coeff, else branch)
-    if (args[0] !== '*' && args[1] !== '*') throw new StyleError('pair_coeff for electron types (ECP parameters s and p) is not ported yet; use pair_coeff * *');
+    if (args.length < 2) throw new StyleError('Incorrect args for pair coefficients');
+    if (args[0] !== '*' && args[1] !== '*') {
+      // pair_eff_cut.cpp coeff, else branch: "pair_coeff <atom type> s A B C" or "... p A B C D E" (ECP parameters)
+      const t = Number(args[0]);
+      if (!Number.isInteger(t) || t < 1) throw new StyleError(`Illegal pair_coeff ECP atom type: ${args[0]}`);
+      const z = this.ecpElement(t);
+      if (args[1] === 's') {
+        if (args.length !== 5) throw new StyleError('Illegal pair_coeff command: "s" takes A B C');
+        this.setPauli(z, [parseNum(args[2], 'A'), parseNum(args[3], 'B'), parseNum(args[4], 'C'), 0, 0]);
+      } else if (args[1] === 'p') {
+        if (args.length !== 7) throw new StyleError('Illegal pair_coeff command: "p" takes A B C D E');
+        this.setPauli(z, [parseNum(args[2], 'A'), parseNum(args[3], 'B'), parseNum(args[4], 'C'), parseNum(args[5], 'D'), parseNum(args[6], 'E')]);
+      } else throw new StyleError('Illegal pair_coeff command');
+      return;
+    }
+    if (args.length > 3) throw new StyleError('Incorrect args for pair coefficients');
     const cutOne = args.length === 3 ? parseNum(args[2], 'cutoff') : this.cutGlobal;
     this.p.setRange(args[0], args[1], [cutOne]);
+  }
+
+  /** The element Z of an atom type set by the ecp keyword of pair_style (refused when the type has none). */
+  private ecpElement(type: number): number {
+    const z = this.ecpType[type];
+    if (z === undefined) throw new StyleError(`pair_coeff ECP: atom type ${type} has no element (pair_style eff/cut ecp ${type} <element>)`);
+    return z;
+  }
+
+  /** Stores the ECP parameters A..E of element z (pair_eff_cut.cpp coeff: PAULI_CORE_*[ecp_type[ecp]]). */
+  private setPauli(z: number, v: number[]): void {
+    this.pauliA[z] = v[0]; this.pauliB[z] = v[1]; this.pauliC[z] = v[2]; this.pauliD[z] = v[3]; this.pauliE[z] = v[4];
   }
 
   initStyle(ctx: StyleContext): void {
@@ -87,13 +166,20 @@ export class PairEffCut extends Pair {
     electronArray(s, ELECTRON_RADIUS);
     electronArray(s, ELECTRON_RFORCE);
     // pair_eff_cut.cpp settings: real units and electron units only, with their Hartree conversions
-    if (s.units.qqr2e === QQR2E_REAL) this.hhmss2e = HHMSS2E_REAL;
-    else if (s.units.qqr2e === QQR2E_ELECTRON) this.hhmss2e = 1;
+    if (s.units.qqr2e === QQR2E_REAL) { this.hhmss2e = HHMSS2E_REAL; this.h2e = H2E_REAL; }
+    else if (s.units.qqr2e === QQR2E_ELECTRON) { this.hhmss2e = 1; this.h2e = 1; }
     else throw new StyleError('Check your units');
+    // pair_eff_cut.cpp init_style: espin 3 (pseudo-core) atoms need the ecp keyword of pair_style
     const spin = electronArray(s, ELECTRON_SPIN);
+    let anyCore = false;
     for (let i = 0; i < s.n; i++) {
-      if (spin[i] === 3 || spin[i] === 4) throw new StyleError('pair_style eff/cut: atoms with espin 3 or 4 (pseudo-core, ECP) are not ported yet');
+      if (spin[i] === 4) throw new StyleError('pair_style eff/cut: atoms with espin 4 (pseudo-core) are not ported yet');
+      if (spin[i] === 3) {
+        anyCore = true;
+        this.ecpElement(s.type[i]);
+      }
     }
+    if (anyCore && !this.ecpFound) throw new StyleError('Need to specify ECP type on pair_style command');
   }
 
   initOne(i: number, j: number): number {
@@ -137,14 +223,18 @@ export class PairEffCut extends Pair {
 
   /** Pair::ev_tally_xyz with the electron conventions of ev_tally_eff (pair_eff_cut.cpp): energy to ecoul, pair virial. */
   private tallyXYZ(pc: PairCompute, i: number, j: number, energy: number, fx: number, fy: number, fz: number, dx: number, dy: number, dz: number): void {
+    // the six virial terms are written out (no array per pair: this runs for every neighbour pair)
     const a = pc.acc;
     a.ecoul += energy;
-    const v = [dx * fx, dy * fy, dz * fz, dx * fy, dx * fz, dy * fz];
-    for (let c = 0; c < 6; c++) a.virial[c] += v[c];
+    const v0 = dx * fx, v1 = dy * fy, v2 = dz * fz, v3 = dx * fy, v4 = dx * fz, v5 = dy * fz;
+    a.virial[0] += v0; a.virial[1] += v1; a.virial[2] += v2; a.virial[3] += v3; a.virial[4] += v4; a.virial[5] += v5;
     if (pc.eatom) { pc.eatom[i] += 0.5 * energy; pc.eatom[j] += 0.5 * energy; }
     if (pc.vatom) {
       const va = pc.vatom;
-      for (let c = 0; c < 6; c++) { va[6 * i + c] += 0.5 * v[c]; va[6 * j + c] += 0.5 * v[c]; }
+      va[6 * i] += 0.5 * v0; va[6 * i + 1] += 0.5 * v1; va[6 * i + 2] += 0.5 * v2;
+      va[6 * i + 3] += 0.5 * v3; va[6 * i + 4] += 0.5 * v4; va[6 * i + 5] += 0.5 * v5;
+      va[6 * j] += 0.5 * v0; va[6 * j + 1] += 0.5 * v1; va[6 * j + 2] += 0.5 * v2;
+      va[6 * j + 3] += 0.5 * v3; va[6 * j + 4] += 0.5 * v4; va[6 * j + 5] += 0.5 * v5;
     }
   }
 
@@ -244,6 +334,8 @@ export class PairEffCut extends Pair {
 
         let ecoul = 0, epauli = 0, fpair = 0, sFpair = 0;
         let e1rforce = 0, e2rforce = 0, sE1 = 0, sE2 = 0;
+        // ECP (pseudo-core) Pauli energy and force, kept apart as in pair_eff_cut.cpp (ecp_epauli, ecp_fpair)
+        let ecpEpauli = 0, ecpFpair = 0;
         const absI = Math.abs(si), absJ = Math.abs(sj);
         if (si === 0 && sj === 0) {
           // nucleus (i) - nucleus (j) Coul interaction
@@ -353,21 +445,108 @@ export class PairEffCut extends Pair {
           sFpair *= 2;
           epauli *= hh;
           sFpair *= hh;
+        }
+        // pseudo-core nucleus (i) - nucleus (j) interaction (ElecCoreNuc, the core is a Gaussian of radius eradius[i])
+        else if (si === 3 && sj === 0) {
+          const r = elecCoreNuc(qi * qj, rc, ei);
+          ecoul += r.e; fpair += r.f;
+        }
+
+        // nucleus (i) - pseudo-core nucleus (j) interaction
+        else if (si === 0 && sj === 3) {
+          const r = elecCoreNuc(qi * qj, rc, ej);
+          ecoul += r.e; fpair += r.f;
+        }
+
+        // pseudo-core (i) - electron/fixed-core electrons (j) interactions
+        else if (si === 3 && (absJ === 1 || sj === 2)) {
+          const zc = this.ecpElement(type[i]);
+          const A = this.pauliA[zc], B = this.pauliB[zc], C = this.pauliC[zc], D = this.pauliD[zc], Ep = this.pauliE[zc];
+          const sType = D === 0 && Ep === 0;
+          let ecpE2 = 0;
+          if (absJ === 1) {
+            const n = elecCoreElec(qi, rc, ei, ej);
+            ecoul += n.e; fpair += n.f; e2rforce += n.f2;
+            const pa = sType ? pauliCoreElec(rc, ej, A, B, C) : pauliCorePElec(rc, ej, A, B, C, D, Ep);
+            ecpEpauli += pa.ep; ecpFpair += pa.f; ecpE2 += pa.f2;
+          } else {
+            // add the second s electron contribution of the fixed core (qxq = q[i] * q[j], as in pair_eff_cut.cpp)
+            const nn = elecCoreNuc(qi * qj, rc, ej);
+            ecoul += nn.e; fpair += nn.f;
+            for (let t = 0; t < 2; t++) {
+              const n = elecCoreElec(qi, rc, ei, ej);
+              ecoul += n.e; fpair += n.f; e2rforce += n.f2;
+            }
+            for (let t = 0; t < 2; t++) {
+              const pa = sType ? pauliCoreElec(rc, ej, A, B, C) : pauliCorePElec(rc, ej, A, B, C, D, Ep);
+              ecpEpauli += pa.ep; ecpFpair += pa.f; ecpE2 += pa.f2;
+            }
+          }
+          ecpEpauli *= this.h2e;
+          ecpFpair *= this.h2e;
+          // only the radial force of the electron j is kept
+          e2rforce = spline * (qqrd2e * e2rforce + this.h2e * ecpE2);
+          erf[j] += e2rforce;
+          if (this.pressureEvirials) this.tallyEff(pc, j, j, 0.0, ej * e2rforce, spin);
+        }
+
+        // electron/fixed-core electrons (i) - pseudo-core (j) interactions
+        else if ((absI === 1 || si === 2) && sj === 3) {
+          const zc = this.ecpElement(type[j]);
+          const A = this.pauliA[zc], B = this.pauliB[zc], C = this.pauliC[zc], D = this.pauliD[zc], Ep = this.pauliE[zc];
+          const sType = D === 0 && Ep === 0;
+          let ecpE1 = 0;
+          if (absI === 1) {
+            const n = elecCoreElec(qj, rc, ej, ei);
+            ecoul += n.e; fpair += n.f; e1rforce += n.f2;
+            const pa = sType ? pauliCoreElec(rc, ei, A, B, C) : pauliCorePElec(rc, ei, A, B, C, D, Ep);
+            ecpEpauli += pa.ep; ecpFpair += pa.f; ecpE1 += pa.f2;
+          } else {
+            const nn = elecCoreNuc(qi * qj, rc, ei);
+            ecoul += nn.e; fpair += nn.f;
+            for (let t = 0; t < 2; t++) {
+              const n = elecCoreElec(qj, rc, ej, ei);
+              ecoul += n.e; fpair += n.f; e1rforce += n.f2;
+            }
+            for (let t = 0; t < 2; t++) {
+              const pa = sType ? pauliCoreElec(rc, ei, A, B, C) : pauliCorePElec(rc, ei, A, B, C, D, Ep);
+              ecpEpauli += pa.ep; ecpFpair += pa.f; ecpE1 += pa.f2;
+            }
+          }
+          ecpEpauli *= this.h2e;
+          ecpFpair *= this.h2e;
+          // only the radial force of the electron i is kept
+          e1rforce = spline * (qqrd2e * e1rforce + this.h2e * ecpE1);
+          erf[i] += e1rforce;
+          if (this.pressureEvirials) this.tallyEff(pc, i, i, 0.0, ei * e1rforce, spin);
+        }
+
+        // pseudo-core (i) - pseudo-core (j) interactions
+        else if (si === 3 && sj === 3) {
+          const r = elecCoreCore(qi * qj, rc, ei, ej);
+          ecoul += r.e; fpair += r.f;
         } else {
-          // espin 3 or 4 (pseudo-cores) are refused in initStyle
-          throw new StyleError('pair_style eff/cut: pseudo-core (espin 3 or 4) pairs are not ported yet');
+          // espin 4 is refused in initStyle
+          throw new StyleError('pair_style eff/cut: pseudo-core (espin 4) pairs are not ported yet');
         }
 
         // Apply Coulomb conversion factor for all cases
         ecoul *= qqrd2e;
         fpair *= qqrd2e;
         // sum up energy and force contributions
+        // the ECP Pauli terms join the pair sums (epauli += ecp_epauli; fpair += ecp_fpair in pair_eff_cut.cpp)
+        epauli += ecpEpauli;
         const energy0 = ecoul + epauli;
-        fpair = fpair + sFpair;
+        fpair = fpair + sFpair + ecpFpair;
         // apply the cutoff spline
         fpair = fpair * spline - energy0 * dspline;
         const energy = spline * energy0;
-        const [fx, fy, fz] = smallRForce(dx, dy, dz, rc, fpair);
+        // smallRForce (pair_eff_inline.h) without a tuple per pair; the rc <= 1e-6 branch is the rare one
+        let fx: number, fy: number, fz: number;
+        if (rc > 0.000001) {
+          const ff = fpair / rc;
+          fx = ff * dx; fy = ff * dy; fz = ff * dz;
+        } else [fx, fy, fz] = smallRForce(dx, dy, dz, rc, fpair);
         f[3 * i] += fx;
         f[3 * i + 1] += fy;
         f[3 * i + 2] += fz;

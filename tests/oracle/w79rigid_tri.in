@@ -1,0 +1,26 @@
+# oracle: fix rigid molecule with triangle atoms (two bodies of two triangles each, 3d), tri/lj pair forces, spin by set angmom (a cut-down of the rigid body part of examples/ASPHERE/tri/in.tri.srd: fix rigid/small molecule with tri atoms; the SRD fix and the box deformation are left out)
+# oracle-inputs: w79rigid_tri.data
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-8
+# Measured with native LAMMPS (black box): the engine agrees with the kinetic and potential energy, c_1 (erotate of the triangles), etotal and every atom's positions and velocities to a relative error of 1e-14 (c_1 9.6e-15, positions and velocities 1e-14 scaled by max(1,|x|)). The pressure (the rigid constraint virial, as rigid_molecule) agrees to an absolute 9.3e-10 at step 20 (the compare uses abs=1e-8 for it, as the other rigid cases). The tri atoms are in two bodies of two triangles, so the thermo temperature needs compute_modify extra/dof -6 (4 atoms give no dof).
+units		lj
+atom_style	tri
+read_data	w79rigid_tri.data
+
+group		all type 1
+pair_style	tri/lj 3.5
+pair_coeff	1 1 0.1 1.0
+
+set		group all angmom 0.4 -0.3 0.8
+
+fix		1 all rigid molecule
+timestep	0.002
+
+compute		1 all erotate/asphere
+compute		2 all ke
+compute		3 all pe
+compute_modify	thermo_temp extra/dof -6
+thermo_style	custom step pe ke c_1 etotal press
+thermo_modify	format float %.15g
+thermo		20
+
+run		200

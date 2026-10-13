@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Session } from '../src/engine/interpreter';
 import type { EngineEvent } from '../src/engine/types';
 
@@ -112,5 +114,54 @@ describe('fix srd setup checks (fix_srd.cpp)', () => {
   });
   it('runs the default SRD bath (point particles, slip) without error', async () => {
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip'))).toBe('');
+  });
+});
+
+/** fix srd with big triangle particles (tests/oracle/w79srd_tri.data: four triangles, 3d); the setup errors stop before a run. */
+describe('fix srd with triangle big particles', () => {
+  const triFile = readFileSync(join(__dirname, 'oracle', 'w79srd_tri.data'), 'utf8');
+  const triBath = (fix: string): string => `units lj
+atom_style tri
+read_data w79srd_tri.data
+group big type 1
+lattice sc 2.0
+region box block INF INF INF INF INF INF
+create_atoms 2 region box
+group small type 2
+set group small mass 0.01
+pair_style lj/cut 1.5
+pair_coeff 1 1 0.0 1.0
+pair_coeff 2 2 0.0 1.0 0.0
+pair_coeff 1 2 0.0 1.0
+pair_style tri/lj 3.5
+pair_coeff 1 1 0.1 1.0
+pair_coeff 2 2 0.0 1.0 0.0
+pair_coeff 1 2 0.0 1.0 0.0
+timestep 0.002
+velocity small create 1.44 87287 loop geom
+${fix}
+run 1
+`;
+  const triError = async (script: string): Promise<string> => {
+    const events: EngineEvent[] = [];
+    const session = new Session({ emit: (e) => events.push(e), writeFile: () => {} }, undefined, 0, 1);
+    session.addFile('w79srd_tri.data', triFile);
+    try {
+      await session.execute(script);
+    } catch {
+      // the error event carries the message
+    }
+    const err = events.find((e) => e.kind === 'error');
+    return err && 'message' in err ? String(err.message) : '';
+  };
+
+  it('runs free triangles with overlap yes (fix nve/tri)', async () => {
+    expect(await triError(triBath('fix 1 big nve/tri\nfix 2 small srd 20 big 1.0 1.0 49894 search 0.2 shift yes 49829 overlap yes collision noslip'))).toBe('');
+  });
+  it('refuses triangles without overlap yes, by name', async () => {
+    expect(await triError(triBath('fix 1 big nve/tri\nfix 2 small srd 20 big 1.0 1.0 49894 search 0.2 collision noslip'))).toMatch(/Cannot use tris with fix srd unless overlap is set/);
+  });
+  it('refuses triangles held in a fix rigid body, by name', async () => {
+    expect(await triError(triBath('fix 1 big rigid molecule\nfix 2 small srd 20 big 1.0 1.0 49894 search 0.2 overlap yes collision noslip'))).toMatch(/triangles inside a fix rigid body/);
   });
 });

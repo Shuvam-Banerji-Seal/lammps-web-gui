@@ -66,8 +66,8 @@ const FUNCS: Record<string, { n: number; f?: (...a: number[]) => number }> = {
   asin: { n: 1, f: Math.asin }, acos: { n: 1, f: Math.acos }, atan: { n: 1, f: Math.atan },
   atan2: { n: 2, f: Math.atan2 },
   ceil: { n: 1, f: Math.ceil }, floor: { n: 1, f: Math.floor },
-  // C round(): halfway cases away from zero
-  round: { n: 1, f: (x) => Math.sign(x) * Math.round(Math.abs(x)) },
+  // round(): halves go toward +infinity, as the variable round() does (formula.ts cround; measured with native LAMMPS)
+  round: { n: 1, f: (x) => { const f = Math.floor(x); return x - f >= 0.5 ? f + 1 : f; } },
   ternary: { n: 3 }, random: { n: 3 }, normal: { n: 3 },
 };
 

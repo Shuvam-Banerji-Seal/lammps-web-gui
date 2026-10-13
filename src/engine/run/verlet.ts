@@ -39,6 +39,8 @@ export interface RunHooks {
   afterSetup(): void;
   /** Milliseconds of work between yields to the event loop (keeps the page responsive). */
   yieldMs: number;
+  /** run pre no: the neighbor lists and forces of the previous run are kept; no setup (run.html "pre"). */
+  skipSetup?: boolean;
 }
 
 /** Fix and compute initialization shared by run and minimize. */
@@ -108,7 +110,7 @@ export const runVerlet = async (sys: System, nsteps: number, hooks: RunHooks): P
   const fEnd = has('endOfStep');
   const flags = sys.computeFlags();
 
-  setupRun(sys);
+  if (!hooks.skipSetup) setupRun(sys);
   hooks.afterSetup();
   let taken = 0;
   let lastYield = performance.now();

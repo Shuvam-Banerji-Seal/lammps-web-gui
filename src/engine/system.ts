@@ -177,13 +177,33 @@ export class System {
     if (name && !append) this.writeFile(name, '', false);
   }
 
+  /** A log file is open (thermo tables are formatted only when one is). */
+  get logOpen(): boolean {
+    return this.logFile !== null;
+  }
+
   log(text: string): void {
     this.io.emit({ kind: 'log', text });
     if (this.logFile) this.writeFile(this.logFile, text + '\n', true);
   }
 
+  /** Thermo table lines go to the log file only: the screen gets the rows as thermo events. */
+  logTable(lines: string[]): void {
+    if (this.logFile && lines.length) this.writeFile(this.logFile, lines.join('\n') + '\n', true);
+  }
+
+  /** thermo_modify warn (thermo.ts): ignore suppresses every warning; past the limit one final line is printed. */
+  warnOff = false;
+  warnLimit = 100;
+  warnCount = 0;
+
   warn(text: string): void {
-    this.log(`WARNING: ${text}`);
+    if (this.warnOff) return;
+    this.warnCount++;
+    if (this.warnCount <= this.warnLimit) { this.log(`WARNING: ${text}`); return; }
+    if (this.warnCount === this.warnLimit + 1) {
+      this.log(`WARNING: Too many warnings: ${this.warnCount} vs ${this.warnLimit}. All future warnings will be suppressed`);
+    }
   }
 
   readFile(name: string): string {

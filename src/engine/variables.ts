@@ -118,8 +118,10 @@ export class Variables {
         break;
       }
       case 'string': v = { style, values: [one()], which: 0 }; break;
-      // a browser has no process environment: every name is unset (empty string)
-      case 'getenv': one(); v = { style, values: [''], which: 0 }; break;
+      // variable.html: "it returns the value of the environment variable, or an empty string if it not defined".
+      // A browser has no process environment, so the engine cannot give that value; it refuses the style by name
+      // instead of returning the empty string (a silent difference from native LAMMPS).
+      case 'getenv': throw new StyleError('variable style getenv is not supported by the browser engine (there is no process environment to read)');
       case 'internal': {
         const n = Number(one());
         if (!Number.isFinite(n)) throw new StyleError('variable internal needs a numeric value');

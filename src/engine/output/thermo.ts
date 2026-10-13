@@ -5,7 +5,7 @@ import { StyleError } from '../force/types';
 import { totalVirial } from '../force/types';
 import { massOf } from '../atoms';
 import { generalBoxFromRestricted, rotateTensorToGeneral, type GeneralBox } from '../triclinic_general';
-import { checkCFormat, type ValueKind } from '../cformat';
+import { checkCFormat, compileCFormat, type ValueKind } from '../cformat';
 
 /*
  * Thermodynamic output — docs.lammps.org/thermo_style.html and
@@ -472,7 +472,26 @@ export class Thermo {
           k += 2;
           break;
         }
-        case 'warn': k += 2; break;
+        case 'warn': {
+          // thermo_modify.html: "warn value = ignore or reset or default or a number". "Any number after the keyword warn
+          // will change the warning limit accordingly. With the value ignore all warnings will be suppressed ... with the
+          // value reset the internal warning counter will be reset to zero, and with the value default, the counter is
+          // reset and the limit set to 100." Measured with native LAMMPS (black box): warn foo stops with
+          // "Expected integer parameter instead of 'foo'"; warn 2 prints two warnings and then
+          // "Too many warnings: 3 vs 2. All future warnings will be suppressed"; warn ignore prints none.
+          const w = need(val);
+          const sys = this.sys;
+          if (w === 'ignore') sys.warnOff = true;
+          else if (w === 'reset') { sys.warnCount = 0; sys.warnOff = false; }
+          else if (w === 'default') { sys.warnCount = 0; sys.warnLimit = 100; sys.warnOff = false; }
+          else {
+            if (!/^\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w}' in input script or data file`);
+            sys.warnLimit = Number(w);
+            sys.warnOff = false;
+          }
+          k += 2;
+          break;
+        }
         case 'flush': this.flush = yesno(need(val), key); k += 2; break;
         case 'line': {
           const v = need(val);
@@ -539,6 +558,48 @@ export class Thermo {
           throw new StyleError(`unknown thermo_modify keyword '${key}'`);
       }
     }
+  }
+
+  /** The log-file lines a run starts with: the one-line labels, or the yaml keyword list (log.html: thermo output is copied to the log). */
+  logHeader(): string[] {
+    const labels = this.header();
+    if (this.lineStyle === 'yaml') return ['---', `keywords: [ ${labels.map((l) => `'${l}'`).join(', ')} ]`, 'data:'];
+    if (this.lineStyle === 'multi') return [];
+    return [labels.map((l) => l.padStart(14)).join(' ')];
+  }
+
+  /**
+   * The log-file lines of one thermo row. thermo_modify.html: "The format keyword ... changes the format of the thermo
+   * output"; "line value = one or multi or yaml" selects the layout. The column format is its own, then the int or
+   * float setting, then the line (the precedence checkFormats uses).
+   */
+  logRow(row: ThermoRow): string[] {
+    const vals = this.keywords.map((k, c) => this.logValue(c, row[k]));
+    if (this.lineStyle === 'yaml') return [`  - [ ${vals.join(', ')} ]`];
+    if (this.lineStyle === 'multi') {
+      const out = [`------------ Step ${this.sys.state.step} ----- CPU = ${this.value('cpu')} (sec) -------------`];
+      const labels = this.header();
+      for (let c = 0; c < vals.length; c += 3) {
+        const parts: string[] = [];
+        for (let j = c; j < Math.min(c + 3, vals.length); j++) parts.push(`${labels[j].padEnd(8)} = ${vals[j]}`);
+        out.push(parts.join(' '));
+      }
+      return out;
+    }
+    return [vals.join(' ')];
+  }
+
+  /** The log-file lines a run ends with (yaml closes its document). */
+  logEnd(): string[] {
+    return this.lineStyle === 'yaml' ? ['...'] : [];
+  }
+
+  private logValue(c: number, v: number): string {
+    const kind = kindOf(this.keywords[c]);
+    const own = this.columnFormat(c);
+    const toks = this.formatLine === null ? [] : this.formatLine.trim().split(/\s+/);
+    const spec = own ?? toks[c] ?? (kind === 'int' ? '%10d' : '%14.8g');
+    return compileCFormat(spec, kind, `Invalid thermo format for column ${c + 1}`)(v);
   }
 
   /** Thermo lines due on this step? */

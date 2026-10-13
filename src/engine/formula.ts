@@ -258,8 +258,28 @@ const map2 = (a: Value, b: Value, f: (x: number, y: number) => number): Value =>
 
 const truth = (b: boolean) => (b ? 1 : 0);
 
-/** C round(): halfway cases away from zero. */
-const cround = (x: number) => Math.sign(x) * Math.round(Math.abs(x));
+/**
+ * round(x): the nearest integer, with a halfway value going toward +infinity. Measured with native LAMMPS
+ * (black box): round(-2.5) gives -2, round(2.5) gives 3, round(-0.5) gives 0, round(-1.4) gives -1.
+ * variable.html: "Round() is the nearest integer to its argument." (the halfway rule is not stated there)
+ */
+const cround = (x: number) => {
+  const f = Math.floor(x);
+  return x - f >= 0.5 ? f + 1 : f;
+};
+
+/**
+ * The step-sequence functions take integer arguments: native LAMMPS truncates each one (black box:
+ * stagger(5.5,2) starts with 2 as stagger(5,2) does, logfreq(5.5,2,10) at step 0 gives 5, and logfreq3(1.5,3,10)
+ * gives the sequence of logfreq3(1,3,10)).
+ */
+const ints = (a: number[]) => a.map((v) => Math.trunc(v));
+
+/** The value of stride() and stride2() past their last timestep: the largest 64-bit integer of LAMMPS (measured with native LAMMPS, black box: 9.223372e+18). */
+const NO_MORE_STEPS = 9223372036854775807;
+
+/** ceil() of a point of a step sequence, with a tolerance for a product that is an integer up to rounding. */
+const ceilPoint = (v: number) => Math.ceil(v - 1e-9);
 
 export const evaluate = (src: string, env: FormulaEnv, mode: Mode): Value => evalNode(parseFormula(src), env, mode, src);
 
@@ -400,14 +420,14 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
     case 'swiggle': return a[0] + a[1] * Math.sin(2 * Math.PI / a[2] * (step - tm.startStep) * tm.dt);
     case 'cwiggle': return a[0] + a[1] * (1 - Math.cos(2 * Math.PI / a[2] * (step - tm.startStep) * tm.dt));
     case 'stagger': {
-      const [x, y] = a;
+      const [x, y] = ints(a);
       if (!(x > 0 && y > 0 && x > y)) throw new StyleError('invalid stagger() arguments: need x > y > 0');
       const lower = Math.floor(step / x) * x;
       const delta = step - lower;
       return delta < y ? lower + y : lower + x;
     }
     case 'logfreq': {
-      const [x, y, z] = a;
+      const [x, y, z] = ints(a);
       if (!(x > 0 && y > 0 && z > 0 && y < z)) throw new StyleError('invalid logfreq() arguments');
       if (step < x) return x;
       let lower = x;
@@ -416,49 +436,70 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
       return multiple < y ? (multiple + 1) * lower : lower * z;
     }
     case 'logfreq2': {
-      const [x, y, z] = a;
-      if (!(x > 0 && y > 0 && z > 0)) throw new StyleError('invalid logfreq2() arguments');
+      // variable.html: "a single logarithmic interval is divided into y equally-spaced timesteps and all of them are
+      // output". The points of an interval [lower, z*lower) are ceil(lower + k*delta), k = 1..y, with
+      // delta = (z-1)*lower/y; the next value is the first point above the step. Measured with native LAMMPS
+      // (black box), logfreq2(1,3,2) at steps 0..16: 1 2 3 4 6 6 7 8 11 11 11 14 14 14 16 (ceil, not round).
+      const [x, y, z] = ints(a);
+      if (!(x > 0 && y > 0 && z > 1)) throw new StyleError('invalid logfreq2() arguments: need x > 0, y > 0, z > 1');
       if (step < x) return x;
       let lower = x;
       while (step >= z * lower) lower *= z;
-      const upper = z * lower;
-      const delta = (upper - lower) / y;
-      return Math.round(lower + delta * (Math.floor((step - lower) / delta) + 1));
+      const delta = (z - 1) * lower / y;
+      for (let k = 1; k <= y; k++) {
+        const p = ceilPoint(lower + k * delta);
+        if (p > step) return p;
+      }
+      return ceilPoint(z * lower);
     }
     case 'logfreq3': {
-      const [x, y, z] = a;
+      // variable.html: "generates y points between x and z (inclusive), that are separated by a multiplicative ratio:
+      // (z/x)^(1/(y-1))". Each point is ceil(x*ratio^k); variable.html's example logfreq3(10,25,1000) lists
+      // 10, 13, 15, 18, 22, 27, 32, ... 1000, which these ceilings reproduce. Measured with native LAMMPS (black box):
+      // logfreq3(1,3,10) at steps 0..9 gives 1 4 4 4 10 10 10 10 10 10. At step z native gives a value that is not on
+      // the documented sequence (29 for logfreq3(1,3,10)); this engine returns z there. Past z native stops with
+      // "Calls to variable exceeded limit" (measured: the error is raised when the variable is evaluated at step 11).
+      const [x, y, z] = ints(a);
       if (!(x > 0 && z > 0 && y > 1 && z - x >= y - 1)) throw new StyleError('invalid logfreq3() arguments');
       if (step < x) return x;
+      if (step > z) throw new StyleError('Calls to variable exceeded limit');
       const r = Math.pow(z / x, 1 / (y - 1));
-      let cur = x;
-      let prev = x;
-      for (let k = 1; k < y; k++) {
-        let next = Math.round(x * Math.pow(r, k));
-        if (next <= prev) next = prev + 1;
-        prev = next;
-        cur = next;
-        if (cur > step) return cur;
+      for (let k = 0; k < y - 1; k++) {
+        const p = ceilPoint(x * Math.pow(r, k));
+        if (p > step) return p;
       }
-      return 1e20;
+      return z;
     }
     case 'stride': {
-      const [x, y, z] = a;
+      const [x, y, z] = ints(a);
       if (!(x >= 0 && y >= 0 && z > 0 && x <= y)) throw new StyleError('invalid stride() arguments');
       if (step < x) return x;
-      if (step >= y) return 1e20;
+      if (step >= y) return NO_MORE_STEPS;
       const next = x + (Math.floor((step - x) / z) + 1) * z;
-      return next > y ? 1e20 : next;
+      return next > y ? NO_MORE_STEPS : next;
     }
     case 'stride2': {
-      const [x, y, z, aa, b, c] = a;
+      // variable.html: "generates two sets of strided timesteps": x, x+z, ... up to a; then increments of c from a to b;
+      // then increments of z again. The documented example stride2(1000,2000,100,1350,1360,1) is reproduced. Measured with
+      // native LAMMPS (black box), stride2(2,20,5,7,12,3) at steps 0..19: 2 2 7 7 7 7 7 10 10 10 17 17 17 17 17 17 17 22 22 22,
+      // so a fine step that would pass b continues on the z grid above b (17, not 12), and the result is not checked
+      // against y (22 at step 19, the limit is reached at step 20).
+      const [x, y, z, aa, b, c] = ints(a);
       if (!(x >= 0 && y >= 0 && z > 0 && x <= y && aa >= 0 && b >= 0 && c > 0 && aa < b && aa >= x && b <= y)) {
         throw new StyleError('invalid stride2() arguments');
       }
       if (step < x) return x;
-      if (step >= aa && step < b) return Math.min(b, aa + (Math.floor((step - aa) / c) + 1) * c);
-      let next = x + (Math.floor((step - x) / z) + 1) * z;
-      if (step < aa && next > aa) next = aa;
-      return next > y ? 1e20 : next;
+      if (step >= y) return NO_MORE_STEPS;
+      const gridAbove = (v: number) => x + (Math.floor((v - x) / z) + 1) * z;
+      if (step < aa) {
+        const next = gridAbove(step);
+        return next > aa ? aa : next;
+      }
+      if (step < b) {
+        const fine = aa + (Math.floor((step - aa) / c) + 1) * c;
+        return fine <= b ? fine : gridAbove(b);
+      }
+      return gridAbove(step);
     }
   }
   throw new StyleError(`unknown function ${n.fn}()`);

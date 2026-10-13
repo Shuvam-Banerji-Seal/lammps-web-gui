@@ -1,0 +1,17 @@
+# oracle: logfreq3 points are ceil(x*ratio^k); steps 0..9 of logfreq3(1,3,10) (black box: step z is a counter value natively, not pinned)
+# oracle-compare: thermo=all rel=1e-12 abs=1e-14
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+variable        c equal logfreq3(1,3,10)
+variable        h equal logfreq3(1.5,3,10)
+thermo_style    custom step v_c v_h
+thermo_modify   format float %.15g
+thermo          1
+run             9

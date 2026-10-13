@@ -11,10 +11,11 @@
  * advected ... the SRD velocities are rotated ... in each bin".
  *
  * Supported here: lj or other unit styles through the unit table, 2d and 3d boxes, point SRD particles of one mass,
- * big particles that are spheres, collision slip or noslip, exact and inexact (exact yes/no), bounce N, inside
- * error/warn/ignore, lamda, radius, search, cubic, rescale, shift no/yes/possible (RanPark bin shifts, periodic
- * boxes), and tstat yes without box deformation. Refused with a StyleError naming the keyword: unbiased yes,
- * overlap yes, tstat yes with fix deform, ellipsoid/line/tri big particles, and fix wall/srd.
+ * big particles that are spheres or ellipsoids (a sphere of a rigid body included), collision slip or noslip, exact
+ * and inexact (exact yes/no), overlap yes (collisions_multi), bounce N, inside error/warn/ignore, lamda, radius,
+ * search, cubic, rescale, shift no/yes/possible (RanPark bin shifts, periodic boxes), and tstat yes without box
+ * deformation. Refused with a StyleError naming the keyword: unbiased yes, tstat yes with fix deform, line/tri big
+ * particles, and fix wall/srd.
  *
  * Browser-engine difference: native processes SRD atoms in its own local order; the engine keeps that order in
  * SimState.order (nativeOrder), and every loop over SRD particles goes through it, so the random draws happen in
@@ -25,7 +26,8 @@
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { isLineAtom, isTriAtom, massOf, nativeOrder } from '../../engine/atoms';
+import { isEllipsoid, isLineAtom, isTriAtom, massOf, nativeOrder } from '../../engine/atoms';
+import { bodyMotion, quatToMatrix, rotateVec } from '../../engine/compute/asphere';
 import { RanMars } from '../random_mars';
 import { RanPark } from '../random_park';
 
@@ -44,9 +46,11 @@ const SRD_ROTATE = 2;
 /** static const int ATOMPERBIN = 30 (native error "too many big particles in bin"). */
 const ATOMPERBIN = 30;
 const BIG = 1.0e20;
+/** big particle kinds (big_static): sphere and ellipsoid */
+const KIND_SPHERE = 0;
+const KIND_ELLIPSOID = 1;
 const EMPTY: number[] = [];
 
-const ZERO3 = [0, 0, 0];
 
 export class FixSRD extends Fix {
   readonly style: string = 'srd';
@@ -137,6 +141,11 @@ export class FixSRD extends Fix {
   private readonly noslipflag: boolean;
   private readonly tstat: boolean;
 
+  /** overlap yes: every overlapping big particle is considered, the first collision applied (collisions_multi) */
+  private readonly overlapflag: boolean;
+  private readonly savedXscoll = new Float64Array(3);
+  private readonly savedXbcoll = new Float64Array(3);
+  private readonly savedNorm = new Float64Array(3);
   /** collision scratch vectors */
   private readonly xs = new Float64Array(3);
   private readonly vs = new Float64Array(3);
@@ -145,6 +154,11 @@ export class FixSRD extends Fix {
   private readonly xbcoll = new Float64Array(3);
   private readonly norm = new Float64Array(3);
   private readonly vsnew = new Float64Array(3);
+  /** big_static()/big_dynamic() per atom: kind (0 sphere, 1 ellipsoid), 1/(semi-axis)^2 (3), body axes ex ey ez (9), omega (3) */
+  private bigKind = new Uint8Array(0);
+  private bigInv = new Float64Array(0);
+  private bigAxes = new Float64Array(0);
+  private bigOmegaAll = new Float64Array(0);
   private readonly tangent = new Float64Array(3);
   private readonly tangent1 = new Float64Array(3);
   private readonly tangent2 = new Float64Array(3);
@@ -273,9 +287,9 @@ export class FixSRD extends Fix {
 
     // the refusals: keywords whose physics is not ported yet (named, never ignored)
     if (unbias) throw new StyleError('fix srd unbiased yes is not supported by this engine yet');
-    if (overlap) throw new StyleError('fix srd overlap yes is not supported by this engine yet (only overlap no)');
 
     this.noslipflag = collide === 'noslip';
+    this.overlapflag = overlap;
     this.tstat = tstatUser;
     // initialize Marsaglia RNG with processor-unique seed (one processor: seed + 0)
     this.random = new RanMars(seed);
@@ -299,27 +313,16 @@ export class FixSRD extends Fix {
     const s = this.sys.state;
     if (s.box.triclinic) throw new StyleError('Fix srd does not support triclinic boxes');
     if (this.initflag && s.dt !== this.dtBig) throw new StyleError('Cannot change timestep once fix srd is set up');
-    if (this.bigExist) this.checkBig();
+    if (this.bigExist) {
+      this.checkBig();
+      this.bigStatic();
+    }
     // fix_srd.cpp init(): "Fix srd no-slip requires atom attribute torque"
     if (this.bigExist && this.noslipflag && !s.torque) throw new StyleError('Fix srd no-slip requires atom attribute torque');
     // fix_srd.cpp init(): a box deformation with the SRD thermostat needs the streaming velocity, not supported here
     if (this.tstat && this.sys.fixes.some((f) => f.style === 'deform')) {
       throw new StyleError('fix srd tstat yes with fix deform is not supported by this engine yet');
     }
-    // big particles that belong to rigid bodies (examples dimer, star, tri .mp) take native's rigid-body collision
-    // path, which is not ported: refused rather than run unverified
-    if (this.bigExist) {
-      const rigid = this.sys.fixes.find((f) => f.style.startsWith('rigid') && (f.groupBit & this.bigBit) !== 0);
-      if (rigid) {
-        const { mask } = s;
-        for (let i = 0; i < s.n; i++) {
-          if ((mask[i] & this.bigBit) && (mask[i] & rigid.groupBit)) {
-            throw new StyleError(`fix srd with big particles in rigid bodies (fix ${rigid.id} ${rigid.style}) is not supported by this engine yet`);
-          }
-        }
-      }
-    }
-
     this.parameterize();
 
     // limit initial SRD velocities if necessary
@@ -357,18 +360,79 @@ export class FixSRD extends Fix {
     this.preNeighbor();
   }
 
-  /** Big particles must be spheres here (ellipsoid, line and tri big particles are refused). */
+  /** Big particles must be spheres or ellipsoids here (line and tri big particles are refused). */
   private checkBig(): void {
     const s = this.sys.state;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.bigBit)) continue;
-      if (s.shape && (s.shape[3 * i] > 0 || s.shape[3 * i + 1] > 0 || s.shape[3 * i + 2] > 0)) {
-        throw new StyleError('fix srd big particles that are ellipsoids are not supported by this engine yet (spheres only)');
-      }
       if (isLineAtom(s, i) || isTriAtom(s, i)) {
-        throw new StyleError('fix srd big particles that are lines or triangles are not supported by this engine yet (spheres only)');
+        throw new StyleError('fix srd big particles that are lines or triangles are not supported by this engine yet (spheres and ellipsoids only)');
       }
     }
+  }
+
+  /**
+   * fix_srd.cpp big_static(): the kind of each big particle and its inverse squared semi-axes, arad = radfactor
+   * times the semi-axis (the shape of atom_style ellipsoid is stored as semi-axes).
+   */
+  private bigStatic(): void {
+    const s = this.sys.state;
+    const n = s.n;
+    if (this.bigKind.length !== n) {
+      this.bigKind = new Uint8Array(n);
+      this.bigInv = new Float64Array(3 * n);
+      this.bigAxes = new Float64Array(9 * n);
+      this.bigOmegaAll = new Float64Array(3 * n);
+    }
+    for (let i = 0; i < n; i++) {
+      if (!(s.mask[i] & this.bigBit)) continue;
+      if (isEllipsoid(s, i)) {
+        this.bigKind[i] = KIND_ELLIPSOID;
+        const sh = s.shape!;
+        for (let d = 0; d < 3; d++) {
+          const arad = this.radfactor * sh[3 * i + d];
+          this.bigInv[3 * i + d] = 1.0 / (arad * arad);
+        }
+      } else {
+        this.bigKind[i] = KIND_SPHERE;
+      }
+    }
+  }
+
+  /** big_dynamic(): body axes and angular velocity of each big particle, from its current quaternion and angmom */
+  private bigDynamic(): void {
+    const s = this.sys.state;
+    const omega = s.omega;
+    for (let i = 0; i < s.n; i++) {
+      if (!(s.mask[i] & this.bigBit)) continue;
+      if (this.bigKind[i] === KIND_ELLIPSOID) {
+        const q = s.quat!;
+        const R = quatToMatrix(q[4 * i], q[4 * i + 1], q[4 * i + 2], q[4 * i + 3]);
+        const ax = this.bigAxes;
+        const o = 9 * i;
+        // ex, ey, ez: columns of R
+        ax[o] = R[0]; ax[o + 1] = R[3]; ax[o + 2] = R[6];
+        ax[o + 3] = R[1]; ax[o + 4] = R[4]; ax[o + 5] = R[7];
+        ax[o + 6] = R[2]; ax[o + 7] = R[5]; ax[o + 8] = R[8];
+        const { wb } = bodyMotion(s, i);
+        const w = rotateVec(R, wb[0], wb[1], wb[2]);
+        this.bigOmegaAll[3 * i] = w[0];
+        this.bigOmegaAll[3 * i + 1] = w[1];
+        this.bigOmegaAll[3 * i + 2] = w[2];
+      } else if (omega) {
+        for (let d = 0; d < 3; d++) this.bigOmegaAll[3 * i + d] = omega[3 * i + d];
+      }
+    }
+  }
+
+  /** big radius for the search bins and the ghost cutoff: radfactor times the radius, or the longest semi-axis */
+  private bigRadius(j: number): number {
+    const s = this.sys.state;
+    if (this.bigKind[j] === KIND_ELLIPSOID) {
+      const sh = s.shape!;
+      return this.radfactor * Math.max(sh[3 * j], sh[3 * j + 1], sh[3 * j + 2]);
+    }
+    return this.radfactor * s.radius![j];
   }
 
   /** fix_srd.cpp parameterize(): sizes, masses, velocity limits and the bin grid. */
@@ -384,6 +448,14 @@ export class FixSRD extends Fix {
     if (this.bigExist) {
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & this.bigBit)) continue;
+        if (isEllipsoid(s, i)) {
+          // fix_srd.cpp parameterize(): the diameters 2*shape of an ellipsoid
+          for (let d = 0; d < 3; d++) {
+            maxd = Math.max(maxd, 2.0 * s.shape![3 * i + d]);
+            mind = Math.min(mind, 2.0 * s.shape![3 * i + d]);
+          }
+          continue;
+        }
         if (!(s.radius && s.radius[i] > 0.0)) throw new StyleError('Big particle in fix srd cannot be point particle');
         maxd = Math.max(maxd, 2.0 * s.radius[i]);
         mind = Math.min(mind, 2.0 * s.radius[i]);
@@ -580,6 +652,7 @@ export class FixSRD extends Fix {
     const s = this.sys.state;
     if (this.binsrd.length < s.n) this.binsrd = new Int32Array(s.n);
     if (this.bigExist) {
+      this.bigStatic();
       this.buildCopies();
       this.registerCopies();
     }
@@ -610,7 +683,7 @@ export class FixSRD extends Fix {
     for (let k = 0; k < s.n; k++) {
       const j = order[k];
       if (!(s.mask[j] & this.bigBit)) continue;
-      const rad = this.radfactor * s.radius![j];
+      const rad = this.bigRadius(j);
       const cb = (rad + skinhalf) * (rad + skinhalf);
       for (let sz = -kmax[2]; sz <= kmax[2]; sz++)
         for (let sy = -kmax[1]; sy <= kmax[1]; sy++)
@@ -918,8 +991,10 @@ export class FixSRD extends Fix {
 
     // detect collision of SRDs with big particles
     if (this.bigExist) {
+      this.bigDynamic();
       this.updateCopyPositions();
-      this.collisionsSingle();
+      if (this.overlapflag) this.collisionsMulti();
+      else this.collisionsSingle();
     }
 
     // if any SRD particle has moved too far, trigger reneighboring on the next step
@@ -946,13 +1021,12 @@ export class FixSRD extends Fix {
   /**
    * fix_srd.cpp collisions_single(): each SRD particle is checked against the big copies in its bin; on
    * overlap the collision is found in time (exact) or pushed to the surface (inexact), the SRD is slipped
-   * off the sphere with a Gaussian normal velocity, and the big particle receives the momentum change.
+   * off the surface with a Gaussian normal velocity, and the big particle receives the momentum change.
    */
   private collisionsSingle(): void {
     const s = this.sys.state;
-    const { x, v } = s;
     const order = nativeOrder(s);
-    const { xs, vs, xb, xscoll, xbcoll, norm, vsnew } = this;
+    const { xs, vs, xb, xscoll, xbcoll, norm } = this;
 
     for (let k = 0; k < s.n; k++) {
       const i = order[k];
@@ -974,67 +1048,32 @@ export class FixSRD extends Fix {
         for (let m = 0; m < nbig; m++) {
           const c = cands[m];
           const j = this.copyOwner[c];
-          for (let d = 0; d < 3; d++) {
-            xs[d] = x[3 * i + d];
-            vs[d] = v[3 * i + d];
-            xb[d] = this.copyPos[3 * c + d];
-          }
+          this.loadPair(i, c, xs, vs, xb);
           const rad = this.copyRadius[c];
-          const inside = insideSphere(xs, xb, rad * rad);
+          const ell = this.bigKind[j] === KIND_ELLIPSOID;
+          const ax = this.bigAxes.subarray(9 * j, 9 * j + 9);
+          const inv = this.bigInv.subarray(3 * j, 3 * j + 3);
+          const inside = ell ? insideEllipsoid(xs, xb, ax, inv) : insideSphere(xs, xb, rad * rad);
           if (!inside) continue;
 
-          // the big particle's velocity and angular velocity (sphere: vb = v of the owner)
+          // the big particle's velocity and angular velocity (the owner's v and omega)
           const vb = this.bigVelocity(j);
           let tRemain: number;
           if (this.exactflag) {
-            tRemain = collisionSphereExact(xs, xb, vs, vb, rad * rad, xscoll, xbcoll, norm);
+            tRemain = ell
+              ? collisionEllipsoidExact(xs, xb, vs, vb, this.bigOmega(j), ax, inv, xscoll, xbcoll, norm)
+              : collisionSphereExact(xs, xb, vs, vb, rad * rad, xscoll, xbcoll, norm);
           } else {
             tRemain = 0.5 * dt;
-            collisionSphereInexact(xs, xb, rad, xscoll, xbcoll, norm);
+            if (ell) collisionEllipsoidInexact(xs, xb, ax, inv, xscoll, xbcoll, norm);
+            else collisionSphereInexact(xs, xb, rad, xscoll, xbcoll, norm);
           }
 
           if (tRemain > dt) {
-            this.ninside++;
-            if (this.insideflag !== INSIDE_IGNORE) {
-              const msg = `SRD particle ${s.id[i]} started inside big particle ${s.id[j]} on step ${s.step} bounce ${ibounce + 1}`;
-              if (this.insideflag === INSIDE_ERROR) throw new StyleError(msg);
-              this.sys.warn(msg);
-            }
+            this.startedInside(i, j, ibounce);
             break;
           }
-
-          // slip or no-slip collision (fix_srd.cpp slip() / noslip())
-          if (this.noslipflag) this.noslip(vs, vb, xb, this.bigOmega(j), xscoll, norm, vsnew);
-          else this.slip(vs, vb, xb, this.bigOmega(j), xscoll, norm, vsnew);
-          vsnew[2] = s.dimension === 2 ? 0.0 : vsnew[2];
-
-          // check on rescaling of vsnew
-          if (this.rescaleCollide) {
-            const vsq = vsnew[0] * vsnew[0] + vsnew[1] * vsnew[1] + vsnew[2] * vsnew[2];
-            if (vsq > this.vmaxsq) {
-              this.nrescale++;
-              const sc = this.vmax / Math.sqrt(vsq);
-              vsnew[0] *= sc;
-              vsnew[1] *= sc;
-              vsnew[2] *= sc;
-            }
-          }
-
-          // big particle gets the momentum change (fix_srd.cpp force_torque(): a torque with no-slip only)
-          this.forceTorque(v, i, vsnew, xscoll, xbcoll, j);
-
-          // update_srd(): SRD velocity, position from the collision point, and its bin
-          for (let d = 0; d < 3; d++) {
-            v[3 * i + d] = vsnew[d];
-            x[3 * i + d] = xscoll[d] + tRemain * vsnew[d];
-          }
-          this.checkSrdDomain(i);
-          const ix = Math.trunc((x[3 * i] - this.blo2[0]) * this.bininv2[0]);
-          const iy = Math.trunc((x[3 * i + 1] - this.blo2[1]) * this.bininv2[1]);
-          const iz = Math.trunc((x[3 * i + 2] - this.blo2[2]) * this.bininv2[2]);
-          const [nx, ny] = this.nbin2;
-          ibin = this.binsrd[i] = iz * ny * nx + iy * nx + ix;
-
+          ibin = this.applyCollisionAt(i, j, c, tRemain);
           if (ibounce === 0) this.ncollide++;
           ibounce++;
           if (ibounce < this.maxbounceallow || this.maxbounceallow === 0) collideFlag = true;
@@ -1047,6 +1086,160 @@ export class FixSRD extends Fix {
       if (this.maxbounceallow && ibounce >= this.maxbounceallow) this.bouncemaxnum++;
       if (ibounce > this.bouncemax) this.bouncemax = ibounce;
     }
+  }
+
+  /**
+   * fix_srd.cpp collisions_multi() (neigh_modify ... overlap yes): the exact collision with every big copy the SRD
+   * overlaps is found, and the one that happened first (largest time before now, not the last collided big
+   * particle) is applied; the last big particle is skipped once, and the search repeats from the new position.
+   * Collisions are always exact here.
+   */
+  private collisionsMulti(): void {
+    const s = this.sys.state;
+    const order = nativeOrder(s);
+    const { xs, vs, xb, xscoll, xbcoll, norm } = this;
+    const xscF = this.savedXscoll, xbcF = this.savedXbcoll, normF = this.savedNorm;
+
+    for (let k = 0; k < s.n; k++) {
+      const i = order[k];
+      if (!(s.mask[i] & this.groupBit)) continue;
+
+      let ibin = this.binsrd[i];
+      if ((this.binbig[ibin] ?? EMPTY).length === 0) continue;
+
+      let ibounce = 0;
+      let jlast = -1;
+      let typefirst = -1;
+      let dt = this.dtBig;
+
+      for (;;) {
+        const cands = this.binbig[ibin] ?? EMPTY;
+        const nbig = cands.length;
+        if (ibounce === 0) this.ncheck += nbig;
+
+        let tFirst = 0;
+        let jfirst = -1;
+        let kfirst = -1;
+        for (let m = 0; m < nbig; m++) {
+          const c = cands[m];
+          const j = this.copyOwner[c];
+          const kind = this.bigKind[j];
+          if (j === jlast && kind === typefirst) continue;
+          this.loadPair(i, c, xs, vs, xb);
+          const rad = this.copyRadius[c];
+          const ell = kind === KIND_ELLIPSOID;
+          const ax = this.bigAxes.subarray(9 * j, 9 * j + 9);
+          const inv = this.bigInv.subarray(3 * j, 3 * j + 3);
+          const inside = ell ? insideEllipsoid(xs, xb, ax, inv) : insideSphere(xs, xb, rad * rad);
+          if (!inside) continue;
+
+          const vb = this.bigVelocity(j);
+          const tRemain = ell
+            ? collisionEllipsoidExact(xs, xb, vs, vb, this.bigOmega(j), ax, inv, xscoll, xbcoll, norm)
+            : collisionSphereExact(xs, xb, vs, vb, rad * rad, xscoll, xbcoll, norm);
+
+          if (tRemain > dt || tRemain < 0.0) {
+            this.startedInside(i, j, ibounce);
+            tFirst = 0;
+            break;
+          }
+          if (tRemain > tFirst) {
+            tFirst = tRemain;
+            jfirst = j;
+            kfirst = c;
+            typefirst = kind;
+            xscF.set(xscoll);
+            xbcF.set(xbcoll);
+            normF.set(norm);
+          }
+        }
+        if (tFirst === 0) break;
+
+        // apply the first collision with the saved collision points of that big particle
+        jlast = jfirst;
+        xscoll.set(xscF);
+        xbcoll.set(xbcF);
+        norm.set(normF);
+        ibin = this.applyCollisionAt(i, jfirst, kfirst, tFirst);
+        if (ibounce === 0) this.ncollide++;
+        ibounce++;
+        if (ibounce === this.maxbounceallow) break;
+        dt = tFirst;
+      }
+
+      this.nbounce += ibounce;
+      if (this.maxbounceallow && ibounce >= this.maxbounceallow) this.bouncemaxnum++;
+      if (ibounce > this.bouncemax) this.bouncemax = ibounce;
+    }
+  }
+
+  /** the SRD position and velocity of candidate c's pair: xs = x[i], vs = v[i], xb = the big copy's position */
+  private loadPair(i: number, c: number, xs: Float64Array, vs: Float64Array, xb: Float64Array): void {
+    const { x, v } = this.sys.state;
+    for (let d = 0; d < 3; d++) {
+      xs[d] = x[3 * i + d];
+      vs[d] = v[3 * i + d];
+      xb[d] = this.copyPos[3 * c + d];
+    }
+  }
+
+  /** the inside-a-big-particle case (collisions_single and collisions_multi): an error, a warning, or nothing */
+  private startedInside(i: number, j: number, ibounce: number): void {
+    const s = this.sys.state;
+    this.ninside++;
+    if (this.insideflag === INSIDE_IGNORE) return;
+    const msg = `SRD particle ${s.id[i]} started inside big particle ${s.id[j]} on step ${s.step} bounce ${ibounce + 1}`;
+    if (this.insideflag === INSIDE_ERROR) throw new StyleError(msg);
+    this.sys.warn(msg);
+  }
+
+  /**
+   * the collision update of collisions_single and collisions_multi, for the collision points in the scratch
+   * arrays (xscoll, xbcoll, norm) at time tRemain: the slip or noslip velocity vsnew, the rescale check, the
+   * momentum (and no-slip torque) given to the big particle, and update_srd(): the SRD moves from the collision
+   * point with its new velocity for tRemain and is binned again. Returns the new search bin.
+   */
+  private applyCollisionAt(i: number, j: number, c: number, tRemain: number): number {
+    const s = this.sys.state;
+    const { x, v } = s;
+    const { vs, xb, xscoll, xbcoll, norm, vsnew } = this;
+    for (let d = 0; d < 3; d++) {
+      vs[d] = v[3 * i + d];
+      xb[d] = this.copyPos[3 * c + d];
+    }
+    // noslip/slip take the big particle's position at the time of the step (x[j]), not its collision point
+    const vb = this.bigVelocity(j);
+    const omega = this.bigOmega(j);
+    if (this.noslipflag) this.noslip(vs, vb, xb, omega, xscoll, norm, vsnew);
+    else this.slip(vs, vb, xb, omega, xscoll, norm, vsnew);
+    if (s.dimension === 2) vsnew[2] = 0.0;
+
+    // check on rescaling of vsnew
+    if (this.rescaleCollide) {
+      const vsq = vsnew[0] * vsnew[0] + vsnew[1] * vsnew[1] + vsnew[2] * vsnew[2];
+      if (vsq > this.vmaxsq) {
+        this.nrescale++;
+        const sc = this.vmax / Math.sqrt(vsq);
+        vsnew[0] *= sc;
+        vsnew[1] *= sc;
+        vsnew[2] *= sc;
+      }
+    }
+
+    // fix_srd.cpp: a sphere with slip collisions gets no torque, every other big particle does
+    this.forceTorque(v, i, vsnew, xscoll, xbcoll, j, this.noslipflag || this.bigKind[j] !== KIND_SPHERE);
+
+    // update_srd(): SRD velocity, position from the collision point, and its bin
+    for (let d = 0; d < 3; d++) {
+      v[3 * i + d] = vsnew[d];
+      x[3 * i + d] = xscoll[d] + tRemain * vsnew[d];
+    }
+    this.checkSrdDomain(i);
+    const ix = Math.trunc((x[3 * i] - this.blo2[0]) * this.bininv2[0]);
+    const iy = Math.trunc((x[3 * i + 1] - this.blo2[1]) * this.bininv2[1]);
+    const iz = Math.trunc((x[3 * i + 2] - this.blo2[2]) * this.bininv2[2]);
+    const [nx, ny] = this.nbin2;
+    return (this.binsrd[i] = iz * ny * nx + iy * nx + ix);
   }
 
   /** warns once per escape from the SRD domain (update_srd: "Fix srd particle moved outside valid domain") */
@@ -1102,7 +1295,9 @@ export class FixSRD extends Fix {
    * fix_srd.cpp force_torque(): the big particle gets -dp/dt of the SRD as a force, and as a torque about its
    * centre (xs - xb cross -dp/dt) when the collision is no-slip.
    */
-  private forceTorque(v: Float64Array, i: number, vsnew: Float64Array, xs: Float64Array, xb: Float64Array, j: number): void {
+  private forceTorque(
+    v: Float64Array, i: number, vsnew: Float64Array, xs: Float64Array, xb: Float64Array, j: number, applyTorque: boolean,
+  ): void {
     const f = this.sys.state.f;
     const factor = this.massSrd / this.dtBig / this.sys.state.units.ftm2v;
     const dp0 = factor * (vsnew[0] - v[3 * i]);
@@ -1111,7 +1306,7 @@ export class FixSRD extends Fix {
     f[3 * j] -= dp0;
     f[3 * j + 1] -= dp1;
     f[3 * j + 2] -= dp2;
-    if (!this.noslipflag) return;
+    if (!applyTorque) return;
     const tq = this.sys.state.torque!;
     const r0 = xs[0] - xb[0];
     const r1 = xs[1] - xb[1];
@@ -1126,9 +1321,9 @@ export class FixSRD extends Fix {
     return v.subarray(3 * j, 3 * j + 3);
   }
 
+  /** omega of big particle j (bigDynamic(): its atom omega, or the angular velocity of an ellipsoid) */
   private bigOmega(j: number): Float64Array {
-    const om = this.sys.state.omega;
-    return om ? om.subarray(3 * j, 3 * j + 3) : new Float64Array(ZERO3);
+    return this.bigOmegaAll.subarray(3 * j, 3 * j + 3);
   }
 
   /** fix_srd.cpp slip(): new SRD velocity from a Gaussian normal component and the surface velocity */
@@ -1241,6 +1436,108 @@ const collisionSphereInexact = (
     xscoll[d] = xb[d] + rad * norm[d];
     xbcoll[d] = xb[d];
   }
+};
+
+/**
+ * inside_ellipsoid(): SRD point inside the ellipsoid. ex/ey/ez are the body axes (9 numbers: ex, ey, ez), inv the
+ * inverse squared semi-axes (aradsqinv, bradsqinv, cradsqinv).
+ */
+const insideEllipsoid = (xs: Float64Array, xb: Float64Array, ax: Float64Array, inv: Float64Array): boolean => {
+  const d0 = xs[0] - xb[0];
+  const d1 = xs[1] - xb[1];
+  const d2 = xs[2] - xb[2];
+  const x = d0 * ax[0] + d1 * ax[1] + d2 * ax[2];
+  const y = d0 * ax[3] + d1 * ax[4] + d2 * ax[5];
+  const z = d0 * ax[6] + d1 * ax[7] + d2 * ax[8];
+  return x * x * inv[0] + y * y * inv[1] + z * z * inv[2] <= 1.0;
+};
+
+/**
+ * collision_ellipsoid_exact(): time before now at which the SRD meets the ellipsoid surface (the surface moves with
+ * the ellipsoid's translation and rotation). Writes the collision points and the unit normal; returns dt.
+ */
+const collisionEllipsoidExact = (
+  xs: Float64Array, xb: Float64Array, vs: Float64Array, vb: Float64Array, omega: Float64Array, ax: Float64Array,
+  inv: Float64Array, xscoll: Float64Array, xbcoll: Float64Array, norm: Float64Array,
+): number => {
+  const ox = omega[0], oy = omega[1], oz = omega[2];
+  const vsvb0 = vs[0] - vb[0], vsvb1 = vs[1] - vb[1], vsvb2 = vs[2] - vb[2];
+  const xsxb0 = xs[0] - xb[0], xsxb1 = xs[1] - xb[1], xsxb2 = xs[2] - xb[2];
+  // omega x e (for each body axis e)
+  const wex = [oy * ax[2] - oz * ax[1], oz * ax[0] - ox * ax[2], ox * ax[1] - oy * ax[0]];
+  const wey = [oy * ax[5] - oz * ax[4], oz * ax[3] - ox * ax[5], ox * ax[4] - oy * ax[3]];
+  const wez = [oy * ax[8] - oz * ax[7], oz * ax[6] - ox * ax[8], ox * ax[7] - oy * ax[6]];
+  const ex = [ax[0], ax[1], ax[2]], ey = [ax[3], ax[4], ax[5]], ez = [ax[6], ax[7], ax[8]];
+  const dot = (p: number[], a0: number, a1: number, a2: number): number => p[0] * a0 + p[1] * a1 + p[2] * a2;
+  const ax_ = dot(wex, vsvb0, vsvb1, vsvb2);
+  let bx = -dot(ex, vsvb0, vsvb1, vsvb2);
+  bx -= dot(wex, xsxb0, xsxb1, xsxb2);
+  const cx = dot(ex, xsxb0, xsxb1, xsxb2);
+  const ay = dot(wey, vsvb0, vsvb1, vsvb2);
+  let by = -dot(ey, vsvb0, vsvb1, vsvb2);
+  by -= dot(wey, xsxb0, xsxb1, xsxb2);
+  const cy = dot(ey, xsxb0, xsxb1, xsxb2);
+  const az = dot(wez, vsvb0, vsvb1, vsvb2);
+  let bz = -dot(ez, vsvb0, vsvb1, vsvb2);
+  bz -= dot(wez, xsxb0, xsxb1, xsxb2);
+  const cz = dot(ez, xsxb0, xsxb1, xsxb2);
+  const a = (bx * bx + 2.0 * ax_ * cx) * inv[0] + (by * by + 2.0 * ay * cy) * inv[1] + (bz * bz + 2.0 * az * cz) * inv[2];
+  const b = 2.0 * (bx * cx * inv[0] + by * cy * inv[1] + bz * cz * inv[2]);
+  const c = cx * cx * inv[0] + cy * cy * inv[1] + cz * cz * inv[2] - 1.0;
+  const dt = (-b + Math.sqrt(b * b - 4.0 * a * c)) / (2.0 * a);
+
+  for (let d = 0; d < 3; d++) {
+    xscoll[d] = xs[d] - dt * vs[d];
+    xbcoll[d] = xb[d] - dt * vb[d];
+  }
+  // body axes at the collision time: e - dt (omega x e)
+  const exc = [0, 0, 0], eyc = [0, 0, 0], ezc = [0, 0, 0];
+  for (let d = 0; d < 3; d++) {
+    exc[d] = ex[d] - dt * (wex[d]);
+    eyc[d] = ey[d] - dt * (wey[d]);
+    ezc[d] = ez[d] - dt * (wez[d]);
+  }
+  const delta0 = xscoll[0] - xbcoll[0], delta1 = xscoll[1] - xbcoll[1], delta2 = xscoll[2] - xbcoll[2];
+  // xbody = (exc, eyc, ezc)^T delta; nbody scales by the inverse squared axes; norm = (exc, eyc, ezc) nbody
+  const xb0 = dot(exc, delta0, delta1, delta2);
+  const xb1 = dot(eyc, delta0, delta1, delta2);
+  const xb2 = dot(ezc, delta0, delta1, delta2);
+  const n0 = xb0 * inv[0], n1 = xb1 * inv[1], n2 = xb2 * inv[2];
+  for (let d = 0; d < 3; d++) norm[d] = exc[d] * n0 + eyc[d] * n1 + ezc[d] * n2;
+  const scale = 1.0 / Math.sqrt(norm[0] * norm[0] + norm[1] * norm[1] + norm[2] * norm[2]);
+  norm[0] *= scale;
+  norm[1] *= scale;
+  norm[2] *= scale;
+  return dt;
+};
+
+/** collision_ellipsoid_inexact(): push the SRD to the ellipsoid surface at the end of the step */
+const collisionEllipsoidInexact = (
+  xs: Float64Array, xb: Float64Array, ax: Float64Array, inv: Float64Array, xscoll: Float64Array,
+  xbcoll: Float64Array, norm: Float64Array,
+): void => {
+  const d0 = xs[0] - xb[0], d1 = xs[1] - xb[1], d2 = xs[2] - xb[2];
+  let x = d0 * ax[0] + d1 * ax[1] + d2 * ax[2];
+  let y = d0 * ax[3] + d1 * ax[4] + d2 * ax[5];
+  let z = d0 * ax[6] + d1 * ax[7] + d2 * ax[8];
+  const scale = 1.0 / Math.sqrt(x * x * inv[0] + y * y * inv[1] + z * z * inv[2]);
+  x *= scale;
+  y *= scale;
+  z *= scale;
+  for (let d = 0; d < 3; d++) {
+    xscoll[d] = x * ax[d] + y * ax[3 + d] + z * ax[6 + d] + xb[d];
+    xbcoll[d] = xb[d];
+  }
+  const delta0 = xscoll[0] - xbcoll[0], delta1 = xscoll[1] - xbcoll[1], delta2 = xscoll[2] - xbcoll[2];
+  const xb0 = ax[0] * delta0 + ax[1] * delta1 + ax[2] * delta2;
+  const xb1 = ax[3] * delta0 + ax[4] * delta1 + ax[5] * delta2;
+  const xb2 = ax[6] * delta0 + ax[7] * delta1 + ax[8] * delta2;
+  const n0 = xb0 * inv[0], n1 = xb1 * inv[1], n2 = xb2 * inv[2];
+  for (let d = 0; d < 3; d++) norm[d] = ax[d] * n0 + ax[3 + d] * n1 + ax[6 + d] * n2;
+  const nn = 1.0 / Math.sqrt(norm[0] * norm[0] + norm[1] * norm[1] + norm[2] * norm[2]);
+  norm[0] *= nn;
+  norm[1] *= nn;
+  norm[2] *= nn;
 };
 
 const scale3 = (v: Float64Array, off: number, s: number): void => {

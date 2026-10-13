@@ -53,7 +53,7 @@ describe('fix srd refusals name the keyword', () => {
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes'))).toBe('');
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes\nfix 3 all deform 1 x scale 1.0'))).toMatch(/tstat yes with fix deform/);
   });
-  it('refuses big particles that belong to a rigid body', async () => {
+  it('runs big particles that belong to a rigid body (fix rigid with sphere atoms)', async () => {
     const script = `units lj
 atom_style sphere
 atom_modify first big
@@ -73,13 +73,14 @@ velocity small create 1.0 593849 loop geom
 neighbor 0.3 bin
 timestep 0.02
 fix 3 big rigid single
-fix 1 small srd 1 big 1.0 0.25 49894 collision slip
+fix 1 small srd 1 big 1.0 0.25 49894 collision slip inside ignore
 run 1
 `;
-    expect(await errorOf(script)).toMatch(/big particles in rigid bodies \(fix 3 rigid\)/);
+    expect(await errorOf(script)).toBe('');
   });
-  it('refuses overlap yes', async () => {
-    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip overlap yes'))).toMatch(/overlap/);
+  it('accepts overlap yes, and refuses unbiased yes', async () => {
+    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip overlap yes'))).toBe('');
+    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes unbiased yes'))).toMatch(/unbiased yes is not supported/);
   });
   it('names an unknown keyword', async () => {
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 bogus 3'))).toMatch(/Unknown fix srd keyword bogus/);

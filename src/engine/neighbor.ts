@@ -198,7 +198,13 @@ export class Neighbor {
     const lim = Math.max(0, 0.5 * this.skin - boxDelta);
     const lim2 = lim * lim;
     const x = s.x, h = this.xhold;
-    for (let k = 0; k < 3 * s.n; k += 3) {
+    // neigh_modify.html: "The include option limits the building of pairwise neighbor lists to atoms in the
+    // specified group." Measured with native LAMMPS (black box): only the atoms of that group take part in the
+    // check (fix srd example: fast SRD particles outside the big group do not force a rebuild; the candidate counts
+    // of fix srd agree step by step only then).
+    const incl = this.includeBit;
+    for (let i = 0, k = 0; i < s.n; i++, k += 3) {
+      if (incl && !(s.mask[i] & incl)) continue;
       const dx = x[k] - h[k], dy = x[k + 1] - h[k + 1], dz = x[k + 2] - h[k + 2];
       if (dx * dx + dy * dy + dz * dz > lim2) return true;
     }

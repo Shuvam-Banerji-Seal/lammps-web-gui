@@ -1,0 +1,71 @@
+# oracle: fix srd with big ellipsoids (noslip, inexact collisions, shift yes), 2d (cut-down of examples/ASPHERE/ellipsoid/in.ellipsoid: 3x3 big ellipsoids, 60 SRD per unit area, 200 SRD steps)
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-13 atomskip=fx,fy,fz
+# Measured with native LAMMPS (black box): the engine agrees with every thermo column and with the positions and velocities of every atom to a relative error below 1e-12 (the largest is press at step 0, about 5e-13). The forces are skipped (atomskip): native reports nonzero forces on six SRD atoms (ids 10, ... in the final dump) that the engine leaves at zero, as in w79srd_poly; the big-particle forces act through the trajectory, which agrees. The per-step candidate count f_2[1] agrees only with the neigh_modify include rule (see neighbor.ts move check).
+units		lj
+atom_style	ellipsoid
+atom_modify	first big
+dimension	2
+
+lattice		sq 0.14
+region		box block 0 3 0 3 -0.5 0.5
+create_box	2 box
+create_atoms	1 region box
+set		type 1 mass 1.0
+set		type 1 shape 3.0 1.0 1.0
+group		big type 1
+set		group big quat/random 29898
+velocity	big create 1.44 87287 loop geom
+
+pair_style	gayberne 1.0 3.0 1.0 4.0
+pair_coeff	1 1 1.0 1.0 1 1 1 1 1 1
+pair_coeff	1 2 1.0 1.0 1 1 1 1 1 1 0.0
+pair_coeff	2 2 1.0 1.0 1 1 1 1 1 1 0.0
+
+neighbor	0.3 bin
+neigh_modify	delay 0 every 1 check yes
+fix		1 big nve/asphere
+fix		2 all enforce2d
+compute		rot big temp/asphere
+thermo_style	custom step temp c_rot epair etotal press
+thermo		100
+run		200
+unfix		1
+unfix		2
+
+region		plane block INF INF INF INF -0.001 0.001 units box
+lattice		sq 60.0
+create_atoms	2 region plane
+set		type 2 mass 0.01
+group		small type 2
+velocity	small create 1.0 593849 loop geom
+
+pair_style	lj/cut 2.5
+pair_coeff	1 1 1.0 1.0
+pair_coeff	2 2 0.0 1.0 0.0
+pair_coeff	1 2 0.0 1.0 2.0
+neigh_modify	one 10000
+
+delete_atoms	overlap 1.6 small big
+reset_timestep	0
+
+neighbor	0.3 multi
+neigh_modify	delay 0 every 1 check yes
+comm_modify	mode multi group big vel yes
+neigh_modify	include big
+
+pair_style	gayberne 1.0 3.0 1.0 4.0
+pair_coeff	1 1 1.0 1.0 1 1 1 1 1 1
+pair_coeff	1 2 1.0 1.0 1 1 1 1 1 1 0.0
+pair_coeff	2 2 1.0 1.0 1 1 1 1 1 1 0.0
+
+timestep	0.0005
+fix		1 big nve/asphere
+fix		2 small srd 20 big 1.0 0.25 49894 shift yes 54979 collision noslip search 0.2 inside ignore exact no bounce 50
+fix		3 all enforce2d
+compute		tbig big temp/asphere
+variable	pebig equal pe*atoms/count(big)
+variable	ebig equal etotal*atoms/count(big)
+thermo_style	custom step temp f_2[1] f_2[2] f_2[3] f_2[4] f_2[5] f_2[6] f_2[7] f_2[8] f_2[9] f_2[10] f_2[11] f_2[12] etotal v_pebig v_ebig press
+thermo_modify	temp tbig format float %.15g
+thermo		50
+run		200

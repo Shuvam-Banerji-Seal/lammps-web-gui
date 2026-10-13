@@ -11,11 +11,12 @@
  * advected ... the SRD velocities are rotated ... in each bin".
  *
  * Supported here: lj or other unit styles through the unit table, 2d and 3d boxes, point SRD particles of one mass,
- * big particles that are spheres or ellipsoids (a sphere of a rigid body included), collision slip or noslip, exact
- * and inexact (exact yes/no), overlap yes (collisions_multi), bounce N, inside error/warn/ignore, lamda, radius,
+ * big particles that are spheres, ellipsoids (a sphere or line of a rigid body included) or 2d lines (overlap yes
+ * only: inside_line, collision_line_exact, newton_raphson, lineside), collision slip or noslip, exact and inexact
+ * (exact yes/no), overlap yes (collisions_multi), bounce N, inside error/warn/ignore, lamda, radius,
  * search, cubic, rescale, shift no/yes/possible (RanPark bin shifts, periodic boxes), and tstat yes without box
- * deformation. Refused with a StyleError naming the keyword: unbiased yes, tstat yes with fix deform, line/tri big
- * particles, and fix wall/srd.
+ * deformation. Refused with a StyleError naming the keyword: unbiased yes, any fix deform (the SRD streaming
+ * velocity h_rate, with or without tstat), tri big particles, and fix wall/srd.
  *
  * Browser-engine difference: native processes SRD atoms in its own local order; the engine keeps that order in
  * SimState.order (nativeOrder), and every loop over SRD particles goes through it, so the random draws happen in
@@ -26,7 +27,7 @@
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { isEllipsoid, isLineAtom, isTriAtom, massOf, nativeOrder } from '../../engine/atoms';
+import { isEllipsoid, isLineAtom, isTriAtom, LINE_BONUS, massOf, nativeOrder } from '../../engine/atoms';
 import { bodyMotion, quatToMatrix, rotateVec } from '../../engine/compute/asphere';
 import { RanMars } from '../random_mars';
 import { RanPark } from '../random_park';
@@ -46,10 +47,14 @@ const SRD_ROTATE = 2;
 /** static const int ATOMPERBIN = 30 (native error "too many big particles in bin"). */
 const ATOMPERBIN = 30;
 const BIG = 1.0e20;
-/** big particle kinds (big_static): sphere and ellipsoid */
+/** big particle kinds (big_static): sphere, ellipsoid and line (fix_srd.cpp enum { SPHERE, ELLIPSOID, LINE, TRIANGLE, WALL }) */
 const KIND_SPHERE = 0;
 const KIND_ELLIPSOID = 1;
+const KIND_LINE = 2;
 const EMPTY: number[] = [];
+/** fix_srd.cpp: static constexpr double TOLERANCE = 0.00001; static constexpr int MAXITER = 20; */
+const LINE_TOLERANCE = 0.00001;
+const LINE_MAXITER = 20;
 
 
 export class FixSRD extends Fix {
@@ -159,6 +164,20 @@ export class FixSRD extends Fix {
   private bigInv = new Float64Array(0);
   private bigAxes = new Float64Array(0);
   private bigOmegaAll = new Float64Array(0);
+  /** line big particles: segment length (big_static) and orientation theta (big_dynamic, from the line bonus) */
+  private bigLength = new Float64Array(0);
+  private bigTheta = new Float64Array(0);
+  /** inside_line() state (fix_srd.cpp members xs0, xs1, xb0, xb1, theta0, theta1, tfraction, xsc, xbc, nbc) */
+  private readonly lxs0 = new Float64Array(2);
+  private readonly lxs1 = new Float64Array(2);
+  private readonly lxb0 = new Float64Array(2);
+  private readonly lxb1 = new Float64Array(2);
+  private ltheta0 = 0;
+  private ltheta1 = 0;
+  private ltfraction = 0;
+  private readonly lxsc = new Float64Array(2);
+  private readonly lxbc = new Float64Array(2);
+  private readonly lnbc = new Float64Array(2);
   private readonly tangent = new Float64Array(3);
   private readonly tangent1 = new Float64Array(3);
   private readonly tangent2 = new Float64Array(3);
@@ -319,9 +338,10 @@ export class FixSRD extends Fix {
     }
     // fix_srd.cpp init(): "Fix srd no-slip requires atom attribute torque"
     if (this.bigExist && this.noslipflag && !s.torque) throw new StyleError('Fix srd no-slip requires atom attribute torque');
-    // fix_srd.cpp init(): a box deformation with the SRD thermostat needs the streaming velocity, not supported here
-    if (this.tstat && this.sys.fixes.some((f) => f.style === 'deform')) {
-      throw new StyleError('fix srd tstat yes with fix deform is not supported by this engine yet');
+    // fix_srd.cpp init() and reset_velocities(): with a box deformation the SRD velocities are corrected by the box
+    // streaming rate h_rate (with or without the thermostat); not ported, so refused rather than run without it
+    if (this.sys.fixes.some((f) => f.style === 'deform')) {
+      throw new StyleError(`fix srd${this.tstat ? ' tstat yes' : ''} with fix deform is not supported by this engine yet (the SRD streaming velocity h_rate)`);
     }
     this.parameterize();
 
@@ -360,15 +380,22 @@ export class FixSRD extends Fix {
     this.preNeighbor();
   }
 
-  /** Big particles must be spheres or ellipsoids here (line and tri big particles are refused). */
+  /**
+   * Big particles must be spheres, ellipsoids or lines (tri big particles are refused). fix_srd.cpp init():
+   * "Cannot use lines with fix srd unless overlap is set"; lines and tris need the atom torque.
+   */
   private checkBig(): void {
     const s = this.sys.state;
+    let anyLines = false;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.bigBit)) continue;
-      if (isLineAtom(s, i) || isTriAtom(s, i)) {
-        throw new StyleError('fix srd big particles that are lines or triangles are not supported by this engine yet (spheres and ellipsoids only)');
+      if (isTriAtom(s, i)) {
+        throw new StyleError('fix srd big particles that are triangles are not supported by this engine yet (spheres, ellipsoids and lines only)');
       }
+      if (isLineAtom(s, i)) anyLines = true;
     }
+    if (anyLines && !this.overlapflag) throw new StyleError('Cannot use lines with fix srd unless overlap is set');
+    if (anyLines && !s.torque) throw new StyleError('Fix srd big particles that are lines require atom attribute torque');
   }
 
   /**
@@ -383,10 +410,16 @@ export class FixSRD extends Fix {
       this.bigInv = new Float64Array(3 * n);
       this.bigAxes = new Float64Array(9 * n);
       this.bigOmegaAll = new Float64Array(3 * n);
+      this.bigLength = new Float64Array(n);
+      this.bigTheta = new Float64Array(n);
     }
     for (let i = 0; i < n; i++) {
       if (!(s.mask[i] & this.bigBit)) continue;
-      if (isEllipsoid(s, i)) {
+      if (isLineAtom(s, i)) {
+        // fix_srd.cpp big_static(), LINE: "set length and cutoff based on 1/2 length" (no radfactor)
+        this.bigKind[i] = KIND_LINE;
+        this.bigLength[i] = s.custom.get(LINE_BONUS)!.data[2 * i];
+      } else if (isEllipsoid(s, i)) {
         this.bigKind[i] = KIND_ELLIPSOID;
         const sh = s.shape!;
         for (let d = 0; d < 3; d++) {
@@ -419,8 +452,10 @@ export class FixSRD extends Fix {
         this.bigOmegaAll[3 * i] = w[0];
         this.bigOmegaAll[3 * i + 1] = w[1];
         this.bigOmegaAll[3 * i + 2] = w[2];
-      } else if (omega) {
-        for (let d = 0; d < 3; d++) this.bigOmegaAll[3 * i + d] = omega[3 * i + d];
+      } else {
+        // fix_srd.cpp big_dynamic(), LINE: "set omega from atom->omega directly" and theta from the line bonus
+        if (this.bigKind[i] === KIND_LINE) this.bigTheta[i] = this.sys.state.custom.get(LINE_BONUS)!.data[2 * i + 1];
+        if (omega) for (let d = 0; d < 3; d++) this.bigOmegaAll[3 * i + d] = omega[3 * i + d];
       }
     }
   }
@@ -428,6 +463,8 @@ export class FixSRD extends Fix {
   /** big radius for the search bins and the ghost cutoff: radfactor times the radius, or the longest semi-axis */
   private bigRadius(j: number): number {
     const s = this.sys.state;
+    // fix_srd.cpp big_static(), LINE: rad = 0.5 * length (no radfactor)
+    if (this.bigKind[j] === KIND_LINE) return 0.5 * this.bigLength[j];
     if (this.bigKind[j] === KIND_ELLIPSOID) {
       const sh = s.shape!;
       return this.radfactor * Math.max(sh[3 * j], sh[3 * j + 1], sh[3 * j + 2]);
@@ -448,6 +485,13 @@ export class FixSRD extends Fix {
     if (this.bigExist) {
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & this.bigBit)) continue;
+        if (isLineAtom(s, i)) {
+          // fix_srd.cpp parameterize(): a line contributes its length (not 2*radius)
+          const len = s.custom.get(LINE_BONUS)!.data[2 * i];
+          maxd = Math.max(maxd, len);
+          mind = Math.min(mind, len);
+          continue;
+        }
         if (isEllipsoid(s, i)) {
           // fix_srd.cpp parameterize(): the diameters 2*shape of an ellipsoid
           for (let d = 0; d < 3; d++) {
@@ -1130,13 +1174,19 @@ export class FixSRD extends Fix {
           const ell = kind === KIND_ELLIPSOID;
           const ax = this.bigAxes.subarray(9 * j, 9 * j + 9);
           const inv = this.bigInv.subarray(3 * j, 3 * j + 3);
-          const inside = ell ? insideEllipsoid(xs, xb, ax, inv) : insideSphere(xs, xb, rad * rad);
-          if (!inside) continue;
-
           const vb = this.bigVelocity(j);
-          const tRemain = ell
-            ? collisionEllipsoidExact(xs, xb, vs, vb, this.bigOmega(j), ax, inv, xscoll, xbcoll, norm)
-            : collisionSphereExact(xs, xb, vs, vb, rad * rad, xscoll, xbcoll, norm);
+          let tRemain: number;
+          if (kind === KIND_LINE) {
+            // fix_srd.cpp collisions_multi(): inside_line(x[i], x[j], v[i], v[j], big, dt), then collision_line_exact
+            if (!this.insideLine(xs, xb, vs, vb, this.bigTheta[j], this.bigOmega(j)[2], this.bigLength[j], dt)) continue;
+            tRemain = this.collisionLineExact(dt, xscoll, xbcoll, norm);
+          } else {
+            const inside = ell ? insideEllipsoid(xs, xb, ax, inv) : insideSphere(xs, xb, rad * rad);
+            if (!inside) continue;
+            tRemain = ell
+              ? collisionEllipsoidExact(xs, xb, vs, vb, this.bigOmega(j), ax, inv, xscoll, xbcoll, norm)
+              : collisionSphereExact(xs, xb, vs, vb, rad * rad, xscoll, xbcoll, norm);
+          }
 
           if (tRemain > dt || tRemain < 0.0) {
             this.startedInside(i, j, ibounce);
@@ -1171,6 +1221,117 @@ export class FixSRD extends Fix {
       if (this.maxbounceallow && ibounce >= this.maxbounceallow) this.bouncemaxnum++;
       if (ibounce > this.bouncemax) this.bouncemax = ibounce;
     }
+  }
+
+  /**
+   * fix_srd.cpp inside_line(): is the SRD particle inside the line big particle during the step? The SRD starts on the
+   * positive side of the (moving, rotating) infinite line and ends on the negative side; the crossing time is found by
+   * newtonRaphson() and the collision point must lie within half the length of the line. Sets the state used by
+   * collisionLineExact(). xs, xb: positions at the end of the step; vs, vb: velocities; theta: orientation at the end of
+   * the step; omegaZ: its angular velocity; dtStep: the time before now.
+   */
+  private insideLine(
+    xs: Float64Array, xb: Float64Array, vs: Float64Array, vb: Float64Array, theta: number, omegaZ: number,
+    length: number, dtStep: number,
+  ): boolean {
+    const xs0 = this.lxs0, xs1 = this.lxs1, xb0 = this.lxb0, xb1 = this.lxb1;
+    for (let d = 0; d < 2; d++) {
+      xs1[d] = xs[d];
+      xb1[d] = xb[d];
+      xs0[d] = xs1[d] - dtStep * vs[d];
+      xb0[d] = xb1[d] - dtStep * vb[d];
+    }
+    this.ltheta1 = theta;
+    this.ltheta0 = theta - dtStep * omegaZ;
+    const th0 = this.ltheta0, th1 = this.ltheta1;
+    // n = normal to the line = [sin(theta), -cos(theta)]; side = (P - C) . n
+    const side0 = (xs0[0] - xb0[0]) * Math.sin(th0) + (xs0[1] - xb0[1]) * -Math.cos(th0);
+    const side1 = (xs1[0] - xb1[0]) * Math.sin(th1) + (xs1[1] - xb1[1]) * -Math.cos(th1);
+    if (side0 <= 0.0 || side1 >= 0.0) return false;
+    // Newton-Raphson solve of the full non-linear parametric equation for the crossing time (0 to 1)
+    const tf = this.newtonRaphson(0.0, 1.0);
+    this.ltfraction = tf;
+    for (let d = 0; d < 2; d++) {
+      this.lxsc[d] = xs0[d] + tf * (xs1[d] - xs0[d]);
+      this.lxbc[d] = xb0[d] + tf * (xb1[d] - xb0[d]);
+    }
+    const delx = this.lxsc[0] - this.lxbc[0];
+    const dely = this.lxsc[1] - this.lxbc[1];
+    const rsq = delx * delx + dely * dely;
+    if (rsq > 0.25 * length * length) return false;
+    const thc = th0 + tf * (th1 - th0);
+    this.lnbc[0] = Math.sin(thc);
+    this.lnbc[1] = -Math.cos(thc);
+    return true;
+  }
+
+  /** fix_srd.cpp collision_line_exact(): the collision points and normal of inside_line(); returns the time before now. */
+  private collisionLineExact(dtStep: number, xscoll: Float64Array, xbcoll: Float64Array, norm: Float64Array): number {
+    xscoll[0] = this.lxsc[0];
+    xscoll[1] = this.lxsc[1];
+    xscoll[2] = 0.0;
+    xbcoll[0] = this.lxbc[0];
+    xbcoll[1] = this.lxbc[1];
+    xbcoll[2] = 0.0;
+    norm[0] = this.lnbc[0];
+    norm[1] = this.lnbc[1];
+    norm[2] = 0.0;
+    return (1.0 - this.ltfraction) * dtStep;
+  }
+
+  /** fix_srd.cpp newton_raphson(): root of lineside() in [t1, t2] (safeguarded Newton-bisection, as native). */
+  private newtonRaphson(t1: number, t2: number): number {
+    const first = this.lineSide(t1);
+    let tlo: number, thi: number;
+    if (first.f < 0.0) {
+      tlo = t1;
+      thi = t2;
+    } else {
+      thi = t1;
+      tlo = t2;
+    }
+    let t = 0.5 * (t1 + t2);
+    let dtold = Math.abs(t2 - t1);
+    let dt = dtold;
+    let side = this.lineSide(t);
+    for (let it = 0; it < LINE_MAXITER; it++) {
+      const f = side.f;
+      const df = side.df;
+      if ((((t - thi) * df - f) * ((t - tlo) * df - f) > 0.0) || Math.abs(2.0 * f) > Math.abs(dtold * df)) {
+        dtold = dt;
+        dt = 0.5 * (thi - tlo);
+        t = tlo + dt;
+        if (tlo === t) return t;
+      } else {
+        dtold = dt;
+        dt = f / df;
+        const temp = t;
+        t -= dt;
+        if (temp === t) return t;
+      }
+      if (Math.abs(dt) < LINE_TOLERANCE) return t;
+      side = this.lineSide(t);
+      if (side.f < 0.0) tlo = t;
+      else thi = t;
+    }
+    return t;
+  }
+
+  /** fix_srd.cpp lineside(): the signed distance f of the SRD from the rotating line at t, and its derivative df. */
+  private lineSide(t: number): { f: number; df: number } {
+    const xs0 = this.lxs0, xs1 = this.lxs1, xb0 = this.lxb0, xb1 = this.lxb1;
+    const p0 = xs0[0] + (xs1[0] - xs0[0]) * t;
+    const p1 = xs0[1] + (xs1[1] - xs0[1]) * t;
+    const c0 = xb0[0] + (xb1[0] - xb0[0]) * t;
+    const c1 = xb0[1] + (xb1[1] - xb0[1]) * t;
+    const dtheta = this.ltheta1 - this.ltheta0;
+    const theta = this.ltheta0 + dtheta * t;
+    const cosT = Math.cos(theta);
+    const sinT = Math.sin(theta);
+    const f = (p1 - c1) * cosT - (p0 - c0) * sinT;
+    const df = ((xs1[1] - xs0[1]) - (xb1[1] - xb0[1])) * cosT - (p1 - c1) * sinT * dtheta -
+      ((xs1[0] - xs0[0]) - (xb1[0] - xb0[0])) * sinT - (p0 - c0) * cosT * dtheta;
+    return { f, df };
   }
 
   /** the SRD position and velocity of candidate c's pair: xs = x[i], vs = v[i], xb = the big copy's position */

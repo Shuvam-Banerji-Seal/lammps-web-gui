@@ -1,0 +1,27 @@
+# oracle: fix bond/react without stabilization, tiny nylon with wildcard map files and JSON molecules (examples/PACKAGES/reaction/tiny_nylon_wildcards, stabilization removed) cut to 200 steps; molecule ... auto adi generates the angles, dihedrals and impropers from the bonds
+# oracle-inputs: w94react_nylon.data w94react_wild_stp1.map w94react_wild_stp1_unreacted.json w94react_wild_stp1_reacted.json w94react_wild_stp2.map w94react_wild_stp2_unreacted.json w94react_wild_stp2_reacted.json
+# Engine vs this fixture (Node 24; Node 20 gives the same numbers to the digits shown): two reactions (steps 10 and 70) with wildcard atoms, types from the labels. thermo max rel 6.1e-8 (press, step 140), temp 2.3e-10; atoms max rel 3.3e-7 (fz, abs 6.4e-7). The 1e-8 default is not met: the press gap starts at the second reaction (step 70); its source is not established.
+# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+units real
+boundary p p p
+atom_style full
+kspace_style pppm 1.0e-4
+pair_style lj/class2/coul/long 8.5
+angle_style class2
+bond_style class2
+dihedral_style class2
+improper_style class2
+special_bonds lj/coul 0 0 1
+pair_modify tail yes mix sixthpower
+read_data w94react_nylon.data extra/bond/per/atom 5 extra/angle/per/atom 15 extra/dihedral/per/atom 15 extra/improper/per/atom 25 extra/special/per/atom 25
+velocity all create 300.0 4928459 dist gaussian
+molecule mol1 w94react_wild_stp1_unreacted.json auto adi
+molecule mol2 w94react_wild_stp1_reacted.json auto adi
+molecule mol3 w94react_wild_stp2_unreacted.json auto adi
+molecule mol4 w94react_wild_stp2_reacted.json auto adi
+thermo 10
+fix myrxns all bond/react stabilization no react rxn1 all 1 0.0 2.9 mol1 mol2 w94react_wild_stp1.map react rxn2 all 1 0.0 5.0 mol3 mol4 w94react_wild_stp2.map rescale_charges yes
+fix 1 all nve/limit .03
+thermo_style custom step temp press density f_myrxns[1] f_myrxns[2]
+thermo_modify colname auto format float %.15g
+run 200

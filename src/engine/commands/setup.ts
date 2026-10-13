@@ -951,6 +951,17 @@ const createAtoms: Handler = ({ sys }, a) => {
 };
 
 /**
+ * The symmetry of an improper style for the auto keyword and the bond/react type inference (the symmatoms of the
+ * style, improper_class2.html "Symmetry convention": "the second atom in the quadruplet is the atom of symmetry").
+ * No improper style gives no symmetry; a style without a known convention gives null.
+ */
+const improperSymmatoms = (style: string | undefined): readonly number[] | null | undefined => {
+  if (style === undefined) return undefined;
+  if (style === 'class2') return [0, 1, 0, 0];
+  return null;
+};
+
+/**
  * molecule ID file1 keyword values ... file2 ... — molecule.html: "zero or
  * more keyword/value pairs may be appended after each file"; "keyword =
  * offset or toff or boff or aoff or doff or ioff or scale". The ID "can only
@@ -964,13 +975,25 @@ const molecule: Handler = ({ sys }, a) => {
   const sets: MoleculeTemplate[] = [];
   for (let k = 1; k < a.length;) {
     const file = a[k++];
-    const o: MoleculeOptions = { toff: 0, boff: 0, aoff: 0, doff: 0, ioff: 0, scale: 1 };
-    while (k < a.length && ['offset', 'toff', 'boff', 'aoff', 'doff', 'ioff', 'scale'].includes(a[k])) {
+    const o: MoleculeOptions = {
+      toff: 0, boff: 0, aoff: 0, doff: 0, ioff: 0, scale: 1, units: sys.units.style,
+      improperSymmatoms: improperSymmatoms(sys.ff.improper?.name),
+    };
+    while (k < a.length && ['offset', 'toff', 'boff', 'aoff', 'doff', 'ioff', 'scale', 'auto', 'check_labels'].includes(a[k])) {
       const key = a[k];
       if (key === 'offset') {
         [o.toff, o.boff, o.aoff, o.doff, o.ioff] = [1, 2, 3, 4, 5].map((j) => int(a[k + j], 'offset'));
         k += 6;
-      } else if (key === 'scale') { o.scale = num(a[k + 1], 'scale'); k += 2; } else { o[key as 'toff'] = int(a[k + 1], key); k += 2; }
+      } else if (key === 'scale') { o.scale = num(a[k + 1], 'scale'); k += 2; }
+      else if (key === 'auto') {
+        // molecule.html: "The auto value is a single string that should contain one or more of the characters 'a', 'd', and 'i'"
+        const v = a[k + 1] ?? '';
+        if (!/^[adi]+$/.test(v)) throw new StyleError(`Illegal auto option ${v}`);
+        o.auto = v;
+        k += 2;
+      } else if (key === 'check_labels') {
+        throw new StyleError('molecule check_labels is not supported by the browser engine (it only warns)');
+      } else { o[key as 'toff'] = int(a[k + 1], key); k += 2; }
     }
     // molecule.html: type words may be type labels, resolved through the label map at read time
     const t = parseMoleculeFile(id, file, sys.readFile(file), o, sys.labels);

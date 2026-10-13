@@ -1,0 +1,18 @@
+# oracle: pair local/density alone, cut down from examples/PACKAGES/local_density/benzene_water/in.benzene_water: 1380 atoms, NVE for 10 steps (the table spline term of the example is left out; the per-atom check of local/density)
+# measured max error vs native (per atom, relative to max(1,|value|), positions, velocities, forces): 6.3e-14 (atom 655 fz); thermo agrees at 1e-8.
+# oracle-inputs: benzene_water.data benzene_water.localdensity.table
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+dimension       3
+boundary        p p p
+atom_style      molecular
+pair_style      local/density
+read_data       benzene_water.data
+velocity        all create  3.0000e+02 16611 rot yes dist gaussian
+pair_coeff * * benzene_water.localdensity.table
+timestep        2.0
+thermo_style    custom step temp ke pe etotal evdwl
+thermo_modify   format float %.15g
+thermo          5
+fix             timeintegration all nve
+run             10

@@ -22,6 +22,8 @@ import { bonds as bondsTerm, atomEnergy, hydrogenBonds, torsionAngles, valenceAn
 import { readControlFile, readForceField, type ControlParams, type ReaxParam } from './ffield';
 import { initLookupTables, type LookupTables } from './lookup';
 import { tabulatedVdwCoulombEnergy, vdwCoulombEnergy } from './nonbonded';
+import { nativeFarOrder, type NativeFarOrder } from './nativeFar';
+import { nativeOrder } from '../../engine/atoms';
 
 const REAX_MIN_CAP = 50;
 
@@ -52,6 +54,14 @@ export class PairReaxFF extends Pair {
   protected cutmax = 0;
   /** LAMMPS pvector: the 14 energy terms of the last evaluation (compute pair reaxff). */
   protected pvector = new Float64Array(14);
+  /** Set by fix reaxff/bonds and fix reaxff/species: keep the bond list and the native order of the last evaluation. */
+  nativeWanted = false;
+  /** The bond list of the last evaluation (with the state the output fixes read); null before the first one. */
+  lastBonds: RxSystem | null = null;
+  /** Native far-list order of the current neighbor build (computed when nativeWanted). */
+  nativeInfo: NativeFarOrder | null = null;
+  private nativeBuild = -1;
+  private nativeOrderRef: Int32Array | null = null;
 
   override allocate(ntypes: number): void {
     super.allocate(ntypes);
@@ -222,6 +232,13 @@ export class PairReaxFF extends Pair {
       tabulatedVdwCoulombEnergy(sys, this.tables(type, n));
     }
     computeTotalForce(sys);
+    this.lastBonds = sys;
+    if (this.nativeWanted && (this.nativeInfo === null || this.nativeBuild !== pc.nb.nbuild || this.nativeOrderRef !== nativeOrder(pc.s))) {
+      if (pc.s.dimension === 2) throw new StyleError('fix reaxff/bonds and fix reaxff/species are not supported in 2d');
+      this.nativeInfo = nativeFarOrder(pc.s, pc.nb, pc.geom, x);
+      this.nativeBuild = pc.nb.nbuild;
+      this.nativeOrderRef = nativeOrder(pc.s);
+    }
     // read_reax_forces: LAMMPS adds -f to the forces of owned and ghost atoms (ghost forces are reverse-communicated)
     const f = pc.f;
     for (let a = 0; a < N; a++) {
@@ -248,6 +265,23 @@ export class PairReaxFF extends Pair {
     pc.acc.evdwl += e.e_bond + e.e_ov + e.e_un + e.e_lp + e.e_ang + e.e_pen + e.e_coa + e.e_hb + e.e_tor + e.e_con + e.e_vdW;
     pc.acc.ecoul += e.e_ele + e.e_pol;
   }
+
+  /** Called by fix reaxff/bonds and fix reaxff/species (init): the next evaluations keep the native order. */
+  wantNative(): void { this.nativeWanted = true; }
+
+  /** The element name of each LAMMPS type 1..ntypes (index t-1), as pair_reaxff.cpp eletype: "NULL" for NULL types. */
+  elementNames(ntypes: number): string[] {
+    if (!this.param) throw new StyleError('pair_style reaxff has no force field');
+    const names: string[] = [];
+    for (let t = 1; t <= ntypes; t++) {
+      const k = this.map[t];
+      names.push(k >= 0 ? this.param.sbp[k].name : 'NULL');
+    }
+    return names;
+  }
+
+  /** bond_graph_cutoff of the control file (control->bg_cut): the bond order cutoff of fix reaxff/bonds. */
+  bondGraphCutoff(): number { return this.ctrl.bgCut; }
 
   /** extract('pvector') for compute pair (the 14 terms of pair_reaxff.cpp compute). */
   override extract(name: string): unknown {

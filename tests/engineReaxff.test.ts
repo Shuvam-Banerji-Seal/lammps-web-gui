@@ -110,7 +110,7 @@ describe('pair_style reaxff in the engine', () => {
     const head = `units real\natom_style charge\nread_data water.data\npair_style reaxff NULL\npair_coeff * * ffield.reax.rdx H O\n`;
     await expect(runScript(`${head}fix 2 all qeq/reaxff 1 0.0 10.0 1e-6 reaxff dual\nrun 0\n`, files)).rejects.toThrow(/dual/);
     await expect(runScript(`${head}fix 2 all qeq/reaxff 1 0.0 10.0 1e-6 reaxff matfree\nrun 0\n`, files)).rejects.toThrow(/matfree/);
-    await expect(runScript(`${head}fix 2 all reaxff/bonds 1 bonds.reaxff\nrun 0\n`, files)).rejects.toThrow(/reaxff\/bonds/);
+    await expect(runScript(`${head}fix 2 all surface/global 1 bonds.reaxff\nrun 0\n`, files)).rejects.toThrow(/surface\/global/);
     await expect(runScript(`${head}compute c all reaxff/atom bonds yes\nrun 0\n`, files)).rejects.toThrow(/reaxff\/atom/);
   });
 
@@ -125,5 +125,26 @@ describe('pair_style reaxff in the engine', () => {
     const ff = readFileSync(join(POTENTIALS, 'ffield.reax.rdx'), 'utf8');
     await expect(runScript(`units real\natom_style charge\nread_data water.data\npair_style reaxff NULL\npair_coeff * * ffield.reax.rdx H O\nrun 0\n`,
       { 'ffield.reax.rdx': ff, 'water.data': water })).rejects.toThrow(/qeq\/reaxff/);
+  });
+});
+
+describe('fix reaxff/bonds and fix reaxff/species: arguments and refusals', () => {
+  const ff = readFileSync(join(POTENTIALS, 'ffield.reax.rdx'), 'utf8');
+  const head = `units real\natom_style charge\nread_data water.data\npair_style reaxff NULL\npair_coeff * * ffield.reax.rdx H O\nfix 2 all qeq/reaxff 1 0.0 10.0 1e-6 reaxff\n`;
+  const files = () => ({ 'ffield.reax.rdx': ff, 'water.data': readFileSync(join(CASES, 'w55reax_water.data'), 'utf8') });
+
+  it('refuses the delete and position keywords of fix reaxff/species by name', async () => {
+    await expect(runScript(`${head}fix 3 all reaxff/species 1 1 1 sp.out delete del.out\nrun 0\n`, files())).rejects.toThrow(/delete/);
+    await expect(runScript(`${head}fix 3 all reaxff/species 1 1 1 sp.out position 1 pos.out\nrun 0\n`, files())).rejects.toThrow(/position/);
+  });
+
+  it('refuses incompatible reaxff/species nevery, nrepeat and nfreq, and an unknown keyword', async () => {
+    await expect(runScript(`${head}fix 3 all reaxff/species 2 1 5 sp.out\nrun 0\n`, files())).rejects.toThrow(/Incompatible/);
+    await expect(runScript(`${head}fix 3 all reaxff/species 1 1 1 sp.out bogus 1\nrun 0\n`, files())).rejects.toThrow(/bogus/);
+  });
+
+  it('refuses a * file name and a missing Nevery for fix reaxff/bonds', async () => {
+    await expect(runScript(`${head}fix 3 all reaxff/bonds 1 bonds.*.reaxff\nrun 0\n`, files())).rejects.toThrow(/\*/);
+    await expect(runScript(`${head}fix 3 all reaxff/bonds 0 bonds.reaxff\nrun 0\n`, files())).rejects.toThrow(/nevery/);
   });
 });

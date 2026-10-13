@@ -1,0 +1,42 @@
+# oracle: LAMMPS examples/reaxff/in.reaxff.tatb (b332f28, GPL-2.0): fix reaxff/bonds and fix reaxff/species of that example,
+# cut down like w55reax_in_tatb: 384-atom TATB cell, 20 steps; the reaxff/atom compute and the dumps of the example are left out.
+# oracle-inputs: w55reax_tatb.data w55reax_tatb.control w55reax_ffield.reax
+# oracle-files: bonds.reaxff species.tatb
+# oracle-compare: thermo=all atoms=all rel=1e-4 abs=1e-6 skip=v_nqeq
+# measured (engine vs native, Node 20 bundle): bonds.reaxff and species.tatb identical (every token); v_nmole, v_nspec exact;
+# thermo max relative error 3.5e-6 (press, step 15; v_eqeq 1.9e-6, v_ep 1.4e-6, temp 1.0e-6), the rest <= 2.4e-8 except v_nqeq
+# (CG iteration count, not compared); per-atom max relative error 4.2e-4 (inherited from the qeq/reaxff port, see w55reax_in_tatb)
+units           real
+atom_style      charge
+read_data       w55reax_tatb.data
+pair_style      reaxff w55reax_tatb.control
+pair_coeff      * * w55reax_ffield.reax C H O N
+compute reax all pair reaxff
+variable eb      equal c_reax[1]
+variable ea      equal c_reax[2]
+variable elp     equal c_reax[3]
+variable emol    equal c_reax[4]
+variable ev      equal c_reax[5]
+variable epen    equal c_reax[6]
+variable ecoa    equal c_reax[7]
+variable ehb     equal c_reax[8]
+variable et      equal c_reax[9]
+variable eco     equal c_reax[10]
+variable ew      equal c_reax[11]
+variable ep      equal c_reax[12]
+variable efi     equal c_reax[13]
+variable eqeq    equal c_reax[14]
+neighbor        2.5 bin
+neigh_modify    delay 0 every 5 check no
+fix             1 all nve
+fix             2 all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff
+fix             4 all reaxff/bonds 5 bonds.reaxff
+fix             3 all reaxff/species 1 5 5 species.tatb
+variable nqeq   equal f_2
+variable nmole  equal f_3[1]
+variable nspec  equal f_3[2]
+thermo          5
+thermo_style    custom step temp epair etotal press v_eb v_ea v_elp v_emol v_ev v_epen v_ecoa v_ehb v_et v_eco v_ew v_ep v_efi v_eqeq v_nqeq v_nmole v_nspec
+thermo_modify   format float %.15g
+timestep        0.0625
+run             20

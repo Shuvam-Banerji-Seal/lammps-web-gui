@@ -14,6 +14,7 @@ import { PairReaxFF } from '../reaxff/pair';
 import { FixQEqReaxFF } from '../reaxff/qeq';
 import { FixACKS2ReaxFF } from '../reaxff/acks2';
 import { FixQEqRelReaxFF, FixQtpieReaxFF } from '../reaxff/qtpie';
+import { FixReaxFFBonds, FixReaxFFSpecies, reaxffPairOf } from '../reaxff/reports';
 
 /** ReaxFF styles ported from LAMMPS (src/REAXFF); merged into styles.ts through lazyStyles.ts. */
 export const PAIRS: Record<string, () => Pair> = {
@@ -23,7 +24,7 @@ export const PAIRS: Record<string, () => Pair> = {
 const qeqFactory = (sys: System, id: string, group: string, args: string[]): Fix =>
   new FixQEqReaxFF(sys, id, group, args, () => (sys.ff.pair instanceof PairReaxFF ? sys.ff.pair : null));
 
-/** Stage 3 of the ReaxFF port: refused by name (the factories throw; listed in refusedStyles.ts). */
+/** Refused by name (the factories throw; listed in refusedStyles.ts): the compute reaxff/atom (stage 3). */
 const refuse = (name: string) => (): never => {
   throw new StyleError(`${name} is not ported to the browser engine (ReaxFF output fixes and computes are not supported)`);
 };
@@ -37,9 +38,15 @@ const qeqRelFactory = (sys: System, id: string, group: string, args: string[]): 
 const acks2Factory = (sys: System, id: string, group: string, args: string[]): Fix =>
   new FixACKS2ReaxFF(sys, id, group, args, () => (sys.ff.pair instanceof PairReaxFF ? sys.ff.pair : null));
 
+const bondsFactory = (sys: System, id: string, group: string, args: string[]): Fix =>
+  new FixReaxFFBonds(sys, id, group, args, () => reaxffPairOf(sys));
+
+const speciesFactory = (sys: System, id: string, group: string, args: string[]): Fix =>
+  new FixReaxFFSpecies(sys, id, group, args, () => reaxffPairOf(sys));
+
 /**
- * fix qeq/reaxff (and its alias qeq/reax), fix acks2/reaxff (alias acks2/reax), fix qtpie/reaxff and
- * fix qeq/rel/reaxff, all in LAMMPS' FixStyle lists; reaxff/bonds and reaxff/species refused.
+ * fix qeq/reaxff (and its alias qeq/reax), fix acks2/reaxff (alias acks2/reax), fix qtpie/reaxff,
+ * fix qeq/rel/reaxff, fix reaxff/bonds and fix reaxff/species, all in LAMMPS' FixStyle lists.
  */
 export const FIXES: Record<string, typeof qeqFactory> = {
   'qeq/reaxff': qeqFactory,
@@ -48,8 +55,8 @@ export const FIXES: Record<string, typeof qeqFactory> = {
   'acks2/reax': acks2Factory,
   'qtpie/reaxff': qtpieFactory,
   'qeq/rel/reaxff': qeqRelFactory,
-  'reaxff/bonds': refuse('fix reaxff/bonds') as unknown as typeof qeqFactory,
-  'reaxff/species': refuse('fix reaxff/species') as unknown as typeof qeqFactory,
+  'reaxff/bonds': bondsFactory as unknown as typeof qeqFactory,
+  'reaxff/species': speciesFactory as unknown as typeof qeqFactory,
 };
 
 /** compute reaxff/atom: refused by name. */

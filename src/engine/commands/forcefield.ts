@@ -1,6 +1,6 @@
 import type { Handler } from './args';
 import { int, num, yesno } from './args';
-import { StyleError, type Bonded } from '../force/types';
+import { StyleError, type Bonded, type KSpace } from '../force/types';
 import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES, KSPACE_STYLES, styleNames } from '../styles';
 import type { System } from '../system';
 import type { MixRule, Pair } from '../force/types';
@@ -8,6 +8,8 @@ import { PairHybrid } from '../force/pair/hybrid';
 import { isMolecularStyle } from '../atoms';
 import { KSpaceBase } from '../force/kspace/ewald';
 import { typeWord } from '../labelmap';
+import { KSpacePPPM } from '../force/kspace/pppm';
+import { pppmGplHook } from '../force/kspace/pppmHook';
 
 /*
  * Force-field commands. Styles come from styles.ts; anything else is an
@@ -240,10 +242,18 @@ const kspaceStyle: Handler = ({ sys }, a) => {
 
 /** kspace_modify keyword value ... — kspace_modify.html. */
 const kspaceModify: Handler = ({ sys }, a) => {
-  const k = sys.ff.kspace;
-  if (!k) throw new StyleError('kspace_modify needs a kspace_style first');
+  const first = sys.ff.kspace;
+  if (!first) throw new StyleError('kspace_modify needs a kspace_style first');
+  let k: KSpace = first;
   for (let i = 0; i < a.length;) {
     const key = a[i];
+    if (key === 'diff' && a[i + 1] === 'ad') {
+      // kspace_modify.html: "diff ad" selects analytic differentiation; the native PPPM helper (gpl_pppm) builds that style
+      const ad: KSpace | null = k instanceof KSpacePPPM ? pppmGplHook().promoteAd(k) : null;
+      if (!ad) throw new StyleError(`kspace_modify diff ad is not supported by kspace_style ${k.name}`);
+      k = ad;
+      sys.ff.kspace = ad;
+    }
     if (key === 'compute') {
       // kspace_modify.html: "The compute keyword allows Kspace computations to be turned off, even though a kspace_style is defined."
       if (!(k instanceof KSpaceBase)) throw new StyleError(`kspace_modify compute is not supported by kspace_style ${k.name}`);

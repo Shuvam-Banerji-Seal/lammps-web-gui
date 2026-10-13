@@ -86,6 +86,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'pair_sw', names: { PAIRS: ['sw', 'sw/mod'] }, load: () => import('./registry/pair_sw') as Promise<StyleModule> },
   { id: 'pair_mbtable49', names: { PAIRS: ['threebody/table', 'sw/angle/table'] }, load: () => import('./registry/pair_mbtable49') as Promise<StyleModule> },
   { id: 'gpl_tri', names: { HOOKS: ['tri'] }, load: () => import('../engine-gpl/registry/tri_hook') as Promise<StyleModule> },
+  { id: 'gpl_pppm', names: { HOOKS: ['pppm', 'pppm/cg', 'pppm/dielectric', 'pppm/electrode', 'pppm/tip4p'] }, load: () => import('../engine-gpl/registry/pppm') as Promise<StyleModule> },
   { id: 'line_tri', names: { FIXES: ['nve/line', 'nve/tri'], PAIRS: ['line/lj', 'tri/lj'] }, load: () => import('../engine-gpl/registry/line_tri') as Promise<StyleModule> },
   { id: 'eff', names: { COMPUTES: ['ke/atom/eff', 'ke/eff', 'temp/eff', 'temp/region/eff'], FIXES: ['nph/eff', 'npt/eff', 'nve/eff', 'nvt/eff', 'temp/rescale/eff'], PAIRS: ['eff/cut'] }, load: () => import('../engine-gpl/registry/eff') as Promise<StyleModule> },
   { id: 'gransurf', names: { PAIRS: ['surf/granular'], FIXES: ['surface/local', 'surface/global'] }, load: () => import('../engine-gpl/registry/gransurf') as Promise<StyleModule> },

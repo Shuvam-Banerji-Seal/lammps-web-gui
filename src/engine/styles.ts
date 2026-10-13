@@ -17,7 +17,8 @@ import { ImproperHarmonic } from './force/improper/harmonic';
 import * as pairCoul from './registry/pair_coul';
 import { PairCoulLong, PairLJCutCoulLong } from './force/pair/coul_long';
 import { KSpaceEwald } from './force/kspace/ewald';
-import { KSpacePPPM, KSpacePPPMCG } from './force/kspace/pppm';
+import { KSpacePPPM, KSpacePPPMCG, type PppmGplHook } from './force/kspace/pppm';
+import { setPppmGplHook } from './force/kspace/pppmHook';
 import * as pairSimple from './registry/pair_simple';
 import * as pairLJ from './registry/pair_lj';
 import * as pairLJCoul from './registry/pair_ljcoul';
@@ -237,6 +238,9 @@ export const loadStyleGroup = (g: LazyGroup): Promise<void> => {
         const add = mod[kind];
         if (add) Object.assign(REGISTRY_OF[kind], add);
       }
+      // the native PPPM helper (gpl_pppm) is read by the core PPPM through its slot, not through HOOKS
+      const pppmHook = mod.HOOKS?.pppm;
+      if (pppmHook) setPppmGplHook(pppmHook as PppmGplHook);
     });
     loaded.set(g.id, p);
   }

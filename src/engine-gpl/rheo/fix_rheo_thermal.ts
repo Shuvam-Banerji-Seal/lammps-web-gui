@@ -22,6 +22,7 @@ import {
   filterTopo, isRheoThermalStyle, massOf, pushTopo, RHEO_COND, RHEO_ESPH, RHEO_HEATFLOW, RHEO_STATUS, RHEO_TEMP,
 } from '../../engine/atoms';
 import { NEIGHMASK } from '../../engine/neighbor';
+import { BondedHybrid } from '../../engine/force/bonded_hybrid';
 import {
   PHASEMASK, rheoModelOf, rheoProp, STATUS_FREEZING, STATUS_MELTING, STATUS_NO_INTEGRATION, STATUS_NO_SHIFT, STATUS_SOLID,
   type RheoModel,
@@ -130,7 +131,9 @@ export class FixRHEOThermal extends Fix {
       // LAMMPS does, and the engine rebuilds the special lists from the topology after each change)
       const sp = this.sys.ff.special.lj;
       if (sp[0] !== 1.0 || sp[1] !== 1.0 || sp[2] !== 1.0) {
-        if (!(this.sys.ff.bond.name ?? '').startsWith('bpm')) {
+        const bond = this.sys.ff.bond;
+        const bpm = (bond.name ?? '').startsWith('bpm') || (bond instanceof BondedHybrid && bond.subNames.some((n) => n.startsWith('bpm')));
+        if (!bpm) {
           throw new StyleError('Without fix update/special/bonds, reactive bond generation in fix rheo/thermal requires special weights of 1.0');
         }
       }

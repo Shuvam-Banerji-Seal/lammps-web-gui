@@ -6,8 +6,11 @@
  *
  * Docs (docs.lammps.org/pair_rheo.html): "pair_style rheo cutoff keyword values" and "keyword = rho/damp or
  * artificial/visc or harmonic/means"; "rho/damp args = density damping prefactor" and "artificial/visc args = artificial
- * viscosity prefactor". harmonic/means is not supported by the browser engine yet and is
- * refused by name. "pair_coeff * *" sets all type pairs. The cutoff must match fix rheo's cutoff.
+ * viscosity prefactor"; "harmonic/means args = none". docs.lammps.org/pair_rheo.html: "If particles have different viscosities
+ * or conductivities, the harmonic/means keyword changes how they are averaged before calculating pairwise forces or heat
+ * exchanges. By default, an arithmetic averaged is used, however, a harmonic mean may improve stability in systems with
+ * multiple fluid phases with large disparities in viscosities." "pair_coeff * *" sets all type pairs. The cutoff must
+ * match fix rheo's cutoff.
  *
  * Forces: the hydrostatic pressure and the artificial pressure (Pi + Pj + Q) along the kernel gradient, the viscous
  * term 2 eta_ave (v_i - v_j) . dW / r^2 with eta_ave the mean viscosity, and the density damping (the native branch for
@@ -43,6 +46,8 @@ export class PairRHEO extends Pair {
   private listFor: unknown = null;
   /** newton pair (pair_rheo.cpp newton_pair): off keeps both images of a ghost pair, each acting on its owned atom only. */
   private newtonPair = true;
+  /** pair_style rheo harmonic/means: the thermal diffusivity and viscosity means are harmonic. */
+  private harmonicMeans = false;
 
   settings(args: string[]): void {
     if (args.length < 1) throw new StyleError('Illegal pair_style command');
@@ -61,7 +66,8 @@ export class PairRHEO extends Pair {
         this.av = parseNum(args[iarg + 1], 'artificial/visc');
         iarg += 2;
       } else if (w === 'harmonic/means') {
-        throw new StyleError('pair_style rheo harmonic/means is not supported by the browser engine yet');
+        this.harmonicMeans = true;
+        iarg += 1;
       } else {
         throw new StyleError(`Illegal pair_style command, ${w}`);
       }
@@ -178,7 +184,8 @@ export class PairRHEO extends Pair {
         // heatflow_i += (dx . dWij) dT volj and heatflow_j += (dx . dWji) dT voli (newton on or the other end owned)
         const alphai = cond[i] / (rho0i * thermal.calcCv(itype));
         const alphaj = cond[oj] / (rho0j * thermal.calcCv(jtype));
-        const alphaAve = 0.5 * (alphai + alphaj);
+        // pair_rheo.cpp: "alpha_ave = 2.0 * alphai * alphaj / (alphai + alphaj)" with harmonic/means, else the mean
+        const alphaAve = this.harmonicMeans ? 2.0 * alphai * alphaj / (alphai + alphaj) : 0.5 * (alphai + alphaj);
         const dTPrefactor = 2.0 * alphaAve * (temp[i] - temp[oj]) * rinvsq;
         let dot = 0;
         for (let a = 0; a < dim; a++) dot += dx[a] * dWij[a];
@@ -193,7 +200,8 @@ export class PairRHEO extends Pair {
         // hydrostatic pressure, then the artificial pressure of the approaching pair
         let fpPrefactor = Pj + Pi;
         for (let a = 0; a < dim; a++) dv[a] = v[3 * i + a] - v[3 * oj + a];
-        const etaAve = 0.5 * (etai + etaj);
+        // pair_rheo.cpp: "eta_ave = 2.0 * etai * etaj / (etai + etaj)" with harmonic/means, else the mean
+        const etaAve = this.harmonicMeans ? 2.0 * etai * etaj / (etai + etaj) : 0.5 * (etai + etaj);
         if (this.artificialFlag && pairAvisc) {
           // interpolate velocities to the midpoint for the artificial viscosity
           for (let a = 0; a < dim; a++) du[a] = dv[a];

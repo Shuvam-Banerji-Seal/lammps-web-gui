@@ -64,6 +64,8 @@ export class BondedHybrid extends Bonded {
   readonly kind: HybridKind;
   /** Sub-style names in the order they were listed. */
   subNames: string[] = [];
+  /** The settings words of each sub-style (bond_style hybrid bpm/spring rheo/shell t/form 100). */
+  private subSettings = new Map<string, string[]>();
   /** Per type: sub-style index, UNSET or NONE. */
   private assign = new Int32Array(0);
   /**
@@ -92,15 +94,29 @@ export class BondedHybrid extends Bonded {
     const kind = this.kind;
     if (!args.length) throw new StyleError(`Illegal ${kind}_style hybrid command: missing argument(s)`);
     const names: string[] = [];
+    // the words after a sub-style name up to the next sub-style name are its settings (e.g. rheo/shell t/form 100):
+    // a keyword (letters first) and the values that follow it; any other word there is an illegal hybrid argument
+    let current: string | null = null;
+    let valuesOk = false;
+    this.subSettings = new Map<string, string[]>();
     args.forEach((a, i) => {
       if (a === 'hybrid') throw new StyleError(`${LABEL[kind]} style hybrid cannot have hybrid as an argument`);
       if (a === 'none') throw new StyleError(`${LABEL[kind]} style hybrid cannot have none as an argument`);
-      if (names.includes(a)) throw new StyleError(`${LABEL[kind]} style hybrid cannot use same ${kind} style twice`);
-      if (!this.registry[a]) {
+      if (this.registry[a]) {
+        if (names.includes(a)) throw new StyleError(`${LABEL[kind]} style hybrid cannot use same ${kind} style twice`);
+        names.push(a);
+        current = a;
+        valuesOk = false;
+        this.subSettings.set(a, []);
+        return;
+      }
+      if (current === null) {
         if (i > 0 && !looksLikeStyle(a)) throw new StyleError(`Illegal ${kind}_style hybrid argument: ${a}`);
         throw new StyleError(`${kind}_style hybrid sub-style '${a}' is not supported by the browser engine`);
       }
-      names.push(a);
+      if (looksLikeStyle(a)) valuesOk = true;
+      else if (!valuesOk) throw new StyleError(`Illegal ${kind}_style hybrid argument: ${a}`);
+      this.subSettings.get(current)!.push(a);
     });
     // a sub-style with required settings (e.g. lepton expressions) cannot sit in a hybrid list
     for (const n of names) this.make(n, this.ctx);
@@ -174,7 +190,8 @@ export class BondedHybrid extends Bonded {
     const subs = this.build();
     const key = ENERGY_KEY[this.kind];
     const listKey = LIST_KEY[this.kind];
-    const buckets = this.bucket(bc.s.topo[listKey]);
+    const global = bc.s.topo[listKey];
+    const { lists: buckets, index } = this.bucket(global);
     for (let k = 0; k < subs.length; k++) {
       this.energy[k] = 0;
       const list = buckets[k];
@@ -182,10 +199,27 @@ export class BondedHybrid extends Bonded {
       this.scratch[key] = 0;
       const state = { ...bc.s, topo: { ...bc.s.topo, [listKey]: list } };
       subs[k].compute({ ...bc, s: state, acc: this.scratch });
+      // the sub-style works on a copy of its entries: a type it sets (bpm breaks a bond: type 0) goes back to the topology
+      const idx = index[k];
+      for (let j = 0; j < list.n; j++) global.type[idx[j]] = list.type[j];
       const e = this.scratch[key];
       this.energy[k] = e;
       bc.acc[key] += e;
     }
+  }
+
+  /** Topology changes of any sub-style (bpm breaks, rheo/shell removals) since the last call. */
+  takeTopologyChange(): boolean {
+    let changed = false;
+    for (const st of this.subs ?? []) if (st.takeTopologyChange?.()) changed = true;
+    return changed;
+  }
+
+  /** The sub-style that owns the type decides whether its bonds ignore the special lists (see Bonded.ignoresSpecial). */
+  ignoresSpecial(type: number): boolean {
+    const a = type >= 0 && type < this.assign.length ? this.assign[type] : UNSET;
+    if (a < 0) return false;
+    return this.build()[a].ignoresSpecial?.(type) ?? false;
   }
 
   /** Energy of each sub-style at the last force evaluation (indices 1..N in compute bond, angle, ...). */
@@ -216,7 +250,7 @@ export class BondedHybrid extends Bonded {
     const f = this.registry[name];
     if (!f || name === 'hybrid') throw new StyleError(`${this.kind}_style hybrid sub-style '${name}' is not supported by the browser engine`);
     const st = f();
-    st.settings([], ctx ?? NO_CONTEXT);
+    st.settings(this.subSettings.get(name) ?? [], ctx ?? NO_CONTEXT);
     return st;
   }
 
@@ -254,7 +288,7 @@ export class BondedHybrid extends Bonded {
   }
 
   /** Splits a topology list into one list per sub-style (types with no sub-style are dropped). */
-  private bucket(list: TopoList): TopoList[] {
+  private bucket(list: TopoList): { lists: TopoList[]; index: Int32Array[] } {
     const nsub = this.subNames.length;
     const width = list.width;
     const owner = (t: number): number => (t >= 0 && t < this.assign.length && this.assign[t] >= 0 ? this.assign[t] : -1);
@@ -264,8 +298,10 @@ export class BondedHybrid extends Bonded {
       if (k >= 0) counts[k]++;
     }
     const out: TopoList[] = [];
+    const index: Int32Array[] = [];
     for (let k = 0; k < nsub; k++) {
       out.push({ n: counts[k], width, type: new Int32Array(counts[k]), atoms: new Int32Array(counts[k] * width) });
+      index.push(new Int32Array(counts[k]));
     }
     const fill = new Int32Array(nsub);
     for (let e = 0; e < list.n; e++) {
@@ -274,8 +310,9 @@ export class BondedHybrid extends Bonded {
       const j = fill[k]++;
       const dst = out[k];
       dst.type[j] = list.type[e];
+      index[k][j] = e;
       for (let c = 0; c < width; c++) dst.atoms[j * width + c] = list.atoms[e * width + c];
     }
-    return out;
+    return { lists: out, index };
   }
 }

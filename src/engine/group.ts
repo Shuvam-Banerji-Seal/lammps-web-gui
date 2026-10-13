@@ -54,8 +54,9 @@ export interface DynamicGroup {
  * DYNAMIC_GROUP_FIXES accept one; every other compute style registered here
  * accepts one too. A fix style in neither list has not been measured.
  */
+// add/heat: src/GRANULAR/fix_add_heat.cpp (b332f28) sets dynamic_group_allow = 1 in its constructor.
 export const DYNAMIC_GROUP_FIXES = new Set([
-  'addforce', 'addtorque/group', 'ave/histo', 'ave/moments', 'ave/time', 'aveforce', 'dt/reset', 'efield', 'gravity', 'langevin', 'lineforce',
+  'add/heat', 'addforce', 'addtorque/group', 'ave/histo', 'ave/moments', 'ave/time', 'aveforce', 'dt/reset', 'efield', 'gravity', 'langevin', 'lineforce',
   'momentum', 'nph', 'nph/sphere', 'npt', 'npt/sphere', 'nve', 'nve/limit', 'nve/sphere', 'nvt',
   'nvt/sllod', 'nvt/sphere', 'planeforce', 'recenter', 'setforce', 'spring', 'temp/berendsen',
   'temp/csld', 'temp/csvr', 'temp/rescale', 'viscous', 'wall/harmonic', 'wall/lj1043', 'wall/lj126',

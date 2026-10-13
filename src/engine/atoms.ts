@@ -814,11 +814,12 @@ export interface SpecialList {
   order: Int8Array;
 }
 
-export const buildSpecial = (s: SimState, opts: { angle?: boolean; dihedral?: boolean } = {}): SpecialList => {
+export const buildSpecial = (s: SimState, opts: { angle?: boolean; dihedral?: boolean; ignoreBond?: (type: number) => boolean } = {}): SpecialList => {
   const adj = new Map<number, number[]>();
   const b = s.topo.bonds;
   for (let e = 0; e < b.n; e++) {
     if (b.type[e] === 0) continue; // a broken bpm bond (type 0) is no 1-2 neighbor
+    if (opts.ignoreBond?.(b.type[e])) continue; // bonds of a style with ignore_special (bond rheo/shell)
     const i = b.atoms[2 * e], j = b.atoms[2 * e + 1];
     if (!adj.has(i)) adj.set(i, []);
     if (!adj.has(j)) adj.set(j, []);

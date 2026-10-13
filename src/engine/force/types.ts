@@ -406,6 +406,12 @@ export interface BondedCopies {
 }
 
 /** What a bonded style sees during compute(). Positions are owned atoms only. */
+/**
+ * Bond type a bond style sets on a bond it deletes (native: the bond is removed from the atoms' lists, as bond rheo/shell's
+ * process_ineligibility does). The force field drops those entries after the bond compute (forcefield.ts).
+ */
+export const BOND_REMOVED = -1;
+
 export interface BondedCompute {
   s: SimState;
   geom: Geometry;
@@ -472,6 +478,11 @@ export abstract class Bonded {
   abstract compute(bc: BondedCompute): void;
   /** Bonds broken by the last compute() (bond_style bpm/spring): true once, then cleared. */
   takeTopologyChange?(): boolean;
+  /**
+   * Bond types whose bonds are not 1-2 neighbors for the special lists (bond_rheo_shell.cpp sets ignore_special_flag:
+   * the bonds of such a type do not switch off the pair interaction between their atoms). Default: none.
+   */
+  ignoresSpecial?(type: number): boolean;
   /** Lines of the "<Kind> Coeffs" data-file section, or null. */
   dataCoeffs(): string[] | null { return null; }
   /**

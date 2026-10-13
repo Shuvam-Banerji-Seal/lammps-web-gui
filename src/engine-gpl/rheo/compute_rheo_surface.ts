@@ -34,6 +34,7 @@ const ensure = (m: RheoModel, n: number): void => {
   const dim = m.dim;
   if (m.nsurface.length < n * dim) m.nsurface = new Float64Array(n * dim);
   if (m.gradC.length < n * dim) m.gradC = new Float64Array(n * dim);
+  if (m.rsurface.length < n) m.rsurface = new Float64Array(n);
 };
 
 /**
@@ -133,6 +134,24 @@ export const computeRheoSurface = (s: SimState, nb: Neighbor, m: RheoModel, grou
       if ((status[i] & STATUS_BULK) && (status[owner[j]] & STATUS_SURFACE)) {
         status[i] = ((status[i] & SURFACEMASK) | STATUS_LAYER) >>> 0;
       }
+    }
+  }
+  // surface distance (compute_rheo_surface.cpp): bulk group atoms start at the cutoff, surface and splash atoms at zero,
+  // and a fluid atom takes the smallest distance to a surface neighbor (the native pair loop, summed over the full list)
+  const rsurface = m.rsurface;
+  for (let i = 0; i < n; i++) {
+    rsurface[i] = (mask[i] & groupBit) && !(status[i] & (STATUS_SURFACE | STATUS_SPLASH)) ? m.cut : 0.0;
+  }
+  for (let i = 0; i < n; i++) {
+    if (status[i] & PHASECHECK) continue;
+    const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
+    const k0 = full.firstneigh[i], k1 = k0 + full.numneigh[i];
+    for (let k = k0; k < k1; k++) {
+      const j = nbr[k] & NEIGHMASK;
+      const dx = xi - x[3 * j], dy = yi - x[3 * j + 1], dz = zi - x[3 * j + 2];
+      const rsq = dx * dx + dy * dy + dz * dz;
+      if (!(rsq < m.cutsq)) continue;
+      if (status[owner[j]] & STATUS_SURFACE) rsurface[i] = Math.min(rsurface[i], Math.sqrt(rsq));
     }
   }
   // normals are zero for atoms that are not surface atoms

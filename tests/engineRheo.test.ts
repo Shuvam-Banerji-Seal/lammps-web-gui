@@ -155,8 +155,8 @@ atom_style hybrid rheo/thermal bond
 region box block 0 4 0 4 -0.01 0.01
 create_box 1 box bond/types 1 extra/bond/per/atom 4
 create_atoms 1 single 1.0 1.0 0
-bond_style hybrid bpm/spring rheo/shell t/form 100
-`)).rejects.toThrow(/rheo\/shell/);
+bond_style hybrid bpm/spring no/such/style t/form 100
+`)).rejects.toThrow(/no\/such\/style/);
     await expect(run(`
 units lj
 dimension 2
@@ -215,5 +215,28 @@ write_data after.data
     };
     expect(atoms(files.get('after.data'))).toEqual(atoms(files.get('before.data')));
     expect(Number(atoms(files.get('after.data'))[0].trim().split(/\s+/)[4])).toBeCloseTo(2.5, 12);
+  });
+
+  it('refuses the oxidation parts by name: rheo/shell without fix rheo/oxidation, nbond/shell without fix rheo/oxidation, add/heat variables', async () => {
+    const HEAD = `
+units lj
+dimension 2
+atom_style hybrid rheo/thermal bond
+comm_modify vel yes
+region box block 0 4 0 4 -0.01 0.01
+create_box 1 box bond/types 1 extra/bond/per/atom 4
+create_atoms 1 single 1.0 1.0 0
+mass * 1.0
+pair_style rheo 3.0
+pair_coeff * *
+fix 1 all rheo 3.0 quintic 0 thermal surface/detection coordination 22 8
+fix 2 all rheo/viscosity * constant 0.05
+fix 3 all rheo/pressure * linear
+fix 4 all rheo/thermal conductivity * constant 0.1 specific/heat * constant 1.0
+`;
+    await expect(run(`${HEAD}bond_style rheo/shell t/form 10\nbond_coeff 1 0.2 0.2 0.1\nrun 1\n`)).rejects.toThrow(/Need to define fix rheo\/oxidation to use bond rheo\/shell/);
+    await expect(run(`${HEAD}bond_style rheo/shell\nbond_coeff 1 0.2 0.2 0.1\n`)).rejects.toThrow(/requires the t\/form keyword/);
+    await expect(run(`${HEAD}compute n all rheo/property/atom nbond/shell\nrun 1\n`)).rejects.toThrow(/Cannot request nbond\/shell without fix rheo\/oxidation/);
+    await expect(run(`${HEAD}fix 5 all add/heat linear v_t 0.5\nrun 1\n`)).rejects.toThrow(/variable values/);
   });
 });

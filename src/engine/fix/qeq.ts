@@ -3,6 +3,7 @@ import { StyleError, typeBounds } from '../force/types';
 import { erfcExact } from '../force/erfc';
 import { PairCoulStreitz, pointUval, slaterS } from '../force/pair/coul_streitz';
 import type { System } from '../system';
+import { gplHook } from '../gplHooks';
 
 /*
  * fix qeq/point, qeq/shielded, qeq/dynamic and qeq/fire — docs.lammps.org/fix_qeq.html
@@ -126,6 +127,17 @@ const isReaxQeqSource = (o: unknown): o is ReaxQeqSource => typeof (o as ReaxQeq
 
 type QeqKind = 'point' | 'shielded' | 'dynamic' | 'fire' | 'slater';
 
+/** The charge history of the qeq/slater solves (src/engine-gpl/qeq/history.ts, the lazy HOOKS entry 'qeq/slater'). */
+export interface QeqHistory {
+  readonly n: number;
+  initialGuesses(idx: number[]): { s: Float64Array; t: Float64Array };
+  shift(idx: number[], sx: Float64Array, tx: Float64Array): void;
+  matvecCount(sIt: number, tIt: number): number;
+}
+export interface QeqHistoryHook {
+  create(n: number, q: Float64Array): QeqHistory;
+}
+
 interface Params {
   chi: Float64Array;
   eta: Float64Array;
@@ -177,14 +189,8 @@ export class FixQeq extends Fix {
   private fromPair = false;
   /** qeq/shielded with qfile reaxff: chi, eta, gamma of the active pair_style reaxff, read at each solve. */
   private fromReax = false;
-  /**
-   * Charge history of the CG solves (fix_qeq.cpp at b332f28: nprev = 5, s_hist and t_hist set to atom->q at creation;
-   * after each solve the solution of the atom shifts in). Atom i has entries 5i .. 5i+4. The next solve starts from
-   * the extrapolations of init_matvec (fix_qeq_shielded.cpp, fix_qeq_point.cpp): s = 4(h0 + h2) - (6 h1 + h3) and
-   * t = h2 + 3 (h0 - h1).
-   */
-  private sHist = new Float64Array(0);
-  private tHist = new Float64Array(0);
+  /** qeq/slater: the charge history of the CG solves (created at the first solve, see QeqHistory). */
+  private history: QeqHistory | null = null;
   scalarFlag = true;
   extscalar = 0;
 
@@ -641,24 +647,13 @@ export class FixQeq extends Fix {
     const bS = new Float64Array(ng);
     const bT = new Float64Array(ng).fill(-1);
     for (let k = 0; k < ng; k++) bS[k] = -chi[k];
-    // init_matvec: the initial guesses are the extrapolated history (fix_qeq_point.cpp and fix_qeq_shielded.cpp)
-    const n5 = 5 * this.sys.state.n;
-    if (this.sHist.length !== n5) {
-      this.sHist = new Float64Array(n5);
-      this.tHist = new Float64Array(n5);
-      for (let i = 0; i < this.sys.state.n; i++) for (let k = 0; k < 5; k++) { this.sHist[5 * i + k] = s.q[i]; this.tHist[5 * i + k] = s.q[i]; }
-    }
-    const sh = this.sHist, th = this.tHist;
-    const sInit = new Float64Array(ng), tInit = new Float64Array(ng);
-    for (let a = 0; a < ng; a++) {
-      const i = idx[a];
-      sInit[a] = 4 * (sh[5 * i] + sh[5 * i + 2]) - (6 * sh[5 * i + 1] + sh[5 * i + 3]);
-      tInit[a] = th[5 * i + 2] + 3 * (th[5 * i] - th[5 * i + 1]);
-    }
-    const sRes = solveOne(bS, sInit);
-    const tRes = solveOne(bT, tInit);
-    // matvecs = (CG(s) + CG(t)) / 2 with integer division (fix_qeq.cpp / fix_qeq_shielded.cpp at b332f28)
-    this.iterations = Math.trunc((sRes.it + tRes.it) / 2);
+    // the history (src/engine-gpl/qeq/history.ts) gives the initial guesses and the iteration count
+    const n = this.sys.state.n;
+    if (!this.history || this.history.n !== n) this.history = gplHook<QeqHistoryHook>('qeq/slater').create(n, s.q);
+    const guess = this.history.initialGuesses(idx);
+    const sRes = solveOne(bS, guess.s);
+    const tRes = solveOne(bT, guess.t);
+    this.iterations = this.history.matvecCount(sRes.it, tRes.it);
     if (this.warn && (!sRes.ok || !tRes.ok)) {
       this.sys.warn(`Fix ${this.style} CG convergence failed after ${this.maxiter} iterations (maxiter reached)`);
     }
@@ -666,13 +661,7 @@ export class FixQeq extends Fix {
     for (let k = 0; k < ng; k++) { sumS += sRes.x[k]; sumT += tRes.x[k]; }
     const q = new Float64Array(ng);
     for (let k = 0; k < ng; k++) q[k] = sRes.x[k] - (sumS / sumT) * tRes.x[k];
-    // calculate_Q: the history shifts in the new solution of each group atom
-    for (let a = 0; a < ng; a++) {
-      const i = idx[a];
-      for (let k = 4; k > 0; k--) { sh[5 * i + k] = sh[5 * i + k - 1]; th[5 * i + k] = th[5 * i + k - 1]; }
-      sh[5 * i] = sRes.x[a];
-      th[5 * i] = tRes.x[a];
-    }
+    this.history.shift(idx, sRes.x, tRes.x);
     return q;
   }
 

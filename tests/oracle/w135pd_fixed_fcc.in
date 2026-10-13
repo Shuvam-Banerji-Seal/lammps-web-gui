@@ -1,0 +1,23 @@
+# oracle: pair lj/cut/dipole/long 2.5 + kspace_style pppm/dipole 1.0e-4 with kspace_modify gewald 0.5 mesh 12 12 12 order 5, 108 fcc point dipoles (dipole/random, |mu| 0.7) in a periodic box, run 0: pe, elong, press and the per-atom forces and torques
+# oracle-files: w135pd_fixed_fcc_tq.dump
+# measured with native LAMMPS (/home/roy/.local/bin/lmp, b332f28 with DIPOLE and KSPACE), engine vs native fixture: max relative error 1.2e-14 (thermo elong), 9.4e-13 (forces, atom 105), 2.2e-14 (torques); under Node 24. Re-measured under Node 20: below 1e-8.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      hybrid sphere dipole
+boundary        p p p
+lattice         fcc 0.4
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+set             group all diameter 1.0
+set             group all density 1.0
+set             group all dipole/random 4421 0.7
+pair_style      lj/cut/dipole/long 2.5
+pair_coeff      * * 1.0 1.0
+kspace_style    pppm/dipole 1.0e-4
+kspace_modify   gewald 0.5 mesh 12 12 12 order 5
+thermo_style    custom step pe evdwl ecoul elong press
+thermo_modify   format float %.15g norm no
+run             0
+write_dump      all custom w135pd_fixed_fcc_tq.dump id tqx tqy tqz modify format float %.15g sort id

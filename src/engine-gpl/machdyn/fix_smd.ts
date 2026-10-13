@@ -15,11 +15,14 @@
  * across all particles contained in the group for which this fix is defined. An additional safety factor s_fact is
  * applied to the time increment."
  */
-import { StyleError } from '../../engine/force/types';
+import { StyleError, type Pair } from '../../engine/force/types';
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { SMD_DESPH, SMD_ESPH, SMD_VEST } from '../../engine/smd';
 import { PairSMDTlsph } from './pair_smd_tlsph';
+import { PairSMDHertz } from './pair_smd_hertz';
+import { PairSMDUlsph } from './pair_smd_ulsph';
+import { PairHybrid } from '../../engine/force/pair/hybrid';
 
 /** Lower bound used by the native code for the stable time step (fix_smd_adjust_dt.cpp: BIG). */
 const BIG = 1.0e20;
@@ -149,10 +152,17 @@ export class FixSMDAdjustDt extends Fix {
   /** The minimum stable time increment over the particle styles (here the SMD tlsph pair), times the safety factor. */
   endOfStep(): void {
     const s = this.sys.state;
-    const pair = this.sys.ff.pair;
-    if (!(pair instanceof PairSMDTlsph)) throw new StyleError('fix smd/adjust_dt failed to access a valid dtCFL');
+    // fix_smd_adjust_dt.cpp: the minimum over the SMD styles' stable time increments (tlsph dtCFL, hertz contact)
+    const stable: number[] = [];
+    const visit = (p: Pair | null | undefined): void => {
+      if (p instanceof PairHybrid) for (const sub of p.subs) visit(sub.style);
+      else if (p instanceof PairSMDTlsph || p instanceof PairSMDUlsph) stable.push(p.dtCFL);
+      else if (p instanceof PairSMDHertz) stable.push(p.stableTimeIncrement);
+    };
+    visit(this.sys.ff.pair);
+    if (!stable.length) throw new StyleError('fix smd/adjust_dt failed to access a valid dtCFL');
     let dtmin = BIG;
-    dtmin = Math.min(dtmin, pair.dtCFL);
+    for (const v of stable) dtmin = Math.min(dtmin, v);
     dtmin *= this.safety;
     let dt = dtmin;
     if (s.step === 0) dt = 1.0e-16;

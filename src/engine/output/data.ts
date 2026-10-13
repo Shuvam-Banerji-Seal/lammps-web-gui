@@ -1,6 +1,7 @@
 import type { System } from '../system';
 import type { AtomStyle, SimState, TopoList } from '../types';
 import { StyleError } from '../force/types';
+import { isSmdStyle, SMD_CONTACT } from '../smd';
 import { isSphStyle, SPH_CV, SPH_DESPH, SPH_DRHO, SPH_ESPH, SPH_RHO, SPH_VEST, appendAtoms, setOxdnaPartners, setSpinVector, atomSubStyles, countEllipsoids, ellipsoidVolume, emptyState, isEllipsoid, isMolecularStyle, isTemplateStyle, maxAtomId, nativeOrder, pushTopo, sphereMass, templateStyleId, topologyLevel, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, TRI_BONUS_COLS, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_SPIN, isElectronStyle, isDielectricStyle, DIEL_AREA, DIEL_ED, DIEL_EM, DIEL_EPSILON, DIEL_CURVATURE, DIEL_QSCALED, isEdpdStyle, isMdpdStyle, tdpdSpecies, EDPD_TEMP, EDPD_CV, MDPD_RHO, TDPD_CC, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH, isDpdStyle, DPD_THETA } from '../atoms';
 import { lineFromEnds, lineEnds, triangleCorner, triangleAreaOfBody, type LineBonus } from '../lineTri';
 import { triBodyHook } from '../styles';
@@ -92,6 +93,10 @@ const BASE_COLS: Record<string, string[]> = {
   // read_data.html, Atoms section for atom_style dpd (the data files of examples/PACKAGES/dpd-react): "atom-ID atom-type
   // dpdTheta x y z"; atom_style.html: "dpd" is "atomic + rho + reactive DPD data", so the energies are not in the data line.
   dpd: ['id', 'type', 'dpdTheta', 'x', 'y', 'z'],
+  // read_data.html, the Atoms-section table, row smd: "atom-ID atom-type molecule volume mass kradius cradius x0 y0 z0 x y z"
+  // (kradius = kernel radius, cradius = contact radius). The x0 columns are read and then replaced by x, as native
+  // AtomVecSMD::data_atom_post does ("reset x0 b/c x may have been modified in Atom::data_atoms()").
+  smd: ['id', 'type', 'mol', 'vfrac', 'rmass', 'kradius', 'cradius', 'x0', 'y0', 'z0', 'x', 'y', 'z'],
 };
 
 /**
@@ -634,6 +639,9 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
           ? { temp: new Float64Array(count), cv: new Float64Array(count), rho: new Float64Array(count), cc: new Float64Array(count * nsp) }
           : null;
         const dpdTh = isDpdStyle(style) ? new Float64Array(count) : null;
+        // atom_style smd (read_data.html): the contact radius and the mass are columns; the kernel radius is the radius
+        const smdCr = isSmdStyle(style) ? new Float64Array(count) : null;
+        const smdRm = isSmdStyle(style) ? new Float64Array(count) : null;
         body.forEach(({ w, at }, a) => {
           if (w.length !== cols.length && w.length !== cols.length + 3) {
             throw new StyleError(`data file line ${at}: Atoms # ${style} expects ${cols.length} values (+3 image flags), got ${w.length}`);
@@ -711,6 +719,12 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
                 else if (sph) sph.rho[a] = numOf(v, 'rho', at);
                 else dm!.rho[a] = numOf(v, 'rho', at);
                 break;
+              // atom_style smd (read_data.html): "volume", "mass", "kradius", "cradius"; the x0 values are not kept (x0 = x)
+              case 'vfrac': vol[a] = numOf(v, 'volume', at); break;
+              case 'rmass': smdRm![a] = numOf(v, 'mass', at); break;
+              case 'kradius': radius[a] = numOf(v, 'kradius', at); break;
+              case 'cradius': smdCr![a] = numOf(v, 'cradius', at); break;
+              case 'x0': case 'y0': case 'z0': numOf(v, cols[c], at); break;
               case 'edpd_temp': dm!.temp[a] = numOf(v, 'edpd_temp', at); break;
               case 'edpd_cv': dm!.cv[a] = numOf(v, 'edpd_cv', at); break;
               default: {
@@ -743,7 +757,7 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         // ellipsoids: the density becomes a mass once the Ellipsoids section gives the volume; a point
         // particle (ellipsoidflag 0) takes the density as its mass
         // atom_style peri. Measured with native LAMMPS (black box): read_data gives mass = density (volume is kept apart)
-        const rmass = s.radius ? radius.map((r, a) => sphereMass(r, density[a])) : s.shape || s.vfrac || bflag ? Float64Array.from(density) : undefined;
+        const rmass = smdRm ?? (s.radius ? radius.map((r, a) => sphereMass(r, density[a])) : s.shape || s.vfrac || bflag ? Float64Array.from(density) : undefined);
         // atom_style body: the mass column is the body's mass (read_data.html); a bodyflag 1 atom needs a Bodies entry
         if (bflag) for (let a = 0; a < count; a++) if (bflag[a]) bodyPending.add(id[a]);
         if (eflag) for (let a = 0; a < count; a++) if (eflag[a]) ellPending.set(id[a], density[a]);
@@ -778,7 +792,8 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         ]) : undefined;
         // atom_style edpd / mdpd / tdpd: the DPD-MESO props of the read atoms (appendAtoms keeps only the styles' own props)
         const dmCustom = dm ? new Map<string, Float64Array>([[EDPD_TEMP, dm.temp], [EDPD_CV, dm.cv], [MDPD_RHO, dm.rho], [TDPD_CC, dm.cc]]) : undefined;
-        const extraCustom = new Map<string, Float64Array>([...(electronCustom ?? []), ...(dielCustom ?? []), ...(sphCustom ?? []), ...(dmCustom ?? []), ...(rheoCustom ?? []), ...(dpdCustom ?? [])]);
+        const smdCustom = smdCr ? new Map<string, Float64Array>([[SMD_CONTACT, smdCr]]) : undefined;
+        const extraCustom = new Map<string, Float64Array>([...(electronCustom ?? []), ...(dielCustom ?? []), ...(sphCustom ?? []), ...(dmCustom ?? []), ...(rheoCustom ?? []), ...(dpdCustom ?? []), ...(smdCustom ?? [])]);
         appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined, sp: spin ?? undefined, vfrac: s.vfrac ? vol : undefined, tmplIndex: tmplId !== null ? tIdx : undefined, tmplAtom: tmplId !== null ? tAt : undefined, custom: extraCustom.size ? extraCustom : undefined });
         // periodic remap of the new atoms
         for (let i = n0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);

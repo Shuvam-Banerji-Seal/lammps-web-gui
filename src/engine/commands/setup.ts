@@ -2560,6 +2560,8 @@ const replicate: Handler = ({ sys }, a) => {
   appendAtoms(s, {
     x, v, type, id, mask: 0, molecule: mol, q, image, tmplIndex: tileI((base.tmplIndex as Int32Array | undefined) ?? null), tmplAtom: tileI((base.tmplAtom as Int32Array | undefined) ?? null),
     rmass: tile(base.rmass as Float64Array | undefined), radius: tile(base.radius as Float64Array | undefined), omega: tile(base.omega),
+    // peri and smd per-atom volume and reference positions are per-atom fields copied as they are (native replicate: pack_restart)
+    vfrac: tile(base.vfrac as Float64Array | undefined), x0: tile(base.x0 as Float64Array | undefined),
     mu: tile(base.mu), shape: tile(base.shape), quat: tile(base.quat), angmom: tile(base.angmom), custom,
   });
   s.mask.set(mask);

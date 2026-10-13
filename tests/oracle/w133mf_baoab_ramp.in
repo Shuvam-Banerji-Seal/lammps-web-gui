@@ -1,0 +1,26 @@
+# oracle: fix baoab with a temperature ramp (Tstart 1.0 to Tstop 2.0 over the run), no zero keyword, in two runs and a reset_timestep:
+# per-atom compare of x, v and f (the random draws follow native atom order). Cut down from examples/PACKAGES/baoab/in.baoab_lj.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# measured with native LAMMPS: max relative error 2e-10 per atom (the ramp and the second run; thermo agrees to 1e-11)
+# native: b332f28 built with the installed lmp (EXTRA-FIX)
+units lj
+atom_style atomic
+lattice fcc 0.8442
+region box block 0 3 0 3 0 3
+create_box 1 box
+create_atoms 1 box
+mass * 1.0
+velocity all create 1.0 54321 loop geom
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0 2.5
+neighbor 0.3 bin
+neigh_modify delay 0 every 1 check yes
+fix 1 all baoab 1.0 2.0 0.5 777
+thermo_style custom step temp pe ke etotal press
+thermo_modify format float %.15g
+thermo 50
+timestep 0.005
+run 150
+reset_timestep 0
+thermo 50
+run 150

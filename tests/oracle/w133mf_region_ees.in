@@ -1,0 +1,23 @@
+# oracle: fix wall/region/ees (cut down from examples/PACKAGES/ees/in.fix_wall_region, Data_region): three ellipsoids outside a
+# side-out block region (the surface contacts of the block faces within the cutoff), resquared pair, nve/asphere, 400 steps.
+# Per-atom compare of x, v, f and the energy/force-sum vector of the fix.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# measured with native LAMMPS: max relative error below 1e-13 (per-atom and thermo)
+# oracle-inputs: w133mf_region_ees.data
+# native: b332f28 built with the installed lmp (EXTRA-FIX)
+units lj
+atom_style ellipsoid
+boundary p p p
+read_data w133mf_region_ees.data
+region the_wall block 20. 40. 20. 40. 20. 40. side out
+pair_style resquared 1
+pair_coeff 1 1 10.0 1.0 0.5 0.5 4 0.5 0.5 4 1
+timestep 0.0005
+fix EES_block all wall/region/ees the_wall 10. 1. 20
+fix NVE all nve/asphere
+compute temp all temp/asphere
+thermo_modify temp temp
+thermo_style custom step temp press etotal f_EES_block f_EES_block[1] f_EES_block[3]
+thermo_modify format float %.15g
+thermo 100
+run 400

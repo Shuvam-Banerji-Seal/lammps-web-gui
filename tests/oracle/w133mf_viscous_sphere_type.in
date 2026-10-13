@@ -1,0 +1,34 @@
+# oracle: fix viscous/sphere with per-type scale factors on finite-size spheres in contact (torque from gran/hooke/history).
+# oracle-compare: thermo=all rel=1e-8 abs=1e-10
+# measured with native LAMMPS (per-atom compare): max relative error 2e-12 (thermo rows agree to 1e-13)
+# native: b332f28 (installed lmp: EXTRA-FIX, GRANULAR)
+units           lj
+comm_modify    vel yes
+atom_style      sphere
+boundary        p p p
+lattice         fcc 1.0
+region          box block 0 3 0 3 0 3
+create_box      2 box
+create_atoms    1 box
+set             type 1 diameter 1.0
+set             group all density 1.0
+set             group all diameter 1.0
+group           odd id 1:108:2
+set             group odd type 2
+set             type 2 diameter 0.9
+
+displace_atoms  all random 0.1 0.1 0.1 4321 units box
+variable        vx atom 0.8*sin(0.9*x+0.4*z)
+variable        vy atom 0.8*cos(0.6*y+0.8*x)
+variable        vz atom 0.8*sin(0.7*z-0.3*y)
+velocity        all set v_vx v_vy v_vz units box
+set             group all omega 0.4 -0.3 0.6
+pair_style      gran/hooke/history 2000.0 NULL 50.0 NULL 0.5 0
+pair_coeff      * *
+timestep        0.002
+fix             1 all nve/sphere
+fix             2 all viscous/sphere 0.3 scale 2 1.5
+thermo_style    custom step temp pe ke
+thermo_modify format float %.15g
+thermo          50
+run             200

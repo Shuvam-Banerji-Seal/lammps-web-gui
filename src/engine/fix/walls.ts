@@ -208,7 +208,7 @@ export abstract class FixWallBase extends Fix {
   minPostForce(): void { this.apply(); }
 
   /** Resolved wall positions for this step: EDGE, or value * lattice spacing (units keyword). */
-  private coords(): Float64Array {
+  protected coords(): Float64Array {
     const g = this.sys.geom;
     const sp = this.sys.lattice?.spacing;
     const out = new Float64Array(this.walls.length);
@@ -222,7 +222,7 @@ export abstract class FixWallBase extends Fix {
   }
 
   /** Applies every wall force, tallies energy, per-wall forces and the virial. */
-  private apply(): void {
+  protected apply(): void {
     const s = this.sys.state;
     const coord = this.coords();
     const bit = this.groupBit;

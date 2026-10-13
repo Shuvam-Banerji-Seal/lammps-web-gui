@@ -131,15 +131,15 @@ export class FixNH extends Fix {
   readonly style: string;
   // thermostat
   private tstat = false;
-  private tStart = 0; private tStop = 0; private tPeriod = 0;
+  protected tStart = 0; protected tStop = 0; private tPeriod = 0;
   private tchain = 3; private tloop = 1;
   private eta: Float64Array; private etaDot: Float64Array;
   /** eta_dotdot of the chain (k >= 1 persists across calls, see nhcTemp). */
   private etaDotdot: Float64Array;
   // barostat
   private pstat = false;
-  private pStart = new Float64Array(6); private pStop = new Float64Array(6); private pPeriod = new Float64Array(6);
-  private pFlag = [false, false, false, false, false, false];
+  protected pStart = new Float64Array(6); protected pStop = new Float64Array(6); protected pPeriod = new Float64Array(6);
+  protected pFlag = [false, false, false, false, false, false];
   private couple: 'none' | 'xyz' | 'xy' | 'yz' | 'xz' = 'none';
   private pchain = 3; private ploop = 1;
   private mtk = true;
@@ -149,14 +149,16 @@ export class FixNH extends Fix {
   private fixedpoint: number[] | null = null;
   private omegaDot = new Float64Array(6);
   private omegaPos = new Float64Array(6);
-  private omegaMass = new Float64Array(6);
+  protected omegaMass = new Float64Array(6);
   private etap: Float64Array; private etapDot: Float64Array;
+  /** Accelerations of the barostat chain elements k >= 1, stored between updates (used with chainMassTemp only). */
+  private etapDotdot: Float64Array;
   private pTarget = new Float64Array(6);
   private pCurrent = new Float64Array(6);
-  private tTarget = 0;
+  protected tTarget = 0;
   private pTempFixed = 0;
-  private tempCompute!: Compute;
-  private pressCompute: Compute | null = null;
+  protected tempCompute!: Compute;
+  protected pressCompute: Compute | null = null;
   /** kinetic tensor of the pressure's temperature compute at the initial step's pressure (see computePressCurrent). */
   private keInitial: Float64Array | null = null;
   private tempId: string;
@@ -169,7 +171,7 @@ export class FixNH extends Fix {
   private ecoupleCum = 0;
   private scaleTilt = [true, true, true];   // yz xz xy with their second dimension
 
-  constructor(sys: System, id: string, group: string, args: string[], style: 'nvt' | 'npt' | 'nph') {
+  constructor(sys: System, id: string, group: string, args: string[], style: 'nvt' | 'npt' | 'nph' | 'nphug') {
     super(sys, id, group, args);
     this.style = style;
     this.timeIntegrate = true;
@@ -246,6 +248,9 @@ export class FixNH extends Fix {
     if (style === 'nvt' && (!this.tstat || this.pstat)) throw new StyleError('fix nvt needs the temp keyword and no pressure keywords');
     if (style === 'npt' && (!this.tstat || !this.pstat)) throw new StyleError('fix npt needs both temp and pressure (iso, aniso, tri, x, ...) keywords');
     if (style === 'nph' && (this.tstat || !this.pstat)) throw new StyleError('fix nph needs pressure keywords and no temp keyword');
+    // fix_nphug.cpp: "Temperature control must be used with fix nphug" and "Pressure control must be used with fix nphug"
+    if (style === 'nphug' && !this.tstat) throw new StyleError('Temperature control must be used with fix nphug');
+    if (style === 'nphug' && !this.pstat) throw new StyleError('Pressure control must be used with fix nphug');
     if (this.pstat) {
       const s = sys.state;
       for (const d of [0, 1, 2]) if (this.pFlag[d] && !s.box.periodic[d]) throw new StyleError(`fix ${style}: cannot barostat a non-periodic dimension (${KEYS[d]})`);
@@ -268,6 +273,7 @@ export class FixNH extends Fix {
     this.etaDot = new Float64Array(this.tchain + 1);
     this.etaDotdot = new Float64Array(this.tchain);
     this.etap = new Float64Array(Math.max(1, this.pchain));
+    this.etapDotdot = new Float64Array(Math.max(1, this.pchain));
     this.etapDot = new Float64Array(Math.max(1, this.pchain) + 1);
     // a restart file holding this fix's state is applied when the fix is re-specified (restart.ts)
     const saved = (sys.pendingFixData.get(id) as { nh?: NHRestart } | undefined)?.nh;
@@ -405,7 +411,9 @@ export class FixNH extends Fix {
    * ilves both orders are the current temperature. The end-of-step alternatives (caching the temperature after the
    * final kick or after its thermostat scaling) do not reproduce the 10-step values, so later updates stay current.
    */
-  private tSetup: number | null = null;
+  protected tSetup: number | null = null;
+  /** fix_nh.cpp deviatoric_flag: the strain energy enters the scalar (fix nphug turns it off). */
+  protected deviatoric = true;
   /**
    * Kinetic energy 2 KE (energy units, = dof k_B T) tracked through the chain's last update of the previous step
    * (null after setup). The chain multiplies it by the square of each velocity factor it applies, as its own
@@ -443,11 +451,40 @@ export class FixNH extends Fix {
 
   // ------------------------------------------------------------------ hooks
 
+  /**
+   * Thermostat target temperature at setup (fix_nh.cpp setup(): compute_temp_target, which is the ramp). Fix nphug
+   * overrides it: its masses use the initial temperature (fix_nphug.cpp setup()).
+   */
+  protected setupTargetTemp(): number { return ramp(this.sys, this.tStart, this.tStop); }
+
+  /**
+   * Thermostat target temperature for a step's first thermostat update (fix_nh.cpp initial_integrate's
+   * compute_temp_target, the ramp). Fix nphug overrides it with the Hugoniot target.
+   */
+  protected stepTargetTemp(): number { return ramp(this.sys, this.tStart, this.tStop); }
+
+  /**
+   * Temperature the thermostat masses are built from, when a subclass fixes them at setup (native eta_mass_flag = 0,
+   * fix_nphug.cpp); null: the masses follow the target temperature (fix nvt).
+   */
+  protected chainMassTemp: number | null = null;
+
+  /**
+   * The current temperature as native fix_nh.cpp's t_current: the setup-time value before the first step, then the
+   * kinetic temperature the thermostat chain left at the end of the previous step.
+   */
+  protected kineticTemp(): number {
+    const kB = this.sys.state.units.boltz;
+    if (this.tSetup !== null) return this.tSetup;
+    if (this.trackKE !== null) return this.trackKE / (this.tempCompute.dof * kB);
+    return this.currentTemp();
+  }
+
   setup(): void {
     this.tSetup = this.currentTemp();
     this.trackKE = null;
     if (this.tstat) {
-      this.tTarget = ramp(this.sys, this.tStart, this.tStop);
+      this.tTarget = this.setupTargetTemp();
       // As native LAMMPS does (src/fix_nh.cpp setup() at b332f28): the chain's inner accelerations are set from the
       // setup-time masses, eta_dotdot[k] = (eta_mass[k-1] eta_dot[k-1]^2 - k_B T) / eta_mass[k], with
       // eta_mass[0] = dof k_B T / t_freq^2 (dof at setup).
@@ -462,17 +499,37 @@ export class FixNH extends Fix {
     if (this.pstat) {
       this.computePressTarget();
       this.computePressCurrent();
+      // As native LAMMPS does (src/fix_nh.cpp setup() at b332f28): the barostat chain's inner accelerations at setup,
+      // etap_dotdot[k] = (etap_mass[k-1] etap_dot[k-1]^2 - k_B T) / etap_mass[k], masses from the setup temperature
+      if (this.pchain > 0) {
+        const kt = this.sys.state.units.boltz * this.baroTemp();
+        const pf = this.pfreqMax();
+        const qk = kt / (pf * pf);
+        for (let k = 1; k < this.pchain; k++) this.etapDotdot[k] = qk > 0 ? (qk * this.etapDot[k - 1] * this.etapDot[k - 1] - kt) / qk : 0;
+      }
     }
   }
 
+  /** Largest barostat frequency 1/Pdamp over the barostatted dimensions (nhc_press_integrate's p_freq_max). */
+  private pfreqMax(): number {
+    let f = 0;
+    for (let d = 0; d < 6; d++) if (this.pFlag[d]) f = Math.max(f, 1 / this.pPeriod[d]);
+    return f;
+  }
+
   initialIntegrate(): void {
+    // As native LAMMPS does (src/fix_nh.cpp initial_integrate at b332f28): the barostat chain runs before the thermostat
+    // target is updated, so it sees the previous step's target. Only the subclasses that fix the masses (chainMassTemp,
+    // fix nphug) move their target each step, so only they take this order; the others are unchanged.
+    const chainFirst = this.chainMassTemp !== null && this.pstat && this.pchain > 0;
+    if (chainFirst) this.nhcPress();
     if (this.tstat) {
-      this.tTarget = ramp(this.sys, this.tStart, this.tStop);
+      this.tTarget = this.stepTargetTemp();
       this.nhcTemp(true);
     }
     if (this.pstat) {
       this.computePressTarget();
-      if (this.pchain > 0) this.nhcPress();
+      if (this.pchain > 0 && !chainFirst) this.nhcPress();
       this.computePressCurrent('init');
       this.omegaUpdate(true);
       // barostat velocity scaling (dt/4 each) on both sides of the half kick is applied before it
@@ -606,9 +663,10 @@ export class FixNH extends Fix {
     const kt = kB * this.tTarget;
     if (!(kt > 0)) return;
     const tfreq = 1 / this.tPeriod;
+    const qT = this.chainMassTemp !== null ? kB * this.chainMassTemp : kt;
     const q = new Float64Array(M);
-    q[0] = dof * kt / (tfreq * tfreq);
-    for (let k = 1; k < M; k++) q[k] = kt / (tfreq * tfreq);
+    q[0] = dof * qT / (tfreq * tfreq);
+    for (let k = 1; k < M; k++) q[k] = qT / (tfreq * tfreq);
     const nc = this.tloop;
     const dthalf = this.dthalf / nc, dt4 = this.dt4 / nc, dt8 = this.dt8 / nc;
     let ke2 = dof * kTcur;   // 2 * KE of the thermostatted dof
@@ -658,27 +716,32 @@ export class FixNH extends Fix {
     if (!(kt > 0)) return;
     // kinetic energy of the barostat
     let kecurrent = 0;
-    let pfreqMax = 0;
     for (let d = 0; d < 6; d++) {
       if (!this.pFlag[d]) continue;
       kecurrent += this.omegaMass[d] * this.omegaDot[d] * this.omegaDot[d];
-      pfreqMax = Math.max(pfreqMax, 1 / this.pPeriod[d]);
     }
+    const pfreqMax = this.pfreqMax();
     const ndims = this.chainDims();
+    // masses fixed at setup and inner accelerations stored between updates when a subclass sets chainMassTemp (native
+    // etap_mass_flag = 0 and etap_dotdot, fix_nphug.cpp); otherwise the masses follow the current temperature
+    const stored = this.chainMassTemp !== null;
+    const qT = stored ? kB * this.chainMassTemp! : kt;
     const q = new Float64Array(M);
-    q[0] = kt / (pfreqMax * pfreqMax);
-    for (let k = 1; k < M; k++) q[k] = kt / (pfreqMax * pfreqMax);
+    q[0] = qT / (pfreqMax * pfreqMax);
+    for (let k = 1; k < M; k++) q[k] = qT / (pfreqMax * pfreqMax);
     const nc = this.ploop;
     const dthalf = this.dthalf / nc, dt4 = this.dt4 / nc, dt8 = this.dt8 / nc;
     const ed = this.etapDot;
     const pdrag = this.drag > 0 ? 1 - this.dtv * pfreqMax * this.drag / nc : 1;
+    const g = (k: number) => (k === 0 ? (kecurrent - ndims * kt) / q[0] : (q[k - 1] * ed[k - 1] * ed[k - 1] - kt) / q[k]);
+    // the top sweep reads the stored accelerations of the inner elements (k >= 1), as the back sweep left them
+    const gTop = (k: number) => (stored && k > 0 ? this.etapDotdot[k] : g(k));
     for (let loop = 0; loop < nc; loop++) {
-      const g = (k: number) => (k === 0 ? (kecurrent - ndims * kt) / q[0] : (q[k - 1] * ed[k - 1] * ed[k - 1] - kt) / q[k]);
-      ed[M - 1] += g(M - 1) * dt4;
+      ed[M - 1] += gTop(M - 1) * dt4;
       ed[M - 1] *= pdrag;
       for (let k = M - 2; k >= 0; k--) {
         const ex = Math.exp(-dt8 * ed[k + 1]);
-        ed[k] *= ex; ed[k] += g(k) * dt4; ed[k] *= pdrag; ed[k] *= ex;
+        ed[k] *= ex; ed[k] += gTop(k) * dt4; ed[k] *= pdrag; ed[k] *= ex;
       }
       const factor = Math.exp(-dthalf * ed[0]);
       for (let d = 0; d < 6; d++) if (this.pFlag[d]) this.omegaDot[d] *= factor;
@@ -686,8 +749,11 @@ export class FixNH extends Fix {
       for (let k = 0; k < M; k++) this.etap[k] += dthalf * ed[k];
       for (let k = 0; k < M - 1; k++) {
         const ex = Math.exp(-dt8 * ed[k + 1]);
-        ed[k] *= ex; ed[k] += g(k) * dt4; ed[k] *= ex;
+        ed[k] *= ex;
+        if (stored && k > 0) this.etapDotdot[k] = g(k);
+        ed[k] += g(k) * dt4; ed[k] *= ex;
       }
+      if (stored && M > 1) this.etapDotdot[M - 1] = g(M - 1);
       ed[M - 1] += g(M - 1) * dt4;
     }
   }
@@ -1018,7 +1084,9 @@ export class FixNH extends Fix {
       const kt = kB * this.tTarget;
       const tfreq = 1 / this.tPeriod;
       const dof = this.tempCompute.dof;
-      const q0 = dof * kt / (tfreq * tfreq), qk = kt / (tfreq * tfreq);
+      // the masses of the stored chain (chainMassTemp: native eta_mass_flag = 0) or those of the target
+      const kM = this.chainMassTemp !== null ? kB * this.chainMassTemp : kt;
+      const q0 = dof * kM / (tfreq * tfreq), qk = kM / (tfreq * tfreq);
       e += dof * kt * this.eta[0] + 0.5 * q0 * this.etaDot[0] * this.etaDot[0];
       for (let k = 1; k < this.tchain; k++) e += kt * this.eta[k] + 0.5 * qk * this.etaDot[k] * this.etaDot[k];
     }
@@ -1037,11 +1105,13 @@ export class FixNH extends Fix {
       if (nhyd) {
         const pMean = pHydro / nhyd;
         e += pMean * (vol - this.vol0) / s.units.nktv2p;
-        e += this.strainEnergy();
+        // fix_nh.cpp compute_scalar: "if (deviatoric_flag) energy += compute_strain_energy()"
+        if (this.deviatoric) e += this.strainEnergy();
       }
       if (this.pchain > 0) {
         const kt = kB * this.baroTemp();
-        const q0 = kt / (pfreqMax * pfreqMax), qk = kt / (pfreqMax * pfreqMax);
+        const kM = this.chainMassTemp !== null ? kB * this.chainMassTemp : kt;
+        const q0 = kM / (pfreqMax * pfreqMax), qk = kM / (pfreqMax * pfreqMax);
         // the scalar's potential term of the first barostat chain element counts the barostatted dimensions
         e += nflag * kt * this.etap[0] + 0.5 * q0 * this.etapDot[0] * this.etapDot[0];
         for (let k = 1; k < this.pchain; k++) e += kt * this.etap[k] + 0.5 * qk * this.etapDot[k] * this.etapDot[k];

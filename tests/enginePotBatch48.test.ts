@@ -391,9 +391,9 @@ describe('pair_style edip/multi (batch 48)', () => {
   });
 });
 
-describe('pair_style extep (not implemented: the unknown-style error names it)', () => {
+describe('pair_style uf3 (not implemented: the unknown-style error names it)', () => {
   it('names the style in its refusal', async () => {
-    const run = await evaluate(['pair_style extep', 'pair_coeff * * BN.extep B N'], [{ type: 1, x: [0, 0, 0] }, { type: 2, x: [1.4, 0, 0] }], { ntypes: 2 });
-    expect(run.error).toMatch(/extep/);
+    const run = await evaluate(['pair_style uf3 3', 'pair_coeff * * Nb.uf3 Nb'], [{ type: 1, x: [0, 0, 0] }, { type: 2, x: [1.4, 0, 0] }], { ntypes: 2 });
+    expect(run.error).toMatch(/uf3/);
   });
 });

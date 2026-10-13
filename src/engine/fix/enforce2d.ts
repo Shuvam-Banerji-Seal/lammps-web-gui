@@ -40,6 +40,22 @@ export class FixEnforce2d extends Fix {
     }
   }
 
+  /**
+   * Spin: the x and y components of omega are zeroed for every atom of the group (spheres and point particles
+   * alike). Measured with native LAMMPS (black box): after run 0 with fix enforce2d, two spheres with omega
+   * (0.05, 0.05, 0.2) and (0.1, 0, -0.1) read back omega_x = omega_y = 0 and a point particle with omega
+   * (0.1, 0.3, -0.1) reads back (0, 0, -0.1); without the fix the x and y spin are kept.
+   */
+  private zeroSpinPlane(): void {
+    const w = this.sys.state.omega;
+    if (!w) return;
+    for (let i = 0; i < this.sys.state.n; i++) {
+      if (!this.inGroup(i)) continue;
+      w[3 * i] = 0;
+      w[3 * i + 1] = 0;
+    }
+  }
+
   postForce(): void {
     const s = this.sys.state;
     for (let i = 0; i < s.n; i++) {
@@ -48,6 +64,7 @@ export class FixEnforce2d extends Fix {
       s.f[3 * i + 2] = 0;
     }
     this.zeroAngmomPlane();
+    this.zeroSpinPlane();
   }
 
   minPostForce(): void { this.postForce(); }

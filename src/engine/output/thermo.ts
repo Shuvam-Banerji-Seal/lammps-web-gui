@@ -273,7 +273,8 @@ export class Thermo {
     const acc = () => sys.forces();
     const vol = () => g.volume(s.dimension);
     const pe = () => sys.compute('thermo_pe').scalarValue();
-    const ke = () => { const t = temp(); return 0.5 * t.dof * u.boltz * t.scalarValue(); };
+    // the temperature first: a dynamic/dof compute updates its dof while it computes its scalar
+    const ke = () => { const t = temp(); const T = t.scalarValue(); return 0.5 * t.dof * u.boltz * T; };
     const n = (v: number) => this.normalize(v, EXTENSIVE.has(k));
     const now = performance.now();
     switch (k) {

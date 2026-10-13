@@ -4,8 +4,8 @@ import type { EngineEvent, ThermoRow } from '../src/engine/types';
 
 /*
  * fix rigid / rigid/small with finite-size particles (src/engine/fix/rigid.ts): spheres are integrated as
- * finite-size bodies; ellipsoids, point dipoles and 2d finite-size particles are refused with an error that
- * names them. The sphere-spin dynamics are checked against native LAMMPS by the oracle case w42rfs_sphere_spin.
+ * finite-size bodies in 2d and 3d; ellipsoids and point dipoles are refused with an error that names them.
+ * The 2d sphere bodies are checked against native LAMMPS by the oracle cases w92rig2d_*. The sphere-spin dynamics are checked against native LAMMPS by the oracle case w42rfs_sphere_spin.
  * fix_rigid.rst: "Finite-size particles contribute differently to the moment of inertia of a rigid body than
  * do point particles."
  */
@@ -98,7 +98,7 @@ run 0
     expect(error?.message ?? '').toMatch(/dipole/);
   });
 
-  it('refuses finite-size particles in 2d bodies, naming them', async () => {
+  it('accepts finite-size spheres in 2d bodies (oracle cases w92rig2d_*)', async () => {
     const { error } = await run(`dimension 2
 units lj
 atom_style sphere
@@ -112,6 +112,6 @@ pair_coeff * *
 fix 1 all rigid single
 run 0
 `);
-    expect(error?.message ?? '').toMatch(/2d/);
+    expect(error).toBeNull();
   });
 });

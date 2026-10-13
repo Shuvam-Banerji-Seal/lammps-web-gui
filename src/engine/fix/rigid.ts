@@ -434,9 +434,18 @@ export class FixRigid extends Fix {
         // (textbook), and its spin omega_i adds I_s omega_i to the body angular momentum. Measured with native
         // LAMMPS (black box): a two-sphere body with spin 0.3 about z has omega_z = 0.0857142857 = L/I with
         // both terms included.
+        // docs.lammps.org/fix_rigid.html (dimension 2): "A 2d rigid body has 3 degrees of freedom (2
+        // translational, 1 rotational)". Spheres in 2d keep the 3d moment of inertia (compute_erotate_sphere.html:
+        // "particles are treated as spheres, not disks"). Measured with native LAMMPS (black box), 2d: the spin
+        // enters the body angular momentum through its z component only; x and y spin components are dropped at
+        // setup and the spheres' omega_x, omega_y read back as 0 (z-only spin gives omega_z = 0.13531269 with
+        // x/y spin 0.4, -0.3 set on the same spheres).
         const Is = 0.4 * m * rad * rad;
         for (let a = 0; a < 3; a++) I[a][a] += Is;
-        if (s.omega) for (let d = 0; d < 3; d++) angmom[d] += Is * s.omega[3 * i + d];
+        if (s.omega) {
+          if (sys.dimension === 2) angmom[2] += Is * s.omega[3 * i + 2];
+          else for (let d = 0; d < 3; d++) angmom[d] += Is * s.omega[3 * i + d];
+        }
         nsph++;
       }
     });
@@ -481,7 +490,6 @@ export class FixRigid extends Fix {
     const id = s.id[i];
     if (s.shape && s.shape[3 * i] > 0) throw new StyleError(`fix ${this.style}: finite-size ellipsoid atom ${id} in rigid body ${key} is not supported by the browser engine (ellipsoidal particles in rigid bodies need their orientation to follow the body)`);
     if (s.mu && s.mu[4 * i + 3] !== 0) throw new StyleError(`fix ${this.style}: point dipole atom ${id} in rigid body ${key} is not supported by the browser engine (dipole vectors must rotate with the body and feel dipole torques)`);
-    if (s.radius && s.radius[i] > 0 && this.sys.dimension === 2) throw new StyleError(`fix ${this.style}: finite-size particle ${id} in rigid body ${key} is not supported in 2d by the browser engine`);
   }
 
   /** The mol template-ID of this fix (null without the mol keyword); fix gcmc rigid must name the same one. */
@@ -594,9 +602,10 @@ export class FixRigid extends Fix {
     let n = 0;
     for (const b of this.bodies) {
       if (!b.atoms.every((id) => (s.mask[idx.get(id)!] & groupBit) !== 0)) continue;
-      // finite-size spheres take their 3 rotational dof away too: measured with native LAMMPS (black box),
-      // a body of n spheres removes 6n - 6 from a temperature compute (sphere-spin oracle w42rfs_sphere_spin)
-      n += d * b.atoms.length - b.dof + 3 * b.nsph;
+      // finite-size spheres take their rotational dof away too: measured with native LAMMPS (black box),
+      // a body of n spheres removes 6n - 6 from a temperature compute in 3d (sphere-spin oracle w42rfs_sphere_spin)
+      // and, in 2d, n + 2n - 3 with one rotational dof per sphere (w92rig2d_* oracles: a 3-sphere body removes 6)
+      n += d * b.atoms.length - b.dof + (d === 3 ? 3 : 1) * b.nsph;
     }
     return n;
   }
@@ -852,10 +861,15 @@ export class FixRigid extends Fix {
   computeScalar(): number {
     const s = this.sys.state;
     let ke = 0, dof = 0;
+    // docs.lammps.org/fix_rigid.html: "A 2d rigid body has 3 degrees of freedom (2 translational, 1 rotational)".
+    // Measured with native LAMMPS (black box, w92rig2d_* oracles): the scalar of a 2d fix rigid body counts only x, y
+    // and the z rotation (3 dof), while fix rigid/small gives exactly twice that value on the same bodies (6 dof per
+    // body, as in 3d); the kinetic part is the same for both.
+    const dim2 = this.sys.dimension === 2 && !this.style.includes('small');
     for (const b of this.bodies) {
       for (let d = 0; d < 3; d++) {
-        if (b.fflag[d]) { ke += b.mass * b.vcm[d] * b.vcm[d]; dof++; }
-        if (b.tflag[d]) dof++;
+        if (b.fflag[d] && !(dim2 && d === 2)) { ke += b.mass * b.vcm[d] * b.vcm[d]; dof++; }
+        if (b.tflag[d] && !(dim2 && d < 2)) dof++;
       }
       // flagged space-frame components of omega removed, energy in the body frame
       const R = qmat(b.q);
@@ -869,6 +883,9 @@ export class FixRigid extends Fix {
   }
 
   computeArray(i: number, j: number): number {
+    // Measured with native LAMMPS (black box, w92rig2d_dimer and w92rig2d_star after fix rigid/small replaces fix rigid):
+    // every f_ID[i][j] of a rigid/small fix reads 0 while its scalar (temperature) is nonzero.
+    if (this.style.includes('small')) return 0;
     const b = this.bodies[i];
     if (!b) throw new StyleError(`fix ${this.id}: rigid body ${i + 1} does not exist`);
     const box = this.sys.state.box;

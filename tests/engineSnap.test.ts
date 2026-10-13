@@ -134,7 +134,12 @@ describe('compute sna/atom: argument errors', () => {
 
   it('rejects unsupported keywords by name', async () => {
     // chem (explicit multi-element bispectrum) is implemented since wave 33 (tests/engineSnapChem33.test.ts, oracle w33snapchem_*)
-    await fails('sna/atom 1.1 0.85 4 1.6 2.0 1.0 1.0 nnn 12', /keyword 'nnn' is not implemented/);
+    await fails('sna/atom 1.1 0.85 4 1.6 2.0 1.0 1.0 switchinnerflag 1', /keyword 'switchinnerflag' is not implemented/);
+    // nnn (wave 137: native src/ML-SNAP/compute_sna_atom.cpp) is implemented; its arguments are checked
+    await fails('sna/atom 1.1 0.85 4 1.6 2.0 1.0 1.0 nnn 0', /nnn must be a positive integer/);
+    await fails('snad/atom 1.1 0.85 4 1.6 2.0 1.0 1.0 nnn 12', /keyword 'nnn' is only implemented for compute sna\/atom/);
+    await fails('sna/atom 1.1 0.85 4 1.6 2.0 1.0 1.0 nnn 12 wmode 2', /wmode must be 0 or 1/);
+    await fails('sna/atom 1.1 0.85 4 1.6 2.0 1.0 1.0 nnn 12 wmode 1 delta 0.0001', /delta must be at least 1e-3/);
   });
 
   it('rejects unknown keywords and non-binary flags', async () => {

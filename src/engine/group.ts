@@ -57,7 +57,7 @@ export interface DynamicGroup {
 // add/heat: src/GRANULAR/fix_add_heat.cpp (b332f28) sets dynamic_group_allow = 1 in its constructor.
 // npt/cauchy: src/EXTRA-FIX/fix_npt_cauchy.cpp (b332f28) sets dynamic_group_allow = 1 in its constructor.
 export const DYNAMIC_GROUP_FIXES = new Set([
-  'add/heat', 'addforce', 'addtorque/group', 'ave/histo', 'ave/moments', 'ave/time', 'aveforce', 'dt/reset', 'efield', 'gravity', 'langevin', 'lineforce',
+  'add/heat', 'addforce', 'addtorque/group', 'ave/histo', 'ave/histo/weight', 'ave/moments', 'ave/time', 'aveforce', 'dt/reset', 'efield', 'gravity', 'langevin', 'lineforce',
   'baoab', 'momentum', 'nph', 'nph/sphere', 'npt', 'npt/cauchy', 'npt/sphere', 'nve', 'nve/limit', 'nve/sphere', 'nvt',
   'nvt/sllod', 'nvt/sphere', 'planeforce', 'recenter', 'setforce', 'spring', 'temp/berendsen',
   'temp/csld', 'temp/csvr', 'temp/rescale', 'viscous', 'viscous/sphere', 'wall/harmonic', 'wall/lj1043', 'wall/lj126',

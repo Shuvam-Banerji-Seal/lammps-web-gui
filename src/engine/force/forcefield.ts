@@ -105,6 +105,12 @@ export class ForceField {
   ptailV = 0;
   private specialList: SpecialList | null = null;
   /**
+   * The 1-2/1-3/1-4 lists are stale: a delete_bonds without its special keyword removed bonds and kept the old lists
+   * (native: "special" rebuilds them only when asked, src/delete_bonds.cpp at b332f28). They are kept until a normal
+   * topology change rebuilds them.
+   */
+  private specialStale = false;
+  /**
    * Rewrites the special lists after they are built from the bonds (a fix may set it and must clear it on unfix).
    * Used by fix drude, whose Drude particles take their core's special neighbors (fix_drude.html).
    */
@@ -168,7 +174,8 @@ export class ForceField {
     this.specialCoul = new Float64Array([1, ...this.special.coul]);
     const manybody = this.pair?.manybody ?? false;
     const hasTopo = s.topo.bonds.n > 0;
-    this.specialList = hasTopo && !manybody ? this.buildSpecialList(s) : null;
+    // stale lists stay even when no bond is left (native keeps its special arrays until a rebuild)
+    if (!this.specialStale) this.specialList = hasTopo && !manybody ? this.buildSpecialList(s) : null;
     const nt = s.ntypes + 1;
     const cutoff = this.pair ? this.pair.cut : new Float64Array(nt * nt);
     const settings: SpecialSettings = {
@@ -220,7 +227,13 @@ export class ForceField {
    * The topology changed or atoms were added/removed: rebuilds the special list and hands it to the neighbor list, so
    * the next build excludes the pairs of the new topology (the force field and the neighbor list keep one list).
    */
-  topologyChanged(s: SimState, nb: Neighbor): void {
+  topologyChanged(s: SimState, nb: Neighbor, keepSpecial = false): void {
+    // keepSpecial: the bonds changed without the special keyword, so the old lists stay (see specialStale)
+    if (keepSpecial) {
+      this.specialStale = true;
+      return;
+    }
+    this.specialStale = false;
     const manybody = this.pair?.manybody ?? false;
     this.specialList = s.topo.bonds.n > 0 && !manybody ? this.buildSpecialList(s) : null;
     nb.setSpecial(this.specialList);

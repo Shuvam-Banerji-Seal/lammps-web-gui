@@ -250,9 +250,11 @@ thermo 5
 run 10`);
     expect(error).toBeNull();
     expect(thermo.map((r) => [r.step, r['f_2[1]'], r['f_2[2]'], r['f_2[3]'], r['f_2[4]']])).toEqual([
+      // measured with native LAMMPS (src/fix_ave_histo.cpp at b332f28): ave running sums the histograms (the
+      // total is 10 at step 10, not the average 5), and its min and max start from 0 (min 0 at step 5)
       [0, 0, 0, 0, 0],
-      [5, 5, 0, 1, 5],
-      [10, 5, 0, 6, 10],
+      [5, 5, 0, 0, 5],
+      [10, 10, 0, 0, 10],
     ]);
   });
 

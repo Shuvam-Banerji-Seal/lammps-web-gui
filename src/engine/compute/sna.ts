@@ -229,6 +229,12 @@ export class ComputeSnaAtom extends Compute {
   protected readonly ncols: number;
   /** Bispectrum of an atom with no neighbors (identity self term), per component. */
   protected b0: Float64Array | null = null;
+  /** keyword nnn: the number of nearest neighbours the cutoff is fitted to; 0 when off (docs: default -1). */
+  protected nnn = 0;
+  /** keyword wmode: 0 = Heaviside weight, 1 = hyperbolic tangent weight (docs.lammps.org/compute_sna_atom.html). */
+  protected wmode = 0;
+  /** keyword delta: width of the tangent weight's transition (docs: default 1.e-3). */
+  protected delta = 1e-3;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -252,6 +258,7 @@ export class ComputeSnaAtom extends Compute {
     let rmin0 = 0;
     let switchflag = true, bzeroflag = true, quadraticflag = false, bnormflag = false;
     let chemflag = false, nelements = 1, wselfallflag = false;
+    let nnn = 0, wmode = 0, delta = 1e-3;
     const elemMap = new Int32Array(ntypes);
     for (let k = need; k < args.length; k++) {
       const kw = args[k];
@@ -277,7 +284,19 @@ export class ComputeSnaAtom extends Compute {
         }
         nelements = ne;
         chemflag = true;
-      } else if (kw === 'switchinnerflag' || kw === 'sinner' || kw === 'dinner' || kw === 'nnn' || kw === 'wmode' || kw === 'delta' || kw === 'bikflag' || kw === 'dgradflag') {
+      } else if (kw === 'nnn') {
+        // docs: "*nnn* value = number of considered nearest neighbors ... (only implemented for compute sna/atom)"
+        nnn = parseInt_(args[++k], `compute ${id} (sna/atom) nnn`);
+        if (nnn <= 0) throw new StyleError(`compute ${id} (sna/atom): nnn must be a positive integer (got ${args[k]})`);
+      } else if (kw === 'wmode') {
+        // docs: "*wmode* value = weight function ... *0* = heavyside weight function, *1* = hyperbolic tangent weight function"
+        wmode = parseInt_(args[++k], `compute ${id} (sna/atom) wmode`);
+        if (wmode !== 0 && wmode !== 1) throw new StyleError(`compute ${id} (sna/atom): wmode must be 0 or 1 (got ${args[k]})`);
+      } else if (kw === 'delta') {
+        // docs: "*delta* value = transition interval centered at cutoff distance for hyperbolic tangent weight function"
+        delta = parseNum(args[++k], `compute ${id} (sna/atom) delta`);
+        if (!(delta >= 1e-3)) throw new StyleError(`compute ${id} (sna/atom): delta must be at least 1e-3 (got ${args[k]})`);
+      } else if (kw === 'switchinnerflag' || kw === 'sinner' || kw === 'dinner' || kw === 'bikflag' || kw === 'dgradflag') {
         throw new StyleError(`compute ${id} (sna/atom): keyword '${kw}' is not implemented in this engine`);
       } else {
         throw new StyleError(`compute ${id} (sna/atom): unknown keyword '${kw}'`);
@@ -292,6 +311,9 @@ export class ComputeSnaAtom extends Compute {
     this.nelements = nelements;
     this.elemMap = elemMap;
     this.wselfallflag = wselfallflag;
+    this.nnn = nnn;
+    this.wmode = wmode;
+    this.delta = delta;
     this.triples = buildTriples(tj);
     this.nbComps = this.triples.length;
     this.nbase = this.nbComps * (chemflag ? nelements * nelements * nelements : 1);
@@ -364,6 +386,46 @@ export class ComputeSnaAtom extends Compute {
     }
   }
 
+  /**
+   * The cutoff that holds nnn weighted neighbours of atom i (keyword nnn). The docs
+   * (docs.lammps.org/compute_sna_atom.html) say: "An optimal cutoff radius for defining the neighborhood of the central
+   * atom is calculated by means of a dichotomy algorithm", and for wmode 0 "the cutoff radius exactly matches the
+   * distance between the central atom an its nnn'th neighbor". The weight of a neighbour at distance r is 1 for
+   * r <= rc (wmode 0) or 0.5 (1 - tanh((r - rc)/delta)) (wmode 1); S(rc) is the sum over the neighbours within the pair
+   * cutoff. As native does (src/ML-SNAP/compute_sna_atom.cpp at b332f28, dichotomie), the bracket [0.1, pair cutoff]
+   * is halved until its width is at most 1e-8 and the cutoff is the middle of the final bracket; a midpoint with S = nnn
+   * exactly is returned at once.
+   */
+  protected nearestCutoff(i: number, xa: Float64Array, nall: number, cutPair: number): number {
+    const xi = xa[3 * i], yi = xa[3 * i + 1], zi = xa[3 * i + 2];
+    const dist: number[] = [];
+    for (let k = 0; k < nall; k++) {
+      if (k === i) continue;
+      const dx = xa[3 * k] - xi, dy = xa[3 * k + 1] - yi, dz = xa[3 * k + 2] - zi;
+      const rsq = dx * dx + dy * dy + dz * dz;
+      if (rsq < cutPair * cutPair) dist.push(Math.sqrt(rsq));
+    }
+    const target = this.nnn;
+    const f = (rc: number): number => {
+      let sum = 0;
+      for (const r of dist) sum += this.wmode === 0 ? (r > rc ? 0 : 1) : 0.5 * (1 - Math.tanh((r - rc) / this.delta));
+      return sum - target;
+    };
+    let a = 0.1, b = cutPair;
+    const tol = 1e-8;
+    for (;;) {
+      const m = (a + b) / 2;
+      const d = Math.abs(b - a);
+      const fa = f(a);
+      const fm = f(m);
+      if (fm === 0) return m;
+      if (fm * fa > 0) a = m;
+      else b = m;
+      if (!(d > tol)) break;
+    }
+    return (a + b) / 2;
+  }
+
   protected computePeratom(): void {
     this.sys.forces();
     const sys = this.sys;
@@ -377,6 +439,8 @@ export class ComputeSnaAtom extends Compute {
     const nall = nb.nall;
     const xa = nb.xall;
     const ta = nb.typeall;
+    // the pair cutoff: the candidate neighbours of keyword nnn (native rcutsq = cutforce^2)
+    const cutPair = nb.cutneighmax - nb.skin;
     const out = (this.arrayAtom = new Float64Array(this.ncols * n));
     const tj = this.twojmax;
     const Ne = this.chemflag ? this.nelements : 1;
@@ -411,6 +475,8 @@ export class ComputeSnaAtom extends Compute {
       const ti = ta[i];
       const muI = this.chemflag ? this.elemMap[ti - 1] : 0;
       const xi = xa[3 * i], yi = xa[3 * i + 1], zi = xa[3 * i + 2];
+      // keyword nnn: one cutoff for all neighbours of atom i, every neighbour weighted 1 (native sets wj = 1)
+      const rcNnn = this.nnn > 0 ? this.nearestCutoff(i, xa, nall, cutPair) : 0;
       // self term: identity times w^self_{μ_i,e} (1 for all e with wselfallflag,
       // else 1 only for e = μ_i); docs.lammps.org/compute_sna_atom.html gives
       // u^μ = w^self U(0,0,0) + sum over neighbours of element μ
@@ -427,9 +493,9 @@ export class ComputeSnaAtom extends Compute {
         if (k === i) continue;
         const dx = xa[3 * k] - xi, dy = xa[3 * k + 1] - yi, dz = xa[3 * k + 2] - zi;
         const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        const Rii = rc * (this.radius[ti - 1] + this.radius[ta[k] - 1]);
+        const Rii = this.nnn > 0 ? rcNnn : rc * (this.radius[ti - 1] + this.radius[ta[k] - 1]);
         if (!(r < Rii) || r === 0) continue;
-        const wj = this.weight[ta[k] - 1];
+        const wj = this.nnn > 0 ? 1 : this.weight[ta[k] - 1];
         const theta0 = (rfac0 * Math.PI * (r - rmin0)) / (Rii - rmin0);
         // positive radial normalization r0 = r / |sin theta0| (theta0 < 0 when r < rmin0)
         const sn = Math.sin(theta0), sg = sn < 0 ? -1 : 1;
@@ -780,6 +846,8 @@ export class ComputeSnaDeriv extends ComputeSnaAtom {
     this.mode = mode;
     this.style = `${mode}/atom`;
     if (this.chemflag) throw new StyleError(`compute ${id} (${mode}/atom): keyword 'chem' is not implemented in this engine`);
+    // docs.lammps.org/compute_sna_atom.html: nnn "(only implemented for compute sna/atom)"
+    if (this.nnn > 0) throw new StyleError(`compute ${id} (${mode}/atom): keyword 'nnn' is only implemented for compute sna/atom`);
     const K = this.nbComps;
     const blk = K + (this.quadraticflag ? (K * (K + 1)) / 2 : 0);
     const nt = this.radius.length;

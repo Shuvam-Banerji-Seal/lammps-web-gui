@@ -1,0 +1,22 @@
+# oracle: delete_bonds remove without the special keyword keeps the old 1-2/1-3/1-4 lists (native src/delete_bonds.cpp
+# oracle: rebuilds them only with "special"): the pairs excluded by the removed bonds stay excluded, so the pair energy
+# oracle: with the stale lists is compared; a second turn-off (no remove) keeps the lists too. 6-atom molecular system.
+# oracle-inputs: w11local_mol.data
+# oracle-compare: thermo=all atoms=none
+units           lj
+atom_style      full
+read_data       w11local_mol.data
+bond_style      harmonic
+bond_coeff      * 100.0 1.0
+angle_style     harmonic
+angle_coeff     * 10.0 110.0
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+special_bonds   lj/coul 0.0 0.5 1.0
+thermo_style    custom step pe ebond eangle evdwl
+thermo_modify   format float %.15g
+run             0
+delete_bonds    all bond 1 remove
+run             0
+delete_bonds    all angle 1 remove
+run             0

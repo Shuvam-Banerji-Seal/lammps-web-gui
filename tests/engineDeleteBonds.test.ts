@@ -93,8 +93,10 @@ describe('delete_bonds', () => {
   it('stops on a bare * range, as native', async () => {
     await expect(runWith('delete_bonds g bond *')).rejects.toThrow('Invalid range string: *');
   });
-  it('refuses remove of a turned-off bond without special (native would keep the old special lists)', async () => {
-    await expect(runWith('delete_bonds g bond 1\ndelete_bonds g angle 1 remove')).rejects.toThrow('add the special keyword');
+  // remove without special keeps the old 1-2/1-3/1-4 lists (native src/delete_bonds.cpp): pinned by the oracle case
+  // w137cf_delbonds_stale (native pair energy with the stale exclusions, measured)
+  it('removes without the special keyword and keeps the old special lists', async () => {
+    await expect(runWith('delete_bonds g bond 1\ndelete_bonds g angle 1 remove')).resolves.toBeDefined();
   });
   it('refuses an unknown keyword', async () => {
     await expect(runWith('delete_bonds g bond 1 sometimes')).rejects.toThrow("unknown keyword 'sometimes'");

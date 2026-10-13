@@ -2879,21 +2879,15 @@ const deleteBonds: Handler = ({ sys }, a) => {
     }
   }
   if (flags.remove) {
-    // the engine rebuilds the 1-2/1-3/1-4 lists after every topology change, which is what the special keyword
-    // asks for; without it native keeps the old lists, so a removal that changes them is refused
-    const sp = sys.ff.special;
-    const changesSpecial = (kind: typeof kinds[number]) => kind === 'bond' || (kind === 'angle' && sp.angle) || (kind === 'dihedral' && sp.dihedral);
+    // native (src/delete_bonds.cpp at b332f28): the removed entries leave the lists; the special lists are rebuilt only
+    // with the special keyword ("re-compute special list if requested"), so without it they keep the old 1-2/1-3/1-4
+    // entries until a later topology change rebuilds them (kept by sys.atomsChanged(true) below)
     for (const kind of kinds) {
       const l = lists[kind];
       let k = 0;
       for (let e = 0; e < l.n; e++) {
         const t = l.type[e];
-        if (t < 0 || (t === 0 && kind === 'bond')) {
-          if (!flags.special && t < 0 && changesSpecial(kind)) {
-            throw new StyleError(`delete_bonds remove without special would keep the old 1-2/1-3/1-4 lists; the browser engine always rebuilds them: add the special keyword`);
-          }
-          continue;
-        }
+        if (t < 0 || (t === 0 && kind === 'bond')) continue;
         l.type[k] = t;
         for (let w = 0; w < l.width; w++) l.atoms[k * l.width + w] = l.atoms[e * l.width + w];
         k++;
@@ -2901,7 +2895,7 @@ const deleteBonds: Handler = ({ sys }, a) => {
       l.n = k;
     }
   }
-  sys.atomsChanged();
+  sys.atomsChanged(!flags.special);
 };
 
 export const SETUP_COMMANDS: Record<string, Handler> = {

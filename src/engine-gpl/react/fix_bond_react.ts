@@ -76,6 +76,8 @@ interface Rxn {
   jatomtype: number;
   closeneigh: number;
   fraction: number;
+  /** prob v_name: the equal-style variable whose value is the probability (native v_prob); null for a number. */
+  probVar: string | null;
   seed: number;
   random: RanMars;
   limitDuration: number;
@@ -811,7 +813,7 @@ const buildReaction = (sys: System, id: number, r: ReactArgs, stabilization: boo
   const rxn: Rxn = {
     ID: id, name: r.name, reactant, product, groupbit: groupBit, nevery: r.nevery,
     rminsq: r.rmin * r.rmin, rmaxsq: r.rmax * r.rmax, ibonding: 0, jbonding: 0, iatomtype: 0, jatomtype: 0,
-    closeneigh: -1, fraction: 1.0, seed: 12345, random: new RanMars(12345), limitDuration: 60,
+    closeneigh: -1, fraction: 1.0, probVar: null, seed: 12345, random: new RanMars(12345), limitDuration: 60,
     rescaleFlag: false, rescaleCount: 0, molTotalCharge: 0, moleculeKeyword: 'off', atoms: [], attempts: [],
     localCount: 0, nlocalkeep: Number.MAX_SAFE_INTEGER, reactionCountTotal: 0,
     createFlag: false, overlapsq: 0, fitFragment: -1,
@@ -822,8 +824,16 @@ const buildReaction = (sys: System, id: number, r: ReactArgs, stabilization: boo
     if (key === 'prob') {
       const f = o[k + 1], sd = o[k + 2];
       if (f === undefined || sd === undefined) throw new StyleError("Illegal fix bond/react command: 'prob' keyword has too few arguments");
-      if (f.startsWith('v_')) throw new StyleError('fix bond/react: prob v_ variables are not supported by the browser engine');
-      rxn.fraction = Number(f);
+      if (f.startsWith('v_')) {
+        // native (src/REACTION/fix_bond_react.cpp at b332f28): "validate_variable_keyword": the variable must exist and be
+        // equal-style; the fraction is its value now and again at each run's init (see setup())
+        const name = f.slice(2);
+        const v = sys.vars.get(name);
+        if (!v) throw new StyleError(`Fix bond/react: Variable ${name} does not exist`);
+        if (v.style !== 'equal') throw new StyleError(`Fix bond/react: Variable ${name} is not equal-style`);
+        rxn.probVar = name;
+        rxn.fraction = sys.equalVariable(name);
+      } else rxn.fraction = Number(f);
       rxn.seed = Number.parseInt(sd, 10);
       if (!(rxn.fraction >= 0 && rxn.fraction <= 1)) throw new StyleError('Illegal fix bond/react command: probability fraction must between 0 and 1, inclusive');
       if (!(rxn.seed > 0)) throw new StyleError('Illegal fix bond/react command: probability seed must be positive');
@@ -1606,6 +1616,8 @@ export class FixBondReact extends Fix {
   /** Run setup: the kspace charge sums follow the charges again (the setup refresh) until a reaction freezes them. */
   setup(): void {
     if (this.sys.ff.kspace) this.sys.ff.kspace.chargeSumsFrozen = false;
+    // native init(): "if (rxn.v_prob > -1) rxn.fraction = input->variable->compute_equal(rxn.v_prob);"
+    for (const rxn of this.rxns) if (rxn.probVar !== null) rxn.fraction = this.sys.equalVariable(rxn.probVar);
     super.setup();
   }
 

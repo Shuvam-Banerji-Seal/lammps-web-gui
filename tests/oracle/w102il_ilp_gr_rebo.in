@@ -1,0 +1,28 @@
+# oracle: pair_style hybrid/overlay rebo ilp/graphene/hbn 16.0 - AB-stacked bilayer graphene (1360 atoms, the example's data file), 10 NVE steps; compute pair c_1[1], c_1[2]
+# measured (engine vs native, black box; rel over |value| >= 1e-6; per-atom scale max(1,|value|)): thermo max abs 4.9e-11, max rel 6.7e-14; per-atom max scaled 1.5e-12
+# oracle-inputs: w102il_ilp_gr.data
+# oracle-potentials: CH.rebo BNCH.ILP
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+boundary        p p p
+atom_style      full
+read_data       w102il_ilp_gr.data
+mass            1 12.0107
+mass            2 12.0107
+group           layer1 molecule 1
+group           layer2 molecule 2
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+pair_style      hybrid/overlay rebo ilp/graphene/hbn 16.0
+pair_coeff      * * rebo CH.rebo C C
+pair_coeff      * * ilp/graphene/hbn BNCH.ILP C C
+compute         0 all pair rebo
+compute         1 all pair ilp/graphene/hbn
+timestep        0.001
+thermo_style    custom step pe etotal press c_0 c_1[1] c_1[2]
+thermo_modify   format float %.15g
+thermo          5
+run             0
+velocity        all create 300.0 12345
+fix             1 all nve
+run             10

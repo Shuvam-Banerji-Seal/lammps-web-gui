@@ -1,0 +1,31 @@
+# oracle: pair_style hybrid/overlay lebedeva/z 20 - two carbon atoms (one per layer, 3.35 A apart in z), the second displaced in plane in 4 steps of 0.05 A
+# measured (engine vs native, black box; rel over |value| >= 1e-6; per-atom scale max(1,|value|)): thermo max abs 5.2e-18, max rel 2.9e-15; per-atom exact (2 atoms)
+# oracle-inputs: w102il_2particles.dat
+# oracle-potentials: CC.Lebedeva
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+dimension       3
+boundary        f f f
+atom_style      atomic
+read_data       w102il_2particles.dat
+mass            1 12.01
+mass            2 12.01
+group           graphene2 type 2
+neighbor        0.3 bin
+neigh_modify    delay 1 check yes
+pair_style      hybrid/overlay lebedeva/z 20
+pair_coeff      * * none
+pair_coeff      1 2 lebedeva/z CC.Lebedeva C C
+thermo_style    custom step pe press
+thermo_modify   format float %.15g
+thermo_modify   lost ignore
+thermo          1
+run             0
+displace_atoms  graphene2 move 0.05 0.05 0 units box
+run             0
+displace_atoms  graphene2 move 0.05 0.05 0 units box
+run             0
+displace_atoms  graphene2 move 0.05 0.05 0 units box
+run             0
+displace_atoms  graphene2 move 0.05 0.05 0 units box
+run             0

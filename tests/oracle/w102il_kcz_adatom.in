@@ -1,0 +1,28 @@
+# oracle: pair_style hybrid/overlay kolmogorov/crespi/z 14.0 - graphene sheet with an adsorbed carbon layer (129 atoms, free boundaries in x y z), 20 NVE steps
+# measured (engine vs native, black box; rel over |value| >= 1e-6; per-atom scale max(1,|value|)): thermo max abs 5.7e-14, max rel 2.6e-12; per-atom max scaled 3.1e-16
+# oracle-inputs: w102il_adatom.data
+# oracle-potentials: CC.KC
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+boundary        p p p
+atom_style      atomic
+read_data       w102il_adatom.data
+mass            1 12.0107
+mass            2 12.0107
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+group           membrane type 1
+group           adsorbant type 2
+pair_style      hybrid/overlay kolmogorov/crespi/z 14.0
+pair_coeff      * * none
+pair_coeff      1 2 kolmogorov/crespi/z CC.KC C C
+timestep        0.0005
+velocity        all create 300.0 4321
+velocity        membrane set 0 0 0
+fix             1 all nve
+fix             2 membrane setforce 0 0 0
+thermo_style    custom step pe etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          5
+run             0
+run             20

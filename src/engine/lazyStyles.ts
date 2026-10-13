@@ -27,6 +27,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_thermostat', names: { FIXES: ['temp/csld', 'temp/csvr'] }, load: () => import('../engine-gpl/registry/thermostat') as Promise<StyleModule> },
   { id: 'gpl_dpdmeso', names: { COMPUTES: ['edpd/temp/atom', 'tdpd/cc/atom'], FIXES: ['edpd/source', 'mvv/dpd', 'mvv/edpd', 'mvv/tdpd', 'tdpd/source'], PAIRS: ['edpd', 'mdpd', 'mdpd/rhosum', 'tdpd'] }, load: () => import('../engine-gpl/registry/dpdmeso') as Promise<StyleModule> },
   { id: 'gpl_rheo', names: { FIXES: ['rheo', 'rheo/pressure', 'rheo/viscosity', 'rheo/thermal'], PAIRS: ['rheo', 'rheo/solid'], COMPUTES: ['rheo/property/atom'] }, load: () => import('../engine-gpl/registry/rheo') as Promise<StyleModule> },
+  { id: 'gpl_dpdreact', names: { PAIRS: ['dpd/fdt', 'dpd/fdt/energy'], FIXES: ['dpd/energy', 'eos/cv', 'shardlow'], COMPUTES: ['dpd'] }, load: () => import('../engine-gpl/registry/dpdreact') as Promise<StyleModule> },
   { id: 'gpl_srd', names: { FIXES: ['srd'] }, load: () => import('../engine-gpl/registry/srd') as Promise<StyleModule> },
   { id: 'gpl_phonon', names: { COMMANDS: ['dynamical_matrix'], FIXES: ['phonon'] }, load: () => import('../engine-gpl/registry/phonon') as Promise<StyleModule> },
   { id: 'gpl_qtb', names: { FIXES: ['qbmsst', 'qtb'] }, load: () => import('../engine-gpl/registry/qtb') as Promise<StyleModule> },

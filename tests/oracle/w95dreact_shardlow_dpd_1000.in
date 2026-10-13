@@ -1,0 +1,31 @@
+# oracle: fix shardlow with pair dpd/fdt (atom_style atomic, velocity-Verlet, SSA) on the examples/PACKAGES/dpd-react/dpd-shardlow fluid (1000 atoms), 100 steps
+# oracle-inputs: w95dreact_shardlow_dpd_1000.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=0
+# Measured with native LAMMPS (black box): the dpd-shardlow example (same data, cutoff, temperature and seed).
+# Measured with native LAMMPS (black box) against this engine: max relative error 4e-15 (thermo), 1e-12 (atoms, v), 4e-13 (forces).
+
+boundary        p p p
+
+units           metal
+atom_style      atomic
+read_data       w95dreact_shardlow_dpd_1000.data
+
+comm_modify     mode single vel yes
+mass            1 100.0
+
+pair_style      dpd/fdt 300.0 10.0 234324
+pair_coeff      1 1 0.075 0.022 10.0
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check no once no
+
+timestep        0.001
+
+thermo          10
+thermo_style    custom step temp pe ke etotal
+thermo_modify   format float %.15g
+
+fix             1 all shardlow
+fix             2 all nve
+
+run             100

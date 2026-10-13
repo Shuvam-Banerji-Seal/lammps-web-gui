@@ -183,6 +183,11 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
   if (isRheoThermalStyle(st)) {
     for (const name of Object.keys(RHEO_THERMAL_DEFAULTS)) m.set(name, { int: false, cols: 0, data: new Float64Array(0) });
   }
+  // atom_style dpd (atom_style.html): "extends DPD particle properties with internal temperature (dpdTheta), internal
+  // conductive energy (uCond), internal mechanical energy (uMech), and internal chemical energy (uChem)."
+  if (isDpdStyle(st)) {
+    for (const name of Object.keys(DPD_DEFAULTS)) m.set(name, { int: false, cols: 0, data: new Float64Array(0) });
+  }
   // atom_style.html, superellipsoid: the blockiness exponents and the principal moments of inertia (superellipsoid.ts)
   if (isSuperEllipsoidStyle(st)) {
     m.set(SUPER_BLOCK, { int: false, cols: 2, data: new Float64Array(0) });
@@ -346,6 +351,23 @@ export const RHEO_THERMAL_DEFAULTS: Record<string, number> = { [RHEO_ESPH]: 0, [
 export const isRheoStyle = (st: AtomStyle): boolean => atomSubStyles(st).some((x) => x === 'rheo' || x === 'rheo/thermal');
 /** atom_style rheo/thermal: the RHEO fields plus energy, temperature, heat flow and conductivity. */
 export const isRheoThermalStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('rheo/thermal');
+/*
+ * atom_style dpd (atom_style.html): "atomic + rho + reactive DPD data" with the internal temperature dpdTheta and the
+ * internal energies uCond, uMech and uChem per atom. uCG, uCGnew and duChem are the reactive (DPD-REACT) quantities
+ * the port keeps as internal props too. Internal keys ('#' cannot start an i_name or d_name).
+ */
+export const DPD_THETA = '#dpdtheta';
+export const DPD_UCOND = '#ucond';
+export const DPD_UMECH = '#umech';
+export const DPD_UCHEM = '#uchem';
+export const DPD_UCG = '#ucg';
+export const DPD_UCGNEW = '#ucgnew';
+export const DPD_DUCHEM = '#duchem';
+export const DPD_RHO = '#rho';
+/** Zero for the energies and rho; a created atom has no internal temperature (see DPD_THETA). */
+export const DPD_DEFAULTS: Record<string, number> = { [DPD_RHO]: 0, [DPD_UCOND]: 0, [DPD_UMECH]: 0, [DPD_UCHEM]: 0, [DPD_UCG]: 0, [DPD_UCGNEW]: 0, [DPD_DUCHEM]: 0, [DPD_THETA]: 0 };
+/** Styles with the DPD properties (atom_style dpd). */
+export const isDpdStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('dpd');
 
 /** atom_style oxdna: the 5' and 3' partner atom IDs of each atom, internal per-atom props (0 = none). */
 export const OXDNA_5P = '#id5p';
@@ -584,6 +606,7 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     if (src) c.data.set(src, w * n0);
     else if (name in ELECTRON_DEFAULTS) c.data.fill(ELECTRON_DEFAULTS[name], w * n0, w * n);
     else if (name in DIELECTRIC_DEFAULTS) c.data.fill(DIELECTRIC_DEFAULTS[name], w * n0, w * n);
+    else if (name in DPD_DEFAULTS) c.data.fill(DPD_DEFAULTS[name], w * n0, w * n);
     else if (name in SUPER_DEFAULTS) c.data.fill(SUPER_DEFAULTS[name], w * n0, w * n);
     else if (name in SPH_DEFAULTS) c.data.fill(SPH_DEFAULTS[name], w * n0, w * n);
     else if (name in DPD_MESO_DEFAULTS) c.data.fill(DPD_MESO_DEFAULTS[name], w * n0, w * n);

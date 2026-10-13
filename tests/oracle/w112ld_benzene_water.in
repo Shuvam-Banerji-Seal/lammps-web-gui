@@ -1,0 +1,21 @@
+# oracle: pair local/density (hybrid/overlay with table spline) cut down from examples/PACKAGES/local_density/benzene_water/in.benzene_water: 1380 atoms (380 benzene, 1000 water), NVE for 10 steps instead of the minimize/Langevin/run protocol. Thermo compared at 1e-8; the per-atom forces are not compared here: the table spline term alone (pair_style table spline 500, a core style, no local/density) already differs from native by 1.5e-6 relative (measured at step 0), so w112ld_benzene_ld carries the per-atom check of local/density.
+# measured: thermo agrees at 1e-8 (first difference at rel 2e-11, temp at step 5). Per-atom forces are not compared: the hybrid run differs from native by 1.71e-6 (atom 117 fx), and the table term alone (no local/density, pair_style table spline 500) by 1.55e-6 at step 0, a core-style residual; the per-atom check of local/density is w112ld_benzene_ld.
+# oracle-inputs: benzene_water.data benzene_water.pair.table benzene_water.localdensity.table
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10
+units           real
+dimension       3
+boundary        p p p
+atom_style      molecular
+pair_style      hybrid/overlay table spline 500 local/density
+read_data       benzene_water.data
+velocity        all create  3.0000e+02 16611 rot yes dist gaussian
+pair_coeff          1     1    table          benzene_water.pair.table      PairBB
+pair_coeff          1     2    table          benzene_water.pair.table      PairWW
+pair_coeff          2     2    table          benzene_water.pair.table      PairBW
+pair_coeff          *     *    local/density  benzene_water.localdensity.table
+timestep        2.0
+thermo_style    custom step temp ke pe etotal evdwl
+thermo_modify   format float %.15g
+thermo          5
+fix             timeintegration all nve
+run             10

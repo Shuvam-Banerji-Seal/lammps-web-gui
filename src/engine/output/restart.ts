@@ -103,7 +103,7 @@ export const PAIR_NOT_IN_RESTART = new Set([
   'body/rounded/polyhedron', 'bop', 'comb', 'comb3', 'dispersion/d3', 'e3b', 'eam', 'eam/alloy',
   'eam/apip', 'eam/cd', 'eam/cd/old', 'eam/fs', 'eam/fs/apip', 'eam/he', 'edip', 'edip/multi',
   'gw', 'gw/zbl', 'hbond/dreiding/lj', 'hbond/dreiding/lj/angleoffset', 'hbond/dreiding/morse',
-  'hbond/dreiding/morse/angleoffset', 'hippo', 'kim', 'lcbop', 'line/lj', 'list', 'local/density',
+  'hbond/dreiding/morse/angleoffset', 'hippo', 'kim', 'lcbop', 'line/lj', 'list', 'ldd', 'local/density',
   'meam', 'meam/ms', 'meam/spline', 'meam/sw/spline', 'mesocnt', 'mesocnt/viscous', 'mgpt',
   'mliap', 'pace', 'pace/apip', 'pace/extrapolation', 'pace/fast/apip', 'pace/precise/apip', 'pod',
   'polymorphic', 'python', 'quip', 'reaxff', 'rebo', 'rebomos', 'smtbq', 'snap', 'sw',

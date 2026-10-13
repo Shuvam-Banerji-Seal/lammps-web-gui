@@ -1,0 +1,26 @@
+# oracle: pair ldd (lucy indicator, quadratic potential) with lj/cut, cut down from examples/PACKAGES/bocs/1_site_just_pair_LD/in.basic_ldd: 968 random atoms in a 53x53x480 box, NVT for 20 steps instead of 10000 (the fix pair and dump lines are left out). The example uses "loop geom" in velocity create; this case uses "loop all" because the engine velocity create with loop geom differs from native (velocities differ at step 0, measured), a core gap outside ldd
+# measured max error vs native (per atom, relative to max(1,|value|)): 2.8e-16 (atom 681 xu); thermo agrees at 1e-8.
+# oracle-inputs: w112ldd_basic.ldd
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+dimension       3
+boundary        p p p
+atom_style      atomic
+newton          on
+timestep        1.0
+region my_box block  0.000000 53.2587274361 0.000000 53.2587274361 0.000000 480
+create_box 1 my_box
+create_atoms 1 random 968 13427890 my_box overlap 2
+mass 1 32.042
+velocity        all create 270 22345 dist gaussian loop all
+pair_style     hybrid/overlay ldd lj/cut 14.0
+pair_coeff      1 1 lj/cut 1 1
+pair_coeff      * * ldd w112ldd_basic.ldd A
+neigh_modify    delay 5 every 1 check yes
+neighbor        2.0 bin
+thermo_style    custom step temp pe ke etotal evdwl
+thermo_modify   format float %.15g
+thermo          5
+fix             1  all      nvt        temp       270  270 100.0
+run_style       verlet
+run 20

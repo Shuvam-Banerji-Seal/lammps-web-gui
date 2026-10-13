@@ -1,0 +1,24 @@
+# oracle: pair ldd alone (dpd indicator, table/spline and table/gradspline potentials, square-gradient term) with harmonic bonds, angles and dihedrals, cut down from examples/PACKAGES/bocs/4_sites_LD_SG/in.ldd_molecule: 240 atoms (4 species), NVE for 10 steps instead of the box/relax minimisation and the NVT run (the pair table of the example is left out; see w112ldd_molecule_hybrid)
+# measured max error vs native (per atom, relative to max(1,|value|)): 1.0e-14 (atom 70 fz); thermo agrees at 1e-8.
+# oracle-inputs: w112ldd_molecule.data w112ldd_bonded.lammps w112ldd_ABCD.ldd w112ldd_LD_table.11.noself.dat w112ldd_LD_table.22.noself.dat w112ldd_LD_table.33.noself.dat w112ldd_LD_table.44.noself.dat w112ldd_SG_table.1.1.noself.dat w112ldd_SG_table.2.2.noself.dat w112ldd_SG_table.3.3.noself.dat w112ldd_SG_table.4.4.noself.dat
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+dimension       3
+boundary        p p p
+atom_style      full
+read_data       w112ldd_molecule.data
+pair_style      ldd
+bond_style harmonic
+angle_style harmonic
+dihedral_style harmonic
+improper_style none
+include w112ldd_bonded.lammps
+pair_coeff      * * w112ldd_ABCD.ldd A B C D
+timestep        0.5
+neighbor        2.0 bin
+neigh_modify    delay 0 every 1 check yes
+thermo_style    custom step temp ke pe evdwl ebond eangle edihed etotal
+thermo_modify   format float %.15g
+thermo          5
+fix             1  all      nve
+run 10

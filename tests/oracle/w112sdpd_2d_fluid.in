@@ -1,0 +1,33 @@
+# oracle: pair sdpd/taitwater/isothermal in 2d (random thermal forces) cut down from examples/PACKAGES/dpd-smooth/2d-diffusion/in.lammps: a 10x10 square block of fluid particles (100 atoms, box -0.5..0.5) with no solid disk (fix rigid/meso is not in the engine), enforce2d, 20 steps; thermo and per-atom state compared
+# measured max error vs native (per atom, relative to max(1,|value|)): 2.8e-17 (atom 4 vx), the random thermal forces included; thermo agrees at 1e-8.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+dimension       2
+units           micro
+atom_style      sph
+variable        a equal 0.1
+variable        L equal 0.5
+variable        T equal 300.
+variable        rho_0 equal 1.
+variable        c_0 equal 100.
+variable        mu equal 1.
+variable        h equal $a*4.5
+variable        mass equal $a*$a*$a*${rho_0}
+variable        dt equal 1e-3
+variable        skin equal 0.2*$h
+region          box block -$L $L -$L $L -0.5 0.5 units box
+create_box      1 box
+lattice         sq $a
+create_atoms    1 box
+mass            * ${mass}
+set             group all sph/rho ${rho_0}
+pair_style      sdpd/taitwater/isothermal $T ${mu} 76787
+pair_coeff      * * ${rho_0} ${c_0} ${h}
+fix             1 all sph
+fix             2 all enforce2d
+neighbor        ${skin} bin
+neigh_modify    delay 0 every 1 check yes
+timestep        ${dt}
+thermo_style    custom step time pe ke etotal
+thermo_modify   format float %.15g
+thermo          5
+run             20

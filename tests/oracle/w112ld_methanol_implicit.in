@@ -1,0 +1,19 @@
+# oracle: pair local/density (hybrid/overlay with table spline) cut down from examples/PACKAGES/local_density/methanol_implicit_water/in.methanol_implicit_water: 2500 atoms, NVE for 10 steps instead of the minimize/Langevin/run protocol. Thermo compared at 1e-8; per-atom forces not compared (the table spline term alone differs from native by about 1.5e-6 relative, see w112ld_benzene_water); w112ld_methanol_ld carries the per-atom check.
+# measured: thermo agrees at 1e-8. Per-atom forces are not compared: the hybrid run differs from native by 1.81e-7 (atom 2306 fz), the table term of the core table style; the per-atom check of local/density is w112ld_methanol_ld.
+# oracle-inputs: methanol_implicit_water.data methanol_implicit_water.pair.table methanol_implicit_water.localdensity.table
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10
+units           real
+dimension       3
+boundary        p p p
+atom_style      molecular
+pair_style      hybrid/overlay table spline 500 local/density
+read_data       methanol_implicit_water.data
+velocity        all create  3.0000e+02 12142 rot yes dist gaussian
+pair_coeff          1     1 table         methanol_implicit_water.pair.table PairMM
+pair_coeff          *     * local/density methanol_implicit_water.localdensity.table
+timestep        1.0
+thermo_style    custom step temp ke pe etotal evdwl
+thermo_modify   format float %.15g
+thermo          5
+fix             timeintegration all nve
+run             10

@@ -3,7 +3,7 @@ import { Session } from '../src/engine/interpreter';
 import type { EngineEvent, ThermoRow } from '../src/engine/types';
 
 /*
- * Batch 48 computes: cnp/atom, temp/profile, hma (entropy/atom is not registered and is refused by name). Parsing, refusals and a few
+ * Batch 48 computes: cnp/atom, temp/profile, hma (the unsupported-style refusal is checked with ti/fl). Parsing, refusals and a few
  * self-consistency checks; the native parity lives in tests/oracle/w48cb_*.in (engineOracle.test.ts).
  */
 
@@ -111,9 +111,9 @@ describe('compute hma', () => {
   });
 });
 
-describe('compute entropy/atom', () => {
+describe('unsupported compute style', () => {
   it('is refused by name (not registered: the engine rejects the style)', async () => {
-    const r = await run(`${LATTICE}compute e all entropy/atom 0.25 3.0\nrun 0\n`);
-    expect(r.errors[0]).toMatch(/compute style 'entropy\/atom' is not supported by the browser engine/);
+    const r = await run(`${LATTICE}compute e all ti/fl\nrun 0\n`);
+    expect(r.errors[0]).toMatch(/compute style 'ti\/fl' is not supported by the browser engine/);
   });
 });

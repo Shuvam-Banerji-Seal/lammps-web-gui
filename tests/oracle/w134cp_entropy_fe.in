@@ -1,0 +1,36 @@
+# oracle: compute entropy/atom on a displaced bcc Fe lattice (eam/fs Fe_mm.eam.fs, 128 atoms, periodic, 20 steps of nve): the four forms (global, local, avg, avg + local) are dumped per atom as c_1..c_4 (dump custom, %.15g) at steps 0, 10 and 20
+# oracle: native: b332f28 (installed lmp; compute entropy/atom is in the EXTRA-COMPUTE package of that binary); sigma 0.25, cutoff 3.5, avg cutoff2 2.5 (3.5 + 2.5 <= 5.3 + skin 1.0)
+# oracle-potentials: Fe_mm.eam.fs
+# oracle-files: w134cp_entropy_fe.dump
+# oracle-compare: thermo=all atoms=none filerel=1e-8
+units           metal
+atom_style      atomic
+lattice         bcc 2.8553
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 55.845
+variable        dx atom 0.08*sin(2.3*x+1.1*y+0.4*z)
+variable        dy atom 0.08*cos(1.9*y-0.7*x+0.3*z)
+variable        dz atom 0.08*sin(1.3*z+0.8*x-0.5*y)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.4*cos(1.7*y-0.6*z)
+variable        vy atom 0.4*sin(1.2*z+0.9*x)
+variable        vz atom 0.3*cos(2.1*x-0.8*y+0.2)
+velocity        all set v_vx v_vy v_vz units box
+pair_style      eam/fs
+pair_coeff      * * Fe_mm.eam.fs Fe
+neighbor        1.0 bin
+neigh_modify    every 1 delay 0 check no
+timestep        0.001
+compute         c1 all entropy/atom 0.25 3.5
+compute         c2 all entropy/atom 0.25 3.5 local yes
+compute         c3 all entropy/atom 0.25 3.5 avg yes 2.5
+compute         c4 all entropy/atom 0.25 3.5 avg yes 2.5 local yes
+dump            d1 all custom 10 w134cp_entropy_fe.dump id c_c1 c_c2 c_c3 c_c4
+dump_modify     d1 format float %.15g
+fix             1 all nve
+thermo          10
+thermo_style    custom step pe ke etotal
+thermo_modify   format float %.15g
+run             20

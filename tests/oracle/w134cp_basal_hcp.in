@@ -1,0 +1,33 @@
+# oracle: compute basal/atom on a displaced hcp Mg crystal (almg.liu eam/alloy, 108 atoms of the 4-atom orthorhombic hcp cell, periodic, 10 steps of nve): the unit basal-plane vector c_b[1..3] of each atom is dumped (%.15g) at steps 0 and 10
+# oracle: native: b332f28 (installed lmp; compute basal/atom is in the EXTRA-COMPUTE package of that binary); the displacement (0.05 A) breaks the exact ties of the perfect lattice (12 equidistant first neighbours), where the native neighbour order could decide the choice
+# oracle-potentials: almg.liu
+# oracle-files: w134cp_basal.dump
+# oracle-compare: thermo=all atoms=none filerel=1e-8
+units           metal
+atom_style      atomic
+lattice         custom 3.181269601 a1 1 0 0 a2 0 1.732050808 0 a3 0 0 1.632993162 &
+                basis 0.0 0.0 0.0 basis 0.5 0.5 0 basis 0 0.3333333 0.5 basis 0.5 0.8333333 0.5
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 24.305
+variable        dx atom 0.05*sin(2.3*x+1.1*y+0.4*z)
+variable        dy atom 0.05*cos(1.9*y-0.7*x+0.3*z)
+variable        dz atom 0.05*sin(1.3*z+0.8*x-0.5*y)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.3*cos(1.7*y-0.6*z)
+variable        vy atom 0.3*sin(1.2*z+0.9*x)
+variable        vz atom 0.2*cos(2.1*x-0.8*y+0.2)
+velocity        all set v_vx v_vy v_vz units box
+pair_style      eam/alloy
+pair_coeff      * * almg.liu Mg
+neighbor        1.0 bin
+timestep        0.001
+compute         b all basal/atom
+dump            d1 all custom 10 w134cp_basal.dump id c_b[1] c_b[2] c_b[3]
+dump_modify     d1 format float %.15g
+fix             1 all nve
+thermo          10
+thermo_style    custom step pe ke
+thermo_modify   format float %.15g
+run             10

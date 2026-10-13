@@ -46,8 +46,11 @@ const KIND_NAME: Record<LabelKind, string> = { atom: 'Atom', bond: 'Bond', angle
 /** labelmap.html: a valid label does not start with a number, '#' or '*' and has no whitespace. */
 export const isValidLabel = (label: string): boolean => label.length > 0 && !/^[\d#*]/.test(label) && !/\s/.test(label);
 
-/** A type word that is not a label: a numeric type, a range (1:3 style words are numeric) or a wildcard. */
-export const isNumericTypeWord = (w: string): boolean => w === '' || /^[\d*]/.test(w);
+/**
+ * A type word that is not a label: a numeric type, a range (1:3 style words are numeric) or a wildcard. A leading
+ * minus is numeric too: turned-off interactions carry negative types (delete_bonds).
+ */
+export const isNumericTypeWord = (w: string): boolean => w === '' || /^-?[\d*]/.test(w);
 
 /** A label map: per kind, numeric type -> label and label -> numeric type. */
 export class LabelMap {

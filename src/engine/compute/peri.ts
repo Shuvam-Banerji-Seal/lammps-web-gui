@@ -1,7 +1,7 @@
 import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { Compute } from './compute';
-import { PairPeri } from '../force/pair/peri';
+import { PairPeri, type PeriBondSource } from '../force/pair/peri';
 
 /*
  * Per-atom peridynamic computes (PERI package). docs.lammps.org/compute_damage_atom.html:
@@ -9,10 +9,12 @@ import { PairPeri } from '../force/pair/peri';
  * volume-weighted fraction of broken bonds of the family (Howto_peri.rst, eq. 10).
  */
 
-const periPair = (sys: System, style: string): PairPeri => {
+const periPair = (sys: System, style: string): PeriBondSource => {
   const p = sys.ff.pair;
-  if (!(p instanceof PairPeri)) throw new StyleError(`compute ${style} needs a peridynamic pair style (peri/pmb or peri/lps)`);
-  return p;
+  if (p instanceof PairPeri) return p;
+  // the bond-family styles of src/engine-gpl/peri (peri/ves, peri/eps) provide the same two methods
+  if (p && typeof (p as Partial<PeriBondSource>).damage === 'function' && typeof (p as Partial<PeriBondSource>).dilatation === 'function') return p as unknown as PeriBondSource;
+  throw new StyleError(`compute ${style} needs a peridynamic pair style (peri/pmb, peri/lps, peri/ves or peri/eps)`);
 };
 
 /** compute ID group-ID damage/atom — docs.lammps.org/compute_damage_atom.html. */
@@ -37,7 +39,7 @@ export class ComputeDamageAtom extends Compute {
 
 /**
  * compute ID group-ID dilatation/atom (docs.lammps.org/compute_dilatation_atom.html) works with the
- * peri/lps pair style here; peri/ves and peri/eps are not available in this engine.
+ * peri/lps, peri/ves and peri/eps pair styles here (peri/pmb has no dilatation).
  */
 export class ComputeDilatationAtom extends Compute {
   readonly style = 'dilatation/atom';

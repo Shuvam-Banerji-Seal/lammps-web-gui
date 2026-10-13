@@ -333,9 +333,6 @@ export class PairSMDTlsph extends Pair {
     const s = pc.s;
     const n = s.n;
     if (this.work.n !== n) this.work = newWork(n);
-    // force clear of desph (atom_vec_smd force_clear): the per-atom energy rate starts at zero every evaluation
-    const desph = s.custom.get(SMD_DESPH)!.data;
-    desph.fill(0);
     const W = this.work;
     this.tagMap = this.tagIndex(s);
     if (this.first) {

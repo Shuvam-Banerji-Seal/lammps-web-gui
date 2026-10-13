@@ -21,6 +21,7 @@ import type { System } from '../../engine/system';
 import { SMD_DESPH, SMD_ESPH, SMD_VEST } from '../../engine/smd';
 import { PairSMDTlsph } from './pair_smd_tlsph';
 import { PairSMDHertz } from './pair_smd_hertz';
+import { PairSMDUlsph } from './pair_smd_ulsph';
 import { PairHybrid } from '../../engine/force/pair/hybrid';
 
 /** Lower bound used by the native code for the stable time step (fix_smd_adjust_dt.cpp: BIG). */
@@ -155,7 +156,7 @@ export class FixSMDAdjustDt extends Fix {
     const stable: number[] = [];
     const visit = (p: Pair | null | undefined): void => {
       if (p instanceof PairHybrid) for (const sub of p.subs) visit(sub.style);
-      else if (p instanceof PairSMDTlsph) stable.push(p.dtCFL);
+      else if (p instanceof PairSMDTlsph || p instanceof PairSMDUlsph) stable.push(p.dtCFL);
       else if (p instanceof PairSMDHertz) stable.push(p.stableTimeIncrement);
     };
     visit(this.sys.ff.pair);

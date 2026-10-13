@@ -4,6 +4,7 @@ import type { Neighbor, SpecialSettings } from '../neighbor';
 import { buildAtomMap, buildSpecial, filterTopo, type SpecialList } from '../atoms';
 import { BOND_REMOVED, clearAccum, newAccum, StyleError, type Accum, type Bonded, type KSpace, type Pair, type PairCompute, type StyleContext } from './types';
 import { PairHybrid } from './pair/hybrid';
+import { SMD_DESPH } from '../smd';
 
 /*
  * The force field: one pair style (possibly hybrid), bond/angle/dihedral/
@@ -240,6 +241,9 @@ export class ForceField {
     clearAccum(acc);
     s.f.fill(0, 0, 3 * s.n);
     s.torque?.fill(0, 0, 3 * s.n);
+    // atom_vec_smd force_clear (native AtomVecSMD::force_clear): the energy rate desph of the SMD styles starts at zero
+    // for every evaluation, before the sub-styles of a hybrid add to it (the styles do not clear it themselves)
+    s.custom.get(SMD_DESPH)?.data.fill(0);
     nb.clearForces();
     const nall = nb.nall;
     const eatomAll = flags.eatom ? new Float64Array(nall) : null;

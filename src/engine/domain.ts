@@ -133,6 +133,7 @@ export class Geometry {
    * coordinates it moves are tested.
    */
   remap(x: Float64Array, image: Int32Array, i: number): void {
+    if (this.triclinic) { this.remapTriclinic(x, image, i); return; }
     for (let d = 2; d >= 0; d--) {
       if (!this.periodic[d]) continue;
       // fractional coordinate along d (only components d.. matter: h is upper triangular)
@@ -151,6 +152,31 @@ export class Geometry {
       if (lam2 >= 1) { this.addEdge(x, i, d, -1); image[3 * i + d] += 1; }
       else if (lam2 < 0) { this.addEdge(x, i, d, 1); image[3 * i + d] -= 1; }
     }
+  }
+
+  /**
+   * Triclinic wrap in fractional coordinates. Measured with native LAMMPS (black box, 400 random atoms in a
+   * box with xy 1.37, xz 0.71, yz -0.43, read_data then write_dump, %.17g): every atom, inside the box or
+   * not, is taken to lamda = h^-1 (x - lo) and back to x = h lamda + lo, with each periodic lamda reduced
+   * by its floor (image += floor); the sums are left to right, x = ((lx*l0 + xy*l1) + xz*l2) + lo, and y and z
+   * likewise. A Cartesian edge shift (x -= k*A) gives the same atom up to round-off, but native's
+   * bits differ, and loop geom velocities hash the bits, so the round trip is what matches.
+   */
+  private remapTriclinic(x: Float64Array, image: Int32Array, i: number): void {
+    const dx = x[3 * i] - this.lo[0], dy = x[3 * i + 1] - this.lo[1], dz = x[3 * i + 2] - this.lo[2];
+    const l = [
+      this.i00 * dx + this.i01 * dy + this.i02 * dz,
+      this.i11 * dy + this.i12 * dz,
+      this.i22 * dz,
+    ];
+    for (let d = 2; d >= 0; d--) {
+      if (!this.periodic[d]) continue;
+      const k = Math.floor(l[d]);
+      if (k !== 0) { l[d] -= k; image[3 * i + d] += k; }
+    }
+    x[3 * i] = this.lx * l[0] + this.xy * l[1] + this.xz * l[2] + this.lo[0];
+    x[3 * i + 1] = this.ly * l[1] + this.yz * l[2] + this.lo[1];
+    x[3 * i + 2] = this.lz * l[2] + this.lo[2];
   }
 
   private readonly scratchX = new Float64Array(3);

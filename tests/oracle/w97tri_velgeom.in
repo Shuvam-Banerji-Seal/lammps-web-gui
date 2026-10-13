@@ -1,0 +1,16 @@
+# oracle: velocity create loop geom in a restricted triclinic box with atoms outside the box (read_data wraps them in lamda space)
+# oracle-inputs: w97tri_velgeom.data
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-10
+units           lj
+atom_style      atomic
+read_data       w97tri_velgeom.data
+mass            1 1.0
+velocity        all create 1.44 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+
+
+thermo_style    custom step temp pe etotal press pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          5
+run             0

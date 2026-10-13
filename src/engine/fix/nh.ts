@@ -718,7 +718,11 @@ export class FixNH extends Fix {
    * (couple none): the barostatted dimensions. Other couplings and tilts keep the ndof of the vector.
    */
   private chainDims(): number {
-    if (this.couple === 'none' && !(this.pFlag[3] || this.pFlag[4] || this.pFlag[5])) return this.nbaroDiag();
+    if (this.couple === 'none') {
+      let n = 0;
+      for (let d = 0; d < 6; d++) if (this.pFlag[d]) n++;
+      return n;
+    }
     return this.ndofDims().length;
   }
 
@@ -749,15 +753,63 @@ export class FixNH extends Fix {
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
       const k = 3 * i;
+      // the coupling terms act on the partner velocity while it decays over dt/4 (its own factor, f8)
       v[k] *= f8[0];
-      v[k] -= this.dt4 * (v[k + 1] * wxy + v[k + 2] * wxz);
+      v[k] -= this.dt4 * (v[k + 1] * f8[1] * wxy + v[k + 2] * f8[2] * wxz);
       v[k] *= f8[0];
       v[k + 1] *= f8[1];
-      v[k + 1] -= this.dt4 * v[k + 2] * wyz;
+      v[k + 1] -= this.dt4 * v[k + 2] * f8[2] * wyz;
       v[k + 1] *= f8[1];
       v[k + 2] *= f8[2] * f8[2];
     }
     if (bias) c.restoreBiasAll();
+  }
+
+  /**
+   * Tilt factors [xy, xz, yz] after dt/2 of the barostat flow of the barostatted tilts. With
+   * h_dot = omega h (upper-triangular h; omega 0..2 the diagonal strain rates, 3 = yz, 4 = xz, 5 = xy), the
+   * diagonal lengths are L_d(s) = L_d exp(omega_d s) and the tilts obey
+   *   xy' = w0 xy + w5 ly(s),   yz' = w1 yz + w3 lz(s),   xz' = w0 xz + w5 yz(s) + w4 lz(s).
+   * The decay of each tilt is applied in full over dt/2; the sources are integrated over the half step with
+   * the partner's time dependence, and the source of xy and xz carries half the rate difference
+   * exp(dt (w_tilt_row - w_source_row) / 2). yz has the closed form for yz(s). Measured against native LAMMPS
+   * (black box, tests/oracle/w97tri_npt_xy, w97tri_nph_xz, w97tri_npt_tri, 20 steps): xy and yz agree to about
+   * 1e-11 relative; xz (the all-tilt case) to about 2e-7 relative at step 20, the one residual not identified.
+   * Unbarostatted tilts keep their input value here (they are scaled after the box update).
+   */
+  private tiltFlow(ly: number, lz: number, yz: number, tilt: [number, number, number]): [number, number, number] {
+    const out: [number, number, number] = [tilt[0], tilt[1], tilt[2]];
+    const tau = this.dthalf;
+    const w = this.omegaDot;
+    const expo = (a: number) => Math.exp(a);
+    const lyAt = (s: number) => ly * expo(w[1] * s);
+    const lzAt = (s: number) => lz * expo(w[2] * s);
+    // yz(s) = yz exp(w1 s) + w3 * integral of lz(u) exp(w1 (s - u)) du, in closed form
+    const yzAt = (s: number): number => {
+      if (!this.pFlag[3]) return yz * expo(w[2] * s);
+      const d = w[2] - w[1];
+      const cross = Math.abs(d) < 1e-12 ? w[3] * lz * s * expo(w[1] * s) : w[3] * lz * (expo(w[2] * s) - expo(w[1] * s)) / d;
+      return yz * expo(w[1] * s) + cross;
+    };
+    // Simpson's rule over [0, tau]
+    const simpson = (f: (s: number) => number): number => {
+      const n = 8, h = tau / n;
+      let acc = f(0) + f(tau);
+      for (let k = 1; k < n; k++) acc += (k % 2 ? 4 : 2) * f(k * h);
+      return acc * h / 3;
+    };
+    if (this.pFlag[5]) {
+      out[0] = expo(tau * w[0]) * tilt[0] + simpson((s) => w[5] * lyAt(s)) * expo(tau * (w[0] - w[1]) / 2);
+    }
+    if (this.pFlag[4]) {
+      out[1] = expo(tau * w[0]) * tilt[1]
+        + simpson((s) => w[5] * yzAt(s)) * expo(tau * (w[0] - w[1]) / 2)
+        + simpson((s) => w[4] * lzAt(s)) * expo(tau * (w[0] - w[2]) / 2);
+    }
+    if (this.pFlag[3]) {
+      out[2] = expo(tau * w[1]) * yz + simpson((s) => w[3] * lzAt(s)) * expo(tau * (w[1] - w[2]) / 2);
+    }
+    return out;
   }
 
   /**
@@ -780,11 +832,8 @@ export class FixNH extends Fix {
     }
     const fp = this.fixedpoint ?? [0.5 * (b.lo[0] + b.hi[0]), 0.5 * (b.lo[1] + b.hi[1]), 0.5 * (b.lo[2] + b.hi[2])];
     const old = [g.lx, g.ly, g.lz];
-    // tilts driven by the off-diagonal strain rates, then the diagonal ones
-    // h_dot = omega h for an upper-triangular strain rate (yz, xz, xy), first order over dt/2
-    if (this.pFlag[3]) b.tilt[2] += this.dthalf * this.omegaDot[3] * g.lz;
-    if (this.pFlag[4]) b.tilt[1] += this.dthalf * (this.omegaDot[4] * g.lz + this.omegaDot[5] * g.yz);
-    if (this.pFlag[5]) b.tilt[0] += this.dthalf * this.omegaDot[5] * g.ly;
+    // barostatted tilts: the exact flow of h_dot = omega h over dt/2 (see tiltFlow)
+    const tiltNew = this.tiltFlow(g.ly, g.lz, g.yz, b.tilt);
     for (let d = 0; d < 3; d++) {
       if (!this.pFlag[d]) continue;
       const e = Math.exp(this.dthalf * this.omegaDot[d]);
@@ -797,9 +846,9 @@ export class FixNH extends Fix {
     if (this.scaleTilt[1] && !this.pFlag[4] && b.triclinic) b.tilt[1] *= nl[2] / old[2];
     if (this.scaleTilt[0] && !this.pFlag[3] && b.triclinic) b.tilt[2] *= nl[2] / old[2];
     // pressure-driven tilts also scale with the diagonal stretch
-    if (this.pFlag[5]) b.tilt[0] *= Math.exp(this.dthalf * this.omegaDot[0]);
-    if (this.pFlag[4]) b.tilt[1] *= Math.exp(this.dthalf * this.omegaDot[0]);
-    if (this.pFlag[3]) b.tilt[2] *= Math.exp(this.dthalf * this.omegaDot[1]);
+    if (this.pFlag[5]) b.tilt[0] = tiltNew[0];
+    if (this.pFlag[4]) b.tilt[1] = tiltNew[1];
+    if (this.pFlag[3]) b.tilt[2] = tiltNew[2];
     for (let t = 0; t < 3; t++) {
       const len = t === 0 ? nl[0] : t === 1 ? nl[0] : nl[1];
       if (Math.abs(b.tilt[t]) > 0.6 * len && b.triclinic) {

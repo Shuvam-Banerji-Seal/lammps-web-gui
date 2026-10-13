@@ -124,7 +124,8 @@ export const runVerlet = async (sys: System, nsteps: number, hooks: RunHooks): P
     for (const f of fPostInt) f.postIntegrate!();
     sys.bump();
     const fReneigh = fixes.some((f) => f.reneighborDue?.(s.step) === true);
-    nb.forceBuildStep = restartDue(sys, s.step) || fReneigh ? s.step : -1;
+    nb.forceBuildStep = restartDue(sys, s.step) ? s.step : -1;
+    nb.fixBuildStep = fReneigh ? s.step : -1;
     if (nb.decide(s.step, s, sys.geom)) {
       for (const f of fPreEx) f.preExchange!();
       sys.pbc();

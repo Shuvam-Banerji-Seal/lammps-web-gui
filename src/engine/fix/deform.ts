@@ -534,6 +534,24 @@ export class FixDeform extends Fix {
     if (this.nevery > 0) sys.forcesCurrent();
   }
 
+  /**
+   * The box length rate (rate, native domain->h_rate[0..2]) and lo-boundary rate (ratelo, native h_ratelo[0..2])
+   * of an orthogonal box, for fix srd's streaming velocity correction (fix_deform.cpp init(): "h_rate[i] = dhi_dt -
+   * dlo_dt; h_ratelo[i] = dlo_dt", and 0 for the dimensions that are not deformed). Only styles whose rate is
+   * constant over the run are supported: the rates of trate, wiggle, variable and volume change with time, and a
+   * tilt parameter makes the box triclinic. Other styles throw a StyleError.
+   */
+  streamingRates(): { rate: number[]; ratelo: number[] } {
+    for (const sp of this.specs) {
+      if (sp.tilt) throw new StyleError(`fix deform ${sp.name} (tilt) is not supported with fix srd (the triclinic SRD box)`);
+      if (sp.style === 'trate' || sp.style === 'wiggle' || sp.style === 'variable' || sp.style === 'volume') {
+        throw new StyleError(`fix deform style ${sp.style} is not supported with fix srd (its box rate changes during the run)`);
+      }
+    }
+    this.deform(false);
+    return { rate: [this.lenDot[0], this.lenDot[1], this.lenDot[2]], ratelo: [this.loDot[0], this.loDot[1], this.loDot[2]] };
+  }
+
   /** Streaming velocity the deforming box imposes at atom i's position. */
   vstream(i: number, out: number[]): void {
     const s = this.sys.state;

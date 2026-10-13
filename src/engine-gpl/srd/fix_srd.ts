@@ -11,12 +11,19 @@
  * advected ... the SRD velocities are rotated ... in each bin".
  *
  * Supported here: lj or other unit styles through the unit table, 2d and 3d boxes, point SRD particles of one mass,
- * big particles that are spheres, ellipsoids (a sphere or line of a rigid body included) or 2d lines (overlap yes
- * only: inside_line, collision_line_exact, newton_raphson, lineside), collision slip or noslip, exact and inexact
+ * big particles that are spheres, ellipsoids (a sphere or line of a rigid body included), 2d lines (overlap yes
+ * only: inside_line, collision_line_exact, newton_raphson, lineside) or 3d triangles (overlap yes only: inside_tri,
+ * collision_tri_exact), collision slip or noslip, exact and inexact
  * (exact yes/no), overlap yes (collisions_multi), bounce N, inside error/warn/ignore, lamda, radius,
- * search, cubic, rescale, shift no/yes/possible (RanPark bin shifts, periodic boxes), and tstat yes without box
- * deformation. Refused with a StyleError naming the keyword: unbiased yes, any fix deform (the SRD streaming
- * velocity h_rate, with or without tstat), tri big particles, and fix wall/srd.
+ * search, cubic, rescale, shift no/yes/possible (RanPark bin shifts, periodic boxes), tstat yes without box
+ * deformation, and a fix deform that changes orthogonal box lengths with a constant rate (final, delta, scale, vel,
+ * erate): the SRD streaming velocity h_rate / h_ratelo of reset_velocities, the last-bin correction and its undo,
+ * the bins that follow the box (change_size), and unbiased yes with tstat yes (the bins keep their average velocity).
+ * Triangle big particles (3d, overlap yes; inside_tri, collision_tri_exact, the triangle normal and omega of
+ * big_dynamic) are supported for free triangles (fix nve/tri) and refused when a fix rigid body holds them.
+ * Refused with a StyleError naming the keyword: tstat yes with a fix deform and no unbiased yes (the biased
+ * streaming bins do not match native yet), a fix deform with tilt or with a time-varying rate (trate, wiggle,
+ * variable, volume), tris in a fix rigid body, and fix wall/srd.
  *
  * Browser-engine difference: native processes SRD atoms in its own local order; the engine keeps that order in
  * SimState.order (nativeOrder), and every loop over SRD particles goes through it, so the random draws happen in
@@ -25,9 +32,10 @@
  * (same bins, same stencil, same counts), and forces on a copy are added to its owner.
  */
 import { Fix } from '../../engine/fix/fix';
+import { FixDeform } from '../../engine/fix/deform';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { isEllipsoid, isLineAtom, isTriAtom, LINE_BONUS, massOf, nativeOrder } from '../../engine/atoms';
+import { isEllipsoid, isLineAtom, isTriAtom, LINE_BONUS, massOf, nativeOrder, TRI_BONUS, TRI_BONUS_COLS } from '../../engine/atoms';
 import { bodyMotion, quatToMatrix, rotateVec } from '../../engine/compute/asphere';
 import { RanMars } from '../random_mars';
 import { RanPark } from '../random_park';
@@ -51,6 +59,7 @@ const BIG = 1.0e20;
 const KIND_SPHERE = 0;
 const KIND_ELLIPSOID = 1;
 const KIND_LINE = 2;
+const KIND_TRI = 3;
 const EMPTY: number[] = [];
 /** fix_srd.cpp: static constexpr double TOLERANCE = 0.00001; static constexpr int MAXITER = 20; */
 const LINE_TOLERANCE = 0.00001;
@@ -94,6 +103,10 @@ export class FixSRD extends Fix {
   private readonly binsize1 = [0, 0, 0];
   private readonly bininv1 = [0, 0, 0];
   private nbins1 = 1;
+  /** fix deform (native deformflag): its box rates give the SRD streaming velocity (h_rate, h_ratelo) */
+  private deformFix: FixDeform | null = null;
+  /** native change_size: a fix with BOX_CHANGE_SIZE, so the velocity bins are rebuilt at every pre-neighbor */
+  private changeSize = false;
 
   private distGhost = 0;
   private distSrd = 0;
@@ -145,6 +158,8 @@ export class FixSRD extends Fix {
   /** collision noslip (true) or slip (false) with big spheres */
   private readonly noslipflag: boolean;
   private readonly tstat: boolean;
+  /** unbiased yes: with a box deformation the thermostat keeps the bin average (no streaming velocity) */
+  private readonly unbiasflag: boolean;
 
   /** overlap yes: every overlapping big particle is considered, the first collision applied (collisions_multi) */
   private readonly overlapflag: boolean;
@@ -167,6 +182,14 @@ export class FixSRD extends Fix {
   /** line big particles: segment length (big_static) and orientation theta (big_dynamic, from the line bonus) */
   private bigLength = new Float64Array(0);
   private bigTheta = new Float64Array(0);
+  /** triangle big particles: body-frame corners c1 c2 c3 (9 per atom, TRI_BONUS), body normal (3), space normal (3) */
+  private bigCorners = new Float64Array(0);
+  private bigNormBody = new Float64Array(0);
+  private bigNorm = new Float64Array(0);
+  /** inside_tri() state: collision point, big particle point and normal at the collision time (xsc, xbc, nbc) */
+  private readonly tsc = new Float64Array(3);
+  private readonly tbc = new Float64Array(3);
+  private readonly tnbc = new Float64Array(3);
   /** inside_line() state (fix_srd.cpp members xs0, xs1, xb0, xb1, theta0, theta1, tfraction, xsc, xbc, nbc) */
   private readonly lxs0 = new Float64Array(2);
   private readonly lxs1 = new Float64Array(2);
@@ -305,11 +328,11 @@ export class FixSRD extends Fix {
     }
 
     // the refusals: keywords whose physics is not ported yet (named, never ignored)
-    if (unbias) throw new StyleError('fix srd unbiased yes is not supported by this engine yet');
 
     this.noslipflag = collide === 'noslip';
     this.overlapflag = overlap;
     this.tstat = tstatUser;
+    this.unbiasflag = unbias;
     // initialize Marsaglia RNG with processor-unique seed (one processor: seed + 0)
     this.random = new RanMars(seed);
     // shift yes/possible: RanPark with the shift seed (fix_srd.cpp: "randomshift = new RanPark(lmp, shiftseed)")
@@ -338,11 +361,23 @@ export class FixSRD extends Fix {
     }
     // fix_srd.cpp init(): "Fix srd no-slip requires atom attribute torque"
     if (this.bigExist && this.noslipflag && !s.torque) throw new StyleError('Fix srd no-slip requires atom attribute torque');
-    // fix_srd.cpp init() and reset_velocities(): with a box deformation the SRD velocities are corrected by the box
-    // streaming rate h_rate (with or without the thermostat); not ported, so refused rather than run without it
-    if (this.sys.fixes.some((f) => f.style === 'deform')) {
-      throw new StyleError(`fix srd${this.tstat ? ' tstat yes' : ''} with fix deform is not supported by this engine yet (the SRD streaming velocity h_rate)`);
+    // fix_srd.cpp init(): "deformflag = 1" for a fix deform, and "change_size" for a fix that changes a box length
+    // (the velocity bins then follow the box, see preNeighbor). The streaming correction itself is in resetVelocities.
+    this.deformFix = null;
+    this.changeSize = false;
+    for (const f of this.sys.fixes) {
+      if (!(f instanceof FixDeform)) continue;
+      if (this.deformFix) throw new StyleError('More than one fix deform');
+      this.deformFix = f;
+      this.changeSize = true;
     }
+    // the thermostatted streaming bins (tstat yes with a deforming box) are not matched to native yet: with the
+    // same input, the per-atom state drifts to about 3e-6 relative at step 200 while the thermo rows agree to 1e-12
+    // up to step 150 (measured with native LAMMPS, black box)
+    if (this.deformFix && this.tstat && !this.unbiasflag) {
+      throw new StyleError('fix srd tstat yes with fix deform is not supported by this engine yet (the thermostatted streaming bins drift from native)');
+    }
+    if (this.deformFix) this.deformFix.streamingRates();
     this.parameterize();
 
     // limit initial SRD velocities if necessary
@@ -381,21 +416,29 @@ export class FixSRD extends Fix {
   }
 
   /**
-   * Big particles must be spheres, ellipsoids or lines (tri big particles are refused). fix_srd.cpp init():
+   * Big particles must be spheres, ellipsoids, lines or free triangles (tris in a fix rigid body are refused). fix_srd.cpp init():
    * "Cannot use lines with fix srd unless overlap is set"; lines and tris need the atom torque.
    */
   private checkBig(): void {
     const s = this.sys.state;
     let anyLines = false;
+    let anyTris = false;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.bigBit)) continue;
-      if (isTriAtom(s, i)) {
-        throw new StyleError('fix srd big particles that are triangles are not supported by this engine yet (spheres, ellipsoids and lines only)');
-      }
+      if (isTriAtom(s, i)) anyTris = true;
       if (isLineAtom(s, i)) anyLines = true;
     }
     if (anyLines && !this.overlapflag) throw new StyleError('Cannot use lines with fix srd unless overlap is set');
     if (anyLines && !s.torque) throw new StyleError('Fix srd big particles that are lines require atom attribute torque');
+    // fix_srd.cpp init(): "Cannot use tris with fix srd unless overlap is set"
+    if (anyTris && !this.overlapflag) throw new StyleError('Cannot use tris with fix srd unless overlap is set');
+    if (anyTris && !s.torque) throw new StyleError('Fix srd big particles that are tris require atom attribute torque');
+    // tri big particles held in a fix rigid body: the first collisions of the rigid triangles differ from native by about
+    // 1e-7 in the SRD velocities (measured with native LAMMPS, black box: two-body rigid molecule, tri/lj, noslip, step 31),
+    // so this combination is refused until that is matched
+    if (anyTris && this.sys.fixes.some((f) => f.style.startsWith('rigid'))) {
+      throw new StyleError('fix srd big particles that are triangles inside a fix rigid body are not supported by this engine yet (the collision velocities differ from native by about 1e-7)');
+    }
   }
 
   /**
@@ -412,6 +455,9 @@ export class FixSRD extends Fix {
       this.bigOmegaAll = new Float64Array(3 * n);
       this.bigLength = new Float64Array(n);
       this.bigTheta = new Float64Array(n);
+      this.bigCorners = new Float64Array(9 * n);
+      this.bigNormBody = new Float64Array(3 * n);
+      this.bigNorm = new Float64Array(3 * n);
     }
     for (let i = 0; i < n; i++) {
       if (!(s.mask[i] & this.bigBit)) continue;
@@ -426,6 +472,17 @@ export class FixSRD extends Fix {
           const arad = this.radfactor * sh[3 * i + d];
           this.bigInv[3 * i + d] = 1.0 / (arad * arad);
         }
+      } else if (isTriAtom(s, i)) {
+        // fix_srd.cpp big_static(), TRIANGLE: normbody = (c2 - c1) x (c3 - c1) from the body-frame corners
+        this.bigKind[i] = KIND_TRI;
+        const tb = s.custom.get(TRI_BONUS)!.data;
+        const c = this.bigCorners;
+        for (let d = 0; d < 9; d++) c[9 * i + d] = tb[TRI_BONUS_COLS * i + d];
+        const e1 = [c[9 * i + 3] - c[9 * i], c[9 * i + 4] - c[9 * i + 1], c[9 * i + 5] - c[9 * i + 2]];
+        const e2 = [c[9 * i + 6] - c[9 * i], c[9 * i + 7] - c[9 * i + 1], c[9 * i + 8] - c[9 * i + 2]];
+        this.bigNormBody[3 * i] = e1[1] * e2[2] - e1[2] * e2[1];
+        this.bigNormBody[3 * i + 1] = e1[2] * e2[0] - e1[0] * e2[2];
+        this.bigNormBody[3 * i + 2] = e1[0] * e2[1] - e1[1] * e2[0];
       } else {
         this.bigKind[i] = KIND_SPHERE;
       }
@@ -455,9 +512,42 @@ export class FixSRD extends Fix {
       } else {
         // fix_srd.cpp big_dynamic(), LINE: "set omega from atom->omega directly" and theta from the line bonus
         if (this.bigKind[i] === KIND_LINE) this.bigTheta[i] = this.sys.state.custom.get(LINE_BONUS)!.data[2 * i + 1];
-        if (omega) for (let d = 0; d < 3; d++) this.bigOmegaAll[3 * i + d] = omega[3 * i + d];
+        if (this.bigKind[i] === KIND_TRI) this.triDynamic(i);
+        else if (omega) for (let d = 0; d < 3; d++) this.bigOmegaAll[3 * i + d] = omega[3 * i + d];
       }
     }
+  }
+
+  /**
+   * fix_srd.cpp big_dynamic(), TRIANGLE: ex, ey, ez from the quaternion; omega from the angular momentum and the
+   * principal moments (MathExtra::angmom_to_omega); the space-frame unit normal from the body normal (matvec, norm3).
+   */
+  private triDynamic(i: number): void {
+    const s = this.sys.state;
+    const q = s.quat!;
+    const R = quatToMatrix(q[4 * i], q[4 * i + 1], q[4 * i + 2], q[4 * i + 3]);
+    const ax = this.bigAxes;
+    const o = 9 * i;
+    ax[o] = R[0]; ax[o + 1] = R[3]; ax[o + 2] = R[6];
+    ax[o + 3] = R[1]; ax[o + 4] = R[4]; ax[o + 5] = R[7];
+    ax[o + 6] = R[2]; ax[o + 7] = R[5]; ax[o + 8] = R[8];
+    const tb = s.custom.get(TRI_BONUS)!.data;
+    const I = [tb[TRI_BONUS_COLS * i + 9], tb[TRI_BONUS_COLS * i + 10], tb[TRI_BONUS_COLS * i + 11]];
+    const L = s.angmom!;
+    const wbody = [0, 0, 0];
+    for (let k = 0; k < 3; k++) {
+      // the axis e_k is stored as three consecutive values (ex = ax[0..2], ey = ax[3..5], ez = ax[6..8])
+      const dot = L[3 * i] * ax[o + 3 * k] + L[3 * i + 1] * ax[o + 3 * k + 1] + L[3 * i + 2] * ax[o + 3 * k + 2];
+      wbody[k] = I[k] === 0.0 ? 0.0 : dot / I[k];
+    }
+    for (let d = 0; d < 3; d++) {
+      this.bigOmegaAll[3 * i + d] = wbody[0] * ax[o + d] + wbody[1] * ax[o + 3 + d] + wbody[2] * ax[o + 6 + d];
+    }
+    const nb = this.bigNormBody;
+    const n = [0, 0, 0];
+    for (let d = 0; d < 3; d++) n[d] = ax[o + d] * nb[3 * i] + ax[o + 3 + d] * nb[3 * i + 1] + ax[o + 6 + d] * nb[3 * i + 2];
+    const len = Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+    for (let d = 0; d < 3; d++) this.bigNorm[3 * i + d] = n[d] / len;
   }
 
   /** big radius for the search bins and the ghost cutoff: radfactor times the radius, or the longest semi-axis */
@@ -465,6 +555,13 @@ export class FixSRD extends Fix {
     const s = this.sys.state;
     // fix_srd.cpp big_static(), LINE: rad = 0.5 * length (no radfactor)
     if (this.bigKind[j] === KIND_LINE) return 0.5 * this.bigLength[j];
+    // fix_srd.cpp big_static(), TRIANGLE: rad = the longest body-frame corner (no radfactor)
+    if (this.bigKind[j] === KIND_TRI) {
+      const c = this.bigCorners;
+      let rad = 0;
+      for (let k = 0; k < 3; k++) rad = Math.max(rad, Math.hypot(c[9 * j + 3 * k], c[9 * j + 3 * k + 1], c[9 * j + 3 * k + 2]));
+      return rad;
+    }
     if (this.bigKind[j] === KIND_ELLIPSOID) {
       const sh = s.shape!;
       return this.radfactor * Math.max(sh[3 * j], sh[3 * j + 1], sh[3 * j + 2]);
@@ -498,6 +595,18 @@ export class FixSRD extends Fix {
             maxd = Math.max(maxd, 2.0 * s.shape![3 * i + d]);
             mind = Math.min(mind, 2.0 * s.shape![3 * i + d]);
           }
+          continue;
+        }
+        if (isTriAtom(s, i)) {
+          // fix_srd.cpp parameterize(): the longest corner length of a triangle (not 2*radius)
+          const tb = s.custom.get(TRI_BONUS)!.data;
+          let len = 0;
+          for (let k = 0; k < 3; k++) {
+            const b = TRI_BONUS_COLS * i + 3 * k;
+            len = Math.max(len, Math.hypot(tb[b], tb[b + 1], tb[b + 2]));
+          }
+          maxd = Math.max(maxd, len);
+          mind = Math.min(mind, len);
           continue;
         }
         if (!(s.radius && s.radius[i] > 0.0)) throw new StyleError('Big particle in fix srd cannot be point particle');
@@ -695,8 +804,18 @@ export class FixSRD extends Fix {
   preNeighbor(): void {
     const s = this.sys.state;
     if (this.binsrd.length < s.n) this.binsrd = new Int32Array(s.n);
+    if (this.bigExist) this.bigStatic();
+    // fix_srd.cpp pre_neighbor(): "if simulation box size changes, reset velocity bins" (change_size, set by a fix
+    // deform that changes a length); the search bins follow the box as well when big particles exist
+    if (this.changeSize) {
+      this.setupBounds();
+      this.setupVelocityBins();
+      if (this.bigExist) {
+        this.setupSearchBins();
+        this.setupSearchStencil();
+      }
+    }
     if (this.bigExist) {
-      this.bigStatic();
       this.buildCopies();
       this.registerCopies();
     }
@@ -833,12 +952,15 @@ export class FixSRD extends Fix {
     const [nbx, nby, nbz] = nb;
     const nbins = nbx * nby * nbz;
     const strides = [1, nbx, nbx * nby];
-    const binOf = (i: number): number => {
-      const ix = clampInt(Math.trunc((x[3 * i] - corner[0]) * this.bininv1[0]), 0, nbx - 1);
-      const iy = clampInt(Math.trunc((x[3 * i + 1] - corner[1]) * this.bininv1[1]), 0, nby - 1);
-      const iz = clampInt(Math.trunc((x[3 * i + 2] - corner[2]) * this.bininv1[2]), 0, nbz - 1);
-      return iz * nby * nbx + iy * nbx + ix;
-    };
+    const cellOf = (i: number): [number, number, number] => [
+      clampInt(Math.trunc((x[3 * i] - corner[0]) * this.bininv1[0]), 0, nbx - 1),
+      clampInt(Math.trunc((x[3 * i + 1] - corner[1]) * this.bininv1[1]), 0, nby - 1),
+      clampInt(Math.trunc((x[3 * i + 2] - corner[2]) * this.bininv1[2]), 0, nbz - 1),
+    ];
+    // fix_srd.cpp reset_velocities(): h_rate and h_ratelo of fix deform (orthogonal box: the tilt rates are zero)
+    const deformRates = this.deformFix ? this.deformFix.streamingRates() : null;
+    const hRate = deformRates ? deformRates.rate : [0, 0, 0];
+    const hRateLo = deformRates ? deformRates.ratelo : [0, 0, 0];
 
     // binhead = first SRD particle in each bin, binnext = next particle in the same bin
     const binhead = new Int32Array(nbins).fill(-1);
@@ -846,7 +968,15 @@ export class FixSRD extends Fix {
     for (let k = 0; k < s.n; k++) {
       const i = order[k];
       if (!(mask[i] & this.groupBit)) continue;
-      const ibin = binOf(i);
+      const [ix, iy, iz] = cellOf(i);
+      // native "shift velocities in last bins": a particle in the extra bin (ix == nbin1x) of a periodic dimension
+      // loses the box rate of that dimension
+      if (deformRates) {
+        if (per[0] && ix === this.nbin1[0]) v[3 * i] -= hRate[0];
+        if (per[1] && iy === this.nbin1[1]) v[3 * i + 1] -= hRate[1];
+        if (per[2] && iz === this.nbin1[2]) v[3 * i + 2] -= hRate[2];
+      }
+      const ibin = iz * nby * nbx + iy * nbx + ix;
       binnext[i] = binhead[ibin];
       binhead[ibin] = i;
     }
@@ -907,6 +1037,10 @@ export class FixSRD extends Fix {
 
     // rotate the thermal velocity of each particle around one of six random axes, then add the average back
     const tfactor = s.units.mvv2e * this.massSrd / (dim * s.units.boltz);
+    // fix_srd.cpp reset_velocities(): "no deformation, no tstat: dof_temp = 1; yes deformation, yes tstat:
+    // dof_temp = dof_tstat = 0" (unbiased yes: the biased deformation case does not apply, dof 1)
+    const dofTemp = this.tstat && deformRates && !this.unbiasflag ? 0 : 1;
+    const dofTstat = dofTemp;
     this.srdBinTemp = 0.0;
     this.srdBinCount = 0;
     let axis = 2;
@@ -952,25 +1086,38 @@ export class FixSRD extends Fix {
     }
     combine([{ a: value, w: 1 }]);
 
-    // thermostat: rescale the thermal velocities of each bin to the SRD temperature (no box deformation)
+    // thermostat: rescale the thermal velocities of each bin to the SRD temperature. With a box deformation the
+    // bin streams with the box: vstream = h_rate * xctr + h_ratelo, where xctr is the bin centre as
+    // setup_velocity_shift() sets it (corner + (i + 0.5) / nbin1 per dimension, "in lamda units")
     if (this.tstat) {
       for (let b = 0; b < nbins; b++) {
         const n = cnt[b];
         if (n <= 1) continue;
-        const vx = vsum[3 * b];
-        const vy = vsum[3 * b + 1];
-        const vz = vsum[3 * b + 2];
-        const tbin = (value[b] / (n - 1)) * tfactor;
+        let sx = vsum[3 * b];
+        let sy = vsum[3 * b + 1];
+        let sz = vsum[3 * b + 2];
+        if (deformRates && !this.unbiasflag) {
+          const bx = b % nbx;
+          const by = Math.trunc(b / nbx) % nby;
+          const bz = Math.trunc(b / (nbx * nby));
+          const xc0 = corner[0] + (bx + 0.5) / this.nbin1[0];
+          const xc1 = corner[1] + (by + 0.5) / this.nbin1[1];
+          const xc2 = corner[2] + (bz + 0.5) / this.nbin1[2];
+          sx = hRate[0] * xc0 + hRateLo[0];
+          sy = hRate[1] * xc1 + hRateLo[1];
+          sz = hRate[2] * xc2 + hRateLo[2];
+        }
+        const tbin = (value[b] / (n - dofTstat)) * tfactor;
         const scale = Math.sqrt(this.temperatureSrd / tbin);
         let vsq = 0.0;
         for (let j = binhead[b]; j >= 0; j = binnext[j]) {
-          const u0 = (v[3 * j] - vx) * scale;
-          const u1 = (v[3 * j + 1] - vy) * scale;
-          const u2 = (v[3 * j + 2] - vz) * scale;
+          const u0 = (v[3 * j] - vsum[3 * b]) * scale;
+          const u1 = (v[3 * j + 1] - vsum[3 * b + 1]) * scale;
+          const u2 = (v[3 * j + 2] - vsum[3 * b + 2]) * scale;
           vsq += u0 * u0 + u1 * u1 + u2 * u2;
-          v[3 * j] = u0 + vx;
-          v[3 * j + 1] = u1 + vy;
-          v[3 * j + 2] = u2 + vz;
+          v[3 * j] = u0 + sx;
+          v[3 * j + 1] = u1 + sy;
+          v[3 * j + 2] = u2 + sz;
         }
         value[b] = vsq;
       }
@@ -980,7 +1127,7 @@ export class FixSRD extends Fix {
     // SRD temperature from the thermal velocities of the owner bins with more than one particle
     for (let b = 0; b < nbins; b++) {
       if (owner[b] && cnt[b] > 1) {
-        this.srdBinTemp += value[b] / (cnt[b] - 1);
+        this.srdBinTemp += value[b] / (cnt[b] - dofTemp);
         this.srdBinCount++;
       }
     }
@@ -996,6 +1143,18 @@ export class FixSRD extends Fix {
           this.nrescale++;
           scale3(v, 3 * i, this.vmax / Math.sqrt(vsq));
         }
+      }
+    }
+
+    // "undo velocity remap (only if using PUT or tstat no)": the box-rate correction of the last bins is added back
+    if (deformRates && (this.unbiasflag || !this.tstat)) {
+      for (let k = 0; k < s.n; k++) {
+        const i = order[k];
+        if (!(mask[i] & this.groupBit)) continue;
+        const [ix, iy, iz] = cellOf(i);
+        if (per[0] && ix === this.nbin1[0]) v[3 * i] += hRate[0];
+        if (per[1] && iy === this.nbin1[1]) v[3 * i + 1] += hRate[1];
+        if (per[2] && iz === this.nbin1[2]) v[3 * i + 2] += hRate[2];
       }
     }
   }
@@ -1180,6 +1339,10 @@ export class FixSRD extends Fix {
             // fix_srd.cpp collisions_multi(): inside_line(x[i], x[j], v[i], v[j], big, dt), then collision_line_exact
             if (!this.insideLine(xs, xb, vs, vb, this.bigTheta[j], this.bigOmega(j)[2], this.bigLength[j], dt)) continue;
             tRemain = this.collisionLineExact(dt, xscoll, xbcoll, norm);
+          } else if (kind === KIND_TRI) {
+            // fix_srd.cpp collisions_multi(): inside_tri(x[i], x[j], v[i], v[j], big, dt), then collision_tri_exact
+            if (!this.insideTri(xs, xb, vs, vb, j, dt)) continue;
+            tRemain = this.collisionTriExact(dt, xscoll, xbcoll, norm);
           } else {
             const inside = ell ? insideEllipsoid(xs, xb, ax, inv) : insideSphere(xs, xb, rad * rad);
             if (!inside) continue;
@@ -1263,6 +1426,104 @@ export class FixSRD extends Fix {
     this.lnbc[0] = Math.sin(thc);
     this.lnbc[1] = -Math.cos(thc);
     return true;
+  }
+
+  /**
+   * fix_srd.cpp inside_tri(): is the SRD particle inside the triangle big particle j during the step? The SRD starts on
+   * the positive side of the (moving, rotating) plane of the triangle and ends on the negative side; the crossing time
+   * is a root of the quadratic approximation of the plane distance, and the collision point (at that time) must lie
+   * inside the triangle. Sets tfraction (ltfraction), tsc, tbc and tnbc for collisionTriExact(). xs, xb: positions at
+   * the end of the step; vs, vb: velocities; j: the big particle (its omega, space normal and axes are from bigDynamic).
+   */
+  private insideTri(xs: Float64Array, xb: Float64Array, vs: Float64Array, vb: Float64Array, j: number, dtStep: number): boolean {
+    const omega = this.bigOmega(j);
+    const n1 = this.bigNorm.subarray(3 * j, 3 * j + 3);
+    // n0 = n1 - dt (omega x n1)
+    const n0 = [
+      n1[0] - dtStep * (omega[1] * n1[2] - omega[2] * n1[1]),
+      n1[1] - dtStep * (omega[2] * n1[0] - omega[0] * n1[2]),
+      n1[2] - dtStep * (omega[0] * n1[1] - omega[1] * n1[0]),
+    ];
+    const pmc0 = [0, 1, 2].map((d) => xs[d] - dtStep * vs[d] - xb[d] + dtStep * vb[d]);
+    const pmc1 = [0, 1, 2].map((d) => xs[d] - xb[d]);
+    const dot = (a: number[] | Float64Array, b: number[] | Float64Array) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const side0 = dot(pmc0, n0);
+    const side1 = dot(pmc1, n1);
+    if (side0 <= 0.0 || side1 >= 0.0) return false;
+
+    // quadratic equation solve of the approximate parametric equation for the crossing time (0 to 1)
+    const n1n0 = [0, 1, 2].map((d) => n1[d] - n0[d]);
+    const pmc1pmc0 = [0, 1, 2].map((d) => pmc1[d] - pmc0[d]);
+    const a = dot(pmc1pmc0, n1n0);
+    const b = dot(pmc1pmc0, n0) + dot(n1n0, pmc0);
+    const c = dot(pmc0, n0);
+    let tf: number;
+    if (a === 0.0) {
+      const dot0 = dot(pmc0, n0);
+      const dot1 = dot(pmc1, n0);
+      tf = -dot0 / (dot1 - dot0);
+    } else {
+      const term = Math.sqrt(b * b - 4.0 * a * c);
+      const root1 = (-b + term) / (2.0 * a);
+      const root2 = (-b - term) / (2.0 * a);
+      if (0.0 <= root1 && root1 <= 1.0) tf = root1;
+      else if (0.0 <= root2 && root2 <= 1.0) tf = root2;
+      else throw new StyleError('Bad quadratic solve for particle/tri collision');
+    }
+    this.ltfraction = tf;
+
+    // the position and orientation of S and B at the collision time (dt before now)
+    const dtc = (1.0 - tf) * dtStep;
+    const ax = this.bigAxes.subarray(9 * j, 9 * j + 9);
+    const cb = this.bigCorners.subarray(9 * j, 9 * j + 9);
+    const ex = [ax[0], ax[1], ax[2]], ey = [ax[3], ax[4], ax[5]], ez = [ax[6], ax[7], ax[8]];
+    const xsc = this.tsc, xbc = this.tbc;
+    for (let d = 0; d < 3; d++) {
+      xsc[d] = xs[d] - dtc * vs[d];
+      xbc[d] = xb[d] - dtc * vb[d];
+    }
+    // orientation axes at the collision time: e - dt (omega x e)
+    const rot = (e: number[]) => [
+      e[0] - dtc * (omega[1] * e[2] - omega[2] * e[1]),
+      e[1] - dtc * (omega[2] * e[0] - omega[0] * e[2]),
+      e[2] - dtc * (omega[0] * e[1] - omega[1] * e[0]),
+    ];
+    const exc = rot(ex), eyc = rot(ey), ezc = rot(ez);
+    // corners c1, c2, c3 at the collision time: xbc + (exc, eyc, ezc) . body corner
+    const corner = (k: number): number[] => {
+      const cb0 = cb[3 * k], cb1 = cb[3 * k + 1], cb2 = cb[3 * k + 2];
+      return [0, 1, 2].map((d) => xbc[d] + exc[d] * cb0 + eyc[d] * cb1 + ezc[d] * cb2);
+    };
+    const c1 = corner(0), c2 = corner(1), c3 = corner(2);
+    const c2mc1 = [0, 1, 2].map((d) => c2[d] - c1[d]);
+    const c3mc2 = [0, 1, 2].map((d) => c3[d] - c2[d]);
+    const c1mc3 = [0, 1, 2].map((d) => c1[d] - c3[d]);
+    const nbc = [
+      c2mc1[1] * c3mc2[2] - c2mc1[2] * c3mc2[1],
+      c2mc1[2] * c3mc2[0] - c2mc1[0] * c3mc2[2],
+      c2mc1[0] * c3mc2[1] - c2mc1[1] * c3mc2[0],
+    ];
+    const nlen = Math.sqrt(nbc[0] * nbc[0] + nbc[1] * nbc[1] + nbc[2] * nbc[2]);
+    for (let d = 0; d < 3; d++) nbc[d] /= nlen;
+    this.tnbc.set(nbc);
+
+    // the collision point must be inside the triangle: on the inner side of each of the three edges
+    const cross = (p: number[], q: number[]) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
+    const edges: [number[], number[], number[]] = [c2mc1, c3mc2, c1mc3];
+    const verts = [c1, c2, c3];
+    for (let k = 0; k < 3; k++) {
+      const pvec = [0, 1, 2].map((d) => xsc[d] - verts[k][d]);
+      if (dot(cross(edges[k], pvec), nbc) < 0.0) return false;
+    }
+    return true;
+  }
+
+  /** fix_srd.cpp collision_tri_exact(): the collision points and normal of insideTri(); returns the time before now. */
+  private collisionTriExact(dtStep: number, xscoll: Float64Array, xbcoll: Float64Array, norm: Float64Array): number {
+    xscoll.set(this.tsc);
+    xbcoll.set(this.tbc);
+    norm.set(this.tnbc);
+    return (1.0 - this.ltfraction) * dtStep;
   }
 
   /** fix_srd.cpp collision_line_exact(): the collision points and normal of inside_line(); returns the time before now. */

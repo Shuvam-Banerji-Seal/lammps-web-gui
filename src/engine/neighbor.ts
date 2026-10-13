@@ -105,6 +105,11 @@ export class Neighbor {
    */
   forceBuildStep = -1;
   /**
+   * The step whose decision a fix forces (Fix::next_reneighbor, set by the run loop before decide(); -1 = none).
+   * Unlike forceBuildStep, the build refreshes the check positions (see decide()).
+   */
+  fixBuildStep = -1;
+  /**
    * neigh_modify exclude (neigh_modify.html): "type M N = exclude if one atom
    * in pair is type M, other is type N"; "group group1-ID group2-ID = exclude
    * if one atom is in 1st group, other in 2nd"; "molecule/intra group-ID =
@@ -174,6 +179,9 @@ export class Neighbor {
     this.forcedDecision = false;
     if (this.once) return false;
     if (step === this.forceBuildStep) { this.forcedDecision = true; return true; }
+    // a rebuild that a fix requests (fix srd next_reneighbor, rheo): native Neighbor::decide() returns 1 and
+    // Neighbor::build() stores the reference positions of the check (xhold), as on every build
+    if (step === this.fixBuildStep) return true;
     const ago = step - this.lastBuild;
     if (ago < this.delay) return false;
     if (this.specialStale) { this.specialStale = false; return true; }

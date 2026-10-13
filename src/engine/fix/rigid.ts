@@ -1,7 +1,8 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
 import type { System } from '../system';
-import { isLineAtom, isTriAtom, LINE_BONUS, massOf } from '../atoms';
+import { isLineAtom, isTriAtom, LINE_BONUS, massOf, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { quatToMatrix } from '../compute/asphere';
 import { RanMars } from '../rng';
 import { parseNumOrVar, ramp, valueOf, type NumOrVar } from './util';
 import { FixGravity } from './force_ext';
@@ -62,6 +63,11 @@ interface Body {
    * per atom in body order, 0 for other atoms. fix_rigid.cpp setup_bodies_static: "orient[i][0] = lbonus[line[i]].theta - theta_body".
    */
   orient: number[];
+  /**
+   * triangle atoms (atom_style tri): the orientation quaternion of each triangle relative to the body, 4 per body atom in
+   * body order (fix_rigid.cpp setup_bodies_static, TRIANGLE: orient = conj(quat_body) * quat_atom, normalized); 0 for others.
+   */
+  orientQ: number[];
 }
 
 /** One line of an infile (fix rigid infile): attributes that override the computed ones. */
@@ -80,8 +86,29 @@ const cloneBody = (b: Body): Body => ({
   atoms: b.atoms.slice(), xcm: b.xcm.slice(), vcm: b.vcm.slice(), image: b.image.slice(),
   inertia: b.inertia.slice(), q: b.q.slice(), angmom: b.angmom.slice(), omega: b.omega.slice(),
   displace: b.displace.map((r) => r.slice()), fcm: b.fcm.slice(), torque: b.torque.slice(),
-  fflag: b.fflag.slice(), tflag: b.tflag.slice(), orient: b.orient.slice(),
+  fflag: b.fflag.slice(), tflag: b.tflag.slice(), orient: b.orient.slice(), orientQ: b.orientQ.slice(),
 });
+
+/** Quaternion product c = a b (math_extra.h quatquat). */
+const quatMul = (a: number[], b: number[]): number[] => [
+  a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+  a[0] * b[1] + b[0] * a[1] + a[2] * b[3] - a[3] * b[2],
+  a[0] * b[2] + b[0] * a[2] + a[3] * b[1] - a[1] * b[3],
+  a[0] * b[3] + b[0] * a[3] + a[1] * b[2] - a[2] * b[1],
+];
+const quatNormalize = (q: number[]): number[] => {
+  const n = 1.0 / Math.sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+  return q.map((c) => c * n);
+};
+/** Space-frame inertia tensor of triangle atom i: R diag(moments) R^T (math_extra.h inertia_triangle with the quaternion). */
+const triInertiaSpace = (q: number[], moments: number[]): number[][] => {
+  const R = quatToMatrix(q[0], q[1], q[2], q[3]);
+  const I = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) {
+    for (let k = 0; k < 3; k++) I[a][b] += R[3 * a + k] * moments[k] * R[3 * b + k];
+  }
+  return I;
+};
 
 /** Angle of a body's z-rotation quaternion (w, x, y, z), as fix_rigid.cpp: "theta_body = 2.0*acos(quat[ibody][0])", signed by z. */
 const bodyTheta = (q: number[]): number => (q[3] >= 0 ? 2.0 * Math.acos(Math.min(1, q[0])) : -2.0 * Math.acos(Math.min(1, q[0])));
@@ -462,6 +489,7 @@ export class FixRigid extends Fix {
     const I = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
     const angmom = [0, 0, 0];
     let nsph = 0;
+    const orientQ = new Array<number>(4 * idx.length).fill(0);
     idx.forEach((i, n) => {
       const m = massOf(s, i);
       const r = [pos[n][0] - xcm[0], pos[n][1] - xcm[1], pos[n][2] - xcm[2]];
@@ -488,6 +516,16 @@ export class FixRigid extends Fix {
         I[1][0] -= a * ux * uy;
         if (s.omega) angmom[2] += a * s.omega[3 * i + 2];
         nsph++;
+      } else if (isTriAtom(s, i)) {
+        // fix_rigid.cpp setup_bodies_static (TRIANGLE): inertia_triangle(inertia, quat_atom, mass) is the triangle's own
+        // inertia in the space frame (its moments are the triangle bonus, mass included); setup_bodies_dynamic adds the
+        // atom's own angular momentum to the body (eflags ANGMOM). The triangle is a point for the dof count (not nsph).
+        if (sys.dimension !== 2) {
+          const moments = [0, 1, 2].map((k) => s.custom.get(TRI_BONUS)!.data[TRI_BONUS_COLS * i + 9 + k]);
+          const Ii = triInertiaSpace([s.quat![4 * i], s.quat![4 * i + 1], s.quat![4 * i + 2], s.quat![4 * i + 3]], moments);
+          for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) I[a][b] += Ii[a][b];
+          for (let d = 0; d < 3; d++) angmom[d] += s.angmom![3 * i + d];
+        } else throw new StyleError(`fix ${this.style}: triangle atom ${s.id[i]} in rigid body ${key} needs a 3d simulation`);
       } else if (rad > 0) {
         // docs.lammps.org/fix_rigid.html: "Finite-size particles contribute differently to the moment of
         // inertia of a rigid body than do point particles." A solid sphere adds 2/5 m r^2 about its own centre
@@ -522,6 +560,14 @@ export class FixRigid extends Fix {
     // line orientations relative to the body (fix_rigid.cpp setup_bodies_static, LINE branch)
     const thetaBody = bodyTheta(frame.q);
     const orient = idx.map((i) => (isLineAtom(s, i) ? wrapAngle(s.custom.get(LINE_BONUS)!.data[2 * i + 1] - thetaBody) : 0));
+    // triangle orientations relative to the body (fix_rigid.cpp setup_bodies_static, TRIANGLE)
+    const qbodyC = [frame.q[0], -frame.q[1], -frame.q[2], -frame.q[3]];
+    idx.forEach((i, n) => {
+      if (!isTriAtom(s, i)) return;
+      const qa = [s.quat![4 * i], s.quat![4 * i + 1], s.quat![4 * i + 2], s.quat![4 * i + 3]];
+      const qo = quatNormalize(quatMul(qbodyC, qa));
+      for (let d = 0; d < 4; d++) orientQ[4 * n + d] = qo[d];
+    });
     const inertia = frame.inertia;
     const ncollinear = inertia.filter((v) => v === 0).length;
     const b: Body = {
@@ -539,6 +585,7 @@ export class FixRigid extends Fix {
       dof: sys.dimension === 2 ? 3 : ncollinear >= 1 ? 5 : 6,
       nsph,
       orient,
+      orientQ,
     };
     this.wrapCom(b);
     return b;
@@ -552,7 +599,6 @@ export class FixRigid extends Fix {
   private refuseUnsupportedParticle(key: string, i: number): void {
     const s = this.sys.state;
     const id = s.id[i];
-    if (isTriAtom(s, i)) throw new StyleError(`fix ${this.style}: triangle atom ${id} in rigid body ${key} is not supported by the browser engine (triangles need their corner points to follow the body)`);
     if (s.shape && s.shape[3 * i] > 0) throw new StyleError(`fix ${this.style}: finite-size ellipsoid atom ${id} in rigid body ${key} is not supported by the browser engine (ellipsoidal particles in rigid bodies need their orientation to follow the body)`);
     if (s.mu && s.mu[4 * i + 3] !== 0) throw new StyleError(`fix ${this.style}: point dipole atom ${id} in rigid body ${key} is not supported by the browser engine (dipole vectors must rotate with the body and feel dipole torques)`);
   }
@@ -738,6 +784,25 @@ export class FixRigid extends Fix {
         if (s.omega && s.radius && s.radius[i] > 0) for (let d = 0; d < 3; d++) s.omega[3 * i + d] = b.omega[d];
         // fix_rigid.cpp set_xv(): the segment angle follows the body, theta = orient + theta_body (set_v does not)
         if (setX && isLineAtom(s, i)) s.custom.get(LINE_BONUS)!.data[2 * i + 1] = wrapAngle(b.orient[n] + bodyTheta(b.q));
+        // fix_rigid.cpp set_xv()/set_v() (TRIANGLE): set_xv sets the triangle's quaternion quat_body * orient; both set its
+        // angular momentum from the body's omega with its principal moments (omega_to_angmom)
+        if (isTriAtom(s, i)) {
+          if (setX) {
+            const qo = quatNormalize(quatMul(b.q, b.orientQ.slice(4 * n, 4 * n + 4)));
+            for (let d = 0; d < 4; d++) s.quat![4 * i + d] = qo[d];
+          }
+          const q = [s.quat![4 * i], s.quat![4 * i + 1], s.quat![4 * i + 2], s.quat![4 * i + 3]];
+          const R = quatToMatrix(q[0], q[1], q[2], q[3]);
+          const moments = [0, 1, 2].map((k) => s.custom.get(TRI_BONUS)!.data[TRI_BONUS_COLS * i + 9 + k]);
+          // omega_to_angmom: L = sum_k (omega . e_k) I_k e_k
+          const L = [0, 0, 0];
+          for (let k = 0; k < 3; k++) {
+            const ek = [R[k], R[3 + k], R[6 + k]];
+            const wk = (b.omega[0] * ek[0] + b.omega[1] * ek[1] + b.omega[2] * ek[2]) * moments[k];
+            for (let d = 0; d < 3; d++) L[d] += wk * ek[d];
+          }
+          for (let d = 0; d < 3; d++) s.angmom![3 * i + d] = L[d];
+        }
         if (setX) {
           // unwrapped position, written back as wrapped position + image flags
           for (let d = 0; d < 3; d++) {

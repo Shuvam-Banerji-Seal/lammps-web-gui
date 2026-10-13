@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import { massOf } from '../atoms';
 import type { BoxDof } from '../fix/box_relax';
 import { checkMinHalt } from './halt';
+import { MINIMIZERS } from './minimizers';
 
 /*
  * Energy minimization — docs.lammps.org/minimize.html, min_style.html,
@@ -82,7 +83,12 @@ export const minimize = async (
   const s = sys.state;
   const set = sys.minSettings;
   const style = sys.minStyle;
+  // a minimizer of a lazily loaded registry (min_style spin, ...; run/minimizers.ts) runs its own iteration
+  if (Object.prototype.hasOwnProperty.call(MINIMIZERS, style)) return MINIMIZERS[style](sys, p, hooks);
   if (!(MIN_STYLES as readonly string[]).includes(style)) throw new StyleError(`min_style ${style} is not supported`);
+  // min_modify line spin_cubic / spin_none belong to the spin minimizers (Measured with native LAMMPS (black box): on
+  // a non-spin minimization both stop with a segmentation fault)
+  if (set.fire.line === 'spin_cubic' || set.fire.line === 'spin_none') throw new StyleError(`min_modify line ${set.fire.line} is only for the spin minimizers (min_style spin/cg)`);
   // a pair style's per-atom degrees of freedom cannot be carried by the damped dynamics styles (quickmin, fire).
   // Measured with native LAMMPS (black box): pair eff/cut with min_style fire or quickmin stops with
   // Cannot use a damped dynamics min style with per-atom DOF.

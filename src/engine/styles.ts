@@ -7,6 +7,8 @@ import { LAZY_GROUPS, type LazyGroup, type StyleKind, type StyleModule } from '.
 import type { NativeRandom, NativeRandomWord } from './nativeRandom';
 import type { TriBonusHook } from './triBonus';
 import { isRefusedStyle } from './refusedStyles';
+import { MINIMIZERS } from './run/minimizers';
+import { MIN_STYLES } from './run/min';
 import { PairLJCut } from './force/pair/lj_cut';
 import { PairHybrid } from './force/pair/hybrid';
 import { BondHarmonic } from './force/bond/harmonic';
@@ -174,7 +176,7 @@ export const LAZY_COMMANDS: Record<string, Handler> = {};
 
 const REGISTRY_OF: Record<StyleKind, Record<string, unknown>> = {
   PAIRS: PAIR_STYLES, BONDS: BOND_STYLES, ANGLES: ANGLE_STYLES, DIHEDRALS: DIHEDRAL_STYLES,
-  IMPROPERS: IMPROPER_STYLES, KSPACES: KSPACE_STYLES, FIXES: FIX_STYLES, COMPUTES: COMPUTE_STYLES, HOOKS, COMMANDS: LAZY_COMMANDS,
+  IMPROPERS: IMPROPER_STYLES, KSPACES: KSPACE_STYLES, FIXES: FIX_STYLES, COMPUTES: COMPUTE_STYLES, HOOKS, COMMANDS: LAZY_COMMANDS, MINIMIZERS,
 };
 
 /**
@@ -218,6 +220,7 @@ export const styleNames = (): Record<string, string[]> => ({
   kspace_style: namesOf('KSPACES'),
   fix: namesOf('FIXES'),
   compute: namesOf('COMPUTES'),
+  min_style: [...MIN_STYLES, ...namesOf('MINIMIZERS')],
 });
 
 /** Style name -> the lazy groups that register it (a name may be in several kinds, e.g. snap). */

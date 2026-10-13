@@ -8,7 +8,8 @@
 
 /** HOOKS: not styles but helpers that core commands call (nativeRandom.ts), named by the command words that need them. */
 /** COMMANDS: general commands a lazy group adds to the session's command table (styles.ts LAZY_COMMANDS). */
-export type StyleKind = 'PAIRS' | 'BONDS' | 'ANGLES' | 'DIHEDRALS' | 'IMPROPERS' | 'KSPACES' | 'FIXES' | 'COMPUTES' | 'HOOKS' | 'COMMANDS';
+/** MINIMIZERS: min_style names (run/minimizers.ts). */
+export type StyleKind = 'PAIRS' | 'BONDS' | 'ANGLES' | 'DIHEDRALS' | 'IMPROPERS' | 'KSPACES' | 'FIXES' | 'COMPUTES' | 'HOOKS' | 'COMMANDS' | 'MINIMIZERS';
 export type StyleModule = Partial<Record<StyleKind, Record<string, unknown>>>;
 
 export interface LazyGroup {
@@ -51,7 +52,8 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'pair_dipole18', names: { PAIRS: ['lj/cut/dipole/cut', 'lj/cut/dipole/long', 'lj/long/dipole/long', 'lj/sf/dipole/sf'] }, load: () => import('./registry/pair_dipole18') as Promise<StyleModule> },
   { id: 'fix_ttm', names: { FIXES: ['ttm', 'ttm/grid', 'ttm/mod', 'ttm/thermal', 'ttm/cascade'] }, load: () => import('./registry/fix_ttm') as Promise<StyleModule> },
   { id: 'compute_tally47', names: { COMPUTES: ['force/tally', 'group/group', 'pe/tally', 'stress/tally'] }, load: () => import('./registry/compute_tally47') as Promise<StyleModule> },
-  { id: 'spin', names: { PAIRS: ['spin/exchange', 'spin/exchange/biquadratic', 'spin/dmi', 'spin/magelec', 'spin/neel'], COMPUTES: ['spin'], FIXES: ['nve/spin', 'precession/spin', 'langevin/spin', 'setforce/spin'] }, load: () => import('./registry/spin') as Promise<StyleModule> },
+  { id: 'gpl_spin', names: { PAIRS: ['spin/dipole/cut', 'spin/neel', 'spin/dipole/long'], FIXES: ['langevin/spin'], KSPACES: ['ewald/dipole/spin', 'pppm/dipole/spin'], MINIMIZERS: ['spin', 'spin/cg', 'spin/lbfgs'] }, load: () => import('../engine-gpl/registry/spin') as Promise<StyleModule> },
+  { id: 'spin', names: { PAIRS: ['spin/exchange', 'spin/exchange/biquadratic', 'spin/dmi', 'spin/magelec'], COMPUTES: ['spin'], FIXES: ['nve/spin', 'precession/spin', 'setforce/spin'] }, load: () => import('./registry/spin') as Promise<StyleModule> },
   { id: 'fix_numdiff', names: { FIXES: ['numdiff', 'numdiff/virial'] }, load: () => import('./registry/fix_numdiff') as Promise<StyleModule> },
   { id: 'fix_qeq', names: { FIXES: ['qeq/dynamic', 'qeq/fire', 'qeq/point', 'qeq/shielded', 'qeq/slater'] }, load: () => import('./registry/fix_qeq') as Promise<StyleModule> },
   { id: 'fix_cmap', names: { FIXES: ['cmap'] }, load: () => import('./registry/fix_cmap') as Promise<StyleModule> },

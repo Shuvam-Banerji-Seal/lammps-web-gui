@@ -1,0 +1,30 @@
+# oracle: fix langevin/spin at T = 300 K (transverse damping 0.01, seed 21) with exchange, lattice frozen (bcc iron 3x3x3 cells, 54 random spins, 50 steps)
+# measured with native LAMMPS (black box), engine vs native fixture: thermo max relative error 1.8e-11; spin dump 5.0e-8 (the random torque stream of 3 gaussians per update reproduces the source's draw order); re-measured under Node 20: the same.
+# oracle-files: w103spin_langevin_T.dump
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10
+units           metal
+atom_style      spin
+boundary        p p p
+atom_modify     map array
+lattice         bcc 2.8665
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 55.845
+set             group all spin/atom/random 31 2.2
+pair_style      spin/exchange 3.5
+pair_coeff      * * exchange 3.4 0.02726 0.2171 1.841
+neighbor        0.1 bin
+neigh_modify    every 10 check yes delay 20
+fix             1 all precession/spin zeeman 0.001 0.0 0.0 1.0
+fix_modify      1 energy yes
+fix             2 all langevin/spin 300.0 0.01 21
+fix             3 all nve/spin lattice frozen
+timestep        0.0001
+compute         s all spin
+compute         p all property/atom spx spy spz sp fmx fmy fmz
+thermo_style    custom step pe c_s[1] c_s[2] c_s[3] c_s[4] c_s[5] c_s[6]
+thermo_modify   format float %.15g
+thermo          10
+run             50
+write_dump      all custom w103spin_langevin_T.dump id c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] c_p[7] modify format float %.15g sort id

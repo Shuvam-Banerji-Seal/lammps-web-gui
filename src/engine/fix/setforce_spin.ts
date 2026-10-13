@@ -28,6 +28,9 @@ export class FixSetForceSpin extends Fix {
     });
   }
 
+  /** The minimizers apply the fix after each force evaluation too (native min_post_force). */
+  minPostForce(): void { this.postForce(); }
+
   postForce(): void {
     const s = this.sys.state;
     const fm = s.fm!;

@@ -80,6 +80,9 @@ const PAIR_RESTART_STYLES = new Set([
   'lj/cubic', 'lj/expand', 'lj/relres', 'lj/smooth', 'lj/smooth/linear',
   // pair_lj96.rst, pair_mie.rst, pair_morse.rst, pair_soft.rst, pair_yukawa.rst, pair_yukawa_colloid.rst
   'lj96/cut', 'mie/cut', 'morse', 'soft', 'yukawa', 'yukawa/colloid',
+  // the spin pair styles (pair_spin_exchange.html and the spin pair pages): measured with native LAMMPS (black box):
+  // write_restart keeps the pair style and its coefficients (examples/SPIN/read_restart/in.spin.write_restart)
+  'spin/exchange', 'spin/exchange/biquadratic', 'spin/dmi', 'spin/magelec', 'spin/dipole/cut', 'spin/neel',
   // pair_colloid.rst, pair_zero.rst, pair_atm.rst, pair_gran.rst, pair_granular.rst
   'colloid', 'zero', 'atm',
   'gran/hooke', 'gran/hooke/history', 'gran/hertz/history', 'granular',

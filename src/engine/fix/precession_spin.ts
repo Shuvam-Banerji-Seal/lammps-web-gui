@@ -130,6 +130,9 @@ export class FixPrecessionSpin extends Fix {
     this.term(i, sp, out);
   }
 
+  /** The minimizers apply the fix after each force evaluation too (native min_post_force). */
+  minPostForce(): void { this.postForce(); }
+
   /** Sets this fix's contribution to the precession vectors of the group (after each force evaluation). */
   postForce(): void {
     const s = this.sys.state;

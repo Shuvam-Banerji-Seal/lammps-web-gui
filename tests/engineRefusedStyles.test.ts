@@ -5,7 +5,7 @@ import type { StyleKind } from '../src/engine/lazyStyles';
 
 const LIST_OF: Record<Exclude<StyleKind, 'HOOKS' | 'COMMANDS'>, string> = {
   PAIRS: 'pair_style', BONDS: 'bond_style', ANGLES: 'angle_style', DIHEDRALS: 'dihedral_style',
-  IMPROPERS: 'improper_style', KSPACES: 'kspace_style', FIXES: 'fix', COMPUTES: 'compute',
+  IMPROPERS: 'improper_style', KSPACES: 'kspace_style', FIXES: 'fix', COMPUTES: 'compute', MINIMIZERS: 'min_style',
 };
 
 describe('refusal-only styles', () => {

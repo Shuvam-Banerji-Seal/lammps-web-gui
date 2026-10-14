@@ -18,6 +18,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { DPD_THETA, DPD_UCOND, DPD_UMECH, DPD_UCHEM } from '../../engine/atoms';
 import { PairDPDfdtEnergy } from './pair_dpd_fdt';
+import { pairMatch } from '../dpdrx/pair_match';
 
 /** fix dpd/energy (no arguments): needs pair dpd/fdt/energy and atom_style dpd. */
 export class FixDPDenergy extends Fix {
@@ -30,7 +31,7 @@ export class FixDPDenergy extends Fix {
   }
 
   private pair(): PairDPDfdtEnergy {
-    const p = this.sys.ff.pair;
+    const p = pairMatch(this.sys.ff.pair, 'dpd/fdt/energy');
     if (!(p instanceof PairDPDfdtEnergy)) throw new StyleError('Must use pair_style dpd/fdt/energy with fix dpd/energy');
     return p;
   }
@@ -124,5 +125,32 @@ export class ComputeDpd extends Compute {
     this.vector[2] = sChem;
     this.vector[3] = count / sInv;
     this.vector[4] = count;
+  }
+}
+
+/** compute dpd/atom (no arguments): per atom uCond, uMech, uChem and dpdTheta; zeros outside the group (compute_dpd_atom.cpp). */
+export class ComputeDpdAtom extends Compute {
+  readonly style = 'dpd/atom';
+
+  constructor(sys: System, id: string, group: string, args: string[]) {
+    super(sys, id, group, args);
+    if (args.length) throw new StyleError('Illegal compute dpd/atom command');
+    if (!sys.state.custom.has(DPD_THETA)) throw new StyleError('compute dpd/atom requires atom_style with internal temperature and energies (e.g. dpd)');
+    this.peratomFlag = true;
+    this.sizePeratomCols = 4;
+  }
+
+  protected computePeratom(): void {
+    const s = this.sys.state;
+    const uc = s.custom.get(DPD_UCOND)!.data, um = s.custom.get(DPD_UMECH)!.data, uh = s.custom.get(DPD_UCHEM)!.data;
+    const th = s.custom.get(DPD_THETA)!.data;
+    this.arrayAtom = new Float64Array(4 * s.n);
+    for (let i = 0; i < s.n; i++) {
+      if (!(s.mask[i] & this.groupBit)) continue;
+      this.arrayAtom[4 * i] = uc[i];
+      this.arrayAtom[4 * i + 1] = um[i];
+      this.arrayAtom[4 * i + 2] = uh[i];
+      this.arrayAtom[4 * i + 3] = th[i];
+    }
   }
 }

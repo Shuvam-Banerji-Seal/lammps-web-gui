@@ -46,8 +46,10 @@ const fix: Handler = ({ sys }, a) => {
   // script before the simulation box is created or atoms are defined." fix_cmap.html: "To function
   // as expected this fix command must be issued *before* a read_data command".
   // examples/amoeba/in.ubiquitin defines fix amoeba/pitorsion and fix amoeba/bitorsion before read_data (their sections
-  // are read by that command, like fix cmap), so they are exempt too
-  if (style !== 'property/atom' && style !== 'cmap' && style !== 'amoeba/pitorsion' && style !== 'amoeba/bitorsion') sys.state;
+  // are read by that command, like fix cmap), so they are exempt too. fix rx (src/DPD-REACT/fix_rx.cpp post_constructor)
+  // only adds its species vectors as fix property/atom fixes, so it may precede create_box (examples/PACKAGES/dpd-react/
+  // dpdrx-shardlow does); its per-atom vectors are attached when the box exists
+  if (style !== 'property/atom' && style !== 'cmap' && style !== 'amoeba/pitorsion' && style !== 'amoeba/bitorsion' && style !== 'rx') sys.state;
   const k = sys.fixes.findIndex((f) => f.id === id);
   if (k >= 0 && sys.fixes[k].style !== style) throw new StyleError(`replacing fix ${id} with a different style (${sys.fixes[k].style} -> ${style}) is not allowed; unfix it first`);
   ensureThermoComputes(sys);

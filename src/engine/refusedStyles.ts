@@ -12,6 +12,7 @@ export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[
     'lj/spica/coul/msm', 'lj/sdk/coul/msm', // registry/pair_class2spica51.ts (lazy): msm kspace is not in the engine
     'smd/tri_surface', // engine-gpl/registry/machdyn.ts (lazy): the wall contact is not matched to native (contact order)
     'srp', 'srp/react', // engine-gpl/registry/srp.ts (lazy): the SRP bond particles are core atoms (fix_srp.cpp), not ported
+    'table/rx', 'multi/lucy/rx', // engine-gpl/registry/dpdrx.ts (lazy): pair_table_rx.cpp and pair_multi_lucy_rx.cpp are not ported
   ],
   FIXES: [
     'filter/corotate', // engine-gpl/registry/filtercorotate.ts (refused: respa fix hooks missing)

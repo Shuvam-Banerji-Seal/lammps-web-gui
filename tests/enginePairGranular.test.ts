@@ -46,7 +46,7 @@ describe('pair_style granular argument errors', () => {
     expect(() => parseGranularSpec(['bogus', '1', '2', 'tangential', 'linear_nohistory', '1', '0.4'])).toThrow(/unknown normal model 'bogus'/);
   });
   it('names the unsupported mdr model', () => {
-    expect(() => parseGranularSpec(['mdr', '1', '2', '3', '4', '5', '6', 'tangential', 'linear_nohistory', '1', '0.4'])).toThrow(/'mdr' is not implemented/);
+    expect(() => parseGranularSpec(['mdr', '1', '0.3', '3', '0.4', '0.5', '6', 'tangential', 'linear_nohistory', '1', '0.4'])).toThrow(/damping mdr/);
   });
   it('accepts dmt and jkr (no longer StyleError) and rejects limit_damping with them', () => {
     expect(() => parseGranularSpec(['dmt', '1000', '0.5', '0.3', '0', 'tangential', 'linear_nohistory', '1', '0.4'])).not.toThrow();

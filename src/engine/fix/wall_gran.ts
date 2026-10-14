@@ -2,7 +2,8 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { parseNum } from '../force/util';
 import type { System } from '../system';
-import { granularContact, heatFlowOf, newContactOut, parseGranularSpec, PairGranular, type ContactOut, type Pm } from '../force/pair/granular';
+import type { SimState } from '../types';
+import { granularContact, heatFlowOf, mdrPairOf, newContactOut, parseGranularSpec, PairGranular, type ContactOut, type MdrApi, type MdrMaterialCore, type Pm } from '../force/pair/granular';
 import { contactMassArray, HEAT_FLOW, HEAT_TEMPERATURE } from '../atoms';
 
 /** The classic fstyles of fix wall/gran/region (hooke, hooke/history, hertz/history). */
@@ -404,6 +405,15 @@ export class FixWallGranGranular extends Fix {
   private readonly out: ContactOut = newContactOut();
   /** Previous move/rotate state of every sub-region, for the surface velocity. */
   private readonly prevStates = new Map<Region, { d: [number, number, number]; theta: number }>();
+  /** mdr normal model of this wall (its own coefficients) and whether it was checked against the pair style yet. */
+  private mdrMat: MdrMaterialCore | null = null;
+  private mdrChecked = false;
+  /**
+   * keyword contacts (fix_wall_gran_region.html): the per-atom array of the contact data, as native (fix_wall_gran_region.cpp
+   * clear_stored_contacts and post_force): column 1 flag, 2-4 contact force on the atom, 5-7 contact point, 8 radius, then the
+   * contact area of the mdr model (one column). Each atom keeps its last contact.
+   */
+  private contactsOn = false;
 
   constructor(sys: System, id: string, group: string, args: string[], regionMode: boolean) {
     super(sys, id, group, args);
@@ -443,6 +453,7 @@ export class FixWallGranGranular extends Fix {
       if (k >= args.length) throw new StyleError(`fix ${id} ${this.style} granular: missing wallstyle`);
       const sp = parseGranularSpec(args.slice(1, k));
       pmOut = new PairGranular().wallParams(sp, regionMode);
+      if (sp.normal === 'mdr') this.mdrMat = { E: sp.E, nu: sp.nu, Y: sp.Y, gamma: sp.gamma, psib: sp.psib, eta: sp.eta, dtype: sp.dtype };
     }
     this.pm = pmOut;
     const ws = args[k];
@@ -481,7 +492,11 @@ export class FixWallGranGranular extends Fix {
         this.motion = { kind: 'shear', dim: d, amp: 0, omega: 0, vshear: parseNum(args[k + 2], 'shear velocity') };
         k += 3;
       } else if (w === 'contacts') {
-        throw new StyleError(`fix ${id} ${this.style} keyword contacts is not supported yet`);
+        // fix_wall_gran_region.html: "contacts" stores the contact data of each atom as a per-atom array (see apply)
+        if (!regionMode) throw new StyleError(`fix ${id} wall/gran: keyword contacts is for fix wall/gran/region`);
+        this.contactsOn = true;
+        k += 1;
+        continue;
       } else if (w === 'temperature') {
         // fix_wall_gran.html: "The following value can either be a numeric value or an equal-style variable. If the value is a variable, it should be specified as v_name"
         const tw = args[k + 1];
@@ -491,6 +506,11 @@ export class FixWallGranGranular extends Fix {
       } else {
         throw new StyleError(`fix ${id} ${this.style}: unknown keyword or argument '${w}'`);
       }
+    }
+    if (this.contactsOn) {
+      // the per-atom contact array (keyword contacts): flag, force, contact point, radius and, for mdr, the contact area
+      this.peratomFlag = true;
+      this.sizePeratomCols = this.mdrMat ? 9 : 8;
     }
     // heat conduction: the wall temperature and the heat model go together (measured with native LAMMPS: a heat model
     // without the temperature keyword, and the keyword with heat none, both stop with Must define wall temperature with heat model)
@@ -559,6 +579,38 @@ export class FixWallGranGranular extends Fix {
     }
   }
 
+  /**
+   * The mdr model of the pair style. Native fix_granular_mdr checks that this wall's E, nu, Y, psi_b and damping agree with
+   * the pair style (its surface energy and friction may differ); checked once.
+   */
+  private mdrApi(s: SimState): MdrApi {
+    const pr = mdrPairOf(s);
+    if (!pr) throw new StyleError(`fix ${this.id} ${this.style}: normal model 'mdr' needs pair_style granular with the mdr normal model`);
+    if (!this.mdrChecked) {
+      const a = pr.mat, b = this.mdrMat!;
+      const eps = 1e-10;
+      if (Math.abs(a.E - b.E) > eps) throw new StyleError(`fix ${this.id} ${this.style}: Young's modulus in pair style, ${a.E}, does not agree with value ${b.E} in fix gran/wall/region`);
+      if (Math.abs(a.nu - b.nu) > eps) throw new StyleError(`fix ${this.id} ${this.style}: Poisson's ratio in pair style, ${a.nu}, does not agree with value ${b.nu} in fix gran/wall/region`);
+      if (Math.abs(a.Y - b.Y) > eps) throw new StyleError(`fix ${this.id} ${this.style}: yield stress in pair style, ${a.Y}, does not agree with value ${b.Y} in fix gran/wall/region`);
+      if (Math.abs(a.psib - b.psib) > eps) throw new StyleError(`fix ${this.id} ${this.style}: bulk response trigger in pair style, ${a.psib}, does not agree with value ${b.psib} in fix gran/wall/region`);
+      if (Math.abs(a.eta - b.eta) > eps) throw new StyleError(`fix ${this.id} ${this.style}: damping in pair style, ${a.eta}, does not agree with value ${b.eta} in fix gran/wall/region`);
+      this.mdrChecked = true;
+    }
+    return pr.api;
+  }
+
+  /** The wall contacts of atom i within its radius (the candidates of the force loop): the contacts of the bulk update. */
+  private mdrContacts(i: number): Array<{ key: string; dist: number }> {
+    const s = this.sys.state;
+    if (!(s.mask[i] & this.groupBit)) return [];
+    const R = s.radius![i];
+    const cand: WallElement[] = [];
+    this.regionElements(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], R, cand);
+    const out: Array<{ key: string; dist: number }> = [];
+    for (const e of cand) if (e.dist < R) out.push({ key: `${this.id}|${e.key}:${s.id[i]}`, dist: e.dist });
+    return out;
+  }
+
   /** Contact candidates of one atom at its position (region faces; all sub-regions of a compound). */
   private regionElements(x: number, y: number, z: number, R: number, out: WallElement[]): void {
     out.length = 0;
@@ -590,6 +642,14 @@ export class FixWallGranGranular extends Fix {
     const bit = this.groupBit;
     const pm = this.pm;
     const jkr = pm.normal === 'jkr';
+    if (this.contactsOn) {
+      // clear_stored_contacts: the per-atom contact data restart every step
+      if (this.arrayAtom.length !== this.sizePeratomCols * s.n) this.arrayAtom = new Float64Array(this.sizePeratomCols * s.n);
+      else this.arrayAtom.fill(0);
+    }
+    // mdr (region walls): the model of the pair style; the wall registers its contacts for the bulk update of the pair step
+    const mdr = this.mdrMat ? this.mdrApi(s) : null;
+    if (mdr) mdr.wallProvider(this.id, (i: number) => this.mdrContacts(i));
     const vel = new Map<Region, { ddot: number[]; omega: number[]; d: number[] }>();
     if (this.regionId) this.updateVelocities(dt, vel);
     // heat conduction (fix_wall_gran.html, temperature keyword): the wall temperature of this step, from a constant or an
@@ -622,6 +682,7 @@ export class FixWallGranGranular extends Fix {
         const key = `${e.key}:${id[i]}`;
         if (e.dist >= R && !jkr) {
           this.shear.delete(key);
+          if (mdr) mdr.wallDrop(`${this.id}|${key}`);
           continue;
         }
         // region walls: the moving surface velocity enters the granular contact
@@ -644,11 +705,14 @@ export class FixWallGranGranular extends Fix {
           vrz = v[3 * i + 2] - wz;
         }
         const sh = this.shear.get(key) ?? new Float64Array(8);
+        const normal = mdr && this.mdrMat
+          ? mdr.wallNormal({ key: `${this.id}|${key}`, ai: i, R, delta: R - e.dist, Rf: e.Rf, nx: e.nx, ny: e.ny, nz: e.nz, meff: mi, hu: update, p: this.mdrMat })
+          : undefined;
         const ok = granularContact({
           pm, nx: e.nx, ny: e.ny, nz: e.nz, r: e.dist, delta: R - e.dist, Rf: e.Rf, ri: R, rj: 0, meff: mi,
           vrx, vry, vrz,
           oix: omega[3 * i], oiy: omega[3 * i + 1], oiz: omega[3 * i + 2],
-          ojx: 0, ojy: 0, ojz: 0, dt, update, sg: 1, surfaceArm: true,
+          ojx: 0, ojy: 0, ojz: 0, dt, update, sg: 1, surfaceArm: true, normal,
           poly: this.legacyHertz ? Math.sqrt((R - e.dist) * e.Rf) : 1,
         }, sh, this.out, this.shear.has(key));
         if (!ok) {
@@ -656,6 +720,15 @@ export class FixWallGranGranular extends Fix {
           continue;
         }
         if (this.out.hist) this.shear.set(key, sh);
+        if (this.contactsOn) {
+          const base = i * this.sizePeratomCols;
+          const av = this.arrayAtom;
+          av[base] = 1;
+          av[base + 1] = this.out.fx; av[base + 2] = this.out.fy; av[base + 3] = this.out.fz;
+          av[base + 4] = xi - e.dist * e.nx; av[base + 5] = yi - e.dist * e.ny; av[base + 6] = zi - e.dist * e.nz;
+          av[base + 7] = R;
+          if (normal?.svector !== undefined) av[base + 8] = normal.svector;
+        }
         f[3 * i] += this.out.fx; f[3 * i + 1] += this.out.fy; f[3 * i + 2] += this.out.fz;
         torque[3 * i] += this.out.tix; torque[3 * i + 1] += this.out.tiy; torque[3 * i + 2] += this.out.tiz;
         if (HF) HF[i] += heatFlowOf(pm.heat, pm.hk, this.out.a, Tw - T![i]);

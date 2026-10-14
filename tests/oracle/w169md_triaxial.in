@@ -1,0 +1,62 @@
+# oracle: cut-down triaxial compaction (pair_style granular mdr, plastic, unequal radii): twelve spheres of diameters 0.8, 1.0 and 1.2 in a box of width 3 compressed by six planes (fix wall/gran/region mdr), from the upstream example in.triaxial.compaction.12 with the compaction shortened to 2000 steps; E 1e9, nu 0.3, Y 50e6, surface energy 0, psi_b 0.5, eta_n0 0.2, damping mdr 1, tangential linear_history, fix nve/sphere
+# native: b332f28 (the installed lmp, GRANULAR included). Measured (engine vs native, black box; rel over |value| >= 1e-6; per-atom scale max(1,|value|)): thermo max rel 3.2e-15, per-atom max scaled 6.1e-15; engine 701 ms.
+units           si
+atom_style      sphere 1
+atom_modify     map array
+comm_modify     vel yes
+newton          off
+boundary        f f f
+neighbor        2 bin
+neigh_modify    delay 0
+timestep        1e-6
+region          box block -10 10 -10 10 -10 10
+create_box      1 box
+create_atoms    1 single 0.0717535226 -0.2092222842 0.3662146798
+create_atoms    1 single -0.8233763986 -0.7426114800 -0.8263932264
+create_atoms    1 single -1.0685863278 -0.4494609702 0.2196698078
+create_atoms    1 single 0.5829432471 -1.0098803839 -0.7607543861
+create_atoms    1 single -0.8658471132 0.6951192569 0.0107556658
+create_atoms    1 single 0.3966456126 0.7215053869 -0.7540113087
+create_atoms    1 single 0.7316242921 0.8996483982 0.6751483031
+create_atoms    1 single 0.6267527768 -0.8419367233 0.6964197101
+create_atoms    1 single -0.0409043189 -0.1452314035 -1.0102948313
+create_atoms    1 single -0.9495107709 0.6760151650 -0.9220534482
+create_atoms    1 single -0.7488486472 0.2188003421 0.7892021020
+create_atoms    1 single 0.8968590780 -0.2350366437 -0.2006719701
+set atom 1 diameter 0.8 density 1000.0
+set atom 2 diameter 1.2 density 1000.0
+set atom 3 diameter 0.8 density 1000.0
+set atom 4 diameter 0.8 density 1000.0
+set atom 5 diameter 0.8 density 1000.0
+set atom 6 diameter 1.2 density 1000.0
+set atom 7 diameter 1.2 density 1000.0
+set atom 8 diameter 1.0 density 1000.0
+set atom 9 diameter 0.8 density 1000.0
+set atom 10 diameter 0.8 density 1000.0
+set atom 11 diameter 1.0 density 1000.0
+set atom 12 diameter 1.2 density 1000.0
+fix             integr all nve/sphere
+variable        halfBoxWidth equal 1.5
+variable        plane_disp equal 0.0
+variable        plane_disp_neg equal 0.0
+region          plane_yz_pos plane ${halfBoxWidth} 0 0 -1 0 0 side in move v_plane_disp_neg NULL NULL units box
+region          plane_yz_neg plane -${halfBoxWidth} 0 0 1 0 0 side in move v_plane_disp NULL NULL units box
+region          plane_xz_pos plane 0 ${halfBoxWidth} 0 0 -1 0 side in move NULL v_plane_disp_neg NULL units box
+region          plane_xz_neg plane 0 -${halfBoxWidth} 0 0 1 0 side in move NULL v_plane_disp NULL units box
+region          plane_xy_pos plane 0 0 ${halfBoxWidth} 0 0 -1 side in move NULL NULL v_plane_disp_neg units box
+region          plane_xy_neg plane 0 0 -${halfBoxWidth} 0 0 1 side in move NULL NULL v_plane_disp units box
+pair_style      granular
+pair_coeff      * * mdr 1e9 0.3 50e6 0.0 0.5 0.2 damping mdr 1 tangential linear_history 1.4285714e8 0.0 0.5
+fix             plane_yz_pos all wall/gran/region granular mdr 1e9 0.3 50e6 0.0 0.5 0.2 damping mdr 1 tangential linear_history 1.4285714e8 0.0 0.5 region plane_yz_pos
+fix             plane_yz_neg all wall/gran/region granular mdr 1e9 0.3 50e6 0.0 0.5 0.2 damping mdr 1 tangential linear_history 1.4285714e8 0.0 0.5 region plane_yz_neg
+fix             plane_xz_pos all wall/gran/region granular mdr 1e9 0.3 50e6 0.0 0.5 0.2 damping mdr 1 tangential linear_history 1.4285714e8 0.0 0.5 region plane_xz_pos
+fix             plane_xz_neg all wall/gran/region granular mdr 1e9 0.3 50e6 0.0 0.5 0.2 damping mdr 1 tangential linear_history 1.4285714e8 0.0 0.5 region plane_xz_neg
+fix             plane_xy_pos all wall/gran/region granular mdr 1e9 0.3 50e6 0.0 0.5 0.2 damping mdr 1 tangential linear_history 1.4285714e8 0.0 0.5 region plane_xy_pos
+fix             plane_xy_neg all wall/gran/region granular mdr 1e9 0.3 50e6 0.0 0.5 0.2 damping mdr 1 tangential linear_history 1.4285714e8 0.0 0.5 region plane_xy_neg
+thermo_style    custom step atoms ke vol
+thermo_modify   format float %.15g lost ignore norm no
+thermo          200
+run             0
+variable        plane_disp equal 1e-4*elapsed
+variable        plane_disp_neg equal -1e-4*elapsed
+run             2000

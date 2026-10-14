@@ -1,0 +1,36 @@
+# oracle: cut-down tableting (pair_style granular mdr, plastic, bulk response with psi_b 0.95): eight spheres of diameter 0.5 in a cylindrical die, a fixed lower punch and an upper punch moving down (fix wall/gran/region mdr); E 1000, nu 0.3, Y 5, surface energy 0.02, psi_b 0.95, eta_n0 0.5, damping mdr 1, tangential linear_history with rolling sds; fix nve/sphere, gravity off
+# native: b332f28 (the installed lmp, GRANULAR included). Measured (engine vs native, black box; rel over |value| >= 1e-6; per-atom scale max(1,|value|)): thermo max rel 2.2e-13, per-atom max scaled 1.9e-14; engine 147 ms. The contacts yield (plastic branch) and the bulk response runs (psi_b 0.95: about 10500 contact-side steps; with psi_b 0.5 the bulk branch never ran). rolling sds is on for pairs and walls (its zero-cap reset was the step-by-step fix in src/engine/force/pair/granular.ts).
+units           lj
+atom_style      sphere 1
+atom_modify     map array
+comm_modify     vel yes
+newton          off
+boundary        f f f
+region          box block -2 2 -2 2 -1 3 units box
+create_box      1 box
+create_atoms    1 single -0.225 -0.225 0.3
+create_atoms    1 single 0.225 -0.225 0.3
+create_atoms    1 single -0.225 0.225 0.3
+create_atoms    1 single 0.225 0.225 0.3
+create_atoms    1 single -0.225 -0.225 0.75
+create_atoms    1 single 0.225 -0.225 0.75
+create_atoms    1 single -0.225 0.225 0.75
+create_atoms    1 single 0.225 0.225 0.75
+set type 1 diameter 0.5 density 1.0
+velocity        all set 0.0 0.0 0.0 units box
+variable        disp equal 0.0
+variable        dispupper equal -0.2*elapsed*dt
+region          lower plane 0 0 0 0 0 1 side in units box
+region          upper plane 0 0 1.05 0 0 -1 side in move NULL NULL v_dispupper units box
+region          die cylinder z 0 0 1.0 0 1.6 side in units box
+pair_style      granular
+pair_coeff      * * mdr 1000.0 0.3 5.0 0.02 0.95 0.5 damping mdr 1 tangential linear_history 71.4285714285714 0.5 0.5 rolling sds 202.5 0.0 0.6
+fix             lowerPunch all wall/gran/region granular mdr 1000.0 0.3 5.0 0.0 0.95 0.5 damping mdr 1 tangential linear_history 71.4285714285714 0.5 0.1 rolling sds 202.5 0.0 0.6 region lower
+fix             upperPunch all wall/gran/region granular mdr 1000.0 0.3 5.0 0.0 0.95 0.5 damping mdr 1 tangential linear_history 71.4285714285714 0.5 0.1 rolling sds 202.5 0.0 0.6 region upper
+fix             die all wall/gran/region granular mdr 1000.0 0.3 5.0 0.0 0.95 0.5 damping mdr 1 tangential linear_history 71.4285714285714 0.5 0.1 rolling sds 202.5 0.0 0.6 region die
+timestep        0.001
+fix             1 all nve/sphere
+thermo_style    custom step ke
+thermo_modify   format float %.15g
+thermo          200
+run             1000

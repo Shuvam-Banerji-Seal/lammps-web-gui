@@ -85,9 +85,9 @@ describe('pair_style granular synchronized_verlet (native values)', () => {
   });
 });
 
-describe('pair_style granular mdr surface energy (refusals kept)', () => {
-  it('refuses an adhesive mdr contact until it is implemented', async () => {
+describe('pair_style granular mdr surface energy (the adhesive branch runs)', () => {
+  it('runs an adhesive mdr contact (tests/oracle/w169md_adhesive_pair)', async () => {
     const r = await run(twoSpheres('mdr 1e6 0.3 1e5 0.5 0.5 0.2 damping mdr 1 tangential linear_history 300.0 0.0 0.4'));
-    expect(r.error).toMatch(/adhesive mdr/);
+    expect(r.error).toBeNull();
   });
 });

@@ -1,0 +1,26 @@
+# oracle: pair_style granular mdr with a closed triangle of touching spheres (the topological contact penalty of the mdr model): three spheres of diameter 1 at (0,0), (0.95,0) and (0.4,0.5) move with different velocities; elastic (Y 1000, no surface energy), damping mdr 2, tangential linear_history, fix nve/sphere
+# native: b332f28 (the installed lmp, GRANULAR included). Measured (engine vs native, black box; rel over |value| >= 1e-6; per-atom scale max(1,|value|)): thermo max rel 2.7e-15, per-atom max scaled 5.6e-17; engine 25 ms. The three contacts close a triangle: with the penalty switched off the same case is off by 10 % in ke, so the penalty (fix_granular_mdr.cpp calculate_contact_penalty) is exercised.
+units           lj
+atom_style      sphere 1
+atom_modify     map array
+comm_modify     vel yes
+newton          off
+boundary        f f f
+region          b block -10 10 -10 10 -10 10
+create_box      1 b
+create_atoms    1 single 0.0 0.0 0.0
+create_atoms    1 single 0.95 0.0 0.0
+create_atoms    1 single 0.4 0.5 0.0
+set type 1 diameter 1.0 density 1.0
+velocity        all set 0.0 0.0 0.0 units box
+set             atom 1 vx 0.1 vy 0.05 vz 0.0
+set             atom 2 vx -0.1 vy 0.02 vz 0.0
+set             atom 3 vx 0.0 vy -0.1 vz 0.0
+pair_style      granular
+pair_coeff      * * mdr 1.0 0.3 1000.0 0.0 0.5 0.1 damping mdr 2 tangential linear_history 300.0 0.4 0.4
+timestep        0.002
+fix             1 all nve/sphere
+thermo_style    custom step ke
+thermo_modify   format float %.15g
+thermo          50
+run             300

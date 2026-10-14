@@ -10,6 +10,7 @@ import type { Comb3Param } from './params';
 
 /** Look-up tables of PairComb3::tables(). Two-dimensional tables are row-major with nntypes columns. */
 export interface Comb3Tables {
+  nel: number;
   nntypes: number;
   /** intype[i*n+j]: interaction-type index of element pair (i, j). */
   intype: Int32Array;
@@ -236,7 +237,15 @@ export const comb3Tables = (
       }
     }
   }
-  return { nntypes, intype, ncoul, ncoulLim, fafb, dfafb, ddfafb, phin, dphin, afb, dafb, erpaw, vvdw, vdvdw };
+  return { nel: n, nntypes, intype, ncoul, ncoulLim, fafb, dfafb, ddfafb, phin, dphin, afb, dafb, erpaw, vvdw, vdvdw };
+};
+
+/** potal_calc: the Wolf-type constants fac11 (1/r^2 force term) and fac11e (self-energy shift) at the Coulomb cutoff. */
+export const potalFactors = (rcoul: number, esucon: number): { fac11: number; fac11e: number } => {
+  const alf = 0.20;
+  const fac11 = (erfcExact(rcoul * alf) / rcoul / rcoul + 2.0 * alf / Math.sqrt(Math.PI) * Math.exp(-alf * alf * rcoul * rcoul) / rcoul) * esucon / rcoul;
+  const fac11e = (erfcExact(rcoul * alf) / rcoul) * esucon;
+  return { fac11, fac11e };
 };
 
 /** vdwaals: van der Waals energy and force/r of one pair from the tables. */

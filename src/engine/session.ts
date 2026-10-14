@@ -78,6 +78,9 @@ const STYLE_WORDS_FROM: Record<string, number> = {
 /** The I/O of a replica other than the first: its output is dropped (the first replica's log and screen speak for the session). */
 const QUIET_IO: SessionIO = { emit: () => undefined };
 
+/** Commands that run native's lmp->init(), which opens the single-file dumps (see dispatch). */
+const INIT_COMMANDS = new Set(['run', 'minimize', 'rerun', 'write_data', 'write_restart', 'write_coeff', 'balance']);
+
 export class Session {
   /** The active system: replica 0 between commands, the replica being run while a command runs on all of them. */
   sys: System;
@@ -158,6 +161,11 @@ export class Session {
     for (const sys of this.replicas) sys.files.set(name, text);
   }
 
+  /** Runs a change of the session's virtual file system (the shell built-ins) on every replica. */
+  forEachReplica(fn: (sys: System) => void): void {
+    for (const sys of this.replicas) fn(sys);
+  }
+
   /** Forgets a file added with addFile (or written by the session). */
   removeFile(name: string): void {
     name = normalizeFileName(name);
@@ -172,6 +180,10 @@ export class Session {
       for (const [name, v] of prev.vars.vars) sys.vars.vars.set(name, v);
       sys.vars.clear();
       for (const [name, text] of prev.files) sys.files.set(name, text);
+      // shell cd, mkdir and putenv state survives clear (clear.html changes only the simulation)
+      sys.cwd = prev.cwd;
+      for (const d of prev.dirs) sys.dirs.add(d);
+      for (const [k, v] of prev.env) sys.env.set(k, v);
       return sys;
     });
     this.sys = this.replicas[0];
@@ -308,6 +320,13 @@ export class Session {
         this.echo = a[0] as Session['echo'];
         return;
     }
+    // A single-file dump opens its file at the first system init after the dump command (src/dump_custom.cpp
+    // init_style at b332f28: "open single file, one time only"), which these commands perform (lmp->init() in
+    // src/run.cpp, minimize.cpp, rerun.cpp, write_data.cpp, write_restart.cpp, write_coeff.cpp and balance.cpp), so the
+    // file name is resolved from the working directory (shell cd) at that point. Measured with native LAMMPS: a dump
+    // defined in out/ then "shell cd .." before the run writes its file in the root; with a write_data in out/ between
+    // them, in out/.
+    if (INIT_COMMANDS.has(cmd)) for (const sys of this.replicas) for (const d of sys.dumps) d.openFile();
     // an accelerator alias (lj/cut/omp, nve/kk, ...) runs as its base style: the names are replaced here, before
     // the styles load, so every object is created with the base name and the fast paths see the base style
     a = this.baseStyleNames(cmd, a);

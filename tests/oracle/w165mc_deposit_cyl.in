@@ -1,0 +1,18 @@
+# oracle: fix deposit into a z-axis cylinder region (side in, region cylinder) with near, 30 atoms every 2 steps, attempt 10
+# Measured max relative error of the engine against native (thermo 5.9e-17, per-atom 1.7e-16). native: b332f28 (installed lmp, black box)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+boundary        p p p
+region          box block -5 5 -5 5 0 10
+create_box      1 box
+region          drop cylinder z 0 0 3 4 9 side in
+mass            * 1.0
+pair_style      lj/cut 1.5
+pair_coeff      * * 0.1 0.8 1.5
+fix             1 all nve
+fix             2 all deposit 30 1 2 4242 region drop near 0.9 vz -0.1 -0.1 attempt 10 units box
+thermo_style    custom step pe ke atoms
+thermo_modify   format float %.15g
+thermo          10
+run             60

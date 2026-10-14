@@ -2,7 +2,8 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { appendAtoms, maxAtomId, isMolecularStyle } from '../atoms';
 import type { System } from '../system';
-import { insertionRegion, insertionStream, insertionBox, num, posInt, separation, appendMolecule, type InsertionRegion } from './pour';
+import { insertionStream, insertionBox, num, posInt, separation, appendMolecule, type InsertionRegion } from './pour';
+import { CompoundRegion, PrismRegion, Region } from '../region';
 import { geometricCenter, type MoleculeTemplate } from '../molecule';
 import { gplHook } from '../gplHooks';
 import { latticeScale } from '../commands/args';
@@ -12,12 +13,19 @@ import type { RanPark } from '../rng';
  * fix ID group-ID deposit N type M seed keyword values ... — docs.lammps.org/fix_deposit.html
  * (plans/lammps-docs/fix_deposit.rst). "Insert a single atom or molecule into
  * the simulation domain every M timesteps until N atoms or molecules have
- * been inserted." Supported keywords: region (block), id max|next, global,
+ * been inserted." Supported keywords: region (any region style with a bounding box, see regionExtent), id max|next, global,
  * local, near, attempt, rate, vx, vy, vz, target, units box, and mol (one
  * molecule template, single-molecule templates only) with molfrac, rigid,
  * shake and orient, and both units box and units lattice (the default).
- * Everything else throws a StyleError: var, set, gaussian, a cylinder region,
- * and global/local combined with mol.
+ * Everything else throws a StyleError: var, set, gaussian, and global/local combined with mol.
+ *
+ * Region (native src/fix_deposit.cpp at b332f28: "Fix deposit region does not support a bounding box" when bboxflag
+ * is 0, and "Fix deposit region cannot be dynamic"; fix_deposit.rst: "region-ID = ID of region to use as insertion volume"
+ * and "It must be defined with side = in"). The draws come from the region's extent (extent_xlo .. extent_zhi of
+ * native's Region), each candidate is accepted only when region->match() holds, and a rejected candidate draws
+ * again without counting as an attempt (src/fix_deposit.cpp pre_exchange: "do { coord[0] = xlo + random->uniform()
+ * * (xhi-xlo); ... } while (iregion->match(coord[0],coord[1],coord[2]) == 0);"). The rate offset is added after the
+ * match ("adjust vertical coord by offset"), so the match tests the un-shifted point.
  *
  * Molecule insertion (measured with native LAMMPS, black box, seed 12345,
  * block region 0..10 x 0..10 x 8..9, M = 1, molecule.dimer): the insertion position
@@ -99,6 +107,53 @@ interface ClusterRebuilder { rebuildClusters(): void; }
 /** 2*pi as fix_deposit.cpp's MY_2PI. */
 const TWO_PI = 2 * Math.PI;
 
+/** Candidate draws for one attempt before a region that matches nothing is reported (native would loop forever). */
+const MAX_REGION_DRAWS = 100000;
+
+/** The extent of a region's interior (native Region::extent_*), or null when it has no bounding box (bboxflag 0). */
+export interface RegionExtent { xlo: number; xhi: number; ylo: number; yhi: number; zlo: number; zhi: number }
+const fromBox = (lo: number[], hi: number[]): RegionExtent => ({ xlo: lo[0], xhi: hi[0], ylo: lo[1], yhi: hi[1], zlo: lo[2], zhi: hi[2] });
+export const regionExtent = (sys: System, r: Region): RegionExtent | null => {
+  // native: bboxflag is 1 only for an interior region (side in); a plane and a side-out region have none
+  if (!r.interior || r.dynamic) return null;
+  if (r instanceof PrismRegion) {
+    // region_prism.cpp: extent_xlo = MIN(xlo, xlo + xy), then MIN(extent_xlo, extent_xlo + xz), and so on
+    const [xlo, xhi, ylo, yhi, zlo, zhi, xy, xz, yz] = r.values();
+    let exlo = Math.min(xlo, xlo + xy); exlo = Math.min(exlo, exlo + xz);
+    const eylo = Math.min(ylo, ylo + yz);
+    let exhi = Math.max(xhi, xhi + xy); exhi = Math.max(exhi, exhi + xz);
+    const eyhi = Math.max(yhi, yhi + yz);
+    return { xlo: exlo, xhi: exhi, ylo: eylo, yhi: eyhi, zlo, zhi };
+  }
+  if (r instanceof CompoundRegion) {
+    // region_union.cpp: bboxflag only if every member has one (the min and max of the extents);
+    // region_intersect.cpp: the members with a bounding box, intersected
+    const ext = r.subRegions().map((m) => regionExtent(sys, m));
+    if (r.style === 'union') {
+      if (ext.some((e) => e === null)) return null;
+      const out = { xlo: Infinity, xhi: -Infinity, ylo: Infinity, yhi: -Infinity, zlo: Infinity, zhi: -Infinity };
+      for (const e of ext as RegionExtent[]) {
+        out.xlo = Math.min(out.xlo, e.xlo); out.xhi = Math.max(out.xhi, e.xhi);
+        out.ylo = Math.min(out.ylo, e.ylo); out.yhi = Math.max(out.yhi, e.yhi);
+        out.zlo = Math.min(out.zlo, e.zlo); out.zhi = Math.max(out.zhi, e.zhi);
+      }
+      return out;
+    }
+    const have = ext.filter((e): e is RegionExtent => e !== null);
+    if (!have.length) return null;
+    const out = { ...have[0] };
+    for (const e of have.slice(1)) {
+      out.xlo = Math.max(out.xlo, e.xlo); out.xhi = Math.min(out.xhi, e.xhi);
+      out.ylo = Math.max(out.ylo, e.ylo); out.yhi = Math.min(out.yhi, e.yhi);
+      out.zlo = Math.max(out.zlo, e.zlo); out.zhi = Math.min(out.zhi, e.zhi);
+    }
+    return out;
+  }
+  // block, sphere, ellipsoid, cylinder and cone: bbox() is the native extent (centre +- radius, lo/hi along the axis)
+  const b = r.bbox();
+  return b ? fromBox(b.lo, b.hi) : null;
+};
+
 /** The rotation of a molecule insertion (the routine is in src/engine-gpl/fix/deposit_rotation.ts). */
 export interface DepositRotationHook {
   rotation(r: number[], theta: number): number[][];
@@ -115,6 +170,7 @@ export class FixDeposit extends Fix {
   private readonly rng: RanPark;
   private readonly regionId: string;
   private reg: InsertionRegion | null = null;
+  private region: Region | null = null;
   private readonly idNext: boolean;
   private nextId: number;
   private globalRange: [number, number] | null = null;
@@ -278,8 +334,12 @@ export class FixDeposit extends Fix {
       }
       this.shakeFix = sf;
     }
-    this.reg = insertionRegion(this.sys, this.regionId, 'deposit');
-    if (this.reg.kind !== 'block') throw new StyleError('fix deposit: only a block region is supported');
+    const r = this.sys.region(this.regionId);
+    if (r.dynamic) throw new StyleError('Fix deposit region cannot be dynamic');
+    const e = regionExtent(this.sys, r);
+    if (!e) throw new StyleError('Fix deposit region does not support a bounding box');
+    this.region = r;
+    this.reg = { kind: 'block', xlo: e.xlo, xhi: e.xhi, ylo: e.ylo, yhi: e.yhi, zlo: e.zlo, zhi: e.zhi, xc: 0, yc: 0, radius: 0 };
     insertionBox(this.sys, this.reg, 'deposit');
   }
 
@@ -297,19 +357,28 @@ export class FixDeposit extends Fix {
     const sys = this.sys;
     const s = sys.state;
     const reg = this.reg!;
+    const region = this.region!;
     const step = s.step;
     const shift = this.rateV * (step - this.nfirst + this.M) * s.dt;
     // fix_deposit.cpp: in 2d the rate offset moves the insertion in y (coord[1] += offset), not z
     const twod = s.dimension === 2;
     const yOff = twod ? shift : 0;
-    const zlo = twod ? reg.zlo : reg.zlo + shift, zhi = twod ? reg.zhi : reg.zhi + shift;
+    const zOff = twod ? 0 : shift;
     const t = this.molTemplate;
     const center = t ? geometricCenter(t) : [0, 0, 0];
     let placed: { p: Vec3; v: Vec3; atoms: Float64Array | null; rot: number[][] | null } | null = null;
     for (let a = 0; a < this.attempt && !placed; a++) {
-      const x = reg.xlo + this.rng.uniform() * (reg.xhi - reg.xlo);
-      const y = reg.ylo + this.rng.uniform() * (reg.yhi - reg.ylo) + yOff;
-      let z = zlo + this.rng.uniform() * (zhi - zlo);
+      // fix_deposit.cpp: draws in the extent until the region matches (rejections are not attempts)
+      let x = 0, y = 0, z = 0;
+      let draws = 0;
+      do {
+        if (++draws > MAX_REGION_DRAWS) throw new StyleError('fix deposit: no point inside the region could be drawn (is the region empty?)');
+        x = reg.xlo + this.rng.uniform() * (reg.xhi - reg.xlo);
+        y = reg.ylo + this.rng.uniform() * (reg.yhi - reg.ylo);
+        z = reg.zlo + this.rng.uniform() * (reg.zhi - reg.zlo);
+      } while (!region.match(x, y, z));
+      y += yOff;
+      z += zOff;
       if (this.globalRange) {
         const top = this.highestZ(null);
         z = top + this.globalRange[0] + this.rng.uniform() * (this.globalRange[1] - this.globalRange[0]);

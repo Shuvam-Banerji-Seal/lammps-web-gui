@@ -4,7 +4,7 @@ import { StyleError } from '../force/types';
 import { formatNumber, substituteVariables } from '../script';
 import { evaluateScalar } from '../formula';
 import { clearSoftHalt } from '../run/halt';
-import { normalizeFileName } from '../fileName';
+import { isDirectory, makeDirectories, removeDirectory, shellKey } from '../shellFs';
 
 /*
  * General-purpose input commands.
@@ -104,15 +104,16 @@ const browserOnly = (name: string, why: string): Handler => {
 };
 
 /**
- * shell command args — shell.html: "A few simple file-based shell commands are
- * supported directly, in Unix-style syntax."; "*rm* args = [-f] file1 file2 ...",
- * "file1,file2 = one or more filenames to delete"; "*mv* args = old new",
- * "new = new filename or destination folder". The browser has no operating-system
- * shell and no directories, so only the file-store operations rm and mv are
- * implemented (they act on the session files that read_restart, read_data,
- * include and pair_coeff read, and that write_restart, write_data, dump and
- * fix print write). Every other form — cd, mkdir, rmdir, putenv and arbitrary
- * external commands — is refused, naming it.
+ * shell command args — shell.html: "A few simple file-based shell commands are supported directly, in Unix-style
+ * syntax."; "*cd* arg = dir", "*mkdir* args = dir1 dir2 ...", "*mv* args = old new", "*rm* args = [-f] file1 file2 ...",
+ * "*rmdir* args = dir1 dir2 ...", "*putenv* args = var1=value1 var2=value2"; "anything else is passed as a command to
+ * the shell for direct execution". A browser has no operating-system shell, so every other command is refused, naming it.
+ * The built-ins act on the notebook's virtual file system (shellFs.ts): cd sets the directory that file names are
+ * resolved from (shell.html: "All subsequent LAMMPS commands that read/write files will use the new directory"), mkdir
+ * creates the whole path ("similar to the Unix mkdir -p command"), rmdir removes the contents recursively, rm and mv act
+ * on the session files, and putenv sets environment variables (LAMMPS_POTENTIALS is searched for a file that is not in
+ * the working directory). Like native (src/input.cpp Input::shell at b332f28), a failed cd, mkdir, rmdir, rm, mv or
+ * putenv warns and carries on.
  *
  * Measured with native LAMMPS (black box):
  *   shell rm <file>          deletes it, silently.
@@ -129,6 +130,41 @@ const browserOnly = (name: string, why: string): Handler => {
 const shell: Handler = ({ sys, session }, a) => {
   const sub = a[0];
   if (sub === undefined) throw new StyleError('shell: missing command (usage: shell command args)');
+  const NO_SUCH = 'No such file or directory';
+  const failed = (what: string, err: string) => sys.warn(`Shell command '${what}' failed with error '${err}'`);
+  if (sub === 'cd') {
+    // native: narg != 2 is "Illegal shell command: expected 2 argument but found narg" (narg counts the command word)
+    if (a.length !== 2) throw new StyleError(`Illegal shell command: expected 2 argument but found ${a.length}`);
+    if (!isDirectory(sys, shellKey(sys, a[1]))) { failed(`cd ${a[1]}`, NO_SUCH); return; }
+    session.forEachReplica((r) => { r.cwd = shellKey(r, a[1]); });
+    return;
+  }
+  if (sub === 'mkdir') {
+    if (a.length < 2) throw new StyleError('shell mkdir: missing argument(s) (usage: shell mkdir dir1 dir2 ...)');
+    for (const dir of a.slice(1)) {
+      if (sys.files.has(shellKey(sys, dir))) { failed(`mkdir ${dir}`, 'File exists'); continue; }
+      session.forEachReplica((r) => makeDirectories(r, shellKey(r, dir)));
+    }
+    return;
+  }
+  if (sub === 'rmdir') {
+    if (a.length < 2) throw new StyleError('shell rmdir: missing argument(s) (usage: shell rmdir dir1 dir2 ...)');
+    for (const dir of a.slice(1)) {
+      if (!isDirectory(sys, shellKey(sys, dir)) || shellKey(sys, dir) === '') { failed(`rmdir ${dir}`, NO_SUCH); continue; }
+      session.forEachReplica((r) => removeDirectory(r, shellKey(r, dir)));
+    }
+    return;
+  }
+  if (sub === 'putenv') {
+    if (a.length < 2) throw new StyleError('shell putenv: missing argument(s) (usage: shell putenv var1=value1 ...)');
+    for (const def of a.slice(1)) {
+      const eq = def.indexOf('=');
+      if (eq <= 0) { failed(`putenv ${def}`, 'Invalid argument'); continue; }
+      const name = def.slice(0, eq), value = def.slice(eq + 1);
+      session.forEachReplica((r) => r.env.set(name, value));
+    }
+    return;
+  }
   if (sub === 'rm') {
     let k = 1;
     let force = false;
@@ -136,25 +172,37 @@ const shell: Handler = ({ sys, session }, a) => {
     if (k >= a.length && !force) throw new StyleError('shell rm: missing argument(s) (usage: shell rm [-f] file1 file2 ...)');
     for (; k < a.length; k++) {
       const name = a[k];
-      if (sys.files.has(normalizeFileName(name))) session.removeFile(name);
-      else if (!force) sys.warn(`Shell command 'rm ${name}' failed with error 'No such file or directory'`);
+      if (sys.files.has(shellKey(sys, name))) session.forEachReplica((r) => r.files.delete(shellKey(r, name)));
+      else if (!force) failed(`rm ${name}`, NO_SUCH);
     }
     return;
   }
   if (sub === 'mv') {
     if (a.length !== 3) throw new StyleError(`shell mv: expected 2 arguments (old new) but found ${a.length - 1}`);
     const oldName = a[1], newName = a[2];
-    const text = sys.files.get(normalizeFileName(oldName));
-    if (text === undefined) {
-      sys.warn(`Shell command 'mv ${oldName} ${newName}' failed with error 'No such file or directory'`);
+    const from = shellKey(sys, oldName);
+    // native: a destination folder takes the file under its own base name (system("mv old dir"))
+    const toDir = isDirectory(sys, shellKey(sys, newName));
+    if (!sys.files.has(from)) {
+      if (toDir) sys.warn(`Shell command 'mv ${oldName} ${newName}' returned with non-zero status`);
+      else failed(`mv ${oldName} ${newName}`, NO_SUCH);
       return;
     }
-    session.removeFile(oldName);
-    sys.writeFile(newName, text, false);
+    const dest = toDir ? `${newName}/${from.split('/').pop()}` : newName;
+    let text = '';
+    session.forEachReplica((r) => {
+      const t = r.files.get(shellKey(r, oldName));
+      if (t === undefined) return;
+      r.files.delete(shellKey(r, oldName));
+      r.files.set(shellKey(r, dest), t);
+      text = t;
+    });
+    // the current replica also reports the file to the notebook, as a write does
+    sys.writeFile(dest, text, false);
     return;
   }
-  // cd, mkdir, rmdir, putenv and arbitrary commands: the browser has no shell and no directories
-  throw new StyleError(`shell ${sub}: cannot run 'shell ${a.join(' ')}': a browser has no operating-system shell and no directories`);
+  // every other command: the browser has no operating-system shell to pass it to
+  throw new StyleError(`shell ${sub}: cannot run 'shell ${a.join(' ')}': a browser has no operating-system shell; only the built-in cd, mkdir, mv, rm, rmdir and putenv are available`);
 };
 
 /*

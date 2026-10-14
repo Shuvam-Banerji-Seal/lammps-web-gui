@@ -1,0 +1,22 @@
+# oracle: fix deposit into a union region (a sphere and a block, side in) and into an intersect region, with the attempt limit, 30 atoms every 2 steps
+# Measured max relative error of the engine against native (thermo 4.9e-17, per-atom 1.1e-16). native: b332f28 (installed lmp, black box)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+boundary        p p p
+region          box block -5 5 -5 5 0 10
+create_box      1 box
+region          ball sphere 0 0 3 2.5 side in
+region          slab block -4 4 -4 4 6 8 side in
+region          both union 2 ball slab
+region          core intersect 2 both box
+mass            * 1.0
+pair_style      lj/cut 1.5
+pair_coeff      * * 0.1 0.8 1.5
+fix             1 all nve
+fix             2 all deposit 15 1 2 777 region both near 0.9 vz -0.1 -0.1 attempt 3 units box
+fix             3 all deposit 15 1 2 778 region core near 0.9 vz -0.1 -0.1 attempt 3 units box id max
+thermo_style    custom step pe ke atoms
+thermo_modify   format float %.15g
+thermo          10
+run             60

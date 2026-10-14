@@ -303,6 +303,117 @@ const HEAT_ATTRS: Record<string, string> = { temperature: HEAT_TEMPERATURE, heat
 const LINE_END = /^end([12])([xyz])$/;
 const TRI_CORNER = /^corner([123])([xyz])$/;
 
+/**
+ * The reason a per-atom attribute cannot be stored by this atom style, or null when it can. Shared by compute
+ * property/atom and fix store/state (both take the same attribute words). Custom i_/d_ names are checked by customAttr.
+ */
+export const peratomAttrProblem = (sys: System, a: string): string | null => {
+  if (HEAT_ATTRS[a] && !sys.state.custom.has(HEAT_ATTRS[a])) return 'needs fix property/atom temperature heatflow';
+  // compute_property_atom.html: "espin, eradius, ervel, erforce" (atom_style electron; "spin" is the older name of espin)
+  const ek = ELECTRON_ATTRS.get(a);
+  if (ek && !sys.state.custom.has(ek)) return 'needs atom_style electron';
+  if (LINE_END.test(a) && !isLineStyle(sys.atomStyle)) return 'requires atom style line';
+  if (TRI_CORNER.test(a) && !isTriStyle(sys.atomStyle)) return 'requires atom style tri';
+  if (SPHERE_ATTRS.has(a) && !sys.state.radius) return 'needs atom_style sphere';
+  if (TORQUE_ATTRS.has(a) && !sys.state.torque) return 'needs atom_style sphere or ellipsoid';
+  // atom_style bpm/sphere stores a quaternion (atoms.ts isBpmSphereStyle) but no shape
+  // atom_style body stores the orientation and the angular momentum of each body (bodies.ts, compute_property_atom.html: "quaternion ... for aspherical or body particles")
+  const bodyQuatOrAngmom = parseBodyStyle(sys.atomStyle) !== null && (/^quat[wijk]$/.test(a) || /^angmom[xyz]$/.test(a));
+  if (ELLIPSOID_ATTRS.has(a) && !sys.state.shape && !bodyQuatOrAngmom && !(isBpmSphereStyle(sys.atomStyle) && /^quat[wijk]$/.test(a))) return 'needs atom_style ellipsoid';
+  if (SUPER_ATTRS.has(a) && !isSuperEllipsoidStyle(sys.atomStyle)) return 'requires atom style ellipsoid superellipsoid';
+  if (DIPOLE_ATTRS.has(a) && !sys.state.mu) return 'needs atom_style dipole';
+  if (SPIN_ATTRS.has(a) && !sys.state.sp) return 'needs atom_style spin';
+  if (CUSTOM_ATTR.test(a)) customAttr(sys.state, a);
+  return null;
+};
+
+/**
+ * Writes the per-atom values of attribute `attr` for the atoms in the group (groupBit) into out at out[stride * i + col];
+ * atoms outside the group are not written (callers zero them). The attribute must pass peratomAttrProblem.
+ */
+export const fillPeratomAttr = (sys: System, attr: string, groupBit: number, out: Float64Array, stride: number, col: number): void => {
+  const s = sys.state;
+  const g = sys.geom;
+  const u = [0, 0, 0];
+  const lam = [0, 0, 0];
+  // direction component: 'x', 'ix'/'vx'/'fx' end in it; 'xs'/'xu'/'xsu' start with it
+  let d = 'xyz'.indexOf(attr[attr.length - 1]);
+  if (d < 0) d = 'xyz'.indexOf(attr[0]);
+  const custom = customAttr(s, attr);
+  const heat = HEAT_ATTRS[attr] ? s.custom.get(HEAT_ATTRS[attr])!.data : null;
+  const ek = ELECTRON_ATTRS.get(attr);
+  const electron = ek ? s.custom.get(ek)!.data : null;
+  const le = LINE_END.exec(attr), tc = TRI_CORNER.exec(attr);
+  const lineBonus = le ? s.custom.get(LINE_BONUS)!.data : null;
+  const triBonus = tc ? s.custom.get(TRI_BONUS)!.data : null;
+  for (let i = 0; i < s.n; i++) {
+    if (!(s.mask[i] & groupBit)) continue;
+    const set = (val: number) => { out[stride * i + col] = val; };
+    if (custom) { set(custom(i)); continue; }
+    if (heat) { set(heat[i]); continue; }
+    if (electron) { set(electron[i]); continue; }
+    if (le) {
+      // pack_end1z / pack_end2z: the atom's z for every group atom
+      if (d === 2) { set(s.x[3 * i + 2]); continue; }
+      if (!isLineAtom(s, i)) { set(0); continue; }
+      const ends = lineEnds(s.x[3 * i], s.x[3 * i + 1], lineBonus![2 * i], lineBonus![2 * i + 1]);
+      // lineEnds centres the segment on (x, y) and returns (end1x, end1y, end2x, end2y)
+      set(ends[2 * (Number(le[1]) - 1) + d]);
+      continue;
+    }
+    if (tc) {
+      // pack_corner*z: the rotated corner's own z (corner = centre + R c, as native pack_corner1x)
+      if (!isTriAtom(s, i)) { set(0); continue; }
+      const corners = triBonus!.subarray(TRI_BONUS_COLS * i, TRI_BONUS_COLS * i + 9);
+      const q = s.quat!.subarray(4 * i, 4 * i + 4);
+      set(triangleCorner([s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]], q, corners, Number(tc[1]) - 1)[d]);
+      continue;
+    }
+    switch (attr) {
+      case 'radius': set(s.radius![i]); break;
+      case 'diameter': set(2 * s.radius![i]); break;
+      case 'omegax': case 'omegay': case 'omegaz': set(s.omega![3 * i + d]); break;
+      case 'tqx': case 'tqy': case 'tqz': set(s.torque![3 * i + d]); break;
+      case 'angmomx': case 'angmomy': case 'angmomz': set(s.angmom![3 * i + d]); break;
+      case 'shapex': case 'shapey': case 'shapez': set(isEllipsoid(s, i) ? 2 * s.shape![3 * i + d] : 1); break;
+      case 'block1': case 'block2': set(superBlock(s, i)[attr === 'block1' ? 0 : 1]); break;
+      case 'inertiax': case 'inertiay': case 'inertiaz': set(s.custom.get(SUPER_INERTIA)!.data[3 * i + d]); break;
+      case 'quatw': case 'quati': case 'quatj': case 'quatk':
+        set((isEllipsoid(s, i) || (s.quat && (isBpmSphereStyle(s.atomStyle) || parseBodyStyle(s.atomStyle) !== null))) ? s.quat![4 * i + 'wijk'.indexOf(attr[4])] : attr === 'quatw' ? 1 : 0);
+        break;
+      case 'mux': case 'muy': case 'muz': set(s.mu![4 * i + 'xyz'.indexOf(attr[2])]); break;
+      case 'mu': set(s.mu![4 * i + 3]); break;
+      case 'spx': case 'spy': case 'spz': set(s.sp![4 * i + 'xyz'.indexOf(attr[2])]); break;
+      case 'sp': set(s.sp![4 * i + 3]); break;
+      case 'fmx': case 'fmy': case 'fmz': set(s.fm ? s.fm[3 * i + 'xyz'.indexOf(attr[2])] : 0); break;
+      case 'id': set(s.id[i]); break;
+      case 'mol': set(s.molecule[i]); break;
+      case 'proc': set(0); break;
+      case 'type': set(s.type[i]); break;
+      case 'mass': set(massOf(s, i)); break;
+      case 'x': case 'y': case 'z': set(s.x[3 * i + d]); break;
+      case 'xs': case 'ys': case 'zs':
+        g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
+        set(lam[d]);
+        break;
+      // fix store/state (fix_store_state.html): "xsu,ysu,zsu = scaled unwrapped atom coordinates"; native
+      // pack_xsu is the scaled position plus the image count (src/fix_store_state.cpp at b332f28)
+      case 'xsu': case 'ysu': case 'zsu':
+        g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
+        set(lam[d] + s.image[3 * i + d]);
+        break;
+      case 'xu': case 'yu': case 'zu':
+        g.unwrap(s.x, s.image, i, u);
+        set(u[d]);
+        break;
+      case 'ix': case 'iy': case 'iz': set(s.image[3 * i + d]); break;
+      case 'vx': case 'vy': case 'vz': set(s.v[3 * i + d]); break;
+      case 'fx': case 'fy': case 'fz': set(s.f[3 * i + d]); break;
+      case 'q': set(s.q[i]); break;
+    }
+  }
+};
+
 export class ComputePropertyAtom extends Compute {
   readonly style = 'property/atom';
   private readonly attrs: string[];
@@ -313,25 +424,11 @@ export class ComputePropertyAtom extends Compute {
     for (const a of args) {
       // compute_property_atom.html also lists "i_name, d_name, i2_name[I], d2_name[I]" (fix
       // property/atom) and the finite-size sphere attributes radius, diameter, omega*, tq*
-      if (HEAT_ATTRS[a] && !sys.state.custom.has(HEAT_ATTRS[a])) throw new StyleError(`compute property/atom ${a} needs fix property/atom temperature heatflow`);
-      // compute_property_atom.html: "espin, eradius, ervel, erforce" (atom_style electron; "spin" is the older name of espin)
-      const ek = ELECTRON_ATTRS.get(a);
-      if (ek && !sys.state.custom.has(ek)) throw new StyleError(`compute property/atom ${a} needs atom_style electron`);
-      if (LINE_END.test(a) && !isLineStyle(sys.atomStyle)) throw new StyleError(`compute property/atom ${a} requires atom style line`);
-      if (TRI_CORNER.test(a) && !isTriStyle(sys.atomStyle)) throw new StyleError(`compute property/atom ${a} requires atom style tri`);
       if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !SUPER_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !SPIN_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a] && !ELECTRON_ATTRS.has(a) && !LINE_END.test(a) && !TRI_CORNER.test(a)) {
         throw new StyleError(`compute property/atom: attribute '${a}' is not supported by the browser engine`);
       }
-      if (SPHERE_ATTRS.has(a) && !sys.state.radius) throw new StyleError(`compute property/atom ${a} needs atom_style sphere`);
-      if (TORQUE_ATTRS.has(a) && !sys.state.torque) throw new StyleError(`compute property/atom ${a} needs atom_style sphere or ellipsoid`);
-      // atom_style bpm/sphere stores a quaternion (atoms.ts isBpmSphereStyle) but no shape
-      // atom_style body stores the orientation and the angular momentum of each body (bodies.ts, compute_property_atom.html: "quaternion ... for aspherical or body particles")
-      const bodyQuatOrAngmom = parseBodyStyle(sys.atomStyle) !== null && (/^quat[wijk]$/.test(a) || /^angmom[xyz]$/.test(a));
-      if (ELLIPSOID_ATTRS.has(a) && !sys.state.shape && !bodyQuatOrAngmom && !(isBpmSphereStyle(sys.atomStyle) && /^quat[wijk]$/.test(a))) throw new StyleError(`compute property/atom ${a} needs atom_style ellipsoid`);
-      if (SUPER_ATTRS.has(a) && !isSuperEllipsoidStyle(sys.atomStyle)) throw new StyleError(`compute property/atom ${a} requires atom style ellipsoid superellipsoid`);
-      if (DIPOLE_ATTRS.has(a) && !sys.state.mu) throw new StyleError(`compute property/atom ${a} needs atom_style dipole`);
-      if (SPIN_ATTRS.has(a) && !sys.state.sp) throw new StyleError(`compute property/atom ${a} needs atom_style spin`);
-      if (CUSTOM_ATTR.test(a)) customAttr(sys.state, a);
+      const problem = peratomAttrProblem(sys, a);
+      if (problem) throw new StyleError(`compute property/atom ${a} ${problem}`);
     }
     this.attrs = [...args];
     this.peratomFlag = true;
@@ -340,84 +437,9 @@ export class ComputePropertyAtom extends Compute {
 
   protected computePeratom(): void {
     const s = this.sys.state;
-    const g = this.sys.geom;
     const m = this.attrs.length;
     const out = new Float64Array(m > 1 ? m * s.n : s.n);
-    const u = [0, 0, 0];
-    const lam = [0, 0, 0];
-    for (let k = 0; k < m; k++) {
-      const attr = this.attrs[k];
-      // direction component: 'x', 'ix'/'vx'/'fx' end in it; 'xs'/'xu' start with it
-      let d = 'xyz'.indexOf(attr[attr.length - 1]);
-      if (d < 0) d = 'xyz'.indexOf(attr[0]);
-      const set = (i: number, val: number) => { out[m > 1 ? m * i + k : i] = val; };
-      const custom = customAttr(s, attr);
-      const heat = HEAT_ATTRS[attr] ? s.custom.get(HEAT_ATTRS[attr])!.data : null;
-      const ek = ELECTRON_ATTRS.get(attr);
-      const electron = ek ? s.custom.get(ek)!.data : null;
-      const le = LINE_END.exec(attr), tc = TRI_CORNER.exec(attr);
-      const lineBonus = le ? s.custom.get(LINE_BONUS)!.data : null;
-      const triBonus = tc ? s.custom.get(TRI_BONUS)!.data : null;
-      for (let i = 0; i < s.n; i++) {
-        if (!(s.mask[i] & this.groupBit)) continue;
-        if (custom) { set(i, custom(i)); continue; }
-        if (heat) { set(i, heat[i]); continue; }
-        if (electron) { set(i, electron[i]); continue; }
-        if (le) {
-          // pack_end1z / pack_end2z: the atom's z for every group atom
-          if (d === 2) { set(i, s.x[3 * i + 2]); continue; }
-          if (!isLineAtom(s, i)) { set(i, 0); continue; }
-          const ends = lineEnds(s.x[3 * i], s.x[3 * i + 1], lineBonus![2 * i], lineBonus![2 * i + 1]);
-          // lineEnds centres the segment on (x, y) and returns (end1x, end1y, end2x, end2y)
-          set(i, ends[2 * (Number(le[1]) - 1) + d]);
-          continue;
-        }
-        if (tc) {
-          // pack_corner*z: the rotated corner's own z (corner = centre + R c, as native pack_corner1x)
-          if (!isTriAtom(s, i)) { set(i, 0); continue; }
-          const corners = triBonus!.subarray(TRI_BONUS_COLS * i, TRI_BONUS_COLS * i + 9);
-          const q = s.quat!.subarray(4 * i, 4 * i + 4);
-          set(i, triangleCorner([s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]], q, corners, Number(tc[1]) - 1)[d]);
-          continue;
-        }
-        switch (attr) {
-          case 'radius': set(i, s.radius![i]); break;
-          case 'diameter': set(i, 2 * s.radius![i]); break;
-          case 'omegax': case 'omegay': case 'omegaz': set(i, s.omega![3 * i + d]); break;
-          case 'tqx': case 'tqy': case 'tqz': set(i, s.torque![3 * i + d]); break;
-          case 'angmomx': case 'angmomy': case 'angmomz': set(i, s.angmom![3 * i + d]); break;
-          case 'shapex': case 'shapey': case 'shapez': set(i, isEllipsoid(s, i) ? 2 * s.shape![3 * i + d] : 1); break;
-          case 'block1': case 'block2': set(i, superBlock(s, i)[attr === 'block1' ? 0 : 1]); break;
-          case 'inertiax': case 'inertiay': case 'inertiaz': set(i, s.custom.get(SUPER_INERTIA)!.data[3 * i + d]); break;
-          case 'quatw': case 'quati': case 'quatj': case 'quatk':
-            set(i, (isEllipsoid(s, i) || (s.quat && (isBpmSphereStyle(s.atomStyle) || parseBodyStyle(s.atomStyle) !== null))) ? s.quat![4 * i + 'wijk'.indexOf(attr[4])] : attr === 'quatw' ? 1 : 0);
-            break;
-          case 'mux': case 'muy': case 'muz': set(i, s.mu![4 * i + 'xyz'.indexOf(attr[2])]); break;
-          case 'mu': set(i, s.mu![4 * i + 3]); break;
-          case 'spx': case 'spy': case 'spz': set(i, s.sp![4 * i + 'xyz'.indexOf(attr[2])]); break;
-          case 'sp': set(i, s.sp![4 * i + 3]); break;
-          case 'fmx': case 'fmy': case 'fmz': set(i, s.fm ? s.fm[3 * i + 'xyz'.indexOf(attr[2])] : 0); break;
-          case 'id': set(i, s.id[i]); break;
-          case 'mol': set(i, s.molecule[i]); break;
-          case 'proc': set(i, 0); break;
-          case 'type': set(i, s.type[i]); break;
-          case 'mass': set(i, massOf(s, i)); break;
-          case 'x': case 'y': case 'z': set(i, s.x[3 * i + d]); break;
-          case 'xs': case 'ys': case 'zs':
-            g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
-            set(i, lam[d]);
-            break;
-          case 'xu': case 'yu': case 'zu':
-            g.unwrap(s.x, s.image, i, u);
-            set(i, u[d]);
-            break;
-          case 'ix': case 'iy': case 'iz': set(i, s.image[3 * i + d]); break;
-          case 'vx': case 'vy': case 'vz': set(i, s.v[3 * i + d]); break;
-          case 'fx': case 'fy': case 'fz': set(i, s.f[3 * i + d]); break;
-          case 'q': set(i, s.q[i]); break;
-        }
-      }
-    }
+    for (let k = 0; k < m; k++) fillPeratomAttr(this.sys, this.attrs[k], this.groupBit, out, m > 1 ? m : 1, m > 1 ? k : 0);
     if (m > 1) this.arrayAtom = out; else this.vectorAtom = out;
   }
 }

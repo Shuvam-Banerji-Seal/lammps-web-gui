@@ -1,0 +1,16 @@
+# oracle: compute xrd on a periodic 4x4x4 fcc Ni crystal (256 atoms, pair_style none, no motion), the BulkNi settings (2Theta 40 80 degrees, c 2 2 2, LP 1): fix ave/time writes the 2theta column c_XRD[1] and the intensity column c_XRD[2] of each reciprocal point (format %.15g, mode vector) at run 0
+# oracle: native: b332f28 (installed lmp; compute xrd is in the DIFFRACTION package of that binary)
+# oracle-files: w134cp_xrd_ni.txt
+# oracle-compare: thermo=all atoms=none filerel=1e-8
+units           metal
+boundary        p p p
+lattice         fcc 3.52
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            * 58.71
+pair_style      none
+compute         XRD all xrd 1.541838 Ni 2Theta 40 80 c 2 2 2 LP 1
+fix             1 all ave/time 1 1 1 c_XRD[1] c_XRD[2] mode vector format " %.15g" file w134cp_xrd_ni.txt
+thermo_style    custom step pe
+run             0

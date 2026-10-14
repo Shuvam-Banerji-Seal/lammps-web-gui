@@ -15,6 +15,7 @@ export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[
   FIXES: [
     'filter/corotate', // engine-gpl/registry/filtercorotate.ts (refused: respa fix hooks missing)
     'wall/piston', 'append/atoms', // engine-gpl/registry/shock.ts (SHOCK wall/piston and append/atoms are not ported)
+    'saed/vtk', // engine-gpl/registry/diffraction.ts (fix_saed_vtk.cpp writes a VTK file; not ported)
   ],
   COMPUTES: [
     'dipole/tip4p', 'dipole/tip4p/chunk', // registry/compute_chunk17.ts

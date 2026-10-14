@@ -1,0 +1,16 @@
+# oracle: compute saed on a periodic 4x4x4 fcc Ni crystal (256 atoms, pair_style none), the whole reciprocal volume (Zone 0 0 0, manual spacing c 0.1 0.1 0.1, Kmax 0.85, dR_Ewald 0.01): fix ave/time writes the vector c_SAED (format %.15g, mode vector) at run 0
+# oracle: native: b332f28 (installed lmp; compute saed is in the DIFFRACTION package of that binary)
+# oracle-files: w134cp_saed_ni.txt
+# oracle-compare: thermo=all atoms=none filerel=1e-8
+units           metal
+boundary        p p p
+lattice         fcc 3.52
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            * 58.71
+pair_style      none
+compute         SAED all saed 0.0251 Ni Kmax 0.85 Zone 0 0 0 c 0.1 0.1 0.1 dR_Ewald 0.01 manual
+fix             1 all ave/time 1 1 1 c_SAED mode vector format " %.15g" file w134cp_saed_ni.txt
+thermo_style    custom step pe
+run             0

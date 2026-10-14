@@ -1,10 +1,11 @@
 /*
  * Body particles ported from LAMMPS (commit b332f28; src/BODY/, GPL-2.0, see src/engine-gpl/body/). merged into
  * styles.ts through the lazy registry entry gpl_body in src/engine/lazyStyles.ts.
- * Registered: pair body/rounded/polygon (friction and damping; no contact history) and pair body/rounded/polyhedron
- * (friction and damping; no contact history; see engine-gpl/body/rounded_polyhedron_law.ts); fix nvt/body, npt/body
- * and nph/body (engine-gpl/body/fix_nh_body.ts), fix wall/body/polygon and wall/body/polyhedron (engine-gpl/body/fix_wall_body.ts)
- * and compute temp/body (engine-gpl/body/compute_temp_body.ts).
+ * Registered: pair body/rounded/polygon and pair body/rounded/polyhedron (friction, damping, and the keyword history:
+ * the tangential spring of the pair, see engine-gpl/body/contact_history.ts); fix nvt/body, npt/body
+ * and nph/body (engine-gpl/body/fix_nh_body.ts), fix wall/body/polygon and wall/body/polyhedron with the keyword
+ * history (engine-gpl/body/fix_wall_body.ts)
+ * compute temp/body (engine-gpl/body/compute_temp_body.ts) and compute body/local (engine-gpl/body/compute_body_local.ts).
  */
 import { type Pair } from '../../engine/force/types';
 import type { ComputeFactory, FixFactory } from '../../engine/styles';
@@ -12,6 +13,7 @@ import { PairBodyRoundedPolygon } from '../body/pair_body_rounded_polygon';
 import { PairBodyRoundedPolyhedron } from '../body/pair_body_rounded_polyhedron';
 import { FixNHBody } from '../body/fix_nh_body';
 import { ComputeTempBody } from '../body/compute_temp_body';
+import { ComputeBodyLocal } from '../body/compute_body_local';
 import { FixWallBody } from '../body/fix_wall_body';
 
 export const PAIRS: Record<string, () => Pair> = {
@@ -27,4 +29,5 @@ export const FIXES: Record<string, FixFactory> = {
 };
 export const COMPUTES: Record<string, ComputeFactory> = {
   'temp/body': (s, i, g, a) => new ComputeTempBody(s, i, g, a),
+  'body/local': (s, i, g, a) => new ComputeBodyLocal(s, i, g, a),
 };

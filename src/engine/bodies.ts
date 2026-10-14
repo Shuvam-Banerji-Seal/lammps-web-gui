@@ -1,4 +1,5 @@
 import { StyleError } from './force/types';
+import type { SimState } from './types';
 
 /*
  * atom_style body nparticle: per-body storage shared by the atom code (read_data, the atom arrays), the
@@ -184,4 +185,189 @@ export const polyhedronFrame = (I6: ArrayLike<number>): { moments: [number, numb
   if (c3[0] * E[2] + c3[1] * E[5] + c3[2] * E[8] < 0) { E[2] = -E[2]; E[5] = -E[5]; E[8] = -E[8]; }
   const ez = [E[2], E[5], E[8]];
   return { moments, E, quat: exyzToQuat(ex, ey, ez) };
+};
+
+/*
+ * Body molecules (docs.lammps.org/molecule.html, "Body Integers" and "Body Doubles"): "The total number of values that
+ * must appear is determined by the body style, and must be equal to the Ninteger value given in the *body* header."
+ * and "For *rounded/polyhedron*, the number of edges E and faces F is required, and Ninteger should have a value of 3."
+ * The integers and doubles are the Bodies entry of a data file, so the same record is filled (As native LAMMPS does,
+ * src/molecule.cpp and src/atom.cpp add_molecule_atom at b332f28: data_body on the body class, then set_quat with the
+ * molecule's quat_external, which replaces the principal-axes quaternion). The radius of the particle is the body class
+ * radius_body (BODY/body_rounded_polyhedron.cpp, body_rounded_polygon.cpp, body_nparticle.cpp at b332f28), written here
+ * in engine terms: the largest sub-particle distance from the centre, plus the rounded corner radius (half the rounded
+ * diameter) for the rounded styles.
+ */
+
+/** Stored counts of a body: sub-particles, and edges and faces kept in the record (polyStoredCounts). */
+export interface BodyCounts { nsub: number; nedge: number; nface: number }
+
+/** Checks the integers and doubles of a body entry for a body style (native data_body error checks) and returns its counts. */
+export const checkBodyParams = (bstyle: string, ints: readonly number[], dbls: readonly number[]): BodyCounts => {
+  if (bstyle === 'rounded/polyhedron') {
+    if (ints.length !== 3) throw new StyleError('Incorrect # of integer values in Bodies section of data file (body rounded/polyhedron has nvertices nedges nfaces)');
+    const [nsub, ned, nfac] = ints;
+    if (nsub < 1) throw new StyleError('Incorrect integer value in Bodies section of data file');
+    const nentries = nsub < 3 ? 6 + 3 * nsub + 1 : 6 + 3 * nsub + 2 * ned + 4 * nfac + 1;
+    if (dbls.length !== nentries) throw new StyleError(`Incorrect # of floating-point values in Bodies section of data file (needs ${nentries}, got ${dbls.length})`);
+    const st = polyStoredCounts(nsub, ned, nfac);
+    if (nsub === 2 && (dbls[6] - dbls[9]) ** 2 + (dbls[7] - dbls[10]) ** 2 + (dbls[8] - dbls[11]) ** 2 === 0) throw new StyleError('The two vertices of a rod body coincide');
+    if (nsub >= 3) {
+      for (let e = 0; e < st.nedge; e++) {
+        const a = dbls[6 + 3 * nsub + 2 * e], b = dbls[7 + 3 * nsub + 2 * e];
+        if (!(a >= 0 && a < nsub && b >= 0 && b < nsub && a !== b)) throw new StyleError(`Edge ${e} of a body has invalid vertices`);
+      }
+      for (let f = 0; f < st.nface; f++) {
+        for (let m = 0; m < 3; m++) {
+          const v = dbls[6 + 3 * nsub + 2 * ned + 4 * f + m];
+          if (!(v >= 0 && v < nsub)) throw new StyleError(`Face ${f} of a body has invalid vertices`);
+        }
+      }
+    }
+    return { nsub, ...st };
+  }
+  if (bstyle !== 'nparticle' && bstyle !== 'rounded/polygon') throw new StyleError(`body style ${bstyle} is not supported for body molecules by the browser engine`);
+  if (ints.length !== 1) throw new StyleError(`body style ${bstyle} has one integer (the number of ${bstyle === 'rounded/polygon' ? 'vertices' : 'sub-particles'})`);
+  const nsub = ints[0];
+  if (nsub < 1) throw new StyleError('Incorrect integer value in Bodies section of data file');
+  const extra = bstyle === 'rounded/polygon' ? 1 : 0;
+  if (dbls.length !== 6 + 3 * nsub + extra) throw new StyleError(`Incorrect # of floating-point values in Bodies section of data file (needs ${6 + 3 * nsub + extra}, got ${dbls.length})`);
+  if (extra) {
+    for (let q = 0; q < nsub; q++) {
+      if (dbls[8 + 3 * q] !== 0) throw new StyleError('body rounded/polygon vertices must have z = 0 (2d bodies)');
+    }
+  }
+  return { nsub, nedge: 0, nface: 0 };
+};
+
+/** The radius of a body particle with the given body style and integers and doubles (the molecule's radius). */
+export const bodyRadiusBody = (bstyle: string, ints: readonly number[], dbls: readonly number[]): number => {
+  const { nsub } = checkBodyParams(bstyle, ints, dbls);
+  let maxrad = 0;
+  for (let q = 0; q < nsub; q++) {
+    const dx = dbls[6 + 3 * q], dy = dbls[7 + 3 * q], dz = dbls[8 + 3 * q];
+    const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (r > maxrad) maxrad = r;
+  }
+  if (bstyle === 'nparticle') return maxrad;
+  // the rounded diameter follows the vertices (after the 2*E + 4*F edge and face values of a polyhedron with more than two vertices)
+  let off = 6 + 3 * nsub;
+  if (bstyle === 'rounded/polyhedron' && nsub > 2) off += 2 * ints[1] + 4 * ints[2];
+  return maxrad + 0.5 * dbls[off];
+};
+
+/**
+ * The radius of body particle i of the system (the radius the body atom takes in native LAMMPS: the enclosing radius
+ * plus the rounded radius, the rounded radius alone for one sub-particle; for nparticle the enclosing radius). Read from
+ * the record, so it follows the body's own displacements.
+ */
+export const bodyAtomRadius = (s: SimState, i: number): number => {
+  const bstyle = parseBodyStyle(s.atomStyle)!.bstyle;
+  const rec = s.custom.get(BODY_RECORD)!;
+  const base = rec.cols * i, nsub = rec.data[base];
+  if (bstyle === 'rounded/polyhedron') return nsub === 1 ? rec.data[base + 6] : rec.data[base + 6] + rec.data[base + 7];
+  const o0 = bodyRecordOffset(bstyle);
+  let erad2 = 0;
+  for (let q = 0; q < nsub; q++) {
+    const o = base + o0 + 3 * q;
+    erad2 = Math.max(erad2, rec.data[o] * rec.data[o] + rec.data[o + 1] * rec.data[o + 1] + rec.data[o + 2] * rec.data[o + 2]);
+  }
+  const erad = Math.sqrt(erad2);
+  if (bstyle === 'nparticle') return erad;
+  const rrad = 0.5 * rec.data[base + 4];
+  return nsub === 1 ? rrad : erad + rrad;
+};
+
+/**
+ * The principal axes of a body molecule's inertia in the order native LAMMPS takes them (MathEigen::jacobi3 with its
+ * default decreasing sort, math_eigen_impl.h SortRows at b332f28: a selection sort that swaps each eigenvalue with the
+ * first largest one after it and swaps the eigenvectors with it, so ties keep the lower index, then the right-handed
+ * flip of the third axis as data_body does). A body molecule's orientation is replaced by the random quaternion of the
+ * insertion (set_quat), so the axes order and signs decide the vertices in space. Only a diagonal inertia tensor is
+ * accepted here: its eigenvectors are the coordinate axes (no Jacobi rotation), so no other eigenvector convention enters.
+ * The example molecules (examples/body) all have diagonal tensors.
+ */
+export const nativeFrame = (I6: ArrayLike<number>): { moments: [number, number, number]; E: number[] } => {
+  if (I6[3] !== 0 || I6[4] !== 0 || I6[5] !== 0) {
+    throw new StyleError('body molecule with off-diagonal inertia (Ixy, Ixz, Iyz nonzero) is not supported by the browser engine: its principal axes need the native Jacobi eigenvectors');
+  }
+  const val = [I6[0], I6[1], I6[2]];
+  // E holds the axes as columns (row-major); the sort swaps columns, as it swaps the eigenvector rows of native
+  const E = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  for (let i = 0; i < 2; i++) {
+    let imax = i;
+    for (let j = i + 1; j < 3; j++) if (val[j] > val[imax]) imax = j;
+    if (imax === i) continue;
+    [val[i], val[imax]] = [val[imax], val[i]];
+    for (let r = 0; r < 3; r++) [E[3 * r + i], E[3 * r + imax]] = [E[3 * r + imax], E[3 * r + i]];
+  }
+  const big = Math.max(val[0], val[1], val[2]);
+  const moments = val.map((v) => (v < 1e-7 * big ? 0 : v)) as [number, number, number];
+  // enforce a right-handed frame: the third axis flips when ex x ey points against it
+  const ex = [E[0], E[3], E[6]], ey = [E[1], E[4], E[7]];
+  const c3 = [ex[1] * ey[2] - ex[2] * ey[1], ex[2] * ey[0] - ex[0] * ey[2], ex[0] * ey[1] - ex[1] * ey[0]];
+  if (c3[0] * E[2] + c3[1] * E[5] + c3[2] * E[8] < 0) { E[2] = -E[2]; E[5] = -E[5]; E[8] = -E[8]; }
+  return { moments, E };
+};
+
+/**
+ * Fills the body record of atom i (the last atom of a body molecule insertion, or any atom with a body entry) from its
+ * integers and doubles, and sets its orientation to quat (w, x, y, z), replacing the principal-axes quaternion of the
+ * entry as native set_quat does. The record grows to the body's size when it does not fit the atom style's Nmax.
+ */
+export const setBodyAtom = (s: SimState, i: number, bstyle: string, ints: readonly number[], dbls: readonly number[], quat: readonly number[]): void => {
+  if (!s.quat) throw new StyleError('body atoms need the quaternion arrays of atom_style body');
+  const c = checkBodyParams(bstyle, ints, dbls);
+  const rec = s.custom.get(BODY_RECORD)!;
+  const need = bstyle === 'rounded/polyhedron' ? polyRecordLength(c.nsub, c.nedge, c.nface) : bodyRecordOffset(bstyle) + 3 * c.nsub;
+  if (need > rec.cols) {
+    const data = new Float64Array(s.n * need);
+    for (let k = 0; k < s.n; k++) data.set(rec.data.subarray(rec.cols * k, rec.cols * (k + 1)), need * k);
+    rec.data = data;
+    rec.cols = need;
+  }
+  const B = rec.cols, base = B * i, nsub = c.nsub;
+  if (bstyle === 'rounded/polyhedron') {
+    const ned = ints[1], nfac = ints[2];
+    const pf = nativeFrame(dbls.slice(0, 6));
+    rec.data[base] = nsub;
+    for (let d = 0; d < 3; d++) rec.data[base + 1 + d] = pf.moments[d];
+    rec.data[base + 4] = c.nedge;
+    rec.data[base + 5] = c.nface;
+    const diam = nsub < 3 ? dbls[6 + 3 * nsub] : dbls[6 + 3 * nsub + 2 * ned + 4 * nfac];
+    let erad2 = 0;
+    for (let q = 0; q < nsub; q++) {
+      const d0 = dbls[6 + 3 * q], d1 = dbls[7 + 3 * q], d2 = dbls[8 + 3 * q];
+      erad2 = Math.max(erad2, d0 * d0 + d1 * d1 + d2 * d2);
+      for (let d = 0; d < 3; d++) rec.data[base + POLY_OFF + 3 * q + d] = pf.E[d] * d0 + pf.E[3 + d] * d1 + pf.E[6 + d] * d2;
+    }
+    const rrad = 0.5 * diam;
+    rec.data[base + 7] = rrad;
+    rec.data[base + 6] = nsub === 1 ? rrad : Math.sqrt(erad2);
+    const eo = base + POLY_OFF + 3 * nsub;
+    if (nsub === 2) {
+      rec.data[eo] = 0;
+      rec.data[eo + 1] = 1;
+    } else {
+      for (let e = 0; e < c.nedge; e++) {
+        rec.data[eo + 2 * e] = dbls[6 + 3 * nsub + 2 * e];
+        rec.data[eo + 2 * e + 1] = dbls[7 + 3 * nsub + 2 * e];
+      }
+    }
+    const fo = eo + 2 * c.nedge;
+    for (let f = 0; f < c.nface; f++) {
+      for (let m = 0; m < 4; m++) rec.data[fo + 4 * f + m] = dbls[6 + 3 * nsub + 2 * ned + 4 * f + m];
+    }
+  } else {
+    const pf = nativeFrame(dbls.slice(0, 6));
+    rec.data[base] = nsub;
+    for (let d = 0; d < 3; d++) rec.data[base + 1 + d] = pf.moments[d];
+    if (bstyle === 'rounded/polygon') rec.data[base + 4] = dbls[6 + 3 * nsub];
+    const o0 = bodyRecordOffset(bstyle);
+    for (let q = 0; q < nsub; q++) {
+      const d0 = dbls[6 + 3 * q], d1 = dbls[7 + 3 * q], d2 = dbls[8 + 3 * q];
+      for (let d = 0; d < 3; d++) rec.data[base + o0 + 3 * q + d] = pf.E[d] * d0 + pf.E[3 + d] * d1 + pf.E[6 + d] * d2;
+    }
+  }
+  for (let d = 0; d < 4; d++) s.quat[4 * i + d] = quat[d];
 };

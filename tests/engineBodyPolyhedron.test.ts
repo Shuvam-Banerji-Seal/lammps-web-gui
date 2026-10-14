@@ -7,7 +7,7 @@ import { BODY_RECORD, POLY_OFF, bodyRecordStride, exyzToQuat, parseBodyStyle, po
  * body_rounded_polyhedron.cpp data_body: "3 integers: nvertices, nedges, nfaces", then the 6 inertia values, the
  * vertices, the edge ends, the faces (4 indices, the fourth -1 for a triangle) and the rounded diameter), the record
  * layout (bodies.ts), the principal frame (native jacobi3 with decreasing moments, exyz_to_q), and the refusal of
- * the history keyword of pair body/rounded/polyhedron by name. Native parity of the free rotation is in tests/oracle/w121body_free_polyhedra.in.
+ * the keywords of pair body/rounded/polyhedron. Native parity of the free rotation is in tests/oracle/w121body_free_polyhedra.in.
  */
 
 // a box with edges 2, 1, 0.5 (vertices at (+-1, +-0.5, +-0.25)): the cube-body layout of examples/body/data.cubes
@@ -169,8 +169,9 @@ Bodies
     await expect(run(HEAD, { 'box.data': BOX.replace('1 3 79', '1 3 78') })).rejects.toThrow(/Incorrect # of floating-point values/);
   });
 
-  it('refuses the history keyword of pair body/rounded/polyhedron by name', async () => {
-    await expect(run(`${HEAD}pair_style body/rounded/polyhedron 20 5 0.1 1.0 0.5 history\n`, { 'box.data': BOX })).rejects.toThrow(/history/);
+  it('accepts the history keyword of pair body/rounded/polyhedron and refuses an unknown keyword by name', async () => {
+    await expect(run(`${HEAD}pair_style body/rounded/polyhedron 20 5 0.1 1.0 0.5 history\n`, { 'box.data': BOX })).resolves.toBeDefined();
+    await expect(run(`${HEAD}pair_style body/rounded/polyhedron 20 5 0.1 1.0 0.5 bogus\n`, { 'box.data': BOX })).rejects.toThrow(/bogus/);
   });
 });
 

@@ -38,7 +38,7 @@ describe('body fixes and compute: refusals by name (engine-gpl/body)', () => {
   });
 
   it('fix wall/body/polygon refuses history and wiggle and needs the pair style', async () => {
-    await expect(run(`${SQ}pair_style body/rounded/polygon 1 1 0.1 0.5 0.5\npair_coeff * * 100 2\nfix 3 all wall/body/polygon 2000 50 50 yplane 0 10 history 0.1 NULL\n`)).rejects.toThrow(/history is not implemented/);
+    await expect(run(`${SQ}pair_style body/rounded/polygon 1 1 0.1 0.5 0.5\npair_coeff * * 100 2\nfix 3 all wall/body/polygon 2000 50 50 yplane 0 10 wiggle x 0.1 1\n`)).rejects.toThrow(/wiggle/);
     await expect(run(`${SQ}pair_style body/rounded/polygon 1 1 0.1 0.5 0.5\npair_coeff * * 100 2\nfix 3 all wall/body/polygon 2000 50 50 yplane 0 10 wiggle y 1 1\n`)).rejects.toThrow(/wiggle is not supported/);
     await expect(run(`${SQ}pair_style body/rounded/polygon 1 1 0.1 0.5 0.5\npair_coeff * * 100 2\nfix 3 all wall/body/polyhedron 2000 50 50 zplane 0 NULL\n`)).rejects.toThrow(/requires body style rounded\/polyhedron|incompatible|rounded\/polyhedron/);
     await expect(run(`${SQ}fix 3 all wall/body/polygon 2000 50 50 yplane 0 10\nrun 1\n`)).rejects.toThrow(/incompatible with Pair style/);

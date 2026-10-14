@@ -8,12 +8,14 @@
  *
  * This module holds the pure functions of the pair style: one pair of bodies in, the forces, the torques and the
  * energy out. The style itself (neighbour loop, body records) is pair_body_rounded_polygon.ts. The friction term
- * is the one without contact history (native: the history keyword is not ported; see the style).
+ * is the one without contact history; the keyword history is in contact_history.ts (see the style).
  *
  * Scope: two-dimensional bodies (z = 0). The three-component vectors keep the native arithmetic.
  */
 
-export type V3 = [number, number, number];
+import { accumulateContact, historyFriction, newContactHistory, type ContactHistory, type V3 } from './contact_history';
+
+export type { V3 };
 
 /** Constants of the native source (pair_body_rounded_polygon.cpp). */
 const EPSILON = 1.0e-3; // dimensionless threshold (end points, contact separations)
@@ -208,6 +210,15 @@ export interface RPParams {
   mu: number;
   dua: number;
   cut: number;
+  /** keyword history: the friction is that of a tangential spring with the shear of the pair (native history). */
+  history?: boolean;
+  /** tangential stiffness k_t of the pair of types (native k_t) and the time step (native dt). */
+  kt?: number;
+  dt?: number;
+  /** false in the setup of a run: the tangential velocity does not advance the shear (native setupflag). */
+  update?: boolean;
+  /** the shear of the pair as seen from body 0 (the stored value, zero when new). */
+  shear?: V3;
 }
 
 /** The pair accumulator: forces and torques on the two bodies of the pair (role 0 = i, role 1 = j), energy, contacts. */
@@ -218,6 +229,9 @@ export interface RPAcc {
   contacts: RPContact[];
   /** j_a applied to the cohesion of the two contacts that carry forces (1 when not scaled). */
   ja: number;
+  /** the contact history of the pair (keyword history), and the new shear when the spring acts (null when not). */
+  hist: ContactHistory | null;
+  shear: V3 | null;
 }
 
 /** Force F on body `role` acting at the point at, with its torque about the centre of that body. */
@@ -286,8 +300,9 @@ const pointVelocity = (g: BodyGeom, x: V3): V3 => {
 };
 
 /**
- * damping_friction (native, without contact history): the damping -c_n v_n - c_t v_t at the contact point, and, when
- * friction is on, the friction -min(mu fne, c_t |v_t|) v_t/|v_t| with the elastic normal force fne.
+ * damping_friction (native): the damping -c_n v_n - c_t v_t at the contact point, and, when friction is on, the friction
+ * -min(mu fne, c_t |v_t|) v_t/|v_t| with the elastic normal force fne. With the contact history (acc.hist), the friction
+ * is added to the history of the pair instead, see historyFriction().
  * The forces act at the contact point pc on the two bodies (role ib receives +fd).
  */
 export const dampingFriction = (bodies: [BodyGeom, BodyGeom], ib: 0 | 1, jb: 0 | 1, pc: V3, n: V3, fne: number, friction: boolean, p: RPParams, acc: RPAcc): void => {
@@ -299,7 +314,10 @@ export const dampingFriction = (bodies: [BodyGeom, BodyGeom], ib: 0 | 1, jb: 0 |
   const vt = sub(vr, vn);
   let fd: V3 = add(scl(-p.cn, vn), scl(-p.ct, vt));
   const vtmag = len(vt);
-  if (friction && fne > 0 && vtmag > 0) {
+  if (friction && acc.hist) {
+    // with the contact history, the friction of the pair is that of one tangential spring, see historyFriction()
+    if (fne > 0) accumulateContact(acc.hist, ib === 0 ? 1 : -1, fne, pc, vt, n);
+  } else if (friction && fne > 0 && vtmag > 0) {
     const s = Math.min(p.mu * fne, p.ct * vtmag) / vtmag;
     fd = sub(fd, scl(s, vt));
   }
@@ -353,17 +371,35 @@ const sphereAgainstSphere = (bodies: [BodyGeom, BodyGeom], p: RPParams, acc: RPA
  * on bodies 0 and 1 (the pair's i and j).
  */
 export const roundedPolygonPair = (bodies: [BodyGeom, BodyGeom], p: RPParams): RPAcc => {
-  const acc: RPAcc = { f: [[0, 0, 0], [0, 0, 0]], t: [[0, 0, 0], [0, 0, 0]], energy: 0, contacts: [], ja: 1 };
+  const acc: RPAcc = {
+    f: [[0, 0, 0], [0, 0, 0]], t: [[0, 0, 0], [0, 0, 0]], energy: 0, contacts: [], ja: 1,
+    hist: p.history ? newContactHistory() : null, shear: null,
+  };
+  pairContacts(bodies, p, acc);
+  // the friction of the contact history acts once per pair, after all contacts (native history_friction)
+  if (acc.hist && p.kt !== undefined) {
+    const hf = historyFriction(acc.hist, p.shear ?? [0, 0, 0], p.kt, p.mu, p.dt ?? 0, p.update !== false);
+    if (hf) {
+      addForce(acc, 0, hf.ft, hf.pc, bodies);
+      addForce(acc, 1, scl(-1, hf.ft), hf.pc, bodies);
+      acc.shear = hf.shear;
+    }
+  }
+  return acc;
+};
+
+/** The contacts of the pair of bodies (native pair_interaction without the friction of the history). */
+const pairContacts = (bodies: [BodyGeom, BodyGeom], p: RPParams, acc: RPAcc): void => {
   const [A, B] = bodies;
   if (A.disc.length === 1 && B.disc.length === 1) {
     sphereAgainstSphere(bodies, p, acc);
-    return acc;
+    return;
   }
   vertexAgainstEdge(bodies, 0, 1, true, p, acc);
   vertexAgainstEdge(bodies, 1, 0, false, p, acc);
   const cs = acc.contacts;
   const nc = cs.length;
-  if (nc === 0) return acc;
+  if (nc === 0) return;
   let m0 = 0, n0 = -1;
   for (let m = 1; m < nc; m++) if (cs[m].separation < cs[m0].separation) m0 = m;
   const rmin = Math.min(A.rrad, B.rrad);
@@ -381,10 +417,12 @@ export const roundedPolygonPair = (bodies: [BodyGeom, BodyGeom], p: RPParams): R
   let ja = 1;
   if (n0 >= 0) ja = Math.max(deltaMax / (EFF_CONTACTS * p.dua), 1);
   acc.ja = ja;
+  // the friction at the contact of largest overlap, or at both contacts with the contact history
   let frictionM = true;
   if (n0 >= 0 && cs[n0].separation < cs[m0].separation) frictionM = false;
+  if (acc.hist) frictionM = true;
+  const frictionN = acc.hist ? true : !frictionM;
   const c0 = cs[m0];
   contactForces(c0, ja, frictionM, bodies, p, acc);
-  if (n0 >= 0) contactForces(cs[n0], ja, !frictionM, bodies, p, acc);
-  return acc;
+  if (n0 >= 0) contactForces(cs[n0], ja, frictionN, bodies, p, acc);
 };

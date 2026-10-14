@@ -8,8 +8,8 @@
  * docs.lammps.org/pair_body_rounded_polyhedron.html: "pair_style body/rounded/polyhedron c_n c_t mu A_ua cutoff
  * keyword" and "pair_coeff * * k_n k_na". The two-body contact law is in rounded_polyhedron_law.ts.
  *
- * Supported: the elastic and cohesive normal law, the damping c_n and c_t, and the friction mu without contact
- * history. Refused by name: the history keyword (the tangential springs of the contact history are not ported), and
+ * Supported: the elastic and cohesive normal law, the damping c_n and c_t, the friction mu, and the keyword history
+ * (the tangential spring of the pair, its shear kept per pair of atom IDs, see contact_history.ts). Refused by name:
  * pair_modify shift and tail. The work of the non-conservative forces (pvector) is not kept.
  */
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
@@ -30,6 +30,9 @@ export class PairBodyRoundedPolyhedron extends Pair {
   bodyRadius = 0;
   p!: PairParams;
   private readonly law = new PolyhedronPairLaw();
+  /** keyword history: the tangential shear of each pair of bodies, keyed by the pair of atom IDs (lower ID first). */
+  private history = false;
+  private shear = new Map<string, V3>();
 
   settings(args: string[]): void {
     if (args.length < 5) throw new StyleError('Illegal pair_style body/rounded/polyhedron command');
@@ -40,22 +43,27 @@ export class PairBodyRoundedPolyhedron extends Pair {
     this.cutGlobal = parseNum(args[4], 'cutoff');
     // native settings(): a negative A_ua is reset to 1
     if (this.Aua < 0) this.Aua = 1;
+    // native settings(): the keyword history keeps the tangential displacement of each pair of bodies
+    this.history = false;
     for (let iarg = 5; iarg < args.length; iarg++) {
-      if (args[iarg] === 'history') throw new StyleError('pair_style body/rounded/polyhedron: the history keyword is not implemented yet by the browser engine');
-      throw new StyleError(`Unknown pair_style body/rounded/polyhedron keyword ${args[iarg]}`);
+      if (args[iarg] !== 'history') throw new StyleError(`Unknown pair_style body/rounded/polyhedron keyword ${args[iarg]}`);
+      this.history = true;
     }
+    this.shear.clear();
   }
 
   allocate(ntypes: number): void {
     super.allocate(ntypes);
-    this.p = new PairParams(ntypes, ['kn', 'kna']);
+    this.p = new PairParams(ntypes, ['kn', 'kna', 'kt']);
   }
 
   coeff(args: string[]): void {
     if (args.length < 4 || args.length > 5) throw new StyleError('Incorrect args for pair coefficients');
-    // the optional k_t (5th argument) is the tangential stiffness of the contact history, which is not ported: it is checked only
-    if (args.length === 5 && parseNum(args[4], 'k_t') < 0) throw new StyleError('Tangential stiffness of pair style body/rounded/polyhedron must not be negative');
-    this.p.setRange(args[0], args[1], [parseNum(args[2], 'k_n'), parseNum(args[3], 'k_na')]);
+    // native coeff(): the tangential stiffness k_t (5th argument) defaults to 2/7 of k_n, as in gran/hooke/history
+    const kn = parseNum(args[2], 'k_n');
+    const kt = args.length === 5 ? parseNum(args[4], 'k_t') : (2.0 / 7.0) * kn;
+    if (kt < 0) throw new StyleError('Tangential stiffness of pair style body/rounded/polyhedron must not be negative');
+    this.p.setRange(args[0], args[1], [kn, parseNum(args[3], 'k_na'), kt]);
   }
 
   initOne(i: number, j: number): number {
@@ -63,6 +71,7 @@ export class PairBodyRoundedPolyhedron extends Pair {
       if (!this.p.isSet(i, i) || !this.p.isSet(j, j)) throw new StyleError(`all pair coeffs are not set (pair ${i} ${j})`);
       this.p.setMixed(i, j, 'kn', Math.sqrt(this.p.get('kn', i, i) * this.p.get('kn', j, j)));
       this.p.setMixed(i, j, 'kna', Math.sqrt(this.p.get('kna', i, i) * this.p.get('kna', j, j)));
+      this.p.setMixed(i, j, 'kt', Math.sqrt(this.p.get('kt', i, i) * this.p.get('kt', j, j)));
     }
     // neighbour cutoff: centres within the two largest radii plus the surface cutoff (native init_one: maxrad + maxrad + cut_inner)
     return 2 * this.bodyRadius + this.cutGlobal;
@@ -108,6 +117,10 @@ export class PairBodyRoundedPolyhedron extends Pair {
     law.tq = tq;
     law.energy = 0;
     const cache = new Map<number, PBody | null>();
+    const hist = this.history;
+    const touched = new Set<string>();
+    const dt = s.dt;
+    const update = pc.historyUpdate === true;
     // the body of atom idx (owned or ghost), built from the body record and the state of its owner
     const getBody = (idx: number): PBody | null => {
       const hit = cache.get(idx);
@@ -166,13 +179,32 @@ export class PairBodyRoundedPolyhedron extends Pair {
         // native compute(): the pair is in the interaction range when r <= radius_i + radius_j + cut_inner
         const r = Math.sqrt(rsq);
         if (!(r <= polyAtomRadius(bi) + polyAtomRadius(bj) + this.cutGlobal)) continue;
+        // the shear is stored as seen from the atom with the lower ID (the sign flips for the other one)
+        const ida = s.id[owner[i]], idb = s.id[owner[j]];
+        const lowerIsI = ida < idb;
+        const key = lowerIsI ? `${ida}:${idb}` : `${idb}:${ida}`;
+        let shear: V3 = [0, 0, 0];
+        if (hist) {
+          const v = this.shear.get(key);
+          if (v) shear = lowerIsI ? v : [-v[0], -v[1], -v[2]];
+        }
         law.P = {
           kn: this.p.get('kn', ti, type[j]), kna: this.p.get('kna', ti, type[j]),
           cn: this.cn, ct: this.ct, mu: this.mu, Aua: this.Aua, cut: this.cutGlobal,
+          history: hist, kt: this.p.get('kt', ti, type[j]), dt, update, shear,
         };
         law.interact(bi, bj);
+        if (hist) {
+          const sh = law.applyHistory();
+          if (sh) {
+            this.shear.set(key, lowerIsI ? sh : [-sh[0], -sh[1], -sh[2]]);
+            touched.add(key);
+          }
+        }
       }
     }
+    // a pair without a tangential spring this step loses its shear (native: touch = 0 zeroes the displacement)
+    if (hist) for (const key of this.shear.keys()) if (!touched.has(key)) this.shear.delete(key);
     nb.reverseSum(tq, 3, s.torque);
     pc.acc.evdwl += law.energy;
   }

@@ -160,7 +160,7 @@ describe('atom_style body and the refused styles', () => {
   });
 
   it('refuses unsupported body computes and fixes by their name (unknown style)', async () => {
-    await expect(run(`${HEAD}pair_style body/nparticle 4.0\npair_coeff * * 1 1\ncompute b all body/local type 1 2\n`)).rejects.toThrow(/body\/local/);
+    await expect(run(`${HEAD}pair_style body/nparticle 4.0\npair_coeff * * 1 1\ncompute b all body/nonexistent\n`)).rejects.toThrow(/body\/nonexistent/);
     await expect(run(`${HEAD}pair_style body/nparticle 4.0\npair_coeff * * 1 1\ncompute t all temp/body bias x\n`)).rejects.toThrow(/temp\/body/);
     await expect(run(`${HEAD}pair_style body/nparticle 4.0\npair_coeff * * 1 1\nfix 1 all wall/body/polygon 2000 50 50 yplane -5 5\n`)).rejects.toThrow(/wall\/body\/polygon/);
   });

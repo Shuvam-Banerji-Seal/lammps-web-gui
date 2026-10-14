@@ -34,7 +34,9 @@ import { LabelMap, inferAngleType, inferDihedralType, inferImproperType, type La
  * individual diameters of each particle (Diameters ...)". Dipoles: "This
  * section is only allowed for atom styles that support particles with point
  * dipoles, e.g. atom_style dipole." (checked where the atoms are inserted,
- * see templateDipoles). Fragments ("name atom-IDs" lines, read for the fix bond/react modify_create fit) are read; Body sections are rejected.
+ * see templateDipoles). Fragments ("name atom-IDs" lines, read for the fix bond/react modify_create fit) are read. Body molecules (a "1 atoms" template with
+ * a "N M body" header, Body Integers and Body Doubles, and Masses) are read into MoleculeTemplate.body; the body radius is
+ * set by the inserting fix (fix pour), which knows the atom style.
  * Keywords: offset (all five type offsets), toff / boff / aoff / doff / ioff
  * (one each), and scale: "The scale factor is applied to each of these
  * properties in the molecule file, if they are defined: the individual
@@ -62,6 +64,11 @@ export interface MoleculeTemplate {
   diam: Float64Array | null;
   /** Per-atom masses (Masses section, scaled), or null (default from the diameter and density 1.0). */
   mass: Float64Array | null;
+  /**
+   * Body particle entry (molecule.html, "Body Integers" and "Body Doubles"): the integers and doubles of the body style,
+   * or absent for a point molecule. Its radius is not set here (bodies.ts bodyRadiusBody, from the atom style).
+   */
+  body?: { ints: number[]; dbls: number[] } | null;
   /** Per-atom point dipoles (Dipoles section: "ID mux muy muz", scaled), flat 3N, or null (default 0). */
   mu: Float64Array | null;
   /**
@@ -131,7 +138,13 @@ const parseMoleculeText = (id: string, name: string, text: string, o: MoleculeOp
   if (hasAtoms && (natoms < 1 || !Number.isInteger(natoms))) throw new StyleError(`molecule ${id}: ${name} needs an "N atoms" header line`);
   if (head.lines && (!Number.isInteger(head.lines[0]) || head.lines[0] < 1)) throw new StyleError(`molecule ${id}: ${name} has no lines or an invalid line count`);
   if (head.triangles && (!Number.isInteger(head.triangles[0]) || head.triangles[0] < 1)) throw new StyleError(`molecule ${id}: ${name} has no triangles or an invalid triangle count`);
-  if (head.body && head.body.some((v) => v !== 0)) throw new StyleError(`molecule ${id}: 'body' molecules are not supported by the browser engine`);
+  // molecule.html: "defining a *body* particle, which requires setting the number of *atoms* to 1, and setting the *inertia*
+  // in a specific section". The Body Integers and Body Doubles counts come from the header (Ninteger, Ndouble).
+  const bodyHeader = head.body !== undefined && (head.body[0] !== 0 || head.body[1] !== 0);
+  if (bodyHeader && (!hasAtoms || natoms !== 1)) throw new StyleError(`molecule ${id}: Molecule natoms must be 1 for body particle`);
+  if (bodyHeader && (head.body![0] < 1 || head.body![1] < 1)) throw new StyleError(`molecule ${id}: a body molecule needs Ninteger and Ndouble values of at least 1 in ${name}`);
+  if (bodyHeader && o.scale !== 1) throw new StyleError(`molecule ${id}: Molecule sizescale must be 1.0 for body particle`);
+  let bodyInts: number[] | null = null, bodyDbls: number[] | null = null;
   const count = (h: string) => head[h]?.[0] ?? 0;
   const t: MoleculeTemplate = {
     id, natoms, x: new Float64Array(3 * natoms), type: new Int32Array(natoms), q: null, mol: null,
@@ -251,6 +264,26 @@ const parseMoleculeText = (id: string, name: string, text: string, o: MoleculeOp
         for (const r of rows(natoms, 2)) t.mass[atomIndex(r[0], 'atom ID') - 1] = r[1] * o.scale;
         break;
       }
+      case 'Body Integers': case 'Body Doubles': {
+        // molecule.html: the values "must be equal to the Ninteger value given in the *body* header" (Ndouble for doubles)
+        const want = head.body?.[sec === 'Body Integers' ? 0 : 1] ?? 0;
+        if (!bodyHeader) throw new StyleError(`molecule ${id}: found the ${sec} section of ${name} but no body header line`);
+        const vals: number[] = [];
+        while (vals.length < want && k < lines.length) {
+          const l = strip(lines[k]);
+          k++;
+          if (!l) continue;
+          for (const w of l.split(/\s+/)) {
+            const v = Number(w);
+            if (!Number.isFinite(v)) throw new StyleError(`molecule ${id}: bad value '${w}' in the ${sec} section of ${name}`);
+            vals.push(v);
+          }
+          if (vals.length > want) throw new StyleError(`molecule ${id}: too many values in the ${sec} section of ${name}`);
+        }
+        if (vals.length !== want) throw new StyleError(`molecule ${id}: the ${sec} section of ${name} has ${vals.length} of ${want} values`);
+        if (sec === 'Body Integers') bodyInts = vals; else bodyDbls = vals;
+        break;
+      }
       case 'Diameters': {
         t.diam = new Float64Array(natoms);
         for (const r of rows(natoms, 2)) t.diam[atomIndex(r[0], 'atom ID') - 1] = r[1] * o.scale;
@@ -290,6 +323,12 @@ const parseMoleculeText = (id: string, name: string, text: string, o: MoleculeOp
       default:
         throw new StyleError(`molecule ${id}: section '${sec}' in ${name} is not supported by the browser engine`);
     }
+  }
+  if (bodyHeader) {
+    // molecule.html: a body molecule has Masses and both Body sections; the native reader also requires them (molecule.cpp)
+    if (!seen.has('Body Integers') || !seen.has('Body Doubles') || !bodyInts || !bodyDbls) throw new StyleError(`molecule ${id}: ${name} needs Body Integers and Body Doubles sections for a body particle`);
+    if (!t.mass) throw new StyleError(`molecule ${id}: Molecule file must have Masses section for body particle`);
+    t.body = { ints: bodyInts, dbls: bodyDbls };
   }
   if (hasAtoms && !seen.has('Coords')) throw new StyleError(`molecule ${id}: ${name} has no Coords section`);
   if (hasAtoms && !seen.has('Types')) throw new StyleError(`molecule ${id}: ${name} has no Types section`);

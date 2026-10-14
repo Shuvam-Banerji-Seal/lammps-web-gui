@@ -6,20 +6,21 @@
  * source): Trung Dac Nguyen (ndactrung@gmail.com).
  *
  * docs.lammps.org/pair_body_rounded_polygon.html: "pair_style body/rounded/polygon c_n c_t mu delta_ua cutoff keyword"
- * and "pair_coeff * * k_n k_na". The contact law, the damping and the friction are in rounded_polygon_law.ts.
+ * and "pair_coeff * * k_n k_na". The contact law, the damping and the friction are in rounded_polygon_law.ts; the
+ * contact history (keyword history) is in contact_history.ts.
  *
- * Supported: the elastic and cohesive normal law, the damping c_n and c_t, and the friction mu (without contact history).
- * Refused by name: the history keyword (the tangential spring of the contact history is not ported) and pair_modify
- * shift and tail. The friction of the native source acts at one contact (the one with the largest overlap), as in
- * the native code with no history.
+ * Supported: the elastic and cohesive normal law, the damping c_n and c_t, the friction mu, and the keyword history
+ * (the tangential spring of the pair, its shear kept per pair of atom IDs). Refused by name: pair_modify shift and tail.
+ * Without the history the friction of the native source acts at one contact (the one with the largest overlap).
  */
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { BODY_RECORD, bodyRecordOffset } from '../../engine/bodies';
+import type { V3 } from './contact_history';
 import { quatToMatrix } from '../../engine/compute/asphere';
 import {
-  atomRadius, bodyGeom, roundedPolygonPair, type BodyGeom, type RPParams, type V3,
+  atomRadius, bodyGeom, roundedPolygonPair, type BodyGeom, type RPParams,
 } from './rounded_polygon_law';
 
 export class PairBodyRoundedPolygon extends Pair {
@@ -32,6 +33,9 @@ export class PairBodyRoundedPolygon extends Pair {
   mu = 0;
   bodyRadius = 0;
   p!: PairParams;
+  /** keyword history: the tangential shear of each pair of bodies, keyed by the pair of atom IDs (lower ID first). */
+  private history = false;
+  private shear = new Map<string, V3>();
 
   settings(args: string[]): void {
     if (args.length < 5) throw new StyleError('Illegal pair_style body/rounded/polygon command');
@@ -42,23 +46,28 @@ export class PairBodyRoundedPolygon extends Pair {
     this.cutGlobal = parseNum(args[4], 'cutoff');
     // native settings(): a negative delta_ua is reset to 1
     if (this.dua < 0) this.dua = 1;
-    if (args.length > 5) {
-      if (args[5] === 'history') throw new StyleError('pair_style body/rounded/polygon: the history keyword is not implemented yet by the browser engine');
-      throw new StyleError(`Unknown pair_style body/rounded/polygon keyword ${args[5]}`);
+    // native settings(): the keyword history keeps the tangential displacement of each pair of bodies
+    this.history = false;
+    for (let a = 5; a < args.length; a++) {
+      if (args[a] !== 'history') throw new StyleError(`Unknown pair_style body/rounded/polygon keyword ${args[a]}`);
+      this.history = true;
     }
+    this.shear.clear();
     if (!(this.cutGlobal > 0)) throw new StyleError('pair_style body/rounded/polygon cutoff must be > 0');
   }
 
   allocate(ntypes: number): void {
     super.allocate(ntypes);
-    this.p = new PairParams(ntypes, ['kn', 'kna']);
+    this.p = new PairParams(ntypes, ['kn', 'kna', 'kt']);
   }
 
   coeff(args: string[]): void {
     if (args.length < 4 || args.length > 5) throw new StyleError('Incorrect args for pair coefficients');
-    // the optional k_t (5th argument) is the tangential stiffness of the contact history, which is not ported: it is checked only
-    if (args.length === 5 && parseNum(args[4], 'k_t') < 0) throw new StyleError('Tangential stiffness of pair style body/rounded/polygon must not be negative');
-    this.p.setRange(args[0], args[1], [parseNum(args[2], 'k_n'), parseNum(args[3], 'k_na')]);
+    // native coeff(): the tangential stiffness k_t (5th argument) defaults to 2/7 of k_n, as in gran/hooke/history
+    const kn = parseNum(args[2], 'k_n');
+    const kt = args.length === 5 ? parseNum(args[4], 'k_t') : (2.0 / 7.0) * kn;
+    if (kt < 0) throw new StyleError('Tangential stiffness of pair style body/rounded/polygon must not be negative');
+    this.p.setRange(args[0], args[1], [kn, parseNum(args[3], 'k_na'), kt]);
   }
 
   initOne(i: number, j: number): number {
@@ -66,6 +75,7 @@ export class PairBodyRoundedPolygon extends Pair {
       if (!this.p.isSet(i, i) || !this.p.isSet(j, j)) throw new StyleError(`all pair coeffs are not set (pair ${i} ${j})`);
       this.p.setMixed(i, j, 'kn', Math.sqrt(this.p.get('kn', i, i) * this.p.get('kn', j, j)));
       this.p.setMixed(i, j, 'kna', Math.sqrt(this.p.get('kna', i, i) * this.p.get('kna', j, j)));
+      this.p.setMixed(i, j, 'kt', Math.sqrt(this.p.get('kt', i, i) * this.p.get('kt', j, j)));
     }
     // neighbour cutoff: two centres closer than twice the largest body radius plus the surface cutoff
     return 2 * this.bodyRadius + this.cutGlobal;
@@ -124,6 +134,10 @@ export class PairBodyRoundedPolygon extends Pair {
       geo[o] = bodyGeom([0, 0, 0], [s.v[3 * o], s.v[3 * o + 1], s.v[3 * o + 2]], omega, body, R, bd[B * o + 4]);
     }
     const params: RPParams = { kn: 0, kna: 0, cn: this.cn, ct: this.ct, mu: this.mu, dua: this.dua, cut: this.cutGlobal };
+    const hist = this.history;
+    const touched = new Set<string>();
+    const dt = s.dt;
+    const update = pc.historyUpdate === true;
     let evdwl = 0;
     for (let i = 0; i < list.inum; i++) {
       const oi = owner[i];
@@ -149,7 +163,21 @@ export class PairBodyRoundedPolygon extends Pair {
         const kn = this.p.get('kn', ti, type[j]), kna = this.p.get('kna', ti, type[j]);
         const bi: BodyGeom = { ...gi, c: xi };
         const bj: BodyGeom = { ...gj, c: xj };
-        const res = roundedPolygonPair([bi, bj], { ...params, kn, kna });
+        // the shear is stored as seen from the atom with the lower ID (the sign flips for the other one)
+        const ida = s.id[oi], idb = s.id[oj];
+        const lowerIsI = ida < idb;
+        const key = lowerIsI ? `${ida}:${idb}` : `${idb}:${ida}`;
+        let shear: V3 = [0, 0, 0];
+        if (hist) {
+          const v = this.shear.get(key);
+          if (v) shear = lowerIsI ? v : [-v[0], -v[1], -v[2]];
+        }
+        const res = roundedPolygonPair([bi, bj], { ...params, kn, kna, kt: this.p.get('kt', ti, type[j]), history: hist, shear, dt, update });
+        if (hist && res.shear) {
+          const sh = res.shear;
+          this.shear.set(key, lowerIsI ? sh : [-sh[0], -sh[1], -sh[2]]);
+          touched.add(key);
+        }
         f[3 * i] += res.f[0][0]; f[3 * i + 1] += res.f[0][1]; f[3 * i + 2] += res.f[0][2];
         f[3 * j] += res.f[1][0]; f[3 * j + 1] += res.f[1][1]; f[3 * j + 2] += res.f[1][2];
         for (let d = 0; d < 3; d++) {
@@ -159,6 +187,8 @@ export class PairBodyRoundedPolygon extends Pair {
         evdwl += res.energy;
       }
     }
+    // a pair without a tangential spring this step loses its shear (native: touch = 0 zeroes the displacement)
+    if (hist) for (const key of this.shear.keys()) if (!touched.has(key)) this.shear.delete(key);
     nb.reverseSum(tq, 3, s.torque);
     pc.acc.evdwl += evdwl;
   }

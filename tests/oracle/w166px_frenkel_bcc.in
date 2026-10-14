@@ -1,0 +1,35 @@
+# oracle: compute frenkel (EXTRA-COMPUTE), cut down from examples/PACKAGES/frenkel/in.frenkel: a 4x4x4-cell bcc iron box
+# (128 atoms) with one vacancy and one <110> dumbbell interstitial (2 atoms on one site), eam/fs Fe_mm potential, 40 steps
+# of nvt at 600 K. Thermo prints c_fr[1..3] (vacancies, interstitials, irregular sites) every 10 steps; the local output
+# (cluster ID, size, centre x y z) is dumped to a file every 20 steps and compared token by token.
+# native: b332f28 (installed lmp, EXTRA-COMPUTE package)
+# oracle-potentials: Fe_mm.eam.fs
+# oracle-files: w166px_frenkel_clusters.dump
+# measured: passes at rel = atomrel = filerel = 1e-12 (thermo c_fr and pe, per-atom state, and the dump local file of
+# cluster IDs, sizes and centres); the cluster IDs are site tags natoms+1+index as native assigns them
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-14 atomrel=1e-12 filerel=1e-12
+units           metal
+atom_style      atomic
+atom_modify     map array
+boundary        p p p
+lattice         bcc 2.8553
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+pair_style      eam/fs
+pair_coeff      * * Fe_mm.eam.fs Fe
+region          hole sphere 2.0 2.0 2.0 0.3 units lattice
+delete_atoms    region hole compress no
+region          dumbbell sphere 1.5 1.5 2.5 0.3 units lattice
+delete_atoms    region dumbbell compress no
+create_atoms    1 single 1.25 1.25 2.5 units lattice
+create_atoms    1 single 1.75 1.75 2.5 units lattice
+velocity        all create 1200.0 4928459 mom yes rot yes loop geom
+compute         fr all frenkel
+thermo_style    custom step temp pe c_fr[1] c_fr[2] c_fr[3]
+thermo_modify   format float %.15g
+thermo          10
+dump            def all local 20 w166px_frenkel_clusters.dump index c_fr[1] c_fr[2] c_fr[3] c_fr[4] c_fr[5]
+fix             1 all nvt temp 600.0 600.0 0.1
+timestep        0.001
+run             40

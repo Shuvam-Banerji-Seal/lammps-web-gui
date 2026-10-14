@@ -17,7 +17,7 @@ export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[
     'filter/corotate', // engine-gpl/registry/filtercorotate.ts (refused: respa fix hooks missing)
     'saed/vtk', // engine-gpl/registry/diffraction.ts (fix_saed_vtk.cpp writes a VTK file; not ported)
     'srp', 'srp/react', // engine-gpl/registry/srp.ts (lazy, refused: see its header)
-    'graphics/labels', 'graphics/periodic', 'graphics/chunk', 'graphics/replica', 'graphics/isosurface', // engine-gpl/registry/graphics.ts (refused: the reason is in the error)
+    'graphics/isosurface', // engine-gpl/registry/graphics.ts (refused: the reason is in the error)
   ],
   COMPUTES: [
     'dipole/tip4p', 'dipole/tip4p/chunk', // registry/compute_chunk17.ts

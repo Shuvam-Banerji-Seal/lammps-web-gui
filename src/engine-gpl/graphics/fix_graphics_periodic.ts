@@ -10,6 +10,13 @@
  * A negative sphere diameter (radius auto, the default) is the renderer's default size, as in the C++ (2 * -1).
  */
 import type { BondObject, GraphicsObject, SphereObject, Vec3 } from './objects';
+import { Fix } from '../../engine/fix/fix';
+import type { System } from '../../engine/system';
+import type { FixFactory } from '../../engine/styles';
+import { StyleError } from '../../engine/force/types';
+import type { ImageObject } from '../../engine/output/image_objects';
+import { parseInteger } from './common';
+import { drawGraphicsObject } from './draw';
 
 export interface PeriodicOptions {
   /** Image faces requested by the keywords xlo, xhi, ylo, yhi, zlo, zhi. */
@@ -139,3 +146,55 @@ export function periodicObjects(
   }
   return out;
 }
+
+/** The fix: "fix ID group-ID graphics/periodic N keyword values ..." (fix_graphics_periodic.cpp). */
+export class FixGraphicsPeriodicFix extends Fix {
+  readonly style = 'graphics/periodic';
+  private readonly opt: PeriodicOptions;
+
+  constructor(sys: System, id: string, group: string, args: string[]) {
+    super(sys, id, group, args);
+    if (args.length < 1) throw new StyleError(`usage: fix ${id} group-ID graphics/periodic N keyword values ...`);
+    this.nevery = parseInteger(args[0], `fix ${id} graphics/periodic N`);
+    if (this.nevery <= 0) throw new StyleError(`fix ${id} graphics/periodic: N must be > 0`);
+    const molecular = sys.state.topo.bonds.n > 0;
+    try {
+      this.opt = parsePeriodicArgs(args.slice(1), molecular);
+    } catch (e) {
+      throw new StyleError(`fix ${id} graphics/periodic: ${(e as Error).message}`);
+    }
+  }
+
+  /** The image spheres and bonds of the snapshot (periodicObjects), in the C++ order. */
+  imageObjects(): ImageObject[] {
+    const s = this.sys.state;
+    const n = s.n;
+    const partners = new Map<number, number[]>();
+    // newton_bond on: a bond is stored with its first atom (the data file rule), so it is drawn once
+    const bonds = s.topo.bonds;
+    for (let b = 0; b < bonds.n; b++) {
+      const a1 = bonds.atoms[2 * b];
+      const list = partners.get(a1);
+      if (list) list.push(bonds.atoms[2 * b + 1]);
+      else partners.set(a1, [bonds.atoms[2 * b + 1]]);
+    }
+    const atoms: PeriodicAtom[] = [];
+    for (let i = 0; i < n; i++) {
+      atoms.push({
+        id: s.id[i],
+        type: s.type[i],
+        x: [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]],
+        inGroup: this.inGroup(i),
+        bondPartners: partners.get(s.id[i]) ?? [],
+      });
+    }
+    const box = s.box;
+    const objs = periodicObjects(this.opt, atoms, {
+      prd: [box.hi[0] - box.lo[0], box.hi[1] - box.lo[1], box.hi[2] - box.lo[2]],
+      periodic: [box.periodic[0], box.periodic[1], box.periodic[2]],
+    });
+    return objs.map((o): ImageObject => ({ kind: 'draw', draw: (f, st) => drawGraphicsObject(f, st, o) }));
+  }
+}
+
+export const makeFixGraphicsPeriodic: FixFactory = (sys, id, group, args) => new FixGraphicsPeriodicFix(sys, id, group, args);

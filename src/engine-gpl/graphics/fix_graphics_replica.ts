@@ -11,6 +11,13 @@
  * (Domain::remap), in ID order.
  */
 import type { GraphicsObject, SphereObject, Vec3 } from './objects';
+import { Fix } from '../../engine/fix/fix';
+import type { System } from '../../engine/system';
+import type { FixFactory } from '../../engine/styles';
+import { StyleError } from '../../engine/force/types';
+import type { ImageObject } from '../../engine/output/image_objects';
+import { parseInteger } from './common';
+import { drawGraphicsObject } from './draw';
 
 export interface ReplicaOptions {
   /** display radius; null when the display keyword is absent. */
@@ -100,3 +107,46 @@ export function replicaObjects(
   }
   return out;
 }
+
+/** The fix: "fix ID group-ID graphics/replica N keyword values ..." (fix_graphics_replica.cpp). */
+export class FixGraphicsReplicaFix extends Fix {
+  readonly style = 'graphics/replica';
+  private readonly opt: ReplicaOptions;
+
+  constructor(sys: System, id: string, group: string, args: string[]) {
+    super(sys, id, group, args);
+    if (args.length < 1) throw new StyleError(`usage: fix ${id} group-ID graphics/replica N keyword values ...`);
+    this.nevery = parseInteger(args[0], `fix ${id} graphics/replica N`);
+    if (this.nevery <= 0) throw new StyleError(`fix ${id} graphics/replica: N must be > 0`);
+    try {
+      this.opt = parseReplicaArgs(args.slice(1));
+    } catch (e) {
+      throw new StyleError(`fix ${id} graphics/replica: ${(e as Error).message}`);
+    }
+  }
+
+  /** The display and average spheres of the snapshot (replicaObjects). */
+  imageObjects(): ImageObject[] {
+    const s = this.sys.state;
+    const atoms: ReplicaAtom[] = [];
+    for (let i = 0; i < s.n; i++) {
+      atoms.push({
+        id: s.id[i],
+        type: s.type[i],
+        x: [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]],
+        image: [s.image[3 * i], s.image[3 * i + 1], s.image[3 * i + 2]],
+        inGroup: this.inGroup(i),
+      });
+    }
+    const box = s.box;
+    const objs = replicaObjects(this.opt, atoms, {
+      lo: [box.lo[0], box.lo[1], box.lo[2]],
+      hi: [box.hi[0], box.hi[1], box.hi[2]],
+      prd: [box.hi[0] - box.lo[0], box.hi[1] - box.lo[1], box.hi[2] - box.lo[2]],
+      periodic: [box.periodic[0], box.periodic[1], box.periodic[2]],
+    });
+    return objs.map((o): ImageObject => ({ kind: 'draw', draw: (f, st) => drawGraphicsObject(f, st, o) }));
+  }
+}
+
+export const makeFixGraphicsReplica: FixFactory = (sys, id, group, args) => new FixGraphicsReplicaFix(sys, id, group, args);

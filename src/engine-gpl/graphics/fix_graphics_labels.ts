@@ -13,6 +13,13 @@
  */
 import { ScalableFont, createLabel, type TextLayout } from './scalable_font';
 import type { GraphicsObject, LabelObject, PixmapObject, Rgb, Vec3 } from './objects';
+import { Fix } from '../../engine/fix/fix';
+import type { System } from '../../engine/system';
+import type { FixFactory } from '../../engine/styles';
+import { StyleError } from '../../engine/force/types';
+import type { ImageObject } from '../../engine/output/image_objects';
+import { parseInteger } from './common';
+import { drawGraphicsObject } from './draw';
 
 /** A number given directly or a reference to an equal-style variable. */
 export type LabelValue = number | { variable: string };
@@ -252,3 +259,37 @@ export class FixGraphicsLabels {
     return out;
   }
 }
+
+/** The fix: "fix ID group-ID graphics/labels N keyword values ..." (fix_graphics_labels.cpp constructor). */
+export class FixGraphicsLabelsFix extends Fix {
+  readonly style = 'graphics/labels';
+  private readonly labels: FixGraphicsLabels;
+
+  constructor(sys: System, id: string, group: string, args: string[]) {
+    super(sys, id, group, args);
+    if (args.length < 1) throw new StyleError(`usage: fix ${id} group-ID graphics/labels N keyword values ...`);
+    this.nevery = parseInteger(args[0], `fix ${id} graphics/labels N`);
+    if (this.nevery <= 0) throw new StyleError(`fix ${id} graphics/labels: N must be > 0`);
+    const readImage = (file: string): ImageData => {
+      throw new StyleError(`fix ${id} graphics/labels image ${file}: image files need an image decoder, which the browser engine does not have`);
+    };
+    let specs: LabelSpec[];
+    try {
+      specs = parseLabelArgs(args.slice(1), readImage);
+    } catch (e) {
+      if (e instanceof StyleError) throw e;
+      throw new StyleError(`fix ${id} graphics/labels: ${(e as Error).message}`);
+    }
+    if (specs.length === 0) throw new StyleError(`fix ${id} graphics/labels needs at least one image or text label`);
+    this.labels = new FixGraphicsLabels(specs);
+  }
+
+  /** The label pixmaps of the snapshot (end_of_step: images first, then texts). */
+  imageObjects(): ImageObject[] {
+    const sys = this.sys;
+    const env: LabelEnv = { variable: (name) => sys.equalVariable(name), substitute: (t) => t };
+    return this.labels.objects(env).map((o): ImageObject => ({ kind: 'draw', draw: (f, st) => drawGraphicsObject(f, st, o) }));
+  }
+}
+
+export const makeFixGraphicsLabels: FixFactory = (sys, id, group, args) => new FixGraphicsLabelsFix(sys, id, group, args);

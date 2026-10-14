@@ -55,11 +55,12 @@ export interface DynamicGroup {
  * accepts one too. A fix style in neither list has not been measured.
  */
 // add/heat: src/GRANULAR/fix_add_heat.cpp (b332f28) sets dynamic_group_allow = 1 in its constructor.
-// graphics/arrows, graphics/objects, graphics/periodic: src/GRAPHICS/fix_graphics_arrows.cpp, fix_graphics_objects.cpp and
-// fix_graphics_periodic.cpp set dynamic_group_allow = 1 (periodic is refused for its objects; see engine-gpl/registry/graphics.ts).
+// graphics/arrows, graphics/objects, graphics/periodic, graphics/replica, graphics/chunk, graphics/labels:
+// src/GRAPHICS/fix_graphics_arrows.cpp, fix_graphics_objects.cpp, fix_graphics_periodic.cpp, fix_graphics_replica.cpp,
+// fix_graphics_chunk.cpp and fix_graphics_labels.cpp set dynamic_group_allow = 1.
 // npt/cauchy: src/EXTRA-FIX/fix_npt_cauchy.cpp (b332f28) sets dynamic_group_allow = 1 in its constructor.
 export const DYNAMIC_GROUP_FIXES = new Set([
-  'add/heat', 'addforce', 'addtorque/group', 'ave/histo', 'ave/histo/weight', 'ave/moments', 'ave/time', 'aveforce', 'dt/reset', 'efield', 'graphics/arrows', 'graphics/objects', 'graphics/periodic', 'gravity', 'langevin', 'lineforce',
+  'add/heat', 'addforce', 'addtorque/group', 'ave/histo', 'ave/histo/weight', 'ave/moments', 'ave/time', 'aveforce', 'dt/reset', 'efield', 'graphics/arrows', 'graphics/chunk', 'graphics/labels', 'graphics/objects', 'graphics/periodic', 'graphics/replica', 'gravity', 'langevin', 'lineforce',
   'baoab', 'momentum', 'nph', 'nph/sphere', 'npt', 'npt/cauchy', 'npt/sphere', 'nve', 'nve/limit', 'nve/sphere', 'nvt',
   'nvt/sllod', 'nvt/sphere', 'planeforce', 'recenter', 'setforce', 'spring', 'temp/berendsen',
   'temp/csld', 'temp/csvr', 'temp/rescale', 'viscous', 'viscous/sphere', 'wall/harmonic', 'wall/lj1043', 'wall/lj126',

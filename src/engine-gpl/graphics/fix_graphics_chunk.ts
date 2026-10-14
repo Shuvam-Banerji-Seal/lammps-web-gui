@@ -17,6 +17,14 @@
  */
 import { buildConvexHull } from './convex_hull';
 import type { GraphicsObject, TriNormObject, Vec3 } from './objects';
+import { Fix } from '../../engine/fix/fix';
+import type { System } from '../../engine/system';
+import type { FixFactory } from '../../engine/styles';
+import { StyleError } from '../../engine/force/types';
+import type { ImageObject } from '../../engine/output/image_objects';
+import { parseInteger } from './common';
+import { drawGraphicsObject } from './draw';
+import { chunkCompute } from '../../engine/compute/chunk';
 
 /** Options of fix graphics/chunk after parsing. */
 export interface ChunkOptions {
@@ -292,3 +300,62 @@ function inside(p: Vec3, box: ChunkBox): boolean {
   }
   return true;
 }
+
+/** The fix: "fix ID group-ID graphics/chunk N chunkID keyword values ..." (fix_graphics_chunk.cpp). */
+export class FixGraphicsChunkFix extends Fix {
+  readonly style = 'graphics/chunk';
+  private readonly chunkId: string;
+  private readonly hull: FixGraphicsChunk;
+
+  constructor(sys: System, id: string, group: string, args: string[]) {
+    super(sys, id, group, args);
+    if (args.length < 2) throw new StyleError(`usage: fix ${id} group-ID graphics/chunk N chunkID keyword values ...`);
+    this.nevery = parseInteger(args[0], `fix ${id} graphics/chunk N`);
+    if (this.nevery <= 0) throw new StyleError(`fix ${id} graphics/chunk: N must be > 0`);
+    this.chunkId = args[1];
+    // the chunk ID must name a compute chunk/atom (checked now, as the C++ constructor does)
+    chunkCompute(sys, this.chunkId, `fix ${id} graphics/chunk`);
+    const regionOf = (rid: string): ((x: Vec3) => boolean) | null => {
+      try {
+        const r = sys.region(rid);
+        return (x) => r.match(x[0], x[1], x[2]);
+      } catch {
+        return null;
+      }
+    };
+    let parsed;
+    try {
+      parsed = parseChunkArgs(args.slice(2), regionOf);
+    } catch (e) {
+      throw new StyleError(`fix ${id} graphics/chunk: ${(e as Error).message}`);
+    }
+    // the default radius is 0.5 * xlattice (fix_graphics_chunk.cpp constructor: radius = 0.5 * domain->lattice->xlattice)
+    const xlattice = sys.lattice ? sys.lattice.spacing[0] : 1;
+    this.hull = new FixGraphicsChunk({ ...parsed, defaultRadius: 0.5 * xlattice });
+  }
+
+  /** The triangles of the convex hulls of the chunks, drawn by dump image (trinorm). */
+  imageObjects(): ImageObject[] {
+    const sys = this.sys;
+    const s = sys.state;
+    const chunk = chunkCompute(sys, this.chunkId, `fix ${this.id} graphics/chunk`);
+    chunk.ensure();
+    // without a radius keyword the C++ takes the per-atom radius, else the pair style sigma (extract("sigma")); the
+    // sigma is not reachable from the browser engine, so that case is refused by name instead of guessed
+    if (this.hull.options.radius === null && !s.radius) {
+      throw new StyleError(`fix ${this.id} graphics/chunk: without a radius keyword the radius comes from the pair style sigma, which the browser engine does not expose; give radius`);
+    }
+    const atoms: ChunkAtom[] = [];
+    for (let i = 0; i < s.n; i++) {
+      atoms.push({
+        type: s.type[i], x: [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]], inGroup: this.inGroup(i), chunk: chunk.ids[i],
+        radius: s.radius ? s.radius[i] : undefined,
+      });
+    }
+    const box = s.box;
+    const objs = this.hull.objects(atoms, { lo: [box.lo[0], box.lo[1], box.lo[2]], hi: [box.hi[0], box.hi[1], box.hi[2]], dimension: s.dimension }, chunk.nchunk);
+    return objs.map((o): ImageObject => ({ kind: 'draw', draw: (f, st) => drawGraphicsObject(f, st, o) }));
+  }
+}
+
+export const makeFixGraphicsChunk: FixFactory = (sys, id, group, args) => new FixGraphicsChunkFix(sys, id, group, args);

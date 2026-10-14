@@ -703,6 +703,20 @@ export class FixRigid extends Fix {
     this.omegaFromAngmom(b);
   }
 
+  /**
+   * FixRigid::deform (src/RIGID/fix_rigid.cpp at b332f28): "adjust xcm of each rigid body due to box deformation";
+   * flag 0 maps xcm to lamda coordinates (the xcm array then holds lamda until flag 1), flag 1 maps it back.
+   */
+  deformBodies(flag: 0 | 1): void {
+    const g = this.sys.geom;
+    const t = [0, 0, 0];
+    for (const b of this.bodies) {
+      if (flag === 0) g.toLamda(b.xcm[0], b.xcm[1], b.xcm[2], t);
+      else g.fromLamda(b.xcm[0], b.xcm[1], b.xcm[2], t);
+      b.xcm[0] = t[0]; b.xcm[1] = t[1]; b.xcm[2] = t[2];
+    }
+  }
+
   /** COM image flags: xcm stays the unwrapped position; image counts box periods. */
   private wrapCom(b: Body): void {
     const box = this.sys.state.box;

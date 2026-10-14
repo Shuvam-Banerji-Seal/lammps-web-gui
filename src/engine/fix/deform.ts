@@ -527,7 +527,12 @@ export class FixDeform extends Fix {
     this.lenDot = lenD;
     this.tiltDot = tiltD;
     this.loDot = loD;
+    // As native LAMMPS does (src/fix_deform.cpp end_of_step at b332f28): with remap x every rigid body's centre of mass
+    // is mapped with the atoms, to lamda coordinates of the old box before the change and back to the new box after it.
+    const remapBodies = this.remapMode === 'x';
+    if (remapBodies) for (const f of sys.fixes) f.deformBodies?.(0);
     sys.setBox(lo, hi, tilt, this.remapMode === 'x' ? this.groupBit : 0, this);
+    if (remapBodies) for (const f of sys.fixes) f.deformBodies?.(1);
     // thermo output and dumps after end_of_step keep reporting this step's
     // force evaluation (energies, virial and per-atom forces), as LAMMPS does
     // when fix deform changes the box after final_integrate

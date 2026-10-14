@@ -106,6 +106,11 @@ export abstract class Fix {
   resetDt?(): void;
   /** The box changed size or shape (barostats, deform): rescale stored geometry. */
   boxChanged?(): void;
+  /**
+   * Rigid-body centres of mass under fix deform with remap x (fix_rigid.cpp FixRigid::deform, called by fix_deform.cpp):
+   * flag 0 maps each body's xcm from the box before the change to lamda coordinates, flag 1 maps it back to the new box.
+   */
+  deformBodies?(flag: 0 | 1): void;
   /** unfix: remove anything the fix created (its own computes). */
   destroy?(): void;
   /** Cumulative energy exchanged with a thermostat/barostat reservoir (thermo ecouple). */

@@ -1,0 +1,23 @@
+# oracle: fix rigid custom bodies under fix deform erate x y with remap x (the bodies' centres of mass follow the box)
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12 atomrel=1e-10 skip=press,pxx,pyy,pzz
+# Measured with native LAMMPS (black box, probe runs): before the fix xcm of the bodies stayed at the old box, the temp column was off by 9e-5 relative at step 5; with the fix every thermo column except the pressure ones agrees to 1e-10 and the final positions, velocities and forces of all 64 atoms to 1e-10. The pressure columns (press, pxx, pyy, pzz) are left out of the compare: they differ by about 1e-8 absolute with or without fix deform (no-deform run too), from the rigid virial frame (fix_rigid.cpp set_xv uses xcmimage, the image of each atom relative to its body's COM image), which this engine does not model; fix rigid molecule w/o deform gives the same difference.
+units           lj
+lattice         sc 0.5
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        bid atom floor(x/2.0)+3*floor(y/2.5)
+fix             1 all rigid custom v_bid
+variable        vx atom 0.3*sin(0.9*x+0.4*z)
+variable        vy atom 0.3*cos(0.6*y+0.8*x)
+variable        vz atom 0.3*sin(0.7*z-0.3*y)
+velocity        all set v_vx v_vy v_vz units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+timestep        0.002
+fix             2 all deform 1 x erate 0.05 y erate 0.05 remap x
+thermo_style    custom step temp pe ke etotal press pxx pyy pzz lx ly lz vol
+thermo_modify   format float %.15g
+thermo          5
+run             40

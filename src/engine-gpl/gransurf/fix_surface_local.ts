@@ -30,6 +30,7 @@ import { lineFromEnds } from '../../engine/lineTri';
 import type { SurfaceEntry } from '../../engine/molecule';
 import { TRI_BODY_HOOK } from '../tri/tri_bonus';
 import { parseStl } from '../../engine/stl';
+import { stlFirstSolid } from './stl_solid';
 
 type V3 = [number, number, number];
 
@@ -63,7 +64,7 @@ const stlEntries = (sys: System, src: { stype: number; smol: number; file: strin
   if (dim === 2) throw new StyleError('Fix surface cannot use an STL file for 2d simulations');
   if (src.stype < 1) throw new StyleError('STL surface type must be >= 1');
   const out: SurfaceEntry[] = [];
-  for (const tri of parseStl(sys.readFile(src.file), src.file)) {
+  for (const tri of parseStl(stlFirstSolid(sys.readFile(src.file)), src.file)) {
     const [a, b, c] = tri.v;
     const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     const e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];

@@ -5,15 +5,18 @@
  *   src/GRANSURF/surf_extra.cpp (SurfExtra::overlap_sphere_line),
  *   src/GRANSURF/fix_surface.cpp (FixSurface::point_connection2d, contact_compare, contact_presort, contact_sort),
  *   src/GRANULAR/granular_model.cpp (GranularModel::check_contact, calculate_forces; SURFACE contact type),
- *   src/GRANULAR/gran_sub_mod_normal.cpp (hooke), src/GRANULAR/gran_sub_mod_tangential.cpp (linear_history),
- *   src/GRANULAR/gran_sub_mod_damping.cpp (mass_velocity), src/GRANULAR/gran_sub_mod.cpp (rotate_rescale_vec).
+ *   src/GRANULAR/gran_sub_mod_normal.cpp (hooke, hertz, hertz/material, GranSubModNormal::calculate_contact_radius),
+ *   src/GRANULAR/gran_sub_mod_tangential.cpp (linear_nohistory, linear_history),
+ *   src/GRANULAR/gran_sub_mod_damping.cpp (mass_velocity, viscoelastic, tsuji),
+ *   src/GRANULAR/gran_sub_mod.cpp (rotate_rescale_vec, mix_stiffnessE_wall),
+ *   src/GRANULAR/granular_model.cpp (check_contact SURFACE: Reff = radi, radsum = radi).
  * Contributing authors of pair_surf_granular.cpp: Joel Clemmer (SNL), Dan Bolintineanu (SNL).
  * Copyright (2003) Sandia Corporation (LAMMPS development team, GNU General Public License). This file is GPL-2.0
  * (see src/engine-gpl/LICENSE).
  *
  * Browser-engine difference: the granular sub-models are written out for the subset the surface pair supports
- * (hooke normal, linear_history tangential, mass_velocity damping); the other models are refused by the style
- * parser (gransurf/parse.ts) with a StyleError.
+ * (normal hooke, hertz, hertz/material; tangential linear_nohistory, linear_history; damping mass_velocity,
+ * viscoelastic, tsuji); the other models are refused by the style parser (pair_surf_granular.ts) with a StyleError.
  */
 
 /** Connection flags (fix_surface.h: FLAT/NONFLAT, CONCAVE/CONVEX, SAME_SIDE/OPPOSITE_SIDE). */
@@ -38,13 +41,34 @@ const TANGENTIAL_EPSILON = 1e-10;
 /** Flip of a connection side (pair_surf_granular.cpp: FLIPSIDE). */
 export const flipSide = (nside: number): number => (nside === OPPOSITE_SIDE ? SAME_SIDE : OPPOSITE_SIDE);
 
-/** Coefficients of the surface contact: normal hooke (k, damp), tangential linear_history (kt, xt, mu). */
+/** Normal models of the surface contact (pair_granular.html): k is k_n (hooke, hertz) or 4/3 E/(2(1-nu^2)) (hertz/material). */
+export type SurfNormal = 'hooke' | 'hertz' | 'hertz/material';
+/** Damping models of the surface contact (pair_granular.html). */
+export type SurfDamping = 'mass_velocity' | 'viscoelastic' | 'tsuji';
+/** Tangential models of the surface contact (pair_granular.html). */
+export type SurfTangential = 'linear_nohistory' | 'linear_history';
+
+/**
+ * Coefficients of the surface contact. damp is the second normal coefficient (eta_n0, or the restitution coefficient
+ * e for tsuji); kt is used by linear_history only; xt and mu by both tangential models.
+ */
 export interface SurfCoeffs {
   k: number;
   damp: number;
   kt: number;
   xt: number;
   mu: number;
+  normal: SurfNormal;
+  damping: SurfDamping;
+  tangential: SurfTangential;
+}
+
+/** gran_sub_mod_damping.cpp: GranSubModDampingTsuji::init, the Marshall (2009) fit times sqrt(2). */
+export function tsujiDampCoefficient(cor: number): number {
+  let damp = 1.2728 - 4.2783 * cor + 11.087 * cor * cor;
+  damp += -22.348 * cor ** 3 + 27.467 * cor ** 4;
+  damp += -18.022 * cor ** 5 + 4.8218 * cor ** 6;
+  return damp * Math.SQRT2;
 }
 
 /** Overlap of a sphere with a line segment in 2d (surf_extra.cpp: overlap_sphere_line). */
@@ -319,8 +343,11 @@ function rotateRescale(v: Float64Array, n: ArrayLike<number>, off: number): void
 }
 
 /**
- * GranularModel::check_contact + calculate_forces for the SURFACE contact type, with hooke, linear_history and
- * mass_velocity. hist is the 3-value tangential history (updated in place when historyUpdate is set).
+ * GranularModel::check_contact + calculate_forces for the SURFACE contact type. The normal force is hooke k delta, or
+ * k a delta with the contact radius a = sqrt(R delta) (R = radi: Reff of a surface contact) for hertz and hertz/material.
+ * The damping prefactor is damp meff (mass_velocity), damp meff a (viscoelastic) or the tsuji prefactor times
+ * sqrt(max(0, meff F_n / delta)). hist is the 3-value tangential history (updated in place when historyUpdate is set;
+ * linear_nohistory keeps no history).
  */
 export function surfContactForces(p: SurfCoeffs, c: SurfContactIn, hist: Float64Array, out: SurfContactOut): void {
   const { dx, radi, vi, omegai, vj, meff, dt, historyUpdate } = c;
@@ -336,36 +363,48 @@ export function surfContactForces(p: SurfCoeffs, c: SurfContactIn, hist: Float64
   const wr = [radi * omegai[0], radi * omegai[1], radi * omegai[2]];
   const wxn = [wr[1] * nx[2] - wr[2] * nx[1], wr[2] * nx[0] - wr[0] * nx[2], wr[0] * nx[1] - wr[1] * nx[0]];
   const vtr = [vt[0] - wxn[0], vt[1] - wxn[1], vt[2] - wxn[2]];
-  // hooke normal force, mass_velocity damping (damp_prefactor = damp * meff)
-  const dampPre = p.damp * meff;
-  const fnormal = p.k * delta;
+  // normal force: hooke k delta; hertz k a delta with a = contact radius (GranSubModNormal::calculate_contact_radius)
+  const contactRadius = p.normal === 'hooke' ? 0 : Math.sqrt(radi * delta);
+  const fnormal = p.normal === 'hooke' ? p.k * delta : p.k * contactRadius * delta;
+  // damping prefactor of the damping model (GranSubModDamping*::calculate_forces)
+  let dampPre: number;
+  if (p.damping === 'mass_velocity') dampPre = p.damp * meff;
+  else if (p.damping === 'viscoelastic') dampPre = p.damp * meff * contactRadius;
+  else dampPre = tsujiDampCoefficient(p.damp) * Math.sqrt(delta > 0 ? Math.max(0, (meff * fnormal) / delta) : 0);
   const fdampN = -dampPre * vnnr;
   const fntot = fnormal + fdampN;
   const fncrit = Math.abs(fntot);
-  // linear_history tangential: damp = xt * damp_prefactor; Fscrit = |Fn| mu
-  const kt = p.kt;
+  // tangential: damp = xt * damp_prefactor; Fscrit = |Fn| mu
+  const kt = p.tangential === 'linear_history' ? p.kt : 0;
   const damp = p.xt * dampPre;
   const fscrit = fncrit * p.mu;
-  if (historyUpdate) {
-    const rsht = hist[0] * nx[0] + hist[1] * nx[1] + hist[2] * nx[2];
-    if (Math.abs(rsht) * kt > TANGENTIAL_EPSILON * fscrit) rotateRescale(hist, nx, 0);
-    for (let a = 0; a < 3; a++) hist[a] += dt * vtr[a];
-  }
   const fs = [0, 0, 0];
-  for (let a = 0; a < 3; a++) fs[a] = -kt * hist[a];
-  const fdamp = [-damp * vtr[0], -damp * vtr[1], -damp * vtr[2]];
-  for (let a = 0; a < 3; a++) fs[a] += fdamp[a];
-  const magfs = Math.hypot(fs[0], fs[1], fs[2]);
-  if (magfs > fscrit) {
-    const shrmag = Math.hypot(hist[0], hist[1], hist[2]);
-    if (shrmag !== 0.0) {
-      const scale = fscrit / magfs;
-      for (let a = 0; a < 3; a++) fs[a] *= scale;
-      // the elastic part of the rescaled force gives the new history (k is removed again)
-      const inv = -1.0 / kt;
-      for (let a = 0; a < 3; a++) hist[a] = (fs[a] - fdamp[a]) * inv;
-    } else {
-      fs[0] = fs[1] = fs[2] = 0;
+  if (p.tangential === 'linear_nohistory') {
+    // GranSubModTangentialLinearNoHistory::calculate_forces: the magnitude is capped at Fscrit, the direction is vtr
+    const vrel = Math.hypot(vtr[0], vtr[1], vtr[2]);
+    const Ft = vrel !== 0 ? Math.min(fscrit, damp * vrel) / vrel : 0;
+    for (let a = 0; a < 3; a++) fs[a] = -Ft * vtr[a];
+  } else {
+    if (historyUpdate) {
+      const rsht = hist[0] * nx[0] + hist[1] * nx[1] + hist[2] * nx[2];
+      if (Math.abs(rsht) * kt > TANGENTIAL_EPSILON * fscrit) rotateRescale(hist, nx, 0);
+      for (let a = 0; a < 3; a++) hist[a] += dt * vtr[a];
+    }
+    for (let a = 0; a < 3; a++) fs[a] = -kt * hist[a];
+    const fdamp = [-damp * vtr[0], -damp * vtr[1], -damp * vtr[2]];
+    for (let a = 0; a < 3; a++) fs[a] += fdamp[a];
+    const magfs = Math.hypot(fs[0], fs[1], fs[2]);
+    if (magfs > fscrit) {
+      const shrmag = Math.hypot(hist[0], hist[1], hist[2]);
+      if (shrmag !== 0.0) {
+        const scale = fscrit / magfs;
+        for (let a = 0; a < 3; a++) fs[a] *= scale;
+        // the elastic part of the rescaled force gives the new history (k is removed again)
+        const inv = -1.0 / kt;
+        for (let a = 0; a < 3; a++) hist[a] = (fs[a] - fdamp[a]) * inv;
+      } else {
+        fs[0] = fs[1] = fs[2] = 0;
+      }
     }
   }
   for (let a = 0; a < 3; a++) out.forces[a] = fntot * nx[a] + fs[a];

@@ -7,9 +7,10 @@
  * Copyright (2003) Sandia Corporation (LAMMPS development team, GNU General Public License). This file is GPL-2.0
  * (see src/engine-gpl/LICENSE).
  *
- * Browser-engine difference: the triangles that touch a corner point are found by comparing the corner points of all
- * owned triangles (quadratic in the number of triangles, once per run) instead of the bins of connectivity3d_local.
- * Neighbour lists hold atom IDs in owned-index order.
+ * Browser-engine difference: the triangles that touch a corner point are found through a hash grid of the corner points
+ * (cells of twice the matching tolerance, the 27 cells around a corner are searched) instead of the bins of
+ * connectivity3d_local. The candidates are then compared exactly and sorted by owned index, so the lists are the
+ * ones of an all-pairs scan. Neighbour lists hold atom IDs in owned-index order.
  */
 import { quatToMatrix } from '../../engine/compute/asphere';
 import { StyleError } from '../../engine/force/types';
@@ -110,14 +111,40 @@ export function buildConnect3d(
     const dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
     return dx * dx + dy * dy + dz * dz < epssq;
   };
-  // the triangles (indices into tris) that have a corner point equal to corner k of triangle a
-  const touching = (a: number, k: number): number[] => {
-    const out: number[] = [];
+  // hash grid of the corner points: two points closer than eps lie in the same or in adjacent cells of size 2 eps
+  const cell = 2.0 * eps;
+  const cellIndex = (v: number): number => Math.floor(v / cell);
+  const cellKey = (ix: number, iy: number, iz: number): string => `${ix},${iy},${iz}`;
+  const grid = new Map<string, number[]>();
+  if (eps > 0) {
     for (let b = 0; b < tris.length; b++) {
-      if (b === a) continue;
-      if (pts[b].c.some((p) => same(pts[a].c[k], p))) out.push(b);
+      for (const p of pts[b].c) {
+        const key = cellKey(cellIndex(p[0]), cellIndex(p[1]), cellIndex(p[2]));
+        const bucket = grid.get(key);
+        if (bucket) {
+          if (bucket[bucket.length - 1] !== b) bucket.push(b);
+        } else grid.set(key, [b]);
+      }
     }
-    return out;
+  }
+  // the triangles (indices into tris, ascending) that have a corner point equal to corner k of triangle a
+  const touching = (a: number, k: number): number[] => {
+    if (!(eps > 0)) return [];
+    const p = pts[a].c[k];
+    const ix = cellIndex(p[0]), iy = cellIndex(p[1]), iz = cellIndex(p[2]);
+    const found = new Set<number>();
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          const bucket = grid.get(cellKey(ix + dx, iy + dy, iz + dz));
+          if (!bucket) continue;
+          for (const b of bucket) {
+            if (b !== a && !found.has(b) && pts[b].c.some((q) => same(p, q))) found.add(b);
+          }
+        }
+      }
+    }
+    return [...found].sort((u, v) => u - v);
   };
   // the 1-based corner of triangle b equal to point p, or -1
   const match1 = (b: number, p: V3): number => {

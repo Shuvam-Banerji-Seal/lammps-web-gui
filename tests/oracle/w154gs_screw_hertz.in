@@ -1,0 +1,30 @@
+# oracle: in.screwfeeder.local with the hertz normal model of pair surf/granular (pair_coeff hertz 1.0 1.0, default damping viscoelastic) and the tangential model linear_history with k_t = x_gamma_t = mu_s = 0 (no friction: see the report on sliding contacts), cut down: the helix STL (w151gs_surf.helix.stl, flat 10.0) only, 7 spheres poured (all inserted in the first run), gravity 0.1 instead of 1e-5 so that the spheres reach the helix (first contact at step ~55), 85 steps, rotation about y. The container STL of examples/gransurf/surf.container.stl is dropped: with the full container (27178 facets, 13589 unique in its first solid) no sphere touches a container facet in these 85 steps (native dump of forces), so it is not in the case and the file is not copied
+# oracle-inputs: w151gs_surf.helix.stl
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 atomrel=1e-8
+# oracle-measured: max relative error (native fixture vs engine, scale max(1,|LAMMPS|)): thermo 1.4e-9 (step 65, ke), per-atom 2.9e-9 (measured with tests/fixtures/oracle, 2026-10-14; helix only, 3649 atoms); native: b332f28 installed lmp (GRANULAR, GRANSURF)
+units           lj
+atom_style      hybrid tri sphere 1
+atom_modify     map array
+boundary        f f f
+dimension       3
+comm_modify     vel yes cutoff 1.0
+region          box block -2 2 -2 16 -2 7 units box
+create_box      3 box
+fix             1 all surface/local input stl 3 2 w151gs_surf.helix.stl flat 10.0
+pair_style      hybrid granular surf/granular
+pair_coeff      1 * surf/granular hertz 1.0 1.0 tangential linear_history 0.0 0.0 0.0
+pair_coeff      1 1 granular hertz 1.0 1.0 tangential linear_history 0.0 0.0 0.0
+pair_coeff      2*3 2*3 none
+region          insert_region cylinder z 0 12 1.6 3 5 side in units box
+group           sphere type 1
+group           corkscrew molecule 2
+fix             2 sphere nve/sphere
+fix             3 sphere gravity 0.1 vector 0 0 -1
+fix             4 sphere pour 7 1 7892374 region insert_region diam range 0.5 1.0
+compute         1 all ke
+timestep        0.05
+thermo          5
+thermo_style    custom step ke atoms c_1
+thermo_modify   format float %.15g lost ignore
+fix             5 corkscrew move rotate 0 0 0 0 1 0 1000 units box
+run             85

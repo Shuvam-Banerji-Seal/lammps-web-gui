@@ -1,0 +1,31 @@
+# oracle: pair_style mesocnt/viscous (fvisc_max 0.05, kvisc 1, vvisc 0.1 eV/A) on the film cut-down of w157mt_film (four CNT chains, 50 steps of NVT, comm_modify vel yes for the ghost velocities). Same chains as w157mt_film: (molecules 1, 81, 93, 84 of data.film_mesocnt: 804 atoms, the closest chains of the film) with bond_style mesocnt, angle_style mesocnt (buckling) and pair_style mesocnt 40 chain id, 50 steps of NVT at 300 K (the example's boundary p p s, special_bonds lj 1 1 1, timestep 0.01 ps). Native: installed lmp (MESONT, commit b332f28). Measured with native LAMMPS (black box) against the engine: the thermo rows (including the per-atom energy checksums c_chka, c_chkb) agree to 7e-12 relative; the per-atom x, v, f agree to 1.6e-10 relative (max 1.6e-10 absolute, atom 268 fy, after 50 MD steps; fixture regenerated with the coarse potential); the friction changes the step-50 temperature by 0.4 K, so it is exercised; the tolerance below is the 1e-8 target. Potential: tests/oracle/w157mt_C_10_10_coarse.mesocnt, derived from potentials/C_10_10.mesocnt (sha256 923f600a081d948eb8b4510f84aa96167b5a6c3e1aba16845d2364ae137dc346) by keeping every 20th grid point of its 1001-point axes (both ends kept, the ranges unchanged), because the full 86 MB file cannot go in the repository.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 atomrel=1e-8
+# oracle-inputs: w157mt_film.data w157mt_C_10_10_coarse.mesocnt
+units metal
+dimension 3
+boundary p p s
+atom_style full
+special_bonds lj 1 1 1
+newton on
+read_data w157mt_film.data
+bond_style mesocnt
+bond_coeff 1 C 10 10 10
+angle_style mesocnt
+angle_coeff 1 buckling C 10 10 10
+comm_modify vel yes
+pair_style mesocnt/viscous 40 chain id
+pair_coeff * * w157mt_C_10_10_coarse.mesocnt 0.05 1.0 0.1 1
+fix angle_mesocnt_buckled all property/atom i_buckled ghost yes
+compute epa all pe/atom pair
+compute epb all pe/atom angle bond
+variable wpa atom c_epa*id*sin(id)
+variable wpb atom c_epb*id*cos(id)
+compute chka all reduce sum v_wpa
+compute chkb all reduce sum v_wpb
+thermo_style custom step temp pe ke etotal ebond eangle epair c_chka c_chkb
+thermo_modify format float %.15g
+run 0
+velocity all create 600.0 2022 loop geom
+timestep 0.01
+fix nvt all nvt temp 300.0 300.0 1
+run 50

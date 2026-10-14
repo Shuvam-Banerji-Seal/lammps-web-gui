@@ -10,8 +10,12 @@
  * and a shaft of diameter 2 * radius; "autoscale value" sets scale so that the mean arrow length is value. The
  * C++ ARROW objects keep the tip ratio 0.2 (fix_graphics_arrows.cpp: imgparms[n][9] = 0.2).
  *
- * Refused (named StyleError): mode dipole (needs the dipole attribute and its arrows are not ported) and mode chunk
- * (needs compute chunk/atom with the per-chunk computes).
+ * Mode chunk (src/GRAPHICS/fix_graphics_arrows.cpp, FixGraphicsArrows::end_of_step, the CHUNK branch): one arrow per
+ * chunk, centred on the chunk's position array (the per-chunk compute of the first column group, columns 1..3) and
+ * pointing along the vector array (columns 1..3 of the second compute); every arrow has type 1, the scale is the
+ * "scale" argument or, with autoscale, the mean vector length over the chunks, and the shaft is 2 * radius.
+ *
+ * Refused (named StyleError): mode dipole (needs the dipole attribute and its arrows are not ported).
  */
 import type { System } from '../../engine/system';
 import { Fix } from '../../engine/fix/fix';
@@ -19,12 +23,21 @@ import type { FixFactory } from '../../engine/styles';
 import { StyleError } from '../../engine/force/types';
 import type { ImageObject, Vec3 } from '../../engine/output/image_objects';
 import { parseInteger, parseNumber } from './common';
+import { chunkCompute, type ComputeChunkAtom } from '../../engine/compute/chunk';
+import type { Compute } from '../../engine/compute/compute';
 
 type Vector = { kind: 'force' } | { kind: 'velocity' } | { kind: 'variable'; comp: [string | null, string | null, string | null]; fixed: Vec3 };
+/** Per-chunk arrows (mode chunk): the chunk/atom compute and the per-chunk position and vector computes. */
+interface ChunkSource {
+  chunk: ComputeChunkAtom;
+  pos: Compute;
+  vec: Compute;
+}
 
 export class FixGraphicsArrows extends Fix {
   readonly style = 'graphics/arrows';
-  private readonly mode: Vector;
+  private readonly mode: Vector | { kind: 'chunk' };
+  private readonly chunkSource: ChunkSource | null = null;
   private scale = 1;
   private readonly radius: number;
   private autoscale: number | null = null;
@@ -56,7 +69,19 @@ export class FixGraphicsArrows extends Fix {
     } else if (mode === 'dipole') {
       throw new StyleError(`fix ${id} graphics/arrows dipole mode is not supported by the browser engine`);
     } else if (mode === 'chunk') {
-      throw new StyleError(`fix ${id} graphics/arrows chunk mode is not supported by the browser engine (it needs compute chunk/atom)`);
+      // fix_graphics_arrows.cpp: "fix ID group-ID graphics/arrows Nevery chunk chunkID posID vecID scale radius keyword value ..."
+      if (args.length < 7) throw new StyleError(`fix ${id} graphics/arrows chunk: needs chunkID, posID, vecID, scale and radius`);
+      const chunk = chunkCompute(sys, args[2], `fix ${id} graphics/arrows`);
+      const pos = sys.compute(args[3]);
+      const vec = sys.compute(args[4]);
+      for (const [c, cid] of [[pos, args[3]], [vec, args[4]]] as const) {
+        if (!c.arrayFlag || c.sizeArrayCols < 3) throw new StyleError(`fix ${id} graphics/arrows: per-chunk compute ${cid} is not compatible (it needs a 3-column global array)`);
+      }
+      this.mode = { kind: 'chunk' };
+      this.chunkSource = { chunk, pos, vec };
+      this.scale = parseNumber(args[5], `fix ${id} graphics/arrows scale`);
+      this.radius = parseNumber(args[6], `fix ${id} graphics/arrows radius`);
+      k = 7;
     } else {
       throw new StyleError(`fix ${id} graphics/arrows: unknown mode '${mode}' (force, velocity, variable)`);
     }
@@ -100,6 +125,7 @@ export class FixGraphicsArrows extends Fix {
   }
 
   imageObjects(): ImageObject[] {
+    if (this.chunkSource) return chunkObjectsOf(this.chunkSource, this.scale, this.autoscale, this.radius);
     const s = this.sys.state;
     const vs = this.vectors();
     let scale = this.scale;
@@ -118,5 +144,30 @@ export class FixGraphicsArrows extends Fix {
     return out;
   }
 }
+
+/** Mode chunk: one arrow per chunk (fix_graphics_arrows.cpp, the CHUNK branch of end_of_step). */
+const chunkObjectsOf = (src: ChunkSource, scale0: number, autoscale: number | null, radius: number): ImageObject[] => {
+  src.chunk.ensure();
+  const n = src.chunk.nchunk;
+  const pdata = src.pos.arrayValues();
+  const pc = src.pos.sizeArrayCols;
+  const vdata = src.vec.arrayValues();
+  const vc = src.vec.sizeArrayCols;
+  let scale = scale0;
+  if (autoscale !== null) {
+    // native: the mean vector length over the chunks sets the scale; a zero sum gives scale 1
+    let sum = 0;
+    for (let c = 0; c < n; c++) sum += Math.hypot(vdata[c * vc], vdata[c * vc + 1], vdata[c * vc + 2]);
+    scale = sum !== 0 ? autoscale / (sum / n) : 1;
+  }
+  const out: ImageObject[] = [];
+  for (let c = 0; c < n; c++) {
+    const v: Vec3 = [vdata[c * vc], vdata[c * vc + 1], vdata[c * vc + 2]];
+    const len = Math.hypot(v[0], v[1], v[2]) * scale;
+    if (!(len > 0)) continue;
+    out.push({ kind: 'arrow', type: 1, center: [pdata[c * pc], pdata[c * pc + 1], pdata[c * pc + 2]], dir: v, length: len, diameter: 2 * radius, ratio: 0.2 });
+  }
+  return out;
+};
 
 export const makeFixGraphicsArrows: FixFactory = (sys, id, group, args) => new FixGraphicsArrows(sys, id, group, args);

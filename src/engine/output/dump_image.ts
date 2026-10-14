@@ -5,7 +5,8 @@ import { buildAtomMap, massOf } from '../atoms';
 import { encodePng } from './png';
 import { encodeJpeg } from './jpeg';
 import { ColorMap } from './image_colormap';
-import { arrowParts, type ImageObject, type ObjectStyle, type RasterFrame, type Rgb255, type Vec3 } from './image_objects';
+import { arrowParts, type ImageObject, type ImageShading, type ObjectStyle, type RasterFrame, type Rgb255, type Vec3 } from './image_objects';
+import { gplHook } from '../gplHooks';
 
 /*
  * dump image — docs.lammps.org/dump_image.html.
@@ -52,13 +53,14 @@ interface DrawCtx {
   depth: Float64Array;
   project: (p: number[]) => [number, number, number];
   scale: number;
-  light: number[];
-  right: number[];
-  ui: number[];
-  V: number[];
   /** The same camera as the frame the GPL graphics objects draw into (image_objects.ts RasterFrame). */
   frame: RasterFrame;
+  /** The shading helpers of the lazily loaded GPL graphics module (gplHook('image')). */
+  shading: ImageShading;
 }
+
+/** dump image ssao ambient colour (Image::view_params: ambientColor 0.5 with ssao; 0 otherwise). */
+const SSAO_AMBIENT = 0.5;
 
 /** A useful subset of the 140 pre-defined colour names (dump_image.html). */
 const NAMED_COLORS: Record<string, RGB> = {
@@ -74,6 +76,7 @@ const NAMED_COLORS: Record<string, RGB> = {
   beige: [245, 245, 220], coral: [255, 127, 80], plum: [221, 160, 221], azure: [240, 255, 255],
   // the colour names the GRAPHICS examples use (dump image colour table of src/GRAPHICS/image.cpp at b332f28,
   // the values in 0..1 times 255 rounded)
+  forestgreen: [34, 139, 34], goldenrod: [218, 165, 32], indianred: [205, 92, 92],
   darkgray: [69, 69, 69], steelblue: [70, 130, 180], slategray: [112, 128, 144], lightslategray: [119, 136, 153],
   midnightblue: [25, 25, 112], firebrick: [178, 34, 34], darkslategray: [47, 79, 79],
 };
@@ -133,7 +136,6 @@ const AXES_SHIFT: Record<2 | 3, Record<AxesLocation, [number, number, number]>> 
   2: { center: [1, 1, 1], lowerleft: [-1, -1, -1], lowerright: [8, -1, -1], upperleft: [-1, 8, -1], upperright: [8, 8, -1] },
 };
 const cross = (a: number[], b: number[]): number[] => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const dot = (a: number[], b: number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const normalize = (a: number[]): number[] => { const n = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / n, a[1] / n, a[2] / n]; };
 
 const toBase64 = (bytes: Uint8Array): string => {
@@ -176,6 +178,8 @@ export class ImageDump {
   private bcolorByType = new Map<number, RGB>();
   private bdiamByType = new Map<number, number>();
   private backcolor: RGB = [0, 0, 0];
+  /** dump_modify backcolor2: the top of a background gradient (null: a single background colour). */
+  private backcolor2: RGB | null = null;
   private boxcolor: RGB = [255, 255, 0];
   /** dump_modify color definitions (name -> RGB), local to this dump. */
   private userColors = new Map<string, RGB>();
@@ -183,6 +187,12 @@ export class ImageDump {
   /** dump_modify amap (colour map of an atom colour value); null = the dump_image.html default. */
   private amap: ColorMap | null = null;
   private readonly defaultMap = ColorMap.default();
+  /** dump image shiny (specular intensity; the highlight hardness is 16 * shiny), fsaa, and ssao (seed, intensity). */
+  private shiny = 1;
+  private fsaa = false;
+  private ssao = false;
+  private ssaoSeed = 1;
+  private ssaoInt = 0;
   /** dump image "axes" keyword: the location, the length and the diameter fraction (null: no axes). */
   private axes: { loc: AxesLocation; len: number; diam: number } | null = null;
   /** dump image "fix ID style flag1 flag2" keywords: the fixes whose graphics objects are drawn. */
@@ -311,9 +321,38 @@ export class ImageDump {
           k += 4;
           break;
         }
+        case 'shiny': {
+          // dump_image.html: "shiny value = shiny value from 0.0 to 1.0"; native checks 0 <= shiny <= 1 (dump_image.cpp)
+          const v = this.num(a[k + 1], 'shiny');
+          if (v < 0 || v > 1) throw new StyleError(`dump ${this.id}: invalid dump image shiny value ${v}`);
+          this.shiny = v;
+          k += 2;
+          break;
+        }
+        case 'fsaa': {
+          // dump_image.html: "fsaa value = *yes* or *no*"; with yes the image is rendered at twice the size and averaged
+          const v = a[k + 1];
+          if (v !== 'yes' && v !== 'no') throw new StyleError(`dump ${this.id}: dump image fsaa must be yes or no`);
+          this.fsaa = v === 'yes';
+          k += 2;
+          break;
+        }
+        case 'ssao': {
+          // dump_image.html: "ssao value = *yes* or *no* seed intensity"; seed is a positive integer, intensity 0.0 to 1.0
+          const v = a[k + 1];
+          if (v !== 'yes' && v !== 'no') throw new StyleError(`dump ${this.id}: dump image ssao must be yes or no`);
+          const seed = this.num(a[k + 2], 'ssao'), inten = this.num(a[k + 3], 'ssao');
+          if (!(seed > 0) || !Number.isInteger(seed)) throw new StyleError(`dump ${this.id}: invalid dump image ssao seed ${seed}`);
+          if (inten < 0 || inten > 1) throw new StyleError(`dump ${this.id}: invalid dump image ssao intensity value ${inten}`);
+          this.ssao = v === 'yes';
+          this.ssaoSeed = seed;
+          this.ssaoInt = inten;
+          k += 4;
+          break;
+        }
         // ellipsoid draws ellipsoids (and superellipsoids, atom_style ellipsoid superellipsoid): no renderer here
         case 'ellipsoid': case 'autobond': case 'grid': case 'line': case 'tri': case 'body': case 'region':
-        case 'subbox': case 'shiny': case 'fsaa': case 'ssao': case 'persp':
+        case 'subbox': case 'persp':
           throw new StyleError(`dump ${this.id}: dump image keyword '${key}' is not supported by the browser engine`);
         default:
           throw new StyleError(`dump ${this.id}: unknown dump image keyword '${key}'`);
@@ -362,6 +401,7 @@ export class ImageDump {
         return 3;
       }
       case 'backcolor': this.backcolor = this.color(a[k + 1]); return 2;
+      case 'backcolor2': this.backcolor2 = a[k + 1] === 'none' ? null : this.color(a[k + 1]); return 2;
       case 'boxcolor': this.boxcolor = this.color(a[k + 1]); return 2;
       case 'color': {
         const name = a[k + 1];
@@ -481,7 +521,7 @@ export class ImageDump {
   /** Render one snapshot and store it under `name` as a data: URL. */
   write(s: SimState, name: string, owner: ImageOwner): void {
     this.ownerElement = owner.element;
-    const rgb = this.render(s);
+    const rgb = this.fsaa ? this.renderSupersampled(s) : this.render(s);
     const lower = name.toLowerCase();
     let url: string;
     if (lower.endsWith('.png')) url = 'data:image/png;base64,' + toBase64(encodePng(this.w, this.h, rgb));
@@ -495,7 +535,7 @@ export class ImageDump {
   private render(s: SimState): Uint8Array {
     const { w, h } = this;
     const rgb = new Uint8Array(w * h * 3);
-    for (let i = 0; i < w * h; i++) { rgb[3 * i] = this.backcolor[0]; rgb[3 * i + 1] = this.backcolor[1]; rgb[3 * i + 2] = this.backcolor[2]; }
+    this.clearBackground(rgb);
     const depth = new Float64Array(w * h).fill(-Infinity);
 
     const box = s.box;
@@ -522,6 +562,21 @@ export class ImageDump {
       return [sx, sy, dep];
     };
 
+    // Image::view_params (orthographic): pixelWidth = maxdel / (height * zoom) with maxdel = 2 * longest edge, and
+    // zdist = (maxdel / tan(30 deg) + 0.5 * del . camDir) / zoom with del = 2 * edges (image.cpp at b332f28)
+    const maxdel = 2 * maxdim;
+    const zdist = (maxdel / Math.tan(30 * DEG) + 0.5 * (2 * lx * V[0] + 2 * ly * V[1] + 2 * lz * V[2])) / this.zoom;
+    const frame: RasterFrame = {
+      w, h, rgb, depth,
+      camRight: [right[0], right[1], right[2]], camUp: [ui[0], ui[1], ui[2]], camDir: [V[0], V[1], V[2]],
+      ctr: [center[0], center[1], center[2]], zdist, pixelWidth: maxdel / (h * this.zoom),
+      // dump image shiny; with ssao the ambient colour is 0.5 and the tangents of the surfaces are kept (view_params)
+      shiny: this.shiny,
+      ambient: this.ssao ? SSAO_AMBIENT : 0,
+      surface: this.ssao ? new Float64Array(2 * w * h) : undefined,
+    };
+    const ctx: DrawCtx = { rgb, depth, project, scale, frame, shading: gplHook<ImageShading>('image') };
+
     // per-atom colour/diameter attributes (computed once per snapshot)
     const colorVals = this.attr.color !== 'type' && this.attr.color !== 'element' ? this.attributeValues(this.attr.color, s) : null;
     const cmap = this.atomColorMap(colorVals, s);
@@ -530,8 +585,6 @@ export class ImageDump {
     if (this.boxOn) this.drawBox(s, rgb, depth, project, scale, this.boxDiam);
     if (this.bond) this.drawBonds(s, rgb, depth, project, scale, diamVals);
 
-    // light from up-right of the viewer
-    const light = normalize([V[0] * 0.5 + ui[0] * 0.5 + right[0] * 0.3, V[1] * 0.5 + ui[1] * 0.5 + right[1] * 0.3, V[2] * 0.5 + ui[2] * 0.5 + right[2] * 0.3]);
     if (this.atomOn) {
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & this.sys.groupBit(this.group))) continue;
@@ -541,19 +594,9 @@ export class ImageDump {
         const r = 0.5 * diam * scale;
         if (r < 0.5) continue;
         const base = this.typeColor(s, i, colorVals, cmap);
-        this.drawSphere(rgb, depth, px, py, pd, r, base, light, right, ui, V);
+        this.drawSphere(ctx, px, py, pd, r, base);
       }
     }
-    // Image::view_params (orthographic): pixelWidth = maxdel / (height * zoom) with maxdel = 2 * longest edge, and
-    // zdist = (maxdel / tan(30 deg) + 0.5 * del . camDir) / zoom with del = 2 * edges (image.cpp at b332f28)
-    const maxdel = 2 * maxdim;
-    const zdist = (maxdel / Math.tan(30 * DEG) + 0.5 * (2 * lx * V[0] + 2 * ly * V[1] + 2 * lz * V[2])) / this.zoom;
-    const frame: RasterFrame = {
-      w, h, rgb, depth,
-      camRight: [right[0], right[1], right[2]], camUp: [ui[0], ui[1], ui[2]], camDir: [V[0], V[1], V[2]],
-      ctr: [center[0], center[1], center[2]], zdist, pixelWidth: maxdel / (h * this.zoom),
-    };
-    const ctx: DrawCtx = { rgb, depth, project, scale, light, right, ui, V, frame };
     if (this.fixObjects.length) this.drawFixObjects(s, ctx);
     if (this.axes) {
       // the origin is grey, the x, y and z arrows red, green and blue (dump_image.cpp, Image::draw_axes)
@@ -561,7 +604,55 @@ export class ImageDump {
       this.drawImageObject(origin, [128, 128, 128], 0, 0, ctx);
       arrows.forEach((o, d) => this.drawImageObject(o, AXIS_COLORS[d], 0, 0, ctx));
     }
+    // Image::compute_SSAO runs on the finished image, before the fsaa reduction (Image::merge)
+    if (this.ssao) ctx.shading.applySsao(frame, maxdel * 0.05 * this.ssaoInt, Math.trunc(8 + 32 * this.ssaoInt), this.ssaoSeed);
     return rgb;
+  }
+
+  /**
+   * Image::clear: the background is the backcolor, or with backcolor2 a vertical gradient. Native rows count from the
+   * bottom: row iy has fraction iy / height of backcolor2 and the rest of backcolor, each channel truncated to an int.
+   */
+  private clearBackground(rgb: Uint8Array): void {
+    const { w, h } = this;
+    const b1 = this.backcolor, b2 = this.backcolor2;
+    for (let iy = 0; iy < h; iy++) {
+      const row = h - 1 - iy;
+      const f = iy / h;
+      const c: RGB = b2
+        ? [Math.trunc(f * b2[0] + (1 - f) * b1[0]), Math.trunc(f * b2[1] + (1 - f) * b1[1]), Math.trunc(f * b2[2] + (1 - f) * b1[2])]
+        : b1;
+      for (let x = 0; x < w; x++) {
+        const o = (row * w + x) * 3;
+        rgb[o] = c[0]; rgb[o + 1] = c[1]; rgb[o + 2] = c[2];
+      }
+    }
+  }
+
+  /**
+   * dump image fsaa: the image is rendered at twice the width and height and every output pixel is the average of
+   * a 2x2 block (Image::merge: "0.25 * (sum of the four bytes)", truncated to a byte).
+   */
+  private renderSupersampled(s: SimState): Uint8Array {
+    const w = this.w, h = this.h;
+    this.w = 2 * w;
+    this.h = 2 * h;
+    let big: Uint8Array;
+    try {
+      big = this.render(s);
+    } finally {
+      this.w = w;
+      this.h = h;
+    }
+    const out = new Uint8Array(w * h * 3);
+    const bw = 2 * w;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i1 = (2 * y * bw + 2 * x) * 3, i2 = i1 + 3, i3 = i1 + 3 * bw, i4 = i3 + 3;
+      for (let c = 0; c < 3; c++) {
+        out[(y * w + x) * 3 + c] = Math.trunc(0.25 * (big[i1 + c] + big[i2 + c] + big[i3 + c] + big[i4 + c]));
+      }
+    }
+    return out;
   }
 
   /**
@@ -626,7 +717,7 @@ export class ImageDump {
       const r = 0.5 * (o.diameter + flag2) * scale;
       if (!(r > 0)) return;
       const [px, py, pd] = project(o.center);
-      this.drawSphere(rgb, depth, px, py, pd, r, base, c.light, c.right, c.ui, c.V);
+      this.drawSphere(c, px, py, pd, r, base);
     } else if (o.kind === 'cylinder') {
       const d = o.diameter + flag2;
       if (!(d > 0)) return;
@@ -634,8 +725,8 @@ export class ImageDump {
       // flag1 is the sflag of native draw_cylinder: bit 0 caps p1, bit 1 caps p2, each with a sphere
       const caps = Math.trunc(flag1);
       const r = 0.5 * d * scale;
-      if (caps & 1) { const [px, py, pd] = project(o.p1); this.drawSphere(rgb, depth, px, py, pd, r, base, c.light, c.right, c.ui, c.V); }
-      if (caps & 2) { const [px, py, pd] = project(o.p2); this.drawSphere(rgb, depth, px, py, pd, r, base, c.light, c.right, c.ui, c.V); }
+      if (caps & 1) { const [px, py, pd] = project(o.p1); this.drawSphere(c, px, py, pd, r, base); }
+      if (caps & 2) { const [px, py, pd] = project(o.p2); this.drawSphere(c, px, py, pd, r, base); }
     } else if (o.kind === 'cone') {
       this.drawCone(rgb, depth, project, o.p1, o.p2, o.d1 + flag2, o.d2 + flag2, scale, base);
     } else {
@@ -725,34 +816,41 @@ export class ImageDump {
     return cross(V, cross(alt, V));
   }
 
-  private drawSphere(rgb: Uint8Array, depth: Float64Array, px: number, py: number, pd: number, r: number, base: RGB, light: number[], right: number[], ui: number[], V: number[]): void {
+  /**
+   * Image::draw_sphere: the pixels of a sphere of radius r (pixels) centred at (px, py). Each pixel is shaded by the
+   * draw_pixel light sum of its camera-space normal (x along the image right, y up, z towards the viewer) with the
+   * frame's shiny and ambient values, from the shading helpers of the GPL graphics module. A pixel's depth is the depth
+   * of the sphere centre plus its surface offset (native draw_sphere: dist - sz).
+   */
+  private drawSphere(c: DrawCtx, px: number, py: number, pd: number, r: number, base: RGB): void {
     const w = this.w, h = this.h;
+    const { rgb, depth, frame, shading } = c;
     const x0 = Math.max(0, Math.floor(px - r - 1)), x1 = Math.min(w - 1, Math.ceil(px + r + 1));
     const y0 = Math.max(0, Math.floor(py - r - 1)), y1 = Math.min(h - 1, Math.ceil(py + r + 1));
     const r2 = r * r;
+    const col: [number, number, number] = [base[0] / 255, base[1] / 255, base[2] / 255];
     for (let y = y0; y <= y1; y++) {
       const dy = y + 0.5 - py;
       for (let x = x0; x <= x1; x++) {
         const dx = x + 0.5 - px;
         const q = (dx * dx + dy * dy) / r2;
         if (q > 1) continue;
+        const idx = y * w + x;
         const nz = Math.sqrt(1 - q);
-        // surface normal in camera basis: (dx/r) along right, (-dy/r) along up, nz towards viewer
-        const nx = -dx / r, ny = dy / r;
-        const N = [
-          nx * right[0] + ny * ui[0] + nz * V[0],
-          nx * right[1] + ny * ui[1] + nz * V[1],
-          nx * right[2] + ny * ui[2] + nz * V[2],
-        ];
-        const diff = Math.max(0, dot(N, light));
-        const spec = Math.pow(diff, 24) * 0.5;
-        const inten = 0.35 + 0.65 * diff;
-        const o = (y * w + x) * 3;
-        if (pd <= depth[y * w + x]) continue;
-        depth[y * w + x] = pd;
-        rgb[o] = clamp(base[0] * inten + 255 * spec);
-        rgb[o + 1] = clamp(base[1] * inten + 255 * spec);
-        rgb[o + 2] = clamp(base[2] * inten + 255 * spec);
+        // camera space: right = dx / r, up = -dy / r (rows grow downwards), towards the viewer = nz
+        const normal: [number, number, number] = [dx / r, -dy / r, nz];
+        const surfDepth = pd + r * nz;
+        if (surfDepth <= depth[idx]) continue;
+        depth[idx] = surfDepth;
+        if (frame.surface) {
+          frame.surface[2 * idx] = normal[1];
+          frame.surface[2 * idx + 1] = -normal[0];
+        }
+        const sh = shading.shadeSurface(normal, col, frame.shiny ?? 1, frame.ambient ?? 0);
+        const o = idx * 3;
+        rgb[o] = clamp(sh[0] * 255);
+        rgb[o + 1] = clamp(sh[1] * 255);
+        rgb[o + 2] = clamp(sh[2] * 255);
       }
     }
   }

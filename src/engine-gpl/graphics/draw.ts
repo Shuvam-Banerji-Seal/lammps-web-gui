@@ -21,6 +21,7 @@
  */
 import type { LabelObject, GraphicsObject, PixmapObject, Rgb, CylinderObject, SphereObject, BondObject, TriNormObject } from './objects';
 import type { ObjectStyle, RasterFrame, Rgb255 } from '../../engine/output/image_objects';
+import { shadeSurface } from './image_shading';
 
 type V = [number, number, number];
 
@@ -39,20 +40,6 @@ const scale = (a: V, s: number): V => [a[0] * s, a[1] * s, a[2] * s];
 const lround = (x: number): number => (x < 0 ? -Math.round(-x) : Math.round(x));
 const trunc = Math.trunc;
 
-/* Light defaults of the Image constructor (image.cpp): directions as setup_lights() builds them, in camera space
- * where z points at the viewer. */
-const dirOf = (theta: number, phi: number): V => [Math.cos(theta) * Math.sin(phi), Math.sin(theta), Math.cos(theta) * Math.cos(phi)];
-const DEG = Math.PI / 180;
-const KEY_DIR = dirOf(30 * DEG, -45 * DEG);
-const KEY_COLOR = 0.9;
-const FILL_DIR = dirOf(0, 30 * DEG);
-const FILL_COLOR = 0.45;
-const BACK_DIR = dirOf(15 * DEG, 180 * DEG);
-const BACK_COLOR = 0.9;
-const KEY_HALF = norm([KEY_DIR[0], KEY_DIR[1], 1 + KEY_DIR[2]]);
-/** shiny 1.0: specularIntensity = shiny and specularHardness = 16 * shiny. */
-const SPEC_INTENSITY = 1.0;
-const SPEC_HARDNESS = 16.0;
 /** The transparency test of draw_pixmap: a pixel within this of the transcolor (0..1 units) is skipped. */
 const TRANS_DELTA = 0.01;
 
@@ -70,20 +57,12 @@ export function drawPixel(f: RasterFrame, ix: number, iy: number, depth: number,
   // depth not nearer than the buffer: rejected (larger buffer value = nearer)
   if (buf <= f.depth[idx]) return;
   f.depth[idx] = buf;
-
-  const diffuseKey = sat(dot(surface, KEY_DIR));
-  const diffuseFill = sat(dot(surface, FILL_DIR));
-  const diffuseBack = sat(dot(surface, BACK_DIR));
-  // metallic 0: reflect is 1 in every channel, so the specular term is the key light times the highlight
-  const specularKey = Math.pow(sat(dot(surface, KEY_HALF)), SPEC_HARDNESS) * SPEC_INTENSITY;
-  const c: V = [0, 0, 0];
-  for (let k = 0; k < 3; k++) {
-    let v = col[k] * KEY_COLOR * diffuseKey;
-    v += KEY_COLOR * 1 * specularKey;
-    v += col[k] * FILL_COLOR * diffuseFill;
-    v += col[k] * BACK_COLOR * diffuseBack;
-    c[k] = sat(v);
+  // the tangent of the surface, kept for the ssao pass (native surfaceBuffer: surface[1], -surface[0])
+  if (f.surface) {
+    f.surface[2 * idx] = surface[1];
+    f.surface[2 * idx + 1] = -surface[0];
   }
+  const c = shadeSurface(surface, col, f.shiny ?? 1, f.ambient ?? 0);
   const o = idx * 3;
   f.rgb[o] = trunc(c[0] * 255);
   f.rgb[o + 1] = trunc(c[1] * 255);

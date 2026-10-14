@@ -7,7 +7,7 @@
  * too (src/engine-gpl/LICENSE).
  *
  * Text labels are vector strokes (see scalable_font.ts) instead of the bitmap of the native renderer. Image labels
- * take their RGB rows from the caller (readImage), since file decoding is not part of the engine. The colorscale
+ * take their RGB rows from the caller (readImage: PNG files through engine/output/png_decode.ts). The colorscale
  * keyword needs the colour map of a dump image, which this engine does not have yet, so it is refused by name.
  * Variables (v_name) and $-substitution are supplied by the caller through LabelEnv.
  */
@@ -20,6 +20,7 @@ import { StyleError } from '../../engine/force/types';
 import type { ImageObject } from '../../engine/output/image_objects';
 import { parseInteger } from './common';
 import { drawGraphicsObject } from './draw';
+import { decodePng } from '../../engine/output/png_decode';
 
 /** A number given directly or a reference to an equal-style variable. */
 export type LabelValue = number | { variable: string };
@@ -270,8 +271,21 @@ export class FixGraphicsLabelsFix extends Fix {
     if (args.length < 1) throw new StyleError(`usage: fix ${id} group-ID graphics/labels N keyword values ...`);
     this.nevery = parseInteger(args[0], `fix ${id} graphics/labels N`);
     if (this.nevery <= 0) throw new StyleError(`fix ${id} graphics/labels: N must be > 0`);
+    // fix graphics/labels image: the file is read from the engine's file store (a PNG; the RGB rows are kept, the
+    // alpha channel is dropped), stored bottom row first as the native pixmap is
     const readImage = (file: string): ImageData => {
-      throw new StyleError(`fix ${id} graphics/labels image ${file}: image files need an image decoder, which the browser engine does not have`);
+      if (!/\.png$/i.test(file)) throw new StyleError(`fix ${id} graphics/labels image ${file}: only PNG image files are read by the browser engine`);
+      const png = decodePng(sys.readFile(file));
+      const rgb = new Uint8Array(png.width * png.height * 3);
+      for (let y = 0; y < png.height; y++) {
+        const dst = (png.height - 1 - y) * png.width * 3;
+        for (let x = 0; x < png.width; x++) {
+          rgb[dst + 3 * x] = png.rgba[4 * (y * png.width + x)];
+          rgb[dst + 3 * x + 1] = png.rgba[4 * (y * png.width + x) + 1];
+          rgb[dst + 3 * x + 2] = png.rgba[4 * (y * png.width + x) + 2];
+        }
+      }
+      return { width: png.width, height: png.height, rgb };
     };
     let specs: LabelSpec[];
     try {

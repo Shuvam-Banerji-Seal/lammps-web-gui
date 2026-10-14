@@ -56,9 +56,9 @@ describe('bpm styles ported from LAMMPS (engine-gpl)', () => {
     }
   });
 
-  it('refuses the peridynamic LPS, VES and EPS models, which the engine does not implement', async () => {
-    const r = await run(`${DIMER}bond_style bpm/peri\nbond_coeff 1 lps 1e10 1e10 0.0015 0.0005 0.25\n`);
-    expect(r.errors.join(' ')).toMatch(/model lps is not supported/);
+  it('refuses an unknown peridynamic model by name (pmb, lps, ves and eps are implemented)', async () => {
+    const r = await run(`${DIMER}bond_style bpm/peri\nbond_coeff 1 foo 1e10 1e10 0.0015 0.0005 0.25\n`);
+    expect(r.errors.join(' ')).toMatch(/model: foo/);
   });
 
   it('needs the per-atom vfrac property for bond_style bpm/peri', async () => {

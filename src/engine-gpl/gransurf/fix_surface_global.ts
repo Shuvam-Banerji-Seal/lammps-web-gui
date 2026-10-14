@@ -30,6 +30,7 @@ import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { parseStl } from '../../engine/stl';
+import { stlFirstSolid } from './stl_solid';
 import { type Connect2d, type Neighbour2d } from './connect2d';
 import { cornerConnection3d, edgeConnection3d, type Connect3d } from './connect3d';
 import { parseSurfCoeff } from './pair_surf_granular';
@@ -175,7 +176,7 @@ export class FixSurfaceGlobal extends Fix {
           throw new StyleError('fix surface/global input stl needs type, molecule-ID and file name');
         }
         if (stype < 1) throw new StyleError('STL surface type must be >= 1');
-        for (const tri of parseStl(sys.readFile(file), file)) {
+        for (const tri of parseStl(stlFirstSolid(sys.readFile(file)), file)) {
           const [a, b, c] = tri.v;
           const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
           const e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
@@ -211,15 +212,24 @@ export class FixSurfaceGlobal extends Fix {
     if (args[k + 3] !== 'granular') throw new StyleError('fix surface/global model: only the granular model syntax is supported (classic models are not)');
     k += 4;
     const sub: string[] = [];
-    const fixedCount: Record<string, number> = { hooke: 3, tangential: 5, damping: 2 };
-    while (k < args.length && fixedCount[args[k]] !== undefined) {
-      const n = fixedCount[args[k]];
+    // the arguments of each sub-model keyword (the tangential count depends on the model)
+    const argCount = (w: string, next: string | undefined): number | undefined => {
+      if (w === 'hooke') return 3;
+      if (w === 'damping') return 2;
+      if (w === 'tangential') return next === 'linear_nohistory' ? 4 : 5;
+      return undefined;
+    };
+    while (k < args.length && argCount(args[k], args[k + 1]) !== undefined) {
+      const n = argCount(args[k], args[k + 1])!;
       if (k + n > args.length) throw new StyleError(`fix surface/global model: '${args[k]}' is missing arguments`);
       sub.push(...args.slice(k, k + n));
       k += n;
     }
     if (sub.length === 0) throw new StyleError('Fix surface/global command requires model keyword');
     this.coeffs = parseSurfCoeff(sub);
+    if (this.coeffs.normal !== 'hooke' || this.coeffs.tangential !== 'linear_history' || this.coeffs.damping !== 'mass_velocity') {
+      throw new StyleError('fix surface/global model: only hooke, tangential linear_history and damping mass_velocity are supported');
+    }
     // keywords after the model
     while (k < args.length) {
       if (args[k] === 'neighbor' && args[k + 1] === 'bin') {

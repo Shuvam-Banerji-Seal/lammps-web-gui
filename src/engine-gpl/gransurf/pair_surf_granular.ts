@@ -12,8 +12,9 @@
  * fix surface/local command." The granular model keywords are those of pair granular.
  *
  * Browser-engine differences:
- *   - the granular sub-models are the subset of surf_contact.ts (hooke, tangential linear_history, damping
- *     mass_velocity); other keywords and the 3d triangle path are refused with a StyleError;
+ *   - the granular sub-models are the subset of surf_contact.ts (normal hooke, hertz, hertz/material; tangential
+ *     linear_nohistory, linear_history; damping mass_velocity, viscoelastic, tsuji); the rolling, twisting, mindlin and
+ *     heat keywords are refused with a StyleError;
  *   - the neighbour list is the engine's half list; each sphere-surface pair is taken once and the contacts are
  *     grouped per sphere (the native pair loops over the sphere's own neighbours);
  *   - the contact history is kept in a map keyed by the atom IDs of the sphere and the surface element (the native
@@ -29,7 +30,7 @@ import { surfaceLocalFlatthresh } from './fix_surface_local';
 import { buildConnect3d, triCorners, type Connect3d } from './connect3d';
 import {
   overlapSphereLine, overlapSphereTri, SAME_SIDE, OPPOSITE_SIDE,
-  surfContactForces, type ContactSurf, type SurfCoeffs,
+  surfContactForces, type ContactSurf, type SurfCoeffs, type SurfDamping, type SurfNormal, type SurfTangential,
 } from './surf_contact';
 import { contactDr, solveSphereContacts } from './contact_flow';
 
@@ -40,35 +41,59 @@ interface Coeffs extends SurfCoeffs {
   cutoff: number;
 }
 
-/** Keyword parser of pair_coeff for the supported granular models (pair_granular.html). */
+/**
+ * Keyword parser of pair_coeff for the supported granular models (pair_granular.html): the normal models hooke
+ * (k_n, eta_n0), hertz (k_n, eta_n0) and hertz/material (E, eta_n0, nu); the tangential models linear_nohistory
+ * (x_gamma_t, mu_s) and linear_history (k_t, x_gamma_t, mu_s); the damping models mass_velocity, viscoelastic
+ * (the default) and tsuji. The rolling, twisting, heat and other tangential models are refused.
+ */
 export function parseSurfCoeff(args: string[]): Coeffs {
-  let k = NaN, damp = NaN, kt = NaN, xt = NaN, mu = NaN, cutoff = NaN;
-  let hooke = false, linearHistory = false, massVelocity = false;
+  let k = NaN, damp = NaN, kt = 0, xt = NaN, mu = NaN, cutoff = NaN;
+  let normal: SurfNormal | null = null, tangential: SurfTangential | null = null;
+  // pair_granular.html: "If the *damping* keyword is not specified, the *viscoelastic* model is used by default."
+  let damping: SurfDamping = 'viscoelastic';
   const num = (w: string | undefined, what: string): number => {
     if (w === undefined || !Number.isFinite(Number(w))) throw new StyleError(`pair_coeff surf/granular: ${what} must be a number`);
     return Number(w);
   };
   for (let n = 0; n < args.length; n++) {
     const w = args[n];
-    if (w === 'hooke') {
-      hooke = true;
-      k = num(args[n + 1], 'hooke kn');
-      damp = num(args[n + 2], 'hooke damp');
+    if (w === 'hooke' || w === 'hertz') {
+      normal = w;
+      k = num(args[n + 1], `${w} kn`);
+      damp = num(args[n + 2], `${w} damp`);
       n += 2;
+    } else if (w === 'hertz/material') {
+      // doc: "hertz/material : E, eta_n0 (or e), nu"; native: k = 4/3 E / (2 (1 - nu^2)) for a surface contact
+      normal = w;
+      const E = num(args[n + 1], 'hertz/material E');
+      damp = num(args[n + 2], 'hertz/material damp');
+      const nu = num(args[n + 3], 'hertz/material nu');
+      if (!(E >= 0)) throw new StyleError('Illegal Hertz material normal model');
+      k = (4 / 3) * (E / (2 * (1 - nu * nu)));
+      n += 3;
     } else if (w === 'tangential') {
-      if (args[n + 1] !== 'linear_history') {
-        throw new StyleError(`pair_style surf/granular: tangential model '${args[n + 1] ?? ''}' is not supported (linear_history only)`);
+      const t = args[n + 1];
+      if (t === 'linear_nohistory') {
+        tangential = t;
+        xt = num(args[n + 2], 'linear_nohistory x_gamma_t');
+        mu = num(args[n + 3], 'linear_nohistory mu_s');
+        n += 3;
+      } else if (t === 'linear_history') {
+        tangential = t;
+        kt = num(args[n + 2], 'linear_history k_t');
+        xt = num(args[n + 3], 'linear_history x_gamma_t');
+        mu = num(args[n + 4], 'linear_history mu_s');
+        n += 4;
+      } else {
+        throw new StyleError(`pair_style surf/granular: tangential model '${t ?? ''}' is not supported (linear_nohistory, linear_history)`);
       }
-      linearHistory = true;
-      kt = num(args[n + 2], 'linear_history k_t');
-      xt = num(args[n + 3], 'linear_history x_gamma_t');
-      mu = num(args[n + 4], 'linear_history mu_s');
-      n += 4;
     } else if (w === 'damping') {
-      if (args[n + 1] !== 'mass_velocity') {
-        throw new StyleError(`pair_style surf/granular: damping model '${args[n + 1] ?? ''}' is not supported (mass_velocity only)`);
+      const d = args[n + 1];
+      if (d !== 'mass_velocity' && d !== 'viscoelastic' && d !== 'tsuji') {
+        throw new StyleError(`pair_style surf/granular: damping model '${d ?? ''}' is not supported (mass_velocity, viscoelastic, tsuji)`);
       }
-      massVelocity = true;
+      damping = d;
       n += 1;
     } else if (w === 'cutoff') {
       cutoff = num(args[n + 1], 'cutoff');
@@ -77,11 +102,11 @@ export function parseSurfCoeff(args: string[]): Coeffs {
       throw new StyleError(`pair_style surf/granular: granular keyword '${w}' is not supported`);
     }
   }
-  if (!hooke || !linearHistory || !massVelocity) {
-    throw new StyleError('pair_coeff surf/granular needs normal hooke, tangential linear_history and damping mass_velocity');
+  if (normal === null || tangential === null) {
+    throw new StyleError('pair_coeff surf/granular needs a normal model (hooke, hertz, hertz/material) and tangential linear_nohistory or linear_history');
   }
   if (!(k >= 0 && damp >= 0 && kt >= 0 && xt >= 0 && mu >= 0)) throw new StyleError('Illegal surf/granular coefficients');
-  return { k, damp, kt, xt, mu, cutoff };
+  return { k, damp, kt, xt, mu, cutoff, normal, damping, tangential };
 }
 
 export class PairSurfGranular extends Pair {

@@ -701,21 +701,22 @@ export class PODModel {
   }
 
   /**
-   * Energy of one atom of element ti (1-based) with nj neighbours at rij (3 per neighbour, neighbour minus
-   * centre) of elements tj (1-based). Writes the force on each neighbour's pair into fij (3 per neighbour,
-   * the force on the centre is minus the sum). eapod.cpp peratomenergyforce2.
+   * Base descriptors of one atom (eapod.cpp peratombase_descriptors, the bd part of peratomenergyforce2): nj
+   * neighbours at rij (3 per neighbour) of elements tj (1-based). The returned buffer (Mdesc values) is reused by
+   * the next call. Zero for nj = 0.
    */
-  atomEnergyForce(ti: number, nj: number, rij: Float64Array, tj: Int32Array, fij: Float64Array): number {
-    const nc = this.nCoeffPerElement * (ti - 1);
-    const coeff = this.coeff;
-    fij.fill(0, 0, 3 * nj);
-    if (nj === 0) return coeff[nc];
-    const s = this.scratch(nj);
+  baseDescriptors(rij: Float64Array, tj: Int32Array, nj: number): Float64Array {
+    if (nj === 0) return this.baseInto(null, rij, tj, nj);
+    return this.baseInto(this.scratch(nj), rij, tj, nj);
+  }
+
+  /** Fills this.bd with the base descriptors of nj neighbours; s is the scratch of nj (null when nj = 0). */
+  private baseInto(s: Scratch | null, rij: Float64Array, tj: Int32Array, nj: number): Float64Array {
     const bd = this.bd;
     bd.fill(0);
+    if (nj === 0 || s === null) return bd;
     const nl2 = this.nl2, nl3 = this.nl3, nl4 = this.nl4;
     const nrbf2 = this.nrbf2;
-
     this.radialbasis(s, rij, nj);
     this.projectRadial(s, nj);
     if (nl2 > 0) {
@@ -729,6 +730,23 @@ export class PODModel {
       this.threebodydesc(bd, nl2);
       if (nl4 > 0 && nj > 2) this.fourbodydesc(bd, nl2 + nl3);
     }
+    return bd;
+  }
+
+  /**
+   * Energy of one atom of element ti (1-based) with nj neighbours at rij (3 per neighbour, neighbour minus
+   * centre) of elements tj (1-based). Writes the force on each neighbour's pair into fij (3 per neighbour,
+   * the force on the centre is minus the sum). eapod.cpp peratomenergyforce2.
+   */
+  atomEnergyForce(ti: number, nj: number, rij: Float64Array, tj: Int32Array, fij: Float64Array): number {
+    const nc = this.nCoeffPerElement * (ti - 1);
+    const coeff = this.coeff;
+    fij.fill(0, 0, 3 * nj);
+    if (nj === 0) return coeff[nc];
+    const s = this.scratch(nj);
+    const bd = this.baseInto(s, rij, tj, nj);
+    const nl2 = this.nl2, nl3 = this.nl3, nl4 = this.nl4;
+    const nrbf2 = this.nrbf2;
     let e = coeff[nc];
     for (let m = 0; m < this.Mdesc; m++) e += coeff[1 + m + nc] * bd[m];
 

@@ -1,0 +1,39 @@
+# oracle: fix pafi (path-action dynamics, overdamped no, com yes, T 500 K, tdamp 0.01 ps, seed 434) on an LJ fcc 3x3x3 cell (108 atoms), path normal and path points from fix property/atom, 50 steps
+# native: b332f28 (installed lmp). Measured max relative error 1.8e-13 over the values above 1e-3 (absolute 2.4e-10 on the tiny ones; target 1e-8). Positions, velocities and the thermo columns other than f_hp[5] are compared.
+# f_hp[5] (dX.f) is skipped: native f[i][3..5] reads past each atom's force row, and for the last atom that is a partial ghost force; the port does not reproduce it (engine value 3.1e-4 vs native -1.3e-2 at step 0).
+# path normal is normalised over the group (|n|^2 = 1 for 108 atoms, n_i = (0.6, 0, 0.8)/sqrt(108)), as the global projection in the source requires
+# oracle-files: w155mx_pafi_dyn.dump
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 skip=f_hp[5]
+units           metal
+atom_style      atomic
+atom_modify     sort 0 0.0
+boundary        p p p
+lattice         fcc 3.52
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            * 55.85
+pair_style      lj/cut 5.0
+pair_coeff      * * 0.01 2.5
+fix             pa all property/atom d_nx d_ny d_nz d_dnx d_dny d_dnz d_ddnx d_ddny d_ddnz
+variable        px atom x-0.05*sin(2*y)
+variable        py atom y+0.05*cos(2*z)
+variable        pz atom z
+set             group all d_nx v_px
+set             group all d_ny v_py
+set             group all d_nz v_pz
+set             group all d_dnx 0.0577350269189626
+set             group all d_dny 0.0
+set             group all d_dnz 0.0769800358919501
+set             group all d_ddnx 0.0577350269189626
+set             group all d_ddny 0.0
+set             group all d_ddnz 0.0769800358919501
+compute         pa all property/atom d_nx d_ny d_nz d_dnx d_dny d_dnz d_ddnx d_ddny d_ddnz
+timestep        0.001
+velocity        all create 300.0 12345
+fix             hp all pafi pa 500.0 0.01 434 overdamped no com yes
+thermo_style    custom step pe temp f_hp[1] f_hp[2] f_hp[3] f_hp[4] f_hp[5]
+thermo_modify   format float %.15g
+thermo          10
+run             50
+write_dump      all custom w155mx_pafi_dyn.dump id x y z vx vy vz modify format float %.15g sort id

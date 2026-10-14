@@ -1,0 +1,27 @@
+# oracle: compute pod/atom (InP_param + InP_coeff, two elements, 151 base descriptors, types mapped In P) on the displaced diamond InP 2x2x2 cell (64 atoms), run 0: per-atom descriptors written to a dump
+# native: b332f28 (installed lmp). Measured max relative error 1.6e-10 over the 9739 values (target 1e-8).
+# oracle-inputs: w128pod_InP_param.pod w128pod_InP_coeff.pod
+# oracle-files: w155mx_podatom_inp.dump
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      atomic
+boundary        p p p
+variable        a equal 5.83
+lattice         diamond $a
+region          box block 0 2 0 2 0 2
+create_box      2 box
+create_atoms    1 box basis 5 2 basis 6 2 basis 7 2 basis 8 2
+mass            1 114.76
+mass            2 30.98
+variable        dx atom 0.05*sin(1.3*x+0.7*y)
+variable        dy atom 0.05*cos(0.9*y-0.4*z)
+variable        dz atom 0.05*sin(1.1*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      pod
+pair_coeff      * * w128pod_InP_param.pod w128pod_InP_coeff.pod In P
+compute         ld all pod/atom w128pod_InP_param.pod w128pod_InP_coeff.pod In P
+thermo_style    custom step pe press
+thermo_modify   format float %.15g norm no
+thermo          1
+run             0
+write_dump      all custom w155mx_podatom_inp.dump id  c_ld[1] c_ld[2] c_ld[3] c_ld[4] c_ld[5] c_ld[6] c_ld[7] c_ld[8] c_ld[9] c_ld[10] c_ld[11] c_ld[12] c_ld[13] c_ld[14] c_ld[15] c_ld[16] c_ld[17] c_ld[18] c_ld[19] c_ld[20] c_ld[21] c_ld[22] c_ld[23] c_ld[24] c_ld[25] c_ld[26] c_ld[27] c_ld[28] c_ld[29] c_ld[30] c_ld[31] c_ld[32] c_ld[33] c_ld[34] c_ld[35] c_ld[36] c_ld[37] c_ld[38] c_ld[39] c_ld[40] c_ld[41] c_ld[42] c_ld[43] c_ld[44] c_ld[45] c_ld[46] c_ld[47] c_ld[48] c_ld[49] c_ld[50] c_ld[51] c_ld[52] c_ld[53] c_ld[54] c_ld[55] c_ld[56] c_ld[57] c_ld[58] c_ld[59] c_ld[60] c_ld[61] c_ld[62] c_ld[63] c_ld[64] c_ld[65] c_ld[66] c_ld[67] c_ld[68] c_ld[69] c_ld[70] c_ld[71] c_ld[72] c_ld[73] c_ld[74] c_ld[75] c_ld[76] c_ld[77] c_ld[78] c_ld[79] c_ld[80] c_ld[81] c_ld[82] c_ld[83] c_ld[84] c_ld[85] c_ld[86] c_ld[87] c_ld[88] c_ld[89] c_ld[90] c_ld[91] c_ld[92] c_ld[93] c_ld[94] c_ld[95] c_ld[96] c_ld[97] c_ld[98] c_ld[99] c_ld[100] c_ld[101] c_ld[102] c_ld[103] c_ld[104] c_ld[105] c_ld[106] c_ld[107] c_ld[108] c_ld[109] c_ld[110] c_ld[111] c_ld[112] c_ld[113] c_ld[114] c_ld[115] c_ld[116] c_ld[117] c_ld[118] c_ld[119] c_ld[120] c_ld[121] c_ld[122] c_ld[123] c_ld[124] c_ld[125] c_ld[126] c_ld[127] c_ld[128] c_ld[129] c_ld[130] c_ld[131] c_ld[132] c_ld[133] c_ld[134] c_ld[135] c_ld[136] c_ld[137] c_ld[138] c_ld[139] c_ld[140] c_ld[141] c_ld[142] c_ld[143] c_ld[144] c_ld[145] c_ld[146] c_ld[147] c_ld[148] c_ld[149] c_ld[150] c_ld[151] modify format float %.15g sort id

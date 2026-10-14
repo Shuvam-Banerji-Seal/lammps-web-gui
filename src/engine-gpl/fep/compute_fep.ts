@@ -176,13 +176,13 @@ export class ComputeFEP extends Compute {
 }
 
 /** Copies of an accumulator's values (scalars and the virial arrays). */
-const snapshotAccum = (a: Accum): Record<string, number | Float64Array> => {
+export const snapshotAccum = (a: Accum): Record<string, number | Float64Array> => {
   const out: Record<string, number | Float64Array> = {};
   for (const [k, v] of Object.entries(a)) out[k] = typeof v === 'number' ? v : (v as Float64Array).slice();
   return out;
 };
 
-const restoreAccum = (a: Accum, saved: Record<string, number | Float64Array>): void => {
+export const restoreAccum = (a: Accum, saved: Record<string, number | Float64Array>): void => {
   const target = a as unknown as Record<string, number | Float64Array>;
   for (const [k, v] of Object.entries(saved)) {
     if (typeof v === 'number') target[k] = v;

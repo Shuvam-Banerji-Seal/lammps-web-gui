@@ -1,0 +1,23 @@
+# oracle: pair_style comb3 polar_off on a small hydrocarbon: two C2H4, two C2H6 and one C3H8 molecule (propane gives C-C-C chains for the radical k and l terms) in a 24 A periodic box (39 atoms, element list C H, so lib.comb3 is read and the radical and torsion paths switch on), 0.2 A random displacement, all charges 0: run 0, then 20 NVE steps; per-atom forces of the final state (dump) and thermo rows
+# native: installed lmp (b332f28 build, which includes COMB3). Charges are 0 for C and H (comb3 allows it), so the Coulomb terms are zero by construction.
+# Measured error (engine vs native): worst per-atom force relative error 6.1e-12 (atom 29 vy, after 20 steps); worst thermo relative error about 2e-12 (step 0, etotal). The 1e-8 target holds on every row. Radical l-side force and both torsion paths are live on this geometry; the radical k-side force contributes nothing detectable at 1e-8 here (switching it off passes).
+# oracle-inputs: w158cb_hc.data
+# oracle-potentials: ffield.comb3 lib.comb3
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 atomrel=1e-8
+units		metal
+atom_style	charge
+dimension       3
+boundary        p p p
+read_data	w158cb_hc.data
+displace_atoms all random 0.2 0.2 0.2 4417 units box
+pair_style	comb3 polar_off
+pair_coeff	* * ffield.comb3 C H
+neighbor	2.0 bin
+neigh_modify	every 1 delay 0 check yes
+fix		1 all nve
+timestep        0.00020
+thermo_style	custom step temp etotal pe evdwl ecoul press vol lx ly lz
+thermo_modify	norm yes format float %.15g
+thermo		10
+run		0
+run		20

@@ -5,8 +5,9 @@
  * Authors credited in the C++ file headers: Tzu-Ray Shan (Sandia) and the COMB3 authors. Copyright (2003)
  * Sandia Corporation (GNU General Public License). This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  *
- * Stage A: fixed charges that are all zero, polar_off, no radical and no torsion terms (the carbon
- * bond-order corrections), no charge-equilibration terms. Anything else throws a StyleError naming the term.
+ * Stages A and B: the radical and torsion terms (radtor.ts) are included. Fixed charges must be zero, and
+ * polar_off is required; the Coulomb and charge-equilibration terms (stage C) are refused with a StyleError
+ * that names them.
  *
  * Ghost atoms: the C++ builds short neighbor lists for ghost atoms too (sht_first[j] for a ghost j). Here a
  * ghost's short list is the translate of its owner's list: the neighbor l of the owner becomes the atom with the
@@ -18,6 +19,7 @@ import { NEIGHMASK } from '../../engine/neighbor';
 import { readComb3Entries, readComb3Lib, setupComb3Params, type Comb3Lib, type Comb3Param } from './params';
 import { comb3Tables, triPoint, vdwaals, type Comb3Tables, type TriPoint } from './tables';
 import { Comb3Kernel } from './terms';
+import { Comb3RadTor } from './radtor';
 
 const v3 = (): Float64Array => new Float64Array(3);
 
@@ -41,9 +43,8 @@ export class PairComb3 extends Pair {
   private cutmax = 0;
   private lib: Comb3Lib | null = null;
   private tables: Comb3Tables | null = null;
-  /** Entries with radical or torsion terms; a run that uses one of their element triplets is refused (stage B). */
-  private radTorEntries: Comb3Param[] = [];
   private readonly kernel = new Comb3Kernel();
+  private readonly rt = new Comb3RadTor(this.kernel);
   private readonly tp: TriPoint = { mr1: 0, mr2: 0, mr3: 0, sr1: 0, sr2: 0, sr3: 0 };
   private readonly vdwOut = { eng: 0, fforce: 0 };
   private readonly repOut = { fforce: 0, eng: 0 };
@@ -64,6 +65,8 @@ export class PairComb3 extends Pair {
   private readonly delrj = v3();
   private readonly delrk = v3();
   private readonly delrl = v3();
+  private readonly delrm = v3();
+  private readonly delrp = v3();
   private readonly vecJI = v3();
   /** Short neighbor lists of the owned atoms (Short_neigh): sht[shtStart[i] .. shtStart[i+1]). */
   private shtStart = new Int32Array(0);
@@ -113,7 +116,6 @@ export class PairComb3 extends Pair {
     this.cutmin = sp.cutmin;
     this.cutmax = sp.cutmax;
     this.tables = comb3Tables(entries, sp.elem3param, this.nel, map, this.cutmax);
-    this.radTorEntries = entries.filter((p) => p.rad_flag !== 0 || p.tor_flag !== 0);
     ctx.log('Pair COMB3:\n  generating Coulomb integral lookup table ...');
   }
 
@@ -207,16 +209,6 @@ export class PairComb3 extends Pair {
     if (!list) throw new Error('pair style comb3 needs a full neighbor list');
     if (!this.tables) throw new StyleError('pair_style comb3 needs a pair_coeff command first');
     if (pc.vatom) throw new StyleError('compute stress/atom with pair_style comb3 is not supported by the browser engine yet');
-    // the radical and torsion terms (carbon bond-order corrections) are not ported yet (stage B): refused when an
-    // entry with them has all three element types present among the atoms of this run
-    if (this.radTorEntries.length) {
-      const present = new Uint8Array(this.nel);
-      for (let i = 0; i < pc.nlocal; i++) present[this.map[pc.type[i]]] = 1;
-      const hit = this.radTorEntries.find((p) => present[p.ielement] && present[p.jelement] && present[p.kelement]);
-      if (hit) {
-        throw new StyleError(`pair_style comb3: the radical and torsion terms of ${this.elements[hit.ielement]} ${this.elements[hit.jelement]} ${this.elements[hit.kelement]} (carbon bond-order corrections) are not ported yet (stage B)`);
-      }
-    }
     const nall = pc.nall, nlocal = pc.nlocal;
     const x = pc.x, f = pc.f, q = pc.q, type = pc.type;
     const owner = pc.nb.owner, gimage = pc.nb.gimage;
@@ -228,10 +220,12 @@ export class PairComb3 extends Pair {
     }
     const tb = this.tables;
     const kernel = this.kernel;
+    const rt = this.rt;
     kernel.lib = this.lib;
     if (this.lib) {
       kernel.maxx = this.lib.maxx; kernel.maxy = this.lib.maxy; kernel.maxz = this.lib.maxz;
     }
+    const dot = (a: Float64Array, b: Float64Array): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     this.ghostCache.clear();
     const inum = list.inum;
     this.buildShortNeigh(pc, inum);
@@ -318,7 +312,10 @@ export class PairComb3 extends Pair {
         if (rsq1 > this.params[iparamIJ].cutsq) continue;
         const jq = q[j];
         // bond order zeta of the i-j bond: loop over the other short neighbors k of i
+        const sl = this.shortOf(pc, j, keyOf);
         let zetaIJ = 0.0;
+        let kconjug = 0.0;
+        let bbtor = 0.0;
         for (let kk = 0; kk < sj.length; kk++) {
           const k = sj[kk];
           if (j === k) continue;
@@ -329,10 +326,33 @@ export class PairComb3 extends Pair {
           const rsq2 = delrk[0] * delrk[0] + delrk[1] * delrk[1] + delrk[2] * delrk[2];
           if (rsq2 > this.params[iparamIK].cutsq) continue;
           zetaIJ += kernel.zeta(this.params[iparamIJK], this.params[iparamIK], rsq1, rsq2, delrj, delrk, xcn);
+          // radical initialization: apply only to CC, CO and OC bonds
+          if (this.params[iparamIJ].rad_flag > 0 && this.params[iparamIK].ielementgp === 1 && this.params[iparamIK].jelementgp === 1) {
+            kconjug += rt.radInit(rsq2, this.params[this.p3(ktype, itype, itype)], nco[k]);
+          }
+          // torsion: i-j-k-l, all C-C bonds
+          if (this.params[iparamIJ].tor_flag !== 0) {
+            let srmu = dot(delrj, delrk) / Math.sqrt(rsq1 * rsq2);
+            srmu = Math.sqrt(1.0 - srmu * srmu);
+            if (srmu > 0.1) {
+              for (let ll = 0; ll < sl.length; ll++) {
+                const l = sl[ll];
+                if (l === i || l === j || l === k) continue;
+                const ltype = this.map[type[l]];
+                delrl[0] = x[3 * l] - x[3 * j]; delrl[1] = x[3 * l + 1] - x[3 * j + 1]; delrl[2] = x[3 * l + 2] - x[3 * j + 2];
+                const rsq3 = delrl[0] * delrl[0] + delrl[1] * delrl[1] + delrl[2] * delrl[2];
+                const iparamJL = this.p3(jtype, ltype, ltype);
+                if (rsq3 > this.params[iparamJL].cutsq) continue;
+                const iparamIKL = this.p3(itype, ktype, ltype);
+                bbtor += rt.bbtor1(this.params[iparamIJ].tor_flag, this.params[iparamIKL], this.params[iparamJL],
+                  rsq1, rsq2, rsq3, delrj, delrk, delrl, srmu);
+              }
+            }
+          }
         }
         // bond order zeta of the j-i bond: loop over the short neighbors l of j
-        const sl = this.shortOf(pc, j, keyOf);
         let zetaJI = 0.0;
+        let lconjug = 0.0;
         for (let ll = 0; ll < sl.length; ll++) {
           const l = sl[ll];
           if (l === i) continue;
@@ -344,16 +364,37 @@ export class PairComb3 extends Pair {
           if (rsq2 > this.params[iparamJL].cutsq) continue;
           vecJI[0] = -delrj[0]; vecJI[1] = -delrj[1]; vecJI[2] = -delrj[2];
           zetaJI += kernel.zeta(this.params[iparamJIL], this.params[iparamJL], rsq1, rsq2, vecJI, delrl, ycn);
+          // radical initialization of the j-l bond
+          if (this.params[iparamJI].rad_flag > 0 && this.params[iparamJL].ielementgp === 1 && this.params[iparamJL].jelementgp === 1) {
+            lconjug += rt.radInit(rsq2, this.params[this.p3(ltype, jtype, jtype)], nco[l]);
+          }
         }
 
-        // force_zeta (without the radical and torsion parts): pair energy and bond-order prefactors
+        // force_zeta: pair energy, bond-order prefactors, and the radical and torsion parts
         const r = Math.sqrt(rsq1);
-        kernel.fa(r, this.params[iparamIJ], this.params[iparamJI], iq, jq, this.faOut);
+        const pIJ = this.params[iparamIJ], pJI = this.params[iparamJI];
+        kernel.fa(r, pIJ, pJI, iq, jq, this.faOut);
         const attEng = this.faOut.eng, attForce = this.faOut.force;
-        kernel.bijD(zetaIJ, this.params[iparamIJ], r, i, xcn, bijO);
-        kernel.bijD(zetaJI, this.params[iparamJI], r, j, ycn, bijP);
+        kernel.bijD(zetaIJ, pIJ, r, i, xcn, bijO);
+        kernel.bijD(zetaJI, pJI, r, j, ycn, bijP);
         const boij = bijO[0], boji = bijP[0];
-        const bij = 0.5 * (boij + boji);
+        let bij = 0.5 * (boij + boji);
+        let pradx = 0.0, prady = 0.0;
+        if (pIJ.rad_flag > 0) {
+          rt.radCalc(r, pIJ, pJI, kconjug, lconjug, xcn, ycn);
+          bij += rt.brad[0];
+          pradx = rt.brad[1] * attEng;
+          prady = rt.brad[2] * attEng;
+          rt.brad[3] = 1.0 * rt.brad[3] * attEng;
+        }
+        if (pIJ.tor_flag !== 0) {
+          rt.torCalc(r, pIJ, pJI, kconjug, lconjug, xcn, ycn);
+          bij += rt.btor[0] * bbtor;
+          rt.ptorr = attEng * rt.btor[0];
+          pradx += 1.0 * rt.btor[1] * bbtor * attEng;
+          prady += rt.btor[2] * bbtor * attEng;
+          rt.brad[3] += 1.0 * rt.btor[3] * bbtor * attEng;
+        }
         let fpair = 1.0 * bij * attForce / r;
         let evdwl = 1.0 * bij * attEng;
         this.prefIJ[0] = -0.5 * attEng * bijO[1];
@@ -366,6 +407,10 @@ export class PairComb3 extends Pair {
         this.prefJI[2] = -0.5 * attEng * bijP[3];
         this.prefJI[3] = -0.5 * attEng * bijP[4];
         this.prefJI[4] = -0.5 * attEng * bijP[5];
+        if (pIJ.rad_flag > 0 || pIJ.tor_flag !== 0) {
+          this.prefIJ[1] -= pradx;
+          this.prefJI[1] -= prady;
+        }
 
         // two-body Legendre-polynomial (p6p) energy of the pair
         this.p6Out.force = 0.0;
@@ -404,6 +449,59 @@ export class PairComb3 extends Pair {
             f[3 * k + c] += fk[c];
           }
           tally(i, j, ep6pIJ);
+          // torsion: i-j-k-l (applied when the torsion prefactor ptorr of this pair is nonzero)
+          if (this.params[iparamIJK].tor_flag !== 0 && Math.abs(rt.ptorr) > 1.0e-8) {
+            let srmu = dot(delrj, delrk) / Math.sqrt(rsq1 * rsq2);
+            srmu = Math.sqrt(1.0 - srmu * srmu);
+            if (srmu > 0.1) {
+              for (let ll = 0; ll < sl.length; ll++) {
+                const l = sl[ll];
+                if (l === i || l === j || l === k) continue;
+                const ltype = this.map[type[l]];
+                delrl[0] = x[3 * l] - x[3 * j]; delrl[1] = x[3 * l + 1] - x[3 * j + 1]; delrl[2] = x[3 * l + 2] - x[3 * j + 2];
+                const rsq3 = delrl[0] * delrl[0] + delrl[1] * delrl[1] + delrl[2] * delrl[2];
+                const iparamJL = this.p3(jtype, ltype, ltype);
+                if (rsq3 > this.params[iparamJL].cutsq) continue;
+                const iparamIKL = this.p3(itype, ktype, ltype);
+                rt.torForce(this.params[iparamIJ].tor_flag, this.params[iparamIKL], this.params[iparamJL], srmu,
+                  rsq1, rsq2, rsq3, delrj, delrk, delrl);
+                for (let c = 0; c < 3; c++) {
+                  f[3 * i + c] += rt.fiTor[c];
+                  f[3 * j + c] += rt.fjTor[c];
+                  f[3 * k + c] += rt.fkTor[c];
+                  f[3 * l + c] += rt.flTor[c];
+                }
+              }
+            }
+          }
+          // radical: k side of the i-j-k angle (CC, CO and OC bonds)
+          if (this.params[iparamIJK].rad_flag >= 1 && this.params[iparamIJK].ielementgp === 1 && this.params[iparamIJK].kelementgp === 1) {
+            const pKI = this.params[this.p3(ktype, itype, itype)];
+            const kradtot = -kernel.fc(Math.sqrt(rsq2), pKI) * pKI.pcross + nco[k];
+            rt.radForceik(pKI, rsq2, delrk, kconjug, kradtot);
+            for (let c = 0; c < 3; c++) {
+              f[3 * i + c] += rt.fiRad[c];
+              f[3 * k + c] += rt.fkRad[c];
+            }
+            if (Math.abs(rt.radtmp) > 1.0e-12) {
+              const sm = this.shortOf(pc, k, keyOf);
+              for (let mm = 0; mm < sm.length; mm++) {
+                const m = sm[mm];
+                if (m === k) continue;
+                const mtype = this.map[type[m]];
+                const delrm = this.delrm;
+                delrm[0] = x[3 * m] - x[3 * k]; delrm[1] = x[3 * m + 1] - x[3 * k + 1]; delrm[2] = x[3 * m + 2] - x[3 * k + 2];
+                const rsq3 = delrm[0] * delrm[0] + delrm[1] * delrm[1] + delrm[2] * delrm[2];
+                const pKM = this.params[this.p3(ktype, mtype, mtype)];
+                if (rsq3 > pKM.cutsq) continue;
+                rt.radForce(pKM, rsq3, delrm, rt.radtmp);
+                for (let c = 0; c < 3; c++) {
+                  f[3 * k + c] += rt.fjRad[c];
+                  f[3 * m + c] += rt.fkRad[c];
+                }
+              }
+            }
+          }
         }
 
         // attractive term via the loop over l (three-body forces j-i-l)
@@ -434,6 +532,34 @@ export class PairComb3 extends Pair {
             f[3 * j + c] += fj[c];
             f[3 * i + c] += fi[c];
             f[3 * l + c] += fl[c];
+          }
+          // radical i-j-l-p: CC, CO and OC bonds
+          if (this.params[iparamJIL].rad_flag >= 1 && this.params[iparamJIL].ielementgp === 1 && this.params[iparamJIL].kelementgp === 1) {
+            const pLJ = this.params[this.p3(ltype, jtype, jtype)];
+            const lradtot = -kernel.fc(Math.sqrt(rsq2), pLJ) * pLJ.pcross + nco[l];
+            rt.radForceik(pLJ, rsq2, delrk, lconjug, lradtot);
+            for (let c = 0; c < 3; c++) {
+              f[3 * j + c] += rt.fiRad[c];
+              f[3 * l + c] += rt.fkRad[c];
+            }
+            if (Math.abs(rt.radtmp) > 1.0e-12) {
+              const sp = this.shortOf(pc, l, keyOf);
+              for (let pp = 0; pp < sp.length; pp++) {
+                const p = sp[pp];
+                if (p === l) continue;
+                const ptype = this.map[type[p]];
+                const delrp = this.delrp;
+                delrp[0] = x[3 * p] - x[3 * l]; delrp[1] = x[3 * p + 1] - x[3 * l + 1]; delrp[2] = x[3 * p + 2] - x[3 * l + 2];
+                const rsq3 = delrp[0] * delrp[0] + delrp[1] * delrp[1] + delrp[2] * delrp[2];
+                const pLP = this.params[this.p3(ltype, ptype, ptype)];
+                if (rsq3 > pLP.cutsq) continue;
+                rt.radForce(pLP, rsq3, delrp, rt.radtmp);
+                for (let c = 0; c < 3; c++) {
+                  f[3 * l + c] += rt.fjRad[c];
+                  f[3 * p + c] += rt.fkRad[c];
+                }
+              }
+            }
           }
         }
       }

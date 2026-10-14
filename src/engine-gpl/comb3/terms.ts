@@ -78,6 +78,10 @@ export class Comb3Kernel {
   fccch(x: number): number { const c = this.requireLib().ccutoff; return this.switchCut(x, c[4], c[5]); }
   fccchD(x: number): number { const c = this.requireLib().ccutoff; return this.switchCutD(x, c[4], c[5]); }
 
+  /** comb_fcch / comb_fcch_d: the radical coordination switch (ccutoff[2], ccutoff[3]). */
+  fcch(x: number): number { const c = this.requireLib().ccutoff; return this.switchCut(x, c[2], c[3]); }
+  fcchD(x: number): number { const c = this.requireLib().ccutoff; return this.switchCutD(x, c[2], c[3]); }
+
   /** comb_gijk: angular function (ang_flag 0: polynomial; 1: spline blend; 2: chain blend), times pcross. */
   gijk(costheta: number, p: Comb3Param, ncoTmp: number): number {
     const rmu1 = costheta;
@@ -424,6 +428,8 @@ export class Comb3Kernel {
       if (pi.kelementgp === 1) com6 = pref[2] * pcrossk * dfcK;
       else if (pi.kelementgp === 2) com6 = pref[3] * pcrossk * dfcK;
       else com6 = pref[4] * pcrossk * dfcK;
+      // the radical and torsion derivative terms are carried by prefac_ij2 (pradx)
+      if (pi.rad_flag >= 1 || pi.tor_flag !== 0) com6 += pref[1] * pcrossk * dfcK;
     } else {
       com6 = pref[1] * pcrossi * dfcK;
     }

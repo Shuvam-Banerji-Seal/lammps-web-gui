@@ -168,35 +168,70 @@ export class KSpacePPPMElectrode extends KSpacePPPM implements ElectrodeKSpace {
     const mod = (a: number, m: number) => ((a % m) + m) % m;
     const group: number[] = [];
     for (let i = 0; i < s.n; i++) if (imat[i] >= 0) group.push(i);
-    // per electrode atom: the P^3 stencil points (grid coordinates and flat index) and their weights
-    const sx = new Int32Array(group.length * P3), sy = new Int32Array(group.length * P3), sz = new Int32Array(group.length * P3);
-    const sw = new Float64Array(group.length * P3);
+    const G = group.length;
+    // per electrode atom: the stencil weights, p = (c * P + b) * P + a (the order of the loops below), and the wrapped
+    // grid index of each stencil point along each axis (these depend on one axis index each)
+    const sw = new Float64Array(G * P3);
+    const xs = new Int32Array(G * P), ys = new Int32Array(G * P), zs = new Int32Array(G * P);
     group.forEach((i, gi) => {
+      for (let a = 0; a < P; a++) {
+        xs[gi * P + a] = mod(first[3 * i] + a, nx);
+        ys[gi * P + a] = mod(first[3 * i + 1] + a, ny);
+        zs[gi * P + a] = mod(first[3 * i + 2] + a, nz);
+      }
       let p = 0;
       for (let c = 0; c < P; c++) {
         for (let b = 0; b < P; b++) {
           for (let a = 0; a < P; a++, p++) {
-            sx[gi * P3 + p] = mod(first[3 * i] + a, nx);
-            sy[gi * P3 + p] = mod(first[3 * i + 1] + b, ny);
-            sz[gi * P3 + p] = mod(first[3 * i + 2] + c, nz);
             sw[gi * P3 + p] = wts[3 * i * P + a] * wts[(3 * i + 1) * P + b] * wts[(3 * i + 2) * P + c];
           }
         }
       }
     });
+    // per pair of atoms: the flat grid offset of every (stencil point of i, stencil point of j) axis pair, with the
+    // minimum-image wrap of the C++ (dx < 0 gets +nx); the flat index is (dz * ny + dy) * nx + dx
+    const TX = new Int32Array(P * P), TY = new Int32Array(P * P), TZ = new Int32Array(P * P);
     const V = this.volume;
-    for (let gi = 0; gi < group.length; gi++) {
+    for (let gi = 0; gi < G; gi++) {
       const ri = imat[group[gi]];
-      for (let gj = 0; gj < group.length; gj++) {
+      for (let gj = 0; gj < G; gj++) {
         const rj = imat[group[gj]];
         if (rj > ri) continue;   // the matrix is symmetric: the lower triangle is summed, then mirrored
+        for (let a = 0; a < P; a++) {
+          for (let a2 = 0; a2 < P; a2++) {
+            const dx = xs[gi * P + a] - xs[gj * P + a2];
+            TX[a * P + a2] = dx < 0 ? dx + nx : dx;
+          }
+        }
+        for (let b = 0; b < P; b++) {
+          for (let b2 = 0; b2 < P; b2++) {
+            const dy = ys[gi * P + b] - ys[gj * P + b2];
+            TY[b * P + b2] = (dy < 0 ? dy + ny : dy) * nx;
+          }
+        }
+        for (let c = 0; c < P; c++) {
+          for (let c2 = 0; c2 < P; c2++) {
+            const dz = zs[gi * P + c] - zs[gj * P + c2];
+            TZ[c * P + c2] = (dz < 0 ? dz + nz : dz) * ny * nx;
+          }
+        }
+        const wj = gj * P3;
         let aij = 0;
-        for (let p = gi * P3; p < (gi + 1) * P3; p++) {
-          for (let r = gj * P3; r < (gj + 1) * P3; r++) {
-            const dx = sx[p] - sx[r] < 0 ? sx[p] - sx[r] + nx : sx[p] - sx[r];
-            const dy = sy[p] - sy[r] < 0 ? sy[p] - sy[r] + ny : sy[p] - sy[r];
-            const dz = sz[p] - sz[r] < 0 ? sz[p] - sz[r] + nz : sz[p] - sz[r];
-            aij += sw[p] * sw[r] * gr[(dz * ny + dy) * nx + dx];
+        for (let c = 0; c < P; c++) {
+          for (let b = 0; b < P; b++) {
+            for (let a = 0; a < P; a++) {
+              const pw = sw[gi * P3 + (c * P + b) * P + a];
+              for (let c2 = 0; c2 < P; c2++) {
+                const tz = TZ[c * P + c2];
+                for (let b2 = 0; b2 < P; b2++) {
+                  const tzy = tz + TY[b * P + b2];
+                  const rb = (c2 * P + b2) * P;
+                  for (let a2 = 0; a2 < P; a2++) {
+                    aij += pw * sw[wj + rb + a2] * gr[tzy + TX[a * P + a2]];
+                  }
+                }
+              }
+            }
           }
         }
         matrix[ri * ngroup + rj] += aij / V;

@@ -115,7 +115,7 @@ export class FixWallPiston extends Fix {
     const sys = this.sys;
     const s = sys.state;
     const run = sys.run;
-    let zlo = this.z0;
+    let zlo: number;
     const t = (s.step - run.beginStep) * s.dt;
     const tott = (run.endStep - run.beginStep) * s.dt;
     const tt = t * t;

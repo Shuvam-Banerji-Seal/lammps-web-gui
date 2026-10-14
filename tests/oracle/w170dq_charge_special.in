@@ -1,0 +1,38 @@
+# oracle: pair lj/cut/dipole/long with point charges and dipoles on a bonded chain (1-2, 1-3, 1-4 special pairs with special_bonds coul factors 0.0, 0.5 and 0.8, so the factor_coul = 0 pair is included), kspace_style pppm/dipole with kspace_modify gewald 0.4 mesh 12 12 12 order 5, run 0: pe, evdwl, ecoul, elong, press and the per-atom forces, dipoles and torques
+# oracle-files: w170dq_charge_special_tq.dump
+# measured with native LAMMPS (/home/roy/.local/bin/lmp, b332f28, installed DIPOLE and KSPACE packages): engine vs native fixture at step 0: max relative error below 2e-16 (bisected: passes at 2e-16, fails at 1e-16 with abs 1e-16); engine time 0.24 s (Node 24, loaded machine). The 1-2 pair has factor_coul 0: native gives zero Coulomb energy for it while its force is nonzero, and the engine matches that
+# oracle-compare: thermo=all atoms=all rel=1e-8 atomrel=1e-8 filerel=1e-8 abs=1e-10
+units           lj
+atom_style      hybrid charge bond sphere dipole
+region          box block -6 6 -6 6 -6 6
+create_box      1 box bond/types 1 extra/bond/per/atom 2 extra/special/per/atom 6
+create_atoms    1 single 0.0 0.0 0.0
+create_atoms    1 single 1.1 0.2 0.0
+create_atoms    1 single 2.0 0.9 0.3
+create_atoms    1 single 2.6 1.9 0.1
+mass            1 1.0
+set             group all charge 0.0
+set             group all diameter 1.0
+set             group all density 1.0
+set             atom 1 charge 0.5
+set             atom 2 charge -0.5
+set             atom 3 charge 0.5
+set             atom 4 charge -0.5
+set             atom 1 dipole 0.5 0.2 0.1
+set             atom 2 dipole -0.3 0.4 0.2
+set             atom 3 dipole 0.1 -0.5 0.3
+set             atom 4 dipole 0.2 0.2 -0.6
+bond_style      harmonic
+bond_coeff      1 50.0 1.1
+create_bonds    single/bond 1 1 2
+create_bonds    single/bond 1 2 3
+create_bonds    single/bond 1 3 4
+special_bonds   lj 0.0 0.3 0.6 coul 0.0 0.5 0.8
+pair_style      lj/cut/dipole/long 4.0
+pair_coeff      * * 0.8 1.0
+kspace_style    pppm/dipole 1.0e-4
+kspace_modify   gewald 0.4 mesh 12 12 12 order 5
+thermo_style    custom step pe evdwl ecoul elong press
+thermo_modify   format float %.15g norm no
+run             0
+write_dump      all custom w170dq_charge_special_tq.dump id fx fy fz mux muy muz tqx tqy tqz modify format float %.15g sort id

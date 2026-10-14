@@ -13,7 +13,45 @@
 
 export type Vec3 = [number, number, number];
 
+/** An 8-bit RGB colour. */
+export type Rgb255 = [number, number, number];
+
+/**
+ * The renderer state one snapshot's objects draw into (dump_image.ts builds it; the drawing follows image.cpp, see
+ * src/engine-gpl/graphics/draw.ts). `rgb` is the image with row 0 at the top and `depth` the depth buffer with larger
+ * values nearer the viewer and -Infinity for an empty pixel. The camera is Image::view_params' orthographic camera:
+ * camRight, camUp and camDir are unit vectors in world space, ctr is the box centre (xctr, yctr, zctr), zdist the
+ * camera distance and pixelWidth the world length of one pixel.
+ */
+export interface RasterFrame {
+  w: number;
+  h: number;
+  rgb: Uint8Array;
+  depth: Float64Array;
+  camRight: Vec3;
+  camUp: Vec3;
+  camDir: Vec3;
+  ctr: Vec3;
+  zdist: number;
+  pixelWidth: number;
+}
+
+/** What dump image's "fix ID style flag1 flag2" keyword gives a graphics object (dump_image.html). */
+export interface ObjectStyle {
+  /** flag1 and flag2 of the keyword (added to lengths and diameters, see dump_image.html). */
+  flag1: number;
+  flag2: number;
+  /** Colour of an object of atom type `type` (the type, element or const style of the keyword). */
+  colorOf(type: number): Rgb255;
+  /** Default diameter of a sphere of type `type` (the dump's adiam setting). */
+  diameterOf(type: number): number;
+  /** Diameter of a bond between two atom types (the dump's bond width setting). */
+  bondDiameter(t1: number, t2: number): number;
+}
+
 export type ImageObject =
+  /** graphics objects drawn by the GPL drawing code in src/engine-gpl/graphics (their own kinds and shading). */
+  | { kind: 'draw'; draw: (frame: RasterFrame, style: ObjectStyle) => void }
   /** sphere: centre and full diameter. */
   | { kind: 'sphere'; type: number; center: Vec3; diameter: number }
   /** cylinder: end points and full diameter (dump image's flag1 chooses sphere caps at the ends). */

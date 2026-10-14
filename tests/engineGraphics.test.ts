@@ -221,18 +221,11 @@ describe('dump image axes (dump_image.cpp axes block)', () => {
 });
 
 describe('graphics fixes and dump image keywords that are refused by name', () => {
-  it('graphics/labels (text) is refused with the reason', async () => {
-    await expect(run(scene('create_atoms 1 single 5 5 5', 'fix t all graphics/labels 1 text "hi" 0 0 0', ''))).rejects.toThrow(/graphics\/labels is not supported.*scalable font/);
+  it('graphics/isosurface is refused by name', async () => {
+    await expect(run(scene('create_atoms 1 single 5 5 5', 'fix x all graphics/isosurface 1', ''))).rejects.toThrow('fix graphics/isosurface is not supported');
   });
 
-  it('graphics/periodic, chunk, replica and isosurface are refused by name', async () => {
-    for (const st of ['periodic', 'chunk', 'replica', 'isosurface']) {
-      await expect(run(scene('create_atoms 1 single 5 5 5', `fix x all graphics/${st} 1`, ''))).rejects.toThrow(`fix graphics/${st} is not supported`);
-    }
-  });
-
-  it('graphics/objects refuses progbar and polygonal cones', async () => {
-    await expect(run(scene('create_atoms 1 single 5 5 5', 'fix o all graphics/objects 1 progbar 1 2 y 0 0 0 5 1.0 0.5 10', ''))).rejects.toThrow(/progbar is not supported/);
+  it('graphics/objects refuses polygonal cones (progbar is drawn, see engineGraphics2Render.test.ts)', async () => {
     await expect(run(scene('create_atoms 1 single 5 5 5', 'fix o all graphics/objects 1 cone 1 5 5 5 5 6 5 0.2 0.1 4', ''))).rejects.toThrow(/polygonal cones/);
   });
 

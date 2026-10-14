@@ -8,7 +8,8 @@
  * Documented behaviour (docs.lammps.org/fix_graphics_objects.html): the objects are sphere, cylinder, arrow and
  * cone, each given by a colour type and geometry; "The radius ... is given" (the C++ doubles the argument into a
  * diameter, fix_graphics_objects.cpp: "sphere.diameter *= 2.0"). Objects are drawn by dump image through the
- * "fix ID type|element|const flag1 flag2" keyword. The progress bar object (progbar) is not ported and is refused.
+ * "fix ID type|element|const flag1 flag2" keyword. The progress bar object (progbar, progbar.ts) is drawn as native
+ * cylinders by the GPL renderer (draw.ts).
  *
  * Difference: the browser engine evaluates the objects when the image is written (the same step as the dump,
  * when N divides the dump frequency, as in the examples), not at every N-th end of step.
@@ -18,9 +19,12 @@ import { Fix } from '../../engine/fix/fix';
 import type { FixFactory } from '../../engine/styles';
 import { StyleError } from '../../engine/force/types';
 import type { ImageObject, Vec3 } from '../../engine/output/image_objects';
-import { evalNumOrVar, parseInteger, parseNumOrVar, type NumOrVar } from './common';
+import { evalNumOrVar, parseInteger, parseNumber, parseNumOrVar, type NumOrVar } from './common';
+import { parseProgbar, progbarObjects, type ProgbarSpec } from './progbar';
+import { drawGraphicsObject } from './draw';
 
 type Item =
+  | { kind: 'progbar'; spec: ProgbarSpec; progress: NumOrVar }
   | { kind: 'sphere'; type: number; pos: NumOrVar[]; radius: NumOrVar }
   | { kind: 'cylinder'; type: number; p1: NumOrVar[]; p2: NumOrVar[]; radius: NumOrVar }
   | { kind: 'arrow'; type: number; bot: NumOrVar[]; tip: NumOrVar[]; radius: NumOrVar; ratio: number }
@@ -67,7 +71,22 @@ export class FixGraphicsObjects extends Fix {
         this.items.push({ kind: 'cone', type: parseInteger(args[i + 1], 'cone type'), bot: [num(args[i + 2], 'cone x1'), num(args[i + 3], 'cone y1'), num(args[i + 4], 'cone z1')], top: [num(args[i + 5], 'cone x2'), num(args[i + 6], 'cone y2'), num(args[i + 7], 'cone z2')], r1: num(args[i + 8], 'cone bottom radius'), r2: num(args[i + 9], 'cone top radius') });
         i += 11;
       } else if (kw === 'progbar') {
-        throw new StyleError(`fix ${id} graphics/objects progbar is not supported by the browser engine (the progress bar geometry is not ported)`);
+        // fix_graphics_objects.cpp: progbar type1 type2 dim x y z length radius progress tics (11 words with the keyword)
+        need(i + 11, 'progbar');
+        const prd = this.sys.state.box;
+        const prdLen: [number, number, number] = [prd.hi[0] - prd.lo[0], prd.hi[1] - prd.lo[1], prd.hi[2] - prd.lo[2]];
+        const spec = parseProgbar(
+          parseInteger(args[i + 1], 'progbar type1'),
+          parseInteger(args[i + 2], 'progbar type2'),
+          args[i + 3],
+          [parseNumber(args[i + 4], 'progbar x'), parseNumber(args[i + 5], 'progbar y'), parseNumber(args[i + 6], 'progbar z')],
+          parseNumber(args[i + 7], 'progbar length'),
+          parseNumber(args[i + 8], 'progbar radius'),
+          parseInteger(args[i + 10], 'progbar tics'),
+          prdLen,
+        );
+        this.items.push({ kind: 'progbar', spec, progress: num(args[i + 9], 'progbar progress') });
+        i += 11;
       } else {
         throw new StyleError(`fix ${id} graphics/objects: unknown object '${kw}' (sphere, cylinder, arrow or cone)`);
       }
@@ -78,17 +97,30 @@ export class FixGraphicsObjects extends Fix {
   /** The objects for dump image (fix_graphics_objects.cpp end_of_step and image()). */
   imageObjects(): ImageObject[] {
     const sys = this.sys;
-    return this.items.map((it): ImageObject => {
-      if (it.kind === 'sphere') return { kind: 'sphere', type: it.type, center: vec(sys, it.pos), diameter: 2 * evalNumOrVar(sys, it.radius) };
-      if (it.kind === 'cylinder') return { kind: 'cylinder', type: it.type, p1: vec(sys, it.p1), p2: vec(sys, it.p2), diameter: 2 * evalNumOrVar(sys, it.radius) };
-      if (it.kind === 'cone') return { kind: 'cone', type: it.type, p1: vec(sys, it.bot), p2: vec(sys, it.top), d1: 2 * evalNumOrVar(sys, it.r1), d2: 2 * evalNumOrVar(sys, it.r2) };
-      // an arrow runs from bot to tip: centre, unit direction and length as the image object takes them
-      const b = vec(sys, it.bot), t = vec(sys, it.tip);
-      const dir: Vec3 = [t[0] - b[0], t[1] - b[1], t[2] - b[2]];
-      const length = Math.hypot(dir[0], dir[1], dir[2]);
-      const center: Vec3 = [0.5 * (t[0] + b[0]), 0.5 * (t[1] + b[1]), 0.5 * (t[2] + b[2])];
-      return { kind: 'arrow', type: it.type, center, dir, length, diameter: 2 * evalNumOrVar(sys, it.radius), ratio: it.ratio };
-    });
+    const out: ImageObject[] = [];
+    for (const it of this.items) {
+      if (it.kind === 'progbar') {
+        // the progress bar objects are native cylinders: drawn by the GPL renderer (dump_image.cpp CYLINDER)
+        const progress = evalNumOrVar(sys, it.progress);
+        for (const c of progbarObjects(it.spec, progress)) out.push({ kind: 'draw', draw: (f, st) => drawGraphicsObject(f, st, c) });
+        continue;
+      }
+      out.push(this.imageItem(it));
+    }
+    return out;
+  }
+
+  private imageItem(it: Exclude<Item, { kind: 'progbar' }>): ImageObject {
+    const sys = this.sys;
+    if (it.kind === 'sphere') return { kind: 'sphere', type: it.type, center: vec(sys, it.pos), diameter: 2 * evalNumOrVar(sys, it.radius) };
+    if (it.kind === 'cylinder') return { kind: 'cylinder', type: it.type, p1: vec(sys, it.p1), p2: vec(sys, it.p2), diameter: 2 * evalNumOrVar(sys, it.radius) };
+    if (it.kind === 'cone') return { kind: 'cone', type: it.type, p1: vec(sys, it.bot), p2: vec(sys, it.top), d1: 2 * evalNumOrVar(sys, it.r1), d2: 2 * evalNumOrVar(sys, it.r2) };
+    // an arrow runs from bot to tip: centre, unit direction and length as the image object takes them
+    const b = vec(sys, it.bot), t = vec(sys, it.tip);
+    const dir: Vec3 = [t[0] - b[0], t[1] - b[1], t[2] - b[2]];
+    const length = Math.hypot(dir[0], dir[1], dir[2]);
+    const center: Vec3 = [0.5 * (t[0] + b[0]), 0.5 * (t[1] + b[1]), 0.5 * (t[2] + b[2])];
+    return { kind: 'arrow', type: it.type, center, dir, length, diameter: 2 * evalNumOrVar(sys, it.radius), ratio: it.ratio };
   }
 }
 

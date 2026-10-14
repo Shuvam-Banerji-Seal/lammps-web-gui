@@ -5,7 +5,7 @@ import { buildAtomMap, massOf } from '../atoms';
 import { encodePng } from './png';
 import { encodeJpeg } from './jpeg';
 import { ColorMap } from './image_colormap';
-import { arrowParts, type ImageObject, type Vec3 } from './image_objects';
+import { arrowParts, type ImageObject, type ObjectStyle, type RasterFrame, type Rgb255, type Vec3 } from './image_objects';
 
 /*
  * dump image — docs.lammps.org/dump_image.html.
@@ -56,6 +56,8 @@ interface DrawCtx {
   right: number[];
   ui: number[];
   V: number[];
+  /** The same camera as the frame the GPL graphics objects draw into (image_objects.ts RasterFrame). */
+  frame: RasterFrame;
 }
 
 /** A useful subset of the 140 pre-defined colour names (dump_image.html). */
@@ -70,6 +72,10 @@ const NAMED_COLORS: Record<string, RGB> = {
   lightgrey: [211, 211, 211], indigo: [75, 0, 130], turquoise: [64, 224, 208], salmon: [250, 128, 114],
   khaki: [240, 230, 140], crimson: [220, 20, 60], orchid: [218, 112, 214], tan: [210, 180, 140],
   beige: [245, 245, 220], coral: [255, 127, 80], plum: [221, 160, 221], azure: [240, 255, 255],
+  // the colour names the GRAPHICS examples use (dump image colour table of src/GRAPHICS/image.cpp at b332f28,
+  // the values in 0..1 times 255 rounded)
+  darkgray: [69, 69, 69], steelblue: [70, 130, 180], slategray: [112, 128, 144], lightslategray: [119, 136, 153],
+  midnightblue: [25, 25, 112], firebrick: [178, 34, 34], darkslategray: [47, 79, 79],
 };
 
 /**
@@ -538,7 +544,16 @@ export class ImageDump {
         this.drawSphere(rgb, depth, px, py, pd, r, base, light, right, ui, V);
       }
     }
-    const ctx: DrawCtx = { rgb, depth, project, scale, light, right, ui, V };
+    // Image::view_params (orthographic): pixelWidth = maxdel / (height * zoom) with maxdel = 2 * longest edge, and
+    // zdist = (maxdel / tan(30 deg) + 0.5 * del . camDir) / zoom with del = 2 * edges (image.cpp at b332f28)
+    const maxdel = 2 * maxdim;
+    const zdist = (maxdel / Math.tan(30 * DEG) + 0.5 * (2 * lx * V[0] + 2 * ly * V[1] + 2 * lz * V[2])) / this.zoom;
+    const frame: RasterFrame = {
+      w, h, rgb, depth,
+      camRight: [right[0], right[1], right[2]], camUp: [ui[0], ui[1], ui[2]], camDir: [V[0], V[1], V[2]],
+      ctr: [center[0], center[1], center[2]], zdist, pixelWidth: maxdel / (h * this.zoom),
+    };
+    const ctx: DrawCtx = { rgb, depth, project, scale, light, right, ui, V, frame };
     if (this.fixObjects.length) this.drawFixObjects(s, ctx);
     if (this.axes) {
       // the origin is grey, the x, y and z arrows red, green and blue (dump_image.cpp, Image::draw_axes)
@@ -561,6 +576,11 @@ export class ImageDump {
       const objs = fix?.imageObjects?.();
       if (!objs) throw new StyleError(`dump ${this.id}: dump image fix ${fo.id} provides no graphics objects`);
       for (const o of objs) {
+        // objects drawn by the GPL renderer get the keyword's colour, diameter and flag rules through this style
+        if (o.kind === 'draw') {
+          o.draw(ctx.frame, this.objectStyle(s, fo));
+          continue;
+        }
         const itype = Math.trunc(o.type - 1) % s.ntypes + 1;
         let base: RGB = [255, 255, 255];
         if (fo.style === 'const') base = fo.rgb;
@@ -571,9 +591,37 @@ export class ImageDump {
     }
   }
 
+  /** The style of one "fix" keyword for the GPL graphics objects (ObjectStyle in image_objects.ts). */
+  private objectStyle(s: SimState, fo: { style: 'type' | 'element' | 'const'; flag1: number; flag2: number; rgb: RGB }): ObjectStyle {
+    const colorOf = (type: number): Rgb255 => {
+      const itype = Math.trunc(type - 1) % s.ntypes + 1;
+      if (fo.style === 'const') return [fo.rgb[0], fo.rgb[1], fo.rgb[2]];
+      if (itype <= 0) return [255, 255, 255];
+      if (fo.style === 'type') return this.acolorByType.get(itype) ?? TYPE_COLORS[(itype - 1) % TYPE_COLORS.length];
+      return (ELEMENTS[this.elementName(s, itype)] ?? ELEMENTS.C)[0];
+    };
+    // default sphere size of a type: the dump's adiam setting (numeric, per type, or per element)
+    const diameterOf = (type: number): number => {
+      if (this.adiamAll !== null) return this.adiamAll;
+      if (this.attr.diameter === 'type') return this.adiamByType.get(type) ?? 1.0;
+      if (this.attr.diameter === 'element') return (ELEMENTS[this.elementName(s, type)] ?? ELEMENTS.C)[1];
+      return 1.0;
+    };
+    // bond width of the dump's bond keyword (a number, or atom / type as the default sizes of the two atoms)
+    const bondDiameter = (t1: number, t2: number): number => {
+      const w = this.bond?.width;
+      if (w === undefined) return 0.5;
+      if (w === 'atom' || w === 'type') return Math.min(diameterOf(t1), diameterOf(t2));
+      if (w === 'none') return 0;
+      return Number(w);
+    };
+    return { flag1: fo.flag1, flag2: fo.flag2, colorOf, diameterOf, bondDiameter };
+  }
+
   /** One graphics object in colour `base`; flag1 and flag2 as dump image's "fix" keyword gives them. */
   private drawImageObject(o: ImageObject, base: RGB, flag1: number, flag2: number, c: DrawCtx): void {
     const { rgb, depth, project, scale } = c;
+    if (o.kind === 'draw') throw new StyleError(`dump ${this.id}: internal: GPL graphics object reached the core object drawing`);
     if (o.kind === 'sphere') {
       const r = 0.5 * (o.diameter + flag2) * scale;
       if (!(r > 0)) return;

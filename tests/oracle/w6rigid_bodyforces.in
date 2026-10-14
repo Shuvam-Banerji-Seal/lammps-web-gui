@@ -1,5 +1,6 @@
 # oracle: fix rigid with fix_modify bodyforces early and a later fix addforce (adds forces after the rigid fix's post_force)
-# oracle-compare: abs=1e-7
+# oracle-compare: rel=1e-10 abs=1e-12 atomrel=1e-10
+# Measured with native LAMMPS (probe runs, 64 atoms): the largest absolute thermo difference, pressure columns included, is 3.1e-13 (pzz); the per-atom scaled error is 1.1e-13. The rigid virial is exact only with the omega of the half-step quaternion that math_extra.cpp richardson() leaves in omega (the engine had the omega of the full-step quaternion, which put about 1e-8 into pxx and pyy).
 units           lj
 lattice         sc 0.5
 region          box block 0 4 0 4 0 4

@@ -281,6 +281,21 @@ export abstract class FixRigidBase extends Fix {
     return b.hi[d] - b.lo[d];
   }
 
+  /**
+   * FixRigid::deform (src/RIGID/fix_rigid.cpp at b332f28), inherited by the NH styles (FixRigidNH : FixRigid) and
+   * meso (FixRigidMeso : FixRigid), and by the /small styles (FixRigidSmall::deform, fix_rigid_small.cpp): "adjust xcm
+   * of each rigid body due to box deformation"; flag 0 maps xcm to lamda coordinates, flag 1 maps it back.
+   */
+  deformBodies(flag: 0 | 1): void {
+    const g = this.sys.geom;
+    const t = [0, 0, 0];
+    for (const b of this.bodies) {
+      if (flag === 0) g.toLamda(b.xcm[0], b.xcm[1], b.xcm[2], t);
+      else g.fromLamda(b.xcm[0], b.xcm[1], b.xcm[2], t);
+      b.xcm[0] = t[0]; b.xcm[1] = t[1]; b.xcm[2] = t[2];
+    }
+  }
+
   /** Unwrapped position of atom i relative to its body's image: x + xcmimage * L (xcmimage = image - imagebody). */
   protected unmapRel(i: number, b: Body, out: V3): void {
     const s = this.sys.state;

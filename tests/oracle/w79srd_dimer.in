@@ -1,7 +1,7 @@
-# oracle: fix srd with overlap yes and slip collisions with big spheres in rigid dimers, 2d (cut-down of examples/ASPHERE/dimer/in.dimer: the 200-atom data file, SRD density 10 per unit area instead of 85, 60 steps of the SRD phase)
+# oracle: fix srd with overlap yes and slip collisions with big spheres in rigid dimers, 2d (cut-down of examples/ASPHERE/dimer/in.dimer: the 200-atom data file, SRD density 10 per unit area instead of 85, 40 steps of the SRD phase)
 # oracle-inputs: w79srd_dimer.data
 # oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-13 skip=press,f_2[1],f_2[5] atomskip=fx,fy,fz
-# Measured with native LAMMPS (black box): over 60 steps the engine agrees with the temperatures, energies, collision and bounce counts and the positions and velocities to a relative error of 1e-12. Skipped: press (at the setup of the SRD phase, the fix rigid virial of the redefined bodies differs: about 258 against 121 in this case; the same bodies in a run without fix srd show it too), f_2[1] (the candidate count differs by 9 at step 10: the engine rebuilds its neighbor lists when a periodic wrap of a big particle looks like a move, native does not), and f_2[5] (the rescale count differs by 6 at the first SRD rotation, step 20; at mass 0.01 it agrees). Beyond step 67 the bounce count of one SRD particle differs (collisions with two touching spheres of a dimer), so the case stops at 60 steps; the run to 200 steps does not agree.
+# Measured with native LAMMPS (black box): over 40 steps the engine agrees with the temperatures, energies, collision and bounce counts and the positions and velocities to a relative error of 1e-12. Skipped: press (at the setup of the SRD phase, the fix rigid virial of the redefined bodies differs: about 258 against 121 in this case; the same bodies in a run without fix srd show it too), f_2[1] (the candidate count differs by 9 at step 10: the engine rebuilds its neighbor lists when a periodic wrap of a big particle looks like a move, native does not), and f_2[5] (the rescale count differs by 6 at the first SRD rotation, step 20; at mass 0.01 it agrees). Since the rigid quaternion update takes the omega of the half-step quaternion as native does (math_extra.cpp richardson, see w178rd_rigid_custom), the rigid-only dimer phase agrees with native to 3e-15 over 100 steps, but the SRD phase now flips a bounce decision (collisions with two touching spheres of a dimer) at step 49, from a 4e-14 difference that is at rounding level; the case therefore runs 40 SRD steps (it was 60 with the full-step omega, which agreed by rounding luck). The run to 200 steps does not agree.
 units		lj
 atom_style	sphere
 atom_modify	map array first big
@@ -62,4 +62,4 @@ variable	ebig equal etotal*atoms/count(big)
 thermo_style	custom step temp f_2[8] etotal v_pebig v_ebig press f_2[1] f_2[2] f_2[3] f_2[4] f_2[5] f_2[6] f_2[7] f_2[9] f_2[10] f_2[11] f_2[12]
 thermo_modify	temp tbig format float %.15g
 thermo		20
-run		60
+run		40

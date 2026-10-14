@@ -1,6 +1,6 @@
 # oracle: fix rigid/small molecule bodies under fix deform erate x y with remap x (the bodies' centres of mass follow the box)
-# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12 atomrel=1e-10 skip=press,pxx,pyy,pzz
-# Measured with native LAMMPS (black box, probe runs): before the fix the temp column was off by 1e-4 relative at step 5; with the fix every thermo column except the pressure ones agrees to 1e-10, and so do the final positions, velocities and forces of all 64 atoms. The pressure columns are left out for the same pre-existing rigid virial difference (about 1e-8 absolute, also without fix deform; see w178rd_rigid_custom).
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12 atomrel=1e-10
+# Measured with native LAMMPS (black box, probe runs): before the fix the temp column was off by 1e-4 relative at step 5; with the fix every thermo column except the pressure ones agrees to 1e-10, and so do the final positions, velocities and forces of all 64 atoms. The pressure columns are left out for the same pre-existing rigid virial difference (about 1e-8 absolute, also without fix deform; see w178rd_rigid_custom). The pressure columns, once left out, now agree too: pxx and pyy were off by 1.1e-8 before the richardson() fix (math_extra.cpp: the omega of the half-step quaternion), and every thermo column agrees to 4e-15 relative and 3e-13 absolute now.
 units           lj
 atom_style      molecular
 lattice         sc 0.5

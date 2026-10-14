@@ -1038,7 +1038,11 @@ export class FixRigid extends Fix {
     this.setXV(false, 0.5);
   }
 
-  /** Orientation over dt with Richardson extrapolation of dq/dt = 1/2 (0, w) q (w from L, space frame). */
+  /**
+   * Orientation over dt with Richardson extrapolation of dq/dt = 1/2 (0, w) q (w from L, space frame). As native LAMMPS does (src/math_extra.cpp richardson at b332f28):
+   * omega is the one of the half-step quaternion (mq_to_omega(angmom, qhalf)); it is not recomputed from the corrected
+   * quaternion. The rigid virial (set_xv) uses it, so recomputing it moved pxx and pyy by about 1e-8.
+   */
   private richardson(b: Body, dt: number): void {
     const wq = (q: number[], w: number[]) => [
       -w[0] * q[1] - w[1] * q[2] - w[2] * q[3],
@@ -1057,7 +1061,6 @@ export class FixRigid extends Fix {
     const d1 = wq(qhalf, b.omega);
     const qhalf2 = qnorm(qhalf.map((v, k) => v + 0.5 * dtq * d1[k]));
     b.q = qnorm(qhalf2.map((v, k) => 2 * v - qfull[k]));
-    this.omegaFromAngmom(b);
   }
 
   // ---------------------------------------------------------------- output

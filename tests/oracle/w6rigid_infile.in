@@ -1,6 +1,7 @@
 # oracle: fix rigid bodystyle custom v_name with keyword infile: bodies 1 and 4 take mass, COM, inertia, velocity and angular momentum from the file
 # oracle-inputs: w6rigid_infile.txt
-# oracle-compare: abs=1e-7
+# oracle-compare: rel=1e-10 abs=1e-12 atomrel=1e-10
+# Measured with native LAMMPS (probe runs, 64 atoms): the largest absolute thermo difference, pressure columns included, is 4.6e-13 (pzz); the per-atom scaled error is 2.3e-14. The rigid virial is exact only with the omega of the half-step quaternion that math_extra.cpp richardson() leaves in omega (the engine had the omega of the full-step quaternion, which put about 1e-8 into pxx and pyy).
 units           lj
 lattice         sc 0.5
 region          box block 0 4 0 4 0 4

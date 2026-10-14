@@ -92,6 +92,7 @@ export const parseRigidArgs = (style: string, args: string[], dimension: 2 | 3) 
     forceSpecs: [] as [string, number[]][],
     torqueSpecs: [] as [string, number[]][],
     reinit: true,
+    mol: null as string | null,
     thermo: { tstat: false, tStart: 0, tStop: 0, tPeriod: 0, tChain: 10, tIter: 1, tOrder: 3 } as ThermostatKeywords,
     press: { pstat: false, pFlag: [0, 0, 0], pStart: [0, 0, 0], pStop: [0, 0, 0], pPeriod: [0, 0, 0], pcouple: 'none', allremap: true, dilate: null, pChain: 10 } as PressureKeywords,
   };
@@ -169,6 +170,11 @@ export const parseRigidArgs = (style: string, args: string[], dimension: 2 | 3) 
     } else if (key === 'pchain') {
       pr.pChain = Math.trunc(num(args[k + 1], 'pchain'));
       k += 2;
+    } else if (key === 'mol' && small) {
+      // fix_rigid.html: "The *mol* keyword can only be used with the *rigid/small* styles." (the template of fix deposit rigid)
+      if (args[k + 1] === undefined) throw new StyleError(`fix ${style}: keyword mol needs a molecule template-ID`);
+      out.mol = args[k + 1];
+      k += 2;
     } else if (key === 'tparam') {
       // fix_rigid.html: "tparam values = Tchain Titer Torder"
       out.thermo.tChain = Math.trunc(num(args[k + 1], 'tparam Tchain'));
@@ -176,7 +182,7 @@ export const parseRigidArgs = (style: string, args: string[], dimension: 2 | 3) 
       out.thermo.tOrder = Math.trunc(num(args[k + 3], 'tparam Torder'));
       k += 4;
     } else {
-      throw new StyleError(`fix ${style}: keyword '${key}' is not supported by the browser engine's native-parity ${style} (supported: bodystyle, force, torque, reinit, temp, tparam, iso, aniso, x, y, z, couple, dilate, pchain)`);
+      throw new StyleError(`fix ${style}: keyword '${key}' is not supported by the browser engine's native-parity ${style} (supported: bodystyle, force, torque, reinit, temp, tparam, iso, aniso, x, y, z, couple, dilate, pchain, and mol for rigid/small)`);
     }
   }
   // fix_rigid.cpp: pstat_flag = 1 if any p_flag is set
@@ -205,6 +211,8 @@ export abstract class FixRigidBase extends Fix {
   protected press: PressureKeywords;
   protected forceSpecs: [string, number[]][];
   protected torqueSpecs: [string, number[]][];
+  /** keyword mol (rigid/small only): the molecule template-ID that fix deposit rigid must name too */
+  protected molTemplateId: string | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[], style: string) {
     super(sys, id, group, args);
@@ -224,8 +232,37 @@ export abstract class FixRigidBase extends Fix {
     this.torqueSpecs = kw.torqueSpecs;
     this.thermo = kw.thermo;
     this.press = kw.press;
+    this.molTemplateId = kw.mol;
+    if (this.molTemplateId && !sys.molecules.has(this.molTemplateId)) throw new StyleError(`fix ${style}: molecule template ${this.molTemplateId} does not exist`);
+    if (this.molTemplateId && this.bodystyle !== 'molecule') throw new StyleError(`fix ${style}: the mol keyword requires bodystyle molecule`);
     for (const g of this.groupList) sys.groups.bit(g);
     if (this.press.dilate) sys.groups.bit(this.press.dilate);
+  }
+
+  /** The mol template-ID of this fix (null without the keyword); fix deposit rigid must name the same one. */
+  moleculeTemplateId(): string | null { return this.molTemplateId; }
+
+  /**
+   * Adds the body of a molecule deposited by fix deposit with the rigid keyword (fix_rigid_small.cpp set_molecule,
+   * which the deposit calls with the new atom IDs). The body is built from the atoms as they were inserted; the
+   * source takes the template's geometry instead, which is the same rigid molecule. As in set_molecule, the new body
+   * starts at rest: its angular momentum, omega and conjugate quaternion momentum are zero.
+   */
+  addMolecule(atomIds: readonly number[]): void {
+    if (this.bodystyle !== 'molecule') throw new StyleError(`fix ${this.style}: the mol keyword needs bodystyle molecule`);
+    const idx = this.indexById();
+    const ii = atomIds.map((id) => {
+      const k = id < idx.length ? idx[id] : -1;
+      if (k < 0) throw new StyleError(`fix ${this.style}: atom ${id} does not exist`);
+      return k;
+    });
+    const b = this.staticBody(ii);
+    b.angmom = [0, 0, 0];
+    b.omega = [0, 0, 0];
+    b.conjqm = [0, 0, 0, 0];
+    this.bodies.push(b);
+    this.nbody = this.bodies.length;
+    this.sizeArrayRows = this.bodies.length;
   }
 
   /** Index of each atom ID (atoms are looked up by ID every time, as the atoms may be reordered). */
@@ -292,6 +329,11 @@ export abstract class FixRigidBase extends Fix {
    */
   private staticBody(idx: number[]): Body {
     const s = this.sys.state;
+    // the NH port has no finite-size ellipsoid or point dipole bodies: refused by name, never treated as points
+    for (const i of idx) {
+      if (s.shape && s.shape[3 * i] > 0) throw new StyleError(`fix ${this.style}: finite-size ellipsoid atom ${s.id[i]} is not supported by the browser engine's native-parity ${this.style}`);
+      if (s.mu && s.mu[4 * i + 3] > 0) throw new StyleError(`fix ${this.style}: point dipole atom ${s.id[i]} is not supported by the browser engine's native-parity ${this.style}`);
+    }
     const box = s.box;
     const xcm: V3 = [0, 0, 0];
     let M = 0;

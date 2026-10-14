@@ -524,7 +524,9 @@ export const insertMolecules = (sys: System, t: MoleculeTemplate, pts: number[],
   const types = new Int32Array(copies * t.natoms);
   for (let c = 0; c < copies; c++) for (let i = 0; i < t.natoms; i++) types[c * t.natoms + i] = t.type[i] + toff;
   for (const ty of types) if (ty < 1 || ty > s.ntypes) throw new StyleError(`molecule ${t.id}: atom type ${ty} is outside 1..${s.ntypes}`);
-  const molecular = isMolecularStyle(sys.atomStyle);
+  // create_atoms.cpp (src/create_atoms.cpp at b332f28): molecule IDs are set when atom->molecule_flag is set, which
+  // includes fix property/atom mol (not only a molecular atom_style)
+  const molecular = hasMolecule(s);
   const tmplStyle = isTemplateStyle(sys.atomStyle);
   const needs: [string, number[][], number, string[]][] = [
     ['bonds', t.bonds, s.topo.nbondtypes, ['bond', 'angle', 'molecular', 'full', 'amoeba', 'template']],

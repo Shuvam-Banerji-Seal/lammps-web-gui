@@ -198,14 +198,15 @@ run 0`);
 });
 
 describe('rigid bodies with point dipoles', () => {
-  it('fix rigid/small refuses a body whose atoms carry dipoles', async () => {
+  // fix rigid/small carries point dipoles with the body since w148rg (fix_rigid_small.cpp DIPOLE); fix rigid still refuses
+  it('fix rigid refuses a body whose atoms carry dipoles', async () => {
     const { error } = await runScript(`units lj
 atom_style hybrid sphere dipole
 region box block 0 10 0 10 0 10 units box
 create_box 1 box
 molecule dm dipoles.txt
 create_atoms 0 single 2 2 2 mol dm 1 units box
-fix 1 all rigid/small molecule
+fix 1 all rigid molecule
 run 0`, { 'dipoles.txt': DIPOLE_MOL });
     expect(error).not.toBeNull();
     expect(error!.message).toMatch(/point dipole/);

@@ -13,7 +13,8 @@
  * Supported: fix rigid/nvt (keyword temp, tparam), rigid/npt (temp, tparam, iso, aniso, x, y, z, couple, dilate,
  * pchain) and rigid/nph (iso, aniso, x, y, z, couple, dilate, pchain), and the /small variants (molecule bodies only,
  * no force and torque flags), in 3d with point particles, bodystyle single, molecule and group, and the force and
- * torque flags for the plain styles. Not ported (StyleError): 2d, infile, mol, langevin, gravity, bodystyle custom,
+ * torque flags for the plain styles, and the mol keyword of the /small styles (bodies added by fix deposit rigid). Not ported
+ * (StyleError): 2d, infile, langevin, gravity, bodystyle custom,
  * fix_modify bodyforces early.
  */
 import type { System } from '../../engine/system';

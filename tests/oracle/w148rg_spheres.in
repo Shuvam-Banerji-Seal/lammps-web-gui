@@ -1,0 +1,25 @@
+# oracle: fix rigid/small molecule of finite spheres (examples/rigid/in.rigid.spheres, cut down to 27 cells, 200 steps).
+# The body extent (native: max distance from the atom nearest the body bounding-box centre, 1.697 for mol.sphere4) is
+# below the ghost cutoff, so no comm_modify cutoff is needed; molecule IDs come from fix property/atom mol, not
+# from the atom style. Native: installed lmp (b332f28, MOLECULE, RIGID packages).
+# oracle-inputs: w148rg_sphere4.mol
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      sphere
+atom_modify     map array
+lattice         sc 0.06
+region          box block 0 3 0 3 0 3
+create_box      1 box
+fix             prop all property/atom mol ghost yes
+molecule        mymol w148rg_sphere4.mol
+create_atoms    0 region box mol mymol 39847
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+neigh_modify    exclude molecule/intra all
+fix             1 all rigid/small molecule
+compute         erot all erotate/sphere
+thermo_style    custom step pe f_1 c_erot
+thermo_modify   format float %.15g
+thermo          50
+timestep        0.0005
+run             200

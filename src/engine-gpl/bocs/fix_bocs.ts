@@ -32,9 +32,6 @@ import type { System } from '../../engine/system';
 import type { ComputePressure } from '../../engine/compute/pressure';
 import { ComputePressureBocs } from './compute_pressure_bocs';
 
-/** Keywords of native fix bocs's constructor (fix_bocs.cpp, process keywords loop). */
-const BOCS_KEYWORDS = ['temp', 'cgiso', 'tchain', 'pchain', 'mtk', 'tloop', 'ploop'];
-
 /** Translate the BOCS argument list into fix npt keywords plus the analytic basis (fix_bocs.cpp constructor). */
 function translate(sys: System, args: string[]): { npt: string[]; basis: { phi: number[]; nMol: number; vavg: number } | null } {
   const npt: string[] = [];

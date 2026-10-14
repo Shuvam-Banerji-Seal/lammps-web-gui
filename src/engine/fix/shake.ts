@@ -291,6 +291,18 @@ export class FixShake extends Fix {
       return r0;
     };
     const ids = [...partners.keys()].sort((p, q) => p - q);
+    // angle index by central atom (a scan of every angle per cluster is quadratic on large topologies)
+    const anglesByCentre = new Map<number, number[]>();
+    if (this.angleTypes.size) {
+      const A = s.topo.angles;
+      for (let e = 0; e < A.n; e++) {
+        if (!this.angleTypes.has(A.type[e])) continue;
+        const centre = A.atoms[3 * e + 1];
+        const list = anglesByCentre.get(centre);
+        if (list) list.push(e);
+        else anglesByCentre.set(centre, [e]);
+      }
+    }
     for (const id of ids) {
       const mine = partners.get(id)!;
       const isCentral = mine.length > 1 || (mine.length === 1 && partners.get(mine[0].other)!.length === 1 && id < mine[0].other);
@@ -303,7 +315,8 @@ export class FixShake extends Fix {
       mine.forEach((p, k) => { const r0 = bondLen(p.bond); c.cons.push({ a: 0, b: k + 1, d2: r0 * r0 }); });
       if (mine.length === 2 && this.angleTypes.size) {
         const A = s.topo.angles;
-        for (let e = 0; e < A.n; e++) {
+        // the angles centred on this atom, in topology order (the same visiting order as a scan of every angle)
+        for (const e of anglesByCentre.get(id) ?? []) {
           const [x1, x2, x3] = [A.atoms[3 * e], A.atoms[3 * e + 1], A.atoms[3 * e + 2]];
           if (x2 !== id || !this.angleTypes.has(A.type[e])) continue;
           const ends = new Set([x1, x3]);

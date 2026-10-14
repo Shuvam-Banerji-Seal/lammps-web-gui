@@ -1,0 +1,24 @@
+# oracle: fix bocs cgiso analytic basis (BOCS package; examples/PACKAGES/bocs/in.methanol cut to 20 steps): modified pressure in thermo, ecouple/econserve of the barostat and thermostat chains
+# oracle-inputs: w156mx_methanol.data w156mx_nb_MET-MET.table
+# measured max relative error vs native: thermo 4.7e-11 (ecouple, abs 2.4e-15; press 1e-14), per-atom 1.5e-13
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# native: LAMMPS b332f28 (installed lmp, BOCS package)
+units		real
+dimension	3
+boundary	p p p
+atom_style      atomic
+newton		on
+timestep	1.0
+read_data	w156mx_methanol.data
+velocity	all create 300.0 16802 dist gaussian
+pair_style	table spline 15000
+pair_coeff	1 1 w156mx_nb_MET-MET.table nb_METMET 12.0
+neigh_modify	delay 0 every 1 check yes one 10000
+neighbor	12.0 bin
+fix 	1  all      bocs       temp       300.0  300.0 100.0    cgiso    0.986   0.986  1000.0   analytic     66476.015   968     2        245030.10   8962.20
+thermo_modify 	press 1_press
+thermo		5
+thermo_style	custom step temp pe etotal press vol ecouple econserve
+thermo_modify   format float %.15g
+run_style       verlet
+run 20

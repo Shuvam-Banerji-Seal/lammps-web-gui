@@ -765,6 +765,15 @@ export class FixNH extends Fix {
    * fix_nh.cpp compute_press_target: the ramped targets, then p_hydro as their mean over the barostatted diagonal
    * dimensions, then the subclass hook (pressTargetSet).
    */
+  /**
+   * The pressure tensor (Voigt xx yy zz xy xz yz) the barostat reads for the current step. The default is the
+   * compute's own tensor; a subclass whose pressure carries a correction to the diagonal (fix bocs,
+   * src/BOCS/fix_bocs.cpp couple(): the ISO pressure is the scalar, which includes the correction) overrides it.
+   */
+  protected pressureTensor(pc: ComputePressure): ArrayLike<number> {
+    return pc.vectorValues();
+  }
+
   protected computePressTarget(): void {
     for (let d = 0; d < 6; d++) {
       if (this.pFlag[d]) this.pTarget[d] = ramp(this.sys, this.pStart[d], this.pStop[d]);
@@ -830,7 +839,7 @@ export class FixNH extends Fix {
         this.sys.refreshComputes();
       }
     }
-    const v = pc.vectorValues();
+    const v = this.pressureTensor(pc);
     // tensor Voigt order of compute pressure: xx yy zz xy xz yz -> ours x y z yz xz xy
     const cur = [v[0], v[1], v[2], v[5], v[4], v[3]];
     const coupled = this.coupledDims();

@@ -391,9 +391,9 @@ describe('pair_style edip/multi (batch 48)', () => {
   });
 });
 
-describe('pair_style uf3 (not implemented: the unknown-style error names it)', () => {
+describe('pair_style mgpt (not implemented: the unknown-style error names it)', () => {
   it('names the style in its refusal', async () => {
-    const run = await evaluate(['pair_style uf3 3', 'pair_coeff * * Nb.uf3 Nb'], [{ type: 1, x: [0, 0, 0] }, { type: 2, x: [1.4, 0, 0] }], { ntypes: 2 });
-    expect(run.error).toMatch(/uf3/);
+    const run = await evaluate(['pair_style mgpt', 'pair_coeff * * Ta6.8x.mgpt.parmin Ta6.8x.mgpt.potin Omega 138.0'], [{ type: 1, x: [0, 0, 0] }, { type: 2, x: [1.4, 0, 0] }], { ntypes: 2 });
+    expect(run.error).toMatch(/mgpt/);
   });
 });

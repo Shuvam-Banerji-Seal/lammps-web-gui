@@ -21,8 +21,6 @@ import { StyleError, typeBounds, type BondedCompute, type StyleContext } from '.
 import { parseNum } from '../../engine/force/util';
 import { BondBPMBase, bondKey, yesno } from './bond_bpm';
 
-// LAMMPS: static constexpr double EPSILON = 1e-10 (bond_bpm_spring.cpp)
-const EPSILON = 1e-10;
 
 export class BondBpmSpring extends BondBPMBase {
   readonly name = 'bpm/spring';

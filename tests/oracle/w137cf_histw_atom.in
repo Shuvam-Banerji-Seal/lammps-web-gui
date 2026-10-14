@@ -1,0 +1,22 @@
+# oracle: fix ave/histo/weight, per-atom values (c_pv binned, v_w = x-10 as the weight: negative, so the total is
+# oracle: negative and the histogram is normalized by it), 256 LJ atoms run 10 steps with NVE, beyond extra (two extra
+# oracle: bins), histogram every 2 steps with Nrepeat 1.
+# oracle-files: w137cf_histw_atom.histo
+# oracle-compare: thermo=all atoms=none
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.44 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+compute         pv all property/atom vx
+variable        w atom x-10.0
+fix             nve all nve
+fix             h all ave/histo/weight 1 1 2 -1.5 1.5 8 c_pv v_w mode vector beyond extra file w137cf_histw_atom.histo
+thermo_style    custom step pe ke
+thermo_modify   format float %.15g
+run             10

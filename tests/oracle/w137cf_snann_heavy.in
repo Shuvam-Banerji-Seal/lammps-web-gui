@@ -1,0 +1,21 @@
+# oracle: compute sna/atom with keyword nnn 12 (the cutoff is fitted so that the weight sum of the neighbours is 12,
+# oracle: docs.lammps.org/compute_sna_atom.html) and wmode 0, 108 displaced LJ-cell atoms
+# oracle: at pair cutoff 3.0, twojmax 4. The per-atom bispectrum is dumped and compared. Native: installed lmp (b332f28).
+# oracle-files: w137cf_snann_heavy.dump
+# oracle-compare: thermo=all atoms=none filerel=1e-8
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+displace_atoms  all random 0.08 0.08 0.08 4417 units box
+pair_style      lj/cut 3.0
+pair_coeff      * * 1.0 1.0
+compute         b all sna/atom 1.0 0.99363 4 0.85 1.0 rmin0 0.0 nnn 12 wmode 0
+dump            d all custom 1 w137cf_snann_heavy.dump id c_b[*]
+dump_modify     d sort id format float %.15g
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0

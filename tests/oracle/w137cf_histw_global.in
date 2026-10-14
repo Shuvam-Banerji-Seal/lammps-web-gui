@@ -1,0 +1,20 @@
+# oracle: fix ave/histo/weight, global scalars (c_r[1] binned, c_r[2] as the weight) of compute reduce max over 108
+# oracle: LJ atoms run 10 steps, beyond end (out-of-range values in the end bins), histogram every step, Nrepeat 1.
+# oracle-files: w137cf_histw_global.histo
+# oracle-compare: thermo=all atoms=none
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.44 4928 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0
+compute         r all reduce max vx vy
+fix             nve all nve
+fix             h all ave/histo/weight 1 1 1 -2 2 8 c_r[1] c_r[2] mode scalar beyond end file w137cf_histw_global.histo
+thermo_style    custom step pe ke
+thermo_modify   format float %.15g
+run             10

@@ -307,7 +307,8 @@ const HISTO_KEYWORDS = new Set([
 ]);
 
 export class FixAveHisto extends Fix {
-  readonly style = 'ave/histo';
+  // typed as string: the weighted variant (src/engine-gpl, fix ave/histo/weight) is a subclass
+  readonly style: string = 'ave/histo';
   vectorFlag = true;
   sizeVector = 4;
   arrayFlag = true;
@@ -318,7 +319,7 @@ export class FixAveHisto extends Fix {
   private readonly hi: number;
   private readonly nBins: number;
   private readonly delta: number;
-  private readonly mode: 'scalar' | 'vector';
+  protected readonly mode: 'scalar' | 'vector';
   private readonly aveMode: 'one' | 'running' | 'window';
   private readonly windowM: number;
   private readonly startStep: number;
@@ -329,7 +330,7 @@ export class FixAveHisto extends Fix {
   private readonly title1: string | undefined;
   private readonly title2: string | undefined;
   private readonly title3: string | undefined;
-  private readonly inputs: HistoInput[];
+  protected readonly inputs: HistoInput[];
   private readonly bins: Float64Array;
   private readonly runBins: Float64Array;
   private readonly outBins: Float64Array;
@@ -338,9 +339,15 @@ export class FixAveHisto extends Fix {
   private winMax = -Infinity;
   private nSample = 0;
   private runMissing = 0;
-  private runN = 0;
-  private ring: { bins: Float64Array; missing: number }[] = [];
+  private runMin = 0;
+  private runMax = 0;
+  private ring: { bins: Float64Array; missing: number; total: number; min: number; max: number }[] = [];
   private outMissing = 0;
+  /** The total weight of the window's samples (native stats[0]), kept apart from the bins' sum (round-off). */
+  private winTotal = 0;
+  private runTotal = 0;
+  private ringTotal = 0;
+  private outTotal = 0;
   private outMin = 0;
   private outMax = 0;
   private headerWritten = false;
@@ -590,6 +597,7 @@ export class FixAveHisto extends Fix {
       // window cannot be complete yet (e.g. step 0 with Nrepeat > 1): discard it
       this.bins.fill(0);
       this.missing = 0;
+      this.winTotal = 0;
       this.winMin = Infinity;
       this.winMax = -Infinity;
       this.nSample = 0;
@@ -597,6 +605,15 @@ export class FixAveHisto extends Fix {
   }
 
   private sample(): void {
+    this.sampleInputs();
+    this.nSample++;
+  }
+
+  /**
+   * Tallies the values of one repeat (the inputs in order). The weighted variant (fix ave/histo/weight, in
+   * src/engine-gpl) overrides this with a value/weight pair per sample.
+   */
+  protected sampleInputs(): void {
     const sys = this.sys;
     const n = sys.state.n;
     for (const inp of this.inputs) {
@@ -619,20 +636,25 @@ export class FixAveHisto extends Fix {
         for (let k = 0; k < vec.length; k++) this.tally(vec[k]);
       }
     }
-    this.nSample++;
   }
 
-  private tally(v: number): void {
+  /**
+   * Bins one value with weight w (1 for the plain histogram). A value outside [lo, hi] with beyond ignore adds
+   * its weight to the missing count; the min and max count every value whatever its weight.
+   */
+  protected tally(v: number, w = 1): void {
     if (v < this.winMin) this.winMin = v;
     if (v > this.winMax) this.winMax = v;
     if (v < this.lo || v > this.hi) {
       if (this.beyond === 'ignore') {
-        this.missing++;
+        this.missing += w;
         return;
       }
-      this.bins[v < this.lo ? 0 : this.bins.length - 1]++;
+      this.bins[v < this.lo ? 0 : this.bins.length - 1] += w;
+      this.winTotal += w;
       return;
     }
+    this.winTotal += w;
     // Bin assignment: the docs (fix_ave_histo.html) say "Values on a bin boundary are assigned to the
     // lower of the two bins." Measured with native LAMMPS (black box): values exactly on an interior
     // edge go to the UPPER bin (lo 0, hi 3, 6 bins: 0.5 -> bin 2, 1.0 -> bin 3, 2.5 -> bin 6; lo -1.5,
@@ -642,51 +664,74 @@ export class FixAveHisto extends Fix {
     let idx = Math.floor((v - this.lo) * (this.nBins / (this.hi - this.lo)));
     if (idx < 0) idx = 0;
     if (idx >= this.nBins) idx = this.nBins - 1;
-    this.bins[this.beyond === 'extra' ? idx + 1 : idx]++;
+    this.bins[this.beyond === 'extra' ? idx + 1 : idx] += w;
   }
 
-  /** Builds the output histogram from the window's samples and applies the ave one/running/window mode. */
+  /**
+   * Builds the output histogram from the window's samples and applies the ave one/running/window mode. Native
+   * fix_ave_histo.cpp (b332f28, end_of_step) sums the histograms of ave running and ave window and does not divide
+   * them: bin_total[i] += bin[i], stats_total[0] += stats[0] (the normalized counts divide by that total when written).
+   * Its running min and max start from 0 (stats_total is zeroed in the constructor), the window's are the min and
+   * max of the window's entries.
+   */
   private produce(step: number): void {
     const outB = new Float64Array(this.bins.length);
     let outM: number;
+    let outMin = Number.isFinite(this.winMin) ? this.winMin : 0;
+    let outMax = Number.isFinite(this.winMax) ? this.winMax : 0;
     if (this.aveMode === 'one') {
       outB.set(this.bins);
       outM = this.missing;
+      this.outTotal = this.winTotal;
     } else if (this.aveMode === 'running') {
-      this.runN++;
-      for (let i = 0; i < this.bins.length; i++) this.runBins[i] += this.bins[i];
+      this.runTotal += this.winTotal;
       this.runMissing += this.missing;
-      for (let i = 0; i < outB.length; i++) outB[i] = this.runBins[i] / this.runN;
-      outM = this.runMissing / this.runN;
+      for (let i = 0; i < this.bins.length; i++) this.runBins[i] += this.bins[i];
+      this.runMin = Math.min(this.runMin, outMin);
+      this.runMax = Math.max(this.runMax, outMax);
+      outB.set(this.runBins);
+      outM = this.runMissing;
+      this.outTotal = this.runTotal;
+      outMin = this.runMin;
+      outMax = this.runMax;
     } else {
-      this.ring.push({ bins: this.bins.slice(), missing: this.missing });
-      if (this.ring.length > this.windowM) this.ring.shift();
+      // native (the window branch): the new entry is added and the one it overwrites taken out
+      this.ringTotal += this.winTotal;
+      this.ring.push({ bins: this.bins.slice(), missing: this.missing, total: this.winTotal, min: outMin, max: outMax });
+      if (this.ring.length > this.windowM) {
+        this.ringTotal -= this.ring[0].total;
+        this.ring.shift();
+      }
+      this.outTotal = this.ringTotal;
       let miss = 0;
+      let lo = Infinity;
+      let hi = -Infinity;
       for (const e of this.ring) {
         for (let i = 0; i < outB.length; i++) outB[i] += e.bins[i];
         miss += e.missing;
+        lo = Math.min(lo, e.min);
+        hi = Math.max(hi, e.max);
       }
-      const inv = 1 / this.ring.length;
-      for (let i = 0; i < outB.length; i++) outB[i] *= inv;
-      outM = miss * inv;
+      outM = miss;
+      outMin = lo;
+      outMax = hi;
     }
     this.outBins.set(outB);
     this.outMissing = outM;
-    this.outMin = Number.isFinite(this.winMin) ? this.winMin : 0;
-    this.outMax = Number.isFinite(this.winMax) ? this.winMax : 0;
+    this.outMin = outMin;
+    this.outMax = outMax;
     this.bins.fill(0);
     this.missing = 0;
+    this.winTotal = 0;
     this.winMin = Infinity;
     this.winMax = -Infinity;
     this.nSample = 0;
     if (this.fileName) this.writeSection(step);
   }
 
-  /** Sum of the output bin counts — "the total count" the normalized counts divide by. */
+  /** "The total count" the normalized counts divide by (native stats_total[0]). */
   private total(): number {
-    let t = 0;
-    for (let i = 0; i < this.outBins.length; i++) t += this.outBins[i];
-    return t;
+    return this.outTotal;
   }
 
   /** The "coordinate for the center of the bin (between lo and hi)"; extra bins print lo and hi. */
@@ -710,11 +755,15 @@ export class FixAveHisto extends Fix {
   private writeSection(step: number): void {
     const total = this.total();
     const lines = [
-      `${step} ${this.outBins.length} ${fmtG(total)} ${fmtG(this.outMissing)} ${fmt17(this.outMin)} ${fmt17(this.outMax)}`,
+      // the leading line is printed with full precision: native prints it with "{}" (src/fix_ave_histo.cpp at
+      // b332f28, utils::print of stats_total), so the total and missing counts are not cut to %g
+      `${step} ${this.outBins.length} ${fmt17(total)} ${fmt17(this.outMissing)} ${fmt17(this.outMin)} ${fmt17(this.outMax)}`,
     ];
     for (let i = 0; i < this.outBins.length; i++) {
       const c = this.outBins[i];
-      lines.push(`${i + 1} ${fmtG(this.coordOf(i))} ${fmtG(c)} ${fmtG(total > 0 ? c / total : 0)}`);
+      // native divides when the total is non-zero (src/fix_ave_histo.cpp at b332f28: `if (stats_total[0] != 0.0)`):
+      // weighted totals can be negative
+      lines.push(`${i + 1} ${fmtG(this.coordOf(i))} ${fmtG(c)} ${fmtG(total !== 0 ? c / total : 0)}`);
     }
     const header = this.buildHeader();
     if (this.overwriteFile) {
@@ -744,6 +793,6 @@ export class FixAveHisto extends Fix {
     if (j === 0) return this.coordOf(i);
     if (j === 1) return this.outBins[i];
     const t = this.total();
-    return t > 0 ? this.outBins[i] / t : 0;
+    return t !== 0 ? this.outBins[i] / t : 0;
   }
 }

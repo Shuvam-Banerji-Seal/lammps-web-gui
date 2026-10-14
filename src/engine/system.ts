@@ -362,9 +362,9 @@ export class System {
   }
 
   /** Atoms were added, deleted or reordered. */
-  atomsChanged(): void {
+  atomsChanged(keepSpecial = false): void {
     this.ff.atomsChanged();
-    this.ff.topologyChanged(this.state, this.nb);
+    this.ff.topologyChanged(this.state, this.nb, keepSpecial);
     this.ff.updateTail(this.state);
     this.nb.lastBuild = -1;
     this.bump();

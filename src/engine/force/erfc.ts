@@ -209,14 +209,25 @@ export const makeErfcTable = (N: number, g: number, cutsq: number, inner: number
 
 /** One pair style's table, rebuilt when pair_modify table N, g_ewald or the Coulomb cutoff change. */
 export class ErfcTableCache {
-  private key = '';
+  private built = false;
+  private keyN = 0;
+  private keyG = 0;
+  private keyCut = 0;
+  private keyInner = 0;
   private table: ErfcTable | null = null;
 
-  /** null for pair_modify table 0 (direct evaluation). */
+  /**
+   * null for pair_modify table 0 (direct evaluation). The key is compared as numbers: this runs for every pair
+   * in the Coulomb terms, and building a string key per call dominated the real-space loop. Two numbers have the
+   * same string form exactly when they are equal (apart from NaN, which then rebuilds the same table).
+   */
   get(N: number, g: number, cutsq: number, inner: number = TABLE_INNER_RSQ): ErfcTable | null {
     if (N <= 0) return null;
-    const key = `${N} ${g} ${cutsq} ${inner}`;
-    if (key !== this.key) { this.table = makeErfcTable(N, g, cutsq, inner); this.key = key; }
+    if (!this.built || N !== this.keyN || g !== this.keyG || cutsq !== this.keyCut || inner !== this.keyInner) {
+      this.table = makeErfcTable(N, g, cutsq, inner);
+      this.built = true;
+      this.keyN = N; this.keyG = g; this.keyCut = cutsq; this.keyInner = inner;
+    }
     return this.table;
   }
 }

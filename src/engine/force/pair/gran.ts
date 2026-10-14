@@ -1,8 +1,9 @@
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
+import { Pair, StyleError, typeBounds, type PairCompute, type PairSep, type StyleContext } from '../types';
 import type { SimState } from '../../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { contactMassArray } from '../../atoms';
 import { parseNum } from '../util';
+import { gplHook } from '../../gplHooks';
 
 /*
  * pair_style gran/hooke, gran/hooke/history, gran/hertz/history —
@@ -53,7 +54,46 @@ import { parseNum } from '../util';
  * potentials".
  */
 
-type GranKind = 'gran/hooke' | 'gran/hooke/history' | 'gran/hertz/history';
+export type GranKind = 'gran/hooke' | 'gran/hooke/history' | 'gran/hertz/history';
+
+/** The style constants of single() (the pair_style arguments after the parsing: Kn, Kt, gamma_n, gamma_t, xmu, dampflag). */
+export interface GranSingleParams {
+  kn: number;
+  kt: number;
+  gamman: number;
+  gammat: number;
+  xmu: number;
+  limitDamping: boolean;
+}
+
+/** The pair geometry, velocities and masses of one contact for single() (see the native single() of pair_gran_*.cpp). */
+export interface GranSingleInput {
+  radi: number;
+  radj: number;
+  rsq: number;
+  /** x_i - x_j */
+  delx: number;
+  dely: number;
+  delz: number;
+  /** v_i - v_j */
+  vr: readonly [number, number, number];
+  omegai: readonly [number, number, number];
+  omegaj: readonly [number, number, number];
+  mi: number;
+  mj: number;
+  freezeI: boolean;
+  freezeJ: boolean;
+  /** The stored shear displacement of the contact, oriented from i to j (zeros when there is none). */
+  shear: readonly [number, number, number];
+}
+
+/** The lazily loaded helper that computes the native single() of the gran styles (src/engine-gpl/granular/gran_single.ts). */
+export interface GranSingleHook {
+  single(kind: GranKind, p: GranSingleParams, inp: GranSingleInput, svector: Float64Array): number;
+}
+
+/** Native single_extra of the gran styles (pair_gran_hooke_history.cpp constructor: single_extra = 10). */
+const GRAN_SINGLE_EXTRA = 10;
 
 export class PairGran extends Pair {
   readonly name: GranKind;
@@ -117,6 +157,50 @@ export class PairGran extends Pair {
     if (!ctx.ghostVelocity) throw new StyleError('Pair gran/h* requires ghost atoms store velocity (use comm_modify vel yes)');
     const s = ctx.s;
     if (s && (!s.radius || !s.rmass || !s.omega)) throw new StyleError(`pair_style ${this.name} requires atom_style sphere (radius, rmass, omega)`);
+  }
+
+  /** Native single_extra: the 10 pN values of compute pair/local (the normal force, the tangential force, vn and vt). */
+  singleExtra(): number { return GRAN_SINGLE_EXTRA; }
+
+  singleNeedsSeparation(): boolean { return true; }
+
+  /** The svector of the last single() call (native Pair::svector; overwritten by the next call). */
+  private readonly svec = new Float64Array(GRAN_SINGLE_EXTRA);
+
+  /**
+   * Native single() of the gran style (src/engine-gpl/granular/gran_single.ts): fforce is the normal force ccel, the energy is
+   * zero, and the svector holds the 10 pN values. i and j are owned atoms; del = x_i - x_j (native delx, dely, delz).
+   * The history styles read the stored shear of the contact and do not update it (native single() reads fix_history).
+   */
+  single(i: number, j: number, _itype: number, _jtype: number, rsq: number, _fc: number, _fl: number, _qi: number, _qj: number, del?: PairSep) {
+    const s = this.state;
+    if (!s) throw new StyleError(`pair ${this.name} single(): the pair style has no state (run setup first)`);
+    // the contact direction is x_i - x_j: a caller without the separation vector is refused, not guessed
+    if (!del) throw new StyleError(`pair ${this.name} single() needs the separation vector x_i - x_j (compute pair/local passes it)`);
+    const radius = s.radius!, omega = s.omega!, v = s.v, id = s.id, mask = s.mask;
+    const massOf = (k: number): number => {
+      const b = s.rigidBodyMass?.get(id[k]);
+      return b !== undefined ? b : s.rmass![k];
+    };
+    const shear: [number, number, number] = [0, 0, 0];
+    if (this.history) {
+      const flip = id[i] > id[j];
+      const sh = this.shear.get(flip ? `${id[j]}:${id[i]}` : `${id[i]}:${id[j]}`);
+      if (sh) { const sg = flip ? -1 : 1; shear[0] = sg * sh[0]; shear[1] = sg * sh[1]; shear[2] = sg * sh[2]; }
+    }
+    const inp: GranSingleInput = {
+      radi: radius[i], radj: radius[j], rsq, delx: del.dx, dely: del.dy, delz: del.dz,
+      vr: [v[3 * i] - v[3 * j], v[3 * i + 1] - v[3 * j + 1], v[3 * i + 2] - v[3 * j + 2]],
+      omegai: [omega[3 * i], omega[3 * i + 1], omega[3 * i + 2]],
+      omegaj: [omega[3 * j], omega[3 * j + 1], omega[3 * j + 2]],
+      mi: massOf(i), mj: massOf(j),
+      freezeI: this.freezeBit !== 0 && (mask[i] & this.freezeBit) !== 0,
+      freezeJ: this.freezeBit !== 0 && (mask[j] & this.freezeBit) !== 0,
+      shear,
+    };
+    const p: GranSingleParams = { kn: this.kn, kt: this.kt, gamman: this.gn, gammat: this.gt, xmu: this.xmu, limitDamping: this.limitDamping };
+    const fforce = gplHook<GranSingleHook>(this.name).single(this.name, p, inp, this.svec);
+    return { eng: 0, fforce, svector: this.svec };
   }
 
   /** Neighbor cutoff for a type pair: the sum of the largest radii of the two types. */

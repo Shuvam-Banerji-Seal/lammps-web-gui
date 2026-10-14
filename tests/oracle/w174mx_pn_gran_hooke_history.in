@@ -1,0 +1,23 @@
+# oracle: compute pair/local with pN for pair gran/hooke/history (native single_extra 10: the normal and tangential forces, vn and vt) on 10 spheres under gravity-free contacts (w172pl_hooke.data, generated, newton on, boundary f f f): dump local every 20 steps of 100, with the shear history of the contacts (native: b332f28 lmp, GRANULAR package)
+# oracle-inputs: w172pl_hooke.data
+# oracle-files: w174mx_pn_gran_hooke_history.local
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12 atomrel=1e-8 filerel=1e-8
+atom_style      sphere 1
+atom_modify     map array
+comm_modify     vel yes
+units           si
+neighbor        2 bin
+neigh_modify    delay 0
+timestep        1e-4
+boundary        f f f
+read_data       w172pl_hooke.data
+fix             integr all nve/sphere
+pair_style      gran/hooke/history 10000.0 NULL 200.0 NULL 0.5 1
+pair_coeff      * *
+compute         pl all pair/local dist eng force fx fy fz p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 cutoff radius
+dump            d all local 20 w174mx_pn_gran_hooke_history.local index c_pl[*]
+dump_modify     d format float %.15g
+thermo_style    custom step ke
+thermo_modify   format float %.15g
+thermo          20
+run             100

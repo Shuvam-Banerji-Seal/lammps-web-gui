@@ -132,7 +132,7 @@ export class ComputeHbondLocal extends Compute {
     const pair = ff.pair;
     const groupBit = this.groupBit;
     const id = this.id;
-    if (this.needEnergy && (!pair || !pair.single)) {
+    if (this.needEnergy && (!pair || !pair.single || pair.singleNeedsSeparation())) {
       throw new StyleError(`compute ${id} hbond/local: computation of the hydrogen bond energy is not supported by the pair style`);
     }
     if (nb.cutghost > 0 && nb.cutghost < this.rcut + nb.skin - 1e-9) {
@@ -168,7 +168,7 @@ export class ComputeHbondLocal extends Compute {
 
     // pair energy of atoms i (owned) and j (owned or ghost) at squared distance rsq, weight 1
     const pe = (i: number, j: number, rsq: number): number => {
-      if (!cutsq || !pair?.single) return 0;
+      if (!cutsq || !pair?.single || pair.singleNeedsSeparation()) return 0;
       const ti = ta[i], tj = ta[j];
       if (rsq >= cutsq[ti * nt + tj]) return 0;
       return pair.single(i, owner[j], ti, tj, rsq, 1, 1, qa[i], qa[j]).eng;

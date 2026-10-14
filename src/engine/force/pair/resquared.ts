@@ -1,4 +1,5 @@
-import { Pair, PairParams, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, typeBounds, type PairCompute, type PairSep, type StyleContext } from '../types';
+import type { SimState } from '../../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { parseNum } from '../util';
 
@@ -108,6 +109,188 @@ const addAxial = (C: ArrayLike<number>, o: number[]): void => {
   o[2] += C[1] - C[3];
 };
 
+/** Per owned atom (flat, 9 entries per atom for M, K and N): M = R S^2 R^T, K = R S^-2 R^T, N = R diag(e) R^T, the half radii, detS and the ellipsoid flag. */
+interface RsqSites { M: Float64Array; K: Float64Array; N: Float64Array; Sh: Float64Array; detS: Float64Array; ell: Uint8Array }
+
+const newRsqSites = (n: number): RsqSites => ({
+  M: new Float64Array(9 * n), K: new Float64Array(9 * n), N: new Float64Array(9 * n),
+  Sh: new Float64Array(3 * n), detS: new Float64Array(n), ell: new Uint8Array(n),
+});
+
+/** Fills the site data of site o from atom a (shape, quaternion, epsilon a,b,c of type t); an LJ sphere (shape 0) leaves ell 0. */
+const rsqSite = (sites: RsqSites, o: number, a: number, shape: Float64Array, quat: Float64Array, t: number, eT: Float64Array): void => {
+  if (!(shape[3 * a] > 0)) return;
+  sites.ell[o] = 1;
+  const R = new Float64Array(9), D2 = new Float64Array(3), Dm2 = new Float64Array(3), De = new Float64Array(3);
+  const tM = new Float64Array(9), tK = new Float64Array(9), tN = new Float64Array(9);
+  quatToMat(quat[4 * a], quat[4 * a + 1], quat[4 * a + 2], quat[4 * a + 3], R);
+  for (let d = 0; d < 3; d++) {
+    const sd = shape[3 * a + d];
+    sites.Sh[3 * o + d] = sd;
+    D2[d] = sd * sd;
+    Dm2[d] = 1 / (sd * sd);
+    De[d] = eT[3 * t + d];
+  }
+  sites.detS[o] = sites.Sh[3 * o] * sites.Sh[3 * o + 1] * sites.Sh[3 * o + 2];
+  rdrt(R, D2, tM);
+  rdrt(R, Dm2, tK);
+  rdrt(R, De, tN);
+  sites.M.set(tM, 9 * o);
+  sites.K.set(tK, 9 * o);
+  sites.N.set(tN, 9 * o);
+};
+
+/** Scratch arrays of one ellipsoid pair (reused between pairs). */
+interface RsqScratch {
+  G: Float64Array; Gi: Float64Array; B: Float64Array; Bi: Float64Array; H: Float64Array; Hi: Float64Array;
+  Gmat: Float64Array; t1: Float64Array; t2: Float64Array; C: Float64Array;
+  FM: Float64Array[]; FN: Float64Array[]; FK: Float64Array[]; Mb: Float64Array[]; Kb: Float64Array[]; Nb: Float64Array[];
+  v: number[]; w: number[]; tmpv: number[]; rv: number[]; rh: number[]; gF: number[];
+  sg: number[]; u: number[]; lam: number[]; dEtaDsg: number[]; acc: number[];
+}
+
+const newRsqScratch = (): RsqScratch => ({
+  G: new Float64Array(9), Gi: new Float64Array(9), B: new Float64Array(9), Bi: new Float64Array(9),
+  H: new Float64Array(9), Hi: new Float64Array(9), Gmat: new Float64Array(9), t1: new Float64Array(9),
+  t2: new Float64Array(9), C: new Float64Array(9),
+  FM: [new Float64Array(9), new Float64Array(9)], FN: [new Float64Array(9), new Float64Array(9)], FK: [new Float64Array(9), new Float64Array(9)],
+  Mb: [new Float64Array(9), new Float64Array(9)], Kb: [new Float64Array(9), new Float64Array(9)], Nb: [new Float64Array(9), new Float64Array(9)],
+  v: [0, 0, 0], w: [0, 0, 0], tmpv: [0, 0, 0], rv: [0, 0, 0], rh: [0, 0, 0], gF: [0, 0, 0],
+  sg: [0, 0], u: [0, 0], lam: [0, 0], dEtaDsg: [0, 0], acc: [0, 0, 0],
+});
+
+/** The force and torques of one ellipsoid pair: fi = force on i (dF/dr), ti and tj = torques on i and j. */
+interface RsqPairOut { fi: Float64Array; ti: Float64Array; tj: Float64Array }
+
+const newRsqPairOut = (): RsqPairOut => ({ fi: new Float64Array(3), ti: new Float64Array(3), tj: new Float64Array(3) });
+
+/**
+ * The RE-squared energy and forces of one ellipsoid pair of owned atoms a (= i) and b (= j); dxi = x_i - x_j. Returns the
+ * energy F and fills out. An ellipsoid with an LJ sphere is refused (see the header); the LJ-sphere pairs are the callers'.
+ */
+const rsqPair = (sites: RsqSites, sc: RsqScratch, a: number, b: number, dxi: number, dyi: number, dzi: number, rsq: number, eps: number, sig: number, out: RsqPairOut): number => {
+  if (sites.ell[a] !== sites.ell[b]) throw new StyleError('pair_style resquared: an ellipsoid with an LJ sphere is not supported');
+  const { G, Gi, B, Bi, H, Hi, Gmat, t1, t2, C, FM, FN, FK, Mb, Kb, Nb, v, w, tmpv, rv, rh, gF, sg, u, lam, dEtaDsg, acc } = sc;
+  const { Sh } = sites;
+
+  // Ellipsoid pair. rv = x_j - x_i, rh = rv / |rv|.
+  const rx = -dxi, ry = -dyi, rz = -dzi;
+  rv[0] = rx; rv[1] = ry; rv[2] = rz;
+  const rr = Math.sqrt(rsq);
+  rh[0] = rx / rr; rh[1] = ry / rr; rh[2] = rz / rr;
+  const Mi = sites.M.subarray(9 * a, 9 * a + 9), Mj = sites.M.subarray(9 * b, 9 * b + 9);
+  const Ki = sites.K.subarray(9 * a, 9 * a + 9), Kj = sites.K.subarray(9 * b, 9 * b + 9);
+  const Ni = sites.N.subarray(9 * a, 9 * a + 9), Nj = sites.N.subarray(9 * b, 9 * b + 9);
+  Mb[0] = Mi; Mb[1] = Mj; Kb[0] = Ki; Kb[1] = Kj; Nb[0] = Ni; Nb[1] = Nj;
+  for (let q = 0; q < 9; q++) { G[q] = Mi[q] + Mj[q]; B[q] = Ni[q] + Nj[q]; }
+  inv3(G, Gi);
+  const detB = inv3(B, Bi);
+  if (!Number.isFinite(detB) || Math.abs(detB) <= 1e-14 * Math.abs(B[0] + B[4] + B[8]) ** 3) {
+    throw new StyleError('Bad matrix inversion in mldivide3');
+  }
+  // Gay-Berne distance: P = r^T G^-1 r / 2, sigma12 = |r| / sqrt(P), h = |r| - sigma12.
+  mv(Gi, rv, v);
+  const P = 0.5 * (rv[0] * v[0] + rv[1] * v[1] + rv[2] * v[2]);
+  const sP = Math.sqrt(P);
+  const h = rr - rr / sP;
+  // chi = 2 rhat^T B^-1 rhat = 2 r^T B^-1 r / r^2 ; w = B^-1 r.
+  mv(Bi, rv, w);
+  const chi = 2 * (rv[0] * w[0] + rv[1] * w[1] + rv[2] * w[2]) / rsq;
+  // Projected radii sigma_b = (rhat^T K_b rhat)^-1/2 and H = M1/sigma1 + M2/sigma2.
+  for (let b = 0; b < 2; b++) {
+    const Kx = Kb[b];
+    let uu = 0;
+    for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) uu += rh[a] * Kx[3 * a + c] * rh[c];
+    u[b] = uu;
+    sg[b] = 1 / Math.sqrt(uu);
+  }
+  for (let q = 0; q < 9; q++) H[q] = Mi[q] / sg[0] + Mj[q] / sg[1];
+  const DH = inv3(H, Hi);
+  const detS = [sites.detS[a], sites.detS[b]];
+  const n = detS[0] * u[0] + detS[1] * u[1];
+  const SS = sg[0] + sg[1];
+  const d = Math.sqrt(DH / SS);
+  const eta = n / d;
+  const Q = eta * chi;
+  const sigc = sig;
+  const x0 = sigc / h;
+  const x6 = x0 ** 6;
+  const a56 = 45 / 56;
+  // Prod over the six half radii: P_c = prod 1/(1 + h/(c S)), with d ln P_c / dh = -sum 1/(c S + h).
+  const c60 = Math.cbrt(60);
+  let P2 = 1, P60 = 1, sum2 = 0, sum60 = 0;
+  for (let d3 = 0; d3 < 3; d3++) {
+    for (const off of [3 * a, 3 * b]) {
+      const Sd = Sh[off + d3];
+      const a2 = 2 * Sd, a60 = c60 * Sd;
+      P2 /= 1 + h / a2;
+      P60 /= 1 + h / a60;
+      sum2 += 1 / (a2 + h);
+      sum60 += 1 / (a60 + h);
+    }
+  }
+  // F = T1 + T2 with T1 = -(A/36)(1 + 3 Q x) P2 and T2 = (A/2025) x^6 (1 + a Q x) P60, x = sigma/h.
+  const F = -(eps / 36) * (1 + 3 * Q * x0) * P2 + (eps / 2025) * x6 * (1 + a56 * Q * x0) * P60;
+  const Fh = -(eps / 36) * (-(3 * Q * x0 / h) * P2 - (1 + 3 * Q * x0) * P2 * sum2)
+    + (eps / 2025) * (-(6 * x6 / h) * (1 + a56 * Q * x0) * P60 - a56 * Q * x6 * (x0 / h) * P60 - x6 * (1 + a56 * Q * x0) * P60 * sum60);
+  const FQ = -(eps / 36) * 3 * x0 * P2 + (eps / 2025) * x6 * a56 * x0 * P60;
+  const Fchi = FQ * eta; // dF/dchi (Q = eta chi)
+  const Feta = FQ * chi; // dF/deta
+
+  // eta depends on sigma_b through H and sigma1 + sigma2: d eta / d sigma_b = eta/(2 SS) + eta/(2 sigma_b^2) tr(H^-1 M_b).
+  // Through u_b (direct in n and via sigma_b): lam_b = detS_b/d + d eta/d sigma_b * (-sigma_b^3 / 2).
+  for (let b = 0; b < 2; b++) {
+    const Mx = Mb[b];
+    let trHM = 0;
+    for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) trHM += Hi[3 * a + c] * Mx[3 * c + a];
+    dEtaDsg[b] = eta / (2 * SS) + (eta / (2 * sg[b] * sg[b])) * trHM;
+    lam[b] = detS[b] / d + dEtaDsg[b] * (-0.5 * sg[b] ** 3);
+  }
+
+  // Matrix derivatives. dh/dG = -(r/4) P^-3/2 v v^T ; dF/dH = Feta (-eta/2) H^-1 ; dchi/dB = -2 w' w'^T with
+  // w' = B^-1 rhat ; dF/dK_b = Feta lam_b rhat rhat^T.
+  const kappa = -(rr / 4) * Math.pow(P, -1.5);
+  for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) Gmat[3 * a + c] = Fh * kappa * v[a] * v[c];
+  mv(Bi, rh, tmpv); // w' = B^-1 rhat
+  for (let b = 0; b < 2; b++) {
+    const sgb = sg[b];
+    const Fm = FM[b], Fn = FN[b], Fk = FK[b];
+    for (let q = 0; q < 9; q++) Fm[q] = Gmat[q] + (Feta * (-eta / 2)) * Hi[q] / sgb;
+    for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) {
+      Fn[3 * a + c] = Fchi * (-2) * tmpv[a] * tmpv[c];
+      Fk[3 * a + c] = Feta * lam[b] * rh[a] * rh[c];
+    }
+  }
+
+  // dF/drv: through h, chi, and u_b = rhat^T K_b rhat (du_b/drv = 2 (K_b rhat - u_b rhat) / r).
+  for (let a = 0; a < 3; a++) {
+    const dhdr = rh[a] * (1 - 1 / sP) + 0.5 * rr * Math.pow(P, -1.5) * v[a];
+    const dchidr = 4 * w[a] / rsq - 2 * chi * rv[a] / rsq;
+    gF[a] = Fh * dhdr + Fchi * dchidr;
+  }
+  for (let b = 0; b < 2; b++) {
+    mv(Kb[b], rh, tmpv);
+    for (let a = 0; a < 3; a++) gF[a] += Feta * lam[b] * (2 / rr) * (tmpv[a] - u[b] * rh[a]);
+  }
+  // Force on i is +dF/drv, on j is -dF/drv. Measured with native LAMMPS (black box): the force is dF/dr.
+  out.fi.set(gF);
+
+  // Torques: tau_b = -dF/domega_b = -sum over X of axial(X F_X - F_X X); the torque on body b is -acc_b.
+  for (let b = 0; b < 2; b++) {
+    acc[0] = 0; acc[1] = 0; acc[2] = 0;
+    const pairsX: [Float64Array, Float64Array][] = [[Mb[b], FM[b]], [Nb[b], FN[b]], [Kb[b], FK[b]]];
+    for (const [X, Fx] of pairsX) {
+      mm(X, Fx, t1);
+      mm(Fx, X, t2);
+      for (let q = 0; q < 9; q++) C[q] = t1[q] - t2[q];
+      addAxial(C, acc);
+    }
+    const tb = b === 0 ? out.ti : out.tj;
+    tb[0] = -acc[0]; tb[1] = -acc[1]; tb[2] = -acc[2];
+  }
+  return F;
+};
+
 export class PairResquared extends Pair {
   readonly name = 'resquared';
   virialFdotr = true;
@@ -117,6 +300,12 @@ export class PairResquared extends Pair {
   eT = new Float64Array(0);
   eSet = new Uint8Array(0);
   offset = new Float64Array(0);
+  /** The system of the last init (single() reads the shapes and quaternions of its two atoms). */
+  private state: SimState | null = null;
+  /** Native svector of the last single() call: force and torque on i (pN 1..6). */
+  private readonly svec = new Float64Array(6);
+  private readonly sc = newRsqScratch();
+  private readonly pout = newRsqPairOut();
 
   settings(args: string[]): void {
     if (args.length !== 1) throw new StyleError('Illegal pair_style command');
@@ -178,7 +367,45 @@ export class PairResquared extends Pair {
     // The page describes no tail correction for this style, so tail yes is refused rather than ignored.
     if (this.tail) throw new StyleError('pair_modify tail is not supported by pair_style resquared');
     this.offset = new Float64Array(0);
+    this.state = ctx.s;
     super.init(ctx);
+  }
+
+  /** Native single_extra (pair_resquared.cpp: single_extra = 6): the force and torque on i (pN 1..6). */
+  singleExtra(): number { return 6; }
+
+  singleNeedsSeparation(): boolean { return true; }
+
+  /**
+   * Native single() (pair_resquared.cpp): fforce is the force on i projected on the centre axis, the svector holds the full
+   * force on i (1-3) and the torque on i (4-6), both times factor_lj, and the energy is factor_lj times the pair energy.
+   * i and j are owned atoms; del = x_i - x_j.
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, _fc: number, factorLJ: number, _qi: number, _qj: number, del?: PairSep): { eng: number; fforce: number; svector: Float64Array } {
+    const s = this.state;
+    if (!s || !s.shape || !s.quat || !s.torque) throw new StyleError('Pair resquared requires atom style ellipsoid');
+    if (!del) throw new StyleError('pair resquared single() needs the separation vector x_i - x_j (compute pair/local passes it)');
+    const nt = this.ntypes + 1;
+    const eps = this.p.get('epsilon', itype, jtype), sig = this.p.get('sigma', itype, jtype);
+    const sites = newRsqSites(2);
+    rsqSite(sites, 0, i, s.shape, s.quat, itype, this.eT);
+    rsqSite(sites, 1, j, s.shape, s.quat, jtype, this.eT);
+    const svector = this.svec;
+    svector.fill(0);
+    if (!sites.ell[0] && !sites.ell[1]) {
+      // LJ sphere pair: plain Lennard-Jones in r with A12 as epsilon, shifted by the pair_modify shift offset
+      const r2inv = 1 / rsq;
+      const sr2 = sig * sig * r2inv, sr6 = sr2 * sr2 * sr2, sr12 = sr6 * sr6;
+      const eLJ = 4 * eps * (sr12 - sr6) - this.offset[itype * nt + jtype];
+      const fljr = (48 * eps * sr12 - 24 * eps * sr6) * r2inv;
+      svector[0] = factorLJ * fljr * del.dx; svector[1] = factorLJ * fljr * del.dy; svector[2] = factorLJ * fljr * del.dz;
+      return { eng: factorLJ * eLJ, fforce: factorLJ * fljr, svector };
+    }
+    const out = this.pout;
+    const F = rsqPair(sites, this.sc, 0, 1, del.dx, del.dy, del.dz, rsq, eps, sig, out);
+    for (let c = 0; c < 3; c++) { svector[c] = factorLJ * out.fi[c]; svector[3 + c] = factorLJ * out.ti[c]; }
+    const radial = (out.fi[0] * del.dx + out.fi[1] * del.dy + out.fi[2] * del.dz) / rsq;
+    return { eng: factorLJ * F, fforce: factorLJ * radial, svector };
   }
 
   compute(pc: PairCompute): void {
@@ -197,43 +424,10 @@ export class PairResquared extends Pair {
 
     // Per owned atom: half radii S, detS, the ellipsoid flag, and the space matrices M = R S^2 R^T, K = R S^-2 R^T,
     // N = R diag(e) R^T (e: the atom type's epsilon a,b,c).
-    const Mo = new Float64Array(9 * nlocal), Ko = new Float64Array(9 * nlocal), No = new Float64Array(9 * nlocal);
-    const Sh = new Float64Array(3 * nlocal), detSo = new Float64Array(nlocal);
-    const ell = new Uint8Array(nlocal);
-    const R = new Float64Array(9), D2 = new Float64Array(3), Dm2 = new Float64Array(3), De = new Float64Array(3);
-    const tM = new Float64Array(9), tK = new Float64Array(9), tN = new Float64Array(9);
-    for (let o = 0; o < nlocal; o++) {
-      const t = type[o];
-      if (!(shape[3 * o] > 0)) continue; // LJ sphere (all shape parameters zero): no ellipsoid data
-      ell[o] = 1;
-      quatToMat(quat[4 * o], quat[4 * o + 1], quat[4 * o + 2], quat[4 * o + 3], R);
-      for (let d = 0; d < 3; d++) {
-        const sd = shape[3 * o + d];
-        Sh[3 * o + d] = sd;
-        D2[d] = sd * sd;
-        Dm2[d] = 1 / (sd * sd);
-        De[d] = this.eT[3 * t + d];
-      }
-      detSo[o] = Sh[3 * o] * Sh[3 * o + 1] * Sh[3 * o + 2];
-      rdrt(R, D2, tM);
-      rdrt(R, Dm2, tK);
-      rdrt(R, De, tN);
-      Mo.set(tM, 9 * o);
-      Ko.set(tK, 9 * o);
-      No.set(tN, 9 * o);
-    }
+    const sites = newRsqSites(nlocal);
+    for (let o = 0; o < nlocal; o++) rsqSite(sites, o, o, shape, quat, type[o], this.eT);
 
-    const G = new Float64Array(9), Gi = new Float64Array(9), B = new Float64Array(9), Bi = new Float64Array(9);
-    const H = new Float64Array(9), Hi = new Float64Array(9);
-    const v = [0, 0, 0], w = [0, 0, 0], tmpv = [0, 0, 0], rv = [0, 0, 0], rh = [0, 0, 0];
-    const gF = [0, 0, 0];
-    // F_X = dF/dX for the matrices of body b: M (through G and H), N (through B), K (through sigma_b).
-    const FM = [new Float64Array(9), new Float64Array(9)], FN = [new Float64Array(9), new Float64Array(9)];
-    const FK = [new Float64Array(9), new Float64Array(9)];
-    const Gmat = new Float64Array(9), t1 = new Float64Array(9), t2 = new Float64Array(9), C = new Float64Array(9);
-    const sg = [0, 0], u = [0, 0], lam = [0, 0], dEtaDsg = [0, 0];
-    const Mb = [Mo, Mo], Kb = [Ko, Ko], Nb = [No, No];
-    const acc = [0, 0, 0];
+    const sc = this.sc, out = this.pout;
     let evdwl = 0;
     for (let i = 0; i < list.inum; i++) {
       const oi = owner[i];
@@ -253,7 +447,7 @@ export class PairResquared extends Pair {
         }
         const ti_ = type[i], tj_ = type[j];
         const eps = this.p.get('epsilon', ti_, tj_), sig = this.p.get('sigma', ti_, tj_);
-        if (!ell[oi] && !ell[oj]) {
+        if (!sites.ell[oi] && !sites.ell[oj]) {
           // LJ sphere pair: plain Lennard-Jones in r with A12 as epsilon, shifted by the pair_modify shift offset.
           const r2inv = 1 / rsq;
           const sr2 = sig * sig * r2inv, sr6 = sr2 * sr2 * sr2, sr12 = sr6 * sr6;
@@ -270,135 +464,17 @@ export class PairResquared extends Pair {
           }
           continue;
         }
-        // Not reproduced (see the header): an ellipsoid with an LJ sphere.
-        if (ell[oi] !== ell[oj]) throw new StyleError('pair_style resquared: an ellipsoid with an LJ sphere is not supported');
-
-        // Ellipsoid pair. rv = x_j - x_i, rh = rv / |rv|.
-        const rx = -dxi, ry = -dyi, rz = -dzi;
-        rv[0] = rx; rv[1] = ry; rv[2] = rz;
-        const rr = Math.sqrt(rsq);
-        rh[0] = rx / rr; rh[1] = ry / rr; rh[2] = rz / rr;
-        const Mi = Mo.subarray(9 * oi, 9 * oi + 9), Mj = Mo.subarray(9 * oj, 9 * oj + 9);
-        const Ki = Ko.subarray(9 * oi, 9 * oi + 9), Kj = Ko.subarray(9 * oj, 9 * oj + 9);
-        const Ni = No.subarray(9 * oi, 9 * oi + 9), Nj = No.subarray(9 * oj, 9 * oj + 9);
-        Mb[0] = Mi; Mb[1] = Mj; Kb[0] = Ki; Kb[1] = Kj; Nb[0] = Ni; Nb[1] = Nj;
-        for (let q = 0; q < 9; q++) { G[q] = Mi[q] + Mj[q]; B[q] = Ni[q] + Nj[q]; }
-        inv3(G, Gi);
-        const detB = inv3(B, Bi);
-        if (!Number.isFinite(detB) || Math.abs(detB) <= 1e-14 * Math.abs(B[0] + B[4] + B[8]) ** 3) {
-          throw new StyleError('Bad matrix inversion in mldivide3');
-        }
-        // Gay-Berne distance: P = r^T G^-1 r / 2, sigma12 = |r| / sqrt(P), h = |r| - sigma12.
-        mv(Gi, rv, v);
-        const P = 0.5 * (rv[0] * v[0] + rv[1] * v[1] + rv[2] * v[2]);
-        const sP = Math.sqrt(P);
-        const h = rr - rr / sP;
-        // chi = 2 rhat^T B^-1 rhat = 2 r^T B^-1 r / r^2 ; w = B^-1 r.
-        mv(Bi, rv, w);
-        const chi = 2 * (rv[0] * w[0] + rv[1] * w[1] + rv[2] * w[2]) / rsq;
-        // Projected radii sigma_b = (rhat^T K_b rhat)^-1/2 and H = M1/sigma1 + M2/sigma2.
-        for (let b = 0; b < 2; b++) {
-          const Kx = Kb[b];
-          let uu = 0;
-          for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) uu += rh[a] * Kx[3 * a + c] * rh[c];
-          u[b] = uu;
-          sg[b] = 1 / Math.sqrt(uu);
-        }
-        for (let q = 0; q < 9; q++) H[q] = Mi[q] / sg[0] + Mj[q] / sg[1];
-        const DH = inv3(H, Hi);
-        const detS = [detSo[oi], detSo[oj]];
-        const n = detS[0] * u[0] + detS[1] * u[1];
-        const SS = sg[0] + sg[1];
-        const d = Math.sqrt(DH / SS);
-        const eta = n / d;
-        const Q = eta * chi;
-        const sigc = sig;
-        const x0 = sigc / h;
-        const x6 = x0 ** 6;
-        const a56 = 45 / 56;
-        // Prod over the six half radii: P_c = prod 1/(1 + h/(c S)), with d ln P_c / dh = -sum 1/(c S + h).
-        const c60 = Math.cbrt(60);
-        let P2 = 1, P60 = 1, sum2 = 0, sum60 = 0;
-        for (let d3 = 0; d3 < 3; d3++) {
-          for (const off of [3 * oi, 3 * oj]) {
-            const Sd = Sh[off + d3];
-            const a2 = 2 * Sd, a60 = c60 * Sd;
-            P2 /= 1 + h / a2;
-            P60 /= 1 + h / a60;
-            sum2 += 1 / (a2 + h);
-            sum60 += 1 / (a60 + h);
-          }
-        }
-        // F = T1 + T2 with T1 = -(A/36)(1 + 3 Q x) P2 and T2 = (A/2025) x^6 (1 + a Q x) P60, x = sigma/h.
-        const F = -(eps / 36) * (1 + 3 * Q * x0) * P2 + (eps / 2025) * x6 * (1 + a56 * Q * x0) * P60;
+        const F = rsqPair(sites, sc, oi, oj, dxi, dyi, dzi, rsq, eps, sig, out);
         evdwl += F;
-        const Fh = -(eps / 36) * (-(3 * Q * x0 / h) * P2 - (1 + 3 * Q * x0) * P2 * sum2)
-          + (eps / 2025) * (-(6 * x6 / h) * (1 + a56 * Q * x0) * P60 - a56 * Q * x6 * (x0 / h) * P60 - x6 * (1 + a56 * Q * x0) * P60 * sum60);
-        const FQ = -(eps / 36) * 3 * x0 * P2 + (eps / 2025) * x6 * a56 * x0 * P60;
-        const Fchi = FQ * eta; // dF/dchi (Q = eta chi)
-        const Feta = FQ * chi; // dF/deta
-
-        // eta depends on sigma_b through H and sigma1 + sigma2: d eta / d sigma_b = eta/(2 SS) + eta/(2 sigma_b^2) tr(H^-1 M_b).
-        // Through u_b (direct in n and via sigma_b): lam_b = detS_b/d + d eta/d sigma_b * (-sigma_b^3 / 2).
-        for (let b = 0; b < 2; b++) {
-          const Mx = Mb[b];
-          let trHM = 0;
-          for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) trHM += Hi[3 * a + c] * Mx[3 * c + a];
-          dEtaDsg[b] = eta / (2 * SS) + (eta / (2 * sg[b] * sg[b])) * trHM;
-          lam[b] = detS[b] / d + dEtaDsg[b] * (-0.5 * sg[b] ** 3);
-        }
-
-        // Matrix derivatives. dh/dG = -(r/4) P^-3/2 v v^T ; dF/dH = Feta (-eta/2) H^-1 ; dchi/dB = -2 w' w'^T with
-        // w' = B^-1 rhat ; dF/dK_b = Feta lam_b rhat rhat^T.
-        const kappa = -(rr / 4) * Math.pow(P, -1.5);
-        for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) Gmat[3 * a + c] = Fh * kappa * v[a] * v[c];
-        mv(Bi, rh, tmpv); // w' = B^-1 rhat
-        for (let b = 0; b < 2; b++) {
-          const sgb = sg[b];
-          const Fm = FM[b], Fn = FN[b], Fk = FK[b];
-          for (let q = 0; q < 9; q++) Fm[q] = Gmat[q] + (Feta * (-eta / 2)) * Hi[q] / sgb;
-          for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) {
-            Fn[3 * a + c] = Fchi * (-2) * tmpv[a] * tmpv[c];
-            Fk[3 * a + c] = Feta * lam[b] * rh[a] * rh[c];
-          }
-        }
-
-        // dF/drv: through h, chi, and u_b = rhat^T K_b rhat (du_b/drv = 2 (K_b rhat - u_b rhat) / r).
-        for (let a = 0; a < 3; a++) {
-          const dhdr = rh[a] * (1 - 1 / sP) + 0.5 * rr * Math.pow(P, -1.5) * v[a];
-          const dchidr = 4 * w[a] / rsq - 2 * chi * rv[a] / rsq;
-          gF[a] = Fh * dhdr + Fchi * dchidr;
-        }
-        for (let b = 0; b < 2; b++) {
-          mv(Kb[b], rh, tmpv);
-          for (let a = 0; a < 3; a++) gF[a] += Feta * lam[b] * (2 / rr) * (tmpv[a] - u[b] * rh[a]);
-        }
-        // Force on i is +dF/drv, on j is -dF/drv. Measured with native LAMMPS (black box): the force is dF/dr.
-        f[3 * i] += gF[0]; f[3 * i + 1] += gF[1]; f[3 * i + 2] += gF[2];
-        f[3 * j] -= gF[0]; f[3 * j + 1] -= gF[1]; f[3 * j + 2] -= gF[2];
-
-        // Torques: tau_b = -dF/domega_b = -sum over X of axial(X F_X - F_X X).
-        for (let b = 0; b < 2; b++) {
-          acc[0] = 0; acc[1] = 0; acc[2] = 0;
-          const pairsX: [Float64Array, Float64Array][] = [[Mb[b], FM[b]], [Nb[b], FN[b]], [Kb[b], FK[b]]];
-          for (const [X, Fx] of pairsX) {
-            mm(X, Fx, t1);
-            mm(Fx, X, t2);
-            for (let q = 0; q < 9; q++) C[q] = t1[q] - t2[q];
-            addAxial(C, acc);
-          }
-          const body = b === 0 ? i : j;
-          tq[3 * body] -= acc[0];
-          tq[3 * body + 1] -= acc[1];
-          tq[3 * body + 2] -= acc[2];
-        }
-
+        const g = out.fi;
+        f[3 * i] += g[0]; f[3 * i + 1] += g[1]; f[3 * i + 2] += g[2];
+        f[3 * j] -= g[0]; f[3 * j + 1] -= g[1]; f[3 * j + 2] -= g[2];
+        for (let c = 0; c < 3; c++) { tq[3 * i + c] += out.ti[c]; tq[3 * j + c] += out.tj[c]; }
         if (pc.eatom) { pc.eatom[i] += 0.5 * F; pc.eatom[j] += 0.5 * F; }
         if (pc.vatom) {
           const va = pc.vatom;
-          const dx = -rx, dy = -ry, dz = -rz; // x_i - x_j
-          const fx = gF[0], fy = gF[1], fz = gF[2];
-          const wv = [dx * fx, dy * fy, dz * fz, dx * fy, dx * fz, dy * fz];
+          const fx = g[0], fy = g[1], fz = g[2];
+          const wv = [dxi * fx, dyi * fy, dzi * fz, dxi * fy, dxi * fz, dyi * fz];
           for (let c = 0; c < 6; c++) { va[6 * i + c] += 0.5 * wv[c]; va[6 * j + c] += 0.5 * wv[c]; }
         }
       }

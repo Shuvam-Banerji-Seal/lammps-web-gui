@@ -90,6 +90,9 @@ const PAIR_RESTART_STYLES = new Set([
   // pair_colloid.rst, pair_zero.rst, pair_atm.rst, pair_gran.rst, pair_granular.rst
   'colloid', 'zero', 'atm',
   'gran/hooke', 'gran/hooke/history', 'gran/hertz/history', 'granular',
+  // pair_eff.rst: "These pair styles write their information to binary restart files" (eff/cut: the settings,
+  // the ECP parameters and the per-type cutoffs, as src/EFF/pair_eff_cut.cpp write_restart at b332f28)
+  'eff/cut',
 ]);
 
 /*

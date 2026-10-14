@@ -1,4 +1,4 @@
-import { Pair, StyleError, typeBounds, type BondedEquilibria, type PairCompute, type StyleContext, newAccum, clearAccum, type Accum } from '../types';
+import { Pair, StyleError, typeBounds, type BondedEquilibria, type PairCompute, type PairSep, type StyleContext, newAccum, clearAccum, type Accum } from '../types';
 import { NEIGHMASK, type NeighList } from '../../neighbor';
 import { parseNum } from '../util';
 
@@ -464,19 +464,67 @@ export class PairHybrid extends Pair {
     return out;
   }
 
-  single(i: number, j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi: number, qj: number): { eng: number; fforce: number } {
+  /**
+   * Native single_extra of the hybrid style: hybrid and hybrid/molecular take the largest sub-style value
+   * (pair_hybrid.cpp init_svector: "single_extra = MAX(single_extra,styles[m]->single_extra)"); hybrid/overlay and
+   * hybrid/scaled sum them (pair_hybrid_overlay.cpp and pair_hybrid_scaled.cpp init_svector).
+   */
+  singleExtra(): number {
+    const summed = this.mode === 'hybrid/overlay' || this.mode === 'hybrid/scaled';
+    let n = 0;
+    for (const s of this.subs) n = summed ? n + s.style.singleExtra() : Math.max(n, s.style.singleExtra());
+    return n;
+  }
+
+  /** A hybrid needs the separation vector when one of its sub-styles does. */
+  singleNeedsSeparation(): boolean { return this.subs.some((s) => s.style.singleNeedsSeparation()); }
+
+  private svecBuf = new Float64Array(0);
+
+  /**
+   * Native PairHybrid::single: the sub-styles of the pair type add their energy and fforce (scaled for hybrid/scaled), and
+   * the svector is copied from one sub-style (pair_hybrid.cpp copy_svector: map[itype][jtype][0]; pair_hybrid_overlay.cpp
+   * and pair_hybrid_scaled.cpp: the sub-styles' svectors side by side, zeros for the sub-styles that are not the active one,
+   * and the active one is the last mapped sub-style, as the native loop leaves it). The pN values are not scaled.
+   * Deviation: native copies the active sub-style's svector even when the pair is outside that sub-style's cutoff (a stale
+   * value of its previous call); here that case gives zeros.
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi: number, qj: number, del?: PairSep): { eng: number; fforce: number; svector?: Float64Array } {
     let eng = 0, fforce = 0;
     const nt = this.ntypes + 1;
-    for (const k of this.subsOf(itype, jtype)) {
+    const ids = this.subsOf(itype, jtype);
+    const summed = this.mode === 'hybrid/overlay' || this.mode === 'hybrid/scaled';
+    const active = ids.length === 0 ? -1 : summed ? ids[ids.length - 1] : ids[0];
+    let activeSvec: Float64Array | undefined;
+    for (const k of ids) {
       const s = this.subs[k];
       if (!(rsq < s.style.cutsq[itype * nt + jtype])) continue;
       if (!s.style.single) throw new StyleError(`pair sub-style ${s.name} does not provide single-pair energies`);
-      const r = s.style.single(i, j, itype, jtype, rsq, factorCoul, factorLJ, qi, qj);
+      const r = s.style.single(i, j, itype, jtype, rsq, factorCoul, factorLJ, qi, qj, del);
       const f = this.scaleOf(s);
       eng += f * r.eng;
       fforce += f * r.fforce;
+      if (k === active) activeSvec = r.svector;
     }
-    return { eng, fforce };
+    const n = this.singleExtra();
+    if (n === 0) return { eng, fforce };
+    if (this.svecBuf.length !== n) this.svecBuf = new Float64Array(n);
+    const out = this.svecBuf;
+    out.fill(0);
+    if (activeSvec) {
+      if (summed) {
+        let off = 0;
+        for (let m = 0; m < this.subs.length; m++) {
+          const e = this.subs[m].style.singleExtra();
+          if (m === active) for (let l = 0; l < e; l++) out[off + l] = activeSvec[l];
+          off += e;
+        }
+      } else {
+        const e = this.subs[active].style.singleExtra();
+        for (let l = 0; l < e; l++) out[l] = activeSvec[l];
+      }
+    }
+    return { eng, fforce, svector: out };
   }
 
   /** Coefficients are not written to data files for hybrid styles (pair_hybrid.html: "The same is true for data files."). */

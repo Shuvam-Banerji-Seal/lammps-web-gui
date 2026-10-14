@@ -421,7 +421,7 @@ export class ComputePairLocal extends Compute {
     for (let c = 0; c < this.pIndex.length; c++) {
       const n = this.pIndex[c];
       if (n >= 0 && n >= nExtra) {
-        throw new StyleError(`compute ${this.id} pair/local: pair style ${pair.name} does not have extra field ${this.values[c]} (the engine defines pN values for pair granular only; native: "Pair style does not have extra field requested by compute pair/local")`);
+        throw new StyleError(`compute ${this.id} pair/local: pair style ${pair.name} does not have extra field ${this.values[c]} (native: "Pair style does not have extra field requested by compute pair/local")`);
       }
     }
     if (this.needSingle && !pair.single) throw new StyleError(`compute ${this.id} pair/local needs a pair_style that supports single() (the engine's pairwise evaluation)`);

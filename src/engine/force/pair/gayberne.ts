@@ -1,4 +1,5 @@
-import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, typeBounds, type PairCompute, type StyleContext } from '../types';
+import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, typeBounds, type PairCompute, type PairSep, type StyleContext } from '../types';
+import type { SimState } from '../../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { parseNum } from '../util';
 
@@ -97,6 +98,132 @@ const mm = (a: ArrayLike<number>, b: ArrayLike<number>, out: Float64Array): void
   }
 };
 
+/** Per owned atom (flat, 9 entries per atom for M and N): the space-frame G and B contributions, the eta factor s_i and the point / LJ-sphere flags. */
+interface GbSites { M: Float64Array; N: Float64Array; sf: Float64Array; ljs: Uint8Array; pt: Uint8Array }
+
+/**
+ * Fills the site data of site o from atom a (shape, quaternion and the epsilon a,b,c of type t). Compute fills every owned
+ * atom with o = a; single() fills its two atoms in slots 0 and 1.
+ */
+const gbSite = (sites: GbSites, o: number, a: number, shape: Float64Array, quat: Float64Array, t: number, eT: Float64Array, invMu: number): void => {
+  const ellip = shape[3 * a] > 0;
+  const rad = ellip ? [shape[3 * a], shape[3 * a + 1], shape[3 * a + 2]] : [1, 1, 1];
+  const R = new Float64Array(9), D2 = new Float64Array(3), Dn = new Float64Array(3);
+  quatToMat(quat[4 * a], quat[4 * a + 1], quat[4 * a + 2], quat[4 * a + 3], R);
+  for (let d = 0; d < 3; d++) {
+    D2[d] = rad[d] * rad[d];
+    Dn[d] = Math.pow(eT[3 * t + d], -invMu);
+  }
+  const Mtmp = new Float64Array(9), Ntmp = new Float64Array(9);
+  rdrt(R, D2, Mtmp);
+  rdrt(R, Dn, Ntmp);
+  sites.M.set(Mtmp, 9 * o);
+  sites.N.set(Ntmp, 9 * o);
+  sites.sf[o] = (rad[0] * rad[1] + rad[2] * rad[2]) * Math.sqrt(rad[0] * rad[1]);
+  sites.pt[o] = ellip ? 0 : 1;
+  sites.ljs[o] = rad[0] === rad[1] && rad[1] === rad[2] && eT[3 * t] === eT[3 * t + 1] && eT[3 * t + 1] === eT[3 * t + 2] ? 1 : 0;
+};
+
+/** The force and torques of one Gay-Berne pair: fi = force on i (native fvec), ti and tj = torques on i and j (zero for point particles). */
+interface GbPairOut { fi: Float64Array; ti: Float64Array; tj: Float64Array }
+
+const newGbOut = (): GbPairOut => ({ fi: new Float64Array(3), ti: new Float64Array(3), tj: new Float64Array(3) });
+
+/**
+ * The Gay-Berne energy and forces of one ellipsoidal pair of owned atoms a (= i) and b (= j); dxi = x_i - x_j. The LJ-sphere
+ * pairs are not handled here (the callers do plain Lennard-Jones for them). Returns the energy and fills out.
+ */
+const gbPair = (sites: GbSites, a: number, b: number, dxi: number, dyi: number, dzi: number, rsq: number, eps: number, sig: number, mu: number, nu: number, gam: number, out: GbPairOut): number => {
+  const { M: Mo, N: No, sf, ljs, pt } = sites;
+  // Measured with native LAMMPS (black box): a point particle (shape 0 0 0) whose epsilon a,b,c are not equal
+  // gives an energy that differs from the Gay-Berne form with radius 1.0 (the same pair with an isotropic
+  // epsilon matches), and two such point particles make the native solver fail. Refused rather than reproduced.
+  if ((pt[a] && !ljs[a]) || (pt[b] && !ljs[b])) {
+    throw new StyleError('pair_style gayberne: point particles need equal epsilon a,b,c (anisotropic point particles are not supported)');
+  }
+  // Measured with native LAMMPS (black box): when one partner is an LJ sphere (spherical shape, equal epsilon
+  // a,b,c) and the other is not, the energy and forces match this form, but the native torque on the other
+  // particle differs from the gradient of its energy unless mu = 1. Refused rather than reproduced.
+  if (ljs[a] !== ljs[b] && mu !== 1) {
+    throw new StyleError('pair_style gayberne: an LJ sphere paired with an ellipsoid needs mu = 1 (the native torques differ otherwise)');
+  }
+
+  // Gay-Berne pair. r = x_j - x_i (the energy is even in r, so the sign only matters for the force).
+  const rx = -dxi, ry = -dyi, rz = -dzi;
+  const rr = Math.sqrt(rsq);
+  const rhat = [rx / rr, ry / rr, rz / rr];
+  const Mi = Mo.subarray(9 * a, 9 * a + 9), Mj = Mo.subarray(9 * b, 9 * b + 9);
+  const Ni = No.subarray(9 * a, 9 * a + 9), Nj = No.subarray(9 * b, 9 * b + 9);
+  const G = new Float64Array(9), Gi = new Float64Array(9), B = new Float64Array(9), Bi = new Float64Array(9);
+  const v = [0, 0, 0], w = [0, 0, 0], o3 = [0, 0, 0];
+  for (let q = 0; q < 9; q++) { G[q] = Mi[q] + Mj[q]; B[q] = Ni[q] + Nj[q]; }
+  const detG = inv3(G, Gi);
+  inv3(B, Bi);
+  // sigma12 = |r| P^-1/2 with P = 1/2 r^T G^-1 r ; v = G^-1 r
+  mv(Gi, [rx, ry, rz], v);
+  const P = 0.5 * (rx * v[0] + ry * v[1] + rz * v[2]);
+  const sqrtP = Math.sqrt(P);
+  const sigma12 = rr / sqrtP;
+  const h = rr - sigma12;
+  // chi = q^mu, q = 2 rhat^T B^-1 rhat ; w = B^-1 r
+  mv(Bi, [rx, ry, rz], w);
+  const rw = rx * w[0] + ry * w[1] + rz * w[2];
+  const qv = 2 * rw / rsq;
+  const chi = Math.pow(qv, mu);
+  const eta = Math.pow(2 * sf[a] * sf[b] / detG, 0.5 * nu);
+  const hg = h + gam * sig;
+  const rho = sig / hg;
+  const rho6 = rho ** 6, rho12 = rho6 * rho6;
+  const Ur = 4 * eps * (rho12 - rho6);
+  const dUr = 4 * eps * (-12 * rho12 + 6 * rho6) / hg; // dUr/dh
+  const eC = eta * chi;
+  const e = Ur * eC;
+
+  // dU/dr12 (vector). dh/dr = rhat - dsigma/dr, dsigma/dr = rhat sigma/rr - 1/2 rr P^-3/2 v ;
+  // dq/dr = 4 w/rr^2 - 2 q r/rr^2.
+  const P32 = P * sqrtP; // P^3/2
+  const dsdr = [0, 1, 2].map((d) => rhat[d] * sigma12 / rr - 0.5 * rr / P32 * v[d]);
+  const dhdr = [0, 1, 2].map((d) => rhat[d] - dsdr[d]);
+  const dqdr = [0, 1, 2].map((d) => 4 * w[d] / rsq - 2 * qv * [rx, ry, rz][d] / rsq);
+  const g = [0, 1, 2].map((d) =>
+    eta * (dUr * chi * dhdr[d] + Ur * chi * mu * dqdr[d] / qv));
+  // force on i is +g (U depends on x_j - x_i), on j is -g
+  out.fi[0] = g[0]; out.fi[1] = g[1]; out.fi[2] = g[2];
+
+  // Torques: tau_b = -dU/dphi_b. For a rotation of body b with space matrix M_b (G part), N_b (B part):
+  //   dsigma/dphi_b = 1/2 rr P^-3/2 (M_b v x v)
+  //   dq/dphi_b     = -4 (N_b w x w)/rr^2
+  //   dln(eta)/dphi_b = -nu axial(M_b G^-1 - G^-1 M_b)
+  // so dU/dphi_b = eta chi dUr (-dsigma/dphi_b) + Ur eta chi mu (dq/dphi_b)/q + Ur chi d eta/dphi_b.
+  for (let side = 0; side < 2; side++) {
+    const atom = side === 0 ? a : b;
+    const Mb = side === 0 ? Mi : Mj;
+    const Nb = side === 0 ? Ni : Nj;
+    mv(Mb, v, o3);
+    const cvx = o3[1] * v[2] - o3[2] * v[1];
+    const cvy = o3[2] * v[0] - o3[0] * v[2];
+    const cvz = o3[0] * v[1] - o3[1] * v[0];
+    const dsx = 0.5 * rr / P32 * cvx, dsy = 0.5 * rr / P32 * cvy, dsz = 0.5 * rr / P32 * cvz;
+    mv(Nb, w, o3);
+    const nwx = o3[1] * w[2] - o3[2] * w[1];
+    const nwy = o3[2] * w[0] - o3[0] * w[2];
+    const nwz = o3[0] * w[1] - o3[1] * w[0];
+    // C = Mb Gi - Gi Mb
+    const tmp = new Float64Array(9), T2 = new Float64Array(9), C = new Float64Array(9);
+    mm(Mb, Gi, tmp);
+    mm(Gi, Mb, T2);
+    for (let q = 0; q < 9; q++) C[q] = tmp[q] - T2[q];
+    const ax = C[5], ay = C[6], az = C[1]; // axial (C23, C31, C12), 0-based C[1][2], C[2][0], C[0][1]
+    const dUx = eC * dUr * (-dsx) + Ur * eC * mu * (-4 * nwx / rsq) / qv - Ur * chi * nu * eta * ax;
+    const dUy = eC * dUr * (-dsy) + Ur * eC * mu * (-4 * nwy / rsq) / qv - Ur * chi * nu * eta * ay;
+    const dUz = eC * dUr * (-dsz) + Ur * eC * mu * (-4 * nwz / rsq) / qv - Ur * chi * nu * eta * az;
+    // Measured with native LAMMPS (black box): a point particle (shape 0 0 0) gets no torque.
+    const t = side === 0 ? out.ti : out.tj;
+    if (pt[atom]) { t[0] = 0; t[1] = 0; t[2] = 0; } else { t[0] = -dUx; t[1] = -dUy; t[2] = -dUz; }
+  }
+  return e;
+};
+
 export class PairGayBerne extends Pair {
   readonly name = 'gayberne';
   virialFdotr = true;
@@ -109,6 +236,11 @@ export class PairGayBerne extends Pair {
   eT = new Float64Array(0);
   eSet = new Uint8Array(0);
   offset = new Float64Array(0);
+  /** The system of the last init (single() reads the shapes and quaternions of its two atoms). */
+  private state: SimState | null = null;
+  /** Native svector of the last single() call: force and torque on i (pN 1..6). */
+  private readonly svec = new Float64Array(6);
+  private readonly gout = newGbOut();
 
   settings(args: string[]): void {
     if (args.length !== 4) throw new StyleError('Illegal pair_style command');
@@ -179,7 +311,45 @@ export class PairGayBerne extends Pair {
     // this style (measured, black box: the pair energy is unchanged); the engine refuses it instead.
     if (this.tail) throw new StyleError('pair_modify tail is not supported by pair_style gayberne');
     this.offset = new Float64Array(0);
+    this.state = ctx.s;
     super.init(ctx);
+  }
+
+  /** Native single_extra (pair_gayberne.cpp: single_extra = 6): the force and torque on i (pN 1..6). */
+  singleExtra(): number { return 6; }
+
+  singleNeedsSeparation(): boolean { return true; }
+
+  /**
+   * Native single() (pair_gayberne.cpp): fforce is the force on i projected on the centre axis, the svector holds the full
+   * force on i (1-3) and the torque on i (4-6), both times factor_lj, and the energy is factor_lj times the pair energy.
+   * i and j are owned atoms; del = x_i - x_j.
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, _fc: number, factorLJ: number, _qi: number, _qj: number, del?: PairSep): { eng: number; fforce: number; svector: Float64Array } {
+    const s = this.state;
+    if (!s || !s.shape || !s.quat || !s.torque) throw new StyleError('Pair gayberne requires atom style ellipsoid');
+    if (!del) throw new StyleError('pair gayberne single() needs the separation vector x_i - x_j (compute pair/local passes it)');
+    const nt = this.ntypes + 1;
+    const eps = this.p.get('epsilon', itype, jtype), sig = this.p.get('sigma', itype, jtype);
+    const sites: GbSites = { M: new Float64Array(18), N: new Float64Array(18), sf: new Float64Array(2), ljs: new Uint8Array(2), pt: new Uint8Array(2) };
+    gbSite(sites, 0, i, s.shape, s.quat, itype, this.eT, 1 / this.mu);
+    gbSite(sites, 1, j, s.shape, s.quat, jtype, this.eT, 1 / this.mu);
+    const svector = this.svec;
+    svector.fill(0);
+    if (sites.ljs[0] && sites.ljs[1]) {
+      // LJ sphere pair: plain Lennard-Jones in r (no torque), with the pair_modify shift offset
+      const r2inv = 1 / rsq;
+      const sr2 = sig * sig * r2inv, sr6 = sr2 * sr2 * sr2, sr12 = sr6 * sr6;
+      const eLJ = 4 * eps * (sr12 - sr6) - this.offset[itype * nt + jtype];
+      const fljr = (48 * eps * sr12 - 24 * eps * sr6) * r2inv;
+      svector[0] = factorLJ * fljr * del.dx; svector[1] = factorLJ * fljr * del.dy; svector[2] = factorLJ * fljr * del.dz;
+      return { eng: factorLJ * eLJ, fforce: factorLJ * fljr, svector };
+    }
+    const out = this.gout;
+    const e = gbPair(sites, 0, 1, del.dx, del.dy, del.dz, rsq, eps, sig, this.mu, this.upsilon, this.gamma, out);
+    for (let c = 0; c < 3; c++) { svector[c] = factorLJ * out.fi[c]; svector[3 + c] = factorLJ * out.ti[c]; }
+    const radial = (out.fi[0] * del.dx + out.fi[1] * del.dy + out.fi[2] * del.dz) / rsq;
+    return { eng: factorLJ * e, fforce: factorLJ * radial, svector };
   }
 
   compute(pc: PairCompute): void {
@@ -199,40 +369,21 @@ export class PairGayBerne extends Pair {
     const shape = s.shape, quat = s.quat;
 
     // Per owned atom: space-frame G and B contributions, radii, the eta factor s_i and the LJ-sphere flag.
-    const Mo = new Float64Array(9 * nlocal), No = new Float64Array(9 * nlocal);
-    const sf = new Float64Array(nlocal), ljs = new Uint8Array(nlocal), pt = new Uint8Array(nlocal);
-    const R = new Float64Array(9), D2 = new Float64Array(3), Dn = new Float64Array(3);
-    const rad = new Float64Array(3);
+    const sites: GbSites = { M: new Float64Array(9 * nlocal), N: new Float64Array(9 * nlocal), sf: new Float64Array(nlocal), ljs: new Uint8Array(nlocal), pt: new Uint8Array(nlocal) };
     // Measured with native LAMMPS (black box): every atom of one type must have the same shape (same raw diameters).
     const tShape = new Float64Array(3 * (nt + 1)), tSeen = new Uint8Array(nt + 1);
     for (let o = 0; o < nlocal; o++) {
       const t = type[o];
-      const ellip = shape[3 * o] > 0;
       if (!tSeen[t]) {
         tSeen[t] = 1;
         for (let d = 0; d < 3; d++) tShape[3 * t + d] = shape[3 * o + d];
       } else if (shape[3 * o] !== tShape[3 * t] || shape[3 * o + 1] !== tShape[3 * t + 1] || shape[3 * o + 2] !== tShape[3 * t + 2]) {
         throw new StyleError('Pair gayberne requires atoms with same type have same shape');
       }
-      if (ellip) { rad[0] = shape[3 * o]; rad[1] = shape[3 * o + 1]; rad[2] = shape[3 * o + 2]; } else { rad[0] = rad[1] = rad[2] = 1; }
-      quatToMat(quat[4 * o], quat[4 * o + 1], quat[4 * o + 2], quat[4 * o + 3], R);
-      for (let d = 0; d < 3; d++) {
-        D2[d] = rad[d] * rad[d];
-        Dn[d] = Math.pow(this.eT[3 * t + d], -invMu);
-      }
-      const Mtmp = new Float64Array(9), Ntmp = new Float64Array(9);
-      rdrt(R, D2, Mtmp);
-      rdrt(R, Dn, Ntmp);
-      Mo.set(Mtmp, 9 * o);
-      No.set(Ntmp, 9 * o);
-      sf[o] = (rad[0] * rad[1] + rad[2] * rad[2]) * Math.sqrt(rad[0] * rad[1]);
-      pt[o] = ellip ? 0 : 1;
-      ljs[o] = rad[0] === rad[1] && rad[1] === rad[2] && this.eT[3 * t] === this.eT[3 * t + 1] && this.eT[3 * t + 1] === this.eT[3 * t + 2] ? 1 : 0;
+      gbSite(sites, o, o, shape, quat, t, this.eT, invMu);
     }
 
-    const G = new Float64Array(9), Gi = new Float64Array(9), B = new Float64Array(9), Bi = new Float64Array(9);
-    const tmp = new Float64Array(9), C = new Float64Array(9);
-    const v = [0, 0, 0], w = [0, 0, 0], o3 = [0, 0, 0];
+    const out = this.gout;
     let evdwl = 0;
     for (let i = 0; i < list.inum; i++) {
       const oi = owner[i];
@@ -252,8 +403,7 @@ export class PairGayBerne extends Pair {
         }
         const ti_ = type[i], tj_ = type[j];
         const eps = this.p.get('epsilon', ti_, tj_), sig = this.p.get('sigma', ti_, tj_);
-        const cut = this.p.get('cut', ti_, tj_);
-        if (ljs[oi] && ljs[oj]) {
+        if (sites.ljs[oi] && sites.ljs[oj]) {
           // LJ sphere pair: plain Lennard-Jones in r, shifted by the pair_modify shift offset.
           const r2inv = 1 / rsq;
           const sr2 = sig * sig * r2inv, sr6 = sr2 * sr2 * sr2, sr12 = sr6 * sr6;
@@ -271,99 +421,18 @@ export class PairGayBerne extends Pair {
           continue;
         }
 
-        // Measured with native LAMMPS (black box): a point particle (shape 0 0 0) whose epsilon a,b,c are not equal
-        // gives an energy that differs from the Gay-Berne form with radius 1.0 (the same pair with an isotropic
-        // epsilon matches), and two such point particles make the native solver fail. Refused rather than reproduced.
-        if ((pt[oi] && !ljs[oi]) || (pt[oj] && !ljs[oj])) {
-          throw new StyleError('pair_style gayberne: point particles need equal epsilon a,b,c (anisotropic point particles are not supported)');
-        }
-        // Measured with native LAMMPS (black box): when one partner is an LJ sphere (spherical shape, equal epsilon
-        // a,b,c) and the other is not, the energy and forces match this form, but the native torque on the other
-        // particle differs from the gradient of its energy unless mu = 1. Refused rather than reproduced.
-        if (ljs[oi] !== ljs[oj] && mu !== 1) {
-          throw new StyleError('pair_style gayberne: an LJ sphere paired with an ellipsoid needs mu = 1 (the native torques differ otherwise)');
-        }
-
-        // Gay-Berne pair. r = x_j - x_i (the energy is even in r, so the sign only matters for the force).
-        const rx = -dxi, ry = -dyi, rz = -dzi;
-        const rr = Math.sqrt(rsq);
-        const rhat = [rx / rr, ry / rr, rz / rr];
-        const Mi = Mo.subarray(9 * oi, 9 * oi + 9), Mj = Mo.subarray(9 * oj, 9 * oj + 9);
-        const Ni = No.subarray(9 * oi, 9 * oi + 9), Nj = No.subarray(9 * oj, 9 * oj + 9);
-        for (let q = 0; q < 9; q++) { G[q] = Mi[q] + Mj[q]; B[q] = Ni[q] + Nj[q]; }
-        const detG = inv3(G, Gi);
-        inv3(B, Bi);
-        // sigma12 = |r| P^-1/2 with P = 1/2 r^T G^-1 r ; v = G^-1 r
-        mv(Gi, [rx, ry, rz], v);
-        const P = 0.5 * (rx * v[0] + ry * v[1] + rz * v[2]);
-        const sqrtP = Math.sqrt(P);
-        const sigma12 = rr / sqrtP;
-        const h = rr - sigma12;
-        // chi = q^mu, q = 2 rhat^T B^-1 rhat ; w = B^-1 r
-        mv(Bi, [rx, ry, rz], w);
-        const rw = rx * w[0] + ry * w[1] + rz * w[2];
-        const qv = 2 * rw / rsq;
-        const chi = Math.pow(qv, mu);
-        const eta = Math.pow(2 * sf[oi] * sf[oj] / detG, 0.5 * nu);
-        const hg = h + gam * sig;
-        const rho = sig / hg;
-        const rho6 = rho ** 6, rho12 = rho6 * rho6;
-        const Ur = 4 * eps * (rho12 - rho6);
-        const dUr = 4 * eps * (-12 * rho12 + 6 * rho6) / hg; // dUr/dh
-        const eC = eta * chi;
-        const e = Ur * eC;
+        const e = gbPair(sites, oi, oj, dxi, dyi, dzi, rsq, eps, sig, mu, nu, gam, out);
         evdwl += e;
-
-        // dU/dr12 (vector). dh/dr = rhat - dsigma/dr, dsigma/dr = rhat sigma/rr - 1/2 rr P^-3/2 v ;
-        // dq/dr = 4 w/rr^2 - 2 q r/rr^2.
-        const P32 = P * sqrtP; // P^3/2
-        const dsdr = [0, 1, 2].map((d) => rhat[d] * sigma12 / rr - 0.5 * rr / P32 * v[d]);
-        const dhdr = [0, 1, 2].map((d) => rhat[d] - dsdr[d]);
-        const dqdr = [0, 1, 2].map((d) => 4 * w[d] / rsq - 2 * qv * [rx, ry, rz][d] / rsq);
-        const g = [0, 1, 2].map((d) =>
-          eta * (dUr * chi * dhdr[d] + Ur * chi * mu * dqdr[d] / qv));
-        // force on i is +g (U depends on x_j - x_i), on j is -g
+        const g = out.fi;
         f[3 * i] += g[0]; f[3 * i + 1] += g[1]; f[3 * i + 2] += g[2];
         f[3 * j] -= g[0]; f[3 * j + 1] -= g[1]; f[3 * j + 2] -= g[2];
-
-        // Torques: tau_b = -dU/dphi_b. For a rotation of body b with space matrix M_b (G part), N_b (B part):
-        //   dsigma/dphi_b = 1/2 rr P^-3/2 (M_b v x v)
-        //   dq/dphi_b     = -4 (N_b w x w)/rr^2
-        //   dln(eta)/dphi_b = -nu axial(M_b G^-1 - G^-1 M_b)
-        // so dU/dphi_b = eta chi dUr (-dsigma/dphi_b) + Ur eta chi mu (dq/dphi_b)/q + Ur chi d eta/dphi_b.
-        for (let side = 0; side < 2; side++) {
-          const b = side === 0 ? i : j;
-          const Mb = side === 0 ? Mi : Mj;
-          const Nb = side === 0 ? Ni : Nj;
-          mv(Mb, v, o3);
-          const cvx = o3[1] * v[2] - o3[2] * v[1];
-          const cvy = o3[2] * v[0] - o3[0] * v[2];
-          const cvz = o3[0] * v[1] - o3[1] * v[0];
-          const dsx = 0.5 * rr / P32 * cvx, dsy = 0.5 * rr / P32 * cvy, dsz = 0.5 * rr / P32 * cvz;
-          mv(Nb, w, o3);
-          const nwx = o3[1] * w[2] - o3[2] * w[1];
-          const nwy = o3[2] * w[0] - o3[0] * w[2];
-          const nwz = o3[0] * w[1] - o3[1] * w[0];
-          // C = Mb Gi - Gi Mb
-          mm(Mb, Gi, tmp);
-          const T2 = new Float64Array(9);
-          mm(Gi, Mb, T2);
-          for (let q = 0; q < 9; q++) C[q] = tmp[q] - T2[q];
-          const ax = C[5], ay = C[6], az = C[1]; // axial (C23, C31, C12), 0-based C[1][2], C[2][0], C[0][1]
-          const dUx = eC * dUr * (-dsx) + Ur * eC * mu * (-4 * nwx / rsq) / qv - Ur * chi * nu * eta * ax;
-          const dUy = eC * dUr * (-dsy) + Ur * eC * mu * (-4 * nwy / rsq) / qv - Ur * chi * nu * eta * ay;
-          const dUz = eC * dUr * (-dsz) + Ur * eC * mu * (-4 * nwz / rsq) / qv - Ur * chi * nu * eta * az;
-          // Measured with native LAMMPS (black box): a point particle (shape 0 0 0) gets no torque.
-          if (!pt[side === 0 ? oi : oj]) {
-            tq[3 * b] -= dUx; tq[3 * b + 1] -= dUy; tq[3 * b + 2] -= dUz;
-          }
-        }
+        for (let c = 0; c < 3; c++) { tq[3 * i + c] += out.ti[c]; tq[3 * j + c] += out.tj[c]; }
 
         if (pc.eatom) { pc.eatom[i] += 0.5 * e; pc.eatom[j] += 0.5 * e; }
         if (pc.vatom) {
           const va = pc.vatom;
           const fx = g[0], fy = g[1], fz = g[2];
-          const dx = -rx, dy = -ry, dz = -rz; // x_i - x_j
+          const dx = dxi, dy = dyi, dz = dzi; // x_i - x_j
           const wv = [dx * fx, dy * fy, dz * fz, dx * fy, dx * fz, dy * fz];
           for (let c = 0; c < 6; c++) { va[6 * i + c] += 0.5 * wv[c]; va[6 * j + c] += 0.5 * wv[c]; }
         }

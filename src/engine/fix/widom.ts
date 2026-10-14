@@ -255,7 +255,7 @@ export class FixWidom extends Fix {
   private canProbeFast(): boolean {
     const s = this.sys.state;
     const pair = this.sys.ff.pair;
-    if (this.fullEnergy || this.molTemplate || !pair || typeof pair.single !== 'function') return false;
+    if (this.fullEnergy || this.molTemplate || !pair || typeof pair.single !== 'function' || pair.singleNeedsSeparation()) return false;
     if (s.box.triclinic || this.sys.nb.excludes.length || this.sys.nb.includeBit) return false;
     let cmax = 0;
     for (let k = 0; k < pair.cut.length; k++) if (pair.cut[k] > cmax) cmax = pair.cut[k];

@@ -10,11 +10,13 @@ import type { Fix } from '../../engine/fix/fix';
 import type { Pair } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { PairComb } from '../comb/comb';
+import { PairComb3 } from '../comb3/pair_comb3';
 import { FixQeqComb } from '../comb/fix_qeq_comb';
 
-/** COMB style and its charge-equilibration fix, ported from LAMMPS (pair_comb, fix_qeq_comb); merged through lazyStyles.ts. */
+/** COMB styles (comb, comb3 stage A) and the charge-equilibration fix, ported from LAMMPS (pair_comb, pair_comb3, fix_qeq_comb); merged through lazyStyles.ts. */
 export const PAIRS: Record<string, () => Pair> = {
   comb: () => new PairComb(),
+  comb3: () => new PairComb3(),
 };
 
 export const FIXES: Record<string, (sys: System, id: string, group: string, args: string[]) => Fix> = {

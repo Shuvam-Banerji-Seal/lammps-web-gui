@@ -6,14 +6,21 @@
  * License). This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  *
  * The file keyword writes the same diagnostic lines as the C++ fix (fopen "w" at creation, then the
- * per-step messages through the engine's file output). Refused (StyleError): respa. The charge force comes from PairComb.chargeForces, which uses the neighbor data of the
+ * per-step messages through the engine's file output). Refused (StyleError): respa. The charge force comes from the pair style's chargeForces (PairComb or PairComb3), which uses the neighbor data of the
  * last force evaluation of this step (the fix runs in postForce, after the forces, as in LAMMPS).
  */
 import { Fix } from '../../engine/fix/fix';
 import { formatNumber } from '../../engine/cformat';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { PairComb } from './comb';
+/** The pair styles that give the charge forces of fix qeq/comb: pair_style comb (PairComb) and comb3 (PairComb3). */
+export interface ChargeForcePair {
+  /** Charge forces of the group into qf (length nall); returns the group's total (enegtot). */
+  chargeForces(qf: Float64Array, isGroup: (i: number) => boolean): number;
+}
+
+const isChargeForcePair = (p: unknown): p is ChargeForcePair =>
+  typeof p === 'object' && p !== null && typeof (p as ChargeForcePair).chargeForces === 'function';
 
 const QSUMSMALL = 0.00001;
 
@@ -43,10 +50,10 @@ export class FixQeqComb extends Fix {
     if (this.fileName !== null) sys.writeFile(this.fileName, '', false);
   }
 
-  /** The pair style: pair_style comb. */
-  private pair(): PairComb {
+  /** The pair style: pair_style comb or comb3. */
+  private pair(): ChargeForcePair {
     const pair = this.sys.ff.pair;
-    if (!(pair instanceof PairComb)) throw new StyleError('Must use pair_style comb with fix qeq/comb (pair_style comb3 is not supported by the browser engine)');
+    if (!isChargeForcePair(pair)) throw new StyleError('Must use pair_style comb or comb3 with fix qeq/comb');
     return pair;
   }
 

@@ -102,9 +102,9 @@ describe('pair_style comb commands', () => {
     expect(errorOf(ev)).toMatch(/one element name per atom type/);
   });
 
-  it('does not offer pair_style comb3 (refused by name)', async () => {
-    const ev = await run(`${box}pair_style comb3\n`, { 'ffield.comb3': ffield });
-    expect(errorOf(ev)).toMatch(/comb3/);
+  it('refuses pair_style comb3 polar_on by name (the polarization terms are not ported)', async () => {
+    const ev = await run(`${box}pair_style comb3 polar_on\n`, { 'ffield.comb3': ffield });
+    expect(errorOf(ev)).toMatch(/polar_on/);
   });
 });
 

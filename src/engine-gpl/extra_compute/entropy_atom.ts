@@ -16,6 +16,7 @@
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
+import { CellList } from '../../engine/cellList';
 
 /** utils::logical of the input parser: yes/on/true/1 or no/off/false/0. */
 const logical = (w: string, what: string): boolean => {
@@ -106,6 +107,8 @@ export class ComputeEntropyAtom extends Compute {
     const xa = nb.xall;
     const cutneigh = maxCut(pair.cut) + nb.skin;
     const cutneigh2 = cutneigh * cutneigh;
+    // every test below accepts a distance under cutneigh, cutoff or cutoff2: cells at least that wide
+    const cells = new CellList(xa, nall, Math.max(cutneigh, this.cutoff, this.cutoff2));
     const sigma = this.sigma, nbin = this.nbin, deltar = this.deltar, deltabin = this.deltabin;
     const sigmasq2 = 2 * sigma * sigma;
     const box = s.box;
@@ -124,7 +127,9 @@ export class ComputeEntropyAtom extends Compute {
       // neighbours of i within the list cutoff (the native list holds the pairs within cutforce + skin)
       let jnum = 0;
       if (this.localDensity) {
-        for (let j = 0; j < nall; j++) {
+        const cand = cells.candidates(xi, yi, zi);
+        for (let t = 0; t < cand.length; t++) {
+          const j = cand[t];
           if (j === i) continue;
           const dx = xi - xa[3 * j], dy = yi - xa[3 * j + 1], dz = zi - xa[3 * j + 2];
           if (dx * dx + dy * dy + dz * dz < cutneigh2) jnum++;
@@ -134,7 +139,9 @@ export class ComputeEntropyAtom extends Compute {
       const normConstantBase = 4 * PI * density * (Math.sqrt(2 * PI) * sigma);
       const invNormConstantBase = 1 / normConstantBase;
       gofr.fill(0);
-      for (let j = 0; j < nall; j++) {
+      const cand = cells.candidates(xi, yi, zi);
+      for (let t = 0; t < cand.length; t++) {
+        const j = cand[t];
         if (j === i) continue;
         const dx = xi - xa[3 * j], dy = yi - xa[3 * j + 1], dz = zi - xa[3 * j + 2];
         const rsq = dx * dx + dy * dy + dz * dz;
@@ -173,7 +180,9 @@ export class ComputeEntropyAtom extends Compute {
         const xi = xa[3 * i], yi = xa[3 * i + 1], zi = xa[3 * i + 2];
         let sum = pe[i];
         let counter = 1;
-        for (let j = 0; j < nall; j++) {
+        const cand = cells.candidates(xi, yi, zi);
+        for (let t = 0; t < cand.length; t++) {
+          const j = cand[t];
           if (j === i) continue;
           const dx = xi - xa[3 * j], dy = yi - xa[3 * j + 1], dz = zi - xa[3 * j + 2];
           if (dx * dx + dy * dy + dz * dz < this.cutsq2) {

@@ -2,6 +2,7 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNum, parseInt_ } from '../force/util';
+import { CellList } from '../cellList';
 
 /*
  * compute ID group-ID orientorder/atom keyword values ...
@@ -361,6 +362,7 @@ export class ComputeOrientorderAtom extends Compute {
     const cols = this.sizePeratomCols;
     const out = (this.arrayAtom = new Float64Array(cols * n));
     const cut2 = cut * cut;
+    const cells = new CellList(xa, nall, cut);
     const nlv = this.degrees.length;
     const sel = this.nnn ?? 0;
     // grow scratch to hold every owned+ghost candidate
@@ -378,7 +380,10 @@ export class ComputeOrientorderAtom extends Compute {
       if (!(s.mask[i] & this.groupBit)) continue;
       const xi = xa[3 * i], yi = xa[3 * i + 1], zi = xa[3 * i + 2];
       let cnt = 0;
-      for (let k = 0; k < nall; k++) {
+      // candidates: the atoms of the cells around i, ascending (the same order as the all-atom loop)
+      const cand = cells.candidates(xi, yi, zi);
+      for (let t = 0; t < cand.length; t++) {
+        const k = cand[t];
         if (k === i) continue;
         const dx = xa[3 * k] - xi, dy = xa[3 * k + 1] - yi, dz = xa[3 * k + 2] - zi;
         const r2 = dx * dx + dy * dy + dz * dz;

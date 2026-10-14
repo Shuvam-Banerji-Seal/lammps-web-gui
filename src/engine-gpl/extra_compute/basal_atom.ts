@@ -17,6 +17,7 @@
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
+import { CellList } from '../../engine/cellList';
 
 /** C copysign(1.0, b) (sign taken from the sign bit of b, so -0.0 gives -1). */
 const copysign1 = (b: number): number => (b < 0 || Object.is(b, -0) ? -1 : 1);
@@ -94,13 +95,14 @@ export class ComputeBasalAtom extends Compute {
     let cutforce = 0;
     for (let k = 0; k < pair.cut.length; k++) if (pair.cut[k] > cutforce) cutforce = pair.cut[k];
     const cutsq = cutforce * cutforce;
+    const cells = new CellList(xa, nall, cutforce);
     const out = new Float64Array(3 * n);
     this.arrayAtom = out;
     const distsq = new Float64Array(nall + 1);
     const nearest = new Int32Array(nall + 1);
     const nearestN0 = new Int32Array(nall + 1);
-    const chiMax = Math.max(1, nall * nall);
-    const x3 = new Float64Array(chiMax), y3 = new Float64Array(chiMax), z3 = new Float64Array(chiMax);
+    // the bond-angle vectors of one atom: at most n0 (n0 - 1) / 2 of them, so the buffers grow with the atom's count
+    let x3 = new Float64Array(0), y3 = new Float64Array(0), z3 = new Float64Array(0);
     const x4 = new Float64Array(3), y4 = new Float64Array(3), z4 = new Float64Array(3);
     const x5 = new Float64Array(3), y5 = new Float64Array(3), z5 = new Float64Array(3);
     const x6 = new Float64Array(3), y6 = new Float64Array(3), z6 = new Float64Array(3);
@@ -115,7 +117,10 @@ export class ComputeBasalAtom extends Compute {
       const xi = xa[3 * i], yi = xa[3 * i + 1], zi = xa[3 * i + 2];
       // neighbours within the pair cutoff (the native full list, self excluded)
       let cnt = 0;
-      for (let j = 0; j < nall; j++) {
+      // candidates: the atoms of the cells around i, ascending (the same order as the all-atom loop)
+      const cand = cells.candidates(xi, yi, zi);
+      for (let t = 0; t < cand.length; t++) {
+        const j = cand[t];
         if (j === i) continue;
         const dx = xi - xa[3 * j], dy = yi - xa[3 * j + 1], dz = zi - xa[3 * j + 2];
         const rsq = dx * dx + dy * dy + dz * dz;
@@ -136,6 +141,8 @@ export class ComputeBasalAtom extends Compute {
       for (let j = 0; j < cnt; j++) {
         if (distsq[j] < n1dist && distsq[j] < n0dist) nearestN0[n0++] = nearest[j];
       }
+      const need = Math.max(1, (n0 * (n0 - 1)) / 2);
+      if (x3.length < need) { x3 = new Float64Array(need); y3 = new Float64Array(need); z3 = new Float64Array(need); }
       const chi = [0];
       // the angles of all n0 pairs: x3 = (r_ik - r_ij) for each pair (j < k) with cos < -0.945
       for (let j = 0; j < n0; j++) {

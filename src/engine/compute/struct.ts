@@ -2,6 +2,7 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNum, parseInt_ } from '../force/util';
+import { CellList } from '../cellList';
 
 /*
  * Wave-11 per-atom structure computes (compute_struct):
@@ -69,11 +70,14 @@ class NeighbourScratch {
     this.dz = new Float64Array(c);
   }
 
-  gather(xa: Float64Array, nall: number, i: number, cut2: number): void {
+  gather(xa: Float64Array, nall: number, i: number, cut2: number, cells: CellList): void {
     this.ensure(nall);
     const xi = xa[3 * i], yi = xa[3 * i + 1], zi = xa[3 * i + 2];
     let c = 0;
-    for (let k = 0; k < nall; k++) {
+    // the cell list holds the atoms of xall in ascending order near i, so the candidates keep the all-atom order
+    const cand = cells.candidates(xi, yi, zi);
+    for (let t = 0; t < cand.length; t++) {
+      const k = cand[t];
       if (k === i) continue;
       const dx = xa[3 * k] - xi, dy = xa[3 * k + 1] - yi, dz = xa[3 * k + 2] - zi;
       const r2 = dx * dx + dy * dy + dz * dz;
@@ -187,10 +191,11 @@ export class ComputeCentroAtom extends Compute {
     const sc = this.scratch;
     const xa = nb.xall;
     const cut2 = cut * cut;
+    const cells = new CellList(nb.xall, nb.nall, cut);
     const P = this.pairVal.length;
     for (let i = 0; i < n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      sc.gather(xa, nb.nall, i, cut2);
+      sc.gather(xa, nb.nall, i, cut2, cells);
       if (sc.count < N) continue; // not enough neighbours: centro-symmetry 0, axes 0
       sc.nearestFirst(N);
       // all pairs among the N nearest: |R_a + R_b|^2, then sort ascending (stable on pair index)
@@ -304,9 +309,10 @@ export class ComputeCnaAtom extends Compute {
     const sc = this.scratch;
     const xa = nb.xall;
     const cut2 = cut * cut;
+    const cells = new CellList(nb.xall, nb.nall, cut);
     for (let i = 0; i < n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      sc.gather(xa, nb.nall, i, cut2);
+      sc.gather(xa, nb.nall, i, cut2, cells);
       const M = sc.count;
       if (M === 0) { out[i] = CNA_UNKNOWN; continue; }
       // bond matrix among the neighbours of i (positions are image positions in xall)
@@ -401,9 +407,10 @@ export class ComputeClusterAtom extends Compute {
     const forest = new Forest(n);
     const sc = this.scratch;
     const cut2 = cut * cut;
+    const cells = new CellList(nb.xall, nb.nall, cut);
     for (let i = 0; i < n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      sc.gather(nb.xall, nb.nall, i, cut2);
+      sc.gather(nb.xall, nb.nall, i, cut2, cells);
       for (let c = 0; c < sc.count; c++) {
         const o = nb.owner[sc.idx[c]];
         if (s.mask[o] & this.groupBit) forest.union(i, o);
@@ -515,9 +522,10 @@ export class ComputeAggregateAtom extends Compute {
     const forest = new Forest(n);
     const sc = this.scratch;
     const cut2 = cut * cut;
+    const cells = new CellList(nb.xall, nb.nall, cut);
     for (let i = 0; i < n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      sc.gather(nb.xall, nb.nall, i, cut2);
+      sc.gather(nb.xall, nb.nall, i, cut2, cells);
       for (let c = 0; c < sc.count; c++) {
         const o = nb.owner[sc.idx[c]];
         if (s.mask[o] & this.groupBit) forest.union(i, o);
@@ -606,10 +614,11 @@ export class ComputeHexorderAtom extends Compute {
     const sc = this.scratch;
     const xa = nb.xall;
     const cut2 = cut * cut;
+    const cells = new CellList(nb.xall, nb.nall, cut);
     const sel = this.nnn ?? 0;
     for (let i = 0; i < n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      sc.gather(xa, nb.nall, i, cut2);
+      sc.gather(xa, nb.nall, i, cut2, cells);
       if (sel > 0) {
         if (sc.count < sel) continue; // fewer than nnn neighbours: q_n = 0
         sc.nearestFirst(sel);

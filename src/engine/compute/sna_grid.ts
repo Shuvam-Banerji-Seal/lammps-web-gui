@@ -2,7 +2,8 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseInt_ } from '../force/util';
-import { rawBispectrum, WignerTables, type Cmat } from './sna';
+import { rawBispectrum, WignerTables, snaBinCut, type Cmat } from './sna';
+import { CellList } from '../cellList';
 import {
   parseSnaArgs, cutoffFactor, innerSwitch, cayleyKlein, quadraticTerms, checkCutoff, type SnaParams,
 } from './snap_global';
@@ -80,6 +81,7 @@ class GridEvaluator {
     const pos = [0, 0, 0];
     const row = 3 + blk;
     const gb = this.groupBit;
+    const cells = new CellList(xa, nall, snaBinCut(p.rcutfac, p.radius, 0));
     for (let iz = 0; iz < nz; iz++) {
       for (let iy = 0; iy < ny; iy++) {
         for (let ix = 0; ix < nx; ix++) {
@@ -89,7 +91,10 @@ class GridEvaluator {
             u[J].re.fill(0); u[J].im.fill(0);
             for (let q = 0; q < J + 1; q++) u[J].re[q * (J + 1) + q] = 1;
           }
-          for (let k = 0; k < nall; k++) {
+          // candidates: the atoms of the cells around the grid point, ascending (the same order as the all-atom loop)
+          const cand = cells.candidates(x, y, z);
+          for (let t = 0; t < cand.length; t++) {
+            const k = cand[t];
             if (!(s.mask[owner[k]] & gb)) continue;
             const dx = xa[3 * k] - x, dy = xa[3 * k + 1] - y, dz = xa[3 * k + 2] - z;
             const r = Math.sqrt(dx * dx + dy * dy + dz * dz);

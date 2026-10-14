@@ -2,7 +2,7 @@ import { isSmdStyle } from '../smd';
 import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { compileCFormat, checkCFormat, formatNumber, type ValueKind } from '../cformat';
-import { localDumpColumns, localColumnSource } from '../compute/local_dump';
+import { localDumpColumns, localColumnSource, localOutputOf } from '../compute/local_dump';
 import { generalBoxFromRestricted, toGeneralPoint, unrotateVector, type V3 } from '../triclinic_general';
 import { fillWildcard } from '../commands/restart';
 import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, hasRmassStyle, isEllipsoidStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
@@ -502,8 +502,8 @@ export class Dump {
     let nrows = -1;
     for (const c of this.columns) {
       if (c === 'index') continue;
-      const m = /^c_([A-Za-z0-9_]+)/.exec(c)!;
-      const r = sys.compute(m[1]).localRows;
+      const m = /^([cf])_([A-Za-z0-9_]+)/.exec(c)!;
+      const r = localOutputOf(sys, m[1] as 'c' | 'f', m[2]).localRows;
       if (nrows >= 0 && r !== nrows) throw new StyleError(`dump ${this.id} local: the computes do not have the same number of local entries (${nrows} and ${r})`);
       nrows = r;
     }

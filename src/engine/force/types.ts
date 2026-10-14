@@ -1,6 +1,8 @@
 import type { SimState } from '../types';
 import type { Geometry } from '../domain';
 import type { Neighbor, NeighList } from '../neighbor';
+import type { System } from '../system';
+import type { Fix } from '../fix/fix';
 
 /*
  * Contracts for force-field styles (pair, bond, angle, dihedral, improper,
@@ -226,6 +228,11 @@ export interface StyleContext {
   equalVariable?(name: string): number;
   /** Lattice spacing in x of the lattice command (1 when none is defined): peri styles take half of it as the node radius. */
   xlattice?: number;
+  /**
+   * Adds a fix the style needs at pair_style time (pair tracker's fix STORE/LOCAL, which the style's own
+   * keywords name); a fix with the same ID is replaced. make receives the system the fix joins.
+   */
+  addFix?(make: (sys: System) => Fix): void;
 }
 
 /** Equilibrium bond lengths and angles (degrees) by type, for Pair.linkBonded. */

@@ -47,6 +47,16 @@ export abstract class Fix {
   sizePeratomCols = 0;
   vectorAtom = new Float64Array(0);
   arrayAtom = new Float64Array(0);
+  /**
+   * Local outputs (one row per local datum, as a compute's: localFlag, sizeLocalCols 0 = vector, localRows
+   * the rows valid after the last post-force step). Read by f_ID references in dump local and fix ave/histo.
+   */
+  localFlag = false;
+  sizeLocalCols = 0;
+  localRows = 0;
+  localValues(): Float64Array<ArrayBuffer> {
+    throw new StyleError(`fix ${this.id} does not calculate local values`);
+  }
   /** Steps between end_of_step calls (and output validity for averaging fixes). */
   nevery = 1;
   /** Steps on which the global output is valid (0: any step); thermo output must use compatible steps. */

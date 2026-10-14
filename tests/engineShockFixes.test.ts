@@ -96,14 +96,14 @@ describe('fix nphug (SHOCK)', () => {
   });
 });
 
-describe('SHOCK fixes not ported', () => {
-  it('names fix wall/piston', async () => {
+describe('SHOCK fixes: refused keywords', () => {
+  it('refuses the xlo face of fix wall/piston (native: only zlo)', async () => {
     const { error } = await runScript(`${base}fix w all wall/piston xlo 0.0 0.5\nrun 1\n`);
-    expect(error).toContain('fix wall/piston');
+    expect(error).toContain('only available at zlo');
   });
 
-  it('names fix append/atoms', async () => {
-    const { error } = await runScript(`${base}fix a all append/atoms\nrun 1\n`);
-    expect(error).toContain('fix append/atoms');
+  it('names the refused append/atoms keyword random', async () => {
+    const { error } = await runScript(`${base.replace('boundary p p p', 'boundary p p m')}fix a all append/atoms zhi freq 1 size 1.0 random 0.1 0.1 0.1 1234\nrun 1\n`);
+    expect(error).toContain('random');
   });
 });

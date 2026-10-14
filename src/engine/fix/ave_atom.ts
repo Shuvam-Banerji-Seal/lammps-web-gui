@@ -1,6 +1,7 @@
 import type { System } from '../system';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
+import { localOutputOf } from '../compute/local_dump';
 import { expandWildcards, globalScalar, globalVector, parseRef, peratomValues, type Ref } from '../refs';
 import { formatNumber } from '../script';
 
@@ -483,7 +484,7 @@ export class FixAveHisto extends Fix {
   private resolveInput(w: string, kindFlag: 'global' | 'peratom' | 'local' | null): HistoInput {
     const what = `fix ${this.id} (ave/histo)`;
     const r = parseRef(w, true);
-    if (kindFlag === 'local' && r.kind !== 'c') throw new StyleError(`${what}: ${w}: kind local needs a compute input (c_ID)`);
+    if (kindFlag === 'local' && r.kind !== 'c' && r.kind !== 'f') throw new StyleError(`${what}: ${w}: kind local needs a compute or fix input (c_ID or f_ID)`);
     if (r.kind === 'attr') return { ref: r, peratom: true };
     if (r.kind === 'v') {
       const v = this.sys.vars.get(r.id);
@@ -520,7 +521,16 @@ export class FixAveHisto extends Fix {
       if (r.index !== null && (cols === 0 || r.index > cols)) throw new StyleError(`${what}: ${w}: column out of range 1..${cols}`);
       return { ref: r, peratom: false, local: true };
     }
-    if (kindFlag === 'local') throw new StyleError(`${what}: ${w}: kind local needs a compute input (c_ID)`);
+    if (r.kind === 'f' && (kindFlag === 'local' || (kindFlag === null && obj.localFlag))) {
+      // local values of a fix (f_ID, e.g. fix STORE/LOCAL); the same column rules as a compute's
+      if (!obj.localFlag) throw new StyleError(`${what}: ${w}: fix ${r.id} does not calculate local values`);
+      if (this.mode !== 'vector') throw new StyleError(`${what}: ${w}: local values can only be histogrammed in mode vector`);
+      const cols = obj.sizeLocalCols;
+      if (r.index === null && cols !== 0) throw new StyleError(`${what}: ${w}: it calculates a local array; give a column, e.g. ${w}[1]`);
+      if (r.index !== null && (cols === 0 || r.index > cols)) throw new StyleError(`${what}: ${w}: column out of range 1..${cols}`);
+      return { ref: r, peratom: false, local: true };
+    }
+    if (kindFlag === 'local') throw new StyleError(`${what}: ${w}: kind local needs a compute or fix input (c_ID or f_ID)`);
     let peratom: boolean;
     if (kindFlag === 'peratom') peratom = true;
     else if (kindFlag === 'global') peratom = false;
@@ -618,7 +628,7 @@ export class FixAveHisto extends Fix {
     const n = sys.state.n;
     for (const inp of this.inputs) {
       if (inp.local) {
-        const comp = sys.compute(inp.ref.id);
+        const comp = localOutputOf(sys, inp.ref.kind === 'f' ? 'f' : 'c', inp.ref.id);
         const data = comp.localValues();
         const ncol = Math.max(1, comp.sizeLocalCols);
         const col = inp.ref.index === null ? 0 : inp.ref.index - 1;
@@ -677,8 +687,9 @@ export class FixAveHisto extends Fix {
   private produce(step: number): void {
     const outB = new Float64Array(this.bins.length);
     let outM: number;
-    let outMin = Number.isFinite(this.winMin) ? this.winMin : 0;
-    let outMax = Number.isFinite(this.winMax) ? this.winMax : 0;
+    // an empty window keeps the native start values (fix_ave_histo.cpp end_of_step: "stats[2] = BIG; stats[3] = -BIG;", BIG = 1.0e20)
+    let outMin = Number.isFinite(this.winMin) ? this.winMin : 1.0e20;
+    let outMax = Number.isFinite(this.winMax) ? this.winMax : -1.0e20;
     if (this.aveMode === 'one') {
       outB.set(this.bins);
       outM = this.missing;

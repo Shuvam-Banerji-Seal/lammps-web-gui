@@ -1,12 +1,15 @@
 import type { System } from '../system';
 import type { SimState } from '../types';
 import { StyleError } from '../force/types';
-import { buildAtomMap, massOf } from '../atoms';
+import { buildAtomMap, isEllipsoid, isLineAtom, isTriAtom, massOf, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { SUPER_BLOCK } from '../superellipsoid';
+import { BODY_RECORD, parseBodyStyle, POLY_OFF } from '../bodies';
 import { encodePng } from './png';
 import { encodeJpeg } from './jpeg';
 import { ColorMap } from './image_colormap';
-import { arrowParts, type ImageObject, type ImageShading, type ObjectStyle, type RasterFrame, type Rgb255, type Vec3 } from './image_objects';
+import { arrowParts, type AtomObjectsHook, type BodyAtom, type EllipsoidAtom, type ImageObject, type ImageShading, type LineAtom, type ObjectStyle, type RasterFrame, type RegionConeHook, type RegionConeSpec, type Rgb255, type TriAtom, type Vec3 } from './image_objects';
 import { gplHook } from '../gplHooks';
+import { ConeRegion } from '../region';
 
 /*
  * dump image — docs.lammps.org/dump_image.html.
@@ -196,7 +199,19 @@ export class ImageDump {
   /** dump image "axes" keyword: the location, the length and the diameter fraction (null: no axes). */
   private axes: { loc: AxesLocation; len: number; diam: number } | null = null;
   /** dump image "fix ID style flag1 flag2" keywords: the fixes whose graphics objects are drawn. */
-  private fixObjects: { id: string; style: 'type' | 'element' | 'const'; flag1: number; flag2: number; rgb: RGB }[] = [];
+  private fixObjects: { id: string; source: 'fix' | 'compute'; style: 'type' | 'element' | 'const'; flag1: number; flag2: number; rgb: RGB; opacity: number }[] = [];
+  /** dump image "line" keyword: colour style (type, atom or index) and the cylinder diameter (null: keyword off). */
+  private lineOn: { color: 'type' | 'atom' | 'index'; diam: number } | null = null;
+  /** dump image "tri" keyword: colour style, tstyle (1 faces, 2 edges, other both) and the edge diameter (null: off). */
+  private triOn: { color: 'type' | 'atom' | 'index'; tstyle: number; diam: number } | null = null;
+  /** dump image "ellipsoid" keyword: colour style, estyle (1 rounded triangles, 2 wireframe), refinement level, width. */
+  private ellipsoidOn: { color: 'type' | 'atom' | 'index'; estyle: number; level: number; diam: number } | null = null;
+  /** dump image "body" keyword: colour style and the flag1 (diameter) and flag2 (face style) values. */
+  private bodyOn: { color: 'type' | 'atom' | 'index'; flag1: number; flag2: number } | null = null;
+  /** While one fix object of ftrans opacity below 1 is drawn: keeps a pixel (column, row from the top) when true. */
+  private gate: ((xx: number, yy: number) => boolean) | null = null;
+  /** dump image "region" keywords: region ID, colour, drawing style, frame diameter and opacity (dump_image.html). */
+  private regions: { id: string; color: RGB; drawstyle: 'filled' | 'frame' | 'transparent'; framediam: number; opacity: number }[] = [];
 
   /**
    * multifileOverride: write_dump only. write_dump.html: "Normally, dump image files require a filename with a "*"
@@ -298,8 +313,93 @@ export class ImageDump {
           if (!id || !style || a.length < k + 5) throw new StyleError(`dump ${this.id}: dump image fix needs an ID, a style and two values`);
           if (!this.sys.fixes.some((f) => f.id === id)) throw new StyleError(`dump ${this.id}: dump image fix ID '${id}' does not exist`);
           if (style !== 'type' && style !== 'element' && style !== 'const') throw new StyleError(`dump ${this.id}: unsupported colour style '${style}' for dump image fix ${id}`);
-          this.fixObjects.push({ id, style, flag1: this.num(a[k + 3], 'fix'), flag2: this.num(a[k + 4], 'fix'), rgb: [255, 255, 255] });
+          this.fixObjects.push({ id, source: 'fix', style, flag1: this.num(a[k + 3], 'fix'), flag2: this.num(a[k + 4], 'fix'), rgb: [255, 255, 255], opacity: 1 });
           k += 5;
+          break;
+        }
+        // dump_image.html: "line = color width", color = type, atom or index (dump_image.cpp: "Dump image line only
+        // supports color by type, atom, or index"); the width is numeric. Line particles are drawn as cylinders (lineflag).
+        case 'line': {
+          const c = a[k + 1];
+          if (c !== 'type' && c !== 'atom' && c !== 'index') throw new StyleError(`dump ${this.id}: dump image line only supports color by type, atom, or index`);
+          this.lineOn = { color: c, diam: this.num(a[k + 2], 'line') };
+          k += 3;
+          break;
+        }
+        // dump_image.html: "tri = color tflag width"; tflag 1 draws the triangles, 2 the edges, 3 both (dump_image.cpp:
+        // tstyle is read as an integer; tridraw is off for 2 and edgedraw off for 1).
+        case 'tri': {
+          const c = a[k + 1];
+          if (c !== 'type' && c !== 'atom' && c !== 'index') throw new StyleError(`dump ${this.id}: dump image tri only supports color by type, atom, or index`);
+          const ts = this.num(a[k + 2], 'tri');
+          if (!Number.isInteger(ts)) throw new StyleError(`dump ${this.id}: dump image tri tflag must be an integer`);
+          this.triOn = { color: c, tstyle: ts, diam: this.num(a[k + 3], 'tri') };
+          k += 4;
+          break;
+        }
+        // dump_image.html: "region values = region-ID color drawstyle [opacity (optional) npoints (optional) diameter (optional)]
+        // [hull_points npoints (optional)]"; drawstyle = filled, frame, points or transparent (dump_image.cpp: "Unknown region
+        // draw style"). The frame diameter must be > 0 and the opacity lies in 0.0 to 1.0. Only the filled, frame and transparent
+        // styles of cylinder and cone regions are drawn; points and hull_points are refused by name in drawRegions.
+        case 'region': {
+          const id = a[k + 1], color = a[k + 2], style = a[k + 3];
+          if (!id || !color || !style) throw new StyleError(`dump ${this.id}: dump image region needs an ID, a colour and a draw style`);
+          this.sys.region(id);
+          const rgb = this.color(color);
+          if (style === 'points') throw new StyleError(`dump ${this.id}: dump image region draw style 'points' is not supported by the browser engine`);
+          let drawstyle: 'filled' | 'frame' | 'transparent' = 'filled', framediam = 0.5, opacity = 1;
+          let used = 4;
+          if (style === 'filled') { /* no value */ }
+          else if (style === 'frame') {
+            framediam = this.num(a[k + 4], 'region');
+            if (!(framediam > 0)) throw new StyleError(`dump ${this.id}: dump image region frame diameter must be > 0.0`);
+            drawstyle = 'frame'; used = 5;
+          } else if (style === 'transparent') {
+            opacity = this.num(a[k + 4], 'region');
+            if (opacity < 0 || opacity > 1) throw new StyleError(`dump ${this.id}: dump image region opacity must be in the range 0.0 to 1.0`);
+            drawstyle = 'transparent'; used = 5;
+          } else throw new StyleError(`dump ${this.id}: unknown dump image region draw style '${style}'`);
+          if (a[k + used] === 'hull_points') throw new StyleError(`dump ${this.id}: dump image region hull_points is not supported by the browser engine`);
+          this.regions.push({ id, color: rgb, drawstyle, framediam, opacity });
+          k += used;
+          break;
+        }
+        // dump_image.html: "ellipsoid = color eflag level width"; eflag 1 draws rounded triangles and 2 the edges, other values
+        // select rounded triangles (dump_image.cpp: "if (estyle !=2) estyle = 1"); level 0 is the default 4 and the level must
+        // lie in 0 to 6 ("invalid mesh refinement level"). Only the color styles type, atom and index are accepted.
+        case 'ellipsoid': {
+          const c = a[k + 1];
+          if (c !== 'type' && c !== 'atom' && c !== 'index') throw new StyleError(`dump ${this.id}: dump image ellipsoid only supports color by type, atom, or index`);
+          const eflag = this.num(a[k + 2], 'ellipsoid'), level0 = this.num(a[k + 3], 'ellipsoid');
+          if (!Number.isInteger(eflag) || !Number.isInteger(level0)) throw new StyleError(`dump ${this.id}: dump image ellipsoid eflag and level must be integers`);
+          const level = level0 === 0 ? 4 : level0;
+          if (level < 0 || level > 6) throw new StyleError(`dump ${this.id}: dump image ellipsoid invalid mesh refinement level ${level}`);
+          this.ellipsoidOn = { color: c, estyle: eflag === 2 ? 2 : 1, level, diam: this.num(a[k + 4], 'ellipsoid') };
+          k += 5;
+          break;
+        }
+        // dump_image.html: "compute = computeID color cflag1 cflag2" with color = type, element or const (dump_image.cpp:
+        // "Unsupported color style for dump image compute"). The compute must exist and provide graphics objects.
+        case 'compute': {
+          const id = a[k + 1], style = a[k + 2];
+          if (!id || !style || a.length < k + 5) throw new StyleError(`dump ${this.id}: dump image compute needs an ID, a style and two values`);
+          this.sys.compute(id);
+          if (style !== 'type' && style !== 'element' && style !== 'const') throw new StyleError(`dump ${this.id}: unsupported colour style '${style}' for dump image compute ${id}`);
+          this.fixObjects.push({ id, source: 'compute', style, flag1: this.num(a[k + 3], 'compute'), flag2: this.num(a[k + 4], 'compute'), rgb: [255, 255, 255], opacity: 1 });
+          k += 5;
+          break;
+        }
+        // dump_image.html: "body = color bflag1 bflag2" with color = type, atom or index (dump_image.cpp: "Dump image body only
+        // supports color by type, atom, or index"). Only atom_style body rounded/polyhedron particles are drawn (the record of
+        // body_rounded_polyhedron.cpp image); the other body styles are refused by name.
+        case 'body': {
+          const c = a[k + 1];
+          if (c !== 'type' && c !== 'atom' && c !== 'index') throw new StyleError(`dump ${this.id}: dump image body only supports color by type, atom, or index`);
+          const bs = parseBodyStyle(this.sys.state.atomStyle);
+          if (!bs) throw new StyleError(`dump ${this.id}: dump image body needs atom_style body`);
+          if (bs.bstyle !== 'rounded/polyhedron') throw new StyleError(`dump ${this.id}: dump image body for body style ${bs.bstyle} is not supported by the browser engine (rounded/polyhedron only)`);
+          this.bodyOn = { color: c, flag1: this.num(a[k + 2], 'body'), flag2: this.num(a[k + 3], 'body') };
+          k += 4;
           break;
         }
         // The remaining keyword/value pairs are accepted by the grammar but need renderers the engine does not
@@ -351,7 +451,7 @@ export class ImageDump {
           break;
         }
         // ellipsoid draws ellipsoids (and superellipsoids, atom_style ellipsoid superellipsoid): no renderer here
-        case 'ellipsoid': case 'autobond': case 'grid': case 'line': case 'tri': case 'body': case 'region':
+        case 'autobond': case 'grid':
         case 'subbox': case 'persp':
           throw new StyleError(`dump ${this.id}: dump image keyword '${key}' is not supported by the browser engine`);
         default:
@@ -414,12 +514,30 @@ export class ImageDump {
         this.amap = map;
         return used + 1;
       }
+      case 'ccolor': {
+        // dump_modify ccolor: "computeID color" sets the colour of the objects of a dump image compute (native: "Compute ID is
+        // not included in dump"; the colour is read for the const style)
+        const f = this.fixObjects.find((x) => x.id === a[k + 1] && x.source === 'compute');
+        if (!f) throw new StyleError(`dump ${this.id}: dump_modify ccolor: compute ID '${a[k + 1] ?? ''}' is not included in dump ${this.id}`);
+        f.rgb = this.color(a[k + 2] ?? '');
+        return 3;
+      }
       case 'fcolor': {
         // dump_modify fcolor: "fcolor ID color" sets the colour of the objects of a dump image "fix" keyword that
         // use the const style (the colour is only read for that style, as in native dump_image.cpp)
-        const f = this.fixObjects.find((x) => x.id === a[k + 1]);
+        const f = this.fixObjects.find((x) => x.id === a[k + 1] && x.source === 'fix');
         if (!f) throw new StyleError(`dump ${this.id}: dump_modify fcolor: fix ID '${a[k + 1] ?? ''}' is not a dump image fix`);
         f.rgb = this.color(a[k + 2] ?? '');
+        return 3;
+      }
+      case 'ftrans': {
+        // dump_modify ftrans: "fixID transparency" sets the opacity of the objects of that dump image fix (native
+        // dump_modify: "Illegal transparency" outside 0..1; "Fix ID is not included in dump" when no such fix)
+        const v = this.num(a[k + 2], 'ftrans');
+        if (v < 0 || v > 1) throw new StyleError(`dump ${this.id}: illegal transparency ${a[k + 2]} for dump_modify ftrans`);
+        const f = this.fixObjects.find((x) => x.id === a[k + 1] && x.source === 'fix');
+        if (!f) throw new StyleError(`dump ${this.id}: fix ID ${a[k + 1] ?? ''} is not included in dump ${this.id}`);
+        f.opacity = v;
         return 3;
       }
       case 'gmap': case 'bitrate': case 'framerate': case 'region': case 'thresh':
@@ -588,6 +706,11 @@ export class ImageDump {
     if (this.atomOn) {
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & this.sys.groupBit(this.group))) continue;
+        // dump_image.cpp: an atom of a line or tri particle is not drawn as a sphere while those keywords are on
+        if (this.lineOn && isLineAtom(s, i)) continue;
+        if (this.triOn && isTriAtom(s, i)) continue;
+        if (this.ellipsoidOn && isEllipsoid(s, i)) continue;
+        if (this.bodyOn) continue;
         const diam = this.diameter(s, i, diamVals);
         if (!(diam > 0)) continue;
         const [px, py, pd] = project([s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]]);
@@ -597,7 +720,11 @@ export class ImageDump {
         this.drawSphere(ctx, px, py, pd, r, base);
       }
     }
+    if (this.lineOn || this.triOn) this.drawParticles(s, ctx, colorVals, cmap);
+    if (this.ellipsoidOn) this.drawEllipsoids(s, ctx, colorVals, cmap);
+    if (this.bodyOn) this.drawBodies(s, ctx, colorVals, cmap);
     if (this.fixObjects.length) this.drawFixObjects(s, ctx);
+    if (this.regions.length) this.drawRegions(s, ctx);
     if (this.axes) {
       // the origin is grey, the x, y and z arrows red, green and blue (dump_image.cpp, Image::draw_axes)
       const [origin, ...arrows] = this.axesObjects(s);
@@ -663,9 +790,9 @@ export class ImageDump {
    */
   private drawFixObjects(s: SimState, ctx: DrawCtx): void {
     for (const fo of this.fixObjects) {
-      const fix = this.sys.fixes.find((f) => f.id === fo.id);
-      const objs = fix?.imageObjects?.();
-      if (!objs) throw new StyleError(`dump ${this.id}: dump image fix ${fo.id} provides no graphics objects`);
+      const provider = fo.source === 'compute' ? this.sys.compute(fo.id) : this.sys.fixes.find((f) => f.id === fo.id);
+      const objs = provider?.imageObjects?.();
+      if (!objs) throw new StyleError(`dump ${this.id}: dump image ${fo.source} ${fo.id} provides no graphics objects`);
       for (const o of objs) {
         // objects drawn by the GPL renderer get the keyword's colour, diameter and flag rules through this style
         if (o.kind === 'draw') {
@@ -677,13 +804,143 @@ export class ImageDump {
         if (fo.style === 'const') base = fo.rgb;
         else if (itype > 0 && fo.style === 'type') base = this.acolorByType.get(itype) ?? TYPE_COLORS[(itype - 1) % TYPE_COLORS.length];
         else if (itype > 0) base = (ELEMENTS[this.elementName(s, itype)] ?? ELEMENTS.C)[0];
-        this.drawImageObject(o, base, fo.flag1, fo.flag2, ctx);
+        this.drawImageObjectAt(o, base, fo.flag1, fo.flag2, ctx, fo.opacity);
       }
     }
   }
 
+  /**
+   * The "region" keywords (dump_image.cpp, "render regions, if supported"): cylinder and cone regions are drawn by the
+   * GPL region module (src/engine-gpl/graphics/region_cone.ts); the other region styles, moving or rotating regions and
+   * regions with open faces are refused by name.
+   */
+  private drawRegions(s: SimState, ctx: DrawCtx): void {
+    const hook = gplHook<RegionConeHook>('region');
+    for (const r of this.regions) {
+      const reg = this.sys.region(r.id);
+      if (!(reg instanceof ConeRegion)) throw new StyleError(`dump ${this.id}: dump image region ${r.id} of style ${reg.style} is not supported by the browser engine`);
+      if (reg.dynamic) throw new StyleError(`dump ${this.id}: dump image region ${r.id} with move or rotate is not supported by the browser engine`);
+      if (reg.openFaces.length > 0) throw new StyleError(`dump ${this.id}: dump image region ${r.id} with open faces is not supported by the browser engine`);
+      const g = reg.geometry();
+      const spec: RegionConeSpec = { style: reg.style === 'cone' ? 'cone' : 'cylinder', axis: g.axis, c1: g.c1, c2: g.c2, radlo: g.radlo, radhi: g.radhi, lo: g.lo, hi: g.hi, color: r.color, drawstyle: r.drawstyle, framediam: r.framediam, opacity: r.opacity };
+      hook.drawConeRegion(ctx.frame, spec, [s.box.lo[0], s.box.lo[1], s.box.lo[2]], [s.box.hi[0], s.box.hi[1], s.box.hi[2]]);
+    }
+  }
+
+  /** The colour of a particle in a "type", "index" or "atom" colour style (dump_image.cpp: index uses the ordinal). */
+  private particleRGB(s: SimState, i: number, mode: 'type' | 'atom' | 'index', ordinal: number, colorVals: Float64Array | null, cmap: ColorMap | null): Rgb255 {
+    if (mode === 'type') return this.typeRGB(s.type[i]);
+    if (mode === 'index') return this.typeRGB((ordinal % s.ntypes) + 1);
+    return this.typeColor(s, i, colorVals, cmap);
+  }
+
+  /**
+   * The atom_style ellipsoid particles of the "ellipsoid" keyword (dump_image.cpp, ellipsoidflag branch): the group's
+   * ellipsoids in atom order with their half-axes, orientation and superellipsoid block (when the style has one), drawn by
+   * the GPL loop (ellipsoid_mesh.ts). The index colour uses the particle's ordinal among the ellipsoids, as native does.
+   */
+  private drawEllipsoids(s: SimState, ctx: DrawCtx, colorVals: Float64Array | null, cmap: ColorMap | null): void {
+    const e = this.ellipsoidOn!;
+    const hook = gplHook<AtomObjectsHook>('atoms');
+    const bit = this.sys.groupBit(this.group);
+    const sh = s.shape!, q = s.quat!;
+    const block = s.custom.get(SUPER_BLOCK)?.data ?? null;
+    const atoms: EllipsoidAtom[] = [];
+    let ord = 0;
+    for (let i = 0; i < s.n; i++) {
+      if (!isEllipsoid(s, i)) continue;
+      const o = ord++;
+      if (!(s.mask[i] & bit)) continue;
+      atoms.push({
+        center: [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]],
+        shape: [sh[3 * i], sh[3 * i + 1], sh[3 * i + 2]],
+        quat: [q[4 * i], q[4 * i + 1], q[4 * i + 2], q[4 * i + 3]],
+        block: block ? [block[2 * i], block[2 * i + 1]] : null,
+        color: this.particleRGB(s, i, e.color, o, colorVals, cmap),
+        opacity: 1,
+      });
+    }
+    if (atoms.length) hook.drawEllipsoidAtoms(ctx.frame, atoms, e.estyle, e.level, e.diam);
+  }
+
+  /**
+   * The atom_style body particles of the "body" keyword (dump_image.cpp, bodyflag branch): every particle of the group, in
+   * atom order, with its record (vertices, edges, faces, rounded radius) and colour; the GPL loop draws them (body_image.ts).
+   * Their atom spheres are not drawn while the keyword is on.
+   */
+  private drawBodies(s: SimState, ctx: DrawCtx, colorVals: Float64Array | null, cmap: ColorMap | null): void {
+    const b = this.bodyOn!;
+    const hook = gplHook<AtomObjectsHook>('atoms');
+    const bit = this.sys.groupBit(this.group);
+    const rec = s.custom.get(BODY_RECORD);
+    if (!rec || !s.quat) return;
+    const atoms: BodyAtom[] = [];
+    let ord = 0;
+    for (let i = 0; i < s.n; i++) {
+      const o = ord++;
+      if (!(s.mask[i] & bit)) continue;
+      const base = rec.cols * i;
+      const nsub = rec.data[base], nedge = rec.data[base + 4], nface = rec.data[base + 5];
+      const v0 = base + POLY_OFF, e0 = v0 + 3 * nsub, f0 = e0 + 2 * nedge;
+      atoms.push({
+        center: [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]],
+        quat: [s.quat[4 * i], s.quat[4 * i + 1], s.quat[4 * i + 2], s.quat[4 * i + 3]],
+        nsub, nedge, nface,
+        vertices: Array.from(rec.data.subarray(v0, e0)),
+        edges: Array.from(rec.data.subarray(e0, f0)),
+        faces: Array.from(rec.data.subarray(f0, f0 + 4 * nface)),
+        radius: rec.data[base + 7],
+        color: this.particleRGB(s, i, b.color, o, colorVals, cmap),
+      });
+    }
+    if (atoms.length) hook.drawBodyAtoms(ctx.frame, atoms, b.flag1, b.flag2, 1);
+  }
+
+  /** The dump's colour of a type (acolor, or the default type colours): the "type" colour style of line and tri. */
+  private typeRGB(t: number): RGB {
+    return this.acolorByType.get(t) ?? TYPE_COLORS[(t - 1) % TYPE_COLORS.length];
+  }
+
+  /**
+   * The atom_style line and tri particles of the "line" and "tri" keywords, drawn by the GPL loops (atom_objects.ts) in
+   * native order: all line segments, then all triangles. The colour style follows dump_image.cpp: type uses the atom
+   * type's colour; index uses the particle's ordinal among the particles of that kind, as the native bonus index
+   * (type = ordinal % ntypes + 1); atom uses the atom colour. Only particles in the dump's group are drawn.
+   */
+  private drawParticles(s: SimState, ctx: DrawCtx, colorVals: Float64Array | null, cmap: ColorMap | null): void {
+    const hook = gplHook<AtomObjectsHook>('atoms');
+    const bit = this.sys.groupBit(this.group);
+    const colorOf = (i: number, mode: 'type' | 'atom' | 'index', ordinal: number): Rgb255 => this.particleRGB(s, i, mode, ordinal, colorVals, cmap);
+    const lb = this.lineOn ? s.custom.get(LINE_BONUS)?.data : undefined;
+    const tb = this.triOn ? s.custom.get(TRI_BONUS)?.data : undefined;
+    const lines: LineAtom[] = [];
+    const tris: TriAtom[] = [];
+    let nl = 0, nt = 0;
+    for (let i = 0; i < s.n; i++) {
+      const inGroup = (s.mask[i] & bit) !== 0;
+      if (this.lineOn && isLineAtom(s, i)) {
+        const ord = nl++;
+        if (inGroup) lines.push({ x: s.x[3 * i], y: s.x[3 * i + 1], length: lb![2 * i], theta: lb![2 * i + 1], color: colorOf(i, this.lineOn.color, ord) });
+      }
+      if (this.triOn && isTriAtom(s, i)) {
+        const ord = nt++;
+        if (inGroup) {
+          const q = s.quat!;
+          tris.push({
+            center: [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]],
+            quat: [q[4 * i], q[4 * i + 1], q[4 * i + 2], q[4 * i + 3]],
+            corners: Array.from(tb!.subarray(TRI_BONUS_COLS * i, TRI_BONUS_COLS * i + 9)),
+            color: colorOf(i, this.triOn.color, ord),
+          });
+        }
+      }
+    }
+    if (this.lineOn && lines.length) hook.drawLineAtoms(ctx.frame, lines, this.lineOn.diam, 1);
+    if (this.triOn && tris.length) hook.drawTriAtoms(ctx.frame, tris, this.triOn.tstyle, this.triOn.diam, 1);
+  }
+
   /** The style of one "fix" keyword for the GPL graphics objects (ObjectStyle in image_objects.ts). */
-  private objectStyle(s: SimState, fo: { style: 'type' | 'element' | 'const'; flag1: number; flag2: number; rgb: RGB }): ObjectStyle {
+  private objectStyle(s: SimState, fo: { style: 'type' | 'element' | 'const'; flag1: number; flag2: number; opacity: number; rgb: RGB }): ObjectStyle {
     const colorOf = (type: number): Rgb255 => {
       const itype = Math.trunc(type - 1) % s.ntypes + 1;
       if (fo.style === 'const') return [fo.rgb[0], fo.rgb[1], fo.rgb[2]];
@@ -706,7 +963,27 @@ export class ImageDump {
       if (w === 'none') return 0;
       return Number(w);
     };
-    return { flag1: fo.flag1, flag2: fo.flag2, colorOf, diameterOf, bondDiameter };
+    return { flag1: fo.flag1, flag2: fo.flag2, opacity: fo.opacity, colorOf, diameterOf, bondDiameter };
+  }
+
+  /**
+   * One graphics object of a fix at its ftrans opacity: below 1 the object's pixels go through the screen-door mask of
+   * Image's draw loops (atoms.ts hook transparentPixel, image.cpp transthresh), otherwise the object is drawn as it is.
+   */
+  private drawImageObjectAt(o: ImageObject, base: RGB, flag1: number, flag2: number, c: DrawCtx, opacity: number): void {
+    if (!(opacity > 0)) return;
+    if (opacity >= 1) {
+      this.drawImageObject(o, base, flag1, flag2, c);
+      return;
+    }
+    const mask = gplHook<AtomObjectsHook>('atoms');
+    const h = this.h;
+    this.gate = (xx, yy) => !mask.transparentPixel(opacity, xx, h - 1 - yy);
+    try {
+      this.drawImageObject(o, base, flag1, flag2, c);
+    } finally {
+      this.gate = null;
+    }
   }
 
   /** One graphics object in colour `base`; flag1 and flag2 as dump image's "fix" keyword gives them. */
@@ -798,6 +1075,7 @@ export class ImageDump {
     const y0 = Math.max(0, Math.floor(y - r)), y1 = Math.min(h - 1, Math.ceil(y + r));
     for (let yy = y0; yy <= y1; yy++) for (let xx = x0; xx <= x1; xx++) {
       if ((xx + 0.5 - x) ** 2 + (yy + 0.5 - y) ** 2 > r * r) continue;
+      if (this.gate && !this.gate(xx, yy)) continue;
       const o = yy * w + xx;
       if (z <= depth[o]) continue;
       depth[o] = z;
@@ -835,6 +1113,7 @@ export class ImageDump {
         const dx = x + 0.5 - px;
         const q = (dx * dx + dy * dy) / r2;
         if (q > 1) continue;
+        if (this.gate && !this.gate(x, y)) continue;
         const idx = y * w + x;
         const nz = Math.sqrt(1 - q);
         // camera space: right = dx / r, up = -dy / r (rows grow downwards), towards the viewer = nz
@@ -919,6 +1198,7 @@ export class ImageDump {
       const y0 = Math.max(0, Math.floor(y - rad)), y1 = Math.min(h - 1, Math.ceil(y + rad));
       for (let yy = y0; yy <= y1; yy++) for (let xx = x0; xx <= x1; xx++) {
         if ((xx + 0.5 - x) ** 2 + (yy + 0.5 - y) ** 2 > rad * rad) continue;
+        if (this.gate && !this.gate(xx, yy)) continue;
         const o = (yy * w + xx) * 3;
         if (d <= depth[yy * w + xx]) continue;
         depth[yy * w + xx] = d;

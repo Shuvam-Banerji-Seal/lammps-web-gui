@@ -39,13 +39,18 @@ const SSAO_JITTER = Math.PI / 12;
 /** ambientColor with ssao (view_params): 0.5 per channel; without ssao the ambient colour is 0. */
 export const SSAO_AMBIENT = 0.5;
 
+/** The key, fill and back light colours of Image (keyLightColor, fillLightColor, backLightColor; each 0..1 per channel). */
+export interface LightColors { key: number; fill: number; back: number }
+/** Image's default light colours (Image constructor, setup_lights). */
+export const DEFAULT_LIGHTS: LightColors = { key: KEY_COLOR, fill: FILL_COLOR, back: BACK_COLOR };
+
 /**
  * Image::draw_pixel's colour for one surface point: `surface` is the camera-space unit normal, `col` the surface colour
  * (0..1 per channel), `shiny` the dump image shiny value (specular intensity = shiny, hardness = 16 * shiny), `ambient`
  * the ambient colour (0, or 0.5 with ssao). Metallic is 0 and gamma is 1 (the dump image defaults), so the reflect term
  * is 1 and the colour is the sum of the ambient, key diffuse, key specular, fill and back terms, saturated to 0..1.
  */
-export function shadeSurface(surface: V, col: V, shiny: number, ambient: number): V {
+export function shadeSurface(surface: V, col: V, shiny: number, ambient: number, lights: LightColors = DEFAULT_LIGHTS): V {
   const diffuseKey = sat(dot(surface, KEY_DIR));
   const diffuseFill = sat(dot(surface, FILL_DIR));
   const diffuseBack = sat(dot(surface, BACK_DIR));
@@ -53,10 +58,10 @@ export function shadeSurface(surface: V, col: V, shiny: number, ambient: number)
   const out: V = [0, 0, 0];
   for (let k = 0; k < 3; k++) {
     let c = col[k] * ambient;
-    c += col[k] * KEY_COLOR * diffuseKey;
-    if (shiny > 0) c += KEY_COLOR * 1 * specularKey;
-    c += col[k] * FILL_COLOR * diffuseFill;
-    c += col[k] * BACK_COLOR * diffuseBack;
+    c += col[k] * lights.key * diffuseKey;
+    if (shiny > 0) c += lights.key * 1 * specularKey;
+    c += col[k] * lights.fill * diffuseFill;
+    c += col[k] * lights.back * diffuseBack;
     out[k] = sat(c);
   }
   return out;

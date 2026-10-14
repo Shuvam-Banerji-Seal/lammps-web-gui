@@ -1,3 +1,4 @@
+import type { ImageObject } from '../output/image_objects';
 import type { System } from '../system';
 import { StyleError } from '../force/types';
 import { parseNum } from '../force/util';
@@ -147,6 +148,11 @@ export abstract class Compute {
   protected computePeratom(): void { throw new StyleError(`compute ${this.id} has no per-atom values`); }
   /** Returns the row-major local data and sets localRows. */
   protected computeLocal(): Float64Array<ArrayBuffer> { throw new StyleError(`compute ${this.id} has no local values`); }
+  /**
+   * The graphics objects of dump image's "compute" keyword (compute_image of native computes; image_objects.ts). Only the
+   * computes that provide them (compute hbond/local) override this.
+   */
+  imageObjects?(): ImageObject[];
 
   /** compute_modify keyword; returns values consumed (0 = unknown keyword). */
   modify(key: string, values: string[]): number {

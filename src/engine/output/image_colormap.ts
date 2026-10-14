@@ -79,12 +79,14 @@ export class ColorMap {
     if (st[1] !== 'a' && st[1] !== 'f') throw new StyleError(`${id}: unknown colour map range '${st[1]}' (a or f)`);
     m.style = st[0];
     m.absolute = st[1] === 'a';
+    // dump_image.html: "amap = lo hi style delta N entry1 ..." with "delta = binsize (only used for style s, otherwise
+    // ignored)"; the delta word is present for every style, so N is always the word after it
     let k = 3;
     if (m.style === 's') {
       m.binsize = Number(words[k]);
       if (!(m.binsize > 0)) throw new StyleError(`${id}: the sequential bin size must be > 0`);
-      k++;
     }
+    k++;
     const n = Number(words[k]);
     if (!Number.isInteger(n) || n < 1) throw new StyleError(`${id}: needs at least 1 colour map entry`);
     k++;

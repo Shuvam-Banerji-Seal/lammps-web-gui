@@ -21,9 +21,22 @@
  */
 import type { LabelObject, GraphicsObject, PixmapObject, Rgb, CylinderObject, SphereObject, BondObject, TriNormObject } from './objects';
 import type { ObjectStyle, RasterFrame, Rgb255 } from '../../engine/output/image_objects';
-import { shadeSurface } from './image_shading';
+import { shadeSurface, DEFAULT_LIGHTS, type LightColors } from './image_shading';
+import { TRANK, TRANSTHRESH } from './transthresh';
 
 type V = [number, number, number];
+
+/**
+ * The light set of one draw_pixel call: Image::ambientColor and the key, fill and back colours. Image::draw_pixel reads
+ * them from the image; draw_triangle changes them for its faces with reset_lighting (dump_image.cpp).
+ */
+export interface PixelLight { ambient: number; lights: LightColors }
+
+/**
+ * Image::draw_sphere, draw_cylinder, draw_triangle and draw_trinorm skip a pixel when opacity < 1 and transthresh[ix % 16][iy % 16]
+ * > opacity (screen-door transparency); ix is the column and iy the native row from the bottom.
+ */
+export const transparentAt = (opacity: number, ix: number, iy: number): boolean => opacity < 1.0 && TRANSTHRESH[ix % TRANK][iy % TRANK] > opacity;
 
 const sat = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 const dot = (a: V, b: V): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -47,7 +60,7 @@ const TRANS_DELTA = 0.01;
  * draw_pixel: shade one pixel of a surface with camera-space normal `surface` and colour `col` (0..1 per channel),
  * native row iy from the bottom. `depth` is the native distance from the camera.
  */
-export function drawPixel(f: RasterFrame, ix: number, iy: number, depth: number, surface: V, col: V): void {
+export function drawPixel(f: RasterFrame, ix: number, iy: number, depth: number, surface: V, col: V, light?: PixelLight): void {
   if (!Number.isFinite(depth)) return;
   if (depth < 0) return;
   if (ix < 0 || iy < 0 || ix >= f.w || iy >= f.h) return;
@@ -62,7 +75,9 @@ export function drawPixel(f: RasterFrame, ix: number, iy: number, depth: number,
     f.surface[2 * idx] = surface[1];
     f.surface[2 * idx + 1] = -surface[0];
   }
-  const c = shadeSurface(surface, col, f.shiny ?? 1, f.ambient ?? 0);
+  const c = light
+    ? shadeSurface(surface, col, f.shiny ?? 1, light.ambient, light.lights)
+    : shadeSurface(surface, col, f.shiny ?? 1, f.ambient ?? 0, DEFAULT_LIGHTS);
   const o = idx * 3;
   f.rgb[o] = trunc(c[0] * 255);
   f.rgb[o + 1] = trunc(c[1] * 255);
@@ -80,8 +95,8 @@ function project(f: RasterFrame, x: V): { xf: number; yf: number; dist: number }
 }
 
 /** Image::draw_sphere: a sphere of the given full diameter at x (box coordinates). */
-export function drawSphere(f: RasterFrame, x: V, col: V, diameter: number): void {
-  if (!(diameter > 0)) return;
+export function drawSphere(f: RasterFrame, x: V, col: V, diameter: number, opacity = 1): void {
+  if (!(diameter > 0) || !(opacity > 0)) return;
   const xl = sub(x, f.ctr);
   const xmap = dot(f.camRight, xl);
   const ymap = dot(f.camUp, xl);
@@ -97,6 +112,7 @@ export function drawSphere(f: RasterFrame, x: V, col: V, diameter: number): void
   for (let iy = yc - pixelRadius; iy <= yc + pixelRadius; iy++) {
     for (let ix = xc - pixelRadius; ix <= xc + pixelRadius; ix++) {
       if (iy < 0 || iy >= f.h || ix < 0 || ix >= f.w) continue;
+      if (transparentAt(opacity, ix, iy)) continue;
       const sy = ((iy - yc) - heightError) * pw;
       const sx = ((ix - xc) - widthError) * pw;
       const projRad = sx * sx + sy * sy;
@@ -111,10 +127,10 @@ export function drawSphere(f: RasterFrame, x: V, col: V, diameter: number): void
  * Image::draw_cylinder: a cylinder of full diameter between the box points x and y. sflag bit 0 adds a sphere cap at
  * x, bit 1 one at y (the flag1 of dump image's "fix" keyword).
  */
-export function drawCylinder(f: RasterFrame, x: V, y: V, col: V, diameter: number, sflag: number): void {
-  if (!(diameter > 0)) return;
-  if (sflag % 2 === 1) drawSphere(f, x, col, diameter);
-  if (trunc(sflag / 2) > 0) drawSphere(f, y, col, diameter);
+export function drawCylinder(f: RasterFrame, x: V, y: V, col: V, diameter: number, sflag: number, opacity = 1): void {
+  if (!(diameter > 0) || !(opacity > 0)) return;
+  if (sflag % 2 === 1) drawSphere(f, x, col, diameter, opacity);
+  if (trunc(sflag / 2) > 0) drawSphere(f, y, col, diameter, opacity);
   const radius = 0.5 * diameter;
   const radsq = radius * radius;
 
@@ -152,6 +168,7 @@ export function drawCylinder(f: RasterFrame, x: V, y: V, col: V, diameter: numbe
   for (let iy = yc - pixelHalfHeight; iy <= yc + pixelHalfHeight; iy++) {
     for (let ix = xc - pixelHalfWidth; ix <= xc + pixelHalfWidth; ix++) {
       if (iy < 0 || iy >= f.h || ix < 0 || ix >= f.w) continue;
+      if (transparentAt(opacity, ix, iy)) continue;
       const sy = ((iy - yc) - heightError) * pw;
       const sx = ((ix - xc) - widthError) * pw;
       const surface: V = [
@@ -180,7 +197,8 @@ export function drawCylinder(f: RasterFrame, x: V, y: V, col: V, diameter: numbe
  * Image::draw_trinorm: a triangle with per-vertex normals and colours, Phong-style interpolated over the pixels of the
  * triangle. Vertices x, y, z; normals nx, ny, nz; colours cx, cy, cz (0..1).
  */
-export function drawTrinorm(f: RasterFrame, x: V, y: V, z: V, nx: V, ny: V, nz: V, cx: V, cy: V, cz: V): void {
+export function drawTrinorm(f: RasterFrame, x: V, y: V, z: V, nx: V, ny: V, nz: V, cx: V, cy: V, cz: V, opacity = 1): void {
+  if (!(opacity > 0)) return;
   const xl = sub(x, f.ctr), yl = sub(y, f.ctr), zl = sub(z, f.ctr);
   const d1l = len(sub(xl, yl));
   if (d1l === 0) return;
@@ -224,6 +242,7 @@ export function drawTrinorm(f: RasterFrame, x: V, y: V, z: V, nx: V, ny: V, nz: 
   for (let iy = yc - pixelDown; iy <= yc + pixelUp; iy++) {
     for (let ix = xc - pixelLeft; ix <= xc + pixelRight; ix++) {
       if (iy < 0 || iy >= f.h || ix < 0 || ix >= f.w) continue;
+      if (transparentAt(opacity, ix, iy)) continue;
       const sy = ((iy - yc) - heightError) * pw;
       const sx = ((ix - xc) - widthError) * pw;
       const surface: V = [f.camRight[0] * sx + f.camUp[0] * sy, f.camRight[1] * sx + f.camUp[1] * sy, f.camRight[2] * sx + f.camUp[2] * sy];
@@ -251,6 +270,70 @@ export function drawTrinorm(f: RasterFrame, x: V, y: V, z: V, nx: V, ny: V, nz: 
     }
   }
 }
+
+/**
+ * Image::draw_triangle: a flat triangle with corner points x, y, z (box coordinates) in colour col (0..1). A pixel
+ * is inside when it lies on the same side of each edge as the opposite corner (three dot-product tests in native
+ * order). The face normal is shaded per pixel with the frame's light set, or with `light` when given (dump_image.cpp
+ * reset_lighting for tri faces).
+ */
+export function drawTriangle(f: RasterFrame, x: V, y: V, z: V, col: V, opacity = 1, light?: PixelLight): void {
+  if (!(opacity > 0)) return;
+  const xl = sub(x, f.ctr), yl = sub(y, f.ctr), zl = sub(z, f.ctr);
+  const d1l = len(sub(xl, yl));
+  if (d1l === 0) return;
+  const d1 = scale(sub(xl, yl), 1 / d1l);
+  const d2l = len(sub(zl, yl));
+  if (d2l === 0) return;
+  const d2 = scale(sub(zl, yl), 1 / d2l);
+  const normal = norm(cross(d1, d2));
+  let invndotd = dot(normal, f.camDir);
+  // a triangle parallel to the camera is invisible
+  if (invndotd === 0) return;
+  invndotd = 1 / invndotd;
+
+  const r: V = [dot(f.camRight, xl), dot(f.camRight, yl), dot(f.camRight, zl)];
+  const u: V = [dot(f.camUp, xl), dot(f.camUp, yl), dot(f.camUp, zl)];
+  const rasterLeft = r[0] - Math.min(r[0], r[1], r[2]);
+  const rasterRight = Math.max(r[0], r[1], r[2]) - r[0];
+  const rasterDown = u[0] - Math.min(u[0], u[1], u[2]);
+  const rasterUp = Math.max(u[0], u[1], u[2]) - u[0];
+
+  const xmap = dot(f.camRight, xl), ymap = dot(f.camUp, xl);
+  const dist = f.zdist - dot(xl, f.camDir);
+  const pw = f.pixelWidth;
+  const xf = xmap / pw, yf = ymap / pw;
+  const xc0 = Math.floor(xf), yc0 = Math.floor(yf);
+  const widthError = xf - xc0, heightError = yf - yc0;
+  const xc = xc0 + trunc(f.w / 2), yc = yc0 + trunc(f.h / 2);
+
+  const pixelLeft = Math.ceil(rasterLeft / pw);
+  const pixelRight = Math.ceil(rasterRight / pw);
+  const pixelDown = Math.ceil(rasterDown / pw);
+  const pixelUp = Math.ceil(rasterUp / pw);
+  const cNormal: V = [dot(f.camRight, normal), dot(f.camUp, normal), dot(f.camDir, normal)];
+
+  for (let iy = yc - pixelDown; iy <= yc + pixelUp; iy++) {
+    for (let ix = xc - pixelLeft; ix <= xc + pixelRight; ix++) {
+      if (iy < 0 || iy >= f.h || ix < 0 || ix >= f.w) continue;
+      if (transparentAt(opacity, ix, iy)) continue;
+      const sy = ((iy - yc) - heightError) * pw;
+      const sx = ((ix - xc) - widthError) * pw;
+      const surface: V = [f.camRight[0] * sx + f.camUp[0] * sy, f.camRight[1] * sx + f.camUp[1] * sy, f.camRight[2] * sx + f.camUp[2] * sy];
+      const t = -dot(normal, surface) * invndotd;
+      // the point on the face plane, in box-local coordinates
+      const p: V = [xl[0] + surface[0] + f.camDir[0] * t, xl[1] + surface[1] + f.camDir[1] * t, xl[2] + surface[2] + f.camDir[2] * t];
+      // inside test: for each edge, p and the opposite corner lie on the same side (native order: z-x-y, x-y-z, y-z-x)
+      if (!sameSide(sub(zl, xl), sub(yl, xl), sub(p, xl))) continue;
+      if (!sameSide(sub(xl, yl), sub(zl, yl), sub(p, yl))) continue;
+      if (!sameSide(sub(yl, zl), sub(xl, zl), sub(p, zl))) continue;
+      drawPixel(f, ix, iy, dist - t, cNormal, col, light);
+    }
+  }
+}
+
+/** The side test of draw_triangle: cross(s1, s2) and cross(s1, s3) point the same way (dot >= 0). */
+const sameSide = (s1: V, s2: V, s3: V): boolean => dot(cross(s1, s2), cross(s1, s3)) >= 0;
 
 /** Image::scale_pixmap: bilinear resampling of an RGB pixmap (rows from the bottom) to nw x nh. */
 export function scalePixmap(ow: number, oh: number, opix: Uint8Array, nw: number, nh: number): Uint8Array {
@@ -376,12 +459,12 @@ export function drawGraphicsObject(f: RasterFrame, st: ObjectStyle, o: GraphicsO
       const s: SphereObject = o;
       // a negative diameter asks for the dump image's default size of the type (dump_image.cpp: objarray[4] < 0)
       const d = s.diameter < 0 ? st.diameterOf(s.type) : s.diameter;
-      drawSphere(f, [s.x, s.y, s.z], unit(st.colorOf(s.type)), d + flag2);
+      drawSphere(f, [s.x, s.y, s.z], unit(st.colorOf(s.type)), d + flag2, st.opacity);
       return;
     }
     case 'cylinder': {
       const c: CylinderObject = o;
-      drawCylinder(f, [c.x1, c.y1, c.z1], [c.x2, c.y2, c.z2], unit(st.colorOf(c.type)), c.diameter + flag2, flag1);
+      drawCylinder(f, [c.x1, c.y1, c.z1], [c.x2, c.y2, c.z2], unit(st.colorOf(c.type)), c.diameter + flag2, flag1, st.opacity);
       return;
     }
     case 'bond': {
@@ -402,12 +485,12 @@ export function drawGraphicsObject(f: RasterFrame, st: ObjectStyle, o: GraphicsO
       const [v0, v1, v2] = t.vertices;
       const [n0, n1, n2] = t.normals;
       if (flag1 % 2 !== 0) {
-        drawTrinorm(f, v0, v1, v2, n0, n1, n2, c[0], c[1], c[2]);
+        drawTrinorm(f, v0, v1, v2, n0, n1, n2, c[0], c[1], c[2], st.opacity);
       } else {
         // the wireframe: three cylinders in the colour of the first vertex, diameter flag2 (dump_image.cpp TRINORM)
-        drawCylinder(f, v0, v1, c[0], flag2, 3);
-        drawCylinder(f, v1, v2, c[0], flag2, 3);
-        drawCylinder(f, v2, v0, c[0], flag2, 3);
+        drawCylinder(f, v0, v1, c[0], flag2, 3, st.opacity);
+        drawCylinder(f, v1, v2, c[0], flag2, 3, st.opacity);
+        drawCylinder(f, v2, v0, c[0], flag2, 3, st.opacity);
       }
       return;
     }

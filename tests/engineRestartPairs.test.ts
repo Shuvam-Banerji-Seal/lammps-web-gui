@@ -30,7 +30,8 @@ const newSession = () => {
 
 /** The setup lines of an oracle script (before its first run), without the lines a restart does not keep. */
 const setupFor = (file: string): string[] | null => {
-  const lines = readFileSync(join(ORACLE_DIR, file), 'utf8').split('\n');
+  // a command continued with '&' is one line (input.cpp joins them before parsing)
+  const lines = readFileSync(join(ORACLE_DIR, file), 'utf8').replace(/&[ \t]*\r?\n/g, ' ').split('\n');
   const first = lines.findIndex((l) => /^run\b/.test(l.trim()));
   if (first < 0) return null;
   const setup = lines.slice(0, first).filter((l) => !/^\s*(#|$)/.test(l) || false);

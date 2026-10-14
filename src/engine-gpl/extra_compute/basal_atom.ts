@@ -213,7 +213,6 @@ export class ComputeBasalAtom extends Compute {
         for (let j = 0; j < nchi; j++) {
           for (let k = j + 1; k < nchi; k++) {
             for (let l = k + 1; l < nchi; l++) {
-              if (k >= nchi || l >= nchi) continue;
               x4[0] = x3[j]; x4[1] = x3[k]; x4[2] = x3[l];
               y4[0] = y3[j]; y4[1] = y3[k]; y4[2] = y3[l];
               z4[0] = z3[j]; z4[1] = z3[k]; z4[2] = z3[l];

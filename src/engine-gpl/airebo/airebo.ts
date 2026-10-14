@@ -23,6 +23,7 @@ import { newKnots, splineInit, splineInitRebo, type Knots } from './splineInit';
 import { flj, type LJCore, type LJParams } from './flj';
 import { torsion } from './torsion';
 import { rowNeighbors } from './neigh';
+import { splineInitBc } from './bc';
 import { powint } from './splines';
 
 /** Scratch derivative of the coordination cutoff in buildRebo. */
@@ -148,7 +149,7 @@ export class PairAIREBO extends Pair {
   constructor(variant: AireboVariant) {
     super();
     this.variant = variant;
-    this.name = variant === 'rebo' ? 'rebo' : variant === 'airebo/morse' ? 'airebo/morse' : 'airebo';
+    this.name = variant === 'rebo' ? 'rebo' : variant === 'airebo/morse' ? 'airebo/morse' : variant === 'airebo/bc' ? 'airebo/bc' : 'airebo';
     this.morseflag = variant === 'airebo/morse' ? 1 : 0;
     if (variant === 'rebo') {
       this.ljflag = 0;
@@ -216,6 +217,7 @@ export class PairAIREBO extends Pair {
     const K = newKnots();
     splineInit(K, tables);
     if (this.variant === 'rebo') splineInitRebo(K, tables);
+    if (this.variant === 'airebo/bc') splineInitBc(tables);
     this.P = params;
     this.T = tables;
     this.K = K;
@@ -288,7 +290,7 @@ export class PairAIREBO extends Pair {
     const rcmaxMax = Math.max(P.rcmax[0], P.rcmax[1], P.rcmax[3]);
     const core: ReboCore = {
       P, T: this.T, K: this.K, mt, tag, x: pc.x, f: pc.f, rstart: new Int32Array(0), rlist: new Int32Array(0),
-      nC, nH, acc: pc.acc, eatom: pc.eatom, dwij: this.dwij, dS: this.dS,
+      nC, nH, bcflag: this.variant === 'airebo/bc', acc: pc.acc, eatom: pc.eatom, dwij: this.dwij, dS: this.dS,
     };
     // REBO neighbor lists of owned and ghost atoms, and the coordination sums nC, nH
     const built = buildRebo(core, nall, P.rcmaxsq, rcmaxMax, P.rcmin, P.rcmax, pc.x);

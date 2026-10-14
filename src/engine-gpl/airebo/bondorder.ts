@@ -9,7 +9,8 @@
  * This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  */
 import { sp, sp2, type Ref } from './splines';
-import { TOL, kron, gSpline, PijSpline, piRCSpline, TijSpline, type ReboCore, newRef } from './rebo';
+import { TOL, kron, gSpline, piRCSpline, TijSpline, type ReboCore, newRef } from './rebo';
+import { bondorderPijCross, pijEval } from './bc';
 
 const v3 = (): Float64Array => new Float64Array(3);
 
@@ -24,6 +25,8 @@ const dt2dik = v3(), dt2djl = v3(), dt2dij = v3();
 const F23 = v3(), F12 = v3(), F34 = v3(), F31 = v3(), F24 = v3();
 const f1 = v3(), f2 = v3(), f3 = v3(), f4 = v3();
 const dN2 = new Float64Array(2);
+// bond-averaged P derivatives of pij and pji, kept for the AIREBO-BC cross force (bc.ts)
+const dN2PIJbc = new Float64Array(2), dN2PJIbc = new Float64Array(2);
 const dN3 = new Float64Array(3);
 const rdgdc = newRef(), rdgdN = newRef();
 const rS = newRef(), rwik = newRef(), rwjl = newRef(), rdNki = newRef(), rdNlj = newRef();
@@ -91,9 +94,11 @@ export const bondorder = (
     NconjtmpI = NconjtmpI + (kron(ktype, 0) * wik * sp(Nki, Nmin, Nmax, rS));
   }
 
-  const PijS = PijSpline(core, NijC, NijH, itype, jtype, dN2);
+  const PijS = pijEval(core, NijC, NijH, NjiC, NjiH, itype, jtype, dN2);
   const pij = 1.0 / Math.sqrt(1.0 + Etmp + PijS);
   tmp = -0.5 * (pij * pij * pij);
+  dN2PIJbc[0] = dN2[0];
+  dN2PIJbc[1] = dN2[1];
 
   // pij forces
   for (let kk = rstart[i]; kk < rstart[i + 1]; kk++) {
@@ -196,9 +201,11 @@ export const bondorder = (
     tmp3 = tmp3 + (wjl * dgdN * Math.exp(lamdaijl));
     NconjtmpJ = NconjtmpJ + (kron(ltype, 0) * wjl * sp(Nlj, Nmin, Nmax, rS));
   }
-  const PjiS = PijSpline(core, NjiC, NjiH, jtype, itype, dN2);
+  const PjiS = pijEval(core, NjiC, NjiH, NijC, NijH, jtype, itype, dN2);
   const pji = 1.0 / Math.sqrt(1.0 + Etmp + PjiS);
   tmp = -0.5 * (pji * pji * pji);
+  dN2PJIbc[0] = dN2[0];
+  dN2PJIbc[1] = dN2[1];
 
   for (let ll = rstart[j]; ll < rstart[j + 1]; ll++) {
     const atoml = rlist[ll];
@@ -274,6 +281,10 @@ export const bondorder = (
     addF(f, atomj, fj[0], fj[1], fj[2]);
     addF(f, atoml, fl[0], fl[1], fl[2]);
   }
+
+  // bond-centric P cross forces (no-op for atom-centric P)
+  bondorderPijCross(core, atomi, atomj, itype, jtype, VA, -0.5 * (pij * pij * pij), -0.5 * (pji * pji * pji),
+    dN2PIJbc, dN2PJIbc);
 
   // evaluate Nij conj
   const Nijconj = 1.0 + (NconjtmpI * NconjtmpI) + (NconjtmpJ * NconjtmpJ);

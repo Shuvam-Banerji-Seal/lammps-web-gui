@@ -46,6 +46,8 @@ export interface ReboCore {
   /** Coordination sums of weighting functions with REBO neighbors of C and H type. */
   nC: Float64Array;
   nH: Float64Array;
+  /** AIREBO-BC (bcflag): the C-C P term is bond-averaged (src/MANYBODY/pair_airebo.cpp bcflag). */
+  bcflag: boolean;
   /** Energy accumulator (pc.acc) and per-atom energy (null when not requested). */
   acc: { evdwl: number };
   eatom: Float64Array | null;
@@ -65,6 +67,26 @@ export const PijSpline = (
   dN2[0] = 0.0;
   dN2[1] = 0.0;
   const { T, K } = core;
+  if (core.bcflag && typei === 0 && typej === 0) {
+    // AIREBO-BC (PairAIREBO::PijSpline, bcflag branch): the half-integer grid in doubled coordinates
+    // (u = 2 N_C, v = 2 N_H, domain [0,3] each); dN2 = dP/du, dP/dv unscaled, zero at the knots.
+    if (NijC < 0.0) NijC = 0.0;
+    if (NijC > 3.0) NijC = 3.0;
+    if (NijH < 0.0) NijH = 0.0;
+    if (NijH > 3.0) NijH = 3.0;
+    const u = 2.0 * NijC;
+    const v = 2.0 * NijH;
+    let x = Math.floor(u);
+    let y = Math.floor(v);
+    if (Math.abs(u - Math.floor(u)) < TOL && Math.abs(v - Math.floor(v)) < TOL) {
+      Pij = T.bcKnots[x * 7 + y];
+    } else {
+      if (u === 6.0) --x;
+      if (v === 6.0) --y;
+      Pij = spbicubic(u, v, T.pCCbc, (x * 6 + y) * 16, dN2);
+    }
+    return Pij;
+  }
   if (typei === 1) return Pij;
   if (typej === 0) {
     const d = T.pCCdom;

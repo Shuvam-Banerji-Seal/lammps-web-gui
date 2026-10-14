@@ -16,4 +16,5 @@ export const PAIRS: Record<string, () => Pair> = {
   rebo: () => new PairAIREBO('rebo'),
   airebo: () => new PairAIREBO('airebo'),
   'airebo/morse': () => new PairAIREBO('airebo/morse'),
+  'airebo/bc': () => new PairAIREBO('airebo/bc'),
 };

@@ -1,0 +1,28 @@
+# oracle: pppm/dipole with a NON-NEUTRAL charged system (charges 0.1 +- 0.5 alternating by id on 64 sc sites: net charge 6.4, native accepts it with the KSpace::qsum_qsq warning), random dipoles (dipole/random 2261), pair lj/cut/dipole/long 3.5 1.0 (see w168pq_charge_dipole_auto), kspace_style pppm/dipole 1.0e-1 with the automatic G-ewald and mesh, run 0: pe, evdwl, ecoul, elong, press and the per-atom forces, dipoles and torques
+# oracle-files: w168pq_nonneutral_tq.dump
+# measured with native LAMMPS (/home/roy/.local/bin/lmp, b332f28, installed DIPOLE and KSPACE packages): engine vs native fixture at step 0: max relative error 3.1e-11 (thermo), 1.6e-11 (per-atom forces and positions), 2.3e-11 (dipoles and torques); engine time 4.1 s (Node 24, loaded machine)
+# oracle-compare: thermo=all atoms=all rel=1e-8 atomrel=1e-8 filerel=1e-8 abs=1e-10
+units           lj
+atom_style      hybrid sphere dipole
+dimension       3
+boundary        p p p
+lattice         sc 0.30
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+set             group all diameter 1.0
+set             group all density 1.0
+variable        qi atom 0.1+((id%2)*2-1)*0.5
+set             group all charge v_qi
+set             group all dipole/random 2261 1.0
+pair_style      lj/cut/dipole/long 3.5 1.0
+pair_coeff      1 1 1.0 1.0
+kspace_style    pppm/dipole 1.0e-1
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+thermo_style    custom step pe evdwl ecoul elong press
+thermo_modify   format float %.15g norm no
+thermo          1
+run             0
+write_dump      all custom w168pq_nonneutral_tq.dump id mux muy muz tqx tqy tqz modify format float %.15g sort id

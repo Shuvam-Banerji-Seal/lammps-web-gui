@@ -35,8 +35,10 @@ import { PairDipoleBase } from './dipole';
  * C -> C - 3(1-f)/r^5 (the same subtraction the coul/long styles make for charges).
  *
  * The LJ term is the plain 12/6 cut (no shift), with the special LJ factor, as in lj/cut/dipole/cut.
- * Charges: the kspace style ewald/dipole refuses point charges, so the charge terms never contribute
- * and are not evaluated here.
+ * Charges: the charge-charge and charge-dipole real-space terms of native pair_lj_cut_dipole_long.cpp (the block under
+ * "if (rsq < cut_coulsq)" with g0 = qi qj and g1 = qi (pj.r) - qj (pi.r) + pi.pj) are not ported. A pair with a
+ * nonzero charge inside the Coulomb cutoff is refused by name; a charged system whose pairs all lie outside the
+ * Coulomb cutoff (no real-space Coulomb term at all) runs with the kspace charge terms of pppm/dipole.
  */
 
 const TWO_OVER_SQRTPI = 2 / Math.sqrt(Math.PI);
@@ -103,6 +105,7 @@ export class PairLJCutDipoleLong extends PairDipoleBase {
     const tq = new Float64Array(3 * pc.nall);
     const sC = pc.specialCoul, sL = pc.specialLJ;
     const qqrd2e = pc.qqrd2e;
+    const q = pc.q;
     const g = this.gEwald;
     const cutsq = this.cutsq;
     const cutCsqG = this.cutCGlobal * this.cutCGlobal;
@@ -120,6 +123,9 @@ export class PairLJCutDipoleLong extends PairDipoleBase {
         const rsq = dx * dx + dy * dy + dz * dz;
         const t = ti + type[j];
         if (rsq >= cutsq[t]) continue;
+        if (rsq < cutCsqG && (q[i] !== 0 || q[j] !== 0)) {
+          throw new StyleError(`pair_style ${this.name} with point charges inside the Coulomb cutoff is not supported by the browser engine (native LAMMPS adds the charge-charge and charge-dipole real-space terms; only the dipole terms are ported)`);
+        }
         const fl = sL[jj >>> SBBITS], fc = sC[jj >>> SBBITS];
         const ti_ = type[i], tj_ = type[j];
         const pjx = mu[4 * oj], pjy = mu[4 * oj + 1], pjz = mu[4 * oj + 2];

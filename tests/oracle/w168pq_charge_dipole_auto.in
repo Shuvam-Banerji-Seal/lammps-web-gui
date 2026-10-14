@@ -1,0 +1,31 @@
+# oracle: pppm/dipole with point charges AND point dipoles, cut down from examples/dipole/in.charge_dipole: 64 sc sites (4x4x4, density 0.30), charges +-0.5 alternating by id, random unit dipoles (dipole/random 5783), pair lj/cut/dipole/long 3.5 1.0 (the Coulomb cutoff 1.0 is below the 1.49 nearest-neighbour distance, so the pair has no real-space Coulomb term and the charge terms are the kspace ones), kspace_style pppm/dipole 1.0e-1 with the AUTOMATIC G-ewald (2.6071548) and mesh (27 27 27), charge terms in the estimate; step 0 only (run 0, no integration: the mesh search at 1.0e-4 with this cutoff does not finish in either code, and 40 steps at accuracy 1e-1 take about 15 s in the engine; the dynamics with charges are in w168pq_charge_partial): pe, evdwl, ecoul, elong, press, the per-atom forces and the dipoles and torques
+# oracle-files: w168pq_charge_dipole_auto_tq.dump
+# measured with native LAMMPS (/home/roy/.local/bin/lmp, b332f28, installed DIPOLE and KSPACE packages): engine vs native fixture at step 0: max relative error 2.7e-11 (thermo), 1.3e-11 (per-atom forces and positions), 1.9e-11 (dipoles and torques); engine time 4.3 s for the whole case (Node 24, loaded machine)
+# oracle-compare: thermo=all atoms=all rel=1e-8 atomrel=1e-8 filerel=1e-8 abs=1e-10
+units           lj
+atom_style      hybrid sphere dipole
+dimension       3
+boundary        p p p
+lattice         sc 0.30
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+set             group all diameter 1.0
+set             group all density 1.0
+variable        qi atom ((id%2)*2-1)*0.5
+set             group all charge v_qi
+set             group all dipole/random 5783 1.0
+pair_style      lj/cut/dipole/long 3.5 1.0
+pair_coeff      1 1 1.0 1.0
+kspace_style    pppm/dipole 1.0e-1
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+velocity        all create 1.0 4928459 mom yes rot yes dist gaussian
+fix             1 all nve/sphere update dipole
+timestep        0.002
+thermo          1
+thermo_style    custom step pe evdwl ecoul elong press
+thermo_modify   format float %.15g norm no
+run             0
+write_dump      all custom w168pq_charge_dipole_auto_tq.dump id mux muy muz tqx tqy tqz modify format float %.15g sort id

@@ -1,21 +1,23 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
- * Source: src/KSPACE/pppm_dipole.cpp and pppm_dipole.h (PPPMDipole, kspace_style pppm/dipole, for point dipoles:
- * init, set_grid_global, set_grid_local, compute_df_kspace_dipole, compute_qopt_dipole, compute_gf_dipole,
- * newton_raphson_f_dipole, find_gewald_dipole, derivf_dipole, compute_gf_denom, make_rho_dipole, the dipole channel of
- * poisson_ik_dipole (the energy, the virial and the dipole field and its gradient), fieldforce_ik_dipole (the force
- * and the torque) and musum_musq), with the stencil and G-ewald helpers of src/KSPACE/pppm.cpp (factorable,
- * adjust_gewald, derivf, set_grid_local, particle_map, compute_rho1d, compute_rho_coeff) and MathSpecial::powsinxx of
- * src/math_special.h, at the same commit. Contributing authors of pppm_dipole.cpp: Stan Moore (SNL), Julien Tranchida
- * (SNL). Copyright (2003) Sandia Corporation, distributed under the GNU General Public License, version 2 (GPL-2.0).
- * This file is GPL-2.0 too (src/engine-gpl/LICENSE).
+ * Source: src/KSPACE/pppm_dipole.cpp and pppm_dipole.h (PPPMDipole, kspace_style pppm/dipole: init, set_grid_global,
+ * set_grid_local, compute_df_kspace_dipole, compute_qopt_dipole, compute_gf_dipole, newton_raphson_f (the charge
+ * channel of the rspace error), newton_raphson_f_dipole, find_gewald_dipole, derivf_dipole, compute_gf_denom,
+ * make_rho_dipole, poisson_ik_dipole (the charge and dipole channels: the energy, the virial and the charge and dipole
+ * fields and field gradients), fieldforce_ik_dipole (the charge force, the dipole force and the torque) and
+ * musum_musq), with the stencil and G-ewald helpers of src/KSPACE/pppm.cpp (factorable, adjust_gewald, derivf,
+ * set_grid_local, particle_map, compute_rho1d, compute_rho_coeff, compute_qopt (the charge k-space error, shared with
+ * src/engine-gpl/pppm/grid.ts)) and MathSpecial::powsinxx of src/math_special.h, at the same commit. Contributing
+ * authors of pppm_dipole.cpp: Stan Moore (SNL), Julien Tranchida (SNL). Copyright (2003) Sandia Corporation,
+ * distributed under the GNU General Public License, version 2 (GPL-2.0). This file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
  * The spin style pppm/dipole/spin (src/engine-gpl/spin/pppm_dipole_spin.ts) is a subclass: it takes the moments
  * mu_i = sp_i |sp_i| with the mub2mu0 prefactor, and sends the field to the precession buffer instead of the torque.
  *
- * Charges: native pppm/dipole also takes point charges (charge-charge and charge-dipole channels). Those channels are
- * not ported: the engine refuses a system with nonzero charges by name, and accepts zero charges (native: the same
- * dipole result, measured with native LAMMPS for the all-zero case in tests/oracle).
+ * Charges: a system with point charges (atom attribute q, nonzero charges at the compute) adds the charge-charge and
+ * charge-dipole channels of native poisson_ik_dipole and fieldforce_ik_dipole, the charge term of the rspace and
+ * k-space error estimates (newton_raphson_f, compute_df_kspace_dipole), and the self and neutralization terms of
+ * compute (qsum, qsqsum). A non-neutral system is accepted with a warning, as native (KSpace::qsum_qsq).
  *
  * Not ported (refused by name): per-atom energy and virial (compute pe/atom, stress/atom), the slab correction
  * (kspace_modify slab), kspace_modify diff ad (native: not with dipoles), kspace_modify force, kspace_modify minorder,
@@ -27,6 +29,7 @@ import type { SimState } from '../../engine/types';
 import type { Geometry } from '../../engine/domain';
 import { parseNum } from '../../engine/force/util';
 import { fft3d, isFFTSize } from '../../engine/force/fft';
+import { computeQopt } from '../pppm/grid';
 
 /** pppm.cpp OFFSET: keeps int() of a negative grid coordinate at the right value. */
 const OFFSET = 16384;
@@ -38,6 +41,8 @@ const EPS_HOC = 1.0e-7;
 /** pppm_dipole.h MAXORDER. */
 const MAXORDER = 7;
 const MY_PIS = Math.sqrt(Math.PI);
+/** math_const.h MY_PI2 (pi/2): the neutralizing-background term of the energy. */
+const MY_PI2 = Math.PI / 2;
 
 const square = (x: number): number => x * x;
 
@@ -85,16 +90,22 @@ const gfDenomCoefficients = (order: number): Float64Array => {
   return b;
 };
 
-/** Dipolar real-space error estimate of PPPMDipole::newton_raphson_f_dipole (without the accuracy and without charges). */
-const dipoleRspaceError = (g: number, rc: number, natoms: number, vol: number, mu2: number): number => {
+/**
+ * Real-space error estimate of PPPMDipole::newton_raphson_f_dipole (and newton_raphson_f): the dipolar term, with the
+ * charge-charge term added in quadrature when q2 (qqrd2e sum q^2) is nonzero.
+ */
+const rspaceError = (g: number, rc: number, natoms: number, vol: number, mu2: number, q2: number): number => {
   const a = rc * g;
   const rg2 = a * a;
   const rg4 = rg2 * rg2;
   const rg6 = rg4 * rg2;
   const Cc = 4.0 * rg4 + 6.0 * rg2 + 3.0;
   const Dc = 8.0 * rg6 + 20.0 * rg4 + 30.0 * rg2 + 15.0;
-  return (mu2 / Math.sqrt(vol * g ** 4 * rc ** 9 * natoms)) *
+  const dd = (mu2 / Math.sqrt(vol * g ** 4 * rc ** 9 * natoms)) *
     Math.sqrt((13.0 / 6.0) * Cc * Cc + (2.0 / 15.0) * Dc * Dc - (13.0 / 15.0) * Cc * Dc) * Math.exp(-rg2);
+  if (q2 === 0) return dd;
+  const dq = (2.0 * q2 * Math.exp(-rg2)) / Math.sqrt(natoms * rc * vol);
+  return Math.sqrt(dd * dd + dq * dq);
 };
 
 export class KSpacePPPMDipole extends KSpaceBase {
@@ -110,6 +121,10 @@ export class KSpacePPPMDipole extends KSpaceBase {
   private mu2 = 0;
   /** sum |mu_i|^2 at init (native musqsum: updated only when the atom count changes, so kept here). */
   private musqsum = 0;
+  /** Charge sums at init (native qsum_qsq in init): qsum, qsqsum and q2 = qsqsum qqrd2e. */
+  private qsumCharge = 0;
+  private qsqsumCharge = 0;
+  private q2 = 0;
   private cutoff = 0;
   private nxyz: [number, number, number] = [0, 0, 0];
   /** set_grid_local: the assignment shifts and the stencil bounds. */
@@ -122,9 +137,14 @@ export class KSpacePPPMDipole extends KSpaceBase {
   /** compute_rho_coeff, packed as rhoCoeff[l * order + (k - kmin)]. */
   private rhoCoeff: Float64Array = new Float64Array(0);
   private kmin = 0;
-  /** The influence function (greensfn) and the virial factors (vg) of the current box, with the mesh wavevectors. */
+  /**
+   * The influence functions (greensfn: dipole-dipole, greensfnQq: charge-charge, greensfnQm: charge-dipole) and the
+   * virial factors (vg) of the current box, with the mesh wavevectors.
+   */
   private greenKey = '';
   private greensfn: Float64Array = new Float64Array(0);
+  private greensfnQq: Float64Array = new Float64Array(0);
+  private greensfnQm: Float64Array = new Float64Array(0);
   private vg: Float64Array = new Float64Array(0);
   private fk: Float64Array[] = [new Float64Array(0), new Float64Array(0), new Float64Array(0)];
 
@@ -199,8 +219,9 @@ export class KSpacePPPMDipole extends KSpaceBase {
   protected beginField(_kc: KSpaceCompute): void {}
 
   /**
-   * The field of atom i: E = field of the dipole density at the atom (native ux, uy, uz brick interpolation, with the
-   * sign of fieldforce_ik_dipole). The dipole style adds the torque mu x E (native t += qfactor (mu x E)).
+   * The dipole field of atom i: E = field of the dipole and charge densities at the atom (native ux, uy, uz brick
+   * interpolation, with the sign of fieldforce_ik_dipole). The dipole style adds the torque mu x E (native
+   * t += qfactor (mu x E)).
    */
   protected applyField(kc: KSpaceCompute, i: number, C: number, E: Float64Array, mu: Float64Array): void {
     const t = kc.torque;
@@ -225,6 +246,16 @@ export class KSpacePPPMDipole extends KSpaceBase {
     for (let i = 0; i < 3 * s.n; i++) musq += mu[i] * mu[i];
     this.musqsum = musq;
     this.mu2 = musq * this.prefactor(qqrd2e);
+    // qsum_qsq(0) in init: the charge sums; q2 = qsqsum qqrd2e (native KSpace::qsum_qsq)
+    let qs = 0, q2s = 0;
+    if (s.q) for (let i = 0; i < s.n; i++) {
+      qs += s.q[i];
+      q2s += s.q[i] * s.q[i];
+    }
+    this.qsumCharge = qs;
+    this.qsqsumCharge = q2s;
+    this.q2 = q2s * qqrd2e;
+    if (Math.abs(qs) > SMALL) ctx.log(`WARNING: System is not charge neutral, net charge = ${qs.toPrecision(8)}`);
     this.natoms = s.n;
     if (this.mu2 === 0) throw new StyleError(this.noMomentError());
     this.gfB = gfDenomCoefficients(this.order);
@@ -250,17 +281,20 @@ export class KSpacePPPMDipole extends KSpaceBase {
       throw new StyleError(`Cannot yet use triclinic cells with ${this.label}`);
     }
     if (this.order < 2 || this.order > MAXORDER) throw new StyleError(`${this.label} order cannot be < 2 or > ${MAXORDER}`);
-    if (s.q) for (let i = 0; i < s.n; i++) {
-      if (s.q[i] !== 0) {
-        throw new StyleError(`kspace_style ${this.name} with point charges is not supported by the browser engine (native LAMMPS adds the charge-charge and charge-dipole terms; only point dipoles are ported)`);
-      }
-    }
   }
 
-  /** Estimated dipolar k-space force error of PPPMDipole::compute_df_kspace_dipole for the given G and mesh. */
+  /**
+   * Estimated k-space force error of PPPMDipole::compute_df_kspace_dipole for the given G and mesh: the dipolar term
+   * (compute_qopt_dipole), with the charge-charge term (the base PPPM compute_qopt) added in quadrature when q2 != 0.
+   */
   private dfKspace(g: number, lx: number, ly: number, lz: number): number {
     const qopt = this.qoptDipole(g, lx, ly, lz);
-    return Math.sqrt(qopt / this.natoms) * this.mu2 / (3.0 * lx * ly * lz);
+    const dd = Math.sqrt(qopt / this.natoms) * this.mu2 / (3.0 * lx * ly * lz);
+    if (this.q2 === 0) return dd;
+    const [nx, ny, nz] = this.nxyz;
+    const qoptQ = computeQopt(nx, ny, nz, g, lx, ly, lz, this.order);
+    const dq = Math.sqrt(qoptQ / this.natoms) * this.q2 / (lx * ly * lz);
+    return Math.sqrt(dd * dd + dq * dq);
   }
 
   /** PPPMDipole::compute_qopt_dipole (ik differentiation, images |n| <= 2). */
@@ -314,7 +348,7 @@ export class KSpacePPPMDipole extends KSpaceBase {
 
   /** PPPMDipole::find_gewald_dipole: Newton-Raphson on the dipolar real-space error (accuracy target). */
   private findGewald(x0: number, rc: number, natoms: number, vol: number, mu2: number): number {
-    const f = (x: number) => dipoleRspaceError(x, rc, natoms, vol, mu2) - this.acc;
+    const f = (x: number) => rspaceError(x, rc, natoms, vol, mu2, this.q2) - this.acc;
     const deriv = (x: number) => (f(x + 0.000001) - f(x)) / 0.000001;
     let x = x0;
     for (let i = 0; i < 10000; i++) {
@@ -377,7 +411,7 @@ export class KSpacePPPMDipole extends KSpaceBase {
   /** PPPM::adjust_gewald with the dipolar newton_raphson_f (the forward-difference derivf of pppm.cpp). */
   private adjustGewald(lx: number, ly: number, lz: number): void {
     const vol = lx * ly * lz;
-    const f = (g: number) => dipoleRspaceError(g, this.cutoff, this.natoms, vol, this.mu2) - this.dfKspace(g, lx, ly, lz);
+    const f = (g: number) => rspaceError(g, this.cutoff, this.natoms, vol, this.mu2, this.q2) - this.dfKspace(g, lx, ly, lz);
     const derivf = (g: number) => {
       const h = 0.000001;
       const f1 = f(g);
@@ -439,8 +473,9 @@ export class KSpacePPPMDipole extends KSpaceBase {
   }
 
   /**
-   * PPPMDipole::compute_gf_dipole (the dipole-dipole influence function of the aliasing sums, with the mesh wavevectors
-   * of setup) and the virial factors vg of PPPMDipole::setup, for the current box.
+   * PPPMDipole::compute_gf_dipole (the influence functions of the aliasing sums, with the mesh wavevectors of setup):
+   * greensfnQq (charge-charge, numerator (k.k_n)^1 / |k|^2), greensfnQm (charge-dipole, (k.k_n)^2 / |k|^4) and
+   * greensfn (dipole-dipole, (k.k_n)^3 / |k|^6); and the virial factors vg of PPPMDipole::setup, for the current box.
    */
   private buildGreen(lx: number, ly: number, lz: number): void {
     const [nx, ny, nz] = this.nxyz;
@@ -460,6 +495,8 @@ export class KSpacePPPMDipole extends KSpaceBase {
     });
     const Ng = nx * ny * nz;
     const G = new Float64Array(Ng);
+    const GQQ = new Float64Array(Ng);
+    const GQM = new Float64Array(Ng);
     const VG = new Float64Array(6 * Ng);
     for (let m = 0; m < nz; m++) {
       const mper = perOf(m, nz);
@@ -475,7 +512,7 @@ export class KSpacePPPMDipole extends KSpaceBase {
           const sqk = square(unit[0] * kper) + square(unit[1] * lper) + square(unit[2] * mper);
           if (sqk === 0) continue;
           const denominator = gfDenom(this.gfB, P, snx, sny, snz);
-          let sum1 = 0;
+          let sum1 = 0, sum1Qq = 0, sum1Qm = 0;
           for (let ix = -nb[0]; ix <= nb[0]; ix++) {
             const qx = unit[0] * (kper + nx * ix);
             const sx = Math.exp(-0.25 * square(qx / g));
@@ -494,11 +531,15 @@ export class KSpacePPPMDipole extends KSpaceBase {
                 const w2 = wx * wy * wz;
                 const phi = u1 * 4 * Math.PI / dot2;
                 const base = w2 * phi;
+                sum1Qq += dot1 * base / sqk;
+                sum1Qm += dot1 * dot1 * base / sqk / sqk;
                 sum1 += dot1 * dot1 * dot1 * base / sqk / sqk / sqk;
               }
             }
           }
           G[idx] = sum1 / denominator;
+          GQQ[idx] = sum1Qq / denominator;
+          GQM[idx] = sum1Qm / denominator;
           // PPPMDipole::setup: vg from the wavevector K = (kx, ky, kz)
           const vterm = -2.0 * (1.0 / sqk + 0.25 / (g * g));
           VG[6 * idx] = 1.0 + vterm * kx * kx;
@@ -511,6 +552,8 @@ export class KSpacePPPMDipole extends KSpaceBase {
       }
     }
     this.greensfn = G;
+    this.greensfnQq = GQQ;
+    this.greensfnQm = GQM;
     this.vg = VG;
     this.greenKey = [lx, ly, lz, g, nx, ny, nz, P].join(',');
   }
@@ -536,6 +579,10 @@ export class KSpacePPPMDipole extends KSpaceBase {
     const P = this.order;
     const C = this.prefactor(kc.qqrd2e);
     const mu = this.moments(s);
+    // the charge channel runs when some atom carries a charge now (a zero charge adds nothing, as in native)
+    const q = s.q;
+    let hasQ = false;
+    if (q) for (let i = 0; i < n; i++) if (q[i] !== 0) { hasQ = true; break; }
     const x = s.x, f = kc.f;
     const lo = s.box.lo;
     const delinv = [nx / lx, ny / ly, nz / lz];
@@ -544,9 +591,12 @@ export class KSpacePPPMDipole extends KSpaceBase {
     const part = new Int32Array(3 * n);
     const r = new Float64Array(3 * P);
     const ds = [0, 0, 0];
-    // make_rho_dipole: the three moment densities on the mesh (real parts; the imaginary parts are filled by the FFT)
-    const dens = [new Float64Array(2 * Ng), new Float64Array(2 * Ng), new Float64Array(2 * Ng)];
-    const mom = [0, 0, 0];
+    // make_rho_dipole: the three moment densities (and the charge density) on the mesh (real parts; the imaginary
+    // parts are filled by the FFT)
+    const nDens = hasQ ? 4 : 3;
+    const dens: Float64Array[] = [];
+    for (let c = 0; c < nDens; c++) dens.push(new Float64Array(2 * Ng));
+    const mom = [0, 0, 0, 0];
     for (let i = 0; i < n; i++) {
       for (let d = 0; d < 3; d++) {
         const u = (x[3 * i + d] - lo[d]) * delinv[d];
@@ -556,8 +606,9 @@ export class KSpacePPPMDipole extends KSpaceBase {
       }
       this.rho1dAll(ds[0], ds[1], ds[2], r);
       mom[0] = mu[3 * i]; mom[1] = mu[3 * i + 1]; mom[2] = mu[3 * i + 2];
+      mom[3] = hasQ ? q![i] : 0;
       const px = part[3 * i], py = part[3 * i + 1], pz = part[3 * i + 2];
-      for (let c = 0; c < 3; c++) {
+      for (let c = 0; c < nDens; c++) {
         const zc = delvolinv * mom[c];
         const dc = dens[c];
         for (let nn = this.nlower; nn <= this.nupper; nn++) {
@@ -574,8 +625,8 @@ export class KSpacePPPMDipole extends KSpaceBase {
         }
       }
     }
-    // poisson_ik_dipole: forward transforms of the moment densities, and D = k . P(k) (the charge terms are zero)
-    for (let c = 0; c < 3; c++) fft3d(dens[c], nx, ny, nz, -1);
+    // poisson_ik_dipole: forward transforms of the densities, and D = k . P(k) (the dipole structure factor)
+    for (let c = 0; c < nDens; c++) fft3d(dens[c], nx, ny, nz, -1);
     const Dre = new Float64Array(Ng), Dim = new Float64Array(Ng);
     const fk = this.fk;
     for (let iz = 0; iz < nz; iz++) {
@@ -591,9 +642,14 @@ export class KSpacePPPMDipole extends KSpaceBase {
     }
     const scaleinv = 1.0 / Ng;
     const s2 = scaleinv * scaleinv;
-    const G = this.greensfn, VG = this.vg;
-    // spectra of the fields: ux_a = k_a sgdd D, and v_ab = i k_a k_b sgdd D (sgdd = scaleinv G), real parts are used
-    const spec = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(() => new Float64Array(2 * Ng));
+    const G = this.greensfn, GQQ = this.greensfnQq, GQM = this.greensfnQm, VG = this.vg;
+    // spectra of the fields (native fills work4 and inverse-transforms it; the brick values are the real parts):
+    //   spec[0..2]  dipole E:  k_a (gdd D + i gqm Q)
+    //   spec[3..8]  dipole field gradient: k_a k_b (i gdd D - gqm Q)
+    //   spec[9..11] charge E:  k_a (i gqq Q + gqm D)           (charge channel only)
+    const nSpec = hasQ ? 12 : 9;
+    const spec: Float64Array[] = [];
+    for (let c = 0; c < nSpec; c++) spec.push(new Float64Array(2 * Ng));
     let esum = 0;
     const W = [0, 0, 0, 0, 0, 0];
     for (let iz = 0; iz < nz; iz++) {
@@ -601,14 +657,17 @@ export class KSpacePPPMDipole extends KSpaceBase {
         for (let ix = 0; ix < nx; ix++) {
           const idx = (iz * ny + iy) * nx + ix;
           const g0 = G[idx];
+          const gqq = GQQ[idx], gqm = GQM[idx];
           const kx = fk[0][ix], ky = fk[1][iy], kz = fk[2][iz];
           const Dr = Dre[idx], Di = Dim[idx];
+          const Qr = hasQ ? dens[3][2 * idx] : 0, Qi = hasQ ? dens[3][2 * idx + 1] : 0;
           const M0r = dens[0][2 * idx], M0i = dens[0][2 * idx + 1];
           const M1r = dens[1][2 * idx], M1i = dens[1][2 * idx + 1];
           const M2r = dens[2][2 * idx], M2i = dens[2][2 * idx + 1];
-          const eng = s2 * g0 * (Dr * Dr + Di * Di);
+          let eng = s2 * g0 * (Dr * Dr + Di * Di);
+          if (hasQ) eng += s2 * gqq * (Qr * Qr + Qi * Qi) + 2.0 * s2 * gqm * (Qr * Di - Qi * Dr);
           esum += eng;
-          // virial: eng * vg plus the terms of the moment densities
+          // virial: eng * vg plus the structure-factor strain terms of the moment densities
           for (let jj = 0; jj < 6; jj++) W[jj] += eng * VG[6 * idx + jj];
           const MxD = M0r * Dr + M0i * Di;
           const MyD = M1r * Dr + M1i * Di;
@@ -619,25 +678,44 @@ export class KSpacePPPMDipole extends KSpaceBase {
           W[3] += 2.0 * s2 * g0 * ky * MxD;
           W[4] += 2.0 * s2 * g0 * kz * MxD;
           W[5] += 2.0 * s2 * g0 * kz * MyD;
-          const sgdd = scaleinv * g0;
-          // u_a = k_a sgdd D
-          const ua = [kx * sgdd, ky * sgdd, kz * sgdd];
-          for (let a = 0; a < 3; a++) {
-            spec[a][2 * idx] = ua[a] * Dr;
-            spec[a][2 * idx + 1] = ua[a] * Di;
+          if (hasQ) {
+            // charge-dipole strain terms: 2 s2 gqm k_b Im(Q* P_a)
+            const IxQ = Qr * M0i - Qi * M0r;
+            const IyQ = Qr * M1i - Qi * M1r;
+            const IzQ = Qr * M2i - Qi * M2r;
+            W[0] += 2.0 * s2 * gqm * kx * IxQ;
+            W[1] += 2.0 * s2 * gqm * ky * IyQ;
+            W[2] += 2.0 * s2 * gqm * kz * IzQ;
+            W[3] += 2.0 * s2 * gqm * ky * IxQ;
+            W[4] += 2.0 * s2 * gqm * kz * IxQ;
+            W[5] += 2.0 * s2 * gqm * kz * IyQ;
           }
-          // v_ab = i (k_a k_b sgdd) D: the real part is -c Di, the imaginary part c Dr
+          const sgdd = scaleinv * g0, sgqq = scaleinv * gqq, sgqm = scaleinv * gqm;
+          const ka = [kx, ky, kz];
+          for (let a = 0; a < 3; a++) {
+            spec[a][2 * idx] = ka[a] * (sgdd * Dr - sgqm * Qi);
+            spec[a][2 * idx + 1] = ka[a] * (sgdd * Di + sgqm * Qr);
+          }
+          // gradient pairs (slot, k_a, k_b): the real part is -k_a k_b (gdd Di + gqm Qr), the imaginary part
+          // k_a k_b (gdd Dr - gqm Qi)
           const pairs: [number, number, number][] = [[3, kx, kx], [4, ky, ky], [5, kz, kz], [6, kx, ky], [7, kx, kz], [8, ky, kz]];
-          for (const [slot, ka, kb] of pairs) {
-            const c = ka * kb * sgdd;
-            spec[slot][2 * idx] = -c * Di;
-            spec[slot][2 * idx + 1] = c * Dr;
+          for (const [slot, ca, cb] of pairs) {
+            const kk = ca * cb;
+            spec[slot][2 * idx] = -kk * (sgdd * Di + sgqm * Qr);
+            spec[slot][2 * idx + 1] = kk * (sgdd * Dr - sgqm * Qi);
+          }
+          if (hasQ) {
+            // charge E: k_a (i gqq Q + gqm D)
+            for (let a = 0; a < 3; a++) {
+              spec[9 + a][2 * idx] = ka[a] * (-sgqq * Qi + sgqm * Dr);
+              spec[9 + a][2 * idx + 1] = ka[a] * (sgqq * Qr + sgqm * Di);
+            }
           }
         }
       }
     }
     // backward transforms (unnormalized); the real parts are the brick values of native
-    for (let c = 0; c < 9; c++) fft3d(spec[c], nx, ny, nz, 1);
+    for (let c = 0; c < nSpec; c++) fft3d(spec[c], nx, ny, nz, 1);
     this.beginField(kc);
     const E = new Float64Array(3);
     for (let i = 0; i < n; i++) {
@@ -650,6 +728,7 @@ export class KSpacePPPMDipole extends KSpaceBase {
       this.rho1dAll(ds[0], ds[1], ds[2], r);
       const px = part[3 * i], py = part[3 * i + 1], pz = part[3 * i + 2];
       let ex = 0, ey = 0, ez = 0;
+      let eqx = 0, eqy = 0, eqz = 0;
       const vv = [0, 0, 0, 0, 0, 0];
       for (let nn = this.nlower; nn <= this.nupper; nn++) {
         const mz = wrap(nn + pz, nz);
@@ -665,10 +744,22 @@ export class KSpacePPPMDipole extends KSpaceBase {
             ey -= x0 * spec[1][idx2];
             ez -= x0 * spec[2][idx2];
             for (let c = 0; c < 6; c++) vv[c] -= x0 * spec[3 + c][idx2];
+            if (hasQ) {
+              eqx -= x0 * spec[9][idx2];
+              eqy -= x0 * spec[10][idx2];
+              eqz -= x0 * spec[11][idx2];
+            }
           }
         }
       }
-      // fieldforce_ik_dipole: the force from the field gradient, and the field itself
+      // fieldforce_ik_dipole: the force on the charge from the total field, the force from the field gradient on the
+      // dipole, and the field itself (torque)
+      if (hasQ) {
+        const qi = q![i];
+        f[3 * i] += C * qi * eqx;
+        f[3 * i + 1] += C * qi * eqy;
+        f[3 * i + 2] += C * qi * eqz;
+      }
       const mux = mu[3 * i], muy = mu[3 * i + 1], muz = mu[3 * i + 2];
       const vxx = vv[0], vyy = vv[1], vzz = vv[2], vxy = vv[3], vxz = vv[4], vyz = vv[5];
       f[3 * i] += C * (vxx * mux + vxy * muy + vxz * muz);
@@ -677,10 +768,13 @@ export class KSpacePPPMDipole extends KSpaceBase {
       E[0] = ex; E[1] = ey; E[2] = ez;
       this.applyField(kc, i, C, E, mu);
     }
-    // energy: 0.5 V sum - the self term, times the prefactor (native compute); virial: 0.5 prefactor V sum
+    // energy: 0.5 V sum, minus the self term and the neutralizing-background term, times the prefactor (native
+    // compute); virial: 0.5 prefactor V sum
     const g3 = this.gEwald * this.gEwald * this.gEwald;
-    const energy = (0.5 * V * esum - this.musqsum * 2.0 * g3 / 3.0 / MY_PIS) * C;
-    kc.acc.elong += energy;
+    const g = this.gEwald;
+    let energy = 0.5 * V * esum - this.musqsum * 2.0 * g3 / 3.0 / MY_PIS;
+    energy -= g * this.qsqsumCharge / MY_PIS + MY_PI2 * this.qsumCharge * this.qsumCharge / (g * g * V);
+    kc.acc.elong += energy * C;
     for (let c = 0; c < 6; c++) kc.acc.vlong[c] += 0.5 * C * V * W[c];
   }
 }

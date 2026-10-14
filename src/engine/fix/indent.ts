@@ -52,9 +52,11 @@ const geoValue = (sys: System, w: string | undefined, what: string, style: strin
  * "A *lo* face reflects particles" / "that move to a coordinate less than the
  * wall position, back in the" / "*hi* direction.  A *hi* face reflects
  * particles that move to a coordinate higher than the wall position, back in
- * the *lo* direction." The reflection is applied in end_of_step, the last
- * hook of the timestep (docs.lammps.org/Developer_flow.html), so the checked
- * position is where the integrator left the atom after its move.
+ * the *lo* direction." As native LAMMPS does (src/fix_wall_reflect.cpp at b332f28: setmask POST_INTEGRATE,
+ * FixWallReflect::post_integrate and wall_particle), the reflection is applied in post_integrate, right after the
+ * position update and before the neighbour decision and the force call, so an atom that crossed a wall of a fixed
+ * boundary is back inside before a rebuild could count it as lost. The new position is coord + (coord - x) for a
+ * lo face and coord - (x - coord) for a hi face (native's operation order).
  *
  * "If the wall position is a variable, it should be specified as v_name,"
  * "where name is an :doc:`equal-style variable <variable>` name.  In this"
@@ -140,7 +142,7 @@ export class FixWallReflect extends Fix {
     }
   }
 
-  endOfStep(): void {
+  postIntegrate(): void {
     const sys = this.sys;
     const s = sys.state;
     const g = sys.geom;
@@ -160,7 +162,7 @@ export class FixWallReflect extends Fix {
         const f = this.faces[k];
         const j = 3 * i + f.dim;
         if (f.lo ? x[j] < pos[k] : x[j] > pos[k]) {
-          x[j] = 2 * pos[k] - x[j];
+          x[j] = f.lo ? pos[k] + (pos[k] - x[j]) : pos[k] - (x[j] - pos[k]);
           v[j] = -v[j];
         }
       }

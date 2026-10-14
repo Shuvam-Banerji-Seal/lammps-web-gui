@@ -596,7 +596,8 @@ export class FixWallReflectStochastic extends Fix {
     }
   }
 
-  endOfStep(): void {
+  /** native FixWallReflectStochastic inherits FixWallReflect::post_integrate (src/EXTRA-FIX/fix_wall_reflect_stochastic.h at b332f28). */
+  postIntegrate(): void {
     const sys = this.sys;
     const s = sys.state;
     const g = sys.geom;

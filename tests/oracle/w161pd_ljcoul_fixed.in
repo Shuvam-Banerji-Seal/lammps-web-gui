@@ -1,0 +1,19 @@
+# oracle: pair_style lj/long/coul/long long long 2.5 with kspace pppm/disp (Coulomb and geometric dispersion, fixed gewald, mesh, order and the dispersion gewald/disp, mesh/disp, order/disp), NVE 10 steps, 108 charged displaced fcc atoms
+# Measured with native LAMMPS (b332f28 binary): thermo and per-atom forces agree to 1e-13 relative (abs 0), Coulomb (charges +-0.5) and dispersion on the same run; the worst is pyz at step 5.
+# oracle-inputs: w161pd_fcc.data
+# native: /home/roy/.local/bin/lmp (b332f28, KSPACE package with pppm/disp, unmodified)
+units           lj
+atom_style      charge
+read_data       w161pd_fcc.data
+pair_style      lj/long/coul/long long long 2.5
+pair_modify     table 0 table/disp 0
+pair_coeff      1 1 1.0 1.0
+pair_coeff      2 2 0.5 1.1
+kspace_style    pppm/disp 1.0e-4
+kspace_modify   gewald 0.5 mesh 12 12 12 order 5 gewald/disp 0.5 mesh/disp 12 12 12 order/disp 5
+timestep        0.005
+fix             1 all nve
+thermo_style    custom step temp pe evdwl elong ecoul press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          5
+run             10

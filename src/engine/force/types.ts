@@ -20,6 +20,14 @@ import type { Fix } from '../fix/fix';
 /** Errors a style raises for bad input; the interpreter adds the line number. */
 export class StyleError extends Error {}
 
+/** A bond style's store/local request: the fix (made by create) that receives its rows. */
+export interface LocalStoreRequest {
+  id: string;
+  freq: number;
+  names: string[];
+  create(sys: unknown): { style: string; nvalues: number; addRow(row: readonly number[]): void } & { id: string };
+}
+
 export interface Accum {
   evdwl: number;
   ecoul: number;
@@ -496,6 +504,12 @@ export abstract class Bonded {
   abstract compute(bc: BondedCompute): void;
   /** Bonds broken by the last compute() (bond_style bpm/spring): true once, then cleared. */
   takeTopologyChange?(): boolean;
+  /**
+   * bond_style bpm/* keyword store/local ID N values: the fix store/local ID the style writes its broken-bond rows to
+   * (bond_bpm.cpp settings). bond_style creates the fix from this request and hands the style its addRow sink.
+   */
+  localStoreRequest?(): LocalStoreRequest | null;
+  attachLocalSink?(sink: (row: number[]) => void): void;
   /**
    * Bond types whose bonds are not 1-2 neighbors for the special lists (bond_rheo_shell.cpp sets ignore_special_flag:
    * the bonds of such a type do not switch off the pair interaction between their atoms). Default: none.

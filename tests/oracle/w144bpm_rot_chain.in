@@ -1,0 +1,42 @@
+# oracle: store/local of bpm/rotational (native: b332f28 built as the installed lmp, BPM package): a chain of 4
+# bpm/sphere atoms (3 bonds, diameter 1) pulled apart at the ends, the bonds break on different steps, and the
+# broken bonds are written by dump local f_brkbond[1..3] (time id1 id2) every 10 steps; 300 steps.
+# oracle-files: w144bpm_rot_chain_broken.dump
+# measured: max relative error 1.3e-13 over the thermo rows and the per-atom state (native b332f28 = installed lmp, BPM package)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+dimension 3
+boundary f f f
+atom_style bpm/sphere
+newton on off
+comm_modify vel yes cutoff 2.6
+region box block -10 10 -10 10 -10 10
+create_box 1 box bond/types 1 extra/bond/per/atom 4
+create_atoms 1 single -1.0 0.0 0.0
+create_atoms 1 single 0.0 0.0 0.0
+create_atoms 1 single 1.0 0.0 0.0
+create_atoms 1 single 2.0 0.0 0.0
+set group all diameter 1.0
+set group all density 1.0
+create_bonds single/bond 1 1 2
+create_bonds single/bond 1 2 3
+create_bonds single/bond 1 3 4
+group left id 1
+group right id 4
+velocity left set -0.25 0.0 0.0
+velocity right set 0.6 0.0 0.0
+pair_style gran/hooke/history 1.0 NULL 0.5 NULL 0.1 1
+pair_coeff 1 1
+neighbor 0.3 bin
+special_bonds lj 0 1 1 coul 1 1 1
+bond_style bpm/rotational store/local brkbond 10 time id1 id2
+bond_coeff 1 1.0 0.2 0.02 0.02 0.05 0.01 0.01 0.01 0.1 0.2 0.002 0.002
+fix 1 all nve/bpm/sphere
+compute nb all nbond/atom
+compute tb all reduce sum c_nb
+dump 2 all local 10 w144bpm_rot_chain_broken.dump f_brkbond[1] f_brkbond[2] f_brkbond[3]
+thermo_style custom step ke pe ebond c_tb
+thermo_modify format float %.15g norm no lost ignore lost/bond ignore
+timestep 0.01
+thermo 50
+run 300

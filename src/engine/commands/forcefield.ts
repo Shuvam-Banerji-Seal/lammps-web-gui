@@ -172,8 +172,33 @@ const bondedStyle = (kind: keyof typeof bondedKinds): Handler => (({ sys }, a) =
   st.settings(a.slice(1), sys.styleContext());
   if (!same && sys.hasBox) st.allocate(bondedKinds[kind].types(sys));
   sys.ff[kind] = st;
+  if (kind === 'bond') attachBondStoreLocal(sys, st);
   sys.bump();
 }) as Handler;
+
+/**
+ * bond_style bpm/* store/local ID N values (bond_bpm.cpp settings): the broken-bond rows go to fix store/local ID,
+ * which is created with the bond style when no fix of that ID exists (the native BondBPM settings does the same, and
+ * reuses an existing fix of that ID). The rows are read back by dump local f_ID.
+ */
+const attachBondStoreLocal = (sys: System, st: Bonded): void => {
+  const req = st.localStoreRequest?.();
+  if (!req || !st.attachLocalSink) return;
+  const k = sys.fixes.findIndex((f) => f.id === req.id);
+  if (k >= 0 && sys.fixes[k].style.toLowerCase() !== 'store/local') {
+    throw new StyleError(`bond_style store/local ${req.id}: fix ${req.id} exists and is not a STORE/LOCAL fix`);
+  }
+  let fix: ReturnType<typeof req.create>;
+  if (k >= 0) {
+    fix = sys.fixes[k] as unknown as ReturnType<typeof req.create>;
+    if (fix.nvalues !== req.names.length) throw new StyleError(`bond_style store/local ${req.id}: fix ${req.id} stores ${fix.nvalues} values, not ${req.names.length}`);
+  } else {
+    fix = req.create(sys) as unknown as ReturnType<typeof req.create>;
+    sys.fixes.push(fix as unknown as (typeof sys.fixes)[number]);
+  }
+  st.attachLocalSink((row) => fix.addRow(row));
+  sys.refreshComputes();
+};
 
 const bondedCoeff = (kind: keyof typeof bondedKinds): Handler => (({ sys }, a) => {
   const st = sys.ff[kind];

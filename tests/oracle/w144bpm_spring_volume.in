@@ -1,0 +1,39 @@
+# oracle: bond_style bpm/spring volume/factor yes (native: b332f28 as the installed lmp, BPM package), cut down from
+# examples/bpm/poissons_ratio/in.bpm.poissons_ratio: a 2 x 2 x 2 cube of 8 atoms with all 12 nearest-neighbour bonds, the
+# top layer pushed down and the bottom layer up (a squeeze), bond_coeff 1 1.0 0.1 1.0 -0.8 (k, epsilon_c, gamma, av) with
+# break yes and smooth yes, so bonds break and the reference volumes change (vol0 update) in the 200 steps.
+# measured: max relative error 1.0e-14 over the thermo rows and the per-atom state (native b332f28 = installed lmp, BPM package)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+dimension 3
+boundary f f f
+atom_style bond
+newton on off
+comm_modify vel yes cutoff 2.6
+lattice sc 1.0
+region box block -1 3 -1 3 -1 3 units box
+create_box 1 box bond/types 1 extra/bond/per/atom 6
+region cube block 0 1 0 1 0 1 units box
+create_atoms 1 region cube
+mass 1 1.0
+pair_style bpm/spring
+pair_coeff 1 1 1.0 1.0 1.0
+create_bonds many all all 1 0.0 1.1
+region top block -1 3 -1 3 0.6 3 units box
+region bot block -1 3 -1 3 -1 0.4 units box
+group top region top
+group bot region bot
+velocity top set 0.0 0.0 -0.3
+velocity bot set 0.0 0.0 0.3
+neighbor 0.3 bin
+special_bonds lj 0.0 1.0 1.0 coul 1.0 1.0 1.0
+bond_style bpm/spring volume/factor yes
+bond_coeff 1 1.0 0.1 1.0 -0.8
+fix 1 all nve
+compute nb all nbond/atom
+compute tb all reduce sum c_nb
+thermo_style custom step ke pe ebond c_tb
+thermo_modify format float %.15g norm no lost ignore lost/bond ignore
+timestep 0.01
+thermo 40
+run 200

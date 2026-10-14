@@ -15,7 +15,7 @@
 import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
 import type { EngineEvent } from '../src/engine/types';
-import type { RasterFrame, ObjectStyle, Rgb255 } from '../src/engine/output/image_objects';
+import type { RasterFrame } from '../src/engine/output/image_objects';
 import { drawCylinder, drawPixmapBox, drawSphere, drawTrinorm, drawPixel, scalePixmap } from '../src/engine-gpl/graphics/draw';
 
 const frame = (w = 32, h = 32): RasterFrame => ({
@@ -36,11 +36,6 @@ const frame = (w = 32, h = 32): RasterFrame => ({
 const at = (f: RasterFrame, col: number, row: number): number[] => {
   const o = (row * f.w + col) * 3;
   return [f.rgb[o], f.rgb[o + 1], f.rgb[o + 2]];
-};
-
-const style = (flag1 = 0, flag2 = 0): ObjectStyle => {
-  const white: Rgb255 = [255, 255, 255];
-  return { flag1, flag2, colorOf: () => white, diameterOf: () => 1, bondDiameter: () => 0.5 };
 };
 
 const b64 = (url: string): Uint8Array => {

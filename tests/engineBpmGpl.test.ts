@@ -42,10 +42,17 @@ const run = async (script: string): Promise<{ rows: Row[]; errors: string[] }> =
 };
 
 describe('bpm styles ported from LAMMPS (engine-gpl)', () => {
-  it('refuses store/local for every ported bond style, by name', async () => {
-    for (const style of ['bpm/rotational', 'bpm/zero', 'bpm/spring/plastic', 'bpm/peri']) {
+  it('refuses store/local for the bond styles whose breaks write no rows, by name', async () => {
+    for (const style of ['bpm/zero', 'bpm/spring/plastic', 'bpm/peri']) {
       const r = await run(`${DIMER}bond_style ${style} store/local brk 100 time\n`);
       expect(r.errors.join(' '), style).toMatch(/store\/local/);
+    }
+  });
+
+  it('accepts store/local for bpm/rotational and bpm/spring (the broken bonds go to fix store/local)', async () => {
+    for (const style of ['bpm/rotational', 'bpm/spring']) {
+      const r = await run(`${DIMER}bond_style ${style} store/local brk 100 time id1 id2\n`);
+      expect(r.errors, style).toEqual([]);
     }
   });
 

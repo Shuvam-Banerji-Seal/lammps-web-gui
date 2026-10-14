@@ -123,7 +123,7 @@ run 0
 
 describe('bond_style bpm/rotational', () => {
   it('refuses store/local, unknown keywords and bad values by name', async () => {
-    expect((await run(`${DIMER()}bond_style bpm/rotational store/local brk 100 time\n`)).errors.join(' ')).toMatch(/store\/local/);
+    expect((await run(`${DIMER()}bond_style bpm/rotational store/local brk 100 time x/ref\n`)).errors.join(' ')).toMatch(/x\/ref/);
     expect((await run(`${DIMER()}bond_style bpm/rotational frame sideways\n`)).errors.join(' ')).toMatch(/frame must be/);
     expect((await run(`${DIMER()}bond_style bpm/rotational foo yes\n`)).errors.join(' ')).toMatch(/illegal bond_style bpm\/rotational keyword 'foo'/);
   });

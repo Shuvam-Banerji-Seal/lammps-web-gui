@@ -9,6 +9,7 @@
 import type { Bonded, Pair } from '../../engine/force/types';
 import { BondBpmPeri } from '../bpm/bond_bpm_peri';
 import { BondBpmRotational } from '../bpm/bond_bpm_rotational';
+import { BondBpmSpring } from '../bpm/bond_bpm_spring';
 import { BondBpmSpringPlastic } from '../bpm/bond_bpm_spring_plastic';
 import { BondBpmZero } from '../bpm/bond_bpm_zero';
 import { PairBpmPeri } from '../bpm/pair_bpm_peri';
@@ -16,6 +17,7 @@ import { PairBpmPeri } from '../bpm/pair_bpm_peri';
 /** Style name -> factory (the names listed in lazyStyles.ts must match these keys). */
 export const BONDS: Record<string, () => Bonded> = {
   'bpm/rotational': () => new BondBpmRotational(),
+  'bpm/spring': () => new BondBpmSpring(),
   'bpm/spring/plastic': () => new BondBpmSpringPlastic(),
   'bpm/zero': () => new BondBpmZero(),
   'bpm/peri': () => new BondBpmPeri(),

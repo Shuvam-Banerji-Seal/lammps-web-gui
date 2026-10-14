@@ -1,0 +1,42 @@
+# oracle: store/local of bond_style bpm/spring (native: b332f28 as the installed lmp, BPM package), cut down from
+# examples/bpm/impact/in.bpm.impact.spring: a chain of 4 atoms (3 bonds, atom_style bond) pulled apart at the ends with
+# bond_coeff 1 1.0 0.04 1.0 (k, epsilon_c, gamma), bond_style bpm/spring store/local brkbond 10 time id1 id2; the broken
+# bonds are written by dump local f_brkbond[1..3] every 10 steps; 300 steps.
+# oracle-files: w144bpm_spring_store_broken.dump
+# measured: max relative error 2.3e-15 over the thermo rows and the per-atom state (native b332f28 = installed lmp, BPM package)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+dimension 3
+boundary f f f
+atom_style bond
+newton on off
+comm_modify vel yes cutoff 2.6
+region box block -10 10 -10 10 -10 10
+create_box 1 box bond/types 1 extra/bond/per/atom 4
+create_atoms 1 single -1.0 0.0 0.0
+create_atoms 1 single 0.0 0.0 0.0
+create_atoms 1 single 1.0 0.0 0.0
+create_atoms 1 single 2.0 0.0 0.0
+mass 1 1.0
+create_bonds single/bond 1 1 2
+create_bonds single/bond 1 2 3
+create_bonds single/bond 1 3 4
+group left id 1
+group right id 4
+velocity left set -0.25 0.0 0.0
+velocity right set 0.6 0.0 0.0
+pair_style bpm/spring
+pair_coeff 1 1 1.0 1.0 1.0
+neighbor 0.3 bin
+special_bonds lj 0.0 1.0 1.0 coul 1.0 1.0 1.0
+bond_style bpm/spring store/local brkbond 10 time id1 id2
+bond_coeff 1 1.0 0.04 1.0
+fix 1 all nve
+compute nb all nbond/atom
+compute tb all reduce sum c_nb
+dump 2 all local 10 w144bpm_spring_store_broken.dump f_brkbond[1] f_brkbond[2] f_brkbond[3]
+thermo_style custom step ke pe ebond c_tb
+thermo_modify format float %.15g norm no lost ignore lost/bond ignore
+timestep 0.01
+thermo 50
+run 300

@@ -40,6 +40,11 @@ export class FixStoreLocal extends Fix {
     this.ncount++;
   }
 
+  /** Appends one row given as plain numbers (the bpm bond styles' broken-bond rows, bond_bpm.cpp store_data). */
+  addRow(values: readonly number[]): void {
+    this.addData(Float64Array.from(values));
+  }
+
   /** post_force: "if (update->ntimestep % nreset == 0) { size_local_rows = ncount; ncount = 0; }". */
   postForce(): void {
     if (this.sys.state.step % this.nreset === 0) {

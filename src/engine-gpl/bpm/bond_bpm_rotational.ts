@@ -71,6 +71,7 @@ type Hist = Float64Array;
 
 export class BondBpmRotational extends BondBPMBase {
   readonly name = 'bpm/rotational';
+  protected readonly localStoreOk = true;
   readonly kind = 'bond' as const;
   readonly paramNames = ['kr', 'ks', 'kt', 'kb', 'fcr', 'fcs', 'tct', 'tcb', 'gr', 'gs', 'gt', 'gb'];
   smooth = true;
@@ -185,7 +186,10 @@ export class BondBpmRotational extends BondBPMBase {
     const b = bc.s.topo.bonds;
     const s = bc.s;
     const d = [0, 0, 0];
-    for (let k = 0; k < b.n; k++) {
+    const order = this.visitOrder(bc);
+    const nVisit = order ? order.length : b.n;
+    for (let q = 0; q < nVisit; q++) {
+      const k = order ? order[q] : q;
       const t = b.type[k];
       if (t === 0) continue; // broken bond: bond type 0
       const ia = b.atoms[2 * k], ib = b.atoms[2 * k + 1];
@@ -196,6 +200,7 @@ export class BondBpmRotational extends BondBPMBase {
       const L = this.loads(bc, i1, i2, t, h);
       if (L.breaking >= 1 && this.breakOn) {
         this.breakBond(b.type, k);
+        this.emitBreak(bc, ia, ib);
         continue;
       }
       const smooth = this.smooth ? 1 - Math.pow(L.breaking, 4) : 1;

@@ -1,0 +1,33 @@
+# oracle: cut-down examples/bpm/impact/in.bpm.impact.rotational with store/local: the 2 x 12 x 12 plate and 3 x 3 x 3 projectile of
+# w53bpm_impact_cut.data (projectile at speed 2 along -z), bpm/rotational with the example's critical force (fcr 0.02),
+# bond_style store/local brkbond 20 time id1 id2 and dump local f_brkbond[1..3] every 20 steps; 300 steps. Thermo, the
+# per-atom state and the bond count (c_tb) are compared with native (b332f28 as the installed lmp, BPM package). The
+# dump file is NOT compared: its rows of one step are in native bond-list order, which follows native's neighbor
+# build schedule (the engine's differs in this window, see the chain case w144bpm_rot_chain for the file check).
+# oracle-inputs: w53bpm_impact_cut.data
+# measured: max relative error 2.3e-14 over the thermo rows and the per-atom state (native b332f28 = installed lmp, BPM package)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units lj
+dimension 3
+boundary f f f
+newton on off
+atom_style bpm/sphere
+comm_modify vel yes cutoff 2.6
+read_data w53bpm_impact_cut.data
+pair_style gran/hooke/history 1.0 NULL 0.5 NULL 0.1 1
+pair_coeff 1 1
+neighbor 0.3 bin
+special_bonds lj 0 1 1 coul 1 1 1
+bond_style bpm/rotational store/local brkbond 20 time id1 id2
+bond_coeff 1 1.0 0 0 0 0.02 1.0 1.0 1.0 0.1 0.0 0.0 0.0
+group projectile id 289:315
+velocity projectile set 0.0 0.0 -2.0
+fix 1 all nve/bpm/sphere
+compute nb all nbond/atom
+compute tb all reduce sum c_nb
+dump 2 all local 20 w144bpm_rot_store_broken.dump f_brkbond[1] f_brkbond[2] f_brkbond[3]
+thermo_style custom step ke pe ebond c_tb
+thermo_modify format float %.15g norm no lost ignore lost/bond ignore
+timestep 0.01
+thermo 20
+run 300

@@ -46,11 +46,11 @@ const run = async (script: string): Promise<{ rows: Row[]; errors: string[] }> =
 };
 
 describe('bond_style bpm/spring', () => {
-  it('refuses store/local and volume/factor yes by name', async () => {
-    const a = await run(`${DIMER}bond_style bpm/spring store/local brk 100 time\n`);
-    expect(a.errors.join(' ')).toMatch(/store\/local/);
-    const b = await run(`${DIMER}bond_style bpm/spring volume/factor yes\n`);
-    expect(b.errors.join(' ')).toMatch(/volume\/factor yes/);
+  it('refuses the x/ref store/local values by name; volume/factor yes takes the av coefficient', async () => {
+    const a = await run(`${DIMER}bond_style bpm/spring store/local brk 100 time x/ref\n`);
+    expect(a.errors.join(' ')).toMatch(/x\/ref/);
+    const b = await run(`${DIMER}bond_style bpm/spring volume/factor yes\nbond_coeff 1 1.0 0.1 1.0\n`);
+    expect(b.errors.join(' ')).toMatch(/Incorrect args for bond coefficients/);
   });
 
   it('refuses break no with smoothing on, as native does', async () => {

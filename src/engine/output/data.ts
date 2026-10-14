@@ -447,6 +447,9 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
   if (isLineStyle(style) && s.dimension !== 2) throw new StyleError('Atom_style line can only be used in 2d simulations');
   if (isTriStyle(style) && s.dimension !== 3) throw new StyleError('Atom_style tri can only be used in 3d simulations');
   if ((isLineStyle(style) || isTriStyle(style)) && (genFrame || s.box.triclinic)) throw new StyleError(`read_data: ${isLineStyle(style) ? 'line' : 'tri'} particles in a triclinic box are not supported by the browser engine`);
+  // atom_style hybrid with a tri sub-style: the Atoms-line columns of the union are not checked against native (the
+  // data_atom column order of atom_vec_hybrid.cpp for two sub-styles that share density); tri particles are read in their own style
+  if (style.startsWith('hybrid ') && isTriStyle(style)) throw new StyleError('read_data: atom_style hybrid with a tri sub-style is not supported by the browser engine (use atom_style tri alone, or create the particles with fix surface/local)');
   // atom_style template: read_data.html "set the *bonds*, *angles*, etc header keywords in the data file," (see template.ts)
   const tmplId = templateStyleId(style);
   if ((h.bodies ?? 0) > 0 && !parseBodyStyle(style)) throw new StyleError(`data file header bodies needs atom_style body (current: ${style})`);

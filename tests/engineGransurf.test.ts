@@ -233,6 +233,8 @@ describe('fix surface/local input mol (fix_surface_local.html: input mol)', () =
       writeFile: () => {},
     } as never);
     s.addFile('w106gs_surf.line', readFileSync(join(__dirname, 'oracle', 'w106gs_surf.line'), 'utf8'));
+    s.addFile('w127gsg_surf.tri.stl', readFileSync(join(__dirname, 'oracle', 'w127gsg_surf.tri.stl'), 'utf8'));
+    s.addFile('w151gs_second.stl', 'solid two\n facet normal 0 0 0\n  outer loop\n   vertex -1 -1 4\n   vertex 1 -1 4\n   vertex 0 1 4\n  endloop\n endfacet\n facet normal 0 0 0\n  outer loop\n   vertex 0 0 4\n   vertex 0 0 4\n   vertex 1 1 4\n  endloop\n endfacet\nendsolid two\n');
     try { await s.execute(text); } catch (e) { error ??= String(e); }
     return { error, atoms };
   };
@@ -244,14 +246,49 @@ region box block -15 15 -15 15 -0.5 0.5 units box
 create_box 2 box
 molecule lines w106gs_surf.line
 `;
+  const head3 = `units lj
+atom_style tri
+dimension 3
+boundary f f f
+region box block -7 7 -7 7 0 9 units box
+create_box 3 box
+`;
   it('creates one line particle per Lines entry, numbered after the atoms that exist', async () => {
     const r = await run(`${head}fix 20 all surface/local input mol lines\nthermo_style custom step atoms\nrun 0\n`);
     expect(r.error).toBeNull();
     expect(r.atoms).toBe(9);
   });
-  it('refuses the input stl source and the other keywords by name', async () => {
-    expect((await run(`${head}fix 20 all surface/local input stl 1 1 w106gs_surf.line\n`)).error).toMatch(/input stl/);
-    expect((await run(`${head}fix 20 all surface/local input mol lines flat 10\n`)).error).toMatch(/keyword 'flat' is not supported/);
+  it('refuses an STL source in 2d, a zero surface type, a bad flat value and an unknown keyword by name', async () => {
+    expect((await run(`${head}fix 20 all surface/local input stl 1 1 w127gsg_surf.tri.stl\n`)).error).toMatch(/STL file for 2d simulations/);
+    expect((await run(`${head}fix 20 all surface/local input mol lines flat 91\n`)).error).toMatch(/Invalid value 91 for fix surface\/local flat/);
+    expect((await run(`${head}fix 20 all surface/local input mol lines smaxtype 3\n`)).error).toMatch(/keyword 'smaxtype' is not supported/);
     expect((await run(`${head}fix 20 all surface/local input mol nope\n`)).error).toMatch(/does not exist/);
+    expect((await run(`${head3}fix 20 all surface/local input stl 0 1 w127gsg_surf.tri.stl\n`)).error).toMatch(/STL surface type must be >= 1/);
+    expect((await run(`${head3}fix 20 all surface/local input stl 2 1\n`)).error).toMatch(/needs type, molecule-ID and file name/);
+  });
+  it('accepts atom_style hybrid tri sphere, and its tri particles come from fix surface/local (in.screwfeeder.local)', async () => {
+    const r = await run(`units lj
+atom_style hybrid tri sphere 1
+dimension 3
+boundary f f f
+region box block -7 7 -7 7 0 9 units box
+create_box 3 box
+fix 20 all surface/local input stl 2 1 w127gsg_surf.tri.stl
+thermo_style custom step atoms
+run 0
+`);
+    expect(r.error).toBeNull();
+    expect(r.atoms).toBe(4);
+  });
+  it('accepts the flat keyword with input mol', async () => {
+    const r = await run(`${head}fix 20 all surface/local input mol lines flat 10\nthermo_style custom step atoms\nrun 0\n`);
+    expect(r.error).toBeNull();
+    expect(r.atoms).toBe(9);
+  });
+  it('creates one tri particle per kept STL triangle (degenerate triangles skipped), from several input keywords', async () => {
+    // w127gsg_surf.tri.stl: 4 triangles in the plane z = 0; w151gs_second.stl: one triangle at z = 4 and one degenerate
+    const r = await run(`${head3}fix 20 all surface/local input stl 2 1 w127gsg_surf.tri.stl input stl 3 2 w151gs_second.stl flat 10\nthermo_style custom step atoms\nrun 0\n`);
+    expect(r.error).toBeNull();
+    expect(r.atoms).toBe(5);
   });
 });

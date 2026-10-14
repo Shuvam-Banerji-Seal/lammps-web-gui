@@ -16,7 +16,8 @@
  * midpoint (centroid), has the molecule-ID and type of the entry, and its end points or corners are its bonus data.
  *
  * Browser-engine differences:
- *   - input stl and the flat keyword are refused with a StyleError naming them;
+ *   - "input stl" (fix_surface.cpp extract_from_stlfile: ASCII STL, degenerate triangles skipped, points keyed by
+ *     coordinates and molecule-ID) and "flat" (the flat threshold of the connectivity) are supported as native does;
  *   - native identifies the points of the template by molecule-ID and coordinates, so entries of two molecule-IDs
  *     that share a point are not connected there; the browser engine connects by coordinates, so that case is refused;
  *   - a particle whose centre lies outside the box is refused (native remaps it into a periodic box first).
@@ -28,8 +29,22 @@ import { appendAtoms, isLineStyle, isTriStyle, LINE_BONUS, LINE_FLAG, maxAtomId,
 import { lineFromEnds } from '../../engine/lineTri';
 import type { SurfaceEntry } from '../../engine/molecule';
 import { TRI_BODY_HOOK } from '../tri/tri_bonus';
+import { parseStl } from '../../engine/stl';
 
 type V3 = [number, number, number];
+
+/** fix_surface_local.cpp: FLATTHRESH (the default flat threshold, 1 - cos(1 degree)). */
+const FLATTHRESH = 0.00015230484360876085;
+
+/** One "input" keyword: a molecule template, or an STL file with its surface type and molecule-ID. */
+type Source = { kind: 'mol'; id: string } | { kind: 'stl'; stype: number; smol: number; file: string };
+
+/**
+ * The flat threshold of the surface/local fix defined on a system state (fix_surface_local.cpp: flatthresh, used by its
+ * connectivity). The pair surf/granular builds its connectivity from the same particles and reads it here.
+ */
+const FLAT_THRESHOLD = new WeakMap<object, number>();
+export const surfaceLocalFlatthresh = (st: object): number => FLAT_THRESHOLD.get(st) ?? FLATTHRESH;
 
 /** The end points (2d) or corners (3d) of one surface entry, from its flat coordinates. */
 const pointsOf = (e: SurfaceEntry, dim: number): V3[] => {
@@ -39,45 +54,85 @@ const pointsOf = (e: SurfaceEntry, dim: number): V3[] => {
   return out;
 };
 
+/**
+ * fix_surface.cpp extract_from_stlfile: the triangles of an ASCII STL file, each with the surface type and molecule-ID
+ * of its input keyword. A triangle whose edge cross product is exactly zero is skipped (native nskip), so the
+ * particle IDs that follow count only the kept triangles.
+ */
+const stlEntries = (sys: System, src: { stype: number; smol: number; file: string }, dim: number): SurfaceEntry[] => {
+  if (dim === 2) throw new StyleError('Fix surface cannot use an STL file for 2d simulations');
+  if (src.stype < 1) throw new StyleError('STL surface type must be >= 1');
+  const out: SurfaceEntry[] = [];
+  for (const tri of parseStl(sys.readFile(src.file), src.file)) {
+    const [a, b, c] = tri.v;
+    const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    const cr = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    if (cr[0] === 0 && cr[1] === 0 && cr[2] === 0) continue;
+    out.push({ mol: src.smol, type: src.stype, p: [a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]] });
+  }
+  return out;
+};
+
 export class FixSurfaceLocal extends Fix {
   readonly style: string = 'surface/local';
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
-    // fix_surface_local.cpp: "input" keywords come first, each "input mol ID" or "input stl ..."
-    const sources: string[] = [];
+    // fix_surface_local.cpp: "input" keywords come first, each "input mol ID" or "input stl type mol-ID file"
+    const sources: Source[] = [];
     let k = 0;
     while (k < args.length && args[k] === 'input') {
       if (args[k + 1] === 'mol' && args[k + 2] !== undefined) {
-        sources.push(args[k + 2]);
+        sources.push({ kind: 'mol', id: args[k + 2] });
         k += 3;
       } else if (args[k + 1] === 'stl') {
-        throw new StyleError('fix surface/local input stl (surfaces from STL files) is not supported by the browser engine; use input mol with Lines or Triangles');
+        // fix_surface_local.cpp: "input stl" takes the surface type, the molecule-ID and the file name
+        const stype = Number(args[k + 2]), smol = Number(args[k + 3]);
+        const file = args[k + 4];
+        if (file === undefined || !Number.isInteger(stype) || !Number.isInteger(smol)) {
+          throw new StyleError('fix surface/local input stl needs type, molecule-ID and file name');
+        }
+        sources.push({ kind: 'stl', stype, smol, file });
+        k += 5;
       } else {
         throw new StyleError(`fix surface/local keyword 'input ${args[k + 1] ?? ''}' is not supported`);
       }
     }
-    // fix_surface_local.cpp: the optional keywords (flat) are not supported in this engine
-    if (k < args.length) throw new StyleError(`fix surface/local keyword '${args[k]}' is not supported`);
+    // fix_surface_local.cpp: "flat" sets the flat threshold, 1 - cos(flat degrees); the default is one degree
+    let flatthresh = FLATTHRESH;
+    while (k < args.length) {
+      if (args[k] !== 'flat') throw new StyleError(`fix surface/local keyword '${args[k]}' is not supported`);
+      const flat = Number(args[k + 1]);
+      // fix_surface_local.cpp: "Invalid value {} for fix surface/local flat keyword" when flat is outside 0..90
+      if (args[k + 1] === undefined || !(flat >= 0 && flat <= 90)) throw new StyleError(`Invalid value ${args[k + 1] ?? ''} for fix surface/local flat keyword`);
+      flatthresh = 1.0 - Math.cos((Math.PI * flat) / 180.0);
+      k += 2;
+    }
+    FLAT_THRESHOLD.set(sys.state, flatthresh);
     if (sources.length) this.createFromTemplates(sys, sources);
   }
 
   /** assign2d / assign3d: one particle per Lines (2d) or Triangles (3d) entry of the input templates. */
-  private createFromTemplates(sys: System, sources: string[]): void {
+  private createFromTemplates(sys: System, sources: Source[]): void {
     const dim = sys.dimension;
     const s = sys.state;
     if (dim === 2 && !isLineStyle(s.atomStyle)) throw new StyleError('Fix surface/local requires atom style line');
     if (dim === 3 && !isTriStyle(s.atomStyle)) throw new StyleError('Fix surface/local requires atom style tri');
     const entries: SurfaceEntry[] = [];
     for (const src of sources) {
+      if (src.kind === 'stl') {
+        for (const e of stlEntries(sys, src, dim)) entries.push(e);
+        continue;
+      }
       // fix_surface.cpp, extract_from_molecule: "Molecule template ID for fix surface does not exist"
-      const sets = sys.molecules.get(src);
-      if (!sets) throw new StyleError(`Molecule template ID for fix surface does not exist: ${src}`);
+      const sets = sys.molecules.get(src.id);
+      if (!sets) throw new StyleError(`Molecule template ID for fix surface does not exist: ${src.id}`);
       for (const t of sets) {
         const list = dim === 2 ? t.lines : t.tris;
         // fix_surface.cpp: "Fix surface molecule must have lines" / "Fix surface molecule must have triangles"
         if (!list) throw new StyleError(dim === 2 ? 'Fix surface molecule must have lines' : 'Fix surface molecule must have triangles');
-        entries.push(...list);
+        for (const e of list) entries.push(e);
       }
     }
     if (!entries.length) throw new StyleError('Fix surface/local defines no line/triangle particles');

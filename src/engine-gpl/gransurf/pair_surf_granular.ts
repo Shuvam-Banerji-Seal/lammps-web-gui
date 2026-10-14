@@ -24,7 +24,8 @@
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { isLineStyle, isTriStyle, LINE_BONUS, LINE_FLAG, TRI_BONUS, TRI_BONUS_COLS, TRI_FLAG } from '../../engine/atoms';
-import { buildConnect2d, FLATTHRESH_2D, lineEnds, type Connect2d } from './connect2d';
+import { buildConnect2d, lineEnds, type Connect2d } from './connect2d';
+import { surfaceLocalFlatthresh } from './fix_surface_local';
 import { buildConnect3d, triCorners, type Connect3d } from './connect3d';
 import {
   overlapSphereLine, overlapSphereTri, SAME_SIDE, OPPOSITE_SIDE,
@@ -174,11 +175,11 @@ export class PairSurfGranular extends Pair {
     if (is3 && !this.conn3) {
       const tris: number[] = [];
       for (let i = 0; i < s.n; i++) if (surfFlag[i]) tris.push(i);
-      this.conn3 = buildConnect3d(s.x, tris, s.quat!, tbonus!, TRI_BONUS_COLS, radius, id, FLATTHRESH_2D);
+      this.conn3 = buildConnect3d(s.x, tris, s.quat!, tbonus!, TRI_BONUS_COLS, radius, id, surfaceLocalFlatthresh(s));
     } else if (!is3 && !this.conn) {
       const lines: number[] = [];
       for (let i = 0; i < s.n; i++) if (surfFlag[i]) lines.push(i);
-      this.conn = buildConnect2d(s.x, lines, bonus!, id, FLATTHRESH_2D);
+      this.conn = buildConnect2d(s.x, lines, bonus!, id, surfaceLocalFlatthresh(s));
     }
     const conn = this.conn;
     const conn3 = this.conn3;

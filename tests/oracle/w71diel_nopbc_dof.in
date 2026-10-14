@@ -1,6 +1,6 @@
-# oracle: atom_style dielectric, pair lj/cut/coul/cut/dielectric, fix polarize/functional (nopbc sphere, run 0, examples/PACKAGES/dielectric in.nopbc.dof)
-# Measured with native LAMMPS (black box): the engine agrees to 1e-15 relative under Node 24 and Node 20 (ecoul, all forces); the direct functional solve (tol 1e-4) is set once in setup, then each step.
-# oracle-inputs: w71diel_sphere.data
+# oracle: atom_style dielectric, pair lj/cut/coul/cut/dielectric, fix polarize/functional (nopbc sphere, cut to its upper half: the interface atoms below the centre are removed, w71diel_sphere_half.data, 306 atoms instead of 643, because the functional's Rww is built over all interface atoms (N^3 work over the all-pairs cut-off: 17 s); run 0, examples/PACKAGES/dielectric in.nopbc.dof)
+# Measured with native LAMMPS (black box): the engine agrees to 1.8e-16 relative on the half sphere (ecoul; the all-atom sphere agreed to 1e-15 under Node 24 and Node 20); the direct functional solve (tol 1e-4) is set once in setup, then each step.
+# oracle-inputs: w71diel_sphere_half.data
 # oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
 newton off
 units       lj
@@ -8,7 +8,7 @@ atom_style  dielectric
 atom_modify map array
 dimension   3
 boundary    f f f
-read_data   w71diel_sphere.data
+read_data   w71diel_sphere_half.data
 group interface type 1
 group ions type 2 3
 pair_style      lj/cut/coul/cut/dielectric 1.122 20.0

@@ -1,7 +1,7 @@
-# oracle: solvated ubiquitin (examples/amoeba: in.ubiquitin with data.ubiquitin = w119amoeba_ub.data, 9737 atoms in a 54.99 x 41.91 x 41.91 A periodic box; amoeba_ubiquitin.prm and amoeba_ubiquitin.key: ewald, pme-grid 60 48 48, pme-order 5, cutoff 7 via the key's vdw-cutoff and taper; bond class2, angle amoeba (in-plane anglep terms), dihedral fourier, improper amoeba (opbend), fix amoeba/pitorsion and fix amoeba/bitorsion with bitorsion.ubiquitin.data). The example's dynamics are not part of this case: the energies of every term (pair epair, the bonded terms ebond, eangle, edihed, eimp, the fix energies f_pit and f_bit, the virial) and the forces at step 0 and after two NVE steps (run 0, then run 2; the example runs 10 steps).
-# oracle-inputs: w119amoeba_ub.data w119amoeba_ub.prm w119amoeba_ub.key w119amoeba_ub_bitorsion.data
+# oracle: solvated ubiquitin (examples/amoeba: in.ubiquitin with data.ubiquitin = w119amoeba_ub_cut.data: the 1232-atom ubiquitin of the 9737-atom box, with only the 95 water molecules that have an atom within 2 A of the protein kept, 1517 atoms; amoeba_ubiquitin.prm and amoeba_ubiquitin.key: ewald, pme-grid 15 12 12 (the key's commented alternative, the example uses 60 48 48: the full box took 63 s), pme-order 5, cutoff 7 via the key's vdw-cutoff and taper; bond class2, angle amoeba (in-plane anglep terms), dihedral fourier, improper amoeba (opbend), fix amoeba/pitorsion and fix amoeba/bitorsion with bitorsion.ubiquitin.data). The example's dynamics are not part of this case: the energies of every term (pair epair, the bonded terms ebond, eangle, edihed, eimp, the fix energies f_pit and f_bit, the virial) and the forces at step 0 and after two NVE steps (run 0, then run 2; the example runs 10 steps).
+# oracle-inputs: w119amoeba_ub_cut.data w119amoeba_ub.prm w119amoeba_ub.key w119amoeba_ub_bitorsion.data
 # oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
-# Measured with native LAMMPS (black box): the engine agrees with native to 3.9e-13 relative in epair, 4.5e-13 in etotal, 2.6e-15 in f_pit, 2.1e-15 in f_bit, 1.6e-15 in ebond, 2.5e-15 in eangle, 2.0e-15 in edihed, 8.8e-16 in eimp, 1.5e-13 in press, 3.1e-14 to 5.9e-13 in the c_virial components, and the forces after two NVE steps to 6.1e-12 relative.
+# Measured with native LAMMPS (black box): thermo max relative error 2.4e-13 (c_virial[6] at step 2, rows 0 to 3), per-atom 2.2e-12 (fy) after the two NVE steps; the engine takes about 5 s
 units           real
 boundary        p p p
 atom_modify     sort 0 0.0
@@ -17,7 +17,7 @@ fix             pit all amoeba/pitorsion
 fix_modify      pit energy yes
 fix             bit all amoeba/bitorsion w119amoeba_ub_bitorsion.data
 fix_modify      bit energy yes
-read_data       w119amoeba_ub.data fix amtype NULL "Tinker Types" &
+read_data       w119amoeba_ub_cut.data fix amtype NULL "Tinker Types" &
                 fix pit "pitorsion types" "PiTorsion Coeffs" &
                 fix pit pitorsions PiTorsions &
                 fix bit bitorsions BiTorsions

@@ -1,7 +1,7 @@
-# oracle: fix srd with big triangle particles (four free triangles, 3d, fix nve/tri), noslip, overlap yes, shift yes, cubic warn, search 0.2 (a cut-down of examples/ASPHERE/tri/in.tri.srd: the first SRD run only, with timestep 0.002 and 500 steps on a box of side 8; the fix deform, the rigid/small molecule of the big particles, the tri/lj pair cut-off phase and the change_box triclinic phase are left out)
+# oracle: fix srd with big triangle particles (four free triangles, 3d, fix nve/tri), noslip, overlap yes, shift yes, cubic warn, search 0.2 (a cut-down of examples/ASPHERE/tri/in.tri.srd: the first SRD run only, with timestep 0.002 and 300 steps (was 500) on a box of side 8, and the SRD lattice at density 10 (was 20: 4344 atoms instead of about 10000, the 500-step run took 44 s, the density-10 run 5 s; density 5 changes the rescale count f_2[5] at step 200); the fix deform, the rigid/small molecule of the big particles, the tri/lj pair cut-off phase and the change_box triclinic phase are left out)
 # oracle-inputs: w79srd_tri.data
 # oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-13
-# Measured with native LAMMPS (black box): the engine agrees with every thermo column (c_tsmall, f_2[1..12] including the rescale count f_2[5], c_1, etotal, pe and ebig, press) to a relative error of 5e-14 (c_1) and with the positions, velocities and forces of every atom to 7.3e-13 (vy, scaled by max(1,|v|)). The first triangle collision is at step 31 in both (the big spin rises from 8.7e-5 to 1.02e-4 at step 32 in both). The engine rebuilds the neighbor list at the steps native does (a rebuild that fix srd requests refreshes the check positions, see neighbor.ts fixBuildStep).
+# Measured with native LAMMPS (black box, density 10, 300 steps): the engine agrees with every thermo column (c_tsmall, f_2[1..12] including the rescale count f_2[5], c_1, etotal, pe and ebig, press) to a relative error of 1.1e-13 (c_1) and with the positions, velocities and forces of every atom to 1.8e-12 (vz, scaled by max(1,|v|)). The collision steps of the density-20 run (the first triangle collision at step 31, the spin change at step 32) were measured at density 20 and are not re-checked here. The engine rebuilds the neighbor list at the steps native does (a rebuild that fix srd requests refreshes the check positions, see neighbor.ts fixBuildStep).
 units		lj
 atom_style	tri
 atom_modify	first big
@@ -11,7 +11,7 @@ read_data	w79srd_tri.data
 
 lattice		sc 0.4
 region		box block INF INF INF INF INF INF
-lattice		sc 20.0
+lattice		sc 10.0
 create_atoms	2 region box
 
 group		big type 1
@@ -63,4 +63,4 @@ thermo_modify	temp tbig
 thermo_modify	format float %.15g
 thermo		100
 
-run		500
+run		300

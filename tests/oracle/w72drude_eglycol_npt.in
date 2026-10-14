@@ -1,7 +1,7 @@
-# oracle: DRUDE ethylene glycol, NPT on the atoms with NVT on the Drude particles (examples/PACKAGES/drude/ethylene_glycol/in.ethylene_glycol) cut down to 10 molecules, 40 steps; fix npt with fix_modify temp (the example also sets press thermo_press, not matched), fix nvt on drudes, drude/transform, coul/tt, thole, shake (tolerance 1e-10)
-# oracle-inputs: w72drude_data.ethylene_glycol_10
+# oracle: DRUDE ethylene glycol, NPT on the atoms with NVT on the Drude particles (examples/PACKAGES/drude/ethylene_glycol/in.ethylene_glycol) cut down to 5 molecules (w72drude_data.eg5: the first 5 of the 10 molecules, ids renumbered; 70 atoms, 6.6 s instead of 16 s), 40 steps; fix npt with fix_modify temp (the example also sets press thermo_press, not matched), fix nvt on drudes, drude/transform, coul/tt, thole, shake (tolerance 1e-10)
+# oracle-inputs: w72drude_data.eg5
 # oracle-compare: thermo=all atoms=all rel=2e-6 abs=1e-10
-# Measured with native LAMMPS (black box): temp-only fix_modify, max relative error 1.0e-6 (thermo pe, step 40; steps 0-30 closer), the tolerance is 2e-6. With the example fix_modify press thermo_press the engine differs by 1e-5 at step 10 (see the ethanol case).
+# Measured with native LAMMPS (black box, 5 molecules): temp-only fix_modify, max relative error 5.4e-7 (thermo pe, step 40), the tolerance is 2e-6. With the example fix_modify press thermo_press the engine differs by 1e-5 at step 10 (see the ethanol case).
 # Measured with native LAMMPS (black box): setup energies and pressure agree to 1e-9 relative; per-atom forces to 1.6e-5 relative (pppm), so the atom tolerance is 1e-4. No dynamics, so this isolates the pair terms.
 
 units real
@@ -18,7 +18,7 @@ pair_style hybrid/overlay lj/cut/coul/long 8.0 8.0 thole 2.600 8.0 coul/tt 4 8.0
 pair_modify tail yes
 kspace_style pppm 1.0e-5
 
-read_data w72drude_data.ethylene_glycol_10
+read_data w72drude_data.eg5
 
 pair_coeff    1    1 lj/cut/coul/long     0.057289     3.500000  # CTO CTO ~
 pair_coeff    1    2 lj/cut/coul/long     0.091945     3.304542  # CTO OHG ~

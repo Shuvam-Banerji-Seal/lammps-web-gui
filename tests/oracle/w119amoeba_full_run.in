@@ -1,6 +1,6 @@
-# Measured with native LAMMPS (black box): the engine agrees with native to rel 1e-10 (abs floor 1e-10) in every thermo value and per-atom force and position; 1e-10 is the tightest tolerance measured on these cases.
-# oracle: the AMOEBA water box of examples/amoeba as in w119amoeba_full_box (648 atoms, ewald, pme-grid 24, cutoff 7 taper 6, polar-eps 1e-5), with 10 NVE steps (fix nve, dt 1 fs in real units) after the step-0 state; thermo every 5 steps and the atom forces and positions at step 10 are compared.
-# oracle-inputs: w119amoeba_box.data w119amoeba_water.prm w119amoeba_box_full.key
+# Measured with native LAMMPS (black box, 216-atom box): the engine agrees with native to 5.7e-13 relative in every thermo value and to 2.5e-12 per atom (force and position); 1e-10 is the tightest tolerance measured on these cases.
+# oracle: the AMOEBA water box of examples/amoeba as in w119amoeba_full_box, cut to its first 72 molecules (w119amoeba_box_k72.data: 216 atoms instead of 648, the 648-atom run took 21 s; the molecules keep the box size, so the density is a third of the example's, ewald, pme-grid 24, cutoff 7 taper 6, polar-eps 1e-5), with 10 NVE steps (fix nve, dt 1 fs in real units) after the step-0 state; thermo every 5 steps and the atom forces and positions at step 10 are compared.
+# oracle-inputs: w119amoeba_box_k72.data w119amoeba_water.prm w119amoeba_box_full.key
 # oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-10
 units           real
 boundary        p p p
@@ -11,7 +11,7 @@ dihedral_style  none
 fix             amtype all property/atom i_amtype ghost yes
 fix             extra all property/atom i_amgroup d_redID d_pval ghost yes
 fix             extra2 all property/atom i_polaxe d2_xyzaxis 3
-read_data       w119amoeba_box.data fix amtype NULL "Tinker Types"
+read_data       w119amoeba_box_k72.data fix amtype NULL "Tinker Types"
 special_bonds   lj/coul 0.5 0.5 0.5 one/five yes
 pair_style      amoeba
 pair_coeff      * * w119amoeba_water.prm w119amoeba_box_full.key

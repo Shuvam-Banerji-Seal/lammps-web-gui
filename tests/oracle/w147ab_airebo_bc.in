@@ -1,0 +1,18 @@
+# oracle: pair_style airebo/bc 3.0 1 1 - polyethylene (C2H4 chains) 60 atoms, 50 NVE steps (AIREBO-BC bond-centric P_CC); native: b332f28 (installed lmp)
+# oracle-inputs: w52airebo_polyethylene.data
+# oracle-potentials: CH.airebo-bc
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 atomrel=1e-8
+# measured: thermo rows agree with native to rel 1e-13 (abs floor 1e-10); per-atom max relative error 8.6e-13 (vz, atom 45, step 50)
+units           metal
+atom_style      atomic
+read_data       w52airebo_polyethylene.data
+timestep        0.0005
+pair_style      airebo/bc 3.0 1 1
+pair_coeff      * * CH.airebo-bc C H
+thermo_style    custom step temp pe etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             0
+velocity        all create 300.0 761341 loop all
+fix             1 all nve
+run             50

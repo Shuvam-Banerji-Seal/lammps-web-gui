@@ -12,8 +12,9 @@
  * This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  */
 import { StyleError } from '../../engine/force/types';
+import { readBcKnots } from './bc';
 
-export type AireboVariant = 'airebo' | 'rebo' | 'airebo/morse';
+export type AireboVariant = 'airebo' | 'rebo' | 'airebo/morse' | 'airebo/bc';
 
 /** Spline coefficient tables of read_file (flat, row-major as the C++ arrays). */
 export class SplineTables {
@@ -30,6 +31,9 @@ export class SplineTables {
   /** pCC[4][4][16], pCH[4][4][16] */
   pCC = new Float64Array(256);
   pCH = new Float64Array(256);
+  /** AIREBO-BC only: PCCf_bc[7][7] knots (index mC*7+mH) and pCC_bc[6][6][16] patches. */
+  bcKnots = new Float64Array(49);
+  pCCbc = new Float64Array(576);
   /** piCCdom[3][2], piCHdom[3][2], piHHdom[3][2] */
   piCCdom = new Float64Array(6);
   piCHdom = new Float64Array(6);
@@ -72,18 +76,19 @@ export const newParams = (): AireboParams => {
 };
 
 /**
- * The values of a potential file after the first two header lines: one value per line, the first
- * word of each non-empty line (the parameter lines carry the symbol name after the value; the
- * LAMMPS reader takes one line per value, PotentialFileReader::next_double).
+ * The non-empty, comment-free lines of a potential file after the first two header lines (their
+ * text without the comment). The values of the standard data take the first word of each line
+ * (the parameter lines carry the symbol name after the value; the LAMMPS reader takes one line per
+ * value, PotentialFileReader::next_double); the AIREBO-BC section reads whole lines.
  */
-const valueWords = (text: string): string[] => {
+const valueLines = (text: string): string[] => {
   const lines = text.split(/\r?\n/);
   const out: string[] = [];
   for (let n = 2; n < lines.length; n++) {
     const hash = lines[n].indexOf('#');
     const body = (hash >= 0 ? lines[n].slice(0, hash) : lines[n]).trim();
     if (body === '') continue;
-    out.push(body.split(/\s+/)[0]);
+    out.push(body);
   }
   return out;
 };
@@ -100,7 +105,8 @@ export const readAireboFile = (
   if (!line2.includes(header)) {
     throw new StyleError(`Potential file ${fileName} does not match AIREBO/REBO style variant: ${header}: ${line2}`);
   }
-  const tok = valueWords(text);
+  const lines = valueLines(text);
+  const tok = lines.map((l) => l.split(/\s+/)[0]);
   let p = 0;
   const bad = (what: string): never => {
     throw new StyleError(`reading ${what} section in ${fileName} file: unexpected end of file or bad number`);
@@ -218,5 +224,7 @@ export const readAireboFile = (
   readConj(T.piCHdom, T.piCH, 'piCH spline');
   readConj(T.piHHdom, T.piHH, 'piHH spline');
   readConj(T.Tijdom, T.Tijc, 'Tij spline');
+  // AIREBO-BC: the bond-centric P_CC knots follow the Tij section (PairAIREBO::read_file_extra)
+  if (variant === 'airebo/bc') readBcKnots(T, lines.slice(p), fileName);
   return { params: P, tables: T };
 };

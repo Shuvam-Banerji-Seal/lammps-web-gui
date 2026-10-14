@@ -116,9 +116,9 @@ describe('AIREBO pair style errors', () => {
     expect(errors.join('\n')).toMatch(/Illegal pair_style rebo command/);
   });
 
-  it('does not run the unported AIREBO-BC style', async () => {
-    const { errors } = await run('units metal\npair_style airebo/bc 3.0 1 1\n');
-    expect(errors.join('\n')).toMatch(/airebo\/bc/);
+  it('airebo/bc needs the bond-centric knots after the standard data', async () => {
+    const { errors } = await run(dimer('airebo/bc 3.0 1 1', 'CH.airebo', 1.3), ['CH.airebo']);
+    expect(errors.join('\n')).toMatch(/reading derived-class extra parameters/);
   });
 });
 

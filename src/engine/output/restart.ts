@@ -100,7 +100,7 @@ const PAIR_RESTART_STYLES = new Set([
  * the list below is every style whose page says so). write_restart stores no pair style for them.
  */
 export const PAIR_NOT_IN_RESTART = new Set([
-  'adp', 'agni', 'airebo', 'airebo/morse', 'amoeba', 'body/nparticle', 'body/rounded/polygon',
+  'adp', 'agni', 'airebo', 'airebo/bc', 'airebo/morse', 'amoeba', 'body/nparticle', 'body/rounded/polygon',
   'body/rounded/polyhedron', 'bop', 'comb', 'comb3', 'dispersion/d3', 'e3b', 'eam', 'eam/alloy',
   'eam/apip', 'eam/cd', 'eam/cd/old', 'eam/fs', 'eam/fs/apip', 'eam/he', 'edip', 'edip/multi',
   'gw', 'gw/zbl', 'hbond/dreiding/lj', 'hbond/dreiding/lj/angleoffset', 'hbond/dreiding/morse',

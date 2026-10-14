@@ -11,7 +11,8 @@
  * This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  */
 import { sp, sp2, type Ref } from './splines';
-import { TOL, kron, gSpline, PijSpline, piRCSpline, TijSpline, newRef, type ReboCore } from './rebo';
+import { TOL, kron, gSpline, piRCSpline, TijSpline, newRef, type ReboCore } from './rebo';
+import { bondorderPijCross, pijEval } from './bc';
 
 /** Parameters of the LJ / Morse term, precomputed in init_one (AIREBO side). */
 export interface LJParams {
@@ -109,7 +110,7 @@ export const bondorderLJ = (
   }
   dN2PIJ[0] = 0.0;
   dN2PIJ[1] = 0.0;
-  const PijS = PijSpline(core, NijC, NijH, itype, jtype, dN2PIJ);
+  const PijS = pijEval(core, NijC, NijH, NjiC, NjiH, itype, jtype, dN2PIJ);
   const pij = 1.0 / Math.sqrt(1.0 + Etmp + PijS);
   const tmppij = -0.5 * (pij * pij * pij);
   const tmp3pij = tmp3;
@@ -139,7 +140,7 @@ export const bondorderLJ = (
   }
   dN2PJI[0] = 0.0;
   dN2PJI[1] = 0.0;
-  const PjiS = PijSpline(core, NjiC, NjiH, jtype, itype, dN2PJI);
+  const PjiS = pijEval(core, NjiC, NjiH, NijC, NijH, jtype, itype, dN2PJI);
   const pji = 1.0 / Math.sqrt(1.0 + Etmp + PjiS);
   const tmppji = -0.5 * (pji * pji * pji);
   const tmp3pji = tmp3;
@@ -357,7 +358,8 @@ export const bondorderLJ = (
       addF(f, atomj, fj[0], fj[1], fj[2]);
       addF(f, atoml, fl[0], fl[1], fl[2]);
     }
-    // bond-averaged P is not used (AIREBO-BC is refused), so no cross force here
+    // bond-centric P cross forces (no-op for atom-centric P)
+    bondorderPijCross(core, atomi, atomj, itype, jtype, VA, tmppij, tmppji, dN2PIJ, dN2PJI);
     dN3[0] = dN3piRC[0];
     dN3[1] = dN3piRC[1];
     dN3[2] = dN3piRC[2];

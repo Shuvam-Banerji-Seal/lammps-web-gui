@@ -259,8 +259,8 @@ export const minimize = async (
         packForce(gNew);
         return en;
       };
-      let eTry = e;
-      let status: 'ok' | 'downhill' | 'zeroquad' | 'zeroalpha' | 'etol' = 'ok';
+      let eTry: number;
+      let status: 'ok' | 'downhill' | 'zeroquad' | 'zeroalpha' | 'etol';
       if (set.line === 'backtrack') {
         // Measured with native LAMMPS (black box, tests/oracle/w16min_backtrack.in): line backtrack accepts the
         // first trial alpha = min(1, dmax/max|h|), halved (alpha *= 0.5), whose energy satisfies
@@ -269,7 +269,6 @@ export const minimize = async (
         // halving when alpha reaches 0 or when the Armijo target is at the round-off level (de_ideal >= -EMACH):
         // "linesearch alpha is zero", or "energy tolerance" when the energy did go down (de < 0).
         let alpha = Math.min(LS_ALPHA_MAX, alphaMax);
-        status = 'zeroalpha';
         for (;;) {
           eTry = stepLS(alpha);
           const de = eTry - eStart;

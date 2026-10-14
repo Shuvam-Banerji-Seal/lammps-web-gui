@@ -302,7 +302,7 @@ run 0
 
   it('names an unsupported keyword instead of ignoring it', async () => {
     await expect(run(base('dump im all image 1 out.*.ppm type type ssao yes 5 0.5'))).rejects.toThrow(/ssao/);
-    await expect(run(base('dump im all image 1 out.*.ppm type type axes yes 0.5 0.1'))).rejects.toThrow(/axes/);
+    await expect(run(base('dump im all image 1 out.*.ppm type type shiny 0.2'))).rejects.toThrow(/shiny/);
   });
 
   it('requires a wildcard in the file name', async () => {

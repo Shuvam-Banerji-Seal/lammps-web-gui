@@ -4,6 +4,8 @@ import { StyleError } from '../force/types';
 import { buildAtomMap, massOf } from '../atoms';
 import { encodePng } from './png';
 import { encodeJpeg } from './jpeg';
+import { ColorMap } from './image_colormap';
+import { arrowParts, type ImageObject, type Vec3 } from './image_objects';
 
 /*
  * dump image — docs.lammps.org/dump_image.html.
@@ -43,6 +45,18 @@ import { encodeJpeg } from './jpeg';
  */
 
 type RGB = [number, number, number];
+
+/** What the object drawing needs from one snapshot's camera. */
+interface DrawCtx {
+  rgb: Uint8Array;
+  depth: Float64Array;
+  project: (p: number[]) => [number, number, number];
+  scale: number;
+  light: number[];
+  right: number[];
+  ui: number[];
+  V: number[];
+}
 
 /** A useful subset of the 140 pre-defined colour names (dump_image.html). */
 const NAMED_COLORS: Record<string, RGB> = {
@@ -95,6 +109,23 @@ export interface ImageOwner {
 }
 
 const DEG = Math.PI / 180;
+
+/** dump image axes locations; null is "no", "yes" is the lower left corner. */
+type AxesLocation = 'center' | 'lowerleft' | 'lowerright' | 'upperleft' | 'upperright';
+/** The colours of the x, y and z axes of dump image "axes" (red, green, blue). */
+const AXIS_COLORS: RGB[] = [[255, 0, 0], [0, 255, 0], [0, 0, 255]];
+const AXES_LOCATIONS = new Map<string, AxesLocation | null>([
+  ['no', null], ['center', 'center'], ['lowerleft', 'lowerleft'], ['yes', 'lowerleft'], ['lowerright', 'lowerright'], ['upperleft', 'upperleft'], ['upperright', 'upperright'],
+]);
+/**
+ * The origin's offset from the lower corner of the box, in units of the offset (dump_image.cpp, the axes block of
+ * DumpImage::create_image: 1 = +offset, -1 = -offset, 8 = 8 * offset), per x, y, z. The 2d and 3d tables are the
+ * native ones, which differ for the right and upper corners.
+ */
+const AXES_SHIFT: Record<2 | 3, Record<AxesLocation, [number, number, number]>> = {
+  3: { center: [1, 1, 1], lowerleft: [-1, -1, -1], lowerright: [-1, 8, -1], upperleft: [-1, -1, 8], upperright: [-1, 8, 8] },
+  2: { center: [1, 1, 1], lowerleft: [-1, -1, -1], lowerright: [8, -1, -1], upperleft: [-1, 8, -1], upperright: [8, 8, -1] },
+};
 const cross = (a: number[], b: number[]): number[] => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const dot = (a: number[], b: number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const normalize = (a: number[]): number[] => { const n = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / n, a[1] / n, a[2] / n]; };
@@ -143,6 +174,13 @@ export class ImageDump {
   /** dump_modify color definitions (name -> RGB), local to this dump. */
   private userColors = new Map<string, RGB>();
   private bond: { color: string; width: string } | null;
+  /** dump_modify amap (colour map of an atom colour value); null = the dump_image.html default. */
+  private amap: ColorMap | null = null;
+  private readonly defaultMap = ColorMap.default();
+  /** dump image "axes" keyword: the location, the length and the diameter fraction (null: no axes). */
+  private axes: { loc: AxesLocation; len: number; diam: number } | null = null;
+  /** dump image "fix ID style flag1 flag2" keywords: the fixes whose graphics objects are drawn. */
+  private fixObjects: { id: string; style: 'type' | 'element' | 'const'; flag1: number; flag2: number; rgb: RGB }[] = [];
 
   /**
    * multifileOverride: write_dump only. write_dump.html: "Normally, dump image files require a filename with a "*"
@@ -237,11 +275,39 @@ export class ImageDump {
           k += 3;
           break;
         }
+        case 'fix': {
+          // dump_image.html: "fix ID style flag1 flag2" with "style = type, element or const"; "flag1 and flag2 are
+          // added to the object sizes" (the objects of fix graphics/lines, objects and arrows).
+          const id = a[k + 1], style = a[k + 2];
+          if (!id || !style || a.length < k + 5) throw new StyleError(`dump ${this.id}: dump image fix needs an ID, a style and two values`);
+          if (!this.sys.fixes.some((f) => f.id === id)) throw new StyleError(`dump ${this.id}: dump image fix ID '${id}' does not exist`);
+          if (style !== 'type' && style !== 'element' && style !== 'const') throw new StyleError(`dump ${this.id}: unsupported colour style '${style}' for dump image fix ${id}`);
+          this.fixObjects.push({ id, style, flag1: this.num(a[k + 3], 'fix'), flag2: this.num(a[k + 4], 'fix'), rgb: [255, 255, 255] });
+          k += 5;
+          break;
+        }
         // The remaining keyword/value pairs are accepted by the grammar but need renderers the engine does not
         // have (or only change image quality). Named so the stop is never silent (dump_image.html keyword list).
+        case 'axes': {
+          // dump_image.html: "axes = no or location, length, diameter"; the location is center, lowerleft (yes),
+          // lowerright, upperleft or upperright; native reads four words in every case (dump_image.cpp, iarg += 4).
+          const loc = AXES_LOCATIONS.get(a[k + 1] ?? '');
+          if (loc === undefined) throw new StyleError(`dump ${this.id}: unknown dump image axes location '${a[k + 1] ?? ''}'`);
+          if (loc === null) this.axes = null;
+          else {
+            const len = this.num(a[k + 2], 'axes'), diam = this.num(a[k + 3], 'axes');
+            if (!(len > 0)) throw new StyleError(`dump ${this.id}: invalid dump image axes length ${len}`);
+            if (!(diam > 0)) throw new StyleError(`dump ${this.id}: invalid dump image axes diameter ${diam}`);
+            this.axes = { loc, len, diam };
+            // the letters X, Y and Z are bitmaps in native image.cpp (Image::draw_axes), not ported: named, not silent
+            this.sys.log(`WARNING: dump ${this.id} image axes: the X, Y and Z letters are not drawn by the browser engine`);
+          }
+          k += 4;
+          break;
+        }
         // ellipsoid draws ellipsoids (and superellipsoids, atom_style ellipsoid superellipsoid): no renderer here
-        case 'ellipsoid': case 'autobond': case 'grid': case 'line': case 'tri': case 'body': case 'fix': case 'region':
-        case 'axes': case 'subbox': case 'shiny': case 'fsaa': case 'ssao': case 'persp':
+        case 'ellipsoid': case 'autobond': case 'grid': case 'line': case 'tri': case 'body': case 'region':
+        case 'subbox': case 'shiny': case 'fsaa': case 'ssao': case 'persp':
           throw new StyleError(`dump ${this.id}: dump image keyword '${key}' is not supported by the browser engine`);
         default:
           throw new StyleError(`dump ${this.id}: unknown dump image keyword '${key}'`);
@@ -297,14 +363,27 @@ export class ImageDump {
         this.userColors.set(name, [Math.round(c[0] * 255), Math.round(c[1] * 255), Math.round(c[2] * 255)]);
         return 5;
       }
-      case 'amap': case 'gmap': case 'bitrate': case 'framerate': case 'region': case 'thresh':
+      case 'amap': {
+        const { map, used } = ColorMap.parse(a.slice(k + 1), (c) => this.userColors.get(c) ?? NAMED_COLORS[c] ?? null);
+        this.amap = map;
+        return used + 1;
+      }
+      case 'fcolor': {
+        // dump_modify fcolor: "fcolor ID color" sets the colour of the objects of a dump image "fix" keyword that
+        // use the const style (the colour is only read for that style, as in native dump_image.cpp)
+        const f = this.fixObjects.find((x) => x.id === a[k + 1]);
+        if (!f) throw new StyleError(`dump ${this.id}: dump_modify fcolor: fix ID '${a[k + 1] ?? ''}' is not a dump image fix`);
+        f.rgb = this.color(a[k + 2] ?? '');
+        return 3;
+      }
+      case 'gmap': case 'bitrate': case 'framerate': case 'region': case 'thresh':
         throw new StyleError(`dump ${this.id}: dump_modify keyword '${key}' is not supported for dump image by the browser engine`);
       default:
         return 0;
     }
   }
 
-  private typeColor(s: SimState, i: number, colorVals: Float64Array | null, cmap: [number, number]): RGB {
+  private typeColor(s: SimState, i: number, colorVals: Float64Array | null, cmap: ColorMap | null): RGB {
     const type = s.type[i];
     if (this.attr.color === 'type') {
       const custom = this.acolorByType.get(type);
@@ -314,16 +393,20 @@ export class ImageDump {
       const el = this.elementName(s, type);
       return (ELEMENTS[el] ?? ELEMENTS.C)[0];
     }
-    return this.colorMap(colorVals![i], cmap);
+    return cmap!.color(colorVals![i]);
   }
 
   /**
-   * dump_image.html Default: "amap = min max cf 0.0 2 min blue max red" — a continuous absolute map
-   * from blue at the group minimum to red at the group maximum, clamped outside the range.
+   * The colour map of an atom colour value: dump_modify amap, or the dump_image.html default
+   * "amap = min max cf 0.0 2 min blue max red" (blue at the group minimum, red at the group maximum).
+   * The range is the group's minimum and maximum of the values (ColorMap.bounds).
    */
-  private colorMap(x: number, [lo, hi]: [number, number]): RGB {
-    const t = hi > lo ? Math.max(0, Math.min(1, (x - lo) / (hi - lo))) : 0;
-    return [Math.round(255 * t), 0, Math.round(255 * (1 - t))];
+  private atomColorMap(colorVals: Float64Array | null, s: SimState): ColorMap | null {
+    if (!colorVals) return null;
+    const [lo, hi] = this.rangeOf(colorVals, s);
+    const cm = this.amap ?? this.defaultMap;
+    cm.bounds(lo, hi);
+    return cm;
   }
 
   private elementName(s: SimState, type: number): string {
@@ -435,15 +518,15 @@ export class ImageDump {
 
     // per-atom colour/diameter attributes (computed once per snapshot)
     const colorVals = this.attr.color !== 'type' && this.attr.color !== 'element' ? this.attributeValues(this.attr.color, s) : null;
-    const cmap = colorVals ? this.rangeOf(colorVals, s) : ([0, 0] as [number, number]);
+    const cmap = this.atomColorMap(colorVals, s);
     const diamVals = this.attr.diameter !== 'type' && this.attr.diameter !== 'element' ? this.attributeValues(this.attr.diameter, s) : null;
 
     if (this.boxOn) this.drawBox(s, rgb, depth, project, scale, this.boxDiam);
     if (this.bond) this.drawBonds(s, rgb, depth, project, scale, diamVals);
 
+    // light from up-right of the viewer
+    const light = normalize([V[0] * 0.5 + ui[0] * 0.5 + right[0] * 0.3, V[1] * 0.5 + ui[1] * 0.5 + right[1] * 0.3, V[2] * 0.5 + ui[2] * 0.5 + right[2] * 0.3]);
     if (this.atomOn) {
-      // light from up-right of the viewer
-      const light = normalize([V[0] * 0.5 + ui[0] * 0.5 + right[0] * 0.3, V[1] * 0.5 + ui[1] * 0.5 + right[1] * 0.3, V[2] * 0.5 + ui[2] * 0.5 + right[2] * 0.3]);
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & this.sys.groupBit(this.group))) continue;
         const diam = this.diameter(s, i, diamVals);
@@ -455,7 +538,137 @@ export class ImageDump {
         this.drawSphere(rgb, depth, px, py, pd, r, base, light, right, ui, V);
       }
     }
+    const ctx: DrawCtx = { rgb, depth, project, scale, light, right, ui, V };
+    if (this.fixObjects.length) this.drawFixObjects(s, ctx);
+    if (this.axes) {
+      // the origin is grey, the x, y and z arrows red, green and blue (dump_image.cpp, Image::draw_axes)
+      const [origin, ...arrows] = this.axesObjects(s);
+      this.drawImageObject(origin, [128, 128, 128], 0, 0, ctx);
+      arrows.forEach((o, d) => this.drawImageObject(o, AXIS_COLORS[d], 0, 0, ctx));
+    }
     return rgb;
+  }
+
+  /**
+   * Draws the graphics objects of the dump's "fix" keywords (image_objects.ts). Sizes get the keyword's flags
+   * added (flag1 to lengths, flag2 to diameters, as dump_image.html states); a shape of zero or negative size is
+   * skipped, like native draw_cylinder does. Colour: type and element styles take the object's type through the
+   * atom colour or element tables (native: itype = int(type - 1) % ntypes + 1, white when itype <= 0).
+   */
+  private drawFixObjects(s: SimState, ctx: DrawCtx): void {
+    for (const fo of this.fixObjects) {
+      const fix = this.sys.fixes.find((f) => f.id === fo.id);
+      const objs = fix?.imageObjects?.();
+      if (!objs) throw new StyleError(`dump ${this.id}: dump image fix ${fo.id} provides no graphics objects`);
+      for (const o of objs) {
+        const itype = Math.trunc(o.type - 1) % s.ntypes + 1;
+        let base: RGB = [255, 255, 255];
+        if (fo.style === 'const') base = fo.rgb;
+        else if (itype > 0 && fo.style === 'type') base = this.acolorByType.get(itype) ?? TYPE_COLORS[(itype - 1) % TYPE_COLORS.length];
+        else if (itype > 0) base = (ELEMENTS[this.elementName(s, itype)] ?? ELEMENTS.C)[0];
+        this.drawImageObject(o, base, fo.flag1, fo.flag2, ctx);
+      }
+    }
+  }
+
+  /** One graphics object in colour `base`; flag1 and flag2 as dump image's "fix" keyword gives them. */
+  private drawImageObject(o: ImageObject, base: RGB, flag1: number, flag2: number, c: DrawCtx): void {
+    const { rgb, depth, project, scale } = c;
+    if (o.kind === 'sphere') {
+      const r = 0.5 * (o.diameter + flag2) * scale;
+      if (!(r > 0)) return;
+      const [px, py, pd] = project(o.center);
+      this.drawSphere(rgb, depth, px, py, pd, r, base, c.light, c.right, c.ui, c.V);
+    } else if (o.kind === 'cylinder') {
+      const d = o.diameter + flag2;
+      if (!(d > 0)) return;
+      this.drawStroke(rgb, depth, project(o.p1), project(o.p2), base, Math.max(1, d * scale));
+      // flag1 is the sflag of native draw_cylinder: bit 0 caps p1, bit 1 caps p2, each with a sphere
+      const caps = Math.trunc(flag1);
+      const r = 0.5 * d * scale;
+      if (caps & 1) { const [px, py, pd] = project(o.p1); this.drawSphere(rgb, depth, px, py, pd, r, base, c.light, c.right, c.ui, c.V); }
+      if (caps & 2) { const [px, py, pd] = project(o.p2); this.drawSphere(rgb, depth, px, py, pd, r, base, c.light, c.right, c.ui, c.V); }
+    } else if (o.kind === 'cone') {
+      this.drawCone(rgb, depth, project, o.p1, o.p2, o.d1 + flag2, o.d2 + flag2, scale, base);
+    } else {
+      const d = o.diameter + flag2;
+      if (!(d > 0)) return;
+      const parts = arrowParts({ center: o.center, dir: o.dir, length: o.length + flag1, diameter: d, ratio: o.ratio });
+      this.drawStroke(rgb, depth, project(parts.shaft.p1), project(parts.shaft.p2), base, Math.max(1, d * scale));
+      this.drawCone(rgb, depth, project, parts.head.p1, parts.head.p2, parts.head.d1, parts.head.d2, scale, base);
+    }
+  }
+
+  /**
+   * The axes of dump image "axes" (dump_image.cpp, DumpImage::create_image): the origin is the lower corner of the box
+   * moved by the offset (10% of the longest edge, half of it for center), the arrows reach axes-length times the box
+   * edges, and the diameter is axes-diameter times the shortest edge. The origin is a grey sphere (its radius is passed
+   * as the diameter, as native does), the x, y and z arrows are red, green and blue (z only in 3d). The letters are
+   * not drawn (the log line in the parser). Triclinic boxes are refused.
+   */
+  private axesObjects(s: SimState): ImageObject[] {
+    const b = s.box;
+    if (b.tilt.some((t) => t !== 0)) throw new StyleError(`dump ${this.id}: dump image axes for a triclinic box are not supported by the browser engine`);
+    const dim = s.dimension === 2 ? 2 : 3;
+    const edges = [0, 1, 2].slice(0, dim).map((d) => b.hi[d] - b.lo[d]);
+    const axes = this.axes!;
+    const diameter = Math.min(...edges) * axes.diam;
+    const offset = Math.max(...edges) * (axes.loc === 'center' ? 0.5 : 0.1);
+    const m = AXES_SHIFT[dim][axes.loc];
+    const origin: Vec3 = [b.lo[0] + m[0] * offset, b.lo[1] + m[1] * offset, b.lo[2] + m[2] * offset];
+    const objs: ImageObject[] = [{ kind: 'sphere', type: 0, center: origin, diameter: 0.5 * diameter }];
+    const colour = [0, 1, 2];
+    for (const d of colour.slice(0, dim)) {
+      const tip: Vec3 = [origin[0], origin[1], origin[2]];
+      tip[d] += axes.len * edges[d];
+      const dir: Vec3 = [tip[0] - origin[0], tip[1] - origin[1], tip[2] - origin[2]];
+      const center: Vec3 = [0.5 * (origin[0] + tip[0]), 0.5 * (origin[1] + tip[1]), 0.5 * (origin[2] + tip[2])];
+      objs.push({ kind: 'arrow', type: d, center, dir, length: axes.len * edges[d], diameter, ratio: 0.2 });
+    }
+    return objs;
+  }
+
+  /**
+   * A cone as chords perpendicular to its projected axis (the silhouette of a side-on cone); a cone that points at the
+   * viewer (its axis projects to a point) is a flat disc of its largest diameter.
+   */
+  private drawCone(rgb: Uint8Array, depth: Float64Array, project: (p: number[]) => [number, number, number], p1: Vec3, p2: Vec3, d1: number, d2: number, scale: number, color: RGB): void {
+    const a = project(p1), b = project(p2);
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy);
+    if (len < 1) {
+      const r = 0.5 * Math.max(d1, d2) * scale;
+      if (r > 0) this.drawDisc(rgb, depth, a[0], a[1], a[2], Math.max(0.5, r), color);
+      return;
+    }
+    const nx = -dy / len, ny = dx / len;
+    const steps = Math.ceil(len);
+    for (let t = 0; t <= steps; t++) {
+      const f = t / steps;
+      const d = d1 + (d2 - d1) * f;
+      if (!(d > 0)) continue;
+      const r = 0.5 * d * scale;
+      const x = a[0] + dx * f, y = a[1] + dy * f, z = a[2] + (b[2] - a[2]) * f;
+      this.drawLine(rgb, depth, [x + nx * r, y + ny * r, z], [x - nx * r, y - ny * r, z], color, 1);
+    }
+  }
+
+  private drawDisc(rgb: Uint8Array, depth: Float64Array, x: number, y: number, z: number, r: number, color: RGB): void {
+    const w = this.w, h = this.h;
+    const x0 = Math.max(0, Math.floor(x - r)), x1 = Math.min(w - 1, Math.ceil(x + r));
+    const y0 = Math.max(0, Math.floor(y - r)), y1 = Math.min(h - 1, Math.ceil(y + r));
+    for (let yy = y0; yy <= y1; yy++) for (let xx = x0; xx <= x1; xx++) {
+      if ((xx + 0.5 - x) ** 2 + (yy + 0.5 - y) ** 2 > r * r) continue;
+      const o = yy * w + xx;
+      if (z <= depth[o]) continue;
+      depth[o] = z;
+      rgb[3 * o] = color[0]; rgb[3 * o + 1] = color[1]; rgb[3 * o + 2] = color[2];
+    }
+  }
+
+  /** A straight stroke of a given pixel width between two projected points (the drawLine rule). */
+  private drawStroke(rgb: Uint8Array, depth: Float64Array, p1: [number, number, number], p2: [number, number, number], color: RGB, width: number): void {
+    this.drawLine(rgb, depth, p1, p2, color, width);
   }
 
   private dimension2Fallback(V: number[]): number[] {
@@ -528,7 +741,7 @@ export class ImageDump {
     const map = buildAtomMap(s);
     const bond = this.bond!;
     const colorVals = this.attr.color !== 'type' && this.attr.color !== 'element' ? this.attributeValues(this.attr.color, s) : null;
-    const cmap = colorVals ? this.rangeOf(colorVals, s) : ([0, 0] as [number, number]);
+    const cmap = this.atomColorMap(colorVals, s);
     for (let bi = 0; bi < bonds.n; bi++) {
       const i1 = map[bonds.atoms[2 * bi]], i2 = map[bonds.atoms[2 * bi + 1]];
       if (i1 < 0 || i2 < 0) continue;

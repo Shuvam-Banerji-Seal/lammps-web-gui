@@ -21,6 +21,9 @@ import { parseNum } from '../../engine/force/util';
 import { FixEfield } from '../../engine/fix/force_ext';
 import { invertDense } from './electrode_math';
 import { MY_2PI, safeDerfcr } from './electrode_math';
+
+/** MY_4PI of LAMMPS math_const.h (4 pi): the fix_modify tf length is scaled by it (fix_electrode_conp.cpp modify_param). */
+const MY_4PI = 4 * Math.PI;
 import { eachImagePair, matrixPairTerms, matrixSelfTerms, vectorPairTerms, vectorSelfTerms } from './electrode_pairs';
 import type { ElectrodeKSpace } from './ewald_electrode';
 
@@ -100,6 +103,8 @@ export class FixElectrodeConp extends Fix {
   protected imat: Int32Array = new Int32Array(0);     // per atom: matrix index or -1
   protected ngroup = 0;
   protected elastance: Float64Array = new Float64Array(0);
+  /** fix_modify tf: Thomas-Fermi self term per atom type (null = not used). */
+  protected tfTypes: Map<number, number> | null = null;
   protected capacitance: Float64Array = new Float64Array(0);
   protected sdVectors: Float64Array[] = [];
   protected macroCapacitance: number[][] = [];
@@ -282,9 +287,35 @@ export class FixElectrodeConp extends Fix {
   }
 
   modify(key: string, values: string[]): number {
-    if (key === 'tf') throw new StyleError('fix_modify tf (Thomas-Fermi) is not supported by the browser engine (fix electrode/conp)');
+    if (key === 'tf') return this.setTf(values);
     if (key === 'energy') throw new StyleError('fix_modify energy is not used by fix electrode/conp (its energy is always part of pe)');
     return super.modify(key, values);
+  }
+
+  /**
+   * fix_modify tf type length voronoi (fix_electrode_conp.cpp modify_param): the Thomas-Fermi self term of the atom
+   * type, MY_4PI l_TF^2 / voronoi, replaces any earlier value of that type. The docs (docs.lammps.org/fix_electrode.html,
+   * doc/src/fix_electrode.rst at b332f28): "fix_modify ID tf type length voronoi"; "If this option is used, these two
+   * parameters must be set for all atom types of the electrode"; "A_{ii} += 1/(4 pi eps0) x 4 pi l_TF^2 / Voronoi
+   * volume" for all electrode atoms (Scalfi). The electrolyte atoms of the type get no term (a warning names them).
+   */
+  protected setTf(values: string[]): number {
+    if (values.length < 3) throw new StyleError(`Incorrect number of arguments for fix_modify ${this.style}`);
+    const type = Math.trunc(parseNum(values[0], 'fix_modify tf type'));
+    const len = parseNum(values[1], 'fix_modify tf length');
+    const voronoi = parseNum(values[2], 'fix_modify tf voronoi');
+    const s = this.sys.state;
+    let inEle = 0, notInEle = 0;
+    for (let i = 0; i < s.n; i++) {
+      if (s.type[i] !== type) continue;
+      if (s.mask[i] & this.elecBit) inEle++;
+      else notInEle++;
+    }
+    if (inEle === 0) throw new StyleError('No atoms of type in electrode');
+    if (notInEle) this.sys.warn('Not all atoms of type in electrode; Thomas-Fermi parameters will be ignored for electrolyte');
+    this.tfTypes ??= new Map<number, number>();
+    this.tfTypes.set(type, MY_4PI * len * len / voronoi);
+    return 4;
   }
 
   /** Fix init: the Coulomb pair style and the k-space style must support the electrode interface. */
@@ -305,6 +336,14 @@ export class FixElectrodeConp extends Fix {
       for (let t = 1; t <= s.ntypes; t++) {
         if (!elec[t] === !elyt[t]) throw new StyleError('Types overlap, cannot use etypes keyword');
       }
+    }
+  }
+
+  /** setup_post_neighbor(): with Thomas-Fermi, every electrode atom type needs its tf parameters. */
+  protected checkTfTypes(): void {
+    const s = this.sys.state;
+    for (let k = 0; k < this.elec.length; k++) {
+      if (!this.tfTypes!.has(s.type[this.elec[k]])) throw new StyleError(`Thomas-Fermi parameters not set for all types in fix ${this.style}`);
     }
   }
 
@@ -351,6 +390,13 @@ export class FixElectrodeConp extends Fix {
     matrixPairTerms(s, geom, cutsq, nt, this.elecBit, this.imat, ng, this.elastance, ks.gEwald, this.etaOf, this.etypes);
     matrixSelfTerms(s, this.elecBit, this.imat, ng, this.elastance, ks.gEwald, this.etaOf);
     ks.computeMatrixCorr(s, this.imat, this.elastance, ng);
+    // ElectrodeMatrix::tf_contribution: A_ii += tf of the atom type for every electrode atom (after the k-space terms)
+    if (this.tfTypes) {
+      for (let k = 0; k < this.elec.length; k++) {
+        const row = this.ieleOfElec[k];
+        this.elastance[row * ng + row] += this.tfTypes.get(s.type[this.elec[k]])!;
+      }
+    }
   }
 
   /** Dense symmetrisation: C -= (C 1)(C 1)^T / (1^T C 1) (fix_electrode_conp.cpp symmetrize). */
@@ -428,6 +474,7 @@ export class FixElectrodeConp extends Fix {
     const s = this.sys.state;
     const ks = this.kspaceOf!;
     this.evscale = s.units.qe2f / ks.qqrd2e;
+    if (this.tfTypes) this.checkTfTypes();
     if (this.algo !== 'cg') {
       this.computeElastance();
       if (this.writeMat !== null) this.writeTable(this.writeMat, this.orderMatrix(this.elastance));
@@ -574,6 +621,13 @@ export class FixElectrodeConp extends Fix {
     const sameType = electrodeOnly && this.etypes;
     vectorPairTerms(s, this.sys.geom, this.sys.ff.pair!.cutsq, this.sys.ff.pair!.ntypes + 1, sensorBit, sourceBit, invert, pot, ks.gEwald, this.etaOf, sameType);
     vectorSelfTerms(s, sensorBit, sourceBit, invert, pot, ks.gEwald, this.etaOf);
+    // ElectrodeVector::tf_contribution (the electrode-electrode vector of the CG algorithm only): pot_i += tf q_i
+    if (electrodeOnly && this.tfTypes) {
+      for (let k = 0; k < this.elec.length; k++) {
+        const i = this.elec[k];
+        pot[i] += this.tfTypes.get(s.type[i])! * s.q[i];
+      }
+    }
     ks.computeVector(s, pot, sensorBit, sourceBit, invert);
     ks.computeVectorCorr(s, pot, sensorBit, sourceBit, invert);
     return pot;
@@ -736,6 +790,8 @@ export class FixElectrodeConp extends Fix {
       const q2 = s.q[i] * s.q[i];
       const ieta = this.etaOf(i);
       energy += ieta * pre * q2;
+      // self_energy(): e += 0.5 qqrd2e q^2 tf for the Thomas-Fermi atoms
+      if (this.tfTypes) energy += 0.5 * qqrd2e * q2 * this.tfTypes.get(s.type[i])!;
     }
     return energy;
   }

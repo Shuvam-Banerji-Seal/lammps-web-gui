@@ -288,6 +288,9 @@ export class Session {
   }
 
   private async dispatch(cmd: string, a: string[], frame: Frame | null): Promise<void> {
+    // a formula that calls omega() (variable, print, if, fix print ...) needs the group motion helper of
+    // groupMotion.ts; it is loaded here, before the switch below, which runs some commands (if) without the lookup
+    if (a.some((w) => w.includes('omega('))) await ensureStyles(['omega']);
     // a jump or next moves one stream for all partitions; with partitions each replica's variables could
     // differ, so the loop controls are refused rather than guessed
     if (this.replicas.length > 1 && (cmd === 'jump' || cmd === 'next')) {

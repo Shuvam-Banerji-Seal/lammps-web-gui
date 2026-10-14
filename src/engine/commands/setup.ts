@@ -20,6 +20,7 @@ import {
 } from '../region';
 import { readData, writeData, defaultReadOptions, type ReadDataOptions } from '../output/data';
 import { RanMars, RanPark, Rng } from '../rng';
+import { groupMotionOf } from '../groupMotion';
 import { nativeRandom } from '../styles';
 import { gzipText } from '../gzip';
 import { ComputeTemp } from '../compute/temp';
@@ -2174,44 +2175,25 @@ export const zeroMomentum = (sys: System, members: number[]): void => {
   for (const i of members) for (let d = 0; d < 3; d++) s.v[3 * i + d] -= p[d] / mt;
 };
 
+/**
+ * velocity zero angular and rot yes (Velocity::zero_rotation in src/velocity.cpp at b332f28): omega is the group's
+ * Group::omega about its centre of mass (no 2d branch in the source), and v_i -= omega x (r_i - xcm) with the unwrapped
+ * positions.
+ */
 export const zeroRotation = (sys: System, members: number[]): void => {
   const s = sys.state;
+  const motion = groupMotionOf(sys, members, 'velocity');
+  if (!(motion.masstotal > 0)) return;
+  const { xcm, omega: w } = motion;
   const g = sys.geom;
-  const pos = members.map((i) => { const u = [0, 0, 0]; g.unwrap(s.x, s.image, i, u); return u; });
-  let mt = 0;
-  const c = [0, 0, 0];
-  members.forEach((i, k) => { const m = massOf(s, i); mt += m; for (let d = 0; d < 3; d++) c[d] += m * pos[k][d]; });
-  if (!(mt > 0)) return;
-  for (let d = 0; d < 3; d++) c[d] /= mt;
-  const L = [0, 0, 0];
-  const I = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
-  members.forEach((i, k) => {
-    const m = massOf(s, i);
-    const r = [pos[k][0] - c[0], pos[k][1] - c[1], pos[k][2] - c[2]];
-    const v = [s.v[3 * i], s.v[3 * i + 1], s.v[3 * i + 2]];
-    L[0] += m * (r[1] * v[2] - r[2] * v[1]); L[1] += m * (r[2] * v[0] - r[0] * v[2]); L[2] += m * (r[0] * v[1] - r[1] * v[0]);
-    const r2 = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
-    for (let p = 0; p < 3; p++) for (let q = 0; q < 3; q++) I[p][q] += m * ((p === q ? r2 : 0) - r[p] * r[q]);
-  });
-  let w: number[];
-  if (s.dimension === 2) w = [0, 0, I[2][2] > 0 ? L[2] / I[2][2] : 0];
-  else {
-    const [[a0, b0, c0], [d0, e0, f0], [g0, h0, k0]] = I;
-    const det = a0 * (e0 * k0 - f0 * h0) - b0 * (d0 * k0 - f0 * g0) + c0 * (d0 * h0 - e0 * g0);
-    if (Math.abs(det) < 1e-300) return;
-    const inv = [
-      [(e0 * k0 - f0 * h0) / det, (c0 * h0 - b0 * k0) / det, (b0 * f0 - c0 * e0) / det],
-      [(f0 * g0 - d0 * k0) / det, (a0 * k0 - c0 * g0) / det, (c0 * d0 - a0 * f0) / det],
-      [(d0 * h0 - e0 * g0) / det, (b0 * g0 - a0 * h0) / det, (a0 * e0 - b0 * d0) / det],
-    ];
-    w = [0, 1, 2].map((p) => inv[p][0] * L[0] + inv[p][1] * L[1] + inv[p][2] * L[2]);
-  }
-  members.forEach((i, k) => {
-    const r = [pos[k][0] - c[0], pos[k][1] - c[1], pos[k][2] - c[2]];
+  const u = [0, 0, 0];
+  for (const i of members) {
+    g.unwrap(s.x, s.image, i, u);
+    const r = [u[0] - xcm[0], u[1] - xcm[1], u[2] - xcm[2]];
     s.v[3 * i] -= w[1] * r[2] - w[2] * r[1];
     s.v[3 * i + 1] -= w[2] * r[0] - w[0] * r[2];
     s.v[3 * i + 2] -= w[0] * r[1] - w[1] * r[0];
-  });
+  }
 };
 
 // ----------------------------------------------------------------- atom edits

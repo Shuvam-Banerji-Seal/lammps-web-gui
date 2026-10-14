@@ -141,10 +141,11 @@ export const noSquishRotate = (k: number, p: Q4, q: Q4, inertia: V3, dt: number)
 
 /**
  * Eigen-decomposition of a symmetric 3x3 matrix by cyclic Jacobi rotations, sorted by increasing eigenvalue
- * (MathEigen::jacobi3 with sort = 1). Returns the eigenvalues and the eigenvectors as columns.
+ * (MathEigen::jacobi3 with sort = 1), or by decreasing eigenvalue when decreasing is true (sort = -1, the default of
+ * MathEigen::jacobi3 that Group::omega uses). Returns the eigenvalues and the eigenvectors as columns.
  * Throws if the rotations do not converge (the source returns an error code).
  */
-export const jacobi3 = (mat: number[][]): { eval: V3; evec: number[][] } => {
+export const jacobi3 = (mat: number[][], decreasing = false): { eval: V3; evec: number[][] } => {
   const n = 3;
   const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
   for (let i = 0; i < n; i++) for (let j = i; j < n; j++) M[i][j] = mat[i][j];
@@ -228,10 +229,10 @@ export const jacobi3 = (mat: number[][]): { eval: V3; evec: number[][] } => {
   }
   if (!converged) throw new Error('Insufficient Jacobi rotations for rigid body');
   const ev: V3 = [M[0][0], M[1][1], M[2][2]];
-  // SortRows, increasing eigenvalues
+  // SortRows (math_eigen_impl.h): selection by the larger (decreasing) or smaller (increasing) eigenvalue
   for (let a = 0; a < n - 1; a++) {
     let imax = a;
-    for (let b = a + 1; b < n; b++) if (ev[b] < ev[imax]) imax = b;
+    for (let b = a + 1; b < n; b++) if (decreasing ? ev[b] > ev[imax] : ev[b] < ev[imax]) imax = b;
     [ev[a], ev[imax]] = [ev[imax], ev[a]];
     [E[a], E[imax]] = [E[imax], E[a]];
   }

@@ -1,0 +1,29 @@
+# oracle: velocity create ... mom yes rot yes on a collinear wire of 10 atoms (tilted line (0.6k, 0.8k, 0)): the inertia tensor is singular, so Group::omega takes the jacobi3 path (src/group.cpp at b332f28, EPSILON 1e-6); then 5 steps of NVE with zero epsilon
+# native: b332f28 installed lmp (/home/roy/.local/bin/lmp), no extra package
+# measured: (filled in by the run)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units          lj
+dimension      3
+boundary       f f f
+atom_style     atomic
+region         box block -10 10 -10 10 -10 10
+create_box     1 box
+create_atoms   1 single 0.0 0.0 0.0 units box
+create_atoms   1 single 0.6 0.8 0.0 units box
+create_atoms   1 single 1.2 1.6 0.0 units box
+create_atoms   1 single 1.8 2.4 0.0 units box
+create_atoms   1 single 2.4 3.2 0.0 units box
+create_atoms   1 single 3.0 4.0 0.0 units box
+create_atoms   1 single 3.6 4.8 0.0 units box
+create_atoms   1 single 4.2 5.6 0.0 units box
+create_atoms   1 single 4.8 6.4 0.0 units box
+create_atoms   1 single 5.4 7.2 0.0 units box
+mass           * 1.0
+pair_style     lj/cut 2.5
+pair_coeff     * * 0.0 1.0 2.5
+velocity       all create 1.0 4928459 mom yes rot yes dist gaussian
+fix            1 all nve
+thermo_style   custom step temp ke
+thermo_modify  format float %.15g
+thermo         1
+run            5

@@ -159,6 +159,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_langevin_angmom', names: { HOOKS: ['angmom'] }, load: () => import('../engine-gpl/registry/langevin_angmom') as Promise<StyleModule> },
   { id: 'gpl_qeq', names: { HOOKS: ['qeq/point', 'qeq/shielded', 'qeq/slater'] }, load: () => import('../engine-gpl/registry/qeq_native') as Promise<StyleModule> },
   { id: 'gpl_ctip', names: { PAIRS: ['coul/ctip'], FIXES: ['qeq/ctip'] }, load: () => import('../engine-gpl/registry/ctip') as Promise<StyleModule> },
+  { id: 'gpl_group_omega', names: { HOOKS: ['velocity', 'momentum', 'omega'] }, load: () => import('../engine-gpl/registry/group_omega') as Promise<StyleModule> },
   { id: 'gpl_deposit', names: { HOOKS: ['deposit'] }, load: () => import('../engine-gpl/registry/deposit') as Promise<StyleModule> },
   { id: 'gpl_tracker', names: { PAIRS: ['tracker'] }, load: () => import('../engine-gpl/registry/tracker') as Promise<StyleModule> },
   { id: 'gpl_multi_lucy', names: { PAIRS: ['multi/lucy'] }, load: () => import('../engine-gpl/registry/multi_lucy') as Promise<StyleModule> },

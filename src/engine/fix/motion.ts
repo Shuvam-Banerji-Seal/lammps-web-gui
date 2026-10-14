@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { SimState } from '../types';
 import { massOf } from '../atoms';
+import { groupMotionOf } from '../groupMotion';
 
 /*
  * Motion-style fixes written only from the LAMMPS documentation (the
@@ -37,8 +38,10 @@ import { massOf } from '../atoms';
  *
  * The angular removal subtracts omega x (r_i - r_com) with omega = I^-1 L,
  * where L and the inertia tensor I are taken about the center of mass of the
- * group and r are the unwrapped coordinates; this zeroes the group's angular
- * momentum exactly. The rescale conserves the raw kinetic energy of the
+ * group and r are the unwrapped coordinates; the solve is Group::omega
+ * (src/group.cpp at b332f28, through groupMotion.ts), which zeroes the group's
+ * angular momentum exactly for a non-singular I and by the Jacobi path for a
+ * singular one. The rescale conserves the raw kinetic energy of the
  * group, 1/2 sum m v^2, measured before the removal and restored after
  * (measured on native LAMMPS with a zero-force 3-atom system and on the
  * w2fmom_momentum oracle configuration: applying [linear 1 1 0 + angular +
@@ -55,8 +58,6 @@ export class FixMomentum extends Fix {
   private readonly linearFlags: boolean[] | null;
   private readonly angular: boolean;
   private readonly rescale: boolean;
-  /** Unwrapped positions of the group, scratch for the angular removal. */
-  private xu = new Float64Array(0);
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -147,60 +148,23 @@ export class FixMomentum extends Fix {
   }
 
   /**
-   * Zeroes the angular momentum about the group's center of mass:
-   * L = sum m (r - rcom) x v, I = sum m (|d|^2 E - d d^T), omega = I^-1 L,
-   * v_i -= omega x (r_i - rcom); then L_after = L - I omega = 0.
+   * Zeroes the angular momentum about the group's center of mass as FixMomentum::end_of_step does (src/fix_momentum.cpp
+   * at b332f28): omega is Group::omega of the point-mass Group::angmom and Group::inertia about xcm, and each atom
+   * gets v_i -= omega x (r_i - xcm) with the unwrapped positions.
    */
   private removeAngular(s: SimState): void {
     const { x, v, mask, image } = s;
     const bit = this.groupBit;
+    const members: number[] = [];
+    for (let i = 0; i < s.n; i++) if (mask[i] & bit) members.push(i);
+    const motion = groupMotionOf(this.sys, members, 'momentum');
+    if (!(motion.masstotal > 0)) return;
+    const { xcm, omega: w } = motion;
     const g = this.sys.geom;
-    const n = s.n;
-    if (this.xu.length < 3 * n) this.xu = new Float64Array(3 * n);
-    const xu = this.xu;
-    const r = [0, 0, 0];
-    let msum = 0;
-    const rc = [0, 0, 0];
-    for (let i = 0; i < n; i++) {
-      if (!(mask[i] & bit)) continue;
-      g.unwrap(x, image, i, r);
-      xu[3 * i] = r[0]; xu[3 * i + 1] = r[1]; xu[3 * i + 2] = r[2];
-      const m = massOf(s, i);
-      msum += m;
-      rc[0] += m * r[0]; rc[1] += m * r[1]; rc[2] += m * r[2];
-    }
-    if (!(msum > 0)) return;
-    rc[0] /= msum; rc[1] /= msum; rc[2] /= msum;
-    // angular momentum and inertia tensor about the COM
-    const L = [0, 0, 0];
-    const I = [0, 0, 0, 0, 0, 0]; // xx xy xz yy yz zz
-    for (let i = 0; i < n; i++) {
-      if (!(mask[i] & bit)) continue;
-      const m = massOf(s, i);
-      const dx = xu[3 * i] - rc[0], dy = xu[3 * i + 1] - rc[1], dz = xu[3 * i + 2] - rc[2];
-      const vx = v[3 * i], vy = v[3 * i + 1], vz = v[3 * i + 2];
-      L[0] += m * (dy * vz - dz * vy);
-      L[1] += m * (dz * vx - dx * vz);
-      L[2] += m * (dx * vy - dy * vx);
-      I[0] += m * (dy * dy + dz * dz);
-      I[1] -= m * dx * dy;
-      I[2] -= m * dx * dz;
-      I[3] += m * (dx * dx + dz * dz);
-      I[4] -= m * dy * dz;
-      I[5] += m * (dx * dx + dy * dy);
-    }
-    // solve I omega = L (symmetric 3x3, Cramer)
-    const [a, b, c, d, e, f] = I;
-    const det = a * (d * f - e * e) - b * (b * f - c * e) + c * (b * e - c * d);
-    if (det === 0 || !Number.isFinite(det)) return; // degenerate (collinear) group: no rotation to remove
-    const w = [
-      ((d * f - e * e) * L[0] + (c * e - b * f) * L[1] + (b * e - c * d) * L[2]) / det,
-      ((c * e - b * f) * L[0] + (a * f - c * c) * L[1] + (b * c - a * e) * L[2]) / det,
-      ((b * e - c * d) * L[0] + (b * c - a * e) * L[1] + (a * d - b * b) * L[2]) / det,
-    ];
-    for (let i = 0; i < n; i++) {
-      if (!(mask[i] & bit)) continue;
-      const dx = xu[3 * i] - rc[0], dy = xu[3 * i + 1] - rc[1], dz = xu[3 * i + 2] - rc[2];
+    const u = [0, 0, 0];
+    for (const i of members) {
+      g.unwrap(x, image, i, u);
+      const dx = u[0] - xcm[0], dy = u[1] - xcm[1], dz = u[2] - xcm[2];
       v[3 * i] -= w[1] * dz - w[2] * dy;
       v[3 * i + 1] -= w[2] * dx - w[0] * dz;
       v[3 * i + 2] -= w[0] * dy - w[1] * dx;

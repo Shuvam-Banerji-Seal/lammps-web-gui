@@ -1,7 +1,7 @@
-# oracle: fix lb/momentum (zero net momentum of particles plus fluid every 50 steps) and the fix lb/fluid outputs f_1 (fluid temperature, total mass, momentum) on the planewall setup (examples/PACKAGES/latboltz/planewall/in.planewall, cut down: dx 8, 100 steps)
+# oracle: fix lb/momentum (zero net momentum of particles plus fluid every 50 steps) and the fix lb/fluid outputs f_1 (fluid temperature, total mass, momentum) on the planewall setup (examples/PACKAGES/latboltz/planewall/in.planewall, cut down: dx 8, lateral box +-40 (w132lb_planewall_cut.data), 100 steps)
 # native: b332f28 built with -D PKG_LATBOLTZ=on -D PKG_MOLECULE=on -D PKG_RIGID=on (serial, 1 process; the installed lmp lacks LATBOLTZ)
-# measured: per-atom 2.6e-9 (vx of atom 27); thermo f_1 outputs agree to 3e-15 relative where the value exceeds 1e-6 (abs <= 4e-8 on the total mass 1.4e7)
-# oracle-inputs: w132lb_planewall.data
+# measured: per-atom 8.1e-14 (xu of atom 52); thermo f_1 agrees within the abs floor (the f_1[5] momentum at row 10 is 1e-20 in both, abs 2e-20 <= 1e-10)
+# oracle-inputs: w132lb_planewall_cut.data
 # oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
 units          micro
 dimension      3
@@ -10,7 +10,7 @@ atom_style     atomic
 neighbor       1.0 bin
 neigh_modify   delay 0 every 1
 comm_modify cutoff 10.0
-read_data      w132lb_planewall.data
+read_data      w132lb_planewall_cut.data
 pair_style     lj/cut 2.45
 pair_coeff     * * 0.0 0.0 2.45
 neigh_modify   exclude type 1 1

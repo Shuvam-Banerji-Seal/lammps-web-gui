@@ -1,7 +1,7 @@
-# oracle: fix srd with big line particles (rigid bodies of four line segments each, fix rigid molecule, noslip, overlap yes, shift yes, cubic warn, search 0.2), 2d (cut-down of examples/ASPHERE/line/in.line.srd: the first SRD run only, with timestep 0.001 instead of 0.0001 and 1000 steps instead of 10000; the fix deform of that run and the change_box triclinic phase are left out)
+# oracle: fix srd with big line particles (rigid bodies of four line segments each, fix rigid molecule, noslip, overlap yes, shift yes, cubic warn, search 0.2), 2d (cut-down of examples/ASPHERE/line/in.line.srd: the first SRD run only, with timestep 0.001 instead of 0.0001, 500 steps instead of 10000 (the 1000-step run took 21 s), and the SRD lattice at density 5 instead of 10 (10292 atoms; 6 s); the fix deform of that run and the change_box triclinic phase are left out)
 # oracle-inputs: w79srd_line.data
 # oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-13 skip=f_2[5]
-# Measured with native LAMMPS (black box): the engine agrees with every thermo column (temperatures, energies, press, the erotate of the big bodies and the SRD counts f_2[1..4] and f_2[6..12]) and with the positions, velocities and forces of every atom to a relative error of 1e-13 (it fails at 1e-14: the largest difference is press at step 100, about 2e-14). Skipped: f_2[5] (the count of rescaled SRD velocities). At the end about 10 SRD particles sit within 1e-9 of vmax (rescaled to |v| = vmax); a particle alone in its velocity bin is tested again at the next SRD rotation, where rounding decides the test, so native and engine count 2 to 3 rescales per SRD step differently (engine 90, native 82 at step 200), while the positions still agree.
+# Measured with native LAMMPS (black box, density 5, 500 steps): the engine agrees with every thermo column (temperatures, energies, press, the erotate of the big bodies and the SRD counts f_2[1..4] and f_2[6..12]) to a relative error of 6.3e-14 (c_1), and with the positions, velocities and forces of every atom to 6.1e-12 (vy, scaled by max(1,|v|)). Skipped: f_2[5] (the count of rescaled SRD velocities), which differs by 2 to 3 rescales per SRD step at a rounding-decided test (see the density-10 header history: at density 10 the counts also differed).
 # The example's compute temp/deform is replaced by temp: with no fix deform the streaming term is zero (native warns and gives the same value).
 units		lj
 atom_style	line
@@ -12,7 +12,7 @@ read_data	w79srd_line.data
 
 lattice		sq 0.4
 region		plane block INF INF INF INF -0.001 0.001
-lattice		sq 10.0
+lattice		sq 5.0
 create_atoms	2 region plane
 
 group		big type 1
@@ -64,4 +64,4 @@ thermo_modify	temp tbig
 thermo_modify	format float %.15g
 thermo		100
 
-run		1000
+run		500

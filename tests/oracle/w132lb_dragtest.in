@@ -1,13 +1,13 @@
-# oracle: fix lb/fluid (D3Q15, IBM 3-point stencil) with fix lb/viscous and a rigid 4-node colloid dragged through the fluid (examples/PACKAGES/latboltz/dragforce/in.dragtest, cut down: box +-12, 200 steps; the rigid body and LB both run in serial)
+# oracle: fix lb/fluid (D3Q15, IBM 3-point stencil) with fix lb/viscous and a rigid 4-node colloid dragged through the fluid (examples/PACKAGES/latboltz/dragforce/in.dragtest, cut down: lateral box +-6 instead of +-12 (z stays +-12), 200 steps: 1.4 s instead of 18 s; the rigid body and LB both run in serial)
 # native: b332f28 built with -D PKG_LATBOLTZ=on -D PKG_MOLECULE=on -D PKG_RIGID=on (serial, 1 process; the installed lmp lacks LATBOLTZ)
-# measured (engine vs native, relative): thermo 1.0e-9 (press, row 4), per-atom x/v/f 1.5e-9 (fy of atom 3); the walled D3Q15 lattice with IBM stencil 3 and the rigid body; the first thermo rows agree to 1e-14
+# measured (engine vs native, relative): thermo 2.7e-10 (press, row 10), per-atom x/v/f 3.1e-13 (fy of atom 1); the walled D3Q15 lattice with IBM stencil 3 and the rigid body; the first thermo rows agree to 1e-14
 # oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
 units           nano
 dimension       3
 boundary        p p f
 atom_style      molecular
 
-region          mydomain block -12.0 12.0 -12.0 12.0 -12.0 12.0
+region          mydomain block -6.0 6.0 -6.0 6.0 -12.0 12.0
 
 variable        stpts equal 3
 variable        tstep equal 0.00025

@@ -2,8 +2,8 @@
  
           320   atoms
           1    atom types
-   -120.0      120.0       xlo xhi
-   -120.0      120.0       ylo yhi
+   -40.0      40.0       xlo xhi
+   -40.0      40.0       ylo yhi
    -120.0      120.0       zlo zhi
  
   Atoms

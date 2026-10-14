@@ -1,6 +1,6 @@
-# oracle: RHEO 2d balloon, cut down from examples/rheo/balloon (300 steps instead of 30000, thermo every 30): atom_style hybrid rheo bond, shell bonds with bpm/spring (create_bonds many), pair hybrid/overlay rheo and rheo/solid, quintic kernel with shift and surface/detection coordination, wall/harmonic, rheo/viscosity, rheo/pressure
+# oracle: RHEO 2d balloon, cut down from examples/rheo/balloon (300 steps instead of 30000, thermo every 30; the drop radii are 18 (fluid) and 16 (shell) instead of 30 and 27, so 1021 atoms instead of 2830, 3 s instead of 15 s): atom_style hybrid rheo bond, shell bonds with bpm/spring (create_bonds many), pair hybrid/overlay rheo and rheo/solid, quintic kernel with shift and surface/detection coordination, wall/harmonic, rheo/viscosity, rheo/pressure
 # oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-13
-# Measured with native LAMMPS (black box): engine vs native passes at rel=1e-15 (abs 1e-13) on all 11 thermo rows (ke, press, atoms) and all 2830 atoms. The bond count is 1263 (native) and matches the engine after the 2d create_bonds fix (no z images). pair rheo/solid has no pairs closer than its cutoff in this 300-step run (its own case is w96rheo_pair_solid); the shift surface correction is applied and does not change the result here.
+# Measured with native LAMMPS (black box): engine vs native passes at rel=1e-15 (abs 1e-13) on all 11 thermo rows (ke, press, atoms) and all 1021 atoms (the largest thermo error is 4e-15). The shell bonds are created by create_bonds many on the 2d drop (no z images); the bond count is not compared here. pair rheo/solid has no pairs closer than its cutoff in this 300-step run (its own case is w96rheo_pair_solid); the shift surface correction is applied and does not change the result here.
 # ------ 2D water balloon ------ #
 
 dimension          2
@@ -13,11 +13,11 @@ newton             off
 region             box block -40 40 0 80 -0.01 0.01 units box
 create_box         1 box bond/types 1 extra/bond/per/atom 15 extra/special/per/atom 50
 
-region             fluid sphere -10 40 0 30 units box side in
+region             fluid sphere -10 40 0 18 units box side in
 lattice            hex 1.0
 create_atoms       1 region fluid
 
-region             shell sphere -10 40 0 27 units box side out
+region             shell sphere -10 40 0 16 units box side out
 group              shell region shell
 
 set                group shell rheo/status 1

@@ -1,7 +1,7 @@
-# oracle: fix lb/fluid (D3Q15, trilinear stencil, z walls with wall velocity) with fix lb/viscous and a rigid sphere in a channel (examples/PACKAGES/latboltz/planewall/in.planewall, cut down: dx 8 instead of 4, 100 steps)
+# oracle: fix lb/fluid (D3Q15, trilinear stencil, z walls with wall velocity) with fix lb/viscous and a rigid sphere in a channel (examples/PACKAGES/latboltz/planewall/in.planewall, cut down: dx 8 instead of 4, lateral box +-40 instead of +-120 (w132lb_planewall_cut.data; the sphere has radius 16, so only the periodic images are closer, 1.5 s instead of 30 s), 100 steps)
 # native: b332f28 built with -D PKG_LATBOLTZ=on -D PKG_MOLECULE=on -D PKG_RIGID=on (serial, 1 process; the installed lmp lacks LATBOLTZ)
-# measured (relative): per-atom 7.4e-9 (vx of atom 218), thermo 3.0e-9 (v_tx); dx 8 instead of 4 (60x60x61 grid too slow for the budget), 100 steps
-# oracle-inputs: w132lb_planewall.data
+# measured (relative): per-atom 8.2e-14 (xu of atom 62), thermo 3.2e-9 (v_tx, a value of 4e-21: the tiny components are checked against the abs floor)
+# oracle-inputs: w132lb_planewall_cut.data
 # oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
 units          micro
 dimension      3
@@ -10,7 +10,7 @@ atom_style     atomic
 neighbor       1.0 bin
 neigh_modify   delay 0 every 1
 comm_modify cutoff 10.0
-read_data      w132lb_planewall.data
+read_data      w132lb_planewall_cut.data
 pair_style     lj/cut 2.45
 pair_coeff     * * 0.0 0.0 2.45
 neigh_modify   exclude type 1 1

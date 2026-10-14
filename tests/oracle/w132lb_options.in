@@ -1,7 +1,7 @@
-# oracle: fix lb/fluid options not used by the other cases: pressurebcx (x pressure jump), scaleGamma, linearInit and dof (the planewall setup, cut down: dx 8, 100 steps; bodyforce is not used here because the particles escape in native with it)
+# oracle: fix lb/fluid options not used by the other cases: pressurebcx (x pressure jump), scaleGamma, linearInit and dof (the planewall setup, cut down: dx 8, lateral box +-40 (w132lb_planewall_cut.data), 100 steps; bodyforce is not used here because the particles escape in native with it)
 # native: b332f28 built with -D PKG_LATBOLTZ=on -D PKG_MOLECULE=on -D PKG_RIGID=on (serial, 1 process; the installed lmp lacks LATBOLTZ)
-# measured: per-atom 4.7e-8 (vz of atom 95, atomrel 1e-7 below); thermo f_1 agrees to 2e-15 relative (abs 7e-11 on f_1[5]); scaleGamma 1 1.5 (and with bodyforce) lost the particles in native, so 0.5 is used
-# oracle-inputs: w132lb_planewall.data
+# measured: per-atom 1.3e-13 (zu of atom 50); thermo f_1 agrees to 1.1e-7 relative (abs 1.9e-12 on f_1[5] = -1.7e-5, within the abs floor 1e-10)
+# oracle-inputs: w132lb_planewall_cut.data
 # oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 atomrel=1e-7
 units          micro
 dimension      3
@@ -10,7 +10,7 @@ atom_style     atomic
 neighbor       1.0 bin
 neigh_modify   delay 0 every 1
 comm_modify cutoff 10.0
-read_data      w132lb_planewall.data
+read_data      w132lb_planewall_cut.data
 pair_style     lj/cut 2.45
 pair_coeff     * * 0.0 0.0 2.45
 neigh_modify   exclude type 1 1

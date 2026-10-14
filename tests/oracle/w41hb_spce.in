@@ -1,6 +1,6 @@
-# oracle: cut-down examples/rdf-adf/in.spce.hbond: SPC/E liquid water (4500 atoms, pppm, flexible bonds, nvt; SHAKE is left out: see the note below), 50 steps; hydrogen bonds with dist hdist angle ehb, reductions and ave/histo of the local columns
-# oracle: the tolerance is 1e-6: the smallest H-bond angles (0.06 to 0.17 degrees, the c_rn[3] column) are sensitive to the last digits of the trajectory (about 1.5e-7 relative at step 50)
-# oracle-inputs: w41hb_spce.data
+# oracle: cut-down examples/rdf-adf/in.spce.hbond: SPC/E liquid water (the first 333 of the 1500 molecules of the 4500-atom data, w41hb_spce_cut.data: 999 atoms in the same box, so the water is at a third of the example's density; pppm, flexible bonds, nvt; SHAKE is left out: see the note below), 25 steps instead of 50 (the cost is the 12 A pair cut-off on every atom: the 1500-molecule box took 14 s); hydrogen bonds with dist hdist angle ehb, reductions and ave/histo of the local columns
+# oracle: the tolerance is 1e-6: the smallest H-bond angles (the c_rn[3] column) are sensitive to the last digits of the trajectory (the 50-step, 4500-atom run measured 1.5e-7 relative at step 50; this cut run measures 2.8e-12 at step 25)
+# oracle-inputs: w41hb_spce_cut.data
 # oracle-files: w41hb_spce_dist.histo w41hb_spce_angle.histo
 # oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
 units           real
@@ -8,7 +8,7 @@ atom_style      full
 pair_style      lj/cut/coul/long 12.0 12.0
 bond_style      harmonic
 angle_style     harmonic
-read_data       w41hb_spce.data
+read_data       w41hb_spce_cut.data
 pair_coeff      * * 0.0     1.0
 pair_coeff      1 1 0.15535 3.166
 pair_modify     tail yes
@@ -38,4 +38,4 @@ fix             ah all ave/histo 1 1 1 0.0 30.0 30 c_hb[6] mode vector kind loca
 thermo_style    custom step temp pe c_hb c_rs[1] c_rs[2] c_rs[3] c_rs[4] c_rx[1] c_rx[2] c_rx[3] c_rx[4] c_rn[1] c_rn[2] c_rn[3] c_rn[4] v_nmol
 thermo_modify   format float %.15g
 velocity        all create 300.0 6244325
-run             50
+run             25

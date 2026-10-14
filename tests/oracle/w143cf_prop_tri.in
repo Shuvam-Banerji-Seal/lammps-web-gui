@@ -1,0 +1,20 @@
+# oracle: compute property/atom corner1x .. corner3z on atom_style tri (3d): three triangles with two of them rotated
+#   by set quat, and one point particle (w143cf_prop_tri.data); native LAMMPS (src/compute_property_atom.cpp at
+#   b332f28, pack_corner1x / pack_corner3z: centre + R(quat) c_k with the body-frame corners c_k; a point particle gives 0).
+#   Per-atom values are dumped with write_dump (sorted by id) and compared with the native dump. Measured with native LAMMPS.
+#   Engine vs native (fixture): largest absolute difference 1.0e-14 on values up to 2.4 (relative about 4e-15).
+# oracle-inputs: w143cf_prop_tri.data
+# oracle-files: w143cf_prop_tri.dump
+# oracle-compare: thermo=all atoms=none rel=1e-12 abs=1e-14
+units           lj
+atom_style      tri
+read_data       w143cf_prop_tri.data
+set             atom 1 quat 0 0 1 90
+set             atom 2 quat 1 1 0 37
+pair_style      lj/cut 2.5
+pair_coeff      * * 0.0 1.0
+compute         p all property/atom corner1x corner1y corner1z corner2x corner2y corner2z corner3x corner3y corner3z
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+write_dump      all custom w143cf_prop_tri.dump id c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] c_p[7] c_p[8] c_p[9] modify format float %.15g sort id

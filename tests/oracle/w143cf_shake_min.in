@@ -1,0 +1,27 @@
+# oracle: minimize with fix shake on four water molecules (w143cf_water_min.data, real units, stretched bonds and bent
+#   angles, box -10..10): constrained bonds and angles are harmonic restraints with kbond (default 1.0e9*boltz,
+#   src/RIGID/fix_shake.cpp at b332f28: min_setup, min_post_force, bond_force, compute_scalar), the energy enters pe,
+#   cg (backtrack line search) for 15 iterations (not converged). Compared: thermo pe and fnorm, and the final per-atom positions and forces.
+#   Measured with native LAMMPS (the restraint energy is the fix scalar, pe includes it by default).
+#   Engine vs native (fixture): step 0 identical; step 15 pe -0.24127164914218308 vs -0.241271649142191 (rel 3e-14),
+#   fnorm 12.490011794722298 vs 12.490011789159 (rel 4e-10). At 20 iterations the engine's fnorm is 4.6e-8 off, so the
+#   case stops at 15. With the default quadratic line search the engine leaves native at step 2 (also without fix shake,
+#   a plain minimization of this box: pe 0.876423 vs 0.875909), so backtrack is used here (Measured with native LAMMPS).
+# oracle-inputs: w143cf_water_min.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      angle
+read_data       w143cf_water_min.data
+pair_style      lj/cut 6.0
+pair_coeff      1 1 0.1553 3.166
+pair_coeff      2 2 0.0 1.0
+pair_coeff      1 2 0.0 1.0
+bond_style      harmonic
+bond_coeff      1 450.0 0.9572
+angle_style     harmonic
+angle_coeff     1 55.0 104.52
+fix             1 all shake 0.0001 20 0 b 1 a 1
+thermo_style    custom step pe fnorm
+thermo_modify   format float %.15g
+min_modify      line backtrack
+minimize        0.0 0.0 15 250

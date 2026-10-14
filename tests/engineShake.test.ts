@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
+import { UNIT_SYSTEMS } from '../src/engine/units';
 import type { EngineError, EngineEvent, ThermoRow } from '../src/engine/types';
 
 /*
@@ -97,9 +98,76 @@ describe('fix shake', () => {
     expect(error?.message).toMatch(/only be one shake or rattle fix/);
   });
 
-  it('is an explicit error during minimization', async () => {
-    const dimer = '# dimer\n2 atoms\n1 bonds\n\nCoords\n\n1 0 0 0\n2 1.3 0 0\n\nTypes\n\n1 1\n2 1\n\nBonds\n\n1 1 1 2\n';
-    const { error } = await run(dimer, 'minimize 1e-8 1e-8 10 10');
-    expect(error?.message).toMatch(/fix shake during minimization .* is not supported/);
+  describe('minimization restraints (fix_shake.cpp min_post_force)', () => {
+    // a bond of length 1.2 with r0 = 1.0 (bond_coeff 1 100 1.0); the bond is constrained, so it has no bond energy
+    const DIMER_DATA = `LAMMPS data
+
+2 atoms
+1 bonds
+1 atom types
+1 bond types
+
+0 20 xlo xhi
+0 20 ylo yhi
+0 20 zlo zhi
+
+Masses
+
+1 12.0
+
+Atoms # bond
+
+1 1 1 5.0 5.0 5.0
+2 1 1 6.2 5.0 5.0
+
+Bonds
+
+1 1 1 2
+`;
+    const pe = async (fix: string, body: string): Promise<{ pe: number[]; error: string | null }> => {
+      const pes: number[] = [];
+      const s = new Session({
+        emit: (e: EngineEvent) => { if (e.kind === 'thermo') pes.push(e.row.pe); },
+        writeFile: () => {},
+      });
+      s.addFile('dimer.data', DIMER_DATA);
+      try {
+        await s.execute(`units real
+atom_style bond
+read_data dimer.data
+pair_style zero 3.0
+pair_coeff * *
+bond_style harmonic
+bond_coeff 1 100.0 1.0
+${fix}
+thermo_style custom step pe
+${body}
+`);
+        return { pe: pes, error: null };
+      } catch (e) {
+        return { pe: pes, error: String(e) };
+      }
+    };
+
+    it('uses kbond = 1e9 * boltz by default: step-0 pe is kbond (r - r0)^2 and the bond has no energy in dynamics', async () => {
+      const k = 1e9 * UNIT_SYSTEMS.real.boltz;
+      const min = await pe('fix 2 all shake 1e-4 20 0 b 1', 'minimize 0 0 1 10');
+      expect(min.error).toBeNull();
+      expect(Math.abs(min.pe[0] - 0.04 * k) / (0.04 * k)).toBeLessThan(1e-12);
+      const md = await pe('fix 2 all shake 1e-4 20 0 b 1', 'run 0');
+      expect(md.error).toBeNull();
+      expect(Math.abs(md.pe[0])).toBeLessThan(1e-9);
+    });
+
+    it('takes the kbond keyword as the restraint constant (pe = 100 * 0.04 = 4)', async () => {
+      const r = await pe('fix 2 all shake 1e-4 20 0 b 1 kbond 100', 'minimize 0 0 1 10');
+      expect(r.error).toBeNull();
+      expect(r.pe[0]).toBeCloseTo(4, 12);
+    });
+
+    it('refuses a negative kbond by name', async () => {
+      const r = await pe('fix 2 all shake 1e-4 20 0 b 1 kbond -1', 'run 0');
+      expect(r.error).toMatch(/Illegal fix shake kbond value -1/);
+    });
   });
 });

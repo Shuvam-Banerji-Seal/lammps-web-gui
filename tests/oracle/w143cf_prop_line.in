@@ -1,0 +1,19 @@
+# oracle: compute property/atom end1x .. end2z on atom_style line (2d): four line segments and one point particle
+#   (w143cf_prop_line.data); native LAMMPS (src/compute_property_atom.cpp at b332f28, pack_end1x/pack_end2y: centre -/+
+#   0.5 length (cos, sin) theta; pack_end1z/pack_end2z: the atom's z for every group atom; a point particle gives 0).
+#   Per-atom values are dumped with write_dump (sorted by id) and compared with the native dump. Measured with native LAMMPS.
+#   Engine vs native (fixture): largest absolute difference 2.2e-16 (one component that is 0 natively).
+# oracle-inputs: w143cf_prop_line.data
+# oracle-files: w143cf_prop_line.dump
+# oracle-compare: thermo=all atoms=none rel=1e-12 abs=1e-14
+units           lj
+atom_style      line
+dimension       2
+read_data       w143cf_prop_line.data
+pair_style      lj/cut 2.5
+pair_coeff      * * 0.0 1.0
+compute         p all property/atom end1x end1y end1z end2x end2y end2z
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+write_dump      all custom w143cf_prop_line.dump id c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] modify format float %.15g sort id

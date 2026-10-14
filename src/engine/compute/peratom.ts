@@ -2,7 +2,8 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import { parseBodyStyle } from '../bodies';
 import type { System } from '../system';
-import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid, isBpmSphereStyle, HEAT_FLOW, HEAT_TEMPERATURE, ELECTRON_SPIN, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_RFORCE, isSuperEllipsoidStyle } from '../atoms';
+import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid, isBpmSphereStyle, HEAT_FLOW, HEAT_TEMPERATURE, ELECTRON_SPIN, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_RFORCE, isSuperEllipsoidStyle, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { lineEnds, triangleCorner } from '../lineTri';
 import { SUPER_INERTIA, superBlock } from '../superellipsoid';
 
 /*
@@ -291,6 +292,16 @@ const SPIN_ATTRS = new Set(['spx', 'spy', 'spz', 'sp', 'fmx', 'fmy', 'fmz']);
  * heat flow of spherical particle" (values from fix property/atom temperature heatflow).
  */
 const HEAT_ATTRS: Record<string, string> = { temperature: HEAT_TEMPERATURE, heatflow: HEAT_FLOW };
+/**
+ * compute_property_atom.html: "*end1x, end1y, end1z, end2x, end2y, end2z* = end points of line segment" and
+ * "*corner1x, corner1y, corner1z, corner2x, ...* = corner points of triangle" (atom_style line and tri).
+ * Native LAMMPS (src/compute_property_atom.cpp at b332f28, pack_end1x and pack_corner1x): the x and y ends are the
+ * centre -/+ half the length along theta, and a group atom that is not a line (or triangle) gives 0; the z ends
+ * (pack_end1z, pack_end2z) are the atom's own z for every group atom, and the corner z is the z of the rotated
+ * corner (pack_corner1z).
+ */
+const LINE_END = /^end([12])([xyz])$/;
+const TRI_CORNER = /^corner([123])([xyz])$/;
 
 export class ComputePropertyAtom extends Compute {
   readonly style = 'property/atom';
@@ -306,7 +317,9 @@ export class ComputePropertyAtom extends Compute {
       // compute_property_atom.html: "espin, eradius, ervel, erforce" (atom_style electron; "spin" is the older name of espin)
       const ek = ELECTRON_ATTRS.get(a);
       if (ek && !sys.state.custom.has(ek)) throw new StyleError(`compute property/atom ${a} needs atom_style electron`);
-      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !SUPER_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !SPIN_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a] && !ELECTRON_ATTRS.has(a)) {
+      if (LINE_END.test(a) && !isLineStyle(sys.atomStyle)) throw new StyleError(`compute property/atom ${a} requires atom style line`);
+      if (TRI_CORNER.test(a) && !isTriStyle(sys.atomStyle)) throw new StyleError(`compute property/atom ${a} requires atom style tri`);
+      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !SUPER_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !SPIN_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a] && !ELECTRON_ATTRS.has(a) && !LINE_END.test(a) && !TRI_CORNER.test(a)) {
         throw new StyleError(`compute property/atom: attribute '${a}' is not supported by the browser engine`);
       }
       if (SPHERE_ATTRS.has(a) && !sys.state.radius) throw new StyleError(`compute property/atom ${a} needs atom_style sphere`);
@@ -342,11 +355,31 @@ export class ComputePropertyAtom extends Compute {
       const heat = HEAT_ATTRS[attr] ? s.custom.get(HEAT_ATTRS[attr])!.data : null;
       const ek = ELECTRON_ATTRS.get(attr);
       const electron = ek ? s.custom.get(ek)!.data : null;
+      const le = LINE_END.exec(attr), tc = TRI_CORNER.exec(attr);
+      const lineBonus = le ? s.custom.get(LINE_BONUS)!.data : null;
+      const triBonus = tc ? s.custom.get(TRI_BONUS)!.data : null;
       for (let i = 0; i < s.n; i++) {
         if (!(s.mask[i] & this.groupBit)) continue;
         if (custom) { set(i, custom(i)); continue; }
         if (heat) { set(i, heat[i]); continue; }
         if (electron) { set(i, electron[i]); continue; }
+        if (le) {
+          // pack_end1z / pack_end2z: the atom's z for every group atom
+          if (d === 2) { set(i, s.x[3 * i + 2]); continue; }
+          if (!isLineAtom(s, i)) { set(i, 0); continue; }
+          const ends = lineEnds(s.x[3 * i], s.x[3 * i + 1], lineBonus![2 * i], lineBonus![2 * i + 1]);
+          // lineEnds centres the segment on (x, y) and returns (end1x, end1y, end2x, end2y)
+          set(i, ends[2 * (Number(le[1]) - 1) + d]);
+          continue;
+        }
+        if (tc) {
+          // pack_corner*z: the rotated corner's own z (corner = centre + R c, as native pack_corner1x)
+          if (!isTriAtom(s, i)) { set(i, 0); continue; }
+          const corners = triBonus!.subarray(TRI_BONUS_COLS * i, TRI_BONUS_COLS * i + 9);
+          const q = s.quat!.subarray(4 * i, 4 * i + 4);
+          set(i, triangleCorner([s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]], q, corners, Number(tc[1]) - 1)[d]);
+          continue;
+        }
         switch (attr) {
           case 'radius': set(i, s.radius![i]); break;
           case 'diameter': set(i, 2 * s.radius![i]); break;

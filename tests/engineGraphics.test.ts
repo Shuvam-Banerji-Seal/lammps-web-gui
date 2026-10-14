@@ -106,7 +106,7 @@ describe('dump_modify amap (colour maps, image.cpp ColorMap rules)', () => {
   });
 
   it('discrete style takes the first bin that contains the value', () => {
-    const { map } = ColorMap.parse(['0', '10', 'da', '2', 'min', '5', 'blue', '5', 'max', 'red'], named);
+    const { map } = ColorMap.parse(['0', '10', 'da', '0', '2', 'min', '5', 'blue', '5', 'max', 'red'], named);
     map.bounds(0, 10);
     expect(map.color(3)).toEqual([0, 0, 255]);
     expect(map.color(7)).toEqual([255, 0, 0]);
@@ -114,9 +114,9 @@ describe('dump_modify amap (colour maps, image.cpp ColorMap rules)', () => {
 
   it('refuses malformed maps with the reason', () => {
     expect(() => ColorMap.parse(['1', '3', 'xa', '2', 'blue', 'red'], named)).toThrow(/colour map style/);
-    expect(() => ColorMap.parse(['0', '1', 'cf', '2', 'min', 'blue', 'max', 'nope'], named)).toThrow(/unknown colour 'nope'/);
-    expect(() => ColorMap.parse(['0', '1', 'cf', '2', '0', 'blue', 'max', 'red'], named)).toThrow(/first continuous entry must be min/);
-    expect(() => ColorMap.parse(['3', '1', 'cf', '2', 'min', 'blue', 'max', 'red'], named)).toThrow(/lo must be smaller/);
+    expect(() => ColorMap.parse(['0', '1', 'cf', '0', '2', 'min', 'blue', 'max', 'nope'], named)).toThrow(/unknown colour 'nope'/);
+    expect(() => ColorMap.parse(['0', '1', 'cf', '0', '2', '0', 'blue', 'max', 'red'], named)).toThrow(/first continuous entry must be min/);
+    expect(() => ColorMap.parse(['3', '1', 'cf', '0', '2', 'min', 'blue', 'max', 'red'], named)).toThrow(/lo must be smaller/);
   });
 
   it('dump image colours atoms by an amap (id 1 in bin [0,2) blue, id 2 in bin [2,4] red)', async () => {

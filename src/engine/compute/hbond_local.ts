@@ -4,6 +4,7 @@ import { parseNum } from '../force/util';
 import { buildAtomMap, buildSpecial, type SpecialList } from '../atoms';
 import { NEIGHMASK } from '../neighbor';
 import type { System } from '../system';
+import type { ImageObject } from '../output/image_objects';
 
 /*
  * compute hbond/local (docs.lammps.org/compute_hbond_local.html). Syntax, from the page:
@@ -118,6 +119,22 @@ export class ComputeHbondLocal extends Compute {
     this.sizeLocalCols = 3 + values.length;
   }
 
+  /** The arrows of dump image's "compute" keyword, one per hydrogen bond (compute_image of ComputeHBondLocal). */
+  private collectImage = false;
+  private imageArrows: { type: number; center: [number, number, number]; dir: [number, number, number]; length: number }[] = [];
+
+  imageObjects(): ImageObject[] {
+    this.imageArrows = [];
+    this.collectImage = true;
+    try {
+      this.computeLocal();
+    } finally {
+      this.collectImage = false;
+    }
+    // native: ARROW with the donor's type, the tip ratio 0.2 and a diameter of 0 (the keyword's flag2 is added to it)
+    return this.imageArrows.map((a): ImageObject => ({ kind: 'arrow', type: a.type, center: a.center, dir: a.dir, length: a.length, diameter: 0, ratio: 0.2 }));
+  }
+
   protected computeScalar(): number {
     this.localValues();
     return this.localRows;
@@ -222,6 +239,19 @@ export class ComputeHbondLocal extends Compute {
           }
           if (this.ecut !== null && !(ehb > this.ecut)) continue;
           rows.push(s.id[h], s.id[d], s.id[a]);
+          if (this.collectImage) {
+            // compute_image: the acceptor's image nearest the donor (xd + d2) minus the hydrogen's (xh); the arrow sits at
+            // their midpoint and points along the unit vector between them
+            const xacc: [number, number, number] = [xd0 + d2[0], xd1 + d2[1], xd2 + d2[2]];
+            const vec = [xacc[0] - xh[0], xacc[1] - xh[1], xacc[2] - xh[2]];
+            const len = norm(vec);
+            this.imageArrows.push({
+              type: s.type[d],
+              center: [0.5 * (xacc[0] + xh[0]), 0.5 * (xacc[1] + xh[1]), 0.5 * (xacc[2] + xh[2])],
+              dir: [vec[0] / len, vec[1] / len, vec[2] / len],
+              length: len,
+            });
+          }
           for (const v of this.values) {
             rows.push(v === 'dist' ? rDA : v === 'angle' ? theta : v === 'hdist' ? hdist : ehb);
           }

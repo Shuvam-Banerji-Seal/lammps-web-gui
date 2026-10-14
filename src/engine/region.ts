@@ -406,6 +406,10 @@ export class ConeRegion extends Region {
     id: string, style: 'cylinder' | 'cone', env: RegionEnv, readonly axis: 0 | 1 | 2,
     readonly c1: Param, readonly c2: Param, readonly radlo: Param, readonly radhi: Param, readonly lo: Param, readonly hi: Param,
   ) { super(id, style, env); }
+  /** The numbers of this cylinder or cone (region command values, scaled as the region uses them): dump image draws them. */
+  geometry(): { axis: 0 | 1 | 2; c1: number; c2: number; radlo: number; radhi: number; lo: number; hi: number } {
+    return { axis: this.axis, c1: this.val(this.c1), c2: this.val(this.c2), radlo: this.val(this.radlo), radhi: this.val(this.radhi), lo: this.val(this.lo), hi: this.val(this.hi) };
+  }
   protected inside(x: number, y: number, z: number): boolean {
     const p = [x, y, z];
     const a = p[this.axis];

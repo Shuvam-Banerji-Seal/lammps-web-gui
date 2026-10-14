@@ -110,7 +110,9 @@ const atomStyle: Handler = ({ sys }, a) => {
       const w = a[k];
       if (w === 'hybrid') throw new StyleError('atom_style hybrid cannot have hybrid as a sub-style');
       if (w === 'body') throw new StyleError('atom_style hybrid with a body sub-style is not supported by the browser engine');
-      if (w === 'line' || w === 'tri') throw new StyleError(`atom_style hybrid with a ${w} sub-style is not supported by the browser engine (use atom_style ${w} alone)`);
+      // atom_style hybrid tri (gransurf/in.screwfeeder.local): the triangle particles come from fix surface/local, so the
+      // tri sub-style is accepted; a line sub-style is still refused
+      if (w === 'line') throw new StyleError(`atom_style hybrid with a ${w} sub-style is not supported by the browser engine (use atom_style ${w} alone)`);
       // atom_style.html: "tdpd Nspecies" (its argument is the number of chemical species)
       if (w === 'tdpd') {
         if (subs.some((x) => x.startsWith('tdpd:'))) throw new StyleError('atom_style hybrid lists tdpd twice');

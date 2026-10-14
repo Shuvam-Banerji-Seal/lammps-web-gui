@@ -145,9 +145,39 @@ describe('contact ordering (fix_surface.cpp: contact_compare)', () => {
 });
 
 describe('style registry', () => {
-  it('refuses fix surface/global with a reason and registers fix surface/local', () => {
-    expect(() => FIXES['surface/global'](null as never, 'g', 'all', [])).toThrow(/surface\/global/);
+  it('registers fix surface/global and fix surface/local', () => {
+    expect(typeof FIXES['surface/global']).toBe('function');
     expect(typeof FIXES['surface/local']).toBe('function');
+  });
+});
+
+describe('fix surface/global refusals (fix_surface_global.cpp keywords not ported)', () => {
+  const run = async (text: string): Promise<string | null> => {
+    let err: string | null = null;
+    const s = new Session({ emit: (e: { kind: string; message?: string }) => { if (e.kind === 'error') err ??= e.message ?? ''; }, writeFile: () => {} } as never);
+    s.addFile('w127gsg_surf.tri.stl', readFileSync(join(__dirname, 'oracle', 'w127gsg_surf.tri.stl'), 'utf8'));
+    try { await s.execute(text); } catch (e) { err ??= String(e); }
+    return err;
+  };
+  const head = `units lj
+atom_style sphere
+dimension 3
+region box block -7 7 -7 7 0 9 units box
+create_box 2 box
+pair_style granular
+pair_coeff * * hooke 4000.0 100.0 tangential linear_history 1000.0 1.0 0.5 damping mass_velocity
+`;
+  const fix = (extra: string): string => `fix 20 all surface/global input stl 2 1 w127gsg_surf.tri.stl model * * granular hooke 4000.0 100.0 tangential linear_history 1000.0 1.0 0.5 damping mass_velocity ${extra}
+`;
+  it('builds from an STL file and a molecule-free model', async () => {
+    expect(await run(head + fix(''))).toBeNull();
+  });
+  it('names the keywords it does not support', async () => {
+    expect(await run(head + fix('flat 10'))).toMatch(/keyword 'flat' is not supported/);
+    expect(await run(head + fix('smaxtype 3'))).toMatch(/keyword 'smaxtype' is not supported/);
+  });
+  it('refuses a move style other than rotate', async () => {
+    expect(await run(head + fix('') + 'fix_modify 20 move * linear 1 0 0\n')).toMatch(/move style 'linear' is not supported/);
   });
 });
 

@@ -26,11 +26,11 @@ import { NEIGHMASK } from '../../engine/neighbor';
 import { isLineStyle, isTriStyle, LINE_BONUS, LINE_FLAG, TRI_BONUS, TRI_BONUS_COLS, TRI_FLAG } from '../../engine/atoms';
 import { buildConnect2d, FLATTHRESH_2D, lineEnds, type Connect2d } from './connect2d';
 import { buildConnect3d, triCorners, type Connect3d } from './connect3d';
-import { calculate3d, prewalk3d, walk3d, type Contacts3d } from './forces3d';
 import {
-  BIG, CONCAVE, CONVEX, EPSILON, FLAT, OPPOSITE_SIDE, SAME_SIDE, flipSide, overlapSphereLine, overlapSphereTri,
-  contactLess, surfContactForces, type ContactSurf, type SurfCoeffs,
+  overlapSphereLine, overlapSphereTri, SAME_SIDE, OPPOSITE_SIDE,
+  surfContactForces, type ContactSurf, type SurfCoeffs,
 } from './surf_contact';
+import { contactDr, solveSphereContacts } from './contact_flow';
 
 type V3 = [number, number, number];
 
@@ -264,48 +264,17 @@ export class PairSurfGranular extends Pair {
     }
     for (const key of this.hist.keys()) if (!seen.has(key)) this.hist.delete(key);
 
-    // 2. per sphere: sort, pre-walk the sides, walk the composite surfaces and add the forces
+    // 2. per sphere: sort, pre-walk the sides, walk the composite surfaces and add the forces (contact_flow.ts)
     const sphereOrder = [...groups.keys()].sort((a, b) => a - b);
     for (const sph of sphereOrder) {
       const os = owner[sph];
       const cs = groups.get(sph)!;
       const radi = radius[os];
       const xi = [x[3 * sph], x[3 * sph + 1], x[3 * sph + 2]];
-      cs.sort((a, b) => (contactLess(a, b, false) ? -1 : contactLess(b, a, false) ? 1 : 0));
-      let posByTag = indexByTag(cs);
-      const ctx3: Contacts3d | null = is3 ? { cs, posByTag, conn: conn3! } : null;
-      if (ctx3) prewalk3d(ctx3);
-      else this.prewalk2d(cs, posByTag, conn!);
-      cs.sort((a, b) => (contactLess(a, b, true) ? -1 : contactLess(b, a, true) ? 1 : 0));
-      posByTag = indexByTag(cs);
-      const ctx = ctx3 ? { cs, posByTag, conn: conn3! } : null;
-      const processed = new Set<number>();
-      for (let n = 0; n < cs.length; n++) {
-        if (processed.has(n)) continue;
-        let composite: number[];
-        let maxOverlap: number;
-        if (ctx) {
-          composite = walk3d({ cs, posByTag, conn: ctx.conn }, processed, n);
-          maxOverlap = calculate3d({ cs, posByTag, conn: ctx.conn }, composite);
-        } else {
-          composite = this.walk2d(cs, posByTag, conn!, processed, n);
-          maxOverlap = this.calc2d(cs, posByTag, composite);
-        }
-        if (maxOverlap < EPSILON) continue;
+      const solved = solveSphereContacts(cs, is3, conn, conn3);
+      for (const { n, composite, maxOverlap } of solved) {
         // geometry of the contact: the overlap-weighted normal of the composite, or the element's own direction
-        const dr: V3 = [0, 0, 0];
-        if (composite.length > 1) {
-          for (const m of composite) {
-            const c = cs[m];
-            if (c.overlap < EPSILON) continue;
-            const w = c.overlap * c.weight;
-            for (let a = 0; a < 3; a++) dr[a] += w * c.drForce[a];
-          }
-          const len = Math.hypot(dr[0], dr[1], dr[2]);
-          for (let a = 0; a < 3; a++) dr[a] = (dr[a] / len) * (radi - maxOverlap);
-        } else {
-          for (let a = 0; a < 3; a++) dr[a] = cs[n].drForce[a] * (radi - maxOverlap);
-        }
+        const dr = contactDr(cs, composite, n, maxOverlap, radi);
         const xc = [xi[0] - dr[0], xi[1] - dr[1], xi[2] - dr[2]];
         const lin = cs[n].index;
         const ol = owner[lin];
@@ -347,142 +316,4 @@ export class PairSurfGranular extends Pair {
     }
     nb.reverseSum(tq, 3, s.torque);
   }
-
-  /** prewalk_connections2d: the consistent side of each contact's element normal (the sign of surf_norm). */
-  private prewalk2d(cs: ContactSurf[], posByTag: Map<number, number>, conn: Map<number, Connect2d>): void {
-    if (!cs.length) return;
-    const walked = new Set<number>();
-    const toWalk = new Map<number, number>();
-    toWalk.set(0, cs[0].nside);
-    while (toWalk.size) {
-      const pos = minByIndex(toWalk.keys(), cs);
-      const nsidej = toWalk.get(pos)!;
-      toWalk.delete(pos);
-      walked.add(pos);
-      const c = cs[pos];
-      if (nsidej === OPPOSITE_SIDE) for (let a = 0; a < 3; a++) c.surfNorm[a] = -c.surfNorm[a];
-      const cn = conn.get(c.tag)!;
-      for (const nbr of [...cn.p[0], ...cn.p[1]]) {
-        const kpos = posByTag.get(nbr.tag);
-        if (kpos === undefined) continue;
-        if (!walked.has(kpos) && !toWalk.has(kpos)) {
-          const nsidek = nsidej === OPPOSITE_SIDE ? flipSide(nbr.nside) : nbr.nside;
-          cs[kpos].nside = nsidek;
-          toWalk.set(kpos, nsidek);
-        }
-      }
-      if (toWalk.size === 0) {
-        for (let nc = 0; nc < cs.length; nc++) if (!walked.has(nc)) toWalk.set(nc, cs[nc].nside);
-      }
-    }
-  }
-
-  /** walk_connections2d: the flat-connected contacts of the first unprocessed contact, in composite order. */
-  private walk2d(
-    cs: ContactSurf[], posByTag: Map<number, number>, conn: Map<number, Connect2d>, processed: Set<number>, start: number,
-  ): number[] {
-    const composite: number[] = [];
-    const toWalk = new Set<number>([start]);
-    const toAdd = new Set<number>();
-    while (toWalk.size) {
-      const n = minByIndex(toWalk.values(), cs);
-      toWalk.delete(n);
-      processed.add(n);
-      composite.push(n);
-      const c = cs[n];
-      const jflag = c.flag;
-      const cn = conn.get(c.tag)!;
-      for (let side = 0; side < 2; side++) {
-        const contactAtJoint = side === 0 ? jflag === -1 : jflag === -2;
-        for (const nbr of cn.p[side]) {
-          const m = posByTag.get(nbr.tag);
-          if (m === undefined) continue;
-          let aflag = nbr.aflag;
-          if (c.nside === OPPOSITE_SIDE) aflag = aflag === CONVEX ? CONCAVE : CONVEX;
-          if (nbr.fflag === FLAT) {
-            if (c.type === cs[m].type && !processed.has(m)) toAdd.add(m);
-          } else if (aflag === CONVEX) {
-            if (c.overlap > cs[m].overlap - EPSILON) cs[m].convexIndex = c.index;
-          }
-          if (contactAtJoint) {
-            c.cindex.push(nbr.tag);
-            c.caflag.push(aflag);
-          }
-        }
-      }
-      for (const k of [...toAdd].sort((a, b) => cs[a].index - cs[b].index)) {
-        if (c.convexIndex !== -1) cs[k].convexIndex = c.index;
-        toWalk.add(k);
-      }
-      toAdd.clear();
-    }
-    return composite;
-  }
-
-  /** calculate_2d_forces: the overlap and the force direction of each composite contact; returns the largest overlap. */
-  private calc2d(cs: ContactSurf[], posByTag: Map<number, number>, composite: number[]): number {
-    let maxOverlap = -BIG;
-    let maxOverlapExt = -BIG;
-    for (const n of composite) {
-      const c = cs[n];
-      if (c.convexIndex !== -1) c.overlap = 0.0;
-      maxOverlap = Math.max(maxOverlap, c.overlap);
-      if (c.external) maxOverlapExt = Math.max(maxOverlapExt, c.overlap);
-    }
-    if (maxOverlap < EPSILON) return maxOverlap;
-    let wExt = 0.0;
-    if (maxOverlapExt !== -BIG) {
-      wExt = maxOverlapExt / maxOverlap;
-      wExt *= wExt;
-    }
-    const wInt = 1.0 - wExt;
-    for (const n of composite) {
-      const c = cs[n];
-      c.weight = c.external ? wExt : wInt;
-      if (c.overlap < EPSILON) continue;
-      if (c.flag === 1) continue;
-      let maxDot = -2;
-      let ck = -1;
-      let caflag = -1;
-      for (let i = 0; i < c.cindex.length; i++) {
-        const m = posByTag.get(c.cindex[i])!;
-        const dot = c.surfNorm[0] * cs[m].surfNorm[0] + c.surfNorm[1] * cs[m].surfNorm[1] + c.surfNorm[2] * cs[m].surfNorm[2];
-        if (dot > maxDot) {
-          ck = c.cindex[i];
-          caflag = c.caflag[i];
-          maxDot = dot;
-        }
-      }
-      if (ck === -1) continue;
-      if (caflag === CONCAVE) {
-        c.drForce = [c.surfNorm[0], c.surfNorm[1], c.surfNorm[2]];
-        continue;
-      }
-      // the end point of this element where the contact sits, and the direction to the other element's far end
-      const pt = c.flag === -1 ? 0 : 1;
-      const ptx = c.ends[pt];
-      const mk = posByTag.get(ck)!;
-      let kline = [cs[mk].ends[0][0] - ptx[0], cs[mk].ends[0][1] - ptx[1], cs[mk].ends[0][2] - ptx[2]];
-      if (kline[0] * kline[0] + kline[1] * kline[1] + kline[2] * kline[2] < EPSILON) {
-        kline = [cs[mk].ends[1][0] - ptx[0], cs[mk].ends[1][1] - ptx[1], cs[mk].ends[1][2] - ptx[2]];
-      }
-      const dot = c.dr[0] * kline[0] + c.dr[1] * kline[1] + c.dr[2] * kline[2];
-      if (dot > 0) c.drForce = [cs[mk].surfNorm[0], cs[mk].surfNorm[1], cs[mk].surfNorm[2]];
-    }
-    return maxOverlap;
-  }
-}
-
-/** Map from atom ID to position in the contact list. */
-function indexByTag(cs: ContactSurf[]): Map<number, number> {
-  const m = new Map<number, number>();
-  for (let n = 0; n < cs.length; n++) if (!m.has(cs[n].tag)) m.set(cs[n].tag, n);
-  return m;
-}
-
-/** The position with the smallest atom index (the std::map / std::set order of the native walks). */
-function minByIndex(keys: Iterable<number>, cs: ContactSurf[]): number {
-  let best = -1;
-  for (const k of keys) if (best === -1 || cs[k].index < cs[best].index) best = k;
-  return best;
 }

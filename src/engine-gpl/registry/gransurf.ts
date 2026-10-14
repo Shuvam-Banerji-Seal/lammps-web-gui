@@ -11,7 +11,7 @@ import type { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { PairSurfGranular } from '../gransurf/pair_surf_granular';
 import { FixSurfaceLocal } from '../gransurf/fix_surface_local';
-import { StyleError } from '../../engine/force/types';
+import { FixSurfaceGlobal } from '../gransurf/fix_surface_global';
 
 export const PAIRS: Record<string, () => Pair> = {
   'surf/granular': () => new PairSurfGranular(),
@@ -19,9 +19,5 @@ export const PAIRS: Record<string, () => Pair> = {
 
 export const FIXES: Record<string, (sys: System, id: string, group: string, args: string[]) => Fix> = {
   'surface/local': (sys, id, group, args) => new FixSurfaceLocal(sys, id, group, args),
-  // fix surface/global (surfaces from molecule templates or STL files) is not ported yet: refused with its reason.
-  // The surfaces of a molecule template are available through fix surface/local input mol.
-  'surface/global': () => {
-    throw new StyleError('fix surface/global is not supported yet (surfaces from molecule templates or STL files; use fix surface/local input mol lines|tris, or the Lines/Triangles section of a data file)');
-  },
+  'surface/global': (sys, id, group, args) => new FixSurfaceGlobal(sys, id, group, args),
 };

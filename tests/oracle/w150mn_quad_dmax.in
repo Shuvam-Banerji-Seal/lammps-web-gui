@@ -1,0 +1,17 @@
+# oracle: min_style sd with min_modify line quadratic and min_modify dmax 0.02 (lj cluster, 30 iterations, every thermo row)
+# Measured with native LAMMPS (black box), all 31 rows: max relative error of the engine pe 1.6e-15, fnorm 4.5e-13.
+# oracle-inputs: w150mn_lj_cluster.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+boundary        f f f
+read_data       w150mn_lj_cluster.data
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+min_style       sd
+min_modify      dmax 0.02
+thermo_style    custom step pe fnorm
+thermo_modify   format float %.15g
+thermo          1
+minimize        0 0 30 1000

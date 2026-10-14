@@ -4,6 +4,7 @@ import { massOf } from '../atoms';
 import type { BoxDof } from '../fix/box_relax';
 import { checkMinHalt } from './halt';
 import { MINIMIZERS } from './minimizers';
+import { gplHook } from '../gplHooks';
 
 /*
  * Energy minimization — docs.lammps.org/minimize.html, min_style.html,
@@ -66,16 +67,30 @@ export interface MinHooks {
   thermo(iterDone: boolean): void;
 }
 
-const ALPHA_ARMIJO = 1e-4;
 /** native min_modify line backtrack: Armijo slope 0.4 and halving (measured, see the backtrack branch) */
 const BACKTRACK_SLOPE = 0.4;
 const BACKTRACK = 0.5;
-/** native min_modify line quadratic: largest first trial alpha (measured, see the quadratic branch) */
+/** native ALPHA_MAX (src/min_linesearch.cpp at b332f28): largest alpha of a line search trial */
 const LS_ALPHA_MAX = 1.0;
 const EPS_ENERGY = 1e-8;
 const EMACH = 1e-8;
-/** Energy resolution in units of the machine epsilon (sums of ~N terms). */
-const ROUNDOFF = 64 * Number.EPSILON;
+
+/** The trial state of the quadratic line search (native MinLineSearch, src/engine-gpl/min/linemin.ts). */
+export interface QuadraticLinesearch {
+  /** search direction */
+  readonly h: Float64Array;
+  /** force at the start point */
+  readonly f0: Float64Array;
+  /** force at the point of the last evaluation (step fills it) */
+  readonly force: Float64Array;
+  /** largest alpha the dof bounds allow (dmax, box, per-atom); the search caps it at 1 */
+  readonly alphaMax: number;
+  /** resets to the start point and steps by alpha along h; returns the energy and fills force */
+  step(alpha: number): number;
+}
+export interface QuadraticResult { status: 'ok' | 'downhill' | 'zeroquad' | 'zeroalpha'; energy: number }
+/** the lazily loaded helper of the 'minimize' HOOKS entry (src/engine-gpl/registry/linemin.ts) */
+export interface LineminHook { quadratic(eoriginal: number, ls: QuadraticLinesearch): QuadraticResult }
 
 export const minimize = async (
   sys: System, p: { etol: number; ftol: number; maxiter: number; maxeval: number }, hooks: MinHooks,
@@ -115,6 +130,8 @@ export const minimize = async (
   let M = 0;
   let boxForce = new Float64Array(0);
   let evaluations = 0;
+  // native neval: the evaluations of the line search (the setup evaluation is not one)
+  let lsEvals = 0;
   const fixesPost = sys.fixes.filter((f) => f.minPostForce);
   const fixesPre = sys.fixes.filter((f) => f.minPreForce);
   // energy and forces at the current positions
@@ -182,6 +199,8 @@ export const minimize = async (
   let lastYield = performance.now();
 
   if (style === 'cg' || style === 'sd') {
+    // the default line search is the GPL port (lazy 'minimize' HOOKS entry, see gplHooks.ts); backtrack is core
+    const lineminQuad = set.line === 'backtrack' ? null : gplHook<LineminHook>('minimize').quadratic;
     // vector: atoms, then box DOF, then the pair's per-atom DOF; the cg restart period counts all of them
     const L = n3 + M + K;
     const eOff = n3 + M;
@@ -217,9 +236,6 @@ export const minimize = async (
       const img0 = Int32Array.from(s.image.subarray(0, n3));
       if (box) { box.begin(); box.dof(u0); }
       const eStart = e;
-      let alpha = alphaMax;
-      let accepted = false;
-      let eTry = e;
       const moveTo = (al: number) => {
         s.image.set(img0);
         if (box) {
@@ -235,62 +251,45 @@ export const minimize = async (
           perAtom.push(s, xe);
         }
       };
+      // one line-search evaluation at x0 + alpha h (native alpha_step): the energy, and the force in gNew
+      const stepLS = (al: number): number => {
+        lsEvals++;
+        moveTo(al);
+        const en = evaluate();
+        packForce(gNew);
+        return en;
+      };
+      let eTry: number;
+      let status: 'ok' | 'downhill' | 'zeroquad' | 'zeroalpha' | 'etol';
       if (set.line === 'backtrack') {
         // Measured with native LAMMPS (black box, tests/oracle/w16min_backtrack.in): line backtrack accepts the
-        // first trial alpha = dmax/max|h|, halved (alpha *= 0.5), whose energy satisfies
+        // first trial alpha = min(1, dmax/max|h|), halved (alpha *= 0.5), whose energy satisfies
         // E(alpha) <= E(0) + 0.4 alpha s0, with s0 = dE/dalpha at 0 = -F.h. Acceptance does not test the slope
-        // at the accepted point (native accepted a point with positive slope). A step that halves below the
-        // floor ends the search.
-        const s0 = -slope;
-        const armijo = (ev: number, al: number) => ev <= eStart + BACKTRACK_SLOPE * al * s0;
+        // at the accepted point (native accepted a point with positive slope). Native's linemin_backtrack stops
+        // halving when alpha reaches 0 or when the Armijo target is at the round-off level (de_ideal >= -EMACH):
+        // "linesearch alpha is zero", or "energy tolerance" when the energy did go down (de < 0).
+        let alpha = Math.min(LS_ALPHA_MAX, alphaMax);
         for (;;) {
-          moveTo(alpha);
-          eTry = evaluate();
-          packForce(gNew);
-          if (armijo(eTry, alpha)) { accepted = true; break; }
+          eTry = stepLS(alpha);
+          const de = eTry - eStart;
+          const deIdeal = -BACKTRACK_SLOPE * alpha * slope;
+          if (de <= deIdeal) { status = 'ok'; break; }
           alpha *= BACKTRACK;
-          if (alpha * Math.max(hmax, hbox, hext) < EMACH) break;
+          if (alpha <= 0 || deIdeal >= -EMACH) { eTry = stepLS(0); status = de < 0 ? 'etol' : 'zeroalpha'; break; }
         }
       } else {
-        // Measured with native LAMMPS (black box, tests/oracle/w47ls_*.in, 108-atom LJ crystal, dmax 0.1): the
-        // quadratic line search starts at alpha0 = min(dmax/max|h|, 1). Its first trial is accepted when it is
-        // downhill and still descending (F.h > 0 at the trial). When the directional derivative F.h changes sign
-        // between the previous point and the trial, the next trial is the zero of the interpolated derivative
-        // (the secant step: alpha = a1 F1.h / (F1.h - F2.h) with the previous point's F.h), and that secant point
-        // is accepted when it is downhill. Otherwise alpha is halved. Native's first trial is an overshoot
-        // (energy rises) only in the large-dmax runs; there native halves before it takes the secant, and this
-        // rule does not reproduce that yet.
-        let a = Math.min(alphaMax, LS_ALPHA_MAX);
-        let prevA = 0, prevS = slope;
-        let fromSecant = false;
-        for (;;) {
-          moveTo(a);
-          eTry = evaluate();
-          packForce(gNew);
-          if (evaluations >= p.maxeval) break;
-          const sA = dot(gNew, h);
-          if (fromSecant && eTry <= eStart + ROUNDOFF * (Math.abs(eStart) + 1)) { accepted = true; break; }
-          if (prevS * sA < 0) {
-            // bracketed: the zero of the linear interpolation of F.h between the two points
-            const z = prevA + prevS * (a - prevA) / (prevS - sA);
-            prevA = a; prevS = sA; a = z; fromSecant = true;
-            continue;
-          }
-          if (!fromSecant && eTry <= eStart - ALPHA_ARMIJO * a * slope && sA > 0) { accepted = true; break; }
-          // round-off floor: when the predicted decrease is below the energy's resolution, the energy cannot
-          // decide the step. Then the forces decide it: a step that does not raise the energy beyond that
-          // resolution and that flattens the directional force (strong Wolfe curvature, |F1.h| <= 0.9 |F0.h|)
-          // is accepted, so the search does not stall at a tiny force
-          if (slope > 0 && eTry <= eStart + ROUNDOFF * (Math.abs(eStart) + 1) && Math.abs(sA) <= 0.9 * slope) { accepted = true; break; }
-          prevA = a; prevS = sA; a *= BACKTRACK; fromSecant = false;
-          if (a * Math.max(hmax, hbox, hext) < EMACH) break;
-        }
+        // native min_modify line quadratic (linemin_quadratic, src/engine-gpl/min/linemin.ts): the hook decides the
+        // trials and leaves the state at the point it returns (or at x0 after a failure)
+        const r = lineminQuad!(e, { h, f0: g, force: gNew, alphaMax, step: stepLS });
+        status = r.status;
+        eTry = r.energy;
       }
-      if (!accepted) {
-        // restore the starting point
-        moveTo(0);
-        e = evaluate();
-        reason = evaluations >= p.maxeval ? 'max force evaluations' : 'linesearch alpha is zero';
+      if (status !== 'ok') {
+        // restored start point (native: ZEROALPHA, ZEROQUAD, DOWNHILL end the minimization). Native advances the
+        // timestep before the line search, so the final thermo row of a failed search is at the next step.
+        e = eTry;
+        s.step++;
+        reason = status === 'downhill' ? 'search direction is not downhill' : status === 'zeroquad' ? 'quadratic factors are zero' : status === 'etol' ? 'energy tolerance' : 'linesearch alpha is zero';
         break;
       }
       ePrev = e;
@@ -298,11 +297,12 @@ export const minimize = async (
       s.step++;
       checkMinHalt(sys);
       hooks.thermo(false);
+      // function evaluation criterion (native checks it right after the line search, before the tolerances)
+      if (lsEvals >= p.maxeval) { reason = 'max force evaluations'; break; }
       // convergence checks (the force test uses the atoms only: a box that is still moving does not hold the minimizer)
       if (Math.abs(e - ePrev) < p.etol * 0.5 * (Math.abs(e) + Math.abs(ePrev) + EPS_ENERGY)) { reason = 'energy tolerance'; break; }
       const fn = fnormOf();
       if (fn < p.ftol) { reason = 'force tolerance'; break; }
-      if (evaluations >= p.maxeval) { reason = 'max force evaluations'; break; }
       if (box && box.nreset > 0 && iter % box.nreset === 0) {
         // nreset: the current box becomes the reference; the objective changes, so restart the search
         box.resetReference();

@@ -1,0 +1,16 @@
+# oracle: min_style cg, default min_modify line quadratic, an LJ cluster (lj units, thermo norm yes), 30 iterations, every thermo row
+# Measured with native LAMMPS (black box), all 31 rows: max relative error of the engine pe 2.1e-15, fnorm 2.3e-9 (fnorm near 1e-5, where round-off of the forces dominates).
+# oracle-inputs: w150mn_lj_cluster.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+boundary        f f f
+read_data       w150mn_lj_cluster.data
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+min_style       cg
+thermo_style    custom step pe fnorm
+thermo_modify   format float %.15g
+thermo          1
+minimize        0 0 30 1000

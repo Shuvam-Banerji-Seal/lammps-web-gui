@@ -458,7 +458,7 @@ export class FixRX extends Fix {
     const ydot = this.h0ydot, y1 = this.h0y1, ydot1 = this.h0ydot1, y = this.y;
     const maxIt = 10;
     let hnewOk = false;
-    let hnew = hg;
+    let hnew: number;
     let iter = 0;
     this.rhs(y, ydot);
     for (;;) {

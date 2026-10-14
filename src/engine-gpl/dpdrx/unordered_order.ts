@@ -13,32 +13,31 @@
 
 const M = 0xc6a4a7935bd1e995n;
 const R = 47n;
-const MASK = (1n << 64n) - 1n;
 
 /** libstdc++ _Hash_bytes (64-bit size_t), the hash of std::hash<std::string>. */
 export const hashBytes = (s: string, seed = 0xc70f6907n): bigint => {
   const buf = new TextEncoder().encode(s);
   const len = buf.length;
-  let h = (seed ^ ((BigInt(len) * M) & MASK)) & MASK;
+  let h = BigInt.asUintN(64, seed ^ BigInt.asUintN(64, BigInt(len) * M));
   const blocks = len >> 3;
   for (let b = 0; b < blocks; b++) {
     let k = 0n;
     for (let j = 7; j >= 0; j--) k = (k << 8n) | BigInt(buf[b * 8 + j]);
-    k = (k * M) & MASK;
+    k = BigInt.asUintN(64, k * M);
     k ^= k >> R;
-    k = (k * M) & MASK;
+    k = BigInt.asUintN(64, k * M);
     h ^= k;
-    h = (h * M) & MASK;
+    h = BigInt.asUintN(64, h * M);
   }
   const rem = len & 7;
   if (rem > 0) {
     const t = blocks * 8;
     for (let j = rem - 1; j >= 1; j--) h ^= BigInt(buf[t + j]) << BigInt(8 * j);
     h ^= BigInt(buf[t]);
-    h = (h * M) & MASK;
+    h = BigInt.asUintN(64, h * M);
   }
   h ^= h >> R;
-  h = (h * M) & MASK;
+  h = BigInt.asUintN(64, h * M);
   h ^= h >> R;
   return h;
 };

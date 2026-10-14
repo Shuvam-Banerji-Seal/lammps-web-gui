@@ -287,6 +287,16 @@ function inflateMember(data: Uint8Array, pos: number, out: Out): number {
 }
 
 /**
+ * The bytes of one raw DEFLATE stream (RFC 1951) that starts at `start` of `data`, without a gzip or zlib wrapper
+ * (the PNG reader strips its zlib header and checks its own trailer). A bad or truncated stream throws a StyleError.
+ */
+export const inflateRaw = (data: Uint8Array, start: number): Uint8Array => {
+  const out = new Out(Math.max(1024, data.length * 4));
+  inflate(new BitReader(data, start, data.length), out);
+  return out.buf.slice(0, out.len);
+};
+
+/**
  * Decompresses one or more concatenated gzip (RFC 1952) members into the decompressed bytes. A bad
  * member header, an invalid/truncated DEFLATE stream, or a failed CRC-32/ISIZE check throws a
  * StyleError naming the problem.

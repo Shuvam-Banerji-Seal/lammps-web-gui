@@ -34,6 +34,23 @@ export interface RasterFrame {
   ctr: Vec3;
   zdist: number;
   pixelWidth: number;
+  /** dump image shiny (specular intensity; hardness 16 * shiny). Default 1. */
+  shiny?: number;
+  /** Ambient colour of the surfaces: 0 without ssao, 0.5 with it (Image::view_params). Default 0. */
+  ambient?: number;
+  /** The ssao tangent buffer (2 values per pixel, rows from the top), set when ssao is on; null otherwise. */
+  surface?: Float64Array;
+}
+
+/**
+ * The shading helpers of the lazily loaded GPL graphics module (engine-gpl/graphics/image_shading.ts), read by the core
+ * dump image through gplHook('image'): the draw_pixel colour of a surface and the ssao occlusion pass.
+ */
+export interface ImageShading {
+  /** draw_pixel's colour (0..1 per channel) of a camera-space unit normal and a surface colour (0..1). */
+  shadeSurface(surface: Vec3, col: Vec3, shiny: number, ambient: number): Vec3;
+  /** compute_SSAO over a finished frame (radius in world units, samples, seed). */
+  applySsao(f: RasterFrame, radius: number, samples: number, seed: number): void;
 }
 
 /** What dump image's "fix ID style flag1 flag2" keyword gives a graphics object (dump_image.html). */

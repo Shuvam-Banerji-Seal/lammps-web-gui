@@ -664,8 +664,12 @@ export class ComputeChunkSpreadAtom extends Compute {
  *   inputs are specified, a global array is produced where the number of columns =
  *   the number of inputs."
  * Measured with native LAMMPS (black box): id on a chunk/atom with compress no is
- * an error (no IDs are stored by compute chunk/atom). coordN is not supported: the
- * bin centres are not exposed by compute chunk/atom in the engine yet.
+ * an error (no IDs are stored by compute chunk/atom).
+ * "The *coordN* attributes can only be used if a *binning* style was used in the compute chunk/atom command
+ * referenced by chunkID. For *bin/1d*, *bin/2d*, and *bin/3d* styles ... Style *bin/1d* only defines a *coord1*
+ * attribute. Style *bin/2d* adds a *coord2* attribute. Style *bin/3d* adds a *coord3* attribute." (the
+ * compute_property_chunk.html page; native error text: "Compute chunk/atom stores no coord1 for compute
+ * property/chunk", src/compute_property_chunk.cpp at b332f28, which reads cchunk->coord[m][N-1]).
  */
 export class ComputePropertyChunk extends Compute {
   readonly style = 'property/chunk';
@@ -679,7 +683,11 @@ export class ComputePropertyChunk extends Compute {
     this.attrs = args.slice(1);
     for (const a of this.attrs) {
       if (a === 'count' || a === 'id') continue;
-      if (/^coord[123]$/.test(a)) throw new StyleError(`compute ${id} (property/chunk): attribute ${a} is not supported by the engine yet`);
+      const m = /^coord([123])$/.exec(a);
+      if (m) {
+        if (this.chunk.binDims < Number(m[1])) throw new StyleError(`compute ${id} (property/chunk): compute chunk/atom ${this.chunk.id} stores no ${a}`);
+        continue;
+      }
       throw new StyleError(`compute ${id} (property/chunk): unknown attribute '${a}', expected count, id, coord1, coord2 or coord3`);
     }
     if (this.attrs.length === 1) {
@@ -699,6 +707,12 @@ export class ComputePropertyChunk extends Compute {
       if (a !== 'id') return;
       if (!origIds) throw new StyleError(`compute ${this.id} (property/chunk): attribute id needs compress yes in compute ${this.chunk.id}`);
       for (let c = 0; c < mem.N; c++) out[K * c + k] = origIds[c];
+    });
+    // coordN: the bin centre of each chunk (compute chunk/atom coord array; row c is chunk c + 1)
+    this.attrs.forEach((a, k) => {
+      const m = /^coord([123])$/.exec(a);
+      if (!m) return;
+      for (let c = 0; c < mem.N; c++) out[K * c + k] = this.chunk.coordsOf(c + 1)[Number(m[1]) - 1];
     });
     for (let j = 0; j < mem.n; j++) {
       const c = mem.chunk[j];

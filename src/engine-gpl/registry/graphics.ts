@@ -18,6 +18,7 @@ import { makeFixGraphicsLabels } from '../graphics/fix_graphics_labels';
 import { makeFixGraphicsPeriodic } from '../graphics/fix_graphics_periodic';
 import { makeFixGraphicsReplica } from '../graphics/fix_graphics_replica';
 import { makeFixGraphicsChunk } from '../graphics/fix_graphics_chunk';
+import { imageShadingHook } from '../graphics/image_shading';
 
 const refuse = (style: string, reason: string): FixFactory => () => {
   throw new StyleError(`fix graphics/${style} is not supported by the browser engine: ${reason}`);
@@ -34,3 +35,9 @@ export const FIXES: Record<string, FixFactory> = {
   'graphics/replica': makeFixGraphicsReplica,
   'graphics/isosurface': refuse('isosurface', 'the marching-cubes isosurface objects (fix_graphics_isosurface.cpp) are not ported'),
 };
+
+/**
+ * HOOKS: the shading and ssao helpers dump image reads through gplHook('image') (image_shading.ts): the draw_pixel
+ * light sum with dump image's shiny, and the compute_SSAO occlusion pass.
+ */
+export const HOOKS = { image: imageShadingHook };

@@ -47,10 +47,10 @@ describe('stl parser', () => {
     expect(tris[0].v).toEqual([[2, 2, 5], [4, 2, 5], [3, 5, 5]]);
   });
 
-  it('rejects a binary STL and names the conversion tool', () => {
-    // 80-byte header that does not start with "solid", then a facet count
+  it('rejects text that is neither ASCII STL nor a binary STL of 84 + 50 N bytes', () => {
+    // 80-byte header that does not start with "solid", then a facet count that does not match the size
     const binary = '\u0000binary\u0000header' + 'z'.repeat(60);
-    expect(() => parseStl(binary, 'part.stl')).toThrow(/binary STL.*stl_bin2txt/);
+    expect(() => parseStl(binary, 'part.stl')).toThrow(/neither an ASCII STL.*84 \+ 50 N bytes/);
   });
 });
 

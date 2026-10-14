@@ -206,14 +206,20 @@ export const totalBytes = (files: { size: number }[]): number => {
 
 /**
  * Text of a picked File as the engine expects it: gzip bytes one character per byte, other
- * files as UTF-8 text.
+ * files as UTF-8 text. A file that is not valid UTF-8 (a binary STL, for one) keeps its bytes
+ * one character per byte too, so the engine reads the same bytes the file holds.
  */
 export const readInputText = async (file: File): Promise<string> => {
-  if (file.name.toLowerCase().endsWith('.gz')) {
-    const bytes = new Uint8Array(await file.arrayBuffer());
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const latin1 = (): string => {
     let out = '';
     for (let k = 0; k < bytes.length; k += 0x8000) out += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
     return out;
+  };
+  if (file.name.toLowerCase().endsWith('.gz')) return latin1();
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return latin1();
   }
-  return file.text();
 };

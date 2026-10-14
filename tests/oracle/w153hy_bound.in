@@ -1,0 +1,33 @@
+# oracle: fix hyper/local keywords bound 0.3 (bias coefficients clamped to 1 +- 0.3) and reset 40 (vmax rescaled to the mean coefficient every 40 steps), 2d square lattice of w153hy_local (cut down, 120 steps); native: b332f28 installed lmp (REPLICA package). Measured with native LAMMPS: thermo max relative error 7.6e-15, per-atom velocities and forces max absolute error 1.1e-13
+# oracle-compare: thermo=all atoms=all atomskip=xu,yu,zu rel=1e-8 abs=1e-10
+units           lj
+dimension       2
+atom_style      atomic
+atom_modify     map array
+boundary        p f p
+comm_modify     cutoff 4.0
+lattice         sq 0.8
+region          box block 0 6 0 3 -2.0 2.0
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+create_atoms    1 single 1.677 3.1 0 units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+region          sub block INF INF INF 0.6 -0.5 0.5 units box
+group           sub region sub
+group           mobile subtract all sub
+fix             1 mobile nve
+fix             2 mobile enforce2d
+fix             3 sub setforce 0.0 0.0 0.0
+velocity        mobile set 0.0 0.0 0.0
+timestep        0.005
+compute         ev all event/displace 0.5
+fix             HL mobile hyper/local 1.5 0.3 0.5 1.0 3.0 0.5 1.2 bound 0.3 reset 40
+thermo_style    custom step pe f_HL f_HL[1] f_HL[2] f_HL[3] f_HL[4] f_HL[5] f_HL[6] f_HL[7] f_HL[8] f_HL[9] f_HL[10] f_HL[11] f_HL[12] f_HL[13] f_HL[14] f_HL[15] f_HL[16] f_HL[17] f_HL[18] f_HL[19] f_HL[20] f_HL[21] f_HL[22] f_HL[23] f_HL[24] f_HL[25] f_HL[26]
+thermo_modify   format float %.15g
+thermo          20
+min_modify      line backtrack
+hyper           120 20 HL ev min 1.0e-5 1.0e-5 100 100

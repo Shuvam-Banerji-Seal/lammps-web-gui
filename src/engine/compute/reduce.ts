@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { expandWildcards, parseRef, peratomValues, type Ref } from '../refs';
 import { ALL_GROUP_BIT } from '../atoms';
+import { CellList } from '../cellList';
 
 /*
  * Wave-2 computes: reduce, reduce/region, displace/atom, coord/atom.
@@ -610,11 +611,18 @@ export class ComputeCoordAtom extends Compute {
     const counts = this.counts;
     const cut2 = this.cutoff * this.cutoff;
     const three = s.dimension === 3;
+    // the minimum-image distance is searched in the cells around i (an orthogonal box; a triclinic box has one cell).
+    // In 2d the z component is ignored by the distance, so the cells see z = 0.
+    const xc = three ? s.x : Float64Array.from({ length: 3 * n }, (_, q) => (q % 3 === 2 ? 0 : s.x[q]));
+    const cells = new CellList(xc, n, g.triclinic ? 0 : this.cutoff, { length: [g.lx, g.ly, g.lz], periodic: g.periodic });
     for (let i = 0; i < n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue; // "0.0 for atoms not in the specified compute group"
       counts.fill(0);
       const xi = s.x[3 * i], yi = s.x[3 * i + 1], zi = s.x[3 * i + 2];
-      for (let j = 0; j < n; j++) {
+      // candidates: the atoms of the cells around i, ascending (the same order as the all-atom loop)
+      const cand = cells.candidates(xi, yi, three ? zi : 0);
+      for (let c = 0; c < cand.length; c++) {
+        const j = cand[c];
         if (j === i) continue;
         if (!(s.mask[j] & this.group2Bit)) continue;
         const d = this.d;

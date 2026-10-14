@@ -2,6 +2,17 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNum, parseInt_ } from '../force/util';
+import { CellList } from '../cellList';
+
+/**
+ * Cutoff of the cell list for the neighbour tests of sna/atom, snap and sna/grid: every test accepts r < Rii with
+ * Rii = rcutfac * (R_i + R_k) <= 2 * rcutfac * max radius, and the keyword nnn cutoff stays inside the pair cutoff.
+ */
+export const snaBinCut = (rcutfac: number, radius: ArrayLike<number>, pairCut: number): number => {
+  let maxR = 0;
+  for (let t = 0; t < radius.length; t++) if (radius[t] > maxR) maxR = radius[t];
+  return Math.max(pairCut, rcutfac * 2 * maxR);
+};
 
 /*
  * compute ID group-ID sna/atom rcutfac rfac0 twojmax R_1 ... R_N w_1 ... w_N keyword values ...
@@ -396,10 +407,12 @@ export class ComputeSnaAtom extends Compute {
    * is halved until its width is at most 1e-8 and the cutoff is the middle of the final bracket; a midpoint with S = nnn
    * exactly is returned at once.
    */
-  protected nearestCutoff(i: number, xa: Float64Array, nall: number, cutPair: number): number {
+  protected nearestCutoff(i: number, xa: Float64Array, cutPair: number, cells: CellList): number {
     const xi = xa[3 * i], yi = xa[3 * i + 1], zi = xa[3 * i + 2];
     const dist: number[] = [];
-    for (let k = 0; k < nall; k++) {
+    const cand = cells.candidates(xi, yi, zi);
+    for (let t = 0; t < cand.length; t++) {
+      const k = cand[t];
       if (k === i) continue;
       const dx = xa[3 * k] - xi, dy = xa[3 * k + 1] - yi, dz = xa[3 * k + 2] - zi;
       const rsq = dx * dx + dy * dy + dz * dz;
@@ -441,6 +454,7 @@ export class ComputeSnaAtom extends Compute {
     const ta = nb.typeall;
     // the pair cutoff: the candidate neighbours of keyword nnn (native rcutsq = cutforce^2)
     const cutPair = nb.cutneighmax - nb.skin;
+    const cells = new CellList(xa, nall, snaBinCut(this.rcutfac, this.radius, cutPair));
     const out = (this.arrayAtom = new Float64Array(this.ncols * n));
     const tj = this.twojmax;
     const Ne = this.chemflag ? this.nelements : 1;
@@ -476,7 +490,7 @@ export class ComputeSnaAtom extends Compute {
       const muI = this.chemflag ? this.elemMap[ti - 1] : 0;
       const xi = xa[3 * i], yi = xa[3 * i + 1], zi = xa[3 * i + 2];
       // keyword nnn: one cutoff for all neighbours of atom i, every neighbour weighted 1 (native sets wj = 1)
-      const rcNnn = this.nnn > 0 ? this.nearestCutoff(i, xa, nall, cutPair) : 0;
+      const rcNnn = this.nnn > 0 ? this.nearestCutoff(i, xa, cutPair, cells) : 0;
       // self term: identity times w^self_{μ_i,e} (1 for all e with wselfallflag,
       // else 1 only for e = μ_i); docs.lammps.org/compute_sna_atom.html gives
       // u^μ = w^self U(0,0,0) + sum over neighbours of element μ
@@ -489,7 +503,9 @@ export class ComputeSnaAtom extends Compute {
           if (wself !== 0) for (let k = 0; k < m; k++) ue[e][J].re[k * m + k] = 1;
         }
       }
-      for (let k = 0; k < nall; k++) {
+      const cand = cells.candidates(xi, yi, zi);
+      for (let t = 0; t < cand.length; t++) {
+        const k = cand[t];
         if (k === i) continue;
         const dx = xa[3 * k] - xi, dy = xa[3 * k + 1] - yi, dz = xa[3 * k + 2] - zi;
         const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -915,6 +931,7 @@ export class ComputeSnaDeriv extends ComputeSnaAtom {
     const raw = new Float64Array(K), Bf = new Float64Array(K), gbuf = new Float64Array(K);
     const dQ = new Float64Array(Q * 3);
     const rfac0 = this.rfac0, rmin0 = this.rmin0;
+    const cells = new CellList(xa, nall, snaBinCut(this.rcutfac, this.radius, 0));
 
     for (let ip = 0; ip < n; ip++) {
       if (!(s.mask[ip] & this.groupBit)) continue;
@@ -922,7 +939,9 @@ export class ComputeSnaDeriv extends ComputeSnaAtom {
       const xi = xa[3 * ip], yi = xa[3 * ip + 1], zi = xa[3 * ip + 2];
       // neighbours inside their pair cutoff
       let m = 0;
-      for (let k = 0; k < nall; k++) {
+      const cand = cells.candidates(xi, yi, zi);
+      for (let t = 0; t < cand.length; t++) {
+        const k = cand[t];
         if (k === ip) continue;
         const dx = xa[3 * k] - xi, dy = xa[3 * k + 1] - yi, dz = xa[3 * k + 2] - zi;
         const r = Math.sqrt(dx * dx + dy * dy + dz * dz);

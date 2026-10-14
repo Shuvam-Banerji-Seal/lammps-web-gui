@@ -1,6 +1,7 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import { parseNum } from '../force/util';
+import { CellList } from '../cellList';
 import type { System } from '../system';
 
 /*
@@ -57,6 +58,7 @@ export class ComputeCnpAtom extends Compute {
     const xa = nb.xall;
     const cut2 = cut * cut;
     const nall = nb.nall;
+    const cells = new CellList(xa, nall, cut);
     if (this.nbr.length < nall) {
       this.nbr = new Int32Array(nall);
       this.ux = new Float64Array(nall);
@@ -68,7 +70,10 @@ export class ComputeCnpAtom extends Compute {
       // neighbours of owned atom i within the cutoff (self excluded), as displacements u_k = x_k - x_i
       const xi = xa[3 * i], yi = xa[3 * i + 1], zi = xa[3 * i + 2];
       let n = 0;
-      for (let k = 0; k < nall; k++) {
+      // the candidates are the atoms of the cells around i, in ascending index order (as the all-atom loop visits them)
+      const cand = cells.candidates(xi, yi, zi);
+      for (let t = 0; t < cand.length; t++) {
+        const k = cand[t];
         if (k === i) continue;
         const dx = xa[3 * k] - xi, dy = xa[3 * k + 1] - yi, dz = xa[3 * k + 2] - zi;
         if (dx * dx + dy * dy + dz * dz >= cut2) continue;

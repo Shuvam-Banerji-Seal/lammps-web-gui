@@ -10,6 +10,7 @@ import { NEIGHMASK } from '../../engine/neighbor';
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { joinPotentialEntries, parseNum } from '../../engine/force/util';
 import { energyScale, stripComment } from './zbase';
+import { CellList } from '../../engine/cellList';
 
 /** One potential-file entry of DRIP (the parameters of one element pair). */
 interface DripParam {
@@ -256,13 +257,20 @@ export class PairDRIP extends Pair {
     const owner = pc.nb.owner;
     const mol = pc.s.molecule;
     const nearest = new Int32Array(3 * nall).fill(-1);
+    // every test accepts rsq < ncutsq of some element pair, so cells as wide as the largest ncut hold all candidates
+    let ncutMax = 0;
+    for (const p of this.params) if (p.ncut > ncutMax) ncutMax = p.ncut;
+    const cells = new CellList(x, nall, ncutMax);
     for (let i = 0; i < nall; i++) {
       const itype = this.map[type[i]];
       if (itype < 0) continue;
       let nb1 = -1, nb2 = -1, nb3 = -1;
       let nb1rsq = NO_NEIGHBOR + 1, nb2rsq = 2.0 * NO_NEIGHBOR, nb3rsq = 3.0 * NO_NEIGHBOR;
       const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
-      for (let j = 0; j < nall; j++) {
+      // candidates: the atoms of the cells around i, ascending (the same order as the all-atom loop)
+      const cand = cells.candidates(xi, yi, zi);
+      for (let t = 0; t < cand.length; t++) {
+        const j = cand[t];
         if (j === i) continue;
         const jtype = this.map[type[j]];
         if (jtype < 0) continue;

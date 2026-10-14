@@ -2,7 +2,8 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNum, parseInt_ } from '../force/util';
-import { buildTriples, rawBispectrum, adjointBispectrum, WignerTables, type Triple, type Cmat, type Grad } from './sna';
+import { buildTriples, rawBispectrum, adjointBispectrum, WignerTables, snaBinCut, type Triple, type Cmat, type Grad } from './sna';
+import { CellList } from '../cellList';
 
 /*
  * compute ID group-ID snap rcutfac rfac0 twojmax R_1 ... R_N w_1 ... w_N keyword values ...
@@ -294,6 +295,7 @@ export class ComputeSnap extends Compute {
     const vals = new Float64Array(blk);
     const dQ = new Float64Array(Q * 3);
     const pairsV = PAIRS_V;
+    const cells = new CellList(xa, nall, snaBinCut(p.rcutfac, p.radius, 0));
 
     for (let ip = 0; ip < n; ip++) {
       if (!(s.mask[ip] & gb)) continue;
@@ -301,7 +303,10 @@ export class ComputeSnap extends Compute {
       const xi = xa[3 * ip], yi = xa[3 * ip + 1], zi = xa[3 * ip + 2];
       // neighbours inside their pair cutoff, group members only
       let m = 0;
-      for (let k = 0; k < nall; k++) {
+      // candidates: the atoms of the cells around ip, ascending (the same order as the all-atom loop)
+      const cand = cells.candidates(xi, yi, zi);
+      for (let t = 0; t < cand.length; t++) {
+        const k = cand[t];
         if (k === ip) continue;
         const dx = xa[3 * k] - xi, dy = xa[3 * k + 1] - yi, dz = xa[3 * k + 2] - zi;
         const r = Math.sqrt(dx * dx + dy * dy + dz * dz);

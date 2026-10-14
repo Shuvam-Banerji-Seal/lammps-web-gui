@@ -218,22 +218,24 @@ run 1`);
 });
 
 describe('the setup row', () => {
-  it('stress/mop evaluated at the setup of a run is an EngineError (native setup row not reproduced)', async () => {
+  // native's setup evaluation (the row at step 0) is reproduced: compute_stress_mop.cpp tests the closed interval
+  // tau in [0, 1] for the kinetic crossing, so an atom exactly on the plane at setup is counted (oracle w149cp_mop_setup)
+  it('stress/mop and stress/mop/profile evaluated at the setup of a run are computed', async () => {
     await expect(runScript(`${PERIODIC_LJ}
 compute m1 all stress/mop x 2.5 kin conf
 thermo_style custom step c_m1[1]
-run 0`)).rejects.toThrow(/setup row/);
+run 0`)).resolves.toBeDefined();
     await expect(runScript(`${PERIODIC_LJ}
 compute mp all stress/mop/profile x 0.0 1.0 kin
 thermo_style custom step c_mp[1][2]
-run 1`)).rejects.toThrow(/setup row/);
+run 1`)).resolves.toBeDefined();
   });
 });
 
 describe('refusals', () => {
-  it('stress/cylinder and stress/spherical are EngineErrors naming the style', async () => {
-    await expect(runScript(`${TWO}\ncompute c all stress/cylinder 0 10 15 0.25\nrun 0`)).rejects.toThrow(/stress\/cylinder/);
-    await expect(runScript(`${TWO}\ncompute c all stress/spherical 0 0 0 0.25 10\nrun 0`)).rejects.toThrow(/stress\/spherical/);
+  it('stress/cylinder and stress/spherical are ported (engine-gpl), not refused', async () => {
+    await expect(runScript(`${TWO}\ncompute c all stress/cylinder 0 10 15 0.25\nrun 0`)).resolves.toBeDefined();
+    await expect(runScript(`${TWO}\ncompute c all stress/spherical 0 0 0 0.25 10\nrun 0`)).resolves.toBeDefined();
   });
 
   it('the bond keyword is refused by stress/cartesian and stress/mop', async () => {

@@ -104,14 +104,14 @@ describe('pair_style reaxff in the engine', () => {
     expect(row.ecoul as number).toBeCloseTo(want.ecoul as number, 9);
   });
 
-  it('refuses fix qeq/reaxff dual and matfree, and names the stage-3 fixes and computes it does not port', async () => {
+  it('refuses fix qeq/reaxff dual and matfree, and names the stage-3 fixes it does not port (compute reaxff/atom runs)', async () => {
     const ff = readFileSync(join(POTENTIALS, 'ffield.reax.rdx'), 'utf8');
     const files = { 'ffield.reax.rdx': ff, 'water.data': water };
     const head = `units real\natom_style charge\nread_data water.data\npair_style reaxff NULL\npair_coeff * * ffield.reax.rdx H O\n`;
     await expect(runScript(`${head}fix 2 all qeq/reaxff 1 0.0 10.0 1e-6 reaxff dual\nrun 0\n`, files)).rejects.toThrow(/dual/);
     await expect(runScript(`${head}fix 2 all qeq/reaxff 1 0.0 10.0 1e-6 reaxff matfree\nrun 0\n`, files)).rejects.toThrow(/matfree/);
     await expect(runScript(`${head}fix 2 all surface/global 1 bonds.reaxff\nrun 0\n`, files)).rejects.toThrow(/surface\/global/);
-    await expect(runScript(`${head}compute c all reaxff/atom bonds yes\nrun 0\n`, files)).rejects.toThrow(/reaxff\/atom/);
+    await expect(runScript(`${head}fix 2 all qeq/reaxff 1 0.0 10.0 1e-6 reaxff\ncompute c all reaxff/atom bonds yes\nrun 0\n`, files)).resolves.toBeDefined();
   });
 
   it('refuses fix qeq/reaxff with a field along a periodic direction (the fix_qeq_reaxff.cpp check)', async () => {

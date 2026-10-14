@@ -1,0 +1,24 @@
+# oracle: compute reaxff/atom (per atom: total bond order, nlp, bondcount; local rows with bonds yes) on the 384-atom TATB cell of w55reax_in_tatb, after 2 nve steps (qeq/reaxff charges); the trajectory carries the ReaxFF port error (see measured)
+# oracle-note: measured: the step-2 dumps differ from native by up to 1.8e-8 relative (atom bond orders) and 2.7e-9 (local rows), the trajectory error of the ReaxFF port; compared at filerel=2e-8
+# oracle-inputs: w55reax_tatb.data w55reax_tatb.control w55reax_ffield.reax
+# oracle-files: w149cp_rxatom_md_atoms.dump w149cp_rxatom_md_local.dump
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10 filerel=2e-8
+units           real
+atom_style      charge
+read_data       w55reax_tatb.data
+pair_style      reaxff w55reax_tatb.control
+pair_coeff      * * w55reax_ffield.reax C H O N
+neighbor        2.5 bin
+neigh_modify    delay 0 every 5 check no
+fix             1 all nve
+fix             2 all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff
+
+compute         bonds all reaxff/atom bonds yes
+dump            1 all custom 2 w149cp_rxatom_md_atoms.dump id type c_bonds[1] c_bonds[2] c_bonds[3]
+dump_modify     1 sort id format float %.15g
+dump            2 all local 2 w149cp_rxatom_md_local.dump c_bonds[1] c_bonds[2] c_bonds[3]
+dump_modify     2 format float %.15g
+thermo          1
+thermo_style    custom step temp epair etotal
+thermo_modify   format float %.15g
+run             2

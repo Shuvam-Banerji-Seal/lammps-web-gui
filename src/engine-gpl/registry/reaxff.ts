@@ -15,6 +15,7 @@ import { FixQEqReaxFF } from '../reaxff/qeq';
 import { FixACKS2ReaxFF } from '../reaxff/acks2';
 import { FixQEqRelReaxFF, FixQtpieReaxFF } from '../reaxff/qtpie';
 import { FixReaxFFBonds, FixReaxFFSpecies, reaxffPairOf } from '../reaxff/reports';
+import { ComputeReaxFFAtom } from '../reaxff/compute_atom';
 
 /** ReaxFF styles ported from LAMMPS (src/REAXFF); merged into styles.ts through lazyStyles.ts. */
 export const PAIRS: Record<string, () => Pair> = {
@@ -23,11 +24,6 @@ export const PAIRS: Record<string, () => Pair> = {
 
 const qeqFactory = (sys: System, id: string, group: string, args: string[]): Fix =>
   new FixQEqReaxFF(sys, id, group, args, () => (sys.ff.pair instanceof PairReaxFF ? sys.ff.pair : null));
-
-/** Refused by name (the factories throw; listed in refusedStyles.ts): the compute reaxff/atom (stage 3). */
-const refuse = (name: string) => (): never => {
-  throw new StyleError(`${name} is not ported to the browser engine (ReaxFF output fixes and computes are not supported)`);
-};
 
 const qtpieFactory = (sys: System, id: string, group: string, args: string[]): Fix =>
   new FixQtpieReaxFF(sys, id, group, args, () => (sys.ff.pair instanceof PairReaxFF ? sys.ff.pair : null));
@@ -59,7 +55,7 @@ export const FIXES: Record<string, typeof qeqFactory> = {
   'reaxff/species': speciesFactory as unknown as typeof qeqFactory,
 };
 
-/** compute reaxff/atom: refused by name. */
+/** compute reaxff/atom (src/REAXFF/compute_reaxff_atom.cpp), in reaxff/compute_atom.ts. */
 export const COMPUTES: Record<string, ComputeFactory> = {
-  'reaxff/atom': refuse('compute reaxff/atom') as unknown as ComputeFactory,
+  'reaxff/atom': (sys, id, group, args) => new ComputeReaxFFAtom(sys, id, group, args),
 };

@@ -20,8 +20,6 @@ export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[
   ],
   COMPUTES: [
     'dipole/tip4p', 'dipole/tip4p/chunk', // registry/compute_chunk17.ts
-    'stress/cylinder', 'stress/spherical', // registry/compute_stressprof.ts
-    'reaxff/atom', // engine-gpl/registry/reaxff.ts (stage 3)
     'slcsa/atom', // registry/compute_sna.ts: native compute slcsa/atom reads five trained model files (not ported)
   ],
 };

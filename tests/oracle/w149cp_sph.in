@@ -1,0 +1,20 @@
+# oracle: compute stress/spherical (centre 0 0 0, bin 0.5, Rmax 4: nine bins of 4/9) on a periodic lj fcc spherical liquid, sampled each step through fix ave/time mode vector (steps 0-10)
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10 filerel=1e-8
+# oracle-files: w149cp_sph.out
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block -5 5 -5 5 -5 5
+create_box      1 box
+region          liquid sphere 0 0 0 3.5
+create_atoms    1 region liquid
+mass            1 1.0
+velocity        all create 1.2 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+fix             1 all nve
+compute         p all stress/spherical 0 0 0 0.5 4.0
+fix             f all ave/time 1 1 1 c_p[*] file w149cp_sph.out mode vector format " %.15g"
+thermo_style    custom step temp pe
+thermo_modify   format float %.15g
+run             10

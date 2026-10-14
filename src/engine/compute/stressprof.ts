@@ -4,8 +4,8 @@ import { massOf } from '../atoms';
 import type { System } from '../system';
 
 /*
- * Spatial stress profiles: compute stress/cartesian, stress/mop, stress/mop/profile (implemented) and
- * stress/cylinder, stress/spherical (refused, see registry/compute_stressprof.ts).
+ * Spatial stress profiles: compute stress/cartesian, stress/mop, stress/mop/profile (implemented here).
+ * stress/cylinder and stress/spherical are ported in src/engine-gpl/compute/stress_curvilinear.ts.
  * Documented in docs.lammps.org/compute_stress_cartesian.html and
  * docs.lammps.org/compute_stress_mop.html; both cite the Irving-Kirkwood contour (Ikeshoji,
  * Hafskjold, Furuholt 2003) and the method of planes (Todd, Evans, Daivis 1995). Each rule below was
@@ -36,8 +36,8 @@ import type { System } from '../system';
  * compute stress/mop and stress/mop/profile: the docs describe the kinetic part as atoms that have
  * crossed the plane between the positions at t-dt and t, using the velocity at t-dt/2 from velocity
  * Verlet (compute_stress_mop.html). Measured (lj units, dt = 0.005, plane area 100):
- *   kinetic = nktv2p * mvv2e * sum over crossings of s m v_b / (A dt), with s = +1 for a crossing from
- *   the lower to the upper side and -1 for the reverse, A the plane area and v_b the half-step velocity
+ *   kinetic = nktv2p * mvv2e * sum over crossings of s m v_b / (A dt), with s = copysign(1, v_dir) (native: sign of
+ *   the velocity at t, not the crossing direction), A the plane area and v_b the half-step velocity
  *   v(t) - dt/2 * ftm2v * f / m. Measured: an atom at x = 4.998 with v = 1 and a constant force 1.0
  *   (fix addforce) crosses x = 5 with kinetic 2.005 = m v_half / (A dt) (A = 100, dt = 0.005) with
  *   v_half = 1.0025; without the force, v = 2 with v_y = 0.3 gives 4 and 0.6.
@@ -49,16 +49,10 @@ import type { System } from '../system';
  *   mid-point.
  *   Keywords: kin, conf, total (kin + conf), pair (the pair part of conf). The bond, angle and dihedral
  *   keywords, and conf on a system with bonded terms, are EngineErrors.
- *   Not reproduced: the setup row (the first evaluation of a run, before any step) of stress/mop and
- *   stress/mop/profile. On a displaced lattice native gives a nonzero kinetic part and a different
- *   configurational part there, while the rows after the first step match; the setup evaluation is an
- *   EngineError (refuseSetupRow).
- *
- * compute stress/cylinder and stress/spherical: refused. Measured: the native kinetic part is the
- * projection of m v on the local radial and tangential directions, and the radial virial matched an
- * exact line integral for pairs inside one shell. But for a non-radial pair crossing one shell edge,
- * native assigned the whole pair to the shell of its first atom, a rule that the midpoint and exact
- * integral splits do not reproduce, so the curvilinear profiles are not implemented.
+ *   Setup row: the evaluation at the setup of a run (step 0) is reproduced. Native counts an atom that lies exactly on
+ *   the plane at setup (a lattice site at the plane): the kinetic test uses the closed interval tau in [0, 1] with the
+ *   atom folded to the plane image nearest the plane (Domain::minimum_image, compute_stress_mop.cpp compute_pairs()),
+ *   and the configurational test is strict (xi > pos && xj < pos, or the same for pos1 = pos +/- prd). Oracle w149cp_mop_setup.
  */
 
 type Mode = 'both' | 'either';
@@ -189,57 +183,56 @@ function refuseStress(sys: System, id: string, style: string, kws: readonly stri
 }
 
 /**
- * The setup row is not reproduced: the first evaluation of a run (before any step) gives native values
- * that do not follow the rules above (measured: a nonzero kinetic part and a different configurational
- * part on a displaced lattice, the same for run 0 and run 1 with no integrator). Refuse rather than print.
+ * Method-of-planes components of one plane: [kin_x, kin_y, kin_z, conf_x, conf_y, conf_z]. Follows
+ * compute_stress_mop.cpp compute_pairs(): the configurational test is strict (xi > pos && xj < pos, or the same for
+ * pos1), and the kinetic test folds the atom to the plane image nearest the plane (Domain::minimum_image on the
+ * displacement from the plane, for a periodic direction) and counts the crossing when tau = (xi - pos)/(xi - xj) lies
+ * in the closed interval [0, 1], so an atom exactly on the plane at setup is counted.
  */
-function refuseSetupRow(sys: System, id: string, style: string): void {
-  if (sys.run.inRun && sys.state.step === sys.run.firstStep) {
-    throw new StyleError(`compute ${id} ${style}: the setup row (the evaluation at step ${sys.state.step}, before the first step of the run) is not reproduced by the browser engine; native gives different values there. Evaluate it after the first step (for example with print after the run, or a thermo output after step 0)`);
-  }
-}
-
-/** Method-of-planes components of one plane: [kin_x, kin_y, kin_z, conf_x, conf_y, conf_z]. */
 function mopPlane(sys: System, d: number, p: number, pairs: PairSet, groupBit: number, withKin: boolean, withConf: boolean): number[] {
   const s = sys.state;
   const out = [0, 0, 0, 0, 0, 0];
   const area = [0, 1, 2].filter((x) => x !== d).reduce((q, x) => q * (s.box.hi[x] - s.box.lo[x]), 1);
-  const L = s.box.hi[d] - s.box.lo[d];
-  // a periodic box is visited through its images of the plane
-  const images = s.box.periodic[d] ? [-1, 0, 1] : [0];
+  const lo = s.box.lo[d];
+  const L = s.box.hi[d] - lo;
+  const half = 0.5 * L;
+  // native: pos1 = pos + prd when pos < boxlo + prd_half, else pos - prd (the other image of the plane)
+  const p1 = p < lo + half ? p + L : p - L;
   const nkt = s.units.nktv2p;
-  const nkm = s.units.nktv2p * s.units.mvv2e;
+  const periodic = s.box.periodic[d];
   if (withConf) {
     for (let q = 0; q < pairs.n; q++) {
       const o = 9 * q;
       const xi = pairs.data[o + d], xj = pairs.data[o + 3 + d];
-      for (const m of images) {
-        const pm = p + m * L;
-        const li = xi < pm, lj = xj < pm;
-        if (li === lj) continue;
-        // the force on the lower-side atom from the upper-side atom
-        const sign = li ? 1 : -1;
-        for (let b = 0; b < 3; b++) out[3 + b] -= (sign * pairs.data[o + 6 + b] * nkt) / area;
-      }
+      const plus = (xi > p && xj < p) || (xi > p1 && xj < p1);
+      const minus = !plus && ((xi < p && xj > p) || (xi < p1 && xj > p1));
+      if (!plus && !minus) continue;
+      // native: +fpair (xi - xj) for a pair with the atom i above the plane, -fpair (xi - xj) for the reverse
+      const add = plus ? 1 : -1;
+      for (let b = 0; b < 3; b++) out[3 + b] += (add * pairs.data[o + 6 + b] * nkt) / area;
     }
   }
   if (withKin) {
-    // velocity Verlet: v(t - dt/2) = v(t) - dt/2 * ftm2v * f / m, and x(t - dt) = x(t) - dt * v(t - dt/2)
-    const dtf = 0.5 * s.dt * s.units.ftm2v;
+    // velocity Verlet: x(t - dt) = x(t) - dt * v(t) + dt * f * iterm, iterm = 0.5 / m * dt * ftm2v (compute_stress_mop.cpp)
+    const ftm2v = s.units.ftm2v;
+    const dt = s.dt;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & groupBit)) continue;
       const m = massOf(s, i);
-      const vh = [0, 0, 0];
-      for (let b = 0; b < 3; b++) vh[b] = s.v[3 * i + b] - (dtf / m) * s.f[3 * i + b];
-      const xcur = s.x[3 * i + d];
-      const xprev = xcur - s.dt * vh[d];
-      for (const m2 of images) {
-        const pm = p + m2 * L;
-        const cur = xcur < pm, prev = xprev < pm;
-        if (cur === prev) continue;
-        // +1 for a crossing from the lower to the upper side
-        const sgn = cur ? -1 : 1;
-        for (let b = 0; b < 3; b++) out[b] += (sgn * nkm * m * vh[b]) / (area * s.dt);
+      const iterm = (0.5 / m) * dt * ftm2v;
+      const vi = s.v[3 * i + d], fi = s.f[3 * i + d];
+      // minimum image of the displacement from the plane (a periodic direction only)
+      let dd = s.x[3 * i + d] - p;
+      if (periodic) while (Math.abs(dd) > half) dd = dd < 0 ? dd + L : dd - L;
+      const xi = dd + p;
+      const xj = xi - vi * dt + fi * iterm * dt;
+      const tau = (xi - p) / (xi - xj);
+      if (!(tau <= 1 && tau >= 0)) continue;
+      // copysign(1, v): -1 for a negative velocity or -0
+      const sgn = vi < 0 || Object.is(vi, -0) ? -1 : 1;
+      for (let b = 0; b < 3; b++) {
+        const vcross = s.v[3 * i + b] - s.f[3 * i + b] * iterm;
+        out[b] += (((m * vcross * sgn) / dt) / area * nkt) / ftm2v;
       }
     }
   }
@@ -283,7 +276,6 @@ export class ComputeStressMop extends Compute {
   protected computeVector(): void {
     const sys = this.sys;
     refuseStress(sys, this.id, 'stress/mop', this.kws);
-    refuseSetupRow(sys, this.id, 'stress/mop');
     const p = planeValue(sys, this.d, this.pos);
     const pairs = collectPairs(sys, this.groupBit, 'either');
     this.vector.fill(0);
@@ -341,7 +333,6 @@ export class ComputeStressMopProfile extends Compute {
   protected computeArray(): void {
     const sys = this.sys;
     refuseStress(sys, this.id, 'stress/mop/profile', this.kws);
-    refuseSetupRow(sys, this.id, 'stress/mop/profile');
     const planes = this.planes();
     const pairs = collectPairs(sys, this.groupBit, 'either');
     const ncol = this.sizeArrayCols;

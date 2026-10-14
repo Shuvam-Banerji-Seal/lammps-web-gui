@@ -11,7 +11,8 @@
  * Limit: the small bucket table covers up to 13 names; above that the caller keeps the order of first appearance.
  */
 
-const M = 0xc6a4a7935bd1e995n;
+// the MurmurHash64A multiplier (built from a string: CodeQL reads the hex bigint literal as undefined)
+const M = BigInt('0xc6a4a7935bd1e995');
 const R = 47n;
 
 /** libstdc++ _Hash_bytes (64-bit size_t), the hash of std::hash<std::string>. */

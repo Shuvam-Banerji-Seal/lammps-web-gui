@@ -1282,6 +1282,14 @@ export class FixSRD extends Fix {
         lamda2xAll(lam2, s.n, s.box.lo, geomR.h);
         x.set(lam2, 0);
       } else {
+        // As native LAMMPS does (src/SRD/fix_srd.cpp reset_velocities at b332f28): the undo pass calls domain->x2lamda(nlocal)
+        // for every box, not only a triclinic one, so its bins are taken from lamda positions against the corner in box
+        // units (orthogonal: boxlo, or the shifted corner). A particle of the last bin of a shifted grid therefore
+        // gets no add-back in an orthogonal box, which is the native result (measured with native LAMMPS: w179rg_srd_line_deform).
+        const geomO = boxMatrix(s.box.lo, s.box.hi, s.box.tilt);
+        const lam2 = Float64Array.from(x.subarray(0, 3 * s.n));
+        x2lamdaAll(lam2, s.n, s.box.lo, geomO.hinv);
+        pos = lam2;
         for (let k = 0; k < s.n; k++) {
           const i = order[k];
           if (!(mask[i] & this.groupBit)) continue;

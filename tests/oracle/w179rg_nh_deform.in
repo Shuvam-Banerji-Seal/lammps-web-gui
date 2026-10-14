@@ -1,0 +1,25 @@
+# oracle: fix rigid/nvt molecule bodies under fix deform erate x y with remap x (the bodies' centres of mass follow the box through FixRigidNH::deform)
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12 atomrel=1e-10
+# Measured with native LAMMPS (probe runs, 64 atoms, 40 steps): every thermo column, pressure included, agrees to 2.3e-15 relative and 3.1e-13 absolute (pzz), and the final per-atom state to 2e-14 (scaled).
+units           lj
+atom_style      molecular
+lattice         sc 0.5
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        mid atom floor(x/2.0)+3*floor(y/2.5)
+set             group all mol v_mid
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+timestep        0.002
+fix             1 all rigid/nvt molecule temp 1.0 1.0 0.5
+variable        vx atom 0.3*sin(0.9*x+0.4*z)
+variable        vy atom 0.3*cos(0.6*y+0.8*x)
+variable        vz atom 0.3*sin(0.7*z-0.3*y)
+velocity        all set v_vx v_vy v_vz units box
+fix             2 all deform 1 x erate 0.05 y erate 0.05 remap x
+thermo_style    custom step temp pe ke etotal press pxx pyy pzz lx ly lz vol f_1
+thermo_modify   format float %.15g
+thermo          5
+run             40

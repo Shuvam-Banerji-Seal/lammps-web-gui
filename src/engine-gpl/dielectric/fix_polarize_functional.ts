@@ -35,8 +35,8 @@ export class FixPolarizeFunctional extends Fix {
   private m = 0;
   private numIons = 0;
   private gEwald = 0.01;
-  /** Rww (m x m, row-major) built by setup_pre_force, and the vectors of the last solve. */
-  private Rww = new Float64Array(0);
+  /** Rww + Rww^T (the CG matrix), built with Rww. */
+  private A = new Float64Array(0);
   /** G1ww, ndotGww and G2ww of the last setup (the right-hand side of the solve reuses them). */
   private gMatrices: { G1: Float64Array; ND: Float64Array; G2: Float64Array } | null = null;
 
@@ -120,7 +120,6 @@ export class FixPolarizeFunctional extends Fix {
     const N = this.m;
     const owner = nb.owner, xa = nb.xall, idx = this.idx;
     const G1 = new Float64Array(N * N), ND = new Float64Array(N * N);
-    const b1 = new Float64Array(N * N), b2 = new Float64Array(N * N);
     const grad = new Float64Array(3);
     const inG = (j: number) => idx[owner[j]] >= 0;
     // pass 1: the Green's function and the normal derivative over the pairs (and the self terms)
@@ -134,83 +133,84 @@ export class FixPolarizeFunctional extends Fix {
         const mk = idx[owner[k]];
         const dx = xa[3 * i] - xa[3 * k], dy = xa[3 * i + 1] - xa[3 * k + 1], dz = xa[3 * i + 2] - xa[3 * k + 2];
         const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        b1[mi * N + mk] = this.greensReal(r);
+        G1[mi * N + mk] = this.greensReal(r);
         this.gradGreensReal(dx, dy, dz, grad);
-        b2[mi * N + mk] = (mu[4 * i] * grad[0] + mu[4 * i + 1] * grad[1] + mu[4 * i + 2] * grad[2]) / MY_4PI;
+        ND[mi * N + mk] = (mu[4 * i] * grad[0] + mu[4 * i + 1] * grad[1] + mu[4 * i + 2] * grad[2]) / MY_4PI;
       }
-      b1[mi * N + mi] = this.greensSelf(area[i]);
-      b2[mi * N + mi] = curv[i] * MY_PIS / Math.sqrt(area[i]) / MY_4PI;
+      G1[mi * N + mi] = this.greensSelf(area[i]);
+      ND[mi * N + mi] = curv[i] * MY_PIS / Math.sqrt(area[i]) / MY_4PI;
     }
-    G1.set(b1);
-    ND.set(b2);
+    // The passes below only touch the entries of pairs in the group: for each atom i the group neighbours l are
+    // gathered once, in list order, with their owner's area and ed (the same factors, in the same order, as before).
+    let maxNb = 0;
+    for (let i = 0; i < list.inum; i++) if (list.numneigh[i] > maxNb) maxNb = list.numneigh[i];
+    const gl = new Int32Array(maxNb), gA = new Float64Array(maxNb), gE = new Float64Array(maxNb), gO = new Int32Array(maxNb);
+    const gather = (i: number): number => {
+      let cnt = 0;
+      for (let kk = list.firstneigh[i], k1 = kk + list.numneigh[i]; kk < k1; kk++) {
+        const l = list.neighbors[kk] & NEIGHMASK;
+        if (!inG(l)) continue;
+        const ol = owner[l];
+        gl[cnt] = idx[ol]; gA[cnt] = area[ol]; gE[cnt] = ed[ol]; gO[cnt] = ol;
+        cnt++;
+      }
+      return cnt;
+    };
+    // transposed copy of ND, so that the sums over l read a contiguous row (ND[ml * N + mk] = NDt[mk * N + ml])
+    const NDt = new Float64Array(N * N);
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) NDt[c * N + r] = ND[r * N + c];
     // pass 2: G2ww from the neighbors of each patch
-    b1.fill(0);
+    const G2 = new Float64Array(N * N);
     for (let i = 0; i < list.inum; i++) {
       if (idx[i] < 0) continue;
-      const mi = idx[i];
-      const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
-      for (let kk = k0; kk < k1; kk++) {
-        const k = list.neighbors[kk] & NEIGHMASK;
-        if (!inG(k)) continue;
-        const mk = idx[owner[k]];
+      const mi = idx[i], miN = mi * N;
+      const cnt = gather(i);
+      for (let t = 0; t < cnt; t++) {
+        const mk = gl[t], mkN = mk * N;
         let temp = 0;
-        for (let ll = k0; ll < k1; ll++) {
-          const l = list.neighbors[ll] & NEIGHMASK;
-          if (!inG(l)) continue;
-          const ml = idx[owner[l]];
-          temp += G1[mi * N + ml] * ND[ml * N + mk] * area[owner[l]] * ed[owner[l]];
+        for (let u = 0; u < cnt; u++) {
+          const ml = gl[u];
+          temp += G1[miN + ml] * NDt[mkN + ml] * gA[u] * gE[u];
         }
-        b1[mi * N + mk] = temp;
+        G2[miN + mk] = temp;
       }
       let temp = 0;
-      for (let kk = k0; kk < k1; kk++) {
-        const k = list.neighbors[kk] & NEIGHMASK;
-        if (!inG(k)) continue;
-        const mk = idx[owner[k]];
-        temp += G1[mi * N + mk] * ND[mk * N + mi] * area[owner[k]] * ed[owner[k]];
+      for (let t = 0; t < cnt; t++) {
+        const mk = gl[t];
+        temp += G1[miN + mk] * NDt[miN + mk] * gA[t] * gE[t];
       }
-      b1[mi * N + mi] = temp;
+      G2[miN + mi] = temp;
     }
-    const G2 = Float64Array.from(b1);
     // pass 3: Rww with the G2 and G3 corrections (the diagonal keeps only the G1 and G2 terms, as in LAMMPS)
-    b1.fill(0);
-    const G3 = new Float64Array(N * N);
+    const G2t = new Float64Array(N * N);
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) G2t[c * N + r] = G2[r * N + c];
+    const Rww = new Float64Array(N * N);
     for (let i = 0; i < list.inum; i++) {
       if (idx[i] < 0) continue;
-      const mi = idx[i];
-      const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
-      for (let kk = k0; kk < k1; kk++) {
-        const k = list.neighbors[kk] & NEIGHMASK;
-        if (!inG(k)) continue;
-        const mk = idx[owner[k]];
-        const emk = em[owner[k]];
+      const mi = idx[i], miN = mi * N;
+      const cnt = gather(i);
+      for (let t = 0; t < cnt; t++) {
+        const mk = gl[t], mkN = mk * N;
+        const emk = em[gO[t]];
         const a1 = em[i] * (emk - 1.0);
         const a2 = 1.0 - em[i] - emk;
-        b1[mi * N + mk] = a1 * G1[mi * N + mk] + a2 * G2[mi * N + mk];
+        Rww[miN + mk] = a1 * G1[miN + mk] + a2 * G2[miN + mk];
         let temp = 0;
-        for (let ll = k0; ll < k1; ll++) {
-          const l = list.neighbors[ll] & NEIGHMASK;
-          if (!inG(l)) continue;
-          const ml = idx[owner[l]];
-          temp += ND[ml * N + mi] * G2[ml * N + mk] * area[owner[l]] * ed[owner[l]];
+        for (let u = 0; u < cnt; u++) {
+          const ml = gl[u];
+          temp += NDt[miN + ml] * G2t[mkN + ml] * gA[u] * gE[u];
         }
-        G3[mi * N + mk] = temp;
-        b1[mi * N + mk] += G3[mi * N + mk];
+        Rww[miN + mk] += temp;
       }
-      let temp = 0;
-      for (let ll = k0; ll < k1; ll++) {
-        const l = list.neighbors[ll] & NEIGHMASK;
-        if (!inG(l)) continue;
-        const ml = idx[owner[l]];
-        temp += ND[ml * N + mi] * G2[ml * N + mi] * area[owner[l]] * ed[owner[l]];
-      }
-      G3[mi * N + mi] = temp;
-      b1[mi * N + mi] += G3[mi * N + mi];
+      // the diagonal keeps only the G1 and G2 terms (the G3 term of the diagonal is not added, as in LAMMPS)
       const a1 = em[i] * (em[i] - 1.0);
       const a2 = 1.0 - em[i] - em[i];
-      b1[mi * N + mi] = a1 * G1[mi * N + mi] + a2 * G2[mi * N + mi];
+      Rww[miN + mi] = a1 * G1[miN + mi] + a2 * G2[miN + mi];
     }
-    this.Rww = b1;
+    // the CG matrix Rww + Rww^T is fixed for the setup: built once here
+    const A = new Float64Array(N * N);
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) A[i * N + j] = Rww[i * N + j] + Rww[j * N + i];
+    this.A = A;
     this.gMatrices = { G1, ND, G2 };
   }
 
@@ -307,11 +307,8 @@ export class FixPolarizeFunctional extends Fix {
       qiRqw[mk] = qiTemp1 + qiTemp2;
     }
     // CG for (Rww + Rww^T) w = qiRqw, from w = 0
-    const A = new Float64Array(N * N);
-    const R = this.Rww;
-    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) A[i * N + j] = R[i * N + j] + R[j * N + i];
     const w = new Float64Array(N);
-    this.cgSolve(A, qiRqw, w, N);
+    this.cgSolve(this.A, qiRqw, w, N);
     // the patches get -w / (4 pi) as their scaled charge; the ions return to their scaled charges
     for (let i = 0; i < n; i++) {
       if (idx[i] >= 0) qs[i] = -w[idx[i]] / MY_4PI;

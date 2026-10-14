@@ -16,35 +16,46 @@ import { safeErfc } from './electrode_math';
 /**
  * Calls fn(i, j, rsq, dx, dy, dz) for every ordered pair (i, j) and periodic image within the type cut-off
  * (rsq < cutsq[type_i * nt + type_j], self pair with zero image excluded). d = x_i - (x_j + image).
+ * The visiting order is i, then j, then the image shifts (x, y, z), as in the C++ pair loops of this file's header.
+ * Pruning: a shift whose dx*dx (or dx*dx + dy*dy) already reaches the cut-off cannot give rsq < cut2, because
+ * rsq is the same sum with non-negative terms added, so those shifts are skipped without changing any call.
  */
 export const eachImagePair = (
   s: SimState, geom: Geometry, cutsq: Float64Array, nt: number,
   fn: (i: number, j: number, rsq: number, dx: number, dy: number, dz: number) => void,
 ): void => {
   const n = s.n, x = s.x, type = s.type;
-  const L = [geom.lx, geom.ly, geom.lz];
-  const per = geom.periodic;
+  const Lx = geom.lx, Ly = geom.ly, Lz = geom.lz;
+  const perX = !!geom.periodic[0], perY = !!geom.periodic[1], perZ = !!geom.periodic[2];
   let cutmax2 = 0;
   for (let t = 0; t < cutsq.length; t++) if (cutsq[t] > cutmax2) cutmax2 = cutsq[t];
   const rmax = Math.sqrt(cutmax2);
-  const nmax = [0, 1, 2].map((d) => (per[d] ? Math.ceil(rmax / L[d]) : 0));
+  // a non-periodic direction has no images: its range is the single shift 0
+  const nx = perX ? Math.ceil(rmax / Lx) : 0;
+  const ny = perY ? Math.ceil(rmax / Ly) : 0;
+  const nz = perZ ? Math.ceil(rmax / Lz) : 0;
   for (let i = 0; i < n; i++) {
+    const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
     for (let j = 0; j < n; j++) {
       const cut2 = cutsq[type[i] * nt + type[j]];
       if (!(cut2 > 0)) continue;
-      const d0 = [0, 1, 2].map((d) => x[3 * i + d] - x[3 * j + d]);
-      const base = [0, 1, 2].map((d) => (per[d] ? Math.round(d0[d] / L[d]) : 0));
-      // a non-periodic direction has no images: its range is the single shift 0
-      const lo = [0, 1, 2].map((d) => (per[d] ? base[d] - nmax[d] : 0));
-      const hi = [0, 1, 2].map((d) => (per[d] ? base[d] + nmax[d] : 0));
-      for (let sx = lo[0]; sx <= hi[0]; sx++) {
-        const dx = d0[0] - sx * L[0];
-        for (let sy = lo[1]; sy <= hi[1]; sy++) {
-          const dy = d0[1] - sy * L[1];
-          for (let sz = lo[2]; sz <= hi[2]; sz++) {
+      const d0x = xi - x[3 * j], d0y = yi - x[3 * j + 1], d0z = zi - x[3 * j + 2];
+      const bx = perX ? Math.round(d0x / Lx) : 0;
+      const by = perY ? Math.round(d0y / Ly) : 0;
+      const bz = perZ ? Math.round(d0z / Lz) : 0;
+      const x0 = bx - nx, x1 = bx + nx, y0 = by - ny, y1 = by + ny, z0 = bz - nz, z1 = bz + nz;
+      for (let sx = x0; sx <= x1; sx++) {
+        const dx = d0x - sx * Lx;
+        const dx2 = dx * dx;
+        if (dx2 >= cut2) continue;
+        for (let sy = y0; sy <= y1; sy++) {
+          const dy = d0y - sy * Ly;
+          const dxy = dx2 + dy * dy;
+          if (dxy >= cut2) continue;
+          for (let sz = z0; sz <= z1; sz++) {
             if (i === j && sx === 0 && sy === 0 && sz === 0) continue;
-            const dz = d0[2] - sz * L[2];
-            const rsq = dx * dx + dy * dy + dz * dz;
+            const dz = d0z - sz * Lz;
+            const rsq = dxy + dz * dz;
             if (rsq < cut2) fn(i, j, rsq, dx, dy, dz);
           }
         }

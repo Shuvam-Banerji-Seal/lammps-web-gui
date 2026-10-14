@@ -50,9 +50,9 @@ describe('kspace_style pppm/dipole', () => {
     expect(r.error).toBeNull();
   });
 
-  it('refuses point charges inside the Coulomb cutoff of lj/cut/dipole/long by name (real-space charge terms not ported)', async () => {
+  it('runs point charges inside the Coulomb cutoff of lj/cut/dipole/long (real-space charge terms ported)', async () => {
     const r = await run(`${header('0.3')}kspace_style pppm/dipole 1.0e-4\nkspace_modify gewald 0.5 mesh 8 8 8\nrun 0\n`);
-    expect(r.error).toContain('with point charges inside the Coulomb cutoff is not supported');
+    expect(r.error).toBeNull();
   });
 
   it('refuses per-atom stress by name (the per-atom virial of pppm/dipole is not ported)', async () => {

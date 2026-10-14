@@ -110,6 +110,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'bonded50', names: { ANGLES: ['class2/p6', 'cosine/buck6d'], IMPROPERS: ['inversion/harmonic'] }, load: () => import('./registry/bonded50') as Promise<StyleModule> },
   { id: 'pair_sw', names: { PAIRS: ['sw', 'sw/mod'] }, load: () => import('./registry/pair_sw') as Promise<StyleModule> },
   { id: 'pair_mbtable49', names: { PAIRS: ['threebody/table', 'sw/angle/table'] }, load: () => import('./registry/pair_mbtable49') as Promise<StyleModule> },
+  { id: 'gpl_granular_mdr', names: { HOOKS: ['mdr'] }, load: () => import('../engine-gpl/registry/granular_mdr') as Promise<StyleModule> },
   { id: 'gpl_tri', names: { HOOKS: ['tri'] }, load: () => import('../engine-gpl/registry/tri_hook') as Promise<StyleModule> },
   { id: 'gpl_reset_atoms', names: { HOOKS: ['reset_atoms'] }, load: () => import('../engine-gpl/registry/reset_atoms_hook') as Promise<StyleModule> },
   { id: 'gpl_linemin', names: { HOOKS: ['minimize', 'hyper'] }, load: () => import('../engine-gpl/registry/linemin') as Promise<StyleModule> },

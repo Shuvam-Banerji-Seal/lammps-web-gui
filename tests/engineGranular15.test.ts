@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Session } from '../src/engine/interpreter';
 import type { EngineEvent, ThermoRow } from '../src/engine/types';
 import { parseGranularSpec } from '../src/engine/force/pair/granular';
-import { mdrDampCoeff, mdrElastic, mdrYieldDisplacement } from '../src/engine/force/pair/granular_mdr';
+import { DAMP_SCALE, mdrDampPrefactor, mdrNonadhesiveForce } from '../src/engine-gpl/granular/mdr/normal';
 
 /*
  * pair_style granular, normal model mdr (docs.lammps.org/pair_granular.html). The closed forms are in
@@ -80,9 +80,9 @@ describe('pair_style granular mdr: parsing', () => {
     expect(() => parseGranularSpec(['mdr', '1e6', '0.3', '1e3', '0', '0.5', '0.2', 'damping', 'mdr', '2', 'tangential', 'linear_nohistory', '1.0', '0.7'])).not.toThrow();
   });
 
-  it('names each unsupported part: adhesion, the damping class, tangential and twisting models', () => {
+  it('names each unsupported part: the damping class, tangential and twisting models', () => {
     const base = ['mdr', '1', '0.3', '1', '0', '0', '0.2'];
-    expect(() => parseGranularSpec(['mdr', '1', '0.3', '1', '0.5', '0', '0.2', 'damping', 'mdr', '1', 'tangential', 'linear_nohistory', '0', '0'])).toThrow(/'mdr' is not implemented/);
+    expect(() => parseGranularSpec(['mdr', '1', '0.3', '1', '0.5', '0', '0.2', 'damping', 'mdr', '1', 'tangential', 'linear_nohistory', '0', '0'])).not.toThrow();
     expect(() => parseGranularSpec([...base, 'tangential', 'linear_nohistory', '0', '0'])).toThrow(/damping mdr/);
     expect(() => parseGranularSpec([...base, 'damping', 'mdr', '3', 'tangential', 'linear_nohistory', '0', '0'])).toThrow(/d_type must be 1 or 2/);
     expect(() => parseGranularSpec([...base, 'damping', 'mdr', '1', 'tangential', 'mindlin', 'NULL', '1', '0.4'])).toThrow(/tangential mindlin with normal model 'mdr'/);
@@ -97,33 +97,36 @@ describe('pair_style granular mdr: parsing', () => {
 });
 
 describe('pair_style granular mdr: closed forms (measured with native LAMMPS)', () => {
-  // E' = E/(1 - nu^2); two spheres of radius R at overlap delta carry 2 R^2 E' br(delta/(4R)), br(x) = arccos(1-x) - (1-x) sqrt(2x-x^2)
+  // E' = E/(1 - nu^2); two spheres of radius R at overlap delta: each side is a sphere on a flat with d = delta/2, A = 4R, B = 2R,
+  // F = 2 R^2 E' br(d/(2R)), br(x) = arccos(1-x) - (1-x) sqrt(2x-x^2) (mdrNonadhesiveForce in src/engine-gpl/granular/mdr/normal.ts)
+  const elastic = (delta: number, R: number, Ep: number): number => mdrNonadhesiveForce(0.5 * delta, 1 / (4 * R), Ep, 4 * R, 2 * R);
   it('elastic force of two spheres of radius 0.5 (nu = 0; native F = 0.0293629534388009 at overlap 0.2)', () => {
-    expect(mdrElastic(0.2, 0.5, 1, 1000).fne).toBeCloseTo(0.0293629534388009, 12);
-    expect(mdrElastic(0.4, 0.5, 1, 1000).fne).toBeCloseTo(0.0817505543966421, 12);
+    expect(elastic(0.2, 0.5, 1)).toBeCloseTo(0.0293629534388009, 12);
+    expect(elastic(0.4, 0.5, 1)).toBeCloseTo(0.0817505543966421, 12);
   });
 
   it('elastic force scales with the radius (diameter 2, nu = 0, overlap 0.4: native 0.117452)', () => {
-    expect(mdrElastic(0.4, 1.0, 1, 1000).fne).toBeCloseTo(0.117452, 5);
+    expect(elastic(0.4, 1.0, 1)).toBeCloseTo(0.117452, 5);
   });
 
   it('elastic force with nu = 0.3 uses E/(1-nu^2) (native 0.0322669818 at overlap 0.2)', () => {
-    expect(mdrElastic(0.2, 0.5, 1 / (1 - 0.09), 1000).fne).toBeCloseTo(0.0322669818, 8);
+    expect(elastic(0.2, 0.5, 1 / (1 - 0.09))).toBeCloseTo(0.0322669818, 8);
   });
 
-  // damping mdr 1: eta_n = eta_n0 sqrt(m_eff k_mdr), k_mdr = 2 E' a, a^2 = 4 R d - d^2 with d = delta/2
+  // damping mdr 1: eta_n = eta_n0 sqrt(m_eff k_mdr), k_mdr = 2 E' a, a^2 = 4 R d - d^2 with d = delta/2 (the two sides sum to a)
   it('damping mdr 1 coefficient (native eta_n = 0.4777357 for eta_n0 = 1, overlap 0.2, nu = 0)', () => {
-    expect(mdrDampCoeff(1, 1, MASS / 2, 0.2, 0.5, 1)).toBeCloseTo(0.4777357, 6);
+    const d = 0.1, R = 0.5, Ep = 1;
+    const a = Math.sqrt(4 * R * d - d * d);
+    const hist = new Float64Array(27);
+    const eta = mdrDampPrefactor({ hist, hu: true, aDamp: a, dampScale: Math.sqrt((MASS / 2) * 2 * Ep * a), eta: 1, dtype: 1 });
+    expect(eta).toBeCloseTo(0.4777357, 6);
+    expect(hist[DAMP_SCALE]).toBeCloseTo(0.4777357, 6);
   });
 
   it('damping mdr 2 is the constant eta_n0 (native eta_n = 1.000000 for eta_n0 = 1)', () => {
-    expect(mdrDampCoeff(2, 0.7, 0.3, 0.2, 0.5, 1)).toBe(0.7);
-  });
-
-  // yield: the first deviation of the native force from the elastic law was at a per-sphere overlap of 0.089531;
-  // the root of paper eq. 13 with the exponent 4.4 (eq. 5) is 0.0895301
-  it('yield displacement of the per-sphere overlap (Y = 0.1, nu = 0)', () => {
-    expect(mdrYieldDisplacement(1, 0.5, 0.1)).toBeCloseTo(0.0895301, 6);
+    const hist = new Float64Array(27);
+    hist[DAMP_SCALE] = 0.5;
+    expect(mdrDampPrefactor({ hist, hu: false, aDamp: 0, dampScale: 0, eta: 0.7, dtype: 2 })).toBe(0.7);
   });
 });
 
@@ -164,7 +167,7 @@ describe('pair_style granular mdr: engine runs against measured native behaviour
     expect(rows[6].ke).toBeCloseTo(0.00523348004551992, 12);
   });
 
-  it('a contact closing a triangle of touching spheres is a StyleError (native topological penalty not implemented)', async () => {
+  it('a contact closing a triangle of touching spheres runs (the topological penalty, tests/oracle/w169md_triangle)', async () => {
     const { error } = await run(`
 units           lj
 atom_style      sphere 1
@@ -185,25 +188,25 @@ timestep 0.001
 fix 1 all nve/sphere
 run 3
 `);
-    expect(error).toMatch(/close a triangle/);
+    expect(error).toBeNull();
   });
 
-  it('particles of unequal radii are a StyleError', async () => {
+  it('particles of unequal radii run (tests/oracle/w169md_unequal_pair)', async () => {
     const { error } = await run(twoSphere({
       p2: [1.2, 0, 0], d1: 1.0, d2: 2.0,
       pairCoeff: 'mdr 1.0 0.3 1000.0 0.0 0.0 0.2 damping mdr 2 tangential linear_nohistory 0.0 0.0',
       runs: 'run 1',
     }));
-    expect(error).toMatch(/unequal radii/);
+    expect(error).toBeNull();
   });
 
-  it('a contact reaching the yield displacement is a StyleError (plastic mdr not implemented)', async () => {
+  it('a contact reaching the yield displacement runs (plastic mdr, tests/oracle/w169md_tableting)', async () => {
     const { error } = await run(twoSphere({
       p2: [0.9, 0, 0], v1: [0.5, 0, 0], v2: [0, 0, 0],
       pairCoeff: 'mdr 1.0 0.3 0.001 0.0 0.0 0.2 damping mdr 2 tangential linear_nohistory 0.0 0.0',
       runs: 'run 1',
     }));
-    expect(error).toMatch(/yield displacement/);
+    expect(error).toBeNull();
   });
 
   it('fix wall/gran with the mdr model is a StyleError', async () => {

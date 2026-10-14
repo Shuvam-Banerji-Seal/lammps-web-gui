@@ -1,0 +1,25 @@
+# oracle: pair_style granular mdr with surface energy 0.05 (adhesive elastic mdr, Y 1000): two spheres of diameter 1 start in overlap 0.03 and pull apart; damping mdr 1, tangential linear_history, fix nve/sphere
+# native: b332f28 (the installed lmp, GRANULAR included). Measured (engine vs native, black box; rel over |value| >= 1e-6; per-atom scale max(1,|value|)): thermo max rel 2.2e-15, per-atom max scaled 1.1e-16; engine 130 ms. The surface energy changes the trajectory (no-surface-energy run: ke 0.0103336 from step 100, this case 0.010313), so the adhesive branch is exercised.
+units           lj
+atom_style      sphere 1
+atom_modify     map array
+comm_modify     vel yes
+newton          off
+boundary        f f f
+region          b block -10 10 -10 10 -10 10
+create_box      1 b
+create_atoms    1 single -0.485 0.0 0.0
+create_atoms    1 single 0.485 0.0 0.0
+set type 1 diameter 1.0 density 1.0
+group           one id 1
+group           two id 2
+velocity        one set -0.2 0.0 0.0 units box
+velocity        two set 0.2 0.0 0.0 units box
+pair_style      granular
+pair_coeff      * * mdr 1.0 0.3 1000.0 0.05 0.5 0.1 damping mdr 1 tangential linear_history 300.0 0.4 0.4
+timestep        0.001
+fix             1 all nve/sphere
+thermo_style    custom step ke
+thermo_modify   format float %.15g
+thermo          100
+run             1000

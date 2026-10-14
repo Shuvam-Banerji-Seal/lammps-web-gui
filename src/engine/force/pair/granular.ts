@@ -2,7 +2,7 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } fro
 import type { SimState } from '../../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
-import { mdrCheckTriangles, mdrDampCoeff, mdrElastic } from './granular_mdr';
+import { gplHook } from '../../gplHooks';
 import { HEAT_FLOW, HEAT_TEMPERATURE } from '../../atoms';
 
 /*
@@ -67,10 +67,10 @@ import { HEAT_FLOW, HEAT_TEMPERATURE } from '../../atoms';
  * - a frozen partner (fix freeze) contributes no mass to m_eff.
  * The multi-body periodic rolling case (w6granular_rolling) still differs by about 1e-5 at step
  * 150 although two-sphere rolling and twisting runs match to 1e-12.
- * mdr (granular_mdr.ts, measured on two equal spheres): the elastic branch is implemented for particle pairs with
- * equal radii, the damping mdr 1 and mdr 2, and the tangential linear models. The plastic branch (overlap at or
- * beyond the yield displacement), adhesion (surface energy > 0), unequal radii, mindlin tangential models and
- * the marshall twisting model throw a StyleError.
+ * mdr: the normal model (plastic contact, adhesion, unequal radii, the bulk response, the closed-triangle penalty and fix
+ * wall/gran/region) is the port in src/engine-gpl/granular/mdr (lazy hook 'mdr'); the tangential models, rolling and
+ * twisting of this file act on its normal force. Not implemented (StyleError): mindlin tangential models and the marshall
+ * twisting model with mdr, synchronized_verlet with mdr or mindlin, fix wall/gran (the plane walls) with mdr.
  * Not implemented (StyleError): rolling or twisting with synchronized_verlet; synchronized_verlet with mdr or mindlin.
  * synchronized_verlet (docs.lammps.org/pair_granular.html): "The *synchronized_verlet* flag implements an alternate
  * Velocity-Verlet integration scheme", as detailed in Vyas et al. (2025; arXiv 2410.14798, section 5, Improved
@@ -85,6 +85,80 @@ import { HEAT_FLOW, HEAT_TEMPERATURE } from '../../atoms';
  * Measured with native LAMMPS (black box): the synchronized and standard forces differ by about 2e-5 relative at step 1
  * of the hooke pair (dt 0.01), so the flag changes the result.
  */
+
+/**
+ * The mdr normal model (Zunker and Kamrin 2024; pair_granular.html "mdr") is implemented in src/engine-gpl/granular/mdr,
+ * behind the lazy hook 'mdr' (src/engine/gplHooks.ts, lazyStyles.ts group gpl_granular_mdr). The core only forwards the
+ * contacts: the normal force and damping prefactor come from MdrApi, the tangential part stays here (granularContact).
+ */
+/** The coefficients of one mdr pair_coeff: E, nu, Y, Delta gamma, psi_b, eta_n0 and the damping class d_type. */
+export interface MdrMaterialCore { E: number; nu: number; Y: number; gamma: number; psib: number; eta: number; dtype: number }
+
+/** One particle pair (both orders of the atom IDs are allowed; the model keys its history by the lower ID). */
+export interface MdrPairIn {
+  ida: number; idb: number;
+  /** Owned atom indices of the pair. */
+  oi: number; oj: number;
+  /** Apparent radii (the radius property, which the model's radius update changes). */
+  ri: number; rj: number;
+  /** Overlap radsum - r (gm->delta). */
+  delta: number;
+  /** Effective radius ri rj / (ri + rj). */
+  Rf: number;
+  /** Unit vector from j to i. */
+  nx: number; ny: number; nz: number;
+  meff: number;
+  /** Advance the history (not at the run setup). */
+  hu: boolean;
+}
+
+/** One wall contact of fix wall/gran/region with the mdr model. */
+export interface MdrWallIn {
+  /** History key of the contact (the wall, the contact and the atom). */
+  key: string;
+  ai: number;
+  /** Apparent radius of the atom and its overlap with the wall surface. */
+  R: number;
+  delta: number;
+  Rf: number;
+  nx: number; ny: number; nz: number;
+  meff: number;
+  hu: boolean;
+  /** The wall's own coefficients (its surface energy may differ from the pair's). */
+  p: MdrMaterialCore;
+}
+
+/** The normal force of one contact (wij-weighted, both sides), the contact radius and the damping prefactor eta_n. */
+export interface MdrNormalOut {
+  fne: number;
+  a: number;
+  etaN: number;
+  /** Contact area of the mdr model for the per-atom contact data (native svector: Ac_avg / 2 of the wall). */
+  svector?: number;
+}
+
+/** Contacts of one wall for one atom: the history key and the distance to the surface (radius - overlap). */
+export type WallContacts = (i: number) => Array<{ key: string; dist: number }>;
+
+/** The mdr contact model of one pair style instance (implemented in src/engine-gpl/granular/mdr/model.ts). */
+export interface MdrApi {
+  /** fix GRANULAR/MDR pre_force, at the start of a force evaluation (hu: a step, not the run setup). */
+  beginStep(s: SimState, pc: PairCompute, hu: boolean): void;
+  pairNormal(c: MdrPairIn): MdrNormalOut;
+  pairDrop(ida: number, idb: number): void;
+  wallNormal(c: MdrWallIn): MdrNormalOut;
+  wallDrop(key: string): void;
+  wallProvider(name: string, contacts: WallContacts): void;
+}
+
+/** The lazy hook 'mdr' (src/engine-gpl/registry/granular_mdr.ts). */
+export interface GranularMdrHook {
+  create(mat: MdrMaterialCore): MdrApi;
+}
+
+/** The model and the pair coefficients of the pair style of a system (walls read them at their setup). */
+const mdrRegistry = new WeakMap<SimState, { api: MdrApi; mat: MdrMaterialCore }>();
+export const mdrPairOf = (s: SimState): { api: MdrApi; mat: MdrMaterialCore } | undefined => mdrRegistry.get(s);
 
 type NormalKind = 'hooke' | 'hertz' | 'hertz/material' | 'dmt' | 'jkr' | 'mdr';
 type DampKind = 'velocity' | 'mass_velocity' | 'viscoelastic' | 'tsuji' | 'coeff_restitution' | 'mdr';
@@ -189,8 +263,8 @@ export function parseGranularSpec(args: string[]): Spec {
     sp.gamma = num[3];
     sp.psib = num[4];
     sp.eta = num[5];
-    // doc: the surface energy is "\Delta\gamma \ge 0"; a non-zero value is the adhesive (Part I) branch, not implemented here
-    if (sp.gamma !== 0) throw new StyleError("pair_style granular: 'mdr' is not implemented for a surface energy above 0 (adhesive mdr) in this engine");
+    // doc: the surface energy is "\Delta\gamma \ge 0" (the adhesive branch is in src/engine-gpl/granular/mdr)
+    if (!(sp.gamma >= 0)) throw new StyleError("pair_style granular: normal model 'mdr' needs a surface energy Delta gamma >= 0");
     if (!(sp.E > 0)) throw new StyleError("pair_style granular: normal model 'mdr' needs Young's modulus E > 0");
     if (!(sp.nu >= 0 && sp.nu <= 0.5)) throw new StyleError("pair_style granular: normal model 'mdr' needs Poisson's ratio 0 <= nu <= 0.5");
     if (!(sp.Y >= 0)) throw new StyleError("pair_style granular: normal model 'mdr' needs yield stress Y >= 0");
@@ -385,11 +459,8 @@ export interface ContactIn {
   dt: number;
   /** True inside a timestep: the history advances. */
   update: boolean;
-  /**
-   * mdr damping is evaluated unless this is the setup force evaluation at step 0 (measured: the first run's setup has no
-   * mdr damping; a setup at a later step, e.g. the second of two runs, has it). Default true.
-   */
-  mdrDamp?: boolean;
+  /** The mdr normal model's force and damping prefactor (the normal force replaces the elastic law above). */
+  normal?: MdrNormalOut;
   /** -1 when the stored history is in the frame of the other atom (ID order). */
   sg: number;
   /**
@@ -427,7 +498,6 @@ export const newContactOut = (): ContactOut => ({ fx: 0, fy: 0, fz: 0, tix: 0, t
 export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut, hadHistory: boolean): boolean {
   const { pm, nx, ny, nz, delta, Rf, ri, rj, meff, dt, update, sg } = c;
   const jkr = pm.normal === 'jkr';
-  const mdr = pm.normal === 'mdr';
   // jkr hysteresis (doc): the tensile range delta < 0 applies only once the pair has been in contact
   if (jkr && delta < 0 && !hadHistory) return false;
   const sqrtR = Math.sqrt(Rf);
@@ -455,13 +525,10 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
   let contactA = 0;
   // pull-off force of the cohesive models (doc: F_pulloff = 4 pi gamma R for dmt, 3 pi gamma R for jkr)
   const fPull = pm.normal === 'dmt' ? 4 * Math.PI * pm.gamma * Rf : jkr ? 3 * Math.PI * pm.gamma * Rf : 0;
-  if (mdr) {
-    // mdr: equal radii only (the unequal-radius formula was not identified; a 0.7 % mismatch to the candidate forms was measured)
-    if (ri !== rj) throw new StyleError("pair_style granular: normal model 'mdr' with particles of unequal radii is not implemented in this engine");
-    if (delta <= 0) return false;
-    const m = mdrElastic(delta, ri, 2 * pm.Eeff, pm.Y ?? 0);
-    fne = m.fne;
-    contactA = m.a;
+  if (c.normal) {
+    // mdr: the normal model is evaluated by the MDR hook (src/engine-gpl/granular/mdr); it has its own contact test
+    fne = c.normal.fne;
+    contactA = c.normal.a;
   } else if (jkr) {
     const cc = jklContact(delta, Rf, pm.Eeff, pm.gamma);
     if (!cc) return false;
@@ -477,13 +544,12 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
     fne -= pm.normal === 'dmt' ? fPull : 0;
   }
   const contact = contactA;
-  let etaN: number;
-  switch (pm.damp) {
+  // the mdr damping prefactor comes with the normal force (c.normal.etaN)
+  let etaN = c.normal ? c.normal.etaN : 0;
+  if (!c.normal) switch (pm.damp) {
     case 'velocity': etaN = pm.eta; break;
     case 'mass_velocity': etaN = pm.eta * meff; break;
     case 'viscoelastic': etaN = pm.eta * contact * meff; break;
-    // doc: the mdr damping class (d_type 1 or 2); the coefficients are measured in granular_mdr.ts
-    case 'mdr': etaN = (c.mdrDamp ?? true) ? mdrDampCoeff(pm.dtype ?? 0, pm.eta, meff, delta, ri, 2 * pm.Eeff) : 0; break;
     case 'coeff_restitution': {
       // doc: eta_n = sqrt(4 m_eff k_nd / (1 + (pi / log e)^2)) for hooke; otherwise
       // eta_n = -2 sqrt(5/6) log(e) / sqrt(pi^2 + log(e)^2) * sqrt(3/2 k_nd m_eff); k_nd = F_elastic / delta.
@@ -610,7 +676,9 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
     if (f0 > cap) {
       // measured as for the tangential force: with no stored displacement the capped rolling force is dropped
       const sc = f0 > 0 && (qx !== 0 || qy !== 0 || qz !== 0) ? cap / f0 : 0;
-      if (k > 0 && sc > 0) {
+      // native (GranSubModRollingSDS::calculate_forces, the capped branch with a non-zero displacement): the displacement
+      // is rebuilt even when the cap is zero (s = 0 leaves -gamma v / k), and only a zero displacement is left alone
+      if (k > 0 && (qx !== 0 || qy !== 0 || qz !== 0)) {
         // F0 = -k xi - gamma v; capped: xi = s xi - gamma v (1 - s) / k
         const cr = -(g * (1 - sc)) / k;
         qx = sc * qx + cr * vrlx; qy = sc * qy + cr * vrly; qz = sc * qz + cr * vrlz;
@@ -683,6 +751,8 @@ export class PairGranular extends Pair {
   private shear = new Map<string, Float64Array>();
   /** Some pair_coeff has a heat model (the temperature and heatflow properties are then needed). */
   private heatOn = false;
+  /** The mdr contact model when a pair_coeff uses the mdr normal model (src/engine-gpl/granular/mdr). */
+  private mdr: MdrApi | null = null;
 
   settings(args: string[]): void {
     if (args.length > 1) throw new StyleError('usage: pair_style granular [cutoff]');
@@ -727,6 +797,19 @@ export class PairGranular extends Pair {
       throw new StyleError('pair_style granular: heat conduction (heat radius or area) needs fix property/atom temperature heatflow');
     }
     this.resolve();
+    // mdr: the model is created by the lazy hook and registered for the walls of this system
+    const mdrSp = this.specs.find((x) => x?.normal === 'mdr');
+    this.mdr = null;
+    if (mdrSp) {
+      if (!s) throw new StyleError("pair_style granular: normal model 'mdr' needs a box (create_box or read_data first)");
+      const mat: MdrMaterialCore = { E: mdrSp.E, nu: mdrSp.nu, Y: mdrSp.Y, gamma: mdrSp.gamma, psib: mdrSp.psib, eta: mdrSp.eta, dtype: mdrSp.dtype };
+      // the contact histories and the fix state live as long as the system: a run's init keeps the model of an unchanged material
+      const prev = mdrRegistry.get(s);
+      const same = prev && (Object.keys(mat) as Array<keyof MdrMaterialCore>).every((k) => prev.mat[k] === mat[k]);
+      const api = same ? prev.api : gplHook<GranularMdrHook>('mdr').create(mat);
+      this.mdr = api;
+      if (!same) mdrRegistry.set(s, { api, mat });
+    }
   }
 
   /** Resolves the parameters of every type pair: explicit coefficients, else mixing of like models. */
@@ -786,10 +869,6 @@ export class PairGranular extends Pair {
   wallParams(sp: Spec, region = false): Pm {
     // doc: "The *mdr* model currently only supports *fix wall/gran/region*, not *fix wall/gran*."
     if (sp.normal === 'mdr' && !region) throw new StyleError("fix wall/gran with normal model 'mdr' is not implemented in this engine (the doc supports fix wall/gran/region only)");
-    // Measured with native LAMMPS (black box): a sphere of radius 0.5 (E 1, nu 0.3, Y 1000, eta 0.2, damping mdr 1) on a plane
-    // region has the elastic force of the sphere-on-plane law times a constant 1.0000454 at overlaps 0.04, 0.05, 0.1 and
-    // 0.2; the constant is not identified, so the wall mdr contact is refused rather than approximated.
-    if (sp.normal === 'mdr') throw new StyleError("fix wall/gran/region with normal model 'mdr' is not implemented in this engine (the native wall force differs from the sphere-plane elastic law by a constant factor 1.0000454)");
     return this.pmOf(sp, sp.E ? effModulus(sp.E, sp.nu) : 0, sp, sp);
   }
 
@@ -853,8 +932,9 @@ export class PairGranular extends Pair {
     const nt = this.ntypes + 1;
     const tq = new Float64Array(3 * nall);
     const seen = new Set<string>();
-    // mdr: the active contacts (atom-ID pairs), checked for closed triangles after the loop
-    const mdrPairs: Array<[number, number]> = [];
+    // mdr: the fix's pre-force update (per-atom state, penalty, mean surface displacement) before the contacts
+    const mdr = this.mdr;
+    if (mdr) mdr.beginStep(s, pc, update);
     const out = newContactOut();
     // heat conduction: heatflow accumulates (zeroed by fix heat/flow), Q_i = heat(a, T_j - T_i) and Q_j = -Q_i
     const T = this.heatOn ? s.custom.get(HEAT_TEMPERATURE)!.data : null;
@@ -878,6 +958,7 @@ export class PairGranular extends Pair {
         const jkr = pm.normal === 'jkr';
         if (rsq >= radsum * radsum && !jkr) {
           this.shear.delete(key);
+          if (mdr) mdr.pairDrop(a, b);
           continue;
         }
         const r = Math.sqrt(rsq), rinv = 1 / r;
@@ -891,12 +972,15 @@ export class PairGranular extends Pair {
           else if (s.mask[oj] & this.freezeBit) meff = mi;
         }
         const sh = this.shear.get(key) ?? new Float64Array(8);
+        const normal = mdr && pm.normal === 'mdr'
+          ? mdr.pairNormal({ ida: a, idb: b, oi, oj, ri, rj, delta, Rf, nx: dx * rinv, ny: dy * rinv, nz: dz * rinv, meff, hu: update })
+          : undefined;
         const ok = granularContact({
           pm, nx: dx * rinv, ny: dy * rinv, nz: dz * rinv, r, delta, Rf, ri, rj, meff,
           vrx: v[3 * oi] - v[3 * oj], vry: v[3 * oi + 1] - v[3 * oj + 1], vrz: v[3 * oi + 2] - v[3 * oj + 2],
           oix: omega[3 * oi], oiy: omega[3 * oi + 1], oiz: omega[3 * oi + 2],
           ojx: omega[3 * oj], ojy: omega[3 * oj + 1], ojz: omega[3 * oj + 2],
-          dt, update, sg: flip ? -1 : 1, mdrDamp: update || s.step > 0,
+          dt, update, sg: flip ? -1 : 1, normal,
         }, sh, out, this.shear.has(key));
         if (!ok) {
           this.shear.delete(key);
@@ -913,7 +997,6 @@ export class PairGranular extends Pair {
           // its share back, so the heat of a contact across a periodic boundary is counted once, on the owned side
           if (j < s.n) HF![oj] -= q;
         }
-        if (pm.normal === 'mdr') mdrPairs.push([a, b]);
         f[3 * i] += out.fx; f[3 * i + 1] += out.fy; f[3 * i + 2] += out.fz;
         f[3 * j] -= out.fx; f[3 * j + 1] -= out.fy; f[3 * j + 2] -= out.fz;
         tq[3 * i] += out.tix; tq[3 * i + 1] += out.tiy; tq[3 * i + 2] += out.tiz;
@@ -921,7 +1004,6 @@ export class PairGranular extends Pair {
       }
     }
     if (this.shear.size) for (const key of this.shear.keys()) if (!seen.has(key)) this.shear.delete(key);
-    mdrCheckTriangles(mdrPairs);
     nb.reverseSum(tq, 3, s.torque!);
   }
 

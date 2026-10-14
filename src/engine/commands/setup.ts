@@ -2246,22 +2246,27 @@ const deleteAtomsCmd: Handler = ({ sys }, a) => {
       let maxReach = 0;
       for (let ti = 1; ti < nt; ti++) for (let tj = 1; tj < nt; tj++) maxReach = Math.max(maxReach, pc.cut[ti * nt + tj] + skin);
       if (cut > maxReach) throw new StyleError('Delete_atoms cutoff > max neighbor cutoff');
+      // delete_atoms.html: "Only pairs where one of the two atoms is in the first group specified and the other atom is in
+      // the second group are considered. The atom that is in the first group is the one that is deleted." As native
+      // LAMMPS does (DeleteAtoms::delete_overlap, src/delete_atoms.cpp at b332f28): atom I of group 1 is deleted when an atom J
+      // of group 2 lies within the cutoff, unless J is an owned atom that is already deleted; a periodic image of J is
+      // never checked against the deletions (single processor: the image is the ghost of the owned atom)
+      const raw = [0, 0, 0];
       for (let i = 0; i < s.n; i++) {
-        if (del[i]) continue;
+        if (del[i] || !(s.mask[i] & b1)) continue;
         for (let j = 0; j < s.n; j++) {
-          if (j === i || del[j]) continue;
-          const pair = ((s.mask[i] & b1) && (s.mask[j] & b2)) || ((s.mask[i] & b2) && (s.mask[j] & b1));
-          if (!pair) continue;
-          d[0] = s.x[3 * i] - s.x[3 * j]; d[1] = s.x[3 * i + 1] - s.x[3 * j + 1]; d[2] = s.x[3 * i + 2] - s.x[3 * j + 2];
+          if (j === i || !(s.mask[j] & b2)) continue;
+          raw[0] = s.x[3 * i] - s.x[3 * j]; raw[1] = s.x[3 * i + 1] - s.x[3 * j + 1]; raw[2] = s.x[3 * i + 2] - s.x[3 * j + 2];
+          d[0] = raw[0]; d[1] = raw[1]; d[2] = raw[2];
           g.minimumImage(d);
           const rsq = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
           const reach = pc.cut[s.type[i] * nt + s.type[j]] + skin;
           if (rsq > reach * reach) continue;
-          if (rsq < cut * cut) {
-            // delete the atom with the larger ID
-            if (s.id[i] > s.id[j]) { del[i] = 1; break; }
-            del[j] = 1;
-          }
+          if (rsq >= cut * cut) continue;
+          const image = d[0] !== raw[0] || d[1] !== raw[1] || d[2] !== raw[2];
+          if (!image && del[j]) continue;
+          del[i] = 1;
+          break;
         }
       }
       rest = a.slice(4);

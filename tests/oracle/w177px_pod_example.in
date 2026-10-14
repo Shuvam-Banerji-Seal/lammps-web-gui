@@ -1,0 +1,27 @@
+# oracle: examples/PACKAGES/pod/Ta in.pod.compute (2x2x2 bcc Ta cell, 16 atoms, the example's random displacement, pair zero 6.0): all four computes of the example (pod/atom, podd/atom, pod/global, pod/local); the global arrays are sampled in thermo (pod/global and pod/local entries), the per-atom pod/atom array is dumped and compared
+# engine vs native fixture: thermo max relative error 1.2e-13 and dump max relative error 1.0e-13 (target 1e-8); engine time 0.43 s
+# native: installed lmp (b332f28, ML-POD)
+# oracle-inputs: w128pod_Ta_param.pod w128pod_Ta_coeff.pod
+# oracle-files: w177px_pod_example.dump
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10 filerel=1e-8
+units           metal
+boundary        p p p
+atom_modify     map hash
+lattice         bcc 2.0
+region          box block 0 2 0 2 0 2
+create_box      2 box
+create_atoms    2 box
+mass            * 180.88
+displace_atoms  all random 0.1 0.1 0.1 123456
+variable        rcutfac equal 6.0
+pair_style      zero ${rcutfac}
+pair_coeff      * *
+compute         ld all pod/atom w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta Ta
+compute         gdd all pod/global w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta Ta
+compute         dd all podd/atom w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta Ta
+compute         ldd all pod/local w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta Ta
+thermo_style    custom step pe c_gdd[1][1] c_gdd[1][2] c_gdd[2][10] c_gdd[5][10] c_gdd[13][31] c_ldd[1][10] c_ldd[5][40] c_ldd[16][31]
+thermo_modify   format float %.15g norm no
+thermo          1
+run             0
+write_dump      all custom w177px_pod_example.dump id c_ld[*] modify format float %.15g sort id

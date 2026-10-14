@@ -84,14 +84,15 @@ describe('kspace_style ewald/disp and pair lj/long/coul/long flag_lj long', () =
     expect(r.error).toMatch(/gewald\/disp/);
   });
 
-  it('refuses pair_modify table/disp N > 0 with flag_lj long', async () => {
-    const r = await run(FCC.replace('pair_modify table 0 table/disp 0', 'pair_modify table 0 table/disp 12'));
-    expect(r.error).toMatch(/table\/disp/);
+  it('refuses pair_modify table/disp N below 8 bits (native: too few total bits)', async () => {
+    const r = await run(FCC.replace('pair_modify table 0 table/disp 0', 'pair_modify table 0 table/disp 4'));
+    expect(r.error).toMatch(/table\/disp 4.*too few/);
   });
 
-  it('refuses the default dispersion table (table/disp not set)', async () => {
+  it('runs the default dispersion table (table/disp 12) with flag_lj long', async () => {
     const r = await run(FCC.replace(' table/disp 0', ''));
-    expect(r.error).toMatch(/table\/disp/);
+    expect(r.error).toBeNull();
+    expect(r.rows.length).toBeGreaterThan(0);
   });
 
   it('refuses splittol, disp/auto yes and mesh/disp with a named StyleError', async () => {

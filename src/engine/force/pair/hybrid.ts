@@ -97,6 +97,8 @@ export class PairHybrid extends Pair {
   /** Sub-style selector for one run_style respa level (set by ForceField.compute); null computes all. */
   subSelect: ((k: number) => boolean) | null = null;
   subs: Sub[] = [];
+  /** The arguments of the last settings() call (pair_style args), kept for write_restart (restart.ts replays them). */
+  settingsArgs: string[] = [];
   /** Sub-style indices per type pair ((ntypes+1)^2, symmetric); null = never assigned. */
   private map: (number[] | null)[] = [];
   private listsBuilt = -1;
@@ -115,6 +117,7 @@ export class PairHybrid extends Pair {
 
   settings(args: string[], ctx: StyleContext): void {
     if (args.length === 0) throw new StyleError(`usage: pair_style ${this.mode} style1 args style2 args ...`);
+    this.settingsArgs = [...args];
     const subs: Sub[] = [];
     const scaled = this.mode === 'hybrid/scaled';
     let k = 0;

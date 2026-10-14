@@ -216,6 +216,84 @@ describe('pair_style table through write_restart / read_restart', () => {
 });
 
 /*
+ * pair_style hybrid through write_restart / read_restart (restart.ts, hybridPairData). pair_hybrid.cpp write_restart
+ * (src/pair_hybrid.cpp at b332f28) writes the sub-style keywords, each sub-style's settings and special weights, and no
+ * coefficient info, so the restarted run gives pair_coeff again. The oracle w177px_hybrid_restart is the native check
+ * (5 steps, restart, 5 steps, shift yes kept); here the sub-style list, the hybrid/scaled factors and the stored
+ * sub-style that cannot be stored are checked.
+ */
+const HYBRID_BOX = `
+units           lj
+atom_style      charge
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      2 box
+create_atoms    1 box
+region          half block INF 1.5 INF INF INF INF
+set             region half type 2
+set             type 1 charge 0.0
+set             type 2 charge -1.0
+mass            * 1.0
+velocity        all create 1.2 4321 loop geom
+timestep        0.002
+`;
+
+describe('pair_style hybrid through write_restart / read_restart', () => {
+  const cases: { style: string; pair: string[]; coeffs: string[] }[] = [
+    {
+      style: 'hybrid/overlay',
+      pair: ['pair_style hybrid/overlay lj/cut 2.5 coul/cut 3.0', 'pair_modify shift yes'],
+      coeffs: ['pair_coeff 1 1 lj/cut 1.0 1.0', 'pair_coeff 2 2 lj/cut 1.0 0.9', 'pair_coeff * * coul/cut'],
+    },
+    {
+      style: 'hybrid/scaled',
+      pair: ['pair_style hybrid/scaled 0.5 lj/cut 2.5 1.0 coul/cut 3.0'],
+      coeffs: ['pair_coeff 1 1 lj/cut 1.0 1.0', 'pair_coeff 2 2 lj/cut 1.0 0.9', 'pair_coeff * * coul/cut'],
+    },
+  ];
+  for (const c of cases) {
+    it(`${c.style}: the sub-styles and settings come back, the coefficients do not; the restarted run equals the uninterrupted one`, async () => {
+      const direct = newSession();
+      await direct.session.execute([HYBRID_BOX, ...c.pair, ...c.coeffs, 'fix 1 all nve', 'run 10', ''].join('\n'));
+      const want = Array.from(direct.session.sys.state.x);
+      const L = direct.session.sys.state.box.hi[0] - direct.session.sys.state.box.lo[0];
+
+      const { session, files } = newSession();
+      await session.execute([HYBRID_BOX, ...c.pair, ...c.coeffs, 'fix 1 all nve', 'run 5', 'write_restart hyb.restart', ''].join('\n'));
+      const text = files.get('hyb.restart') ?? '';
+      expect(text).toContain(`"name":"${c.style}"`);
+      expect(text).toContain('"subs"');
+      // the coefficient arrays of the sub-styles are not in the file (epsilon / sigma / cutsq are recomputed by pair_coeff)
+      expect(text).not.toContain('"cutsq"');
+      await session.execute('clear\nread_restart hyb.restart\n');
+      const pair = session.sys.ff.pair as unknown as { name: string; subs: { name: string; scale: number | string; style: { shift?: boolean } }[] };
+      expect(pair.name).toBe(c.style);
+      expect(pair.subs.map((q) => q.name)).toEqual(['lj/cut', 'coul/cut']);
+      if (c.style === 'hybrid/scaled') expect(pair.subs[0].scale).toBe(0.5);
+      if (c.style === 'hybrid/overlay') expect(pair.subs[0].style.shift).toBe(true);
+      // no coefficients came back: a run before pair_coeff stops with the native error
+      await expect(session.execute('fix 1 all nve\nrun 0\n')).rejects.toThrow();
+      await session.execute(['pair_coeff 1 1 lj/cut 1.0 1.0', 'pair_coeff 2 2 lj/cut 1.0 0.9', 'pair_coeff * * coul/cut', 'fix 1 all nve', 'run 5', ''].join('\n'));
+      const got = Array.from(session.sys.state.x);
+      expect(got.length).toBe(want.length);
+      let worst = 0;
+      for (let i = 0; i < want.length; i++) {
+        let d = got[i] - want[i];
+        d -= L * Math.round(d / L);
+        worst = Math.max(worst, Math.abs(d));
+      }
+      expect(worst).toBeLessThan(1e-9);
+    });
+  }
+
+  it('refuses a hybrid whose sub-style cannot be stored, by name', async () => {
+    const { session } = newSession();
+    await expect(session.execute([HYBRID_BOX, 'pair_style hybrid/overlay lj/cut 2.5 zbl 1.0 2.0', 'pair_coeff 1 1 lj/cut 1.0 1.0', 'pair_coeff * * zbl 1 1', 'run 0', 'write_restart x.restart', ''].join('\n')))
+      .rejects.toThrow(/sub-style zbl is not stored in the browser restart file yet/);
+  });
+});
+
+/*
  * Pair styles whose doc page says they do not write their information (restart.ts,
  * PAIR_NOT_IN_RESTART): write_restart stores no pair style, read_restart leaves the pair style
  * unset, and the next run needs a new pair_style and pair_coeff.

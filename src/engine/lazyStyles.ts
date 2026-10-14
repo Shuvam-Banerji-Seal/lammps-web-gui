@@ -33,6 +33,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_amoeba', names: { PAIRS: ['amoeba', 'hippo'], ANGLES: ['amoeba'], IMPROPERS: ['amoeba'], FIXES: ['amoeba/pitorsion', 'amoeba/bitorsion'] }, load: () => import('../engine-gpl/registry/amoeba') as Promise<StyleModule> },
   { id: 'gpl_entropy_basal', names: { COMPUTES: ['basal/atom', 'entropy/atom'] }, load: () => import('../engine-gpl/registry/entropy_basal') as Promise<StyleModule> },
   { id: 'gpl_diffraction', names: { COMPUTES: ['saed', 'xrd'], FIXES: ['saed/vtk'] }, load: () => import('../engine-gpl/registry/diffraction') as Promise<StyleModule> },
+  { id: 'gpl_uf3', names: { PAIRS: ['uf3'] }, load: () => import('../engine-gpl/registry/uf3') as Promise<StyleModule> },
   { id: 'gpl_dpd', names: { PAIRS: ['dpd', 'dpd/ext', 'dpd/ext/tstat', 'dpd/tstat'] }, load: () => import('../engine-gpl/registry/dpd') as Promise<StyleModule> },
   { id: 'gpl_thermostat', names: { FIXES: ['temp/csld', 'temp/csvr'] }, load: () => import('../engine-gpl/registry/thermostat') as Promise<StyleModule> },
   { id: 'gpl_dpdmeso', names: { COMPUTES: ['edpd/temp/atom', 'tdpd/cc/atom'], FIXES: ['edpd/source', 'mvv/dpd', 'mvv/edpd', 'mvv/tdpd', 'tdpd/source'], PAIRS: ['edpd', 'mdpd', 'mdpd/rhosum', 'tdpd'] }, load: () => import('../engine-gpl/registry/dpdmeso') as Promise<StyleModule> },

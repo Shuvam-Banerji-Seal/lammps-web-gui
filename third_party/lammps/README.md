@@ -13,6 +13,9 @@ distribution:
   `FeTiClibrary.meam` (the MEAM library file of the `in.meam.fire` example; it is not in `potentials/`). It is read
   by the native-parity case `tests/oracle/w47mn_ti_crystal` and `tests/engineMeamNn2Hcp47.test.ts`.
 - added for the basal/atom oracle case: `potentials/almg.liu`, copied byte for byte from `examples/PACKAGES/basal/` of the same LAMMPS tree (`cmp` checked; the example's Al-Mg setfl potential)
+- added for the UF3 oracle cases (`tests/oracle/w146uf3_*`): `potentials/Nb.uf3`, the unified UF3 potential of the
+  `examples/PACKAGES/uf3/in.uf3.Nb` example (the file the example links as `Nb.uf3`), copied byte for byte from the
+  `potentials/` directory of the same tree (`cmp` checked against the upstream copy)
 - added for the SPIN oracle cases: `potentials/Fe_Mishin2006.eam.alloy`, copied byte for byte from `examples/SPIN/iron/` of the same LAMMPS tree (`cmp` checked)
 
 These files are part of LAMMPS and are distributed under the **GNU General

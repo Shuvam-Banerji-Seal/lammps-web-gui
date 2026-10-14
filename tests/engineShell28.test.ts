@@ -6,8 +6,8 @@ import type { EngineEvent } from '../src/engine/types';
  * shell rm / shell mv on the session file store (commands/misc.ts).
  * shell.html: "A few simple file-based shell commands are supported directly,
  * in Unix-style syntax."; "*rm* args = [-f] file1 file2 ..." and
- * "*mv* args = old new". Everything else (cd, mkdir, rmdir, putenv, arbitrary
- * commands) is refused because a browser has no shell and no directories.
+ * "*mv* args = old new". cd, mkdir, rmdir and putenv are built-ins on the virtual file
+ * system (engineShellBuiltins.test.ts); arbitrary commands are refused, because a browser has no shell.
  *
  * Measured native behaviour (black box) is recorded in commands/misc.ts.
  */
@@ -114,15 +114,12 @@ describe('shell mv', () => {
 
 describe('shell refuses what a browser cannot do', () => {
   it.each([
-    ['shell cd sub1', /shell cd/],
-    ['shell mkdir tmp1 tmp2', /shell mkdir/],
-    ['shell rmdir tmp1', /shell rmdir/],
-    ['shell putenv LAMMPS_POTENTIALS=../../potentials', /shell putenv/],
     ['shell my_setup file1 10', /shell my_setup/],
+    ['shell gpu 1', /shell gpu/],
   ])('%s is a StyleError naming the form', async (line, pattern) => {
     const { session } = newSession();
     await expect(session.execute(`${line}\n`)).rejects.toThrow(pattern);
-    await expect(session.execute(`${line}\n`)).rejects.toThrow(/no operating-system shell and no directories/);
+    await expect(session.execute(`${line}\n`)).rejects.toThrow(/no operating-system shell; only the built-in/);
   });
 
   it('shell with no command is refused', async () => {

@@ -5,7 +5,6 @@ import { hasCharge, hasMolecule, massOf } from './atoms';
 import { finiteSpin } from './compute/finiteSpin';
 import type { SimState } from './types';
 import { isLabelKind } from './labelmap';
-import { normalizeFileName } from './fileName';
 
 /*
  * Group, region, special and feature functions of variable formulas —
@@ -58,7 +57,7 @@ export const groupFunction = (sys: System, fn: string, args: string[], mode: Mod
       sys.vars.next([args[0]]);
       return cur;
     }
-    case 'is_file': return sys.files.has(normalizeFileName(args[0])) ? 1 : 0;
+    case 'is_file': return sys.files.has(sys.resolveFile(args[0])) ? 1 : 0;
     case 'is_os': return 0;
     case 'is_timeout': return 0;
     case 'extract_setting': return extractSetting(sys, args[0]);

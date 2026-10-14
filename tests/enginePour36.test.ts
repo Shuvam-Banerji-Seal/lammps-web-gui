@@ -334,6 +334,16 @@ fix 3 all pour 2 0 4767548 vol 0.5 50 region slab mol md
 fix 4 all enforce2d
 run 1
 `;
-    expect((await run(script, { 'md.mol': multi })).error).toMatch(/single-molecule template/);
+    expect((await run(script, { 'md.mol': multi })).error).toMatch(/one molecule per file/);
+  });
+
+  it('fix pour mol takes one molecule per file and molfrac as cumulative fractions (native fix_pour.cpp)', async () => {
+    const one = '# one\n1 atoms\n\nCoords\n\n1 0 0 0\n\nTypes\n\n1 1\n';
+    const two = '# two\n2 atoms\n\nCoords\n\n1 0 0 0\n2 0.5 0 0\n\nTypes\n\n1 1\n2 1\n';
+    const base = `${header2d}molecule md md.mol md2.mol\nregion slab block 2 8 4 8 -0.5 0.5 units box\n`;
+    const ok = await run(`${base}fix 3 all pour 2 0 4767548 vol 0.5 50 region slab mol md molfrac 0.5 0.5\nfix 4 all enforce2d\nrun 1\n`, { 'md.mol': one, 'md2.mol': two });
+    expect(ok.error).toBeNull();
+    const bad = await run(`${base}fix 3 all pour 2 0 4767548 vol 0.5 50 region slab mol md molfrac 0.3 0.3\nfix 4 all enforce2d\nrun 1\n`, { 'md.mol': one, 'md2.mol': two });
+    expect(bad.error).toMatch(/Illegal fix pour command molfrac: 0\.6/);
   });
 });

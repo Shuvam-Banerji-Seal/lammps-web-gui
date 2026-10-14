@@ -110,8 +110,28 @@ run 10
     expect(error?.message).toContain('Lost atoms: original 256 current 215');
   });
 
-  it('fix store/state refuses an attribute the engine does not store (xu)', async () => {
-    const { error } = await runScript(`${SYS}\nfix s all store/state 0 xu\n`);
-    expect(error?.message).toContain("invalid input value 'xu'");
+  it('fix store/state refuses an attribute that is not a store/state input (temperature)', async () => {
+    const { error } = await runScript(`${SYS}\nfix s all store/state 0 temperature\n`);
+    expect(error?.message).toContain("invalid input value 'temperature'");
+  });
+
+  it('fix store/state stores a custom d_name property (fix property/atom) at the first run', async () => {
+    const session = new Session({ emit: () => {}, writeFile: () => {} });
+    await session.execute(`${SYS}\nfix p all property/atom d_W\nset atom 1 d_W 2.5\nfix s all store/state 0 d_W\nrun 0\n`);
+    expect((session.sys.fix('s') as unknown as { vectorAtom: Float64Array }).vectorAtom[0]).toBe(2.5);
+  });
+
+  it('fix store/state refuses mol and q when the atom style has no molecule ID or charge (native Cannot use)', async () => {
+    const { error } = await runScript(`${SYS}\nfix s all store/state 0 mol\n`);
+    expect(error?.message).toContain('Cannot use fix store/state mol for atom style atomic');
+    const q = await runScript(`${SYS}\nfix s all store/state 0 q\n`);
+    expect(q.error?.message).toContain('Cannot use fix store/state q for atom style atomic');
+  });
+
+  it('fix store/state refuses the history keyword by name and a second thresh keyword', async () => {
+    const h = await runScript(`${SYS}\nfix s all store/state 0 x history 5 10 0\n`);
+    expect(h.error?.message).toContain("keyword 'history' is not supported");
+    const t = await runScript(`${SYS}\nvariable g equal 1\nfix s all store/state 0 x thresh v_g > 0 thresh v_g > 0\n`);
+    expect(t.error?.message).toContain('the thresh keyword may be used only once');
   });
 });

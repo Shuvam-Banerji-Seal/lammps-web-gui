@@ -57,6 +57,14 @@ import type { System } from '../system';
  * defined in the -y direction." "The cylinder style of region can only be used
  * with 3d simulations."
  *
+ * Several molecules (fix_pour.rst: "*molfrac* ... Each time a molecule is inserted, a random number is used to sample
+ * from the list of relative probabilities. The N values must sum to 1.0."; the default is "*molfrac* is an equal
+ * probabilities for all molecules in the template"): one template per molecule file, the cumulative fractions of
+ * native fix_pour.cpp (molfrac[i] = molfrac[i-1] + f(i), the last one checked to 1 within 0.001 and set to 1.0), and
+ * the molecule of each trial is the first with rng <= molfrac (fix_pour.cpp pre_exchange: "while (rng > molfrac[imol])
+ * imol++"). The molecule radius for the insertion volume adds the atom radii only when the file has a Diameters
+ * section (native Molecule::compute_center).
+ *
  * Molecules. Measured with native LAMMPS (black box, seed 12345, a molecule
  * template with a Coords/Types section, region 5..15 x 5..15 x 15..18): per
  * molecule the draw order is fall, x, y (3d), then per attempt the molecule
@@ -342,7 +350,9 @@ export class FixPour extends Fix {
   private g = 0;
   private readonly twoD: boolean;
   private readonly molTemplateId: string | null;
-  private molTemplate: MoleculeTemplate | null = null;
+  /** One template per molecule file (native onemols[0..nset-1]); the cumulative molfrac of each (native molfrac[]). */
+  private molTemplates: MoleculeTemplate[] = [];
+  private molCum: number[] = [];
   private readonly molfrac: number[] | null;
   private readonly rigidId: string | null;
   private readonly shakeId: string | null;
@@ -409,10 +419,13 @@ export class FixPour extends Fix {
       else if (key === 'molfrac') {
         if (!molTemplateId) throw new StyleError('fix pour: molfrac requires the mol keyword before it');
         const n = moleculeCount(sys, molTemplateId);
-        const vals: number[] = [];
-        for (let k = 1; k <= n; k++) vals.push(num(args[i + k], 'molfrac'));
-        if (Math.abs(vals.reduce((a, b) => a + b, 0) - 1) > 1e-8) throw new StyleError('fix pour: molfrac values must sum to 1.0');
-        molfrac = vals;
+        // fix_pour.cpp (molfrac): molfrac[0] = v1, molfrac[i] = molfrac[i-1] + v(i+1); the last sum must be 1 within
+        // EPSILON = 0.001 and is then set to 1.0 ("Illegal fix pour command molfrac")
+        const cum: number[] = [];
+        for (let k = 0; k < n; k++) cum.push((k === 0 ? 0 : cum[k - 1]) + num(args[i + k + 1], 'molfrac'));
+        if (cum[n - 1] < 1 - 0.001 || cum[n - 1] > 1 + 0.001) throw new StyleError(`Illegal fix pour command molfrac: ${cum[n - 1]}`);
+        cum[n - 1] = 1;
+        molfrac = cum;
         i += 1 + n;
       } else if (key === 'rigid') { rigidId = args[i + 1] ?? null; i += 2; }
       else if (key === 'shake') { shakeId = args[i + 1] ?? null; i += 2; }
@@ -449,14 +462,26 @@ export class FixPour extends Fix {
     const s = this.sys.state;
     if (this.molTemplateId) {
       const count = moleculeCount(this.sys, this.molTemplateId);
-      if (count > 1) {
-        throw new StyleError(`fix pour mol: molecule template '${this.molTemplateId}' defines ${count} molecules (molfrac); only a single-molecule template is supported by the browser engine`);
+      const sets = this.sys.molecules.get(this.molTemplateId)!;
+      // a file with a Molecules section holds several molecules; fix pour takes one molecule per file (fix_pour.cpp onemols)
+      if (count > 1 && sets.some((t) => t.mol)) {
+        throw new StyleError(`fix pour mol: molecule template '${this.molTemplateId}' has several molecules in one file (Molecules section); only one molecule per file is supported by the browser engine`);
       }
-      this.molTemplate = this.sys.molecules.get(this.molTemplateId)![0];
+      this.molTemplates = sets;
+      // fix_pour.cpp (mol, without molfrac): molfrac[0] = 1/nmol, molfrac[i] = molfrac[i-1] + 1/nmol, the last set to 1.0
+      if (!this.molfrac) {
+        const cum: number[] = [];
+        for (let k = 0; k < count; k++) cum.push(k === 0 ? 1 / count : cum[k - 1] + 1 / count);
+        cum[count - 1] = 1;
+        this.molCum = cum;
+      } else this.molCum = this.molfrac;
       let maxT = 0;
-      for (const ty of this.molTemplate.type) if (ty > maxT) maxT = ty;
+      for (const t of sets) for (const ty of t.type) if (ty > maxT) maxT = ty;
       if (this.type + maxT > s.ntypes) {
         throw new StyleError(`fix pour mol: type offset ${this.type} plus template type ${maxT} is larger than ntypes ${s.ntypes}`);
+      }
+      if (count > 1 && (this.rigidId || this.shakeId)) {
+        throw new StyleError('fix pour: the rigid and shake keywords with several molecule templates are not supported by the browser engine');
       }
       if (this.rigidId) {
         const rf = this.sys.fix(this.rigidId);
@@ -474,12 +499,15 @@ export class FixPour extends Fix {
       }
     } else if (this.type > s.ntypes) throw new StyleError(`fix pour: atom type ${this.type} is larger than ntypes ${s.ntypes}`);
     if (this.bodyStyle) {
-      const bt = this.molTemplate?.body;
-      if (!this.molTemplate || !bt) throw new StyleError(`fix pour: atom_style ${s.atomStyle} needs a body molecule (mol with Body Integers and Body Doubles); point body particles are not supported by the browser engine`);
+      if (!this.molTemplates.length) throw new StyleError(`fix pour: atom_style ${s.atomStyle} needs a body molecule (mol with Body Integers and Body Doubles); point body particles are not supported by the browser engine`);
       if (this.rigidId || this.shakeId) throw new StyleError('fix pour: the rigid and shake keywords with body molecules are not supported by the browser engine');
       // the molecule radius (native Molecule::read with radius_body) is the diameter of the template atom
-      this.molTemplate = { ...this.molTemplate, diam: Float64Array.of(2 * bodyRadiusBody(this.bodyStyle, bt.ints, bt.dbls)) };
-    } else if (this.molTemplate?.body) {
+      this.molTemplates = this.molTemplates.map((t) => {
+        const bt = t.body;
+        if (!bt) throw new StyleError(`fix pour: atom_style ${s.atomStyle} needs a body molecule (mol with Body Integers and Body Doubles); point body particles are not supported by the browser engine`);
+        return { ...t, diam: Float64Array.of(2 * bodyRadiusBody(this.bodyStyle!, bt.ints, bt.dbls)) };
+      });
+    } else if (this.molTemplates.some((t) => t.body)) {
       throw new StyleError(`fix pour mol: molecule '${this.molTemplateId}' is a body molecule and needs atom_style body`);
     }
     this.reg = insertionRegion(this.sys, this.regionId, 'pour');
@@ -492,7 +520,7 @@ export class FixPour extends Fix {
 
   /** Particle volume used for the count: diam range uses Dhi, poly the percentage-weighted mean. */
   private particleVolume(): number {
-    if (this.molTemplate) return this.moleculeVolume(this.molTemplate);
+    if (this.molTemplates.length) return this.moleculeVolume();
     const a = (d: number) => (this.twoD ? (Math.PI / 4) * d * d : (Math.PI / 6) * d * d * d);
     if (this.diam.style === 'one') return a(this.diam.d);
     if (this.diam.style === 'range') return a(this.diam.hi);
@@ -501,16 +529,27 @@ export class FixPour extends Fix {
     return m;
   }
 
-  /** Sphere (3d) / disc (2d) volume of R = max over atoms of (|x - center| + radius). */
-  private moleculeVolume(t: MoleculeTemplate): number {
+  /**
+   * Molecule radius of a template (native Molecule::compute_center): R = max over atoms of (|x - center| + radius),
+   * where the radius is added only when the file has a Diameters section (radiusflag); otherwise it is 0, not the
+   * default atom radius that the overlap test uses.
+   */
+  private static moleculeRadius(t: MoleculeTemplate): number {
     const c = geometricCenter(t);
     let R = 0;
     for (let i = 0; i < t.natoms; i++) {
       const dx = t.x[3 * i] - c[0], dy = t.x[3 * i + 1] - c[1], dz = t.x[3 * i + 2] - c[2];
-      const r = t.diam ? t.diam[i] / 2 : SPHERE_DEFAULT_RADIUS;
+      const r = t.diam ? t.diam[i] / 2 : 0;
       const d = Math.hypot(dx, dy, dz) + r;
       if (d > R) R = d;
     }
+    return R;
+  }
+
+  /** Sphere (3d) / disc (2d) volume of the largest molecule radius (fix_pour.cpp: molradius_max, volume_one). */
+  private moleculeVolume(): number {
+    let R = 0;
+    for (const t of this.molTemplates) R = Math.max(R, FixPour.moleculeRadius(t));
     return this.twoD ? Math.PI * R * R : (4 / 3) * Math.PI * R * R * R;
   }
 
@@ -560,8 +599,9 @@ export class FixPour extends Fix {
     const budget = nnew * this.nattempt;
     let tries = 0;
     const nOld = s.n;
-    const t = this.molTemplate;
-    const center = t ? geometricCenter(t) : [0, 0, 0];
+    const templates = this.molTemplates;
+    const centers = templates.map((t) => geometricCenter(t));
+    const mols: { t: MoleculeTemplate; pos: Float64Array; v: [number, number, number]; rot: number[][]; quat: number[] }[] = [];
     // candidate atoms appended during this event (molecules register all their atoms)
     const cx: number[] = [], cy: number[] = [], cz: number[] = [], cr: number[] = [];
     const at = (i: number): [number, number, number, number] => (i < nOld
@@ -580,13 +620,14 @@ export class FixPour extends Fix {
     // accepted atoms (no mol) and molecules
     const ax: number[] = [], ay: number[] = [], az: number[] = [], ar: number[] = [], am: number[] = [];
     const avx: number[] = [], avy: number[] = [], avz: number[] = [];
-    const mols: { pos: Float64Array; v: [number, number, number]; rot: number[][]; quat: number[] }[] = [];
     for (let k = 0; k < nnew; k++) {
       // the fall coordinate is drawn once per particle; overlap retries keep it
       const uz = this.rng.uniform();
       const f = fLo + H * (1 - uz * uz);
-      if (t) {
+      if (templates.length) {
         let placed = false, pos: Float64Array | null = null, placedRot: number[][] | null = null, placedQuat: number[] | null = null;
+        let imol = 0;
+        let t = templates[0];
         while (tries < budget) {
           tries++;
           const x = reg.xlo + this.rng.uniform() * (reg.xhi - reg.xlo);
@@ -594,9 +635,11 @@ export class FixPour extends Fix {
           if (twoD) y = f;
           else { y = reg.ylo + this.rng.uniform() * (reg.yhi - reg.ylo); z = f; }
           if (reg.kind === 'cylinder' && (x - reg.xc) ** 2 + (y - reg.yc) ** 2 > reg.radius * reg.radius) continue;
-          // one draw samples the molecule list; then the random rotation
+          // fix_pour.cpp: one draw samples the molecule list ("while (rng > molfrac[imol]) imol++"), then the rotation
           const sel = this.rng.uniform();
-          if (this.molfrac) { let c = 0; for (const fr of this.molfrac) { c += fr; if (sel < c) break; } }
+          imol = 0;
+          while (imol < this.molCum.length - 1 && sel > this.molCum[imol]) imol++;
+          t = templates[imol];
           let R: number[][], quat: number[];
           if (twoD) {
             const th = 2 * Math.PI * this.rng.uniform();
@@ -607,7 +650,7 @@ export class FixPour extends Fix {
             R = rotationMatrix(2 * Math.PI * u4, u1 - 0.5, u2 - 0.5, u3 - 0.5);
             quat = axisAngleQuat([u1 - 0.5, u2 - 0.5, u3 - 0.5], 2 * Math.PI * u4);
           }
-          const cand = this.placeMolecule(t, center, R, [x, y, z]);
+          const cand = this.placeMolecule(t, centers[imol], R, [x, y, z]);
           let hit = false;
           for (let a = 0; a < t.natoms && !hit; a++) {
             const rad = t.diam ? t.diam[a] / 2 : SPHERE_DEFAULT_RADIUS;
@@ -625,7 +668,7 @@ export class FixPour extends Fix {
           cx.push(pos![3 * a]); cy.push(pos![3 * a + 1]); cz.push(pos![3 * a + 2]);
           cr.push(t.diam ? t.diam[a] / 2 : SPHERE_DEFAULT_RADIUS);
         }
-        mols.push({ pos: pos!, v, rot: placedRot!, quat: placedQuat! });
+        mols.push({ t, pos: pos!, v, rot: placedRot!, quat: placedQuat! });
       } else {
         const rad = this.drawRadius() / 2;
         let x = 0, y = 0, z = 0, found = false;
@@ -654,8 +697,9 @@ export class FixPour extends Fix {
     const n = mols.length + ax.length;
     if (n < nnew) sys.warn(`Fewer insertions than requested (${n} vs ${nnew}) on step ${step}`);
     if (n > 0) {
-      if (t) {
+      if (templates.length) {
         for (const m of mols) {
+          const t = m.t;
           const ids = this.idNext ? new Int32Array(t.natoms) : undefined;
           if (ids) for (let k = 0; k < t.natoms; k++) ids[k] = ++this.nextId;
           const molId = this.idNext ? ++this.nextMolId : maxMoleculeId(s) + 1;

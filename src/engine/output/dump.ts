@@ -7,7 +7,6 @@ import { generalBoxFromRestricted, toGeneralPoint, unrotateVector, type V3 } fro
 import { fillWildcard } from '../commands/restart';
 import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, hasRmassStyle, isEllipsoidStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
 import { ImageDump } from './dump_image';
-import { normalizeFileName } from '../fileName';
 
 /*
  * Per-atom snapshots — docs.lammps.org/dump.html and dump_modify.html.
@@ -102,6 +101,20 @@ export class Dump {
   /** dump image: the image renderer (dump_image.ts); null for every other style. */
   private imageDump: ImageDump | null = null;
   readonly columns: string[];
+
+  /**
+   * The single file's name, resolved from the working directory (shell cd) when it is first opened. As native LAMMPS
+   * does (src/dump_custom.cpp init_style at b332f28: "open single file, one time only"; src/dump.cpp write: "if file per
+   * timestep, open new file"), a single file is opened once, at the first run after the dump command, and a multi-file
+   * dump opens each snapshot's file when it is written. The session opens it at the first init command (Session
+   * dispatch, INIT_COMMANDS); a write before any of them opens it then.
+   */
+  private singleKey: string | null = null;
+
+  /** Opens the single file (resolves its name from the working directory) if it is not open yet; see singleKey. */
+  openFile(): void {
+    if (!this.file.includes('*') && this.singleKey === null) this.singleKey = this.sys.resolveFile(this.file);
+  }
 
   constructor(private sys: System, readonly id: string, readonly group: string, readonly style: DumpStyle, every: number | string, readonly file: string, cols: string[], multifileOverride = false) {
     // dump.html: "if the filename ends with ".gz" ... the dump file (or files, if "*" or "%" is also used) is written in
@@ -347,12 +360,12 @@ export class Dump {
    * are removed from the file store once a newer one is written (dump_modify.html).
    */
   private writeSnapshot(name: string, text: string, append: boolean): void {
-    this.sys.writeFile(name, text, append);
+    this.sys.writeFileAt(name, text, append);
     if (this.maxfiles <= 0) return;
     if (!this.written.includes(name)) this.written.push(name);
     while (this.written.length > this.maxfiles) {
       const old = this.written.shift();
-      if (old !== undefined) this.sys.files.delete(normalizeFileName(old));
+      if (old !== undefined) this.sys.files.delete(old);
     }
   }
 
@@ -481,7 +494,7 @@ export class Dump {
     }
     const multi = this.file.includes('*');
     const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
-    const name = multi ? fillWildcard(this.file, stepText) : this.file;
+    const name = multi ? this.sys.resolveFile(fillWildcard(this.file, stepText)) : (this.singleKey ??= this.sys.resolveFile(this.file));
     const appendNow = multi ? false : this.opened || this.append;
     this.writeSnapshot(name, lines.join('\n') + '\n', appendNow);
     this.opened = true;
@@ -535,7 +548,7 @@ export class Dump {
     }
     const multi = this.file.includes('*');
     const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
-    const name = multi ? fillWildcard(this.file, stepText) : this.file;
+    const name = multi ? this.sys.resolveFile(fillWildcard(this.file, stepText)) : (this.singleKey ??= this.sys.resolveFile(this.file));
     const appendNow = multi ? false : this.opened || this.append;
     this.writeSnapshot(name, lines.join('\n') + '\n', appendNow);
     this.opened = true;

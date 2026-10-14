@@ -213,6 +213,24 @@ write_dump all custom pour_check.dump id x y z radius modify format float %.15g 
     }
   });
 
+  it('fix deposit takes any region with a bounding box (cylinder, union) and refuses one without (native bboxflag)', async () => {
+    const header = 'units lj\natom_style atomic\nboundary p p p\nregion box block -5 5 -5 5 0 10\ncreate_box 1 box\nmass * 1.0\n';
+    const cyl = await run(`${header}region c cylinder z 0 0 2 1 4 side in\nfix 1 all deposit 5 1 2 99 region c vz -0.1 -0.1 units box\nrun 10\n`);
+    expect(cyl.error).toBeNull();
+    const uni = await run(`${header}region a block -3 3 -3 3 0 2 side in\nregion b sphere 0 0 5 1 side in\nregion u union 2 a b\nfix 1 all deposit 5 1 2 99 region u vz -0.1 -0.1 units box\nrun 10\n`);
+    expect(uni.error).toBeNull();
+    const plane = await run(`${header}region p plane 0 0 5 0 0 1 side in\nfix 1 all deposit 5 1 2 99 region p units box\nrun 1\n`);
+    expect(plane.error).toContain('Fix deposit region does not support a bounding box');
+    const out = await run(`${header}region o block -3 3 -3 3 0 2 side out\nfix 1 all deposit 5 1 2 99 region o units box\nrun 1\n`);
+    expect(out.error).toContain('Fix deposit region does not support a bounding box');
+  });
+
+  it('fix deposit refuses a dynamic region', async () => {
+    const header = 'units lj\natom_style atomic\nboundary p p p\nregion box block -5 5 -5 5 0 10\ncreate_box 1 box\nmass * 1.0\n';
+    const r = await run(`${header}region m block -3 3 -3 3 0 2 side in move NULL NULL v_zz\nvariable zz equal 0.1\nfix 1 all deposit 5 1 2 99 region m units box\nrun 1\n`);
+    expect(r.error).toContain('Fix deposit region cannot be dynamic');
+  });
+
   it('a cylinder region keeps particles inside the radius', async () => {
     const script = `${header}region cyl cylinder z 0 0 3 0 1 side in units box
 fix 3 all pour 10 1 31 region cyl diam one 1.0 dens 1.0 1.0 vol 0.3 100

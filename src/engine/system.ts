@@ -21,7 +21,7 @@ import { buildAtomMap, deleteAtoms as deleteAtomsImpl, massOf, customAttr, nativ
 import { groupFunction } from './groupfn';
 import { LabelMap } from './labelmap';
 import { defaultMinSettings, type MinSettings } from './run/min';
-import { normalizeFileName } from './fileName';
+import { normalizeFileName, resolveFileName } from './fileName';
 
 /*
  * The whole simulation: settings, atoms, box, neighbor lists, force field,
@@ -98,6 +98,12 @@ export class System {
   registries: Record<string, string[]> = {};
   /** Files the session can read: uploads plus everything it wrote. */
   readonly files = new Map<string, string>();
+  /** shell cd: the working directory, relative to the notebook root (''); see shellFs.ts. */
+  cwd = '';
+  /** shell mkdir: directories made by the shell (root-relative names); see shellFs.ts. */
+  readonly dirs = new Set<string>();
+  /** shell putenv: environment variables; LAMMPS_POTENTIALS is the directory a potential file is looked up in. */
+  readonly env = new Map<string, string>();
   /** molecule templates by ID (each a list of sets; create_atoms uses the first). */
   readonly molecules = new Map<string, MoleculeTemplate[]>();
   run: RunInfo = { inRun: false, firstStep: 0, lastStep: 0, beginStep: 0, endStep: 0, t0: 0, ranOnce: false };
@@ -224,8 +230,17 @@ export class System {
     }
   }
 
+  /** The root-relative session-file name of a name given in the input, from the working directory (shell cd). */
+  resolveFile(name: string): string {
+    return this.cwd === '' ? normalizeFileName(name) : resolveFileName(this.cwd, name);
+  }
+
   readFile(name: string): string {
-    const f = this.files.get(normalizeFileName(name));
+    let f = this.files.get(this.resolveFile(name));
+    // native LAMMPS (utils::get_potential_file_path): a file not found in the working directory is looked up in the
+    // directory of the LAMMPS_POTENTIALS environment variable (set by shell putenv)
+    const potDir = this.env.get('LAMMPS_POTENTIALS');
+    if (f === undefined && potDir !== undefined) f = this.files.get(resolveFileName('', `${potDir}/${name}`));
     if (f === undefined) {
       throw new StyleError(`cannot open file ${name}: add it to the notebook's files (upload) or write it earlier in the session`);
     }
@@ -240,9 +255,16 @@ export class System {
   }
 
   writeFile(name: string, text: string, append: boolean): void {
-    name = normalizeFileName(name);
-    this.files.set(name, (append ? this.files.get(name) ?? '' : '') + text);
-    this.io.writeFile?.(name, text, append);
+    this.writeFileAt(this.resolveFile(name), text, append);
+  }
+
+  /**
+   * Writes a session file under its root-relative name, already resolved from the working directory when it was
+   * defined (a dump opens its file at the dump command, as native LAMMPS does, so a later shell cd does not move it).
+   */
+  writeFileAt(key: string, text: string, append: boolean): void {
+    this.files.set(key, (append ? this.files.get(key) ?? '' : '') + text);
+    this.io.writeFile?.(key, text, append);
   }
 
   // ---------------------------------------------------------------- forces

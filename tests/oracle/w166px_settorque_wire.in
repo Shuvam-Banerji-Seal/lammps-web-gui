@@ -1,0 +1,63 @@
+# oracle: fix settorque/atom (GRANULAR), cut down from examples/bpm/wires/in.bpm.wires: a straight BPM wire of 10 spheres
+# (bond_style bpm/rotational, pair granular hooke/linear_history, nve/bpm/sphere with dipoles). The first end is frozen with
+# constant settorque/atom 0 0 0 and setforce; the far end gets settorque/atom with NULL, an equal-style variable (v_ty), an
+# atom-style variable (v_tzat) and a region keyword. The vector output f_ID[1..3] (the group torque before the change) is
+# printed in thermo. 200 steps, dt 0.1.
+# native: b332f28 (installed lmp, GRANULAR, BPM, DIPOLE packages). Velocities are set from atom-style variables, not
+# velocity create: the engine's velocity create (loop geom or loop all, mom yes rot yes) disagrees with native per atom here.
+# measured: max relative error between 1e-10 and 1e-9 (the thermo column f_4[1] at step 20 is 3.7e-4 with an absolute
+# difference of 4e-14; rel 1e-10 fails, rel 1e-9 passes; per-atom state within 1e-9 too)
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12 atomrel=1e-9
+units           lj
+dimension       3
+boundary        m m m
+atom_style      hybrid bpm/sphere dipole
+special_bonds   lj 0.0 1.0 1.0 coul 0.0 1.0 1.0
+newton          on off
+comm_modify     vel yes cutoff 2.6
+region          box block -10 60 -10 30 -10 10
+create_box      1 box bond/types 1 extra/bond/per/atom 2
+create_atoms    1 single 0.0 0.0 0.0 units box
+create_atoms    1 single 1.0 0.0 0.0 units box
+create_atoms    1 single 2.0 0.0 0.0 units box
+create_atoms    1 single 3.0 0.0 0.0 units box
+create_atoms    1 single 4.0 0.0 0.0 units box
+create_atoms    1 single 5.0 0.0 0.0 units box
+create_atoms    1 single 6.0 0.0 0.0 units box
+create_atoms    1 single 7.0 0.0 0.0 units box
+create_atoms    1 single 8.0 0.0 0.0 units box
+create_atoms    1 single 9.0 0.0 0.0 units box
+create_bonds    single/bond 1 1 2
+create_bonds    single/bond 1 2 3
+create_bonds    single/bond 1 3 4
+create_bonds    single/bond 1 4 5
+create_bonds    single/bond 1 5 6
+create_bonds    single/bond 1 6 7
+create_bonds    single/bond 1 7 8
+create_bonds    single/bond 1 8 9
+create_bonds    single/bond 1 9 10
+group           ends1 id 1
+group           loaded id 6:10
+set             group all dipole 0 0 1
+variable        vxa atom 0.0
+variable        vya atom 0.02*sin(1.3*x+0.4)
+variable        vza atom 0.015*cos(0.8*x)
+velocity        all set 0.0 v_vya v_vza
+pair_style      granular
+pair_coeff      1 1 hooke 10.0 0.5 tangential linear_history 5.0 0.5 0.1
+neighbor        0.3 bin
+bond_style      bpm/rotational smooth no break no
+bond_coeff      1 1.0 0.1 0.1 0.1 -1 -1 -1 -1 0.5 0.5 0.05 0.05
+region          reg2 block 7.5 20.0 -10.0 10.0 -10.0 10.0 units box
+variable        ty equal 0.001*step
+variable        tzat atom 0.002*x
+fix             1 all nve/bpm/sphere update dipole
+fix             2 ends1 settorque/atom 0.0 0.0 0.0
+fix             3 ends1 setforce 0.0 0.0 0.0
+fix             4 loaded settorque/atom NULL v_ty v_tzat region reg2
+fix             5 loaded setforce 0.0 0.0 0.0
+thermo_style    custom step ke pe f_2[1] f_2[2] f_2[3] f_4[1] f_4[2] f_4[3]
+thermo_modify   format float %.15g
+timestep        0.1
+thermo          20
+run             200

@@ -1,0 +1,26 @@
+# oracle: fix rigid/small molecule bodies under fix deform erate x y with remap x (the bodies' centres of mass follow the box)
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12 atomrel=1e-10 skip=press,pxx,pyy,pzz
+# Measured with native LAMMPS (black box, probe runs): before the fix the temp column was off by 1e-4 relative at step 5; with the fix every thermo column except the pressure ones agrees to 1e-10, and so do the final positions, velocities and forces of all 64 atoms. The pressure columns are left out for the same pre-existing rigid virial difference (about 1e-8 absolute, also without fix deform; see w178rd_rigid_custom).
+units           lj
+atom_style      molecular
+lattice         sc 0.5
+region          box block 0 4 0 4 0 4
+create_box      1 box bond/types 1 extra/bond/per/atom 1 extra/special/per/atom 1
+create_atoms    1 box
+mass            1 1.0
+variable        mid atom floor(x/2.0)+3*floor(y/2.5)
+set             group all mol v_mid
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+timestep        0.002
+comm_modify     cutoff 5.0
+fix             1 all rigid/small molecule
+variable        vx atom 0.3*sin(0.9*x+0.4*z)
+variable        vy atom 0.3*cos(0.6*y+0.8*x)
+variable        vz atom 0.3*sin(0.7*z-0.3*y)
+velocity        all set v_vx v_vy v_vz units box
+fix             2 all deform 1 x erate 0.05 y erate 0.05 remap x
+thermo_style    custom step temp pe ke etotal press pxx pyy pzz lx ly lz vol
+thermo_modify   format float %.15g
+thermo          5
+run             40

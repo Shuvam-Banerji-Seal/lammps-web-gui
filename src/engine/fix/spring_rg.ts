@@ -1,3 +1,4 @@
+import { takeFixRecord } from './restartRecord';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
@@ -41,7 +42,7 @@ const num = (w: string | undefined, what: string): number => {
 export class FixSpringRG extends Fix {
   readonly style = 'spring/rg';
   private readonly k: number;
-  private readonly rg0: number;
+  private rg0: number;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -57,7 +58,13 @@ export class FixSpringRG extends Fix {
     } else {
       this.rg0 = num(args[1], 'RG0');
     }
+    // fix_spring_rg.cpp restart(): the reference rg0 of the run that wrote the file
+    const saved = takeFixRecord(sys, id, this.style)?.state as { rg0: number } | undefined;
+    if (saved) this.rg0 = saved.rg0;
   }
+
+  /** fix_spring_rg.cpp write_restart: rg0. */
+  restartState(): { rg0: number } { return { rg0: this.rg0 }; }
 
   /** Radius of gyration of the group about its centre of mass (unwrapped coordinates). */
   private radiusOfGyration(): number | null {

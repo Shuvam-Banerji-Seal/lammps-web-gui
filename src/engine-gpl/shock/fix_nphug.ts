@@ -72,6 +72,25 @@ export class FixNPHug extends FixNH {
     removeCompute(this.sys, this.idPe);
   }
 
+  /**
+   * fix_nphug.cpp pack_restart_data: "e0, v0, p0" ahead of the FixNH list (its t0 is in that list). The t0 flag tells
+   * whether the reference temperature was set (setup or a restart file) when the file was written.
+   */
+  protected restartExtra(): Record<string, number> {
+    return { e0: this.e0, v0: this.v0, p0: this.p0, t0: this.t0 ?? 0, t0Set: this.t0 === null ? 0 : 1 };
+  }
+
+  /** fix_nphug.cpp restart(): the reference state of the file replaces the keywords; applied before the first setup. */
+  private applyRestored(): void {
+    const r = this.restoredExtra;
+    if (!r) return;
+    this.restoredExtra = undefined;
+    this.e0 = r.e0; this.e0Set = true;
+    this.v0 = r.v0; this.v0Set = true;
+    this.p0 = r.p0; this.p0Set = true;
+    if (r.t0Set === 1) this.t0 = r.t0;
+  }
+
   /** fix_nphug.cpp modify_param: e0, v0 and p0 set the reference state. */
   modify(key: string, values: string[]): number {
     if (key === 'e0' || key === 'v0' || key === 'p0') {
@@ -97,6 +116,7 @@ export class FixNPHug extends FixNH {
 
   /** fix_nphug.cpp setup(): the reference state, rho0 and the target temperature 0.01 after the base setup. */
   setup(): void {
+    this.applyRestored();
     super.setup();
     const s = this.sys.state;
     const kB = s.units.boltz;

@@ -1,6 +1,7 @@
 import type { Ctx, Handler } from './args';
 import { int, num } from './args';
 import { StyleError } from '../force/types';
+import { checkFixStateNotStored } from '../fix/restartRecord';
 import { FIX_STYLES, COMPUTE_STYLES, styleNames } from '../styles';
 import { Dump, type DumpStyle } from '../output/dump';
 import { initRun, runVerlet } from '../run/verlet';
@@ -39,6 +40,7 @@ const fix: Handler = ({ sys }, a) => {
   if (!make) {
     throw new StyleError(`fix style '${style}' is not supported by the browser engine; supported: ${styleNames().fix.join(', ')}`);
   }
+  checkFixStateNotStored(sys, id, style);
   // the style is checked first, so a fix the engine lacks is named even before the box exists;
   // fix_property_atom.html: "This fix is one of a small number that can be defined in an input
   // script before the simulation box is created or atoms are defined." fix_cmap.html: "To function

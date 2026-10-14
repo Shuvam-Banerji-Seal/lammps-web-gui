@@ -5,13 +5,30 @@ import type { SpecialBonds } from '../force/forcefield';
 import type { DynamicGroup } from '../group';
 import { StyleError, type Bonded, type Pair } from '../force/types';
 import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES } from '../styles';
-import { FixPropertyAtom, type PropertyAtomRestart } from '../fix/property_atom';
-import { FixCmap, type CmapRestart } from '../fix/cmap';
-import { FixNH, type NHRestart } from '../fix/nh';
+import { FixPropertyAtom } from '../fix/property_atom';
+import { FixCmap } from '../fix/cmap';
+import { FixNH } from '../fix/nh';
+import { type FixRecord, isRestartableFix } from '../fix/restartRecord';
 import { BondedHybrid, type HybridKind } from '../force/bonded_hybrid';
 
-/** A fix's record in the restart file: property/atom values, and the cmap cross-term list when the fix is cmap. */
-type FixRestart = PropertyAtomRestart & { cmap?: CmapRestart; nh?: NHRestart };
+/** A fix's record in the restart file (fix/restartRecord.ts). */
+type FixRestart = FixRecord;
+
+/*
+ * Fix styles whose native class keeps state in the binary restart file (restart_global or restart_peratom in
+ * the LAMMPS source at b332f28, checked against the class's write_restart / pack_restart) and that this engine
+ * does not store yet. write_restart refuses them by name: dropping their state silently would make a restarted
+ * run differ from the uninterrupted one without a word. The fixes that are stored are fix nvt/npt/nph and their
+ * variants (FixNH), fix nphug, npt/cauchy, msst and qbmsst (restartState), fix property/atom and fix cmap.
+ */
+const FIX_STATE_NOT_STORED = new Set([
+  'adapt', 'amoeba/bitorsion', 'amoeba/pitorsion', 'baoab', 'bocs', 'bond/react', 'brownian', 'brownian/asphere',
+  'brownian/sphere', 'charge/regulation', 'deform', 'deposit', 'gcmc', 'gjf', 'gle', 'graphics/lines', 'mol/swap',
+  'move', 'rigid/nph', 'rigid/nph/small', 'rigid/npt', 'rigid/npt/small', 'rigid/nvt', 'rigid/nvt/small',
+  'smd/adjust_dt', 'spring/self', 'store/state', 'temp/csld', 'temp/csvr',
+  'tgnpt/drude', 'tgnvt/drude', 'ti/spring', 'ttm', 'ttm/cascade', 'ttm/grid', 'ttm/mod',
+  'ttm/thermal', 'wall/body/polygon', 'wall/body/polyhedron', 'wall/gran', 'wall/gran/region', 'widom',
+]);
 import { SMD_COLS, isSmdStyle } from '../smd';
 import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, isElectronStyle, ELECTRON_DEFAULTS, ELECTRON_SPIN, isDielectricStyle, DIELECTRIC_DEFAULTS, isSphStyle, SPH_DEFAULTS, SPH_WIDTH, isDpdMesoKey, isDpdMesoStyle, dpdMesoProps, RHEO_DEFAULTS, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_THERMAL_DEFAULTS, DPD_DEFAULTS, isDpdStyle } from '../atoms';
 import { ErfcTableCache } from '../force/erfc';
@@ -34,8 +51,13 @@ import { ErfcTableCache } from '../force/erfc';
  * coefficients, pair_modify settings (mix, shift, tail, table), special_bonds
  * settings, and comm_style / comm_modify settings (vel, cutoff).
  *
+ * Fixes: the state a fix keeps in the native restart file (fix/restartRecord.ts) is stored per fix ID and style and
+ * taken back when a fix with the same ID and style is re-specified (fix_nh.html, fix_msst.html, fix_qbmsst.html,
+ * fix_property_atom.html, fix_cmap.html and the other pages that say "writes ... to binary restart files"). A fix
+ * whose native class keeps state this engine does not store is refused by name (FIX_STATE_NOT_STORED), never dropped.
+ *
  * Not stored (read_restart.rst: "Here is a list of information not stored in a
- * restart file"): fixes, computes, variables, regions, neighbor settings,
+ * restart file"): computes, variables, regions, neighbor settings,
  * kspace settings, thermo / dump / restart output settings. Molecule templates
  * are not stored either. Forces are recomputed by the next run, so the file
  * does not hold them.
@@ -249,18 +271,24 @@ const bondedTypeCount = (s: SimState, kind: typeof BONDED_KINDS[number]): number
 /** The restart text (magic line, then one JSON line). Throws StyleError for anything it cannot store. */
 export const writeRestartText = (sys: System): string => {
   const s = sys.state;
+  // fixes whose native state is not stored: a marker record, and one warning naming them (checkFixStateNotStored
+  // refuses a fix with the same ID and style after read_restart)
+  const unstored: string[] = [];
   // fix_property_atom.html: "This fix writes the per-atom values it stores to :doc:`binary restart
   // files <restart>`, so that the values can be restored when a simulation is restarted."
   const fixes: FixRestart[] = [];
   for (const f of sys.fixes) {
-    // fix_qbmsst.html (native restart keeps the omega, e0, v0, p0 and T_qm of the fix): not stored by the browser yet
-    if (f.style === 'qbmsst') throw new StyleError(`write_restart: fix ${f.id} (qbmsst) state is not stored in the browser restart file yet; use write_data or re-specify the fix`);
-    // fix_msst.html / fix_nphug.html: the omega, e0, v0 and p0 of these fixes are not stored by the browser yet
-    if (f.style === 'msst' || f.style === 'nphug' || f.style === 'npt/cauchy') throw new StyleError(`write_restart: fix ${f.id} (${f.style}) state is not stored in the browser restart file yet; use write_data or re-specify the fix`);
+    if (FIX_STATE_NOT_STORED.has(f.style)) {
+      unstored.push(`${f.id} (${f.style})`);
+      fixes.push({ id: f.id, style: f.style, props: [], data: {}, stateNotStored: true });
+      continue;
+    }
     // fix_cmap.html: "This fix writes the list of CMAP cross-terms to binary restart files"
-    if (f instanceof FixCmap) { fixes.push({ id: f.id, props: [], data: {}, cmap: f.restartState() }); continue; }
+    if (f instanceof FixCmap) { fixes.push({ id: f.id, style: f.style, props: [], data: {}, cmap: f.restartState() }); continue; }
     // fix_nh.html: the thermostat and barostat variables go to the binary restart file
-    if (f instanceof FixNH) { fixes.push({ id: f.id, props: [], data: {}, nh: f.restartState() }); continue; }
+    if (f instanceof FixNH) { fixes.push({ id: f.id, style: f.style, props: [], data: {}, nh: f.restartState() }); continue; }
+    // fix_msst.html, fix_qbmsst.html, fix_nphug.html: the omega, e0, v0 and p0 (and T_qm) the fix keeps (restartState)
+    if (isRestartableFix(f)) { fixes.push({ id: f.id, style: f.style, props: [], data: {}, state: f.restartState() }); continue; }
     if (!(f instanceof FixPropertyAtom)) continue;
     const data: Record<string, number[]> = {};
     for (const p of f.props) {
@@ -270,8 +298,9 @@ export const writeRestartText = (sys: System): string => {
       else if (p.kind === 'temperature' || p.kind === 'heatflow') data[p.kind] = Array.from(s.custom.get(p.kind === 'temperature' ? HEAT_TEMPERATURE : HEAT_FLOW)!.data.subarray(0, s.n));
       else data[`${p.kind}_${p.name}`] = Array.from(s.custom.get(p.name)!.data);
     }
-    fixes.push({ id: f.id, props: f.props.map((p) => ({ ...p })), data });
+    fixes.push({ id: f.id, style: f.style, props: f.props.map((p) => ({ ...p })), data });
   }
+  if (unstored.length) sys.warn(`state of fix ${unstored.join(', ')} is not stored in the browser restart file`);
   const pair = sys.ff.pair;
   const pairStored = pair && !PAIR_NOT_IN_RESTART.has(pair.name) ? pair : null;
   if (pairStored && !PAIR_RESTART_STYLES.has(pairStored.name) && !(pairStored.name in PAIR_SETTINGS_ONLY)) {

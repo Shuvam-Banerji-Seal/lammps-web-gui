@@ -57,9 +57,9 @@ describe('fix npt/cauchy (EXTRA-FIX)', () => {
     expect((await runScript(`${base}fix c all npt/cauchy temp 1.0 1.0 1.0 x 1.0 1.0 1.0 drag 0.1\nrun 1\n`)).error).toContain('drag is not supported');
   });
 
-  it('refuses write_restart, which does not store the CauchyStat state yet', async () => {
+  it('writes the CauchyStat state with write_restart (the restarted run is the oracle case w176rs_cauchy)', async () => {
     const { error } = await runScript(`${base}fix c all npt/cauchy temp 1.0 1.0 1.0 x 1.0 1.0 1.0\nrun 1\nwrite_restart r.restart\n`);
-    expect(error).toContain('fix c (npt/cauchy) state is not stored');
+    expect(error).toBe('');
   });
 
   it('runs two runs, the second one continuing the stored target stress', async () => {

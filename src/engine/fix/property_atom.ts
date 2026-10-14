@@ -1,3 +1,4 @@
+import { takeFixRecord } from './restartRecord';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
@@ -106,9 +107,8 @@ export class FixPropertyAtom extends Fix {
    * engine stops with an error instead.
    */
   private restoreFromRestart(s: SimState): void {
-    const saved = this.sys.pendingFixData.get(this.id);
+    const saved = takeFixRecord(this.sys, this.id, this.style);
     if (!saved) return;
-    this.sys.pendingFixData.delete(this.id);
     const same = saved.props.length === this.props.length
       && saved.props.every((p, k) => p.kind === this.props[k].kind && p.name === this.props[k].name && p.cols === this.props[k].cols);
     if (!same) throw new StyleError(`fix ${this.id} property/atom does not define the same properties as the fix that wrote the restart file`);

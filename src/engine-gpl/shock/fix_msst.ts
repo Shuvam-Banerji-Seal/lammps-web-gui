@@ -13,6 +13,7 @@
  * the browser engine has no fix external, so that keyword is refused by name.
  */
 import { Fix } from '../../engine/fix/fix';
+import { takeFixRecord } from '../../engine/fix/restartRecord';
 import { ownCompute, removeCompute } from '../../engine/fix/util';
 import { StyleError } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
@@ -27,6 +28,9 @@ const logicalWord = (w: string | undefined): boolean => {
   if (w === 'no') return false;
   throw new StyleError(`Expected boolean parameter instead of '${w ?? ''}' in fix msst command`);
 };
+
+/** The fix msst restart record (fix_msst.cpp write_restart). */
+export interface MsstRestart { omega: number; e0: number; v0: number; p0: number }
 
 export class FixMSST extends Fix {
   readonly style = 'msst';
@@ -115,6 +119,24 @@ export class FixMSST extends Fix {
     ownCompute(sys, this.idPress, 'all', 'pressure', [this.idTemp]);
     ownCompute(sys, this.idPe, 'all', 'pe', []);
     this.bindComputes();
+    // fix_msst.cpp restart(): the omega, e0, v0 and p0 of the run that wrote the file replace the keywords; tscale is
+    // set to zero, so the initial velocity bias of setup() is not applied again
+    const saved = takeFixRecord(sys, id, this.style)?.state as MsstRestart | undefined;
+    if (saved) {
+      this.omega[this.direction] = saved.omega;
+      this.e0 = saved.e0; this.e0Set = true;
+      this.v0 = saved.v0; this.v0Set = true;
+      this.p0 = saved.p0; this.p0Set = true;
+      this.tscale = 0.0;
+    }
+  }
+
+  /**
+   * fix_msst.cpp write_restart: "omega[direction], e0, v0, p0 and TS_int" (TS_int is the DFTB entropy integral, zero
+   * here since dftb yes is refused). Read back by the constructor above.
+   */
+  restartState(): MsstRestart {
+    return { omega: this.omega[this.direction], e0: this.e0, v0: this.v0, p0: this.p0 };
   }
 
   private bindComputes(): void {

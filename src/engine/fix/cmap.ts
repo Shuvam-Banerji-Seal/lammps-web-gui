@@ -1,3 +1,4 @@
+import { takeFixRecord } from './restartRecord';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { BondedCompute } from '../force/types';
@@ -244,9 +245,8 @@ export class FixCmap extends Fix {
    * is read again from the new filename).
    */
   private restoreFromRestart(): void {
-    const saved = (this.sys.pendingFixData.get(this.id) as { cmap?: CmapRestart } | undefined)?.cmap;
+    const saved = takeFixRecord(this.sys, this.id, this.style)?.cmap;
     if (!saved) return;
-    this.sys.pendingFixData.delete(this.id);
     for (const c of saved.crossterms) {
       if (c.type < 1 || c.type > this.tables.length) {
         throw new StyleError(`fix ${this.id} (cmap): the restart file's CMAP type ${c.type} has no grid in this grid file (it holds ${this.tables.length})`);

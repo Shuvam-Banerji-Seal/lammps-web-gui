@@ -1,3 +1,4 @@
+import { takeFixRecord } from './restartRecord';
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
@@ -117,6 +118,8 @@ const KEYS = ['x', 'y', 'z', 'yz', 'xz', 'xy'];
 export interface NHRestart {
   eta: number[];
   etaDot: number[];
+  /** the subclass's own variables (restartExtra), when it has any */
+  extra?: Record<string, number>;
   etap: number[];
   etapDot: number[];
   omegaDot: number[];
@@ -281,11 +284,12 @@ export class FixNH extends Fix {
     this.etapDotdot = new Float64Array(Math.max(1, this.pchain));
     this.etapDot = new Float64Array(Math.max(1, this.pchain) + 1);
     // a restart file holding this fix's state is applied when the fix is re-specified (restart.ts)
-    const saved = (sys.pendingFixData.get(id) as { nh?: NHRestart } | undefined)?.nh;
-    if (saved) {
-      sys.pendingFixData.delete(id);
-      this.restoreState(saved);
-    }
+    // the variant styles (nvt/sphere, npt/asphere, ...) are set by their subclass after this constructor: a record
+    // of such a variant belongs to this family
+    const rec = sys.pendingFixData.get(id);
+    const ofFamily = !!rec && (rec.style === undefined || rec.style === style || rec.style.startsWith(`${style}/`));
+    const saved = ofFamily ? takeFixRecord(sys, id, rec.style ?? style)?.nh : undefined;
+    if (saved) this.restoreState(saved);
     this.tempId = `${id}_temp`;
     this.tempCompute = ownCompute(sys, this.tempId, this.pstat ? 'all' : group, 'temp', []);
     this.vectorFlag = true;
@@ -1122,12 +1126,21 @@ export class FixNH extends Fix {
   /** Energy exchanged with the reservoirs (extended-system terms). */
   /** The chain and barostat variables, as the restart file stores them. */
   restartState(): NHRestart {
-    return {
+    const r: NHRestart = {
       eta: Array.from(this.eta), etaDot: Array.from(this.etaDot), etap: Array.from(this.etap), etapDot: Array.from(this.etapDot),
       omegaDot: Array.from(this.omegaDot), omegaPos: Array.from(this.omegaPos), ecoupleCum: this.ecoupleCum,
       vol0: this.vol0, len0: this.len0.slice(),
     };
+    const extra = this.restartExtra();
+    if (extra) r.extra = extra;
+    return r;
   }
+
+  /** The variables a subclass keeps beyond the NH ones (fix_nphug.cpp pack_restart_data); none for the base class. */
+  protected restartExtra(): Record<string, number> | undefined { return undefined; }
+
+  /** The subclass variables read from a restart file; the subclass applies them (applyRestoredExtra) before its setup. */
+  protected restoredExtra: Record<string, number> | undefined;
 
   private restoreState(r: NHRestart): void {
     const same = (a: Float64Array, b: number[]) => a.length === b.length;
@@ -1139,6 +1152,7 @@ export class FixNH extends Fix {
     this.ecoupleCum = r.ecoupleCum;
     this.vol0 = r.vol0;
     this.len0 = r.len0.slice();
+    this.restoredExtra = r.extra;
     this.refRestored = true;
   }
 

@@ -1,0 +1,29 @@
+# oracle: fix nphug state (e0, v0, p0, t0 and the NH chain and barostat variables) survives write_restart/read_restart: 20 steps, write_restart, clear, read_restart, fix nphug re-specified, 20 more steps. Native: built from b332f28 with PKG_SHOCK.
+# oracle-compare: thermo=all atoms=all rel=1e-8
+units           lj
+atom_style      atomic
+boundary        p p p
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 0.8 4928 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+timestep        0.002
+fix             myhug all nphug temp 1.0 1.0 10.0 iso 1.5 1.5 20.0 tchain 1 pchain 0
+thermo_style    custom step temp ke pe econserve press vol lz f_myhug f_myhug[1] f_myhug[2] f_myhug[3]
+thermo_modify   format float %.15g
+thermo          5
+run             20
+write_restart   w176rs_nphug.restart
+clear
+read_restart    w176rs_nphug.restart
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+fix             myhug all nphug temp 1.0 1.0 10.0 iso 1.5 1.5 20.0 tchain 1 pchain 0
+thermo_style    custom step temp ke pe econserve press vol lz f_myhug f_myhug[1] f_myhug[2] f_myhug[3]
+thermo_modify   format float %.15g
+thermo          5
+run             20

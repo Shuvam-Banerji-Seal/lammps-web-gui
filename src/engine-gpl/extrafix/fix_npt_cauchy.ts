@@ -264,9 +264,26 @@ export class FixNPTCauchy extends FixNH {
     return { coreArgs, alpha, restartPK, deviatoric, scalexy, scalexz, scaleyz };
   }
 
+  /**
+   * fix_npt_cauchy.cpp pack_restart_data: the FixNH list, with the deviatoric reference h0_inv (when deviatoric_flag
+   * is set) and vol0 that sigma uses. The reference of the run that wrote the file is kept by a restart.
+   */
+  protected restartExtra(): Record<string, number> | undefined {
+    if (this.h0Inv === null) return undefined;
+    const h = this.h0Inv;
+    return { vol0Ref: this.vol0Ref, h0_0: h[0], h0_1: h[1], h0_2: h[2], h0_3: h[3], h0_4: h[4], h0_5: h[5] };
+  }
+
   /** fix_npt_cauchy.cpp init: sigma's reference (vol0 and h0_inv) at the first init, then the core init. */
   init(): void {
     super.init();
+    // a restart file's reference replaces the box of this run (FixNH::restart reads h0_inv and vol0 from the file)
+    const r = this.restoredExtra;
+    if (r && r.h0_0 !== undefined) {
+      this.restoredExtra = undefined;
+      this.vol0Ref = r.vol0Ref;
+      this.h0Inv = [r.h0_0, r.h0_1, r.h0_2, r.h0_3, r.h0_4, r.h0_5];
+    }
     if (this.h0Inv === null) {
       const g = this.sys.geom;
       this.vol0Ref = g.lx * g.ly * g.lz;

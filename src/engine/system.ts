@@ -505,8 +505,8 @@ export class System {
   /** Per-atom group mask bit by name. */
   groupBit(name: string): number { return this.groups.bit(name); }
 
-  /** fix property/atom values from read_restart, by fix ID, until the fix is re-specified. */
-  pendingFixData = new Map<string, import('./fix/property_atom').PropertyAtomRestart>();
+  /** Fix records from read_restart, by fix ID, until a fix with the same ID and style is re-specified (fix/restartRecord.ts). */
+  pendingFixData = new Map<string, import('./fix/restartRecord').FixRecord>();
 
   /** atom_modify map was given (atomic systems have no map by default). */
   atomMapSet = false;

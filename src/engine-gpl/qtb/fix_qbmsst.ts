@@ -11,6 +11,7 @@
  * and T_qm"; "The fix creates the computes ID_temp, ID_press and ID_pe" and "fix_modify temp and press" replace them.
  */
 import { Fix } from '../../engine/fix/fix';
+import { takeFixRecord } from '../../engine/fix/restartRecord';
 import { ownCompute, removeCompute } from '../../engine/fix/util';
 import { StyleError } from '../../engine/force/types';
 import { parseInt_, parseNum } from '../../engine/force/util';
@@ -19,6 +20,9 @@ import type { System } from '../../engine/system';
 import type { Compute } from '../../engine/compute/compute';
 import { RanMars } from '../random_mars';
 import { colorFilter } from './fix_qtb';
+
+/** The fix qbmsst restart record (fix_qbmsst.cpp write_restart). */
+export interface QbmsstRestart { omega: number; e0: number; v0: number; p0: number; tCurrent: number }
 
 export class FixQBMSST extends Fix {
   readonly style = 'qbmsst';
@@ -136,6 +140,21 @@ export class FixQBMSST extends Fix {
     ownCompute(sys, this.idPress, 'all', 'pressure', [this.idTemp]);
     ownCompute(sys, this.idPe, 'all', 'pe', []);
     this.bindComputes();
+    // fix_qbmsst.cpp restart(): omega[direction], e0, v0, p0 and T_qm replace the keywords (tscale is not changed)
+    const saved = takeFixRecord(sys, id, this.style)?.state as QbmsstRestart | undefined;
+    if (saved) {
+      this.omega[this.direction] = saved.omega;
+      this.e0 = saved.e0; this.e0Set = true;
+      this.v0 = saved.v0; this.v0Set = true;
+      this.p0 = saved.p0; this.p0Set = true;
+      this.tCurrent = saved.tCurrent;
+      this.qtbSet = true;
+    }
+  }
+
+  /** fix_qbmsst.cpp write_restart: "omega[direction], e0, v0, p0 and t_current" (the QTB temperature T_qm). */
+  restartState(): QbmsstRestart {
+    return { omega: this.omega[this.direction], e0: this.e0, v0: this.v0, p0: this.p0, tCurrent: this.tCurrent };
   }
 
   private bindComputes(): void {

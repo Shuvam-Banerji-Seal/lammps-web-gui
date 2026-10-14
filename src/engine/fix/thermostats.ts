@@ -1,4 +1,5 @@
 import { Fix } from './fix';
+import { takeFixRecord } from './restartRecord';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { Compute } from '../compute/compute';
@@ -94,13 +95,28 @@ export abstract class RescaleFix extends Fix {
  * Berendsen et al., J Chem Phys 81, 3684 (1984): lambda = sqrt(1 + (dt/Tdamp)
  * (T_target/T - 1)).
  */
+/**
+ * fix_temp_berendsen.cpp write_restart: "energy" (the cumulative energy change), read back by restart() when the fix
+ * is re-specified (fix_temp_rescale.cpp keeps the same single value).
+ */
+export interface EnergyRestart { energy: number }
+
+/** The energy record of a fix re-specified after read_restart (see EnergyRestart). */
+const energyRestart = (sys: System, id: string, style: string): number | undefined =>
+  (takeFixRecord(sys, id, style)?.state as EnergyRestart | undefined)?.energy;
+
 export class FixTempBerendsen extends RescaleFix {
   readonly style = 'temp/berendsen';
   private damp: number;
 
+  /** fix_temp_berendsen.cpp write_restart: the cumulative energy change. */
+  restartState(): EnergyRestart { return { energy: this.exchanged }; }
+
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length !== 3) throw new StyleError('usage: fix ID group temp/berendsen Tstart Tstop Tdamp');
+    const energy = energyRestart(sys, id, this.style);
+    if (energy !== undefined) this.exchanged = energy;
     this.tStart = parseNumOrVar(args[0], 'Tstart');
     this.tStop = Number(args[1]);
     this.damp = Number(args[2]);
@@ -132,9 +148,14 @@ export class FixTempRescale extends RescaleFix {
   private window: number;
   private fraction: number;
 
+  /** fix_temp_rescale.cpp write_restart: the cumulative energy change. */
+  restartState(): EnergyRestart { return { energy: this.exchanged }; }
+
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length !== 5) throw new StyleError('usage: fix ID group temp/rescale N Tstart Tstop window fraction');
+    const energy = energyRestart(sys, id, this.style);
+    if (energy !== undefined) this.exchanged = energy;
     this.nevery = Number(args[0]);
     if (!Number.isInteger(this.nevery) || this.nevery < 1) throw new StyleError('fix temp/rescale: N must be a positive integer');
     this.tStart = parseNumOrVar(args[1], 'Tstart');

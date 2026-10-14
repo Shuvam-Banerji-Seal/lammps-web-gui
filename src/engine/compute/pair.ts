@@ -32,6 +32,8 @@ import type { System } from '../system';
  */
 
 const VECTOR_LENGTH: Record<string, number> = {
+  // pair_e3b.cpp: nextra = 4 (e2, ea, eb, ec), returned from extract('pvector')
+  e3b: 4,
   'hbond/dreiding/lj': 2,
   'hbond/dreiding/morse': 2,
   'hbond/dreiding/lj/angleoffset': 2,

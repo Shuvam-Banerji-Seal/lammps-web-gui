@@ -1,0 +1,32 @@
+# oracle: pair dpd/coul/slater/long 1.0 1.0 165412 0.25 2.0 with kspace pppm 1e-4, 3 types (two charged) in a 5^3 periodic box, 120 atoms, NVE 20 steps; random dpd forces on (T=1)
+# Measured with native LAMMPS (black box): engine vs native max relative error between 1e-11 and 1e-10 (the cause of the last digits is not isolated; the random dpd forces match step by step); the case passes at rel=1e-10 abs=0 (the tightest tolerance that holds).
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=0
+units        lj
+boundary     p p p
+atom_style   full
+dimension    3
+newton       on
+comm_modify  vel yes
+region       simBox block 0 5 0 5 0 5
+create_box   3 simBox
+create_atoms 1 random 60 4321 simBox
+create_atoms 2 random 30 1111 simBox
+create_atoms 3 random 30 2222 simBox
+set          type 2 charge -1.0
+set          type 3 charge 1.0
+mass         * 1.0
+velocity     all create 1.0 68768932
+pair_style   dpd/coul/slater/long 1.0 1.0 165412 0.25 2.0
+pair_coeff   1 1 78 4.5 no 1
+pair_coeff   1 2 78 4.5 no 1
+pair_coeff   1 3 78 4.5 no 1
+pair_coeff   2 2 78 4.5 yes 1
+pair_coeff   2 3 78 4.5 yes 1
+pair_coeff   3 3 78 4.5 yes 1
+kspace_style pppm 1e-4
+timestep     0.01
+fix          1 all nve
+thermo_style custom step temp press vol evdwl ecoul elong pe ke
+thermo_modify format float %.15g
+thermo       5
+run          20

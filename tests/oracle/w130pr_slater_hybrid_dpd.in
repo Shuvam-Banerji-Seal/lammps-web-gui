@@ -1,0 +1,26 @@
+# oracle: the slater example's pair style, hybrid/overlay dpd 1.0 1.0 245455 + coul/slater/long 0.929 3.0 with ewald 1e-5, 200 atoms (+1/-1 and a neutral dpd species) in a 10^3 periodic box, NVE 20 steps
+# Measured with native LAMMPS (black box): engine vs native max relative error at or below 1e-14; the case passes at rel=1e-14 abs=0 (the tightest tolerance that holds).
+# oracle-compare: thermo=all atoms=all rel=1e-14 abs=0
+units        lj
+boundary     p p p
+atom_style   charge
+region       simBox block 0 10 0 10 0 10
+create_box   3 simBox
+create_atoms 1 random 100 1234 simBox
+create_atoms 2 random 50 5678 simBox
+create_atoms 3 random 50 9012 simBox
+set          type 2 charge -1.0
+set          type 3 charge 1.0
+comm_modify  mode single vel yes
+mass         * 1.0
+velocity     all create 1.0 4242
+pair_style   hybrid/overlay dpd 1.0 1.0 245455 coul/slater/long 0.929 3.0
+pair_coeff   * * dpd 25.0 4.5
+pair_coeff   * * coul/slater/long
+kspace_style ewald 1e-5
+timestep     0.0005
+fix          1 all nve
+thermo_style custom step time temp pe ke ecoul elong evdwl
+thermo_modify format float %.15g
+thermo       5
+run          20

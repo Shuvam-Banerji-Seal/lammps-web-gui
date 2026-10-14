@@ -11,6 +11,7 @@ import type { FixFactory, ComputeFactory } from '../../engine/styles';
 import type { Pair } from '../../engine/force/types';
 import { FixAdaptFEP } from '../fep/fix_adapt_fep';
 import { ComputeFEP } from '../fep/compute_fep';
+import { ComputeFEPTA } from '../fep/compute_fep_ta';
 import { PairMorseSoft } from '../fep/pair_morse_soft';
 import { PairCoulCutSoftGapsys, PairLJCutSoftGapsys } from '../fep/pair_soft_gapsys';
 import { PairLJCutTIP4PSoft, PairTIP4PSoft } from '../fep/pair_tip4p_soft';
@@ -30,4 +31,5 @@ export const PAIRS: Record<string, () => Pair> = {
 
 export const COMPUTES: Record<string, ComputeFactory> = {
   fep: (sys, id, group, args) => new ComputeFEP(sys, id, group, args),
+  'fep/ta': (sys, id, group, args) => new ComputeFEPTA(sys, id, group, args),
 };

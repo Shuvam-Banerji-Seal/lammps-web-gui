@@ -1,0 +1,26 @@
+# oracle: compute pod/atom (Ta_param + Ta_coeff, 31 base descriptors, one element) on the displaced bcc Ta 4x4x4 cell (128 atoms), run 0: per-atom descriptors written to a dump
+# native: b332f28 (installed lmp). Measured max relative error 6.0e-11 over the 4107 values (target 1e-8).
+# oracle-inputs: w128pod_Ta_param.pod w128pod_Ta_coeff.pod
+# oracle-files: w155mx_podatom_ta.dump
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      atomic
+boundary        p p p
+variable        a equal 3.316
+lattice         bcc $a
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 180.88
+variable        dx atom 0.05*sin(1.3*x+0.7*y)
+variable        dy atom 0.05*cos(0.9*y-0.4*z)
+variable        dz atom 0.05*sin(1.1*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      pod
+pair_coeff      * * w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta
+compute         ld all pod/atom w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta
+thermo_style    custom step pe press
+thermo_modify   format float %.15g norm no
+thermo          1
+run             0
+write_dump      all custom w155mx_podatom_ta.dump id  c_ld[1] c_ld[2] c_ld[3] c_ld[4] c_ld[5] c_ld[6] c_ld[7] c_ld[8] c_ld[9] c_ld[10] c_ld[11] c_ld[12] c_ld[13] c_ld[14] c_ld[15] c_ld[16] c_ld[17] c_ld[18] c_ld[19] c_ld[20] c_ld[21] c_ld[22] c_ld[23] c_ld[24] c_ld[25] c_ld[26] c_ld[27] c_ld[28] c_ld[29] c_ld[30] c_ld[31] modify format float %.15g sort id

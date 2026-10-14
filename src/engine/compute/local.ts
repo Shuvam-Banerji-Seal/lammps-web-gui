@@ -6,6 +6,9 @@ import { buildAtomMap, massOf, nativeOrder } from '../atoms';
 import type { System } from '../system';
 import type { SimState, TopoList } from '../types';
 import type { Geometry } from '../domain';
+import type { Neighbor, NeighList } from '../neighbor';
+import { NEIGHMASK, SBBITS } from '../neighbor';
+import { gplHook } from '../gplHooks';
 
 /*
  * Local computes (docs.lammps.org/compute_bond_local.html and the angle,
@@ -48,8 +51,8 @@ import type { Geometry } from '../domain';
  * atom, an angle, dihedral or improper by its second atom (the central atom); the rows walk
  * the atoms in native storage order.
  *
- * Not implemented (throw StyleError): the set keyword, v_name values, bN style quantities,
- * omega, and pair/local (the pair neighbour order is not reproduced).
+ * Not implemented (throw StyleError): the set keyword, v_name values, bN style quantities and
+ * omega. compute pair/local is at the end of this file.
  */
 
 export type TermKind = 'bond' | 'angle' | 'dihedral' | 'improper';
@@ -315,48 +318,97 @@ export class ComputePropertyLocal extends Compute {
   }
 }
 
+/**
+ * The row order of compute pair/local: gplHook('pair/local') (src/engine-gpl/registry/pair_local.ts) gives the pairs of
+ * the half list in native's enumeration (npair_bin.cpp order, newton on or off); the engine keeps its own cutoffs.
+ * The enumeration is kept between neighbor builds (native bins the atoms only in Neighbor::build, so build_one of the
+ * occasional list enumerates with the bins of the last build; the distances are the current ones).
+ */
+export interface PairOrderSource {
+  pairs(s: SimState, nb: Neighbor, g: Geometry, half: NeighList | null): Int32Array;
+}
+export interface PairLocalHook {
+  pairOrder(newton: boolean): PairOrderSource;
+}
+
 /*
  * compute pair/local (docs.lammps.org/compute_pair_local.html):
- *   "Define a computation that calculates properties of individual pairwise
- *   interactions. ... Info about an individual pairwise interaction will only
- *   be included if both atoms in the pair are in the specified compute group,
- *   and if the current pairwise distance is less than the force cutoff distance
- *   for that interaction, as defined by the pair_style and pair_coeff commands."
- *   "The value *dist* is the distance between the pair of atoms. The values
- *   *dx*, *dy*, and *dz* are the :math:`(x,y,z)` components of the distance vector
- *   :math:`\vec{x_i} - \vec{x_j}` between the pair of atoms."
+ *   "Define a computation that calculates properties of individual pairwise interactions. ... Info about an individual
+ *   pairwise interaction will only be included if both atoms in the pair are in the specified compute group, and if the
+ *   current pairwise distance is less than the force cutoff distance for that interaction, as defined by the pair_style and
+ *   pair_coeff commands."
+ *   "The value *dist* is the distance between the pair of atoms. The values *dx*, *dy*, and *dz* are the :math:`(x,y,z)`
+ *   components of the distance vector :math:`\vec{x_i} - \vec{x_j}` between the pair of atoms."
  *   "The value *eng* is the interaction energy for the pair of atoms."
- *   "The value *force* is the force acting between the pair of atoms, which is
- *   positive for a repulsive force and negative for an attractive force."
- *   "The values *fx*, *fy*, and *fz* are the (x,y,z) components of the force
- *   vector on the first atom *i* of a pair in the neighbor list due to the second
- *   atom *j*."
- *   Keywords: "cutoff = type or radius" and the pN values are not supported; they
- *   throw StyleError.
+ *   "The value *force* is the force acting between the pair of atoms, which is positive for a repulsive force and negative
+ *   for an attractive force."
+ *   "The values *fx*, *fy*, and *fz* are the :math:`(x,y,z)` components of the force vector on the first atom *i* of a pair
+ *   in the neighbor list due to the second atom *j*." "For pair styles that apply non-central forces, such as granular pair
+ *   styles, these values only include the :math:`(x,y,z)` components of the normal force component."
+ *   "A pair style may define additional pairwise quantities which can be accessed as *p1* to *pN*, where :math:`N` is defined
+ *   by the pair style. Most pair styles do not define any additional quantities, so :math:`N = 0`."
+ *   "When using *pN* with pair style *hybrid*, the output will be the Nth quantity from the sub-style that computes the
+ *   pairwise interaction (based on atom types). If that sub-style does not define a *pN*, the output will be 0.0."
+ *   cutoff: "The optional *cutoff* keyword determines how the force cutoff distance for an interaction is determined. For the
+ *   default setting of *type*, the pairwise cutoff defined by the pair_style command for the types of the two atoms is used.
+ *   For the *radius* setting, the sum of the radii of the two particles is used as a cutoff."
+ *   "The keyword default is cutoff = type." (the page's Default section)
  *
- * Row order: the rows follow this engine's half neighbour list (owned i, then its
- * list). That is NOT native's row order (native's list is built by its own bins), so
- * the values are only meaningful through order-independent aggregates (fix ave/histo,
- * compute reduce) — see tests/oracle/w12local_*.in.
+ * Native compute_pair_local.cpp (compute_pairs, b332f28): the test is "if (rsq >= cutsq[itype][jtype]) continue;" for type,
+ * and "radsum = radius[i] + radius[j]; if (rsq >= radsum * radsum) continue;" for radius, applied to the pairs of the
+ * half list (which holds the pairs inside the neighbor cutoff, so no separate force-cutoff test is made for radius).
+ * The energy and force come from pair->single() when a value other than dist, dx, dy, dz is requested (singleflag);
+ * pN is svector[N-1], and the native init() refuses N >= single_extra ("Pair style does not have extra field requested
+ * by compute pair/local").
+ * Row order: native's (the pair order of the half list, see PairLocalHook). A pair with a ghost partner under newton off
+ * is counted once, by the tag rule of compute_pairs(). Triclinic boxes keep the engine's list order.
+ *
+ * Refused (StyleError): pN on a pair style with singleExtra() 0 (it names the style), and the radius cutoff without atom
+ * radius.
  */
 const PAIR_VALUES = ['dist', 'dx', 'dy', 'dz', 'eng', 'force', 'fx', 'fy', 'fz'];
+const PN = /^p\d+$/;
 
 export class ComputePairLocal extends Compute {
   readonly style = 'pair/local';
+  /** The requested values: a name of PAIR_VALUES, or pN. */
   private readonly values: string[];
+  /** For each value, N-1 when it is pN, else -1. */
+  private readonly pIndex: number[];
+  private readonly radiusCut: boolean;
+  /** Any value other than dist, dx, dy, dz needs pair.single() (native singleflag). */
+  private readonly needSingle: boolean;
+  /** The native pair order (kept between neighbor builds, see PairOrderSource) and the newton setting it was made for. */
+  private order: PairOrderSource | null = null;
+  private orderNewton = true;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (!args.length) throw new StyleError(`compute ${id} pair/local needs at least one value`);
     const values: string[] = [];
-    for (let a = 0; a < args.length; a++) {
+    let a = 0;
+    for (; a < args.length && args[a] !== 'cutoff'; a++) {
       const w = args[a];
-      if (w === 'cutoff') throw new StyleError(`compute ${id} pair/local: the cutoff keyword is not supported by the browser engine`);
-      if (/^p\d+$/.test(w)) throw new StyleError(`compute ${id} pair/local: pN quantities are not supported by the browser engine (no pair style defines them)`);
-      if (!PAIR_VALUES.includes(w)) throw new StyleError(`compute ${id} pair/local: unknown value '${w}' (use ${PAIR_VALUES.join(', ')})`);
+      if (PN.test(w)) {
+        if (Number(w.slice(1)) < 1) throw new StyleError(`compute ${id} pair/local: invalid keyword ${w}`);
+      } else if (!PAIR_VALUES.includes(w)) {
+        throw new StyleError(`compute ${id} pair/local: unknown value '${w}' (use ${PAIR_VALUES.join(', ')}, or pN)`);
+      }
       values.push(w);
     }
+    // keyword cutoff type|radius (native: "cutstyle = TYPE" by default; the keywords follow the values)
+    let radiusCut = false;
+    for (; a < args.length; a += 2) {
+      if (args[a] !== 'cutoff') throw new StyleError(`compute ${id} pair/local: unknown keyword ${args[a]} (use cutoff)`);
+      if (a + 1 >= args.length) throw new StyleError(`compute ${id} pair/local: missing argument after cutoff (type or radius)`);
+      const c = args[a + 1];
+      if (c !== 'type' && c !== 'radius') throw new StyleError(`compute ${id} pair/local: unknown cutoff keyword ${c} (use type or radius)`);
+      radiusCut = c === 'radius';
+    }
     this.values = values;
+    this.pIndex = values.map((v) => (PN.test(v) ? Number(v.slice(1)) - 1 : -1));
+    this.radiusCut = radiusCut;
+    this.needSingle = values.some((v) => !['dist', 'dx', 'dy', 'dz'].includes(v));
     this.localFlag = true;
     this.sizeLocalCols = values.length > 1 ? values.length : 0;
   }
@@ -364,7 +416,16 @@ export class ComputePairLocal extends Compute {
   protected computeLocal(): Float64Array<ArrayBuffer> {
     const sys = this.sys;
     const pair = sys.ff.pair;
-    if (!pair || !pair.single) throw new StyleError(`compute ${this.id} pair/local needs a pair_style that supports single() (the engine's pairwise evaluation)`);
+    if (!pair) throw new StyleError(`compute ${this.id} pair/local needs a pair_style (none is defined)`);
+    const nExtra = pair.singleExtra();
+    for (let c = 0; c < this.pIndex.length; c++) {
+      const n = this.pIndex[c];
+      if (n >= 0 && n >= nExtra) {
+        throw new StyleError(`compute ${this.id} pair/local: pair style ${pair.name} does not have extra field ${this.values[c]} (the engine defines pN values for pair granular only; native: "Pair style does not have extra field requested by compute pair/local")`);
+      }
+    }
+    if (this.needSingle && !pair.single) throw new StyleError(`compute ${this.id} pair/local needs a pair_style that supports single() (the engine's pairwise evaluation)`);
+    if (this.radiusCut && !sys.state.radius) throw new StyleError(`Compute pair/local with ID ${this.id} requires atom attribute radius`);
     sys.forces();
     const s = sys.state;
     const nb = sys.nb;
@@ -372,33 +433,61 @@ export class ComputePairLocal extends Compute {
     if (!list) throw new StyleError(`compute ${this.id} pair/local: no half neighbour list is available`);
     // special-bond factors of the last force evaluation (index = special bits of the neighbour)
     const { specialLJ: sLJ, specialCoul: sCoul } = sys.ff as unknown as { specialLJ: Float64Array; specialCoul: Float64Array };
+    const newton = sys.newtonPair !== false;
+    if (!this.order || this.orderNewton !== newton) {
+      this.order = gplHook<PairLocalHook>('pair/local').pairOrder(newton);
+      this.orderNewton = newton;
+    }
+    const pairs = this.order.pairs(s, nb, sys.geom, list);
     const nt = pair.ntypes + 1;
     const ncol = this.values.length;
     const rows: number[] = [];
-    const nb0 = list.neighbors;
     const xa = nb.xall;
-    const NEIGH_MASK = (1 << 30) - 1;
-    // rows are collected as the list is walked; each row fills `ncol` values
-    for (let i = 0; i < list.inum; i++) {
-      if (!(s.mask[i] & this.groupBit)) continue;
-      const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
-      for (let k = k0; k < k1; k++) {
-        const jj = nb0[k];
-        const j = jj & NEIGH_MASK;
-        const sb = jj >>> 30;
-        if (!(s.mask[nb.owner[j]] & this.groupBit)) continue;
-        const dx = xa[3 * i] - xa[3 * j], dy = xa[3 * i + 1] - xa[3 * j + 1], dz = xa[3 * i + 2] - xa[3 * j + 2];
-        const rsq = dx * dx + dy * dy + dz * dz;
-        const ti = nb.typeall[i], tj = nb.typeall[j];
-        if (rsq >= pair.cutsq[ti * nt + tj]) continue;
-        const factorLJ = sb === 0 ? 1 : sLJ[sb];
-        const factorCoul = sb === 0 ? 1 : sCoul[sb];
-        const r = Math.sqrt(rsq);
-        const res = pair.single(nb.owner[i], nb.owner[j], ti, tj, rsq, factorCoul, factorLJ, nb.qall[i], nb.qall[j]);
-        const force = res.fforce * r;
-        const fx = res.fforce * dx, fy = res.fforce * dy, fz = res.fforce * dz;
-        const vals: Record<string, number> = { dist: r, dx, dy, dz, eng: res.eng, force, fx, fy, fz };
-        for (const name of this.values) rows.push(vals[name]);
+    const nlocal = nb.nlocal;
+    const tag = s.id;
+    const radius = s.radius;
+    for (let p = 0; p < pairs.length; p += 2) {
+      const i = pairs[p];
+      const oi = nb.owner[i];
+      if (!(s.mask[oi] & this.groupBit)) continue;
+      const jEnc = pairs[p + 1];
+      const j = jEnc & NEIGHMASK;
+      const sb = jEnc >>> SBBITS;
+      const oj = nb.owner[j];
+      if (!(s.mask[oj] & this.groupBit)) continue;
+      // newton off, a ghost partner: the pair is counted once, by the tag rule of compute_pairs() (compute_pair_local.cpp)
+      if (!newton && j >= nlocal) {
+        const itag = tag[oi], jtag = tag[oj];
+        if (itag > jtag) {
+          if ((itag + jtag) % 2 === 0) continue;
+        } else if (itag < jtag) {
+          if ((itag + jtag) % 2 === 1) continue;
+        } else {
+          if (xa[3 * j + 2] < xa[3 * i + 2]) continue;
+          if (xa[3 * j + 2] === xa[3 * i + 2]) {
+            if (xa[3 * j + 1] < xa[3 * i + 1]) continue;
+            if (xa[3 * j + 1] === xa[3 * i + 1] && xa[3 * j] < xa[3 * i]) continue;
+          }
+        }
+      }
+      const dx = xa[3 * i] - xa[3 * j], dy = xa[3 * i + 1] - xa[3 * j + 1], dz = xa[3 * i + 2] - xa[3 * j + 2];
+      const rsq = dx * dx + dy * dy + dz * dz;
+      const ti = nb.typeall[i], tj = nb.typeall[j];
+      if (this.radiusCut) {
+        const radsum = radius![oi] + radius![oj];
+        if (rsq >= radsum * radsum) continue;
+      } else if (rsq >= pair.cutsq[ti * nt + tj]) continue;
+      const factorLJ = sb === 0 ? 1 : sLJ[sb];
+      const factorCoul = sb === 0 ? 1 : sCoul[sb];
+      const r = Math.sqrt(rsq);
+      const res = this.needSingle ? pair.single!(oi, oj, ti, tj, rsq, factorCoul, factorLJ, nb.qall[i], nb.qall[j], { dx, dy, dz }) : null;
+      const fpair = res ? res.fforce : 0;
+      const named: Record<string, number> = {
+        dist: r, dx, dy, dz, eng: res ? res.eng : 0, force: fpair * r, fx: fpair * dx, fy: fpair * dy, fz: fpair * dz,
+      };
+      for (let c = 0; c < ncol; c++) {
+        const n = this.pIndex[c];
+        rows.push(n >= 0 ? (res?.svector?.[n] ?? 0) : named[this.values[c]]);
       }
     }
     this.localRows = rows.length / ncol;

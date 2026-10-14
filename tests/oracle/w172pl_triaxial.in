@@ -1,0 +1,61 @@
+# oracle: cut-down triaxial.compaction.12 (examples/granular, mdr contacts with plane walls): 8 spheres (w172pl_triaxial.data, generated) compressed by the walls for 300 steps, compute pair/local dist p1 p13 cutoff radius dumped every 100 steps with dump local (native: b332f28 lmp, GRANULAR package)
+# measured (engine vs native, per-file and per-atom): dump local max relative error 0 (exact text), atoms 7e-16; engine run 300 ms (8 spheres, 300 steps); native: lmp GRANULAR (no other package).
+# oracle-inputs: w172pl_triaxial.data
+# oracle-files: w172pl_triaxial.local
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12 atomrel=1e-8 filerel=1e-8
+atom_style      sphere 1
+atom_modify     map array
+comm_modify vel yes
+units           si
+newton          off
+neighbor        2 bin
+neigh_modify    delay 0
+timestep        1e-6
+boundary f f f
+read_data w172pl_triaxial.data
+fix integr all nve/sphere
+group particles type 1
+variable atomRadius equal 0.5
+pair_style granular
+variable YoungsModulus  equal 1e9
+variable PoissonsRatio  equal 0.3
+variable YieldStress    equal 50e6
+variable SurfaceEnergy  equal 0.0
+variable psi_b          equal 0.5
+variable damp           equal 0.2
+variable damp_type      equal 1
+variable kt       equal 2/7*${YoungsModulus}*${atomRadius}
+variable xgammat  equal 0.0
+variable mu_s     equal 0.5
+pair_coeff * * mdr ${YoungsModulus} ${PoissonsRatio} ${YieldStress} ${SurfaceEnergy} ${psi_b} ${damp} &
+   damping mdr ${damp_type} &
+   tangential linear_history ${kt} ${xgammat} ${mu_s}
+variable boxWidth equal 3
+variable halfBoxWidth equal ${boxWidth}/2
+variable plane_disp equal 0.0
+variable plane_disp_neg equal 0.0
+region plane_yz_pos plane ${halfBoxWidth} 0 0 -1 0 0 side in move v_plane_disp_neg NULL NULL units box
+region plane_yz_neg plane -${halfBoxWidth} 0 0 1 0 0 side in move v_plane_disp NULL NULL units box
+region plane_xz_pos plane 0 ${halfBoxWidth} 0 0 -1 0 side in move NULL v_plane_disp_neg NULL units box
+region plane_xz_neg plane 0 -${halfBoxWidth} 0 0 1 0 side in move NULL v_plane_disp NULL units box
+region plane_xy_pos plane 0 0 ${halfBoxWidth} 0 0 -1  side in move NULL NULL v_plane_disp_neg units box
+region plane_xy_neg plane 0 0 -${halfBoxWidth} 0 0 1 side in move NULL NULL v_plane_disp units box
+variable wall_contact_string string "granular mdr ${YoungsModulus} ${PoissonsRatio} ${YieldStress} ${SurfaceEnergy} ${psi_b} ${damp} damping mdr ${damp_type} tangential linear_history ${kt} ${xgammat} ${mu_s} "
+fix plane_yz_pos all wall/gran/region ${wall_contact_string} region plane_yz_pos contacts
+fix plane_yz_neg all wall/gran/region ${wall_contact_string} region plane_yz_neg contacts
+fix plane_xz_pos all wall/gran/region ${wall_contact_string} region plane_xz_pos contacts
+fix plane_xz_neg all wall/gran/region ${wall_contact_string} region plane_xz_neg contacts
+fix plane_xy_pos all wall/gran/region ${wall_contact_string} region plane_xy_pos contacts
+fix plane_xy_neg all wall/gran/region ${wall_contact_string} region plane_xy_neg contacts
+compute       1 all erotate/sphere
+thermo_style  custom step atoms ke c_1
+thermo_modify format float %.15g
+thermo        100
+thermo_modify lost ignore norm no
+run 0
+compute Ac all pair/local dist p13 cutoff radius
+dump pl all local 100 w172pl_triaxial.local index c_Ac[1] c_Ac[2]
+dump_modify pl format float %.15g
+variable plane_disp equal 1e-6*elapsed
+variable plane_disp_neg equal -1e-6*elapsed
+run 300

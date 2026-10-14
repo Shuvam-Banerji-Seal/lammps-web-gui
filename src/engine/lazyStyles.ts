@@ -23,6 +23,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_uef', names: { COMPUTES: ['pressure/uef', 'temp/uef'], FIXES: ['npt/uef', 'nvt/uef'] }, load: () => import('../engine-gpl/registry/uef') as Promise<StyleModule> },
   { id: 'gpl_random', names: { HOOKS: ['dipole/random', 'geom', 'quat/random', 'random', 'spin/atom/random', 'spin/random', 'theta/random', 'type/fraction', 'type/ratio', 'type/subset'] }, load: () => import('../engine-gpl/registry/random') as Promise<StyleModule> },
   { id: 'gpl_born_matrix', names: { HOOKS: ['born/matrix'] }, load: () => import('../engine-gpl/registry/born_matrix') as Promise<StyleModule> },
+  { id: 'gpl_pair_local', names: { HOOKS: ['pair/local'] }, load: () => import('../engine-gpl/registry/pair_local') as Promise<StyleModule> },
   { id: 'gpl_rigid_nh', names: { FIXES: ['rigid/nph', 'rigid/nph/small', 'rigid/npt', 'rigid/npt/small', 'rigid/nvt', 'rigid/nvt/small'] }, load: () => import('../engine-gpl/registry/fix_rigid_nh') as Promise<StyleModule> },
   { id: 'gpl_hyper_local', names: { FIXES: ['hyper/local'] }, load: () => import('../engine-gpl/registry/hyper_local') as Promise<StyleModule> },
   { id: 'gpl_rigid_meso', names: { FIXES: ['rigid/meso'] }, load: () => import('../engine-gpl/registry/fix_rigid_meso') as Promise<StyleModule> },

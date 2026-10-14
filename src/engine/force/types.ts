@@ -262,6 +262,9 @@ export interface PairMinPerAtom {
   push(s: SimState, x: Float64Array): void;
 }
 
+/** The separation vector x_i - x_j of a pair (Pair.single's del argument). */
+export interface PairSep { dx: number; dy: number; dz: number }
+
 export abstract class Pair {
   abstract readonly name: string;
   ntypes = 0;
@@ -409,8 +412,22 @@ export abstract class Pair {
     throw new StyleError(`pair_modify keyword '${key}' is not supported for pair style ${this.name}`);
   }
 
-  /** Energy and force of one pair (for pair_write, compute pair/local); optional. */
-  single?(i: number, j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi: number, qj: number): { eng: number; fforce: number };
+  /**
+   * Energy and force of one pair (for pair_write and compute pair/local); optional. i and j are owned-atom indices
+   * (a ghost is passed as its owner). del = x_i - x_j, for styles whose extra quantities need the separation vector.
+   * fforce is the force divided by the distance (native Pair::single fforce): compute pair/local multiplies it by the
+   * separation components for fx, fy, fz. svector: the pN values (native svector), index N-1 for pN; only a style with
+   * singleExtra() > 0 returns it.
+   */
+  single?(i: number, j: number, itype: number, jtype: number, rsq: number, factorCoul: number, factorLJ: number, qi: number, qj: number, del?: PairSep): { eng: number; fforce: number; svector?: Float64Array };
+
+  /**
+   * Native single_extra: the number of pN values (compute pair/local p1 .. pN) that single() reports. 0 for a style that
+   * defines none; the engine refuses pN for such a style, naming it. docs.lammps.org/compute_pair_local.html: "A pair style
+   * may define additional pairwise quantities which can be accessed as *p1* to *pN*, where :math:`N` is defined by the
+   * pair style. Most pair styles do not define any additional quantities, so :math:`N = 0`."
+   */
+  singleExtra(): number { return 0; }
 
   /** Named values for other styles (e.g. 'cut_coul' for kspace). */
   extract(_name: string): unknown { return undefined; }

@@ -363,6 +363,12 @@ export abstract class Pair {
    */
   rawCoeff?(args: string[]): boolean;
   /**
+   * True when the style's last pair_coeff set the type pair I J (native setflag[I][J]). A hybrid style assigns a
+   * sub-style with "pair_coeff * *" only to the type pairs it sets (pair_hybrid.cpp PairHybrid::coeff). Styles that
+   * set every pair of the range do not define it.
+   */
+  setsPair?(i: number, j: number): boolean;
+  /**
    * pair_modify shift/tail on a style that has no such term. The style's docs say it "does not support"
    * the option (pair_morse.rst, pair_soft.rst, pair_yukawa.rst, pair_lj_cubic.rst, pair_lj_smooth.rst,
    * pair_lj_smooth_linear.rst, pair_eam.rst, pair_sw.rst, pair_tersoff.rst); native LAMMPS accepts it and

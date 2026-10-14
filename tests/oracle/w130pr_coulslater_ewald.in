@@ -1,0 +1,23 @@
+# oracle: pair coul/slater/long 0.929 3.0 with kspace ewald 1e-5, 200 charged atoms (+1/-1) in a 10^3 periodic lj box, NVE 20 steps
+# Measured with native LAMMPS (black box): engine vs native max relative error between 1e-14 and 1e-13 (per-atom and thermo); the case passes at rel=1e-13 abs=0 (the tightest tolerance that holds).
+# oracle-compare: thermo=all atoms=all rel=1e-13 abs=0
+units        lj
+boundary     p p p
+atom_style   charge
+region       simBox block 0 10 0 10 0 10
+create_box   2 simBox
+create_atoms 1 random 100 1234 simBox
+create_atoms 2 random 100 5678 simBox
+set          type 1 charge 1.0
+set          type 2 charge -1.0
+mass         * 1.0
+velocity     all create 1.0 4242
+pair_style   coul/slater/long 0.929 3.0
+pair_coeff   * *
+kspace_style ewald 1e-5
+timestep     0.0005
+fix          1 all nve
+thermo_style custom step time temp press pe ke ecoul elong
+thermo_modify format float %.15g
+thermo       5
+run          20

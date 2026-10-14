@@ -233,6 +233,8 @@ export class PairHybrid extends Pair {
     }
     for (const [i, j] of pairs) {
       if (active && (!active(i) || !active(j))) continue;
+      // pair_hybrid.cpp: the sub-style takes only the type pairs its own pair_coeff set (setflag)
+      if (sub.style.setsPair && !sub.style.setsPair(i, j)) continue;
       const cur = this.map[i * (n + 1) + j];
       if (this.mode === 'hybrid') this.assign(i, j, [idx]);
       else if (!cur || !cur.includes(idx)) this.assign(i, j, [...(cur ?? []), idx]);

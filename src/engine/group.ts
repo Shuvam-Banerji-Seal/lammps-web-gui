@@ -55,9 +55,11 @@ export interface DynamicGroup {
  * accepts one too. A fix style in neither list has not been measured.
  */
 // add/heat: src/GRANULAR/fix_add_heat.cpp (b332f28) sets dynamic_group_allow = 1 in its constructor.
+// graphics/arrows, graphics/objects, graphics/periodic: src/GRAPHICS/fix_graphics_arrows.cpp, fix_graphics_objects.cpp and
+// fix_graphics_periodic.cpp set dynamic_group_allow = 1 (periodic is refused for its objects; see engine-gpl/registry/graphics.ts).
 // npt/cauchy: src/EXTRA-FIX/fix_npt_cauchy.cpp (b332f28) sets dynamic_group_allow = 1 in its constructor.
 export const DYNAMIC_GROUP_FIXES = new Set([
-  'add/heat', 'addforce', 'addtorque/group', 'ave/histo', 'ave/histo/weight', 'ave/moments', 'ave/time', 'aveforce', 'dt/reset', 'efield', 'gravity', 'langevin', 'lineforce',
+  'add/heat', 'addforce', 'addtorque/group', 'ave/histo', 'ave/histo/weight', 'ave/moments', 'ave/time', 'aveforce', 'dt/reset', 'efield', 'graphics/arrows', 'graphics/objects', 'graphics/periodic', 'gravity', 'langevin', 'lineforce',
   'baoab', 'momentum', 'nph', 'nph/sphere', 'npt', 'npt/cauchy', 'npt/sphere', 'nve', 'nve/limit', 'nve/sphere', 'nvt',
   'nvt/sllod', 'nvt/sphere', 'planeforce', 'recenter', 'setforce', 'spring', 'temp/berendsen',
   'temp/csld', 'temp/csvr', 'temp/rescale', 'viscous', 'viscous/sphere', 'wall/harmonic', 'wall/lj1043', 'wall/lj126',
@@ -65,6 +67,7 @@ export const DYNAMIC_GROUP_FIXES = new Set([
 ]);
 export const NO_DYNAMIC_GROUP_FIXES = new Set([
   'ave/atom', 'ave/chunk', 'balance', 'deform', 'deposit', 'ehex', 'electron/stopping', 'enforce2d', 'freeze', 'heat', 'indent',
+  'graphics/lines', // fix_graphics_lines.cpp (b332f28) sets dynamic_group_allow = 0
   'nve/noforce', 'pour', 'print',
   'property/atom', 'rattle', 'rigid', 'rigid/nph', 'rigid/nph/small', 'rigid/npt', 'rigid/npt/small', 'rigid/nve', 'rigid/nve/small', 'rigid/nvt', 'rigid/nvt/small',
   'rigid/small', 'shake', 'spring/self', 'vector', 'wall/ees', 'wall/region/ees', 'wall/gran', 'wall/gran/region', 'flow/gauss', 'orient/eco',

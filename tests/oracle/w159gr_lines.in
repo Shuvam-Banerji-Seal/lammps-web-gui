@@ -1,0 +1,19 @@
+# oracle: fix graphics/lines scalar f_ID (the number of stored position averages) in a small LJ liquid, 20 steps; native: b332f28 GRAPHICS (the installed lmp has the GRAPHICS package)
+# Measured with native LAMMPS (black box), engine vs native: all 21 thermo rows agree at rel 1e-10 and abs 1e-10 (f_l is an integer, equal on every row).
+# oracle-compare: thermo=all atoms=none rel=1e-10 abs=1e-10
+units lj
+atom_style atomic
+lattice fcc 0.8442
+region box block 0 3 0 3 0 3
+create_box 1 box
+create_atoms 1 box
+mass 1 1.0
+velocity all create 1.44 87287 loop geom
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0 2.5
+fix 1 all nve
+fix l all graphics/lines 2 3 6 4
+thermo_style custom step temp pe etotal f_l
+thermo_modify format float %.15g
+thermo 1
+run 20

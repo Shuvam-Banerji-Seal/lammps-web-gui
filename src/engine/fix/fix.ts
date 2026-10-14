@@ -1,5 +1,6 @@
 import type { System } from '../system';
 import { StyleError } from '../force/types';
+import type { ImageObject } from '../output/image_objects';
 
 /*
  * Base class for fixes — docs.lammps.org/fix.html: "Set a fix that will be
@@ -107,6 +108,12 @@ export abstract class Fix {
   destroy?(): void;
   /** Cumulative energy exchanged with a thermostat/barostat reservoir (thermo ecouple). */
   ecouple?(): number;
+
+  /**
+   * dump image "fix ID type|element|const flag1 flag2" (dump_image.html): the graphics objects this fix draws for the
+   * current snapshot. Fixes without graphics leave it undefined; the dump refuses a fix that provides none.
+   */
+  imageObjects?(): ImageObject[];
 
   /** Global energy contribution for compute pe when fix_modify energy yes. */
   energy(): number { return 0; }

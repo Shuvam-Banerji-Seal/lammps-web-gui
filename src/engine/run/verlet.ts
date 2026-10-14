@@ -79,6 +79,7 @@ export const setupRun = (sys: System): void => {
   sys.computeForcesInRun(sys.computeFlags());
   sys.forcesCurrent();
   sys.assignDynamicGroups(true);
+  for (const f of sys.fixes) f.setupPreReverse?.();
   for (const f of sys.fixes) f.setup();
   sys.refreshComputes();
 };

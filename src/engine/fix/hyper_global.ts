@@ -95,7 +95,7 @@ export class FixHyperGlobal extends Fix {
   }
 
   /** Makes the bond list from the current (quenched) positions: pairs closer than cutbond, one of them in the group. */
-  createBonds(): void {
+  buildBonds(): void {
     const s = this.sys.state;
     const d = [0, 0, 0];
     const bi: number[] = [];
@@ -121,6 +121,14 @@ export class FixHyperGlobal extends Fix {
     this.bi = Int32Array.from(bi);
     this.bj = Int32Array.from(bj);
     this.r0 = Float64Array.from(r0);
+  }
+
+  /** The hyper command's quenches and dynamics: the bias fix has no quench-specific state (fix/hyper/local does). */
+  setQuench(): void {}
+
+  /** Cumulative quantities of the hyper command's final stats (hyper.html "Cummulative quantities for fix hyper"). */
+  summary(): { hyperTime: number; events: number; eventAtoms: number } {
+    return { hyperTime: this.computeVector(9), events: this.computeVector(10), eventAtoms: this.computeVector(11) };
   }
 
   /** A hyper run starts at this timestep: the per-run statistics are reset (fix_hyper_global.html). */

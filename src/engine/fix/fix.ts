@@ -93,6 +93,8 @@ export abstract class Fix {
   /** Run once at the start of a run, before the setup force evaluation (the solve of a charge model that
    *  sets the charges the forces use); preForce's rule for the step's nevery applies in the fix itself. */
   setupPreForce?(): void;
+  /** Modify::setup_pre_reverse: the setup force evaluation's pre_reverse (before any fix setup, as native). */
+  setupPreReverse?(): void;
   preReverse?(): void;
   postForce?(): void;
   finalIntegrate?(): void;

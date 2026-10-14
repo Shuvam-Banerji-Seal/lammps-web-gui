@@ -187,9 +187,17 @@ print           "continued step=$(step)"
 });
 
 describe('fix hyper/global and the hyper command', () => {
-  it('refuses fix hyper/local by name', async () => {
-    const out = await runText(`${HYPER_BASE}\nfix HL mobile hyper/local 1.5 0.3 0.5 1.0 0.5\n`);
-    expect(out.error).toMatch(/fix style 'hyper\/local' is not supported/);
+  it('checks the fix hyper/local arguments and refuses its diagnostic keywords', async () => {
+    expect((await runText(`${HYPER_BASE}\nfix HL mobile hyper/local 1.5 0.3 0.5 1.0 0.5\n`)).error).toMatch(/expected cutbond qfactor Vmax Tequil Dcut alpha boost/);
+    expect((await runText(`${HYPER_BASE}\nfix HL mobile hyper/local 1.5 0.3 0.5 1.0 3.0 0.5 0.5\n`)).error).toMatch(/boost >= 1/);
+    expect((await runText(`${HYPER_BASE}\nfix HL mobile hyper/local 1.5 0.3 0.5 1.0 3.0 0.5 1.2 check/ghost\n`)).error).toMatch(/keyword check\/ghost is not supported/);
+    expect((await runText(`${HYPER_BASE}\nfix HL mobile hyper/local 1.5 0.3 0.5 1.0 3.0 0.5 1.2 bogus\n`)).error).toMatch(/unknown keyword 'bogus'/);
+  });
+
+  it('accepts fix hyper/local in the hyper command (bond list, bias and the 26 vector entries)', async () => {
+    const out = await runText(`${HYPER_BASE}\nfix HL mobile hyper/local 1.5 0.3 0.5 1.0 3.0 0.5 1.2\nthermo_style custom step f_HL f_HL[1] f_HL[26]\ncompute ev all event/displace 0.5\nhyper 40 20 HL ev min 1.0e-5 1.0e-5 100 100\n`);
+    expect(out.error).toBeNull();
+    expect(out.logs.join('\n')).toMatch(/Final hyper stats/);
   });
 
   it('checks the fix arguments', async () => {

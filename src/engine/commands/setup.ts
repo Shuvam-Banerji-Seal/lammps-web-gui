@@ -4,7 +4,7 @@ import { StyleError, typeBounds } from '../force/types';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, isBpmSphereStyle, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH } from '../atoms';
+import { EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, isBpmSphereStyle, isTriAtom, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH } from '../atoms';
 import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
 import { isSmdStyle, SMD_CONTACT } from '../smd';
 import { parseStl } from '../stl';
@@ -1834,7 +1834,8 @@ const set: Handler = ({ sys }, a) => {
         if (!s.quat) throw new StyleError(`Cannot set attribute quat for atom style ${s.atomStyle}`);
         const vs = [1, 2, 3, 4].map((d) => value(a[k + d], 'quat'));
         for (const i of atoms) {
-          if (!isEllipsoid(s, i) && !isBpmSphereStyle(s.atomStyle)) throw new StyleError('Cannot set quaternion for atom that has none');
+          // set.cpp (src/set.cpp at b332f28, the quat branch): ellipsoid, then tri (tri[i] >= 0), then body, then quat_flag
+          if (!isEllipsoid(s, i) && !isTriAtom(s, i) && !isBpmSphereStyle(s.atomStyle)) throw new StyleError('Cannot set quaternion for atom that has none');
           const [qa, qb, qc, th] = vs.map((f) => f(i));
           if (sys.dimension === 2 && (qa !== 0 || qb !== 0)) throw new StyleError('Cannot set quaternion with xy components for 2d system');
           const h = (th * Math.PI) / 360, sn = Math.sin(h);

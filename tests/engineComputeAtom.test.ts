@@ -164,7 +164,8 @@ describe('compute property/atom', () => {
   });
 
   it('rejects an unsupported attribute instead of storing zeroes', async () => {
-    await expect(runScript(`${TWO_ATOMS}\ncompute q all property/atom end1x`)).rejects.toThrow("attribute 'end1x' is not supported");
+    // end1x and corner1x are attributes of atom styles line and tri: other styles refuse them (compute_property_atom.cpp: "requires atom style line")
+    await expect(runScript(`${TWO_ATOMS}\ncompute q all property/atom end1x`)).rejects.toThrow('compute property/atom end1x requires atom style line');
     await expect(runScript(`${TWO_ATOMS}\ncompute q all property/atom nbonds`)).rejects.toThrow("attribute 'nbonds' is not supported");
   });
 });

@@ -6,6 +6,7 @@ import { SharedThreadsBackend, SharedPairThreads, sharedThreadsAvailable } from 
 import { probeDevice, autoPlan, autoThreads, type AutoPlan, type DeviceProfile } from './device';
 import type { ForceBackend } from './types';
 import type { BackendChoice, FromEngine, ToEngine } from './protocol';
+import { normalizeFileName } from './fileName';
 
 /**
  * The engine side of the notebook protocol, independent of where it runs:
@@ -46,9 +47,10 @@ export class EngineHost {
     if (msg.type === 'cancel') { this.session?.cancel(); return; }
     if (msg.type === 'exec') return this.exec(msg.id, msg.text, msg.firstLine);
     if (msg.type === 'file') {
-      if (msg.text === null) { this.files.delete(msg.name); this.session?.removeFile(msg.name); return; }
-      this.files.set(msg.name, msg.text);
-      this.session?.addFile(msg.name, msg.text);
+      const name = normalizeFileName(msg.name);
+      if (msg.text === null) { this.files.delete(name); this.session?.removeFile(name); return; }
+      this.files.set(name, msg.text);
+      this.session?.addFile(name, msg.text);
     }
   }
 

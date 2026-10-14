@@ -1,4 +1,5 @@
 import { Fix } from './fix';
+import { harmonicRestraint } from './harmonicRestraint';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { TopoList } from '../types';
@@ -52,7 +53,11 @@ import { massOf } from '../atoms';
  * temp 300 300 100: f_1[1] 0.00028430 native against 0.00025062 engine); the engine matches native with the setup-time
  * temperature in fix nh (checked by a temporary change that was reverted). Oracle cases therefore use fix nve.
  *
- * Refused: minimization (the restraint substitute with kbond is not implemented), a second fix ilves.
+ * Minimization (fix_ilves.cpp at b332f28, min_setup, min_post_force, min_harmonic_bond): every constraint is a
+ * harmonic bond k (r - d)^2 with the stiff k = KBOND_MIN_FACTOR (2e3) times the MD constant (kbond, default
+ * 5e5 * boltz, so 1e9 * boltz by default, as fix shake); the linear-angle A-C restraints keep the MD constant. The
+ * energy is the fix's scalar and enters the potential energy. A separation below 1e-10 gives neither force nor energy.
+ * Refused: a second fix ilves.
  * Type words of the b, a and t keywords may be type labels (fix_ilves.html: "may use type labels"), resolved through the label map.
  */
 
@@ -65,6 +70,8 @@ interface Con {
   a: number;
   b: number;
   d2: number;
+  /** A bond constraint (false: the A-C distance of an angle constraint). */
+  bond: boolean;
 }
 
 /** A harmonic restraint E = k (r - d)^2 between two atoms (atom IDs). */
@@ -258,7 +265,7 @@ export class FixIlves extends Fix {
       bondOn.push(on);
       if (!on) continue;
       const r0 = bondLength(e);
-      cons.push({ a, b, d2: r0 * r0 });
+      cons.push({ a, b, d2: r0 * r0, bond: true });
       constrainedLen.set(key(a, b), r0);
     }
     const angles = s.topo.angles;
@@ -280,7 +287,7 @@ export class FixIlves extends Fix {
       const dac2 = r1 * r1 + r2 * r2 - 2 * r1 * r2 * Math.cos(th);
       if (!nearLinear) {
         // rigid angle: the A-C distance is a constraint and the angle potential is switched off
-        cons.push({ a: x1, b: x3, d2: dac2 });
+        cons.push({ a: x1, b: x3, d2: dac2, bond: false });
         keepA[e] = false;
       } else if (this.linearStyle === 'restrain') {
         restraints.push({ a: x1, c: x3, d: Math.sqrt(dac2), k: this.kbond ?? 5e5 * s.units.boltz });
@@ -375,8 +382,27 @@ export class FixIlves extends Fix {
     this.sys.ff.setTopologyOverride(null);
   }
 
+  /** fix_ilves.cpp min_setup: the log line that counts the constraints replaced by restraints. */
+  minSetup(): void {
+    let nb = 0, na = 0;
+    for (const c of this.cons) { if (c.bond) nb++; else na++; }
+    this.sys.log(`Fix ilves: replacing ${nb} bond and ${na} angle constraint(s) with harmonic restraints for minimization`);
+  }
+
+  /**
+   * fix_ilves.cpp min_post_force: the constraints are harmonic restraints with k = kbond times KBOND_MIN_FACTOR (the
+   * default MD constant 5e5 * boltz gives 1e9 * boltz), the linear-angle restraints with the MD constant.
+   */
   minPostForce(): void {
-    throw new StyleError('fix ilves during minimization (harmonic restraints with kbond) is not supported by the browser engine');
+    const sys = this.sys;
+    const s = sys.state;
+    const kMd = this.kbond ?? 5e5 * sys.units.boltz;
+    const kBond = kMd * 2e3;
+    const index = this.indexOf();
+    let e = 0;
+    for (const c of this.cons) e += harmonicRestraint(s, sys.geom, index.get(c.a)!, index.get(c.b)!, Math.sqrt(c.d2), kBond, 1e-10, null);
+    for (const rs of this.restraints) e += harmonicRestraint(s, sys.geom, index.get(rs.a)!, index.get(rs.c)!, rs.d, kMd, 1e-10, null);
+    this.lastEnergy = e;
   }
 
   // ---------------------------------------------------------------- dynamics

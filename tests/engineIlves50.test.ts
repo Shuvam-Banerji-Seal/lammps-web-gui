@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
+import { UNIT_SYSTEMS } from '../src/engine/units';
 import { solveBanded } from '../src/engine/fix/ilves';
 import type { EngineError, EngineEvent, ThermoRow } from '../src/engine/types';
 
@@ -185,9 +186,13 @@ describe('fix ilves parsing', () => {
     expect((await run(DIMER, input)).error?.message).toMatch(/Only one fix ilves/);
   });
 
-  it('refuses minimization, which needs the kbond restraint substitute', async () => {
-    const input = BASE(DIMER, 'fix c all ilves 1e-4 25 0 b 1', 'minimize 0 0 10 10');
-    expect((await run(DIMER, input)).error?.message).toMatch(/minimization.*not supported/);
+  it('minimization: each bond constraint is a restraint with 2000 * 5e5 * boltz (1e9 * boltz), energy in pe', async () => {
+    // fix_ilves.cpp min_post_force: k_bond = kbond (default 5e5*boltz) times KBOND_MIN_FACTOR (2e3); the DIMER bond is
+    // stretched from 1.0 to 1.2 and the bond itself is switched off, so step 0 has pe = k (r - r0)^2 = 0.04 k alone
+    const { rows, error } = await run(DIMER, BASE(DIMER, 'fix c all ilves 1e-4 25 0 b 1\nthermo_style custom step pe', 'minimize 0 0 1 10'));
+    expect(error).toBeNull();
+    const k = 1e9 * UNIT_SYSTEMS.real.boltz;
+    expect(Math.abs(rows[0].pe - 0.04 * k) / (0.04 * k)).toBeLessThan(1e-12);
   });
 
   it('refuses a near-linear angle type with the default error style', async () => {

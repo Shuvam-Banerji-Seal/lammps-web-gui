@@ -10,6 +10,7 @@ import { evaluateBoolean } from './boolean';
 import { CpuForceBackend } from './cpu/forces';
 import { RunCancelled, QuitSignal } from './errors';
 import { ACCEL_ALIASES } from './accelAliases';
+import { normalizeFileName } from './fileName';
 
 /*
  * The notebook's LAMMPS input interpreter (engine v2). It reads input as a
@@ -153,11 +154,13 @@ export class Session {
 
   /** Makes a file available to read_data, include, jump, potential files. */
   addFile(name: string, text: string): void {
+    name = normalizeFileName(name);
     for (const sys of this.replicas) sys.files.set(name, text);
   }
 
   /** Forgets a file added with addFile (or written by the session). */
   removeFile(name: string): void {
+    name = normalizeFileName(name);
     for (const sys of this.replicas) sys.files.delete(name);
   }
 
@@ -313,7 +316,7 @@ export class Session {
     // a lazily loaded command (a COMMANDS name of lazyStyles.ts) is registered by its group before the lookup below
     await ensureStyles([cmd, ...a]);
     const handler = COMMANDS[cmd] ?? LAZY_COMMANDS[cmd];
-    if (cmd === 'read_restart' && a.length && this.sys.files.has(a[0])) await ensureStyles(this.sys.files.get(a[0])!.split(/[\s"',:\[\]{}]+/));
+    if (cmd === 'read_restart' && a.length && this.sys.files.has(normalizeFileName(a[0]))) await ensureStyles(this.sys.files.get(normalizeFileName(a[0]))!.split(/[\s"',:\[\]{}]+/));
     if (!handler) {
       throw new StyleError(`'${cmd}' is not supported by the in-browser engine (it is not LAMMPS). Supported commands: ${SUPPORTED_COMMANDS.join(', ')}`);
     }

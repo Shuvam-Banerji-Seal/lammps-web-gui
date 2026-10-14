@@ -1,0 +1,49 @@
+LAMMPS data file: four water molecules, slightly stretched bonds and bent angles (oracle cases w143cf_shake_min, w143cf_ilves_min)
+
+12 atoms
+8 bonds
+4 angles
+2 atom types
+1 bond types
+1 angle types
+-10 10 xlo xhi
+-10 10 ylo yhi
+-10 10 zlo zhi
+
+Masses
+
+1 15.9994
+2 1.008
+
+Atoms # angle
+
+1 1 1 0.0 0.0 0.0 0 0 0
+2 1 2 1.07 0.05 0.0 0 0 0
+3 1 2 -0.22 0.98 0.03 0 0 0
+4 2 1 4.0 0.1 -0.1 0 0 0
+5 2 2 5.02 0.1 0.05 0 0 0
+6 2 2 3.85 1.02 -0.02 0 0 0
+7 3 1 0.1 4.0 0.0 0 0 0
+8 3 2 0.0 5.1 0.2 0 0 0
+9 3 2 -0.95 3.9 0.0 0 0 0
+10 4 1 -4.0 -4.0 -4.0 0 0 0
+11 4 2 -3.1 -4.1 -3.8 0 0 0
+12 4 2 -4.1 -3.2 -4.9 0 0 0
+
+Bonds
+
+1 1 1 2
+2 1 1 3
+3 1 4 5
+4 1 4 6
+5 1 7 8
+6 1 7 9
+7 1 10 11
+8 1 10 12
+
+Angles
+
+1 1 2 1 3
+2 1 5 4 6
+3 1 8 7 9
+4 1 11 10 12

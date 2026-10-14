@@ -7,6 +7,7 @@ import { generalBoxFromRestricted, toGeneralPoint, unrotateVector, type V3 } fro
 import { fillWildcard } from '../commands/restart';
 import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, hasRmassStyle, isEllipsoidStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
 import { ImageDump } from './dump_image';
+import { normalizeFileName } from '../fileName';
 
 /*
  * Per-atom snapshots — docs.lammps.org/dump.html and dump_modify.html.
@@ -351,7 +352,7 @@ export class Dump {
     if (!this.written.includes(name)) this.written.push(name);
     while (this.written.length > this.maxfiles) {
       const old = this.written.shift();
-      if (old !== undefined) this.sys.files.delete(old);
+      if (old !== undefined) this.sys.files.delete(normalizeFileName(old));
     }
   }
 

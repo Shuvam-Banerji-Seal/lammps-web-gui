@@ -1,0 +1,23 @@
+LAMMPS data file: four line segments and one point particle (oracle case w143cf_prop_line)
+
+5 atoms
+4 lines
+1 atom types
+-10 10 xlo xhi
+-10 10 ylo yhi
+-0.5 0.5 zlo zhi
+
+Atoms
+
+1 1 1 1 1.0 0.0 0.0 0.0 0 0 0
+2 1 1 1 1.0 2.0 1.0 0.0 0 0 0
+3 1 1 1 2.0 -1.5 2.5 0.0 0 0 0
+4 1 1 1 1.0 3.0 -2.0 0.0 0 0 0
+5 1 1 0 1.0 -3.0 -1.0 0.0 0 0 0
+
+Lines
+
+1 -0.6 -0.8 0.6 0.8
+2 1.0 2.0 3.0 0.0
+3 -2.5 2.0 -0.5 3.0
+4 3.0 -2.5 3.0 -1.5

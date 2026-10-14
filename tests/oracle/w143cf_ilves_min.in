@@ -1,0 +1,23 @@
+# oracle: minimize with fix ilves on the same four water molecules (w143cf_water_min.data): every bond and angle
+#   constraint is a harmonic restraint with KBOND_MIN_FACTOR (2000) times the MD constant 5e5*boltz, i.e. 1e9*boltz
+#   (src/RIGID/fix_ilves.cpp at b332f28: min_setup, min_post_force, min_harmonic_bond, compute_scalar). The energy is
+#   the fix scalar and enters pe. cg (backtrack line search) for 15 iterations (not converged). Measured with native LAMMPS.
+#   Engine vs native (fixture): same restraint model as fix shake (w143cf_shake_min); the step-15 pe agrees to 1e-14 relative.
+# oracle-inputs: w143cf_water_min.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      angle
+read_data       w143cf_water_min.data
+pair_style      lj/cut 6.0
+pair_coeff      1 1 0.1553 3.166
+pair_coeff      2 2 0.0 1.0
+pair_coeff      1 2 0.0 1.0
+bond_style      harmonic
+bond_coeff      1 450.0 0.9572
+angle_style     harmonic
+angle_coeff     1 55.0 104.52
+fix             1 all ilves 0.0001 20 0 b 1 a 1
+thermo_style    custom step pe fnorm
+thermo_modify   format float %.15g
+min_modify      line backtrack
+minimize        0.0 0.0 15 250

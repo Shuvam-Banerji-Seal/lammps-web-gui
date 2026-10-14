@@ -5,6 +5,7 @@ import type { TopoList } from '../types';
 import { int, num } from '../commands/args';
 import { typeWord } from '../labelmap';
 import { massOf } from '../atoms';
+import { harmonicRestraint } from './harmonicRestraint';
 
 /*
  * fix ID group shake|rattle tol iter N constraint values ... —
@@ -51,7 +52,13 @@ import { massOf } from '../atoms';
  *    of freedom when the cluster's central atom is in the compute's group
  *    (a compute on the 6 central atoms of 4 water-like and 2 CH3-like
  *    clusters stops with "degrees of freedom < 0": 15 - 18).
- * Minimization (restraints with kbond) is not implemented: it is an error.
+ * Minimization (fix_shake.cpp at b332f28, min_setup, min_post_force; docs.lammps.org/fix_shake.html: "kbond value =
+ * spring constant for springs that replace rigid constraints during minimization"): the constraints are not solved;
+ * each constrained bond (and the A-C distance of an angle constraint) is a harmonic restraint k (r - r0)^2 with
+ * k = kbond, default 1.0e9 * boltz ("kbond = 1.0e9*force->boltz" in the constructor). The restraint energy is the
+ * fix's scalar and enters the potential energy (thermo_energy is 1 by default in the constructor); the forces are
+ * added after the pair and bond forces at every minimizer evaluation. Its energy is 0 in dynamics (post_force
+ * resets it, as native does).
  *
  * Measured with native LAMMPS (black box, 2 Sep 2026 probes: a 30-atom water/methyl/chain
  * box and a two-atom bond stretched from 1.2 to 1.0 with mass 12, dt 1 fs):
@@ -163,6 +170,10 @@ export class FixShake extends Fix {
    * constrained separations that cross a periodic boundary (see rattleFinal).
    */
   private velStore: { at: number[]; u: number[][]; dv: number[][]; nCross: number }[] = [];
+  /** keyword kbond: restraint spring constant during minimization (null = 1.0e9 * boltz). */
+  private kbond: number | null = null;
+  /** Energy of the minimization restraints of the last minimizer evaluation (fix_shake.cpp ebond, compute_scalar). */
+  private restraintEnergy = 0;
 
   constructor(sys: System, id: string, group: string, args: string[], style: 'shake' | 'rattle') {
     super(sys, id, group, args);
@@ -182,7 +193,12 @@ export class FixShake extends Fix {
         this.molTemplateId = t;
         continue;
       }
-      if (w === 'kbond') { num(args[++k], 'kbond'); continue; }
+      if (w === 'kbond') {
+        const kb = num(args[++k], 'kbond');
+        if (!(kb >= 0)) throw new StyleError(`Illegal fix ${style} kbond value ${kb}. Must be >= 0.0`);
+        this.kbond = kb;
+        continue;
+      }
       if (w === 'store') {
         const v = args[++k];
         if (v !== 'yes' && v !== 'no') throw new StyleError(`fix ${style}: store must be yes or no, got '${v ?? ''}'`);
@@ -197,6 +213,10 @@ export class FixShake extends Fix {
     if (sys.fixes.some((f) => f instanceof FixShake && f.id !== id)) throw new StyleError('"there can only be one shake or rattle fix defined in a simulation"');
     this.virialGlobal = true;
     this.thermoVirial = true;
+    // fix_shake.cpp (constructor): energy_global_flag = 1, thermo_energy = 1, scalar_flag = 1
+    this.energyGlobal = true;
+    this.thermoEnergy = true;
+    this.scalarFlag = true;
     if (this.storeForces) {
       this.peratomFlag = true;
       this.sizePeratomCols = 3;
@@ -356,13 +376,47 @@ export class FixShake extends Fix {
     return n;
   }
 
+  /** fix_shake.cpp min_setup (the warning of init() for a minimization run); the forces come from minPostForce. */
+  minSetup(): void {
+    const k = this.kbond ?? 1.0e9 * this.sys.units.boltz;
+    this.sys.warn(`Using fix ${this.style} with minimization.\n  Substituting constraints with harmonic restraint forces using kbond=${k.toPrecision(8)}`);
+  }
+
+  /**
+   * fix_shake.cpp min_post_force: every constrained bond of a cluster (and the A-C distance of an angle constraint)
+   * is a harmonic restraint with kbond; the energy is stored for energy() and computeScalar().
+   */
   minPostForce(): void {
-    throw new StyleError(`fix ${this.style} during minimization (harmonic restraints with kbond) is not supported by the browser engine`);
+    const sys = this.sys;
+    const s = sys.state;
+    const kbond = this.kbond ?? 1.0e9 * sys.units.boltz;
+    const index = new Map<number, number>();
+    for (let i = 0; i < s.n; i++) index.set(s.id[i], i);
+    if (this.storeForces) {
+      if (this.arrayAtom.length !== 3 * s.n) this.arrayAtom = new Float64Array(3 * s.n);
+      this.arrayAtom.fill(0);
+    }
+    let e = 0;
+    for (const c of this.clusters) {
+      for (const p of c.cons) {
+        e += harmonicRestraint(s, sys.geom, index.get(c.ids[p.a])!, index.get(c.ids[p.b])!, Math.sqrt(p.d2), kbond, 0, this.storeForces ? this.arrayAtom : null);
+      }
+    }
+    this.restraintEnergy = e;
+  }
+
+  energy(): number {
+    return this.restraintEnergy;
+  }
+
+  computeScalar(): number {
+    return this.restraintEnergy;
   }
 
   // ---------------------------------------------------------------- SHAKE
 
   setup(): void {
+    this.restraintEnergy = 0;
     // measured: after setup the coordinates satisfy the constraints exactly (velocities unchanged)
     if (this.storeForces) {
       if (this.arrayAtom.length !== 3 * this.sys.state.n) this.arrayAtom = new Float64Array(3 * this.sys.state.n);
@@ -402,6 +456,7 @@ export class FixShake extends Fix {
   }
 
   postForce(): void {
+    this.restraintEnergy = 0;
     if (this.style === 'rattle') this.rattlePositions();
     else this.shake(1);
   }

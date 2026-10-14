@@ -4,8 +4,7 @@ import type { EngineEvent } from '../src/engine/types';
 
 /*
  * reset_atoms (engine/commands/reset_atoms.ts; docs.lammps.org/reset_atoms.html). The results are pinned by the
- * oracle cases tests/oracle/w104cf_reset_*.in. These tests cover what is refused: the spatial sort (sort yes) and
- * the argument checks, which the docs describe as "reset_atoms id sort yes" and "offset value = Noffset >= -1".
+ * oracle cases tests/oracle/w104cf_reset_*.in and w143cf_reset_sort.in. These tests cover the argument checks, which the docs describe as "reset_atoms id sort yes" and "offset value = Noffset >= -1".
  */
 
 const DATA = `refusals
@@ -50,8 +49,8 @@ const runScript = async (script: string) => {
 };
 
 describe('reset_atoms: refusals', () => {
-  it('refuses sort yes for id (the native spatial sort order is not reproduced)', async () => {
-    expect(await runScript('reset_atoms id sort yes')).toMatch(/reset_atoms id sort yes is not supported/);
+  it('sort yes runs the native spatial order (the oracle case w143cf_reset_sort pins the IDs)', async () => {
+    expect(await runScript('reset_atoms id sort yes')).toBe('');
   });
 
   it('accepts sort no and refuses other keywords by name', async () => {

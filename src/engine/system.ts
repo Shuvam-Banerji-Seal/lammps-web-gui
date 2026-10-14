@@ -21,6 +21,7 @@ import { buildAtomMap, deleteAtoms as deleteAtomsImpl, massOf, customAttr, nativ
 import { groupFunction } from './groupfn';
 import { LabelMap } from './labelmap';
 import { defaultMinSettings, type MinSettings } from './run/min';
+import { normalizeFileName } from './fileName';
 
 /*
  * The whole simulation: settings, atoms, box, neighbor lists, force field,
@@ -217,7 +218,7 @@ export class System {
   }
 
   readFile(name: string): string {
-    const f = this.files.get(name);
+    const f = this.files.get(normalizeFileName(name));
     if (f === undefined) {
       throw new StyleError(`cannot open file ${name}: add it to the notebook's files (upload) or write it earlier in the session`);
     }
@@ -232,6 +233,7 @@ export class System {
   }
 
   writeFile(name: string, text: string, append: boolean): void {
+    name = normalizeFileName(name);
     this.files.set(name, (append ? this.files.get(name) ?? '' : '') + text);
     this.io.writeFile?.(name, text, append);
   }

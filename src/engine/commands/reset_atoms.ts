@@ -2,6 +2,7 @@ import type { Handler } from './args';
 import { int, yesno, keywords } from './args';
 import { StyleError } from '../force/types';
 import { hasMolecule, isMolecularStyle, nativeOrder } from '../atoms';
+import { gplHook } from '../gplHooks';
 import type { SimState, TopoList } from '../types';
 import type { System } from '../system';
 
@@ -37,9 +38,9 @@ import type { System } from '../system';
  *    group is its own molecule), the units are ranked by their smallest atom ID, and an atom with no bond at all
  *    is a single (0 by default, its own ID rank with single yes). The offset M is the largest molecule ID of the
  *    atoms outside the group (w104cf_reset_mol: six variants written to files and compared).
- * Not reproduced (refused by name): sort yes. The docs give no bin size for the spatial sort and the native bin
- * order could not be matched from black-box runs (60 random atoms in a 20 box: the order is by z-block, then
- * y-block, then x, with block edges that no single bin size reproduces).
+ * sort yes: the spatial order of src/reset_atoms_id.cpp (b332f28, ResetAtomsID::sort and sort_bins), see
+ * the GPL helper src/engine-gpl/reset_atoms/spatial_sort.ts (SpatialSortHook). Native wraps the atoms into the periodic box
+ * first (domain->pbc()) for both settings.
  */
 
 /** Union-find over atom indices (path halving). */
@@ -79,14 +80,23 @@ const bondPairs = (sys: System, b: TopoList): [number, number][] => {
   return out;
 };
 
-/** id: contiguous IDs in native storage order; the bonded topology is renumbered with the atoms. */
+/**
+ * The atom order of "sort yes" (src/reset_atoms_id.cpp at b332f28, the bin sort of ResetAtomsID::sort): the GPL
+ * helper of the lazy HOOKS entry 'reset_atoms' (src/engine-gpl/reset_atoms/spatial_sort.ts). Arguments: positions,
+ * atom count, dimension; the result lists the atom indices in the order that receives the IDs 1..N.
+ */
+export type SpatialSortHook = (x: Float64Array, n: number, dim: number) => number[];
+
+/**
+ * id: contiguous IDs in native storage order (sort no), or in the spatial order (sort yes); the bonded topology is
+ * renumbered with the atoms. Native calls domain->pbc() before either (reset_atoms_id.cpp, command()).
+ */
 const resetIds = (sys: System, args: string[]): void => {
   const kw = keywords(args, { sort: 1 }, 'reset_atoms id');
-  if (kw.has('sort') && yesno(kw.get('sort')![0], 'reset_atoms id sort')) {
-    throw new StyleError('reset_atoms id sort yes is not supported by the browser engine (the native spatial sort order is not reproduced)');
-  }
+  const sorted = kw.has('sort') && yesno(kw.get('sort')![0], 'reset_atoms id sort');
   const s = sys.state;
-  const order = nativeOrder(s);
+  sys.pbc();
+  const order = sorted ? gplHook<SpatialSortHook>('reset_atoms')(s.x, s.n, s.dimension) : nativeOrder(s);
   const newId = new Map<number, number>();
   for (let k = 0; k < s.n; k++) newId.set(s.id[order[k]], k + 1);
   const renumber = (l: TopoList): void => {

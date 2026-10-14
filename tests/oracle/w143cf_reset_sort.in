@@ -1,0 +1,24 @@
+# oracle: reset_atoms id sort yes on a shuffled 24-atom angle system (w143cf_reset_sort.data: IDs and storage order
+#   shuffled, 16 bonds, 6 angles, box -4.5..4.5). Native LAMMPS (src/reset_atoms_id.cpp at b332f28, sort(): bins of
+#   binsize = (vol / (natoms/10 + 1))^(1/dim) over the bounding box grown by 1e-4 of its length; new IDs go in bin order
+#   (z-block, then y, then x), then by x, y, z inside a bin; sort_bins() numbers them 1..N). The bonded and angle
+#   topology is renumbered; write_data writes the result (ids, positions, bonds, angles) and is compared with the native file.
+#   Measured with native LAMMPS.
+#   Engine vs native (fixture): IDs and positions identical; the derived bin order matched all 24 atoms before the engine was written.
+# oracle-inputs: w143cf_reset_sort.data
+# oracle-files: w143cf_reset_sort.written.data
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-14
+units           lj
+atom_style      angle
+read_data       w143cf_reset_sort.data
+pair_style      lj/cut 2.5
+pair_coeff      * * 0.0 1.0
+bond_style      harmonic
+bond_coeff      1 1.0 1.0
+angle_style     harmonic
+angle_coeff     1 1.0 109.0
+reset_atoms     id sort yes
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             0
+write_data      w143cf_reset_sort.written.data

@@ -4,6 +4,7 @@ import { StyleError } from '../force/types';
 import { formatNumber, substituteVariables } from '../script';
 import { evaluateScalar } from '../formula';
 import { clearSoftHalt } from '../run/halt';
+import { normalizeFileName } from '../fileName';
 
 /*
  * General-purpose input commands.
@@ -135,7 +136,7 @@ const shell: Handler = ({ sys, session }, a) => {
     if (k >= a.length && !force) throw new StyleError('shell rm: missing argument(s) (usage: shell rm [-f] file1 file2 ...)');
     for (; k < a.length; k++) {
       const name = a[k];
-      if (sys.files.has(name)) session.removeFile(name);
+      if (sys.files.has(normalizeFileName(name))) session.removeFile(name);
       else if (!force) sys.warn(`Shell command 'rm ${name}' failed with error 'No such file or directory'`);
     }
     return;
@@ -143,7 +144,7 @@ const shell: Handler = ({ sys, session }, a) => {
   if (sub === 'mv') {
     if (a.length !== 3) throw new StyleError(`shell mv: expected 2 arguments (old new) but found ${a.length - 1}`);
     const oldName = a[1], newName = a[2];
-    const text = sys.files.get(oldName);
+    const text = sys.files.get(normalizeFileName(oldName));
     if (text === undefined) {
       sys.warn(`Shell command 'mv ${oldName} ${newName}' failed with error 'No such file or directory'`);
       return;

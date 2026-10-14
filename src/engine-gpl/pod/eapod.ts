@@ -706,12 +706,25 @@ export class PODModel {
    * the next call. Zero for nj = 0.
    */
   baseDescriptors(rij: Float64Array, tj: Int32Array, nj: number): Float64Array {
-    if (nj === 0) return this.baseInto(null, rij, tj, nj);
-    return this.baseInto(this.scratch(nj), rij, tj, nj);
+    if (nj === 0) return this.baseInto(null, rij, tj, nj, null);
+    return this.baseInto(this.scratch(nj), rij, tj, nj, null);
   }
 
-  /** Fills this.bd with the base descriptors of nj neighbours; s is the scratch of nj (null when nj = 0). */
-  private baseInto(s: Scratch | null, rij: Float64Array, tj: Int32Array, nj: number): Float64Array {
+  /**
+   * Base descriptors and their derivatives with respect to each neighbour's r_ij (eapod.cpp peratombase_descriptors,
+   * bd1 and bdd1). Returns copies: bd[D] for the Mdesc descriptors and bdd[3*(nj*D + n) + d] = d bd[D] / d rij[n][d].
+   * The two- and three-body descriptors are differentiated; four-body descriptors are refused (not ported here).
+   */
+  baseDescriptorsWithDerivatives(rij: Float64Array, tj: Int32Array, nj: number): { bd: Float64Array; bdd: Float64Array } {
+    if (this.nl4 > 0) throw new StyleError('compute podd/atom: four-body POD descriptors are not ported');
+    const bdd = new Float64Array(3 * nj * this.Mdesc);
+    if (nj === 0) return { bd: new Float64Array(this.Mdesc), bdd };
+    const bd = this.baseInto(this.scratch(nj), rij, tj, nj, bdd);
+    return { bd: Float64Array.from(bd), bdd };
+  }
+
+  /** Fills this.bd with the base descriptors of nj neighbours; s is the scratch of nj (null when nj = 0). dd: derivatives or null. */
+  private baseInto(s: Scratch | null, rij: Float64Array, tj: Int32Array, nj: number, dd: Float64Array | null): Float64Array {
     const bd = this.bd;
     bd.fill(0);
     if (nj === 0 || s === null) return bd;
@@ -721,16 +734,61 @@ export class PODModel {
     this.projectRadial(s, nj);
     if (nl2 > 0) {
       for (let m = 0; m < nrbf2; m++) {
-        for (let n = 0; n < nj; n++) bd[m + nrbf2 * (tj[n] - 1)] += s.rbf[n + nj * m];
+        for (let n = 0; n < nj; n++) {
+          const D = m + nrbf2 * (tj[n] - 1);
+          bd[D] += s.rbf[n + nj * m];
+          if (dd) {
+            // eapod.cpp twobodydescderiv: dd2[d + 3*(n + N*D)] += rbfd[n + N*m]
+            const o = 3 * (n + nj * D);
+            dd[o] += s.rbfx[n + nj * m];
+            dd[o + 1] += s.rbfy[n + nj * m];
+            dd[o + 2] += s.rbfz[n + nj * m];
+          }
+        }
       }
     }
     if (nl3 > 0 && nj > 1) {
       this.angularbasis(s, rij, nj);
       this.radialangularbasis(s, tj, nj);
       this.threebodydesc(bd, nl2);
+      if (dd) this.threebodyDerivatives(s, dd, nl2, tj, nj);
       if (nl4 > 0 && nj > 2) this.fourbodydesc(bd, nl2 + nl3);
     }
     return bd;
+  }
+
+  /**
+   * Derivatives of the three-body descriptors (eapod.cpp threebodydescderiv, the nelements loop): neighbour j of element
+   * e contributes f * Ux[j] to the pair (i1, e) of every i1, with f = 2 t1 when i1 == e and t1 otherwise.
+   */
+  private threebodyDerivatives(s: Scratch, dd: Float64Array, nl2: number, tj: Int32Array, nj: number): void {
+    const Ne = this.nelements, K = this.K3, M = this.nrbf3, nabf = this.nabf3;
+    const sumU = this.sumU, pn = this.pn3, pc = this.pc3;
+    // pair index of (a, b) in threebodydesc's order: a <= b, pairs enumerated row by row
+    const pairIdx = new Int32Array(Ne * Ne);
+    let kp = 0;
+    for (let a = 0; a < Ne; a++) for (let b = a; b < Ne; b++) { pairIdx[a * Ne + b] = kp; pairIdx[b * Ne + a] = kp; kp++; }
+    for (let m = 0; m < M; m++) {
+      for (let p = 0; p < nabf; p++) {
+        const n1 = pn[p], n2 = pn[p + 1];
+        for (let q = 0; q < n2 - n1; q++) {
+          const kq = n1 + q;
+          for (let j = 0; j < nj; j++) {
+            const e = tj[j] - 1;
+            for (let i1 = 0; i1 < Ne; i1++) {
+              const t1 = pc[kq] * sumU[i1 + Ne * kq + Ne * K * m];
+              const f = i1 === e ? 2.0 * t1 : t1;
+              const k = pairIdx[i1 * Ne + e];
+              const o = 3 * (nj * (nl2 + p + nabf * m + nabf * M * k) + j);
+              const jj = j + nj * kq + nj * K * m;
+              dd[o] += f * s.ux[jj];
+              dd[o + 1] += f * s.uy[jj];
+              dd[o + 2] += f * s.uz[jj];
+            }
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -744,7 +802,7 @@ export class PODModel {
     fij.fill(0, 0, 3 * nj);
     if (nj === 0) return coeff[nc];
     const s = this.scratch(nj);
-    const bd = this.baseInto(s, rij, tj, nj);
+    const bd = this.baseInto(s, rij, tj, nj, null);
     const nl2 = this.nl2, nl3 = this.nl3, nl4 = this.nl4;
     const nrbf2 = this.nrbf2;
     let e = coeff[nc];

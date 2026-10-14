@@ -1,0 +1,27 @@
+# oracle: compute slcsa/atom (the example sna_nnn_slcsa in.slcsa: sna/atom nnn 24 wmode 1 on hcp Zr, cut to the first 216 of its 864 atoms (delete_atoms, ids kept), twojmax 8, four classes, the example's model files) at run 0: the Mahalanobis distances and the class of each atom, written to a dump
+# engine vs native fixture: thermo max relative error 2.5e-15; the dump (216 atoms x 5 columns: 4 distances and the class) max relative error 8.1e-14; engine time 1.4 s
+# native: installed lmp (b332f28, EXTRA-COMPUTE), the example's data and model files, the Zr_mm.eam.fs potential from third_party
+# oracle-inputs: w171px_slcsa_data.zr_cell w171px_slcsa_mean_descriptor.dat w171px_slcsa_lda_scalings.dat w171px_slcsa_lr_decision.dat w171px_slcsa_lr_bias.dat w171px_slcsa_mahalanobis.dat
+# oracle-potentials: Zr_mm.eam.fs
+# oracle-files: w171px_slcsa.dump
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10 filerel=1e-8
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+read_data       w171px_slcsa_data.zr_cell
+change_box      all triclinic
+group           drop id 217:864
+delete_atoms    group drop compress no
+mass            1 91.224
+pair_style      hybrid/overlay zero 9.0 eam/fs
+pair_coeff      * *  zero
+pair_coeff      * *  eam/fs Zr_mm.eam.fs Zr
+compute         bnnn all sna/atom 9.0 0.99363 8 0.5 1.0 rmin0 0.0 nnn 24 wmode 1 delta 0.25
+compute         slcsa all slcsa/atom 8 4 w171px_slcsa_mean_descriptor.dat w171px_slcsa_lda_scalings.dat w171px_slcsa_lr_decision.dat w171px_slcsa_lr_bias.dat w171px_slcsa_mahalanobis.dat c_bnnn[1]
+compute         max_slcsa all reduce max c_slcsa[*]
+thermo_style    custom step pe c_max_slcsa[*]
+thermo_modify   format float %.15g norm no
+thermo          1
+run             0
+write_dump      all custom w171px_slcsa.dump id c_slcsa[*] modify format float %.15g sort id

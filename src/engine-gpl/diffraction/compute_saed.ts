@@ -38,6 +38,8 @@ export class ComputeSAED extends Compute {
   /** reciprocal-lattice indices (i, j, k) of each entry, in native order (k outer, i inner) */
   private readonly hkl: Int32Array;
   private readonly nRows: number;
+  /** The settings fix saed/vtk reads (native saed_var in compute_saed.h): Zone already scaled to 1/lambda. */
+  readonly saedVar: { lambda: number; Kmax: number; zone: [number, number, number]; c: [number, number, number]; dRewald: number; manual: boolean };
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -109,6 +111,7 @@ export class ComputeSAED extends Compute {
       zone[1] = zone[1] * rnorm;
       zone[2] = zone[2] * rnorm;
     }
+    this.saedVar = { lambda: this.lambda, Kmax, zone: [zone[0], zone[1], zone[2]], c: [c[0], c[1], c[2]], dRewald: dR, manual };
     const prdInv = reciprocalSpacing(sys, manual, 'Compute SAED');
     this.dK = [prdInv[0] * c[0], prdInv[1] * c[1], prdInv[2] * c[2]];
     this.knmax = [0, 0, 0];

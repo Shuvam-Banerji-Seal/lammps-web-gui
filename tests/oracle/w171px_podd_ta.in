@@ -1,0 +1,23 @@
+# oracle: compute podd/atom (Ta_param + Ta_coeff, 31 base descriptors, one element, as the example pod/Ta in.pod.compute) on the randomly displaced bcc Ta 2x2x2 cell (16 atoms, 4 A box, rcut 5 so the neighbours are periodic images): the per-atom derivatives, 3*16*31 columns per atom, written to a dump
+# engine vs native fixture: thermo max relative error 3.8e-14; the dump of 16 atoms x 1488 derivative columns: max relative error 6.4e-11 (target 1e-8); engine time 0.19 s. Four-body models (the pod/InP example) are refused: their descriptor derivatives are not ported.
+# native: installed lmp (b332f28, ML-POD)
+# oracle-inputs: w128pod_Ta_param.pod w128pod_Ta_coeff.pod
+# oracle-files: w171px_podd_ta.dump
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10 filerel=1e-8
+units           metal
+atom_style      atomic
+boundary        p p p
+lattice         bcc 2.0
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 180.88
+displace_atoms  all random 0.1 0.1 0.1 123456 units box
+pair_style      pod
+pair_coeff      * * w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta
+compute         dd all podd/atom w128pod_Ta_param.pod w128pod_Ta_coeff.pod Ta
+thermo_style    custom step pe
+thermo_modify   format float %.15g norm no
+thermo          1
+run             0
+write_dump      all custom w171px_podd_ta.dump id c_dd[*] modify format float %.15g sort id

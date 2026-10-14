@@ -69,7 +69,7 @@ interface PairSet {
  */
 function collectPairs(sys: System, groupBit: number, mode: Mode): PairSet {
   const pair = sys.ff.pair;
-  if (!pair || !pair.single) {
+  if (!pair || !pair.single || pair.singleNeedsSeparation()) {
     throw new StyleError('compute stress profile needs a pair_style that supports single() (the engine\'s pairwise evaluation); many-body pair styles are not supported');
   }
   sys.forces();

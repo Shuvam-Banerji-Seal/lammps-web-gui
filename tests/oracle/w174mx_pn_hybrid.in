@@ -1,0 +1,40 @@
+# oracle: compute pair/local pN through pair_style hybrid: gran/hooke/history for the types 1-1 and 1-2 pairs and lj/cut for 2-2 (no pN), 12 spheres (two types, generated positions, newton on, boundary f f f) with velocities and omega, dump local every 25 steps of 100, cutoff radius (native: b332f28 lmp, GRANULAR and MOLECULE packages)
+# oracle-files: w174mx_pn_hybrid.local
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12 atomrel=1e-8 filerel=1e-8
+units           lj
+atom_style      sphere 1
+atom_modify     map array
+comm_modify     vel yes
+neighbor        0.3 bin
+neigh_modify    delay 0
+boundary        f f f
+region          box block -2 4 -2 4 -2 4
+create_box      2 box
+create_atoms    1 single 0.0 0.0 0.0 units box
+create_atoms    1 single 0.9 0.0 0.0 units box
+create_atoms    1 single 1.8 0.0 0.0 units box
+create_atoms    1 single 0.0 0.9 0.0 units box
+create_atoms    1 single 0.9 0.9 0.0 units box
+create_atoms    1 single 1.8 0.9 0.0 units box
+create_atoms    1 single 0.0 0.45 0.85 units box
+create_atoms    1 single 0.9 0.45 0.85 units box
+create_atoms    2 single 1.8 0.45 0.85 units box
+create_atoms    2 single 0.45 1.35 0.2 units box
+create_atoms    2 single 1.35 1.35 0.3 units box
+create_atoms    2 single 0.9 1.8 0.6 units box
+set             atom * diameter 1.0
+set             atom * density 1.0
+velocity        all create 1.0 4321 loop geom
+pair_style      hybrid gran/hooke/history 2000.0 NULL 50.0 NULL 0.5 1 lj/cut 1.2
+pair_coeff      1 1 gran/hooke/history
+pair_coeff      1 2 gran/hooke/history
+pair_coeff      2 2 lj/cut 0.5 0.6 1.2
+timestep        0.0005
+fix             integr all nve/sphere
+compute         pl all pair/local dist eng force fx fy fz p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 cutoff radius
+dump            d all local 25 w174mx_pn_hybrid.local index c_pl[*]
+dump_modify     d format float %.15g
+thermo_style    custom step ke pe
+thermo_modify   format float %.15g
+thermo          25
+run             100

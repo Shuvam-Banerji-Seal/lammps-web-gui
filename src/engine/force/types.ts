@@ -429,6 +429,13 @@ export abstract class Pair {
    */
   singleExtra(): number { return 0; }
 
+  /**
+   * True when single() needs the separation vector del = x_i - x_j (the granular and ellipsoid styles: the contact normal
+   * and the shear are defined by it). The callers that have no separation (widom's probe sum, tally, stress/prof, hbond/local
+   * energies) treat such a style as one without single(), so they refuse or fall back as they do for that case.
+   */
+  singleNeedsSeparation(): boolean { return false; }
+
   /** Named values for other styles (e.g. 'cut_coul' for kspace). */
   extract(_name: string): unknown { return undefined; }
 }

@@ -59,11 +59,12 @@ const oracleSetups = (): Map<string, { file: string; setup: string[] }> => {
 };
 
 /** Runs the setup, then either 10 steps straight through or 5 steps, a restart, and 5 more. */
-const runPaths = async (setup: string[]) => {
+const runPaths = async (setup: string[], opts: { files?: Record<string, string>; tail?: string[] } = {}) => {
   // fixes and kspace settings are not stored: the restarted run specifies them again
   const kspace = setup.filter((l) => /^\s*kspace_/.test(l));
-  const tail = ['fix 1 all nve'];
+  const tail = opts.tail ?? ['fix 1 all nve'];
   const a = newSession();
+  for (const [n, t] of Object.entries(opts.files ?? {})) a.session.addFile(n, t);
   await a.session.execute([...setup, ...tail, 'run 10', ''].join('\n'));
   const boxOf = (s: Session): [number, number, number] => {
     const bx = s.sys.state.box;
@@ -72,6 +73,7 @@ const runPaths = async (setup: string[]) => {
   const direct = { x: Array.from(a.session.sys.state.x), v: Array.from(a.session.sys.state.v), step: a.session.sys.state.step };
 
   const b = newSession();
+  for (const [n, t] of Object.entries(opts.files ?? {})) b.session.addFile(n, t);
   await b.session.execute([...setup, ...tail, 'run 5', 'write_restart pairs.restart', 'clear', 'read_restart pairs.restart', ...kspace, ...tail, 'run 5', ''].join('\n'));
   const restarted = { x: Array.from(b.session.sys.state.x), v: Array.from(b.session.sys.state.v), step: b.session.sys.state.step };
   return { direct, restarted, lengths: boxOf(b.session), pair: b.session.sys.ff.pair?.name ?? null, text: b.files.get('pairs.restart') ?? '' };
@@ -97,6 +99,21 @@ const close = (a: number[], b: number[], box: [number, number, number] | undefin
  */
 const GRANULAR_TOLERANCE = 1e-2;
 
+/*
+ * Setups that read a data file (so the oracle-script scan above skips them): eff/cut reads the electron H2 data
+ * of tests/oracle/w63eff_h2.data and steps with fix nve/eff (pair_eff.rst: "These pair styles write their
+ * information to binary restart files").
+ */
+const EFF_DATA = readFileSync(join(ORACLE_DIR, 'w63eff_h2.data'), 'utf8');
+const INLINE_SETUPS: Record<string, { setup: string[]; files: Record<string, string>; tail: string[] }> = {
+  'eff/cut': {
+    setup: ['units electron', 'newton on', 'boundary p p p', 'atom_style electron', 'read_data w63eff_h2.data',
+      'pair_style eff/cut 6.447968 pressure/evirials', 'pair_coeff * *', 'comm_modify vel yes', 'timestep 0.0005'],
+    files: { 'w63eff_h2.data': EFF_DATA },
+    tail: ['fix 1 all nve/eff'],
+  },
+};
+
 /** Pair styles whose doc page says they write their information to binary restart files (see restart.ts). */
 const DOC_STORED = [
   'lj/cut', 'lj/cut/coul/cut', 'lj/cut/coul/long', 'lj/cut/coul/debye', 'lj/cut/coul/dsf', 'lj/cut/coul/wolf',
@@ -105,7 +122,7 @@ const DOC_STORED = [
   'born', 'buck', 'buck/coul/cut',
   'lj/cubic', 'lj/expand', 'lj/relres', 'lj/smooth', 'lj/smooth/linear', 'lj96/cut', 'mie/cut', 'morse', 'soft',
   'yukawa', 'yukawa/colloid', 'zero', 'colloid', 'gauss', 'atm',
-  'gran/hooke', 'gran/hooke/history', 'gran/hertz/history', 'granular',
+  'gran/hooke', 'gran/hooke/history', 'gran/hertz/history', 'granular', 'eff/cut',
 ];
 
 /** Doc-declared styles that the restore cannot rebuild yet (see restart.ts, HOOKS NEEDED). */
@@ -118,11 +135,12 @@ beforeAll(() => loadAllStyles());
 describe('pair styles through write_restart / read_restart', () => {
   const setups = oracleSetups();
   for (const style of DOC_STORED) {
-    const hit = setups.get(style);
+    const inline = INLINE_SETUPS[style];
+    const hit = inline ? { file: 'inline', setup: inline.setup } : setups.get(style);
     it(`${style}: restart run equals the uninterrupted run`, async () => {
       expect(style in PAIR_STYLES).toBe(true);
       expect(hit, `no oracle setup selects pair_style ${style}`).toBeTruthy();
-      const r = await runPaths(hit!.setup);
+      const r = await runPaths(hit!.setup, inline ? { files: inline.files, tail: inline.tail } : {});
       expect(r.pair).toBe(style);
       expect(r.text.startsWith('LAMMPS-WEB-RESTART 1\n')).toBe(true);
       expect(r.restarted.step).toBe(r.direct.step);

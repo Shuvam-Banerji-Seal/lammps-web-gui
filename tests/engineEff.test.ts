@@ -99,17 +99,33 @@ describe('atom_style electron', () => {
   });
 
   it('round-trips the electron properties through write_restart and read_restart', async () => {
-    // pair eff/cut itself is not stored in a restart file (write_restart refuses it by name), so the round trip has no pair style
+    // the electron properties are stored apart from the pair style, so this round trip needs no pair_style
     const { session, files } = newSession();
     session.addFile('h2.data', H2_DATA);
     await session.execute(`${HEAD}read_data h2.data\nset atom 2 radius/electron 0.75\nwrite_data before.data\nwrite_restart h2.restart\n`);
     await session.execute('clear\nread_restart h2.restart\nwrite_data after.data\n');
     const cols = (t: string) => t.slice(t.indexOf('Atoms'), t.indexOf('Velocities'));
     expect(cols(files.get('after.data') ?? '')).toBe(cols(files.get('before.data') ?? ''));
-    const withData = newSession();
-    withData.session.addFile('h2.data', H2_DATA);
-    await expect(withData.session.execute(`${HEAD}read_data h2.data\npair_style eff/cut 1.0\npair_coeff * *\nwrite_restart x.restart\n`))
-      .rejects.toThrow(/eff\/cut is not stored/);
+  });
+
+  it('pair eff/cut round-trips through write_restart and read_restart without pair_style or pair_coeff', async () => {
+    // pair_eff.rst: "These pair styles write their information to binary restart files"; the run after the restart equals the uninterrupted run
+    const setup = `${HEAD}read_data h2.data\nset atom 2 radius/electron 0.75\npair_style eff/cut 1.5 limit/eradius pressure/evirials\npair_coeff * *\ncomm_modify vel yes\nfix 1 all nve/eff\n`;
+    const direct = newSession();
+    direct.session.addFile('h2.data', H2_DATA);
+    await direct.session.execute(`${setup}run 4\n`);
+    const want = { x: Array.from(direct.session.sys.state.x), e: Array.from(direct.session.sys.state.custom.get('#eradius')!.data) };
+    const { session, files } = newSession();
+    session.addFile('h2.data', H2_DATA);
+    await session.execute(`${setup}run 2\nwrite_restart eff.restart\n`);
+    expect(files.get('eff.restart')).toContain('"name":"eff/cut"');
+    await session.execute('clear\nread_restart eff.restart\nfix 1 all nve/eff\nrun 2\n');
+    expect(session.sys.ff.pair?.name).toBe('eff/cut');
+    const got = Array.from(session.sys.state.x);
+    let worst = 0;
+    for (let i = 0; i < got.length; i++) worst = Math.max(worst, Math.abs(got[i] - want.x[i]) / (1 + Math.abs(want.x[i])));
+    expect(worst).toBeLessThan(1e-12);
+    expect(Array.from(session.sys.state.custom.get('#eradius')!.data)).toEqual(want.e);
   });
 
   it('the set keywords radius/electron and spin/electron change the electron properties and check their values', async () => {

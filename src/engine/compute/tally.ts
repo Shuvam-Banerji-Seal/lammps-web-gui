@@ -81,7 +81,7 @@ export const walkTallyPairs = (
 ): void => {
   const pair = sys.ff.pair;
   if (!pair) throw new StyleError(`compute ${owner} needs a pair_style (none is defined)`);
-  if (!pair.single) throw new StyleError(`compute ${owner} needs a pair_style that supports single() (pairwise evaluation); pair_style ${pair.name} does not`);
+  if (!pair.single || pair.singleNeedsSeparation()) throw new StyleError(`compute ${owner} needs a pair_style that supports single() (pairwise evaluation); pair_style ${pair.name} does not`);
   sys.forces();
   const s = sys.state;
   const nb = sys.nb;

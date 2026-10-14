@@ -116,10 +116,10 @@ describe('atom_style body rounded/polygon (bodies.ts, output/data.ts)', () => {
 });
 
 describe('refused body styles are named (registry/body48.ts)', () => {
-  it('pair body/rounded/polygon with the history keyword and fix wall/body/polygon with history', async () => {
-    // pair body/rounded/polygon is registered (src/engine-gpl/registry/body.ts) with friction; the contact history is refused
-    await expect(run(`${HEAD}pair_style body/rounded/polygon 20.0 5.0 0.1 1.0 0.5 history\n`, { 'sq.data': SQUARE })).rejects.toThrow(/history/);
-    await expect(run(`${HEAD}fix 1 all wall/body/polygon 2000 50 50 yplane -5 5 history 0.1 NULL\n`, { 'sq.data': SQUARE })).rejects.toThrow(/wall\/body\/polygon history/);
+  it('pair body/rounded/polygon with the history keyword and fix wall/body/polygon with history are accepted', async () => {
+    // pair body/rounded/polygon and the wall fix are registered (src/engine-gpl/registry/body.ts) with the contact history
+    await expect(run(`${HEAD}pair_style body/rounded/polygon 20.0 5.0 0.1 1.0 0.5 history\n`, { 'sq.data': SQUARE })).resolves.toBeDefined();
+    await expect(run(`${HEAD}fix 1 all wall/body/polygon 2000 50 50 yplane -5 5 history 0.1 NULL\n`, { 'sq.data': SQUARE })).resolves.toBeDefined();
   });
 });
 

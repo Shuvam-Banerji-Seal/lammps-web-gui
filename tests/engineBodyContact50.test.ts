@@ -109,7 +109,7 @@ describe('body/rounded/polygon contact law (native numbers)', () => {
     expect(rel(roundedPairForce(A, B, DIAM, 1.0, 100, 2, 0.3).fB[0], -2.585297595052200581)).toBeLessThan(1e-9);
   });
 
-  it('forces of the pair sum to zero (Newton third law); settings accept c_n and c_t, accept mu, refuse the history keyword', () => {
+  it('forces of the pair sum to zero (Newton third law); settings accept c_n and c_t, accept mu and the history keyword, refuse an unknown keyword', () => {
     const A = square(0, 0, 0), B = square(4.3, 3.0, 0.05);
     const r = roundedPairForce(A, B, DIAM, 1.0, 100, 2, 0.3);
     expect(r.fA[0] + r.fB[0]).toBeCloseTo(0, 12);
@@ -117,7 +117,8 @@ describe('body/rounded/polygon contact law (native numbers)', () => {
     const st = new PairBodyRoundedPolygon();
     expect(() => st.settings(['1', '0', '0', '0.5', '1.0'])).not.toThrow();
     expect(() => st.settings(['0', '0', '0.1', '0.5', '1.0'])).not.toThrow(); // friction (mu != 0) is ported
-    expect(() => st.settings(['0', '0', '0', '0.5', '1.0', 'history'])).toThrow(StyleError);
+    expect(() => st.settings(['0', '0', '0', '0.5', '1.0', 'history'])).not.toThrow();
+    expect(() => st.settings(['0', '0', '0', '0.5', '1.0', 'bogus'])).toThrow(StyleError);
   });
 });
 

@@ -1,0 +1,23 @@
+# oracle: compute body/local (id 1 2 3) on four 2d nparticle bodies (cut down from examples/body data.body, 6/4/3/5 sub-particles), fix nve/body with pair body/nparticle and enforce2d, 200 steps; the compute's local array (id, x, y, z of every sub-particle, rows in atom order) is written by dump local at step 0 and step 200 and compared token by token; thermo pe ke etotal and the final atom state
+# Measured max relative error: 5e-9 for the local array (native dump local prints 8 significant digits whatever dump_modify says, and every printed value matches the engine exactly; the file check is filerel=1e-14 with abs 1e-12) and 1e-9 for thermo and the final atom state (rel 1e-9, the case tolerance; the measured value is below it).
+# oracle-inputs: w152body_local_nparticle.data
+# oracle-files: w152body_local_nparticle.dump
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12 filerel=1e-14
+units           lj
+dimension       2
+atom_style      body nparticle 2 6
+atom_modify     sort 0 0.0
+read_data       w152body_local_nparticle.data
+velocity        all create 1.44 87287 loop geom
+pair_style      body/nparticle 5.0
+pair_coeff      * * 1.0 1.0
+neighbor        0.5 bin
+neigh_modify    every 1 delay 0 check yes
+fix             1 all nve/body
+fix             2 all enforce2d
+compute         1 all body/local id 1 2 3
+dump            1 all local 200 w152body_local_nparticle.dump index c_1[1] c_1[2] c_1[3] c_1[4]
+thermo_style    custom step pe ke etotal
+thermo_modify   format float %.15g
+thermo          200
+run             200

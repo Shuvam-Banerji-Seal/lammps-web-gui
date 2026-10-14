@@ -13,9 +13,10 @@
  * force c_n (normal) and c_t (tangential) from the velocity of the body at the contact point, and the torque of that
  * force acts on the body. The polyhedron wall is the same with the polyhedron record (bodies.ts POLY_OFF layout).
  *
- * Supported: the elastic and damping wall force, and the walls at lo and hi. Refused by name (StyleError): the wiggle
- * keyword and the history keyword (the tangential contact history of the wall is not ported); the pair style must
- * be pair body/rounded/polygon or body/rounded/polyhedron (native init: "... is incompatible with Pair style").
+ * Supported: the elastic and damping wall force, the walls at lo and hi, and the keyword history (a tangential spring
+ * per body and wall, its deformation kept per atom ID; see contact_history.ts for the shared spring). Refused by name
+ * (StyleError): the wiggle keyword; the pair style must be pair body/rounded/polygon or body/rounded/polyhedron
+ * (native init: "... is incompatible with Pair style").
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
@@ -47,6 +48,14 @@ export class FixWallBody extends Fix {
   private readonly lo: number;
   private readonly hi: number;
   private readonly polyhedron: boolean;
+  /** keyword history: friction coefficient mu and tangential stiffness k_t (native defaults 2/7 k_n). */
+  private history = false;
+  private mu = 0;
+  private kt = 0;
+  /** the tangential deformation of each body at the walls [lo, hi], keyed by atom ID (zero when not touching). */
+  private shear = new Map<number, [V3, V3]>();
+  /** true while the run setup calls postForce (native update->setupflag): the shear does not advance then. */
+  private setupCall = false;
 
   constructor(sys: System, id: string, group: string, args: string[], variant: 'polygon' | 'polyhedron') {
     super(sys, id, group, args);
@@ -72,8 +81,15 @@ export class FixWallBody extends Fix {
     this.hi = args[5] === 'NULL' ? Infinity : num(args[5], 'hi');
     for (let k = 6; k < args.length; k++) {
       if (args[k] === 'wiggle') throw new StyleError(`Fix ${this.style} wiggle is not supported by the browser engine`);
-      if (args[k] === 'history') throw new StyleError(`Fix ${this.style} history is not implemented yet by the browser engine`);
-      throw new StyleError(`Unknown fix ${this.style} keyword ${args[k]}`);
+      if (args[k] !== 'history') throw new StyleError(`Unknown fix ${this.style} keyword ${args[k]}`);
+      // native: history mu kt, kt NULL is 2/7 k_n (as in pair body/rounded/polygon)
+      if (k + 3 > args.length) throw new StyleError(`Illegal fix ${this.style} history: needs mu and kt`);
+      this.mu = num(args[k + 1], 'history mu');
+      if (this.mu < 0) throw new StyleError(`Illegal fix ${this.style} history argument ${this.mu}`);
+      this.kt = args[k + 2] === 'NULL' ? (2.0 / 7.0) * this.kn : num(args[k + 2], 'history kt');
+      if (this.kt < 0) throw new StyleError(`Illegal fix ${this.style} history argument ${this.kt}`);
+      this.history = true;
+      k += 2;
     }
     const layout = this.polyhedron ? 'rounded/polyhedron' : 'rounded/polygon';
     if (!sys.state.quat || !sys.state.angmom || !sys.state.torque || !sys.state.custom.has(BODY_RECORD)) {
@@ -112,11 +128,22 @@ export class FixWallBody extends Fix {
     return geo;
   }
 
+  setup(): void {
+    this.setupCall = true;
+    try {
+      super.setup();
+    } finally {
+      this.setupCall = false;
+    }
+  }
+
   postForce(): void {
     const s = this.sys.state;
     const rec = s.custom.get(BODY_RECORD)!.data;
     const B = s.custom.get(BODY_RECORD)!.cols;
     const x = s.x, f = s.f, tq = s.torque!, d = this.dim;
+    // the shear of the bodies touching a wall this step (native: the history of the others is reset)
+    const nextShear = new Map<number, [V3, V3]>();
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
       if (rec[B * i] < 1) continue;
@@ -124,6 +151,9 @@ export class FixWallBody extends Fix {
       const xc: V3 = [x[3 * i], x[3 * i + 1], x[3 * i + 2]];
       const vcm = geo.vcm, om = geo.omega;
       const radius = atomRadius(geo), rrad = geo.rrad;
+      const prev = this.history ? this.shear.get(s.id[i]) : undefined;
+      const xiNext: [V3, V3] = [[0, 0, 0], [0, 0, 0]];
+      let touched = false;
       // lo wall first (inward normal +), then hi (inward normal -), as native post_force
       for (const nside of [1, -1]) {
         const wall = nside === 1 ? this.lo : this.hi;
@@ -132,6 +162,11 @@ export class FixWallBody extends Fix {
         nw[d] = nside;
         const scom = (xc[d] - wall) * nw[d];
         if (scom > radius) continue;
+        const iwall = nside === 1 ? 0 : 1;
+        // with the history, one friction force per wall acts on the body, at the contact points weighted by their
+        // elastic normal forces (native fnsum, pcsum, vtsum)
+        let fnsum = 0;
+        const pcsum: V3 = [0, 0, 0], vtsum: V3 = [0, 0, 0];
         for (const p of geo.disc) {
           const xp: V3 = [xc[0] + p[0], xc[1] + p[1], xc[2] + p[2]];
           const sd = (xp[d] - wall) * nw[d];
@@ -151,8 +186,62 @@ export class FixWallBody extends Fix {
           tq[3 * i] += r[1] * fw[2] - r[2] * fw[1];
           tq[3 * i + 1] += r[2] * fw[0] - r[0] * fw[2];
           tq[3 * i + 2] += r[0] * fw[1] - r[1] * fw[0];
+          if (this.history && -this.kn * Rv > 0) {
+            const fne = -this.kn * Rv;
+            fnsum += fne;
+            for (let k = 0; k < 3; k++) {
+              pcsum[k] += fne * pc[k];
+              vtsum[k] += fne * vt[k];
+            }
+          }
+        }
+        if (this.history && fnsum > 0) {
+          // native: pcsum and vtsum are scaled by 1/fnsum (scale3), then tangential_spring()
+          const inv = 1.0 / fnsum;
+          const pcm: V3 = [inv * pcsum[0], inv * pcsum[1], inv * pcsum[2]];
+          const vtm: V3 = [inv * vtsum[0], inv * vtsum[1], inv * vtsum[2]];
+          const xi0: V3 = prev ? [...prev[iwall]] as V3 : [0, 0, 0];
+          const sp = wallSpring(nw, vtm, fnsum, xi0, this.kt, this.mu, s.dt, !this.setupCall);
+          f[3 * i] += sp.ft[0]; f[3 * i + 1] += sp.ft[1]; f[3 * i + 2] += sp.ft[2];
+          const r: V3 = [pcm[0] - xc[0], pcm[1] - xc[1], pcm[2] - xc[2]];
+          tq[3 * i] += r[1] * sp.ft[2] - r[2] * sp.ft[1];
+          tq[3 * i + 1] += r[2] * sp.ft[0] - r[0] * sp.ft[2];
+          tq[3 * i + 2] += r[0] * sp.ft[1] - r[1] * sp.ft[0];
+          xiNext[iwall] = sp.xi;
+          touched = true;
         }
       }
+      if (touched) nextShear.set(s.id[i], xiNext);
     }
+    if (this.history) this.shear = nextShear;
   }
 }
+
+/**
+ * tangential_spring (native fix wall/body/polygon and polyhedron): xi is rotated into the tangent plane of the wall
+ * normal n keeping its magnitude, advanced by vt dt unless in the setup, the spring force -kt xi is limited to mu fne
+ * and xi is reduced with it. Returns the force and the new deformation.
+ */
+const wallSpring = (n: V3, vt: V3, fne: number, xi0: V3, kt: number, mu: number, dt: number, update: boolean): { ft: V3; xi: V3 } => {
+  const dotv = (a: V3, b: V3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const lenv = (a: V3): number => Math.sqrt(dotv(a, a));
+  let xi: V3 = [xi0[0], xi0[1], xi0[2]];
+  const xin = dotv(xi, n);
+  const mag = lenv(xi);
+  xi = [xi[0] - xin * n[0], xi[1] - xin * n[1], xi[2] - xin * n[2]];
+  const magt = lenv(xi);
+  if (magt > 0.0) {
+    const sc = mag / magt;
+    xi = [sc * xi[0], sc * xi[1], sc * xi[2]];
+  }
+  if (update) xi = [xi[0] + vt[0] * dt, xi[1] + vt[1] * dt, xi[2] + vt[2] * dt];
+  let ft: V3 = [-kt * xi[0], -kt * xi[1], -kt * xi[2]];
+  const ftmag = lenv(ft);
+  const ftmax = mu * fne;
+  if (ftmag > ftmax) {
+    const sc = ftmax / ftmag;
+    ft = [sc * ft[0], sc * ft[1], sc * ft[2]];
+    xi = [sc * xi[0], sc * xi[1], sc * xi[2]];
+  }
+  return { ft, xi };
+};

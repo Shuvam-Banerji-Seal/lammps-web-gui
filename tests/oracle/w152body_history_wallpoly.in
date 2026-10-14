@@ -1,0 +1,25 @@
+# oracle: fix wall/body/polyhedron with the keyword history (mu 0.5, k_t default 2/7 k_n) and pair body/rounded/polyhedron with history, from examples/body/in.heap3d cut down: the two rounded cubes of w121body_cubes_friction, gravity 1 along -z onto the floor zplane 0 (boundary p p fm), cube 1 moving down and sideways so that it slides on the floor, fix nve/body, 3000 steps: thermo pe ke etotal and the atom state
+# Measured (engine vs native, max relative error): below 1e-13 (passes at rel 1e-13 abs 1e-12, measured by tightening the tolerance). The native run with the history keyword differs from the run without it, so the history term is exercised.
+# oracle-inputs: w152body_wallpoly_cubes.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+units           lj
+boundary        p p fm
+dimension       3
+atom_style      body rounded/polyhedron 1 8
+atom_modify     map array
+read_data       w152body_wallpoly_cubes.data
+set             atom 1 vx 1.0 vy 0.5 vz -2.0
+set             atom 2 vx 0.0 vy 0.0 vz 0.0
+pair_style      body/rounded/polyhedron 20 5 0.5 1 0.5 history
+pair_coeff      * * 100 1
+comm_modify     vel yes
+neighbor        0.5 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        0.001
+fix             1 all nve/body
+fix             2 all gravity 1.0 vector 0.0 0.0 -1.0
+fix             3 all wall/body/polyhedron 2000 50 50 zplane 0.0 NULL history 0.5 NULL
+thermo_style    custom step pe ke etotal
+thermo_modify   format float %.15g
+thermo          100
+run             3000

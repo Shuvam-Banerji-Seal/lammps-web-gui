@@ -4,6 +4,7 @@ import { RanPark } from '../rng';
 import { appendAtoms, maxAtomId, pushTopo, sphereMass, hasChargeStyle, hasDipoleStyle, hasRadiusStyle, hasRmassStyle, isLineStyle, isTriStyle, isLineAtom, isTriAtom, SPHERE_DEFAULT_RADIUS } from '../atoms';
 import { BlockRegion, ConeRegion, type Param, type Region } from '../region';
 import { geometricCenter, rotationMatrix, rotateDipoles, templateDipoles, type MoleculeTemplate } from '../molecule';
+import { bodyAtomRadius, bodyRadiusBody, parseBodyStyle, setBodyAtom } from '../bodies';
 import type { System } from '../system';
 
 /*
@@ -111,6 +112,14 @@ import type { System } from '../system';
  * before the neighbour decision), so atomsChanged() forces a neighbour
  * rebuild in the same step. preExchange is defined only so that the
  * accelerated backends (which cannot add atoms) are not chosen.
+ *
+ * Body molecules (atom_style body; docs.lammps.org/molecule.html, "defining a *body* particle, which requires setting the
+ * number of *atoms* to 1, and setting the *inertia* in a specific section"). Each inserted body is one molecule with
+ * its orientation drawn as above: the random quaternion of the rotation (native fix_pour.cpp, quat_external from
+ * axisangle_to_quat) replaces the body's principal-axes quaternion, and the body record is filled from the molecule's
+ * Body Integers and Body Doubles (bodies.ts setBodyAtom, as native Atom::add_molecule_atom). The body's radius
+ * (bodies.ts bodyRadiusBody) is the molecule radius of the overlap test and the volume. Point (non-body) particles of a
+ * body style, and rigid or shake with body molecules, are refused.
  */
 
 /** Strict numeric argument. */
@@ -257,6 +266,13 @@ export const appendMolecule = (
   return base + 1;
 };
 
+/** Quaternion (w, x, y, z) of a rotation by theta about an axis, the axis normalised (native axisangle_to_quat after norm3). */
+export const axisAngleQuat = (axis: number[], theta: number): number[] => {
+  const n = Math.sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
+  const h = 0.5 * theta, sh = Math.sin(h);
+  return [Math.cos(h), (axis[0] / n) * sh, (axis[1] / n) * sh, (axis[2] / n) * sh];
+};
+
 /** Atom list checks shared by pour and deposit. */
 export const insertionBox = (sys: System, reg: InsertionRegion, what: string): void => {
   const s = sys.state;
@@ -338,12 +354,15 @@ export class FixPour extends Fix {
   /** ignore keyword: the inserted particles skip line (tri) particles in the overlap test (fix_pour.cpp overlap). */
   private ignoreLine = false;
   private ignoreTri = false;
+  /** The body style of atom_style body (bodies.ts), or null for the other styles. */
+  private bodyStyle: string | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     // fix_pour.cpp: "Fix pour requires atom attributes radius, rmass" (the line and tri styles have both; the inserted
     // particles are point-like spheres of that style, with the line or triangle flag 0)
-    if (!hasRadiusStyle(sys.atomStyle) || !hasRmassStyle(sys.atomStyle)) throw new StyleError('fix pour requires atom attributes radius, rmass (atom_style sphere, line or tri)');
+    this.bodyStyle = parseBodyStyle(sys.atomStyle)?.bstyle ?? null;
+    if (!this.bodyStyle && (!hasRadiusStyle(sys.atomStyle) || !hasRmassStyle(sys.atomStyle))) throw new StyleError('fix pour requires atom attributes radius, rmass (atom_style sphere, line or tri)');
     if (args.length < 3) throw new StyleError('usage: fix ID group-ID pour N type seed keyword values ...');
     const twoD = sys.dimension === 2;
     this.twoD = twoD;
@@ -454,6 +473,15 @@ export class FixPour extends Fix {
         this.shakeFix = sf;
       }
     } else if (this.type > s.ntypes) throw new StyleError(`fix pour: atom type ${this.type} is larger than ntypes ${s.ntypes}`);
+    if (this.bodyStyle) {
+      const bt = this.molTemplate?.body;
+      if (!this.molTemplate || !bt) throw new StyleError(`fix pour: atom_style ${s.atomStyle} needs a body molecule (mol with Body Integers and Body Doubles); point body particles are not supported by the browser engine`);
+      if (this.rigidId || this.shakeId) throw new StyleError('fix pour: the rigid and shake keywords with body molecules are not supported by the browser engine');
+      // the molecule radius (native Molecule::read with radius_body) is the diameter of the template atom
+      this.molTemplate = { ...this.molTemplate, diam: Float64Array.of(2 * bodyRadiusBody(this.bodyStyle, bt.ints, bt.dbls)) };
+    } else if (this.molTemplate?.body) {
+      throw new StyleError(`fix pour mol: molecule '${this.molTemplateId}' is a body molecule and needs atom_style body`);
+    }
     this.reg = insertionRegion(this.sys, this.regionId, 'pour');
     if (this.twoD && this.reg.kind === 'cylinder') {
       throw new StyleError('fix pour: the cylinder style of region can only be used with 3d simulations');
@@ -537,7 +565,7 @@ export class FixPour extends Fix {
     // candidate atoms appended during this event (molecules register all their atoms)
     const cx: number[] = [], cy: number[] = [], cz: number[] = [], cr: number[] = [];
     const at = (i: number): [number, number, number, number] => (i < nOld
-      ? [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], s.radius![i]]
+      ? [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], s.radius ? s.radius[i] : bodyAtomRadius(s, i)]
       : [cx[i - nOld], cy[i - nOld], cz[i - nOld], cr[i - nOld]]);
     const overlaps = (x: number, y: number, z: number, rad: number, n: number): boolean => {
       for (let j = 0; j < n; j++) {
@@ -552,13 +580,13 @@ export class FixPour extends Fix {
     // accepted atoms (no mol) and molecules
     const ax: number[] = [], ay: number[] = [], az: number[] = [], ar: number[] = [], am: number[] = [];
     const avx: number[] = [], avy: number[] = [], avz: number[] = [];
-    const mols: { pos: Float64Array; v: [number, number, number]; rot: number[][] }[] = [];
+    const mols: { pos: Float64Array; v: [number, number, number]; rot: number[][]; quat: number[] }[] = [];
     for (let k = 0; k < nnew; k++) {
       // the fall coordinate is drawn once per particle; overlap retries keep it
       const uz = this.rng.uniform();
       const f = fLo + H * (1 - uz * uz);
       if (t) {
-        let placed = false, pos: Float64Array | null = null, placedRot: number[][] | null = null;
+        let placed = false, pos: Float64Array | null = null, placedRot: number[][] | null = null, placedQuat: number[] | null = null;
         while (tries < budget) {
           tries++;
           const x = reg.xlo + this.rng.uniform() * (reg.xhi - reg.xlo);
@@ -569,11 +597,15 @@ export class FixPour extends Fix {
           // one draw samples the molecule list; then the random rotation
           const sel = this.rng.uniform();
           if (this.molfrac) { let c = 0; for (const fr of this.molfrac) { c += fr; if (sel < c) break; } }
-          let R: number[][];
-          if (twoD) R = rotationMatrix(2 * Math.PI * this.rng.uniform(), 0, 0, 1);
-          else {
+          let R: number[][], quat: number[];
+          if (twoD) {
+            const th = 2 * Math.PI * this.rng.uniform();
+            R = rotationMatrix(th, 0, 0, 1);
+            quat = axisAngleQuat([0, 0, 1], th);
+          } else {
             const u1 = this.rng.uniform(), u2 = this.rng.uniform(), u3 = this.rng.uniform(), u4 = this.rng.uniform();
             R = rotationMatrix(2 * Math.PI * u4, u1 - 0.5, u2 - 0.5, u3 - 0.5);
+            quat = axisAngleQuat([u1 - 0.5, u2 - 0.5, u3 - 0.5], 2 * Math.PI * u4);
           }
           const cand = this.placeMolecule(t, center, R, [x, y, z]);
           let hit = false;
@@ -582,7 +614,7 @@ export class FixPour extends Fix {
             hit = overlaps(cand[3 * a], cand[3 * a + 1], cand[3 * a + 2], rad, nOld + cx.length);
           }
           if (hit) continue;
-          placed = true; pos = cand; placedRot = R; break;
+          placed = true; pos = cand; placedRot = R; placedQuat = quat; break;
         }
         if (!placed) break;
         const vx = this.vel[0] + this.rng.uniform() * (this.vel[1] - this.vel[0]);
@@ -593,7 +625,7 @@ export class FixPour extends Fix {
           cx.push(pos![3 * a]); cy.push(pos![3 * a + 1]); cz.push(pos![3 * a + 2]);
           cr.push(t.diam ? t.diam[a] / 2 : SPHERE_DEFAULT_RADIUS);
         }
-        mols.push({ pos: pos!, v, rot: placedRot! });
+        mols.push({ pos: pos!, v, rot: placedRot!, quat: placedQuat! });
       } else {
         const rad = this.drawRadius() / 2;
         let x = 0, y = 0, z = 0, found = false;
@@ -628,6 +660,7 @@ export class FixPour extends Fix {
           if (ids) for (let k = 0; k < t.natoms; k++) ids[k] = ++this.nextId;
           const molId = this.idNext ? ++this.nextMolId : maxMoleculeId(s) + 1;
           const firstId = appendMolecule(sys, t, this.type, m.pos, m.v, molId, this.groupBit, ids, m.rot);
+          if (this.bodyStyle && t.body) setBodyAtom(s, s.n - 1, this.bodyStyle, t.body.ints, t.body.dbls, m.quat);
           if (this.rigidFix) (this.rigidFix as unknown as RigidAdder).addMolecule(Array.from({ length: t.natoms }, (_, k) => firstId + k));
           if (this.shakeFix) (this.shakeFix as unknown as ClusterRebuilder).rebuildClusters();
         }

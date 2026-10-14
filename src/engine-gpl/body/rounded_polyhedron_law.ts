@@ -10,14 +10,15 @@
  * keyword" and "pair_coeff * * k_n k_na". The contact law is that of the native code, transcribed in the order of
  * its loops, so that the contact list and the sums of the forces follow the native sequence.
  *
- * Not ported (refused by the style): the history keyword (the tangential springs of the contact history and
- * fix neigh/history), the work done by the forces that do not derive from the energy (only pvector), and
- * the debug printouts of the native code.
+ * The keyword history (the tangential spring of the contact history, see contact_history.ts) is applied per pair by
+ * applyHistory(), called by the style after interact(). Not ported: the work done by the forces that do not derive
+ * from the energy (only pvector), and the debug printouts of the native code.
  *
  * The per-atom quantities of native (discrete, facnorm, facplane, reach, vertex_done) live on the PBody objects of
  * one pair compute; the contacts of a pair of bodies are the Contact records of the native contact list.
  */
 import { normalForce } from './rounded_polygon_law';
+import { accumulateContact, historyFriction, newContactHistory, type ContactHistory } from './contact_history';
 
 export type V3 = [number, number, number];
 
@@ -130,6 +131,13 @@ export interface PolyParams {
   mu: number;
   Aua: number;
   cut: number;
+  /** keyword history: the friction is that of a tangential spring with the shear of the pair (see contact_history.ts). */
+  history?: boolean;
+  /** tangential stiffness k_t of the pair of types, the time step, the setup flag and the shear (as seen from body i). */
+  kt?: number;
+  dt?: number;
+  update?: boolean;
+  shear?: V3;
 }
 
 /** A corner of the clipped polygon of a region of overlap (native PatchVertex). */
@@ -339,6 +347,10 @@ export class PolyhedronPairLaw {
   contacts: Contact[] = [];
   private bi!: PBody;
   private bj!: PBody;
+  /** the contact history of the pair (keyword history), its first body (native shear_i) and the two bodies. */
+  private hist: ContactHistory | null = null;
+  private histI = -1;
+  private histBodies: [PBody, PBody] | null = null;
   private reachMinI = 0;
   private reachMinJ = 0;
   private patchAny = false;
@@ -346,6 +358,9 @@ export class PolyhedronPairLaw {
 
   /** the two-body interaction (native pair_interaction) for bodies i and j with the parameters P */
   interact(bi: PBody, bj: PBody): void {
+    this.hist = this.P.history ? newContactHistory() : null;
+    this.histI = bi.idx;
+    this.histBodies = [bi, bj];
     const npi = bi.disc.length, npj = bj.disc.length;
     if (npi === 1 && npj === 1) {
       this.sphereSphere(bi, bj);
@@ -423,7 +438,10 @@ export class PolyhedronPairLaw {
     return [w[1] * r[2] - w[2] * r[1] + b.vcm[0], w[2] * r[0] - w[0] * r[2] + b.vcm[1], w[0] * r[1] - w[1] * r[0] + b.vcm[2]];
   }
 
-  /** damping_friction (native) without the contact history: damping, and the friction limited by mu fne. */
+  /**
+   * damping_friction (native): the damping, and the friction limited by mu fne. With the contact history the friction
+   * of the contact is added to the history of the pair instead (and no force acts here), see applyHistory().
+   */
   private dampingFriction(ib: PBody, jb: PBody, pc: V3, n: V3, fne: number, damping: boolean, friction: boolean, w: number): void {
     const vi = this.totalVelocity(ib, pc), vj = this.totalVelocity(jb, pc);
     const vr = sub(vi, vj);
@@ -434,7 +452,10 @@ export class PolyhedronPairLaw {
     const { cn, ct, mu } = this.P;
     if (damping) for (let k = 0; k < 3; k++) fdiss[k] = -w * (cn * vn[k] + ct * vt[k]);
     const vtmag = len(vt);
-    if (friction && fne > 0.0 && vtmag > 0.0) {
+    if (friction && this.hist) {
+      if (fne > 0.0) accumulateContact(this.hist, ib.idx === this.histI ? 1 : -1, fne, pc, vt, n);
+      if (!damping) return;
+    } else if (friction && fne > 0.0 && vtmag > 0.0) {
       const scale = Math.min(mu * fne, ct * vtmag) / vtmag;
       for (let k = 0; k < 3; k++) fdiss[k] -= scale * vt[k];
     }
@@ -1163,10 +1184,33 @@ export class PolyhedronPairLaw {
     }
   }
 
-  /** friction_forces (native, no contact history): the friction at the unique contact with the largest overlap. */
+  /** history_friction (native): the friction of the pair from its contact history and tangential spring; returns the new shear. */
+  applyHistory(): V3 | null {
+    const h = this.hist, bodies = this.histBodies;
+    if (!h || !bodies) return null;
+    const P = this.P;
+    const hf = historyFriction(h, P.shear ?? [0, 0, 0], P.kt ?? 0, P.mu, P.dt ?? 0, P.update !== false);
+    if (!hf) return null;
+    const [bi, bj] = bodies;
+    this.addForce(bi.idx, hf.ft);
+    this.addTorque(bi.idx, bi.c, hf.pc, hf.ft);
+    const mf = neg(hf.ft);
+    this.addForce(bj.idx, mf);
+    this.addTorque(bj.idx, bj.c, hf.pc, mf);
+    return hf.shear;
+  }
+
+  /**
+   * friction_forces (native): without the contact history the friction at the unique contact with the largest overlap;
+   * with it, the friction of every unique contact (added to the history of the pair).
+   */
   private frictionForces(): void {
     const contacts = this.contacts;
     if (contacts.length === 0) return;
+    if (this.hist) {
+      for (const c of contacts) if (c.unique) this.frictionForce(c);
+      return;
+    }
     let mmax = -1;
     let fmax = 0.0;
     for (let m = 0; m < contacts.length; m++) {

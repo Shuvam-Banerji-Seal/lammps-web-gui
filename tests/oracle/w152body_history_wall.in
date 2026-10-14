@@ -1,0 +1,26 @@
+# oracle: fix wall/body/polygon with the keyword history (mu 0.3, k_t default) and pair body/rounded/polygon with history, from examples/body/in.wall2d cut down: 2x2 replicate of data.squares (8 rounded squares), gravity 1 pulling them onto the lower wall (yplane 0 24, boundary p f p), velocity create 0.5 with rot yes, fix nve/body and enforce2d, 3000 steps: thermo pe ke etotal and the atom state
+# Measured (engine vs native, max relative error): below 1e-13 (passes at rel 1e-13 abs 1e-12, measured by tightening the tolerance). The native run with the history keyword differs from the run without it, so the history term is exercised.
+# oracle-inputs: w111body_squares.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+units           lj
+dimension       2
+atom_style      body rounded/polygon 1 6
+atom_modify     map array
+read_data       w111body_squares.data
+replicate       2 2 1
+velocity        all create 0.5 980411 dist gaussian mom yes rot yes
+change_box      all boundary p f p
+pair_style      body/rounded/polygon 0.1 0.1 0.1 0.5 0.5 history
+pair_coeff      * * 100 2
+comm_modify     vel yes
+neighbor        0.5 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        0.001
+fix             1 all nve/body
+fix             2 all enforce2d
+fix             3 all wall/body/polygon 2000 50 50 yplane 0 24 history 0.3 NULL
+fix             4 all gravity 1.0 vector 0.0 -1.0 0.0
+thermo_style    custom step pe ke etotal press pxx pyy pxy
+thermo_modify   format float %.15g
+thermo          100
+run             3000

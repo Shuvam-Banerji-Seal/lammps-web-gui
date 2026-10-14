@@ -1,0 +1,23 @@
+# oracle: compute body/local with one keyword (type, a local vector) on the four cut-down 2d nparticle bodies of w152body_local_nparticle (setup only, run 0): the vector (one type per sub-particle, rows in atom order) is written by dump local and compared token by token; thermo pe ke etotal
+# Measured max relative error: 5e-9 for the local vector (native dump local prints 8 significant digits, every printed value matches the engine exactly; the file check is filerel=1e-14 with abs 1e-12) and thermo within rel 1e-9.
+# oracle-inputs: w152body_local_nparticle.data
+# oracle-files: w152body_local_vector.dump
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12 filerel=1e-14
+units           lj
+dimension       2
+atom_style      body nparticle 2 6
+atom_modify     sort 0 0.0
+read_data       w152body_local_nparticle.data
+velocity        all create 1.44 87287 loop geom
+pair_style      body/nparticle 5.0
+pair_coeff      * * 1.0 1.0
+neighbor        0.5 bin
+neigh_modify    every 1 delay 0 check yes
+fix             1 all nve/body
+fix             2 all enforce2d
+compute         1 all body/local type
+dump            1 all local 1 w152body_local_vector.dump index c_1
+thermo_style    custom step pe ke etotal
+thermo_modify   format float %.15g
+thermo          1
+run             0

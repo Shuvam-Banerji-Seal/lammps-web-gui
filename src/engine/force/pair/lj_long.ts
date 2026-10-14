@@ -1,6 +1,7 @@
 import { StyleError, type PairCompute } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { parseNum } from '../util';
+import { gplHook } from '../../gplHooks';
 import { PairLJCutCoulLong } from './coul_long';
 import { tallyAtom } from './lj_cut';
 import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../erfc';
@@ -54,8 +55,10 @@ import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../
  *    the default dispersion table (table/disp 12) changes the real-space energy
  *    by up to about 2e-7 relative at r = 1.6, and pair_modify table/disp 0 gives
  *    the exact kernel above to all printed digits. So table/disp must be 0 here.
- *  - Not implemented (StyleError): pair_modify table/disp N > 0 with flag_lj long
- *    (the dispersion table is not reproduced), per-type
+ *  - pair_modify table/disp N > 0 with flag_lj long: the native dispersion lookup table (Pair::init_tables_disp,
+ *    src/pair.cpp at b332f28) is built by the lazy helper of src/engine-gpl/pair_disp (HOOKS word lj/long/coul/long) and
+ *    used for rsq above its inner cutoff, as the native "table real space" branch.
+ *  - Not implemented (StyleError): per-type
  *    LJ cutoffs (the doc forbids them), shift and tail with flag_lj long (the doc
  *    applies shift to flag_lj cut only and has no tail), and special_bonds
  *    weights other than 1 for the LJ part with flag_lj long (the k-space sum
@@ -66,6 +69,20 @@ import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../
  * with it, measured in an earlier wave).
  */
 const g6kernel = (x2: number): number => Math.exp(-x2) * (1 + x2 + x2 * x2 / 2);
+
+/**
+ * The dispersion lookup table of pair_modify table/disp N (native Pair::init_tables_disp): force(rsq) and energy(rsq)
+ * are the kernels without lj4 (the table branch of the native compute multiplies them by lj4 = C6), and inner is the
+ * rsq below which the series is used.
+ */
+export interface DispTable {
+  readonly inner: number;
+  force(rsq: number): number;
+  energy(rsq: number): number;
+}
+
+/** The helper that builds a DispTable: ntablebits, the dispersion G-ewald, the LJ cutoff and tabinner/disp. */
+export type DispTableHook = (ntablebits: number, g: number, cutLJ: number, tabinnerDisp: number) => DispTable;
 
 /** Coulomb real-space kernel, as coul_long.ts coulLongPair. */
 const coulShort = (
@@ -112,11 +129,14 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
   gEwaldDisp = 0;
   /**
    * pair_modify table/disp N (native default 12, pair_modify.rst "The default value of 12
-   * (table of length 4096)"). The dispersion table is not implemented: N must be 0.
-   * forcefield.ts currently drops the table/disp value (a hook, see the kspace report).
+   * (table of length 4096)"). 0 is the series only; N > 0 uses the dispersion table (computeLongLJ).
    */
   tableDisp = 12;
+  /** pair_modify tabinner/disp (native tabinner_disp, default sqrt(2)). */
+  tabinnerDisp = Math.SQRT2;
   private readonly ljErfcTables = new ErfcTableCache();
+  private dispTable: DispTable | null = null;
+  private dispKey: number[] = [];
 
   settings(args: string[]): void {
     if (args.length !== 3 && args.length !== 4) {
@@ -153,7 +173,6 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
     if (this.ljLong) {
       if (this.shift) throw new StyleError('pair_modify shift yes is not supported with flag_lj long (shift applies to flag_lj cut)');
       if (this.tail) throw new StyleError('pair_modify tail yes is not supported for pair style lj/long/coul/long');
-      if (this.tableDisp !== 0) throw new StyleError('pair_style lj/long/coul/long flag_lj long needs pair_modify table/disp 0 (the dispersion table is not implemented)');
     }
     const cut = super.initOne(i, j);
     if (!this.ljLong || this.p.isSet(i, j)) return cut;
@@ -188,6 +207,7 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
     const gd = this.gEwaldDisp;
     const gd6 = gd ** 6;
     const tab = coul ? this.ljErfcTables.get(this.table, g, cutcsq, this.tabinnerRsq) : null;
+    const dtab = this.ljDispTable(gd);
     const sLJ = pc.specialLJ, sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwl = 0, ecoul = 0;
@@ -216,12 +236,20 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
             throw new StyleError('special_bonds lj weight other than 1 is not implemented with pair style lj/long/coul/long flag_lj long');
           }
           const r2inv = 1 / rsq, r6inv = r2inv * r2inv * r2inv;
-          const x2 = gd * gd * rsq;
-          const g6 = g6kernel(x2);
           const A = lj3[t], C6 = lj4[t];
-          // E = A/r^12 - C6 g6/r^6 ;  fpair = -(dE/dr)/r with d/dr [g6/r^6] giving g^6 exp(-x^2)/r^2 extra
-          fpair += 12 * A * r6inv * r6inv * r2inv - C6 * (6 * g6 * r6inv * r2inv + gd6 * Math.exp(-x2) * r2inv);
-          const ev = A * r6inv * r6inv - C6 * g6 * r6inv;
+          let ev: number;
+          if (dtab !== null && rsq > dtab.inner) {
+            // the native table branch (src/KSPACE/pair_lj_long_coul_long.cpp compute): force_lj = 12 A r^-12 - C6 ftable,
+            // fpair = force_lj / r^2, and the energy is A r^-12 - C6 etable
+            fpair += (12 * A * r6inv * r6inv - C6 * dtab.force(rsq)) * r2inv;
+            ev = A * r6inv * r6inv - C6 * dtab.energy(rsq);
+          } else {
+            // E = A/r^12 - C6 g6/r^6 ;  fpair = -(dE/dr)/r with d/dr [g6/r^6] giving g^6 exp(-x^2)/r^2 extra
+            const x2 = gd * gd * rsq;
+            const g6 = g6kernel(x2);
+            fpair += 12 * A * r6inv * r6inv * r2inv - C6 * (6 * g6 * r6inv * r2inv + gd6 * Math.exp(-x2) * r2inv);
+            ev = A * r6inv * r6inv - C6 * g6 * r6inv;
+          }
           evdwl += ev;
           e += ev;
         }
@@ -234,6 +262,20 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
     }
     pc.acc.evdwl += evdwl;
     pc.acc.ecoul += ecoul;
+  }
+
+  /**
+   * The dispersion table for pair_modify table/disp N > 0 with flag_lj long, rebuilt when N, the dispersion G-ewald, the
+   * global LJ cutoff or tabinner/disp change. The table comes from the lazy helper (gplHook, src/engine-gpl/pair_disp).
+   */
+  private ljDispTable(gd: number): DispTable | null {
+    if (!this.ljLong || this.tableDisp <= 0) return null;
+    const key = [this.tableDisp, gd, this.cutGlobal, this.tabinnerDisp];
+    if (this.dispTable === null || key.some((v, i) => v !== this.dispKey[i])) {
+      this.dispTable = gplHook<DispTableHook>('lj/long/coul/long')(this.tableDisp, gd, this.cutGlobal, this.tabinnerDisp);
+      this.dispKey = key;
+    }
+    return this.dispTable;
   }
 
   extract(name: string): unknown {

@@ -4,6 +4,7 @@ import { LABEL_KINDS, LabelMap } from '../labelmap';
 import type { SpecialBonds } from '../force/forcefield';
 import type { DynamicGroup } from '../group';
 import { StyleError, type Bonded, type Pair } from '../force/types';
+import { PairHybrid, type HybridMode } from '../force/pair/hybrid';
 import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES } from '../styles';
 import { FixPropertyAtom } from '../fix/property_atom';
 import { FixCmap } from '../fix/cmap';
@@ -264,6 +265,33 @@ const restoreHybrid = (kind: HybridKind, data: Json, ntypes: number, reg: Record
   return st;
 };
 
+/**
+ * Rebuilds a pair_style hybrid from hybridPairData: the stored arguments go through settings() (the sub-styles are made
+ * as the pair_style command makes them), then the stored special weights and scalar settings are put back. No
+ * coefficients are set, so pair_coeff is needed again, as after native read_restart.
+ */
+const restoreHybridPair = (mode: HybridMode, data: Json, ntypes: number, sys: System): PairHybrid => {
+  const d = decodeValue(data, 'pair') as { args?: unknown; subs?: unknown };
+  need(Array.isArray(d.args) && d.args.every((x) => typeof x === 'string'), `${mode} data has no argument list`);
+  need(Array.isArray(d.subs), `${mode} data has no sub-style list`);
+  const hy = new PairHybrid(mode, PAIR_STYLES as Record<string, () => Pair>);
+  hy.settings(d.args as string[], sys.styleContext());
+  hy.allocate(ntypes);
+  const subs = d.subs as { name: string; specialLJ: number[] | null; specialCoul: number[] | null; fields: Record<string, unknown> }[];
+  need(subs.length === hy.subs.length, `${mode} sub-style count does not match its arguments`);
+  hy.subs.forEach((sub, k) => {
+    const stored = subs[k];
+    need(stored.name === sub.name, `${mode} sub-style ${k + 1} is ${sub.name}, the file has ${stored.name}`);
+    for (const [key, val] of Object.entries(stored.fields)) {
+      need(key in sub.style, `restart file: ${mode} sub-style ${sub.name} has no field ${key} (the file was written by another version?)`);
+      (sub.style as unknown as Record<string, unknown>)[key] = val;
+    }
+    sub.specialLJ = stored.specialLJ ? Float64Array.from(stored.specialLJ) : null;
+    sub.specialCoul = stored.specialCoul ? Float64Array.from(stored.specialCoul) : null;
+  });
+  return hy;
+};
+
 const bondedTypeCount = (s: SimState, kind: typeof BONDED_KINDS[number]): number => ({
   bond: s.topo.nbondtypes, angle: s.topo.nangletypes, dihedral: s.topo.ndihedraltypes, improper: s.topo.nimpropertypes,
 })[kind];
@@ -303,7 +331,15 @@ export const writeRestartText = (sys: System): string => {
   if (unstored.length) sys.warn(`state of fix ${unstored.join(', ')} is not stored in the browser restart file`);
   const pair = sys.ff.pair;
   const pairStored = pair && !PAIR_NOT_IN_RESTART.has(pair.name) ? pair : null;
-  if (pairStored && !PAIR_RESTART_STYLES.has(pairStored.name) && !(pairStored.name in PAIR_SETTINGS_ONLY)) {
+  // pair_hybrid.cpp write_restart (b332f28): the sub-style names and settings, no coefficients; each sub-style must be one
+  // of the styles stored here (a hybrid cannot store a sub-style whose settings are not in the file)
+  if (pair instanceof PairHybrid) {
+    for (const sub of pair.subs) {
+      if (!PAIR_RESTART_STYLES.has(sub.name) && !(sub.name in PAIR_SETTINGS_ONLY)) {
+        throw new StyleError(`write_restart: pair_style ${pair.name} sub-style ${sub.name} is not stored in the browser restart file yet; re-specify it after read_restart, or use write_data`);
+      }
+    }
+  } else if (pairStored && !PAIR_RESTART_STYLES.has(pairStored.name) && !(pairStored.name in PAIR_SETTINGS_ONLY)) {
     throw new StyleError(`write_restart: pair_style ${pairStored.name} is not stored in the browser restart file yet; re-specify it after read_restart, or use write_data`);
   }
   if (pair && !pairStored) sys.log(`write_restart: pair_style ${pair.name} keeps its coefficients in potential files and is not stored; re-specify pair_style and pair_coeff after read_restart`);
@@ -318,9 +354,11 @@ export const writeRestartText = (sys: System): string => {
   // atom_style line and tri: the per-atom line/triangle flags and bonus data (atoms.ts LINE_FLAG ... TRI_BONUS) are stored with the atoms
   const lineTri = new Map([...s.custom].filter(([k]) => k === LINE_FLAG || k === LINE_BONUS || k === TRI_FLAG || k === TRI_BONUS));
   const styleEntry = (name: string, obj: unknown) => ({ name, data: encodeValue(obj, name, []) });
-  styles.pair = pairStored
-    ? styleEntry(pairStored.name, pairStored.name in PAIR_SETTINGS_ONLY ? withoutFields(pairStored, PAIR_SETTINGS_ONLY[pairStored.name]) : pairStored)
-    : null;
+  styles.pair = pair instanceof PairHybrid
+    ? { name: pair.name, data: hybridPairData(pair) }
+    : pairStored
+      ? styleEntry(pairStored.name, pairStored.name in PAIR_SETTINGS_ONLY ? withoutFields(pairStored, PAIR_SETTINGS_ONLY[pairStored.name]) : pairStored)
+      : null;
   if (pair && !pairStored) styles.pairNotStored = pair.name;
   for (const kind of BONDED_KINDS) {
     const st = sys.ff[kind];
@@ -377,6 +415,22 @@ export const writeRestartText = (sys: System): string => {
   };
   return `${RESTART_MAGIC}\n${JSON.stringify(doc)}\n`;
 };
+
+/**
+ * The stored form of a pair_style hybrid (pair_hybrid.cpp write_restart at b332f28): the pair_style arguments, which
+ * rebuild the sub-styles and their settings, and per sub-style its special weights and its scalar fields (the settings
+ * that pair_modify changed, such as shift, tail or tabinner). Coefficient arrays are left out, as native writes no
+ * coefficient info; pair_coeff is specified again after read_restart.
+ */
+const hybridPairData = (pair: PairHybrid): Json => encodeValue({
+  args: pair.settingsArgs,
+  subs: pair.subs.map((sub) => ({
+    name: sub.name,
+    specialLJ: sub.specialLJ ? Array.from(sub.specialLJ) : null,
+    specialCoul: sub.specialCoul ? Array.from(sub.specialCoul) : null,
+    fields: Object.fromEntries(Object.entries(sub.style).filter(([, v]) => v === null || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'string')),
+  })),
+}, 'pair', []);
 
 const need = (cond: boolean, msg: string): void => {
   if (!cond) throw new StyleError(`restart file: ${msg}`);
@@ -551,7 +605,10 @@ export const readRestartText = (sys: System, text: string, name: string): void =
     restoreInto(st as unknown as Obj, entry.data as { f: { [k: string]: Json } }, kind);
     return st;
   };
-  const pair = restoreStyle('pair', PAIR_STYLES as Record<string, () => Pair>, doc.styles.pair, state.ntypes);
+  const HYBRID_PAIRS = ['hybrid', 'hybrid/overlay', 'hybrid/scaled', 'hybrid/molecular'];
+  const pair = doc.styles.pair && HYBRID_PAIRS.includes(doc.styles.pair.name)
+    ? restoreHybridPair(doc.styles.pair.name as HybridMode, doc.styles.pair.data, state.ntypes, sys)
+    : restoreStyle('pair', PAIR_STYLES as Record<string, () => Pair>, doc.styles.pair, state.ntypes);
   sys.ff.pair = pair;
   // measured with native LAMMPS (black box): read_restart logs pair style sw stores no restart info,
   // and the next run needs a new pair_style (ForceField.pairNotRestarted)

@@ -543,13 +543,31 @@ export class FixDeform extends Fix {
    */
   streamingRates(): { rate: number[]; ratelo: number[] } {
     for (const sp of this.specs) {
-      if (sp.tilt) throw new StyleError(`fix deform ${sp.name} (tilt) is not supported with fix srd (the triclinic SRD box)`);
       if (sp.style === 'trate' || sp.style === 'wiggle' || sp.style === 'variable' || sp.style === 'volume') {
         throw new StyleError(`fix deform style ${sp.style} is not supported with fix srd (its box rate changes during the run)`);
       }
     }
     this.deform(false);
-    return { rate: [this.lenDot[0], this.lenDot[1], this.lenDot[2]], ratelo: [this.loDot[0], this.loDot[1], this.loDot[2]] };
+    // domain.cpp h_rate order: the length rates, then yz, xz and xy (the tilt rates; zero for an orthogonal box)
+    return {
+      rate: [this.lenDot[0], this.lenDot[1], this.lenDot[2], this.tiltDot[2], this.tiltDot[1], this.tiltDot[0]],
+      ratelo: [this.loDot[0], this.loDot[1], this.loDot[2]],
+    };
+  }
+
+  /** Does the fix change a box tilt (BOX_CHANGE_SHAPE in native LAMMPS)? */
+  hasTilt(): boolean {
+    return this.specs.some((sp) => sp.tilt);
+  }
+
+  /** Does the fix change a box length (BOX_CHANGE_SIZE in native LAMMPS)? */
+  hasLengthChange(): boolean {
+    return this.specs.some((sp) => !sp.tilt);
+  }
+
+  /** The remap keyword (x, v or none). */
+  remapFlag(): 'x' | 'v' | 'none' {
+    return this.remapMode;
   }
 
   /** Streaming velocity the deforming box imposes at atom i's position. */

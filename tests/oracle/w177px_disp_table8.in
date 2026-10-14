@@ -1,0 +1,19 @@
+# oracle: pair_style lj/long/coul/long long long 2.5 with kspace ewald/disp (as w16disp_ljcoul) and pair_modify table/disp 8 (the native dispersion lookup table, not the series): NVE 50 steps, thermo every 10 steps, per-atom forces and positions
+# engine vs native: thermo max relative error 1.0e-9 and per-atom max relative error 1.4e-8 over 50 steps (the same as the series case w16disp_ljcoul, where the error is the kspace trajectory); the first row (step 0) agrees with native to 6e-15 in evdwl, and the table changes evdwl by 2e-7 relative as native does (measured: table 12 minus table 0 at step 0); engine time 0.42 s
+# native: installed lmp (b332f28)
+# oracle-inputs: w16disp_fcc2.data
+units           lj
+atom_style      charge
+read_data       w16disp_fcc2.data
+pair_style      lj/long/coul/long long long 2.5
+pair_modify     table 0 table/disp 8 tabinner/disp 2.0
+pair_coeff      1 1 1.0 1.0
+pair_coeff      2 2 0.5 1.1
+kspace_style    ewald/disp 1.0e-6
+kspace_modify   gewald 0.4 gewald/disp 0.4
+timestep        0.005
+fix             1 all nve
+thermo_style    custom step temp pe evdwl elong ecoul press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             50

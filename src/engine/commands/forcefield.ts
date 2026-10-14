@@ -107,7 +107,19 @@ const pairModify: Handler = ({ sys }, a) => {
       case 'shift': { const y = yesno(v, 'shift'); for (const t of targets) t.shift = y; k += 2; break; }
       case 'tail': { const y = yesno(v, 'tail'); for (const t of targets) t.tail = y; k += 2; break; }
       case 'table': { const n = int(v, 'table'); for (const t of targets) t.table = n; k += 2; break; }
-      case 'table/disp': { const n = int(v, 'table/disp'); for (const t of targets) (t as Pair & { tableDisp?: number }).tableDisp = n; k += 2; break; }
+      case 'table/disp': {
+        // As native LAMMPS does (src/pair.cpp pair_modify at b332f28): 0 is the series only; N must be 8 to 32 bits otherwise
+        const n = int(v, 'table/disp');
+        if (n > 32) throw new StyleError(`pair_modify table/disp ${n}: too many total bits for the bitmapped dispersion lookup table (at most 32)`);
+        if (n !== 0 && n < 8) throw new StyleError(`pair_modify table/disp ${n}: too few total bits for the bitmapped dispersion lookup table (at least 8)`);
+        // only lj/long/coul/long (flag_lj long) has a dispersion table in the engine
+        for (const t of targets) {
+          if (n > 0 && !('ljLong' in t)) throw new StyleError(`pair_modify table/disp ${n} is not supported for this pair style (only lj/long/coul/long has a dispersion table)`);
+          (t as Pair & { tableDisp?: number }).tableDisp = n;
+        }
+        k += 2;
+        break;
+      }
       case 'tabinner': {
         // pair_modify.html: "The *tabinner* and *tabinner/disp* keywords set an inner cutoff above which the
         // pairwise computation is done by table lookup"; the default is sqrt(2.0). The erfc tables take it from here.
@@ -119,9 +131,15 @@ const pairModify: Handler = ({ sys }, a) => {
         break;
       }
       case 'tabinner/disp': {
-        // the dispersion tables are not in the engine: only the default cutoff is accepted
+        // pair_modify.html: "The *tabinner* and *tabinner/disp* keywords set an inner cutoff above which the pairwise
+        // computation is done by table lookup"; the dispersion table is that of lj/long/coul/long (flag_lj long); the
+        // other styles have no dispersion table, so only the default sqrt(2.0) is accepted for them
         const c = num(v, key);
-        if (Math.abs(c - Math.SQRT2) > 1e-12) throw new StyleError(`pair_modify ${key} ${v}: only the default sqrt(2.0) is supported by the browser engine (no dispersion tables)`);
+        if (!(c > 0)) throw new StyleError(`pair_modify ${key} must be > 0 (got ${v})`);
+        for (const t of targets) {
+          if ('ljLong' in t) (t as Pair & { tabinnerDisp?: number }).tabinnerDisp = c;
+          else if (Math.abs(c - Math.SQRT2) > 1e-12) throw new StyleError(`pair_modify ${key} ${v}: only the default sqrt(2.0) is supported for this pair style (no dispersion table)`);
+        }
         k += 2;
         break;
       }

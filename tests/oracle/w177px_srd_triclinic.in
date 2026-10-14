@@ -1,0 +1,39 @@
+# oracle: fix srd on a triclinic box (examples/ASPHERE/line in.line.srd cut down to a 2d box of 16 x 16 A with two big spheres of diameter 2 and SRD particles at density 10): 10 steps orthogonal, then change_box all triclinic and fix deform xy erate 0.0002 remap v for 10 steps; the SRD bin temperature (f_2[9]) and the per-atom state
+# engine vs native fixture: measured below
+# native: installed lmp (b332f28)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      sphere
+dimension       2
+boundary        p p p
+region          box block -8 8 -8 8 -0.5 0.5
+create_box      2 box
+lattice         sq 10.0
+create_atoms    2 box
+create_atoms    1 single -4 0 0 units box
+create_atoms    1 single 3 2.5 0 units box
+group           big type 1
+group           small type 2
+set             type 1 diameter 2.0
+set             type 1 density 0.5
+set             type 2 diameter 0.0
+set             group small mass 0.01
+pair_style      lj/cut 1.5
+pair_coeff      * * 0.0 1.0
+delete_atoms    overlap 1.0 small big
+velocity        small create 1.44 87287 loop geom
+neighbor        0.8 multi
+comm_modify     vel yes
+neigh_modify    delay 0 every 1 check yes
+timestep        0.0001
+fix             1 big nve/sphere
+fix             2 small srd 20 big 1.0 0.25 49894 search 0.2 cubic warn 0.0001 shift yes 49829 overlap yes collision noslip
+fix             3 all enforce2d
+compute         tsmall small temp
+thermo          5
+thermo_style    custom step c_tsmall f_2[9] atoms
+thermo_modify   format float %.15g
+run             10
+change_box      all triclinic
+fix             4 all deform 1 xy erate 0.0002 units box remap v
+run             10

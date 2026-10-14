@@ -21,9 +21,16 @@
  * the bins that follow the box (change_size), and unbiased yes with tstat yes (the bins keep their average velocity).
  * Triangle big particles (3d, overlap yes; inside_tri, collision_tri_exact, the triangle normal and omega of
  * big_dynamic) are supported for free triangles (fix nve/tri) and refused when a fix rigid body holds them.
- * Refused with a StyleError naming the keyword: tstat yes with a fix deform and no unbiased yes (the biased
- * streaming bins do not match native yet), a fix deform with tilt or with a time-varying rate (trate, wiggle,
- * variable, volume), tris in a fix rigid body, and fix wall/srd.
+ * Triclinic boxes (domain->triclinic, fix_srd.cpp at b332f28): the velocity bins are in lamda units (binsize1 = 1/nbin1,
+ * bininv1 = nbin1; binsize3 = the bin in box units for the cubic and lamda checks), the bounds and the reneighbor check
+ * are in lamda units, the search bins are the real-space bounding box of the lamda sub-domain (Domain::bbox), the
+ * periodic images of big particles are lattice shifts (copies at x + sx lx + sy xy + sz xz, ...), and the streaming
+ * velocity of a fix deform includes the tilt rates (h_rate[3..5]). A tilted box needs fix deform remap v (native
+ * "inconsistent fix deform remap option" otherwise). Verified against native: tests/oracle/w177px_srd_triclinic.
+ *
+ * Refused here with a StyleError naming the keyword: tstat yes with a fix deform and no unbiased yes (the biased
+ * streaming bins do not match native yet), a fix deform with a time-varying rate (trate, wiggle, variable, volume),
+ * tris in a fix rigid body, and fix wall/srd.
  *
  * Browser-engine difference: native processes SRD atoms in its own local order; the engine keeps that order in
  * SimState.order (nativeOrder), and every loop over SRD particles goes through it, so the random draws happen in
@@ -107,6 +114,12 @@ export class FixSRD extends Fix {
   private deformFix: FixDeform | null = null;
   /** native change_size: a fix with BOX_CHANGE_SIZE, so the velocity bins are rebuilt at every pre-neighbor */
   private changeSize = false;
+  /** native change_shape: a fix deform with a tilt (BOX_CHANGE_SHAPE), so the search bins follow the tilted box */
+  private changeShape = false;
+  /** domain->triclinic: bins, bounds and the reneighbor check are in lamda units (fix_srd.cpp) */
+  private triclinic = false;
+  /** binsize3 = binsize1 in box units (fix_srd.cpp parameterize; the lamda binsize times the box length for triclinic) */
+  private readonly binsize3 = [0, 0, 0];
 
   private distGhost = 0;
   private distSrd = 0;
@@ -353,7 +366,7 @@ export class FixSRD extends Fix {
 
   init(): void {
     const s = this.sys.state;
-    if (s.box.triclinic) throw new StyleError('Fix srd does not support triclinic boxes');
+    this.triclinic = s.box.triclinic;
     if (this.initflag && s.dt !== this.dtBig) throw new StyleError('Cannot change timestep once fix srd is set up');
     if (this.bigExist) {
       this.checkBig();
@@ -365,11 +378,16 @@ export class FixSRD extends Fix {
     // (the velocity bins then follow the box, see preNeighbor). The streaming correction itself is in resetVelocities.
     this.deformFix = null;
     this.changeSize = false;
+    this.changeShape = false;
     for (const f of this.sys.fixes) {
       if (!(f instanceof FixDeform)) continue;
       if (this.deformFix) throw new StyleError('More than one fix deform');
       this.deformFix = f;
-      this.changeSize = true;
+      // fix_srd.cpp init(): a shape (tilt) change with a remap other than v is an error
+      const tilted = f.hasTilt();
+      if (tilted && f.remapFlag() !== 'v') throw new StyleError('Using fix srd with inconsistent fix deform remap option');
+      if (f.hasLengthChange()) this.changeSize = true;
+      if (tilted) this.changeShape = true;
     }
     // the thermostatted streaming bins (tstat yes with a deforming box) are not matched to native yet: with the
     // same input, the per-atom state drifts to about 3e-6 relative at step 200 while the thermo rows agree to 1e-12
@@ -646,8 +664,8 @@ export class FixSRD extends Fix {
 
     this.setupVelocityBins();
 
-    // SRD bins must be cubic within tolerance, and close to the requested size
-    const b3 = this.binsize1;
+    // SRD bins must be cubic within tolerance, and close to the requested size (binsize3: in box units)
+    const b3 = this.binsize3;
     const dim = s.dimension;
     let tolflag = false;
     if (b3[1] / b3[0] > 1.0 + this.cubictol || b3[0] / b3[1] > 1.0 + this.cubictol) tolflag = true;
@@ -679,7 +697,10 @@ export class FixSRD extends Fix {
     this.sys.warn(msg);
   }
 
-  /** fix_srd.cpp setup_velocity_bins() for one processor and no shift (orthogonal box). */
+  /**
+   * fix_srd.cpp setup_velocity_bins() for one processor and no shift. Orthogonal: bins of the box lengths. Triclinic: the
+   * bins are in lamda units (binsize1 = 1/nbin1, bininv1 = nbin1) and binsize3 is the bin in box units.
+   */
   private setupVelocityBins(): void {
     const s = this.sys.state;
     const len = [s.box.hi[0] - s.box.lo[0], s.box.hi[1] - s.box.lo[1], s.box.hi[2] - s.box.lo[2]];
@@ -689,8 +710,15 @@ export class FixSRD extends Fix {
     if (s.dimension === 2) this.nbin1[2] = 1;
     for (let d = 0; d < 3; d++) if (this.nbin1[d] === 0) this.nbin1[d] = 1;
     for (let d = 0; d < 3; d++) {
-      this.binsize1[d] = len[d] / this.nbin1[d];
-      this.bininv1[d] = 1.0 / this.binsize1[d];
+      if (this.triclinic) {
+        this.binsize1[d] = 1.0 / this.nbin1[d];
+        this.bininv1[d] = this.nbin1[d];
+        this.binsize3[d] = this.binsize1[d] * len[d];
+      } else {
+        this.binsize1[d] = len[d] / this.nbin1[d];
+        this.bininv1[d] = 1.0 / this.binsize1[d];
+        this.binsize3[d] = this.binsize1[d];
+      }
     }
     this.nbins1 = this.nbin1[0] * this.nbin1[1] * this.nbin1[2];
   }
@@ -708,10 +736,30 @@ export class FixSRD extends Fix {
     } else {
       this.distGhost = 0;
       this.distSrd = 0;
-      let subsize = s.box.hi[0] - s.box.lo[0];
-      subsize = Math.min(subsize, s.box.hi[1] - s.box.lo[1]);
-      if (s.dimension === 3) subsize = Math.min(subsize, s.box.hi[2] - s.box.lo[2]);
+      // fix_srd.cpp setup_bounds(): the perpendicular distance between the sub-domain faces (lamda units scaled back)
+      let subsize: number;
+      if (this.triclinic) {
+        const { len } = boxMatrix(s.box.lo, s.box.hi, s.box.tilt);
+        subsize = 1.0 / len[0];
+        subsize = Math.min(subsize, 1.0 / len[1]);
+        if (s.dimension === 3) subsize = Math.min(subsize, 1.0 / len[2]);
+      } else {
+        subsize = s.box.hi[0] - s.box.lo[0];
+        subsize = Math.min(subsize, s.box.hi[1] - s.box.lo[1]);
+        if (s.dimension === 3) subsize = Math.min(subsize, s.box.hi[2] - s.box.lo[2]);
+      }
       this.distSrdReneigh = subsize - onemove;
+    }
+    if (this.triclinic) {
+      // fix_srd.cpp setup_bounds(): for triclinic boxes the bounds are in lamda units (sublo_lamda 0, subhi_lamda 1)
+      const { len } = boxMatrix(s.box.lo, s.box.hi, s.box.tilt);
+      for (let d = 0; d < 3; d++) {
+        this.srdlo[d] = 0 - this.distSrd * len[d];
+        this.srdhi[d] = 1 + this.distSrd * len[d];
+        this.srdloRe[d] = 0 - this.distSrdReneigh * len[d];
+        this.srdhiRe[d] = 1 + this.distSrdReneigh * len[d];
+      }
+      return;
     }
     for (let d = 0; d < 3; d++) {
       this.srdlo[d] = s.box.lo[d] - this.distSrd;
@@ -726,9 +774,33 @@ export class FixSRD extends Fix {
     const s = this.sys.state;
     const subboxlo = [0, 0, 0];
     const subboxhi = [0, 0, 0];
-    for (let d = 0; d < 3; d++) {
-      subboxlo[d] = s.box.lo[d] - this.distGhost;
-      subboxhi[d] = s.box.hi[d] + this.distGhost;
+    if (this.triclinic) {
+      // fix_srd.cpp setup_search_bins(): the lamda sub-domain grown by dist_ghost, then Domain::bbox (the real-space box
+      // around its eight corners, lamda2x at each corner as native)
+      const { h, len } = boxMatrix(s.box.lo, s.box.hi, s.box.tilt);
+      const lo = [0 - this.distGhost * len[0], 0 - this.distGhost * len[1], 0 - this.distGhost * len[2]];
+      const hi = [1 + this.distGhost * len[0], 1 + this.distGhost * len[1], 1 + this.distGhost * len[2]];
+      const bl = [BIG, BIG, BIG], bh = [-BIG, -BIG, -BIG];
+      const c = new Float64Array(3);
+      for (let k = 0; k < 8; k++) {
+        c[0] = k & 1 ? hi[0] : lo[0];
+        c[1] = k & 2 ? hi[1] : lo[1];
+        c[2] = k & 4 ? hi[2] : lo[2];
+        lamda2xAll(c, 1, s.box.lo, h);
+        for (let d = 0; d < 3; d++) {
+          bl[d] = Math.min(bl[d], c[d]);
+          bh[d] = Math.max(bh[d], c[d]);
+        }
+      }
+      for (let d = 0; d < 3; d++) {
+        subboxlo[d] = bl[d];
+        subboxhi[d] = bh[d];
+      }
+    } else {
+      for (let d = 0; d < 3; d++) {
+        subboxlo[d] = s.box.lo[d] - this.distGhost;
+        subboxhi[d] = s.box.hi[d] + this.distGhost;
+      }
     }
     // require integer # of bins for that volume
     for (let d = 0; d < 3; d++) this.nbin2[d] = Math.trunc((subboxhi[d] - subboxlo[d]) / this.gridsearch);
@@ -807,13 +879,15 @@ export class FixSRD extends Fix {
     if (this.bigExist) this.bigStatic();
     // fix_srd.cpp pre_neighbor(): "if simulation box size changes, reset velocity bins" (change_size, set by a fix
     // deform that changes a length); the search bins follow the box as well when big particles exist
+    // fix_srd.cpp pre_neighbor(): setup_bounds and the velocity bins on change_size, the search bins on change_size
+    // or change_shape (a tilted triclinic box moves the bins every reneighbor)
     if (this.changeSize) {
       this.setupBounds();
       this.setupVelocityBins();
-      if (this.bigExist) {
-        this.setupSearchBins();
-        this.setupSearchStencil();
-      }
+    }
+    if ((this.changeSize || this.changeShape) && this.bigExist) {
+      this.setupSearchBins();
+      this.setupSearchStencil();
     }
     if (this.bigExist) {
       this.buildCopies();
@@ -835,10 +909,16 @@ export class FixSRD extends Fix {
     const skinhalf = 0.5 * this.sys.nb.skin;
     const dim = s.dimension;
     const len = [s.box.hi[0] - s.box.lo[0], s.box.hi[1] - s.box.lo[1], s.box.hi[2] - s.box.lo[2]];
+    // triclinic: the periodic images are lattice shifts, i.e. integer lamda shifts; the ghost cutoff is in lamda units
+    const geom = this.triclinic ? boxMatrix(s.box.lo, s.box.hi, s.box.tilt) : null;
+    const cutlam = [0, 0, 0];
     const kmax = [0, 0, 0];
     for (let d = 0; d < dim; d++) {
-      kmax[d] = s.box.periodic[d] && cutghost > 0 ? Math.ceil(cutghost / len[d]) : 0;
+      cutlam[d] = geom ? cutghost * geom.len[d] : cutghost;
+      const span = geom ? 1 : len[d];
+      kmax[d] = s.box.periodic[d] && cutghost > 0 ? Math.ceil(cutlam[d] / span) : 0;
     }
+    const lam = new Float64Array(3);
     const owner: number[] = [];
     const shift: number[] = [];
     const radius: number[] = [];
@@ -848,6 +928,11 @@ export class FixSRD extends Fix {
       if (!(s.mask[j] & this.bigBit)) continue;
       const rad = this.bigRadius(j);
       const cb = (rad + skinhalf) * (rad + skinhalf);
+      // the owner's lamda position (triclinic ghost test); the lamda shift of an image is its integer shift
+      if (geom) {
+        lam.set(s.x.subarray(3 * j, 3 * j + 3));
+        x2lamdaAll(lam, 1, s.box.lo, geom.hinv);
+      }
       for (let sz = -kmax[2]; sz <= kmax[2]; sz++)
         for (let sy = -kmax[1]; sy <= kmax[1]; sy++)
           for (let sx = -kmax[0]; sx <= kmax[0]; sx++) {
@@ -857,6 +942,11 @@ export class FixSRD extends Fix {
               let ghost = true;
               for (let d = 0; d < dim && ghost; d++) {
                 if (sh[d] === 0) continue;
+                if (geom) {
+                  const p = lam[d] + sh[d];
+                  if (p < 0 - cutlam[d] || p > 1 + cutlam[d]) ghost = false;
+                  continue;
+                }
                 const p = s.x[3 * j + d] + sh[d] * len[d];
                 if (p < s.box.lo[d] - cutghost || p > s.box.hi[d] + cutghost) ghost = false;
               }
@@ -880,12 +970,14 @@ export class FixSRD extends Fix {
   /** copy positions = owner position + periodic shift (forward communication of ghost positions) */
   private updateCopyPositions(): void {
     const s = this.sys.state;
-    const len = [s.box.hi[0] - s.box.lo[0], s.box.hi[1] - s.box.lo[1], s.box.hi[2] - s.box.lo[2]];
+    // the image of shift (sx, sy, sz): x += sx lx + sy xy + sz xz, y += sy ly + sz yz, z += sz lz (Comm::borders, triclinic)
+    const { h } = boxMatrix(s.box.lo, s.box.hi, s.box.tilt);
     for (let c = 0; c < this.copyOwner.length; c++) {
       const j = this.copyOwner[c];
-      for (let d = 0; d < 3; d++) {
-        this.copyPos[3 * c + d] = s.x[3 * j + d] + this.copyShift[3 * c + d] * len[d];
-      }
+      const sx = this.copyShift[3 * c], sy = this.copyShift[3 * c + 1], sz = this.copyShift[3 * c + 2];
+      this.copyPos[3 * c] = s.x[3 * j] + (sx * h[0] + sy * h[5] + sz * h[4]);
+      this.copyPos[3 * c + 1] = s.x[3 * j + 1] + (sy * h[1] + sz * h[3]);
+      this.copyPos[3 * c + 2] = s.x[3 * j + 2] + sz * h[2];
     }
   }
 
@@ -935,31 +1027,40 @@ export class FixSRD extends Fix {
     const per = s.box.periodic;
 
     // the shifted grid corner (fix_srd.cpp: shifts[1].corner, drawn x, y, then z in 3d)
-    const corner = [s.box.lo[0], s.box.lo[1], s.box.lo[2]];
+    // triclinic: the origin is boxlo_lamda (0), and the bins are in lamda units (fix_srd.cpp reset_velocities)
+    const tri = this.triclinic;
+    const geomR = tri ? boxMatrix(s.box.lo, s.box.hi, s.box.tilt) : null;
+    const corner = tri ? [0, 0, 0] : [s.box.lo[0], s.box.lo[1], s.box.lo[2]];
     if (this.shiftflag && this.randomShift) {
-      corner[0] = s.box.lo[0] - this.binsize1[0] * this.randomShift.uniform();
-      corner[1] = s.box.lo[1] - this.binsize1[1] * this.randomShift.uniform();
-      if (dim === 3) corner[2] = s.box.lo[2] - this.binsize1[2] * this.randomShift.uniform();
+      corner[0] = corner[0] - this.binsize1[0] * this.randomShift.uniform();
+      corner[1] = corner[1] - this.binsize1[1] * this.randomShift.uniform();
+      if (dim === 3) corner[2] = corner[2] - this.binsize1[2] * this.randomShift.uniform();
     }
     // bin range per dimension: [0, nb-1]; the shifted grid runs to the bin holding the upper box face
     const nb = [1, 1, 1];
     for (let d = 0; d < 3; d++) {
       let hi = this.nbin1[d] - 1;
-      if (this.shiftflag) hi = Math.trunc((s.box.hi[d] - corner[d]) * this.bininv1[d]);
+      if (this.shiftflag) hi = Math.trunc(((tri ? 1 : s.box.hi[d]) - corner[d]) * this.bininv1[d]);
       if (d === 2 && dim === 2) hi = 0;
       nb[d] = hi + 1;
     }
     const [nbx, nby, nbz] = nb;
     const nbins = nbx * nby * nbz;
     const strides = [1, nbx, nbx * nby];
+    // triclinic: the positions are taken to lamda units for the binning (native x2lamda(nlocal)) and restored after it
+    // (native lamda2x(nlocal)), so x keeps the round-off of the round trip as native does
+    const lamB = tri && geomR ? Float64Array.from(x.subarray(0, 3 * s.n)) : null;
+    if (lamB && geomR) x2lamdaAll(lamB, s.n, s.box.lo, geomR.hinv);
+    let pos: Float64Array = lamB ?? x;
     const cellOf = (i: number): [number, number, number] => [
-      clampInt(Math.trunc((x[3 * i] - corner[0]) * this.bininv1[0]), 0, nbx - 1),
-      clampInt(Math.trunc((x[3 * i + 1] - corner[1]) * this.bininv1[1]), 0, nby - 1),
-      clampInt(Math.trunc((x[3 * i + 2] - corner[2]) * this.bininv1[2]), 0, nbz - 1),
+      clampInt(Math.trunc((pos[3 * i] - corner[0]) * this.bininv1[0]), 0, nbx - 1),
+      clampInt(Math.trunc((pos[3 * i + 1] - corner[1]) * this.bininv1[1]), 0, nby - 1),
+      clampInt(Math.trunc((pos[3 * i + 2] - corner[2]) * this.bininv1[2]), 0, nbz - 1),
     ];
-    // fix_srd.cpp reset_velocities(): h_rate and h_ratelo of fix deform (orthogonal box: the tilt rates are zero)
+    // fix_srd.cpp reset_velocities(): h_rate = [lx, ly, lz, yz, xz, xy] rates and h_ratelo of fix deform (the tilt
+    // rates are zero in an orthogonal box)
     const deformRates = this.deformFix ? this.deformFix.streamingRates() : null;
-    const hRate = deformRates ? deformRates.rate : [0, 0, 0];
+    const hRate = deformRates ? deformRates.rate : [0, 0, 0, 0, 0, 0];
     const hRateLo = deformRates ? deformRates.ratelo : [0, 0, 0];
 
     // binhead = first SRD particle in each bin, binnext = next particle in the same bin
@@ -973,12 +1074,23 @@ export class FixSRD extends Fix {
       // loses the box rate of that dimension
       if (deformRates) {
         if (per[0] && ix === this.nbin1[0]) v[3 * i] -= hRate[0];
-        if (per[1] && iy === this.nbin1[1]) v[3 * i + 1] -= hRate[1];
-        if (per[2] && iz === this.nbin1[2]) v[3 * i + 2] -= hRate[2];
+        if (per[1] && iy === this.nbin1[1]) {
+          v[3 * i] -= hRate[5];
+          v[3 * i + 1] -= hRate[1];
+        }
+        if (per[2] && iz === this.nbin1[2]) {
+          v[3 * i] -= hRate[4];
+          v[3 * i + 1] -= hRate[3];
+          v[3 * i + 2] -= hRate[2];
+        }
       }
       const ibin = iz * nby * nbx + iy * nbx + ix;
       binnext[i] = binhead[ibin];
       binhead[ibin] = i;
+    }
+    if (lamB && geomR) {
+      lamda2xAll(lamB, s.n, s.box.lo, geomR.h);
+      x.set(lamB, 0);
     }
 
     // owners: with shifting, the last bin of a periodic dimension duplicates the first one (not an owner)
@@ -1148,13 +1260,36 @@ export class FixSRD extends Fix {
 
     // "undo velocity remap (only if using PUT or tstat no)": the box-rate correction of the last bins is added back
     if (deformRates && (this.unbiasflag || !this.tstat)) {
-      for (let k = 0; k < s.n; k++) {
-        const i = order[k];
-        if (!(mask[i] & this.groupBit)) continue;
-        const [ix, iy, iz] = cellOf(i);
-        if (per[0] && ix === this.nbin1[0]) v[3 * i] += hRate[0];
-        if (per[1] && iy === this.nbin1[1]) v[3 * i + 1] += hRate[1];
-        if (per[2] && iz === this.nbin1[2]) v[3 * i + 2] += hRate[2];
+      if (lamB && geomR) {
+        const lam2 = Float64Array.from(x.subarray(0, 3 * s.n));
+        x2lamdaAll(lam2, s.n, s.box.lo, geomR.hinv);
+        pos = lam2;
+        for (let k = 0; k < s.n; k++) {
+          const i = order[k];
+          if (!(mask[i] & this.groupBit)) continue;
+          const [ix, iy, iz] = cellOf(i);
+          if (per[0] && ix === this.nbin1[0]) v[3 * i] += hRate[0];
+          if (per[1] && iy === this.nbin1[1]) {
+            v[3 * i] += hRate[5];
+            v[3 * i + 1] += hRate[1];
+          }
+          if (per[2] && iz === this.nbin1[2]) {
+            v[3 * i] += hRate[4];
+            v[3 * i + 1] += hRate[3];
+            v[3 * i + 2] += hRate[2];
+          }
+        }
+        lamda2xAll(lam2, s.n, s.box.lo, geomR.h);
+        x.set(lam2, 0);
+      } else {
+        for (let k = 0; k < s.n; k++) {
+          const i = order[k];
+          if (!(mask[i] & this.groupBit)) continue;
+          const [ix, iy, iz] = cellOf(i);
+          if (per[0] && ix === this.nbin1[0]) v[3 * i] += hRate[0];
+          if (per[1] && iy === this.nbin1[1]) v[3 * i + 1] += hRate[1];
+          if (per[2] && iz === this.nbin1[2]) v[3 * i + 2] += hRate[2];
+        }
       }
     }
   }
@@ -1200,8 +1335,11 @@ export class FixSRD extends Fix {
       else this.collisionsSingle();
     }
 
-    // if any SRD particle has moved too far, trigger reneighboring on the next step
+    // if any SRD particle has moved too far, trigger reneighboring on the next step (lamda units for triclinic:
+    // fix_srd.cpp post_force(), x2lamda(nlocal) and lamda2x(nlocal) around the check)
     let flag = false;
+    const geomP = this.triclinic ? boxMatrix(s.box.lo, s.box.hi, s.box.tilt) : null;
+    if (geomP) x2lamdaAll(x, s.n, s.box.lo, geomP.hinv);
     for (let k = 0; k < s.n && !flag; k++) {
       const i = order[k];
       if (!(mask[i] & this.groupBit)) continue;
@@ -1209,6 +1347,7 @@ export class FixSRD extends Fix {
         if (x[3 * i + d] < this.srdloRe[d] || x[3 * i + d] > this.srdhiRe[d]) { flag = true; break; }
       }
     }
+    if (geomP) lamda2xAll(x, s.n, s.box.lo, geomP.h);
     if (flag) {
       this.nextReneighbor = s.step + 1;
       this.reneighflag = SRD_MOVE;
@@ -1969,6 +2108,39 @@ const scale3 = (v: Float64Array, off: number, s: number): void => {
 };
 
 const clampInt = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
+
+/**
+ * The box matrix of domain.cpp at b332f28 (set_global_box): h = [lx, ly, lz, yz, xz, xy] (h[3..5] are the tilts) and
+ * its inverse hinv, with the same operations as native, so the lamda round trips agree bit for bit.
+ */
+interface BoxMatrix { h: number[]; hinv: number[]; len: number[] }
+const boxMatrix = (lo: number[], hi: number[], tilt: number[]): BoxMatrix => {
+  const h = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], tilt[2], tilt[1], tilt[0]];
+  const hinv = [1 / h[0], 1 / h[1], 1 / h[2], -h[3] / (h[1] * h[2]), (h[3] * h[5] - h[1] * h[4]) / (h[0] * h[1] * h[2]), -h[5] / (h[0] * h[1])];
+  // fix_srd.cpp: the perpendicular-distance scale factors length0..2 of a lamda distance
+  const len = [Math.sqrt(hinv[0] * hinv[0] + hinv[5] * hinv[5] + hinv[4] * hinv[4]), Math.sqrt(hinv[1] * hinv[1] + hinv[3] * hinv[3]), hinv[2]];
+  return { h, hinv, len };
+};
+
+/** Domain::x2lamda(n) in place for atoms 0..n-1 (domain.cpp at b332f28). */
+const x2lamdaAll = (x: Float64Array, n: number, lo: number[], hinv: number[]): void => {
+  for (let i = 0; i < n; i++) {
+    const d0 = x[3 * i] - lo[0], d1 = x[3 * i + 1] - lo[1], d2 = x[3 * i + 2] - lo[2];
+    x[3 * i] = hinv[0] * d0 + hinv[5] * d1 + hinv[4] * d2;
+    x[3 * i + 1] = hinv[1] * d1 + hinv[3] * d2;
+    x[3 * i + 2] = hinv[2] * d2;
+  }
+};
+
+/** Domain::lamda2x(n) in place for atoms 0..n-1 (domain.cpp at b332f28: the boxlo is added last). */
+const lamda2xAll = (x: Float64Array, n: number, lo: number[], h: number[]): void => {
+  for (let i = 0; i < n; i++) {
+    const l0 = x[3 * i], l1 = x[3 * i + 1], l2 = x[3 * i + 2];
+    x[3 * i] = h[0] * l0 + h[5] * l1 + h[4] * l2 + lo[0];
+    x[3 * i + 1] = h[1] * l1 + h[3] * l2 + lo[1];
+    x[3 * i + 2] = h[2] * l2 + lo[2];
+  }
+};
 
 const intArg = (w: string | undefined, what: string): number => {
   const n = Number(w);

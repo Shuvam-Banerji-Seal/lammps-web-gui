@@ -250,10 +250,10 @@ describe('write_restart options and unsupported states', () => {
     await expect(s3.session.execute('read_restart s.restart\npair_style sw\npair_coeff * * Si.sw Si\nrun 0\n')).resolves.toBeUndefined();
   });
 
-  it('refuses hybrid pair styles (only the sub-style list is stored natively)', async () => {
+  it('refuses a hybrid pair style whose sub-style is not stored, by name (zbl keeps no restart info)', async () => {
     const { session } = newSession();
-    await session.execute(`${LJ_BOX}pair_style hybrid lj/cut 2.5\npair_coeff 1 1 lj/cut 1.0 1.0 2.5\n`);
-    await expect(session.execute('write_restart h.restart\n')).rejects.toThrow(/pair_style hybrid is not stored/);
+    await session.execute(`${LJ_BOX}pair_style hybrid/overlay lj/cut 2.5 zbl 1.0 2.0\npair_coeff 1 1 lj/cut 1.0 1.0 2.5\npair_coeff * * zbl 1 1\nrun 0\n`);
+    await expect(session.execute('write_restart h.restart\n')).rejects.toThrow(/sub-style zbl is not stored in the browser restart file yet/);
   });
 
   it('needs a box', async () => {

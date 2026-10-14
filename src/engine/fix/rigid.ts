@@ -1,8 +1,8 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
 import type { System } from '../system';
-import { isLineAtom, isTriAtom, LINE_BONUS, massOf, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
-import { quatToMatrix } from '../compute/asphere';
+import { isEllipsoid, isLineAtom, isSuperEllipsoidStyle, isTriAtom, LINE_BONUS, massOf, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { ellipsoidInertia, quatToMatrix } from '../compute/asphere';
 import { RanMars } from '../rng';
 import { parseNumOrVar, ramp, valueOf, type NumOrVar } from './util';
 import { FixGravity } from './force_ext';
@@ -68,6 +68,11 @@ interface Body {
    * body order (fix_rigid.cpp setup_bodies_static, TRIANGLE: orient = conj(quat_body) * quat_atom, normalized); 0 for others.
    */
   orientQ: number[];
+  /**
+   * point dipoles (atom_style dipole): the dipole vector in the body frame, 3 per body atom in body order
+   * (fix_rigid_small.cpp setup_bodies_static: dorient = R^T mu scaled to |mu|); 0 for other atoms.
+   */
+  dorient: number[];
 }
 
 /** One line of an infile (fix rigid infile): attributes that override the computed ones. */
@@ -86,7 +91,7 @@ const cloneBody = (b: Body): Body => ({
   atoms: b.atoms.slice(), xcm: b.xcm.slice(), vcm: b.vcm.slice(), image: b.image.slice(),
   inertia: b.inertia.slice(), q: b.q.slice(), angmom: b.angmom.slice(), omega: b.omega.slice(),
   displace: b.displace.map((r) => r.slice()), fcm: b.fcm.slice(), torque: b.torque.slice(),
-  fflag: b.fflag.slice(), tflag: b.tflag.slice(), orient: b.orient.slice(), orientQ: b.orientQ.slice(),
+  fflag: b.fflag.slice(), tflag: b.tflag.slice(), orient: b.orient.slice(), orientQ: b.orientQ.slice(), dorient: b.dorient.slice(),
 });
 
 /** Quaternion product c = a b (math_extra.h quatquat). */
@@ -476,12 +481,16 @@ export class FixRigid extends Fix {
       for (let d = 0; d < 3; d++) { xcm[d] += m * pos[n][d]; vcm[d] += m * s.v[3 * i + d]; }
     });
     for (let d = 0; d < 3; d++) { xcm[d] /= M; vcm[d] /= M; }
-    // Body extent: the largest distance of a body atom from the atom nearest the centre of mass (measured with
-    // native LAMMPS, black box: chains of 2, 3, 4, 5 and 8 atoms spaced 1 apart give extents 1, 1, 2, 2 and 4).
+    // Body extent (fix_rigid_small.cpp at b332f28, create_bodies): the owner is the atom nearest the centre of the
+    // body's bounding box (ties to the lower atom ID), and the extent is the largest distance of a body atom from it.
+    // Measured with native LAMMPS (black box): chains of 2, 3, 4, 5 and 8 atoms spaced 1 apart give extents 1, 1, 2, 2 and 4.
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (const p of pos) for (let d = 0; d < 3; d++) { lo[d] = Math.min(lo[d], p[d]); hi[d] = Math.max(hi[d], p[d]); }
+    const ctr = [0, 1, 2].map((d) => 0.5 * (lo[d] + hi[d]));
     let ref = 0, refD2 = Infinity;
     pos.forEach((p, n) => {
-      const d2 = (p[0] - xcm[0]) ** 2 + (p[1] - xcm[1]) ** 2 + (p[2] - xcm[2]) ** 2;
-      if (d2 < refD2) { refD2 = d2; ref = n; }
+      const d2 = (p[0] - ctr[0]) ** 2 + (p[1] - ctr[1]) ** 2 + (p[2] - ctr[2]) ** 2;
+      if (d2 < refD2 || (d2 === refD2 && s.id[idx[n]] < s.id[idx[ref]])) { refD2 = d2; ref = n; }
     });
     let ext2 = 0;
     for (const p of pos) ext2 = Math.max(ext2, (p[0] - pos[ref][0]) ** 2 + (p[1] - pos[ref][1]) ** 2 + (p[2] - pos[ref][2]) ** 2);
@@ -490,6 +499,7 @@ export class FixRigid extends Fix {
     const angmom = [0, 0, 0];
     let nsph = 0;
     const orientQ = new Array<number>(4 * idx.length).fill(0);
+    const dorient = new Array<number>(3 * idx.length).fill(0);
     idx.forEach((i, n) => {
       const m = massOf(s, i);
       const r = [pos[n][0] - xcm[0], pos[n][1] - xcm[1], pos[n][2] - xcm[2]];
@@ -499,7 +509,17 @@ export class FixRigid extends Fix {
       for (let d = 0; d < 3; d++) angmom[d] += m * L[d];
       this.refuseUnsupportedParticle(key, i);
       const rad = s.radius ? s.radius[i] : 0;
-      if (isLineAtom(s, i)) {
+      if (isEllipsoid(s, i)) {
+        // fix_rigid_small.cpp setup_bodies_static (ELLIPSOID): inertia_ellipsoid(shape, quat_atom, mass) is the ellipsoid's
+        // own inertia in the space frame (its principal moments m/5 (b^2+c^2) and so on, rotated by quat_atom);
+        // setup_bodies_dynamic adds the particle's own angular momentum (ANGMOM flag). The orientation relative to the
+        // body is set after the body frame is known (below). Finite-size, so it adds a rotational dof (nsph).
+        const q = [s.quat![4 * i], s.quat![4 * i + 1], s.quat![4 * i + 2], s.quat![4 * i + 3]];
+        const Ii = triInertiaSpace(q, ellipsoidInertia(s, i));
+        for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) I[a][b] += Ii[a][b];
+        for (let d = 0; d < 3; d++) angmom[d] += s.angmom![3 * i + d];
+        nsph++;
+      } else if (isLineAtom(s, i)) {
         // fix_rigid.cpp setup_bodies_static (LINE): the segment's own inertia, inertia_line(length, theta, mass), which
         // is mass L^2/12 times (1 - u u^T) with u the segment direction (cos theta, sin theta, 0); its spin adds
         // LINERTIA m L^2 omega_z to the body angular momentum (only the z component, as native)
@@ -563,10 +583,22 @@ export class FixRigid extends Fix {
     // triangle orientations relative to the body (fix_rigid.cpp setup_bodies_static, TRIANGLE)
     const qbodyC = [frame.q[0], -frame.q[1], -frame.q[2], -frame.q[3]];
     idx.forEach((i, n) => {
-      if (!isTriAtom(s, i)) return;
+      if (!isTriAtom(s, i) && !isEllipsoid(s, i)) return;
       const qa = [s.quat![4 * i], s.quat![4 * i + 1], s.quat![4 * i + 2], s.quat![4 * i + 3]];
       const qo = quatNormalize(quatMul(qbodyC, qa));
       for (let d = 0; d < 4; d++) orientQ[4 * n + d] = qo[d];
+    });
+    // point dipoles (fix_rigid_small.cpp setup_bodies_static, DIPOLE): dorient = R^T mu, scaled to the dipole magnitude
+    // mu[3] (snormalize3); R is the body frame, whose axes are the columns of Rq
+    const Rq0 = qmat(frame.q);
+    idx.forEach((i, n) => {
+      if (!(s.mu && s.mu[4 * i + 3] > 0)) return;
+      const mu = [s.mu[4 * i], s.mu[4 * i + 1], s.mu[4 * i + 2]];
+      const dv = [0, 1, 2].map((c) => Rq0[0][c] * mu[0] + Rq0[1][c] * mu[1] + Rq0[2][c] * mu[2]);
+      const val = dv[0] * dv[0] + dv[1] * dv[1] + dv[2] * dv[2];
+      if (val <= 0) return;
+      const scale = s.mu[4 * i + 3] / Math.sqrt(val);
+      for (let d = 0; d < 3; d++) dorient[3 * n + d] = dv[d] * scale;
     });
     const inertia = frame.inertia;
     const ncollinear = inertia.filter((v) => v === 0).length;
@@ -586,6 +618,7 @@ export class FixRigid extends Fix {
       nsph,
       orient,
       orientQ,
+      dorient,
     };
     this.wrapCom(b);
     return b;
@@ -593,12 +626,17 @@ export class FixRigid extends Fix {
 
   /**
    * Particles this fix cannot yet integrate as finite-size bodies are refused, never treated as points.
-   * Ellipsoids (their orientation quaternion and angular momentum must follow the body) and point dipoles
-   * (their vectors must rotate with the body and receive dipole torques) are not implemented.
+   * rigid/small integrates ellipsoids (constructBody, setXV) and point dipoles; the other rigid styles still refuse
+   * them, since their orientation and dipole vectors are not implemented there.
    */
   private refuseUnsupportedParticle(key: string, i: number): void {
     const s = this.sys.state;
     const id = s.id[i];
+    // fix rigid/small: ellipsoids and point dipoles are integrated (see constructBody and setXV)
+    if (this.style.includes('small')) {
+      if (isSuperEllipsoidStyle(s.atomStyle)) throw new StyleError(`fix ${this.style}: Superellipsoids not supported in fix rigid/small`);
+      return;
+    }
     if (s.shape && s.shape[3 * i] > 0) throw new StyleError(`fix ${this.style}: finite-size ellipsoid atom ${id} in rigid body ${key} is not supported by the browser engine (ellipsoidal particles in rigid bodies need their orientation to follow the body)`);
     if (s.mu && s.mu[4 * i + 3] !== 0) throw new StyleError(`fix ${this.style}: point dipole atom ${id} in rigid body ${key} is not supported by the browser engine (dipole vectors must rotate with the body and feel dipole torques)`);
   }
@@ -786,6 +824,33 @@ export class FixRigid extends Fix {
         if (setX && isLineAtom(s, i)) s.custom.get(LINE_BONUS)!.data[2 * i + 1] = wrapAngle(b.orient[n] + bodyTheta(b.q));
         // fix_rigid.cpp set_xv()/set_v() (TRIANGLE): set_xv sets the triangle's quaternion quat_body * orient; both set its
         // angular momentum from the body's omega with its principal moments (omega_to_angmom)
+        // fix_rigid_small.cpp set_xv() and set_v() (ELLIPSOID): quat_atom = quat_body * orient (set_xv only), then
+        // angmom from the body omega with the ellipsoid's own moments in the space frame (omega_to_angmom)
+        if (isEllipsoid(s, i)) {
+          if (setX) {
+            const qo = quatNormalize(quatMul(b.q, b.orientQ.slice(4 * n, 4 * n + 4)));
+            for (let d = 0; d < 4; d++) s.quat![4 * i + d] = qo[d];
+          }
+          const q = [s.quat![4 * i], s.quat![4 * i + 1], s.quat![4 * i + 2], s.quat![4 * i + 3]];
+          const R = quatToMatrix(q[0], q[1], q[2], q[3]);
+          const moments = ellipsoidInertia(s, i);
+          const L = [0, 0, 0];
+          for (let k = 0; k < 3; k++) {
+            const ek = [R[k], R[3 + k], R[6 + k]];
+            const wk = (b.omega[0] * ek[0] + b.omega[1] * ek[1] + b.omega[2] * ek[2]) * moments[k];
+            for (let d = 0; d < 3; d++) L[d] += wk * ek[d];
+          }
+          for (let d = 0; d < 3; d++) s.angmom![3 * i + d] = L[d];
+        }
+        // fix_rigid_small.cpp set_xv() (DIPOLE): mu = R dorient, scaled to the magnitude mu[3]; set_v leaves mu alone
+        if (setX && s.mu && s.mu[4 * i + 3] > 0) {
+          const dv = [b.dorient[3 * n], b.dorient[3 * n + 1], b.dorient[3 * n + 2]];
+          const val = dv[0] * dv[0] + dv[1] * dv[1] + dv[2] * dv[2];
+          if (val > 0) {
+            const scale = s.mu[4 * i + 3] / Math.sqrt(val);
+            for (let d = 0; d < 3; d++) s.mu[4 * i + d] = (R[d][0] * dv[0] + R[d][1] * dv[1] + R[d][2] * dv[2]) * scale;
+          }
+        }
         if (isTriAtom(s, i)) {
           if (setX) {
             const qo = quatNormalize(quatMul(b.q, b.orientQ.slice(4 * n, 4 * n + 4)));

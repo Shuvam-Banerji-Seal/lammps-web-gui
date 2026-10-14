@@ -266,6 +266,9 @@ export class FixDeposit extends Fix {
       if (typeof (rf as { addMolecule?: unknown }).addMolecule !== 'function') {
         throw new StyleError(`fix deposit rigid: fix ${this.rigidId} (${rf.style}) is not a fix rigid/small`);
       }
+      // fix_deposit.cpp (init): "Fix deposit and rigid fix are not using the same molecule template ID"
+      const fixMol = (rf as { moleculeTemplateId?: () => string | null }).moleculeTemplateId?.() ?? null;
+      if (fixMol !== this.molTemplateId) throw new StyleError('Fix deposit and rigid fix are not using the same molecule template ID');
       this.rigidFix = rf;
     }
     if (this.shakeId) {

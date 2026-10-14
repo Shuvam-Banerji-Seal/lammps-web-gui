@@ -1,0 +1,32 @@
+# oracle: pair_style table spline 500 with a table that has FPRIME end slopes (w10table_lj_fp50.table, LJ 12-6 in RSQ, outer distance 2.5) used with a pair cutoff of 2.0 below the outer table distance, so the outer force-spline end slope is the secant estimate (src/pair_table.cpp compute_table, SPLINE branch, "tb->cut == tb->rfile[tb->ninput - 1]" test); 108 atoms, run 0
+# guard: passes on main (the FPRIME inner end and the cutoff-below-outer-table branch agree with native); measured max error per atom relative to max(1,|value|): per-atom 1.1e-14 (atom 12 fx), thermo 1.8e-15. native: b332f28 (/home/roy/.local/bin/lmp)
+# oracle-inputs: w10table_lj_fp50.table
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+dimension       3
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      2 box
+create_atoms    1 box
+group           odd id 1:108:2
+set             group odd type 2
+mass            * 1.0
+variable        dx atom 0.04*sin(1.3*x+0.7*y)
+variable        dy atom 0.04*cos(0.9*y-1.1*z)
+variable        dz atom 0.04*sin(1.7*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 0.8*sin(0.9*x+0.4*z)
+variable        vy atom 0.8*cos(0.6*y+0.8*x)
+variable        vz atom 0.8*sin(0.7*z-0.3*y)
+velocity        all set v_vx v_vy v_vz units box
+pair_style      table spline 500
+pair_coeff      1 1 w10table_lj_fp50.table LJ11 2.0
+pair_coeff      2 2 w10table_lj_fp50.table LJ11 2.0
+pair_coeff      1 2 w10table_lj_fp50.table LJ11 2.0
+timestep        0.002
+fix             1 all nve
+thermo_style    custom step temp pe etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             0

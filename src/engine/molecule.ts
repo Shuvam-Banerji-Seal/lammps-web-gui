@@ -707,6 +707,32 @@ export const geometricCenter = (t: MoleculeTemplate): [number, number, number] =
   return [c[0] / t.natoms, c[1] / t.natoms, c[2] / t.natoms];
 };
 
+/**
+ * Orientation of a molecule inserted by create_atoms (theta in radians about the axis rx, ry, rz). The axis is scaled
+ * to unit length, the rotation is the quaternion (cos(theta/2), axis sin(theta/2)), and the matrix is read off the
+ * quaternion, in the operation order of native LAMMPS (As native LAMMPS does: src/create_atoms.cpp get_xmol with
+ * src/math_extra.h norm3 and axisangle_to_quat, and src/math_extra.cpp quat_to_mat, at b332f28). The order matters:
+ * velocity loop geom seeds its random numbers from the bit pattern of each atom's coordinates, so a last-bit
+ * difference in an inserted coordinate changes every velocity.
+ */
+export const orientationMatrix = (theta: number, rx: number, ry: number, rz: number): number[][] => {
+  const val = rx * rx + ry * ry + rz * rz;
+  if (!(val > 0)) throw new StyleError('rotation vector must be non-zero');
+  const scale = 1 / Math.sqrt(val);
+  const ax = rx * scale, ay = ry * scale, az = rz * scale;
+  const halfa = 0.5 * theta;
+  const sina = Math.sin(halfa);
+  const w = Math.cos(halfa), i = ax * sina, j = ay * sina, k = az * sina;
+  const w2 = w * w, i2 = i * i, j2 = j * j, k2 = k * k;
+  const twoij = 2 * i * j, twoik = 2 * i * k, twojk = 2 * j * k;
+  const twoiw = 2 * i * w, twojw = 2 * j * w, twokw = 2 * k * w;
+  return [
+    [w2 + i2 - j2 - k2, twoij - twokw, twojw + twoik],
+    [twoij + twokw, w2 - i2 + j2 - k2, twojk - twoiw],
+    [twoik - twojw, twojk + twoiw, w2 - i2 - j2 + k2],
+  ];
+};
+
 /** Rotation matrix for angle theta (radians) about the axis (rx, ry, rz) (right-hand rule). */
 export const rotationMatrix = (theta: number, rx: number, ry: number, rz: number): number[][] => {
   const n = Math.hypot(rx, ry, rz);

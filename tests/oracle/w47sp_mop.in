@@ -1,7 +1,7 @@
 # oracle: compute stress/mop at one plane (center, kin conf; lower total; a group with the pair keyword) on a periodic lj fcc liquid after 20 nve steps
 # oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10
 # oracle-files: w47sp_mop.time
-# oracle-note: the values are sampled by fix ave/time with start 20 (the setup evaluation of stress/mop is an EngineError: native's setup row is not reproduced)
+# oracle-note: the values are sampled by fix ave/time with start 20 (the setup evaluation is reproduced too: w149cp_mop_setup)
 units           lj
 atom_style      atomic
 lattice         fcc 0.8442

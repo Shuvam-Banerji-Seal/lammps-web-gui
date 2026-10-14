@@ -46,7 +46,7 @@ const fixedWidth = (x: number, w: number, p: number): string => x.toFixed(p).pad
  * the owned atoms below i in native order (their BOp calls append to i's region while those atoms are processed),
  * in native order of those atoms; then the bonds of i's own far neighbors, in the order of the native far list.
  */
-const nativeRegion = (b: BondList, nat: NativeFarOrder, i: number, n: number): number[] => {
+export const nativeRegion = (b: BondList, nat: NativeFarOrder, i: number, n: number): number[] => {
   const ni = nat.nativeIdx[i];
   const items: { pj: number; group: number; key: number }[] = [];
   for (let pj = b.start[i]; pj < b.end[i]; pj++) {
@@ -64,7 +64,7 @@ const nativeRegion = (b: BondList, nat: NativeFarOrder, i: number, n: number): n
 };
 
 /** Current tag of an owned or ghost atom (engine index). */
-const tagOf = (sys: System, p: number, n: number): number => sys.state.id[p < n ? p : sys.nb.owner[p]];
+export const tagOf = (sys: System, p: number, n: number): number => sys.state.id[p < n ? p : sys.nb.owner[p]];
 
 /** fix reaxff/bonds Nevery filename (docs.lammps.org/fix_reaxff_bonds.html). */
 export class FixReaxFFBonds extends Fix {

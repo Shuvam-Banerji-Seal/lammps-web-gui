@@ -43,9 +43,21 @@ describe('kspace_style pppm/dipole', () => {
     expect(r.error).toBeNull();
   });
 
-  it('refuses nonzero point charges by name (native also adds the charge terms, not ported)', async () => {
+  it('runs a system with point charges and point dipoles (charge-charge and charge-dipole channels)', async () => {
+    // Coulomb cutoff 0.5 is below the fcc nearest-neighbour distance: no real-space Coulomb pair term exists
+    const h = header('0.3').replace('lj/cut/dipole/long 2.5', 'lj/cut/dipole/long 2.5 0.5');
+    const r = await run(`${h}kspace_style pppm/dipole 1.0e-4\nkspace_modify gewald 0.5 mesh 8 8 8\nrun 0\n`);
+    expect(r.error).toBeNull();
+  });
+
+  it('refuses point charges inside the Coulomb cutoff of lj/cut/dipole/long by name (real-space charge terms not ported)', async () => {
     const r = await run(`${header('0.3')}kspace_style pppm/dipole 1.0e-4\nkspace_modify gewald 0.5 mesh 8 8 8\nrun 0\n`);
-    expect(r.error).toContain('kspace_style pppm/dipole with point charges is not supported');
+    expect(r.error).toContain('with point charges inside the Coulomb cutoff is not supported');
+  });
+
+  it('refuses per-atom stress by name (the per-atom virial of pppm/dipole is not ported)', async () => {
+    const r = await run(`${header('0.0')}kspace_style pppm/dipole 1.0e-4\nkspace_modify gewald 0.5 mesh 8 8 8\ncompute sa all stress/atom NULL\nthermo_style custom step c_sa[1]\nrun 0\n`);
+    expect(r.error).toContain('stress/atom');
   });
 
   it('refuses kspace_modify slab, diff, force and minorder by name', async () => {

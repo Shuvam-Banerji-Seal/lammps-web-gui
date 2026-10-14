@@ -4,7 +4,7 @@ import type { EngineEvent } from '../src/engine/types';
 
 /*
  * Computes ported from LAMMPS (commit b332f28): entropy/atom and basal/atom (src/EXTRA-COMPUTE), xrd and saed (src/DIFFRACTION),
- * and the refusal of fix saed/vtk. Native parity is in tests/oracle/w134cp_*.in (engineOracle.test.ts); this file checks the
+ * and fix saed/vtk (refusals of its unsupported keywords). Native parity is in tests/oracle/w134cp_*.in (engineOracle.test.ts); this file checks the
  * refusals and error texts of the ported commands.
  */
 
@@ -93,9 +93,19 @@ describe('compute saed (ported)', () => {
   });
 });
 
-describe('fix saed/vtk (refused)', () => {
-  it('is refused by name with the reason', async () => {
+describe('fix saed/vtk (ported)', () => {
+  it('refuses binary output by name', async () => {
+    const r = await run(`${SETUP}${PAIR}compute s all saed 0.0251 Ni manual\nfix v all saed/vtk 1 1 1 c_s file out.vtk binary yes\nrun 0\n`);
+    expect(r.errors[0]).toMatch(/fix saed\/vtk binary yes is not supported/);
+  });
+
+  it('refuses ave window, which overruns the native window buffer', async () => {
+    const r = await run(`${SETUP}${PAIR}compute s all saed 0.0251 Ni Kmax 0.7 Zone 0 0 0 c 0.05 0.05 0.05 manual\nfix v all saed/vtk 1 1 1 c_s file out.vtk ave window 2\nrun 0\n`);
+    expect(r.errors[0]).toMatch(/ave window is not supported/);
+  });
+
+  it('needs a c_ID compute reference', async () => {
     const r = await run(`${SETUP}${PAIR}compute s all saed 0.0251 Ni manual\nfix v all saed/vtk 1 1 1 s file out.vtk\nrun 0\n`);
-    expect(r.errors[0]).toMatch(/fix saed\/vtk is not supported/);
+    expect(r.errors[0]).toMatch(/4th argument must be c_ID/);
   });
 });

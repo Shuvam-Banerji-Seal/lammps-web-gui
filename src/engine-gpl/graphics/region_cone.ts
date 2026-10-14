@@ -26,7 +26,6 @@ const SMALL = 1.0e-10;
 /** Graphics::CONE_TOP, CONE_BOT and CONE_SIDE (graphics.h). */
 const CONE_TOP = 1, CONE_BOT = 2, CONE_SIDE = 4;
 
-const dot = (a: V, b: V): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: V, b: V): V => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const vlen = (a: V): number => Math.hypot(a[0], a[1], a[2]);
 /** vec3norm of image_objects.cpp: a zero vector stays zero. */

@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
 import type { EngineEvent } from '../src/engine/types';
 import type { RasterFrame } from '../src/engine/output/image_objects';
-import { drawCylinder, drawSphere, drawTriangle } from '../src/engine-gpl/graphics/draw';
+import { drawSphere, drawTriangle } from '../src/engine-gpl/graphics/draw';
 import { drawLineAtoms, drawTriAtoms } from '../src/engine-gpl/graphics/atom_objects';
 import { TRANSTHRESH } from '../src/engine-gpl/graphics/transthresh';
 import { drawConeRegion } from '../src/engine-gpl/graphics/region_cone';

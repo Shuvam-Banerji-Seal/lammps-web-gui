@@ -28,7 +28,7 @@ import type { AtomStyle, SimState } from '../types';
 import type { System } from '../system';
 import { bitOfIndex, type DynamicGroup } from '../group';
 import { parseBalanceWeight, applyBalanceWeights, balanceNeighFactor, balanceUsesNeigh, type BalanceWeightAction } from '../fix/balance';
-import { parseMoleculeFile, geometricCenter, rotationMatrix, templateDipoles, type MoleculeTemplate, type MoleculeOptions } from '../molecule';
+import { parseMoleculeFile, geometricCenter, orientationMatrix, templateDipoles, type MoleculeTemplate, type MoleculeOptions } from '../molecule';
 
 /*
  * System setup commands. Each handler cites its docs.lammps.org page.
@@ -660,17 +660,17 @@ const createAtoms: Handler = ({ sys }, a) => {
   if (rotKw && sys.dimension === 2 && (num(rotKw[1], 'Rx') !== 0 || num(rotKw[2], 'Ry') !== 0)) {
     throw new StyleError('create_atoms rotate: "A rotation vector specified for a single molecule must be in the z-direction for a 2d model."');
   }
-  const fixedR = rotKw ? rotationMatrix((num(rotKw[0], 'theta') * Math.PI) / 180, num(rotKw[1], 'Rx'), num(rotKw[2], 'Ry'), num(rotKw[3], 'Rz')) : null;
+  const fixedR = rotKw ? orientationMatrix((num(rotKw[0], 'theta') / 180) * Math.PI, num(rotKw[1], 'Rx'), num(rotKw[2], 'Ry'), num(rotKw[3], 'Rz')) : null;
   const molCenter = tmpl ? geometricCenter(tmpl) : [0, 0, 0];
   /** create_atoms.html: "placing the geometric center of the molecule at the lattice point, and (by default) giving the molecule a random orientation about the point" */
   const placeMol = (p: number[]): number[] => {
     let R = fixedR;
     if (!R) {
-      if (sys.dimension === 2) R = rotationMatrix(2 * Math.PI * molRng!.uniform(), 0, 0, 1);
+      if (sys.dimension === 2) R = orientationMatrix(molRng!.uniform() * (2 * Math.PI), 0, 0, 1);
       else {
         // rotation by 2 pi u4 about the axis (u1 - 0.5, u2 - 0.5, u3 - 0.5), see molRng above
         const u1 = molRng!.uniform(), u2 = molRng!.uniform(), u3 = molRng!.uniform(), u4 = molRng!.uniform();
-        R = rotationMatrix(2 * Math.PI * u4, u1 - 0.5, u2 - 0.5, u3 - 0.5);
+        R = orientationMatrix(u4 * (2 * Math.PI), u1 - 0.5, u2 - 0.5, u3 - 0.5);
       }
     }
     const out: number[] = [];
@@ -680,7 +680,8 @@ const createAtoms: Handler = ({ sys }, a) => {
     lastMu = [];
     for (let i = 0; i < tmpl!.natoms; i++) {
       const r = [0, 1, 2].map((d) => tmpl!.x[3 * i + d] - molCenter[d]);
-      for (let d = 0; d < 3; d++) out.push(p[d] + R[d][0] * r[0] + R[d][1] * r[1] + R[d][2] * r[2]);
+      // matvec then add3 in native (create_atoms.cpp get_xmol): the rotated offset is summed first, then the center is added
+      for (let d = 0; d < 3; d++) out.push(p[d] + (R[d][0] * r[0] + R[d][1] * r[1] + R[d][2] * r[2]));
       if (tmpl!.mu) {
         const m = [0, 1, 2].map((d) => tmpl!.mu![3 * i + d]);
         for (let d = 0; d < 3; d++) lastMu.push(R[d][0] * m[0] + R[d][1] * m[1] + R[d][2] * m[2]);

@@ -1,0 +1,30 @@
+# oracle: fix efield on point dipoles with an equal-style ramp (v_bz = 0.25*ramp(0,1)) over 40 steps, BPM dimer with nve/bpm/sphere update dipole (the w131cf_efield_dipole system run longer); thermo every step, final per-atom state compared
+# guard: passes on main. Measured with native LAMMPS (b332f28, /home/roy/.local/bin/lmp) against the engine: thermo 7.7e-16 relative (max(1,|v|)), final x, v, f 1.4e-12 relative. Dumped bond torques (not compared here) differ by up to 3e-5 relative on near-zero torques after step 25 (absolute 4e-10); see the follow-up note.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+dimension       3
+boundary        f f f
+atom_style      hybrid bpm/sphere dipole
+region          box block -10 10 -10 10 -10 10
+create_box      1 box bond/types 1 extra/bond/per/atom 2
+create_atoms    1 single 0.0 0.0 0.0
+create_atoms    1 single 1.2 0.1 0.0
+create_bonds    single/bond 1 1 2
+set             group all density 1.0
+set             atom 1 dipole 0.0 0.0 1.0
+set             atom 2 dipole 1.0 0.0 0.5
+comm_modify     vel yes cutoff 3.0
+pair_style      zero 2.0
+pair_coeff      * *
+special_bonds   lj 0.0 1.0 1.0 coul 1.0 1.0 1.0
+bond_style      bpm/rotational smooth no break no
+bond_coeff      1 1.0 1.0 0.1 0.5 -1 -1 -1 -1 1e-3 1e-3 1e-3 1e-3
+set             atom 2 vy 0.3
+timestep        1e-4
+variable        bz equal 0.25*ramp(0,1)
+fix             1 all nve/bpm/sphere update dipole
+fix             2 all efield 0.0 0.0 v_bz
+thermo_style    custom step ke pe ebond
+thermo_modify   format float %.15g norm no
+thermo          1
+run             40

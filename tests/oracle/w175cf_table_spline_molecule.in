@@ -1,0 +1,31 @@
+# oracle: pair_style table spline 3000 alone on a create_atoms molecule topology (w112ldd_ABCD.mol inserted with create_atoms mol, bonded terms of w112ldd_bonded.lammps, 240 atoms) with non-zero special factors (special_bonds lj/coul 0.0 0.5 0.8), 10 NVE steps; velocity loop all (loop geom depends on coordinate bits, see w112ldd_create_data)
+# guard: the table spline term on this topology (special pairs included) agrees with native; the 5% per-atom error mentioned in the follow-up list does not reproduce on main
+# measured max error vs native (per atom, relative to max(1,|value|)): per-atom 8.6e-14 (atom 190 fz), thermo 4.3e-15. native: b332f28 (/home/roy/.local/bin/lmp)
+# oracle-inputs: w112ldd_ABCD.mol w112ldd_bonded.lammps w112ldd_nb_ACA_ACA.table
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+dimension       3
+boundary        p p p
+atom_style      full
+timestep        0.5
+bond_style harmonic
+angle_style harmonic
+dihedral_style harmonic
+improper_style none
+region my_box block 0 40 0 40 0 40
+create_box 4 my_box bond/types 1 angle/types 1 dihedral/types 1 extra/bond/per/atom 12 extra/angle/per/atom 12 extra/dihedral/per/atom 8 extra/special/per/atom 30
+mass  * 59.0448
+special_bonds lj 0.0 0.5 0.8 coul 0.0 0.5 0.8
+pair_style      table spline 3000
+molecule CHAIN w112ldd_ABCD.mol
+create_atoms 0 random 60 885401 my_box mol CHAIN 454756
+include w112ldd_bonded.lammps
+pair_coeff      * * w112ldd_nb_ACA_ACA.table nb_ACA_ACA 15.0
+velocity        all create 300.0 22345 dist gaussian loop all
+neighbor        2.0 bin
+neigh_modify    delay 0 every 1 check yes
+thermo_style    custom step temp ke pe evdwl ebond eangle edihed etotal
+thermo_modify   format float %.15g
+thermo          5
+fix             1  all      nve
+run 10

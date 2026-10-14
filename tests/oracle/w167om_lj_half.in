@@ -1,0 +1,23 @@
+# oracle: velocity all create, then velocity half zero angular on the 54 atoms with id <= 54 of a 3d LJ fcc block (108 atoms): a non-singular inertia tensor, so Group::omega takes the inverse path (det > EPSILON, src/group.cpp at b332f28), then 10 NVE steps
+# native: b332f28 installed lmp (/home/roy/.local/bin/lmp), no extra package
+# measured: (filled in by the run)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units          lj
+dimension      3
+boundary       p p p
+atom_style     atomic
+lattice        fcc 0.8442
+region         box block 0 3 0 3 0 3
+create_box     1 box
+create_atoms   1 box
+mass           * 1.0
+velocity       all create 1.44 87287 loop geom
+group          half id <= 54
+velocity       half zero angular
+pair_style     lj/cut 2.5
+pair_coeff     * * 1.0 1.0 2.5
+fix            1 all nve
+thermo_style   custom step temp pe ke
+thermo_modify  format float %.15g
+thermo         5
+run            10

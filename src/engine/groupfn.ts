@@ -5,6 +5,7 @@ import { hasCharge, hasMolecule, massOf } from './atoms';
 import { finiteSpin } from './compute/finiteSpin';
 import type { SimState } from './types';
 import { isLabelKind } from './labelmap';
+import { groupMotionOf } from './groupMotion';
 
 /*
  * Group, region, special and feature functions of variable formulas —
@@ -184,11 +185,8 @@ const groupFn = (sys: System, fn: string, args: string[]): number => {
       return [I[0][0], I[1][1], I[2][2], I[0][1], I[1][2], I[0][2]][k];
     }
     case 'omega': {
-      const c = com();
-      // omega() keeps the point-mass L and I: measured with native LAMMPS (black box), omega(all,x) equals the pseudo-inverse of the point-mass inertia times the point-mass angmom, also with finite spheres and ellipsoids.
-      const L = angmom(s, idx, pos, c, m, false);
-      const I = inertia(s, idx, pos, c, m, false);
-      return omegaFrom(I, L)[dim(args[1])];
+      // variable.cpp (omega group function at b332f28): group->xcm, angmom and inertia (point masses), then group->omega
+      return groupMotionOf(sys, idx, 'omega').omega[dim(args[1])];
     }
   }
   throw new StyleError(`unknown group function ${fn}()`);
@@ -240,23 +238,6 @@ const inertia = (s: SimState, idx: number[], pos: (i: number) => number[], c: nu
   }
   I[1][0] = I[0][1]; I[2][1] = I[1][2]; I[2][0] = I[0][2];
   return I;
-};
-
-/** omega = I^-1 L; a singular (e.g. linear or planar) inertia tensor uses its pseudo-inverse along the non-degenerate axes. */
-const omegaFrom = (I: number[][], L: number[]): number[] => {
-  const [[a, b, c], [d, e, f], [g, h, k]] = I;
-  const det = a * (e * k - f * h) - b * (d * k - f * g) + c * (d * h - e * g);
-  const scale = Math.max(Math.abs(a), Math.abs(e), Math.abs(k), 1e-300);
-  if (Math.abs(det) > 1e-12 * scale * scale * scale) {
-    const inv = [
-      [(e * k - f * h) / det, (c * h - b * k) / det, (b * f - c * e) / det],
-      [(f * g - d * k) / det, (a * k - c * g) / det, (c * d - a * f) / det],
-      [(d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det],
-    ];
-    return [0, 1, 2].map((r) => inv[r][0] * L[0] + inv[r][1] * L[1] + inv[r][2] * L[2]);
-  }
-  // degenerate: diagonal approximation where the moment is non-zero
-  return [0, 1, 2].map((r) => (Math.abs(I[r][r]) > 0 ? L[r] / I[r][r] : 0));
 };
 
 /** The global vector a special function reduces: c_ID, c_ID[N], f_ID, f_ID[N], v_name. */

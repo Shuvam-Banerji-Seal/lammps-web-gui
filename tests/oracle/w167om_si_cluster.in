@@ -1,0 +1,25 @@
+# oracle: velocity create ... mom yes rot yes on a 4-atom SI-unit cluster (about 2.5e-10 m across, mass 6.6e-26 kg): det(I) is far below 1e-6, so Group::omega takes the jacobi3 path (src/group.cpp at b332f28), 5 NVE steps
+# native: b332f28 installed lmp (/home/roy/.local/bin/lmp), no extra package
+# measured: (filled in by the run)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-30
+units          si
+dimension      3
+boundary       f f f
+atom_style     atomic
+region         box block -1e-9 1e-9 -1e-9 1e-9 -1e-9 1e-9
+create_box     1 box
+create_atoms   1 single 0.0 0.0 0.0 units box
+create_atoms   1 single 2.5e-10 0.0 0.0 units box
+create_atoms   1 single 1.25e-10 2.165e-10 0.0 units box
+create_atoms   1 single 1.25e-10 0.72e-10 2.04e-10 units box
+mass           * 6.6e-26
+pair_style     lj/cut 6e-10
+pair_coeff     * * 1.0e-21 2.5e-10 6e-10
+neighbor       1e-10 bin
+timestep       1e-15
+velocity       all create 300.0 4928459 mom yes rot yes dist gaussian
+fix            1 all nve
+thermo_style   custom step temp ke
+thermo_modify  format float %.15g
+thermo         1
+run            5

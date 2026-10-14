@@ -340,7 +340,7 @@ export class MdrModel implements MdrApi {
     const deltap = deltap0 + deltap1;
     const wij = Math.max(1.0 - hist[PENALTY], 0.0);
     const iLarger = c.ida > c.idb;
-    let F0 = 0, F1 = 0, aDamp = 0;
+    let F0 = 0, F1 = 0, aDamp = 0, wAcSum = 0;
     for (let side = 0; side < 2; side++) {
       // side 0 is the larger-ID atom, side 1 the other (native: contactSide and the tags)
       const isI = (side === 0) === iLarger;
@@ -368,11 +368,13 @@ export class MdrModel implements MdrApi {
       if (side === 0) F0 = r.F0;
       else F1 = r.F0;
       aDamp += r.aDamp;
+      wAcSum += r.wAc;
     }
     const fne = (wij * (F0 + F1)) * 0.5;
     const dampScale = Math.sqrt(c.meff * 2.0 * K.Eeff * aDamp);
     const etaN = mdrDampPrefactor({ hist, hu: c.hu, aDamp, dampScale, eta: this.pair.eta, dtype: this.pair.dtype });
-    return { fne, a: Math.sqrt(c.delta * c.Rf), etaN };
+    // native GranSubModNormalMDR::calculate_forces: svector = Ac_avg * 0.5, Ac_avg summed over both sides (pair/local p13)
+    return { fne, a: Math.sqrt(c.delta * c.Rf), etaN, svector: 0.5 * wAcSum };
   }
 
   /** One wall contact (fix wall/gran/region with the mdr model): one side, the wall weight wfm. */

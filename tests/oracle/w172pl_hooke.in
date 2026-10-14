@@ -1,0 +1,24 @@
+# oracle: pair_style granular hooke (linear_history tangential, rolling sds, twisting sds) on 10 spheres (w172pl_hooke.data, generated, newton on, boundary f f f): compute pair/local dist eng force fx fy fz p1-p12 cutoff radius, dumped every 50 steps with dump local (native: b332f28 lmp, GRANULAR package)
+# measured (engine vs native): dump local max relative error 0 (exact text), atoms 9e-16; engine run 125 ms (10 spheres, 200 steps); native: lmp GRANULAR (no other package).
+# oracle-inputs: w172pl_hooke.data
+# oracle-files: w172pl_hooke.local
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12 atomrel=1e-8 filerel=1e-8
+atom_style      sphere 1
+atom_modify     map array
+comm_modify     vel yes
+units           si
+neighbor        2 bin
+neigh_modify    delay 0
+timestep        1e-4
+boundary        f f f
+read_data       w172pl_hooke.data
+fix             integr all nve/sphere
+pair_style      granular
+pair_coeff      * * hooke 10000.0 0.2 tangential linear_history 2857.0 0.0 0.5 rolling sds 1000.0 200.0 0.3 twisting sds 800.0 100.0 0.4
+compute         pl all pair/local dist eng force fx fy fz p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 p11 p12 cutoff radius
+dump            d all local 50 w172pl_hooke.local index c_pl[*]
+dump_modify     d format float %.15g
+thermo_style    custom step ke
+thermo_modify   format float %.15g
+thermo          50
+run             200

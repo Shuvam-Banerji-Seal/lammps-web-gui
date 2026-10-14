@@ -1,4 +1,4 @@
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
+import { Pair, StyleError, typeBounds, type PairCompute, type PairSep, type StyleContext } from '../types';
 import type { SimState } from '../../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
@@ -133,7 +133,7 @@ export interface MdrNormalOut {
   fne: number;
   a: number;
   etaN: number;
-  /** Contact area of the mdr model for the per-atom contact data (native svector: Ac_avg / 2 of the wall). */
+  /** Contact area of the mdr model (native svector: Ac_avg / 2, the wall's per-atom data and the pair's pN value). */
   svector?: number;
 }
 
@@ -485,9 +485,34 @@ export interface ContactOut {
   hist: boolean;
   /** Contact radius a of the normal model (the heat models use it). */
   a: number;
+  /** Native single() values: the normal force Fntot (normal plus damping) on i, the tangential force on i, the rolling force, the twisting torque. */
+  fntot: number;
+  fsx: number; fsy: number; fsz: number;
+  frx: number; fry: number; frz: number;
+  mtt: number;
 }
 
-export const newContactOut = (): ContactOut => ({ fx: 0, fy: 0, fz: 0, tix: 0, tiy: 0, tiz: 0, tjx: 0, tjy: 0, tjz: 0, hist: false, a: 0 });
+export const newContactOut = (): ContactOut => ({ fx: 0, fy: 0, fz: 0, tix: 0, tiy: 0, tiz: 0, tjx: 0, tjy: 0, tjz: 0, hist: false, a: 0, fntot: 0, fsx: 0, fsy: 0, fsz: 0, frx: 0, fry: 0, frz: 0, mtt: 0 });
+
+/** Native EPSILON of the frame-update tests (GRANULAR/gran_sub_mod_tangential.cpp and gran_sub_mod_rolling.cpp: 1e-10). */
+const FRAME_EPS = 1e-10;
+
+/**
+ * A history vector moved into the tangent plane of the new normal n (native GranSubMod::rotate_rescale_vec: remove the normal
+ * part, rescale to the previous magnitude), done only when native's frame-update test holds: |v . n| k > FRAME_EPS F_crit
+ * (sn = v . n; F_crit = mu |F_n|, the tangential or rolling Fscrit/Frcrit). Otherwise the vector is returned unchanged.
+ */
+function frameRotate(vx: number, vy: number, vz: number, nx: number, ny: number, nz: number, sn: number, k: number, fcrit: number): [number, number, number] {
+  if (!(Math.abs(sn) * k > FRAME_EPS * fcrit)) return [vx, vy, vz];
+  const mag0 = Math.hypot(vx, vy, vz);
+  let px = vx - sn * nx, py = vy - sn * ny, pz = vz - sn * nz;
+  const mag1 = Math.hypot(px, py, pz);
+  if (mag1 > 0) {
+    const cr = mag0 / mag1;
+    px *= cr; py *= cr; pz *= cr;
+  }
+  return [px, py, pz];
+}
 
 /**
  * One granular contact: normal (hooke/hertz/hertz-material/dmt/jkr), damping, tangential (linear, mindlin),
@@ -601,16 +626,9 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
       const ux = px + vtx * dt, uy = py + vty * dt, uz = pz + vtz * dt;
       [shx, shy, shz] = planeMap(ux, uy, uz, nx, ny, nz, Math.hypot(ux, uy, uz));
     } else if (update) {
-      // keep the prior displacement (or elastic force) in the tangent plane, rescaled to its previous magnitude
-      const mag0 = Math.hypot(shx, shy, shz);
+      // keep the prior displacement (or elastic force) in the tangent plane, rescaled to its previous magnitude (frameRotate)
       const sn = shx * nx + shy * ny + shz * nz;
-      let px = shx - sn * nx, py = shy - sn * ny, pz = shz - sn * nz;
-      const mag1 = Math.hypot(px, py, pz);
-      if (mag1 > 0) {
-        const cr = mag0 / mag1;
-        px *= cr; py *= cr; pz *= cr;
-      }
-      shx = px; shy = py; shz = pz;
+      [shx, shy, shz] = frameRotate(shx, shy, shz, nx, ny, nz, sn, keff, fnAbs * pm.mu);
       // mindlin_rescale: on unloading (a < a_prev) the stored value is scaled by a / a_prev
       const aPrev = sh[3];
       if (rescale && aPrev > 0 && aC < aPrev) {
@@ -657,19 +675,13 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
     // v_roll = -R (w_i - w_j) x n, with R the effective radius
     const vrlx = -Rf * (wdy * nz - wdz * ny), vrly = -Rf * (wdz * nx - wdx * nz), vrlz = -Rf * (wdx * ny - wdy * nx);
     let qx = sh[4], qy = sh[5], qz = sh[6];
+    const k = pm.kr, g = pm.gr;
     if (update) {
-      // prior rolling displacement rotated into the tangent plane, rescaled to its previous magnitude
-      const mag0 = Math.hypot(qx, qy, qz);
+      // prior rolling displacement rotated into the tangent plane (frameRotate), then the step's rolling velocity
       const sn = qx * nx + qy * ny + qz * nz;
-      let px = qx - sn * nx, py = qy - sn * ny, pz = qz - sn * nz;
-      const mag1 = Math.hypot(px, py, pz);
-      if (mag1 > 0) {
-        const cr = mag0 / mag1;
-        px *= cr; py *= cr; pz *= cr;
-      }
+      const [px, py, pz] = frameRotate(qx, qy, qz, nx, ny, nz, sn, k, fnAbs * pm.mr);
       qx = px + vrlx * dt; qy = py + vrly * dt; qz = pz + vrlz * dt;
     }
-    const k = pm.kr, g = pm.gr;
     let fx0 = -k * qx - g * vrlx, fy0 = -k * qy - g * vrly, fz0 = -k * qz - g * vrlz;
     const f0 = Math.hypot(fx0, fy0, fz0);
     const cap = pm.mr * fnAbs;
@@ -733,6 +745,9 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
   }
   out.hist = hist;
   out.a = contactA;
+  out.fntot = fn; out.fsx = ftx; out.fsy = fty; out.fsz = ftz;
+  // the rolling force is reported with native's sign (the engine's pseudo-force is the negative of native fr; its torque uses it so)
+  out.frx = -rlx; out.fry = -rly; out.frz = -rlz; out.mtt = twq;
   return true;
 }
 
@@ -1005,6 +1020,88 @@ export class PairGranular extends Pair {
     }
     if (this.shear.size) for (const key of this.shear.keys()) if (!seen.has(key)) this.shear.delete(key);
     nb.reverseSum(tq, 3, s.torque!);
+  }
+
+  /**
+   * Native single() (GRANULAR/pair_granular.cpp, single_extra = 12 plus the sub-model values, docs.lammps.org/pair_granular.html:
+   * "The first 3 are the components of the tangential force between particles I and J, acting on particle I. The fourth is the
+   * magnitude of this tangential force. The next 3 (5-7) are the components of the rolling torque acting on particle I. The next
+   * entry (8) is the magnitude of the rolling torque. The next entry (9) is the magnitude of the twisting torque acting about the
+   * vector connecting the two particle centers. The next 3 (10-12) are the components of the vector connecting the centers of the
+   * two particles (x_I - x_J)."). Then, "First, any extra values from the normal sub-model are appended followed by the damping,
+   * tangential, rolling, twisting, then heat models." The contact is evaluated with the stored history read only (native sets
+   * history_update = 0); fforce is Fntot / r and the energy is 0 ("The single() function of these pair styles returns 0.0 for the
+   * energy"). Pairs without contact give zeros.
+   */
+  single(i: number, j: number, itype: number, jtype: number, rsq: number, _fc: number, factorLJ: number, _qi: number, _qj: number, del?: PairSep) {
+    const extra = this.singleExtra();
+    const svector = new Float64Array(extra);
+    const none = { eng: 0, fforce: 0, svector };
+    const s = this.state;
+    if (!s) throw new StyleError('pair granular single(): the pair style has no state (run setup first)');
+    // the contact normal is x_i - x_j: a caller that does not pass the separation (stress/prof, tally) is refused, not guessed
+    if (!del) throw new StyleError('pair granular single() needs the separation vector x_i - x_j (compute pair/local passes it; this compute does not)');
+    if (factorLJ === 0) return none;
+    const nt = this.ntypes + 1;
+    const pm = this.pm[itype * nt + jtype];
+    if (!pm) return none;
+    const radius = s.radius!, rmass = s.rmass!, omega = s.omega!, v = s.v, id = s.id;
+    const ri = radius[i], rj = radius[j];
+    const radsum = ri + rj;
+    const jkr = pm.normal === 'jkr';
+    if (rsq >= radsum * radsum && !jkr) return none;
+    const r = Math.sqrt(rsq), rinv = 1 / r;
+    const delta = radsum - r;
+    const Rf = (ri * rj) / radsum;
+    const mi = rmass[i], mj = rmass[j];
+    let meff = (mi * mj) / (mi + mj);
+    if (this.freezeBit) {
+      if (s.mask[i] & this.freezeBit) meff = mj;
+      else if (s.mask[j] & this.freezeBit) meff = mi;
+    }
+    const a = id[i], b = id[j];
+    const flip = a > b;
+    const key = flip ? `${b}:${a}` : `${a}:${b}`;
+    const stored = this.shear.get(key);
+    // a copy: the contact code writes its history arrays even without an update
+    const sh = stored ? Float64Array.from(stored) : new Float64Array(8);
+    const nx = del.dx * rinv, ny = del.dy * rinv, nz = del.dz * rinv;
+    const normal = this.mdr && pm.normal === 'mdr'
+      ? this.mdr.pairNormal({ ida: a, idb: b, oi: i, oj: j, ri, rj, delta, Rf, nx, ny, nz, meff, hu: false })
+      : undefined;
+    const out = newContactOut();
+    const ok = granularContact({
+      pm, nx, ny, nz, r, delta, Rf, ri, rj, meff,
+      vrx: v[3 * i] - v[3 * j], vry: v[3 * i + 1] - v[3 * j + 1], vrz: v[3 * i + 2] - v[3 * j + 2],
+      oix: omega[3 * i], oiy: omega[3 * i + 1], oiz: omega[3 * i + 2],
+      ojx: omega[3 * j], ojy: omega[3 * j + 1], ojz: omega[3 * j + 2],
+      dt: s.dt, update: false, sg: flip ? -1 : 1, normal,
+    }, sh, out, this.shear.has(key));
+    if (!ok) return none;
+    svector[0] = out.fsx; svector[1] = out.fsy; svector[2] = out.fsz;
+    svector[3] = Math.sqrt(out.fsx * out.fsx + out.fsy * out.fsy + out.fsz * out.fsz);
+    svector[4] = out.frx; svector[5] = out.fry; svector[6] = out.frz;
+    svector[7] = Math.sqrt(out.frx * out.frx + out.fry * out.fry + out.frz * out.frz);
+    svector[8] = out.mtt;
+    svector[9] = del.dx; svector[10] = del.dy; svector[11] = del.dz;
+    // normal sub-model (mdr: the contact area), then the heat sub-model (the heat flow into i)
+    let k = 12;
+    if (normal && pm.normal === 'mdr') svector[k++] = normal.svector ?? 0;
+    if (this.heatOn && pm.heat !== 'none') {
+      const T = s.custom.get(HEAT_TEMPERATURE)!.data;
+      svector[k++] = heatFlowOf(pm.heat, pm.hk, out.a, T[j] - T[i]);
+    }
+    return { eng: 0, fforce: out.fntot * rinv, svector };
+  }
+
+  /**
+   * Native single_extra (pair_granular.cpp: 12, raised to 12 + the most extra quantities of one model when a pair_coeff uses the
+   * mdr normal model (its contact area) or a heat model): the pN values that compute pair/local can read.
+   */
+  singleExtra(): number {
+    let extra = 0;
+    for (const p of this.pm) if (p) extra = Math.max(extra, (p.normal === 'mdr' ? 1 : 0) + (p.heat !== 'none' ? 1 : 0));
+    return 12 + extra;
   }
 
   dataCoeffs(): string[] | null { return null; }

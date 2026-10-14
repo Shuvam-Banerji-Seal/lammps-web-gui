@@ -86,11 +86,51 @@ describe('local computes: argument errors', () => {
     await expect(molecule('compute c all angle/local dist')).rejects.toThrow(/unknown value 'dist'/);
   });
 
-  it('rejects pair/local pN values and cutoff, and pair attributes of property/local', async () => {
-    await expect(molecule('compute c all pair/local dist p1')).rejects.toThrow(/pN quantities are not supported/);
-    await expect(molecule('compute c all pair/local dist cutoff type')).rejects.toThrow(/cutoff keyword is not supported/);
+  it('rejects pair/local pN values of a pair style that defines none, a bad cutoff keyword and radius without radius', async () => {
+    // docs.lammps.org/compute_pair_local.html: "Most pair styles do not define any additional quantities, so N = 0."
+    await expect(molecule('compute c all pair/local dist p1\ndump d all local 1 pl.txt c_c[1] c_c[2]')).rejects.toThrow(/pair style lj\/cut does not have extra field p1/);
+    await expect(molecule('compute c all pair/local dist cutoff bogus')).rejects.toThrow(/unknown cutoff keyword bogus/);
+    await expect(molecule('compute c all pair/local dist cutoff radius\ndump d all local 1 pl.txt c_c')).rejects.toThrow(/requires atom attribute radius/);
+    await expect(molecule('compute c all pair/local dist p0')).rejects.toThrow(/invalid keyword p0/);
+    // cutoff type is the default and is accepted (the rows are checked in tests/oracle/w172pl_ljcut.in)
+    await expect(molecule('compute c all pair/local dist cutoff type\ndump d all local 1 pl.txt c_c')).resolves.toBeDefined();
     await expect(molecule('compute c all property/local patom1 patom2')).rejects.toThrow(/not supported/);
     await expect(molecule('compute c all property/local batom1 aatom1')).rejects.toThrow(/cannot be mixed/);
+  });
+
+  it('pair granular: p1-p12 are the contact values, p13 (the mdr contact area) is refused without the mdr model', async () => {
+    // docs.lammps.org/pair_granular.html: "These extra quantities can be accessed by the compute pair/local command, as p1, p2, ..., p12."
+    // (the mdr contact area is p13 only with a pair_coeff that uses the mdr model)
+    const run = async (extra: string) => {
+      const writes = new Map<string, string>();
+      const session = new Session({ emit: () => {}, writeFile: (n, t, ap) => writes.set(n, (ap ? writes.get(n) ?? '' : '') + t) });
+      await session.execute(`
+        units lj
+        atom_style sphere
+        comm_modify vel yes
+        region b block -5 5 -5 5 -5 5
+        create_box 1 b
+        create_atoms 1 single 0 0 0
+        create_atoms 1 single 0.9 0 0
+        set type 1 diameter 1.0 density 1.0
+        pair_style granular
+        pair_coeff * * hooke 1000.0 0.5 tangential linear_history 300.0 0.0 0.5
+        ${extra}
+        run 0
+      `);
+      return writes;
+    };
+    await expect(run('compute c all pair/local p13 cutoff radius\ndump d all local 1 pl.txt c_c')).rejects.toThrow(/pair style granular does not have extra field p13/);
+    const w = await run('compute c all pair/local dist p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 p11 p12 cutoff radius\ndump d all local 1 pl.txt c_c[*]');
+    // one pair in contact (overlap 0.1, no history yet): the dump row is dist, p1..p12 (no index column); p10..p12 are
+    // x_i - x_j (+-0.9, 0, 0) and the tangential force p1..p3 is zero at the first contact step (no history, no velocity)
+    const last = w.get('pl.txt')!.trim().split('\n').pop()!.trim().split(/\s+/).map(Number);
+    expect(last.length).toBe(13);
+    expect(close(last[0], 0.9, 1e-12)).toBe(true);
+    expect(close(Math.abs(last[10]), 0.9, 1e-12)).toBe(true);
+    expect(Math.abs(last[11])).toBe(0);
+    expect(Math.abs(last[12])).toBe(0);
+    expect(Math.abs(last[1])).toBe(0);
   });
 
   it('rejects a dump column that the compute cannot give', async () => {

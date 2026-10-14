@@ -1,0 +1,28 @@
+# oracle: compute pair/local with the default cutoff type (given explicitly) on a displaced lj fcc crystal (2x2x2 cells, one vacancy, nve), dump local every step of run 2 (native: b332f28 lmp, no extra package); the rows are compared in native order, per file. Only one run: after a run 0 the native atom order of the next run differs (native atom sort), see the report
+# measured (engine vs native): dump local max relative error 0 (exact text, native row order), atoms 0; engine run 143 ms (31 atoms, 2 steps); native: lmp (no extra package).
+# oracle-files: w172pl_ljcut.local
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12 atomrel=1e-8 filerel=1e-8
+units           lj
+atom_style      atomic
+lattice         fcc 0.9
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+group           vac id 4
+delete_atoms    group vac compress no
+variable        dx atom 0.06*sin(2.3*x+1.1*y)
+variable        dy atom 0.06*cos(1.9*y-0.7*z)
+variable        dz atom 0.06*sin(1.4*z+0.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+velocity        all create 1.0 4321 loop geom
+fix             integ all nve
+pair_style      lj/cut 2.2
+pair_coeff      * * 1.0 1.0
+compute         pl all pair/local dist eng force fx fy fz cutoff type
+dump            d all local 1 w172pl_ljcut.local index c_pl[*]
+dump_modify     d format float %.15g
+thermo_style    custom step pe ke
+thermo_modify   format float %.15g
+thermo          1
+run             2

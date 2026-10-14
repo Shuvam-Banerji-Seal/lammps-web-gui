@@ -1,0 +1,27 @@
+# oracle: bond_style mesocnt (C 10 10, r0 16 A), angle_style mesocnt (buckling, C 10 10) and pair_style mesocnt (chain, id) on one hairpin chain of 20 segments (two arms 16 A apart: the arms interact, the self-chain terms are segment-segment). Native: installed lmp (MESONT, commit b332f28). Measured with native LAMMPS (black box) against the engine: max relative error 3e-14 in the thermo rows (epair at step 20), 1.4e-12 in the per-atom x, v, f (relative to max(1, |value|); fixture regenerated with the coarse potential), and the per-atom energy checksums c_chka, c_chkb agree to 1e-12; the tolerance below is the 1e-8 target. Potential: tests/oracle/w157mt_C_10_10_coarse.mesocnt, derived from potentials/C_10_10.mesocnt (sha256 923f600a081d948eb8b4510f84aa96167b5a6c3e1aba16845d2364ae137dc346) by keeping every 20th grid point of its 1001-point axes (both ends kept, the ranges unchanged), because the full 86 MB file cannot go in the repository.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 atomrel=1e-8
+# oracle-inputs: w157mt_chain.data w157mt_C_10_10_coarse.mesocnt
+units metal
+atom_style full
+boundary f f f
+read_data w157mt_chain.data
+bond_style mesocnt
+bond_coeff 1 C 10 10 16
+angle_style mesocnt
+angle_coeff 1 buckling C 10 10 10
+pair_style mesocnt 40 chain id
+pair_coeff * * w157mt_C_10_10_coarse.mesocnt 1
+special_bonds lj 1 1 1
+compute epa all pe/atom pair
+compute epb all pe/atom angle bond
+variable wpa atom c_epa*id*sin(id)
+variable wpb atom c_epb*id*cos(id)
+compute chka all reduce sum v_wpa
+compute chkb all reduce sum v_wpb
+thermo_style custom step temp pe ke etotal ebond eangle epair c_chka c_chkb
+thermo_modify format float %.15g
+run 0
+velocity all create 300.0 4928 loop geom
+fix 1 all nve
+timestep 0.0001
+run 20

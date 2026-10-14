@@ -166,6 +166,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_latboltz', names: { FIXES: ['lb/fluid', 'lb/viscous', 'lb/momentum'] }, load: () => import('../engine-gpl/registry/latboltz') as Promise<StyleModule> },
   { id: 'gpl_extep', names: { PAIRS: ['extep'] }, load: () => import('../engine-gpl/registry/extep') as Promise<StyleModule> },
   { id: 'gpl_class2xe', names: { ANGLES: ['class2xe'] }, load: () => import('../engine-gpl/registry/class2xe') as Promise<StyleModule> },
+  { id: 'gpl_mesont', names: { BONDS: ['mesocnt'], ANGLES: ['mesocnt'], PAIRS: ['mesocnt', 'mesocnt/viscous'] }, load: () => import('../engine-gpl/registry/mesont') as Promise<StyleModule> },
   { id: 'gpl_yaff', names: { ANGLES: ['cross'], BONDS: ['mm3'], PAIRS: ['lj/switch3/coulgauss/long'] }, load: () => import('../engine-gpl/registry/yaff') as Promise<StyleModule> },
   { id: 'gpl_bocs', names: { FIXES: ['bocs'], COMPUTES: ['pressure/bocs'] }, load: () => import('../engine-gpl/registry/bocs') as Promise<StyleModule> },
 ];

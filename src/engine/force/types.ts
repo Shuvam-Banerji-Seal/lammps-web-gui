@@ -241,6 +241,11 @@ export interface StyleContext {
    * keywords name); a fix with the same ID is replaced. make receives the system the fix joins.
    */
   addFix?(make: (sys: System) => Fix): void;
+  /**
+   * The fix of a style defined in the system (native Modify::get_fix_by_style, first match), or null. A pair style
+   * that needs a fix at pair_coeff time (pair exp6/rx needs fix rx) reads its data through it.
+   */
+  fixOf?(style: string): Fix | null;
 }
 
 /** Equilibrium bond lengths and angles (degrees) by type, for Pair.linkBonded. */

@@ -5,15 +5,14 @@
  * development team, GNU General Public License). This file is GPL-2.0 (src/engine-gpl/LICENSE).
  *
  * Registered for the core through src/engine/lazyStyles.ts (the names of this module are listed there). The reactive
- * styles of the package (fix rx, exp6/rx, table/rx, eos/table, multi/lucy) are not registered yet; the core reports them
- * as unknown styles.
+ * styles of the package (fix rx, exp6/rx, eos/table/rx) are in registry/dpdrx.ts; compute dpd/atom is here.
  */
 import type { Pair } from '../../engine/force/types';
 import type { Fix } from '../../engine/fix/fix';
 import type { Compute } from '../../engine/compute/compute';
 import type { System } from '../../engine/system';
 import { PairDPDfdt, PairDPDfdtEnergy } from '../dpdreact/pair_dpd_fdt';
-import { FixDPDenergy, FixEOScv, ComputeDpd } from '../dpdreact/fixes_compute';
+import { FixDPDenergy, FixEOScv, ComputeDpd, ComputeDpdAtom } from '../dpdreact/fixes_compute';
 import { FixShardlow } from '../dpdreact/fix_shardlow';
 
 export const PAIRS: Record<string, () => Pair> = {
@@ -29,4 +28,5 @@ export const FIXES: Record<string, (sys: System, id: string, group: string, args
 
 export const COMPUTES: Record<string, (sys: System, id: string, group: string, args: string[]) => Compute> = {
   dpd: (sys, id, group, args) => new ComputeDpd(sys, id, group, args),
+  'dpd/atom': (sys, id, group, args) => new ComputeDpdAtom(sys, id, group, args),
 };

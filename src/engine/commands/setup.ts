@@ -4,7 +4,7 @@ import { StyleError, typeBounds } from '../force/types';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, isBpmSphereStyle, isTriAtom, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH } from '../atoms';
+import { DPD_THETA, isDpdStyle, EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, isBpmSphereStyle, isTriAtom, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH } from '../atoms';
 import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
 import { isSmdStyle, SMD_CONTACT } from '../smd';
 import { parseStl } from '../stl';
@@ -1606,6 +1606,33 @@ const set: Handler = ({ sys }, a) => {
       // set.html: "Keywords *edpd/temp* and *edpd/cv* set the temperature and volumetric heat capacity of an eDPD particle as
       // defined by the DPD-MESO package. Currently, only atom_style edpd defines particles with these attributes. The values
       // for the temperature and heat capacity must be positive."
+      // set.html: "Keyword *dpd/theta* sets the internal temperature of a DPD particle as defined by the DPD-REACT package.
+      // If the specified value is a number it must be >= 0.0. If the specified value is NULL, then the kinetic temperature
+      // Tkin of each particle is computed as 3/2 k Tkin = KE = 1/2 m v^2". As native LAMMPS does (src/set.cpp
+      // invoke_dpd_theta at b332f28): NULL gives tfactor m v^2 with tfactor = mvv2e / (dimension kB), and a negative value
+      // stops with "Invalid dpd/theta value in set command" also for an atom-style variable (the doc says a negative
+      // variable value selects Tkin; native's code refuses it, and the engine follows the code).
+      case 'dpd/theta': {
+        if (!isDpdStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute ${key} for atom style ${s.atomStyle}`);
+        const th = s.custom.get(DPD_THETA)!.data;
+        if (a[k + 1] === 'NULL') {
+          const tfactor = s.units.mvv2e / (s.dimension * s.units.boltz);
+          for (const i of atoms) {
+            const vx = s.v[3 * i], vy = s.v[3 * i + 1], vz = s.v[3 * i + 2];
+            th[i] = tfactor * massOf(s, i) * (vx * vx + vy * vy + vz * vz);
+          }
+        } else {
+          const v = value(a[k + 1], key);
+          for (const i of atoms) {
+            const x = v(i);
+            if (!(x >= 0)) throw new StyleError(`Invalid dpd/theta value ${x} in set command`);
+            th[i] = x;
+          }
+        }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
       case 'edpd/temp': case 'edpd/cv': {
         if (!isEdpdStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute ${key} for atom style ${s.atomStyle}`);
         const v = value(a[k + 1], key);

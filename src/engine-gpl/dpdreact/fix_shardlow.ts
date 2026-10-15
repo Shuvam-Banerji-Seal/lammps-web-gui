@@ -33,6 +33,7 @@ import { DPD_THETA, DPD_UCOND, DPD_UMECH, massOf, nativeOrder } from '../../engi
 import { nativeGhosts } from '../neighbor/nativeOrder';
 import { PairDPDfdt, PairDPDfdtEnergy } from './pair_dpd_fdt';
 import { ExtState, esGenNextParallelState, esInit, esNormal } from './random_external_state';
+import { pairMatch } from '../dpdrx/pair_match';
 
 /** npair_half_bin_newton_ssa / fix_shardlow.cpp: "static constexpr double EPSILON_SQUARED = 1.0e-20;". */
 const EPSILON_SQUARED = 1.0e-20;
@@ -128,7 +129,8 @@ export class FixShardlow extends Fix {
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (args.length) throw new StyleError('Illegal fix shardlow command');
-    const p = sys.ff.pair;
+    // fix_shardlow.cpp constructor: force->pair_match("dpd/fdt", 1), then "dpd/fdt/energy" (a hybrid sub-style counts)
+    const p = pairMatch(sys.ff.pair, 'dpd/fdt') ?? pairMatch(sys.ff.pair, 'dpd/fdt/energy');
     // fix_shardlow.cpp constructor: "Must use pair_style dpd/fdt or dpd/fdt/energy with fix shardlow"
     if (!(p instanceof PairDPDfdt) && !(p instanceof PairDPDfdtEnergy)) {
       throw new StyleError('Must use pair_style dpd/fdt or dpd/fdt/energy with fix shardlow');

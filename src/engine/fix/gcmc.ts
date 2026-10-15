@@ -67,11 +67,9 @@ import type { SimState, Topology, TopoList } from '../types';
  * at once; a rejected trial restores them. Molecule placement (measured,
  * w37gcmc_* water and dimer, which match native to 1e-12): the centre of mass
  * (mass weighted) is placed at the insertion point, and the velocities of an
- * accepted molecule are the Gaussians of the second stream from its draw 11
- * (nine draws follow the acceptance draw). Not matched: the exchange stream of
- * a second molecule event (native's choice sequence differs from the engine's
- * after the first insertion of a mol run), so multi-event mol runs with shake
- * (and without) are not oracle-checked. Native's mid-run SHAKE for a
+ * accepted molecule are drawn from the equal stream after its acceptance draw (before it with full_energy),
+ * as the Random streams paragraph above describes. Not oracle-checked: multi-event mol runs with shake (the w37
+ * cases are single insertions). Native's mid-run SHAKE for a
  * three-atom water cluster inserted by gcmc or fix deposit collapses the H-H
  * distance (it is not constrained as a rigid angle); the engine constrains it
  * as the documented SHAKE does, so water inserted mid-run differs from native.
@@ -91,32 +89,30 @@ import type { SimState, Topology, TopoList } from '../types';
  * simply set to unity." h is the style's Planck constant (units.ts hplanck),
  * m the exchanged particle's mass (atom mass, or the molecule's total mass).
  *
- * Random streams, measured with native LAMMPS (black box). The number of
- * attempts per event is exactly X exchanges and M moves (not a Poisson draw).
- * There are two Park-Miller streams, both seeded with the fix's seed:
- *  - the exchange stream skips one draw at creation; each exchange then takes
- *    the choice draw (insertion when u >= 0.5, deletion otherwise), then for
- *    an insertion three position draws, for a deletion the candidate-index
- *    draw (only when there is a candidate), and in both cases one more draw
- *    where the decision is made (also for a deletion with no candidate);
- *  - the second stream holds the decisions: one uniform per accept/reject
- *    test (accepted when u < min(1, P)), none for a deletion with no
- *    candidate, and after an accepted insertion the three velocity
- *    components, each insertion starting a new polar pair.
- * Evidence: bisecting mu at the first insertion into an empty box puts the
- * threshold exactly at the first draw of the second stream (units real and
- * metal, see units.ts hplanck); the first four inserted atoms' velocities in
- * w33gcmc_lj_acc are Gaussians starting at its draws 1, 6, 11 and 16,
- * times sqrt(k_B T / (m mvv2e)); and w33gcmc_lj_acc (lj, dU = 0) and
- * w33gcmc_real_acc (real, interacting argon) match native's atom count,
- * energy and kinetic energy at every step, through 120 and 150 exchanges with
- * both acceptances and rejections. Translations and molecule moves use the
- * same decision rule but are checked exactly only by w32gcmc_move, which uses
- * displace 0 so every translation has dU = 0 and is accepted: measured with
- * native LAMMPS (black box) with X = 0, M = 1, displace = 0, the vector counts
- * one translation attempt and success every step and the atoms and pe are
- * unchanged. tests/engineGcmc32.test.ts checks acceptance ratios and <N> vs mu
- * statistically.
+ * Random streams and event order (fix_gcmc.cpp pre_exchange, b332f28; the first version of this engine was measured
+ * against native LAMMPS, black box). Two Park-Miller generators are seeded with the fix's seed: random_equal (here
+ * rng) and random_unequal (here accRng). Each event runs ncycles = X + M cycles. A cycle draws
+ * ixm = int(u * ncycles) + 1 from random_equal; ixm <= M is an MC move, else a GCMC exchange (both always draw from
+ * random_equal, even when X or M is zero). The move choice (one equal draw, normalised proportions) and the
+ * exchange choice (one equal draw, below 0.5 is a deletion) follow. Then each attempt draws in native's order:
+ *  - atom translation: pick (equal), displacement on the sphere (unequal), acceptance (unequal, or equal with
+ *    full_energy);
+ *  - molecule translation and rotation: everything on the equal stream;
+ *  - atom or molecule deletion: pick (equal, none when the gas is empty or at min), acceptance (unequal for partial
+ *    atoms, equal otherwise);
+ *  - insertion: three position draws (equal), the orientation draws for a molecule (equal), acceptance (unequal for
+ *    partial atoms, equal otherwise), and the velocities: three Gaussians and one discarded (unequal for atoms,
+ *    equal for molecules), drawn after an accepted partial insertion but before the acceptance of a full_energy one.
+ * Evidence: the w33 cases (X only) and the w37/w38 cases pass with this order; w33gcmc_lj_acc (lj, dU = 0) and
+ * w33gcmc_real_acc (real, interacting argon) match native's atom count, energy and kinetic energy at every step,
+ * through 120 and 150 exchanges with both acceptances and rejections. w32gcmc_move uses displace 0 so every
+ * translation has dU = 0 and is accepted: measured with native LAMMPS (black box) with X = 0, M = 1, displace = 0,
+ * the vector counts one translation attempt and success every step and the atoms and pe are unchanged.
+ * tests/engineGcmc32.test.ts checks acceptance ratios and <N> vs mu statistically.
+ * Known gap: with a mol template and partial energy (no full_energy), native's energy() leaves out every pair of the
+ * molecule with itself, while the engine subtracts only the template's bonded energy from the total change, so a
+ * molecule whose own non-bonded pairs are counted (no special-bond exclusion, e.g. a template without bonds) is
+ * trialled with that pair energy included. full_energy is exact for such molecules (w188gc_mol_xm uses it).
  */
 
 type Vec3 = [number, number, number];
@@ -145,6 +141,9 @@ const nonNegInt = (w: string | undefined, what: string): number => {
   if (!Number.isInteger(v) || v < 0) throw new StyleError(`fix gcmc: ${what} must be a non-negative integer, got '${w ?? ''}'`);
   return v;
 };
+
+/** native max_region_attempts (fix_gcmc.cpp constructor): redraws of a region-restricted trial point. */
+const MAX_REGION_ATTEMPTS = 1000;
 
 const copyList = (l: TopoList): TopoList => ({ n: l.n, width: l.width, type: l.type.slice(), atoms: l.atoms.slice() });
 const copyTopo = (t: Topology): Topology => ({
@@ -247,10 +246,6 @@ export class FixGcmc extends Fix {
     this.M = nonNegInt(args[2], 'M');
     const seed = posInt(args[4], 'seed');
     this.rng = new RanPark(seed);
-    // Measured with native LAMMPS (black box): the fix consumes one draw before its first
-    // exchange choice; consuming it here keeps the choice and insertion-position stream aligned
-    // with native (see the header).
-    this.rng.uniform();
     this.accRng = new RanPark(seed);
     this.T = num(args[5], 'T');
     if (!(this.T > 0)) throw new StyleError('fix gcmc: T must be > 0');
@@ -443,17 +438,39 @@ export class FixGcmc extends Fix {
     this.nextStep += this.N;
   }
 
-  /** One Monte Carlo event: X exchange attempts then M move attempts. */
+  /**
+   * One GCMC event, as native FixGCMC::pre_exchange does it (fix_gcmc.cpp at b332f28): ncycles = X + M cycles.
+   * Each cycle draws ixm = int(u * ncycles) + 1 from the equal stream first; ixm <= M is an MC move, otherwise a
+   * GCMC exchange. Moves and exchanges interleave in cycle order (they are not all exchanges and then all moves).
+   */
   private event(): void {
-    for (let i = 0; i < this.X; i++) {
-      if (this.rng.uniform() < 0.5) this.deletion();
-      else this.insertion();
+    const ncycles = this.X + this.M;
+    for (let c = 0; c < ncycles; c++) {
+      const ixm = Math.floor(this.rng.uniform() * ncycles) + 1;
+      if (ixm <= this.M) this.move();
+      else this.exchange();
     }
-    for (let i = 0; i < this.M; i++) this.move();
     // docs fix_gcmc.html: "Note that neighbor lists are re-built every timestep that this fix is
     // invoked, so you should not set N to be too small." Rebuild for the final atom count so the
     // run loop's force evaluation (which may decide not to reneighbor) sees the exchanged atoms.
     this.sys.setupNeighbors();
+  }
+
+  /** The exchange choice of a cycle (fix_gcmc.cpp: xgcmc < 0.5 is a deletion), the same for both exchange modes. */
+  private exchange(): void {
+    if (this.rng.uniform() < 0.5) this.deletion();
+    else this.insertion();
+  }
+
+  /** The move choice of a cycle: xmcmove against the proportions normalised by their sum (fix_gcmc.cpp). */
+  private move(): void {
+    const total = this.patomtrans + this.pmoltrans + this.pmolrotate;
+    const pa = this.patomtrans / total;
+    const pm = this.pmoltrans / total;
+    const x = this.rng.uniform();
+    if (x < pa) this.translateAtom();
+    else if (x < pa + pm) this.translateMolecule();
+    else this.rotateMolecule();
   }
 
   private get volume(): number {
@@ -462,22 +479,28 @@ export class FixGcmc extends Fix {
     return (b.hi[0] - b.lo[0]) * (b.hi[1] - b.lo[1]) * (b.hi[2] - b.lo[2]);
   }
 
-  /** Random insertion point: the box, or the region bounding box with rejection for non-rectangular regions. */
+  /**
+   * Random insertion point (fix_gcmc.cpp attempt_*_insertion): three draws of the equal stream inside the box or
+   * the region's bounding box. A point outside a region is redrawn; after max_region_attempts (1000) redraws the
+   * attempt gives up with no insertion, as the native loop returns once region_attempt reaches the maximum.
+   */
   private drawPosition(): Vec3 | null {
     const s = this.sys.state;
     const lo = this.reg ? this.reg.lo : (s.box.lo as unknown as Vec3);
     const hi = this.reg ? this.reg.hi : (s.box.hi as unknown as Vec3);
-    if (!this.region || this.region instanceof BlockRegion) {
-      return [lo[0] + this.rng.uniform() * (hi[0] - lo[0]), lo[1] + this.rng.uniform() * (hi[1] - lo[1]), lo[2] + this.rng.uniform() * (hi[2] - lo[2])];
+    const trial = (): Vec3 => [
+      lo[0] + this.rng.uniform() * (hi[0] - lo[0]),
+      lo[1] + this.rng.uniform() * (hi[1] - lo[1]),
+      lo[2] + this.rng.uniform() * (hi[2] - lo[2]),
+    ];
+    let p = trial();
+    if (!this.region) return p;
+    let attempt = 0;
+    while (!this.region.match(p[0], p[1], p[2])) {
+      p = trial();
+      if (++attempt >= MAX_REGION_ATTEMPTS) return null;
     }
-    // docs fix_gcmc.html: "For non-rectangular regions, random trial points are generated within the
-    // rectangular bounding box until a point is found that lies inside the region. If no valid point
-    // is generated after 1000 trials, no insertion is performed, but it is counted as an attempted insertion."
-    for (let t = 0; t < 1000; t++) {
-      const p: Vec3 = [lo[0] + this.rng.uniform() * (hi[0] - lo[0]), lo[1] + this.rng.uniform() * (hi[1] - lo[1]), lo[2] + this.rng.uniform() * (hi[2] - lo[2])];
-      if (this.region.match(p[0], p[1], p[2])) return p;
-    }
-    return null;
+    return p;
   }
 
   private potentialEnergy(): number {
@@ -485,8 +508,11 @@ export class FixGcmc extends Fix {
     return a.evdwl + a.ecoul + a.elong + a.ebond + a.eangle + a.edihed + a.eimp;
   }
 
-  /** Atoms of the fix group inside the region. */
-  private eligibleAtoms(): number[] {
+  /**
+   * The gas list (fix_gcmc.cpp update_gas_atoms_list): the group atoms inside the region, sorted by atom ID (tag).
+   * The native pickers index this list, so its order is the atom-ID order whatever the storage order.
+   */
+  private gasAtoms(): number[] {
     const s = this.sys.state;
     const out: number[] = [];
     for (let i = 0; i < s.n; i++) {
@@ -494,37 +520,58 @@ export class FixGcmc extends Fix {
       if (this.region && !this.region.match(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2])) continue;
       out.push(i);
     }
-    return out;
+    return out.sort((a, b) => s.id[a] - s.id[b]);
   }
 
-  /** Distinct molecule IDs of group atoms inside the region. */
-  private eligibleMolecules(): number[] {
-    const s = this.sys.state;
-    const seen = new Set<number>();
-    for (const i of this.eligibleAtoms()) if (s.molecule[i] > 0) seen.add(s.molecule[i]);
-    return [...seen];
+  /** Exchanged particles of a gas list: atoms, or distinct molecules with the mol keyword (ngas / natoms_per_molecule). */
+  private nParticles(gas: readonly number[]): number {
+    if (!this.molTemplate) return gas.length;
+    return new Set(gas.map((i) => this.sys.state.molecule[i])).size;
   }
 
-  /** Number of exchanged particles: atoms, or distinct molecules with the mol keyword. */
-  private particleCount(): number {
-    if (this.molTemplateId) return this.eligibleMolecules().length;
-    return this.eligibleAtoms().length;
+  /**
+   * Picks one gas atom (fix_gcmc.cpp pick_random_gas_atom and pick_random_gas_molecule): one equal-stream draw,
+   * index = int(ngas * u). The caller has checked that the list is not empty (native returns before the draw).
+   */
+  private pickGasAtom(gas: readonly number[]): number {
+    return gas[Math.floor(gas.length * this.rng.uniform())];
   }
 
-  private extraMask(): number {
-    let m = this.groupBit;
-    if (this.groupId) m |= this.sys.groups.bit(this.groupId);
-    return m;
+  /** Stream of the acceptance decisions: equal for full_energy and molecules, unequal for partial-energy atoms (fix_gcmc.cpp). */
+  private acceptStream(): RanPark {
+    return this.fullEnergy || this.molTemplate ? this.rng : this.accRng;
   }
 
-  private drawVelocity(mass: number): Vec3 {
+  /** Stream of the trial displacements and of inserted velocities: unequal for atoms, equal for molecules (fix_gcmc.cpp). */
+  private vecStream(): RanPark {
+    return this.molTemplate ? this.rng : this.accRng;
+  }
+
+  /** Accepts when u < min(1, exp(exponent)), with one uniform from the stream (fix_gcmc.cpp compares u < exp(...)). */
+  private accept(stream: RanPark, exponent: number): boolean {
+    return stream.uniform() < Math.exp(Math.min(0, exponent));
+  }
+
+  /** Trial displacement: a point of the cube [-1, 1]^3 inside the unit sphere (rejection), scaled by displace. */
+  private sphereDisplacement(stream: RanPark): Vec3 {
+    let rx = 0, ry = 0, rz = 0, rsq = 1.1;
+    while (rsq > 1.0) {
+      rx = 2 * stream.uniform() - 1;
+      ry = 2 * stream.uniform() - 1;
+      rz = 2 * stream.uniform() - 1;
+      rsq = rx * rx + ry * ry + rz * rz;
+    }
+    return [this.displace * rx, this.displace * ry, this.displace * rz];
+  }
+
+  private drawVelocity(mass: number, stream: RanPark): Vec3 {
     const u = this.sys.state.units;
     // kT / m is energy per mass; mvv2e turns it into the style's velocity^2
     const sd = Math.sqrt((u.boltz * this.T * this.tfacInsert) / (mass * u.mvv2e));
-    const v: Vec3 = [sd * this.accRng.gaussian(), sd * this.accRng.gaussian(), sd * this.accRng.gaussian()];
+    const v: Vec3 = [sd * stream.gaussian(), sd * stream.gaussian(), sd * stream.gaussian()];
     // Measured with native LAMMPS (black box): each insertion starts a new polar pair, so the
     // unused second value of the last pair is dropped.
-    this.accRng.discardGaussian();
+    stream.discardGaussian();
     return v;
   }
 
@@ -541,21 +588,22 @@ export class FixGcmc extends Fix {
     return Math.sqrt((u.hplanck * u.hplanck) / (2 * Math.PI * mass * u.boltz * this.T * u.mvv2e));
   }
 
-  private metropolis(exponent: number): boolean {
-    // the exchange stream still advances by one draw here (see the header)
-    this.rng.uniform();
-    return this.accRng.uniform() < Math.exp(Math.min(0, exponent));
+  private extraMask(): number {
+    let m = this.groupBit;
+    if (this.groupId) m |= this.sys.groups.bit(this.groupId);
+    return m;
   }
 
   private insertion(): void {
     const sys = this.sys;
     const s = sys.state;
     this.ninsAtt++;
+    // native returns before any draw when the gas count is at the max bound
+    const gas = this.gasAtoms();
+    if (this.maxAtoms !== null && gas.length >= this.maxAtoms) return;
     const p = this.drawPosition();
     if (!p) return;
-    const nPart = this.particleCount();
-    const add = this.molTemplate ? this.molTemplate.natoms : 1;
-    if (this.maxAtoms !== null && this.groupAtomCount() + add > this.maxAtoms) return;
+    const nPart = this.nParticles(gas);
     const eBefore = this.potentialEnergy();
     const snap = capture(s);
     const kT = s.units.boltz * this.T;
@@ -583,24 +631,18 @@ export class FixGcmc extends Fix {
     }
     // the trial molecule's bonds stay in the energy until it is accepted (see the header)
     this.shakeFix?.extendTopology();
+    // native full_energy insertions draw their velocities before the acceptance test (attempt_*_insertion_full)
+    const vel0 = this.fullEnergy ? this.drawVelocity(mass, this.vecStream()) : null;
     let dU = this.potentialEnergy() - eBefore;
     if (!this.fullEnergy) dU -= this.molTemplate ? this.intraMolEnergy : 0;
     dU -= this.intraEnergy;
     const overlap = this.overlapCutoff > 0 && this.hasOverlap(snap.n, this.overlapCutoff);
     const l3 = this.deBroglie(mass) ** 3;
     const exponent = (this.mu - dU) / kT + Math.log(this.volume / ((nPart + 1) * l3));
-    if (!overlap && this.metropolis(exponent)) {
+    if (!overlap && this.accept(this.acceptStream(), exponent)) {
       this.ninsSucc++;
-      // Measured with native LAMMPS (black box): an accepted molecule's velocities are the Gaussians
-      // that start at draw 11 of the second stream, for the water and the dimer of the w37 cases (the
-      // acceptance number is draw 1), so nine more draws come first; the atom path starts at draw 2.
-      // Measured with native LAMMPS (black box, w38gcr_one_ins and w38gcr_one_full, insertion velocities
-      // with timestep 0): the partial-energy insertion starts its Gaussians after 9 extra draws; with
-      // full_energy the velocities are the Gaussians of 10 extra draws (one more than partial; eight give
-      // the same velocities, which is not separable from the velocities alone).
-      if (this.molTemplate) for (let k = 0; k < (this.fullEnergy ? 10 : 9); k++) this.accRng.uniform();
-      // the velocity is drawn after the acceptance number, from the same stream (see the header)
-      const vel = this.drawVelocity(mass);
+      // the trial's bonds are kept; a partial-energy insertion draws its velocities after the acceptance
+      const vel = vel0 ?? this.drawVelocity(mass, this.vecStream());
       for (let i = snap.n; i < s.n; i++) {
         s.v[3 * i] = vel[0]; s.v[3 * i + 1] = vel[1]; s.v[3 * i + 2] = vel[2];
       }
@@ -622,27 +664,21 @@ export class FixGcmc extends Fix {
     const sys = this.sys;
     const s = sys.state;
     this.ndelAtt++;
-    let idx: number[] = [];
-    if (this.molTemplate) {
-      const mols = this.eligibleMolecules();
-      if (mols.length) {
-        const mid = mols[Math.floor(this.rng.uniform() * mols.length)];
-        for (let i = 0; i < s.n; i++) if (s.molecule[i] === mid) idx.push(i);
-      }
-    } else {
-      const cands = this.eligibleAtoms();
-      if (cands.length) idx = [cands[Math.floor(this.rng.uniform() * cands.length)]];
-    }
-    const blocked = this.minAtoms !== null && this.groupAtomCount() - idx.length < this.minAtoms;
+    // native returns before any draw when the gas is empty or at the min bound
+    const gas = this.gasAtoms();
+    if (gas.length === 0) return;
+    if (this.minAtoms !== null && gas.length <= this.minAtoms) return;
     // docs fix_gcmc.html: "deletion of the last remaining molecule is not allowed" with fix rigid
-    const lastRigid = this.rigidFix !== null && this.particleCount() <= 1;
-    if (!idx.length || blocked || lastRigid) {
-      // No candidate: native still advances the exchange stream by its decision draw but takes
-      // nothing from the second stream (w33gcmc_lj_empty). The min bound is assumed to act the same.
-      this.rng.uniform();
-      return;
+    if (this.rigidFix !== null && this.nParticles(gas) <= 1) return;
+    const picked = this.pickGasAtom(gas);
+    const idx: number[] = [];
+    if (this.molTemplate) {
+      const mid = s.molecule[picked];
+      for (let i = 0; i < s.n; i++) if (s.molecule[i] === mid) idx.push(i);
+    } else {
+      idx.push(picked);
     }
-    const nPart = this.particleCount();
+    const nPart = this.nParticles(gas);
     const eBefore = this.potentialEnergy();
     const snap = capture(s);
     const bodySnap = this.rigidFix?.snapshotBodies();
@@ -661,7 +697,7 @@ export class FixGcmc extends Fix {
     const kT = s.units.boltz * this.T;
     const l3 = this.deBroglie(mass) ** 3;
     const exponent = -(this.mu + dU) / kT + Math.log((nPart * l3) / this.volume);
-    if (this.metropolis(exponent)) {
+    if (this.accept(this.acceptStream(), exponent)) {
       this.ndelSucc++;
     } else {
       restore(s, snap);
@@ -692,11 +728,6 @@ export class FixGcmc extends Fix {
     }
   }
 
-  /** Number of atoms (not molecules) in the fix group inside the region, for max/min. */
-  private groupAtomCount(): number {
-    return this.eligibleAtoms().length;
-  }
-
   /** Random rotation: axis by rejection in the unit sphere, angle 2 pi u (insertion) or [0, maxangle). */
   private randomRotation(angle: number): number[][] {
     let ax: number, ay: number, az: number;
@@ -709,72 +740,75 @@ export class FixGcmc extends Fix {
     return rotationMatrix(theta, ax, ay, az);
   }
 
-  /** One MC move: atom translation, molecule translation, or molecule rotation. */
-  private move(): void {
-    const total = this.patomtrans + this.pmoltrans + this.pmolrotate;
-    if (total <= 0) return;
-    const u = this.rng.uniform() * total;
-    if (u < this.patomtrans) this.translateAtom();
-    else if (u < this.patomtrans + this.pmoltrans) this.translateMolecule();
-    else this.rotateMolecule();
-  }
-
+  /** Atom translation (fix_gcmc.cpp attempt_atomic_translation): pick, displacement, optional region redraws, acceptance. */
   private translateAtom(): void {
     const sys = this.sys;
     const s = sys.state;
     this.ntransAtt++;
-    const cands = this.eligibleAtoms();
-    if (!cands.length) return;
-    const i = cands[Math.floor(this.rng.uniform() * cands.length)];
+    const gas = this.gasAtoms();
+    if (!gas.length) return;
+    const i = this.pickGasAtom(gas);
     const old: Vec3 = [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]];
-    let nw: Vec3;
-    let tries = 0;
-    let inside = false;
-    do {
-      nw = [old[0] + (2 * this.rng.uniform() - 1) * this.displace, old[1] + (2 * this.rng.uniform() - 1) * this.displace, old[2] + (2 * this.rng.uniform() - 1) * this.displace];
-      inside = !this.region || this.region.match(nw[0], nw[1], nw[2]);
-    } while (!inside && ++tries < 1000);
-    if (!inside) { this.regionMoveRejected(); return; }
+    const stream = this.vecStream();
+    let d = this.sphereDisplacement(stream);
+    let nw: Vec3 = [old[0] + d[0], old[1] + d[1], old[2] + d[2]];
+    if (this.region) {
+      let attempt = 0;
+      while (!this.region.match(nw[0], nw[1], nw[2])) {
+        d = this.sphereDisplacement(stream);
+        nw = [old[0] + d[0], old[1] + d[1], old[2] + d[2]];
+        if (++attempt >= MAX_REGION_ATTEMPTS) break;
+      }
+      // docs fix_gcmc.html: a trial move that cannot be placed inside the region is rejected (and still counted)
+      if (!this.region.match(nw[0], nw[1], nw[2])) { this.regionMoveRejected(); return; }
+    }
+    const oldImage = this.snapshotImages([i]);
     const eBefore = this.potentialEnergy();
-    for (let d = 0; d < 3; d++) s.x[3 * i + d] = nw[d];
+    for (let k = 0; k < 3; k++) s.x[3 * i + k] = nw[k];
     sys.bump();
     const dU = this.potentialEnergy() - eBefore;
-    if (this.metropolis(-dU / (s.units.boltz * this.T))) {
+    if (this.accept(this.acceptStream(), -dU / (s.units.boltz * this.T))) {
       this.ntransSucc++;
     } else {
-      for (let d = 0; d < 3; d++) s.x[3 * i + d] = old[d];
+      this.restoreTrial([i], Float64Array.from(old), oldImage);
       sys.bump();
     }
   }
 
+  /** Molecule translation (fix_gcmc.cpp attempt_molecule_translation): the molecule of a picked gas atom moves as a whole. */
   private translateMolecule(): void {
     const sys = this.sys;
     const s = sys.state;
     this.ntransAtt++;
-    const mols = this.eligibleMolecules();
-    if (!mols.length) return;
-    const mid = mols[Math.floor(this.rng.uniform() * mols.length)];
+    const gas = this.gasAtoms();
+    if (!gas.length) return;
+    const mid = s.molecule[this.pickGasAtom(gas)];
     const idx: number[] = [];
     for (let i = 0; i < s.n; i++) if (s.molecule[i] === mid) idx.push(i);
     const com = this.moleculeCom(idx);
-    let nw: Vec3;
-    let tries = 0;
-    let inside = false;
-    do {
-      nw = [com[0] + (2 * this.rng.uniform() - 1) * this.displace, com[1] + (2 * this.rng.uniform() - 1) * this.displace, com[2] + (2 * this.rng.uniform() - 1) * this.displace];
-      inside = !this.region || this.region.match(nw[0], nw[1], nw[2]);
-    } while (!inside && ++tries < 1000);
-    if (!inside) { this.regionMoveRejected(); return; }
-    const shift: Vec3 = [nw[0] - com[0], nw[1] - com[1], nw[2] - com[2]];
+    let d = this.sphereDisplacement(this.rng);
+    let nw: Vec3 = [com[0] + d[0], com[1] + d[1], com[2] + d[2]];
+    if (this.region) {
+      let attempt = 0;
+      while (!this.region.match(nw[0], nw[1], nw[2])) {
+        d = this.sphereDisplacement(this.rng);
+        nw = [com[0] + d[0], com[1] + d[1], com[2] + d[2]];
+        if (++attempt >= MAX_REGION_ATTEMPTS) break;
+      }
+      if (!this.region.match(nw[0], nw[1], nw[2])) { this.regionMoveRejected(); return; }
+    }
+    // native shifts by the displacement of the last draw (com_displace), which is the first one outside a region
+    const shift = d;
     const old = this.snapshotCoords(idx);
+    const oldImage = this.snapshotImages(idx);
     const eBefore = this.potentialEnergy();
-    for (const i of idx) for (let d = 0; d < 3; d++) s.x[3 * i + d] += shift[d];
+    for (const i of idx) for (let k = 0; k < 3; k++) s.x[3 * i + k] += shift[k];
     sys.bump();
     const dU = this.potentialEnergy() - eBefore;
-    if (this.metropolis(-dU / (s.units.boltz * this.T))) {
+    if (this.accept(this.acceptStream(), -dU / (s.units.boltz * this.T))) {
       this.ntransSucc++;
     } else {
-      for (let k = 0; k < idx.length; k++) for (let d = 0; d < 3; d++) s.x[3 * idx[k] + d] = old[3 * k + d];
+      this.restoreTrial(idx, old, oldImage);
       sys.bump();
     }
   }
@@ -790,44 +824,57 @@ export class FixGcmc extends Fix {
     this.sys.warn('fix gcmc: could not place a region-restricted trial move inside the region after 1000 attempts; rejecting the move (reduce displace or enlarge the region)');
   }
 
+  /** Molecule rotation (fix_gcmc.cpp attempt_molecule_rotation): pick, random rotation about the centre of mass, acceptance. */
   private rotateMolecule(): void {
     const sys = this.sys;
     const s = sys.state;
     this.nrotAtt++;
-    const mols = this.eligibleMolecules();
-    if (!mols.length) return;
-    const mid = mols[Math.floor(this.rng.uniform() * mols.length)];
+    const gas = this.gasAtoms();
+    if (!gas.length) return;
+    const mid = s.molecule[this.pickGasAtom(gas)];
     const idx: number[] = [];
     for (let i = 0; i < s.n; i++) if (s.molecule[i] === mid) idx.push(i);
     const com = this.moleculeCom(idx);
     const rot = this.randomRotation(this.maxangle);
     const old = this.snapshotCoords(idx);
+    const oldImage = this.snapshotImages(idx);
     const eBefore = this.potentialEnergy();
+    // fix_gcmc.cpp attempt_molecule_rotation: the rotation acts on the unwrapped coordinates about the unwrapped
+    // centre of mass; the rotated atoms are then remapped into the box with their image flags reset first
+    const u: number[] = [0, 0, 0];
     for (const i of idx) {
-      const rx = s.x[3 * i] - com[0], ry = s.x[3 * i + 1] - com[1], rz = s.x[3 * i + 2] - com[2];
+      sys.geom.unwrap(s.x, s.image, i, u);
+      const rx = u[0] - com[0], ry = u[1] - com[1], rz = u[2] - com[2];
       s.x[3 * i] = com[0] + rot[0][0] * rx + rot[0][1] * ry + rot[0][2] * rz;
       s.x[3 * i + 1] = com[1] + rot[1][0] * rx + rot[1][1] * ry + rot[1][2] * rz;
       s.x[3 * i + 2] = com[2] + rot[2][0] * rx + rot[2][1] * ry + rot[2][2] * rz;
+      s.image[3 * i] = 0; s.image[3 * i + 1] = 0; s.image[3 * i + 2] = 0;
+      sys.geom.remap(s.x, s.image, i);
     }
     sys.bump();
     const dU = this.potentialEnergy() - eBefore;
-    if (this.metropolis(-dU / (s.units.boltz * this.T))) {
+    if (this.accept(this.acceptStream(), -dU / (s.units.boltz * this.T))) {
       this.nrotSucc++;
     } else {
-      for (let k = 0; k < idx.length; k++) for (let d = 0; d < 3; d++) s.x[3 * idx[k] + d] = old[3 * k + d];
+      this.restoreTrial(idx, old, oldImage);
       sys.bump();
     }
   }
 
-  /** Mass-weighted centre of an inserted molecule's atoms (docs fix_gcmc.rst: "center-of-mass"). */
+  /**
+   * Mass-weighted centre of an inserted molecule's atoms (docs fix_gcmc.rst: "center-of-mass"), from the unwrapped
+   * positions as native's group->xcm does (fix_gcmc.cpp attempt_molecule_translation and rotation).
+   */
   private moleculeCom(idx: number[]): Vec3 {
     const s = this.sys.state;
     const c: Vec3 = [0, 0, 0];
+    const u: number[] = [0, 0, 0];
     let mtot = 0;
     for (const i of idx) {
       const m = s.massByType[s.type[i]];
       mtot += m;
-      for (let d = 0; d < 3; d++) c[d] += m * s.x[3 * i + d];
+      this.sys.geom.unwrap(s.x, s.image, i, u);
+      for (let d = 0; d < 3; d++) c[d] += m * u[d];
     }
     return [c[0] / mtot, c[1] / mtot, c[2] / mtot];
   }
@@ -843,6 +890,28 @@ export class FixGcmc extends Fix {
       for (let d = 0; d < 3; d++) c[d] += m * t.x[3 * a + d];
     }
     return [c[0] / mtot, c[1] / mtot, c[2] / mtot];
+  }
+
+  /**
+   * Puts back the positions and image flags of a rejected trial. The trial's bump lets the neighbour build wrap an
+   * atom that was moved out of the box, which changes its image flags, so both must be restored (native never moves
+   * a rejected trial: fix_gcmc.cpp evaluates the trial at the coordinates it would move to).
+   */
+  private restoreTrial(idx: readonly number[], x: Float64Array, image: Int32Array): void {
+    const s = this.sys.state;
+    for (let k = 0; k < idx.length; k++) {
+      for (let d = 0; d < 3; d++) {
+        s.x[3 * idx[k] + d] = x[3 * k + d];
+        s.image[3 * idx[k] + d] = image[3 * k + d];
+      }
+    }
+  }
+
+  private snapshotImages(idx: number[]): Int32Array {
+    const s = this.sys.state;
+    const out = new Int32Array(3 * idx.length);
+    idx.forEach((i, k) => { for (let d = 0; d < 3; d++) out[3 * k + d] = s.image[3 * i + d]; });
+    return out;
   }
 
   private snapshotCoords(idx: number[]): Float64Array {

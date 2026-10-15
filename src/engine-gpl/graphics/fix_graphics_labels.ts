@@ -191,7 +191,9 @@ export function parseLabelArgs(args: string[], readImage: (file: string) => Imag
       }
       specs.push(txt);
     } else if (key === 'colorscale') {
-      throw new Error('fix graphics/labels colorscale is not supported: it needs the colour map of a dump image');
+      // refused by name: the bar's tick labels are the create_label() bitmaps of the native scalable font, and this engine
+      // draws the glyphs from their strokes (scalable_font.ts), so the bar is not pixel-identical and is not drawn
+      throw new Error('fix graphics/labels colorscale is not supported by the browser engine: its tick labels use the native font bitmaps, which the engine does not reproduce pixel for pixel');
     } else {
       throw new Error(`Unknown fix graphics/labels keyword: ${key}`);
     }

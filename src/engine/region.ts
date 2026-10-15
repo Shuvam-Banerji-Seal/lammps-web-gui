@@ -329,6 +329,8 @@ export abstract class Region {
 
 export class BlockRegion extends Region {
   constructor(id: string, env: RegionEnv, readonly b: Param[]) { super(id, 'block', env); }
+  /** xlo, xhi, ylo, yhi, zlo, zhi as the region command gives them (dump image draws the box). */
+  bounds(): number[] { return this.b.map((p) => this.val(p)); }
   protected inside(x: number, y: number, z: number): boolean {
     const b = this.b.map((p) => this.val(p));
     return x >= b[0] && x <= b[1] && y >= b[2] && y <= b[3] && z >= b[4] && z <= b[5];
@@ -354,6 +356,9 @@ export class BlockRegion extends Region {
 
 export class SphereRegion extends Region {
   constructor(id: string, env: RegionEnv, readonly c: Param[], readonly r: Param) { super(id, 'sphere', env); }
+  /** The centre and the radius of the sphere (dump image draws it). */
+  center(): [number, number, number] { const [x, y, z] = this.c.map((p) => this.val(p)); return [x, y, z]; }
+  radius(): number { return this.val(this.r); }
   protected inside(x: number, y: number, z: number): boolean {
     const [cx, cy, cz] = this.c.map((p) => this.val(p));
     const r = this.val(this.r);
@@ -385,6 +390,9 @@ export class SphereRegion extends Region {
 
 export class EllipsoidRegion extends Region {
   constructor(id: string, env: RegionEnv, readonly c: Param[], readonly ax: Param[]) { super(id, 'ellipsoid', env); }
+  /** The centre and the half-axes of the ellipsoid (dump image draws it). */
+  center(): [number, number, number] { const [x, y, z] = this.c.map((p) => this.val(p)); return [x, y, z]; }
+  axes(): [number, number, number] { const [a, b, c] = this.ax.map((p) => this.val(p)); return [a, b, c]; }
   protected inside(x: number, y: number, z: number): boolean {
     const [cx, cy, cz] = this.c.map((p) => this.val(p));
     const [a, b, c] = this.ax.map((p) => this.val(p));
@@ -477,6 +485,9 @@ export class ConeRegion extends Region {
 
 export class PlaneRegion extends Region {
   constructor(id: string, env: RegionEnv, readonly pt: Param[], readonly nrm: Param[]) { super(id, 'plane', env); }
+  /** A point of the plane and the normal vector (not normalised, as the region command gives it). */
+  point(): [number, number, number] { const [x, y, z] = this.pt.map((p) => this.val(p)); return [x, y, z]; }
+  normal(): [number, number, number] { const [x, y, z] = this.nrm.map((p) => this.val(p)); return [x, y, z]; }
   /** "The inside of the plane is the half-space in the direction of the normal vector". */
   protected inside(x: number, y: number, z: number): boolean {
     const [px, py, pz] = this.pt.map((p) => this.val(p));

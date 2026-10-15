@@ -20,7 +20,7 @@ import { makeFixGraphicsReplica } from '../graphics/fix_graphics_replica';
 import { makeFixGraphicsChunk } from '../graphics/fix_graphics_chunk';
 import { imageShadingHook } from '../graphics/image_shading';
 import { atomObjectsHook } from '../graphics/atom_objects';
-import { regionConeHook } from '../graphics/region_cone';
+import { regionHook } from '../graphics/region_box';
 
 const refuse = (style: string, reason: string): FixFactory => () => {
   throw new StyleError(`fix graphics/${style} is not supported by the browser engine: ${reason}`);
@@ -42,4 +42,4 @@ export const FIXES: Record<string, FixFactory> = {
  * HOOKS: the shading and ssao helpers dump image reads through gplHook('image') (image_shading.ts): the draw_pixel
  * light sum with dump image's shiny, and the compute_SSAO occlusion pass.
  */
-export const HOOKS = { image: imageShadingHook, atoms: atomObjectsHook, region: regionConeHook };
+export const HOOKS = { image: imageShadingHook, atoms: atomObjectsHook, region: regionHook };

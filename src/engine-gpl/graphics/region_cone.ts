@@ -12,7 +12,7 @@
  * cylinder that native draws for filled cylinders has diameter 2 * radius, and radius stays 0 in that branch, so it
  * draws nothing and is not ported.
  */
-import type { RasterFrame, Rgb255, RegionConeHook, RegionConeSpec } from '../../engine/output/image_objects';
+import type { RasterFrame, Rgb255, RegionConeSpec } from '../../engine/output/image_objects';
 import { drawCylinder, drawTrinorm } from './draw';
 
 type V = [number, number, number];
@@ -171,6 +171,3 @@ export function drawConeRegion(f: RasterFrame, spec: RegionConeSpec, boxlo: V, b
   const mesh = coneMesh(length, spec.radhi, spec.radlo, faceflag, frame ? RESOLUTION : 2 * RESOLUTION);
   drawConeMesh(f, mesh, drawflag, dir, mid, unit(spec.color), spec.framediam, opacity);
 }
-
-/** The lazy HOOKS entry 'region' (registry/graphics.ts): dump image's region drawing reads it through gplHook. */
-export const regionConeHook: RegionConeHook = { drawConeRegion };

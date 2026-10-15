@@ -25,13 +25,13 @@ const unit = (c: Rgb255): V => [c[0] / 255, c[1] / 255, c[2] / 255];
  * dump_image.cpp, lineflag branch: each segment is the centre plus and minus half its length along theta, in the
  * plane z = 0 (pt1[2] = pt2[2] = 0), drawn with draw_cylinder of the line width and both end caps (sflag 3).
  */
-export function drawLineAtoms(f: RasterFrame, lines: readonly LineAtom[], diameter: number, opacity: number): void {
+export function drawLineAtoms(f: RasterFrame, lines: readonly LineAtom[], diameter: number): void {
   for (const l of lines) {
     const dx = 0.5 * l.length * Math.cos(l.theta);
     const dy = 0.5 * l.length * Math.sin(l.theta);
     const pt1: V = [l.x + dx, l.y + dy, 0];
     const pt2: V = [l.x - dx, l.y - dy, 0];
-    drawCylinder(f, pt1, pt2, unit(l.color), diameter, 3, opacity);
+    drawCylinder(f, pt1, pt2, unit(l.color), diameter, 3, l.opacity);
   }
 }
 
@@ -40,7 +40,7 @@ export function drawLineAtoms(f: RasterFrame, lines: readonly LineAtom[], diamet
  * off for 2, edgedraw off for 1). A face is drawn with draw_triangle under the tri lighting (ambient 0.3, key 0.8,
  * fill 0.45, back 0.8: "brighten flat surfaces a bit"), the edges as three cylinders of diameter `diameter` with caps.
  */
-export function drawTriAtoms(f: RasterFrame, tris: readonly TriAtom[], tstyle: number, diameter: number, opacity: number): void {
+export function drawTriAtoms(f: RasterFrame, tris: readonly TriAtom[], tstyle: number, diameter: number): void {
   const tridraw = tstyle !== 2;
   const edgedraw = tstyle !== 1;
   const faceLight: PixelLight = { ambient: 0.3, lights: { key: 0.8, fill: 0.45, back: 0.8 } };
@@ -49,11 +49,11 @@ export function drawTriAtoms(f: RasterFrame, tris: readonly TriAtom[], tstyle: n
     const p1 = triangleCorner(t.center, t.quat, t.corners, 0);
     const p2 = triangleCorner(t.center, t.quat, t.corners, 1);
     const p3 = triangleCorner(t.center, t.quat, t.corners, 2);
-    if (tridraw) drawTriangle(f, p1, p2, p3, c, opacity, faceLight);
+    if (tridraw) drawTriangle(f, p1, p2, p3, c, t.opacity, faceLight);
     if (edgedraw) {
-      drawCylinder(f, p1, p2, c, diameter, 3, opacity);
-      drawCylinder(f, p2, p3, c, diameter, 3, opacity);
-      drawCylinder(f, p3, p1, c, diameter, 3, opacity);
+      drawCylinder(f, p1, p2, c, diameter, 3, t.opacity);
+      drawCylinder(f, p2, p3, c, diameter, 3, t.opacity);
+      drawCylinder(f, p3, p1, c, diameter, 3, t.opacity);
     }
   }
 }

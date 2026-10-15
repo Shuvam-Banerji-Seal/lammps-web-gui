@@ -2,7 +2,10 @@
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
  * Source: src/BODY/body_rounded_polyhedron.cpp at b332f28 (BodyRoundedPolyhedron::image: the sphere of a one-vertex body,
  * the edges as lines, the faces as rounded or flat triangles with their normals, quadrilateral faces split into two
- * triangles, and the outward shift by half the diameter when edges are drawn; rounded_radius), and the body branch of
+ * triangles, and the outward shift by half the diameter when edges are drawn; rounded_radius), src/BODY/body_nparticle.cpp
+ * (BodyNparticle::image: one sphere per sub-particle of diameter flag1), src/BODY/body_rounded_polygon.cpp
+ * (BodyRoundedPolygon::image: the sphere of a one-vertex body, the rod of two vertices, the edges as lines and the fan of
+ * triangles about the centre, all in the plane z = 0 with the edge half-diameter in z), and the body branch of
  * DumpImage::create_image in src/GRAPHICS/dump_image.cpp (the SPHERE, LINE, TRI and TRINORM element kinds and their
  * drawing with draw_sphere, draw_cylinder (sflag 3), draw_triangle and draw_trinorm). LAMMPS is Copyright (2003) Sandia
  * Corporation and distributed under the GNU General Public License, version 2 (GPL-2.0); this file is GPL-2.0 too
@@ -48,10 +51,77 @@ type Element =
   | { kind: 'trinorm'; p: [V, V, V]; n: [V, V, V] };
 
 /**
- * BodyRoundedPolyhedron::image for one body (the element list in native order). vertices are the body-frame corners,
- * edges and faces index them (a face's fourth index is negative for a triangle).
+ * The element list of one body in native order, by its style: rounded/polyhedron (BodyRoundedPolyhedron::image), nparticle
+ * (BodyNparticle::image) or rounded/polygon (BodyRoundedPolygon::image). vertices are the body-frame corners (or the
+ * sub-particle displacements); for polyhedron, edges and faces index them (a face's fourth index is negative for a triangle).
  */
 export function bodyElements(b: BodyAtom, flag1: number, flag2: number): Element[] {
+  if (b.style === 'nparticle') return nparticleElements(b, flag1);
+  if (b.style === 'rounded/polygon') return polygonElements(b, flag1, flag2);
+  return polyhedronElements(b, flag1, flag2);
+}
+
+/** BodyNparticle::image: one sphere per sub-particle at its rotated body-frame displacement plus the body centre, diameter flag1. */
+function nparticleElements(b: BodyAtom, flag1: number): Element[] {
+  const p = quatMatrix(b.quat);
+  const out: Element[] = [];
+  for (let i = 0; i < b.nsub; i++) {
+    const d = matvec(p, [b.vertices[3 * i], b.vertices[3 * i + 1], b.vertices[3 * i + 2]]);
+    out.push({ kind: 'sphere', c: add3(d, b.center), d: flag1 });
+  }
+  return out;
+}
+
+/**
+ * BodyRoundedPolygon::image: the planar body (z = 0 for its vertices). One vertex is a sphere; otherwise the edges are lines
+ * (two vertices give one rod from vertex 0 to itself, as native does) and, with triangles on, a fan of triangles from the
+ * centroid whose outer corners have z = 0.5 diameter when edges are drawn. flag2 1 keeps edges only off, 2 keeps triangles
+ * only off (native: "if (flag == 2) triflag = false; if (flag == 1) edgeflag = false"); diameter 2 * radius when flag1 <= 0.
+ */
+function polygonElements(b: BodyAtom, flag1: number, flag2: number): Element[] {
+  const p = quatMatrix(b.quat);
+  const diam = flag1 <= 0 ? 2.0 * b.radius : flag1;
+  const vert = (i: number): V => [b.vertices[3 * i], b.vertices[3 * i + 1], b.vertices[3 * i + 2]];
+  if (b.nsub === 1) {
+    const q = matvec(p, vert(0));
+    return [{ kind: 'sphere', c: [q[0] + b.center[0], q[1] + b.center[1], 0], d: diam }];
+  }
+  const edgeflag = flag2 !== 1;
+  const triflag = flag2 !== 2;
+  const out: Element[] = [];
+  // the vertices in the plane z = 0 (native copies x and y and sets z to 0)
+  const pts: V[] = [];
+  for (let i = 0; i < b.nsub; i++) {
+    const q = matvec(p, vert(i));
+    pts.push([q[0] + b.center[0], q[1] + b.center[1], 0]);
+  }
+  let n = b.nsub;
+  if (n === 2) n = 1;
+  if (edgeflag || n === 1) {
+    for (let i = 0; i < n; i++) {
+      let next = i + 1;
+      if (next === n) next = 0;
+      out.push({ kind: 'line', p1: pts[i], p2: [pts[next][0], pts[next][1], 0], d: diam });
+    }
+  }
+  if (triflag && n > 1) {
+    const zc = edgeflag ? 0.5 * diam : 0;
+    const outer: V[] = [];
+    for (let i = 0; i < n; i++) outer.push([pts[i][0], pts[i][1], zc]);
+    const centre: V = [0, 0, 0];
+    for (const o of outer) { centre[0] += o[0]; centre[1] += o[1]; centre[2] += o[2]; }
+    const invn = 1 / n;
+    const c: V = [centre[0] * invn, centre[1] * invn, centre[2] * invn];
+    for (let i = 0; i < n; i++) {
+      const next = (i + 1) % n;
+      out.push({ kind: 'tri', p: [outer[i], c, outer[next]] });
+    }
+  }
+  return out;
+}
+
+/** BodyRoundedPolyhedron::image for one body: the sphere, the edges as lines, the faces as triangles (see bodyElements). */
+function polyhedronElements(b: BodyAtom, flag1: number, flag2: number): Element[] {
   const p = quatMatrix(b.quat);
   const x = b.center;
   const diam = flag1 <= 0 ? 2.0 * b.radius : flag1;
@@ -121,9 +191,10 @@ const add3 = (a: V, b: V): V => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const scale3 = (a: V, s: number): V => [a[0] * s, a[1] * s, a[2] * s];
 
 /** Draws the elements of the body atoms in colour b.color (dump_image.cpp, the bodyflag branch). */
-export function drawBodyAtoms(f: RasterFrame, atoms: readonly BodyAtom[], flag1: number, flag2: number, opacity: number): void {
+export function drawBodyAtoms(f: RasterFrame, atoms: readonly BodyAtom[], flag1: number, flag2: number): void {
   for (const b of atoms) {
     const col = unit(b.color);
+    const opacity = b.opacity;
     for (const e of bodyElements(b, flag1, flag2)) {
       if (e.kind === 'sphere') drawSphere(f, e.c, col, e.d, opacity);
       else if (e.kind === 'line') drawCylinder(f, e.p1, e.p2, col, e.d, 3, opacity);

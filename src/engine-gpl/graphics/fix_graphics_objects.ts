@@ -117,8 +117,11 @@ export class FixGraphicsObjects extends Fix {
     if (it.kind === 'cone') return { kind: 'cone', type: it.type, p1: vec(sys, it.bot), p2: vec(sys, it.top), d1: 2 * evalNumOrVar(sys, it.r1), d2: 2 * evalNumOrVar(sys, it.r2) };
     // an arrow runs from bot to tip: centre, unit direction and length as the image object takes them
     const b = vec(sys, it.bot), t = vec(sys, it.tip);
-    const dir: Vec3 = [t[0] - b[0], t[1] - b[1], t[2] - b[2]];
-    const length = Math.hypot(dir[0], dir[1], dir[2]);
+    // fix_graphics_objects.cpp (ARROW, the imgparms of end_of_step): the unit direction and the length |tip - bot|
+    const raw: Vec3 = [t[0] - b[0], t[1] - b[1], t[2] - b[2]];
+    const length = Math.hypot(raw[0], raw[1], raw[2]);
+    const inv = length > 0 ? 1.0 / length : 0;
+    const dir: Vec3 = [inv * raw[0], inv * raw[1], inv * raw[2]];
     const center: Vec3 = [0.5 * (t[0] + b[0]), 0.5 * (t[1] + b[1]), 0.5 * (t[2] + b[2])];
     return { kind: 'arrow', type: it.type, center, dir, length, diameter: 2 * evalNumOrVar(sys, it.radius), ratio: it.ratio };
   }

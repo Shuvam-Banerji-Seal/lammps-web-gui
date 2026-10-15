@@ -162,11 +162,12 @@ describe('dump image fix objects (graphics/objects, graphics/arrows)', () => {
     // one atom at (5,5,5) with v = (0,2,0): an arrow of length 2 * scale 1 centred on the atom, columns 90 to 110
     const { files } = await run(scene('create_atoms 1 single 5 5 5', 'velocity all set 0 2 0\nfix v all graphics/arrows 1 velocity 1.0 0.5', 'dump im all image 1 out.*.ppm type type size 200 200 box no 0.02 atom no view 90 0 fix v const 0 0'));
     const e = litExtent(decodePpm(b64(files.get('out.0.ppm')!)));
-    // shaft radius 5 px around the columns 90..110 (the arrow of length 2 centred on column 100)
-    expect(e.x0).toBeGreaterThanOrEqual(83);
-    expect(e.x0).toBeLessThanOrEqual(87);
-    expect(e.x1).toBeGreaterThanOrEqual(108);
-    expect(e.x1).toBeLessThanOrEqual(113);
+    // the arrow is ImageObjects::ArrowObj (image_objects.cpp), whose bottom and tip are flat (no caps), so the lit columns
+    // are exactly the arrow's length: 90..110 (the arrow of length 2 centred on column 100)
+    expect(e.x0).toBeGreaterThanOrEqual(89);
+    expect(e.x0).toBeLessThanOrEqual(91);
+    expect(e.x1).toBeGreaterThanOrEqual(109);
+    expect(e.x1).toBeLessThanOrEqual(111);
   });
 
   it('dump_modify fcolor sets the colour of a const-style fix object', async () => {

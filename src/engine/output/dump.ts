@@ -103,8 +103,9 @@ export class Dump {
   private imageDump: ImageDump | null = null;
 
   /** The atom colour map of a dump image as the previous output left it (fix graphics/labels colorscale); null for other styles. */
-  colorScaleMap(): ColorMap | null {
-    return this.imageDump ? this.imageDump.colorScaleMap() : null;
+  colorScaleMap(which: 'atom' | 'bond' = 'atom'): ColorMap | null {
+    if (!this.imageDump) return null;
+    return which === 'bond' ? this.imageDump.bondColorScaleMap() : this.imageDump.colorScaleMap();
   }
   readonly columns: string[];
 

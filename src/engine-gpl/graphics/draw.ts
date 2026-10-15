@@ -408,9 +408,17 @@ const transOf = (t: Rgb | null): V => (t ? [t[0] / 255, t[1] / 255, t[2] / 255] 
 export function drawPixmapBox(f: RasterFrame, x: V, pwidth: number, pheight: number, pixmap: Uint8Array, trans: Rgb | null, sc: number): void {
   if (pwidth === 0 || pheight === 0 || sc <= 0) return;
   const p = project(f, x);
-  const xc = trunc(p.xf) + trunc(f.w / 2);
-  const yc = trunc(p.yf) + trunc(f.h / 2);
-  drawPixmapAt(f, xc, yc, pwidth, pheight, pixmap, transOf(trans), sc, p.dist);
+  let xc = trunc(p.xf) + trunc(f.w / 2);
+  let yc = trunc(p.yf) + trunc(f.h / 2);
+  let s = sc;
+  // image.cpp draw_pixmap (box overload): with fsaa the centre goes to output pixels (xc /= 2, C++ truncation), and the
+  // second overload doubles it back and doubles the scale for the doubled image
+  if (f.fsaa) {
+    xc = 2 * trunc(xc / 2);
+    yc = 2 * trunc(yc / 2);
+    s *= 2;
+  }
+  drawPixmapAt(f, xc, yc, pwidth, pheight, pixmap, transOf(trans), s, p.dist);
 }
 
 /**
@@ -419,7 +427,9 @@ export function drawPixmapBox(f: RasterFrame, x: V, pwidth: number, pheight: num
  */
 export function drawPixmapImage(f: RasterFrame, xc: number, yc: number, pwidth: number, pheight: number, pixmap: Uint8Array, trans: Rgb | null, sc: number): void {
   if (pwidth === 0 || pheight === 0 || sc <= 0) return;
-  drawPixmapAt(f, trunc(xc), trunc(yc), pwidth, pheight, pixmap, transOf(trans), sc, 0);
+  // image.cpp draw_pixmap (int overload): with fsaa the centre and the scale are doubled
+  const fs = f.fsaa ? 2 : 1;
+  drawPixmapAt(f, trunc(xc) * fs, trunc(yc) * fs, pwidth, pheight, pixmap, transOf(trans), sc * fs, 0);
 }
 
 /** Colour of an object's atom type, 0..1 per channel (the colour tables are 0..255). */

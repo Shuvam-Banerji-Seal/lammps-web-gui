@@ -137,9 +137,9 @@ export class FixGraphicsArrows extends Fix {
     }
     const out: ImageObject[] = [];
     for (const { i, v } of vs) {
-      const len = Math.hypot(v[0], v[1], v[2]) * scale;
-      if (!(len > 0)) continue;
-      out.push({ kind: 'arrow', type: s.type[i], center: [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]], dir: v, length: len, diameter: 2 * this.radius, ratio: 0.2 });
+      if (!(Math.hypot(v[0], v[1], v[2]) * scale > 0)) continue;
+      // fix_graphics_arrows.cpp (end_of_step): imgparms = centre atom, the vector, scale (the length factor), 2 * radius, 0.2
+      out.push({ kind: 'arrow', type: s.type[i], center: [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]], dir: v, length: scale, diameter: 2 * this.radius, ratio: 0.2 });
     }
     return out;
   }
@@ -163,9 +163,8 @@ const chunkObjectsOf = (src: ChunkSource, scale0: number, autoscale: number | nu
   const out: ImageObject[] = [];
   for (let c = 0; c < n; c++) {
     const v: Vec3 = [vdata[c * vc], vdata[c * vc + 1], vdata[c * vc + 2]];
-    const len = Math.hypot(v[0], v[1], v[2]) * scale;
-    if (!(len > 0)) continue;
-    out.push({ kind: 'arrow', type: 1, center: [pdata[c * pc], pdata[c * pc + 1], pdata[c * pc + 2]], dir: v, length: len, diameter: 2 * radius, ratio: 0.2 });
+    if (!(Math.hypot(v[0], v[1], v[2]) * scale > 0)) continue;
+    out.push({ kind: 'arrow', type: 1, center: [pdata[c * pc], pdata[c * pc + 1], pdata[c * pc + 2]], dir: v, length: scale, diameter: 2 * radius, ratio: 0.2 });
   }
   return out;
 };

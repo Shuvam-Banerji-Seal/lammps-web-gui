@@ -1,0 +1,30 @@
+# oracle: pair_style smtbq with the Al2O3 potential (ffield.smtbq.Al2O3, QEqAll) on a 109-atom sphere (R 12 A about the centre, 68 O and 41 Al) cut from examples/PACKAGES/smtbq/data.Alpha (the 1800-atom alumina of in.smtbq.Al2O3), free boundaries (boundary f f f, the cluster is not periodic), 10 NVE steps from 300 K with the example's charge computes. The charges are equilibrated inside the pair style every step (Nevery 1)
+# native: LAMMPS b332f28 built from source with -D PKG_SMTBQ=on -D PKG_MANYBODY=on -D PKG_KSPACE=on -D PKG_MOLECULE=on -D PKG_EXTRA-FIX=on (the scratch build of the SMTBQ package, the installed lmp has no SMTBQ)
+# oracle-inputs: w189sq_al2o3_cluster.data
+# oracle-potentials: ffield.smtbq.Al2O3
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS: thermo max relative error 7.0e-12, per-atom 2.0e-11 (QEq every step; engine ~2.2 s).
+units           metal
+atom_style      charge
+dimension       3
+boundary        f f f
+read_data       w189sq_al2o3_cluster.data
+mass            1 16.00
+mass            2 26.98
+group           Oxy type 1
+compute         chargeOxy Oxy property/atom q
+compute         q_Oxy Oxy reduce ave c_chargeOxy
+group           Al type 2
+compute         chargeAl Al property/atom q
+compute         q_Al Al reduce ave c_chargeAl
+velocity        all create 300 277387
+pair_style      smtbq
+pair_coeff      * * ffield.smtbq.Al2O3 O Al
+neighbor        0.5 bin
+neigh_modify    every 20 delay 0 check yes
+timestep        0.0002
+thermo_style    custom step temp press pe ke etotal c_q_Al c_q_Oxy lx ly lz vol
+thermo_modify   format float %.15g flush yes
+thermo          1
+fix             3 all nve
+run             10

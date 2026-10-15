@@ -1,0 +1,22 @@
+# oracle: pair_style body/rounded/polyhedron between a rounded cube tilted 10 degrees about x, falling at speed 1 onto an axis-aligned rounded cube at rest (edge and face contacts, a tilt gives contact points that differ between the two bodies), no friction, c_n 20, c_t 5, k_n 100, A_ua 1, fix nve/body, 200 steps: thermo pe ke etotal press (the contact area factor j_a depends on which body is the first of the pair, as native LAMMPS takes it, so the pair is taken in native's order)
+# Measured with native LAMMPS (b332f28): pe at step 125 is -0.199708017910766 and the engine (fixed) gives -0.19970801791077192; the engine without the native pair order gave -0.19968157770123893 (relative error 1.3e-4). Thermo max relative error below 1e-12 over 200 steps (measured by tightening the tolerance).
+# oracle-inputs: w182bd_tilt_cubes.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+units           lj
+dimension       3
+atom_style      body rounded/polyhedron 1 8
+atom_modify     map array
+read_data       w182bd_tilt_cubes.data
+set             atom 1 vx 0.0 vy 0.0 vz -1.0
+set             atom 2 vx 0.0 vy 0.0 vz 0.0
+pair_style      body/rounded/polyhedron 20 5 0 1 0.5
+pair_coeff      * * 100 1
+comm_modify     vel yes
+neighbor        0.5 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        0.001
+fix             1 all nve/body
+thermo_style    custom step pe ke etotal press
+thermo_modify   format float %.15g
+thermo          25
+run             200

@@ -697,7 +697,10 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
       }
       fx0 *= sc; fy0 *= sc; fz0 *= sc;
     }
-    sh[4] = qx; sh[5] = qy; sh[6] = qz;
+    // native GranSubModRollingSDS::calculate_forces (GRANULAR/gran_sub_mod_rolling.cpp, b332f28) writes the displacement
+    // back only "if (history_update)": the capped rebuild above is local to the force of a setup or force-only evaluation
+    // (history_update = 0), so the stored displacement is kept for the next full step
+    if (update) { sh[4] = qx; sh[5] = qy; sh[6] = qz; }
     rlx = fx0; rly = fy0; rlz = fz0;
   }
   // twisting: torque along n, tau = clamp(-k xi - gamma Omega_tw); no force

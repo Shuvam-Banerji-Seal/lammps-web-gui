@@ -1,0 +1,104 @@
+# oracle: cut-down in.tableting.200 (pair_style granular mdr with rolling sds, 200 spheres in a cylindrical die, fix nve/sphere, gravity), run 1590 steps then 30 more in a separate run (the second run's setup evaluation leaves the rolling history of the capped contacts in place, as native does); the divergence fixed in src/engine/force/pair/granular.ts (rolling sds history written only on full steps, gran_sub_mod_rolling.cpp at b332f28). w183md_spheres200.data is copied byte for byte from examples/granular/spheres200.data at b332f28; also in third_party/lammps/examples/granular.
+# native: b332f28 built as installed lmp (GRANULAR). The rotational energy c_erot (spin of every sphere) is the sensitive check: without the fix the engine fails at step 1610 (c_erot relative 1.2e-8, the spin of the capped contacts is off from step 1591 on); with the fix the thermo rows agree: measured max rel 1.7e-11 (c_erot), 6e-14 (ke); engine 3.6 s.
+# oracle-inputs: w183md_spheres200.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-20 atomrel=1e-7
+##################################### SIMULATION SETTINGS ###################################################
+
+atom_style sphere 1
+atom_modify map array
+comm_modify vel yes
+units si
+newton off
+neighbor      1.0e-3 bin
+neigh_modify every 10 delay 60 check no
+timestep 4e-6
+
+############################## SIMULATION BOUNDING BOX AND INSERT PARTICLES #################################
+
+boundary f f f
+read_data w183md_spheres200.data
+
+#################################### ADD DIE AND ATOM PARAMETERIZATION ######################################
+
+variable atomRadius    equal 0.44e-3*1.25
+variable atomDiameter  equal 2*${atomRadius}
+variable atomDensity   equal 1560
+variable atomMassAvg   equal ${atomDensity}*4.0/3.0*PI*${atomRadius}^3.0
+variable dieRadius     equal 4e-3
+variable dieHeight     equal 1e-2
+
+############################## PARTICLE MATERIAL PROPERTIES AND FORCE MODEL ##################################
+
+pair_style granular
+
+# mdr = E, nu, Y, gamma, psi_b, damp
+variable YoungsModulus      equal 5e6
+variable YieldStress        equal 1.9e5
+variable PoissonsRatio      equal 0.4
+variable SurfaceEnergy      equal 2
+variable SurfaceEnergyWall  equal 0.0
+variable psi_b              equal 0.5
+variable damp               equal 0.2
+variable damp_type          equal 1
+
+# linear_history = k_t, x_gammat, mu_s
+variable kt         equal 2/7*${YoungsModulus}*${atomRadius}
+variable kt_wall    equal 2/7*${YoungsModulus}*${atomRadius}
+variable xgammat    equal 1.0
+variable mu_s       equal 0.7
+variable mu_s_wall  equal 0.1
+
+# sds = mu_roll, k_roll, gamma_roll
+variable mu_roll     equal 0.6
+variable k_roll      equal 2.25*${mu_roll}*${mu_roll}*${YoungsModulus}*${atomRadius}
+variable gamma_roll  equal 0.0
+
+pair_coeff * * mdr ${YoungsModulus} ${PoissonsRatio} ${YieldStress} ${SurfaceEnergy} ${psi_b} ${damp} &
+    damping mdr ${damp_type} &
+    tangential linear_history ${kt} ${xgammat} ${mu_s} &
+    rolling sds ${k_roll} ${gamma_roll} ${mu_roll}
+
+######################################### ADD DIE AND PUNCH WALLS ############################################
+
+variable disp_upper      equal 0.0
+variable disp_lower      equal 0.0
+
+variable wall_contact_string string "granular mdr ${YoungsModulus} ${PoissonsRatio} ${YieldStress} ${SurfaceEnergyWall} ${psi_b} ${damp} damping mdr ${damp_type} tangential linear_history ${kt_wall} ${xgammat} ${mu_s_wall} rolling sds ${k_roll} ${gamma_roll} ${mu_roll}"
+
+variable dieHeight2 equal 2*${dieHeight}
+
+region lowerPunch plane 0 0 0 0 0 1 side in units box move NULL NULL v_disp_lower units box
+region upperPunch plane 0 0 ${dieHeight} 0 0 -1 side in move NULL NULL v_disp_upper units box
+region die cylinder z 0 0 ${dieRadius} 0 ${dieHeight2} side in units box
+
+fix lowerPunch all wall/gran/region ${wall_contact_string} region lowerPunch contacts
+fix upperPunch all wall/gran/region ${wall_contact_string} region upperPunch contacts
+fix die all wall/gran/region ${wall_contact_string} region die contacts
+
+
+
+##################################### INTEGRATION AND GRAVITY #################################################
+
+
+########################################### SCREEN OUTPUT  ####################################################
+
+compute       1 all erotate/sphere
+thermo        10
+thermo_modify lost ignore norm no
+
+##################################### SET UP DUMP OUTPUTS  ####################################################
+
+
+
+
+
+
+
+################
+compute erot all erotate/sphere
+thermo_style  custom step ke c_erot
+thermo_modify format float %.15g
+fix 1 all nve/sphere
+fix grav all gravity 9.81 vector 0 0 -1
+run 1590
+run 30

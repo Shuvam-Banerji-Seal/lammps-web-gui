@@ -12,7 +12,11 @@
  * frame keeps rows from the top (RasterFrame); compute_SSAO works on native rows counted from the bottom, so the
  * occlusion pass converts the buffers to that order and back.
  */
-import type { RasterFrame } from '../../engine/output/image_objects';
+import type { PostProcessOptions, RasterFrame } from '../../engine/output/image_objects';
+import { postProcess } from './image_postprocess';
+import { drawSphere } from './draw';
+import { color2rgb, defaultTypeColor, element2color, element2diam } from './colors';
+import type { ImageSpecular } from '../../engine/output/image_objects';
 
 type V = [number, number, number];
 
@@ -50,16 +54,20 @@ export const DEFAULT_LIGHTS: LightColors = { key: KEY_COLOR, fill: FILL_COLOR, b
  * the ambient colour (0, or 0.5 with ssao). Metallic is 0 and gamma is 1 (the dump image defaults), so the reflect term
  * is 1 and the colour is the sum of the ambient, key diffuse, key specular, fill and back terms, saturated to 0..1.
  */
-export function shadeSurface(surface: V, col: V, shiny: number, ambient: number, lights: LightColors = DEFAULT_LIGHTS): V {
+export function shadeSurface(surface: V, col: V, shiny: number, ambient: number, lights: LightColors = DEFAULT_LIGHTS, spec?: ImageSpecular): V {
   const diffuseKey = sat(dot(surface, KEY_DIR));
   const diffuseFill = sat(dot(surface, FILL_DIR));
   const diffuseBack = sat(dot(surface, BACK_DIR));
-  const specularKey = shiny > 0 ? Math.pow(sat(dot(surface, KEY_HALF)), 16 * shiny) * shiny : 0;
+  // the highlight: pow(saturate(n . half), specularHardness) * specularIntensity (image.cpp draw_pixel). Without a
+  // dump_modify specular the hardness is 16 * shiny and the intensity is shiny; "specular none" is an intensity of 0.
+  const specOn = spec ? spec.intensity > 0 : shiny > 0;
+  const specularKey = !specOn ? 0 : spec ? Math.pow(sat(dot(surface, KEY_HALF)), spec.hardness) * spec.intensity
+    : Math.pow(sat(dot(surface, KEY_HALF)), 16 * shiny) * shiny;
   const out: V = [0, 0, 0];
   for (let k = 0; k < 3; k++) {
     let c = col[k] * ambient;
     c += col[k] * lights.key * diffuseKey;
-    if (shiny > 0) c += lights.key * 1 * specularKey;
+    if (specOn) c += lights.key * 1 * specularKey;
     c += col[k] * lights.fill * diffuseFill;
     c += col[k] * lights.back * diffuseBack;
     out[k] = sat(c);
@@ -208,6 +216,12 @@ export function applySsao(f: RasterFrame, radius: number, samples: number, seed:
 export interface ImageShadingHook {
   shadeSurface: typeof shadeSurface;
   applySsao: typeof applySsao;
+  postProcess: (f: RasterFrame, o: PostProcessOptions) => void;
+  drawSphere: typeof drawSphere;
+  color2rgb: typeof color2rgb;
+  defaultTypeColor: typeof defaultTypeColor;
+  element2color: typeof element2color;
+  element2diam: typeof element2diam;
 }
 
-export const imageShadingHook: ImageShadingHook = { shadeSurface, applySsao };
+export const imageShadingHook: ImageShadingHook = { shadeSurface, applySsao, postProcess, drawSphere, color2rgb, defaultTypeColor, element2color, element2diam };

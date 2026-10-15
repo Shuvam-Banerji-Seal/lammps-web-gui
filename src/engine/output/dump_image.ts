@@ -48,7 +48,19 @@ import { BlockRegion, ConeRegion, EllipsoidRegion, PlaneRegion, PrismRegion, Sph
  * 0.5 * diameter * scale.
  */
 
+/** An 8-bit colour as the flat raster routines write it. */
 type RGB = [number, number, number];
+/**
+ * A colour as native keeps it: red, green and blue in 0..1 (Image::rgbcolors, image.cpp at b332f28). Shaded objects
+ * (atoms) keep it until the pixel write (int(c * 255), Image::draw_pixel); the flat routines take rgbOf(c).
+ */
+type Col = [number, number, number];
+
+/** static_cast<int>(c * 255.0) for each channel (native backcolor, depthcue and outline colours). */
+const rgbOf = (c: Col): RGB => [Math.trunc(c[0] * 255), Math.trunc(c[1] * 255), Math.trunc(c[2] * 255)];
+
+/** The default box colour as 8-bit values: color2rgb("gold") (image.cpp, Image::Image). */
+const boxcolorDefault = (): RGB => rgbOf(gplHook<ImageShading>('image').color2rgb('gold')!);
 
 /** What the object drawing needs from one snapshot's camera. */
 interface DrawCtx {
@@ -65,31 +77,12 @@ interface DrawCtx {
 /** dump image ssao ambient colour (Image::view_params: ambientColor 0.5 with ssao; 0 otherwise). */
 const SSAO_AMBIENT = 0.5;
 
-/** A useful subset of the 140 pre-defined colour names (dump_image.html). */
-const NAMED_COLORS: Record<string, RGB> = {
-  red: [255, 0, 0], green: [0, 255, 0], blue: [0, 0, 255], yellow: [255, 255, 0],
-  aqua: [0, 255, 255], cyan: [0, 255, 255], magenta: [255, 0, 255], fuchsia: [255, 0, 255],
-  white: [255, 255, 255], black: [0, 0, 0], gray: [128, 128, 128], grey: [128, 128, 128],
-  silver: [192, 192, 192], maroon: [128, 0, 0], olive: [128, 128, 0], lime: [0, 255, 0],
-  teal: [0, 128, 128], navy: [0, 0, 128], purple: [128, 0, 128], orange: [255, 165, 0],
-  pink: [255, 192, 203], brown: [165, 42, 42], gold: [255, 215, 0], violet: [238, 130, 238],
-  darkred: [139, 0, 0], darkgreen: [0, 100, 0], darkblue: [0, 0, 139], lightgray: [211, 211, 211],
-  lightgrey: [211, 211, 211], indigo: [75, 0, 130], turquoise: [64, 224, 208], salmon: [250, 128, 114],
-  khaki: [240, 230, 140], crimson: [220, 20, 60], orchid: [218, 112, 214], tan: [210, 180, 140],
-  beige: [245, 245, 220], coral: [255, 127, 80], plum: [221, 160, 221], azure: [240, 255, 255],
-  // the colour names the GRAPHICS examples use (dump image colour table of src/GRAPHICS/image.cpp at b332f28,
-  // the values in 0..1 times 255 rounded)
-  forestgreen: [34, 139, 34], goldenrod: [218, 165, 32], indianred: [205, 92, 92],
-  darkgray: [69, 69, 69], steelblue: [70, 130, 180], slategray: [112, 128, 144], lightslategray: [119, 136, 153],
-  midnightblue: [25, 25, 112], firebrick: [178, 34, 34], darkslategray: [47, 79, 79],
-};
 
 /**
  * dump_image.html Default: "acolor = \* red/green/blue/yellow/aqua/cyan". Measured with native
  * LAMMPS (black box): types 1..6 render red, green, blue, yellow, aqua, magenta, so the sixth
  * entry is magenta (255,0,255) here; the mapping "repeats itself for types > 6".
  */
-const TYPE_COLORS: RGB[] = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0], [0, 255, 255], [255, 0, 255]];
 
 /** Atom attributes dump image can colour/size by (dump.html attribute names + c_/f_/v_); type and element are special. */
 const SUPPORTED_ATTRS = new Set([
@@ -97,15 +90,6 @@ const SUPPORTED_ATTRS = new Set([
   'q', 'mol', 'radius', 'diameter',
 ]);
 
-/** Common element colours/radii (AtomEye-like); every type defaults to C (dump_image.html). */
-const ELEMENTS: Record<string, [RGB, number]> = {
-  H: [[255, 255, 255], 0.5], He: [[217, 255, 255], 0.6], Li: [[204, 128, 255], 1.5], Be: [[194, 255, 0], 1.1],
-  B: [[255, 181, 181], 0.9], C: [[144, 144, 144], 1.5], N: [[48, 80, 248], 1.4], O: [[255, 13, 13], 1.3],
-  F: [[144, 224, 80], 1.2], Ne: [[179, 227, 245], 1.2], Na: [[171, 92, 242], 1.9], Mg: [[138, 255, 0], 1.6],
-  Al: [[191, 166, 166], 1.5], Si: [[240, 200, 160], 1.5], P: [[255, 128, 0], 1.4], S: [[255, 255, 48], 1.4],
-  Cl: [[31, 240, 31], 1.4], Ar: [[128, 209, 227], 1.3], K: [[143, 64, 212], 2.2], Ca: [[61, 255, 0], 2.0],
-  Fe: [[224, 102, 51], 1.6], Cu: [[200, 128, 51], 1.5], Zn: [[125, 128, 176], 1.5], Au: [[255, 209, 35], 1.6],
-};
 
 interface Attr {
   color: string;
@@ -123,8 +107,6 @@ const DEG = Math.PI / 180;
 
 /** dump image axes locations; null is "no", "yes" is the lower left corner. */
 type AxesLocation = 'center' | 'lowerleft' | 'lowerright' | 'upperleft' | 'upperright';
-/** The colours of the x, y and z axes of dump image "axes" (red, green, blue). */
-const AXIS_COLORS: RGB[] = [[255, 0, 0], [0, 255, 0], [0, 0, 255]];
 const AXES_LOCATIONS = new Map<string, AxesLocation | null>([
   ['no', null], ['center', 'center'], ['lowerleft', 'lowerleft'], ['yes', 'lowerleft'], ['lowerright', 'lowerright'], ['upperleft', 'upperleft'], ['upperright', 'upperright'],
 ]);
@@ -184,20 +166,21 @@ export class ImageDump {
   private boxOn = true;
   private boxDiam = 0.02;
   private adiamAll: number | null = null;
-  private acolorByType = new Map<number, RGB>();
+  private acolorByType = new Map<number, Col>();
   private adiamByType = new Map<number, number>();
   /** dump_modify atrans: the transparency (0..1, 1 opaque) of the atoms of each type, native aopacity (default 1). */
   private aopacityByType = new Map<number, number>();
   /** dump_modify lights: ambient, key, fill and back light colours (0..1); null keeps the Image defaults. */
   private lightSet: { ambient: number; key: number; fill: number; back: number } | null = null;
-  private bcolorByType = new Map<number, RGB>();
+  private bcolorByType = new Map<number, Col>();
   private bdiamByType = new Map<number, number>();
   private backcolor: RGB = [0, 0, 0];
   /** dump_modify backcolor2: the top of a background gradient (null: a single background colour). */
   private backcolor2: RGB | null = null;
-  private boxcolor: RGB = [255, 255, 0];
+  /** The box colour default: color2rgb("gold") (image.cpp, Image::Image; gold is 1.0, 0.843, 0.0), see boxcolorDefault(). */
+  private boxcolor: RGB = boxcolorDefault();
   /** dump_modify color definitions (name -> RGB), local to this dump. */
-  private userColors = new Map<string, RGB>();
+  private userColors = new Map<string, Col>();
   private bond: { color: string; width: string } | null;
   /** dump_modify amap (colour map of an atom colour value); null = the dump_image.html default. */
   private amap: ColorMap | null = null;
@@ -208,6 +191,17 @@ export class ImageDump {
   private ssao = false;
   private ssaoSeed = 1;
   private ssaoInt = 0;
+  /** dump_modify ssaosamples (0: the number derived from the ssao intensity) and specular (see parse()). */
+  private ssaoSamples = 0;
+  private specularSet = false;
+  private specularNone = false;
+  private specularHardness = 16;
+  /** dump image "outline" keyword: the width (1 to 16 pixels) and the colour; null when off. */
+  private outlineOn: { width: number; color: RGB } | null = null;
+  /** dump image "depthcue" keyword: the strength, the fog colour (null: auto) and the start (null: auto); null when off. */
+  private depthcueOn: { strength: number; color: RGB | null; start: number | null } | null = null;
+  /** dump image "defocus" keyword: the blur strength and the start (null: auto); null when off. */
+  private defocusOn: { strength: number; start: number | null } | null = null;
   /** dump image "axes" keyword: the location, the length and the diameter fraction (null: no axes). */
   private axes: { loc: AxesLocation; len: number; diam: number } | null = null;
   /** dump image "fix ID style flag1 flag2" keywords: the fixes whose graphics objects are drawn. */
@@ -251,6 +245,32 @@ export class ImageDump {
     this.parse(args.slice(2));
   }
 
+  /**
+   * A logical keyword value as utils::logical reads it (utils.cpp at b332f28): yes, on, true or 1 are on; no, off,
+   * false or 0 are off; anything else is an error ("Expected boolean parameter instead of ...").
+   */
+  private logical(w: string | undefined): boolean {
+    if (w === 'yes' || w === 'on' || w === 'true' || w === '1') return true;
+    if (w === 'no' || w === 'off' || w === 'false' || w === '0') return false;
+    throw new StyleError(`dump ${this.id}: expected boolean parameter instead of '${w ?? ''}' in dump image`);
+  }
+
+  /**
+   * A colour as native's Image::color2rgb reads it: a dump_modify color definition first, then the table of
+   * Image::rgbcolors (engine-gpl/graphics/colors.ts, through the 'image' hook). Null for "none" and an unknown name.
+   */
+  private namedColor(w: string): Col | null {
+    const u = this.userColors.get(w);
+    if (u) return [u[0], u[1], u[2]];
+    return gplHook<ImageShading>('image').color2rgb(w);
+  }
+
+  /** A colour name for the image keywords; null for "none" or an unknown name (the caller raises its error). */
+  private colorOrNull(w: string | undefined): Col | null {
+    if (w === undefined || w === 'none') return null;
+    return this.namedColor(w);
+  }
+
   private num(w: string, key: string): number {
     if (w.startsWith('v_')) return this.sys.equalVariable(w.slice(2));
     const n = Number(w);
@@ -258,10 +278,10 @@ export class ImageDump {
     return n;
   }
 
-  private color(w: string): RGB {
-    const c = this.userColors.get(w) ?? NAMED_COLORS[w];
+  private color(w: string): Col {
+    const c = this.namedColor(w);
     if (!c) throw new StyleError(`dump ${this.id}: unknown colour '${w}'`);
-    return [c[0], c[1], c[2]];
+    return c;
   }
 
   private parse(a: string[]): void {
@@ -357,7 +377,7 @@ export class ImageDump {
           const id = a[k + 1], color = a[k + 2], style = a[k + 3];
           if (!id || !color || !style) throw new StyleError(`dump ${this.id}: dump image region needs an ID, a colour and a draw style`);
           this.sys.region(id);
-          const rgb = this.color(color);
+          const rgb = rgbOf(this.color(color));
           let drawstyle: 'filled' | 'frame' | 'transparent' | 'points' = 'filled', framediam = 0.5, opacity = 1, npoints = 0;
           let used = 4;
           if (style === 'filled') { /* no value */ }
@@ -468,6 +488,58 @@ export class ImageDump {
           k += 4;
           break;
         }
+        // dump_image.html: "depthcue values = cueing cfactor color start"; the four words are read in every case
+        // (dump_image.cpp: iarg+5 > narg, then iarg += 5). cueing is a logical (see logical()).
+        case 'depthcue': {
+          if (k + 5 > a.length) throw new StyleError(`dump ${this.id}: dump image depthcue needs cueing, cfactor, color and start`);
+          const on = this.logical(a[k + 1]);
+          const strength = this.num(a[k + 2], 'depthcue');
+          // dump_image.html: "cfactor = strength of fading from 0.0 to 1.0" (dump_image.cpp: cfactor < 0.0 || cfactor > 1.0)
+          if (strength < 0 || strength > 1) throw new StyleError(`dump ${this.id}: invalid dump image depthcue strength value ${strength}`);
+          // dump_image.html: "color = fog color name or *auto* = fade toward the background color"
+          let color: Col | null = null;
+          if (a[k + 3] !== 'auto') {
+            color = this.colorOrNull(a[k + 3]);
+            if (!color) throw new StyleError(`dump ${this.id}: invalid dump image depthcue color ${a[k + 3]}`);
+          }
+          // dump_image.html: "start = box fraction along the view direction where fading starts, or *auto*"; "With *auto*
+          // it begins at the nearest rendered object, so the front of the scene never fades." and "The fading always ends
+          // at the most distant rendered object."
+          const start = a[k + 4] === 'auto' ? null : this.num(a[k + 4], 'depthcue');
+          this.depthcueOn = on ? { strength, color: color ? rgbOf(color) : null, start } : null;
+          k += 5;
+          break;
+        }
+        // dump_image.html: "defocus values = blurring bfactor start" (dump_image.cpp: iarg+4 > narg, iarg += 4); "Objects in
+        // front of the start position are not blurred, and the blur always reaches its maximum at the most distant rendered
+        // object."
+
+        case 'defocus': {
+          if (k + 4 > a.length) throw new StyleError(`dump ${this.id}: dump image defocus needs blurring, bfactor and start`);
+          const on = this.logical(a[k + 1]);
+          const strength = this.num(a[k + 2], 'defocus');
+          // dump_image.html: "bfactor = strength of the blur from 0.0 to 1.0" (dump_image.cpp: bfactor < 0.0 || bfactor > 1.0)
+          if (strength < 0 || strength > 1) throw new StyleError(`dump ${this.id}: invalid dump image defocus strength value ${strength}`);
+          const start = a[k + 3] === 'auto' ? null : this.num(a[k + 3], 'defocus');
+          this.defocusOn = on ? { strength, start } : null;
+          k += 4;
+          break;
+        }
+        // dump_image.html: "outline values = flag width color = outlines at depth jumps" and "width = width of the outlines in
+        // pixels (from 1 to 16)"; width is an integer from 1 to
+        // 16 (dump_image.cpp: utils::inumeric, owidth < 1 || owidth > 16), color a colour name (not none)
+        case 'outline': {
+          if (k + 4 > a.length) throw new StyleError(`dump ${this.id}: dump image outline needs flag, width and color`);
+          const on = this.logical(a[k + 1]);
+          const wText = a[k + 2];
+          const width = /^[+-]?\d+$/.test(wText) ? Number(wText) : NaN;
+          if (!(width >= 1 && width <= 16)) throw new StyleError(`dump ${this.id}: invalid dump image outline width ${wText}`);
+          const color = this.colorOrNull(a[k + 3]);
+          if (!color) throw new StyleError(`dump ${this.id}: invalid dump image outline color ${a[k + 3]}`);
+          this.outlineOn = on ? { width, color: rgbOf(color) } : null;
+          k += 4;
+          break;
+        }
         // ellipsoid draws ellipsoids (and superellipsoids, atom_style ellipsoid superellipsoid): no renderer here
         case 'autobond': case 'grid':
         case 'subbox': case 'persp':
@@ -496,7 +568,7 @@ export class ImageDump {
       for (let t = lo; t <= hi; t++) out.push(t);
       return out;
     };
-    const colors = (w: string): RGB[] => w.split('/').map((c) => this.color(c));
+    const colors = (w: string): Col[] => w.split('/').map((c) => this.color(c));
     switch (key) {
       case 'acolor': {
         const types = typeRange(a[k + 1]);
@@ -536,17 +608,39 @@ export class ImageDump {
         for (const t of typeRange(a[k + 1])) this.bdiamByType.set(t, this.num(a[k + 2], 'bdiam'));
         return 3;
       }
-      case 'backcolor': this.backcolor = this.color(a[k + 1]); return 2;
-      case 'backcolor2': this.backcolor2 = a[k + 1] === 'none' ? null : this.color(a[k + 1]); return 2;
-      case 'boxcolor': this.boxcolor = this.color(a[k + 1]); return 2;
+      // dump_image.html (dump_modify options): "*ssaosamples* arg = nsamples" and "nsamples = number of SSAO sampling
+      // directions per pixel (from 4 to 64)"; dump_modify.cpp checks 4 <= nsamples <= 64 (image.cpp ssaosamples)
+      case 'ssaosamples': {
+        const v = a[k + 1] === undefined ? NaN : Number(a[k + 1]);
+        if (!Number.isInteger(v) || v < 4 || v > 64) throw new StyleError(`dump ${this.id}: illegal ssaosamples value ${a[k + 1] ?? ''} in dump_modify`);
+        this.ssaoSamples = v;
+        return 2;
+      }
+      // dump_image.html (dump_modify options): "*specular* arg = style" and "style = *none* or *wide* or *narrow* or *tight*
+      // = specular highlights off or their width"; "The *specular* keyword adjusts the specular highlights independently from
+      // the *shiny* keyword of the dump image command." Hardness wide 10, narrow 50, tight 250 (dump_modify.cpp, image.cpp)
+      case 'specular': {
+        const st = a[k + 1];
+        if (st === 'none') { this.specularNone = true; this.specularSet = true; return 2; }
+        const h = st === 'wide' ? 10 : st === 'narrow' ? 50 : st === 'tight' ? 250 : null;
+        if (h === null) throw new StyleError(`dump ${this.id}: unknown specular setting ${st ?? ''}`);
+        this.specularHardness = h;
+        this.specularNone = false;
+        this.specularSet = true;
+        return 2;
+      }
+      case 'backcolor': this.backcolor = rgbOf(this.color(a[k + 1])); return 2;
+      case 'backcolor2': this.backcolor2 = a[k + 1] === 'none' ? null : rgbOf(this.color(a[k + 1])); return 2;
+      case 'boxcolor': this.boxcolor = rgbOf(this.color(a[k + 1])); return 2;
       case 'color': {
         const name = a[k + 1];
-        const c: RGB = [this.num(a[k + 2], 'color'), this.num(a[k + 3], 'color'), this.num(a[k + 4], 'color')];
-        this.userColors.set(name, [Math.round(c[0] * 255), Math.round(c[1] * 255), Math.round(c[2] * 255)]);
+        // dump_modify color: rgbcolors[name] = {r, g, b} with the values as given (image.cpp add_color), no rounding
+        const c: Col = [this.num(a[k + 2], 'color'), this.num(a[k + 3], 'color'), this.num(a[k + 4], 'color')];
+        this.userColors.set(name, c);
         return 5;
       }
       case 'amap': {
-        const { map, used } = ColorMap.parse(a.slice(k + 1), (c) => this.userColors.get(c) ?? NAMED_COLORS[c] ?? null);
+        const { map, used } = ColorMap.parse(a.slice(k + 1), (c) => this.namedColor(c));
         this.amap = map;
         return used + 1;
       }
@@ -555,7 +649,7 @@ export class ImageDump {
         // not included in dump"; the colour is read for the const style)
         const f = this.fixObjects.find((x) => x.id === a[k + 1] && x.source === 'compute');
         if (!f) throw new StyleError(`dump ${this.id}: dump_modify ccolor: compute ID '${a[k + 1] ?? ''}' is not included in dump ${this.id}`);
-        f.rgb = this.color(a[k + 2] ?? '');
+        f.rgb = rgbOf(this.color(a[k + 2] ?? ''));
         return 3;
       }
       case 'fcolor': {
@@ -563,7 +657,7 @@ export class ImageDump {
         // use the const style (the colour is only read for that style, as in native dump_image.cpp)
         const f = this.fixObjects.find((x) => x.id === a[k + 1] && x.source === 'fix');
         if (!f) throw new StyleError(`dump ${this.id}: dump_modify fcolor: fix ID '${a[k + 1] ?? ''}' is not a dump image fix`);
-        f.rgb = this.color(a[k + 2] ?? '');
+        f.rgb = rgbOf(this.color(a[k + 2] ?? ''));
         return 3;
       }
       case 'ftrans': {
@@ -589,15 +683,18 @@ export class ImageDump {
   }
 
   private typeColor(s: SimState, i: number, colorVals: Float64Array | null, cmap: ColorMap | null): RGB {
+    return rgbOf(this.atomColor(s, i, colorVals, cmap));
+  }
+
+  /**
+   * The colour of an atom as native's DumpImage::create_image sets it: colortype (acolor, else default_colors[type % 16]),
+   * colorelement (the element table), or the colour map of an atom value (ColorMap keeps native's double colours).
+   */
+  private atomColor(s: SimState, i: number, colorVals: Float64Array | null, cmap: ColorMap | null): Col {
     const type = s.type[i];
-    if (this.attr.color === 'type') {
-      const custom = this.acolorByType.get(type);
-      return custom ?? TYPE_COLORS[(type - 1) % TYPE_COLORS.length];
-    }
-    if (this.attr.color === 'element') {
-      const el = this.elementName(s, type);
-      return (ELEMENTS[el] ?? ELEMENTS.C)[0];
-    }
+    const hook = gplHook<ImageShading>('image');
+    if (this.attr.color === 'type') return this.acolorByType.get(type) ?? hook.defaultTypeColor(type);
+    if (this.attr.color === 'element') return hook.element2color(this.elementName(s, type)) ?? hook.element2color('C')!;
     return cmap!.color(colorVals![i]);
   }
 
@@ -626,10 +723,7 @@ export class ImageDump {
     if (this.adiamAll !== null) return this.adiamAll;
     const type = s.type[i];
     if (this.attr.diameter === 'type') return this.adiamByType.get(type) ?? 1.0;
-    if (this.attr.diameter === 'element') {
-      const el = this.elementName(s, type);
-      return (ELEMENTS[el] ?? ELEMENTS.C)[1];
-    }
+    if (this.attr.diameter === 'element') return gplHook<ImageShading>('image').element2diam(this.elementName(s, type));
     return diamVals![i];
   }
 
@@ -721,20 +815,22 @@ export class ImageDump {
       return [sx, sy, dep];
     };
 
-    // Image::view_params (orthographic): pixelWidth = maxdel / (height * zoom) with maxdel = 2 * longest edge, and
+    // Image::view_params (image.cpp at b332f28: FOV = MY_PI / 6.0, so tan(FOV) is taken of MY_PI / 6.0 exactly): pixelWidth = maxdel / (height * zoom) with maxdel = 2 * longest edge, and
     // zdist = (maxdel / tan(30 deg) + 0.5 * del . camDir) / zoom with del = 2 * edges (image.cpp at b332f28)
     const maxdel = 2 * maxdim;
-    const zdist = (maxdel / Math.tan(30 * DEG) + 0.5 * (2 * lx * V[0] + 2 * ly * V[1] + 2 * lz * V[2])) / this.zoom;
+    const zdist = (maxdel / Math.tan(Math.PI / 6) + 0.5 * (2 * lx * V[0] + 2 * ly * V[1] + 2 * lz * V[2])) / this.zoom;
     const frame: RasterFrame = {
       w, h, rgb, depth,
       camRight: [right[0], right[1], right[2]], camUp: [ui[0], ui[1], ui[2]], camDir: [V[0], V[1], V[2]],
-      ctr: [center[0], center[1], center[2]], zdist, pixelWidth: maxdel / (h * this.zoom),
+      ctr: [center[0], center[1], center[2]], zdist, pixelWidth: maxdel / h / this.zoom,
       // dump image shiny; with ssao the ambient colour is 0.5 and the tangents of the surfaces are kept (view_params)
       shiny: this.shiny,
       // Image::view_params sets the ssao ambient at construction; dump_modify lights (later) replaces it
       ambient: this.lightSet ? this.lightSet.ambient : this.ssao ? SSAO_AMBIENT : 0,
       lights: this.lightSet ? { key: this.lightSet.key, fill: this.lightSet.fill, back: this.lightSet.back } : undefined,
       surface: this.ssao ? new Float64Array(2 * w * h) : undefined,
+      dist: new Float64Array(w * h).fill(-1),
+      spec: this.specularSet ? { hardness: this.specularHardness, intensity: this.specularNone ? 0 : this.shiny } : undefined,
     };
     const ctx: DrawCtx = { rgb, depth, project, scale, frame, shading: gplHook<ImageShading>('image') };
 
@@ -756,13 +852,14 @@ export class ImageDump {
         if (this.bodyOn) continue;
         const diam = this.diameter(s, i, diamVals);
         if (!(diam > 0)) continue;
-        const [px, py, pd] = project([s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]]);
         const r = 0.5 * diam * scale;
         if (r < 0.5) continue;
-        const base = this.typeColor(s, i, colorVals, cmap);
+        const base = this.atomColor(s, i, colorVals, cmap);
         const opacity = this.atomOpacity(s.type[i]);
         if (!(opacity > 0)) continue;
-        this.withOpacity(opacity, () => this.drawSphere(ctx, px, py, pd, r, base));
+        // Image::draw_sphere (image.cpp at b332f28) in world units through the GPL module (draw.ts); the colour stays a
+        // double until the shaded pixel write, as native's double colours do
+        ctx.shading.drawSphere(frame, [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]], base, diam, opacity);
       }
     }
     if (this.lineOn || this.triOn) this.drawParticles(s, ctx, colorVals, cmap);
@@ -773,11 +870,26 @@ export class ImageDump {
     if (this.axes) {
       // the origin is grey, the x, y and z arrows red, green and blue (dump_image.cpp, Image::draw_axes)
       const [origin, ...arrows] = this.axesObjects(s);
-      this.drawImageObject(origin, [128, 128, 128], 0, 0, ctx);
-      arrows.forEach((o, d) => this.drawImageObject(o, AXIS_COLORS[d], 0, 0, ctx));
+      this.drawImageObject(origin, rgbOf(gplHook<ImageShading>('image').color2rgb('gray')!), 0, 0, ctx);
+      // native draws the axes in color2rgb("red"), "green" and "blue" (image.cpp draw_axes)
+      arrows.forEach((o, d) => this.drawImageObject(o, rgbOf(gplHook<ImageShading>('image').color2rgb(['red', 'green', 'blue'][d])!), 0, 0, ctx));
     }
     // Image::compute_SSAO runs on the finished image, before the fsaa reduction (Image::merge)
-    if (this.ssao) ctx.shading.applySsao(frame, maxdel * 0.05 * this.ssaoInt, Math.trunc(8 + 32 * this.ssaoInt), this.ssaoSeed);
+    if (this.ssao) ctx.shading.applySsao(frame, maxdel * 0.05 * this.ssaoInt, this.ssaoSamples > 0 ? this.ssaoSamples : Math.trunc(8 + 32 * this.ssaoInt), this.ssaoSeed);
+    // Image::merge then runs compute_outline, compute_depthcue and compute_defocus on the same image, in that order,
+    // still before the fsaa reduction (the image is the doubled one with fsaa). docs: dump_image.html "outline",
+    // "depthcue" and "defocus" (2Sep2026): see the keyword comments in parse().
+    if (this.outlineOn || this.depthcueOn || this.defocusOn) {
+      ctx.shading.postProcess(frame, {
+        maxdel,
+        fsaa: this.fsaa,
+        outline: this.outlineOn ?? undefined,
+        depthcue: this.depthcueOn ? { ...this.depthcueOn, background: this.backcolor, background2: this.backcolor2 } : undefined,
+        defocus: this.defocusOn ?? undefined,
+        boxLo: [s.box.lo[0], s.box.lo[1], s.box.lo[2]],
+        boxHi: [s.box.hi[0], s.box.hi[1], s.box.hi[2]],
+      });
+    }
     return rgb;
   }
 
@@ -847,8 +959,8 @@ export class ImageDump {
         const itype = Math.trunc(o.type - 1) % s.ntypes + 1;
         let base: RGB = [255, 255, 255];
         if (fo.style === 'const') base = fo.rgb;
-        else if (itype > 0 && fo.style === 'type') base = this.acolorByType.get(itype) ?? TYPE_COLORS[(itype - 1) % TYPE_COLORS.length];
-        else if (itype > 0) base = (ELEMENTS[this.elementName(s, itype)] ?? ELEMENTS.C)[0];
+        else if (itype > 0 && fo.style === 'type') base = rgbOf(this.acolorByType.get(itype) ?? gplHook<ImageShading>('image').defaultTypeColor(itype));
+        else if (itype > 0) base = rgbOf(gplHook<ImageShading>('image').element2color(this.elementName(s, itype))!);
         this.drawImageObjectAt(o, base, fo.flag1, fo.flag2, ctx, fo.opacity);
       }
     }
@@ -986,7 +1098,7 @@ export class ImageDump {
 
   /** The dump's colour of a type (acolor, or the default type colours): the "type" colour style of line and tri. */
   private typeRGB(t: number): RGB {
-    return this.acolorByType.get(t) ?? TYPE_COLORS[(t - 1) % TYPE_COLORS.length];
+    return rgbOf(this.acolorByType.get(t) ?? gplHook<ImageShading>('image').defaultTypeColor(t));
   }
 
   /**
@@ -1034,14 +1146,14 @@ export class ImageDump {
       const itype = Math.trunc(type - 1) % s.ntypes + 1;
       if (fo.style === 'const') return [fo.rgb[0], fo.rgb[1], fo.rgb[2]];
       if (itype <= 0) return [255, 255, 255];
-      if (fo.style === 'type') return this.acolorByType.get(itype) ?? TYPE_COLORS[(itype - 1) % TYPE_COLORS.length];
-      return (ELEMENTS[this.elementName(s, itype)] ?? ELEMENTS.C)[0];
+      if (fo.style === 'type') return rgbOf(this.acolorByType.get(itype) ?? gplHook<ImageShading>('image').defaultTypeColor(itype));
+      return rgbOf(gplHook<ImageShading>('image').element2color(this.elementName(s, itype))!);
     };
     // default sphere size of a type: the dump's adiam setting (numeric, per type, or per element)
     const diameterOf = (type: number): number => {
       if (this.adiamAll !== null) return this.adiamAll;
       if (this.attr.diameter === 'type') return this.adiamByType.get(type) ?? 1.0;
-      if (this.attr.diameter === 'element') return (ELEMENTS[this.elementName(s, type)] ?? ELEMENTS.C)[1];
+      if (this.attr.diameter === 'element') return gplHook<ImageShading>('image').element2diam(this.elementName(s, type));
       return 1.0;
     };
     // bond width of the dump's bond keyword (a number, or atom / type as the default sizes of the two atoms)
@@ -1215,14 +1327,16 @@ export class ImageDump {
         const nz = Math.sqrt(1 - q);
         // camera space: right = dx / r, up = -dy / r (rows grow downwards), towards the viewer = nz
         const normal: [number, number, number] = [dx / r, -dy / r, nz];
-        const surfDepth = pd + r * nz;
+        // the depth buffer is in world units (Image::draw_pixel's dist - sz, image.cpp at b332f28): the radius r is in
+        // pixels here, so the world radius is r / scale
+        const surfDepth = pd + (r / c.scale) * nz;
         if (surfDepth <= depth[idx]) continue;
         depth[idx] = surfDepth;
         if (frame.surface) {
           frame.surface[2 * idx] = normal[1];
           frame.surface[2 * idx + 1] = -normal[0];
         }
-        const sh = shading.shadeSurface(normal, col, frame.shiny ?? 1, frame.ambient ?? 0, frame.lights);
+        const sh = shading.shadeSurface(normal, col, frame.shiny ?? 1, frame.ambient ?? 0, frame.lights, frame.spec);
         const o = idx * 3;
         rgb[o] = clamp(sh[0] * 255);
         rgb[o + 1] = clamp(sh[1] * 255);
@@ -1279,10 +1393,27 @@ export class ImageDump {
       else if (bond.width === 'type') width = this.bdiamByType.get(bonds.type[bi]) ?? 0.5;
       else width = Number(bond.width);
       if (!(width > 0)) continue;
-      const col = bond.color === 'type' ? (this.bcolorByType.get(bonds.type[bi]) ?? TYPE_COLORS[(bonds.type[bi] - 1) % TYPE_COLORS.length]) : this.typeColor(s, i1, colorVals, cmap);
-      const p1 = project([s.x[3 * i1], s.x[3 * i1 + 1], s.x[3 * i1 + 2]]);
-      const p2 = project([s.x[3 * i2], s.x[3 * i2 + 1], s.x[3 * i2 + 2]]);
-      this.drawLine(rgb, depth, p1, p2, col, Math.max(1, width * scale));
+      const col = bond.color === 'type' ? rgbOf(this.bcolorByType.get(bonds.type[bi]) ?? gplHook<ImageShading>('image').defaultTypeColor(bonds.type[bi])) : this.typeColor(s, i1, colorVals, cmap);
+      const x1 = [s.x[3 * i1], s.x[3 * i1 + 1], s.x[3 * i1 + 2]];
+      const x2 = [s.x[3 * i2], s.x[3 * i2 + 1], s.x[3 * i2 + 2]];
+      const sw = Math.max(1, width * scale);
+      // dump_image.cpp (DumpImage::create_image, bond loop at b332f28): "draw cylinder in 2 pieces if bcolor = ATOM or bond
+      // crosses periodic boundary". A crossing bond takes the minimum image of its vector (Domain::minimum_image_check,
+      // the half box length per periodic dimension) and is drawn from each end to the midpoint; an atom-coloured bond is
+      // drawn in two halves, each in the colour of its own atom.
+      const g = this.sys.geom;
+      const del = [x2[0] - x1[0], x2[1] - x1[1], x2[2] - x1[2]];
+      const crosses = (g.periodic[0] && Math.abs(del[0]) > 0.5 * g.lx) || (g.periodic[1] && Math.abs(del[1]) > 0.5 * g.ly) || (g.periodic[2] && Math.abs(del[2]) > 0.5 * g.lz);
+      if (!crosses && bond.color !== 'atom') {
+        this.drawLine(rgb, depth, project(x1), project(x2), col, sw);
+        continue;
+      }
+      if (crosses) g.minimumImage(del);
+      const mid1 = [x1[0] + 0.5 * del[0], x1[1] + 0.5 * del[1], x1[2] + 0.5 * del[2]];
+      const mid2 = [x2[0] - 0.5 * del[0], x2[1] - 0.5 * del[1], x2[2] - 0.5 * del[2]];
+      const col2 = bond.color === 'atom' ? this.typeColor(s, i2, colorVals, cmap) : col;
+      this.drawLine(rgb, depth, project(x1), project(mid1), col, sw);
+      this.drawLine(rgb, depth, project(mid2), project(x2), col2, sw);
     }
   }
 

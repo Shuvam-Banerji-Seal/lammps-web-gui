@@ -39,6 +39,15 @@ export interface PixelLight { ambient: number; lights: LightColors }
  */
 export const transparentAt = (opacity: number, ix: number, iy: number): boolean => opacity < 1.0 && TRANSTHRESH[ix % TRANK][iy % TRANK] > opacity;
 
+/**
+ * Image's camera distance dot3(camPos, camDir) with camPos = camDir * zdist (image.cpp at b332f28: every draw routine
+ * takes dist = dot3(camPos,camDir) - dot3(xlocal,camDir)). In floating point this is not zdist itself, so it is
+ * computed the way native does, to keep the depth buffer bit-identical.
+ */
+const camDist = (f: RasterFrame): number => {
+  const V = f.camDir;
+  return (V[0] * f.zdist) * V[0] + (V[1] * f.zdist) * V[1] + (V[2] * f.zdist) * V[2];
+};
 const dot = (a: V, b: V): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: V, b: V): V => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const len = (a: V): number => Math.hypot(a[0], a[1], a[2]);
@@ -70,14 +79,15 @@ export function drawPixel(f: RasterFrame, ix: number, iy: number, depth: number,
   // depth not nearer than the buffer: rejected (larger buffer value = nearer)
   if (buf <= f.depth[idx]) return;
   f.depth[idx] = buf;
+  if (f.dist) f.dist[idx] = depth;
   // the tangent of the surface, kept for the ssao pass (native surfaceBuffer: surface[1], -surface[0])
   if (f.surface) {
     f.surface[2 * idx] = surface[1];
     f.surface[2 * idx + 1] = -surface[0];
   }
   const c = light
-    ? shadeSurface(surface, col, f.shiny ?? 1, light.ambient, light.lights)
-    : shadeSurface(surface, col, f.shiny ?? 1, f.ambient ?? 0, f.lights ?? DEFAULT_LIGHTS);
+    ? shadeSurface(surface, col, f.shiny ?? 1, light.ambient, light.lights, f.spec)
+    : shadeSurface(surface, col, f.shiny ?? 1, f.ambient ?? 0, f.lights ?? DEFAULT_LIGHTS, f.spec);
   const o = idx * 3;
   f.rgb[o] = trunc(c[0] * 255);
   f.rgb[o + 1] = trunc(c[1] * 255);
@@ -90,7 +100,7 @@ function project(f: RasterFrame, x: V): { xf: number; yf: number; dist: number }
   return {
     xf: dot(f.camRight, xl) / f.pixelWidth,
     yf: dot(f.camUp, xl) / f.pixelWidth,
-    dist: f.zdist - dot(xl, f.camDir),
+    dist: camDist(f) - dot(xl, f.camDir),
   };
 }
 
@@ -100,7 +110,7 @@ export function drawSphere(f: RasterFrame, x: V, col: V, diameter: number, opaci
   const xl = sub(x, f.ctr);
   const xmap = dot(f.camRight, xl);
   const ymap = dot(f.camUp, xl);
-  const dist = f.zdist - dot(xl, f.camDir);
+  const dist = camDist(f) - dot(xl, f.camDir);
   const radius = 0.5 * diameter;
   const radsq = radius * radius;
   const pw = f.pixelWidth;
@@ -146,7 +156,7 @@ export function drawCylinder(f: RasterFrame, x: V, y: V, col: V, diameter: numbe
 
   const xmap = dot(f.camRight, mid);
   const ymap = dot(f.camUp, mid);
-  const dist = f.zdist - dot(mid, f.camDir);
+  const dist = camDist(f) - dot(mid, f.camDir);
   const pw = f.pixelWidth;
   const xf = xmap / pw, yf = ymap / pw;
   const xi = trunc(xf), yi = trunc(yf);
@@ -220,7 +230,7 @@ export function drawTrinorm(f: RasterFrame, x: V, y: V, z: V, nx: V, ny: V, nz: 
 
   const xmap = dot(f.camRight, xl);
   const ymap = dot(f.camUp, xl);
-  const dist = f.zdist - dot(xl, f.camDir);
+  const dist = camDist(f) - dot(xl, f.camDir);
   const pw = f.pixelWidth;
   const xf = xmap / pw;
   const yf = ymap / pw;
@@ -300,7 +310,7 @@ export function drawTriangle(f: RasterFrame, x: V, y: V, z: V, col: V, opacity =
   const rasterUp = Math.max(u[0], u[1], u[2]) - u[0];
 
   const xmap = dot(f.camRight, xl), ymap = dot(f.camUp, xl);
-  const dist = f.zdist - dot(xl, f.camDir);
+  const dist = camDist(f) - dot(xl, f.camDir);
   const pw = f.pixelWidth;
   const xf = xmap / pw, yf = ymap / pw;
   const xc0 = Math.floor(xf), yc0 = Math.floor(yf);

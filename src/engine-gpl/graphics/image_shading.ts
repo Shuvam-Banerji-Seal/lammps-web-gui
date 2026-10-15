@@ -14,7 +14,8 @@
  */
 import type { PostProcessOptions, RasterFrame } from '../../engine/output/image_objects';
 import { postProcess } from './image_postprocess';
-import { drawSphere } from './draw';
+import { drawCylinder, drawSphere } from './draw';
+import { drawAxes } from './axes';
 import { color2rgb, defaultTypeColor, element2color, element2diam } from './colors';
 import type { ImageSpecular } from '../../engine/output/image_objects';
 
@@ -218,10 +219,12 @@ export interface ImageShadingHook {
   applySsao: typeof applySsao;
   postProcess: (f: RasterFrame, o: PostProcessOptions) => void;
   drawSphere: typeof drawSphere;
+  drawCylinder: typeof drawCylinder;
+  drawAxes: typeof drawAxes;
   color2rgb: typeof color2rgb;
   defaultTypeColor: typeof defaultTypeColor;
   element2color: typeof element2color;
   element2diam: typeof element2diam;
 }
 
-export const imageShadingHook: ImageShadingHook = { shadeSurface, applySsao, postProcess, drawSphere, color2rgb, defaultTypeColor, element2color, element2diam };
+export const imageShadingHook: ImageShadingHook = { shadeSurface, applySsao, postProcess, drawSphere, drawCylinder, drawAxes, color2rgb, defaultTypeColor, element2color, element2diam };

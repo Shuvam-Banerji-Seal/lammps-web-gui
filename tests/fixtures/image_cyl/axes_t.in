@@ -1,0 +1,10 @@
+# image_cyl fixture: native b332f28 (/home/roy/.local/bin/lmp), dump image PPM, run 0; the axes block of tests/engineGraphics.test.ts.
+units lj
+atom_style atomic
+boundary f f f
+region box block 0 10 0 10 0 10
+create_box 2 box
+create_atoms 1 single 5 5 5
+mass * 1.0
+dump im all image 1 out.*.ppm type type size 200 200 box no 0.02 atom no view 90 0 axes yes 0.5 0.05
+run 0

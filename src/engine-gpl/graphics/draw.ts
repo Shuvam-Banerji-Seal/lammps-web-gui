@@ -50,10 +50,14 @@ const camDist = (f: RasterFrame): number => {
 };
 const dot = (a: V, b: V): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: V, b: V): V => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const len = (a: V): number => Math.hypot(a[0], a[1], a[2]);
+/** MathExtra::len3: sqrt of the sum of squares (not Math.hypot, whose rounding differs). */
+const len = (a: V): number => Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+/** MathExtra::norm3: the vector times 1 / sqrt(sum of squares), left as it is when that sum is 0. */
 const norm = (a: V): V => {
-  const l = len(a);
-  return l > 0 ? [a[0] / l, a[1] / l, a[2] / l] : [a[0], a[1], a[2]];
+  const val = a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
+  if (!(val > 0)) return [a[0], a[1], a[2]];
+  const s = 1.0 / Math.sqrt(val);
+  return [a[0] * s, a[1] * s, a[2] * s];
 };
 const sub = (a: V, b: V): V => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const add = (a: V, b: V): V => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];

@@ -1,0 +1,22 @@
+# image_cyl fixture: native b332f28 (/home/roy/.local/bin/lmp), dump image PPM, run 0.
+units lj
+atom_style bond
+bond_style harmonic
+region box block 0 6 0 6 0 6
+create_box 2 box bond/types 2 extra/bond/per/atom 2
+bond_coeff 1 100.0 1.0
+bond_coeff 2 100.0 1.2
+create_atoms 1 single 1.0 1.0 1.0
+create_atoms 1 single 2.0 1.5 1.2
+create_atoms 2 single 3.0 1.0 1.4
+create_atoms 2 single 5.5 4.0 3.0
+create_atoms 1 single 0.3 4.0 3.0
+mass * 1.0
+pair_style lj/cut 2.5
+pair_coeff * * 1.0 1.0
+create_bonds single/bond 1 1 2
+create_bonds single/bond 2 2 3
+create_bonds single/bond 2 4 5
+dump d all image 1 img.*.ppm type type size 96 96 view 60 30 zoom 1.2 box no 0.02 bond type 0.25
+dump_modify d pad 0 bcolor 1 red bcolor 2 blue bdiam 2 0.3 bdiam 1 0.2
+run 0

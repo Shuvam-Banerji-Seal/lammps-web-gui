@@ -95,6 +95,13 @@ export interface ImageShading {
   applySsao(f: RasterFrame, radius: number, samples: number, seed: number): void;
   /** Image::draw_sphere of an atom: world centre x, colour 0..1, world diameter, opacity (draw.ts). */
   drawSphere(f: RasterFrame, x: Vec3, col: Vec3, diameter: number, opacity: number): void;
+  /** Image::draw_cylinder between world points x1 and x2: full diameter, sflag caps (bit 0 at x1, bit 1 at x2), colour 0..1. */
+  drawCylinder(f: RasterFrame, x1: Vec3, x2: Vec3, col: Vec3, diameter: number, sflag: number, opacity: number): void;
+  /**
+   * Image::draw_axes (axes.ts): the four axes points (origin and the ends of x, y and z; the z end is unused in 2d), the
+   * diameter, opacity, the background colour (bytes, for the letters' colours) and whether fsaa doubles the frame.
+   */
+  drawAxes(f: RasterFrame, axes: Vec3[], diameter: number, opacity: number, background: Rgb255, fsaa: boolean, dimension: 2 | 3): void;
   /** Image::color2rgb (native rgbcolors, 0..1 per channel): null for "none" and an unknown name. */
   color2rgb(name: string): Vec3 | null;
   /** dump_image.cpp default_colors: the colour of atom type `type` (type 1 is red), 0..1. */

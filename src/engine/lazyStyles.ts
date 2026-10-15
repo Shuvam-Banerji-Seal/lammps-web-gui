@@ -126,6 +126,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'eff', names: { COMPUTES: ['ke/atom/eff', 'ke/eff', 'temp/eff', 'temp/region/eff'], FIXES: ['nph/eff', 'npt/eff', 'nve/eff', 'nvt/eff', 'temp/rescale/eff'], PAIRS: ['eff/cut'] }, load: () => import('../engine-gpl/registry/eff') as Promise<StyleModule> },
   { id: 'gransurf', names: { PAIRS: ['surf/granular'], FIXES: ['surface/local', 'surface/global'] }, load: () => import('../engine-gpl/registry/gransurf') as Promise<StyleModule> },
   { id: 'pair_comb', names: { PAIRS: ['comb', 'comb3'], FIXES: ['qeq/comb'] }, load: () => import('../engine-gpl/registry/pair_comb') as Promise<StyleModule> },
+  { id: 'pair_smtbq', names: { PAIRS: ['smtbq'] }, load: () => import('../engine-gpl/registry/pair_smtbq') as Promise<StyleModule> },
   { id: 'pair_rebomos', names: { PAIRS: ['rebomos'] }, load: () => import('../engine-gpl/registry/pair_rebomos') as Promise<StyleModule> },
   { id: 'pair_ylz', names: { PAIRS: ['ylz'] }, load: () => import('../engine-gpl/registry/pair_ylz') as Promise<StyleModule> },
   { id: 'pair_mm3', names: { PAIRS: ['mm3/switch3/coulgauss/long'] }, load: () => import('../engine-gpl/registry/pair_mm3') as Promise<StyleModule> },

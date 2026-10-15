@@ -1,11 +1,10 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
  * Source: src/LATBOLTZ/latboltz_const.h at commit b332f28 (the D3Q15 velocities e15, weights w_lb15, normalizations
- * Ng_lb15 and moment matrix mg_lb15, and the wall bounce-back rows bbl for the orientations 3 and 16 used by the
- * flat walls). Copyright (2003) Sandia Corporation, LAMMPS development team (Frances Mackay, Santtu Ollila, Colin
+ * Ng_lb15, moment matrix mg_lb15, the opposite directions od and the bounce-back table bbl for all 33 orientations). Copyright (2003) Sandia Corporation, LAMMPS development team (Frances Mackay, Santtu Ollila, Colin
  * Denniston, Tyson Whitehead). GNU General Public License. This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  *
- * The D3Q19 tables and the pit (bbl rows other than 3 and 16, od) are not ported: the engine refuses them.
+ * The D3Q19 tables are not ported: the engine refuses that lattice.
  */
 
 /** MY_SQRT2 and MY_ISQRT2 (math_const.h). */
@@ -50,10 +49,46 @@ export const MG15: Float64Array = Float64Array.from([
   MY_SQRT2, -MY_ISQRT2, -MY_ISQRT2, -MY_ISQRT2, -MY_ISQRT2, -MY_ISQRT2, -MY_ISQRT2, MY_SQRT2, MY_SQRT2, MY_SQRT2, MY_SQRT2, MY_SQRT2, MY_SQRT2, MY_SQRT2, MY_SQRT2,
 ]);
 
-/**
- * Wall bounce-back lists (latboltz_const.h, bbl): row [0] is the number of bounce-back directions, the next
- * entries the directions coming from inside the wall, a 0 separator, then the directions that propagate normally.
- * Only the flat walls are used: orientation 3 (bottom wall, +z normal) and 16 (top wall, -z normal).
- */
-export const BBL_WALL_BOTTOM: readonly number[] = [5, 5, 7, 8, 9, 10, 0, 1, 2, 3, 4, 6, 11, 12, 13, 14];
-export const BBL_WALL_TOP: readonly number[] = [5, 6, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 7, 8, 9, 10];
+/** 15-velocity opposite lattice directions: OD[i] = j such that E15[j] = -E15[i] (latboltz_const.h, od). */
+export const OD: readonly number[] = [0, 3, 4, 1, 2, 6, 5, 13, 14, 11, 12, 9, 10, 7, 8];
+
+/** bbl[ori] rows of latboltz_const.h (33 orientations x 16 entries, trailing zeros kept as in native). */
+export const BBL: readonly (readonly number[])[] = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 0
+  [5, 1, 7, 10, 11, 14, 0, 2, 3, 4, 5, 6, 8, 9, 12, 13], // 1
+  [5, 2, 7, 8, 11, 12, 0, 1, 3, 4, 5, 6, 9, 10, 13, 14], // 2
+  [5, 5, 7, 8, 9, 10, 0, 1, 2, 3, 4, 6, 11, 12, 13, 14], // 3
+  [4, 7, 10, 1, 5, 0, 2, 3, 4, 6, 8, 9, 11, 12, 13, 14], // 4
+  [8, 1, 5, 7, 10, 8, 9, 11, 14, 0, 2, 3, 4, 6, 12, 13], // 5
+  [8, 2, 5, 7, 8, 9, 10, 11, 12, 0, 1, 3, 4, 6, 13, 14], // 6
+  [4, 2, 5, 7, 8, 0, 1, 3, 4, 6, 9, 10, 11, 12, 13, 14], // 7
+  [8, 3, 4, 9, 13, 8, 10, 12, 14, 0, 1, 2, 5, 6, 7, 11], // 8
+  [8, 2, 3, 8, 12, 7, 9, 11, 13, 0, 1, 4, 5, 6, 10, 14], // 9
+  [3, 7, 8, 10, 0, 1, 2, 3, 4, 5, 6, 9, 11, 12, 13, 14], // 10
+  [3, 7, 9, 10, 0, 1, 2, 3, 4, 5, 6, 8, 11, 12, 13, 14], // 11
+  [10, 2, 3, 5, 8, 7, 9, 10, 11, 12, 13, 0, 1, 4, 6, 14], // 12
+  [10, 3, 4, 5, 9, 7, 8, 10, 12, 13, 14, 0, 1, 2, 6, 11], // 13
+  [5, 3, 8, 9, 12, 13, 0, 1, 2, 4, 5, 6, 7, 10, 11, 14], // 14
+  [5, 4, 9, 10, 13, 14, 0, 1, 2, 3, 5, 6, 7, 8, 11, 12], // 15
+  [5, 6, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 7, 8, 9, 10], // 16
+  [4, 8, 9, 3, 5, 0, 1, 2, 4, 6, 7, 10, 11, 12, 13, 14], // 17
+  [8, 3, 5, 8, 9, 7, 10, 12, 13, 0, 1, 2, 4, 6, 11, 14], // 18
+  [8, 4, 5, 9, 10, 7, 8, 13, 14, 0, 1, 2, 3, 6, 11, 12], // 19
+  [4, 4, 5, 9, 10, 0, 1, 2, 3, 6, 7, 8, 11, 12, 13, 14], // 20
+  [8, 1, 4, 10, 14, 7, 9, 11, 13, 0, 2, 3, 5, 6, 8, 12], // 21
+  [8, 1, 2, 7, 11, 8, 10, 12, 14, 0, 3, 4, 5, 6, 9, 13], // 22
+  [3, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 10, 11, 12, 13, 14], // 23
+  [3, 8, 9, 10, 0, 1, 2, 3, 4, 5, 6, 7, 11, 12, 13, 14], // 24
+  [10, 1, 2, 5, 7, 8, 9, 10, 11, 12, 14, 0, 3, 4, 6, 13], // 25
+  [10, 1, 4, 5, 10, 7, 8, 9, 11, 13, 14, 0, 2, 3, 6, 12], // 26
+  [8, 2, 6, 11, 12, 7, 8, 13, 14, 0, 1, 3, 4, 5, 9, 10], // 27
+  [8, 4, 6, 13, 14, 9, 10, 11, 12, 0, 1, 2, 3, 5, 7, 8], // 28
+  [6, 2, 7, 8, 11, 10, 12, 0, 1, 3, 4, 5, 6, 9, 13, 14], // 29
+  [6, 4, 9, 10, 14, 7, 13, 0, 1, 2, 3, 5, 6, 8, 11, 12], // 30
+  [6, 2, 7, 8, 12, 9, 11, 0, 1, 3, 4, 5, 6, 10, 13, 14], // 31
+  [6, 4, 9, 10, 13, 8, 14, 0, 1, 2, 3, 5, 6, 7, 11, 12], // 32
+];
+
+/** Wall bounce-back lists of the flat walls: bottom (orientation 3, the +z normal) and top (orientation 16). */
+export const BBL_WALL_BOTTOM: readonly number[] = BBL[3];
+export const BBL_WALL_TOP: readonly number[] = BBL[16];

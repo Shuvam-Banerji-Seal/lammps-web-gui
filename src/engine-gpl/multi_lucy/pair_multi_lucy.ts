@@ -16,7 +16,7 @@ import { NEIGHMASK } from '../../engine/neighbor';
 
 const PI = Math.PI;
 
-interface Table {
+export interface Table {
   ninput: number;
   /** 0 none (r from the file), 1 R (linear in r^2 ... r), 2 RSQ (linear in r^2) */
   rflag: 0 | 1 | 2;
@@ -88,15 +88,55 @@ const splint = (xa: Float64Array, ya: Float64Array, y2a: Float64Array, n: number
   return a * ya[klo] + b * ya[khi] + ((a * a * a - a) * y2a[klo] + (b * b * b - b) * y2a[khi]) * (h * h) / 6;
 };
 
+/** A table with every field empty (the fields are filled by readTable, coeff and computeTable). */
+export const newTable = (): Table => {
+  return {
+    ninput: 0, rflag: 0, rlo: 0, rhi: 0, fpflag: 0, fplo: 0, fphi: 0,
+    rfile: new Float64Array(0), efile: new Float64Array(0), ffile: new Float64Array(0),
+    e2file: new Float64Array(0), f2file: new Float64Array(0), cut: 0, innersq: 0, delta: 0, invdelta: 0,
+    rsq: new Float64Array(0), e: new Float64Array(0), f: new Float64Array(0), de: new Float64Array(0), df: new Float64Array(0),
+    match: false,
+  };
+};
+
+/**
+ * computeLocalDensity of pair_multi_lucy.cpp: the density of each owned atom, the sum of the Lucy weights of its
+ * neighbors inside the cutoff (the pair's weight is added to both atoms; a ghost's weight goes to its owner).
+ */
+export const lucyLocalDensity = (pc: PairCompute, cutsq: Float64Array, nt: number): Float64Array => {
+  const list = pc.half!;
+  const { x, type } = pc;
+  const owner = pc.nb.owner;
+  const nlocal = pc.nlocal;
+  const nbrs = list.neighbors;
+  const rhoOwn = new Float64Array(nlocal);
+  for (let i = 0; i < list.inum; i++) {
+    const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
+    for (let k = k0; k < k1; k++) {
+      const j = nbrs[k] & NEIGHMASK;
+      const dx = x[3 * i] - x[3 * j], dy = x[3 * i + 1] - x[3 * j + 1], dz = x[3 * i + 2] - x[3 * j + 2];
+      const rsq = dx * dx + dy * dy + dz * dz;
+      const ti = type[i], tj = type[j];
+      if (!(rsq < cutsq[ti * nt + tj])) continue;
+      const rcut = Math.sqrt(cutsq[ti * nt + tj]);
+      const r = Math.sqrt(rsq);
+      const factor = (84 / (5 * PI * rcut * rcut * rcut)) * (1 + (3 * r) / (2 * rcut)) * (1 - r / rcut) * (1 - r / rcut) * (1 - r / rcut) * (1 - r / rcut);
+      rhoOwn[owner[i]] += factor;
+      rhoOwn[owner[j]] += factor;
+    }
+  }
+  return rhoOwn;
+};
+
 export class PairMultiLucy extends Pair {
-  readonly name = 'multi/lucy';
+  readonly name: string = 'multi/lucy';
   /** Global virial by the force dot product (native virial_fdotr_compute). */
   virialFdotr = true;
-  private tabstyle: 'lookup' | 'linear' = 'linear';
-  private tablength = 0;
-  private tables: Table[] = [];
-  private tabindex = new Int32Array(0);
-  private set = new Uint8Array(0);
+  protected tabstyle: 'lookup' | 'linear' = 'linear';
+  protected tablength = 0;
+  protected tables: Table[] = [];
+  protected tabindex = new Int32Array(0);
+  protected set = new Uint8Array(0);
 
   allocate(ntypes: number): void {
     super.allocate(ntypes);
@@ -156,15 +196,9 @@ export class PairMultiLucy extends Pair {
   }
 
   /** read_table of pair_multi_lucy.cpp (param_extract and the entries of the keyword section). */
-  private readTable(text: string, keyword: string, file: string): Table {
+  protected readTable(text: string, keyword: string, file: string): Table {
     const { params, rows } = readSection(text, keyword, file);
-    const tb: Table = {
-      ninput: 0, rflag: 0, rlo: 0, rhi: 0, fpflag: 0, fplo: 0, fphi: 0,
-      rfile: new Float64Array(0), efile: new Float64Array(0), ffile: new Float64Array(0),
-      e2file: new Float64Array(0), f2file: new Float64Array(0), cut: 0, innersq: 0, delta: 0, invdelta: 0,
-      rsq: new Float64Array(0), e: new Float64Array(0), f: new Float64Array(0), de: new Float64Array(0), df: new Float64Array(0),
-      match: false,
-    };
+    const tb = newTable();
     let nFound = -1;
     for (let k = 0; k < params.length; k++) {
       if (params[k] === 'N' && nFound < 0) {
@@ -281,23 +315,7 @@ export class PairMultiLucy extends Pair {
     const nt = this.ntypes + 1;
     const cutsq = this.cutsq;
     const nbrs = list.neighbors;
-    // computeLocalDensity: rho[i] += factor and rho[j] += factor for each pair inside the cutoff (ghost j on its owner)
-    const rhoOwn = new Float64Array(nlocal);
-    for (let i = 0; i < list.inum; i++) {
-      const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
-      for (let k = k0; k < k1; k++) {
-        const j = nbrs[k] & NEIGHMASK;
-        const dx = x[3 * i] - x[3 * j], dy = x[3 * i + 1] - x[3 * j + 1], dz = x[3 * i + 2] - x[3 * j + 2];
-        const rsq = dx * dx + dy * dy + dz * dz;
-        const ti = type[i], tj = type[j];
-        if (!(rsq < cutsq[ti * nt + tj])) continue;
-        const rcut = Math.sqrt(cutsq[ti * nt + tj]);
-        const r = Math.sqrt(rsq);
-        const factor = (84 / (5 * PI * rcut * rcut * rcut)) * (1 + (3 * r) / (2 * rcut)) * (1 - r / rcut) * (1 - r / rcut) * (1 - r / rcut) * (1 - r / rcut);
-        rhoOwn[owner[i]] += factor;
-        rhoOwn[owner[j]] += factor;
-      }
-    }
+    const rhoOwn = lucyLocalDensity(pc, cutsq, nt);
     const rho = (k: number) => rhoOwn[owner[k]];
     const energyAt = (i: number, itype: number): number => {
       const tb = this.tables[this.tabindex[itype * nt + itype]];

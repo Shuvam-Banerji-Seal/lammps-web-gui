@@ -181,7 +181,7 @@ const parseParams = (line: string, filename: string, keyword: string): FileSecti
 };
 
 /** Reads the file and returns the section whose keyword matches pair_coeff. */
-const readSection = (text: string, filename: string, keyword: string): FileSection => {
+export const readSection = (text: string, filename: string, keyword: string): FileSection => {
   const lines = text.split('\n');
   let k = 0;
   while (k < lines.length) {
@@ -299,13 +299,13 @@ export class PairTable extends Pair {
   ntable = 0;
   p!: PairParams;
   /** Per type pair file section + cutoff, stored by pair_coeff (i*nt+j, both orders). */
-  private inputs = new Map<number, { sec: FileSection; cut: number }>();
-  private tRsq1 = new Float64Array(0);
-  private tInvDelta = new Float64Array(0);
-  private tE: Float64Array[] = [];
-  private tG: Float64Array[] = [];
-  private tE2: Float64Array[] = [];
-  private tG2: Float64Array[] = [];
+  protected inputs = new Map<number, { sec: FileSection; cut: number }>();
+  protected tRsq1 = new Float64Array(0);
+  protected tInvDelta = new Float64Array(0);
+  protected tE: Float64Array[] = [];
+  protected tG: Float64Array[] = [];
+  protected tE2: Float64Array[] = [];
+  protected tG2: Float64Array[] = [];
 
   settings(args: string[]): void {
     if (args.length < 2) throw new StyleError('usage: pair_style table style N [keyword ...]');

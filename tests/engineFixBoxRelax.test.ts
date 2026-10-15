@@ -97,8 +97,10 @@ describe('fix box/relax relaxation', () => {
     const M: number = bd.dofCount;
     expect(M).toBe(6);
     const x0 = Float64Array.from(st.x.subarray(0, n3));
-    // start from a strained box so that the strain and shear terms are nonzero
-    bd.trial(Float64Array.from([0.02, -0.01, 0.015, 0.03, -0.02, 0.01]), x0, st.x);
+    // start from a strained, untilted box: native's triclinic box force (each DOF uses its own stress component,
+    // src/fix_box_relax.cpp min_energy) is the exact derivative only while the tilts are zero; a tilted start
+    // differs by the off-diagonal stress times h^-1 (checked against native in tests/oracle/w189sq_min.in)
+    bd.trial(Float64Array.from([0.02, -0.01, 0.015, 0, 0, 0]), x0, st.x);
     bd.begin();
     const u0 = new Float64Array(M);
     bd.dof(u0);

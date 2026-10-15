@@ -44,9 +44,14 @@ import type { Compute } from '../compute/compute';
  *     shear target (xy 1.0) stopped with linesearch alpha is zero (not checked
  *     against the stationary relation; not used as an oracle case).
  *
- * Gradient: the exact derivative of the objective above, using the virial of
- * compute pressure. The doc: "are assumed to only be the virial component of the
- * pressure (the non-kinetic portion)", so the kinetic part is excluded. Stationary relation (the doc):
+ * Gradient: the derivative of the objective above, using the virial of compute
+ * pressure. For triclinic boxes it is native's form (src/fix_box_relax.cpp min_energy at
+ * b332f28): each DOF uses the stress component of its own box direction, scaled by the box
+ * lengths, without the off-diagonal stress times h^-1. This is the exact derivative only for an
+ * untilted box; the engine follows native (the extra term shifted the first line-search box
+ * force by 8e-10 against native's). The doc: "are
+ * assumed to only be the virial component of the pressure (the non-kinetic portion)", so the
+ * kinetic part is excluded. Stationary relation (the doc):
  * "This equation only applies when the box dimensions are equal to those of the
  * reference dimensions." Coupled dimensions use the group average of the stress:
  * "the instantaneous stress will be computed as an average of the corresponding
@@ -258,10 +263,10 @@ export class FixBoxRelax extends Fix {
     const specified = diagDims.map((d) => this.pDiag[d] as number);
     this.ph = specified.length ? specified.reduce((a, c) => a + c, 0) / specified.length : 0;
     this.setReference();
-    // default fixed point: the centre of the (possibly tilted) box, lo + 0.5 (a + b + c)
+    // default fixed point: the centre of the box per dimension, 0.5 (boxlo + boxhi), without the tilt terms
+    // (As native LAMMPS does, src/fix_box_relax.cpp at b332f28, FixBoxRelax::FixBoxRelax: fixedpoint[i] = 0.5*(domain->boxlo[i]+domain->boxhi[i]))
     const [lx, ly, lz] = this.currentLengths();
-    const [xy, xz, yz] = b.tilt;
-    this.pivot = this.fixedPoint ? [...this.fixedPoint] : [b.lo[0] + 0.5 * (lx + xy + xz), b.lo[1] + 0.5 * (ly + yz), b.lo[2] + 0.5 * lz];
+    this.pivot = this.fixedPoint ? [...this.fixedPoint] : [b.lo[0] + 0.5 * lx, b.lo[1] + 0.5 * ly, b.lo[2] + 0.5 * lz];
     this.ready = true;
   }
 
@@ -315,17 +320,21 @@ export class FixBoxRelax extends Fix {
       newT[ti] = this.tRef[ti] + u[k++] * this.lRef[TILT_PAIR[ti][0]];
     }
     const hNew = hMatrix(newL, newT);
-    const F = mul3(hNew, inv3(this.startH));
+    // The origin scales about the fixed point dimension by dimension, with no tilt term (As native LAMMPS does,
+    // src/fix_box_relax.cpp remap() at b332f28: boxlo = boxlo0 + (boxlo0 - fixedpoint) / h * ds * h0, so the new
+    // boxlo is fixedpoint + (boxlo0 - fixedpoint) * L / L0). The tilt enters only through the matrix that maps the
+    // atoms: lamda = h0^-1 (x0 - boxlo0), then x = boxlo + h lamda (remap's x2lamda and lamda2x).
     const p = this.pivot;
-    const lo = [0, 1, 2].map((a) => p[a] + F[a][0] * (this.startLo[0] - p[0]) + F[a][1] * (this.startLo[1] - p[1]) + F[a][2] * (this.startLo[2] - p[2]));
+    const lo = [0, 1, 2].map((a) => p[a] + (this.startLo[a] - p[a]) * (newL[a] / this.startL[a]));
     const hi = [lo[0] + newL[0], lo[1] + newL[1], lo[2] + newL[2]];
     this.sys.setBox(lo, hi, newT, 0, this);
+    const F = mul3(hNew, inv3(this.startH));
     const n = s.n;
     for (let i = 0; i < n; i++) {
-      const x = x0[3 * i] - p[0], y = x0[3 * i + 1] - p[1], z = x0[3 * i + 2] - p[2];
-      xOut[3 * i] = p[0] + F[0][0] * x + F[0][1] * y + F[0][2] * z;
-      xOut[3 * i + 1] = p[1] + F[1][0] * x + F[1][1] * y + F[1][2] * z;
-      xOut[3 * i + 2] = p[2] + F[2][0] * x + F[2][1] * y + F[2][2] * z;
+      const x = x0[3 * i] - this.startLo[0], y = x0[3 * i + 1] - this.startLo[1], z = x0[3 * i + 2] - this.startLo[2];
+      xOut[3 * i] = lo[0] + F[0][0] * x + F[0][1] * y + F[0][2] * z;
+      xOut[3 * i + 1] = lo[1] + F[1][0] * x + F[1][1] * y + F[1][2] * z;
+      xOut[3 * i + 2] = lo[2] + F[2][0] * x + F[2][1] * y + F[2][2] * z;
     }
   }
 
@@ -354,9 +363,12 @@ export class FixBoxRelax extends Fix {
       const avg = g.reduce((a, d) => a + sig[d][d], 0) / g.length;
       for (const d of g) sig[d][d] = avg;
     }
-    const hinv = inv3(hMatrix(l, t));
-    // M_ab = sum_c sig_ac * hinv_bc ; dU/dh_ab = -pv2e * vol * M_ab
-    const M: Mat3 = sig.map((row) => [0, 1, 2].map((b) => row[0] * hinv[b][0] + row[1] * hinv[b][1] + row[2] * hinv[b][2]));
+    // M_ab = sig_ab / l_b: each box force uses only the stress component of its own DOF, scaled by the box
+    // lengths, with no sum over the other stress components (As native LAMMPS does, src/fix_box_relax.cpp
+    // min_energy at b332f28: fextra[0] = pv2e * (p_current[0] - p_hydro) * scaley * scalez * vol0, and fextra[5] =
+    // pv2e * p_current[5] * scalex * xprdinit * scalez * zprdinit * xprdinit for xy; the off-diagonal
+    // stress times h^-1 is not in native's gradient). dU/dh_ab = -pv2e * vol * M_ab
+    const M: Mat3 = sig.map((row) => [0, 1, 2].map((b) => row[b] / l[b]));
     const dEdl = [0, 1, 2].map((d) => {
       let r = -pv2e * vol * M[d][d];
       if (this.pDiag[d] !== null) {

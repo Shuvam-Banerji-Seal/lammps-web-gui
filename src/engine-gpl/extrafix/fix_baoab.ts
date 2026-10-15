@@ -13,6 +13,7 @@ import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import { massOf, nativeOrder } from '../../engine/atoms';
 import { ramp } from '../../engine/fix/util';
+import { takeFixRecord } from '../../engine/fix/restartRecord';
 import type { System } from '../../engine/system';
 import { RanMars } from '../random_mars';
 
@@ -53,7 +54,13 @@ export class FixBAOAB extends Fix {
     this.scalarFlag = true;
     this.extscalar = 1;
     this.rng = new RanMars(this.seed);
+    // fix_baoab.cpp write_restart stores only the energy (rank 0's global value); the generator is seeded afresh
+    const saved = takeFixRecord(sys, id, this.style)?.state as { energy: number } | undefined;
+    if (saved) this.energyAcc = saved.energy;
   }
+
+  /** fix_baoab.cpp write_restart: the cumulative energy exchanged with the reservoir (the stream is not stored). */
+  restartState(): { energy: number } { return { energy: this.energyAcc }; }
 
   init(): void {
     // "fix baoab and fix shake/rattle/ilves cannot be used together" on a shared group

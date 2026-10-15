@@ -38,6 +38,15 @@ export const checkFixStateNotStored = (sys: System, id: string, style: string): 
   throw new StyleError(`fix ${id} (${style}): native LAMMPS would restore its saved state, which the browser restart file does not hold; re-create the system instead`);
 };
 
+/**
+ * A RanMars stream (the 105 values of RanMars::get_state) and the energy a thermostat has exchanged: fix temp/csvr and
+ * fix temp/csld write_restart store the energy and the stream of the one processor (random_mars.cpp).
+ */
+export interface MarsEnergyRestart { energy: number; rng: number[] }
+
+/** A RanMars stream alone: fix gjf and the fix brownian family store nprocs and the stream (write_restart). */
+export interface MarsRestart { rng: number[] }
+
 /** A fix whose native class keeps global state in the restart file (fix.h restart_global). */
 export interface RestartableFix {
   /** The state the restart file stores, as plain JSON data (the fix's write_restart list). */

@@ -1,0 +1,12 @@
+# oracle: native binary restart of fix npt (FixNH::pack_restart_data with pstat_flag: omega, omega_dot, vol0, t0 and the barostat chain; fix_nh.cpp restart), read by the engine, fix npt re-specified and run 40 steps
+# oracle-inputs: w187rs_npt_native.restart
+# native: b332f28 built as the parity binary wrote w187rs_npt_native.restart (lj fcc melt, fix npt iso 1.0 1.0 2.0 for 60 steps, 108 atoms)
+read_restart    w187rs_npt_native.restart
+neighbor        0.3 bin
+fix             1 all npt temp 1.0 1.0 0.5 iso 1.0 1.0 2.0
+thermo_style    custom step temp pe press vol
+thermo_modify   format float %.15g
+thermo          10
+run             40
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-14
+# measured: the case passes at rel=1e-14 abs=0 (tightest tested), so the tolerance is 1e-12; the run takes about 0.2 s

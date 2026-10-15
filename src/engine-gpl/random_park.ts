@@ -58,6 +58,11 @@ export class RanPark {
     return first;
   }
 
+  /** RanPark::state(): the seed the stream continues from (what write_restart stores). */
+  state(): number {
+    return this.seed;
+  }
+
   /** RanPark::reset(int seed_init): a new seed, and the saved gaussian is dropped. */
   reset(seedInit: number): void {
     if (seedInit <= 0) throw new Error('Invalid seed for Park random # generator');

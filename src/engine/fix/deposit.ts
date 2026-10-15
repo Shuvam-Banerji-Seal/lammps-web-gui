@@ -8,6 +8,7 @@ import { geometricCenter, type MoleculeTemplate } from '../molecule';
 import { gplHook } from '../gplHooks';
 import { latticeScale } from '../commands/args';
 import type { RanPark } from '../rng';
+import { takeFixRecord } from './restartRecord';
 
 /*
  * fix ID group-ID deposit N type M seed keyword values ... — docs.lammps.org/fix_deposit.html
@@ -162,6 +163,9 @@ export interface DepositRotationHook {
 /** The lazy HOOKS entry 'deposit' (lazyStyles.ts group gpl_deposit): the native rotation of fix_deposit.cpp. */
 const nativeRotation = (r: number[], theta: number): number[][] => gplHook<DepositRotationHook>('deposit').rotation(r, theta);
 
+/** The state fix deposit keeps in a restart file (fix_deposit.cpp write_restart). */
+export interface DepositRestart { seed: number; inserted: number; nfirst: number; nextStep: number; step: number }
+
 export class FixDeposit extends Fix {
   readonly style = 'deposit';
   readonly N: number;
@@ -191,7 +195,7 @@ export class FixDeposit extends Fix {
   private nextMolId: number;
   private rigidFix: Fix | null = null;
   private shakeFix: Fix | null = null;
-  private readonly nfirst: number;
+  private nfirst: number;
   private nextStep: number;
   inserted = 0;
 
@@ -298,6 +302,25 @@ export class FixDeposit extends Fix {
     this.nfirst = sys.state.step + 1;
     this.nextStep = this.nfirst;
     this.scalarFlag = true;
+    const saved = takeFixRecord(sys, id, this.style)?.state as DepositRestart | undefined;
+    if (saved) this.restoreState(saved);
+  }
+
+  /**
+   * fix_deposit.cpp write_restart: the generator, the number inserted, the first and next steps and the step the file was
+   * written at (restart checks that it is the file's).
+   */
+  restartState(): DepositRestart {
+    return { seed: this.rng.state(), inserted: this.inserted, nfirst: this.nfirst, nextStep: this.nextStep, step: this.sys.state.step };
+  }
+
+  /** FixDeposit::restart: the generator, the counts and steps; the step must be the file's. */
+  private restoreState(r: DepositRestart): void {
+    if (r.step !== this.sys.state.step) throw new StyleError(`fix ${this.id}: must not reset timestep when restarting this fix`);
+    this.rng.reset(r.seed);
+    this.inserted = r.inserted;
+    this.nfirst = r.nfirst;
+    this.nextStep = r.nextStep;
   }
 
   init(): void {

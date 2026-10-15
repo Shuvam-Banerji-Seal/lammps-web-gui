@@ -23,6 +23,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { ALL_GROUP_BIT, appendAtoms, deleteAtoms, nativeOrder } from '../../engine/atoms';
 import { RanPark } from '../random_park';
+import { takeFixRecord } from '../../engine/fix/restartRecord';
 
 /** Avogadro's constant times the reference concentration (N_A * mol / liter) [nm^-3]. */
 const NA_RHO0 = 0.602214;
@@ -50,6 +51,9 @@ const int = (w: string | undefined, what: string): number => {
 
 /** Options refused by name: the browser engine does not implement them. */
 const REFUSED = new Set(['onlysalt', 'group', 'tag']);
+
+/** The state fix charge/regulation keeps in a restart file (fix_charge_regulation.cpp write_restart). */
+export interface ChargeRegulationRestart { seed: number; seedUnequal: number; nextEvent: number; step: number; counters: number[] }
 
 export class FixChargeRegulation extends Fix {
   readonly style = 'charge/regulation';
@@ -150,6 +154,28 @@ export class FixChargeRegulation extends Fix {
     this.rngUneq = new RanPark(this.seed);
     this.nextEvent = sys.hasBox ? sys.state.step + 1 : 1;
     this.exclName = `FixChargeRegulation:exclusion_group:${id}`;
+    const saved = takeFixRecord(sys, id, this.style)?.state as ChargeRegulationRestart | undefined;
+    if (saved) this.restoreState(saved);
+  }
+
+  /**
+   * fix_charge_regulation.cpp write_restart: the two generators, the six attempt and success counts (native order: acid,
+   * base, salt), the next event step and the step the file was written at.
+   */
+  restartState(): ChargeRegulationRestart {
+    return {
+      seed: this.rngEq.state(), seedUnequal: this.rngUneq.state(), nextEvent: this.nextEvent, step: this.sys.state.step,
+      counters: [this.nacidAtt, this.nacidSucc, this.nbaseAtt, this.nbaseSucc, this.nsaltAtt, this.nsaltSucc],
+    };
+  }
+
+  /** FixChargeRegulation::restart: the generators, the next event and the counts; the step must be the file's. */
+  private restoreState(r: ChargeRegulationRestart): void {
+    if (r.step !== this.sys.state.step) throw new StyleError(`fix ${this.id}: must not reset timestep when restarting fix charge/regulation`);
+    this.rngEq.reset(r.seed);
+    this.rngUneq.reset(r.seedUnequal);
+    this.nextEvent = r.nextEvent;
+    [this.nacidAtt, this.nacidSucc, this.nbaseAtt, this.nbaseSucc, this.nsaltAtt, this.nsaltSucc] = r.counters;
   }
 
   init(): void {

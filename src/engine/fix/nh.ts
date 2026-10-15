@@ -128,6 +128,8 @@ export interface NHRestart {
   /** the strain reference (volume and box lengths) of the run that wrote the file */
   vol0: number;
   len0: number[];
+  /** the barostat reference temperature (fix_nh.cpp t0, the temperature of the masses of an nph run), when there is a barostat */
+  t0?: number;
 }
 
 export class FixNH extends Fix {
@@ -173,6 +175,8 @@ export class FixNH extends Fix {
   private len0: number[] = [1, 1, 1];   // box lengths at the start of the run (strain reference)
   /** the strain reference came from a restart file: the next init keeps it */
   private refRestored = false;
+  /** the barostat reference temperature a restart file held (null when none was read) */
+  private restoredT0: number | null = null;
   private ecoupleCum = 0;
   protected scaleTilt = [true, true, true];   // yz xz xy with their second dimension
 
@@ -380,8 +384,9 @@ export class FixNH extends Fix {
     // barostat target temperature
     this.tTarget = this.tstat ? ramp(this.sys, this.tStart, this.tStop) : this.currentTemp();
     if (this.pstat) {
-      let tb = this.tstat ? this.tTarget : this.ptemp ?? this.currentTemp();
-      if (!this.tstat && this.ptemp === null && !(tb > 0)) {
+      // fix_nh.cpp setup: "if it was read in from a restart file, leave it be" (t0 of an nph run)
+      let tb = this.tstat ? this.tTarget : this.restoredT0 ?? this.ptemp ?? this.currentTemp();
+      if (!this.tstat && this.restoredT0 === null && this.ptemp === null && !(tb > 0)) {
         throw new StyleError(`fix ${this.style}: the system temperature is 0; set ptemp to give the barostat a target temperature`);
       }
       if (!(tb > 0)) tb = this.ptemp ?? 1;
@@ -1131,6 +1136,7 @@ export class FixNH extends Fix {
       omegaDot: Array.from(this.omegaDot), omegaPos: Array.from(this.omegaPos), ecoupleCum: this.ecoupleCum,
       vol0: this.vol0, len0: this.len0.slice(),
     };
+    if (this.pstat) r.t0 = this.pTempFixed;
     const extra = this.restartExtra();
     if (extra) r.extra = extra;
     return r;
@@ -1146,11 +1152,14 @@ export class FixNH extends Fix {
     const same = (a: Float64Array, b: number[]) => a.length === b.length;
     // the barostat chain is stored only by a file written with a barostat (fix_nh.cpp pack_restart_data: pstat_flag)
     const barostat = this.pstat && r.etap.length > 0;
-    if (!same(this.eta, r.eta) || !same(this.etaDot, r.etaDot) || (barostat && (!same(this.etap, r.etap) || !same(this.etapDot, r.etapDot)))) {
+    // the thermostat chain is restored only for a fix with a thermostat (an nph run has none, so its chain is not used)
+    const chain = this.tstat;
+    if ((chain && (!same(this.eta, r.eta) || !same(this.etaDot, r.etaDot))) || (barostat && (!same(this.etap, r.etap) || !same(this.etapDot, r.etapDot)))) {
       throw new StyleError(`fix ${this.id}: the restart file was written with other tchain or pchain settings`);
     }
-    this.eta.set(r.eta); this.etaDot.set(r.etaDot);
+    if (chain) { this.eta.set(r.eta); this.etaDot.set(r.etaDot); }
     if (barostat) { this.etap.set(r.etap); this.etapDot.set(r.etapDot); }
+    if (this.pstat && r.t0 !== undefined) this.restoredT0 = r.t0;
     this.omegaDot.set(r.omegaDot); this.omegaPos.set(r.omegaPos);
     this.ecoupleCum = r.ecoupleCum;
     this.vol0 = r.vol0;

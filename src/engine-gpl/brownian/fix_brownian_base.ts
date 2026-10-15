@@ -13,6 +13,7 @@ import { StyleError } from '../../engine/force/types';
 import { parseInt_, parseNum } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { RanMars } from '../random_mars';
+import { takeFixRecord, type MarsRestart } from '../../engine/fix/restartRecord';
 
 /** A numeric argument; utils::numeric (strtod) accepts "inf", which the eigen-damping keywords use. */
 export const brownNum = (w: string | undefined, what: string): number => (w === 'inf' ? Infinity : parseNum(w, what));
@@ -147,7 +148,12 @@ export abstract class FixBrownianBase extends Fix {
     }
     if (!this.rotTempFlag) this.rotTemp = this.temp;
     this.rng = new RanMars(this.seed);
+    const saved = takeFixRecord(sys, id, style)?.state as MarsRestart | undefined;
+    if (saved) this.rng.setState(saved.rng);
   }
+
+  /** fix_brownian_base.cpp write_restart: the generator state of the one processor (RanMars::get_state). */
+  restartState(): MarsRestart { return { rng: this.rng.getState() }; }
 
   /** Whether the noise terms are drawn (rng keyword other than none). */
   protected get noisy(): boolean {

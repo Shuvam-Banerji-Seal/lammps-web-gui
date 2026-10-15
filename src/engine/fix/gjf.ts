@@ -2,6 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { RanMars } from '../rng';
+import { takeFixRecord, type MarsRestart } from './restartRecord';
 import { parseNumOrVar, ramp, valueOf, type NumOrVar } from './util';
 import { massOf, nativeOrder } from '../atoms';
 
@@ -126,6 +127,20 @@ export class FixGJF extends Fix {
     // Measured with native LAMMPS (black box): the Gaussian stream starts one
     // uniform in, as for fix langevin, so one uniform is discarded here.
     this.rng.uniform();
+    // fix_gjf.cpp write_restart: the generator state, with the cached second deviate of the polar pair (save, second)
+    const saved = takeFixRecord(sys, id, this.style)?.state as MarsRestart | undefined;
+    if (saved) {
+      this.rng.setState(saved.rng);
+      this.cached = saved.rng[103] ? saved.rng[104] : null;
+    }
+  }
+
+  /** fix_gjf.cpp write_restart: the stream with the kept gaussian (its flag and value in the save and second slots). */
+  restartState(): MarsRestart {
+    const st = this.rng.getState();
+    st[103] = this.cached === null ? 0 : 1;
+    st[104] = this.cached ?? 0;
+    return { rng: st };
   }
 
   /** Gaussian deviate: the second value of each Marsaglia polar pair is kept for the next call. */

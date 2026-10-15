@@ -192,7 +192,9 @@ const jacobi = (A: number[][]): { values: number[]; vectors: number[][] } => {
  */
 const principalFrame = (I: number[][], twoD = false): { inertia: number[]; q: number[] } => {
   const jac = jacobi(I);
-  let order = [0, 1, 2];
+  // fix_rigid.cpp and fix_rigid_small.cpp setup_bodies_static (b332f28): "request that jacobi3() returns them in ascending order" (sort = 1,
+  // MathEigen::jacobi3); the resampled body velocities use one scale per principal axis, so the order is observable.
+  let order = [0, 1, 2].sort((a, b) => jac.values[a] - jac.values[b]);
   if (twoD) {
     // fix_rigid.cpp setup_bodies_static (2d): "for 2d, ensure that evector along z axis is last ... so that quaternion
     // is a simple rotation around +z axis"; the line-orientation bookkeeping (theta_body) relies on it.

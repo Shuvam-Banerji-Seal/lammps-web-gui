@@ -14,6 +14,7 @@ import { num, posInt } from './pour';
  * dynamics (MD) to generate trial MC "moves" which are then accepted or
  * rejected via the Metropolis criterion." Supported keywords are rigid,
  * resample and mom; everything else is a StyleError naming it.
+
  *
  * Algorithm, quoted from the doc: "(1) The configuration of the system is
  * stored along with its current total energy." "(2) The system is time
@@ -170,7 +171,7 @@ export class FixHmc extends Fix {
       // docs.lammps.org/fix_hmc.html: "The rigidID value should be the ID of a
       // fix rigid/small or fix rigid/nve/small command which defines the rigid
       // bodies. Its integrator will be used during the MD timesteps."
-      throw new StyleError(`fix hmc rigid ${rigidId}: the browser engine's fix rigid does not expose the per-body state reinitialisation that HMC needs after a rejected move, so rigid HMC is not supported`);
+      throw new StyleError(`fix hmc rigid ${rigidId}: rigid HMC is not supported (after a rejected move the rigid bodies' velocity draws do not yet match native LAMMPS, src/MC/fix_hmc.cpp at b332f28)`);
     }
     this.resample = resample;
     this.mom = mom;

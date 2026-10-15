@@ -2483,6 +2483,9 @@ const replicate: Handler = ({ sys }, a) => {
   if (rep.some((r) => r < 1)) throw new StyleError('replicate factors must be >= 1');
   if (s.dimension === 2 && rep[2] !== 1) throw new StyleError('cannot replicate in z for a 2d simulation');
   for (const w of a.slice(3)) if (w !== 'bbox' && w !== 'bond/periodic') throw new StyleError(`unknown replicate keyword '${w}'`);
+  // As native LAMMPS does (src/replicate.cpp at b332f28, bond_flag): without bond/periodic a copy's topology refers to the
+  // atoms of the same copy; with it, each partner is taken from the copy whose image is nearest to the first atom.
+  const bondPeriodic = a.slice(3).includes('bond/periodic');
   const g = sys.geom;
   const old: SimState = { ...s, x: s.x.slice(0, 3 * s.n), v: s.v.slice(0, 3 * s.n), image: s.image.slice(0, 3 * s.n), type: s.type.slice(0, s.n), id: s.id.slice(0, s.n), mask: s.mask.slice(0, s.n), molecule: s.molecule.slice(0, s.n), q: s.q.slice(0, s.n) };
   // measured with native LAMMPS: "Cannot replicate with fixes that store per-atom quantities"
@@ -2576,7 +2579,7 @@ const replicate: Handler = ({ sys }, a) => {
           // which copy holds the partner nearest to atom 0 of this copy
           const p = ux(oldIdx.get(aid)!);
           const off = [kx, ky, kz];
-          if (w > 0) {
+          if (w > 0 && bondPeriodic) {
             const dd = [p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]];
             const sh = [Math.round(dd[0] / g.lx), Math.round(dd[1] / g.ly), Math.round(dd[2] / g.lz)];
             for (let d = 0; d < 3; d++) off[d] = (((off[d] + sh[d]) % rep[d]) + rep[d]) % rep[d];

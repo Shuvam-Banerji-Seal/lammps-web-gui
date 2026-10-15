@@ -13,17 +13,21 @@
  * Browser-engine notes. Serial only (one block: the periodic ghost layers that native fills from its
  * neighbours are copied from the opposite side of the same block, in native's order). The per-atom hydroF
  * and massp arrays are kept by atom ID, so they follow the atoms through the engine's sorting as native's
- * copy_arrays does. Not ported and refused by name: D3Q19, stencil 4 (Keys), pit geometry (npits, wp, sw), dumpxdmf,
- * read_restart and write_restart.
+ * copy_arrays does. Pit geometry (npits, wp, sw) is ported in pit_geometry.ts. Not ported and refused by name: D3Q19,
+ * stencil 4 (Keys), dumpxdmf, read_restart and write_restart.
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { massOf, nativeOrder } from '../../engine/atoms';
 import { RanMars } from '../random_mars';
-import { BBL_WALL_BOTTOM, BBL_WALL_TOP, E15, MG15, NG15, W15 } from './lb_tables';
+import { BBL, BBL_WALL_BOTTOM, BBL_WALL_TOP, E15, MG15, NG15, OD, W15 } from './lb_tables';
+import { flatGeometry, LatticeGeometry, pitGeometry, PitSpec, wholeIndex } from './pit_geometry';
 
 const NV = 15;
+/** W15[l] * MG15[ii][l] (the first two factors of the equilibrium sum, in native's order), indexed ii * NV + l. */
+const WM15 = Float64Array.from({ length: NV * NV }, (_, n) => W15[n % NV] * MG15[n]);
+const NG15F = Float64Array.from(NG15);
 const FLT_EPSILON = 1.1920928955078125e-7;
 
 /** C round(): halves away from zero. */
@@ -48,9 +52,6 @@ const REFUSED: Record<string, string> = {
   dumpxdmf: 'dumpxdmf (fluid output files) is not supported by the browser engine',
   read_restart: 'read_restart is not supported by the browser engine',
   write_restart: 'write_restart is not supported by the browser engine',
-  npits: 'pit geometry (npits) is not ported to the browser engine',
-  wp: 'pit geometry (wp) is not ported to the browser engine',
-  sw: 'pit geometry (sw) is not ported to the browser engine',
 };
 
 export class FixLbFluid extends Fix {
@@ -113,7 +114,10 @@ export class FixLbFluid extends Fix {
   private u!: Float64Array;
   private Ff!: Float64Array;
   private Wf!: Float64Array;
-  /** sublattice type (0 bulk, 3 flat wall) and orientation of each f-grid node. */
+  /** pit geometry (null without npits), its sidewall flag and the height of the slit. */
+  pit: PitSpec | null = null;
+  pitHs = 0;
+  /** sublattice type (0 bulk, 1 bounce-back, 2 outside, 3 flat wall) and orientation of each f-grid node. */
   private stype!: Int8Array;
   private sori!: Int8Array;
 
@@ -141,6 +145,9 @@ export class FixLbFluid extends Fix {
 
     let dxGiven = false;
     let a0Given = false;
+    let pit: PitSpec | null = null;
+    let sidewalls = 0;
+    let wpArg = 0;
     for (let iarg = 3; iarg < args.length; ) {
       const key = args[iarg];
       if (Object.prototype.hasOwnProperty.call(REFUSED, key)) throw new StyleError(`fix lb/fluid ${key}: ${REFUSED[key]}`);
@@ -199,6 +206,27 @@ export class FixLbFluid extends Fix {
         this.bodyforcey = numArg(args[iarg + 2], 'bodyforce');
         this.bodyforcez = numArg(args[iarg + 3], 'bodyforce');
         iarg += 4;
+      } else if (key === 'npits') {
+        // native: npits N h_p l_p l_pp l_e (fix_lb_fluid.cpp constructor)
+        need(6);
+        pit = {
+          npits: intArg(args[iarg + 1], 'npits'),
+          hp: intArg(args[iarg + 2], 'npits h_p'),
+          lp: intArg(args[iarg + 3], 'npits l_p'),
+          lpp: intArg(args[iarg + 4], 'npits l_pp'),
+          le: intArg(args[iarg + 5], 'npits l_e'),
+          wp: 0,
+          sw: 0,
+        };
+        iarg += 6;
+      } else if (key === 'sw') {
+        // native: "sw" takes no value (y-sidewalls on)
+        sidewalls = 1;
+        iarg += 1;
+      } else if (key === 'wp') {
+        need(2);
+        wpArg = intArg(args[iarg + 1], 'wp');
+        iarg += 2;
       } else if (key === 'linearInit') {
         this.linInit = 1;
         iarg += 1;
@@ -237,6 +265,23 @@ export class FixLbFluid extends Fix {
     this.Nbz = NzOrig;
     if (NzOrig + 2 < 7 || Nx + 2 < 7 || Ny + 2 < 7) throw new StyleError('Need at least 5 grid points in each direction per processor');
     if (walls) this.Nbz += 1;
+    // grid checks for pits (fix_lb_fluid.cpp constructor, serial)
+    if (pit !== null) {
+      if (!walls) throw new StyleError('the z-direction cannot have periodic boundary conditions when there are pits.');
+      const p = pit as PitSpec;
+      p.wp = wpArg === 0 ? Ny : wpArg;
+      p.sw = sidewalls;
+      const hs = this.Nbz - 1 - p.hp;
+      if (hs <= 1) throw new StyleError('hp too big for system in z-direction');
+      if (p.wp > Ny) throw new StyleError('wp bigger than system in y-direction');
+      if (2 * p.le + p.npits * p.lp + (p.npits - 1) * p.lpp < Nx)
+        throw new StyleError('length of pits and end segments too small to fill system in x-direction');
+      if (this.vwtp !== 0.0 || this.vwbt !== 0.0) throw new StyleError('Moving walls not compatible with pit geometry options');
+      this.pit = p;
+      this.pitHs = hs;
+    } else if (sidewalls) {
+      throw new StyleError('Sidewalls require pit geometry (you can enable by setting npits to 0 or higher)');
+    }
     this.subNbx = Nx + 2;
     this.subNby = Ny + 2;
     this.subNbz = this.Nbz + 2;
@@ -319,29 +364,47 @@ export class FixLbFluid extends Fix {
   }
 
   /**
-   * initializeGlobalGeometry() and initializeGeometry() for one block without pits: flat walls at the two z ends
-   * when z is not periodic. Sub node k maps to whole node (k - 1) mod Nbz, as native does with a zero offset.
+   * initializeGlobalGeometry() (flat walls or pit geometry) and initializeGeometry() for the one block: the sublattice
+   * takes the whole-lattice site of each node, wrapped periodically, and the two z ghost layers are corrected where the
+   * wrap crossed a fixed boundary that bounds no fluid on that side (fix_lb_fluid.cpp, initializeGeometry).
    */
   private initializeGeometry(walls: boolean): void {
     const Nbx = this.Nbx, Nby = this.Nby, Nbz = this.Nbz;
-    const wt = new Int8Array(Nbx * Nby * Nbz);
-    const wo = new Int8Array(Nbx * Nby * Nbz);
-    const widx = (i: number, j: number, k: number) => (i * Nby + j) * Nbz + k;
-    for (let i = 0; i < Nbx; i++)
-      for (let j = 0; j < Nby; j++) {
-        if (walls) {
-          wt[widx(i, j, 0)] = 3;
-          wt[widx(i, j, Nbz - 1)] = 3;
-          wo[widx(i, j, 0)] = 3;
-          wo[widx(i, j, Nbz - 1)] = 16;
-        }
+    const whole: LatticeGeometry = this.pit
+      ? pitGeometry(Nbx, Nby, Nbz, this.pitHs, this.pit)
+      : flatGeometry(Nbx, Nby, Nbz, walls);
+    const wt = whole.type, wo = whole.ori;
+    // inlet and outlet must have the same fluid sites (native's openingsites check)
+    let inlet = 0, outlet = 0;
+    for (let j = 0; j < Nby; j++)
+      for (let k = 0; k < Nbz; k++) {
+        if (wt[wholeIndex(whole, 0, j, k)] !== 2) inlet++;
+        if (wt[wholeIndex(whole, Nbx - 1, j, k)] !== 2) outlet++;
       }
+    if (inlet !== outlet) throw new StyleError('inlet and outlet geometry do not match in x-direction');
+
     for (let i = 0; i < this.subNbx; i++)
       for (let j = 0; j < this.subNby; j++)
         for (let k = 0; k < this.subNbz; k++) {
           const wi = (i - 1 + Nbx) % Nbx, wj = (j - 1 + Nby) % Nby, wk = (k - 1 + Nbz) % Nbz;
-          this.stype[this.fi(i, j, k)] = wt[widx(wi, wj, wk)];
-          this.sori[this.fi(i, j, k)] = wo[widx(wi, wj, wk)];
+          const n = wholeIndex(whole, wi, wj, wk);
+          let type = wt[n], ori = wo[n];
+          if (k === 0) {
+            // true boundary ghost rather than neighbouring processor ghost
+            const just = wt[wholeIndex(whole, wi, wj, (k + Nbz) % Nbz)];
+            if (type === 1 && just === 2) {
+              type = 2;
+              ori = 0;
+            }
+          } else if (k === this.subNbz - 1) {
+            const just = wt[wholeIndex(whole, wi, wj, (k - 2 + Nbz) % Nbz)];
+            if (type === 1 && just === 2) {
+              type = 2;
+              ori = 0;
+            }
+          }
+          this.stype[this.fi(i, j, k)] = type;
+          this.sori[this.fi(i, j, k)] = ori;
         }
   }
 
@@ -385,7 +448,7 @@ export class FixLbFluid extends Fix {
    * `arr` has `comp` components per node on a grid of sizes (nx, ny, nz).
    */
   private copyPlanes(
-    arr: Float64Array, nx: number, ny: number, nz: number, comp: number,
+    arr: Float64Array, ny: number, nz: number, comp: number,
     dim: 0 | 1 | 2, pairs: readonly (readonly [number, number])[],
     a0: number, a1: number, b0: number, b1: number,
   ): void {
@@ -467,10 +530,10 @@ export class FixLbFluid extends Fix {
   private passBackWf(): void {
     const QX = this.QX, QY = this.QY, QZ = this.QZ;
     const nx = this.subNbx - 2, ny = this.subNby - 2, nz = this.subNbz - 2;
-    this.copyPlanes(this.Wf, QX, QY, QZ, 1, 0, this.wrapPairs(nx), 0, QY, 0, QZ);
-    this.copyPlanes(this.Wf, QX, QY, QZ, 1, 1, this.wrapPairs(ny), 0, QX, 0, QZ);
+    this.copyPlanes(this.Wf, QY, QZ, 1, 0, this.wrapPairs(nx), 0, QY, 0, QZ);
+    this.copyPlanes(this.Wf, QY, QZ, 1, 1, this.wrapPairs(ny), 0, QX, 0, QZ);
     if (!this.sys.state.box.periodic[2]) return;
-    this.copyPlanes(this.Wf, QX, QY, QZ, 1, 2, this.wrapPairs(nz), 0, QX, 0, QY);
+    this.copyPlanes(this.Wf, QY, QZ, 1, 2, this.wrapPairs(nz), 0, QX, 0, QY);
   }
 
   // ---------------------------------------------------------------- hooks
@@ -525,9 +588,11 @@ export class FixLbFluid extends Fix {
     const bfx = this.bodyforcex, bfy = this.bodyforcey, bfz = this.bodyforcez;
     const etacov = new Float64Array(15);
     const S0 = new Float64Array(3), S1 = new Float64Array(3);
+    const feq = this.feq;
     for (let i = 1; i < this.subNbx - 1; i++)
       for (let j = 1; j < this.subNby - 1; j++)
         for (let k = 1; k < this.subNbz - 1; k++) {
+          if (this.stype[this.fi(i, j, k)] === 2) continue; // outside the domain: feq stays zero, no noise drawn
           const q = this.qi(i, j, k);
           const fidx = this.fi(i, j, k) * NV;
           const rho = this.density[q];
@@ -551,8 +616,8 @@ export class FixLbFluid extends Fix {
           etacov[14] = this.K0 * rho * (1.0 - 3.0 * a0);
           for (let l = 0; l < NV; l++) {
             let acc = 0.0;
-            for (let ii = 0; ii < NV; ii++) acc += W15[l] * MG15[ii * NV + l] * etacov[ii] * NG15[ii];
-            this.feq[fidx + l] = acc;
+            for (let ii = 0; ii < NV; ii++) acc += WM15[ii * NV + l] * etacov[ii] * NG15F[ii];
+            feq[fidx + l] = acc;
           }
           if (this.noisestress === 1 && this.random) {
             const rnd = this.random;
@@ -578,7 +643,7 @@ export class FixLbFluid extends Fix {
                   MG15[10 * NV + l] * etacov[10] * NG15[10] + MG15[11 * NV + l] * etacov[11] * NG15[11] +
                   MG15[12 * NV + l] * etacov[12] * NG15[12] + MG15[13 * NV + l] * etacov[13] * NG15[13] +
                   MG15[14 * NV + l] * etacov[14] * NG15[14]);
-              this.feq[fidx + l] += ghostnoise * this.noisefactor;
+              feq[fidx + l] += ghostnoise * this.noisefactor;
             }
           }
         }
@@ -598,7 +663,7 @@ export class FixLbFluid extends Fix {
 
   /** The feq / f exchange on the f-grid (NV components per node). */
   private copyPlanesF(arr: Float64Array, dim: 0 | 1 | 2, pairs: readonly (readonly [number, number])[], a0: number, a1: number, b0: number, b1: number): void {
-    this.copyPlanes(arr, this.subNbx, this.subNby, this.subNbz, NV, dim, pairs, a0, a1, b0, b1);
+    this.copyPlanes(arr, this.subNby, this.subNbz, NV, dim, pairs, a0, a1, b0, b1);
   }
 
   /** update_periodic() for types 0 (bulk) and 3 (flat wall) with D3Q15. */
@@ -617,6 +682,22 @@ export class FixLbFluid extends Fix {
               const im = i - E15[m][0], jm = j - E15[m][1], km = k - E15[m][2];
               const src = this.fi(im, jm, km) * NV + m;
               fn[base + m] = f[src] + (feq[src] - f[src]) / tau;
+            }
+          } else if (type === 1) {
+            // pit geometry boundary fluid nodes (update_periodic, native): bounce back, then normal propagation
+            const row = BBL[ori];
+            const nb = row[0];
+            fn[base] = f[base] - (f[base] - feq[base]) / tau;
+            for (let nbb = 1; nbb <= nb; nbb++) {
+              const ll = row[nbb];
+              const o = base + OD[ll];
+              fn[base + ll] = f[o] - (f[o] - feq[o]) / tau;
+            }
+            for (let nbb = nb + 1; nbb <= 15; nbb++) {
+              const ll = row[nbb];
+              const im = i - E15[ll][0], jm = j - E15[ll][1], km = k - E15[ll][2];
+              const src = this.fi(im, jm, km) * NV + ll;
+              fn[base + ll] = f[src] - (f[src] - feq[src]) / tau;
             }
           } else if (type === 3) {
             // normal propagation directions (includes on-wall which will be modified)
@@ -741,19 +822,27 @@ export class FixLbFluid extends Fix {
       for (let j = 0; j < sy; j++)
         for (let k = 0; k < sz; k++) this.parametercalcNode(i, j, k);
     // density and velocity ghosts that native copies from the opposite side of the block
-    this.copyPlanes(this.density, QX, QY, QZ, 1, 0, this.outerPairs(nx), 0, QY, 0, QZ);
-    this.copyPlanes(this.density, QX, QY, QZ, 1, 1, this.outerPairs(ny), 0, QX, 0, QZ);
-    this.copyPlanes(this.u, QX, QY, QZ, 3, 0, this.outerPairs(nx), 0, QY, 0, QZ);
-    this.copyPlanes(this.u, QX, QY, QZ, 3, 1, this.outerPairs(ny), 0, QX, 0, QZ);
+    this.copyPlanes(this.density, QY, QZ, 1, 0, this.outerPairs(nx), 0, QY, 0, QZ);
+    this.copyPlanes(this.density, QY, QZ, 1, 1, this.outerPairs(ny), 0, QX, 0, QZ);
+    this.copyPlanes(this.u, QY, QZ, 3, 0, this.outerPairs(nx), 0, QY, 0, QZ);
+    this.copyPlanes(this.u, QY, QZ, 3, 1, this.outerPairs(ny), 0, QX, 0, QZ);
     if (this.sys.state.box.periodic[2]) {
-      this.copyPlanes(this.density, QX, QY, QZ, 1, 2, this.outerPairs(nz), 0, QX, 0, QY);
-      this.copyPlanes(this.u, QX, QY, QZ, 3, 2, this.outerPairs(nz), 0, QX, 0, QY);
+      this.copyPlanes(this.density, QY, QZ, 1, 2, this.outerPairs(nz), 0, QX, 0, QY);
+      this.copyPlanes(this.u, QY, QZ, 3, 2, this.outerPairs(nz), 0, QX, 0, QY);
     }
   }
 
   /** parametercalc_part() for one node: density and mass-weighted velocity from the populations. */
   private parametercalcNode(i: number, j: number, k: number): void {
     const q = this.qi(i, j, k);
+    if (this.stype[this.fi(i, j, k)] === 2) {
+      // type 2 is outside the domain (native parametercalc_part)
+      this.density[q] = 0.0;
+      this.u[3 * q] = 0.0;
+      this.u[3 * q + 1] = 0.0;
+      this.u[3 * q + 2] = 0.0;
+      return;
+    }
     const f = this.fi(i, j, k) * NV;
     let rho = 0.0, ux = 0.0, uy = 0.0, uz = 0.0;
     for (let m = 0; m < NV; m++) {
@@ -1038,9 +1127,9 @@ export class FixLbFluid extends Fix {
           this.u[3 * q + 2] += 0.5 * (this.Ff[3 * q + 2] / rho + this.bodyforcez);
         }
     const QX = this.QX, QY = this.QY, QZ = this.QZ;
-    this.copyPlanes(this.u, QX, QY, QZ, 3, 0, this.wrapPairs(nx), 0, QY, 0, QZ);
-    this.copyPlanes(this.u, QX, QY, QZ, 3, 1, this.wrapPairs(ny), 0, QX, 0, QZ);
-    if (this.sys.state.box.periodic[2]) this.copyPlanes(this.u, QX, QY, QZ, 3, 2, this.wrapPairs(nz), 0, QX, 0, QY);
+    this.copyPlanes(this.u, QY, QZ, 3, 0, this.wrapPairs(nx), 0, QY, 0, QZ);
+    this.copyPlanes(this.u, QY, QZ, 3, 1, this.wrapPairs(ny), 0, QX, 0, QZ);
+    if (this.sys.state.box.periodic[2]) this.copyPlanes(this.u, QY, QZ, 3, 2, this.wrapPairs(nz), 0, QX, 0, QY);
   }
 
   // ---------------------------------------------------------------- outputs and fields for the companion fixes

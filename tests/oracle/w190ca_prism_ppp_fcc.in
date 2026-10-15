@@ -1,0 +1,16 @@
+# oracle: create_atoms box on a triclinic (prism region, zero tilt) fcc box with boundary p p p and an inexact spacing (fcc 4.5937 metal, prism 0 13.7811 0 13.7811 0 9.1874 0 0 0); the periodic images on the upper faces are not created (regression guard); atom counts and positions by ID
+# Measured with native LAMMPS: 72 atoms (fcc 4.5937, 3x3x2 cells, 4 basis atoms each), the same count as the engine before and after the fix; a regression guard for the periodic prism (images on the upper faces are not created).
+units           metal
+atom_style      atomic
+dimension       3
+boundary        p p p
+lattice         fcc 4.5937
+region          box prism 0 13.7811 0 13.7811 0 9.1874 0 0 0 units box
+create_box      1 box
+create_atoms    1 box
+mass            1 63.546
+pair_style      zero 5.0
+pair_coeff      * *
+thermo_style    custom step atoms pe
+thermo_modify   format float %.15g
+run             0

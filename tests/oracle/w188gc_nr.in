@@ -1,0 +1,14 @@
+# oracle: w188gc_nr: native binary restart written after 20 steps of fix gcmc with X=2 exchanges and M=2 moves per event (lj, 4 atoms, interacting), read by the engine and continued 20 steps with the fix re-defined (its generators, next step and counters come from the file)
+# oracle-inputs: w188gc_nr.restart
+# native: b332f28 built as the parity binary wrote w188gc_nr.restart (prep: the w188gc_lj_xm setup, run 20, write_restart)
+read_restart    w188gc_nr.restart
+pair_style      lj/cut 2.5
+pair_modify     tail no
+pair_coeff      * * 1.0 1.0
+fix             mygcmc gcmcgroup gcmc 1 2 2 1 29494 1.5 -2.7 0.5
+thermo_style    custom step atoms pe f_mygcmc[1] f_mygcmc[2] f_mygcmc[3] f_mygcmc[4] f_mygcmc[5] f_mygcmc[6] f_mygcmc[7] f_mygcmc[8]
+thermo_modify   format float %.15g
+thermo          1
+run             20
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# measured: max relative error 1.9e-15 (max abs 8.9e-16); fail-before (the pre-change gas list in storage order) diverges at step 21 (pe -0.15010 against native -0.09804)

@@ -1,0 +1,20 @@
+# oracle: w188gc_mol_xm (full_energy: the dimer has no bonds, so its intramolecular pair energy is part of the trial energy): molecule-mode fix gcmc (dimer) with X=2 exchanges and M=2 moves per event in native's interleaved cycle order (fix_gcmc.cpp pre_exchange, mol exchange mode; the default mcmoves for mol are translation and rotation with 0.5 each). lj units, interacting dimers, N=1, 30 steps. Native: built from b332f28 (installed lmp).
+# oracle-inputs: w32gcmc_dimer.mol
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# measured: max relative error 1.9e-13 (max abs 6.9e-14) over the thermo rows and the per-atom state; fail-before stops at step 1 with atoms 6 against native 4
+units lj
+atom_style molecular
+pair_style lj/cut 2.5
+pair_modify tail no
+region box block 0 6 0 6 0 6
+create_box 1 box
+pair_coeff * * 1.0 1.0
+mass 1 1.0
+molecule dimer w32gcmc_dimer.mol
+create_atoms 0 single 1.0 1.0 1.0 mol dimer 12345 units box
+create_atoms 0 single 4.0 4.0 4.0 mol dimer 777 units box
+fix mygcmc all gcmc 1 2 2 0 29494 2.0 -2.5 0.5 mol dimer maxangle 30 full_energy
+thermo_style custom step atoms pe f_mygcmc[1] f_mygcmc[2] f_mygcmc[3] f_mygcmc[4] f_mygcmc[5] f_mygcmc[6] f_mygcmc[7] f_mygcmc[8]
+thermo 1
+thermo_modify format float %.15g
+run 30

@@ -1,0 +1,21 @@
+# oracle: w188gc_lj_xm: fix gcmc with X=2 exchanges and M=2 MC moves per event, interleaved in native's cycle order (fix_gcmc.cpp pre_exchange: ncycles = X + M cycles, each drawing ixm = int(u*ncycles)+1 and moving when ixm <= M). lj units, interacting atoms (dU != 0), N=1 so every step is an event, 40 steps. Native: built from b332f28 (installed lmp).
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# measured: max relative error 2.2e-15 (max abs 3.6e-15) over the thermo rows and the per-atom state; fail-before (the exchanges-then-moves event order) stops at step 1 with atoms 6 against native 4
+units lj
+atom_style atomic
+pair_style lj/cut 2.5
+pair_modify tail no
+region box block 0 6 0 6 0 6
+create_box 1 box
+pair_coeff * * 1.0 1.0
+mass 1 1.0
+group gcmcgroup type 1
+create_atoms 1 single 1.0 1.0 1.0 units box
+create_atoms 1 single 2.2 1.0 1.0 units box
+create_atoms 1 single 1.0 2.4 1.5 units box
+create_atoms 1 single 4.0 4.0 4.0 units box
+fix mygcmc gcmcgroup gcmc 1 2 2 1 29494 1.5 -2.7 0.5
+thermo_style custom step atoms pe f_mygcmc[1] f_mygcmc[2] f_mygcmc[3] f_mygcmc[4] f_mygcmc[5] f_mygcmc[6] f_mygcmc[7] f_mygcmc[8]
+thermo 1
+thermo_modify format float %.15g
+run 40

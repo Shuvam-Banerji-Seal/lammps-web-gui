@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
   <url>
     <loc>https://shuvam-banerji-seal.github.io/lammps-web-gui/</loc>
     <lastmod>2026-10-15</lastmod>
@@ -9,5 +10,13 @@
     <image:image>
       <image:loc>https://shuvam-banerji-seal.github.io/lammps-web-gui/og-image.png</image:loc>
     </image:image>
+    <video:video>
+      <video:thumbnail_loc>https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/app-demo-poster.jpg</video:thumbnail_loc>
+      <video:title>LAMMPS Web GUI demo: run LAMMPS in the browser</video:title>
+      <video:description>A one-minute walkthrough: a starter template in the Script Builder, a Lennard-Jones melt run in the MD Notebook with live thermo output and a 3D view, and trajectory playback in the Structure Viewer.</video:description>
+      <video:content_loc>https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/app-demo.mp4</video:content_loc>
+      <video:duration>64</video:duration>
+      <video:publication_date>2026-10-15</video:publication_date>
+    </video:video>
   </url>
 </urlset>

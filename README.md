@@ -31,25 +31,49 @@ The notebook's engine is written in TypeScript for the browser. Its results are 
 
 ---
 
+## 🎬 Demo
+
+[![LAMMPS Web GUI demo: a Lennard-Jones melt run in the MD notebook, then trajectory playback in the 3D viewer](docs/videos/app-demo-preview.gif)](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/app-demo.mp4)
+
+*A one-minute walkthrough: pick a starter template in the Script Builder, run a Lennard-Jones melt in the MD Notebook (thermo table, charts and the 3D view update as it runs), then play the trajectory back in the Structure Viewer. Full video: [`app-demo.mp4`](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/app-demo.mp4) (64 s, 1280×720, 1.4 MB; also in the repo at [`public/videos/app-demo.mp4`](public/videos/app-demo.mp4)). Recorded in headless Chromium with software rendering, so a real GPU is smoother.*
+
 ## 📸 Screenshots
 
-| Script Builder — editable flowchart | Structure Viewer — C60 |
-|---|---|
-| ![Script Builder](docs/screenshots/app-desktop.png) | ![Viewer](docs/screenshots/viewer-c60.png) |
-| **Compiler Helper — click-to-inspect flags** | **Dump trajectory playback** |
-| ![Compiler](docs/screenshots/compiler-flags.png) | ![Dump playback](docs/screenshots/viewer-dump-playback.png) |
-| **Simulation box (NaCl, CIF)** | **Starter templates** |
-| ![Box](docs/screenshots/simulation-box.png) | ![Templates](docs/screenshots/templates-menu.png) |
-| **Warm light theme** | **Keyboard shortcuts overlay** |
-| ![Light](docs/screenshots/app-light.png) | ![Shortcuts](docs/screenshots/shortcuts-overlay.png) |
-| **Mobile** | **Trajectory Analysis — RDF/MSD** |
-| ![Mobile](docs/screenshots/app-mobile.png) | ![Analysis](docs/screenshots/analysis-desktop.png) |
-| **Analysis — mobile** | **Concept branching — one flowchart, several ideas** |
-| ![Analysis Mobile](docs/screenshots/analysis-mobile.png) | ![Branching](docs/screenshots/flowchart-branching.png) |
-| **Script check — doc-grounded validation** | **Viewer dock on a phone** |
-| ![Script check](docs/screenshots/script-check.png) | ![Mobile dock](docs/screenshots/viewer-dock-mobile.png) |
+### MD Notebook — LAMMPS input running in the browser
 
-## 🎬 Simulation Videos — rendered **in-browser**
+| Lennard-Jones melt: cells, thermo table, 3D view | Notebook with markdown notes and several cells |
+|---|---|
+| ![MD Notebook running a Lennard-Jones melt: input cells, thermo output table, 3D view of 500 atoms and the device panel](docs/screenshots/notebook-run.png) | ![MD Notebook with a markdown cell and several LAMMPS input cells](docs/screenshots/notebook-script.png) |
+
+<p align="center"><img src="docs/screenshots/notebook-monitor.png" width="360" alt="Device and performance panel: cores, memory, shared-memory threads, the engine Auto chose, steps per second and atom-steps per second"><br><em>Device and performance panel: what Auto chose and why, steps/s, ms/step and atom-steps/s.</em></p>
+
+### Script Builder — LAMMPS input scripts as a flowchart
+
+| Starter template with the generated script | Concept branching — one flowchart, several ideas |
+|---|---|
+| ![Script Builder with the LJ fluid template, generated LAMMPS input script and the script check](docs/screenshots/script-builder.png) | ![Script Builder flowchart with a concept branch forked after atom_style](docs/screenshots/flowchart-branching.png) |
+| **Script check — every rule cites docs.lammps.org** | **Starter templates** |
+| ![Script check panel showing an error with its docs.lammps.org link](docs/screenshots/script-check.png) | ![Starter pipeline templates menu: LJ fluid, EAM metal, ReaxFF, granular pouring, NEMD shear](docs/screenshots/templates-menu.png) |
+| **Flowchart overview** | **Compiler Helper — CMake build script for native LAMMPS** |
+| ![Script Builder overview with the command palette and flowchart](docs/screenshots/app-desktop.png) | ![Compiler Helper with the Materials / metals preset and the generated CMake build script](docs/screenshots/compiler-flags.png) |
+
+### Structure Viewer — LAMMPS data and dump, XYZ, PDB, CIF
+
+| C60 with the sidebar | LAMMPS dump trajectory playback |
+|---|---|
+| ![Structure Viewer showing a C60 fullerene](docs/screenshots/viewer-c60.png) | ![Structure Viewer playing back a Lennard-Jones melt dump trajectory](docs/screenshots/viewer-dump-playback.png) |
+| **Trajectory analysis — RDF and MSD** | **Unit cell (NaCl, CIF)** |
+| ![Analysis tab with the radial distribution function and mean squared displacement of a LAMMPS dump](docs/screenshots/analysis-desktop.png) | ![NaCl crystal from a CIF file with its unit cell box](docs/screenshots/simulation-box.png) |
+| **Keyboard shortcuts** | **Warm paper theme** |
+| ![Keyboard shortcut overlay of the Structure Viewer](docs/screenshots/shortcuts-overlay.png) | ![The app in the Warm paper theme](docs/screenshots/app-light.png) |
+
+### On a phone
+
+| MD Notebook | Trajectory analysis | Viewer dock |
+|---|---|---|
+| ![MD Notebook on a phone after a run](docs/screenshots/app-mobile.png) | ![Trajectory analysis on a phone](docs/screenshots/analysis-mobile.png) | ![Structure Viewer dock on a phone](docs/screenshots/viewer-dock-mobile.png) |
+
+## 🎞️ Simulation videos — rendered in the browser
 
 The viewer plays **LAMMPS dump** (`.lammpstrj`/`.dump`) natively and exports **MP4/WebM at 60 fps** — no Python needed. The 15 s clip below was recorded **directly from this website** (canvas capture) at 896×752, stitched from the three GPU trajectories in [`introduction-to-molecular-simulation/simulations`](https://github.com/Shuvam-Banerji-Seal/introduction-to-molecular-simulation/tree/main/simulations):
 

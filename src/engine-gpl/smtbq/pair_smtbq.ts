@@ -153,7 +153,6 @@ export class PairSMTBQ extends Pair {
     if (!this.file || !this.tables) throw new StyleError('pair_style smtbq needs a pair_coeff command first');
     if (pc.vatom) throw new StyleError('compute stress/atom with pair_style smtbq is not supported by the browser engine');
     const file = this.file;
-    const tb = this.tables;
     const nb = pc.nb;
     const s = pc.s;
     this.pc = pc;

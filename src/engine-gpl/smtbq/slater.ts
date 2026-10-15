@@ -278,7 +278,7 @@ export class SlaterIntegrals {
     const zeta1 = alpha / r;
     const zeta2 = beta / r;
     const sumzeta = zeta1 + zeta2;
-    let difzeta = zeta1 - zeta2;
+    const difzeta = zeta1 - zeta2;
 
     // Partial derivative terms for zeta derivatives
     const dpdz1 = r;
@@ -298,7 +298,7 @@ export class SlaterIntegrals {
       n1 = n2;
       n2 = k;
       pt = -pt;
-      difzeta = -difzeta;
+      // native also negates difzeta here; it is not read again, so the assignment is left out
       dptdr = -dptdr;
       dptdz1 = -dptdz1;
       dptdz2 = -dptdz2;

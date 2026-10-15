@@ -128,7 +128,7 @@ function cutTable(
 
     // Cutting function
     if (dij < 0.01 && ii === 0) {
-      ii = 2;
+      // native sets ii = 2 and then ii = 1 before it is read; only the second value matters
       rc = r;
       ii = 1;
       if (rc + nang > rcoupe) nang = rcoupe - rc;

@@ -592,6 +592,6 @@ export const pitGeometry = (Nbx: number, Nby: number, Nbz: number, HS: number, p
     ix = addpit(g, ix, HS, pit.hp, pit.wp, pit.lp, pit.sw);
     if (nn < pit.npits - 1) ix = addslit(g, ix, HS, pit.hp, pit.lpp - 1, pit.sw);
   }
-  if (pit.npits > 0 && ix < Nbx - 1) ix = addslit(g, ix, HS, pit.hp, pit.le - 1, pit.sw);
+  if (pit.npits > 0 && ix < Nbx - 1) addslit(g, ix, HS, pit.hp, pit.le - 1, pit.sw);
   return g;
 };

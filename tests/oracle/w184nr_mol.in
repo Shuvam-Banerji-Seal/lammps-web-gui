@@ -1,0 +1,13 @@
+# oracle: native binary restart (serial file) of atom_style full with harmonic bonds and angles and lj/cut/coul/long with pppm; the restarted run continues 40 steps
+# oracle-inputs: w184nr_mol.restart
+# native: b332f28 built as the parity binary wrote w184nr_mol.restart (chains from w184nr_mol.data, pppm 1e-4)
+read_restart    w184nr_mol.restart
+kspace_style    pppm 1.0e-4
+neighbor        2.0 bin
+thermo_style    custom step temp epair emol etotal press
+thermo_modify   format float %.15g
+thermo          20
+fix             1 all nve
+run             40
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12
+# measured: max relative error 2.8e-12 (fx of atom 13 after 40 steps; the thermo rows agree to 1e-14), so the tolerance is 1e-10

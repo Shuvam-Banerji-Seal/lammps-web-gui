@@ -1,0 +1,12 @@
+# oracle: native binary restart of a triclinic (prism) box with groups and two types, 100 steps of lj/cut run before writing, continued 40 steps
+# oracle-inputs: w184nr_tri.restart
+# native: b332f28 built as the parity binary wrote w184nr_tri.restart (fcc 0.9 prism 3x3x3 cells, tilt 1.5 1 0.5, 108 atoms)
+read_restart    w184nr_tri.restart
+neighbor        0.3 bin
+fix             1 all nve
+thermo_style    custom step temp epair emol etotal press
+thermo_modify   format float %.15g
+thermo          20
+run             40
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-14
+# measured: max relative error 1.1e-13 (epair of the first row, step 100), so the tolerance is 1e-12

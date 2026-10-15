@@ -338,7 +338,11 @@ export class Session {
     // a lazily loaded command (a COMMANDS name of lazyStyles.ts) is registered by its group before the lookup below
     await ensureStyles([cmd, ...a]);
     const handler = COMMANDS[cmd] ?? LAZY_COMMANDS[cmd];
-    if (cmd === 'read_restart' && a.length && this.sys.files.has(normalizeFileName(a[0]))) await ensureStyles(this.sys.files.get(normalizeFileName(a[0]))!.split(/[\s"',:\[\]{}]+/));
+    // a native binary restart file (output/restart.ts) is read by the lazily loaded helper, whatever its words
+    if (cmd === 'read_restart') await ensureStyles(['native-restart']);
+    // the words of a restart file: a native binary file has its style names between non-printable length bytes, so
+    // every run of word characters counts (an over-loaded group is harmless)
+    if (cmd === 'read_restart' && a.length && this.sys.files.has(normalizeFileName(a[0]))) await ensureStyles(this.sys.files.get(normalizeFileName(a[0]))!.split(/[^\w/.+*-]+/));
     if (!handler) {
       throw new StyleError(`'${cmd}' is not supported by the in-browser engine (it is not LAMMPS). Supported commands: ${SUPPORTED_COMMANDS.join(', ')}`);
     }

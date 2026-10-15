@@ -1,0 +1,12 @@
+# oracle: native binary restart of fix nvt (FixNH thermostat chain state in the file, fix_nh.cpp pack_restart_data), the nvt fix re-specified after read_restart and run 40 steps
+# oracle-inputs: w184nr_nvt.restart
+# native: b332f28 built as the parity binary wrote w184nr_nvt.restart (lj melt, fix nvt 100 steps, 108 atoms)
+read_restart    w184nr_nvt.restart
+neighbor        0.3 bin
+fix             1 all nvt temp 1.0 1.0 0.5
+thermo_style    custom step temp epair emol etotal press
+thermo_modify   format float %.15g
+thermo          20
+run             40
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-14
+# measured: max relative error 8.5e-14 (fx of atom 67 after 40 steps of the nvt continuation), so the tolerance is 1e-12

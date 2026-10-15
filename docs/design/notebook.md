@@ -92,8 +92,10 @@ The block below is checked against the engine's registries by
 | min_style | `cg` `sd` `fire` `quickmin` `spin` `spin/cg` `spin/lbfgs` |
 <!-- coverage:end -->
 
-Not supported (an error names each): native binary restart files (`write_restart` / `read_restart`
-use the engine's own format), `atom_style` other than
+Native binary restart files (written by LAMMPS b332f28, serial, one file) are read by `read_restart` for the
+styles named in `src/engine-gpl/restart/nativeRestart.ts`; any other style, a multi-file (`%`) restart, or fix state
+the engine does not hold is an error that names it. `write_restart` writes the engine's own format only. Not supported
+(an error names each): `atom_style` other than
 atomic / charge / bond / angle / molecular / full / sphere, `pppm/disp`, `msm`,
 `run_style`, atom-style `hybrid/scaled` factors.
 

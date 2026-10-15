@@ -1144,10 +1144,13 @@ export class FixNH extends Fix {
 
   private restoreState(r: NHRestart): void {
     const same = (a: Float64Array, b: number[]) => a.length === b.length;
-    if (!same(this.eta, r.eta) || !same(this.etaDot, r.etaDot) || !same(this.etap, r.etap) || !same(this.etapDot, r.etapDot)) {
+    // the barostat chain is stored only by a file written with a barostat (fix_nh.cpp pack_restart_data: pstat_flag)
+    const barostat = this.pstat && r.etap.length > 0;
+    if (!same(this.eta, r.eta) || !same(this.etaDot, r.etaDot) || (barostat && (!same(this.etap, r.etap) || !same(this.etapDot, r.etapDot)))) {
       throw new StyleError(`fix ${this.id}: the restart file was written with other tchain or pchain settings`);
     }
-    this.eta.set(r.eta); this.etaDot.set(r.etaDot); this.etap.set(r.etap); this.etapDot.set(r.etapDot);
+    this.eta.set(r.eta); this.etaDot.set(r.etaDot);
+    if (barostat) { this.etap.set(r.etap); this.etapDot.set(r.etapDot); }
     this.omegaDot.set(r.omegaDot); this.omegaPos.set(r.omegaPos);
     this.ecoupleCum = r.ecoupleCum;
     this.vol0 = r.vol0;

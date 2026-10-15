@@ -11,6 +11,7 @@ import { FixCmap } from '../fix/cmap';
 import { FixNH } from '../fix/nh';
 import { type FixRecord, isRestartableFix } from '../fix/restartRecord';
 import { BondedHybrid, type HybridKind } from '../force/bonded_hybrid';
+import { gplHook } from '../gplHooks';
 
 /** A fix's record in the restart file (fix/restartRecord.ts). */
 type FixRestart = FixRecord;
@@ -37,10 +38,10 @@ import { ErfcTableCache } from '../force/erfc';
 /*
  * The browser engine's restart file (write_restart / read_restart).
  *
- * A native LAMMPS binary restart file cannot be read here. read_restart.rst
- * says: "The binary restart file format was not designed with backward,
- * forward, or cross-platform compatibility in mind". This module therefore
- * writes its own text format: a magic first line, then one JSON document
+ * A native LAMMPS binary restart file is read by the lazily loaded reader (engine-gpl/restart/nativeRestart.ts,
+ * dispatched from readRestartText by its magic string). read_restart.rst says: "The binary restart file format was not
+ * designed with backward, forward, or cross-platform compatibility in mind", so this module writes its own text format
+ * and reads only that format and the native binary one: a magic first line, then one JSON document
  * holding what the docs list as stored. Everything else is re-specified by
  * the input script, as the docs require.
  *
@@ -78,6 +79,10 @@ import { ErfcTableCache } from '../force/erfc';
  */
 
 export const RESTART_MAGIC = 'LAMMPS-WEB-RESTART 1';
+/** The first 16 bytes of a native binary restart file (lmprestart.h MAGIC_STRING "LammpS RestartT" and its NUL). */
+const NATIVE_RESTART_MAGIC_TEXT = 'LammpS RestartT\u0000';
+/** The lazily loaded native reader (gplHook 'native-restart'). */
+type NativeRestartReader = (sys: System, text: string, name: string) => void;
 /** The internal RHEO props stored in a restart file for a style (atom_style rheo, or rheo/thermal with its thermal props). */
 const rheoKeys = (st: AtomStyle): string[] => [...Object.keys(RHEO_DEFAULTS), ...(isRheoThermalStyle(st) ? Object.keys(RHEO_THERMAL_DEFAULTS) : [])];
 
@@ -443,11 +448,17 @@ const need = (cond: boolean, msg: string): void => {
  * as the System had it.
  */
 export const readRestartText = (sys: System, text: string, name: string): void => {
+  // a native LAMMPS binary restart file (its magic string, lmprestart.h MAGIC_STRING): the lazily loaded reader reads it
+  // into this System (src/engine-gpl/restart/nativeRestart.ts); the session loads it before read_restart
+  if (text.startsWith(NATIVE_RESTART_MAGIC_TEXT)) {
+    gplHook<NativeRestartReader>('native-restart')(sys, text, name);
+    return;
+  }
   const nl = text.indexOf('\n');
   const header = (nl < 0 ? text : text.slice(0, nl)).trim();
   if (header !== RESTART_MAGIC) {
     if (header.startsWith('LAMMPS-WEB-RESTART')) throw new StyleError(`${name}: restart format '${header}' is not supported (this engine reads '${RESTART_MAGIC}')`);
-    throw new StyleError(`${name} is not a restart file written by this browser engine. Native LAMMPS binary restart files cannot be read in the browser: their format is platform-specific. Convert the native file with the lmp -restart2data command-line flag and use read_data, or write the state here with write_restart (or write_data)`);
+    throw new StyleError(`${name} is not a restart file written by this browser engine or by native LAMMPS (a native binary restart file starts with 'LammpS RestartT'). Use write_restart or write_data here; a native file of another kind can be converted with the lmp -restart2data command-line flag and read with read_data`);
   }
   let doc: { format: string; version: number; step: number; state: Json; electron?: Json | null; dielectric?: Json | null; sph?: Json | null; dpdMeso?: Json | null; rheo?: Json | null; dpd?: Json | null; smd?: Json | null; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: FixRestart[]; lineTri?: Json };
   try {

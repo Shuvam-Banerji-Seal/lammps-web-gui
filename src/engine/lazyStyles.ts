@@ -20,6 +20,7 @@ export interface LazyGroup {
 }
 
 export const LAZY_GROUPS: readonly LazyGroup[] = [
+  { id: 'gpl_restart', names: { HOOKS: ['native-restart'] }, load: () => import('../engine-gpl/registry/restart') as Promise<StyleModule> },
   { id: 'gpl_uef', names: { COMPUTES: ['pressure/uef', 'temp/uef'], FIXES: ['npt/uef', 'nvt/uef'] }, load: () => import('../engine-gpl/registry/uef') as Promise<StyleModule> },
   { id: 'gpl_random', names: { HOOKS: ['dipole/random', 'geom', 'quat/random', 'random', 'spin/atom/random', 'spin/random', 'theta/random', 'type/fraction', 'type/ratio', 'type/subset'] }, load: () => import('../engine-gpl/registry/random') as Promise<StyleModule> },
   { id: 'gpl_hma', names: { HOOKS: ['hma'] }, load: () => import('../engine-gpl/registry/hma') as Promise<StyleModule> },

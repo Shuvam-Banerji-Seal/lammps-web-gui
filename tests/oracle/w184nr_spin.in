@@ -1,0 +1,16 @@
+# oracle: native binary restart (serial file) of atom_style spin with pair spin/exchange (examples/SPIN/read_restart write script, shortened); the restarted spin-lattice run continues 50 steps
+# oracle-inputs: w184nr_spin.restart
+# native: b332f28 built as the parity binary wrote w184nr_spin.restart (hcp cobalt 3x3x3, 100 steps of precession and langevin/spin)
+read_restart    w184nr_spin.restart
+neighbor        0.1 bin
+neigh_modify    every 10 check yes delay 20
+fix             1 all precession/spin zeeman 0.0 0.0 0.0 1.0
+fix             2 all langevin/spin 0.0 0.0 21
+fix             3 all nve/spin lattice frozen
+timestep        0.0001
+thermo_style    custom step pe ke etotal
+thermo_modify   format float %.15g
+thermo          25
+run             50
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-14
+# measured: thermo and per-atom rows agree below 1e-14 relative (pe row 0 differs by 1 ulp), so the tolerance is 1e-12

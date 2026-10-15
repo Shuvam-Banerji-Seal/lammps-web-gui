@@ -1,12 +1,13 @@
 {
-  "name": "Molecule3D — Molecular Structure Viewer",
-  "short_name": "Molecule3D",
-  "description": "3D molecular structure viewer for LAMMPS, XYZ, PDB and CIF files",
+  "name": "LAMMPS Web GUI — run LAMMPS in your browser",
+  "short_name": "LAMMPS Web GUI",
+  "description": "Build LAMMPS input scripts, run molecular dynamics in the browser and view structures and trajectories in 3D.",
   "start_url": "/lammps-web-gui/",
   "scope": "/lammps-web-gui/",
   "display": "standalone",
   "background_color": "#16130f",
   "theme_color": "#16130f",
+  "categories": ["education", "science", "developer"],
   "icons": [
     {
       "src": "/lammps-web-gui/logo.svg",

@@ -2,20 +2,32 @@
 
 # LAMMPS Web GUI
 
-**A free, GPU-accelerated LAMMPS workbench and 3D molecular structure viewer that runs entirely in your browser.**
+**Run LAMMPS molecular dynamics in your browser — build input scripts visually, run them, plot thermo output and explore structures and trajectories in 3D.**
 
-*Free for education and non-commercial research · attribution required · [commercial use needs a licence](COMMERCIAL.md)*
+*No install, no account, nothing uploaded · free for education and non-commercial research · attribution required · [commercial use needs a licence](COMMERCIAL.md)*
 
-Load **LAMMPS**, **XYZ**, **PDB** and **CIF** structures by drag & drop and explore them in real-time 3D — no install, no upload, no account.
-
-[![Live Demo](https://img.shields.io/badge/▶_Live_Demo-shuvam--banerji--seal.github.io-blue?style=for-the-badge)](https://shuvam-banerji-seal.github.io/lammps-web-gui/)
+[![Live Demo](https://img.shields.io/badge/▶_Open_the_app-shuvam--banerji--seal.github.io-blue?style=for-the-badge)](https://shuvam-banerji-seal.github.io/lammps-web-gui/)
 [![CI](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/ci.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/ci.yml)
 [![Deploy](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/deploy.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/deploy.yml)
-[![Tests](https://img.shields.io/badge/tests-3000%2B%20passing-brightgreen)](#development)
+[![Native parity cases](https://img.shields.io/badge/native_LAMMPS_parity_cases-1964-brightgreen)](#-checked-against-native-lammps)
+[![LAMMPS examples](https://img.shields.io/badge/LAMMPS_examples_that_run-650_of_882-brightgreen)](#-checked-against-native-lammps)
 [![License: Educational / Non-Commercial](https://img.shields.io/badge/License-Educational%20%2F%20Non--Commercial-blue.svg)](LICENSE)
 [![Commercial licence](https://img.shields.io/badge/Commercial_use-licence_required-orange.svg)](COMMERCIAL.md)
 
 </div>
+
+LAMMPS Web GUI is a browser-based workbench for [LAMMPS](https://www.lammps.org/), the molecular dynamics code from Sandia National Laboratories. It has four modules:
+
+| Module | What it does |
+|---|---|
+| 🧮 **MD Notebook** | Type LAMMPS input into notebook cells and press Run. Thermo output fills a table and live charts while the atoms move in a 3D view. Forces run on the GPU (WebGPU) or on CPU threads. `dump image` frames, data files and restart files are written in the browser. |
+| 🧩 **Script Builder** | Build LAMMPS input scripts as a flowchart from 185 commands, branch alternative ideas, import existing `in.*` files, and check the script against rules that each cite their docs.lammps.org page. |
+| 🏗️ **Compiler Helper** | Pick packages and accelerators and get a ready-to-run CMake build script for native LAMMPS. |
+| 🔬 **Structure Viewer** | GPU-instanced 3D viewer for LAMMPS data and dump files, XYZ, PDB and CIF, with trajectory playback, measurements and RDF/MSD analysis. |
+
+### 🧪 Checked against native LAMMPS
+
+The notebook's engine is written in TypeScript for the browser. Its results are compared with native LAMMPS (the same source commit, b332f28) on **1964 parity cases**: thermo output and per-atom positions, velocities and forces are compared at 1e-8 relative or tighter in most cases (each case states its tolerance and why when it is looser). Of the **882 input scripts in the LAMMPS `examples/` tree, 650 run** in the browser (runs shortened to a few steps; the rest need native libraries, Python, MPI partitions or features not ported yet, and stop with an error that names them). Styles ported from the LAMMPS C++ source live in a separate GPL-2.0 module, [`src/engine-gpl`](src/engine-gpl/README.md).
 
 ---
 
@@ -49,16 +61,16 @@ The viewer plays **LAMMPS dump** (`.lammpstrj`/`.dump`) natively and exports **M
 
 ## ✨ Features
 
-- 🧮 **MD Notebook — run small simulations in the browser, on the GPU.** Type LAMMPS-style input into notebook cells, press Run, and watch the system move in the 3D view while thermo output fills a table and live temperature / energy charts. An **Auto / CPU / GPU** choice and a **Threads** selector choose where forces run. **Auto** (the default) reads what the device offers and uses a hardware GPU if there is one, else CPU threads (half the logical cores, at most 8). **GPU** computes forces through WebGPU (a WGSL Lennard-Jones kernel with a cell list; hardware adapters are preferred — including WebGPU compatibility mode, which is how e.g. NVIDIA GPUs are exposed on Linux — and a software-only adapter is declined with a note, since it is slower than the CPU); **CPU** runs an fp64 engine split over as many threads as you pick (one Web Worker per thread, each pair computed once). When the page is cross-origin isolated, the general engine's pair term also runs on shared-memory threads, and with the GPU selected the runs the GPU path cannot take use those CPU threads. Switching keeps the system you built; the page never stalls, and **Stop** cancels a run at any step. On the GPU, plain `fix nve` runs stay resident: whole time steps run on the GPU and the state comes back only for thermo rows, dumps and viewer frames. Measured in Chromium on a 24-core Xeon with an NVIDIA A100: a force step for 16,384 atoms takes 42.6 ms on 1 thread, 12.2 ms on 4 and 8.9 ms on 8; a live notebook run of 55,296 atoms goes at ~750 steps/s on the GPU. It is **not LAMMPS**: it is an independent engine (no LAMMPS source) that runs a documented subset — `units` lj/real/metal, 2D/3D periodic boxes, `lattice`/`region`/`create_atoms` (box, region, single, random), `lj/cut` with mixing and shift, `velocity`, `fix nve / langevin / nvt (Nosé–Hoover chain) / temp/berendsen / temp/rescale / enforce2d`, `thermo_style custom`, `run`, `dump`, `write_data`, `variable` and `print` with `${…}` / `$(…)` substitution. Anything else stops with an error that names the line and the command. Correctness is checked against LAMMPS itself: the official `examples/melt` input reproduces LAMMPS's published step-0 thermo line (E_pair −6.7733681, TotEng −2.2744931, Press −3.7033504) to every printed digit on the fp64 CPU path and within 1e-5 on the fp32 WebGPU path, and GPU forces match the CPU forces within 1e-4. Design notes: [`docs/design/notebook.md`](docs/design/notebook.md).
+- 🧮 **MD Notebook — LAMMPS input in the browser, on the GPU or on CPU threads.** Type LAMMPS input into notebook cells, press Run, and watch the system move in the 3D view while thermo output fills a table and live temperature / energy charts. **Auto / CPU / GPU** chooses where forces run: WebGPU (WGSL kernels; hardware adapters are preferred and a software-only adapter is declined with a note) or an fp64 CPU engine split over Web Worker threads, with shared-memory threads when the page is cross-origin isolated. Plain `fix nve` runs can stay resident on the GPU, and **Stop** cancels a run at any step. Measured in Chromium on a 24-core Xeon with an NVIDIA A100: a force step for 16,384 atoms takes 42.6 ms on 1 thread, 12.2 ms on 4 and 8.9 ms on 8; a live run of 55,296 atoms goes at ~750 steps/s on the GPU. The engine covers a large part of LAMMPS: pair, bond, angle, dihedral, improper and kspace styles (Ewald, PPPM and more), thermostats and barostats, rigid bodies, SHAKE/RATTLE, GCMC and other Monte Carlo fixes, `fix bond/react`, deposits and walls, computes, `minimize`, NEB with notebook partitions, `variable`/`if`/`label`/`jump`, `read_data`/`write_data`, binary restart files (its own and native LAMMPS's), `dump` (atom, custom, xyz, local, yaml, image) and `rerun`. A command that is not supported stops the run with an error that names the line and the command. See [Checked against native LAMMPS](#-checked-against-native-lammps) and the design notes in [`docs/design/notebook.md`](docs/design/notebook.md).
 
 - 🌿 **Concept branching — divergent ideas in one flowchart.** Hover any step and hit the branch icon to *fork the pipeline from that point onward*. The new concept starts as a **copy of the rest of your pipeline**, so you edit a variant instead of rebuilding from scratch: swap the thermostat, try a different pair style, extend the production run. Switch between **Main line** and each concept with one click — the generated script, the warnings and the SVG export all follow whichever concept is taken. A concept either **replaces** everything after the fork (truly divergent) or **rejoins** the main line (a detour), and the steps it cut off stay visible, ghosted, under *"not in this concept"*. When one idea wins, **Promote** folds it into the main line and drops its rivals; **Tab** flattens any concept into its own flowchart tab for side-by-side comparison. Several forks can be open at once.
 - ✅ **Script check — validation against the LAMMPS rules, not vibes.** A linter reads the *final* script (generated or hand-edited) and flags what LAMMPS would reject or silently do wrong: header-only commands used after the box (`units`, `dimension`, `boundary`, `atom_style`), commands used before it (`pair_coeff`, `mass`, `velocity`, `create_atoms`), `unfix`/`undump`/`uncompute` of an ID that was never defined, fix/dump/compute ID reuse with a different style, groups and regions referenced before definition, a `run` with no time-integration fix, `pair_style reaxff` without charge equilibration, and kspace/pair-style mismatches. **Every rule quotes the `docs.lammps.org` page it enforces and links to it**, and the whole rule set is verified silent on the official example scripts (`in.melt`, `in.heatflux`, `in.msd.2d`, `in.cos.1000SPCE`) — a linter that cries wolf on `in.melt` would be worse than none. Every shipped template is asserted to pass with zero errors *and* zero warnings.
 - ⬇️ **Pipeline-order emission.** The script comes out in exactly the order the flowchart shows, because LAMMPS executes an input file top to bottom and the docs are explicit that the settings/run phases *"can be repeated as many times as desired"*. That makes multi-stage scripts work: `run` → `reset_timestep` → `run`, a second `dump` opened after a stage, and `write_data` **after** the run rather than before it. A **Sort** action still reorders into canonical section order on demand — it moves the steps, so the flowchart never disagrees with the script.
-- 🧪 **LAMMPS Workbench** — four integrated modules: the **MD Notebook** above, a visual **Script Builder** (branching flowchart pipeline over 185 curated commands — the complete general-command surface, locked by a coverage test against docs.lammps.org), a **Compiler Helper** (package/accelerator presets → ready-to-run CMake build scripts) and the 3D **Structure Viewer**. The Script Builder and the MD Notebook pass scripts both ways: **Run in Notebook** sends the Builder's script to the notebook, and **Open in Script Builder** opens the notebook's cells as a new Builder tab (flowchart, script check, export).
+- 🧪 **Four integrated modules**: the **MD Notebook** above, a visual **Script Builder** (branching flowchart pipeline over 185 curated commands — the complete general-command surface, locked by a coverage test against docs.lammps.org), a **Compiler Helper** (package/accelerator presets → ready-to-run CMake build scripts) and the 3D **Structure Viewer**. The Script Builder and the MD Notebook pass scripts both ways: **Run in Notebook** sends the Builder's script to the notebook, and **Open in Script Builder** opens the notebook's cells as a new Builder tab (flowchart, script check, export).
 - 📟 **Device detection, Auto and a resource monitor.** The engine probes the device (logical cores, memory, Web Workers, shared memory, and the WebGPU adapter: hardware, software or none). The notebook's right panel shows those chips, the engine in use and why Auto chose it, and the live steps/s, ms/step, atom-steps/s and simulated time per day (ns/day etc. from the units style), with a steps/s sparkline, page memory and hints about what limits the device.
 - 🖼️ **`dump image` in the notebook.** PNG, JPEG and PPM frames written by `dump image` appear in a preview with a frame slider, and each file has a Download button. `dump movie` is not supported (no video encoder in the browser).
 - 🧭 **Notebook usability.** A progress bar shows `step S of T` while a cell runs. Thermo tables carry a units caption and a tooltip per column. Reset asks for a second click when it would clear output, and a deleted cell can be restored with Undo. Unknown command errors suggest a "Did you mean …?" fix.
-- 🧪 **Wider engine coverage.** Monte Carlo: `fix widom` (atoms or molecules), `fix mol/swap`, `fix gcmc` (every unit style) and `fix hmc`. Constraints: `fix ehex` with `constrain` and `constrain com`, `fix shake`/`rattle` with `mol`, `fix deposit` with `mol` (including `rigid` and `shake` on the inserted molecules), and `rigid/small` with `mol` (`fix rigid` itself refuses `mol`, as the docs say). `shell rm` and `shell mv` on the in-browser files. `voronoi/atom` in 2d, triclinic and non-periodic boxes (a non-periodic triclinic box is refused). MEAM: 2NN (`nn2 = 1`), `sc` and `hcp` reference lattices, `ialloy`, and multi-element `erose_form` with `dia` elements. `fix wall/region` with a `plane` region. Unsupported forms still stop with an error that names them. Coverage check: 168 of the 309 input scripts in the LAMMPS `examples/` tree run to completion in the engine (every `run` and `minimize` shortened to a few steps; measured on commit 94485ba plus the fix widom probe-energy path, 2026-10-09).
+- 🧪 **Wider engine coverage.** Monte Carlo: `fix widom` (atoms or molecules), `fix mol/swap`, `fix gcmc` (every unit style) and `fix hmc`. Constraints: `fix ehex` with `constrain` and `constrain com`, `fix shake`/`rattle` with `mol`, `fix deposit` with `mol` (including `rigid` and `shake` on the inserted molecules), and `rigid/small` with `mol` (`fix rigid` itself refuses `mol`, as the docs say). `shell rm` and `shell mv` on the in-browser files. `voronoi/atom` in 2d, triclinic and non-periodic boxes (a non-periodic triclinic box is refused). MEAM: 2NN (`nn2 = 1`), `sc` and `hcp` reference lattices, `ialloy`, and multi-element `erose_form` with `dia` elements. `fix wall/region` with a `plane` region. Unsupported forms still stop with an error that names them. Coverage: 650 of the 882 input scripts in the LAMMPS `examples/` tree run in the engine (every `run` and `minimize` shortened to a few steps; measured 2026-10-15).
 - 💾 **Everything persists** — your script pipeline, compiler options, active module and colour theme (Coffee & sage, Warm paper, Midnight, Solarized light or High contrast, from the header's theme picker) survive module switches *and* page reloads (local-only, nothing uploaded).
 - 🧩 **Editable flowchart** — grab any card and drop it between two others (it locks into place with a live insertion indicator), pan by dragging the background, zoom with the mouse wheel (35–250%), click any **connect** pill to insert a command at that exact spot. Prefer raw text? **Edit script** switches to a hand-editing mode that emits your text verbatim.
 - 📥 **Import existing scripts** — load any `in.*` LAMMPS input and the flowchart builds itself: commands are matched back to editable parameter forms (user-chosen fix/dump/compute IDs handled), unknown lines are preserved verbatim as raw steps — nothing is lost.
@@ -232,10 +244,17 @@ and code-owner review. See [CONTRIBUTING.md](CONTRIBUTING.md#branch-protection-a
 
 ## 🔍 Search indexing
 
-The site ships `robots.txt`, `sitemap.xml`, Open Graph/Twitter meta and JSON-LD
-(`WebApplication`) structured data for search engines. After major releases,
-the URL can be (re-)submitted through
-[Google Search Console](https://search.google.com/search-console) → *URL inspection* → *Request indexing*.
+The site ships `robots.txt`, an image `sitemap.xml`, a canonical URL, Open Graph and
+Twitter cards with a 1200×630 preview (`public/og-image.png`), crawlable `<noscript>`
+content, and JSON-LD structured data (`WebApplication`, `SoftwareSourceCode`, `Person`,
+`VideoObject`) in [`index.html`](index.html). To get it indexed or re-indexed:
+
+- **Google** — add `https://shuvam-banerji-seal.github.io/lammps-web-gui/` as a URL-prefix
+  property in [Google Search Console](https://search.google.com/search-console), submit
+  `sitemap.xml`, and use *URL inspection* → *Request indexing* after a release.
+- **Bing, DuckDuckGo, Yahoo, Ecosia** (all use Bing's index) — add the site in
+  [Bing Webmaster Tools](https://www.bing.com/webmasters) (it can import the Google
+  Search Console property) and submit the same sitemap.
 
 ## 🤝 Contributing
 
@@ -274,4 +293,7 @@ revoked for those copies (LICENSE §11).
 Third-party dependencies (React, three.js, Tailwind, …) keep their own licences
 — see [`NOTICE`](NOTICE). **LAMMPS** itself is a separate GPL-2.0 project of
 Sandia National Laboratories and the LAMMPS Developers; this tool is
-independent and is not affiliated with or endorsed by it.
+independent and is not affiliated with or endorsed by it. Styles ported from
+the LAMMPS C++ source are kept in [`src/engine-gpl`](src/engine-gpl/README.md), and
+unmodified LAMMPS potential files and examples in [`third_party/lammps`](third_party/lammps/README.md);
+both are GPL-2.0 and carry their own `LICENSE`.

@@ -1,0 +1,12 @@
+# oracle: native binary restart (serial file, b332f28 write_restart) of atomic lj/cut with 2 types, a mixed (unset) pair and pair_modify shift; the restarted run continues 100 steps
+# oracle-inputs: w184nr_lj.restart
+# native: b332f28 built as the parity binary wrote w184nr_lj.restart (100 steps of fcc velocity-create lj melt, 2 types)
+read_restart    w184nr_lj.restart
+neighbor        0.3 bin
+thermo_style    custom step temp epair emol etotal press
+thermo_modify   format float %.15g
+thermo          50
+fix             1 all nve
+run             100
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+# measured: max relative error 6.6e-13 (fz of atom 60 after 100 steps; thermo rows agree to 1 ulp), so the tolerance is 1e-9

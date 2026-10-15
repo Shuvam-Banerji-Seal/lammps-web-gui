@@ -21,6 +21,18 @@ import type { EngineEvent, ThermoRow } from '../src/engine/types';
  *                            rows and the "Climbing replica" lines, compared with the same rel/abs
  */
 
+
+/** A case input: UTF-8 text when it decodes, else its bytes as latin1 (the app's rule, fileStore.ts readInputText). */
+const readInputBytes = (path: string, latin1: boolean): string => {
+  const buf = readFileSync(path);
+  if (latin1) return buf.toString('latin1');
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf);
+  } catch {
+    return buf.toString('latin1');
+  }
+};
+
 const CASES = join(__dirname, 'oracle');
 const FIX = join(__dirname, 'fixtures', 'oracle');
 const POTENTIALS = join(__dirname, '..', 'third_party', 'lammps', 'potentials');
@@ -107,7 +119,8 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
         writeFile: (n, t, ap) => files.set(n, (ap ? files.get(n) ?? '' : '') + t),
       }, undefined, 0, partitions);
       // a gzipped input travels as one character per byte, as the notebook uploads it (System.readFile inflates it)
-      for (const f of directive(text, 'oracle-inputs')) session.addFile(f, readFileSync(join(CASES, f), f.endsWith('.gz') ? 'latin1' : 'utf8'));
+      // as the app reads uploads (fileStore.ts readInputText): UTF-8 text, else the bytes as latin1 (a binary restart file)
+      for (const f of directive(text, 'oracle-inputs')) session.addFile(f, readInputBytes(join(CASES, f), f.endsWith('.gz')));
       for (const f of directive(text, 'oracle-potentials')) session.addFile(f, readFileSync(join(POTENTIALS, f), 'utf8'));
       try {
         await session.execute(partitions > 1 ? `${text}\n` : `${text}\n${FINAL_DUMP}\n`);

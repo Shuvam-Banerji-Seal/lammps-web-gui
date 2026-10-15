@@ -10,9 +10,9 @@ export const fillWildcard = (file: string, text: string): string => {
 };
 
 /*
- * write_restart, read_restart and restart (wave 9). The file format is the
- * browser engine's own (output/restart.ts): a native binary restart file
- * cannot be read here.
+ * write_restart, read_restart and restart (wave 9). The file format written is the
+ * browser engine's own (output/restart.ts). read_restart reads that format and a
+ * serial native binary restart file (engine-gpl/restart/nativeRestart.ts).
  *
  * write_restart.html: "Write a binary restart file of the current state of the
  * simulation." Filename rule: "If a "\*" appears in the filename, it is

@@ -1,6 +1,6 @@
 # Home
 
-**Molecule3D** is a free, GPU-accelerated LAMMPS workbench and 3D molecular
+**LAMMPS Web GUI** is a free, GPU-accelerated LAMMPS workbench and 3D molecular
 structure viewer that runs entirely in your browser.
 
 It is **source-available**, not open source: free for education and

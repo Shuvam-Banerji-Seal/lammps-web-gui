@@ -1,4 +1,4 @@
-# Contributing to Molecule3D
+# Contributing to LAMMPS Web GUI
 
 Thank you for considering a contribution! This document describes how to set up
 the project locally and the rules that keep contributions easy to review.

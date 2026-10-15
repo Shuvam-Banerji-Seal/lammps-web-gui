@@ -5,28 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
     <!-- Primary SEO -->
-    <title>Molecule3D — Free Online 3D Molecular Structure Viewer (LAMMPS, XYZ, PDB, CIF)</title>
-    <meta name="description" content="Visualize LAMMPS data files, XYZ trajectories, PDB proteins and CIF crystals in real-time 3D. All 118 elements with CPK colors, simulation box rendering, GPU instancing for huge systems. Free, open source, runs entirely in your browser." />
-    <meta name="keywords" content="LAMMPS viewer, molecular visualization, PDB viewer, XYZ viewer, CIF viewer, crystal structure, 3D molecules, WebGL, three.js, atom visualizer, MD simulation, protein structure online" />
+    <title>LAMMPS Web GUI — Run LAMMPS Molecular Dynamics Online in Your Browser</title>
+    <meta name="description" content="Run LAMMPS molecular dynamics in your browser: build input scripts visually, run them in an engine checked against native LAMMPS, and view trajectories in 3D." />
+    <meta name="keywords" content="LAMMPS online, LAMMPS GUI, LAMMPS web, run LAMMPS in browser, LAMMPS input script generator, LAMMPS script builder, LAMMPS visualizer, LAMMPS dump viewer, LAMMPS data file viewer, LAMMPS examples, molecular dynamics online, molecular dynamics simulation in browser, MD simulation, WebGPU molecular dynamics, LAMMPS compile CMake, XYZ viewer, PDB viewer, CIF viewer" />
     <meta name="author" content="Shuvam Banerji Seal" />
-    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="application-name" content="LAMMPS Web GUI" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <meta name="theme-color" content="#16130f" />
     <link rel="canonical" href="https://shuvam-banerji-seal.github.io/lammps-web-gui/" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Molecule3D" />
-    <meta property="og:title" content="Molecule3D — 3D Molecular Structure Viewer" />
-    <meta property="og:description" content="Real-time 3D visualization of LAMMPS, XYZ, PDB and CIF structures with all-118-element CPK coloring and GPU-accelerated rendering." />
+    <meta property="og:site_name" content="LAMMPS Web GUI" />
+    <meta property="og:title" content="LAMMPS Web GUI — run LAMMPS molecular dynamics in your browser" />
+    <meta property="og:description" content="A visual LAMMPS script builder, an in-browser MD notebook checked against native LAMMPS, a CMake compiler helper and a GPU 3D structure and trajectory viewer. Free for education and research." />
     <meta property="og:url" content="https://shuvam-banerji-seal.github.io/lammps-web-gui/" />
-    <meta property="og:image" content="https://shuvam-banerji-seal.github.io/lammps-web-gui/image.png" />
+    <meta property="og:image" content="https://shuvam-banerji-seal.github.io/lammps-web-gui/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="LAMMPS Web GUI running a Lennard-Jones melt in the browser: thermo table, live charts and the 3D view" />
     <meta property="og:locale" content="en_US" />
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Molecule3D — 3D Molecular Structure Viewer" />
-    <meta name="twitter:description" content="Drag-and-drop LAMMPS/XYZ/PDB/CIF files into your browser and explore them in 3D." />
-    <meta name="twitter:image" content="https://shuvam-banerji-seal.github.io/lammps-web-gui/image.png" />
+    <meta name="twitter:title" content="LAMMPS Web GUI — run LAMMPS in your browser" />
+    <meta name="twitter:description" content="Build LAMMPS input scripts, run molecular dynamics in the browser and view trajectories in 3D. No install, nothing uploaded." />
+    <meta name="twitter:image" content="https://shuvam-banerji-seal.github.io/lammps-web-gui/og-image.png" />
+    <meta name="twitter:image:alt" content="LAMMPS Web GUI running a Lennard-Jones melt in the browser" />
 
     <!-- Fonts — Inter + JetBrains Mono for better readability -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -42,27 +47,70 @@
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "Molecule3D",
-      "url": "https://shuvam-banerji-seal.github.io/lammps-web-gui/",
-      "applicationCategory": "ScienceApplication",
-      "operatingSystem": "Any (web browser)",
-      "description": "Free online 3D molecular structure viewer for LAMMPS data files, XYZ trajectories, PDB protein structures and CIF crystals. GPU-accelerated rendering, CPK element colors for all 118 elements, simulation box display.",
-      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-      "author": {
-        "@type": "Person",
-        "name": "Shuvam Banerji Seal",
-        "url": "https://shuvam-banerji-seal.github.io/"
-      },
-      "featureList": [
-        "LAMMPS data file parsing (atomic, charge, molecular, full styles)",
-        "XYZ trajectory parsing",
-        "PDB parsing with CONECT bonds and CRYST1 unit cell",
-        "CIF crystallographic file parsing",
-        "All 118 elements with CPK/Jmol colors",
-        "Simulation box rendering including triclinic cells",
-        "GPU instanced rendering for large systems",
-        "Keyboard shortcuts"
+      "@graph": [
+        {
+          "@type": "WebApplication",
+          "@id": "https://shuvam-banerji-seal.github.io/lammps-web-gui/#app",
+          "name": "LAMMPS Web GUI",
+          "alternateName": ["LAMMPS Workbench", "LAMMPS online in the browser"],
+          "url": "https://shuvam-banerji-seal.github.io/lammps-web-gui/",
+          "applicationCategory": "EducationalApplication",
+          "applicationSubCategory": "Molecular dynamics simulation",
+          "operatingSystem": "Any (web browser)",
+          "browserRequirements": "Requires JavaScript and WebGL 2; WebGPU is used when available",
+          "softwareVersion": "3.1.0",
+          "isAccessibleForFree": true,
+          "inLanguage": "en",
+          "description": "A browser-based LAMMPS workbench: a visual input-script builder with a script check that cites the LAMMPS docs, an MD notebook that runs LAMMPS input in the browser with an engine checked against native LAMMPS, a CMake compiler helper, and a GPU-accelerated 3D structure and trajectory viewer for LAMMPS data and dump, XYZ, PDB and CIF files.",
+          "screenshot": "https://shuvam-banerji-seal.github.io/lammps-web-gui/og-image.png",
+          "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+          "license": "https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/blob/main/LICENSE",
+          "author": { "@id": "https://shuvam-banerji-seal.github.io/#person" },
+          "keywords": "LAMMPS, molecular dynamics, LAMMPS GUI, LAMMPS online, input script generator, MD simulation in the browser, WebGPU, trajectory viewer",
+          "featureList": [
+            "Run LAMMPS input scripts in the browser (MD notebook with thermo tables, live charts and a 3D view)",
+            "Engine results checked against native LAMMPS on about two thousand parity cases",
+            "Visual LAMMPS input-script builder with branching flowcharts",
+            "Script check that cites the docs.lammps.org page of every rule",
+            "Import existing LAMMPS in.* scripts",
+            "CMake compiler helper for LAMMPS packages and accelerators",
+            "3D viewer for LAMMPS data and dump files, XYZ, PDB and CIF",
+            "Trajectory playback and analysis: RDF, MSD, density profiles",
+            "dump image rendering in the browser",
+            "WebGPU and multi-threaded CPU force computation"
+          ]
+        },
+        {
+          "@type": "SoftwareSourceCode",
+          "@id": "https://github.com/Shuvam-Banerji-Seal/lammps-web-gui#code",
+          "name": "LAMMPS Web GUI source code",
+          "codeRepository": "https://github.com/Shuvam-Banerji-Seal/lammps-web-gui",
+          "programmingLanguage": ["TypeScript", "WGSL"],
+          "runtimePlatform": "Web browser",
+          "license": "https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/blob/main/LICENSE",
+          "author": { "@id": "https://shuvam-banerji-seal.github.io/#person" },
+          "targetProduct": { "@id": "https://shuvam-banerji-seal.github.io/lammps-web-gui/#app" }
+        },
+        {
+          "@type": "VideoObject",
+          "@id": "https://shuvam-banerji-seal.github.io/lammps-web-gui/#demo",
+          "name": "LAMMPS Web GUI demo: run LAMMPS in the browser",
+          "description": "A one-minute walkthrough of LAMMPS Web GUI: pick a starter template in the Script Builder, run a Lennard-Jones melt in the MD Notebook with live thermo output and a 3D view, then play the trajectory back in the Structure Viewer.",
+          "thumbnailUrl": "https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/app-demo-poster.jpg",
+          "contentUrl": "https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/app-demo.mp4",
+          "uploadDate": "2026-10-15",
+          "duration": "PT1M4S",
+          "inLanguage": "en",
+          "author": { "@id": "https://shuvam-banerji-seal.github.io/#person" },
+          "about": { "@id": "https://shuvam-banerji-seal.github.io/lammps-web-gui/#app" }
+        },
+        {
+          "@type": "Person",
+          "@id": "https://shuvam-banerji-seal.github.io/#person",
+          "name": "Shuvam Banerji Seal",
+          "url": "https://shuvam-banerji-seal.github.io/",
+          "sameAs": ["https://github.com/Shuvam-Banerji-Seal"]
+        }
       ]
     }
     </script>
@@ -70,8 +118,19 @@
   <body class="bg-[#16130f] text-[#ede5d8] overflow-hidden">
     <div id="root"></div>
     <noscript>
-      Molecule3D is an interactive WebGL application and requires JavaScript.
-      It visualizes LAMMPS (.data), XYZ, PDB and CIF molecular structure files in 3D.
+      <h1>LAMMPS Web GUI — run LAMMPS molecular dynamics in your browser</h1>
+      <p>LAMMPS Web GUI is a free (for education and research) browser-based workbench for the LAMMPS
+        molecular dynamics code. It needs JavaScript and WebGL 2 to run.</p>
+      <ul>
+        <li>MD notebook: run LAMMPS input scripts in the browser, with thermo tables, live charts and a 3D view.
+          The engine is checked against native LAMMPS.</li>
+        <li>Script builder: build LAMMPS input scripts as a flowchart, with a script check that cites docs.lammps.org.</li>
+        <li>Compiler helper: CMake build scripts for LAMMPS packages and accelerators.</li>
+        <li>3D viewer: LAMMPS data and dump files, XYZ, PDB and CIF, with trajectory playback and RDF/MSD analysis.</li>
+      </ul>
+      <p>Source code and documentation:
+        <a href="https://github.com/Shuvam-Banerji-Seal/lammps-web-gui">github.com/Shuvam-Banerji-Seal/lammps-web-gui</a>.
+        Not affiliated with or endorsed by the LAMMPS developers or Sandia National Laboratories.</p>
     </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>

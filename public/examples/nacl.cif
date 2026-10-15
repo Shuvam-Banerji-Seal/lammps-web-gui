@@ -1,5 +1,5 @@
 # Rocksalt NaCl, Fm-3m, a = 5.6402 Angstrom
-# Generated for Molecule3D demo — standard cubic cell with fractional coordinates
+# Generated for LAMMPS Web GUI demo — standard cubic cell with fractional coordinates
 data_NaCl_rocksalt
 _cell_length_a              5.6402
 _cell_length_b              5.6402

@@ -1,6 +1,6 @@
 # File Formats
 
-Molecule3D auto-detects formats by extension **and** content sniffing, so
+LAMMPS Web GUI auto-detects formats by extension **and** content sniffing, so
 `.txt` files and pasted data usually work too.
 
 ---

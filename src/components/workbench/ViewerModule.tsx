@@ -501,7 +501,7 @@ const ViewerModule: React.FC<{
     }
     try {
       const link = document.createElement('a');
-      link.download = `molecule3d-${Date.now()}.png`;
+      link.download = `lammps-web-gui-${Date.now()}.png`;
       link.href = dataUrl;
       link.click();
     } catch {
@@ -539,7 +539,7 @@ const ViewerModule: React.FC<{
       const url = URL.createObjectURL(result.blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `molecule3d-${new Date().toISOString().replace(/[:.]/g, '-')}.${result.ext}`;
+      a.download = `lammps-web-gui-${new Date().toISOString().replace(/[:.]/g, '-')}.${result.ext}`;
       a.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch (e) {
@@ -730,9 +730,9 @@ const ViewerModule: React.FC<{
         {/* Header */}
         <div className={`flex items-center justify-between px-4 h-14 border-b ${ct.divider}`}>
           <div className="flex items-center gap-2.5">
-            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Molecule3D logo" className="w-8 h-8" />
+            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="LAMMPS Web GUI logo" className="w-8 h-8" />
             <div className="min-w-0">
-              <h1 className="text-base font-bold tracking-tight">Molecule3D</h1>
+              <h2 className="text-base font-bold tracking-tight">Structure Viewer</h2>
               <p className={`hidden text-[10px] leading-none sm:block ${ct.muted}`}>Molecular Structure Viewer</p>
             </div>
           </div>

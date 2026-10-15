@@ -23,7 +23,7 @@ export class CanvasErrorBoundary extends React.Component<
   componentDidCatch(error: Error, info: React.ErrorInfo): void {
     // Log at reduced severity — the app is functional without WebGL
     // when the user is on the Script Builder or Compiler modules.
-    console.info('[Molecule3D] 3D canvas unavailable:', error.message);
+    console.info('[LAMMPS Web GUI] 3D canvas unavailable:', error.message);
   }
 
   render(): React.ReactNode {

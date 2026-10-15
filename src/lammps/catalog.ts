@@ -1979,7 +1979,7 @@ export const CONTROL_COMMANDS: CommandDef[] = [
     section: 'control',
     category: 'Scripting',
     doc: 'https://docs.lammps.org/print.html',
-    params: [str('text', 'Text', '"Hello from Molecule3D builder"')],
+    params: [str('text', 'Text', '"Hello from LAMMPS Web GUI"')],
     build: v => [line('print', v.text)],
   },
   {

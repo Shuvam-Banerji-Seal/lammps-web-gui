@@ -28,7 +28,7 @@ export interface TrajectoryPlayerProps {
   canvasHost: React.RefObject<HTMLDivElement | null>;
   /** True while a video is being recorded: the 3D view keeps rendering. */
   onVideoActive: (on: boolean) => void;
-  /** Opens the trajectory in the Molecule 3D Viewer as a dump file. */
+  /** Opens the trajectory in the 3D Viewer as a dump file. */
   onOpenInViewer?: (file: { name: string; text: string }) => void;
   /** Opens the Render panel (snapshot, frame export, video options). */
   onRender?: () => void;
@@ -257,7 +257,7 @@ const TrajectoryPlayer: React.FC<TrajectoryPlayerProps> = ({
         )}
         {onOpenInViewer && (
           <button className={`${btn} ${ct.button}`} disabled={count === 0 || live || busy} onClick={openInViewer}
-            title="Open the recorded frames in the Molecule 3D Viewer (RDF, MSD and measurements there)">
+            title="Open the recorded frames in the 3D Viewer (RDF, MSD and measurements there)">
             <Box size={13} aria-hidden="true" />Open in 3D Viewer
           </button>
         )}

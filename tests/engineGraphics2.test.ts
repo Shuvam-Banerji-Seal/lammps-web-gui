@@ -11,6 +11,7 @@ import {
   parseLabelArgs,
   type LabelEnv,
 } from '../src/engine-gpl/graphics/fix_graphics_labels';
+import { ColorMap } from '../src/engine/output/image_colormap';
 import { parsePeriodicArgs, periodicObjects, type PeriodicAtom } from '../src/engine-gpl/graphics/fix_graphics_periodic';
 import { parseReplicaArgs, replicaObjects, type ReplicaAtom } from '../src/engine-gpl/graphics/fix_graphics_replica';
 import { FixGraphicsChunk, parseChunkArgs, type ChunkAtom } from '../src/engine-gpl/graphics/fix_graphics_chunk';
@@ -46,70 +47,91 @@ describe('scalable font (src/GRAPHICS/scalable_font.cpp, VeraR.sfn)', () => {
     expect(() => f.selectFont(255)).not.toThrow();
   });
 
-  it('bitmap-mode glyph height: 16 px gives 25 px (65536 * 16 / ((187 - 26) << 8) = 25.4)', () => {
+  it('glyph height of _ssfn_render: 16 px gives 25 rows (65536 * 16 / ((187 - 26) << 8) = 25.4) and 4 bytes per row', () => {
     const f = new ScalableFont();
     f.selectFont(16);
     const l = f.glyph('l');
-    expect(l.height).toBe(25);
-    // the stem of an l stands on the baseline: its lowest point is the baseline row (+-1 for rounding)
-    const ys = l.contours.flat().map((p) => p[1]);
-    expect(Math.max(...ys)).toBeGreaterThanOrEqual(l.baseline - 1);
-    expect(Math.max(...ys)).toBeLessThanOrEqual(l.baseline + 1);
-    expect(l.contours.length).toBe(1);
-    expect(l.contours[0].length).toBe(5);
+    expect(l.h).toBe(25);
+    expect(l.pitch).toBe(4);
+    expect(l.data.length).toBe(l.h * l.pitch);
+    expect(l.data.some((b) => b !== 0)).toBe(true);
   });
 
-  it('a glyph with no outline (space) has an advance but no strokes', () => {
+  it('a glyph with no ink (space) has an advance and no bits set', () => {
     const f = new ScalableFont();
     f.selectFont(16);
     const sp = f.glyph(' ');
-    expect(sp.contours).toEqual([]);
     expect(sp.advX).toBeGreaterThan(0);
+    expect(sp.data.every((b) => b === 0)).toBe(true);
   });
 
-  it('throws for a character the font does not have', () => {
+  it('throws for a character the font does not have, and for a code above 127 (the C char loop never finds it)', () => {
     const f = new ScalableFont();
     f.selectFont(16);
     expect(() => f.glyph('中')).toThrow(SsfnError);
+    expect(() => f.glyph('é')).toThrow(SsfnError);
   });
 });
 
-describe('label layout (ScalableFont::create_label with strokes)', () => {
+describe('label pixmap (ScalableFont::create_label)', () => {
+  const colors = { font: [255, 255, 255] as [number, number, number], frame: [192, 192, 192] as [number, number, number], back: [0, 0, 0] as [number, number, number] };
+  const pixel = (w: number, rgb: Uint8Array, x: number, y: number) => [...rgb.subarray(3 * (y * w + x), 3 * (y * w + x) + 3)];
+
   it('width is the sum of the advances of the text plus "gll"; vertical swaps width and height', () => {
     const f = new ScalableFont();
     f.selectFont(16);
     const adv = (c: string) => f.glyph(c).advX;
-    const h = createLabel(f, 'ab', true);
+    const h = createLabel(f, 'ab', true, colors);
     expect(h.width).toBe(adv('a') + adv('b') + adv('g') + 2 * adv('l'));
-    const v = createLabel(f, 'ab', false);
+    expect(h.rgb.length).toBe(h.width * h.height * 3);
+    const v = createLabel(f, 'ab', false, colors);
     expect(v.width).toBe(h.height);
     expect(v.height).toBe(h.width);
   });
 
-  it('pen starts at 2 * xspace and every stroke point is inside the label', () => {
+  it('frame of xspace/2 pixels round the whole label; background inside it; the height is the ink plus 3 * xspace', () => {
     const f = new ScalableFont();
     f.selectFont(16);
     const xspace = f.glyph(' ').advX;
-    const h = createLabel(f, 'l', true);
-    const xs = h.strokes.filter((_, i) => i % 2 === 0);
-    const ys = h.strokes.filter((_, i) => i % 2 === 1);
-    expect(Math.min(...xs)).toBeGreaterThanOrEqual(2 * xspace);
-    expect(Math.max(...xs)).toBeLessThanOrEqual(h.width);
-    expect(Math.min(...ys)).toBeGreaterThanOrEqual(0);
-    expect(Math.max(...ys)).toBeLessThanOrEqual(h.height);
-    expect(h.frame).toBe(Math.trunc(xspace / 2));
+    const xhalf = Math.trunc(xspace / 2);
+    const h = createLabel(f, 'l', true, colors);
+    expect(pixel(h.width, h.rgb, 0, 0)).toEqual([192, 192, 192]);
+    expect(pixel(h.width, h.rgb, h.width - 1, h.height - 1)).toEqual([192, 192, 192]);
+    expect(pixel(h.width, h.rgb, xhalf, h.height - xhalf - 1)).toEqual([0, 0, 0]);
+    // the height is the ink extent of the text plus "gll" (the dry run of create_label) plus 3 * xspace
+    let miny = 1073741824;
+    let maxy = 0;
+    for (const c of ['l', 'g', 'l', 'l']) {
+      const g = f.glyph(c);
+      for (let y = 0; y < g.h; y++) {
+        const ypos = g.h - 1 - y + g.baseline;
+        for (let x = 0; x < g.w; x++) {
+          if (g.data[y * g.pitch + (x >> 3)] & (1 << (x & 7))) {
+            miny = Math.min(miny, ypos);
+            maxy = Math.max(maxy, ypos);
+          }
+        }
+      }
+    }
+    expect(h.height).toBe(maxy - miny + 1 + 3 * xspace);
   });
 
-  it('a vertical label is the horizontal one rotated: (x, row) -> (height - row, x)', () => {
+  it('a vertical label is the horizontal one rotated: row x of the vertical label is column x of the horizontal, flipped', () => {
     const f = new ScalableFont();
     f.selectFont(20);
-    const h = createLabel(f, 'Ai', true);
-    const v = createLabel(f, 'Ai', false);
-    expect(v.strokes.length).toBe(h.strokes.length);
-    for (let k = 0; k < h.strokes.length; k += 2) {
-      expect(v.strokes[k]).toBeCloseTo(h.height - h.strokes[k + 1], 9);
-      expect(v.strokes[k + 1]).toBeCloseTo(h.strokes[k], 9);
+    const h = createLabel(f, 'Ai', true, colors);
+    const v = createLabel(f, 'Ai', false, colors);
+    for (let y = 0; y < h.height; y++) {
+      for (let x = 0; x < h.width; x++) {
+        expect(pixel(v.width, v.rgb, h.height - 1 - y, x)).toEqual(pixel(h.width, h.rgb, x, y));
+      }
     }
+  });
+
+  it('an unknown character throws the SSFN error that the fix turns into a named error', () => {
+    const f = new ScalableFont();
+    f.selectFont(16);
+    expect(() => createLabel(f, 'x中', true, colors)).toThrow(SsfnError);
   });
 });
 
@@ -127,34 +149,33 @@ describe('fix graphics/labels (src/GRAPHICS/fix_graphics_labels.cpp)', () => {
     const objs = new FixGraphicsLabels(specs).objects(env());
     expect(objs).toHaveLength(1);
     const o = objs[0];
-    expect(o.kind).toBe('label');
-    if (o.kind !== 'label') return;
+    expect(o.kind).toBe('pixmap');
+    if (o.kind !== 'pixmap') return;
     expect(o.pos).toEqual([1, 2, 3]);
     expect(o.scale).toBe(0.5);
     const f = new ScalableFont();
     f.selectFont(20);
-    const ref = createLabel(f, 'hi', true);
+    const ref = createLabel(f, 'hi', true, { font: [255, 255, 255], frame: [192, 192, 192], back: [192, 192, 192] });
     expect(o.width).toBe(ref.width);
     expect(o.height).toBe(ref.height);
-    expect(o.strokes).toEqual(ref.strokes);
+    expect(o.rgb.length).toBe(ref.rgb.length);
   });
 
   it('a size above 128 (after the 2x rule) is rendered at 128 and scaled by size / 256', () => {
     const objs = new FixGraphicsLabels(parseLabelArgs(['text', 'a', '0', '0', '0', 'size', '100'], noImage)).objects(env());
     const o = objs[0];
-    if (o.kind !== 'label') throw new Error('expected a label');
+    if (o.kind !== 'pixmap') throw new Error('expected a pixmap');
     expect(o.scale).toBe(200 / 256);
   });
 
-  it('defaults: size 48 rendered with scale 0.5, white font, silver back, frame and transparent colour', () => {
+  it('defaults: size 48 rendered with scale 0.5, silver frame and background (the transparent colour)', () => {
     const objs = new FixGraphicsLabels(parseLabelArgs(['text', 'x', '0', '0', '0'], noImage)).objects(env());
     const o = objs[0];
-    if (o.kind !== 'label') throw new Error('expected a label');
+    if (o.kind !== 'pixmap') throw new Error('expected a pixmap');
     expect(o.scale).toBe(0.5);
-    expect(o.fontcolor).toEqual([255, 255, 255]);
-    expect(o.backcolor).toEqual([192, 192, 192]);
-    expect(o.framecolor).toEqual([192, 192, 192]);
     expect(o.transcolor).toEqual([192, 192, 192]);
+    // the frame corner is the silver frame colour
+    expect([...o.rgb.subarray(0, 3)]).toEqual([192, 192, 192]);
   });
 
   it('a variable size and position are evaluated per snapshot (2 * v; v = 100 gives scale 200/256)', () => {
@@ -162,7 +183,7 @@ describe('fix graphics/labels (src/GRAPHICS/fix_graphics_labels.cpp)', () => {
     const f = new FixGraphicsLabels(specs);
     const a = f.objects(env({ px: 4, s: 40 }))[0];
     const b = f.objects(env({ px: 5, s: 100 }))[0];
-    if (a.kind !== 'label' || b.kind !== 'label') throw new Error('expected labels');
+    if (a.kind !== 'pixmap' || b.kind !== 'pixmap') throw new Error('expected pixmaps');
     expect(a.pos[0]).toBe(4);
     expect(a.scale).toBe(0.5);
     expect(b.pos[0]).toBe(5);
@@ -180,7 +201,7 @@ describe('fix graphics/labels (src/GRAPHICS/fix_graphics_labels.cpp)', () => {
       () => ({ width: 2, height: 2, rgb }),
     );
     const objs = new FixGraphicsLabels(specs).objects(env({ z: 7 }));
-    expect(objs.map((o) => o.kind)).toEqual(['pixmap', 'label']);
+    expect(objs.map((o) => o.kind)).toEqual(['pixmap', 'pixmap']);
     const p = objs[0];
     if (p.kind !== 'pixmap') throw new Error('expected a pixmap');
     expect(p.pos).toEqual([1, 2, 7]);
@@ -189,8 +210,18 @@ describe('fix graphics/labels (src/GRAPHICS/fix_graphics_labels.cpp)', () => {
     expect(p.scale).toBe(1);
   });
 
-  it('colorscale is refused by name, and $-references are substituted only when present', () => {
-    expect(() => parseLabelArgs(['colorscale', 'd', 'lbl', '0', '0', '0'], noImage)).toThrow(/colorscale/);
+  it('colorscale is a pixmap of the map range: map grid is refused by name; $-references substitute only when present', () => {
+    expect(() => parseLabelArgs(['colorscale', 'd', 'lbl', '0', '0', '0', 'map', 'grid'], noImage)).toThrow(/not supported/);
+    const colorOf = (name: string): [number, number, number] | null => (name === 'blue' ? [0, 0, 1] : name === 'red' ? [1, 0, 0] : null);
+    const map = ColorMap.parse(['0', '3', 'cf', '0.0', '2', 'min', 'blue', 'max', 'red'], colorOf).map;
+    const objs = new FixGraphicsLabels(parseLabelArgs(['colorscale', 'd', 'Range', '0.5', '2.5', '0', 'length', '60'], noImage))
+      .objects({ ...env(), colorScale: () => map });
+    expect(objs).toHaveLength(1);
+    const bar = objs[0];
+    if (bar.kind !== 'pixmap') throw new Error('expected a pixmap');
+    expect(bar.rgb.length).toBe(bar.width * bar.height * 3);
+    expect(bar.scale).toBe(0.5);
+    expect(() => new FixGraphicsLabels(parseLabelArgs(['colorscale', 'd', 'x', '0', '0', '0'], noImage)).objects(env())).toThrow(/no dump image colour map/);
     let calls = 0;
     const subst = (t: string) => {
       calls++;

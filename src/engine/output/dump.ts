@@ -7,6 +7,7 @@ import { generalBoxFromRestricted, toGeneralPoint, unrotateVector, type V3 } fro
 import { fillWildcard } from '../commands/restart';
 import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, hasRmassStyle, isEllipsoidStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
 import { ImageDump } from './dump_image';
+import type { ColorMap } from './image_colormap';
 
 /*
  * Per-atom snapshots — docs.lammps.org/dump.html and dump_modify.html.
@@ -100,6 +101,11 @@ export class Dump {
   private nextStep = -1;
   /** dump image: the image renderer (dump_image.ts); null for every other style. */
   private imageDump: ImageDump | null = null;
+
+  /** The atom colour map of a dump image as the previous output left it (fix graphics/labels colorscale); null for other styles. */
+  colorScaleMap(): ColorMap | null {
+    return this.imageDump ? this.imageDump.colorScaleMap() : null;
+  }
   readonly columns: string[];
 
   /**

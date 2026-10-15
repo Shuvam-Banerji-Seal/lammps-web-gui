@@ -52,25 +52,6 @@ export interface TriNormObject {
   normals: [Vec3, Vec3, Vec3];
 }
 
-/**
- * A rectangle of label pixels placed in space (fix graphics/labels). `strokes` is the flat segment list of the
- * glyphs in label pixels (origin at the bottom-left, as the native pixmap rows); `frame` is the frame thickness.
- * Colours are 0..255 triples; `transcolor` null means no transparent colour ("none").
- */
-export interface LabelObject {
-  kind: 'label';
-  pos: Vec3;
-  width: number;
-  height: number;
-  scale: number;
-  transcolor: Rgb | null;
-  fontcolor: Rgb;
-  backcolor: Rgb;
-  framecolor: Rgb;
-  frame: number;
-  strokes: number[];
-}
-
 /** A raster image placed in space (fix graphics/labels image), with caller-supplied RGB rows (bottom row first). */
 export interface PixmapObject {
   kind: 'pixmap';
@@ -87,5 +68,4 @@ export type GraphicsObject =
   | CylinderObject
   | BondObject
   | TriNormObject
-  | LabelObject
   | PixmapObject;

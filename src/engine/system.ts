@@ -12,7 +12,9 @@ import type { Region, RegionEnv } from './region';
 import type { Compute } from './compute/compute';
 import type { Fix } from './fix/fix';
 import { Variables } from './variables';
-import { type FormulaEnv, type Mode, type Value } from './formula';
+import { evaluateScalar, type FormulaEnv, type Mode, type Value } from './formula';
+import { substituteVariables } from './script';
+import { formatNumber } from './cformat';
 import type { Lattice } from './lattice';
 import { Rng } from './rng';
 import { Thermo } from './output/thermo';
@@ -906,6 +908,15 @@ export class System {
   }
 
   /** An equal-style formula's value (used by commands that take v_name arguments). */
+  /**
+   * Input::substitute on a text (a fix's label or colour-scale text): $x, ${name} and $(formula[:fmt]) with the variables
+   * of the run now (Input::substitute, input.cpp at b332f28; the same rule as the command words of the session).
+   */
+  substituteText(text: string): string {
+    return substituteVariables(text, (name) => this.vars.text(name, this.formulaEnv),
+      (f, fmt) => formatNumber(evaluateScalar(f, this.formulaEnv), fmt ?? '%.20g'));
+  }
+
   equalVariable(name: string): number {
     return this.vars.scalar(name, this.formulaEnv);
   }

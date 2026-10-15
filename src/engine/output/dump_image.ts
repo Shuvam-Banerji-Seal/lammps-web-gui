@@ -718,6 +718,17 @@ export class ImageDump {
    * "amap = min max cf 0.0 2 min blue max red" (blue at the group minimum, red at the group maximum).
    * The range is the group's minimum and maximum of the values (ColorMap.bounds).
    */
+  /** The atom colour map before the current frame (null before the first frame). */
+  private priorAtomMap: ColorMap | null = null;
+
+  /**
+   * The atom colour map as fix graphics/labels colorscale sees it: the range and colours of the map at the end of the
+   * previous dump output (native draws the scale in end_of_step, before the dump's own minmax of this frame).
+   */
+  colorScaleMap(): ColorMap {
+    return this.priorAtomMap ?? (this.amap ?? this.defaultMap).snapshot();
+  }
+
   private atomColorMap(colorVals: Float64Array | null, s: SimState): ColorMap | null {
     if (!colorVals) return null;
     const [lo, hi] = this.rangeOf(colorVals, s);
@@ -861,6 +872,8 @@ export class ImageDump {
 
     // per-atom colour/diameter attributes (computed once per snapshot)
     const colorVals = this.attr.color !== 'type' && this.attr.color !== 'element' ? this.attributeValues(this.attr.color, s) : null;
+    // the colour scale of fix graphics/labels reads the map as the previous output left it (ColorMap::info)
+    this.priorAtomMap = (this.amap ?? this.defaultMap).snapshot();
     const cmap = this.atomColorMap(colorVals, s);
     const diamVals = this.attr.diameter !== 'type' && this.attr.diameter !== 'element' ? this.attributeValues(this.attr.diameter, s) : null;
 

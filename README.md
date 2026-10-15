@@ -1,6 +1,6 @@
 <div align="center">
 
-# Molecule3D
+# LAMMPS Web GUI
 
 **A free, GPU-accelerated LAMMPS workbench and 3D molecular structure viewer that runs entirely in your browser.**
 

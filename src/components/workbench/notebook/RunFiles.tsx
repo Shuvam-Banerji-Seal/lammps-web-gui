@@ -31,7 +31,7 @@ interface RunFilesProps {
   /** Cells in notebook order, and each cell's output, for the log and CSV downloads. */
   cells: { id: string }[];
   runs: Record<string, RunOutput | undefined>;
-  /** Opens a structure or trajectory file in the Molecule 3D Viewer. */
+  /** Opens a structure or trajectory file in the 3D Viewer. */
   onOpenInViewer?: (file: { name: string; text: string }) => void;
   /** Loads a LAMMPS dump the run wrote into the notebook's player and opens the Render panel on it. */
   onRenderFile?: (file: { name: string; text: string }) => void;
@@ -146,7 +146,7 @@ const RunFiles: React.FC<RunFilesProps> = ({ ct, files, cells, runs, onOpenInVie
                       )}
                       {onOpenInViewer && canOpenInViewer(e.kind) && (
                         <button className={`${btn} ${ct.button}`} aria-label={`Open ${e.name} in 3D Viewer`}
-                          title="Open in the Molecule 3D Viewer"
+                          title="Open in the 3D Viewer"
                           onClick={() => onOpenInViewer({ name: e.name, text: e.text })}>
                           <ExternalLink size={12} aria-hidden="true" />Open in 3D Viewer
                         </button>

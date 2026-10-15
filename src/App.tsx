@@ -30,7 +30,7 @@ const loadLastModule = (): Module => {
 };
 
 /**
- * Molecule3D Workbench — four modules:
+ * LAMMPS Web GUI — four modules:
  *  1. Script Builder (primary): visual LAMMPS input construction + flowchart
  *  2. Compiler Helper: package/accelerator selection → build commands
  *  3. Structure Viewer: the original 3D visualizer
@@ -117,7 +117,7 @@ const App: React.FC = () => {
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
             <FlaskConical size={18} aria-hidden="true" className={`shrink-0 ${ct.accentText}`} />
-            <span className="hidden truncate text-sm font-bold tracking-tight sm:inline">LAMMPS Workbench</span>
+            <h1 className="hidden truncate text-sm font-bold tracking-tight sm:inline">LAMMPS Web GUI</h1>
             {/*
               Author credit. LICENSE §3.2 requires a legible, permanently
               reachable attribution in any deployed build — do not remove,
@@ -192,7 +192,7 @@ const App: React.FC = () => {
           onClick={closeAbout}
           role="dialog"
           aria-modal="true"
-          aria-label="About LAMMPS Workbench"
+          aria-label="About LAMMPS Web GUI"
         >
           <div
             ref={aboutDialogRef}
@@ -203,7 +203,7 @@ const App: React.FC = () => {
               <div className="flex items-center gap-2.5">
                 <FlaskConical size={22} aria-hidden="true" className={`shrink-0 ${ct.accentText}`} />
                 <div>
-                  <h2 className="text-base font-bold tracking-tight">LAMMPS Workbench · Molecule3D</h2>
+                  <h2 className="text-base font-bold tracking-tight">LAMMPS Web GUI</h2>
                   <p className={`text-[11px] ${ct.muted}`}>
                     Created by <span className="font-semibold">Shuvam Banerji Seal</span>
                   </p>

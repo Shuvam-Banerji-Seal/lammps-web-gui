@@ -1,5 +1,5 @@
 12000
-synthetic 12k stress lattice for Molecule3D
+synthetic 12k stress lattice for LAMMPS Web GUI
 Fe 0.000 0.000 0.000
 Cu 0.000 0.000 2.500
 Fe 0.000 0.000 5.000

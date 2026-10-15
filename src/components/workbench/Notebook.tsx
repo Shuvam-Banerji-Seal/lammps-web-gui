@@ -127,7 +127,7 @@ interface NotebookProps {
   onIncomingTaken?: () => void;
   /** Opens the notebook's cells in the Script Builder (as a new tab). */
   onOpenInBuilder?: (script: string) => void;
-  /** Opens a file written by the run, or the recorded trajectory as a dump, in the Molecule 3D Viewer. */
+  /** Opens a file written by the run, or the recorded trajectory as a dump, in the 3D Viewer. */
   onOpenInViewer?: (file: { name: string; text: string }) => void;
 }
 

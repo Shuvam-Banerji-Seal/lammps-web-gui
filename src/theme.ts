@@ -1,5 +1,5 @@
 /**
- * Molecule3D Workbench — shared flat-design theme tokens.
+ * LAMMPS Web GUI — shared flat-design theme tokens.
  *
  * Policy: NO gradients anywhere. Solid surfaces, 1px borders, restrained
  * accents. Dark mode is a warm "coffee & sage" palette (deep brown-black

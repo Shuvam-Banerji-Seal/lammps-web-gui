@@ -1,5 +1,5 @@
 {
-  "name": "Molecule3D",
+  "name": "LAMMPS Web GUI",
   "description": "A high-performance 3D molecular structure visualizer for LAMMPS data, dump trajectories, XYZ, PDB and CIF files using React Three Fiber.",
   "author": "Shuvam Banerji Seal",
   "requestFramePermissions": []

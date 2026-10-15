@@ -1,5 +1,5 @@
 60000
-synthetic 60k stress lattice for Molecule3D performance testing
+synthetic 60k stress lattice for LAMMPS Web GUI performance testing
 Fe 0.000 0.000 0.000
 Cu 0.000 0.000 2.500
 Fe 0.000 0.000 5.000

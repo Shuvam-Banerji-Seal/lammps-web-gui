@@ -73,7 +73,7 @@ export const flowchartToSVG = (model: ScriptModel, opts: FlowchartSvgOptions = {
   const p = PALETTES[theme];
   const showParams = opts.showParams ?? true;
   const showDisabled = opts.showDisabled ?? true;
-  const credit = opts.credit ?? 'Molecule3D — LAMMPS Workbench';
+  const credit = opts.credit ?? 'LAMMPS Web GUI';
 
   const flow = deriveFlowchart(model);
   const nodes = flow.nodes.filter(n => showDisabled || n.enabled);

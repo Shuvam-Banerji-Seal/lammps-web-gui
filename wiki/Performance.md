@@ -1,6 +1,6 @@
 # Performance Architecture
 
-How Molecule3D stays smooth on large systems.
+How LAMMPS Web GUI stays smooth on large systems.
 
 ## Draw calls
 

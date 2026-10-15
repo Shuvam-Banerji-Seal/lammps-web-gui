@@ -22,6 +22,7 @@ export interface LazyGroup {
 export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_uef', names: { COMPUTES: ['pressure/uef', 'temp/uef'], FIXES: ['npt/uef', 'nvt/uef'] }, load: () => import('../engine-gpl/registry/uef') as Promise<StyleModule> },
   { id: 'gpl_random', names: { HOOKS: ['dipole/random', 'geom', 'quat/random', 'random', 'spin/atom/random', 'spin/random', 'theta/random', 'type/fraction', 'type/ratio', 'type/subset'] }, load: () => import('../engine-gpl/registry/random') as Promise<StyleModule> },
+  { id: 'gpl_hma', names: { HOOKS: ['hma'] }, load: () => import('../engine-gpl/registry/hma') as Promise<StyleModule> },
   { id: 'gpl_born_matrix', names: { HOOKS: ['born/matrix'] }, load: () => import('../engine-gpl/registry/born_matrix') as Promise<StyleModule> },
   { id: 'gpl_lj_long_disp', names: { HOOKS: ['lj/long/coul/long'] }, load: () => import('../engine-gpl/registry/lj_long_disp') as Promise<StyleModule> },
   { id: 'gpl_pair_local', names: { HOOKS: ['pair/local'] }, load: () => import('../engine-gpl/registry/pair_local') as Promise<StyleModule> },

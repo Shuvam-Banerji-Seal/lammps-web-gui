@@ -1,6 +1,38 @@
 import { Compute } from './compute';
 import { StyleError } from '../force/types';
+import { gplHook } from '../gplHooks';
+import { NEIGHMASK, SBBITS } from '../neighbor';
 import type { System } from '../system';
+
+/** Hessian tables of pair lj/smooth/linear (pair.lj1, lj2, dphiRc; index itype * nt + jtype). */
+export interface LjSmoothLinearHessianTables {
+  lj1: Float64Array;
+  lj2: Float64Array;
+  dljcut: Float64Array;
+  nt: number;
+}
+
+/** The inputs of the phiSum loop of compute hma cv (the half neighbour list, ghosts mapped to their owners). */
+export interface HmaPhiSumInput {
+  inum: number;
+  numneigh: ArrayLike<number>;
+  firstneigh: ArrayLike<number>;
+  neighbors: ArrayLike<number>;
+  xall: ArrayLike<number>;
+  typeall: ArrayLike<number>;
+  owner: ArrayLike<number>;
+  deltaR: ArrayLike<number>;
+  cutsq: ArrayLike<number>;
+  specialLJ: ArrayLike<number>;
+  sbBits: number;
+  neighMask: number;
+  tables: LjSmoothLinearHessianTables;
+}
+
+/** The lazily loaded GPL helper (src/engine-gpl/extra_compute/hma.ts, HOOKS 'hma'). */
+export interface HmaHook {
+  phiSum(p: HmaPhiSumInput): number;
+}
 
 /*
  * compute ID group-ID hma temp-ID keyword ... — docs.lammps.org/compute_hma.html (plans/lammps-docs-live/
@@ -27,9 +59,10 @@ import type { System } from '../system';
  * pe + 3/2 (N-1) T when it is defined after the displacement (sites are then the displaced positions).
  * The p entry equals dP + P_vir + (beta dP - rho) F.dr / (3 (N-1)) (P_vir from compute pressure NULL pair).
  *
- * Not implemented (EngineError): cv (needs the pair single_hessian method, which the doc lists as implemented
- * only by pair lj/smooth/linear, with the Hessian of that style) and anharmonic (the doc gives no formula for
- * its values). Only group all, constant set temperatures, lj units and orthogonal boxes are accepted.
+ * cv (ported with the pair single_hessian of lj/smooth/linear, src/engine-gpl/extra_compute/hma.ts; compute_hma.cpp
+ * computeCv at b332f28): Cv = -1/4 (F.dr + phi_sum)/T + (<U + F.dr/2>/T + d/2 (N-1))^2 + d/2 (N-1).
+ * Not implemented (EngineError): anharmonic (the doc gives no formula for its values). Only group all, constant set
+ * temperatures, lj units and orthogonal boxes are accepted.
  */
 
 export class ComputeHma extends Compute {
@@ -40,6 +73,7 @@ export class ComputeHma extends Compute {
   /** Lattice sites by atom id: unwrapped x, y, z (3 per id). */
   private sites = new Float64Array(0);
   private hasSites = new Uint8Array(0);
+  private readonly hasCv: boolean;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -50,15 +84,16 @@ export class ComputeHma extends Compute {
     let pharm = NaN;
     for (let k = 1; k < args.length; k++) {
       const w = args[k];
-      if (w === 'u') this.keys.push('u');
-      else if (w === 'p') {
+      if (w === 'u') {
+        if (!this.keys.includes('u')) this.keys.push('u');
+      } else if (w === 'p') {
         const v = Number(args[k + 1]);
         if (args[k + 1] === undefined || !Number.isFinite(v)) throw new StyleError(`compute ${id} (hma): keyword p needs a pressure value (Pharm)`);
         pharm = v;
-        this.keys.push('p');
+        if (!this.keys.includes('p')) this.keys.push('p');
         k++;
       } else if (w === 'cv') {
-        throw new StyleError(`compute ${id} (hma): keyword cv is not implemented (it needs the pair style single_hessian method, which the doc lists for pair lj/smooth/linear only)`);
+        if (!this.keys.includes('cv')) this.keys.push('cv');
       } else if (w === 'anharmonic') {
         throw new StyleError(`compute ${id} (hma): keyword anharmonic is not implemented (the doc gives no formula for its values)`);
       } else {
@@ -74,7 +109,12 @@ export class ComputeHma extends Compute {
     this.vectorFlag = true;
     this.sizeVector = this.keys.length;
     this.extvector = 1;
-    this.extlist = this.keys.map((k) => (k === 'u' ? 1 : 0));
+    this.extlist = this.keys.map((k) => (k === 'p' ? 0 : 1));
+    this.hasCv = this.keys.includes('cv');
+    if (this.hasCv) {
+      const pair = sys.ff.pair;
+      if (!pair || pair.name !== 'lj/smooth/linear') throw new StyleError(`compute ${id} (hma): Pair style does not support compute hma cv (pair lj/smooth/linear only)`);
+    }
     this.vector = new Float64Array(this.keys.length);
     // lattice sites: unwrapped positions at definition (the doc's "when the atoms are at their lattice sites")
     let maxId = 0;
@@ -115,13 +155,30 @@ export class ComputeHma extends Compute {
     const L = [0, 1, 2].map((k) => st.box.hi[k] - st.box.lo[k]);
     // F . dr, dr = unwrapped position - lattice site (atoms are matched by id; a site missing for an id is an error)
     let fdr = 0;
+    const dR = new Float64Array(3 * n);
     for (let i = 0; i < n; i++) {
       const k = st.id[i];
       if (k >= this.hasSites.length || !this.hasSites[k]) throw new StyleError(`compute ${this.id} (hma): atom ${k} has no lattice site (it was created after the compute)`);
       for (let c = 0; c < 3; c++) {
         const dr = st.x[3 * i + c] + st.image[3 * i + c] * L[c] - this.sites[3 * k + c];
+        dR[3 * i + c] = dr;
         fdr += st.f[3 * i + c] * dr;
       }
+    }
+    // phi_sum of cv: the pair Hessian over the half list (compute_hma.cpp computeCv), owners give ghost displacements
+    let phiSum = 0;
+    if (this.hasCv) {
+      const pair = sys.ff.pair as unknown as { cutsq: Float64Array; ntypes: number; lj1: Float64Array; lj2: Float64Array; dphiRc: Float64Array };
+      const list = sys.nb.half;
+      if (!list) throw new StyleError(`compute ${this.id} (hma): no half neighbour list is available`);
+      const sLJ = (sys.ff as unknown as { specialLJ: Float64Array }).specialLJ;
+      phiSum = gplHook<HmaHook>('hma').phiSum({
+        inum: list.inum, numneigh: list.numneigh, firstneigh: list.firstneigh, neighbors: list.neighbors,
+        xall: sys.nb.xall, typeall: sys.nb.typeall, owner: sys.nb.owner, deltaR: dR, cutsq: pair.cutsq, specialLJ: sLJ,
+        sbBits: SBBITS, neighMask: NEIGHMASK,
+        // the engine stores dphiRc = -dljcut (native dljcut = cutinv cut6inv (lj1 cut6inv - lj2), pair_lj_smooth_linear.cpp)
+        tables: { lj1: pair.lj1, lj2: pair.lj2, dljcut: pair.dphiRc.map((v) => -v), nt: pair.ntypes + 1 },
+      });
     }
     const U = a.evdwl + a.ecoul + a.ebond + a.eangle + a.edihed + a.eimp + a.elong + sys.fixEnergy();
     const vol = sys.geom.volume(d);
@@ -136,6 +193,9 @@ export class ComputeHma extends Compute {
     this.keys.forEach((key, c) => {
       if (key === 'u') {
         this.vector[c] = U + 0.5 * fdr + (d / 2) * N1 * kT;
+      } else if (key === 'cv') {
+        const buTot = (U + 0.5 * fdr) / T + (d / 2) * N1 * st.units.boltz;
+        this.vector[c] = -0.25 * (fdr + phiSum) / T + buTot * buTot + (d / 2) * N1;
       } else {
         const dP = this.pharm;
         const beta = 1 / kT;

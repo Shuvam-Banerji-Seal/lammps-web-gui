@@ -82,8 +82,8 @@ describe('compute temp/profile', () => {
 
 describe('compute hma', () => {
   const FIX = 'fix settemp all nvt temp 1.0 1.0 0.5\n';
-  it('refuses cv and anharmonic and bad keywords', async () => {
-    expect((await run(`${LATTICE}${FIX}compute h all hma settemp u cv\nrun 0\n`)).errors[0]).toMatch(/keyword cv is not implemented.*single_hessian/);
+  it('refuses anharmonic and bad keywords', async () => {
+    expect((await run(`${LATTICE}${FIX}compute h all hma settemp u anharmonic\nrun 0\n`)).errors[0]).toMatch(/keyword anharmonic is not implemented/);
     expect((await run(`${LATTICE}${FIX}compute h all hma settemp anharmonic u\nrun 0\n`)).errors[0]).toMatch(/keyword anharmonic is not implemented/);
     expect((await run(`${LATTICE}${FIX}compute h all hma settemp w\nrun 0\n`)).errors[0]).toMatch(/unknown keyword 'w'/);
     expect((await run(`${LATTICE}${FIX}compute h all hma settemp p\nrun 0\n`)).errors[0]).toMatch(/keyword p needs a pressure value/);

@@ -141,17 +141,26 @@ const AXES_SHIFT: Record<2 | 3, Record<AxesLocation, [number, number, number]>> 
 const cross = (a: number[], b: number[]): number[] => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const normalize = (a: number[]): number[] => { const n = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / n, a[1] / n, a[2] / n]; };
 
-const toBase64 = (bytes: Uint8Array): string => {
+/**
+ * base64 of the bytes as one flat string. Built by repeated `+=`, the result is a rope of about 30-byte nodes, one per
+ * character, and a frame kept in the session's file store (dump image writes one per snapshot) then retains about 30
+ * times its text (measured: a 1.44 MB base64 frame kept 44 MB of heap). The characters go into a byte array first and
+ * are decoded in chunks, so the string is flat; its content is unchanged.
+ */
+export const toBase64 = (bytes: Uint8Array): string => {
   const T = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  let out = '';
+  const chars = new Uint8Array(Math.ceil(bytes.length / 3) * 4);
+  let o = 0;
   for (let i = 0; i < bytes.length; i += 3) {
     const b0 = bytes[i], b1 = bytes[i + 1], b2 = bytes[i + 2];
-    out += T[b0 >> 2];
-    out += T[((b0 & 3) << 4) | (b1 === undefined ? 0 : b1 >> 4)];
-    out += b1 === undefined ? '=' : T[((b1 & 15) << 2) | (b2 === undefined ? 0 : b2 >> 6)];
-    out += b2 === undefined ? '=' : T[b2 & 63];
+    chars[o++] = T.charCodeAt(b0 >> 2);
+    chars[o++] = T.charCodeAt(((b0 & 3) << 4) | (b1 === undefined ? 0 : b1 >> 4));
+    chars[o++] = b1 === undefined ? 0x3d : T.charCodeAt(((b1 & 15) << 2) | (b2 === undefined ? 0 : b2 >> 6));
+    chars[o++] = b2 === undefined ? 0x3d : T.charCodeAt(b2 & 63);
   }
-  return out;
+  const parts: string[] = [];
+  for (let i = 0; i < chars.length; i += 8192) parts.push(String.fromCharCode(...chars.subarray(i, i + 8192)));
+  return parts.join('');
 };
 
 /** Build a PPM (P6 binary, 8-bit RGB) file. */

@@ -84,14 +84,15 @@ describe('dump_modify amap (colour maps, image.cpp ColorMap rules)', () => {
   it('the default map runs blue at the minimum to red at the maximum, linearly between', () => {
     const m = ColorMap.default();
     m.bounds(0, 10);
-    expect(m.color(0)).toEqual([0, 0, 255]);
-    expect(m.color(10)).toEqual([255, 0, 0]);
+    // color2rgb("blue") = (0, 0, 1) and color2rgb("red") = (1, 0, 0), image.cpp rgbcolors: the colours stay doubles
+    expect(m.color(0)).toEqual([0, 0, 1]);
+    expect(m.color(10)).toEqual([1, 0, 0]);
     const mid = m.color(5);
-    expect(mid[0]).toBeCloseTo(127.5, 9);
-    expect(mid[2]).toBeCloseTo(127.5, 9);
+    expect(mid[0]).toBeCloseTo(0.5, 12);
+    expect(mid[2]).toBeCloseTo(0.5, 12);
     // values outside the range are clamped
-    expect(m.color(-4)).toEqual([0, 0, 255]);
-    expect(m.color(40)).toEqual([255, 0, 0]);
+    expect(m.color(-4)).toEqual([0, 0, 1]);
+    expect(m.color(40)).toEqual([1, 0, 0]);
   });
 
   it('sequential style bins the range and gives the top value the bin below (rounddown)', () => {
@@ -125,11 +126,10 @@ describe('dump_modify amap (colour maps, image.cpp ColorMap rules)', () => {
     const img = decodePpm(b64(files.get('out.0.ppm')!));
     // atom id 1 at y = 2 projects to column 70, id 2 at y = 8 to column 130 (10 px per unit, +y to larger columns);
     // the row of the centre is 98 (pixel index of the continuous centre 98.5)
+    // Measured with native LAMMPS (b332f28, this scene): pixel (70, 98) is (78, 78, 255) and (130, 98) is (255, 78, 78)
     const a = px(img, 70, 98), b = px(img, 130, 98);
-    expect(a[2]).toBeGreaterThan(100);
-    expect(a[0]).toBeLessThan(60);
-    expect(b[0]).toBeGreaterThan(100);
-    expect(b[2]).toBeLessThan(60);
+    expect(a).toEqual([78, 78, 255]);
+    expect(b).toEqual([255, 78, 78]);
   });
 });
 

@@ -167,21 +167,22 @@ describe('dump_modify lights (Image key, fill, back and ambient colours)', () =>
     expect(at(f, 16, 15)).toEqual([13, 130, 13]);
   });
 
-  it('adds the ambient light 0.1 to the green sphere (the default lights have ambient 0)', async () => {
+  it('adds the ambient light 0.1 to the type 2 sphere (forestgreen, the default type 2 colour; the default lights have ambient 0)', async () => {
     const base = 'dump im all image 1 out.*.ppm type type size 120 120 box no 0.02 view 0 0 zoom 1.6';
     const lit = await runImage(twoTypes(base, 'dump_modify im lights 0.1 0.9 0.45 0.9'));
     const dflt = await runImage(twoTypes(base));
     const greenLit = classify(lit).green, greenDflt = classify(dflt).green;
     expect(greenLit.length).toBeGreaterThan(0);
-    // lights 0.1 0.9 0.45 0.9 differ from the defaults only in the ambient 0.1: every green pixel gains 0.1 * 255 = 25.5 in
-    // the green channel (before truncation), so the difference of the two renders is 25 or 26 wherever no saturation occurs
+    // lights 0.1 0.9 0.45 0.9 differ from the defaults only in the ambient 0.1: the type 2 colour is forestgreen
+    // (0.133, 0.545, 0.133, dump_image.cpp default_colors[2]), so the green channel gains 0.1 * 0.545 * 255 = 13.9
+    // before truncation. Measured with native LAMMPS (b332f28, this scene): the difference is 13 or 14
     const diffs: number[] = [];
     for (const [x, y] of greenDflt) {
       const o = (y * dflt.w + x) * 3 + 1;
       if (dflt.rgb[o] <= 229) diffs.push(lit.rgb[o] - dflt.rgb[o]);
     }
     expect(diffs.length).toBeGreaterThan(0);
-    for (const d of diffs) expect([25, 26]).toContain(d);
+    for (const d of diffs) expect([13, 14]).toContain(d);
   });
 
   it('refuses a light value outside 0..1 and names the keyword', async () => {

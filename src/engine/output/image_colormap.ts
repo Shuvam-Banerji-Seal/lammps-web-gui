@@ -15,6 +15,10 @@ import { StyleError } from '../force/types';
  * range is an exact multiple of delta.
  */
 
+/**
+ * A colour of the map as native keeps it: each channel as a double (ColorMap returns the colour of color2rgb, not a byte).
+ * The caller takes the 8-bit value with int(c * 255) where a byte is needed (image.cpp draw_pixel and friends).
+ */
 export type RGB = [number, number, number];
 
 type Bound = { kind: 'num'; v: number } | { kind: 'min' } | { kind: 'max' };
@@ -57,8 +61,9 @@ export class ColorMap {
   static default(): ColorMap {
     const m = new ColorMap();
     m.entries = [
-      { pos: MIN, lo: MIN, hi: MIN, color: [0, 0, 255] },
-      { pos: MAX, lo: MIN, hi: MIN, color: [255, 0, 0] },
+      // amap = min max cf 0.0 2 min blue max red: color2rgb("blue") and color2rgb("red") (image.cpp rgbcolors, 0..1)
+      { pos: MIN, lo: MIN, hi: MIN, color: [0, 0, 1] },
+      { pos: MAX, lo: MIN, hi: MIN, color: [1, 0, 0] },
     ];
     return m;
   }

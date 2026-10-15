@@ -13,6 +13,9 @@
 
 export type Vec3 = [number, number, number];
 
+/** The specular highlight of Image::draw_pixel: pow(n . half, hardness) * intensity (dump_modify specular). */
+export interface ImageSpecular { hardness: number; intensity: number }
+
 /** The key, fill and back light colours of Image (keyLightColor, fillLightColor, backLightColor), each 0..1. */
 export interface ImageLights { key: number; fill: number; back: number }
 
@@ -43,8 +46,42 @@ export interface RasterFrame {
   ambient?: number;
   /** The key, fill and back light colours (0..1) of dump_modify lights; the image defaults 0.9, 0.45, 0.9 when absent. */
   lights?: ImageLights;
+  /**
+   * Native's depth buffer (Image::depthBuffer, zdist - camera offset, -1 for an empty pixel) for the pixels the GPL
+   * routines wrote; a pixel counts only while depth still holds zdist - dist (the write of draw.ts drawPixel). Set by
+   * dump image's render; the composite passes read native depths from it so that no round trip changes a bit.
+   */
+  dist?: Float64Array;
+  /** dump_modify specular: the highlight hardness and intensity (undefined: 16 * shiny and shiny, the defaults). */
+  spec?: ImageSpecular;
   /** The ssao tangent buffer (2 values per pixel, rows from the top), set when ssao is on; null otherwise. */
   surface?: Float64Array;
+}
+
+/**
+ * The post-processing settings of dump image (the Image fields of outline, depthcue and defocus; dump_image.html).
+ * Values are the parsed keyword values; colours are 0..255.
+ */
+export interface PostProcessOptions {
+  /** maxdel of Image::view_params (2 * longest box edge): the outline threshold is 0.02 * maxdel. */
+  maxdel: number;
+  /** Image::fsaa: the outline width is doubled with the doubled internal image. */
+  fsaa: boolean;
+  outline?: { width: number; color: Rgb255 };
+  depthcue?: {
+    strength: number;
+    /** depthcue color: null for "auto" (the background, gradient rows included). */
+    color: Rgb255 | null;
+    /** depthcue start fraction between the near and far side of the box; null for "auto". */
+    start: number | null;
+    background: Rgb255;
+    /** dump image backcolor2 gradient (null: a single background colour). */
+    background2: Rgb255 | null;
+  };
+  defocus?: { strength: number; start: number | null };
+  /** The simulation box bounds (Image::boxbounds): lo and hi corners. */
+  boxLo: Vec3;
+  boxHi: Vec3;
 }
 
 /**
@@ -53,9 +90,20 @@ export interface RasterFrame {
  */
 export interface ImageShading {
   /** draw_pixel's colour (0..1 per channel) of a camera-space unit normal and a surface colour (0..1). */
-  shadeSurface(surface: Vec3, col: Vec3, shiny: number, ambient: number, lights?: ImageLights): Vec3;
+  shadeSurface(surface: Vec3, col: Vec3, shiny: number, ambient: number, lights?: ImageLights, spec?: ImageSpecular): Vec3;
   /** compute_SSAO over a finished frame (radius in world units, samples, seed). */
   applySsao(f: RasterFrame, radius: number, samples: number, seed: number): void;
+  /** Image::draw_sphere of an atom: world centre x, colour 0..1, world diameter, opacity (draw.ts). */
+  drawSphere(f: RasterFrame, x: Vec3, col: Vec3, diameter: number, opacity: number): void;
+  /** Image::color2rgb (native rgbcolors, 0..1 per channel): null for "none" and an unknown name. */
+  color2rgb(name: string): Vec3 | null;
+  /** dump_image.cpp default_colors: the colour of atom type `type` (type 1 is red), 0..1. */
+  defaultTypeColor(type: number): Vec3;
+  /** Image::element2color (the element table, 0..1) and Image::element2diam (the covalent diameter, 0 when unknown). */
+  element2color(name: string): Vec3 | null;
+  element2diam(name: string): number;
+  /** Image::merge's composite passes after SSAO: outline, depthcue, defocus (in place, rows from the top). */
+  postProcess(f: RasterFrame, o: PostProcessOptions): void;
 }
 
 /** What dump image's "fix ID style flag1 flag2" keyword gives a graphics object (dump_image.html). */

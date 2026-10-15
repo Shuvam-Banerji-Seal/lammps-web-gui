@@ -51,10 +51,11 @@ describe('fix graphics/arrows chunk mode', () => {
     const c2 = objs.find((o) => o.center[0] > 3)!;
     expect(c1.center).toEqual([1.5, 1, 1]);
     expect(c2.center).toEqual([6.5, 6, 6]);
-    // scale 2: length = |vector| * 2; the direction is the vector itself
+    // scale 2: the direction is the vector itself and the length factor is the scale (fix_graphics_arrows.cpp imgparms[7]);
+    // the drawn arrow is |vector| * scale long (ArrowObj: lscale = |dir| * length)
     expect(c1.dir).toEqual([1.5, 1, 1]);
-    expect(c1.length).toBeCloseTo(Math.hypot(1.5, 1, 1) * 2, 12);
-    expect(c2.length).toBeCloseTo(Math.hypot(6.5, 6, 6) * 2, 12);
+    expect(c1.length * Math.hypot(...c1.dir)).toBeCloseTo(Math.hypot(1.5, 1, 1) * 2, 12);
+    expect(c2.length * Math.hypot(...c2.dir)).toBeCloseTo(Math.hypot(6.5, 6, 6) * 2, 12);
     for (const o of objs) {
       expect(o.type).toBe(1);
       expect(o.diameter).toBe(0.2);
@@ -66,7 +67,8 @@ describe('fix graphics/arrows chunk mode', () => {
     const s = await newSession();
     const objs = arrows((s.sys.fix('auto').imageObjects?.() ?? []));
     expect(objs).toHaveLength(2);
-    const mean = (objs[0].length + objs[1].length) / 2;
+    // the drawn length of each arrow is |dir| * length (ArrowObj); their mean is the autoscale value
+    const mean = (objs[0].length * Math.hypot(...objs[0].dir) + objs[1].length * Math.hypot(...objs[1].dir)) / 2;
     expect(mean).toBeCloseTo(3.0, 12);
   });
 

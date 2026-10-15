@@ -52,6 +52,11 @@ export interface RasterFrame {
    * dump image's render; the composite passes read native depths from it so that no round trip changes a bit.
    */
   dist?: Float64Array;
+  /**
+   * dump image fsaa: the frame is the doubled image (w and h twice the output size). Image::draw_pixmap converts its
+   * position to output-image pixels and back, and doubles the pixmap scale (image.cpp, the fsaa branches of both overloads).
+   */
+  fsaa?: boolean;
   /** dump_modify specular: the highlight hardness and intensity (undefined: 16 * shiny and shiny, the defaults). */
   spec?: ImageSpecular;
   /** The ssao tangent buffer (2 values per pixel, rows from the top), set when ssao is on; null otherwise. */
@@ -102,6 +107,13 @@ export interface ImageShading {
    * diameter, opacity, the background colour (bytes, for the letters' colours) and whether fsaa doubles the frame.
    */
   drawAxes(f: RasterFrame, axes: Vec3[], diameter: number, opacity: number, background: Rgb255, fsaa: boolean, dimension: 2 | 3): void;
+  /**
+   * ImageObjects::ArrowObj::draw (centre, length and direction overload, dump image's ARROW objects): centre, length, the
+   * direction (scaled by its own length), the shaft diameter (scale), opacity and the tip length (the object's ratio).
+   */
+  drawArrow(f: RasterFrame, col: Vec3, center: Vec3, length: number, dir: Vec3, scale: number, opacity: number, tiplength: number): void;
+  /** dump image autobond: the bonds of the dump's atoms closer than the cutoff (autobond.ts). */
+  drawAutoBonds(f: RasterFrame, b: AutoBondSpec): void;
   /** Image::color2rgb (native rgbcolors, 0..1 per channel): null for "none" and an unknown name. */
   color2rgb(name: string): Vec3 | null;
   /** dump_image.cpp default_colors: the colour of atom type `type` (type 1 is red), 0..1. */
@@ -140,29 +152,32 @@ export type ImageObject =
   /** arrow: centre, unit direction, length, shaft diameter, tip fraction (0.1 .. 0.5). */
   | { kind: 'arrow'; type: number; center: Vec3; dir: Vec3; length: number; diameter: number; ratio: number };
 
-/** Shaft and head of an arrow in world coordinates. */
-export interface ArrowParts {
-  shaft: { p1: Vec3; p2: Vec3; diameter: number };
-  head: { p1: Vec3; p2: Vec3; d1: number; d2: number };
-}
-
 /**
- * Split an arrow into its shaft (diameter D) and head (base diameter 2D, length ratio * length). The arrow runs
- * from centre - length/2 * dir to centre + length/2 * dir.
+ * What dump image's autobond loop reads from the atoms (autobond.ts, dump_image.cpp AUTO branch): the dump group, positions,
+ * the hydrogen-rule masses, the minimum image and the atom colours.
  */
-export const arrowParts = (a: { center: Vec3; dir: Vec3; length: number; diameter: number; ratio: number }): ArrowParts => {
-  const n = Math.hypot(a.dir[0], a.dir[1], a.dir[2]) || 1;
-  const u = [a.dir[0] / n, a.dir[1] / n, a.dir[2] / n] as Vec3;
-  const h = 0.5 * a.length;
-  const bot: Vec3 = [a.center[0] - h * u[0], a.center[1] - h * u[1], a.center[2] - h * u[2]];
-  const tip: Vec3 = [a.center[0] + h * u[0], a.center[1] + h * u[1], a.center[2] + h * u[2]];
-  const frac = 1 - a.ratio;
-  const mid: Vec3 = [bot[0] + frac * (tip[0] - bot[0]), bot[1] + frac * (tip[1] - bot[1]), bot[2] + frac * (tip[2] - bot[2])];
-  return {
-    shaft: { p1: bot, p2: mid, diameter: a.diameter },
-    head: { p1: mid, p2: tip, d1: 2 * a.diameter, d2: 0 },
-  };
-};
+export interface AutoBondSpec {
+  /** Number of atoms. */
+  n: number;
+  /** Positions, 3 per atom. */
+  x: Float64Array;
+  /** Whether atom i is in the dump group. */
+  selected: (i: number) => boolean;
+  /** Mass of atom i for the hydrogen rule (metal and real units); null for the other unit styles. */
+  mass: ((i: number) => number) | null;
+  /** Domain::minimum_image on a separation vector, in place. */
+  minimumImage: (d: Vec3) => void;
+  /**
+   * Whether the pair is absent from the neighbor list: a special pair whose special_bonds weights are both 0 (native's
+   * neighbor list drops it, so autobond never sees it). Undefined when no pair is dropped.
+   */
+  excluded?: (i: number, j: number) => boolean;
+  /** Colour (0..1 per channel) of atom i as the atom colour of the dump gives it. */
+  colorOf: (i: number) => Vec3;
+  /** Bond cutoff (distance units) and bond diameter (dump image autobond values). */
+  cutoff: number;
+  width: number;
+}
 
 /** An atom_style line particle for dump image's "line" keyword: centre, length, theta (LINE_BONUS) and colour (0..255). */
 export interface LineAtom { x: number; y: number; length: number; theta: number; color: Rgb255; opacity: number }

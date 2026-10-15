@@ -64,6 +64,8 @@ export interface ScaleLabelSpec {
   kind: 'scale';
   /** The dump image whose colour map is drawn. */
   dumpid: string;
+  /** Which colour map of the dump is drawn: the atom map or the bond map (map keyword). */
+  map: 'atom' | 'bond';
   text: string;
   pos: [LabelValue, LabelValue, LabelValue];
   /** Font size in pixels as the native renderer gets it (after the 2x rule). */
@@ -87,7 +89,7 @@ export interface LabelEnv {
   /** Replace $-references in label text, as Input::substitute does. */
   substitute(text: string): string;
   /** The colour map of a dump image as the previous output left it (ColorMap::info, value2color). */
-  colorScale?(dumpid: string): ColorMap;
+  colorScale?(dumpid: string, map: 'atom' | 'bond'): ColorMap;
 }
 
 const COLOR_NAMES: Record<string, Rgb> = {
@@ -224,7 +226,7 @@ export function parseLabelArgs(args: string[], readImage: (file: string) => Imag
       need(6, 'fix graphics/labels colorscale');
       const pos: [LabelValue, LabelValue, LabelValue] = [parseValue(args[i + 3]), parseValue(args[i + 4]), parseValue(args[i + 5])];
       const sc: ScaleLabelSpec = {
-        kind: 'scale', dumpid: args[i + 1], text: args[i + 2], pos,
+        kind: 'scale', dumpid: args[i + 1], text: args[i + 2], pos, map: 'atom',
         size: 48.0, scale: 0.5,
         fontcolor: [255, 255, 255], backcolor: [192, 192, 192], framecolor: [192, 192, 192],
         transcolor: [192, 192, 192], horizontal: true, length: 0, tics: 0,
@@ -254,8 +256,9 @@ export function parseLabelArgs(args: string[], readImage: (file: string) => Imag
           i += 2;
         } else if (k === 'map') {
           need(2, 'fix graphics/labels colorscale map');
-          // the grid and bond colour maps are not drawn by the browser engine (only the atom map of the dump image)
-          if (args[i + 1] !== 'atom') throw new Error(`fix graphics/labels colorscale map ${args[i + 1]} is not supported by the browser engine (only atom)`);
+          // the atom and bond colour maps are drawn; the grid map is not (the browser engine has no grid colouring)
+          if (args[i + 1] !== 'atom' && args[i + 1] !== 'bond') throw new Error(`fix graphics/labels colorscale map ${args[i + 1]} is not supported by the browser engine (only atom and bond)`);
+          sc.map = args[i + 1] === 'bond' ? 'bond' : 'atom';
           i += 2;
         } else if (k === 'fontcolor') {
           need(2, 'fix graphics/labels colorscale fontcolor');
@@ -360,7 +363,7 @@ export class FixGraphicsLabels {
         }
       }
       if (!env.colorScale) throw new Error(`fix graphics/labels colorscale ${s.dumpid}: no dump image colour map`);
-      const map: ColorScaleMap = env.colorScale(s.dumpid);
+      const map: ColorScaleMap = env.colorScale(s.dumpid, s.map);
       const text = s.text.includes('$') ? env.substitute(s.text) : s.text;
       this.font.selectFont(Math.trunc(size));
       const layout = createColorscale(this.font, text, s.horizontal, s.length, map, s.tics,
@@ -416,9 +419,9 @@ export class FixGraphicsLabelsFix extends Fix {
       variable: (name) => sys.equalVariable(name),
       // Input::substitute on the label text: $x, ${name} and $(formula), with the variables of the run now
       substitute: (t) => sys.substituteText(t),
-      colorScale: (dumpid) => {
-        const d = sys.dumps.find((x) => x.id === dumpid) as unknown as { colorScaleMap?: () => ColorMap | null } | undefined;
-        const map = d?.colorScaleMap?.() ?? null;
+      colorScale: (dumpid, which) => {
+        const d = sys.dumps.find((x) => x.id === dumpid) as unknown as { colorScaleMap?: (w: 'atom' | 'bond') => ColorMap | null } | undefined;
+        const map = d?.colorScaleMap?.(which) ?? null;
         if (!map) throw new StyleError(`Dump ID ${dumpid} for colorscale not found or not dump style image`);
         return map;
       },

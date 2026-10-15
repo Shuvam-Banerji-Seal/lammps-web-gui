@@ -15,7 +15,8 @@
 import type { PostProcessOptions, RasterFrame } from '../../engine/output/image_objects';
 import { postProcess } from './image_postprocess';
 import { drawCylinder, drawSphere } from './draw';
-import { drawAxes } from './axes';
+import { drawArrowObj, drawAxes } from './axes';
+import { drawAutoBonds } from './autobond';
 import { color2rgb, defaultTypeColor, element2color, element2diam } from './colors';
 import type { ImageSpecular } from '../../engine/output/image_objects';
 
@@ -221,10 +222,12 @@ export interface ImageShadingHook {
   drawSphere: typeof drawSphere;
   drawCylinder: typeof drawCylinder;
   drawAxes: typeof drawAxes;
+  drawArrow: typeof drawArrowObj;
+  drawAutoBonds: typeof drawAutoBonds;
   color2rgb: typeof color2rgb;
   defaultTypeColor: typeof defaultTypeColor;
   element2color: typeof element2color;
   element2diam: typeof element2diam;
 }
 
-export const imageShadingHook: ImageShadingHook = { shadeSurface, applySsao, postProcess, drawSphere, drawCylinder, drawAxes, color2rgb, defaultTypeColor, element2color, element2diam };
+export const imageShadingHook: ImageShadingHook = { shadeSurface, applySsao, postProcess, drawSphere, drawCylinder, drawAxes, drawArrow: drawArrowObj, drawAutoBonds, color2rgb, defaultTypeColor, element2color, element2diam };

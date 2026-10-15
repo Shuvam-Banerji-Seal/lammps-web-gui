@@ -1,13 +1,14 @@
 import type { System } from '../system';
 import type { SimState } from '../types';
 import { StyleError } from '../force/types';
-import { buildAtomMap, isEllipsoid, isLineAtom, isTriAtom, massOf, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { buildAtomMap, buildSpecial, isEllipsoid, isLineAtom, isTriAtom, massOf, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { termRows } from '../compute/local';
 import { SUPER_BLOCK } from '../superellipsoid';
 import { BODY_RECORD, bodyRecordOffset, parseBodyStyle, POLY_OFF } from '../bodies';
 import { encodePng } from './png';
 import { encodeJpeg } from './jpeg';
 import { ColorMap } from './image_colormap';
-import { arrowParts, type AtomObjectsHook, type BodyAtom, type EllipsoidAtom, type ImageObject, type ImageShading, type LineAtom, type ObjectStyle, type RasterFrame, type RegionConeSpec, type RegionHook, type Rgb255, type TriAtom, type Vec3 } from './image_objects';
+import { type AtomObjectsHook, type BodyAtom, type EllipsoidAtom, type ImageObject, type ImageShading, type LineAtom, type ObjectStyle, type RasterFrame, type RegionConeSpec, type RegionHook, type Rgb255, type TriAtom, type Vec3 } from './image_objects';
 import { gplHook } from '../gplHooks';
 import { BlockRegion, ConeRegion, EllipsoidRegion, PlaneRegion, PrismRegion, SphereRegion } from '../region';
 
@@ -198,7 +199,22 @@ export class ImageDump {
   private boxcolor: Col = boxcolorDefault();
   /** dump_modify color definitions (name -> RGB), local to this dump. */
   private userColors = new Map<string, Col>();
+  /**
+   * Colour names as native's Image::rgbcolors holds them: a name's entry is one array, the colours that use it point at
+   * it (color2rgb returns the stored double*), and dump_modify color redefines it in place (Image::addcolor), so every
+   * earlier use of the name, in acolor, bcolor, amap, bmap and the like, takes the new value. Measured with native
+   * LAMMPS: a name set to 0x0d0887, used by acolor, then redefined as 0.050 0.030 0.528, renders as the redefined colour.
+   */
   private bond: { color: string; width: string } | null;
+  /** dump image bond color = c_ID or c_ID[I]: the per-bond /local compute and its column (0 = its vector). */
+  private bondCompute: { id: string; column: number } | null = null;
+  /** dump_modify bmap: the colour map of the per-bond compute values (null = the dump_image.html default). */
+  private bmap: ColorMap | null = null;
+  private readonly defaultBondMap = ColorMap.default();
+  /** The bond colour map before the current frame (fix graphics/labels colorscale map bond reads it). */
+  private priorBondMap: ColorMap | null = null;
+  /** dump image autobond (cutoff, width): the bonds are found from the atom distances; the bond keyword replaces them. */
+  private autobond: { cutoff: number; width: number } | null = null;
   /** dump_modify amap (colour map of an atom colour value); null = the dump_image.html default. */
   private amap: ColorMap | null = null;
   private readonly defaultMap = ColorMap.default();
@@ -277,9 +293,26 @@ export class ImageDump {
    * Image::rgbcolors (engine-gpl/graphics/colors.ts, through the 'image' hook). Null for "none" and an unknown name.
    */
   private namedColor(w: string): Col | null {
-    const u = this.userColors.get(w);
-    if (u) return [u[0], u[1], u[2]];
-    return gplHook<ImageShading>('image').color2rgb(w);
+    const live = this.userColors.get(w);
+    if (live) return live;
+    const builtin = gplHook<ImageShading>('image').color2rgb(w);
+    if (!builtin) return null;
+    // the first use of a built-in name creates its entry, so a later dump_modify color redefines the same array
+    const ref: Col = [builtin[0], builtin[1], builtin[2]];
+    this.userColors.set(w, ref);
+    return ref;
+  }
+
+  /** Image::addcolor: sets the RGB values of a colour name in place (an existing entry keeps its identity). */
+  private setColor(name: string, c: readonly [number, number, number]): void {
+    const ref = this.userColors.get(name);
+    if (ref) {
+      ref[0] = c[0];
+      ref[1] = c[1];
+      ref[2] = c[2];
+    } else {
+      this.userColors.set(name, [c[0], c[1], c[2]]);
+    }
   }
 
   /** A colour name for the image keywords; null for "none" or an unknown name (the caller raises its error). */
@@ -348,10 +381,28 @@ export class ImageDump {
         case 'bond': {
           const color = a[k + 1], width = a[k + 2];
           if (!color || !width) throw new StyleError(`dump ${this.id}: dump image bond needs a color and a width`);
-          if (color !== 'atom' && color !== 'type' && color !== 'none') throw new StyleError(`dump ${this.id}: dump image bond color '${color}' is not supported (atom, type or none)`);
+          // dump_image.html: "color = atom or type or none or c_ID or c_ID[I]" (c_ID: per-bond vector of a local compute)
+          const ref = /^c_([^[\]]+)(?:\[(\d+)\])?$/.exec(color);
+          const computeRef = ref ? { id: ref[1], column: ref[2] === undefined ? 0 : Number(ref[2]) } : null;
+          if (computeRef && computeRef.column < 0) throw new StyleError(`dump ${this.id}: invalid dump image bond compute reference ${color}`);
+          if (!computeRef && color !== 'atom' && color !== 'type' && color !== 'none') throw new StyleError(`dump ${this.id}: dump image bond color '${color}' is not supported (atom, type, none or c_ID)`);
           if (width !== 'atom' && width !== 'type' && width !== 'none' && !Number.isFinite(Number(width))) throw new StyleError(`dump ${this.id}: dump image bond width '${width}' is not supported`);
           if (color === 'none' && width === 'none') this.bond = null;
-          else this.bond = { color, width };
+          else this.bond = { color: computeRef ? 'compute' : color, width };
+          this.bondCompute = computeRef;
+          this.autobond = null;
+          k += 3;
+          break;
+        }
+        case 'autobond': {
+          // dump_image.html: "autobond values = cutoff width = bond cutoff and width of bonds"; dump_image.cpp rejects a
+          // cutoff or width that is not positive ("Illegal dump image autobond cutoff value", "... diameter value")
+          if (k + 3 > a.length) throw new StyleError(`dump ${this.id}: dump image autobond needs a cutoff and a width`);
+          const cutoff = this.num(a[k + 1], 'autobond'), width = this.num(a[k + 2], 'autobond');
+          if (!(cutoff > 0)) throw new StyleError(`dump ${this.id}: illegal dump image autobond cutoff value ${cutoff}`);
+          if (!(width > 0)) throw new StyleError(`dump ${this.id}: illegal dump image autobond diameter value ${width}`);
+          this.autobond = { cutoff, width };
+          this.bond = null;
           k += 3;
           break;
         }
@@ -556,7 +607,7 @@ export class ImageDump {
           break;
         }
         // ellipsoid draws ellipsoids (and superellipsoids, atom_style ellipsoid superellipsoid): no renderer here
-        case 'autobond': case 'grid':
+        case 'grid':
         case 'subbox': case 'persp':
           throw new StyleError(`dump ${this.id}: dump image keyword '${key}' is not supported by the browser engine`);
         default:
@@ -649,9 +700,16 @@ export class ImageDump {
       case 'boxcolor': this.boxcolor = this.color(a[k + 1]); return 2;
       case 'color': {
         const name = a[k + 1];
+        // dump_modify.html: "color = 0xRRGGBB" is also accepted (dump_image.cpp: the regular expression ^0x[0-9a-fA-F]+$
+        // and the 8-bit channels divided by 255); a hex colour takes 3 words, a numeric one 5
+        if (/^0x[0-9a-fA-F]+$/.test(a[k + 2] ?? '')) {
+          const v = parseInt(a[k + 2], 16);
+          this.setColor(name, [((v & 0xff0000) >> 16) / 255, ((v & 0x00ff00) >> 8) / 255, (v & 0x0000ff) / 255]);
+          return 3;
+        }
         // dump_modify color: rgbcolors[name] = {r, g, b} with the values as given (image.cpp add_color), no rounding
         const c: Col = [this.num(a[k + 2], 'color'), this.num(a[k + 3], 'color'), this.num(a[k + 4], 'color')];
-        this.userColors.set(name, c);
+        this.setColor(name, c);
         return 5;
       }
       case 'amap': {
@@ -684,6 +742,12 @@ export class ImageDump {
         if (!f) throw new StyleError(`dump ${this.id}: fix ID ${a[k + 1] ?? ''} is not included in dump ${this.id}`);
         f.opacity = v;
         return 3;
+      }
+      case 'bmap': {
+        // dump_modify bmap: "identical to amap args" (dump_image.html)
+        const { map, used } = ColorMap.parse(a.slice(k + 1), (c) => this.namedColor(c));
+        this.bmap = map;
+        return used + 1;
       }
       case 'gmap': case 'bitrate': case 'framerate': case 'region': case 'thresh':
         throw new StyleError(`dump ${this.id}: dump_modify keyword '${key}' is not supported for dump image by the browser engine`);
@@ -867,6 +931,7 @@ export class ImageDump {
       surface: this.ssao ? new Float64Array(2 * w * h) : undefined,
       dist: new Float64Array(w * h).fill(-1),
       spec: this.specularSet ? { hardness: this.specularHardness, intensity: this.specularNone ? 0 : this.shiny } : undefined,
+      fsaa: this.fsaa,
     };
     const ctx: DrawCtx = { rgb, depth, project, scale, frame, shading: gplHook<ImageShading>('image') };
 
@@ -879,6 +944,7 @@ export class ImageDump {
 
     if (this.boxOn) this.drawBox(s, ctx, this.boxDiam);
     if (this.bond) this.drawBonds(s, ctx, diamVals);
+    if (this.autobond) this.drawAutoBonds(s, ctx, this.autobond);
 
     if (this.atomOn) {
       for (let i = 0; i < s.n; i++) {
@@ -1252,11 +1318,10 @@ export class ImageDump {
     } else if (o.kind === 'cone') {
       this.drawCone(rgb, depth, project, o.p1, o.p2, o.d1 + flag2, o.d2 + flag2, scale, base);
     } else {
+      // dump_image.cpp (the ARROW branch of create_image, b332f28): ImageObjects::ArrowObj(ratio).draw with the object's
+      // length + flag1 and diameter + flag2; the template is drawn by the GPL graphics module (axes.ts drawArrowObj)
       const d = o.diameter + flag2;
-      if (!(d > 0)) return;
-      const parts = arrowParts({ center: o.center, dir: o.dir, length: o.length + flag1, diameter: d, ratio: o.ratio });
-      this.drawStroke(rgb, depth, project(parts.shaft.p1), project(parts.shaft.p2), base, Math.max(1, d * scale));
-      this.drawCone(rgb, depth, project, parts.head.p1, parts.head.p2, parts.head.d1, parts.head.d2, scale, base);
+      c.shading.drawArrow(c.frame, [base[0] / 255, base[1] / 255, base[2] / 255], o.center, o.length + flag1, o.dir, d, 1, o.ratio);
     }
   }
 
@@ -1407,6 +1472,37 @@ export class ImageDump {
     for (const [a, c] of edges) ctx.shading.drawCylinder(ctx.frame, corners[a], corners[c], this.boxcolor, diameter, 3, 1);
   }
 
+  /**
+   * The per-bond values of a bond colour compute (dump_image.cpp, the LOCALVALUE checks of init and create_image at
+   * b332f28): the compute's local rows are the bonds of its group in native order (termRows), keyed by the bond's index.
+   * The colour map of the values is set from their range when it is dynamic (native map_minmax over all rows).
+   */
+  private bondValues(bc: { id: string; column: number }): { values: Map<number, number>; lo: number; hi: number } {
+    const comp = this.sys.compute(bc.id);
+    if (!comp.localFlag) throw new StyleError(`dump ${this.id}: dump image bond compute ${bc.id} does not compute local info`);
+    if (bc.column === 0 && comp.sizeLocalCols !== 0) throw new StyleError(`dump ${this.id}: dump image bond compute ${bc.id} does not compute a local vector`);
+    if (bc.column > 0 && comp.sizeLocalCols === 0) throw new StyleError(`dump ${this.id}: dump image bond compute ${bc.id} does not compute a local array`);
+    if (bc.column > comp.sizeLocalCols) throw new StyleError(`dump ${this.id}: dump image bond compute ${bc.id} local array has no column ${bc.column}`);
+    const ncol = Math.max(1, comp.sizeLocalCols);
+    const col = Math.max(0, bc.column - 1);
+    const data = comp.localValues();
+    const rows = termRows(this.sys, 'bond', comp.groupBit);
+    const values = new Map<number, number>();
+    let lo = Infinity, hi = -Infinity;
+    rows.forEach(({ k }, r) => {
+      const v = data[r * ncol + col];
+      values.set(k, v);
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    });
+    return { values, lo, hi };
+  }
+
+  /** The bond colour map as fix graphics/labels colorscale map bond sees it: the previous output's (ColorMap::info). */
+  bondColorScaleMap(): ColorMap {
+    return this.priorBondMap ?? (this.bmap ?? this.defaultBondMap).snapshot();
+  }
+
   private drawBonds(s: SimState, ctx: DrawCtx, diamVals: Float64Array | null): void {
     const bonds = s.topo.bonds;
     if (!bonds || bonds.n === 0) return;
@@ -1420,6 +1516,16 @@ export class ImageDump {
     const colorVals = this.attr.color !== 'type' && this.attr.color !== 'element' ? this.attributeValues(this.attr.color, s) : null;
     const cmap = this.atomColorMap(colorVals, s);
     const hook = gplHook<ImageShading>('image');
+    // bonds coloured by a compute: the map of the values (dynamic range from all rows) gives each bond's colour
+    let bvals: Map<number, number> | null = null;
+    let bmapOf: ColorMap | null = null;
+    if (this.bondCompute) {
+      const bv = this.bondValues(this.bondCompute);
+      bvals = bv.values;
+      this.priorBondMap = (this.bmap ?? this.defaultBondMap).snapshot();
+      bmapOf = this.bmap ?? this.defaultBondMap;
+      bmapOf.bounds(bv.lo, bv.hi);
+    }
     for (let bi = 0; bi < bonds.n; bi++) {
       const i1 = map[bonds.atoms[2 * bi]], i2 = map[bonds.atoms[2 * bi + 1]];
       if (i1 < 0 || i2 < 0) continue;
@@ -1430,7 +1536,14 @@ export class ImageDump {
       else if (bond.width === 'type') width = this.bdiamByType.get(bonds.type[bi]) ?? 0.5;
       else width = Number(bond.width);
       if (!(width > 0)) continue;
-      const col: Col = bond.color === 'type' ? (this.bcolorByType.get(bonds.type[bi]) ?? hook.defaultTypeColor(bonds.type[bi])) : this.atomColor(s, i1, colorVals, cmap);
+      let col: Col;
+      if (bond.color === 'compute') {
+        const v = bvals!.get(bi);
+        if (v === undefined) throw new StyleError(`dump ${this.id}: dump image bond compute ${this.bondCompute!.id} produced fewer values than rendered bonds; its group must select the same bonds as the dump`);
+        col = bmapOf!.color(v);
+      } else {
+        col = bond.color === 'type' ? (this.bcolorByType.get(bonds.type[bi]) ?? hook.defaultTypeColor(bonds.type[bi])) : this.atomColor(s, i1, colorVals, cmap);
+      }
       const x1: Vec3 = [s.x[3 * i1], s.x[3 * i1 + 1], s.x[3 * i1 + 2]];
       const x2: Vec3 = [s.x[3 * i2], s.x[3 * i2 + 1], s.x[3 * i2 + 2]];
       // dump_image.cpp (DumpImage::create_image, bond loop at b332f28): "draw cylinder in 2 pieces if bcolor = ATOM
@@ -1451,6 +1564,49 @@ export class ImageDump {
       ctx.shading.drawCylinder(ctx.frame, x1, mid1, col, width, 3, 1);
       ctx.shading.drawCylinder(ctx.frame, mid2, x2, col2, width, 3, 1);
     }
+  }
+
+  /**
+   * dump image autobond (dump_image.cpp, the AUTO branch of create_image): the pair search and the two-halves drawing are
+   * the GPL autobond loop (engine-gpl/graphics/autobond.ts); the core gives it the atoms, their colours and the rules.
+   */
+  private drawAutoBonds(s: SimState, ctx: DrawCtx, ab: { cutoff: number; width: number }): void {
+    // the same atrans rule as the bond keyword: the halves of a bond would need the atoms' transparency
+    for (const v of this.aopacityByType.values()) {
+      if (v < 1) throw new StyleError(`dump ${this.id}: dump image bonds with dump_modify atrans below 1 are not supported by the browser engine`);
+    }
+    const group = this.sys.groupBit(this.group);
+    const colorVals = this.attr.color !== 'type' && this.attr.color !== 'element' ? this.attributeValues(this.attr.color, s) : null;
+    const cmap = this.atomColorMap(colorVals, s);
+    // Domain::minimum_image; the hydrogen rule (both masses below 3) applies to units metal and real only
+    const g = this.sys.geom;
+    const hydrogenRule = s.units.style === 'metal' || s.units.style === 'real';
+    // native's search runs over the neighbor list, which drops the special pairs whose lj and coul weights are both 0
+    // (neighbor.ts encode; keepExcluded when a kspace or coul/long style needs them). The special lists are the ones
+    // the force field builds from the bonds.
+    const ff = this.sys.ff;
+    const sp = s.topo.bonds.n > 0 ? buildSpecial(s, { angle: ff.special.angle, dihedral: ff.special.dihedral }) : null;
+    const keepExcluded = !!ff.kspace || !!ff.pair?.coulLong || !!ff.pair?.keepExcluded;
+    const ljw = [1, ...ff.special.lj], clw = [1, ...ff.special.coul];
+    const excluded = sp && !keepExcluded ? (i: number, j: number): boolean => {
+      for (let k = sp.offset[i]; k < sp.offset[i + 1]; k++) {
+        if (sp.partner[k] !== s.id[j]) continue;
+        const o = sp.order[k];
+        return ljw[o] === 0 && clw[o] === 0;
+      }
+      return false;
+    } : undefined;
+    ctx.shading.drawAutoBonds(ctx.frame, {
+      n: s.n,
+      x: s.x,
+      selected: (i) => (s.mask[i] & group) !== 0,
+      mass: hydrogenRule ? (i) => massOf(s, i) : null,
+      minimumImage: (d) => g.minimumImage(d),
+      excluded,
+      colorOf: (i) => this.atomColor(s, i, colorVals, cmap),
+      cutoff: ab.cutoff,
+      width: ab.width,
+    });
   }
 
   private drawLine(rgb: Uint8Array, depth: Float64Array, p1: [number, number, number], p2: [number, number, number], color: RGB, width: number): void {

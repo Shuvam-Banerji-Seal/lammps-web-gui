@@ -78,8 +78,16 @@ const buildTemplate = (tiplength: number, tipwidth: number, radius: number, res:
   return { triangles, normals, diameter: 2.0 * radius, resolution: res };
 };
 
-let template: ArrowTemplate | null = null;
-const arrowTemplate = (): ArrowTemplate => (template ??= buildTemplate(TIPL, TIPW, RADIUS, RESOLUTION));
+/** The templates by tip length (ArrowObj's tiplength; the axes use TIPL, the graphics objects their ratio). */
+const templates = new Map<number, ArrowTemplate>();
+const arrowTemplate = (tiplength: number = TIPL): ArrowTemplate => {
+  let t = templates.get(tiplength);
+  if (!t) {
+    t = buildTemplate(tiplength, TIPW, RADIUS, RESOLUTION);
+    templates.set(tiplength, t);
+  }
+  return t;
+};
 
 /** The orthonormal basis around the unit direction u (ArrowObj transform): v and w. */
 const basisOf = (u: V): { v: V; w: V } => {
@@ -89,7 +97,7 @@ const basisOf = (u: V): { v: V; w: V } => {
 };
 
 /** ArrowObj's transform: the template re-oriented along dir, scaled by len (along dir) and width, moved to offs. */
-const transform = (dir: V, offs: V, len: number, width: number): Tri[] => {
+const transform = (tpl: ArrowTemplate, dir: V, offs: V, len: number, width: number): Tri[] => {
   const u = norm3(dir);
   if (len3(u) < SMALL) return [];
   const { v, w } = basisOf(u);
@@ -98,17 +106,17 @@ const transform = (dir: V, offs: V, len: number, width: number): Tri[] => {
     const a = (len * t[0]), b = (width * t[1]), c = (width * t[2]);
     return [(a * u[0] + b * v[0] + c * w[0]) + offs[0], (a * u[1] + b * v[1] + c * w[1]) + offs[1], (a * u[2] + b * v[2] + c * w[2]) + offs[2]];
   };
-  for (const tri of arrowTemplate().triangles) out.push([pt(tri[0]), pt(tri[1]), pt(tri[2])]);
+  for (const tri of tpl.triangles) out.push([pt(tri[0]), pt(tri[1]), pt(tri[2])]);
   return out;
 };
 
 /** ArrowObj's transform_normals: the template normals rotated along dir (no scaling). */
-const transformNormals = (dir: V): Tri[] => {
+const transformNormals = (tpl: ArrowTemplate, dir: V): Tri[] => {
   const u = norm3(dir);
   if (len3(u) < SMALL) return [];
   const { v, w } = basisOf(u);
   const rot = (n: V): V => norm3([n[0] * u[0] + n[1] * v[0] + n[2] * w[0], n[0] * u[1] + n[1] * v[1] + n[2] * w[1], n[0] * u[2] + n[1] * v[2] + n[2] * w[2]]);
-  return arrowTemplate().normals.map((n): Tri => [rot(n[0]), rot(n[1]), rot(n[2])]);
+  return tpl.normals.map((n): Tri => [rot(n[0]), rot(n[1]), rot(n[2])]);
 };
 
 /**
@@ -123,8 +131,30 @@ export function drawArrow(f: RasterFrame, col: V, bottom: Vec3, tip: Vec3, scale
   const center: V = [0.5 * dir[0] + bottom[0], 0.5 * dir[1] + bottom[1], 0.5 * dir[2] + bottom[2]];
   const lscale = len3(dir);
   const wscale = scale / tpl.diameter;
-  const arrow = transform(dir, center, lscale, wscale);
-  const norms = transformNormals(dir);
+  const arrow = transform(tpl, dir, center, lscale, wscale);
+  const norms = transformNormals(tpl, dir);
+  if (arrow.length === 0) return;
+  for (let i = 0; i < arrow.length; i++) {
+    drawTrinorm(f, arrow[i][0], arrow[i][1], arrow[i][2], norms[i][0], norms[i][1], norms[i][2], col, col, col, opacity);
+  }
+  if (arrow.length > tpl.resolution + 2) {
+    drawCylinder(f, arrow[1][1], arrow[arrow.length - 1][1], col, scale, 0, opacity);
+  }
+}
+
+/**
+ * ImageObjects::ArrowObj::draw (centre, length and direction overload, image_objects.cpp at b332f28, the call of
+ * dump image's ARROW objects): the template of tip length `tiplength` is oriented along dir, scaled by |dir| * length
+ * and by scale / 0.2 across, centred on centre; the same triangles and shaft cylinder as drawArrow.
+ */
+export function drawArrowObj(f: RasterFrame, col: V, center: Vec3, length: number, dir: Vec3, scale: number, opacity: number, tiplength: number): void {
+  const tpl = arrowTemplate(tiplength);
+  if (tpl.triangles.length === 0) return;
+  const dirv: V = [dir[0], dir[1], dir[2]];
+  const lscale = len3(dirv) * length;
+  const wscale = scale / tpl.diameter;
+  const arrow = transform(tpl, dirv, [center[0], center[1], center[2]], lscale, wscale);
+  const norms = transformNormals(tpl, dirv);
   if (arrow.length === 0) return;
   for (let i = 0; i < arrow.length; i++) {
     drawTrinorm(f, arrow[i][0], arrow[i][1], arrow[i][2], norms[i][0], norms[i][1], norms[i][2], col, col, col, opacity);

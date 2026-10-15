@@ -2,17 +2,18 @@
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28): src/GRAPHICS/fix_graphics_labels.cpp
  * (FixGraphicsLabels: keywords image, text, colorscale; the colour names and r/g/b parsing of get_color(); the
  * size rule of text labels (2x rendering for anti-aliasing, scale 0.5, sizes above 128 rendered at 128 and scaled);
- * end_of_step() builds one PIXMAP per image or text label, in the order image, text). LAMMPS is Copyright (2003)
- * Sandia Corporation and distributed under the GNU General Public License, version 2 (GPL-2.0); this file is GPL-2.0
- * too (src/engine-gpl/LICENSE).
+ * end_of_step() builds one PIXMAP per image, text or colorscale object, in the order image, text, colorscale). LAMMPS is
+ * Copyright (2003) Sandia Corporation and distributed under the GNU General Public License, version 2 (GPL-2.0); this
+ * file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
- * Text labels are vector strokes (see scalable_font.ts) instead of the bitmap of the native renderer. Image labels
- * take their RGB rows from the caller (readImage: PNG files through engine/output/png_decode.ts). The colorscale
- * keyword needs the colour map of a dump image, which this engine does not have yet, so it is refused by name.
- * Variables (v_name) and $-substitution are supplied by the caller through LabelEnv.
+ * Text labels and colour scales are the create_label() and create_colorscale() pixmaps of the native renderer
+ * (scalable_font.ts). Image labels take their RGB rows from the caller (readImage: PNG files through
+ * engine/output/png_decode.ts). The colorscale keyword reads the atom colour map of its dump image as the previous
+ * output left it (Dump.colorScaleMap); the grid and bond maps are refused by name. Variables (v_name) and
+ * $-substitution are supplied by the caller through LabelEnv.
  */
-import { ScalableFont, createLabel, type TextLayout } from './scalable_font';
-import type { GraphicsObject, LabelObject, PixmapObject, Rgb, Vec3 } from './objects';
+import { ScalableFont, createLabel, createColorscale, type ColorScaleMap } from './scalable_font';
+import type { GraphicsObject, PixmapObject, Rgb, Vec3 } from './objects';
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import type { FixFactory } from '../../engine/styles';
@@ -21,6 +22,7 @@ import type { ImageObject } from '../../engine/output/image_objects';
 import { parseInteger } from './common';
 import { drawGraphicsObject } from './draw';
 import { decodePng } from '../../engine/output/png_decode';
+import type { ColorMap } from '../../engine/output/image_colormap';
 
 /** A number given directly or a reference to an equal-style variable. */
 export type LabelValue = number | { variable: string };
@@ -57,13 +59,35 @@ export interface TextLabelSpec {
   horizontal: boolean;
 }
 
-export type LabelSpec = ImageLabelSpec | TextLabelSpec;
+/** A colour scale of a dump image's atom colour map (fix graphics/labels colorscale). */
+export interface ScaleLabelSpec {
+  kind: 'scale';
+  /** The dump image whose colour map is drawn. */
+  dumpid: string;
+  text: string;
+  pos: [LabelValue, LabelValue, LabelValue];
+  /** Font size in pixels as the native renderer gets it (after the 2x rule). */
+  size: LabelValue;
+  scale: number;
+  fontcolor: Rgb;
+  backcolor: Rgb;
+  framecolor: Rgb;
+  transcolor: Rgb | null;
+  horizontal: boolean;
+  /** Bar length in pixels (2 * the length keyword, as the native code stores it); 0 for the text width. */
+  length: number;
+  tics: number;
+}
+
+export type LabelSpec = ImageLabelSpec | TextLabelSpec | ScaleLabelSpec;
 
 /** What the labels need from the engine at each snapshot. */
 export interface LabelEnv {
   variable(name: string): number;
   /** Replace $-references in label text, as Input::substitute does. */
   substitute(text: string): string;
+  /** The colour map of a dump image as the previous output left it (ColorMap::info, value2color). */
+  colorScale?(dumpid: string): ColorMap;
 }
 
 const COLOR_NAMES: Record<string, Rgb> = {
@@ -85,6 +109,12 @@ export function parseColor(text: string): Rgb {
     return v;
   });
   return [rgb[0], rgb[1], rgb[2]];
+}
+
+/** An integer keyword value (utils::inumeric). */
+function parseIntegerValue(text: string, what: string): number {
+  if (!/^[+-]?\d+$/.test(text)) throw new Error(`Expected integer parameter instead of '${text}' in ${what}`);
+  return Number(text);
 }
 
 /** A value is "v_name" for a variable, otherwise a number. */
@@ -191,9 +221,66 @@ export function parseLabelArgs(args: string[], readImage: (file: string) => Imag
       }
       specs.push(txt);
     } else if (key === 'colorscale') {
-      // refused by name: the bar's tick labels are the create_label() bitmaps of the native scalable font, and this engine
-      // draws the glyphs from their strokes (scalable_font.ts), so the bar is not pixel-identical and is not drawn
-      throw new Error('fix graphics/labels colorscale is not supported by the browser engine: its tick labels use the native font bitmaps, which the engine does not reproduce pixel for pixel');
+      need(6, 'fix graphics/labels colorscale');
+      const pos: [LabelValue, LabelValue, LabelValue] = [parseValue(args[i + 3]), parseValue(args[i + 4]), parseValue(args[i + 5])];
+      const sc: ScaleLabelSpec = {
+        kind: 'scale', dumpid: args[i + 1], text: args[i + 2], pos,
+        size: 48.0, scale: 0.5,
+        fontcolor: [255, 255, 255], backcolor: [192, 192, 192], framecolor: [192, 192, 192],
+        transcolor: [192, 192, 192], horizontal: true, length: 0, tics: 0,
+      };
+      i += 6;
+      while (i < args.length && !['image', 'text', 'colorscale'].includes(args[i])) {
+        const k = args[i];
+        if (k === 'size') {
+          need(2, 'fix graphics/labels colorscale size');
+          const v = parseValue(args[i + 1]);
+          if (typeof v === 'number') {
+            const c = constantTextSize(v);
+            sc.size = c.size;
+            sc.scale = c.scale;
+          } else {
+            sc.size = v;
+          }
+          i += 2;
+        } else if (k === 'length') {
+          need(2, 'fix graphics/labels colorscale length');
+          sc.length = 2 * parseIntegerValue(args[i + 1], 'fix graphics/labels colorscale length');
+          i += 2;
+        } else if (k === 'tics') {
+          need(2, 'fix graphics/labels colorscale tics');
+          sc.tics = parseIntegerValue(args[i + 1], 'fix graphics/labels colorscale tics');
+          if (sc.tics < 0) throw new Error('Invalid tics value');
+          i += 2;
+        } else if (k === 'map') {
+          need(2, 'fix graphics/labels colorscale map');
+          // the grid and bond colour maps are not drawn by the browser engine (only the atom map of the dump image)
+          if (args[i + 1] !== 'atom') throw new Error(`fix graphics/labels colorscale map ${args[i + 1]} is not supported by the browser engine (only atom)`);
+          i += 2;
+        } else if (k === 'fontcolor') {
+          need(2, 'fix graphics/labels colorscale fontcolor');
+          sc.fontcolor = parseColor(args[i + 1]);
+          i += 2;
+        } else if (k === 'backcolor') {
+          need(2, 'fix graphics/labels colorscale backcolor');
+          sc.backcolor = parseColor(args[i + 1]);
+          i += 2;
+        } else if (k === 'framecolor') {
+          need(2, 'fix graphics/labels colorscale framecolor');
+          sc.framecolor = parseColor(args[i + 1]);
+          i += 2;
+        } else if (k === 'transcolor') {
+          need(2, 'fix graphics/labels colorscale transcolor');
+          sc.transcolor = args[i + 1] === 'none' ? null : parseColor(args[i + 1]);
+          i += 2;
+        } else if (k === 'horizontal' || k === 'vertical') {
+          sc.horizontal = k === 'horizontal';
+          i += 1;
+        } else {
+          throw new Error(`Unknown fix graphics/labels colorscale keyword: ${k}`);
+        }
+      }
+      specs.push(sc);
     } else {
       throw new Error(`Unknown fix graphics/labels keyword: ${key}`);
     }
@@ -243,21 +330,43 @@ export class FixGraphicsLabels {
       }
       const text = s.text.includes('$') ? env.substitute(s.text) : s.text;
       this.font.selectFont(Math.trunc(size));
-      const layout: TextLayout = createLabel(this.font, text, s.horizontal);
-      const lab: LabelObject = {
-        kind: 'label',
+      const layout = createLabel(this.font, text, s.horizontal, { font: s.fontcolor, frame: s.framecolor, back: s.backcolor });
+      const lab: PixmapObject = {
+        kind: 'pixmap',
         pos,
         width: layout.width,
         height: layout.height,
         scale,
         transcolor: s.transcolor,
-        fontcolor: s.fontcolor,
-        backcolor: s.backcolor,
-        framecolor: s.framecolor,
-        frame: layout.frame,
-        strokes: layout.strokes,
+        rgb: layout.rgb,
       };
       out.push(lab);
+    }
+    for (const s of this.specs) {
+      if (s.kind !== 'scale') continue;
+      const pos: Vec3 = [valueOf(s.pos[0], env), valueOf(s.pos[1], env), valueOf(s.pos[2], env)];
+      let size = 0;
+      let scale = s.scale;
+      if (typeof s.size === 'number') {
+        size = s.size;
+      } else {
+        const v = 2.0 * env.variable(s.size.variable);
+        if (v > 128.0) {
+          scale = v / 256.0;
+          size = 128.0;
+        } else {
+          size = Math.max(v, 8.0);
+          scale = 0.5;
+        }
+      }
+      if (!env.colorScale) throw new Error(`fix graphics/labels colorscale ${s.dumpid}: no dump image colour map`);
+      const map: ColorScaleMap = env.colorScale(s.dumpid);
+      const text = s.text.includes('$') ? env.substitute(s.text) : s.text;
+      this.font.selectFont(Math.trunc(size));
+      const layout = createColorscale(this.font, text, s.horizontal, s.length, map, s.tics,
+        { font: s.fontcolor, frame: s.framecolor, back: s.backcolor });
+      const bar: PixmapObject = { kind: 'pixmap', pos, width: layout.width, height: layout.height, scale, transcolor: s.transcolor, rgb: layout.rgb };
+      out.push(bar);
     }
     return out;
   }
@@ -303,7 +412,17 @@ export class FixGraphicsLabelsFix extends Fix {
   /** The label pixmaps of the snapshot (end_of_step: images first, then texts). */
   imageObjects(): ImageObject[] {
     const sys = this.sys;
-    const env: LabelEnv = { variable: (name) => sys.equalVariable(name), substitute: (t) => t };
+    const env: LabelEnv = {
+      variable: (name) => sys.equalVariable(name),
+      // Input::substitute on the label text: $x, ${name} and $(formula), with the variables of the run now
+      substitute: (t) => sys.substituteText(t),
+      colorScale: (dumpid) => {
+        const d = sys.dumps.find((x) => x.id === dumpid) as unknown as { colorScaleMap?: () => ColorMap | null } | undefined;
+        const map = d?.colorScaleMap?.() ?? null;
+        if (!map) throw new StyleError(`Dump ID ${dumpid} for colorscale not found or not dump style image`);
+        return map;
+      },
+    };
     return this.labels.objects(env).map((o): ImageObject => ({ kind: 'draw', draw: (f, st) => drawGraphicsObject(f, st, o) }));
   }
 }

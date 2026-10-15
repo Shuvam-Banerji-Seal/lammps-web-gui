@@ -53,8 +53,13 @@ export class ColorMap {
   /** Entry positions/bins as numbers in the value space of the current range (set by bounds()). */
   private pos: number[] = [];
   private bins: [number, number][] = [];
-  private locurrent = 0;
-  private hicurrent = 1;
+  /**
+   * As native LAMMPS does before the first minmax (src/GRAPHICS/image.cpp at b332f28, ColorMap constructor:
+   * "locurrent = mlo = MINVALUE" with the enum value 1, and "hicurrent = mhi = MAXVALUE" with 2): the range of a
+   * dynamic map that no frame has bounded yet, which is what a colour scale of the first output reads.
+   */
+  private locurrent = 1;
+  private hicurrent = 2;
   private roundDown = false;
 
   /** The dump_image.html default: amap = min max cf 0.0 2 min blue max red. */
@@ -124,7 +129,21 @@ export class ColorMap {
     } else if (m.style === 'd') {
       if (m.entries[n - 1].hi.kind !== 'max') throw new StyleError(`${id}: the last discrete entry must end at max`);
     }
+    // a static range is fixed when the map is set (ColorMap::reset calls minmax for a map that is not dynamic)
+    if (m.lo.kind === 'num' && m.hi.kind === 'num') m.bounds(0, 0);
     return { map: m, used: k };
+  }
+
+  /** The map as it stands now, detached from later bounds() calls (see ImageDump.colorScaleMap). */
+  snapshot(): ColorMap {
+    const m = new ColorMap();
+    Object.assign(m, this);
+    return m;
+  }
+
+  /** ColorMap::info: the current range and whether the map is sequential (which adds one to the top of the scale). */
+  info(): { lo: number; hi: number; sequential: boolean } {
+    return { lo: this.locurrent, hi: this.hicurrent, sequential: this.style === 's' };
   }
 
   /**

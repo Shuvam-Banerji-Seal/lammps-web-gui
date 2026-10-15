@@ -1,0 +1,14 @@
+# image_labels fixture: native b332f28 (/home/roy/.local/bin/lmp), dump image PPM, run 0.
+units lj
+atom_style atomic
+lattice sc 0.6
+region box block 0 3 0 3 0 3
+create_box 2 box
+create_atoms 1 box
+mass * 1.0
+pair_style lj/cut 2.5
+pair_coeff * * 1.0 1.0
+fix lab all graphics/labels 1 text Trans 1 1 1 size 12 backcolor black framecolor 0/102/0 transcolor none
+dump d all image 1 lab_trans.*.ppm type type fix lab const 0 0 size 140 100 view 60 30 zoom 1.2 box no 0.02 axes no 0.02 0.1
+dump_modify d pad 0
+run 0

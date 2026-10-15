@@ -3,8 +3,8 @@
  * Source: src/GRAPHICS/image.cpp (Image::draw_sphere, draw_cylinder, draw_trinorm, draw_pixmap (both overloads),
  * draw_pixel, scale_pixmap, view_params and the light defaults of the Image constructor) and the object dispatch of
  * src/GRAPHICS/dump_image.cpp (the SPHERE, TRINORM, CYLINDER, PIXMAP and BOND branches of DumpImage::create_image).
- * The label bitmap is the create_label() pixmap of src/GRAPHICS/scalable_font.cpp, here rasterised from the strokes
- * of scalable_font.ts. LAMMPS is Copyright (2003) Sandia Corporation and distributed under the GNU General Public
+ * The label bitmaps are the create_label() pixmaps of src/GRAPHICS/scalable_font.cpp (scalable_font.ts), drawn as PIXMAP
+ * objects. LAMMPS is Copyright (2003) Sandia Corporation and distributed under the GNU General Public
  * License, version 2 (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
  * Conventions. The functions work in the native image coordinates: ix is the column, iy the row counted from the
@@ -20,7 +20,7 @@
  * 1 and ssao is off (the ambient colour is 0), so draw_pixel reduces to the diffuse key, fill and back lights plus
  * the key specular highlight.
  */
-import type { LabelObject, GraphicsObject, PixmapObject, Rgb, CylinderObject, SphereObject, BondObject, TriNormObject } from './objects';
+import type { GraphicsObject, PixmapObject, Rgb, CylinderObject, SphereObject, BondObject, TriNormObject } from './objects';
 import type { ObjectStyle, RasterFrame, Rgb255 } from '../../engine/output/image_objects';
 import { shadeSurface, DEFAULT_LIGHTS, type LightColors } from './image_shading';
 import { TRANK, TRANSTHRESH } from './transthresh';
@@ -422,42 +422,6 @@ export function drawPixmapImage(f: RasterFrame, xc: number, yc: number, pwidth: 
   drawPixmapAt(f, trunc(xc), trunc(yc), pwidth, pheight, pixmap, transOf(trans), sc, 0);
 }
 
-/**
- * The label bitmap of fix graphics/labels: the background and a frame of `frame` pixels, and the glyph strokes in the
- * font colour (create_label() of scalable_font.cpp fills the pixmap the same way; the strokes replace its bitmap).
- * Rows are counted from the bottom, as the native pixmap is.
- */
-export function rasterLabel(l: LabelObject): PixmapObject {
-  const W = l.width, H = l.height;
-  const rgb = new Uint8Array(W * H * 3);
-  const xh = l.frame;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const c = y < xh || y >= H - xh || x < xh || x >= W - xh ? l.framecolor : l.backcolor;
-      const o = 3 * (y * W + x);
-      rgb[o] = c[0];
-      rgb[o + 1] = c[1];
-      rgb[o + 2] = c[2];
-    }
-  }
-  const put = (x: number, y: number) => {
-    if (x < 0 || y < 0 || x >= W || y >= H) return;
-    const o = 3 * (y * W + x);
-    rgb[o] = l.fontcolor[0];
-    rgb[o + 1] = l.fontcolor[1];
-    rgb[o + 2] = l.fontcolor[2];
-  };
-  for (let k = 0; k + 3 < l.strokes.length; k += 4) {
-    const x0 = l.strokes[k], y0 = l.strokes[k + 1], x1 = l.strokes[k + 2], y1 = l.strokes[k + 3];
-    const n = Math.max(1, Math.ceil(2 * Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0))));
-    for (let s = 0; s <= n; s++) {
-      const t = s / n;
-      put(Math.floor(x0 + (x1 - x0) * t), Math.floor(y0 + (y1 - y0) * t));
-    }
-  }
-  return { kind: 'pixmap', pos: l.pos, width: W, height: H, scale: l.scale, transcolor: l.transcolor, rgb };
-}
-
 /** Colour of an object's atom type, 0..1 per channel (the colour tables are 0..255). */
 const unit = (c: Rgb255): V => [c[0] / 255, c[1] / 255, c[2] / 255];
 
@@ -510,10 +474,6 @@ export function drawGraphicsObject(f: RasterFrame, st: ObjectStyle, o: GraphicsO
     }
     case 'pixmap': {
       drawPixmapObject(f, o, flag1);
-      return;
-    }
-    case 'label': {
-      drawPixmapObject(f, rasterLabel(o), flag1);
       return;
     }
   }

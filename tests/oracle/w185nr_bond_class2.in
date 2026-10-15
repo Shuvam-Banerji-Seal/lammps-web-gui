@@ -1,0 +1,12 @@
+# oracle: native binary restart of bond class2 (CLASS2/bond_class2.cpp write_restart: r0, k2, k3, k4 per type); 48 chains of 5 atoms (atom_style full, 2 bond and 2 angle types, bonded.data), 50 steps written natively, then read and continued for 100 steps
+# oracle-inputs: w185nr_bond_class2.restart
+# native: b332f28 built as the parity binary wrote w185nr_bond_class2.restart (lj/cut pair with epsilon 0 written with it)
+read_restart    w185nr_bond_class2.restart
+neighbor        0.3 bin
+thermo_style    custom step temp epair ebond eangle etotal press
+thermo_modify   format float %.15g
+thermo          50
+fix             1 all nve
+run             100
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+# measured: max relative error 9.0e-15 (native restart continuation, engine vs native thermo and per-atom), so the tolerance is 1e-9

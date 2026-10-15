@@ -94,9 +94,9 @@ describe('read_restart of a native binary restart file', () => {
 });
 
 describe('read_restart of a native binary restart file: refusals', () => {
-  it('names a pair style whose coefficient block is not read', async () => {
-    const { session } = withFiles(['w184nr_morse.restart']);
-    await expect(session.execute('read_restart w184nr_morse.restart\n')).rejects.toThrow(/native restart w184nr_morse\.restart: pair style morse is not readable by the browser engine yet/);
+  it('names a pair style that is not read (angle cosine/periodic is an unreadable angle style)', async () => {
+    const { session } = withFiles(['w185nr_refuse_angle.restart']);
+    await expect(session.execute('read_restart w185nr_refuse_angle.restart\n')).rejects.toThrow(/native restart w185nr_refuse_angle\.restart: angle style cosine\/periodic is not readable by the browser engine yet/);
   });
 
   it('names an atom_style that is not read', async () => {
@@ -110,5 +110,66 @@ describe('read_restart of a native binary restart file: refusals', () => {
     const session = new Session({ emit: (e) => events.push(e), writeFile: () => {} });
     session.addFile('cut.restart', full.slice(0, full.length - 500));
     await expect(session.execute('read_restart cut.restart\n')).rejects.toThrow(/incomplete or corrupted restart file/);
+  });
+});
+
+describe('read_restart of native binary restart files: the pair, bonded and topology styles of w185nr', () => {
+  it('restores the settings and pair_modify flags of a pair style with a coulomb table (lj/cut/coul/cut)', async () => {
+    const { session } = withFiles(['w185nr_lj_cut_coul_cut.restart']);
+    await session.execute('read_restart w185nr_lj_cut_coul_cut.restart\n');
+    const p = session.sys.ff.pair;
+    expect(p?.name).toBe('lj/cut/coul/cut');
+    // written with pair_modify mix arithmetic tail yes (shift no): the restart keeps the flags
+    expect(p?.mix).toBe('arithmetic');
+    expect(p?.tail).toBe(true);
+    expect(p?.shift).toBe(false);
+  });
+
+  it('restores the pair_modify shift of morse and the Coulomb table of coul/long', async () => {
+    const morse = withFiles(['w185nr_morse.restart']);
+    await morse.session.execute('read_restart w185nr_morse.restart\n');
+    expect(morse.session.sys.ff.pair?.name).toBe('morse');
+    expect(morse.session.sys.ff.pair?.shift).toBe(true);
+    const long = withFiles(['w185nr_coul_long.restart']);
+    await long.session.execute('read_restart w185nr_coul_long.restart\n');
+    expect(long.session.sys.ff.pair?.name).toBe('coul/long');
+    expect(long.session.sys.ff.pair?.table).toBe(12);
+  });
+
+  it('restores pair table as its settings only: the tables are not stored, so pair_coeff must be re-issued', async () => {
+    const { session } = withFiles(['w185nr_table.restart']);
+    await session.execute('read_restart w185nr_table.restart\n');
+    expect(session.sys.ff.pair?.name).toBe('table');
+    await expect(session.execute('run 0\n')).rejects.toThrow();
+  });
+
+  it('accepts a fix langevin after read_restart (the file stores no langevin state)', async () => {
+    const { session } = withFiles(['w184nr_lj.restart']);
+    await session.execute('read_restart w184nr_lj.restart\nfix 2 all langevin 1.0 1.0 1.0 4711\n');
+    expect(session.sys.fixes.map((f) => f.style)).toContain('langevin');
+  });
+
+  it('restores hybrid/overlay as its sub-style list only: pair_coeff must be re-issued before a run', async () => {
+    const { session } = withFiles(['w185nr_hybrid_overlay.restart']);
+    await session.execute('read_restart w185nr_hybrid_overlay.restart\n');
+    expect(session.sys.ff.pair?.name).toBe('hybrid/overlay');
+    expect((session.sys.ff.pair as unknown as { settingsArgs: string[] }).settingsArgs).toEqual(['lj/cut', '2.5', 'coul/cut', '2.5']);
+    await expect(session.execute('run 0\n')).rejects.toThrow();
+  });
+
+  it('restores dihedral harmonic and improper harmonic with their topology (48 dihedrals, 48 impropers)', async () => {
+    const { session } = withFiles(['w185nr_dihedral_harmonic.restart']);
+    await session.execute('read_restart w185nr_dihedral_harmonic.restart\n');
+    expect(session.sys.ff.dihedral?.name).toBe('harmonic');
+    expect(session.sys.ff.improper?.name).toBe('harmonic');
+    expect(session.sys.state.topo.dihedrals.n).toBe(48);
+    expect(session.sys.state.topo.impropers.n).toBe(48);
+  });
+
+  it('restores the bonded coefficients of class2 angles (bb and ba terms with the plain line)', async () => {
+    const { session } = withFiles(['w185nr_angle_class2.restart']);
+    await session.execute('read_restart w185nr_angle_class2.restart\n');
+    expect(session.sys.ff.angle?.name).toBe('class2');
+    expect(session.sys.state.topo.angles.n).toBe(3 * 48);
   });
 });

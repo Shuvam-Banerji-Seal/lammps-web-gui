@@ -6,23 +6,31 @@
  * entries), src/domain.cpp (Domain::remap), src/atom_vec.cpp (AtomVec::unpack_restart) with the fields of
  * src/atom_vec_*.cpp, MOLECULE/atom_vec_molecular.cpp and MOLECULE/atom_vec_full.cpp, and the per-style read_restart of
  * src/KSPACE/pair_lj_cut_coul_long.cpp, src/pair_lj_cut.cpp, src/SPIN/pair_spin_exchange.cpp, src/MOLECULE/bond_harmonic.cpp
- * and src/MOLECULE/angle_harmonic.cpp. LAMMPS is Copyright (2003) Sandia Corporation and the LAMMPS development team,
+ * and src/MOLECULE/angle_harmonic.cpp, and the write_restart layouts of the other styles listed below (each cites its file).
+ * LAMMPS is Copyright (2003) Sandia Corporation and the LAMMPS development team,
  * distributed under the GNU General Public License, version 2 (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
  * What it reads: a serial (one-file, no "%") binary restart file of revision 3, written by native LAMMPS on this
  * platform (little-endian, 32-bit imageint and tagint, 64-bit bigint), from one or more processes. The box (orthogonal
- * and triclinic) and the header settings, the masses, the groups, the per-atom attributes of atom_style atomic, charge,
- * molecular, full, sphere and spin, the bonds and angles of the molecular styles, the pair styles lj/cut,
- * lj/cut/coul/long and spin/exchange (or the NO_PAIR marker of a style that stores nothing), the bond and angle styles
- * harmonic, and the fix state of fix nvt (its thermostat chain). Any other fix state is a marker that refuses the
- * definition of that fix after read_restart. Anything else is refused by name (StyleError).
+ * and triclinic), the header settings, the masses, the groups, the per-atom attributes of atom_style atomic, charge,
+ * molecular, full, sphere and spin, and the topology (bonds, angles, dihedrals, impropers) of the molecular styles.
+ * Pair styles: lj/cut, lj/cut/coul/long, lj/cut/coul/cut, lj/cut/coul/debye, lj/cut/coul/dsf, coul/cut, coul/long,
+ * lj/charmm/coul/long, lj/charmm/coul/charmm, morse, buck, buck/coul/long, born, soft, yukawa, lj96/cut, lj/expand,
+ * lj/smooth/linear, table (settings only: its tables are not stored), spin/exchange, the hybrid styles (their sub-style settings only: pair_coeff must be re-issued,
+ * as native LAMMPS stores no sub-style coefficients), and the NO_PAIR marker. Bond styles: harmonic, fene, morse,
+ * class2, gromos; angle styles: harmonic, charmm, cosine, cosine/squared, class2; dihedral styles: harmonic, charmm,
+ * opls, multi/harmonic; improper styles: harmonic, cvff (umbrella is read too, but has no oracle case: the engine's
+ * umbrella energy differs from native on a fresh-run geometry, see tests/oracle).
+ * The fix state of fix nvt (its thermostat chain). Any other fix state is a marker that refuses the definition of that
+ * fix after read_restart. Anything else is refused by name (StyleError).
  *
  * The file's values go into the engine's own state (SimState) and style objects, through the public engine API.
  */
 import { emptyState, emptyTopology, pushTopo } from '../../engine/atoms';
 import { makeBox } from '../../engine/domain';
 import { UNIT_SYSTEMS, isUnitStyle } from '../../engine/units';
-import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES } from '../../engine/styles';
+import { PAIR_STYLES, BOND_STYLES, ANGLE_STYLES, DIHEDRAL_STYLES, IMPROPER_STYLES } from '../../engine/styles';
+import { PairHybrid } from '../../engine/force/pair/hybrid';
 import { StyleError, type Bonded, type Pair, type StyleContext } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import type { FixRecord } from '../../engine/fix/restartRecord';
@@ -151,7 +159,9 @@ interface Header {
   nangles: number;
   nangletypes: number;
   ndihedrals: number;
+  ndihedraltypes: number;
   nimpropers: number;
+  nimpropertypes: number;
   triclinic: number;
   boxlo: number[];
   boxhi: number[];
@@ -174,7 +184,9 @@ export interface NativePairStyle {
   name: string;
   settings: string[];
   coeffs: string[][];
-  modify: { mix?: (typeof MIX_RULE)[number]; shift?: boolean; tail?: boolean; table?: number; tabinnerRsq?: number };
+  modify: PairFlags;
+  /** hybrid styles: the sub-styles in order, each with its pair_modify flags */
+  subs?: HybridSub[];
 }
 
 /** One bonded style (bond or angle) read from the file: its class and its per-type coefficient arguments. */
@@ -192,7 +204,7 @@ const readHeader = (b: Bin): Header => {
   const h: Header = {
     version: '', units: 'lj', ntimestep: 0, dimension: 3, nprocs: 1, newtonBond: 1, periodic: [1, 1, 1],
     boundary: [0, 0, 0, 0, 0, 0], boundmin: null, atomStyle: 'atomic', atomStyleArgs: [], natoms: 0, ntypes: 0,
-    nbonds: 0, nbondtypes: 0, nangles: 0, nangletypes: 0, ndihedrals: 0, nimpropers: 0, triclinic: 0,
+    nbonds: 0, nbondtypes: 0, nangles: 0, nangletypes: 0, ndihedrals: 0, ndihedraltypes: 0, nimpropers: 0, nimpropertypes: 0, triclinic: 0,
     boxlo: [0, 0, 0], boxhi: [1, 1, 1], xy: 0, xz: 0, yz: 0, specialLJ: [0, 0, 0], specialCoul: [0, 0, 0],
     dt: 0, atomId: 1, commMode: 0, commCutoff: 0, commVel: 0, atime: 0, atimestep: 0,
   };
@@ -231,10 +243,10 @@ const readHeader = (b: Bin): Header => {
       case F.NANGLETYPES: h.nangletypes = b.int(); break;
       case F.ANGLE_PER_ATOM: b.int(); break;
       case F.NDIHEDRALS: h.ndihedrals = b.i64(); break;
-      case F.NDIHEDRALTYPES: b.int(); break;
+      case F.NDIHEDRALTYPES: h.ndihedraltypes = b.int(); break;
       case F.DIHEDRAL_PER_ATOM: b.int(); break;
       case F.NIMPROPERS: h.nimpropers = b.i64(); break;
-      case F.NIMPROPERTYPES: b.int(); break;
+      case F.NIMPROPERTYPES: h.nimpropertypes = b.int(); break;
       case F.IMPROPER_PER_ATOM: b.int(); break;
       case F.TRICLINIC: h.triclinic = b.int(); break;
       case F.BOXLO: b.int(); h.boxlo = b.dbls(3); break;
@@ -303,84 +315,466 @@ const readTypeArrays = (b: Bin, h: Header): number[] | null => {
   return masses;
 };
 
-/** Pair style data of the file (the write_restart layouts of the styles listed below); any other style stops the read by name. */
-const readPairStyle = (b: Bin, name: string, ntypes: number): NativePairStyle => {
-  const mixOf = (k: number): (typeof MIX_RULE)[number] => {
-    if (k < 0 || k > 2) b.fail(`pair style ${name}: unknown mixing rule ${k}`);
-    return MIX_RULE[k];
-  };
-  // the (i <= j) loop of each write_restart: a set flag per pair, then the values of a set pair
-  const lj3 = (i: number, j: number): string[] => {
-    const eps = b.dbl(), sig = b.dbl(), cutIJ = b.dbl();
-    return [String(i), String(j), String(eps), String(sig), String(cutIJ)];
-  };
-  // pair_lj_cut.cpp write_restart_settings: cut_global, offset_flag, mix_flag, tail_flag
-  if (name === 'lj/cut') {
-    const cut = b.dbl();
-    const offset = b.int(), mix = b.int(), tail = b.int();
-    const coeffs: string[][] = [];
-    for (let i = 1; i <= ntypes; i++) for (let j = i; j <= ntypes; j++) if (b.int()) coeffs.push(lj3(i, j));
-    return { name, settings: [String(cut)], coeffs, modify: { shift: offset !== 0, mix: mixOf(mix), tail: tail !== 0 } };
-  }
-  // KSPACE/pair_lj_cut_coul_long.cpp write_restart_settings: cut_lj_global, cut_coul, offset_flag, mix_flag, tail_flag,
-  // ncoultablebits, tabinner (the squared inner cutoff is tabinner^2, as pair_modify tabinner sets it)
-  if (name === 'lj/cut/coul/long') {
-    const cutLJ = b.dbl(), cutCoul = b.dbl();
-    const offset = b.int(), mix = b.int(), tail = b.int(), tableBits = b.int();
-    const tabinner = b.dbl();
-    const coeffs: string[][] = [];
-    for (let i = 1; i <= ntypes; i++) for (let j = i; j <= ntypes; j++) if (b.int()) coeffs.push(lj3(i, j));
-    return {
-      name, settings: [String(cutLJ), String(cutCoul)], coeffs,
-      modify: { shift: offset !== 0, mix: mixOf(mix), tail: tail !== 0, table: tableBits, tabinnerRsq: tabinner * tabinner },
-    };
-  }
-  // SPIN/pair_spin_exchange.cpp write_restart_settings: cut_spin_exchange_global, e_offset, offset_flag, mix_flag;
-  // per pair: J1_mag, J1_mech, J2, J3, cut. The pair_coeff command takes J1_mech (J1_mag = J1_mech / hbar is derived
-  // from it, as coeff() does), then J2 and J3, with the pair's cutoff.
-  if (name === 'spin/exchange') {
-    const cutGlobal = b.dbl();
-    const eOffset = b.int(), offset = b.int();
-    b.int();
-    if (offset !== 0) b.fail(`pair style ${name} with offset_flag set is not readable by the browser engine yet`);
-    const coeffs: string[][] = [];
-    for (let i = 1; i <= ntypes; i++) {
-      for (let j = i; j <= ntypes; j++) {
-        if (!b.int()) continue;
-        b.dbl(); // J1_mag (derived from J1_mech)
-        const j1mech = b.dbl(), j2 = b.dbl(), j3 = b.dbl(), rc = b.dbl();
-        coeffs.push([String(i), String(j), 'exchange', String(rc), String(j1mech), String(j2), String(j3), ...(eOffset ? ['offset', 'yes'] : [])]);
-      }
-    }
-    return { name, settings: [String(cutGlobal)], coeffs, modify: {} };
-  }
-  return b.fail(`pair style ${name} is not readable by the browser engine yet (its binary coefficient block is not decoded here)`);
+/** Flags of a pair style the engine stores per style (pair_modify shift, mix, tail, table and tabinner). */
+interface PairFlags {
+  mix?: (typeof MIX_RULE)[number];
+  shift?: boolean;
+  tail?: boolean;
+  table?: number;
+  tabinnerRsq?: number;
+}
+
+/** The settings block of one pair style: its pair_style arguments and its pair_modify flags. */
+interface PairSettings {
+  args: string[];
+  modify: PairFlags;
+  /** spin/exchange: the per-pair block needs the global offset flag */
+  eOffset?: number;
+}
+
+/**
+ * One pair style of the file (write_restart_settings, then write_restart). settings reads the settings block;
+ * pairs reads the per-pair block (null when the style stores none, as the sub-styles of pair hybrid do). The per-pair
+ * values become pair_coeff arguments (type I, type J, then the values in the order of the style's pair_coeff command).
+ */
+interface PairLayout {
+  settings: (b: Bin, ntypes: number) => PairSettings;
+  pairs: ((b: Bin, ntypes: number, st: PairSettings) => string[][]) | null;
+}
+
+const num = (v: number): string => String(v);
+
+/** The pair_modify mix, shift and tail flags of a settings block (offset_flag, mix_flag, tail_flag). */
+const mixOf = (b: Bin, k: number): (typeof MIX_RULE)[number] => {
+  if (k < 0 || k > 2) b.fail(`unknown pair mixing rule ${k}`);
+  return MIX_RULE[k];
 };
 
-/** Bond and angle style data (bond_harmonic.cpp, angle_harmonic.cpp): k per type, then r0 or theta0 per type. */
-const readBondedStyle = (b: Bin, kind: 'bond' | 'angle', name: string, ntypes: number): NativeBondedStyle => {
-  if (name !== 'harmonic') b.fail(`${kind} style ${name} is not readable by the browser engine yet`);
-  const k = b.dbls(ntypes);
-  const second = b.dbls(ntypes);
-  const coeffs = k.map((kv, t) => {
-    // angle_harmonic.cpp stores theta0 in radians; the angle_coeff command takes degrees
-    const v2 = kind === 'angle' ? (second[t] * 180) / Math.PI : second[t];
-    return [String(t + 1), String(kv), String(v2)];
-  });
-  return { name, coeffs };
+/**
+ * The (i <= j) loop of a write_restart: a set flag per pair (setflag), then the values of a set pair. read() gets the
+ * type pair and returns the pair_coeff arguments after it (the values it reads from the file).
+ */
+const eachSetPair = (b: Bin, ntypes: number, read: (i: number, j: number) => string[]): string[][] => {
+  const out: string[][] = [];
+  for (let i = 1; i <= ntypes; i++) {
+    for (let j = i; j <= ntypes; j++) {
+      if (b.int()) out.push([num(i), num(j), ...read(i, j)]);
+    }
+  }
+  return out;
+};
+
+const dbls = (b: Bin, n: number): string[] => Array.from({ length: n }, () => num(b.dbl()));
+
+/** The pair_modify flags of the offset, mix and tail ints that most settings blocks store. */
+const flags3 = (b: Bin): PairFlags => {
+  const offset = b.int();
+  const mix = mixOf(b, b.int());
+  const tail = b.int();
+  return { shift: offset !== 0, mix, tail: tail !== 0 };
+};
+const flags2 = (b: Bin): PairFlags => {
+  const offset = b.int();
+  const mix = mixOf(b, b.int());
+  return { shift: offset !== 0, mix };
+};
+
+/** The coulomb table of the long-range styles: ncoultablebits (table) and tabinner (its squared value is the inner cutoff). */
+const tableFlags = (b: Bin): PairFlags => {
+  const bits = b.int();
+  const tabinner = b.dbl();
+  return { table: bits, tabinnerRsq: tabinner * tabinner };
+};
+
+/** A scale factor that the engine cannot store per pair (only fix adapt sets one): refused unless it is 1. */
+const unitScale = (b: Bin, name: string, v: number): void => {
+  if (v !== 1) b.fail(`pair style ${name} with a per-pair scale factor ${v} is not readable by the browser engine yet`);
+};
+
+/** The pair styles whose settings and per-pair blocks are read. Each cites its write_restart in the C++ source. */
+const PAIR_LAYOUTS: Record<string, PairLayout> = {
+  // pair_lj_cut.cpp: cut_global, offset_flag, mix_flag, tail_flag; per pair eps, sigma, cut
+  'lj/cut': {
+    settings: (b) => {
+      const cut = b.dbl();
+      return { args: [num(cut)], modify: flags3(b) };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 3)),
+  },
+  // KSPACE/pair_lj_cut_coul_long.cpp: cut_lj_global, cut_coul, offset, mix, tail, ncoultablebits, tabinner; per pair eps, sigma, cut_lj
+  'lj/cut/coul/long': {
+    settings: (b) => {
+      const cutLJ = b.dbl(), cutCoul = b.dbl();
+      const f = flags3(b);
+      return { args: [num(cutLJ), num(cutCoul)], modify: { ...f, ...tableFlags(b) } };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 3)),
+  },
+  // pair_lj_cut_coul_cut.cpp: cut_lj_global, cut_coul_global, offset, mix, tail; per pair eps, sigma, cut_lj, cut_coul
+  'lj/cut/coul/cut': {
+    settings: (b) => {
+      const cutLJ = b.dbl(), cutCoul = b.dbl();
+      return { args: [num(cutLJ), num(cutCoul)], modify: flags3(b) };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 4)),
+  },
+  // EXTRA-PAIR/pair_lj_cut_coul_debye.cpp (write_restart inherited from lj/cut/coul/cut): cut_lj_global, cut_coul_global,
+  // kappa, offset, mix (no tail); the per-pair block of lj/cut/coul/cut
+  'lj/cut/coul/debye': {
+    settings: (b) => {
+      const cutLJ = b.dbl(), cutCoul = b.dbl(), kappa = b.dbl();
+      return { args: [num(kappa), num(cutLJ), num(cutCoul)], modify: flags2(b) };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 4)),
+  },
+  // EXTRA-PAIR/pair_lj_cut_coul_dsf.cpp: alpha, cut_lj_global, cut_coul, offset, mix, tail; per pair eps, sigma, cut_lj
+  'lj/cut/coul/dsf': {
+    settings: (b) => {
+      const alpha = b.dbl(), cutLJ = b.dbl(), cutCoul = b.dbl();
+      return { args: [num(alpha), num(cutLJ), num(cutCoul)], modify: flags3(b) };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 3)),
+  },
+  // pair_coul_cut.cpp: cut_global, offset, mix; per pair scale (always stored), setflag, cut when set
+  'coul/cut': {
+    settings: (b) => {
+      const cut = b.dbl();
+      return { args: [num(cut)], modify: flags2(b) };
+    },
+    pairs: (b, nt) => {
+      const out: string[][] = [];
+      for (let i = 1; i <= nt; i++) {
+        for (let j = i; j <= nt; j++) {
+          unitScale(b, 'coul/cut', b.dbl());
+          if (b.int()) out.push([num(i), num(j), num(b.dbl())]);
+        }
+      }
+      return out;
+    },
+  },
+  // KSPACE/pair_coul_long.cpp: cut_coul, offset, mix, ncoultablebits, tabinner; per pair setflag, then scale when set
+  'coul/long': {
+    settings: (b) => {
+      const cutCoul = b.dbl();
+      const f = flags2(b);
+      return { args: [num(cutCoul)], modify: { ...f, ...tableFlags(b) } };
+    },
+    // a set pair is a pair_coeff I J (the engine's coul/long takes no coefficients but marks the pair as set)
+    pairs: (b, nt) => {
+      const out: string[][] = [];
+      for (let i = 1; i <= nt; i++) {
+        for (let j = i; j <= nt; j++) {
+          if (b.int()) {
+            unitScale(b, 'coul/long', b.dbl());
+            out.push([num(i), num(j)]);
+          }
+        }
+      }
+      return out;
+    },
+  },
+  // KSPACE/pair_lj_charmm_coul_long.cpp: cut_lj_inner, cut_lj, cut_coul, offset, mix, ncoultablebits, tabinner;
+  // per pair eps, sigma, eps14, sigma14
+  'lj/charmm/coul/long': {
+    settings: (b) => {
+      const inner = b.dbl(), outer = b.dbl(), cutCoul = b.dbl();
+      const f = flags2(b);
+      return { args: [num(inner), num(outer), num(cutCoul)], modify: { ...f, ...tableFlags(b) } };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 4)),
+  },
+  // MOLECULE/pair_lj_charmm_coul_charmm.cpp: cut_lj_inner, cut_lj, cut_coul_inner, cut_coul, offset, mix;
+  // per pair eps, sigma, eps14, sigma14
+  'lj/charmm/coul/charmm': {
+    settings: (b) => {
+      const v = dbls(b, 4);
+      return { args: v, modify: flags2(b) };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 4)),
+  },
+  // pair_morse.cpp: cut_global, offset, mix; per pair d0, alpha, r0, cut
+  morse: {
+    settings: (b) => {
+      const cut = b.dbl();
+      return { args: [num(cut)], modify: flags2(b) };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 4)),
+  },
+  // pair_buck.cpp: cut_global, offset, mix, tail; per pair a, rho, c, cut
+  buck: {
+    settings: (b) => {
+      const cut = b.dbl();
+      return { args: [num(cut)], modify: flags3(b) };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 4)),
+  },
+  // KSPACE/pair_buck_coul_long.cpp: cut_lj_global, cut_coul, offset, mix, tail, ncoultablebits, tabinner; per pair a, rho, c, cut_lj
+  'buck/coul/long': {
+    settings: (b) => {
+      const cutLJ = b.dbl(), cutCoul = b.dbl();
+      const f = flags3(b);
+      return { args: [num(cutLJ), num(cutCoul)], modify: { ...f, ...tableFlags(b) } };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 4)),
+  },
+  // pair_born.cpp: cut_global, offset, mix, tail; per pair a, rho, sigma, c, d, cut
+  born: {
+    settings: (b) => {
+      const cut = b.dbl();
+      return { args: [num(cut)], modify: flags3(b) };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 6)),
+  },
+  // pair_soft.cpp: cut_global, mix; per pair prefactor, cut
+  soft: {
+    settings: (b) => {
+      const cut = b.dbl();
+      const mix = mixOf(b, b.int());
+      return { args: [num(cut)], modify: { mix } };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 2)),
+  },
+  // pair_yukawa.cpp: kappa, cut_global, offset, mix; per pair a, cut
+  yukawa: {
+    settings: (b) => {
+      const kappa = b.dbl(), cut = b.dbl();
+      return { args: [num(kappa), num(cut)], modify: flags2(b) };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 2)),
+  },
+  // EXTRA-PAIR/pair_lj96_cut.cpp: cut_global, offset, mix, tail; per pair epsilon, sigma, cut
+  'lj96/cut': {
+    settings: (b) => {
+      const cut = b.dbl();
+      return { args: [num(cut)], modify: flags3(b) };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 3)),
+  },
+  // pair_lj_expand.cpp: cut_global, offset, mix, tail; per pair epsilon, sigma, shift, cut
+  'lj/expand': {
+    settings: (b) => {
+      const cut = b.dbl();
+      return { args: [num(cut)], modify: flags3(b) };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 4)),
+  },
+  // EXTRA-PAIR/pair_lj_smooth_linear.cpp: cut_global, mix; per pair epsilon, sigma, cut
+  'lj/smooth/linear': {
+    settings: (b) => {
+      const cut = b.dbl();
+      const mix = mixOf(b, b.int());
+      return { args: [num(cut)], modify: { mix } };
+    },
+    pairs: (b, nt) => eachSetPair(b, nt, () => dbls(b, 3)),
+  },
+  // pair_table.cpp write_restart: its settings only (tabstyle, tablength, the ewald, pppm, msm, dispersion and tip4p
+  // flags). The tables are not stored: pair_coeff must be re-issued after read_restart (the engine refuses a run before).
+  // The flags are set by the kspace style that follows, so they are not kept here.
+  table: {
+    settings: (b) => {
+      const style = b.int(), n = b.int();
+      b.ints(5);
+      const names = ['lookup', 'linear', 'spline', 'bitmap'];
+      const name = names[style];
+      if (name === undefined || name === 'bitmap') b.fail(`pair style table with tabstyle ${style} is not readable by the browser engine yet (bitmap tables are not supported)`);
+      return { args: [name, num(n)], modify: {} };
+    },
+    pairs: null,
+  },
+  // pair_spin_exchange.cpp (SPIN): cut_spin_exchange_global, e_offset, offset_flag, mix_flag; per pair J1_mag,
+  // J1_mech, J2, J3, cut. The pair_coeff command takes J1_mech (J1_mag = J1_mech / hbar is derived from it, as coeff()
+  // does), then J2 and J3, with the pair's cutoff.
+  'spin/exchange': {
+    settings: (b) => {
+      const cut = b.dbl();
+      const eOffset = b.int(), offset = b.int();
+      b.int();
+      if (offset !== 0) b.fail('pair style spin/exchange with offset_flag set is not readable by the browser engine yet');
+      return { args: [num(cut)], modify: {}, eOffset };
+    },
+    pairs: (b, nt, st) => eachSetPair(b, nt, () => {
+      b.dbl(); // J1_mag (derived from J1_mech)
+      const j1mech = b.dbl(), j2 = b.dbl(), j3 = b.dbl(), rc = b.dbl();
+      return ['exchange', num(rc), num(j1mech), num(j2), num(j3), ...(st.eOffset ? ['offset', 'yes'] : [])];
+    }),
+  },
+};
+
+/** The hybrid styles: pair_hybrid.cpp write_restart (nstyles, compute_tally, then per sub-style its keyword, its settings and its special weights, NO per-pair block). */
+const HYBRID_STYLES = ['hybrid', 'hybrid/overlay', 'hybrid/scaled'];
+
+/** One sub-style of a hybrid pair style: its keyword, settings and pair_modify flags, and its scale factor (hybrid/scaled). */
+interface HybridSub {
+  name: string;
+  st: PairSettings;
+  scale: number | null;
+}
+
+/**
+ * PairHybrid::write_restart (and PairHybridScaled::write_restart): the sub-style settings, then for hybrid/scaled the
+ * scale factor of each sub-style (scaleval) with its variable indices (scaleidx, atomvar) and names. Variable scale
+ * factors (any atomvar, or a scale variable name) are refused. A sub-style's special weights are refused (its
+ * pair_modify special is not restored).
+ */
+const readHybrid = (b: Bin, name: string, ntypes: number): { args: string[]; subs: HybridSub[] } => {
+  const nstyles = b.int();
+  if (nstyles < 1 || nstyles > 64) b.fail('Invalid number of sub-styles in restart file');
+  b.ints(nstyles); // compute_tally (the flags of the sub-styles' tallies are not kept)
+  const subs: HybridSub[] = [];
+  for (let m = 0; m < nstyles; m++) {
+    const n = b.int();
+    if (n < 1 || n > 65536) b.fail('Invalid style name length in restart file');
+    const sub = b.chars(n);
+    const layout = PAIR_LAYOUTS[sub];
+    if (!layout || sub.startsWith('hybrid')) b.fail(`pair style ${name} sub-style ${sub} is not readable by the browser engine yet`);
+    const st = layout.settings(b, ntypes);
+    for (let k = 0; k < 2; k++) {
+      if (b.int()) b.fail(`pair style ${name} sub-style ${sub} with special weights is not readable by the browser engine yet`);
+    }
+    subs.push({ name: sub, st, scale: null });
+  }
+  if (name === 'hybrid/scaled') {
+    const scaleval = b.dbls(nstyles);
+    const scaleidx = b.ints(nstyles);
+    const atomvar = b.ints(nstyles);
+    const nvars = b.int();
+    if (nvars < 0 || nvars > 4096) b.fail('Invalid number of scale variables in restart file');
+    for (let k = 0; k < nvars; k++) b.chars(b.int());
+    // PairHybridScaled::settings: scaleidx and atomvar are -1 for a constant factor (an index otherwise)
+    if (scaleidx.some((v) => v >= 0) || atomvar.some((v) => v >= 0)) {
+      b.fail(`pair style ${name} with variable scale factors is not readable by the browser engine yet`);
+    }
+    subs.forEach((s, m) => { s.scale = scaleval[m]; });
+  }
+  const args: string[] = [];
+  for (const s of subs) {
+    if (s.scale !== null) args.push(num(s.scale));
+    args.push(s.name, ...s.st.args);
+  }
+  return { args, subs };
+};
+
+/**
+ * Pair style data of the file: the settings block, then the per-pair block of the style (none for a hybrid, whose
+ * sub-styles' coefficients are not stored, so pair_coeff must be re-issued after read_restart). Any other style stops
+ * the read by name.
+ */
+const readPairStyle = (b: Bin, name: string, ntypes: number): NativePairStyle => {
+  if (HYBRID_STYLES.includes(name)) {
+    const h = readHybrid(b, name, ntypes);
+    return { name, settings: h.args, coeffs: [], modify: {}, subs: h.subs };
+  }
+  const layout = PAIR_LAYOUTS[name];
+  if (!layout) return b.fail(`pair style ${name} is not readable by the browser engine yet (its binary coefficient block is not decoded here)`);
+  const st = layout.settings(b, ntypes);
+  const coeffs = layout.pairs ? layout.pairs(b, ntypes, st) : [];
+  return { name, settings: st.args, coeffs, modify: st.modify };
+};
+
+/** Bond and angle style data: the per-type arrays in the order of each style's write_restart; the rows are coeff lines (type first). */
+const deg = (rad: number): number => (rad * 180) / Math.PI;
+const rows = (n: number, cols: number[][], fmt: (t: number) => string[] = () => []): string[][] =>
+  Array.from({ length: n }, (_, t) => [String(t + 1), ...cols.map((c) => num(c[t])), ...fmt(t)]);
+
+/** bond_harmonic.cpp (k, r0), bond_fene.cpp (k, r0, epsilon, sigma), bond_morse.cpp (d0, alpha, r0), bond_class2.cpp (r0, k2, k3, k4), bond_gromos.cpp (k, r0). */
+const BOND_READERS: Record<string, (b: Bin, n: number) => string[][]> = {
+  harmonic: (b, n) => { const k = b.dbls(n), r0 = b.dbls(n); return rows(n, [k, r0]); },
+  fene: (b, n) => { const k = b.dbls(n), r0 = b.dbls(n), eps = b.dbls(n), sig = b.dbls(n); return rows(n, [k, r0, eps, sig]); },
+  morse: (b, n) => { const d0 = b.dbls(n), alpha = b.dbls(n), r0 = b.dbls(n); return rows(n, [d0, alpha, r0]); },
+  class2: (b, n) => { const r0 = b.dbls(n), k2 = b.dbls(n), k3 = b.dbls(n), k4 = b.dbls(n); return rows(n, [r0, k2, k3, k4]); },
+  gromos: (b, n) => { const k = b.dbls(n), r0 = b.dbls(n); return rows(n, [k, r0]); },
+};
+
+/**
+ * angle_harmonic.cpp (k, theta0), angle_charmm.cpp (k, theta0, k_ub, r_ub), angle_cosine.cpp (k),
+ * angle_cosine_squared.cpp (k, theta0), angle_class2.cpp (theta0, k2, k3, k4, then the bb and ba terms). theta0 is
+ * stored in radians; the angle_coeff command takes degrees.
+ */
+const ANGLE_READERS: Record<string, (b: Bin, n: number) => string[][]> = {
+  harmonic: (b, n) => { const k = b.dbls(n), th = b.dbls(n); return rows(n, [k, th.map(deg)]); },
+  charmm: (b, n) => { const k = b.dbls(n), th = b.dbls(n), kub = b.dbls(n), rub = b.dbls(n); return rows(n, [k, th.map(deg), kub, rub]); },
+  cosine: (b, n) => { const k = b.dbls(n); return rows(n, [k]); },
+  'cosine/squared': (b, n) => { const k = b.dbls(n), th = b.dbls(n); return rows(n, [k, th.map(deg)]); },
+  class2: (b, n) => {
+    const th = b.dbls(n), k2 = b.dbls(n), k3 = b.dbls(n), k4 = b.dbls(n);
+    const bbK = b.dbls(n), bbR1 = b.dbls(n), bbR2 = b.dbls(n);
+    const baK1 = b.dbls(n), baK2 = b.dbls(n), baR1 = b.dbls(n), baR2 = b.dbls(n);
+    const out = rows(n, [th.map(deg), k2, k3, k4]);
+    for (let t = 0; t < n; t++) {
+      out.push([String(t + 1), 'bb', num(bbK[t]), num(bbR1[t]), num(bbR2[t])]);
+    }
+    for (let t = 0; t < n; t++) {
+      out.push([String(t + 1), 'ba', num(baK1[t]), num(baK2[t]), num(baR1[t]), num(baR2[t])]);
+    }
+    return out;
+  },
+};
+
+/**
+ * dihedral_harmonic.cpp (k, sign, multiplicity), dihedral_charmm.cpp (k, multiplicity, shift, weight per type, then the
+ * weightflag), dihedral_opls.cpp (k1..k4), dihedral_multi_harmonic.cpp (a1..a5). A charmm style with weights (weightflag
+ * set) is read with its per-type weights, which dihedral_coeff takes.
+ */
+const DIHEDRAL_READERS: Record<string, (b: Bin, n: number) => string[][]> = {
+  harmonic: (b, n) => { const k = b.dbls(n), sign = b.ints(n), mult = b.ints(n); return rows(n, [k, sign, mult]); },
+  charmm: (b, n) => {
+    const k = b.dbls(n), mult = b.ints(n), shift = b.ints(n), weight = b.dbls(n);
+    b.int(); // weightflag: set when any weight is positive (the weights are read per type)
+    return rows(n, [k, mult, shift, weight]);
+  },
+  // dihedral_opls.cpp coeff stores 0.5 * K (k1[i] = 0.5 * k1_one); the command takes K, so the file value is doubled (exact)
+  opls: (b, n) => {
+    const k1 = b.dbls(n), k2 = b.dbls(n), k3 = b.dbls(n), k4 = b.dbls(n);
+    const twice = (v: number[]): number[] => v.map((x) => 2 * x);
+    return rows(n, [twice(k1), twice(k2), twice(k3), twice(k4)]);
+  },
+  'multi/harmonic': (b, n) => {
+    const a1 = b.dbls(n), a2 = b.dbls(n), a3 = b.dbls(n), a4 = b.dbls(n), a5 = b.dbls(n);
+    return rows(n, [a1, a2, a3, a4, a5]);
+  },
+};
+
+/**
+ * improper_harmonic.cpp (k, chi in radians), improper_cvff.cpp (k, sign, multiplicity), improper_umbrella.cpp (kw, w0 in
+ * radians; the C coefficient is derived from kw and w0 and not read as an input).
+ */
+const IMPROPER_READERS: Record<string, (b: Bin, n: number) => string[][]> = {
+  harmonic: (b, n) => { const k = b.dbls(n), chi = b.dbls(n); return rows(n, [k, chi.map(deg)]); },
+  cvff: (b, n) => { const k = b.dbls(n), sign = b.ints(n), mult = b.ints(n); return rows(n, [k, sign, mult]); },
+  umbrella: (b, n) => { const kw = b.dbls(n), w0 = b.dbls(n); b.dbls(n); return rows(n, [kw, w0.map(deg)]); },
+};
+
+/** Reads one bonded style (bond, angle, dihedral or improper) of the file; a style without a reader stops the read by name. */
+const readBondedStyle = (b: Bin, kind: 'bond' | 'angle' | 'dihedral' | 'improper', name: string, ntypes: number): NativeBondedStyle => {
+  const readers = kind === 'bond' ? BOND_READERS : kind === 'angle' ? ANGLE_READERS : kind === 'dihedral' ? DIHEDRAL_READERS : IMPROPER_READERS;
+  const read = readers[name];
+  if (!read) b.fail(`${kind} style ${name} is not readable by the browser engine yet`);
+  return { name, coeffs: read(b, ntypes) };
+};
+
+/** The pair_modify flags of a style read from the file (only the keys the file stores). */
+const applyPairFlags = (p: Pair, m: PairFlags): void => {
+  if (m.mix !== undefined) p.mix = m.mix;
+  if (m.shift !== undefined) p.shift = m.shift;
+  if (m.tail !== undefined) p.tail = m.tail;
+  if (m.table !== undefined) p.table = m.table;
+  if (m.tabinnerRsq !== undefined) p.tabinnerRsq = m.tabinnerRsq;
 };
 
 /** ReadRestart::force_fields: the pair style (or the NO_PAIR marker), then the bond and angle styles; dihedrals and impropers are refused. */
-const readForceFields = (b: Bin, h: Header): { pair: NativePairStyle | null; noPair: string | null; bond: NativeBondedStyle | null; angle: NativeBondedStyle | null } => {
-  const out = { pair: null as NativePairStyle | null, noPair: null as string | null, bond: null as NativeBondedStyle | null, angle: null as NativeBondedStyle | null };
+const readForceFields = (b: Bin, h: Header): { pair: NativePairStyle | null; noPair: string | null; bond: NativeBondedStyle | null; angle: NativeBondedStyle | null; dihedral: NativeBondedStyle | null; improper: NativeBondedStyle | null } => {
+  const out = {
+    pair: null as NativePairStyle | null, noPair: null as string | null, bond: null as NativeBondedStyle | null, angle: null as NativeBondedStyle | null,
+    dihedral: null as NativeBondedStyle | null, improper: null as NativeBondedStyle | null,
+  };
   let flag = b.int();
   while (flag >= 0) {
     if (flag === F.PAIR) out.pair = readPairStyle(b, b.str(), h.ntypes);
     else if (flag === F.NO_PAIR) out.noPair = b.str();
     else if (flag === F.BOND) out.bond = readBondedStyle(b, 'bond', b.str(), h.nbondtypes);
     else if (flag === F.ANGLE) out.angle = readBondedStyle(b, 'angle', b.str(), h.nangletypes);
-    else if (flag === F.DIHEDRAL) b.fail(`dihedral style ${b.str()} is not readable by the browser engine yet`);
-    else if (flag === F.IMPROPER) b.fail(`improper style ${b.str()} is not readable by the browser engine yet`);
+    else if (flag === F.DIHEDRAL) out.dihedral = readBondedStyle(b, 'dihedral', b.str(), h.ndihedraltypes);
+    else if (flag === F.IMPROPER) out.improper = readBondedStyle(b, 'improper', b.str(), h.nimpropertypes);
     else b.fail('Invalid flag in force field section of restart file');
     flag = b.int();
   }
@@ -598,8 +992,9 @@ const buildTopology = (b: Bin, h: Header, atoms: NativeAtom[]): Topology => {
   const tags = new Set(atoms.map((a) => a.tag));
   const bondSeen = new Set<string>();
   const angleSeen = new Set<string>();
+  const dihSeen = new Set<string>();
+  const impSeen = new Set<string>();
   for (const at of atoms) {
-    if (at.dihedrals.length || at.impropers.length) b.fail('dihedrals and impropers are not readable by the browser engine yet');
     for (const [t, partner] of at.bonds.map((e) => [e[0], e[1]] as const)) {
       if (!tags.has(partner)) b.fail(`bond references atom ${partner}, which is not in the file`);
       if (t < 1 || t > h.nbondtypes) b.fail(`bond type ${t} is outside 1..${h.nbondtypes}`);
@@ -616,9 +1011,31 @@ const buildTopology = (b: Bin, h: Header, atoms: NativeAtom[]): Topology => {
       angleSeen.add(key);
       pushTopo(topo.angles, t, [a1, a2, a3]);
     }
+    // dihedral and improper: stored once (newton_bond on); a quadruple and its reverse are the same dihedral
+    for (const [t, a1, a2, a3, a4] of at.dihedrals as [number, number, number, number, number][]) {
+      for (const a of [a1, a2, a3, a4]) if (!tags.has(a)) b.fail('dihedral references an atom that is not in the file');
+      if (t < 1 || t > h.ndihedraltypes) b.fail(`dihedral type ${t} is outside 1..${h.ndihedraltypes}`);
+      const fwd = `${a1},${a2},${a3},${a4}`, rev = `${a4},${a3},${a2},${a1}`;
+      const key = fwd < rev ? fwd : rev;
+      if (dihSeen.has(key)) continue;
+      dihSeen.add(key);
+      pushTopo(topo.dihedrals, t, [a1, a2, a3, a4]);
+    }
+    for (const [t, a1, a2, a3, a4] of at.impropers as [number, number, number, number, number][]) {
+      for (const a of [a1, a2, a3, a4]) if (!tags.has(a)) b.fail('improper references an atom that is not in the file');
+      if (t < 1 || t > h.nimpropertypes) b.fail(`improper type ${t} is outside 1..${h.nimpropertypes}`);
+      const key = `${a1},${a2},${a3},${a4}`;
+      if (impSeen.has(key)) continue;
+      impSeen.add(key);
+      pushTopo(topo.impropers, t, [a1, a2, a3, a4]);
+    }
   }
+  topo.ndihedraltypes = h.ndihedraltypes;
+  topo.nimpropertypes = h.nimpropertypes;
   if (topo.bonds.n !== h.nbonds) b.fail(`the file holds ${topo.bonds.n} bonds, its header says ${h.nbonds}`);
   if (topo.angles.n !== h.nangles) b.fail(`the file holds ${topo.angles.n} angles, its header says ${h.nangles}`);
+  if (topo.dihedrals.n !== h.ndihedrals) b.fail(`the file holds ${topo.dihedrals.n} dihedrals, its header says ${h.ndihedrals}`);
+  if (topo.impropers.n !== h.nimpropers) b.fail(`the file holds ${topo.impropers.n} impropers, its header says ${h.nimpropers}`);
   return topo;
 };
 
@@ -760,19 +1177,17 @@ export const readNativeRestart = (sys: System, text: string, name: string): void
     p.settings(ff.pair.settings, ctx);
     p.allocate(h.ntypes);
     for (const c of ff.pair.coeffs) p.coeff(c, ctx);
-    const m = ff.pair.modify;
-    if (m.mix !== undefined) p.mix = m.mix;
-    if (m.shift !== undefined) p.shift = m.shift;
-    if (m.tail !== undefined) p.tail = m.tail;
-    if (m.table !== undefined) p.table = m.table;
-    if (m.tabinnerRsq !== undefined) p.tabinnerRsq = m.tabinnerRsq;
+    applyPairFlags(p, ff.pair.modify);
+    if (p instanceof PairHybrid && ff.pair.subs) {
+      ff.pair.subs.forEach((sub, m) => applyPairFlags(p.subs[m].style, sub.st.modify));
+    }
     sys.ff.pair = p;
   } else if (ff.noPair) {
     // measured with native LAMMPS (black box): read_restart logs that the pair style stores no restart info
     sys.ff.pairNotRestarted = ff.noPair;
     sys.log(`pair style ${ff.noPair} stores no restart info`);
   }
-  const bonded = (kind: 'bond' | 'angle', st: NativeBondedStyle | null, reg: Record<string, () => Bonded>, ntypes: number): Bonded | null => {
+  const bonded = (kind: 'bond' | 'angle' | 'dihedral' | 'improper', st: NativeBondedStyle | null, reg: Record<string, () => Bonded>, ntypes: number): Bonded | null => {
     if (!st) return null;
     const make = reg[st.name];
     if (!make) b.fail(`${kind} style ${st.name} is not available in this engine`);
@@ -784,6 +1199,8 @@ export const readNativeRestart = (sys: System, text: string, name: string): void
   };
   sys.ff.bond = bonded('bond', ff.bond, BOND_STYLES, h.nbondtypes);
   sys.ff.angle = bonded('angle', ff.angle, ANGLE_STYLES, h.nangletypes);
+  sys.ff.dihedral = bonded('dihedral', ff.dihedral, DIHEDRAL_STYLES, h.ndihedraltypes);
+  sys.ff.improper = bonded('improper', ff.improper, IMPROPER_STYLES, h.nimpropertypes);
   sys.bump();
   sys.log(`Restoring from native restart file ${name}: ${n} atoms at step ${h.ntimestep} (LAMMPS ${h.version})`);
 };

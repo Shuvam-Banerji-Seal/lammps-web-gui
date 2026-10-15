@@ -1,0 +1,12 @@
+# oracle: native binary restart (serial file, b332f28 write_restart) of pair_style soft (pair_soft.cpp; settings cut_global, mix; per pair prefactor, cut); the 108-atom lj melt (50 steps) is written natively with that pair style, then read and continued for 100 steps
+# oracle-inputs: w185nr_soft.restart
+# native: b332f28 built as the parity binary wrote w185nr_soft.restart (atom_style atomic)
+read_restart    w185nr_soft.restart
+neighbor        0.3 bin
+thermo_style    custom step temp epair emol etotal press
+thermo_modify   format float %.15g
+thermo          50
+fix             1 all nve
+run             100
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+# measured: max relative error 2.3e-15 (native restart continuation, engine vs native thermo and per-atom), so the tolerance is 1e-9

@@ -1,0 +1,12 @@
+# oracle: native binary restart of dihedral charmm with improper cvff, and lj/charmm/coul/charmm (dihedral_charmm.cpp k, multiplicity, shift, weight, weightflag; improper_cvff.cpp k, sign, multiplicity); 16 chains of 6 atoms (atom_style full, dihedral.data with bonds, angles, dihedrals and impropers), 50 steps written natively, then read and continued for 100 steps
+# oracle-inputs: w185nr_dihedral_charmm.restart
+# native: b332f28 built as the parity binary wrote w185nr_dihedral_charmm.restart (lj/cut or lj/charmm/coul/charmm pair with zero epsilon)
+read_restart    w185nr_dihedral_charmm.restart
+neighbor        0.3 bin
+thermo_style    custom step temp epair ebond eangle edihed eimp etotal press
+thermo_modify   format float %.15g
+thermo          50
+fix             1 all nve
+run             100
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+# measured: max relative error 2.8e-14 (native restart continuation, engine vs native thermo and per-atom), so the tolerance is 1e-9

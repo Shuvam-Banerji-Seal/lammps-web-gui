@@ -1,0 +1,20 @@
+# oracle: create_atoms box in a prism region (triclinic, zero tilt) TiO2 rutile 2x2x2 cell (custom lattice a=4.5937, c=2.9587 as in examples/PACKAGES/smtbq/in.smtbq.TiO2) with boundary f f f; atom counts and positions by ID
+# Measured with native LAMMPS: 75 atoms (Ti 35, O 40) with boundary f f f; the engine before the fix created 48 (Ti 16, O 32), dropping the upper-face lattice points. Native keeps the upper-face points whose lamda coordinate rounds just below 1.
+units           metal
+atom_style      charge
+dimension       3
+boundary        f f f
+lattice         sc 1.0
+region          box_vide prism 0 9.1874 0 9.1874 0 5.9174 0 0 0
+create_box      2 box_vide
+lattice         custom 4.5937 origin 0.0 0.0 0.0 orient x 1 0 0 orient y 0 1 0 orient z 0 0 1 a1 1.0 0.0 0.0 a2 0.0 1.0 0.0 a3 0.0 0.0 0.644077758669482 basis 0.0 0.0 0.0 basis 0.5 0.5 0.5
+create_atoms   2 box
+lattice         custom 4.5937 origin 0.0 0.0 0.0 orient x 1 0 0 orient y 0 1 0 orient z 0 0 1 a1 1.0 0.0 0.0 a2 0.0 1.0 0.0 a3 0.0 0.0 0.644077758669482 basis 0.30478 0.30478 0.0 basis 0.69522 0.69522 0.0 basis 0.19522 0.80478 0.5 basis 0.80478 0.19522 0.5
+create_atoms   1 box
+mass            1 16.00
+mass            2 47.867
+pair_style      zero 5.0
+pair_coeff      * *
+thermo_style    custom step atoms pe
+thermo_modify   format float %.15g
+run             0

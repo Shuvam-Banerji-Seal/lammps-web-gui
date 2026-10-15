@@ -1,0 +1,16 @@
+# oracle: create_atoms box on an orthogonal block box with boundary f f f and an inexact lattice spacing (fcc 4.5937 metal, box 0 3 0 3 0 2 lattice units); atom counts and positions by ID
+# Measured with native LAMMPS: 72 atoms (fcc 4.5937, 3x3x2 cells), the same count as the engine before and after the fix; a regression guard for the orthogonal block with boundary f f f.
+units           metal
+atom_style      atomic
+dimension       3
+boundary        f f f
+lattice         fcc 4.5937
+region          box block 0 3 0 3 0 2 units lattice
+create_box      1 box
+create_atoms    1 box
+mass            1 63.546
+pair_style      zero 5.0
+pair_coeff      * *
+thermo_style    custom step atoms pe
+thermo_modify   format float %.15g
+run             0

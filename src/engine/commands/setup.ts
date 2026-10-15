@@ -494,6 +494,10 @@ const createBox: Handler = ({ sys }, a) => {
   const molecular = isMolecularStyle(s.atomStyle);
   if (!molecular && (s.topo.nbondtypes || s.topo.nangletypes)) throw new StyleError(`atom_style ${s.atomStyle} cannot have bond or angle types`);
   sys.setState(s);
+  // src/domain.cpp Domain::set_initial_box (expandflag = 1, called by create_box at b332f28): SMALL = 1.0e-4 of the box
+  // length, taken before the expansion; a shrink-wrapped face is then moved out by that amount. create_atoms lattice
+  // fill uses the expanded window until the box is first reset (System.pbc).
+  sys.initSmall = [0, 1, 2].map((d) => 1.0e-4 * (box.hi[d] - box.lo[d])) as [number, number, number];
   sys.ff.bond?.allocate(s.topo.nbondtypes);
   sys.ff.angle?.allocate(s.topo.nangletypes);
   sys.ff.dihedral?.allocate(s.topo.ndihedraltypes);
@@ -716,19 +720,37 @@ const createAtoms: Handler = ({ sys }, a) => {
     return true;
   };
   // Lattice fill (create_atoms box | region): the insertion window of native add_lattice (src/create_atoms.cpp at
-  // b332f28): "if periodic and style = BOX or REGION ... if I am lo proc, decrement lower bound by EPSILON ...
-  // if I am hi proc, decrement upper bound by 2.0*EPSILON" with EPSILON = 1.0e-6 in lamda units (triclinic) or
-  // prd*1e-6 (orthogonal, the same in lamda). So a periodic lower face accepts lamda >= -1e-6 and a periodic upper
-  // face rejects lamda >= 1 - 2e-6: exactly one of two periodic images is created. Non-periodic faces keep the
-  // rounding tolerance of insideBox, and a shrink-wrapped upper face stays inclusive.
+  // b332f28, the bounds set before loop_lattice). The window bounds are the sublo/subhi of the box (src/domain.cpp
+  // set_local_box with one proc: subhi = boxhi exactly). A triclinic box (a prism region, even with zero tilt) tests
+  // the lamda coordinates against [0, 1) (set_lamda_box), computed by x2lamda in native's operation order; an
+  // orthogonal box tests the box coordinates themselves. Only a periodic face moves: "if I am lo proc, decrement
+  // lower bound by EPSILON ... if I am hi proc, decrement upper bound by 2.0*EPSILON" with EPSILON = 1.0e-6 in lamda
+  // units or prd*1e-6 in box units, so exactly one of two periodic images is created. A non-periodic face has no
+  // tolerance: a lattice point on it is kept only when its computed coordinate lies below the upper bound, which
+  // depends on the last bit of the point (the rutile TiO2 cell of examples/PACKAGES/smtbq with boundary f f f gives
+  // 60 atoms in a block box and 75 in a prism box, not 48). A shrink-wrapped face is expanded by SMALL = 1e-4 of the
+  // box length when create_box makes it (src/domain.cpp set_initial_box, expandflag = 1; sys.initSmall holds those
+  // amounts until the first reset of the box in pbc), so the window reaches past the nominal face.
+  const winLo: [number, number, number] = [box.lo[0], box.lo[1], box.lo[2]];
+  const winHi: [number, number, number] = [box.hi[0], box.hi[1], box.hi[2]];
+  if (sys.initSmall) {
+    for (let d = 0; d < 3; d++) {
+      if (box.boundary[d][0] === 's') winLo[d] -= sys.initSmall[d];
+      if (box.boundary[d][1] === 's') winHi[d] += sys.initSmall[d];
+    }
+  }
+  const winGeom = box.triclinic ? new Geometry({ ...box, lo: winLo, hi: winHi }) : null;
+  const winLam = [0, 0, 0];
   const insideLatticeBox = (x: number, y: number, z: number) => {
-    g.toLamda(x, y, z, lam);
-    const EPSL = 1e-6;
-    for (let d = 0; d < (sys.dimension === 2 ? 2 : 3); d++) {
+    if (winGeom) winGeom.toLamda(x, y, z, winLam);
+    for (let d = 0; d < 3; d++) {
       const periodicLo = box.boundary[d][0] === 'p', periodicHi = box.boundary[d][1] === 'p';
-      if (lam[d] < (periodicLo ? -EPSL : -1e-9)) return false;
-      if (box.boundary[d][1] === 's') { if (lam[d] > 1 + 1e-9) return false; }
-      else if (lam[d] >= (periodicHi ? 1 - 2 * EPSL : 1 - 1e-9)) return false;
+      const v = winGeom ? winLam[d] : d === 0 ? x : d === 1 ? y : z;
+      const subLo = winGeom ? 0 : winLo[d], subHi = winGeom ? 1 : winHi[d];
+      const epsilon = winGeom ? 1e-6 : (winHi[d] - winLo[d]) * 1e-6;
+      const lowBound = periodicLo ? subLo - epsilon : subLo;
+      const highBound = periodicHi ? subHi - 2.0 * epsilon : subHi;
+      if (v < lowBound || v >= highBound) return false;
     }
     return true;
   };

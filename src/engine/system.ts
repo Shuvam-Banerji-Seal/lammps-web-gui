@@ -70,6 +70,11 @@ export class System {
    * the rule is measured with native LAMMPS, see data.ts).
    */
   extraBondPerAtom = 0;
+  /**
+   * The amounts a create_box expanded its shrink-wrapped faces by (SMALL = 1e-4 of the box length, native
+   * set_initial_box); null once the box has been reset (pbc), or for a box read from a file. See create_atoms.
+   */
+  initSmall: [number, number, number] | null = null;
   boundary: SimState['box']['boundary'] = [['p', 'p'], ['p', 'p'], ['p', 'p']];
   atomStyle: AtomStyle = 'atomic';
   lattice: Lattice | null = null;
@@ -133,6 +138,7 @@ export class System {
   /** Installs the state created by create_box / read_data. */
   setState(s: SimState): void {
     this._state = s;
+    this.initSmall = null;
     this.geom = new Geometry(s.box);
     if (this.pendingDt !== null) { s.dt = this.pendingDt; this.pendingDt = null; }
     // a new state with the same number of types keeps the pair coefficients (measured with native LAMMPS, black
@@ -327,6 +333,8 @@ export class System {
   pbc(): void {
     const s = this.state;
     const g = this.geom;
+    // the first reset of the box (domain->pbc and reset_box at setup) replaces the create_box expansion
+    this.initSmall = null;
     for (let i = 0; i < s.n; i++) g.remap(s.x, s.image, i);
     if (shrinkWrap(s, g)) this.nb.forwardComm(s, g);
     this.checkLost();

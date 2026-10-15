@@ -1,0 +1,26 @@
+# oracle: fix box/relax tri 0.0 vmax 0.001 with minimize on a tilted fcc Al box (2x2x2 conventional cells, region prism tilts xy 1.2 xz 0.6 yz -0.8 A, eam/alloy Al_zhou) with a smooth displacement: the box origin and the tilt-coupled box force of a tilted start, both of fix box/relax's remap. Measures the thermo rows and the atoms of the line search path
+# native: LAMMPS b332f28 (the installed /home/roy/.local/bin/lmp, no package needed: eam/alloy is in the MANYBODY package)
+# Measured with native LAMMPS: 61 thermo rows and 32 atoms agree (max rel: pe 5.2e-15, press 2.2e-13, pxx 5.6e-12, pzz 1.2e-11, lx 1.1e-15, vol 3.2e-15; atoms fz 4.1e-12, fx 1.4e-12). Before the box_relax.ts fix (tilt-free origin scaling, stress-only box force) the first line-search step (row 1) was off by 3.4e-6 relative in pe
+# oracle-potentials: Al_zhou.eam.alloy
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units		metal
+atom_style	atomic
+boundary	p p p
+lattice		fcc 4.05
+region		box prism 0 8.1 0 8.1 0 8.1 1.2 0.6 -0.8 units box
+create_box	1 box
+create_atoms	1 box
+mass		1 26.98
+variable	dx atom 0.04*sin(3.1*x+1.7*y)
+variable	dy atom 0.04*cos(2.3*y+0.9*z)
+variable	dz atom 0.04*sin(1.9*z+2.5*x)
+displace_atoms	all move v_dx v_dy v_dz units box
+pair_style	eam/alloy
+pair_coeff	* * Al_zhou.eam.alloy Al
+neighbor	0.5 bin
+neigh_modify	every 20 delay 0 check yes
+thermo_style	custom step pe press pxx pyy pzz pxy pxz pyz lx ly lz xy xz yz vol
+thermo_modify	format float %.15g flush yes
+thermo		1
+fix		1 all box/relax tri 0.0 vmax 0.001
+minimize	1.0e-8 1.0e-10 60 600

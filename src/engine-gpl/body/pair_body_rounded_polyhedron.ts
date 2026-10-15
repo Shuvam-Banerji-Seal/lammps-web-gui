@@ -14,6 +14,7 @@
  */
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
+import { NativePairOrder } from '../neighbor/nativeOrder';
 import { parseNum } from '../../engine/force/util';
 import { BODY_RECORD, POLY_OFF } from '../../engine/bodies';
 import { quatToMatrix } from '../../engine/compute/asphere';
@@ -33,6 +34,10 @@ export class PairBodyRoundedPolyhedron extends Pair {
   /** keyword history: the tangential shear of each pair of bodies, keyed by the pair of atom IDs (lower ID first). */
   private history = false;
   private shear = new Map<string, V3>();
+  /** native's pair orientation (see compute()): the pair list it was built from, and its keys */
+  private readonly nativeOrder = new NativePairOrder();
+  private natPairsRef: Int32Array | null = null;
+  private natKeys = new Set<string>();
 
   settings(args: string[]): void {
     if (args.length < 5) throw new StyleError('Illegal pair_style body/rounded/polyhedron command');
@@ -162,6 +167,18 @@ export class PairBodyRoundedPolyhedron extends Pair {
       cache.set(idx, res);
       return res;
     };
+    // native's pairs (npair_bin.cpp, newton on) as keys of (owner, owner, image shift): a pair is taken with the body
+    // whose list holds the other one first, as native stores it; a pair native does not store keeps the engine's order
+    const gi = nb.gimage;
+    const pairKey = (a: number, b: number): string =>
+      `${owner[a]}:${owner[b]}:${gi[3 * b] - gi[3 * a]},${gi[3 * b + 1] - gi[3 * a + 1]},${gi[3 * b + 2] - gi[3 * a + 2]}`;
+    const nativeFirst = (a: number, b: number): boolean => this.natKeys.has(pairKey(a, b)) || !this.natKeys.has(pairKey(b, a));
+    const natPairs = this.nativeOrder.pairs(s, pc.nb, pc.geom, list);
+    if (natPairs !== this.natPairsRef) {
+      this.natPairsRef = natPairs;
+      this.natKeys = new Set<string>();
+      for (let q = 0; q < natPairs.length; q += 2) this.natKeys.add(pairKey(natPairs[q], natPairs[q + 1] & NEIGHMASK));
+    }
     for (let i = 0; i < list.inum; i++) {
       const ti = type[i];
       for (let k = list.firstneigh[i], k1 = k + list.numneigh[i]; k < k1; k++) {
@@ -174,13 +191,17 @@ export class PairBodyRoundedPolyhedron extends Pair {
         if (jj >>> SBBITS !== 0 && (sL[jj >>> SBBITS] !== 1 || sC[jj >>> SBBITS] !== 1)) {
           throw new StyleError('pair_style body/rounded/polyhedron does not support special_bonds factors other than 1');
         }
-        const bi = getBody(i), bj = getBody(j);
+        // the pair in native's orientation: native's contact area (rescale_cohesive_forces, src/BODY/pair_body_rounded_polyhedron.cpp
+        // at b332f28) is taken at the contact points of its first body (contacts[m].xi), so the order of the two bodies matters
+        const ii = nativeFirst(i, j) ? i : j;
+        const jn = ii === i ? j : i;
+        const bi = getBody(ii), bj = getBody(jn);
         if (!bi || !bj) continue;
         // native compute(): the pair is in the interaction range when r <= radius_i + radius_j + cut_inner
         const r = Math.sqrt(rsq);
         if (!(r <= polyAtomRadius(bi) + polyAtomRadius(bj) + this.cutGlobal)) continue;
         // the shear is stored as seen from the atom with the lower ID (the sign flips for the other one)
-        const ida = s.id[owner[i]], idb = s.id[owner[j]];
+        const ida = s.id[owner[ii]], idb = s.id[owner[jn]];
         const lowerIsI = ida < idb;
         const key = lowerIsI ? `${ida}:${idb}` : `${idb}:${ida}`;
         let shear: V3 = [0, 0, 0];
@@ -188,10 +209,11 @@ export class PairBodyRoundedPolyhedron extends Pair {
           const v = this.shear.get(key);
           if (v) shear = lowerIsI ? v : [-v[0], -v[1], -v[2]];
         }
+        const tii = type[ii], tjj = type[jn];
         law.P = {
-          kn: this.p.get('kn', ti, type[j]), kna: this.p.get('kna', ti, type[j]),
+          kn: this.p.get('kn', tii, tjj), kna: this.p.get('kna', tii, tjj),
           cn: this.cn, ct: this.ct, mu: this.mu, Aua: this.Aua, cut: this.cutGlobal,
-          history: hist, kt: this.p.get('kt', ti, type[j]), dt, update, shear,
+          history: hist, kt: this.p.get('kt', tii, tjj), dt, update, shear,
         };
         law.interact(bi, bj);
         if (hist) {

@@ -91,12 +91,18 @@ const umbrellaC = (bc: BondedCompute, atoms: readonly number[], grad: number[]):
  * cos(omega) = -sqrt(1 - c) when that sum is positive (the energy then is K (1 - cos omega) with the negative value).
  *   sum = (r_L - r_I) . [ (r_J - r_I)/|r_J - r_I| + (r_K - r_I)/|r_K - r_I| ]
  * Returns -1 when sum > 0 and +1 otherwise.
+ * The vectors are the ones of improper_umbrella.cpp compute() (b332f28): vb1 = x[i2]-x[i1],
+ * vb3 = x[i4]-x[i1]; each atom is the copy nearest to atom 2, the owner of an improper
+ * (molecule.cpp stores an improper with its atom2; ntopo_improper_template.cpp calls
+ * closest_image(owner, atom)), so the copies are placed relative to atoms[1] as in umbrellaC.
+ * Native LAMMPS (oracle w186um_dih_umbrella): with copies around atoms[0] the sign flipped on a
+ * ghost-edge geometry at step 31 and the energies split.
  */
 const umbrellaSide = (bc: BondedCompute, atoms: readonly number[]): number => {
   const b1 = [0, 0, 0], b2 = [0, 0, 0], v = [0, 0, 0];
-  delta(bc, atoms[0], atoms[1], b1);
-  delta(bc, atoms[0], atoms[2], b2);
-  delta(bc, atoms[0], atoms[3], v);
+  termDelta(bc, atoms[1], atoms[0], atoms[1], b1);
+  termDelta(bc, atoms[1], atoms[0], atoms[2], b2);
+  termDelta(bc, atoms[1], atoms[0], atoms[3], v);
   const l1 = Math.sqrt(b1[0] * b1[0] + b1[1] * b1[1] + b1[2] * b1[2]);
   const l2 = Math.sqrt(b2[0] * b2[0] + b2[1] * b2[1] + b2[2] * b2[2]);
   if (l1 * l2 === 0) return 1;

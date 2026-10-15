@@ -13,6 +13,9 @@
 
 export type Vec3 = [number, number, number];
 
+/** The key, fill and back light colours of Image (keyLightColor, fillLightColor, backLightColor), each 0..1. */
+export interface ImageLights { key: number; fill: number; back: number }
+
 /** An 8-bit RGB colour. */
 export type Rgb255 = [number, number, number];
 
@@ -36,8 +39,10 @@ export interface RasterFrame {
   pixelWidth: number;
   /** dump image shiny (specular intensity; hardness 16 * shiny). Default 1. */
   shiny?: number;
-  /** Ambient colour of the surfaces: 0 without ssao, 0.5 with it (Image::view_params). Default 0. */
+  /** Ambient colour of the surfaces: 0 without ssao, 0.5 with it (Image::view_params), or the dump_modify lights ambient. Default 0. */
   ambient?: number;
+  /** The key, fill and back light colours (0..1) of dump_modify lights; the image defaults 0.9, 0.45, 0.9 when absent. */
+  lights?: ImageLights;
   /** The ssao tangent buffer (2 values per pixel, rows from the top), set when ssao is on; null otherwise. */
   surface?: Float64Array;
 }
@@ -48,7 +53,7 @@ export interface RasterFrame {
  */
 export interface ImageShading {
   /** draw_pixel's colour (0..1 per channel) of a camera-space unit normal and a surface colour (0..1). */
-  shadeSurface(surface: Vec3, col: Vec3, shiny: number, ambient: number): Vec3;
+  shadeSurface(surface: Vec3, col: Vec3, shiny: number, ambient: number, lights?: ImageLights): Vec3;
   /** compute_SSAO over a finished frame (radius in world units, samples, seed). */
   applySsao(f: RasterFrame, radius: number, samples: number, seed: number): void;
 }
@@ -105,29 +110,29 @@ export const arrowParts = (a: { center: Vec3; dir: Vec3; length: number; diamete
 };
 
 /** An atom_style line particle for dump image's "line" keyword: centre, length, theta (LINE_BONUS) and colour (0..255). */
-export interface LineAtom { x: number; y: number; length: number; theta: number; color: Rgb255 }
+export interface LineAtom { x: number; y: number; length: number; theta: number; color: Rgb255; opacity: number }
 
 /**
  * An atom_style tri particle for dump image's "tri" keyword: centroid, orientation quaternion (w, i, j, k), the nine
  * body-frame corner values (lineTri.ts triangleCorner) and colour (0..255).
  */
-export interface TriAtom { center: Vec3; quat: readonly number[]; corners: readonly number[]; color: Rgb255 }
+export interface TriAtom { center: Vec3; quat: readonly number[]; corners: readonly number[]; color: Rgb255; opacity: number }
 
 /**
  * The lazily loaded line and triangle loops of dump image (src/engine-gpl/graphics/atom_objects.ts), read through
  * gplHook('atoms'). The core passes the atoms it draws; the GPL side draws them in native order.
  */
 export interface AtomObjectsHook {
-  /** atom_style line segments: each a cylinder of `diameter` with both caps, opacity from the dump's transparency. */
-  drawLineAtoms(f: RasterFrame, lines: readonly LineAtom[], diameter: number, opacity: number): void;
-  /** atom_style tri triangles: tstyle 1 faces, 2 edges, other values both; edges of `diameter`. */
-  drawTriAtoms(f: RasterFrame, tris: readonly TriAtom[], tstyle: number, diameter: number, opacity: number): void;
+  /** atom_style line segments: each a cylinder of `diameter` with both caps, at the atom's opacity (dump_modify atrans). */
+  drawLineAtoms(f: RasterFrame, lines: readonly LineAtom[], diameter: number): void;
+  /** atom_style tri triangles: tstyle 1 faces, 2 edges, other values both; edges of `diameter`; each at its atom's opacity. */
+  drawTriAtoms(f: RasterFrame, tris: readonly TriAtom[], tstyle: number, diameter: number): void;
   /** The screen-door mask of Image's draw loops: true when a pixel (column ix, native row iy) is dropped at this opacity. */
   transparentPixel(opacity: number, ix: number, iy: number): boolean;
   /** atom_style ellipsoid particles: rounded triangles (estyle 1) or a wireframe (2) of the given refinement level. */
   drawEllipsoidAtoms(f: RasterFrame, atoms: readonly EllipsoidAtom[], estyle: number, level: number, diameter: number): void;
   /** atom_style body particles (rounded/polyhedron): the elements of body_image.ts with the flags of dump image's "body" keyword. */
-  drawBodyAtoms(f: RasterFrame, atoms: readonly BodyAtom[], flag1: number, flag2: number, opacity: number): void;
+  drawBodyAtoms(f: RasterFrame, atoms: readonly BodyAtom[], flag1: number, flag2: number): void;
 }
 
 /**
@@ -135,6 +140,18 @@ export interface AtomObjectsHook {
  * j, k), the superellipsoid block exponents (null for a plain ellipsoid), the colour (0..255) and the transparency.
  */
 export interface EllipsoidAtom { center: Vec3; shape: Vec3; quat: readonly number[]; block: [number, number] | null; color: Rgb255; opacity: number }
+
+/**
+ * The drawing style of a dump image "region" keyword (dump_image.html: "region-ID color drawstyle"): the colour (0..255),
+ * the style (filled, frame, transparent or points), the frame diameter (frame, and the point diameter of points) and the
+ * opacity (transparent).
+ */
+export interface RegionDrawSpec {
+  color: Rgb255;
+  drawstyle: 'filled' | 'frame' | 'transparent' | 'points';
+  framediam: number;
+  opacity: number;
+}
 
 /**
  * A cylinder or cone region for dump image's "region" keyword: the axis (0 x, 1 y, 2 z), the two coordinates other than
@@ -156,10 +173,39 @@ export interface RegionConeSpec {
   opacity: number;
 }
 
-/** The lazily loaded region drawing of dump image (src/engine-gpl/graphics/region_cone.ts), read through gplHook('region'). */
-export interface RegionConeHook {
-  /** Draws a cylinder or cone region clipped to the box [boxlo, boxhi] (native: lo and hi limited to the box along the axis). */
+/** A block or prism region (the box corners of dump_image.cpp): b = xlo, xhi, ylo, yhi, zlo, zhi and, for a prism, xy, xz, yz. */
+export interface BoxRegionSpec extends RegionDrawSpec {
+  kind: 'block' | 'prism';
+  b: number[];
+  /** The region's "open" face numbers (1 xlo, 2 xhi, 3 ylo, 4 yhi, 5 zlo, 6 zhi as the region command gives them). */
+  openFaces: number[];
+}
+
+/** A sphere region: centre and radius (static regions only). */
+export interface SphereRegionSpec extends RegionDrawSpec { center: Vec3; radius: number }
+
+/** An ellipsoid region: centre and half-axes (static regions only). */
+export interface EllipsoidRegionSpec extends RegionDrawSpec { center: Vec3; shape: Vec3 }
+
+/** A plane region: a point of the plane, its unit normal and the box diagonal (PlaneObj's scale). */
+export interface PlaneRegionSpec extends RegionDrawSpec { point: Vec3; normal: Vec3; scale: number }
+
+/** The points style: npoints tries in the box; framediam is the sphere diameter of each point. */
+export interface PointsRegionSpec extends RegionDrawSpec { npoints: number }
+
+/**
+ * The lazily loaded region drawing of dump image (src/engine-gpl/graphics/region_box.ts, region_cone.ts), read through
+ * gplHook('region'). Each draws its region clipped to the box [boxlo, boxhi] as the native branch of dump_image.cpp does.
+ */
+export interface RegionHook {
+  /** Cylinder and cone regions (lo and hi limited to the box along the axis). */
   drawConeRegion(f: RasterFrame, spec: RegionConeSpec, boxlo: Vec3, boxhi: Vec3): void;
+  drawBoxRegion(f: RasterFrame, spec: BoxRegionSpec, boxlo: Vec3, boxhi: Vec3): void;
+  drawSphereRegion(f: RasterFrame, spec: SphereRegionSpec): void;
+  drawEllipsoidRegion(f: RasterFrame, spec: EllipsoidRegionSpec): void;
+  drawPlaneRegion(f: RasterFrame, spec: PlaneRegionSpec, boxlo: Vec3, boxhi: Vec3): void;
+  /** The points style for any region: `match` tells whether a position lies in the region. */
+  drawPointsRegion(f: RasterFrame, spec: PointsRegionSpec, boxlo: Vec3, boxhi: Vec3, match: (x: number, y: number, z: number) => boolean): void;
 }
 
 /**
@@ -169,6 +215,8 @@ export interface RegionConeHook {
  * for a triangle), the rounded radius and the colour (0..255).
  */
 export interface BodyAtom {
+  /** The body style of the record: rounded/polyhedron (faces and edges), rounded/polygon (planar vertices) or nparticle (spheres). */
+  style: 'rounded/polyhedron' | 'rounded/polygon' | 'nparticle';
   center: Vec3;
   quat: readonly number[];
   nsub: number;
@@ -177,6 +225,8 @@ export interface BodyAtom {
   vertices: readonly number[];
   edges: readonly number[];
   faces: readonly number[];
+  /** The rounded radius (rounded/polyhedron), or the diameter stored by rounded/polygon (its diameter is 2 * radius when flag1 is 0). */
   radius: number;
   color: Rgb255;
+  opacity: number;
 }

@@ -15,7 +15,8 @@
  * rejected.
  *
  * Simplifications, all fixed by the engine's dump image keywords: the view is orthographic (dump image's persp is not
- * supported), opacity is 1 (atrans and the transparency thresholds are not used), metallic is 0, gamma is 1, shiny is
+ * supported), the opacity is 1 unless the caller passes one (dump_modify atrans and ftrans through the transparency mask),
+ * metallic is 0, gamma is 1, shiny is
  * 1 and ssao is off (the ambient colour is 0), so draw_pixel reduces to the diffuse key, fill and back lights plus
  * the key specular highlight.
  */
@@ -38,7 +39,6 @@ export interface PixelLight { ambient: number; lights: LightColors }
  */
 export const transparentAt = (opacity: number, ix: number, iy: number): boolean => opacity < 1.0 && TRANSTHRESH[ix % TRANK][iy % TRANK] > opacity;
 
-const sat = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 const dot = (a: V, b: V): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: V, b: V): V => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const len = (a: V): number => Math.hypot(a[0], a[1], a[2]);
@@ -77,7 +77,7 @@ export function drawPixel(f: RasterFrame, ix: number, iy: number, depth: number,
   }
   const c = light
     ? shadeSurface(surface, col, f.shiny ?? 1, light.ambient, light.lights)
-    : shadeSurface(surface, col, f.shiny ?? 1, f.ambient ?? 0, DEFAULT_LIGHTS);
+    : shadeSurface(surface, col, f.shiny ?? 1, f.ambient ?? 0, f.lights ?? DEFAULT_LIGHTS);
   const o = idx * 3;
   f.rgb[o] = trunc(c[0] * 255);
   f.rgb[o + 1] = trunc(c[1] * 255);

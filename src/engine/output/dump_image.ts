@@ -59,8 +59,8 @@ type Col = [number, number, number];
 /** static_cast<int>(c * 255.0) for each channel (native backcolor, depthcue and outline colours). */
 const rgbOf = (c: Col): RGB => [Math.trunc(c[0] * 255), Math.trunc(c[1] * 255), Math.trunc(c[2] * 255)];
 
-/** The default box colour as 8-bit values: color2rgb("gold") (image.cpp, Image::Image). */
-const boxcolorDefault = (): RGB => rgbOf(gplHook<ImageShading>('image').color2rgb('gold')!);
+/** The default box colour, 0..1 per channel as native keeps it: color2rgb("gold") (image.cpp, Image::Image). */
+const boxcolorDefault = (): Col => gplHook<ImageShading>('image').color2rgb('gold')!;
 
 /** What the object drawing needs from one snapshot's camera. */
 interface DrawCtx {
@@ -121,6 +121,23 @@ const AXES_SHIFT: Record<2 | 3, Record<AxesLocation, [number, number, number]>> 
 };
 const cross = (a: number[], b: number[]): number[] => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const normalize = (a: number[]): number[] => { const n = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / n, a[1] / n, a[2] / n]; };
+/** Image::view_params' EPSILON (image.cpp at b332f28: constexpr double EPSILON = 1.0e-6). */
+const VIEW_EPSILON = 1.0e-6;
+/**
+ * The bounds Image::view_params is given (dump_image.cpp box_bounds, domain->boxlo_bound and boxhi_bound for a triclinic
+ * box, domain.cpp set_global_box): the lower bound of x and of y is the smaller of the box bound and its tilted copy,
+ * updated in turn for xz, as native does; the upper bounds are the larger. An orthogonal box is its own bounds.
+ */
+const viewBounds = (b: SimState['box']): { lo: number[]; hi: number[] } => {
+  const [xy, xz, yz] = b.tilt;
+  let lo0 = Math.min(b.lo[0], b.lo[0] + xy);
+  lo0 = Math.min(lo0, lo0 + xz);
+  const lo1 = Math.min(b.lo[1], b.lo[1] + yz);
+  let hi0 = Math.max(b.hi[0], b.hi[0] + xy);
+  hi0 = Math.max(hi0, hi0 + xz);
+  const hi1 = Math.max(b.hi[1], b.hi[1] + yz);
+  return { lo: [lo0, lo1, b.lo[2]], hi: [hi0, hi1, b.hi[2]] };
+};
 
 /**
  * base64 of the bytes as one flat string. Built by repeated `+=`, the result is a rope of about 30-byte nodes, one per
@@ -178,7 +195,7 @@ export class ImageDump {
   /** dump_modify backcolor2: the top of a background gradient (null: a single background colour). */
   private backcolor2: RGB | null = null;
   /** The box colour default: color2rgb("gold") (image.cpp, Image::Image; gold is 1.0, 0.843, 0.0), see boxcolorDefault(). */
-  private boxcolor: RGB = boxcolorDefault();
+  private boxcolor: Col = boxcolorDefault();
   /** dump_modify color definitions (name -> RGB), local to this dump. */
   private userColors = new Map<string, Col>();
   private bond: { color: string; width: string } | null;
@@ -453,8 +470,6 @@ export class ImageDump {
             if (!(len > 0)) throw new StyleError(`dump ${this.id}: invalid dump image axes length ${len}`);
             if (!(diam > 0)) throw new StyleError(`dump ${this.id}: invalid dump image axes diameter ${diam}`);
             this.axes = { loc, len, diam };
-            // the letters X, Y and Z are bitmaps in native image.cpp (Image::draw_axes), not ported: named, not silent
-            this.sys.log(`WARNING: dump ${this.id} image axes: the X, Y and Z letters are not drawn by the browser engine`);
           }
           k += 4;
           break;
@@ -631,7 +646,7 @@ export class ImageDump {
       }
       case 'backcolor': this.backcolor = rgbOf(this.color(a[k + 1])); return 2;
       case 'backcolor2': this.backcolor2 = a[k + 1] === 'none' ? null : rgbOf(this.color(a[k + 1])); return 2;
-      case 'boxcolor': this.boxcolor = rgbOf(this.color(a[k + 1])); return 2;
+      case 'boxcolor': this.boxcolor = this.color(a[k + 1]); return 2;
       case 'color': {
         const name = a[k + 1];
         // dump_modify color: rgbcolors[name] = {r, g, b} with the values as given (image.cpp add_color), no rounding
@@ -792,19 +807,29 @@ export class ImageDump {
     const depth = new Float64Array(w * h).fill(-Infinity);
 
     const box = s.box;
-    const lx = box.hi[0] - box.lo[0], ly = box.hi[1] - box.lo[1], lz = box.hi[2] - box.lo[2];
+    // Image::view_params works on the bounds of the box (dump_image.cpp box_bounds: domain->boxlo_bound and boxhi_bound
+    // for a triclinic box), so the extents, the centre and the scale all use them
+    const vb = viewBounds(box);
+    const lx = vb.hi[0] - vb.lo[0], ly = vb.hi[1] - vb.lo[1], lz = vb.hi[2] - vb.lo[2];
     const maxdim = Math.max(lx, ly, lz, 1e-12);
     const scale = (h / (2 * maxdim)) * this.zoom;
 
-    // box centre: fractions of the box dimensions (dump_image.html center keyword)
-    const center: number[] = [0, 1, 2].map((d) => box.lo[d] + this.centerFrac[d] * (box.hi[d] - box.lo[d]));
+    // box centre: fractions of the box dimensions (dump_image.cpp, DumpImage::set_image_center: xctr = boxxlo + cx*(boxxhi-boxxlo))
+    const center: number[] = [0, 1, 2].map((d) => vb.lo[d] + this.centerFrac[d] * (vb.hi[d] - vb.lo[d]));
 
     const th = this.theta * DEG, ph = this.phi * DEG;
-    const V = [Math.sin(th) * Math.cos(ph), Math.sin(th) * Math.sin(ph), Math.cos(th)];
-    let ui = cross(V, cross(this.up, V));
-    if (Math.hypot(ui[0], ui[1], ui[2]) < 1e-9) ui = this.dimension2Fallback(V);
-    ui = normalize(ui);
-    const right = normalize(cross(ui, V));
+    let V = [Math.sin(th) * Math.cos(ph), Math.sin(th) * Math.sin(ph), Math.cos(th)];
+    const up = normalize(this.up);
+    // Image::view_params (image.cpp at b332f28): when the view direction is (nearly) parallel to the up vector, camDir is
+    // tilted by EPSILON = 1e-6 (theta = 0 and theta = 180 are the degenerate cases), so that camRight stays defined
+    if (Math.abs(up[0] * V[0] + up[1] * V[1] + up[2] * V[2]) > 1 - VIEW_EPSILON) {
+      if (th === 0) V = [Math.sin(VIEW_EPSILON) * Math.cos(ph), Math.sin(VIEW_EPSILON) * Math.sin(ph), Math.cos(VIEW_EPSILON)];
+      else if (th === Math.PI) V = [Math.sin(th - VIEW_EPSILON) * Math.cos(ph), Math.sin(th - VIEW_EPSILON) * Math.sin(ph), Math.cos(th - VIEW_EPSILON)];
+      else V = [Math.sin(th + VIEW_EPSILON) * Math.cos(ph), Math.sin(th + VIEW_EPSILON) * Math.sin(ph), Math.cos(th + VIEW_EPSILON)];
+    }
+    // camRight = up x camDir, camUp = camDir x camRight (both normalised, as Image::view_params does)
+    const right = normalize(cross(up, V));
+    const ui = normalize(cross(V, right));
     const cx0 = Math.floor(w / 2);
     const cy0 = h % 2 === 0 ? h / 2 - 1.5 : (h - 1) / 2;
     const project = (p: number[]): [number, number, number] => {
@@ -839,8 +864,8 @@ export class ImageDump {
     const cmap = this.atomColorMap(colorVals, s);
     const diamVals = this.attr.diameter !== 'type' && this.attr.diameter !== 'element' ? this.attributeValues(this.attr.diameter, s) : null;
 
-    if (this.boxOn) this.drawBox(s, rgb, depth, project, scale, this.boxDiam);
-    if (this.bond) this.drawBonds(s, rgb, depth, project, scale, diamVals);
+    if (this.boxOn) this.drawBox(s, ctx, this.boxDiam);
+    if (this.bond) this.drawBonds(s, ctx, diamVals);
 
     if (this.atomOn) {
       for (let i = 0; i < s.n; i++) {
@@ -868,11 +893,9 @@ export class ImageDump {
     if (this.fixObjects.length) this.drawFixObjects(s, ctx);
     if (this.regions.length) this.drawRegions(s, ctx);
     if (this.axes) {
-      // the origin is grey, the x, y and z arrows red, green and blue (dump_image.cpp, Image::draw_axes)
-      const [origin, ...arrows] = this.axesObjects(s);
-      this.drawImageObject(origin, rgbOf(gplHook<ImageShading>('image').color2rgb('gray')!), 0, 0, ctx);
-      // native draws the axes in color2rgb("red"), "green" and "blue" (image.cpp draw_axes)
-      arrows.forEach((o, d) => this.drawImageObject(o, rgbOf(gplHook<ImageShading>('image').color2rgb(['red', 'green', 'blue'][d])!), 0, 0, ctx));
+      // Image::draw_axes (GPL axes.ts) with the points dump_image.cpp sets up (axesPoints)
+      const { axes, diameter } = this.axesPoints(s);
+      ctx.shading.drawAxes(frame, axes, diameter, 1, this.backcolor, this.fsaa, s.dimension === 2 ? 2 : 3);
     }
     // Image::compute_SSAO runs on the finished image, before the fsaa reduction (Image::merge)
     if (this.ssao) ctx.shading.applySsao(frame, maxdel * 0.05 * this.ssaoInt, this.ssaoSamples > 0 ? this.ssaoSamples : Math.trunc(8 + 32 * this.ssaoInt), this.ssaoSeed);
@@ -1225,32 +1248,35 @@ export class ImageDump {
   }
 
   /**
-   * The axes of dump image "axes" (dump_image.cpp, DumpImage::create_image): the origin is the lower corner of the box
-   * moved by the offset (10% of the longest edge, half of it for center), the arrows reach axes-length times the box
-   * edges, and the diameter is axes-diameter times the shortest edge. The origin is a grey sphere (its radius is passed
-   * as the diameter, as native does), the x, y and z arrows are red, green and blue (z only in 3d). The letters are
-   * not drawn (the log line in the parser). Triclinic boxes are refused.
+   * The axes of dump image "axes" (dump_image.cpp, create_image, "render XYZ axes" at b332f28): the diameter is the shortest
+   * box edge (x and y, and z in 3d) times the axes diameter; the origin is the lower corner of the box and the x, y and z
+   * points are its upper corners in those directions; all four are moved by the offset (10% of the longest edge, half of it
+   * for center, times 8 for the upper and right positions of the location); the arrows then reach axes-length times the
+   * edges from the origin. Native forms each arrow end as origin + len * (point - origin), and so does this. Triclinic
+   * boxes are refused.
    */
-  private axesObjects(s: SimState): ImageObject[] {
+  private axesPoints(s: SimState): { axes: Vec3[]; diameter: number } {
     const b = s.box;
     if (b.tilt.some((t) => t !== 0)) throw new StyleError(`dump ${this.id}: dump image axes for a triclinic box are not supported by the browser engine`);
     const dim = s.dimension === 2 ? 2 : 3;
-    const edges = [0, 1, 2].slice(0, dim).map((d) => b.hi[d] - b.lo[d]);
     const axes = this.axes!;
-    const diameter = Math.min(...edges) * axes.diam;
-    const offset = Math.max(...edges) * (axes.loc === 'center' ? 0.5 : 0.1);
+    const lo = b.lo, hi = b.hi;
+    let diameter = Math.min(hi[0] - lo[0], hi[1] - lo[1]);
+    if (dim === 3) diameter = Math.min(diameter, hi[2] - lo[2]);
+    diameter *= axes.diam;
+    const pts: Vec3[] = [[lo[0], lo[1], lo[2]], [hi[0], lo[1], lo[2]], [lo[0], hi[1], lo[2]], [lo[0], lo[1], hi[2]]];
+    let offset = Math.max(hi[0] - lo[0], hi[1] - lo[1]);
+    if (dim === 3) offset = Math.max(offset, hi[2] - lo[2]);
+    offset *= axes.loc === 'center' ? 0.5 : 0.1;
     const m = AXES_SHIFT[dim][axes.loc];
-    const origin: Vec3 = [b.lo[0] + m[0] * offset, b.lo[1] + m[1] * offset, b.lo[2] + m[2] * offset];
-    const objs: ImageObject[] = [{ kind: 'sphere', type: 0, center: origin, diameter: 0.5 * diameter }];
-    const colour = [0, 1, 2];
-    for (const d of colour.slice(0, dim)) {
-      const tip: Vec3 = [origin[0], origin[1], origin[2]];
-      tip[d] += axes.len * edges[d];
-      const dir: Vec3 = [tip[0] - origin[0], tip[1] - origin[1], tip[2] - origin[2]];
-      const center: Vec3 = [0.5 * (origin[0] + tip[0]), 0.5 * (origin[1] + tip[1]), 0.5 * (origin[2] + tip[2])];
-      objs.push({ kind: 'arrow', type: d, center, dir, length: axes.len * edges[d], diameter, ratio: 0.2 });
+    for (const p of pts) for (let c = 0; c < 3; c++) {
+      // native: "+= offset", "-= offset" or "+= 8.0*offset"
+      if (m[c] === 1) p[c] = p[c] + offset;
+      else if (m[c] === -1) p[c] = p[c] - offset;
+      else p[c] = p[c] + m[c] * offset;
     }
-    return objs;
+    for (let k = 1; k < 4; k++) for (let c = 0; c < 3; c++) pts[k][c] = pts[0][c] + axes.len * (pts[k][c] - pts[0][c]);
+    return { axes: pts, diameter };
   }
 
   /**
@@ -1297,12 +1323,6 @@ export class ImageDump {
     this.drawLine(rgb, depth, p1, p2, color, width);
   }
 
-  private dimension2Fallback(V: number[]): number[] {
-    // When up is parallel to the view (e.g. 3d view 0 0 with the default up), pick any perpendicular.
-    const alt = Math.abs(V[2]) < 0.9 ? [0, 0, 1] : [0, 1, 0];
-    return cross(V, cross(alt, V));
-  }
-
   /**
    * Image::draw_sphere: the pixels of a sphere of radius r (pixels) centred at (px, py). Each pixel is shaded by the
    * draw_pixel light sum of its camera-space normal (x along the image right, y up, z towards the viewer) with the
@@ -1345,33 +1365,36 @@ export class ImageDump {
     }
   }
 
-  private drawBox(s: SimState, rgb: Uint8Array, depth: Float64Array, project: (p: number[]) => [number, number, number], scale: number, diam: number): void {
+  /**
+   * The simulation box of dump image "box" (dump_image.cpp, create_image, "render outline of simulation box" at b332f28):
+   * the diameter is the shortest box edge (x and y, and z in 3d) times the box keyword's value, and Image::draw_box
+   * (image.cpp at b332f28) draws the twelve edges in its fixed order as cylinders with caps at both ends, through the
+   * GPL drawCylinder. The corners follow Domain::lamda_box_corners (x changing fastest); an orthogonal box uses the
+   * bounds themselves, a triclinic one lamda2x (x = h0 l0 + h5 l1 + h4 l2 + lo).
+   */
+  private drawBox(s: SimState, ctx: DrawCtx, boxDiam: number): void {
     const b = s.box;
-    const corners: number[][] = [];
-    const dim = s.dimension;
-    // the 8 corners (4 in 2d) of the (possibly tilted) box: each fractional coordinate is 0 or 1
-    const kz = dim === 2 ? [0] : [0, 1];
-    const idx = (i: number, j: number, k: number) => [b.lo[0] + i * (b.hi[0] - b.lo[0]) + j * b.tilt[0] + k * b.tilt[1], b.lo[1] + j * (b.hi[1] - b.lo[1]) + k * b.tilt[2], b.lo[2] + k * (b.hi[2] - b.lo[2])];
-    for (const i of [0, 1]) for (const j of [0, 1]) for (const k of kz) corners.push(idx(i, j, k));
-    const width = Math.max(1, diam * Math.min(b.hi[0] - b.lo[0], b.hi[1] - b.lo[1]) * scale);
-    const edges: [number, number][] = [];
-    // connect corners differing in exactly one axis
-    for (let a = 0; a < corners.length; a++) for (let c = a + 1; c < corners.length; c++) {
-      let d = 0;
-      for (let t = 0; t < 3; t++) if (Math.abs(corners[a][t] - corners[c][t]) > 1e-9) d++;
-      if (d === 1) edges.push([a, c]);
+    const lens = [b.hi[0] - b.lo[0], b.hi[1] - b.lo[1], b.hi[2] - b.lo[2]];
+    let diameter = Math.min(lens[0], lens[1]);
+    if (s.dimension === 3) diameter = Math.min(diameter, lens[2]);
+    diameter *= boxDiam;
+    if (!(diameter > 0)) return;
+    const tri = b.tilt.some((t) => t !== 0);
+    const corners: Vec3[] = [];
+    for (let k = 0; k < 2; k++) for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) {
+      if (tri) {
+        const xy = b.tilt[0], xz = b.tilt[1], yz = b.tilt[2];
+        corners.push([lens[0] * i + xy * j + xz * k + b.lo[0], lens[1] * j + yz * k + b.lo[1], lens[2] * k + b.lo[2]]);
+      } else {
+        corners.push([i ? b.hi[0] : b.lo[0], j ? b.hi[1] : b.lo[1], k ? b.hi[2] : b.lo[2]]);
+      }
     }
-    const seen = new Set<string>();
-    for (const [a, c] of edges) {
-      const key = `${Math.min(a, c)}-${Math.max(a, c)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const p1 = project(corners[a]), p2 = project(corners[c]);
-      this.drawLine(rgb, depth, p1, p2, this.boxcolor, width);
-    }
+    // Image::draw_box: the edges between corners (index bit 0 = x, bit 1 = y, bit 2 = z)
+    const edges: [number, number][] = [[0, 1], [2, 3], [0, 2], [1, 3], [0, 4], [1, 5], [2, 6], [3, 7], [4, 5], [6, 7], [4, 6], [5, 7]];
+    for (const [a, c] of edges) ctx.shading.drawCylinder(ctx.frame, corners[a], corners[c], this.boxcolor, diameter, 3, 1);
   }
 
-  private drawBonds(s: SimState, rgb: Uint8Array, depth: Float64Array, project: (p: number[]) => [number, number, number], scale: number, diamVals: Float64Array | null): void {
+  private drawBonds(s: SimState, ctx: DrawCtx, diamVals: Float64Array | null): void {
     const bonds = s.topo.bonds;
     if (!bonds || bonds.n === 0) return;
     // native draws the halves of an atom-coloured bond with the atoms' transparency (aopacity); the engine draws a bond in
@@ -1383,6 +1406,7 @@ export class ImageDump {
     const bond = this.bond!;
     const colorVals = this.attr.color !== 'type' && this.attr.color !== 'element' ? this.attributeValues(this.attr.color, s) : null;
     const cmap = this.atomColorMap(colorVals, s);
+    const hook = gplHook<ImageShading>('image');
     for (let bi = 0; bi < bonds.n; bi++) {
       const i1 = map[bonds.atoms[2 * bi]], i2 = map[bonds.atoms[2 * bi + 1]];
       if (i1 < 0 || i2 < 0) continue;
@@ -1393,27 +1417,26 @@ export class ImageDump {
       else if (bond.width === 'type') width = this.bdiamByType.get(bonds.type[bi]) ?? 0.5;
       else width = Number(bond.width);
       if (!(width > 0)) continue;
-      const col = bond.color === 'type' ? rgbOf(this.bcolorByType.get(bonds.type[bi]) ?? gplHook<ImageShading>('image').defaultTypeColor(bonds.type[bi])) : this.typeColor(s, i1, colorVals, cmap);
-      const x1 = [s.x[3 * i1], s.x[3 * i1 + 1], s.x[3 * i1 + 2]];
-      const x2 = [s.x[3 * i2], s.x[3 * i2 + 1], s.x[3 * i2 + 2]];
-      const sw = Math.max(1, width * scale);
-      // dump_image.cpp (DumpImage::create_image, bond loop at b332f28): "draw cylinder in 2 pieces if bcolor = ATOM or bond
-      // crosses periodic boundary". A crossing bond takes the minimum image of its vector (Domain::minimum_image_check,
+      const col: Col = bond.color === 'type' ? (this.bcolorByType.get(bonds.type[bi]) ?? hook.defaultTypeColor(bonds.type[bi])) : this.atomColor(s, i1, colorVals, cmap);
+      const x1: Vec3 = [s.x[3 * i1], s.x[3 * i1 + 1], s.x[3 * i1 + 2]];
+      const x2: Vec3 = [s.x[3 * i2], s.x[3 * i2 + 1], s.x[3 * i2 + 2]];
+      // dump_image.cpp (DumpImage::create_image, bond loop at b332f28): "draw cylinder in 2 pieces if bcolor = ATOM
+      // or bond crosses periodic boundary". A crossing bond takes the minimum image of its vector (Domain::minimum_image_check,
       // the half box length per periodic dimension) and is drawn from each end to the midpoint; an atom-coloured bond is
-      // drawn in two halves, each in the colour of its own atom.
+      // drawn in two halves, each in the colour of its own atom. Image::draw_cylinder (sflag 3) is the GPL drawCylinder.
       const g = this.sys.geom;
       const del = [x2[0] - x1[0], x2[1] - x1[1], x2[2] - x1[2]];
       const crosses = (g.periodic[0] && Math.abs(del[0]) > 0.5 * g.lx) || (g.periodic[1] && Math.abs(del[1]) > 0.5 * g.ly) || (g.periodic[2] && Math.abs(del[2]) > 0.5 * g.lz);
       if (!crosses && bond.color !== 'atom') {
-        this.drawLine(rgb, depth, project(x1), project(x2), col, sw);
+        ctx.shading.drawCylinder(ctx.frame, x1, x2, col, width, 3, 1);
         continue;
       }
       if (crosses) g.minimumImage(del);
-      const mid1 = [x1[0] + 0.5 * del[0], x1[1] + 0.5 * del[1], x1[2] + 0.5 * del[2]];
-      const mid2 = [x2[0] - 0.5 * del[0], x2[1] - 0.5 * del[1], x2[2] - 0.5 * del[2]];
-      const col2 = bond.color === 'atom' ? this.typeColor(s, i2, colorVals, cmap) : col;
-      this.drawLine(rgb, depth, project(x1), project(mid1), col, sw);
-      this.drawLine(rgb, depth, project(mid2), project(x2), col2, sw);
+      const mid1: Vec3 = [x1[0] + 0.5 * del[0], x1[1] + 0.5 * del[1], x1[2] + 0.5 * del[2]];
+      const mid2: Vec3 = [x2[0] - 0.5 * del[0], x2[1] - 0.5 * del[1], x2[2] - 0.5 * del[2]];
+      const col2: Col = bond.color === 'atom' ? this.atomColor(s, i2, colorVals, cmap) : col;
+      ctx.shading.drawCylinder(ctx.frame, x1, mid1, col, width, 3, 1);
+      ctx.shading.drawCylinder(ctx.frame, mid2, x2, col2, width, 3, 1);
     }
   }
 

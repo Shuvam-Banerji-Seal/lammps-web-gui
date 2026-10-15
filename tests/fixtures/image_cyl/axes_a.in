@@ -1,0 +1,16 @@
+# image_cyl fixture: native b332f28 (/home/roy/.local/bin/lmp), dump image PPM, run 0.
+units lj
+atom_style atomic
+lattice sc 0.6
+region box block 0 3 0 3 0 3
+create_box 2 box
+create_atoms 1 box
+create_atoms 2 single 0.4 0.9 1.2
+create_atoms 2 single 1.5 0.2 2.6
+create_atoms 2 single 2.2 2.1 0.4
+mass * 1.0
+pair_style lj/cut 2.5
+pair_coeff * * 1.0 1.0
+dump d all image 1 img.*.ppm type type size 96 96 view 60 30 box no 0.02 axes lowerleft 0.8 0.1
+dump_modify d pad 0 adiam 1 1.0 adiam 2 0.6
+run 0

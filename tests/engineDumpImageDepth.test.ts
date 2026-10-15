@@ -14,9 +14,10 @@ import { Session } from '../src/engine/interpreter';
  * header is "# CREATOR" then the size). Cases are 64x64, the defocus cases 200x200 (the blur radius is 1% of the image
  * height, so a smaller image blurs by less than one pixel and native skips the pass).
  *
- * Every case is byte-exact with native except dc_named (depthcue with a white fog, start 0.3): 35 bytes, each by one
+ * Every case is byte-exact with native except dc_named (depthcue with a white fog, start 0.3): 1 byte, by one
  * level in the red channel, where the fade lands just below an integer (see the notes in tests/engineDumpImageDepth
- * and the report). Those 35 bytes are pinned, not loosened.
+ * and the report). That byte is pinned, not loosened. (It was 35 bytes before the camera basis followed native's
+ * view_params arithmetic, camRight = up x camDir and camUp = camDir x camRight, in dump_image.ts; the pin moved with it.)
  */
 
 const DIR = join(process.cwd(), 'tests', 'fixtures', 'image_depth');
@@ -29,7 +30,7 @@ const BASE: Record<string, { count: number; max: number }> = {
   ssaos: { count: 0, max: 0 }, specT: { count: 0, max: 0 }, specN: { count: 0, max: 0 },
 };
 const WITH: Record<string, { count: number; max: number }> = {
-  dc_auto: { count: 0, max: 0 }, dc_named: { count: 35, max: 1 }, df_auto: { count: 0, max: 0 },
+  dc_auto: { count: 0, max: 0 }, dc_named: { count: 1, max: 1 }, df_auto: { count: 0, max: 0 },
   df_num: { count: 0, max: 0 }, outline: { count: 0, max: 0 }, combo: { count: 0, max: 0 },
   ssaos: { count: 0, max: 0 }, specT: { count: 0, max: 0 }, specN: { count: 0, max: 0 },
 };
@@ -105,7 +106,7 @@ describe('dump image depthcue, defocus and outline against native LAMMPS', () =>
       expect(d).toEqual(BASE[name]);
     });
 
-    it(`${name}: with the keyword the engine matches native's output (dc_named: the pinned 35 bytes)`, async () => {
+    it(`${name}: with the keyword the engine matches native's output (dc_named: the pinned 1 byte)`, async () => {
       const { kw, nkw } = await load(name);
       const d = diff(kw, nkw);
       expect(d).toEqual(WITH[name]);

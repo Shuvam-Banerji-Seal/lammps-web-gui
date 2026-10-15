@@ -197,10 +197,12 @@ describe('dump image fix objects (graphics/objects, graphics/arrows)', () => {
 });
 
 describe('dump image axes (dump_image.cpp axes block)', () => {
-  it('lowerleft axes start at the box corner shifted by 10% of the longest edge and name the missing letters', async () => {
+  it('lowerleft axes start at the box corner shifted by 10% of the longest edge (native: tests/fixtures/image_cyl/axes_t.ppm)', async () => {
     // origin (-1, -1, -1) projects to column 40, row 158.5 (z down is larger rows); the y arrow (green) runs from
     // y = -1 to y = 4 (length 0.5 * 10 = 5) along row 158. The red x arrow points at the viewer, so its end-on head
-    // covers the start of the green shaft; the far end of the green arrow is at column 90.
+    // covers the start of the green shaft. The far end of the green arrow is at column 86 in native's PPM for this
+    // scene (the arrow head is a draw_trinorm mesh, image_objects.cpp ArrowObj, so its tip is 4 columns short of the
+    // flat-stroke column 90 the earlier engine drew); the letters are drawn too (draw_axes), so no log line names them.
     const { files, logs } = await run(scene('create_atoms 1 single 5 5 5', '', 'dump im all image 1 out.*.ppm type type size 200 200 box no 0.02 atom no view 90 0 axes yes 0.5 0.05'));
     const img = decodePpm(b64(files.get('out.0.ppm')!));
     let x1 = -1, n = 0, ys = 0;
@@ -208,11 +210,10 @@ describe('dump image axes (dump_image.cpp axes block)', () => {
       const [r, g, b] = px(img, x, y);
       if (g > 150 && r < 80 && b < 80) { n++; x1 = Math.max(x1, x); ys += y; }
     }
-    expect(n).toBeGreaterThan(0);
-    expect(ys / n).toBeCloseTo(158, 0);
-    expect(x1).toBeGreaterThanOrEqual(87);
-    expect(x1).toBeLessThanOrEqual(93);
-    expect(logs.some((t) => /axes: the X, Y and Z letters are not drawn/.test(t))).toBe(true);
+    expect(n).toBe(88);
+    expect(ys / n).toBeCloseTo(158.4772727, 6);
+    expect(x1).toBe(86);
+    expect(logs.some((t) => /letters are not drawn/.test(t))).toBe(false);
   });
 
   it('refuses a triclinic box and an unknown location', async () => {

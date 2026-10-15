@@ -89,6 +89,27 @@ export class RanMars {
   }
 
   /**
+   * RanMars::get_state (random_mars.cpp at b332f28): the STATE_SIZE values, a -1 marker, u[1..97], i97, j97, c, cd, cm,
+   * save and second (the cached gaussian, so a restart continues the same gaussian stream).
+   */
+  getState(): number[] {
+    const st = [-1];
+    for (let i = 1; i < 98; i++) st.push(this.u[i]);
+    st.push(this.i97, this.j97, this.c, this.cd, this.cm, this.save, this.second);
+    return st;
+  }
+
+  /** RanMars::set_state (random_mars.cpp): the layout written by getState, with its cached gaussian. */
+  setState(st: readonly number[]): void {
+    for (let i = 1; i < 98; i++) this.u[i] = st[i];
+    this.i97 = st[98];
+    this.j97 = st[99];
+    this.c = st[100];
+    this.save = st[103];
+    this.second = st[104];
+  }
+
+  /**
    * RanMars::select_subset(ntarget, nmine, mark, next) on one processor: mark[i] = 1 for ntarget of the nmine
    * items, chosen by flipping random items between two linked lists. next is a work array of length nmine.
    */

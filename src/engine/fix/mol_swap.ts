@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import { hasCharge, isMolecularStyle } from '../atoms';
 import type { System } from '../system';
 import { RanPark } from '../rng';
+import { takeFixRecord } from './restartRecord';
 import { num, posInt } from './pour';
 
 /*
@@ -68,6 +69,9 @@ import { num, posInt } from './pour';
 /** Saved per-atom values so a rejected attempt restores exactly. */
 interface Saved { i: number; type: number; q: number; vx: number; vy: number; vz: number; }
 
+/** The state fix mol/swap keeps in a restart file (fix_mol_swap.cpp write_restart). */
+export interface MolSwapRestart { seed: number; nextStep: number; attempts: number; accepts: number; step: number }
+
 export class FixMolSwap extends Fix {
   readonly style = 'mol/swap';
   private readonly N: number;
@@ -122,6 +126,25 @@ export class FixMolSwap extends Fix {
     this.sizeVector = 2;
     this.extvector = 0;
     this.nextStep = s.step + 1;
+    const saved = takeFixRecord(sys, id, this.style)?.state as MolSwapRestart | undefined;
+    if (saved) this.restoreState(saved);
+  }
+
+  /**
+   * fix_mol_swap.cpp write_restart: the generator, the next step, the attempt and accept counts and the step the file
+   * was written at (restart checks that it is the file's).
+   */
+  restartState(): MolSwapRestart {
+    return { seed: this.rng.state(), nextStep: this.nextStep, attempts: this.attempts, accepts: this.accepts, step: this.sys.state.step };
+  }
+
+  /** FixMolSwap::restart: the generator, the next step and the counts; the step must be the file's. */
+  private restoreState(r: MolSwapRestart): void {
+    if (r.step !== this.sys.state.step) throw new StyleError(`fix ${this.id}: must not reset timestep when restarting fix mol/swap`);
+    this.rng.reset(r.seed);
+    this.nextStep = r.nextStep;
+    this.attempts = r.attempts;
+    this.accepts = r.accepts;
   }
 
   init(): void {

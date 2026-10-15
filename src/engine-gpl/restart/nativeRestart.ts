@@ -783,12 +783,12 @@ const readForceFields = (b: Bin, h: Header): { pair: NativePairStyle | null; noP
 
 /**
  * Modify::read_restart: the fix entries with global state (id, style, the state block of its size), then those with
- * per-atom state (id, style, the largest per-atom size). A fix nvt entry with a thermostat and no barostat is read
- * into the engine's NH state (fix_nh.cpp FixNH::pack_restart_data and FixNH::restart: the chain variables only). Every
- * other entry is a marker (stateNotStored): the engine refuses a definition of that fix after read_restart, as it does
- * for its own records of fixes it does not store (fix/restartRecord.ts checkFixStateNotStored).
+ * per-atom state (id, style, the largest per-atom size). A global block the engine can hold is read into the engine's
+ * record for that fix (fixRecordOf); every other entry is a marker (stateNotStored): the engine refuses a definition of
+ * that fix after read_restart, as it does for its own records of fixes it does not store (fix/restartRecord.ts
+ * checkFixStateNotStored).
  */
-const readFixState = (b: Bin): { records: FixRecord[]; hasPerAtom: boolean } => {
+const readFixState = (b: Bin, h: Header): { records: FixRecord[]; hasPerAtom: boolean } => {
   const records: FixRecord[] = [];
   const nglobal = b.int();
   if (nglobal < 0 || nglobal > 4096) b.fail('Invalid number of fix entries in restart file');
@@ -797,8 +797,8 @@ const readFixState = (b: Bin): { records: FixRecord[]; hasPerAtom: boolean } => 
     const size = b.int();
     if (size < 0 || size > 1 << 30) b.fail('Invalid fix data size in restart file');
     const dv = new DataView(b.b.buffer, b.take(size), size);
-    const nh = style === 'nvt' ? nvtChainState(dv) : null;
-    records.push(nh ? { id, style, props: [], data: {}, nh } : { id, style, props: [], data: {}, stateNotStored: true });
+    const rec = fixRecordOf(style, dv, h);
+    records.push(rec ? { id, style, props: [], data: {}, ...rec } : { id, style, props: [], data: {}, stateNotStored: true });
   }
   const nperatom = b.int();
   if (nperatom < 0 || nperatom > 4096) b.fail('Invalid number of fix entries in restart file');
@@ -810,22 +810,107 @@ const readFixState = (b: Bin): { records: FixRecord[]; hasPerAtom: boolean } => 
   return { records, hasPerAtom: nperatom > 0 };
 };
 
+/** The doubles of a state block (the block size is a multiple of 8 for each block read here). */
+const blockDoubles = (dv: DataView): number[] | null => {
+  if (dv.byteLength % 8 !== 0) return null;
+  return Array.from({ length: dv.byteLength / 8 }, (_, k) => dv.getFloat64(8 * k, true));
+};
+
 /**
- * The thermostat chain of a fix nvt state block (fix_nh.cpp pack_restart_data): tstat_flag, mtchain, eta[mtchain],
- * eta_dot[mtchain], then pstat_flag, which must be 0 (no barostat state). The engine's etaDot holds one more entry
- * than the chain, which the file does not store (zero, as at the start of a run). Null for any other block.
+ * The engine's record of one global fix block, or null when the engine does not hold that state (a marker). Each block
+ * is the layout its write_restart writes, serial (one processor), with the values in the order its restart() reads them:
+ *  - fix gcmc (fix_gcmc.cpp): random_equal state, next_reneighbor, the eight counters (translation, rotation, deletion,
+ *    insertion; attempts then successes), ntimestep, nprocs, random_unequal state;
+ *  - fix mol/swap (fix_mol_swap.cpp), fix deposit (fix_deposit.cpp): the state, the next step, the counts, ntimestep;
+ *  - fix charge/regulation (fix_charge_regulation.cpp): two states, six counters, next_reneighbor, ntimestep;
+ *  - fix temp/csvr, temp/csld (energy, nprocs, RanMars state), fix gjf and the brownian fixes (nprocs, RanMars state),
+ *    fix baoab (energy): RanMars::get_state, with its -1 marker (random_mars.cpp; a legacy layout is a marker);
+ *  - fix nvt, npt, nph (FixNH::pack_restart_data: see nhRecord).
  */
-const nvtChainState = (dv: DataView): NHRestart | null => {
-  const size = dv.byteLength;
-  if (size % 8 !== 0) return null;
-  const n = size / 8;
-  const d = (k: number): number => dv.getFloat64(8 * k, true);
-  if (n < 4 || d(0) !== 1) return null;
-  const m = d(1);
-  if (!Number.isInteger(m) || m < 1 || 2 + 2 * m + 1 !== n || d(2 + 2 * m) !== 0) return null;
-  const eta = Array.from({ length: m }, (_, k) => d(2 + k));
-  const etaDot = [...Array.from({ length: m }, (_, k) => d(2 + m + k)), 0];
-  return { eta, etaDot, etap: [], etapDot: [], omegaDot: [], omegaPos: [], ecoupleCum: 0, vol0: 0, len0: [0, 0, 0] };
+const fixRecordOf = (style: string, dv: DataView, h: Header): Partial<FixRecord> | null => {
+  if (style === 'nvt' || style === 'npt' || style === 'nph') return nhRecord(style, dv, h);
+  const d = blockDoubles(dv);
+  if (!d) return null;
+  const n = d.length;
+  // a step or a step count is written as ubuf(bigint).d, the 8 bytes of the integer read as a double (native restart)
+  const u = (k: number): number => Number(dv.getBigInt64(8 * k, true));
+  switch (style) {
+    case 'gcmc':
+      return n === 13 && d[11] === 1 ? { state: { seed: d[0], seedUnequal: d[12], nextStep: u(1), step: u(10), counters: d.slice(2, 10) } } : null;
+    case 'mol/swap':
+      return n === 5 ? { state: { seed: d[0], nextStep: u(1), attempts: d[2], accepts: d[3], step: u(4) } } : null;
+    case 'deposit':
+      return n === 5 ? { state: { seed: d[0], inserted: d[1], nfirst: u(2), nextStep: u(3), step: u(4) } } : null;
+    case 'charge/regulation':
+      return n === 10 ? { state: { seed: d[0], seedUnequal: d[1], nextEvent: u(8), step: u(9), counters: d.slice(2, 8) } } : null;
+    case 'temp/csvr':
+    case 'temp/csld':
+      return n === 107 && d[1] === 1 && d[2] === -1 ? { state: { energy: d[0], rng: d.slice(2) } } : null;
+    case 'gjf':
+    case 'brownian':
+    case 'brownian/sphere':
+    case 'brownian/asphere':
+      return n === 106 && d[0] === 1 && d[1] === -1 ? { state: { rng: d.slice(1) } } : null;
+    case 'baoab':
+      return n === 1 ? { state: { energy: d[0] } } : null;
+    default:
+      return null;
+  }
+};
+
+/**
+ * A fix nvt, npt or nph block (fix_nh.cpp FixNH::pack_restart_data): tstat_flag, then mtchain, eta[mtchain], eta_dot[mtchain]
+ * when set; pstat_flag, then omega[6], omega_dot[6], vol0, t0, mpchain, etap[mpchain], etap_dot[mpchain] (when mpchain
+ * is set), deviatoric_flag (then h0_inv[6]) and isochoric (then p_isoch[3] and vol_start). The engine holds the chains
+ * and barostat variables (NHRestart): the strain reference is 1 / h0_inv when the file has it, else the box lengths the
+ * header gives (the engine's len0). An isochoric barostat is a marker, since the engine has no isochoric barostat.
+ * The style must match the flags (nvt a thermostat only, nph a barostat only, npt both).
+ */
+const nhRecord = (style: string, dv: DataView, h: Header): Partial<FixRecord> | null => {
+  const d = blockDoubles(dv);
+  if (!d) return null;
+  let k = 0;
+  const next = (): number => d[k++];
+  const tflag = next();
+  let eta: number[] = [], etaDot: number[] = [];
+  if (tflag === 1) {
+    const m = next();
+    if (!Number.isInteger(m) || m < 1 || k + 2 * m > d.length) return null;
+    eta = d.slice(k, k + m); k += m;
+    etaDot = d.slice(k, k + m); k += m;
+  } else if (tflag !== 0) return null;
+  const pflag = next();
+  let omega = [0, 0, 0, 0, 0, 0], omegaDot = [0, 0, 0, 0, 0, 0], vol0 = 0, t0 = 0;
+  let etap: number[] = [], etapDot: number[] = [], h0inv: number[] | null = null;
+  if (pflag === 1) {
+    if (k + 14 > d.length) return null;
+    omega = d.slice(k, k + 6); k += 6;
+    omegaDot = d.slice(k, k + 6); k += 6;
+    vol0 = next();
+    t0 = next();
+    const mp = next();
+    if (!Number.isInteger(mp) || mp < 0 || k + 2 * mp > d.length) return null;
+    if (mp > 0) {
+      etap = d.slice(k, k + mp); k += mp;
+      etapDot = d.slice(k, k + mp); k += mp;
+    }
+    const dev = next();
+    if (dev === 1) {
+      if (k + 6 > d.length) return null;
+      h0inv = d.slice(k, k + 6); k += 6;
+    } else if (dev !== 0) return null;
+    if (next() !== 0) return null; // isochoric: not held by the engine
+  } else if (pflag !== 0) return null;
+  if (k !== d.length) return null;
+  if ((tflag === 1) !== (style !== 'nph') || (pflag === 1) !== (style !== 'nvt')) return null;
+  const boxLen = [0, 1, 2].map((a) => h.boxhi[a] - h.boxlo[a]);
+  const len0 = h0inv ? [0, 1, 2].map((a) => 1 / h0inv![a]) : boxLen;
+  const nh: NHRestart = {
+    eta, etaDot: [...etaDot, 0], etap, etapDot: pflag === 1 ? [...etapDot, 0] : [],
+    omegaDot, omegaPos: omega, ecoupleCum: 0, vol0, len0,
+  };
+  if (pflag === 1) nh.t0 = t0;
+  return { nh };
 };
 
 /** One atom of the file, with the fields of its atom_style (AtomVec::unpack_restart order). */
@@ -1065,7 +1150,7 @@ export const readNativeRestart = (sys: System, text: string, name: string): void
   const names = readGroups(b);
   const masses = readTypeArrays(b, h);
   const ff = readForceFields(b, h);
-  const fixState = readFixState(b);
+  const fixState = readFixState(b, h);
   let multiproc = 0;
   let flag = b.int();
   while (flag >= 0) {

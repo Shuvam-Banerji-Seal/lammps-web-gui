@@ -24,12 +24,14 @@ type FixRestart = FixRecord;
  * variants (FixNH), fix nphug, npt/cauchy, msst and qbmsst (restartState), fix property/atom and fix cmap.
  */
 const FIX_STATE_NOT_STORED = new Set([
-  'adapt', 'amoeba/bitorsion', 'amoeba/pitorsion', 'baoab', 'bocs', 'bond/react', 'brownian', 'brownian/asphere',
-  'brownian/sphere', 'charge/regulation', 'deform', 'deposit', 'gcmc', 'gjf', 'gle', 'graphics/lines', 'mol/swap',
-  'move', 'rigid/nph', 'rigid/nph/small', 'rigid/npt', 'rigid/npt/small', 'rigid/nvt', 'rigid/nvt/small',
-  'smd/adjust_dt', 'spring/self', 'store/state', 'temp/csld', 'temp/csvr',
-  'tgnpt/drude', 'tgnvt/drude', 'ti/spring', 'ttm', 'ttm/cascade', 'ttm/grid', 'ttm/mod',
-  'ttm/thermal', 'wall/body/polygon', 'wall/body/polyhedron', 'wall/gran', 'wall/gran/region', 'widom',
+  // widom: fix_widom.cpp restart() reads a third value (list[2]) that write_restart never wrote, so the next event step
+  // native restores is not defined; its state cannot be stored exactly
+  'widom',
+  'adapt', 'amoeba/bitorsion', 'amoeba/pitorsion', 'bocs', 'bond/react', 'deform',
+  'graphics/lines', 'rigid/nph', 'rigid/nph/small', 'rigid/npt', 'rigid/npt/small', 'rigid/nvt', 'rigid/nvt/small',
+  'smd/adjust_dt', 'spring/self', 'store/state', 'tgnpt/drude', 'tgnvt/drude', 'ti/spring', 'ttm', 'ttm/cascade',
+  'ttm/grid', 'ttm/mod', 'ttm/thermal', 'wall/body/polygon', 'wall/body/polyhedron', 'wall/gran', 'wall/gran/region',
+  'gle', 'move',
 ]);
 import { SMD_COLS, isSmdStyle } from '../smd';
 import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, isElectronStyle, ELECTRON_DEFAULTS, ELECTRON_SPIN, isDielectricStyle, DIELECTRIC_DEFAULTS, isSphStyle, SPH_DEFAULTS, SPH_WIDTH, isDpdMesoKey, isDpdMesoStyle, dpdMesoProps, RHEO_DEFAULTS, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_THERMAL_DEFAULTS, DPD_DEFAULTS, isDpdStyle } from '../atoms';

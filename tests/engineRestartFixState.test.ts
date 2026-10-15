@@ -88,4 +88,21 @@ describe('fix state in write_restart', () => {
     await session.execute(`${BOX}${MSST}\nrun 2\nwrite_restart m.restart\nclear\nread_restart m.restart\n${AFTER_READ}fix m all nvt temp 1.0 1.0 0.5\n`);
     expect(session.sys.pendingFixData.has('m')).toBe(true);
   });
+  it.each([
+    ['temp/csvr', 'fix t all temp/csvr 1.0 1.0 0.5 77', 't'],
+    ['gcmc', 'fix t all gcmc 1 2 0 1 77 2.0 -1.25 0.5', 't'],
+    ['temp/csld', 'fix t all temp/csld 1.0 1.0 0.5 77', 't'],
+    ['gjf', 'fix t all gjf 1.0 1.0 0.5 77', 't'],
+    ['brownian', 'fix t all brownian 1.0 77 gamma_t 1.0 rng uniform', 't'],
+    ['baoab', 'fix t all baoab 1.0 1.0 0.5 77', 't'],
+  ])('stores the generator and counters of %s and restores them when re-specified', async (style, def, id) => {
+    const { session, files } = newSession();
+    await session.execute(`${BOX}${def}\nrun 4\nwrite_restart r.restart\n`);
+    expect(files.get('r.restart')).toContain(`"style":"${style}"`);
+    const written = (session.sys.fixes.find((f) => f.id === id) as unknown as { restartState(): unknown }).restartState();
+    await session.execute(`clear\nread_restart r.restart\n${AFTER_READ}${def}\n`);
+    expect(session.sys.pendingFixData.has(id)).toBe(false);
+    const restored = (session.sys.fixes.find((f) => f.id === id) as unknown as { restartState(): unknown }).restartState();
+    expect(restored).toEqual(written);
+  });
 });

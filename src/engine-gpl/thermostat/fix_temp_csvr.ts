@@ -13,6 +13,7 @@
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { RescaleFix } from '../../engine/fix/thermostats';
+import { takeFixRecord, type MarsEnergyRestart } from '../../engine/fix/restartRecord';
 import { parseNumOrVar, ramp, valueOf } from '../../engine/fix/util';
 import { RanMars } from '../random_mars';
 
@@ -31,7 +32,12 @@ export class FixTempCSVR extends RescaleFix {
     if (!Number.isFinite(this.tStop) || !(this.tPeriod > 0)) throw new StyleError('Illegal fix temp/csvr command period value');
     if (!Number.isInteger(seed) || seed <= 0) throw new StyleError('Illegal fix temp/csvr command seed value');
     this.rng = new RanMars(seed);
+    const saved = takeFixRecord(sys, id, this.style)?.state as MarsEnergyRestart | undefined;
+    if (saved) { this.exchanged = saved.energy; this.rng.setState(saved.rng); }
   }
+
+  /** fix_temp_csvr.cpp write_restart: the energy exchanged and the generator state of the one processor. */
+  restartState(): MarsEnergyRestart { return { energy: this.exchanged, rng: this.rng.getState() }; }
 
   /** Target temperature now: the Tstart..Tstop ramp, or an equal-style variable. */
   private target(): number {

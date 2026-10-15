@@ -1,6 +1,7 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { RanPark } from '../rng';
+import { takeFixRecord } from './restartRecord';
 import { appendAtoms, deleteAtoms, hasChargeStyle, isMolecularStyle } from '../atoms';
 import { appendMolecule, num, posInt } from './pour';
 import { rotationMatrix, type MoleculeTemplate } from '../molecule';
@@ -185,6 +186,9 @@ const restore = (s: SimState, k: Snap): void => {
   s.topo = k.topo;
 };
 
+/** The state fix gcmc keeps in a restart file (fix_gcmc.cpp write_restart); counters in native order (trans, rot, del, ins). */
+export interface GcmcRestart { seed: number; seedUnequal: number; nextStep: number; step: number; counters: number[] }
+
 export class FixGcmc extends Fix {
   readonly style = 'gcmc';
   readonly N: number;
@@ -338,6 +342,28 @@ export class FixGcmc extends Fix {
     this.sizeVector = 8;
     this.extvector = 0;
     this.extscalar = 0;
+    const saved = takeFixRecord(sys, id, this.style)?.state as GcmcRestart | undefined;
+    if (saved) this.restoreState(saved);
+  }
+
+  /**
+   * fix_gcmc.cpp write_restart: the two generators (random_equal, random_unequal), the next step, the eight attempt and
+   * success counters (native order: translation, rotation, deletion, insertion) and the step the file was written at.
+   */
+  restartState(): GcmcRestart {
+    return {
+      seed: this.rng.state(), seedUnequal: this.accRng.state(), nextStep: this.nextStep, step: this.sys.state.step,
+      counters: [this.ntransAtt, this.ntransSucc, this.nrotAtt, this.nrotSucc, this.ndelAtt, this.ndelSucc, this.ninsAtt, this.ninsSucc],
+    };
+  }
+
+  /** FixGCMC::restart (fix_gcmc.cpp): the generators, the next step and the counters; the step must be the file's. */
+  private restoreState(r: GcmcRestart): void {
+    if (r.step !== this.sys.state.step) throw new StyleError(`fix ${this.id}: must not reset timestep when restarting fix gcmc`);
+    this.rng.reset(r.seed);
+    this.accRng.reset(r.seedUnequal);
+    this.nextStep = r.nextStep;
+    [this.ntransAtt, this.ntransSucc, this.nrotAtt, this.nrotSucc, this.ndelAtt, this.ndelSucc, this.ninsAtt, this.ninsSucc] = r.counters;
   }
 
   init(): void {

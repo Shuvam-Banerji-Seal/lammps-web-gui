@@ -83,13 +83,16 @@ describe('read_restart of a native binary restart file', () => {
     expect(events.some((e) => e.kind === 'log' && 'text' in e && /pair style eam stores no restart info/.test(e.text))).toBe(true);
   });
 
-  it('restores the thermostat chain of fix nvt, and refuses a barostat state by name', async () => {
+  it('restores the thermostat chain of fix nvt, and the barostat chain of fix npt', async () => {
     const { session } = withFiles(['w184nr_nvt.restart']);
     await session.execute('read_restart w184nr_nvt.restart\nfix 1 all nvt temp 1.0 1.0 0.5\n');
     expect(session.sys.fixes.map((f) => f.style)).toEqual(['nvt']);
-    const npt = withFiles(['w184nr_npt.restart']);
-    await npt.session.execute('read_restart w184nr_npt.restart\n');
-    await expect(npt.session.execute('fix 1 all npt temp 1.0 1.0 0.5 iso 1.0 1.0 2.0\n')).rejects.toThrow(/fix 1 \(npt\): native LAMMPS would restore its saved state/);
+    const npt = withFiles(['w187rs_npt_native.restart']);
+    await npt.session.execute('read_restart w187rs_npt_native.restart\nfix 1 all npt temp 1.0 1.0 0.5 iso 1.0 1.0 2.0\n');
+    const fix = npt.session.sys.fixes.find((f) => f.id === '1') as unknown as { restartState(): { etap: number[]; vol0: number } };
+    const state = fix.restartState();
+    expect(state.etap.length).toBe(3);
+    expect(state.vol0).toBeGreaterThan(0);
   });
 });
 

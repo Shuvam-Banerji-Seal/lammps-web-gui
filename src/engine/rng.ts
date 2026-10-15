@@ -119,6 +119,18 @@ export class RanPark {
   discardGaussian(): void {
     this.saved = null;
   }
+
+  /** RanPark::state(): the seed the stream continues from (the value a restart file stores). */
+  state(): number {
+    return this.seed;
+  }
+
+  /** RanPark::reset(seed): continue the stream from this seed; the kept gaussian is dropped (random_park.cpp). */
+  reset(seed: number): void {
+    if (!Number.isInteger(seed) || seed <= 0 || seed >= PM_M) throw new Error('Invalid seed for Park random # generator');
+    this.seed = seed;
+    this.saved = null;
+  }
 }
 
 const PM_A = 16807, PM_M = 2147483647, PM_Q = 127773, PM_R = 2836;
@@ -174,6 +186,26 @@ export class RanMars {
     uni -= this.c;
     if (uni < 0) uni += 1;
     return uni;
+  }
+
+  /**
+   * RanMars::get_state (random_mars.cpp at b332f28): the STATE_SIZE values of the native layout, a -1 marker, u[1..97],
+   * i97, j97, c, cd, cm, save and second. The engine's RanMars keeps no cached gaussian, so save is 0 here; a fix that
+   * keeps one (fix gjf) writes its own pair into the last two values.
+   */
+  getState(): number[] {
+    const st = [-1];
+    for (let i = 1; i < 98; i++) st.push(this.u[i]);
+    st.push(this.ui, this.uj, this.c, this.cd, this.cm, 0, 0);
+    return st;
+  }
+
+  /** RanMars::set_state (random_mars.cpp): restores the layout written by getState; the cached gaussian is not restored. */
+  setState(st: readonly number[]): void {
+    for (let i = 1; i < 98; i++) this.u[i] = st[i];
+    this.ui = st[98];
+    this.uj = st[99];
+    this.c = st[100];
   }
 
   /**

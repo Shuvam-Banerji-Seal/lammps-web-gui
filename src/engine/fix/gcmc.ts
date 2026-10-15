@@ -109,10 +109,13 @@ import type { SimState, Topology, TopoList } from '../types';
  * translation has dU = 0 and is accepted: measured with native LAMMPS (black box) with X = 0, M = 1, displace = 0,
  * the vector counts one translation attempt and success every step and the atoms and pe are unchanged.
  * tests/engineGcmc32.test.ts checks acceptance ratios and <N> vs mu statistically.
- * Known gap: with a mol template and partial energy (no full_energy), native's energy() leaves out every pair of the
- * molecule with itself, while the engine subtracts only the template's bonded energy from the total change, so a
- * molecule whose own non-bonded pairs are counted (no special-bond exclusion, e.g. a template without bonds) is
- * trialled with that pair energy included. full_energy is exact for such molecules (w188gc_mol_xm uses it).
+ * Partial energy (fix_gcmc.cpp energy(), b332f28; the default when canPartial() holds). Every trial sums pair.single()
+ * of the trial particle with the atoms inside the cutoff (minimum image), skipping its own index and, for a molecule,
+ * every atom of its molecule (native leaves out every intramolecular pair, bonded or not). Nothing is rebuilt and no
+ * forces are evaluated; a rejected trial changes nothing. Known gap (fallback only): when canPartial() is false
+ * (triclinic box, neigh_modify exclude/include, a periodic length below twice the largest cutoff, or a hybrid pair
+ * style), the trial uses the total energy difference, which for a mol template still counts the template's own
+ * non-bonded pairs (only its bonded energy is subtracted); full_energy is exact for such molecules (w188gc_mol_xm).
  */
 
 type Vec3 = [number, number, number];
@@ -213,6 +216,10 @@ export class FixGcmc extends Fix {
   private readonly regionId: string | null;
   private reg: { lo: Vec3; hi: Vec3; volume: number } | null = null;
   private region: Region | null = null;
+  /** This event uses the partial-energy path (set in event() by canPartial()). */
+  private partial = false;
+  /** Image shells per periodic side summed by particleEnergy (set by canPartial). */
+  private imgN: [number, number, number] = [0, 0, 0];
   private fullEnergy = false;
   private readonly charge: number | null;
   private readonly intraEnergy: number;
@@ -444,6 +451,9 @@ export class FixGcmc extends Fix {
    * GCMC exchange. Moves and exchanges interleave in cycle order (they are not all exchanges and then all moves).
    */
   private event(): void {
+    this.setImageShells();
+    this.partial = this.canPartial();
+    const before = this.successCount();
     const ncycles = this.X + this.M;
     for (let c = 0; c < ncycles; c++) {
       const ixm = Math.floor(this.rng.uniform() * ncycles) + 1;
@@ -453,7 +463,14 @@ export class FixGcmc extends Fix {
     // docs fix_gcmc.html: "Note that neighbor lists are re-built every timestep that this fix is
     // invoked, so you should not set N to be too small." Rebuild for the final atom count so the
     // run loop's force evaluation (which may decide not to reneighbor) sees the exchanged atoms.
-    this.sys.setupNeighbors();
+    // As native FixGCMC::pre_exchange (fix_gcmc.cpp at b332f28): the partial-energy path only refreshes the ghosts
+    // (comm->borders) after an accepted change; a rejected trial leaves the atoms and their neighbour list alone.
+    if (!this.partial || this.successCount() !== before) this.sys.setupNeighbors();
+  }
+
+  /** Accepted exchanges and moves so far (any change to the atoms or their positions). */
+  private successCount(): number {
+    return this.ntransSucc + this.nrotSucc + this.ninsSucc + this.ndelSucc;
   }
 
   /** The exchange choice of a cycle (fix_gcmc.cpp: xgcmc < 0.5 is a deletion), the same for both exchange modes. */
@@ -501,6 +518,145 @@ export class FixGcmc extends Fix {
       if (++attempt >= MAX_REGION_ATTEMPTS) return null;
     }
     return p;
+  }
+
+  /**
+   * Whether this event uses the partial-energy path (fix_gcmc.cpp energy(), b332f28): the pair energy of a trial
+   * particle with the rest of the system, with no force evaluation and no neighbour rebuild. Native switches to
+   * full_energy for kspace, hybrid, eam, tail and a pair style without single() (fix_gcmc.cpp init, lines 538-549);
+   * init() already maps the engine's own auto cases to fullEnergy. The sum uses minimum-image distances in place of
+   * native's ghost atoms: every periodic image of an atom within the largest cutoff (or overlap_cutoff) is summed, so
+   * the sum is exact for any orthogonal box. It needs no neigh_modify exclude or include. Otherwise the event keeps the
+   * total-energy difference.
+   */
+  private canPartial(): boolean {
+    if (this.fullEnergy) return false;
+    const s = this.sys.state;
+    const pair = this.sys.ff.pair;
+    if (!pair || typeof pair.single !== 'function' || pair.singleNeedsSeparation()) return false;
+    if (pair.name.startsWith('hybrid')) return false;
+    if (s.box.triclinic || this.sys.nb.excludes.length || this.sys.nb.includeBit) return false;
+    return true;
+  }
+
+  /**
+   * The periodic image shells summed for a separation (imgN): none for a periodic side at least twice the largest
+   * cutoff (the minimum image is then the only image in range), else ceil(cutoff / length) shells on each side.
+   * Called at every event, so the overlap check also has its images with full_energy.
+   */
+  private setImageShells(): void {
+    const s = this.sys.state;
+    const pair = this.sys.ff.pair;
+    let cmax = this.overlapCutoff;
+    if (pair) for (let k = 0; k < pair.cut.length; k++) if (pair.cut[k] > cmax) cmax = pair.cut[k];
+    for (let d = 0; d < 3; d++) {
+      const L = s.box.hi[d] - s.box.lo[d];
+      this.imgN[d] = s.box.periodic[d] && 2 * cmax > L && L > 0 ? Math.ceil(cmax / L) : 0;
+    }
+  }
+
+  /**
+   * As native FixGCMC::energy (fix_gcmc.cpp at b332f28, lines 2312-2357): the pair energy of one trial particle of type
+   * itype and charge qi at p with every other atom inside the cutoff. The particle's own index (self) is skipped, and
+   * with a molecule template every atom of the same molecule is skipped ("if (imolecule == molecule[j]) continue;"), so
+   * intramolecular pairs never count. An atom closer than overlap_cutoff makes the energy an overlap (native returns
+   * MAXENERGYSIGNAL at once). Native passes factor_coul = factor_lj = 1, so special bonds are not applied.
+   */
+  private particleEnergy(p: Vec3, itype: number, qi: number, mol: number, self: number): { e: number; overlap: boolean } {
+    const s = this.sys.state;
+    const pair = this.sys.ff.pair!;
+    const nt = s.ntypes + 1;
+    const cutsq = pair.cutsq;
+    const ovl2 = this.overlapCutoff * this.overlapCutoff;
+    const checkOverlap = this.overlapCutoff > 0;
+    const molExcl = this.molTemplate !== null;
+    const x = s.x, type = s.type, q = s.q;
+    let e = 0;
+    for (let j = 0; j < s.n; j++) {
+      if (j === self) continue;
+      if (molExcl && s.molecule[j] === mol) continue;
+      const jt = type[j];
+      const cut2 = cutsq[itype * nt + jt];
+      let overlap = false;
+      let ej = 0;
+      this.forEachImageSq(p[0] - x[3 * j], p[1] - x[3 * j + 1], p[2] - x[3 * j + 2], (rsq) => {
+        if (checkOverlap && rsq < ovl2) { overlap = true; return; }
+        if (rsq < cut2) ej += pair.single!(s.n, j, itype, jt, rsq, 1, 1, qi, q ? q[j] : 0).eng;
+      });
+      if (overlap) return { e: 0, overlap: true };
+      e += ej;
+    }
+    return { e, overlap: false };
+  }
+
+  /**
+   * Calls f with the squared length of the separation (dx, dy, dz) and each periodic image of it that the image shells
+   * (imgN, see canPartial) cover, centred on the minimum image. With imgN all zero this is the minimum image alone.
+   */
+  private forEachImageSq(dx: number, dy: number, dz: number, f: (rsq: number) => void): void {
+    const b = this.sys.state.box;
+    const [nx, ny, nz] = this.imgN;
+    const Lx = b.periodic[0] ? b.hi[0] - b.lo[0] : 0;
+    const Ly = b.periodic[1] ? b.hi[1] - b.lo[1] : 0;
+    const Lz = b.periodic[2] ? b.hi[2] - b.lo[2] : 0;
+    const mx = Lx ? Math.round(dx / Lx) : 0, my = Ly ? Math.round(dy / Ly) : 0, mz = Lz ? Math.round(dz / Lz) : 0;
+    for (let a = -nx; a <= nx; a++) {
+      const ex = dx - (mx + a) * Lx;
+      for (let c = -ny; c <= ny; c++) {
+        const ey = dy - (my + c) * Ly;
+        for (let d = -nz; d <= nz; d++) {
+          const ez = dz - (mz + d) * Lz;
+          f(ex * ex + ey * ey + ez * ez);
+        }
+      }
+    }
+  }
+
+  /** particleEnergy of the stored atom i placed at p with type itype (its charge and molecule are its own). */
+  private atomEnergy(i: number, p: Vec3, itype: number): { e: number; overlap: boolean } {
+    const s = this.sys.state;
+    return this.particleEnergy(p, itype, s.q ? s.q[i] : 0, s.molecule[i], i);
+  }
+
+  /** Sum of the particle energies of the stored atoms idx at positions xs (3 per atom); an overlap of any atom wins. */
+  private groupEnergy(idx: readonly number[], xs: Float64Array): { e: number; overlap: boolean } {
+    const s = this.sys.state;
+    let e = 0;
+    for (let k = 0; k < idx.length; k++) {
+      const i = idx[k];
+      const r = this.particleEnergy([xs[3 * k], xs[3 * k + 1], xs[3 * k + 2]], s.type[i], s.q ? s.q[i] : 0, s.molecule[i], i);
+      if (r.overlap) return { e: 0, overlap: true };
+      e += r.e;
+    }
+    return { e, overlap: false };
+  }
+
+  /**
+   * The positions of the molecule atoms idx rotated by rot about com (fix_gcmc.cpp attempt_molecule_rotation): the rotation
+   * acts on the unwrapped coordinates, and each atom's own image flags are used to unwrap it.
+   */
+  private rotatedCoords(idx: readonly number[], com: Vec3, rot: number[][]): Float64Array {
+    const s = this.sys.state;
+    const out = new Float64Array(3 * idx.length);
+    const u: number[] = [0, 0, 0];
+    idx.forEach((i, k) => {
+      this.sys.geom.unwrap(s.x, s.image, i, u);
+      const rx = u[0] - com[0], ry = u[1] - com[1], rz = u[2] - com[2];
+      out[3 * k] = com[0] + rot[0][0] * rx + rot[0][1] * ry + rot[0][2] * rz;
+      out[3 * k + 1] = com[1] + rot[1][0] * rx + rot[1][1] * ry + rot[1][2] * rz;
+      out[3 * k + 2] = com[2] + rot[2][0] * rx + rot[2][1] * ry + rot[2][2] * rz;
+    });
+    return out;
+  }
+
+  /** Writes rotated positions (see rotatedCoords) back, remapping each atom into the box with its image flags reset. */
+  private writeRotated(idx: readonly number[], xs: Float64Array): void {
+    const s = this.sys.state;
+    idx.forEach((i, k) => {
+      s.x[3 * i] = xs[3 * k]; s.x[3 * i + 1] = xs[3 * k + 1]; s.x[3 * i + 2] = xs[3 * k + 2];
+      s.image[3 * i] = 0; s.image[3 * i + 1] = 0; s.image[3 * i + 2] = 0;
+      this.sys.geom.remap(s.x, s.image, i);
+    });
   }
 
   private potentialEnergy(): number {
@@ -604,6 +760,7 @@ export class FixGcmc extends Fix {
     const p = this.drawPosition();
     if (!p) return;
     const nPart = this.nParticles(gas);
+    if (this.partial) { this.insertionPartial(p, nPart); return; }
     const eBefore = this.potentialEnergy();
     const snap = capture(s);
     const kT = s.units.boltz * this.T;
@@ -679,6 +836,7 @@ export class FixGcmc extends Fix {
       idx.push(picked);
     }
     const nPart = this.nParticles(gas);
+    if (this.partial) { this.deletionPartial(idx, nPart); return; }
     const eBefore = this.potentialEnergy();
     const snap = capture(s);
     const bodySnap = this.rigidFix?.snapshotBodies();
@@ -707,14 +865,115 @@ export class FixGcmc extends Fix {
     }
   }
 
+  /**
+   * Insertion on the partial-energy path (fix_gcmc.cpp attempt_atomic_insertion and attempt_molecule_insertion, b332f28):
+   * the trial's energy is the sum of its pair energies with the atoms already in the system (native sums energy() for
+   * each molecule atom before appending them, so the molecule's own atoms do not interact). Nothing is appended until
+   * the trial is accepted. The draws keep the full-path order: the rotation first, the acceptance, then the velocities.
+   */
+  private insertionPartial(p: Vec3, nPart: number): void {
+    const sys = this.sys;
+    const s = sys.state;
+    const kT = s.units.boltz * this.T;
+    const n0 = s.n;
+    let mass = 0;
+    let coords: Float64Array | null = null;
+    let rot: number[][] | null = null;
+    let e = 0;
+    let overlap = false;
+    if (this.molTemplate) {
+      const t = this.molTemplate;
+      rot = this.randomRotation(Math.PI * 2);
+      // docs fix_gcmc.rst: "The center of mass of the molecule is placed at the insertion point. The
+      // orientation of the molecule is chosen at random by rotating about this point."
+      const center = this.templateCenterOfMass(t);
+      coords = new Float64Array(3 * t.natoms);
+      for (let a = 0; a < t.natoms; a++) {
+        const rx = t.x[3 * a] - center[0], ry = t.x[3 * a + 1] - center[1], rz = t.x[3 * a + 2] - center[2];
+        coords[3 * a] = p[0] + rot[0][0] * rx + rot[0][1] * ry + rot[0][2] * rz;
+        coords[3 * a + 1] = p[1] + rot[1][0] * rx + rot[1][1] * ry + rot[1][2] * rz;
+        coords[3 * a + 2] = p[2] + rot[2][0] * rx + rot[2][1] * ry + rot[2][2] * rz;
+      }
+      for (const ty of t.type) mass += s.massByType[ty];
+      for (let a = 0; a < t.natoms && !overlap; a++) {
+        const r = this.particleEnergy([coords[3 * a], coords[3 * a + 1], coords[3 * a + 2]], t.type[a], t.q ? t.q[a] : 0, -1, -1);
+        e += r.e;
+        overlap = r.overlap;
+      }
+    } else {
+      mass = s.massByType[this.type];
+      const r = this.particleEnergy(p, this.type, this.charge ?? 0, -1, -1);
+      e = r.e;
+      overlap = r.overlap;
+    }
+    const dU = e - this.intraEnergy;
+    const l3 = this.deBroglie(mass) ** 3;
+    const exponent = (this.mu - dU) / kT + Math.log(this.volume / ((nPart + 1) * l3));
+    // native: insertion_energy < MAXENERGYTEST && random_unequal->uniform() < ... (no draw after an overlap)
+    if (overlap || !this.accept(this.acceptStream(), exponent)) return;
+    this.ninsSucc++;
+    if (this.molTemplate) {
+      appendMolecule(sys, this.molTemplate, 0, coords!, [0, 0, 0], maxMoleculeId(s) + 1, this.extraMask(), undefined, rot!);
+    } else {
+      appendAtoms(s, { x: Float64Array.from(p), type: this.type, v: new Float64Array(3), q: this.charge ?? undefined, mask: this.extraMask() });
+    }
+    sys.atomsChanged();
+    // the accepted molecule's bonds are registered with fix shake at the next step (see postIntegrate)
+    this.shakeFix?.extendTopology();
+    const vel = this.drawVelocity(mass, this.vecStream());
+    for (let i = n0; i < s.n; i++) {
+      s.v[3 * i] = vel[0]; s.v[3 * i + 1] = vel[1]; s.v[3 * i + 2] = vel[2];
+    }
+    this.applyGroupTypes(n0);
+    if (this.shakeFix) this.shakePending = true;
+    if (this.rigidFix) {
+      const ids: number[] = [];
+      for (let i = n0; i < s.n; i++) ids.push(s.id[i]);
+      this.rigidFix.addMolecule(ids);
+    }
+  }
+
+  /**
+   * Deletion on the partial-energy path (fix_gcmc.cpp attempt_atomic_deletion and attempt_molecule_deletion, b332f28):
+   * the removed particle's energy with the rest of the system. An atom uses the fix's type (native energy(i, ngcmc_type,
+   * ...)); a molecule uses each atom's own type (molecule_energy). Nothing is removed until the deletion is accepted.
+   */
+  private deletionPartial(idx: number[], nPart: number): void {
+    const sys = this.sys;
+    const s = sys.state;
+    const kT = s.units.boltz * this.T;
+    let e = 0;
+    let mass = 0;
+    for (const i of idx) {
+      mass += s.massByType[s.type[i]];
+      const p: Vec3 = [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]];
+      e += this.atomEnergy(i, p, this.molTemplate ? s.type[i] : this.type).e;
+    }
+    const dU = -e - this.intraEnergy;
+    const l3 = this.deBroglie(mass) ** 3;
+    const exponent = -(this.mu + dU) / kT + Math.log((nPart * l3) / this.volume);
+    if (!this.accept(this.acceptStream(), exponent)) return;
+    this.ndelSucc++;
+    const delIds = idx.map((i) => s.id[i]);
+    const flags = new Uint8Array(s.n);
+    for (const i of idx) flags[i] = 1;
+    deleteAtoms(s, flags);
+    sys.atomsChanged();
+    this.shakeFix?.rebuildClusters();
+    this.rigidFix?.removeMolecule(delIds);
+  }
+
   /** True if any atom appended after n0 lies closer than the cutoff to a pre-existing atom. */
   private hasOverlap(n0: number, cutoff: number): boolean {
     const s = this.sys.state;
     const c2 = cutoff * cutoff;
     for (let i = n0; i < s.n; i++) {
       for (let j = 0; j < n0; j++) {
-        const dx = s.x[3 * i] - s.x[3 * j], dy = s.x[3 * i + 1] - s.x[3 * j + 1], dz = s.x[3 * i + 2] - s.x[3 * j + 2];
-        if (dx * dx + dy * dy + dz * dz < c2) return true;
+        let hit = false;
+        this.forEachImageSq(s.x[3 * i] - s.x[3 * j], s.x[3 * i + 1] - s.x[3 * j + 1], s.x[3 * i + 2] - s.x[3 * j + 2], (rsq) => {
+          if (rsq < c2) hit = true;
+        });
+        if (hit) return true;
       }
     }
     return false;
@@ -762,6 +1021,19 @@ export class FixGcmc extends Fix {
       // docs fix_gcmc.html: a trial move that cannot be placed inside the region is rejected (and still counted)
       if (!this.region.match(nw[0], nw[1], nw[2])) { this.regionMoveRejected(); return; }
     }
+    if (this.partial) {
+      const kT = s.units.boltz * this.T;
+      const before = this.atomEnergy(i, old, this.type).e;
+      const after = this.atomEnergy(i, nw, this.type);
+      // native: energy_after < MAXENERGYTEST && random_unequal->uniform() < ... (no draw after an overlap)
+      if (!after.overlap && this.accept(this.acceptStream(), -(after.e - before) / kT)) {
+        this.ntransSucc++;
+        for (let k = 0; k < 3; k++) s.x[3 * i + k] = nw[k];
+        sys.bump();
+      }
+      return;
+    }
+    if (this.overlapCutoff > 0 && this.atomEnergy(i, nw, this.type).overlap) return;
     const oldImage = this.snapshotImages([i]);
     const eBefore = this.potentialEnergy();
     for (let k = 0; k < 3; k++) s.x[3 * i + k] = nw[k];
@@ -800,6 +1072,19 @@ export class FixGcmc extends Fix {
     // native shifts by the displacement of the last draw (com_displace), which is the first one outside a region
     const shift = d;
     const old = this.snapshotCoords(idx);
+    const moved = Float64Array.from(old, (v, k) => v + shift[k % 3]);
+    if (this.partial) {
+      const kT = s.units.boltz * this.T;
+      const before = this.groupEnergy(idx, old);
+      const after = this.groupEnergy(idx, moved);
+      if (!after.overlap && this.accept(this.acceptStream(), -(after.e - before.e) / kT)) {
+        this.ntransSucc++;
+        for (let k = 0; k < idx.length; k++) for (let c = 0; c < 3; c++) s.x[3 * idx[k] + c] = moved[3 * k + c];
+        sys.bump();
+      }
+      return;
+    }
+    if (this.overlapCutoff > 0 && this.groupEnergy(idx, moved).overlap) return;
     const oldImage = this.snapshotImages(idx);
     const eBefore = this.potentialEnergy();
     for (const i of idx) for (let k = 0; k < 3; k++) s.x[3 * i + k] += shift[k];
@@ -837,20 +1122,24 @@ export class FixGcmc extends Fix {
     const com = this.moleculeCom(idx);
     const rot = this.randomRotation(this.maxangle);
     const old = this.snapshotCoords(idx);
-    const oldImage = this.snapshotImages(idx);
-    const eBefore = this.potentialEnergy();
     // fix_gcmc.cpp attempt_molecule_rotation: the rotation acts on the unwrapped coordinates about the unwrapped
     // centre of mass; the rotated atoms are then remapped into the box with their image flags reset first
-    const u: number[] = [0, 0, 0];
-    for (const i of idx) {
-      sys.geom.unwrap(s.x, s.image, i, u);
-      const rx = u[0] - com[0], ry = u[1] - com[1], rz = u[2] - com[2];
-      s.x[3 * i] = com[0] + rot[0][0] * rx + rot[0][1] * ry + rot[0][2] * rz;
-      s.x[3 * i + 1] = com[1] + rot[1][0] * rx + rot[1][1] * ry + rot[1][2] * rz;
-      s.x[3 * i + 2] = com[2] + rot[2][0] * rx + rot[2][1] * ry + rot[2][2] * rz;
-      s.image[3 * i] = 0; s.image[3 * i + 1] = 0; s.image[3 * i + 2] = 0;
-      sys.geom.remap(s.x, s.image, i);
+    const nw = this.rotatedCoords(idx, com, rot);
+    if (this.partial) {
+      const kT = s.units.boltz * this.T;
+      const before = this.groupEnergy(idx, old);
+      const after = this.groupEnergy(idx, nw);
+      if (!after.overlap && this.accept(this.acceptStream(), -(after.e - before.e) / kT)) {
+        this.nrotSucc++;
+        this.writeRotated(idx, nw);
+        sys.bump();
+      }
+      return;
     }
+    if (this.overlapCutoff > 0 && this.groupEnergy(idx, nw).overlap) return;
+    const oldImage = this.snapshotImages(idx);
+    const eBefore = this.potentialEnergy();
+    this.writeRotated(idx, nw);
     sys.bump();
     const dU = this.potentialEnergy() - eBefore;
     if (this.accept(this.acceptStream(), -dU / (s.units.boltz * this.T))) {

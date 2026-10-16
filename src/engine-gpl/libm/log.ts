@@ -246,17 +246,8 @@ export const log = (x: number): number => {
       const y0 = h + v0;
       const bb = y0 - v0;
       const e0 = (v0 - (y0 - bb)) + (h - bb);
-      F[0] = y0;
-      const ex = (U[1] >>> 20) & 0x7ff;
-      if (ex > 60) {
-        const pow2 = (U[1] & 0xfffff) === 0 && U[0] === 0;
-        U[1] = (ex - 53) << 20;
-        U[0] = 0;
-        const half = F[0];
-        const away = (e0 > 0) === (y0 > 0);
-        const dist = (away || !pow2 ? half : half / 2) - Math.abs(e0);
-        if (dist > 4 * (Math.abs(r3) * 8.881784197001252e-16 + r2 * 8.271806125530277e-25)) return y0;
-      }
+      const m = 4 * (Math.abs(r3) * 8.881784197001252e-16 + r2 * 8.271806125530277e-25) + 4.9e-324;
+      if (y0 + (e0 + m) === y0 && y0 + (e0 - m) === y0) return y0;
     }
     const a1 = fma(r, B[2], B[1]);
     const a2 = fma(r, B[5], B[4]);
@@ -315,16 +306,8 @@ export const log = (x: number): number => {
     const y0 = v0 + h0;
     const bb = y0 - v0;
     const e0 = (v0 - (y0 - bb)) + (h0 - bb);
-    F[0] = y0;
-    const ex = (U[1] >>> 20) & 0x7ff;
-    const pow2 = (U[1] & 0xfffff) === 0 && U[0] === 0;
-    U[1] = (ex - 53) << 20;
-    U[0] = 0;
-    const half = F[0]; // ulp(y0) / 2
-    // the midpoint on the side of the exact value: below a power of two the spacing is half as large
-    const away = (e0 > 0) === (y0 > 0);
-    const dist = (away || !pow2 ? half : half / 2) - Math.abs(e0);
-    if (dist > FAST_MARGIN) return y0;
+    // RN is monotonic: if y0 + e0 +- margin both round to y0, the fused sum (within the margin of y0 + e0) does too
+    if (y0 + (e0 + FAST_MARGIN) === y0 && y0 + (e0 - FAST_MARGIN) === y0) return y0;
   }
   const w = fmaS(k, LN2HI, SL2H, LN2HI - SL2H, logc);
   const t1 = fmaS(r, A2, SA2, A2 - SA2, A1);

@@ -97,6 +97,18 @@ const TAB = new Uint32Array([
 
 const asDouble = (hi: number, lo: number): number => { U[1] = hi; U[0] = lo; return F[0]; };
 
+/** tail_i = asdouble(tab[2i]) and 2^(i/N) = asdouble(tab[2i+1] + (i << 45)) for the fast path. */
+const TAILD = new Float64Array(128);
+const SCALE2 = new Float64Array(128);
+for (let i = 0; i < 128; i++) {
+  TAILD[i] = asDouble(TAB[4 * i], TAB[4 * i + 1]);
+  SCALE2[i] = asDouble((TAB[4 * i + 2] + (i << 13)) >>> 0, TAB[4 * i + 3]);
+}
+/** 2^m for |m| <= 1100 (exact powers of two). */
+const POW2_OFF = 1100;
+const POW2 = new Float64Array(2201);
+for (let m = -1100; m <= 1100; m++) POW2[m + POW2_OFF] = 2 ** m;
+
 /** The k < 0 special case of e_exp.c (unfused products, as compiled). */
 const specialNeg = (tmp: number, sHi: number, sLo: number): number => {
   const scale = asDouble((sHi + 0x3fe00000) >>> 0, sLo);
@@ -157,35 +169,20 @@ export const exp = (x: number): number => {
   const ks = z + Shift;
   const kd = ks - Shift;
   if (0.5 - Math.abs(z - kd) < 9.313225746154785e-10) return expExact(x, false); // within 2^-30 of a half-integer
-  F[0] = ks;
-  const kiLo = U[0];
+  const i = kd & 127;
   const r = (x + kd * NegLn2hiN) + kd * NegLn2loN;
-  const idx = 2 * (kiLo & 127);
-  const tail = asDouble(TAB[2 * idx], TAB[2 * idx + 1]);
-  const sHi = (TAB[2 * idx + 2] + (kiLo << 13)) >>> 0, sLo = TAB[2 * idx + 3];
   const r2 = r * r;
-  const tmp = (tail + r) + r2 * (C2 + r * C3) + r2 * r2 * (C4 + r * C5);
-  const scale = asDouble(sHi, sLo);
-  // y = scale + scale tmp with the exact errors of the product (Dekker) and of the sum
+  const tmp = (TAILD[i] + r) + r2 * (C2 + r * C3) + r2 * r2 * (C4 + r * C5);
+  // scale = 2^(i/N) 2^m, m = (k - i) / N: the table's scale bits plus k << 45 (exact for these k)
+  const scale = SCALE2[i] * POW2[(kd - i) / 128 + POW2_OFF];
+  // the fused y = RN(scale + scale tmp): the exact sum differs from scale + p by less than |scale| 2^-60 (the fused
+  // tmp) + |p| 2^-53 (the rounding of p); M doubles that. RN is monotonic, so if y + es +- M both round to y, so does
+  // the exact sum.
   const p = scale * tmp;
-  let t = SPLIT * scale;
-  const ah = t - (t - scale), al = scale - ah;
-  t = SPLIT * tmp;
-  const bh = t - (t - tmp), bl = tmp - bh;
-  const ep = ((ah * bh - p) + ah * bl + al * bh) + al * bl;
   const y = scale + p;
   const bb = y - scale;
   const es = (scale - (y - bb)) + (p - bb);
-  const e = es + ep;
-  F[0] = y;
-  const ex = (U[1] >>> 20) & 0x7ff;
-  const pow2 = (U[1] & 0xfffff) === 0 && U[0] === 0;
-  if (ex <= 53) return expExact(x, false);
-  U[1] = (ex - 53) << 20;
-  U[0] = 0;
-  const half = F[0];
-  const away = (e > 0) === (y > 0);
-  const dist = (away || !pow2 ? half : half / 2) - Math.abs(e);
-  if (dist > Math.abs(scale) * 1.734723475976807e-18) return y; // 2 x 2^-60 |scale|
+  const M = Math.abs(scale) * 1.734723475976807e-18 + Math.abs(p) * 2.220446049250313e-16;
+  if (y + (es + M) === y && y + (es - M) === y) return y;
   return expExact(x, false);
 };

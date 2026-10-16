@@ -723,7 +723,7 @@ export class FixGcmc extends Fix {
 
   /** Accepts when u < min(1, exp(exponent)), with one uniform from the stream (fix_gcmc.cpp compares u < exp(...)). */
   private accept(stream: RanPark, exponent: number): boolean {
-    return stream.uniform() < Math.exp(Math.min(0, exponent));
+    return stream.uniform() < libm.exp(Math.min(0, exponent));
   }
 
   /** Trial displacement: a point of the cube [-1, 1]^3 inside the unit sphere (rejection), scaled by displace. */

@@ -21,6 +21,7 @@ import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
+import { exp as libmExp } from '../libm/exp';
 
 /** MathSpecial::powint: x^n for integer n by repeated squaring (the source's helper). */
 const powint = (x: number, n: number): number => {
@@ -97,11 +98,11 @@ export class PairMorseSoft extends Pair {
     const r = Math.sqrt(rsq);
     const D = this.d0T[k], a = this.alphaT[k], x0 = this.r0T[k], l = this.lamT[k];
     const dr = r - x0;
-    const dexp = Math.exp(-a * dr);
+    const dexp = libmExp(-a * dr);
     const dexp2 = dexp * dexp;
     const dexp3 = dexp2 * dexp;
-    const ea = Math.exp(a * x0);
-    const iea2 = Math.exp(-2 * a * x0);
+    const ea = libmExp(a * x0);
+    const iea2 = libmExp(-2 * a * x0);
     const V0 = D * dexp * (dexp - 2);
     const B = (-2 * D * iea2 * (ea - 1)) / 3;
     if (l >= this.shiftRange) {

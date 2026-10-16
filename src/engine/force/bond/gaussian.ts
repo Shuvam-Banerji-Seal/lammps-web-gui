@@ -81,12 +81,12 @@ export class BondGaussian extends Bonded {
       let S = 0;
       for (const g of terms) {
         const d = r - g.r0;
-        S += (g.a / (g.w * SQRT_PI_2)) * Math.exp((-2 * d * d) / (g.w * g.w));
+        S += (g.a / (g.w * SQRT_PI_2)) * libm.exp((-2 * d * d) / (g.w * g.w));
       }
       let dS = 0;
       for (const g of terms) {
         const d = r - g.r0;
-        dS += (g.a / (g.w * SQRT_PI_2)) * Math.exp((-2 * d * d) / (g.w * g.w)) * ((-4 * d) / (g.w * g.w));
+        dS += (g.a / (g.w * SQRT_PI_2)) * libm.exp((-2 * d * d) / (g.w * g.w)) * ((-4 * d) / (g.w * g.w));
       }
       return { e: -kT * libm.log(S), dEdr: (-kT * dS) / S };
     });

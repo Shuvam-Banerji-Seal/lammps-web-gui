@@ -13,6 +13,7 @@ import { Pair, StyleError, type PairCompute, type StyleContext } from '../../eng
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { CORE_TYPE, DRUDE_TYPE, NOPOL_TYPE, drudeModelOf, type DrudeModel } from './drude_model';
+import { exp as libmExp } from '../libm/exp';
 
 export class PairCoulTT extends Pair {
   readonly name = 'coul/tt';
@@ -155,7 +156,7 @@ export class PairCoulTT extends Pair {
         const r2inv = 1 / rsq;
         const r = Math.sqrt(rsq);
         const b = this.bArr[t], c = this.cArr[t], n = this.nArr[t];
-        const beta = c * Math.exp(-b * r);
+        const beta = c * libmExp(-b * r);
         const betaprime = -b * beta;
         let gamma = 1.0 + b * r;
         let gammaprime = b;

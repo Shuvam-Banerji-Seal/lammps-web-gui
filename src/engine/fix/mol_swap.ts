@@ -5,6 +5,7 @@ import type { System } from '../system';
 import { RanPark } from '../rng';
 import { takeFixRecord } from './restartRecord';
 import { num, posInt } from './pour';
+import { libm } from '../libm';
 
 /*
  * fix ID group-ID mol/swap N X itype jtype seed T keyword value ...
@@ -216,7 +217,7 @@ export class FixMolSwap extends Fix {
     for (const i of idx) this.setType(i, s.type[i] === this.itype ? this.jtype : this.itype);
     const dE = this.potentialEnergy() - e0;
     const u = this.rng.uniform();
-    const accept = dE <= 0 || u < Math.exp(-dE / (s.units.boltz * this.T));
+    const accept = dE <= 0 || u < libm.exp(-dE / (s.units.boltz * this.T));
     if (accept) this.accepts++;
     else {
       for (const p of saved) {

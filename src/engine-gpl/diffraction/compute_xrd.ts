@@ -19,6 +19,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { ASF_XRD, XRD_TYPE_LIST } from './asf_xrd';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 const PI = Math.PI;
 
@@ -188,7 +189,7 @@ export class ComputeXRD extends Compute {
       for (let t = 0; t < nt; t++) {
         const row = ASF_XRD[this.ztype[t]];
         let ft = 0;
-        for (let C = 0; C < 8; C += 2) ft += row[C] * Math.exp(-1 * row[C + 1] * SinTheta_lambda * SinTheta_lambda);
+        for (let C = 0; C < 8; C += 2) ft += row[C] * libmExp(-1 * row[C + 1] * SinTheta_lambda * SinTheta_lambda);
         f[t] = ft + row[8];
       }
       let F1 = 0, F2 = 0;

@@ -1,6 +1,7 @@
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * pair_style smatb and smatb/single, docs.lammps.org/pair_smatb.html (text: plans/lammps-docs-live/pair_smatb.rst).
@@ -79,8 +80,8 @@ const polyFor = (d0: number, f0: number, f1: number, f2: number): [number, numbe
 const makePot = (R0: number, p: number, q: number, A: number, xi: number, Rsc: number, Rc: number): Pot => {
   const d0 = Rsc - Rc;
   // exponential branch at R_sc: f = C exp(-k (r/R0 - 1)), f' = -(k/R0) f, f'' = (k/R0)^2 f
-  const ea = A * Math.exp(-p * (Rsc / R0 - 1));
-  const ex = xi * Math.exp(-q * (Rsc / R0 - 1));
+  const ea = A * libm.exp(-p * (Rsc / R0 - 1));
+  const ex = xi * libm.exp(-q * (Rsc / R0 - 1));
   const a = polyFor(d0, ea, (-p / R0) * ea, ((p / R0) ** 2) * ea);
   const x = polyFor(d0, ex, (-q / R0) * ex, ((q / R0) ** 2) * ex);
   return { R0, p, q, A, xi, Rsc, Rc, a, x };
@@ -89,8 +90,8 @@ const makePot = (R0: number, p: number, q: number, A: number, xi: number, Rsc: n
 /** alpha(r) and Xi(r) with their radial derivatives (r < Rc). */
 const evalPot = (P: Pot, r: number): { al: number; dal: number; xi: number; dxi: number } => {
   if (r < P.Rsc) {
-    const ea = P.A * Math.exp(-P.p * (r / P.R0 - 1));
-    const ex = P.xi * Math.exp(-P.q * (r / P.R0 - 1));
+    const ea = P.A * libm.exp(-P.p * (r / P.R0 - 1));
+    const ex = P.xi * libm.exp(-P.q * (r / P.R0 - 1));
     return { al: ea, dal: (-P.p / P.R0) * ea, xi: ex, dxi: (-P.q / P.R0) * ex };
   }
   const d = r - P.Rc, d2 = d * d;

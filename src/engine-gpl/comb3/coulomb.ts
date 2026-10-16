@@ -11,6 +11,7 @@ import type { Comb3Param } from './params';
 import type { Comb3Tables, TriPoint } from './tables';
 import type { Comb3Kernel } from './terms';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 const MY_PI = Math.PI;
 const MY_PI2 = Math.PI / 2;
@@ -238,13 +239,13 @@ export class Comb3Charge {
       Bsj = pj.aB - Math.pow(QOchj, 10);
       dBsj = -pj.bB * 10.0 * powint(QOchj, 9);
     }
-    const LamDiLamDj = Math.exp(0.5 * (pi.lami * Di + pj.lami * Dj) - rlm1 * r);
+    const LamDiLamDj = libmExp(0.5 * (pi.lami * Di + pj.lami * Dj) - rlm1 * r);
     const caj = 0.5 * tmpFc * pi.bigA * LamDiLamDj;
     let cbqpn: number, cbqpj: number;
     if (Bsi * Bsj > 0.0) {
-      const AlfDiAlfDj = Math.exp(0.5 * (pi.alfi * Di + pj.alfi * Dj));
+      const AlfDiAlfDj = libmExp(0.5 * (pi.alfi * Di + pj.alfi * Dj));
       const cbj = -0.5 * tmpFc * bij * Math.sqrt(Bsi * Bsj) * AlfDiAlfDj *
-        (pbij1 * Math.exp(-alfij1 * r) + pbij2 * Math.exp(-alfij2 * r) + pbij3 * Math.exp(-alfij3 * r));
+        (pbij1 * libmExp(-alfij1 * r) + pbij2 * libmExp(-alfij2 * r) + pbij3 * libmExp(-alfij3 * r));
       cbqpn = cbj * (pi.alfi * dDi + dBsi / Bsi);
       cbqpj = cbj * (pj.alfi * dDj + dBsj / Bsj);
     } else {

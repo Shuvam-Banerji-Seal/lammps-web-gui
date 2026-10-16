@@ -15,6 +15,7 @@ import { StyleError, mixDistance, mixEpsilon, type PairCompute } from '../../eng
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { PairDipoleBase } from '../../engine/force/pair/dipole';
+import { exp as libmExp } from '../libm/exp';
 
 /** ewald_const.h: the erfc approximation (Abramowitz and Stegun 7.1.26) of LAMMPS, b332f28. */
 const EWALD_P = 0.3275911;
@@ -142,7 +143,7 @@ export class PairLJCutDipoleLong extends PairDipoleBase {
         if (rsq < cutCsqG) {
           const r = Math.sqrt(rsq);
           const grij = g * r;
-          const expm2 = Math.exp(-grij * grij);
+          const expm2 = libmExp(-grij * grij);
           const tp = 1.0 / (1.0 + EWALD_P * grij);
           const erfc = tp * (A1 + tp * (A2 + tp * (A3 + tp * (A4 + tp * A5)))) * expm2;
           const pdotp = mix * mjx + miy * mjy + miz * mjz;

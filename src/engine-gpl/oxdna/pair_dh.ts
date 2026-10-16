@@ -16,6 +16,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, OXDNA_QEFF, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { type OxdnaConstants, backboneOxdna2, backboneOxrna2Dh, lrfOf, oxdnaConstants, potentialLines } from './common';
+import { exp as libmExp } from '../libm/exp';
 
 /** utils::logical of LAMMPS for the half_charged_ends keyword. */
 const logical = (w: string): boolean => {
@@ -85,7 +86,7 @@ export class PairOxdna2Dh extends Pair {
     const kappaOne = 1.0 / lambda;
     const qpfOne = c.qeff_dh_pf_one_prefactor * qeffOne * qeffOne;
     const cutAstOne = 3.0 * lambda;
-    const bOne = (Math.exp(-cutAstOne / lambda) * qpfOne * (cutAstOne + lambda) * (cutAstOne + lambda))
+    const bOne = (libmExp(-cutAstOne / lambda) * qpfOne * (cutAstOne + lambda) * (cutAstOne + lambda))
       / (4.0 * cutAstOne * cutAstOne * cutAstOne * lambda * lambda);
     const cutCOne = cutAstOne * (cutAstOne + 3.0 * lambda) / (cutAstOne + lambda);
     const nt = this.nt;
@@ -174,8 +175,8 @@ export class PairOxdna2Dh extends Pair {
         const kap = this.kappa[ij], qpf = this.qpf[ij];
         let fpair: number, e: number;
         if (r <= this.cutAst[ij]) {
-          fpair = qa * qb * qpf * Math.exp(-kap * r) * (kap + rinv) * rinv * rinv;
-          e = qa * qb * qpf * Math.exp(-kap * r) * rinv;
+          fpair = qa * qb * qpf * libmExp(-kap * r) * (kap + rinv) * rinv * rinv;
+          e = qa * qb * qpf * libmExp(-kap * r) * rinv;
         } else {
           fpair = 2.0 * qa * qb * this.bDh[ij] * (this.cutC[ij] - r) * rinv;
           e = qa * qb * this.bDh[ij] * (r - this.cutC[ij]) * (r - this.cutC[ij]);

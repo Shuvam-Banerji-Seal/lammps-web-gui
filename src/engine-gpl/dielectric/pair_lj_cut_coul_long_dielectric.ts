@@ -16,6 +16,7 @@ import { evTally, StyleError, type PairCompute } from '../../engine/force/types'
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { ErfcTableCache, EWALD_F, erfcPoly, TABLE_INNER_RSQ, type ErfcTable } from '../../engine/force/erfc';
 import { dielArrays } from './common';
+import { exp as libmExp } from '../libm/exp';
 
 /** Within this distance squared the Coulomb term is left out (pair_lj_cut_coul_long_dielectric.cpp EPSILON). */
 const EPSILON = 1.0e-6;
@@ -30,7 +31,7 @@ const kernels = (rsq: number, g: number, table: ErfcTable | null): { fo: number;
   if (table && rsq > TABLE_INNER_RSQ) return { fo: table.force(rsq), eo: table.energy(rsq), co: table.coul(rsq) };
   const r = Math.sqrt(rsq);
   const grij = g * r;
-  const ex = Math.exp(-grij * grij);
+  const ex = libmExp(-grij * grij);
   const erfc = erfcPoly(grij, ex);
   return { fo: (erfc + EWALD_F * grij * ex) / r, eo: erfc / r, co: 1 / r };
 };

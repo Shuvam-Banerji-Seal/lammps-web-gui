@@ -21,6 +21,7 @@ import { pppmKspaceError, type PppmGridRequest, type PppmGridResult } from '../.
 import { isFFTSize } from '../../engine/force/fft';
 import { log as libmLog } from '../libm/log';
 import { sin as libmSin } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 const LARGE = 10000;
 const SMALL = 0.00001;
@@ -106,17 +107,17 @@ export const computeQopt = (nx: number, ny: number, nz: number, g: number, lx: n
         let sum1 = 0, sum2 = 0, sum3 = 0, sum4 = 0;
         for (let ix = -2; ix <= 2; ix++) {
           let qx = unitkx * (kper + nx * ix);
-          const sx = Math.exp(-0.25 * ((qx / g) * (qx / g)));
+          const sx = libmExp(-0.25 * ((qx / g) * (qx / g)));
           const wx = powsinxx((0.5 * qx * lx) / nx, twoorder);
           qx *= qx;
           for (let iy = -2; iy <= 2; iy++) {
             let qy = unitky * (lper + ny * iy);
-            const sy = Math.exp(-0.25 * ((qy / g) * (qy / g)));
+            const sy = libmExp(-0.25 * ((qy / g) * (qy / g)));
             const wy = powsinxx((0.5 * qy * ly) / ny, twoorder);
             qy *= qy;
             for (let iz = -2; iz <= 2; iz++) {
               let qz = unitkz * (mper + nz * iz);
-              const sz = Math.exp(-0.25 * ((qz / g) * (qz / g)));
+              const sz = libmExp(-0.25 * ((qz / g) * (qz / g)));
               const wz = powsinxx((0.5 * qz * lzs) / nz, twoorder);
               qz *= qz;
               const dot2 = qx + qy + qz;
@@ -202,7 +203,7 @@ const triclinicGrid = (r: PppmGridRequest): PppmGridResult => {
   // the spacings of the final grid (x2lamdaT of the counts): fixed while G is solved
   const lam = x2lamdaT(r, [nx, ny, nz]);
   const hx = 1 / lam[0], hy = 1 / lam[1], hz = 1 / lam[2];
-  const dfRspace = (g: number) => (2 * r.q2 * Math.exp(-g * g * r.cutoff * r.cutoff)) / Math.sqrt(natoms * r.cutoff * r.lx * r.ly * r.lz);
+  const dfRspace = (g: number) => (2 * r.q2 * libmExp(-g * g * r.cutoff * r.cutoff)) / Math.sqrt(natoms * r.cutoff * r.lx * r.ly * r.lz);
   const dfKspace = (g: number) => {
     const a = estimateIk(r, g, hx, r.lx, natoms);
     const b = estimateIk(r, g, hy, r.ly, natoms);
@@ -243,7 +244,7 @@ const adGrid = (r: PppmGridRequest): PppmGridResult => {
   while (!factorable(ny)) ny++;
   while (!factorable(nz)) nz++;
   if (r.gUser > 0) return { g: r.gUser, mesh: [nx, ny, nz] };
-  const dfRspace = (g: number) => (2 * r.q2 * Math.exp(-g * g * r.cutoff * r.cutoff)) / Math.sqrt(natoms * r.cutoff * r.lx * r.ly * r.lz);
+  const dfRspace = (g: number) => (2 * r.q2 * libmExp(-g * g * r.cutoff * r.cutoff)) / Math.sqrt(natoms * r.cutoff * r.lx * r.ly * r.lz);
   const g = adjustGewald(gInit, (x) => dfRspace(x) - dfKspace(x, nx, ny, nz));
   return { g, mesh: [nx, ny, nz] };
 };

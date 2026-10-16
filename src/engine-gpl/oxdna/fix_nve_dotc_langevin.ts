@@ -14,6 +14,7 @@ import { isEllipsoid, massOf } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { RanMars } from '../random_mars';
 import { noSquishRotate, vec3ToVec4, vec4ToVec3 } from './fix_nve_dot';
+import { exp as libmExp } from '../libm/exp';
 
 /** fix_nve_dotc_langevin.cpp: "static constexpr double INERTIA = 0.2;" */
 const INERTIA = 0.2;
@@ -64,7 +65,7 @@ export class FixNVEDotcLangevin extends FixNVE {
     for (let i = 0; i < s.n; i++) {
       if ((s.mask[i] & this.groupBit) && !isEllipsoid(s, i)) throw new StyleError('Fix nve/dotc/langevin requires extended particles');
     }
-    this.gfactor1 = Math.exp(-this.gamma * s.dt);
+    this.gfactor1 = libmExp(-this.gamma * s.dt);
     this.computeTarget();
     super.init();
   }
@@ -98,7 +99,7 @@ export class FixNVEDotcLangevin extends FixNVE {
       const M = (inertia[0] * inertia[1] * inertia[2]) / (inertia[1] * inertia[2] + inertia[0] * inertia[2] + inertia[0] * inertia[1]);
       const gfactor2 = Math.sqrt(12.0 * (1.0 - this.gfactor1 * this.gfactor1) / m0) * this.tsqrt;
       for (let c = 0; c < 3; c++) {
-        gf3[c] = Math.exp(-this.Gamma * M * dt / inertia[c]);
+        gf3[c] = libmExp(-this.Gamma * M * dt / inertia[c]);
         gf4[c] = Math.sqrt(48.0 * inertia[c] * (1.0 - gf3[c] * gf3[c])) * this.tsqrt;
       }
       noSquishRotate(3, conj, quat, qo, inertia, dtqrt);

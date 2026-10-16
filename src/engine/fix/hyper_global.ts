@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import { parseNum } from '../force/util';
 import { nativeOrder } from '../atoms';
 import type { System } from '../system';
+import { libm } from '../libm';
 
 /*
  * fix hyper/global — bond-boost global hyperdynamics, implemented from docs.lammps.org/fix_hyper_global.html
@@ -187,7 +188,7 @@ export class FixHyperGlobal extends Fix {
     if (emax < q) {
       const v = this.vmax * (1 - (ebest / q) * (ebest / q));
       this.curV = v;
-      this.curBoost = Math.exp(this.beta * v);
+      this.curBoost = libm.exp(this.beta * v);
       // force along the bond (minimum image unit vector from j to i), magnitude 2 Vmax E / (q^2 R0)
       const c = (2 * this.vmax * ebest) / (q * q * this.r0[best]);
       for (let k = 0; k < 3; k++) d[k] = s.x[3 * i + k] - s.x[3 * j + k];

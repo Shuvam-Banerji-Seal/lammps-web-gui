@@ -526,7 +526,7 @@ export abstract class PairSWBase extends Pair {
     const A = this.pA[t], B = this.pB[t], p = this.pP[t], q = this.pQ[t];
     const u = sig / r;
     const den = r - a * sig;
-    const es = Math.exp(sig / den);
+    const es = libm.exp(sig / den);
     const f2 = B * Math.pow(u, p) - Math.pow(u, q);
     const dfdu = (p > 0 ? B * p * Math.pow(u, p - 1) : 0) - (q > 0 ? q * Math.pow(u, q - 1) : 0);
     // dphi2/dr = A*eps*exp(sigma/(r-a*sigma)) * (-dfdu*sigma/r^2 - f2*sigma/(r-a*sigma)^2)
@@ -621,7 +621,7 @@ export abstract class PairSWBase extends Pair {
             nDx[m] = dxx; nDy[m] = dyy; nDz[m] = dzz;
             nR[m] = r;
             nInvR[m] = 1 / r;
-            nES[m] = Math.exp((g * sgs) / d2);
+            nES[m] = libm.exp((g * sgs) / d2);
             nW[m] = (g * sgs) / (d2 * d2);
             m++;
           }

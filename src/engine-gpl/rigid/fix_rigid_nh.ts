@@ -25,6 +25,7 @@ import { UNIT_SYSTEMS } from '../../engine/units';
 import { FixRigidBase, EPSILON } from './fix_rigid';
 import { angmomToOmega, invquatvec, matvec, noSquishRotate, qToExyz, quatvec, transposeMatvec, type Q4, type V3 } from './math_extra';
 import { log as libmLog } from '../libm/log';
+import { exp as libmExp } from '../libm/exp';
 
 /** FixRigidNH::maclaurin_series: 1 + x^2/6 + x^4/120 + x^6/5040 + x^8/362880 */
 const maclaurinSeries = (x: number): number => {
@@ -325,18 +326,18 @@ export class FixRigidNH extends FixRigidBase {
     if (tstat) {
       this.akinT = 0.0;
       this.akinR = 0.0;
-      const tmp = Math.exp(-dtq * this.etaDotT[0]);
+      const tmp = libmExp(-dtq * this.etaDotT[0]);
       scaleT[0] = scaleT[1] = scaleT[2] = tmp;
-      scaleR = Math.exp(-dtq * this.etaDotR[0]);
+      scaleR = libmExp(-dtq * this.etaDotR[0]);
     }
     if (pstat) {
       this.akinT = 0.0;
       this.akinR = 0.0;
-      for (let i = 0; i < 3; i++) scaleT[i] *= Math.exp(-dtq * (this.epsilonDot[i] + this.mtkTerm2));
-      scaleR *= Math.exp(-dtq * (this.pdim * this.mtkTerm2));
+      for (let i = 0; i < 3; i++) scaleT[i] *= libmExp(-dtq * (this.epsilonDot[i] + this.mtkTerm2));
+      scaleR *= libmExp(-dtq * (this.pdim * this.mtkTerm2));
       for (let i = 0; i < 3; i++) {
         const tmp = dtq * this.epsilonDot[i];
-        scaleV[i] = dtv * Math.exp(tmp) * maclaurinSeries(tmp);
+        scaleV[i] = dtv * libmExp(tmp) * maclaurinSeries(tmp);
       }
     }
     const mbody: V3 = [0, 0, 0], tbody: V3 = [0, 0, 0];
@@ -390,13 +391,13 @@ export class FixRigidNH extends FixRigidBase {
     const scaleT = [1.0, 1.0, 1.0];
     let scaleR = 1.0;
     if (tstat) {
-      const tmp = Math.exp(-1.0 * dtq * this.etaDotT[0]);
+      const tmp = libmExp(-1.0 * dtq * this.etaDotT[0]);
       scaleT[0] = scaleT[1] = scaleT[2] = tmp;
-      scaleR = Math.exp(-1.0 * dtq * this.etaDotR[0]);
+      scaleR = libmExp(-1.0 * dtq * this.etaDotR[0]);
     }
     if (pstat) {
-      for (let i = 0; i < 3; i++) scaleT[i] *= Math.exp(-dtq * (this.epsilonDot[i] + this.mtkTerm2));
-      scaleR *= Math.exp(-dtq * (this.pdim * this.mtkTerm2));
+      for (let i = 0; i < 3; i++) scaleT[i] *= libmExp(-dtq * (this.epsilonDot[i] + this.mtkTerm2));
+      scaleR *= libmExp(-dtq * (this.pdim * this.mtkTerm2));
       this.akinT = 0.0;
       this.akinR = 0.0;
     }
@@ -456,7 +457,7 @@ export class FixRigidNH extends FixRigidBase {
       if (!this.press.pFlag[i]) continue;
       const oldlo = b.lo[i], oldhi = b.hi[i];
       const ctr = 0.5 * (oldlo + oldhi);
-      const expfac = Math.exp(this.dtq * this.epsilonDot[i]);
+      const expfac = libmExp(this.dtq * this.epsilonDot[i]);
       b.lo[i] = (oldlo - ctr) * expfac + ctr;
       b.hi[i] = (oldhi - ctr) * expfac + ctr;
     }
@@ -501,12 +502,12 @@ export class FixRigidNH extends FixRigidBase {
         for (let k = 1; k < T; k++) {
           let tmp = this.wdti4[j] * eT[T - k];
           let ms = maclaurinSeries(tmp);
-          let sc = Math.exp(-1.0 * tmp);
+          let sc = libmExp(-1.0 * tmp);
           let s2 = sc * sc;
           eT[T - k - 1] = eT[T - k - 1] * s2 + this.wdti2[j] * fT[T - k - 1] * sc * ms;
           tmp = this.wdti4[j] * eR[T - k];
           ms = maclaurinSeries(tmp);
-          sc = Math.exp(-1.0 * tmp);
+          sc = libmExp(-1.0 * tmp);
           s2 = sc * sc;
           eR[T - k - 1] = eR[T - k - 1] * s2 + this.wdti2[j] * fR[T - k - 1] * sc * ms;
         }
@@ -523,14 +524,14 @@ export class FixRigidNH extends FixRigidBase {
         for (let k = 0; k < T - 1; k++) {
           let tmp = this.wdti4[j] * eT[k + 1];
           let ms = maclaurinSeries(tmp);
-          let sc = Math.exp(-1.0 * tmp);
+          let sc = libmExp(-1.0 * tmp);
           let s2 = sc * sc;
           eT[k] = eT[k] * s2 + this.wdti2[j] * fT[k] * sc * ms;
           tmp = qT[k] * eT[k] * eT[k] - kt;
           fT[k + 1] = tmp / qT[k + 1];
           tmp = this.wdti4[j] * eR[k + 1];
           ms = maclaurinSeries(tmp);
-          sc = Math.exp(-1.0 * tmp);
+          sc = libmExp(-1.0 * tmp);
           s2 = sc * sc;
           eR[k] = eR[k] * s2 + this.wdti2[j] * fR[k] * sc * ms;
           tmp = qR[k] * eR[k] * eR[k] - kt;
@@ -572,7 +573,7 @@ export class FixRigidNH extends FixRigidBase {
         for (let k = 1; k < P; k++) {
           const tmp = this.wdti4[j] * eB[P - k];
           const ms = maclaurinSeries(tmp);
-          const sc = Math.exp(-0.5 * tmp);
+          const sc = libmExp(-0.5 * tmp);
           const s2 = sc * sc;
           eB[P - k - 1] = eB[P - k - 1] * s2 + this.wdti2[j] * fB[P - k - 1] * sc * ms;
         }
@@ -584,7 +585,7 @@ export class FixRigidNH extends FixRigidBase {
         for (let k = 0; k < P - 1; k++) {
           const tmp = this.wdti4[j] * eB[k + 1];
           const ms = maclaurinSeries(tmp);
-          const sc = Math.exp(-0.5 * tmp);
+          const sc = libmExp(-0.5 * tmp);
           const s2 = sc * sc;
           eB[k] = eB[k] * s2 + this.wdti2[j] * fB[k] * sc * ms;
           const t2 = qB[k] * eB[k] * eB[k] - kt;
@@ -600,7 +601,7 @@ export class FixRigidNH extends FixRigidBase {
     if (this.gF === 0) return;
     const volume = this.sys.geom.volume(3);
     this.mtkTerm1 = ((this.akinT + this.akinR) * this.mvv2e) / this.gF;
-    const scale = Math.exp(-1.0 * this.dtq * this.etaDotB[0]);
+    const scale = libmExp(-1.0 * this.dtq * this.etaDotB[0]);
     for (let i = 0; i < 3; i++) {
       if (!this.press.pFlag[i]) continue;
       let fEpsilon = ((this.pCurrent[i] - this.pHydro) * volume) / this.nktv2p + this.mtkTerm1;

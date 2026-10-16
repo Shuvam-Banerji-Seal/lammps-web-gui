@@ -23,6 +23,7 @@ import { parseNum } from '../../engine/force/util';
 import { hasChargeStyle } from '../../engine/atoms';
 import type { System } from '../../engine/system';
 import { hasTail, refreshChargeSums, reinitPair, resolvePairTable, typePairs, type PairTable } from './pair_table';
+import { exp as libmExp } from '../libm/exp';
 
 const USAGE = 'usage: compute ID group-ID fep T keyword args ... (pair pstyle pparam I J v_name | atom charge I v_name | tail yes/no | volume yes/no)';
 
@@ -153,7 +154,7 @@ export class ComputeFEP extends Compute {
       const pe1 = this.perturbedEnergy();
       const dU = pe1 - pe0;
       this.vector[0] = dU;
-      this.vector[1] = Math.exp(-dU / kT);
+      this.vector[1] = libmExp(-dU / kT);
       this.vector[2] = sys.geom.volume(s.dimension);
       if (this.volumeFlag) this.vector[1] *= this.vector[2];
     } finally {

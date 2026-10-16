@@ -18,6 +18,7 @@ import { NEIGHMASK } from '../../engine/neighbor';
 import type { System } from '../../engine/system';
 import { dielArrays, dielectricPairField } from './common';
 import { setDielectricParams } from './fix_polarize_bem_gmres';
+import { exp as libmExp } from '../libm/exp';
 
 const MY_PIS = Math.sqrt(Math.PI);
 const MY_4PI = 4 * Math.PI;
@@ -98,7 +99,7 @@ export class FixPolarizeFunctional extends Fix {
   private gradGreensReal(dx: number, dy: number, dz: number, out: Float64Array): void {
     const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const alpha = this.gEwald * r;
-    const factor = erfcExact(alpha) + 2.0 * alpha / MY_PIS * Math.exp(-(alpha * alpha));
+    const factor = erfcExact(alpha) + 2.0 * alpha / MY_PIS * libmExp(-(alpha * alpha));
     const r3 = r * r * r;
     const real = factor * (-1.0 / r3);
     out[0] = real * dx; out[1] = real * dy; out[2] = real * dz;

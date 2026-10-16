@@ -7,6 +7,7 @@
  */
 import type { SimState } from '../../engine/types';
 import { MY_2PI, MY_4PI, MY_PIS, erfAccurate } from './electrode_math';
+import { exp as libmExp } from '../libm/exp';
 
 /** Quantities the corrections need from the k-space style (single process: all atoms are local). */
 export interface BoundaryEnv {
@@ -107,7 +108,7 @@ export class Slab2d extends BoundaryCorrection {
         const zij = x[3 * j + 2] - x[3 * i + 2];
         const gzij = gEwald * zij;
         // coulomb potential; see eq. (4) in metalwalls parallelization doc
-        potIJ += q[j] * (Math.exp(-gzij * gzij) * gInv + MY_PIS * zij * erfAccurate(gzij));
+        potIJ += q[j] * (libmExp(-gzij * gzij) * gInv + MY_PIS * zij * erfAccurate(gzij));
         f[3 * i + 2] -= ffact * q[i] * q[j] * erfAccurate(gzij);
       }
       // per-atom energy; see eq. (20) in metalwalls ewald doc
@@ -132,7 +133,7 @@ export class Slab2d extends BoundaryCorrection {
         const zij = zAll[j] - zi;
         const gzij = gEwald * zij;
         // avoid exp underflow
-        const zfac = gzij > 7 ? MY_PIS * zij : Math.exp(-(gzij * gzij)) / gEwald + MY_PIS * zij * erfAccurate(gzij);
+        const zfac = gzij > 7 ? MY_PIS * zij : libmExp(-(gzij * gzij)) / gEwald + MY_PIS * zij * erfAccurate(gzij);
         b += qAll[j] * zfac;
       }
       vec[i] -= prefac * b;
@@ -150,7 +151,7 @@ export class Slab2d extends BoundaryCorrection {
       for (const j of group) {
         if (imat[j] > imat[i]) continue;   // matrix is symmetric
         const dij = x[3 * j + 2] - x[3 * i + 2];
-        const aij = prefac * (Math.exp(-dij * dij * gSq) * gInv + MY_PIS * dij * erfAccurate(dij * gEwald));
+        const aij = prefac * (libmExp(-dij * dij * gSq) * gInv + MY_PIS * dij * erfAccurate(dij * gEwald));
         matrix[imat[i] * ngroup + imat[j]] -= aij;
         if (imat[i] !== imat[j]) matrix[imat[j] * ngroup + imat[i]] -= aij;
       }

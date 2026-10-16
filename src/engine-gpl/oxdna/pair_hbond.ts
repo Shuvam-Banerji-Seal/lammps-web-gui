@@ -17,6 +17,7 @@ import { OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, F1, F4, baseSiteOxdna1, lrfOf, oxdnaConstants, type OxdnaConstants, potentialLines } from './common';
 import { sin as libmSin } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 /** pair_oxdna_hbond.cpp constructor: alpha_hb[i][j] (sequence dependence of the hydrogen bonds, oxDNA). */
 const ALPHA_HB_OXDNA: number[][] = [
@@ -92,7 +93,7 @@ export class PairOxdnaHbond extends Pair {
       v = found;
     }
     const [eps, a, cut0, cutC, cutLo, cutHi, a1, th1, dth1, a2, th2, dth2, a3, th3, dth3, a4, th4, dth4, a7, th7, dth7, a8, th8, dth8] = v;
-    const e = (x: number) => Math.exp(-a * x);
+    const e = (x: number) => libmExp(-a * x);
     const ulo = cutLo - cut0, uhi = cutHi - cut0, uc = cutC - cut0;
     const bLo = 2 * a * e(ulo) * 2 * a * e(ulo) * (1 - e(ulo)) * (1 - e(ulo))
       / (4 * ((1 - e(ulo)) * (1 - e(ulo)) - (1 - e(uc)) * (1 - e(uc))));
@@ -100,7 +101,7 @@ export class PairOxdnaHbond extends Pair {
     const bHi = 2 * a * e(uhi) * 2 * a * e(uhi) * (1 - e(uhi)) * (1 - e(uhi))
       / (4 * ((1 - e(uhi)) * (1 - e(uhi)) - (1 - e(uc)) * (1 - e(uc))));
     const cHc = cutHi - a * e(uhi) * (1 - e(uhi)) / bHi;
-    const tmp = 1 - Math.exp(-(cutC - cut0) * a);
+    const tmp = 1 - libmExp(-(cutC - cut0) * a);
     const shiftOne = eps * tmp * tmp;
     const bang = (aa: number, ast: number) => aa * aa * ast * ast / (1 - aa * ast * ast);
     const cang = (aa: number, ast: number) => 1 / (aa * ast);

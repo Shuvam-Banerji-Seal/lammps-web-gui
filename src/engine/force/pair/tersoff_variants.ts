@@ -229,7 +229,7 @@ export class PairTersoffMod extends PairTersoff {
     const u = p[o + 2] - cth;
     const u2 = u * u;
     const go = p[o + 4] * u2 / (p[o + 5] + u2);
-    const ga = 1 + p[o + 6] * Math.exp(-p[o + 7] * u2);
+    const ga = 1 + p[o + 6] * libm.exp(-p[o + 7] * u2);
     return p[o + 3] + go * ga;
   }
 
@@ -242,7 +242,7 @@ export class PairTersoffMod extends PairTersoff {
     const den = c3 + u2;
     const go = c2 * u2 / den;
     const dgo = c2 * 2 * u * c3 / (den * den);
-    const e = Math.exp(-c5 * u2);
+    const e = libm.exp(-c5 * u2);
     const ga = 1 + c4 * e;
     const dga = c4 * e * (-2 * c5 * u);
     return -(dgo * ga + go * dga);
@@ -256,7 +256,7 @@ export class PairTersoffMod extends PairTersoff {
   protected override zetaExp(t3: number, dr: number): number {
     const alpha = this.p3[8 * t3];
     if (alpha === 0) return 1;
-    return Math.exp(Math.pow(alpha * dr, this.p3[8 * t3 + 1]));
+    return libm.exp(Math.pow(alpha * dr, this.p3[8 * t3 + 1]));
   }
 
   /** d ln(zetaExp) / d r_ij = beta alpha (alpha dr)^(beta - 1). */
@@ -387,10 +387,10 @@ export class PairTersoffZBL extends PairTersoff {
     const fc = this.cutFn(rs, R, D);
     const dfc = this.cutDeriv(rs, R, D);
     const AF = this.af2[t2];
-    const fF = 1 / (1 + Math.exp(-AF * (rs - this.rc2[t2])));
+    const fF = 1 / (1 + libm.exp(-AF * (rs - this.rc2[t2])));
     const dfF = AF * fF * (1 - fF);
-    const fr = this.A2[t2] * Math.exp(-this.lam1[t2] * rs);
-    const fa = -this.B2[t2] * Math.exp(-this.lam2[t2] * rs);
+    const fr = this.A2[t2] * libm.exp(-this.lam1[t2] * rs);
+    const fa = -this.B2[t2] * libm.exp(-this.lam2[t2] * rs);
     out[0] = fF * fc;
     out[1] = fr;
     out[2] = fa;
@@ -402,7 +402,7 @@ export class PairTersoffZBL extends PairTersoff {
     const x = rs / a;
     let phi = 0, dphi = 0;
     for (let q = 0; q < 4; q++) {
-      const e = ZBL_AMP[q] * Math.exp(-ZBL_DECAY[q] * x);
+      const e = ZBL_AMP[q] * libm.exp(-ZBL_DECAY[q] * x);
       phi += e;
       dphi += -ZBL_DECAY[q] * e;
     }

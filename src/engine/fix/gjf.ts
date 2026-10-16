@@ -5,6 +5,7 @@ import { RanMars } from '../rng';
 import { takeFixRecord, type MarsRestart } from './restartRecord';
 import { parseNumOrVar, ramp, valueOf, type NumOrVar } from './util';
 import { massOf, nativeOrder } from '../atoms';
+import { libm } from '../libm';
 
 /*
  * fix ID group-ID gjf Tstart Tstop damp seed [vel vfull|vhalf] [method 1-8 [scalar]]
@@ -64,7 +65,7 @@ export const gjCoefficients = (method: number, x: number): { c1: number; c2: num
   let c2: number;
   switch (method) {
     case 1: c2 = (1 - x / 2) / (1 + x / 2); break;
-    case 2: c2 = Math.exp(-x); break;
+    case 2: c2 = libm.exp(-x); break;
     case 3: c2 = 1 - x; break;
     case 4: c2 = 2 / (1 + Math.sqrt(1 + 4 * x)); break;
     case 5: c2 = 1 / (1 + x); break;

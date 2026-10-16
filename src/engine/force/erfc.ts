@@ -5,6 +5,7 @@
  * Stegun 7.1.14), read with cubic Hermite interpolation using the exact
  * derivative erfc'(x) = -2/sqrt(pi) exp(-x^2). Beyond the table erfc < 1e-17.
  */
+import { libm } from '../libm';
 
 const TWO_OVER_SQRTPI = 2 / Math.sqrt(Math.PI);
 
@@ -26,7 +27,7 @@ export const erfcExact = (x: number): number => {
   // erfc(x) = exp(-x^2)/sqrt(pi) * 1/(x + (1/2)/(x + 1/(x + (3/2)/(x + 2/(x + ...)))))
   let f = x;
   for (let k = 400; k >= 1; k--) f = x + (k / 2) / f;
-  return Math.exp(-x * x) / Math.sqrt(Math.PI) / f;
+  return libm.exp(-x * x) / Math.sqrt(Math.PI) / f;
 };
 
 const XMAX = 6.25;
@@ -43,8 +44,8 @@ export const erfcFast = (x: number, ex: number): number => {
   const t = u - k;
   const x0 = k * H;
   const f0 = table[k], f1 = table[k + 1];
-  const d0 = -TWO_OVER_SQRTPI * Math.exp(-x0 * x0) * H;
-  const d1 = -TWO_OVER_SQRTPI * Math.exp(-(x0 + H) * (x0 + H)) * H;
+  const d0 = -TWO_OVER_SQRTPI * libm.exp(-x0 * x0) * H;
+  const d1 = -TWO_OVER_SQRTPI * libm.exp(-(x0 + H) * (x0 + H)) * H;
   void ex;
   const t2 = t * t, t3 = t2 * t;
   return (2 * t3 - 3 * t2 + 1) * f0 + (t3 - 2 * t2 + t) * d0 + (-2 * t3 + 3 * t2) * f1 + (t3 - t2) * d1;
@@ -176,14 +177,14 @@ export const makeErfcTable = (N: number, g: number, cutsq: number, inner: number
     const x = g * r;
     const ec = x >= 6.25 ? 0 : erfcExact(x);
     eTab[k] = ec / r;
-    fTab[k] = (ec + TWO_OVER_SQRTPI * x * Math.exp(-x * x)) / r;
+    fTab[k] = (ec + TWO_OVER_SQRTPI * x * libm.exp(-x * x)) / r;
     cTab[k] = 1 / r;
   }
   const shift = 23 - M;
   const direct = (rsq: number, which: 0 | 1 | 2): number => {
     const r = Math.sqrt(rsq);
     if (which === 2) return 1 / r;
-    const x = g * r, ex = Math.exp(-x * x), ec = erfcPoly(x, ex);
+    const x = g * r, ex = libm.exp(-x * x), ec = erfcPoly(x, ex);
     return which === 0 ? ec / r : (ec + EWALD_F * x * ex) / r;
   };
   const interp = (rsq: number, tab: Float64Array, which: 0 | 1 | 2): number => {

@@ -51,7 +51,7 @@ export const gammaFn = (x: number): number => {
   const z2 = 1 / (z * z);
   const series = (1 / z) * (1 / 12 - z2 * (1 / 360 - z2 * (1 / 1260 - z2 * (1 / 1680 - z2 * (1 / 1188 - z2 * (691 / 360360 - z2 / 156))))));
   const lnG = (z - 0.5) * libm.log(z) - z + 0.5 * libm.log(2 * Math.PI) + series;
-  return Math.exp(lnG) / prod;
+  return libm.exp(lnG) / prod;
 };
 
 /** Beta function B(a, b) = G(a) G(b) / G(a + b) for a, b > 0. */

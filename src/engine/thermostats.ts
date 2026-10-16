@@ -3,6 +3,7 @@ import { degreesOfFreedom, kineticEnergy, temperature } from './observables';
 import { Rng } from './rng';
 import { halfKick, drift, rampFraction, type Fix, type RunContext } from './integrate';
 import { massOf } from './atoms';
+import { libm } from './libm';
 
 /*
  * Thermostats for the in-browser MD engine, written from the DOCUMENTED
@@ -228,9 +229,9 @@ export class FixNvt implements Fix {
         ? (2 * kineticEnergy(s) - dof * kB * T) / q1
         : (qOf(k - 1) * vxi[k - 2] * vxi[k - 2] - kB * T) / qOf(k);
       const f = k < NVT_CHAIN ? vxi[k] : 0;
-      vxi[k - 1] = vxi[k - 1] * Math.exp(-f * h4) + g * h4 * Math.exp(-f * h8);
+      vxi[k - 1] = vxi[k - 1] * libm.exp(-f * h4) + g * h4 * libm.exp(-f * h8);
     }
-    const scale = Math.exp(-vxi[0] * tau);
+    const scale = libm.exp(-vxi[0] * tau);
     const v = s.v;
     for (let j = 0; j < 3 * s.n; j++) v[j] *= scale;
     for (let k = 0; k < NVT_CHAIN; k++) xi[k] += vxi[k] * tau;
@@ -241,7 +242,7 @@ export class FixNvt implements Fix {
         ? (2 * kineticEnergy(s) - dof * kB * T) / q1
         : (qOf(k - 1) * vxi[k - 2] * vxi[k - 2] - kB * T) / qOf(k);
       const f = k < NVT_CHAIN ? vxi[k] : 0;
-      vxi[k - 1] = vxi[k - 1] * Math.exp(-f * h4) + g * h4 * Math.exp(-f * h8);
+      vxi[k - 1] = vxi[k - 1] * libm.exp(-f * h4) + g * h4 * libm.exp(-f * h8);
     }
   }
 }

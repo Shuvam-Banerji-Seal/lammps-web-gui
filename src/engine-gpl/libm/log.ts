@@ -51,10 +51,10 @@ export const fma = (a: number, b: number, c: number): number => {
 };
 
 /** Veltkamp split of b into bh + bl (26 + 27 bits), for a multiplicand used many times. */
-const splitHi = (b: number): number => { const t = SPLIT * b; return t - (t - b); };
+export const splitHi = (b: number): number => { const t = SPLIT * b; return t - (t - b); };
 
 /** fma(a, b, c) with b given with its split (bh, bl): the same correctly rounded result, one split fewer. */
-const fmaS = (a: number, b: number, bh: number, bl: number, c: number): number => {
+export const fmaS = (a: number, b: number, bh: number, bl: number, c: number): number => {
   const p = a * b;
   const t = SPLIT * a;
   const ah = t - (t - a), al = a - ah;

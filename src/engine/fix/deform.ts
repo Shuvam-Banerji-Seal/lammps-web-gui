@@ -412,7 +412,7 @@ export class FixDeform extends Fix {
           LD = L0 * sp.rate!;
           break;
         case 'trate':
-          L = L0 * Math.exp(sp.rate! * elapsed);
+          L = L0 * libm.exp(sp.rate! * elapsed);
           LD = L * sp.rate!;
           break;
         case 'wiggle': {
@@ -487,8 +487,8 @@ export class FixDeform extends Fix {
           TD = this.perp0[t] * sp.rate!;
           break;
         case 'trate':
-          T = T0 * Math.exp(sp.rate! * elapsed);
-          TD = T0 * sp.rate! * Math.exp(sp.rate! * elapsed);
+          T = T0 * libm.exp(sp.rate! * elapsed);
+          TD = T0 * sp.rate! * libm.exp(sp.rate! * elapsed);
           break;
         case 'wiggle': {
           const w = (2 * Math.PI * elapsed) / sp.period!;

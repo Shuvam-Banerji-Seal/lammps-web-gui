@@ -14,6 +14,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
 import { parseNum } from '../../engine/force/util';
 import { EWALD_F } from '../../engine/force/erfc';
+import { exp as libmExp } from '../libm/exp';
 
 /** ewald_const.h: EWALD_P (the polynomial erfc of the direct branch uses the same A1..A5 as erfcPoly). */
 const EWALD_P = 0.3275911;
@@ -28,15 +29,15 @@ export const slaterCoulPair = (rsq: number, qi: number, qj: number, g: number, q
   const r2inv = 1.0 / rsq;
   const r = Math.sqrt(rsq);
   const grij = g * r;
-  const expm2 = Math.exp(-grij * grij);
+  const expm2 = libmExp(-grij * grij);
   const t = 1.0 / (1.0 + EWALD_P * grij);
   const erfc = t * (A1 + t * (A2 + t * (A3 + t * (A4 + t * A5)))) * expm2;
-  const slaterTerm = Math.exp(-2 * r / lamda) * (1 + (2 * r / lamda * (1 + r / lamda)));
+  const slaterTerm = libmExp(-2 * r / lamda) * (1 + (2 * r / lamda * (1 + r / lamda)));
   const prefactor = qqrd2e * qi * qj / r;
   let forcecoul = prefactor * (erfc + EWALD_F * grij * expm2 - slaterTerm);
   if (fc < 1.0) forcecoul -= (1.0 - fc) * prefactor * (1 - slaterTerm);
-  let e = prefactor * (erfc - (1 + r / lamda) * Math.exp(-2 * r / lamda));
-  if (fc < 1.0) e -= (1.0 - fc) * prefactor * (1.0 - (1 + r / lamda) * Math.exp(-2 * r / lamda));
+  let e = prefactor * (erfc - (1 + r / lamda) * libmExp(-2 * r / lamda));
+  if (fc < 1.0) e -= (1.0 - fc) * prefactor * (1.0 - (1 + r / lamda) * libmExp(-2 * r / lamda));
   return { e, f: forcecoul * r2inv };
 };
 

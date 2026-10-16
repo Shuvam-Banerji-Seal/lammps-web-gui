@@ -19,6 +19,7 @@ import { fft3d } from '../../engine/force/fft';
 import { powint } from './hal';
 import { ELECTRIC, torque2force, type MpoleSites } from './multipole';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 /** pi (amoeba_kspace.cpp MY_PI). */
 const MY_PI = Math.PI;
@@ -462,7 +463,7 @@ export const influence = (g: PmeGrid, aewald: number): Float64Array => {
         const term = -pterm * hsq;
         if (term > -50.0 && hsq !== 0.0) {
           const denom = volterm * hsq * bs1[i] * bs2[j] * bs3[k];
-          w[nn] = Math.exp(term) / denom;
+          w[nn] = libmExp(term) / denom;
         }
         nn++;
       }

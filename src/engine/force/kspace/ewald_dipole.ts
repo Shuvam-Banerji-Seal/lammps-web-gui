@@ -54,12 +54,12 @@ export const dipoleRealForceError = (g: number, rc: number, V: number, N: number
   const C = 4 * x4 + 6 * x2 + 3;
   const D = 8 * x6 + 20 * x4 + 30 * x2 + 15;
   const inner = (13 / 6) * C * C + (2 / 15) * D * D - (13 / 15) * C * D;
-  return musq / Math.sqrt(V * g ** 4 * rc ** 9 * N) * Math.sqrt(inner) * Math.exp(-x2);
+  return musq / Math.sqrt(V * g ** 4 * rc ** 9 * N) * Math.sqrt(inner) * libm.exp(-x2);
 };
 
 /** Reciprocal-space rms force error of equation 46 for a cutoff kc along one box length L_d. */
 export const dipoleKSpaceForceError = (kc: number, g: number, Ld: number, V: number, N: number, musq: number): number =>
-  8 * Math.PI * musq / V * g * Math.sqrt((2 * Math.PI * kc ** 3) / (15 * N)) * Math.exp(-(((Math.PI * kc) / (g * Ld)) ** 2));
+  8 * Math.PI * musq / V * g * Math.sqrt((2 * Math.PI * kc ** 3) / (15 * N)) * libm.exp(-(((Math.PI * kc) / (g * Ld)) ** 2));
 
 export class KSpaceEwaldDipole extends KSpace {
   readonly name = 'ewald/dipole';
@@ -191,7 +191,7 @@ export class KSpaceEwaldDipole extends KSpace {
     for (let v = 0; v < nk; v++) {
       const Kx = this.kvec[3 * v], Ky = this.kvec[3 * v + 1], Kz = this.kvec[3 * v + 2];
       const K2 = Kx * Kx + Ky * Ky + Kz * Kz;
-      const Gk = Math.exp(-K2 / g2) / K2;
+      const Gk = libm.exp(-K2 / g2) / K2;
       let Mr = 0, Mi = 0;
       const P = [0, 0, 0], Pi = [0, 0, 0];
       for (let i = 0; i < n; i++) {

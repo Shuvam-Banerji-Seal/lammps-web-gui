@@ -20,6 +20,7 @@ import { MY_PI, MY_PI2, MY_PIS } from './electrode_math';
 import { BoundaryCorrection, NoBoundaryCorrection, SlabDipole, Slab2d, type BoundaryEnv, inGroup } from './boundary_correction';
 import { log as libmLog } from '../libm/log';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 /** electrode_kspace.h: what the constant-potential fixes call on a k-space style. */
 export interface ElectrodeKSpace {
@@ -34,7 +35,7 @@ export interface ElectrodeKSpace {
 /** ewald.cpp Ewald::rms: the rms force error of the k-space sum for km vectors along a box length prd. */
 const rms = (km: number, prd: number, natoms: number, q2: number, g: number): number => {
   const n = natoms === 0 ? 1 : natoms;
-  return 2.0 * q2 * g / prd * Math.sqrt(1.0 / (MY_PI * km * n)) * Math.exp(-MY_PI * MY_PI * km * km / (g * g * prd * prd));
+  return 2.0 * q2 * g / prd * Math.sqrt(1.0 / (MY_PI * km * n)) * libmExp(-MY_PI * MY_PI * km * km / (g * g * prd * prd));
 };
 
 export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
@@ -220,19 +221,19 @@ export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
     for (let m = 1; m <= kmax; m++) {
       let sqk = (m * u[0]) * (m * u[0]);
       if (sqk <= gsqmx) {
-        const ugv = preu * Math.exp(-0.25 * sqk * gInvSq) / sqk;
+        const ugv = preu * libmExp(-0.25 * sqk * gInvSq) / sqk;
         const vterm = -2.0 * (1.0 / sqk + 0.25 * gInvSq);
         push(m, 0, 0, ugv, 2.0 * u[0] * m * ugv, 0, 0, 1.0 + vterm * (u[0] * m) * (u[0] * m), 1.0, 1.0, 0, 0, 0);
       }
       sqk = (m * u[1]) * (m * u[1]);
       if (sqk <= gsqmx) {
-        const ugv = preu * Math.exp(-0.25 * sqk * gInvSq) / sqk;
+        const ugv = preu * libmExp(-0.25 * sqk * gInvSq) / sqk;
         const vterm = -2.0 * (1.0 / sqk + 0.25 * gInvSq);
         push(0, m, 0, ugv, 0, 2.0 * u[1] * m * ugv, 0, 1.0, 1.0 + vterm * (u[1] * m) * (u[1] * m), 1.0, 0, 0, 0);
       }
       sqk = (m * u[2]) * (m * u[2]);
       if (sqk <= gsqmx && this.slabflag !== 3) {
-        const ugv = preu * Math.exp(-0.25 * sqk * gInvSq) / sqk;
+        const ugv = preu * libmExp(-0.25 * sqk * gInvSq) / sqk;
         const vterm = -2.0 * (1.0 / sqk + 0.25 * gInvSq);
         push(0, 0, m, ugv, 0, 0, 2.0 * u[2] * m * ugv, 1.0, 1.0, 1.0 + vterm * (u[2] * m) * (u[2] * m), 0, 0, 0);
       }
@@ -242,7 +243,7 @@ export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
       for (let l = 1; l <= kymax; l++) {
         const sqk = (u[0] * k) * (u[0] * k) + (u[1] * l) * (u[1] * l);
         if (sqk <= gsqmx) {
-          const ugv = preu * Math.exp(-0.25 * sqk * gInvSq) / sqk;
+          const ugv = preu * libmExp(-0.25 * sqk * gInvSq) / sqk;
           const vterm = -2.0 * (1.0 / sqk + 0.25 * gInvSq);
           const a = 1.0 + vterm * (u[0] * k) * (u[0] * k), b = 1.0 + vterm * (u[1] * l) * (u[1] * l);
           push(k, l, 0, ugv, 2.0 * u[0] * k * ugv, 2.0 * u[1] * l * ugv, 0, a, b, 1.0, vterm * u[0] * k * u[1] * l, 0, 0);
@@ -255,7 +256,7 @@ export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
       for (let m = 1; m <= kzmax; m++) {
         const sqk = (u[1] * l) * (u[1] * l) + (u[2] * m) * (u[2] * m);
         if (sqk <= gsqmx) {
-          const ugv = preu * Math.exp(-0.25 * sqk * gInvSq) / sqk;
+          const ugv = preu * libmExp(-0.25 * sqk * gInvSq) / sqk;
           const vterm = -2.0 * (1.0 / sqk + 0.25 * gInvSq);
           const b = 1.0 + vterm * (u[1] * l) * (u[1] * l), c = 1.0 + vterm * (u[2] * m) * (u[2] * m);
           push(0, l, m, ugv, 0, 2.0 * u[1] * l * ugv, 2.0 * u[2] * m * ugv, 1.0, b, c, 0, 0, vterm * u[1] * l * u[2] * m);
@@ -268,7 +269,7 @@ export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
       for (let m = 1; m <= kzmax; m++) {
         const sqk = (u[0] * k) * (u[0] * k) + (u[2] * m) * (u[2] * m);
         if (sqk <= gsqmx) {
-          const ugv = preu * Math.exp(-0.25 * sqk * gInvSq) / sqk;
+          const ugv = preu * libmExp(-0.25 * sqk * gInvSq) / sqk;
           const vterm = -2.0 * (1.0 / sqk + 0.25 * gInvSq);
           const a = 1.0 + vterm * (u[0] * k) * (u[0] * k), c = 1.0 + vterm * (u[2] * m) * (u[2] * m);
           push(k, 0, m, ugv, 2.0 * u[0] * k * ugv, 0, 2.0 * u[2] * m * ugv, a, 1.0, c, 0, vterm * u[0] * k * u[2] * m, 0);
@@ -282,7 +283,7 @@ export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
         for (let m = 1; m <= kzmax; m++) {
           const sqk = (u[0] * k) * (u[0] * k) + (u[1] * l) * (u[1] * l) + (u[2] * m) * (u[2] * m);
           if (sqk <= gsqmx) {
-            const ugv = preu * Math.exp(-0.25 * sqk * gInvSq) / sqk;
+            const ugv = preu * libmExp(-0.25 * sqk * gInvSq) / sqk;
             const vterm = -2.0 * (1.0 / sqk + 0.25 * gInvSq);
             const a = 1.0 + vterm * (u[0] * k) * (u[0] * k), b = 1.0 + vterm * (u[1] * l) * (u[1] * l);
             const c = 1.0 + vterm * (u[2] * m) * (u[2] * m);

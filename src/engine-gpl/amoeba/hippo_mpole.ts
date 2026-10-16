@@ -18,6 +18,7 @@ import { erfcExact } from '../../engine/force/erfc';
 /** sqrt(pi) (amoeba_multipole.cpp MY_PIS). */
 const MY_PIS = Math.sqrt(Math.PI);
 import { resolveSiteTorques, type TermPairs, type TermResult } from './hippo_terms';
+import { exp as libmExp } from '../libm/exp';
 
 /**
  * damppole (amoeba_multipole.cpp): the charge penetration damping factors dmpi and dmpk (entries 0, 2, 4, 6, 8, and the
@@ -31,8 +32,8 @@ export const damppole = (
   const diff = Math.abs(alphai - alphak);
   const dampi = alphai * r;
   const dampk = alphak * r;
-  const expi = Math.exp(-dampi);
-  const expk = Math.exp(-dampk);
+  const expi = libmExp(-dampi);
+  const expk = libmExp(-dampk);
   // core-valence charge penetration damping for Gordon f1
   const dampi2 = dampi * dampi;
   const dampi3 = dampi * dampi2;
@@ -210,7 +211,7 @@ export const multipoleRealHippo = (
     const bn = [erfcExact(ralpha) / r, 0, 0, 0, 0, 0];
     const alsq2 = 2.0 * aewald * aewald;
     let alsq2n = aewald > 0.0 ? 1.0 / (MY_PIS * aewald) : 0.0;
-    const exp2a = Math.exp(-ralpha * ralpha);
+    const exp2a = libmExp(-ralpha * ralpha);
     for (let k = 1; k < 6; k++) {
       alsq2n = alsq2 * alsq2n;
       bn[k] = ((2 * k - 1) * bn[k - 1] + alsq2n * exp2a) / r2;

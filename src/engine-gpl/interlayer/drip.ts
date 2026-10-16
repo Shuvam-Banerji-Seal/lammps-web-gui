@@ -11,6 +11,7 @@ import { Pair, StyleError, type PairCompute, type StyleContext } from '../../eng
 import { joinPotentialEntries, parseNum } from '../../engine/force/util';
 import { energyScale, stripComment } from './zbase';
 import { CellList } from '../../engine/cellList';
+import { exp as libmExp } from '../libm/exp';
 
 /** One potential-file entry of DRIP (the parameters of one element pair). */
 interface DripParam {
@@ -341,7 +342,7 @@ export class PairDRIP extends Pair {
     const dih = this.dihedral(pc, i, j, p, rhosqij);
     const V2 = C + tdij + dih.gij;
     const { t: tp, dtap: dtp } = tap(r, cutoff);
-    const V1 = Math.exp(-lambda * (r - z0));
+    const V1 = libmExp(-lambda * (r - z0));
     const dV1 = -V1 * lambda;
     const phi = tp * V1 * V2;
     const fnbi: number[][] = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
@@ -390,8 +391,8 @@ export class PairDRIP extends Pair {
     if (rhosqij < 0) rhosqij = 0;
     const delSq = delta * delta;
     const rodSq = rhosqij / delSq;
-    const tdij = Math.exp(-rodSq) * (C0 + rodSq * (C2 + rodSq * C4));
-    const dtdij = -tdij / delSq + Math.exp(-rodSq) * (C2 + 2 * C4 * rodSq) / delSq;
+    const tdij = libmExp(-rodSq) * (C0 + rodSq * (C2 + rodSq * C4));
+    const dtdij = -tdij / delSq + libmExp(-rodSq) * (C2 + 2 * C4 * rodSq) / delSq;
     return { tdij, rhosqij, dtdij };
   }
 
@@ -418,7 +419,7 @@ export class PairDRIP extends Pair {
       }
     }
     const eta = p.eta;
-    const epart = [0, 1, 2].map((m) => Math.exp(-eta * cos[m][0] * cos[m][1] * cos[m][2]));
+    const epart = [0, 1, 2].map((m) => libmExp(-eta * cos[m][0] * cos[m][1] * cos[m][2]));
     const D2 = epart[0] + epart[1] + epart[2];
     const tr = tapRho(rhosq, p.rhocutsq);
     const D0 = p.B * tr.t;

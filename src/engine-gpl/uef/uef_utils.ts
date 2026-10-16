@@ -10,6 +10,7 @@
  * Operation order is kept as in the C++ source: the box and the lattice reduction are compared with native
  * LAMMPS to about 1e-8 over a run, so a reordered sum would change the last bits and grow over the run.
  */
+import { exp as libmExp } from '../libm/exp';
 
 /** A 3x3 matrix stored row-major as number[row][column]. Integer matrices hold whole numbers. */
 export type M3 = number[][];
@@ -276,10 +277,10 @@ export class UEFBox {
     const t1 = zero3(), t1i = zero3(), t2 = zero3(), t2i = zero3(), l0t = zero3();
     for (let k = 0; k < 3; k++) {
       for (let j = 0; j < 3; j++) {
-        t1[k][j] = Math.exp(this.w1[k]) * this.l0[k][j];
-        t1i[k][j] = Math.exp(-this.w1[k]) * this.l0[k][j];
-        t2[k][j] = Math.exp(this.w2[k]) * this.l0[k][j];
-        t2i[k][j] = Math.exp(-this.w2[k]) * this.l0[k][j];
+        t1[k][j] = libmExp(this.w1[k]) * this.l0[k][j];
+        t1i[k][j] = libmExp(-this.w1[k]) * this.l0[k][j];
+        t2[k][j] = libmExp(this.w2[k]) * this.l0[k][j];
+        t2i[k][j] = libmExp(-this.w2[k]) * this.l0[k][j];
         l0t[k][j] = this.l0[j][k];
       }
     }
@@ -329,7 +330,7 @@ export class UEFBox {
     this.theta[0] -= cRound(this.theta[0]);
     this.theta[1] -= cRound(this.theta[1]);
     for (let k = 0; k < 3; k++) {
-      const eps = Math.exp(this.theta[0] * this.w1[k] + this.theta[1] * this.w2[k]);
+      const eps = libmExp(this.theta[0] * this.w1[k] + this.theta[1] * this.w2[k]);
       this.l[k][0] = eps * this.l0[k][0];
       this.l[k][1] = eps * this.l0[k][1];
       this.l[k][2] = eps * this.l0[k][2];
@@ -344,7 +345,7 @@ export class UEFBox {
     this.theta[1] += this.winv[1][0] * ex + this.winv[1][1] * ey;
     const eps = [ex, ey, -ex - ey];
     for (let k = 0; k < 3; k++) {
-      eps[k] = Math.exp(eps[k]);
+      eps[k] = libmExp(eps[k]);
       this.l[k][0] = eps[k] * this.l[k][0];
       this.l[k][1] = eps[k] * this.l[k][1];
       this.l[k][2] = eps[k] * this.l[k][2];
@@ -370,7 +371,7 @@ export class UEFBox {
     if (f2 < 0) for (let k = 0; k < -f2; k++) mulM2(this.a2i, r0);
     // robust reduction to the box defined by Dobson
     for (let k = 0; k < 3; k++) {
-      const eps = Math.exp(this.theta[0] * this.w1[k] + this.theta[1] * this.w2[k]);
+      const eps = libmExp(this.theta[0] * this.w1[k] + this.theta[1] * this.w2[k]);
       this.l[k][0] = eps * this.l0[k][0];
       this.l[k][1] = eps * this.l0[k][1];
       this.l[k][2] = eps * this.l0[k][2];

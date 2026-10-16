@@ -20,6 +20,7 @@ import { parseNum } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import { hasTail } from './pair_table';
 import { restoreAccum, snapshotAccum } from './compute_fep';
+import { exp as libmExp } from '../libm/exp';
 
 const USAGE = 'usage: compute ID group-ID fep/ta T xy|xz|yz scale tail yes/no';
 
@@ -90,7 +91,7 @@ export class ComputeFEPTA extends Compute {
       const pe1 = this.energyOf(sys.computeForcesInRun(sys.computeFlags()));
       const dU = pe1 - pe0;
       this.vector[0] = dU;
-      this.vector[1] = Math.exp(-dU / kT);
+      this.vector[1] = libmExp(-dU / kT);
       this.vector[2] = areaOrig * (this.scale - 1.0);
     } finally {
       // restore_box, then restore_xfev: the original box, positions, forces and accumulator

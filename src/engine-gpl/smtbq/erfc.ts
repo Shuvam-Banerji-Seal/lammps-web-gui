@@ -9,6 +9,7 @@
  * there) and the continued fraction for erfc at x >= 2 (Abramowitz and Stegun 7.1.14): direct evaluation, accurate
  * to about 1e-15 absolute; no table.
  */
+import { exp as libmExp } from '../libm/exp';
 
 const TWO_OVER_SQRTPI = 2 / Math.sqrt(Math.PI);
 
@@ -32,5 +33,5 @@ export function erfc(x: number): number {
   // erfc(x) = exp(-x^2)/sqrt(pi) * 1/(x + (1/2)/(x + 1/(x + (3/2)/(x + 2/(x + ...)))))
   let f = x;
   for (let k = 80; k >= 1; k--) f = x + (k / 2) / f;  // 80 levels: relative change below 1e-16 against 3000 levels for x >= 2
-  return Math.exp(-x * x) / Math.sqrt(Math.PI) / f;
+  return libmExp(-x * x) / Math.sqrt(Math.PI) / f;
 }

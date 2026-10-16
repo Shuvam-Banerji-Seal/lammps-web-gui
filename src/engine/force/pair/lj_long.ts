@@ -5,6 +5,7 @@ import { gplHook } from '../../gplHooks';
 import { PairLJCutCoulLong } from './coul_long';
 import { tallyAtom } from './lj_cut';
 import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../erfc';
+import { libm } from '../../libm';
 
 /*
  * pair_style lj/long/coul/long — docs.lammps.org/pair_lj_long.html
@@ -68,7 +69,7 @@ import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../
  * flag_lj = off is not supported (native LAMMPS rejects kspace ewald and pppm
  * with it, measured in an earlier wave).
  */
-const g6kernel = (x2: number): number => Math.exp(-x2) * (1 + x2 + x2 * x2 / 2);
+const g6kernel = (x2: number): number => libm.exp(-x2) * (1 + x2 + x2 * x2 / 2);
 
 /**
  * The dispersion lookup table of pair_modify table/disp N (native Pair::init_tables_disp): force(rsq) and energy(rsq)
@@ -101,7 +102,7 @@ const coulShort = (
   }
   const r = Math.sqrt(rsq);
   const grij = g * r;
-  const ex = Math.exp(-grij * grij);
+  const ex = libm.exp(-grij * grij);
   const erfc = poly || table ? erfcPoly(grij, ex) : erfcFast(grij, ex);
   const pre = qqrd2e * qi * qj / r;
   let forcecoul = pre * (erfc + EWALD_F * grij * ex);
@@ -247,7 +248,7 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
             // E = A/r^12 - C6 g6/r^6 ;  fpair = -(dE/dr)/r with d/dr [g6/r^6] giving g^6 exp(-x^2)/r^2 extra
             const x2 = gd * gd * rsq;
             const g6 = g6kernel(x2);
-            fpair += 12 * A * r6inv * r6inv * r2inv - C6 * (6 * g6 * r6inv * r2inv + gd6 * Math.exp(-x2) * r2inv);
+            fpair += 12 * A * r6inv * r6inv * r2inv - C6 * (6 * g6 * r6inv * r2inv + gd6 * libm.exp(-x2) * r2inv);
             ev = A * r6inv * r6inv - C6 * g6 * r6inv;
           }
           evdwl += ev;

@@ -6,6 +6,7 @@ import type { Compute } from '../compute/compute';
 import { ownCompute, ramp, removeCompute } from './util';
 import { massOf } from '../atoms';
 import type { ComputePressure } from '../compute/pressure';
+import { libm } from '../libm';
 
 /*
  * fix nvt / npt / nph — docs.lammps.org/fix_nh.html.
@@ -714,21 +715,21 @@ export class FixNH extends Fix {
       ed[M - 1] += (M === 1 ? g0() : this.etaDotdot[M - 1]) * dt4;
       ed[M - 1] *= drag;
       for (let k = M - 2; k >= 0; k--) {
-        const ex = Math.exp(-dt8 * ed[k + 1]);
+        const ex = libm.exp(-dt8 * ed[k + 1]);
         ed[k] *= ex;
         ed[k] += (k === 0 ? g0() : this.etaDotdot[k]) * dt4;
         ed[k] *= drag;
         ed[k] *= ex;
       }
       // scale velocities
-      const factor = Math.exp(-dthalf * ed[0]);
+      const factor = libm.exp(-dthalf * ed[0]);
       this.scaleVelocities(factor);
       ke2 *= factor * factor;
       this.nhcScale2 *= factor * factor;
       for (let k = 0; k < M; k++) this.eta[k] += dthalf * ed[k];
       // back up the chain
       for (let k = 0; k < M - 1; k++) {
-        const ex = Math.exp(-dt8 * ed[k + 1]);
+        const ex = libm.exp(-dt8 * ed[k + 1]);
         ed[k] *= ex;
         if (k > 0) this.etaDotdot[k] = (q[k - 1] * ed[k - 1] * ed[k - 1] - kt) / q[k];
         ed[k] += (k === 0 ? g0() : this.etaDotdot[k]) * dt4;
@@ -775,15 +776,15 @@ export class FixNH extends Fix {
       ed[M - 1] += gTop(M - 1) * dt4;
       ed[M - 1] *= pdrag;
       for (let k = M - 2; k >= 0; k--) {
-        const ex = Math.exp(-dt8 * ed[k + 1]);
+        const ex = libm.exp(-dt8 * ed[k + 1]);
         ed[k] *= ex; ed[k] += gTop(k) * dt4; ed[k] *= pdrag; ed[k] *= ex;
       }
-      const factor = Math.exp(-dthalf * ed[0]);
+      const factor = libm.exp(-dthalf * ed[0]);
       for (let d = 0; d < 6; d++) if (this.pFlag[d]) this.omegaDot[d] *= factor;
       kecurrent *= factor * factor;
       for (let k = 0; k < M; k++) this.etap[k] += dthalf * ed[k];
       for (let k = 0; k < M - 1; k++) {
-        const ex = Math.exp(-dt8 * ed[k + 1]);
+        const ex = libm.exp(-dt8 * ed[k + 1]);
         ed[k] *= ex;
         // the stored inner accelerations are tracked in every case (they are read only once the masses are fixed)
         if (k > 0) this.etapDotdot[k] = g(k);
@@ -1000,7 +1001,7 @@ export class FixNH extends Fix {
     const mtkTerm2 = this.mtkVelocityTerm();
     // each call advances the strain-rate scaling by dt/4: diagonal factors split
     // symmetrically around the off-diagonal (tilt) coupling, x then y then z
-    const f8 = [0, 1, 2].map((d) => (s.dimension === 2 && d === 2 ? 1 : Math.exp(-this.dt8 * (this.omegaDot[d] + mtkTerm2))));
+    const f8 = [0, 1, 2].map((d) => (s.dimension === 2 && d === 2 ? 1 : libm.exp(-this.dt8 * (this.omegaDot[d] + mtkTerm2))));
     const c = this.tempCompute;
     const bias = c.hasBias();
     if (bias) { c.computeBias(); c.removeBiasAll(); }
@@ -1037,7 +1038,7 @@ export class FixNH extends Fix {
     const out: [number, number, number] = [tilt[0], tilt[1], tilt[2]];
     const tau = this.dthalf;
     const w = this.omegaDot;
-    const expo = (a: number) => Math.exp(a);
+    const expo = (a: number) => libm.exp(a);
     const lyAt = (s: number) => ly * expo(w[1] * s);
     const lzAt = (s: number) => lz * expo(w[2] * s);
     // yz(s) = yz exp(w1 s) + w3 * integral of lz(u) exp(w1 (s - u)) du, in closed form
@@ -1092,7 +1093,7 @@ export class FixNH extends Fix {
     const tiltNew = this.tiltFlow(g.ly, g.lz, g.yz, b.tilt);
     for (let d = 0; d < 3; d++) {
       if (!this.pFlag[d]) continue;
-      const e = Math.exp(this.dthalf * this.omegaDot[d]);
+      const e = libm.exp(this.dthalf * this.omegaDot[d]);
       b.lo[d] = fp[d] + (b.lo[d] - fp[d]) * e;
       b.hi[d] = fp[d] + (b.hi[d] - fp[d]) * e;
     }

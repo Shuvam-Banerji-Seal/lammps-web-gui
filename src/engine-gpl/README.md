@@ -53,6 +53,8 @@ source and licence in its header:
   `__ieee754_log_fma` from `sysdeps/ieee754/dbl-64/e_log.c` and `e_log_data.c`), bit for bit, with an emulated
   correctly rounded `fma`. glibc is LGPL-2.1-or-later; the file is used under LGPL-2.1 section 3, which allows
   distributing it under the GPL, version 2 or later.
+- `libm/exp.ts`: the `exp()` of the same glibc (`__exp_fma` from `e_exp.c` and `e_exp_data.c`), bit for bit, with the
+  fused steps of the compiled libm; LGPL-2.1-or-later, used the same way.
 - `libm/sincos.ts`: the `sin()` and `cos()` of the same glibc (the IBM accurate routines of `s_sin.c`,
   `sincostab.c`, `branred.c`, built without FMA contraction), bit for bit; LGPL-2.1-or-later, used the same way.
 - `dpdrx/unordered_order.ts`: the iteration order of libstdc++'s `std::unordered_set<std::string>` (GCC 11),

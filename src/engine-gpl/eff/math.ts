@@ -10,6 +10,7 @@
  * The functions return the values that the C++ code adds (or subtracts) to its pointer arguments; the caller
  * applies them with the same sign, so every sum keeps the order of the original.
  */
+import { exp as libmExp } from '../libm/exp';
 
 /* pair_eff_inline.h: ERF_TERMS1 12, ERF_TERMS2 7, DERF_TERMS 13 */
 const ERF_TERMS1 = 12;
@@ -112,7 +113,7 @@ export const ierfoverx1 = (x: number): { f: number; df: number } => {
   /* erf(x) = 1 - exp(-x^2)/x * y(t), t = (10.5 - x^2) / (2.5 + x^2) */
   const x2 = x * x;
   const t = (10.5 - x2) / (2.5 + x2);
-  const expTerm = Math.exp(-x2);
+  const expTerm = libmExp(-x2);
   const recipX = 1.0 / x;
   const f = 1.0 / x - (expTerm / x2) * ipoly02(t);
   const df = (1.12837916709551257389615890312 * expTerm - f) * recipX;
@@ -166,7 +167,7 @@ export const pauliElecElec = (samespin: number, rc0: number, re10: number, re20:
   const re1 = re10 * PAULI_RE, re2 = re20 * PAULI_RE, rc = rc0 * PAULI_RC;
   const ree = re1 * re1 + re2 * re2;
   const rem = re1 * re1 - re2 * re2;
-  const S = (2.82842712474619 / Math.pow((re2 / re1 + re1 / re2), 1.5)) * Math.exp(-rc * rc / ree);
+  const S = (2.82842712474619 / Math.pow((re2 / re1 + re1 / re2), 1.5)) * libmExp(-rc * rc / ree);
   const t1 = 1.5 * (1 / (re1 * re1) + 1 / (re2 * re2));
   const t2 = 2.0 * (3 * ree - 2 * rc * rc) / (ree * ree);
   const tt = t1 - t2;
@@ -260,9 +261,9 @@ export const elecCoreElec = (q: number, rc: number, re1: number, re2: number): {
 export const pauliCoreElec = (rc: number, re2: number, A: number, B: number, C: number): { ep: number; f: number; f2: number } => {
   const rcsq = rc * rc;
   const ssq = re2 * re2;
-  const E = A * Math.exp((-B * rcsq) / (ssq + C));
-  const dEdrc = -2 * A * B * rc * Math.exp(-B * rcsq / (ssq + C)) / (ssq + C);
-  const dEdre2 = 2 * A * B * re2 * rcsq * Math.exp(-B * rcsq / (ssq + C)) / ((C + ssq) * (C + ssq));
+  const E = A * libmExp((-B * rcsq) / (ssq + C));
+  const dEdrc = -2 * A * B * rc * libmExp(-B * rcsq / (ssq + C)) / (ssq + C);
+  const dEdre2 = 2 * A * B * re2 * rcsq * libmExp(-B * rcsq / (ssq + C)) / ((C + ssq) * (C + ssq));
   return { ep: E, f: -dEdrc, f2: -dEdre2 };
 };
 
@@ -273,11 +274,11 @@ export const pauliCoreElec = (rc: number, re2: number, A: number, B: number, C: 
 export const pauliCorePElec = (rc: number, re2: number, A: number, B: number, C: number, D: number, Ep: number): { ep: number; f: number; f2: number } => {
   const u = rc - C * re2;
   const g = Math.pow(2.0 / (B / re2 + re2 / B), 5.0);
-  const en = A * g * Math.pow(u, 2.0) * Math.exp(-D * Math.pow(u, 2.0) / (Ep + re2 * re2));
-  const dEdrc = A * g * 2.0 * u * Math.exp(-D * Math.pow(u, 2.0) / (Ep + re2 * re2)) +
+  const en = A * g * Math.pow(u, 2.0) * libmExp(-D * Math.pow(u, 2.0) / (Ep + re2 * re2));
+  const dEdrc = A * g * 2.0 * u * libmExp(-D * Math.pow(u, 2.0) / (Ep + re2 * re2)) +
     en * (-D * 2.0 * u / (Ep + re2 * re2));
   const dEdre2 = en * (-5.0 / (B / re2 + re2 / B) * (-B / (re2 * re2) + 1.0 / B)) +
-    A * g * 2.0 * u * (-C) * Math.exp(-D * Math.pow(u, 2.0) / (Ep + re2 * re2)) +
+    A * g * 2.0 * u * (-C) * libmExp(-D * Math.pow(u, 2.0) / (Ep + re2 * re2)) +
     en * (2.0 * D * u * (C * Ep + rc * re2) / Math.pow((Ep + re2 * re2), 2.0));
   return { ep: en, f: -dEdrc, f2: -dEdre2 };
 };

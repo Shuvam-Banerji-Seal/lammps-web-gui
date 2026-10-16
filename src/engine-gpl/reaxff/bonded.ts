@@ -14,6 +14,7 @@
  */
 import { DEG2RAD, MIN_SINE, type RxSystem, type ThreeBodyList } from './core';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 const SQR = (x: number) => x * x;
 const CUBE = (x: number) => x * x * x;
@@ -89,7 +90,7 @@ export const bonds = (sys: RxSystem): void => {
       const twbp = param.tbp[typeI * param.numAtomTypes + typeJ];
       // the calculation of the constants
       const powBOs_be2 = b.BO_s[pj] === 0.0 ? 0.0 : Math.pow(b.BO_s[pj], twbp.p_be2);
-      const exp_be12 = Math.exp(twbp.p_be1 * (1.0 - powBOs_be2));
+      const exp_be12 = libmExp(twbp.p_be1 * (1.0 - powBOs_be2));
       const CEbo = -twbp.De_s * exp_be12 * (1.0 - twbp.p_be1 * twbp.p_be2 * powBOs_be2);
       // the bond energy
       const ebond = -twbp.De_s * b.BO_s[pj] * exp_be12 - twbp.De_p * b.BO_pi[pj] - twbp.De_pp * b.BO_pi2[pj];
@@ -101,10 +102,10 @@ export const bonds = (sys: RxSystem): void => {
       // stabilisation terminal triple bond
       if (b.BO[pj] >= 1.0) {
         if (gp37 === 2 || (sbpI.mass === 12.0 && sbpJ.mass === 15.999) || (sbpJ.mass === 12.0 && sbpI.mass === 15.999)) {
-          const exphu = Math.exp(-gp7 * SQR(b.BO[pj] - 2.5));
-          const exphua1 = Math.exp(-gp3 * (ws.total_bond_order[i] - b.BO[pj]));
-          const exphub1 = Math.exp(-gp3 * (ws.total_bond_order[j] - b.BO[pj]));
-          const exphuov = Math.exp(gp4 * (ws.Delta[i] + ws.Delta[j]));
+          const exphu = libmExp(-gp7 * SQR(b.BO[pj] - 2.5));
+          const exphua1 = libmExp(-gp3 * (ws.total_bond_order[i] - b.BO[pj]));
+          const exphub1 = libmExp(-gp3 * (ws.total_bond_order[j] - b.BO[pj]));
+          const exphuov = libmExp(gp4 * (ws.Delta[i] + ws.Delta[j]));
           const hulpov = 1.0 / (1.0 + 25.0 * exphuov);
           const estriph = gp10 * exphu * hulpov * (exphua1 + exphub1);
           en.e_bond += estriph;
@@ -137,7 +138,7 @@ export const atomEnergy = (sys: RxSystem): void => {
     const sbpI = param.sbp[typeI];
     // lone-pair energy
     const p_lp2 = sbpI.p_lp2;
-    const expvd2 = Math.exp(-75 * ws.Delta_lp[i]);
+    const expvd2 = libmExp(-75 * ws.Delta_lp[i]);
     const inv_expvd2 = 1.0 / (1.0 + expvd2);
     let numbonds = 0;
     let e_lp = 0.0;
@@ -186,10 +187,10 @@ export const atomEnergy = (sys: RxSystem): void => {
       sum_ovun1 += twbp.p_ovun1 * twbp.De_s * b.BO[pj];
       sum_ovun2 += (ws.Delta[j] - dfvl * ws.Delta_lp_temp[j]) * (b.BO_pi[pj] + b.BO_pi2[pj]);
     }
-    const exp_ovun1 = p_ovun3 * Math.exp(p_ovun4 * sum_ovun2);
+    const exp_ovun1 = p_ovun3 * libmExp(p_ovun4 * sum_ovun2);
     const inv_exp_ovun1 = 1.0 / (1 + exp_ovun1);
     const Delta_lpcorr = ws.Delta[i] - (dfvl * ws.Delta_lp_temp[i]) * inv_exp_ovun1;
-    const exp_ovun2 = Math.exp(p_ovun2 * Delta_lpcorr);
+    const exp_ovun2 = libmExp(p_ovun2 * Delta_lpcorr);
     const inv_exp_ovun2 = 1.0 / (1.0 + exp_ovun2);
     const DlpVi = 1.0 / (Delta_lpcorr + sbpI.valency + 1e-8);
     const CEover1 = Delta_lpcorr * DlpVi * inv_exp_ovun2;
@@ -201,8 +202,8 @@ export const atomEnergy = (sys: RxSystem): void => {
     // under-coordination potential
     const p_ovun5 = sbpI.p_ovun5;
     const exp_ovun2n = 1.0 / exp_ovun2;
-    const exp_ovun6 = Math.exp(p_ovun6 * Delta_lpcorr);
-    const exp_ovun8 = p_ovun7 * Math.exp(p_ovun8 * sum_ovun2);
+    const exp_ovun6 = libmExp(p_ovun6 * Delta_lpcorr);
+    const exp_ovun8 = p_ovun7 * libmExp(p_ovun8 * sum_ovun2);
     const inv_exp_ovun2n = 1.0 / (1.0 + exp_ovun2n);
     const inv_exp_ovun8 = 1.0 / (1.0 + exp_ovun8);
     let numbonds = 0;
@@ -268,7 +269,7 @@ export const valenceAngles = (sys: RxSystem): void => {
       let temp = SQR(b.BO[t]);
       temp *= temp;
       temp *= temp;
-      prod_SBO *= Math.exp(-temp);
+      prod_SBO *= libmExp(-temp);
     }
     let vlpadj: number, dSBO2: number;
     if (ws.vlpex[j] >= 0) {
@@ -289,7 +290,7 @@ export const valenceAngles = (sys: RxSystem): void => {
       SBO2 = 2 - Math.pow(2 - SBO, p_val9);
       CSBO2 = p_val9 * Math.pow(2 - SBO, p_val9 - 1);
     } else { SBO2 = 2; CSBO2 = 0; }
-    const expval6 = Math.exp(p_val6 * ws.Delta_boc[j]);
+    const expval6 = libmExp(p_val6 * ws.Delta_boc[j]);
     for (let pi = startJ; pi < endJ; pi++) {
       thb.start[pi] = numThb;
       const BOij = b.BO[pi];
@@ -346,26 +347,26 @@ export const valenceAngles = (sys: RxSystem): void => {
                 const p_val4 = prm.p_val4;
                 const p_val7 = prm.p_val7;
                 const theta_00 = prm.theta_00;
-                const exp3ij = Math.exp(-p_val3 * Math.pow(BOA_ij, p_val4));
+                const exp3ij = libmExp(-p_val3 * Math.pow(BOA_ij, p_val4));
                 const f7_ij = 1.0 - exp3ij;
                 const Cf7ij = p_val3 * p_val4 * Math.pow(BOA_ij, p_val4 - 1.0) * exp3ij;
-                const exp3jk = Math.exp(-p_val3 * Math.pow(BOA_jk, p_val4));
+                const exp3jk = libmExp(-p_val3 * Math.pow(BOA_jk, p_val4));
                 const f7_jk = 1.0 - exp3jk;
                 const Cf7jk = p_val3 * p_val4 * Math.pow(BOA_jk, p_val4 - 1.0) * exp3jk;
-                const expval7 = Math.exp(-p_val7 * ws.Delta_boc[j]);
+                const expval7 = libmExp(-p_val7 * ws.Delta_boc[j]);
                 const trm8 = 1.0 + expval6 + expval7;
                 const f8_Dj = p_val5 - ((p_val5 - 1.0) * (2.0 + expval6) / trm8);
                 const Cf8j = ((1.0 - p_val5) / SQR(trm8)) *
                   (p_val6 * expval6 * trm8 - (2.0 + expval6) * (p_val6 * expval6 - p_val7 * expval7));
-                let theta_0 = 180.0 - theta_00 * (1.0 - Math.exp(-p_val10 * (2.0 - SBO2)));
+                let theta_0 = 180.0 - theta_00 * (1.0 - libmExp(-p_val10 * (2.0 - SBO2)));
                 theta_0 = DEG2RAD(theta_0);
-                const expval2theta = Math.exp(-p_val2 * SQR(theta_0 - theta));
+                const expval2theta = libmExp(-p_val2 * SQR(theta_0 - theta));
                 const expval12theta = p_val1 >= 0 ? p_val1 * (1.0 - expval2theta) : p_val1 * -expval2theta;
                 const CEval1 = Cf7ij * f7_jk * f8_Dj * expval12theta;
                 const CEval2 = Cf7jk * f7_ij * f8_Dj * expval12theta;
                 const CEval3 = Cf8j * f7_ij * f7_jk * expval12theta;
                 const CEval4 = -2.0 * p_val1 * p_val2 * f7_ij * f7_jk * f8_Dj * expval2theta * (theta_0 - theta);
-                const Ctheta_0 = p_val10 * DEG2RAD(theta_00) * Math.exp(-p_val10 * (2.0 - SBO2));
+                const Ctheta_0 = p_val10 * DEG2RAD(theta_00) * libmExp(-p_val10 * (2.0 - SBO2));
                 const CEval5 = -CEval4 * Ctheta_0 * CSBO2;
                 const CEval6 = CEval5 * dSBO1;
                 const CEval7 = CEval5 * dSBO2;
@@ -377,10 +378,10 @@ export const valenceAngles = (sys: RxSystem): void => {
                 const p_pen2 = gp[19];
                 const p_pen3 = gp[20];
                 const p_pen4 = gp[21];
-                const exp_pen2ij = Math.exp(-p_pen2 * SQR(BOA_ij - 2.0));
-                const exp_pen2jk = Math.exp(-p_pen2 * SQR(BOA_jk - 2.0));
-                const exp_pen3 = Math.exp(-p_pen3 * ws.Delta[j]);
-                const exp_pen4 = Math.exp(p_pen4 * ws.Delta[j]);
+                const exp_pen2ij = libmExp(-p_pen2 * SQR(BOA_ij - 2.0));
+                const exp_pen2jk = libmExp(-p_pen2 * SQR(BOA_jk - 2.0));
+                const exp_pen3 = libmExp(-p_pen3 * ws.Delta[j]);
+                const exp_pen4 = libmExp(p_pen4 * ws.Delta[j]);
                 const trm_pen34 = 1.0 + exp_pen3 + exp_pen4;
                 const f9_Dj = (2.0 + exp_pen3) / trm_pen34;
                 const Cf9j = (-p_pen3 * exp_pen3 * trm_pen34 - (2.0 + exp_pen3) * (-p_pen3 * exp_pen3 + p_pen4 * exp_pen4)) / SQR(trm_pen34);
@@ -395,12 +396,12 @@ export const valenceAngles = (sys: RxSystem): void => {
                 const p_coa2 = gp[2];
                 const p_coa3 = gp[38];
                 const p_coa4 = gp[30];
-                const exp_coa2 = Math.exp(p_coa2 * ws.Delta_val[j]);
+                const exp_coa2 = libmExp(p_coa2 * ws.Delta_val[j]);
                 const e_coa = p_coa1 / (1.0 + exp_coa2) *
-                  Math.exp(-p_coa3 * SQR(ws.total_bond_order[i] - BOA_ij)) *
-                  Math.exp(-p_coa3 * SQR(ws.total_bond_order[k] - BOA_jk)) *
-                  Math.exp(-p_coa4 * SQR(BOA_ij - 1.5)) *
-                  Math.exp(-p_coa4 * SQR(BOA_jk - 1.5));
+                  libmExp(-p_coa3 * SQR(ws.total_bond_order[i] - BOA_ij)) *
+                  libmExp(-p_coa3 * SQR(ws.total_bond_order[k] - BOA_jk)) *
+                  libmExp(-p_coa4 * SQR(BOA_ij - 1.5)) *
+                  libmExp(-p_coa4 * SQR(BOA_jk - 1.5));
                 en.e_coa += e_coa;
                 const CEcoa1 = -2 * p_coa4 * (BOA_ij - 1.5) * e_coa;
                 const CEcoa2 = -2 * p_coa4 * (BOA_jk - 1.5) * e_coa;
@@ -544,10 +545,10 @@ export const torsionAngles = (sys: RxSystem): void => {
       const r_jk = b.d[pk];
       const startPk = thb.start[pk], endPk = thb.end[pk];
       const startPj = thb.start[pj], endPj = thb.end[pj];
-      const exp_tor2_jk = Math.exp(-p_tor2 * BOA_jk);
-      const exp_cot2_jk = Math.exp(-p_cot2 * SQR(BOA_jk - 1.5));
-      const exp_tor3_DjDk = Math.exp(-p_tor3 * (Delta_j + Delta_k));
-      const exp_tor4_DjDk = Math.exp(p_tor4 * (Delta_j + Delta_k));
+      const exp_tor2_jk = libmExp(-p_tor2 * BOA_jk);
+      const exp_cot2_jk = libmExp(-p_cot2 * SQR(BOA_jk - 1.5));
+      const exp_tor3_DjDk = libmExp(-p_tor3 * (Delta_j + Delta_k));
+      const exp_tor4_DjDk = libmExp(p_tor4 * (Delta_j + Delta_k));
       const exp_tor34_inv = 1.0 / (1.0 + exp_tor3_DjDk + exp_tor4_DjDk);
       const f11_DjDk = (2.0 + exp_tor3_DjDk) * exp_tor34_inv;
       for (let pi = startPk; pi < endPk; pi++) {
@@ -561,8 +562,8 @@ export const torsionAngles = (sys: RxSystem): void => {
         const theta_ijk = thb.theta[pi];
         const sin_ijk = libmSin(theta_ijk);
         const cos_ijk = libmCos(theta_ijk);
-        const exp_tor2_ij = Math.exp(-p_tor2 * BOA_ij);
-        const exp_cot2_ij = Math.exp(-p_cot2 * SQR(BOA_ij - 1.5));
+        const exp_tor2_ij = libmExp(-p_tor2 * BOA_ij);
+        const exp_cot2_ij = libmExp(-p_cot2 * SQR(BOA_ij - 1.5));
         let tan_ijk_i: number;
         if (sin_ijk >= 0 && sin_ijk <= MIN_SINE) tan_ijk_i = cos_ijk / MIN_SINE;
         else if (sin_ijk <= 0 && sin_ijk >= -MIN_SINE) tan_ijk_i = cos_ijk / -MIN_SINE;
@@ -598,9 +599,9 @@ export const torsionAngles = (sys: RxSystem): void => {
           const cos2omega = libmCos(2.0 * omega);
           const cos3omega = libmCos(3.0 * omega);
           // torsion energy
-          const exp_tor1 = Math.exp(fbp.p_tor1 * SQR(2.0 - b.BO_pi[pk] - f11_DjDk));
-          const exp_tor2_kl = Math.exp(-p_tor2 * BOA_kl);
-          const exp_cot2_kl = Math.exp(-p_cot2 * SQR(BOA_kl - 1.5));
+          const exp_tor1 = libmExp(fbp.p_tor1 * SQR(2.0 - b.BO_pi[pk] - f11_DjDk));
+          const exp_tor2_kl = libmExp(-p_tor2 * BOA_kl);
+          const exp_cot2_kl = libmExp(-p_cot2 * SQR(BOA_kl - 1.5));
           const fn10 = (1.0 - exp_tor2_ij) * (1.0 - exp_tor2_jk) * (1.0 - exp_tor2_kl);
           const CV = 0.5 * (fbp.V1 * (1.0 + cos_omega) + fbp.V2 * exp_tor1 * (1.0 - cos2omega) + fbp.V3 * (1.0 + cos3omega));
           const e_tor = fn10 * sin_ijk * sin_jkl * CV;
@@ -704,8 +705,8 @@ export const hydrogenBonds = (sys: RxSystem): void => {
         let sin_xhz4 = SQR(sin_theta2);
         sin_xhz4 *= sin_xhz4;
         const cos_xhz1 = 1.0 - cosTheta;
-        const exp_hb2 = Math.exp(-hbp.p_hb2 * b.BO[pi]);
-        const exp_hb3 = Math.exp(-hbp.p_hb3 * (hbp.r0_hb / r_jk + r_jk / hbp.r0_hb - 2.0));
+        const exp_hb2 = libmExp(-hbp.p_hb2 * b.BO[pi]);
+        const exp_hb3 = libmExp(-hbp.p_hb3 * (hbp.r0_hb / r_jk + r_jk / hbp.r0_hb - 2.0));
         const e_hb = hbp.p_hb1 * (1.0 - exp_hb2) * exp_hb3 * sin_xhz4;
         en.e_hb += e_hb;
         const CEhb1 = hbp.p_hb1 * hbp.p_hb2 * exp_hb2 * exp_hb3 * sin_xhz4;

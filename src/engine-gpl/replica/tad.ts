@@ -24,6 +24,7 @@ import type { NebHost } from '../../engine/commands/neb';
 import type { Fix } from '../../engine/fix/fix';
 import { snapOf, restoreSnap, dynamics, setupOnly, quench, type Snap } from './accelerated';
 import { log as libmLog } from '../libm/log';
+import { exp as libmExp } from '../libm/exp';
 
 interface EventCompute {
   id: string;
@@ -226,7 +227,7 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
   const computeTlo = (ievent: number): void => {
     const ev = events[ievent];
     const delthi = ev.timestep - main.timestep;
-    const deltlo = delthi * Math.exp(ev.ebarrier * deltaBeta);
+    const deltlo = delthi * libmExp(ev.ebarrier * deltaBeta);
     ev.tlo = main.tlo + deltlo;
     let status = 'D ';
     if (ievent === 0) {

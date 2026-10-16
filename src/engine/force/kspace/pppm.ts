@@ -155,7 +155,7 @@ const IK_COEF: Record<number, number[]> = {
 
 /** Real-space rms force error, Deserno and Holm eq. (23). */
 export const pppmRealError = (g: number, rc: number, q2: number, n: number, volume: number): number =>
-  (2 * q2 / Math.sqrt(n * rc * volume)) * Math.exp(-g * g * rc * rc);
+  (2 * q2 / Math.sqrt(n * rc * volume)) * libm.exp(-g * g * rc * rc);
 
 /** Reciprocal-space rms force error for ik differentiation, Deserno and Holm eq. (38), one edge L, mesh spacing h. */
 export const pppmKspaceError = (g: number, h: number, P: number, q2: number, n: number, L: number): number => {
@@ -407,7 +407,7 @@ export class KSpacePPPM extends KSpaceBase {
                 const nzm = mz + az * nz;
                 kvec(nxm, nym, nzm, km);
                 const km2 = km[0] * km[0] + km[1] * km[1] + km[2] * km[2];
-                num += ux * uy * u2(nzm, nz) * ((k[0] * km[0] + k[1] * km[1] + k[2] * km[2]) / km2) * NATIVE_IK_FOUR_PI * Math.exp(-km2 / (4 * g * g));
+                num += ux * uy * u2(nzm, nz) * ((k[0] * km[0] + k[1] * km[1] + k[2] * km[2]) / km2) * NATIVE_IK_FOUR_PI * libm.exp(-km2 / (4 * g * g));
               }
             }
           }

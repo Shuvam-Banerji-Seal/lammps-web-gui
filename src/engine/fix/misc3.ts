@@ -309,7 +309,7 @@ export class FixWallRegion extends Fix {
       }
       case 'harmonic': return a * (d - this.rc) ** 2;
       default: { // morse: D_0 = a, alpha = b, r_0 = c
-        const e = Math.exp(-b * (d - c));
+        const e = libm.exp(-b * (d - c));
         return a * (e * e - 2 * e);
       }
     }
@@ -328,7 +328,7 @@ export class FixWallRegion extends Fix {
       }
       case 'harmonic': return 2 * a * (this.rc - d);
       default: {
-        const e = Math.exp(-b * (d - c));
+        const e = libm.exp(-b * (d - c));
         return 2 * b * a * (e * e - e);
       }
     }

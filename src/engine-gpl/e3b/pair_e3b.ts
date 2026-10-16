@@ -15,6 +15,7 @@ import { Pair, StyleError, type PairCompute, type StyleContext } from '../../eng
 import { NEIGHMASK } from '../../engine/neighbor';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
 import { parseNum } from '../../engine/force/util';
+import { exp as libmExp } from '../libm/exp';
 
 /** pair_e3b.cpp: NOT_SET marks a keyword that was not given. */
 const NOT_SET = 1.024e300;
@@ -243,7 +244,7 @@ export class PairE3B extends Pair {
         // two-body O-O term, not shifted: k2 = 4.87/A so e^(-k r) is 1e-11 at the cutoff
         if (rsq < this.rc2sq) {
           const tmpr = Math.sqrt(rsq);
-          const tmpexp = this.e2 * Math.exp(-this.k2 * tmpr);
+          const tmpexp = this.e2 * libmExp(-this.k2 * tmpr);
           const fpair = this.k2 * tmpexp / tmpr;
           const fxtmp = delx * fpair, fytmp = dely * fpair, fztmp = delz * fpair;
           fix += fxtmp; fiy += fytmp; fiz += fztmp;
@@ -276,7 +277,7 @@ export class PairE3B extends Pair {
               const rsqh = delxh * delxh + delyh * delyh + delzh * delzh;
               if (rsqh < rc3sq) {
                 const tmpr = Math.sqrt(rsqh);
-                let tmpexp = Math.exp(-k3 * tmpr);
+                let tmpexp = libmExp(-k3 * tmpr);
                 let scEng: number, scDer: number;
                 if (tmpr > rs) {
                   const scFact1 = rc3 - tmpr;

@@ -22,6 +22,7 @@ import type { SimState } from '../../engine/types';
 import type { Geometry } from '../../engine/domain';
 import { gfDenomCoefficients, nativePppmGrid } from './grid';
 import { sin as libmSin } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 const MY_2PI = 6.28318530717958647692;
 const MY_4PI = 12.56637061435917295384;
@@ -294,19 +295,19 @@ export class KSpacePPPMAd extends KSpacePPPM {
       const mper = m - nz * Math.trunc((2 * m) / nz);
       const qz = unitkz * mper;
       const snz = libmSin((0.5 * qz * lzs) / nz) ** 2;
-      const sz = Math.exp(-0.25 * ((qz / g) * (qz / g)));
+      const sz = libmExp(-0.25 * ((qz / g) * (qz / g)));
       const wz = powsinxx((0.5 * qz * lzs) / nz, twoorder);
       for (let l = 0; l < ny; l++) {
         const lper = l - ny * Math.trunc((2 * l) / ny);
         const qy = unitky * lper;
         const sny = libmSin((0.5 * qy * geom.ly) / ny) ** 2;
-        const sy = Math.exp(-0.25 * ((qy / g) * (qy / g)));
+        const sy = libmExp(-0.25 * ((qy / g) * (qy / g)));
         const wy = powsinxx((0.5 * qy * geom.ly) / ny, twoorder);
         for (let k = 0; k < nx; k++) {
           const kper = k - nx * Math.trunc((2 * k) / nx);
           const qx = unitkx * kper;
           const snx = libmSin((0.5 * qx * geom.lx) / nx) ** 2;
-          const sx = Math.exp(-0.25 * ((qx / g) * (qx / g)));
+          const sx = libmExp(-0.25 * ((qx / g) * (qx / g)));
           const wx = powsinxx((0.5 * qx * geom.lx) / nx, twoorder);
           const sqk = qx * qx + qy * qy + qz * qz;
           if (sqk !== 0) {

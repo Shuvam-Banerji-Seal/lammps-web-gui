@@ -362,9 +362,9 @@ export class DihedralCosineShiftExp extends SimpleBonded {
         e = Umin[t] * U - 0.5 * a[t] * Umin[t] * (U + U * U);
         dEdU = Umin[t] * (1 - 0.5 * a[t] * (1 + 2 * U));
       } else {
-        const ea = Math.exp(a[t]);
-        e = -Umin[t] * (Math.exp(-a[t] * U) - 1) / (ea - 1);
-        dEdU = a[t] * Umin[t] * Math.exp(-a[t] * U) / (ea - 1);
+        const ea = libm.exp(a[t]);
+        e = -Umin[t] * (libm.exp(-a[t] * U) - 1) / (ea - 1);
+        dEdU = a[t] * Umin[t] * libm.exp(-a[t] * U) / (ea - 1);
       }
       return { e, dEdphi: dEdU * 0.5 * libm.sin(dth) };
     });

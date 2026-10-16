@@ -18,6 +18,7 @@ import type { System } from '../../engine/system';
 import { ASF_SAED, SAED_TYPE_LIST } from './asf_saed';
 import { reciprocalSpacing } from './compute_xrd';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 const PI = Math.PI;
 
@@ -177,7 +178,7 @@ export class ComputeSAED extends Compute {
         let ft = 0;
         for (let C = 0; C < 5; C++) {
           const D = C + offset;
-          ft += row[D] * Math.exp(-1 * row[5 + D] * SinTheta_lambda * SinTheta_lambda);
+          ft += row[D] * libmExp(-1 * row[5 + D] * SinTheta_lambda * SinTheta_lambda);
         }
         f[t] = ft;
       }

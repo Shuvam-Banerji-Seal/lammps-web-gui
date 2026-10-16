@@ -11,6 +11,7 @@
 import { sp, sp2, type Ref } from './splines';
 import { TOL, kron, gSpline, piRCSpline, TijSpline, type ReboCore, newRef } from './rebo';
 import { bondorderPijCross, pijEval } from './bc';
+import { exp as libmExp } from '../libm/exp';
 
 const v3 = (): Float64Array => new Float64Array(3);
 
@@ -89,8 +90,8 @@ export const bondorder = (
     // evaluate splines g and derivatives dg
     const g = gSpline(core, cosjik, NijC + NijH, itype, rdgdc, rdgdN);
     dgdN = rdgdN.v;
-    Etmp = Etmp + (wik * g * Math.exp(lamdajik));
-    tmp3 = tmp3 + (wik * dgdN * Math.exp(lamdajik));
+    Etmp = Etmp + (wik * g * libmExp(lamdajik));
+    tmp3 = tmp3 + (wik * dgdN * libmExp(lamdajik));
     NconjtmpI = NconjtmpI + (kron(ktype, 0) * wik * sp(Nki, Nmin, Nmax, rS));
   }
 
@@ -126,7 +127,7 @@ export const bondorder = (
     dcosjikdrj[2] = (-rik[2] / (rijmag * rikmag)) + (cosjik * (rij[2] / (rijmag * rijmag)));
     const g = gSpline(core, cosjik, NijC + NijH, itype, rdgdc, rdgdN);
     dgdc = rdgdc.v;
-    tmp2 = VA * .5 * (tmp * wik * dgdc * Math.exp(lamdajik));
+    tmp2 = VA * .5 * (tmp * wik * dgdc * libmExp(lamdajik));
     fj[0] = -tmp2 * dcosjikdrj[0];
     fj[1] = -tmp2 * dcosjikdrj[1];
     fj[2] = -tmp2 * dcosjikdrj[2];
@@ -136,7 +137,7 @@ export const bondorder = (
     fk[0] = -tmp2 * dcosjikdrk[0];
     fk[1] = -tmp2 * dcosjikdrk[1];
     fk[2] = -tmp2 * dcosjikdrk[2];
-    tmp2 = VA * .5 * (tmp * wik * g * Math.exp(lamdajik) * 4.0 * kron(itype, 1));
+    tmp2 = VA * .5 * (tmp * wik * g * libmExp(lamdajik) * 4.0 * kron(itype, 1));
     fj[0] -= tmp2 * (-rij[0] / rijmag);
     fj[1] -= tmp2 * (-rij[1] / rijmag);
     fj[2] -= tmp2 * (-rij[2] / rijmag);
@@ -147,7 +148,7 @@ export const bondorder = (
     fk[1] -= tmp2 * (rik[1] / rikmag);
     fk[2] -= tmp2 * (rik[2] / rikmag);
     // coordination forces: dwik
-    tmp2 = VA * .5 * (tmp * dwik * g * Math.exp(lamdajik)) / rikmag;
+    tmp2 = VA * .5 * (tmp * dwik * g * libmExp(lamdajik)) / rikmag;
     fi[0] -= tmp2 * rik[0];
     fi[1] -= tmp2 * rik[1];
     fi[2] -= tmp2 * rik[2];
@@ -197,8 +198,8 @@ export const bondorder = (
     // evaluate splines g and derivatives dg
     const g = gSpline(core, cosijl, NjiC + NjiH, jtype, rdgdc, rdgdN);
     dgdN = rdgdN.v;
-    Etmp = Etmp + (wjl * g * Math.exp(lamdaijl));
-    tmp3 = tmp3 + (wjl * dgdN * Math.exp(lamdaijl));
+    Etmp = Etmp + (wjl * g * libmExp(lamdaijl));
+    tmp3 = tmp3 + (wjl * dgdN * libmExp(lamdaijl));
     NconjtmpJ = NconjtmpJ + (kron(ltype, 0) * wjl * sp(Nlj, Nmin, Nmax, rS));
   }
   const PjiS = pijEval(core, NjiC, NjiH, NijC, NijH, jtype, itype, dN2);
@@ -233,7 +234,7 @@ export const bondorder = (
     // evaluate splines g and derivatives dg
     const g = gSpline(core, cosijl, NjiC + NjiH, jtype, rdgdc, rdgdN);
     dgdc = rdgdc.v;
-    tmp2 = VA * .5 * (tmp * wjl * dgdc * Math.exp(lamdaijl));
+    tmp2 = VA * .5 * (tmp * wjl * dgdc * libmExp(lamdaijl));
     fi[0] = -tmp2 * dcosijldri[0];
     fi[1] = -tmp2 * dcosijldri[1];
     fi[2] = -tmp2 * dcosijldri[2];
@@ -243,7 +244,7 @@ export const bondorder = (
     fl[0] = -tmp2 * dcosijldrl[0];
     fl[1] = -tmp2 * dcosijldrl[1];
     fl[2] = -tmp2 * dcosijldrl[2];
-    tmp2 = VA * .5 * (tmp * wjl * g * Math.exp(lamdaijl) * 4.0 * kron(jtype, 1));
+    tmp2 = VA * .5 * (tmp * wjl * g * libmExp(lamdaijl) * 4.0 * kron(jtype, 1));
     fi[0] -= tmp2 * (rij[0] / rijmag);
     fi[1] -= tmp2 * (rij[1] / rijmag);
     fi[2] -= tmp2 * (rij[2] / rijmag);
@@ -254,7 +255,7 @@ export const bondorder = (
     fl[1] -= tmp2 * (rjl[1] / rjlmag);
     fl[2] -= tmp2 * (rjl[2] / rjlmag);
     // coordination forces: dwjl
-    tmp2 = VA * .5 * (tmp * dwjl * g * Math.exp(lamdaijl)) / rjlmag;
+    tmp2 = VA * .5 * (tmp * dwjl * g * libmExp(lamdaijl)) / rjlmag;
     fj[0] -= tmp2 * rjl[0];
     fj[1] -= tmp2 * rjl[1];
     fj[2] -= tmp2 * rjl[2];

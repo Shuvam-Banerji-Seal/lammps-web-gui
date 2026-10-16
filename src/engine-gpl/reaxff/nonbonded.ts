@@ -15,6 +15,7 @@ import type { RxSystem } from './core';
 import { C_ele, EV_to_KCALpMOL, KCALpMOL_to_EV } from './core';
 import type { ControlParams, ReaxParam, TwoBody } from './ffield';
 import type { LookupTables } from './lookup';
+import { exp as libmExp } from '../libm/exp';
 
 const SMALL = 0.0001;
 
@@ -122,21 +123,21 @@ const directPair = (
     const powr_vdW1 = Math.pow(r_ij, p_vdW1);
     const powgi_vdW1 = Math.pow(1.0 / twbp.gamma_w, p_vdW1);
     const fn13 = Math.pow(powr_vdW1 + powgi_vdW1, p_vdW1i);
-    const exp1 = Math.exp(twbp.alpha * (1.0 - fn13 / twbp.r_vdW));
-    const exp2 = Math.exp(0.5 * twbp.alpha * (1.0 - fn13 / twbp.r_vdW));
+    const exp1 = libmExp(twbp.alpha * (1.0 - fn13 / twbp.r_vdW));
+    const exp2 = libmExp(0.5 * twbp.alpha * (1.0 - fn13 / twbp.r_vdW));
     e_vdW = twbp.D * (exp1 - 2.0 * exp2);
     const dfn13 = Math.pow(powr_vdW1 + powgi_vdW1, p_vdW1i - 1.0) * Math.pow(r_ij, p_vdW1 - 2.0);
     CEvd = dTap * e_vdW - Tap * twbp.D * (twbp.alpha / twbp.r_vdW) * (exp1 - exp2) * dfn13;
   } else {
     // no shielding
-    const exp1 = Math.exp(twbp.alpha * (1.0 - r_ij / twbp.r_vdW));
-    const exp2 = Math.exp(0.5 * twbp.alpha * (1.0 - r_ij / twbp.r_vdW));
+    const exp1 = libmExp(twbp.alpha * (1.0 - r_ij / twbp.r_vdW));
+    const exp2 = libmExp(0.5 * twbp.alpha * (1.0 - r_ij / twbp.r_vdW));
     e_vdW = twbp.D * (exp1 - 2.0 * exp2);
     CEvd = dTap * e_vdW - Tap * twbp.D * (twbp.alpha / twbp.r_vdW) * (exp1 - exp2) / r_ij;
   }
   if (param.vdwType === 2 || param.vdwType === 3) {
     // inner wall
-    e_core = twbp.ecore * Math.exp(twbp.acore * (1.0 - r_ij / twbp.rcore));
+    e_core = twbp.ecore * libmExp(twbp.acore * (1.0 - r_ij / twbp.rcore));
     const de_core = -(twbp.acore / twbp.rcore) * e_core;
     CEvd += dTap * e_core + Tap * de_core / r_ij;
     // lg correction, only if lgvdw is yes (refused by the pair style: lgflag is always 0 here)

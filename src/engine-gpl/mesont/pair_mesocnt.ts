@@ -27,6 +27,7 @@ import { eunitOf } from './units';
 import { finf, fsemi, geometry, mesoConst, newGeoOut, newWeightOut, weight, type GeoOut, type MesoConst, type WeightOut } from './forces';
 import { readMesocntFile, sCubic, type MesocntTables } from './tables';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 /** LAMMPS: static constexpr int SELF_CUTOFF = 3 (pair_mesocnt.cpp). */
 const SELF_CUTOFF = 3;
@@ -87,7 +88,7 @@ export interface ViscParams {
  */
 const frictionTotal = (v: ViscParams, vtot: number, sumw: number, param: Float64Array): number => {
   if (vtot === 0.0) return 0.0;
-  let ft = v.fviscMax / (1.0 + Math.exp(-v.kvisc * (Math.abs(vtot) - v.vvisc))) - v.fviscShift;
+  let ft = v.fviscMax / (1.0 + libmExp(-v.kvisc * (Math.abs(vtot) - v.vvisc))) - v.fviscShift;
   ft *= 0.25 * (1 - sCubic(sumw)) * (param[3] - param[2]);
   if (vtot < 0) ft = -ft;
   return ft;
@@ -806,7 +807,7 @@ export class PairMesoCNTViscous extends PairMesoCNT {
     const fviscMax = parseNum(args[3], 'fvisc_max');
     const kvisc = parseNum(args[4], 'kvisc');
     const vvisc = parseNum(args[5], 'vvisc');
-    this.visc = { fviscMax, kvisc, vvisc, fviscShift: fviscMax / (1.0 + Math.exp(kvisc * vvisc)) };
+    this.visc = { fviscMax, kvisc, vvisc, fviscShift: fviscMax / (1.0 + libmExp(kvisc * vvisc)) };
     this.setPotential(args[2], args.slice(6), ctx);
   }
 }

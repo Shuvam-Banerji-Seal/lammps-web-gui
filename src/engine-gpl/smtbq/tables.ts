@@ -14,6 +14,7 @@
 import { erfc } from './erfc';
 import { SlaterIntegrals } from './slater';
 import type { SmtbqFile } from './potfile';
+import { exp as libmExp } from '../libm/exp';
 
 /** MathConst::MY_PIS (sqrt(pi)). */
 const MY_PIS = 1.77245385090551602729;
@@ -133,12 +134,12 @@ function cutTable(
       ii = 1;
       if (rc + nang > rcoupe) nang = rcoupe - rc;
       bCoeff = (2 * dij + ddij * nang) / (dij * nang);
-      aCoeff = dij * Math.exp(-bCoeff * rc) / (nang * nang);
+      aCoeff = dij * libmExp(-bCoeff * rc) / (nang * nang);
     }
     if (r > rc) {
       const d = r - rc - nang;
-      dij = aCoeff * (d * d) * Math.exp(bCoeff * r);
-      ddij = aCoeff * d * (2 + bCoeff * d) * Math.exp(bCoeff * r);
+      dij = aCoeff * (d * d) * libmExp(bCoeff * r);
+      ddij = aCoeff * d * (2 + bCoeff * d) * libmExp(bCoeff * r);
     }
     if (r > rc + nang) {
       dij = 0.0;
@@ -184,7 +185,7 @@ export function buildTables(file: SmtbqFile, slater: SlaterIntegrals): SmtbqTabl
     let r = Math.sqrt(s);
     if (k === 0) r = 10e-30;
     potqn[k] = 14.4 * (erfc(alf * r) / r - mu);
-    dpotqn[k] = -14.4 * ((erfc(alf * r) / (r * r) + 2.0 * alf / MY_PIS / r * Math.exp(-alf * alf * r * r)) / r);
+    dpotqn[k] = -14.4 * ((erfc(alf * r) / (r * r) + 2.0 * alf / MY_PIS / r * libmExp(-alf * alf * r * r)) / r);
   }
   const Vself = -14.4 * (alf / MY_PIS + mu * 0.5);
 
@@ -261,8 +262,8 @@ export function buildTables(file: SmtbqFile, slater: SlaterIntegrals): SmtbqTabl
       const s = k * ds;
       let r = Math.sqrt(s);
       if (k === 0) r = 10e-30;
-      const tmpb = Math.exp(-2.0 * q * (r / rzero - 1.0));
-      const tmpr = Math.exp(-p * (r / rzero - 1.0));
+      const tmpb = libmExp(-2.0 * q * (r / rzero - 1.0));
+      const tmpr = libmExp(-p * (r / rzero - 1.0));
       const at = k * smCols + sm;
       if (r <= rc1) {
         tabsmb[at] = Ksi * Ksi * tmpb;

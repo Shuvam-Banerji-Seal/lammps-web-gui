@@ -32,6 +32,7 @@ import { fft3d, isFFTSize } from '../../engine/force/fft';
 import { computeQopt } from '../pppm/grid';
 import { log as libmLog } from '../libm/log';
 import { sin as libmSin } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 /** pppm.cpp OFFSET: keeps int() of a negative grid coordinate at the right value. */
 const OFFSET = 16384;
@@ -104,9 +105,9 @@ const rspaceError = (g: number, rc: number, natoms: number, vol: number, mu2: nu
   const Cc = 4.0 * rg4 + 6.0 * rg2 + 3.0;
   const Dc = 8.0 * rg6 + 20.0 * rg4 + 30.0 * rg2 + 15.0;
   const dd = (mu2 / Math.sqrt(vol * g ** 4 * rc ** 9 * natoms)) *
-    Math.sqrt((13.0 / 6.0) * Cc * Cc + (2.0 / 15.0) * Dc * Dc - (13.0 / 15.0) * Cc * Dc) * Math.exp(-rg2);
+    Math.sqrt((13.0 / 6.0) * Cc * Cc + (2.0 / 15.0) * Dc * Dc - (13.0 / 15.0) * Cc * Dc) * libmExp(-rg2);
   if (q2 === 0) return dd;
-  const dq = (2.0 * q2 * Math.exp(-rg2)) / Math.sqrt(natoms * rc * vol);
+  const dq = (2.0 * q2 * libmExp(-rg2)) / Math.sqrt(natoms * rc * vol);
   return Math.sqrt(dd * dd + dq * dq);
 };
 
@@ -320,15 +321,15 @@ export class KSpacePPPMDipole extends KSpaceBase {
           let sum1 = 0, sum2 = 0;
           for (let ix = -2; ix <= 2; ix++) {
             const qx = unitkx * (kper + nx * ix);
-            const sx = Math.exp(-0.25 * square(qx / g));
+            const sx = libmExp(-0.25 * square(qx / g));
             const wx = powsinxx(0.5 * qx * lx / nx, twoorder);
             for (let iy = -2; iy <= 2; iy++) {
               const qy = unitky * (lper + ny * iy);
-              const sy = Math.exp(-0.25 * square(qy / g));
+              const sy = libmExp(-0.25 * square(qy / g));
               const wy = powsinxx(0.5 * qy * ly / ny, twoorder);
               for (let iz = -2; iz <= 2; iz++) {
                 const qz = unitkz * (mper + nz * iz);
-                const sz = Math.exp(-0.25 * square(qz / g));
+                const sz = libmExp(-0.25 * square(qz / g));
                 const wz = powsinxx(0.5 * qz * lz / nz, twoorder);
                 const dot1 = unitkx * kper * qx + unitky * lper * qy + unitkz * mper * qz;
                 const dot2 = qx * qx + qy * qy + qz * qz;
@@ -517,15 +518,15 @@ export class KSpacePPPMDipole extends KSpaceBase {
           let sum1 = 0, sum1Qq = 0, sum1Qm = 0;
           for (let ix = -nb[0]; ix <= nb[0]; ix++) {
             const qx = unit[0] * (kper + nx * ix);
-            const sx = Math.exp(-0.25 * square(qx / g));
+            const sx = libmExp(-0.25 * square(qx / g));
             const wx = powsinxx(0.5 * qx * lx / nx, twoorder);
             for (let iy = -nb[1]; iy <= nb[1]; iy++) {
               const qy = unit[1] * (lper + ny * iy);
-              const sy = Math.exp(-0.25 * square(qy / g));
+              const sy = libmExp(-0.25 * square(qy / g));
               const wy = powsinxx(0.5 * qy * ly / ny, twoorder);
               for (let iz = -nb[2]; iz <= nb[2]; iz++) {
                 const qz = unit[2] * (mper + nz * iz);
-                const sz = Math.exp(-0.25 * square(qz / g));
+                const sz = libmExp(-0.25 * square(qz / g));
                 const wz = powsinxx(0.5 * qz * lz / nz, twoorder);
                 const dot1 = unit[0] * kper * qx + unit[1] * lper * qy + unit[2] * mper * qz;
                 const dot2 = qx * qx + qy * qy + qz * qz;

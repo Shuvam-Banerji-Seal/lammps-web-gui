@@ -238,7 +238,7 @@ export class KSpaceEwaldDisp extends KSpace {
 /** f(u) = (1 - 2u) e^-u + 2 sqrt(pi) u^(3/2) erfc(sqrt u) and df/du, u = b^2. */
 const dispKernel = (u: number): { f: number; fu: number } => {
   const b = Math.sqrt(u);
-  const e = Math.exp(-u);
+  const e = libm.exp(-u);
   const erfc = erfcExact(b);
   const f = (1 - 2 * u) * e + 2 * Math.sqrt(Math.PI) * u * b * erfc;
   const fu = 3 * (Math.sqrt(Math.PI) * b * erfc - e);

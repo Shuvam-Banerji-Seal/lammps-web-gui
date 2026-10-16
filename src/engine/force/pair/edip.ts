@@ -1,6 +1,7 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { joinPotentialEntries, parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * pair_style edip, edip/multi: docs.lammps.org/pair_edip.html (text: plans/lammps-docs-live/pair_edip.rst).
@@ -84,7 +85,7 @@ export const coordF = (p: EDIPEntry, r: number): { f: number; df: number } => {
   const x3 = x ** -3;
   const den = 1 - x3;
   const g = p.alpha / den;
-  const f = Math.exp(g);
+  const f = libm.exp(g);
   // d g / dx = -alpha * (3 x^-4) / den^2 ; dx/dr = 1/(a - c)
   const dgdr = (-p.alpha * 3 * x ** -4) / (den * den) / (p.a - p.c);
   return { f, df: f * dgdr };
@@ -92,9 +93,9 @@ export const coordF = (p: EDIPEntry, r: number): { f: number; df: number } => {
 
 /** phi_2(r, Z) and its partial derivatives in r and Z. */
 export const phi2Terms = (p: EDIPEntry, r: number, Z: number): { e: number; dr: number; dZ: number } => {
-  const bz = Math.exp(-p.beta * Z * Z);
+  const bz = libm.exp(-p.beta * Z * Z);
   const pw = (p.B / r) ** p.rho;
-  const ex = Math.exp(p.sigma / (r - p.a));
+  const ex = libm.exp(p.sigma / (r - p.a));
   const br = pw - bz;
   const e = p.A * br * ex;
   // d/dr [(B/r)^rho] = -rho (B/r)^rho / r ; d/dr exp(sigma/(r-a)) = -sigma/(r-a)^2 exp(...)
@@ -107,14 +108,14 @@ export const phi2Terms = (p: EDIPEntry, r: number, Z: number): { e: number; dr: 
  * h(l, Z) and its partials in l and Z. Q(Z) = Q0 exp(-mu Z), tau(Z) = u1 + u2 (u3 exp(-u4 Z) - exp(-2 u4 Z)).
  */
 export const hTerms = (p: EDIPEntry, l: number, Z: number): { h: number; dl: number; dZ: number } => {
-  const Q = p.Q0 * Math.exp(-p.mu * Z);
+  const Q = p.Q0 * libm.exp(-p.mu * Z);
   const dQ = -p.mu * Q;
-  const e4 = Math.exp(-p.u4 * Z), e8 = Math.exp(-2 * p.u4 * Z);
+  const e4 = libm.exp(-p.u4 * Z), e8 = libm.exp(-2 * p.u4 * Z);
   const tau = p.u1 + p.u2 * (p.u3 * e4 - e8);
   const dtau = p.u2 * (-p.u3 * p.u4 * e4 + 2 * p.u4 * e8);
   const s = l + tau;
   const t = s * s;
-  const ex = Math.exp(-Q * t);
+  const ex = libm.exp(-Q * t);
   // -expm1(-Qt) = 1 - exp(-Qt) without cancellation when Qt is small (Z = 4 with l + tau near 0)
   const h = p.lambda * (-Math.expm1(-Q * t) + p.eta * Q * t);
   // d/dl: lambda (ex + eta) * 2 Q s
@@ -284,13 +285,13 @@ export class PairEDIP extends Pair {
         const ra = sR[a];
         const pa = this.pairP[ti + sT[a]]!;
         const ux = sDx[a] / ra, uy = sDy[a] / ra, uz = sDz[a] / ra;
-        const ga = Math.exp(pa.gamma / (ra - pa.a));
+        const ga = libm.exp(pa.gamma / (ra - pa.a));
         for (let b = a + 1; b < m; b++) {
           const rb = sR[b];
           const pb = this.pairP[ti + sT[b]]!;
           const vx = sDx[b] / rb, vy = sDy[b] / rb, vz = sDz[b] / rb;
           const l = ux * vx + uy * vy + uz * vz;
-          const gb = Math.exp(pb.gamma / (rb - pb.a));
+          const gb = libm.exp(pb.gamma / (rb - pb.a));
           const P = ga * gb;
           const h = hTerms(this.triP[(ti + sT[a]) * nt + sT[b]]!, l, Z);
           Ei += P * h.h;

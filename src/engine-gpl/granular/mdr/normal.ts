@@ -12,6 +12,7 @@
  * between adhesive elastic-plastic particles into large deformation."). A particle pair is split into two sides, each
  * a rigid-flat contact (see model.ts); a wall contact has one side.
  */
+import { exp as libmExp } from '../../libm/exp';
 
 /** Indices into a contact history (27 values per contact; fix_granular_mdr.h Granular_MDR_NS::HistoryIndex). */
 export const DELTA_0 = 0;
@@ -183,7 +184,7 @@ export function mdrSide(c: MdrSideIn): MdrSideOut {
   if (deltaMDR > hist[dMAX]) hist[dMAX] = deltaMDR;
   const deltamaxMDR = hist[dMAX];
   // average pressure along the yield surface
-  const pY = Y * (1.75 * Math.exp((-4.4 * deltamaxMDR) / R) + 1.0);
+  const pY = Y * (1.75 * libmExp((-4.4 * deltamaxMDR) / R) + 1.0);
   if (hist[dYF] === 0 && deltaMDR >= deltamaxMDR) {
     const phertz = (4 * Eeff * Math.sqrt(deltaMDR)) / (3 * PI * Math.sqrt(R));
     if (hu && phertz > pY) {

@@ -391,7 +391,7 @@ export class FixWidom extends Fix {
     for (let k = 0; k < this.M; k++) {
       const p = this.drawPosition();
       if (!p) break;
-      avg += (Math.exp(-this.trial(p, eBefore) / kT) - avg) / (k + 1);
+      avg += (libm.exp(-this.trial(p, eBefore) / kT) - avg) / (k + 1);
     }
     this.avgBoltz = avg;
     this.mu = avg > 0 ? -kT * libm.log(avg) : 0;

@@ -15,6 +15,7 @@ import { OXDNA_5P, OXDNA_3P, buildAtomMap, isEllipsoid } from '../../engine/atom
 import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, DF5, F1, F4, F5, lrfOf, oxdnaConstants, stackingSiteOxdna1, backboneSite, type StackRule, potentialLines } from './common';
 import { sin as libmSin } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 /** pair_oxdna_stk.cpp constructor: the sequence-dependence factors eta_st[i][j] (indexed by 1-based base types mod 4). */
 export const ETA_ST: number[][] = [
@@ -33,7 +34,7 @@ export const stackingStrength = (xi: number, kappa: number, T: number): number =
  * cut_hc, and the shift of the exponential term (the same formulas for oxRNA2 stk, pair_oxrna2_stk.cpp).
  */
 export const stackingDerived = (eps: number, a: number, cut0: number, cutC: number, cutLo: number, cutHi: number) => {
-  const e = (x: number) => Math.exp(-a * x);
+  const e = (x: number) => libmExp(-a * x);
   const ulo = cutLo - cut0, uhi = cutHi - cut0, uc = cutC - cut0;
   const bLo = 2 * a * e(ulo) * 2 * a * e(ulo) * (1 - e(ulo)) * (1 - e(ulo))
     / (4 * ((1 - e(ulo)) * (1 - e(ulo)) - (1 - e(uc)) * (1 - e(uc))));
@@ -41,7 +42,7 @@ export const stackingDerived = (eps: number, a: number, cut0: number, cutC: numb
   const bHi = 2 * a * e(uhi) * 2 * a * e(uhi) * (1 - e(uhi)) * (1 - e(uhi))
     / (4 * ((1 - e(uhi)) * (1 - e(uhi)) - (1 - e(uc)) * (1 - e(uc))));
   const cHc = cutHi - a * e(uhi) * (1 - e(uhi)) / bHi;
-  const tmp = 1 - Math.exp(-(cutC - cut0) * a);
+  const tmp = 1 - libmExp(-(cutC - cut0) * a);
   const shiftOne = eps * tmp * tmp;
   return { bLo, cLc, bHi, cHc, shiftOne };
 };

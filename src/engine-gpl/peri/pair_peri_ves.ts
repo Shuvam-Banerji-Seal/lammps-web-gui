@@ -9,6 +9,7 @@
  * and a viscoelastic part (weight lambdai) whose back extension relaxes over the time constant taui.
  */
 import { PERI_GEOM_LEN, G_DR, G_DX, G_DY, G_DZ, G_J, G_OM, G_R, G_R0, G_VS, PeriBondPair, type PeriStep } from './pair_peri_bonds';
+import { exp as libmExp } from '../libm/exp';
 
 const PERI_VES_NAMES = ['K', 'G', 'cut', 's00', 'alpha', 'lambdai', 'taubi'] as const;
 
@@ -26,7 +27,7 @@ export class PairPeriVES extends PeriBondPair {
       const taui = this.c('taubi', ti, ti);
       // exponential relaxation of the back extension over one step (pair_peri_ves.cpp: c1, decay, betai)
       const c1 = taui / dt;
-      const decay = Math.exp(-1.0 / c1);
+      const decay = libmExp(-1.0 / c1);
       const betai = 1.0 - c1 * (1.0 - decay);
       const thi = this.theta[i];
       let first = true;

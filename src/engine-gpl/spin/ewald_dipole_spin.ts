@@ -29,6 +29,7 @@ import { fmLongOf } from './dipole_long_field';
 import { HBAR, MUB2MU0 } from './pair_spin_dipole_cut';
 import { log as libmLog } from '../libm/log';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 const TWO_OVER_SQRTPI = 2 / Math.sqrt(Math.PI);
 
@@ -197,7 +198,7 @@ export class KSpaceEwaldDipoleSpin extends KSpace {
     for (let v = 0; v < nk; v++) {
       const Kx = this.kvec[3 * v], Ky = this.kvec[3 * v + 1], Kz = this.kvec[3 * v + 2];
       const K2 = Kx * Kx + Ky * Ky + Kz * Kz;
-      const Gk = Math.exp(-K2 / g2) / K2;
+      const Gk = libmExp(-K2 / g2) / K2;
       let Mr = 0, Mi = 0;
       const P = [0, 0, 0], Pi = [0, 0, 0];
       for (let i = 0; i < n; i++) {

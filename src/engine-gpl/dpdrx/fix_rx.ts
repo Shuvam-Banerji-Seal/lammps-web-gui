@@ -27,6 +27,7 @@ import { DPD_THETA } from '../../engine/atoms';
 import { TextLines, Tokens } from './rx_table_reader';
 import { pairMatch } from './pair_match';
 import { unorderedSetOrder } from './unordered_order';
+import { exp as libmExp } from '../libm/exp';
 
 /** fix_rx.cpp: "static constexpr double MY_EPSILON = 10.0*DBL_EPSILON;". */
 export const MY_EPSILON = 10.0 * 2.220446049250313e-16;
@@ -318,7 +319,7 @@ export class FixRX extends Fix {
       const th = theta[i];
       // fix_rx.cpp pre_force: kFor = Arr T^nArr exp(-Ea/(kB T))
       for (let r = 0; r < this.nreactions; r++) {
-        this.kFor[r] = this.arr[r] * Math.pow(th, this.nArr[r]) * Math.exp(-this.ea[r] / this.boltz / th);
+        this.kFor[r] = this.arr[r] * Math.pow(th, this.nArr[r]) * libmExp(-this.ea[r] / this.boltz / th);
       }
       this.solve(i);
     }

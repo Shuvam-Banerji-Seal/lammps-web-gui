@@ -13,6 +13,7 @@
 import { sp, sp2, type Ref } from './splines';
 import { TOL, kron, gSpline, piRCSpline, TijSpline, newRef, type ReboCore } from './rebo';
 import { bondorderPijCross, pijEval } from './bc';
+import { exp as libmExp } from '../libm/exp';
 
 /** Parameters of the LJ / Morse term, precomputed in init_one (AIREBO side). */
 export interface LJParams {
@@ -104,8 +105,8 @@ export const bondorderLJ = (
     cosjik = Math.max(cosjik, -1.0);
     const g = gSpline(core, cosjik, NijC + NijH, itype, rdgdc, rdgdN);
     dgdN = rdgdN.v;
-    Etmp += (wik * g * Math.exp(lamdajik));
-    tmp3 += (wik * dgdN * Math.exp(lamdajik));
+    Etmp += (wik * g * libmExp(lamdajik));
+    tmp3 += (wik * dgdN * libmExp(lamdajik));
     NconjtmpI = NconjtmpI + (kron(ktype, 0) * wik * sp(Nki, Nmin, Nmax, rdS));
   }
   dN2PIJ[0] = 0.0;
@@ -134,8 +135,8 @@ export const bondorderLJ = (
     cosijl = Math.max(cosijl, -1.0);
     const g = gSpline(core, cosijl, NjiC + NjiH, jtype, rdgdc, rdgdN);
     dgdN = rdgdN.v;
-    Etmp += (wjl * g * Math.exp(lamdaijl));
-    tmp3 += (wjl * dgdN * Math.exp(lamdaijl));
+    Etmp += (wjl * g * libmExp(lamdaijl));
+    tmp3 += (wjl * dgdN * libmExp(lamdaijl));
     NconjtmpJ = NconjtmpJ + (kron(ltype, 0) * wjl * sp(Nlj, Nmin, Nmax, rdS));
   }
   dN2PJI[0] = 0.0;
@@ -244,7 +245,7 @@ export const bondorderLJ = (
       dcosjikdrj[2] = (-rik[2] / (rijmag * rikmag)) + (cosjik * (rij[2] / (rijmag * rijmag)));
       const g = gSpline(core, cosjik, NijC + NijH, itype, rdgdc, rdgdN);
       dgdc = rdgdc.v;
-      tmp2 = VA * .5 * (tmp * wik * dgdc * Math.exp(lamdajik));
+      tmp2 = VA * .5 * (tmp * wik * dgdc * libmExp(lamdajik));
       fj[0] = -tmp2 * dcosjikdrj[0];
       fj[1] = -tmp2 * dcosjikdrj[1];
       fj[2] = -tmp2 * dcosjikdrj[2];
@@ -254,14 +255,14 @@ export const bondorderLJ = (
       fk[0] = -tmp2 * dcosjikdrk[0];
       fk[1] = -tmp2 * dcosjikdrk[1];
       fk[2] = -tmp2 * dcosjikdrk[2];
-      tmp2 = VA * .5 * (tmp * wik * g * Math.exp(lamdajik) * 4.0 * kron(itype, 1));
+      tmp2 = VA * .5 * (tmp * wik * g * libmExp(lamdajik) * 4.0 * kron(itype, 1));
       fi[0] += tmp2 * (rik[0] / rikmag);
       fi[1] += tmp2 * (rik[1] / rikmag);
       fi[2] += tmp2 * (rik[2] / rikmag);
       fk[0] -= tmp2 * (rik[0] / rikmag);
       fk[1] -= tmp2 * (rik[1] / rikmag);
       fk[2] -= tmp2 * (rik[2] / rikmag);
-      tmp2 = VA * .5 * (tmp * dwik * g * Math.exp(lamdajik)) / rikmag;
+      tmp2 = VA * .5 * (tmp * dwik * g * libmExp(lamdajik)) / rikmag;
       fi[0] -= tmp2 * rik[0];
       fi[1] -= tmp2 * rik[1];
       fi[2] -= tmp2 * rik[2];
@@ -316,7 +317,7 @@ export const bondorderLJ = (
       dcosijldrl[2] = (rij[2] / (rijmag * rjlmag)) + (cosijl * rjl[2] / (rjlmag * rjlmag));
       const g = gSpline(core, cosijl, NjiC + NjiH, jtype, rdgdc, rdgdN);
       dgdc = rdgdc.v;
-      tmp2 = VA * .5 * (tmp * wjl * dgdc * Math.exp(lamdaijl));
+      tmp2 = VA * .5 * (tmp * wjl * dgdc * libmExp(lamdaijl));
       fi[0] = -tmp2 * dcosijldri[0];
       fi[1] = -tmp2 * dcosijldri[1];
       fi[2] = -tmp2 * dcosijldri[2];
@@ -326,14 +327,14 @@ export const bondorderLJ = (
       fl[0] = -tmp2 * dcosijldrl[0];
       fl[1] = -tmp2 * dcosijldrl[1];
       fl[2] = -tmp2 * dcosijldrl[2];
-      tmp2 = VA * .5 * (tmp * wjl * g * Math.exp(lamdaijl) * 4.0 * kron(jtype, 1));
+      tmp2 = VA * .5 * (tmp * wjl * g * libmExp(lamdaijl) * 4.0 * kron(jtype, 1));
       fj[0] += tmp2 * (rjl[0] / rjlmag);
       fj[1] += tmp2 * (rjl[1] / rjlmag);
       fj[2] += tmp2 * (rjl[2] / rjlmag);
       fl[0] -= tmp2 * (rjl[0] / rjlmag);
       fl[1] -= tmp2 * (rjl[1] / rjlmag);
       fl[2] -= tmp2 * (rjl[2] / rjlmag);
-      tmp2 = VA * .5 * (tmp * dwjl * g * Math.exp(lamdaijl)) / rjlmag;
+      tmp2 = VA * .5 * (tmp * dwjl * g * libmExp(lamdaijl)) / rjlmag;
       fj[0] -= tmp2 * rjl[0];
       fj[1] -= tmp2 * rjl[1];
       fj[2] -= tmp2 * rjl[2];
@@ -890,7 +891,7 @@ export const flj = (core: LJCore, nlocal: number): void => {
       }
       let vdw: number, dvdw: number;
       if (ljp.morseflag) {
-        const exr = Math.exp(-rij * ljp.lj4[pidx(itype, jtype)]);
+        const exr = libmExp(-rij * ljp.lj4[pidx(itype, jtype)]);
         vdw = ljp.lj1[pidx(itype, jtype)] * exr * (ljp.lj2[pidx(itype, jtype)] * exr - 2);
         dvdw = ljp.lj3[pidx(itype, jtype)] * exr * (1 - ljp.lj2[pidx(itype, jtype)] * exr);
       } else {

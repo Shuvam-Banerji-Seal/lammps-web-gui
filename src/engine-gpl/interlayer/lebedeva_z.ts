@@ -8,6 +8,7 @@
 import type { PairCompute } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { InterlayerZBase, tallyZPair } from './zbase';
+import { exp as libmExp } from '../libm/exp';
 
 interface LebZParam {
   ie: number; je: number;
@@ -64,9 +65,9 @@ export class PairLebedevaZ extends InterlayerZBase<LebZParam> {
         const r = Math.sqrt(rsq);
         const r6 = rsq * rsq * rsq;
         const r8 = r6 * rsq;
-        const exp1 = Math.exp(-p.alpha * (r - p.z0));
-        const exp2 = Math.exp(-p.lambda1 * rhosq);
-        const exp3 = Math.exp(-p.lambda2 * (delz * delz - p.z02));
+        const exp1 = libmExp(-p.alpha * (r - p.z0));
+        const exp2 = libmExp(-p.lambda1 * rhosq);
+        const exp3 = libmExp(-p.lambda2 * (delz * delz - p.z02));
         const sumD = 1 + p.D1 * rhosq + p.D2 * rhosq * rhosq;
         const Ulm = -p.A * p.z06 / r6 + p.B * exp1 + p.C * sumD * exp2 * exp3;
         // derivatives

@@ -19,6 +19,7 @@ import { StyleError } from '../../engine/force/types';
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 const MY_PI = Math.PI;
 
@@ -371,17 +372,17 @@ export class FixPIMDNVT extends Fix {
       const etaMass = this.nhcEtaMass.subarray(slot * nc, slot * nc + nc);
       etaDotdot[0] = (kecurrent - KT) / etaMass[0];
       for (let ich = nc - 1; ich > 0; ich--) {
-        expfac = Math.exp(-dt8 * etaDot[ich + 1]);
+        expfac = libmExp(-dt8 * etaDot[ich + 1]);
         etaDot[ich] *= expfac;
         etaDot[ich] += etaDotdot[ich] * dt4;
         etaDot[ich] *= expfac;
       }
-      expfac = Math.exp(-dt8 * etaDot[1]);
+      expfac = libmExp(-dt8 * etaDot[1]);
       etaDot[0] *= expfac;
       etaDot[0] += etaDotdot[0] * dt4;
       etaDot[0] *= expfac;
       // update the particle velocity half step
-      const factorEta = Math.exp(-dthalf * etaDot[0]);
+      const factorEta = libmExp(-dthalf * etaDot[0]);
       v[k] *= factorEta;
       tCurrent *= factorEta * factorEta;
       kecurrent = u.boltz * tCurrent;
@@ -391,7 +392,7 @@ export class FixPIMDNVT extends Fix {
       etaDot[0] += etaDotdot[0] * dt4;
       etaDot[0] *= expfac;
       for (let ich = 1; ich < nc; ich++) {
-        expfac = Math.exp(-dt8 * etaDot[ich + 1]);
+        expfac = libmExp(-dt8 * etaDot[ich + 1]);
         etaDot[ich] *= expfac;
         etaDotdot[ich] = (etaMass[ich - 1] * etaDot[ich - 1] * etaDot[ich - 1] - KT) / etaMass[ich];
         etaDot[ich] += etaDotdot[ich] * dt4;

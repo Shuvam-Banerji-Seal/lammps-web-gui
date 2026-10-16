@@ -114,6 +114,7 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum, joinPotentialEntries } from '../util';
+import { libm } from '../../libm';
 
 interface NB3BEntry {
   e1: string;
@@ -367,7 +368,7 @@ export class PairNB3BHarmonic extends Pair {
           let F = 1, radJ = 0, radK = 0;
           if (screened) {
             const rhoJ = legRho[ti * nt + tj], rhoK = legRho[ti * nt + tk];
-            F = Math.exp(-ru / rhoJ - rv / rhoK);
+            F = libm.exp(-ru / rhoJ - rv / rhoK);
           }
           const dot = ux * vx + uy * vy + uz * vz;
           const c = Math.min(1, Math.max(-1, dot / (ru * rv)));

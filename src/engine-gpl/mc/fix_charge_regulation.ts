@@ -24,6 +24,7 @@ import type { System } from '../../engine/system';
 import { ALL_GROUP_BIT, appendAtoms, deleteAtoms, nativeOrder } from '../../engine/atoms';
 import { RanPark } from '../random_park';
 import { takeFixRecord } from '../../engine/fix/restartRecord';
+import { exp as libmExp } from '../libm/exp';
 
 /** Avogadro's constant times the reference concentration (N_A * mol / liter) [nm^-3]. */
 const NA_RHO0 = 0.602214;
@@ -338,7 +339,7 @@ export class FixChargeRegulation extends Fix {
   /** Native acceptance: energy_after < MAXENERGYTEST && random_equal->uniform() < ratio * exp(beta * (before - after)). */
   private accept(ratio: number, after: number): boolean {
     if (!(after < MAXENERGYTEST)) return false;
-    return this.rngEq.uniform() < ratio * Math.exp(this.beta * (this.energyStored - after));
+    return this.rngEq.uniform() < ratio * libmExp(this.beta * (this.energyStored - after));
   }
 
   private forwardAcid(): void {

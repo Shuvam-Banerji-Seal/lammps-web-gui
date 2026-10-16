@@ -11,6 +11,7 @@ import { StyleError } from '../../engine/force/types';
 import { joinPotentialEntries } from '../../engine/force/util';
 import { log as libmLog } from '../libm/log';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 /** Number of words in one COMB potential entry (PairComb::NPARAMS_PER_LINE). */
 export const NPARAMS_PER_LINE = 49;
@@ -260,8 +261,8 @@ export const combBijD = (zeta: number, p: CombParam): number => {
 
 /** Charge-dependent D, B and A (PairComb::comb_fa, comb_fa_d, repulsive and qfo_short share these). */
 export const combBsi = (p: CombParam, qi: number, qj: number, Di: number, Dj: number): { Bsi: number; Bsj: number } => ({
-  Bsi: p.bigb1 * Math.exp(p.lam21 * Di) * (p.aB1 - Math.abs(powint(p.bB1 * (qi - p.Qo1), 10))),
-  Bsj: p.bigb2 * Math.exp(p.lam22 * Dj) * (p.aB2 - Math.abs(powint(p.bB2 * (qj - p.Qo2), 10))),
+  Bsi: p.bigb1 * libmExp(p.lam21 * Di) * (p.aB1 - Math.abs(powint(p.bB1 * (qi - p.Qo1), 10))),
+  Bsj: p.bigb2 * libmExp(p.lam22 * Dj) * (p.aB2 - Math.abs(powint(p.bB2 * (qj - p.Qo2), 10))),
 });
 
 export const combDi = (p: CombParam, qi: number): number => p.DU1 + Math.pow(Math.abs(p.bD1 * (p.QU1 - qi)), p.nD1);

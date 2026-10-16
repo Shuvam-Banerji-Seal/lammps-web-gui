@@ -19,6 +19,7 @@ import { StyleError } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { Compute } from '../../engine/compute/compute';
+import { exp as libmExp } from '../libm/exp';
 
 const usage = 'Illegal fix msst command: usage fix ID group msst x|y|z shockvel [q v] [mu v] [p0 v] [v0 v] [e0 v] [tscale v] [dftb yes|no] [beta v]';
 
@@ -266,7 +267,7 @@ export class FixMSST extends Fix {
     if (vol > this.v0 && A > 0.0) A = -A;
     // Taylor expansion to avoid the singularity at B = 0
     if (B * this.dthalf > 1.0e-06) {
-      this.omega[sd] = (this.omega[sd] + A * (Math.exp(B * this.dthalf) - 1.0) / B) * Math.exp(-B * this.dthalf);
+      this.omega[sd] = (this.omega[sd] + A * (libmExp(B * this.dthalf) - 1.0) / B) * libmExp(-B * this.dthalf);
     } else {
       this.omega[sd] = this.omega[sd] + (A - B * this.omega[sd]) * this.dthalf +
         0.5 * (B * B * this.omega[sd] - A * B) * this.dthalf * this.dthalf;
@@ -288,7 +289,7 @@ export class FixMSST extends Fix {
         if (keepOld) this.oldV[3 * i + k] = v[3 * i + k];
         if (k === sd) D -= 2.0 * omegaD / vol;
         if (Math.abs(this.dthalf * D) > 1.0e-06) {
-          const expd = Math.exp(D * this.dthalf);
+          const expd = libmExp(D * this.dthalf);
           v[3 * i + k] = expd * (C + D * v[3 * i + k] - C / expd) / D;
         } else {
           v[3 * i + k] = v[3 * i + k] + (C + D * v[3 * i + k]) * this.dthalf +

@@ -3,6 +3,7 @@ import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
 import type { UnitStyle } from '../../types';
+import { libm } from '../../libm';
 
 /*
  * pair_style zbl inner outer — docs.lammps.org/pair_zbl.html:
@@ -174,8 +175,8 @@ export class PairZBL extends Pair {
     // g'' = sum ek*lambda^2*ainv^2/r + 2 sum ek*lambda*ainv/r^2 + 2 phi/r^3.
     const rc = this.outer, uc = rc * ai;
     const [d1, d2, d3, d4] = this.dScaled;
-    const e1 = SCREEN[0] * Math.exp(-d1 * uc), e2 = SCREEN[1] * Math.exp(-d2 * uc);
-    const e3 = SCREEN[2] * Math.exp(-d3 * uc), e4 = SCREEN[3] * Math.exp(-d4 * uc);
+    const e1 = SCREEN[0] * libm.exp(-d1 * uc), e2 = SCREEN[1] * libm.exp(-d2 * uc);
+    const e3 = SCREEN[2] * libm.exp(-d3 * uc), e4 = SCREEN[3] * libm.exp(-d4 * uc);
     const phi = e1 + e2 + e3 + e4;
     const dl = e1 * d1 + e2 * d2 + e3 * d3 + e4 * d4;
     const ddl = e1 * d1 * d1 + e2 * d2 * d2 + e3 * d3 * d3 + e4 * d4 * d4;
@@ -193,8 +194,8 @@ export class PairZBL extends Pair {
     const ai = this.ainv[t];
     const u = r * ai;
     const [d1, d2, d3, d4] = this.dScaled;
-    const e1 = SCREEN[0] * Math.exp(-d1 * u), e2 = SCREEN[1] * Math.exp(-d2 * u);
-    const e3 = SCREEN[2] * Math.exp(-d3 * u), e4 = SCREEN[3] * Math.exp(-d4 * u);
+    const e1 = SCREEN[0] * libm.exp(-d1 * u), e2 = SCREEN[1] * libm.exp(-d2 * u);
+    const e3 = SCREEN[2] * libm.exp(-d3 * u), e4 = SCREEN[3] * libm.exp(-d4 * u);
     const phi = e1 + e2 + e3 + e4;
     const dl = e1 * d1 + e2 * d2 + e3 * d3 + e4 * d4;
     const k = pref * this.zz[t];

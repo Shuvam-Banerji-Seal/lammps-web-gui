@@ -24,6 +24,7 @@ import { parseNum } from '../../engine/force/util';
 import { erfcPoly, EWALD_F } from '../../engine/force/erfc';
 import { PairTIP4PBase } from '../../engine/force/pair/tip4p';
 import { buildOwnedSites, tip4pAlpha, type OwnedSites, type Tip4pModel } from '../../engine/force/pair/tip4p_sites';
+import { exp as libmExp } from '../libm/exp';
 
 const VALUES = ['epsilon', 'sigma', 'lambda', 'cut'];
 
@@ -276,7 +277,7 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
         const rs2 = this.aC[t] + rc, rs = Math.sqrt(rs2);
         const r = Math.sqrt(rc);
         const gr = g * r;
-        const expg = Math.exp(-gr * gr);
+        const expg = libmExp(-gr * gr);
         const corr = erfcPoly(gr, expg) - (1 - fc);
         const e = (P * corr) / rs;
         const fr = P * (EWALD_F * g * expg / (r * rs) + corr / (rs2 * rs));

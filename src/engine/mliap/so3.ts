@@ -160,7 +160,7 @@ const QUAD = 100;
 const scaledIn = (L: number, x: number, out: Float64Array): void => {
   const T = 2 * (L + 2);
   if (x < T) {
-    const ex = Math.exp(-x);
+    const ex = libm.exp(-x);
     const x2 = x * x;
     for (let l = 0; l <= L + 1; l++) {
       // term_0 = x^l / (2l+1)!!
@@ -177,7 +177,7 @@ const scaledIn = (L: number, x: number, out: Float64Array): void => {
     }
     return;
   }
-  const e2 = Math.exp(-2 * x);
+  const e2 = libm.exp(-2 * x);
   out[0] = (1 - e2) / (2 * x);
   out[1] = ((1 + e2) / 2) / x - ((1 - e2) / 2) / (x * x);
   for (let l = 1; l <= L; l++) out[l + 1] = out[l - 1] - ((2 * l + 1) / x) * out[l];
@@ -293,7 +293,7 @@ export class So3Engine {
       for (let q = 0; q < QUAD; q++) {
         const rq = this.rq[q];
         const dr = r - rq;
-        const gauss = Math.exp(-alpha * dr * dr);
+        const gauss = libm.exp(-alpha * dr * dr);
         const x = 2 * alpha * r * rq;
         scaledIn(L, x, this.ib);
         for (let n = 0; n < nmax; n++) {

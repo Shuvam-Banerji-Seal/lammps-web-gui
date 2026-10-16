@@ -19,6 +19,7 @@
 import { StyleError } from '../../engine/force/types';
 import type { ControlParams, ReaxParam, SingleBody, TwoBody } from './ffield';
 import { log as libmLog } from '../libm/log';
+import { exp as libmExp } from '../libm/exp';
 
 export const MIN_SINE = 1e-10;
 export const DANGER_ZONE = 0.9;
@@ -361,15 +362,15 @@ const bondOrderPair = (
   let BO_s = 0, C12 = 0, BO_pi = 0, C34 = 0, BO_pi2 = 0, C56 = 0;
   if (sbpI.r_s > 0.0 && sbpJ.r_s > 0.0) {
     C12 = twbp.p_bo1 * Math.pow(d / twbp.r_s, twbp.p_bo2);
-    BO_s = (1.0 + boCut) * Math.exp(C12);
+    BO_s = (1.0 + boCut) * libmExp(C12);
   }
   if (sbpI.r_pi > 0.0 && sbpJ.r_pi > 0.0) {
     C34 = twbp.p_bo3 * Math.pow(d / twbp.r_p, twbp.p_bo4);
-    BO_pi = Math.exp(C34);
+    BO_pi = libmExp(C34);
   }
   if (sbpI.r_pi_pi > 0.0 && sbpJ.r_pi_pi > 0.0) {
     C56 = twbp.p_bo5 * Math.pow(d / twbp.r_pp, twbp.p_bo6);
-    BO_pi2 = Math.exp(C56);
+    BO_pi2 = libmExp(C56);
   }
   // Initially BO values are the uncorrected ones, page 1
   const BO = BO_s + BO_pi + BO_pi2;
@@ -473,10 +474,10 @@ export const computeBondOrders = (sys: RxSystem): void => {
           // on page 1
           if (twbp.ovc >= 0.001) {
             // correction for overcoordination
-            const exp_p1i = Math.exp(-p_boc1 * Deltap_i);
-            const exp_p2i = Math.exp(-p_boc2 * Deltap_i);
-            const exp_p1j = Math.exp(-p_boc1 * Deltap_j);
-            const exp_p2j = Math.exp(-p_boc2 * Deltap_j);
+            const exp_p1i = libmExp(-p_boc1 * Deltap_i);
+            const exp_p2i = libmExp(-p_boc2 * Deltap_i);
+            const exp_p1j = libmExp(-p_boc1 * Deltap_j);
+            const exp_p2j = libmExp(-p_boc2 * Deltap_j);
             const f2 = exp_p1i + exp_p1j;
             const f3 = (-1.0 / p_boc2) * libmLog(0.5 * (exp_p2i + exp_p2j));
             f1 = 0.5 * ((val_i + f2) / (val_i + f2 + f3) + (val_j + f2) / (val_j + f2 + f3));
@@ -495,8 +496,8 @@ export const computeBondOrders = (sys: RxSystem): void => {
           if (twbp.v13cor >= 0.001) {
             // correction for 1-3 bond orders
             const BOij = b.BO[pj];
-            const exp_f4 = Math.exp(-(twbp.p_boc4 * BOij * BOij - Deltap_boc_i) * twbp.p_boc3 + twbp.p_boc5);
-            const exp_f5 = Math.exp(-(twbp.p_boc4 * BOij * BOij - Deltap_boc_j) * twbp.p_boc3 + twbp.p_boc5);
+            const exp_f4 = libmExp(-(twbp.p_boc4 * BOij * BOij - Deltap_boc_i) * twbp.p_boc3 + twbp.p_boc5);
+            const exp_f5 = libmExp(-(twbp.p_boc4 * BOij * BOij - Deltap_boc_j) * twbp.p_boc3 + twbp.p_boc5);
             f4 = 1.0 / (1.0 + exp_f4);
             f5 = 1.0 / (1.0 + exp_f5);
             f4f5 = f4 * f5;
@@ -556,7 +557,7 @@ export const computeBondOrders = (sys: RxSystem): void => {
     ws.Delta_boc[j] = ws.total_bond_order[j] - s.valency_boc;
     ws.Delta_val[j] = ws.total_bond_order[j] - s.valency_val;
     ws.vlpex[j] = ws.Delta_e[j] - 2.0 * Math.trunc(ws.Delta_e[j] / 2.0);
-    const explp1 = Math.exp(-p_lp1 * (2.0 + ws.vlpex[j]) * (2.0 + ws.vlpex[j]));
+    const explp1 = libmExp(-p_lp1 * (2.0 + ws.vlpex[j]) * (2.0 + ws.vlpex[j]));
     ws.nlp[j] = explp1 - Math.trunc(ws.Delta_e[j] / 2.0);
     ws.Delta_lp[j] = s.nlp_opt - ws.nlp[j];
     ws.Clp[j] = 2.0 * p_lp1 * explp1 * (2.0 + ws.vlpex[j]);

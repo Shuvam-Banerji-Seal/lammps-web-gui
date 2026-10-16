@@ -23,6 +23,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { NativeQeqSolver } from './native_solver';
 import { A1, A2, A3, A4, A5, EWALD_P, MY_PIS, PairCoulCtip, type CtipParams } from '../ctip/pair_coul_ctip';
+import { exp as libmExp } from '../libm/exp';
 
 /** Per type: s2d_self (the self-energy term of the diagonal) and the shielded shift constants per type pair (nt * nt). */
 interface CtipTables {
@@ -144,7 +145,7 @@ export class FixQeqCtip extends Fix {
     const r = this.cutoff, rsq = r * r, cd = this.cdamp;
     const qqr2e = this.sys.units.qqr2e;
     const cutoffcu = rsq * r, cutoff4 = rsq * rsq, cdampcu = cd * cd * cd;
-    const erfcdCut = Math.exp(-cd * cd * rsq);
+    const erfcdCut = libmExp(-cd * cd * rsq);
     const tCut = 1.0 / (1.0 + EWALD_P * cd * r);
     const erfccCut = (tCut * (A1 + tCut * (A2 + tCut * (A3 + tCut * (A4 + tCut * A5))))) * erfcdCut / r;
     const tb: CtipTables = {
@@ -218,7 +219,7 @@ export class FixQeqCtip extends Fix {
     const r = Math.sqrt(rsq);
     const k = ti * tb.nt + tj;
     const reff = Math.cbrt(rsq * r + 1 / tb.shieldCu[k]);
-    const erfcd = Math.exp(-this.cdamp * this.cdamp * rsq);
+    const erfcd = libmExp(-this.cdamp * this.cdamp * rsq);
     const t = 1 / (1 + EWALD_P * this.cdamp * r);
     const erfcc = t * (A1 + t * (A2 + t * (A3 + t * (A4 + t * A5)))) * erfcd;
     return this.sys.units.qqr2e * (erfcc / r + 1 / reff - 1 / r - tb.eShift[k] + tb.fShift[k] * (r - this.cutoff) -

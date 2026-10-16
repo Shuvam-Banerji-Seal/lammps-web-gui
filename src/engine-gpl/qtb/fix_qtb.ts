@@ -17,6 +17,7 @@ import { nativeOrder } from '../../engine/atoms';
 import type { System } from '../../engine/system';
 import { RanMars } from '../random_mars';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 /** fix_qtb.cpp: "MY_PI" from math_const.h. */
 const MY_PI = 3.14159265358979323846;
@@ -37,7 +38,7 @@ export const colorFilter = (
       omegaH[k] = Math.sqrt(boltz * tt);
     } else {
       const energyK = hplanck * Math.abs(fk);
-      omegaH[k] = Math.sqrt(energyK * (0.5 + 1.0 / (Math.exp(energyK / (boltz * tt)) - 1.0)));
+      omegaH[k] = Math.sqrt(energyK * (0.5 + 1.0 / (libmExp(energyK / (boltz * tt)) - 1.0)));
       omegaH[k] *= alpha * libmSin(((k - nf) * MY_PI) / (2 * alpha * nf)) / libmSin(((k - nf) * MY_PI) / (2 * nf));
     }
   }

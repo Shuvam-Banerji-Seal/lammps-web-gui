@@ -3,6 +3,7 @@ import { NEIGHMASK, type Neighbor } from '../../neighbor';
 import { parseNum } from '../util';
 import { PairHybrid } from './hybrid';
 import { spinContribute, type SpinPairStyle } from '../spin_book';
+import { libm } from '../../libm';
 
 /*
  * pair_style spin/exchange cutoff and pair_style spin/exchange/biquadratic —
@@ -62,7 +63,7 @@ export const SPIN_HBAR = 6.5821191e-4;
 /** J(r) of spin/exchange and its derivative with respect to r (pair_spin_exchange.html). */
 export const exchangeJ = (a: number, b: number, d: number, r: number): { j: number; dj: number } => {
   const x = (r / d) * (r / d);
-  const e = Math.exp(-x);
+  const e = libm.exp(-x);
   // J = 4a x (1 - b x) e^{-x} with x = (r/d)^2; dJ/dr = 4a (2 r / d^2) (1 - 2 b x - x + b x^2) e^{-x}
   const j = 4 * a * x * (1 - b * x) * e;
   const dj = 4 * a * (2 * r / (d * d)) * (1 - 2 * b * x - x + b * x * x) * e;

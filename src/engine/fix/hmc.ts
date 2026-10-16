@@ -6,6 +6,7 @@ import type { CustomProp } from '../types';
 import { RanPark, Rng } from '../rng';
 import { kineticEnergy } from '../observables';
 import { num, posInt } from './pour';
+import { libm } from '../libm';
 
 /*
  * fix ID group-ID hmc N seed T keyword values ... — docs.lammps.org/fix_hmc.html
@@ -297,7 +298,7 @@ export class FixHmc extends Fix {
       accept = true;
       this.first = false;
     } else {
-      const p = this.lastDH <= 0 ? 1 : Math.exp(-this.lastDH / (s.units.boltz * this.T));
+      const p = this.lastDH <= 0 ? 1 : libm.exp(-this.lastDH / (s.units.boltz * this.T));
       accept = this.decisionRng.uniform() < p;
     }
     this.attempted++;

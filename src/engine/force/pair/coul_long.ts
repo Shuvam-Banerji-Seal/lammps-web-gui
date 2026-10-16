@@ -3,6 +3,7 @@ import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairLJCut, tallyAtom } from './lj_cut';
 import { parseNum } from '../util';
 import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../erfc';
+import { libm } from '../../libm';
 
 /*
  * Real-space parts of Ewald/PPPM Coulombics.
@@ -50,7 +51,7 @@ export const coulLongPair = (
   }
   const r = Math.sqrt(rsq);
   const grij = g * r;
-  const ex = Math.exp(-grij * grij);
+  const ex = libm.exp(-grij * grij);
   // native's direct branch (table 0, and table N > 0 below r^2 = 2) is the polynomial fit; measured
   // with native LAMMPS (black box): table 0 and table 12 give the same energy at r = 1.2
   const erfc = poly || table ? erfcPoly(grij, ex) : erfcFast(grij, ex);

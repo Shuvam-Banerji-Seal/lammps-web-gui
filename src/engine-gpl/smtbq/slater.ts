@@ -10,6 +10,7 @@
  * Slater-orbital two-centre overlap integrals of the second-moment tight-binding charge model. Arrays use the
  * 1-based indexing of the C++ source (a[1] .. a[n]); fct(n+1) holds n! (set by css, read by coeffs and binm).
  */
+import { exp as libmExp } from '../libm/exp';
 
 /** nfac_table of math_special.cpp, entries 0..31 (n! for n = index); the literals are copied as the C++ source has them. */
 const NFAC: readonly number[] = [
@@ -395,7 +396,7 @@ export class SlaterIntegrals {
 
   /** caintgs (pair_smtbq.cpp): a(i+1) integrals for the exponent x. */
   private caintgs(x: number, k: number, a: Float64Array): void {
-    const cste = Math.exp(-x);
+    const cste = libmExp(-x);
     const rx = 1.0 / x;
     a[1] = cste * rx;
     for (let i = 1; i <= k; i++) {
@@ -426,7 +427,7 @@ export class SlaterIntegrals {
     else branch = 'small';
 
     if (branch === 'exp') {
-      const expx = Math.exp(x);
+      const expx = libmExp(x);
       const expmx = 1.0 / expx;
       const rx = 1.0 / x;
       b[1] = (expx - expmx) * rx;

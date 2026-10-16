@@ -3,6 +3,7 @@ import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { parseNum } from '../util';
 import { erfcPoly, EWALD_F } from '../erfc';
 import { tallyAtom } from './lj_cut';
+import { libm } from '../../libm';
 
 /*
  * Soft-core free-energy pair styles (docs.lammps.org/pair_fep_soft.html).
@@ -280,7 +281,7 @@ export class PairFepSoft extends Pair {
     }
     const r = Math.sqrt(rsq);
     const gr = g * r;
-    const ex = Math.exp(-gr * gr);
+    const ex = libm.exp(-gr * gr);
     const ec = erfcPoly(gr, ex);
     const P = this.lamN[t] * qqrd2e * qq;
     const corr = ec - (1 - fc);

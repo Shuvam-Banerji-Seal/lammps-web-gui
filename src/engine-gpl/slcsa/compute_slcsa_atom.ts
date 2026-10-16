@@ -25,6 +25,7 @@
 import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
+import { exp as libmExp } from '../libm/exp';
 
 const USAGE = 'usage: compute ID group-ID slcsa/atom jmax nclasses database_mean_descriptor_file lda_scalings_file lr_decision_file lr_bias_file maha_file c_ID[N]';
 
@@ -160,8 +161,8 @@ export class ComputeSLCSAAtom extends Compute {
       }
       // 4th step: class probabilities; the class is the argmax
       let sumexp = 0.0;
-      for (let j = 0; j < NCLASSES; j++) sumexp += Math.exp(scores[j]);
-      for (let j = 0; j < NCLASSES; j++) probas[j] = Math.exp(scores[j]) / sumexp;
+      for (let j = 0; j < NCLASSES; j++) sumexp += libmExp(scores[j]);
+      for (let j = 0; j < NCLASSES; j++) probas[j] = libmExp(scores[j]) / sumexp;
       let best = 0;
       for (let j = 1; j < NCLASSES; j++) if (probas[j] > probas[best]) best = j;
       out[o + NCLASSES] = best;

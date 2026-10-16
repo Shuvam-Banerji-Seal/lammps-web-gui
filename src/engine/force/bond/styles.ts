@@ -149,7 +149,7 @@ export class BondMorse extends SimpleBonded {
     const D = this.params.p('D'), al = this.params.p('alpha'), r0 = this.params.p('r0');
     bondLoop(bc, (r, t) => {
       const dr = r - r0[t];
-      const ex = Math.exp(-al[t] * dr);
+      const ex = libm.exp(-al[t] * dr);
       return { e: D[t] * (1 - ex) * (1 - ex), dEdr: 2 * D[t] * (1 - ex) * al[t] * ex };
     });
   }

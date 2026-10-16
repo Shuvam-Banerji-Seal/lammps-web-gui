@@ -12,6 +12,7 @@
  */
 import { checkPmeOrder, convolveReal, factorable, makePmeGrid, pmeFill, type PmeGrid } from './kspace';
 import { erfcExact } from '../../engine/force/erfc';
+import { exp as libmExp } from '../libm/exp';
 
 const MY_PI = Math.PI;
 
@@ -89,7 +90,7 @@ export const dispersionKspace = (
         const hhh = h * hsq;
         const term = -b * b;
         if (term > -50.0 && hsq !== 0.0) {
-          const expterm = Math.exp(term);
+          const expterm = libmExp(term);
           const erfcterm = erfcExact(b);
           const term1 = fac1 * erfcterm * hhh + expterm * (fac2 + fac3 * hsq);
           const denom = denom0 * bs1[i] * bs2[j] * bs3[k];

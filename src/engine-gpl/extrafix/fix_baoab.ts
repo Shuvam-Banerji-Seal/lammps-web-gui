@@ -16,6 +16,7 @@ import { ramp } from '../../engine/fix/util';
 import { takeFixRecord } from '../../engine/fix/restartRecord';
 import type { System } from '../../engine/system';
 import { RanMars } from '../random_mars';
+import { exp as libmExp } from '../libm/exp';
 
 export class FixBAOAB extends Fix {
   readonly style = 'baoab';
@@ -87,7 +88,7 @@ export class FixBAOAB extends Fix {
     const dt = s.dt;
     const dtf = 0.5 * dt * u.ftm2v;
     const dtby2 = 0.5 * dt;
-    const c1 = Math.exp(-this.gamma * dt);
+    const c1 = libmExp(-this.gamma * dt);
     const oneMinusC1sq = -Math.expm1(-2.0 * this.gamma * dt);
     const tTarget = this.targetT();
     // kT in velocity-squared * mass units (kB / mvv2e)

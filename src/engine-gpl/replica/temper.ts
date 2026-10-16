@@ -39,6 +39,7 @@ import { FixNH } from '../../engine/fix/nh';
 import { RanPark } from '../random_park';
 import { FixGrem } from '../extrafix/fix_grem';
 import { log as libmLog } from '../libm/log';
+import { exp as libmExp } from '../libm/exp';
 
 type Kind = 'temper' | 'npt' | 'grem';
 
@@ -286,7 +287,7 @@ export const runTempering = async (kind: Kind, ctx: Ctx, a: string[]): Promise<v
       if (kind === 'temper') {
         const bf = (pe[lo] - pe[hi]) * (1.0 / (boltz * setVal[tl]) - 1.0 / (boltz * setVal[th]));
         if (bf >= 0.0) swap = true;
-        else if (rl.ranboltz.uniform() < Math.exp(bf)) swap = true;
+        else if (rl.ranboltz.uniform() < libmExp(bf)) swap = true;
       } else if (kind === 'npt') {
         // temper_npt.cpp: the pressure-volume term joins the energy term
         const pressUnits = rl.pressSet / nktv2p;
@@ -294,7 +295,7 @@ export const runTempering = async (kind: Kind, ctx: Ctx, a: string[]): Promise<v
           + pressUnits * (1.0 / (boltz * setVal[tl]) - 1.0 / (boltz * setVal[th])) * (vol[hi] - vol[lo]);
         const bf = -delr;
         if (bf >= 0.0) swap = true;
-        else if (rl.ranboltz.uniform() < Math.exp(bf)) swap = true;
+        else if (rl.ranboltz.uniform() < libmExp(bf)) swap = true;
       } else {
         // temper_grem.cpp: each partition's weight log(lambda + eta (H - h0)) and its weight with the partner's lambda
         const rh = reps[hi];
@@ -306,7 +307,7 @@ export const runTempering = async (kind: Kind, ctx: Ctx, a: string[]): Promise<v
         const weightCrossPartner = libmLog(setVal[tl] + (rh.eta * (enthHi - rh.h0)));
         const bf = (weight + weightPartner - weightCross - weightCrossPartner) * (1 / (boltz * rl.eta));
         if (bf >= 0.0) swap = true;
-        else if (rl.ranboltz.uniform() < Math.exp(bf)) swap = true;
+        else if (rl.ranboltz.uniform() < libmExp(bf)) swap = true;
       }
       if (swap) { swapWith[lo] = hi; swapWith[hi] = lo; }
     }

@@ -491,7 +491,7 @@ export class PairTersoff extends Pair {
   protected zetaExp(t3: number, dr: number): number {
     const lp = this.lam3p[t3];
     if (lp === 0) return 1;
-    return Math.exp(lp * Math.pow(dr, this.m3[t3]));
+    return libm.exp(lp * Math.pow(dr, this.m3[t3]));
   }
 
   /** d ln(zetaExp) / d r_ij of the (ijk) entry t3. */
@@ -529,8 +529,8 @@ export class PairTersoff extends Pair {
     const rs = r + this.shiftDelta;
     const R = this.R2[t2], D = this.D2[t2];
     const facc = this.cutFn(rs, R, D);
-    const fr = this.A2[t2] * Math.exp(-this.lam1[t2] * rs);
-    const fa = -this.B2[t2] * Math.exp(-this.lam2[t2] * rs);
+    const fr = this.A2[t2] * libm.exp(-this.lam1[t2] * rs);
+    const fa = -this.B2[t2] * libm.exp(-this.lam2[t2] * rs);
     out[0] = facc;
     out[1] = fr;
     out[2] = fa;

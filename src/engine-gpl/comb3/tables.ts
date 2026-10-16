@@ -7,6 +7,7 @@
  */
 import { erfcExact } from '../../engine/force/erfc';
 import type { Comb3Param } from './params';
+import { exp as libmExp } from '../libm/exp';
 
 /** Look-up tables of PairComb3::tables(). Two-dimensional tables are row-major with nntypes columns. */
 export interface Comb3Tables {
@@ -92,11 +93,11 @@ export const comb3Tables = (
     const itype = typeElem[i + 1];
     const iparamI = elem3param[(itype * n + itype) * n + itype];
     const z = params[iparamI].esm;
-    const exp2ershift = Math.exp(-2.0 * z * rc);
+    const exp2ershift = libmExp(-2.0 * z * rc);
     const afbshift = -exp2ershift * (z + 1.0 / rc);
     const dafbshift = exp2ershift * (2.0 * z * z + 2.0 * z / rc + 1.0 / (rc * rc));
     for (let j = 0; j < ncoul; j++) {
-      const exp2er = Math.exp(-2.0 * z * r);
+      const exp2er = libmExp(-2.0 * z * r);
       phin[at(j, i)] = 1.0 - exp2er * (1.0 + 2.0 * z * r * (1.0 + z * r));
       dphin[at(j, i)] = (4.0 * exp2er * z * z * z * r * r);
       afb[at(j, i)] = -exp2er * (z + 1.0 / r) - afbshift - (r - rc) * dafbshift;
@@ -115,12 +116,12 @@ export const comb3Tables = (
         const iparamI = elem3param[(itype * n + itype) * n + itype];
         const z = params[iparamI].esm;
         const zrc = z * rc;
-        const exp2ersh = Math.exp(-2.0 * zrc);
+        const exp2ersh = libmExp(-2.0 * zrc);
         const fafash = -exp2ersh * (1.0 / rc + z * (11.0 / 8.0 + 3.0 / 4.0 * zrc + zrc * zrc / 6.0));
         const dfafash = exp2ersh * (1.0 / (rc * rc) + 2.0 * z / rc + z * z * (2.0 + 7.0 / 6.0 * zrc + zrc * zrc / 3.0));
         for (let kk = 0; kk < ncoul; kk++) {
           const zr = z * r;
-          const exp2er = Math.exp(-2.0 * zr);
+          const exp2er = libmExp(-2.0 * zr);
           const F1 = -exp2er * (1.0 / r + z * (11.0 / 8.0 + 3.0 / 4.0 * zr + zr * zr / 6.0));
           const dF1 = exp2er * (1.0 / (r * r) + 2.0 * z / r + z * z * (2.0 + 7.0 / 6.0 * zr + zr * zr / 3.0));
           const ddF1 = -exp2er * (2.0 / (r * r * r) + 4.0 * z / (r * r) + 4.0 * z * z / r +
@@ -144,14 +145,14 @@ export const comb3Tables = (
           ((ea + eb) * (ea + eb) * (ea + eb) * (ea - eb) * (ea - eb) * (ea - eb));
         const E4 = (3.0 * eb * eb * ea3 * ea - ea3 * ea3) /
           ((ea + eb) * (ea + eb) * (ea + eb) * (eb - ea) * (eb - ea) * (eb - ea));
-        const exp2earsh = Math.exp(-2.0 * ea * rc);
-        const exp2ebrsh = Math.exp(-2.0 * eb * rc);
+        const exp2earsh = libmExp(-2.0 * ea * rc);
+        const exp2ebrsh = libmExp(-2.0 * eb * rc);
         const fafbsh = -exp2earsh * (E1 + E3 / rc) - exp2ebrsh * (E2 + E4 / rc);
         const dfafbsh = exp2earsh * (2.0 * ea * (E1 + E3 / rc) + E3 / (rc * rc)) +
           exp2ebrsh * (2.0 * eb * (E2 + E4 / rc) + E4 / (rc * rc));
         for (let kk = 0; kk < ncoul; kk++) {
-          const exp2ear = Math.exp(-2.0 * ea * r);
-          const exp2ebr = Math.exp(-2.0 * eb * r);
+          const exp2ear = libmExp(-2.0 * ea * r);
+          const exp2ebr = libmExp(-2.0 * eb * r);
           fafb[at(kk, inty)] = -exp2ear * (E1 + E3 / r) - exp2ebr * (E2 + E4 / r) - fafbsh - (r - rc) * dfafbsh;
           dfafb[at(kk, inty)] = -(exp2ear * (2.0 * ea * (E1 + E3 / r) + E3 / (r * r)) +
             exp2ebr * (2.0 * eb * (E2 + E4 / r) + E4 / (r * r)) - dfafbsh);
@@ -165,7 +166,7 @@ export const comb3Tables = (
   for (let i = 0; i < ncoulLim; i++) {
     const r = dra * (i - 1) + drin;
     erpaw[2 * i] = erfcExact(r * alf);
-    erpaw[2 * i + 1] = Math.exp(-r * r * alf * alf);
+    erpaw[2 * i + 1] = libmExp(-r * r * alf * alf);
   }
 
   // van der Waals spline (vrc[i] = rc^(i+1), as the C++ array is filled)
@@ -243,7 +244,7 @@ export const comb3Tables = (
 /** potal_calc: the Wolf-type constants fac11 (1/r^2 force term) and fac11e (self-energy shift) at the Coulomb cutoff. */
 export const potalFactors = (rcoul: number, esucon: number): { fac11: number; fac11e: number } => {
   const alf = 0.20;
-  const fac11 = (erfcExact(rcoul * alf) / rcoul / rcoul + 2.0 * alf / Math.sqrt(Math.PI) * Math.exp(-alf * alf * rcoul * rcoul) / rcoul) * esucon / rcoul;
+  const fac11 = (erfcExact(rcoul * alf) / rcoul / rcoul + 2.0 * alf / Math.sqrt(Math.PI) * libmExp(-alf * alf * rcoul * rcoul) / rcoul) * esucon / rcoul;
   const fac11e = (erfcExact(rcoul * alf) / rcoul) * esucon;
   return { fac11, fac11e };
 };

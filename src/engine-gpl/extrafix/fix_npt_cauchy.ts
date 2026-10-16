@@ -18,6 +18,7 @@ import { FixNH } from '../../engine/fix/nh';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import type { ComputePressure } from '../../engine/compute/pressure';
+import { exp as libmExp } from '../libm/exp';
 
 type Mat3 = number[][];
 
@@ -457,7 +458,7 @@ export class FixNPTCauchy extends FixNH {
     const s = this.sys.state;
     const mtkTerm2 = this.mtkVelocityTerm();
     const w = this.omegaDot;
-    const f = [0, 1, 2].map((d) => Math.exp(-this.dt4 * (w[d] + mtkTerm2)));
+    const f = [0, 1, 2].map((d) => libmExp(-this.dt4 * (w[d] + mtkTerm2)));
     const tri = this.pFlag[3] || this.pFlag[4] || this.pFlag[5];
     const dthalf = this.dthalf;
     const v = s.v;
@@ -502,26 +503,26 @@ export class FixNPTCauchy extends FixNH {
     const tri = p[3] || p[4] || p[5];
     const tiltSweep = (): void => {
       if (p[4]) {
-        const e = Math.exp(dto8 * w[0]);
+        const e = libmExp(dto8 * w[0]);
         h[4] *= e; h[4] += dto4 * (w[5] * h[3] + w[4] * h[2]); h[4] *= e;
       }
       if (p[3]) {
-        const e = Math.exp(dto4 * w[1]);
+        const e = libmExp(dto4 * w[1]);
         h[3] *= e; h[3] += dto2 * (w[3] * h[2]); h[3] *= e;
       }
       if (p[5]) {
-        const e = Math.exp(dto4 * w[0]);
+        const e = libmExp(dto4 * w[0]);
         h[5] *= e; h[5] += dto2 * (w[5] * h[1]); h[5] *= e;
       }
       if (p[4]) {
-        const e = Math.exp(dto8 * w[0]);
+        const e = libmExp(dto8 * w[0]);
         h[4] *= e; h[4] += dto4 * (w[5] * h[3] + w[4] * h[2]); h[4] *= e;
       }
     };
     if (tri) tiltSweep();
     const fp = this.fixedpoint ?? [0.5 * (b.lo[0] + b.hi[0]), 0.5 * (b.lo[1] + b.hi[1]), 0.5 * (b.lo[2] + b.hi[2])];
     const stretch = (d: number): number => {
-      const e = Math.exp(dto * w[d]);
+      const e = libmExp(dto * w[d]);
       b.lo[d] = (b.lo[d] - fp[d]) * e + fp[d];
       b.hi[d] = (b.hi[d] - fp[d]) * e + fp[d];
       return e;

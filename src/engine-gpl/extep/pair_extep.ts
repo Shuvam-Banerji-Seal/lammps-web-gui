@@ -22,6 +22,7 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 // LAMMPS: static constexpr int MAXTYPES 8, NSPLINE 5 (pair_extep.h)
 const NSPLINE = 5;
@@ -244,12 +245,12 @@ export class PairExTeP extends Pair {
 
   private fa(r: number, p: Param): number {
     if (r > p.bigr + p.bigd) return 0.0;
-    return -p.bigb * Math.exp(-p.lam2 * r) * this.fc(r, p);
+    return -p.bigb * libmExp(-p.lam2 * r) * this.fc(r, p);
   }
 
   private faD(r: number, p: Param): number {
     if (r > p.bigr + p.bigd) return 0.0;
-    return p.bigb * Math.exp(-p.lam2 * r) * (p.lam2 * this.fc(r, p) - this.fcD(r, p));
+    return p.bigb * libmExp(-p.lam2 * r) * (p.lam2 * this.fc(r, p) - this.fcD(r, p));
   }
 
   private bij(zeta: number, p: Param): number {
@@ -290,7 +291,7 @@ export class PairExTeP extends Pair {
     const arg = p.powermint === 3 ? (p.lam3 * (rij - rik)) ** 3.0 : p.lam3 * (rij - rik);
     if (arg > 69.0776) return 1.e30;
     if (arg < -69.0776) return 0.0;
-    return Math.exp(arg);
+    return libmExp(arg);
   }
 
   /** zeta term of one k neighbour (native PairExTeP::zeta). */
@@ -475,7 +476,7 @@ export class PairExTeP extends Pair {
         // repulsive (native PairExTeP::repulsive)
         const r = Math.sqrt(rsq);
         const fcv = this.fc(r, p), fcD = this.fcD(r, p);
-        const ex = Math.exp(-p.lam1 * r);
+        const ex = libmExp(-p.lam1 * r);
         const fpair = (-p.biga * ex * (fcD - fcv * p.lam1)) / r;
         const eng = fcv * p.biga * ex;
         f[3 * i] += delx * fpair; f[3 * i + 1] += dely * fpair; f[3 * i + 2] += delz * fpair;

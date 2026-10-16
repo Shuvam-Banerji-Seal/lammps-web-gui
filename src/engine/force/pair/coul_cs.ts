@@ -5,6 +5,7 @@ import { PairBornCoulLong, PairBuckCoulLong } from './coul_long2';
 import { PairCoulLong } from './coul_long';
 import { tallyAtom } from './lj_cut';
 import { erfcFast, EWALD_F } from '../erfc';
+import { libm } from '../../libm';
 
 /*
  * Core-shell ("/cs") variants: born/coul/long/cs, buck/coul/long/cs and
@@ -76,7 +77,7 @@ export const erfAcc = (x: number): number => {
     }
     return TWO_OVER_SQRTPI * sum;
   }
-  return 1 - erfcFast(x, Math.exp(-x * x));
+  return 1 - erfcFast(x, libm.exp(-x * x));
 };
 
 /**
@@ -86,7 +87,7 @@ export const erfAcc = (x: number): number => {
  */
 export const hOverX3 = (x: number): number => {
   if (x >= 1) {
-    const h = erfAcc(x) - TWO_OVER_SQRTPI * x * Math.exp(-x * x);
+    const h = erfAcc(x) - TWO_OVER_SQRTPI * x * libm.exp(-x * x);
     return h / (x * x * x);
   }
   const x2 = x * x;
@@ -118,7 +119,7 @@ export const csCoulPair = (
 ): { e: number; f: number } => {
   const r = Math.sqrt(rsq);
   const x = g * r;
-  const ex = Math.exp(-x * x);
+  const ex = libm.exp(-x * x);
   const K = qqrd2e * qi * qj;
   if (fc >= 1) {
     // Accurate erfc for every pair of a /cs style (see the header): native cs gives
@@ -183,7 +184,7 @@ export class PairBornCoulLongCS extends PairBornCoulLong {
           const factor = sLJ[sb];
           const r = Math.sqrt(rsq);
           const rinv = 1 / r;
-          const ex = Math.exp((bornSig[t] - r) * bornIR[t]);
+          const ex = libm.exp((bornSig[t] - r) * bornIR[t]);
           const r2inv = 1 / rsq;
           const r6inv = r2inv * r2inv * r2inv;
           const r8inv = r6inv * r2inv;
@@ -260,7 +261,7 @@ export class PairBuckCoulLongCS extends PairBuckCoulLong {
         if (rsq < buckCutSq[t] && sLJ[sb] !== 0) {
           const factor = sLJ[sb];
           const r = Math.sqrt(rsq);
-          const ex = Math.exp(-r * buckIR[t]);
+          const ex = libm.exp(-r * buckIR[t]);
           const r2inv = 1 / rsq;
           fpair += factor * (buckA[t] * buckIR[t] * ex / r - 6 * buckC[t] * r2inv * r2inv * r2inv * r2inv);
           const ev = factor * (buckA[t] * ex - buckC[t] * (r2inv * r2inv * r2inv) - offset[t]);

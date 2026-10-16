@@ -2,6 +2,7 @@ import { Pair, StyleError, type PairCompute, type StyleContext } from '../types'
 import { NEIGHMASK } from '../../neighbor';
 import { parseInt_, parseNum } from '../util';
 import { PairVashishta } from './vashishta';
+import { libm } from '../../libm';
 
 /*
  * pair_style vashishta/table Ntable cutinner — docs.lammps.org/pair_vashishta.html
@@ -157,8 +158,8 @@ export class PairVashishtaTable extends Pair {
     const D = b['tbD'][t], lam4 = b['tbLam4'][t], W = b['tbW'][t];
     const rc = this.rcArr[t];
     return (
-      H / Math.pow(r, eta) + (zpq * Math.exp(-r / lam1)) / r -
-      (D / Math.pow(r, 4)) * Math.exp(-r / lam4) - W / Math.pow(r, 6) -
+      H / Math.pow(r, eta) + (zpq * libm.exp(-r / lam1)) / r -
+      (D / Math.pow(r, 4)) * libm.exp(-r / lam4) - W / Math.pow(r, 6) -
       b['tbU2rc'][t] - (r - rc) * b['tbDuRc'][t]
     );
   }
@@ -168,10 +169,10 @@ export class PairVashishtaTable extends Pair {
     const b = this.base as unknown as Record<string, Float64Array>;
     const H = b['tbH'][t], eta = b['tbEta'][t], zpq = b['tbZpq'][t], lam1 = b['tbLam1'][t];
     const D = b['tbD'][t], lam4 = b['tbLam4'][t], W = b['tbW'][t];
-    const scr = Math.exp(-r / lam1);
+    const scr = libm.exp(-r / lam1);
     return (
       -eta * H / Math.pow(r, eta + 1) - zpq * scr * (1 / (r * r) + 1 / (lam1 * r)) +
-      D * Math.exp(-r / lam4) * (4 / Math.pow(r, 5) + 1 / (lam4 * Math.pow(r, 4))) +
+      D * libm.exp(-r / lam4) * (4 / Math.pow(r, 5) + 1 / (lam4 * Math.pow(r, 4))) +
       6 * W / Math.pow(r, 7) - b['tbDuRc'][t]
     );
   }

@@ -326,7 +326,7 @@ export class KSpaceEwald extends KSpaceBase {
     const q2 = qqrd2e * this.qsqsum;
     const N = Math.max(1, this.natoms);
     for (let m = 1; m < 1000; m++) {
-      const rms = (2 * q2 * g / prd) * Math.sqrt(1 / (Math.PI * m * N)) * Math.exp(-(Math.PI * Math.PI * m * m) / (g * g * prd * prd));
+      const rms = (2 * q2 * g / prd) * Math.sqrt(1 / (Math.PI * m * N)) * libm.exp(-(Math.PI * Math.PI * m * m) / (g * g * prd * prd));
       if (rms <= acc) return m;
     }
     return 999;
@@ -358,7 +358,7 @@ export class KSpaceEwald extends KSpaceBase {
           // included, as native LAMMPS does (oracle case ewald_sphere_boundary); the slack only
           // absorbs the last-bit rounding of k2 against gsqmx
           if (k2 > gsqmx * (1 + 1e-12)) continue;
-          list.push(kxv, kyv, kzv, Math.exp(-k2 / (4 * g * g)) / k2);
+          list.push(kxv, kyv, kzv, libm.exp(-k2 / (4 * g * g)) / k2);
           ns.push(nx, ny, nz);
         }
       }

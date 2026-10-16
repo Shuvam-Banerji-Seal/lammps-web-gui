@@ -2,6 +2,7 @@ import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * pair_style pedone, docs.lammps.org/pair_pedone.html (text: plans/lammps-docs-live/pair_pedone.rst).
@@ -31,7 +32,7 @@ import { fmtCoeff, parseNum } from '../util';
 
 const pairTerms = (d0: number, alpha: number, r0: number, b0: number, r: number) => {
   const dr = r - r0;
-  const e1 = Math.exp(-2 * alpha * dr), e2 = Math.exp(-alpha * dr);
+  const e1 = libm.exp(-2 * alpha * dr), e2 = libm.exp(-alpha * dr);
   const r2 = 1 / (r * r);
   const r12 = r2 ** 6;
   return {
@@ -44,7 +45,7 @@ const pairTerms = (d0: number, alpha: number, r0: number, b0: number, r: number)
 /** Energy shift of pair_modify shift yes (see the measured note in initOne). */
 const shiftOffset = (d0: number, alpha: number, r0: number, b0: number, rc: number): number => {
   const dr = rc - r0;
-  return d0 * (Math.exp(-2 * alpha * dr) - 2 * Math.exp(-alpha * dr)) - b0 / rc ** 12;
+  return d0 * (libm.exp(-2 * alpha * dr) - 2 * libm.exp(-alpha * dr)) - b0 / rc ** 12;
 };
 
 export class PairPedone extends Pair {

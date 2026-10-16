@@ -24,6 +24,7 @@ import type { PairReaxFF } from './pair';
 import type { FixEfield } from '../../engine/fix/force_ext';
 import { efieldForModel, fieldOf, findEfield, fieldPotential } from './efield';
 import { log as libmLog } from '../libm/log';
+import { exp as libmExp } from '../libm/exp';
 
 /** ANGSTROM_TO_BOHRRADIUS_SQ of fix_qtpie_reaxff.cpp: an exponent in 1/bohr^2 is this many 1/Angstrom^2. */
 const ANGSTROM_TO_BOHRRADIUS_SQ = 3.571064831;
@@ -233,7 +234,7 @@ export class FixQtpieReaxFF extends Fix {
         const distSq = dx * dx + dy * dy + dz * dz;
         if (distSq < this.distCutSq) {
           const chib = p.chi[typeAll[j]];
-          const overlap = this.prefactor[typeAll[i] * nt1 + typeAll[j]] * Math.exp(-this.expfactor[typeAll[i] * nt1 + typeAll[j]] * distSq);
+          const overlap = this.prefactor[typeAll[i] * nt1 + typeAll[j]] * libmExp(-this.expfactor[typeAll[i] * nt1 + typeAll[j]] * distSq);
           if (E) {
             const phib = fieldPotential(x, j, E, qe2f);
             sumN += (chia - chib + this.scale * (phia - phib)) * overlap;
@@ -280,7 +281,7 @@ export class FixQEqRelReaxFF extends FixQtpieReaxFF {
         const dx = x[3 * i] - x[3 * j], dy = x[3 * i + 1] - x[3 * j + 1], dz = x[3 * i + 2] - x[3 * j + 2];
         const distSq = dx * dx + dy * dy + dz * dz;
         if (distSq < this.distCutSq) {
-          const overlap = this.prefactor[typeAll[i] * nt1 + typeAll[j]] * Math.exp(-this.expfactor[typeAll[i] * nt1 + typeAll[j]] * distSq);
+          const overlap = this.prefactor[typeAll[i] * nt1 + typeAll[j]] * libmExp(-this.expfactor[typeAll[i] * nt1 + typeAll[j]] * distSq);
           sumN += fieldPotential(x, j, E, qe2f) * overlap;
           sumD += overlap;
         }

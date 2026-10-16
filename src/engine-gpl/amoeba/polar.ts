@@ -17,6 +17,7 @@
 import { erfcExact } from '../../engine/force/erfc';
 import { ELECTRIC, type MpoleSites, torque2force } from './multipole';
 import { hippoDirectField, hippoPolarReal, hippoPrecondTensors, type HippoPolarAtoms } from './hippo_polar';
+import { exp as libmExp } from '../libm/exp';
 
 /** Constant converting q-Angstrom to Debye, used by the convergence test (amoeba_induce.cpp DEBYE). */
 const DEBYE = 4.80321;
@@ -177,7 +178,7 @@ const directField = (a: PolarAtoms, s: PolarSettings, pairs: readonly number[], 
     const bn = [erfcExact(ralpha) * rr1, 0, 0, 0];
     const aesq2 = 2.0 * s.aewald * s.aewald;
     let aesq2n = s.aewald > 0.0 ? 1.0 / (MY_PIS * s.aewald) : 0.0;
-    const exp2a = Math.exp(-ralpha * ralpha);
+    const exp2a = libmExp(-ralpha * ralpha);
     for (let m = 1; m <= 3; m++) {
       aesq2n = aesq2 * aesq2n;
       bn[m] = ((2 * m - 1) * bn[m - 1] + aesq2n * exp2a) * rr2;
@@ -202,7 +203,7 @@ const directField = (a: PolarAtoms, s: PolarSettings, pairs: readonly number[], 
     const damp = tholeDamp(a, I, J, r);
     if (a.pdamp[I] * a.pdamp[J] !== 0) {
       if (damp < 50.0) {
-        const expdamp = Math.exp(-damp);
+        const expdamp = libmExp(-damp);
         scale3 = 1.0 - expdamp;
         scale5 = 1.0 - expdamp * (1.0 + damp);
         scale7 = 1.0 - expdamp * (1.0 + damp + 0.6 * damp * damp);
@@ -240,7 +241,7 @@ const directField = (a: PolarAtoms, s: PolarSettings, pairs: readonly number[], 
     // mutual dipole-dipole tensor (uscale), built with the 3- and 5-term damping only
     let mscale3 = 1.0, mscale5 = 1.0;
     if (a.pdamp[I] * a.pdamp[J] !== 0 && damp < 50.0) {
-      const expdamp = Math.exp(-damp);
+      const expdamp = libmExp(-damp);
       mscale3 = 1.0 - expdamp;
       mscale5 = 1.0 - expdamp * (1.0 + damp);
     }
@@ -361,7 +362,7 @@ export const buildPrecondTensors = (a: PolarAtoms, pc: PrecondPairs, s: PolarSet
       const pgamma = Math.min(a.thole[I], a.thole[J]);
       const damp = -pgamma * (r / damp0) * (r / damp0) * (r / damp0);
       if (damp > -50.0) {
-        const expdamp = Math.exp(damp);
+        const expdamp = libmExp(damp);
         scale3 *= 1.0 - expdamp;
         scale5 *= 1.0 - expdamp * (1.0 - damp);
       }
@@ -663,7 +664,7 @@ export const polarReal = (
     const bn = [erfcExact(ralpha) / r, 0, 0, 0, 0];
     const alsq2 = 2.0 * s.aewald * s.aewald;
     let alsq2n = s.aewald > 0.0 ? 1.0 / (MY_PIS * s.aewald) : 0.0;
-    const exp2a = Math.exp(-ralpha * ralpha);
+    const exp2a = libmExp(-ralpha * ralpha);
     for (let m = 1; m <= 4; m++) {
       alsq2n = alsq2 * alsq2n;
       bn[m] = ((2 * m - 1) * bn[m - 1] + alsq2n * exp2a) / r2;
@@ -680,7 +681,7 @@ export const polarReal = (
     const damp = tholeDamp(a, I, J, r);
     if (a.pdamp[I] * a.pdamp[J] !== 0) {
       if (damp < 50.0) {
-        const expdamp = Math.exp(-damp);
+        const expdamp = libmExp(-damp);
         sc3 = 1.0 - expdamp;
         sc5 = 1.0 - (1.0 + damp) * expdamp;
         sc7 = 1.0 - (1.0 + damp + 0.6 * damp * damp) * expdamp;

@@ -15,6 +15,7 @@
  */
 
 import type { DispTable } from '../../engine/force/pair/lj_long';
+import { exp as libmExp } from '../libm/exp';
 
 const f32 = new Float32Array(1);
 const u32 = new Uint32Array(f32.buffer);
@@ -79,7 +80,7 @@ export const makeDispTable = (ntablebits: number, g: number, cutLJ: number, tabi
     rsq = floatOf(bits);
     let x2 = g2 * rsq;
     const a2 = 1.0 / x2;
-    x2 = a2 * Math.exp(-x2);
+    x2 = a2 * libmExp(-x2);
     rdisp[i] = rsq;
     fdisp[i] = g8 * (((6.0 * a2 + 6.0) * a2 + 3.0) * a2 + 1.0) * x2 * rsq;
     edisp[i] = g6 * ((a2 + 1.0) * a2 + 0.5) * x2;
@@ -104,7 +105,7 @@ export const makeDispTable = (ntablebits: number, g: number, cutLJ: number, tabi
     const rcut = floatOf(bitsOf(cutLJsq));
     let x2 = g2 * rsq;
     const a2 = 1.0 / x2;
-    x2 = a2 * Math.exp(-x2);
+    x2 = a2 * libmExp(-x2);
     const fTmp = g8 * (((6.0 * a2 + 6.0) * a2 + 3.0) * a2 + 1.0) * x2 * rsq;
     const eTmp = g6 * ((a2 + 1.0) * a2 + 0.5) * x2;
     drdisp[itablemax] = 1.0 / (rcut - rdisp[itablemax]);

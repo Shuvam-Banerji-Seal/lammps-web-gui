@@ -2,6 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNumOrVar, valueOf, type NumOrVar } from './util';
+import { libm } from '../libm';
 
 /*
  * Wall fixes — docs.lammps.org/fix_wall.html (fix_wall.rst). One class per
@@ -467,7 +468,7 @@ export class FixWallMorse extends FixWallBase {
     const d0 = valueOf(this.sys, w.params[0]);
     const alpha = valueOf(this.sys, w.params[1]);
     const r0 = valueOf(this.sys, w.params[2]);
-    const a = Math.exp(-alpha * (r - r0));
+    const a = libm.exp(-alpha * (r - r0));
     return d0 * (a * a - 2 * a);
   }
 
@@ -475,7 +476,7 @@ export class FixWallMorse extends FixWallBase {
     const d0 = valueOf(this.sys, w.params[0]);
     const alpha = valueOf(this.sys, w.params[1]);
     const r0 = valueOf(this.sys, w.params[2]);
-    const a = Math.exp(-alpha * (r - r0));
+    const a = libm.exp(-alpha * (r - r0));
     return 2 * alpha * d0 * (a * a - a);
   }
 }

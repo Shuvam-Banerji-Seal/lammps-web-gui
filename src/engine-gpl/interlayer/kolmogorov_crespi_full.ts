@@ -8,6 +8,7 @@ import type { PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, type NeighList } from '../../engine/neighbor';
 import { calcDTap, calcTap } from './taper';
 import { KCNormalBase, tallyPairAtoms, tallyXYZAtoms, type NormalParam } from './normals';
+import { exp as libmExp } from '../libm/exp';
 
 export interface KCFullParam extends NormalParam {
   C0: number; C2: number; C4: number; C: number; A: number; z06: number;
@@ -139,8 +140,8 @@ export class PairKolmogorovCrespiFull extends KCNormalBase<KCFullParam> {
         const prodnorm1 = ni[0] * delx + ni[1] * dely + ni[2] * delz;
         const rhosq1 = rsq - prodnorm1 * prodnorm1; // rho_ij
         const rho = rhosq1 * p.delta2inv; // (rho_ij/delta)^2
-        const exp0 = Math.exp(-p.lambda * (r - p.z0));
-        const exp1 = Math.exp(-rho);
+        const exp0 = libmExp(-p.lambda * (r - p.z0));
+        const exp1 = libmExp(-rho);
         const sumC1 = p.C0 + p.C2 * rho + p.C4 * rho * rho;
         const sumC11 = (p.C2 + 2.0 * p.C4 * rho) * p.delta2inv;
         const frhoIJ = exp1 * sumC1;

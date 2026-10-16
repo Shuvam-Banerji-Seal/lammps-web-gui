@@ -199,7 +199,7 @@ export class PairYukawa extends Pair {
     const k1 = i * nt + j, k2 = j * nt + i;
     this.pa[k1] = this.pa[k2] = a;
     // pair_modify shift: subtract the pair energy at the cutoff
-    this.offset[k1] = this.offset[k2] = this.shift && cut > 0 ? a * Math.exp(-this.kappa * cut) / cut : 0;
+    this.offset[k1] = this.offset[k2] = this.shift && cut > 0 ? a * libm.exp(-this.kappa * cut) / cut : 0;
     return cut;
   }
 
@@ -227,7 +227,7 @@ export class PairYukawa extends Pair {
         const factor = sLJ[jj >>> SBBITS];
         const r = Math.sqrt(rsq);
         const ir = 1 / r, ir2 = 1 / rsq;
-        const ek = Math.exp(-kappa * r);
+        const ek = libm.exp(-kappa * r);
         const fpair = factor * pa[t] * ek * (kappa * ir2 + ir2 * ir);
         const fx = dx * fpair, fy = dy * fpair, fz = dz * fpair;
         fxi += fx; fyi += fy; fzi += fz;
@@ -370,7 +370,7 @@ export class PairGauss extends Pair {
         const t = ti + type[j];
         if (rsq >= cutsq[t]) continue;
         const factor = sLJ[jj >>> SBBITS];
-        const ek = Math.exp(-pb[t] * rsq);
+        const ek = libm.exp(-pb[t] * rsq);
         const fpair = factor * (-2 * pa[t] * pb[t]) * ek;
         const fx = dx * fpair, fy = dy * fpair, fz = dz * fpair;
         fxi += fx; fyi += fy; fzi += fz;

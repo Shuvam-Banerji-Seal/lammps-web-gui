@@ -28,6 +28,7 @@ import type { Geometry } from '../../engine/domain';
 import { dielArrays } from './common';
 import { log as libmLog } from '../libm/log';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 /** LAMMPS pppm.cpp SMALL: the convergence of adjust_gewald. */
 const SMALL = 0.00001;
@@ -340,7 +341,7 @@ export class KSpacePPPMDielectric extends KSpacePPPM {
                 const nzm = mz + az * nz;
                 kvec(nxm, nym, nzm, km);
                 const km2 = km[0] * km[0] + km[1] * km[1] + km[2] * km[2];
-                num += ux * uy * u2(nzm, nz) * ((k[0] * km[0] + k[1] * km[1] + k[2] * km[2]) / km2) * 4 * Math.PI * Math.exp(-km2 / (4 * g * g));
+                num += ux * uy * u2(nzm, nz) * ((k[0] * km[0] + k[1] * km[1] + k[2] * km[2]) / km2) * 4 * Math.PI * libmExp(-km2 / (4 * g * g));
               }
             }
           }

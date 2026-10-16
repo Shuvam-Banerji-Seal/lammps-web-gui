@@ -24,6 +24,7 @@ import { RanMars } from '../random_mars';
 import { nativeOrder } from '../../engine/atoms';
 import { log as libmLog } from '../libm/log';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 const MY_2PI = 2.0 * Math.PI;
 const MY_SQRT2 = Math.sqrt(2.0);
@@ -381,8 +382,8 @@ export class FixPIMDLangevin extends Fix {
       }
     }
     const gamma = this.tau > 0 ? 1.0 / this.tau : np / beta / this.hbar;
-    if (this.integrator === 'obabo') this.c1 = Math.exp(-gamma * 0.5 * dt);
-    else this.c1 = Math.exp(-gamma * dt);
+    if (this.integrator === 'obabo') this.c1 = libmExp(-gamma * 0.5 * dt);
+    else this.c1 = libmExp(-gamma * dt);
     this.c2 = Math.sqrt(1.0 - this.c1 * this.c1);
     this.c1k = new Float64Array(np);
     this.c2k = new Float64Array(np);
@@ -391,8 +392,8 @@ export class FixPIMDLangevin extends Fix {
       this.c2k[0] = this.c2;
       for (let i = 1; i < np; i++) {
         const tauK = 0.5 / this.pilescale / this.omegaK[i];
-        if (this.integrator === 'obabo') this.c1k[i] = Math.exp(-0.5 * dt / tauK);
-        else this.c1k[i] = Math.exp(-1.0 * dt / tauK);
+        if (this.integrator === 'obabo') this.c1k[i] = libmExp(-0.5 * dt / tauK);
+        else this.c1k[i] = libmExp(-1.0 * dt / tauK);
         this.c2k[i] = Math.sqrt(1.0 - this.c1k[i] * this.c1k[i]);
       }
     }
@@ -479,8 +480,8 @@ export class FixPIMDLangevin extends Fix {
     if (b0.pstyle === 'iso') { vw[1] = vw[0]; vw[2] = vw[0]; }
     const expq = [0, 0, 0], expp = [0, 0, 0];
     for (let j = 0; j < 3; j++) {
-      expq[j] = Math.exp(b0.dtv * vw[j]);
-      expp[j] = Math.exp(-b0.dtv * vw[j]);
+      expq[j] = libmExp(b0.dtv * vw[j]);
+      expp[j] = libmExp(-b0.dtv * vw[j]);
     }
     if (this.barostat === 'BZP') {
       for (let i = 0; i < s.n; i++) {

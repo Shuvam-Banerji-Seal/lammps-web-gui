@@ -25,6 +25,7 @@ import { readSmtbqFile, type SmtbqFile, type SmtbqInter, type SmtbqParam } from 
 import { SlaterIntegrals } from './slater';
 import { buildTables, fcoup2, fcoupured, fcoupure, intfcoup2, type SmtbqTables } from './tables';
 import { QEqGroups, type GroupContext } from './groups';
+import { exp as libmExp } from '../libm/exp';
 
 /** Cut-off width of the oxygen coordination switch (the 0.15 of potqeq and pot_ES). */
 const OX_SWITCH = 0.15;
@@ -448,7 +449,7 @@ export class PairSMTBQ extends Pair {
     const rho = it.rhobuck;
     const r = Math.sqrt(rsq);
     const tmp = -r / rho;
-    const tmpExp = Math.exp(tmp);
+    const tmpExp = libmExp(tmp);
     this.eOut = A * tmpExp;
     this.fOut = A / rho * tmpExp / r;
   }
@@ -457,7 +458,7 @@ export class PairSMTBQ extends Pair {
   private attrOO(it: SmtbqInter, rsq: number): void {
     const aOO = it.aOO, bOO = it.bOO, r1OO = it.r1OO, r2OO = it.r2OO;
     const r = Math.sqrt(rsq);
-    const tmpExp = Math.exp(bOO * r);
+    const tmpExp = libmExp(bOO * r);
     this.eOut = aOO * tmpExp * fcoupure(r, r1OO, r2OO);
     this.fOut = -(aOO * bOO * tmpExp * fcoupure(r, r1OO, r2OO) + aOO * tmpExp * fcoupured(r, r1OO, r2OO)) / r;
   }

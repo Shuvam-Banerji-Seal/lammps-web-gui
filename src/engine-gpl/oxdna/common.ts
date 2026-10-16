@@ -9,6 +9,7 @@
  * LAMMPS is Copyright (2003) Sandia Corporation and distributed under the GNU General Public License, version 2
  * (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
+import { exp as libmExp } from '../libm/exp';
 
 /** The oxDNA1 site offsets (constants_oxdna.cpp: "oxDNA1 parameters"), in the units of the simulation. */
 export interface OxdnaConstants {
@@ -134,7 +135,7 @@ export const F1 = (r: number, eps: number, a: number, cut0: number, cutLc: numbe
   if (r > cutHc) return 0.0;
   if (r > cutHi) return eps * bHi * (r - cutHc) * (r - cutHc);
   if (r > cutLo) {
-    const tmp = 1 - Math.exp(-(r - cut0) * a);
+    const tmp = 1 - libmExp(-(r - cut0) * a);
     return eps * tmp * tmp - shift;
   }
   if (r > cutLc) return eps * bLo * (r - cutLc) * (r - cutLc);
@@ -146,7 +147,7 @@ export const DF1 = (r: number, eps: number, a: number, cut0: number, cutLc: numb
   if (r > cutHc) return 0.0;
   if (r > cutHi) return 2 * eps * bHi * (1 - cutHc / r);
   if (r > cutLo) {
-    const tmp = Math.exp(-(r - cut0) * a);
+    const tmp = libmExp(-(r - cut0) * a);
     return 2 * eps * (1 - tmp) * tmp * a / r;
   }
   if (r > cutLc) return 2 * eps * bLo * (1 - cutLc / r);

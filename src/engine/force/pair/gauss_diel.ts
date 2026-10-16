@@ -2,6 +2,7 @@ import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * pair_style gauss/cut and coul/diel (EXTRA-PAIR), docs.lammps.org/pair_gauss.html and
@@ -152,7 +153,7 @@ export class PairGaussCut extends Pair {
 /** Gauss/cut energy H/(sigma sqrt(2 pi)) exp(-(r - r_mh)^2 / (2 sigma^2)) for r < cut (0 beyond). */
 const gaussE = (H: number, rmh: number, sigma: number, r: number): number => {
   const d = r - rmh;
-  return (H / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(-(d * d) / (2 * sigma * sigma));
+  return (H / (sigma * Math.sqrt(2 * Math.PI))) * libm.exp(-(d * d) / (2 * sigma * sigma));
 };
 
 /** g(r) = (eps/eps_D(r) - 1)/r of the coul/diel energy E = C qi qj g(r) (the doc's prefactor 1/eps is absent, measured). */

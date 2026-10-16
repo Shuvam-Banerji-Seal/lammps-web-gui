@@ -4,6 +4,7 @@ import { erfcExact } from '../force/erfc';
 import { PairCoulStreitz, mdfTaper, pointUval, slaterS } from '../force/pair/coul_streitz';
 import type { System } from '../system';
 import { gplHook } from '../gplHooks';
+import { libm } from '../libm';
 
 /*
  * fix qeq/point, qeq/shielded, qeq/dynamic and qeq/fire — docs.lammps.org/fix_qeq.html
@@ -215,7 +216,7 @@ const erfcSlater = (x: number): number => {
   if (x < 2) return erfcExact(x);
   let f = x;
   for (let k = 60; k >= 1; k--) f = x + (k / 2) / f;
-  return Math.exp(-x * x) / Math.sqrt(Math.PI) / f;
+  return libm.exp(-x * x) / Math.sqrt(Math.PI) / f;
 };
 
 export class FixQeq extends Fix {
@@ -558,7 +559,7 @@ export class FixQeq extends Fix {
     const a = this.alpha, rc = this.cutoff;
     const erc = erfcSlater(a * rc);
     const selfW = -(erc / (2 * rc) + a / Math.sqrt(Math.PI));
-    const kd = this.dsf ? erc / (rc * rc) + (2 * a / Math.sqrt(Math.PI)) * Math.exp(-a * a * rc * rc) / rc : 0;
+    const kd = this.dsf ? erc / (rc * rc) + (2 * a / Math.sqrt(Math.PI)) * libm.exp(-a * a * rc * rc) / rc : 0;
     const cc = (r: number): number => {
       const e = erfcSlater(a * r) / r;
       return this.dsf ? e - erc / rc + (r - rc) * kd : e;

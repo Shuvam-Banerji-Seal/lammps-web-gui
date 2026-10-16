@@ -1,11 +1,11 @@
 import { EngineError, type EngineEvent, type ForceBackend } from './types';
 import type { ForceField } from './force/forcefield';
 import { System, type SessionIO } from './system';
+import { RUN_API } from './commands/runApi';
 import { StyleError } from './force/types';
 import { mapUnquoted, splitCommands, substituteVariables, tokenize, formatNumber, type RawCommand } from './script';
 import { evaluateScalar } from './formula';
 import { COMMANDS, UNAVAILABLE_COMMANDS, type Ctx } from './commands';
-import { RUN_API } from './commands/runApi';
 import { ensureStyles, LAZY_COMMANDS, styleNames } from './styles';
 import { evaluateBoolean } from './boolean';
 import { CpuForceBackend } from './cpu/forces';
@@ -64,6 +64,8 @@ const REPLICA_DRIVEN = new Set(['neb', 'temper', 'temper/npt', 'temper/grem']);
  * dynamics minimization across all the replicas").
  */
 const SESSION_LEVEL = new Set(['label', 'jump', 'next', 'include', 'if', 'quit', 'clear', 'echo', 'neb']);
+/** Words that make an if a session-level command (its branch is not run per replica). */
+const SESSION_FLOW_WORDS = /\b(label|jump|next|include|quit|clear|echo|neb|run|minimize|rerun)\b/;
 
 /**
  * The commands whose words can name a style, with the index of the first such word. fix and compute take an
@@ -261,7 +263,12 @@ export class Session {
       this.sys = this.replicas[0];
       try { return await this.runOne(text, line, frame); } finally { this.coupledRun = false; }
     }
-    if (first === undefined || SESSION_LEVEL.has(first)) return this.runOne(text, line, frame);
+    // an if whose branches run no flow or run command is evaluated on each replica (fix_alchemy.rst at b332f28: "This
+    // can be initialized in the same input script by using commands which only apply to one or the other replica. The
+    // example scripts use a world-style variable command along with if/then/else commands for this purpose."), so
+    // each partition takes its own branch; an if with a jump, next, run or similar stays a session-level command
+    const perReplicaIf = first === 'if' && !SESSION_FLOW_WORDS.test(text);
+    if (first === undefined || (SESSION_LEVEL.has(first) && !perReplicaIf)) return this.runOne(text, line, frame);
     this.onReplica = true;
     try {
       for (const sys of this.replicas) {

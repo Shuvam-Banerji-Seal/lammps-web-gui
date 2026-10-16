@@ -1,0 +1,33 @@
+# Measured with native LAMMPS: engine vs native (b332f28, /home/roy/.local/bin/lmp, PKG REPLICA, MPI, 2 partitions) per partition: thermo max err 3.4e-11 (relative), per-atom max 6.1e-11 (18 atoms, 6 waters, npt on the mixed pressure, 200 steps, about 1.2-1.5 s engine incl. node start).
+# oracle: w194alc_water — fix alchemy on 2 partitions, a water-like system (6 water molecules, bonds and angles from a data file) with fix npt on the mixed pressure (fix_modify press pressure with compute pressure/alchemy); the partitions differ in the charges of the first two molecules (the example in.twowater changes the topology too, which the engine does not do yet)
+# oracle-partitions: 2
+# oracle-inputs: w194alc_water.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+variable name world twowater twoions
+units real
+atom_style full
+atom_modify map array
+boundary p p p
+read_data w194alc_water.data
+pair_style lj/cut/coul/cut 6.0
+pair_coeff 1 1 0.1553 3.166
+pair_coeff 1 2 0.0 1.0
+pair_coeff 2 2 0.0 1.0
+bond_style harmonic
+bond_coeff 1 1000.0 1.0
+angle_style harmonic
+angle_coeff 1 100.0 109.47
+group transform id 1:6
+if "${name} == twoions" then "set atom 1 charge -1.1354" "set atom 2 charge 0.1354" "set atom 3 charge 0.56775" "set atom 4 charge -0.70305" "set atom 5*6 charge 0.56775"
+velocity all create 300.0 5463576
+timestep 0.2
+if "${name} == twowater" then "variable ramp equal ramp(1.0,0.0)" else "variable ramp equal ramp(0.0,1.0)"
+fix integrate all npt temp 300 300 1.0 iso 1.0 1.0 10.0
+fix transform all alchemy v_ramp
+compute pressure all pressure/alchemy transform
+fix_modify integrate press pressure
+thermo_style custom step temp press etotal density pe ke f_transform f_transform[3]
+thermo_modify press pressure
+thermo_modify format float %.15g
+thermo 20
+run 200

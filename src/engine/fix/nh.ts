@@ -860,7 +860,9 @@ export class FixNH extends Fix {
     const pc = this.pressCompute! as ComputePressure;
     pc.keOverride = null;
     this.sys.refreshComputes();
-    const pressTemp = pc.tempId;
+    // a pressure compute without a temperature compute (compute pressure/alchemy, fix alchemy's mixed tensor, which
+    // already holds the kinetic term of both partitions: compute_pressure_alchemy.cpp at b332f28) has no tempId
+    const pressTemp = pc.tempId ?? null;
     // A subclass whose kinetic tensor is not refreshed between the initial and the final half step (see
     // staleKineticFinal) reads the initial step's tensor for the final pressure as well.
     const stale = this.staleKineticFinal();

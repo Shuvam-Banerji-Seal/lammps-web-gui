@@ -86,6 +86,15 @@ const numArg = (w: string | undefined, key: string): number => {
 const CORE_KEYWORDS = new Set(['every', 'first', 'delay', 'pad']);
 
 /** The dump vtk helper for one dump command (see the header of this file). */
+/**
+ * percent_subst of dump_vtk.cpp: only the FIRST '%' of the file name is replaced (std::string::find), as native does;
+ * the legacy format writes one file, so its '%' becomes 0.
+ */
+const percentSubst = (name: string, subst: string): string => {
+  const pos = name.indexOf('%');
+  return pos < 0 ? name : name.slice(0, pos) + subst + name.slice(pos + 1);
+};
+
 class DumpVtk implements DumpVtkStyle {
   private readonly columns: Column[];
   private readonly xml: 'polydata' | 'unstructured' | null;
@@ -236,7 +245,7 @@ class DumpVtk implements DumpVtkStyle {
     const stepText = pad > 0 ? String(step).padStart(pad, '0') : String(step);
     const multi = this.host.file.includes('*');
     const named = (base: string): string => sys.resolveFile(multi ? this.host.fillWildcard(base, stepText) : base);
-    const main = flavor === 'legacy' ? this.host.file.replace('%', '0') : this.host.file;
+    const main = flavor === 'legacy' ? percentSubst(this.host.file, '0') : this.host.file;
     sys.writeFileAt(named(main), writer.text(), false);
 
     // the bounding box: a second file, named before the extension

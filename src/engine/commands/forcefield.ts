@@ -10,6 +10,7 @@ import { KSpaceBase } from '../force/kspace/ewald';
 import { typeWord } from '../labelmap';
 import { KSpacePPPM } from '../force/kspace/pppm';
 import { pppmGplHook } from '../force/kspace/pppmHook';
+import { removedStyleError } from '../deprecated';
 
 /*
  * Force-field commands. Styles come from styles.ts; anything else is an
@@ -17,7 +18,7 @@ import { pppmGplHook } from '../force/kspace/pppmHook';
  */
 
 const unsupported = (kind: string, name: string, list: Record<string, unknown>) =>
-  new StyleError(`${kind} '${name}' is not supported by the browser engine; supported: ${(styleNames()[kind] ?? Object.keys(list).sort()).join(', ') || 'none yet'}`);
+  (kind === 'pair_style' ? removedStyleError('pair_style', name) : null) ?? new StyleError(`${kind} '${name}' is not supported by the browser engine; supported: ${(styleNames()[kind] ?? Object.keys(list).sort()).join(', ') || 'none yet'}`);
 
 /** pair_style style args — pair_style.html; "pair_style none" removes it. */
 const pairStyle: Handler = ({ sys }, a) => {

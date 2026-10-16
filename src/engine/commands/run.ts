@@ -1,6 +1,7 @@
 import type { Ctx, Handler } from './args';
 import { int, num } from './args';
 import { StyleError } from '../force/types';
+import { removedStyleError } from '../deprecated';
 import { checkFixStateNotStored } from '../fix/restartRecord';
 import { FIX_STYLES, COMPUTE_STYLES, styleNames } from '../styles';
 import { Dump, type DumpStyle } from '../output/dump';
@@ -39,7 +40,7 @@ const fix: Handler = ({ sys }, a) => {
   if (!/^[A-Za-z0-9_]+$/.test(id)) throw new StyleError(`fix ID '${id}' must be alphanumeric or underscore`);
   const make = FIX_STYLES[style];
   if (!make) {
-    throw new StyleError(`fix style '${style}' is not supported by the browser engine; supported: ${styleNames().fix.join(', ')}`);
+    throw removedStyleError('fix', style) ?? new StyleError(`fix style '${style}' is not supported by the browser engine; supported: ${styleNames().fix.join(', ')}`);
   }
   checkFixStateNotStored(sys, id, style);
   // the style is checked first, so a fix the engine lacks is named even before the box exists;
@@ -92,7 +93,7 @@ const compute: Handler = ({ sys }, a) => {
   if (sys.computes.some((c) => c.id === id)) throw new StyleError(`reuse of compute ID '${id}' (uncompute it first)`);
   const make = COMPUTE_STYLES[style];
   if (!make) {
-    throw new StyleError(`compute style '${style}' is not supported by the browser engine; supported: ${styleNames().compute.join(', ')}`);
+    throw removedStyleError('compute', style) ?? new StyleError(`compute style '${style}' is not supported by the browser engine; supported: ${styleNames().compute.join(', ')}`);
   }
   ensureThermoComputes(sys);
   if (style === 'msd' && sys.groups.isDynamic(sys.groupBit(group))) throw new StyleError('Compute msd is not compatible with dynamic groups');
@@ -185,7 +186,7 @@ const dump: Handler = ({ sys }, a) => {
   if (!id || !group || !style || !every || !file) throw new StyleError('usage: dump ID group-ID style N file [attributes]');
   if (sys.dumps.some((d) => d.id === id)) throw new StyleError(`reuse of dump ID '${id}' (undump it first)`);
   if (/\/(gz|zstd)$/.test(style)) throw new StyleError(`dump ${style}: compressed dump files are not available in the browser; use ${style.split('/')[0]}`);
-  if (!(DUMP_STYLES as string[]).includes(style)) throw new StyleError(`dump style '${style}' is not supported by the browser engine; supported: ${DUMP_STYLES.join(', ')}`);
+  if (!(DUMP_STYLES as string[]).includes(style)) throw removedStyleError('dump', style) ?? new StyleError(`dump style '${style}' is not supported by the browser engine; supported: ${DUMP_STYLES.join(', ')}`);
   let n: number | string;
   if (every.startsWith('v_')) n = every.slice(2);
   else {
@@ -581,7 +582,7 @@ const minimizeCmd: Handler = async (ctx, a) => {
 const minStyle: Handler = ({ sys }, a) => {
   if (a[0] && Object.prototype.hasOwnProperty.call(MINIMIZERS, a[0])) { sys.minStyle = a[0]; return; }
   if (!a[0] || !(MIN_STYLES as readonly string[]).includes(a[0])) {
-    throw new StyleError(`min_style '${a[0] ?? ''}' is not supported by the browser engine; supported: ${MIN_STYLES.join(', ')}`);
+    throw removedStyleError('min_style', a[0] ?? '') ?? new StyleError(`min_style '${a[0] ?? ''}' is not supported by the browser engine; supported: ${MIN_STYLES.join(', ')}`);
   }
   sys.minStyle = a[0];
 };

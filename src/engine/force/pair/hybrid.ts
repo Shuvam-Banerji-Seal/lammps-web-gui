@@ -1,6 +1,7 @@
 import { Pair, StyleError, typeBounds, type BondedEquilibria, type PairCompute, type PairSep, type StyleContext, newAccum, clearAccum, type Accum } from '../types';
 import { NEIGHMASK, type NeighList } from '../../neighbor';
 import { parseNum } from '../util';
+import { removedStyleError } from '../../deprecated';
 
 /*
  * pair_style hybrid, hybrid/overlay, hybrid/scaled, hybrid/molecular —
@@ -135,7 +136,7 @@ export class PairHybrid extends Pair {
       if (name === 'none') throw new StyleError(`pair_style ${this.mode}: none is not a sub-style (use pair_coeff I J none)`);
       const make = this.registry[name];
       if (!make) {
-        throw new StyleError(`pair_style ${this.mode}: sub-style '${name}' is not supported by the browser engine; supported: ${Object.keys(this.registry).filter((n) => !n.startsWith('hybrid')).sort().join(', ')}`);
+        throw removedStyleError('pair_style', name) ?? new StyleError(`pair_style ${this.mode}: sub-style '${name}' is not supported by the browser engine; supported: ${Object.keys(this.registry).filter((n) => !n.startsWith('hybrid')).sort().join(', ')}`);
       }
       // the sub-style's arguments run up to the next sub-style name (or scale factor)
       let e = k + 1;
@@ -149,6 +150,11 @@ export class PairHybrid extends Pair {
         if (!(err instanceof StyleError)) throw err;
         // an unsupported sub-style's name lands in the previous sub-style's arguments
         const words = subArgs.filter((w) => /^[A-Za-z]/.test(w) && !w.startsWith('v_'));
+        // a removed LAMMPS style (deprecated.ts) gets native's note
+        for (const w of words) {
+          const removed = removedStyleError('pair_style', w);
+          if (removed) throw removed;
+        }
         const hint = words.length
           ? ` If ${words.map((w) => `'${w}'`).join(' or ')} is meant as a pair style, the browser engine does not support it; supported: ${Object.keys(this.registry).filter((n) => !n.startsWith('hybrid')).sort().join(', ')}.`
           : '';

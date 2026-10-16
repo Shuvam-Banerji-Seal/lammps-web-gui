@@ -108,6 +108,94 @@ export const nativeGhosts = (xn: Float64Array, n: number, g: Geometry, cut: numb
  * own bin after it in the chain (ghosts only when above and to the right), then the partners of the upper stencil.
  * A candidate is kept only when the engine's half list holds the same pair (its cutoff, special bonds, exclusions).
  */
+
+/**
+ * Open-addressing hash table from integer keys to int32 values. The keys are numbers below 2^53 compared exactly, so
+ * the table has the same key equality as the Map it replaces; absent keys read as -1 (all values here are >= 0).
+ */
+class IntTable {
+  private cap = 0;
+  private mask = 0;
+  private keys = new Float64Array(0);
+  private vals = new Int32Array(0);
+  private used = new Uint8Array(0);
+  private count = 0;
+
+  constructor(expected: number) {
+    let cap = 16;
+    while (cap < 2 * expected) cap *= 2;
+    this.alloc(cap);
+  }
+
+  private alloc(cap: number): void {
+    this.cap = cap;
+    this.mask = cap - 1;
+    this.keys = new Float64Array(cap);
+    this.vals = new Int32Array(cap);
+    this.used = new Uint8Array(cap);
+  }
+
+  private slot(key: number): number {
+    const hi = Math.floor(key / 4294967296);
+    const lo = key - hi * 4294967296;
+    let h = Math.imul(lo | 0, 0x9e3779b1) ^ Math.imul((hi | 0) + 0x27d4eb2f, 0x85ebca6b);
+    h ^= h >>> 15;
+    h = Math.imul(h, 0xc2b2ae35);
+    h ^= h >>> 13;
+    let s = h & this.mask;
+    while (this.used[s] === 1 && this.keys[s] !== key) s = (s + 1) & this.mask;
+    return s;
+  }
+
+  private insert(s: number, key: number, val: number): void {
+    this.used[s] = 1;
+    this.keys[s] = key;
+    this.vals[s] = val;
+    this.count++;
+    if (this.count * 2 > this.cap) this.grow();
+  }
+
+  private grow(): void {
+    const ok = this.keys, ov = this.vals, ou = this.used, oc = this.cap;
+    this.alloc(oc * 2);
+    for (let i = 0; i < oc; i++) {
+      if (ou[i] !== 1) continue;
+      const s = this.slot(ok[i]);
+      this.used[s] = 1;
+      this.keys[s] = ok[i];
+      this.vals[s] = ov[i];
+    }
+  }
+
+  get(key: number): number {
+    const s = this.slot(key);
+    return this.used[s] === 1 ? this.vals[s] : -1;
+  }
+
+  /** Map.set: the last value wins. */
+  set(key: number, val: number): void {
+    const s = this.slot(key);
+    if (this.used[s] === 1) this.vals[s] = val;
+    else this.insert(s, key, val);
+  }
+}
+
+/** A growable Int32 buffer for the pair output (pairs are appended as two int32 each). */
+interface Growable {
+  buf: Int32Array;
+  len: number;
+}
+
+const pushPair = (out: Growable, a: number, b: number): void => {
+  if (out.len + 2 > out.buf.length) {
+    const grown = new Int32Array(out.buf.length * 2 + 2);
+    grown.set(out.buf.subarray(0, out.len));
+    out.buf = grown;
+  }
+  out.buf[out.len++] = a;
+  out.buf[out.len++] = b;
+};
+
 /** The native layout of one step (one processor, orthogonal box): native order, ghosts, bins, bin chains. */
 export interface NativeLayout {
   /** native local order: native atom k is engine atom order[k] */
@@ -118,8 +206,16 @@ export interface NativeLayout {
   X: Float64Array;
   /** the bin coordinates of each native atom (3 per atom) */
   binOf: Int32Array;
-  /** the bin chains: native indices in ascending order inside each bin */
-  chains: Map<number, number[]>;
+  /** bin key (binKey) -> bin number, -1 when no atom is in that bin */
+  bins: IntTable;
+  /** the bin number of each native atom */
+  atomBin: Int32Array;
+  /**
+   * the bin chains as CSR: the native indices of bin b, in ascending order, are
+   * members[chainStart[b] .. chainStart[b + 1])
+   */
+  chainStart: Int32Array;
+  members: Int32Array;
   /** position of each native atom in its bin chain */
   posInBin: Int32Array;
   binsize: number[];
@@ -132,9 +228,9 @@ export interface NativeLayout {
   /** nstencil_bin.cpp bin_distance: squared minimum distance from the central bin to bin (i, j, k) */
   binDist: (i: number, j: number, k: number) => number;
   /** engine index of native atom k (owned or ghost), or -1 when the engine holds no such image */
-  engineIndex: (k: number) => number;
+  gEng: Int32Array;
   /** the engine's neighbor-list index of each (owned engine atom, engine atom) membership key */
-  engByKey: Map<number, number>;
+  engByKey: IntTable;
   NA: number;
 }
 
@@ -145,7 +241,7 @@ const nativeLayout = (s: SimState, nb: Neighbor, g: Geometry): NativeLayout => {
   // the engine's neighbor list keys (owned engine i, engine atom k) by their periodic image
   const NA = nb.nall;
   const gi = nb.gimage;
-  const engByKey = new Map<number, number>();
+  const engByKey = new IntTable(NA);
   for (let k = 0; k < NA; k++) engByKey.set(imgKey(nb.owner[k], gi[3 * k], gi[3 * k + 1], gi[3 * k + 2]), k);
   // native positions and ghosts (native local order: atom k of the native list is engine atom order[k])
   const xn = new Float64Array(3 * n);
@@ -180,16 +276,28 @@ const nativeLayout = (s: SimState, nb: Neighbor, g: Geometry): NativeLayout => {
     return Math.trunc((x - lo[d]) * bininv[d]) - 1;
   };
   const binOf = new Int32Array(nall * 3);
-  const chains = new Map<number, number[]>();
-  const posInBin = new Int32Array(nall);
+  const atomBin = new Int32Array(nall);
+  const bins = new IntTable(nall);
+  const binCount = new Int32Array(nall);
+  let nbins = 0;
   for (let k = 0; k < nall; k++) {
     const bx = coord(X[3 * k], 0), by = coord(X[3 * k + 1], 1), bz = coord(X[3 * k + 2], 2);
     binOf[3 * k] = bx; binOf[3 * k + 1] = by; binOf[3 * k + 2] = bz;
     const key = binKey(bx, by, bz);
-    let chain = chains.get(key);
-    if (!chain) { chain = []; chains.set(key, chain); }
-    posInBin[k] = chain.length;
-    chain.push(k);
+    let b = bins.get(key);
+    if (b < 0) { b = nbins++; bins.set(key, b); }
+    atomBin[k] = b;
+    binCount[b]++;
+  }
+  const chainStart = new Int32Array(nbins + 1);
+  for (let b = 0; b < nbins; b++) chainStart[b + 1] = chainStart[b] + binCount[b];
+  const fill = chainStart.slice(0, nbins);
+  const members = new Int32Array(nall);
+  const posInBin = new Int32Array(nall);
+  for (let k = 0; k < nall; k++) {
+    const b = atomBin[k];
+    posInBin[k] = fill[b] - chainStart[b];
+    members[fill[b]++] = k;
   }
 
   // stencil reach (nstencil.cpp sx, sy, sz) and bin_distance (nstencil_bin.cpp)
@@ -204,38 +312,95 @@ const nativeLayout = (s: SimState, nb: Neighbor, g: Geometry): NativeLayout => {
     const dz = k > 0 ? (k - 1) * binsize[2] : k === 0 ? 0 : (k + 1) * binsize[2];
     return dx * dx + dy * dy + dz * dz;
   };
-  /** Engine index of native atom k (owned or ghost), or -1 when the engine holds no such image. */
-  const engineIndex = (k: number): number => {
-    const r = gh.root[k];
-    const e = order[r];
-    if (k < n) return e;
-    const hit = engByKey.get(imgKey(e, gh.img[3 * k], gh.img[3 * k + 1], gh.img[3 * k + 2]));
-    return hit === undefined ? -1 : hit;
-  };
+  // engine index of each native atom (owned: order[k]; ghost: the engine image, or -1 when there is none)
+  const gEng = new Int32Array(nall);
+  for (let k = 0; k < nall; k++) {
+    if (k < n) { gEng[k] = order[k]; continue; }
+    const e = order[gh.root[k]];
+    gEng[k] = engByKey.get(imgKey(e, gh.img[3 * k], gh.img[3 * k + 1], gh.img[3 * k + 2]));
+  }
   return {
-    order, n, two, X, binOf, chains, posInBin, binsize, bininv,
+    order, n, two, X, binOf, bins, atomBin, chainStart, members, posInBin, binsize, bininv,
     sx: reach(0), sy: reach(1), sz: two ? 0 : reach(2), cutmaxsq: cutmax * cutmax,
-    binDist, engineIndex, engByKey, NA,
+    binDist, gEng, engByKey, NA,
   };
+};
+
+/**
+ * Membership rows: row r holds the (column, value) entries of engine atom r in first-insertion order. The original
+ * Map kept the first value of each key ("if (!memb.has(key)) memb.set(key, m)"), so scattering a row into a dense
+ * array (first entry wins) reproduces each lookup exactly.
+ */
+interface Rows {
+  start: Int32Array;
+  col: Int32Array;
+  val: Int32Array;
+}
+
+/** Stable counting sort of the (row, column, value) insertions into rows (insertion order kept inside each row). */
+const buildRows = (nrows: number, cnt: number, rowOf: Int32Array, colOf: Int32Array, valOf: Int32Array): Rows => {
+  const start = new Int32Array(nrows + 1);
+  for (let e = 0; e < cnt; e++) start[rowOf[e] + 1]++;
+  for (let r = 0; r < nrows; r++) start[r + 1] += start[r];
+  const fill = start.slice(0, nrows);
+  const col = new Int32Array(cnt);
+  const val = new Int32Array(cnt);
+  for (let e = 0; e < cnt; e++) {
+    const p = fill[rowOf[e]]++;
+    col[p] = colOf[e];
+    val[p] = valOf[e];
+  }
+  return { start, col, val };
+};
+
+/** dense[column] = value of the first entry of row r in that column (-1 where the row has none). */
+const scatterRow = (rows: Rows, r: number, dense: Int32Array): void => {
+  const end = rows.start[r + 1];
+  for (let p = rows.start[r]; p < end; p++) {
+    if (dense[rows.col[p]] < 0) dense[rows.col[p]] = rows.val[p];
+  }
+};
+
+/** Undoes scatterRow for row r, leaving dense all -1. */
+const clearRow = (rows: Rows, r: number, dense: Int32Array): void => {
+  const end = rows.start[r + 1];
+  for (let p = rows.start[r]; p < end; p++) dense[rows.col[p]] = -1;
+};
+
+/**
+ * The pair (ei, engine partner j) with its pair code, appended when the engine's half list holds the pair (dense holds
+ * the membership row of ei, see scatterRow).
+ */
+const takePair = (out: Growable, dense: Int32Array, gEng: Int32Array, ei: number, j: number): void => {
+  const ek = gEng[j];
+  if (ek < 0) return;
+  const m = dense[ek];
+  if (m < 0) return;
+  pushPair(out, ei, ek | (m << SBBITS));
 };
 
 export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighList, newton = true): Int32Array => {
   const L = nativeLayout(s, nb, g);
-  const { order, n, two, X, binOf, chains, posInBin, sx, sy, sz, cutmaxsq, binDist, engineIndex, engByKey, NA } = L;
+  const { order, n, two, X, binOf, bins, atomBin, chainStart, members, posInBin, sx, sy, sz, cutmaxsq, binDist, gEng, engByKey, NA } = L;
   const gi = nb.gimage;
-  const memb = new Map<number, number>();
+  let total = 0;
+  for (let i = 0; i < nb.nlocal; i++) total += half.numneigh[i];
+  // membership insertions, in the original order: (i, k) with the half-list value, then the mirror (owner(k), kr)
+  const rowOf = new Int32Array(2 * total), colOf = new Int32Array(2 * total), valOf = new Int32Array(2 * total);
+  let cnt = 0;
   for (let i = 0; i < nb.nlocal; i++) {
     const k0 = half.firstneigh[i], k1 = k0 + half.numneigh[i];
     for (let q = k0; q < k1; q++) {
       const jj = half.neighbors[q];
       const k = jj & NEIGHMASK;
       const m = jj >>> SBBITS;
-      if (!memb.has(i * NA + k)) memb.set(i * NA + k, m);
+      rowOf[cnt] = i; colOf[cnt] = k; valOf[cnt] = m; cnt++;
       // the mirror of the pair (i, k) with image shift d is the pair (owner(k), the image of i with shift -d)
       const kr = engByKey.get(imgKey(i, -gi[3 * k], -gi[3 * k + 1], -gi[3 * k + 2]));
-      if (kr !== undefined && !memb.has(nb.owner[k] * NA + kr)) memb.set(nb.owner[k] * NA + kr, m);
+      if (kr >= 0) { rowOf[cnt] = nb.owner[k]; colOf[cnt] = kr; valOf[cnt] = m; cnt++; }
     }
   }
+  const rows = buildRows(nb.nlocal, cnt, rowOf, colOf, valOf);
   // half newton stencil (nstencil.cpp sx, sy, sz; nstencil_bin.cpp create)
   // newton off: npair_bin.cpp with the full stencil (neighbor.cpp: "request a full stencil if building full neighbor list
   // or newton is off"), the central bin in its place, every bin in k, j, i order
@@ -267,47 +432,47 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
     }
   }
   // npair_bin.cpp build(): own bin after i (ghosts above and to the right only), then the stencil bins
-  const out: number[] = [];
+  const dense = new Int32Array(NA).fill(-1);
+  const out: Growable = { buf: new Int32Array(Math.max(16, 2 * total)), len: 0 };
   for (let i = 0; i < n; i++) {
     const ei = order[i];
+    scatterRow(rows, ei, dense);
     const xi = X[3 * i], yi = X[3 * i + 1], zi = X[3 * i + 2];
     const bx = binOf[3 * i], by = binOf[3 * i + 1], bz = binOf[3 * i + 2];
-    const own = chains.get(binKey(bx, by, bz))!;
-    const take = (j: number): void => {
-      const ek = engineIndex(j);
-      if (ek < 0) return;
-      const m = memb.get(ei * NA + ek);
-      if (m === undefined) return;
-      out.push(ei, ek | (m << SBBITS));
-    };
     if (!newton) {
       // npair_half_bin_newtoff: "only store pair if i < j" (own/own once), every ghost; the chains start at the bin head
       for (let st = 0; st < stencil.length; st += 3) {
-        const chain = chains.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
-        if (!chain) continue;
-        for (const j of chain) if (j > i) take(j);
-      }
-      continue;
-    }
-    for (let q = posInBin[i] + 1; q < own.length; q++) {
-      const j = own[q];
-      if (j >= n) {
-        const zj = X[3 * j + 2], yj = X[3 * j + 1], xj = X[3 * j];
-        if (zj < zi) continue;
-        if (zj === zi) {
-          if (yj < yi) continue;
-          if (yj === yi && xj < xi) continue;
+        const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+        if (b < 0) continue;
+        for (let q = chainStart[b]; q < chainStart[b + 1]; q++) {
+          const j = members[q];
+          if (j > i) takePair(out, dense, gEng, ei, j);
         }
       }
-      take(j);
+    } else {
+      const ob = atomBin[i];
+      const ownEnd = chainStart[ob + 1];
+      for (let q = chainStart[ob] + posInBin[i] + 1; q < ownEnd; q++) {
+        const j = members[q];
+        if (j >= n) {
+          const zj = X[3 * j + 2], yj = X[3 * j + 1], xj = X[3 * j];
+          if (zj < zi) continue;
+          if (zj === zi) {
+            if (yj < yi) continue;
+            if (yj === yi && xj < xi) continue;
+          }
+        }
+        takePair(out, dense, gEng, ei, j);
+      }
+      for (let st = 0; st < stencil.length; st += 3) {
+        const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+        if (b < 0) continue;
+        for (let q = chainStart[b]; q < chainStart[b + 1]; q++) takePair(out, dense, gEng, ei, members[q]);
+      }
     }
-    for (let st = 0; st < stencil.length; st += 3) {
-      const chain = chains.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
-      if (!chain) continue;
-      for (const j of chain) take(j);
-    }
+    clearRow(rows, ei, dense);
   }
-  return Int32Array.from(out);
+  return out.buf.slice(0, out.len);
 };
 
 /**
@@ -319,12 +484,16 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
  */
 export const nativeFullLast = (s: SimState, nb: Neighbor, g: Geometry, full: NeighList): Int32Array => {
   const L = nativeLayout(s, nb, g);
-  const { order, n, binOf, chains, sx, sy, sz, cutmaxsq, binDist, engineIndex, NA } = L;
-  const memb = new Set<number>();
+  const { order, n, binOf, bins, chainStart, members, sx, sy, sz, cutmaxsq, binDist, gEng, NA } = L;
+  let total = 0;
+  for (let i = 0; i < nb.nlocal; i++) total += full.numneigh[i];
+  const rowOf = new Int32Array(total), colOf = new Int32Array(total), valOf = new Int32Array(total).fill(1);
+  let cnt = 0;
   for (let i = 0; i < nb.nlocal; i++) {
     const k0 = full.firstneigh[i], k1 = k0 + full.numneigh[i];
-    for (let q = k0; q < k1; q++) memb.add(i * NA + (full.neighbors[q] & NEIGHMASK));
+    for (let q = k0; q < k1; q++) { rowOf[cnt] = i; colOf[cnt] = full.neighbors[q] & NEIGHMASK; cnt++; }
   }
+  const rows = buildRows(nb.nlocal, cnt, rowOf, colOf, valOf);
   const stencil: number[] = [];
   for (let k = -sz; k <= sz; k++) {
     for (let j = -sy; j <= sy; j++) {
@@ -333,20 +502,24 @@ export const nativeFullLast = (s: SimState, nb: Neighbor, g: Geometry, full: Nei
       }
     }
   }
+  const dense = new Int32Array(NA).fill(-1);
   const last = new Int32Array(n).fill(-1);
   for (let i = 0; i < n; i++) {
     const ei = order[i];
+    scatterRow(rows, ei, dense);
     const bx = binOf[3 * i], by = binOf[3 * i + 1], bz = binOf[3 * i + 2];
     let found = -1;
     for (let st = 0; st < stencil.length; st += 3) {
-      const chain = chains.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
-      if (!chain) continue;
-      for (const j of chain) {
+      const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+      if (b < 0) continue;
+      for (let q = chainStart[b]; q < chainStart[b + 1]; q++) {
+        const j = members[q];
         if (j === i) continue;
-        const ek = engineIndex(j);
-        if (ek >= 0 && memb.has(ei * NA + ek)) found = ek;
+        const ek = gEng[j];
+        if (ek >= 0 && dense[ek] >= 0) found = ek;
       }
     }
+    clearRow(rows, ei, dense);
     last[ei] = found;
   }
   return last;

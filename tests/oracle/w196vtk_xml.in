@@ -1,0 +1,18 @@
+# oracle: dump vtk XML PolyData file (.vtp) with id type vx vy vz fx fy fz and the RectilinearGrid bounding box (.vtr), 4x4x4 fcc lj
+# oracle-files: dump0.vtp dump10.vtp dump20.vtp dump0_boundingBox.vtr dump20_boundingBox.vtr
+# oracle-compare: filerel=1e-7
+# Measured with native LAMMPS: max relative error 0 on values above 1e-6 in all five files (PolyData at steps 0, 10, 20 and the RectilinearGrid boxes); the largest absolute difference is 3.9e-15. Native build: /home/roy/.local/bin/lmp (b332f28). Engine time about 0.5 s.
+units           lj
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.44 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+fix             1 all nve
+dump            d all vtk 10 dump*.vtp id type vx vy vz fx fy fz
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             20

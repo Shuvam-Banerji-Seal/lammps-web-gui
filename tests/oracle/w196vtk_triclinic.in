@@ -1,0 +1,19 @@
+# oracle: dump vtk of a triclinic (prism) box: legacy .vtk and XML .vtu atoms (UnstructuredGrid vertices) with the hexahedron bounding boxes
+# oracle-files: tri0.vtk tri20.vtk tri0_boundingBox.vtk tri20_boundingBox.vtk tri0.vtu tri20.vtu tri0_boundingBox.vtu tri20_boundingBox.vtu
+# oracle-compare: filerel=1e-7
+# Measured with native LAMMPS: max relative error 0 on values above 1e-6 in all eight files (legacy and vtu atoms, hexahedron boxes); the largest absolute difference is 8.1e-13 on near-zero forces at step 0 (summation order). Native build: /home/roy/.local/bin/lmp (b332f28). Engine time about 0.3 s.
+units           lj
+lattice         fcc 0.8442
+region          box prism 0 4 0 4 0 4 0.5 0.3 0.2
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.44 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+fix             1 all nve
+dump            a all vtk 10 tri*.vtk id type vx fx
+dump            b all vtk 10 tri*.vtu id type vx fx
+thermo_style    custom step pe
+thermo_modify   format float %.15g
+run             20

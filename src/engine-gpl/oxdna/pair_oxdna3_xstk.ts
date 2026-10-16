@@ -17,6 +17,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF2, DF4, F2, F4, baseSiteOxdna3, lrfOf, oxdnaConstants, tetIndex, tetramerTable, potentialLines } from './common';
+import { sin as libmSin } from '../libm/sincos';
 
 /** The per-tetramer tables of one neighbour set ("33" or "55"). */
 const SET_KEYS = ['cut0', 'cutc', 'cutlo', 'cuthi', 'cutlc', 'cuthc', 'a4', 'th4', 'dth4ast', 'b4', 'dth4c'] as const;
@@ -269,16 +270,16 @@ export class PairOxdna3Xstk extends Pair {
         // derivatives (the C++ divides the angle derivatives by sin(theta), the theta4, 7 and 8 ones by it as well)
         const df2_33 = DF2(r, kx, T.cut0_33[q33], T.cutlc_33[q33], T.cuthc_33[q33], T.cutlo_33[q33], T.cuthi_33[q33], blo, bhi);
         const df2_55 = DF2(r, kx, T.cut0_55[q55], T.cutlc_55[q55], T.cuthc_55[q55], T.cutlo_55[q55], T.cuthi_55[q55], blo, bhi);
-        const df4t1 = DF4(theta1, P.a1[ij], P.th1[ij], P.dth1ast[ij], P.b1[ij], P.dth1c[ij]) / Math.sin(theta1);
-        const df4t2 = DF4(theta2, P.a2[ij], P.th2[ij], P.dth2ast[ij], P.b2[ij], P.dth2c[ij]) / Math.sin(theta2);
-        const df4t3 = DF4(theta3, P.a3[ij], P.th3[ij], P.dth3ast[ij], P.b3[ij], P.dth3c[ij]) / Math.sin(theta3);
-        const rsint4 = 1.0 / Math.sin(theta4);
+        const df4t1 = DF4(theta1, P.a1[ij], P.th1[ij], P.dth1ast[ij], P.b1[ij], P.dth1c[ij]) / libmSin(theta1);
+        const df4t2 = DF4(theta2, P.a2[ij], P.th2[ij], P.dth2ast[ij], P.b2[ij], P.dth2c[ij]) / libmSin(theta2);
+        const df4t3 = DF4(theta3, P.a3[ij], P.th3[ij], P.dth3ast[ij], P.b3[ij], P.dth3c[ij]) / libmSin(theta3);
+        const rsint4 = 1.0 / libmSin(theta4);
         const df4t4_33 = DF4(theta4, T.a4_33[q33], T.th4_33[q33], T.dth4ast_33[q33], T.b4_33[q33], T.dth4c_33[q33]) * rsint4;
         const df4t4_55 = DF4(theta4, T.a4_55[q55], T.th4_55[q55], T.dth4ast_55[q55], T.b4_55[q55], T.dth4c_55[q55]) * rsint4;
-        const rsint7 = 1.0 / Math.sin(theta7);
+        const rsint7 = 1.0 / libmSin(theta7);
         const df4t7_33 = DF4(theta7, P.a7[ij], P.th7_33[ij], P.dth7ast[ij], P.b7[ij], P.dth7c[ij]) * rsint7;
         const df4t7_55 = DF4(theta7, P.a7[ij], P.th7_55[ij], P.dth7ast[ij], P.b7[ij], P.dth7c[ij]) * rsint7;
-        const rsint8 = 1.0 / Math.sin(theta8);
+        const rsint8 = 1.0 / libmSin(theta8);
         const df4t8_33 = DF4(theta8, P.a8[ij], P.th8_33[ij], P.dth8ast[ij], P.b8[ij], P.dth8c[ij]) * rsint8;
         const df4t8_55 = DF4(theta8, P.a8[ij], P.th8_55[ij], P.dth8ast[ij], P.b8[ij], P.dth8c[ij]) * rsint8;
         // the sums with one factor differentiated: r (df2), theta4, theta7 and theta8

@@ -16,6 +16,7 @@ import type { System } from '../../engine/system';
 import type { MinHooks, MinResult } from '../../engine/run/min';
 import { minEnergyForce, type MinimizeParams } from '../../engine/run/minimizers';
 import { minSpinEvaluateDt, minSpinTorqueNorm, spinMinSettings, spinMinStop } from './min_spin';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** Rodrigues' formula for the rotation by the vector p (rot is row-major 3x3 in the source's index order). */
 export const rodrigues = (p: Float64Array, off: number, out: Float64Array): void => {
@@ -26,7 +27,7 @@ export const rodrigues = (p: Float64Array, off: number, out: Float64Array): void
     return;
   }
   const theta = Math.sqrt(px * px + py * py + pz * pz);
-  const A = Math.cos(theta), B = Math.sin(theta), D = 1.0 - A;
+  const A = libmCos(theta), B = libmSin(theta), D = 1.0 - A;
   const x = px / theta, y = py / theta, z = pz / theta;
   out[0] = A + z * z * D;
   out[4] = A + y * y * D;

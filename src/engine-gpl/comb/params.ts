@@ -9,6 +9,8 @@
  */
 import { StyleError } from '../../engine/force/types';
 import { joinPotentialEntries } from '../../engine/force/util';
+import { log as libmLog } from '../libm/log';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** Number of words in one COMB potential entry (PairComb::NPARAMS_PER_LINE). */
 export const NPARAMS_PER_LINE = 49;
@@ -151,13 +153,13 @@ export const setupCombParams = (params: CombParam[], elements: readonly string[]
     p.dQ1 = (p.QU1 - p.QL1) / 2.0;
     p.aB1 = 1.0 / (1.0 - powint(Math.abs(p.Qo1 / p.dQ1), 10));
     p.bB1 = Math.pow(Math.abs(p.aB1), 0.1) / p.dQ1;
-    p.nD1 = Math.log(p.DU1 / (p.DU1 - p.DL1)) / Math.log(p.QU1 / (p.QU1 - p.QL1));
+    p.nD1 = libmLog(p.DU1 / (p.DU1 - p.DL1)) / libmLog(p.QU1 / (p.QU1 - p.QL1));
     p.bD1 = Math.pow(p.DL1 - p.DU1, 1.0 / p.nD1) / (p.QU1 - p.QL1);
     p.Qo2 = (p.QU2 + p.QL2) / 2.0;
     p.dQ2 = (p.QU2 - p.QL2) / 2.0;
     p.aB2 = 1.0 / (1.0 - powint(Math.abs(p.Qo2 / p.dQ2), 10));
     p.bB2 = Math.pow(Math.abs(p.aB2), 0.1) / p.dQ2;
-    p.nD2 = Math.log(p.DU2 / (p.DU2 - p.DL2)) / Math.log(p.QU2 / (p.QU2 - p.QL2));
+    p.nD2 = libmLog(p.DU2 / (p.DU2 - p.DL2)) / libmLog(p.QU2 / (p.QU2 - p.QL2));
     p.bD2 = Math.pow(p.DL2 - p.DU2, 1.0 / p.nD2) / (p.QU2 - p.QL2);
     p.lcut = p.coulcut;
     p.lcutsq = p.lcut * p.lcut;
@@ -178,42 +180,42 @@ export const combFc = (r: number, p: CombParam): number => {
   const R = p.bigr, D = p.bigd;
   if (r < R - D) return 1.0;
   if (r > R + D) return 0.0;
-  return 0.5 * (1.0 - Math.sin(MY_PI2 * (r - R) / D));
+  return 0.5 * (1.0 - libmSin(MY_PI2 * (r - R) / D));
 };
 
 export const combFcD = (r: number, p: CombParam): number => {
   const R = p.bigr, D = p.bigd;
   if (r < R - D) return 0.0;
   if (r > R + D) return 0.0;
-  return -(MY_PI4 / D) * Math.cos(MY_PI2 * (r - R) / D);
+  return -(MY_PI4 / D) * libmCos(MY_PI2 * (r - R) / D);
 };
 
 export const combFc2 = (r: number): number => {
   const R = 1.89350, D = R + 0.050;
   if (r < R) return 0.0;
   if (r > D) return 1.0;
-  return 0.5 * (1.0 + Math.cos(MY_PI * (r - R) / (D - R)));
+  return 0.5 * (1.0 + libmCos(MY_PI * (r - R) / (D - R)));
 };
 
 export const combFc2D = (r: number): number => {
   const R = 1.89350, D = R + 0.050;
   if (r < R) return 0.0;
   if (r > D) return 0.0;
-  return -(MY_PI2 / (D - R)) * Math.sin(MY_PI * (r - R) / (D - R));
+  return -(MY_PI2 / (D - R)) * libmSin(MY_PI * (r - R) / (D - R));
 };
 
 export const combFc3 = (r: number): number => {
   const R = 2.51350, D = R + 0.050;
   if (r < R) return 1.0;
   if (r > D) return 0.0;
-  return 0.5 * (1.0 + Math.cos(MY_PI * (r - R) / (D - R)));
+  return 0.5 * (1.0 + libmCos(MY_PI * (r - R) / (D - R)));
 };
 
 export const combFc3D = (r: number): number => {
   const R = 2.51350, D = R + 0.050;
   if (r < R) return 0.0;
   if (r > D) return 0.0;
-  return -(MY_PI2 / (D - R)) * Math.sin(MY_PI * (r - R) / (D - R));
+  return -(MY_PI2 / (D - R)) * libmSin(MY_PI * (r - R) / (D - R));
 };
 
 /** comb_gijk: angular function g(cos theta). */

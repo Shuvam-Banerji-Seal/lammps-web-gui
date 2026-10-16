@@ -17,6 +17,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF2, DF4, DF6, F2, F4, F6, lrfOf, oxdnaConstants, stackingSiteOxdna1, type StackRule, potentialLines } from './common';
+import { sin as libmSin } from '../libm/sincos';
 
 const CX2_NAMES = ['k_cxst', 'cut_cxst_0', 'cut_cxst_c', 'cut_cxst_lo', 'cut_cxst_hi',
   'a_cxst1', 'theta_cxst1_0', 'dtheta_cxst1_ast', 'a_cxst4', 'theta_cxst4_0', 'dtheta_cxst4_ast',
@@ -208,13 +209,13 @@ export class PairOxdna2Coaxstk extends Pair {
         const e = f2 * f4f6t1 * f4t4 * f4t5 * f4t6 * factorLJ;
         if (e === 0.0) continue;
         const df2 = DF2(r, kab, T.cut0[ij], T.cutlc[ij], T.cuthc[ij], T.cutlo[ij], T.cuthi[ij], T.blo[ij], T.bhi[ij]);
-        const df4f6t1 = (DF4(theta1, T.a1[ij], T.th1[ij], T.dth1ast[ij], T.b1[ij], T.dth1c[ij]) + DF6(theta1, T.AA[ij], T.BB[ij])) / Math.sin(theta1);
+        const df4f6t1 = (DF4(theta1, T.a1[ij], T.th1[ij], T.dth1ast[ij], T.b1[ij], T.dth1c[ij]) + DF6(theta1, T.AA[ij], T.BB[ij])) / libmSin(theta1);
         const df4t4 = (DF4(theta4, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])
-          + DF4(theta4, T.a4[ij], PI - T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])) / Math.sin(theta4);
+          + DF4(theta4, T.a4[ij], PI - T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])) / libmSin(theta4);
         const df4t5 = (DF4(theta5, T.a5[ij], T.th5[ij], T.dth5ast[ij], T.b5[ij], T.dth5c[ij])
-          - DF4(theta5p, T.a5[ij], T.th5[ij], T.dth5ast[ij], T.b5[ij], T.dth5c[ij])) / Math.sin(theta5);
+          - DF4(theta5p, T.a5[ij], T.th5[ij], T.dth5ast[ij], T.b5[ij], T.dth5c[ij])) / libmSin(theta5);
         const df4t6 = (DF4(theta6, T.a6[ij], T.th6[ij], T.dth6ast[ij], T.b6[ij], T.dth6c[ij])
-          - DF4(theta6p, T.a6[ij], T.th6[ij], T.dth6ast[ij], T.b6[ij], T.dth6c[ij])) / Math.sin(theta6);
+          - DF4(theta6p, T.a6[ij], T.th6[ij], T.dth6ast[ij], T.b6[ij], T.dth6c[ij])) / libmSin(theta6);
         delf[0] = 0.0; delf[1] = 0.0; delf[2] = 0.0;
         delta[0] = 0.0; delta[1] = 0.0; delta[2] = 0.0;
         deltb[0] = 0.0; deltb[1] = 0.0; deltb[2] = 0.0;

@@ -12,6 +12,7 @@ import type { NativeRandom } from '../../engine/nativeRandom';
 import { NATIVE_RANDOM_WORDS } from '../../engine/nativeRandom';
 import { RanPark } from '../random_park';
 import { RanMars } from '../random_mars';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 const TWO_PI = 2 * Math.PI;
 
@@ -91,13 +92,13 @@ export const NATIVE: NativeRandom = {
       const t2 = Math.sqrt(s);
       const theta1 = TWO_PI * rp.uniform();
       const theta2 = TWO_PI * rp.uniform();
-      out[0] = Math.cos(theta2) * t2;
-      out[1] = Math.sin(theta1) * t1;
-      out[2] = Math.cos(theta1) * t1;
-      out[3] = Math.sin(theta2) * t2;
+      out[0] = libmCos(theta2) * t2;
+      out[1] = libmSin(theta1) * t1;
+      out[2] = libmCos(theta1) * t1;
+      out[3] = libmSin(theta2) * t2;
     } else {
       const theta2 = Math.PI * rp.uniform();
-      out[0] = Math.cos(theta2); out[1] = 0; out[2] = 0; out[3] = Math.sin(theta2);
+      out[0] = libmCos(theta2); out[1] = 0; out[2] = 0; out[3] = libmSin(theta2);
     }
   },
   // set.cpp, THETA_RANDOM: "avec_line->bonus[line[i]].theta = MY_2PI*ranpark->uniform();"

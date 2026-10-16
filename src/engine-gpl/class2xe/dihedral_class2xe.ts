@@ -14,6 +14,7 @@
 import { SimpleBonded, atomIndex, delta, TypeParams } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { bondedVirial, StyleError, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** docs.lammps.org/dihedral_class2.html (class2xe section): "The class2xe dihedral style uses the potential". */
 const SMALL = 0.0000001;
@@ -256,8 +257,8 @@ export class DihedralClass2xe extends SimpleBonded {
       const dphi1 = phi - PH[0][type];
       const dphi2 = 2.0 * phi - PH[1][type];
       const dphi3 = 3.0 * phi - PH[2][type];
-      let edihedral = K[0][type] * (1.0 - Math.cos(dphi1)) + K[1][type] * (1.0 - Math.cos(dphi2)) + K[2][type] * (1.0 - Math.cos(dphi3));
-      const deDihedral = K[0][type] * Math.sin(dphi1) + 2.0 * K[1][type] * Math.sin(dphi2) + 3.0 * K[2][type] * Math.sin(dphi3);
+      let edihedral = K[0][type] * (1.0 - libmCos(dphi1)) + K[1][type] * (1.0 - libmCos(dphi2)) + K[2][type] * (1.0 - libmCos(dphi3));
+      const deDihedral = K[0][type] * libmSin(dphi1) + 2.0 * K[1][type] * libmSin(dphi2) + 3.0 * K[2][type] * libmSin(dphi3);
       for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) fabcd[i][j] = deDihedral * dphidr[i][j];
 
       // d(bond)/dr: dbonddr[bond][atom][coordinate]
@@ -288,8 +289,8 @@ export class DihedralClass2xe extends SimpleBonded {
         dthetadr[1][3][k] = -sc2 * ((t4 * vb3[k]) + (vb2[k] * r12c2));
       }
 
-      const cos2phi = Math.cos(2.0 * phi);
-      const cos3phi = Math.cos(3.0 * phi);
+      const cos2phi = libmCos(2.0 * phi);
+      const cos3phi = libmCos(3.0 * phi);
 
       // middle bond / torsion coupling (energy and force on bond 2)
       let bt1 = mf1[type] * cosphi;
@@ -301,8 +302,8 @@ export class DihedralClass2xe extends SimpleBonded {
       let db = 1 - mbtRalpha2;
       edihedral += db * sumbte;
       bt1 = -mf1[type] * sinphi;
-      bt2 = -2.0 * mf2[type] * Math.sin(2.0 * phi);
-      bt3 = -3.0 * mf3[type] * Math.sin(3.0 * phi);
+      bt2 = -2.0 * mf2[type] * libmSin(2.0 * phi);
+      bt3 = -3.0 * mf3[type] * libmSin(3.0 * phi);
       let sumbtf = bt1 + bt2 + bt3;
       for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
         fabcd[i][j] += db * sumbtf * dphidr[i][j] + sumbte * (mAlpha2[type] * mbtRalpha2) * dbonddr[1][i][j];
@@ -318,8 +319,8 @@ export class DihedralClass2xe extends SimpleBonded {
       db = 1 - ebtRalpha1;
       edihedral += db * (bt1 + bt2 + bt3);
       bt1 = e1f1[type] * sinphi;
-      bt2 = 2.0 * e1f2[type] * Math.sin(2.0 * phi);
-      bt3 = 3.0 * e1f3[type] * Math.sin(3.0 * phi);
+      bt2 = 2.0 * e1f2[type] * libmSin(2.0 * phi);
+      bt3 = 3.0 * e1f3[type] * libmSin(3.0 * phi);
       sumbtf = bt1 + bt2 + bt3;
       for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
         fabcd[i][j] -= db * sumbtf * dphidr[i][j] + sumbte * (e1Alpha[type] * ebtRalpha1) * dbonddr[0][i][j];
@@ -335,8 +336,8 @@ export class DihedralClass2xe extends SimpleBonded {
       db = 1 - ebtRalpha3;
       edihedral += db * (bt1 + bt2 + bt3);
       bt1 = -e2f1[type] * sinphi;
-      bt2 = -2.0 * e2f2[type] * Math.sin(2.0 * phi);
-      bt3 = -3.0 * e2f3[type] * Math.sin(3.0 * phi);
+      bt2 = -2.0 * e2f2[type] * libmSin(2.0 * phi);
+      bt3 = -3.0 * e2f3[type] * libmSin(3.0 * phi);
       sumbtf = bt1 + bt2 + bt3;
       for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
         fabcd[i][j] += db * sumbtf * dphidr[i][j] + sumbte * (e2Alpha[type] * ebtRalpha3) * dbonddr[2][i][j];
@@ -350,8 +351,8 @@ export class DihedralClass2xe extends SimpleBonded {
       let da = Math.acos(costh12) - a1Theta[type];
       edihedral += da * (at1 + at2 + at3);
       bt1 = a1f1[type] * sinphi;
-      bt2 = 2.0 * a1f2[type] * Math.sin(2.0 * phi);
-      bt3 = 3.0 * a1f3[type] * Math.sin(3.0 * phi);
+      bt2 = 2.0 * a1f2[type] * libmSin(2.0 * phi);
+      bt3 = 3.0 * a1f3[type] * libmSin(3.0 * phi);
       sumbtf = bt1 + bt2 + bt3;
       for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
         fabcd[i][j] -= da * sumbtf * dphidr[i][j] + sumbte * dthetadr[0][i][j];
@@ -365,8 +366,8 @@ export class DihedralClass2xe extends SimpleBonded {
       da = Math.acos(costh23) - a2Theta[type];
       edihedral += da * (at1 + at2 + at3);
       bt1 = -a2f1[type] * sinphi;
-      bt2 = -2.0 * a2f2[type] * Math.sin(2.0 * phi);
-      bt3 = -3.0 * a2f3[type] * Math.sin(3.0 * phi);
+      bt2 = -2.0 * a2f2[type] * libmSin(2.0 * phi);
+      bt3 = -3.0 * a2f3[type] * libmSin(3.0 * phi);
       sumbtf = bt1 + bt2 + bt3;
       for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
         fabcd[i][j] += da * sumbtf * dphidr[i][j] + sumbte * dthetadr[1][i][j];

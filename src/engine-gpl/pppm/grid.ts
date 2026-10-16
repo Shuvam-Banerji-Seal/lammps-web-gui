@@ -19,6 +19,8 @@
 import { StyleError } from '../../engine/force/types';
 import { pppmKspaceError, type PppmGridRequest, type PppmGridResult } from '../../engine/force/kspace/pppm';
 import { isFFTSize } from '../../engine/force/fft';
+import { log as libmLog } from '../libm/log';
+import { sin as libmSin } from '../libm/sincos';
 
 const LARGE = 10000;
 const SMALL = 0.00001;
@@ -28,7 +30,7 @@ const MY_4PI = 12.56637061435917295384;
 /** math_special.h powsinxx: (sin x / x)^n by binary powering, 1 at x = 0. */
 const powsinxx = (x: number, n: number): number => {
   if (x === 0) return 1;
-  let ww = Math.sin(x) / x;
+  let ww = libmSin(x) / x;
   let yy = 1;
   for (; n !== 0; n >>= 1, ww *= ww) if (n & 1) yy *= ww;
   return yy;
@@ -153,8 +155,8 @@ const adjustGewald = (g0: number, f: (g: number) => number): number => {
 /** The initial G-ewald of PPPM::init (before the grid is chosen), from the accuracy and the orthogonal volume. */
 const initialG = (r: PppmGridRequest, natoms: number): number => {
   const pre = (r.accuracy * Math.sqrt(natoms * r.cutoff * r.lx * r.ly * r.lz)) / (2 * r.q2);
-  if (pre >= 1) return (1.35 - 0.15 * Math.log(r.accuracy)) / r.cutoff;
-  return Math.sqrt(-Math.log(pre)) / r.cutoff;
+  if (pre >= 1) return (1.35 - 0.15 * libmLog(r.accuracy)) / r.cutoff;
+  return Math.sqrt(-libmLog(pre)) / r.cutoff;
 };
 
 /** The native automatic (or partly user-set) G-ewald and mesh for a triclinic box, or for diff ad on an orthogonal box. */

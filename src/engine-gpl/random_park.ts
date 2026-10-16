@@ -8,6 +8,7 @@
  * and an atom's coordinates. Every arithmetic step is exact in a JavaScript number (all values stay below 2^53),
  * and the hash keeps 32 unsigned bits, so the streams are the same in every browser.
  */
+import { log as libmLog } from './libm/log';
 
 const IA = 16807;
 const IM = 2147483647;
@@ -47,7 +48,7 @@ export class RanPark {
         v2 = 2.0 * this.uniform() - 1.0;
         rsq = v1 * v1 + v2 * v2;
       } while (rsq >= 1.0 || rsq === 0.0);
-      const fac = Math.sqrt((-2.0 * Math.log(rsq)) / rsq);
+      const fac = Math.sqrt((-2.0 * libmLog(rsq)) / rsq);
       this.second = v1 * fac;
       first = v2 * fac;
       this.save = 1;

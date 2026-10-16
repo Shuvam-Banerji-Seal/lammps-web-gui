@@ -11,6 +11,7 @@
  * This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  */
 import { CINV_BI, CINV_TRI } from './cinv';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** Output slot for a derivative (the C++ code passes double * for it). */
 export interface Ref { v: number }
@@ -63,8 +64,8 @@ export const sp = (xij: number, xmin: number, xmax: number, dX: Ref): number => 
     cutoff = 0.0;
     dX.v = 0.0;
   } else {
-    cutoff = 0.5 * (1.0 + Math.cos(t * PI));
-    dX.v = (-0.5 * PI * Math.sin(t * PI)) / (xmax - xmin);
+    cutoff = 0.5 * (1.0 + libmCos(t * PI));
+    dX.v = (-0.5 * PI * libmSin(t * PI)) / (xmax - xmin);
   }
   return cutoff;
 };

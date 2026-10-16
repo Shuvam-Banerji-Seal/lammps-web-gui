@@ -24,6 +24,7 @@ import { ramp, rampFraction, ownCompute, removeCompute } from '../../engine/fix/
 import { UNIT_SYSTEMS } from '../../engine/units';
 import { FixRigidBase, EPSILON } from './fix_rigid';
 import { angmomToOmega, invquatvec, matvec, noSquishRotate, qToExyz, quatvec, transposeMatvec, type Q4, type V3 } from './math_extra';
+import { log as libmLog } from '../libm/log';
 
 /** FixRigidNH::maclaurin_series: 1 + x^2/6 + x^4/120 + x^6/5040 + x^8/362880 */
 const maclaurinSeries = (x: number): number => {
@@ -286,7 +287,7 @@ export class FixRigidNH extends FixRigidBase {
       for (let i = 0; i < 3; i++) {
         if (this.press.pFlag[i]) {
           this.epsilonMass[i] = ((this.gF + dimension) * kt) / (this.pFreq[i] * this.pFreq[i]);
-          this.epsilon[i] = Math.log(this.vol0) / dimension;
+          this.epsilon[i] = libmLog(this.vol0) / dimension;
         }
       }
       const tbMass = kt / (this.pFreqMax * this.pFreqMax);

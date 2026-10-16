@@ -12,6 +12,7 @@ import { FixNVE } from '../../engine/fix/nve';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { isEllipsoid, massOf } from '../../engine/atoms';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** fix_nve_dot.cpp: "static constexpr double INERTIA = 0.2;  // moment of inertia prefactor for ellipsoid" */
 const INERTIA = 0.2;
@@ -59,7 +60,7 @@ export const noSquishRotate = (k: number, p: number[], q: Float64Array, qo: numb
   let phi = p[0] * kq[0] + p[1] * kq[1] + p[2] * kq[2] + p[3] * kq[3];
   if (inertia[k - 1] === 0.0) phi = 0.0;
   else phi /= 4.0 * inertia[k - 1];
-  const c = Math.cos(dt * phi), sn = Math.sin(dt * phi);
+  const c = libmCos(dt * phi), sn = libmSin(dt * phi);
   for (let m = 0; m < 4; m++) p[m] = c * p[m] + sn * kp[m];
   for (let m = 0; m < 4; m++) q[qo + m] = c * q[qo + m] + sn * kq[m];
 };

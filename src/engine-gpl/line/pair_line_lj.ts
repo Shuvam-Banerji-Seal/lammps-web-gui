@@ -17,6 +17,7 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } fro
 import { NEIGHMASK } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { isLineStyle, LINE_BONUS, LINE_FLAG } from '../../engine/atoms';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 export class PairLineLJ extends Pair {
   readonly name = 'line/lj';
@@ -138,8 +139,8 @@ export class PairLineLJ extends Pair {
       const L = bonus[2 * i], th = bonus[2 * i + 1], n = dCount[i];
       for (let m = 0; m < n; m++) {
         const delta = -0.5 + (2 * m + 1) / (2.0 * n);
-        ddx[dStart[i] + m] = delta * L * Math.cos(th);
-        ddy[dStart[i] + m] = delta * L * Math.sin(th);
+        ddx[dStart[i] + m] = delta * L * libmCos(th);
+        ddy[dStart[i] + m] = delta * L * libmSin(th);
       }
     }
 

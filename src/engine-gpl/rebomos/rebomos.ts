@@ -9,6 +9,7 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { rowNeighbors } from '../airebo/neigh';
 import { powint } from '../airebo/splines';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 const TOL = 1.0e-9;
 const MY_PI = 3.14159265358979323846;
@@ -28,8 +29,8 @@ const sp = (xij: number, xmin: number, xmax: number, out: Ref): number => {
     cutoff = 0.0;
     out.v = 0.0;
   } else {
-    cutoff = 0.5 * (1.0 + Math.cos(t * MY_PI));
-    out.v = (-0.5 * MY_PI * Math.sin(t * MY_PI)) / (xmax - xmin);
+    cutoff = 0.5 * (1.0 + libmCos(t * MY_PI));
+    out.v = (-0.5 * MY_PI * libmSin(t * MY_PI)) / (xmax - xmin);
   }
   return cutoff;
 };
@@ -63,8 +64,8 @@ const gSpline = (costh: number, typei: number, b: Float64Array, bg: Float64Array
     const dgamma = { v: 0 };
     const gamma = poly7(bg, o, costh, dgamma);
     const tmp = MY_2PI * (costh - 0.5);
-    const psi = 0.5 * (1 - Math.cos(tmp));
-    const dpsi = MY_PI * Math.sin(tmp);
+    const psi = 0.5 * (1 - libmCos(tmp));
+    const dpsi = MY_PI * libmSin(tmp);
     g = gcos + psi * (gamma - gcos);
     dgdc.v = dgcos.v + dpsi * (gamma - gcos) + psi * (dgamma.v - dgcos.v);
   } else {

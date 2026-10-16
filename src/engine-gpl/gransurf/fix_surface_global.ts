@@ -39,6 +39,7 @@ import {
   surfContactForces, type ContactSurf, type SurfCoeffs,
 } from './surf_contact';
 import { contactDr, solveSphereContacts } from './contact_flow';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 type V3 = [number, number, number];
 
@@ -487,7 +488,7 @@ export class FixSurfaceGlobal extends Fix {
       const m = this.motions[im];
       const delta = (s.step - m.timeOrigin) * dt;
       const arg = m.omega * delta;
-      const cosine = Math.cos(arg), sine = Math.sin(arg);
+      const cosine = libmCos(arg), sine = libmSin(arg);
       for (const p of this.corners[i]) this.rotatePoint(p, m, cosine, sine);
       // xsurf and vsurf: X = P + C + A cos + B sin about the rotation axis through P
       const disp = this.rotateVector(this.xsOrig.subarray(3 * i, 3 * i + 3), m, cosine, sine);

@@ -19,6 +19,7 @@
  */
 import { normalForce } from './rounded_polygon_law';
 import { accumulateContact, historyFriction, newContactHistory, type ContactHistory } from './contact_history';
+import { cos as libmCos } from '../libm/sincos';
 
 export type V3 = [number, number, number];
 
@@ -31,9 +32,9 @@ const MY_2PI = 2 * Math.PI;
 const DEG2RAD = Math.PI / 180;
 const PATCH_ANGLE = 5.0 * DEG2RAD;
 const LINE_ANGLE = 5.0 * DEG2RAD;
-const COS_PATCH_ANGLE = Math.cos(PATCH_ANGLE);
-const COS_HALF_PATCH_ANGLE = Math.cos(0.5 * PATCH_ANGLE);
-const COS_LINE_ANGLE = Math.cos(LINE_ANGLE);
+const COS_PATCH_ANGLE = libmCos(PATCH_ANGLE);
+const COS_HALF_PATCH_ANGLE = libmCos(0.5 * PATCH_ANGLE);
+const COS_LINE_ANGLE = libmCos(LINE_ANGLE);
 
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];

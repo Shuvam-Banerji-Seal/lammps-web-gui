@@ -21,6 +21,7 @@
  */
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 // LAMMPS: static constexpr int MAXTYPES 8, NSPLINE 5 (pair_extep.h)
 const NSPLINE = 5;
@@ -231,14 +232,14 @@ export class PairExTeP extends Pair {
     const R = p.bigr, D = p.bigd;
     if (r < R - D) return 1.0;
     if (r > R + D) return 0.0;
-    return 0.5 * (1.0 - Math.sin(PI2 * (r - R) / D));
+    return 0.5 * (1.0 - libmSin(PI2 * (r - R) / D));
   }
 
   private fcD(r: number, p: Param): number {
     const R = p.bigr, D = p.bigd;
     if (r < R - D) return 0.0;
     if (r > R + D) return 0.0;
-    return -(PI4 / D) * Math.cos(PI2 * (r - R) / D);
+    return -(PI4 / D) * libmCos(PI2 * (r - R) / D);
   }
 
   private fa(r: number, p: Param): number {

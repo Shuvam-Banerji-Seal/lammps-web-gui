@@ -18,6 +18,7 @@
  */
 import { StyleError } from '../../engine/force/types';
 import type { ControlParams, ReaxParam, SingleBody, TwoBody } from './ffield';
+import { log as libmLog } from '../libm/log';
 
 export const MIN_SINE = 1e-10;
 export const DANGER_ZONE = 0.9;
@@ -477,7 +478,7 @@ export const computeBondOrders = (sys: RxSystem): void => {
             const exp_p1j = Math.exp(-p_boc1 * Deltap_j);
             const exp_p2j = Math.exp(-p_boc2 * Deltap_j);
             const f2 = exp_p1i + exp_p1j;
-            const f3 = (-1.0 / p_boc2) * Math.log(0.5 * (exp_p2i + exp_p2j));
+            const f3 = (-1.0 / p_boc2) * libmLog(0.5 * (exp_p2i + exp_p2j));
             f1 = 0.5 * ((val_i + f2) / (val_i + f2 + f3) + (val_j + f2) / (val_j + f2 + f3));
             const temp = f2 + f3;
             const u1_ij = val_i + temp;

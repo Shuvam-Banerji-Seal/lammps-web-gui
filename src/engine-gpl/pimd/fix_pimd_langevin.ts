@@ -22,6 +22,8 @@ import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { RanMars } from '../random_mars';
 import { nativeOrder } from '../../engine/atoms';
+import { log as libmLog } from '../libm/log';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 const MY_2PI = 2.0 * Math.PI;
 const MY_SQRT2 = Math.sqrt(2.0);
@@ -324,16 +326,16 @@ export class FixPIMDLangevin extends Fix {
     this.mxp2x = new Float64Array(np * np);
     const M = (i: number, j: number) => i * np + j;
     for (let i = 0; i < np; i++) {
-      const sinTmp = Math.sin(i * Math.PI / np);
+      const sinTmp = libmSin(i * Math.PI / np);
       this.lam[i] = 4 * sinTmp * sinTmp;
     }
     const sqrtnp = Math.sqrt(np);
     for (let j = 0; j < np; j++) {
       for (let i = 1; i < Math.trunc(np / 2) + 1; i++) {
-        this.mx2xp[M(i, j)] = MY_SQRT2 * Math.cos(MY_2PI * i * j / np) / sqrtnp;
+        this.mx2xp[M(i, j)] = MY_SQRT2 * libmCos(MY_2PI * i * j / np) / sqrtnp;
       }
       for (let i = Math.trunc(np / 2) + 1; i < np; i++) {
-        this.mx2xp[M(i, j)] = MY_SQRT2 * Math.sin(MY_2PI * i * j / np) / sqrtnp;
+        this.mx2xp[M(i, j)] = MY_SQRT2 * libmSin(MY_2PI * i * j / np) / sqrtnp;
       }
     }
     for (let i = 0; i < np; i++) {
@@ -367,14 +369,14 @@ export class FixPIMDLangevin extends Fix {
       if (this.fmmode === 'physical') {
         for (let i = 0; i < np; i++) {
           this.omegaK[i] = omegaNp * Math.sqrt(this.lam[i]) / Math.sqrt(this.fmass);
-          this.lanC[i] = Math.cos(Math.sqrt(this.lam[i]) * omegaNpDtHalf);
-          this.lanS[i] = Math.sin(Math.sqrt(this.lam[i]) * omegaNpDtHalf);
+          this.lanC[i] = libmCos(Math.sqrt(this.lam[i]) * omegaNpDtHalf);
+          this.lanS[i] = libmSin(Math.sqrt(this.lam[i]) * omegaNpDtHalf);
         }
       } else {
         for (let i = 0; i < np; i++) {
           this.omegaK[i] = omegaNp / Math.sqrt(this.fmass);
-          this.lanC[i] = Math.cos(omegaNpDtHalf);
-          this.lanS[i] = Math.sin(omegaNpDtHalf);
+          this.lanC[i] = libmCos(omegaNpDtHalf);
+          this.lanS[i] = libmSin(omegaNpDtHalf);
         }
       }
     }
@@ -974,11 +976,11 @@ export class FixPIMDLangevin extends Fix {
     for (const b of R) {
       if (this.barostat === 'BZP') {
         if (this.pstyle === 'iso') {
-          b.totenthalpy = b.tote + 0.5 * this.W * b.vw[0] * b.vw[0] * (1.0 / this.np) + this.pHydro * volume / u.nktv2p - this.Vcoeff * kt * Math.log(volume);
+          b.totenthalpy = b.tote + 0.5 * this.W * b.vw[0] * b.vw[0] * (1.0 / this.np) + this.pHydro * volume / u.nktv2p - this.Vcoeff * kt * libmLog(volume);
         } else {
           b.totenthalpy = b.tote + 0.5 * this.W * b.vw[0] * b.vw[0] * (1.0 / this.np) +
             0.5 * this.W * b.vw[1] * b.vw[1] * (1.0 / this.np) + 0.5 * this.W * b.vw[2] * b.vw[2] * (1.0 / this.np) +
-            this.pHydro * volume / u.nktv2p - this.Vcoeff * kt * Math.log(volume);
+            this.pHydro * volume / u.nktv2p - this.Vcoeff * kt * libmLog(volume);
         }
       } else {
         b.totenthalpy = b.tote + 1.5 * this.W * b.vw[0] * b.vw[0] * (1.0 / this.np) + this.pHydro * (volume - this.vol0);
@@ -1006,7 +1008,7 @@ export class FixPIMDLangevin extends Fix {
         if (this.barostat === 'BZP') { if (n === 11) return 0.5 * this.W * this.vw[0] * this.vw[0]; }
         else if (n === 11) return 1.5 * this.W * this.vw[0] * this.vw[0];
         if (n === 12) return this.np * this.Pext * volume / u.nktv2p;
-        if (n === 13) return -this.Vcoeff * this.np * this.kt * Math.log(volume);
+        if (n === 13) return -this.Vcoeff * this.np * this.kt * libmLog(volume);
         if (n === 14) return this.totenthalpy;
       } else {
         if (n === 10) return this.vw[0];
@@ -1014,7 +1016,7 @@ export class FixPIMDLangevin extends Fix {
         if (n === 12) return this.vw[2];
         if (n === 13) return 0.5 * this.W * (this.vw[0] * this.vw[0] + this.vw[1] * this.vw[1] + this.vw[2] * this.vw[2]);
         if (n === 14) return this.np * this.Pext * volume / u.nktv2p;
-        if (n === 15) return -this.Vcoeff * this.np * this.kt * Math.log(volume);
+        if (n === 15) return -this.Vcoeff * this.np * this.kt * libmLog(volume);
         if (n === 16) return this.totenthalpy;
       }
     }

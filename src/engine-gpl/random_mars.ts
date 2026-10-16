@@ -8,6 +8,7 @@
  * subset selection of set type/ratio and type/subset for one processor (the reduction over processors is trivial).
  */
 import { StyleError } from '../engine/force/types';
+import { log as libmLog } from './libm/log';
 
 const ADD = 0;
 const SUBTRACT = 1;
@@ -79,7 +80,7 @@ export class RanMars {
         v2 = 2.0 * this.uniform() - 1.0;
         rsq = v1 * v1 + v2 * v2;
       } while (rsq >= 1.0 || rsq === 0.0);
-      const fac = Math.sqrt((-2.0 * Math.log(rsq)) / rsq);
+      const fac = Math.sqrt((-2.0 * libmLog(rsq)) / rsq);
       this.second = v1 * fac;
       this.save = 1;
       return v2 * fac;

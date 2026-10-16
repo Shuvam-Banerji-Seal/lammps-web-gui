@@ -10,6 +10,7 @@
  * This file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
 import { erfcExact as erfcLocal } from '../../engine/force/erfc';
+import { sin as libmSin } from '../libm/sincos';
 
 /** Offset added before int() in particle_map (pppm_disp.cpp: "add/subtract OFFSET to avoid int(-0.75) = 0"). */
 export const OFFSET = 16384;
@@ -152,32 +153,32 @@ export const greenCoulomb = (mg: MeshGeom, g: number, ord: number): Float64Array
   for (let m = 0; m < nz; m++) {
     const mper = m - nz * Math.floor((2 * m) / nz);
     const qz = uz * mper;
-    const snz = Math.sin(0.5 * qz * zprd / nz);
+    const snz = libmSin(0.5 * qz * zprd / nz);
     const snz2 = snz * snz;
     const sz = Math.exp(-0.25 * Math.pow(qz / g, 2.0));
     let wz = 1.0;
     const argz = 0.5 * qz * zprd / nz;
-    if (argz !== 0.0) wz = Math.pow(Math.sin(argz) / argz, ord);
+    if (argz !== 0.0) wz = Math.pow(libmSin(argz) / argz, ord);
     wz *= wz;
     for (let l = 0; l < ny; l++) {
       const lper = l - ny * Math.floor((2 * l) / ny);
       const qy = uy * lper;
-      const sny = Math.sin(0.5 * qy * yprd / ny);
+      const sny = libmSin(0.5 * qy * yprd / ny);
       const sny2 = sny * sny;
       const sy = Math.exp(-0.25 * Math.pow(qy / g, 2.0));
       let wy = 1.0;
       const argy = 0.5 * qy * yprd / ny;
-      if (argy !== 0.0) wy = Math.pow(Math.sin(argy) / argy, ord);
+      if (argy !== 0.0) wy = Math.pow(libmSin(argy) / argy, ord);
       wy *= wy;
       for (let k = 0; k < nx; k++) {
         const kper = k - nx * Math.floor((2 * k) / nx);
         const qx = ux * kper;
-        const snx = Math.sin(0.5 * qx * xprd / nx);
+        const snx = libmSin(0.5 * qx * xprd / nx);
         const snx2 = snx * snx;
         const sx = Math.exp(-0.25 * Math.pow(qx / g, 2.0));
         let wx = 1.0;
         const argx = 0.5 * qx * xprd / nx;
-        if (argx !== 0.0) wx = Math.pow(Math.sin(argx) / argx, ord);
+        if (argx !== 0.0) wx = Math.pow(libmSin(argx) / argx, ord);
         wx *= wx;
         const sqk = Math.pow(qx, 2.0) + Math.pow(qy, 2.0) + Math.pow(qz, 2.0);
         if (sqk !== 0.0) {
@@ -228,32 +229,32 @@ export const greenDispersion = (mg: MeshGeom, g: number, ord: number): Float64Ar
   for (let m = 0; m < nz; m++) {
     const mper = m - nz * Math.floor((2 * m) / nz);
     const qz = uz * mper;
-    const snz = Math.sin(0.5 * uz * mper * zprd / nz);
+    const snz = libmSin(0.5 * uz * mper * zprd / nz);
     const snz2 = snz * snz;
     const sz = Math.exp(-qz * qz * inv2ew * inv2ew);
     let wz = 1.0;
     const argz = 0.5 * qz * zprd / nz;
-    if (argz !== 0.0) wz = Math.pow(Math.sin(argz) / argz, ord);
+    if (argz !== 0.0) wz = Math.pow(libmSin(argz) / argz, ord);
     wz *= wz;
     for (let l = 0; l < ny; l++) {
       const lper = l - ny * Math.floor((2 * l) / ny);
       const qy = uy * lper;
-      const sny = Math.sin(0.5 * uy * lper * yprd / ny);
+      const sny = libmSin(0.5 * uy * lper * yprd / ny);
       const sny2 = sny * sny;
       const sy = Math.exp(-qy * qy * inv2ew * inv2ew);
       let wy = 1.0;
       const argy = 0.5 * qy * yprd / ny;
-      if (argy !== 0.0) wy = Math.pow(Math.sin(argy) / argy, ord);
+      if (argy !== 0.0) wy = Math.pow(libmSin(argy) / argy, ord);
       wy *= wy;
       for (let k = 0; k < nx; k++) {
         const kper = k - nx * Math.floor((2 * k) / nx);
         const qx = ux * kper;
-        const snx = Math.sin(0.5 * ux * kper * xprd / nx);
+        const snx = libmSin(0.5 * ux * kper * xprd / nx);
         const snx2 = snx * snx;
         const sx = Math.exp(-qx * qx * inv2ew * inv2ew);
         let wx = 1.0;
         const argx = 0.5 * qx * xprd / nx;
-        if (argx !== 0.0) wx = Math.pow(Math.sin(argx) / argx, ord);
+        if (argx !== 0.0) wx = Math.pow(libmSin(argx) / argx, ord);
         wx *= wx;
         const sqk = qx * qx + qy * qy + qz * qz;
         if (sqk !== 0.0) {
@@ -339,19 +340,19 @@ export const qoptDispersionIk = (N: [number, number, number], prd: [number, numb
           const sx = Math.exp(-qx * qx * inv2ew * inv2ew);
           let wx = 1.0;
           const argx = 0.5 * qx * xprd / nx;
-          if (argx !== 0.0) wx = Math.pow(Math.sin(argx) / argx, ord);
+          if (argx !== 0.0) wx = Math.pow(libmSin(argx) / argx, ord);
           for (let ay = -nb; ay <= nb; ay++) {
             const qy = unitky * (lper + ny * ay);
             const sy = Math.exp(-qy * qy * inv2ew * inv2ew);
             let wy = 1.0;
             const argy = 0.5 * qy * yprd / ny;
-            if (argy !== 0.0) wy = Math.pow(Math.sin(argy) / argy, ord);
+            if (argy !== 0.0) wy = Math.pow(libmSin(argy) / argy, ord);
             for (let az = -nb; az <= nb; az++) {
               const qz = unitkz * (mper + nz * az);
               const sz = Math.exp(-qz * qz * inv2ew * inv2ew);
               let wz = 1.0;
               const argz = 0.5 * qz * zprd / nz;
-              if (argz !== 0.0) wz = Math.pow(Math.sin(argz) / argz, ord);
+              if (argz !== 0.0) wz = Math.pow(libmSin(argz) / argz, ord);
               const dot1 = unitkx * kper * qx + unitky * lper * qy + unitkz * mper * qz;
               const dot2 = qx * qx + qy * qy + qz * qz;
               const rtdot2 = Math.sqrt(dot2);

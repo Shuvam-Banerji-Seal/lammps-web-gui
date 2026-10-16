@@ -13,6 +13,7 @@
  * prim_estimator are kept as comments in the code below.
  */
 import { StyleError } from '../../engine/force/types';
+import { log as libmLog } from '../libm/log';
 
 export class BosonicExchange {
   /** scratch: temp_nbosons_array (n + 1) */
@@ -129,7 +130,7 @@ export class BosonicExchange {
       }
       let sigDenom = 0.0;
       for (let k = m; k > 0; k--) sigDenom += Math.exp(-beta * (this.tmp[k - 1] - Elongest));
-      this.V[m] = Elongest - (1.0 / beta) * Math.log(sigDenom / m);
+      this.V[m] = Elongest - (1.0 / beta) * libmLog(sigDenom / m);
       if (!Number.isFinite(this.V[m])) throw new StyleError(`Invalid sig_denom ${sigDenom} with Elongest ${Elongest} in bosonic exchange potential`);
     }
   }
@@ -148,7 +149,7 @@ export class BosonicExchange {
       }
       let sigDenom = 0.0;
       for (let p = l; p < n; p++) sigDenom += (1.0 / (p + 1)) * Math.exp(-beta * (this.tmp[p] - Elongest));
-      this.Vb[l] = Elongest - Math.log(sigDenom) / beta;
+      this.Vb[l] = Elongest - libmLog(sigDenom) / beta;
       if (!Number.isFinite(this.Vb[l])) throw new StyleError(`Invalid sig_denom ${sigDenom} with Elongest ${Elongest} in bosonic exchange potential backwards`);
     }
     this.Vb[0] = this.V[n];

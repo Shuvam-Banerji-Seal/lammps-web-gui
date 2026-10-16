@@ -16,6 +16,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, F1, F4, baseSiteOxdna1, lrfOf, oxdnaConstants, type OxdnaConstants, potentialLines } from './common';
+import { sin as libmSin } from '../libm/sincos';
 
 /** pair_oxdna_hbond.cpp constructor: alpha_hb[i][j] (sequence dependence of the hydrogen bonds, oxDNA). */
 const ALPHA_HB_OXDNA: number[][] = [
@@ -249,12 +250,12 @@ export class PairOxdnaHbond extends Pair {
         const e = f1 * f4t1 * f4t2 * f4t3 * f4t4 * f4t7 * f4t8 * factorLJ;
         if (e === 0.0) continue;
         const df1 = DF1(r, eps, aa, cut0, cutlc, cuthc, cutlo, cuthi, blo, bhi);
-        const df4t1 = DF4(theta1, T.a1[ij], T.th1[ij], T.dth1ast[ij], T.b1[ij], T.dth1c[ij]) / Math.sin(theta1);
-        const df4t2 = DF4(theta2, T.a2[ij], T.th2[ij], T.dth2ast[ij], T.b2[ij], T.dth2c[ij]) / Math.sin(theta2);
-        const df4t3 = DF4(theta3, T.a3[ij], T.th3[ij], T.dth3ast[ij], T.b3[ij], T.dth3c[ij]) / Math.sin(theta3);
-        const df4t4 = DF4(theta4, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij]) / Math.sin(theta4);
-        const df4t7 = DF4(theta7, T.a7[ij], T.th7[ij], T.dth7ast[ij], T.b7[ij], T.dth7c[ij]) / Math.sin(theta7);
-        const df4t8 = DF4(theta8, T.a8[ij], T.th8[ij], T.dth8ast[ij], T.b8[ij], T.dth8c[ij]) / Math.sin(theta8);
+        const df4t1 = DF4(theta1, T.a1[ij], T.th1[ij], T.dth1ast[ij], T.b1[ij], T.dth1c[ij]) / libmSin(theta1);
+        const df4t2 = DF4(theta2, T.a2[ij], T.th2[ij], T.dth2ast[ij], T.b2[ij], T.dth2c[ij]) / libmSin(theta2);
+        const df4t3 = DF4(theta3, T.a3[ij], T.th3[ij], T.dth3ast[ij], T.b3[ij], T.dth3c[ij]) / libmSin(theta3);
+        const df4t4 = DF4(theta4, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij]) / libmSin(theta4);
+        const df4t7 = DF4(theta7, T.a7[ij], T.th7[ij], T.dth7ast[ij], T.b7[ij], T.dth7c[ij]) / libmSin(theta7);
+        const df4t8 = DF4(theta8, T.a8[ij], T.th8[ij], T.dth8ast[ij], T.b8[ij], T.dth8c[ij]) / libmSin(theta8);
         delf[0] = 0.0; delf[1] = 0.0; delf[2] = 0.0;
         delta[0] = 0.0; delta[1] = 0.0; delta[2] = 0.0;
         deltb[0] = 0.0; deltb[1] = 0.0; deltb[2] = 0.0;

@@ -13,6 +13,8 @@
  * meamNonMs.ts and phi_meam). The two branches are the msmeamflag branches of the routines above.
  */
 import { fmExp, getShpfcn, getZij, getZij2, getZij2b2nn, iszero, fcut, erosePot, zblPot, powint, type Lattice } from './meamMath';
+import { log as libmLog } from '../libm/log';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 export const MAXELT = 8;
 const NR = 1000;
@@ -217,8 +219,8 @@ export class MeamModel {
       case 21: {
         need(2);
         const i1 = Math.min(idx[0], idx[1]), i2 = Math.max(idx[0], idx[1]);
-        this.stheta[i1][i2] = Math.sin((value / 2 * Math.PI) / 180.0);
-        this.ctheta[i1][i2] = Math.cos((value / 2 * Math.PI) / 180.0);
+        this.stheta[i1][i2] = libmSin((value / 2 * Math.PI) / 180.0);
+        this.ctheta[i1][i2] = libmCos((value / 2 * Math.PI) / 180.0);
         break;
       }
       default: throw new Error('unknown keyword');
@@ -441,7 +443,7 @@ export class MeamModel {
   embedding(A: number, Ec: number, rhobar: number): { F: number; dF: number } {
     const AEc = A * Ec;
     if (rhobar > 0.0) {
-      const lrb = Math.log(rhobar);
+      const lrb = libmLog(rhobar);
       return { F: AEc * rhobar * lrb, dF: AEc * (1.0 + lrb) };
     }
     if (this.embLinNeg === 0) return { F: 0.0, dF: 0.0 };

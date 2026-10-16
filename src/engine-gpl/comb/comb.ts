@@ -21,6 +21,7 @@ import {
   combGijk, combGijkD, cube, powint, readCombEntries, setupCombParams, square,
   type CombParam,
 } from './params';
+import { cos as libmCos } from '../libm/sincos';
 
 const MY_PIS = Math.sqrt(Math.PI);
 const ALF = 0.20;
@@ -635,7 +636,7 @@ export class PairComb extends Pair {
   protected elp(p: CombParam, rsqij: number, rsqik: number, delrij: V3, delrik: V3): number {
     if (p.aconf > 1.0e-6 || p.plp1 > 1.0e-6 || p.plp3 > 1.0e-6 || p.plp6 > 1.0e-6) {
       const pplp1 = p.plp1, pplp3 = p.plp3, pplp6 = p.plp6;
-      const c123 = Math.cos(p.a123 * Math.PI / 180.0);
+      const c123 = libmCos(p.a123 * Math.PI / 180.0);
       const rij = Math.sqrt(rsqij);
       const rik = Math.sqrt(rsqik);
       const costheta = dot3(delrij, delrik) / (rij * rik);
@@ -665,7 +666,7 @@ export class PairComb extends Pair {
     let ffj1 = 0.0, ffj2 = 0.0, ffk1 = 0.0, ffk2 = 0.0;
     if (p.aconf > 1.0e-4 || p.plp1 > 1.0e-6 || p.plp3 > 1.0e-6 || p.plp6 > 1.0e-6) {
       const pplp1 = p.plp1, pplp3 = p.plp3, pplp6 = p.plp6;
-      const c123 = Math.cos(p.a123 * Math.PI / 180.0);
+      const c123 = libmCos(p.a123 * Math.PI / 180.0);
       const rij = Math.sqrt(rsqij);
       const rik = Math.sqrt(rsqik);
       const costheta = dot3(delrij, delrik) / (rij * rik);

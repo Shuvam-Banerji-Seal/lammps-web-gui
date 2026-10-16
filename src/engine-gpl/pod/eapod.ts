@@ -13,6 +13,7 @@
  */
 import { StyleError } from '../../engine/force/types';
 import { POLY3, POLY4, NS4 } from './tables';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** npa of eapod.cpp: number of monomials of each degree. */
 const NPA = [0, 1, 4, 10, 20, 35, 56, 84, 120, 165, 220, 286, 364, 455];
@@ -399,7 +400,7 @@ export class PODModel {
         for (let i = 0; i < this.besseldegree; i++) {
           const a = (i + 1) * Math.PI;
           const b = Math.sqrt(2.0 / rmax) / (i + 1);
-          rbf[n + N * i + N * this.besseldegree * j] = b * fcut * Math.sin(a * x) / r;
+          rbf[n + N * i + N * this.besseldegree * j] = b * fcut * libmSin(a * x) / r;
         }
       }
       for (let i = 0; i < this.inversedegree; i++) {
@@ -457,10 +458,10 @@ export class PODModel {
           const a = (i + 1) * Math.PI;
           const b = Math.sqrt(2.0 / rmax) / (i + 1);
           const af1 = a * f1;
-          const sinax = Math.sin(a * x);
+          const sinax = libmSin(a * x);
           const nij = n + nj * (i + bd * j);
           s.rbft[nij] = b * f1 * sinax;
-          const drbfdr = b * (df1 * sinax - f2 * sinax + af1 * Math.cos(a * x) * dx);
+          const drbfdr = b * (df1 * sinax - f2 * sinax + af1 * libmCos(a * x) * dx);
           s.rbfxt[nij] = drbfdr * dr1;
           s.rbfyt[nij] = drbfdr * dr2;
           s.rbfzt[nij] = drbfdr * dr3;

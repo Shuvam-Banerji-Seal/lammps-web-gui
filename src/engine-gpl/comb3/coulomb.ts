@@ -10,6 +10,7 @@ import { powint } from '../comb/params';
 import type { Comb3Param } from './params';
 import type { Comb3Tables, TriPoint } from './tables';
 import type { Comb3Kernel } from './terms';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 const MY_PI = Math.PI;
 const MY_PI2 = Math.PI / 2;
@@ -20,7 +21,7 @@ export const fcCurl = (rocn: number, p: Comb3Param): number => {
   const a = p.curlcut1, b = p.curlcut2;
   if (rocn <= a) return 1.0;
   if (rocn >= b) return 0.0;
-  return 0.5 * (1.0 + Math.cos(MY_PI * (rocn - a) / (b - a)));
+  return 0.5 * (1.0 + libmCos(MY_PI * (rocn - a) / (b - a)));
 };
 
 /** comb_fc_curl_d: derivative of fcCurl. */
@@ -28,7 +29,7 @@ export const fcCurlD = (rocn: number, p: Comb3Param): number => {
   const a = p.curlcut1, b = p.curlcut2;
   if (rocn <= a) return 0.0;
   if (rocn >= b) return 0.0;
-  return -MY_PI2 / (b - a) * Math.sin(MY_PI * (rocn - a) / (b - a));
+  return -MY_PI2 / (b - a) * libmSin(MY_PI * (rocn - a) / (b - a));
 };
 
 /** Coulomb (direct, field) and charge-force terms of pair_style comb3, with the tables of tables.ts. */

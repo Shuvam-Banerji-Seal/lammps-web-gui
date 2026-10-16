@@ -18,6 +18,7 @@ import { StyleError } from '../../engine/force/types';
 import { fft3d } from '../../engine/force/fft';
 import { powint } from './hal';
 import { ELECTRIC, torque2force, type MpoleSites } from './multipole';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** pi (amoeba_kspace.cpp MY_PI). */
 const MY_PI = Math.PI;
@@ -67,8 +68,8 @@ const dftmod = (bsmod: Float64Array, bsarray: Float64Array, nfft: number, order:
     let sum1 = 0.0, sum2 = 0.0;
     for (let j = 0; j < nfft; j++) {
       const arg = factor * i * j;
-      sum1 += bsarray[j] * Math.cos(arg);
-      sum2 += bsarray[j] * Math.sin(arg);
+      sum1 += bsarray[j] * libmCos(arg);
+      sum2 += bsarray[j] * libmSin(arg);
     }
     bsmod[i] = sum1 * sum1 + sum2 * sum2;
   }

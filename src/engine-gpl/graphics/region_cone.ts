@@ -14,6 +14,7 @@
  */
 import type { RasterFrame, Rgb255, RegionConeSpec } from '../../engine/output/image_objects';
 import { drawCylinder, drawTrinorm } from './draw';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 type V = [number, number, number];
 type Tri = [V, V, V];
@@ -52,20 +53,20 @@ export function coneMesh(length: number, topwidth: number, botwidth: number, fla
   const ntop: V = [1, 0, 0], nbot: V = [-1, 0, 0];
   for (let i = 0; i < resolution; i++) {
     if (topwidth > 0) {
-      p1top[1] = topwidth * Math.sin(radinc * i - RADOVERLAP);
-      p1top[2] = topwidth * Math.cos(radinc * i - RADOVERLAP);
-      p2top[1] = topwidth * Math.sin(radinc * (i + 1));
-      p2top[2] = topwidth * Math.cos(radinc * (i + 1));
+      p1top[1] = topwidth * libmSin(radinc * i - RADOVERLAP);
+      p1top[2] = topwidth * libmCos(radinc * i - RADOVERLAP);
+      p2top[1] = topwidth * libmSin(radinc * (i + 1));
+      p2top[2] = topwidth * libmCos(radinc * (i + 1));
       if (dotop) {
         tris.push([[...p1top], [...top], [...p2top]]);
         norms.push([ntop, ntop, ntop]);
       }
     }
     if (botwidth > 0) {
-      p1bot[1] = botwidth * Math.sin(radinc * i - RADOVERLAP);
-      p1bot[2] = botwidth * Math.cos(radinc * i - RADOVERLAP);
-      p2bot[1] = botwidth * Math.sin(radinc * (i + 1));
-      p2bot[2] = botwidth * Math.cos(radinc * (i + 1));
+      p1bot[1] = botwidth * libmSin(radinc * i - RADOVERLAP);
+      p1bot[2] = botwidth * libmCos(radinc * i - RADOVERLAP);
+      p2bot[1] = botwidth * libmSin(radinc * (i + 1));
+      p2bot[2] = botwidth * libmCos(radinc * (i + 1));
       if (dobot) {
         tris.push([[...p1bot], [...bot], [...p2bot]]);
         norms.push([nbot, nbot, nbot]);

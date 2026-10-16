@@ -8,6 +8,7 @@
 import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 const MY_PI = 3.14159265358979323846;
 const MY_PI2 = 1.57079632679489661923;
@@ -60,12 +61,12 @@ const ylzAnalytic = (eps: number, sig: number, zt: number, muu: number, sint: nu
     dUdphi = -energyWell;
   } else {
     const t = MY_PI2 * (r - rmin) / (rcut - rmin);
-    const cosT = Math.cos(t);
+    const cosT = libmCos(t);
     let t1 = cosT;
     for (let k = 1; k <= 2 * zt - 2; k++) t1 *= cosT; // cos()^(2zt-1)
     const uA = -energyWell * t1 * cosT;
     U = uA * phi;
-    dUdr = MY_PI * zt / (rcut - rmin) * t1 * Math.sin(t) * phi * energyWell;
+    dUdr = MY_PI * zt / (rcut - rmin) * t1 * libmSin(t) * phi * energyWell;
     dUdphi = uA;
   }
   const dUdrhat = new Float64Array(3);

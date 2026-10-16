@@ -17,6 +17,7 @@ import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { CellList } from '../../engine/cellList';
+import { log as libmLog } from '../libm/log';
 
 /** utils::logical of the input parser: yes/on/true/1 or no/off/false/0. */
 const logical = (w: string, what: string): boolean => {
@@ -161,7 +162,7 @@ export class ComputeEntropyAtom extends Compute {
         }
       }
       for (let k = 0; k < nbin; k++) {
-        integrand[k] = gofr[k] < 1e-10 ? rbinsq[k] : (gofr[k] * Math.log(gofr[k]) - gofr[k] + 1) * rbinsq[k];
+        integrand[k] = gofr[k] < 1e-10 ? rbinsq[k] : (gofr[k] * libmLog(gofr[k]) - gofr[k] + 1) * rbinsq[k];
       }
       // trapezoid rule
       let value = 0;

@@ -30,6 +30,8 @@ import type { Geometry } from '../../engine/domain';
 import { parseNum } from '../../engine/force/util';
 import { fft3d, isFFTSize } from '../../engine/force/fft';
 import { computeQopt } from '../pppm/grid';
+import { log as libmLog } from '../libm/log';
+import { sin as libmSin } from '../libm/sincos';
 
 /** pppm.cpp OFFSET: keeps int() of a negative grid coordinate at the right value. */
 const OFFSET = 16384;
@@ -49,7 +51,7 @@ const square = (x: number): number => x * x;
 /** MathSpecial::powsinxx (math_special.h at b332f28): (sin x / x)^n for an integer n >= 0. */
 const powsinxx = (x: number, n: number): number => {
   if (x === 0) return 1;
-  let ww = Math.sin(x) / x;
+  let ww = libmSin(x) / x;
   let yy = 1;
   for (; n !== 0; n >>= 1, ww *= ww) if (n & 1) yy *= ww;
   return yy;
@@ -305,13 +307,13 @@ export class KSpacePPPMDipole extends KSpaceBase {
     let qopt = 0;
     for (let m = 0; m < nz; m++) {
       const mper = perOf(m, nz);
-      const snz = square(Math.sin(0.5 * unitkz * mper * lz / nz));
+      const snz = square(libmSin(0.5 * unitkz * mper * lz / nz));
       for (let l = 0; l < ny; l++) {
         const lper = perOf(l, ny);
-        const sny = square(Math.sin(0.5 * unitky * lper * ly / ny));
+        const sny = square(libmSin(0.5 * unitky * lper * ly / ny));
         for (let k = 0; k < nx; k++) {
           const kper = perOf(k, nx);
-          const snx = square(Math.sin(0.5 * unitkx * kper * lx / nx));
+          const snx = square(libmSin(0.5 * unitkx * kper * lx / nx));
           const sqk = square(unitkx * kper) + square(unitky * lper) + square(unitkz * mper);
           if (sqk === 0) continue;
           const denominator = gfDenom(this.gfB, this.order, snx, sny, snz);
@@ -368,7 +370,7 @@ export class KSpacePPPMDipole extends KSpaceBase {
     const vol = lx * ly * lz;
     if (!(this.gewaldUser > 0)) {
       if (!(this.acc > 0)) throw new StyleError('KSpace accuracy must be > 0');
-      let g = (1.35 - 0.15 * Math.log(this.acc)) / this.cutoff;
+      let g = (1.35 - 0.15 * libmLog(this.acc)) / this.cutoff;
       const gNew = this.findGewald(g, this.cutoff, this.natoms, vol, this.mu2);
       if (gNew > 0) g = gNew;
       else ctx.log('WARNING: PPPMDipole dipole Newton solver failed, using old method to estimate g_ewald');
@@ -490,7 +492,7 @@ export class KSpacePPPMDipole extends KSpaceBase {
     this.fk = fk;
     // native: nbx = max(int(g Lx / (pi Nx) (-ln EPS_HOC)^(1/4)), 2)
     const nb = [0, 1, 2].map((d) => {
-      const c = Math.trunc((g * L[d] / (Math.PI * N[d])) * Math.pow(-Math.log(EPS_HOC), 0.25));
+      const c = Math.trunc((g * L[d] / (Math.PI * N[d])) * Math.pow(-libmLog(EPS_HOC), 0.25));
       return Math.max(c, 2);
     });
     const Ng = nx * ny * nz;
@@ -504,9 +506,9 @@ export class KSpacePPPMDipole extends KSpaceBase {
         const lper = perOf(l, ny);
         for (let k = 0; k < nx; k++) {
           const kper = perOf(k, nx);
-          const snx = square(Math.sin(0.5 * unit[0] * kper * lx / nx));
-          const sny = square(Math.sin(0.5 * unit[1] * lper * ly / ny));
-          const snz = square(Math.sin(0.5 * unit[2] * mper * lz / nz));
+          const snx = square(libmSin(0.5 * unit[0] * kper * lx / nx));
+          const sny = square(libmSin(0.5 * unit[1] * lper * ly / ny));
+          const snz = square(libmSin(0.5 * unit[2] * mper * lz / nz));
           const idx = (m * ny + l) * nx + k;
           const kx = unit[0] * kper, ky = unit[1] * lper, kz = unit[2] * mper;
           const sqk = square(unit[0] * kper) + square(unit[1] * lper) + square(unit[2] * mper);

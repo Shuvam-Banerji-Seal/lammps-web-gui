@@ -10,6 +10,7 @@
 import { StyleError } from '../../engine/force/types';
 import { powint } from '../comb/params';
 import type { Comb3Lib, Comb3Param } from './params';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 const MY_PI = Math.PI;
 const MY_PI2 = Math.PI / 2;
@@ -49,7 +50,7 @@ export class Comb3Kernel {
     const rOut = p.bigr + p.bigd;
     if (r <= rInn) return 1.0;
     if (r >= rOut) return 0.0;
-    return 0.5 * (1.0 + Math.cos(MY_PI * (r - rInn) / (rOut - rInn)));
+    return 0.5 * (1.0 + libmCos(MY_PI * (r - rInn) / (rOut - rInn)));
   }
 
   fcD(r: number, p: Comb3Param): number {
@@ -57,20 +58,20 @@ export class Comb3Kernel {
     const rOut = p.bigr + p.bigd;
     if (r <= rInn) return 0.0;
     if (r >= rOut) return 0.0;
-    return -MY_PI2 / (rOut - rInn) * Math.sin(MY_PI * (r - rInn) / (rOut - rInn));
+    return -MY_PI2 / (rOut - rInn) * libmSin(MY_PI * (r - rInn) / (rOut - rInn));
   }
 
   /** Coordination switches with the cut-offs of lib.comb3 (ccutoff[0..5]): comb_fccc, comb_fcch, comb_fccch. */
   private switchCut(x: number, c1: number, c2: number): number {
     if (x <= c1) return 1.0;
     if (x >= c2) return 0.0;
-    return 0.5 * (1.0 + Math.cos(MY_PI * (x - c1) / (c2 - c1)));
+    return 0.5 * (1.0 + libmCos(MY_PI * (x - c1) / (c2 - c1)));
   }
 
   private switchCutD(x: number, c1: number, c2: number): number {
     if (x <= c1) return 0.0;
     if (x >= c2) return 0.0;
-    return -MY_PI2 / (c2 - c1) * Math.sin(MY_PI * (x - c1) / (c2 - c1));
+    return -MY_PI2 / (c2 - c1) * libmSin(MY_PI * (x - c1) / (c2 - c1));
   }
 
   fccc(x: number): number { const c = this.requireLib().ccutoff; return this.switchCut(x, c[0], c[1]); }

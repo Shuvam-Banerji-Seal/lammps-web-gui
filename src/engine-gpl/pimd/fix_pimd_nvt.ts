@@ -18,6 +18,7 @@
 import { StyleError } from '../../engine/force/types';
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 const MY_PI = Math.PI;
 
@@ -197,7 +198,7 @@ export class FixPIMDNVT extends Fix {
     this.lam[0] = 0.0;
     if (np % 2 === 0) this.lam[np - 1] = 4.0 * np;
     for (let i = 2; i <= Math.floor(np / 2); i++) {
-      this.lam[2 * i - 3] = this.lam[2 * i - 2] = 2.0 * np * (1.0 - 1.0 * Math.cos(2.0 * MY_PI * (i - 1) / np));
+      this.lam[2 * i - 3] = this.lam[2 * i - 2] = 2.0 * np * (1.0 - 1.0 * libmCos(2.0 * MY_PI * (i - 1) / np));
     }
     for (let i = 0; i < np; i++) {
       this.mx2xp[M(0, i)] = inverseNp;
@@ -205,8 +206,8 @@ export class FixPIMDNVT extends Fix {
     }
     for (let i = 0; i < Math.floor((np - 1) / 2); i++) {
       for (let j = 0; j < np; j++) {
-        this.mx2xp[M(2 * i + 1, j)] = Math.sqrt(2.0) * Math.cos(2.0 * MY_PI * (i + 1) * j / np) / np;
-        this.mx2xp[M(2 * i + 2, j)] = -Math.sqrt(2.0) * Math.sin(2.0 * MY_PI * (i + 1) * j / np) / np;
+        this.mx2xp[M(2 * i + 1, j)] = Math.sqrt(2.0) * libmCos(2.0 * MY_PI * (i + 1) * j / np) / np;
+        this.mx2xp[M(2 * i + 2, j)] = -Math.sqrt(2.0) * libmSin(2.0 * MY_PI * (i + 1) * j / np) / np;
       }
     }
     for (let i = 0; i < np; i++) {

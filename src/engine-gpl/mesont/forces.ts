@@ -11,6 +11,7 @@
  */
 import type { MesocntTables } from './tables';
 import { dspline1, dxspline2, dyspline2, ds5, dsCubic, glNodes, glWeights, s5, sCubic, spline1, spline2 } from './tables';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** LAMMPS: static constexpr double SWITCH = 1.0e-4, SMALL = 1.0e-6, RHOMIN = 10.0 (pair_mesocnt.cpp). */
 const SWITCH = 1.0e-4;
@@ -233,7 +234,7 @@ export const finf = (c: MesoConst, param: Float64Array, f: Float64Array): number
   const alpha = param[1];
   const xi1 = param[2] * c.angInv;
   const xi2 = param[3] * c.angInv;
-  const sinAlpha = Math.sin(alpha);
+  const sinAlpha = libmSin(alpha);
   const sinAlphasq = sinAlpha * sinAlpha;
   const dAng = c.dAng;
   // parallel case
@@ -251,7 +252,7 @@ export const finf = (c: MesoConst, param: Float64Array, f: Float64Array): number
   // non-parallel case
   const sinAlphaInv = 1.0 / sinAlpha;
   const sinAlphasqInv = sinAlphaInv * sinAlphaInv;
-  const cosAlpha = Math.cos(alpha);
+  const cosAlpha = libmCos(alpha);
   const cotAlpha = cosAlpha * sinAlphaInv;
   const omega = 1.0 / (1.0 - c.comega * sinAlphasq);
   const c1 = omega * sinAlpha;
@@ -358,9 +359,9 @@ export const fsemi = (c: MesoConst, param: Float64Array, f: Float64Array, out: {
   const xi1 = param[2] * c.angInv;
   const xi2 = param[3] * c.angInv;
   const etae = param[6] * c.angInv;
-  const sinAlpha = Math.sin(alpha);
+  const sinAlpha = libmSin(alpha);
   const sinAlphasq = sinAlpha * sinAlpha;
-  const cosAlpha = Math.cos(alpha);
+  const cosAlpha = libmCos(alpha);
   const omega = 1.0 / (1.0 - c.comega * sinAlphasq);
   const omegasq = omega * omega;
   const domega = 2 * c.comega * sinAlpha * cosAlpha * omegasq;

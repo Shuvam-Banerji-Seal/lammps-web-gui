@@ -23,6 +23,7 @@ import { parsePertypeFile, type QeqParams } from './qeq';
 import type { PairReaxFF } from './pair';
 import type { FixEfield } from '../../engine/fix/force_ext';
 import { efieldForModel, fieldOf, findEfield, fieldPotential } from './efield';
+import { log as libmLog } from '../libm/log';
 
 /** ANGSTROM_TO_BOHRRADIUS_SQ of fix_qtpie_reaxff.cpp: an exponent in 1/bohr^2 is this many 1/Angstrom^2. */
 const ANGSTROM_TO_BOHRRADIUS_SQ = 3.571064831;
@@ -154,7 +155,7 @@ export class FixQtpieReaxFF extends Fix {
     // find_min_exp: the smallest exponent over the types 1..ntypes
     let expMin = gaussExp[1];
     for (let i = 2; i <= nt; i++) if (gaussExp[i] < expMin) expMin = gaussExp[i];
-    this.distCutSq = (2 * OLAP_CUT * Math.log(10.0)) / expMin;
+    this.distCutSq = (2 * OLAP_CUT * libmLog(10.0)) / expMin;
   }
 
   /** init_shielding: shld[i][j] = (gamma_i gamma_j)^(-1.5). */

@@ -38,6 +38,7 @@ import type { Fix } from '../../engine/fix/fix';
 import { FixNH } from '../../engine/fix/nh';
 import { RanPark } from '../random_park';
 import { FixGrem } from '../extrafix/fix_grem';
+import { log as libmLog } from '../libm/log';
 
 type Kind = 'temper' | 'npt' | 'grem';
 
@@ -299,10 +300,10 @@ export const runTempering = async (kind: Kind, ctx: Ctx, a: string[]): Promise<v
         const rh = reps[hi];
         const enthLo = pe[lo] + rl.pressRef * vol[lo];
         const enthHi = pe[hi] + rh.pressRef * vol[hi];
-        const weight = Math.log(setVal[tl] + (rl.eta * (enthLo - rl.h0)));
-        const weightCross = Math.log(setVal[th] + (rl.eta * (enthLo - rl.h0)));
-        const weightPartner = Math.log(setVal[th] + (rh.eta * (enthHi - rh.h0)));
-        const weightCrossPartner = Math.log(setVal[tl] + (rh.eta * (enthHi - rh.h0)));
+        const weight = libmLog(setVal[tl] + (rl.eta * (enthLo - rl.h0)));
+        const weightCross = libmLog(setVal[th] + (rl.eta * (enthLo - rl.h0)));
+        const weightPartner = libmLog(setVal[th] + (rh.eta * (enthHi - rh.h0)));
+        const weightCrossPartner = libmLog(setVal[tl] + (rh.eta * (enthHi - rh.h0)));
         const bf = (weight + weightPartner - weightCross - weightCrossPartner) * (1 / (boltz * rl.eta));
         if (bf >= 0.0) swap = true;
         else if (rl.ranboltz.uniform() < Math.exp(bf)) swap = true;

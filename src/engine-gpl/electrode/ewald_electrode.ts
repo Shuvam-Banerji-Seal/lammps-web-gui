@@ -18,6 +18,8 @@ import type { SimState } from '../../engine/types';
 import type { Geometry } from '../../engine/domain';
 import { MY_PI, MY_PI2, MY_PIS } from './electrode_math';
 import { BoundaryCorrection, NoBoundaryCorrection, SlabDipole, Slab2d, type BoundaryEnv, inGroup } from './boundary_correction';
+import { log as libmLog } from '../libm/log';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** electrode_kspace.h: what the constant-potential fixes call on a k-space style. */
 export interface ElectrodeKSpace {
@@ -150,8 +152,8 @@ export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
       if (this.accuracyEff <= 0) throw new StyleError('KSpace accuracy must be > 0');
       if (this.q2 === 0) throw new StyleError("Must use 'kspace_modify gewald' for uncharged system");
       let g = this.accuracyEff * Math.sqrt(this.natoms * this.cutoff * xprd * yprd * zprd) / (2.0 * this.q2);
-      if (g >= 1.0) g = (1.35 - 0.15 * Math.log(this.accuracyEff)) / this.cutoff;
-      else g = Math.sqrt(-Math.log(g)) / this.cutoff;
+      if (g >= 1.0) g = (1.35 - 0.15 * libmLog(this.accuracyEff)) / this.cutoff;
+      else g = Math.sqrt(-libmLog(g)) / this.cutoff;
       this.gEwald = g;
     }
     this.setup(geom);
@@ -331,7 +333,7 @@ export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
       for (let i = 0; i < n; i++) {
         C[K * n + i] = 1.0;
         S[K * n + i] = 0.0;
-        const c1 = Math.cos(u[ic] * x[3 * i + ic]), s1 = Math.sin(u[ic] * x[3 * i + ic]);
+        const c1 = libmCos(u[ic] * x[3 * i + ic]), s1 = libmSin(u[ic] * x[3 * i + ic]);
         C[(K + 1) * n + i] = c1;
         S[(K + 1) * n + i] = s1;
         C[(K - 1) * n + i] = c1;

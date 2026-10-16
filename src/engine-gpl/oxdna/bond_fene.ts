@@ -14,6 +14,7 @@ import { atomIndex, delta as nearestCopy } from '../../engine/force/bonded_util'
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { type OxdnaConstants, backboneOxdna1, lrfOf, oxdnaConstants, potentialLines } from './common';
+import { log as libmLog } from '../libm/log';
 
 /** bond_oxdna_fene.cpp: "const double rlogarg_min = 0.2;" */
 const RLOGARG_MIN = 0.2;
@@ -156,18 +157,18 @@ export class BondOxdnaFene extends Bonded {
       const rr0sq = rr0 * rr0;
       const deltasq = delta * delta;
       let rlogarg = 1.0 - rr0sq / deltasq;
-      let ebond = -0.5 * kk * Math.log(rlogarg);
+      let ebond = -0.5 * kk * libmLog(rlogarg);
       // capped force for r - r0 beyond Delta (bond_oxdna_fene.cpp, "switching to capped force")
       if (rlogarg < RLOGARG_MIN) {
         bc.warn?.(`FENE bond too long: ${s.step} ${s.id[a]} ${s.id[b]} ${rBkbk}`);
         rlogarg = RLOGARG_MIN;
         if (rBkbk > r0) {
           rr0 = delta * Math.sqrt(1.0 - rlogarg);
-          ebond = -0.5 * kk * Math.log(rlogarg) + kk * Math.sqrt(1.0 - rlogarg) / rlogarg / delta *
+          ebond = -0.5 * kk * libmLog(rlogarg) + kk * Math.sqrt(1.0 - rlogarg) / rlogarg / delta *
             (rBkbk - r0 - delta * Math.sqrt(1.0 - rlogarg));
         } else if (rBkbk < r0) {
           rr0 = -delta * Math.sqrt(1.0 - rlogarg);
-          ebond = -0.5 * kk * Math.log(rlogarg) + kk * Math.sqrt(1.0 - rlogarg) / rlogarg / delta *
+          ebond = -0.5 * kk * libmLog(rlogarg) + kk * Math.sqrt(1.0 - rlogarg) / rlogarg / delta *
             (r0 - delta * Math.sqrt(1.0 - rlogarg) - rBkbk);
         }
       }

@@ -46,6 +46,7 @@ import { isEllipsoid, isLineAtom, isTriAtom, LINE_BONUS, massOf, nativeOrder, TR
 import { bodyMotion, quatToMatrix, rotateVec } from '../../engine/compute/asphere';
 import { RanMars } from '../random_mars';
 import { RanPark } from '../random_park';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** enum { INSIDE_ERROR, INSIDE_WARN, INSIDE_IGNORE } */
 const INSIDE_ERROR = 0;
@@ -1555,8 +1556,8 @@ export class FixSRD extends Fix {
     this.ltheta0 = theta - dtStep * omegaZ;
     const th0 = this.ltheta0, th1 = this.ltheta1;
     // n = normal to the line = [sin(theta), -cos(theta)]; side = (P - C) . n
-    const side0 = (xs0[0] - xb0[0]) * Math.sin(th0) + (xs0[1] - xb0[1]) * -Math.cos(th0);
-    const side1 = (xs1[0] - xb1[0]) * Math.sin(th1) + (xs1[1] - xb1[1]) * -Math.cos(th1);
+    const side0 = (xs0[0] - xb0[0]) * libmSin(th0) + (xs0[1] - xb0[1]) * -libmCos(th0);
+    const side1 = (xs1[0] - xb1[0]) * libmSin(th1) + (xs1[1] - xb1[1]) * -libmCos(th1);
     if (side0 <= 0.0 || side1 >= 0.0) return false;
     // Newton-Raphson solve of the full non-linear parametric equation for the crossing time (0 to 1)
     const tf = this.newtonRaphson(0.0, 1.0);
@@ -1570,8 +1571,8 @@ export class FixSRD extends Fix {
     const rsq = delx * delx + dely * dely;
     if (rsq > 0.25 * length * length) return false;
     const thc = th0 + tf * (th1 - th0);
-    this.lnbc[0] = Math.sin(thc);
-    this.lnbc[1] = -Math.cos(thc);
+    this.lnbc[0] = libmSin(thc);
+    this.lnbc[1] = -libmCos(thc);
     return true;
   }
 
@@ -1734,8 +1735,8 @@ export class FixSRD extends Fix {
     const c1 = xb0[1] + (xb1[1] - xb0[1]) * t;
     const dtheta = this.ltheta1 - this.ltheta0;
     const theta = this.ltheta0 + dtheta * t;
-    const cosT = Math.cos(theta);
-    const sinT = Math.sin(theta);
+    const cosT = libmCos(theta);
+    const sinT = libmSin(theta);
     const f = (p1 - c1) * cosT - (p0 - c0) * sinT;
     const df = ((xs1[1] - xs0[1]) - (xb1[1] - xb0[1])) * cosT - (p1 - c1) * sinT * dtheta -
       ((xs1[0] - xs0[0]) - (xb1[0] - xb0[0])) * sinT - (p0 - c0) * cosT * dtheta;

@@ -14,6 +14,7 @@ import type { RasterFrame, Vec3 } from '../../engine/output/image_objects';
 import { drawCylinder, drawSphere, drawTrinorm, drawPixmapBox } from './draw';
 import { color2rgb, byteOf, type Col } from './colors';
 import { LETTER_X, LETTER_Y, LETTER_Z } from './axes_letters';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 type V = [number, number, number];
 type Tri = [V, V, V];
@@ -50,10 +51,10 @@ const buildTemplate = (tiplength: number, tipwidth: number, radius: number, res:
   const p2: V = [0.5 - tiplength, 0.0, 0.0];
   const nflat: V = [-1.0, 0.0, 0.0];
   for (let i = 0; i < res; i++) {
-    p1[1] = (radius + tipwidth) * Math.sin(radinc * i - RADOVERLAP);
-    p1[2] = (radius + tipwidth) * Math.cos(radinc * i - RADOVERLAP);
-    p2[1] = (radius + tipwidth) * Math.sin(radinc * (i + 1));
-    p2[2] = (radius + tipwidth) * Math.cos(radinc * (i + 1));
+    p1[1] = (radius + tipwidth) * libmSin(radinc * i - RADOVERLAP);
+    p1[2] = (radius + tipwidth) * libmCos(radinc * i - RADOVERLAP);
+    p2[1] = (radius + tipwidth) * libmSin(radinc * (i + 1));
+    p2[2] = (radius + tipwidth) * libmCos(radinc * (i + 1));
     // tip cone: radial normals at the rim, the mid-point rim normal tilted for a mostly pointy tip
     const n1 = norm3([0.0, p2[1], p2[2]]);
     const n2 = norm3([0.25, 0.5 * (p1[1] + p2[1]), 0.5 * (p1[2] + p2[2])]);
@@ -68,10 +69,10 @@ const buildTemplate = (tiplength: number, tipwidth: number, radius: number, res:
   p1[0] = -0.5;
   p2[0] = -0.5;
   for (let i = 0; i < res; i++) {
-    p1[1] = radius * Math.sin(radinc * i - RADOVERLAP);
-    p1[2] = radius * Math.cos(radinc * i - RADOVERLAP);
-    p2[1] = radius * Math.sin(radinc * (i + 1));
-    p2[2] = radius * Math.cos(radinc * (i + 1));
+    p1[1] = radius * libmSin(radinc * i - RADOVERLAP);
+    p1[2] = radius * libmCos(radinc * i - RADOVERLAP);
+    p2[1] = radius * libmSin(radinc * (i + 1));
+    p2[2] = radius * libmCos(radinc * (i + 1));
     triangles.push([[p2[0], p2[1], p2[2]], [bot[0], bot[1], bot[2]], [p1[0], p1[1], p1[2]]]);
     normals.push([nflat, nflat, nflat]);
   }

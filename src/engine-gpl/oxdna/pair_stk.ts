@@ -14,6 +14,7 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } fro
 import { OXDNA_5P, OXDNA_3P, buildAtomMap, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, DF5, F1, F4, F5, lrfOf, oxdnaConstants, stackingSiteOxdna1, backboneSite, type StackRule, potentialLines } from './common';
+import { sin as libmSin } from '../libm/sincos';
 
 /** pair_oxdna_stk.cpp constructor: the sequence-dependence factors eta_st[i][j] (indexed by 1-based base types mod 4). */
 export const ETA_ST: number[][] = [
@@ -283,9 +284,9 @@ export class PairOxdnaStk extends Pair {
             if (evdwl !== 0.0) {
               const df1 = DF1(rStk, this.eps[qe], this.aSt[qe], this.c0[q4], this.clc[q4], this.chc[q4], this.clo[q4], this.chi[q4],
                 this.bLo[qe], this.bHi[qe]);
-              const df4t4 = DF4(theta4, this.a4[q4], this.th4[qe], this.dth4ast[q4], this.b4[q4], this.dth4c[q4]) / Math.sin(theta4);
-              const df4t5 = DF4(theta5p, this.a5[qe], this.th5[qe], this.dth5ast[qe], this.b5[qe], this.dth5c[qe]) / Math.sin(theta5p);
-              const df4t6 = DF4(theta6p, this.a6[qe], this.th6[qe], this.dth6ast[qe], this.b6[qe], this.dth6c[qe]) / Math.sin(theta6p);
+              const df4t4 = DF4(theta4, this.a4[q4], this.th4[qe], this.dth4ast[q4], this.b4[q4], this.dth4c[q4]) / libmSin(theta4);
+              const df4t5 = DF4(theta5p, this.a5[qe], this.th5[qe], this.dth5ast[qe], this.b5[qe], this.dth5c[qe]) / libmSin(theta5p);
+              const df4t6 = DF4(theta6p, this.a6[qe], this.th6[qe], this.dth6ast[qe], this.b6[qe], this.dth6c[qe]) / libmSin(theta6p);
               const df5c1 = DF5(-cosphi1, this.a1[qe], -this.cos1ast[qe], this.b1[qe], -this.cos1c[qe]);
               const df5c2 = DF5(-cosphi2, this.a2[qe], -this.cos2ast[qe], this.b2[qe], -this.cos2c[qe]);
               delf[0] = 0.0; delf[1] = 0.0; delf[2] = 0.0;

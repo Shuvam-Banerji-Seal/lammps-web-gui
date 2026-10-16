@@ -11,6 +11,7 @@
  * extrapolate or clamp as the C++ does.
  */
 import { StyleError } from '../../engine/force/types';
+import { cos as libmCos } from '../libm/sincos';
 
 /** Parsed mesocnt potential file with its spline coefficients. */
 export interface MesocntTables {
@@ -478,8 +479,8 @@ export const glNodes = (quad: number): Float64Array => {
   let root = 0;
   for (let k = kStart; k < kEnd; k++) {
     const theta = (Math.ceil(0.5 * quad) - 0.25 - k) * Math.PI / (quad + 0.5);
-    let a = Math.cos((Math.ceil(0.5 * quad) - k) * Math.PI / (quad + 1.0));
-    let b = Math.cos(theta);
+    let a = libmCos((Math.ceil(0.5 * quad) - k) * Math.PI / (quad + 1.0));
+    let b = libmCos(theta);
     let c = 0;
     let iter = 0;
     do {

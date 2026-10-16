@@ -21,6 +21,7 @@ import { fft3d } from '../../engine/force/fft';
 import type { SimState } from '../../engine/types';
 import type { Geometry } from '../../engine/domain';
 import { gfDenomCoefficients, nativePppmGrid } from './grid';
+import { sin as libmSin } from '../libm/sincos';
 
 const MY_2PI = 6.28318530717958647692;
 const MY_4PI = 12.56637061435917295384;
@@ -29,7 +30,7 @@ const MY_PI = Math.PI;
 /** math_special.h powsinxx (see grid.ts). */
 const powsinxx = (x: number, n: number): number => {
   if (x === 0) return 1;
-  let ww = Math.sin(x) / x;
+  let ww = libmSin(x) / x;
   let yy = 1;
   for (; n !== 0; n >>= 1, ww *= ww) if (n & 1) yy *= ww;
   return yy;
@@ -258,8 +259,8 @@ export class KSpacePPPMAd extends KSpacePPPM {
 
   /** sf_coeff[c] sin(2 pi s) + sf_coeff[c+1] sin(4 pi s), times 2 q^2 (fieldforce_ad). */
   private selfForce(sfc: Float64Array, c: number, s: number, q: number): number {
-    let sf = sfc[c] * Math.sin(2 * MY_PI * s);
-    sf += sfc[c + 1] * Math.sin(4 * MY_PI * s);
+    let sf = sfc[c] * libmSin(2 * MY_PI * s);
+    sf += sfc[c + 1] * libmSin(4 * MY_PI * s);
     return sf * 2 * q * q;
   }
 
@@ -292,19 +293,19 @@ export class KSpacePPPMAd extends KSpacePPPM {
     for (let m = 0; m < nz; m++) {
       const mper = m - nz * Math.trunc((2 * m) / nz);
       const qz = unitkz * mper;
-      const snz = Math.sin((0.5 * qz * lzs) / nz) ** 2;
+      const snz = libmSin((0.5 * qz * lzs) / nz) ** 2;
       const sz = Math.exp(-0.25 * ((qz / g) * (qz / g)));
       const wz = powsinxx((0.5 * qz * lzs) / nz, twoorder);
       for (let l = 0; l < ny; l++) {
         const lper = l - ny * Math.trunc((2 * l) / ny);
         const qy = unitky * lper;
-        const sny = Math.sin((0.5 * qy * geom.ly) / ny) ** 2;
+        const sny = libmSin((0.5 * qy * geom.ly) / ny) ** 2;
         const sy = Math.exp(-0.25 * ((qy / g) * (qy / g)));
         const wy = powsinxx((0.5 * qy * geom.ly) / ny, twoorder);
         for (let k = 0; k < nx; k++) {
           const kper = k - nx * Math.trunc((2 * k) / nx);
           const qx = unitkx * kper;
-          const snx = Math.sin((0.5 * qx * geom.lx) / nx) ** 2;
+          const snx = libmSin((0.5 * qx * geom.lx) / nx) ** 2;
           const sx = Math.exp(-0.25 * ((qx / g) * (qx / g)));
           const wx = powsinxx((0.5 * qx * geom.lx) / nx, twoorder);
           const sqk = qx * qx + qy * qy + qz * qz;

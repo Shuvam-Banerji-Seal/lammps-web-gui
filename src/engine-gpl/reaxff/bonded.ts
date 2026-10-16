@@ -13,6 +13,7 @@
  * are refused by the pair style).
  */
 import { DEG2RAD, MIN_SINE, type RxSystem, type ThreeBodyList } from './core';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 const SQR = (x: number) => x * x;
 const CUBE = (x: number) => x * x * x;
@@ -332,7 +333,7 @@ export const valenceAngles = (sys: RxSystem): void => {
           thb.thb[q] = k;
           thb.pthb[q] = pk;
           thb.theta[q] = theta;
-          let sinTheta = Math.sin(theta);
+          let sinTheta = libmSin(theta);
           if (sinTheta < 1.0e-5) sinTheta = 1.0e-5;
           if (j < n && BOA_jk > 0.0 && BOij > ctrl.thbCut && BOjk > ctrl.thbCut && BOij * BOjk > ctrl.thbCutsq) {
             const thbh = param.thbp[(typeI * param.numAtomTypes + typeJ) * param.numAtomTypes + typeK];
@@ -455,10 +456,10 @@ const calculateOmega = (
   pijk: DCos, pjkl: DCos,
   out: Float64Array,
 ): number => {
-  let sin_ijk = Math.sin(thetaIJK);
-  const cos_ijk = Math.cos(thetaIJK);
-  let sin_jkl = Math.sin(thetaJKL);
-  const cos_jkl = Math.cos(thetaJKL);
+  let sin_ijk = libmSin(thetaIJK);
+  const cos_ijk = libmCos(thetaIJK);
+  let sin_jkl = libmSin(thetaJKL);
+  const cos_jkl = libmCos(thetaJKL);
   if (sin_ijk >= 0 && sin_ijk <= MIN_SINE) sin_ijk = MIN_SINE;
   else if (sin_ijk <= 0 && sin_ijk >= -MIN_SINE) sin_ijk = -MIN_SINE;
   if (sin_jkl >= 0 && sin_jkl <= MIN_SINE) sin_jkl = MIN_SINE;
@@ -558,8 +559,8 @@ export const torsionAngles = (sys: RxSystem): void => {
         const r_ij = b.d[pbondIJ];
         const BOA_ij = BOij - thbCut;
         const theta_ijk = thb.theta[pi];
-        const sin_ijk = Math.sin(theta_ijk);
-        const cos_ijk = Math.cos(theta_ijk);
+        const sin_ijk = libmSin(theta_ijk);
+        const cos_ijk = libmCos(theta_ijk);
         const exp_tor2_ij = Math.exp(-p_tor2 * BOA_ij);
         const exp_cot2_ij = Math.exp(-p_cot2 * SQR(BOA_ij - 1.5));
         let tan_ijk_i: number;
@@ -577,8 +578,8 @@ export const torsionAngles = (sys: RxSystem): void => {
           const r_kl = b.d[plk];
           const BOA_kl = BOkl - thbCut;
           const theta_jkl = thb.theta[pl];
-          const sin_jkl = Math.sin(theta_jkl);
-          const cos_jkl = Math.cos(theta_jkl);
+          const sin_jkl = libmSin(theta_jkl);
+          const cos_jkl = libmCos(theta_jkl);
           let tan_jkl_i: number;
           if (sin_jkl >= 0 && sin_jkl <= MIN_SINE) tan_jkl_i = cos_jkl / MIN_SINE;
           else if (sin_jkl <= 0 && sin_jkl >= -MIN_SINE) tan_jkl_i = cos_jkl / -MIN_SINE;
@@ -593,9 +594,9 @@ export const torsionAngles = (sys: RxSystem): void => {
             { di: thb.dcos_di, dj: thb.dcos_dj, dk: thb.dcos_dk, q: 3 * pl },
             dcosOmega,
           );
-          const cos_omega = Math.cos(omega);
-          const cos2omega = Math.cos(2.0 * omega);
-          const cos3omega = Math.cos(3.0 * omega);
+          const cos_omega = libmCos(omega);
+          const cos2omega = libmCos(2.0 * omega);
+          const cos3omega = libmCos(3.0 * omega);
           // torsion energy
           const exp_tor1 = Math.exp(fbp.p_tor1 * SQR(2.0 - b.BO_pi[pk] - f11_DjDk));
           const exp_tor2_kl = Math.exp(-p_tor2 * BOA_kl);
@@ -699,7 +700,7 @@ export const hydrogenBonds = (sys: RxSystem): void => {
         // the derivative of cos(theta): di, dj, dk
         calculateDCosTheta(b.dvec, 3 * pi, b.d[pi], dvecJK, 0, r_jk, tmp, 0, 3, 6);
         // hydrogen bond energy
-        const sin_theta2 = Math.sin(theta / 2.0);
+        const sin_theta2 = libmSin(theta / 2.0);
         let sin_xhz4 = SQR(sin_theta2);
         sin_xhz4 *= sin_xhz4;
         const cos_xhz1 = 1.0 - cosTheta;

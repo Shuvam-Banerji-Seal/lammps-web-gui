@@ -77,9 +77,16 @@ describe('partitions', () => {
     expect(events.filter((e) => e.kind === 'thermo').length).toBe(1);
   });
 
-  it('refuses jump and next with partitions (one input stream, per-replica variables)', async () => {
-    const { error } = await run('label here\njump SELF here\n', 2);
-    expect(error?.message).toMatch(/jump.*partitions/);
+  it('runs a next/jump loop on every partition (one input stream, each replica advances its own loop variable)', async () => {
+    const { session, error } = await run('variable i loop 3\nlabel top\nnext i\njump SELF top\n', 2);
+    expect(error).toBeNull();
+    // the loop ran out on both replicas, so next deleted the loop variable on each
+    for (const sys of session.replicaSystems) expect(sys.vars.get('i')).toBeUndefined();
+  });
+
+  it('refuses a loop whose variable runs out at a different pass on different partitions', async () => {
+    const { error } = await run('variable n world 2 3\nvariable i loop ${n}\nlabel top\nnext i\njump SELF top\n', 2);
+    expect(error?.message).toMatch(/run out at different times/);
   });
 });
 

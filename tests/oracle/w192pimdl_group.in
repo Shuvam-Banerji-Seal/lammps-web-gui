@@ -1,0 +1,28 @@
+# oracle: w192pimdl_group — fix pimd/langevin on a group (type 1 atoms only; the type 2 atoms are not integrated), nvt, obabo, lj units, 4 beads (4 atoms, 30 steps)
+# oracle-partitions: 4
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS: max relative error over the 4 partitions 3.7e-15 on thermo, 3.3e-16 per atom.
+variable ibead world 0 1 2 3
+units lj
+atom_style atomic
+atom_modify map yes
+boundary p p p
+region box block -6 6 -6 6 -6 6
+create_box 2 box
+create_atoms 1 single -1.0 0.5 0.2
+create_atoms 1 single 1.5 -0.7 0.9
+create_atoms 2 single 0.3 2.0 -1.1
+create_atoms 2 single -2.0 -2.0 2.0
+mass 1 1.0
+mass 2 2.0
+group real_atom type 1
+pair_style lj/cut 2.8015
+pair_coeff * * 1.0 1.0
+pair_modify shift yes
+timestep 0.00044905847
+velocity all create 1.0 4321${ibead} mom yes rot no dist gaussian
+fix 1 real_atom pimd/langevin ensemble nvt integrator obabo temp 1.00888 sp 0.1924 thermostat PILE_L 1234
+thermo_style custom step temp f_1[1] f_1[2] f_1[3] f_1[4] f_1[5] f_1[6] f_1[7] f_1[8] f_1[9] f_1[10] pe
+thermo_modify format float %.15g norm no
+thermo 5
+run 30

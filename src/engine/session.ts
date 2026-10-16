@@ -314,11 +314,9 @@ export class Session {
     // a formula that calls omega() (variable, print, if, fix print ...) needs the group motion helper of
     // groupMotion.ts; it is loaded here, before the switch below, which runs some commands (if) without the lookup
     if (a.some((w) => w.includes('omega('))) await ensureStyles(['omega']);
-    // a jump or next moves one stream for all partitions; with partitions each replica's variables could
-    // differ, so the loop controls are refused rather than guessed
-    if (this.replicas.length > 1 && (cmd === 'jump' || cmd === 'next')) {
-      throw new StyleError(`'${cmd}' is not supported with partitions yet (the replicas share one input stream)`);
-    }
+    // with partitions there is one input stream: each replica advances its own loop variables for next (the same
+    // command on every replica, as lammps -partition runs it on each partition), and the jump is taken only when
+    // all partitions agree that their loop has run out, so the replicas stay on the same command
     switch (cmd) {
       case 'label':
         if (a.length !== 1) throw new StyleError('usage: label ID');
@@ -326,6 +324,14 @@ export class Session {
       case 'jump': return this.jump(a, frame);
       case 'next':
         if (!a.length) throw new StyleError('usage: next variable1 [variable2 ...]');
+        if (this.replicas.length > 1) {
+          const outs = this.replicas.map((sys) => sys.vars.next(a));
+          if (outs.some((o) => o !== outs[0])) {
+            throw new StyleError("'next': the partitions' loop variables run out at different times (the partitions must run the same number of loop passes)");
+          }
+          if (outs[0]) this.skipJump = true;
+          return;
+        }
         if (this.sys.vars.next(a)) this.skipJump = true;
         return;
       case 'include': {

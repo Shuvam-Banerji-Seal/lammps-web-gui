@@ -34,3 +34,11 @@ voro++ is distributed under the **BSD three-clause licence**, copyright The Rege
 unchanged in `voro/LICENSE.voro++`; each ported file names the voro++ source it follows and carries the copyright
 notice. The BSD licence is compatible with this directory's GPL-2.0 licence, and the code here stays under GPL-2.0 as
 part of the LAMMPS port.
+
+## Third-party code: PTM (MIT) and its voro++ cell
+
+- `ptm/` (compute ptm/atom): the Polyhedral Template Matching library is MIT-licensed (Copyright (c) 2016 PM Larsen);
+  its licence text is in `ptm/LICENSE.ptm`.
+- `ptm/ptm_voronoi_cell.ts` and `ptm/ptm_voronoi_config.ts`: the voro++ (BSD-3, The Regents of the University of California,
+  Copyright (c) 2008) Voronoi cell bundled in the PTM library, ported with the owner's approval (2026-10-16); the licence
+  text is in `ptm/LICENSE.voro++`.

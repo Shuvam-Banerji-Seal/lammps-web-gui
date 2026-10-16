@@ -297,8 +297,8 @@ and more.
 
 ## 📄 License
 
-**[LAMMPS Web GUI / Molecule3D Educational and Non-Commercial Source-Available
-Licence v1.0](LICENSE)** © 2025–2026 Shuvam Banerji Seal. All rights reserved.
+**[LAMMPS Web GUI Educational and Non-Commercial Source-Available Licence
+v1.0](LICENSE)** © 2025–2026 Shuvam Banerji Seal. All rights reserved.
 
 This is **source-available, not open source**. In plain terms:
 

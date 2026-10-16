@@ -1,0 +1,19 @@
+# oracle: fix gcmc insertions and deletions inside a sphere region: the region volume is native's 10,000,000-point
+# estimate made at the fix definition, which also advances the equal stream before the first event
+# Measured with native LAMMPS: thermo (atoms, pe, the insertion and deletion counters) 1.2e-15, per-atom 1.4e-15
+# relative.
+units lj
+atom_style atomic
+boundary p p p
+region box block 0 7 0 7 0 7
+create_box 1 box
+create_atoms 1 random 30 5531 NULL overlap 0.9
+mass 1 1.0
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0
+region ball sphere 3.5 3.5 3.5 2.2 units box
+fix g all gcmc 1 4 0 1 81723 1.3 -2.0 0.3 region ball
+thermo_style custom step atoms pe f_g[3] f_g[4] f_g[5] f_g[6]
+thermo_modify format float %.15g
+thermo 1
+run 30

@@ -5,7 +5,7 @@ import { takeFixRecord } from './restartRecord';
 import { appendAtoms, deleteAtoms, hasChargeStyle, isMolecularStyle } from '../atoms';
 import { appendMolecule, num, posInt } from './pour';
 import { rotationMatrix, type MoleculeTemplate } from '../molecule';
-import { regionBox, boxInsertionPoint, maxMoleculeId, topoList } from './widom';
+import { estimateRegion, boxInsertionPoint, maxMoleculeId, topoList } from './widom';
 import { BlockRegion, type Region } from '../region';
 import { newAccum, type Bonded, type BondedCompute } from '../force/types';
 import type { System } from '../system';
@@ -365,6 +365,9 @@ export class FixGcmc extends Fix {
     this.sizeVector = 8;
     this.extvector = 0;
     this.extscalar = 0;
+    // native estimates the region's volume here, before any other draw of the equal stream (widom.ts estimateRegion);
+    // a restart file's generator state replaces the stream afterwards
+    if (regionId) this.reg = estimateRegion(sys.region(regionId), this.rng, 'gcmc');
     const saved = takeFixRecord(sys, id, this.style)?.state as GcmcRestart | undefined;
     if (saved) this.restoreState(saved);
   }
@@ -439,15 +442,8 @@ export class FixGcmc extends Fix {
       this.rigidFix = rf as RigidBodies;
     }
     for (const g of this.groupTypes) if (g.type < 1 || g.type > s.ntypes) throw new StyleError(`fix gcmc grouptype: type ${g.type} is outside 1..${s.ntypes}`);
-    if (this.regionId) {
-      const r = this.sys.region(this.regionId);
-      if (!r.interior) throw new StyleError('fix gcmc: the region must be defined with side in');
-      if (r.dynamic) throw new StyleError('fix gcmc: a dynamic region (move or rotate) is not supported');
-      this.region = r;
-      this.reg = regionBox(this.sys, r);
-    } else {
-      this.reg = null;
-    }
+    // the region's bounding box and volume come from the definition of the fix (constructor)
+    this.region = this.regionId ? this.sys.region(this.regionId) : null;
   }
 
   /** The run loop calls preExchange only on neighbour rebuilds; it is a stub (see fix pour). */

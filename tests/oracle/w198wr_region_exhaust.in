@@ -1,0 +1,21 @@
+# oracle: fix widom in a sparse region (two small spheres at opposite corners): many trials run out of region attempts,
+# which ends the whole insertion event; the draw count of an exhausted trial decides the later events
+# Measured with native LAMMPS: thermo 4.7e-15, per-atom 5.4e-15 relative; 3 of 26
+# events end at their first insertion (f_w[1] = 0).
+units lj
+atom_style atomic
+boundary p p p
+region box block 0 6 0 6 0 6
+create_box 1 box
+create_atoms 1 random 40 9127 NULL overlap 0.9
+mass 1 1.0
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0
+region s1 sphere 0.8 0.8 0.8 0.35 units box
+region s2 sphere 5.2 5.2 5.2 0.35 units box
+region sparse union 2 s1 s2
+fix w all widom 1 5 1 4711 1.2 region sparse
+thermo_style custom step f_w[1] f_w[2] f_w[3]
+thermo_modify format float %.15g
+thermo 1
+run 25

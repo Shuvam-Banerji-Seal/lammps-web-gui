@@ -2,9 +2,9 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import { RanPark } from '../rng';
 import { appendAtoms, deleteAtoms, hasChargeStyle, isMolecularStyle } from '../atoms';
-import { appendMolecule, num, posInt, paramValue } from './pour';
+import { appendMolecule, num, posInt } from './pour';
 import { geometricCenter, rotationMatrix, type MoleculeTemplate } from '../molecule';
-import { BlockRegion, SphereRegion, EllipsoidRegion, ConeRegion, type Region } from '../region';
+import { BlockRegion, type Region } from '../region';
 import { newAccum, type Accum, type Bonded, type BondedCompute } from '../force/types';
 import { PairHybrid } from '../force/pair/hybrid';
 import type { System } from '../system';
@@ -66,13 +66,12 @@ import type { SimState, TopoList } from '../types';
  * the doc requires: "an amount of energy that is subtracted from the final
  * energy when a molecule is inserted".
  *
- * Not measured / not matched: native's region insertion stream could not be
- * reproduced (with a region, even one equal to the whole box, the positions
- * are not a linear map of consecutive RanPark draws). The engine draws the
- * point uniformly in the region's bounding box with its own RanPark stream
- * (rejecting points outside a non-rectangular region, up to 1000 tries) and
- * reports the region's exact volume; the atom/molecule no-region cases match
- * native exactly.
+ * Region insertions: native estimates the region volume with 10,000,000
+ * points of the equal stream when the fix is defined (estimateRegion), which is
+ * why its region insertions looked unrelated to consecutive RanPark draws; the
+ * engine makes the same draws, reports the same estimated volume, draws each
+ * point in the region's bounding box with native's redraw count, and ends the
+ * event when a point runs out of attempts (w30widom_region, w198wr_*).
  */
 
 type Vec3 = [number, number, number];
@@ -119,32 +118,29 @@ export const boxInsertionPoint = (sys: System, rng: RanPark): Vec3 => {
   ];
 };
 
-/** Bounding box and volume of an insertion region (side in). */
-export const regionBox = (sys: System, r: Region): { lo: Vec3; hi: Vec3; volume: number } => {
-  if (r instanceof BlockRegion) {
-    const b = r.b.map((p) => paramValue(sys, p));
-    const lo: Vec3 = [b[0], b[2], b[4]], hi: Vec3 = [b[1], b[3], b[5]];
-    return { lo, hi, volume: (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2]) };
+/**
+ * The bounding box of an insertion region and the estimate of its volume that native LAMMPS makes when the fix is
+ * defined (src/MC/fix_gcmc.cpp and fix_widom.cpp constructors at b332f28, "estimate region volume using MC trials"):
+ * 10,000,000 points in the region's bounding box, three draws each from the equal stream, and volume = bounding-box
+ * volume x (points inside) / 10,000,000. The fixes make these draws before any other draw of that stream, so the
+ * insertions after them follow native's stream. A region without a bounding box is refused as native does.
+ */
+export const estimateRegion = (r: Region, rng: RanPark, fix: string): { lo: Vec3; hi: Vec3; volume: number } => {
+  if (!r.interior) throw new StyleError(`fix ${fix}: the region must be defined with side in`);
+  if (r.dynamic) throw new StyleError(`Fix ${fix} region ${r.id} cannot be dynamic`);
+  const bb = r.bbox();
+  if (!bb) throw new StyleError(`Fix ${fix} region ${r.id} does not support a bounding box`);
+  const lo: Vec3 = [bb.lo[0], bb.lo[1], bb.lo[2]], hi: Vec3 = [bb.hi[0], bb.hi[1], bb.hi[2]];
+  const attempts = 10000000;
+  let inside = 0;
+  for (let i = 0; i < attempts; i++) {
+    const x = lo[0] + rng.uniform() * (hi[0] - lo[0]);
+    const y = lo[1] + rng.uniform() * (hi[1] - lo[1]);
+    const z = lo[2] + rng.uniform() * (hi[2] - lo[2]);
+    if (r.match(x, y, z)) inside++;
   }
-  if (r instanceof SphereRegion) {
-    const c = r.c.map((p) => paramValue(sys, p));
-    const rad = paramValue(sys, r.r);
-    return { lo: [c[0] - rad, c[1] - rad, c[2] - rad], hi: [c[0] + rad, c[1] + rad, c[2] + rad], volume: (4 / 3) * Math.PI * rad ** 3 };
-  }
-  if (r instanceof EllipsoidRegion) {
-    const c = r.c.map((p) => paramValue(sys, p));
-    const a = r.ax.map((p) => paramValue(sys, p));
-    return { lo: [c[0] - a[0], c[1] - a[1], c[2] - a[2]], hi: [c[0] + a[0], c[1] + a[1], c[2] + a[2]], volume: (4 / 3) * Math.PI * a[0] * a[1] * a[2] };
-  }
-  if (r instanceof ConeRegion) {
-    const bb = r.bbox();
-    if (!bb) throw new StyleError(`fix widom: region '${r.id}' (${r.style}) has no finite bounding box`);
-    const r1 = paramValue(sys, r.radlo), r2 = paramValue(sys, r.radhi);
-    const h = paramValue(sys, r.hi) - paramValue(sys, r.lo);
-    const volume = r.style === 'cylinder' ? Math.PI * r1 * r1 * Math.abs(h) : (Math.PI / 3) * Math.abs(h) * (r1 * r1 + r1 * r2 + r2 * r2);
-    return { lo: [bb.lo[0], bb.lo[1], bb.lo[2]], hi: [bb.hi[0], bb.hi[1], bb.hi[2]], volume };
-  }
-  throw new StyleError(`fix widom: the volume of a '${r.style}' region is not supported by the browser engine`);
+  const boxVolume = (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2]);
+  return { lo, hi, volume: boxVolume * inside / attempts };
 };
 
 export class FixWidom extends Fix {
@@ -210,6 +206,8 @@ export class FixWidom extends Fix {
     this.type = typeInt;
     this.molTemplateId = molTemplateId;
     this.regionId = regionId;
+    // native estimates the region's volume when the fix is defined, from the equal stream (estimateRegion)
+    if (regionId) this.reg = estimateRegion(sys.region(regionId), this.rng, 'widom');
     this.fullEnergy = fullEnergy;
     this.charge = charge;
     this.intraEnergy = intraEnergy;
@@ -256,15 +254,8 @@ export class FixWidom extends Fix {
       if (this.type > s.ntypes) throw new StyleError(`fix widom: atom type ${this.type} is larger than ntypes ${s.ntypes}`);
       if (this.charge !== null && !hasChargeStyle(s.atomStyle)) throw new StyleError(`fix widom charge: atom_style ${s.atomStyle} cannot store a charge`);
     }
-    if (this.regionId) {
-      const r = this.sys.region(this.regionId);
-      if (!r.interior) throw new StyleError('fix widom: the region must be defined with side in');
-      if (r.dynamic) throw new StyleError('fix widom: a dynamic region (move or rotate) is not supported');
-      this.region = r;
-      this.reg = regionBox(this.sys, r);
-    } else {
-      this.reg = null;
-    }
+    // the region's bounding box and volume come from the definition of the fix (constructor)
+    this.region = this.regionId ? this.sys.region(this.regionId) : null;
     this.volume = this.reg ? this.reg.volume : (s.box.hi[0] - s.box.lo[0]) * (s.box.hi[1] - s.box.lo[1]) * (s.box.hi[2] - s.box.lo[2]);
   }
 
@@ -392,15 +383,15 @@ export class FixWidom extends Fix {
     // decided here, after the energy call has set up the pair style's cutoffs (empty during init)
     this.probeFast = this.canProbeFast();
     this.cells = this.probeFast ? this.buildCells() : null;
-    let sum = 0;
-    let ninsert = 0;
+    // As native LAMMPS does (src/MC/fix_widom.cpp attempt_atomic_insertion and the molecule insertions at b332f28): the
+    // average is a running one, ave += (exp(-dU/kT) - ave) / k for the k-th insertion, and a region trial that runs out
+    // of attempts ends the whole event, so the later insertions of that event are not drawn
+    let avg = 0;
     for (let k = 0; k < this.M; k++) {
       const p = this.drawPosition();
-      if (!p) continue;
-      sum += Math.exp(-this.trial(p, eBefore) / kT);
-      ninsert++;
+      if (!p) break;
+      avg += (Math.exp(-this.trial(p, eBefore) / kT) - avg) / (k + 1);
     }
-    const avg = ninsert > 0 ? sum / ninsert : 0;
     this.avgBoltz = avg;
     this.mu = avg > 0 ? -kT * Math.log(avg) : 0;
   }
@@ -415,11 +406,16 @@ export class FixWidom extends Fix {
     }
     // "random trial points are generated within the rectangular bounding box until a point is found that
     // lies inside the region. If no valid point is generated after 1000 trials, no insertion is performed."
-    for (let t = 0; t < 1000; t++) {
-      const p: Vec3 = [lo[0] + this.rng.uniform() * (hi[0] - lo[0]), lo[1] + this.rng.uniform() * (hi[1] - lo[1]), lo[2] + this.rng.uniform() * (hi[2] - lo[2])];
-      if (this.region.match(p[0], p[1], p[2])) return p;
+    // As native does (fix_widom.cpp, max_region_attempts = 1000): a first point, then up to 1000 redraws while the
+    // point is outside; the 1000th redraw is not tested, so a trial that runs out takes 1001 draws of three
+    const draw = (): Vec3 => [lo[0] + this.rng.uniform() * (hi[0] - lo[0]), lo[1] + this.rng.uniform() * (hi[1] - lo[1]), lo[2] + this.rng.uniform() * (hi[2] - lo[2])];
+    let p = draw();
+    let attempts = 0;
+    while (!this.region.match(p[0], p[1], p[2])) {
+      p = draw();
+      if (++attempts >= 1000) return null;
     }
-    return null;
+    return p;
   }
 
   /** One insertion: append the probe, take the energy difference, remove it. */

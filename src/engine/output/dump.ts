@@ -8,6 +8,7 @@ import { fillWildcard } from '../commands/restart';
 import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, hasRmassStyle, isEllipsoidStyle, massOf, CUSTOM_ATTR, customAttr, hasCharge, hasMolecule, nativeOrder } from '../atoms';
 import { ImageDump } from './dump_image';
 import type { ColorMap } from './image_colormap';
+import { gplHook } from '../gplHooks';
 
 /*
  * Per-atom snapshots — docs.lammps.org/dump.html and dump_modify.html.
@@ -57,7 +58,34 @@ const DIPOLE_COLS = new Set(['mux', 'muy', 'muz', 'mu']);
  */
 export const fmt = (f: string): ((v: number) => string) => compileCFormat(f, 'float', 'Invalid dump format');
 
-export type DumpStyle = 'atom' | 'custom' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image';
+export type DumpStyle = 'atom' | 'custom' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image' | 'vtk';
+
+/**
+ * The core side of the lazily loaded dump vtk helper (engine-gpl/dump/dump_vtk.ts, HOOKS 'vtk' of group gpl_dump_vtk):
+ * the core Dump passes itself through this narrow host, and the helper does the attributes, the dump_modify keywords and
+ * the files. "dump vtk" is documented at docs.lammps.org/dump_vtk.html.
+ */
+export interface DumpVtkHost {
+  readonly sys: System;
+  readonly groupBit: number;
+  readonly file: string;
+  /** dump_modify pad: the timestep digits of a "*" file name (live value). */
+  readonly pad: number;
+  /** The atoms in native storage order (nativeOrder) and the "*" file name substitution (fillWildcard), from the core. */
+  nativeRows(): Int32Array;
+  fillWildcard(file: string, text: string): string;
+  validateColumn(c: string): void;
+  columnValues(c: string): Float64Array;
+  isIntColumn(c: string): boolean;
+}
+
+/** What the helper gives the core dump: its dump_modify keywords (returns the words taken, 0 for the core's) and the write. */
+export interface DumpVtkStyle {
+  modify(args: string[], k: number): number;
+  write(step: number): void;
+}
+
+export type DumpVtkFactory = (host: DumpVtkHost, cols: string[]) => DumpVtkStyle;
 
 /** Columns dump_modify triclinic/general rotates (dump.html: "vx,vy,vz = atom velocities" and the others listed there). */
 const GENERAL_ROTATED = /^(x|y|z|xu|yu|zu|vx|vy|vz|fx|fy|fz)$/;
@@ -101,6 +129,8 @@ export class Dump {
   private nextStep = -1;
   /** dump image: the image renderer (dump_image.ts); null for every other style. */
   private imageDump: ImageDump | null = null;
+  /** dump vtk: the lazily loaded helper (null for every other style). */
+  private vtkStyle: DumpVtkStyle | null = null;
 
   /** The atom colour map of a dump image as the previous output left it (fix graphics/labels colorscale); null for other styles. */
   colorScaleMap(which: 'atom' | 'bond' = 'atom'): ColorMap | null {
@@ -142,6 +172,21 @@ export class Dump {
       this.columns = ['type', 'x', 'y', 'z'];
     } else if (style === 'local') {
       this.columns = localDumpColumns(sys, id, cols);
+    } else if (style === 'vtk') {
+      // dump vtk: the attributes are parsed by the helper, which reads the live pad and the core's column access
+      this.columns = [];
+      const dump = this;
+      this.vtkStyle = gplHook<DumpVtkFactory>('vtk')({
+        sys,
+        groupBit: this.groupBit,
+        file,
+        get pad() { return dump.pad; },
+        nativeRows: () => nativeOrder(sys.state),
+        fillWildcard,
+        validateColumn: (c) => this.validate(c),
+        columnValues: (c) => this.columnValues(c),
+        isIntColumn: (c) => this.isInt(c),
+      }, cols);
     } else {
       if (!cols.length) throw new StyleError('dump custom needs a list of attributes, e.g. id type x y z');
       const out: string[] = [];
@@ -209,6 +254,11 @@ export class Dump {
     for (let k = 0; k < args.length;) {
       const key = args[k];
       const v = args[k + 1];
+      // dump vtk: its own keywords (label, double, element, region, thresh ...); the common ones stay with the core
+      if (this.vtkStyle) {
+        const n = this.vtkStyle.modify(args, k);
+        if (n > 0) { k += n; continue; }
+      }
       // dump image/movie-only dump_modify keywords (dump_image.html, "dump_modify options for dump
       // image/movie"): acolor, adiam, bcolor, bdiam, backcolor, boxcolor, color.
       if (this.imageDump) {
@@ -398,6 +448,10 @@ export class Dump {
       const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
       const name = this.file.includes('*') ? fillWildcard(this.file, stepText) : this.file;
       this.imageDump.write(s, name, this);
+      return;
+    }
+    if (this.vtkStyle) {
+      this.vtkStyle.write(step);
       return;
     }
     sys.forces();

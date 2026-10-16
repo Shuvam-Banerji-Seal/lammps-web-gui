@@ -186,7 +186,8 @@ const dump: Handler = ({ sys }, a) => {
   if (!id || !group || !style || !every || !file) throw new StyleError('usage: dump ID group-ID style N file [attributes]');
   if (sys.dumps.some((d) => d.id === id)) throw new StyleError(`reuse of dump ID '${id}' (undump it first)`);
   if (/\/(gz|zstd)$/.test(style)) throw new StyleError(`dump ${style}: compressed dump files are not available in the browser; use ${style.split('/')[0]}`);
-  if (!(DUMP_STYLES as string[]).includes(style)) throw removedStyleError('dump', style) ?? new StyleError(`dump style '${style}' is not supported by the browser engine; supported: ${DUMP_STYLES.join(', ')}`);
+  // vtk is a lazily loaded style (lazyStyles.ts group gpl_dump_vtk, loaded before this command by the session)
+  if (!(DUMP_STYLES as string[]).includes(style) && style !== 'vtk') throw removedStyleError('dump', style) ?? new StyleError(`dump style '${style}' is not supported by the browser engine; supported: ${[...DUMP_STYLES, 'vtk'].join(', ')}`);
   let n: number | string;
   if (every.startsWith('v_')) n = every.slice(2);
   else {

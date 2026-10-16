@@ -1,0 +1,23 @@
+# oracle: compute ptm/atom with an rmsd threshold (0.05) and a group2-ID (lower): the perturbed fcc upper half sees only the lower half as neighbours
+# oracle-files: w201pt_rmsd.dump
+# oracle-compare: thermo=all atoms=none filerel=1e-12
+# native: b332f28 built with -D PKG_PTM=on
+# measured (ORACLE_MEASURE=1): thermo max rel err 4.0e-16; per-atom columns of 256 atoms (160 outside the group, 96 in) match all tokens at filerel=1e-12; engine time about 1.2 s
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+region          lowz block INF INF INF INF INF 4.0 units box
+group           lower region lowz
+group           upper subtract all lower
+displace_atoms  all random 0.05 0.05 0.05 7717 units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+compute         ptm upper ptm/atom fcc-hcp-ico 0.05 lower
+dump            1 all custom 1 w201pt_rmsd.dump id c_ptm[1] c_ptm[2] c_ptm[3] c_ptm[4] c_ptm[5] c_ptm[6] c_ptm[7]
+dump_modify     1 sort id format float %.15g
+thermo_modify   format float %.15g
+run             0

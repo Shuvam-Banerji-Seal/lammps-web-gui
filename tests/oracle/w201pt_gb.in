@@ -1,0 +1,34 @@
+# oracle: compute ptm/atom default on the fcc Sigma5(310) grain boundary of examples/PACKAGES/ptm/in.ptm (cut to run 0, c_ptm[1..7] dumped per atom; see the deviation note)
+# deviation: in.ptm builds the boundary at y = 0 and deletes the coincident pairs with delete_atoms overlap 0.35. This case opens a 3 A gap (y in [-1.5, 1.5] left empty) so no pair coincides and the native LJ energy and pressure stay finite; delete_atoms is left out. The create region starts at x = z = 0.01 (not 0): native create_atoms keeps atoms that sit exactly on the region faces at x = 0 and z = 0 but the engine's face rule differs there (measured: 390 vs 388 atoms), so the faces are moved off the lattice planes.
+# oracle-files: w201pt_gb.dump
+# oracle-compare: thermo=all atoms=none filerel=1e-12
+# native: b332f28 built with -D PKG_PTM=on
+# measured (ORACLE_MEASURE=1): thermo max rel err 1.1e-15; the 6 per-atom dumped columns (type, rmsd, distance, quaternion) of 388 atoms match all tokens at filerel=1e-12; engine time about 1.1 s
+clear
+units metal
+dimension 3
+boundary p p p
+atom_style atomic
+lattice fcc 4.05
+region whole block 0.010000 12.807225 -64.0361225 64.0361225 0.010000 4.050000 units box
+create_box 2 whole
+region upper block INF INF 1.500000 64.0361225 INF INF units box
+lattice fcc 4.05 orient x  0  3  1 orient y  0 -1  3 orient z  1  0  0
+create_atoms 1 region upper
+region lower block INF INF -64.0361225 -1.500000 INF INF units box
+lattice fcc 4.05 orient x  0  3 -1 orient y  0  1  3 orient z  1  0  0
+create_atoms 2 region lower
+group upper type 1
+group lower type 2
+mass 1 1.0
+mass 2 1.0
+pair_style lj/cut 2.5
+pair_coeff * * 1 1
+pair_coeff 1 1 1 1.1 2.8
+displace_atoms upper move 0 0 0 units lattice
+compute ptm all ptm/atom default 0.1
+reset_timestep 0
+dump 1 all custom 1 w201pt_gb.dump id c_ptm[1] c_ptm[2] c_ptm[3] c_ptm[4] c_ptm[5] c_ptm[6] c_ptm[7]
+dump_modify 1 sort id format float %.15g
+thermo_modify format float %.15g
+run 0

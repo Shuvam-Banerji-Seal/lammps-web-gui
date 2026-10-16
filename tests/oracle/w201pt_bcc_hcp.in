@@ -1,0 +1,36 @@
+# oracle: compute ptm/atom all on a perturbed bcc crystal (5x5x5 cells) and a perturbed hcp crystal, structure keyword all, threshold 0.1
+# oracle-files: w201pt_bcc.dump w201pt_hcp.dump
+# oracle-compare: thermo=all atoms=none filerel=1e-12
+# native: b332f28 built with -D PKG_PTM=on
+# measured (ORACLE_MEASURE=1): thermo max rel err 1.8e-15; per-atom columns of 250 bcc and 240 hcp atoms match all tokens at filerel=1e-12; engine time about 2.1 s
+units           lj
+atom_style      atomic
+lattice         bcc 1.0
+region          box block 0 5 0 5 0 5
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+displace_atoms  all random 0.08 0.08 0.08 4413 units lattice
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+compute         ptm all ptm/atom all 0.1
+dump            1 all custom 1 w201pt_bcc.dump id c_ptm[1] c_ptm[2] c_ptm[3] c_ptm[4] c_ptm[5] c_ptm[6] c_ptm[7]
+dump_modify     1 sort id format float %.15g
+thermo_modify  format float %.15g
+run             0
+clear
+units           lj
+atom_style      atomic
+lattice         hcp 1.2
+region          box block 0 5 0 4 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+displace_atoms  all random 0.06 0.06 0.06 9271 units lattice
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+compute         ptm all ptm/atom all 0.1
+dump            1 all custom 1 w201pt_hcp.dump id c_ptm[1] c_ptm[2] c_ptm[3] c_ptm[4] c_ptm[5] c_ptm[6] c_ptm[7]
+dump_modify     1 sort id format float %.15g
+thermo_modify  format float %.15g
+run             0

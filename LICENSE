@@ -1,4 +1,4 @@
-LAMMPS WEB GUI / MOLECULE3D
+LAMMPS WEB GUI
 EDUCATIONAL AND NON-COMMERCIAL SOURCE-AVAILABLE LICENSE
 Version 1.0, 22 September 2026
 
@@ -126,7 +126,7 @@ under Section 5, requires all of the following that apply:
        permanently (for example an "About", "Credits" or footer area), and
        in text no less legible than the surrounding body text:
 
-         "Built on LAMMPS Web GUI / Molecule3D by Shuvam Banerji Seal —
+         "Built on LAMMPS Web GUI by Shuvam Banerji Seal —
           https://github.com/Shuvam-Banerji-Seal/lammps-web-gui"
 
        You may not remove, obscure, shrink below legibility, overlay,
@@ -144,7 +144,7 @@ under Section 5, requires all of the following that apply:
        poster, thesis, dissertation, grant application or technical report,
        You must cite it. Use the CITATION.cff file in this repository, or:
 
-         Banerji Seal, Shuvam. "LAMMPS Web GUI / Molecule3D: a browser-based
+         Banerji Seal, Shuvam. "LAMMPS Web GUI: a browser-based
          LAMMPS script builder, compiler helper and molecular structure
          viewer." 2026. https://github.com/Shuvam-Banerji-Seal/lammps-web-gui
 

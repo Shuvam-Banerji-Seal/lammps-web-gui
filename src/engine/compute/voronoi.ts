@@ -3,6 +3,23 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { Geometry } from '../domain';
 import { parseNum, parseInt_ } from '../force/util';
+import { gplHook } from '../gplHooks';
+import { nativeOrder } from '../atoms';
+
+/** Contract of the lazily loaded native neighbour-order helper (src/engine-gpl/voro/nativeNeighbors.ts, word 'voronoi/atom'). */
+export interface NativeVoroInput {
+  dim: number;
+  lo: readonly number[];
+  hi: readonly number[];
+  periodic: readonly boolean[];
+  cutghost: number;
+  x: Float64Array;
+  owner: Uint8Array;
+  pool: Uint8Array;
+  faceThreshold: number;
+}
+export interface NativeVoroRow { owner: number; neighbor: number; area: number }
+export interface NativeVoroHook { rows(inp: NativeVoroInput): NativeVoroRow[] | null }
 
 /*
  * compute ID group-ID voronoi/atom keyword arg ... — docs.lammps.org/compute_voronoi_atom.html
@@ -88,9 +105,13 @@ import { parseNum, parseInt_ } from '../force/util';
  * (or zero if the face is external), and the area of the face." Measured with
  * native LAMMPS (black box): 27 atoms on a periodic sc lattice gave 162 rows (six
  * faces per atom), each owner with its six neighbour IDs (periodic images resolve to
- * the atom ID) and face areas 1. The row order inside one owner is voro++'s own
- * face order, which this code does not reproduce: the rows are per owner in the
- * order the faces are clipped here.
+ * the atom ID) and face areas 1. The row order is native's when the layout is
+ * reproduced: an orthogonal box with one ghost swap per periodic side (cutghost
+ * below a box length) takes the ported voro++ cell construction and LAMMPS's
+ * container and ghost order (src/engine-gpl/voro, lazy group gpl_neighbor_swap; the
+ * oracle cases tests/oracle/w199vo_*). Other layouts (cutghost at or above a box
+ * length, general triclinic) keep the set-based rows of this file, whose per-owner
+ * order is the order the faces are clipped here.
  *
  * occupation (docs.lammps.org/compute_voronoi_atom.html): "If the *occupation*
  * keyword is specified the tessellation is only performed for the first invocation
@@ -503,7 +524,19 @@ export class ComputeVoronoiAtom extends Compute {
     }
     this.arrayAtom = out;
     if (this.edgeMax !== null) this.vector = histo;
-    if (this.neighborsOn) {
+    // neighbors yes in native order when the layout is reproduced (orthogonal box, one ghost swap per side)
+    const native = this.neighborsOn && this.radiusName === null && !g.triclinic && !g.box.general
+      ? this.nativeRows(g, s, targets.length > 0) : null;
+    if (native !== null) {
+      const loc = new Float64Array(3 * native.length);
+      for (let r = 0; r < native.length; r++) {
+        loc[3 * r] = s.id[native[r].owner];
+        loc[3 * r + 1] = native[r].neighbor < 0 ? 0 : s.id[native[r].neighbor];
+        loc[3 * r + 2] = native[r].area;
+      }
+      this.localOut = loc;
+      this.localRows = native.length;
+    } else if (this.neighborsOn) {
       let rows = 0;
       for (const r of targetRows) rows += r.length / 3;
       const loc = new Float64Array(3 * rows);
@@ -513,6 +546,43 @@ export class ComputeVoronoiAtom extends Compute {
       this.localRows = rows;
     }
     this.cachedEpoch = sys.epoch;
+  }
+
+  /** The native-order rows of the lazily loaded helper, or null when it is not loaded or the layout is not reproduced. */
+  private nativeRows(g: Geometry, s: System['state'], hasTargets: boolean): NativeVoroRow[] | null {
+    if (!hasTargets) return null;
+    const hook = gplHook<NativeVoroHook>('voronoi/atom');
+    const n = s.n;
+    // the atoms go to the helper in native storage order (the order the atom sort leaves them in, nativeOrder): native
+    // puts them into the voro++ container in that order, which decides the block lists and so the face order
+    const ord = nativeOrder(s);
+    const xs = new Float64Array(3 * n);
+    const owner = new Uint8Array(n), pool = new Uint8Array(n);
+    for (let k = 0; k < n; k++) {
+      const i = ord[k];
+      xs[3 * k] = s.x[3 * i]; xs[3 * k + 1] = s.x[3 * i + 1]; xs[3 * k + 2] = s.x[3 * i + 2];
+      const inGroup = (s.mask[i] & this.groupBit) !== 0 ? 1 : 0;
+      owner[k] = inGroup;
+      pool[k] = this.onlyGroup ? inGroup : 1;
+    }
+    const rows = hook.rows({
+      dim: this.sys.dimension,
+      lo: g.lo,
+      hi: g.hi,
+      periodic: g.periodic,
+      cutghost: this.sys.nb.cutghost,
+      x: xs,
+      owner,
+      pool,
+      faceThreshold: this.faceThreshold,
+    });
+    if (rows === null) return null;
+    // back to engine indices
+    for (const r of rows) {
+      r.owner = ord[r.owner];
+      if (r.neighbor >= 0) r.neighbor = ord[r.neighbor];
+    }
+    return rows;
   }
 
   /** occupation: the first invocation stores the seeds; later ones count the atoms per stored cell (see the module comment). */

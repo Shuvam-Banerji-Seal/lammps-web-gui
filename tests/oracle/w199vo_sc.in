@@ -1,0 +1,20 @@
+# oracle: compute voronoi/atom neighbors yes (local array) in a periodic 3x3x3 simple cubic box: the row order is native's (block order, then voro++ face order per owner)
+# Measured (ORACLE_MEASURE=1): thermo 0 (max relative error vs native); the 162 local rows agree at 1e-12 (filerel), owner order and face order included; engine ~0.13 s warm. native: lmp b332f28 (VORONOI, MC), atom_modify sort 0 0.0 (no reordering of the local atoms).
+# oracle-files: w199vo_sc.loc
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10 filerel=1e-12
+units           lj
+atom_style      atomic
+atom_modify     map array sort 0 0.0
+lattice         sc 1.0
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 1.5
+pair_coeff      * * 1.0 1.0
+thermo_modify   format float %.15g
+compute         v all voronoi/atom neighbors yes
+dump            d all local 1 w199vo_sc.loc c_v[1] c_v[2] c_v[3]
+dump_modify     d format float %.15g
+run             0
+undump          d

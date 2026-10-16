@@ -56,7 +56,7 @@ const pairThreadsOf = (b: ForceBackend): ForceField['pairThreads'] =>
  * The partition commands that drive all replicas together and read their words per replica (each replica's own
  * variables, as lammps -partition): neb (neb.html) and the tempering commands (temper.html, temper/npt, temper/grem).
  */
-const REPLICA_DRIVEN = new Set(['neb', 'neb/spin', 'temper', 'temper/npt', 'temper/grem']);
+const REPLICA_DRIVEN = new Set(['neb', 'neb/spin', 'temper', 'temper/npt', 'temper/grem', 'prd', 'tad']);
 
 /**
  * Commands that run once for the session rather than on every replica (partitions): control flow, `clear`,

@@ -2,6 +2,9 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { Session } from '../session';
 import type { RunHooks } from '../run/verlet';
+import type { MinHooks } from '../run/min';
+import type { NebHost } from './neb';
+import type { Fix } from '../fix/fix';
 
 /**
  * The run-loop helpers a command handler can call. Lazily loaded commands (src/engine-gpl) take them from the
@@ -17,6 +20,12 @@ export interface RunApi {
   writeRestarts(sys: System, step: number, force?: boolean): void;
   initRun(sys: System): void;
   runVerlet(sys: System, nsteps: number, hooks: RunHooks): Promise<number>;
+  /** minimize (run/min.ts): the quench of prd and tad; the minimizer of the session's min_style */
+  minimize(sys: System, p: { etol: number; ftol: number; maxiter: number; maxeval: number }, hooks: MinHooks): Promise<{ reason: string }>;
+  /** the neb command's calculation on the replicas (commands/neb.ts runNeb); returns the barrier EBF (native neb->ebf) */
+  runNeb(host: NebHost, a: string[]): Promise<number>;
+  /** fix neb Kspring of a replica, as tad adds one to every replica (fix/neb.ts) */
+  makeNebFix(sys: System, id: string, group: string, args: string[]): Fix;
 }
 
 /** What a command handler sees. */

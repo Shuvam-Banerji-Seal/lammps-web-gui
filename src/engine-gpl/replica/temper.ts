@@ -321,7 +321,7 @@ export const runTempering = async (kind: Kind, ctx: Ctx, a: string[]): Promise<v
         (r.fix as FixGrem).lambda = setVal[theirs];
       } else {
         // scale_velocities: sfactor = sqrt(set_temp[partner] / set_temp[me]), each component times sfactor
-        const sfactor = Math.sqrt(setVal[theirs] / setVal[mine]) * (1 + Number(process.env.EPS ?? 0));
+        const sfactor = Math.sqrt(setVal[theirs] / setVal[mine]);
         const s = r.sys.state;
         for (let i = 0; i < s.n; i++) {
           s.v[3 * i] = s.v[3 * i] * sfactor;

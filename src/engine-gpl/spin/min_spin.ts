@@ -64,7 +64,7 @@ export const minSpinEvaluateDt = (sys: System, discreteFactor: number): number =
 };
 
 /** Geometric damped advance of all spins (advance_spins of the source). */
-const advanceSpins = (sys: System, alpha: number, dts: number): void => {
+export const advanceSpins = (sys: System, alpha: number, dts: number): void => {
   const s = sys.state;
   const fm = s.fm!, sp = s.sp!;
   const dts2 = dts * dts;

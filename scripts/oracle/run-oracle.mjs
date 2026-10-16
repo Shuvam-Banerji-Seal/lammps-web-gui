@@ -16,7 +16,7 @@
  * unmodified LAMMPS potential files from third_party/lammps/potentials.
  * The header oracle-partitions: N runs the case on N partitions (replicas) with
  * mpirun -np N lmp -partition Nx1. Two kinds:
- *  - a NEB case (its universe log has the header line starting with Step MaxReplicaForce): the fixture holds the
+ *  - a NEB case (its universe log has the header line starting with Step MaxReplicaForce or MaxReplicaTorque): the fixture holds the
  *    NEB table rows of the universe log (each printed step is one row) and the Climbing replica lines; no
  *    write_dump is appended.
  *  - any other partitioned case (e.g. fix pimd): the fixture holds, per partition K, the thermo rows of its log
@@ -112,7 +112,7 @@ const parseDump = (text) => {
 };
 
 /**
- * The NEB table of a universe log (neb.rst): the header line "Step MaxReplicaForce ..." names the
+ * The NEB table of a universe log (neb.rst; neb/spin prints "Step MaxReplicaTorque ..."): the header line names the
  * columns; each following line with the same number of numeric fields is one printed step. Climbing lines
  * are kept in order with the row index they follow.
  */
@@ -121,10 +121,24 @@ const parseNeb = (log) => {
   const climbing = [];
   const lines = log.split('\n');
   let keys = null;
+  // neb/spin (neb_spin.cpp print_status) writes "..." as a literal in its header and names only the first and last
+  // verbose pair, so its columns are rebuilt from the row width: 9 + 2N values (9 + 4N verbose, the GradV<r>dottan
+  // and DN<r> pairs after the RD/PE pairs)
+  let spinVerbose = null;
   for (const line of lines) {
-    if (/^\s*Step\s+MaxReplicaForce\b/.test(line)) { keys = line.trim().split(/\s+/); continue; }
+    if (/^\s*Step\s+MaxReplicaTorque\b/.test(line)) { spinVerbose = /dottan/.test(line); keys = null; continue; }
+    if (/^\s*Step\s+MaxReplicaForce\b/.test(line)) { spinVerbose = null; keys = line.trim().split(/\s+/); continue; }
     const c = /^Climbing replica = (\d+)/.exec(line);
     if (c) { climbing.push({ replica: Number(c[1]), row: rows.length }); continue; }
+    if (spinVerbose !== null && keys === null) {
+      const w0 = line.trim().split(/\s+/);
+      if (w0.length < 9 || !w0.every((x) => /^[-+0-9.eE]+$/.test(x) || /^-?(nan|inf)$/i.test(x))) continue;
+      const n = (w0.length - 9) / (spinVerbose ? 4 : 2);
+      if (!Number.isInteger(n) || n < 2) continue;
+      keys = ['Step', 'MaxReplicaTorque', 'MaxAtomTorque', 'GradV0', 'GradV1', 'GradVc', 'EBF', 'EBR', 'RDT'];
+      for (let r = 1; r <= n; r++) keys.push(`RD${r}`, `PE${r}`);
+      if (spinVerbose) for (let r = 0; r < n; r++) keys.push(`GradV${r}dottan`, `DN${r}`);
+    }
     if (!keys) continue;
     const w = line.trim().split(/\s+/);
     if (w.length !== keys.length || !w.every((x) => /^[-+0-9.eE]+$/.test(x) || /^-?(nan|inf)$/i.test(x))) continue;
@@ -164,7 +178,7 @@ for (const name of cases) {
   for (const f of header(text, 'oracle-potentials')) copyFileSync(join(POTENTIALS, f), join(dir, f));
   const partitions = Number(header(text, 'oracle-partitions')[0] ?? 1);
   // a NEB case (its input runs the neb command) gets no dump: every replica would write it
-  const isNeb = /^\s*neb\s/m.test(text);
+  const isNeb = /^\s*neb(\/spin)?\s/m.test(text);
   writeFileSync(join(dir, 'in.case'), partitions > 1 ? (isNeb ? `${text}\n` : `${text}\n${partitionFinalDump(partitions)}\n`) : `${text}\n${FINAL_DUMP}\n`);
   try {
     if (partitions > 1) execFileSync(MPIRUN, ['-np', String(partitions), LMP, '-partition', `${partitions}x1`, '-in', 'in.case', '-log', 'log.lammps', '-screen', 'none'], { cwd: dir, stdio: 'pipe' });
@@ -179,7 +193,7 @@ for (const name of cases) {
   const files = {};
   for (const f of header(text, 'oracle-files')) files[f] = readFileSync(join(dir, f), 'utf8');
   const version = (/LAMMPS \((.*?)\)/.exec(log) ?? [])[1] ?? 'unknown';
-  if (partitions > 1 && /^\s*Step\s+MaxReplicaForce\b/m.test(log)) {
+  if (partitions > 1 && /^\s*Step\s+MaxReplica(Force|Torque)\b/m.test(log)) {
     const { rows, climbing } = parseNeb(log);
     writeFileSync(join(OUT, `${name}.json`), JSON.stringify({ lammps: version, partitions, neb: rows, climbing, thermo: [], atoms: [], files }, null, 0) + '\n');
     console.log(`✓ ${name}: ${rows.length} NEB rows, ${climbing.length} climbing line(s) on ${partitions} partitions (LAMMPS ${version})`);

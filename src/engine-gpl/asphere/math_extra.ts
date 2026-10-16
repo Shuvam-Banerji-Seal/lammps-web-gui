@@ -2,7 +2,8 @@
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
  * Source: src/math_extra.h and src/math_extra.cpp at commit b332f28 (the MathExtra helpers used by
  * src/ASPHERE/pair_gayberne.cpp: quat_to_mat_trans, diag_times3, transpose_times3, plus3, det3, mldivide3,
- * normalize3, dot3, cross3, vecmat). Copyright (2003) Sandia Corporation, distributed under the GNU General Public
+ * normalize3, dot3, cross3, vecmat; and the Richardson orientation update of the rigid-body fixes: richardson,
+ * mq_to_omega, quat_to_mat, transpose_matvec, matvec, vecquat, qnormalize). Copyright (2003) Sandia Corporation, distributed under the GNU General Public
  * License (the LAMMPS file headers). Original authors: Mike Brown (SNL) and the LAMMPS development team
  * (developers@lammps.org). This file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
@@ -209,3 +210,88 @@ export function computeEtaTorque(m: Mat3, m2: Mat3, s: ArrayLike<number>, ans: M
                     m[2][0]*m[0][1]*m2[2][1]-2.0*m2[2][2]*m[1][0]*m[0][1])/den;
 }
 
+/**
+ * The orientation update of the native rigid-body fixes (fix_nve_asphere.cpp, fix_nve_asphere_noforce.cpp,
+ * fix_nh_asphere.cpp, fix_nve_body.cpp, fix_nh_body.cpp, fix_nve_tri.cpp at b332f28): "dtq = 0.5 * dtv;" then
+ * "MathExtra::mq_to_omega(angmom[i],quat,inertia,omega); MathExtra::richardson(quat,angmom[i],omega,inertia,dtq);"
+ * (math_extra.cpp richardson and mq_to_omega, with the inline quat_to_mat, transpose_matvec, matvec, vecquat and
+ * qnormalize of math_extra.h), in native's operation order. q: w i j k at q[off]; L: angular momentum at L[lo];
+ * I: principal moments; h: the full time step dtv. Same signature as the engine's richardsonStep.
+ */
+export const richardson = (q: Float64Array, off: number, L: Float64Array, lo: number, I: ArrayLike<number>, h: number): void => {
+  const dtq = 0.5 * h;
+  const m0 = L[lo], m1 = L[lo + 1], m2 = L[lo + 2];
+  const w = mqw;
+  mqToOmega(m0, m1, m2, q[off], q[off + 1], q[off + 2], q[off + 3], I, w);
+  // full update from dq/dt = 1/2 w q
+  vecquat(w, q[off], q[off + 1], q[off + 2], q[off + 3], wq);
+  const qfull = qf;
+  qfull[0] = q[off] + dtq * wq[0];
+  qfull[1] = q[off + 1] + dtq * wq[1];
+  qfull[2] = q[off + 2] + dtq * wq[2];
+  qfull[3] = q[off + 3] + dtq * wq[3];
+  qnormalize(qfull);
+  // 1st half update from dq/dt = 1/2 w q
+  const qhalf = qh;
+  qhalf[0] = q[off] + 0.5 * dtq * wq[0];
+  qhalf[1] = q[off + 1] + 0.5 * dtq * wq[1];
+  qhalf[2] = q[off + 2] + 0.5 * dtq * wq[2];
+  qhalf[3] = q[off + 3] + 0.5 * dtq * wq[3];
+  qnormalize(qhalf);
+  // re-compute omega at 1/2 step from m at 1/2 step and q at 1/2 step, recompute wq
+  mqToOmega(m0, m1, m2, qhalf[0], qhalf[1], qhalf[2], qhalf[3], I, w);
+  vecquat(w, qhalf[0], qhalf[1], qhalf[2], qhalf[3], wq);
+  // 2nd half update from dq/dt = 1/2 w q
+  qhalf[0] += 0.5 * dtq * wq[0];
+  qhalf[1] += 0.5 * dtq * wq[1];
+  qhalf[2] += 0.5 * dtq * wq[2];
+  qhalf[3] += 0.5 * dtq * wq[3];
+  qnormalize(qhalf);
+  // corrected Richardson update
+  const qn = qr;
+  qn[0] = 2.0 * qhalf[0] - qfull[0];
+  qn[1] = 2.0 * qhalf[1] - qfull[1];
+  qn[2] = 2.0 * qhalf[2] - qfull[2];
+  qn[3] = 2.0 * qhalf[3] - qfull[3];
+  qnormalize(qn);
+  q[off] = qn[0]; q[off + 1] = qn[1]; q[off + 2] = qn[2]; q[off + 3] = qn[3];
+};
+
+const mqw = new Float64Array(3), wq = new Float64Array(4), qf = new Float64Array(4), qh = new Float64Array(4), qr = new Float64Array(4);
+const rot = new Float64Array(9);
+
+/** math_extra.h qnormalize: "double norm = 1.0 / sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);" then q *= norm. */
+const qnormalize = (a: Float64Array): void => {
+  const norm = 1.0 / Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2] + a[3] * a[3]);
+  a[0] *= norm; a[1] *= norm; a[2] *= norm; a[3] *= norm;
+};
+
+/** math_extra.h vecquat: c = a*b with a = (0, a). */
+const vecquat = (a: Float64Array, b0: number, b1: number, b2: number, b3: number, c: Float64Array): void => {
+  c[0] = -a[0] * b1 - a[1] * b2 - a[2] * b3;
+  c[1] = b0 * a[0] + a[1] * b3 - a[2] * b2;
+  c[2] = b0 * a[1] + a[2] * b1 - a[0] * b3;
+  c[3] = b0 * a[2] + a[0] * b2 - a[1] * b1;
+};
+
+/** math_extra.cpp mq_to_omega: quat_to_mat, transpose_matvec, divide by the moments (0 for a zero moment), matvec. */
+const mqToOmega = (m0: number, m1: number, m2: number, q0: number, q1: number, q2: number, q3: number, moments: ArrayLike<number>, w: Float64Array): void => {
+  // quat_to_mat (row-major rot[3 * r + c] = mat[r][c])
+  const w2 = q0 * q0, i2 = q1 * q1, j2 = q2 * q2, k2 = q3 * q3;
+  const twoij = 2.0 * q1 * q2, twoik = 2.0 * q1 * q3, twojk = 2.0 * q2 * q3;
+  const twoiw = 2.0 * q1 * q0, twojw = 2.0 * q2 * q0, twokw = 2.0 * q3 * q0;
+  rot[0] = w2 + i2 - j2 - k2; rot[1] = twoij - twokw; rot[2] = twojw + twoik;
+  rot[3] = twoij + twokw; rot[4] = w2 - i2 + j2 - k2; rot[5] = twojk - twoiw;
+  rot[6] = twoik - twojw; rot[7] = twojk + twoiw; rot[8] = w2 - i2 - j2 + k2;
+  // transpose_matvec
+  let b0 = rot[0] * m0 + rot[3] * m1 + rot[6] * m2;
+  let b1 = rot[1] * m0 + rot[4] * m1 + rot[7] * m2;
+  let b2 = rot[2] * m0 + rot[5] * m1 + rot[8] * m2;
+  if (moments[0] === 0.0) b0 = 0.0; else b0 /= moments[0];
+  if (moments[1] === 0.0) b1 = 0.0; else b1 /= moments[1];
+  if (moments[2] === 0.0) b2 = 0.0; else b2 /= moments[2];
+  // matvec
+  w[0] = rot[0] * b0 + rot[1] * b1 + rot[2] * b2;
+  w[1] = rot[3] * b0 + rot[4] * b1 + rot[5] * b2;
+  w[2] = rot[6] * b0 + rot[7] * b1 + rot[8] * b2;
+};

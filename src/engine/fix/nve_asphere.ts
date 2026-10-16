@@ -73,6 +73,14 @@ export const richardsonStep = (q: Float64Array, off: number, L: Float64Array, lo
   q[off] = qn[0]; q[off + 1] = qn[1]; q[off + 2] = qn[2]; q[off + 3] = qn[3];
 };
 
+/**
+ * The orientation update the rigid-body fixes call (nve/asphere, nve/asphere/noforce, nvt/npt/nph asphere, nve/body and
+ * the ported body and tri fixes). The default is richardsonStep above; Session.execute loads the GPL module's port of
+ * native LAMMPS's MathExtra::richardson (src/engine-gpl/asphere/math_extra.ts, lazy group gpl_mathextra), whose
+ * operation order reproduces the native orientations bit for bit, and its registry installs it here.
+ */
+export const orientation: { richardson: typeof richardsonStep } = { richardson: richardsonStep };
+
 export class FixNVEAsphere extends FixNVE {
   readonly style: string = 'nve/asphere';
   /** fix nve/asphere/noforce: no velocity or angular momentum update (see initialIntegrate). */
@@ -112,7 +120,7 @@ export class FixNVEAsphere extends FixNVE {
     const dtq = this.dtv;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      richardsonStep(s.quat!, 4 * i, s.angmom!, 3 * i, ellipsoidInertia(s, i), dtq);
+      orientation.richardson(s.quat!, 4 * i, s.angmom!, 3 * i, ellipsoidInertia(s, i), dtq);
     }
   }
 

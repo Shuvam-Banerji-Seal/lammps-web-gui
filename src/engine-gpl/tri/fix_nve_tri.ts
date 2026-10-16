@@ -9,14 +9,14 @@
  * docs.lammps.org/fix_nve_tri.html: "Perform constant NVE integration to update position, velocity, orientation, and angular momentum for triangular particles in the group each timestep".
  *
  * Browser-engine difference: the principal moments of each triangle are the core custom property TRI_BONUS (columns
- * 9 to 11). The Richardson orientation update is the core's richardsonStep (src/engine/fix/nve_asphere.ts), which
- * takes the same steps as MathExtra::richardson with dtq = dt/2.
+ * 9 to 11). The orientation update is the port of MathExtra::richardson in ../asphere/math_extra.ts (mq_to_omega,
+ * then richardson with dtq = dt/2).
  */
 import { FixNVE } from '../../engine/fix/nve';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { isTriAtom, isTriStyle, TRI_BONUS, TRI_BONUS_COLS } from '../../engine/atoms';
-import { richardsonStep } from '../../engine/fix/nve_asphere';
+import { richardson } from '../asphere/math_extra';
 
 export class FixNVETri extends FixNVE {
   readonly style: string = 'nve/tri';
@@ -57,7 +57,7 @@ export class FixNVETri extends FixNVE {
       L[3 * i + 1] += dtf * torque[3 * i + 1];
       L[3 * i + 2] += dtf * torque[3 * i + 2];
       const I = [bonus[TRI_BONUS_COLS * i + 9], bonus[TRI_BONUS_COLS * i + 10], bonus[TRI_BONUS_COLS * i + 11]] as [number, number, number];
-      richardsonStep(quat, 4 * i, L, 3 * i, I, dtv);
+      richardson(quat, 4 * i, L, 3 * i, I, dtv);
     }
   }
 

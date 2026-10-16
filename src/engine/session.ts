@@ -224,8 +224,9 @@ export class Session {
   async execute(text: string, firstLine = 1, name = 'cell'): Promise<void> {
     this.cancelled = false;
     this.frames = [];
-    // the C library log, sin and cos of the native binary (libm.ts): installed before the first command
-    await ensureStyles(['libm']);
+    // the C library log, sin and cos of the native binary (libm.ts) and native LAMMPS's Richardson orientation update
+    // (orientation in fix/nve_asphere.ts): installed before the first command
+    await ensureStyles(['libm', 'mathextra']);
     try {
       await this.runText(text, firstLine, name);
     } catch (e) {

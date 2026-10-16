@@ -14,9 +14,10 @@ import type { EngineEvent, ThermoRow } from '../src/engine/types';
  *   # oracle-inputs: files the input reads (data, potentials), next to the .in file
  *   # oracle-potentials: unmodified LAMMPS potential files from third_party/lammps/potentials
  *   # oracle-files: files it writes that are compared token by token
- *   # oracle-compare: thermo=all|first|first-last atoms=all|none rel=1e-8 abs=1e-10 skip=kw1,kw2 atomskip=c1,c2
+ *   # oracle-compare: thermo=all|first|first-last atoms=all|none rel=1e-8 abs=1e-10 skip=kw1,kw2 atomskip=c1,c2 printed=N
  *                     atomrel=R filerel=R (optional: the per-atom and written-file tolerances, relative, default
- *                     100*max(rel,1e-9) and 1e-6)
+ *                     100*max(rel,1e-9) and 1e-6). printed=N (NEB tables only): the engine's table values are rounded
+ *                     to N significant digits before the comparison, as the native table prints them (%12.8g: N=8)
  *   # oracle-partitions: N   the case runs on N replicas (partitions). A NEB case's fixture holds the NEB table
  *                            rows and the "Climbing replica" lines, compared with the same rel/abs. Any other
  *                            case's fixture holds each partition's thermo rows and final atoms (perPartition),
@@ -62,7 +63,7 @@ const directive = (text: string, key: string): string[] => {
 };
 
 const options = (text: string) => {
-  const o: { thermo: string; atoms: string; rel: number; abs: number; atomrel?: number; filerel?: number; skip: Set<string>; atomskip: Set<string> } = {
+  const o: { thermo: string; atoms: string; rel: number; abs: number; atomrel?: number; filerel?: number; printed?: number; skip: Set<string>; atomskip: Set<string> } = {
     thermo: 'all', atoms: 'all', rel: 1e-8, abs: 1e-10, skip: new Set<string>(), atomskip: new Set<string>(),
   };
   for (const w of directive(text, 'oracle-compare')) {
@@ -73,6 +74,7 @@ const options = (text: string) => {
     else if (k === 'abs') o.abs = Number(v);
     else if (k === 'atomrel') o.atomrel = Number(v);
     else if (k === 'filerel') o.filerel = Number(v);
+    else if (k === 'printed') o.printed = Number(v);
     else if (k === 'skip') for (const s of v.split(',')) o.skip.add(s);
     else if (k === 'atomskip') for (const s of v.split(',')) o.atomskip.add(s);
   }
@@ -232,7 +234,9 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
         for (let r = 0; r < fx.neb!.length; r++) {
           for (const [k, v] of Object.entries(fx.neb![r])) {
             if (o.skip.has(k)) continue;
-            const g = nebRows[r][k];
+            const raw = nebRows[r][k];
+            // the native table prints each value with 8 significant digits (print_status, "%12.8g"): compare what it prints
+            const g = o.printed !== undefined && Number.isFinite(raw) ? Number(raw.toPrecision(o.printed)) : raw;
             if (!close(g, v, o.rel, o.abs)) throw new Error(`${name}: NEB row ${r} (step ${fx.neb![r].Step}) ${k}: engine ${g} vs LAMMPS ${v}`);
           }
         }

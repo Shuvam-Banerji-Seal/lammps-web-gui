@@ -1,0 +1,30 @@
+# oracle: w194gneb_norm — the w194gneb_chain_conv case with thermo_modify norm yes: the energies are divided by the atom count
+# (Min::energy_force), so the energy test of the minimizer and the PE columns of the table use the normalized energies.
+# Measured with native LAMMPS: the same stops as w194gneb_chain_conv (Step 54 and Step 64) and the table rows equal native's at the
+# printed precision (8 significant digits), max relative error 0 after rounding; unrounded, the largest difference is 4.2e-8
+# (GradVc), the printed digits themselves. Engine 1.2 s.
+# native: b332f28 (the installed lmp, SPIN and REPLICA packages)
+# oracle-partitions: 4
+# oracle-inputs: w194gneb_chain.data w194gneb_chain.final
+# oracle-compare: rel=1e-8 abs=1e-10 printed=8 skip=GradV3dottan
+units metal
+dimension 3
+boundary p p p
+atom_style spin
+atom_modify map array
+read_data w194gneb_chain.data
+mass 1 55.845
+pair_style spin/exchange 3.0
+pair_coeff * * exchange 3.0 0.02726 0.2171 1.841
+neighbor 0.1 bin
+neigh_modify every 10 check yes delay 20
+fix 1 all precession/spin zeeman 0.1 0.0 0.0 1.0 anisotropy 0.0001 1.0 0.0 0.0
+fix_modify 1 energy yes
+fix 3 all neb/spin 1.0
+timestep 0.0001
+thermo 10
+thermo_style custom step pe
+thermo_modify format float %.15g norm yes
+min_style spin
+min_modify alpha_damp 1.0 discrete_factor 10.0
+neb/spin 1.0e-7 1.0e-3 60 60 10 final w194gneb_chain.final verbose

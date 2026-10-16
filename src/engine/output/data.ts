@@ -898,6 +898,19 @@ export const readData = (sys: System, text: string, opts: ReadDataOptions): void
         appendAtoms(s, { x, type, id, image, molecule: mol, q, mask: gbit, radius: s.radius ? radius : undefined, rmass, mu: mu ?? undefined, sp: spin ?? undefined, vfrac: s.vfrac ? vol : undefined, tmplIndex: tmplId !== null ? tIdx : undefined, tmplAtom: tmplId !== null ? tAt : undefined, custom: extraCustom.size ? extraCustom : undefined });
         // periodic remap of the new atoms
         for (let i = n0; i < s.n; i++) sys.geom.remap(s.x, s.image, i);
+        // read_data: an atom is assigned to the box only if lo <= x < hi in every dimension (native Domain::ownatom);
+        // with fixed (f) faces on both sides, an atom on the upper face is not assigned. "Measured with native LAMMPS
+        // (black box, boundary p p f, zhi 3.0 with atoms at z 3.0): ERROR: Did not assign all atoms correctly (read_data.cpp)".
+        // Shrink-wrapped faces (s, m) keep the header box as before.
+        if (!s.box.triclinic) {
+          for (let d = 0; d < 3; d++) {
+            if (s.box.periodic[d] || s.box.boundary[d][0] !== 'f' || s.box.boundary[d][1] !== 'f') continue;
+            for (let i = n0; i < s.n; i++) {
+              const xd = s.x[3 * i + d];
+              if (xd < s.box.lo[d] || xd >= s.box.hi[d]) throw new StyleError('read_data: Did not assign all atoms correctly (an atom lies outside the box in a fixed dimension; native ERROR err0016)');
+            }
+          }
+        }
         if (tmplId !== null) expandTemplateTopology(s, sys.molecules.get(tmplId) ?? [], tmplId, firstNew, s.n);
         break;
       }

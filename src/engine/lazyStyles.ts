@@ -40,6 +40,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_diffraction', names: { COMPUTES: ['saed', 'xrd'], FIXES: ['saed/vtk'] }, load: () => import('../engine-gpl/registry/diffraction') as Promise<StyleModule> },
   { id: 'gpl_uf3', names: { PAIRS: ['uf3'] }, load: () => import('../engine-gpl/registry/uf3') as Promise<StyleModule> },
   { id: 'gpl_dpd', names: { PAIRS: ['dpd', 'dpd/ext', 'dpd/ext/tstat', 'dpd/tstat'] }, load: () => import('../engine-gpl/registry/dpd') as Promise<StyleModule> },
+  { id: 'gpl_neb_spin', names: { COMMANDS: ['neb/spin'], FIXES: ['neb/spin'] }, load: () => import('../engine-gpl/registry/neb_spin') as Promise<StyleModule> },
   { id: 'gpl_replica', names: { COMMANDS: ['temper', 'temper/npt', 'temper/grem'], COMPUTES: ['pressure/alchemy'], FIXES: ['alchemy'] }, load: () => import('../engine-gpl/registry/replica') as Promise<StyleModule> },
   { id: 'gpl_pimd', names: { FIXES: ['pimd', 'pimd/nvt', 'pimd/nvt/bosonic', 'pimd/langevin', 'pimd/langevin/bosonic'] }, load: () => import('../engine-gpl/registry/pimd') as Promise<StyleModule> },
   { id: 'gpl_thermostat', names: { FIXES: ['temp/csld', 'temp/csvr'] }, load: () => import('../engine-gpl/registry/thermostat') as Promise<StyleModule> },

@@ -56,14 +56,15 @@ const pairThreadsOf = (b: ForceBackend): ForceField['pairThreads'] =>
  * The partition commands that drive all replicas together and read their words per replica (each replica's own
  * variables, as lammps -partition): neb (neb.html) and the tempering commands (temper.html, temper/npt, temper/grem).
  */
-const REPLICA_DRIVEN = new Set(['neb', 'temper', 'temper/npt', 'temper/grem']);
+const REPLICA_DRIVEN = new Set(['neb', 'neb/spin', 'temper', 'temper/npt', 'temper/grem']);
 
 /**
  * Commands that run once for the session rather than on every replica (partitions): control flow, `clear`,
  * `echo`, and `neb`, which drives all replicas together (neb.html: "a NEB calculation performs a damped
- * dynamics minimization across all the replicas").
+ * dynamics minimization across all the replicas"), and `neb/spin` (neb_spin.html: "a GNEB calculation performs a
+ * minimization across all the replicas.").
  */
-const SESSION_LEVEL = new Set(['label', 'jump', 'next', 'include', 'if', 'quit', 'clear', 'echo', 'neb']);
+const SESSION_LEVEL = new Set(['label', 'jump', 'next', 'include', 'if', 'quit', 'clear', 'echo', 'neb', 'neb/spin']);
 /** Words that make an if a session-level command (its branch is not run per replica). */
 const SESSION_FLOW_WORDS = /\b(label|jump|next|include|quit|clear|echo|neb|run|minimize|rerun)\b/;
 
@@ -467,5 +468,7 @@ export class Session {
 /** Commands the engine runs (recognized-but-unavailable ones such as python or shell excluded). */
 export const SUPPORTED_COMMANDS = [
   'label', 'jump', 'next', 'include', 'if', 'quit', 'clear', 'echo',
+  // neb/spin runs at session level like neb; its handler is registered by a lazily loaded group (lazyStyles.ts)
+  'neb/spin',
   ...Object.keys(COMMANDS).filter((c) => !UNAVAILABLE_COMMANDS.has(c)),
 ].sort();

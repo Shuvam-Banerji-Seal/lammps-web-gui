@@ -1,0 +1,17 @@
+# oracle: fix gcmc atom insertions and deletions (X 2, M 0) in a triclinic prism box (xy 2.5 xz 1.5 yz -1.0, lj units, no region): the insertion point is three fractional draws mapped by lamda2x, so the inserted atoms lie in the tilted cell; atom count, pe and ke per step follow native's streams (native: the installed b332f28 binary, which has MC; fix_gcmc.cpp attempt_atomic_insertion) Measured with native LAMMPS: max relative error below 1e-12 (passes at 1e-12 with abs 0, fails at 1e-14); engine about 3 s under vitest on the loaded host.
+# oracle-compare: thermo=all atoms=none rel=1e-8
+units lj
+atom_style atomic
+pair_style lj/cut 2.5
+pair_modify tail no
+region box prism 0 8 0 8 0 8 2.5 1.5 -1.0 units box
+create_box 1 box
+pair_coeff * * 1.0 1.0
+mass 1 1.0
+create_atoms 1 random 30 4321 box
+group gcmcgroup type 1
+fix mygcmc gcmcgroup gcmc 1 2 0 1 7311 1.5 -3.0 0.3
+thermo_style custom step atoms pe ke f_mygcmc[3] f_mygcmc[4] f_mygcmc[5] f_mygcmc[6]
+thermo 1
+thermo_modify format float %.15g
+run 30

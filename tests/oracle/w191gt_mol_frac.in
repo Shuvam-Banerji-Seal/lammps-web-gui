@@ -1,0 +1,20 @@
+# oracle: fix gcmc mcmoves with real proportions (0 0.3 0.7 on a dimer template, X 0, M 40, displace 0.3): the move choice draws a uniform against the normalised proportions (0.3 and 0.7 are real numbers, so the translation share is 0.3 of the draws), and the counters f[1..8] of translation and rotation attempts follow native (the mol keyword refuses atom moves in the engine, so the atom share is 0) (native: the installed b332f28 binary, which has MC; fix_gcmc.cpp options() mcmoves and pre_exchange) Measured with native LAMMPS: max relative error below 1e-12 (passes at 1e-12 with abs 0, fails at 1e-14); engine about 3 s under vitest on the loaded host.
+# oracle-inputs: w32gcmc_dimer.mol
+# oracle-compare: thermo=all atoms=all rel=1e-8
+units lj
+atom_style molecular
+pair_style lj/cut 3.0
+pair_modify tail no
+region box block 0 6 0 6 0 6
+create_box 1 box
+pair_coeff * * 1.0 1.0
+mass 1 1.0
+molecule dimer w32gcmc_dimer.mol
+create_atoms 0 single 1.0 1.0 1.0 mol dimer 12345 units box
+create_atoms 0 single 3.0 3.5 2.0 mol dimer 2345 units box
+create_atoms 0 single 4.5 1.5 4.0 mol dimer 3456 units box
+fix mygcmc all gcmc 1 0 40 0 29494 1.0 -1.0 0.3 mol dimer mcmoves 0 0.3 0.7
+thermo_style custom step atoms pe f_mygcmc[1] f_mygcmc[2] f_mygcmc[3] f_mygcmc[4] f_mygcmc[5] f_mygcmc[6] f_mygcmc[7] f_mygcmc[8]
+thermo 1
+thermo_modify format float %.15g
+run 5

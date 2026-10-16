@@ -1,0 +1,32 @@
+# oracle: 2d fix pour over three runs: the second run (pre yes) inserts at its first step, the third (pre no) keeps the schedule
+# Measured with native LAMMPS: insertions at steps 1, 301 (the first step of the second run) and 933 (pre no keeps the
+# schedule); engine thermo 3.1e-15, per-atom 1.4e-14 relative; 0.9 s in the engine.
+dimension	2
+atom_style	sphere
+boundary	f f p
+newton		off
+comm_modify	vel yes
+
+# a tall box so no particle reaches the floor in 1100 steps
+region		box block 0 20 0 200 -0.5 0.5 units box
+create_box	1 box
+
+pair_style	gran/hooke/history 4000.0 NULL 100.0 NULL 0.5 0
+pair_coeff	* *
+
+timestep	0.005
+
+fix		1 all nve/sphere
+fix		2 all gravity 1.0 spherical 0.0 -180.0
+
+region		slab block 2 18 180 185 -0.5 0.5 units box
+fix		ins all pour 90 1 4767548 vol 0.2 50 diam range 0.5 1.0 region slab
+
+fix		3 all enforce2d
+
+thermo_style	custom step atoms ke
+thermo_modify	format float %.15g
+thermo		50
+run		300
+run		400
+run		400 pre no

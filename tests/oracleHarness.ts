@@ -257,6 +257,7 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
       const pick = (r: ThermoRow[]) => (o.thermo === 'first' ? r.slice(0, 1) : o.thermo === 'first-last' ? [r[0], r[r.length - 1]] : r);
       const want = pick(fx.thermo), got = pick(rows);
       expect(got.length, 'thermo row count').toBe(want.length);
+      let thermoWorst = 0;
       for (let r = 0; r < want.length; r++) {
         for (const [k, v] of Object.entries(want[r])) {
           if (o.skip.has(k) || (o.thermo === 'first-last' && r === 1 && k === 'step')) continue;
@@ -264,8 +265,10 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
           if (!close(g, v, o.rel, o.abs)) {
             throw new Error(`${name}: thermo row ${r} (step ${want[r].step}) ${k}: engine ${g} vs LAMMPS ${v}`);
           }
+          if (Math.abs(v) > o.abs) thermoWorst = Math.max(thermoWorst, Math.abs(g - v) / Math.abs(v));
         }
       }
+      if (process.env.ORACLE_MEASURE) console.log(`MEASURE ${name} thermo ${thermoWorst.toExponential(1)}`);
       // final per-atom state
       if (o.atoms === 'all') {
         const dump = files.get('oracle_final.dump') ?? '';
@@ -294,6 +297,7 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
         }
         const atomTol = o.atomrel ?? Math.max(o.rel, 1e-9) * 100;
         if (worst > atomTol) throw new Error(`${name}: per-atom mismatch ${worst.toExponential(2)} (${where})`);
+        if (process.env.ORACLE_MEASURE) console.log(`MEASURE ${name} atoms ${worst.toExponential(1)}`);
       }
       // written files
       for (const [f, ref] of Object.entries(fx.files)) {

@@ -132,6 +132,29 @@ describe('LAMMPS script generator', () => {
     expect(text).toContain('# ---- 5 · Run control ----');
   });
 
+  it('labels a section that comes back later "(continued)"', () => {
+    // in.melt order: neighbor after pair_coeff belongs to the interactions,
+    // and a fix after the output settings is a second run-control banner.
+    const m = model([
+      step('units', { style: 'lj' }),
+      step('pair_style_popular', { style: 'lj/cut', args: '2.5' }),
+      step('pair_coeff', { types: '* *', coeffs: '1.0 1.0 2.5' }),
+      step('neighbor'),
+      step('timestep'),
+      step('thermo', { n: '100' }),
+      step('fix_nve'),
+      step('run', { steps: '10' }),
+    ]);
+    const banners = generateScript(m).text.split('\n').filter(l => l.startsWith('# ---- '));
+    expect(banners).toEqual([
+      '# ---- 1 · Simulation setup ----',
+      '# ---- 3 · Interactions ----',
+      '# ---- 5 · Run control ----',
+      '# ---- 4 · Output ----',
+      '# ---- 5 · Run control (continued) ----',
+    ]);
+  });
+
   it('skips disabled steps silently (flowchart shows them dashed)', () => {
     const s = step('fix_nve');
     s.enabled = false;

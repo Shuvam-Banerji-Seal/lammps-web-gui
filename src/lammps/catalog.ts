@@ -142,6 +142,18 @@ let branchCounter = 1;
 export const newBranchId = (): string =>
   `br-${Date.now().toString(36)}-${branchCounter++}`;
 
+/**
+ * The five builder sections follow the input-script structure on
+ * https://docs.lammps.org/Commands_structure.html: "Initialization" (setup),
+ * "System definition" (system) and "Simulation settings", which this builder
+ * splits into interactions ("pair_coeff, bond_coeff, ... kspace_style,
+ * dielectric, special_bonds" and the neighbor list commands "neighbor,
+ * neigh_modify"), output ("thermo, dump, restart") and run control together
+ * with the run itself ("timestep, reset_timestep, run_style, min_style,
+ * min_modify", fixes, "run", "minimize"). The page adds: "The last 2 parts
+ * can be repeated as many times as desired", so a script may come back to a
+ * section; the generator labels the second banner "(continued)".
+ */
 export const SECTION_ORDER: ScriptSection[] = [
   'setup',
   'system',
@@ -293,7 +305,7 @@ export const SETUP_COMMANDS: CommandDef[] = [
     id: 'neighbor',
     command: 'neighbor',
     label: 'neighbor — skin distance + style',
-    section: 'setup',
+    section: 'interactions',
     category: 'Neighbor lists',
     doc: 'https://docs.lammps.org/neighbor.html',
     params: [
@@ -306,7 +318,7 @@ export const SETUP_COMMANDS: CommandDef[] = [
     id: 'neigh_modify',
     command: 'neigh_modify',
     label: 'neigh_modify — tuning',
-    section: 'setup',
+    section: 'interactions',
     category: 'Neighbor lists',
     doc: 'https://docs.lammps.org/neigh_modify.html',
     params: [
@@ -318,7 +330,7 @@ export const SETUP_COMMANDS: CommandDef[] = [
     id: 'timestep',
     command: 'timestep',
     label: 'timestep — dt',
-    section: 'setup',
+    section: 'control',
     category: 'Integration',
     doc: 'https://docs.lammps.org/timestep.html',
     params: [num('dt', 'Timestep', '0.001', 'metal: ps · real: fs · lj: tau')],
@@ -328,7 +340,7 @@ export const SETUP_COMMANDS: CommandDef[] = [
     id: 'reset_timestep',
     command: 'reset_timestep',
     label: 'reset_timestep',
-    section: 'setup',
+    section: 'control',
     category: 'Integration',
     doc: 'https://docs.lammps.org/reset_timestep.html',
     params: [num('n', 'Start at step', '0')],
@@ -408,7 +420,7 @@ export const SETUP_COMMANDS: CommandDef[] = [
     id: 'dielectric',
     command: 'dielectric',
     label: 'dielectric — system permittivity',
-    section: 'setup',
+    section: 'interactions',
     category: 'Fundamentals',
     doc: 'https://docs.lammps.org/dielectric.html',
     params: [num('value', 'Dielectric constant', '1.0')],
@@ -446,7 +458,7 @@ export const SETUP_COMMANDS: CommandDef[] = [
     id: 'run_style',
     command: 'run_style',
     label: 'run_style — integrator style',
-    section: 'setup',
+    section: 'control',
     category: 'Integration',
     doc: 'https://docs.lammps.org/run_style.html',
     params: [

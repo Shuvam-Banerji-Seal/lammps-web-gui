@@ -520,7 +520,6 @@ export class VoroCellNeighbor {
       const up = this.up;
       lp = this.ed[up]![0];
       lw = this.mTest(lp);
-      l = this.mAns;
       if (lw !== -1) {
         rp = lw;
         do {
@@ -528,13 +527,11 @@ export class VoroCellNeighbor {
           if (i === this.nu[up]) return false;
           lp = this.ed[up]![i];
           lw = this.mTest(lp);
-          l = this.mAns;
         } while (lw !== -1);
         j = i + 1;
         while (j < this.nu[up]) {
           lp = this.ed[up]![j];
           lw = this.mTest(lp);
-          l = this.mAns;
           if (lw !== -1) break;
           j++;
         }
@@ -567,24 +564,20 @@ export class VoroCellNeighbor {
         i = this.nu[up] - 1;
         lp = this.ed[up]![i];
         lw = this.mTest(lp);
-        l = this.mAns;
         while (lw === -1) {
           i--;
           if (i === 0) return true;
           lp = this.ed[up]![i];
           lw = this.mTest(lp);
-          l = this.mAns;
         }
         j = 1;
         qp = this.ed[up]![j];
         qw = this.mTest(qp);
-        q = this.mAns;
         while (qw === -1) {
           j++;
           qp = this.ed[up]![j];
           qw = this.mTest(qp);
-          // voro++ 0.4.6 evaluates this test at l, not q (kept as in the source)
-          l = this.mAns;
+          // voro++ 0.4.6 stores this test result in l (m_test(qp,l)), which is not read afterwards
         }
         if (i === j && qw === 0) {
           doubleEdge = true;
@@ -718,7 +711,6 @@ export class VoroCellNeighbor {
           qs = this.cycleUp(qs, qp);
           lp = this.ed[qp]![qs];
           lw = this.mTest(lp);
-          l = this.mAns;
         } while (lw === -1);
         j = -this.ed[qp]![this.nu[qp] << 1];
         if (qp === this.up && qs === us) {

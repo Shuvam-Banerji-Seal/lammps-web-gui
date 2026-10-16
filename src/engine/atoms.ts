@@ -863,7 +863,8 @@ export interface SpecialList {
   order: Int8Array;
 }
 
-export const buildSpecial = (s: SimState, opts: { angle?: boolean; dihedral?: boolean; ignoreBond?: (type: number) => boolean } = {}): SpecialList => {
+export const buildSpecial = (s: SimState, opts: { angle?: boolean; dihedral?: boolean; ignoreBond?: (type: number) => boolean; maxOrder?: 1 | 2 | 3 } = {}): SpecialList => {
+  const maxOrder = opts.maxOrder ?? 3;
   const adj = new Map<number, number[]>();
   const b = s.topo.bonds;
   for (let e = 0; e < b.n; e++) {
@@ -903,7 +904,7 @@ export const buildSpecial = (s: SimState, opts: { angle?: boolean; dihedral?: bo
     if (n1) {
       const seen = new Map<number, number>([[me, 0]]);
       let frontier = [me];
-      for (let o = 1; o <= 3; o++) {
+      for (let o = 1; o <= maxOrder; o++) {
         const next: number[] = [];
         for (const a of frontier) {
           for (const c of adj.get(a) ?? []) {

@@ -53,8 +53,9 @@ interface Fixture {
   climbing?: { replica: number; row: number }[];
   /** partitioned (non-NEB) cases: the thermo rows and final atoms of each partition K = 0..N-1 */
   perPartition?: { thermo: ThermoRow[]; atoms: Record<string, number>[] }[];
-  /** tempering cases: the swap table rows {Step, T0, T1, ...} of the universe log (temper.html and its variants) */
-  tempering?: Record<string, number>[];
+  /** tempering cases: the swap table rows {Step, T0, T1, ...} (key tempering); prd and tad cases: the event table rows (CPU dropped, key table) */
+  table?: Record<string, number | string>[];
+  tempering?: Record<string, number | string>[];
 }
 
 const directive = (text: string, key: string): string[] => {
@@ -103,26 +104,28 @@ const sameText = (a: string, b: string, rel: number): string | null => {
 };
 
 /**
- * The swap table of a tempering run: the engine's session log lines "Step T0 T1 ..." and the rows of integers after it
- * (temper.cpp print_status; the same rows as the universe log of native LAMMPS).
+ * The table of a run: the engine's session log lines of a tempering swap table ("Step T0 T1 ...", temper.cpp
+ * print_status) or of prd / tad ("Step CPU Clock Event ..." of prd.cpp log_event, "Step CPU N M Status ..." of tad.cpp
+ * log_event), and the rows after each header. The CPU column is dropped (wall-clock time); the same rows as the
+ * universe log of native LAMMPS (run-oracle.mjs parseTable).
  */
-const swapTable = (events: EngineEvent[]): Record<string, number>[] => {
+const NUMBER = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
+const tableRows = (events: EngineEvent[]): Record<string, number | string>[] => {
   let keys: string[] | null = null;
-  const rows: Record<string, number>[] = [];
+  const rows: Record<string, number | string>[] = [];
   for (const e of events) {
     if (e.kind !== 'log') continue;
     for (const line of e.text.split('\n')) {
       const w = line.trim().split(/\s+/);
-      if (w[0] === 'Step' && w.length > 1 && w.slice(1).every((x) => /^T\d+$/.test(x))) { keys = w; continue; }
-      if (!keys || w.length !== keys.length || !w.every((x) => /^-?\d+$/.test(x))) continue;
-      const row: Record<string, number> = {};
-      keys.forEach((k, c) => { row[k] = Number(w[c]); });
+      if (w[0] === 'Step' && w.length > 1 && (w[1] === 'CPU' || w.slice(1).every((x) => /^T\d+$/.test(x)))) { keys = w; continue; }
+      if (!keys || w.length !== keys.length || !w.every((x) => x !== '')) continue;
+      const row: Record<string, number | string> = {};
+      keys.forEach((k, c) => { if (k !== 'CPU') row[k] = NUMBER.test(w[c]) ? Number(w[c]) : w[c]; });
       rows.push(row);
     }
   }
   return rows;
 };
-
 const allCases = existsSync(CASES) ? readdirSync(CASES).filter((f) => f.endsWith('.in')).map((f) => f.slice(0, -3)).sort() : [];
 
 /**
@@ -217,7 +220,8 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
             if (process.env.ORACLE_MEASURE) console.log(`MEASURE ${name} partition ${k} atoms ${worst.toExponential(1)}`);
           }
         }
-        if (fx.tempering !== undefined) expect(swapTable(events), 'swap table rows').toEqual(fx.tempering);
+        const table = fx.table ?? fx.tempering;
+        if (table !== undefined) expect(tableRows(events), 'table rows').toEqual(table);
         return;
       }
       if (partitions > 1) {

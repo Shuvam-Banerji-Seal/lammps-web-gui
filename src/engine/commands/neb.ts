@@ -57,6 +57,11 @@ export interface NebHost {
   emit(ev: EngineEvent): void;
   /** the command's arguments as replica r parsed them (undefined: the same words for every replica) */
   argsOf(r: number): readonly string[] | undefined;
+  /**
+   * The thermo rows of each replica's minimization (native: the minimize of every partition prints its own thermo
+   * output, setup = true for the header and the setup row of a stage). Only tad asks for them (see tad.ts).
+   */
+  replicaThermo?(sys: System, setup: boolean): void;
 }
 
 const USAGE = 'usage: neb etol ftol N1 N2 Nevery file-style [arg] [verbosity default]';
@@ -184,8 +189,11 @@ const norm = (a: Float64Array | number[], from = 0, to = a.length): number => {
   return Math.sqrt(t);
 };
 
-/** neb command: the two stages of the NEB calculation (neb.rst). */
-export const runNeb = async (host: NebHost, a: string[]): Promise<void> => {
+/**
+ * neb command: the two stages of the NEB calculation (neb.rst). Returns the energy barrier of the last table row (the
+ * forward barrier EBF without thermo normalization: native neb->ebf, used by the tad command).
+ */
+export const runNeb = async (host: NebHost, a: string[]): Promise<number> => {
   const reps = [...host.replicaSystems];
   if (reps.length < 2) throw new StyleError('neb needs two or more partitions (replicas); this session has 1 partition (Session partitions option)');
   if (a.length < 6) throw new StyleError(USAGE);
@@ -237,15 +245,19 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<void> => {
   const n0 = reps[0].state.n;
   for (const sys of reps) if (sys.state.n !== n0) throw new StyleError('neb needs the same number of atoms in every replica');
   const dims = reps[0].state.dimension;
+  const boxLen = [0, 1, 2].map((d) => reps[0].state.box.hi[d] - reps[0].state.box.lo[d]);
+  const periodic = reps[0].state.box.periodic;
   const nebBit = fix0.groupBit;
   const kspring = fix0.kspring;
   const parallel = fix0.parallel;
 
-  // the replicas start like a minimization: thermo computes, run state, fix setup
+  // the replicas start like a minimization: thermo computes, run state, fix setup, and the quickmin velocities at zero
+  // (MinQuickMin::setup_style at b332f28, src/min_quickmin.cpp: v = 0 for every atom; a dynamics before the NEB leaves velocities)
   for (const sys of reps) {
     ensureThermoComputes(sys);
     initRun(sys);
     for (const f of sys.fixes) f.minSetup?.();
+    sys.state.v.fill(0);
   }
 
   // initial configurations (neb.rst, file-style final: the intermediate replicas are interpolated from the
@@ -318,9 +330,12 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<void> => {
   // the nudging forces of every replica (fix_neb.rst), from the positions and raw forces of all replicas
   const applyNudging = (): number[] => {
     const m = snaps[0].idx.length;
+    // fix_neb.cpp: the differences between neighbouring replicas are minimum images (domain->minimum_image on
+    // xprev/xnext minus x, at b332f28), so an atom that a periodic boundary wrapped in one replica is not a long step
+    const sep = (a: number, j: number): number => minImage(a, boxLen[j % 3], periodic[j % 3]);
     const dist = (r1: number, r2: number): number => {
       let t = 0;
-      for (let j = 0; j < 3 * m; j++) { const d = snaps[r1].X[j] - snaps[r2].X[j]; t += d * d; }
+      for (let j = 0; j < 3 * m; j++) { const d = sep(snaps[r1].X[j] - snaps[r2].X[j], j); t += d * d; }
       return Math.sqrt(t);
     };
     const cum: number[] = [0];
@@ -337,8 +352,8 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<void> => {
       if (r === 0 || r === nReps - 1) continue;
       // tangent T' (Henkelman and Jonsson 2000, the improved tangent with energy weights)
       const tau = new Float64Array(3 * m);
-      if (r === 0) for (let j = 0; j < 3 * m; j++) tau[j] = snaps[1].X[j] - snaps[0].X[j];
-      else if (r === nReps - 1) for (let j = 0; j < 3 * m; j++) tau[j] = snaps[r].X[j] - snaps[r - 1].X[j];
+      if (r === 0) for (let j = 0; j < 3 * m; j++) tau[j] = sep(snaps[1].X[j] - snaps[0].X[j], j);
+      else if (r === nReps - 1) for (let j = 0; j < 3 * m; j++) tau[j] = sep(snaps[r].X[j] - snaps[r - 1].X[j], j);
       else {
         const Ep = E[r + 1], Ei = E[r], Em = E[r - 1];
         const wp = Ep - Ei, wm = Em - Ei;
@@ -350,8 +365,8 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<void> => {
         else if (Ep > Em) { a1 = dVmax; a2 = dVmin; }
         else { a1 = dVmin; a2 = dVmax; }
         for (let j = 0; j < 3 * m; j++) {
-          const dRp = snaps[r + 1].X[j] - snaps[r].X[j];
-          const dRm = snaps[r].X[j] - snaps[r - 1].X[j];
+          const dRp = sep(snaps[r + 1].X[j] - snaps[r].X[j], j);
+          const dRm = sep(snaps[r].X[j] - snaps[r - 1].X[j], j);
           tau[j] = a1 * dRp + a2 * dRm;
         }
       }
@@ -409,6 +424,7 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<void> => {
     }
     let hi = 0;
     for (let r = 1; r < nReps; r++) if (energies[r] > energies[hi]) hi = r;
+    ebfRaw = energies[hi] - energies[0];
     const row: Record<string, number> = {
       Step: step,
       MaxReplicaForce: maxRep,
@@ -438,6 +454,7 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<void> => {
   const header = () => host.emit({ kind: 'thermo-header', keywords: cols, labels: cols, units });
 
   const t0 = performance.now();
+  let ebfRaw = 0;
   for (const f of fixes) f.active = true;
   try {
     // the initial replicas: forces, nudging, then the first row
@@ -464,6 +481,15 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<void> => {
       // Nevery counts from the start of the stage: measured with native LAMMPS (black box, hop1 cut down: the
       // climbing stage that starts at step 87 prints at 107 and 124, its convergence step)
       const start = reps[0].state.step;
+      // the replicas' own thermo rows (output.cpp Output::setup and Output::write): the next row at the thermo
+      // interval, both capped at the stage's last step (update->laststep = firststep + N1 or N2), and the last row
+      // when the stage converges
+      const every = reps[0].thermo.every;
+      const stageLast = start + n;
+      let nextThermo = every > 0 ? Math.min(Math.trunc(start / every) * every + every, stageLast) : stageLast;
+      let lastThermo = -1;
+      const replicaRows = (setup: boolean): void => { for (const sys of reps) host.replicaThermo?.(sys, setup); };
+      if (host.replicaThermo) { replicaRows(true); lastThermo = start; }
       for (let it = 0; it < n; it++) {
         quickminStep(reps);
         for (const sys of reps) sys.state.step++;
@@ -473,6 +499,10 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<void> => {
         const step = reps[0].state.step;
         const conv = converged();
         if ((step - start) % nevery === 0 || conv) printRow(step);
+        if (host.replicaThermo) {
+          if (step === nextThermo || (conv && lastThermo !== step)) { replicaRows(false); lastThermo = step; }
+          if (step === nextThermo) nextThermo = every > 0 ? Math.min(nextThermo + every, stageLast) : stageLast;
+        }
         if (conv) return;
         prevE = energies.slice();
       }
@@ -499,11 +529,12 @@ export const runNeb = async (host: NebHost, a: string[]): Promise<void> => {
   } finally {
     for (const f of fixes) f.active = false;
     reps.forEach((sys, r) => { sys.nb.every = saved[r].every; sys.nb.delay = saved[r].delay; sys.nb.check = saved[r].check; });
-    for (const sys of reps) sys.state.v.fill(0);
+    // the quickmin velocities stay when the NEB ends (min.cpp: only the start zeroes them; min_quickmin.cpp leaves v)
   }
   host.emit({ kind: 'done', steps: stepsDone, seconds: (performance.now() - t0) / 1000, backend: host.backendLabel });
+  return ebfRaw;
 };
 
 export const NEB_COMMANDS: Record<string, Handler> = {
-  neb: ({ session }, a) => runNeb(session, a),
+  neb: async ({ session }, a) => { await runNeb(session, a); },
 };

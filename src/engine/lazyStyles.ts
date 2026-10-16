@@ -40,6 +40,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_diffraction', names: { COMPUTES: ['saed', 'xrd'], FIXES: ['saed/vtk'] }, load: () => import('../engine-gpl/registry/diffraction') as Promise<StyleModule> },
   { id: 'gpl_uf3', names: { PAIRS: ['uf3'] }, load: () => import('../engine-gpl/registry/uf3') as Promise<StyleModule> },
   { id: 'gpl_dpd', names: { PAIRS: ['dpd', 'dpd/ext', 'dpd/ext/tstat', 'dpd/tstat'] }, load: () => import('../engine-gpl/registry/dpd') as Promise<StyleModule> },
+  { id: 'gpl_pimd', names: { FIXES: ['pimd', 'pimd/nvt', 'pimd/nvt/bosonic', 'pimd/langevin', 'pimd/langevin/bosonic'] }, load: () => import('../engine-gpl/registry/pimd') as Promise<StyleModule> },
   { id: 'gpl_thermostat', names: { FIXES: ['temp/csld', 'temp/csvr'] }, load: () => import('../engine-gpl/registry/thermostat') as Promise<StyleModule> },
   { id: 'gpl_dpdmeso', names: { COMPUTES: ['edpd/temp/atom', 'tdpd/cc/atom'], FIXES: ['edpd/source', 'mvv/dpd', 'mvv/edpd', 'mvv/tdpd', 'tdpd/source'], PAIRS: ['edpd', 'mdpd', 'mdpd/rhosum', 'tdpd'] }, load: () => import('../engine-gpl/registry/dpdmeso') as Promise<StyleModule> },
   { id: 'gpl_rheo', names: { FIXES: ['rheo', 'rheo/pressure', 'rheo/viscosity', 'rheo/thermal', 'rheo/oxidation', 'add/heat'], BONDS: ['rheo/shell'], PAIRS: ['rheo', 'rheo/solid'], COMPUTES: ['rheo/property/atom'] }, load: () => import('../engine-gpl/registry/rheo') as Promise<StyleModule> },

@@ -15,11 +15,14 @@
  * they are looked up next to the .in file. "# oracle-potentials: a b" lists
  * unmodified LAMMPS potential files from third_party/lammps/potentials.
  * The header oracle-partitions: N runs the case on N partitions (replicas) with
- * mpirun -np N lmp -partition Nx1. The fixture then holds the NEB table rows of
- * the universe log (the header line starting with Step MaxReplicaForce names the
- * columns; each printed step is one row) and the Climbing replica lines, instead
- * of thermo rows and the final atom dump (no write_dump is appended: every
- * replica would write it).
+ * mpirun -np N lmp -partition Nx1. Two kinds:
+ *  - a NEB case (its universe log has the header line starting with Step MaxReplicaForce): the fixture holds the
+ *    NEB table rows of the universe log (each printed step is one row) and the Climbing replica lines; no
+ *    write_dump is appended.
+ *  - any other partitioned case (e.g. fix pimd): the fixture holds, per partition K, the thermo rows of its log
+ *    (log.lammps.K) and its final atom state. A world-style variable oracle_p (0..N-1) is defined and the final dump
+ *    is written to oracle_final.${oracle_p}.dump, so every partition writes its own file. The fixture's perPartition
+ *    array holds {thermo, atoms} for K = 0..N-1.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync, copyFileSync, existsSync, rmSync } from 'node:fs';
@@ -34,6 +37,8 @@ const LMP = process.env.LMP ?? 'lmp';
 const MPIRUN = process.env.MPIRUN ?? 'mpirun';
 
 export const FINAL_DUMP = 'write_dump all custom oracle_final.dump id type xu yu zu vx vy vz fx fy fz modify format float %.17g sort id';
+/** Partitioned (non-NEB) cases: the per-partition final dump, one file per partition (see the header above). */
+export const partitionFinalDump = (n) => `variable oracle_p world ${[...Array(n).keys()].join(' ')}\nwrite_dump all custom oracle_final.\${oracle_p}.dump id type xu yu zu vx vy vz fx fy fz modify format float %.17g sort id`;
 
 const header = (text, key) => {
   const m = new RegExp(`^#\\s*${key}:\\s*(.*)$`, 'm').exec(text);
@@ -138,7 +143,9 @@ for (const name of cases) {
   for (const f of header(text, 'oracle-inputs')) copyFileSync(join(CASES, f), join(dir, f));
   for (const f of header(text, 'oracle-potentials')) copyFileSync(join(POTENTIALS, f), join(dir, f));
   const partitions = Number(header(text, 'oracle-partitions')[0] ?? 1);
-  writeFileSync(join(dir, 'in.case'), partitions > 1 ? `${text}\n` : `${text}\n${FINAL_DUMP}\n`);
+  // a NEB case (its input runs the neb command) gets no dump: every replica would write it
+  const isNeb = /^\s*neb\s/m.test(text);
+  writeFileSync(join(dir, 'in.case'), partitions > 1 ? (isNeb ? `${text}\n` : `${text}\n${partitionFinalDump(partitions)}\n`) : `${text}\n${FINAL_DUMP}\n`);
   try {
     if (partitions > 1) execFileSync(MPIRUN, ['-np', String(partitions), LMP, '-partition', `${partitions}x1`, '-in', 'in.case', '-log', 'log.lammps', '-screen', 'none'], { cwd: dir, stdio: 'pipe' });
     else execFileSync(LMP, ['-in', 'in.case', '-log', 'log.lammps', '-screen', 'none'], { cwd: dir, stdio: 'pipe' });
@@ -152,10 +159,23 @@ for (const name of cases) {
   const files = {};
   for (const f of header(text, 'oracle-files')) files[f] = readFileSync(join(dir, f), 'utf8');
   const version = (/LAMMPS \((.*?)\)/.exec(log) ?? [])[1] ?? 'unknown';
-  if (partitions > 1) {
+  if (partitions > 1 && /^\s*Step\s+MaxReplicaForce\b/m.test(log)) {
     const { rows, climbing } = parseNeb(log);
     writeFileSync(join(OUT, `${name}.json`), JSON.stringify({ lammps: version, partitions, neb: rows, climbing, thermo: [], atoms: [], files }, null, 0) + '\n');
     console.log(`✓ ${name}: ${rows.length} NEB rows, ${climbing.length} climbing line(s) on ${partitions} partitions (LAMMPS ${version})`);
+    rmSync(dir, { recursive: true, force: true });
+    continue;
+  }
+  if (partitions > 1) {
+    const keywords = thermoKeywords(text);
+    const perPartition = [];
+    for (let k = 0; k < partitions; k++) {
+      const plog = readFileSync(join(dir, `log.lammps.${k}`), 'utf8');
+      const atoms = parseDump(readFileSync(join(dir, `oracle_final.${k}.dump`), 'utf8'));
+      perPartition.push({ thermo: parseLog(plog, keywords), atoms });
+    }
+    writeFileSync(join(OUT, `${name}.json`), JSON.stringify({ lammps: version, partitions, perPartition, thermo: [], atoms: [], files }, null, 0) + '\n');
+    console.log(`✓ ${name}: ${perPartition.map((p) => `${p.thermo.length} thermo rows, ${p.atoms.length} atoms`).join(' | ')} on ${partitions} partitions (LAMMPS ${version})`);
     rmSync(dir, { recursive: true, force: true });
     continue;
   }

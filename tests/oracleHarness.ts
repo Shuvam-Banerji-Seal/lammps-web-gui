@@ -17,8 +17,10 @@ import type { EngineEvent, ThermoRow } from '../src/engine/types';
  *   # oracle-compare: thermo=all|first|first-last atoms=all|none rel=1e-8 abs=1e-10 skip=kw1,kw2 atomskip=c1,c2
  *                     atomrel=R filerel=R (optional: the per-atom and written-file tolerances, relative, default
  *                     100*max(rel,1e-9) and 1e-6)
- *   # oracle-partitions: N   the case runs on N replicas (partitions); its fixture holds the NEB table
- *                            rows and the "Climbing replica" lines, compared with the same rel/abs
+ *   # oracle-partitions: N   the case runs on N replicas (partitions). A NEB case's fixture holds the NEB table
+ *                            rows and the "Climbing replica" lines, compared with the same rel/abs. Any other
+ *                            case's fixture holds each partition's thermo rows and final atoms (perPartition),
+ *                            compared partition by partition with the same tolerances
  */
 
 
@@ -37,6 +39,7 @@ const CASES = join(__dirname, 'oracle');
 const FIX = join(__dirname, 'fixtures', 'oracle');
 const POTENTIALS = join(__dirname, '..', 'third_party', 'lammps', 'potentials');
 const FINAL_DUMP = 'write_dump all custom oracle_final.dump id type xu yu zu vx vy vz fx fy fz modify format float %.17g sort id';
+const PARTITION_FINAL_DUMP = 'write_dump all custom oracle_final.${oracle_p}.dump id type xu yu zu vx vy vz fx fy fz modify format float %.17g sort id';
 
 interface Fixture {
   lammps: string;
@@ -47,6 +50,8 @@ interface Fixture {
   partitions?: number;
   neb?: ThermoRow[];
   climbing?: { replica: number; row: number }[];
+  /** partitioned (non-NEB) cases: the thermo rows and final atoms of each partition K = 0..N-1 */
+  perPartition?: { thermo: ThermoRow[]; atoms: Record<string, number>[] }[];
 }
 
 const directive = (text: string, key: string): string[] => {
@@ -118,15 +123,71 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
         emit: (e) => events.push(e),
         writeFile: (n, t, ap) => files.set(n, (ap ? files.get(n) ?? '' : '') + t),
       }, undefined, 0, partitions);
+      // partitioned (non-NEB) cases: the other replicas' thermo rows and dumps are passed on (Session.recordPartitionOutput)
+      session.recordPartitionOutput = fx.perPartition !== undefined;
       // a gzipped input travels as one character per byte, as the notebook uploads it (System.readFile inflates it)
       // as the app reads uploads (fileStore.ts readInputText): UTF-8 text, else the bytes as latin1 (a binary restart file)
       for (const f of directive(text, 'oracle-inputs')) session.addFile(f, readInputBytes(join(CASES, f), f.endsWith('.gz')));
       for (const f of directive(text, 'oracle-potentials')) session.addFile(f, readFileSync(join(POTENTIALS, f), 'utf8'));
       try {
-        await session.execute(partitions > 1 ? `${text}\n` : `${text}\n${FINAL_DUMP}\n`);
+        // as scripts/oracle/run-oracle.mjs: a partitioned non-NEB case writes one final dump per partition (oracle_p
+        // is a world-style variable, 0..N-1); a NEB case writes none
+        const partitionDump = `variable oracle_p world ${Array.from({ length: partitions }, (_, k) => k).join(' ')}\n${PARTITION_FINAL_DUMP}`;
+        const tail = partitions > 1 ? (fx.perPartition ? `\n${partitionDump}` : '') : `\n${FINAL_DUMP}`;
+        await session.execute(`${text}${tail}\n`);
       } catch (e) {
         const err = events.find((ev) => ev.kind === 'error');
         throw new Error(`engine failed: ${err && 'message' in err ? err.message : String(e)}`);
+      }
+      if (fx.perPartition) {
+        // each partition: its thermo rows (the rows carry the partition they were printed by) and its final atoms
+        expect(fx.perPartition.length, 'partitions').toBe(partitions);
+        const keysOf = (rows: ThermoRow[]) => (rows.length ? Object.keys(rows[0]) : []);
+        for (let k = 0; k < partitions; k++) {
+          const want = fx.perPartition[k];
+          const keys = keysOf(want.thermo);
+          const rows = events
+            .filter((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo' && (e.partition ?? 0) === k)
+            .map((e) => e.row)
+            .filter((row) => keys.every((key) => key in row));
+          expect(rows.length, `partition ${k} thermo row count`).toBe(want.thermo.length);
+          for (let r = 0; r < want.thermo.length; r++) {
+            for (const [key, v] of Object.entries(want.thermo[r])) {
+              if (o.skip.has(key)) continue;
+              const g = rows[r][key];
+              if (!close(g, v, o.rel, o.abs)) throw new Error(`${name}: partition ${k} thermo row ${r} (step ${want.thermo[r].step}) ${key}: engine ${g} vs LAMMPS ${v}`);
+            }
+          }
+          if (o.atoms === 'all') {
+            const dump = files.get(`oracle_final.${k}.dump`) ?? '';
+            const lines = dump.trim().split('\n');
+            const k0 = lines.findIndex((l) => l.startsWith('ITEM: ATOMS'));
+            const cols = lines[k0].split(/\s+/).slice(2);
+            const mine = lines.slice(k0 + 1).map((l) => {
+              const w = l.trim().split(/\s+/).map(Number);
+              const a: Record<string, number> = {};
+              cols.forEach((c, i) => { a[c] = w[i]; });
+              return a;
+            });
+            expect(mine.length, `partition ${k} atom count`).toBe(want.atoms.length);
+            let worst = 0;
+            let where = '';
+            for (let i = 0; i < mine.length; i++) {
+              const a = mine[i], b = want.atoms[i];
+              expect(a.id, `partition ${k} atom ${i} id`).toBe(b.id);
+              expect(a.type, `partition ${k} atom ${i} type`).toBe(b.type);
+              for (const c of ['xu', 'yu', 'zu', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz']) {
+                if (o.atomskip.has(c)) continue;
+                const scale = Math.max(1, Math.abs(b[c]));
+                const d = Math.abs(a[c] - b[c]) / scale;
+                if (d > worst) { worst = d; where = `atom ${b.id} ${c}: engine ${a[c]} vs LAMMPS ${b[c]}`; }
+              }
+            }
+            const atomTol = o.atomrel ?? Math.max(o.rel, 1e-9) * 100;
+            if (worst > atomTol) throw new Error(`${name}: partition ${k} per-atom mismatch ${worst.toExponential(2)} (${where})`);
+          }
+        }
+        return;
       }
       if (partitions > 1) {
         // NEB table rows are the thermo rows that carry the RD and PE columns; the minimize rows before them do not

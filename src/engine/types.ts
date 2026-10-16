@@ -294,7 +294,8 @@ export type EngineEvent =
   | { kind: 'log'; text: string }
   /** labels: header text per column where thermo_modify colname renamed it (else the keyword). */
   | { kind: 'thermo-header'; keywords: ThermoKeyword[]; labels?: string[]; units?: UnitStyle }
-  | { kind: 'thermo'; row: ThermoRow }
+  /** partition: the replica (0-based) that printed the row, for partitions other than replica 0 (session recordPartitionOutput). */
+  | { kind: 'thermo'; row: ThermoRow; partition?: number }
   /**
    * An MD run starts: it goes from step `from` to step `to` (progress display), with timestep dt in the
    * units style (simulated time per wall-clock day in the resource monitor).

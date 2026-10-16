@@ -93,6 +93,11 @@ export class System {
   readonly regions = new Map<string, Region>();
   readonly computes: Compute[] = [];
   readonly fixes: Fix[] = [];
+  /**
+   * The systems of all partitions (replica 0 first), the same list for every replica. A single system without
+   * partitions. Set by the session; a fix coupled to the same fix on the other replicas (fix pimd) reads them.
+   */
+  replicaPeers: () => readonly System[] = () => [this];
   /** run_style respa settings (run/respa.ts); null for run_style verlet. */
   respa: RespaSettings | null = null;
   readonly vars: Variables;

@@ -17,6 +17,7 @@ export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[
     'filter/corotate', // engine-gpl/registry/filtercorotate.ts (refused: respa fix hooks missing)
     'srp', 'srp/react', // engine-gpl/registry/srp.ts (lazy, refused: see its header)
     'graphics/isosurface', // engine-gpl/registry/graphics.ts (refused: the reason is in the error)
+    'pimd/langevin', 'pimd/langevin/bosonic', // engine-gpl/registry/pimd.ts (lazy, refused: the Langevin fix is not ported)
   ],
   COMPUTES: [
     'dipole/tip4p', 'dipole/tip4p/chunk', // registry/compute_chunk17.ts

@@ -5,6 +5,7 @@ import { checkFixStateNotStored } from '../fix/restartRecord';
 import { FIX_STYLES, COMPUTE_STYLES, styleNames } from '../styles';
 import { Dump, type DumpStyle } from '../output/dump';
 import { initRun, runVerlet } from '../run/verlet';
+import { runVerletCoupled } from '../run/coupled';
 import { parseRunStyleRespa, runRespa } from '../run/respa';
 import { RunCancelled } from '../errors';
 import { DYNAMIC_GROUP_FIXES, NO_DYNAMIC_GROUP_FIXES } from '../group';
@@ -290,12 +291,76 @@ const setupSignature = (sys: System): string => {
 /** The setup signature at the end of the last run of each system (WeakMap: a clear makes a new system). */
 const lastSetup = new WeakMap<System, string>();
 
+/**
+ * One run of n steps on coupled replicas (a fix with `coupled`, fix pimd): every replica is set up and output in its own
+ * right (its thermo rows, dumps and restarts), and the replicas are stepped in lockstep (run/coupled.ts). Only replica 0's
+ * output reaches the session's log and screen; the others reach it when Session.recordPartitionOutput is set.
+ * Not supported with them: pre no, every, a CPU-only run (the accelerators step one system), run_style respa.
+ */
+const runCoupledSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => {
+  const { sys, session } = ctx;
+  const group = session.coupledSystems!;
+  if (!opts.pre) throw new StyleError('run pre no is not supported with coupled replicas (fix pimd): use pre yes');
+  if (opts.every > 0 && opts.every < n) throw new StyleError('run every is not supported with coupled replicas (fix pimd)');
+  if (sys.respa) throw new StyleError('run_style respa is not supported with coupled replicas (fix pimd)');
+  const first = sys.state.step;
+  if (opts.start !== null && opts.start > first) throw new StyleError('run start cannot be after the current timestep');
+  if (opts.stop !== null && opts.stop < first + n) throw new StyleError('run stop cannot be before the last timestep of the run');
+  const lastThermo = new Map<System, number>();
+  for (const r of group) {
+    ensureThermoComputes(r);
+    initRun(r);
+    r.run = {
+      inRun: true, firstStep: first, lastStep: first + n,
+      beginStep: opts.start ?? first, endStep: opts.stop ?? first + n, t0: performance.now(), ranOnce: true,
+    };
+    r.io.emit({ kind: 'thermo-header', keywords: [...r.thermo.keywords], labels: r.thermo.labels(), units: r.units.style });
+    r.io.emit({ kind: 'run', from: first, to: first + n, dt: r.state.dt, units: r.units.style });
+    startRestarts(r);
+    lastThermo.set(r, -1);
+  }
+  const nextThermoVar = new Map<System, number>(group.map((r) => [r, r.thermo.everyVar ? r.thermo.nextVariableStep() : -1]));
+  const emitThermo = (r: System) => {
+    lastThermo.set(r, emitThermoRow(r));
+  };
+  const t0 = sys.run.t0;
+  const taken = await runVerletCoupled(group, n, {
+    cancelled: () => session.isCancelled,
+    afterSetup: (r) => {
+      emitThermo(r);
+      const dumped = writeDumps(r, true);
+      if (dumped && r === sys) emitFrame(r);
+    },
+    afterStep: (r, step) => {
+      writeRestarts(r, step);
+      const th = r.thermo;
+      let due = th.due(step, first, first + n);
+      if (th.everyVar && step >= nextThermoVar.get(r)!) { due = true; nextThermoVar.set(r, th.nextVariableStep()); }
+      if (due) emitThermo(r);
+      writeDumps(r, false);
+    },
+    yieldMs: 30,
+  });
+  for (const r of group) {
+    // a cancelled run still reports its last step (as runSteps)
+    if (lastThermo.get(r) !== r.state.step && !haltRequested(r)) emitThermo(r);
+    r.run.inRun = false;
+    lastSetup.set(r, setupSignature(r));
+  }
+  const seconds = (performance.now() - t0) / 1000;
+  sys.log(`Loop time of ${seconds.toFixed(3)} s for ${taken} steps with ${sys.state.n} atoms (CPU · fp64, ${group.length} coupled replicas)`);
+  sys.io.emit({ kind: 'done', steps: taken, seconds, backend: 'CPU · fp64' });
+  if (session.isCancelled) throw new RunCancelled();
+  return taken;
+};
+
 /** One run of n steps with output; returns steps taken. */
 const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => {
   const { sys, session } = ctx;
   // fix_halt.html: after a soft halt "additional run or minimize commands will be skipped" (no output)
   if (softHalted(sys)) return 0;
   clearHaltRequest(sys);
+  if (session.coupledSystems) return runCoupledSteps(ctx, n, opts);
   const s = sys.state;
   const first = s.step;
   // run.html: start and stop are checked before anything changes, so a rejected run leaves the system as it was

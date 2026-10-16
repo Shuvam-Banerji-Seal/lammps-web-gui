@@ -27,6 +27,11 @@ export abstract class Fix {
   readonly groupBit: number;
   /** Fix moves atoms by time integration (nve, nvt, ...). */
   timeIntegrate = false;
+  /**
+   * Coupled to the same fix on the other replicas (fix pimd: the beads of a path integral): the session runs the
+   * replicas in lockstep (run/coupled.ts) and the fix reads them through System.replicaPeers.
+   */
+  replicaCoupled = false;
   /** Supports fix_modify energy / virial, and their current settings. */
   energyGlobal = false;
   virialGlobal = false;

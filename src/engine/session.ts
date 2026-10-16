@@ -75,9 +75,6 @@ const STYLE_WORDS_FROM: Record<string, number> = {
   fix: 2, compute: 2,
 };
 
-/** The I/O of a replica other than the first: its output is dropped (the first replica's log and screen speak for the session). */
-const QUIET_IO: SessionIO = { emit: () => undefined };
-
 /** Commands that run native's lmp->init(), which opens the single-file dumps (see dispatch). */
 const INIT_COMMANDS = new Set(['run', 'minimize', 'rerun', 'write_data', 'write_restart', 'write_coeff', 'balance']);
 
@@ -92,6 +89,14 @@ export class Session {
   private onReplica = false;
   /** The words of the neb command being run, as each replica parsed them. */
   private nebWords: string[][] | null = null;
+  /** True while a run of coupled replicas (a fix with `coupled`, fix pimd) runs in lockstep on all of them. */
+  private coupledRun = false;
+  /**
+   * Test harness switch (scripts/oracle, tests/oracleHarness.ts): the thermo rows and the written files of the
+   * replicas other than the first are passed on (thermo rows tagged with their partition). Off, they are dropped as
+   * before, so the app shows replica 0 only.
+   */
+  recordPartitionOutput = false;
   private cancelled = false;
   private line = 0;
   private command = '';
@@ -116,15 +121,27 @@ export class Session {
   }
 
   private newSystem(k = 0): System {
-    const sys = new System(k === 0 ? this.io : QUIET_IO);
+    const sys = new System(k === 0 ? this.io : this.replicaIo(k));
     sys.registries = { ...styleNames(), command: SUPPORTED_COMMANDS.slice() };
     sys.ff.pairThreads = pairThreadsOf(this.backend);
     sys.vars.partition = k;
+    sys.replicaPeers = () => this.replicas;
     return sys;
+  }
+
+  /** The I/O of replica k (k > 0): dropped, unless recordPartitionOutput. */
+  private replicaIo(k: number): SessionIO {
+    return {
+      emit: (ev) => { if (this.recordPartitionOutput && ev.kind === 'thermo') this.io.emit({ ...ev, partition: k }); },
+      writeFile: (name, text, append) => { if (this.recordPartitionOutput) this.io.writeFile?.(name, text, append); },
+    };
   }
 
   /** The systems of all partitions, replica 0 first (the neb command reads and drives them). */
   get replicaSystems(): readonly System[] { return this.replicas; }
+
+  /** The replicas a run of coupled systems steps in lockstep (null for an ordinary run). */
+  get coupledSystems(): readonly System[] | null { return this.coupledRun ? this.replicas : null; }
 
   /** Whether frames carry velocities and masses (EngineEvent 'frame', v and mass); off by default. */
   setFrameVelocities(on: boolean): void {
@@ -230,6 +247,12 @@ export class Session {
       this.nebWords = this.replicas.map((sys) => { this.sys = sys; return this.parse(text); });
       this.sys = this.replicas[0];
       try { return await this.runOne(text, line, frame); } finally { this.nebWords = null; }
+    }
+    // a run with a coupled fix (fix pimd: every bead's forces and positions are needed each step) runs once, in lockstep
+    if (first === 'run' && this.replicas.some((sys) => sys.fixes.some((f) => f.replicaCoupled))) {
+      this.coupledRun = true;
+      this.sys = this.replicas[0];
+      try { return await this.runOne(text, line, frame); } finally { this.coupledRun = false; }
     }
     if (first === undefined || SESSION_LEVEL.has(first)) return this.runOne(text, line, frame);
     this.onReplica = true;

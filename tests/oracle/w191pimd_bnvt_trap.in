@@ -1,0 +1,29 @@
+# Measured with native LAMMPS: engine vs native (b332f28, installed /home/roy/.local/bin/lmp, PKG REPLICA) per partition: thermo max err 4.7e-15 (relative), per-atom max 6.6e-24 (4 beads, 3 bosons, 50 steps, about 2.6 s engine incl. node start; the exchange evaluates the cycle energies on the exterior beads).
+# oracle: w191pimd_bnvt_trap — fix pimd/nvt/bosonic (method pimd, Nose-Hoover chains) on 3 bosons in a spring/self trap, 4 beads (electron units, from examples/PACKAGES/pimd_bosonic/harmonic_trap_nvt)
+# oracle-partitions: 4
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+variable ibead world 0 1 2 3
+units electron
+dimension 3
+boundary p p p
+atom_style atomic
+atom_modify map yes
+pair_style none
+timestep 0.5
+variable Temp equal 17.4
+region box block -1500 1500 -1500 1500 -1500 1500
+create_box 1 box
+create_atoms 1 single -15.0 10.0 1.0
+create_atoms 1 single -14.5 9.5 1.5
+create_atoms 1 single -14.0 9.0 2.0
+mass 1 0.00054858
+velocity all create ${Temp} 18889${ibead} mom yes rot yes dist gaussian
+fix harm all spring/self 1.2154614120000001e-08
+fix_modify harm energy yes
+fix pimdb all pimd/nvt/bosonic method pimd temp ${Temp} nhc 4
+variable virial equal f_pimdb[3]
+variable prim_kinetic equal f_pimdb[4]
+thermo_style custom step pe v_virial v_prim_kinetic
+thermo_modify format float %.15g
+thermo 5
+run 50

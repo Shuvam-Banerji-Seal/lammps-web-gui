@@ -384,8 +384,8 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
     });
     case 'abs': return map1(arg(0), Math.abs);
     case 'sign': return map1(arg(0), (x) => (x >= 0 ? 1 : -1));
-    case 'sin': return map1(arg(0), Math.sin);
-    case 'cos': return map1(arg(0), Math.cos);
+    case 'sin': return map1(arg(0), (x) => libm.sin(x));
+    case 'cos': return map1(arg(0), (x) => libm.cos(x));
     case 'tan': return map1(arg(0), Math.tan);
     case 'asin': return map1(arg(0), (x) => {
       if (x < -1 || x > 1) throw new StyleError(`arcsin of invalid value in variable formula "${src}"`);

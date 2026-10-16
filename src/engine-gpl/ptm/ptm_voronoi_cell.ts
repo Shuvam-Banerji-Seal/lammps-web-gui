@@ -76,7 +76,6 @@ import {
   init_marginal,
   init_delete_size,
   init_delete2_size,
-  max_vertices,
   max_vertex_order,
   max_n_vertices,
   max_marginal,
@@ -265,23 +264,8 @@ export class voronoicell_base {
    * In this build the C routine is reached only at the cell limit, where the C
    * code prints "nope" and exits with status 3. */
   add_memory_vertices(vc: voronoicell_neighbor): void {
-    throw new Error(`nope: ${this.current_vertices}`);
-
-    // Unreachable: kept from the C code (the routine above exits in C).
-    const i = this.current_vertices << 1;
-    if (i > max_vertices) voro_fatal_error('Vertex memory allocation exceeded absolute maximum', VOROPP_MEMORY_ERROR);
-    const pp = emptyRecords(i);
-    let j: number;
-    for (j = 0; j < this.current_vertices; j++) pp[j] = this.ed[j];
-    this.ed = pp;
-    vc.n_add_memory_vertices(i);
-    const pnu = zeros(i);
-    for (j = 0; j < this.current_vertices; j++) pnu[j] = this.nu[j];
-    this.nu = pnu;
-    const ppts = new Float64Array(3 * i);
-    for (j = 0; j < 3 * this.current_vertices; j++) ppts[j] = this.pts[j];
-    this.pts = ppts;
-    this.current_vertices = i;
+    // the C routine prints "nope" and calls exit(3) here (native LAMMPS stops); its unreachable remainder is not ported
+    throw new Error(`compute ptm/atom: Voronoi cell vertex memory exceeded (nope: ${this.current_vertices}); native LAMMPS exits here`);
   }
 
   /** Doubles the maximum allowed vertex order, by reallocating mem, mep and mec. */
@@ -449,8 +433,8 @@ export class voronoicell_base {
     let uw = 0;
     let qw = 0;
     let lw = 0;
-    let edp: Int32Array = EMPTY_INTS;
-    let edd: Int32Array = EMPTY_INTS;
+    let edp!: Int32Array;
+    let edd!: Int32Array;
     let u = 0;
     let l = 0;
     let r = 0;
@@ -669,7 +653,6 @@ export class voronoicell_base {
       i = 0;
       lp = this.ed[this.up][0];
       lw = this.m_test(lp);
-      l = this.m_test_ans;
       if (lw !== -1) {
         // The first edge is either inside the cutting space,
         // or lies within the cutting plane. Test the edges
@@ -685,7 +668,6 @@ export class voronoicell_base {
           if (i === this.nu[this.up]) return false;
           lp = this.ed[this.up][i];
           lw = this.m_test(lp);
-          l = this.m_test_ans;
         } while (lw !== -1);
         j = i + 1;
 
@@ -695,7 +677,6 @@ export class voronoicell_base {
         while (j < this.nu[this.up]) {
           lp = this.ed[this.up][j];
           lw = this.m_test(lp);
-          l = this.m_test_ans;
           if (lw !== -1) break;
           j++;
         }
@@ -745,7 +726,6 @@ export class voronoicell_base {
         i = this.nu[this.up] - 1;
         lp = this.ed[this.up][i];
         lw = this.m_test(lp);
-        l = this.m_test_ans;
         while (lw === -1) {
           i--;
 
@@ -755,20 +735,17 @@ export class voronoicell_base {
           if (i === 0) return true;
           lp = this.ed[this.up][i];
           lw = this.m_test(lp);
-          l = this.m_test_ans;
         }
 
         // Now search forwards from zero
         j = 1;
         qp = this.ed[this.up][j];
         qw = this.m_test(qp);
-        // Note: the C code stores this second test's output in l, not q (kept as is).
-        l = this.m_test_ans;
+        // the C code stores this second test's output in l, which is not read afterwards
         while (qw === -1) {
           j++;
           qp = this.ed[this.up][j];
           qw = this.m_test(qp);
-          l = this.m_test_ans;
         }
 
         // Compute the number of edges for the new vertex. In
@@ -956,7 +933,6 @@ export class voronoicell_base {
           qs = this.cycle_up(qs, qp);
           lp = this.ed[qp][qs];
           lw = this.m_test(lp);
-          l = this.m_test_ans;
         } while (lw === -1);
 
         // Now we need to find out whether this marginal vertex

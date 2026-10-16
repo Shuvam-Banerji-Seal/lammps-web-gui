@@ -21,7 +21,7 @@ import type { System } from '../../engine/system';
 import { CellList } from '../../engine/cellList';
 import {
   PTM_CHECK_BCC, PTM_CHECK_DCUB, PTM_CHECK_DHEX, PTM_CHECK_FCC, PTM_CHECK_GRAPHENE, PTM_CHECK_HCP, PTM_CHECK_ICO,
-  PTM_CHECK_SC, PTM_CHECK_ALL, PTM_CHECK_DEFAULT, PTM_MATCH_NONE,
+  PTM_CHECK_SC, PTM_CHECK_ALL, PTM_MATCH_NONE,
 } from './ptm_constants';
 import type { GetNeighbours } from './ptm_types';
 import { ptm_index } from './ptm_index';

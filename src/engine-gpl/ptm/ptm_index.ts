@@ -20,7 +20,7 @@ import { find_alloy_type } from './ptm_alloy_types';
 import { match_dcub_dhex, match_fcc_hcp_ico, match_general, match_graphene } from './ptm_structure_matcher';
 import { normalize_vertices } from './ptm_normalize_vertices';
 import { calculate_neighbour_ordering, calculate_two_shell_neighbour_ordering } from './ptm_neighbour_ordering';
-import { rotate_quaternion_into_cubic_fundamental_zone, rotate_quaternion_into_diamond_cubic_fundamental_zone, rotate_quaternion_into_diamond_hexagonal_fundamental_zone, rotate_quaternion_into_hcp_conventional_fundamental_zone, rotate_quaternion_into_hcp_fundamental_zone, rotate_quaternion_into_icosahedral_fundamental_zone } from './ptm_quat';
+import { rotate_quaternion_into_cubic_fundamental_zone, rotate_quaternion_into_diamond_cubic_fundamental_zone, rotate_quaternion_into_diamond_hexagonal_fundamental_zone, rotate_quaternion_into_hcp_fundamental_zone, rotate_quaternion_into_icosahedral_fundamental_zone } from './ptm_quat';
 import { ptm_global, structure_bcc, structure_sc } from './ptm_initialize_data';
 import type { voronoicell_neighbor } from './ptm_voronoi_cell';
 

@@ -194,6 +194,10 @@ export class Geometry {
 
   /** A point mapped into the periodic box (the rule of remap(), without an atom). */
   remapPoint(p: number[]): void {
+    // a point already inside an orthogonal box stays as it is (native Domain::remap only moves a coordinate below lo
+    // or at/above hi); region matches call this for every point (fix gcmc and fix widom test 10,000,000 of them)
+    if (!this.triclinic && p[0] >= this.lo[0] && p[0] < this.hi[0] && p[1] >= this.lo[1] && p[1] < this.hi[1]
+      && p[2] >= this.lo[2] && p[2] < this.hi[2]) return;
     const x = this.scratchX;
     x[0] = p[0]; x[1] = p[1]; x[2] = p[2];
     this.remap(x, this.scratchImage, 0);

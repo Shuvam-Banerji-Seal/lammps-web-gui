@@ -87,7 +87,7 @@ export abstract class Region {
       const p = this.remapBuf;
       p[0] = x; p[1] = y; p[2] = z;
       this.env.remap(p);
-      [x, y, z] = p;
+      x = p[0]; y = p[1]; z = p[2];
     }
     if (this.dynamic) [x, y, z] = this.toBodyFrame(x, y, z);
     const ins = this.inside(x, y, z);
@@ -332,8 +332,9 @@ export class BlockRegion extends Region {
   /** xlo, xhi, ylo, yhi, zlo, zhi as the region command gives them (dump image draws the box). */
   bounds(): number[] { return this.b.map((p) => this.val(p)); }
   protected inside(x: number, y: number, z: number): boolean {
-    const b = this.b.map((p) => this.val(p));
-    return x >= b[0] && x <= b[1] && y >= b[2] && y <= b[3] && z >= b[4] && z <= b[5];
+    // no array per call: fix gcmc and fix widom test 10,000,000 points when they are defined (widom.ts estimateRegion)
+    const b = this.b;
+    return x >= this.val(b[0]) && x <= this.val(b[1]) && y >= this.val(b[2]) && y <= this.val(b[3]) && z >= this.val(b[4]) && z <= this.val(b[5]);
   }
   protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
     const b = this.b.map((p) => this.val(p));
@@ -360,9 +361,8 @@ export class SphereRegion extends Region {
   center(): [number, number, number] { const [x, y, z] = this.c.map((p) => this.val(p)); return [x, y, z]; }
   radius(): number { return this.val(this.r); }
   protected inside(x: number, y: number, z: number): boolean {
-    const [cx, cy, cz] = this.c.map((p) => this.val(p));
     const r = this.val(this.r);
-    const dx = x - cx, dy = y - cy, dz = z - cz;
+    const dx = x - this.val(this.c[0]), dy = y - this.val(this.c[1]), dz = z - this.val(this.c[2]);
     return dx * dx + dy * dy + dz * dz <= r * r;
   }
   protected primitiveContacts(x: number, y: number, z: number, out: SurfaceContact[]): void {
@@ -545,13 +545,35 @@ export class CompoundRegion extends Region {
       return r;
     });
   }
+  /**
+   * Bounding box as native LAMMPS sets the extent (src/region_union.cpp and region_intersect.cpp at b332f28): a union
+   * has one only when every sub-region has one and takes their hull; an intersect takes the overlap of the sub-regions
+   * that have one. A side-out compound region has none.
+   */
+  bbox(): { lo: number[]; hi: number[] } | null {
+    if (!this.interior) return null;
+    const boxes = this.subRegions().map((r) => r.bbox());
+    if (this.style === 'union' && boxes.some((b) => !b)) return null;
+    const have = boxes.filter((b): b is { lo: number[]; hi: number[] } => b !== null);
+    if (!have.length) return null;
+    const union = this.style === 'union';
+    const lo = [...have[0].lo], hi = [...have[0].hi];
+    for (const b of have.slice(1)) {
+      for (let d = 0; d < 3; d++) {
+        lo[d] = union ? Math.min(lo[d], b.lo[d]) : Math.max(lo[d], b.lo[d]);
+        hi[d] = union ? Math.max(hi[d], b.hi[d]) : Math.min(hi[d], b.hi[d]);
+      }
+    }
+    return { lo, hi };
+  }
   protected inside(x: number, y: number, z: number): boolean {
-    const regs = this.members.map((m) => {
+    const union = this.style === 'union';
+    for (const m of this.members) {
       const r = this.env.region(m);
       if (!r) throw new StyleError(`region ${this.id}: sub-region ${m} no longer exists`);
-      return r;
-    });
-    return this.style === 'union' ? regs.some((r) => r.match(x, y, z)) : regs.every((r) => r.match(x, y, z));
+      if (r.match(x, y, z) === union) return union;
+    }
+    return !union;
   }
   /**
    * Contacts of the union/intersect surface.  Measured with native LAMMPS

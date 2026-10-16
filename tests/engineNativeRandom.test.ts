@@ -190,4 +190,26 @@ describe('through the session (the lazy group loads when a command names its wor
     const types = session.sys.state.type as Int32Array;
     expect(types.some((t) => t === 2) && types.some((t) => t === 1)).toBe(true);
   });
+
+  it('every set random keyword stops for a seed above 900000000, as native (set.cpp setrandom builds a RanMars)', async () => {
+    // Measured with native LAMMPS: Invalid seed 900000001 for the Marsaglia random # generator; 900000000 is accepted.
+    const run = async (style: string, kw: string) => {
+      const errors: string[] = [];
+      const session = new Session({ emit: (e) => { if (e.kind === 'error') errors.push(e.message); }, writeFile: () => {} }, undefined, 0, 1);
+      await session.execute([
+        'units lj', `atom_style ${style}`, 'lattice sc 1.0', 'region b block 0 2 0 2 0 2', 'create_box 2 b',
+        'create_atoms 1 box', `set group all ${kw}`, '',
+      ].join('\n')).catch(() => {});
+      return errors.join(' ');
+    };
+    for (const [style, kw] of [
+      ['atomic', 'type/fraction 2 0.5 900000001'], ['atomic', 'type/ratio 2 0.5 900000001'],
+      ['hybrid sphere dipole', 'dipole/random 900000001 1.0'], ['ellipsoid', 'quat/random 900000001'],
+      ['spin', 'spin/atom/random 900000001 1.0'], ['spin', 'spin/random 900000001 1.0'],
+    ]) {
+      expect(await run(style, kw), kw).toMatch(/Invalid seed 900000001 for the Marsaglia random # generator/);
+    }
+    expect(await run('atomic', 'type/fraction 2 0.5 900000000')).toBe('');
+  });
 });
+

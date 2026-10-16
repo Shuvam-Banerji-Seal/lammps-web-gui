@@ -1469,6 +1469,17 @@ const selected = (sys: System, style: string, id: string): number[] => {
 };
 
 /**
+ * The random keywords of set (type/fraction, type/ratio, type/subset, dipole/random, quat/random, spin/random,
+ * spin/atom/random): as native LAMMPS does (src/set.cpp setrandom at b332f28), each one also builds a Marsaglia
+ * generator from its seed, so a seed above 900000000 stops even when the keyword's own draws use another generator.
+ * Measured with native LAMMPS: set group all type/fraction 2 0.5 900000001 (and dipole/random, quat/random,
+ * spin/atom/random) stops with Invalid seed 900000001 for the Marsaglia random # generator; 900000000 is accepted.
+ */
+const marsagliaSeed = (seed: number): void => {
+  if (seed > 900000000) throw new StyleError(`Invalid seed ${seed} for the Marsaglia random # generator`);
+};
+
+/**
  * set style ID keyword values — set.html. Values may be atom-style variables
  * (v_name). type/fraction, type/ratio and type/subset choose atoms with the
  * per-atom and subset streams of native LAMMPS (nativeRandom.ts).
@@ -1505,6 +1516,7 @@ const set: Handler = ({ sys }, a) => {
         const amount = num(a[k + 2], key);
         const seed = int(a[k + 3], 'seed');
         if (t < 1 || t > s.ntypes) throw new StyleError(`set type ${t} is outside 1..${s.ntypes}`);
+        marsagliaSeed(seed);
         const rnd = nativeRandom(key);
         if (key === 'type/fraction') {
           // set.html: "Random numbers are used in such a way that a particular atom is changed or not changed,
@@ -1823,6 +1835,7 @@ const set: Handler = ({ sys }, a) => {
         const g = num(a[k + 2], 'spin magnitude');
         if (seed <= 0) throw new StyleError(`Invalid random number seed ${seed} in set ${a[k]} command`);
         if (!(g > 0)) throw new StyleError(`Invalid spin magnitude ${g} in set ${a[k]} command`);
+        marsagliaSeed(seed);
         const rnd = nativeRandom('spin/atom/random');
         const dir = new Float64Array(3);
         for (const i of atoms) {
@@ -1910,6 +1923,7 @@ const set: Handler = ({ sys }, a) => {
         if (!s.quat) throw new StyleError(`Cannot set attribute quat/random for atom style ${s.atomStyle}`);
         const seed = int(a[k + 1], 'seed');
         if (seed <= 0) throw new StyleError('set quat/random: seed must be a positive integer');
+        marsagliaSeed(seed);
         const rnd = nativeRandom('quat/random');
         const q = new Float64Array(4);
         for (const i of atoms) {
@@ -1941,6 +1955,7 @@ const set: Handler = ({ sys }, a) => {
         const dlen = num(a[k + 2], 'Dlen');
         if (seed <= 0) throw new StyleError('set dipole/random: seed must be a positive integer');
         if (!(dlen > 0)) throw new StyleError('set dipole/random: Dlen must be > 0');
+        marsagliaSeed(seed);
         const rnd = nativeRandom('dipole/random');
         const mu = new Float64Array(3);
         for (const i of atoms) {

@@ -286,7 +286,7 @@ export class ForceField {
         if (this.pair instanceof PairHybrid) this.pair.subSelect = sel.subPair ?? null;
         try { this.pair.compute(pc); } finally { if (this.pair instanceof PairHybrid) this.pair.subSelect = null; }
       } else if (!this.pairThreads?.run(this.pair, pc)) this.pair.compute(pc);
-      if (this.pair.virialFdotr) {
+      if (this.pair.virialFdotr && !pc.fdotrDone) {
         const xa = nb.xall, fa = nb.fall;
         let v0 = 0, v1 = 0, v2 = 0, v3 = 0, v4 = 0, v5 = 0;
         for (let k = 0; k < 3 * nall; k += 3) {

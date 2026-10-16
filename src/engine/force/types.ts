@@ -88,6 +88,11 @@ export interface PairCompute {
   vatom: Float64Array | null;
   /** True inside a timestep; false at run setup and between runs (granular contact history is then left alone). */
   historyUpdate?: boolean;
+  /**
+   * Set by a fdotr style that summed the global virial (sum x.f) into acc.virial itself, in native LAMMPS's atom order,
+   * and folded its ghost forces into their owners: the force field then skips its own dot product.
+   */
+  fdotrDone?: boolean;
 }
 
 /**

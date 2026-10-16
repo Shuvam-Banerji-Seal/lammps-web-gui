@@ -95,6 +95,30 @@ export const maxMoleculeId = (s: SimState): number => {
   return m;
 };
 
+/**
+ * Random insertion point in the whole box, for an insertion with no region. An orthogonal box takes three draws of
+ * the equal stream, each lo + u (hi - lo). As native LAMMPS does for a triclinic box (src/MC/fix_widom.cpp and
+ * fix_gcmc.cpp attempt_atomic_insertion at b332f28), the three draws are fractional coordinates instead, a draw of
+ * exactly 1 counts as 0, and the point is x = lx l0 + xy l1 + xz l2 + xlo, y = ly l1 + yz l2 + ylo, z = lz l2 + zlo,
+ * summed left to right.
+ */
+export const boxInsertionPoint = (sys: System, rng: RanPark): Vec3 => {
+  const b = sys.state.box;
+  if (!b.triclinic) {
+    return [b.lo[0] + rng.uniform() * (b.hi[0] - b.lo[0]), b.lo[1] + rng.uniform() * (b.hi[1] - b.lo[1]), b.lo[2] + rng.uniform() * (b.hi[2] - b.lo[2])];
+  }
+  const l: Vec3 = [rng.uniform(), rng.uniform(), rng.uniform()];
+  // a draw of exactly 1 is mapped to the origin face
+  for (let d = 0; d < 3; d++) if (l[d] === 1) l[d] = 0;
+  const lx = b.hi[0] - b.lo[0], ly = b.hi[1] - b.lo[1], lz = b.hi[2] - b.lo[2];
+  const [xy, xz, yz] = b.tilt;
+  return [
+    lx * l[0] + xy * l[1] + xz * l[2] + b.lo[0],
+    ly * l[1] + yz * l[2] + b.lo[1],
+    lz * l[2] + b.lo[2],
+  ];
+};
+
 /** Bounding box and volume of an insertion region (side in). */
 export const regionBox = (sys: System, r: Region): { lo: Vec3; hi: Vec3; volume: number } => {
   if (r instanceof BlockRegion) {
@@ -383,10 +407,10 @@ export class FixWidom extends Fix {
 
   /** Random point: the box, or the region bounding box with rejection for non-rectangular regions. */
   private drawPosition(): Vec3 | null {
-    const s = this.sys.state;
-    const lo = this.reg ? this.reg.lo : (s.box.lo as unknown as Vec3);
-    const hi = this.reg ? this.reg.hi : (s.box.hi as unknown as Vec3);
-    if (!this.region || this.region instanceof BlockRegion) {
+    if (!this.region) return boxInsertionPoint(this.sys, this.rng);
+    const lo = this.reg!.lo;
+    const hi = this.reg!.hi;
+    if (this.region instanceof BlockRegion) {
       return [lo[0] + this.rng.uniform() * (hi[0] - lo[0]), lo[1] + this.rng.uniform() * (hi[1] - lo[1]), lo[2] + this.rng.uniform() * (hi[2] - lo[2])];
     }
     // "random trial points are generated within the rectangular bounding box until a point is found that

@@ -1,0 +1,17 @@
+# oracle: fix gcmc MC translations (X 0, M 3, displace 2.0) in a triclinic prism box (xy 2.5 xz 1.5 yz -1.0): displacements are Cartesian and moved atoms are wrapped by the fractional rule of the tilted cell (native: the installed b332f28 binary, which has MC; fix_gcmc.cpp attempt_atomic_translation_full and energy_full pbc in lamda space) Measured with native LAMMPS: max relative error below 1e-12 (passes at 1e-12 with abs 0, fails at 1e-14); engine about 3 s under vitest on the loaded host.
+# oracle-compare: thermo=all atoms=all rel=1e-8
+units lj
+atom_style atomic
+pair_style lj/cut 2.5
+pair_modify tail no
+region box prism 0 8 0 8 0 8 2.5 1.5 -1.0 units box
+create_box 1 box
+pair_coeff * * 1.0 1.0
+mass 1 1.0
+create_atoms 1 random 24 4321 box
+group gcmcgroup type 1
+fix mygcmc gcmcgroup gcmc 1 0 3 1 4242 1.0 0.0 2.0
+thermo_style custom step atoms pe f_mygcmc[1] f_mygcmc[2] f_mygcmc[3] f_mygcmc[4]
+thermo 1
+thermo_modify format float %.15g
+run 20

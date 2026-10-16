@@ -5,7 +5,7 @@ import { takeFixRecord } from './restartRecord';
 import { appendAtoms, deleteAtoms, hasChargeStyle, isMolecularStyle } from '../atoms';
 import { appendMolecule, num, posInt } from './pour';
 import { rotationMatrix, type MoleculeTemplate } from '../molecule';
-import { regionBox, maxMoleculeId, topoList } from './widom';
+import { regionBox, boxInsertionPoint, maxMoleculeId, topoList } from './widom';
 import { BlockRegion, type Region } from '../region';
 import { newAccum, type Bonded, type BondedCompute } from '../force/types';
 import type { System } from '../system';
@@ -112,10 +112,19 @@ import type { SimState, Topology, TopoList } from '../types';
  * Partial energy (fix_gcmc.cpp energy(), b332f28; the default when canPartial() holds). Every trial sums pair.single()
  * of the trial particle with the atoms inside the cutoff (minimum image), skipping its own index and, for a molecule,
  * every atom of its molecule (native leaves out every intramolecular pair, bonded or not). Nothing is rebuilt and no
- * forces are evaluated; a rejected trial changes nothing. Known gap (fallback only): when canPartial() is false
- * (triclinic box, neigh_modify exclude/include, a periodic length below twice the largest cutoff, or a hybrid pair
- * style), the trial uses the total energy difference, which for a mol template still counts the template's own
- * non-bonded pairs (only its bonded energy is subtracted); full_energy is exact for such molecules (w188gc_mol_xm).
+ * forces are evaluated; a rejected trial changes nothing.
+ *
+ * Triclinic boxes (fix_gcmc.cpp attempt_atomic_insertion and attempt_molecule_insertion, b332f28): without a region
+ * the insertion point is drawn in fractional coordinates, three draws lamda = u mapped by lamda2x (widom.ts
+ * boxInsertionPoint); with a region it is drawn in the region's box bounding box as in the orthogonal case. Moved atoms
+ * are wrapped by the fractional rule of Domain::remap (domain.ts remapTriclinic), which forces() applies before every
+ * energy (native energy_full does pbc() in lamda space). MC translation displacements are Cartesian, as native's
+ * x += displace. Known gap (fallback only): native's partial energy also runs for a triclinic box (through ghost atoms),
+ * but this engine's partial sum uses the orthogonal minimum image, so a triclinic box takes the total-energy difference.
+ * For atoms the two agree to round-off with the same random streams; for a mol template the total-energy difference
+ * still counts the template's own non-bonded pairs (only its bonded energy is subtracted), so full_energy is exact for
+ * such molecules (w188gc_mol_xm). neigh_modify exclude/include, a periodic length below twice the largest cutoff, and a
+ * hybrid pair style take the same fallback.
  */
 
 type Vec3 = [number, number, number];
@@ -142,6 +151,17 @@ interface RigidBodies {
 const nonNegInt = (w: string | undefined, what: string): number => {
   const v = num(w, what);
   if (!Number.isInteger(v) || v < 0) throw new StyleError(`fix gcmc: ${what} must be a non-negative integer, got '${w ?? ''}'`);
+  return v;
+};
+
+/**
+ * A non-negative real keyword value. The mcmoves proportions are real numbers (docs.lammps.org/fix_gcmc.html:
+ * "The values must be non-negative integers or real numbers, with at least one non-zero value."), so only the sign
+ * is checked here; native fix_gcmc.cpp options() (lines 292-300) refuses a negative one with "Illegal fix gcmc mcmoves parameters".
+ */
+const nonNegReal = (w: string | undefined, what: string): number => {
+  const v = num(w, what);
+  if (v < 0) throw new StyleError(`fix gcmc: Illegal fix gcmc mcmoves parameters (${what} must be non-negative, got '${w ?? ''}')`);
   return v;
 };
 
@@ -281,10 +301,11 @@ export class FixGcmc extends Fix {
       };
       if (key === 'mol') { molTemplateId = v(1); i += 2; }
       else if (key === 'mcmoves') {
-        this.patomtrans = nonNegInt(v(1), 'mcmoves Patomtrans');
-        this.pmoltrans = nonNegInt(v(2), 'mcmoves Pmoltrans');
-        this.pmolrotate = nonNegInt(v(3), 'mcmoves Pmolrotate');
-        if (this.patomtrans + this.pmoltrans + this.pmolrotate === 0) throw new StyleError('fix gcmc mcmoves: at least one proportion must be non-zero');
+        this.patomtrans = nonNegReal(v(1), 'mcmoves Patomtrans');
+        this.pmoltrans = nonNegReal(v(2), 'mcmoves Pmoltrans');
+        this.pmolrotate = nonNegReal(v(3), 'mcmoves Pmolrotate');
+        // native: pmctot = patomtrans + pmoltrans + pmolrotate; "if (pmctot <= 0) error->all(...Illegal fix gcmc mcmoves parameters)"
+        if (this.patomtrans + this.pmoltrans + this.pmolrotate <= 0) throw new StyleError('fix gcmc mcmoves: at least one proportion must be non-zero');
         sawMcmoves = true;
         i += 4;
       } else if (key === 'region') { regionId = v(1); i += 2; }
@@ -502,16 +523,16 @@ export class FixGcmc extends Fix {
    * attempt gives up with no insertion, as the native loop returns once region_attempt reaches the maximum.
    */
   private drawPosition(): Vec3 | null {
-    const s = this.sys.state;
-    const lo = this.reg ? this.reg.lo : (s.box.lo as unknown as Vec3);
-    const hi = this.reg ? this.reg.hi : (s.box.hi as unknown as Vec3);
+    // no region: the whole box, fractional coordinates for a triclinic box (widom.ts boxInsertionPoint)
+    if (!this.region) return boxInsertionPoint(this.sys, this.rng);
+    const lo = this.reg!.lo;
+    const hi = this.reg!.hi;
     const trial = (): Vec3 => [
       lo[0] + this.rng.uniform() * (hi[0] - lo[0]),
       lo[1] + this.rng.uniform() * (hi[1] - lo[1]),
       lo[2] + this.rng.uniform() * (hi[2] - lo[2]),
     ];
     let p = trial();
-    if (!this.region) return p;
     let attempt = 0;
     while (!this.region.match(p[0], p[1], p[2])) {
       p = trial();

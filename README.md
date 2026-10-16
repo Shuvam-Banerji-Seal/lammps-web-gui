@@ -33,9 +33,11 @@ The notebook's engine is written in TypeScript for the browser. Its results are 
 
 ## 🎬 Demo
 
-[![LAMMPS Web GUI demo: a Lennard-Jones melt run in the MD notebook, then trajectory playback in the 3D viewer](docs/videos/app-demo-preview.gif)](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/app-demo.mp4)
+[![LAMMPS Web GUI film: a peptide in water rendered by the engine's dump image, the MD Notebook running a Lennard-Jones melt, and the 3D Structure Viewer](docs/videos/app-demo-preview.webp)](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/app-demo.mp4)
 
-*A one-minute walkthrough: pick a starter template in the Script Builder, run a Lennard-Jones melt in the MD Notebook (thermo table, charts and the 3D view update as it runs), then play the trajectory back in the Structure Viewer. Full video: [`app-demo.mp4`](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/app-demo.mp4) (64 s, 1280×720, 1.4 MB; also in the repo at [`public/videos/app-demo.mp4`](public/videos/app-demo.mp4)). Recorded in headless Chromium with software rendering, so a real GPU is smoother.*
+**▶ [Watch the 84-second film with sound](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/app-demo.mp4)** (1920×1080, H.264/AAC; also in the repo at [`public/videos/app-demo.mp4`](public/videos/app-demo.mp4)).
+
+*In three acts: **Build** (starter templates, branching flowcharts, the script check that cites docs.lammps.org, the CMake compiler helper), **Run** (a 4000-atom Lennard-Jones melt in the MD Notebook with live thermo output and a 3D view) and **See** (trajectory playback, turntables, RDF/MSD analysis). The opening and closing shots are a peptide in water rendered by the engine's own `dump image` with depth cueing, ambient occlusion and defocus. The film was cut with [Remotion](https://www.remotion.dev/) and scored with original synthesized music and sound design. App footage was captured frame by frame in headless Chromium.*
 
 ## 📸 Screenshots
 

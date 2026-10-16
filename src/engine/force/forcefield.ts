@@ -246,7 +246,14 @@ export class ForceField {
   private buildSpecialList(s: SimState): SpecialList {
     const bond = this.bond;
     const ignoreBond = bond?.ignoresSpecial ? (t: number) => bond.ignoresSpecial!(t) : undefined;
-    const list = buildSpecial(s, { angle: this.special.angle, dihedral: this.special.dihedral, ignoreBond });
+    // As native LAMMPS does (src/special.cpp Special::build at b332f28): the 1-3 and 1-4 lists are not built when
+    // their lj and coul weights are all 1.0 (the 1-4 list alone when only its weights are 1.0), unless one/five needs
+    // them. A weight of 1.0 leaves a pair as if it had no special status, and skipping the lists keeps densely bonded
+    // systems fast (bpm with special_bonds lj 0 1 1 and ~120 bonds per atom reached nearly every atom at depth 3).
+    const { lj, coul } = this.special;
+    const one = (k: 1 | 2) => lj[k] === 1 && coul[k] === 1;
+    const maxOrder: 1 | 2 | 3 = this.special.one5 ? 3 : one(1) && one(2) ? 1 : one(2) ? 2 : 3;
+    const list = buildSpecial(s, { angle: this.special.angle, dihedral: this.special.dihedral, ignoreBond, maxOrder });
     return this.specialHook ? this.specialHook(list, s) : list;
   }
 

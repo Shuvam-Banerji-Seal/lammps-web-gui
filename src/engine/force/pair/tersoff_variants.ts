@@ -1,6 +1,7 @@
 import { StyleError, type StyleContext } from '../types';
 import { parseNum, joinPotentialEntries } from '../util';
 import { PairTersoff, key3, type ParsedFile, type TersoffEntry } from './tersoff';
+import { libm } from '../../libm';
 
 /*
  * pair_style tersoff/mod, tersoff/mod/c and tersoff/zbl: docs.lammps.org/pair_tersoff_mod.html
@@ -212,14 +213,14 @@ export class PairTersoffMod extends PairTersoff {
     if (r < R - D) return 1;
     if (r > R + D) return 0;
     const x = (r - R) / D;
-    return 0.5 - (9 / 16) * Math.sin((Math.PI / 2) * x) - (1 / 16) * Math.sin((3 * Math.PI / 2) * x);
+    return 0.5 - (9 / 16) * libm.sin((Math.PI / 2) * x) - (1 / 16) * libm.sin((3 * Math.PI / 2) * x);
   }
 
   protected override cutDeriv(r: number, R: number, D: number): number {
     if (r <= R - D || r >= R + D) return 0;
     const x = (r - R) / D;
-    return -(9 / 16) * (Math.PI / (2 * D)) * Math.cos((Math.PI / 2) * x)
-      - (1 / 16) * (3 * Math.PI / (2 * D)) * Math.cos((3 * Math.PI / 2) * x);
+    return -(9 / 16) * (Math.PI / (2 * D)) * libm.cos((Math.PI / 2) * x)
+      - (1 / 16) * (3 * Math.PI / (2 * D)) * libm.cos((3 * Math.PI / 2) * x);
   }
 
   /** g(theta) = c1 + g_o g_a with u = h - cos theta (pair_tersoff_mod.html). */

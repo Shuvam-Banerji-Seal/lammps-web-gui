@@ -4,6 +4,7 @@ import { PairBuck6dCoulGauss } from '../pair/buck6d_gauss';
 import { fmtCoeff, parseInt_, parseNum } from '../util';
 import { StyleError, type BondedCompute, type StyleContext } from '../types';
 import type { CharmmLink } from '../dihedral/charmm';
+import { libm } from '../../libm';
 
 /*
  * angle_style cosine/buck6d — docs.lammps.org/angle_cosine_buck6d.html (text in
@@ -81,9 +82,9 @@ export class AngleCosineBuck6d extends SimpleBonded {
       const t = A.type[a];
       angleTerm(bc, i, j, k, d1, d2, (theta) => {
         const arg = n[t] * theta - th0[t];
-        const ea = K[t] * (1 + Math.cos(arg));
+        const ea = K[t] * (1 + libm.cos(arg));
         e += ea;
-        return { e: ea, dEdtheta: -K[t] * n[t] * Math.sin(arg) };
+        return { e: ea, dEdtheta: -K[t] * n[t] * libm.sin(arg) };
       });
       // buck6d vdW between the end atoms i and k: dk = r_k - r_i (minimum image)
       termDelta(bc, j, i, k, dk);

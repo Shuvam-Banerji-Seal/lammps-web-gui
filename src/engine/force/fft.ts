@@ -5,6 +5,7 @@
  * interleaved (re, im) Float64Arrays. Forward transform uses exp(-2 pi i jk/n);
  * the inverse uses exp(+2 pi i jk/n) and is NOT normalized.
  */
+import { libm } from '../libm';
 
 export const isFFTSize = (n: number): boolean => {
   if (n < 1 || !Number.isInteger(n)) return false;
@@ -39,8 +40,8 @@ const plan = (n: number): Plan => {
   for (const f of [5, 3, 2]) while (m % f === 0) { factors.push(f); m /= f; }
   const cos = new Float64Array(n), sin = new Float64Array(n);
   for (let k = 0; k < n; k++) {
-    cos[k] = Math.cos((2 * Math.PI * k) / n);
-    sin[k] = -Math.sin((2 * Math.PI * k) / n);
+    cos[k] = libm.cos((2 * Math.PI * k) / n);
+    sin[k] = -libm.sin((2 * Math.PI * k) / n);
   }
   p = { n, factors, cos, sin, scratch: new Float64Array(2 * n) };
   plans.set(n, p);

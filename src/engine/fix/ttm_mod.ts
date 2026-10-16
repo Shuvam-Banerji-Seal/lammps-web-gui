@@ -1,6 +1,7 @@
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { FixTTM, type TtmPositional } from './ttm';
+import { libm } from '../libm';
 
 /*
  * fix ttm/mod — the two-temperature model with a temperature-dependent electronic heat capacity and
@@ -177,7 +178,7 @@ export const ttmModGridIndex = (x: number, lo: number, hi: number, n: number): n
 const gaussLegendre = (n: number): { x: number[]; w: number[] } => {
   const x: number[] = [], w: number[] = [];
   for (let i = 1; i <= n; i++) {
-    let z = Math.cos((Math.PI * (i - 0.25)) / (n + 0.5));
+    let z = libm.cos((Math.PI * (i - 0.25)) / (n + 0.5));
     let dp = 1;
     for (let iter = 0; iter < 100; iter++) {
       let p0 = 1, p1 = z;

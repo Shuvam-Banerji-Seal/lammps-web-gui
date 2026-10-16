@@ -1,6 +1,7 @@
 import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
+import { libm } from '../libm';
 
 /*
  * fix rhok — written from docs.lammps.org/fix_rhok.html (plans/lammps-docs-live/fix_rhok.rst). Syntax quoted there:
@@ -74,8 +75,8 @@ export class FixRhok extends Fix {
       const i = idx[m];
       const p = kx * s.x[3 * i] + ky * s.x[3 * i + 1] + kz * s.x[3 * i + 2];
       ph[m] = p;
-      re += Math.cos(p);
-      im += -Math.sin(p);
+      re += libm.cos(p);
+      im += -libm.sin(p);
     }
     re /= sq;
     im /= sq;
@@ -92,7 +93,7 @@ export class FixRhok extends Fix {
     for (let m = 0; m < N; m++) {
       const i = idx[m];
       const p = ph[m];
-      const ex = -Math.sin(p), ey = -Math.cos(p); // -i exp(-i p) = -sin p - i cos p
+      const ex = -libm.sin(p), ey = -libm.cos(p); // -i exp(-i p) = -sin p - i cos p
       // (cr + i ci)(ex + i ey) real part = cr ex - ci ey
       const realFac = (cr * ex - ci * ey) / sq;
       const fac = -this.K * dev * realFac;

@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNum, parseInt_ } from '../force/util';
 import { CellList } from '../cellList';
+import { libm } from '../libm';
 
 /*
  * Wave-11 per-atom structure computes (compute_struct):
@@ -628,8 +629,8 @@ export class ComputeHexorderAtom extends Compute {
       let re = 0, im = 0;
       for (let t = 0; t < m; t++) {
         const theta = Math.atan2(sc.dy[t], sc.dx[t]);
-        re += Math.cos(this.degree * theta);
-        im += Math.sin(this.degree * theta);
+        re += libm.cos(this.degree * theta);
+        im += libm.sin(this.degree * theta);
       }
       out[2 * i] = re / m;
       out[2 * i + 1] = im / m;

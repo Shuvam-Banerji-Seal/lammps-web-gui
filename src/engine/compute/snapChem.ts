@@ -1,4 +1,5 @@
 import { WignerTables, bispectrumComponent, adjointComponentChem, type Triple, type Cmat } from './sna';
+import { libm } from '../libm';
 
 /*
  * Explicit multi-element bispectrum (chemflag 1) shared by pair_style snap (src/engine/force/pair/snap.ts,
@@ -107,8 +108,8 @@ export class ChemSna {
     const span = Rii - this.rmin0;
     const th = (this.rfac0 * Math.PI * (r - this.rmin0)) / span;
     const sw = this.switchflag && r >= this.rmin0;
-    const fc = sw ? 0.5 * (Math.cos((Math.PI * (r - this.rmin0)) / span) + 1) : 1;
-    const dfc = sw ? -0.5 * Math.sin((Math.PI * (r - this.rmin0)) / span) * (Math.PI / span) : 0;
+    const fc = sw ? 0.5 * (libm.cos((Math.PI * (r - this.rmin0)) / span) + 1) : 1;
+    const dfc = sw ? -0.5 * libm.sin((Math.PI * (r - this.rmin0)) / span) * (Math.PI / span) : 0;
     const m = this.m;
     this.j[m] = j; this.ele[m] = ej; this.dx[m] = dx; this.dy[m] = dy; this.dz[m] = dz;
     this.r[m] = r; this.rc[m] = Rii; this.th[m] = th;
@@ -132,7 +133,7 @@ export class ChemSna {
     }
     for (let a = 0; a < m; a++) {
       const r = this.r[a];
-      const sn = Math.sin(this.th[a]), cs = Math.cos(this.th[a]);
+      const sn = libm.sin(this.th[a]), cs = libm.cos(this.th[a]);
       const sg = sn < 0 ? -1 : 1;
       const S = sg * sn, C = sg * cs;
       const g = S / r;
@@ -201,7 +202,7 @@ export class ChemSna {
     const tj = this.tj, rfac0 = this.rfac0, rmin0 = this.rmin0, WT = this.WT, dp = this.dp;
     const dx = this.dx[a], dy = this.dy[a], dz = this.dz[a];
     const r = this.r[a], Rii = this.rc[a];
-    const sn = Math.sin(this.th[a]), cs = Math.cos(this.th[a]);
+    const sn = libm.sin(this.th[a]), cs = libm.cos(this.th[a]);
     const sg = sn < 0 ? -1 : 1;
     const S = sg * sn, C = sg * cs;
     const g = S / r;

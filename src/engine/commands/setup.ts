@@ -29,6 +29,7 @@ import type { System } from '../system';
 import { bitOfIndex, type DynamicGroup } from '../group';
 import { parseBalanceWeight, applyBalanceWeights, balanceNeighFactor, balanceUsesNeigh, type BalanceWeightAction } from '../fix/balance';
 import { parseMoleculeFile, geometricCenter, orientationMatrix, templateDipoles, type MoleculeTemplate, type MoleculeOptions } from '../molecule';
+import { libm } from '../libm';
 
 /*
  * System setup commands. Each handler cites its docs.lammps.org page.
@@ -1923,8 +1924,8 @@ const set: Handler = ({ sys }, a) => {
           if (!isEllipsoid(s, i) && !isTriAtom(s, i) && !isBpmSphereStyle(s.atomStyle)) throw new StyleError('Cannot set quaternion for atom that has none');
           const [qa, qb, qc, th] = vs.map((f) => f(i));
           if (sys.dimension === 2 && (qa !== 0 || qb !== 0)) throw new StyleError('Cannot set quaternion with xy components for 2d system');
-          const h = (th * Math.PI) / 360, sn = Math.sin(h);
-          const q = [Math.cos(h), qa * sn, qb * sn, qc * sn];
+          const h = (th * Math.PI) / 360, sn = libm.sin(h);
+          const q = [libm.cos(h), qa * sn, qb * sn, qc * sn];
           const len = Math.hypot(q[0], q[1], q[2], q[3]);
           for (let d = 0; d < 4; d++) s.quat[4 * i + d] = q[d] / len;
         }
@@ -2513,7 +2514,7 @@ const displaceAtoms: Handler = ({ sys }, a) => {
       if (!(len > 0)) throw new StyleError('displace_atoms rotate: zero axis');
       R = R.map((x) => x / len);
       const th = (num(args[6], 'theta') * Math.PI) / 180;
-      const c = Math.cos(th), sn = Math.sin(th);
+      const c = libm.cos(th), sn = libm.sin(th);
       const g = sys.geom;
       for (const i of members) {
         // rotate the unwrapped position, then let pbc remap it
@@ -2530,8 +2531,8 @@ const displaceAtoms: Handler = ({ sys }, a) => {
       // appropriately to correspond to the atom's rotation." The ellipsoid quaternion q becomes r q, with r the
       // rotation by theta about R (the composition measured with native LAMMPS, black box).
       if (s.quat) {
-        const h = th / 2, rs = Math.sin(h);
-        const r = [Math.cos(h), R[0] * rs, R[1] * rs, R[2] * rs];
+        const h = th / 2, rs = libm.sin(h);
+        const r = [libm.cos(h), R[0] * rs, R[1] * rs, R[2] * rs];
         for (const i of members) {
           if (!isEllipsoid(s, i)) continue;
           const q = s.quat.subarray(4 * i, 4 * i + 4);

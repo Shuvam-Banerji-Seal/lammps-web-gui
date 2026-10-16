@@ -7,7 +7,7 @@
  * The rotation matrix of a deposited molecule. The core FixDeposit (src/engine/fix/deposit.ts) reaches it through the
  * lazy HOOKS entry 'deposit' (lazyStyles.ts group gpl_deposit, registry/deposit.ts).
  */
-import { cosExact, sinExact } from '../../engine/trigExact';
+import { cos as libmCos, sin as libmSin } from '../libm/sincos';
 
 /** Rotation matrix of fix_deposit.cpp: norm3(r), axisangle_to_quat(r, theta), quat_to_mat (math_extra.h, b332f28),
  * which gives the rounding of native LAMMPS for the molecule orientation (a molecule's atoms at exactly the cutoff
@@ -20,9 +20,9 @@ export const nativeRotation = (r: number[], theta: number): number[][] => {
     v[0] *= scale; v[1] *= scale; v[2] *= scale;
   }
   const halfa = 0.5 * theta;
-  // C's sin and cos (correctly rounded in practice) rather than the engine's Math.sin / Math.cos (trigExact.ts)
-  const sina = sinExact(halfa);
-  const q = [cosExact(halfa), v[0] * sina, v[1] * sina, v[2] * sina];
+  // the C library's sin and cos (bit-exact glibc ports, ../libm/sincos.ts) rather than Math.sin / Math.cos
+  const sina = libmSin(halfa);
+  const q = [libmCos(halfa), v[0] * sina, v[1] * sina, v[2] * sina];
   const w2 = q[0] * q[0], i2 = q[1] * q[1], j2 = q[2] * q[2], k2 = q[3] * q[3];
   const twoij = 2.0 * q[1] * q[2], twoik = 2.0 * q[1] * q[3], twojk = 2.0 * q[2] * q[3];
   const twoiw = 2.0 * q[1] * q[0], twojw = 2.0 * q[2] * q[0], twokw = 2.0 * q[3] * q[0];

@@ -3,6 +3,7 @@ import { KSpace, StyleError, type KSpaceCompute, type StyleContext } from '../ty
 import type { SimState } from '../../types';
 import type { Geometry } from '../../domain';
 import { parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * kspace_style ewald accuracy — docs.lammps.org/kspace_style.html: "The ewald
@@ -213,7 +214,7 @@ export abstract class KSpaceBase extends KSpace {
     if (!(T > 0 && T < 1)) throw new StyleError('kspace_modify slab auto requires a normalized force tolerance between 0 and 1');
     if (T > 0.35) throw new StyleError(`kspace_modify slab auto is reproduced only for a normalized force tolerance up to 0.35 (got ${T})`);
     const lateral = Math.max(geom.lx, geom.ly);
-    return 1 + Math.log(1 / T) * lateral / (2 * Math.PI * geom.lz);
+    return 1 + libm.log(1 / T) * lateral / (2 * Math.PI * geom.lz);
   }
 
   /** g from the real-space estimate (Kolafa-Perram eq. 18) unless set by the user. */
@@ -225,7 +226,7 @@ export abstract class KSpaceBase extends KSpace {
     const pre = (2 * qqrd2e * this.qsqsum) / Math.sqrt(n * rc * this.volume);
     if (!(pre > acc)) return 1 / rc;   // any splitting meets the target; a gentle default
     // 2 C Q2 exp(-g^2 rc^2) / sqrt(N rc V) = acc
-    return Math.sqrt(Math.log(pre / acc)) / rc;
+    return Math.sqrt(libm.log(pre / acc)) / rc;
   }
 
   /** KSpace::qsum_qsq: the charge sums of the current charges; G-ewald, kmax and the mesh stay (see paramsFrozen). */
@@ -388,7 +389,7 @@ export class KSpaceEwald extends KSpaceBase {
       lam[2] /= this.slab;
       for (let d = 0; d < 3; d++) {
         const K = km[d] + 1;
-        const c1 = Math.cos(2 * Math.PI * lam[d]), s1 = Math.sin(2 * Math.PI * lam[d]);
+        const c1 = libm.cos(2 * Math.PI * lam[d]), s1 = libm.sin(2 * Math.PI * lam[d]);
         cs[d][i * K] = 1; sn[d][i * K] = 0;
         for (let m = 1; m <= km[d]; m++) {
           const pc = cs[d][i * K + m - 1], ps = sn[d][i * K + m - 1];

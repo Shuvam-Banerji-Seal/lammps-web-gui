@@ -2,6 +2,7 @@ import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, typeBounds, type
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { fmtCoeff, parseNum } from '../util';
 import { tallyAtom } from './lj_cut';
+import { libm } from '../../libm';
 
 /*
  * pair_style soft cutoff — docs.lammps.org/pair_soft.html:
@@ -98,11 +99,11 @@ export class PairSoft extends Pair {
         const factor = sLJ[jj >>> SBBITS];
         const r = Math.sqrt(rsq);
         const arg = r * pk[t];
-        const fpair = factor * pa[t] * pk[t] * Math.sin(arg) / r;
+        const fpair = factor * pa[t] * pk[t] * libm.sin(arg) / r;
         const fx = dx * fpair, fy = dy * fpair, fz = dz * fpair;
         fxi += fx; fyi += fy; fzi += fz;
         f[3 * j] -= fx; f[3 * j + 1] -= fy; f[3 * j + 2] -= fz;
-        const e = factor * pa[t] * (1 + Math.cos(arg));
+        const e = factor * pa[t] * (1 + libm.cos(arg));
         evdwl += e;
         if (tally) tallyAtom(pc, i, j, e, fpair, dx, dy, dz);
       }

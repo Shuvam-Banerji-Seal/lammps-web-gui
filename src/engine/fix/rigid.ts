@@ -6,6 +6,7 @@ import { ellipsoidInertia, quatToMatrix } from '../compute/asphere';
 import { RanMars } from '../rng';
 import { parseNumOrVar, ramp, valueOf, type NumOrVar } from './util';
 import { FixGravity } from './force_ext';
+import { libm } from '../libm';
 
 /*
  * fix ID group rigid|rigid/nve|rigid/small|rigid/nve/small bodystyle ... —
@@ -530,7 +531,7 @@ export class FixRigid extends Fix {
         const len = bonus[2 * i];
         const th = bonus[2 * i + 1];
         const a = (m * len * len) / 12.0;
-        const ux = Math.cos(th), uy = Math.sin(th);
+        const ux = libm.cos(th), uy = libm.sin(th);
         I[0][0] += a * (1 - ux * ux);
         I[1][1] += a * (1 - uy * uy);
         I[2][2] += a;

@@ -2,6 +2,7 @@ import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext }
 import { atomIndex } from '../bonded_util';
 import { angleTerm } from './harmonic';
 import { fmtCoeff, parseInt_, parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * angle_style gaussian — docs.lammps.org/angle_gaussian.html:
@@ -97,7 +98,7 @@ export class AngleGaussian extends Bonded {
           const d = theta - g.th;
           dS += (g.a / (g.w * SQRT_PI_2)) * Math.exp((-2 * d * d) / (g.w * g.w)) * ((-4 * d) / (g.w * g.w));
         }
-        const eb = -kT * Math.log(S);
+        const eb = -kT * libm.log(S);
         e += eb;
         return { e: eb, dEdtheta: (-kT * dS) / S };
       });

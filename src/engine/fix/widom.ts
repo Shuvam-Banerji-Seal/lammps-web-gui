@@ -9,6 +9,7 @@ import { newAccum, type Accum, type Bonded, type BondedCompute } from '../force/
 import { PairHybrid } from '../force/pair/hybrid';
 import type { System } from '../system';
 import type { SimState, TopoList } from '../types';
+import { libm } from '../libm';
 
 /*
  * fix ID group-ID widom N M type seed T keyword values ... — docs.lammps.org/fix_widom.html
@@ -393,7 +394,7 @@ export class FixWidom extends Fix {
       avg += (Math.exp(-this.trial(p, eBefore) / kT) - avg) / (k + 1);
     }
     this.avgBoltz = avg;
-    this.mu = avg > 0 ? -kT * Math.log(avg) : 0;
+    this.mu = avg > 0 ? -kT * libm.log(avg) : 0;
   }
 
   /** Random point: the box, or the region bounding box with rejection for non-rectangular regions. */

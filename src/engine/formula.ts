@@ -1,4 +1,5 @@
 import { StyleError } from './force/types';
+import { libm } from './libm';
 
 /*
  * Variable formulas — docs.lammps.org/variable.html. One parser builds an
@@ -375,7 +376,7 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
     case 'exp': return map1(arg(0), Math.exp);
     case 'ln': return map1(arg(0), (x) => {
       if (x <= 0) throw new StyleError(`log of zero/negative value in variable formula "${src}"`);
-      return Math.log(x);
+      return libm.log(x);
     });
     case 'log': return map1(arg(0), (x) => {
       if (x <= 0) throw new StyleError(`log of zero/negative value in variable formula "${src}"`);
@@ -417,8 +418,8 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
       return a[0] + (a[1] - a[0]) * (step - tm.startStep) / (tm.stopStep - tm.startStep);
     }
     case 'vdisplace': return a[0] + a[1] * (step - tm.startStep) * tm.dt;
-    case 'swiggle': return a[0] + a[1] * Math.sin(2 * Math.PI / a[2] * (step - tm.startStep) * tm.dt);
-    case 'cwiggle': return a[0] + a[1] * (1 - Math.cos(2 * Math.PI / a[2] * (step - tm.startStep) * tm.dt));
+    case 'swiggle': return a[0] + a[1] * libm.sin(2 * Math.PI / a[2] * (step - tm.startStep) * tm.dt);
+    case 'cwiggle': return a[0] + a[1] * (1 - libm.cos(2 * Math.PI / a[2] * (step - tm.startStep) * tm.dt));
     case 'stagger': {
       const [x, y] = ints(a);
       if (!(x > 0 && y > 0 && x > y)) throw new StyleError('invalid stagger() arguments: need x > y > 0');

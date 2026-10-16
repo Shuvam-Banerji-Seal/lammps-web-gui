@@ -1,4 +1,5 @@
 import { PAIR_SHELL_RATIO, referenceVectors, type ReferenceLattice } from './meam_lattice';
+import { libm } from '../../libm';
 
 /*
  * Multi-element MEAM (pair_style meam, two or more elements). Energy and analytic forces for the
@@ -527,12 +528,12 @@ export const densityPartials = (terms: Term[], P: number, ibar: number, mode = 0
 const embedF = (el: AlloyElement, rhoRef: number, rb: number): number => {
   if (rb <= 0) return 0;
   const x = rb / rhoRef;
-  return el.A * el.Ec * x * Math.log(x);
+  return el.A * el.Ec * x * libm.log(x);
 };
 const embedFp = (el: AlloyElement, rhoRef: number, rb: number): number => {
   if (rb <= 0) return 0;
   const x = rb / rhoRef;
-  return (el.A * el.Ec * (Math.log(x) + 1)) / rhoRef;
+  return (el.A * el.Ec * (libm.log(x) + 1)) / rhoRef;
 };
 
 /**

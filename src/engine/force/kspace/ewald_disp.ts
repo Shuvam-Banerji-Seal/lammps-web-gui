@@ -5,6 +5,7 @@ import { parseNum } from '../util';
 import { KSpaceEwald, invertUpper } from './ewald';
 import { PairLJLongCoulLong } from '../pair/lj_long';
 import { erfcExact } from '../erfc';
+import { libm } from '../../libm';
 
 /*
  * kspace_style ewald/disp — docs.lammps.org/kspace_style.html (source:
@@ -197,7 +198,7 @@ export class KSpaceEwaldDisp extends KSpace {
       Cs.fill(0); Sn.fill(0);
       for (let i = 0; i < n; i++) {
         const ph = kx * x[3 * i] + ky * x[3 * i + 1] + kz * x[3 * i + 2];
-        const c = Math.cos(ph), sn = Math.sin(ph);
+        const c = libm.cos(ph), sn = libm.sin(ph);
         cosi[i] = c; sini[i] = sn;
         Cs[type[i]] += c; Sn[type[i]] += sn;
       }

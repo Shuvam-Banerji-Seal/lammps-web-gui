@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNum, parseInt_ } from '../force/util';
 import { CellList } from '../cellList';
+import { libm } from '../libm';
 
 /**
  * Cutoff of the cell list for the neighbour tests of sna/atom, snap and sna/grid: every test accepts r < Rii with
@@ -514,13 +515,13 @@ export class ComputeSnaAtom extends Compute {
         const wj = this.nnn > 0 ? 1 : this.weight[ta[k] - 1];
         const theta0 = (rfac0 * Math.PI * (r - rmin0)) / (Rii - rmin0);
         // positive radial normalization r0 = r / |sin theta0| (theta0 < 0 when r < rmin0)
-        const sn = Math.sin(theta0), sg = sn < 0 ? -1 : 1;
+        const sn = libm.sin(theta0), sg = sn < 0 ? -1 : 1;
         const r0 = r / Math.abs(sn);
         // f_c = 1 for r < rmin0 (measured with native LAMMPS; see the header of snap.ts)
-        const fc = this.switchflag && r >= rmin0 ? 0.5 * (Math.cos((Math.PI * (r - rmin0)) / (Rii - rmin0)) + 1) : 1;
+        const fc = this.switchflag && r >= rmin0 ? 0.5 * (libm.cos((Math.PI * (r - rmin0)) / (Rii - rmin0)) + 1) : 1;
         const sc = fc * wj;
         // Cayley-Klein parameters of the point on the 3-sphere
-        const ar = sg * Math.cos(theta0), ai = dz / r0, br = dy / r0, bi = dx / r0;
+        const ar = sg * libm.cos(theta0), ai = dz / r0, br = dy / r0, bi = dx / r0;
         const e = this.chemflag ? this.elemMap[ta[k] - 1] : 0;
         for (let J = 0; J <= tj; J++) {
           const U = wignerU(J, ar, ai, br, bi);
@@ -951,8 +952,8 @@ export class ComputeSnaDeriv extends ComputeSnaAtom {
         const span = Rii - rmin0;
         nTh[m] = (rfac0 * Math.PI * (r - rmin0)) / span;
         const inside = this.switchflag && r >= rmin0;
-        const fc = inside ? 0.5 * (Math.cos((Math.PI * (r - rmin0)) / span) + 1) : 1;
-        const dfc = inside ? -0.5 * Math.sin((Math.PI * (r - rmin0)) / span) * (Math.PI / span) : 0;
+        const fc = inside ? 0.5 * (libm.cos((Math.PI * (r - rmin0)) / span) + 1) : 1;
+        const dfc = inside ? -0.5 * libm.sin((Math.PI * (r - rmin0)) / span) * (Math.PI / span) : 0;
         const w = this.weight[ta[k] - 1];
         nSc[m] = fc * w; nDsc[m] = dfc * w;
         m++;
@@ -969,7 +970,7 @@ export class ComputeSnaDeriv extends ComputeSnaAtom {
       }
       for (let a = 0; a < m; a++) {
         const r = nR[a];
-        const sn = Math.sin(nTh[a]), cs = Math.cos(nTh[a]);
+        const sn = libm.sin(nTh[a]), cs = libm.cos(nTh[a]);
         const sg = sn < 0 ? -1 : 1;
         const Sx = sg * sn, Cx = sg * cs;
         const g = Sx / r;

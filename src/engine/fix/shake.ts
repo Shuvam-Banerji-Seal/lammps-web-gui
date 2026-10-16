@@ -6,6 +6,7 @@ import { int, num } from '../commands/args';
 import { typeWord } from '../labelmap';
 import { massOf } from '../atoms';
 import { harmonicRestraint } from './harmonicRestraint';
+import { libm } from '../libm';
 
 /*
  * fix ID group shake|rattle tol iter N constraint values ... —
@@ -323,7 +324,7 @@ export class FixShake extends Fix {
           if (!(ends.has(c.ids[1]) && ends.has(c.ids[2]))) continue;
           const th = (ff.angle!.equilibrium(A.type[e]) * Math.PI) / 180;
           const d1 = Math.sqrt(c.cons[0].d2), d2 = Math.sqrt(c.cons[1].d2);
-          c.cons.push({ a: 1, b: 2, d2: d1 * d1 + d2 * d2 - 2 * d1 * d2 * Math.cos(th) });
+          c.cons.push({ a: 1, b: 2, d2: d1 * d1 + d2 * d2 - 2 * d1 * d2 * libm.cos(th) });
         }
       }
       for (const x of c.ids) {

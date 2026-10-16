@@ -1,0 +1,22 @@
+# oracle: create_atoms with random molecule orientations, then velocity loop geom: the orientations take sin and cos
+# of random angles (C library values), the positions set the loop geom seeds, so a one-ulp difference changes velocities
+# Measured with native LAMMPS: thermo 8.9e-16, per-atom 8.4e-15 relative with the glibc sin/cos (src/engine/libm.ts);
+# with Math.sin / Math.cos the step-5 temperature was off by 3e-5 relative (one-ulp orientations changed the seeds).
+# oracle-inputs: w32gcmc_dimer.mol
+units		lj
+atom_style	molecular
+lattice		sc 0.08
+region		box block 0 4 0 4 0 4
+create_box	1 box
+molecule	dimer w32gcmc_dimer.mol
+create_atoms	0 box mol dimer 734594
+mass		1 1.0
+pair_style	lj/cut 2.5
+pair_coeff	1 1 1.0 1.0
+velocity	all create 0.5 87287 loop geom
+fix		1 all nve
+timestep	0.002
+thermo_style	custom step temp pe ke
+thermo_modify	format float %.15g
+thermo		5
+run		20

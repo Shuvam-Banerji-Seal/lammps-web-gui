@@ -9,6 +9,7 @@ import { contactMassArray, HEAT_FLOW, HEAT_TEMPERATURE } from '../atoms';
 /** The classic fstyles of fix wall/gran/region (hooke, hooke/history, hertz/history). */
 const CLASSIC_FSTYLES = ['hooke', 'hooke/history', 'hertz/history'] as const;
 import { type Region, type SurfaceContact } from '../region';
+import { libm } from '../libm';
 
 /*
  * fix ID group-ID wall/gran fstyle fstyle_params wallstyle args keyword values ...
@@ -247,8 +248,8 @@ export class FixWallGran extends Fix {
     let off = 0;
     const m = this.motion;
     if (m?.kind === 'wiggle') {
-      off = m.amp - m.amp * Math.cos(m.omega * delta);
-      mv[m.dim] = m.amp * m.omega * Math.sin(m.omega * delta);
+      off = m.amp - m.amp * libm.cos(m.omega * delta);
+      mv[m.dim] = m.amp * m.omega * libm.sin(m.omega * delta);
     } else if (m?.kind === 'shear') {
       mv[m.dim] = m.vshear;
     }
@@ -634,8 +635,8 @@ export class FixWallGranGranular extends Fix {
     let off = 0;
     const m = this.motion;
     if (m?.kind === 'wiggle') {
-      off = m.amp - m.amp * Math.cos(m.omega * delta);
-      mv[m.dim] = m.amp * m.omega * Math.sin(m.omega * delta);
+      off = m.amp - m.amp * libm.cos(m.omega * delta);
+      mv[m.dim] = m.amp * m.omega * libm.sin(m.omega * delta);
     } else if (m?.kind === 'shear') {
       mv[m.dim] = m.vshear;
     }

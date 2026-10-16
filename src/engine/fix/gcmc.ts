@@ -10,6 +10,7 @@ import { BlockRegion, type Region } from '../region';
 import { newAccum, type Bonded, type BondedCompute } from '../force/types';
 import type { System } from '../system';
 import type { SimState, Topology, TopoList } from '../types';
+import { libm } from '../libm';
 
 /*
  * fix ID group-ID gcmc N X M type seed T mu displace keyword values ...
@@ -812,7 +813,7 @@ export class FixGcmc extends Fix {
     dU -= this.intraEnergy;
     const overlap = this.overlapCutoff > 0 && this.hasOverlap(snap.n, this.overlapCutoff);
     const l3 = this.deBroglie(mass) ** 3;
-    const exponent = (this.mu - dU) / kT + Math.log(this.volume / ((nPart + 1) * l3));
+    const exponent = (this.mu - dU) / kT + libm.log(this.volume / ((nPart + 1) * l3));
     if (!overlap && this.accept(this.acceptStream(), exponent)) {
       this.ninsSucc++;
       // the trial's bonds are kept; a partial-energy insertion draws its velocities after the acceptance
@@ -871,7 +872,7 @@ export class FixGcmc extends Fix {
     dU -= this.intraEnergy;
     const kT = s.units.boltz * this.T;
     const l3 = this.deBroglie(mass) ** 3;
-    const exponent = -(this.mu + dU) / kT + Math.log((nPart * l3) / this.volume);
+    const exponent = -(this.mu + dU) / kT + libm.log((nPart * l3) / this.volume);
     if (this.accept(this.acceptStream(), exponent)) {
       this.ndelSucc++;
     } else {
@@ -925,7 +926,7 @@ export class FixGcmc extends Fix {
     }
     const dU = e - this.intraEnergy;
     const l3 = this.deBroglie(mass) ** 3;
-    const exponent = (this.mu - dU) / kT + Math.log(this.volume / ((nPart + 1) * l3));
+    const exponent = (this.mu - dU) / kT + libm.log(this.volume / ((nPart + 1) * l3));
     // native: insertion_energy < MAXENERGYTEST && random_unequal->uniform() < ... (no draw after an overlap)
     if (overlap || !this.accept(this.acceptStream(), exponent)) return;
     this.ninsSucc++;
@@ -968,7 +969,7 @@ export class FixGcmc extends Fix {
     }
     const dU = -e - this.intraEnergy;
     const l3 = this.deBroglie(mass) ** 3;
-    const exponent = -(this.mu + dU) / kT + Math.log((nPart * l3) / this.volume);
+    const exponent = -(this.mu + dU) / kT + libm.log((nPart * l3) / this.volume);
     if (!this.accept(this.acceptStream(), exponent)) return;
     this.ndelSucc++;
     const delIds = idx.map((i) => s.id[i]);

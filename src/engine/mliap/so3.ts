@@ -1,5 +1,6 @@
 import { StyleError } from '../force/types';
 import { parseNum, parseInt_ } from '../force/util';
+import { libm } from '../libm';
 
 /*
  * Descriptor so3 of pair_style mliap (wave 37). Doc (docs.lammps.org/pair_mliap.html, plans/lammps-docs/
@@ -88,7 +89,7 @@ export const parseMliapSo3Descriptor = (text: string, filename: string): So3Desc
 const gaussLegendre = (n: number): { x: Float64Array; w: Float64Array } => {
   const x = new Float64Array(n), w = new Float64Array(n);
   for (let i = 0; i < n; i++) {
-    let z = Math.cos((Math.PI * (i + 0.75)) / (n + 0.5));
+    let z = libm.cos((Math.PI * (i + 0.75)) / (n + 0.5));
     let dp = 1;
     for (let it = 0; it < 100; it++) {
       let p0 = 1, p1 = z;
@@ -285,8 +286,8 @@ export class So3Engine {
       rr[a] = r;
       uh[3 * a] = dx / r; uh[3 * a + 1] = dy / r; uh[3 * a + 2] = dz / r;
       const th = (Math.PI * r) / rc;
-      fcv[a] = 0.5 * (Math.cos(th) + 1);
-      dfcv[a] = -0.5 * Math.sin(th) * (Math.PI / rc);
+      fcv[a] = 0.5 * (libm.cos(th) + 1);
+      dfcv[a] = -0.5 * libm.sin(th) * (Math.PI / rc);
       // radial integrals K_nl(r) = e^{-alpha r^2} J_nl(r) and dK/dr
       this.Kv.fill(0); this.Kd.fill(0);
       for (let q = 0; q < QUAD; q++) {

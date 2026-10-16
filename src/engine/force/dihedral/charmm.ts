@@ -2,6 +2,7 @@ import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral, termDelta } f
 import { parseNum, parseInt_ } from '../util';
 import { StyleError, type BondedCompute, type Pair, type StyleContext } from '../types';
 import { PairHybrid } from '../pair/hybrid';
+import { libm } from '../../libm';
 
 /*
  * dihedral_style charmm and charmmfsw (wave 13).
@@ -184,8 +185,8 @@ export class DihedralCharmm extends SimpleBonded {
       const t = D.type[q];
       const phi = dihedralGeometry(bc, atoms[0], atoms[1], atoms[2], atoms[3], grad, rel);
       const arg = nn[t] * phi - dd[t] * DEG2RAD;
-      const ed = K[t] * (1 + Math.cos(arg));
-      const dEdphi = -K[t] * nn[t] * Math.sin(arg);
+      const ed = K[t] * (1 + libm.cos(arg));
+      const dEdphi = -K[t] * nn[t] * libm.sin(arg);
       e += ed;
       applyDihedral(bc, atoms, dEdphi, grad, rel, ed);
       const w = ww[t];

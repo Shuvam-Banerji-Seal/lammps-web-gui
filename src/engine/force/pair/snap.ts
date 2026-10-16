@@ -3,6 +3,7 @@ import { NEIGHMASK } from '../../neighbor';
 import { buildTriples, WignerTables, rawBispectrum, adjointBispectrum, type Triple, type Cmat, type Grad } from '../../compute/sna';
 import { ChemSna } from '../../compute/snapChem';
 import { parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * pair_style snap — docs.lammps.org/pair_snap.html
@@ -342,8 +343,8 @@ export class PairSnap extends Pair {
         const span = Rii - rmin0;
         const th = (rfac0 * Math.PI * (r - rmin0)) / span;
         const sw = p.switchflag && r >= rmin0;
-        const fc = sw ? 0.5 * (Math.cos((Math.PI * (r - rmin0)) / span) + 1) : 1;
-        const dfc = sw ? -0.5 * Math.sin((Math.PI * (r - rmin0)) / span) * (Math.PI / span) : 0;
+        const fc = sw ? 0.5 * (libm.cos((Math.PI * (r - rmin0)) / span) + 1) : 1;
+        const dfc = sw ? -0.5 * libm.sin((Math.PI * (r - rmin0)) / span) * (Math.PI / span) : 0;
         nJ[m] = j; nDx[m] = dx; nDy[m] = dy; nDz[m] = dz;
         nR[m] = r; nRc[m] = Rii; nTh[m] = th;
         nSc[m] = fc * file.weight[ej];
@@ -360,7 +361,7 @@ export class PairSnap extends Pair {
       for (let a = 0; a < m; a++) {
         const r = nR[a];
         // Cayley-Klein parameters with the positive radial normalization (see header)
-        const sn = Math.sin(nTh[a]), cs = Math.cos(nTh[a]);
+        const sn = libm.sin(nTh[a]), cs = libm.cos(nTh[a]);
         const sg = sn < 0 ? -1 : 1;
         const S = sg * sn, C = sg * cs;
         const g = S / r;
@@ -419,7 +420,7 @@ export class PairSnap extends Pair {
         const j = nJ[a];
         const dx = nDx[a], dy = nDy[a], dz = nDz[a];
         const r = nR[a], Rii = nRc[a];
-        const sn = Math.sin(nTh[a]), cs = Math.cos(nTh[a]);
+        const sn = libm.sin(nTh[a]), cs = libm.cos(nTh[a]);
         const sg = sn < 0 ? -1 : 1;
         const S = sg * sn, C = sg * cs;
         const g = S / r;

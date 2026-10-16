@@ -2,6 +2,7 @@ import { ComputeTemp } from './temp';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { massOf } from '../atoms';
+import { libm } from '../libm';
 
 /*
  * compute ID group-ID viscosity/cos — docs.lammps.org/compute_viscosity_cos.html
@@ -70,7 +71,7 @@ export class ComputeViscosityCos extends ComputeTemp {
     const b = this.sys.state.box;
     if (b.triclinic) throw new StyleError('compute viscosity/cos does not support triclinic boxes');
     const lz = b.hi[2] - b.lo[2];
-    return Math.cos((2 * Math.PI * (z - b.lo[2])) / lz);
+    return libm.cos((2 * Math.PI * (z - b.lo[2])) / lz);
   }
 
   /** V = sum 2 m v_x cos / sum m over the group (intensive). */

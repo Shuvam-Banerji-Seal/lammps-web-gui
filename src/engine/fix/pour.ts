@@ -6,6 +6,7 @@ import { BlockRegion, ConeRegion, type Param, type Region } from '../region';
 import { geometricCenter, rotationMatrix, rotateDipoles, templateDipoles, type MoleculeTemplate } from '../molecule';
 import { bodyAtomRadius, bodyRadiusBody, parseBodyStyle, setBodyAtom } from '../bodies';
 import type { System } from '../system';
+import { libm } from '../libm';
 
 /*
  * fix ID group-ID pour N type seed keyword values ... — docs.lammps.org/fix_pour.html
@@ -277,8 +278,8 @@ export const appendMolecule = (
 /** Quaternion (w, x, y, z) of a rotation by theta about an axis, the axis normalised (native axisangle_to_quat after norm3). */
 export const axisAngleQuat = (axis: number[], theta: number): number[] => {
   const n = Math.sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
-  const h = 0.5 * theta, sh = Math.sin(h);
-  return [Math.cos(h), (axis[0] / n) * sh, (axis[1] / n) * sh, (axis[2] / n) * sh];
+  const h = 0.5 * theta, sh = libm.sin(h);
+  return [libm.cos(h), (axis[0] / n) * sh, (axis[1] / n) * sh, (axis[2] / n) * sh];
 };
 
 /** Atom list checks shared by pour and deposit. */

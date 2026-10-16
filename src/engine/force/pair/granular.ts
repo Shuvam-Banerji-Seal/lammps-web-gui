@@ -4,6 +4,7 @@ import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
 import { gplHook } from '../../gplHooks';
 import { HEAT_FLOW, HEAT_TEMPERATURE } from '../../atoms';
+import { libm } from '../../libm';
 
 /*
  * pair_style granular heat keyword (heat conduction) — docs.lammps.org/pair_granular.html:
@@ -580,7 +581,7 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
       // eta_n = -2 sqrt(5/6) log(e) / sqrt(pi^2 + log(e)^2) * sqrt(3/2 k_nd m_eff); k_nd = F_elastic / delta.
       // Measured with native LAMMPS (black box): both forms match with no extra factor (ratio 1.0 for hooke and hertz).
       const knd = fne / delta;
-      const le = Math.log(pm.eta);
+      const le = libm.log(pm.eta);
       etaN = pm.normal === 'hooke'
         ? Math.sqrt((4 * meff * knd) / (1 + (Math.PI / le) ** 2))
         : (-2 * Math.sqrt(5 / 6) * le / Math.sqrt(Math.PI * Math.PI + le * le)) * Math.sqrt(1.5 * knd * meff);

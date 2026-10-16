@@ -2,6 +2,7 @@ import { SimpleBonded, atomIndex } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 import { angleTerm } from './harmonic';
 import { StyleError, type BondedCompute } from '../types';
+import { libm } from '../../libm';
 
 /*
  * Angle styles added by wave 18: cosine/squared/restricted and mm3.
@@ -64,7 +65,7 @@ export class AngleCosineSquaredRestricted extends SimpleBonded {
       const t = A.type[a];
       angleTerm(bc, i, j, k, d1, d2, (_theta, c) => {
         const s2 = 1 - c * c;
-        const u = c - Math.cos(th0[t]);
+        const u = c - libm.cos(th0[t]);
         const ea = (K[t] * u * u) / s2;
         const dEdc = (K[t] * (2 * u * s2 + 2 * c * u * u)) / (s2 * s2);
         e += ea;

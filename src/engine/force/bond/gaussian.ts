@@ -1,6 +1,7 @@
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
 import { bondLoop } from './styles';
 import { fmtCoeff, parseInt_, parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * bond_style gaussian — docs.lammps.org/bond_gaussian.html:
@@ -87,7 +88,7 @@ export class BondGaussian extends Bonded {
         const d = r - g.r0;
         dS += (g.a / (g.w * SQRT_PI_2)) * Math.exp((-2 * d * d) / (g.w * g.w)) * ((-4 * d) / (g.w * g.w));
       }
-      return { e: -kT * Math.log(S), dEdr: (-kT * dS) / S };
+      return { e: -kT * libm.log(S), dEdr: (-kT * dS) / S };
     });
   }
 

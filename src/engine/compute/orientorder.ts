@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNum, parseInt_ } from '../force/util';
 import { CellList } from '../cellList';
+import { libm } from '../libm';
 
 /*
  * compute ID group-ID orientorder/atom keyword values ...
@@ -428,8 +429,8 @@ export class ComputeOrientorderAtom extends Compute {
           for (let m = 0; m <= l; m++) {
             const A = nm[m] * P[m * (L + 1) + l];
             if (A === 0) continue;
-            const c = Math.cos(m * phi);
-            const sn = Math.sin(m * phi);
+            const c = libm.cos(m * phi);
+            const sn = libm.sin(m * phi);
             re[m + l] += A * c;
             im[m + l] += A * sn;
             if (m > 0) {

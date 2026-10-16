@@ -6,6 +6,7 @@
  * This is NOT LAMMPS's generator (that is RanPark below): with the same seed
  * it gives different, equally valid, numbers; only the statistics match.
  */
+import { libm } from './libm';
 export class Rng {
   private s0: number;
   private s1: number;
@@ -60,7 +61,7 @@ export class Rng {
       v = 2 * this.uniform() - 1;
       q = u * u + v * v;
     } while (q >= 1 || q === 0);
-    const m = Math.sqrt((-2 * Math.log(q)) / q);
+    const m = Math.sqrt((-2 * libm.log(q)) / q);
     this.spare = v * m;
     return u * m;
   }
@@ -110,7 +111,7 @@ export class RanPark {
       v2 = 2 * this.uniform() - 1;
       rsq = v1 * v1 + v2 * v2;
     } while (rsq >= 1 || rsq === 0);
-    const fac = Math.sqrt((-2 * Math.log(rsq)) / rsq);
+    const fac = Math.sqrt((-2 * libm.log(rsq)) / rsq);
     this.saved = v1 * fac;
     return v2 * fac;
   }
@@ -219,7 +220,7 @@ export class RanMars {
       const v2 = 2 * this.uniform() - 1;
       const s = v1 * v1 + v2 * v2;
       if (s < 1 && s > 0) {
-        const f = Math.sqrt((-2 * Math.log(s)) / s);
+        const f = Math.sqrt((-2 * libm.log(s)) / s);
         return [v2 * f, v1 * f];
       }
     }

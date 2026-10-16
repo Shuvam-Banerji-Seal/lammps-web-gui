@@ -1,6 +1,7 @@
 import { SimpleBonded, atomIndex, bondDelta } from '../bonded_util';
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
 import { fmtCoeff, parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * Bond styles added by wave 1. Each class cites its docs.lammps.org page and
@@ -84,7 +85,7 @@ export class BondFene extends SimpleBonded {
     const rmin = Math.pow(2, 1 / 6);
     bondLoop(bc, (r, t, k) => {
       const arg = feneArg(bc, 1 - (r * r) / (R0[t] * R0[t]), k, r);
-      const e = -0.5 * K[t] * R0[t] * R0[t] * Math.log(arg);
+      const e = -0.5 * K[t] * R0[t] * R0[t] * libm.log(arg);
       const dEdr = (K[t] * r) / arg;
       if (r < rmin * sig[t]) {
         const s = sig[t] / r, s6 = s ** 6, s12 = s6 * s6;
@@ -119,7 +120,7 @@ export class BondFeneExpand extends SimpleBonded {
     bondLoop(bc, (r, t, k) => {
       const r0 = r - del[t];
       const arg = feneArg(bc, 1 - (r0 * r0) / (R0[t] * R0[t]), k, r);
-      const e = -0.5 * K[t] * R0[t] * R0[t] * Math.log(arg);
+      const e = -0.5 * K[t] * R0[t] * R0[t] * libm.log(arg);
       const dEdr = (K[t] * r0) / arg;
       if (r0 > 0 && r < rmin * sig[t] + del[t]) {
         const s = sig[t] / r0, s6 = s ** 6, s12 = s6 * s6;

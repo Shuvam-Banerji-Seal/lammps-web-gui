@@ -6,6 +6,7 @@ import type { TopoList } from '../types';
 import { int, num } from '../commands/args';
 import { typeWord } from '../labelmap';
 import { massOf } from '../atoms';
+import { libm } from '../libm';
 
 /*
  * fix ID group ilves tol iter N selectors ... [mode|linearangle|kbond|store values] — docs.lammps.org/fix_ilves.html:
@@ -284,7 +285,7 @@ export class FixIlves extends Fix {
       const r1 = constrainedLen.get(key(x1, x2)), r2 = constrainedLen.get(key(x2, x3));
       if (r1 === undefined || r2 === undefined) continue;
       const th = (th0 * Math.PI) / 180;
-      const dac2 = r1 * r1 + r2 * r2 - 2 * r1 * r2 * Math.cos(th);
+      const dac2 = r1 * r1 + r2 * r2 - 2 * r1 * r2 * libm.cos(th);
       if (!nearLinear) {
         // rigid angle: the A-C distance is a constraint and the angle potential is switched off
         cons.push({ a: x1, b: x3, d2: dac2, bond: false });

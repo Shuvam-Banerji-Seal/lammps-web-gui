@@ -3,6 +3,7 @@ import type { SimState } from '../../types';
 import type { Geometry } from '../../domain';
 import { parseNum } from '../util';
 import { modifyNoEffect } from './ewald';
+import { libm } from '../../libm';
 
 /*
  * kspace_style ewald/dipole — docs.lammps.org/kspace_style.html: "The *ewald/dipole* style adds
@@ -131,8 +132,8 @@ export class KSpaceEwaldDipole extends KSpace {
    * function decreases monotonically in g, so bisection on ln g is used.
    */
   private chooseGEwald(musq: number, rc: number): number {
-    const target = Math.log(this.accuracy);
-    const f = (g: number) => Math.log(dipoleRealForceError(g, rc, this.volume, this.natoms, musq)) - target;
+    const target = libm.log(this.accuracy);
+    const f = (g: number) => libm.log(dipoleRealForceError(g, rc, this.volume, this.natoms, musq)) - target;
     let lo = 1e-6 / rc, hi = 100 / rc;
     if (!(f(lo) > 0 && f(hi) < 0)) throw new StyleError('kspace_style ewald/dipole cannot choose G-ewald for this accuracy and cutoff');
     for (let it = 0; it < 200; it++) {
@@ -195,7 +196,7 @@ export class KSpaceEwaldDipole extends KSpace {
       const P = [0, 0, 0], Pi = [0, 0, 0];
       for (let i = 0; i < n; i++) {
         const ph = Kx * x[3 * i] + Ky * x[3 * i + 1] + Kz * x[3 * i + 2];
-        const c = Math.cos(ph), sn = Math.sin(ph);
+        const c = libm.cos(ph), sn = libm.sin(ph);
         cosv[i] = c; sinv[i] = sn;
         const mk = mu[4 * i] * Kx + mu[4 * i + 1] * Ky + mu[4 * i + 2] * Kz;
         Mr += mk * c; Mi += mk * sn;

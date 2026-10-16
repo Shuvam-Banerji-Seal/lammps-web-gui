@@ -23,6 +23,7 @@ import {
 } from './meam_alloy';
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { gplHook } from '../../gplHooks';
+import { libm } from '../../libm';
 
 /*
  * MEAM, single element: energy, analytic forces and pair_style meam (see the sections below).
@@ -387,7 +388,7 @@ export const nn2PhiPrime = (el: MeamElement, o: MeamOptions, rhoRef: number, r: 
   let s = 0, ar = r, sign = 1, scale = 1;
   for (let n = 0; n < 500; n++) {
     const { rho, drho } = nn2RhoBarPrime(el, o, el.nn2!, ar);
-    const fp = rho > 0 ? (el.A * el.Ec * (Math.log(rho / rhoRef) + 1)) / rhoRef : 0;
+    const fp = rho > 0 ? (el.A * el.Ec * (libm.log(rho / rhoRef) + 1)) / rhoRef : 0;
     s += sign * (2 / z1) * scale * (eroseDeriv(el, ar) - fp * drho);
     sign *= -q;
     ar *= a;
@@ -401,7 +402,7 @@ export const nn2PhiPrime = (el: MeamElement, o: MeamOptions, rhoRef: number, r: 
 export const embedding = (el: MeamElement, rhoRef: number, rhoBar: number): number => {
   if (rhoBar <= 0) return 0;
   const x = rhoBar / rhoRef;
-  return el.A * el.Ec * x * Math.log(x);
+  return el.A * el.Ec * x * libm.log(x);
 };
 
 /*
@@ -596,7 +597,7 @@ export const refBackgroundPrime = (el: MeamElement, o: MeamOptions, r: number): 
 export const pairPhiPrime = (el: MeamElement, o: MeamOptions, rhoRef: number, r: number): number => {
   const dEu = eroseDeriv(el, r);
   const { rho, drho } = refBackgroundPrime(el, o, r);
-  const fp = rho > 0 ? (el.A * el.Ec * (Math.log(rho / rhoRef) + 1)) / rhoRef : 0;
+  const fp = rho > 0 ? (el.A * el.Ec * (libm.log(rho / rhoRef) + 1)) / rhoRef : 0;
   return (2 / el.z) * (dEu - fp * drho);
 };
 
@@ -713,8 +714,8 @@ export function meamAtomEnergyGrad(
     const rb = rho0 * Gg;
     if (rb > 0) {
       const x = rb / rhoRef;
-      Eden = el.A * el.Ec * x * Math.log(x);
-      const Fp = (el.A * el.Ec * (Math.log(x) + 1)) / rhoRef;
+      Eden = el.A * el.Ec * x * libm.log(x);
+      const Fp = (el.A * el.Ec * (libm.log(x) + 1)) / rhoRef;
       G0 = Fp * (Gg - 2 * gam * Gp);
       G1 = (Fp * Gp * t[1]) / rho0;
       G2 = (Fp * Gp * t[2]) / rho0;

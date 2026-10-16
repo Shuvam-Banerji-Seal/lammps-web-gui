@@ -1,4 +1,5 @@
 import { StyleError } from './force/types';
+import { libm } from './libm';
 
 /*
  * Geometric regions — docs.lammps.org/region.html.
@@ -105,7 +106,7 @@ export abstract class Region {
       const [ux, uy, uz] = this.rotate.r;
       // rotation of (p - P) by -theta about R (Rodrigues)
       const vx = px - ox, vy = py - oy, vz = pz - oz;
-      const c = Math.cos(th), s = Math.sin(th);
+      const c = libm.cos(th), s = libm.sin(th);
       const dot = ux * vx + uy * vy + uz * vz;
       const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
       px = ox + vx * c + cx * s + ux * dot * (1 - c);
@@ -140,7 +141,7 @@ export abstract class Region {
     if (!this.rotate) return [vx, vy, vz];
     const th = this.env.variable(this.rotate.theta);
     const [ux, uy, uz] = this.rotate.r;
-    const c = Math.cos(th), s = Math.sin(th);
+    const c = libm.cos(th), s = libm.sin(th);
     const dot = ux * vx + uy * vy + uz * vz;
     const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
     return [vx * c + cx * s + ux * dot * (1 - c), vy * c + cy * s + uy * dot * (1 - c), vz * c + cz * s + uz * dot * (1 - c)];
@@ -160,7 +161,7 @@ export abstract class Region {
       const [ox, oy, oz] = this.rotate.p;
       const [ux, uy, uz] = this.rotate.r;
       const vx = bx - ox, vy = by - oy, vz = bz - oz;
-      const c = Math.cos(th), s = Math.sin(th);
+      const c = libm.cos(th), s = libm.sin(th);
       const dot = ux * vx + uy * vy + uz * vz;
       const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
       px = ox + vx * c + cx * s + ux * dot * (1 - c);

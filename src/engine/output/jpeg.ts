@@ -6,6 +6,7 @@
  * forward DCT, the JPEG Annex K luminance/chrominance quantisation and Huffman
  * tables (scaled for quality 85), 4:4:4 sampling. It emits SOI ... EOI.
  */
+import { libm } from '../libm';
 
 // JPEG Annex K.1 quantisation tables in natural (row) order.
 const Q_LUMA = [
@@ -93,7 +94,7 @@ const AC_CHROMA = buildHuff(AC_CHROMA_BITS, AC_CHROMA_VALS);
 const COS = (() => {
   const c = new Float64Array(64);
   for (let u = 0; u < 8; u++) for (let x = 0; x < 8; x++) {
-    c[u * 8 + x] = Math.cos(((2 * x + 1) * u * Math.PI) / 16) * (u === 0 ? Math.SQRT1_2 : 1);
+    c[u * 8 + x] = libm.cos(((2 * x + 1) * u * Math.PI) / 16) * (u === 0 ? Math.SQRT1_2 : 1);
   }
   return c;
 })();

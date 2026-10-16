@@ -1,4 +1,5 @@
 import type { SimState } from './types';
+import { libm } from './libm';
 
 /*
  * atom_style ellipsoid superellipsoid: the per-atom blockiness exponents and the moments of inertia of a superellipsoid
@@ -41,7 +42,7 @@ export const SUPER_DEFAULTS: Record<string, number> = { [SUPER_BLOCK]: 2, [SUPER
  * (about 1e-15 relative accuracy for the arguments of the inertia formula).
  */
 export const gammaFn = (x: number): number => {
-  if (x < 0.5) return Math.PI / (Math.sin(Math.PI * x) * gammaFn(1 - x));
+  if (x < 0.5) return Math.PI / (libm.sin(Math.PI * x) * gammaFn(1 - x));
   let z = x, prod = 1;
   while (z < 15) {
     prod *= z;
@@ -49,7 +50,7 @@ export const gammaFn = (x: number): number => {
   }
   const z2 = 1 / (z * z);
   const series = (1 / z) * (1 / 12 - z2 * (1 / 360 - z2 * (1 / 1260 - z2 * (1 / 1680 - z2 * (1 / 1188 - z2 * (691 / 360360 - z2 / 156))))));
-  const lnG = (z - 0.5) * Math.log(z) - z + 0.5 * Math.log(2 * Math.PI) + series;
+  const lnG = (z - 0.5) * libm.log(z) - z + 0.5 * libm.log(2 * Math.PI) + series;
   return Math.exp(lnG) / prod;
 };
 

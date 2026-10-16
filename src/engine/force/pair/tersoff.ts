@@ -1,6 +1,7 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum, joinPotentialEntries } from '../util';
+import { libm } from '../../libm';
 
 /*
  * pair_style tersoff — docs.lammps.org/pair_tersoff.html
@@ -459,13 +460,13 @@ export class PairTersoff extends Pair {
   protected cutFn(r: number, R: number, D: number): number {
     if (r < R - D) return 1;
     if (r > R + D) return 0;
-    return 0.5 - 0.5 * Math.sin((Math.PI / 2) * (r - R) / D);
+    return 0.5 - 0.5 * libm.sin((Math.PI / 2) * (r - R) / D);
   }
 
   /** d f_C/dr. */
   protected cutDeriv(r: number, R: number, D: number): number {
     if (r <= R - D || r >= R + D) return 0;
-    return -(Math.PI / (4 * D)) * Math.cos((Math.PI / 2) * (r - R) / D);
+    return -(Math.PI / (4 * D)) * libm.cos((Math.PI / 2) * (r - R) / D);
   }
 
   /** Angular factor g(cos theta) of the (ijk) entry t3 (docs: g(theta) formula above). */

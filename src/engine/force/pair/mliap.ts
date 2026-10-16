@@ -5,6 +5,7 @@ import { parseMliapSnaDescriptor, type MliapSnaDescriptor } from '../../mliap/de
 import { parseMliapModel, type MliapModel, type ModelKind } from '../../mliap/model';
 import { parseMliapSo3Descriptor, So3Engine, type So3Descriptor } from '../../mliap/so3';
 import { ChemSna } from '../../compute/snapChem';
+import { libm } from '../../libm';
 
 /*
  * pair_style mliap (wave 16) — docs.lammps.org/pair_mliap.html (plans/lammps-docs/pair_mliap.rst).
@@ -236,8 +237,8 @@ export class PairMliap extends Pair {
         const span = Rii - rmin0;
         const th = (rfac0 * Math.PI * (r - rmin0)) / span;
         const sw = d.switchflag && r >= rmin0;
-        const fc = sw ? 0.5 * (Math.cos((Math.PI * (r - rmin0)) / span) + 1) : 1;
-        const dfc = sw ? -0.5 * Math.sin((Math.PI * (r - rmin0)) / span) * (Math.PI / span) : 0;
+        const fc = sw ? 0.5 * (libm.cos((Math.PI * (r - rmin0)) / span) + 1) : 1;
+        const dfc = sw ? -0.5 * libm.sin((Math.PI * (r - rmin0)) / span) * (Math.PI / span) : 0;
         nJ[m] = j; nDx[m] = dx; nDy[m] = dy; nDz[m] = dz;
         nR[m] = r; nRc[m] = Rii; nTh[m] = th;
         nSc[m] = fc * d.weight[ej];
@@ -253,7 +254,7 @@ export class PairMliap extends Pair {
       }
       for (let a = 0; a < m; a++) {
         const r = nR[a];
-        const sn = Math.sin(nTh[a]), cs = Math.cos(nTh[a]);
+        const sn = libm.sin(nTh[a]), cs = libm.cos(nTh[a]);
         const sg = sn < 0 ? -1 : 1;
         const S = sg * sn, C = sg * cs;
         const g = S / r;
@@ -289,7 +290,7 @@ export class PairMliap extends Pair {
         const j = nJ[a];
         const dx = nDx[a], dy = nDy[a], dz = nDz[a];
         const r = nR[a], Rii = nRc[a];
-        const sn = Math.sin(nTh[a]), cs = Math.cos(nTh[a]);
+        const sn = libm.sin(nTh[a]), cs = libm.cos(nTh[a]);
         const sg = sn < 0 ? -1 : 1;
         const S = sg * sn, C = sg * cs;
         const g = S / r;

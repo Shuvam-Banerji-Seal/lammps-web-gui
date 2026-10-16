@@ -1,4 +1,5 @@
 import type { RNode } from './resolve';
+import { libm } from '../libm';
 
 /*
  * Closure compiler for resolved Lepton trees. A compiled node reads its
@@ -115,11 +116,11 @@ const callFn = (fn: string, f: Fn[], args: RNode[], zbl: ZblConst | null): Fn =>
   switch (fn) {
     case 'sqrt': return (e) => Math.sqrt(a(e));
     case 'exp': return (e) => Math.exp(a(e));
-    case 'log': return (e) => Math.log(a(e));
-    case 'sin': return (e) => Math.sin(a(e));
-    case 'cos': return (e) => Math.cos(a(e));
-    case 'sec': return (e) => 1 / Math.cos(a(e));
-    case 'csc': return (e) => 1 / Math.sin(a(e));
+    case 'log': return (e) => libm.log(a(e));
+    case 'sin': return (e) => libm.sin(a(e));
+    case 'cos': return (e) => libm.cos(a(e));
+    case 'sec': return (e) => 1 / libm.cos(a(e));
+    case 'csc': return (e) => 1 / libm.sin(a(e));
     case 'tan': return (e) => Math.tan(a(e));
     case 'cot': return (e) => 1 / Math.tan(a(e));
     case 'asin': return (e) => Math.asin(a(e));

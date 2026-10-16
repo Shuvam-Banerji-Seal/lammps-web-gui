@@ -3,6 +3,7 @@ import type { ForceField } from './force/forcefield';
 import { System, type SessionIO } from './system';
 import { RUN_API } from './commands/runApi';
 import { StyleError } from './force/types';
+import { removedStyleError, renamedCommand } from './deprecated';
 import { mapUnquoted, splitCommands, substituteVariables, tokenize, formatNumber, type RawCommand } from './script';
 import { evaluateScalar } from './formula';
 import { COMMANDS, UNAVAILABLE_COMMANDS, type Ctx } from './commands';
@@ -327,6 +328,12 @@ export class Session {
   }
 
   private async dispatch(cmd: string, a: string[], frame: Frame | null): Promise<void> {
+    // a command LAMMPS renamed (deprecated.ts) runs under its new name after native's warning
+    const renamed = renamedCommand(cmd, a);
+    if (renamed) {
+      this.sys.warn(renamed.warning);
+      return this.dispatch(renamed.cmd, renamed.args, frame);
+    }
     // a formula that calls omega() (variable, print, if, fix print ...) needs the group motion helper of
     // groupMotion.ts; it is loaded here, before the switch below, which runs some commands (if) without the lookup
     if (a.some((w) => w.includes('omega('))) await ensureStyles(['omega']);
@@ -389,7 +396,7 @@ export class Session {
     // every run of word characters counts (an over-loaded group is harmless)
     if (cmd === 'read_restart' && a.length && this.sys.files.has(normalizeFileName(a[0]))) await ensureStyles(this.sys.files.get(normalizeFileName(a[0]))!.split(/[^\w/.+*-]+/));
     if (!handler) {
-      throw new StyleError(`'${cmd}' is not supported by the in-browser engine (it is not LAMMPS). Supported commands: ${SUPPORTED_COMMANDS.join(', ')}`);
+      throw removedStyleError('command', cmd) ?? new StyleError(`'${cmd}' is not supported by the in-browser engine (it is not LAMMPS). Supported commands: ${SUPPORTED_COMMANDS.join(', ')}`);
     }
     await handler(this.ctx(frame), a);
   }

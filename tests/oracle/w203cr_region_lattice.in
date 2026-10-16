@@ -1,0 +1,24 @@
+# oracle: create_atoms region on an oriented lattice (examples/PACKAGES/ptm/in.ptm): only the lattice cells covering the
+# region's extent clipped to the box are visited, so sites far from the region that a periodic remap would move into
+# it are not created (native add_lattice); atom count and positions
+# Measured with native LAMMPS: 400 atoms, positions exact (0 relative error); before the fix the region upper fill made
+# 202 atoms (two sites just below the lower face, remapped to the top by the region test).
+units		metal
+dimension	3
+boundary	p p p
+atom_style	atomic
+lattice		fcc 4.05
+region		whole block 0.000000 12.807225 -64.0361225 64.0361225 0.000000 4.050000 units box
+create_box	2 whole
+region		upper block INF INF 0.000000 64.0361225 INF INF units box
+lattice		fcc 4.05 orient x  0  3  1 orient y  0 -1  3 orient z  1  0  0
+create_atoms	1 region upper
+region		lower block INF INF -64.0361225 0.000000 INF INF units box
+lattice		fcc 4.05 orient x  0  3 -1 orient y  0  1  3 orient z  1  0  0
+create_atoms	2 region lower
+mass		* 1.0
+pair_style	zero 2.5
+pair_coeff	* *
+thermo_style	custom step atoms pe
+thermo_modify	format float %.15g
+run		0

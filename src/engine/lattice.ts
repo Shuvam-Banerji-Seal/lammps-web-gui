@@ -293,9 +293,13 @@ export const latticeSites = (
     const f = lat.fromBox([cx, cy, dimension === 2 ? 0 : cz]);
     for (let d = 0; d < 3; d++) { lmin[d] = Math.min(lmin[d], f[d]); lmax[d] = Math.max(lmax[d], f[d]); }
   }
-  const i0 = Math.floor(lmin[0]) - 1, i1 = Math.ceil(lmax[0]) + 1;
-  const j0 = Math.floor(lmin[1]) - 1, j1 = Math.ceil(lmax[1]) + 1;
-  const k0 = dimension === 2 ? 0 : Math.floor(lmin[2]) - 1, k1 = dimension === 2 ? 0 : Math.ceil(lmax[2]) + 1;
+  // the cell range of native add_lattice (src/create_atoms.cpp at b332f28): (int) min - 1, one more below zero
+  // ("static_cast(-1.5) = -1"), and (int) max + 1
+  const lowCell = (v: number) => Math.trunc(v) - 1 - (v < 0 ? 1 : 0);
+  const highCell = (v: number) => Math.trunc(v) + 1;
+  const i0 = lowCell(lmin[0]), i1 = highCell(lmax[0]);
+  const j0 = lowCell(lmin[1]), j1 = highCell(lmax[1]);
+  const k0 = dimension === 2 ? 0 : lowCell(lmin[2]), k1 = dimension === 2 ? 0 : highCell(lmax[2]);
   const x: number[] = [];
   const basis: number[] = [];
   for (let k = k0; k <= k1; k++) {

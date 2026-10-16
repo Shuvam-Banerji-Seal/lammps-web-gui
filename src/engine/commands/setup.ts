@@ -951,9 +951,22 @@ const createAtoms: Handler = ({ sys }, a) => {
     const xhi = box.hi[0] + Math.max(0, box.tilt[0], box.tilt[1], box.tilt[0] + box.tilt[1]);
     const ylo = box.lo[1] + Math.min(0, box.tilt[2]), yhi = box.hi[1] + Math.max(0, box.tilt[2]);
     const accept = (x: number, y: number, z: number) => insideLatticeBox(x, y, z) && (!reg || reg.match(x, y, z)) && varOk([x, y, z]);
+    // As native LAMMPS does (src/create_atoms.cpp add_lattice at b332f28): with a region that has a bounding box, only
+    // the lattice cells covering the region's extent clipped to the box are visited, so a site far from the region
+    // that the periodic remap of the region test would move inside it is never tested. Measured with native LAMMPS:
+    // examples/PACKAGES/ptm/in.ptm's region upper (y 0 .. 64.0361225 in a periodic box -64.0361225 .. 64.0361225)
+    // gets 200 atoms; testing every box site gave 202 (two sites just below the lower face, remapped to the top).
+    const bboxLo = [xlo, ylo, box.lo[2]], bboxHi = [xhi, yhi, box.hi[2]];
+    const rb = !lat.general && reg ? reg.bbox() : null;
+    if (rb) {
+      for (let d = 0; d < 3; d++) {
+        if (rb.lo[d] > bboxLo[d]) bboxLo[d] = rb.lo[d] > bboxHi[d] ? bboxHi[d] : rb.lo[d];
+        if (rb.hi[d] < bboxHi[d]) bboxHi[d] = rb.hi[d] < bboxLo[d] ? bboxLo[d] : rb.hi[d];
+      }
+    }
     const site = lat.general
       ? generalAtomSites(lat.general, generalBoxFromRestricted(lat.general.Q, box.lo as [number, number, number], box.hi as [number, number, number], box.tilt as [number, number, number]), accept)
-      : latticeSites(lat, [xlo, ylo, box.lo[2]], [xhi, yhi, box.hi[2]], sys.dimension, accept);
+      : latticeSites(lat, bboxLo, bboxHi, sys.dimension, accept);
     pts = site.x;
     // create_atoms.html: basis "M = which basis atom"; the lattice defines lat.basis.length of them. Native stops
     // with "Out of range basis setting '2 2' in create_atoms command" (measured, black box: lattice sc, basis 2 2).

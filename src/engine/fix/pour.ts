@@ -559,6 +559,18 @@ export class FixPour extends Fix {
     return (reg.xhi - reg.xlo) * (reg.yhi - reg.ylo) * (reg.zhi - reg.zlo);
   }
 
+  /**
+   * As native LAMMPS does at the setup of every run (src/GRANULAR/fix_pour.cpp setup_pre_exchange at b332f28): while
+   * particles remain to be inserted, the next insertion is the first step of the run, so a second run starts with an
+   * insertion event instead of waiting for the fall time of the previous one. A run with "pre no" has no setup
+   * (run.html: "So if pre is specified as "no" then the initial setup is skipped, except for printing thermodynamic
+   * info."), so its schedule carries on (w192pr_pour_2run).
+   */
+  setup(): void {
+    super.setup();
+    if (this.inserted < this.N) this.nextStep = this.sys.state.step + 1;
+  }
+
   /** Insertion happens here: after the initial half kick, before the neighbour decision. */
   postIntegrate(): void {
     if (this.inserted >= this.N || this.sys.state.step !== this.nextStep) return;

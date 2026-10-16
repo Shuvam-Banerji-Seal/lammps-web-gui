@@ -1,0 +1,20 @@
+# oracle: storage order after the atom sort in a triclinic box (unsorted dump = native storage order)
+# oracle-files: order.dump
+# Measured with native LAMMPS: the dump order (native storage order, atom_modify sort 1 0.9) matches at every 5th step;
+# thermo 1.2e-14, per-atom 4.3e-12 relative; 1.3 s in the engine.
+units		lj
+atom_style	atomic
+region		box prism 0 8 0 7 0 6 2.5 -1.5 1.0
+create_box	1 box
+create_atoms	1 random 300 4821 NULL overlap 0.8
+mass		1 1.0
+pair_style	lj/cut 2.5
+pair_coeff	1 1 1.0 1.0 2.5
+atom_modify	sort 1 0.9
+velocity	all create 0.5 9283
+fix		1 all nve
+dump		d all custom 5 order.dump id
+thermo_style	custom step pe ke
+thermo_modify	format float %.15g
+thermo		5
+run		20

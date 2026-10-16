@@ -1,0 +1,14 @@
+# oracle: create_atoms random keeps trying up to native's default maxtry (1000; the doc page says 10)
+# Measured with native LAMMPS: all 300 atoms inserted (256 with maxtry 10, as the engine had); thermo 1.3e-15, per-atom
+# 2.2e-12 relative (overlapping LJ pairs); 1.0 s in the engine.
+units		lj
+atom_style	atomic
+region		box block 0 8 0 7 0 6
+create_box	1 box
+create_atoms	1 random 300 4821 NULL overlap 0.8
+mass		1 1.0
+pair_style	lj/cut 2.5
+pair_coeff	1 1 1.0 1.0 2.5
+thermo_style	custom step atoms pe press
+thermo_modify	format float %.15g
+run		0

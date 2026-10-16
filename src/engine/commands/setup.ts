@@ -789,7 +789,10 @@ const createAtoms: Handler = ({ sys }, a) => {
     const overlap = overlapW * latticeScale(sys, unitsW, 'create_atoms')[0];
     // create_atoms.html, keyword maxtry: "It limits the number of attempts to generate valid coordinates for a
     // single new particle." Native stops with "Illegal create_atoms maxtry value 0" (measured, black box).
-    const maxtry = kw.has('maxtry') ? int(kw.get('maxtry')![0], 'maxtry') : 10;
+    // The default is 1000 as in native LAMMPS (src/create_atoms.cpp at b332f28: DEFAULT_MAXTRY = 1000), not the
+    // "maxtry = 10" of the page's Default section. Measured with native LAMMPS: 300 random atoms with overlap 0.8 in
+    // an 8 x 7 x 6 box are all inserted by default and 256 with maxtry 10 (the engine's count with 10).
+    const maxtry = kw.has('maxtry') ? int(kw.get('maxtry')![0], 'maxtry') : 1000;
     if (maxtry < 1) throw new StyleError(`Illegal create_atoms maxtry value ${maxtry}`);
     // sample in the region's bounding box clipped to the box, accept points inside both
     const bb = reg?.bbox();
@@ -834,7 +837,8 @@ const createAtoms: Handler = ({ sys }, a) => {
       }
       if (!placed) failed++;
     }
-    if (failed) sys.warn(`create_atoms random: only ${random.count - failed} of ${random.count} atoms could be inserted`);
+    // native's warning (src/create_atoms.cpp add_random)
+    if (failed) sys.warn(`Only inserted ${random.count - failed} particles out of ${random.count}`);
   } else if (meshFile) {
     // create_atoms.html: "For the *mesh* style, a file with a triangle mesh in"
     // STL format "is read and one or more particles are placed into the area of

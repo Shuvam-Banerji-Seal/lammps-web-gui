@@ -1,0 +1,31 @@
+# oracle: w192pimdl_bosonic_langevin — fix pimd/langevin/bosonic (exchange-aware springs, PILE_L, nvt) in a harmonic trap (spring/self), electron units, 4 beads (3 atoms, 20 steps)
+# oracle-partitions: 4
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS: max relative error over the 4 partitions 4.4e-15 on thermo, 2.8e-16 per atom.
+variable ibead world 0 1 2 3
+units        electron
+dimension    3
+boundary     p p p
+atom_style   atomic
+atom_modify  map yes
+pair_style   none
+timestep     0.5
+variable     Temp equal 17.4
+variable     k equal 1.2154614120000001e-08
+variable     seed equal 18889
+region       box block -1500 1500 -1500 1500 -1500 1500
+create_box   1 box
+create_atoms 1 single -15.0 10.0 1.0
+create_atoms 1 single -14.5 9.5 1.5
+create_atoms 1 single -14.0 9.0 2.0
+mass         1 0.00054858
+velocity     all create ${Temp} ${seed}${ibead} mom yes rot yes dist gaussian
+fix          harm all spring/self ${k}
+fix_modify   harm energy yes
+fix          pimdb all pimd/langevin/bosonic ensemble nvt temp ${Temp} thermostat PILE_L 12345 tau 50 fixcom no
+variable prim_kinetic  equal f_pimdb[5]
+variable virial        equal f_pimdb[6]
+thermo_style custom step pe v_virial v_prim_kinetic
+thermo_modify format float %.15g
+thermo 1
+run 20

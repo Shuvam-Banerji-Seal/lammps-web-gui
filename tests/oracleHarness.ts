@@ -151,13 +151,17 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
             .map((e) => e.row)
             .filter((row) => keys.every((key) => key in row));
           expect(rows.length, `partition ${k} thermo row count`).toBe(want.thermo.length);
+          let thermoWorst = 0;
           for (let r = 0; r < want.thermo.length; r++) {
             for (const [key, v] of Object.entries(want.thermo[r])) {
               if (o.skip.has(key)) continue;
               const g = rows[r][key];
               if (!close(g, v, o.rel, o.abs)) throw new Error(`${name}: partition ${k} thermo row ${r} (step ${want.thermo[r].step}) ${key}: engine ${g} vs LAMMPS ${v}`);
+              if (Math.abs(v) > o.abs) thermoWorst = Math.max(thermoWorst, Math.abs(g - v) / Math.abs(v));
             }
           }
+          // ORACLE_MEASURE=1 prints the measured errors for the case header ("# Measured with native LAMMPS: ...")
+          if (process.env.ORACLE_MEASURE) console.log(`MEASURE ${name} partition ${k} thermo ${thermoWorst.toExponential(1)}`);
           if (o.atoms === 'all') {
             const dump = files.get(`oracle_final.${k}.dump`) ?? '';
             const lines = dump.trim().split('\n');
@@ -185,6 +189,7 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
             }
             const atomTol = o.atomrel ?? Math.max(o.rel, 1e-9) * 100;
             if (worst > atomTol) throw new Error(`${name}: partition ${k} per-atom mismatch ${worst.toExponential(2)} (${where})`);
+            if (process.env.ORACLE_MEASURE) console.log(`MEASURE ${name} partition ${k} atoms ${worst.toExponential(1)}`);
           }
         }
         return;

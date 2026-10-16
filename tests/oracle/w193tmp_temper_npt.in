@@ -1,0 +1,23 @@
+# oracle: parallel tempering with the pressure-volume term (temper/npt) on 4 replicas: LJ fcc under fix npt, a swap every 20 of 400 steps
+# oracle-partitions: 4
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 atomrel=1e-8
+# native: b332f28 (/home/roy/.local/bin/lmp, mpirun -np 4 -partition 4x1); the swap table (21 rows, 8 rows with a change) is compared exactly
+# Measured with native LAMMPS: thermo max 1.3e-11, atoms max 1.6e-9 relative (ORACLE_MEASURE=1, fix npt with the pressure-volume term (temper/npt, press 1.0))
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.5 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+variable        tT world 1.0 1.2 1.4 1.6
+fix             f all npt temp ${tT} ${tT} 0.5 iso 1.0 1.0 5.0
+thermo_style    custom step temp pe etotal press vol
+thermo_modify   format float %.15g
+thermo          50
+timestep        0.005
+temper/npt      400 20 ${tT} f 4928 2394 1.0

@@ -260,7 +260,7 @@ export const emitFrame = (sys: System): void => {
 type FrameEventOut = Extract<EngineEvent, { kind: 'frame' }>;
 
 /** One thermo row: the thermo event and, with a log file open, its lines in the log (thermo.ts logRow). */
-const emitThermoRow = (sys: System): number => {
+export const emitThermoRow = (sys: System): number => {
   const row = sys.thermo.row();
   sys.io.emit({ kind: 'thermo', row });
   if (sys.logOpen) sys.logTable(sys.thermo.logRow(row));
@@ -270,7 +270,7 @@ const emitThermoRow = (sys: System): number => {
 /** How often (wall-clock ms) a run reports its speed (EngineEvent 'perf'). */
 const PERF_EVERY_MS = 500;
 
-const writeDumps = (sys: System, firstOfRun: boolean): boolean => {
+export const writeDumps = (sys: System, firstOfRun: boolean): boolean => {
   let any = false;
   for (const d of sys.dumps) {
     if (d.due(sys.state.step, firstOfRun)) { d.write(); any = true; }
@@ -290,6 +290,9 @@ const setupSignature = (sys: System): string => {
 
 /** The setup signature at the end of the last run of each system (WeakMap: a clear makes a new system). */
 const lastSetup = new WeakMap<System, string>();
+
+/** Records the setup of a run that a session-level driver (the tempering commands, src/engine-gpl/replica) ran, so a later pre no run may continue it. */
+export const markRunSetup = (sys: System): void => { lastSetup.set(sys, setupSignature(sys)); };
 
 /**
  * One run of n steps on coupled replicas (a fix with `coupled`, fix pimd): every replica is set up and output in its own

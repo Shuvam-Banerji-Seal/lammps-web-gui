@@ -338,6 +338,17 @@ export class FixNH extends Fix {
   get initialKinetic(): Float64Array | null { return this.keInitial; }
 
   /**
+   * reset_target (temper, temper/npt: src/fix_nh.cpp FixNH::reset_target at b332f28): "t_target = t_start = t_stop = t_new".
+   * The tempering commands call it after a swap of replicas (docs.lammps.org/temper.html: the temperature of the fix is
+   * set to the one of the swapped replica).
+   */
+  resetTarget(tNew: number): void {
+    // the barostat chain keeps its setup-time masses (native etap_mass_flag = 0), see baroMassTemp
+    if (this.pstat && this.pchain > 0 && this.baroMassTemp === null) this.baroMassTemp = this.baroSetupTemp;
+    this.tStart = tNew; this.tStop = tNew; this.tTarget = tNew;
+  }
+
+  /**
    * extract (used by fix grem, docs.lammps.org/fix_nh.html's extract): "t_start" and "t_stop" are the thermostat
    * targets (null without a temp keyword); "p_start", "p_stop" and "p_flag" are the six barostat entries (null
    * without a barostat). Other names are null.
@@ -484,6 +495,16 @@ export class FixNH extends Fix {
   protected chainMassTemp: number | null = null;
 
   /**
+   * Temperature the barostat chain's masses were built from at setup, once a tempering swap has reset the target
+   * (resetTarget). Native fix_nh.cpp keeps etap_mass fixed from setup (etap_mass_flag = 0, b332f28) while the
+   * thermostat masses follow the target (eta_mass_flag = 1), so after a reset the barostat chain uses these masses and
+   * its stored inner accelerations. null until a reset: the chain then follows the current target as before.
+   */
+  private baroMassTemp: number | null = null;
+  /** The barostat temperature at setup (the masses' temperature, see baroMassTemp). */
+  private baroSetupTemp = 0;
+
+  /**
    * The current temperature as native fix_nh.cpp's t_current: the setup-time value before the first step, then the
    * kinetic temperature the thermostat chain left at the end of the previous step.
    */
@@ -515,6 +536,7 @@ export class FixNH extends Fix {
       this.computePressCurrent();
       // As native LAMMPS does (src/fix_nh.cpp setup() at b332f28): the barostat chain's inner accelerations at setup,
       // etap_dotdot[k] = (etap_mass[k-1] etap_dot[k-1]^2 - k_B T) / etap_mass[k], masses from the setup temperature
+      this.baroSetupTemp = this.baroTemp();
       if (this.pchain > 0) {
         const kt = this.sys.state.units.boltz * this.baroTemp();
         const pf = this.pfreqMax();
@@ -736,8 +758,9 @@ export class FixNH extends Fix {
     const ndims = this.chainDims();
     // masses fixed at setup and inner accelerations stored between updates when a subclass sets chainMassTemp (native
     // etap_mass_flag = 0 and etap_dotdot, fix_nphug.cpp); otherwise the masses follow the current temperature
-    const stored = this.chainMassTemp !== null;
-    const qT = stored ? kB * this.chainMassTemp! : kt;
+    const massT = this.chainMassTemp ?? this.baroMassTemp;
+    const stored = massT !== null;
+    const qT = stored ? kB * massT! : kt;
     const q = new Float64Array(M);
     q[0] = qT / (pfreqMax * pfreqMax);
     for (let k = 1; k < M; k++) q[k] = qT / (pfreqMax * pfreqMax);
@@ -762,10 +785,11 @@ export class FixNH extends Fix {
       for (let k = 0; k < M - 1; k++) {
         const ex = Math.exp(-dt8 * ed[k + 1]);
         ed[k] *= ex;
-        if (stored && k > 0) this.etapDotdot[k] = g(k);
+        // the stored inner accelerations are tracked in every case (they are read only once the masses are fixed)
+        if (k > 0) this.etapDotdot[k] = g(k);
         ed[k] += g(k) * dt4; ed[k] *= ex;
       }
-      if (stored && M > 1) this.etapDotdot[M - 1] = g(M - 1);
+      if (M > 1) this.etapDotdot[M - 1] = g(M - 1);
       ed[M - 1] += g(M - 1) * dt4;
     }
   }
@@ -814,7 +838,7 @@ export class FixNH extends Fix {
   protected staleKineticFinal(): boolean { return false; }
 
   /** Hook: whether the barostat chain runs before the thermostat target update of the step (fix_nh.cpp order). */
-  protected barostatChainFirst(): boolean { return this.chainMassTemp !== null; }
+  protected barostatChainFirst(): boolean { return this.chainMassTemp !== null || this.baroMassTemp !== null; }
 
   /** Hook: strain energy term of the scalar (fix_nh.cpp compute_strain_energy; the default is the measured form). */
   protected strainEnergyValue(): number { return this.strainEnergy(); }

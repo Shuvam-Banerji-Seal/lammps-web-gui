@@ -1,6 +1,23 @@
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { Session } from '../session';
+import type { RunHooks } from '../run/verlet';
+
+/**
+ * The run-loop helpers a command handler can call. Lazily loaded commands (src/engine-gpl) take them from the
+ * context instead of importing the run modules, so their chunks do not pull the run machinery into shared chunks.
+ */
+export interface RunApi {
+  emitThermoRow(sys: System): number;
+  writeDumps(sys: System, firstOfRun: boolean): boolean;
+  emitFrame(sys: System): void;
+  ensureThermoComputes(sys: System): void;
+  markRunSetup(sys: System): void;
+  startRestarts(sys: System): void;
+  writeRestarts(sys: System, step: number, force?: boolean): void;
+  initRun(sys: System): void;
+  runVerlet(sys: System, nsteps: number, hooks: RunHooks): Promise<number>;
+}
 
 /** What a command handler sees. */
 export interface Ctx {
@@ -8,6 +25,7 @@ export interface Ctx {
   session: Session;
   frame: unknown;
   fail(message: string): never;
+  run: RunApi;
 }
 
 export type Handler = (ctx: Ctx, args: string[]) => void | Promise<void>;

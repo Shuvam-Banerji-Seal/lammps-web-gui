@@ -20,7 +20,8 @@
  *    NEB table rows of the universe log (each printed step is one row) and the Climbing replica lines; no
  *    write_dump is appended.
  *  - any other partitioned case (e.g. fix pimd): the fixture holds, per partition K, the thermo rows of its log
- *    (log.lammps.K) and its final atom state. A world-style variable oracle_p (0..N-1) is defined and the final dump
+ *    (log.lammps.K) and its final atom state. A tempering case (temper, temper/npt, temper/grem) also keeps the swap table
+ *    of its universe log (the "Step T0 T1 ..." rows, fixture key tempering). A world-style variable oracle_p (0..N-1) is defined and the final dump
  *    is written to oracle_final.${oracle_p}.dump, so every partition writes its own file. The fixture's perPartition
  *    array holds {thermo, atoms} for K = 0..N-1.
  */
@@ -134,6 +135,25 @@ const parseNeb = (log) => {
   return { rows, climbing };
 };
 
+/**
+ * The swap table of a tempering run (temper.html, temper_npt.html, temper_grem.html): the universe log has a header line
+ * "Step T0 T1 ..." (the number of temperature indices) and one line of integers per printed swap: the step and the index
+ * of each partition. Returns the rows as {Step, T0, T1, ...} (null when the log has no such header).
+ */
+const parseTemperingTable = (log) => {
+  let keys = null;
+  const rows = [];
+  for (const line of log.split('\n')) {
+    const w = line.trim().split(/\s+/);
+    if (w[0] === 'Step' && w.length > 1 && w.slice(1).every((x) => /^T\d+$/.test(x))) { keys = w; continue; }
+    if (!keys || w.length !== keys.length || !w.every((x) => /^-?\d+$/.test(x))) continue;
+    const row = {};
+    keys.forEach((k, c) => { row[k] = Number(w[c]); });
+    rows.push(row);
+  }
+  return keys ? rows : null;
+};
+
 const names = process.argv.slice(2);
 const cases = readdirSync(CASES).filter((f) => f.endsWith('.in')).map((f) => basename(f, '.in')).filter((n) => !names.length || names.includes(n));
 let failed = 0;
@@ -174,8 +194,10 @@ for (const name of cases) {
       const atoms = parseDump(readFileSync(join(dir, `oracle_final.${k}.dump`), 'utf8'));
       perPartition.push({ thermo: parseLog(plog, keywords), atoms });
     }
-    writeFileSync(join(OUT, `${name}.json`), JSON.stringify({ lammps: version, partitions, perPartition, thermo: [], atoms: [], files }, null, 0) + '\n');
-    console.log(`✓ ${name}: ${perPartition.map((p) => `${p.thermo.length} thermo rows, ${p.atoms.length} atoms`).join(' | ')} on ${partitions} partitions (LAMMPS ${version})`);
+    // a tempering run (its universe log has a swap table) also keeps the table rows, compared exactly by the harness
+    const tempering = parseTemperingTable(log);
+    writeFileSync(join(OUT, `${name}.json`), JSON.stringify({ lammps: version, partitions, perPartition, thermo: [], atoms: [], files, ...(tempering ? { tempering } : {}) }, null, 0) + '\n');
+    console.log(`✓ ${name}: ${perPartition.map((p) => `${p.thermo.length} thermo rows, ${p.atoms.length} atoms`).join(' | ')} on ${partitions} partitions (LAMMPS ${version})${tempering ? `, ${tempering.length} swap table rows` : ''}`);
     rmSync(dir, { recursive: true, force: true });
     continue;
   }

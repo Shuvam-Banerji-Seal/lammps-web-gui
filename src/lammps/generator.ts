@@ -195,7 +195,8 @@ export const isSectionSorted = (steps: ScriptStep[]): boolean => {
  * - Steps are emitted in PIPELINE order — exactly the order the flowchart
  *   shows — because LAMMPS executes an input file top to bottom. A `# ---- `
  *   banner is written whenever the section changes, so canonically ordered
- *   scripts still read like the hand-written examples in the docs.
+ *   scripts still read like the hand-written examples in the docs; a section
+ *   that comes back later is labelled "(continued)".
  * - Whichever branch is taken at each fork point is spliced in; a branch that
  *   does not rejoin replaces the trunk tail.
  * - Disabled steps are skipped SILENTLY (the flowchart shows them dashed);
@@ -249,6 +250,10 @@ export const generateScript = (
 
   let lastSection: ScriptSection | null = null;
   let wroteAnyBanner = false;
+  // Sections already given a banner: a script that comes back to one (the
+  // settings and run parts repeat, docs.lammps.org/Commands_structure.html)
+  // gets a "(continued)" banner instead of what looks like a second section 1.
+  const bannered = new Set<ScriptSection>();
 
   for (const { step } of path) {
     if (!step.enabled) continue;
@@ -273,7 +278,9 @@ export const generateScript = (
 
     if (def.section !== lastSection) {
       if (wroteAnyBanner) chunks.push('');
-      chunks.push(`# ---- ${SECTION_LABELS[def.section]} ----`);
+      const again = bannered.has(def.section) ? ' (continued)' : '';
+      chunks.push(`# ---- ${SECTION_LABELS[def.section]}${again} ----`);
+      bannered.add(def.section);
       lastSection = def.section;
       wroteAnyBanner = true;
     }

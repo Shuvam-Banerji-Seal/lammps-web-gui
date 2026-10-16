@@ -39,6 +39,10 @@ export const buildTemplate = (tpl: ScriptTemplate): ScriptModel => ({
   steps: tpl.steps.map(s => step(s.defId, s.params)),
 });
 
+// Steps follow the part order of https://docs.lammps.org/Commands_structure.html
+// ("Initialization", "System definition", "Simulation settings", "Run a
+// simulation"), so each template's generated banners read 1 · 2 · 3 · 4 · 5
+// (lammpsTemplates.test.ts checks it).
 export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
   {
     id: 'lj-nvt',
@@ -61,11 +65,11 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
       { defId: 'pair_style_popular', params: { style: 'lj/cut', args: '2.5' } },
       { defId: 'pair_coeff', params: { types: '* *', coeffs: '1.0 1.0 2.5' } },
       { defId: 'neighbor' },
-      { defId: 'timestep' },
       { defId: 'thermo_style', params: { fields: 'step temp pe press vol density' } },
       { defId: 'thermo' },
       { defId: 'dump_custom', params: { id: 'traj', file: 'traj.lammpstrj', fields: 'id type x y z vx vy vz' } },
       { defId: 'fix_nvt', params: { temp_start: '1.0', temp_end: '1.0', temp_damp: '0.5' } },
+      { defId: 'timestep' },
       { defId: 'run', params: { steps: '50000' } },
     ],
   },
@@ -84,11 +88,11 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
       { defId: 'pair_style_popular', params: { style: 'eam', args: '' } },
       { defId: 'pair_coeff', params: { types: '1 1', coeffs: 'Cu_u3.eam' } },
       { defId: 'neighbor' },
+      { defId: 'thermo_style', params: { fields: 'step temp pe etotal press vol' } },
+      { defId: 'dump_custom', params: { file: 'metal.lammpstrj' } },
       { defId: 'fix_minimize' },
       { defId: 'fix_npt', params: { temp_start: '300', temp_end: '300', temp_damp: '0.1', p_start: '0.0', p_end: '0.0', p_damp: '1.0' } },
       { defId: 'timestep', params: { dt: '0.003' } },
-      { defId: 'thermo_style', params: { fields: 'step temp pe etotal press vol' } },
-      { defId: 'dump_custom', params: { file: 'metal.lammpstrj' } },
       { defId: 'run', params: { steps: '20000' } },
     ],
   },
@@ -105,6 +109,7 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
       // defaults); pair_coeff takes the force field plus the element mapping.
       { defId: 'pair_style_popular', params: { style: 'reaxff', args: 'NULL' } },
       { defId: 'pair_coeff', params: { types: '* *', coeffs: 'ffield.reax C H O' } },
+      { defId: 'thermo_style', params: { fields: 'step temp press etotal density' } },
       // LAMMPS requires a charge-equilibration fix with pair_style reaxff.
       // SHAKE is deliberately absent: constraining bonds contradicts a
       // reactive potential (and atom_style charge carries no bond topology).
@@ -112,7 +117,6 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
       { defId: 'fix_langevin', params: { temp_start: '300', temp_end: '300', damp: '100.0' } },
       { defId: 'fix_nve' },
       { defId: 'timestep', params: { dt: '0.25' } },
-      { defId: 'thermo_style', params: { fields: 'step temp press etotal density' } },
       { defId: 'run', params: { steps: '100000' } },
     ],
   },
@@ -130,22 +134,22 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
       { defId: 'atom_style_cmd', params: { style: 'sphere' } },
       { defId: 'boundary', params: { bx: 'p', by: 'p', bz: 'f' } },
       { defId: 'comm_modify', params: { args: 'vel yes' } },
-      { defId: 'neighbor', params: { skin: '0.15', style: 'bin' } },
-      { defId: 'neigh_modify', params: { args: 'delay 0 every 1 check yes' } },
       { defId: 'region_block', params: { id: 'boxreg', xhi: '20', yhi: '20', zhi: '30', units: 'box' } },
       { defId: 'create_box', params: { ntypes: '1', region: 'boxreg' } },
-      { defId: 'pair_style_popular', params: { style: 'granular', args: '' } },
-      { defId: 'pair_coeff', params: { types: '* *', coeffs: 'hertz/material 1e5 1e3 0.3 tangential mindlin NULL 1.0 0.5' } },
       // insertion volume: a cylinder high above the wall
       { defId: 'region_cylinder', params: { id: 'insreg', axis: 'z', c1: '10', c2: '10', radius: '5', lo: '15', hi: '30', units: 'box' } },
+      { defId: 'pair_style_popular', params: { style: 'granular', args: '' } },
+      { defId: 'pair_coeff', params: { types: '* *', coeffs: 'hertz/material 1e5 1e3 0.3 tangential mindlin NULL 1.0 0.5' } },
+      { defId: 'neighbor', params: { skin: '0.15', style: 'bin' } },
+      { defId: 'neigh_modify', params: { args: 'delay 0 every 1 check yes' } },
+      { defId: 'thermo_style', params: { fields: 'step atoms ke' } },
+      { defId: 'thermo', params: { n: '100' } },
+      { defId: 'dump_custom', params: { id: 'traj', file: 'pour.lammpstrj', fields: 'id type radius mass x y z' } },
       { defId: 'fix_any', params: { id: 'integrate', group: 'all', style: 'nve/sphere', args: '' } },
       { defId: 'fix_gravity', params: { id: 'grav', magnitude: '10.0', style: 'vector', args: '0 0 -1' } },
       { defId: 'fix_any', params: { id: 'wall', group: 'all', style: 'wall/gran', args: 'granular hertz/material 1e5 1e3 0.3 tangential mindlin NULL 1.0 0.5 zplane 0 NULL' } },
       { defId: 'fix_pour', params: { id: 'ins', group: 'all', n: '1500', type: '1', seed: '3123', region: 'insreg', diam: 'range 0.5 1.0', vol: '', rate: '0', extra: 'dens 1.0 1.0' } },
       { defId: 'timestep', params: { dt: '0.001' } },
-      { defId: 'thermo_style', params: { fields: 'step atoms ke' } },
-      { defId: 'thermo', params: { n: '100' } },
-      { defId: 'dump_custom', params: { id: 'traj', file: 'pour.lammpstrj', fields: 'id type radius mass x y z' } },
       { defId: 'run', params: { steps: '25000' } },
     ],
   },
@@ -160,15 +164,15 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
       { defId: 'read_data', params: { file: 'fluid.data' } },
       { defId: 'pair_style_popular', params: { style: 'lj/cut', args: '2.5' } },
       { defId: 'pair_coeff', params: { types: '* *', coeffs: '1.0 1.0 2.5' } },
+      { defId: 'compute_rdf', params: { id: 'myRDF', nbins: '200' } },
+      { defId: 'fix_ave_time', params: { values: 'c_myRDF[*]', mode: 'vector', file: 'rdf.txt', ave: 'running' } },
+      { defId: 'thermo_style', params: { fields: 'step temp press xy' } },
       { defId: 'fix_deform', params: { param: 'xy', style: 'erate', v1: '0.1', remap: 'v', units: 'box' } },
       // Plain `fix nvt` thermostats the TOTAL velocity, which under shear
       // includes the streaming profile and gives the wrong temperature.
       // fix nvt/sllod creates its own `compute temp/deform` and pairs with
       // `fix deform ... remap v` (docs.lammps.org/fix_nvt_sllod.html).
       { defId: 'fix_any', params: { id: 'integrate', group: 'all', style: 'nvt/sllod', args: 'temp 1.0 1.0 0.5' } },
-      { defId: 'compute_rdf', params: { id: 'myRDF', nbins: '200' } },
-      { defId: 'fix_ave_time', params: { values: 'c_myRDF[*]', mode: 'vector', file: 'rdf.txt', ave: 'running' } },
-      { defId: 'thermo_style', params: { fields: 'step temp press xy' } },
       { defId: 'timestep' },
       { defId: 'run', params: { steps: '100000' } },
     ],

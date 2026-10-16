@@ -18,6 +18,17 @@ describe('script templates', () => {
     }
   });
 
+  it('every template walks the sections once, in order (no repeated banner)', () => {
+    // docs.lammps.org/Commands_structure.html part order; a repeated banner
+    // used to show "1 · Simulation setup" again after pair_coeff.
+    for (const tpl of SCRIPT_TEMPLATES) {
+      const banners = generateScript(buildTemplate(tpl)).text
+        .split('\n').filter(l => l.startsWith('# ---- '));
+      expect(banners.map(b => b.slice(7, 8)).join(''), tpl.id).toBe('12345');
+      expect(banners.join('\n'), tpl.id).not.toContain('(continued)');
+    }
+  });
+
   it('templates contain their signature commands', () => {
     const textOf = (id: string) => generateScript(buildTemplate(
       SCRIPT_TEMPLATES.find(t => t.id === id)!

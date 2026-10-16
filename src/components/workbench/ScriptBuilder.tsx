@@ -352,6 +352,10 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
   // Mobile: palette/editor become overlay drawers
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+  // Below lg the step editor is an overlay drawer too: as a fixed 320 px column
+  // next to the 288 px palette it left the flowchart 160 px at 768 px (tablet).
+  const [editorOverlay, setEditorOverlay] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 1024 : false);
   const [editorOpenMobile, setEditorOpenMobile] = useState(false);
   useEffect(() => {
     // Crossing into phone width (e.g. a desktop window narrowed or a tablet
@@ -365,6 +369,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
         if (mobile && !prev) setPaletteOpen(false);
         return mobile;
       });
+      setEditorOverlay(window.innerWidth < 1024);
     };
     check();
     window.addEventListener('resize', check);
@@ -1071,7 +1076,9 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
               column. Before, its nowrap buttons overflowed the column and the
               inspector sidebar painted over the right-hand ones (Run in
               Notebook was unclickable at ~768-1200px). */}
-          <div className="flex min-w-0 items-center gap-0.5 max-md:overflow-x-auto md:ml-auto md:flex-wrap md:justify-end sm:gap-1.5">
+          {/* Phone: one scrolling strip whose buttons keep their width (shrunk
+              to 24 px, the "Script" label ran over the next icon). */}
+          <div className="flex min-w-0 items-center gap-0.5 max-md:overflow-x-auto max-md:*:shrink-0 md:ml-auto md:flex-wrap md:justify-end sm:gap-1.5">
             <button
               onClick={undo}
               disabled={!canUndo}
@@ -1514,7 +1521,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
                   dragUid={drag?.uid ?? null}
                   overIndex={overIndex}
                   edgeMenuIndex={edgeMenuIndex}
-                  onSelect={(uid) => { setSelectedUid(uid); if (isMobile) setEditorOpenMobile(true); }}
+                  onSelect={(uid) => { setSelectedUid(uid); if (editorOverlay) setEditorOpenMobile(true); }}
                   onToggle={(uid) => updateStep(uid, { enabled: !findStepInModel(model, uid)?.enabled })}
                   onRemove={removeStep}
                   onDuplicate={duplicateStep}
@@ -1618,18 +1625,18 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
         )}
       </div>
 
-      {/* Right: step editor (overlay drawer on mobile) */}
+      {/* Right: step editor (overlay drawer below lg) */}
       <div
-        inert={isMobile && !(selectedStep && editorOpenMobile)}
+        inert={editorOverlay && !(selectedStep && editorOpenMobile)}
         className={`overflow-y-auto border-l transition-transform duration-300 ease-in-out ${ct.panel} ${
-          isMobile
+          editorOverlay
             ? `fixed inset-y-0 right-0 z-40 w-80 max-w-[85vw] shadow-2xl ${
                 selectedStep && editorOpenMobile ? 'translate-x-0' : 'translate-x-full'
               }`
             : 'w-80 shrink-0'
         }`}
       >
-        {isMobile && selectedStep && editorOpenMobile && (
+        {editorOverlay && selectedStep && editorOpenMobile && (
           <div className={`flex items-center justify-between border-b px-3 py-2 ${ct.divider}`}>
             <span className={`text-xs font-semibold ${ct.headerText}`}>Step editor</span>
             <button
@@ -1662,11 +1669,11 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
         )}
       </div>
 
-      {/* Mobile drawer backdrop */}
-      {isMobile && (paletteOpen || (selectedStep && editorOpenMobile)) && (
+      {/* Drawer backdrop (palette on phones, step editor below lg) */}
+      {((isMobile && paletteOpen) || (editorOverlay && selectedStep && editorOpenMobile)) && (
         <div
           className="fixed inset-0 z-30 bg-black/50"
-          onClick={() => { setPaletteOpen(false); setEditorOpenMobile(false); if (editorOpenMobile) setSelectedUid(null); }}
+          onClick={() => { if (isMobile) setPaletteOpen(false); setEditorOpenMobile(false); if (editorOpenMobile) setSelectedUid(null); }}
         />
       )}
 
@@ -1986,7 +1993,9 @@ const FlowchartView: React.FC<FlowchartViewProps> = ({
                     </span>
                   )}
                 </span>
-                <div className="flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                {/* Desktop shows the step actions on hover or focus, and always on the
+                    selected step, so a click is enough to reach "Fork a concept here". */}
+                <div className={`flex items-center gap-1 opacity-100 transition-opacity ${isSel ? '' : 'md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100'}`}>
                   {!inBranch && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onFork(node.uid); }}

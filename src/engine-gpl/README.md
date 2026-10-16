@@ -23,3 +23,14 @@ Rules (AGENTS.md, rule 7):
 
 The built app loads these modules as separate engine chunks, on first use of a
 style they provide.
+
+## Third-party code: voro++ (BSD-3-Clause)
+
+`src/engine-gpl/voro/` also holds a port of the subset of **voro++ 0.4.6** (<http://math.lbl.gov/voro++/>) that LAMMPS
+compiles into compute voronoi/atom: the cell construction (`cell.ts`, `container.ts`, `worklist.ts`), as bundled with
+LAMMPS at commit `b332f28` (`lib/voronoi`, the LAMMPS build of voro++ 0.4.6, with its rad_option.hh patch).
+voro++ is distributed under the **BSD three-clause licence**, copyright The Regents of the University of California
+(through Lawrence Berkeley National Laboratory, 2008) and Chris H. Rycroft (2008-2011). Its licence text is kept
+unchanged in `voro/LICENSE.voro++`; each ported file names the voro++ source it follows and carries the copyright
+notice. The BSD licence is compatible with this directory's GPL-2.0 licence, and the code here stays under GPL-2.0 as
+part of the LAMMPS port.

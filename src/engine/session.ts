@@ -5,6 +5,7 @@ import { StyleError } from './force/types';
 import { mapUnquoted, splitCommands, substituteVariables, tokenize, formatNumber, type RawCommand } from './script';
 import { evaluateScalar } from './formula';
 import { COMMANDS, UNAVAILABLE_COMMANDS, type Ctx } from './commands';
+import { RUN_API } from './commands/runApi';
 import { ensureStyles, LAZY_COMMANDS, styleNames } from './styles';
 import { evaluateBoolean } from './boolean';
 import { CpuForceBackend } from './cpu/forces';
@@ -52,6 +53,12 @@ const pairThreadsOf = (b: ForceBackend): ForceField['pairThreads'] =>
   (b as { pairThreads?: ForceField['pairThreads'] }).pairThreads ?? null;
 
 /**
+ * The partition commands that drive all replicas together and read their words per replica (each replica's own
+ * variables, as lammps -partition): neb (neb.html) and the tempering commands (temper.html, temper/npt, temper/grem).
+ */
+const REPLICA_DRIVEN = new Set(['neb', 'temper', 'temper/npt', 'temper/grem']);
+
+/**
  * Commands that run once for the session rather than on every replica (partitions): control flow, `clear`,
  * `echo`, and `neb`, which drives all replicas together (neb.html: "a NEB calculation performs a damped
  * dynamics minimization across all the replicas").
@@ -87,7 +94,7 @@ export class Session {
   private skipJump = false;
   /** True while a command runs on the replicas one by one. */
   private onReplica = false;
-  /** The words of the neb command being run, as each replica parsed them. */
+  /** The words of the replica-driven command being run (REPLICA_DRIVEN), as each replica parsed them. */
   private nebWords: string[][] | null = null;
   /** True while a run of coupled replicas (a fix with `coupled`, fix pimd) runs in lockstep on all of them. */
   private coupledRun = false;
@@ -137,7 +144,7 @@ export class Session {
     };
   }
 
-  /** The systems of all partitions, replica 0 first (the neb command reads and drives them). */
+  /** The systems of all partitions, replica 0 first (the neb and tempering commands read and drive them). */
   get replicaSystems(): readonly System[] { return this.replicas; }
 
   /** The replicas a run of coupled systems steps in lockstep (null for an ordinary run). */
@@ -151,7 +158,7 @@ export class Session {
   /** Sends an event through the session's output (the neb command's table and log lines). */
   emit(ev: EngineEvent): void { this.io.emit(ev); }
 
-  /** The arguments of the running neb command as replica r parsed them (after $-substitution with its variables). */
+  /** The arguments of the running replica-driven command (neb, temper) as replica r parsed them (after $-substitution with its variables). */
   argsOf(r: number): readonly string[] | undefined { return this.nebWords?.[r]?.slice(1); }
 
   /** The current system (null before create_box). */
@@ -242,8 +249,8 @@ export class Session {
     // a command nested in one replica's run (run ... every) runs on that replica only
     if (this.replicas.length === 1 || this.onReplica) return this.runOne(text, line, frame);
     const first = this.parse(text)[0];
-    if (first === 'neb') {
-      // neb runs once, but its arguments are read per replica ($u gives each partition its own value)
+    if (first !== undefined && REPLICA_DRIVEN.has(first)) {
+      // neb and the tempering commands run once, but their arguments are read per replica ($u gives each partition its own value)
       this.nebWords = this.replicas.map((sys) => { this.sys = sys; return this.parse(text); });
       this.sys = this.replicas[0];
       try { return await this.runOne(text, line, frame); } finally { this.nebWords = null; }
@@ -307,6 +314,7 @@ export class Session {
       session: this,
       frame,
       fail: (m: string): never => { throw new StyleError(m); },
+      run: RUN_API,
     };
   }
 

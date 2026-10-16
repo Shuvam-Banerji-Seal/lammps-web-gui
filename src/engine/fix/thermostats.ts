@@ -330,6 +330,15 @@ export class FixLangevin extends Fix {
     return typeof this.tStart === 'number' ? ramp(this.sys, this.tStart, this.tStop) : valueOf(this.sys, this.tStart);
   }
 
+  /**
+   * reset_target (temper: src/fix_langevin.cpp FixLangevin::reset_target at b332f28): "t_target = t_start = t_stop = t_new".
+   * A variable target temperature is refused: the native command would take it from the variable again on the next step.
+   */
+  resetTarget(tNew: number): void {
+    if (typeof this.tStart !== 'number') throw new StyleError(`fix ${this.id} langevin: a tempering reset of a variable target temperature is not supported`);
+    this.tStart = tNew; this.tStop = tNew;
+  }
+
   postForce(): void {
     const sys = this.sys;
     const s = sys.state;

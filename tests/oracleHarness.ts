@@ -52,6 +52,8 @@ interface Fixture {
   climbing?: { replica: number; row: number }[];
   /** partitioned (non-NEB) cases: the thermo rows and final atoms of each partition K = 0..N-1 */
   perPartition?: { thermo: ThermoRow[]; atoms: Record<string, number>[] }[];
+  /** tempering cases: the swap table rows {Step, T0, T1, ...} of the universe log (temper.html and its variants) */
+  tempering?: Record<string, number>[];
 }
 
 const directive = (text: string, key: string): string[] => {
@@ -96,6 +98,27 @@ const sameText = (a: string, b: string, rel: number): string | null => {
     }
   }
   return null;
+};
+
+/**
+ * The swap table of a tempering run: the engine's session log lines "Step T0 T1 ..." and the rows of integers after it
+ * (temper.cpp print_status; the same rows as the universe log of native LAMMPS).
+ */
+const swapTable = (events: EngineEvent[]): Record<string, number>[] => {
+  let keys: string[] | null = null;
+  const rows: Record<string, number>[] = [];
+  for (const e of events) {
+    if (e.kind !== 'log') continue;
+    for (const line of e.text.split('\n')) {
+      const w = line.trim().split(/\s+/);
+      if (w[0] === 'Step' && w.length > 1 && w.slice(1).every((x) => /^T\d+$/.test(x))) { keys = w; continue; }
+      if (!keys || w.length !== keys.length || !w.every((x) => /^-?\d+$/.test(x))) continue;
+      const row: Record<string, number> = {};
+      keys.forEach((k, c) => { row[k] = Number(w[c]); });
+      rows.push(row);
+    }
+  }
+  return rows;
 };
 
 const allCases = existsSync(CASES) ? readdirSync(CASES).filter((f) => f.endsWith('.in')).map((f) => f.slice(0, -3)).sort() : [];
@@ -192,6 +215,7 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
             if (process.env.ORACLE_MEASURE) console.log(`MEASURE ${name} partition ${k} atoms ${worst.toExponential(1)}`);
           }
         }
+        if (fx.tempering !== undefined) expect(swapTable(events), 'swap table rows').toEqual(fx.tempering);
         return;
       }
       if (partitions > 1) {

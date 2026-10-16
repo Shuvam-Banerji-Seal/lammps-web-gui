@@ -19,9 +19,10 @@ import { ComputePressureGrem } from './compute_pressure_grem';
 
 export class FixGrem extends Fix {
   readonly style = 'grem';
-  private readonly lambda: number;
-  private readonly eta: number;
-  private readonly h0: number;
+  /** lambda is the replica's gREM parameter; temper/grem sets it after a swap (fix_grem.cpp: a public member). */
+  lambda: number;
+  readonly eta: number;
+  readonly h0: number;
   private readonly idNh: string;
   private readonly idTemp: string;
   private readonly idPress: string;
@@ -30,7 +31,8 @@ export class FixGrem extends Fix {
   private scaleGrem = 1.0;
   private tbath = 0;
   private pressRef = 0;
-  private pressFlag = false;
+  /** Barostat on all three dimensions: the gREM pressure is in the enthalpy (fix_grem.cpp pressflag). */
+  pressFlag = false;
   /** The fix nvt/npt, looked up by ID (the thermostat or barostat of the gREM). */
   private nhKinetic(): Float64Array | null {
     const nh = this.sys.fixes.find((f) => f.id === this.idNh);

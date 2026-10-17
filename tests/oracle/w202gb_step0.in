@@ -1,0 +1,32 @@
+# oracle: pair gayberne with fix nve/asphere, bit for bit (the first run of w79srd_ellipsoid: 9 big ellipsoids, shape 3 1 1, quat/random, 50 NVE steps, thermo every step)
+# oracle-compare: thermo=all atoms=all rel=1e-14 abs=1e-13 atomrel=1e-15
+# Measured with native LAMMPS: the final positions, velocities and forces of every atom are identical, and every thermo value agrees to 4.6e-15 (the 15 printed digits). That needs each piece in native's operation order: set quat/random with glibc sin and cos (src/engine-gpl/libm), the pair_gayberne.cpp port with its pairs in native order, native's reverse_comm fold of the ghost forces and torques and its fdotr virial (NativeReverseComm in src/engine-gpl/neighbor/nativeOrder.ts), and MathExtra::richardson with the moments as INERTIA*rmass*(...) for fix nve/asphere. Before, the forces of three atoms differed by one ulp at step 0 (fold order) and the orientations from step 2 (Richardson update).
+units		lj
+atom_style	ellipsoid
+atom_modify	first big
+dimension	2
+
+lattice		sq 0.14
+region		box block 0 3 0 3 -0.5 0.5
+create_box	2 box
+create_atoms	1 region box
+set		type 1 mass 1.0
+set		type 1 shape 3.0 1.0 1.0
+group		big type 1
+set		group big quat/random 29898
+velocity	big create 1.44 87287 loop geom
+
+pair_style	gayberne 1.0 3.0 1.0 4.0
+pair_coeff	1 1 1.0 1.0 1 1 1 1 1 1
+pair_coeff	1 2 1.0 1.0 1 1 1 1 1 1 0.0
+pair_coeff	2 2 1.0 1.0 1 1 1 1 1 1 0.0
+
+neighbor	0.3 bin
+neigh_modify	delay 0 every 1 check yes
+fix		1 big nve/asphere
+fix		2 all enforce2d
+compute		rot big temp/asphere
+thermo_style	custom step temp c_rot epair etotal press
+thermo_modify	format float %.15g
+thermo		1
+run		50

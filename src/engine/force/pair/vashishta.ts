@@ -1,6 +1,7 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum, joinPotentialEntries } from '../util';
+import { libm } from '../../libm';
 
 /*
  * pair_style vashishta — docs.lammps.org/pair_vashishta.html
@@ -289,16 +290,16 @@ export class PairVashishta extends Pair {
 
   /** U2(r) of one ordered entry with the Coulomb prefactor folded in. */
   private u2Raw(e: VEntry, r: number): number {
-    const coul = e.Zi * e.Zj * QQ * Math.exp(-r / e.lam1) / r;
-    return e.H / Math.pow(r, e.eta) + coul - e.D / Math.pow(r, 4) * Math.exp(-r / e.lam4) - e.W / Math.pow(r, 6);
+    const coul = e.Zi * e.Zj * QQ * libm.exp(-r / e.lam1) / r;
+    return e.H / Math.pow(r, e.eta) + coul - e.D / Math.pow(r, 4) * libm.exp(-r / e.lam4) - e.W / Math.pow(r, 6);
   }
 
   /** dU2/dr of one ordered entry (same prefactor). */
   private du2Raw(e: VEntry, r: number): number {
-    const coul = -e.Zi * e.Zj * QQ * Math.exp(-r / e.lam1) * (1 / (r * r) + 1 / (e.lam1 * r));
+    const coul = -e.Zi * e.Zj * QQ * libm.exp(-r / e.lam1) * (1 / (r * r) + 1 / (e.lam1 * r));
     return (
       -e.eta * e.H / Math.pow(r, e.eta + 1) + coul +
-      e.D * Math.exp(-r / e.lam4) * (4 / Math.pow(r, 5) + 1 / (e.lam4 * Math.pow(r, 4))) +
+      e.D * libm.exp(-r / e.lam4) * (4 / Math.pow(r, 5) + 1 / (e.lam4 * Math.pow(r, 4))) +
       6 * e.W / Math.pow(r, 7)
     );
   }
@@ -425,13 +426,13 @@ export class PairVashishta extends Pair {
           const zpq = this.tbZpq[t], lam1 = this.tbLam1[t];
           const D = this.tbD[t], lam4 = this.tbLam4[t], W = this.tbW[t];
           const u2rc = this.tbU2rc[t], duRc = this.tbDuRc[t];
-          const scr = Math.exp(-r / lam1);
+          const scr = libm.exp(-r / lam1);
           const phi2 =
             H / Math.pow(r, eta) + zpq * scr / r -
-            D / Math.pow(r, 4) * Math.exp(-r / lam4) - W / Math.pow(r, 6);
+            D / Math.pow(r, 4) * libm.exp(-r / lam4) - W / Math.pow(r, 6);
           const du =
             -eta * H / Math.pow(r, eta + 1) - zpq * scr * (1 / (r * r) + 1 / (lam1 * r)) +
-            D * Math.exp(-r / lam4) * (4 / Math.pow(r, 5) + 1 / (lam4 * Math.pow(r, 4))) +
+            D * libm.exp(-r / lam4) * (4 / Math.pow(r, 5) + 1 / (lam4 * Math.pow(r, 4))) +
             6 * W / Math.pow(r, 7) - duRc;
           const phi2s = phi2 - u2rc - (r - rc) * duRc;
           const fpair = -du / r;
@@ -470,7 +471,7 @@ export class PairVashishta extends Pair {
           nDx[m] = dxx; nDy[m] = dyy; nDz[m] = dzz;
           nR[m] = r;
           nInvR[m] = 1 / r;
-          nES[m] = Math.exp(g / d2);
+          nES[m] = libm.exp(g / d2);
           nW[m] = g / (d2 * d2);
           m++;
         }

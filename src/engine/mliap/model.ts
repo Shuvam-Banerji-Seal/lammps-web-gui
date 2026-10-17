@@ -1,5 +1,6 @@
 import { StyleError } from '../force/types';
 import { parseNum, parseInt_ } from '../force/util';
+import { libm } from '../libm';
 
 /*
  * Model files of pair_style mliap (wave 16). Doc (docs.lammps.org/pair_mliap.html, quoted from
@@ -186,7 +187,7 @@ const actValue = (act: Act, z: number): number => {
   switch (act) {
     case 'linear': return z;
     case 'tanh': return Math.tanh(z);
-    case 'sigmoid': return 1 / (1 + Math.exp(-z));
+    case 'sigmoid': return 1 / (1 + libm.exp(-z));
     default: return z > 0 ? z : 0;
   }
 };

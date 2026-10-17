@@ -1,6 +1,6 @@
 # oracle: fix srd with big ellipsoids (noslip, inexact collisions, shift yes), 2d (cut-down of examples/ASPHERE/ellipsoid/in.ellipsoid: 3x3 big ellipsoids, 60 SRD per unit area, 200 SRD steps)
-# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-13 atomskip=fx,fy,fz
-# Measured with native LAMMPS (black box): the engine agrees with every thermo column and with the positions and velocities of every atom to a relative error below 1e-12 (the largest is press at step 0, about 5e-13). The forces are skipped (atomskip): native reports nonzero forces on six SRD atoms (ids 10, ... in the final dump) that the engine leaves at zero, as in w79srd_poly; the big-particle forces act through the trajectory, which agrees. The per-step candidate count f_2[1] agrees only with the neigh_modify include rule (see neighbor.ts move check).
+# oracle-compare: thermo=all atoms=all rel=1e-13 abs=1e-13 atomrel=1e-12 atomskip=fx,fy,fz
+# Measured with native LAMMPS: the engine agrees with every thermo column to a relative error of 4.6e-15 (the 15 printed digits) and with the positions and velocities of every atom to 1.1e-13 (5.4e-13 and 3.6e-12 before pair gayberne, nve/asphere and set quat/random reproduced native bit for bit; the first run, before the SRD particles are added, is now exact, see w202gb_step0). The forces are skipped (atomskip): native reports nonzero forces on six SRD atoms (ids 10, ... in the final dump) that the engine leaves at zero, as in w79srd_poly; the big-particle forces act through the trajectory, which agrees. The per-step candidate count f_2[1] agrees only with the neigh_modify include rule (see neighbor.ts move check).
 units		lj
 atom_style	ellipsoid
 atom_modify	first big

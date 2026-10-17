@@ -27,6 +27,9 @@ import { modifyNoEffect } from '../../engine/force/kspace/ewald';
 import { dipoleKSpaceForceError, dipoleRealForceError } from '../../engine/force/kspace/ewald_dipole';
 import { fmLongOf } from './dipole_long_field';
 import { HBAR, MUB2MU0 } from './pair_spin_dipole_cut';
+import { log as libmLog } from '../libm/log';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 const TWO_OVER_SQRTPI = 2 / Math.sqrt(Math.PI);
 
@@ -104,7 +107,7 @@ export class KSpaceEwaldDipoleSpin extends KSpace {
     } else {
       // ewald/dipole/spin init: the old estimate, then the Newton solver (ewald_dipole.cpp NewtonSolve)
       let g = (acc * Math.sqrt(this.natoms * cutCoul * xprd * yprd * zprd)) / (2 * this.mu2);
-      g = g >= 1 ? (1.35 - 0.15 * Math.log(acc)) / cutCoul : Math.sqrt(-Math.log(g)) / cutCoul;
+      g = g >= 1 ? (1.35 - 0.15 * libmLog(acc)) / cutCoul : Math.sqrt(-libmLog(g)) / cutCoul;
       const gNew = this.newtonSolve(g, cutCoul, this.natoms, xprd * yprd * zprd, this.mu2);
       if (gNew > 0) g = gNew;
       else ctx.log('WARNING: Ewald/disp Newton solver failed, using old method to estimate g_ewald');
@@ -195,12 +198,12 @@ export class KSpaceEwaldDipoleSpin extends KSpace {
     for (let v = 0; v < nk; v++) {
       const Kx = this.kvec[3 * v], Ky = this.kvec[3 * v + 1], Kz = this.kvec[3 * v + 2];
       const K2 = Kx * Kx + Ky * Ky + Kz * Kz;
-      const Gk = Math.exp(-K2 / g2) / K2;
+      const Gk = libmExp(-K2 / g2) / K2;
       let Mr = 0, Mi = 0;
       const P = [0, 0, 0], Pi = [0, 0, 0];
       for (let i = 0; i < n; i++) {
         const ph = Kx * x[3 * i] + Ky * x[3 * i + 1] + Kz * x[3 * i + 2];
-        const c = Math.cos(ph), sn = Math.sin(ph);
+        const c = libmCos(ph), sn = libmSin(ph);
         cosv[i] = c; sinv[i] = sn;
         const mk = mu[3 * i] * Kx + mu[3 * i + 1] * Ky + mu[3 * i + 2] * Kz;
         Mr += mk * c; Mi += mk * sn;

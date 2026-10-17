@@ -1,4 +1,5 @@
 import { PAIR_SHELL_RATIO, referenceVectors, type ReferenceLattice } from './meam_lattice';
+import { libm } from '../../libm';
 
 /*
  * Multi-element MEAM (pair_style meam, two or more elements). Energy and analytic forces for the
@@ -140,8 +141,8 @@ export interface AlloyElement {
  */
 export const gOfIbar = (ibar: number, gamma: number): number => {
   if (ibar === 0 || ibar === 4) return Math.sqrt(1 + gamma);
-  if (ibar === 1) return Math.exp(gamma / 2);
-  if (ibar === 3) return 2 / (1 + Math.exp(-gamma));
+  if (ibar === 1) return libm.exp(gamma / 2);
+  if (ibar === 3) return 2 / (1 + libm.exp(-gamma));
   // The -5 form is signed; a symmetric reference lattice has Gamma = 0 only up to rounding, so a
   // tiny negative value must not flip the sign (the reference density would go negative and the
   // embedding would vanish). Measured with native LAMMPS (black box): the sc Bi reference crystal
@@ -153,11 +154,11 @@ export const gOfIbar = (ibar: number, gamma: number): number => {
 /** dG/dGamma for the same ibar forms as gOfIbar. */
 export const gPrimeOfIbar = (ibar: number, gamma: number): number => {
   if (ibar === 0 || ibar === 4) return 1 / (2 * Math.sqrt(1 + gamma));
-  if (ibar === 1) return Math.exp(gamma / 2) / 2;
+  if (ibar === 1) return libm.exp(gamma / 2) / 2;
   if (ibar === 3) {
     // 2 exp(-Gamma) / (1 + exp(-Gamma))^2 is even in Gamma; with exp(-|Gamma|) neither factor overflows, so a
     // large |Gamma| (a far reference shell of the 2NN series, where rho0 is tiny) gives 0, not Infinity/Infinity.
-    const e = Math.exp(-Math.abs(gamma));
+    const e = libm.exp(-Math.abs(gamma));
     return (2 * e) / ((1 + e) * (1 + e));
   }
   if (ibar === -5) {
@@ -527,12 +528,12 @@ export const densityPartials = (terms: Term[], P: number, ibar: number, mode = 0
 const embedF = (el: AlloyElement, rhoRef: number, rb: number): number => {
   if (rb <= 0) return 0;
   const x = rb / rhoRef;
-  return el.A * el.Ec * x * Math.log(x);
+  return el.A * el.Ec * x * libm.log(x);
 };
 const embedFp = (el: AlloyElement, rhoRef: number, rb: number): number => {
   if (rb <= 0) return 0;
   const x = rb / rhoRef;
-  return (el.A * el.Ec * (Math.log(x) + 1)) / rhoRef;
+  return (el.A * el.Ec * (libm.log(x) + 1)) / rhoRef;
 };
 
 /**
@@ -547,7 +548,7 @@ const termsOf = (model: AlloyModel, list: AlloyNeighbor[], central: number, radi
     // The neighbour's atomic electron density is scaled by its own rozero / rho0(I) (see AlloyElement.rozero).
     const rz = el.rozero ?? 1;
     const A: [number, number, number, number] = [0, 0, 0, 0];
-    for (let n = 0; n < 4; n++) A[n] = rz * Math.exp(-el.beta[n] * (p.r / el.re - 1));
+    for (let n = 0; n < 4; n++) A[n] = rz * libm.exp(-el.beta[n] * (p.r / el.re - 1));
     return { e: p.e, W, A, u: [p.dx / p.r, p.dy / p.r, p.dz / p.r], t: effT(model, central, p.e) };
   });
 };
@@ -722,7 +723,7 @@ export const pairErose = (pr: AlloyPair, form: number, r: number): { E: number; 
     T = a3 * s ** 3;
     Tp = a3 * 3 * s * s * sp;
   }
-  return { E: -pr.Ec * (1 + s + T) * Math.exp(-s), dE: -pr.Ec * Math.exp(-s) * (Tp - (s + T) * sp) };
+  return { E: -pr.Ec * (1 + s + T) * libm.exp(-s), dE: -pr.Ec * libm.exp(-s) * (Tp - (s + T) * sp) };
 };
 
 /**

@@ -9,6 +9,8 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { rowNeighbors } from '../airebo/neigh';
 import { powint } from '../airebo/splines';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 const TOL = 1.0e-9;
 const MY_PI = 3.14159265358979323846;
@@ -28,8 +30,8 @@ const sp = (xij: number, xmin: number, xmax: number, out: Ref): number => {
     cutoff = 0.0;
     out.v = 0.0;
   } else {
-    cutoff = 0.5 * (1.0 + Math.cos(t * MY_PI));
-    out.v = (-0.5 * MY_PI * Math.sin(t * MY_PI)) / (xmax - xmin);
+    cutoff = 0.5 * (1.0 + libmCos(t * MY_PI));
+    out.v = (-0.5 * MY_PI * libmSin(t * MY_PI)) / (xmax - xmin);
   }
   return cutoff;
 };
@@ -63,8 +65,8 @@ const gSpline = (costh: number, typei: number, b: Float64Array, bg: Float64Array
     const dgamma = { v: 0 };
     const gamma = poly7(bg, o, costh, dgamma);
     const tmp = MY_2PI * (costh - 0.5);
-    const psi = 0.5 * (1 - Math.cos(tmp));
-    const dpsi = MY_PI * Math.sin(tmp);
+    const psi = 0.5 * (1 - libmCos(tmp));
+    const dpsi = MY_PI * libmSin(tmp);
     g = gcos + psi * (gamma - gcos);
     dgdc.v = dgcos.v + dpsi * (gamma - gcos) + psi * (dgamma.v - dgcos.v);
   } else {
@@ -260,11 +262,11 @@ export class PairREBOMoS extends Pair {
         const wij = sp(rij, this.rcmin[q], this.rcmax[q], dwij);
         if (wij <= TOL) continue;
         const Qij = this.Q[q], Aij = this.A[q], alphaij = this.alpha[q];
-        const VR = wij * (1.0 + (Qij / rij)) * Aij * Math.exp(-alphaij * rij);
-        const pre = wij * Aij * Math.exp(-alphaij * rij);
+        const VR = wij * (1.0 + (Qij / rij)) * Aij * libmExp(-alphaij * rij);
+        const pre = wij * Aij * libmExp(-alphaij * rij);
         let dVRdi = pre * ((-alphaij) - (Qij / rsq) - (Qij * alphaij / rij));
         dVRdi += VR / wij * dwij.v;
-        const VA = -wij * this.BIJc[q] * Math.exp(-this.Beta[q] * rij);
+        const VA = -wij * this.BIJc[q] * libmExp(-this.Beta[q] * rij);
         let dVA = -this.Beta[q] * VA;
         dVA += VA / wij * dwij.v;
         const del = [delx, dely, delz];
@@ -446,8 +448,8 @@ export class PairREBOMoS extends Pair {
     const N = NM + NS;
     const o = typei * 4;
     const a0 = this.a[o], a1 = this.a[o + 1], a2 = this.a[o + 2], a3 = this.a[o + 3];
-    dp.v = -a0 + a1 * a2 * Math.exp(-a2 * N);
-    return -a0 * (N - 1) - a1 * Math.exp(-a2 * N) + a3;
+    dp.v = -a0 + a1 * a2 * libmExp(-a2 * N);
+    return -a0 * (N - 1) - a1 * libmExp(-a2 * N) + a3;
   }
 
   /** PairREBOMoS::FLJ: the Lennard-Jones term of owned atoms with each physical pair once. */

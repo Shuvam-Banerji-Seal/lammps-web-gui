@@ -20,6 +20,7 @@ import { delta } from '../../engine/force/bonded_util';
 import { StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
 import { BondBPMBase, bondKey, yesno } from './bond_bpm';
+import { pow as libmPow } from '../libm/pow';
 
 
 export class BondBpmSpring extends BondBPMBase {
@@ -158,7 +159,7 @@ export class BondBpmSpring extends BondBPMBase {
       if (this.volume) {
         const volSum = (this.vol.get(a1) ?? 0) + (this.vol.get(a2) ?? 0);
         const vol0Sum = (this.vol0.get(a1) ?? 0) + (this.vol0.get(a2) ?? 0);
-        fbond += this.av[t] * (Math.pow(volSum / vol0Sum, invdim) - 1 - e);
+        fbond += this.av[t] * (libmPow(volSum / vol0Sum, invdim) - 1 - e);
       }
       const dvx = vel[3 * i1] - vel[3 * i2], dvy = vel[3 * i1 + 1] - vel[3 * i2 + 1], dvz = vel[3 * i1 + 2] - vel[3 * i2 + 2];
       const dot = dx * dvx + dy * dvy + dz * dvz;

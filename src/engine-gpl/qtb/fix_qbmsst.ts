@@ -20,6 +20,7 @@ import type { System } from '../../engine/system';
 import type { Compute } from '../../engine/compute/compute';
 import { RanMars } from '../random_mars';
 import { colorFilter } from './fix_qtb';
+import { exp as libmExp } from '../libm/exp';
 
 /** The fix qbmsst restart record (fix_qbmsst.cpp write_restart). */
 export interface QbmsstRestart { omega: number; e0: number; v0: number; p0: number; tCurrent: number }
@@ -388,7 +389,7 @@ export class FixQBMSST extends Fix {
     if (vol > this.v0 && A > 0.0) A = -A;
     // Taylor expansion to avoid the singularity at B = 0
     if (B * this.dthalf > 1.0e-06) {
-      this.omega[sd] = (this.omega[sd] + A * (Math.exp(B * this.dthalf) - 1.0) / B) * Math.exp(-B * this.dthalf);
+      this.omega[sd] = (this.omega[sd] + A * (libmExp(B * this.dthalf) - 1.0) / B) * libmExp(-B * this.dthalf);
     } else {
       this.omega[sd] = this.omega[sd] + (A - B * this.omega[sd]) * this.dthalf +
         0.5 * (B * B * this.omega[sd] - A * B) * this.dthalf * this.dthalf;
@@ -407,7 +408,7 @@ export class FixQBMSST extends Fix {
           if (keepOld) oldV[3 * i + k] = v[3 * i + k];
           if (k === sd) D = D - 2.0 * omegaD / vol;
           if (Math.abs(this.dthalf * D) > 1.0e-06) {
-            const expd = Math.exp(D * this.dthalf);
+            const expd = libmExp(D * this.dthalf);
             v[3 * i + k] = expd * (C + D * v[3 * i + k] - C / expd) / D;
           } else {
             v[3 * i + k] = v[3 * i + k] + (C + D * v[3 * i + k]) * this.dthalf +
@@ -458,7 +459,7 @@ export class FixQBMSST extends Fix {
         let D = this.mu * this.omega[sd] * this.omega[sd] / (this.velocitySum * m * vol) - this.fricCoef;
         if (k === sd) D = D - 2.0 * this.omega[sd] / vol;
         if (Math.abs(this.dthalf * D) > 1.0e-06) {
-          const expd = Math.exp(D * this.dthalf);
+          const expd = libmExp(D * this.dthalf);
           v[3 * i + k] = expd * (C + D * v[3 * i + k] - C / expd) / D;
         } else {
           v[3 * i + k] = v[3 * i + k] + (C + D * v[3 * i + k]) * this.dthalf +
@@ -479,7 +480,7 @@ export class FixQBMSST extends Fix {
     const B = this.totalMass * this.mu / (this.qmass * vol);
     if (vol > this.v0 && A > 0.0) A = -A;
     if (B * this.dthalf > 1.0e-06) {
-      this.omega[sd] = (this.omega[sd] + A * (Math.exp(B * this.dthalf) - 1.0) / B) * Math.exp(-B * this.dthalf);
+      this.omega[sd] = (this.omega[sd] + A * (libmExp(B * this.dthalf) - 1.0) / B) * libmExp(-B * this.dthalf);
     } else {
       this.omega[sd] = this.omega[sd] + (A - B * this.omega[sd]) * this.dthalf +
         0.5 * (B * B * this.omega[sd] - A * B) * this.dthalf * this.dthalf;

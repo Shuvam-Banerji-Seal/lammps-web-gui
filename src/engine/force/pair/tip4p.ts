@@ -4,6 +4,7 @@ import { PairLJCut } from './lj_cut';
 import { parseNum } from '../util';
 import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../erfc';
 import { buildOwnedSites, tip4pAlpha, type OwnedSites, type Tip4pModel } from './tip4p_sites';
+import { libm } from '../../libm';
 
 /*
  * pair_style lj/cut/tip4p/cut, lj/cut/tip4p/long, tip4p/cut and tip4p/long.
@@ -63,7 +64,7 @@ const coulLong = (rsq: number, qq: number, g: number, fc: number, poly: boolean,
   }
   const r = Math.sqrt(rsq);
   const grij = g * r;
-  const ex = Math.exp(-grij * grij);
+  const ex = libm.exp(-grij * grij);
   const erfc = poly || table ? erfcPoly(grij, ex) : erfcFast(grij, ex);
   const pre = qq / r;
   let forcecoul = pre * (erfc + EWALD_F * grij * ex);

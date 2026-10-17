@@ -22,6 +22,7 @@
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
+import { pow as libmPow } from '../libm/pow';
 
 /** Shared settings, coefficients and bookkeeping of the two bond-valence styles. */
 export abstract class PairBondValBase extends Pair {
@@ -136,7 +137,7 @@ export class PairBondVal extends PairBondValBase {
         const rsq = dx * dx + dy * dy + dz * dz;
         if (rsq >= cutsq[t]) continue;
         const r = Math.sqrt(rsq);
-        s += Math.pow(r0[t] / r, alpha[t]);
+        s += libmPow(r0[t] / r, alpha[t]);
       }
       s0[i] = s;
     }
@@ -163,7 +164,7 @@ export class PairBondVal extends PairBondValBase {
         if (rsq >= cutsq[t]) continue;
         const r = Math.sqrt(rsq);
         const recip = 1 / r;
-        const aij = alpha[t] * Math.pow(r0[t] * recip, alpha[t]) * recip;
+        const aij = alpha[t] * libmPow(r0[t] * recip, alpha[t]) * recip;
         const fpair = (fpi + fp[j]) * aij * recip;
         const fx = dx * fpair, fy = dy * fpair, fz = dz * fpair;
         f[3 * i] += fx; f[3 * i + 1] += fy; f[3 * i + 2] += fz;

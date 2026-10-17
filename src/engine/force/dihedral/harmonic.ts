@@ -1,6 +1,7 @@
 import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral } from '../bonded_util';
 import { parseNum } from '../util';
 import { StyleError, type BondedCompute } from '../types';
+import { libm } from '../../libm';
 
 /*
  * dihedral_style harmonic — docs.lammps.org/dihedral_harmonic.html:
@@ -30,8 +31,8 @@ export class DihedralHarmonic extends SimpleBonded {
       const atoms = [0, 1, 2, 3].map((w) => atomIndex(bc, D.atoms[4 * q + w], 'dihedral'));
       const t = D.type[q];
       const phi = dihedralGeometry(bc, atoms[0], atoms[1], atoms[2], atoms[3], grad, rel);
-      const ed = K[t] * (1 + dd[t] * Math.cos(nn[t] * phi));
-      const dEdphi = -K[t] * dd[t] * nn[t] * Math.sin(nn[t] * phi);
+      const ed = K[t] * (1 + dd[t] * libm.cos(nn[t] * phi));
+      const dEdphi = -K[t] * dd[t] * nn[t] * libm.sin(nn[t] * phi);
       e += ed;
       applyDihedral(bc, atoms, dEdphi, grad, rel, ed);
     }

@@ -13,6 +13,9 @@
  * meamNonMs.ts and phi_meam). The two branches are the msmeamflag branches of the routines above.
  */
 import { fmExp, getShpfcn, getZij, getZij2, getZij2b2nn, iszero, fcut, erosePot, zblPot, powint, type Lattice } from './meamMath';
+import { log as libmLog } from '../libm/log';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { pow as libmPow } from '../libm/pow';
 
 export const MAXELT = 8;
 const NR = 1000;
@@ -217,8 +220,8 @@ export class MeamModel {
       case 21: {
         need(2);
         const i1 = Math.min(idx[0], idx[1]), i2 = Math.max(idx[0], idx[1]);
-        this.stheta[i1][i2] = Math.sin((value / 2 * Math.PI) / 180.0);
-        this.ctheta[i1][i2] = Math.cos((value / 2 * Math.PI) / 180.0);
+        this.stheta[i1][i2] = libmSin((value / 2 * Math.PI) / 180.0);
+        this.ctheta[i1][i2] = libmCos((value / 2 * Math.PI) / 180.0);
         break;
       }
       default: throw new Error('unknown keyword');
@@ -355,7 +358,7 @@ export class MeamModel {
                 const s112 = this.getSijk(C, a, a, b);
                 const s221 = this.getSijk(C, b, b, a);
                 const S11 = s111 * s111 * s112 * s112;
-                const S22 = Math.pow(s221, 4);
+                const S22 = libmPow(s221, 4);
                 phir[j] = phir[j] - 0.75 * S11 * phiaa - 0.25 * S22 * phibb;
               }
             } else {
@@ -391,7 +394,7 @@ export class MeamModel {
         const sw = -this.gsmooth / (this.gsmooth + 1);
         if (gamma < sw) {
           if (gamma === 0.0) return 0.0;
-          const G = (1 / (this.gsmooth + 1)) * Math.pow(sw / gamma, this.gsmooth);
+          const G = (1 / (this.gsmooth + 1)) * libmPow(sw / gamma, this.gsmooth);
           return Math.sqrt(G);
         }
         return Math.sqrt(1.0 + gamma);
@@ -411,7 +414,7 @@ export class MeamModel {
       case 4: {
         const sw = -this.gsmooth / (this.gsmooth + 1);
         if (gamma < sw) {
-          let G = (1 / (this.gsmooth + 1)) * Math.pow(sw / gamma, this.gsmooth);
+          let G = (1 / (this.gsmooth + 1)) * libmPow(sw / gamma, this.gsmooth);
           G = Math.sqrt(G);
           return { G, dG: (-this.gsmooth * G) / (2.0 * gamma) };
         }
@@ -441,7 +444,7 @@ export class MeamModel {
   embedding(A: number, Ec: number, rhobar: number): { F: number; dF: number } {
     const AEc = A * Ec;
     if (rhobar > 0.0) {
-      const lrb = Math.log(rhobar);
+      const lrb = libmLog(rhobar);
       return { F: AEc * rhobar * lrb, dF: AEc * (1.0 + lrb) };
     }
     if (this.embLinNeg === 0) return { F: 0.0, dF: 0.0 };

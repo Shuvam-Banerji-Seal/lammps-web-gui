@@ -2,6 +2,7 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { buildAtomMap } from '../../atoms';
 import { parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * pair_style hbond/dreiding/lj, hbond/dreiding/morse and their /angleoffset
@@ -300,7 +301,7 @@ export class PairHbondDreiding extends Pair {
     const phiDeg = phi / DEG;
     if (phiDeg < e.tc - 1e-9) return;
     this.hbCount += 1;
-    const cphi = Math.cos(phi), sphi = Math.sin(phi);
+    const cphi = libm.cos(phi), sphi = libm.sin(phi);
     const n = e.n;
     const G = Math.pow(cphi, n);
     const dG = n === 0 ? 0 : -n * Math.pow(cphi, n - 1) * sphi;
@@ -322,7 +323,7 @@ export class PairHbondDreiding extends Pair {
       dR = eps * (-60 * s12 * ir10 * ir ** 3 + 60 * s10 * ir10 * ir);
     } else {
       const D0 = e.p1, alpha = e.p2, r0 = e.p3;
-      const ex = Math.exp(-alpha * (r - r0));
+      const ex = libm.exp(-alpha * (r - r0));
       const e2 = ex * ex;
       R = D0 * (e2 - 2 * ex);
       dR = D0 * (-2 * alpha * e2 + 2 * alpha * ex);

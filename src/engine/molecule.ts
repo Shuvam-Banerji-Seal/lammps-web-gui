@@ -1,5 +1,6 @@
 import { StyleError } from './force/types';
 import { LabelMap, inferAngleType, inferDihedralType, inferImproperType, type LabelKind } from './labelmap';
+import { libm } from './libm';
 
 /*
  * Molecule templates — docs.lammps.org/molecule.html: "Define a molecule
@@ -721,8 +722,8 @@ export const orientationMatrix = (theta: number, rx: number, ry: number, rz: num
   const scale = 1 / Math.sqrt(val);
   const ax = rx * scale, ay = ry * scale, az = rz * scale;
   const halfa = 0.5 * theta;
-  const sina = Math.sin(halfa);
-  const w = Math.cos(halfa), i = ax * sina, j = ay * sina, k = az * sina;
+  const sina = libm.sin(halfa);
+  const w = libm.cos(halfa), i = ax * sina, j = ay * sina, k = az * sina;
   const w2 = w * w, i2 = i * i, j2 = j * j, k2 = k * k;
   const twoij = 2 * i * j, twoik = 2 * i * k, twojk = 2 * j * k;
   const twoiw = 2 * i * w, twojw = 2 * j * w, twokw = 2 * k * w;
@@ -738,7 +739,7 @@ export const rotationMatrix = (theta: number, rx: number, ry: number, rz: number
   const n = Math.hypot(rx, ry, rz);
   if (!(n > 0)) throw new StyleError('rotation vector must be non-zero');
   const [x, y, z] = [rx / n, ry / n, rz / n];
-  const c = Math.cos(theta), s = Math.sin(theta), C = 1 - c;
+  const c = libm.cos(theta), s = libm.sin(theta), C = 1 - c;
   return [
     [c + x * x * C, x * y * C - z * s, x * z * C + y * s],
     [y * x * C + z * s, c + y * y * C, y * z * C - x * s],

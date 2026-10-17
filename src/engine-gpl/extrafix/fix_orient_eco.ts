@@ -14,6 +14,7 @@ import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import type { System } from '../../engine/system';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** Per-owned-atom order parameter data (the source's Nbr struct). */
 interface Nbr {
@@ -125,8 +126,8 @@ export class FixOrientECO extends Fix {
             wsum += weight;
             for (let k = 0; k < 3; k++) {
               const sp = this.recip[1][k][0] * delta[0] + this.recip[1][k][1] * delta[1] + this.recip[1][k][2] * delta[2];
-              reesum[k] += weight * Math.cos(sp);
-              imesum[k] -= weight * Math.sin(sp);
+              reesum[k] += weight * libmCos(sp);
+              imesum[k] -= weight * libmSin(sp);
             }
           }
         }
@@ -192,8 +193,8 @@ export class FixOrientECO extends Fix {
           for (let lambda = 0; lambda < 2; lambda++) {
             for (let k = 0; k < 3; k++) {
               const sp = recip[lambda][k][0] * dx + recip[lambda][k][1] * dy + recip[lambda][k][2] * dz;
-              nbi.realPhi[lambda][k] += weight * Math.cos(sp);
-              nbi.imagPhi[lambda][k] += weight * Math.sin(sp);
+              nbi.realPhi[lambda][k] += weight * libmCos(sp);
+              nbi.imagPhi[lambda][k] += weight * libmSin(sp);
             }
           }
         }
@@ -214,9 +215,9 @@ export class FixOrientECO extends Fix {
         this.arrayAtom[2 * i + 1] = -this.sign;
       } else {
         const omega = omegaPre * chi;
-        const sinOm = Math.sin(omega);
+        const sinOm = libmSin(omega);
         this.addedEnergy += this.halfU * sinOm;
-        nbi.duchi = duchiPre * Math.cos(omega);
+        nbi.duchi = duchiPre * libmCos(omega);
         this.arrayAtom[2 * i + 1] = this.sign * sinOm;
       }
       // the product with the potential derivative
@@ -255,7 +256,7 @@ export class FixOrientECO extends Fix {
           for (let lambda = 0; lambda < 2; lambda++) {
             for (let k = 0; k < 3; k++) {
               const sp = recip[lambda][k][0] * dx + recip[lambda][k][1] * dy + recip[lambda][k][2] * dz;
-              const cosSp = Math.cos(sp), sinSp = Math.sin(sp);
+              const cosSp = libmCos(sp), sinSp = libmSin(sp);
               for (let dim = 0; dim < 3; dim++) {
                 giiCos[lambda][k][dim] += wg[dim] * cosSp;
                 giiSin[lambda][k][dim] += wg[dim] * sinSp;

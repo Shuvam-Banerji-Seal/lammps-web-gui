@@ -4,7 +4,7 @@ import type { System } from '../system';
 import { ownCompute } from './util';
 import { isEllipsoid } from '../atoms';
 import { ellipsoidInertia } from '../compute/asphere';
-import { richardsonStep } from './nve_asphere';
+import { orientation } from './nve_asphere';
 
 /*
  * fix nvt/asphere, npt/asphere, nph/asphere — docs.lammps.org/fix_nvt_asphere.html,
@@ -47,7 +47,7 @@ import { richardsonStep } from './nve_asphere';
  *      body angular velocity R I^-1 R^T L scales with it;
  *   3. the half-step kick also takes L += dt/2 * ftm2v * torque, and the drift
  *      updates the orientation with the same Richardson step as fix
- *      nve/asphere (richardsonStep in nve_asphere.ts) using the stored L.
+ *      nve/asphere (orientation.richardson in nve_asphere.ts) using the stored L.
  * The barostat's strain-rate scaling of velocities is left to fix nh: the
  * angular momenta are not scaled by it. Measured with native LAMMPS (black
  * box, oracle w19nhasphere_npt and w19nhasphere_nph): the npt and nph rows
@@ -145,7 +145,7 @@ export class FixNHAsphere extends FixNH {
     const s = this.sys.state;
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
-      richardsonStep(s.quat!, 4 * i, s.angmom!, 3 * i, ellipsoidInertia(s, i), s.dt);
+      orientation.richardson(s.quat!, 4 * i, s.angmom!, 3 * i, ellipsoidInertia(s, i), s.dt);
     }
   }
 

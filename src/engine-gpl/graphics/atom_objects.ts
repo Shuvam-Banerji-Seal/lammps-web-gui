@@ -16,6 +16,7 @@ import { triangleCorner } from '../../engine/lineTri';
 import { drawCylinder, drawTriangle, transparentAt, type PixelLight } from './draw';
 import { drawEllipsoidAtoms } from './ellipsoid_mesh';
 import { drawBodyAtoms } from './body_image';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 type V = [number, number, number];
 
@@ -27,8 +28,8 @@ const unit = (c: Rgb255): V => [c[0] / 255, c[1] / 255, c[2] / 255];
  */
 export function drawLineAtoms(f: RasterFrame, lines: readonly LineAtom[], diameter: number): void {
   for (const l of lines) {
-    const dx = 0.5 * l.length * Math.cos(l.theta);
-    const dy = 0.5 * l.length * Math.sin(l.theta);
+    const dx = 0.5 * l.length * libmCos(l.theta);
+    const dy = 0.5 * l.length * libmSin(l.theta);
     const pt1: V = [l.x + dx, l.y + dy, 0];
     const pt2: V = [l.x - dx, l.y - dy, 0];
     drawCylinder(f, pt1, pt2, unit(l.color), diameter, 3, l.opacity);

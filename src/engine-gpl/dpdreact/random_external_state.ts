@@ -9,6 +9,7 @@
  * arithmetic is the same modulo 2^64. A state is a plain pair of numbers owned by the caller (the native code keeps
  * no internal state in the class).
  */
+import { log as libmLog } from '../libm/log';
 
 /** A 64-bit generator state (hi and lo 32-bit halves, unsigned). */
 export interface ExtState { hi: number; lo: number }
@@ -80,7 +81,7 @@ export const esNormal = (s: ExtState): number => {
     U = 2.0 * esDrand(s) - 1.0;
     const V = 2.0 * esDrand(s) - 1.0;
     S = U * U + V * V;
-    if (S < 1.0 && S !== 0.0) return U * Math.sqrt(-2.0 * Math.log(S) / S);
+    if (S < 1.0 && S !== 0.0) return U * Math.sqrt(-2.0 * libmLog(S) / S);
   } while (true);
 };
 

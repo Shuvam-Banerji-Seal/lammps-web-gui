@@ -42,3 +42,24 @@ part of the LAMMPS port.
 - `ptm/ptm_voronoi_cell.ts` and `ptm/ptm_voronoi_config.ts`: the voro++ (BSD-3, The Regents of the University of California,
   Copyright (c) 2008) Voronoi cell bundled in the PTM library, ported with the owner's approval (2026-10-16); the licence
   text is in `ptm/LICENSE.voro++`.
+
+## Third-party code: the C and C++ runtime libraries
+
+Native parity sometimes needs code that LAMMPS itself does not contain but calls or links. On 2026-10-16 the owner
+decided that such code may be ported here when the port reproduces the native binary exactly. Each file names its
+source and licence in its header:
+
+- `libm/log.ts`: the `log()` of the C library the native binary runs with (Ubuntu glibc 2.35,
+  `__ieee754_log_fma` from `sysdeps/ieee754/dbl-64/e_log.c` and `e_log_data.c`), bit for bit, with an emulated
+  correctly rounded `fma`. glibc is LGPL-2.1-or-later; the file is used under LGPL-2.1 section 3, which allows
+  distributing it under the GPL, version 2 or later.
+- `libm/exp.ts`: the `exp()` of the same glibc (`__exp_fma` from `e_exp.c` and `e_exp_data.c`), bit for bit, with the
+  fused steps of the compiled libm; LGPL-2.1-or-later, used the same way.
+- `libm/pow.ts`: the `pow()` of the same glibc (`__ieee754_pow_fma` from `e_pow.c` and `e_pow_log_data.c`, with the
+  exp tables), bit for bit, with the fused steps of the compiled libm; LGPL-2.1-or-later, used the same way. JavaScript
+  engines disagree on `Math.pow` (Node 18 and 20 differ from glibc for about 10 percent of ordinary arguments), so the
+  ported styles call this one.
+- `libm/sincos.ts`: the `sin()` and `cos()` of the same glibc (the IBM accurate routines of `s_sin.c`,
+  `sincostab.c`, `branred.c`, built without FMA contraction), bit for bit; LGPL-2.1-or-later, used the same way.
+- `dpdrx/unordered_order.ts`: the iteration order of libstdc++'s `std::unordered_set<std::string>` (GCC 11),
+  GPL-3.0-or-later with the GCC Runtime Library Exception (decided 2026-10-15).

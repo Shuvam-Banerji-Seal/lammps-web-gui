@@ -13,6 +13,8 @@ import { Pair, StyleError, mixDistance, type PairCompute, type StyleContext } fr
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { DRUDE_TYPE, NOPOL_TYPE, drudeModelOf, type DrudeModel } from './drude_model';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 export class PairThole extends Pair {
   readonly name = 'thole';
@@ -77,7 +79,7 @@ export class PairThole extends Pair {
         const k = i * nt + j;
         this.polar[k] = polarOne;
         this.thole[k] = tholeOne;
-        this.ascreen[k] = tholeOne / Math.pow(polarOne, 1 / 3);
+        this.ascreen[k] = tholeOne / libmPow(polarOne, 1 / 3);
         this.cutOne[k] = cutOne;
         this.set[k] = 1;
         count++;
@@ -150,7 +152,7 @@ export class PairThole extends Pair {
         const rinv = 1 / Math.sqrt(rsq);
         const r = Math.sqrt(rsq);
         const asr = this.ascreen[t] * r;
-        const expAsr = Math.exp(-asr);
+        const expAsr = libmExp(-asr);
         const dcoul = qqrd2e * qi * qj * rinv;
         const factorF = 0.5 * (2.0 + expAsr * (-2.0 - asr * (2.0 + asr))) - factorCoul;
         const factorE = 0.5 * (2.0 - expAsr * (2.0 + asr)) - factorCoul;

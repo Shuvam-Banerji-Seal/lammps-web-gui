@@ -1,6 +1,7 @@
 import { SimpleBonded, atomIndex, dihedralGeometry, delta, TypeParams, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 import { bondedVirial, StyleError, type BondedCompute, type StyleContext } from '../types';
+import { libm } from '../../libm';
 
 /*
  * dihedral_style class2 (docs.lammps.org/dihedral_class2.html). COMPASS class-2
@@ -159,8 +160,8 @@ export class DihedralClass2 extends SimpleBonded {
       const [i, j, k, l] = atoms;
       const t = D.type[q];
       const phi = dihedralGeometry(bc, i, j, k, l, grad, rel);
-      const c1 = Math.cos(phi), c2 = Math.cos(2 * phi), c3 = Math.cos(3 * phi);
-      const s1 = Math.sin(phi), s2 = Math.sin(2 * phi), s3 = Math.sin(3 * phi);
+      const c1 = libm.cos(phi), c2 = libm.cos(2 * phi), c3 = libm.cos(3 * phi);
+      const s1 = libm.sin(phi), s2 = libm.sin(2 * phi), s3 = libm.sin(3 * phi);
 
       // geometry of the two end angles and the three bonds
       const b1 = [rel[3], rel[4], rel[5]], b2 = [rel[6] - rel[3], rel[7] - rel[4], rel[8] - rel[5]];
@@ -173,8 +174,8 @@ export class DihedralClass2 extends SimpleBonded {
       let ed = 0, dEdphi = 0;
       for (let n = 0; n < 3; n++) {
         const arg = (n + 1) * phi - P[n][t];
-        ed += K[n][t] * (1 - Math.cos(arg));
-        dEdphi += K[n][t] * (n + 1) * Math.sin(arg);
+        ed += K[n][t] * (1 - libm.cos(arg));
+        dEdphi += K[n][t] * (n + 1) * libm.sin(arg);
       }
 
       // E_mbt
@@ -265,9 +266,9 @@ const angleOf = (a: number[], b: number[]): number => {
  */
 const angleGrad = (A: number[], B: number[], theta: number): number[][] => {
   const a = Math.hypot(A[0], A[1], A[2]), b = Math.hypot(B[0], B[1], B[2]);
-  let s = Math.sin(theta);
+  let s = libm.sin(theta);
   if (s < 1e-12) s = 1e-12;
-  const c = Math.cos(theta);
+  const c = libm.cos(theta);
   const ab = a * b;
   const gi = [0, 0, 0], gk = [0, 0, 0], gj = [0, 0, 0];
   for (let d = 0; d < 3; d++) {

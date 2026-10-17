@@ -8,6 +8,8 @@
 import type { PairCompute } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { InterlayerZBase, tallyZPair } from './zbase';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 interface KCZParam {
   ie: number; je: number;
@@ -30,13 +32,13 @@ export class PairKolmogorovCrespiZ extends InterlayerZBase<KCZParam> {
     return {
       ie, je, z0, lambda,
       C: C * meV, A: A * meV, C0: C0 * meV, C2: C2 * meV, C4: C4 * meV,
-      delta2inv: Math.pow(delta, -2),
-      z06: Math.pow(z0, 6),
+      delta2inv: libmPow(delta, -2),
+      z06: libmPow(z0, 6),
     };
   }
 
   protected offsetOf(p: KCZParam, cut: number): number {
-    return -p.A * Math.pow(p.z0 / cut, 6);
+    return -p.A * libmPow(p.z0 / cut, 6);
   }
 
   override compute(pc: PairCompute): void {
@@ -64,8 +66,8 @@ export class PairKolmogorovCrespiZ extends InterlayerZBase<KCZParam> {
         const r6 = rsq * rsq * rsq;
         const r8 = r6 * rsq;
         const rdsq = rhosq * p.delta2inv; // (rho/delta)^2
-        const exp1 = Math.exp(-p.lambda * (r - p.z0));
-        const exp2 = Math.exp(-rdsq);
+        const exp1 = libmExp(-p.lambda * (r - p.z0));
+        const exp2 = libmExp(-rdsq);
         // f(rho_ij) equals f(rho_ji) as the normals are all along z
         const sumC = p.C0 + p.C2 * rdsq + p.C4 * rdsq * rdsq;
         const sumC2 = (2 * p.C2 + 4 * p.C4 * rdsq) * p.delta2inv;

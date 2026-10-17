@@ -9,6 +9,10 @@
  */
 import { StyleError } from '../../engine/force/types';
 import { joinPotentialEntries } from '../../engine/force/util';
+import { log as libmLog } from '../libm/log';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** Number of words in one COMB potential entry (PairComb::NPARAMS_PER_LINE). */
 export const NPARAMS_PER_LINE = 49;
@@ -141,8 +145,8 @@ export const setupCombParams = (params: CombParam[], elements: readonly string[]
   for (const p of params) {
     p.cut = p.bigr + p.bigd;
     p.cutsq = p.cut * p.cut;
-    p.c1 = Math.pow(2.0 * p.powern * 1.0e-16, -1.0 / p.powern);
-    p.c2 = Math.pow(2.0 * p.powern * 1.0e-8, -1.0 / p.powern);
+    p.c1 = libmPow(2.0 * p.powern * 1.0e-16, -1.0 / p.powern);
+    p.c2 = libmPow(2.0 * p.powern * 1.0e-8, -1.0 / p.powern);
     p.c3 = 1.0 / p.c2;
     p.c4 = 1.0 / p.c1;
     p.rlm1 = 0.5 * (p.lam11 + p.lam12) * p.romigc;
@@ -150,15 +154,15 @@ export const setupCombParams = (params: CombParam[], elements: readonly string[]
     p.Qo1 = (p.QU1 + p.QL1) / 2.0;
     p.dQ1 = (p.QU1 - p.QL1) / 2.0;
     p.aB1 = 1.0 / (1.0 - powint(Math.abs(p.Qo1 / p.dQ1), 10));
-    p.bB1 = Math.pow(Math.abs(p.aB1), 0.1) / p.dQ1;
-    p.nD1 = Math.log(p.DU1 / (p.DU1 - p.DL1)) / Math.log(p.QU1 / (p.QU1 - p.QL1));
-    p.bD1 = Math.pow(p.DL1 - p.DU1, 1.0 / p.nD1) / (p.QU1 - p.QL1);
+    p.bB1 = libmPow(Math.abs(p.aB1), 0.1) / p.dQ1;
+    p.nD1 = libmLog(p.DU1 / (p.DU1 - p.DL1)) / libmLog(p.QU1 / (p.QU1 - p.QL1));
+    p.bD1 = libmPow(p.DL1 - p.DU1, 1.0 / p.nD1) / (p.QU1 - p.QL1);
     p.Qo2 = (p.QU2 + p.QL2) / 2.0;
     p.dQ2 = (p.QU2 - p.QL2) / 2.0;
     p.aB2 = 1.0 / (1.0 - powint(Math.abs(p.Qo2 / p.dQ2), 10));
-    p.bB2 = Math.pow(Math.abs(p.aB2), 0.1) / p.dQ2;
-    p.nD2 = Math.log(p.DU2 / (p.DU2 - p.DL2)) / Math.log(p.QU2 / (p.QU2 - p.QL2));
-    p.bD2 = Math.pow(p.DL2 - p.DU2, 1.0 / p.nD2) / (p.QU2 - p.QL2);
+    p.bB2 = libmPow(Math.abs(p.aB2), 0.1) / p.dQ2;
+    p.nD2 = libmLog(p.DU2 / (p.DU2 - p.DL2)) / libmLog(p.QU2 / (p.QU2 - p.QL2));
+    p.bD2 = libmPow(p.DL2 - p.DU2, 1.0 / p.nD2) / (p.QU2 - p.QL2);
     p.lcut = p.coulcut;
     p.lcutsq = p.lcut * p.lcut;
     p.gamma = 1.0;
@@ -178,42 +182,42 @@ export const combFc = (r: number, p: CombParam): number => {
   const R = p.bigr, D = p.bigd;
   if (r < R - D) return 1.0;
   if (r > R + D) return 0.0;
-  return 0.5 * (1.0 - Math.sin(MY_PI2 * (r - R) / D));
+  return 0.5 * (1.0 - libmSin(MY_PI2 * (r - R) / D));
 };
 
 export const combFcD = (r: number, p: CombParam): number => {
   const R = p.bigr, D = p.bigd;
   if (r < R - D) return 0.0;
   if (r > R + D) return 0.0;
-  return -(MY_PI4 / D) * Math.cos(MY_PI2 * (r - R) / D);
+  return -(MY_PI4 / D) * libmCos(MY_PI2 * (r - R) / D);
 };
 
 export const combFc2 = (r: number): number => {
   const R = 1.89350, D = R + 0.050;
   if (r < R) return 0.0;
   if (r > D) return 1.0;
-  return 0.5 * (1.0 + Math.cos(MY_PI * (r - R) / (D - R)));
+  return 0.5 * (1.0 + libmCos(MY_PI * (r - R) / (D - R)));
 };
 
 export const combFc2D = (r: number): number => {
   const R = 1.89350, D = R + 0.050;
   if (r < R) return 0.0;
   if (r > D) return 0.0;
-  return -(MY_PI2 / (D - R)) * Math.sin(MY_PI * (r - R) / (D - R));
+  return -(MY_PI2 / (D - R)) * libmSin(MY_PI * (r - R) / (D - R));
 };
 
 export const combFc3 = (r: number): number => {
   const R = 2.51350, D = R + 0.050;
   if (r < R) return 1.0;
   if (r > D) return 0.0;
-  return 0.5 * (1.0 + Math.cos(MY_PI * (r - R) / (D - R)));
+  return 0.5 * (1.0 + libmCos(MY_PI * (r - R) / (D - R)));
 };
 
 export const combFc3D = (r: number): number => {
   const R = 2.51350, D = R + 0.050;
   if (r < R) return 0.0;
   if (r > D) return 0.0;
-  return -(MY_PI2 / (D - R)) * Math.sin(MY_PI * (r - R) / (D - R));
+  return -(MY_PI2 / (D - R)) * libmSin(MY_PI * (r - R) / (D - R));
 };
 
 /** comb_gijk: angular function g(cos theta). */
@@ -237,30 +241,30 @@ export const combGijkD = (costheta: number, p: CombParam): number => {
 export const combBij = (zeta: number, p: CombParam): number => {
   const tmp = p.beta * zeta;
   if (tmp > p.c1) return 1.0 / Math.sqrt(tmp);
-  if (tmp > p.c2) return (1.0 - Math.pow(tmp, -1.0 * p.powern) / (2.0 * p.powern)) / Math.sqrt(tmp);
+  if (tmp > p.c2) return (1.0 - libmPow(tmp, -1.0 * p.powern) / (2.0 * p.powern)) / Math.sqrt(tmp);
   if (tmp < p.c4) return 1.0;
-  if (tmp < p.c3) return 1.0 - Math.pow(tmp, p.powern) / (2.0 * p.powern);
-  return Math.pow(1.0 + Math.pow(tmp, p.powern), -1.0 / (2.0 * p.powern));
+  if (tmp < p.c3) return 1.0 - libmPow(tmp, p.powern) / (2.0 * p.powern);
+  return libmPow(1.0 + libmPow(tmp, p.powern), -1.0 / (2.0 * p.powern));
 };
 
 export const combBijD = (zeta: number, p: CombParam): number => {
   const tmp = p.beta * zeta;
-  if (tmp > p.c1) return p.beta * -0.5 * Math.pow(tmp, -1.5);
+  if (tmp > p.c1) return p.beta * -0.5 * libmPow(tmp, -1.5);
   if (tmp > p.c2) {
-    return p.beta * (-0.5 * Math.pow(tmp, -1.5) *
-      (1.0 - (1.0 + 1.0 / (2.0 * p.powern)) * Math.pow(tmp, -p.powern)));
+    return p.beta * (-0.5 * libmPow(tmp, -1.5) *
+      (1.0 - (1.0 + 1.0 / (2.0 * p.powern)) * libmPow(tmp, -p.powern)));
   }
   if (tmp < p.c4) return 0.0;
-  if (tmp < p.c3) return -0.5 * p.beta * Math.pow(tmp, p.powern - 1.0);
-  const tmpN = Math.pow(tmp, p.powern);
-  return -0.5 * Math.pow(1.0 + tmpN, -1.0 - (1.0 / (2.0 * p.powern))) * tmpN / zeta;
+  if (tmp < p.c3) return -0.5 * p.beta * libmPow(tmp, p.powern - 1.0);
+  const tmpN = libmPow(tmp, p.powern);
+  return -0.5 * libmPow(1.0 + tmpN, -1.0 - (1.0 / (2.0 * p.powern))) * tmpN / zeta;
 };
 
 /** Charge-dependent D, B and A (PairComb::comb_fa, comb_fa_d, repulsive and qfo_short share these). */
 export const combBsi = (p: CombParam, qi: number, qj: number, Di: number, Dj: number): { Bsi: number; Bsj: number } => ({
-  Bsi: p.bigb1 * Math.exp(p.lam21 * Di) * (p.aB1 - Math.abs(powint(p.bB1 * (qi - p.Qo1), 10))),
-  Bsj: p.bigb2 * Math.exp(p.lam22 * Dj) * (p.aB2 - Math.abs(powint(p.bB2 * (qj - p.Qo2), 10))),
+  Bsi: p.bigb1 * libmExp(p.lam21 * Di) * (p.aB1 - Math.abs(powint(p.bB1 * (qi - p.Qo1), 10))),
+  Bsj: p.bigb2 * libmExp(p.lam22 * Dj) * (p.aB2 - Math.abs(powint(p.bB2 * (qj - p.Qo2), 10))),
 });
 
-export const combDi = (p: CombParam, qi: number): number => p.DU1 + Math.pow(Math.abs(p.bD1 * (p.QU1 - qi)), p.nD1);
-export const combDj = (p: CombParam, qj: number): number => p.DU2 + Math.pow(Math.abs(p.bD2 * (p.QU2 - qj)), p.nD2);
+export const combDi = (p: CombParam, qi: number): number => p.DU1 + libmPow(Math.abs(p.bD1 * (p.QU1 - qi)), p.nD1);
+export const combDj = (p: CombParam, qj: number): number => p.DU2 + libmPow(Math.abs(p.bD2 * (p.QU2 - qj)), p.nD2);

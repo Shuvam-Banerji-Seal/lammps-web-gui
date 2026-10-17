@@ -23,6 +23,9 @@ import { parsePertypeFile, type QeqParams } from './qeq';
 import type { PairReaxFF } from './pair';
 import type { FixEfield } from '../../engine/fix/force_ext';
 import { efieldForModel, fieldOf, findEfield, fieldPotential } from './efield';
+import { log as libmLog } from '../libm/log';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** ANGSTROM_TO_BOHRRADIUS_SQ of fix_qtpie_reaxff.cpp: an exponent in 1/bohr^2 is this many 1/Angstrom^2. */
 const ANGSTROM_TO_BOHRRADIUS_SQ = 3.571064831;
@@ -154,7 +157,7 @@ export class FixQtpieReaxFF extends Fix {
     // find_min_exp: the smallest exponent over the types 1..ntypes
     let expMin = gaussExp[1];
     for (let i = 2; i <= nt; i++) if (gaussExp[i] < expMin) expMin = gaussExp[i];
-    this.distCutSq = (2 * OLAP_CUT * Math.log(10.0)) / expMin;
+    this.distCutSq = (2 * OLAP_CUT * libmLog(10.0)) / expMin;
   }
 
   /** init_shielding: shld[i][j] = (gamma_i gamma_j)^(-1.5). */
@@ -162,7 +165,7 @@ export class FixQtpieReaxFF extends Fix {
     const nt = this.ntypes, p = this.params!;
     this.shld = new Float64Array((nt + 1) * (nt + 1));
     for (let i = 1; i <= nt; i++) {
-      for (let j = 1; j <= nt; j++) this.shld[i * (nt + 1) + j] = Math.pow(p.gamma[i] * p.gamma[j], -1.5);
+      for (let j = 1; j <= nt; j++) this.shld[i * (nt + 1) + j] = libmPow(p.gamma[i] * p.gamma[j], -1.5);
     }
   }
 
@@ -176,7 +179,7 @@ export class FixQtpieReaxFF extends Fix {
         const expa = this.gaussExp[i], expb = this.gaussExp[j];
         const expsum = expa + expb;
         const expnorm = (expa * expb) / expsum;
-        this.prefactor[i * (nt + 1) + j] = Math.pow(4.0 * expnorm / expsum, 0.75);
+        this.prefactor[i * (nt + 1) + j] = libmPow(4.0 * expnorm / expsum, 0.75);
         this.expfactor[i * (nt + 1) + j] = expnorm;
       }
     }
@@ -232,7 +235,7 @@ export class FixQtpieReaxFF extends Fix {
         const distSq = dx * dx + dy * dy + dz * dz;
         if (distSq < this.distCutSq) {
           const chib = p.chi[typeAll[j]];
-          const overlap = this.prefactor[typeAll[i] * nt1 + typeAll[j]] * Math.exp(-this.expfactor[typeAll[i] * nt1 + typeAll[j]] * distSq);
+          const overlap = this.prefactor[typeAll[i] * nt1 + typeAll[j]] * libmExp(-this.expfactor[typeAll[i] * nt1 + typeAll[j]] * distSq);
           if (E) {
             const phib = fieldPotential(x, j, E, qe2f);
             sumN += (chia - chib + this.scale * (phia - phib)) * overlap;
@@ -279,7 +282,7 @@ export class FixQEqRelReaxFF extends FixQtpieReaxFF {
         const dx = x[3 * i] - x[3 * j], dy = x[3 * i + 1] - x[3 * j + 1], dz = x[3 * i + 2] - x[3 * j + 2];
         const distSq = dx * dx + dy * dy + dz * dz;
         if (distSq < this.distCutSq) {
-          const overlap = this.prefactor[typeAll[i] * nt1 + typeAll[j]] * Math.exp(-this.expfactor[typeAll[i] * nt1 + typeAll[j]] * distSq);
+          const overlap = this.prefactor[typeAll[i] * nt1 + typeAll[j]] * libmExp(-this.expfactor[typeAll[i] * nt1 + typeAll[j]] * distSq);
           sumN += fieldPotential(x, j, E, qe2f) * overlap;
           sumD += overlap;
         }

@@ -1,6 +1,7 @@
 import { SimpleBonded, atomIndex, delta, dihedralGeometry, applyDihedral, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum, parseInt_ } from '../util';
 import { StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext } from '../types';
+import { libm } from '../../libm';
 
 /*
  * Improper styles (wave 1). Every class below implements exactly the formula
@@ -231,9 +232,9 @@ export class ImproperCvff extends SimpleBonded {
       const t = I.type[q];
       const phi = dihedralGeometry(bc, atoms[0], atoms[1], atoms[2], atoms[3], grad, rel);
       const arg = N[t] * phi;
-      const ei = K[t] * (1 + D[t] * Math.cos(arg));
+      const ei = K[t] * (1 + D[t] * libm.cos(arg));
       e += ei;
-      applyDihedral(bc, atoms, -K[t] * D[t] * N[t] * Math.sin(arg), grad, rel, ei);
+      applyDihedral(bc, atoms, -K[t] * D[t] * N[t] * libm.sin(arg), grad, rel, ei);
     }
     bc.acc.eimp += e;
   }
@@ -284,9 +285,9 @@ export class ImproperUmbrella extends SimpleBonded {
         ei = K[t] * (1 - cw);
         dEdc = K[t] / (2 * cw);
       } else {
-        const s0 = Math.sin(w0[t]);
+        const s0 = libm.sin(w0[t]);
         const inv = 1 / (s0 * s0);
-        const d = cw - Math.cos(w0[t]);
+        const d = cw - libm.cos(w0[t]);
         ei = 0.5 * K[t] * inv * d * d;
         dEdc = -0.5 * K[t] * inv * d / cw;
       }
@@ -361,7 +362,7 @@ export class ImproperCossq extends SimpleBonded {
       const atoms = [0, 1, 2, 3].map((w) => atomIndex(bc, I.atoms[4 * q + w], 'improper'));
       const t = I.type[q];
       const c = Math.min(1, Math.max(-1, bondPairCos(bc, atoms, grad)));
-      const cd = c * Math.cos(c0[t]) + Math.sqrt(1 - c * c) * Math.sin(c0[t]); // cos(chi - chi0)
+      const cd = c * libm.cos(c0[t]) + Math.sqrt(1 - c * c) * libm.sin(c0[t]); // cos(chi - chi0)
       const ei = 0.5 * K[t] * cd * cd;
       e += ei;
       applyGradC(bc, atoms, K[t] * cd, grad, ei);

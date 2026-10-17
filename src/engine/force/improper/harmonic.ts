@@ -1,6 +1,7 @@
 import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral, delta, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 import { StyleError, type BondedCompute } from '../types';
+import { libm } from '../../libm';
 
 /*
  * improper_style harmonic — docs.lammps.org/improper_harmonic.html:
@@ -81,7 +82,7 @@ export class ImproperHarmonic extends SimpleBonded {
       const cn = nativeCos(vb1, vb2, vb3);
       const chi = Math.acos(cn);
       const sNative = Math.max(Math.sqrt(1 - cn * cn), SMALL);
-      const sTrue = Math.sin(Math.abs(phi));
+      const sTrue = libm.sin(Math.abs(phi));
       const dchi = chi - c0[t];
       const ei = K[t] * dchi * dchi;
       e += ei;

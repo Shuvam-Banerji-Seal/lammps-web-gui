@@ -18,6 +18,7 @@ import { StyleError } from '../../engine/force/types';
 import { parseInt_ } from '../../engine/force/util';
 import type { System } from '../../engine/system';
 import type { Compute } from '../../engine/compute/compute';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** The map file name that makes every group atom its own cell (the gamma-point cluster). */
 const GAMMA_MAP = 'GAMMA';
@@ -51,8 +52,8 @@ const dft3 = (data: Cx[], nx: number, ny: number, nz: number): Cx[] => {
           const ph = (2 * Math.PI * ((j * k) % n)) / n;
           const x = buf[b + j * stride];
           // exp(+i ph) times x: the sign of the transform of the fix's fft3d call (FORWARD = -1 there)
-          re += x[0] * Math.cos(ph) - x[1] * Math.sin(ph);
-          im += x[1] * Math.cos(ph) + x[0] * Math.sin(ph);
+          re += x[0] * libmCos(ph) - x[1] * libmSin(ph);
+          im += x[1] * libmCos(ph) + x[0] * libmSin(ph);
         }
         tmp[k] = [re, im];
       }

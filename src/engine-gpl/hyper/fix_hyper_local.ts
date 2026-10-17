@@ -35,6 +35,7 @@ import { parseNum } from '../../engine/force/util';
 import { NEIGHMASK } from '../../engine/neighbor';
 import type { System } from '../../engine/system';
 import { nativePairs } from '../neighbor/nativeOrder';
+import { exp as libmExp } from '../libm/exp';
 
 /** fix_hyper_local.cpp: BIG (minimum of the bias coefficients before any update) and COEFFINIT (a new bond). */
 const BIG = 1.0e20;
@@ -499,7 +500,7 @@ export class FixHyperLocal extends Fix {
     for (let m = 0; m < nbl; m++) {
       const emax = MAXP(maxdom[bi[m]], maxdom[bj[m]]);
       const vb = emax < q ? vmax * (1.0 - emax * emax * this.invqfactorsq) : 0;
-      const boost = Math.exp(this.beta * this.bC[m] * vb);
+      const boost = libmExp(this.beta * this.bC[m] * vb);
       let c = this.bC[m];
       c -= alpha * this.invvmax * (boost - target) / target;
       c = MAXP(c, 0.0);

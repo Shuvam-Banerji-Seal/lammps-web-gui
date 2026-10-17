@@ -10,6 +10,9 @@
 import { StyleError } from '../../engine/force/types';
 import { powint } from '../comb/params';
 import type { Comb3Lib, Comb3Param } from './params';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 const MY_PI = Math.PI;
 const MY_PI2 = Math.PI / 2;
@@ -49,7 +52,7 @@ export class Comb3Kernel {
     const rOut = p.bigr + p.bigd;
     if (r <= rInn) return 1.0;
     if (r >= rOut) return 0.0;
-    return 0.5 * (1.0 + Math.cos(MY_PI * (r - rInn) / (rOut - rInn)));
+    return 0.5 * (1.0 + libmCos(MY_PI * (r - rInn) / (rOut - rInn)));
   }
 
   fcD(r: number, p: Comb3Param): number {
@@ -57,20 +60,20 @@ export class Comb3Kernel {
     const rOut = p.bigr + p.bigd;
     if (r <= rInn) return 0.0;
     if (r >= rOut) return 0.0;
-    return -MY_PI2 / (rOut - rInn) * Math.sin(MY_PI * (r - rInn) / (rOut - rInn));
+    return -MY_PI2 / (rOut - rInn) * libmSin(MY_PI * (r - rInn) / (rOut - rInn));
   }
 
   /** Coordination switches with the cut-offs of lib.comb3 (ccutoff[0..5]): comb_fccc, comb_fcch, comb_fccch. */
   private switchCut(x: number, c1: number, c2: number): number {
     if (x <= c1) return 1.0;
     if (x >= c2) return 0.0;
-    return 0.5 * (1.0 + Math.cos(MY_PI * (x - c1) / (c2 - c1)));
+    return 0.5 * (1.0 + libmCos(MY_PI * (x - c1) / (c2 - c1)));
   }
 
   private switchCutD(x: number, c1: number, c2: number): number {
     if (x <= c1) return 0.0;
     if (x >= c2) return 0.0;
-    return -MY_PI2 / (c2 - c1) * Math.sin(MY_PI * (x - c1) / (c2 - c1));
+    return -MY_PI2 / (c2 - c1) * libmSin(MY_PI * (x - c1) / (c2 - c1));
   }
 
   fccc(x: number): number { const c = this.requireLib().ccutoff; return this.switchCut(x, c[0], c[1]); }
@@ -164,17 +167,17 @@ export class Comb3Kernel {
   fa(r: number, pi: Comb3Param, pj: Comb3Param, qi: number, qj: number, out: { eng: number; force: number }): void {
     const alfij1 = pi.alpha1, alfij2 = pi.alpha2, alfij3 = pi.alpha3;
     const pbij1 = pi.bigB1, pbij2 = pi.bigB2, pbij3 = pi.bigB3;
-    const Di = pi.DU + Math.pow(Math.abs(pi.bD * (pi.QU - qi)), pi.nD);
-    const Dj = pj.DU + Math.pow(Math.abs(pj.bD * (pj.QU - qj)), pj.nD);
+    const Di = pi.DU + libmPow(Math.abs(pi.bD * (pi.QU - qi)), pi.nD);
+    const Dj = pj.DU + libmPow(Math.abs(pj.bD * (pj.QU - qj)), pj.nD);
     const YYBn = pi.aB - Math.abs(powint(pi.bB * (qi - pi.Qo), 10));
     const YYBj = pj.aB - Math.abs(powint(pj.bB * (qj - pj.Qo), 10));
     if (YYBn * YYBj > 0.0) {
-      const AlfDiAlfDj = Math.exp(0.5 * (pi.alfi * Di + pj.alfi * Dj));
+      const AlfDiAlfDj = libmExp(0.5 * (pi.alfi * Di + pj.alfi * Dj));
       const sq = Math.sqrt(YYBn * YYBj);
-      const Bsi = (pbij1 * Math.exp(-alfij1 * r) + pbij2 * Math.exp(-alfij2 * r) + pbij3 * Math.exp(-alfij3 * r)) * sq * AlfDiAlfDj;
+      const Bsi = (pbij1 * libmExp(-alfij1 * r) + pbij2 * libmExp(-alfij2 * r) + pbij3 * libmExp(-alfij3 * r)) * sq * AlfDiAlfDj;
       out.eng = -Bsi * this.fc(r, pi);
       out.force = -(Bsi * this.fcD(r, pi) - this.fc(r, pi) * sq * AlfDiAlfDj *
-        (alfij1 * pbij1 * Math.exp(-alfij1 * r) + alfij2 * pbij2 * Math.exp(-alfij2 * r) + alfij3 * pbij3 * Math.exp(-alfij3 * r)));
+        (alfij1 * pbij1 * libmExp(-alfij1 * r) + alfij2 * pbij2 * libmExp(-alfij2 * r) + alfij3 * pbij3 * libmExp(-alfij3 * r)));
     } else {
       out.eng = 0.0;
       out.force = 0.0;
@@ -190,18 +193,18 @@ export class Comb3Kernel {
     const [pcorn, dpcorn, dxccij, dxchij, dxcoij] = this.cd;
     const zetang = zet;
     const powN = p.powern;
-    let zeta = Math.pow(zetang, powN) + pcorn;
-    const tmpTbij = powN * Math.pow(zetang, powN - 1.0);
+    let zeta = libmPow(zetang, powN) + pcorn;
+    const tmpTbij = powN * libmPow(zetang, powN - 1.0);
     let tbij: number, tbij1: number;
     if ((1.0 + zeta) < 0.1) {
       zeta = 0.1 - 1.0;
-      tbij = Math.pow(1.0 + zeta, -0.5 / powN);
+      tbij = libmPow(1.0 + zeta, -0.5 / powN);
       tbij1 = 0.0;
     } else if (zeta > p.c1) {
-      tbij = Math.pow(zeta, -0.5 / powN);
-      tbij1 = -0.5 / powN * Math.pow(zeta, (-0.5 / powN - 1.0));
+      tbij = libmPow(zeta, -0.5 / powN);
+      tbij1 = -0.5 / powN * libmPow(zeta, -0.5 / powN - 1.0);
     } else if (zeta > p.c2) {
-      tbij = Math.pow(zeta, -0.5 / powN) - 0.5 / powN * Math.pow(zeta, (-0.5 / powN - 1.0));
+      tbij = libmPow(zeta, -0.5 / powN) - 0.5 / powN * libmPow(zeta, -0.5 / powN - 1.0);
       tbij1 = -0.5 / powN / zeta;
     } else if (Math.abs(zeta) < p.c4) {
       tbij = 1.0;
@@ -210,8 +213,8 @@ export class Comb3Kernel {
       tbij = 1.0 - zeta / (2.0 * powN);
       tbij1 = -1 / (2.0 * powN);
     } else {
-      tbij = Math.pow(1.0 + zeta, -0.5 / powN);
-      tbij1 = -0.5 / powN * Math.pow(1.0 + zeta, (-1.0 - 0.5 / powN));
+      tbij = libmPow(1.0 + zeta, -0.5 / powN);
+      tbij1 = -0.5 / powN * libmPow(1.0 + zeta, -1.0 - 0.5 / powN);
     }
     o[0] = tbij;
     o[2] = tbij1 * dpcorn;
@@ -266,8 +269,8 @@ export class Comb3Kernel {
         }
       }
     } else {
-      cd[0] = pan * xcntot + pbn * Math.exp(pcn * xcntot) + pdn;
-      cd[1] = pan + pbn * pcn * Math.exp(pcn * xcntot);
+      cd[0] = pan * xcntot + pbn * libmExp(pcn * xcntot) + pdn;
+      cd[1] = pan + pbn * pcn * libmExp(pcn * xcntot);
     }
   }
 
@@ -283,7 +286,7 @@ export class Comb3Kernel {
     const base = ((((triFlag - 1) * 4 + ixmin) * 4 + iymin) * 4 + izmin) * 64;
     for (let j = 0; j < 64; j++) {
       const e0 = Math.trunc(j / 16), e1 = Math.trunc(j / 4) % 4, e2 = j % 4;
-      const x = lib.pcnCubs[base + j] * Math.pow(xval, e0) * Math.pow(yval, e1) * Math.pow(zval, e2);
+      const x = lib.pcnCubs[base + j] * libmPow(xval, e0) * libmPow(yval, e1) * libmPow(zval, e2);
       cd[0] += x;
       if (xval > 1.0e-8) cd[2] += x * e0 / xval;
       if (yval > 1.0e-8) cd[3] += x * e1 / yval;
@@ -302,7 +305,7 @@ export class Comb3Kernel {
     let exDelr: number;
     if (arg > 69.0776) exDelr = 1.e30;
     else if (arg < -69.0776) exDelr = 0.0;
-    else exDelr = Math.exp(arg);
+    else exDelr = libmExp(arg);
     return this.fc(rik, pik) * this.gijk(costheta, pij, xcn) * exDelr;
   }
 
@@ -315,12 +318,12 @@ export class Comb3Kernel {
     if (r > rrcs) return;
     const tmpFc = this.fc(r, pi);
     const tmpFcD = this.fcD(r, pi);
-    const Di = pi.DU + Math.pow(Math.abs(pi.bD * (pi.QU - iq)), pi.nD);
-    const Dj = pj.DU + Math.pow(Math.abs(pj.bD * (pj.QU - jq)), pj.nD);
+    const Di = pi.DU + libmPow(Math.abs(pi.bD * (pi.QU - iq)), pi.nD);
+    const Dj = pj.DU + libmPow(Math.abs(pj.bD * (pj.QU - jq)), pj.nD);
     const bigA = pi.bigA;
     const rlm1 = pi.lambda;
     const fcdA = tmpFcD - tmpFc * rlm1;
-    const LamDiLamDj = Math.exp(0.5 * (pi.lami * Di + pj.lami * Dj) - rlm1 * r);
+    const LamDiLamDj = libmExp(0.5 * (pi.lami * Di + pj.lami * Dj) - rlm1 * r);
     const caj = bigA * LamDiLamDj;
     let fforce = -caj * fcdA;
     let vrcs = 1.0, fvrcs = 0.0;
@@ -416,7 +419,7 @@ export class Comb3Kernel {
     let exDelr: number;
     if (tmp > 69.0776) exDelr = 1.e30;
     else if (tmp < -69.0776) exDelr = 0.0;
-    else exDelr = Math.exp(tmp);
+    else exDelr = libmExp(tmp);
     exDelr *= pcrossi;
     const cosTheta = dot3(rijHat, rikHat);
     const gijk = this.gijk(cosTheta, pi, xcn);

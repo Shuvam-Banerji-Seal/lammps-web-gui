@@ -5,6 +5,7 @@ import { globalScalar, parseRef, type Ref } from '../refs';
 import { BlockRegion, ConeRegion, SphereRegion, type Region, type SurfaceContact } from '../region';
 import { massOf, nativeOrder } from '../atoms';
 import { RanMars } from '../rng';
+import { libm } from '../libm';
 
 /*
  * Fixes of the misc3 wave: fix vector, fix wall/region, fix wall/reflect/stochastic.
@@ -308,7 +309,7 @@ export class FixWallRegion extends Fix {
       }
       case 'harmonic': return a * (d - this.rc) ** 2;
       default: { // morse: D_0 = a, alpha = b, r_0 = c
-        const e = Math.exp(-b * (d - c));
+        const e = libm.exp(-b * (d - c));
         return a * (e * e - 2 * e);
       }
     }
@@ -327,7 +328,7 @@ export class FixWallRegion extends Fix {
       }
       case 'harmonic': return 2 * a * (this.rc - d);
       default: {
-        const e = Math.exp(-b * (d - c));
+        const e = libm.exp(-b * (d - c));
         return 2 * b * a * (e * e - e);
       }
     }
@@ -666,7 +667,7 @@ export class FixWallReflectStochastic extends Fix {
     v[o + t1] = f.wv[t1] + sigma * g1;
     v[o + t2] = f.wv[t2] + sigma * g2;
     const u = this.rng.uniform();
-    v[o + d] = sgn * sigma * Math.sqrt(-2 * Math.log(u));
+    v[o + d] = sgn * sigma * Math.sqrt(-2 * libm.log(u));
   }
 }
 

@@ -21,6 +21,7 @@ import { Fix } from '../../engine/fix/fix';
 import { rampFraction } from '../../engine/fix/util';
 import { massOf, nativeOrder } from '../../engine/atoms';
 import { RanMars } from '../random_mars';
+import { pow as libmPow } from '../libm/pow';
 
 /** Row-major n x n index, as the source's midx(n,i,j). */
 const midx = (n: number, i: number, j: number) => i * n + j;
@@ -72,7 +73,7 @@ export const matrixExp = (n: number, M: Float64Array, EM: Float64Array, j = 8, k
   const tc = new Float64Array(j + 1);
   const SM = new Float64Array(n * n);
   const TMP = new Float64Array(n * n);
-  const onetotwok = Math.pow(0.5, 1.0 * k);
+  const onetotwok = libmPow(0.5, 1.0 * k);
   tc[0] = 1;
   for (let i = 0; i < j; i++) tc[i + 1] = tc[i] / (i + 1.0);
   for (let i = 0; i < n * n; i++) { SM[i] = M[i] * onetotwok; EM[i] = 0.0; TMP[i] = 0.0; }

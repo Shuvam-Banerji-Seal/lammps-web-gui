@@ -14,6 +14,7 @@ import { StyleError } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
 import { nativeOrder } from '../../engine/atoms';
 import { RanMars } from '../random_mars';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 const TWO_PI = 2 * Math.PI;
 
@@ -132,14 +133,14 @@ export class FixWallPiston extends Fix {
     } else if (this.ramp === 'NL1') {
       this.paccelz = maxvz / tott;
       const angfreq = TWO_PI / (0.5 * tott);
-      zlo = this.z0 + this.paccelz * (0.5 * tt + 1 / (angfreq * angfreq) - (1 / (angfreq * angfreq)) * Math.cos(angfreq * t));
-      this.vz = this.paccelz * (t + (1 / angfreq) * Math.sin(angfreq * t));
+      zlo = this.z0 + this.paccelz * (0.5 * tt + 1 / (angfreq * angfreq) - (1 / (angfreq * angfreq)) * libmCos(angfreq * t));
+      this.vz = this.paccelz * (t + (1 / angfreq) * libmSin(angfreq * t));
     } else if (this.ramp === 'NL2') {
       this.paccelz = maxvz / tott;
       const angfreq = (3 * TWO_PI) / tott;
-      zlo = this.z0 + this.paccelz * (0.5 * tt + (4 / (3 * angfreq * angfreq)) * (1 - Math.cos(angfreq * t)) +
-        (1 / (6 * angfreq * angfreq)) * (1 - Math.cos(2 * angfreq * t)));
-      this.vz = this.paccelz * (t + (4 / (3 * angfreq)) * Math.sin(angfreq * t) + (1 / (3 * angfreq)) * Math.sin(2 * angfreq * t));
+      zlo = this.z0 + this.paccelz * (0.5 * tt + (4 / (3 * angfreq * angfreq)) * (1 - libmCos(angfreq * t)) +
+        (1 / (6 * angfreq * angfreq)) * (1 - libmCos(2 * angfreq * t)));
+      this.vz = this.paccelz * (t + (4 / (3 * angfreq)) * libmSin(angfreq * t) + (1 / (3 * angfreq)) * libmSin(2 * angfreq * t));
     } else if (this.ramp === 'NL3') {
       this.paccelz = maxvz / tott;
       zlo = this.z0 + ((this.paccelz * tott * tott) / 2.5) * t2p5;

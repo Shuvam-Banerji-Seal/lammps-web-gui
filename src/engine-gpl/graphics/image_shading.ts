@@ -19,6 +19,8 @@ import { drawArrowObj, drawAxes } from './axes';
 import { drawAutoBonds } from './autobond';
 import { color2rgb, defaultTypeColor, element2color, element2diam } from './colors';
 import type { ImageSpecular } from '../../engine/output/image_objects';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { pow as libmPow } from '../libm/pow';
 
 type V = [number, number, number];
 
@@ -31,7 +33,7 @@ const norm = (a: V): V => {
 
 const DEG = Math.PI / 180;
 /** Image constructor light defaults (setup_lights, camera space, z towards the viewer): theta, phi in degrees. */
-const dirOf = (theta: number, phi: number): V => [Math.cos(theta) * Math.sin(phi), Math.sin(theta), Math.cos(theta) * Math.cos(phi)];
+const dirOf = (theta: number, phi: number): V => [libmCos(theta) * libmSin(phi), libmSin(theta), libmCos(theta) * libmCos(phi)];
 const KEY_DIR = dirOf(30 * DEG, -45 * DEG);
 const KEY_COLOR = 0.9;
 const FILL_DIR = dirOf(0, 30 * DEG);
@@ -63,8 +65,8 @@ export function shadeSurface(surface: V, col: V, shiny: number, ambient: number,
   // the highlight: pow(saturate(n . half), specularHardness) * specularIntensity (image.cpp draw_pixel). Without a
   // dump_modify specular the hardness is 16 * shiny and the intensity is shiny; "specular none" is an intensity of 0.
   const specOn = spec ? spec.intensity > 0 : shiny > 0;
-  const specularKey = !specOn ? 0 : spec ? Math.pow(sat(dot(surface, KEY_HALF)), spec.hardness) * spec.intensity
-    : Math.pow(sat(dot(surface, KEY_HALF)), 16 * shiny) * shiny;
+  const specularKey = !specOn ? 0 : spec ? libmPow(sat(dot(surface, KEY_HALF)), spec.hardness) * spec.intensity
+    : libmPow(sat(dot(surface, KEY_HALF)), 16 * shiny) * shiny;
   const out: V = [0, 0, 0];
   for (let k = 0; k < 3; k++) {
     let c = col[k] * ambient;
@@ -114,8 +116,8 @@ export function applySsao(f: RasterFrame, radius: number, samples: number, seed:
   // horizon directions, evenly spaced; each pixel rotates the table by its jitter angle
   const dirX = new Float64Array(samples), dirY = new Float64Array(samples);
   for (let s = 0; s < samples; s++) {
-    dirX[s] = Math.cos(s * delTheta);
-    dirY[s] = Math.sin(s * delTheta);
+    dirX[s] = libmCos(s * delTheta);
+    dirY[s] = libmSin(s * delTheta);
   }
 
   for (let index = 0; index < n; index++) {
@@ -130,7 +132,7 @@ export function applySsao(f: RasterFrame, radius: number, samples: number, seed:
     // interleaved gradient noise: a deterministic jitter per pixel
     const ign = (0.06711056 * x + 0.00583715 * y + seedshift) % 1;
     const mytheta = ((52.9829189 * ign) % 1) * SSAO_JITTER;
-    const cosj = Math.cos(mytheta), sinj = Math.sin(mytheta);
+    const cosj = libmCos(mytheta), sinj = libmSin(mytheta);
     let ao = 0;
 
     for (let s = 0; s < samples; s++) {
@@ -189,7 +191,7 @@ export function applySsao(f: RasterFrame, radius: number, samples: number, seed:
 
       if (peakLen > 0) {
         const hh = Math.atan((cdepth - minPeak) / peakLen);
-        ao += sat(Math.sin(hh) - scaledSinT);
+        ao += sat(libmSin(hh) - scaledSinT);
       } else {
         ao += sat(-scaledSinT);
       }

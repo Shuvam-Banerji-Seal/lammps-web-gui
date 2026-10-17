@@ -13,6 +13,8 @@ import { StyleError, typeBounds, type StyleContext } from '../../engine/force/ty
 import { parseNum } from '../../engine/force/util';
 import { PairOxdnaStk, stackingDerived, stackingStrength } from './pair_stk';
 import { type StackRule, stackingSiteOxdna3, tetIndex, tetramerTable, potentialLines } from './common';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /**
  * eta_st[r][c] of pair_oxdna3_stk.cpp (the constructor): "sequence-specific stacking strength, A:0 C:1 G:2 T:3,
@@ -44,7 +46,7 @@ export class PairOxdna3Stk extends PairOxdnaStk {
     if (ihi > 4) throw new StyleError('pair oxdna3/stk does not support more than 4 atom types for A, C, G and T');
     const T = parseNum(args[2], 'T');
     const n = ihi;
-    const m4 = n ** 4;
+    const m4 = libmPow(n, 4);
     const text = ctx?.readFile(args[3]) ?? '';
     let found: number[] | null = null;
     for (const w of potentialLines(text, [args[0], args[1]], 'stk')) {
@@ -104,9 +106,9 @@ export class PairOxdna3Stk extends PairOxdnaStk {
             this.c0[q] = c0;
             this.clo[q] = clo;
             this.chi[q] = chi;
-            this.clc[q] = clo - a * Math.exp(-a * ulo) * (1 - Math.exp(-a * ulo)) / bLoOne;
-            this.chc[q] = chi - a * Math.exp(-a * uhi) * (1 - Math.exp(-a * uhi)) / bHiOne;
-            const tmp = 1 - Math.exp(-(cc - c0) * a);
+            this.clc[q] = clo - a * libmExp(-a * ulo) * (1 - libmExp(-a * ulo)) / bLoOne;
+            this.chc[q] = chi - a * libmExp(-a * uhi) * (1 - libmExp(-a * uhi)) / bHiOne;
+            const tmp = 1 - libmExp(-(cc - c0) * a);
             this.shiftSt[q] = epsOne * this.etaSt[mod4(j) - 1][mod4(k) - 1] * tmp * tmp;
             const a4 = a4T[idx], dth4 = dth4T[idx];
             this.a4[q] = a4;

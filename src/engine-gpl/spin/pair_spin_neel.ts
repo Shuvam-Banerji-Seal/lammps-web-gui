@@ -21,6 +21,7 @@ import { NEIGHMASK, type Neighbor } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { spinContribute, type SpinPairStyle } from '../../engine/force/spin_book';
 import { HBAR } from './pair_spin_dipole_cut';
+import { exp as libmExp } from '../libm/exp';
 
 type Vec = [number, number, number];
 
@@ -32,11 +33,11 @@ const neelPrecession = (c: NeelCoef, rsq: number, e: Vec, fmi: Vec, si: Float64A
   let ra = rsq / c.g3 / c.g3;
   let gr = 4.0 * c.g1 * ra;
   gr *= (1.0 - c.g2 * ra);
-  gr *= Math.exp(-ra);
+  gr *= libmExp(-ra);
   ra = rsq / c.q3 / c.q3;
   let qr = 4.0 * c.q1 * ra;
   qr *= (1.0 - c.q2 * ra);
-  qr *= Math.exp(-ra);
+  qr *= libmExp(-ra);
   const g1r = gr + 12.0 * qr / 35.0;
   const q1r = 9.0 * qr / 5.0;
   const q2r = -2.0 * qr / 5.0;
@@ -71,9 +72,9 @@ const neelForce = (c: NeelCoef, rsq: number, e: Vec, fi: Vec, si: Float64Array, 
   let rr = drij * ig3;
   let gij = 4.0 * c.g1m * ra;
   gij *= (1.0 - c.g2 * ra);
-  gij *= Math.exp(-ra);
+  gij *= libmExp(-ra);
   let dgij = 1.0 - ra - c.g2 * ra * (2.0 - ra);
-  dgij *= 8.0 * c.g1m * rr * Math.exp(-ra);
+  dgij *= 8.0 * c.g1m * rr * libmExp(-ra);
   const pdt1 = (dgij - 2.0 * gij / drij) * eiSi * eiSj - sisj * dgij / 3.0;
   const pdt2 = eiSj * gij / drij;
   const pdt3 = eiSi * gij / drij;
@@ -83,10 +84,10 @@ const neelForce = (c: NeelCoef, rsq: number, e: Vec, fi: Vec, si: Float64Array, 
   const iq3 = 1.0 / (c.q3 * c.q3);
   ra = rsq * iq3;
   rr = drij * iq3;
-  const q1ij = 4.0 * c.q1m * ra * (1.0 - c.q2 * ra) * Math.exp(-ra);
+  const q1ij = 4.0 * c.q1m * ra * (1.0 - c.q2 * ra) * libmExp(-ra);
   const q2ij = -2.0 * q1ij / 9.0;
   let dq1ij = 1.0 - ra - c.q2 * ra * (2.0 - ra);
-  dq1ij *= 8.0 * c.q1m * rr * Math.exp(-ra);
+  dq1ij *= 8.0 * c.q1m * rr * libmExp(-ra);
   const dq2ij = -2.0 * dq1ij / 9.0;
   const eiSi2 = eiSi * eiSi, eiSj2 = eiSj * eiSj;
   const pqt1 = eiSi2 - sisj / 3.0;
@@ -121,11 +122,11 @@ const neelEnergy = (c: NeelCoef, rsq: number, e: Vec, si: Float64Array, i: numbe
   let ra = rsq / c.g3 / c.g3;
   let gr = 4.0 * c.g1m * ra;
   gr *= (1.0 - c.g2 * ra);
-  gr *= Math.exp(-ra);
+  gr *= libmExp(-ra);
   ra = rsq / c.q3 / c.q3;
   let qr = 4.0 * c.q1m * ra;
   qr *= (1.0 - c.q2 * ra);
-  qr *= Math.exp(-ra);
+  qr *= libmExp(-ra);
   const g1r = gr + 12.0 * qr / 35.0;
   const q1r = 9.0 * qr / 5.0;
   const q2r = -2.0 * qr / 5.0;

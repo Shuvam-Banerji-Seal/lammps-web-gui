@@ -2,6 +2,7 @@ import { SimpleBonded, atomIndex, termDelta } from '../bonded_util';
 import { angleTerm } from './harmonic';
 import { fmtCoeff, parseInt_, parseNum } from '../util';
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
+import { libm } from '../../libm';
 
 /*
  * Angle styles added by wave 1. Each class cites its docs.lammps.org page and
@@ -84,7 +85,7 @@ export class AngleCosineSquared extends SimpleBonded {
       const k = atomIndex(bc, A.atoms[3 * a + 2], 'angle');
       const t = A.type[a];
       angleTerm(bc, i, j, k, d1, d2, (theta, c) => {
-        const dc = c - Math.cos(th0[t]);
+        const dc = c - libm.cos(th0[t]);
         const ea = K[t] * dc * dc;
         e += ea;
         return { e: ea, dEdc: 2 * K[t] * dc };
@@ -131,7 +132,7 @@ export class AngleCosinePeriodic extends SimpleBonded {
       const t = A.type[a];
       const nt = n[t], sign = nt % 2 === 0 ? 1 : -1;
       angleTerm(bc, i, j, k, d1, d2, (theta, c) => {
-        const ea = ((2 / (nt * nt)) * C[t]) * (1 - B[t] * sign * Math.cos(nt * theta));
+        const ea = ((2 / (nt * nt)) * C[t]) * (1 - B[t] * sign * libm.cos(nt * theta));
         e += ea;
         // dE/dc = -(2C/n) B (-1)^n U_{n-1}(c), with U_{n-1}(c) = sin(n theta)/sin(theta) (a polynomial, no 1/sin)
         return { e: ea, dEdc: -((2 * C[t]) / nt) * B[t] * sign * chebyshevU(nt - 1, c) };
@@ -185,9 +186,9 @@ export class AngleCosineShift extends SimpleBonded {
       const t = A.type[a];
       angleTerm(bc, i, j, k, d1, d2, (_theta, c) => {
         const s = Math.max(Math.sqrt(1 - c * c), 0.001);
-        const ea = -0.5 * U[t] * (1 + c * Math.cos(th0[t]) + s * Math.sin(th0[t]));
+        const ea = -0.5 * U[t] * (1 + c * libm.cos(th0[t]) + s * libm.sin(th0[t]));
         e += ea;
-        return { e: ea, dEdc: -0.5 * U[t] * (Math.cos(th0[t]) - (c / s) * Math.sin(th0[t])) };
+        return { e: ea, dEdc: -0.5 * U[t] * (libm.cos(th0[t]) - (c / s) * libm.sin(th0[t])) };
       });
     }
     bc.acc.eangle += e;
@@ -228,10 +229,10 @@ export class AngleCosineDelta extends SimpleBonded {
       const k = atomIndex(bc, A.atoms[3 * a + 2], 'angle');
       const t = A.type[a];
       angleTerm(bc, i, j, k, d1, d2, (theta, c) => {
-        const ea = K[t] * (1 - Math.cos(theta - th0[t]));
+        const ea = K[t] * (1 - libm.cos(theta - th0[t]));
         e += ea;
         const s = Math.max(Math.sqrt(1 - c * c), 0.001);
-        return { e: ea, dEdc: K[t] * (-Math.cos(th0[t]) + (c / s) * Math.sin(th0[t])) };
+        return { e: ea, dEdc: K[t] * (-libm.cos(th0[t]) + (c / s) * libm.sin(th0[t])) };
       });
     }
     bc.acc.eangle += e;
@@ -373,7 +374,7 @@ export class AngleFourier extends SimpleBonded {
       const k = atomIndex(bc, A.atoms[3 * a + 2], 'angle');
       const t = A.type[a];
       angleTerm(bc, i, j, k, d1, d2, (theta, c) => {
-        const ea = K[t] * (C0[t] + C1[t] * c + C2[t] * Math.cos(2 * theta));
+        const ea = K[t] * (C0[t] + C1[t] * c + C2[t] * libm.cos(2 * theta));
         e += ea;
         // cos(2 theta) = 2c^2 - 1 is a polynomial in c, so dE/dc is exact
         return { e: ea, dEdc: K[t] * (C1[t] + 4 * C2[t] * c) };
@@ -411,9 +412,9 @@ export class AngleFourierSimple extends SimpleBonded {
       const t = A.type[a];
       angleTerm(bc, i, j, k, d1, d2, (theta) => {
         const nt = n[t];
-        const ea = K[t] * (1 + c[t] * Math.cos(nt * theta));
+        const ea = K[t] * (1 + c[t] * libm.cos(nt * theta));
         e += ea;
-        return { e: ea, dEdtheta: -K[t] * c[t] * nt * Math.sin(nt * theta) };
+        return { e: ea, dEdtheta: -K[t] * c[t] * nt * libm.sin(nt * theta) };
       });
     }
     bc.acc.eangle += e;

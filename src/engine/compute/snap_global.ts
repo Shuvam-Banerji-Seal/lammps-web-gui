@@ -4,6 +4,7 @@ import type { System } from '../system';
 import { parseNum, parseInt_ } from '../force/util';
 import { buildTriples, rawBispectrum, adjointBispectrum, WignerTables, snaBinCut, type Triple, type Cmat, type Grad } from './sna';
 import { CellList } from '../cellList';
+import { libm } from '../libm';
 
 /*
  * compute ID group-ID snap rcutfac rfac0 twojmax R_1 ... R_N w_1 ... w_N keyword values ...
@@ -180,7 +181,7 @@ export const cutoffFactor = (p: SnaParams, r: number, Rii: number): [number, num
   const span = Rii - p.rmin0;
   const inside = p.switchflag && r >= p.rmin0;
   if (!inside) return [1, 0];
-  return [0.5 * (Math.cos((Math.PI * (r - p.rmin0)) / span) + 1), -0.5 * Math.sin((Math.PI * (r - p.rmin0)) / span) * (Math.PI / span)];
+  return [0.5 * (libm.cos((Math.PI * (r - p.rmin0)) / span) + 1), -0.5 * libm.sin((Math.PI * (r - p.rmin0)) / span) * (Math.PI / span)];
 };
 
 /**
@@ -192,13 +193,13 @@ export const innerSwitch = (r: number, S: number, D: number): [number, number] =
   if (r <= S - D) return [0, 0];
   if (r > S + D) return [1, 0];
   const th = (Math.PI / 2) * (1 + (r - S) / D);
-  return [0.5 * (1 - Math.cos(th)), 0.5 * Math.sin(th) * (Math.PI / (2 * D))];
+  return [0.5 * (1 - libm.cos(th)), 0.5 * libm.sin(th) * (Math.PI / (2 * D))];
 };
 
 /** Cayley-Klein parameters (ar, ai, br, bi) and the scaled sine/cosine used by the derivative tables. */
 export const cayleyKlein = (p: SnaParams, r: number, Rii: number, dx: number, dy: number, dz: number): { ar: number; ai: number; br: number; bi: number; th: number; sg: number } => {
   const th = (p.rfac0 * Math.PI * (r - p.rmin0)) / (Rii - p.rmin0);
-  const sn = Math.sin(th), cs = Math.cos(th);
+  const sn = libm.sin(th), cs = libm.cos(th);
   const sg = sn < 0 ? -1 : 1;
   const Sx = sg * sn;
   const Cx = sg * cs;
@@ -338,7 +339,7 @@ export class ComputeSnap extends Compute {
       }
       for (let a = 0; a < m; a++) {
         const r = nR[a];
-        const sn = Math.sin(nTh[a]), cs = Math.cos(nTh[a]);
+        const sn = libm.sin(nTh[a]), cs = libm.cos(nTh[a]);
         const sg = sn < 0 ? -1 : 1;
         const Sx = sg * sn, Cx = sg * cs;
         const g = Sx / r;

@@ -13,6 +13,7 @@
  * depth is the offset itself (-Infinity when empty), so the pass converts it.
  */
 import type { PostProcessOptions, RasterFrame, Rgb255 } from '../../engine/output/image_objects';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** EPSILON of image.cpp (depth ranges closer than this have no depth variation). */
 const EPSILON = 1.0e-6;
@@ -247,8 +248,8 @@ function computeDefocus(n: NativeBuffers, f: RasterFrame, o: PostProcessOptions,
   for (let s = 0; s < nsamples; s++) {
     const r = Math.sqrt((s + 0.5) / nsamples);
     const angle = s * GOLDEN_ANGLE;
-    sample[3 * s] = r * Math.cos(angle);
-    sample[3 * s + 1] = r * Math.sin(angle);
+    sample[3 * s] = r * libmCos(angle);
+    sample[3 * s + 1] = r * libmSin(angle);
     sample[3 * s + 2] = r;
   }
 
@@ -261,7 +262,7 @@ function computeDefocus(n: NativeBuffers, f: RasterFrame, o: PostProcessOptions,
 
       const noise = (0.06711056 * ix + 0.00583715 * iy) % 1.0;
       const angle = ((52.9829189 * noise) % 1.0) * TWO_PI;
-      const cosa = Math.cos(angle), sina = Math.sin(angle);
+      const cosa = libmCos(angle), sina = libmSin(angle);
 
       const c = [source[3 * i], source[3 * i + 1], source[3 * i + 2]];
       let wsum = 1.0;

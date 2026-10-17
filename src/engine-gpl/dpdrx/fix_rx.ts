@@ -27,6 +27,8 @@ import { DPD_THETA } from '../../engine/atoms';
 import { TextLines, Tokens } from './rx_table_reader';
 import { pairMatch } from './pair_match';
 import { unorderedSetOrder } from './unordered_order';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** fix_rx.cpp: "static constexpr double MY_EPSILON = 10.0*DBL_EPSILON;". */
 export const MY_EPSILON = 10.0 * 2.220446049250313e-16;
@@ -318,7 +320,7 @@ export class FixRX extends Fix {
       const th = theta[i];
       // fix_rx.cpp pre_force: kFor = Arr T^nArr exp(-Ea/(kB T))
       for (let r = 0; r < this.nreactions; r++) {
-        this.kFor[r] = this.arr[r] * Math.pow(th, this.nArr[r]) * Math.exp(-this.ea[r] / this.boltz / th);
+        this.kFor[r] = this.arr[r] * libmPow(th, this.nArr[r]) * libmExp(-this.ea[r] / this.boltz / th);
       }
       this.solve(i);
     }
@@ -505,7 +507,7 @@ export class FixRX extends Fix {
       let rate = this.kFor[r];
       for (let k = 0; k < ns; k++) {
         const conc = y[k] / vdpd;
-        rate *= Math.pow(conc, this.stoichR[r * ns + k]);
+        rate *= libmPow(conc, this.stoichR[r * ns + k]);
       }
       this.rateLaw[r] = rate;
     }
@@ -531,11 +533,11 @@ export class FixRX extends Fix {
           rate *= powint(conc[k], inu[base + kk]);
         }
       } else {
-        rate = this.kFor[i] * Math.pow(conc[nuk[base]], nu[base]);
+        rate = this.kFor[i] * libmPow(conc[nuk[base]], nu[base]);
         for (let kk = 1; kk < maxReactants; kk++) {
           const k = nuk[base + kk];
           if (k === INVALID) break;
-          rate *= Math.pow(conc[k], nu[base + kk]);
+          rate *= libmPow(conc[k], nu[base + kk]);
         }
       }
       this.rateLaw[i] = rate;

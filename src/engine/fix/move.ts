@@ -2,6 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { massOf, isEllipsoid, isLineAtom, isTriAtom, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { libm } from '../libm';
 
 /*
  * fix ID group-ID move style args keyword values ... —
@@ -270,8 +271,8 @@ export class FixMove extends Fix {
           moved = true;
           const sc = this.scale(d);
           const ang = this.omega * delta;
-          x[3 * i + d] = this.xorig[3 * i + d] + sc * val * Math.sin(ang);
-          v[3 * i + d] = sc * val * this.omega * Math.cos(ang);
+          x[3 * i + d] = this.xorig[3 * i + d] + sc * val * libm.sin(ang);
+          v[3 * i + d] = sc * val * this.omega * libm.cos(ang);
         }
       }
       if (moved) {
@@ -290,7 +291,7 @@ export class FixMove extends Fix {
     const bit = this.groupBit;
     const delta = (s.step - this.initial) * this.dtv;
     const th = this.omega * delta;
-    const c = Math.cos(th), sn = Math.sin(th);
+    const c = libm.cos(th), sn = libm.sin(th);
     const R = this.axis, P = this.point, w = this.omega;
     const vt = this.moveStyle === 'transrot' ? [0, 1, 2].map((d) => this.scale(d) * this.comp[d]!) : [0, 0, 0];
     const rot = (u: number[], out: number[]): void => {
@@ -298,8 +299,8 @@ export class FixMove extends Fix {
       const cr = [R[1] * u[2] - R[2] * u[1], R[2] * u[0] - R[0] * u[2], R[0] * u[1] - R[1] * u[0]];
       for (let d = 0; d < 3; d++) out[d] = u[d] * c + cr[d] * sn + R[d] * dot * (1 - c);
     };
-    const hr = Math.sin(th / 2);
-    const r = [Math.cos(th / 2), R[0] * hr, R[1] * hr, R[2] * hr];
+    const hr = libm.sin(th / 2);
+    const r = [libm.cos(th / 2), R[0] * hr, R[1] * hr, R[2] * hr];
     const u = [0, 0, 0], xr = [0, 0, 0], A = new Array<number>(9).fill(0);
     for (let i = 0; i < s.n; i++) {
       if (!this.captured[i] || !(mask[i] & bit)) continue;

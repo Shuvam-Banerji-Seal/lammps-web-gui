@@ -16,6 +16,7 @@ import type { System } from '../../engine/system';
 import type { Compute } from '../../engine/compute/compute';
 import { massOf } from '../../engine/atoms';
 import { ramp, temperatureOf } from '../../engine/fix/util';
+import { exp as libmExp } from '../libm/exp';
 
 /** fix_nh.cpp constructor: mtchain = mpchain = 3 by default, nc_tchain = nc_pchain = 1 (tloop, ploop). */
 const DEFAULT_CHAIN = 3;
@@ -283,19 +284,19 @@ export class FixNHBase extends Fix {
     const ncfac = 1.0 / this.ncTchain;
     for (let iloop = 0; iloop < this.ncTchain; iloop++) {
       for (let ich = this.mtchain - 1; ich > 0; ich--) {
-        let expfac = Math.exp(-ncfac * dt8 * etaDot[ich + 1]);
+        let expfac = libmExp(-ncfac * dt8 * etaDot[ich + 1]);
         etaDot[ich] *= expfac;
         etaDot[ich] += etaDotdot[ich] * ncfac * dt4;
         etaDot[ich] *= this.tdragFactor;
         etaDot[ich] *= expfac;
       }
-      let expfac = Math.exp(-ncfac * dt8 * etaDot[1]);
+      let expfac = libmExp(-ncfac * dt8 * etaDot[1]);
       etaDot[0] *= expfac;
       etaDot[0] += etaDotdot[0] * ncfac * dt4;
       etaDot[0] *= this.tdragFactor;
       etaDot[0] *= expfac;
 
-      this.factorEta = Math.exp(-ncfac * dthalf * etaDot[0]);
+      this.factorEta = libmExp(-ncfac * dthalf * etaDot[0]);
       this.nhVTemp();
       this.tCurrent *= this.factorEta * this.factorEta;
       kecurrent = this.tdof * boltz * this.tCurrent;
@@ -306,7 +307,7 @@ export class FixNHBase extends Fix {
       etaDot[0] += etaDotdot[0] * ncfac * dt4;
       etaDot[0] *= expfac;
       for (let ich = 1; ich < this.mtchain; ich++) {
-        expfac = Math.exp(-ncfac * dt8 * etaDot[ich + 1]);
+        expfac = libmExp(-ncfac * dt8 * etaDot[ich + 1]);
         etaDot[ich] *= expfac;
         etaDotdot[ich] = (etaMass[ich - 1] * etaDot[ich - 1] * etaDot[ich - 1] - boltz * this.tTarget) / etaMass[ich];
         etaDot[ich] += etaDotdot[ich] * ncfac * dt4;
@@ -328,19 +329,19 @@ export class FixNHBase extends Fix {
     const ncfac = 1.0 / this.ncPchain;
     for (let iloop = 0; iloop < this.ncPchain; iloop++) {
       for (let ich = this.mpchain - 1; ich > 0; ich--) {
-        let expfac = Math.exp(-ncfac * dt8 * etapDot[ich + 1]);
+        let expfac = libmExp(-ncfac * dt8 * etapDot[ich + 1]);
         etapDot[ich] *= expfac;
         etapDot[ich] += etapDotdot[ich] * ncfac * dt4;
         etapDot[ich] *= this.pdragFactor;
         etapDot[ich] *= expfac;
       }
-      let expfac = Math.exp(-ncfac * dt8 * etapDot[1]);
+      let expfac = libmExp(-ncfac * dt8 * etapDot[1]);
       etapDot[0] *= expfac;
       etapDot[0] += etapDotdot[0] * ncfac * dt4;
       etapDot[0] *= this.pdragFactor;
       etapDot[0] *= expfac;
       for (let ich = 0; ich < this.mpchain; ich++) etap[ich] += ncfac * dthalf * etapDot[ich];
-      const factorEtap = Math.exp(-ncfac * dthalf * etapDot[0]);
+      const factorEtap = libmExp(-ncfac * dthalf * etapDot[0]);
       this.omegaDot *= factorEtap;
       kecurrent = 0.0;
       for (let d = 0; d < this.pdim; d++) kecurrent += this.omegaMass * this.omegaDot * this.omegaDot;
@@ -349,7 +350,7 @@ export class FixNHBase extends Fix {
       etapDot[0] += etapDotdot[0] * ncfac * dt4;
       etapDot[0] *= expfac;
       for (let ich = 1; ich < this.mpchain; ich++) {
-        expfac = Math.exp(-ncfac * dt8 * etapDot[ich + 1]);
+        expfac = libmExp(-ncfac * dt8 * etapDot[ich + 1]);
         etapDot[ich] *= expfac;
         etapDotdot[ich] = (etapMass[ich - 1] * etapDot[ich - 1] * etapDot[ich - 1] - this.boltz * this.tTarget) / etapMass[ich];
         etapDot[ich] += etapDotdot[ich] * ncfac * dt4;
@@ -376,7 +377,7 @@ export class FixNHBase extends Fix {
   protected nhVPress(): void {
     const s = this.sys.state;
     const { v, mask } = s;
-    const factor = Math.exp(-this.dt4 * (this.omegaDot + this.mtkTerm2));
+    const factor = libmExp(-this.dt4 * (this.omegaDot + this.mtkTerm2));
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & this.groupBit)) continue;
       v[3 * i] *= factor; v[3 * i + 1] *= factor; v[3 * i + 2] *= factor;
@@ -401,7 +402,7 @@ export class FixNHBase extends Fix {
       lam[3 * i] = tmp[0]; lam[3 * i + 1] = tmp[1]; lam[3 * i + 2] = tmp[2];
     }
     for (let d = 0; d < 3; d++) {
-      const e = Math.exp(this.dthalf * this.omegaDot);
+      const e = libmExp(this.dthalf * this.omegaDot);
       b.lo[d] = (b.lo[d] - this.fixedpoint[d]) * e + this.fixedpoint[d];
       b.hi[d] = (b.hi[d] - this.fixedpoint[d]) * e + this.fixedpoint[d];
     }

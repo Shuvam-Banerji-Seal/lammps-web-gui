@@ -10,6 +10,7 @@ import type { System } from '../../engine/system';
 import { StyleError } from '../../engine/force/types';
 import { FixBrownianBase } from './fix_brownian_base';
 import { cross3, dot3, len3, scale3, scaleadd3, scaleadd3Two, snormalize3 } from './mathextra';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 export class FixBrownianSphere extends FixBrownianBase {
   private g3 = 0;
@@ -95,8 +96,8 @@ export class FixBrownianSphere extends FixBrownianBase {
       if (geometric) {
         if (dim2 || planar) {
           const theta = dt * w[2];
-          const c = Math.cos(theta);
-          const sn = Math.sin(theta);
+          const c = libmCos(theta);
+          const sn = libmSin(theta);
           const ux = u[0];
           const uy = u[1];
           u[0] = c * ux - sn * uy;
@@ -110,8 +111,8 @@ export class FixBrownianSphere extends FixBrownianBase {
             scale3(1 / wperplen, wperp, n);
             cross3(u, n, uxn);
             const theta = dt * wperplen;
-            const c = Math.cos(theta);
-            const sn = Math.sin(theta);
+            const c = libmCos(theta);
+            const sn = libmSin(theta);
             scaleadd3Two(c, u, -sn, uxn, u);
             snormalize3(mulen, u, muNew);
           }

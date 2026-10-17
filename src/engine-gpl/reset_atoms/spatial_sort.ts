@@ -11,6 +11,7 @@
  * nbx) (the same for y and z; invz is 0 in 2d). Atoms are ordered by bin, then by x, y, z, and equal positions keep their
  * storage order (the merge sort of sort_bins is stable).
  */
+import { pow as libmPow } from '../libm/pow';
 export const spatialSortOrder = (x: Float64Array, n: number, dim: number): number[] => {
   const BIG = 1.0e20;
   const lo = [BIG, BIG, BIG], hi = [-BIG, -BIG, -BIG];
@@ -33,7 +34,7 @@ export const spatialSortOrder = (x: Float64Array, n: number, dim: number): numbe
   const nbinEstimate = Math.floor(n / 10) + 1;
   const ext = [bhi[0] - blo[0], bhi[1] - blo[1], bhi[2] - blo[2]];
   const vol = dim === 2 ? ext[0] * ext[1] : ext[0] * ext[1] * ext[2];
-  const binsize = Math.pow(vol / nbinEstimate, 1 / dim);
+  const binsize = libmPow(vol / nbinEstimate, 1 / dim);
   const nbx = Math.trunc(ext[0] / binsize) + 1;
   const nby = Math.trunc(ext[1] / binsize) + 1;
   const nbz = Math.trunc(ext[2] / binsize) + 1;

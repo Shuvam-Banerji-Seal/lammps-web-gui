@@ -2,6 +2,7 @@ import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * Simple two-body pair styles (Buckingham, Born-Mayer-Huggins, Morse),
@@ -86,7 +87,7 @@ export class PairBuck extends Pair {
     this.buckA[k1] = this.buckA[k2] = a;
     this.buckIR[k1] = this.buckIR[k2] = 1 / rho;
     this.buckC[k1] = this.buckC[k2] = c;
-    this.offset[k1] = this.offset[k2] = this.shift && rc > 0 ? a * Math.exp(-rc / rho) - c / rc ** 6 : 0;
+    this.offset[k1] = this.offset[k2] = this.shift && rc > 0 ? a * libm.exp(-rc / rho) - c / rc ** 6 : 0;
     return rc;
   }
 
@@ -99,7 +100,7 @@ export class PairBuck extends Pair {
         const a = this.p.get('A', i, j), rho = this.p.get('rho', i, j), c = this.p.get('C', i, j);
         const rc = this.cut[i * nt + j];
         if (!(rc > 0)) continue;
-        const nn = count[i] * count[j], ex = Math.exp(-rc / rho);
+        const nn = count[i] * count[j], ex = libm.exp(-rc / rho);
         // int_rc^inf u(r) r^2 dr = A rho e^{-rc/rho} (rc^2 + 2 rho rc + 2 rho^2) - C/(3 rc^3)
         e += nn * (a * rho * ex * (rc * rc + 2 * rho * rc + 2 * rho * rho) - c / (3 * rc ** 3));
         // int_rc^inf r^3 u'(r) dr = -(A/rho) e^{-rc/rho} (rc^3 rho + 3 rc^2 rho^2 + 6 rc rho^3 + 6 rho^4) + 2 C/rc^3
@@ -133,7 +134,7 @@ export class PairBuck extends Pair {
         if (rsq >= cutsq[t]) continue;
         const factor = sLJ[jj >>> SBBITS];
         const r = Math.sqrt(rsq);
-        const ex = Math.exp(-r * buckIR[t]);
+        const ex = libm.exp(-r * buckIR[t]);
         const r2inv = 1 / rsq;
         // F_vec = [(A/rho) e^{-r/rho} - 6 C/r^7] * rhat = fpair * (ri - rj)
         const fpair = factor * (buckA[t] * buckIR[t] * ex / r - 6 * buckC[t] * r2inv * r2inv * r2inv * r2inv);
@@ -152,7 +153,7 @@ export class PairBuck extends Pair {
   single(_i: number, _j: number, itype: number, jtype: number, rsq: number, _fc: number, factorLJ: number, _qi: number, _qj: number) {
     const t = itype * (this.ntypes + 1) + jtype;
     const r = Math.sqrt(rsq);
-    const ex = Math.exp(-r * this.buckIR[t]);
+    const ex = libm.exp(-r * this.buckIR[t]);
     const r2inv = 1 / rsq;
     return {
       fforce: factorLJ * (this.buckA[t] * this.buckIR[t] * ex / r - 6 * this.buckC[t] * r2inv * r2inv * r2inv * r2inv),
@@ -281,7 +282,7 @@ export class PairBuckCoulCut extends PairBuck {
         if (rsq < buckCutSq[t]) {
           const factor = sLJ[sb];
           const r = Math.sqrt(rsq);
-          const ex = Math.exp(-r * buckIR[t]);
+          const ex = libm.exp(-r * buckIR[t]);
           const r2inv = 1 / rsq;
           fpair += factor * (buckA[t] * buckIR[t] * ex / r - 6 * buckC[t] * r2inv * r2inv * r2inv * r2inv);
           const ev = factor * (buckA[t] * ex - buckC[t] * (r2inv * r2inv * r2inv) - offset[t]);
@@ -419,7 +420,7 @@ export class PairBorn extends Pair {
     this.bornC[k1] = this.bornC[k2] = c;
     this.bornD[k1] = this.bornD[k2] = d;
     this.offset[k1] = this.offset[k2] = this.shift && rc > 0
-      ? a * Math.exp((sig - rc) / rho) - c / rc ** 6 + d / rc ** 8
+      ? a * libm.exp((sig - rc) / rho) - c / rc ** 6 + d / rc ** 8
       : 0;
     return rc;
   }
@@ -434,7 +435,7 @@ export class PairBorn extends Pair {
         const c = this.p.get('C', i, j), d = this.p.get('D', i, j);
         const rc = this.cut[i * nt + j];
         if (!(rc > 0)) continue;
-        const nn = count[i] * count[j], ex = Math.exp((sig - rc) / rho);
+        const nn = count[i] * count[j], ex = libm.exp((sig - rc) / rho);
         // + D/(5 rc^5) and -8 D/(5 rc^5) from the 1/r^8 term
         e += nn * (a * rho * ex * (rc * rc + 2 * rho * rc + 2 * rho * rho) - c / (3 * rc ** 3) + d / (5 * rc ** 5));
         pr += nn * (-(a / rho) * ex * (rc ** 3 * rho + 3 * rc * rc * rho * rho + 6 * rc * rho ** 3 + 6 * rho ** 4) + 2 * c / rc ** 3 - 8 * d / (5 * rc ** 5));
@@ -467,7 +468,7 @@ export class PairBorn extends Pair {
         const factor = sLJ[jj >>> SBBITS];
         const r = Math.sqrt(rsq);
         const rinv = 1 / r;
-        const ex = Math.exp((bornSig[t] - r) * bornIR[t]);
+        const ex = libm.exp((bornSig[t] - r) * bornIR[t]);
         const r2inv = 1 / rsq;
         const r6inv = r2inv * r2inv * r2inv;
         const r8inv = r6inv * r2inv;
@@ -490,7 +491,7 @@ export class PairBorn extends Pair {
     const t = itype * (this.ntypes + 1) + jtype;
     const r = Math.sqrt(rsq);
     const rinv = 1 / r;
-    const ex = Math.exp((this.bornSig[t] - r) * this.bornIR[t]);
+    const ex = libm.exp((this.bornSig[t] - r) * this.bornIR[t]);
     const r2inv = 1 / rsq;
     const r6inv = r2inv * r2inv * r2inv;
     const r8inv = r6inv * r2inv;
@@ -590,7 +591,7 @@ export class PairMorse extends Pair {
     this.morseR0[k1] = this.morseR0[k2] = r0;
     if (this.shift && rc > 0) {
       const d = rc - r0;
-      const e1 = Math.exp(-2 * alpha * d), e2 = Math.exp(-alpha * d);
+      const e1 = libm.exp(-2 * alpha * d), e2 = libm.exp(-alpha * d);
       this.offset[k1] = this.offset[k2] = d0 * (e1 - 2 * e2);
     } else this.offset[k1] = this.offset[k2] = 0;
     return rc;
@@ -619,7 +620,7 @@ export class PairMorse extends Pair {
         if (rsq >= cutsq[t]) continue;
         const factor = sLJ[jj >>> SBBITS];
         const dr = Math.sqrt(rsq) - morseR0[t];
-        const e1 = Math.exp(-2 * morseAlpha[t] * dr), e2 = Math.exp(-morseAlpha[t] * dr);
+        const e1 = libm.exp(-2 * morseAlpha[t] * dr), e2 = libm.exp(-morseAlpha[t] * dr);
         // F_vec = 2 alpha D0 [e^{-2 alpha (r-r0)} - e^{-alpha (r-r0)}] * rhat
         const fpair = factor * 2 * morseAlpha[t] * morseD0[t] * (e1 - e2) / Math.sqrt(rsq);
         const fx = dx * fpair, fy = dy * fpair, fz = dz * fpair;
@@ -638,7 +639,7 @@ export class PairMorse extends Pair {
     const t = itype * (this.ntypes + 1) + jtype;
     const r = Math.sqrt(rsq);
     const dr = r - this.morseR0[t];
-    const e1 = Math.exp(-2 * this.morseAlpha[t] * dr), e2 = Math.exp(-this.morseAlpha[t] * dr);
+    const e1 = libm.exp(-2 * this.morseAlpha[t] * dr), e2 = libm.exp(-this.morseAlpha[t] * dr);
     return {
       fforce: factorLJ * 2 * this.morseAlpha[t] * this.morseD0[t] * (e1 - e2) / r,
       eng: factorLJ * (this.morseD0[t] * (e1 - 2 * e2) - this.offset[t]),

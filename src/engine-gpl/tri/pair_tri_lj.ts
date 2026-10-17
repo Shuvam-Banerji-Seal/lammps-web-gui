@@ -17,6 +17,7 @@ import { NEIGHMASK } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { isTriStyle, TRI_BONUS, TRI_BONUS_COLS, TRI_FLAG } from '../../engine/atoms';
 import { quatToMatrix } from '../../engine/compute/asphere';
+import { pow as libmPow } from '../libm/pow';
 
 interface Disc { dx: number; dy: number; dz: number; sigma: number }
 type V3 = [number, number, number];
@@ -122,10 +123,10 @@ export class PairTriLJ extends Pair {
       this.cutIJ[k] = mixDistance(this.mix, this.cutIJ[kii], this.cutIJ[kjj]);
     }
     const e = this.eps[k], s = this.sig[k];
-    this.lj1[k] = 48.0 * e * Math.pow(s, 12.0);
-    this.lj2[k] = 24.0 * e * Math.pow(s, 6.0);
-    this.lj3[k] = 4.0 * e * Math.pow(s, 12.0);
-    this.lj4[k] = 4.0 * e * Math.pow(s, 6.0);
+    this.lj1[k] = 48.0 * e * libmPow(s, 12.0);
+    this.lj2[k] = 24.0 * e * libmPow(s, 6.0);
+    this.lj3[k] = 4.0 * e * libmPow(s, 12.0);
+    this.lj4[k] = 4.0 * e * libmPow(s, 6.0);
     this.eps[kr] = e;
     this.sig[kr] = s;
     this.lj1[kr] = this.lj1[k];

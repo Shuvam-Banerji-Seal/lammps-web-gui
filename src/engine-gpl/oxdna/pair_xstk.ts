@@ -13,6 +13,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF2, DF4, F2, F4, baseSite, lrfOf, oxdnaConstants, potentialLines } from './common';
+import { sin as libmSin } from '../libm/sincos';
 
 /** The 23 numbers after "I J" (pair_coeff) or after the potential-file name, in order. */
 const XST_NAMES = ['k_xst', 'cut_xst_0', 'cut_xst_c', 'cut_xst_lo', 'cut_xst_hi',
@@ -210,17 +211,17 @@ export class PairOxdnaXstk extends Pair {
         const e = f2 * f4t1 * f4t2 * f4t3 * f4t4 * f4t7 * f4t8 * factorLJ;
         if (e === 0.0) continue;
         const df2 = DF2(r, T.k[ij], T.cut0[ij], T.cutlc[ij], T.cuthc[ij], T.cutlo[ij], T.cuthi[ij], T.blo[ij], T.bhi[ij]);
-        const df4t1 = DF4(theta1, T.a1[ij], T.th1[ij], T.dth1ast[ij], T.b1[ij], T.dth1c[ij]) / Math.sin(theta1);
-        const df4t2 = DF4(theta2, T.a2[ij], T.th2[ij], T.dth2ast[ij], T.b2[ij], T.dth2c[ij]) / Math.sin(theta2);
-        const df4t3 = DF4(theta3, T.a3[ij], T.th3[ij], T.dth3ast[ij], T.b3[ij], T.dth3c[ij]) / Math.sin(theta3);
+        const df4t1 = DF4(theta1, T.a1[ij], T.th1[ij], T.dth1ast[ij], T.b1[ij], T.dth1c[ij]) / libmSin(theta1);
+        const df4t2 = DF4(theta2, T.a2[ij], T.th2[ij], T.dth2ast[ij], T.b2[ij], T.dth2c[ij]) / libmSin(theta2);
+        const df4t3 = DF4(theta3, T.a3[ij], T.th3[ij], T.dth3ast[ij], T.b3[ij], T.dth3c[ij]) / libmSin(theta3);
         const df4t4 = this.withTheta4
           ? (DF4(theta4, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])
-            - DF4(theta4p, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])) / Math.sin(theta4)
+            - DF4(theta4p, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])) / libmSin(theta4)
           : 0.0;
         const df4t7 = (DF4(theta7, T.a7[ij], T.th7[ij], T.dth7ast[ij], T.b7[ij], T.dth7c[ij])
-          - DF4(theta7p, T.a7[ij], T.th7[ij], T.dth7ast[ij], T.b7[ij], T.dth7c[ij])) / Math.sin(theta7);
+          - DF4(theta7p, T.a7[ij], T.th7[ij], T.dth7ast[ij], T.b7[ij], T.dth7c[ij])) / libmSin(theta7);
         const df4t8 = (DF4(theta8, T.a8[ij], T.th8[ij], T.dth8ast[ij], T.b8[ij], T.dth8c[ij])
-          - DF4(theta8p, T.a8[ij], T.th8[ij], T.dth8ast[ij], T.b8[ij], T.dth8c[ij])) / Math.sin(theta8);
+          - DF4(theta8p, T.a8[ij], T.th8[ij], T.dth8ast[ij], T.b8[ij], T.dth8c[ij])) / libmSin(theta8);
         delf[0] = 0.0; delf[1] = 0.0; delf[2] = 0.0;
         delta[0] = 0.0; delta[1] = 0.0; delta[2] = 0.0;
         deltb[0] = 0.0; deltb[1] = 0.0; deltb[2] = 0.0;

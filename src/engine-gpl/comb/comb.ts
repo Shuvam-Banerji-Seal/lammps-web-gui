@@ -21,6 +21,9 @@ import {
   combGijk, combGijkD, cube, powint, readCombEntries, setupCombParams, square,
   type CombParam,
 } from './params';
+import { cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 const MY_PIS = Math.sqrt(Math.PI);
 const ALF = 0.20;
@@ -166,12 +169,12 @@ export class PairComb extends Pair {
           const inty = intype[itype * n + itype];
           const z = this.params[this.p3(itype, itype, itype)].esm1;
           const zrc = z * rc;
-          const exp2ersh = Math.exp(-2.0 * zrc);
+          const exp2ersh = libmExp(-2.0 * zrc);
           const fafash = -exp2ersh * (1.0 / rc + z * (11.0 / 8.0 + 3.0 / 4.0 * zrc + zrc * zrc / 6.0));
           const dfafash = exp2ersh * (1.0 / (rc * rc) + 2.0 * z / rc + z * z * (2.0 + 7.0 / 6.0 * zrc + zrc * zrc / 3.0));
           for (let kk = 0; kk < ncoul; kk++) {
             const zr = z * r;
-            const exp2er = Math.exp(-2.0 * zr);
+            const exp2er = libmExp(-2.0 * zr);
             const F1 = -exp2er * (1.0 / r + z * (11.0 / 8.0 + 3.0 / 4.0 * zr + zr * zr / 6.0));
             const dF1 = exp2er * (1.0 / (r * r) + 2.0 * z / r + z * z * (2.0 + 7.0 / 6.0 * zr + zr * zr / 3.0));
             fafb[kk * nntypes + inty] = F1 - fafash - (r - rc) * dfafash;
@@ -192,14 +195,14 @@ export class PairComb extends Pair {
             ((ea + eb) * (ea + eb) * (ea + eb) * (ea - eb) * (ea - eb) * (ea - eb));
           const E4 = (3.0 * eb * eb * ea3 * ea - ea3 * ea3) /
             ((ea + eb) * (ea + eb) * (ea + eb) * (eb - ea) * (eb - ea) * (eb - ea));
-          const exp2earsh = Math.exp(-2.0 * ea * rc);
-          const exp2ebrsh = Math.exp(-2.0 * eb * rc);
+          const exp2earsh = libmExp(-2.0 * ea * rc);
+          const exp2ebrsh = libmExp(-2.0 * eb * rc);
           const fafbsh = -exp2earsh * (E1 + E3 / rc) - exp2ebrsh * (E2 + E4 / rc);
           const dfafbsh = exp2earsh * (2.0 * ea * (E1 + E3 / rc) + E3 / (rc * rc)) +
             exp2ebrsh * (2.0 * eb * (E2 + E4 / rc) + E4 / (rc * rc));
           for (let kk = 0; kk < ncoul; kk++) {
-            const exp2ear = Math.exp(-2.0 * ea * r);
-            const exp2ebr = Math.exp(-2.0 * eb * r);
+            const exp2ear = libmExp(-2.0 * ea * r);
+            const exp2ebr = libmExp(-2.0 * eb * r);
             fafb[kk * nntypes + inty] = -exp2ear * (E1 + E3 / r) - exp2ebr * (E2 + E4 / r) - fafbsh - (r - rc) * dfafbsh;
             dfafb[kk * nntypes + inty] = exp2ear * (2.0 * ea * (E1 + E3 / r) + E3 / (r * r)) +
               exp2ebr * (2.0 * eb * (E2 + E4 / r) + E4 / (r * r)) - dfafbsh;
@@ -212,7 +215,7 @@ export class PairComb extends Pair {
     for (let i = 0; i < NSM; i++) {
       const r = dra * i + drin;
       erpaw[2 * i] = erfcExact(r * alf);
-      erpaw[2 * i + 1] = Math.exp(-r * r * alf * alf);
+      erpaw[2 * i + 1] = libmExp(-r * r * alf * alf);
     }
     return { intype, nntypes, fafb, dfafb, erpaw };
   }
@@ -222,7 +225,7 @@ export class PairComb extends Pair {
     const alf = ALF;
     let rcoul = 0.0;
     for (const p of this.params) if (p.lcut > rcoul) rcoul = p.lcut;
-    const fac11 = (erfcExact(rcoul * alf) / rcoul / rcoul + 2.0 * alf / MY_PIS * Math.exp(-alf * alf * rcoul * rcoul) / rcoul) * esucon / rcoul;
+    const fac11 = (erfcExact(rcoul * alf) / rcoul / rcoul + 2.0 * alf / MY_PIS * libmExp(-alf * alf * rcoul * rcoul) / rcoul) * esucon / rcoul;
     const fac11e = (erfcExact(rcoul * alf) / rcoul) * esucon;
     const potal = -(alf / MY_PIS * esucon + fac11e * 0.5);
     return { potal, fac11, fac11e };
@@ -585,7 +588,7 @@ export class PairComb extends Pair {
     if (r > rrcs) return { fforce: 0, eng: 0 };
     const tmpFc = combFc(r, p);
     const tmpFcD = combFcD(r, p);
-    const tmpExp = Math.exp(-p.rlm1 * r);
+    const tmpExp = libmExp(-p.rlm1 * r);
     const arr1 = 2.22850, arr2 = 1.89350;
     const fc2j = combFc2(r);
     const fc3j = combFc3(r);
@@ -593,8 +596,8 @@ export class PairComb extends Pair {
     const fcp3j = combFc3D(r);
     const Di = combDi(p, iq);
     const Dj = combDj(p, jq);
-    const Asi = p.biga1 * Math.exp(p.lam11 * Di);
-    const Asj = p.biga2 * Math.exp(p.lam12 * Dj);
+    const Asi = p.biga1 * libmExp(p.lam11 * Di);
+    const Asj = p.biga2 * libmExp(p.lam12 * Dj);
     const bigA = Asi > 0.0 && Asj > 0.0 ? Math.sqrt(Asi * Asj) * p.romiga : 0.0;
     let fforce = -bigA * tmpExp * (tmpFcD - tmpFc * p.rlm1) / r;
     // additional repulsion for TiO2 and HfO2 (switch by cor_flag)
@@ -627,7 +630,7 @@ export class PairComb extends Pair {
     let exDelr: number;
     if (arg > 69.0776) exDelr = 1.e30;
     else if (arg < -69.0776) exDelr = 0.0;
-    else exDelr = Math.exp(arg);
+    else exDelr = libmExp(arg);
     return combFc(rik, p) * combGijk(costheta, p) * exDelr;
   }
 
@@ -635,7 +638,7 @@ export class PairComb extends Pair {
   protected elp(p: CombParam, rsqij: number, rsqik: number, delrij: V3, delrik: V3): number {
     if (p.aconf > 1.0e-6 || p.plp1 > 1.0e-6 || p.plp3 > 1.0e-6 || p.plp6 > 1.0e-6) {
       const pplp1 = p.plp1, pplp3 = p.plp3, pplp6 = p.plp6;
-      const c123 = Math.cos(p.a123 * Math.PI / 180.0);
+      const c123 = libmCos(p.a123 * Math.PI / 180.0);
       const rij = Math.sqrt(rsqij);
       const rik = Math.sqrt(rsqik);
       const costheta = dot3(delrij, delrik) / (rij * rik);
@@ -665,7 +668,7 @@ export class PairComb extends Pair {
     let ffj1 = 0.0, ffj2 = 0.0, ffk1 = 0.0, ffk2 = 0.0;
     if (p.aconf > 1.0e-4 || p.plp1 > 1.0e-6 || p.plp3 > 1.0e-6 || p.plp6 > 1.0e-6) {
       const pplp1 = p.plp1, pplp3 = p.plp3, pplp6 = p.plp6;
-      const c123 = Math.cos(p.a123 * Math.PI / 180.0);
+      const c123 = libmCos(p.a123 * Math.PI / 180.0);
       const rij = Math.sqrt(rsqij);
       const rik = Math.sqrt(rsqik);
       const costheta = dot3(delrij, delrik) / (rij * rik);
@@ -733,7 +736,7 @@ export class PairComb extends Pair {
     const Di = combDi(p, qi), Dj = combDj(p, qj);
     const { Bsi, Bsj } = combBsi(p, qi, qj, Di, Dj);
     const bigB = Bsi > 0.0 && Bsj > 0.0 ? Math.sqrt(Bsi * Bsj) * p.romigb : 0.0;
-    return -bigB * Math.exp(-p.rlm2 * r) * combFc(r, p);
+    return -bigB * libmExp(-p.rlm2 * r) * combFc(r, p);
   }
 
   /** comb_fa_d: derivative of combFa with respect to r. */
@@ -742,7 +745,7 @@ export class PairComb extends Pair {
     const Di = combDi(p, qi), Dj = combDj(p, qj);
     const { Bsi, Bsj } = combBsi(p, qi, qj, Di, Dj);
     const bigB = Bsi > 0.0 && Bsj > 0.0 ? Math.sqrt(Bsi * Bsj) * p.romigb : 0.0;
-    return bigB * Math.exp(-p.rlm2 * r) * (p.rlm2 * combFc(r, p) - combFcD(r, p));
+    return bigB * libmExp(-p.rlm2 * r) * (p.rlm2 * combFc(r, p) - combFcD(r, p));
   }
 
   /** attractive: the zeta derivative with respect to the three atoms (writes fi, fj, fk). */
@@ -766,7 +769,7 @@ export class PairComb extends Pair {
     let exDelr: number;
     if (tmp > 69.0776) exDelr = 1.e30;
     else if (tmp < -69.0776) exDelr = 0.0;
-    else exDelr = Math.exp(tmp);
+    else exDelr = libmExp(tmp);
     const exDelrD = p.powermint === 3 ? 3.0 * cube(p.rlm2) * square(rij - rik) * exDelr : p.rlm2 * exDelr;
     const cosTheta = dot3(rijHat, rikHat);
     const gijk = combGijk(cosTheta, p);
@@ -940,8 +943,8 @@ export class PairComb extends Pair {
     const romi = p.addrep, rrcs = p.bigr + p.bigd;
     const romie = p.romiga, romib = p.romigb;
     const tmpFc = combFc(r, p);
-    const tmpExp1 = Math.exp(-p.rlm1 * r);
-    const tmpExp2 = Math.exp(-p.rlm2 * r);
+    const tmpExp1 = libmExp(-p.rlm1 * r);
+    const tmpExp2 = libmExp(-p.rlm2 * r);
     const bij = this.bbij[i * this.bbStride + nj];
     const arr1 = 2.22850, arr2 = 1.89350;
     const fc2j = combFc2(r);
@@ -957,23 +960,23 @@ export class PairComb extends Pair {
       }
     }
     const Di = combDi(p, iq), Dj = combDj(p, jq);
-    const Asi = p.biga1 * Math.exp(p.lam11 * Di);
-    const Asj = p.biga2 * Math.exp(p.lam12 * Dj);
+    const Asi = p.biga1 * libmExp(p.lam11 * Di);
+    const Asj = p.biga2 * libmExp(p.lam12 * Dj);
     const { Bsi, Bsj } = combBsi(p, iq, jq, Di, Dj);
     const QUchi = (p.QU1 - iq) * p.bD1;
     const QUchj = (p.QU2 - jq) * p.bD2;
     const QOchi = (iq - p.Qo1) * p.bB1;
     const QOchj = (jq - p.Qo2) * p.bB2;
-    const YYDiqp = QUchi === 0.0 ? 0.0 : -p.nD1 * QUchi * p.bD1 * Math.pow(Math.abs(QUchi), (p.nD1 - 2.0));
-    const YYDjqp = QUchj === 0.0 ? 0.0 : -p.nD2 * QUchj * p.bD2 * Math.pow(Math.abs(QUchj), (p.nD2 - 2.0));
+    const YYDiqp = QUchi === 0.0 ? 0.0 : -p.nD1 * QUchi * p.bD1 * libmPow(Math.abs(QUchi), p.nD1 - 2.0);
+    const YYDjqp = QUchj === 0.0 ? 0.0 : -p.nD2 * QUchj * p.bD2 * libmPow(Math.abs(QUchj), p.nD2 - 2.0);
     const YYAsiqp = Asi * p.lam11 * YYDiqp;
     const YYAsjqp = Asj * p.lam12 * YYDjqp;
     const YYBsiqp = QOchi === 0.0
       ? Bsi * p.lam21 * YYDiqp
-      : Bsi * p.lam21 * YYDiqp - p.bigb1 * Math.exp(p.lam21 * Di) * 10.0 * QOchi * p.bB1 * powint(Math.abs(QOchi), (10 - 2));
+      : Bsi * p.lam21 * YYDiqp - p.bigb1 * libmExp(p.lam21 * Di) * 10.0 * QOchi * p.bB1 * powint(Math.abs(QOchi), (10 - 2));
     const YYBsjqp = QOchj === 0.0
       ? Bsj * p.lam22 * YYDjqp
-      : Bsj * p.lam22 * YYDjqp - p.bigb2 * Math.exp(p.lam22 * Dj) * 10.0 * QOchj * p.bB2 * powint(Math.abs(QOchj), (10 - 2));
+      : Bsj * p.lam22 * YYDjqp - p.bigb2 * libmExp(p.lam22 * Dj) * 10.0 * QOchj * p.bB2 * powint(Math.abs(QOchj), (10 - 2));
     const caj = Asi > 0.0 && Asj > 0.0 ? 1.0 / (2.0 * Math.sqrt(Asi * Asj)) * romie : 0.0;
     const cbj = Bsi > 0.0 && Bsj > 0.0 ? 1.0 / (2.0 * Math.sqrt(Bsi * Bsj)) * romib : 0.0;
     const cfqr = 0.50 * tmpFc * (1.0 + vrcs); // 0.5 b/c full atom loop
@@ -1003,10 +1006,10 @@ export class PairComb extends Pair {
     const ECo = p.hfocor;
     const BCo = 0.1;
     if (NCon >= 0.20) {
-      Eov = tmpFc * ECo * NCon / (1.0 + Math.exp(BCo * NCon));
-      Fov = -(tmpFcD * Eov + tmpFc * ECo / (1.0 + Math.exp(BCo * NCon)) -
-        (tmpFc * ECo * NCon * BCo * Math.exp(BCo * NCon)) /
-        ((1.0 + Math.exp(BCo * NCon)) * (1.0 + Math.exp(BCo * NCon))));
+      Eov = tmpFc * ECo * NCon / (1.0 + libmExp(BCo * NCon));
+      Fov = -(tmpFcD * Eov + tmpFc * ECo / (1.0 + libmExp(BCo * NCon)) -
+        (tmpFc * ECo * NCon * BCo * libmExp(BCo * NCon)) /
+        ((1.0 + libmExp(BCo * NCon)) * (1.0 + libmExp(BCo * NCon))));
       Fov /= r;
     }
     return { Eov, Fov };

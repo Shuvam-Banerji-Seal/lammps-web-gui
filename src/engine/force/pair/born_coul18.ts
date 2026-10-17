@@ -5,6 +5,7 @@ import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
 import { erfcExact } from '../erfc';
 import { erfAcc } from './coul_cs';
+import { libm } from '../../libm';
 
 /*
  * pair_style born/coul/wolf and pair_style born/coul/dsf —
@@ -147,7 +148,7 @@ abstract class PairBornCoul18 extends PairBorn {
           const factor = sLJ[sb];
           const r = Math.sqrt(rsq);
           const rinv = 1 / r;
-          const ex = Math.exp((bornSig[t] - r) * bornIR[t]);
+          const ex = libm.exp((bornSig[t] - r) * bornIR[t]);
           const r2inv = 1 / rsq;
           const r6inv = r2inv * r2inv * r2inv;
           const r8inv = r6inv * r2inv;
@@ -193,7 +194,7 @@ abstract class PairBornCoul18 extends PairBorn {
         const cut = this.p.get('cut', i, j);
         const rc = Number.isNaN(cut) ? this.cutGlobal : cut;
         if (!(rc > 0)) continue;
-        const nn = count[i] * count[j], ex = Math.exp((sig - rc) / rho);
+        const nn = count[i] * count[j], ex = libm.exp((sig - rc) / rho);
         e += nn * (a * rho * ex * (rc * rc + 2 * rho * rc + 2 * rho * rho) - c / (3 * rc ** 3) + d / (5 * rc ** 5));
         pr += nn * (-(a / rho) * ex * (rc ** 3 * rho + 3 * rc * rc * rho * rho + 6 * rc * rho ** 3 + 6 * rho ** 4) + 2 * c / rc ** 3 - 8 * d / (5 * rc ** 5));
       }
@@ -207,7 +208,7 @@ abstract class PairBornCoul18 extends PairBorn {
     if (rsq < this.bornCutSq[t] && factorLJ !== 0) {
       const r = Math.sqrt(rsq);
       const rinv = 1 / r;
-      const ex = Math.exp((this.bornSig[t] - r) * this.bornIR[t]);
+      const ex = libm.exp((this.bornSig[t] - r) * this.bornIR[t]);
       const r2inv = 1 / rsq;
       const r6inv = r2inv * r2inv * r2inv;
       const r8inv = r6inv * r2inv;
@@ -274,7 +275,7 @@ export class PairBornCoulWolf extends PairBornCoul18 {
     const arc = this.alpha * rc;
     const a = erfcExact(arc) / rc;
     this.wolfA[k1] = this.wolfA[k2] = a;
-    this.wolfF[k1] = this.wolfF[k2] = -(a + TWO_OVER_SQRTPI * this.alpha * Math.exp(-arc * arc)) / rc;
+    this.wolfF[k1] = this.wolfF[k2] = -(a + TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
   }
 
   protected coulSelf(qi: number, qqrd2e: number): number {
@@ -284,7 +285,7 @@ export class PairBornCoulWolf extends PairBornCoul18 {
   protected coulPair(t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
     const r = Math.sqrt(rsq);
     const grij = this.alpha * r;
-    const ex = Math.exp(-grij * grij);
+    const ex = libm.exp(-grij * grij);
     const erfcc = erfcExact(grij);
     const pref = qqrd2e * qi * qj;
     return {
@@ -325,18 +326,18 @@ export class PairBornCoulDsf extends PairBornCoul18 {
     const arc = this.alpha * rc;
     const erc = erfcExact(arc);
     this.dsfA[k1] = this.dsfA[k2] = erc / rc;
-    this.dsfB[k1] = this.dsfB[k2] = erc / (rc * rc) + (TWO_OVER_SQRTPI * this.alpha * Math.exp(-arc * arc)) / rc;
+    this.dsfB[k1] = this.dsfB[k2] = erc / (rc * rc) + (TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
   }
 
   protected coulSelf(qi: number, qqrd2e: number): number {
     const arc = this.alpha * this.cutCoul;
-    return -(erfcExact(arc) / this.cutCoul + (this.alpha / Math.sqrt(Math.PI)) * (1 + Math.exp(-arc * arc))) * qi * qi * qqrd2e;
+    return -(erfcExact(arc) / this.cutCoul + (this.alpha / Math.sqrt(Math.PI)) * (1 + libm.exp(-arc * arc))) * qi * qi * qqrd2e;
   }
 
   protected coulPair(t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
     const r = Math.sqrt(rsq);
     const grij = this.alpha * r;
-    const ex = Math.exp(-grij * grij);
+    const ex = libm.exp(-grij * grij);
     // Measured with native LAMMPS: born/coul/dsf evaluates erfc(alpha r) exactly,
     // not with the Abramowitz-Stegun polynomial erfcPoly that lj/cut/coul/dsf uses
     // (the two natives differ by ~1.9e-8 in ecoul on the same 108-atom test system;
@@ -400,7 +401,7 @@ export class PairBornCoulWolfCS extends PairBornCoulWolf {
     }
     const r = Math.sqrt(rsq);
     const x = this.alpha * r;
-    const ex = Math.exp(-x * x);
+    const ex = libm.exp(-x * x);
     const erf = erfAcc(x);
     return {
       e: pref * ((fc - erf) / r - this.wolfA[t]),
@@ -426,7 +427,7 @@ export class PairBornCoulDsfCS extends PairBornCoulDsf {
     }
     const r = Math.sqrt(rsq);
     const x = this.alpha * r;
-    const ex = Math.exp(-x * x);
+    const ex = libm.exp(-x * x);
     const erf = erfAcc(x);
     return {
       e: pref * ((fc - erf) / r - this.dsfA[t] + this.dsfB[t] * (r - this.cutCoul)),

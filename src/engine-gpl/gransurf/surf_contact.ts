@@ -18,6 +18,7 @@
  * (normal hooke, hertz, hertz/material; tangential linear_nohistory, linear_history; damping mass_velocity,
  * viscoelastic, tsuji); the other models are refused by the style parser (pair_surf_granular.ts) with a StyleError.
  */
+import { pow as libmPow } from '../libm/pow';
 
 /** Connection flags (fix_surface.h: FLAT/NONFLAT, CONCAVE/CONVEX, SAME_SIDE/OPPOSITE_SIDE). */
 export const NONFLAT = 0;
@@ -66,8 +67,8 @@ export interface SurfCoeffs {
 /** gran_sub_mod_damping.cpp: GranSubModDampingTsuji::init, the Marshall (2009) fit times sqrt(2). */
 export function tsujiDampCoefficient(cor: number): number {
   let damp = 1.2728 - 4.2783 * cor + 11.087 * cor * cor;
-  damp += -22.348 * cor ** 3 + 27.467 * cor ** 4;
-  damp += -18.022 * cor ** 5 + 4.8218 * cor ** 6;
+  damp += -22.348 * libmPow(cor, 3) + 27.467 * libmPow(cor, 4);
+  damp += -18.022 * libmPow(cor, 5) + 4.8218 * libmPow(cor, 6);
   return damp * Math.SQRT2;
 }
 

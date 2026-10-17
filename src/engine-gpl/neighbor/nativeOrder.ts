@@ -47,6 +47,8 @@ export interface NativeGhosts {
   x: Float64Array;
   root: Int32Array;
   img: Int32Array;
+  /** Ghost k: the native index of the atom (owned or an earlier ghost) whose coordinates were sent; -1 for owned atoms. */
+  from: Int32Array;
 }
 
 /** comm_brick.cpp CommBrick::setup (cutghost = comm cutoff, maxneed = 1 + cut/prd for one processor) and borders(). */
@@ -54,7 +56,8 @@ export const nativeGhosts = (xn: Float64Array, n: number, g: Geometry, cut: numb
   const xs: number[] = Array.from(xn.subarray(0, 3 * n));
   const roots: number[] = [];
   const imgs: number[] = [];
-  for (let i = 0; i < n; i++) { roots.push(i); imgs.push(0, 0, 0); }
+  const froms: number[] = [];
+  for (let i = 0; i < n; i++) { roots.push(i); imgs.push(0, 0, 0); froms.push(-1); }
   const prd = [g.lx, g.ly, g.lz];
   for (let dim = 0; dim < (two ? 2 : 3); dim++) {
     if (!g.periodic[dim]) continue;
@@ -86,6 +89,7 @@ export const nativeGhosts = (xn: Float64Array, n: number, g: Geometry, cut: numb
         for (let c = 0; c < 3; c++) xs.push(xs[3 * i + c]);
         xs[3 * k + dim] = xs[3 * i + dim] + sgn * len;
         roots.push(roots[i]);
+        froms.push(i);
         imgs.push(imgs[3 * i], imgs[3 * i + 1], imgs[3 * i + 2]);
         imgs[3 * k + dim] += sgn;
       }
@@ -97,6 +101,7 @@ export const nativeGhosts = (xn: Float64Array, n: number, g: Geometry, cut: numb
     x: Float64Array.from(xs),
     root: Int32Array.from(roots),
     img: Int32Array.from(imgs),
+    from: Int32Array.from(froms),
   };
 };
 
@@ -558,3 +563,124 @@ const engineOrder = (half: NeighList, nlocal: number): Int32Array => {
   }
   return Int32Array.from(out);
 };
+
+/**
+ * comm_brick.cpp CommBrick::reverse_comm with one processor, where every swap is to self ("for (int iswap = nswap-1;
+ * iswap >= 0; iswap--)" ... "avec->unpack_reverse(sendnum[iswap],sendlist[iswap],buf_send)": the values of the ghosts
+ * of swap iswap are added to the atoms they were sent from), and pair.cpp Pair::virial_fdotr_compute ("sum over force
+ * on all particles including ghosts": owned atoms, then ghosts, in local order). Inside one swap every target receives
+ * one value, so folding the ghosts from the last to the first gives native's sums bit for bit.
+ *
+ * Engine arrays are indexed by the engine's atoms (owned, then its ghosts). A native atom maps to the engine atom with
+ * the same owner and periodic image; a native ghost that the engine does not hold carries zero, and an engine ghost
+ * with no native counterpart is folded the engine's way. The mapping is kept between neighbor builds, as native keeps
+ * its ghost lists (borders) between reneighborings. Orthogonal boxes, newton on.
+ */
+export class NativeReverseComm {
+  private nbuild = -1;
+  private order: Int32Array | null = null;
+  private n = 0;
+  /** engine index of each native atom (-1: the engine holds no such image) */
+  private eng: Int32Array = new Int32Array(0);
+  /** native index of the atom each native ghost was sent from */
+  private from: Int32Array = new Int32Array(0);
+  /** engine ghosts that native does not hold */
+  private extra: number[] = [];
+  private buf = new Float64Array(0);
+
+  private refresh(s: SimState, nb: Neighbor, g: Geometry): void {
+    if (this.nbuild === nb.nbuild && this.order === s.order) return;
+    const order = nativeOrder(s);
+    const n = s.n;
+    const gi = nb.gimage;
+    const engByKey = new Map<number, number>();
+    for (let k = 0; k < nb.nall; k++) engByKey.set(imgKey(nb.owner[k], gi[3 * k], gi[3 * k + 1], gi[3 * k + 2]), k);
+    const xn = new Float64Array(3 * n);
+    for (let k = 0; k < n; k++) {
+      const e = order[k];
+      xn[3 * k] = s.x[3 * e]; xn[3 * k + 1] = s.x[3 * e + 1]; xn[3 * k + 2] = s.x[3 * e + 2];
+    }
+    const gh = nativeGhosts(xn, n, g, nb.cutghost, s.dimension === 2);
+    const eng = new Int32Array(gh.nall);
+    const held = new Uint8Array(nb.nall);
+    for (let k = 0; k < gh.nall; k++) {
+      const e = order[gh.root[k]];
+      const hit = k < n ? e : engByKey.get(imgKey(e, gh.img[3 * k], gh.img[3 * k + 1], gh.img[3 * k + 2]));
+      eng[k] = hit === undefined ? -1 : hit;
+      if (hit !== undefined) held[hit] = 1;
+    }
+    this.extra = [];
+    for (let e = nb.nlocal; e < nb.nall; e++) if (!held[e]) this.extra.push(e);
+    this.eng = eng;
+    this.from = gh.from;
+    this.n = n;
+    if (this.buf.length < 3 * gh.nall) this.buf = new Float64Array(3 * gh.nall);
+    this.nbuild = nb.nbuild;
+    this.order = s.order;
+  }
+
+  /** The values of a (3 per engine atom) in native order, folded as reverse_comm; the owned atoms' sums are in buf[0, 3n). */
+  private gatherFold(a: Float64Array): void {
+    const { eng, from, n, buf } = this;
+    const nall = eng.length;
+    for (let k = 0; k < nall; k++) {
+      const e = eng[k];
+      if (e < 0) { buf[3 * k] = 0; buf[3 * k + 1] = 0; buf[3 * k + 2] = 0; continue; }
+      buf[3 * k] = a[3 * e]; buf[3 * k + 1] = a[3 * e + 1]; buf[3 * k + 2] = a[3 * e + 2];
+    }
+    for (let k = nall - 1; k >= n; k--) {
+      const t = from[k];
+      buf[3 * t] += buf[3 * k]; buf[3 * t + 1] += buf[3 * k + 1]; buf[3 * t + 2] += buf[3 * k + 2];
+    }
+  }
+
+  /**
+   * Pair::virial_fdotr_compute over the pair forces f (3 per engine atom, owned and ghosts) at positions x, in native
+   * order, added to virial (xx, yy, zz, xy, xz, yz); then f is folded in place as reverse_comm: the owned entries hold
+   * the folded sums and the ghost entries native holds are zero (the engine's own fold then adds nothing).
+   */
+  fdotrFold(s: SimState, nb: Neighbor, g: Geometry, x: Float64Array, f: Float64Array, virial: Float64Array): void {
+    this.refresh(s, nb, g);
+    const { eng, n, buf } = this;
+    const nall = eng.length;
+    let v0 = virial[0], v1 = virial[1], v2 = virial[2], v3 = virial[3], v4 = virial[4], v5 = virial[5];
+    for (let k = 0; k < nall; k++) {
+      const e = eng[k];
+      if (e < 0) continue;
+      const fx = f[3 * e], fy = f[3 * e + 1], fz = f[3 * e + 2];
+      const xx = x[3 * e], xy = x[3 * e + 1], xz = x[3 * e + 2];
+      v0 += fx * xx; v1 += fy * xy; v2 += fz * xz; v3 += fy * xx; v4 += fz * xx; v5 += fz * xy;
+    }
+    for (const e of this.extra) {
+      const fx = f[3 * e], fy = f[3 * e + 1], fz = f[3 * e + 2];
+      const xx = x[3 * e], xy = x[3 * e + 1], xz = x[3 * e + 2];
+      v0 += fx * xx; v1 += fy * xy; v2 += fz * xz; v3 += fy * xx; v4 += fz * xx; v5 += fz * xy;
+    }
+    virial[0] = v0; virial[1] = v1; virial[2] = v2; virial[3] = v3; virial[4] = v4; virial[5] = v5;
+    this.gatherFold(f);
+    for (let k = 0; k < n; k++) {
+      const e = eng[k];
+      f[3 * e] = buf[3 * k]; f[3 * e + 1] = buf[3 * k + 1]; f[3 * e + 2] = buf[3 * k + 2];
+    }
+    for (let k = n; k < nall; k++) {
+      const e = eng[k];
+      if (e >= 0) { f[3 * e] = 0; f[3 * e + 1] = 0; f[3 * e + 2] = 0; }
+    }
+  }
+
+  /** Folds a (3 per engine atom) as reverse_comm and adds the owned sums to out (3 per owned atom). */
+  foldInto(s: SimState, nb: Neighbor, g: Geometry, a: Float64Array, out: Float64Array): void {
+    this.refresh(s, nb, g);
+    const { eng, n, buf } = this;
+    this.gatherFold(a);
+    for (let k = 0; k < n; k++) {
+      const e = eng[k];
+      out[3 * e] += buf[3 * k]; out[3 * e + 1] += buf[3 * k + 1]; out[3 * e + 2] += buf[3 * k + 2];
+    }
+    const o = nb.owner;
+    for (const e of this.extra) {
+      const i = o[e];
+      out[3 * i] += a[3 * e]; out[3 * i + 1] += a[3 * e + 1]; out[3 * i + 2] += a[3 * e + 2];
+    }
+  }
+}

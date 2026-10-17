@@ -20,6 +20,8 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { CORE_TYPE, NOPOL_TYPE, drudeModelOf, type DrudeModel } from './drude_model';
 import { bounds } from './pair_thole';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** LAMMPS EPSILON: added to rsq so that r = 0 between a Drude pair stays finite (the special bond removes it). */
 const EPSILON = 1.0e-20;
@@ -60,7 +62,7 @@ const coulKernel = (
   if (tab !== null && rsq > TABLE_INNER_RSQ) return coulLongPair(rsq, qi, qj, g, qqrd2e, fc, false, tab);
   const r = Math.sqrt(rsq);
   const grij = g * r;
-  const expm2 = Math.exp(-grij * grij);
+  const expm2 = libmExp(-grij * grij);
   const pre = qqrd2e * qi * qj / r;
   if (fc < 1) {
     const erfc = fc - erfNative(grij);
@@ -130,7 +132,7 @@ export class PairLJCutTholeLong extends PairLJCutCoulLong {
         const k = i * nt + j;
         this.polar[k] = polarOne;
         this.thole[k] = tholeOne;
-        this.ascreen[k] = tholeOne / Math.pow(polarOne, 1 / 3);
+        this.ascreen[k] = tholeOne / libmPow(polarOne, 1 / 3);
         this.tset[k] = 1;
       }
     }
@@ -149,7 +151,7 @@ export class PairLJCutTholeLong extends PairLJCutCoulLong {
       const kii = i * nt + i, kjj = j * nt + j;
       this.polar[k] = Math.sqrt(this.polar[kii] * this.polar[kjj]);
       this.thole[k] = 0.5 * (this.thole[kii] + this.thole[kjj]);
-      this.ascreen[k] = this.thole[k] / Math.pow(this.polar[k], 1 / 3);
+      this.ascreen[k] = this.thole[k] / libmPow(this.polar[k], 1 / 3);
     }
     this.polar[kr] = this.polar[k];
     this.thole[kr] = this.thole[k];
@@ -220,7 +222,7 @@ export class PairLJCutTholeLong extends PairLJCutCoulLong {
             }
             const r = Math.sqrt(rsq);
             const asr = this.ascreen[t] * r;
-            const expAsr = Math.exp(-asr);
+            const expAsr = libmExp(-asr);
             const dcoul = qqrd2e * dqi * dqj / r;
             const factorF = 0.5 * (2.0 + expAsr * (-2.0 - asr * (2.0 + asr))) - factorCoul;
             const factorE = 0.5 * (2.0 - expAsr * (2.0 + asr)) - factorCoul;

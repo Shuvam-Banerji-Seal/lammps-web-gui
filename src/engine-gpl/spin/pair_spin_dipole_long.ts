@@ -21,6 +21,8 @@ import { HBAR, MUB2MU0, MUB2MU0HBINV } from './pair_spin_dipole_cut';
 import { fmLongOf } from './dipole_long_field';
 import { nativeFullLast } from '../neighbor/nativeOrder';
 import type { SimState } from '../../engine/types';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** ewald_const.h: EWALD_P and the coefficients of the erfc approximation (LAMMPS src/ewald_const.h, b332f28). */
 const EWALD_P = 0.3275911;
@@ -90,13 +92,13 @@ export class PairSpinDipoleLong extends Pair implements SpinPairStyle {
   private bterms(rsq: number, out: Float64Array): void {
     const g = this.gEwald;
     const pre1 = 2 * g / Math.sqrt(Math.PI);
-    const pre2 = 4 * g ** 3 / Math.sqrt(Math.PI);
-    const pre3 = 8 * g ** 5 / Math.sqrt(Math.PI);
+    const pre2 = 4 * libmPow(g, 3) / Math.sqrt(Math.PI);
+    const pre3 = 8 * libmPow(g, 5) / Math.sqrt(Math.PI);
     const r2inv = 1 / rsq;
     const r = Math.sqrt(rsq);
     const rinv = 1 / r;
     const grij = g * r;
-    const expm2 = Math.exp(-grij * grij);
+    const expm2 = libmExp(-grij * grij);
     const t = 1 / (1 + EWALD_P * grij);
     const erfc = t * (A1 + t * (A2 + t * (A3 + t * (A4 + t * A5)))) * expm2;
     out[0] = erfc * rinv;

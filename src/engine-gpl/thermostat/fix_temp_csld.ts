@@ -16,6 +16,7 @@ import { takeFixRecord, type MarsEnergyRestart } from '../../engine/fix/restartR
 import { parseNumOrVar, ramp, valueOf } from '../../engine/fix/util';
 import { massOf, nativeOrder } from '../../engine/atoms';
 import { RanMars } from '../random_mars';
+import { exp as libmExp } from '../libm/exp';
 
 export class FixTempCSLD extends RescaleFix {
   readonly style = 'temp/csld';
@@ -75,7 +76,7 @@ export class FixTempCSLD extends RescaleFix {
     }
     sys.refreshComputes();
     // the source takes the temperature of the random velocities for the mixing factor
-    const c1 = Math.exp(-s.dt / this.tPeriod);
+    const c1 = libmExp(-s.dt / this.tPeriod);
     const c2 = Math.sqrt(((1.0 - c1 * c1) * tTarget) / comp.scalarValue());
     atoms.forEach((i, k) => {
       for (let d = 0; d < 3; d++) s.v[3 * i + d] = vhold[3 * k + d] * c1 + s.v[3 * i + d] * c2;

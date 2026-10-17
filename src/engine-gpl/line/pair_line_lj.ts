@@ -17,6 +17,8 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } fro
 import { NEIGHMASK } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { isLineStyle, LINE_BONUS, LINE_FLAG } from '../../engine/atoms';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { pow as libmPow } from '../libm/pow';
 
 export class PairLineLJ extends Pair {
   readonly name = 'line/lj';
@@ -93,10 +95,10 @@ export class PairLineLJ extends Pair {
     if (!this.setflag[k]) throw new StyleError('All pair coeffs are not set');
     const e = this.eps[k], s = this.sig[k];
     this.cutsubsq[k] = this.cutsub[k] * this.cutsub[k];
-    this.lj1[k] = 48.0 * e * Math.pow(s, 12.0);
-    this.lj2[k] = 24.0 * e * Math.pow(s, 6.0);
-    this.lj3[k] = 4.0 * e * Math.pow(s, 12.0);
-    this.lj4[k] = 4.0 * e * Math.pow(s, 6.0);
+    this.lj1[k] = 48.0 * e * libmPow(s, 12.0);
+    this.lj2[k] = 24.0 * e * libmPow(s, 6.0);
+    this.lj3[k] = 4.0 * e * libmPow(s, 12.0);
+    this.lj4[k] = 4.0 * e * libmPow(s, 6.0);
     this.eps[kr] = e;
     this.sig[kr] = s;
     this.cutsubsq[kr] = this.cutsubsq[k];
@@ -138,8 +140,8 @@ export class PairLineLJ extends Pair {
       const L = bonus[2 * i], th = bonus[2 * i + 1], n = dCount[i];
       for (let m = 0; m < n; m++) {
         const delta = -0.5 + (2 * m + 1) / (2.0 * n);
-        ddx[dStart[i] + m] = delta * L * Math.cos(th);
-        ddy[dStart[i] + m] = delta * L * Math.sin(th);
+        ddx[dStart[i] + m] = delta * L * libmCos(th);
+        ddy[dStart[i] + m] = delta * L * libmSin(th);
       }
     }
 

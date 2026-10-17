@@ -1,6 +1,7 @@
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum, joinPotentialEntries } from '../util';
+import { libm } from '../../libm';
 
 /*
  * pair_style sw, sw/mod — docs.lammps.org/pair_sw.html
@@ -525,7 +526,7 @@ export abstract class PairSWBase extends Pair {
     const A = this.pA[t], B = this.pB[t], p = this.pP[t], q = this.pQ[t];
     const u = sig / r;
     const den = r - a * sig;
-    const es = Math.exp(sig / den);
+    const es = libm.exp(sig / den);
     const f2 = B * Math.pow(u, p) - Math.pow(u, q);
     const dfdu = (p > 0 ? B * p * Math.pow(u, p - 1) : 0) - (q > 0 ? q * Math.pow(u, q - 1) : 0);
     // dphi2/dr = A*eps*exp(sigma/(r-a*sigma)) * (-dfdu*sigma/r^2 - f2*sigma/(r-a*sigma)^2)
@@ -620,7 +621,7 @@ export abstract class PairSWBase extends Pair {
             nDx[m] = dxx; nDy[m] = dyy; nDz[m] = dzz;
             nR[m] = r;
             nInvR[m] = 1 / r;
-            nES[m] = Math.exp((g * sgs) / d2);
+            nES[m] = libm.exp((g * sgs) / d2);
             nW[m] = (g * sgs) / (d2 * d2);
             m++;
           }
@@ -749,7 +750,7 @@ export class PairSWMod extends PairSWBase {
     const ad = Math.abs(dc);
     if (ad <= this.delta1) return 1;
     if (ad >= this.delta2) return 0;
-    return 0.5 + 0.5 * Math.cos((Math.PI * (ad - this.delta1)) / (this.delta2 - this.delta1));
+    return 0.5 + 0.5 * libm.cos((Math.PI * (ad - this.delta1)) / (this.delta2 - this.delta1));
   }
 
   /** d f_C / d delta = sign(delta) d f_C / d|delta| inside the switching band (0 outside). */
@@ -757,7 +758,7 @@ export class PairSWMod extends PairSWBase {
     const ad = Math.abs(dc);
     if (ad <= this.delta1 || ad >= this.delta2) return 0;
     const w = this.delta2 - this.delta1;
-    const d = -(Math.PI / (2 * w)) * Math.sin((Math.PI * (ad - this.delta1)) / w);
+    const d = -(Math.PI / (2 * w)) * libm.sin((Math.PI * (ad - this.delta1)) / w);
     return dc < 0 ? -d : d;
   }
 }

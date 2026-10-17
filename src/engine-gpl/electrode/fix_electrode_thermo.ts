@@ -10,6 +10,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { RanMars } from '../random_mars';
 import { FixElectrodeConp } from './fix_electrode_conp';
+import { exp as libmExp } from '../libm/exp';
 
 /** fix_electrode_thermo.cpp SMALL: the relaxation time must exceed it. */
 const SMALL = 1e-16;
@@ -67,8 +68,8 @@ export class FixElectrodeThermo extends FixElectrodeConp {
       this.deltaPsi0 = this.sys.vars.scalar(this.psiVar[1]!, this.sys.formulaEnv) - this.sys.vars.scalar(this.psiVar[0]!, this.sys.formulaEnv);
     }
     let deltaCharge = 0.5 * (this.groupQOld[1] - this.groupQOld[0])
-      - this.vacCap * (deltaPsi - this.deltaPsi0) * (1 - Math.exp(-dt / this.thermoTime));
-    deltaCharge += Math.sqrt((this.thermoTemp * this.vacCap) * (1 - Math.exp(-2 * dt / this.thermoTime))) * this.thermoRandom.gaussian();
+      - this.vacCap * (deltaPsi - this.deltaPsi0) * (1 - libmExp(-dt / this.thermoTime));
+    deltaCharge += Math.sqrt((this.thermoTemp * this.vacCap) * (1 - libmExp(-2 * dt / this.thermoTime))) * this.thermoRandom.gaussian();
     const r0 = -deltaCharge - this.sbCharges[0];
     const r1 = this.symm ? 0 : deltaCharge - this.sbCharges[1];
     this.groupPsi[0] = me[0][0] * r0 + me[0][1] * r1;

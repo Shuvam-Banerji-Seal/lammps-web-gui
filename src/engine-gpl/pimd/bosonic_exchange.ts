@@ -13,6 +13,8 @@
  * prim_estimator are kept as comments in the code below.
  */
 import { StyleError } from '../../engine/force/types';
+import { log as libmLog } from '../libm/log';
+import { exp as libmExp } from '../libm/exp';
 
 export class BosonicExchange {
   /** scratch: temp_nbosons_array (n + 1) */
@@ -128,8 +130,8 @@ export class BosonicExchange {
         this.tmp[k - 1] = val;
       }
       let sigDenom = 0.0;
-      for (let k = m; k > 0; k--) sigDenom += Math.exp(-beta * (this.tmp[k - 1] - Elongest));
-      this.V[m] = Elongest - (1.0 / beta) * Math.log(sigDenom / m);
+      for (let k = m; k > 0; k--) sigDenom += libmExp(-beta * (this.tmp[k - 1] - Elongest));
+      this.V[m] = Elongest - (1.0 / beta) * libmLog(sigDenom / m);
       if (!Number.isFinite(this.V[m])) throw new StyleError(`Invalid sig_denom ${sigDenom} with Elongest ${Elongest} in bosonic exchange potential`);
     }
   }
@@ -147,8 +149,8 @@ export class BosonicExchange {
         this.tmp[p] = val;
       }
       let sigDenom = 0.0;
-      for (let p = l; p < n; p++) sigDenom += (1.0 / (p + 1)) * Math.exp(-beta * (this.tmp[p] - Elongest));
-      this.Vb[l] = Elongest - Math.log(sigDenom) / beta;
+      for (let p = l; p < n; p++) sigDenom += (1.0 / (p + 1)) * libmExp(-beta * (this.tmp[p] - Elongest));
+      this.Vb[l] = Elongest - libmLog(sigDenom) / beta;
       if (!Number.isFinite(this.Vb[l])) throw new StyleError(`Invalid sig_denom ${sigDenom} with Elongest ${Elongest} in bosonic exchange potential backwards`);
     }
     this.Vb[0] = this.V[n];
@@ -159,11 +161,11 @@ export class BosonicExchange {
     const n = this.nbosons;
     const beta = this.beta;
     for (let l = 0; l < n - 1; l++) {
-      this.conn[n * l + (l + 1)] = 1.0 - Math.exp(-beta * (this.V[l + 1] + this.Vb[l + 1] - this.V[n]));
+      this.conn[n * l + (l + 1)] = 1.0 - libmExp(-beta * (this.V[l + 1] + this.Vb[l + 1] - this.V[n]));
     }
     for (let u = 0; u < n; u++) {
       for (let l = u; l < n; l++) {
-        this.conn[n * l + u] = (1.0 / (l + 1)) * Math.exp(-beta * (this.V[u] + this.getEnk(l + 1, l - u + 1) + this.Vb[l + 1] - this.V[n]));
+        this.conn[n * l + u] = (1.0 / (l + 1)) * libmExp(-beta * (this.V[u] + this.getEnk(l + 1, l - u + 1) + this.Vb[l + 1] - this.V[n]));
       }
     }
   }
@@ -258,9 +260,9 @@ export class BosonicExchange {
       for (let k = m; k > 0; k--) Elongest = Math.min(Elongest, this.getEnk(m, k) + this.V[m - k]);
       for (let k = m; k > 0; k--) {
         const Ekn = this.getEnk(m, k);
-        sig += (this.tmp[m - k] - Ekn) * Math.exp(-beta * (Ekn + this.V[m - k] - Elongest));
+        sig += (this.tmp[m - k] - Ekn) * libmExp(-beta * (Ekn + this.V[m - k] - Elongest));
       }
-      const sigDenomM = m * Math.exp(-beta * (this.V[m] - Elongest));
+      const sigDenomM = m * libmExp(-beta * (this.V[m] - Elongest));
       this.tmp[m] = sig / sigDenomM;
     }
     return convention * (0.5 * this.dimension * n / beta + this.tmp[n]);

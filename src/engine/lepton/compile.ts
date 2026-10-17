@@ -1,4 +1,5 @@
 import type { RNode } from './resolve';
+import { libm } from '../libm';
 
 /*
  * Closure compiler for resolved Lepton trees. A compiled node reads its
@@ -47,7 +48,7 @@ export const erf = (x: number): number => {
 const erfcLarge = (x: number): number => {
   let f = x;
   for (let k = 200; k >= 1; k--) f = x + (k / 2) / f;
-  return Math.exp(-x * x) / Math.sqrt(Math.PI) / f;
+  return libm.exp(-x * x) / Math.sqrt(Math.PI) / f;
 };
 
 export const erfc = (x: number): number => {
@@ -64,7 +65,7 @@ const zblScale = (zi: number, zj: number, c: ZblConst): number =>
 export const zblEnergy = (zi: number, zj: number, r: number, c: ZblConst): number => {
   const k = zblScale(zi, zj, c);
   let phi = 0;
-  for (let m = 0; m < 4; m++) phi += SCREEN[m] * Math.exp(-DECAY[m] * k * r);
+  for (let m = 0; m < 4; m++) phi += SCREEN[m] * libm.exp(-DECAY[m] * k * r);
   return (c.qqr2e * zi * zj * phi) / r;
 };
 
@@ -74,7 +75,7 @@ export const zblDerivative = (zi: number, zj: number, r: number, c: ZblConst): n
   let s = 0;
   for (let m = 0; m < 4; m++) {
     const g = DECAY[m] * k;
-    s += SCREEN[m] * Math.exp(-g * r) * (-g / r - 1 / (r * r));
+    s += SCREEN[m] * libm.exp(-g * r) * (-g / r - 1 / (r * r));
   }
   return c.qqr2e * zi * zj * s;
 };
@@ -114,12 +115,12 @@ const callFn = (fn: string, f: Fn[], args: RNode[], zbl: ZblConst | null): Fn =>
   };
   switch (fn) {
     case 'sqrt': return (e) => Math.sqrt(a(e));
-    case 'exp': return (e) => Math.exp(a(e));
-    case 'log': return (e) => Math.log(a(e));
-    case 'sin': return (e) => Math.sin(a(e));
-    case 'cos': return (e) => Math.cos(a(e));
-    case 'sec': return (e) => 1 / Math.cos(a(e));
-    case 'csc': return (e) => 1 / Math.sin(a(e));
+    case 'exp': return (e) => libm.exp(a(e));
+    case 'log': return (e) => libm.log(a(e));
+    case 'sin': return (e) => libm.sin(a(e));
+    case 'cos': return (e) => libm.cos(a(e));
+    case 'sec': return (e) => 1 / libm.cos(a(e));
+    case 'csc': return (e) => 1 / libm.sin(a(e));
     case 'tan': return (e) => Math.tan(a(e));
     case 'cot': return (e) => 1 / Math.tan(a(e));
     case 'asin': return (e) => Math.asin(a(e));

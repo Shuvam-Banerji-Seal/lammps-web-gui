@@ -13,6 +13,8 @@
  */
 import { StyleError } from '../../engine/force/types';
 import { POLY3, POLY4, NS4 } from './tables';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 /** npa of eapod.cpp: number of monomials of each degree. */
 const NPA = [0, 1, 4, 10, 20, 35, 56, 84, 120, 165, 220, 286, 364, 455];
@@ -390,16 +392,16 @@ export class PODModel {
       const y3 = 1.0 - y2 * y;
       const y4 = y3 * y3 + 1e-6;
       const y5 = Math.sqrt(y4);
-      const y6 = Math.exp(-1.0 / y5);
-      const fcut = y6 / Math.exp(-1.0);
+      const y6 = libmExp(-1.0 / y5);
+      const fcut = y6 / libmExp(-1.0);
       for (let j = 0; j < NBESSELPARS; j++) {
         let alpha = BESSEL_PARAMS[j];
         if (Math.abs(alpha) <= 1.0e-6) alpha = 1e-3;
-        const x = (1.0 - Math.exp(-alpha * r / rmax)) / (1.0 - Math.exp(-alpha));
+        const x = (1.0 - libmExp(-alpha * r / rmax)) / (1.0 - libmExp(-alpha));
         for (let i = 0; i < this.besseldegree; i++) {
           const a = (i + 1) * Math.PI;
           const b = Math.sqrt(2.0 / rmax) / (i + 1);
-          rbf[n + N * i + N * this.besseldegree * j] = b * fcut * Math.sin(a * x) / r;
+          rbf[n + N * i + N * this.besseldegree * j] = b * fcut * libmSin(a * x) / r;
         }
       }
       for (let i = 0; i < this.inversedegree; i++) {
@@ -440,27 +442,27 @@ export class PODModel {
       const y3 = 1.0 - y2 * y;
       const y4 = y3 * y3 + 1e-6;
       const y5 = Math.sqrt(y4);
-      const y6 = Math.exp(-1.0 / y5);
+      const y6 = libmExp(-1.0 / y5);
       const y7 = y4 * Math.sqrt(y4);
-      const fcut = y6 / Math.exp(-1.0);
-      const dfcut = ((3.0 / (rmax * Math.exp(-1.0))) * y2 * y6 * (y * y2 - 1.0)) / y7;
+      const fcut = y6 / libmExp(-1.0);
+      const dfcut = ((3.0 / (rmax * libmExp(-1.0))) * y2 * y6 * (y * y2 - 1.0)) / y7;
       const f1 = fcut / r;
       const f2 = f1 / r;
       const df1 = dfcut / r;
       for (let j = 0; j < NBESSELPARS; j++) {
         const alpha = BESSEL_PARAMS[j];
-        const t1 = 1.0 - Math.exp(-alpha);
-        const t2 = Math.exp(-alpha * r / rmax);
+        const t1 = 1.0 - libmExp(-alpha);
+        const t2 = libmExp(-alpha * r / rmax);
         const x = (1.0 - t2) / t1;
         const dx = (alpha / rmax) * t2 / t1;
         for (let i = 0; i < bd; i++) {
           const a = (i + 1) * Math.PI;
           const b = Math.sqrt(2.0 / rmax) / (i + 1);
           const af1 = a * f1;
-          const sinax = Math.sin(a * x);
+          const sinax = libmSin(a * x);
           const nij = n + nj * (i + bd * j);
           s.rbft[nij] = b * f1 * sinax;
-          const drbfdr = b * (df1 * sinax - f2 * sinax + af1 * Math.cos(a * x) * dx);
+          const drbfdr = b * (df1 * sinax - f2 * sinax + af1 * libmCos(a * x) * dx);
           s.rbfxt[nij] = drbfdr * dr1;
           s.rbfyt[nij] = drbfdr * dr2;
           s.rbfzt[nij] = drbfdr * dr3;

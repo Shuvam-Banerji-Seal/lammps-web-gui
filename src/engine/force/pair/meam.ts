@@ -23,6 +23,7 @@ import {
 } from './meam_alloy';
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { gplHook } from '../../gplHooks';
+import { libm } from '../../libm';
 
 /*
  * MEAM, single element: energy, analytic forces and pair_style meam (see the sections below).
@@ -201,7 +202,7 @@ const refRhoBarPrime = (
     // Reference structure: the radial cutoff is not applied to its shells (see the header of this function).
     const wt = S[m], dwt = 0;
     const u = [p.dx / rm, p.dy / rm, p.dz / rm];
-    const a = [0, 1, 2, 3].map((n) => Math.exp(-el.beta[n] * (rm / el.re - 1)));
+    const a = [0, 1, 2, 3].map((n) => libm.exp(-el.beta[n] * (rm / el.re - 1)));
     // weights W_n = wt a_n and their r-derivatives dW_n = dwt a_n + wt (-beta_n/re) a_n s_m
     const W = [0, 1, 2, 3].map((n) => wt * a[n]);
     const dW = [0, 1, 2, 3].map((n) => dwt * a[n] + wt * (-el.beta[n] / el.re) * a[n] * sm);
@@ -323,7 +324,7 @@ const nn2RhoBarPrime = (
     const rm = r * sm;
     const wt = ref.s[m];
     const u = [ref.dir[3 * m], ref.dir[3 * m + 1], ref.dir[3 * m + 2]];
-    const a = [0, 1, 2, 3].map((q) => Math.exp(-el.beta[q] * (rm / el.re - 1)));
+    const a = [0, 1, 2, 3].map((q) => libm.exp(-el.beta[q] * (rm / el.re - 1)));
     const W = [0, 1, 2, 3].map((q) => wt * a[q]);
     const dW = [0, 1, 2, 3].map((q) => wt * (-el.beta[q] / el.re) * a[q] * sm);
     rho0 += W[0]; drho0 += dW[0];
@@ -387,7 +388,7 @@ export const nn2PhiPrime = (el: MeamElement, o: MeamOptions, rhoRef: number, r: 
   let s = 0, ar = r, sign = 1, scale = 1;
   for (let n = 0; n < 500; n++) {
     const { rho, drho } = nn2RhoBarPrime(el, o, el.nn2!, ar);
-    const fp = rho > 0 ? (el.A * el.Ec * (Math.log(rho / rhoRef) + 1)) / rhoRef : 0;
+    const fp = rho > 0 ? (el.A * el.Ec * (libm.log(rho / rhoRef) + 1)) / rhoRef : 0;
     s += sign * (2 / z1) * scale * (eroseDeriv(el, ar) - fp * drho);
     sign *= -q;
     ar *= a;
@@ -401,7 +402,7 @@ export const nn2PhiPrime = (el: MeamElement, o: MeamOptions, rhoRef: number, r: 
 export const embedding = (el: MeamElement, rhoRef: number, rhoBar: number): number => {
   if (rhoBar <= 0) return 0;
   const x = rhoBar / rhoRef;
-  return el.A * el.Ec * x * Math.log(x);
+  return el.A * el.Ec * x * libm.log(x);
 };
 
 /*
@@ -423,7 +424,7 @@ export const eroseE = (el: MeamElement, r: number): number => {
   if (e.form === 0) T = (eroseA3(e, s) * s ** 3) / q;
   else if (e.form === 1) T = (-e.attrac + e.repuls / r) * s ** 3;
   else T = eroseA3(e, s) * s ** 3;
-  return -el.Ec * (1 + s + T) * Math.exp(-s);
+  return -el.Ec * (1 + s + T) * libm.exp(-s);
 };
 export const eroseDeriv = (el: MeamElement, r: number): number => {
   const e = el.erose ?? NO_EROSE;
@@ -442,7 +443,7 @@ export const eroseDeriv = (el: MeamElement, r: number): number => {
     T = a3 * s ** 3;
     Tp = a3 * 3 * s * s * sp;
   }
-  return -el.Ec * Math.exp(-s) * (Tp - (s + T) * sp);
+  return -el.Ec * libm.exp(-s) * (Tp - (s + T) * sp);
 };
 
 /** Pair term phi(r) from the reference structure (Rose energy erose and the reference background). */
@@ -523,10 +524,10 @@ export function meamEnergy(el: MeamElement, o: MeamOptions, x: Float64Array, L: 
       const w = radialWeight(p.r, o) * S[m];
       const r = p.r;
       const u = [p.dx / r, p.dy / r, p.dz / r];
-      const a0 = Math.exp(-el.beta[0] * (r / el.re - 1));
-      const a1 = Math.exp(-el.beta[1] * (r / el.re - 1));
-      const a2 = Math.exp(-el.beta[2] * (r / el.re - 1));
-      const a3 = Math.exp(-el.beta[3] * (r / el.re - 1));
+      const a0 = libm.exp(-el.beta[0] * (r / el.re - 1));
+      const a1 = libm.exp(-el.beta[1] * (r / el.re - 1));
+      const a2 = libm.exp(-el.beta[2] * (r / el.re - 1));
+      const a3 = libm.exp(-el.beta[3] * (r / el.re - 1));
       rho0 += w * a0;
       v1x += w * a1 * u[0]; v1y += w * a1 * u[1]; v1z += w * a1 * u[2];
       rho2s += w * a2;
@@ -596,7 +597,7 @@ export const refBackgroundPrime = (el: MeamElement, o: MeamOptions, r: number): 
 export const pairPhiPrime = (el: MeamElement, o: MeamOptions, rhoRef: number, r: number): number => {
   const dEu = eroseDeriv(el, r);
   const { rho, drho } = refBackgroundPrime(el, o, r);
-  const fp = rho > 0 ? (el.A * el.Ec * (Math.log(rho / rhoRef) + 1)) / rhoRef : 0;
+  const fp = rho > 0 ? (el.A * el.Ec * (libm.log(rho / rhoRef) + 1)) / rhoRef : 0;
   return (2 / el.z) * (dEu - fp * drho);
 };
 
@@ -669,7 +670,7 @@ export function meamAtomEnergyGrad(
     phi[m] = pairPhiTab(el, o, rhoRef, r[m]);
     phip[m] = pairPhiTabPrime(el, o, rhoRef, r[m]);
     for (let n = 0; n < 4; n++) {
-      a[n][m] = Math.exp(-el.beta[n] * (r[m] / el.re - 1));
+      a[n][m] = libm.exp(-el.beta[n] * (r[m] / el.re - 1));
       ap[n][m] = (-el.beta[n] / el.re) * a[n][m];
     }
   }
@@ -713,8 +714,8 @@ export function meamAtomEnergyGrad(
     const rb = rho0 * Gg;
     if (rb > 0) {
       const x = rb / rhoRef;
-      Eden = el.A * el.Ec * x * Math.log(x);
-      const Fp = (el.A * el.Ec * (Math.log(x) + 1)) / rhoRef;
+      Eden = el.A * el.Ec * x * libm.log(x);
+      const Fp = (el.A * el.Ec * (libm.log(x) + 1)) / rhoRef;
       G0 = Fp * (Gg - 2 * gam * Gp);
       G1 = (Fp * Gp * t[1]) / rho0;
       G2 = (Fp * Gp * t[2]) / rho0;

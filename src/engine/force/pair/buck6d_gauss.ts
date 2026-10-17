@@ -3,6 +3,7 @@ import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { erfAcc } from './coul_cs';
 import { fmtCoeff, parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * pair_style buck6d/coul/gauss/dsf and buck6d/coul/gauss/long (MOF-FF), docs.lammps.org/pair_buck6d_coul_gauss.html
@@ -53,7 +54,7 @@ const switchDs = (t: number): number => -30 * t * t * (1 - t) * (1 - t);
 
 /** erf(alpha r)/r kernel g(r) and its derivative, for the shifted-force form. */
 const gKernel = (a: number, r: number): number => erfAcc(a * r) / r;
-const gDeriv = (a: number, r: number): number => -erfAcc(a * r) / (r * r) + TWO_OVER_SQRTPI * a * Math.exp(-a * a * r * r) / r;
+const gDeriv = (a: number, r: number): number => -erfAcc(a * r) / (r * r) + TWO_OVER_SQRTPI * a * libm.exp(-a * a * r * r) / r;
 
 /** Buckingham term with the D/r^14 damping: energy and dE/dr (before smoothing). */
 const vdwRaw = (A: number, rho: number, C: number, D: number, r: number): { e: number; de: number } => {
@@ -62,7 +63,7 @@ const vdwRaw = (A: number, rho: number, C: number, D: number, r: number): { e: n
   const inv6 = inv2 * inv2 * inv2;
   const inv14 = inv6 * inv6 * inv2;
   const g = 1 / (1 + D * inv14);
-  const ex = A * Math.exp(-rho * r);
+  const ex = A * libm.exp(-rho * r);
   const h = C * inv6 * g;
   // d/dr [C r^-6 g] = -6 C r^-7 g + C r^-6 * 14 D r^-15 g^2
   const dh = -6 * C * inv6 * inv * g + C * inv6 * 14 * D * inv14 * inv * g * g;
@@ -82,7 +83,7 @@ const vdwTerm = (A: number, rho: number, C: number, D: number, rs: number, rc: n
 const coulLongRaw = (alpha: number, g: number, qq: number, r: number): { e: number; de: number } => {
   const a = erfAcc(alpha * r), b = erfAcc(g * r);
   const k = (a - b) / r;
-  const dk = (TWO_OVER_SQRTPI * (alpha * Math.exp(-alpha * alpha * r * r) - g * Math.exp(-g * g * r * r))) / r - (a - b) / (r * r);
+  const dk = (TWO_OVER_SQRTPI * (alpha * libm.exp(-alpha * alpha * r * r) - g * libm.exp(-g * g * r * r))) / r - (a - b) / (r * r);
   return { e: qq * k, de: qq * dk };
 };
 

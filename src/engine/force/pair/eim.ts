@@ -1,6 +1,7 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { erfcExact } from '../erfc';
+import { libm } from '../../libm';
 
 /*
  * pair_style eim — embedded-ion method (EIM) potentials, docs.lammps.org/pair_eim.html
@@ -314,7 +315,7 @@ export class PairEIM extends Pair {
   private dfc(r: number, rp: number, rc: number): number {
     const g2 = this.file!.G2, g3 = this.file!.G3;
     const arg = g2 + ((g3 - g2) * (r - rp)) / (rc - rp);
-    return (-TWO_OVER_SQRT_PI * Math.exp(-arg * arg) * (g3 - g2)) / ((rc - rp) * this.cutDenom);
+    return (-TWO_OVER_SQRT_PI * libm.exp(-arg * arg) * (g3 - g2)) / ((rc - rp) * this.cutDenom);
   }
 
   /**
@@ -325,7 +326,7 @@ export class PairEIM extends Pair {
     const { Eb, re, alpha: al, beta: be } = p;
     const pre = (Eb * be) / (be - al), pre2 = (Eb * al) / (be - al);
     if (p.p === 1) {
-      const ea = Math.exp((-al * (r - re)) / re), eb = Math.exp((-be * (r - re)) / re);
+      const ea = libm.exp((-al * (r - re)) / re), eb = libm.exp((-be * (r - re)) / re);
       return [pre * ea, pre * ea * (-al / re), pre2 * eb, pre2 * eb * (-be / re)];
     }
     const xa = Math.pow(re / r, al), xb = Math.pow(re / r, be);
@@ -386,7 +387,7 @@ export class PairEIM extends Pair {
         if (rsq >= cutsq[ti * nt + tj]) continue;
         const r = Math.sqrt(rsq);
         if (r >= tp.rcPsi) continue;
-        s += q[j] * tp.Apsi * Math.exp(-tp.zeta * r) * this.fc(r, tp.rsPsi, tp.rcPsi);
+        s += q[j] * tp.Apsi * libm.exp(-tp.zeta * r) * this.fc(r, tp.rsPsi, tp.rcPsi);
       }
       sigma[i] = s;
       const e = 0.5 * q[i] * s;
@@ -428,7 +429,7 @@ export class PairEIM extends Pair {
           dEdr += 0.5 * dV;
         }
         if (r < p.rcPsi) {
-          const ex = p.Apsi * Math.exp(-p.zeta * r);
+          const ex = p.Apsi * libm.exp(-p.zeta * r);
           const c = this.fc(r, p.rsPsi, p.rcPsi);
           const dpsi = ex * (-p.zeta * c + this.dfc(r, p.rsPsi, p.rcPsi));
           dEdr += 0.5 * q[i] * q[j] * dpsi;

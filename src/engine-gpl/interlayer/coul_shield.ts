@@ -11,6 +11,7 @@ import { tallyAtom } from '../../engine/force/pair/lj_cut';
 import { parseNum } from '../../engine/force/util';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { calcDTap, calcTap } from './taper';
+import { pow as libmPow } from '../libm/pow';
 
 /**
  * pair_style coul/shield (docs.lammps.org/pair_coul_shield.html): a shielded Coulomb interaction between atoms of
@@ -129,7 +130,7 @@ export class PairCoulShield extends Pair {
         const r3 = rsq * r;
         const rarg = 1.0 / this.sigmae[t];
         const th = r3 + rarg * rarg * rarg;
-        const epsr = 1.0 / Math.pow(th, 1.0 / 3.0);
+        const epsr = 1.0 / libmPow(th, 1.0 / 3.0);
         let depsdr = epsr * epsr;
         depsdr *= depsdr;
         const vc = qqrd2e * qi * q[j] * epsr;

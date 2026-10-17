@@ -18,6 +18,8 @@ import { StyleError } from '../../engine/force/types';
 import { fft3d } from '../../engine/force/fft';
 import { powint } from './hal';
 import { ELECTRIC, torque2force, type MpoleSites } from './multipole';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 /** pi (amoeba_kspace.cpp MY_PI). */
 const MY_PI = Math.PI;
@@ -67,8 +69,8 @@ const dftmod = (bsmod: Float64Array, bsarray: Float64Array, nfft: number, order:
     let sum1 = 0.0, sum2 = 0.0;
     for (let j = 0; j < nfft; j++) {
       const arg = factor * i * j;
-      sum1 += bsarray[j] * Math.cos(arg);
-      sum2 += bsarray[j] * Math.sin(arg);
+      sum1 += bsarray[j] * libmCos(arg);
+      sum2 += bsarray[j] * libmSin(arg);
     }
     bsmod[i] = sum1 * sum1 + sum2 * sum2;
   }
@@ -461,7 +463,7 @@ export const influence = (g: PmeGrid, aewald: number): Float64Array => {
         const term = -pterm * hsq;
         if (term > -50.0 && hsq !== 0.0) {
           const denom = volterm * hsq * bs1[i] * bs2[j] * bs3[k];
-          w[nn] = Math.exp(term) / denom;
+          w[nn] = libmExp(term) / denom;
         }
         nn++;
       }

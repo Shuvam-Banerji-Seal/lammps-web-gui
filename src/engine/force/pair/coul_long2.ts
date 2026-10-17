@@ -4,6 +4,7 @@ import { PairBorn, PairBuck, } from './simple';
 import { tallyAtom } from './lj_cut';
 import { erfcFast, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../erfc';
 import { fmtCoeff, parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * born/coul/long and buck/coul/long — the Born-Mayer-Huggins and Buckingham
@@ -106,7 +107,7 @@ const coulLongPair = (
   }
   const r = Math.sqrt(rsq);
   const grij = g * r;
-  const ex = Math.exp(-grij * grij);
+  const ex = libm.exp(-grij * grij);
   // native's direct branch (table 0, and table N > 0 below r^2 = 2) is the polynomial fit; measured
   // with native LAMMPS (black box): table 0 and table 12 give the same energy at r = 1.2
   const erfc = poly || table ? erfcPoly(grij, ex) : erfcFast(grij, ex);
@@ -174,7 +175,7 @@ export class PairBornCoulLong extends PairBorn {
           const factor = sLJ[sb];
           const r = Math.sqrt(rsq);
           const rinv = 1 / r;
-          const ex = Math.exp((bornSig[t] - r) * bornIR[t]);
+          const ex = libm.exp((bornSig[t] - r) * bornIR[t]);
           const r2inv = 1 / rsq;
           const r6inv = r2inv * r2inv * r2inv;
           const r8inv = r6inv * r2inv;
@@ -236,7 +237,7 @@ export class PairBornCoulLong extends PairBorn {
         const c = this.p.get('C', i, j), d = this.p.get('D', i, j);
         const rc = nonCoulCut(this.p.get('cut', i, j), this.cutGlobal);
         if (!(rc > 0)) continue;
-        const nn = count[i] * count[j], ex = Math.exp((sig - rc) / rho);
+        const nn = count[i] * count[j], ex = libm.exp((sig - rc) / rho);
         e += nn * (a * rho * ex * (rc * rc + 2 * rho * rc + 2 * rho * rho) - c / (3 * rc ** 3) + d / (5 * rc ** 5));
         pr += nn * (-(a / rho) * ex * (rc ** 3 * rho + 3 * rc * rc * rho * rho + 6 * rc * rho ** 3 + 6 * rho ** 4) + 2 * c / rc ** 3 - 8 * d / (5 * rc ** 5));
       }
@@ -303,7 +304,7 @@ export class PairBuckCoulLong extends PairBuck {
         if (rsq < buckCutSq[t]) {
           const factor = sLJ[sb];
           const r = Math.sqrt(rsq);
-          const ex = Math.exp(-r * buckIR[t]);
+          const ex = libm.exp(-r * buckIR[t]);
           const r2inv = 1 / rsq;
           // F_vec = [(A/rho) e^{-r/rho} - 6 C/r^7] * rhat = fpair * (ri - rj)
           fpair += factor * (buckA[t] * buckIR[t] * ex / r - 6 * buckC[t] * r2inv * r2inv * r2inv * r2inv);
@@ -361,7 +362,7 @@ export class PairBuckCoulLong extends PairBuck {
         const a = this.p.get('A', i, j), rho = this.p.get('rho', i, j), c = this.p.get('C', i, j);
         const rc = nonCoulCut(this.p.get('cut', i, j), this.cutGlobal);
         if (!(rc > 0)) continue;
-        const nn = count[i] * count[j], ex = Math.exp(-rc / rho);
+        const nn = count[i] * count[j], ex = libm.exp(-rc / rho);
         e += nn * (a * rho * ex * (rc * rc + 2 * rho * rc + 2 * rho * rho) - c / (3 * rc ** 3));
         pr += nn * (-(a / rho) * ex * (rc ** 3 * rho + 3 * rc * rc * rho * rho + 6 * rc * rho ** 3 + 6 * rho ** 4) + 2 * c / rc ** 3);
       }

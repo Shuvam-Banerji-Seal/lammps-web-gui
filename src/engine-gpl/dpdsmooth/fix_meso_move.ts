@@ -16,6 +16,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { massOf } from '../../engine/atoms';
 import { sphArrays } from '../sph/common';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 type Style = 'linear' | 'wiggle' | 'rotate';
 
@@ -202,7 +203,7 @@ export class FixMesoMove extends Fix {
         }
       } else if (this.mstyle === 'wiggle') {
         const arg = this.omega * delta, argNext = this.omega * deltaNext;
-        const sine = Math.sin(arg), cosine = Math.cos(arg), cosineNext = Math.cos(argNext);
+        const sine = libmSin(arg), cosine = libmCos(arg), cosineNext = libmCos(argNext);
         for (let d = 0; d < 3; d++) {
           const val = this.comp[d];
           if (val === null) { updNve(i, d); continue; }
@@ -229,8 +230,8 @@ export class FixMesoMove extends Fix {
     const R = this.runit, P = this.point;
     const w = this.omega;
     const arg = w * delta, argNext = w * deltaNext;
-    const sine = Math.sin(arg), cosine = Math.cos(arg);
-    const sineNext = Math.sin(argNext), cosineNext = Math.cos(argNext);
+    const sine = libmSin(arg), cosine = libmCos(arg);
+    const sineNext = libmSin(argNext), cosineNext = libmCos(argNext);
     const d = [0, 1, 2].map((k) => this.xorig[3 * i + k] - P[k]);
     const ddotr = d[0] * R[0] + d[1] * R[1] + d[2] * R[2];
     const c = [ddotr * R[0], ddotr * R[1], ddotr * R[2]];

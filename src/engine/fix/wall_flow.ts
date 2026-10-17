@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { massOf, nativeOrder } from '../atoms';
 import { RanMars } from '../rng';
+import { libm } from '../libm';
 
 /*
  * fix wall/flow — docs.lammps.org/fix_wall_flow.html (fix_wall_flow.rst).
@@ -127,11 +128,11 @@ const erf = (x: number): number => {
     sum += term;
     if (term < 1e-17 * sum) break;
   }
-  return (2 / Math.sqrt(Math.PI)) * Math.exp(-x2) * sum;
+  return (2 / Math.sqrt(Math.PI)) * libm.exp(-x2) * sum;
 };
 const SQRT_2PI = Math.sqrt(2 * Math.PI);
 /** Standard normal density and cumulative distribution. */
-const phi = (z: number): number => Math.exp((-0.5 * z) * z) / SQRT_2PI;
+const phi = (z: number): number => libm.exp((-0.5 * z) * z) / SQRT_2PI;
 const Phi = (z: number): number => 0.5 * (1 + erf(z / Math.SQRT2));
 
 /**

@@ -22,6 +22,8 @@
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { StyleError, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { BondBPMBase, bondKey } from './bond_bpm';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 // LAMMPS: NEAR_ZERO of bond_bpm_peri.cpp (roundoff noise in the stretch)
 const NEAR_ZERO = 2.2204e-16;
@@ -174,7 +176,7 @@ export class BondBpmPeri extends BondBPMBase {
       if (m === EPS) {
         this.plastic = true;
         this.gshearRep = this.gshear[t];
-        this.pointwiseYield = (25 / (8 * Math.PI * Math.pow(this.cut[t], 5))) * this.yieldS[t] * this.yieldS[t];
+        this.pointwiseYield = (25 / (8 * Math.PI * libmPow(this.cut[t], 5))) * this.yieldS[t] * this.yieldS[t];
       }
     }
     // the weighted volume is rebuilt in each run (bond_bpm_peri.cpp init_style sets wvolume_setup = 0)
@@ -398,7 +400,7 @@ export class BondBpmPeri extends BondBPMBase {
           rk = 3 * this.kbulk[t] * vEff * scale * (theta[i1] * w1 + theta[i2] * w2);
           const dev = dr - 0.5 * (theta[i1] + theta[i2]) * r0 * THIRD;
           const c1 = this.tau[t] / bc.s.dt;
-          const decay = Math.exp(-1 / c1);
+          const decay = libmExp(-1 / c1);
           const beta = 1 - c1 * (1 - decay);
           const h = this.histOf(bondKey(lo, hi));
           const devPrior = h[0], devbackPrior = h[1];

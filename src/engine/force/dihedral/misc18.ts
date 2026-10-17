@@ -1,6 +1,7 @@
 import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 import { StyleError, type BondedCompute } from '../types';
+import { libm } from '../../libm';
 
 /*
  * dihedral_style cosine/squared/restricted (wave 18).
@@ -61,13 +62,13 @@ export class DihedralCosineSquaredRestricted extends SimpleBonded {
       const atoms = [0, 1, 2, 3].map((w) => atomIndex(bc, D.atoms[4 * q + w], 'dihedral'));
       const t = D.type[q];
       const phi = dihedralGeometry(bc, atoms[0], atoms[1], atoms[2], atoms[3], grad, rel);
-      const s = Math.sin(phi);
+      const s = libm.sin(phi);
       const s2 = s * s;
       if (s2 < SIN_MIN * SIN_MIN) {
         throw new StyleError(`dihedral_style cosine/squared/restricted: |sin(phi)| = ${Math.abs(s).toExponential(3)} is below ${SIN_MIN}, the potential is singular at phi = 0 or 180 degrees`);
       }
-      const u = Math.cos(phi) - Math.cos(phi0[t]);
-      const c = Math.cos(phi);
+      const u = libm.cos(phi) - libm.cos(phi0[t]);
+      const c = libm.cos(phi);
       const ed = (K[t] * u * u) / s2;
       const dEdphi = (-2 * K[t] * u) / s - (2 * K[t] * u * u * c) / (s2 * s);
       e += ed;

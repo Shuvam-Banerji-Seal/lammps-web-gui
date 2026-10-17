@@ -15,6 +15,7 @@
  */
 import { powint, taperCoeffs } from './hal';
 import { torque2force, type MpoleSites } from './multipole';
+import { exp as libmExp } from '../libm/exp';
 
 /** Pair list of a term: copy indices and the special code of each pair. */
 export interface TermPairs {
@@ -85,7 +86,7 @@ export const damprep = (
     const r3 = r2 * r, r4 = r3 * r, r5 = r4 * r, r6 = r5 * r, r7 = r6 * r;
     const dmpi2 = 0.5 * dmpi;
     const dampi = dmpi2 * r;
-    const expi = Math.exp(-dampi);
+    const expi = libmExp(-dampi);
     const dmpi22 = dmpi2 * dmpi2;
     const dmpi23 = dmpi22 * dmpi2;
     const dmpi24 = dmpi23 * dmpi2;
@@ -106,8 +107,8 @@ export const damprep = (
     const dmpk2 = 0.5 * dmpk;
     const dampi = dmpi2 * r;
     const dampk = dmpk2 * r;
-    const expi = Math.exp(-dampi);
-    const expk = Math.exp(-dampk);
+    const expi = libmExp(-dampi);
+    const expk = libmExp(-dampk);
     const dmpi22 = dmpi2 * dmpi2;
     const dmpi23 = dmpi22 * dmpi2;
     const dmpi24 = dmpi23 * dmpi2;
@@ -361,7 +362,7 @@ export const dispersionReal = (
     const r6 = r2 * r2 * r2;
     const ralpha2 = r2 * aewald * aewald;
     const term = 1.0 + ralpha2 + 0.5 * ralpha2 * ralpha2;
-    const expterm = Math.exp(-ralpha2);
+    const expterm = libmExp(-ralpha2);
     const expa = expterm * term;
     const r = Math.sqrt(r2);
     const r7 = r6 * r;
@@ -369,8 +370,8 @@ export const dispersionReal = (
     const di2 = di * di;
     const di3 = di * di2;
     const dk = ak * r;
-    const expi = Math.exp(-di);
-    const expk = Math.exp(-dk);
+    const expi = libmExp(-di);
+    const expk = libmExp(-dk);
     let damp3: number, damp5: number, ddamp: number;
     if (ai !== ak) {
       const ai2 = ai * ai, ak2 = ak * ak;
@@ -452,8 +453,8 @@ export const chargeTransferTerm = (
     const chgj = ct.chgct[cls[j]];
     let alphaj = ct.dmpct[cls[j]];
     if (alphaj === 0.0) alphaj = 100.0;
-    const expi = Math.exp(-alphai * r);
-    const expj = Math.exp(-alphaj * r);
+    const expi = libmExp(-alphai * r);
+    const expj = libmExp(-alphaj * r);
     let e = -chgi * expj - chgj * expi;
     let de = chgi * expj * alphaj + chgj * expi * alphai;
     e = felec * e * factorMpole;

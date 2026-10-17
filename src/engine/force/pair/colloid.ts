@@ -1,6 +1,7 @@
 import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * pair_style colloid — docs.lammps.org/pair_colloid.html
@@ -228,7 +229,7 @@ export class PairColloid extends Pair {
     const dp = a1 + a2, dm = a1 - a2;
     const q1 = rsq - dp * dp, q2 = rsq - dm * dm;
     const twoA1A2 = 2 * a1 * a2;
-    const ua = -(A / 6) * (twoA1A2 / q1 + twoA1A2 / q2 + Math.log(q1 / q2));
+    const ua = -(A / 6) * (twoA1A2 / q1 + twoA1A2 / q2 + libm.log(q1 / q2));
     const kp = a1 * a1 + 7 * a1 * a2 + a2 * a2;
     const km = a1 * a1 - 7 * a1 * a2 + a2 * a2;
     const T1 = uRTerm(r, -7 * dp, 6 * kp, -dp)[0];

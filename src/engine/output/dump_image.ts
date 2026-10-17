@@ -11,6 +11,7 @@ import { ColorMap } from './image_colormap';
 import { type AtomObjectsHook, type BodyAtom, type EllipsoidAtom, type ImageObject, type ImageShading, type LineAtom, type ObjectStyle, type RasterFrame, type RegionConeSpec, type RegionHook, type Rgb255, type TriAtom, type Vec3 } from './image_objects';
 import { gplHook } from '../gplHooks';
 import { BlockRegion, ConeRegion, EllipsoidRegion, PlaneRegion, PrismRegion, SphereRegion } from '../region';
+import { libm } from '../libm';
 
 /*
  * dump image — docs.lammps.org/dump_image.html.
@@ -893,14 +894,14 @@ export class ImageDump {
     const center: number[] = [0, 1, 2].map((d) => vb.lo[d] + this.centerFrac[d] * (vb.hi[d] - vb.lo[d]));
 
     const th = this.theta * DEG, ph = this.phi * DEG;
-    let V = [Math.sin(th) * Math.cos(ph), Math.sin(th) * Math.sin(ph), Math.cos(th)];
+    let V = [libm.sin(th) * libm.cos(ph), libm.sin(th) * libm.sin(ph), libm.cos(th)];
     const up = normalize(this.up);
     // Image::view_params (image.cpp at b332f28): when the view direction is (nearly) parallel to the up vector, camDir is
     // tilted by EPSILON = 1e-6 (theta = 0 and theta = 180 are the degenerate cases), so that camRight stays defined
     if (Math.abs(up[0] * V[0] + up[1] * V[1] + up[2] * V[2]) > 1 - VIEW_EPSILON) {
-      if (th === 0) V = [Math.sin(VIEW_EPSILON) * Math.cos(ph), Math.sin(VIEW_EPSILON) * Math.sin(ph), Math.cos(VIEW_EPSILON)];
-      else if (th === Math.PI) V = [Math.sin(th - VIEW_EPSILON) * Math.cos(ph), Math.sin(th - VIEW_EPSILON) * Math.sin(ph), Math.cos(th - VIEW_EPSILON)];
-      else V = [Math.sin(th + VIEW_EPSILON) * Math.cos(ph), Math.sin(th + VIEW_EPSILON) * Math.sin(ph), Math.cos(th + VIEW_EPSILON)];
+      if (th === 0) V = [libm.sin(VIEW_EPSILON) * libm.cos(ph), libm.sin(VIEW_EPSILON) * libm.sin(ph), libm.cos(VIEW_EPSILON)];
+      else if (th === Math.PI) V = [libm.sin(th - VIEW_EPSILON) * libm.cos(ph), libm.sin(th - VIEW_EPSILON) * libm.sin(ph), libm.cos(th - VIEW_EPSILON)];
+      else V = [libm.sin(th + VIEW_EPSILON) * libm.cos(ph), libm.sin(th + VIEW_EPSILON) * libm.sin(ph), libm.cos(th + VIEW_EPSILON)];
     }
     // camRight = up x camDir, camUp = camDir x camRight (both normalised, as Image::view_params does)
     const right = normalize(cross(up, V));

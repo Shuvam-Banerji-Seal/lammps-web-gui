@@ -26,6 +26,7 @@ import { massOf } from '../../engine/atoms';
 import { ComputeTempUef } from './compute_temp_uef';
 import { ComputePressureUef } from './compute_pressure_uef';
 import { UEFBox, zeroRot, type M3 } from './uef_utils';
+import { exp as libmExp } from '../libm/exp';
 
 /**
  * Keyword value counts of fix nvt/npt (docs.lammps.org/fix_nh.html) that the UEF fix passes on to FixNH. Keywords
@@ -230,7 +231,7 @@ export class FixNHUef extends FixNH {
       const ex = this.erate[0] * dtf / 2;
       const ey = this.erate[1] * dtf / 2;
       const ez = -ex - ey;
-      const e0 = Math.exp(-ex), e1 = Math.exp(-ey), e2 = Math.exp(-ez);
+      const e0 = libmExp(-ex), e1 = libmExp(-ey), e2 = libmExp(-ez);
       const { v, f, mask } = s;
       for (let i = 0; i < s.n; i++) {
         if (!(mask[i] & this.groupBit)) continue;
@@ -250,12 +251,12 @@ export class FixNHUef extends FixNH {
       const om = nh.omegaDot;
       const ex = this.erate[0] * dtv;
       this.strain[0] += ex;
-      const e0 = Math.exp((ex + om[0] * dtv) / 2);
+      const e0 = libmExp((ex + om[0] * dtv) / 2);
       const ey = this.erate[1] * dtv;
       this.strain[1] += ey;
-      const e1 = Math.exp((ey + om[1] * dtv) / 2);
+      const e1 = libmExp((ey + om[1] * dtv) / 2);
       const ez = -ex - ey;
-      const e2 = Math.exp((ez + om[2] * dtv) / 2);
+      const e2 = libmExp((ez + om[2] * dtv) / 2);
       const { x, v, mask } = s;
       for (let i = 0; i < s.n; i++) {
         if (!(mask[i] & this.groupBit)) continue;
@@ -281,7 +282,7 @@ export class FixNHUef extends FixNH {
       this.uefbox.stepDeform(ex, ey);
       this.strain[0] += ex;
       this.strain[1] += ey;
-      vol = vol * Math.exp(3 * domega);
+      vol = vol * libmExp(3 * domega);
       this.setBoxFromUef(vol);
     };
 

@@ -25,6 +25,7 @@ import { torsion } from './torsion';
 import { rowNeighbors } from './neigh';
 import { splineInitBc } from './bc';
 import { powint } from './splines';
+import { exp as libmExp } from '../libm/exp';
 
 /** Scratch derivative of the coordination cutoff in buildRebo. */
 const SCRATCH = newRef();
@@ -247,9 +248,9 @@ export class PairAIREBO extends Pair {
         this.cutljsq[q] = this.cutlj * P.sigma[q] * this.cutlj * P.sigma[q];
         if (this.morseflag) {
           // Morse parameters are stored in the LJ arrays (pair_airebo_morse.cpp)
-          this.lj1[q] = P.epsilonM[q] * Math.exp(P.alphaM[q] * P.reqM[q]);
-          this.lj2[q] = Math.exp(P.alphaM[q] * P.reqM[q]);
-          this.lj3[q] = 2 * P.epsilonM[q] * P.alphaM[q] * Math.exp(P.alphaM[q] * P.reqM[q]);
+          this.lj1[q] = P.epsilonM[q] * libmExp(P.alphaM[q] * P.reqM[q]);
+          this.lj2[q] = libmExp(P.alphaM[q] * P.reqM[q]);
+          this.lj3[q] = 2 * P.epsilonM[q] * P.alphaM[q] * libmExp(P.alphaM[q] * P.reqM[q]);
           this.lj4[q] = P.alphaM[q];
         } else {
           this.lj1[q] = 48.0 * P.epsilon[q] * powint(P.sigma[q], 12);
@@ -351,13 +352,13 @@ export class PairAIREBO extends Pair {
         const Qij = P.Q[itype * 2 + jtype];
         const Aij = P.A[itype * 2 + jtype];
         const alphaij = P.alpha[itype * 2 + jtype];
-        const VR = wij * (1.0 + (Qij / rij)) * Aij * Math.exp(-alphaij * rij);
-        const pre = wij * Aij * Math.exp(-alphaij * rij);
+        const VR = wij * (1.0 + (Qij / rij)) * Aij * libmExp(-alphaij * rij);
+        const pre = wij * Aij * libmExp(-alphaij * rij);
         let dVRdi = pre * ((-alphaij) - (Qij / rsq) - (Qij * alphaij / rij));
         dVRdi += VR / wij * dwij;
         let VA = 0.0, dVA = 0.0;
         for (let m = 0; m < 3; m++) {
-          const term = -wij * P.BIJc[(itype * 2 + jtype) * 3 + m] * Math.exp(-P.Beta[(itype * 2 + jtype) * 3 + m] * rij);
+          const term = -wij * P.BIJc[(itype * 2 + jtype) * 3 + m] * libmExp(-P.Beta[(itype * 2 + jtype) * 3 + m] * rij);
           VA += term;
           dVA += -P.Beta[(itype * 2 + jtype) * 3 + m] * term;
         }

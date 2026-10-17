@@ -16,6 +16,7 @@
 import type { PairCompute } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { PairBondValBase } from './pair_bondval';
+import { pow as libmPow } from '../libm/pow';
 
 /** pair_style bondval/vec: the bond-valence vector energy E_BVV = sum_i D_i (|W_i|^2 - W0_i^2)^2. */
 export class PairBondValVec extends PairBondValBase {
@@ -52,7 +53,7 @@ export class PairBondValVec extends PairBondValBase {
         const rsq = dx * dx + dy * dy + dz * dz;
         if (rsq >= cutsq[t]) continue;
         const recip = 1 / Math.sqrt(rsq);
-        const g = Math.pow(r0[t] * recip, alpha[t]) * recip;
+        const g = libmPow(r0[t] * recip, alpha[t]) * recip;
         wx += g * dx; wy += g * dy; wz += g * dz;
       }
       w[3 * i] = wx; w[3 * i + 1] = wy; w[3 * i + 2] = wz;
@@ -84,7 +85,7 @@ export class PairBondValVec extends PairBondValBase {
         const r = Math.sqrt(rsq);
         const recip = 1 / r;
         const recip2 = recip * recip;
-        const aij = Math.pow(r0[t] * recip, alpha[t]) * recip;
+        const aij = libmPow(r0[t] * recip, alpha[t]) * recip;
         const eij = (alpha[t] + 1.0) * recip2;
         // dD = D_i - D_j; F = -A dD + E A del (dD . del): the native fx, fy, fz expressions in vector form
         const ddx = d[3 * i] - d[3 * j], ddy = d[3 * i + 1] - d[3 * j + 1], ddz = d[3 * i + 2] - d[3 * j + 2];

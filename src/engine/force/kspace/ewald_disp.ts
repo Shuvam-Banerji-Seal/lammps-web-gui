@@ -5,6 +5,7 @@ import { parseNum } from '../util';
 import { KSpaceEwald, invertUpper } from './ewald';
 import { PairLJLongCoulLong } from '../pair/lj_long';
 import { erfcExact } from '../erfc';
+import { libm } from '../../libm';
 
 /*
  * kspace_style ewald/disp — docs.lammps.org/kspace_style.html (source:
@@ -197,7 +198,7 @@ export class KSpaceEwaldDisp extends KSpace {
       Cs.fill(0); Sn.fill(0);
       for (let i = 0; i < n; i++) {
         const ph = kx * x[3 * i] + ky * x[3 * i + 1] + kz * x[3 * i + 2];
-        const c = Math.cos(ph), sn = Math.sin(ph);
+        const c = libm.cos(ph), sn = libm.sin(ph);
         cosi[i] = c; sini[i] = sn;
         Cs[type[i]] += c; Sn[type[i]] += sn;
       }
@@ -237,7 +238,7 @@ export class KSpaceEwaldDisp extends KSpace {
 /** f(u) = (1 - 2u) e^-u + 2 sqrt(pi) u^(3/2) erfc(sqrt u) and df/du, u = b^2. */
 const dispKernel = (u: number): { f: number; fu: number } => {
   const b = Math.sqrt(u);
-  const e = Math.exp(-u);
+  const e = libm.exp(-u);
   const erfc = erfcExact(b);
   const f = (1 - 2 * u) * e + 2 * Math.sqrt(Math.PI) * u * b * erfc;
   const fu = 3 * (Math.sqrt(Math.PI) * b * erfc - e);

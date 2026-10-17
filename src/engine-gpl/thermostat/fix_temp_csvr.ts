@@ -16,6 +16,8 @@ import { RescaleFix } from '../../engine/fix/thermostats';
 import { takeFixRecord, type MarsEnergyRestart } from '../../engine/fix/restartRecord';
 import { parseNumOrVar, ramp, valueOf } from '../../engine/fix/util';
 import { RanMars } from '../random_mars';
+import { log as libmLog } from '../libm/log';
+import { exp as libmExp } from '../libm/exp';
 
 export class FixTempCSVR extends RescaleFix {
   readonly style = 'temp/csvr';
@@ -52,7 +54,7 @@ export class FixTempCSVR extends RescaleFix {
       let x = 1;
       for (let j = 1; j <= ia; j++) x *= rng.uniform();
       // make certain that -log() does not overflow
-      return x < 2.2250759805e-308 ? 708.4 : -Math.log(x);
+      return x < 2.2250759805e-308 ? 708.4 : -libmLog(x);
     }
     const am = ia - 1;
     const s = Math.sqrt(2.0 * am + 1.0);
@@ -69,8 +71,8 @@ export class FixTempCSVR extends RescaleFix {
           y = v2 / v1;
           x = s * y + am;
         } while (x <= 0.0);
-        if (am * Math.log(x / am) - s * y < -700 || v1 < 0.00001) continue restart;
-        e = (1.0 + y * y) * Math.exp(am * Math.log(x / am) - s * y);
+        if (am * libmLog(x / am) - s * y < -700 || v1 < 0.00001) continue restart;
+        e = (1.0 + y * y) * libmExp(am * libmLog(x / am) - s * y);
       } while (rng.uniform() > e);
       return x;
     }
@@ -91,7 +93,7 @@ export class FixTempCSVR extends RescaleFix {
   /** resamplekin: the velocity scaling factor that samples the canonical kinetic energy. */
   private resamplekin(ekinOld: number, ekinNew: number): number {
     const tdof = this.temp.dof;
-    const c1 = Math.exp(-this.sys.state.dt / this.tPeriod);
+    const c1 = libmExp(-this.sys.state.dt / this.tPeriod);
     const c2 = ((1.0 - c1) * ekinNew) / ekinOld / tdof;
     const r1 = this.rng.gaussian();
     const r2 = this.sumnoises(Math.trunc(tdof - 1));

@@ -17,6 +17,7 @@ import { Pair, StyleError, type PairCompute, type StyleContext } from '../../eng
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
 import { parseNum } from '../../engine/force/util';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
+import { exp as libmExp } from '../libm/exp';
 
 /** ewald_const.h (EWALD_P, A1 ... A5): the erfc approximation of coul/ctip and fix qeq/ctip. */
 export const EWALD_P = 0.3275911;
@@ -154,7 +155,7 @@ export class PairCoulCtip extends Pair {
     const cutCoulcu = cutCoulsq * rc;
     const cut4 = cutCoulsq * cutCoulsq;
     const alphacu = a * a * a;
-    const erfcdCut = Math.exp(-a * a * cutCoulsq);
+    const erfcdCut = libmExp(-a * a * cutCoulsq);
     const tCut = 1.0 / (1.0 + EWALD_P * a * rc);
     const erfccCut = tCut * (A1 + tCut * (A2 + tCut * (A3 + tCut * (A4 + tCut * A5)))) * erfcdCut;
     for (let t1 = 1; t1 <= this.ntypes; t1++) {
@@ -191,7 +192,7 @@ export class PairCoulCtip extends Pair {
     const cutCoulsq = rc * rc;
     const tally = pc.eatom !== null || pc.vatom !== null;
     const sC = pc.specialCoul;
-    const erfcdCut = Math.exp(-a * a * cutCoulsq);
+    const erfcdCut = libmExp(-a * a * cutCoulsq);
     const tCut = 1.0 / (1.0 + EWALD_P * a * rc);
     const erfccCut = tCut * (A1 + tCut * (A2 + tCut * (A3 + tCut * (A4 + tCut * A5)))) * erfcdCut;
     let ecoul = 0;
@@ -225,7 +226,7 @@ export class PairCoulCtip extends Pair {
         const reffsq = reff * reff;
         const reff4 = reffsq * reffsq;
         const prefactor = C * qi * qj / r;
-        const erfcd = Math.exp(-a * a * rsq);
+        const erfcd = libmExp(-a * a * rsq);
         const t = 1.0 / (1.0 + EWALD_P * a * r);
         const erfcc = t * (A1 + t * (A2 + t * (A3 + t * (A4 + t * A5)))) * erfcd;
         let forcecoul = prefactor *

@@ -18,6 +18,7 @@ import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { RanMars } from '../random_mars';
 import { EPSILON, tallyXYZ } from './pair_dpd';
 import { NativePairOrder } from '../neighbor/nativeOrder';
+import { pow as libmPow } from '../libm/pow';
 
 export class PairDPDExt extends Pair {
   readonly name: string;
@@ -161,8 +162,8 @@ export class PairDPDExt extends Pair {
       P[7] = P[5];
       P[8] = 1.0 - delz * delz * rinv * rinv;
       const wd = 1.0 - r / cut[t];
-      const wdPar = Math.pow(wd, wsArr[t]);
-      const wdPerp = Math.pow(wd, wsTArr[t]);
+      const wdPar = libmPow(wd, wsArr[t]);
+      const wdPerp = libmPow(wd, wsTArr[t]);
       const randnum = rng.gaussian();
       const randnumx = rng.gaussian();
       const randnumy = rng.gaussian();

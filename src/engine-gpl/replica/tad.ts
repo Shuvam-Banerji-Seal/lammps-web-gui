@@ -23,6 +23,9 @@ import type { System } from '../../engine/system';
 import type { NebHost } from '../../engine/commands/neb';
 import type { Fix } from '../../engine/fix/fix';
 import { snapOf, restoreSnap, dynamics, setupOnly, quench, type Snap } from './accelerated';
+import { log as libmLog } from '../libm/log';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 interface EventCompute {
   id: string;
@@ -179,7 +182,7 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
   const dt = s0.dt;
   const boltz = s0.units.boltz;
   // deltconf = (ln(1/delta))/freq_min (timestep units); the NEB timestep defaults to the run's
-  const deltconf = -Math.log(deltaConf) * tmax / dt;
+  const deltconf = -libmLog(deltaConf) * tmax / dt;
   const deltaBeta = (1.0 / templo - 1.0 / temphi) / boltz;
   const ratioBeta = templo / temphi;
   const dtNeb = o.dtNeb ?? dt;
@@ -217,7 +220,7 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
 
   /** TAD::check_confidence: the stopping time deltstop, and whether the time since the event exceeds it. */
   const checkConfidence = (): boolean => {
-    deltstop = deltconf * Math.pow(deltfirst / deltconf, ratioBeta);
+    deltstop = deltconf * libmPow(deltfirst / deltconf, ratioBeta);
     return deltstop < s0.step - main.timestep;
   };
 
@@ -225,7 +228,7 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
   const computeTlo = (ievent: number): void => {
     const ev = events[ievent];
     const delthi = ev.timestep - main.timestep;
-    const deltlo = delthi * Math.exp(ev.ebarrier * deltaBeta);
+    const deltlo = delthi * libmExp(ev.ebarrier * deltaBeta);
     ev.tlo = main.tlo + deltlo;
     let status = 'D ';
     if (ievent === 0) {

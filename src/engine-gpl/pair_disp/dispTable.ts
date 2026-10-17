@@ -15,6 +15,8 @@
  */
 
 import type { DispTable } from '../../engine/force/pair/lj_long';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 const f32 = new Float32Array(1);
 const u32 = new Uint32Array(f32.buffer);
@@ -35,16 +37,16 @@ const FLT_MANT_DIG = 24;
 const initBitmap = (inner: number, outer: number, ntablebits: number): { masklo: number; maskhi: number; nmask: number; nshift: number } => {
   if (ntablebits > 32) throw new RangeError('Too many total bits for bitmapped Dispersion lookup table');
   let nlowermin = 1;
-  while (2 ** nlowermin > inner * inner || 2 ** (nlowermin + 1) <= inner * inner) {
-    if (2 ** nlowermin <= inner * inner) nlowermin++;
+  while (libmPow(2, nlowermin) > inner * inner || libmPow(2, nlowermin + 1) <= inner * inner) {
+    if (libmPow(2, nlowermin) <= inner * inner) nlowermin++;
     else nlowermin--;
   }
   let nexpbits = 0;
-  const requiredRange = (outer * outer) / 2 ** nlowermin;
+  const requiredRange = (outer * outer) / libmPow(2, nlowermin);
   let availableRange = 2.0;
   while (availableRange < requiredRange) {
     nexpbits++;
-    availableRange = 2 ** (2 ** nexpbits);
+    availableRange = libmPow(2, 2 ** nexpbits);
   }
   const nmantbits = ntablebits - nexpbits;
   if (nexpbits > 32 - FLT_MANT_DIG) throw new RangeError('Too many exponent bits for lookup table');
@@ -67,7 +69,7 @@ export const makeDispTable = (ntablebits: number, g: number, cutLJ: number, tabi
   const g2 = g * g, g6 = g2 * g2 * g2, g8 = g6 * g2;
   const tabinnerdispsq = tabinnerDisp * tabinnerDisp;
   const { masklo, maskhi, nmask, nshift } = initBitmap(tabinnerDisp, cutLJ, ntablebits);
-  const ntable = 2 ** ntablebits;
+  const ntable = libmPow(2, ntablebits);
   const rdisp = new Float64Array(ntable), fdisp = new Float64Array(ntable), edisp = new Float64Array(ntable);
   const drdisp = new Float64Array(ntable), dfdisp = new Float64Array(ntable), dedisp = new Float64Array(ntable);
   // the lookup bits of the table nodes: the masklo bits, or the maskhi bits below the inner cutoff
@@ -79,7 +81,7 @@ export const makeDispTable = (ntablebits: number, g: number, cutLJ: number, tabi
     rsq = floatOf(bits);
     let x2 = g2 * rsq;
     const a2 = 1.0 / x2;
-    x2 = a2 * Math.exp(-x2);
+    x2 = a2 * libmExp(-x2);
     rdisp[i] = rsq;
     fdisp[i] = g8 * (((6.0 * a2 + 6.0) * a2 + 3.0) * a2 + 1.0) * x2 * rsq;
     edisp[i] = g6 * ((a2 + 1.0) * a2 + 0.5) * x2;
@@ -104,7 +106,7 @@ export const makeDispTable = (ntablebits: number, g: number, cutLJ: number, tabi
     const rcut = floatOf(bitsOf(cutLJsq));
     let x2 = g2 * rsq;
     const a2 = 1.0 / x2;
-    x2 = a2 * Math.exp(-x2);
+    x2 = a2 * libmExp(-x2);
     const fTmp = g8 * (((6.0 * a2 + 6.0) * a2 + 3.0) * a2 + 1.0) * x2 * rsq;
     const eTmp = g6 * ((a2 + 1.0) * a2 + 0.5) * x2;
     drdisp[itablemax] = 1.0 / (rcut - rdisp[itablemax]);

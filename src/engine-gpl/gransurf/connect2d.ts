@@ -10,6 +10,7 @@
  * hold atom IDs. Periodic surfaces are refused by the pair (the end points are not unwrapped).
  */
 import { EXTERNAL, FLAT, INTERNAL, UNCONNECTED, pointConnection2d } from './surf_contact';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** FixSurfaceLocal flat threshold default (fix_surface_local.cpp: FLATTHRESH). */
 export const FLATTHRESH_2D = 0.00015230484360876085;
@@ -35,8 +36,8 @@ export interface Connect2d {
 export function lineEnds(x: ArrayLike<number>, i: number, length: number, theta: number): {
   e0: [number, number, number]; e1: [number, number, number]; norm: [number, number, number];
 } {
-  const dx = 0.5 * length * Math.cos(theta);
-  const dy = 0.5 * length * Math.sin(theta);
+  const dx = 0.5 * length * libmCos(theta);
+  const dy = 0.5 * length * libmSin(theta);
   const e0: [number, number, number] = [x[3 * i] - dx, x[3 * i + 1] - dy, 0.0];
   const e1: [number, number, number] = [x[3 * i] + dx, x[3 * i + 1] + dy, 0.0];
   // norm = normalize(zunit x (e1 - e0))

@@ -2,6 +2,7 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import { parseInt_, parseNum } from '../force/util';
 import type { System } from '../system';
+import { libm } from '../libm';
 
 /*
  * compute ID group-ID gaussian/grid/local grid nx ny nz rcutfac R_1 ... R_ntypes sigma_1 ... sigma_ntypes
@@ -166,7 +167,7 @@ export class ComputeGaussianGridLocal extends Compute {
                   const r2 = dx * dx + dy * dy + dz * dz;
                   // strict inequality: the atom at distance exactly the cutoff does not contribute
                   if (!(Math.sqrt(r2) < cut[t])) continue;
-                  vals[t] += norm[t] * Math.exp(-r2 * inv2s2[t]);
+                  vals[t] += norm[t] * libm.exp(-r2 * inv2s2[t]);
                 }
               }
             }

@@ -24,6 +24,7 @@ import type { PairReaxFF } from './pair';
 import type { QeqParams } from './qeq';
 import type { FixEfield } from '../../engine/fix/force_ext';
 import { efieldForModel, fieldOf, findEfield, qeqChiField } from './efield';
+import { pow as libmPow } from '../libm/pow';
 
 /** The per-type ACKS2 parameters: chi, eta, gamma (QeqParams) and the bond cutoff bcut_acks2 (1-based). */
 interface Acks2Params extends QeqParams { bcut: Float64Array<ArrayBufferLike> }
@@ -115,7 +116,7 @@ export class FixACKS2ReaxFF extends Fix {
     this.bcut = new Float64Array(nt1 * nt1);
     for (let i = 1; i <= nt; i++) {
       for (let j = 1; j <= nt; j++) {
-        this.shld[i * nt1 + j] = Math.pow(p.gamma[i] * p.gamma[j], -1.5);
+        this.shld[i * nt1 + j] = libmPow(p.gamma[i] * p.gamma[j], -1.5);
         this.bcut[i * nt1 + j] = 0.5 * (p.bcut[i] + p.bcut[j]);
       }
     }

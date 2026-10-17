@@ -2,6 +2,7 @@ import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * pair_style momb (EXTRA-PAIR), docs.lammps.org/pair_momb.html (text: plans/lammps-docs-live/pair_momb.rst).
@@ -139,13 +140,13 @@ export class PairMomb extends Pair {
 /** Morse-type term D0 [exp(-2 alpha x) - 2 exp(-alpha x)], x = r - r0: energy and dE/dr. */
 const morse = (d0: number, alpha: number, r0: number, r: number): { e: number; de: number } => {
   const x = r - r0;
-  const e1 = Math.exp(-alpha * x), e2 = e1 * e1;
+  const e1 = libm.exp(-alpha * x), e2 = e1 * e1;
   return { e: d0 * (e2 - 2 * e1), de: d0 * (-2 * alpha * e2 + 2 * alpha * e1) };
 };
 
 /** Dispersion term s6 C6/r^6 f_damp(r, Rr), f_damp = 1/(1 + exp(-d (r/Rr - 1))): energy and dE/dr. */
 const dispersion = (s6: number, c6: number, rr: number, dDamp: number, r: number): { e: number; de: number } => {
-  const u = Math.exp(-dDamp * (r / rr - 1));
+  const u = libm.exp(-dDamp * (r / rr - 1));
   const f = 1 / (1 + u);
   const df = f * f * u * (dDamp / rr);
   const inv6 = 1 / Math.pow(r, 6);

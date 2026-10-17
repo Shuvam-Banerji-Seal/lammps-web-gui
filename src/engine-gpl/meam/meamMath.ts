@@ -6,6 +6,7 @@
  * file is GPL-2.0 too (src/engine-gpl/LICENSE). Original MEAM authors (from meam_funcs.cpp and meam.h): Greg Wagner
  * (Sandia), Sungkwang Mun, Stephen Foiles, Michael I. Baskes and Mike Baskes (MS-MEAM: Steve Valone, LANL).
  */
+import { pow as libmPow } from '../libm/pow';
 
 /** MEAM lattice names (MEAM::lattice_t). */
 export type Lattice = 'fcc' | 'bcc' | 'hcp' | 'dim' | 'dia' | 'dia3' | 'b1' | 'c11' | 'l12' | 'b2' | 'ch4' | 'lin' | 'zig' | 'tri' | 'sc';
@@ -156,8 +157,8 @@ export const getShpfcn = (latt: Lattice, sthe: number, cthe: number): [number, n
     case 'zig':
     case 'tri': {
       const s0 = 4.0 * Math.pow(cthe, 2);
-      const s1 = 4.0 * (Math.pow(cthe, 4) + Math.pow(sthe, 4) - 1.0 / 3.0);
-      let s2 = 4.0 * (Math.pow(cthe, 2) * (3 * Math.pow(sthe, 4) + Math.pow(cthe, 4)));
+      const s1 = 4.0 * (libmPow(cthe, 4) + libmPow(sthe, 4) - 1.0 / 3.0);
+      let s2 = 4.0 * (Math.pow(cthe, 2) * (3 * libmPow(sthe, 4) + libmPow(cthe, 4)));
       s2 = s2 - 0.6 * s0;
       return [s0, s1, s2];
     }
@@ -214,7 +215,7 @@ export const zblPot = (r: number, z1: number, z2: number): number => {
   const d = [0.20162, 0.40290, 0.94229, 3.1998];
   const azero = 0.4685;
   const cc = 14.3997;
-  const a = azero / (Math.pow(z1, 0.23) + Math.pow(z2, 0.23));
+  const a = azero / (libmPow(z1, 0.23) + libmPow(z2, 0.23));
   let result = 0.0;
   const x = r / a;
   for (let i = 0; i <= 3; i++) result = result + c[i] * fmExp(-d[i] * x);

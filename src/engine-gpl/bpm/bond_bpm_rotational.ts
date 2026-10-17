@@ -19,6 +19,8 @@ import { delta } from '../../engine/force/bonded_util';
 import { StyleError, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { bondKey, BondBPMBase, yesno } from './bond_bpm';
 import { add3, cross3, dot3, len3, normalize3, quatquat, qconjugate, qnormalize, quatrotvec, scale3, sub3, type Quat, type Vec3 } from './quat';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { pow as libmPow } from '../libm/pow';
 
 // LAMMPS: static constexpr double EPSILON = 1e-10 (bond_bpm_rotational.cpp)
 const EPSILON = 1e-10;
@@ -52,7 +54,7 @@ const decomposeSwingTwist = (q: Quat): { swing: Quat; twist: Quat } => {
   const tmp = Math.sqrt(q[0] * q[0] + q[3] * q[3]);
   let psi = tmp < EPSILON ? 0 : 2 * acosLimit(q[0] / tmp);
   if (q[3] < 0) psi = -psi;
-  const twist: Quat = [Math.cos(psi / 2), 0, 0, Math.sin(psi / 2)];
+  const twist: Quat = [libmCos(psi / 2), 0, 0, libmSin(psi / 2)];
   const swing = qnormalize(quatquat(qconjugate(twist), q));
   return { swing, twist };
 };
@@ -167,7 +169,7 @@ export class BondBpmRotational extends BondBPMBase {
     const snap = this.synced.get(key);
     h[4] = snap ? snap[0] : 0; h[5] = snap ? snap[1] : 0; h[6] = snap ? snap[2] : 0;
     const L = this.loads(bc, i1, i2, t, h);
-    const smooth = this.smooth ? 1 - Math.pow(L.breaking, 4) : 1;
+    const smooth = this.smooth ? 1 - libmPow(L.breaking, 4) : 1;
     const F = scale3(smooth, L.f1on2);
     const sg = ia > ib ? -1 : 1;
     const r0 = h[0];
@@ -203,7 +205,7 @@ export class BondBpmRotational extends BondBPMBase {
         this.emitBreak(bc, ia, ib);
         continue;
       }
-      const smooth = this.smooth ? 1 - Math.pow(L.breaking, 4) : 1;
+      const smooth = this.smooth ? 1 - libmPow(L.breaking, 4) : 1;
       const F = scale3(smooth, L.f1on2);
       const T1 = scale3(smooth, L.t1on2);
       const T2 = scale3(smooth, L.t2on1);

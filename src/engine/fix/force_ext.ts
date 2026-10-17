@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseNumOrVar, valueOf, type NumOrVar } from './util';
 import { massOf, hasChargeStyle } from '../atoms';
+import { libm } from '../libm';
 
 /*
  * Force-style fixes from wave "force_ext", written only from the LAMMPS
@@ -174,22 +175,22 @@ export class FixGravity extends Fix {
     if (this.kind === 'chute') {
       const a = valueOf(this.sys, this.a1) * rad;
       // "angle in +x away from -z or -y axis": tilt toward +x from -z (3d) / -y (2d)
-      out[0] = Math.sin(a);
-      out[1] = two ? -Math.cos(a) : 0;
-      out[2] = two ? 0 : -Math.cos(a);
+      out[0] = libm.sin(a);
+      out[1] = two ? -libm.cos(a) : 0;
+      out[2] = two ? 0 : -libm.cos(a);
     } else if (this.kind === 'spherical') {
       const phi = valueOf(this.sys, this.a1) * rad;
       const theta = valueOf(this.sys, this.a2!) * rad;
       if (two) {
         // "theta is an angle in the xy plane where theta = 0.0 is the y-axis"
-        out[0] = Math.sin(theta);
-        out[1] = Math.cos(theta);
+        out[0] = libm.sin(theta);
+        out[1] = libm.cos(theta);
         out[2] = 0;
       } else {
-        const st = Math.sin(theta);
-        out[0] = st * Math.cos(phi);
-        out[1] = st * Math.sin(phi);
-        out[2] = Math.cos(theta);
+        const st = libm.sin(theta);
+        out[0] = st * libm.cos(phi);
+        out[1] = st * libm.sin(phi);
+        out[2] = libm.cos(theta);
       }
     } else {
       const x = valueOf(this.sys, this.a1);

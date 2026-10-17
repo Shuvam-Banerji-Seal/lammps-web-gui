@@ -14,6 +14,7 @@ import { StyleError } from '../../engine/force/types';
 import { valueOf } from '../../engine/fix/util';
 import { nativeOrder } from '../../engine/atoms';
 import type { System } from '../../engine/system';
+import { log as libmLog } from '../libm/log';
 
 /** MathSpecial::powint (src/math_special.h): x^n by repeated squaring, the source's operation order. */
 const powint = (x: number, n: number): number => {
@@ -165,10 +166,10 @@ export class FixWallEES extends FixWallBase {
           c3 * (21 * delta6 + 63 * delta4 * sigman2 + 27 * delta2 * sigman4 + sigman6) / hhss8
         );
         f[3 * i + dim] -= fwall;
-        this.ewall0 += -1 * c2 * (4 * delta / sigman2 / hhss + 2 * Math.log(hms / hps) / sigman3) +
+        this.ewall0 += -1 * c2 * (4 * delta / sigman2 / hhss + 2 * libmLog(hms / hps) / sigman3) +
           c1 * (35 * delta5 + 70 * delta3 * sigman2 + 15 * delta * sigman4) / hhss7;
         this.ewallF[k] += fwall;
-        const twall = c6 * (6. * delta3 / sigman4 / hhss2 - 10. * delta / sigman2 / hhss2 + 3. * Math.log(hms / hps) / sigman5) +
+        const twall = c6 * (6. * delta3 / sigman4 / hhss2 - 10. * delta / sigman2 / hhss2 + 3. * libmLog(hms / hps) / sigman5) +
           c5 * (21. * delta5 + 30. * delta3 * sigman2 + 5. * delta * sigman4) / hhss8;
         // SAn = S A^T nhat (tempvec after scaling); that[j] = SAn . S A^T (L_j nhat)
         const SAn = tempvec;

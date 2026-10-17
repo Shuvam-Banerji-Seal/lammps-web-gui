@@ -33,6 +33,7 @@ import {
   OFFSET, MAXORDER, SMALL, LARGE, factorable, makeStencil, rho1d, meshGeom, greenCoulomb, greenDispersion,
   virialCoulomb, virialDispersion, ljRspaceError, qoptDispersionIk, symEigenvalues, type MeshGeom, type Stencil,
 } from './grid';
+import { pow as libmPow } from '../libm/pow';
 
 /** Grid index of each atom (particle_map): base[3i + d] = floor((x_d - lo_d) N_d / L_d + shift) - OFFSET. */
 const mapAtoms = (x: Float64Array, n: number, lo: [number, number, number], mg: MeshGeom, st: Stencil): Int32Array => {
@@ -554,7 +555,7 @@ export class KSpacePPPMDisp extends KSpaceBase {
       }
       for (const F of Fs) fields.push(fieldsIk(F, mg, info.G));
       let e6 = 0.5 * V * egy.v;
-      e6 += -piSqrt / (6 * V) * Math.pow(g, 3) * this.csumij + (1.0 / 12.0) * Math.pow(g, 6) * this.csum;
+      e6 += -piSqrt / (6 * V) * libmPow(g, 3) * this.csumij + (1.0 / 12.0) * libmPow(g, 6) * this.csum;
       for (let i = 0; i < n; i++) {
         const t = s.type[i];
         let fx = 0, fy = 0, fz = 0;
@@ -571,7 +572,7 @@ export class KSpacePPPMDisp extends KSpaceBase {
         kc.f[3 * i + 2] += fz;
       }
       for (let c = 0; c < 6; c++) virial[c] += 0.5 * V * vir[c];
-      const a = piSqrt / (6 * V) * Math.pow(g, 3) * this.csumij;
+      const a = piSqrt / (6 * V) * libmPow(g, 3) * this.csumij;
       virial[0] -= a;
       virial[1] -= a;
       virial[2] -= a;

@@ -2,6 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { massOf } from '../atoms';
+import { libm } from '../libm';
 
 /*
  * fix ID group-ID accelerate/cos value — docs.lammps.org/fix_accelerate_cos.html
@@ -61,7 +62,7 @@ export class FixAccelerateCos extends Fix {
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & this.groupBit)) continue;
       const m = massOf(s, i);
-      f[3 * i] += m * scale * Math.cos(k * (x[3 * i + 2] - zlo));
+      f[3 * i] += m * scale * libm.cos(k * (x[3 * i + 2] - zlo));
     }
   }
 

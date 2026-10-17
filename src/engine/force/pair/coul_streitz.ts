@@ -3,6 +3,7 @@ import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { parseNum } from '../util';
 import { erfcExact } from '../erfc';
+import { libm } from '../../libm';
 
 /*
  * pair_style coul/streitz — Streitz-Mintmire Coulomb part with fixed charges.
@@ -104,7 +105,7 @@ export const slaterShort = (R: number, za: number, zb: number): { s: number; ds:
   const m = 0.5 * (za + zb), d = 0.5 * (za - zb);
   if (Math.abs(d) * R < SERIES_DR) return seriesS(R, m, d);
   const D1 = za * za - zb * zb;
-  const XA = Math.exp(-2 * za * R), XB = Math.exp(-2 * zb * R);
+  const XA = libm.exp(-2 * za * R), XB = libm.exp(-2 * zb * R);
   const zb4 = zb ** 4, za4 = za ** 4;
   const cA = -zb4 * (za * R * D1 + (3 * za * za - zb * zb));
   const cB = -za4 * (zb * R * D1 + (za * za - 3 * zb * zb));
@@ -117,7 +118,7 @@ export const slaterShort = (R: number, za: number, zb: number): { s: number; ds:
 
 /** Taylor series of S in d about m (even in d), see the header comment. */
 const seriesS = (R: number, m: number, d: number): { s: number; ds: number } => {
-  const E = Math.exp(-2 * m * R);
+  const E = libm.exp(-2 * m * R);
   const m2 = m * m, m3 = m2 * m, m4 = m3 * m, m5 = m4 * m, m6 = m5 * m, m7 = m6 * m;
   const R2 = R * R, R3 = R2 * R, R4 = R3 * R, R5 = R4 * R, R6 = R5 * R, R7 = R6 * R;
   const s0 = (-E * (4 * R3 * m3 + 18 * R2 * m2 + 33 * R * m + 24)) / (24 * R);
@@ -141,7 +142,7 @@ export const slaterS = (R: number, za: number, zb: number): number => {
   const m = 0.5 * (za + zb), d = 0.5 * (za - zb);
   if (Math.abs(d) * R < SERIES_DR) return seriesS(R, m, d).s;
   const D1 = za * za - zb * zb;
-  const XA = Math.exp(-2 * za * R), XB = Math.exp(-2 * zb * R);
+  const XA = libm.exp(-2 * za * R), XB = libm.exp(-2 * zb * R);
   const zb2 = zb * zb, za2 = za * za;
   const cA = -(zb2 * zb2) * (za * R * D1 + (3 * za2 - zb2));
   const cB = -(za2 * za2) * (zb * R * D1 + (za2 - 3 * zb2));
@@ -149,11 +150,11 @@ export const slaterS = (R: number, za: number, zb: number): number => {
 };
 
 /** Point-charge short-range potential U_b(R) alone (no allocation): the value of pointU(R, z).u. */
-export const pointUval = (R: number, z: number): number => -(z + 1 / R) * Math.exp(-2 * z * R);
+export const pointUval = (R: number, z: number): number => -(z + 1 / R) * libm.exp(-2 * z * R);
 
 /** Point-charge short-range potential U_b(R) = -(zeta_b + 1/R) exp(-2 zeta_b R) and dU/dR. */
 export const pointU = (R: number, z: number): { u: number; du: number } => {
-  const E = Math.exp(-2 * z * R);
+  const E = libm.exp(-2 * z * R);
   return { u: -(z + 1 / R) * E, du: E * (1 / (R * R) + 2 * z * (z + 1 / R)) };
 };
 
@@ -294,7 +295,7 @@ export class PairCoulStreitz extends Pair {
     if (this.mode !== 'ewald') {
       const arc = this.alpha * rc;
       this.eShiftW = erfcExact(arc) / rc;
-      this.fShiftW = -(this.eShiftW + TWO_OVER_SQRTPI * this.alpha * Math.exp(-arc * arc)) / rc;
+      this.fShiftW = -(this.eShiftW + TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
     }
     const nt = this.ntypes + 1;
     this.rcS = new Float64Array(nt * nt);
@@ -387,7 +388,7 @@ export class PairCoulStreitz extends Pair {
         let e: number, fpair: number;
         if (wolf) {
           const grij = alpha * r;
-          const ex = Math.exp(-grij * grij);
+          const ex = libm.exp(-grij * grij);
           const erfcc = erfcExact(grij);
           const pref = C * qq;
           const Gc = cS * this.rcS[t] + pI.Z * qj * this.rcUj[t] + pJ.Z * qi * this.rcUi[t];
@@ -401,7 +402,7 @@ export class PairCoulStreitz extends Pair {
             - C * (tf * (dG - dGc) + dtf * Gsf) / r);
         } else {
           const grij = g * r;
-          const ex = Math.exp(-grij * grij);
+          const ex = libm.exp(-grij * grij);
           const erfcc = erfcExact(grij);
           const pref = C * qq;
           e = pref * erfcc / r + C * G;

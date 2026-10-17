@@ -1,6 +1,7 @@
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { FixTTM, type TtmPositional } from './ttm';
+import { libm } from '../libm';
 
 /*
  * fix ttm/mod — the two-temperature model with a temperature-dependent electronic heat capacity and
@@ -177,7 +178,7 @@ export const ttmModGridIndex = (x: number, lo: number, hi: number, n: number): n
 const gaussLegendre = (n: number): { x: number[]; w: number[] } => {
   const x: number[] = [], w: number[] = [];
   for (let i = 1; i <= n; i++) {
-    let z = Math.cos((Math.PI * (i - 0.25)) / (n + 0.5));
+    let z = libm.cos((Math.PI * (i - 0.25)) / (n + 0.5));
     let dp = 1;
     for (let iter = 0; iter < 100; iter++) {
       let p0 = 1, p1 = z;
@@ -234,7 +235,7 @@ export class FixTTMMod extends FixTTM {
     const p = this.par;
     const X = T / 1000;
     const poly = p.a[0] + X * (p.a[1] + X * (p.a[2] + X * (p.a[3] + X * p.a[4])));
-    return p.Cz + poly * Math.exp(-(p.A * X) * (p.A * X));
+    return p.Cz + poly * libm.exp(-(p.A * X) * (p.A * X));
   }
 
   /** Int_0^T C_e(t) dt (composite Gauss-Legendre; the integrand is smooth on the scale of the panels). */
@@ -346,7 +347,7 @@ export class FixTTMMod extends FixTTM {
     for (let c = 0; c < cells; c++) {
       const ix = c % nx;
       if (p.I0 === 0 || ix < p.lsurface) continue;
-      amplitude[c] = (p.I0 / (dx[0] * p.lSkin)) * Math.exp(-(ix - p.lsurface) / p.lSkin);
+      amplitude[c] = (p.I0 / (dx[0] * p.lSkin)) * libm.exp(-(ix - p.lsurface) / p.lSkin);
     }
     for (let sub = 0; sub < k; sub++) {
       // the laser is on while the sub-step's end time is before tau (measured: a sub-step ending exactly at tau is off)

@@ -1,6 +1,7 @@
 import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral } from '../bonded_util';
 import { parseNum, parseInt_, fmtCoeff } from '../util';
 import { StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
+import { libm } from '../../libm';
 
 /*
  * Dihedral styles (wave 1). Every class below implements exactly the formula
@@ -85,10 +86,10 @@ export class DihedralOpls extends SimpleBonded {
   compute(bc: BondedCompute): void {
     const K1 = this.params.p('K1'), K2 = this.params.p('K2'), K3 = this.params.p('K3'), K4 = this.params.p('K4');
     eachDihedral(bc, (t, phi) => {
-      const c = Math.cos(phi), s = Math.sin(phi);
-      const c2 = Math.cos(2 * phi), s2 = Math.sin(2 * phi);
-      const c3 = Math.cos(3 * phi), s3 = Math.sin(3 * phi);
-      const c4 = Math.cos(4 * phi), s4 = Math.sin(4 * phi);
+      const c = libm.cos(phi), s = libm.sin(phi);
+      const c2 = libm.cos(2 * phi), s2 = libm.sin(2 * phi);
+      const c3 = libm.cos(3 * phi), s3 = libm.sin(3 * phi);
+      const c4 = libm.cos(4 * phi), s4 = libm.sin(4 * phi);
       // the n >= 2 terms take the sqrt-based near-planar factor (measured; the K1 term is exact)
       return {
         e: 0.5 * (K1[t] * (1 + c) + K2[t] * (1 - c2) + K3[t] * (1 + c3) + K4[t] * (1 - c4)),
@@ -117,7 +118,7 @@ export class DihedralMultiHarmonic extends SimpleBonded {
   compute(bc: BondedCompute): void {
     const A1 = this.params.p('A1'), A2 = this.params.p('A2'), A3 = this.params.p('A3'), A4 = this.params.p('A4'), A5 = this.params.p('A5');
     eachDihedral(bc, (t, phi) => {
-      const c = Math.cos(phi), s = Math.sin(phi);
+      const c = libm.cos(phi), s = libm.sin(phi);
       const c2 = c * c, c3 = c2 * c, c4 = c3 * c;
       return {
         e: A1[t] + A2[t] * c + A3[t] * c2 + A4[t] * c3 + A5[t] * c4,
@@ -224,8 +225,8 @@ export class DihedralFourier extends DihedralVarLen {
       let e = 0, dEdphi = 0;
       for (let i = 0; i < v.length; i += 3) {
         const arg = v[i + 1] * phi - v[i + 2];
-        e += v[i] * (1 + Math.cos(arg));
-        dEdphi -= v[i] * v[i + 1] * Math.sin(arg);
+        e += v[i] * (1 + libm.cos(arg));
+        dEdphi -= v[i] * v[i + 1] * libm.sin(arg);
       }
       return { e, dEdphi };
     });
@@ -266,7 +267,7 @@ export class DihedralQuadratic extends SimpleBonded {
       // measured with native LAMMPS: the energy uses phi - phi0 wrapped into [-pi, pi]
       const d = wrapPi(phi - phi0[t]);
       // whole term: exact-sine factor (see SMALL_SIN)
-      const s = Math.sin(phi);
+      const s = libm.sin(phi);
       const r = nearPlanarSine(s);
       return { e: K[t] * d * d, dEdphi: 2 * K[t] * d * r };
     });
@@ -305,7 +306,7 @@ export class DihedralNHarmonic extends DihedralVarLen {
   compute(bc: BondedCompute): void {
     eachDihedral(bc, (t, phi) => {
       const A = this.vals[t]!;
-      const c = Math.cos(phi), s = Math.sin(phi);
+      const c = libm.cos(phi), s = libm.sin(phi);
       // E = sum_k A_k c^(k-1);  dE/dphi = -sin(phi) * sum_k (k-1) A_k c^(k-2)
       let e = A[0], cp = 1, S = 0;
       for (let i = 1; i < A.length; i++) {
@@ -353,7 +354,7 @@ export class DihedralCosineShiftExp extends SimpleBonded {
     const Umin = this.params.p('Umin'), th0 = this.params.p('theta0'), a = this.params.p('a');
     eachDihedral(bc, (t, phi) => {
       const dth = phi - th0[t];
-      const U = -0.5 * (1 + Math.cos(dth));
+      const U = -0.5 * (1 + libm.cos(dth));
       // dU/dphi = 0.5 sin(phi - theta0); dE/dphi = dE/dU * dU/dphi
       let e: number, dEdU: number;
       if (a[t] < 0.001) {
@@ -361,11 +362,11 @@ export class DihedralCosineShiftExp extends SimpleBonded {
         e = Umin[t] * U - 0.5 * a[t] * Umin[t] * (U + U * U);
         dEdU = Umin[t] * (1 - 0.5 * a[t] * (1 + 2 * U));
       } else {
-        const ea = Math.exp(a[t]);
-        e = -Umin[t] * (Math.exp(-a[t] * U) - 1) / (ea - 1);
-        dEdU = a[t] * Umin[t] * Math.exp(-a[t] * U) / (ea - 1);
+        const ea = libm.exp(a[t]);
+        e = -Umin[t] * (libm.exp(-a[t] * U) - 1) / (ea - 1);
+        dEdU = a[t] * Umin[t] * libm.exp(-a[t] * U) / (ea - 1);
       }
-      return { e, dEdphi: dEdU * 0.5 * Math.sin(dth) };
+      return { e, dEdphi: dEdU * 0.5 * libm.sin(dth) };
     });
   }
 }
@@ -388,13 +389,13 @@ export class DihedralHelix extends SimpleBonded {
   compute(bc: BondedCompute): void {
     const A = this.params.p('A'), B = this.params.p('B'), C = this.params.p('C');
     eachDihedral(bc, (t, phi) => {
-      const c = Math.cos(phi), s = Math.sin(phi);
+      const c = libm.cos(phi), s = libm.sin(phi);
       // B term: sqrt-based factor; C term: exact-sine factor; A term: exact (see SMALL_SIN)
       const rB = rSqrt(s, c, 1);
       const rC = nearPlanarSine(s);
       return {
-        e: A[t] * (1 - c) + B[t] * (1 + Math.cos(3 * phi)) + C[t] * (1 + Math.cos(phi + Math.PI / 4)),
-        dEdphi: A[t] * s - 3 * B[t] * Math.sin(3 * phi) * rB - C[t] * Math.sin(phi + Math.PI / 4) * rC,
+        e: A[t] * (1 - c) + B[t] * (1 + libm.cos(3 * phi)) + C[t] * (1 + libm.cos(phi + Math.PI / 4)),
+        dEdphi: A[t] * s - 3 * B[t] * libm.sin(3 * phi) * rB - C[t] * libm.sin(phi + Math.PI / 4) * rC,
       };
     });
   }

@@ -3,6 +3,7 @@ import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairLJCut, tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
 import { erfcExact, erfcPoly } from '../erfc';
+import { libm } from '../../libm';
 
 /*
  * pair_style lj/cut/coul/cut, lj/cut/coul/debye, lj/cut/coul/dsf and
@@ -288,7 +289,7 @@ export class PairLJCutCoulDebye extends PairLJCutCoul {
 
   protected coulPair(_t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
     const r = Math.sqrt(rsq);
-    const pre = (qqrd2e * qi * qj * Math.exp(-this.kappa * r)) / r;
+    const pre = (qqrd2e * qi * qj * libm.exp(-this.kappa * r)) / r;
     return { e: pre, f: (pre * (1 + this.kappa * r)) / rsq };
   }
 }
@@ -348,7 +349,7 @@ export class PairLJCutCoulDsf extends PairLJCutCoul {
 
   protected coulSelf(qi: number, qqrd2e: number): number {
     const arc = this.alpha * this.cutCoul;
-    return -(erfcExact(arc) / this.cutCoul + (this.alpha / Math.sqrt(Math.PI)) * (1 + Math.exp(-arc * arc))) * qi * qi * qqrd2e;
+    return -(erfcExact(arc) / this.cutCoul + (this.alpha / Math.sqrt(Math.PI)) * (1 + libm.exp(-arc * arc))) * qi * qi * qqrd2e;
   }
 
   protected initCoul(i: number, j: number): void {
@@ -359,13 +360,13 @@ export class PairLJCutCoulDsf extends PairLJCutCoul {
     const erc = erfcExact(arc);
     this.dsfRC[k1] = this.dsfRC[k2] = rc;
     this.dsfA[k1] = this.dsfA[k2] = erc / rc;
-    this.dsfB[k1] = this.dsfB[k2] = erc / (rc * rc) + (TWO_OVER_SQRTPI * this.alpha * Math.exp(-arc * arc)) / rc;
+    this.dsfB[k1] = this.dsfB[k2] = erc / (rc * rc) + (TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
   }
 
   protected coulPair(t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
     const r = Math.sqrt(rsq);
     const grij = this.alpha * r;
-    const ex = Math.exp(-grij * grij);
+    const ex = libm.exp(-grij * grij);
     // measured with native LAMMPS (two charges at r = 1, 1.5, 2; 13 digits): erfc(alpha r) is the
     // Abramowitz-Stegun polynomial (erfcPoly), the shift constants use the exact erfc(alpha rc)
     const erfcc = erfcPoly(grij, ex);
@@ -441,13 +442,13 @@ export class PairLJCutCoulWolf extends PairLJCutCoul {
     const a = erfcExact(this.alpha * rc) / rc;
     this.wolfA[k1] = this.wolfA[k2] = a;
     const arc = this.alpha * rc;
-    this.wolfF[k1] = this.wolfF[k2] = -(a + TWO_OVER_SQRTPI * this.alpha * Math.exp(-arc * arc)) / rc;
+    this.wolfF[k1] = this.wolfF[k2] = -(a + TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
   }
 
   protected coulPair(t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
     const r = Math.sqrt(rsq);
     const grij = this.alpha * r;
-    const ex = Math.exp(-grij * grij);
+    const ex = libm.exp(-grij * grij);
     const erfcc = erfcExact(grij);
     const pref = qqrd2e * qi * qj;
     return {

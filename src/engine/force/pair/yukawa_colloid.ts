@@ -3,6 +3,7 @@ import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
 import { tallyAtom } from './lj_cut';
 import type { SimState } from '../../types';
+import { libm } from '../../libm';
 
 /*
  * pair_style yukawa/colloid — docs.lammps.org/pair_yukawa_colloid.html
@@ -138,7 +139,7 @@ export class PairYukawaColloid extends Pair {
     // pair_modify shift: subtract the pair energy at the cutoff,
     // E(rc) = (A/kappa) exp(-kappa (rc - (ri + rj)))
     this.offset[k1] = this.offset[k2] = this.shift && cut > 0
-      ? (a / this.kappa) * Math.exp(-this.kappa * (cut - this.typeRadius[i] - this.typeRadius[j]))
+      ? (a / this.kappa) * libm.exp(-this.kappa * (cut - this.typeRadius[i] - this.typeRadius[j]))
       : 0;
     return cut;
   }
@@ -167,7 +168,7 @@ export class PairYukawaColloid extends Pair {
         if (rsq >= cutsq[t]) continue;
         const rj = radius[owner[j]];
         const r = Math.sqrt(rsq);
-        const ex = Math.exp(-kappa * (r - ri - rj));
+        const ex = libm.exp(-kappa * (r - ri - rj));
         const fpair = aTab[t] * ex / r; // force on i = fpair * (x_i - x_j)
         const hx = 0.5 * fpair * dx, hy = 0.5 * fpair * dy, hz = 0.5 * fpair * dz;
         f[3 * i] += hx; f[3 * i + 1] += hy; f[3 * i + 2] += hz;
@@ -185,7 +186,7 @@ export class PairYukawaColloid extends Pair {
     const t = itype * nt + jtype;
     if (rsq >= this.cutsq[t]) return { eng: 0, fforce: 0 };
     const r = Math.sqrt(rsq);
-    const ex = Math.exp(-this.kappa * (r - this.typeRadius[itype] - this.typeRadius[jtype]));
+    const ex = libm.exp(-this.kappa * (r - this.typeRadius[itype] - this.typeRadius[jtype]));
     return {
       fforce: factorLJ * this.aTab[t] * ex / r,
       eng: factorLJ * ((this.aTab[t] / this.kappa) * ex - this.offset[t]),

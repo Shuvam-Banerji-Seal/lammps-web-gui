@@ -2,7 +2,7 @@ import { FixNVE } from './nve';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { BODY_RECORD } from '../bodies';
-import { richardsonStep } from './nve_asphere';
+import { orientation } from './nve_asphere';
 
 /*
  * fix ID group nve/body — docs.lammps.org/fix_nve_body.html: "Perform constant NVE integration to update position,
@@ -47,7 +47,7 @@ export class FixNVEBody extends FixNVE {
     for (let i = 0; i < s.n; i++) {
       if (!(s.mask[i] & this.groupBit)) continue;
       const b = rec.cols * i;
-      richardsonStep(s.quat!, 4 * i, s.angmom!, 3 * i, [rec.data[b + 1], rec.data[b + 2], rec.data[b + 3]], dtq);
+      orientation.richardson(s.quat!, 4 * i, s.angmom!, 3 * i, [rec.data[b + 1], rec.data[b + 2], rec.data[b + 3]], dtq);
     }
   }
 

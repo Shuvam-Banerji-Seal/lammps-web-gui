@@ -3,6 +3,7 @@ import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
 import { erfcExact, erfcPoly } from '../erfc';
+import { libm } from '../../libm';
 
 /*
  * pair_style coul/cut, coul/debye, coul/dsf and coul/wolf —
@@ -193,7 +194,7 @@ export class PairCoulDebye extends PairCoul {
 
   protected coulPair(_t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
     const r = Math.sqrt(rsq);
-    const pre = (qqrd2e * qi * qj * Math.exp(-this.kappa * r)) / r;
+    const pre = (qqrd2e * qi * qj * libm.exp(-this.kappa * r)) / r;
     return { e: pre, f: (pre * (1 + this.kappa * r)) / rsq };
   }
 }
@@ -228,18 +229,18 @@ export class PairCoulDsf extends PairCoul {
     const rc = this.cutGlobal, arc = this.alpha * rc;
     const erc = erfcExact(arc);
     this.eShift = erc / rc;
-    this.fShift = erc / (rc * rc) + (TWO_OVER_SQRTPI * this.alpha * Math.exp(-arc * arc)) / rc;
+    this.fShift = erc / (rc * rc) + (TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
   }
 
   protected coulSelf(qi: number, qqrd2e: number): number {
     const arc = this.alpha * this.cutGlobal;
-    return -(erfcExact(arc) / this.cutGlobal + (this.alpha / Math.sqrt(Math.PI)) * (1 + Math.exp(-arc * arc))) * qi * qi * qqrd2e;
+    return -(erfcExact(arc) / this.cutGlobal + (this.alpha / Math.sqrt(Math.PI)) * (1 + libm.exp(-arc * arc))) * qi * qi * qqrd2e;
   }
 
   protected coulPair(_t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
     const r = Math.sqrt(rsq);
     const grij = this.alpha * r;
-    const ex = Math.exp(-grij * grij);
+    const ex = libm.exp(-grij * grij);
     const erfcc = erfcPoly(grij, ex);
     const pref = qqrd2e * qi * qj;
     return {
@@ -281,7 +282,7 @@ export class PairCoulWolf extends PairCoul {
   protected initCoul(): void {
     const rc = this.cutGlobal, arc = this.alpha * rc;
     this.eShift = erfcExact(arc) / rc;
-    this.fShift = -(this.eShift + TWO_OVER_SQRTPI * this.alpha * Math.exp(-arc * arc)) / rc;
+    this.fShift = -(this.eShift + TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
   }
 
   protected coulSelf(qi: number, qqrd2e: number): number {
@@ -291,7 +292,7 @@ export class PairCoulWolf extends PairCoul {
   protected coulPair(_t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
     const r = Math.sqrt(rsq);
     const grij = this.alpha * r;
-    const ex = Math.exp(-grij * grij);
+    const ex = libm.exp(-grij * grij);
     const erfcc = erfcExact(grij);
     const pref = qqrd2e * qi * qj;
     return {

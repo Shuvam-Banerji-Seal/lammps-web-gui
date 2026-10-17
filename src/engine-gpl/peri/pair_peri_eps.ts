@@ -12,6 +12,7 @@
  * The per-atom plastic multiplier lambdaValue of the source is not needed for the forces and is not kept.
  */
 import { PERI_GEOM_LEN, G_DR, G_DX, G_DY, G_DZ, G_J, G_OM, G_R, G_R0, G_VS, PeriBondPair, type PeriStep } from './pair_peri_bonds';
+import { pow as libmPow } from '../libm/pow';
 
 const PERI_EPS_NAMES = ['K', 'G', 'cut', 's00', 'alpha', 'yield'] as const;
 
@@ -48,7 +49,7 @@ export class PairPeriEPS extends PeriBondPair {
       const yieldStress = this.c('yield', ti, ti);
       const horizon = this.c('cut', ti, ti);
       const tdnorm = this.deviatoricNorm(st, i, g);
-      const pointwiseYield = (25.0 / 8.0 / Math.PI / Math.pow(horizon, 5)) * yieldStress * yieldStress;
+      const pointwiseYield = (25.0 / 8.0 / Math.PI / libmPow(horizon, 5)) * yieldStress * yieldStress;
       const fsurf = (tdnorm * tdnorm) / 2.0 - pointwiseYield;
       const elastic = !(fsurf > 0.0);
       // the plastic multiplier of this step (pair_peri_eps.cpp: deltalambda); the cumulative lambdaValue is not kept

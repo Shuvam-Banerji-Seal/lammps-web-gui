@@ -17,6 +17,8 @@ import {
   kinElec, elecNucNuc, elecNucElec, elecElecElec, pauliElecElec, smallRForce, cutoff, dcutoff,
   elecCoreNuc, elecCoreCore, elecCoreElec, pauliCoreElec, pauliCorePElec,
 } from './math';
+import { log as libmLog } from '../libm/log';
+import { exp as libmExp } from '../libm/exp';
 
 /** units real: qqr2e and the Hartree/Bohr conversions used by pair eff/cut (initStyle, "Check your units" otherwise). */
 const QQR2E_REAL = 332.06371;
@@ -202,7 +204,7 @@ export class PairEffCut extends Pair {
         const spin = electronArray(st, ELECTRON_SPIN), er = electronArray(st, ELECTRON_RADIUS), rf = electronArray(st, ELECTRON_RFORCE);
         for (let i = 0; i < st.n; i++) {
           if (spin[i]) {
-            x[i] = Math.log(er[i]);
+            x[i] = libmLog(er[i]);
             f[i] = er[i] * rf[i];
           } else {
             x[i] = 0;
@@ -212,7 +214,7 @@ export class PairEffCut extends Pair {
       },
       push: (st, x) => {
         const spin = electronArray(st, ELECTRON_SPIN), er = electronArray(st, ELECTRON_RADIUS);
-        for (let i = 0; i < st.n; i++) if (spin[i]) er[i] = Math.exp(x[i]);
+        for (let i = 0; i < st.n; i++) if (spin[i]) er[i] = libmExp(x[i]);
       },
     };
   }

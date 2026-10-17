@@ -14,6 +14,9 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } fro
 import { OXDNA_5P, OXDNA_3P, buildAtomMap, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, DF5, F1, F4, F5, lrfOf, oxdnaConstants, stackingSiteOxdna1, backboneSite, type StackRule, potentialLines } from './common';
+import { sin as libmSin } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** pair_oxdna_stk.cpp constructor: the sequence-dependence factors eta_st[i][j] (indexed by 1-based base types mod 4). */
 export const ETA_ST: number[][] = [
@@ -32,7 +35,7 @@ export const stackingStrength = (xi: number, kappa: number, T: number): number =
  * cut_hc, and the shift of the exponential term (the same formulas for oxRNA2 stk, pair_oxrna2_stk.cpp).
  */
 export const stackingDerived = (eps: number, a: number, cut0: number, cutC: number, cutLo: number, cutHi: number) => {
-  const e = (x: number) => Math.exp(-a * x);
+  const e = (x: number) => libmExp(-a * x);
   const ulo = cutLo - cut0, uhi = cutHi - cut0, uc = cutC - cut0;
   const bLo = 2 * a * e(ulo) * 2 * a * e(ulo) * (1 - e(ulo)) * (1 - e(ulo))
     / (4 * ((1 - e(ulo)) * (1 - e(ulo)) - (1 - e(uc)) * (1 - e(uc))));
@@ -40,7 +43,7 @@ export const stackingDerived = (eps: number, a: number, cut0: number, cutC: numb
   const bHi = 2 * a * e(uhi) * 2 * a * e(uhi) * (1 - e(uhi)) * (1 - e(uhi))
     / (4 * ((1 - e(uhi)) * (1 - e(uhi)) - (1 - e(uc)) * (1 - e(uc))));
   const cHc = cutHi - a * e(uhi) * (1 - e(uhi)) / bHi;
-  const tmp = 1 - Math.exp(-(cutC - cut0) * a);
+  const tmp = 1 - libmExp(-(cutC - cut0) * a);
   const shiftOne = eps * tmp * tmp;
   return { bLo, cLc, bHi, cHc, shiftOne };
 };
@@ -88,7 +91,7 @@ export class PairOxdnaStk extends Pair {
     this.a1 = z(); this.cos1ast = z(); this.b1 = z(); this.cos1c = z();
     this.a2 = z(); this.cos2ast = z(); this.b2 = z(); this.cos2c = z();
     this.set = new Uint8Array(n);
-    const n4 = this.nt ** 4;
+    const n4 = libmPow(this.nt, 4);
     const z4 = () => new Float64Array(n4);
     this.c0 = z4(); this.clc = z4(); this.chc = z4(); this.clo = z4(); this.chi = z4();
     this.shiftSt = z4(); this.a4 = z4(); this.dth4ast = z4(); this.b4 = z4(); this.dth4c = z4();
@@ -283,9 +286,9 @@ export class PairOxdnaStk extends Pair {
             if (evdwl !== 0.0) {
               const df1 = DF1(rStk, this.eps[qe], this.aSt[qe], this.c0[q4], this.clc[q4], this.chc[q4], this.clo[q4], this.chi[q4],
                 this.bLo[qe], this.bHi[qe]);
-              const df4t4 = DF4(theta4, this.a4[q4], this.th4[qe], this.dth4ast[q4], this.b4[q4], this.dth4c[q4]) / Math.sin(theta4);
-              const df4t5 = DF4(theta5p, this.a5[qe], this.th5[qe], this.dth5ast[qe], this.b5[qe], this.dth5c[qe]) / Math.sin(theta5p);
-              const df4t6 = DF4(theta6p, this.a6[qe], this.th6[qe], this.dth6ast[qe], this.b6[qe], this.dth6c[qe]) / Math.sin(theta6p);
+              const df4t4 = DF4(theta4, this.a4[q4], this.th4[qe], this.dth4ast[q4], this.b4[q4], this.dth4c[q4]) / libmSin(theta4);
+              const df4t5 = DF4(theta5p, this.a5[qe], this.th5[qe], this.dth5ast[qe], this.b5[qe], this.dth5c[qe]) / libmSin(theta5p);
+              const df4t6 = DF4(theta6p, this.a6[qe], this.th6[qe], this.dth6ast[qe], this.b6[qe], this.dth6c[qe]) / libmSin(theta6p);
               const df5c1 = DF5(-cosphi1, this.a1[qe], -this.cos1ast[qe], this.b1[qe], -this.cos1c[qe]);
               const df5c2 = DF5(-cosphi2, this.a2[qe], -this.cos2ast[qe], this.b2[qe], -this.cos2c[qe]);
               delf[0] = 0.0; delf[1] = 0.0; delf[2] = 0.0;

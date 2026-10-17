@@ -20,6 +20,7 @@
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
+import { exp as libmExp } from '../libm/exp';
 
 // LAMMPS: static constexpr double SMALL = 0.001 (angle_class2xe.cpp)
 const SMALL = 0.001;
@@ -159,8 +160,8 @@ export class AngleClass2xe extends Bonded {
 
       // bond-bond term
       const bbD0 = this.bbD0[t], bbAl = this.bbAlpha[t];
-      const bbRa1 = Math.exp(-bbAl * (r1 - this.bbR1[t]));
-      const bbRa2 = Math.exp(-bbAl * (r2 - this.bbR2[t]));
+      const bbRa1 = libmExp(-bbAl * (r1 - this.bbR1[t]));
+      const bbRa2 = libmExp(-bbAl * (r2 - this.bbR2[t]));
       const tk1 = bbD0 * bbAl * bbRa2 * (1 - bbRa1);
       const tk2 = bbD0 * bbAl * bbRa1 * (1 - bbRa2);
       for (let q = 0; q < 3; q++) {
@@ -170,8 +171,8 @@ export class AngleClass2xe extends Bonded {
       eangle += bbD0 * (1 - bbRa1) * (1 - bbRa2);
 
       // bond-angle term
-      const baRa1 = Math.exp(-this.baAlpha1[t] * (r1 - this.baR1[t]));
-      const baRa2 = Math.exp(-this.baAlpha2[t] * (r2 - this.baR2[t]));
+      const baRa1 = libmExp(-this.baAlpha1[t] * (r1 - this.baR1[t]));
+      const baRa2 = libmExp(-this.baAlpha2[t] * (r2 - this.baR2[t]));
       const aa1 = this.baD1[t] * (1 - baRa1) * s;
       const aa2 = this.baD2[t] * (1 - baRa2) * s;
       // native: aa21 uses rsq1 in the first block (angle_class2xe.cpp, bond-angle term)

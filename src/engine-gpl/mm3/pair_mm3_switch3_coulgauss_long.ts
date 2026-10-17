@@ -8,6 +8,8 @@ import { Pair, PairParams, StyleError, mixDistance, type PairCompute, type Style
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { erfcExact, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../../engine/force/erfc';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /**
  * Pair style mm3/switch3/coulgauss/long (pair_mm3_switch3_coulgauss_long.cpp): the MM3 van der Waals term with a
@@ -104,14 +106,14 @@ export class PairMM3Switch3CoulGaussLong extends Pair {
     const gi = this.p.get('gamma', i, i), gj = this.p.get('gamma', j, j);
     const lj2 = gi === 0 && gj === 0 ? 0 : 1.0 / Math.sqrt(gi * gi + gj * gj);
     const lj3 = 1.84e5 * eps;
-    const lj4 = 2.25 * eps * Math.pow(2.0 * sig, 6.0);
+    const lj4 = 2.25 * eps * libmPow(2.0 * sig, 6.0);
     let offset = 0;
     if (this.shift && cutLJ > 0.0 && this.truncw === 0.0) {
       // the offset makes the energy zero at the cutoff, as in init_one (truncw == 0)
       const r = cutLJ;
       const r2inv = 1.0 / (r * r);
       const r6inv = r2inv * r2inv * r2inv;
-      const expb = lj3 * Math.exp(-lj1 * r);
+      const expb = lj3 * libmExp(-lj1 * r);
       offset = expb - lj4 * r6inv;
     }
     for (const k of [q, qr]) {
@@ -166,7 +168,7 @@ export class PairMM3Switch3CoulGaussLong extends Pair {
             // direct branch: the polynomial erfc of coul/long (EWALD_P, A1..A5 in ewald_const.h)
             const r = Math.sqrt(rsq);
             const grij = g * r;
-            const expm2 = Math.exp(-grij * grij);
+            const expm2 = libmExp(-grij * grij);
             const erfc1 = erfcPoly(grij, expm2);
             const prefactor = qqrd2e * qtmp * q[j] / r;
             forcecoul = prefactor * (erfc1 + EWALD_F * grij * expm2);
@@ -193,14 +195,14 @@ export class PairMM3Switch3CoulGaussLong extends Pair {
         let expb = 0, r6inv = 0, r = 0;
         if (rsq < cutLJsq) {
           r = Math.sqrt(rsq);
-          expb = this.lj3[lt] * Math.exp(-this.lj1[lt] * r);
+          expb = this.lj3[lt] * libmExp(-this.lj1[lt] * r);
           forcelj = expb * this.lj1[lt] * r;
           r6inv = r2inv * r2inv * r2inv;
           forcelj -= 6.0 * this.lj4[lt] * r6inv;
           if (this.lj2[lt] !== 0.0) {
             // the Gaussian-smeared correction: erfc(lj2 r) with the libm erfc (erfcExact here)
             const rrij = this.lj2[lt] * r;
-            const expn2 = Math.exp(-rrij * rrij);
+            const expn2 = libmExp(-rrij * rrij);
             erfc2 = erfcExact(rrij);
             prefactor2 = -qqrd2e * qtmp * q[j] / r;
             forcecoul2 = prefactor2 * (erfc2 + EWALD_F * rrij * expn2);

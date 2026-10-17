@@ -17,6 +17,8 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { ASF_SAED, SAED_TYPE_LIST } from './asf_saed';
 import { reciprocalSpacing } from './compute_xrd';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 const PI = Math.PI;
 
@@ -176,7 +178,7 @@ export class ComputeSAED extends Compute {
         let ft = 0;
         for (let C = 0; C < 5; C++) {
           const D = C + offset;
-          ft += row[D] * Math.exp(-1 * row[5 + D] * SinTheta_lambda * SinTheta_lambda);
+          ft += row[D] * libmExp(-1 * row[5 + D] * SinTheta_lambda * SinTheta_lambda);
         }
         f[t] = ft;
       }
@@ -184,8 +186,8 @@ export class ComputeSAED extends Compute {
       for (let a = 0; a < ts.length; a++) {
         const typei = ts[a] - 1;
         const inners = 2 * PI * (K[0] * xs[3 * a] + K[1] * xs[3 * a + 1] + K[2] * xs[3 * a + 2]);
-        F1 += f[typei] * Math.cos(inners);
-        F2 += f[typei] * Math.sin(inners);
+        F1 += f[typei] * libmCos(inners);
+        F2 += f[typei] * libmSin(inners);
       }
       F[2 * r] = F1;
       F[2 * r + 1] = F2;

@@ -5,6 +5,7 @@ import { buildAtomMap } from '../atoms';
 import { dihedralGeometry } from '../force/bonded_util';
 import type { BondedCompute } from '../force/types';
 import { ramp } from './util';
+import { libm } from '../libm';
 
 /*
  * fix restrain — written from docs.lammps.org/fix_restrain.html
@@ -224,10 +225,10 @@ export class FixRestrain extends Fix {
         const grad = new Array(12).fill(0), rel = new Array(12).fill(0);
         const phi = dihedralGeometry(shim, atoms[0], atoms[1], atoms[2], atoms[3], grad, rel);
         const n = t.mult;
-        const e = k * (1 + Math.cos(n * phi - r0));
+        const e = k * (1 + libm.cos(n * phi - r0));
         etot += e;
         // dE/dphi = -K n sin(n phi - phi0); F = -dE/dphi grad
-        const dEdphi = -k * n * Math.sin(n * phi - r0);
+        const dEdphi = -k * n * libm.sin(n * phi - r0);
         for (let a = 0; a < 4; a++) {
           for (let c = 0; c < 3; c++) f[3 * atoms[a] + c] += -dEdphi * grad[3 * a + c];
         }

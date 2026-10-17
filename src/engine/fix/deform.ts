@@ -2,6 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { int, latticeScale, num, yesno } from '../commands/args';
+import { libm } from '../libm';
 
 /*
  * fix ID group-ID deform N parameter style args ... keyword value ...
@@ -411,13 +412,13 @@ export class FixDeform extends Fix {
           LD = L0 * sp.rate!;
           break;
         case 'trate':
-          L = L0 * Math.exp(sp.rate! * elapsed);
+          L = L0 * libm.exp(sp.rate! * elapsed);
           LD = L * sp.rate!;
           break;
         case 'wiggle': {
           const w = (2 * Math.PI * elapsed) / sp.period!;
-          L = L0 + sp.amp! * Math.sin(w);
-          LD = sp.amp! * ((2 * Math.PI) / sp.period!) * Math.cos(w);
+          L = L0 + sp.amp! * libm.sin(w);
+          LD = sp.amp! * ((2 * Math.PI) / sp.period!) * libm.cos(w);
           break;
         }
         case 'variable':
@@ -486,13 +487,13 @@ export class FixDeform extends Fix {
           TD = this.perp0[t] * sp.rate!;
           break;
         case 'trate':
-          T = T0 * Math.exp(sp.rate! * elapsed);
-          TD = T0 * sp.rate! * Math.exp(sp.rate! * elapsed);
+          T = T0 * libm.exp(sp.rate! * elapsed);
+          TD = T0 * sp.rate! * libm.exp(sp.rate! * elapsed);
           break;
         case 'wiggle': {
           const w = (2 * Math.PI * elapsed) / sp.period!;
-          T = T0 + sp.amp! * Math.sin(w);
-          TD = sp.amp! * ((2 * Math.PI) / sp.period!) * Math.cos(w);
+          T = T0 + sp.amp! * libm.sin(w);
+          TD = sp.amp! * ((2 * Math.PI) / sp.period!) * libm.cos(w);
           break;
         }
         case 'variable':

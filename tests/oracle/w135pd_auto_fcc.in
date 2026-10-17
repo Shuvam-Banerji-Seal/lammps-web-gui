@@ -1,7 +1,7 @@
 # oracle: pair lj/cut/dipole/long 2.5 + kspace_style pppm/dipole 1.0e-4 with the automatic G-ewald and mesh (accuracy 1.0e-4), 108 fcc point dipoles (dipole/random, |mu| 0.7) in a periodic box, run 0: pe, elong, press and the per-atom forces and torques
 # oracle-files: w135pd_auto_fcc_tq.dump
-# measured with native LAMMPS (/home/roy/.local/bin/lmp, b332f28): the automatic G-ewald is 1.3859120 (native, printed 1.385912) and 1.3859114 (engine); the relative difference 4e-7 is the one Newton step of adjust_gewald, whose finite-difference derivative (h = 1e-6) follows the last digits of the k-space error. The engine agrees with native at fixed G (kspace_modify gewald 1.3769898 mesh 32 32 32: the printed estimated accuracy agrees to 8 digits). Error at the automatic G: thermo ecoul 3.2e-6 relative, forces 1.7e-7, torques 2.4e-8 under Node 24; under Node 20 2.3e-6, 1.2e-7, 1.7e-8. The compare tolerance is set to those values, not to 1e-8.
-# oracle-compare: thermo=all atoms=all rel=5e-6 atomrel=5e-7 filerel=5e-8 abs=1e-10
+# Measured with native LAMMPS (/home/roy/.local/bin/lmp, b332f28): the engine agrees to 1.0e-14 (thermo) and 1.4e-15 (forces and torques). The automatic G-ewald follows the last bits of mu2: adjust_gewald takes one Newton step with a forward-difference derivative (h = 1e-6) of the error estimates, where a one-ulp change of mu2 moves G by 5.6e-6, so mu2 is summed as native does it, per atom (mu_x^2 + mu_y^2 + mu_z^2) in native atom order. Before that the engine summed component by component in its own order: G 1.3859114 against native 1.3859120, ecoul 3.2e-6.
+# oracle-compare: thermo=all atoms=all rel=1e-12 atomrel=1e-12 filerel=1e-11 abs=1e-10
 units           lj
 atom_style      hybrid sphere dipole
 boundary        p p p

@@ -11,6 +11,7 @@
  * Vectors are 3-element arrays, quaternions are (w, x, y, z) 4-element arrays, matrices are arrays of rows.
  * Every operation keeps LAMMPS's order of floating-point operations so the rigid-body trajectories match.
  */
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 export type V3 = number[];
 export type Q4 = number[];
@@ -134,7 +135,7 @@ export const noSquishRotate = (k: number, p: Q4, q: Q4, inertia: V3, dt: number)
   let phi = p[0] * kq[0] + p[1] * kq[1] + p[2] * kq[2] + p[3] * kq[3];
   if (inertia[k - 1] === 0.0) phi = 0.0;
   else phi /= 4.0 * inertia[k - 1];
-  const c = Math.cos(dt * phi), s = Math.sin(dt * phi);
+  const c = libmCos(dt * phi), s = libmSin(dt * phi);
   for (let m = 0; m < 4; m++) p[m] = c * p[m] + s * kp[m];
   for (let m = 0; m < 4; m++) q[m] = c * q[m] + s * kq[m];
 };

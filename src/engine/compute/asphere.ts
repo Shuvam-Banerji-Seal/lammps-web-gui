@@ -88,7 +88,9 @@ export const ellipsoidInertia = (s: SimState, i: number): [number, number, numbe
   // atom_style ellipsoid superellipsoid: the moments stored when the shape or block was set (superellipsoid.ts)
   const stored = s.custom.get(SUPER_INERTIA);
   if (stored) return [stored.data[3 * i], stored.data[3 * i + 1], stored.data[3 * i + 2]];
-  const m = massOf(s, i) / 5;
+  // I = m/5 (b^2 + c^2) etc., written as native LAMMPS does (src/ASPHERE/fix_nve_asphere.cpp at b332f28: "INERTIA*rmass[i] *
+  // (shape[1]*shape[1]+shape[2]*shape[2])" with INERTIA = 0.2): 0.2 m and m / 5 can differ in the last bit
+  const m = 0.2 * massOf(s, i);
   const sh = s.shape!;
   const a = sh[3 * i], b = sh[3 * i + 1], c = sh[3 * i + 2];
   return [m * (b * b + c * c), m * (a * a + c * c), m * (a * a + b * b)];

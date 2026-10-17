@@ -1,6 +1,7 @@
 import { SimpleBonded, atomIndex, applyDihedral, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 import { StyleError, type BondedCompute } from '../types';
+import { libm } from '../../libm';
 
 /*
  * improper_style inversion/harmonic — docs.lammps.org/improper_inversion_harmonic.html (text in
@@ -104,7 +105,7 @@ export class ImproperInversionHarmonic extends SimpleBonded {
         // native's force is 2 k3 dw / sin(omega_native) times the gradient of the cosine; the engine's exact
         // gradient of asin(s) carries sin(omega) = sa, so it is scaled by sa / sin(omega_native) (0 below 1e-12
         // rad, where native applies no angle force)
-        const sinN = Math.sin(omegaN);
+        const sinN = libm.sin(omegaN);
         const ratio = omegaN * omegaN > 1e-24 ? sa / sinN : 0;
         // ds/dp, ds/dq, ds/dr (see the header)
         const gN: V3 = pm > 0

@@ -15,6 +15,7 @@ import { massOf } from '../../engine/atoms';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import type { System } from '../../engine/system';
 import { NativePairOrder } from '../neighbor/nativeOrder';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 /** One pair of the half list that passes the group test and the cutoff: positions of i and j (image), fpair. */
 interface PairRow { xi: number; yi: number; zi: number; xj: number; yj: number; zj: number; fpair: number }
@@ -143,8 +144,8 @@ export class ComputeStressCylinder extends Compute {
     for (let iphi = 0; iphi < NPHI; iphi++) {
       const phi = (iphi * Math.PI) / 180.0;
       this.tangent[iphi] = Math.tan(phi);
-      this.ephiX[iphi] = -Math.sin(phi);
-      this.ephiY[iphi] = Math.cos(phi);
+      this.ephiX[iphi] = -libmSin(phi);
+      this.ephiY[iphi] = libmCos(phi);
     }
     for (let zz = 0; zz < nz; zz++) this.binz[zz] = (zz + 0.5) * w + zl;
     this.sizeArrayRows = nb;
@@ -375,7 +376,7 @@ export class ComputeStressSpherical extends Compute {
         tdens[bin] += 1.0;
         const vr = (ri[0] * v[3 * i] + ri[1] * v[3 * i + 1] + ri[2] * v[3 * i + 2]) / r;
         const q = ri[1] / ri[0];
-        const vt = (r * Math.sin(theta)) / (q * q + 1.0) * ((ri[0] * v[3 * i + 1] - ri[1] * v[3 * i]) / (ri[0] * ri[0]));
+        const vt = (r * libmSin(theta)) / (q * q + 1.0) * ((ri[0] * v[3 * i + 1] - ri[1] * v[3 * i]) / (ri[0] * ri[0]));
         const vp = (ri[2] * vr - r * v[3 * i + 2]) / (r * Math.sqrt(1.0 - (ri[2] / r) * (ri[2] / r)));
         tpkrr[bin] += vr * vr;
         tpktt[bin] += vt * vt;

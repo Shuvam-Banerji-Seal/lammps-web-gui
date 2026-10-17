@@ -31,6 +31,7 @@ import type { SurfaceEntry } from '../../engine/molecule';
 import { TRI_BODY_HOOK } from '../tri/tri_bonus';
 import { parseStl } from '../../engine/stl';
 import { stlFirstSolid } from './stl_solid';
+import { cos as libmCos } from '../libm/sincos';
 
 type V3 = [number, number, number];
 
@@ -107,7 +108,7 @@ export class FixSurfaceLocal extends Fix {
       const flat = Number(args[k + 1]);
       // fix_surface_local.cpp: "Invalid value {} for fix surface/local flat keyword" when flat is outside 0..90
       if (args[k + 1] === undefined || !(flat >= 0 && flat <= 90)) throw new StyleError(`Invalid value ${args[k + 1] ?? ''} for fix surface/local flat keyword`);
-      flatthresh = 1.0 - Math.cos((Math.PI * flat) / 180.0);
+      flatthresh = 1.0 - libmCos((Math.PI * flat) / 180.0);
       k += 2;
     }
     FLAT_THRESHOLD.set(sys.state, flatthresh);

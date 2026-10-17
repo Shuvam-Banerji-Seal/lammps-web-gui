@@ -18,6 +18,8 @@ import { Compute } from '../../engine/compute/compute';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { ASF_XRD, XRD_TYPE_LIST } from './asf_xrd';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 const PI = Math.PI;
 
@@ -119,7 +121,7 @@ export class ComputeXRD extends Compute {
     this.min2Theta = min2;
     this.max2Theta = max2;
     this.convf = this.radflag ? 2 : (360 / PI);
-    const kmax = (2 * Math.sin(max2)) / this.lambda;
+    const kmax = (2 * libmSin(max2)) / this.lambda;
     const prdInv = reciprocalSpacing(sys, manual, 'Compute XRD');
     this.dK = [prdInv[0] * c[0], prdInv[1] * c[1], prdInv[2] * c[2]];
     this.knmax = [0, 0, 0];
@@ -182,20 +184,20 @@ export class ComputeXRD extends Compute {
       const SinTheta_lambda = 0.5 * dinv;
       const SinTheta = SinTheta_lambda * lambda;
       const ang = Math.asin(SinTheta);
-      const Cos2Theta = Math.cos(2 * ang);
-      const CosTheta = Math.cos(ang);
+      const Cos2Theta = libmCos(2 * ang);
+      const CosTheta = libmCos(ang);
       for (let t = 0; t < nt; t++) {
         const row = ASF_XRD[this.ztype[t]];
         let ft = 0;
-        for (let C = 0; C < 8; C += 2) ft += row[C] * Math.exp(-1 * row[C + 1] * SinTheta_lambda * SinTheta_lambda);
+        for (let C = 0; C < 8; C += 2) ft += row[C] * libmExp(-1 * row[C + 1] * SinTheta_lambda * SinTheta_lambda);
         f[t] = ft + row[8];
       }
       let F1 = 0, F2 = 0;
       for (let a = 0; a < xs.length / 3; a++) {
         const typei = ts[a] - 1;
         const inners = 2 * PI * (K[0] * xs[3 * a] + K[1] * xs[3 * a + 1] + K[2] * xs[3 * a + 2]);
-        F1 += f[typei] * Math.cos(inners);
-        F2 += f[typei] * Math.sin(inners);
+        F1 += f[typei] * libmCos(inners);
+        F2 += f[typei] * libmSin(inners);
       }
       if (this.LP === 1) {
         const sqrtLp = Math.sqrt((1 + Cos2Theta * Cos2Theta) / (CosTheta * SinTheta * SinTheta));

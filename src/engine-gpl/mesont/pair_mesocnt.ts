@@ -26,6 +26,8 @@ import { BUCKLED } from './angle_mesocnt';
 import { eunitOf } from './units';
 import { finf, fsemi, geometry, mesoConst, newGeoOut, newWeightOut, weight, type GeoOut, type MesoConst, type WeightOut } from './forces';
 import { readMesocntFile, sCubic, type MesocntTables } from './tables';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
 
 /** LAMMPS: static constexpr int SELF_CUTOFF = 3 (pair_mesocnt.cpp). */
 const SELF_CUTOFF = 3;
@@ -86,7 +88,7 @@ export interface ViscParams {
  */
 const frictionTotal = (v: ViscParams, vtot: number, sumw: number, param: Float64Array): number => {
   if (vtot === 0.0) return 0.0;
-  let ft = v.fviscMax / (1.0 + Math.exp(-v.kvisc * (Math.abs(vtot) - v.vvisc))) - v.fviscShift;
+  let ft = v.fviscMax / (1.0 + libmExp(-v.kvisc * (Math.abs(vtot) - v.vvisc))) - v.fviscShift;
   ft *= 0.25 * (1 - sCubic(sumw)) * (param[3] - param[2]);
   if (vtot < 0) ft = -ft;
   return ft;
@@ -360,8 +362,8 @@ export class PairMesoCNT extends Pair {
             }
             geometry(c, r1, r2, q1, q2, q1, geo);
             if (param[0] > cutoff) continue;
-            const calpha = Math.cos(param[1]);
-            const salpha = Math.sin(param[1]);
+            const calpha = libmCos(param[1]);
+            const salpha = libmSin(param[1]);
             const hsq = param[0] * param[0];
             let ceta = calpha * param[4];
             let seta = salpha * param[4];
@@ -589,7 +591,7 @@ export class PairMesoCNT extends Pair {
           geometry(c, r1, r2, P1, P2, null, geo);
           if (param[0] > cutoff) continue;
           if (param[2] >= 0 || param[3] <= 0) {
-            const salpha = Math.sin(param[1]);
+            const salpha = libmSin(param[1]);
             const sxi1 = salpha * param[2];
             const sxi2 = salpha * param[3];
             const hsq = param[0] * param[0];
@@ -603,19 +605,19 @@ export class PairMesoCNT extends Pair {
           if (param[0] > cutoff) continue;
           if (param[2] >= 0 || param[3] <= 0) {
             const hsq = param[0] * param[0];
-            const calpha = Math.cos(param[1]);
+            const calpha = libmCos(param[1]);
             let etamin = calpha * param[2];
             let dsq1: number;
             if (etamin < param[6]) {
-              dsq1 = hsq + Math.pow(Math.sin(param[1]) * param[6], 2);
+              dsq1 = hsq + Math.pow(libmSin(param[1]) * param[6], 2);
               dsq1 += Math.pow(param[2] - calpha * param[6], 2);
-            } else dsq1 = hsq + Math.pow(Math.sin(param[1]) * param[2], 2);
+            } else dsq1 = hsq + Math.pow(libmSin(param[1]) * param[2], 2);
             etamin = calpha * param[3];
             let dsq2: number;
             if (etamin < param[6]) {
-              dsq2 = hsq + Math.pow(Math.sin(param[1]) * param[6], 2);
+              dsq2 = hsq + Math.pow(libmSin(param[1]) * param[6], 2);
               dsq2 += Math.pow(param[3] - calpha * param[6], 2);
-            } else dsq2 = hsq + Math.pow(Math.sin(param[1]) * param[3], 2);
+            } else dsq2 = hsq + Math.pow(libmSin(param[1]) * param[3], 2);
             if (dsq1 > cutoffsq && dsq2 > cutoffsq) continue;
           }
           evdwl = fsemi(c, param, fl, this.fend);
@@ -805,7 +807,7 @@ export class PairMesoCNTViscous extends PairMesoCNT {
     const fviscMax = parseNum(args[3], 'fvisc_max');
     const kvisc = parseNum(args[4], 'kvisc');
     const vvisc = parseNum(args[5], 'vvisc');
-    this.visc = { fviscMax, kvisc, vvisc, fviscShift: fviscMax / (1.0 + Math.exp(kvisc * vvisc)) };
+    this.visc = { fviscMax, kvisc, vvisc, fviscShift: fviscMax / (1.0 + libmExp(kvisc * vvisc)) };
     this.setPotential(args[2], args.slice(6), ctx);
   }
 }

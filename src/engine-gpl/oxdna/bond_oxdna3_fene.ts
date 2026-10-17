@@ -13,6 +13,7 @@ import { StyleError, typeBounds, type StyleContext } from '../../engine/force/ty
 import { parseNum } from '../../engine/force/util';
 import { BondOxdnaFene, type Pair2 } from './bond_fene';
 import { backboneOxdna2, tetIndex, tetramerTable, type OxdnaConstants, potentialLines } from './common';
+import { pow as libmPow } from '../libm/pow';
 
 /** The tables of one bond type: K, the four-index Delta and r0 (m = atom types + 1 entries per axis). */
 interface Tables { k: number; m: number; delta: Float64Array; r0: Float64Array }
@@ -38,7 +39,7 @@ export class BondOxdna3Fene extends BondOxdnaFene {
     if (n > 4) throw new StyleError('bond oxdna3/fene does not support more than 4 atom types for A, C, G and T');
     const [lo, hi] = typeBounds(args[0], this.ntypes);
     const text = ctx?.readFile(args[1]) ?? '';
-    const m4 = n ** 4;
+    const m4 = libmPow(n, 4);
     let found: number[] | null = null;
     for (const w of potentialLines(text, [args[0]], 'fene')) {
       if (w.length < 2) continue;

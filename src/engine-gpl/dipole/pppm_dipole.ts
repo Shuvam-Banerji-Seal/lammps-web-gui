@@ -28,8 +28,13 @@ import { KSpaceBase, modifyNoEffect, ANGSTROM, QELECTRON } from '../../engine/fo
 import type { SimState } from '../../engine/types';
 import type { Geometry } from '../../engine/domain';
 import { parseNum } from '../../engine/force/util';
+import { nativeOrder } from '../../engine/atoms';
 import { fft3d, isFFTSize } from '../../engine/force/fft';
 import { computeQopt } from '../pppm/grid';
+import { log as libmLog } from '../libm/log';
+import { sin as libmSin } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** pppm.cpp OFFSET: keeps int() of a negative grid coordinate at the right value. */
 const OFFSET = 16384;
@@ -46,10 +51,21 @@ const MY_PI2 = Math.PI / 2;
 
 const square = (x: number): number => x * x;
 
+/** MathSpecial::powint (math_special.h at b332f28): x^n by repeated squaring, as native computes powint(g, 4). */
+const powint = (x: number, n: number): number => {
+  if (n === 0) return 1.0;
+  if (x === 0.0) return 0.0;
+  let nn = n > 0 ? n : -n;
+  let ww = x;
+  let yy = 1.0;
+  for (; nn !== 0; nn >>= 1, ww *= ww) if (nn & 1) yy *= ww;
+  return n > 0 ? yy : 1.0 / yy;
+};
+
 /** MathSpecial::powsinxx (math_special.h at b332f28): (sin x / x)^n for an integer n >= 0. */
 const powsinxx = (x: number, n: number): number => {
   if (x === 0) return 1;
-  let ww = Math.sin(x) / x;
+  let ww = libmSin(x) / x;
   let yy = 1;
   for (; n !== 0; n >>= 1, ww *= ww) if (n & 1) yy *= ww;
   return yy;
@@ -101,10 +117,10 @@ const rspaceError = (g: number, rc: number, natoms: number, vol: number, mu2: nu
   const rg6 = rg4 * rg2;
   const Cc = 4.0 * rg4 + 6.0 * rg2 + 3.0;
   const Dc = 8.0 * rg6 + 20.0 * rg4 + 30.0 * rg2 + 15.0;
-  const dd = (mu2 / Math.sqrt(vol * g ** 4 * rc ** 9 * natoms)) *
-    Math.sqrt((13.0 / 6.0) * Cc * Cc + (2.0 / 15.0) * Dc * Dc - (13.0 / 15.0) * Cc * Dc) * Math.exp(-rg2);
+  const dd = (mu2 / Math.sqrt(vol * powint(g, 4) * powint(rc, 9) * natoms)) *
+    Math.sqrt((13.0 / 6.0) * Cc * Cc + (2.0 / 15.0) * Dc * Dc - (13.0 / 15.0) * Cc * Dc) * libmExp(-rg2);
   if (q2 === 0) return dd;
-  const dq = (2.0 * q2 * Math.exp(-rg2)) / Math.sqrt(natoms * rc * vol);
+  const dq = (2.0 * q2 * libmExp(-rg2)) / Math.sqrt(natoms * rc * vol);
   return Math.sqrt(dd * dd + dq * dq);
 };
 
@@ -241,14 +257,22 @@ export class KSpacePPPMDipole extends KSpaceBase {
     this.cutoff = cutCoul;
     this.acc = this.accuracy * twoChargeForce;
     // musum_musq: musqsum = sum |mu_i|^2, mu2 = musqsum * prefactor
+    // native sums in its local atom order (nativeOrder), one term per atom: "musqsum_local += mu[i][0]*mu[i][0] +
+    // mu[i][1]*mu[i][1] + mu[i][2]*mu[i][2];". The automatic G-ewald follows the last bits of mu2 (the one Newton step
+    // of adjust_gewald takes a forward-difference derivative of the error estimates), so the order matters.
     const mu = this.moments(s);
+    const ord = nativeOrder(s);
     let musq = 0;
-    for (let i = 0; i < 3 * s.n; i++) musq += mu[i] * mu[i];
+    for (let k = 0; k < s.n; k++) {
+      const i = ord[k];
+      musq += mu[3 * i] * mu[3 * i] + mu[3 * i + 1] * mu[3 * i + 1] + mu[3 * i + 2] * mu[3 * i + 2];
+    }
     this.musqsum = musq;
     this.mu2 = musq * this.prefactor(qqrd2e);
-    // qsum_qsq(0) in init: the charge sums; q2 = qsqsum qqrd2e (native KSpace::qsum_qsq)
+    // qsum_qsq(0) in init: the charge sums in native order; q2 = qsqsum qqrd2e (native KSpace::qsum_qsq)
     let qs = 0, q2s = 0;
-    if (s.q) for (let i = 0; i < s.n; i++) {
+    if (s.q) for (let k = 0; k < s.n; k++) {
+      const i = ord[k];
       qs += s.q[i];
       q2s += s.q[i] * s.q[i];
     }
@@ -305,28 +329,28 @@ export class KSpacePPPMDipole extends KSpaceBase {
     let qopt = 0;
     for (let m = 0; m < nz; m++) {
       const mper = perOf(m, nz);
-      const snz = square(Math.sin(0.5 * unitkz * mper * lz / nz));
+      const snz = square(libmSin(0.5 * unitkz * mper * lz / nz));
       for (let l = 0; l < ny; l++) {
         const lper = perOf(l, ny);
-        const sny = square(Math.sin(0.5 * unitky * lper * ly / ny));
+        const sny = square(libmSin(0.5 * unitky * lper * ly / ny));
         for (let k = 0; k < nx; k++) {
           const kper = perOf(k, nx);
-          const snx = square(Math.sin(0.5 * unitkx * kper * lx / nx));
+          const snx = square(libmSin(0.5 * unitkx * kper * lx / nx));
           const sqk = square(unitkx * kper) + square(unitky * lper) + square(unitkz * mper);
           if (sqk === 0) continue;
           const denominator = gfDenom(this.gfB, this.order, snx, sny, snz);
           let sum1 = 0, sum2 = 0;
           for (let ix = -2; ix <= 2; ix++) {
             const qx = unitkx * (kper + nx * ix);
-            const sx = Math.exp(-0.25 * square(qx / g));
+            const sx = libmExp(-0.25 * square(qx / g));
             const wx = powsinxx(0.5 * qx * lx / nx, twoorder);
             for (let iy = -2; iy <= 2; iy++) {
               const qy = unitky * (lper + ny * iy);
-              const sy = Math.exp(-0.25 * square(qy / g));
+              const sy = libmExp(-0.25 * square(qy / g));
               const wy = powsinxx(0.5 * qy * ly / ny, twoorder);
               for (let iz = -2; iz <= 2; iz++) {
                 const qz = unitkz * (mper + nz * iz);
-                const sz = Math.exp(-0.25 * square(qz / g));
+                const sz = libmExp(-0.25 * square(qz / g));
                 const wz = powsinxx(0.5 * qz * lz / nz, twoorder);
                 const dot1 = unitkx * kper * qx + unitky * lper * qy + unitkz * mper * qz;
                 const dot2 = qx * qx + qy * qy + qz * qz;
@@ -368,7 +392,7 @@ export class KSpacePPPMDipole extends KSpaceBase {
     const vol = lx * ly * lz;
     if (!(this.gewaldUser > 0)) {
       if (!(this.acc > 0)) throw new StyleError('KSpace accuracy must be > 0');
-      let g = (1.35 - 0.15 * Math.log(this.acc)) / this.cutoff;
+      let g = (1.35 - 0.15 * libmLog(this.acc)) / this.cutoff;
       const gNew = this.findGewald(g, this.cutoff, this.natoms, vol, this.mu2);
       if (gNew > 0) g = gNew;
       else ctx.log('WARNING: PPPMDipole dipole Newton solver failed, using old method to estimate g_ewald');
@@ -445,7 +469,7 @@ export class KSpacePPPMDipole extends KSpaceBase {
         let s = 0.0;
         for (let l = 0; l < j; l++) {
           a[l + 1][k + P] = (a[l][k + 1 + P] - a[l][k - 1 + P]) / (l + 1);
-          s += Math.pow(0.5, l + 1) * (a[l][k - 1 + P] + Math.pow(-1.0, l) * a[l][k + 1 + P]) / (l + 1);
+          s += libmPow(0.5, l + 1) * (a[l][k - 1 + P] + libmPow(-1.0, l) * a[l][k + 1 + P]) / (l + 1);
         }
         a[0][k + P] = s;
       }
@@ -490,7 +514,7 @@ export class KSpacePPPMDipole extends KSpaceBase {
     this.fk = fk;
     // native: nbx = max(int(g Lx / (pi Nx) (-ln EPS_HOC)^(1/4)), 2)
     const nb = [0, 1, 2].map((d) => {
-      const c = Math.trunc((g * L[d] / (Math.PI * N[d])) * Math.pow(-Math.log(EPS_HOC), 0.25));
+      const c = Math.trunc((g * L[d] / (Math.PI * N[d])) * libmPow(-libmLog(EPS_HOC), 0.25));
       return Math.max(c, 2);
     });
     const Ng = nx * ny * nz;
@@ -504,9 +528,9 @@ export class KSpacePPPMDipole extends KSpaceBase {
         const lper = perOf(l, ny);
         for (let k = 0; k < nx; k++) {
           const kper = perOf(k, nx);
-          const snx = square(Math.sin(0.5 * unit[0] * kper * lx / nx));
-          const sny = square(Math.sin(0.5 * unit[1] * lper * ly / ny));
-          const snz = square(Math.sin(0.5 * unit[2] * mper * lz / nz));
+          const snx = square(libmSin(0.5 * unit[0] * kper * lx / nx));
+          const sny = square(libmSin(0.5 * unit[1] * lper * ly / ny));
+          const snz = square(libmSin(0.5 * unit[2] * mper * lz / nz));
           const idx = (m * ny + l) * nx + k;
           const kx = unit[0] * kper, ky = unit[1] * lper, kz = unit[2] * mper;
           const sqk = square(unit[0] * kper) + square(unit[1] * lper) + square(unit[2] * mper);
@@ -515,15 +539,15 @@ export class KSpacePPPMDipole extends KSpaceBase {
           let sum1 = 0, sum1Qq = 0, sum1Qm = 0;
           for (let ix = -nb[0]; ix <= nb[0]; ix++) {
             const qx = unit[0] * (kper + nx * ix);
-            const sx = Math.exp(-0.25 * square(qx / g));
+            const sx = libmExp(-0.25 * square(qx / g));
             const wx = powsinxx(0.5 * qx * lx / nx, twoorder);
             for (let iy = -nb[1]; iy <= nb[1]; iy++) {
               const qy = unit[1] * (lper + ny * iy);
-              const sy = Math.exp(-0.25 * square(qy / g));
+              const sy = libmExp(-0.25 * square(qy / g));
               const wy = powsinxx(0.5 * qy * ly / ny, twoorder);
               for (let iz = -nb[2]; iz <= nb[2]; iz++) {
                 const qz = unit[2] * (mper + nz * iz);
-                const sz = Math.exp(-0.25 * square(qz / g));
+                const sz = libmExp(-0.25 * square(qz / g));
                 const wz = powsinxx(0.5 * qz * lz / nz, twoorder);
                 const dot1 = unit[0] * kper * qx + unit[1] * lper * qy + unit[2] * mper * qz;
                 const dot2 = qx * qx + qy * qy + qz * qz;

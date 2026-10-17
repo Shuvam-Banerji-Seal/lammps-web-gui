@@ -17,6 +17,7 @@ import { OXDNA_5P, buildAtomMap, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, DF5, F1, F4, F5, lrfOf, oxdnaConstants } from './common';
 import { stackingDerived, stackingStrength } from './pair_stk';
+import { sin as libmSin } from '../libm/sincos';
 
 /** pair_oxrna2_stk.cpp constructor: the sequence-dependence factors eta_st[i-1][j-1] (1-based types). */
 const ETA_OXRNA2: number[][] = [
@@ -231,10 +232,10 @@ export class PairOxrna2Stk extends Pair {
       const e = f1 * f4t5 * f4t6 * f4t9 * f4t10 * f5c1 * f5c2;
       if (e === 0.0) continue;
       const df1 = DF1(rS, TT.eps[ij], TT.a[ij], TT.cut0[ij], TT.cutlc[ij], TT.cuthc[ij], TT.cutlo[ij], TT.cuthi[ij], TT.blo[ij], TT.bhi[ij]);
-      const df4t5 = DF4(theta5p, TT.a5[ij], TT.th5[ij], TT.dth5ast[ij], TT.b5[ij], TT.dth5c[ij]) / Math.sin(theta5p);
-      const df4t6 = DF4(theta6p, TT.a6[ij], TT.th6[ij], TT.dth6ast[ij], TT.b6[ij], TT.dth6c[ij]) / Math.sin(theta6p);
-      const df4t9 = DF4(theta9, TT.a9[ij], TT.th9[ij], TT.dth9ast[ij], TT.b9[ij], TT.dth9c[ij]) / Math.sin(theta9);
-      const df4t10 = DF4(theta10, TT.a10[ij], TT.th10[ij], TT.dth10ast[ij], TT.b10[ij], TT.dth10c[ij]) / Math.sin(theta10);
+      const df4t5 = DF4(theta5p, TT.a5[ij], TT.th5[ij], TT.dth5ast[ij], TT.b5[ij], TT.dth5c[ij]) / libmSin(theta5p);
+      const df4t6 = DF4(theta6p, TT.a6[ij], TT.th6[ij], TT.dth6ast[ij], TT.b6[ij], TT.dth6c[ij]) / libmSin(theta6p);
+      const df4t9 = DF4(theta9, TT.a9[ij], TT.th9[ij], TT.dth9ast[ij], TT.b9[ij], TT.dth9c[ij]) / libmSin(theta9);
+      const df4t10 = DF4(theta10, TT.a10[ij], TT.th10[ij], TT.dth10ast[ij], TT.b10[ij], TT.dth10c[ij]) / libmSin(theta10);
       const df5c1 = DF5(-cosphi1, TT.a1[ij], -TT.cos1ast[ij], TT.b1[ij], -TT.cos1c[ij]);
       const df5c2 = DF5(-cosphi2, TT.a2[ij], -TT.cos2ast[ij], TT.b2[ij], -TT.cos2c[ij]);
       // radial force along the stacking vector, then the angles 5' and 6' (the stacking sites)

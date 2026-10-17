@@ -1,5 +1,6 @@
 import { StyleError } from '../types';
 import type { Geometry } from '../../domain';
+import { libm } from '../../libm';
 
 /*
  * Massless M site of the TIP4P water models (the sites of pair styles
@@ -43,7 +44,7 @@ export interface Tip4pModel {
 
 /** alpha = qdist / (r0 cos(theta0 / 2)); theta0 in degrees. */
 export const tip4pAlpha = (qdist: number, r0: number, thetaDeg: number): number =>
-  qdist / (r0 * Math.cos((thetaDeg * Math.PI) / 360));
+  qdist / (r0 * libm.cos((thetaDeg * Math.PI) / 360));
 
 /** Sites of the owned atoms: M positions (3 per atom; the atom's own position for non-O atoms) and the H owned indices (-1 for non-O). */
 export interface OwnedSites {

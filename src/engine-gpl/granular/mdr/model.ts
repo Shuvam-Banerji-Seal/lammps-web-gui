@@ -18,6 +18,7 @@ import {
   AC_0, DELTAO_0, DELTAP_0, DELTA_0, DELTA_MAX, HIST_SIZE, MDR_OVERLAP_LIMIT, PENALTY,
   mdrConsts, mdrDampPrefactor, mdrSide, type MdrAtomArrays, type MdrConsts, type MdrMaterial,
 } from './normal';
+import { exp as libmExp } from '../../libm/exp';
 
 const EPSILON = 1e-10;
 
@@ -128,7 +129,7 @@ export class MdrModel implements MdrApi {
       Atot[i] = 4.0 * Math.PI * Rsq + Atot_sum[i];
       psi[i] = (Atot[i] - Acon1[i]) / Atot[i];
       if (psib < psi[i]) {
-        const w = psi[i] > 0.1 ? 1.0 / (1.0 + Math.exp(-75.0 * (psi[i] - 0.2))) : 0.0;
+        const w = psi[i] > 0.1 ? 1.0 / (1.0 + libmExp(-75.0 * (psi[i] - 0.2))) : 0.0;
         const dR = Math.max((dRnumerator[i] / (dRdenominator[i] - 4.0 * Math.PI * Rsq)) * w, 0.0);
         const Nwindow = 10.0;
         if (dR > 0.0) dRavg[i] += (dR - dRavg[i]) / Nwindow;
@@ -221,20 +222,20 @@ export class MdrModel implements MdrApi {
             const enx_ki = -delx_ik * rinv_ik, eny_ki = -dely_ik * rinv_ik, enz_ki = -delz_ik * rinv_ik;
             const enx_kj = -delx_jk * rinv_jk, eny_kj = -dely_jk * rinv_jk, enz_kj = -delz_jk * rinv_jk;
             const alpha = Math.acos(enx_ki * enx_kj + eny_ki * eny_kj + enz_ki * enz_kj);
-            pij[PENALTY] += 1.0 / (1.0 + Math.exp(-50.0 * (alpha / Math.PI - 0.5)));
+            pij[PENALTY] += 1.0 / (1.0 + libmExp(-50.0 * (alpha / Math.PI - 0.5)));
           } else if (r_ik === r_max) {
             // the central particle is j
             const enx_ji = -delx_ij * rinv_ij, eny_ji = -dely_ij * rinv_ij, enz_ji = -delz_ij * rinv_ij;
             const enx_jk = delx_jk * rinv_jk, eny_jk = dely_jk * rinv_jk, enz_jk = delz_jk * rinv_jk;
             const alpha = Math.acos(enx_ji * enx_jk + eny_ji * eny_jk + enz_ji * enz_jk);
-            pik[PENALTY] += 1.0 / (1.0 + Math.exp(-50.0 * (alpha / Math.PI - 0.5)));
+            pik[PENALTY] += 1.0 / (1.0 + libmExp(-50.0 * (alpha / Math.PI - 0.5)));
           } else {
             // the central particle is i
             const enx_ij = delx_ij * rinv_ij, eny_ij = dely_ij * rinv_ij, enz_ij = delz_ij * rinv_ij;
             const enx_ik = delx_ik * rinv_ik, eny_ik = dely_ik * rinv_ik, enz_ik = delz_ik * rinv_ik;
             const alpha = Math.acos(enx_ij * enx_ik + eny_ij * eny_ik + enz_ij * enz_ik);
             const pjk = this.entry(this.pairHist, MdrModel.pairKey(id[oj], id[ok]));
-            pjk[PENALTY] += 1.0 / (1.0 + Math.exp(-50.0 * (alpha / Math.PI - 0.5)));
+            pjk[PENALTY] += 1.0 / (1.0 + libmExp(-50.0 * (alpha / Math.PI - 0.5)));
           }
         }
       }
@@ -385,7 +386,7 @@ export class MdrModel implements MdrApi {
     const wij = Math.max(1.0 - hist[PENALTY], 0.0);
     const r = mdrSide({ hist, side: 0, st, ai: c.ai, R: c.R, delta: c.delta, nx: c.nx, ny: c.ny, nz: c.nz, c: K, hu: c.hu, wij });
     // wall force magnifier of the native wall (fix_granular_mdr uses the same contact, wfm = exp(10.7 delta_o / R_o - 10) + 1)
-    const wfm = Math.exp((10.7 * hist[DELTAO_0]) / st.Ro[c.ai] - 10.0) + 1.0;
+    const wfm = libmExp((10.7 * hist[DELTAO_0]) / st.Ro[c.ai] - 10.0) + 1.0;
     const fne = wij * r.F0 * wfm;
     const aDamp = r.aDamp / 2.0;
     const Eeff2particle = 0.5 * K.Eeff;

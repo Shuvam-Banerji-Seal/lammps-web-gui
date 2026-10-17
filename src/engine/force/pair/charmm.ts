@@ -3,6 +3,7 @@ import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { parseNum } from '../util';
 import { erfcPoly, EWALD_F, ErfcTableCache } from '../erfc';
+import { libm } from '../../libm';
 
 /*
  * CHARMM LJ + Coulomb pair styles with the energy switching function:
@@ -418,7 +419,7 @@ export class PairLJCharmmCoulLong extends PairLJCharmmCoulCharmm {
     }
     const r = Math.sqrt(rsq);
     const grij = this.gEwald * r;
-    const ex = Math.exp(-grij * grij);
+    const ex = libm.exp(-grij * grij);
     const erfc = erfcPoly(grij, ex);
     const pre = qqrd2e * qi * qj / r;
     return { e: pre * erfc, f: pre * (erfc + EWALD_F * grij * ex) / rsq };
@@ -648,7 +649,7 @@ export class PairLJCharmmfswCoulLong extends PairLJCharmmfswBase {
     } else {
       const r = Math.sqrt(rsq);
       const grij = this.gEwald * r;
-      const ex = Math.exp(-grij * grij);
+      const ex = libm.exp(-grij * grij);
       const erfc = erfcPoly(grij, ex);
       e = qq * erfc / r;
       f = qq * (erfc + EWALD_F * grij * ex) / (r * rsq);

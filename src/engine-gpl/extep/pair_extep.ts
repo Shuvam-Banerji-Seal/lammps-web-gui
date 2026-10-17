@@ -21,6 +21,9 @@
  */
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 // LAMMPS: static constexpr int MAXTYPES 8, NSPLINE 5 (pair_extep.h)
 const NSPLINE = 5;
@@ -117,7 +120,7 @@ export class PairExTeP extends Pair {
     const reader = new EntryReader(lines);
     // first block: 3-body entries, read until one per element triple (native: nparams >= nelements^3 breaks)
     for (;;) {
-      if (params.length >= nel ** 3) break;
+      if (params.length >= libmPow(nel, 3)) break;
       const w = reader.next(DELTA_NEXT);
       if (!w) break;
       const ie = elements.indexOf(w[0]), je = elements.indexOf(w[1]), ke = elements.indexOf(w[2]);
@@ -179,8 +182,8 @@ export class PairExTeP extends Pair {
     for (const p of params) {
       p.cut = p.bigr + p.bigd;
       p.cutsq = p.cut * p.cut;
-      p.c1 = (2 * p.powern * 1.0e-16) ** (-1 / p.powern);
-      p.c2 = (2 * p.powern * 1.0e-8) ** (-1 / p.powern);
+      p.c1 = libmPow(2 * p.powern * 1.0e-16, -1 / p.powern);
+      p.c2 = libmPow(2 * p.powern * 1.0e-8, -1 / p.powern);
       p.c3 = 1 / p.c2;
       p.c4 = 1 / p.c1;
       if (p.cut > cutmax) cutmax = p.cut;
@@ -231,43 +234,43 @@ export class PairExTeP extends Pair {
     const R = p.bigr, D = p.bigd;
     if (r < R - D) return 1.0;
     if (r > R + D) return 0.0;
-    return 0.5 * (1.0 - Math.sin(PI2 * (r - R) / D));
+    return 0.5 * (1.0 - libmSin(PI2 * (r - R) / D));
   }
 
   private fcD(r: number, p: Param): number {
     const R = p.bigr, D = p.bigd;
     if (r < R - D) return 0.0;
     if (r > R + D) return 0.0;
-    return -(PI4 / D) * Math.cos(PI2 * (r - R) / D);
+    return -(PI4 / D) * libmCos(PI2 * (r - R) / D);
   }
 
   private fa(r: number, p: Param): number {
     if (r > p.bigr + p.bigd) return 0.0;
-    return -p.bigb * Math.exp(-p.lam2 * r) * this.fc(r, p);
+    return -p.bigb * libmExp(-p.lam2 * r) * this.fc(r, p);
   }
 
   private faD(r: number, p: Param): number {
     if (r > p.bigr + p.bigd) return 0.0;
-    return p.bigb * Math.exp(-p.lam2 * r) * (p.lam2 * this.fc(r, p) - this.fcD(r, p));
+    return p.bigb * libmExp(-p.lam2 * r) * (p.lam2 * this.fc(r, p) - this.fcD(r, p));
   }
 
   private bij(zeta: number, p: Param): number {
     const tmp = p.beta * zeta;
     if (tmp > p.c1) return 1.0 / Math.sqrt(tmp);
-    if (tmp > p.c2) return (1.0 - tmp ** (-p.powern) / (2.0 * p.powern)) / Math.sqrt(tmp);
+    if (tmp > p.c2) return (1.0 - libmPow(tmp, -p.powern) / (2.0 * p.powern)) / Math.sqrt(tmp);
     if (tmp < p.c4) return 1.0;
-    if (tmp < p.c3) return 1.0 - tmp ** p.powern / (2.0 * p.powern);
-    return (1.0 + tmp ** p.powern) ** (-1.0 / (2.0 * p.powern));
+    if (tmp < p.c3) return 1.0 - libmPow(tmp, p.powern) / (2.0 * p.powern);
+    return libmPow(1.0 + libmPow(tmp, p.powern), -1.0 / (2.0 * p.powern));
   }
 
   private bijD(zeta: number, p: Param): number {
     const tmp = p.beta * zeta;
-    if (tmp > p.c1) return p.beta * -0.5 * tmp ** -1.5;
-    if (tmp > p.c2) return p.beta * (-0.5 * tmp ** -1.5 * (1.0 - 0.5 * (1.0 + 1.0 / (2.0 * p.powern)) * tmp ** (-p.powern)));
+    if (tmp > p.c1) return p.beta * -0.5 * libmPow(tmp, -1.5);
+    if (tmp > p.c2) return p.beta * (-0.5 * libmPow(tmp, -1.5) * (1.0 - 0.5 * (1.0 + 1.0 / (2.0 * p.powern)) * libmPow(tmp, -p.powern)));
     if (tmp < p.c4) return 0.0;
-    if (tmp < p.c3) return -0.5 * p.beta * tmp ** (p.powern - 1.0);
-    const tmpN = tmp ** p.powern;
-    return -0.5 * (1.0 + tmpN) ** (-1.0 - 1.0 / (2.0 * p.powern)) * tmpN / zeta;
+    if (tmp < p.c3) return -0.5 * p.beta * libmPow(tmp, p.powern - 1.0);
+    const tmpN = libmPow(tmp, p.powern);
+    return -0.5 * libmPow(1.0 + tmpN, -1.0 - 1.0 / (2.0 * p.powern)) * tmpN / zeta;
   }
 
   private gijk(cos: number, p: Param): number {
@@ -286,10 +289,10 @@ export class PairExTeP extends Pair {
 
   /** exp(arg) of the lam3 term with native's overflow guards (zeta and zetaterm_d use the same). */
   private exDelr(rij: number, rik: number, p: Param): number {
-    const arg = p.powermint === 3 ? (p.lam3 * (rij - rik)) ** 3.0 : p.lam3 * (rij - rik);
+    const arg = p.powermint === 3 ? libmPow(p.lam3 * (rij - rik), 3.0) : p.lam3 * (rij - rik);
     if (arg > 69.0776) return 1.e30;
     if (arg < -69.0776) return 0.0;
-    return Math.exp(arg);
+    return libmExp(arg);
   }
 
   /** zeta term of one k neighbour (native PairExTeP::zeta). */
@@ -315,7 +318,7 @@ export class PairExTeP extends Pair {
     const fc = this.fc(rik, p), dfc = this.fcD(rik, p);
     const ex = this.exDelr(rij, rik, p);
     const exD = p.powermint === 3
-      ? 3.0 * p.lam3 ** 3.0 * (rij - rik) ** 2.0 * ex
+      ? 3.0 * libmPow(p.lam3, 3.0) * (rij - rik) ** 2.0 * ex
       : p.lam3 * ex;
     const cos = rijHat[0] * rikHat[0] + rijHat[1] * rikHat[1] + rijHat[2] * rikHat[2];
     const g = this.gijk(cos, p), gD = this.gijkD(cos, p);
@@ -474,7 +477,7 @@ export class PairExTeP extends Pair {
         // repulsive (native PairExTeP::repulsive)
         const r = Math.sqrt(rsq);
         const fcv = this.fc(r, p), fcD = this.fcD(r, p);
-        const ex = Math.exp(-p.lam1 * r);
+        const ex = libmExp(-p.lam1 * r);
         const fpair = (-p.biga * ex * (fcD - fcv * p.lam1)) / r;
         const eng = fcv * p.biga * ex;
         f[3 * i] += delx * fpair; f[3 * i + 1] += dely * fpair; f[3 * i + 2] += delz * fpair;

@@ -16,6 +16,7 @@
 import { StyleError } from '../../engine/force/types';
 import { erfcExact } from '../../engine/force/erfc';
 import type { AxisKind, MultipoleFrame } from './params';
+import { exp as libmExp } from '../libm/exp';
 
 /** Coulomb constant of AMOEBA (pair_amoeba.cpp: electric = 332.063713). */
 export const ELECTRIC = 332.063713;
@@ -445,7 +446,7 @@ export const multipoleReal = (
     const bn = [erfcExact(ralpha) / r, 0, 0, 0, 0, 0];
     const alsq2 = 2.0 * aewald * aewald;
     let alsq2n = aewald > 0.0 ? 1.0 / (MY_PIS * aewald) : 0.0;
-    const exp2a = Math.exp(-ralpha * ralpha);
+    const exp2a = libmExp(-ralpha * ralpha);
     for (let k = 1; k < 6; k++) {
       alsq2n = alsq2 * alsq2n;
       bn[k] = ((2 * k - 1) * bn[k - 1] + alsq2n * exp2a) / r2;

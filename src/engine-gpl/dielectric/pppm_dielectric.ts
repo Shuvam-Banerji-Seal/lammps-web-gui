@@ -26,6 +26,10 @@ import { StyleError, type KSpaceCompute, type StyleContext } from '../../engine/
 import type { SimState } from '../../engine/types';
 import type { Geometry } from '../../engine/domain';
 import { dielArrays } from './common';
+import { log as libmLog } from '../libm/log';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** LAMMPS pppm.cpp SMALL: the convergence of adjust_gewald. */
 const SMALL = 0.00001;
@@ -33,7 +37,7 @@ const LARGE = 10000;
 /** Largest number of mesh points tried per edge before the grid choice is refused. */
 const MAX_MESH = 100000;
 /** Alias images in the optimal influence function (pppm.ts ALIAS_C, measured against native LAMMPS). */
-const ALIAS_C = Math.pow(7 * Math.LN10, 0.25);
+const ALIAS_C = libmPow(7 * Math.LN10, 0.25);
 
 /** Cardinal B-spline M_p(x), support [0, p] (the charge assignment function of PPPM). */
 const bspline = (p: number, x: number): number => {
@@ -70,7 +74,7 @@ export class KSpacePPPMDielectric extends KSpacePPPM {
     // initial estimate with the box volume (no slab extension): g = acc / (2 q2 / sqrt(N rc V)), pppm.cpp set_grid_global
     const Vbox = lx * ly * lz;
     const ratio = accE / ((2 * q2) / Math.sqrt(natoms * rc * Vbox));
-    const g0 = ratio >= 1 ? (1.35 - 0.15 * Math.log(accE)) / rc : Math.sqrt(-Math.log(ratio)) / rc;
+    const g0 = ratio >= 1 ? (1.35 - 0.15 * libmLog(accE)) / rc : Math.sqrt(-libmLog(ratio)) / rc;
     let g = this.gewaldUser > 0 ? this.gewaldUser : g0;
     // mesh: per edge the smallest size meeting the error of pppm.cpp estimate_ik_error, then the next factorable size
     const L = [lx, ly, zSlab];
@@ -305,14 +309,14 @@ export class KSpacePPPMDielectric extends KSpacePPPM {
       out[1] = 2 * Math.PI * (a * inv[0][1] + b * inv[1][1] + c * inv[2][1]);
       out[2] = 2 * Math.PI * (a * inv[0][2] + b * inv[1][2] + c * inv[2][2]);
     };
-    const sinc = (x: number) => (x === 0 ? 1 : Math.sin(x) / x);
-    const u2 = (m: number, nn: number) => Math.pow(sinc((Math.PI * m) / nn), 2 * P);
+    const sinc = (x: number) => (x === 0 ? 1 : libmSin(x) / x);
+    const u2 = (m: number, nn: number) => libmPow(sinc((Math.PI * m) / nn), 2 * P);
     const edge = [Math.abs(geom.lx), Math.abs(geom.xy) + Math.abs(geom.ly), Math.abs(geom.xz) + Math.abs(geom.yz) + Math.abs(lz)];
     const nbImg = [0, 1, 2].map((dd) => Math.floor(((g * edge[dd]) / (Math.PI * N[dd])) * ALIAS_C));
     const den1 = N.map((nn) => {
       const out = new Float64Array(nn);
       for (let i = 0; i < nn; i++) {
-        for (let j = 1 - P; j < P; j++) out[i] += bspline(2 * P, P + j) * Math.cos((2 * Math.PI * j * i) / nn);
+        for (let j = 1 - P; j < P; j++) out[i] += bspline(2 * P, P + j) * libmCos((2 * Math.PI * j * i) / nn);
       }
       return out;
     });
@@ -338,7 +342,7 @@ export class KSpacePPPMDielectric extends KSpacePPPM {
                 const nzm = mz + az * nz;
                 kvec(nxm, nym, nzm, km);
                 const km2 = km[0] * km[0] + km[1] * km[1] + km[2] * km[2];
-                num += ux * uy * u2(nzm, nz) * ((k[0] * km[0] + k[1] * km[1] + k[2] * km[2]) / km2) * 4 * Math.PI * Math.exp(-km2 / (4 * g * g));
+                num += ux * uy * u2(nzm, nz) * ((k[0] * km[0] + k[1] * km[1] + k[2] * km[2]) / km2) * 4 * Math.PI * libmExp(-km2 / (4 * g * g));
               }
             }
           }

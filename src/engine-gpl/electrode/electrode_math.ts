@@ -16,6 +16,7 @@ export const A4 = -1.453152027;
 export const A5 = 1.061405429;
 
 import { erfcExact } from '../../engine/force/erfc';
+import { exp as libmExp } from '../libm/exp';
 
 /** math_const.h values used by the ELECTRODE sources. */
 export const MY_PI = Math.PI;
@@ -31,7 +32,7 @@ const ERFCMAX = 5.8;
 /** electrode_math.h safe_erfc: the approximate erfc used by every electrode pair term. */
 export const safeErfc = (x: number): number => {
   if (x > ERFCMAX) return 0.0;
-  const expm2 = Math.exp(-x * x);
+  const expm2 = libmExp(-x * x);
   const t = 1.0 / (1.0 + EWALD_P * x);
   return t * (A1 + t * (A2 + t * (A3 + t * (A4 + t * A5)))) * expm2;
 };
@@ -46,7 +47,7 @@ export const safeDerfcr = (x: number, out: { erfc: number }): number => {
     return 0.0;
   }
   const x2 = x * x;
-  const expm2 = Math.exp(-x2);
+  const expm2 = libmExp(-x2);
   const t = 1.0 / (1.0 + EWALD_P * x);
   out.erfc = t * (A1 + t * (A2 + t * (A3 + t * (A4 + t * A5)))) * expm2;
   return -out.erfc - 2.0 * expm2 * x / MY_PIS;

@@ -28,6 +28,8 @@ import {
   add3, det3, deviator3, identity3, inverse3, mat3, mul3, norm3, polDec, pseudoInverseSVD, scale3, setM, sub3, trace3,
   transpose3, type Mat3,
 } from './smd_math';
+import { log as libmLog } from '../libm/log';
+import { pow as libmPow } from '../libm/pow';
 
 /** pair_smd_tlsph.cpp: DETF_MIN and DETF_MAX (deletion of a particle outside this range of det F). */
 const DETF_MIN = 0.2;
@@ -88,7 +90,7 @@ const polynomialEOS = (rho: number, rho0: number, C: number[], _pInitial: number
 const johnsonCook = (P: TypeParams, dt: number, ep: number, epdot: number, sigmaInitialDev: Mat3, dDev: Mat3): { final: Mat3; inc: number } => {
   const { A, B, a, C, epdot0 } = P.jc;
   const epdotRatio = Math.max(epdot / epdot0, 1.0);
-  const yieldStress = (A + B * Math.pow(ep, a)) * (1.0 + C * Math.log(epdotRatio));
+  const yieldStress = (A + B * libmPow(ep, a)) * (1.0 + C * libmLog(epdotRatio));
   return linearPlasticReturn(P, dt, yieldStress, sigmaInitialDev, dDev);
 };
 

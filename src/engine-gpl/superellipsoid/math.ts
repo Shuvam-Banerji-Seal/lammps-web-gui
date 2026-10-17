@@ -9,6 +9,7 @@
  * chooses the type from the block exponents (superellipsoid.ts); the formulas of 0 and 1 are the same surfaces, so only the
  * rounding of the iteration depends on the choice.
  */
+import { pow as libmPow } from '../libm/pow';
 
 export type V3 = [number, number, number];
 export type M3 = [V3, V3, V3];
@@ -172,11 +173,11 @@ export const derivSuperquad = (x: V3, shape: V3, block: [number, number]): Deriv
   const aInv = 1 / shape[0], bInv = 1 / shape[1], cInv = 1 / shape[2];
   const xa = Math.abs(x[0] * aInv), yb = Math.abs(x[1] * bInv), zc = Math.abs(x[2] * cInv);
   const n1 = block[0], n2 = block[1];
-  const xaP2m2 = Math.pow(xa, n2 - 2), xaP2m1 = xaP2m2 * xa;
-  const ybP2m2 = Math.pow(yb, n2 - 2), ybP2m1 = ybP2m2 * yb;
+  const xaP2m2 = libmPow(xa, n2 - 2), xaP2m1 = xaP2m2 * xa;
+  const ybP2m2 = libmPow(yb, n2 - 2), ybP2m1 = ybP2m2 * yb;
   const nu = xaP2m1 * xa + ybP2m1 * yb;
-  const nuP2m2 = Math.pow(nu, n1 / n2 - 2), nuP2m1 = nuP2m2 * nu;
-  const zcP1m2 = Math.pow(zc, n1 - 2), zcP1m1 = zcP1m2 * zc;
+  const nuP2m2 = libmPow(nu, n1 / n2 - 2), nuP2m1 = nuP2m2 * nu;
+  const zcP1m2 = libmPow(zc, n1 - 2), zcP1m1 = zcP1m2 * zc;
   const sx = signOf(x[0]), sy = signOf(x[1]), sz = signOf(x[2]);
   const g: V3 = [n1 * aInv * xaP2m1 * nuP2m1 * sx, n1 * bInv * ybP2m1 * nuP2m1 * sy, n1 * cInv * zcP1m1 * sz];
   const h = zero3();
@@ -190,9 +191,9 @@ export const derivSuperquad = (x: V3, shape: V3, block: [number, number]): Deriv
 export const derivEqual = (x: V3, shape: V3, n: number): Deriv => {
   const aInv = 1 / shape[0], bInv = 1 / shape[1], cInv = 1 / shape[2];
   const xa = Math.abs(x[0] * aInv), yb = Math.abs(x[1] * bInv), zc = Math.abs(x[2] * cInv);
-  const xaP2m2 = Math.pow(xa, n - 2), xaP2m1 = xaP2m2 * xa;
-  const ybP2m2 = Math.pow(yb, n - 2), ybP2m1 = ybP2m2 * yb;
-  const zcP2m2 = Math.pow(zc, n - 2), zcP2m1 = zcP2m2 * zc;
+  const xaP2m2 = libmPow(xa, n - 2), xaP2m1 = xaP2m2 * xa;
+  const ybP2m2 = libmPow(yb, n - 2), ybP2m1 = ybP2m2 * yb;
+  const zcP2m2 = libmPow(zc, n - 2), zcP2m1 = zcP2m2 * zc;
   const g: V3 = [n * aInv * xaP2m1 * signOf(x[0]), n * bInv * ybP2m1 * signOf(x[1]), n * cInv * zcP2m1 * signOf(x[2])];
   const h = zero3();
   h[0][0] = aInv * aInv * n * (n - 1) * xaP2m2;
@@ -222,28 +223,28 @@ export const surfSuperquad = (x: V3, shape: V3, block: [number, number]): { f: n
   const aInv = 1 / shape[0], bInv = 1 / shape[1], cInv = 1 / shape[2];
   const xa = Math.abs(x[0] * aInv), yb = Math.abs(x[1] * bInv), zc = Math.abs(x[2] * cInv);
   const n1 = block[0], n2 = block[1];
-  const xaP2m2 = Math.pow(xa, n2 - 2), xaP2m1 = xaP2m2 * xa;
-  const ybP2m2 = Math.pow(yb, n2 - 2), ybP2m1 = ybP2m2 * yb;
+  const xaP2m2 = libmPow(xa, n2 - 2), xaP2m1 = xaP2m2 * xa;
+  const ybP2m2 = libmPow(yb, n2 - 2), ybP2m1 = ybP2m2 * yb;
   const nu = xaP2m1 * xa + ybP2m1 * yb;
-  const nuP2m2 = Math.pow(nu, n1 / n2 - 2), nuP2m1 = nuP2m2 * nu;
-  const zcP1m2 = Math.pow(zc, n1 - 2), zcP1m1 = zcP1m2 * zc;
+  const nuP2m2 = libmPow(nu, n1 / n2 - 2), nuP2m1 = nuP2m2 * nu;
+  const zcP1m2 = libmPow(zc, n1 - 2), zcP1m1 = zcP1m2 * zc;
   const sx = signOf(x[0]), sy = signOf(x[1]), sz = signOf(x[2]);
   const g: V3 = [n1 * aInv * xaP2m1 * nuP2m1 * sx, n1 * bInv * ybP2m1 * nuP2m1 * sy, n1 * cInv * zcP1m1 * sz];
   const F = nuP2m1 * nu + zcP1m1 * zc;
-  const scale = Math.pow(F, 1 / n1 - 1) / n1;
-  return { f: Math.pow(F, 1 / n1) - 1, g: [g[0] * scale, g[1] * scale, g[2] * scale] };
+  const scale = libmPow(F, 1 / n1 - 1) / n1;
+  return { f: libmPow(F, 1 / n1) - 1, g: [g[0] * scale, g[1] * scale, g[2] * scale] };
 };
 
 export const surfEqual = (x: V3, shape: V3, n: number): { f: number; g: V3 } => {
   const aInv = 1 / shape[0], bInv = 1 / shape[1], cInv = 1 / shape[2];
   const xa = Math.abs(x[0] * aInv), yb = Math.abs(x[1] * bInv), zc = Math.abs(x[2] * cInv);
-  const xaP2m2 = Math.pow(xa, n - 2), xaP2m1 = xaP2m2 * xa;
-  const ybP2m2 = Math.pow(yb, n - 2), ybP2m1 = ybP2m2 * yb;
-  const zcP2m2 = Math.pow(zc, n - 2), zcP2m1 = zcP2m2 * zc;
+  const xaP2m2 = libmPow(xa, n - 2), xaP2m1 = xaP2m2 * xa;
+  const ybP2m2 = libmPow(yb, n - 2), ybP2m1 = ybP2m2 * yb;
+  const zcP2m2 = libmPow(zc, n - 2), zcP2m1 = zcP2m2 * zc;
   const g: V3 = [n * aInv * xaP2m1 * signOf(x[0]), n * bInv * ybP2m1 * signOf(x[1]), n * cInv * zcP2m1 * signOf(x[2])];
   const F = xaP2m1 * xa + ybP2m1 * yb + zcP2m1 * zc;
-  const scale = Math.pow(F, 1 / n - 1) / n;
-  return { f: Math.pow(F, 1 / n) - 1, g: [g[0] * scale, g[1] * scale, g[2] * scale] };
+  const scale = libmPow(F, 1 / n - 1) / n;
+  return { f: libmPow(F, 1 / n) - 1, g: [g[0] * scale, g[1] * scale, g[2] * scale] };
 };
 
 /** Surface search derivative for flags 0 and 1 (the C++ uses the n1 = n2 form there). */
@@ -258,7 +259,7 @@ const regularize = (n1: number, avgRadius: number, value: number, grad: V3, hess
   const base = Math.max(value + 1, REGULARIZATION_EPSILON);
   const invF = 1 / base;
   const invN1 = 1 / n1;
-  const Fp = Math.pow(base, invN1);
+  const Fp = libmPow(base, invN1);
   const scaleGrad = avgRadius * invN1 * Fp * invF;
   const scaleHessAdd = scaleGrad * (invN1 - 1) * invF;
   for (let i = 0; i < 3; i++) {

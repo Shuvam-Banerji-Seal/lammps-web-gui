@@ -19,6 +19,7 @@ import type { System } from '../../engine/system';
 import { StyleError } from '../../engine/force/types';
 import { massOf } from '../../engine/atoms';
 import { CORE_TYPE, DRUDE_TYPE, NOPOL_TYPE, drudeModelOf, type DrudeModel } from './drude_model';
+import { exp as libmExp } from '../libm/exp';
 
 const num = (w: string | undefined, what: string): number => {
   const v = Number(w);
@@ -421,23 +422,23 @@ export class FixTGNHDrude extends Fix {
     etaDotdot[0] = (ke2 - ke2Target) / etaMass[0];
     for (let iloop = 0; iloop < this.ncTchain; iloop++) {
       for (let ich = mt - 1; ich > 0; ich--) {
-        let expfac = Math.exp(-ncfac * this.dt8 * etaDot[ich + 1]);
+        let expfac = libmExp(-ncfac * this.dt8 * etaDot[ich + 1]);
         etaDot[ich] *= expfac;
         etaDot[ich] += etaDotdot[ich] * ncfac * this.dt4;
         etaDot[ich] *= expfac;
       }
-      let expfac = Math.exp(-ncfac * this.dt8 * etaDot[1]);
+      let expfac = libmExp(-ncfac * this.dt8 * etaDot[1]);
       etaDot[0] *= expfac;
       etaDot[0] += etaDotdot[0] * ncfac * this.dt4;
       etaDot[0] *= expfac;
-      factorEta *= Math.exp(-ncfac * this.dthalf * etaDot[0]);
+      factorEta *= libmExp(-ncfac * this.dthalf * etaDot[0]);
       for (let ich = 0; ich < mt; ich++) eta[ich] += ncfac * this.dthalf * etaDot[ich];
       etaDotdot[0] = (ke2 * factorEta * factorEta - ke2Target) / etaMass[0];
       etaDot[0] *= expfac;
       etaDot[0] += etaDotdot[0] * ncfac * this.dt4;
       etaDot[0] *= expfac;
       for (let ich = 1; ich < mt; ich++) {
-        expfac = Math.exp(-ncfac * this.dt8 * etaDot[ich + 1]);
+        expfac = libmExp(-ncfac * this.dt8 * etaDot[ich + 1]);
         etaDot[ich] *= expfac;
         etaDotdot[ich] = (etaMass[ich - 1] * etaDot[ich - 1] * etaDot[ich - 1] - kB * tt) / etaMass[ich];
         etaDot[ich] += etaDotdot[ich] * ncfac * this.dt4;
@@ -517,17 +518,17 @@ export class FixTGNHDrude extends Fix {
     const ncfac = 1 / this.ncPchain;
     for (let iloop = 0; iloop < this.ncPchain; iloop++) {
       for (let ich = mp - 1; ich > 0; ich--) {
-        const expfac = Math.exp(-ncfac * this.dt8 * this.etapDot[ich + 1]);
+        const expfac = libmExp(-ncfac * this.dt8 * this.etapDot[ich + 1]);
         this.etapDot[ich] *= expfac;
         this.etapDot[ich] += this.etapDotdot[ich] * ncfac * this.dt4;
         this.etapDot[ich] *= expfac;
       }
-      let expfac = Math.exp(-ncfac * this.dt8 * this.etapDot[1]);
+      let expfac = libmExp(-ncfac * this.dt8 * this.etapDot[1]);
       this.etapDot[0] *= expfac;
       this.etapDot[0] += this.etapDotdot[0] * ncfac * this.dt4;
       this.etapDot[0] *= expfac;
       for (let ich = 0; ich < mp; ich++) this.etap[ich] += ncfac * this.dthalf * this.etapDot[ich];
-      const factorEtap = Math.exp(-ncfac * this.dthalf * this.etapDot[0]);
+      const factorEtap = libmExp(-ncfac * this.dthalf * this.etapDot[0]);
       for (let i = 0; i < 3; i++) this.omegaDot[i] *= factorEtap;
       kecurrent = 0;
       for (let i = 0; i < 3; i++) kecurrent += this.omegaMass[i] * this.omegaDot[i] * this.omegaDot[i];
@@ -536,7 +537,7 @@ export class FixTGNHDrude extends Fix {
       this.etapDot[0] += this.etapDotdot[0] * ncfac * this.dt4;
       this.etapDot[0] *= expfac;
       for (let ich = 1; ich < mp; ich++) {
-        expfac = Math.exp(-ncfac * this.dt8 * this.etapDot[ich + 1]);
+        expfac = libmExp(-ncfac * this.dt8 * this.etapDot[ich + 1]);
         this.etapDot[ich] *= expfac;
         this.etapDotdot[ich] = (this.etapMass[ich - 1] * this.etapDot[ich - 1] * this.etapDot[ich - 1] - kt) / this.etapMass[ich];
         this.etapDot[ich] += this.etapDotdot[ich] * ncfac * this.dt4;
@@ -549,7 +550,7 @@ export class FixTGNHDrude extends Fix {
   private nhVPress(): void {
     const s = this.sys.state;
     const { v, mask } = s;
-    const factor = Math.exp(-this.dt4 * (this.omegaDot[0] + this.mtkTerm2));
+    const factor = libmExp(-this.dt4 * (this.omegaDot[0] + this.mtkTerm2));
     for (let i = 0; i < s.n; i++) {
       if (!(mask[i] & this.groupBit)) continue;
       v[3 * i] *= factor; v[3 * i + 1] *= factor; v[3 * i + 2] *= factor;
@@ -590,7 +591,7 @@ export class FixTGNHDrude extends Fix {
       lam[3 * i] = tmp[0]; lam[3 * i + 1] = tmp[1]; lam[3 * i + 2] = tmp[2];
     }
     for (let d = 0; d < 3; d++) {
-      const expfac = Math.exp(dto * this.omegaDot[d]);
+      const expfac = libmExp(dto * this.omegaDot[d]);
       const fp = this.fixedpoint[d];
       b.lo[d] = (b.lo[d] - fp) * expfac + fp;
       b.hi[d] = (b.hi[d] - fp) * expfac + fp;

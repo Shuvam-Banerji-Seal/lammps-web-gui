@@ -10,6 +10,8 @@ import type { PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, type NeighList } from '../../engine/neighbor';
 import { calcDTap, calcTap } from './taper';
 import { KCNormalBase, tallyPairAtoms, tallyXYZAtoms, type NormalParam } from './normals';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 export interface ILPParam extends NormalParam {
   epsilon: number; C: number; d: number; seff: number; C6: number;
@@ -41,7 +43,7 @@ export class PairILPGrapheneHBN extends KCNormalBase<ILPParam> {
     return {
       ie, je, z0, rcut, d,
       lambda: alpha / z0,
-      delta2inv: Math.pow(delta, -2.0),
+      delta2inv: libmPow(delta, -2.0),
       seff: sR * reff,
       epsilon: epsilon * meV,
       C: C * meV,
@@ -50,7 +52,7 @@ export class PairILPGrapheneHBN extends KCNormalBase<ILPParam> {
   }
 
   protected offsetOf(p: ILPParam, cut: number): number {
-    return -p.C6 * Math.pow(1.0 / cut, 6) / (1.0 + Math.exp(-p.d * (cut / p.seff - 1.0)));
+    return -p.C6 * libmPow(1.0 / cut, 6) / (1.0 + libmExp(-p.d * (cut / p.seff - 1.0)));
   }
 
   protected calcFvdW(pc: PairCompute, list: NeighList): void {
@@ -92,8 +94,8 @@ export class PairILPGrapheneHBN extends KCNormalBase<ILPParam> {
         const rc = Math.sqrt(cutsq[t]);
         const tap = tapOn ? calcTap(r, rc) : 1.0;
         const dtap = tapOn ? calcDTap(r, rc) : 0.0;
-        const tsvdw = 1.0 + Math.exp(-p.d * (r / p.seff - 1.0));
-        const tsvdw2inv = Math.pow(tsvdw, -2.0);
+        const tsvdw = 1.0 + libmExp(-p.d * (r / p.seff - 1.0));
+        const tsvdw2inv = libmPow(tsvdw, -2.0);
         const vilp = -p.C6 * r6inv / tsvdw;
         const fpair = -6.0 * p.C6 * r8inv / tsvdw + p.C6 * p.d / p.seff * (tsvdw - 1.0) * tsvdw2inv * r8inv * r;
         const fsum = fpair * tap - vilp * dtap / r;
@@ -143,7 +145,7 @@ export class PairILPGrapheneHBN extends KCNormalBase<ILPParam> {
         const dtap = tapOn ? calcDTap(r, rc) : 0.0;
         if (metal[ti]) {
           // saip/metal: a metal atom's repulsion has no transverse dependence (frho1 = C), so no normal terms
-          const exp0m = Math.exp(-p.lambda * (r - p.z0));
+          const exp0m = libmExp(-p.lambda * (r - p.z0));
           const erepm = 0.5 * p.epsilon + p.C;
           const vilpm = exp0m * erepm;
           const fpairm = p.lambda * exp0m / r * erepm;
@@ -163,8 +165,8 @@ export class PairILPGrapheneHBN extends KCNormalBase<ILPParam> {
         const prodnorm1 = ni[0] * delx + ni[1] * dely + ni[2] * delz;
         const rhosq1 = rsq - prodnorm1 * prodnorm1; // rho_ij
         const rdsq1 = rhosq1 * p.delta2inv; // (rho_ij/delta)^2
-        const exp0 = Math.exp(-p.lambda * (r - p.z0));
-        const exp1 = Math.exp(-rdsq1);
+        const exp0 = libmExp(-p.lambda * (r - p.z0));
+        const exp1 = libmExp(-rdsq1);
         const frho1 = exp1 * p.C;
         const erep = 0.5 * p.epsilon + frho1;
         const vilp = exp0 * erep;

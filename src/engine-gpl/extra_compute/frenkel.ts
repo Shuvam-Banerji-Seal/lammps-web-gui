@@ -30,6 +30,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import type { Lattice } from '../../engine/lattice';
 import type { Region } from '../../engine/region';
+import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 const BIG = 1.0e20;
 const SMALL = 1.0e-10;
@@ -383,8 +384,8 @@ export class ComputeFrenkel extends Compute {
       nsites[n] += 1;
       for (let d = 0; d < 3; d++) {
         const theta = ((sites[3 * k + d] - lo[d]) / prd[d]) * TWO_PI;
-        zeta[3 * n + d] += Math.sin(theta);
-        xi[3 * n + d] += Math.cos(theta);
+        zeta[3 * n + d] += libmSin(theta);
+        xi[3 * n + d] += libmCos(theta);
       }
     }
     // approximate centres from the circular means, remapped into the box; then the nearest images of the sites

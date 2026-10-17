@@ -16,6 +16,7 @@
  *
  */
 import { quatToMatrix } from './compute/asphere';
+import { libm } from './libm';
 
 type V3 = [number, number, number];
 
@@ -36,7 +37,7 @@ export const lineFromEnds = (x1: number, y1: number, x2: number, y2: number): Li
 
 /** End points of a line segment centred at (cx, cy) (write_data: Lines section). */
 export const lineEnds = (cx: number, cy: number, length: number, theta: number): [number, number, number, number] => {
-  const h = 0.5 * length, c = Math.cos(theta), s = Math.sin(theta);
+  const h = 0.5 * length, c = libm.cos(theta), s = libm.sin(theta);
   return [cx - h * c, cy - h * s, cx + h * c, cy + h * s];
 };
 

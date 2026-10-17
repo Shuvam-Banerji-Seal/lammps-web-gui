@@ -18,6 +18,7 @@ import { ELECTRIC } from './multipole';
 import { erfcExact } from '../../engine/force/erfc';
 import type { PolarAtoms, PolarSettings, InducedDipoles, PolarResult } from './polar';
 import type { MpoleSites } from './multipole';
+import { exp as libmExp } from '../libm/exp';
 
 /** sqrt(pi) (amoeba_polar.cpp MY_PIS). */
 const MY_PIS = Math.sqrt(Math.PI);
@@ -37,7 +38,7 @@ export const dampdir = (r: number, alphai: number, alphak: number, dmpi: Float64
   const eps = 0.001;
   const diff = Math.abs(alphai - alphak);
   const dampi = alphai * r, dampk = alphak * r;
-  const expi = Math.exp(-dampi), expk = Math.exp(-dampk);
+  const expi = libmExp(-dampi), expk = libmExp(-dampk);
   const dampi2 = dampi * dampi, dampi3 = dampi * dampi2, dampi4 = dampi2 * dampi2;
   dmpi[2] = 1.0 - (1.0 + dampi + 0.5 * dampi2) * expi;
   dmpi[4] = 1.0 - (1.0 + dampi + 0.5 * dampi2 + dampi3 / 6.0) * expi;
@@ -62,7 +63,7 @@ export const dampmut = (r: number, alphai: number, alphak: number, dmpik: Float6
   const eps = 0.001;
   const diff = Math.abs(alphai - alphak);
   const dampi = alphai * r, dampk = alphak * r;
-  const expi = Math.exp(-dampi), expk = Math.exp(-dampk);
+  const expi = libmExp(-dampi), expk = libmExp(-dampk);
   const dampi2 = dampi * dampi, dampi3 = dampi * dampi2;
   if (diff < eps) {
     const dampi4 = dampi2 * dampi2, dampi5 = dampi2 * dampi3;
@@ -220,7 +221,7 @@ const ewaldTerms = (aewald: number, r: number, rr1: number, rr2: number, mmax: n
   const bn = [erfcExact(ralpha) * rr1];
   const aesq2 = 2.0 * aewald * aewald;
   let aesq2n = aewald > 0.0 ? 1.0 / (MY_PIS * aewald) : 0.0;
-  const exp2a = Math.exp(-ralpha * ralpha);
+  const exp2a = libmExp(-ralpha * ralpha);
   for (let m = 1; m <= mmax; m++) {
     aesq2n = aesq2 * aesq2n;
     bn.push(((2 * m - 1) * bn[m - 1] + aesq2n * exp2a) * rr2);

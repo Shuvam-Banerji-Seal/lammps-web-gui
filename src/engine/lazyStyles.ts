@@ -20,6 +20,8 @@ export interface LazyGroup {
 }
 
 export const LAZY_GROUPS: readonly LazyGroup[] = [
+  { id: 'gpl_libm', names: { HOOKS: ['libm'] }, load: () => import('../engine-gpl/registry/libm') as Promise<StyleModule> },
+  { id: 'gpl_mathextra', names: { HOOKS: ['mathextra'] }, load: () => import('../engine-gpl/registry/mathextra') as Promise<StyleModule> },
   { id: 'gpl_restart', names: { HOOKS: ['native-restart'] }, load: () => import('../engine-gpl/registry/restart') as Promise<StyleModule> },
   { id: 'gpl_dump_vtk', names: { HOOKS: ['vtk'] }, load: () => import('../engine-gpl/registry/dump_vtk') as Promise<StyleModule> },
   { id: 'gpl_uef', names: { COMPUTES: ['pressure/uef', 'temp/uef'], FIXES: ['npt/uef', 'nvt/uef'] }, load: () => import('../engine-gpl/registry/uef') as Promise<StyleModule> },
@@ -102,7 +104,8 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'body48', names: { FIXES: ['nve/body'], PAIRS: ['body/nparticle'] }, load: () => import('./registry/body48') as Promise<StyleModule> },
   { id: 'gpl_body', names: { PAIRS: ['body/rounded/polygon', 'body/rounded/polyhedron'], FIXES: ['nvt/body', 'npt/body', 'nph/body', 'wall/body/polygon', 'wall/body/polyhedron'], COMPUTES: ['temp/body', 'body/local'] }, load: () => import('../engine-gpl/registry/body') as Promise<StyleModule> },
   { id: 'asphere19', names: { COMPUTES: ['erotate/asphere', 'temp/asphere'], FIXES: ['nph/asphere', 'npt/asphere', 'nve/asphere', 'nve/asphere/noforce', 'nvt/asphere'] }, load: () => import('./registry/asphere19') as Promise<StyleModule> },
-  { id: 'pair_asphere19', names: { PAIRS: ['gayberne', 'resquared'] }, load: () => import('./registry/pair_asphere19') as Promise<StyleModule> },
+  { id: 'pair_asphere19', names: { PAIRS: ['resquared'] }, load: () => import('./registry/pair_asphere19') as Promise<StyleModule> },
+  { id: 'gpl_asphere_gayberne', names: { PAIRS: ['gayberne'] }, load: () => import('../engine-gpl/registry/pair_gayberne') as Promise<StyleModule> },
   { id: 'compute_struct', names: { COMPUTES: ['aggregate/atom', 'centro/atom', 'cluster/atom', 'cna/atom', 'fragment/atom', 'hexorder/atom'] }, load: () => import('./registry/compute_struct') as Promise<StyleModule> },
   { id: 'compute_orient', names: { COMPUTES: ['orientorder/atom'] }, load: () => import('./registry/compute_orient') as Promise<StyleModule> },
   { id: 'dihedral_class2xe', names: { DIHEDRALS: ['class2xe'] }, load: () => import('../engine-gpl/registry/dihedral_class2xe') as Promise<StyleModule> },

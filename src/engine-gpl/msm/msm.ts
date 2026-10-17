@@ -37,6 +37,13 @@ const OFFSET = 16384;
 const SMALL = 0.00001;
 /** msm_cg.cpp SMALLQ: the default charge below which msm/cg skips an atom. */
 const SMALLQ = 0.00001;
+/** MSM::estimate_1d_error by p = order - 1: Mp (Hardy's thesis table 5.1), cprime (eq. 4.17) and the error scaling. */
+const HARDY: Readonly<Record<number, readonly [number, number, number]>> = {
+  3: [9, 1.0 / 6.0, 0.39189561],
+  5: [825, 1.0 / 30.0, 0.150829428],
+  7: [130095, 1.0 / 140.0, 0.049632967],
+  9: [34096545, 1.0 / 630.0, 0.013520855],
+};
 
 /** A pair style that works with MSM (native Pair::msmflag): the coul/msm family. */
 export interface MsmPair {
@@ -280,12 +287,10 @@ export class KSpaceMSM extends KSpaceBase {
   protected estimate1dError(h: number, prd: number, natoms: number): number {
     const a = this.cutoff;
     const p = this.order - 1;
-    let Mp = 1, cprime = 1, errorScaling = 1;
-    if (p === 3) { Mp = 9; cprime = 1.0 / 6.0; errorScaling = 0.39189561; }
-    else if (p === 5) { Mp = 825; cprime = 1.0 / 30.0; errorScaling = 0.150829428; }
-    else if (p === 7) { Mp = 130095; cprime = 1.0 / 140.0; errorScaling = 0.049632967; }
-    else if (p === 9) { Mp = 34096545; cprime = 1.0 / 630.0; errorScaling = 0.013520855; }
-    else throw new StyleError('MSM order must be 4, 6, 8, or 10');
+    // [Mp, cprime, error_scaling]; the error scaling is msm.cpp's empirical conversion to rms force errors
+    const c = HARDY[p];
+    if (!c) throw new StyleError('MSM order must be 4, 6, 8, or 10');
+    const [Mp, cprime, errorScaling] = c;
     this.cP = (4.0 * cprime * Mp) / 3.0;
     this.cP *= errorScaling;
     let error1d = (this.cP * pow(h, p - 1)) / pow(a, p + 1);
@@ -415,8 +420,8 @@ export class KSpaceMSM extends KSpaceBase {
     if (levels > MAX_LEVELS) throw new StyleError('Too many MSM grid levels');
     // at least 2 MSM levels for periodic systems
     if (levels <= 1) {
+      // (native also resets nx_max, ny_max and nz_max to 2 here; they are not read again)
       levels = xlevels = ylevels = zlevels = 2;
-      nxMax = nyMax = nzMax = 2;
       if (gridflag) ctx.log('WARNING: MSM mesh too small, increasing to 2 points in each direction');
     }
     // the top grid level is omitted for periodic systems

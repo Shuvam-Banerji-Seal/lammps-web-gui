@@ -15,7 +15,7 @@ everything runs client-side.
 ## Commands
 
 ```bash
-npm test             # vitest run — the whole suite (~2250 tests, a few minutes; ~400 are native-LAMMPS oracle cases)
+npm test             # vitest run — the whole suite (~7000 tests, a few minutes; ~2000 are native-LAMMPS oracle cases in 8 shard files)
 npx vitest run tests/<file>.test.ts   # one file
 npm run typecheck    # tsc --noEmit — must be clean
 npm run build        # tsc && vite build

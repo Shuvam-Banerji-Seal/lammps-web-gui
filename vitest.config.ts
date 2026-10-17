@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -11,5 +12,8 @@ export default defineConfig({
     // the suites that load every lazy style chunk in a beforeAll (loadAllStyles) took just over the 10 s default hook
     // limit on a loaded host, so hooks get the same 30 s
     hookTimeout: 30000,
+    // one worker per core: vitest's default for a run is cores - 1, which leaves a core of a 4-vCPU CI runner idle
+    // while the main process mostly waits for results (the suite is CPU-bound: 2000+ oracle cases)
+    maxWorkers: availableParallelism(),
   }
 });

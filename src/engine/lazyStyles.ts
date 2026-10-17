@@ -77,6 +77,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'fix_molswap', names: { FIXES: ['mol/swap'] }, load: () => import('./registry/fix_molswap') as Promise<StyleModule> },
   { id: 'compute_voro', names: { COMPUTES: ['voronoi/atom'] }, load: () => import('./registry/compute_voro') as Promise<StyleModule> },
   { id: 'gpl_neighbor_swap', names: { FIXES: ['neighbor/swap'], HOOKS: ['voronoi/atom'] }, load: () => import('../engine-gpl/registry/neighbor_swap') as Promise<StyleModule> },
+  { id: 'gpl_sgcmc', names: { FIXES: ['sgcmc'] }, load: () => import('../engine-gpl/registry/sgcmc') as Promise<StyleModule> },
   { id: 'peri22', names: { COMPUTES: ['damage/atom', 'dilatation/atom'], PAIRS: ['peri/lps', 'peri/pmb'] }, load: () => import('./registry/peri22') as Promise<StyleModule> },
   { id: 'peri_ves_eps', names: { PAIRS: ['peri/eps', 'peri/ves'] }, load: () => import('../engine-gpl/registry/peri') as Promise<StyleModule> },
   { id: 'pair_tip4p', names: { PAIRS: ['lj/cut/tip4p/cut', 'lj/cut/tip4p/long', 'tip4p/cut', 'tip4p/long'] }, load: () => import('./registry/pair_tip4p') as Promise<StyleModule> },

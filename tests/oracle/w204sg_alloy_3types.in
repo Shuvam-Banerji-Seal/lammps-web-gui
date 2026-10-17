@@ -1,0 +1,22 @@
+# oracle: fix sgcmc with three species (the new species drawn from the local stream) and pair eam/alloy (NiAlH_jea.eam.alloy, Ni Al H), 1372 fcc atoms, 15% Al and 2% H, NVT at 700 K, an MC event every 10 steps, 30 steps.
+# oracle-potentials: NiAlH_jea.eam.alloy
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units metal
+atom_style atomic
+boundary p p p
+lattice fcc 3.52
+region box block 0 7 0 7 0 7
+create_box 3 box
+create_atoms 1 box
+set type 1 type/fraction 2 0.15 4242
+set type 1 type/fraction 3 0.02 4343
+pair_style eam/alloy
+pair_coeff * * NiAlH_jea.eam.alloy Ni Al H
+timestep 0.001
+velocity all create 1400 87287 dist gaussian
+fix integrate all nvt temp 700 700 0.1
+fix mc all sgcmc 10 0.2 700 0.4 1.5 randseed 1111
+thermo_style custom step temp pe press f_mc[1] f_mc[2] f_mc[3] f_mc[4] f_mc[5]
+thermo_modify format float %.15g
+thermo 10
+run 30

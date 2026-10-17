@@ -185,9 +185,20 @@ class Spline {
   }
 }
 
+/** A tabulated function of an EAM file: y[k] at x = k * dx, k = 0 .. y.length - 1. */
+export interface EAMTable {
+  readonly y: Float64Array;
+  readonly dx: number;
+}
+
 /** Embedding energy F(rho): spline in [0, rhoMax], linear above it (doc quote in the header). */
 class Embed {
   private constructor(private readonly sp: Spline, private readonly rhoMax: number, private readonly slope: number) {}
+
+  /** The tabulated values of F(rho) and their spacing drho. */
+  get table(): EAMTable {
+    return this.sp;
+  }
 
   static of(y: Float64Array, drho: number): Embed {
     const sp = new Spline(y, drho);
@@ -364,7 +375,7 @@ const parseSetfl = (text: string, name: string, ctx: StyleContext, fs: boolean):
  * force, -F'_i(rho_i) rho'_{ij}(r)/r on atom i and -F'_j(rho_j)
  * rho'_{ji}(r)/r on atom j, follows from dE/dx of the documented energy.
  */
-abstract class PairEAMBase extends Pair {
+export abstract class PairEAMBase extends Pair {
   manybody = true;
   needsFull = true;
   needsHalf = true;
@@ -399,6 +410,15 @@ abstract class PairEAMBase extends Pair {
     this.rhoTab = new Array(nt * nt).fill(null);
     this.gTab = new Array(nt * nt).fill(null);
     this.fTab = new Array(nt).fill(ZERO_EMBED);
+  }
+
+  /**
+   * The per-type tables after init, read-only, for code that evaluates EAM energies itself (fix sgcmc): with
+   * nt = ntypes + 1, rho[i * nt + j] is the density at a type-i site from a type-j neighbour, z2r[i * nt + j] the
+   * pair's r*phi(r), and frho[t] the embedding function F of type t.
+   */
+  tables(): { rho: readonly (EAMTable | null)[]; z2r: readonly (EAMTable | null)[]; frho: readonly EAMTable[] } {
+    return { rho: this.rhoTab, z2r: this.gTab, frho: this.fTab.map((e) => e.table) };
   }
 
   /** Sets the per-type tables for both type orders; called from initOne (i <= j). */

@@ -16,7 +16,7 @@ export const A4 = -1.453152027;
 export const A5 = 1.061405429;
 
 import { exp as libmExp } from '../libm/exp';
-import { erf as libmErf, erfc as libmErfc } from '../libm/erf';
+import { erf as libmErf } from '../libm/erf';
 
 /** math_const.h values used by the ELECTRODE sources. */
 export const MY_PI = Math.PI;

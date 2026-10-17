@@ -7,6 +7,8 @@ import { ComputeChunkAtom, chunkCompute } from './chunk';
 import { ComputeGyration } from './global';
 import { pinvSolve3, shapeOf } from './chunk17_math';
 import { finiteSpin } from './finiteSpin';
+import { buildOwnedSites, type Tip4pModel } from '../force/pair/tip4p_sites';
+import type { Pair } from '../force/types';
 
 /*
  * Wave-17 chunk and shape computes, implemented from the cited
@@ -208,7 +210,9 @@ const dipoleMode = (style: string, words: string[]): 'mass' | 'geometry' => {
 };
 
 /** Dipole per chunk (dx, dy, dz, |d|): sum q u - Q r_ref, r_ref = centre of mass or geometric centre. */
-const dipoleOf = (sys: System, mem: Members, cen: Centres, mode: 'mass' | 'geometry'): Float64Array<ArrayBuffer> => {
+const dipoleOf = (
+  sys: System, mem: Members, cen: Centres, mode: 'mass' | 'geometry', qpos: Float64Array = mem.u,
+): Float64Array<ArrayBuffer> => {
   const s = sys.state;
   const out = new Float64Array(4 * mem.N);
   const qsum = new Float64Array(mem.N);
@@ -220,7 +224,7 @@ const dipoleOf = (sys: System, mem: Members, cen: Centres, mode: 'mass' | 'geome
     const i = mem.atom[k];
     const q = s.q[i];
     qsum[c] += q;
-    for (let d = 0; d < 3; d++) qu[3 * c + d] += q * mem.u[3 * k + d];
+    for (let d = 0; d < 3; d++) qu[3 * c + d] += q * qpos[3 * k + d];
     if (s.mu) for (let d = 0; d < 3; d++) mud[3 * c + d] += s.mu[4 * i + d];
   }
   for (let c = 0; c < mem.N; c++) {
@@ -480,7 +484,6 @@ export class ComputeMomentum extends Compute {
  * atoms, mass and geometry give the vectors (-1.7428571, -1.0285714, -1.2214286)
  * and (-1.64, -0.84, -1.11), the geometric centre being the unweighted mean.
  * The scalar is the magnitude of the vector.
- * dipole/tip4p is not supported by the engine (it needs the pair style's M-site parameters).
  */
 export class ComputeDipole extends Compute {
   readonly style = 'dipole';
@@ -534,6 +537,122 @@ export class ComputeDipoleChunk extends Compute {
     const mem = members(this.sys, this.groupBit, this.chunk);
     this.sizeArrayRows = mem.N;
     this.array = dipoleOf(this.sys, mem, centres(mem), this.mode);
+  }
+}
+
+/** The TIP4P pair style (the pair or a sub-style of pair hybrid): the one with an M-site model. */
+const tip4pPairOf = (sys: System, style: string): Pair & { siteModel: () => Tip4pModel | null } => {
+  const pair = sys.ff.pair;
+  // compute_dipole.html: "Compute style dipole/tip4p can only be used with tip4p pair styles"
+  if (!pair) throw new StyleError(`Pair style must be defined for compute ${style}`);
+  type SitePair = Pair & { siteModel: () => Tip4pModel | null };
+  const find = (p: Pair): SitePair | null => {
+    if (typeof (p as Partial<SitePair>).siteModel === 'function') return p as SitePair;
+    const subs = (p as Pair & { subs?: { style: Pair }[] }).subs;
+    if (subs) for (const sub of subs) { const m = find(sub.style); if (m) return m; }
+    return null;
+  };
+  const m = find(pair);
+  if (!m) throw new StyleError(`Pair style is incompatible with compute ${style}`);
+  return m;
+};
+
+/** The TIP4P model of the pair style, valid after the force-field init. */
+const tip4pModelOf = (sys: System, style: string): Tip4pModel => {
+  const m = tip4pPairOf(sys, style).siteModel();
+  if (!m) throw new StyleError(`compute ${style}: the TIP4P pair style is not initialized (bond and angle styles are needed)`);
+  return m;
+};
+
+/**
+ * The positions at which the members' charges sit, unwrapped: the M site for a TIP4P oxygen ("includes adjustments
+ * for the charge carrying point M in molecules with TIP4P water geometry. The corresponding parameters are extracted
+ * from the pair style", compute_dipole.html), the atom itself otherwise (tip4p_sites.ts places M).
+ */
+const tip4pChargePositions = (sys: System, mem: Members, model: Tip4pModel): Float64Array => {
+  const s = sys.state;
+  const g = sys.geom;
+  const sites = buildOwnedSites(s.n, s.x, s.type, s.id, g, model);
+  const out = Float64Array.from(mem.u);
+  const u = [0, 0, 0];
+  for (let k = 0; k < mem.n; k++) {
+    const i = mem.atom[k];
+    if (s.type[i] !== model.otype) continue;
+    g.unwrap(sites.M, s.image, i, u);
+    out[3 * k] = u[0]; out[3 * k + 1] = u[1]; out[3 * k + 2] = u[2];
+  }
+  return out;
+};
+
+/*
+ * compute ID group-ID dipole/tip4p [mass|geometry] — docs.lammps.org/compute_dipole.html: "Compute *dipole/tip4p*
+ * includes adjustments for the charge carrying point M in molecules with TIP4P water geometry. The corresponding
+ * parameters are extracted from the pair style." The centre of mass or geometry is that of the atoms.
+ */
+export class ComputeDipoleTip4p extends Compute {
+  readonly style = 'dipole/tip4p';
+  private readonly mode: 'mass' | 'geometry';
+
+  constructor(sys: System, id: string, group: string, args: string[]) {
+    super(sys, id, group, args);
+    this.mode = dipoleMode('dipole/tip4p', args);
+    this.scalarFlag = true;
+    this.vectorFlag = true;
+    this.sizeVector = 3;
+    this.vector = new Float64Array(3);
+  }
+
+  /** The pair style must be a TIP4P style (checked at the run's init, as native). */
+  init(): void {
+    super.init();
+    tip4pPairOf(this.sys, 'dipole/tip4p');
+  }
+
+  protected computeVector(): void {
+    if (!hasCharge(this.sys.state) && !this.sys.state.mu) throw new StyleError(`compute ${this.id} (dipole/tip4p) requires atom charges or point dipoles`);
+    const model = tip4pModelOf(this.sys, 'dipole/tip4p');
+    const mem = members(this.sys, this.groupBit, null);
+    const d = dipoleOf(this.sys, mem, centres(mem), this.mode, tip4pChargePositions(this.sys, mem, model));
+    this.vector = d.slice(0, 3);
+  }
+
+  protected computeScalar(): number {
+    const v = this.vectorValues();
+    return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+  }
+}
+
+/*
+ * compute ID group-ID dipole/tip4p/chunk chunkID [mass|geometry] — docs.lammps.org/compute_dipole_chunk.html:
+ * "Compute *dipole/tip4p/chunk* includes adjustments for the charge carrying point M in molecules with TIP4P water
+ * geometry. The corresponding parameters are extracted from the pair style."
+ */
+export class ComputeDipoleTip4pChunk extends Compute {
+  readonly style = 'dipole/tip4p/chunk';
+  private readonly chunk: ComputeChunkAtom;
+  private readonly mode: 'mass' | 'geometry';
+
+  constructor(sys: System, id: string, group: string, args: string[]) {
+    super(sys, id, group, args);
+    if (!args.length) throw new StyleError(`usage: compute ${id} group-ID dipole/tip4p/chunk chunkID [mass|geometry]`);
+    this.chunk = chunkCompute(sys, args[0], `compute ${id} (dipole/tip4p/chunk)`);
+    this.mode = dipoleMode('dipole/tip4p/chunk', args.slice(1));
+    this.arrayFlag = true;
+    this.sizeArrayCols = 4;
+  }
+
+  /** The pair style must be a TIP4P style (checked at the run's init, as native). */
+  init(): void {
+    super.init();
+    tip4pPairOf(this.sys, 'dipole/tip4p/chunk');
+  }
+
+  protected computeArray(): void {
+    if (!hasCharge(this.sys.state) && !this.sys.state.mu) throw new StyleError(`compute ${this.id} (dipole/tip4p/chunk) requires atom charges or point dipoles`);
+    const model = tip4pModelOf(this.sys, 'dipole/tip4p/chunk');
+    const mem = members(this.sys, this.groupBit, this.chunk);
+    this.sizeArrayRows = mem.N;
+    this.array = dipoleOf(this.sys, mem, centres(mem), this.mode, tip4pChargePositions(this.sys, mem, model));
   }
 }
 

@@ -13,6 +13,8 @@ import type { EngineEvent, ThermoRow } from '../src/engine/types';
  * Case directives (comment lines in the .in file):
  *   # oracle-inputs: files the input reads (data, potentials), next to the .in file
  *   # oracle-potentials: unmodified LAMMPS potential files from third_party/lammps/potentials
+ *   # oracle-examples: unmodified files of the LAMMPS examples tree (third_party/lammps/examples/<dir>/<file>), added
+ *     under their base name
  *   # oracle-files: files it writes that are compared token by token
  *   # oracle-compare: thermo=all|first|first-last atoms=all|none rel=1e-8 abs=1e-10 skip=kw1,kw2 atomskip=c1,c2 printed=N
  *                     atomrel=R filerel=R (optional: the per-atom and written-file tolerances, relative, default
@@ -39,6 +41,7 @@ const readInputBytes = (path: string, latin1: boolean): string => {
 const CASES = join(__dirname, 'oracle');
 const FIX = join(__dirname, 'fixtures', 'oracle');
 const POTENTIALS = join(__dirname, '..', 'third_party', 'lammps', 'potentials');
+const EXAMPLES = join(__dirname, '..', 'third_party', 'lammps', 'examples');
 const FINAL_DUMP = 'write_dump all custom oracle_final.dump id type xu yu zu vx vy vz fx fy fz modify format float %.17g sort id';
 const PARTITION_FINAL_DUMP = 'write_dump all custom oracle_final.${oracle_p}.dump id type xu yu zu vx vy vz fx fy fz modify format float %.17g sort id';
 
@@ -157,6 +160,7 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
       // as the app reads uploads (fileStore.ts readInputText): UTF-8 text, else the bytes as latin1 (a binary restart file)
       for (const f of directive(text, 'oracle-inputs')) session.addFile(f, readInputBytes(join(CASES, f), f.endsWith('.gz')));
       for (const f of directive(text, 'oracle-potentials')) session.addFile(f, readFileSync(join(POTENTIALS, f), 'utf8'));
+      for (const f of directive(text, 'oracle-examples')) session.addFile(f.split('/').pop()!, readInputBytes(join(EXAMPLES, f), f.endsWith('.gz')));
       try {
         // as scripts/oracle/run-oracle.mjs: a partitioned non-NEB case writes one final dump per partition (oracle_p
         // is a world-style variable, 0..N-1); a NEB case writes none

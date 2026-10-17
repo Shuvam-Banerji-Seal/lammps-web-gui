@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import { massOf } from '../atoms';
 import type { BoxDof } from '../fix/box_relax';
 import { checkMinHalt } from './halt';
+import { computeSetup } from './verlet';
 import { MINIMIZERS } from './minimizers';
 import { gplHook } from '../gplHooks';
 
@@ -179,6 +180,7 @@ export const minimize = async (
   };
   const fnormOf = () => { const n = norms(); return set.norm === 'two' ? n.two : set.norm === 'max' ? n.max : n.inf; };
 
+  computeSetup(sys);
   for (const f of sys.fixes) f.minSetup?.();
   const boxFixes = sys.fixes.filter((f) => (f as unknown as { boxDof?: BoxDof }).boxDof);
   if (boxFixes.length > 1) throw new StyleError('only one fix box/relax may be defined');

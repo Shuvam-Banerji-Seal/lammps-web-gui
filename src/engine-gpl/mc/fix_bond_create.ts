@@ -43,7 +43,8 @@ export class FixBondCreate extends Fix {
   /** Bonds of the type per atom ID (native bondcount): counted at the first run setup, then incremented by this fix. */
   private readonly count = new Map<number, number>();
   private counted = false;
-  private createcount = 0;
+  /** bonds created in the last event (fix srp/react reads and resets it, as native) */
+  createcount = 0;
   private createcounttotal = 0;
 
   /** fix ID group-ID bond/create N itype jtype rmin btype keyword values ... (docs.lammps.org/fix_bond_create.html). */

@@ -13,7 +13,8 @@
  *   LMP=/path/to/lmp node scripts/oracle/run-oracle.mjs [case-name ...]
  * A case may list data/potential files it reads in "# oracle-inputs: a b";
  * they are looked up next to the .in file. "# oracle-potentials: a b" lists
- * unmodified LAMMPS potential files from third_party/lammps/potentials.
+ * unmodified LAMMPS potential files from third_party/lammps/potentials; "# oracle-examples: dir/a" lists
+ * unmodified files of the LAMMPS examples tree in third_party/lammps/examples (copied under their base name).
  * The header oracle-partitions: N runs the case on N partitions (replicas) with
  * mpirun -np N lmp -partition Nx1. Two kinds:
  *  - a NEB case (its universe log has the header line starting with Step MaxReplicaForce or MaxReplicaTorque): the fixture holds the
@@ -35,6 +36,7 @@ const ROOT = new URL('../..', import.meta.url).pathname;
 const CASES = join(ROOT, 'tests/oracle');
 const OUT = join(ROOT, 'tests/fixtures/oracle');
 const POTENTIALS = join(ROOT, 'third_party/lammps/potentials');
+const EXAMPLES = join(ROOT, 'third_party/lammps/examples');
 const LMP = process.env.LMP ?? 'lmp';
 const MPIRUN = process.env.MPIRUN ?? 'mpirun';
 
@@ -87,6 +89,8 @@ const parseLog = (log, keywords) => {
       // warnings (e.g. "FENE bond too long") are printed between thermo rows, some followed by a
       // "For more information see https://docs.lammps.org/err...." line
       if (/^WARNING/.test(lines[j]) || /^For more information see/.test(lines[j])) continue;
+      // fix SRP/REACT remakes its bond particles during the run and logs it between thermo rows
+      if (/^Removed\/inserted \d+\/\d+ bond particles\.$/.test(lines[j].trim())) continue;
       const w = lines[j].trim().split(/\s+/);
       if (w.length !== ncol || !w.every((x) => /^[-+0-9.eE]+$/.test(x) || /^-?(nan|inf)$/i.test(x))) break;
       const row = {};
@@ -182,6 +186,7 @@ for (const name of cases) {
   const dir = mkdtempSync(join(tmpdir(), `oracle-${name}-`));
   for (const f of header(text, 'oracle-inputs')) copyFileSync(join(CASES, f), join(dir, f));
   for (const f of header(text, 'oracle-potentials')) copyFileSync(join(POTENTIALS, f), join(dir, f));
+  for (const f of header(text, 'oracle-examples')) copyFileSync(join(EXAMPLES, f), join(dir, basename(f)));
   const partitions = Number(header(text, 'oracle-partitions')[0] ?? 1);
   // a NEB case (its input runs the neb command) gets no dump: every replica would write it
   const isNeb = /^\s*neb(\/spin)?\s/m.test(text);

@@ -28,7 +28,8 @@ There is no linter configured; `typecheck` is the static gate.
 
 Engine behaviour is checked against native LAMMPS (`/home/roy/.local/bin/lmp`, built from commit `b332f28`):
 a case is `tests/oracle/<case>.in` (header lines `# oracle:`, optional `# oracle-inputs:` (files next to the
-case), `# oracle-potentials:` (unmodified LAMMPS potential files from `third_party/lammps/potentials`) and
+case), `# oracle-potentials:` (unmodified LAMMPS potential files from `third_party/lammps/potentials`), `# oracle-examples:`
+(unmodified files of the examples tree, `third_party/lammps/examples/<dir>/<file>`) and
 `# oracle-compare:`); `LMP=/home/roy/.local/bin/lmp node scripts/oracle/run-oracle.mjs <case>` writes the native
 fixture `tests/fixtures/oracle/<case>.json`, and `npx vitest run tests/engineOracle -t <case>` compares the
 engine with it (the cases are split over the shard files tests/engineOracle*.test.ts, run in parallel; the path prefix

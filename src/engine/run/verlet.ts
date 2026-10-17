@@ -43,6 +43,15 @@ export interface RunHooks {
   skipSetup?: boolean;
 }
 
+/**
+ * Modify::setup's compute setup, before the fixes' setup: "compute setup needs to come before fix setup b/c NH fixes
+ * need DOF of temperature computes" (src/modify.cpp at b332f28). The temperature computes count their degrees of
+ * freedom again, so atoms a fix added or removed in setup_pre_force (the bond particles of fix srp) are counted.
+ */
+export const computeSetup = (sys: System): void => {
+  for (const c of sys.computes) if (c.tempFlag) (c as unknown as { dofCompute?: () => void }).dofCompute?.();
+};
+
 /** Fix and compute initialization shared by run and minimize. */
 export const initRun = (sys: System): void => {
   const s = sys.state;
@@ -80,6 +89,7 @@ export const setupRun = (sys: System): void => {
   sys.forcesCurrent();
   sys.assignDynamicGroups(true);
   for (const f of sys.fixes) f.setupPreReverse?.();
+  computeSetup(sys);
   for (const f of sys.fixes) f.setup();
   sys.refreshComputes();
 };

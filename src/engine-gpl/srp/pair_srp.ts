@@ -52,24 +52,27 @@ const tally = (pc: PairCompute, i: number, j: number, evdwl: number, fpair: numb
 
 /** native srp_instance: each pair srp names its fix with the next number. */
 let srpInstance = 0;
+export const nextSrpInstance = (): number => srpInstance++;
 
 export class PairSRP extends Pair {
-  readonly name = 'srp';
+  readonly name: string = 'srp';
   /** the global virial is the sum x.f over owned and ghost atoms (native: the hybrid's virial_fdotr_compute) */
   virialFdotr = true;
-  private cutGlobal = 0;
-  private btypeStr = '';
-  private btype = 0;
-  private midpoint = false;
-  private min = false;
-  private exclude = true;
-  private bptypeStr = '';
-  private bptype = 0;
+  protected cutGlobal = 0;
+  protected btypeStr = '';
+  protected btype = 0;
+  protected midpoint = false;
+  protected min = false;
+  protected exclude = true;
+  protected bptypeStr = '';
+  protected bptype = 0;
   private a0 = new Float64Array(0);
-  private cutT = new Float64Array(0);
-  private setflag = new Uint8Array(0);
-  private fixId = '';
-  private fix: FixSRP | null = null;
+  protected cutT = new Float64Array(0);
+  protected setflag = new Uint8Array(0);
+  protected fixId = '';
+  protected fix: FixSRP | null = null;
+  /** the style of the fix this pair makes (SRP; SRPREACT for srp/react) */
+  protected fixStyle = 'SRP';
   private readonly order = new NativePairOrder(true);
   /** segment[2 e], segment[2 e + 1]: the engine indices of the two atoms of bond particle e (closest images), per build */
   private segment = new Int32Array(0);
@@ -103,9 +106,12 @@ export class PairSRP extends Pair {
         iarg += 2;
       } else throw new StyleError('Illegal pair srp command');
     }
-    // the fix SRP is made with the style (native constructor: "{:02d}_FIX_SRP" + "_FIX_SRP all SRP")
-    const fixId = `${String(srpInstance).padStart(2, '0')}_FIX_SRP_FIX_SRP`;
-    srpInstance++;
+    this.createFix(ctx);
+  }
+
+  /** The fix SRP is made with the style (native constructor: "{:02d}_FIX_SRP" + "_FIX_SRP all SRP"). */
+  protected createFix(ctx: StyleContext): void {
+    const fixId = `${String(nextSrpInstance()).padStart(2, '0')}_FIX_SRP_FIX_SRP`;
     this.fixId = fixId;
     if (!ctx.addFix) throw new StyleError('pair srp needs to create its fix SRP');
     ctx.addFix((sys) => new FixSRP(sys, fixId, 'all', []));
@@ -150,14 +156,14 @@ export class PairSRP extends Pair {
     if (count === 0) ctx.log?.('WARNING: PairSRP: No pair coefficients were set');
     // the fix gets its types here too: the engine inits the fixes before the pair styles (native: the pair's
     // init_style hands them over before the fixes' init, which needs bptype for the neighbor exclusions)
-    (ctx.fixOf?.('SRP') as FixSRP | null)?.setTypes(this.btype, this.bptype);
+    (ctx.fixOf?.(this.fixStyle) as FixSRP | null)?.setTypes(this.btype, this.bptype);
     this.version++;
   }
 
   initStyle(ctx: StyleContext): void {
-    if (ctx.newtonPair === false) throw new StyleError('Pair srp requires newton pair on');
-    const fix = ctx.fixOf?.('SRP') as FixSRP | null;
-    if (!fix || fix.id !== this.fixId) throw new StyleError('Fix SRP has been changed unexpectedly');
+    if (ctx.newtonPair === false) throw new StyleError(`Pair ${this.name} requires newton pair on`);
+    const fix = ctx.fixOf?.(this.fixStyle) as FixSRP | null;
+    if (!fix || fix.id !== this.fixId) throw new StyleError(`Fix ${this.fixStyle} has been changed unexpectedly`);
     this.fix = fix;
     ctx.log?.(`Using type ${this.bptype} for bond particles`);
     fix.setTypes(this.btype, this.bptype);

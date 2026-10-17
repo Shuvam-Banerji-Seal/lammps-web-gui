@@ -253,6 +253,12 @@ export interface StyleContext {
   fixOf?(style: string): Fix | null;
   /** The fix with this ID (null when there is none). */
   fixById?(id: string): Fix | null;
+  /**
+   * The amount by which create_box moved each shrink-wrapped (s) face out (System.initSmall), while the box has not
+   * been reset since; null otherwise. Until that first reset native LAMMPS's box includes the expansion (src/domain.cpp
+   * set_initial_box at b332f28), and a style that reads the box at init (kspace_style msm) sees those lengths.
+   */
+  initialBoxExpansion?: readonly [number, number, number] | null;
 }
 
 /** Equilibrium bond lengths and angles (degrees) by type, for Pair.linkBonded. */
@@ -322,6 +328,11 @@ export abstract class Pair {
    * copies of the style held by force threads (cpu/pairThreads.ts) are refreshed.
    */
   version = 0;
+  /**
+   * Force-field hook, called before init(): the kspace style (null when none). A pair style that needs a particular
+   * solver (the coul/msm styles read the splitting function of kspace_style msm) keeps it and refuses others.
+   */
+  linkKSpace?(kspace: KSpace | null): void;
   /**
    * Force-field hook, called before init(): the equilibrium length of each bond type and angle
    * (degrees) of each angle type, NaN without a bond or angle style. The TIP4P styles place
@@ -615,4 +626,17 @@ export abstract class KSpace {
   abstract compute(kc: KSpaceCompute): void;
   /** Force-field hook, called before init(): the pair style (pppm/tip4p reads its charge sites). */
   linkPair?(pair: Pair | null): void;
+  /**
+   * kspace_modify pressure/scalar (MSM). kspace_modify.html: "If this option is turned on, only the scalar pressure
+   * (i.e. (Pxx + Pyy + Pzz)/3.0) will be computed" and "This option cannot be used to access individual components of
+   * the pressure tensor, to compute per-atom virial". compute pressure refuses its tensor while it is set.
+   */
+  scalarPressure = false;
+  /**
+   * Force-field hook, called before the pair style's init() (and before the neighbor list is set up): a solver that
+   * sets the pair style's Coulomb cutoff does it here, so the pair cutoffs and the neighbor list are built with the
+   * new value. kspace_modify.html: "The *cutoff/adjust* keyword applies only to MSM. If this option is turned on, the
+   * Coulombic cutoff will be automatically adjusted at the beginning of the run to give the desired estimated error."
+   */
+  preparePair?(pair: Pair | null, s: SimState, geom: Geometry, qqrd2e: number, ctx: StyleContext): void;
 }

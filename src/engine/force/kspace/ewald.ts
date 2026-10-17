@@ -99,11 +99,12 @@ export const modifyNoEffect = (key: string, values: string[]): number => {
     // kspace_modify.html: "The *pressure/scalar* keyword applies only to MSM." Measured with native LAMMPS (black
     // box): pressure/scalar yes with only press in thermo_style gives the same numbers, but with the pxx..pyz
     // components in thermo_style it stops with (measured): Must use kspace_modify pressure/scalar no for tensor
-    // components. The engine does not reproduce that path, so yes is refused rather than half done.
+    // components. KSpaceBase (ewald, pppm and their variants) keeps the flag for compute pressure's check; the
+    // solvers that come here (the dipole and electrode ones) refuse yes rather than ignore it.
     case 'pressure/scalar':
       yesNoValue(values[0], 'pressure/scalar');
       if (values[0] === 'yes') {
-        throw new StyleError('kspace_modify pressure/scalar yes is not supported by the browser engine (it applies only to MSM, which the engine does not have)');
+        throw new StyleError('kspace_modify pressure/scalar yes is not supported by the browser engine for this kspace style (it applies only to MSM)');
       }
       return 1;
     // tol is not a kspace_modify keyword: the keyword list in kspace_modify.html does not contain it, and native
@@ -150,6 +151,13 @@ export abstract class KSpaceBase extends KSpace {
         if (this.slab === 1) throw new StyleError('Bad kspace_modify slab parameter (volfactor 1.0 is refused; omit slab for no slab correction)');
         return 1;
       case 'minorder': this.minorder = minorderValue(values[0]); return 1;
+      // src/compute_pressure.cpp compute_vector at b332f28 checks scalar_pressure_flag for every kspace style ("Must
+      // use 'kspace_modify pressure/scalar no' for tensor components with kspace_style msm"); these solvers compute
+      // their full virial either way (the flag is read only by msm.cpp and the coul/msm pair styles)
+      case 'pressure/scalar':
+        yesNoValue(values[0], 'pressure/scalar');
+        this.scalarPressure = values[0] === 'yes';
+        return 1;
       default: return modifyNoEffect(key, values);
     }
   }

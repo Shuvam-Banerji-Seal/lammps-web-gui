@@ -159,7 +159,8 @@ run             0
     ['p p p', 'coul/long 4.0', 'kspace_style pppm 1e-4\nkspace_modify kmax/ewald 4 4 4', /applies to ewald/],
     ['p p p', 'coul/long 4.0', '', /needs a kspace style/],
     ['p p p', 'lj/cut 4.0', 'kspace_style ewald 1e-4', /not compatible with pair style lj\/cut/],
-    ['p p p', 'coul/long 4.0', 'kspace_style msm 1e-4', /msm/],
+    // Measured with native LAMMPS: KSpace style msm is incompatible with Pair style lj/cut/coul/long (kspace.cpp pair_check)
+    ['p p p', 'coul/long 4.0', 'kspace_style msm 1e-4', /KSpace style msm is incompatible with Pair style coul\/long/],
   ];
   for (const [boundary, pair, kspace, re] of cases) {
     it(`${kspace.replace(/\n/g, ' / ') || 'no kspace'} (${boundary}, ${pair})`, async () => {

@@ -5,7 +5,7 @@ import type { System } from '../system';
 import type { Compute } from '../compute/compute';
 import { ownCompute, ramp, removeCompute } from './util';
 import { massOf } from '../atoms';
-import type { ComputePressure } from '../compute/pressure';
+import { ComputePressure } from '../compute/pressure';
 import { libm } from '../libm';
 
 /*
@@ -805,6 +805,11 @@ export class FixNH extends Fix {
    * src/BOCS/fix_bocs.cpp couple(): the ISO pressure is the scalar, which includes the correction) overrides it.
    */
   protected pressureTensor(pc: ComputePressure): ArrayLike<number> {
+    // fix_nh.cpp couple(): an ISO barostat (couple xyz, or xy in 2d) reads compute_scalar(), allowed with MSM's
+    // kspace_modify pressure/scalar yes; the diagonal mean of the tensor is the same scalar
+    // (fix_modify press can name another pressure compute, e.g. pressure/alchemy, which has no such check)
+    const iso = this.couple === 'xyz' || (this.couple === 'xy' && this.sys.dimension === 2);
+    if (iso && pc instanceof ComputePressure) return pc.isoVectorValues();
     return pc.vectorValues();
   }
 

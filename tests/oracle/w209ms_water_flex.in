@@ -1,0 +1,28 @@
+# oracle-inputs: w12tip4p_long_water.data
+# oracle: kspace_style msm order 8 (cutoff/adjust yes, pressure/scalar no) with pair lj/cut/coul/msm on 27 flexible 3-site waters (bond and angle harmonic): the excluded 1-2 and 1-3 pairs (special_bonds lj/coul 0 0 0.5) subtract the bare Coulomb term through the tables' ctable, NVE, 1 fs, 40 steps.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.7e-12, atoms 1.7e-12.
+units           real
+atom_style      full
+boundary        p p p
+read_data       w12tip4p_long_water.data
+pair_style      lj/cut/coul/msm 4.5
+pair_coeff      1 1 0.1852 3.1589
+pair_coeff      1 2 0.0 1.0
+pair_coeff      2 2 0.0 1.0
+bond_style      harmonic
+bond_coeff      1 450.0 0.9572
+angle_style     harmonic
+angle_coeff     1 55.0 104.52
+special_bonds   lj/coul 0.0 0.0 0.5
+kspace_style    msm 1.0e-4
+kspace_modify   order 8 pressure/scalar no
+velocity        all create 300.0 4928459 dist gaussian
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+timestep        1.0
+fix             1 all nve
+thermo_style    custom step temp pe evdwl ecoul elong ebond eangle press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             40

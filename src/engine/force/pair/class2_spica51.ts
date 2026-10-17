@@ -354,10 +354,3 @@ export class PairLJSpica extends PairPowerLJ {
     };
   }
 }
-
-/**
- * lj/spica/coul/msm and lj/sdk/coul/msm are refused: the MSM long-range Coulomb part needs msm kspace, which the
- * engine does not provide (see refusedStyles.ts).
- */
-export const SPICA_MSM_REFUSAL = (name: string): string =>
-  `pair_style ${name} needs msm kspace, which the engine does not provide (use lj/spica/coul/long or lj/sdk/coul/long with ewald or pppm)`;

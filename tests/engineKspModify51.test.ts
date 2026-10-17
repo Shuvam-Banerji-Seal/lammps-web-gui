@@ -48,9 +48,12 @@ describe('kspace_modify keywords refused by the engine', () => {
     }
   });
 
-  it('refuses pressure/scalar yes (it applies only to MSM)', async () => {
-    const err = await run(system('ewald 1e-4', 'gewald 0.4 kmax/ewald 5 5 5 pressure/scalar yes'));
-    expect(err).toMatch(/kspace_modify pressure\/scalar yes is not supported/);
+  it('pressure/scalar yes with ewald: press is unchanged, a tensor component is refused (measured)', async () => {
+    // Measured with native LAMMPS: thermo press is the same as with pressure/scalar no, and pxx stops the run with
+    // Must use 'kspace_modify pressure/scalar no' for tensor components with kspace_style msm
+    expect(await run(system('ewald 1e-4', 'gewald 0.4 kmax/ewald 5 5 5 pressure/scalar yes'))).toBeNull();
+    const err = await run(system('ewald 1e-4', 'gewald 0.4 kmax/ewald 5 5 5 pressure/scalar yes').replace('run 0', 'thermo_style custom step press pxx\nrun 0'));
+    expect(err).toMatch(/Must use 'kspace_modify pressure\/scalar no' for tensor components with kspace_style msm/);
   });
 
   it('accepts pressure/scalar no and the no-effect keywords without error', async () => {

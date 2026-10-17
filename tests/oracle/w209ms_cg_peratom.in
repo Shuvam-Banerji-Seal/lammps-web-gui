@@ -1,0 +1,47 @@
+# oracle: kspace_style msm/cg 1e-4 1e-3 (only the atoms with |q| > 1e-3 on the grid; 72 of the 216 ions carry charge +-5e-4 and are skipped), pressure/scalar no, order 6, mesh 8 8 8, cutoff/adjust no, pair lj/cut/coul/msm, per-atom energy and virial (compute pe/atom and stress/atom, summed), rocksalt ions, NVE, 40 steps.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.1e-13, atoms 1.2e-13.
+units           metal
+atom_style      charge
+lattice         fcc 5.64
+region          box block 0 3 0 3 0 3
+create_box      4 box
+create_atoms    1 box
+lattice         fcc 5.64 origin 0.5 0.0 0.0
+create_atoms    2 box
+mass            * 22.99
+mass            2 35.45
+mass            4 35.45
+set             type 1 type/subset 3 36 482793
+set             type 2 type/subset 4 36 9271
+set             type 1 charge 1.0
+set             type 2 charge -1.0
+set             type 3 charge 5.0e-4
+set             type 4 charge -5.0e-4
+variable        dx atom 0.12*sin(0.53*x+0.21*y)
+variable        dy atom 0.12*cos(0.37*y-0.19*z)
+variable        dz atom 0.12*sin(0.29*z+0.41*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+velocity        all create 300.0 87287 dist gaussian
+pair_style      lj/cut/coul/msm 7.0
+pair_coeff      * * 0.0070 3.00
+pair_coeff      1 1 0.0100 2.35
+pair_coeff      3 3 0.0100 2.35
+pair_coeff      1 3 0.0100 2.35
+pair_coeff      2 2 0.0050 4.40
+pair_coeff      4 4 0.0050 4.40
+pair_coeff      2 4 0.0050 4.40
+kspace_style    msm/cg 1.0e-4 1.0e-3
+kspace_modify   order 6 pressure/scalar no cutoff/adjust no mesh 8 8 8
+compute         pea all pe/atom
+compute         sa all stress/atom NULL
+compute         pes all reduce sum c_pea
+compute         sas all reduce sum c_sa[1] c_sa[2] c_sa[3] c_sa[4] c_sa[5] c_sa[6]
+compute         pek all pe/atom kspace
+compute         peks all reduce sum c_pek
+timestep        0.001
+fix             1 all nve
+thermo_style    custom step temp pe ecoul elong c_pes c_peks press pxx pyy pzz pxy c_sas[1] c_sas[2] c_sas[3] c_sas[4] c_sas[5] c_sas[6]
+thermo_modify   format float %.15g
+thermo          10
+run             40

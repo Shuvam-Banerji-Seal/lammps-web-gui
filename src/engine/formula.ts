@@ -373,7 +373,7 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
       if (x < 0) throw new StyleError(`sqrt of negative value in variable formula "${src}"`);
       return Math.sqrt(x);
     });
-    case 'exp': return map1(arg(0), Math.exp);
+    case 'exp': return map1(arg(0), (x) => libm.exp(x));
     case 'ln': return map1(arg(0), (x) => {
       if (x <= 0) throw new StyleError(`log of zero/negative value in variable formula "${src}"`);
       return libm.log(x);

@@ -26,6 +26,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { RanPark } from '../random_park';
 import { nativeOrder } from '../../engine/atoms';
+import { exp as libmExp } from '../libm/exp';
 
 const num = (w: string | undefined, what: string): number => {
   const v = Number(w);
@@ -252,7 +253,7 @@ export class FixNeighborSwap extends Fix {
     s.type[i] = jtype;
     s.type[j] = itype;
     const energyAfter = this.energyFull();
-    if (this.rng.uniform() < Math.exp(this.beta * (energyBefore - energyAfter))) {
+    if (this.rng.uniform() < libmExp(this.beta * (energyBefore - energyAfter))) {
       this.updateIswapList();
       if (this.keFlag) {
         const ri = this.sqrtMassRatio(itype, jtype);
@@ -321,7 +322,7 @@ export class FixNeighborSwap extends Fix {
       if (s.id[nb.owner[g]] === idCenter && rtmp < r) r = rtmp;
     }
     const rr = r * this.invR0;
-    const weight = Math.exp(-(rr * rr));
+    const weight = libmExp(-(rr * rr));
     const prob = this.ratesFlag ? this.rateList[typeOfJ - 1] * weight : weight;
     return { j: tj, prob, typeValue };
   }

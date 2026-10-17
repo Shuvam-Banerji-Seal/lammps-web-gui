@@ -60,7 +60,7 @@ const CONSTANTS: Record<string, number> = {
 };
 
 const FUNCS: Record<string, { n: number; f?: (...a: number[]) => number }> = {
-  sqrt: { n: 1, f: Math.sqrt }, exp: { n: 1, f: Math.exp }, ln: { n: 1, f: (x) => libm.log(x) },
+  sqrt: { n: 1, f: Math.sqrt }, exp: { n: 1, f: (x) => libm.exp(x) }, ln: { n: 1, f: (x) => libm.log(x) },
   log: { n: 1, f: Math.log10 }, abs: { n: 1, f: Math.abs },
   sign: { n: 1, f: (x) => (x >= 0 ? 1 : -1) },
   sin: { n: 1, f: (x) => libm.sin(x) }, cos: { n: 1, f: (x) => libm.cos(x) }, tan: { n: 1, f: Math.tan },

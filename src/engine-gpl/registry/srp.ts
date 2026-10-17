@@ -1,23 +1,26 @@
 /*
- * Refusals for styles named after LAMMPS sources. Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28):
- * the names of the SRP package (src/MISC/pair_srp.cpp, pair_srp_react.cpp, fix_srp.cpp, fix_srp_react.cpp). Nothing
- * here is ported: they are registered only so that using them names the reason. LAMMPS is Copyright Sandia Corporation and distributed under the GNU General Public License, version 2
- * (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE). Listed in src/engine/refusedStyles.ts.
+ * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
+ * Sources: src/MISC/pair_srp.cpp and fix_srp.cpp (pair_style srp and its fix SRP, see ../srp), and the names of
+ * pair_srp_react.cpp and fix_srp_react.cpp, which stay refused. LAMMPS is Copyright Sandia Corporation and distributed
+ * under the GNU General Public License, version 2 (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
+ * Registered for the core through src/engine/lazyStyles.ts (group gpl_srp); srp/react is listed in src/engine/refusedStyles.ts.
  */
 import { StyleError } from '../../engine/force/types';
 import type { Pair } from '../../engine/force/types';
+import type { FixFactory } from '../../engine/styles';
+import { PairSRP } from '../srp/pair_srp';
+import { FixSRP } from '../srp/fix_srp';
 
-const SRP_REASON = 'fix srp inserts one bond-midpoint particle per bond as a real owned atom of an extra type, creates and deletes them at every neighbor build (fix_srp.cpp setup_pre_force, pre_exchange), and renumbers the atom arrays; the browser engine keeps a fixed atom set during a run, so this needs a core change that is not made yet';
-const REACT_REASON = 'srp/react creates and deletes the same bond-midpoint particles as pair srp (fix_srp_react.cpp), which the browser engine does not support during a run yet';
+const REACT_REASON = 'srp/react creates and deletes bond particles while fix bond/break and bond/create change the bonds (fix_srp_react.cpp), which is not ported yet';
 
-/** pair_style names: refused. */
+/** pair_style names. */
 export const PAIRS: Record<string, () => Pair> = {
-  srp: () => { throw new StyleError(`pair_style srp is not supported by the browser engine yet: ${SRP_REASON}`); },
+  srp: () => new PairSRP(),
   'srp/react': () => { throw new StyleError(`pair_style srp/react is not supported by the browser engine yet: ${REACT_REASON}`); },
 };
 
-/** fix styles: refused. */
-export const FIXES: Record<string, () => never> = {
-  srp: () => { throw new StyleError(`fix srp is not supported by the browser engine yet: ${SRP_REASON}`); },
+/** fix styles: SRP is the fix pair srp makes (native FixStyle(SRP,FixSRP)); srp/react stays refused. */
+export const FIXES: Record<string, FixFactory> = {
+  SRP: (sys, id, group, args) => new FixSRP(sys, id, group, args),
   'srp/react': () => { throw new StyleError(`fix srp/react is not supported by the browser engine yet: ${REACT_REASON}`); },
 };

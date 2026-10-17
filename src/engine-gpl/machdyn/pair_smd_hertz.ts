@@ -36,7 +36,8 @@ export class PairSMDHertz extends Pair {
   private maxrad = new Float64Array(0);
   /** Stable time increment of the last force evaluation (fix smd/adjust_dt reads it; native extract smd/hertz/stable_time_increment_ptr). */
   stableTimeIncrement = BIG_DT;
-  private readonly order = new NativePairOrder();
+  /** native's size list (NeighConst::REQ_SIZE), in the enumeration of the newton pair setting (set at init) */
+  private order = new NativePairOrder();
 
   settings(args: string[], _ctx: StyleContext): void {
     if (args.length !== 1) throw new StyleError('Illegal number of args for pair_style smd/hertz');
@@ -80,6 +81,8 @@ export class PairSMDHertz extends Pair {
   }
 
   initStyle(ctx: StyleContext): void {
+    const nt = this.ntypes + 1;
+    this.order = new NativePairOrder(ctx.newtonPair !== false, { allow: (a, b) => !!this.setflag[a * nt + b] });
     const s = ctx.s;
     if (!s) throw new StyleError('pair smd/hertz needs a box and atoms');
     if (!s.x0 || !s.custom.has(SMD_CONTACT)) throw new StyleError('Pair style smd/hertz requires atom style with contact_radius');

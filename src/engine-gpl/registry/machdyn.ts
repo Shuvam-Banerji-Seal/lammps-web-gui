@@ -8,11 +8,11 @@
  * Registered for the core through src/engine/lazyStyles.ts (group gpl_machdyn; the names listed there must match these keys).
  */
 import type { FixFactory, ComputeFactory } from '../../engine/styles';
-import { StyleError } from '../../engine/force/types';
 import type { Pair } from '../../engine/force/types';
 import { PairSMDTlsph } from '../machdyn/pair_smd_tlsph';
 import { PairSMDHertz } from '../machdyn/pair_smd_hertz';
 import { PairSMDUlsph } from '../machdyn/pair_smd_ulsph';
+import { PairSMDTriSurface } from '../machdyn/pair_smd_tri_surface';
 import { FixSMDAdjustDt, FixSMDIntegrateTlsph, FixSMDSetVel } from '../machdyn/fix_smd';
 import { FixSMDIntegrateUlsph } from '../machdyn/fix_smd_integrate_ulsph';
 import { FixSMDWallSurface } from '../machdyn/fix_smd_wall_surface';
@@ -29,8 +29,7 @@ export const PAIRS: Record<string, () => Pair> = {
   'smd/tlsph': () => new PairSMDTlsph(),
   'smd/hertz': () => new PairSMDHertz(),
   'smd/ulsph': () => new PairSMDUlsph(),
-  // refused: the contact of particles with the wall triangles (fix smd/wall_surface) is not matched to native yet (see refusedStyles.ts)
-  'smd/tri_surface': () => { throw new StyleError("pair_style smd/tri_surface is not supported by the browser engine yet: the contact of several wall triangles with one particle in a step is processed in another order than native, so the contact phase is not matched"); },
+  'smd/tri_surface': () => new PairSMDTriSurface(),
 };
 
 /** fix styles. */

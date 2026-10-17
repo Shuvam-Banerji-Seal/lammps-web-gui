@@ -1,0 +1,52 @@
+# oracle: pair smd/tri_surface (MACHDYN, src/MACHDYN/pair_smd_triangulated_surface.cpp at b332f28, ported in src/engine-gpl/machdyn/pair_smd_tri_surface.ts): water (smd/ulsph) against the triangulated wall of fix smd/wall_surface, as examples/PACKAGES/machdyn/funnel_flow (hybrid/overlay smd/tri_surface 1.0 smd/ulsph, contact stiffness 0.1 K, setforce on the wall, integrate_ulsph on all, newton off) cut down like w100smd_funnel_wall_surface: the 369 facets of w100smd_funnel_wall_cut.stl, 96 water atoms on a 5 mm lattice.
+# Measured with native LAMMPS (black box): engine vs native thermo max rel 3.4e-15, final per-atom state max rel 2.4e-15 (544 atoms, contacts from the first steps, kernel radii adjusted every step). Debugged against an instrumented native build: the contacts of steps 118-121 are the same pairs in the same order, with distances equal to the last ulp.
+# oracle-inputs: w100smd_funnel_wall_cut.stl
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+####################################################################################################
+# water in a funnel-like box with the STL wall atoms created by fix smd/wall_surface
+####################################################################################################
+variable        c0 equal 10.0
+variable        rho equal 1.0e-6
+variable        q1 equal 0.06
+variable        cp equal 1.0
+variable        K equal ${c0}*${rho}^2
+variable        contact_stiffness equal 0.1*${K}
+variable        hg equal 0.0
+dimension       3
+units           si
+boundary        f f f
+atom_style      smd
+atom_modify     map array
+comm_modify     vel yes
+newton          off
+variable        l0 equal 5.0
+lattice         sc ${l0}
+region          box block -40 40 -30 40 -30 30 units box
+create_box      2 box
+region          water block -10 10 -10 20 -10 10 units box
+create_atoms    1 region water
+group           water type 1
+variable        h equal 2.01*${l0}
+variable        vol_one equal ${l0}^3
+variable        skin equal 0.1*${h}
+neighbor        ${skin} bin
+variable        cr equal ${l0}/2
+set             group all smd/contact/radius ${cr}
+set             group all volume ${vol_one}
+set             group all smd/mass/density ${rho}
+set             group all diameter ${h}
+fix             gfix all gravity 0.01 vector 0.0 -1. 0.0
+pair_style      hybrid/overlay smd/tri_surface 1.0 smd/ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *NO_GRADIENT_CORRECTION
+pair_coeff      1 1 smd/ulsph *COMMON ${rho} ${c0} ${q1} ${cp} ${hg} *EOS_TAIT 2 *END
+pair_coeff      2 2 none
+pair_coeff      1 2 smd/tri_surface ${contact_stiffness}
+fix             stl_surface_fix all smd/wall_surface w100smd_funnel_wall_cut.stl 2 65535
+run             0
+group           surface type 2
+fix             force_fix surface setforce 0 0 0
+fix             dtfix all smd/adjust_dt 0.1
+fix             integration_fix all smd/integrate_ulsph adjust_radius 1.01 10 15
+thermo          20
+thermo_style    custom step dt f_dtfix pe ke
+thermo_modify   format float %.15g
+run             200

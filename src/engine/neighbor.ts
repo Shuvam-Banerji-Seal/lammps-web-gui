@@ -399,6 +399,11 @@ export class Neighbor {
   }
 
   /** The neigh_modify exclusions as one predicate over owned indices (null when none). */
+  /** The neigh_modify exclusions as a test on two owned atoms (null when there are none). */
+  exclusion(s: SimState): ((i: number, j: number) => boolean) | null {
+    return this.excludeFn(s);
+  }
+
   private excludeFn(s: SimState): ((i: number, j: number) => boolean) | null {
     if (!this.excludes.length) return null;
     const ex = this.excludes;

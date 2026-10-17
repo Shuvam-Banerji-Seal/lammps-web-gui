@@ -18,7 +18,6 @@ import { fma, fmaS, splitHi } from './log';
 
 const F = new Float64Array(1);
 const U = new Uint32Array(F.buffer); // little-endian: U[0] low word, U[1] high word
-const SPLIT = 134217729;
 
 export const InvLn2N = 184.6649652337873;
 export const Shift = 6755399441055744.0;

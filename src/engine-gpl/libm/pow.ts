@@ -472,7 +472,7 @@ export const pow = (x: number, y: number): number => {
   let ixHi = U[1];
   const ixLo = U[0];
   F[0] = y;
-  const iyHi = U[1], iyLo = U[0];
+  const iyHi = U[1];
   let topx = ixHi >>> 20;
   const topy = iyHi >>> 20;
   let signBias = 0;

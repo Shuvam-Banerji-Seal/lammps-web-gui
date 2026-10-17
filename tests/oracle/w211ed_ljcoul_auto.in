@@ -1,0 +1,22 @@
+# oracle: kspace_style ewald/disp 1e-5 with Coulomb and dispersion long (pair lj/long/coul/long long long) and the automatic G-ewald (from the Coulomb estimate; the dispersion uses the same g), arithmetic mixing (7 structure factors), the default dispersion table, per-atom energy and virial summed, NVE 30 steps.
+# oracle-inputs: w16disp_fcc2.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.0e-9, atoms 1.4e-9. The 1e-9 is the real-space Coulomb term of the core pair (its 12-bit erfc table emulation): elong and the per-atom k-space sums agree to 1e-15 at step 0.
+units           lj
+atom_style      charge
+read_data       w16disp_fcc2.data
+pair_style      lj/long/coul/long long long 2.5
+pair_modify     mix arithmetic
+pair_coeff      1 1 1.0 1.0
+pair_coeff      2 2 0.5 1.1
+kspace_style    ewald/disp 1.0e-5
+compute         pea all pe/atom kspace
+compute         sa all stress/atom NULL kspace
+compute         pes all reduce sum c_pea
+compute         sas all reduce sum c_sa[1] c_sa[2] c_sa[3] c_sa[4] c_sa[5] c_sa[6]
+timestep        0.005
+fix             1 all nve
+thermo_style    custom step temp pe evdwl elong ecoul press pxx pyy pzz pxy c_pes c_sas[1] c_sas[2] c_sas[3] c_sas[4] c_sas[5] c_sas[6]
+thermo_modify   format float %.15g
+thermo          10
+run             30

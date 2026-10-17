@@ -45,8 +45,8 @@ import { libm } from '../../libm';
  *  - real space, per pair within the global cutoff: E = A/r^12 - C6 g6(g r)/r^6
  *    with A = 4 eps sigma^12, C6 = 4 eps sigma^6 (lj3, lj4 of PairLJCut) and
  *    g6(x) = exp(-x^2) (1 + x^2 + x^4/2), the Ewald-damped dispersion kernel
- *    (in 't Veld, Ismail, Grest 2007). The k-space part of 1/r^6 is in
- *    kspace_disp / ewald_disp.ts.
+ *    (in 't Veld, Ismail, Grest 2007). The k-space part of 1/r^6 is kspace_style ewald/disp
+ *    (src/engine-gpl/ewald_disp, the GPL port) or pppm/disp.
  *  - Measured with native LAMMPS (black box, two atoms, cutoff 2.5, gewald/disp 0.4,
  *    pair_modify table/disp 0): evdwl equals A/r^12 - C6 g6/r^6 (no shift) at r = 1.6
  *    (-0.22219283725231) and r = 2.4 (-0.0194305071976297) to all printed digits.
@@ -128,6 +128,14 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
   ljLong = false;
   /** Dispersion G-ewald set by kspace ewald/disp at init (gewald/disp). */
   gEwaldDisp = 0;
+  /** flag_coul long (pair_lj_long.html: "flag_coul = long or off"); the k-space solver reads it as its Coulomb term. */
+  coulLongFlag = false;
+  /**
+   * The Coulomb cutoff as given (cutoff2, else the LJ cutoff), kept also with flag_coul off. pair_lj_long.html:
+   * "cutoff2 = global cutoff for Coulombic (optional)"; kspace_style ewald/disp estimates its G-ewald from this cutoff
+   * when the pair has no Coulomb term (src/KSPACE/pair_lj_long_coul_long.cpp settings at b332f28 keeps cut_coul).
+   */
+  cutCoulNative = 0;
   /**
    * pair_modify table/disp N (native default 12, pair_modify.rst "The default value of 12
    * (table of length 4096)"). 0 is the series only; N > 0 uses the dispersion table (computeLongLJ).
@@ -154,6 +162,8 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
     this.cutCoul = args.length === 4 ? parseNum(args[3], 'Coulomb cutoff') : this.cutGlobal;
     if (!(this.cutCoul > 0)) throw new StyleError('pair_style lj/long/coul/long: Coulomb cutoff must be > 0');
     this.ljLong = flagLJ === 'long';
+    this.coulLongFlag = flagCoul === 'long';
+    this.cutCoulNative = this.cutCoul;
     if (flagCoul === 'long') {
       this.coulLong = true;
     } else {

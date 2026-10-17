@@ -1,0 +1,18 @@
+# oracle: kspace_style ewald/disp 1e-5 in a triclinic box (the k vectors from h_inv, e^(ik.r) from the tilted unitk), pair lj/long/coul/long long long 2.5 with the automatic G-ewald, the 2-type charged fcc data tilted by change_box, NVE 30 steps.
+# oracle-inputs: w16disp_fcc2.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.9e-10, atoms 1.6e-9. The 1e-9 is the real-space Coulomb term of the core pair (its 12-bit erfc table emulation): elong agrees to all printed digits at step 0.
+units           lj
+atom_style      charge
+read_data       w16disp_fcc2.data
+change_box      all triclinic xy final 0.6 xz final -0.4 yz final 0.3 remap units box
+pair_style      lj/long/coul/long long long 2.5
+pair_coeff      1 1 1.0 1.0
+pair_coeff      2 2 0.5 1.1
+kspace_style    ewald/disp 1.0e-5
+timestep        0.005
+fix             1 all nve
+thermo_style    custom step temp pe evdwl elong ecoul press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             30

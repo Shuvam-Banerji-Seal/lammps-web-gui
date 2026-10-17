@@ -79,9 +79,12 @@ describe('kspace_style ewald/disp and pair lj/long/coul/long flag_lj long', () =
     expect(close(geom.rows[0].elong, pair.rows[0].elong, 1e-13)).toBe(true);
   });
 
-  it('refuses the automatic dispersion G-ewald with a named StyleError', async () => {
+  it('the automatic G-ewald (Newton solve of the r^-6 error, g_ewald_6 = g_ewald) matches native LAMMPS', async () => {
+    // Measured with native LAMMPS: G vector = 1.6965764, elong -850.512893456264, evdwl 215.769335926041
     const r = await run(FCC.replace('kspace_modify gewald/disp 0.4', ''));
-    expect(r.error).toMatch(/gewald\/disp/);
+    expect(r.error).toBeNull();
+    expect(close(r.rows[0].elong, -850.512893456264, 1e-12)).toBe(true);
+    expect(close(r.rows[0].evdwl, 215.769335926041, 1e-12)).toBe(true);
   });
 
   it('refuses pair_modify table/disp N below 8 bits (native: too few total bits)', async () => {
@@ -95,10 +98,15 @@ describe('kspace_style ewald/disp and pair lj/long/coul/long flag_lj long', () =
     expect(r.rows.length).toBeGreaterThan(0);
   });
 
-  it('refuses splittol, disp/auto yes and mesh/disp with a named StyleError', async () => {
-    expect((await run(FCC.replace('gewald/disp 0.4', 'gewald/disp 0.4 splittol 1.0e-4'))).error).toMatch(/splittol/);
-    expect((await run(FCC.replace('gewald/disp 0.4', 'gewald/disp 0.4 disp/auto yes'))).error).toMatch(/disp\/auto/);
-    expect((await run(FCC.replace('gewald/disp 0.4', 'gewald/disp 0.4 mesh/disp 8 8 8'))).error).toMatch(/mesh\/disp/);
+  it('splittol, disp/auto, mesh/disp, order/disp and force/disp/* have no effect on ewald/disp; mix/disp none is refused', async () => {
+    // Measured with native LAMMPS: with all of them elong -20.3347008705397 and evdwl -584.183842934727, as without;
+    // mix/disp none stops with: kspace_modify mix/disp none is not supported by kspace_style ewald/disp
+    const r = await run(FCC.replace('gewald/disp 0.4', 'gewald/disp 0.4 splittol 1.0e-4 disp/auto yes mesh/disp 8 8 8 order/disp 5 force/disp/real 1e-4 force/disp/kspace 1e-4'));
+    expect(r.error).toBeNull();
+    expect(close(r.rows[0].elong, -20.3347008705397, 1e-12)).toBe(true);
+    expect(close(r.rows[0].evdwl, -584.183842934727, 1e-12)).toBe(true);
+    expect((await run(FCC.replace('gewald/disp 0.4', 'gewald/disp 0.4 mix/disp none'))).error)
+      .toContain('kspace_modify mix/disp none is not supported by kspace_style ewald/disp');
   });
 
   it('accepts per-type LJ cutoffs and refuses shift with flag_lj long', async () => {

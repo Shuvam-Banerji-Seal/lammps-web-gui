@@ -97,6 +97,15 @@ describe('kspace_style msm refusals (messages measured with native LAMMPS)', () 
   });
 });
 
+describe('msm/dielectric and lj/cut/coul/msm/dielectric (engine-gpl/dielectric)', () => {
+  it('both need atom style dielectric (msm_dielectric.cpp init, pair_lj_cut_coul_msm_dielectric.cpp init_style)', async () => {
+    const k = await run(ions(`${LJ}\nkspace_style msm/dielectric 1e-3\nrun 0`));
+    expect(k.error).toContain('msm/dielectric requires atom style dielectric');
+    const p = await run(ions('pair_style lj/cut/coul/msm/dielectric 5.0\npair_coeff * * 0.01 3.0\nkspace_style msm 1e-3\nrun 0'));
+    expect(p.error).toContain('Pair lj/cut/coul/msm/dielectric requires atom style dielectric');
+  });
+});
+
 describe('kspace_style msm set-up (measured with native LAMMPS)', () => {
   it('mesh 6 8 8: the mesh is moved to a power of 2 with a warning, and cutoff/adjust sets the Coulomb cutoff', async () => {
     // Measured with native LAMMPS: WARNING: Number of MSM mesh points changed to be a multiple of 2, then WARNING:

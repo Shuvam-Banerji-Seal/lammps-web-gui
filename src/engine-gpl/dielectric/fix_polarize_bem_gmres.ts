@@ -16,8 +16,7 @@ import { Fix } from '../../engine/fix/fix';
 import { parseNum } from '../../engine/force/util';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { dielArrays, dielectricPairField, epsilon0e2q, fieldAt, type DielArrays } from './common';
-import { KSpacePPPMDielectric } from './pppm_dielectric';
+import { dielArrays, dielectricKSpaceField, keepingVirial, dielectricPairField, epsilon0e2q, fieldAt, type DielArrays } from './common';
 
 const MY_4PI = 4 * Math.PI;
 
@@ -71,10 +70,10 @@ export class FixPolarizeBEMGMRES extends Fix {
     this.sys.computeForcesInRun({});
   }
 
-  /** The kspace field (pppm/dielectric) when the fix uses kspace (fix_modify kspace yes), else null. */
+  /** The kspace field (pppm/dielectric or msm/dielectric) when the fix uses kspace (fix_modify kspace yes), else null. */
   private kspaceField(): Float64Array | null {
     const k = this.sys.ff.kspace;
-    return k && this.kspaceOn && k instanceof KSpacePPPMDielectric ? k.efield : null;
+    return k && this.kspaceOn ? dielectricKSpaceField(k as { name: string; efield?: Float64Array }) : null;
   }
 
   /** The field at owned atom i (pair plus kspace) into out. */
@@ -88,7 +87,7 @@ export class FixPolarizeBEMGMRES extends Fix {
     this.checkStyles();
     // LAMMPS: the induced charges are set after the run's force evaluation; the last evaluation inside the solver
     // (update_residual at the final induced charges) leaves the energies and forces the run reports
-    this.computeInduced();
+    keepingVirial(this.sys.ff.acc, () => this.computeInduced());
   }
 
   preForce(): void {
@@ -101,7 +100,7 @@ export class FixPolarizeBEMGMRES extends Fix {
   private checkStyles(): void {
     if (!pairFieldOf(this.sys)) throw new StyleError(`Pair style not compatible with fix ${this.id} (${this.style})`);
     const k = this.sys.ff.kspace;
-    if (k && this.kspaceOn && !(k instanceof KSpacePPPMDielectric)) throw new StyleError(`Kspace style not compatible with fix ${this.id} (${this.style})`);
+    if (k && this.kspaceOn && !dielectricKSpaceField(k as { name: string; efield?: Float64Array })) throw new StyleError(`Kspace style not compatible with fix ${this.id} (${this.style})`);
   }
 
   private computeInduced(): void {

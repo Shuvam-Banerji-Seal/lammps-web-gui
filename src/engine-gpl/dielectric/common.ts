@@ -10,7 +10,7 @@
  * pair or kspace style exposes to the polarization fixes.
  */
 import { DIEL_AREA, DIEL_CURVATURE, DIEL_ED, DIEL_EM, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle } from '../../engine/atoms';
-import { StyleError } from '../../engine/force/types';
+import { StyleError, type Accum } from '../../engine/force/types';
 import type { SimState } from '../../engine/types';
 
 /** Owned per-atom arrays of atom_style dielectric (read them after each change: a sort or an append can reallocate). */
@@ -66,6 +66,14 @@ export const epsilon0e2q = (unit: string): number => {
 export const dielectricPairField = (p: { name: string; efield?: Float64Array } | null): Float64Array | null =>
   p && /\/dielectric$/.test(p.name) && p.efield ? p.efield : null;
 
+/**
+ * The electric field array of a dielectric kspace style (pppm/dielectric, msm/dielectric: the fixes of
+ * fix_polarize_bem_gmres.cpp, fix_polarize_bem_icc.cpp and fix_polarize_functional.cpp take efield from either); null
+ * for any other style.
+ */
+export const dielectricKSpaceField = (k: { name: string; efield?: Float64Array } | null): Float64Array | null =>
+  k && (k.name === 'pppm/dielectric' || k.name === 'msm/dielectric') && k.efield ? k.efield : null;
+
 /** The field arrays of a dielectric pair or kspace style: E per owned atom (3 values), the pair's and kspace's own. */
 export interface DielectricField {
   /** Electric field at each owned atom from the pair term (3 per atom). */
@@ -76,4 +84,18 @@ export interface DielectricField {
 export const fieldAt = (pairField: Float64Array, kspaceField: Float64Array | null, i: number, out: Float64Array): void => {
   out[0] = pairField[3 * i]; out[1] = pairField[3 * i + 1]; out[2] = pairField[3 * i + 2];
   if (kspaceField) { out[0] += kspaceField[3 * i]; out[1] += kspaceField[3 * i + 1]; out[2] += kspaceField[3 * i + 2]; }
+};
+
+/**
+ * Runs fn (a polarization fix's force evaluations at setup) and puts back the pair and kspace virials of the force
+ * evaluation before it. As native LAMMPS does (src/DIELECTRIC/fix_polarize_bem_gmres.cpp and fix_polarize_bem_icc.cpp
+ * compute_induced_charges at b332f28: "int eflag = ENERGY_GLOBAL | ENERGY_ONLY; int vflag = VIRIAL_NONE;"): the
+ * evaluations inside the solver tally the energies only, so the pressure after setup is that of the run's own force
+ * evaluation, before the induced charges were set.
+ */
+export const keepingVirial = (acc: Accum, fn: () => void): void => {
+  const virial = Float64Array.from(acc.virial), vlong = Float64Array.from(acc.vlong);
+  fn();
+  acc.virial.set(virial);
+  acc.vlong.set(vlong);
 };

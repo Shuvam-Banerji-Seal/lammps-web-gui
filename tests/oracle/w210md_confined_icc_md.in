@@ -1,0 +1,30 @@
+# oracle: kspace_style msm/dielectric with its default pressure/scalar yes (the scalar branch of lj/cut/coul/msm/dielectric: the tally carries the Coulomb part of the force, the LJ forces go to f at once and E_coul/3 joins the diagonal) and fix polarize/bem/icc every step, the two confined ions of examples/PACKAGES/dielectric moving (fix nve), boundary p p f, order 4, mesh 16 16 16, cutoff/adjust no, 4 steps.
+# oracle-inputs: w71diel_confined.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.5e-14, atoms 1.0e-18.
+units           lj
+atom_style      dielectric
+atom_modify     map array
+dimension       3
+boundary        p p f
+read_data       w71diel_confined.data
+group interface type 1
+group ions type 2 3
+group cations type 2
+group anions type 3
+set group cations epsilon 10
+set group anions epsilon 10
+pair_style      lj/cut/coul/msm/dielectric 1.122 10.0
+pair_coeff      * * 1.0 1.0
+pair_coeff      1 1 0.0 1.0
+kspace_style    msm/dielectric 0.0001
+kspace_modify   order 4 mesh 16 16 16 cutoff/adjust no
+neigh_modify    every 1 delay 0 check yes one 5000
+fix             1 ions nve
+fix             3 interface polarize/bem/icc 1 1.0e-4
+fix_modify      3 itr_max 50 dielectrics -10 15 1.0 0.866 NULL
+thermo          2
+thermo_style    custom step temp evdwl ecoul elong epair press
+thermo_modify   flush yes format float %.15g
+timestep        0.005
+run             4

@@ -12,8 +12,7 @@ import { Fix } from '../../engine/fix/fix';
 import { parseNum } from '../../engine/force/util';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { dielArrays, dielectricPairField, epsilon0e2q, fieldAt } from './common';
-import { KSpacePPPMDielectric } from './pppm_dielectric';
+import { dielArrays, dielectricKSpaceField, keepingVirial, dielectricPairField, epsilon0e2q, fieldAt } from './common';
 import { setDielectricParams } from './fix_polarize_bem_gmres';
 
 const MY_4PI = 4 * Math.PI;
@@ -45,10 +44,10 @@ export class FixPolarizeBEMICC extends Fix {
     this.sys.computeForcesInRun({});
   }
 
-  /** The kspace field (pppm/dielectric) when the fix uses kspace, else null. */
+  /** The kspace field (pppm/dielectric or msm/dielectric) when the fix uses kspace, else null. */
   private kspaceField(): Float64Array | null {
     const k = this.sys.ff.kspace;
-    return k && this.kspaceOn && k instanceof KSpacePPPMDielectric ? k.efield : null;
+    return k && this.kspaceOn ? dielectricKSpaceField(k as { name: string; efield?: Float64Array }) : null;
   }
 
   private pairE(): Float64Array {
@@ -60,10 +59,10 @@ export class FixPolarizeBEMICC extends Fix {
   setup(): void {
     this.pairE();
     const k = this.sys.ff.kspace;
-    if (k && this.kspaceOn && !(k instanceof KSpacePPPMDielectric)) throw new StyleError(`Kspace style not compatible with fix ${this.id} (${this.style})`);
+    if (k && this.kspaceOn && !dielectricKSpaceField(k as { name: string; efield?: Float64Array })) throw new StyleError(`Kspace style not compatible with fix ${this.id} (${this.style})`);
     // LAMMPS leaves the energies and forces of the last field evaluation inside the solver (no force
     // evaluation follows the setup in Verlet::setup), so they are not recomputed with the final charges here
-    this.computeInduced();
+    keepingVirial(this.sys.ff.acc, () => this.computeInduced());
   }
 
   preForce(): void {

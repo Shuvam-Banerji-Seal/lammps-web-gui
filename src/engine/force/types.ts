@@ -251,6 +251,8 @@ export interface StyleContext {
    * that needs a fix at pair_coeff time (pair exp6/rx needs fix rx) reads its data through it.
    */
   fixOf?(style: string): Fix | null;
+  /** The fix with this ID (null when there is none). */
+  fixById?(id: string): Fix | null;
 }
 
 /** Equilibrium bond lengths and angles (degrees) by type, for Pair.linkBonded. */

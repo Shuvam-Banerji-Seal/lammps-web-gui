@@ -27,9 +27,10 @@ describe('pairs ported in batch 6', () => {
     expect(p.extract('pvector')).toBeInstanceOf(Float64Array);
   });
 
-  it('srp/react is refused by name, not run as a no-op (pair srp and its fix SRP are ported: w206sr_* oracle cases)', () => {
+  it('pair srp and srp/react and their fixes SRP and SRPREACT are registered (w206sr_* and w207sr_* oracle cases)', () => {
     expect(SRP_PAIRS.srp().name).toBe('srp');
-    expect(() => SRP_PAIRS['srp/react']()).toThrow(/pair_style srp\/react is not supported/);
+    expect(SRP_PAIRS['srp/react']().name).toBe('srp/react');
     expect(typeof SRP_FIXES.SRP).toBe('function');
+    expect(typeof SRP_FIXES.SRPREACT).toBe('function');
   });
 });

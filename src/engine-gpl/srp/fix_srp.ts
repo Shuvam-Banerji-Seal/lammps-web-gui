@@ -52,7 +52,9 @@ export const imageChains = (owner: Int32Array, nall: number, nlocal: number): { 
 };
 
 export class FixSRP extends Fix {
-  readonly style = 'SRP';
+  readonly style: string = 'SRP';
+  /** the pair style named in the messages (native pair_name) */
+  protected pairName = 'srp';
   /** the bond type the bond particles represent (0: every bond) and the bond particle type, set by pair srp */
   btype = -1;
   bptype = -1;
@@ -72,8 +74,8 @@ export class FixSRP extends Fix {
   init(): void {
     const sys = this.sys;
     const pair = sys.ff.pair;
-    if (!pair || !pair.name.startsWith('hybrid')) throw new StyleError('Cannot use pair srp without pair_style hybrid');
-    if (sys.fixes.some((f) => f.style.startsWith('rigid'))) throw new StyleError('Pair srp is not compatible with rigid fixes.');
+    if (!pair || !pair.name.startsWith('hybrid')) throw new StyleError(`Cannot use pair ${this.pairName} without pair_style hybrid`);
+    if (sys.fixes.some((f) => f.style.startsWith('rigid'))) throw new StyleError(`Pair ${this.pairName} is not compatible with rigid fixes.`);
     const ntypes = sys.state.ntypes;
     if (this.bptype < 1 || this.bptype > ntypes) throw new StyleError('Illegal bond particle type');
     // bond particles only interact with each other: exclude every other type (native: types 1 .. ntypes-1)
@@ -84,7 +86,7 @@ export class FixSRP extends Fix {
     }
     // pair srp init_style: "bond particles do not belong to group all but thermo normalization is by nall"
     sys.thermo.normUser = false;
-    sys.log('Thermo normalization turned off by pair srp');
+    sys.log(`Thermo normalization turned off by pair ${this.pairName}`);
   }
 
   /** Native has no setup(): nothing after the setup forces. */
@@ -160,7 +162,7 @@ export class FixSRP extends Fix {
     const cutneighmaxSrp = nb.cutneighmax + 0.51 * rmax;
     const cutghostmin = nb.cutghost;
     if (cutneighmaxSrp > cutghostmin) {
-      throw new StyleError(`Communication cutoff too small for fix SRP. Need ${cutneighmaxSrp.toPrecision(8)}, current ${cutghostmin.toPrecision(8)}`);
+      throw new StyleError(`Communication cutoff too small for fix ${this.style}. Need ${cutneighmaxSrp.toPrecision(8)}, current ${cutghostmin.toPrecision(8)}`);
     }
     // the new atoms into the box, sorted, ghosts and neighbor lists again (pbc, exchange, sort, borders, build)
     sys.atomsChanged();
@@ -191,7 +193,7 @@ export class FixSRP extends Fix {
       if (s.type[ii] !== this.bptype) continue;
       const px = s.x[3 * ii], py = s.x[3 * ii + 1], pz = s.x[3 * ii + 2];
       const a = map[tags[2 * ii]], b = map[tags[2 * ii + 1]];
-      if (!(a >= 0) || !(b >= 0)) throw new StyleError('Fix SRP failed to map atom');
+      if (!(a >= 0) || !(b >= 0)) throw new StyleError(`Fix ${this.style} failed to map atom`);
       const i = closestImage(xall, head, next, a, px, py, pz);
       const j = closestImage(xall, head, next, b, px, py, pz);
       s.x[3 * ii] = (xall[3 * i] + xall[3 * j]) * 0.5;

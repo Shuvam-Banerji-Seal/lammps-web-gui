@@ -3,7 +3,7 @@ import type { Fix } from '../fix/fix';
 import type { LevelSelect, PerAtomTerm } from '../force/forcefield';
 import { PairHybrid } from '../force/pair/hybrid';
 import { clearAccum, newAccum, StyleError, type Accum } from '../force/types';
-import { yieldNow, type RunHooks } from './verlet';
+import { computeSetup, yieldNow, type RunHooks } from './verlet';
 import { restartDue } from '../commands/restart';
 import { haltRequested } from './halt';
 
@@ -249,6 +249,7 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
   totals();
   sys.forcesCurrent();
   sys.assignDynamicGroups(true);
+  computeSetup(sys);
   for (const f of sys.fixes) f.setup();
   sys.refreshComputes();
   hooks.afterSetup();

@@ -198,7 +198,7 @@ export class System {
 
   styleContext(): StyleContext {
     const freeze = this.fixes.find((f) => f.style === 'freeze');
-    return { s: this._state, readFile: (n) => this.readFile(n), log: (t) => this.log(t), ghostVelocity: this.ghostVelocity, freezeGroupBit: freeze ? freeze.groupBit : 0, newtonPair: this.newtonPair, equalVariable: (n: string) => this.equalVariable(n), xlattice: this.lattice ? this.lattice.spacing[0] : 1, addFix: (make) => this.addStyleFix(make), fixOf: (st) => this.fixes.find((f) => f.style === st) ?? null };
+    return { s: this._state, readFile: (n) => this.readFile(n), log: (t) => this.log(t), ghostVelocity: this.ghostVelocity, freezeGroupBit: freeze ? freeze.groupBit : 0, newtonPair: this.newtonPair, equalVariable: (n: string) => this.equalVariable(n), xlattice: this.lattice ? this.lattice.spacing[0] : 1, addFix: (make) => this.addStyleFix(make), fixOf: (st) => this.fixes.find((f) => f.style === st) ?? null, fixById: (id) => this.fixes.find((f) => f.id === id) ?? null };
   }
 
   /** A fix a style adds at its own command time (StyleContext.addFix): replaces a fix with the same ID. */

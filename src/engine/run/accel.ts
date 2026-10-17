@@ -4,7 +4,7 @@ import { PairLJCut } from '../force/pair/lj_cut';
 import { newPairTable } from '../pairs';
 import { clearAccum } from '../force/types';
 import { isResident, MAX_CHUNK, type ResidentBackend } from '../md';
-import { yieldNow } from './verlet';
+import { computeSetup, yieldNow } from './verlet';
 import { haltRequested } from './halt';
 import { CpuForceBackend } from '../cpu/forces';
 
@@ -105,6 +105,7 @@ export const runAccelerated = async (sys: System, n: number, a: Accel, hooks: Ac
   for (const f of sys.fixes) f.setupPreForce?.();
   sys.bump();
   store(sys, await a.backend.compute(s, a.table));
+  computeSetup(sys);
   for (const f of sys.fixes) f.setup();
   sys.refreshComputes();
   hooks.afterSetup();

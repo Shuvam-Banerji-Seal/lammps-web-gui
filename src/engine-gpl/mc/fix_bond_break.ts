@@ -24,7 +24,8 @@ export class FixBondBreak extends Fix {
   private readonly cutsq: number;
   private readonly fraction: number;
   private readonly rng: RanMars;
-  private breakcount = 0;
+  /** bonds broken in the last event (fix srp/react reads and resets it, as native) */
+  breakcount = 0;
   private breakcounttotal = 0;
 
   /** fix ID group-ID bond/break N btype rmin [prob fraction seed] (docs.lammps.org/fix_bond_break.html). */

@@ -9,7 +9,7 @@
 [![Live Demo](https://img.shields.io/badge/▶_Open_the_app-shuvam--banerji--seal.github.io-blue?style=for-the-badge)](https://shuvam-banerji-seal.github.io/lammps-web-gui/)
 [![CI](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/ci.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/ci.yml)
 [![Deploy](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/deploy.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/deploy.yml)
-[![Native parity cases](https://img.shields.io/badge/native_LAMMPS_parity_cases-1964-brightgreen)](#-checked-against-native-lammps)
+[![Native parity cases](https://img.shields.io/badge/native_LAMMPS_parity_cases-2027-brightgreen)](#-checked-against-native-lammps)
 [![LAMMPS examples](https://img.shields.io/badge/LAMMPS_examples_that_run-650_of_882-brightgreen)](#-checked-against-native-lammps)
 [![License: Educational / Non-Commercial](https://img.shields.io/badge/License-Educational%20%2F%20Non--Commercial-blue.svg)](LICENSE)
 [![Commercial licence](https://img.shields.io/badge/Commercial_use-licence_required-orange.svg)](COMMERCIAL.md)
@@ -27,17 +27,27 @@ LAMMPS Web GUI is a browser-based workbench for [LAMMPS](https://www.lammps.org/
 
 ### 🧪 Checked against native LAMMPS
 
-The notebook's engine is written in TypeScript for the browser. Its results are compared with native LAMMPS (the same source commit, b332f28) on **1964 parity cases**: thermo output and per-atom positions, velocities and forces are compared at 1e-8 relative or tighter in most cases (each case states its tolerance and why when it is looser). Of the **882 input scripts in the LAMMPS `examples/` tree, 650 run** in the browser (runs shortened to a few steps; the rest need native libraries, Python, MPI partitions or features not ported yet, and stop with an error that names them). Styles ported from the LAMMPS C++ source live in a separate GPL-2.0 module, [`src/engine-gpl`](src/engine-gpl/README.md).
+The notebook's engine is written in TypeScript for the browser. Its results are compared with native LAMMPS (the same source commit, b332f28) on **2027 parity cases**: thermo output and per-atom positions, velocities and forces are compared at 1e-8 relative or tighter in most cases (each case states its tolerance and why when it is looser). Of the **882 input scripts in the LAMMPS `examples/` tree, 650 run** in the browser (runs shortened to a few steps; the rest need native libraries, Python, MPI partitions or features not ported yet, and stop with an error that names them). Styles ported from the LAMMPS C++ source live in a separate GPL-2.0 module, [`src/engine-gpl`](src/engine-gpl/README.md).
 
 ---
 
 ## 🎬 Demo
 
-[![LAMMPS Web GUI film: a peptide in water rendered by the engine's dump image, the MD Notebook running a Lennard-Jones melt, and the 3D Structure Viewer](docs/videos/app-demo-preview.webp)](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/app-demo.mp4)
+[![LAMMPS Web GUI film: a granular pour, an oxDNA ring, micelles, a running crack and a solvated peptide simulated by the app's engine, then how the app works, how it is checked against native LAMMPS, how it uses your own CPU and GPU, its themes and its four modules](docs/videos/lammps-web-gui-film-preview.webp)](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/lammps-web-gui-film.mp4)
 
-**▶ [Watch the 84-second film with sound](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/app-demo.mp4)** (1920×1080, H.264/AAC; also in the repo at [`public/videos/app-demo.mp4`](public/videos/app-demo.mp4)).
+**▶ [Watch the film with sound (2 min 47 s)](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/lammps-web-gui-film.mp4)** (1920×1080, H.264/AAC; also in the repo at [`public/videos/lammps-web-gui-film.mp4`](public/videos/lammps-web-gui-film.mp4)).
 
-*In three acts: **Build** (starter templates, branching flowcharts, the script check that cites docs.lammps.org, the CMake compiler helper), **Run** (a 4000-atom Lennard-Jones melt in the MD Notebook with live thermo output and a 3D view) and **See** (trajectory playback, turntables, RDF/MSD analysis). The opening and closing shots are a peptide in water rendered by the engine's own `dump image` with depth cueing, ambient occlusion and defocus. The film was cut with [Remotion](https://www.remotion.dev/) and scored with original synthesized music and sound design. App footage was captured frame by frame in headless Chromium.*
+*In seven parts:*
+
+- ***Cold open*** *— five simulations run by the app's own engine and rendered as 3D instanced atoms: a granular pour (2,814 spheres, `fix pour`, `gran/hooke/history`), a 74-base-pair oxDNA2 ring under Langevin dynamics, surfactants assembling into micelles, a crack running through a Lennard-Jones solid (8,141 atoms) and a CHARMM peptide in water (PPPM, SHAKE).*
+- ***How it works*** *— the pipeline in one browser tab: the Script Builder writes the input, the interpreter reads it line by line as LAMMPS does, styles load on first use, forces run on your device, the integrator steps and the 3D viewer shows the atoms. No server, no install, no upload.*
+- ***True to LAMMPS*** *— the script check that cites docs.lammps.org, the `examples/melt` thermo output printed digit for digit as native LAMMPS prints it, the native parity cases, the GPL-2.0 module of styles ported from the LAMMPS C++, and the C library math (`log`, `sin`, `cos`, `exp`, `pow`) ported from glibc, so the engine computes them as the native binary does rather than with the browser's `Math` functions, which differ between browser versions.*
+- ***Your hardware*** *— worker threads sharing one copy of the atoms (`SharedArrayBuffer`), and WebGPU compute shaders where the browser has them.*
+- ***Themes*** *— the five themes side by side.*
+- ***Tour*** *— the Script Builder, the CMake compiler helper, the Structure Viewer and the MD Notebook.*
+- ***End card*** *— a QR code that opens this film, and the links to the app, the source and the LAMMPS manual.*
+
+*Cut with [Remotion](https://www.remotion.dev/) and three.js, scored with original synthesized music. The app footage is the production build captured in headless Chromium. The earlier 84-second film is still at [`public/videos/app-demo.mp4`](public/videos/app-demo.mp4).*
 
 ## 📸 Screenshots
 

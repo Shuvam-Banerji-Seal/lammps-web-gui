@@ -13,12 +13,12 @@
 import { Fix } from '../../engine/fix/fix';
 import { parseNum } from '../../engine/force/util';
 import { StyleError } from '../../engine/force/types';
-import { erfcExact } from '../../engine/force/erfc';
 import { NEIGHMASK } from '../../engine/neighbor';
 import type { System } from '../../engine/system';
 import { dielArrays, dielectricPairField } from './common';
 import { setDielectricParams } from './fix_polarize_bem_gmres';
 import { exp as libmExp } from '../libm/exp';
+import { erfc as libmErfc } from '../libm/erf';
 
 const MY_PIS = Math.sqrt(Math.PI);
 const MY_4PI = 4 * Math.PI;
@@ -93,13 +93,13 @@ export class FixPolarizeFunctional extends Fix {
   }
 
   /** Real Green's function erfc(g r) / r. */
-  private greensReal(r: number): number { return erfcExact(this.gEwald * r) / r; }
+  private greensReal(r: number): number { return libmErfc(this.gEwald * r) / r; }
 
   /** Gradient of the real Green's function as a vector (grad_greens_real_factor times d). */
   private gradGreensReal(dx: number, dy: number, dz: number, out: Float64Array): void {
     const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const alpha = this.gEwald * r;
-    const factor = erfcExact(alpha) + 2.0 * alpha / MY_PIS * libmExp(-(alpha * alpha));
+    const factor = libmErfc(alpha) + 2.0 * alpha / MY_PIS * libmExp(-(alpha * alpha));
     const r3 = r * r * r;
     const real = factor * (-1.0 / r3);
     out[0] = real * dx; out[1] = real * dy; out[2] = real * dz;

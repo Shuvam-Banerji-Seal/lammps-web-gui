@@ -9,10 +9,10 @@
  * Copyright (2003) Sandia Corporation, distributed under the GNU General Public License, version 2 (GPL-2.0).
  * This file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
-import { erfcExact as erfcLocal } from '../../engine/force/erfc';
 import { sin as libmSin } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
+import { erfc as libmErfc } from '../libm/erf';
 
 /** Offset added before int() in particle_map (pppm_disp.cpp: "add/subtract OFFSET to avoid int(-0.75) = 0"). */
 export const OFFSET = 16384;
@@ -263,7 +263,7 @@ export const greenDispersion = (mg: MeshGeom, g: number, ord: number): Float64Ar
           const denominator = gfDenom(snx2, sny2, snz2, gb, ord);
           const rtsqk = Math.sqrt(sqk);
           const term = (1 - 2 * sqk * inv2ew * inv2ew) * sx * sy * sz
-            + 2 * sqk * rtsqk * inv2ew * inv2ew * inv2ew * rtpi * erfcLocal(rtsqk * inv2ew);
+            + 2 * sqk * rtsqk * inv2ew * inv2ew * inv2ew * rtpi * libmErfc(rtsqk * inv2ew);
           out[n++] = numerator * term * wx * wy * wz / denominator;
         } else out[n++] = 0.0;
       }
@@ -286,7 +286,7 @@ export const virialDispersion = (mg: MeshGeom, g: number): Float64Array => {
       const b = 0.5 * Math.sqrt(sqk) * gewinv;
       const bs = b * b;
       const bt = bs * b;
-      const erft = 2 * bt * rtpi * erfcLocal(b);
+      const erft = 2 * bt * rtpi * libmErfc(b);
       const expt = libmExp(-bs);
       const nom = erft - 2 * bs * expt;
       const denom = nom + expt;
@@ -359,7 +359,7 @@ export const qoptDispersionIk = (N: [number, number, number], prd: [number, numb
               const dot2 = qx * qx + qy * qy + qz * qz;
               const rtdot2 = Math.sqrt(dot2);
               let term = (1 - 2 * dot2 * inv2ew * inv2ew) * sx * sy * sz
-                + 2 * dot2 * rtdot2 * inv2ew * inv2ew * inv2ew * rtpi * erfcLocal(rtdot2 * inv2ew);
+                + 2 * dot2 * rtdot2 * inv2ew * inv2ew * inv2ew * rtpi * libmErfc(rtdot2 * inv2ew);
               term *= g * g * g;
               const u2 = Math.pow(wx * wy * wz, 2.0);
               sum1 += term * term * Math.PI * Math.PI * Math.PI / 9.0 * dot2;

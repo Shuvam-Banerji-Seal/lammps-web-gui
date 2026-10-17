@@ -18,7 +18,6 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, sbOf } from '../../engine/neighbor';
 import { buildOneFive } from '../../engine/atoms';
-import { erfcExact } from '../../engine/force/erfc';
 import {
   checkPmeOrder, cmpFromRpole, defaultGridSize, factorable, influence, makePmeGrid, mutualRecipField, multipoleKspace,
   permanentRecipField, pmeFill, polarKspaceForces, type PmeFill, type PmeGrid,
@@ -35,6 +34,7 @@ import { dispersionGridSize, dispersionKspace, makeDispersionGrid } from './disp
 import { multipoleRealHippo, type HippoMpoleSites } from './hippo_mpole';
 import type { HippoPolarAtoms } from './hippo_polar';
 import { pow as libmPow } from '../libm/pow';
+import { erfc as libmErfc } from '../libm/erf';
 
 /** pvector order of pair amoeba (pair_amoeba.cpp): hal, repulse, disp, mpole, polar, qxfer. */
 const NVECTOR = 6;
@@ -54,14 +54,14 @@ export const ewaldcof = (cutoff: number): number => {
     i++;
     x *= 2.0;
     const y = x * cutoff;
-    ratio = erfcExact(y) / cutoff;
+    ratio = libmErfc(y) / cutoff;
   }
   const k = i + 60;
   let xlo = 0.0, xhi = x;
   for (let m = 0; m < k; m++) {
     x = (xlo + xhi) / 2.0;
     const y = x * cutoff;
-    ratio = erfcExact(y) / cutoff;
+    ratio = libmErfc(y) / cutoff;
     if (ratio >= eps) xlo = x;
     else xhi = x;
   }

@@ -15,7 +15,6 @@
  */
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
-import { erfcExact } from '../../engine/force/erfc';
 import {
   combBijD, combBij, combBsi, combDi, combDj, combFc, combFc2, combFc2D, combFc3, combFc3D, combFcD,
   combGijk, combGijkD, cube, powint, readCombEntries, setupCombParams, square,
@@ -24,6 +23,7 @@ import {
 import { cos as libmCos } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
+import { erfc as libmErfc } from '../libm/erf';
 
 const MY_PIS = Math.sqrt(Math.PI);
 const ALF = 0.20;
@@ -214,7 +214,7 @@ export class PairComb extends Pair {
     const erpaw = new Float64Array(NSM * 2);
     for (let i = 0; i < NSM; i++) {
       const r = dra * i + drin;
-      erpaw[2 * i] = erfcExact(r * alf);
+      erpaw[2 * i] = libmErfc(r * alf);
       erpaw[2 * i + 1] = libmExp(-r * r * alf * alf);
     }
     return { intype, nntypes, fafb, dfafb, erpaw };
@@ -225,8 +225,8 @@ export class PairComb extends Pair {
     const alf = ALF;
     let rcoul = 0.0;
     for (const p of this.params) if (p.lcut > rcoul) rcoul = p.lcut;
-    const fac11 = (erfcExact(rcoul * alf) / rcoul / rcoul + 2.0 * alf / MY_PIS * libmExp(-alf * alf * rcoul * rcoul) / rcoul) * esucon / rcoul;
-    const fac11e = (erfcExact(rcoul * alf) / rcoul) * esucon;
+    const fac11 = (libmErfc(rcoul * alf) / rcoul / rcoul + 2.0 * alf / MY_PIS * libmExp(-alf * alf * rcoul * rcoul) / rcoul) * esucon / rcoul;
+    const fac11e = (libmErfc(rcoul * alf) / rcoul) * esucon;
     const potal = -(alf / MY_PIS * esucon + fac11e * 0.5);
     return { potal, fac11, fac11e };
   }

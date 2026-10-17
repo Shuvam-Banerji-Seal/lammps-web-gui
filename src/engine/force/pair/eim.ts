@@ -1,6 +1,5 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
-import { erfcExact } from '../erfc';
 import { libm } from '../../libm';
 
 /*
@@ -246,8 +245,8 @@ export class PairEIM extends Pair {
     }
     if (!this.file) throw new StyleError(`pair_style ${this.name} needs a pair_coeff command with an EIM potential file`);
     // cutoff function constants: erfc(G3) and erfc(G2) - erfc(G3) (see the header comment)
-    this.cutErfc3 = erfcExact(this.file.G3);
-    this.cutDenom = erfcExact(this.file.G2) - this.cutErfc3;
+    this.cutErfc3 = libm.erfc(this.file.G3);
+    this.cutDenom = libm.erfc(this.file.G2) - this.cutErfc3;
     if (!(this.cutDenom > 0)) throw new StyleError(`EIM potential file ${this.file.name}: global values G2 and G3 do not define a cutoff function`);
   }
 
@@ -308,7 +307,7 @@ export class PairEIM extends Pair {
   private fc(r: number, rp: number, rc: number): number {
     const g2 = this.file!.G2, g3 = this.file!.G3;
     const arg = g2 + ((g3 - g2) * (r - rp)) / (rc - rp);
-    return (erfcExact(arg) - this.cutErfc3) / this.cutDenom;
+    return (libm.erfc(arg) - this.cutErfc3) / this.cutDenom;
   }
 
   /** d fc / dr. */

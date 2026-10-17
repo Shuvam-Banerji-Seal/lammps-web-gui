@@ -5,30 +5,12 @@
  * Stegun 7.1.14), read with cubic Hermite interpolation using the exact
  * derivative erfc'(x) = -2/sqrt(pi) exp(-x^2). Beyond the table erfc < 1e-17.
  */
-import { libm } from '../libm';
+import { erfcExact, libm } from '../libm';
 
 const TWO_OVER_SQRTPI = 2 / Math.sqrt(Math.PI);
 
-/** Direct evaluation (slow, for the table). */
-export const erfcExact = (x: number): number => {
-  if (x < 0) return 2 - erfcExact(-x);
-  if (x < 2) {
-    // erf(x) = 2/sqrt(pi) sum_n (-1)^n x^(2n+1) / (n! (2n+1))
-    let term = x, sum = x;
-    const x2 = x * x;
-    for (let n = 1; n < 200; n++) {
-      term *= -x2 / n;
-      const t = term / (2 * n + 1);
-      sum += t;
-      if (Math.abs(t) < 1e-18 * Math.abs(sum)) break;
-    }
-    return 1 - TWO_OVER_SQRTPI * sum;
-  }
-  // erfc(x) = exp(-x^2)/sqrt(pi) * 1/(x + (1/2)/(x + 1/(x + (3/2)/(x + 2/(x + ...)))))
-  let f = x;
-  for (let k = 400; k >= 1; k--) f = x + (k / 2) / f;
-  return libm.exp(-x * x) / Math.sqrt(Math.PI) / f;
-};
+/** Direct evaluation (slow, for the table): defined with the libm table, which uses it outside a session. */
+export { erfcExact };
 
 const XMAX = 6.25;
 const N = 1600;            // h = 1/256

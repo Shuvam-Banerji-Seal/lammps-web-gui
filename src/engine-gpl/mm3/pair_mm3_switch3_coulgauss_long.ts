@@ -7,9 +7,10 @@
 import { Pair, PairParams, StyleError, mixDistance, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
-import { erfcExact, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../../engine/force/erfc';
+import { erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../../engine/force/erfc';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
+import { erfc as libmErfc } from '../libm/erf';
 
 /**
  * Pair style mm3/switch3/coulgauss/long (pair_mm3_switch3_coulgauss_long.cpp): the MM3 van der Waals term with a
@@ -200,10 +201,10 @@ export class PairMM3Switch3CoulGaussLong extends Pair {
           r6inv = r2inv * r2inv * r2inv;
           forcelj -= 6.0 * this.lj4[lt] * r6inv;
           if (this.lj2[lt] !== 0.0) {
-            // the Gaussian-smeared correction: erfc(lj2 r) with the libm erfc (erfcExact here)
+            // the Gaussian-smeared correction: erfc(lj2 r) with the C library's erfc (../libm/erf.ts)
             const rrij = this.lj2[lt] * r;
             const expn2 = libmExp(-rrij * rrij);
-            erfc2 = erfcExact(rrij);
+            erfc2 = libmErfc(rrij);
             prefactor2 = -qqrd2e * qtmp * q[j] / r;
             forcecoul2 = prefactor2 * (erfc2 + EWALD_F * rrij * expn2);
           }

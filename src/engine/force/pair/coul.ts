@@ -2,7 +2,7 @@ import { Pair, PairParams, StyleError, mixDistance, type PairCompute } from '../
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
-import { erfcExact, erfcPoly } from '../erfc';
+import { erfcPoly } from '../erfc';
 import { libm } from '../../libm';
 
 /*
@@ -227,14 +227,14 @@ export class PairCoulDsf extends PairCoul {
 
   protected initCoul(): void {
     const rc = this.cutGlobal, arc = this.alpha * rc;
-    const erc = erfcExact(arc);
+    const erc = libm.erfc(arc);
     this.eShift = erc / rc;
     this.fShift = erc / (rc * rc) + (TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
   }
 
   protected coulSelf(qi: number, qqrd2e: number): number {
     const arc = this.alpha * this.cutGlobal;
-    return -(erfcExact(arc) / this.cutGlobal + (this.alpha / Math.sqrt(Math.PI)) * (1 + libm.exp(-arc * arc))) * qi * qi * qqrd2e;
+    return -(libm.erfc(arc) / this.cutGlobal + (this.alpha / Math.sqrt(Math.PI)) * (1 + libm.exp(-arc * arc))) * qi * qi * qqrd2e;
   }
 
   protected coulPair(_t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
@@ -281,19 +281,19 @@ export class PairCoulWolf extends PairCoul {
 
   protected initCoul(): void {
     const rc = this.cutGlobal, arc = this.alpha * rc;
-    this.eShift = erfcExact(arc) / rc;
+    this.eShift = libm.erfc(arc) / rc;
     this.fShift = -(this.eShift + TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
   }
 
   protected coulSelf(qi: number, qqrd2e: number): number {
-    return -(erfcExact(this.alpha * this.cutGlobal) / (2 * this.cutGlobal) + this.alpha / Math.sqrt(Math.PI)) * qi * qi * qqrd2e;
+    return -(libm.erfc(this.alpha * this.cutGlobal) / (2 * this.cutGlobal) + this.alpha / Math.sqrt(Math.PI)) * qi * qi * qqrd2e;
   }
 
   protected coulPair(_t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
     const r = Math.sqrt(rsq);
     const grij = this.alpha * r;
     const ex = libm.exp(-grij * grij);
-    const erfcc = erfcExact(grij);
+    const erfcc = libm.erfc(grij);
     const pref = qqrd2e * qi * qj;
     return {
       e: pref * (erfcc / r - this.eShift),

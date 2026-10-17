@@ -2,7 +2,6 @@ import { Pair, StyleError, type PairCompute, type StyleContext } from '../types'
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { parseNum } from '../util';
-import { erfcExact } from '../erfc';
 import { libm } from '../../libm';
 
 /*
@@ -72,7 +71,7 @@ import { libm } from '../../libm';
  * symbolically; the d^8 truncation error is below 1e-11 relative at that bound).
  *
  * The 1/r real-space part follows the coul/wolf (pair_coul.ts) and Ewald real-space
- * conventions, with the erfc evaluated exactly (erfc.ts erfcExact), not from the
+ * conventions, with the C library's erfc (libm.erfc, as native calls erfc()), not from the
  * tables coul/long uses; the w38streitz_ewald_* oracle cases agree with native at 1e-9.
  * pair_modify table other than its default, shift and tail are refused.
  */
@@ -294,7 +293,7 @@ export class PairCoulStreitz extends Pair {
     const rc = this.cutGlobal;
     if (this.mode !== 'ewald') {
       const arc = this.alpha * rc;
-      this.eShiftW = erfcExact(arc) / rc;
+      this.eShiftW = libm.erfc(arc) / rc;
       this.fShiftW = -(this.eShiftW + TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
     }
     const nt = this.ntypes + 1;
@@ -347,7 +346,7 @@ export class PairCoulStreitz extends Pair {
     const alpha = this.alpha, g = this.gEwald;
     let ecoul = 0;
     // per owned atom: chi q + J q^2 / 2 (and the wolf self term)
-    const selfWolf = wolf ? -(erfcExact(alpha * rc) / (2 * rc) + alpha / Math.sqrt(Math.PI)) : 0;
+    const selfWolf = wolf ? -(libm.erfc(alpha * rc) / (2 * rc) + alpha / Math.sqrt(Math.PI)) : 0;
     for (let i = 0; i < pc.nlocal; i++) {
       const p = this.typeParams(type[i]);
       const qi = q[i];
@@ -389,7 +388,7 @@ export class PairCoulStreitz extends Pair {
         if (wolf) {
           const grij = alpha * r;
           const ex = libm.exp(-grij * grij);
-          const erfcc = erfcExact(grij);
+          const erfcc = libm.erfc(grij);
           const pref = C * qq;
           const Gc = cS * this.rcS[t] + pI.Z * qj * this.rcUj[t] + pJ.Z * qi * this.rcUi[t];
           const dGc = cS * this.rcDS[t] + pI.Z * qj * this.rcDUj[t] + pJ.Z * qi * this.rcDUi[t];
@@ -403,7 +402,7 @@ export class PairCoulStreitz extends Pair {
         } else {
           const grij = g * r;
           const ex = libm.exp(-grij * grij);
-          const erfcc = erfcExact(grij);
+          const erfcc = libm.erfc(grij);
           const pref = C * qq;
           e = pref * erfcc / r + C * G;
           fpair = (pref * (erfcc / (rsq * r) + (TWO_OVER_SQRTPI * g * ex) / rsq) - C * dG / r);

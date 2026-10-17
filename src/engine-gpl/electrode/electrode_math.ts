@@ -15,8 +15,8 @@ export const A3 = 1.421413741;
 export const A4 = -1.453152027;
 export const A5 = 1.061405429;
 
-import { erfcExact } from '../../engine/force/erfc';
 import { exp as libmExp } from '../libm/exp';
+import { erf as libmErf, erfc as libmErfc } from '../libm/erf';
 
 /** math_const.h values used by the ELECTRODE sources. */
 export const MY_PI = Math.PI;
@@ -87,20 +87,5 @@ export const invertDense = (a: Float64Array, n: number): boolean => {
   return true;
 };
 
-/**
- * erf(x) for the Slab2d correction: Taylor series for |x| < 2, and 1 - erfc beyond (erfc from the engine's
- * erfcExact). Accurate to about 1e-15 absolute.
- */
-export const erfAccurate = (x: number): number => {
-  if (x < 0) return -erfAccurate(-x);
-  if (x >= 2) return 1 - erfcExact(x);
-  let term = x, sum = x;
-  const x2 = x * x;
-  for (let n = 1; n < 200; n++) {
-    term *= -x2 / n;
-    const t = term / (2 * n + 1);
-    sum += t;
-    if (Math.abs(t) < 1e-18 * Math.abs(sum)) break;
-  }
-  return (2 / MY_PIS) * sum;
-};
+/** erf(x) for the Slab2d correction: the C library's, as native slab_2d.cpp calls erf() (../libm/erf.ts). */
+export const erfAccurate = (x: number): number => libmErf(x);

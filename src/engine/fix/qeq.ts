@@ -1,6 +1,5 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
-import { erfcExact } from '../force/erfc';
 import { PairCoulStreitz, mdfTaper, pointUval, slaterS } from '../force/pair/coul_streitz';
 import type { System } from '../system';
 import { gplHook } from '../gplHooks';
@@ -207,17 +206,8 @@ const taper = (x: number): number => {
 /** Constant of the qeq/dynamic charge dynamics (measured with native LAMMPS, black box). */
 const DYNAMIC_SCALE = 31.25;
 
-/**
- * erfc for the qeq/slater matrix (same values as erfcExact to 2.5e-16 relative). erfcExact's continued fraction runs
- * 400 terms for x >= 2, which made every image of the periodic matrix cost microseconds; 60 terms converge to the
- * same double (checked on x in [2, 8] against 400 terms).
- */
-const erfcSlater = (x: number): number => {
-  if (x < 2) return erfcExact(x);
-  let f = x;
-  for (let k = 60; k >= 1; k--) f = x + (k / 2) / f;
-  return libm.exp(-x * x) / Math.sqrt(Math.PI) / f;
-};
+/** erfc for the qeq/slater matrix: the C library's, as native fix_qeq_slater.cpp calls erfc() (libm.ts). */
+const erfcSlater = (x: number): number => libm.erfc(x);
 
 export class FixQeq extends Fix {
   readonly style: string;

@@ -14,10 +14,10 @@
  * and per-site data are indexed by owner while the geometry uses the copy. Not ported here: DIRECT and OPT
  * polarization and polar-predict.
  */
-import { erfcExact } from '../../engine/force/erfc';
 import { ELECTRIC, type MpoleSites, torque2force } from './multipole';
 import { hippoDirectField, hippoPolarReal, hippoPrecondTensors, type HippoPolarAtoms } from './hippo_polar';
 import { exp as libmExp } from '../libm/exp';
+import { erfc as libmErfc } from '../libm/erf';
 
 /** Constant converting q-Angstrom to Debye, used by the convergence test (amoeba_induce.cpp DEBYE). */
 const DEBYE = 4.80321;
@@ -175,7 +175,7 @@ const directField = (a: PolarAtoms, s: PolarSettings, pairs: readonly number[], 
     // Ewald damping of the reciprocal distance terms (amoeba_induce.cpp udirect2b): bn[0] = erfc(aewald r)/r and
     // bn[m] = ((2m-1) bn[m-1] + aesq2n exp(-(aewald r)^2)) / r^2 with aesq2n = (2 aewald^2)^m / (sqrt(pi) aewald)
     const ralpha = s.aewald * r;
-    const bn = [erfcExact(ralpha) * rr1, 0, 0, 0];
+    const bn = [libmErfc(ralpha) * rr1, 0, 0, 0];
     const aesq2 = 2.0 * s.aewald * s.aewald;
     let aesq2n = s.aewald > 0.0 ? 1.0 / (MY_PIS * s.aewald) : 0.0;
     const exp2a = libmExp(-ralpha * ralpha);
@@ -661,7 +661,7 @@ export const polarReal = (
     const rr9 = (7.0 * rr7) / r2;
     // Ewald damping (amoeba_polar.cpp polar_real): bn[0] = erfc(aewald r)/r, the recursion of the multipole term
     const ralpha = s.aewald * r;
-    const bn = [erfcExact(ralpha) / r, 0, 0, 0, 0];
+    const bn = [libmErfc(ralpha) / r, 0, 0, 0, 0];
     const alsq2 = 2.0 * s.aewald * s.aewald;
     let alsq2n = s.aewald > 0.0 ? 1.0 / (MY_PIS * s.aewald) : 0.0;
     const exp2a = libmExp(-ralpha * ralpha);

@@ -1,7 +1,8 @@
 /*
  * Complex FFTs for the PPPM solver: mixed radix 2, 3, 5 (kspace_modify.html:
  * the PPPM mesh "must be factorizable into powers of 2, 3, and 5"), written
- * from the textbook Cooley-Tukey decimation-in-time recursion. Data are
+ * as the textbook Stockham autosort (iterative, self-sorting) with radix-4,
+ * 2, 3 and 5 butterflies and per-size buffers, so a transform allocates nothing. Data are
  * interleaved (re, im) Float64Arrays. Forward transform uses exp(-2 pi i jk/n);
  * the inverse uses exp(+2 pi i jk/n) and is NOT normalized.
  */
@@ -22,11 +23,17 @@ export const nextFFTSize = (n: number): number => {
 
 interface Plan {
   n: number;
-  factors: number[];
-  /** twiddles exp(-2 pi i k/n), k = 0..n-1 */
+  /** radices of the stages, in order (4s first, then 2, 3, 5) */
+  radices: number[];
+  /** cos and sin of 2 pi k / n, k = 0..n-1 */
   cos: Float64Array;
   sin: Float64Array;
-  scratch: Float64Array;
+  /** ping-pong buffers (interleaved re, im) */
+  a: Float64Array;
+  b: Float64Array;
+  /** cos and sin of 2 pi / 3, 2 pi / 5 and 4 pi / 5 (the small butterflies) */
+  c3: number; s3: number;
+  c51: number; s51: number; c52: number; s52: number;
 }
 
 const plans = new Map<number, Plan>();
@@ -35,17 +42,119 @@ const plan = (n: number): Plan => {
   let p = plans.get(n);
   if (p) return p;
   if (!isFFTSize(n)) throw new Error(`FFT size ${n} must factor into 2, 3 and 5`);
-  const factors: number[] = [];
+  const radices: number[] = [];
   let m = n;
-  for (const f of [5, 3, 2]) while (m % f === 0) { factors.push(f); m /= f; }
+  while (m % 4 === 0) { radices.push(4); m /= 4; }
+  while (m % 2 === 0) { radices.push(2); m /= 2; }
+  while (m % 3 === 0) { radices.push(3); m /= 3; }
+  while (m % 5 === 0) { radices.push(5); m /= 5; }
   const cos = new Float64Array(n), sin = new Float64Array(n);
   for (let k = 0; k < n; k++) {
     cos[k] = libm.cos((2 * Math.PI * k) / n);
-    sin[k] = -libm.sin((2 * Math.PI * k) / n);
+    sin[k] = libm.sin((2 * Math.PI * k) / n);
   }
-  p = { n, factors, cos, sin, scratch: new Float64Array(2 * n) };
+  p = {
+    n, radices, cos, sin, a: new Float64Array(2 * n), b: new Float64Array(2 * n),
+    c3: libm.cos((2 * Math.PI) / 3), s3: libm.sin((2 * Math.PI) / 3),
+    c51: libm.cos((2 * Math.PI) / 5), s51: libm.sin((2 * Math.PI) / 5),
+    c52: libm.cos((4 * Math.PI) / 5), s52: libm.sin((4 * Math.PI) / 5),
+  };
   plans.set(n, p);
   return p;
+};
+
+/**
+ * One Stockham autosort stage of radix R (textbook self-sorting decimation in time, no bit reversal): for each of
+ * the n/R butterflies j, the inputs src[j + r n/R] times the twiddles w^(r k), k = j mod ns, go through a radix-R DFT
+ * and land at dst[(j - k) R + k + r ns]; ns is the size of the transforms combined so far. sign = -1 forward.
+ */
+const stage = (p: Plan, src: Float64Array, dst: Float64Array, R: number, ns: number, sign: number): void => {
+  const n = p.n, cos = p.cos, sin = p.sin;
+  const stride = n / R;          // input distance between the R points of a butterfly
+  const tw = n / (ns * R);       // twiddle table step: w^(r k) = exp(sign 2 pi i r k / (ns R))
+  for (let j = 0; j < stride; j++) {
+    const k = j % ns;
+    const out = (j - k) * R + k;
+    if (R === 4) {
+      let x0r = src[2 * j], x0i = src[2 * j + 1];
+      let x1r = src[2 * (j + stride)], x1i = src[2 * (j + stride) + 1];
+      let x2r = src[2 * (j + 2 * stride)], x2i = src[2 * (j + 2 * stride) + 1];
+      let x3r = src[2 * (j + 3 * stride)], x3i = src[2 * (j + 3 * stride) + 1];
+      if (k !== 0) {
+        let t = k * tw, c = cos[t], s = sign * sin[t];
+        let re = x1r * c - x1i * s; x1i = x1r * s + x1i * c; x1r = re;
+        t = 2 * k * tw; c = cos[t]; s = sign * sin[t];
+        re = x2r * c - x2i * s; x2i = x2r * s + x2i * c; x2r = re;
+        t = 3 * k * tw; c = cos[t]; s = sign * sin[t];
+        re = x3r * c - x3i * s; x3i = x3r * s + x3i * c; x3r = re;
+      }
+      const t0r = x0r + x2r, t0i = x0i + x2i, t1r = x0r - x2r, t1i = x0i - x2i;
+      const t2r = x1r + x3r, t2i = x1i + x3i;
+      // (x1 - x3) times sign i
+      const t3r = -sign * (x1i - x3i), t3i = sign * (x1r - x3r);
+      dst[2 * out] = t0r + t2r; dst[2 * out + 1] = t0i + t2i;
+      dst[2 * (out + ns)] = t1r + t3r; dst[2 * (out + ns) + 1] = t1i + t3i;
+      dst[2 * (out + 2 * ns)] = t0r - t2r; dst[2 * (out + 2 * ns) + 1] = t0i - t2i;
+      dst[2 * (out + 3 * ns)] = t1r - t3r; dst[2 * (out + 3 * ns) + 1] = t1i - t3i;
+    } else if (R === 2) {
+      const x0r = src[2 * j], x0i = src[2 * j + 1];
+      let x1r = src[2 * (j + stride)], x1i = src[2 * (j + stride) + 1];
+      if (k !== 0) {
+        const t = k * tw, c = cos[t], s = sign * sin[t];
+        const re = x1r * c - x1i * s; x1i = x1r * s + x1i * c; x1r = re;
+      }
+      dst[2 * out] = x0r + x1r; dst[2 * out + 1] = x0i + x1i;
+      dst[2 * (out + ns)] = x0r - x1r; dst[2 * (out + ns) + 1] = x0i - x1i;
+    } else if (R === 3) {
+      const x0r = src[2 * j], x0i = src[2 * j + 1];
+      let x1r = src[2 * (j + stride)], x1i = src[2 * (j + stride) + 1];
+      let x2r = src[2 * (j + 2 * stride)], x2i = src[2 * (j + 2 * stride) + 1];
+      if (k !== 0) {
+        let t = k * tw, c = cos[t], s = sign * sin[t];
+        let re = x1r * c - x1i * s; x1i = x1r * s + x1i * c; x1r = re;
+        t = 2 * k * tw; c = cos[t]; s = sign * sin[t];
+        re = x2r * c - x2i * s; x2i = x2r * s + x2i * c; x2r = re;
+      }
+      const ar = x1r + x2r, ai = x1i + x2i, br = x1r - x2r, bi = x1i - x2i;
+      const mr = x0r + p.c3 * ar, mi = x0i + p.c3 * ai;
+      // (x1 - x2) times sign i sin(2 pi / 3)
+      const s3 = sign * p.s3;
+      const nr = -s3 * bi, ni = s3 * br;
+      dst[2 * out] = x0r + ar; dst[2 * out + 1] = x0i + ai;
+      dst[2 * (out + ns)] = mr + nr; dst[2 * (out + ns) + 1] = mi + ni;
+      dst[2 * (out + 2 * ns)] = mr - nr; dst[2 * (out + 2 * ns) + 1] = mi - ni;
+    } else {
+      // R === 5
+      const x0r = src[2 * j], x0i = src[2 * j + 1];
+      let x1r = src[2 * (j + stride)], x1i = src[2 * (j + stride) + 1];
+      let x2r = src[2 * (j + 2 * stride)], x2i = src[2 * (j + 2 * stride) + 1];
+      let x3r = src[2 * (j + 3 * stride)], x3i = src[2 * (j + 3 * stride) + 1];
+      let x4r = src[2 * (j + 4 * stride)], x4i = src[2 * (j + 4 * stride) + 1];
+      if (k !== 0) {
+        let t = k * tw, c = cos[t], s = sign * sin[t];
+        let re = x1r * c - x1i * s; x1i = x1r * s + x1i * c; x1r = re;
+        t = 2 * k * tw; c = cos[t]; s = sign * sin[t];
+        re = x2r * c - x2i * s; x2i = x2r * s + x2i * c; x2r = re;
+        t = 3 * k * tw; c = cos[t]; s = sign * sin[t];
+        re = x3r * c - x3i * s; x3i = x3r * s + x3i * c; x3r = re;
+        t = 4 * k * tw; c = cos[t]; s = sign * sin[t];
+        re = x4r * c - x4i * s; x4i = x4r * s + x4i * c; x4r = re;
+      }
+      const a1r = x1r + x4r, a1i = x1i + x4i, b1r = x1r - x4r, b1i = x1i - x4i;
+      const a2r = x2r + x3r, a2i = x2i + x3i, b2r = x2r - x3r, b2i = x2i - x3i;
+      const c1 = p.c51, c2 = p.c52, s1 = sign * p.s51, s2 = sign * p.s52;
+      const m1r = x0r + c1 * a1r + c2 * a2r, m1i = x0i + c1 * a1i + c2 * a2i;
+      const m2r = x0r + c2 * a1r + c1 * a2r, m2i = x0i + c2 * a1i + c1 * a2i;
+      // i (s1 b1 + s2 b2) and i (s2 b1 - s1 b2)
+      const u1r = -(s1 * b1i + s2 * b2i), u1i = s1 * b1r + s2 * b2r;
+      const u2r = -(s2 * b1i - s1 * b2i), u2i = s2 * b1r - s1 * b2r;
+      dst[2 * out] = x0r + a1r + a2r; dst[2 * out + 1] = x0i + a1i + a2i;
+      dst[2 * (out + ns)] = m1r + u1r; dst[2 * (out + ns) + 1] = m1i + u1i;
+      dst[2 * (out + 2 * ns)] = m2r + u2r; dst[2 * (out + 2 * ns) + 1] = m2i + u2i;
+      dst[2 * (out + 3 * ns)] = m2r - u2r; dst[2 * (out + 3 * ns) + 1] = m2i - u2i;
+      dst[2 * (out + 4 * ns)] = m1r - u1r; dst[2 * (out + 4 * ns) + 1] = m1i - u1i;
+    }
+  }
 };
 
 /**
@@ -56,67 +165,22 @@ const plan = (n: number): Plan => {
 export const fft1d = (data: Float64Array, off: number, stride: number, n: number, sign: -1 | 1): void => {
   if (n === 1) return;
   const p = plan(n);
-  const buf = p.scratch;
-  // gather
+  let src = p.a, dst = p.b;
   for (let k = 0; k < n; k++) {
     const s = 2 * (off + k * stride);
-    buf[2 * k] = data[s];
-    buf[2 * k + 1] = data[s + 1];
+    src[2 * k] = data[s];
+    src[2 * k + 1] = data[s + 1];
   }
-  const out = new Float64Array(2 * n);
-  rec(buf, 0, 1, out, 0, n, p, 0, sign);
+  let ns = 1;
+  for (const R of p.radices) {
+    stage(p, src, dst, R, ns, sign);
+    ns *= R;
+    const t = src; src = dst; dst = t;
+  }
   for (let k = 0; k < n; k++) {
     const s = 2 * (off + k * stride);
-    data[s] = out[2 * k];
-    data[s + 1] = out[2 * k + 1];
-  }
-};
-
-/**
- * Recursive mixed-radix DIT: transforms in[inOff + j*inStride], j < len, into
- * out[outOff .. outOff+len). `level` indexes p.factors.
- */
-const rec = (
-  inp: Float64Array, inOff: number, inStride: number, out: Float64Array, outOff: number,
-  len: number, p: Plan, level: number, sign: number,
-): void => {
-  if (len === 1) {
-    out[2 * outOff] = inp[2 * inOff];
-    out[2 * outOff + 1] = inp[2 * inOff + 1];
-    return;
-  }
-  const r = p.factors[level];
-  const m = len / r;
-  // sub-transforms of the r decimated sequences
-  for (let q = 0; q < r; q++) rec(inp, inOff + q * inStride, inStride * r, out, outOff + q * m, m, p, level + 1, sign);
-  // butterflies: X[k + s*m] = sum_q W_len^{q(k + s m)} Y_q[k]
-  const step = p.n / len;   // twiddle index stride for this level
-  const tmpRe = new Float64Array(r), tmpIm = new Float64Array(r);
-  for (let k = 0; k < m; k++) {
-    for (let q = 0; q < r; q++) {
-      const idx = outOff + q * m + k;
-      let re = out[2 * idx], im = out[2 * idx + 1];
-      if (q > 0) {
-        const t = ((q * k * step) % p.n);
-        const c = p.cos[t], sn = sign < 0 ? p.sin[t] : -p.sin[t];
-        const nr = re * c - im * sn;
-        im = re * sn + im * c;
-        re = nr;
-      }
-      tmpRe[q] = re; tmpIm[q] = im;
-    }
-    for (let s = 0; s < r; s++) {
-      let accRe = 0, accIm = 0;
-      for (let q = 0; q < r; q++) {
-        const t = ((q * s * m * step) % p.n);
-        const c = p.cos[t], sn = sign < 0 ? p.sin[t] : -p.sin[t];
-        accRe += tmpRe[q] * c - tmpIm[q] * sn;
-        accIm += tmpRe[q] * sn + tmpIm[q] * c;
-      }
-      const o = outOff + s * m + k;
-      out[2 * o] = accRe;
-      out[2 * o + 1] = accIm;
-    }
+    data[s] = src[2 * k];
+    data[s + 1] = src[2 * k + 1];
   }
 };
 

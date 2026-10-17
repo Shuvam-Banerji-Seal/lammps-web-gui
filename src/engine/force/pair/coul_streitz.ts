@@ -2,7 +2,7 @@ import { Pair, StyleError, type PairCompute, type StyleContext } from '../types'
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { parseNum } from '../util';
-import { libm } from '../../libm';
+import { libm, SQRT_PI } from '../../libm';
 
 /*
  * pair_style coul/streitz — Streitz-Mintmire Coulomb part with fixed charges.
@@ -346,7 +346,7 @@ export class PairCoulStreitz extends Pair {
     const alpha = this.alpha, g = this.gEwald;
     let ecoul = 0;
     // per owned atom: chi q + J q^2 / 2 (and the wolf self term)
-    const selfWolf = wolf ? -(libm.erfc(alpha * rc) / (2 * rc) + alpha / Math.sqrt(Math.PI)) : 0;
+    const selfWolf = wolf ? -(libm.erfc(alpha * rc) / (2 * rc) + alpha / SQRT_PI) : 0;
     for (let i = 0; i < pc.nlocal; i++) {
       const p = this.typeParams(type[i]);
       const qi = q[i];

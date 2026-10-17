@@ -45,7 +45,7 @@ const LARGE = 10000;
 const EPS_HOC = 1.0e-7;
 /** pppm_dipole.h MAXORDER. */
 const MAXORDER = 7;
-const MY_PIS = Math.sqrt(Math.PI);
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 /** math_const.h MY_PI2 (pi/2): the neutralizing-background term of the energy. */
 const MY_PI2 = Math.PI / 2;
 

@@ -21,7 +21,7 @@ import { exp as libmExp } from '../libm/exp';
 import { erfc as libmErfc } from '../libm/erf';
 
 /** sqrt(pi) (amoeba_polar.cpp MY_PIS). */
-const MY_PIS = Math.sqrt(Math.PI);
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 
 /** Per-copy HIPPO inputs of the polarization: pcore and palpha of the class, pval of the owner (see pair_amoeba.ts). */
 export interface HippoPolarAtoms {

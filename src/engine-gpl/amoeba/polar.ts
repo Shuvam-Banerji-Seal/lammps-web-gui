@@ -22,7 +22,7 @@ import { erfc as libmErfc } from '../libm/erf';
 /** Constant converting q-Angstrom to Debye, used by the convergence test (amoeba_induce.cpp DEBYE). */
 const DEBYE = 4.80321;
 /** sqrt(pi) (amoeba_polar.cpp MY_PIS). */
-const MY_PIS = Math.sqrt(Math.PI);
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 /** Lower bound of the polarizability in the solver (amoeba_induce.cpp polmin). */
 const POLMIN = 0.00000001;
 

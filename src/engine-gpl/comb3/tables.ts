@@ -8,6 +8,7 @@
 import type { Comb3Param } from './params';
 import { exp as libmExp } from '../libm/exp';
 import { erfc as libmErfc } from '../libm/erf';
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 
 /** Look-up tables of PairComb3::tables(). Two-dimensional tables are row-major with nntypes columns. */
 export interface Comb3Tables {
@@ -244,7 +245,7 @@ export const comb3Tables = (
 /** potal_calc: the Wolf-type constants fac11 (1/r^2 force term) and fac11e (self-energy shift) at the Coulomb cutoff. */
 export const potalFactors = (rcoul: number, esucon: number): { fac11: number; fac11e: number } => {
   const alf = 0.20;
-  const fac11 = (libmErfc(rcoul * alf) / rcoul / rcoul + 2.0 * alf / Math.sqrt(Math.PI) * libmExp(-alf * alf * rcoul * rcoul) / rcoul) * esucon / rcoul;
+  const fac11 = (libmErfc(rcoul * alf) / rcoul / rcoul + 2.0 * alf / MY_PIS * libmExp(-alf * alf * rcoul * rcoul) / rcoul) * esucon / rcoul;
   const fac11e = (libmErfc(rcoul * alf) / rcoul) * esucon;
   return { fac11, fac11e };
 };

@@ -23,6 +23,7 @@ import { nativeFullLast } from '../neighbor/nativeOrder';
 import type { SimState } from '../../engine/types';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 
 /** ewald_const.h: EWALD_P and the coefficients of the erfc approximation (LAMMPS src/ewald_const.h, b332f28). */
 const EWALD_P = 0.3275911;
@@ -91,9 +92,9 @@ export class PairSpinDipoleLong extends Pair implements SpinPairStyle {
   /** Real-space screened terms B_0..B_3 of the source for a pair at distance r (rsq > 0). */
   private bterms(rsq: number, out: Float64Array): void {
     const g = this.gEwald;
-    const pre1 = 2 * g / Math.sqrt(Math.PI);
-    const pre2 = 4 * libmPow(g, 3) / Math.sqrt(Math.PI);
-    const pre3 = 8 * libmPow(g, 5) / Math.sqrt(Math.PI);
+    const pre1 = 2.0 * g / MY_PIS;
+    const pre2 = 4.0 * libmPow(g, 3.0) / MY_PIS;
+    const pre3 = 8.0 * libmPow(g, 5.0) / MY_PIS;
     const r2inv = 1 / rsq;
     const r = Math.sqrt(rsq);
     const rinv = 1 / r;

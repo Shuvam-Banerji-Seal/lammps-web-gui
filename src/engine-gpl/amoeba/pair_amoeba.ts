@@ -39,7 +39,7 @@ import { erfc as libmErfc } from '../libm/erf';
 /** pvector order of pair amoeba (pair_amoeba.cpp): hal, repulse, disp, mpole, polar, qxfer. */
 const NVECTOR = 6;
 /** sqrt(pi) (pair_amoeba.cpp MY_PIS). */
-const MY_PIS = Math.sqrt(Math.PI);
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 
 /**
  * ewaldcof (amoeba_kspace.cpp): the Ewald coefficient for which erfc(a cutoff)/cutoff falls below 1e-8, found by

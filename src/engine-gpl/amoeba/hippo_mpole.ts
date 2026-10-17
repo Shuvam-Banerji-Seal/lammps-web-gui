@@ -15,7 +15,7 @@
 import { ELECTRIC, type MpoleSites } from './multipole';
 
 /** sqrt(pi) (amoeba_multipole.cpp MY_PIS). */
-const MY_PIS = Math.sqrt(Math.PI);
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 import { resolveSiteTorques, type TermPairs, type TermResult } from './hippo_terms';
 import { exp as libmExp } from '../libm/exp';
 import { erfc as libmErfc } from '../libm/erf';

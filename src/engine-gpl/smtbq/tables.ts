@@ -11,7 +11,7 @@
  * replaced by the cut-off polynomial (r > rc), so the C++ values there do not depend on gam. The overlap is
  * therefore evaluated only while no cutting point has been found (the same values, fewer integral calls).
  */
-import { erfc } from './erfc';
+import { erfc } from '../libm/erf';
 import { SlaterIntegrals } from './slater';
 import type { SmtbqFile } from './potfile';
 import { exp as libmExp } from '../libm/exp';

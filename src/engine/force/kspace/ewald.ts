@@ -3,7 +3,7 @@ import { KSpace, StyleError, type KSpaceCompute, type StyleContext } from '../ty
 import type { SimState } from '../../types';
 import type { Geometry } from '../../domain';
 import { parseNum } from '../util';
-import { libm } from '../../libm';
+import { libm, SQRT_PI } from '../../libm';
 
 /*
  * kspace_style ewald accuracy — docs.lammps.org/kspace_style.html: "The ewald
@@ -254,7 +254,7 @@ export abstract class KSpaceBase extends KSpace {
   /** Self and background energies (added to elong). */
   protected constantEnergy(qqrd2e: number): number {
     const g = this.gEwald;
-    let e = -(g / Math.sqrt(Math.PI)) * this.qsqsum;
+    let e = -(g / SQRT_PI) * this.qsqsum;
     e += -(Math.PI * this.qsum * this.qsum) / (2 * this.volume * g * g);
     return e * qqrd2e;
   }

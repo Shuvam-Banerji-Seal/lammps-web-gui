@@ -3,7 +3,7 @@ import { StyleError, typeBounds } from '../force/types';
 import { PairCoulStreitz, mdfTaper, pointUval, slaterS } from '../force/pair/coul_streitz';
 import type { System } from '../system';
 import { gplHook } from '../gplHooks';
-import { libm } from '../libm';
+import { libm, SQRT_PI } from '../libm';
 
 /*
  * fix qeq/point, qeq/shielded, qeq/dynamic and qeq/fire — docs.lammps.org/fix_qeq.html
@@ -548,8 +548,8 @@ export class FixQeq extends Fix {
     const C = 14.399645; // qqrd2e of units metal, as the pair style uses it (measured with native LAMMPS, black box)
     const a = this.alpha, rc = this.cutoff;
     const erc = erfcSlater(a * rc);
-    const selfW = -(erc / (2 * rc) + a / Math.sqrt(Math.PI));
-    const kd = this.dsf ? erc / (rc * rc) + (2 * a / Math.sqrt(Math.PI)) * libm.exp(-a * a * rc * rc) / rc : 0;
+    const selfW = -(erc / (2 * rc) + a / SQRT_PI);
+    const kd = this.dsf ? erc / (rc * rc) + (2 * a / SQRT_PI) * libm.exp(-a * a * rc * rc) / rc : 0;
     const cc = (r: number): number => {
       const e = erfcSlater(a * r) / r;
       return this.dsf ? e - erc / rc + (r - rc) * kd : e;

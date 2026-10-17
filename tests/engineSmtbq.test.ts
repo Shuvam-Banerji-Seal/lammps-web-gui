@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readSmtbqFile } from '../src/engine-gpl/smtbq/potfile';
 import { SlaterIntegrals, factorial, powint } from '../src/engine-gpl/smtbq/slater';
-import { erfc } from '../src/engine-gpl/smtbq/erfc';
+import { erfc } from '../src/engine-gpl/libm/erf';
 import { buildTables } from '../src/engine-gpl/smtbq/tables';
 import { PairSMTBQ } from '../src/engine-gpl/smtbq/pair_smtbq';
 

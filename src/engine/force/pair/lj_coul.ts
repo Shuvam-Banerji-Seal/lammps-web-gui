@@ -3,7 +3,7 @@ import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairLJCut, tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
 import { erfcPoly } from '../erfc';
-import { libm } from '../../libm';
+import { libm, SQRT_PI } from '../../libm';
 
 /*
  * pair_style lj/cut/coul/cut, lj/cut/coul/debye, lj/cut/coul/dsf and
@@ -349,7 +349,7 @@ export class PairLJCutCoulDsf extends PairLJCutCoul {
 
   protected coulSelf(qi: number, qqrd2e: number): number {
     const arc = this.alpha * this.cutCoul;
-    return -(libm.erfc(arc) / this.cutCoul + (this.alpha / Math.sqrt(Math.PI)) * (1 + libm.exp(-arc * arc))) * qi * qi * qqrd2e;
+    return -(libm.erfc(arc) / this.cutCoul + (this.alpha / SQRT_PI) * (1 + libm.exp(-arc * arc))) * qi * qi * qqrd2e;
   }
 
   protected initCoul(i: number, j: number): void {
@@ -432,7 +432,7 @@ export class PairLJCutCoulWolf extends PairLJCutCoul {
    * (alpha 0.6, rc 3, q 1: -0.340331999856; alpha 0.3, rc 4: -0.180467627786).
    */
   protected coulSelf(qi: number, qqrd2e: number): number {
-    return -(libm.erfc(this.alpha * this.cutCoul) / (2 * this.cutCoul) + this.alpha / Math.sqrt(Math.PI)) * qi * qi * qqrd2e;
+    return -(libm.erfc(this.alpha * this.cutCoul) / (2 * this.cutCoul) + this.alpha / SQRT_PI) * qi * qi * qqrd2e;
   }
 
   protected initCoul(i: number, j: number): void {

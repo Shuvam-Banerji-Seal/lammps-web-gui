@@ -21,7 +21,7 @@ import { erfc as libmErfc } from '../libm/erf';
 /** Coulomb constant of AMOEBA (pair_amoeba.cpp: electric = 332.063713). */
 export const ELECTRIC = 332.063713;
 /** sqrt(pi) (amoeba_multipole.cpp MY_PIS). */
-const MY_PIS = Math.sqrt(Math.PI);
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 
 /** Topology queries kmpole needs; atom IDs, not local indices. */
 export interface MpoleTopo {

@@ -23,7 +23,7 @@ export const MY_PI = Math.PI;
 export const MY_PI2 = Math.PI / 2;
 export const MY_2PI = 2 * Math.PI;
 export const MY_4PI = 4 * Math.PI;
-export const MY_PIS = Math.sqrt(Math.PI);
+export const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 export const MY_SQRT2 = Math.SQRT2;
 
 /** electrode_math.h: "erfc(ERFCMAX) < machine epsilon(double)". */

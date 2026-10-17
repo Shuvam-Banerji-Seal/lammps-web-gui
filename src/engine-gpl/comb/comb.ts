@@ -25,7 +25,7 @@ import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
 import { erfc as libmErfc } from '../libm/erf';
 
-const MY_PIS = Math.sqrt(Math.PI);
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 const ALF = 0.20;
 const NSM = 25000;
 

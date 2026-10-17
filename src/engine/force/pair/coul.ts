@@ -3,7 +3,7 @@ import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
 import { erfcPoly } from '../erfc';
-import { libm } from '../../libm';
+import { libm, SQRT_PI } from '../../libm';
 
 /*
  * pair_style coul/cut, coul/debye, coul/dsf and coul/wolf —
@@ -234,7 +234,7 @@ export class PairCoulDsf extends PairCoul {
 
   protected coulSelf(qi: number, qqrd2e: number): number {
     const arc = this.alpha * this.cutGlobal;
-    return -(libm.erfc(arc) / this.cutGlobal + (this.alpha / Math.sqrt(Math.PI)) * (1 + libm.exp(-arc * arc))) * qi * qi * qqrd2e;
+    return -(libm.erfc(arc) / this.cutGlobal + (this.alpha / SQRT_PI) * (1 + libm.exp(-arc * arc))) * qi * qi * qqrd2e;
   }
 
   protected coulPair(_t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
@@ -286,7 +286,7 @@ export class PairCoulWolf extends PairCoul {
   }
 
   protected coulSelf(qi: number, qqrd2e: number): number {
-    return -(libm.erfc(this.alpha * this.cutGlobal) / (2 * this.cutGlobal) + this.alpha / Math.sqrt(Math.PI)) * qi * qi * qqrd2e;
+    return -(libm.erfc(this.alpha * this.cutGlobal) / (2 * this.cutGlobal) + this.alpha / SQRT_PI) * qi * qi * qqrd2e;
   }
 
   protected coulPair(_t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {

@@ -20,7 +20,7 @@ import { setDielectricParams } from './fix_polarize_bem_gmres';
 import { exp as libmExp } from '../libm/exp';
 import { erfc as libmErfc } from '../libm/erf';
 
-const MY_PIS = Math.sqrt(Math.PI);
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 const MY_4PI = 4 * Math.PI;
 /** Default CG tolerance on the squared residual (fix_polarize_functional.cpp EPSILON). */
 const EPSILON = 1.0e-6;

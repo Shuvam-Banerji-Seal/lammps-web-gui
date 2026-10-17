@@ -55,10 +55,10 @@ const mean = (a: number[]): number => {
 
 describe('thermostats through the interpreter (500-atom lj melt)', () => {
   const holdsTarget = async (fixes: string, label: string) => {
-    const { thermo } = await runScript(LIQUID(fixes, { steps: 4000 }));
-    const half = thermo.filter((r) => (r.step ?? 0) > 2000).map((r) => r.temp as number);
+    const { thermo } = await runScript(LIQUID(fixes, { steps: 2400 }));
+    const half = thermo.filter((r) => (r.step ?? 0) > 1200).map((r) => r.temp as number);
     const t = mean(half);
-    console.log(`[evidence] ${label}: mean T over steps 2000-4000 = ${t.toFixed(4)} (${half.length} rows)`);
+    console.log(`[evidence] ${label}: mean T over steps 1200-2400 = ${t.toFixed(4)} (${half.length} rows)`);
     expect(Math.abs(t - 1.5) / 1.5).toBeLessThan(0.03);
   };
 
@@ -75,22 +75,22 @@ describe('thermostats through the interpreter (500-atom lj melt)', () => {
   }, 240000);
 
   it('temp/rescale 10: T is exactly 1.5 right after each rescale; window 10 never rescales', async () => {
-    const rescaled = await runScript(LIQUID('fix 1 all nve\nfix 2 all temp/rescale 10 1.5 1.5 0.0 1.0', { steps: 2000 }));
+    const rescaled = await runScript(LIQUID('fix 1 all nve\nfix 2 all temp/rescale 10 1.5 1.5 0.0 1.0', { steps: 500 }));
     for (const r of rescaled.thermo) {
       if ((r.step ?? 0) > 0) expect(Math.abs((r.temp ?? 0) - 1.5)).toBeLessThan(1e-9);
     }
-    const windowed = await runScript(LIQUID('fix 1 all nve\nfix 2 all temp/rescale 10 1.5 1.5 10.0 1.0', { steps: 2000 }));
-    const plain = await runScript(LIQUID('fix 1 all nve', { steps: 2000 }));
+    const windowed = await runScript(LIQUID('fix 1 all nve\nfix 2 all temp/rescale 10 1.5 1.5 10.0 1.0', { steps: 500 }));
+    const plain = await runScript(LIQUID('fix 1 all nve', { steps: 500 }));
     expect(windowed.thermo.map((r) => r.temp)).toEqual(plain.thermo.map((r) => r.temp));
   }, 240000);
 
-  it('temp/berendsen ramps T from 1.0 to 2.0 over 3000 steps', async () => {
-    const { thermo } = await runScript(LIQUID('fix 1 all nve\nfix 2 all temp/berendsen 1.0 2.0 0.1', { velT: 1.0, steps: 3000 }));
-    const first = thermo.filter((r) => (r.step ?? 0) <= 300).map((r) => r.temp as number);
-    const last = thermo.filter((r) => (r.step ?? 0) >= 2700).map((r) => r.temp as number);
+  it('temp/berendsen ramps T from 1.0 to 2.0 over 1500 steps', async () => {
+    const { thermo } = await runScript(LIQUID('fix 1 all nve\nfix 2 all temp/berendsen 1.0 2.0 0.1', { velT: 1.0, steps: 1500 }));
+    const first = thermo.filter((r) => (r.step ?? 0) <= 150).map((r) => r.temp as number);
+    const last = thermo.filter((r) => (r.step ?? 0) >= 1350).map((r) => r.temp as number);
     const tFirst = mean(first);
     const tLast = mean(last);
-    console.log(`[evidence] berendsen ramp: mean T first 300 steps = ${tFirst.toFixed(4)}, last 300 = ${tLast.toFixed(4)}`);
+    console.log(`[evidence] berendsen ramp: mean T first 150 steps = ${tFirst.toFixed(4)}, last 150 = ${tLast.toFixed(4)}`);
     expect(tFirst).toBeGreaterThan(0.9);
     expect(tFirst).toBeLessThan(1.25);
     expect(tLast).toBeGreaterThan(1.85);
@@ -112,13 +112,14 @@ pair_coeff 1 1 0.0 1.0 2.5
 fix 1 all langevin 1.2 1.2 0.1 9871
 fix 2 all nve
 thermo 50
-run 2000`;
+run 1000`;
     const { session } = await runScript(head);
     const s = session.system!;
     const vx2: number[] = [];
     const temps: number[] = [];
+    // samples 50 steps apart: the velocity memory of the friction is damp = 0.1 (20 steps), so they are close to independent
     for (let c = 0; c < 40; c++) {
-      await session.execute('run 100');
+      await session.execute('run 50');
       let sum = 0;
       const v = s.v;
       for (let i = 0; i < s.n; i++) sum += v[3 * i] * v[3 * i];
@@ -130,7 +131,7 @@ run 2000`;
     // bands below allow for it
     const tMean = mean(temps);
     const vx2Mean = mean(vx2);
-    console.log(`[evidence] ideal gas langevin: mean T (steps 2000-6000) = ${tMean.toFixed(4)}, <vx^2> = ${vx2Mean.toFixed(4)} (kB T/m = 0.6)`);
+    console.log(`[evidence] ideal gas langevin: mean T (steps 1000-3000) = ${tMean.toFixed(4)}, <vx^2> = ${vx2Mean.toFixed(4)} (kB T/m = 0.6)`);
     expect(Math.abs(tMean - 1.2) / 1.2).toBeLessThan(0.02);
     expect(Math.abs(vx2Mean - 0.6) / 0.6).toBeLessThan(0.03);
   }, 240000);

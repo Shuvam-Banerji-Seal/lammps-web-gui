@@ -133,7 +133,7 @@ const allCases = existsSync(CASES) ? readdirSync(CASES).filter((f) => f.endsWith
  * workers; case i (in name order) belongs to shard i % ORACLE_SHARDS. Run one case with
  * `npx vitest run tests/engineOracle -t <case>` (the path prefix matches every shard file).
  */
-export const ORACLE_SHARDS = 4;
+export const ORACLE_SHARDS = 8;
 
 export const oracleSuite = (shard: number): void => {
 const cases = allCases.filter((_, i) => i % ORACLE_SHARDS === shard);

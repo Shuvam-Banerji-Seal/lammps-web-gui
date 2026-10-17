@@ -306,7 +306,8 @@ export const sin = (x: number): number => {
     const n = branred(x);
     return doSincos(redA, redDa, n);
   }
-  return x / x;
+  // s_sin.c: "return x / x;" for an infinite or NaN argument, which is NaN
+  return NaN;
 };
 
 /** cos(x) exactly as the native binary's glibc computes it (see the header). */
@@ -329,5 +330,6 @@ export const cos = (x: number): number => {
     const n = branred(x);
     return doSincos(redA, redDa, n + 1);
   }
-  return x / x;
+  // s_sin.c: "return x / x;" for an infinite or NaN argument, which is NaN
+  return NaN;
 };

@@ -628,7 +628,6 @@ export class PairGayBerne extends Pair {
     const tq = new Float64Array(3 * pc.nall);
     const sC = pc.specialCoul, sL = pc.specialLJ;
     const cutsq = this.cutsq;
-    const quat = s.quat;
 
     // Per owned ellipsoid atom: a1, b1, g1 (native, computed when form[itype][itype] == ELLIPSE_ELLIPSE).
     const mats: (AtomMats | null)[] = new Array(nlocal);

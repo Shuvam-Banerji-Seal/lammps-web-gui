@@ -28,6 +28,7 @@ import { KSpaceBase, modifyNoEffect, ANGSTROM, QELECTRON } from '../../engine/fo
 import type { SimState } from '../../engine/types';
 import type { Geometry } from '../../engine/domain';
 import { parseNum } from '../../engine/force/util';
+import { nativeOrder } from '../../engine/atoms';
 import { fft3d, isFFTSize } from '../../engine/force/fft';
 import { computeQopt } from '../pppm/grid';
 import { log as libmLog } from '../libm/log';
@@ -49,6 +50,17 @@ const MY_PIS = Math.sqrt(Math.PI);
 const MY_PI2 = Math.PI / 2;
 
 const square = (x: number): number => x * x;
+
+/** MathSpecial::powint (math_special.h at b332f28): x^n by repeated squaring, as native computes powint(g, 4). */
+const powint = (x: number, n: number): number => {
+  if (n === 0) return 1.0;
+  if (x === 0.0) return 0.0;
+  let nn = n > 0 ? n : -n;
+  let ww = x;
+  let yy = 1.0;
+  for (; nn !== 0; nn >>= 1, ww *= ww) if (nn & 1) yy *= ww;
+  return n > 0 ? yy : 1.0 / yy;
+};
 
 /** MathSpecial::powsinxx (math_special.h at b332f28): (sin x / x)^n for an integer n >= 0. */
 const powsinxx = (x: number, n: number): number => {
@@ -105,7 +117,7 @@ const rspaceError = (g: number, rc: number, natoms: number, vol: number, mu2: nu
   const rg6 = rg4 * rg2;
   const Cc = 4.0 * rg4 + 6.0 * rg2 + 3.0;
   const Dc = 8.0 * rg6 + 20.0 * rg4 + 30.0 * rg2 + 15.0;
-  const dd = (mu2 / Math.sqrt(vol * libmPow(g, 4) * libmPow(rc, 9) * natoms)) *
+  const dd = (mu2 / Math.sqrt(vol * powint(g, 4) * powint(rc, 9) * natoms)) *
     Math.sqrt((13.0 / 6.0) * Cc * Cc + (2.0 / 15.0) * Dc * Dc - (13.0 / 15.0) * Cc * Dc) * libmExp(-rg2);
   if (q2 === 0) return dd;
   const dq = (2.0 * q2 * libmExp(-rg2)) / Math.sqrt(natoms * rc * vol);
@@ -245,14 +257,22 @@ export class KSpacePPPMDipole extends KSpaceBase {
     this.cutoff = cutCoul;
     this.acc = this.accuracy * twoChargeForce;
     // musum_musq: musqsum = sum |mu_i|^2, mu2 = musqsum * prefactor
+    // native sums in its local atom order (nativeOrder), one term per atom: "musqsum_local += mu[i][0]*mu[i][0] +
+    // mu[i][1]*mu[i][1] + mu[i][2]*mu[i][2];". The automatic G-ewald follows the last bits of mu2 (the one Newton step
+    // of adjust_gewald takes a forward-difference derivative of the error estimates), so the order matters.
     const mu = this.moments(s);
+    const ord = nativeOrder(s);
     let musq = 0;
-    for (let i = 0; i < 3 * s.n; i++) musq += mu[i] * mu[i];
+    for (let k = 0; k < s.n; k++) {
+      const i = ord[k];
+      musq += mu[3 * i] * mu[3 * i] + mu[3 * i + 1] * mu[3 * i + 1] + mu[3 * i + 2] * mu[3 * i + 2];
+    }
     this.musqsum = musq;
     this.mu2 = musq * this.prefactor(qqrd2e);
-    // qsum_qsq(0) in init: the charge sums; q2 = qsqsum qqrd2e (native KSpace::qsum_qsq)
+    // qsum_qsq(0) in init: the charge sums in native order; q2 = qsqsum qqrd2e (native KSpace::qsum_qsq)
     let qs = 0, q2s = 0;
-    if (s.q) for (let i = 0; i < s.n; i++) {
+    if (s.q) for (let k = 0; k < s.n; k++) {
+      const i = ord[k];
       qs += s.q[i];
       q2s += s.q[i] * s.q[i];
     }

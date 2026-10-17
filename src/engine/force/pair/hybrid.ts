@@ -1,4 +1,4 @@
-import { Pair, StyleError, typeBounds, type BondedEquilibria, type PairCompute, type PairSep, type StyleContext, newAccum, clearAccum, type Accum } from '../types';
+import { Pair, StyleError, typeBounds, type BondedEquilibria, type KSpace, type PairCompute, type PairSep, type StyleContext, newAccum, clearAccum, type Accum } from '../types';
 import { NEIGHMASK, type NeighList } from '../../neighbor';
 import { parseNum } from '../util';
 import { removedStyleError } from '../../deprecated';
@@ -263,6 +263,11 @@ export class PairHybrid extends Pair {
   subEnergy(name: string, instance: number): { style: Pair; evdwl: number; ecoul: number; evaluated: boolean } | null {
     const s = this.subs.find((x) => x.name === name && x.instance === instance);
     return s ? { style: s.style, evdwl: s.evdwl, ecoul: s.ecoul, evaluated: s.evaluated } : null;
+  }
+
+  /** Force-field hook: the kspace style reaches every sub-style (the coul/msm ones read MSM's splitting function). */
+  linkKSpace(kspace: KSpace | null): void {
+    for (const s of this.subs) s.style.linkKSpace?.(kspace);
   }
 
   /** Force-field hook: the bond and angle equilibria reach every sub-style (the TIP4P ones place their M site from them). */

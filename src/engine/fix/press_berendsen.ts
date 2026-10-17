@@ -2,6 +2,7 @@ import { Fix } from './fix';
 import { StyleError } from '../force/types';
 import type { System } from '../system';
 import type { Compute } from '../compute/compute';
+import { ComputePressure } from '../compute/pressure';
 import { ownCompute, parseNumOrVar, ramp, removeCompute, valueOf, type NumOrVar } from './util';
 
 /*
@@ -144,7 +145,10 @@ export class FixPressBerendsen extends Fix {
     const b = s.box;
     const g = sys.geom;
     sys.refreshComputes();
-    const pv = this.pressCompute.vectorValues();
+    // fix_press_berendsen.cpp couple(): an ISO barostat (couple xyz, or xy in 2d) reads compute_scalar(), which MSM's
+    // kspace_modify pressure/scalar yes allows; the diagonal mean of the tensor is the same scalar
+    const iso = this.coupled.length === this.sys.dimension && this.pressCompute instanceof ComputePressure;
+    const pv = iso ? (this.pressCompute as ComputePressure).isoVectorValues() : this.pressCompute.vectorValues();
     const pDiag = [pv[0], pv[1], pv[2]];
     let pAvg = 0;
     for (const d of this.coupled) pAvg += pDiag[d];

@@ -9,7 +9,6 @@ import type { StyleKind } from './lazyStyles';
 export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[]>>> = {
   PAIRS: [
     'lj/long/dipole/long', // registry/pair_dipole18.ts
-    'lj/spica/coul/msm', 'lj/sdk/coul/msm', // registry/pair_class2spica51.ts (lazy): msm kspace is not in the engine
   ],
   FIXES: [
     'filter/corotate', // engine-gpl/registry/filtercorotate.ts (refused: respa fix hooks missing)

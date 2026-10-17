@@ -163,6 +163,13 @@ export class ForceField {
     if (!this.pair && this.pairNotRestarted) throw new StyleError(`Must re-specify non-restarted pair style (${this.pairNotRestarted}) after read_restart`);
     this.warn = (t) => ctx.log(`WARNING: ${t}`);
     this.checkTopology(s);
+    this.pair?.linkKSpace?.(this.kspace);
+    // A solver that sets the pair style's Coulomb cutoff (MSM cutoff/adjust) does it before the pair style's init, as
+    // native LAMMPS's Force::init does (src/force.cpp at b332f28: "kspace->init(); // kspace must come before pair").
+    if (this.kspace?.preparePair && this.pair) {
+      if (this.pair.ntypes !== s.ntypes) this.pair.allocate(s.ntypes);
+      this.kspace.preparePair(this.pair, s, geom, s.units.qqr2e * this.pair.coulConstScale / this.dielectric, ctx);
+    }
     if (this.pair) {
       if (this.pair.ntypes !== s.ntypes) this.pair.allocate(s.ntypes);
       this.pair.linkBonded?.({ bond: (t) => this.bond?.equilibrium(t) ?? Number.NaN, angle: (t) => this.angle?.equilibrium(t) ?? Number.NaN });
@@ -191,7 +198,7 @@ export class ForceField {
       size: (this.pair?.sizeList ?? false) && s.radius !== null,
     });
     if (this.pair?.coulLong && !this.kspace) {
-      throw new StyleError(`pair style ${this.pair.name} needs a kspace style (kspace_style ewald or pppm)`);
+      throw new StyleError(`pair style ${this.pair.name} needs a kspace style (kspace_style ewald, pppm or msm)`);
     }
     if (this.kspace) {
       if (!this.pair) throw new StyleError('kspace_style needs a pair style with a long-range Coulomb part');

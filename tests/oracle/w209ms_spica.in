@@ -1,0 +1,33 @@
+# oracle: pair_style lj/spica/coul/msm 7.0 with the lj9_6, lj12_4, lj12_5 and lj12_6 forms (native lj_spica_common.h prefactors, pair_modify shift yes) and kspace_style msm order 6, mesh 8 8 8, cutoff/adjust no, pressure/scalar no (required by the style), charged beads on a rocksalt lattice, NVE, 40 steps.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 9.1e-15, atoms 2.6e-12.
+units           real
+atom_style      charge
+lattice         fcc 5.64
+region          box block 0 3 0 3 0 3
+create_box      2 box
+create_atoms    1 box
+lattice         fcc 5.64 origin 0.5 0.0 0.0
+create_atoms    2 box
+mass            1 30.0
+mass            2 45.0
+set             type 1 charge 1.0
+set             type 2 charge -1.0
+variable        dx atom 0.12*sin(0.53*x+0.21*y)
+variable        dy atom 0.12*cos(0.37*y-0.19*z)
+variable        dz atom 0.12*sin(0.29*z+0.41*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+velocity        all create 300.0 87287 dist gaussian
+pair_style      lj/spica/coul/msm 7.0
+pair_coeff      1 1 lj9_6 0.40 3.2
+pair_coeff      1 2 lj12_4 0.35 3.6
+pair_coeff      2 2 lj12_5 0.30 4.0 6.5
+pair_modify     shift yes
+kspace_style    msm 1.0e-4
+kspace_modify   order 6 mesh 8 8 8 cutoff/adjust no pressure/scalar no
+timestep        2.0
+fix             1 all nve
+thermo_style    custom step temp pe evdwl ecoul elong etotal press pxx pyy pzz
+thermo_modify   format float %.15g
+thermo          10
+run             40

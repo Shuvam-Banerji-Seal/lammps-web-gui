@@ -127,12 +127,22 @@ describe('pair_style lj/spica family', () => {
     expect(out.error).toContain('Incorrect args for pair coefficients');
   });
 
-  it('the msm variants are refused by name (msm kspace is not in the engine)', async () => {
+  it('the msm variants (engine-gpl/msm): kspace msm, refused with ewald and with pressure/scalar yes (measured)', async () => {
+    // Measured with native LAMMPS: q = +-0.5 at r = 2 (one atom type), pair_coeff 1 1 lj9_6 1.0 1.1 9.0, kspace_style msm 1e-4 with
+    // pressure/scalar no cutoff/adjust no order 6: evdwl -0.155758099776856, ecoul -22.2977238633228, elong
+    // -19.2194800416347. With kspace_style ewald: KSpace style ewald is incompatible with Pair style lj/spica/coul/msm.
+    // With the default pressure/scalar yes: Must use 'kspace_modify pressure/scalar no' with Pair style.
+    const pair = (name: string) => `pair_style ${name} 9.0\npair_coeff * * lj9_6 1.0 1.1 9.0`;
+    const msm = 'kspace_style msm 1e-4\nkspace_modify pressure/scalar no cutoff/adjust no order 6\n';
     for (const name of ['lj/spica/coul/msm', 'lj/sdk/coul/msm']) {
-      const out = await runScript(`pair_style ${name} 9.0\n`);
-      expect(out.error).toContain(name);
-      expect(out.error).toContain('msm');
+      const row = await evdwlOf(pair(name), 2.0, [1, 2], [0.5, -0.5], msm);
+      expect(row.evdwl).toBeCloseTo(-0.155758099776856, 12);
+      expect(row.ecoul).toBeCloseTo(-22.2977238633228, 10);
     }
+    const ew = await runScript(dimer(pair('lj/spica/coul/msm'), 2.0, [1, 2], [0.5, -0.5], 'kspace_style ewald 1e-6\n'));
+    expect(ew.error).toContain('KSpace style ewald is incompatible with Pair style lj/spica/coul/msm');
+    const sc = await runScript(dimer(pair('lj/spica/coul/msm'), 2.0, [1, 2], [0.5, -0.5], 'kspace_style msm 1e-4\n'));
+    expect(sc.error).toContain("Must use 'kspace_modify pressure/scalar no' with Pair style");
   });
 
   it('lj/spica/coul/long: the Coulomb part with ewald (measured: ecoul 16.4431231190563 at r = 2 with table 0, q = 0.5 each)', async () => {

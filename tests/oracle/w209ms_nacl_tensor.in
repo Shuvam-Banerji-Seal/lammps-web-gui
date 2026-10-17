@@ -1,0 +1,37 @@
+# oracle: kspace_style msm with kspace_modify pressure/scalar no (the full virial tensor of the direct sums), cutoff/adjust no (the grid doubled from 2 until the error estimate meets the accuracy 3e-3: 8 8 8), order 6, pair lj/cut/coul/msm 7.0 9.0 with pair_modify table 0, rocksalt ions, NVE, 40 steps.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.4e-13, atoms 3.2e-14.
+units           metal
+atom_style      charge
+lattice         fcc 5.64
+region          box block 0 3 0 3 0 3
+create_box      2 box
+create_atoms    1 box
+lattice         fcc 5.64 origin 0.5 0.0 0.0
+create_atoms    2 box
+mass            1 22.99
+mass            2 35.45
+set             type 1 charge 1.0
+set             type 2 charge -1.0
+variable        dx atom 0.12*sin(0.53*x+0.21*y)
+variable        dy atom 0.12*cos(0.37*y-0.19*z)
+variable        dz atom 0.12*sin(0.29*z+0.41*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+variable        vx atom 2.0*sin(0.7*x+0.3*z)
+variable        vy atom 2.0*cos(0.5*y+0.2*x)
+variable        vz atom 2.0*sin(0.4*z-0.6*y)
+velocity        all set v_vx v_vy v_vz units box
+velocity        all zero linear
+pair_style      lj/cut/coul/msm 7.0 9.0
+pair_coeff      1 1 0.0100 2.35
+pair_coeff      2 2 0.0050 4.40
+pair_coeff      1 2 0.0070 3.00
+pair_modify     table 0
+kspace_style    msm 3.0e-3
+kspace_modify   pressure/scalar no cutoff/adjust no order 6
+timestep        0.001
+fix             1 all nve
+thermo_style    custom step temp pe evdwl ecoul elong etotal press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             40

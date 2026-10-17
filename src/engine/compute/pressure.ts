@@ -117,4 +117,25 @@ export class ComputePressure extends Compute {
   protected computeVector(): void {
     this.vector.set(this.vectorAt(this.virial(), this.sys.geom.volume(this.sys.dimension)));
   }
+
+  /**
+   * The pressure tensor. With kspace_modify pressure/scalar yes (MSM) a tensor that includes the kspace term is
+   * refused, as native LAMMPS does (src/compute_pressure.cpp compute_vector at b332f28: "Must use 'kspace_modify
+   * pressure/scalar no' for tensor components with kspace_style msm"); kspace_modify.html: the option "cannot be used
+   * to access individual components of the pressure tensor".
+   */
+  vectorValues(): Float64Array {
+    if (this.terms.has('kspace') && this.sys.ff.kspace?.scalarPressure) {
+      throw new StyleError("Must use 'kspace_modify pressure/scalar no' for tensor components with kspace_style msm");
+    }
+    return super.vectorValues();
+  }
+
+  /**
+   * The tensor for an isotropic barostat, which uses only its diagonal mean (the scalar pressure). Native fix nh and
+   * fix press/berendsen call compute_scalar() for an iso barostat (pstyle ISO), so pressure/scalar yes is allowed there.
+   */
+  isoVectorValues(): Float64Array {
+    return super.vectorValues();
+  }
 }

@@ -331,6 +331,8 @@ export class PairHybrid extends Pair {
     const anyExplicit = this.subs.some((q) => explicitSub(q.style));
     this.mixedVirial = anyExplicit && this.subs.some((q) => !explicitSub(q.style));
     this.virialFdotr = !anyExplicit;
+    // one list serves every sub-style, so it is a size list only when each sub-style asks for one (after their initStyle)
+    this.sizeList = this.subs.every((q) => q.style.sizeList);
     this.listsBuilt = -1;
   }
 

@@ -73,6 +73,8 @@ export interface NeighborNeeds {
   specialSettings: SpecialSettings;
   /** Optional pair exclusion (neigh_modify exclude), by owned indices. */
   exclude?: ((i: number, j: number) => boolean) | null;
+  /** Size list (Pair.sizeList): a pair is kept only when r <= radius_i + radius_j + skin (atom_style sphere radii). */
+  size?: boolean;
 }
 
 /** Whether two special lists hold the same partners, orders and offsets. */
@@ -436,6 +438,8 @@ export class Neighbor {
   private sBxG = new Float64Array(0);
   private sBt = new Int32Array(0);
   private sBtG = new Int32Array(0);
+  private sBr = new Float64Array(0);
+  private sBrG = new Float64Array(0);
   private sPairA = new Int32Array(0);
   private sPairJ = new Int32Array(0);
 
@@ -530,6 +534,10 @@ export class Neighbor {
     const gxs = (this.sBxG.length >= 3 * nghost ? this.sBxG : (this.sBxG = new Float64Array(Math.max(3 * nghost, 2 * this.sBxG.length))));
     const lt = (this.sBt.length >= nlocal ? this.sBt : (this.sBt = new Int32Array(Math.max(nlocal, 2 * this.sBt.length))));
     const gt = (this.sBtG.length >= nghost ? this.sBtG : (this.sBtG = new Int32Array(Math.max(nghost, 2 * this.sBtG.length))));
+    // size list (NeighborNeeds.size): the radii in bin order, owned and ghost (a ghost has its owner's radius)
+    const radius = needs.size ? s.radius : null;
+    const lr = radius ? (this.sBr.length >= nlocal ? this.sBr : (this.sBr = new Float64Array(Math.max(nlocal, 2 * this.sBr.length)))) : null;
+    const gr = radius ? (this.sBrG.length >= nghost ? this.sBrG : (this.sBrG = new Float64Array(Math.max(nghost, 2 * this.sBrG.length)))) : null;
     for (let b = 0; b < nbins; b++) cursor[b] = bL[b];
     for (let b = 0; b < nbins; b++) cursor[nbins + b] = bG[b];
     for (let k = 0; k < nall; k++) {
@@ -538,10 +546,12 @@ export class Neighbor {
         const p = cursor[b]++;
         lk[p] = k; lt[p] = ta[k];
         lxs[3 * p] = xa[3 * k]; lxs[3 * p + 1] = xa[3 * k + 1]; lxs[3 * p + 2] = xa[3 * k + 2];
+        if (lr) lr[p] = radius![k];
       } else {
         const p = cursor[nbins + b]++;
         gk[p] = k; gt[p] = ta[k];
         gxs[3 * p] = xa[3 * k]; gxs[3 * p + 1] = xa[3 * k + 1]; gxs[3 * p + 2] = xa[3 * k + 2];
+        if (gr) gr[p] = radius![owner[k]];
       }
     }
 
@@ -619,7 +629,9 @@ export class Neighbor {
             for (let q = qs; q < lB; q++) {
               const kq = lk[q], tq = lt[q];
               const dx = lxs[3 * q] - px, dy = lxs[3 * q + 1] - py, dz = lxs[3 * q + 2] - pz;
-              const r2 = dx * dx + dy * dy + dz * dz;
+              let r2 = dx * dx + dy * dy + dz * dz;
+              // a size list keeps the pair only within radsum + skin (Pair.sizeList); NaN fails every test below
+              if (lr) { const rc = lr[p] + lr[q] + skin; if (!(r2 <= rc * rc)) r2 = NaN; }
               if (fullList) {
                 const c1 = r2 < cutsq[tp * nt + tq], c2 = r2 < cutsq[tq * nt + tp];
                 if (plain) {
@@ -648,7 +660,8 @@ export class Neighbor {
             for (let q = gA; q < gB; q++) {
               const kq = gk[q], tq = gt[q];
               const dx = gxs[3 * q] - px, dy = gxs[3 * q + 1] - py, dz = gxs[3 * q + 2] - pz;
-              const r2 = dx * dx + dy * dy + dz * dz;
+              let r2 = dx * dx + dy * dy + dz * dz;
+              if (lr) { const rc = lr[p] + gr![q] + skin; if (!(r2 <= rc * rc)) r2 = NaN; }
               // ghost q lies "above" the owned atom p when its offset is lex-positive
               const c = r2 < cutsq[tp * nt + tq] && (fullList || keepAbove(dx, dy, dz));
               if (plain) { pa[np] = kp; pj[np] = kq; np += +c; }
@@ -670,7 +683,8 @@ export class Neighbor {
             for (let q = lA; q < lB; q++) {
               const kq = lk[q], tq = lt[q];
               const dx = lxs[3 * q] - px, dy = lxs[3 * q + 1] - py, dz = lxs[3 * q + 2] - pz;
-              const r2 = dx * dx + dy * dy + dz * dz;
+              let r2 = dx * dx + dy * dy + dz * dz;
+              if (lr) { const rc = lr[q] + gr![p] + skin; if (!(r2 <= rc * rc)) r2 = NaN; }
               // the owned atom is q: the ghost lies at offset p - q
               const c = r2 < cutsq[tq * nt + tp] && (fullList || keepAbove(-dx, -dy, -dz));
               if (plain) { pa[np] = kq; pj[np] = kp; np += +c; }

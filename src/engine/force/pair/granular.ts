@@ -810,6 +810,10 @@ export class PairGranular extends Pair {
     if (ctx.newtonPair !== false && this.specs.some((sp) => sp?.normal === 'mdr')) {
       throw new StyleError("pair_style granular: normal model 'mdr' requires newton off");
     }
+    // a size list (Pair.sizeList) unless a model acts beyond contact: as native LAMMPS does (src/GRANULAR/pair_granular.cpp
+    // at b332f28: "if (!beyond_contact) req_flags |= NeighConst::REQ_SIZE;"), where only the jkr normal model sets
+    // beyond_contact (src/GRANULAR/gran_sub_mod_normal.cpp)
+    this.sizeList = !this.specs.some((sp) => sp?.normal === 'jkr');
     this.heatOn = this.specs.some((sp) => sp && sp.heat !== 'none');
     if (this.heatOn && (!s || !s.custom.has(HEAT_TEMPERATURE) || !s.custom.has(HEAT_FLOW))) {
       throw new StyleError('pair_style granular: heat conduction (heat radius or area) needs fix property/atom temperature heatflow');

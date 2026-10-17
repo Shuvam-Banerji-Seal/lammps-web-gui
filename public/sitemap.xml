@@ -4,19 +4,19 @@
         xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
   <url>
     <loc>https://shuvam-banerji-seal.github.io/lammps-web-gui/</loc>
-    <lastmod>2026-10-15</lastmod>
+    <lastmod>2026-10-17</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <image:image>
       <image:loc>https://shuvam-banerji-seal.github.io/lammps-web-gui/og-image.png</image:loc>
     </image:image>
     <video:video>
-      <video:thumbnail_loc>https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/app-demo-poster.jpg</video:thumbnail_loc>
-      <video:title>LAMMPS Web GUI: run LAMMPS molecular dynamics in your browser (film)</video:title>
-      <video:description>An 84-second film in three acts: build LAMMPS input scripts, run a Lennard-Jones melt in the MD Notebook with live thermo output and a 3D view, and explore trajectories in the Structure Viewer.</video:description>
-      <video:content_loc>https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/app-demo.mp4</video:content_loc>
-      <video:duration>84</video:duration>
-      <video:publication_date>2026-10-16</video:publication_date>
+      <video:thumbnail_loc>https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/lammps-web-gui-film-poster.jpg</video:thumbnail_loc>
+      <video:title>LAMMPS Web GUI: molecular dynamics in your browser, true to LAMMPS (film)</video:title>
+      <video:description>Simulations run by the app's own engine (a granular pour, an oxDNA ring, micelles, a running crack, a solvated peptide), how a LAMMPS input runs in one browser tab, how the engine is checked against native LAMMPS, how it uses your own CPU threads and GPU, the five themes and the four modules.</video:description>
+      <video:content_loc>https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/lammps-web-gui-film.mp4</video:content_loc>
+      <video:duration>167</video:duration>
+      <video:publication_date>2026-10-17</video:publication_date>
     </video:video>
   </url>
 </urlset>

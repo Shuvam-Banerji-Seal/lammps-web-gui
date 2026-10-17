@@ -1,6 +1,7 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
- * Source: the DIELECTRIC package's style registry (src/DIELECTRIC/pair_lj_cut_coul_cut_dielectric.h, fix_polarize_bem_gmres.h,
+ * Source: the DIELECTRIC package's style registry (src/DIELECTRIC/pair_lj_cut_coul_cut_dielectric.h, msm_dielectric.h,
+ * pair_lj_cut_coul_msm_dielectric.h, fix_polarize_bem_gmres.h,
  * fix_polarize_bem_icc.h and the other headers named in the style sources) at commit b332f28. DIELECTRIC package authors:
  * Trung Nguyen and Monica Olvera de la Cruz (Northwestern University), and Honghao Li (Northwestern).
  * Copyright Sandia Corporation (GNU General Public License). This file is GPL-2.0 too (src/engine-gpl/LICENSE).
@@ -12,6 +13,8 @@ import type { KSpace, Pair } from '../../engine/force/types';
 import { PairLJCutCoulCutDielectric } from '../dielectric/pair_lj_cut_coul_cut_dielectric';
 import { PairLJCutCoulLongDielectric } from '../dielectric/pair_lj_cut_coul_long_dielectric';
 import { KSpacePPPMDielectric } from '../dielectric/pppm_dielectric';
+import { KSpaceMSMDielectric } from '../dielectric/msm_dielectric';
+import { PairLJCutCoulMSMDielectric } from '../dielectric/pair_lj_cut_coul_msm_dielectric';
 import { FixPolarizeBEMGMRES } from '../dielectric/fix_polarize_bem_gmres';
 import { FixPolarizeBEMICC } from '../dielectric/fix_polarize_bem_icc';
 import { FixPolarizeFunctional } from '../dielectric/fix_polarize_functional';
@@ -20,11 +23,13 @@ import { FixPolarizeFunctional } from '../dielectric/fix_polarize_functional';
 export const PAIRS: Record<string, () => Pair> = {
   'lj/cut/coul/cut/dielectric': () => new PairLJCutCoulCutDielectric(),
   'lj/cut/coul/long/dielectric': () => new PairLJCutCoulLongDielectric(),
+  'lj/cut/coul/msm/dielectric': () => new PairLJCutCoulMSMDielectric(),
 };
 
 /** kspace_style names. */
 export const KSPACES: Record<string, () => KSpace> = {
   'pppm/dielectric': () => new KSpacePPPMDielectric(),
+  'msm/dielectric': () => new KSpaceMSMDielectric(),
 };
 
 /** fix styles. */

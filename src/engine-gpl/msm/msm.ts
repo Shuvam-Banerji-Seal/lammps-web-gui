@@ -209,6 +209,7 @@ export class KSpaceMSM extends KSpaceBase {
     if (s.box.triclinic && !this.triclinicSupport) throw new StyleError(`KSpace style ${this.name} does not yet support triclinic geometries`);
     if (s.dimension === 2) throw new StyleError('Cannot (yet) use MSM with 2d simulation');
     if (!hasChargeStyle(s.atomStyle)) throw new StyleError('Kspace style requires atom attribute q');
+    this.checkAtoms(s);
     if (this.slab > 1 || this.slabAuto) {
       ctx.log('WARNING: Slab correction not needed for MSM and will be ignored');
       this.slab = 1;
@@ -797,7 +798,7 @@ export class KSpaceMSM extends KSpaceBase {
     this.vflagAtom = kc.vatom !== null;
     this.beforeCompute(s);
     if (this.scalarPressure && this.vflagAtom) {
-      throw new StyleError("Must use 'kspace_modify pressure/scalar no' to obtain per-atom virial with kspace_style MSM");
+      throw new StyleError(`Must use 'kspace_modify pressure/scalar no' to obtain per-atom virial with kspace_style ${this.peratomName}`);
     }
     if (s.n !== this.natomsOriginal) {
       this.qsumQsq(s, this.qqrd2eRun, null);
@@ -863,14 +864,23 @@ export class KSpaceMSM extends KSpaceBase {
   protected afterFieldforce(_s: SimState): void {}
   /** MSM::compute returns early when no atom is charged (msm/cg does not). */
   protected qsqsumZeroReturns = true;
+  /** The style name of the per-atom virial refusal (msm.cpp: "MSM"; msm_dielectric.cpp: "msm/dielectric"). */
+  protected peratomName = 'MSM';
+  /** The charges of fieldforce and of the per-atom self energy (msm/dielectric uses the scaled charges). */
+  protected fieldCharges(s: SimState): Float64Array { return s.q; }
+  /** The field at owned atom i after fieldforce (E times delxinv, lamda-transformed); msm/dielectric stores it. */
+  protected fieldAtom(_i: number, _ex: number, _ey: number, _ez: number): void {}
+  /** Atom style checks of a subclass at init (msm/dielectric: atom style dielectric). */
+  protected checkAtoms(_s: SimState): void {}
 
   /** eatom/vatom of the owned atoms: self energy and the 0.5 qqrd2e factor (end of MSM::compute). */
   protected peratomFinish(s: SimState, list: Int32Array | null, eatom: Float64Array | null, vatom: Float64Array | null, qscale: number, g0: number): void {
     const n = list ? list.length : s.n;
+    const q = this.fieldCharges(s);
     for (let k = 0; k < n; k++) {
       const i = list ? list[k] : k;
       if (eatom) {
-        eatom[i] -= (s.q[i] * s.q[i] * g0) / this.cutoff;
+        eatom[i] -= (q[i] * q[i] * g0) / this.cutoff;
         eatom[i] *= 0.5 * qscale;
       }
       if (vatom) for (let j = 0; j < 6; j++) vatom[6 * i + j] *= 0.5 * qscale;
@@ -1470,6 +1480,7 @@ export class KSpaceMSM extends KSpaceBase {
     const lo = this.curLo, xg = this.xg, p2g = this.part2grid, o = this.order;
     const [px, py, pz] = this.phi1d;
     const [qx, qy, qz] = this.dphi1d;
+    const q = this.fieldCharges(s);
     for (let k = 0; k < n; k++) {
       const i = list ? list[k] : k;
       const nx = p2g[3 * i], ny = p2g[3 * i + 1], nz = p2g[3 * i + 2];
@@ -1505,7 +1516,8 @@ export class KSpaceMSM extends KSpaceBase {
         const t2 = hi[4] * ekx + hi[3] * eky + hi[2] * ekz;
         ekx = t0; eky = t1; ekz = t2;
       }
-      const qfactor = qqrd2e * s.q[i];
+      this.fieldAtom(i, ekx, eky, ekz);
+      const qfactor = qqrd2e * q[i];
       f[3 * i] += qfactor * ekx;
       f[3 * i + 1] += qfactor * eky;
       f[3 * i + 2] += qfactor * ekz;

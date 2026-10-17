@@ -33,14 +33,14 @@ const f32 = new Float32Array(1);
 const i32 = new Int32Array(f32.buffer);
 
 /** The kspace style a coul/msm style needs: kspace_style msm or msm/cg (native pair_check of both sides). */
-const msmOf = (k: KSpace | null, pair: string): KSpaceMSM => {
+export const msmOf = (k: KSpace | null, pair: string): KSpaceMSM => {
   if (!k) throw new StyleError('Pair style requires a KSpace style');
   if (!(k instanceof KSpaceMSM)) throw new StyleError(`KSpace style ${k.name} is incompatible with Pair style ${pair}`);
   return k;
 };
 
 /** The native tables of one style, rebuilt when the table size, inner cutoff, Coulomb cutoff, qqrd2e or order change. */
-class TableCache {
+export class TableCache {
   private key = '';
   private tab: CoulTables | null = null;
   get(bits: number, tabinnerRsq: number, cutCoul: number, qqrd2e: number, order: number): CoulTables | null {
@@ -273,8 +273,8 @@ export class PairLJCutCoulMSM extends PairLJCutCoulLong implements MsmPair, MsmL
   override readonly name: string = 'lj/cut/coul/msm';
   readonly msmflag = true as const;
   readonly tables = new TableCache();
-  private kspace: KSpace | null = null;
-  private cutljsq = new Float64Array(0);
+  protected kspace: KSpace | null = null;
+  protected cutljsq = new Float64Array(0);
   private readonly opts: LoopOptions;
 
   constructor() {

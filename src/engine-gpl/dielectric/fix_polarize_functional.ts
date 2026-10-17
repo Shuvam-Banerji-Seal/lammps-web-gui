@@ -77,7 +77,7 @@ export class FixPolarizeFunctional extends Fix {
   setup(): void {
     this.pairOk();
     const k = this.sys.ff.kspace;
-    if (k && this.kspaceOn && k.name !== 'pppm/dielectric') throw new StyleError(`Kspace style not compatible with fix ${this.id} (${this.style})`);
+    if (k && this.kspaceOn && k.name !== 'pppm/dielectric' && k.name !== 'msm/dielectric') throw new StyleError(`Kspace style not compatible with fix ${this.id} (${this.style})`);
     this.gEwald = k && this.kspaceOn ? k.gEwald : 0.01;
     this.mapping();
     // calculate_Rww_cutoff: the interface matrix from the neighbor list of the run (before the forces of setup)

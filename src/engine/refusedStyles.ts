@@ -16,7 +16,6 @@ export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[
     'graphics/isosurface', // engine-gpl/registry/graphics.ts (refused: the reason is in the error)
   ],
   COMPUTES: [
-    'dipole/tip4p', 'dipole/tip4p/chunk', // registry/compute_chunk17.ts
   ],
 };
 

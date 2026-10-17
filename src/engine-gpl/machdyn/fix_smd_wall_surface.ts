@@ -42,8 +42,17 @@ export class FixSMDWallSurface extends Fix {
     if (!Number.isInteger(this.wallMol) || this.wallMol < WALL_MOLECULE_MIN) throw new StyleError('wall molcule id must be >= 65535');
   }
 
-  /** Native setup: the triangles are read once, before the first force evaluation of the run. */
-  setupPreForce(): void {
+  /** For minimization: setup as with dynamics (native min_setup). */
+  minSetup(): void {
+    this.setup();
+  }
+
+  /**
+   * Native setup (Verlet::setup calls the fixes' setup after the setup force evaluation): the triangles are read once,
+   * so the setup forces and energies of that run are those without the wall atoms, and the wall takes part from the
+   * next run on (native: "Always run for 0 timesteps directly after loading STL file!").
+   */
+  override setup(): void {
     if (this.done) return;
     this.done = true;
     const s = this.sys.state;
@@ -86,5 +95,7 @@ export class FixSMDWallSurface extends Fix {
       custom,
     });
     this.sys.atomsChanged();
+    // the forces and energies of this setup were evaluated before the wall atoms existed, as in native
+    this.sys.forcesCurrent();
   }
 }

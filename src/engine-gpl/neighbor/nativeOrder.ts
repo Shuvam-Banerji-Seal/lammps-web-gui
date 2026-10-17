@@ -480,6 +480,105 @@ export const nativePairs = (s: SimState, nb: Neighbor, g: Geometry, half: NeighL
   return out.buf.slice(0, out.len);
 };
 
+/** The size-list settings of NativePairOrder (pair styles that request NeighConst::REQ_SIZE). */
+export interface SizeListSpec {
+  /** the type pairs the style owns (a sub-style of pair hybrid gets the skip list of its own type pairs) */
+  allow: (itype: number, jtype: number) => boolean;
+}
+
+/**
+ * npair_bin.cpp build() for a SIZE list (SIZE = 1, orthogonal box, one processor): the candidates of the bin stencil
+ * in native's order, as nativePairs walks them (half stencil with newton on; with newton off the full stencil, each
+ * owned pair once and every ghost pair), kept when "radsum = radius[i] + radius[j]; cut = radsum + skin; ... if (rsq
+ * <= cutsq)" by the radii and positions of the build, after the neigh_modify exclusions; no type cutoff, as native.
+ * The membership is native's, not the engine's list (the radii of styles such as smd/ulsph change between builds, so
+ * native's list holds pairs beyond the cutoff of the last init). Pairs whose ghost the engine does not hold are left out.
+ */
+export const nativeSizePairs = (s: SimState, nb: Neighbor, g: Geometry, newton: boolean, spec: SizeListSpec): Int32Array => {
+  const L = nativeLayout(s, nb, g);
+  const { order, n, two, X, binOf, bins, atomBin, chainStart, members, posInBin, sx, sy, sz, cutmaxsq, binDist, gEng } = L;
+  const radius = s.radius;
+  if (!radius) throw new Error('native size list needs per-atom radii');
+  const owner = nb.owner;
+  const skin = nb.skin;
+  const exclude = nb.exclusion(s);
+  const stencil: number[] = [];
+  if (!newton) {
+    const szf = two ? 0 : sz;
+    for (let k = -szf; k <= szf; k++) {
+      for (let j = -sy; j <= sy; j++) {
+        for (let i = -sx; i <= sx; i++) {
+          if (binDist(i, j, k) < cutmaxsq) stencil.push(i, j, k);
+        }
+      }
+    }
+  } else if (!two) {
+    for (let k = 0; k <= sz; k++) {
+      for (let j = -sy; j <= sy; j++) {
+        for (let i = -sx; i <= sx; i++) {
+          if (k <= 0 && j <= 0 && (j !== 0 || i <= 0)) continue;
+          if (binDist(i, j, k) < cutmaxsq) stencil.push(i, j, k);
+        }
+      }
+    }
+  } else {
+    for (let j = 0; j <= sy; j++) {
+      for (let i = -sx; i <= sx; i++) {
+        if (j <= 0 && (j !== 0 || i <= 0)) continue;
+        if (binDist(i, j, 0) < cutmaxsq) stencil.push(i, j, 0);
+      }
+    }
+  }
+  const out: Growable = { buf: new Int32Array(64), len: 0 };
+  for (let i = 0; i < n; i++) {
+    const ei = order[i];
+    const xi = X[3 * i], yi = X[3 * i + 1], zi = X[3 * i + 2];
+    const ri = radius[ei], ti = s.type[ei];
+    const consider = (j: number): void => {
+      const ek = gEng[j];
+      if (ek < 0) return;
+      const oj = owner[ek];
+      if (!spec.allow(ti, s.type[oj])) return;
+      if (exclude && exclude(ei, oj)) return;
+      const dx = xi - X[3 * j], dy = yi - X[3 * j + 1], dz = zi - X[3 * j + 2];
+      const rsq = dx * dx + dy * dy + dz * dz;
+      const cut = ri + radius[oj] + skin;
+      if (rsq <= cut * cut) pushPair(out, ei, ek);
+    };
+    const bx = binOf[3 * i], by = binOf[3 * i + 1], bz = binOf[3 * i + 2];
+    if (!newton) {
+      for (let st = 0; st < stencil.length; st += 3) {
+        const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+        if (b < 0) continue;
+        for (let q = chainStart[b]; q < chainStart[b + 1]; q++) {
+          const j = members[q];
+          if (j > i) consider(j);
+        }
+      }
+    } else {
+      const ob = atomBin[i];
+      for (let q = chainStart[ob] + posInBin[i] + 1; q < chainStart[ob + 1]; q++) {
+        const j = members[q];
+        if (j >= n) {
+          const zj = X[3 * j + 2], yj = X[3 * j + 1], xj = X[3 * j];
+          if (zj < zi) continue;
+          if (zj === zi) {
+            if (yj < yi) continue;
+            if (yj === yi && xj < xi) continue;
+          }
+        }
+        consider(j);
+      }
+      for (let st = 0; st < stencil.length; st += 3) {
+        const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+        if (b < 0) continue;
+        for (let q = chainStart[b]; q < chainStart[b + 1]; q++) consider(members[q]);
+      }
+    }
+  }
+  return out.buf.slice(0, out.len);
+};
+
 /**
  * npair_bin.cpp build() for a FULL list (HALF = 0, orthogonal box, one processor): for each owned atom, the engine index
  * of the partner that native's full list stores LAST (-1 when there is none). The full stencil of nstencil_bin.cpp create
@@ -535,8 +634,11 @@ export const nativeFullLast = (s: SimState, nb: Neighbor, g: Geometry, full: Nei
  * kept between rebuilds (native keeps its pair lists and only tests the cutoff each step).
  */
 export class NativePairOrder {
-  /** newton: the native pair enumeration of newton on (default) or newton off. */
-  constructor(private readonly newton = true) {}
+  /**
+   * newton: the native pair enumeration of newton on (default) or newton off. size: a size list (NeighConst::REQ_SIZE)
+   * whose membership is native's (nativeSizePairs) rather than the engine list's.
+   */
+  constructor(private readonly newton = true, private readonly size: SizeListSpec | null = null) {}
   private nbuild = -1;
   private order: Int32Array | null = null;
   private half: NeighList | null = null;
@@ -546,7 +648,8 @@ export class NativePairOrder {
   pairs(s: SimState, nb: Neighbor, g: Geometry, half: NeighList | null): Int32Array {
     if (!half) throw new Error('native pair order needs a half neighbor list');
     if (this.nbuild === nb.nbuild && this.order === s.order && this.half === half) return this.pairsCache;
-    this.pairsCache = g.triclinic ? engineOrder(half, nb.nlocal) : nativePairs(s, nb, g, half, this.newton);
+    this.pairsCache = g.triclinic ? engineOrder(half, nb.nlocal)
+      : this.size ? nativeSizePairs(s, nb, g, this.newton, this.size) : nativePairs(s, nb, g, half, this.newton);
     this.nbuild = nb.nbuild;
     this.order = s.order;
     this.half = half;

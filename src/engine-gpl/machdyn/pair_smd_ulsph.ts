@@ -61,7 +61,8 @@ export class PairSMDUlsph extends Pair {
   private params: (TypeParams | null)[] = [];
   private active = new Uint8Array(0);
   private maxrad = new Float64Array(0);
-  private readonly order = new NativePairOrder();
+  /** native's size list (NeighConst::REQ_SIZE), in the enumeration of the newton pair setting (set at init) */
+  private order = new NativePairOrder();
   /** Critical time step of the last force evaluation (fix smd/adjust_dt reads it). */
   dtCFL = BIG_DT;
   /** Per owned atom: velocity gradient L (3x3 row-major, 9 per atom), shape of the deformation F, Cauchy stress, sound speed. */
@@ -148,6 +149,8 @@ export class PairSMDUlsph extends Pair {
   }
 
   initStyle(ctx: StyleContext): void {
+    const nt = this.ntypes + 1;
+    this.order = new NativePairOrder(ctx.newtonPair !== false, { allow: (a, b) => !!this.active[a * nt + b] });
     const s = ctx.s;
     if (!s) throw new StyleError('pair smd/ulsph needs a box and atoms');
     if (!s.radius || !s.rmass || !s.vfrac || !s.custom.has(SMD_DEFGRAD)) throw new StyleError('pair smd/ulsph needs atom_style smd');

@@ -23,6 +23,7 @@ import {
 } from './params';
 import { cos as libmCos } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 const MY_PIS = Math.sqrt(Math.PI);
 const ALF = 0.20;
@@ -966,8 +967,8 @@ export class PairComb extends Pair {
     const QUchj = (p.QU2 - jq) * p.bD2;
     const QOchi = (iq - p.Qo1) * p.bB1;
     const QOchj = (jq - p.Qo2) * p.bB2;
-    const YYDiqp = QUchi === 0.0 ? 0.0 : -p.nD1 * QUchi * p.bD1 * Math.pow(Math.abs(QUchi), (p.nD1 - 2.0));
-    const YYDjqp = QUchj === 0.0 ? 0.0 : -p.nD2 * QUchj * p.bD2 * Math.pow(Math.abs(QUchj), (p.nD2 - 2.0));
+    const YYDiqp = QUchi === 0.0 ? 0.0 : -p.nD1 * QUchi * p.bD1 * libmPow(Math.abs(QUchi), p.nD1 - 2.0);
+    const YYDjqp = QUchj === 0.0 ? 0.0 : -p.nD2 * QUchj * p.bD2 * libmPow(Math.abs(QUchj), p.nD2 - 2.0);
     const YYAsiqp = Asi * p.lam11 * YYDiqp;
     const YYAsjqp = Asj * p.lam12 * YYDjqp;
     const YYBsiqp = QOchi === 0.0

@@ -16,6 +16,7 @@ import { C_ele, EV_to_KCALpMOL, KCALpMOL_to_EV } from './core';
 import type { ControlParams, ReaxParam, TwoBody } from './ffield';
 import type { LookupTables } from './lookup';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 const SMALL = 0.0001;
 
@@ -37,12 +38,12 @@ const acks2Pairs = (sys: RxSystem): void => {
       const xcut = 0.5 * (sys.param.sbp[sys.type[i]].bcut_acks2 + sys.param.sbp[sys.type[j]].bcut_acks2);
       if (!pairFlag(sys, i, j, pj, xcut)) continue;
       const d = far.d[pj] / xcut;
-      const bond_softness = gp34 * Math.pow(d, 3.0) * Math.pow(1.0 - d, 6.0);
+      const bond_softness = gp34 * libmPow(d, 3.0) * libmPow(1.0 - d, 6.0);
       if (!(bond_softness > 0.0)) continue;
       const effpot_diff = s[N + i] - s[N + j];
       const e_ele = -0.5 * KCALpMOL_to_EV * bond_softness * effpot_diff * effpot_diff;
       en.e_ele += e_ele;
-      let d_bond_softness = gp34 * (3.0 / xcut) * Math.pow(d, 2.0) * Math.pow(1.0 - d, 5.0) * (1.0 - 3.0 * d);
+      let d_bond_softness = gp34 * (3.0 / xcut) * Math.pow(d, 2.0) * libmPow(1.0 - d, 5.0) * (1.0 - 3.0 * d);
       d_bond_softness = -0.5 * d_bond_softness * effpot_diff * effpot_diff;
       d_bond_softness = (KCALpMOL_to_EV * d_bond_softness) / far.d[pj];
       for (let k = 0; k < 3; k++) {
@@ -120,13 +121,13 @@ const directPair = (
   void gamma_w;
   if (param.vdwType === 1 || param.vdwType === 3) {
     // shielding
-    const powr_vdW1 = Math.pow(r_ij, p_vdW1);
-    const powgi_vdW1 = Math.pow(1.0 / twbp.gamma_w, p_vdW1);
-    const fn13 = Math.pow(powr_vdW1 + powgi_vdW1, p_vdW1i);
+    const powr_vdW1 = libmPow(r_ij, p_vdW1);
+    const powgi_vdW1 = libmPow(1.0 / twbp.gamma_w, p_vdW1);
+    const fn13 = libmPow(powr_vdW1 + powgi_vdW1, p_vdW1i);
     const exp1 = libmExp(twbp.alpha * (1.0 - fn13 / twbp.r_vdW));
     const exp2 = libmExp(0.5 * twbp.alpha * (1.0 - fn13 / twbp.r_vdW));
     e_vdW = twbp.D * (exp1 - 2.0 * exp2);
-    const dfn13 = Math.pow(powr_vdW1 + powgi_vdW1, p_vdW1i - 1.0) * Math.pow(r_ij, p_vdW1 - 2.0);
+    const dfn13 = libmPow(powr_vdW1 + powgi_vdW1, p_vdW1i - 1.0) * libmPow(r_ij, p_vdW1 - 2.0);
     CEvd = dTap * e_vdW - Tap * twbp.D * (twbp.alpha / twbp.r_vdW) * (exp1 - exp2) * dfn13;
   } else {
     // no shielding
@@ -142,7 +143,7 @@ const directPair = (
     CEvd += dTap * e_core + Tap * de_core / r_ij;
     // lg correction, only if lgvdw is yes (refused by the pair style: lgflag is always 0 here)
     if (ctrl.lgflag) {
-      const r_ij5 = Math.pow(r_ij, 5.0), r_ij6 = Math.pow(r_ij, 6.0), re6 = Math.pow(twbp.lgre, 6.0);
+      const r_ij5 = libmPow(r_ij, 5.0), r_ij6 = libmPow(r_ij, 6.0), re6 = libmPow(twbp.lgre, 6.0);
       e_lg = -(twbp.lgcij / (r_ij6 + re6));
       const de_lg = -6.0 * e_lg * r_ij5 / (r_ij6 + re6);
       CEvd += dTap * e_lg + Tap * de_lg / r_ij;
@@ -150,7 +151,7 @@ const directPair = (
   }
   // Coulomb
   const dr3gamij_1 = r_ij * r_ij * r_ij + twbp.gamma;
-  const dr3gamij_3 = Math.pow(dr3gamij_1, 0.33333333333333);
+  const dr3gamij_3 = libmPow(dr3gamij_1, 0.33333333333333);
   const tmp = Tap / dr3gamij_3;
   const e_ele0 = C_ele * tmp;
   const CEclmb = C_ele * (dTap - Tap * r_ij / dr3gamij_1) / dr3gamij_3;
@@ -243,10 +244,10 @@ export const lrVdwCoulomb = (param: ReaxParam, ctrl: ControlParams, T: Float64Ar
   const { Tap, dTap } = taperAt(T, r_ij);
   const r = directPair(param, ctrl, Tap, dTap, r_ij, twbp, twbp.gamma_w, p_vdW1);
   return {
-    H: EV_to_KCALpMOL * (Tap / Math.pow(r_ij * r_ij * r_ij + twbp.gamma, 0.33333333333333)),
+    H: EV_to_KCALpMOL * (Tap / libmPow(r_ij * r_ij * r_ij + twbp.gamma, 0.33333333333333)),
     e_vdW: Tap * (r.e_vdW + r.e_core + r.e_lg),
     CEvd: r.CEvd,
-    e_ele: C_ele * (Tap / Math.pow(r_ij * r_ij * r_ij + twbp.gamma, 0.33333333333333)),
-    CEclmb: C_ele * (dTap - Tap * r_ij / (r_ij * r_ij * r_ij + twbp.gamma)) / Math.pow(r_ij * r_ij * r_ij + twbp.gamma, 0.33333333333333),
+    e_ele: C_ele * (Tap / libmPow(r_ij * r_ij * r_ij + twbp.gamma, 0.33333333333333)),
+    CEclmb: C_ele * (dTap - Tap * r_ij / (r_ij * r_ij * r_ij + twbp.gamma)) / libmPow(r_ij * r_ij * r_ij + twbp.gamma, 0.33333333333333),
   };
 };

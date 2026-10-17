@@ -20,6 +20,7 @@ import { StyleError } from '../../engine/force/types';
 import type { ControlParams, ReaxParam, SingleBody, TwoBody } from './ffield';
 import { log as libmLog } from '../libm/log';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 export const MIN_SINE = 1e-10;
 export const DANGER_ZONE = 0.9;
@@ -165,7 +166,7 @@ export const taperCoefficients = (nonbLow: number, nonbCut: number): Float64Arra
   if (nonbCut < 0.0) throw new StyleError('Negative upper Taper-radius cutoff');
   const swa = nonbLow, swb = nonbCut;
   const d1 = swb - swa;
-  const d7 = Math.pow(d1, 7.0);
+  const d7 = libmPow(d1, 7.0);
   const swa2 = swa * swa, swa3 = swa * swa * swa;
   const swb2 = swb * swb, swb3 = swb * swb * swb;
   const T = new Float64Array(8);
@@ -361,15 +362,15 @@ const bondOrderPair = (
   const rr2 = 1.0 / (d * d);
   let BO_s = 0, C12 = 0, BO_pi = 0, C34 = 0, BO_pi2 = 0, C56 = 0;
   if (sbpI.r_s > 0.0 && sbpJ.r_s > 0.0) {
-    C12 = twbp.p_bo1 * Math.pow(d / twbp.r_s, twbp.p_bo2);
+    C12 = twbp.p_bo1 * libmPow(d / twbp.r_s, twbp.p_bo2);
     BO_s = (1.0 + boCut) * libmExp(C12);
   }
   if (sbpI.r_pi > 0.0 && sbpJ.r_pi > 0.0) {
-    C34 = twbp.p_bo3 * Math.pow(d / twbp.r_p, twbp.p_bo4);
+    C34 = twbp.p_bo3 * libmPow(d / twbp.r_p, twbp.p_bo4);
     BO_pi = libmExp(C34);
   }
   if (sbpI.r_pi_pi > 0.0 && sbpJ.r_pi_pi > 0.0) {
-    C56 = twbp.p_bo5 * Math.pow(d / twbp.r_pp, twbp.p_bo6);
+    C56 = twbp.p_bo5 * libmPow(d / twbp.r_pp, twbp.p_bo6);
     BO_pi2 = libmExp(C56);
   }
   // Initially BO values are the uncorrected ones, page 1

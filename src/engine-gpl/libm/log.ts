@@ -50,6 +50,54 @@ export const fma = (a: number, b: number, c: number): number => {
   return th + F[0];
 };
 
+/**
+ * The same correctly rounded a * b + c as fma, faster: with the exact product p + ul and TwoSum(c, p) = th + tl, the
+ * value is th + tl + ul; v = RN(tl + ul) leaves an exact error e2, and RN(th + v) is the correct rounding unless e2 is
+ * non-zero and th + v is exactly a rounding midpoint (|e2| is below half an ulp of v, and every midpoint near th + v
+ * lies on v's grid). That case, detected by the exact error d of th + v (a midpoint is the only case where r + 2d is
+ * r's neighbour, so (r + 2d) - r equals 2d with d non-zero), goes through the round-to-odd fma.
+ */
+export const fmaF = (a: number, b: number, c: number): number => {
+  const p = a * b;
+  let t = SPLIT * a;
+  const ah = t - (t - a), al = a - ah;
+  t = SPLIT * b;
+  const bh = t - (t - b), bl = b - bh;
+  const ul = ((ah * bh - p) + ah * bl + al * bh) + al * bl;
+  const th = c + p;
+  const bb = th - c;
+  const tl = (c - (th - bb)) + (p - bb);
+  const v = tl + ul;
+  const vb = v - tl;
+  const e2 = (tl - (v - vb)) + (ul - vb);
+  const r = th + v;
+  if (e2 === 0) return r;
+  const rb = r - th;
+  const d = (th - (r - rb)) + (v - rb);
+  if (d === 0 || (r + 2 * d) - r !== 2 * d) return r;
+  return fma(a, b, c);
+};
+
+/** fmaF with b given with its split (bh, bl). */
+export const fmaSF = (a: number, b: number, bh: number, bl: number, c: number): number => {
+  const p = a * b;
+  const t = SPLIT * a;
+  const ah = t - (t - a), al = a - ah;
+  const ul = ((ah * bh - p) + ah * bl + al * bh) + al * bl;
+  const th = c + p;
+  const bb = th - c;
+  const tl = (c - (th - bb)) + (p - bb);
+  const v = tl + ul;
+  const vb = v - tl;
+  const e2 = (tl - (v - vb)) + (ul - vb);
+  const r = th + v;
+  if (e2 === 0) return r;
+  const rb = r - th;
+  const d = (th - (r - rb)) + (v - rb);
+  if (d === 0 || (r + 2 * d) - r !== 2 * d) return r;
+  return fma(a, b, c);
+};
+
 /** Veltkamp split of b into bh + bl (26 + 27 bits), for a multiplicand used many times. */
 export const splitHi = (b: number): number => { const t = SPLIT * b; return t - (t - b); };
 

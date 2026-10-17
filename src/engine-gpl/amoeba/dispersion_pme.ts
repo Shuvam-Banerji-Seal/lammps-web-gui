@@ -13,6 +13,7 @@
 import { checkPmeOrder, convolveReal, factorable, makePmeGrid, pmeFill, type PmeGrid } from './kspace';
 import { erfcExact } from '../../engine/force/erfc';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 const MY_PI = Math.PI;
 
@@ -66,8 +67,8 @@ export const dispersionKspace = (
     }
   }
   // the influence weights of the dispersion sum: -term1/denom per wavevector (zero at h = 0 and where exp underflows)
-  const denom0 = (6.0 * volbox) / Math.pow(MY_PI, 1.5);
-  const fac1 = 2.0 * Math.pow(MY_PI, 3.5);
+  const denom0 = (6.0 * volbox) / libmPow(MY_PI, 1.5);
+  const fac1 = 2.0 * libmPow(MY_PI, 3.5);
   const fac2 = aewald * aewald * aewald;
   const fac3 = -2.0 * aewald * MY_PI * MY_PI;
   const bfac = MY_PI / aewald;

@@ -20,15 +20,15 @@ const F = new Float64Array(1);
 const U = new Uint32Array(F.buffer); // little-endian: U[0] low word, U[1] high word
 const SPLIT = 134217729;
 
-const InvLn2N = 184.6649652337873;
-const Shift = 6755399441055744.0;
-const NegLn2hiN = -0.005415212348111709;
-const NegLn2loN = -1.2864023111638346e-14;
-const C2 = 0.49999999999996786, C3 = 0.16666666666665886, C4 = 0.0416666808410674, C5 = 0.008333335853059549;
-const SINV = splitHi(InvLn2N), SHI = splitHi(NegLn2hiN), SLO = splitHi(NegLn2loN);
-const SC2 = splitHi(C3), SC4 = splitHi(C5);
+export const InvLn2N = 184.6649652337873;
+export const Shift = 6755399441055744.0;
+export const NegLn2hiN = -0.005415212348111709;
+export const NegLn2loN = -1.2864023111638346e-14;
+export const C2 = 0.49999999999996786, C3 = 0.16666666666665886, C4 = 0.0416666808410674, C5 = 0.008333335853059549;
+export const SINV = splitHi(InvLn2N), SHI = splitHi(NegLn2hiN), SLO = splitHi(NegLn2loN);
+export const SC2 = splitHi(C3), SC4 = splitHi(C5);
 /** __exp_data.tab (N = 128): for i, tab[2i] = tail bits and tab[2i+1] = scale bits, as (high word, low word) pairs. */
-const TAB = new Uint32Array([
+export const TAB = new Uint32Array([
   0x00000000, 0x00000000, 0x3ff00000, 0x00000000, 0x3c9b3b4f, 0x1a88bf6e, 0x3feff63d, 0xa9fb3335,
   0xbc716013, 0x9cd8dc5d, 0x3fefec9a, 0x3e778061, 0xbc905e7a, 0x108766d1, 0x3fefe315, 0xe86e7f85,
   0x3c8cd252, 0x3567f613, 0x3fefd9b0, 0xd3158574, 0xbc8bce80, 0x23f98efa, 0x3fefd06b, 0x29ddf6de,
@@ -95,18 +95,18 @@ const TAB = new Uint32Array([
   0x3c77893b, 0x4d91cd9d, 0x3fefe7c1, 0x819e90d8, 0x3c5305c1, 0x4160cc89, 0x3feff3c2, 0x2b8f71f1,
 ]);
 
-const asDouble = (hi: number, lo: number): number => { U[1] = hi; U[0] = lo; return F[0]; };
+export const asDouble = (hi: number, lo: number): number => { U[1] = hi; U[0] = lo; return F[0]; };
 
 /** tail_i = asdouble(tab[2i]) and 2^(i/N) = asdouble(tab[2i+1] + (i << 45)) for the fast path. */
-const TAILD = new Float64Array(128);
-const SCALE2 = new Float64Array(128);
+export const TAILD = new Float64Array(128);
+export const SCALE2 = new Float64Array(128);
 for (let i = 0; i < 128; i++) {
   TAILD[i] = asDouble(TAB[4 * i], TAB[4 * i + 1]);
   SCALE2[i] = asDouble((TAB[4 * i + 2] + (i << 13)) >>> 0, TAB[4 * i + 3]);
 }
 /** 2^m for |m| <= 1100 (exact powers of two). */
-const POW2_OFF = 1100;
-const POW2 = new Float64Array(2201);
+export const POW2_OFF = 1100;
+export const POW2 = new Float64Array(2201);
 for (let m = -1100; m <= 1100; m++) POW2[m + POW2_OFF] = 2 ** m;
 
 /** The k < 0 special case of e_exp.c (unfused products, as compiled). */

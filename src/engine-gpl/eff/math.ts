@@ -11,6 +11,7 @@
  * applies them with the same sign, so every sum keeps the order of the original.
  */
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /* pair_eff_inline.h: ERF_TERMS1 12, ERF_TERMS2 7, DERF_TERMS 13 */
 const ERF_TERMS1 = 12;
@@ -167,7 +168,7 @@ export const pauliElecElec = (samespin: number, rc0: number, re10: number, re20:
   const re1 = re10 * PAULI_RE, re2 = re20 * PAULI_RE, rc = rc0 * PAULI_RC;
   const ree = re1 * re1 + re2 * re2;
   const rem = re1 * re1 - re2 * re2;
-  const S = (2.82842712474619 / Math.pow((re2 / re1 + re1 / re2), 1.5)) * libmExp(-rc * rc / ree);
+  const S = (2.82842712474619 / libmPow(re2 / re1 + re1 / re2, 1.5)) * libmExp(-rc * rc / ree);
   const t1 = 1.5 * (1 / (re1 * re1) + 1 / (re2 * re2));
   const t2 = 2.0 * (3 * ree - 2 * rc * rc) / (ree * ree);
   const tt = t1 - t2;
@@ -273,7 +274,7 @@ export const pauliCoreElec = (rc: number, re2: number, A: number, B: number, C: 
  */
 export const pauliCorePElec = (rc: number, re2: number, A: number, B: number, C: number, D: number, Ep: number): { ep: number; f: number; f2: number } => {
   const u = rc - C * re2;
-  const g = Math.pow(2.0 / (B / re2 + re2 / B), 5.0);
+  const g = libmPow(2.0 / (B / re2 + re2 / B), 5.0);
   const en = A * g * Math.pow(u, 2.0) * libmExp(-D * Math.pow(u, 2.0) / (Ep + re2 * re2));
   const dEdrc = A * g * 2.0 * u * libmExp(-D * Math.pow(u, 2.0) / (Ep + re2 * re2)) +
     en * (-D * 2.0 * u / (Ep + re2 * re2));

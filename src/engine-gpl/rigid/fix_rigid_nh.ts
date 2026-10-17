@@ -26,6 +26,7 @@ import { FixRigidBase, EPSILON } from './fix_rigid';
 import { angmomToOmega, invquatvec, matvec, noSquishRotate, qToExyz, quatvec, transposeMatvec, type Q4, type V3 } from './math_extra';
 import { log as libmLog } from '../libm/log';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** FixRigidNH::maclaurin_series: 1 + x^2/6 + x^4/120 + x^6/5040 + x^8/362880 */
 const maclaurinSeries = (x: number): number => {
@@ -166,11 +167,11 @@ export class FixRigidNH extends FixRigidBase {
     // Table 1 in Kamberaj et al
     const order = this.thermo.tOrder;
     if (order === 3) {
-      this.w[0] = 1.0 / (2.0 - Math.pow(2.0, 1.0 / 3.0));
+      this.w[0] = 1.0 / (2.0 - libmPow(2.0, 1.0 / 3.0));
       this.w[1] = 1.0 - 2.0 * this.w[0];
       this.w[2] = this.w[0];
     } else if (order === 5) {
-      this.w[0] = 1.0 / (4.0 - Math.pow(4.0, 1.0 / 3.0));
+      this.w[0] = 1.0 / (4.0 - libmPow(4.0, 1.0 / 3.0));
       this.w[1] = this.w[0];
       this.w[2] = 1.0 - 4.0 * this.w[0];
       this.w[3] = this.w[0];

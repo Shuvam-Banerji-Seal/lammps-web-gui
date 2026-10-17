@@ -12,6 +12,7 @@
 import { StyleError } from '../../engine/force/types';
 import type { Comb3Lib, Comb3Param } from './params';
 import type { Comb3Kernel } from './terms';
+import { pow as libmPow } from '../libm/pow';
 
 const v3 = (): Float64Array => new Float64Array(3);
 
@@ -103,7 +104,7 @@ export class Comb3RadTor {
   private spline(spl: Float64Array, base: number, xv: number, yv: number, zv: number, out: Float64Array): void {
     for (let j = 0; j < 64; j++) {
       const e0 = Math.trunc(j / 16), e1 = Math.trunc(j / 4) % 4, e2 = j % 4;
-      const x = spl[base + j] * Math.pow(xv, e0) * Math.pow(yv, e1) * Math.pow(zv, e2);
+      const x = spl[base + j] * libmPow(xv, e0) * libmPow(yv, e1) * libmPow(zv, e2);
       out[0] += x;
       if (xv > 1.0e-8) out[1] += x * e0 / xv;
       if (yv > 1.0e-8) out[2] += x * e1 / yv;

@@ -16,6 +16,7 @@
  */
 import { VoroCellNeighbor } from './cell';
 import { VoroContainer } from './container';
+import { pow as libmPow } from '../libm/pow';
 
 /** BIG of comm_brick.cpp (slab bounds of the outermost swaps). */
 const BIG = 1.0e20;
@@ -120,7 +121,7 @@ export const nativeNeighborRows = (inp: NativeNeighborInput): NativeNeighborRow[
   for (let i = 0; i < 3; i++) n[i] = sh[i] - sb[i];
   const V = n[0] * n[1] * n[2];
   for (let i = 0; i < 3; i++) {
-    n[i] = Math.round(n[i] * Math.pow(nall / (V * 8.0), 0.333333));
+    n[i] = Math.round(n[i] * libmPow(nall / (V * 8.0), 0.333333));
     n[i] = n[i] === 0 ? 1 : n[i];
   }
   const con = new VoroContainer(sb[0], sh[0], sb[1], sh[1], sb[2], sh[2], n[0], n[1], n[2]);

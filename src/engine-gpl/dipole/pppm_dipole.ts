@@ -33,6 +33,7 @@ import { computeQopt } from '../pppm/grid';
 import { log as libmLog } from '../libm/log';
 import { sin as libmSin } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** pppm.cpp OFFSET: keeps int() of a negative grid coordinate at the right value. */
 const OFFSET = 16384;
@@ -104,7 +105,7 @@ const rspaceError = (g: number, rc: number, natoms: number, vol: number, mu2: nu
   const rg6 = rg4 * rg2;
   const Cc = 4.0 * rg4 + 6.0 * rg2 + 3.0;
   const Dc = 8.0 * rg6 + 20.0 * rg4 + 30.0 * rg2 + 15.0;
-  const dd = (mu2 / Math.sqrt(vol * g ** 4 * rc ** 9 * natoms)) *
+  const dd = (mu2 / Math.sqrt(vol * libmPow(g, 4) * libmPow(rc, 9) * natoms)) *
     Math.sqrt((13.0 / 6.0) * Cc * Cc + (2.0 / 15.0) * Dc * Dc - (13.0 / 15.0) * Cc * Dc) * libmExp(-rg2);
   if (q2 === 0) return dd;
   const dq = (2.0 * q2 * libmExp(-rg2)) / Math.sqrt(natoms * rc * vol);
@@ -448,7 +449,7 @@ export class KSpacePPPMDipole extends KSpaceBase {
         let s = 0.0;
         for (let l = 0; l < j; l++) {
           a[l + 1][k + P] = (a[l][k + 1 + P] - a[l][k - 1 + P]) / (l + 1);
-          s += Math.pow(0.5, l + 1) * (a[l][k - 1 + P] + Math.pow(-1.0, l) * a[l][k + 1 + P]) / (l + 1);
+          s += libmPow(0.5, l + 1) * (a[l][k - 1 + P] + libmPow(-1.0, l) * a[l][k + 1 + P]) / (l + 1);
         }
         a[0][k + P] = s;
       }
@@ -493,7 +494,7 @@ export class KSpacePPPMDipole extends KSpaceBase {
     this.fk = fk;
     // native: nbx = max(int(g Lx / (pi Nx) (-ln EPS_HOC)^(1/4)), 2)
     const nb = [0, 1, 2].map((d) => {
-      const c = Math.trunc((g * L[d] / (Math.PI * N[d])) * Math.pow(-libmLog(EPS_HOC), 0.25));
+      const c = Math.trunc((g * L[d] / (Math.PI * N[d])) * libmPow(-libmLog(EPS_HOC), 0.25));
       return Math.max(c, 2);
     });
     const Ng = nx * ny * nz;

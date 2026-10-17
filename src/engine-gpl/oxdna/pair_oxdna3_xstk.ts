@@ -18,6 +18,7 @@ import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF2, DF4, F2, F4, baseSiteOxdna3, lrfOf, oxdnaConstants, tetIndex, tetramerTable, potentialLines } from './common';
 import { sin as libmSin } from '../libm/sincos';
+import { pow as libmPow } from '../libm/pow';
 
 /** The per-tetramer tables of one neighbour set ("33" or "55"). */
 const SET_KEYS = ['cut0', 'cutc', 'cutlo', 'cuthi', 'cutlc', 'cuthc', 'a4', 'th4', 'dth4ast', 'b4', 'dth4c'] as const;
@@ -46,7 +47,7 @@ export class PairOxdna3Xstk extends Pair {
   allocate(ntypes: number): void {
     super.allocate(ntypes);
     this.nt = ntypes + 1;
-    const n2 = this.nt * this.nt, n4 = this.nt ** 4;
+    const n2 = this.nt * this.nt, n4 = libmPow(this.nt, 4);
     this.pair = {};
     for (const k of PAIR_KEYS) this.pair[k] = new Float64Array(n2);
     this.tet = {};
@@ -67,7 +68,7 @@ export class PairOxdna3Xstk extends Pair {
     if (ilo !== jlo || ihi !== jhi) throw new StyleError('Incorrect args for pair coefficients in oxdna3/xstk');
     if (ihi > 4) throw new StyleError('pair oxdna3/xstk does not support more than 4 atom types for A, C, G and T');
     const n = ihi;
-    const m4 = n ** 4;
+    const m4 = libmPow(n, 4);
     const need = 1 + 14 * m4 + 17;
     const text = ctx?.readFile(args[2]) ?? '';
     let vals: number[] | null = null;

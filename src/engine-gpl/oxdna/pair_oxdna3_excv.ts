@@ -14,6 +14,7 @@ import { parseNum } from '../../engine/force/util';
 import { derived } from './pair_excv';
 import { PairOxdna2Excv } from './variants';
 import { type OxdnaConstants, baseSiteOxdna3, tetIndex, tetramerTable, potentialLines } from './common';
+import { pow as libmPow } from '../libm/pow';
 
 /** pair_style oxdna3/excv (PairOxdna3Excv). */
 export class PairOxdna3Excv extends PairOxdna2Excv {
@@ -31,7 +32,7 @@ export class PairOxdna3Excv extends PairOxdna2Excv {
     if (ilo !== jlo || ihi !== jhi) throw new StyleError('Incorrect args for pair coefficients in oxdna3/excv');
     if (ihi > 4) throw new StyleError('pair oxdna3/excv does not support more than 4 atom types for A, C, G and T');
     const n = ihi;
-    const m4 = n ** 4;
+    const m4 = libmPow(n, 4);
     const text = ctx?.readFile(args[2]) ?? '';
     let found: number[] | null = null;
     for (const w of potentialLines(text, [args[0], args[1]], 'excv')) {
@@ -64,8 +65,8 @@ export class PairOxdna3Excv extends PairOxdna2Excv {
             t.b[q] = b;
             t.cutC[q] = cutC;
             t.cutsqC[q] = cutC * cutC;
-            t.lj14[q] = 4.0 * this.tEps[j * nt + k] * Math.pow(sigma, 12.0);
-            t.lj24[q] = 4.0 * this.tEps[j * nt + k] * Math.pow(sigma, 6.0);
+            t.lj14[q] = 4.0 * this.tEps[j * nt + k] * libmPow(sigma, 12.0);
+            t.lj24[q] = 4.0 * this.tEps[j * nt + k] * libmPow(sigma, 6.0);
           }
         }
       }

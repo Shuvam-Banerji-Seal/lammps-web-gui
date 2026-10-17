@@ -36,6 +36,7 @@ import { tallyAtom } from '../../engine/force/pair/lj_cut';
 import { erfcExact, EWALD_F, ErfcTableCache } from '../../engine/force/erfc';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 // LAMMPS: ewald_const.h EWALD_F; the engine's erfc.ts EWALD_F is the same rounded constant used by coul/long.
 
@@ -113,7 +114,7 @@ export class PairLJSwitch3CoulGaussLong extends PairLJCutCoulLong {
     const eps = p.get('epsilon', i, j), sig = p.get('sigma', i, j), cutLJ = p.get('cut', i, j);
     const gii = p.get('gamma', i, i), gjj = p.get('gamma', j, j);
     const gInv = gii === 0 && gjj === 0 ? 0 : 1 / Math.sqrt(gii * gii + gjj * gjj);
-    const s6 = sig ** 6, s12 = s6 * s6;
+    const s6 = libmPow(sig, 6), s12 = s6 * s6;
     const lj3 = 4 * eps * s12, lj4 = 4 * eps * s6;
     let off = 0;
     if (this.shift && cutLJ > 0 && this.truncw === 0) {

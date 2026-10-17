@@ -21,6 +21,7 @@ import { BoundaryCorrection, NoBoundaryCorrection, SlabDipole, Slab2d, type Boun
 import { log as libmLog } from '../libm/log';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** electrode_kspace.h: what the constant-potential fixes call on a k-space style. */
 export interface ElectrodeKSpace {
@@ -160,7 +161,7 @@ export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
     this.setup(geom);
     this.env = { volume: this.volume, zprdSlab: zprd * this.slabVolfactor, area: this.area, gEwald: this.gEwald, qqrd2e };
     this.initDone = true;
-    ctx.log(`Ewald/electrode initialization ...\n  G vector (1/distance) = ${this.gEwald}\n  KSpace vectors: actual max1d max3d = ${this.kcount} ${this.kmax} ${4 * this.kmax ** 3 + 6 * this.kmax ** 2 + 3 * this.kmax}\n                  kxmax kymax kzmax  = ${this.kxmax} ${this.kymax} ${this.kzmax}`);
+    ctx.log(`Ewald/electrode initialization ...\n  G vector (1/distance) = ${this.gEwald}\n  KSpace vectors: actual max1d max3d = ${this.kcount} ${this.kmax} ${4 * libmPow(this.kmax, 3) + 6 * this.kmax ** 2 + 3 * this.kmax}\n                  kxmax kymax kzmax  = ${this.kxmax} ${this.kymax} ${this.kzmax}`);
   }
 
   /** KSpace::qsum_qsq: total and squared charge (q2 = qsqsum * qqrd2e). */

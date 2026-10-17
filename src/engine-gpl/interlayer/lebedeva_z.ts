@@ -9,6 +9,7 @@ import type { PairCompute } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { InterlayerZBase, tallyZPair } from './zbase';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 interface LebZParam {
   ie: number; je: number;
@@ -33,12 +34,12 @@ export class PairLebedevaZ extends InterlayerZBase<LebZParam> {
       ie, je, z0, alpha, D1, D2, lambda1, lambda2,
       A: A * meV, B: B * meV, C: C * meV,
       z02: Math.pow(z0, 2),
-      z06: Math.pow(z0, 6),
+      z06: libmPow(z0, 6),
     };
   }
 
   protected offsetOf(p: LebZParam, cut: number): number {
-    return -p.A * Math.pow(p.z0 / cut, 6);
+    return -p.A * libmPow(p.z0 / cut, 6);
   }
 
   override compute(pc: PairCompute): void {

@@ -27,6 +27,7 @@ import { Pair, PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
+import { pow as libmPow } from '../libm/pow';
 
 export class PairLJCutSoftGapsys extends Pair {
   readonly name = 'lj/cut/soft/gapsys';
@@ -87,13 +88,13 @@ export class PairLJCutSoftGapsys extends Pair {
       this.lj1 = z(); this.lj2 = z(); this.lj3 = z(); this.lj4 = z(); this.offT = z();
     }
     const eps = p.get('epsilon', i, j), sig = p.get('sigma', i, j), lam = p.get('lambda', i, j), cut = p.get('cut', i, j);
-    const lj1 = 48 * eps * sig ** 12, lj2 = 24 * eps * sig ** 6, lj3 = 4 * eps * sig ** 12, lj4 = 4 * eps * sig ** 6;
+    const lj1 = 48 * eps * libmPow(sig, 12), lj2 = 24 * eps * libmPow(sig, 6), lj3 = 4 * eps * libmPow(sig, 12), lj4 = 4 * eps * libmPow(sig, 6);
     let off = 0;
     if (this.shift && cut > 0) {
       const ratio = sig / cut;
-      off = 4 * eps * (ratio ** 12 - ratio ** 6);
+      off = 4 * eps * (libmPow(ratio, 12) - libmPow(ratio, 6));
     }
-    const rin = this.alphaLJ * (26 * lam / 7) ** (1 / 6) * sig;
+    const rin = this.alphaLJ * libmPow(26 * lam / 7, 1 / 6) * sig;
     for (const [a, b] of [[i, j], [j, i]]) {
       const k = a * nt + b;
       this.eps[k] = eps; this.sig[k] = sig; this.cutsqT[k] = cut * cut;
@@ -124,7 +125,7 @@ export class PairLJCutSoftGapsys extends Pair {
         let fpair = 0, e = 0;
         if (rsq < this.innerSq[t]) {
           const eps = this.eps[t], sig = this.sig[t], cin = this.innerT[t];
-          const s6 = (sig / cin) ** 6, s12 = s6 * s6;
+          const s6 = libmPow(sig / cin, 6), s12 = s6 * s6;
           const b1 = (-24 * eps * (26 * s12 - 7 * s6)) / (cin * cin);
           const b2 = (96 * eps * (7 * s12 - 2 * s6)) / cin;
           fpair = fl * (b1 + b2 / Math.sqrt(rsq));
@@ -223,11 +224,11 @@ export class PairCoulCutSoftGapsys extends Pair {
         const qq = qi * q[j];
         let fpair = 0, e = 0;
         // r_inner = (1 + sigma_C |q_i q_j|) alpha_C lambda^(1/6), the source's cut_inner
-        const cin = (1 + this.sigmaQ * Math.abs(qq)) * this.alphaQ * this.lamT[t] ** (1 / 6);
+        const cin = (1 + this.sigmaQ * Math.abs(qq)) * this.alphaQ * libmPow(this.lamT[t], 1 / 6);
         if (rsq < cin * cin) {
           const forcecoul = fc * qqrd2e * qq;
-          fpair = (-2 / cin ** 3 + 3 / (cin ** 2 * Math.sqrt(rsq))) * forcecoul;
-          e = forcecoul * (rsq / cin ** 3 - (3 * Math.sqrt(rsq)) / cin ** 2 + 3 / cin);
+          fpair = (-2 / libmPow(cin, 3) + 3 / (cin ** 2 * Math.sqrt(rsq))) * forcecoul;
+          e = forcecoul * (rsq / libmPow(cin, 3) - (3 * Math.sqrt(rsq)) / cin ** 2 + 3 / cin);
         } else if (rsq < this.cutsqT[t]) {
           const r2inv = 1 / rsq;
           const rinv = Math.sqrt(r2inv);

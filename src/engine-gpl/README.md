@@ -55,6 +55,10 @@ source and licence in its header:
   distributing it under the GPL, version 2 or later.
 - `libm/exp.ts`: the `exp()` of the same glibc (`__exp_fma` from `e_exp.c` and `e_exp_data.c`), bit for bit, with the
   fused steps of the compiled libm; LGPL-2.1-or-later, used the same way.
+- `libm/pow.ts`: the `pow()` of the same glibc (`__ieee754_pow_fma` from `e_pow.c` and `e_pow_log_data.c`, with the
+  exp tables), bit for bit, with the fused steps of the compiled libm; LGPL-2.1-or-later, used the same way. JavaScript
+  engines disagree on `Math.pow` (Node 18 and 20 differ from glibc for about 10 percent of ordinary arguments), so the
+  ported styles call this one.
 - `libm/sincos.ts`: the `sin()` and `cos()` of the same glibc (the IBM accurate routines of `s_sin.c`,
   `sincostab.c`, `branred.c`, built without FMA contraction), bit for bit; LGPL-2.1-or-later, used the same way.
 - `dpdrx/unordered_order.ts`: the iteration order of libstdc++'s `std::unordered_set<std::string>` (GCC 11),

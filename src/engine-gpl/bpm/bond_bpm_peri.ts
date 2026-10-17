@@ -23,6 +23,7 @@ import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { StyleError, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { BondBPMBase, bondKey } from './bond_bpm';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 // LAMMPS: NEAR_ZERO of bond_bpm_peri.cpp (roundoff noise in the stretch)
 const NEAR_ZERO = 2.2204e-16;
@@ -175,7 +176,7 @@ export class BondBpmPeri extends BondBPMBase {
       if (m === EPS) {
         this.plastic = true;
         this.gshearRep = this.gshear[t];
-        this.pointwiseYield = (25 / (8 * Math.PI * Math.pow(this.cut[t], 5))) * this.yieldS[t] * this.yieldS[t];
+        this.pointwiseYield = (25 / (8 * Math.PI * libmPow(this.cut[t], 5))) * this.yieldS[t] * this.yieldS[t];
       }
     }
     // the weighted volume is rebuilt in each run (bond_bpm_peri.cpp init_style sets wvolume_setup = 0)

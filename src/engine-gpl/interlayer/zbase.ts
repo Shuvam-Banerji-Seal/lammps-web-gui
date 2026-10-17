@@ -8,6 +8,7 @@
  */
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { joinPotentialEntries, parseNum } from '../../engine/force/util';
+import { pow as libmPow } from '../libm/pow';
 
 /** One potential-file entry: element indices (into the style's element list) and its numbers. */
 interface FileEntry { ie: number; je: number; nums: number[] }
@@ -162,7 +163,7 @@ export abstract class InterlayerZBase<P> extends Pair {
 
   /** The reader stops after this many matching entries (LAMMPS reads ntypes^3 of them for the z styles). */
   protected entryLimit(): number {
-    return Math.pow(this.ntypes, 3);
+    return libmPow(this.ntypes, 3);
   }
 
   override initStyle(ctx: StyleContext): void {

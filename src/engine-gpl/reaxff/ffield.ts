@@ -8,6 +8,7 @@
  * This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  */
 import { StyleError } from '../../engine/force/types';
+import { pow as libmPow } from '../libm/pow';
 
 /** Two character element name -> parameters (reaxff_types.h single_body_parameters). */
 export interface SingleBody {
@@ -197,9 +198,9 @@ export const readForceField = (text: string, filename: string, lgflag: number): 
   for (let k = 0; k < ntypes * ntypes * ntypes; k++) param.hbp.push({ r0_hb: 0, p_hb1: 0, p_hb2: 0, p_hb3: 0 });
   const HB = (j: number, k: number, l: number) => param.hbp[(j * ntypes + k) * ntypes + l];
   param.fbp = [];
-  for (let k = 0; k < ntypes ** 4; k++) param.fbp.push({ cnt: 0, prm: [newFour()] });
+  for (let k = 0; k < libmPow(ntypes, 4); k++) param.fbp.push({ cnt: 0, prm: [newFour()] });
   const FB = (j: number, k: number, l: number, m: number) => param.fbp[((j * ntypes + k) * ntypes + l) * ntypes + m];
-  const torFlag = new Uint8Array(ntypes ** 4);
+  const torFlag = new Uint8Array(libmPow(ntypes, 4));
   const TF = (j: number, k: number, l: number, m: number) => ((j * ntypes + k) * ntypes + l) * ntypes + m;
   const gpVdw = { vdw: 0 };
 
@@ -318,7 +319,7 @@ export const readForceField = (text: string, filename: string, lgflag: number): 
       set('alpha', Math.sqrt(sbp[j].alpha * sbp[i].alpha));
       set('r_vdW', 2.0 * Math.sqrt(sbp[j].r_vdw * sbp[i].r_vdw));
       set('gamma_w', Math.sqrt(sbp[j].gamma_w * sbp[i].gamma_w));
-      set('gamma', Math.pow(sbp[j].gamma * sbp[i].gamma, -1.5));
+      set('gamma', libmPow(sbp[j].gamma * sbp[i].gamma, -1.5));
       set('rcore', Math.sqrt(sbp[i].rcore2 * sbp[j].rcore2));
       set('ecore', Math.sqrt(sbp[i].ecore2 * sbp[j].ecore2));
       set('acore', Math.sqrt(sbp[i].acore2 * sbp[j].acore2));

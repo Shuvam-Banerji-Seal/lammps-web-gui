@@ -23,6 +23,7 @@ import { NEIGHMASK } from '../../engine/neighbor';
 import { NativePairOrder } from '../neighbor/nativeOrder';
 import { SMD_DEFGRAD, SMD_DESPH, SMD_VEST } from '../../engine/smd';
 import { spikyKernel } from './pair_smd_tlsph';
+import { pow as libmPow } from '../libm/pow';
 
 /** BIG: initial value of the stable time increment of each compute (native: dtCFL = 1.0e22). */
 const BIG_DT = 1.0e22;
@@ -46,7 +47,7 @@ interface TypeParams {
  */
 const taitEOS = (exponent: number, c0Ref: number, rhoRef: number, rho: number): { p: number; c: number } => {
   const B = rhoRef * c0Ref * c0Ref / exponent;
-  const tmp = Math.pow(rho / rhoRef, exponent);
+  const tmp = libmPow(rho / rhoRef, exponent);
   const p = B * (tmp - 1.0);
   const bulkModulus = B * tmp * exponent;
   return { p, c: Math.sqrt(bulkModulus / rho) };

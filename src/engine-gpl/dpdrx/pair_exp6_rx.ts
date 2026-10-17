@@ -24,6 +24,7 @@ import { tallyXYZ } from '../dpd/pair_dpd';
 import { FixRX, MY_EPSILON, powint } from './fix_rx';
 import { TextLines, Tokens } from './rx_table_reader';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** Exponent of the repulsive wall (pair_exp6_rx.cpp compute: nRep = 12); the wall starts at shift * rm * f(alpha). */
 const N_REP = 12;
@@ -413,18 +414,18 @@ export class PairExp6rx extends Pair {
   private exponentScaling(phi: number, epsilon: number, rm: number): [number, number] {
     let eps = epsilon, r = rm;
     if (this.exponentEpsilon < 0.0) {
-      const powfuch = Math.pow(phi, -this.exponentEpsilon);
+      const powfuch = libmPow(phi, -this.exponentEpsilon);
       if (powfuch < MY_EPSILON) eps = 0.0;
       else eps *= 1.0 / powfuch;
     } else {
-      eps *= Math.pow(phi, this.exponentEpsilon);
+      eps *= libmPow(phi, this.exponentEpsilon);
     }
     if (this.exponentR < 0.0) {
-      const powfuch = Math.pow(phi, -this.exponentR);
+      const powfuch = libmPow(phi, -this.exponentR);
       if (powfuch < MY_EPSILON) r = 0.0;
       else r *= 1.0 / powfuch;
     } else {
-      r *= Math.pow(phi, this.exponentR);
+      r *= libmPow(phi, this.exponentR);
     }
     return [eps, r];
   }

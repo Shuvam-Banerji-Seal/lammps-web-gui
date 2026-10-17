@@ -9,6 +9,7 @@ import { StyleError } from '../../engine/force/types';
 import { joinPotentialEntries } from '../../engine/force/util';
 import { powint } from '../comb/params';
 import { log as libmLog } from '../libm/log';
+import { pow as libmPow } from '../libm/pow';
 
 /** Words per potential entry (PairComb3::NPARAMS_PER_LINE). */
 export const NPARAMS_PER_LINE = 74;
@@ -120,16 +121,16 @@ export const setupComb3Params = (params: Comb3Param[], nel: number) => {
   for (const p of params) {
     p.cut = p.bigr + p.bigd;
     p.cutsq = p.cut * p.cut;
-    p.c1 = Math.pow(2.0 * p.powern * 1.0e-16, -1.0 / p.powern);
-    p.c2 = Math.pow(2.0 * p.powern * 1.0e-8, -1.0 / p.powern);
+    p.c1 = libmPow(2.0 * p.powern * 1.0e-16, -1.0 / p.powern);
+    p.c2 = libmPow(2.0 * p.powern * 1.0e-8, -1.0 / p.powern);
     p.c3 = 1.0 / p.c2;
     p.c4 = 1.0 / p.c1;
     p.Qo = (p.QU + p.QL) / 2.0;
     p.dQ = (p.QU - p.QL) / 2.0;
     p.aB = 1.0 / (1.0 - powint(Math.abs(p.Qo / p.dQ), 10));
-    p.bB = Math.pow(Math.abs(p.aB), 0.1) / p.dQ;
+    p.bB = libmPow(Math.abs(p.aB), 0.1) / p.dQ;
     p.nD = libmLog(p.DU / (p.DU - p.DL)) / libmLog(p.QU / (p.QU - p.QL));
-    p.bD = Math.pow(p.DL - p.DU, 1.0 / p.nD) / (p.QU - p.QL);
+    p.bD = libmPow(p.DL - p.DU, 1.0 / p.nD) / (p.QU - p.QL);
     p.lcut = p.coulcut;
     p.lcutsq = p.lcut * p.lcut;
   }

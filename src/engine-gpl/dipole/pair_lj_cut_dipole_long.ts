@@ -16,6 +16,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { PairDipoleBase } from '../../engine/force/pair/dipole';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** ewald_const.h: the erfc approximation (Abramowitz and Stegun 7.1.26) of LAMMPS, b332f28. */
 const EWALD_P = 0.3275911;
@@ -79,10 +80,10 @@ export class PairLJCutDipoleLong extends PairDipoleBase {
     const ij = i * nt + j, ji = j * nt + i;
     this.cutLJsq[ij] = this.cutLJsq[ji] = cl * cl;
     this.cutCsq[ij] = this.cutCsq[ji] = cc * cc;
-    this.lj1[ij] = this.lj1[ji] = 48.0 * eps * Math.pow(sig, 12.0);
-    this.lj2[ij] = this.lj2[ji] = 24.0 * eps * Math.pow(sig, 6.0);
-    this.lj3[ij] = this.lj3[ji] = 4.0 * eps * Math.pow(sig, 12.0);
-    this.lj4[ij] = this.lj4[ji] = 4.0 * eps * Math.pow(sig, 6.0);
+    this.lj1[ij] = this.lj1[ji] = 48.0 * eps * libmPow(sig, 12.0);
+    this.lj2[ij] = this.lj2[ji] = 24.0 * eps * libmPow(sig, 6.0);
+    this.lj3[ij] = this.lj3[ji] = 4.0 * eps * libmPow(sig, 12.0);
+    this.lj4[ij] = this.lj4[ji] = 4.0 * eps * libmPow(sig, 6.0);
     // native: cut = MAX(cut_lj, cut_coul)
     return Math.max(cl, cc);
   }
@@ -110,8 +111,8 @@ export class PairLJCutDipoleLong extends PairDipoleBase {
     const cutCsqG = this.cutCGlobal * this.cutCGlobal;
     const cutLJsq = this.cutLJsq, lj1 = this.lj1, lj2 = this.lj2, lj3 = this.lj3, lj4 = this.lj4;
     const pre1 = 2.0 * g / MY_PIS;
-    const pre2 = 4.0 * Math.pow(g, 3.0) / MY_PIS;
-    const pre3 = 8.0 * Math.pow(g, 5.0) / MY_PIS;
+    const pre2 = 4.0 * libmPow(g, 3.0) / MY_PIS;
+    const pre3 = 8.0 * libmPow(g, 5.0) / MY_PIS;
     let evdwl = 0, ecoul = 0;
     for (let i = 0; i < list.inum; i++) {
       const oi = owner[i];

@@ -25,6 +25,7 @@ import { ALL_GROUP_BIT, appendAtoms, deleteAtoms, nativeOrder } from '../../engi
 import { RanPark } from '../random_park';
 import { takeFixRecord } from '../../engine/fix/restartRecord';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** Avogadro's constant times the reference concentration (N_A * mol / liter) [nm^-3]. */
 const NA_RHO0 = 0.602214;
@@ -223,12 +224,12 @@ export class FixChargeRegulation extends Fix {
     this.volumeRx = lx * ly * lz * cube * NA_RHO0;
     const kT = s.units.boltz * this.target;
     this.beta = 1.0 / kT;
-    this.c10pH = Math.pow(10.0, -this.pH);
-    this.c10pKa = Math.pow(10.0, -this.pKa);
-    this.c10pKb = Math.pow(10.0, -this.pKb);
-    this.c10pOH = Math.pow(10.0, -this.pKs + this.pH);
-    this.c10pIplus = Math.pow(10.0, -this.pIp);
-    this.c10pIminus = Math.pow(10.0, -this.pIm);
+    this.c10pH = libmPow(10.0, -this.pH);
+    this.c10pKa = libmPow(10.0, -this.pKa);
+    this.c10pKb = libmPow(10.0, -this.pKb);
+    this.c10pOH = libmPow(10.0, -this.pKs + this.pH);
+    this.c10pIplus = libmPow(10.0, -this.pIp);
+    this.c10pIminus = libmPow(10.0, -this.pIm);
 
     // native: the kspace G-ewald, kmax and mesh are the ones of the run's init while the charges change
     const kspace = this.sys.ff.kspace;

@@ -19,6 +19,7 @@ import { parseNum, fmtCoeff } from '../../engine/force/util';
 import { ANGSTROM } from '../../engine/force/kspace/ewald';
 import type { CustomProp } from '../../engine/types';
 import { chiralRadius, eunitOf } from './units';
+import { pow as libmPow } from '../libm/pow';
 
 /** LAMMPS: static constexpr double SMALL = 0.001 (angle_mesocnt.cpp). */
 const SMALL = 0.001;
@@ -76,7 +77,7 @@ export class AngleMesoCNT extends Bonded {
       const m = Math.trunc(parseNum(args[4], 'm'));
       const l = parseNum(args[5], 'l');
       const rAng = chiralRadius(n, m);
-      const k = 63.80 * Math.pow(rAng, 2.93) * eunit * ang;
+      const k = 63.80 * libmPow(rAng, 2.93) * eunit * ang;
       kh = 0.5 * k / l;
       if (buckling) {
         kb = 0.7 * k / (275.0 * ang);

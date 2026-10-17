@@ -15,6 +15,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_5P, OXDNA_3P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { type OxdnaConstants, F3, backboneOxdna1, baseSiteOxdna1, lrfOf, oxdnaConstants, potentialLines } from './common';
+import { pow as libmPow } from '../libm/pow';
 
 /** The three site kinds of the excluded volume: bk-bk, bk-bs (both orders) and bs-bs. */
 interface SiteTable {
@@ -41,12 +42,12 @@ const newTable = (n: number): SiteTable => ({
 export const derived = (sigma: number, cutAst: number): { b: number; cutC: number } => {
   const x = sigma / cutAst;
   const b = 4.0 / sigma
-    * (6.0 * Math.pow(x, 7) - 12.0 * Math.pow(x, 13))
-    * 4.0 / sigma * (6.0 * Math.pow(x, 7) - 12.0 * Math.pow(x, 13))
-    / 4.0 / (4.0 * (Math.pow(x, 12) - Math.pow(x, 6)));
+    * (6.0 * libmPow(x, 7) - 12.0 * libmPow(x, 13))
+    * 4.0 / sigma * (6.0 * libmPow(x, 7) - 12.0 * libmPow(x, 13))
+    / 4.0 / (4.0 * (libmPow(x, 12) - libmPow(x, 6)));
   const cutC = cutAst
-    - 2.0 * 4.0 * (Math.pow(x, 12) - Math.pow(x, 6))
-    / (4.0 / sigma * (6.0 * Math.pow(x, 7) - 12.0 * Math.pow(x, 13)));
+    - 2.0 * 4.0 * (libmPow(x, 12) - libmPow(x, 6))
+    / (4.0 / sigma * (6.0 * libmPow(x, 7) - 12.0 * libmPow(x, 13)));
   return { b, cutC };
 };
 
@@ -87,7 +88,7 @@ export class PairOxdnaExcv extends Pair {
     this.bk = newTable(n);
     this.bs = newTable(n);
     this.bb = newTable(n);
-    const n4 = this.nt ** 4;
+    const n4 = libmPow(this.nt, 4);
     this.t4 = {
       sigma: new Float64Array(n4), cutAst: new Float64Array(n4), cutsqAst: new Float64Array(n4), cutC: new Float64Array(n4),
       cutsqC: new Float64Array(n4), b: new Float64Array(n4), lj14: new Float64Array(n4), lj24: new Float64Array(n4),
@@ -98,8 +99,8 @@ export class PairOxdnaExcv extends Pair {
   /** Fills one table entry (i, j) from the sigma, cut_ast and epsilon of a site kind. */
   protected fill(t: SiteTable, idx: number, eps: number, sigma: number, cutAst: number, b: number, cutC: number): void {
     t.eps[idx] = eps; t.sigma[idx] = sigma; t.cutAst[idx] = cutAst; t.b[idx] = b; t.cutC[idx] = cutC;
-    t.lj1[idx] = 4.0 * eps * Math.pow(sigma, 12.0);
-    t.lj2[idx] = 4.0 * eps * Math.pow(sigma, 6.0);
+    t.lj1[idx] = 4.0 * eps * libmPow(sigma, 12.0);
+    t.lj2[idx] = 4.0 * eps * libmPow(sigma, 6.0);
     t.cutsqAst[idx] = cutAst * cutAst;
     t.cutsqC[idx] = cutC * cutC;
   }
@@ -146,8 +147,8 @@ export class PairOxdnaExcv extends Pair {
             t.cutC[q] = d3.cutC;
             t.cutsqAst[q] = cutBbAst * cutBbAst;
             t.cutsqC[q] = d3.cutC * d3.cutC;
-            t.lj14[q] = 4.0 * this.tEps[j * nt + k] * Math.pow(t.sigma[q], 12.0);
-            t.lj24[q] = 4.0 * this.tEps[j * nt + k] * Math.pow(t.sigma[q], 6.0);
+            t.lj14[q] = 4.0 * this.tEps[j * nt + k] * libmPow(t.sigma[q], 12.0);
+            t.lj24[q] = 4.0 * this.tEps[j * nt + k] * libmPow(t.sigma[q], 6.0);
           }
         }
       }

@@ -14,6 +14,7 @@
  */
 import type { EllipsoidAtom, RasterFrame, Rgb255 } from '../../engine/output/image_objects';
 import { drawSphere, drawTrinorm, drawCylinder } from './draw';
+import { pow as libmPow } from '../libm/pow';
 
 type V = [number, number, number];
 type Tri = [V, V, V];
@@ -97,9 +98,9 @@ const radscale = (shape: V, p: V): number =>
 /** superscale: the factor for a superellipsoid with block exponents (n1 = block[0], n2 = block[1]). */
 const superscale = (shape: V, block: [number, number], p: V): number => {
   const n = block[0], e = block[1];
-  const a = Math.pow(Math.abs(p[0] / shape[0]), e) + Math.pow(Math.abs(p[1] / shape[1]), e);
-  const b = Math.pow(Math.abs(p[2] / shape[2]), n);
-  return Math.pow(Math.pow(a, n / e) + b, -1.0 / n);
+  const a = libmPow(Math.abs(p[0] / shape[0]), e) + libmPow(Math.abs(p[1] / shape[1]), e);
+  const b = libmPow(Math.abs(p[2] / shape[2]), n);
+  return libmPow(libmPow(a, n / e) + b, -1.0 / n);
 };
 
 /** supernormal: the unit normal of a superellipsoid at a unit-sphere point. */
@@ -108,11 +109,11 @@ const supernormal = (shape: V, block: [number, number], p: V): V => {
   const xa = Math.abs(p[0] / shape[0]);
   const yb = Math.abs(p[1] / shape[1]);
   const zc = Math.abs(p[2] / shape[2]);
-  const u = Math.pow(xa, e) + Math.pow(yb, e);
-  const ufactor = u > 0 ? Math.pow(u, n / e - 1.0) : 0;
-  const nx = xa > 0 ? (ufactor * Math.pow(xa, e - 1.0) * Math.sign(p[0] || 1)) / shape[0] : 0;
-  const ny = yb > 0 ? (ufactor * Math.pow(yb, e - 1.0) * Math.sign(p[1] || 1)) / shape[1] : 0;
-  const nz = zc > 0 ? (Math.pow(zc, n - 1.0) * Math.sign(p[2] || 1)) / shape[2] : 0;
+  const u = libmPow(xa, e) + libmPow(yb, e);
+  const ufactor = u > 0 ? libmPow(u, n / e - 1.0) : 0;
+  const nx = xa > 0 ? (ufactor * libmPow(xa, e - 1.0) * Math.sign(p[0] || 1)) / shape[0] : 0;
+  const ny = yb > 0 ? (ufactor * libmPow(yb, e - 1.0) * Math.sign(p[1] || 1)) / shape[1] : 0;
+  const nz = zc > 0 ? (libmPow(zc, n - 1.0) * Math.sign(p[2] || 1)) / shape[2] : 0;
   return vnorm([nx, ny, nz]);
 };
 

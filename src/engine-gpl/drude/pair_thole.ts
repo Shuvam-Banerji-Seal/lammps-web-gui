@@ -14,6 +14,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { DRUDE_TYPE, NOPOL_TYPE, drudeModelOf, type DrudeModel } from './drude_model';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 export class PairThole extends Pair {
   readonly name = 'thole';
@@ -78,7 +79,7 @@ export class PairThole extends Pair {
         const k = i * nt + j;
         this.polar[k] = polarOne;
         this.thole[k] = tholeOne;
-        this.ascreen[k] = tholeOne / Math.pow(polarOne, 1 / 3);
+        this.ascreen[k] = tholeOne / libmPow(polarOne, 1 / 3);
         this.cutOne[k] = cutOne;
         this.set[k] = 1;
         count++;

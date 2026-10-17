@@ -16,6 +16,7 @@ import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, DF5, F1, F4, F5, lrfOf, oxdnaConstants, stackingSiteOxdna1, backboneSite, type StackRule, potentialLines } from './common';
 import { sin as libmSin } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** pair_oxdna_stk.cpp constructor: the sequence-dependence factors eta_st[i][j] (indexed by 1-based base types mod 4). */
 export const ETA_ST: number[][] = [
@@ -90,7 +91,7 @@ export class PairOxdnaStk extends Pair {
     this.a1 = z(); this.cos1ast = z(); this.b1 = z(); this.cos1c = z();
     this.a2 = z(); this.cos2ast = z(); this.b2 = z(); this.cos2c = z();
     this.set = new Uint8Array(n);
-    const n4 = this.nt ** 4;
+    const n4 = libmPow(this.nt, 4);
     const z4 = () => new Float64Array(n4);
     this.c0 = z4(); this.clc = z4(); this.chc = z4(); this.clo = z4(); this.chi = z4();
     this.shiftSt = z4(); this.a4 = z4(); this.dth4ast = z4(); this.b4 = z4(); this.dth4c = z4();

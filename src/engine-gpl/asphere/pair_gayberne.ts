@@ -29,6 +29,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { NativePairOrder, NativeReverseComm } from '../neighbor/nativeOrder';
 import { parseNum } from '../../engine/force/util';
 import { type Mat3, newMat3, quatToMatTrans, diagTimes3, transposeTimes3, plus3, det3, normalize3, dot3, cross3, vecmat, mldivide3, computeEtaTorque } from './math_extra';
+import { pow as libmPow } from '../libm/pow';
 
 /** Form per type pair (native enum): the sphere and ellipsoid forms of pair_gayberne.cpp init_one. */
 const SPHERE_SPHERE = 0;
@@ -79,7 +80,7 @@ function gayberneAnalytic(g: GbTables, ti: number, tj: number, a1: Mat3, a2: Mat
   tempv[1] = kappa[1] / r;
   tempv[2] = kappa[2] / r;
   let sigma12 = dot3(r12hat, tempv);
-  sigma12 = Math.pow(0.5 * sigma12, -0.5);
+  sigma12 = libmPow(0.5 * sigma12, -0.5);
   const h12 = r - sigma12;
 
   // energy
@@ -87,14 +88,14 @@ function gayberneAnalytic(g: GbTables, ti: number, tj: number, a1: Mat3, a2: Mat
   const k = ti * g.nt + tj;
   const sg = g.sig[k];
   const varrho = sg / (h12 + g.gamma * sg);
-  const varrho6 = Math.pow(varrho, 6.0);
+  const varrho6 = libmPow(varrho, 6.0);
   const varrho12 = varrho6 * varrho6;
   const u_r = 4.0 * g.eps[k] * (varrho12 - varrho6);
 
   // compute eta_12
   let eta = 2.0 * g.lshape[ti] * g.lshape[tj];
   const det_g12 = det3(g12);
-  eta = Math.pow(eta / det_g12, g.upsilon);
+  eta = libmPow(eta / det_g12, g.upsilon);
 
   // compute chi_12
   const b12 = newMat3();
@@ -105,13 +106,13 @@ function gayberneAnalytic(g: GbTables, ti: number, tj: number, a1: Mat3, a2: Mat
   tempv[1] = iota[1] / r;
   tempv[2] = iota[2] / r;
   let chi = dot3(r12hat, tempv);
-  chi = Math.pow(chi * 2.0, g.mu);
+  chi = libmPow(chi * 2.0, g.mu);
 
   // force
   // compute dUr/dr
   let temp1 = (2.0 * varrho12 * varrho - varrho6 * varrho) / sg;
   temp1 = temp1 * 24.0 * g.eps[k];
-  const u_slj = temp1 * Math.pow(sigma12, 3.0) / 2.0;
+  const u_slj = temp1 * libmPow(sigma12, 3.0) / 2.0;
   const dUr = v3();
   let temp2 = dot3(kappa, r12hat);
   const uslj_rsq = u_slj / rsq;
@@ -122,7 +123,7 @@ function gayberneAnalytic(g: GbTables, ti: number, tj: number, a1: Mat3, a2: Mat
   // compute dChi_12/dr
   const dchi = v3();
   temp1 = dot3(iota, r12hat);
-  temp2 = -4.0 / rsq * g.mu * Math.pow(chi, (g.mu - 1.0) / g.mu);
+  temp2 = -4.0 / rsq * g.mu * libmPow(chi, (g.mu - 1.0) / g.mu);
   dchi[0] = temp2 * (iota[0] - temp1 * r12hat[0]);
   dchi[1] = temp2 * (iota[1] - temp1 * r12hat[1]);
   dchi[2] = temp2 * (iota[2] - temp1 * r12hat[2]);
@@ -220,7 +221,7 @@ function gayberneLj(g: GbTables, ti: number, tj: number, a1: Mat3, b1: Mat3, g1:
   tempv[1] = kappa[1] / r;
   tempv[2] = kappa[2] / r;
   let sigma12 = dot3(r12hat, tempv);
-  sigma12 = Math.pow(0.5 * sigma12, -0.5);
+  sigma12 = libmPow(0.5 * sigma12, -0.5);
   const h12 = r - sigma12;
 
   // energy
@@ -228,14 +229,14 @@ function gayberneLj(g: GbTables, ti: number, tj: number, a1: Mat3, b1: Mat3, g1:
   const k = ti * g.nt + tj;
   const sg = g.sig[k];
   const varrho = sg / (h12 + g.gamma * sg);
-  const varrho6 = Math.pow(varrho, 6.0);
+  const varrho6 = libmPow(varrho, 6.0);
   const varrho12 = varrho6 * varrho6;
   const u_r = 4.0 * g.eps[k] * (varrho12 - varrho6);
 
   // compute eta_12
   let eta = 2.0 * g.lshape[ti] * g.lshape[tj];
   const det_g12 = det3(g12);
-  eta = Math.pow(eta / det_g12, g.upsilon);
+  eta = libmPow(eta / det_g12, g.upsilon);
 
   // compute chi_12
   const b12 = newMat3();
@@ -252,13 +253,13 @@ function gayberneLj(g: GbTables, ti: number, tj: number, a1: Mat3, b1: Mat3, g1:
   tempv[1] = iota[1] / r;
   tempv[2] = iota[2] / r;
   let chi = dot3(r12hat, tempv);
-  chi = Math.pow(chi * 2.0, g.mu);
+  chi = libmPow(chi * 2.0, g.mu);
 
   // force
   // compute dUr/dr
   let temp1 = (2.0 * varrho12 * varrho - varrho6 * varrho) / sg;
   temp1 = temp1 * 24.0 * g.eps[k];
-  const u_slj = temp1 * Math.pow(sigma12, 3.0) / 2.0;
+  const u_slj = temp1 * libmPow(sigma12, 3.0) / 2.0;
   const dUr = v3();
   const temp2a = dot3(kappa, r12hat);
   const uslj_rsq = u_slj / rsq;
@@ -269,7 +270,7 @@ function gayberneLj(g: GbTables, ti: number, tj: number, a1: Mat3, b1: Mat3, g1:
   // compute dChi_12/dr
   const dchi = v3();
   temp1 = dot3(iota, r12hat);
-  const temp2 = -4.0 / rsq * g.mu * Math.pow(chi, (g.mu - 1.0) / g.mu);
+  const temp2 = -4.0 / rsq * g.mu * libmPow(chi, (g.mu - 1.0) / g.mu);
   dchi[0] = temp2 * (iota[0] - temp1 * r12hat[0]);
   dchi[1] = temp2 * (iota[1] - temp1 * r12hat[1]);
   dchi[2] = temp2 * (iota[2] - temp1 * r12hat[2]);
@@ -516,7 +517,7 @@ export class PairGayBerne extends Pair {
       const s0 = this.shape1[3 * t], s1 = this.shape1[3 * t + 1], s2 = this.shape1[3 * t + 2];
       this.lshape[t] = (s0 * s1 + s2 * s2) * Math.sqrt(s0 * s1);
       if (this.eSet[t]) {
-        for (let d = 0; d < 3; d++) this.well[3 * t + d] = Math.pow(this.eT[3 * t + d], -1.0 / this.mu);
+        for (let d = 0; d < 3; d++) this.well[3 * t + d] = libmPow(this.eT[3 * t + d], -1.0 / this.mu);
         const e = [this.eT[3 * t], this.eT[3 * t + 1], this.eT[3 * t + 2]];
         this.setwell[t] = e[0] === e[1] && e[1] === e[2] ? 2 : 1;
       }
@@ -541,14 +542,14 @@ export class PairGayBerne extends Pair {
     const set = (arr: Float64Array, v: number) => { arr[k1] = v; arr[k2] = v; };
     set(this.eps, eps);
     set(this.sig, sig);
-    set(this.lj1, 48.0 * eps * Math.pow(sig, 12.0));
-    set(this.lj2, 24.0 * eps * Math.pow(sig, 6.0));
-    set(this.lj3, 4.0 * eps * Math.pow(sig, 12.0));
-    set(this.lj4, 4.0 * eps * Math.pow(sig, 6.0));
+    set(this.lj1, 48.0 * eps * libmPow(sig, 12.0));
+    set(this.lj2, 24.0 * eps * libmPow(sig, 6.0));
+    set(this.lj3, 4.0 * eps * libmPow(sig, 12.0));
+    set(this.lj4, 4.0 * eps * libmPow(sig, 6.0));
     // pair_modify shift: the LJ offset is used by sphere-sphere (LJ sphere) pairs only.
     if (this.shift && cut > 0.0) {
       const ratio = sig / cut;
-      set(this.offset, 4.0 * eps * (Math.pow(ratio, 12.0) - Math.pow(ratio, 6.0)));
+      set(this.offset, 4.0 * eps * (libmPow(ratio, 12.0) - libmPow(ratio, 6.0)));
     } else set(this.offset, 0);
 
     // ellipsoidal shape: non-equal radii or an anisotropic well

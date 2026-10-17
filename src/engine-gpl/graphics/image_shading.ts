@@ -20,6 +20,7 @@ import { drawAutoBonds } from './autobond';
 import { color2rgb, defaultTypeColor, element2color, element2diam } from './colors';
 import type { ImageSpecular } from '../../engine/output/image_objects';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { pow as libmPow } from '../libm/pow';
 
 type V = [number, number, number];
 
@@ -64,8 +65,8 @@ export function shadeSurface(surface: V, col: V, shiny: number, ambient: number,
   // the highlight: pow(saturate(n . half), specularHardness) * specularIntensity (image.cpp draw_pixel). Without a
   // dump_modify specular the hardness is 16 * shiny and the intensity is shiny; "specular none" is an intensity of 0.
   const specOn = spec ? spec.intensity > 0 : shiny > 0;
-  const specularKey = !specOn ? 0 : spec ? Math.pow(sat(dot(surface, KEY_HALF)), spec.hardness) * spec.intensity
-    : Math.pow(sat(dot(surface, KEY_HALF)), 16 * shiny) * shiny;
+  const specularKey = !specOn ? 0 : spec ? libmPow(sat(dot(surface, KEY_HALF)), spec.hardness) * spec.intensity
+    : libmPow(sat(dot(surface, KEY_HALF)), 16 * shiny) * shiny;
   const out: V = [0, 0, 0];
   for (let k = 0; k < 3; k++) {
     let c = col[k] * ambient;

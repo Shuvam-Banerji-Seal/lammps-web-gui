@@ -15,6 +15,7 @@
 import { DEG2RAD, MIN_SINE, type RxSystem, type ThreeBodyList } from './core';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 const SQR = (x: number) => x * x;
 const CUBE = (x: number) => x * x * x;
@@ -89,7 +90,7 @@ export const bonds = (sys: RxSystem): void => {
       const sbpJ = param.sbp[typeJ];
       const twbp = param.tbp[typeI * param.numAtomTypes + typeJ];
       // the calculation of the constants
-      const powBOs_be2 = b.BO_s[pj] === 0.0 ? 0.0 : Math.pow(b.BO_s[pj], twbp.p_be2);
+      const powBOs_be2 = b.BO_s[pj] === 0.0 ? 0.0 : libmPow(b.BO_s[pj], twbp.p_be2);
       const exp_be12 = libmExp(twbp.p_be1 * (1.0 - powBOs_be2));
       const CEbo = -twbp.De_s * exp_be12 * (1.0 - twbp.p_be1 * twbp.p_be2 * powBOs_be2);
       // the bond energy
@@ -158,12 +159,12 @@ export const atomEnergy = (sys: RxSystem): void => {
         if (typeJ < 0) continue;
         if (param.sbp[typeJ].name === 'C') {
           const Di = ws.Delta[i];
-          const vov3 = b.BO[pj] - Di - 0.04 * Math.pow(Di, 4.0);
+          const vov3 = b.BO[pj] - Di - 0.04 * libmPow(Di, 4.0);
           if (vov3 > 3.0) {
             const e_lph = p_lp3 * SQR(vov3 - 3.0);
             en.e_lp += e_lph;
             const deahu2dbo = 2.0 * p_lp3 * (vov3 - 3.0);
-            const deahu2dsbo = 2.0 * p_lp3 * (vov3 - 3.0) * (-1.0 - 0.16 * Math.pow(Di, 3.0));
+            const deahu2dsbo = 2.0 * p_lp3 * (vov3 - 3.0) * (-1.0 - 0.16 * libmPow(Di, 3.0));
             b.Cdbo[pj] += deahu2dbo;
             ws.CdDelta[i] += deahu2dsbo;
           }
@@ -284,11 +285,11 @@ export const valenceAngles = (sys: RxSystem): void => {
     let SBO2: number, CSBO2: number;
     if (SBO <= 0) { SBO2 = 0; CSBO2 = 0; }
     else if (SBO > 0 && SBO <= 1) {
-      SBO2 = Math.pow(SBO, p_val9);
-      CSBO2 = p_val9 * Math.pow(SBO, p_val9 - 1);
+      SBO2 = libmPow(SBO, p_val9);
+      CSBO2 = p_val9 * libmPow(SBO, p_val9 - 1);
     } else if (SBO > 1 && SBO < 2) {
-      SBO2 = 2 - Math.pow(2 - SBO, p_val9);
-      CSBO2 = p_val9 * Math.pow(2 - SBO, p_val9 - 1);
+      SBO2 = 2 - libmPow(2 - SBO, p_val9);
+      CSBO2 = p_val9 * libmPow(2 - SBO, p_val9 - 1);
     } else { SBO2 = 2; CSBO2 = 0; }
     const expval6 = libmExp(p_val6 * ws.Delta_boc[j]);
     for (let pi = startJ; pi < endJ; pi++) {
@@ -347,12 +348,12 @@ export const valenceAngles = (sys: RxSystem): void => {
                 const p_val4 = prm.p_val4;
                 const p_val7 = prm.p_val7;
                 const theta_00 = prm.theta_00;
-                const exp3ij = libmExp(-p_val3 * Math.pow(BOA_ij, p_val4));
+                const exp3ij = libmExp(-p_val3 * libmPow(BOA_ij, p_val4));
                 const f7_ij = 1.0 - exp3ij;
-                const Cf7ij = p_val3 * p_val4 * Math.pow(BOA_ij, p_val4 - 1.0) * exp3ij;
-                const exp3jk = libmExp(-p_val3 * Math.pow(BOA_jk, p_val4));
+                const Cf7ij = p_val3 * p_val4 * libmPow(BOA_ij, p_val4 - 1.0) * exp3ij;
+                const exp3jk = libmExp(-p_val3 * libmPow(BOA_jk, p_val4));
                 const f7_jk = 1.0 - exp3jk;
-                const Cf7jk = p_val3 * p_val4 * Math.pow(BOA_jk, p_val4 - 1.0) * exp3jk;
+                const Cf7jk = p_val3 * p_val4 * libmPow(BOA_jk, p_val4 - 1.0) * exp3jk;
                 const expval7 = libmExp(-p_val7 * ws.Delta_boc[j]);
                 const trm8 = 1.0 + expval6 + expval7;
                 const f8_Dj = p_val5 - ((p_val5 - 1.0) * (2.0 + expval6) / trm8);

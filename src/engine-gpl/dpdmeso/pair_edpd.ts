@@ -20,6 +20,7 @@ import { EDPD_CV, EDPD_FLUX, EDPD_TEMP, isEdpdStyle } from '../../engine/atoms';
 import { RanMars } from '../random_mars';
 import { NativePairOrder } from '../neighbor/nativeOrder';
 import { EPSILON, tallyXYZ } from '../dpd/pair_dpd';
+import { pow as libmPow } from '../libm/pow';
 
 /** pair_edpd.cpp: "static constexpr double EPSILON = 1.0e-10;" and kboltz = 1.0 (the lj units of the eDPD examples). */
 const KBOLTZ = 1.0;
@@ -168,7 +169,7 @@ export class PairEDPD extends Pair {
       powerD = Math.max(0.01, powerD);
       let wc = 1.0 - r / cutA[t];
       wc = Math.max(0.0, Math.min(1.0, wc));
-      const wr = Math.pow(wc, 0.5 * powerD);
+      const wr = libmPow(wc, 0.5 * powerD);
       const GammaIJ = gam[t];
       let SigmaIJ = 4.0 * GammaIJ * KBOLTZ * Ti * Tj / (Ti + Tj);
       SigmaIJ = Math.sqrt(SigmaIJ);
@@ -182,7 +183,7 @@ export class PairEDPD extends Pair {
       if (r < cutT[t]) {
         let wrT = 1.0 - r / cutT[t];
         wrT = Math.max(0.0, Math.min(1.0, wrT));
-        wrT = Math.pow(wrT, 0.5 * pwT[t]);
+        wrT = libmPow(wrT, 0.5 * pwT[t]);
         let randnumT = rngT.gaussian();
         randnumT = Math.max(-5.0, Math.min(randnumT, 5.0));
         let kappaT = kap[t];

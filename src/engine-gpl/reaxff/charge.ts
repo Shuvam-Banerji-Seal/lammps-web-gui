@@ -14,6 +14,7 @@
  * CG, and the two-solve (s and t) fictitious-charge step with its history extrapolation.
  */
 import type { System } from '../../engine/system';
+import { pow as libmPow } from '../libm/pow';
 
 export const EV_TO_KCAL_PER_MOL = 14.4;
 const EPSILON = 0.0001;
@@ -23,7 +24,7 @@ export const NPREV = 4;
 /** The Taper polynomial of the fix (init_taper of fix_qeq_reaxff.cpp and fix_qtpie_reaxff.cpp). */
 export const taperFix = (swa: number, swb: number): Float64Array => {
   const Tap = new Float64Array(8);
-  const d7 = Math.pow(swb - swa, 7);
+  const d7 = libmPow(swb - swa, 7);
   const swa2 = swa * swa, swa3 = swa * swa * swa;
   const swb2 = swb * swb, swb3 = swb * swb * swb;
   Tap[7] = 20.0 / d7;
@@ -47,7 +48,7 @@ export const calcHValue = (Tap: Float64Array, r: number, gamma: number): number 
   taper = taper * r + Tap[1];
   taper = taper * r + Tap[0];
   let denom = r * r * r + gamma;
-  denom = Math.pow(denom, 1.0 / 3.0);
+  denom = libmPow(denom, 1.0 / 3.0);
   return (taper * EV_TO_KCAL_PER_MOL) / denom;
 };
 

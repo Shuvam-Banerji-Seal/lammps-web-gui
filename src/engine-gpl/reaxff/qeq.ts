@@ -20,6 +20,7 @@ import { PairReaxFF } from './pair';
 import { type HistoryMap, solveFictitious, taperFix } from './charge';
 import { efieldForModel, fieldOf, findEfield, qeqChiField } from './efield';
 import type { FixEfield } from '../../engine/fix/force_ext';
+import { pow as libmPow } from '../libm/pow';
 
 /** Per-type QEq parameters, 1-based (chi, eta, gamma). */
 export interface QeqParams { chi: Float64Array; eta: Float64Array; gamma: Float64Array }
@@ -108,7 +109,7 @@ export class FixQEqReaxFF extends Fix {
     const nt = this.ntypes;
     this.shld = new Float64Array((nt + 1) * (nt + 1));
     for (let i = 1; i <= nt; i++) {
-      for (let j = 1; j <= nt; j++) this.shld[i * (nt + 1) + j] = Math.pow(p.gamma[i] * p.gamma[j], -1.5);
+      for (let j = 1; j <= nt; j++) this.shld[i * (nt + 1) + j] = libmPow(p.gamma[i] * p.gamma[j], -1.5);
     }
   }
 

@@ -12,6 +12,7 @@ import type { Comb3Tables, TriPoint } from './tables';
 import type { Comb3Kernel } from './terms';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 const MY_PI = Math.PI;
 const MY_PI2 = Math.PI / 2;
@@ -223,9 +224,9 @@ export class Comb3Charge {
     } else if (iq0 > pi.QU + 0.2) {
       Di = pi.DU; dDi = 0.0; Bsi = 0.0; dBsi = 0.0;
     } else {
-      Di = pi.DU + Math.pow(QUchi, pi.nD);
-      dDi = -pi.nD * pi.bD * Math.pow(QUchi, pi.nD - 1.0);
-      Bsi = pi.aB - Math.pow(QOchi, 10);
+      Di = pi.DU + libmPow(QUchi, pi.nD);
+      dDi = -pi.nD * pi.bD * libmPow(QUchi, pi.nD - 1.0);
+      Bsi = pi.aB - libmPow(QOchi, 10);
       dBsi = -pi.bB * 10.0 * powint(QOchi, 9);
     }
     let Dj: number, dDj: number, Bsj: number, dBsj: number;
@@ -234,9 +235,9 @@ export class Comb3Charge {
     } else if (jq0 > pj.QU + 0.2) {
       Dj = pj.DU; dDj = 0.0; Bsj = 0.0; dBsj = 0.0;
     } else {
-      Dj = pj.DU + Math.pow(QUchj, pj.nD);
-      dDj = -pj.nD * pj.bD * Math.pow(QUchj, pj.nD - 1.0);
-      Bsj = pj.aB - Math.pow(QOchj, 10);
+      Dj = pj.DU + libmPow(QUchj, pj.nD);
+      dDj = -pj.nD * pj.bD * libmPow(QUchj, pj.nD - 1.0);
+      Bsj = pj.aB - libmPow(QOchj, 10);
       dBsj = -pj.bB * 10.0 * powint(QOchj, 9);
     }
     const LamDiLamDj = libmExp(0.5 * (pi.lami * Di + pj.lami * Dj) - rlm1 * r);

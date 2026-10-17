@@ -25,6 +25,7 @@ import type { Fix } from '../../engine/fix/fix';
 import { snapOf, restoreSnap, dynamics, setupOnly, quench, type Snap } from './accelerated';
 import { log as libmLog } from '../libm/log';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 interface EventCompute {
   id: string;
@@ -219,7 +220,7 @@ export const runTad = async (ctx: Ctx, a: string[]): Promise<void> => {
 
   /** TAD::check_confidence: the stopping time deltstop, and whether the time since the event exceeds it. */
   const checkConfidence = (): boolean => {
-    deltstop = deltconf * Math.pow(deltfirst / deltconf, ratioBeta);
+    deltstop = deltconf * libmPow(deltfirst / deltconf, ratioBeta);
     return deltstop < s0.step - main.timestep;
   };
 

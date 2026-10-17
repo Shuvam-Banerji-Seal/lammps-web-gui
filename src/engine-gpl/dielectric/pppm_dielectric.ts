@@ -29,6 +29,7 @@ import { dielArrays } from './common';
 import { log as libmLog } from '../libm/log';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /** LAMMPS pppm.cpp SMALL: the convergence of adjust_gewald. */
 const SMALL = 0.00001;
@@ -36,7 +37,7 @@ const LARGE = 10000;
 /** Largest number of mesh points tried per edge before the grid choice is refused. */
 const MAX_MESH = 100000;
 /** Alias images in the optimal influence function (pppm.ts ALIAS_C, measured against native LAMMPS). */
-const ALIAS_C = Math.pow(7 * Math.LN10, 0.25);
+const ALIAS_C = libmPow(7 * Math.LN10, 0.25);
 
 /** Cardinal B-spline M_p(x), support [0, p] (the charge assignment function of PPPM). */
 const bspline = (p: number, x: number): number => {
@@ -309,7 +310,7 @@ export class KSpacePPPMDielectric extends KSpacePPPM {
       out[2] = 2 * Math.PI * (a * inv[0][2] + b * inv[1][2] + c * inv[2][2]);
     };
     const sinc = (x: number) => (x === 0 ? 1 : libmSin(x) / x);
-    const u2 = (m: number, nn: number) => Math.pow(sinc((Math.PI * m) / nn), 2 * P);
+    const u2 = (m: number, nn: number) => libmPow(sinc((Math.PI * m) / nn), 2 * P);
     const edge = [Math.abs(geom.lx), Math.abs(geom.xy) + Math.abs(geom.ly), Math.abs(geom.xz) + Math.abs(geom.yz) + Math.abs(lz)];
     const nbImg = [0, 1, 2].map((dd) => Math.floor(((g * edge[dd]) / (Math.PI * N[dd])) * ALIAS_C));
     const den1 = N.map((nn) => {

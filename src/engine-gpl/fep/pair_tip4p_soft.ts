@@ -25,6 +25,7 @@ import { erfcPoly, EWALD_F } from '../../engine/force/erfc';
 import { PairTIP4PBase } from '../../engine/force/pair/tip4p';
 import { buildOwnedSites, tip4pAlpha, type OwnedSites, type Tip4pModel } from '../../engine/force/pair/tip4p_sites';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 const VALUES = ['epsilon', 'sigma', 'lambda', 'cut'];
 
@@ -143,14 +144,14 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
     const isH = i === this.htype || j === this.htype;
     const cutLJ = this.hasLJ && !isH ? p.get('cut', i, j) : 0;
     if (this.hasLJ && !isH && !(cutLJ > 0)) throw new StyleError(`pair ${this.name}: LJ cutoff for types ${i} ${j} must be > 0`);
-    const pl = lam ** this.nlambda;
+    const pl = libmPow(lam, this.nlambda);
     const oml2 = (1 - lam) * (1 - lam);
     const aL = this.alphaLJ * oml2, aC = this.alphaC * oml2;
-    const sinv6 = sig > 0 ? 1 / sig ** 6 : 0; // the tip4p/long/soft style has no LJ term (sigma unset)
+    const sinv6 = sig > 0 ? 1 / libmPow(sig, 6) : 0; // the tip4p/long/soft style has no LJ term (sigma unset)
     const k1 = i * nt + j, k2 = j * nt + i;
     let off = 0;
     if (this.hasLJ && this.shift && cutLJ > 0) {
-      const x = cutLJ ** 6 * sinv6, D = aL + x, iD = 1 / D;
+      const x = libmPow(cutLJ, 6) * sinv6, D = aL + x, iD = 1 / D;
       off = pl * 4 * eps * (iD * iD - iD);
     }
     for (const k of [k1, k2]) {

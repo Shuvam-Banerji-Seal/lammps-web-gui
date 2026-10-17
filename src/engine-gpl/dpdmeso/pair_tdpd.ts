@@ -17,6 +17,7 @@ import { TDPD_CC, TDPD_CC_FLUX, isTdpdStyle, tdpdSpecies } from '../../engine/at
 import { RanMars } from '../random_mars';
 import { NativePairOrder } from '../neighbor/nativeOrder';
 import { EPSILON, tallyXYZ } from '../dpd/pair_dpd';
+import { pow as libmPow } from '../libm/pow';
 
 const NAMES = ['a0', 'gamma', 'power', 'cut', 'cutcc'];
 
@@ -153,7 +154,7 @@ export class PairTDPD extends Pair {
       const dot = delx * delvx + dely * delvy + delz * delvz;
       let wc = 1.0 - r / cutA[t];
       wc = Math.max(0, Math.min(1.0, wc));
-      const wr = Math.pow(wc, 0.5 * pw[t]);
+      const wr = libmPow(wc, 0.5 * pw[t]);
       const randnum = rng.gaussian();
       let fpair = a0[t] * wc;
       fpair -= gam[t] * wr * wr * dot * rinv;
@@ -165,7 +166,7 @@ export class PairTDPD extends Pair {
         for (let k = 0; k < nsp; k++) {
           let wcr = 1.0 - r / cutcc[t];
           wcr = Math.max(0, wcr);
-          wcr = Math.pow(wcr, 0.5 * this.powercc[nsp * t + k]);
+          wcr = libmPow(wcr, 0.5 * this.powercc[nsp * t + k]);
           let rn = rng.gaussian();
           rn = Math.max(-5.0, Math.min(rn, 5.0));
           const ci = cc[nsp * i + k], cj = cc[nsp * oj + k];

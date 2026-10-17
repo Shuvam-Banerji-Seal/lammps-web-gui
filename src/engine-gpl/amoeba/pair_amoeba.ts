@@ -34,6 +34,7 @@ import { chargeTransferTerm, dispersionReal, repulsionTerm, type HippoSiteData, 
 import { dispersionGridSize, dispersionKspace, makeDispersionGrid } from './dispersion_pme';
 import { multipoleRealHippo, type HippoMpoleSites } from './hippo_mpole';
 import type { HippoPolarAtoms } from './hippo_polar';
+import { pow as libmPow } from '../libm/pow';
 
 /** pvector order of pair amoeba (pair_amoeba.cpp): hal, repulse, disp, mpole, polar, qxfer. */
 const NVECTOR = 6;
@@ -146,7 +147,7 @@ export class PairAmoeba extends Pair {
     const nt = nclass + 1;
     const radmin = new Float64Array(nt * nt), epsilon = new Float64Array(nt * nt);
     const kred = new Float64Array(nt);
-    const TWOSIX = Math.pow(2.0, 1.0 / 6.0);
+    const TWOSIX = libmPow(2.0, 1.0 / 6.0);
     for (let c = 1; c <= nclass; c++) kred[c] = prm.vdw.get(c)?.kred ?? 0;
     for (let i = 1; i <= nclass; i++) {
       for (let j = i; j <= nclass; j++) {
@@ -548,7 +549,7 @@ export class PairAmoeba extends Pair {
       const pol = prm.polar.get(types[i]);
       if (!pol) continue;
       alpha[i] = pol.alpha;
-      pdamp[i] = Math.pow(pol.alpha, 1.0 / 6.0);
+      pdamp[i] = libmPow(pol.alpha, 1.0 / 6.0);
       thole[i] = pol.thole;
     }
     // 1-2 partners as local indices (polar groups, assign_groups in pair_amoeba.cpp)

@@ -9,6 +9,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { erfcExact, erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../../engine/force/erfc';
 import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
 
 /**
  * Pair style mm3/switch3/coulgauss/long (pair_mm3_switch3_coulgauss_long.cpp): the MM3 van der Waals term with a
@@ -105,7 +106,7 @@ export class PairMM3Switch3CoulGaussLong extends Pair {
     const gi = this.p.get('gamma', i, i), gj = this.p.get('gamma', j, j);
     const lj2 = gi === 0 && gj === 0 ? 0 : 1.0 / Math.sqrt(gi * gi + gj * gj);
     const lj3 = 1.84e5 * eps;
-    const lj4 = 2.25 * eps * Math.pow(2.0 * sig, 6.0);
+    const lj4 = 2.25 * eps * libmPow(2.0 * sig, 6.0);
     let offset = 0;
     if (this.shift && cutLJ > 0.0 && this.truncw === 0.0) {
       // the offset makes the energy zero at the cutoff, as in init_one (truncw == 0)

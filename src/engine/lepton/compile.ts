@@ -6,8 +6,7 @@ import { libm } from '../libm';
  * variables from a Float64Array env: slots of builtin variables and of
  * equal-style references (v_name) are given by `slotOf`.
  *
- * Special functions: erf and erfc (double precision; a Maclaurin series for
- * |x| <= 3 and a continued fraction beyond), and the ZBL screened repulsion
+ * Special functions: erf and erfc (the C library's, through libm), and the ZBL screened repulsion
  * zbl(zi, zj, r) of pair_style lepton (pair_lepton.rst defers to pair_zbl.rst):
  *   E = qqr2e zi zj / r * sum_m c_m exp(-d_m k r),  k = angstrom (zi^0.23 + zj^0.23) / 0.46850,
  *   c = (0.18175, 0.50986, 0.28022, 0.02817), d = (3.19980, 0.94229, 0.40290, 0.20162)
@@ -27,36 +26,12 @@ export interface ZblConst {
 const SCREEN = [0.18175, 0.50986, 0.28022, 0.02817];
 const DECAY = [3.19980, 0.94229, 0.40290, 0.20162];
 
-/** erf(x) with a Maclaurin series (|x| <= 2.2) or 1 - erfc by continued fraction (|x| > 2.2). */
-export const erf = (x: number): number => {
-  if (Number.isNaN(x)) return x;
-  const ax = Math.abs(x);
-  if (ax > 2.2) return x > 0 ? 1 - erfcLarge(ax) : erfcLarge(ax) - 1;
-  // erf(x) = 2/sqrt(pi) sum_n (-1)^n x^(2n+1) / (n! (2n+1))
-  let term = x, sum = x;
-  const x2 = x * x;
-  for (let n = 1; n < 200; n++) {
-    term *= -x2 / n;
-    const add = term / (2 * n + 1);
-    sum += add;
-    if (Math.abs(add) < 1e-17 * Math.abs(sum)) break;
-  }
-  return (2 / Math.sqrt(Math.PI)) * sum;
-};
-
-/** erfc(x) for x > 2.2 by the continued fraction erfc(x) = exp(-x^2)/sqrt(pi) / (x + (1/2)/(x + 1/(x + (3/2)/(x + ...)))). */
-const erfcLarge = (x: number): number => {
-  let f = x;
-  for (let k = 200; k >= 1; k--) f = x + (k / 2) / f;
-  return libm.exp(-x * x) / Math.sqrt(Math.PI) / f;
-};
-
-export const erfc = (x: number): number => {
-  if (Number.isNaN(x)) return x;
-  if (x > 2.2) return erfcLarge(x);
-  if (x < -2.2) return 2 - erfcLarge(-x);
-  return 1 - erf(x);
-};
+/**
+ * erf and erfc are the C library's: Lepton's Erf and Erfc operations evaluate erf(args[0]) and erfc(args[0])
+ * (lib/lepton/src/Operation.cpp at b332f28), and the engine's libm table holds glibc's in a session.
+ */
+export const erf = (x: number): number => libm.erf(x);
+export const erfc = (x: number): number => libm.erfc(x);
 
 const zblScale = (zi: number, zj: number, c: ZblConst): number =>
   (c.angstrom * (zi ** 0.23 + zj ** 0.23)) / 0.4685;

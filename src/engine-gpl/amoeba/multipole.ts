@@ -14,14 +14,14 @@
  * and T. A. Darden, J. Chem. Phys. 120, 73 (2004).
  */
 import { StyleError } from '../../engine/force/types';
-import { erfcExact } from '../../engine/force/erfc';
 import type { AxisKind, MultipoleFrame } from './params';
 import { exp as libmExp } from '../libm/exp';
+import { erfc as libmErfc } from '../libm/erf';
 
 /** Coulomb constant of AMOEBA (pair_amoeba.cpp: electric = 332.063713). */
 export const ELECTRIC = 332.063713;
 /** sqrt(pi) (amoeba_multipole.cpp MY_PIS). */
-const MY_PIS = Math.sqrt(Math.PI);
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 
 /** Topology queries kmpole needs; atom IDs, not local indices. */
 export interface MpoleTopo {
@@ -443,7 +443,7 @@ export const multipoleReal = (
     // bn[k] = ((2k-1) bn[k-1] + alsq2n exp(-(aewald r)^2)) / r^2 with alsq2n = (2 aewald^2)^k / (sqrt(pi) aewald);
     // with aewald = 0 this is 1/r, (2k-1) bn[k-1] / r^2 as before
     const ralpha = aewald * r;
-    const bn = [erfcExact(ralpha) / r, 0, 0, 0, 0, 0];
+    const bn = [libmErfc(ralpha) / r, 0, 0, 0, 0, 0];
     const alsq2 = 2.0 * aewald * aewald;
     let alsq2n = aewald > 0.0 ? 1.0 / (MY_PIS * aewald) : 0.0;
     const exp2a = libmExp(-ralpha * ralpha);

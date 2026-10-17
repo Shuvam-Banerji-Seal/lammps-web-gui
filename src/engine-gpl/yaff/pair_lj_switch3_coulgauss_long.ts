@@ -21,7 +21,7 @@
  *    are 0 (then no Gaussian correction).
  *  - the Gaussian correction and the LJ term are evaluated only for r < cut_lj; the Coulomb real-space term for
  *    r < cut_coul; the Gaussian term is weighted by the Coulomb special weight.
- *  - the erfc of the Gaussian correction is the exact erfc() (erfc.ts erfcExact); the Ewald term uses the
+ *  - the erfc of the Gaussian correction is the C library's erfc() (../libm/erf.ts); the Ewald term uses the
  *    pair_modify table kernels of coul/long (erfc.ts), as native does with ncoultablebits.
  *  - shift: the offset is zero when the switching function is active (width > 0), as native init_one.
  *
@@ -33,10 +33,11 @@ import { PairParams, StyleError, mixDistance, mixEpsilon, type PairCompute } fro
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { PairLJCutCoulLong, coulLongPair } from '../../engine/force/pair/coul_long';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
-import { erfcExact, EWALD_F, ErfcTableCache } from '../../engine/force/erfc';
+import { EWALD_F, ErfcTableCache } from '../../engine/force/erfc';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
+import { erfc as libmErfc } from '../libm/erf';
 
 // LAMMPS: ewald_const.h EWALD_F; the engine's erfc.ts EWALD_F is the same rounded constant used by coul/long.
 
@@ -176,7 +177,7 @@ export class PairLJSwitch3CoulGaussLong extends PairLJCutCoulLong {
           const r = Math.sqrt(rsq);
           const rrij = gi * r;
           const expn2 = libmExp(-rrij * rrij);
-          const erfc2 = erfcExact(rrij);
+          const erfc2 = libmErfc(rrij);
           const prefactor2 = (-qqrd2e * qi * qj) / r;
           const forcecoul2 = prefactor2 * (erfc2 + EWALD_F * rrij * expn2);
           fpair += (fc * forcecoul2) / rsq;

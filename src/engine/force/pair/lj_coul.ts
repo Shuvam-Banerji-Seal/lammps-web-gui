@@ -2,8 +2,8 @@ import { PairParams, StyleError, mixDistance, type PairCompute } from '../types'
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairLJCut, tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
-import { erfcExact, erfcPoly } from '../erfc';
-import { libm } from '../../libm';
+import { erfcPoly } from '../erfc';
+import { libm, SQRT_PI } from '../../libm';
 
 /*
  * pair_style lj/cut/coul/cut, lj/cut/coul/debye, lj/cut/coul/dsf and
@@ -41,8 +41,8 @@ import { libm } from '../../libm';
  * and epsilon is the dielectric constant which can be set by the dielectric
  * command" (docs.lammps.org/dielectric.html: "The value is used in the
  * denominator of the formulas for Coulombic interactions").
- * erfc() in the dsf/wolf formulas is evaluated at machine precision
- * (erfc.ts erfcExact), matching the erfc() function the formula names.
+ * erfc() in the dsf/wolf formulas is the C library's (libm.erfc: the glibc port in a
+ * session), the erfc() function the formula names and native LAMMPS calls.
  * special_bonds Coulomb weights scale the whole pair term for coul/cut and
  * coul/debye. For coul/dsf and coul/wolf, measured with native LAMMPS (a
  * charged 4-atom chain, weights 0.25, 0.5, 1.0 on each neighbor order;
@@ -349,7 +349,7 @@ export class PairLJCutCoulDsf extends PairLJCutCoul {
 
   protected coulSelf(qi: number, qqrd2e: number): number {
     const arc = this.alpha * this.cutCoul;
-    return -(erfcExact(arc) / this.cutCoul + (this.alpha / Math.sqrt(Math.PI)) * (1 + libm.exp(-arc * arc))) * qi * qi * qqrd2e;
+    return -(libm.erfc(arc) / this.cutCoul + (this.alpha / SQRT_PI) * (1 + libm.exp(-arc * arc))) * qi * qi * qqrd2e;
   }
 
   protected initCoul(i: number, j: number): void {
@@ -357,7 +357,7 @@ export class PairLJCutCoulDsf extends PairLJCutCoul {
     const k1 = i * nt + j, k2 = j * nt + i;
     const rc = this.p.get('cut_coul', i, j);
     const arc = this.alpha * rc;
-    const erc = erfcExact(arc);
+    const erc = libm.erfc(arc);
     this.dsfRC[k1] = this.dsfRC[k2] = rc;
     this.dsfA[k1] = this.dsfA[k2] = erc / rc;
     this.dsfB[k1] = this.dsfB[k2] = erc / (rc * rc) + (TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
@@ -432,14 +432,14 @@ export class PairLJCutCoulWolf extends PairLJCutCoul {
    * (alpha 0.6, rc 3, q 1: -0.340331999856; alpha 0.3, rc 4: -0.180467627786).
    */
   protected coulSelf(qi: number, qqrd2e: number): number {
-    return -(erfcExact(this.alpha * this.cutCoul) / (2 * this.cutCoul) + this.alpha / Math.sqrt(Math.PI)) * qi * qi * qqrd2e;
+    return -(libm.erfc(this.alpha * this.cutCoul) / (2 * this.cutCoul) + this.alpha / SQRT_PI) * qi * qi * qqrd2e;
   }
 
   protected initCoul(i: number, j: number): void {
     const nt = this.ntypes + 1;
     const k1 = i * nt + j, k2 = j * nt + i;
     const rc = this.p.get('cut_coul', i, j);
-    const a = erfcExact(this.alpha * rc) / rc;
+    const a = libm.erfc(this.alpha * rc) / rc;
     this.wolfA[k1] = this.wolfA[k2] = a;
     const arc = this.alpha * rc;
     this.wolfF[k1] = this.wolfF[k2] = -(a + TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
@@ -449,7 +449,7 @@ export class PairLJCutCoulWolf extends PairLJCutCoul {
     const r = Math.sqrt(rsq);
     const grij = this.alpha * r;
     const ex = libm.exp(-grij * grij);
-    const erfcc = erfcExact(grij);
+    const erfcc = libm.erfc(grij);
     const pref = qqrd2e * qi * qj;
     return {
       e: pref * (erfcc / r - this.wolfA[t]),

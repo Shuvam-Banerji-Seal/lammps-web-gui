@@ -59,6 +59,10 @@ source and licence in its header:
   exp tables), bit for bit, with the fused steps of the compiled libm; LGPL-2.1-or-later, used the same way. JavaScript
   engines disagree on `Math.pow` (Node 18 and 20 differ from glibc for about 10 percent of ordinary arguments), so the
   ported styles call this one.
+- `libm/erf.ts`: the `erf()` and `erfc()` of the same glibc (`s_erf.c`, built without FMA; its `exp` calls go to
+  `libm/exp.ts`), bit for bit. The file carries the Sun Microsystems notice of `s_erf.c` ("Permission to use, copy,
+  modify, and distribute this software is freely granted, provided that this notice is preserved"); used here as part
+  of the GPL-2.0 module.
 - `libm/sincos.ts`: the `sin()` and `cos()` of the same glibc (the IBM accurate routines of `s_sin.c`,
   `sincostab.c`, `branred.c`, built without FMA contraction), bit for bit; LGPL-2.1-or-later, used the same way.
 - `dpdrx/unordered_order.ts`: the iteration order of libstdc++'s `std::unordered_set<std::string>` (GCC 11),

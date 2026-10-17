@@ -11,7 +11,7 @@
  */
 import type { SimState } from '../../engine/types';
 import type { Geometry } from '../../engine/domain';
-import { safeErfc } from './electrode_math';
+import { MY_PIS, safeErfc } from './electrode_math';
 
 /**
  * Calls fn(i, j, rsq, dx, dy, dz) for every ordered pair (i, j) and periodic image within the type cut-off
@@ -90,8 +90,8 @@ export const matrixSelfTerms = (
   s: SimState, elecBit: number, imat: Int32Array, ngroup: number, matrix: Float64Array, gEwald: number,
   etaOf: (i: number) => number,
 ): void => {
-  const selfint = 2.0 / Math.sqrt(Math.PI) * gEwald;
-  const preta = Math.SQRT2 / Math.sqrt(Math.PI);
+  const selfint = 2.0 / MY_PIS * gEwald;
+  const preta = Math.SQRT2 / MY_PIS;
   for (let i = 0; i < s.n; i++) {
     if (!(s.mask[i] & elecBit)) continue;
     const etaI = etaOf(i);
@@ -133,8 +133,8 @@ export const vectorSelfTerms = (
   s: SimState, sensorBit: number, sourceBit: number, invert: boolean, vec: Float64Array, gEwald: number,
   etaOf: (i: number) => number,
 ): void => {
-  const selfint = 2.0 / Math.sqrt(Math.PI) * gEwald;
-  const preta = Math.SQRT2 / Math.sqrt(Math.PI);
+  const selfint = 2.0 / MY_PIS * gEwald;
+  const preta = Math.SQRT2 / MY_PIS;
   for (let i = 0; i < s.n; i++) {
     const sens = (s.mask[i] & sensorBit) !== 0;
     const src = ((s.mask[i] & sourceBit) !== 0) !== invert;

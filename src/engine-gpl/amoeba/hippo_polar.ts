@@ -15,13 +15,13 @@
  */
 import { damppole } from './hippo_mpole';
 import { ELECTRIC } from './multipole';
-import { erfcExact } from '../../engine/force/erfc';
 import type { PolarAtoms, PolarSettings, InducedDipoles, PolarResult } from './polar';
 import type { MpoleSites } from './multipole';
 import { exp as libmExp } from '../libm/exp';
+import { erfc as libmErfc } from '../libm/erf';
 
 /** sqrt(pi) (amoeba_polar.cpp MY_PIS). */
-const MY_PIS = Math.sqrt(Math.PI);
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 
 /** Per-copy HIPPO inputs of the polarization: pcore and palpha of the class, pval of the owner (see pair_amoeba.ts). */
 export interface HippoPolarAtoms {
@@ -218,7 +218,7 @@ export const hippoDirectField = (a: PolarAtoms, h: HippoPolarAtoms, s: PolarSett
  */
 const ewaldTerms = (aewald: number, r: number, rr1: number, rr2: number, mmax: number): number[] => {
   const ralpha = aewald * r;
-  const bn = [erfcExact(ralpha) * rr1];
+  const bn = [libmErfc(ralpha) * rr1];
   const aesq2 = 2.0 * aewald * aewald;
   let aesq2n = aewald > 0.0 ? 1.0 / (MY_PIS * aewald) : 0.0;
   const exp2a = libmExp(-ralpha * ralpha);

@@ -15,13 +15,14 @@
 import { PairLJCutCoulLong, coulLongPair } from '../../engine/force/pair/coul_long';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
 import { StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
-import { EWALD_F, ErfcTableCache, TABLE_INNER_RSQ, erfcExact, type ErfcTable } from '../../engine/force/erfc';
+import { EWALD_F, ErfcTableCache, TABLE_INNER_RSQ, type ErfcTable } from '../../engine/force/erfc';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { CORE_TYPE, NOPOL_TYPE, drudeModelOf, type DrudeModel } from './drude_model';
 import { bounds } from './pair_thole';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
+import { erfc as libmErfc } from '../libm/erf';
 
 /** LAMMPS EPSILON: added to rsq so that r = 0 between a Drude pair stays finite (the special bond removes it). */
 const EPSILON = 1.0e-20;
@@ -34,7 +35,7 @@ const TWO_OVER_SQRTPI = 2 / Math.sqrt(Math.PI);
  * terms do not cancel badly, and 1 - erfc above it, where erfc is small.
  */
 const erfNative = (x: number): number => {
-  if (x >= 2) return 1 - erfcExact(x);
+  if (x >= 2) return 1 - libmErfc(x);
   let term = x, sum = x;
   const x2 = x * x;
   for (let n = 1; n < 200; n++) {

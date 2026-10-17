@@ -1,10 +1,9 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
-import { erfcExact } from '../force/erfc';
 import { PairCoulStreitz, mdfTaper, pointUval, slaterS } from '../force/pair/coul_streitz';
 import type { System } from '../system';
 import { gplHook } from '../gplHooks';
-import { libm } from '../libm';
+import { libm, SQRT_PI } from '../libm';
 
 /*
  * fix qeq/point, qeq/shielded, qeq/dynamic and qeq/fire — docs.lammps.org/fix_qeq.html
@@ -207,17 +206,8 @@ const taper = (x: number): number => {
 /** Constant of the qeq/dynamic charge dynamics (measured with native LAMMPS, black box). */
 const DYNAMIC_SCALE = 31.25;
 
-/**
- * erfc for the qeq/slater matrix (same values as erfcExact to 2.5e-16 relative). erfcExact's continued fraction runs
- * 400 terms for x >= 2, which made every image of the periodic matrix cost microseconds; 60 terms converge to the
- * same double (checked on x in [2, 8] against 400 terms).
- */
-const erfcSlater = (x: number): number => {
-  if (x < 2) return erfcExact(x);
-  let f = x;
-  for (let k = 60; k >= 1; k--) f = x + (k / 2) / f;
-  return libm.exp(-x * x) / Math.sqrt(Math.PI) / f;
-};
+/** erfc for the qeq/slater matrix: the C library's, as native fix_qeq_slater.cpp calls erfc() (libm.ts). */
+const erfcSlater = (x: number): number => libm.erfc(x);
 
 export class FixQeq extends Fix {
   readonly style: string;
@@ -558,8 +548,8 @@ export class FixQeq extends Fix {
     const C = 14.399645; // qqrd2e of units metal, as the pair style uses it (measured with native LAMMPS, black box)
     const a = this.alpha, rc = this.cutoff;
     const erc = erfcSlater(a * rc);
-    const selfW = -(erc / (2 * rc) + a / Math.sqrt(Math.PI));
-    const kd = this.dsf ? erc / (rc * rc) + (2 * a / Math.sqrt(Math.PI)) * libm.exp(-a * a * rc * rc) / rc : 0;
+    const selfW = -(erc / (2 * rc) + a / SQRT_PI);
+    const kd = this.dsf ? erc / (rc * rc) + (2 * a / SQRT_PI) * libm.exp(-a * a * rc * rc) / rc : 0;
     const cc = (r: number): number => {
       const e = erfcSlater(a * r) / r;
       return this.dsf ? e - erc / rc + (r - rc) * kd : e;

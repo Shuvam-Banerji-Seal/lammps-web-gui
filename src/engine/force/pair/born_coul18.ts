@@ -3,9 +3,8 @@ import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { PairBorn } from './simple';
 import { tallyAtom } from './lj_cut';
 import { fmtCoeff, parseNum } from '../util';
-import { erfcExact } from '../erfc';
 import { erfAcc } from './coul_cs';
-import { libm } from '../../libm';
+import { libm, SQRT_PI } from '../../libm';
 
 /*
  * pair_style born/coul/wolf and pair_style born/coul/dsf —
@@ -273,20 +272,20 @@ export class PairBornCoulWolf extends PairBornCoul18 {
     const k1 = i * nt + j, k2 = j * nt + i;
     const rc = this.cutCoul;
     const arc = this.alpha * rc;
-    const a = erfcExact(arc) / rc;
+    const a = libm.erfc(arc) / rc;
     this.wolfA[k1] = this.wolfA[k2] = a;
     this.wolfF[k1] = this.wolfF[k2] = -(a + TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
   }
 
   protected coulSelf(qi: number, qqrd2e: number): number {
-    return -(erfcExact(this.alpha * this.cutCoul) / (2 * this.cutCoul) + this.alpha / Math.sqrt(Math.PI)) * qi * qi * qqrd2e;
+    return -(libm.erfc(this.alpha * this.cutCoul) / (2 * this.cutCoul) + this.alpha / SQRT_PI) * qi * qi * qqrd2e;
   }
 
   protected coulPair(t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
     const r = Math.sqrt(rsq);
     const grij = this.alpha * r;
     const ex = libm.exp(-grij * grij);
-    const erfcc = erfcExact(grij);
+    const erfcc = libm.erfc(grij);
     const pref = qqrd2e * qi * qj;
     return {
       e: pref * (erfcc / r - this.wolfA[t]),
@@ -324,14 +323,14 @@ export class PairBornCoulDsf extends PairBornCoul18 {
     const k1 = i * nt + j, k2 = j * nt + i;
     const rc = this.cutCoul;
     const arc = this.alpha * rc;
-    const erc = erfcExact(arc);
+    const erc = libm.erfc(arc);
     this.dsfA[k1] = this.dsfA[k2] = erc / rc;
     this.dsfB[k1] = this.dsfB[k2] = erc / (rc * rc) + (TWO_OVER_SQRTPI * this.alpha * libm.exp(-arc * arc)) / rc;
   }
 
   protected coulSelf(qi: number, qqrd2e: number): number {
     const arc = this.alpha * this.cutCoul;
-    return -(erfcExact(arc) / this.cutCoul + (this.alpha / Math.sqrt(Math.PI)) * (1 + libm.exp(-arc * arc))) * qi * qi * qqrd2e;
+    return -(libm.erfc(arc) / this.cutCoul + (this.alpha / SQRT_PI) * (1 + libm.exp(-arc * arc))) * qi * qi * qqrd2e;
   }
 
   protected coulPair(t: number, rsq: number, qi: number, qj: number, qqrd2e: number): { e: number; f: number } {
@@ -342,7 +341,7 @@ export class PairBornCoulDsf extends PairBornCoul18 {
     // not with the Abramowitz-Stegun polynomial erfcPoly that lj/cut/coul/dsf uses
     // (the two natives differ by ~1.9e-8 in ecoul on the same 108-atom test system;
     // the exact form matches born/coul/dsf, erfcPoly matches lj/cut/coul/dsf).
-    const erfcc = erfcExact(grij);
+    const erfcc = libm.erfc(grij);
     const pref = qqrd2e * qi * qj;
     const a = this.dsfA[t], b = this.dsfB[t];
     return {

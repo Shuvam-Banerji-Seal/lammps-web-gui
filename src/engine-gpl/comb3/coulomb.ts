@@ -16,7 +16,7 @@ import { pow as libmPow } from '../libm/pow';
 
 const MY_PI = Math.PI;
 const MY_PI2 = Math.PI / 2;
-const MY_PIS = Math.sqrt(Math.PI);
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 
 /** comb_fc_curl: switch of the curl (carbon-type) correction between curlcut1 and curlcut2. */
 export const fcCurl = (rocn: number, p: Comb3Param): number => {

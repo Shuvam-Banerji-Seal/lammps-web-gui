@@ -13,12 +13,12 @@
  * Slipchenko and M. S. Gordon, J. Comput. Chem. 28, 276 (2007).
  */
 import { ELECTRIC, type MpoleSites } from './multipole';
-import { erfcExact } from '../../engine/force/erfc';
 
 /** sqrt(pi) (amoeba_multipole.cpp MY_PIS). */
-const MY_PIS = Math.sqrt(Math.PI);
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 import { resolveSiteTorques, type TermPairs, type TermResult } from './hippo_terms';
 import { exp as libmExp } from '../libm/exp';
+import { erfc as libmErfc } from '../libm/erf';
 
 /**
  * damppole (amoeba_multipole.cpp): the charge penetration damping factors dmpi and dmpk (entries 0, 2, 4, 6, 8, and the
@@ -208,7 +208,7 @@ export const multipoleRealHippo = (
     const rr11 = 9.0 * rr9 / r2;
     // Ewald real-space terms bn[k] (multipole_real): erfc(aewald r)/r and the recursion, times felec
     const ralpha = aewald * r;
-    const bn = [erfcExact(ralpha) / r, 0, 0, 0, 0, 0];
+    const bn = [libmErfc(ralpha) / r, 0, 0, 0, 0, 0];
     const alsq2 = 2.0 * aewald * aewald;
     let alsq2n = aewald > 0.0 ? 1.0 / (MY_PIS * aewald) : 0.0;
     const exp2a = libmExp(-ralpha * ralpha);

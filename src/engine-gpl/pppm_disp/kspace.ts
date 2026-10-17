@@ -34,6 +34,7 @@ import {
   virialCoulomb, virialDispersion, ljRspaceError, qoptDispersionIk, symEigenvalues, type MeshGeom, type Stencil,
 } from './grid';
 import { pow as libmPow } from '../libm/pow';
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 
 /** Grid index of each atom (particle_map): base[3i + d] = floor((x_d - lo_d) N_d / L_d + shift) - OFFSET. */
 const mapAtoms = (x: Float64Array, n: number, lo: [number, number, number], mg: MeshGeom, st: Stencil): Int32Array => {
@@ -507,7 +508,7 @@ export class KSpacePPPMDisp extends KSpaceBase {
       const s2 = (1 / (mg.N[0] * mg.N[1] * mg.N[2])) ** 2;
       pairSum(F, F, info.G, info.vg, s2, 1, egy, vir);
       let e1 = 0.5 * V * egy.v;
-      e1 -= this.gEwald * qsqsum / Math.sqrt(Math.PI) + (Math.PI / 2) * qsum * qsum / (this.gEwald * this.gEwald * V);
+      e1 -= this.gEwald * qsqsum / MY_PIS + (Math.PI / 2) * qsum * qsum / (this.gEwald * this.gEwald * V);
       e1 *= qqrd2e;
       const grids = fieldsIk(F, mg, info.G);
       for (let i = 0; i < n; i++) {
@@ -530,7 +531,7 @@ export class KSpacePPPMDisp extends KSpaceBase {
       const ng = mg.N[0] * mg.N[1] * mg.N[2];
       const s2 = (1 / ng) ** 2;
       const base = mapAtoms(x, n, lo, mg, st);
-      const piSqrt = Math.PI * Math.sqrt(Math.PI);
+      const piSqrt = Math.PI * MY_PIS;
       const egy = { v: 0 };
       const vir = new Float64Array(6);
       // the (density, field) pairs: geometric one grid; arithmetic seven grids with the energy of the pairs (k, 6 - k)

@@ -11,9 +11,9 @@
  * multipole PME (kspace.ts) with the dispersion order and grid of the key file.
  */
 import { checkPmeOrder, convolveReal, factorable, makePmeGrid, pmeFill, type PmeGrid } from './kspace';
-import { erfcExact } from '../../engine/force/erfc';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
+import { erfc as libmErfc } from '../libm/erf';
 
 const MY_PI = Math.PI;
 
@@ -92,7 +92,7 @@ export const dispersionKspace = (
         const term = -b * b;
         if (term > -50.0 && hsq !== 0.0) {
           const expterm = libmExp(term);
-          const erfcterm = erfcExact(b);
+          const erfcterm = libmErfc(b);
           const term1 = fac1 * erfcterm * hhh + expterm * (fac2 + fac3 * hsq);
           const denom = denom0 * bs1[i] * bs2[j] * bs3[k];
           w[nn] = -(term1 / denom);

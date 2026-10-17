@@ -4,8 +4,7 @@ import type { Geometry } from '../../domain';
 import { parseNum } from '../util';
 import { KSpaceEwald, invertUpper } from './ewald';
 import { PairLJLongCoulLong } from '../pair/lj_long';
-import { erfcExact } from '../erfc';
-import { libm } from '../../libm';
+import { libm, SQRT_PI } from '../../libm';
 
 /*
  * kspace_style ewald/disp — docs.lammps.org/kspace_style.html (source:
@@ -239,8 +238,8 @@ export class KSpaceEwaldDisp extends KSpace {
 const dispKernel = (u: number): { f: number; fu: number } => {
   const b = Math.sqrt(u);
   const e = libm.exp(-u);
-  const erfc = erfcExact(b);
-  const f = (1 - 2 * u) * e + 2 * Math.sqrt(Math.PI) * u * b * erfc;
-  const fu = 3 * (Math.sqrt(Math.PI) * b * erfc - e);
+  const erfc = libm.erfc(b);
+  const f = (1 - 2 * u) * e + 2 * SQRT_PI * u * b * erfc;
+  const fu = 3 * (SQRT_PI * b * erfc - e);
   return { f, fu };
 };

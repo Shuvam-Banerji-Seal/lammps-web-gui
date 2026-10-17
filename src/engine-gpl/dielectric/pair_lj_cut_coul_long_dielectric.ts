@@ -21,7 +21,7 @@ import { exp as libmExp } from '../libm/exp';
 /** Within this distance squared the Coulomb term is left out (pair_lj_cut_coul_long_dielectric.cpp EPSILON). */
 const EPSILON = 1.0e-6;
 /** sqrt(pi), as LAMMPS MathConst::MY_PIS. */
-const MY_PIS = Math.sqrt(Math.PI);
+const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 
 /**
  * Coulomb kernels of one pair at distance r (per unit charge product, without qqrd2e): fo = force / r of the damped

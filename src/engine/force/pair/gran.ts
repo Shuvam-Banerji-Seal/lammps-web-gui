@@ -111,6 +111,9 @@ export class PairGran extends Pair {
     this.name = kind;
     this.history = kind !== 'gran/hooke';
     this.hertz = kind === 'gran/hertz/history';
+    // size list (Pair.sizeList), as native LAMMPS's init_style requests (src/GRANULAR/pair_gran_hooke_history.cpp at
+    // b332f28: "neighbor->add_request(this, NeighConst::REQ_SIZE | NeighConst::REQ_HISTORY)")
+    this.sizeList = true;
   }
 
   settings(args: string[]): void {

@@ -188,6 +188,7 @@ export class ForceField {
       half: this.pair ? this.pair.needsHalf : false,
       full: this.pair ? this.pair.needsFull : false,
       cutoff, ntypes: s.ntypes, special: this.specialList, specialSettings: settings,
+      size: (this.pair?.sizeList ?? false) && s.radius !== null,
     });
     if (this.pair?.coulLong && !this.kspace) {
       throw new StyleError(`pair style ${this.pair.name} needs a kspace style (kspace_style ewald or pppm)`);

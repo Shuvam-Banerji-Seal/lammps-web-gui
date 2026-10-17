@@ -285,6 +285,14 @@ export abstract class Pair {
   hybridOverlay = false;
   needsFull = false;
   needsHalf = true;
+  /**
+   * The neighbor list keeps a pair only within the two radii plus the skin. As native LAMMPS does (src/npair_bin.cpp at
+   * b332f28) for the size lists that finite-size styles request (NeighConst::REQ_SIZE): "radsum = radius[i] +
+   * radius[j]; cut = radsum + skin; cutsq = cut * cut;" and the pair is stored "if (rsq <= cutsq)". The pairs left out
+   * are not in contact, so forces are unchanged; with a wide size distribution the list is far shorter (the type cutoff
+   * covers the largest pair of radii).
+   */
+  sizeList = false;
   /** Styles with a long-range Coulomb part (need a kspace style). */
   coulLong = false;
   /**

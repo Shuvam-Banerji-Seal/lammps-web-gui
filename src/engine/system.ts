@@ -191,6 +191,8 @@ export class System {
   ghostVelocity = false;
   /** newton command, pair setting (newton.html default on); the engine's results do not depend on it. */
   newtonPair = true;
+  /** newton command, bond setting (newton.html: "flag2 = on or off for bonded interactions"; default on). */
+  newtonBond = true;
   /** comm_style brick|tiled (only fix balance rcb cares in a one-process engine). */
   commStyle: 'brick' | 'tiled' = 'brick';
 

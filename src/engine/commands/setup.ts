@@ -306,6 +306,8 @@ const balanceCommand: Handler = ({ sys }, a) => {
 const newton: Handler = ({ sys }, a) => {
   if (a.length < 1 || a.length > 2 || a.some((w) => w !== 'on' && w !== 'off')) throw new StyleError('usage: newton on|off [on|off]');
   sys.newtonPair = a[0] === 'on';
+  // newton.html: "flag = on or off for both pairwise and bonded interactions"; "flag2 = on or off for bonded interactions"
+  sys.newtonBond = (a.length === 2 ? a[1] : a[0]) === 'on';
   sys.log('newton: accepted (the engine always uses Newton\'s 3rd law within one process; results are the same)');
 };
 

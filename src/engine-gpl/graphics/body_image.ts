@@ -20,7 +20,6 @@ import { drawCylinder, drawSphere, drawTrinorm, drawTriangle } from './draw';
 
 type V = [number, number, number];
 
-const unit = (c: readonly number[]): V => [c[0] / 255, c[1] / 255, c[2] / 255];
 const vlen = (a: V): number => Math.hypot(a[0], a[1], a[2]);
 /** MathExtra::norm3 (in place in native): a zero vector is left as it is. */
 const norm3 = (a: V): V => {
@@ -193,7 +192,7 @@ const scale3 = (a: V, s: number): V => [a[0] * s, a[1] * s, a[2] * s];
 /** Draws the elements of the body atoms in colour b.color (dump_image.cpp, the bodyflag branch). */
 export function drawBodyAtoms(f: RasterFrame, atoms: readonly BodyAtom[], flag1: number, flag2: number): void {
   for (const b of atoms) {
-    const col = unit(b.color);
+    const col = b.color;
     const opacity = b.opacity;
     for (const e of bodyElements(b, flag1, flag2)) {
       if (e.kind === 'sphere') drawSphere(f, e.c, col, e.d, opacity);

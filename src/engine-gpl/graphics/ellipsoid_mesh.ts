@@ -12,7 +12,7 @@
  * The triangle mesh of a level is built once and reused for every atom (native builds one per atom; the mesh is the
  * same, so only the time differs).
  */
-import type { EllipsoidAtom, RasterFrame, Rgb255 } from '../../engine/output/image_objects';
+import type { EllipsoidAtom, RasterFrame } from '../../engine/output/image_objects';
 import { drawSphere, drawTrinorm, drawCylinder } from './draw';
 import { pow as libmPow } from '../libm/pow';
 
@@ -30,7 +30,6 @@ const vnorm = (a: V): V => {
   const l = vlen(a);
   return l > 0 ? [a[0] / l, a[1] / l, a[2] / l] : [0, 0, 0];
 };
-const unit = (c: Rgb255): V => [c[0] / 255, c[1] / 255, c[2] / 255];
 
 /** EllipsoidObj::refine: each triangle becomes four, the new vertices on the unit sphere (the picture of the native comment). */
 const refine = (tris: Tri[]): Tri[] => {
@@ -182,6 +181,6 @@ export function drawEllipsoid(f: RasterFrame, flag: number, col: V, center: V, s
 /** The ellipsoid atoms of the "ellipsoid" keyword, in atom order: estyle 1 rounded triangles, 2 wireframe. */
 export function drawEllipsoidAtoms(f: RasterFrame, atoms: readonly EllipsoidAtom[], estyle: number, level: number, diameter: number): void {
   for (const a of atoms) {
-    drawEllipsoid(f, estyle, unit(a.color), a.center, a.shape, a.quat, a.block, diameter, a.opacity, level);
+    drawEllipsoid(f, estyle, a.color, a.center, a.shape, a.quat, a.block, diameter, a.opacity, level);
   }
 }

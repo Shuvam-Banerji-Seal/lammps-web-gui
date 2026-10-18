@@ -11,7 +11,7 @@
  * The core (src/engine/output/dump_image.ts) picks the atoms (group, line, tri or ellipsoid flag), their colours and
  * bonus data, and calls these loops in the order of native create_image (lines, triangles, then ellipsoids: ellipsoid_mesh.ts).
  */
-import type { RasterFrame, Rgb255, AtomObjectsHook, LineAtom, TriAtom } from '../../engine/output/image_objects';
+import type { RasterFrame, AtomObjectsHook, LineAtom, TriAtom } from '../../engine/output/image_objects';
 import { triangleCorner } from '../../engine/lineTri';
 import { drawCylinder, drawTriangle, transparentAt, type PixelLight } from './draw';
 import { drawEllipsoidAtoms } from './ellipsoid_mesh';
@@ -20,7 +20,6 @@ import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
 type V = [number, number, number];
 
-const unit = (c: Rgb255): V => [c[0] / 255, c[1] / 255, c[2] / 255];
 
 /**
  * dump_image.cpp, lineflag branch: each segment is the centre plus and minus half its length along theta, in the
@@ -32,7 +31,7 @@ export function drawLineAtoms(f: RasterFrame, lines: readonly LineAtom[], diamet
     const dy = 0.5 * l.length * libmSin(l.theta);
     const pt1: V = [l.x + dx, l.y + dy, 0];
     const pt2: V = [l.x - dx, l.y - dy, 0];
-    drawCylinder(f, pt1, pt2, unit(l.color), diameter, 3, l.opacity);
+    drawCylinder(f, pt1, pt2, l.color, diameter, 3, l.opacity);
   }
 }
 
@@ -46,7 +45,7 @@ export function drawTriAtoms(f: RasterFrame, tris: readonly TriAtom[], tstyle: n
   const edgedraw = tstyle !== 1;
   const faceLight: PixelLight = { ambient: 0.3, lights: { key: 0.8, fill: 0.45, back: 0.8 } };
   for (const t of tris) {
-    const c = unit(t.color);
+    const c = t.color;
     const p1 = triangleCorner(t.center, t.quat, t.corners, 0);
     const p2 = triangleCorner(t.center, t.quat, t.corners, 1);
     const p3 = triangleCorner(t.center, t.quat, t.corners, 2);

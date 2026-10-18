@@ -226,12 +226,15 @@ describe('engine: a graphics object reaches the image through dump image', () =>
     expect(lit).toBeGreaterThan(20);
   });
 
-  it('fix graphics/chunk without a radius keyword is refused by name (its default needs the pair style sigma)', async () => {
-    await expect(run(scene(
+  it('fix graphics/chunk without a radius keyword and without a pair style draws with the default radius', async () => {
+    // native: no pair style, so no sigma, so the default 0.5 * xlattice (tests/engineGraphicsChunkSigma.test.ts has the
+    // native images)
+    const { logs } = await run(scene(
       'compute ch all chunk/atom type\nfix hull all graphics/chunk 1 ch alpha 0.0',
       'dump im all image 1 out.*.ppm type type size 32 32 view 70 20 box no 0 fix hull const 1 0',
       'create_atoms 1 single 4.5 5 5\ncreate_atoms 1 single 5.5 5 5',
-    ))).rejects.toThrow(/pair style sigma/);
+    ));
+    expect(logs.filter((t) => /error/i.test(t))).toEqual([]);
   });
 
   it('fix graphics/chunk draws the hull of a chunk of atoms through dump image (trinorm)', async () => {

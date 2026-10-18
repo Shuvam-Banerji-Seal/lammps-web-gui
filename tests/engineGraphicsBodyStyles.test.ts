@@ -15,7 +15,7 @@ import { drawSphere } from '../src/engine-gpl/graphics/draw';
 const identity = [1, 0, 0, 0];
 const body = (over: Partial<BodyAtom>): BodyAtom => ({
   style: 'nparticle', center: [5, 5, 5], quat: identity, nsub: 0, nedge: 0, nface: 0, vertices: [], edges: [], faces: [], radius: 0,
-  color: [255, 0, 0], opacity: 1, ...over,
+  color: [1, 0, 0], opacity: 1, ...over,
 });
 
 const frameAlongX = (): RasterFrame => ({

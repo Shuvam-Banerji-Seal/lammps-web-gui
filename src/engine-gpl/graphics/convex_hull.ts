@@ -32,9 +32,12 @@ function cross(a: Vec3, b: Vec3): Vec3 {
 function len(v: Vec3): number {
   return Math.sqrt(dot(v, v));
 }
+/** vec3norm: "(n > 0.0) ? (1.0 / n) * v" (times the reciprocal, not divided by n: the rounding differs). */
 function norm(v: Vec3): Vec3 {
   const n = len(v);
-  return n > 0.0 ? [v[0] / n, v[1] / n, v[2] / n] : [0.0, 0.0, 0.0];
+  if (!(n > 0.0)) return [0.0, 0.0, 0.0];
+  const inv = 1.0 / n;
+  return [inv * v[0], inv * v[1], inv * v[2]];
 }
 function sub(a: Vec3, b: Vec3): Vec3 {
   return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];

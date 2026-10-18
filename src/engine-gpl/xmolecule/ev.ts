@@ -7,7 +7,7 @@
  * The tally helpers of the xmolecule styles: the energy and virial sums of native LAMMPS for newton_bond on, in the
  * same expressions and order, so the per-term virial bookkeeping matches native bit for bit.
  */
-import type { BondedCompute } from '../../engine/force/types';
+import { addCentroid, type BondedCompute } from '../../engine/force/types';
 
 /** Angle::ev_tally: THIRD = 1.0/3.0 (math_const.h). */
 const THIRD = 1.0 / 3.0;
@@ -58,6 +58,15 @@ export const evTallyAngle = (
       bc.vatom[6 * a + 3] += THIRD * w3; bc.vatom[6 * a + 4] += THIRD * w4; bc.vatom[6 * a + 5] += THIRD * w5;
     }
   }
+  if (bc.cvatom) {
+    // the centroid virial (angle.cpp with cvflag_atom): a1 = r10 = (2 r12 - r32) / 3, a2 = (-r12 - r32) / 3,
+    // a3 = (-r12 + 2 r32) / 3, f2 = -f1 - f3
+    const cv = bc.cvatom;
+    addCentroid(cv, i, THIRD * (2 * d1[0] - d2[0]), THIRD * (2 * d1[1] - d2[1]), THIRD * (2 * d1[2] - d2[2]), f1[0], f1[1], f1[2]);
+    addCentroid(cv, j, THIRD * (-d1[0] - d2[0]), THIRD * (-d1[1] - d2[1]), THIRD * (-d1[2] - d2[2]),
+      -f1[0] - f3[0], -f1[1] - f3[1], -f1[2] - f3[2]);
+    addCentroid(cv, k, THIRD * (-d1[0] + 2 * d2[0]), THIRD * (-d1[1] + 2 * d2[1]), THIRD * (-d1[2] + 2 * d2[2]), f3[0], f3[1], f3[2]);
+  }
 };
 
 /**
@@ -86,5 +95,17 @@ export const evTallyFour = (
       bc.vatom[6 * a] += 0.25 * w0; bc.vatom[6 * a + 1] += 0.25 * w1; bc.vatom[6 * a + 2] += 0.25 * w2;
       bc.vatom[6 * a + 3] += 0.25 * w3; bc.vatom[6 * a + 4] += 0.25 * w4; bc.vatom[6 * a + 5] += 0.25 * w5;
     }
+  }
+  if (bc.cvatom) {
+    // the centroid virial (dihedral.cpp / improper.cpp with cvflag_atom): vb1 = r12, vb2 = r32, vb3 = r43,
+    // a1 = (3 vb1 - 2 vb2 - vb3) / 4, a2 = (-vb1 - 2 vb2 - vb3) / 4, a3 = (-vb1 + 2 vb2 - vb3) / 4,
+    // a4 = (-vb1 + 2 vb2 + 3 vb3) / 4, f2 = -f1 - f3 - f4
+    const cv = bc.cvatom;
+    const a = (c1: number, c2: number, c3: number, d: number) => 0.25 * (c1 * vb1[d] + c2 * vb2[d] + c3 * vb3[d]);
+    addCentroid(cv, atoms[0], a(3, -2, -1, 0), a(3, -2, -1, 1), a(3, -2, -1, 2), f1[0], f1[1], f1[2]);
+    addCentroid(cv, atoms[1], a(-1, -2, -1, 0), a(-1, -2, -1, 1), a(-1, -2, -1, 2),
+      -f1[0] - f3[0] - f4[0], -f1[1] - f3[1] - f4[1], -f1[2] - f3[2] - f4[2]);
+    addCentroid(cv, atoms[2], a(-1, 2, -1, 0), a(-1, 2, -1, 1), a(-1, 2, -1, 2), f3[0], f3[1], f3[2]);
+    addCentroid(cv, atoms[3], a(-1, 2, 3, 0), a(-1, 2, 3, 1), a(-1, 2, 3, 2), f4[0], f4[1], f4[2]);
   }
 };

@@ -1,0 +1,36 @@
+# oracle: compute centroid/stress/atom (all, virial, angle dihedral improper) with stress/atom and pe/atom on harmonic chains: the angle, dihedral and improper terms tally (r_a - r_0) (x) f_a about each term centroid (angle.cpp, dihedral.cpp, improper.cpp ev_tally)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.8e-15, atoms 6.1e-14; the per-atom pe, stress and centroid dump agrees within 1e-10.
+# oracle-inputs: mol_chains.data
+# oracle-files: w247cs_harmonic.dump
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-10 filerel=1e-10
+units           lj
+atom_style      molecular
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  harmonic
+improper_style  harmonic
+pair_style      lj/cut 2.5
+read_data       mol_chains.data
+pair_coeff      * * 0.5 0.9
+pair_coeff      1 3 0.8 1.0
+bond_coeff      1 120.0 1.05
+bond_coeff      2 90.0 1.1
+angle_coeff     1 40.0 109.5
+angle_coeff     2 25.0 120.0
+dihedral_coeff  1 1.5 -1 3
+improper_coeff  1 12.0 20.0
+special_bonds   lj 0.0 0.5 0.8
+timestep        0.002
+fix             1 all nve
+compute         pe all pe/atom
+compute         st all stress/atom NULL
+compute         cs all centroid/stress/atom NULL
+compute         csv all centroid/stress/atom NULL virial
+compute         csa all centroid/stress/atom NULL angle dihedral improper
+compute         sum all reduce sum c_cs[1] c_cs[2] c_cs[3] c_cs[4] c_cs[5] c_cs[6] c_cs[7] c_cs[8] c_cs[9] c_st[4] c_pe
+thermo_style    custom step pe press c_sum[1] c_sum[2] c_sum[3] c_sum[4] c_sum[5] c_sum[6] c_sum[7] c_sum[8] c_sum[9] c_sum[10] c_sum[11]
+thermo_modify   format float %.15g norm no
+thermo          10
+dump            d all custom 10 w247cs_harmonic.dump id c_pe c_st[1] c_st[4] c_st[6] c_cs[1] c_cs[2] c_cs[3] c_cs[4] c_cs[5] c_cs[6] c_cs[7] c_cs[8] c_cs[9] c_csv[4] c_csv[7] c_csa[1] c_csa[5] c_csa[9]
+dump_modify     d sort id format float %.15g
+run             20

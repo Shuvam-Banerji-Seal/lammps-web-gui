@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, dihedralGeometry, applyDihedral, termDelta } from '../bonded_util';
 import { parseNum, parseInt_ } from '../util';
-import { StyleError, type BondedCompute, type Pair, type StyleContext } from '../types';
+import { StyleError, addPairCentroid, type BondedCompute, type Pair, type StyleContext } from '../types';
 import { PairHybrid } from '../pair/hybrid';
 import { libm } from '../../libm';
 
@@ -237,9 +237,14 @@ export class DihedralCharmm extends SimpleBonded {
     bc.f[3 * l] += fx; bc.f[3 * l + 1] += fy; bc.f[3 * l + 2] += fz;
     bc.f[3 * i] -= fx; bc.f[3 * i + 1] -= fy; bc.f[3 * i + 2] -= fz;
     const v = bc.virial;
-    v[0] += rvec[0] * fx; v[1] += rvec[1] * fy; v[2] += rvec[2] * fz;
-    v[3] += rvec[0] * fy; v[4] += rvec[0] * fz; v[5] += rvec[1] * fz;
-    if (bc.eatom) { bc.eatom[i] += eTot / 2; bc.eatom[l] += eTot / 2; }
+    const w6 = [rvec[0] * fx, rvec[1] * fy, rvec[2] * fz, rvec[0] * fy, rvec[0] * fz, rvec[1] * fz];
+    v[0] += w6[0]; v[1] += w6[1]; v[2] += w6[2]; v[3] += w6[3]; v[4] += w6[4]; v[5] += w6[5];
+    // native tallies the 1-4 pair through force->pair->ev_tally (dihedral_charmm.cpp at b332f28): half of the
+    // energy and of the virial to each of the two atoms, and a pairwise part of the centroid virial
+    const ea = bc.pairEatom ?? bc.eatom, va = bc.pairVatom ?? bc.vatom;
+    if (ea) { ea[i] += eTot / 2; ea[l] += eTot / 2; }
+    if (va) for (const a of [i, l]) for (let c = 0; c < 6; c++) va[6 * a + c] += 0.5 * w6[c];
+    if (bc.cvatom && !bc.pairVatom) addPairCentroid(bc.cvatom, i, l, w6);
   }
 }
 

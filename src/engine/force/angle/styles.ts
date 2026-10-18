@@ -297,33 +297,23 @@ export class AngleCharmm extends SimpleBonded {
       const j = atomIndex(bc, A.atoms[3 * a + 1], 'angle');
       const k = atomIndex(bc, A.atoms[3 * a + 2], 'angle');
       const t = A.type[a];
+      // the Urey-Bradley term on the i-k distance (atoms 1 and 3) joins the angle's f1, f3 and energy, as native
+      // angle_charmm.cpp does before its one Angle::ev_tally: the per-atom energy and virial go a third to each atom
       angleTerm(bc, i, j, k, d1, d2, (theta) => {
         const dth = theta - th0[t];
         const ea = K[t] * dth * dth;
         e += ea;
         return { e: ea, dEdtheta: 2 * K[t] * dth };
-      });
-      // Urey-Bradley term on the i-k distance (atoms 1 and 3 of the angle)
-      if (Kub[t] !== 0) {
+      }, Kub[t] === 0 ? undefined : (f1, f3) => {
         termDelta(bc, j, k, i, dk); // r_i - r_k, both copies nearest to the centre j
         const r = Math.sqrt(dk[0] * dk[0] + dk[1] * dk[1] + dk[2] * dk[2]);
         const dr = r - rub[t];
         const eub = Kub[t] * dr * dr;
         e += eub;
         const fmag = r > 0 ? (-2 * Kub[t] * dr) / r : 0;
-        const f = bc.f;
-        f[3 * i] += dk[0] * fmag; f[3 * i + 1] += dk[1] * fmag; f[3 * i + 2] += dk[2] * fmag;
-        f[3 * k] -= dk[0] * fmag; f[3 * k + 1] -= dk[1] * fmag; f[3 * k + 2] -= dk[2] * fmag;
-        const w0 = dk[0] * dk[0] * fmag, w1 = dk[1] * dk[1] * fmag, w2 = dk[2] * dk[2] * fmag;
-        const w3 = dk[0] * dk[1] * fmag, w4 = dk[0] * dk[2] * fmag, w5 = dk[1] * dk[2] * fmag;
-        const v = bc.virial;
-        v[0] += w0; v[1] += w1; v[2] += w2; v[3] += w3; v[4] += w4; v[5] += w5;
-        if (bc.eatom) { bc.eatom[i] += 0.5 * eub; bc.eatom[k] += 0.5 * eub; }
-        if (bc.vatom) {
-          const w = [w0, w1, w2, w3, w4, w5];
-          for (let c = 0; c < 6; c++) { bc.vatom[6 * i + c] += 0.5 * w[c]; bc.vatom[6 * k + c] += 0.5 * w[c]; }
-        }
-      }
+        for (let c = 0; c < 3; c++) { f1[c] += dk[c] * fmag; f3[c] -= dk[c] * fmag; }
+        return eub;
+      });
     }
     bc.acc.eangle += e;
   }

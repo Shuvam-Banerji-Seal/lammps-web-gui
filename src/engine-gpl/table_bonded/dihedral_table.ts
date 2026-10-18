@@ -15,7 +15,7 @@
  * gradients of its compute(). The bond vectors are the copies nearest to the second atom (bonded_util.ts delta),
  * then minimum-imaged as Phi() does.
  */
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { Bonded, StyleError, addCentroid, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { cycLin, cycSpline, cycSplint } from './splines';
 import { TableFileReader, TokenError, WordStream, readTableText, splitWords } from './tablefile';
@@ -511,6 +511,16 @@ export const tallyDihedral = (
   for (let c = 0; c < 6; c++) bc.virial[c] += v[c];
   if (bc.vatom) {
     for (const i of atoms) for (let c = 0; c < 6; c++) bc.vatom[6 * i + c] += 0.25 * v[c];
+  }
+  if (bc.cvatom) {
+    // the centroid virial (dihedral.cpp with cvflag_atom): a1 = (3 vb1 - 2 vb2 - vb3) / 4, a2 = (-vb1 - 2 vb2 - vb3) / 4,
+    // a3 = (-vb1 + 2 vb2 - vb3) / 4, a4 = (-vb1 + 2 vb2 + 3 vb3) / 4, f2 = -f1 - f3 - f4
+    const cv = bc.cvatom;
+    addCentroid(cv, atoms[0], 0.25 * (3 * vb1x - 2 * vb2x - vb3x), 0.25 * (3 * vb1y - 2 * vb2y - vb3y), 0.25 * (3 * vb1z - 2 * vb2z - vb3z), f1[0], f1[1], f1[2]);
+    addCentroid(cv, atoms[1], 0.25 * (-vb1x - 2 * vb2x - vb3x), 0.25 * (-vb1y - 2 * vb2y - vb3y), 0.25 * (-vb1z - 2 * vb2z - vb3z),
+      -f1[0] - f3[0] - f4[0], -f1[1] - f3[1] - f4[1], -f1[2] - f3[2] - f4[2]);
+    addCentroid(cv, atoms[2], 0.25 * (-vb1x + 2 * vb2x - vb3x), 0.25 * (-vb1y + 2 * vb2y - vb3y), 0.25 * (-vb1z + 2 * vb2z - vb3z), f3[0], f3[1], f3[2]);
+    addCentroid(cv, atoms[3], 0.25 * (-vb1x + 2 * vb2x + 3 * vb3x), 0.25 * (-vb1y + 2 * vb2y + 3 * vb3y), 0.25 * (-vb1z + 2 * vb2z + 3 * vb3z), f4[0], f4[1], f4[2]);
   }
 };
 

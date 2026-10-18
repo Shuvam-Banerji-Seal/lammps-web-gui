@@ -1,0 +1,42 @@
+# oracle: centroid/stress/atom, stress/atom and pe/atom with class2 angle and improper styles (dihedral zero: the engine class2 dihedral differs from native at 2e-8 in forces, a separate item) (the cross terms included in the forces passed to ev_tally); static (run 0) so the bond/react thermostat chain of the source case does not enter
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 7.3e-15, atoms 2.7e-14; the per-atom pe, stress and centroid dump agrees within 1e-10.
+# oracle-inputs: w94react_epoxy_tiny_epoxy.data w94react_epoxy_rxn1_stp1.map w94react_epoxy_rxn1_stp1_post.molecule_template w94react_epoxy_rxn1_stp1_pre.molecule_template w94react_epoxy_rxn1_stp2.map w94react_epoxy_rxn1_stp2_post.molecule_template w94react_epoxy_rxn2_stp1.map w94react_epoxy_rxn2_stp1_post.molecule_template w94react_epoxy_rxn2_stp1_pre.molecule_template w94react_epoxy_rxn2_stp2.map w94react_epoxy_rxn2_stp2_post.molecule_template
+# oracle-files: w247cs_class2.dump
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-10 filerel=1e-10
+units real
+boundary p p p
+atom_style full
+pair_style lj/class2 8
+angle_style class2
+bond_style class2
+dihedral_style zero nocoeff
+improper_style class2
+special_bonds lj/coul 0 0 1
+pair_modify tail yes mix sixthpower
+read_data w94react_epoxy_tiny_epoxy.data &
+  extra/special/per/atom 25
+velocity all create 300.0 4928459 dist gaussian
+molecule mol1 w94react_epoxy_rxn1_stp1_pre.molecule_template
+molecule mol2 w94react_epoxy_rxn1_stp1_post.molecule_template
+molecule mol3 w94react_epoxy_rxn1_stp2_post.molecule_template
+molecule mol4 w94react_epoxy_rxn2_stp1_pre.molecule_template
+molecule mol5 w94react_epoxy_rxn2_stp1_post.molecule_template
+molecule mol6 w94react_epoxy_rxn2_stp2_post.molecule_template
+fix rxns all bond/react stabilization yes statted_grp .03 &
+  react rxn1_stp1 all 1 0.0 5 mol1 mol2 w94react_epoxy_rxn1_stp1.map &
+  react rxn1_stp2 all 1 0.0 5 mol2 mol3 w94react_epoxy_rxn1_stp2.map &
+  react rxn2_stp1 all 1 0.0 5 mol4 mol5 w94react_epoxy_rxn2_stp1.map &
+  react rxn2_stp2 all 1 0.0 5 mol5 mol6 w94react_epoxy_rxn2_stp2.map
+fix 1 statted_grp_REACT nvt temp 300 300 100
+compute         pe all pe/atom
+compute         st all stress/atom NULL
+compute         cs all centroid/stress/atom NULL
+compute         csv all centroid/stress/atom NULL virial
+compute         csa all centroid/stress/atom NULL angle dihedral improper
+compute         sum all reduce sum c_cs[1] c_cs[2] c_cs[3] c_cs[4] c_cs[5] c_cs[6] c_cs[7] c_cs[8] c_cs[9] c_st[4] c_pe
+thermo_style    custom step pe press c_sum[1] c_sum[2] c_sum[3] c_sum[4] c_sum[5] c_sum[6] c_sum[7] c_sum[8] c_sum[9] c_sum[10] c_sum[11]
+thermo_modify   format float %.15g norm no
+thermo          10
+dump            d all custom 10 w247cs_class2.dump id c_pe c_st[1] c_st[4] c_st[6] c_cs[1] c_cs[2] c_cs[3] c_cs[4] c_cs[5] c_cs[6] c_cs[7] c_cs[8] c_cs[9] c_csv[4] c_csv[7] c_csa[1] c_csa[5] c_csa[9]
+dump_modify     d sort id format float %.15g
+run             0

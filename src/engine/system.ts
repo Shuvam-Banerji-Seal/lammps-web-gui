@@ -289,9 +289,9 @@ export class System {
 
   /** What per-atom force-field data the defined computes need. */
   computeFlags(): ComputeFlags {
-    let eatom = false, vatom = false;
-    for (const c of this.computes) { eatom ||= c.needsEatom; vatom ||= c.needsVatom; }
-    return { eatom, vatom };
+    let eatom = false, vatom = false, cvatom = false;
+    for (const c of this.computes) { eatom ||= c.needsEatom; vatom ||= c.needsVatom; cvatom ||= c.needsCvatom; }
+    return cvatom ? { eatom, vatom, cvatom } : { eatom, vatom };
   }
 
   /**
@@ -436,7 +436,7 @@ export class System {
   /** Per-atom energy / virial for the current state. */
   peratomEnergy(): { eatom: Float64Array | null; vatom: Float64Array | null } {
     const want = this.computeFlags();
-    if ((want.eatom && !this.flagsUsed.eatom) || (want.vatom && !this.flagsUsed.vatom)) this.forcesVersion = -1;
+    if ((want.eatom && !this.flagsUsed.eatom) || (want.vatom && !this.flagsUsed.vatom) || (want.cvatom && !this.flagsUsed.cvatom)) this.forcesVersion = -1;
     this.forces();
     return { eatom: this.ff.eatom, vatom: this.ff.vatom };
   }

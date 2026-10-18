@@ -53,6 +53,8 @@ export interface ComputeFlags {
   /** Per-atom energy / virial wanted on this step (compute pe/atom, stress/atom). */
   eatom?: boolean;
   vatom?: boolean;
+  /** Per-atom centroid virial of the angle, dihedral and improper terms wanted (compute centroid/stress/atom). */
+  cvatom?: boolean;
   /** A force evaluation inside a timestep: history-dependent pair styles advance their history (not at setup or between runs). */
   step?: boolean;
 }
@@ -100,6 +102,8 @@ export class ForceField {
    */
   eatomTerm: Partial<Record<PerAtomTerm, Float64Array>> = {};
   vatomTerm: Partial<Record<PerAtomTerm, Float64Array>> = {};
+  /** Per-atom centroid virial (9 per atom) of the angle, dihedral and improper terms, when ComputeFlags.cvatom. */
+  cvatomTerm: Partial<Record<PerAtomTerm, Float64Array>> = {};
   /** Tail corrections: energy = etailV / V, pressure term = ptailV / V^2 (in energy/volume). */
   etailV = 0;
   ptailV = 0;
@@ -309,11 +313,17 @@ export class ForceField {
     // per-atom energy and virial are tallied per term, then summed
     const eTerm: Partial<Record<PerAtomTerm, Float64Array>> = {};
     const vTerm: Partial<Record<PerAtomTerm, Float64Array>> = {};
+    const cvTerm: Partial<Record<PerAtomTerm, Float64Array>> = {};
     const termArrays = (t: PerAtomTerm): { eatom: Float64Array | null; vatom: Float64Array | null } => {
       const e = flags.eatom ? (eTerm[t] = new Float64Array(s.n)) : null;
       const v = flags.vatom ? (vTerm[t] = new Float64Array(6 * s.n)) : null;
       return { eatom: e, vatom: v };
     };
+    const centroidArray = (t: PerAtomTerm): Float64Array | null =>
+      flags.cvatom && (t === 'angle' || t === 'dihedral' || t === 'improper') ? (cvTerm[t] = new Float64Array(9 * s.n)) : null;
+    // the pairwise parts of bonded terms that native tallies through the pair style (BondedCompute.pairEatom)
+    const pair14E = flags.eatom ? new Float64Array(s.n) : null;
+    const pair14V = flags.vatom ? new Float64Array(6 * s.n) : null;
     if (this.bond || this.angle || this.dihedral || this.improper) {
       if (this.map.length === 0 || this.mapStale(s)) this.map = buildAtomMap(s);
       const ov = this.topoOverride;
@@ -321,10 +331,10 @@ export class ForceField {
         ? { ...s, topo: { ...s.topo, bonds: ov.bonds, angles: ov.angles } }
         : s;
       const sb = switchedOff(sb0.topo) ? { ...sb0, topo: withoutSwitchedOff(sb0.topo) } : sb0;
-      const bc = { s: sb, geom, map: this.map, f: s.f, acc, eatom: null as Float64Array | null, vatom: null as Float64Array | null, virial: acc.vbond, warn: this.warn, historyUpdate: !!flags.step, nbuild: nb.nbuild, copies: nb.bondedCopies() };
+      const bc = { s: sb, geom, map: this.map, f: s.f, acc, eatom: null as Float64Array | null, vatom: null as Float64Array | null, cvatom: null as Float64Array | null, pairEatom: pair14E, pairVatom: pair14V, virial: acc.vbond, warn: this.warn, historyUpdate: !!flags.step, nbuild: nb.nbuild, copies: nb.bondedCopies() };
       const run = (style: Bonded | null, t: PerAtomTerm, virial: Float64Array) => {
         if (!style || !want(t)) return;
-        Object.assign(bc, termArrays(t));
+        Object.assign(bc, termArrays(t), { cvatom: centroidArray(t) });
         bc.virial = virial;
         style.compute(bc);
       };
@@ -346,6 +356,14 @@ export class ForceField {
       if (eatomAll && pt.eatom) nb.reverseSum(eatomAll, 1, pt.eatom);
       if (vatomAll && pt.vatom) nb.reverseSum(vatomAll, 6, pt.vatom);
     }
+    if (pair14E && pair14E.some((x) => x !== 0)) {
+      const e = eTerm.pair ?? (eTerm.pair = new Float64Array(s.n));
+      for (let i = 0; i < s.n; i++) e[i] += pair14E[i];
+    }
+    if (pair14V && pair14V.some((x) => x !== 0)) {
+      const v = vTerm.pair ?? (vTerm.pair = new Float64Array(6 * s.n));
+      for (let k = 0; k < 6 * s.n; k++) v[k] += pair14V[k];
+    }
     // the tail correction is added once per run_style respa step by the integrator, not per level
     if (this.etailV !== 0 && !sel) acc.evdwl += this.etailV / geom.volume(s.dimension);
     const sum = (terms: Partial<Record<PerAtomTerm, Float64Array>>, len: number): Float64Array => {
@@ -355,6 +373,7 @@ export class ForceField {
     };
     this.eatomTerm = eTerm;
     this.vatomTerm = vTerm;
+    this.cvatomTerm = cvTerm;
     this.eatom = flags.eatom ? sum(eTerm, s.n) : null;
     this.vatom = flags.vatom ? sum(vTerm, 6 * s.n) : null;
     return acc;

@@ -1,6 +1,6 @@
 import { SimpleBonded, atomIndex, delta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
-import { StyleError, type BondedCompute } from '../types';
+import { StyleError, addCentroid, type BondedCompute } from '../types';
 import { libm } from '../../libm';
 
 /*
@@ -63,6 +63,7 @@ export class AngleHarmonic extends SimpleBonded {
 export const angleTerm = (
   bc: BondedCompute, i: number, j: number, k: number, d1: number[], d2: number[],
   pot: (theta: number, c: number) => { e: number; dEdtheta?: number; dEdc?: number },
+  extra?: (f1: number[], f3: number[]) => number,
 ): void => {
   delta(bc, j, i, d1);   // r_i - r_j
   delta(bc, j, k, d2);   // r_k - r_j
@@ -87,6 +88,21 @@ export const angleTerm = (
     f1[d] = -dEdc * (d2[d] / (r1 * r2) - c * d1[d] / (r1 * r1));
     f3[d] = -dEdc * (d1[d] / (r1 * r2) - c * d2[d] / (r2 * r2));
   }
+  // a term of the same angle that acts on atoms 1 and 3 (CHARMM Urey-Bradley) adds to f1 and f3 and the energy
+  // before the tally, as native angle_charmm.cpp passes the combined f1, f3 to one Angle::ev_tally
+  const e = r.e + (extra ? extra(f1, f3) : 0);
+  tallyAngle(bc, i, j, k, e, f1, f3, d1, d2);
+};
+
+/**
+ * Angle::ev_tally (angle.cpp) for the angle i-j-k with d1 = r_i - r_j, d2 = r_k - r_j and the forces f1 on i and f3
+ * on k: applies the forces (f2 = -f1 - f3), adds the virial, a third of the energy and of the virial to each atom,
+ * and the centroid virial (r_a - r_0) (x) f_a with r_0 = (r_i + r_j + r_k) / 3.
+ */
+export const tallyAngle = (
+  bc: BondedCompute, i: number, j: number, k: number, e: number,
+  f1: readonly number[], f3: readonly number[], d1: readonly number[], d2: readonly number[],
+): void => {
   const f = bc.f;
   for (let d = 0; d < 3; d++) {
     f[3 * i + d] += f1[d];
@@ -98,6 +114,14 @@ export const angleTerm = (
     d1[0] * f1[1] + d2[0] * f3[1], d1[0] * f1[2] + d2[0] * f3[2], d1[1] * f1[2] + d2[1] * f3[2],
   ];
   for (let q = 0; q < 6; q++) bc.virial[q] += w[q];
-  if (bc.eatom) { const third = r.e / 3; bc.eatom[i] += third; bc.eatom[j] += third; bc.eatom[k] += third; }
+  if (bc.eatom) { const third = e / 3; bc.eatom[i] += third; bc.eatom[j] += third; bc.eatom[k] += third; }
   if (bc.vatom) for (const a of [i, j, k]) for (let q = 0; q < 6; q++) bc.vatom[6 * a + q] += w[q] / 3;
+  if (bc.cvatom) {
+    // a1 = (2 d1 - d2) / 3, a2 = (-d1 - d2) / 3, a3 = (-d1 + 2 d2) / 3 (angle.cpp ev_tally with cvflag_atom)
+    const T = 1 / 3;
+    const f2 = [-f1[0] - f3[0], -f1[1] - f3[1], -f1[2] - f3[2]];
+    addCentroid(bc.cvatom, i, T * (2 * d1[0] - d2[0]), T * (2 * d1[1] - d2[1]), T * (2 * d1[2] - d2[2]), f1[0], f1[1], f1[2]);
+    addCentroid(bc.cvatom, j, T * (-d1[0] - d2[0]), T * (-d1[1] - d2[1]), T * (-d1[2] - d2[2]), f2[0], f2[1], f2[2]);
+    addCentroid(bc.cvatom, k, T * (-d1[0] + 2 * d2[0]), T * (-d1[1] + 2 * d2[1]), T * (-d1[2] + 2 * d2[2]), f3[0], f3[1], f3[2]);
+  }
 };

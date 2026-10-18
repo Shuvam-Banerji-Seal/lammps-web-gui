@@ -1,0 +1,29 @@
+# oracle: w246gm_lj_gibbs — fix gemc on two lj boxes (gas: 4 atoms, liquid: 32 atoms), 30 cycles of 10 translations, 10 exchanges, 10 volume changes each
+# oracle-partitions: 2
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.7e-15, atoms 1.1e-15.
+variable temp index 1.0
+variable ntranslate index 10
+variable nexchange index 10
+variable nvolume index 10
+variable displace index 0.5
+variable max_dlogvolratio index 0.5
+variable nsteps index 30
+units lj
+atom_style atomic
+variable rho world 0.05 0.6
+variable ncell world 1 2
+lattice fcc ${rho}
+region box block 0 ${ncell} 0 ${ncell} 0 ${ncell}
+create_box 1 box
+create_atoms 1 box
+mass 1 1.0
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0 2.5
+neighbor 0.3 bin
+neigh_modify every 1 delay 5 check yes
+fix 2 all gemc 1 ${ntranslate} ${nexchange} ${nvolume} ${temp} ${displace} ${max_dlogvolratio} 29494
+thermo 1
+thermo_style custom step pe vol atoms
+thermo_modify format float %.15g
+run ${nsteps}

@@ -4,6 +4,7 @@ import type { Neighbor, SpecialSettings } from '../neighbor';
 import { buildAtomMap, buildSpecial, filterTopo, type SpecialList } from '../atoms';
 import { BOND_REMOVED, clearAccum, newAccum, StyleError, type Accum, type Bonded, type KSpace, type Pair, type PairCompute, type StyleContext } from './types';
 import { PairHybrid } from './pair/hybrid';
+import { checkKspacePair } from './kspaceCheck';
 import { SMD_DESPH } from '../smd';
 
 /*
@@ -206,18 +207,16 @@ export class ForceField {
     }
     if (this.kspace) {
       if (!this.pair) throw new StyleError('kspace_style needs a pair style with a long-range Coulomb part');
-      const cutCoul = this.pair.extract('cut_coul');
-      if (typeof cutCoul !== 'number') throw new StyleError(`kspace_style ${this.kspace.name} is not compatible with pair style ${this.pair.name}`);
-      // pair_zero.html: "pair style *zero/coul* cannot be used with kspace styles that require a pair style
-      // providing dispersion or TIP4P support (e.g. *pppm/disp* or *pppm/tip4p*)"; the refusal text is native's (measured)
-      if (this.pair.name === 'zero/coul' && /disp|tip4p/.test(this.kspace.name)) {
-        throw new StyleError(`KSpace style ${this.kspace.name} is incompatible with Pair style zero/coul`);
-      }
       this.kspace.linkPair?.(this.pair);
-      // As native LAMMPS does (src/kspace.cpp KSpace::pair_check at b332f28): the dispersion flags of the pair and the
-      // kspace style must agree (pppm/disp needs a pair with dispersion; ewald, pppm and msm refuse one)
-      if (this.kspace.dispersion() !== this.pair.dispersionFlag) {
-        throw new StyleError(`KSpace style ${this.kspace.name} is incompatible with Pair style ${this.pair.name}`);
+      // KSpace::pair_check (src/kspace.cpp at b332f28) runs in the kspace init, before the cutoff is read; the solver
+      // styles that call it are checked against the pair's flags (kspaceCheck.ts)
+      checkKspacePair(this.kspace, this.pair, s.atomStyle);
+      const cutCoul = this.pair.extract('cut_coul');
+      // kspace_zero.cpp (b332f28) has no pair_check; its own refusal names no styles
+      if (typeof cutCoul !== 'number') {
+        throw new StyleError(this.kspace.name === 'zero'
+          ? 'KSpace style is incompatible with Pair style'
+          : `KSpace style ${this.kspace.name} is incompatible with Pair style ${this.pair.name}`);
       }
       // paramsFrozen: a charge-changing fix (fix charge/regulation) keeps the init-time G-ewald, kmax and mesh
       if (this.kspace.paramsFrozen && this.kspace.gEwald > 0) this.kspace.updateChargeSums(s);

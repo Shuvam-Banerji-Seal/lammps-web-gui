@@ -149,7 +149,8 @@ describe('kspace_style zero', () => {
   });
   it('is refused with a pair style that has no Coulomb cutoff (native: KSpace style is incompatible with Pair style)', async () => {
     const { error } = await run(film({ pair: 'lj/cut 6.0', kspace: 'kspace_style zero 1.0e-5' }));
-    expect(error?.message).toMatch(/not compatible with pair style lj\/cut/);
+    // Measured with native LAMMPS: KSpace style is incompatible with Pair style (src/kspace_zero.cpp:74)
+    expect(error?.message).toMatch(/KSpace style is incompatible with Pair style/);
   });
   it('refuses kspace_modify slab for zero', async () => {
     const { error } = await run(zero('1.0e-5', 'kspace_modify slab 3.0'));
@@ -174,7 +175,8 @@ describe('pair_style zero/coul', () => {
   });
   it('plain pair_style zero is still incompatible with a kspace style', async () => {
     const { error } = await run(film({ pair: 'zero 6.0', kspace: 'kspace_style ewald 1.0e-5' }));
-    expect(error?.message).toMatch(/not compatible with pair style zero/);
+    // Measured with native LAMMPS: KSpace style ewald is incompatible with Pair style zero (src/kspace.cpp:215)
+    expect(error?.message).toMatch(/KSpace style ewald is incompatible with Pair style zero/);
   });
 });
 

@@ -158,7 +158,8 @@ run             0
     ['p p p', 'coul/long 4.0', 'kspace_style ewald 1e-4\nkspace_modify mesh 8 8 8', /applies to pppm/],
     ['p p p', 'coul/long 4.0', 'kspace_style pppm 1e-4\nkspace_modify kmax/ewald 4 4 4', /applies to ewald/],
     ['p p p', 'coul/long 4.0', '', /needs a kspace style/],
-    ['p p p', 'lj/cut 4.0', 'kspace_style ewald 1e-4', /not compatible with pair style lj\/cut/],
+    // Measured with native LAMMPS: KSpace style ewald is incompatible with Pair style lj/cut (src/kspace.cpp pair_check)
+    ['p p p', 'lj/cut 4.0', 'kspace_style ewald 1e-4', /KSpace style ewald is incompatible with Pair style lj\/cut/],
     // Measured with native LAMMPS: KSpace style msm is incompatible with Pair style lj/cut/coul/long (kspace.cpp pair_check)
     ['p p p', 'coul/long 4.0', 'kspace_style msm 1e-4', /KSpace style msm is incompatible with Pair style coul\/long/],
   ];
@@ -171,6 +172,7 @@ run             0
   }
   it('rejects a kspace solver without per-atom charges', async () => {
     const { error } = await run(cell('p p p', 'lj/cut 4.0', 'kspace_style ewald 1e-4', 'atomic'));
-    expect(error?.message).toMatch(/needs charges|not compatible/);
+    // Measured with native LAMMPS: Kspace style requires atom attribute q (src/KSPACE/ewald.cpp:106, before pair_check)
+    expect(error?.message).toMatch(/Kspace style requires atom attribute q/);
   });
 });

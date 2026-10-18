@@ -34,7 +34,7 @@ const at = (f: RasterFrame, col: number, row: number): number[] => {
 
 const BOX: [number, number, number] = [0, 0, 0];
 const BOXHI: [number, number, number] = [10, 10, 10];
-const base = { color: [255, 0, 0] as [number, number, number], drawstyle: 'filled' as const, framediam: 0.5, opacity: 1 };
+const base = { color: [1, 0, 0] as [number, number, number], drawstyle: 'filled' as const, framediam: 0.5, opacity: 1 };
 
 describe('dump image block and prism regions (dump_image.cpp, corner branch)', () => {
   it('shades the face towards the viewer of a filled block with the default lights (exact colour)', () => {

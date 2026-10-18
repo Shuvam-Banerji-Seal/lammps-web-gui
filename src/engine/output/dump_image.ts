@@ -239,7 +239,8 @@ export class ImageDump {
   /** dump image "axes" keyword: the location, the length and the diameter fraction (null: no axes). */
   private axes: { loc: AxesLocation; len: number; diam: number } | null = null;
   /** dump image "fix ID style flag1 flag2" keywords: the fixes whose graphics objects are drawn. */
-  private fixObjects: { id: string; source: 'fix' | 'compute'; style: 'type' | 'element' | 'const'; flag1: number; flag2: number; rgb: RGB; opacity: number }[] = [];
+  /** rgb: the const colour as 8 bits (the core object routines); col: the same colour in 0..1 as native keeps it (iobj.rgb). */
+  private fixObjects: { id: string; source: 'fix' | 'compute'; style: 'type' | 'element' | 'const'; flag1: number; flag2: number; rgb: RGB; col: Col; opacity: number }[] = [];
   /** dump image "line" keyword: colour style (type, atom or index) and the cylinder diameter (null: keyword off). */
   private lineOn: { color: 'type' | 'atom' | 'index'; diam: number } | null = null;
   /** dump image "tri" keyword: colour style, tstyle (1 faces, 2 edges, other both) and the edge diameter (null: off). */
@@ -251,7 +252,7 @@ export class ImageDump {
   /** While one fix object of ftrans opacity below 1 is drawn: keeps a pixel (column, row from the top) when true. */
   private gate: ((xx: number, yy: number) => boolean) | null = null;
   /** dump image "region" keywords: region ID, colour, drawing style, frame diameter and opacity (dump_image.html). */
-  private regions: { id: string; color: RGB; drawstyle: 'filled' | 'frame' | 'transparent' | 'points'; framediam: number; opacity: number; npoints: number }[] = [];
+  private regions: { id: string; color: Col; drawstyle: 'filled' | 'frame' | 'transparent' | 'points'; framediam: number; opacity: number; npoints: number }[] = [];
 
   /**
    * multifileOverride: write_dump only. write_dump.html: "Normally, dump image files require a filename with a "*"
@@ -414,7 +415,7 @@ export class ImageDump {
           if (!id || !style || a.length < k + 5) throw new StyleError(`dump ${this.id}: dump image fix needs an ID, a style and two values`);
           if (!this.sys.fixes.some((f) => f.id === id)) throw new StyleError(`dump ${this.id}: dump image fix ID '${id}' does not exist`);
           if (style !== 'type' && style !== 'element' && style !== 'const') throw new StyleError(`dump ${this.id}: unsupported colour style '${style}' for dump image fix ${id}`);
-          this.fixObjects.push({ id, source: 'fix', style, flag1: this.num(a[k + 3], 'fix'), flag2: this.num(a[k + 4], 'fix'), rgb: [255, 255, 255], opacity: 1 });
+          this.fixObjects.push({ id, source: 'fix', style, flag1: this.num(a[k + 3], 'fix'), flag2: this.num(a[k + 4], 'fix'), rgb: [255, 255, 255], col: [1, 1, 1], opacity: 1 });
           k += 5;
           break;
         }
@@ -446,7 +447,8 @@ export class ImageDump {
           const id = a[k + 1], color = a[k + 2], style = a[k + 3];
           if (!id || !color || !style) throw new StyleError(`dump ${this.id}: dump image region needs an ID, a colour and a draw style`);
           this.sys.region(id);
-          const rgb = rgbOf(this.color(color));
+          // the colour in 0..1, as native keeps it for the region drawing (color2rgb)
+          const rgb = this.color(color);
           let drawstyle: 'filled' | 'frame' | 'transparent' | 'points' = 'filled', framediam = 0.5, opacity = 1, npoints = 0;
           let used = 4;
           if (style === 'filled') { /* no value */ }
@@ -493,7 +495,7 @@ export class ImageDump {
           if (!id || !style || a.length < k + 5) throw new StyleError(`dump ${this.id}: dump image compute needs an ID, a style and two values`);
           this.sys.compute(id);
           if (style !== 'type' && style !== 'element' && style !== 'const') throw new StyleError(`dump ${this.id}: unsupported colour style '${style}' for dump image compute ${id}`);
-          this.fixObjects.push({ id, source: 'compute', style, flag1: this.num(a[k + 3], 'compute'), flag2: this.num(a[k + 4], 'compute'), rgb: [255, 255, 255], opacity: 1 });
+          this.fixObjects.push({ id, source: 'compute', style, flag1: this.num(a[k + 3], 'compute'), flag2: this.num(a[k + 4], 'compute'), rgb: [255, 255, 255], col: [1, 1, 1], opacity: 1 });
           k += 5;
           break;
         }
@@ -723,7 +725,8 @@ export class ImageDump {
         // not included in dump"; the colour is read for the const style)
         const f = this.fixObjects.find((x) => x.id === a[k + 1] && x.source === 'compute');
         if (!f) throw new StyleError(`dump ${this.id}: dump_modify ccolor: compute ID '${a[k + 1] ?? ''}' is not included in dump ${this.id}`);
-        f.rgb = rgbOf(this.color(a[k + 2] ?? ''));
+        f.col = this.color(a[k + 2] ?? '');
+        f.rgb = rgbOf(f.col);
         return 3;
       }
       case 'fcolor': {
@@ -731,7 +734,8 @@ export class ImageDump {
         // use the const style (the colour is only read for that style, as in native dump_image.cpp)
         const f = this.fixObjects.find((x) => x.id === a[k + 1] && x.source === 'fix');
         if (!f) throw new StyleError(`dump ${this.id}: dump_modify fcolor: fix ID '${a[k + 1] ?? ''}' is not a dump image fix`);
-        f.rgb = rgbOf(this.color(a[k + 2] ?? ''));
+        f.col = this.color(a[k + 2] ?? '');
+        f.rgb = rgbOf(f.col);
         return 3;
       }
       case 'ftrans': {
@@ -1115,10 +1119,12 @@ export class ImageDump {
   }
 
   /** The colour of a particle in a "type", "index" or "atom" colour style (dump_image.cpp: index uses the ordinal). */
-  private particleRGB(s: SimState, i: number, mode: 'type' | 'atom' | 'index', ordinal: number, colorVals: Float64Array | null, cmap: ColorMap | null): Rgb255 {
-    if (mode === 'type') return this.typeRGB(s.type[i]);
-    if (mode === 'index') return this.typeRGB((ordinal % s.ntypes) + 1);
-    return this.typeColor(s, i, colorVals, cmap);
+  private particleRGB(s: SimState, i: number, mode: 'type' | 'atom' | 'index', ordinal: number, colorVals: Float64Array | null, cmap: ColorMap | null): Col {
+    // 0..1, as native passes the colour pointer (colortype[itype] or the map colour) to the shaded drawing routines
+    const typeCol = (t: number): Col => this.acolorByType.get(t) ?? gplHook<ImageShading>('image').defaultTypeColor(t);
+    if (mode === 'type') return typeCol(s.type[i]);
+    if (mode === 'index') return typeCol((ordinal % s.ntypes) + 1);
+    return this.atomColor(s, i, colorVals, cmap);
   }
 
   /**
@@ -1213,7 +1219,7 @@ export class ImageDump {
   private drawParticles(s: SimState, ctx: DrawCtx, colorVals: Float64Array | null, cmap: ColorMap | null): void {
     const hook = gplHook<AtomObjectsHook>('atoms');
     const bit = this.sys.groupBit(this.group);
-    const colorOf = (i: number, mode: 'type' | 'atom' | 'index', ordinal: number): Rgb255 => this.particleRGB(s, i, mode, ordinal, colorVals, cmap);
+    const colorOf = (i: number, mode: 'type' | 'atom' | 'index', ordinal: number): Col => this.particleRGB(s, i, mode, ordinal, colorVals, cmap);
     const lb = this.lineOn ? s.custom.get(LINE_BONUS)?.data : undefined;
     const tb = this.triOn ? s.custom.get(TRI_BONUS)?.data : undefined;
     const lines: LineAtom[] = [];
@@ -1244,13 +1250,15 @@ export class ImageDump {
   }
 
   /** The style of one "fix" keyword for the GPL graphics objects (ObjectStyle in image_objects.ts). */
-  private objectStyle(s: SimState, fo: { style: 'type' | 'element' | 'const'; flag1: number; flag2: number; opacity: number; rgb: RGB }): ObjectStyle {
-    const colorOf = (type: number): Rgb255 => {
+  private objectStyle(s: SimState, fo: { style: 'type' | 'element' | 'const'; flag1: number; flag2: number; opacity: number; col: Col }): ObjectStyle {
+    // the colour in 0..1, as native passes its colour pointer to the Image routines (dump_image.cpp: color = colortype[itype],
+    // colorelement[itype] or iobj.rgb); the 8-bit value would darken colours such as forestgreen (0.133 vs 33/255)
+    const colorOf = (type: number): Col => {
       const itype = Math.trunc(type - 1) % s.ntypes + 1;
-      if (fo.style === 'const') return [fo.rgb[0], fo.rgb[1], fo.rgb[2]];
-      if (itype <= 0) return [255, 255, 255];
-      if (fo.style === 'type') return rgbOf(this.acolorByType.get(itype) ?? gplHook<ImageShading>('image').defaultTypeColor(itype));
-      return rgbOf(gplHook<ImageShading>('image').element2color(this.elementName(s, itype))!);
+      if (fo.style === 'const') return [fo.col[0], fo.col[1], fo.col[2]];
+      if (itype <= 0) return [1, 1, 1];
+      if (fo.style === 'type') return this.acolorByType.get(itype) ?? gplHook<ImageShading>('image').defaultTypeColor(itype);
+      return gplHook<ImageShading>('image').element2color(this.elementName(s, itype))!;
     };
     // default sphere size of a type: the dump's adiam setting (numeric, per type, or per element)
     const diameterOf = (type: number): number => {

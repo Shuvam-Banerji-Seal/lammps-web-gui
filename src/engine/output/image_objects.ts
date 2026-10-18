@@ -132,8 +132,8 @@ export interface ObjectStyle {
   flag2: number;
   /** Transparency of the fix's objects (dump_modify ftrans; 1 = opaque, the default). */
   opacity: number;
-  /** Colour of an object of atom type `type` (the type, element or const style of the keyword). */
-  colorOf(type: number): Rgb255;
+  /** Colour (0..1 per channel) of an object of atom type `type` (the type, element or const style of the keyword). */
+  colorOf(type: number): Vec3;
   /** Default diameter of a sphere of type `type` (the dump's adiam setting). */
   diameterOf(type: number): number;
   /** Diameter of a bond between two atom types (the dump's bond width setting). */
@@ -180,13 +180,13 @@ export interface AutoBondSpec {
 }
 
 /** An atom_style line particle for dump image's "line" keyword: centre, length, theta (LINE_BONUS) and colour (0..255). */
-export interface LineAtom { x: number; y: number; length: number; theta: number; color: Rgb255; opacity: number }
+export interface LineAtom { x: number; y: number; length: number; theta: number; color: Vec3; opacity: number }
 
 /**
  * An atom_style tri particle for dump image's "tri" keyword: centroid, orientation quaternion (w, i, j, k), the nine
  * body-frame corner values (lineTri.ts triangleCorner) and colour (0..255).
  */
-export interface TriAtom { center: Vec3; quat: readonly number[]; corners: readonly number[]; color: Rgb255; opacity: number }
+export interface TriAtom { center: Vec3; quat: readonly number[]; corners: readonly number[]; color: Vec3; opacity: number }
 
 /**
  * The lazily loaded line and triangle loops of dump image (src/engine-gpl/graphics/atom_objects.ts), read through
@@ -209,15 +209,15 @@ export interface AtomObjectsHook {
  * An atom_style ellipsoid particle for dump image's "ellipsoid" keyword: centre, half-axes, orientation quaternion (w, i,
  * j, k), the superellipsoid block exponents (null for a plain ellipsoid), the colour (0..255) and the transparency.
  */
-export interface EllipsoidAtom { center: Vec3; shape: Vec3; quat: readonly number[]; block: [number, number] | null; color: Rgb255; opacity: number }
+export interface EllipsoidAtom { center: Vec3; shape: Vec3; quat: readonly number[]; block: [number, number] | null; color: Vec3; opacity: number }
 
 /**
- * The drawing style of a dump image "region" keyword (dump_image.html: "region-ID color drawstyle"): the colour (0..255),
+ * The drawing style of a dump image "region" keyword (dump_image.html: "region-ID color drawstyle"): the colour (0..1),
  * the style (filled, frame, transparent or points), the frame diameter (frame, and the point diameter of points) and the
  * opacity (transparent).
  */
 export interface RegionDrawSpec {
-  color: Rgb255;
+  color: Vec3;
   drawstyle: 'filled' | 'frame' | 'transparent' | 'points';
   framediam: number;
   opacity: number;
@@ -226,7 +226,7 @@ export interface RegionDrawSpec {
 /**
  * A cylinder or cone region for dump image's "region" keyword: the axis (0 x, 1 y, 2 z), the two coordinates other than
  * the axis (c1 and c2 in the region command's order), the radii at the lower and upper end, the extent along the axis,
- * the colour (0..255) and the drawing style with its frame diameter or opacity (dump_image.html).
+ * the colour (0..1) and the drawing style with its frame diameter or opacity (dump_image.html).
  */
 export interface RegionConeSpec {
   style: 'cylinder' | 'cone';
@@ -237,7 +237,7 @@ export interface RegionConeSpec {
   radhi: number;
   lo: number;
   hi: number;
-  color: Rgb255;
+  color: Vec3;
   drawstyle: 'filled' | 'frame' | 'transparent';
   framediam: number;
   opacity: number;
@@ -297,6 +297,6 @@ export interface BodyAtom {
   faces: readonly number[];
   /** The rounded radius (rounded/polyhedron), or the diameter stored by rounded/polygon (its diameter is 2 * radius when flag1 is 0). */
   radius: number;
-  color: Rgb255;
+  color: Vec3;
   opacity: number;
 }

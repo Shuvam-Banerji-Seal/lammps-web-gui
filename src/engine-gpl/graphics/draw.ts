@@ -21,7 +21,7 @@
  * the key specular highlight.
  */
 import type { GraphicsObject, PixmapObject, Rgb, CylinderObject, SphereObject, BondObject, TriNormObject } from './objects';
-import type { ObjectStyle, RasterFrame, Rgb255 } from '../../engine/output/image_objects';
+import type { ObjectStyle, RasterFrame } from '../../engine/output/image_objects';
 import { shadeSurface, DEFAULT_LIGHTS, type LightColors } from './image_shading';
 import { TRANK, TRANSTHRESH } from './transthresh';
 
@@ -432,9 +432,6 @@ export function drawPixmapImage(f: RasterFrame, xc: number, yc: number, pwidth: 
   drawPixmapAt(f, trunc(xc) * fs, trunc(yc) * fs, pwidth, pheight, pixmap, transOf(trans), sc * fs, 0);
 }
 
-/** Colour of an object's atom type, 0..1 per channel (the colour tables are 0..255). */
-const unit = (c: Rgb255): V => [c[0] / 255, c[1] / 255, c[2] / 255];
-
 /**
  * Draws one graphics object the way dump image's create_image dispatches its native kind, with the colours and
  * diameters the keyword's style gives (style.colorOf, style.diameterOf, style.bondDiameter, flag1, flag2).
@@ -447,12 +444,12 @@ export function drawGraphicsObject(f: RasterFrame, st: ObjectStyle, o: GraphicsO
       const s: SphereObject = o;
       // a negative diameter asks for the dump image's default size of the type (dump_image.cpp: objarray[4] < 0)
       const d = s.diameter < 0 ? st.diameterOf(s.type) : s.diameter;
-      drawSphere(f, [s.x, s.y, s.z], unit(st.colorOf(s.type)), d + flag2, st.opacity);
+      drawSphere(f, [s.x, s.y, s.z], st.colorOf(s.type), d + flag2, st.opacity);
       return;
     }
     case 'cylinder': {
       const c: CylinderObject = o;
-      drawCylinder(f, [c.x1, c.y1, c.z1], [c.x2, c.y2, c.z2], unit(st.colorOf(c.type)), c.diameter + flag2, flag1, st.opacity);
+      drawCylinder(f, [c.x1, c.y1, c.z1], [c.x2, c.y2, c.z2], st.colorOf(c.type), c.diameter + flag2, flag1, st.opacity);
       return;
     }
     case 'bond': {
@@ -463,13 +460,13 @@ export function drawGraphicsObject(f: RasterFrame, st: ObjectStyle, o: GraphicsO
       const mid = add(p1, half);
       const d = st.bondDiameter(b.types[0], b.types[1]) + flag2;
       const cap = flag1 !== 0 ? 3 : 0;
-      drawCylinder(f, p1, mid, unit(st.colorOf(b.types[0])), d, cap);
-      drawCylinder(f, sub(p2, half), p2, unit(st.colorOf(b.types[1])), d, cap);
+      drawCylinder(f, p1, mid, st.colorOf(b.types[0]), d, cap);
+      drawCylinder(f, sub(p2, half), p2, st.colorOf(b.types[1]), d, cap);
       return;
     }
     case 'trinorm': {
       const t: TriNormObject = o;
-      const c = t.types.map((ty) => unit(st.colorOf(ty))) as V[];
+      const c = t.types.map((ty) => st.colorOf(ty)) as V[];
       const [v0, v1, v2] = t.vertices;
       const [n0, n1, n2] = t.normals;
       if (flag1 % 2 !== 0) {

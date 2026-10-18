@@ -11,7 +11,7 @@
  * Scope: static regions (the core refuses moving and rotating ones) with the identity forward transform. The hull_points
  * style (ConvexHullObj) and compound regions drawn as a point cloud's hull are not ported; the core names them.
  */
-import type { RasterFrame, Rgb255, RegionHook, BoxRegionSpec, SphereRegionSpec, EllipsoidRegionSpec, PlaneRegionSpec, PointsRegionSpec } from '../../engine/output/image_objects';
+import type { RasterFrame, RegionHook, BoxRegionSpec, SphereRegionSpec, EllipsoidRegionSpec, PlaneRegionSpec, PointsRegionSpec } from '../../engine/output/image_objects';
 import { drawSphere, drawCylinder, drawTriangle } from './draw';
 import { drawEllipsoid } from './ellipsoid_mesh';
 import { drawConeRegion } from './region_cone';
@@ -20,7 +20,6 @@ import { RanMars } from '../random_mars';
 type V = [number, number, number];
 type Tri = [V, V, V];
 
-const unit = (c: Rgb255): V => [c[0] / 255, c[1] / 255, c[2] / 255];
 const IDENTITY_QUAT = [1, 0, 0, 0];
 /** dump_image.cpp POINT_CLOUD_SEED: the seed of the RanMars stream of the points and hull_points styles. */
 const POINT_CLOUD_SEED = 19660405;
@@ -70,7 +69,7 @@ const EDGES: [number, number][] = [[0, 1], [1, 2], [0, 3], [2, 3], [0, 4], [1, 5
 /** Block and prism regions: a frame of cylinders, or the triangles of the faces that are not open (dump image). */
 export function drawBoxRegion(f: RasterFrame, spec: BoxRegionSpec, boxlo: V, boxhi: V): void {
   const c = boxCorners(spec, boxlo, boxhi);
-  const col = unit(spec.color);
+  const col = spec.color;
   if (spec.drawstyle === 'frame') {
     for (const [a, b] of EDGES) drawCylinder(f, c[a], c[b], col, spec.framediam, 3, 1);
     return;
@@ -85,7 +84,7 @@ export function drawBoxRegion(f: RasterFrame, spec: BoxRegionSpec, boxlo: V, box
 
 /** Sphere regions: a filled sphere of diameter 2 radius, or the wireframe of the ellipsoid mesh at level 4. */
 export function drawSphereRegion(f: RasterFrame, spec: SphereRegionSpec): void {
-  const col = unit(spec.color);
+  const col = spec.color;
   const r = spec.radius;
   if (spec.drawstyle === 'frame') {
     drawEllipsoid(f, 2, col, spec.center, [r, r, r], IDENTITY_QUAT, null, spec.framediam, 1, 4);
@@ -96,7 +95,7 @@ export function drawSphereRegion(f: RasterFrame, spec: SphereRegionSpec): void {
 
 /** Ellipsoid regions: the wireframe at mesh level 4 or the filled surface at level 5 (dump_image.cpp, the ellipsoid branch). */
 export function drawEllipsoidRegion(f: RasterFrame, spec: EllipsoidRegionSpec): void {
-  const col = unit(spec.color);
+  const col = spec.color;
   if (spec.drawstyle === 'frame') {
     drawEllipsoid(f, 2, col, spec.center, spec.shape, IDENTITY_QUAT, null, spec.framediam, 1, 4);
     return;
@@ -131,7 +130,7 @@ function planeTemplate(): Tri[] {
  * cylinders on the triangle edges (dump_image.cpp, the plane branch).
  */
 export function drawPlaneRegion(f: RasterFrame, spec: PlaneRegionSpec, boxlo: V, boxhi: V): void {
-  const col = unit(spec.color);
+  const col = spec.color;
   const frame = spec.drawstyle === 'frame';
   const opacity = spec.drawstyle === 'transparent' ? spec.opacity : 1;
   const u = norm(spec.normal);
@@ -168,7 +167,7 @@ export function drawPlaneRegion(f: RasterFrame, spec: PlaneRegionSpec, boxlo: V,
  */
 export function drawPointsRegion(f: RasterFrame, spec: PointsRegionSpec, boxlo: V, boxhi: V, match: (x: number, y: number, z: number) => boolean): void {
   const rand = new RanMars(POINT_CLOUD_SEED);
-  const col = unit(spec.color);
+  const col = spec.color;
   const len = [boxhi[0] - boxlo[0], boxhi[1] - boxlo[1], boxhi[2] - boxlo[2]];
   for (let i = 0; i < spec.npoints; i++) {
     const pos: V = [rand.uniform() * len[0] + boxlo[0], rand.uniform() * len[1] + boxlo[1], rand.uniform() * len[2] + boxlo[2]];

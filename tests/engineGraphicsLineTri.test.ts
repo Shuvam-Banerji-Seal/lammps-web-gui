@@ -135,7 +135,7 @@ describe('atom_style line segments (dump_image.cpp lineflag branch)', () => {
   it('draws a segment as a cylinder with both caps along its length', () => {
     const f = frameAlongZ();
     // a segment of length 4 centred on (5, 5, 0), along +x: end points (3, 5, 0) and (7, 5, 0), width 1
-    drawLineAtoms(f, [{ x: 5, y: 5, length: 4, theta: 0, color: [255, 0, 0], opacity: 1 }], 1);
+    drawLineAtoms(f, [{ x: 5, y: 5, length: 4, theta: 0, color: [1, 0, 0], opacity: 1 }], 1);
     // the centre row (native row 16 = buffer row 15) is drawn from the left end to the right end ...
     // (half the length is 2 units = 3.2 px, so columns 14 and 18 lie on the segment)
     expect(drawnAt(f, 16 - 2, 15)).toBe(true);
@@ -148,7 +148,7 @@ describe('atom_style line segments (dump_image.cpp lineflag branch)', () => {
 
   it('draws nothing for a zero width', () => {
     const f = frameAlongZ();
-    drawLineAtoms(f, [{ x: 5, y: 5, length: 4, theta: 0, color: [255, 0, 0], opacity: 1 }], 0);
+    drawLineAtoms(f, [{ x: 5, y: 5, length: 4, theta: 0, color: [1, 0, 0], opacity: 1 }], 0);
     expect(f.depth.every((d) => !Number.isFinite(d))).toBe(true);
   });
 });
@@ -160,10 +160,10 @@ describe('atom_style tri particles (dump_image.cpp triflag branch)', () => {
 
   it('draws faces only for tstyle 1 and edges only for tstyle 2', () => {
     const faces = frameAlongZ();
-    drawTriAtoms(faces, [{ center: [5, 5, 0], quat, corners, color: [255, 0, 0], opacity: 1 }], 1, 0.2);
+    drawTriAtoms(faces, [{ center: [5, 5, 0], quat, corners, color: [1, 0, 0], opacity: 1 }], 1, 0.2);
     expect(faces.depth.some((d) => Number.isFinite(d))).toBe(true);
     const edges = frameAlongZ();
-    drawTriAtoms(edges, [{ center: [5, 5, 0], quat, corners, color: [255, 0, 0], opacity: 1 }], 2, 0.2);
+    drawTriAtoms(edges, [{ center: [5, 5, 0], quat, corners, color: [1, 0, 0], opacity: 1 }], 2, 0.2);
     // the centroid of the triangle is inside the face but not on an edge: only the edges are drawn there
     expect(drawnAt(edges, 16, 15)).toBe(false);
     expect(edges.depth.some((d) => Number.isFinite(d))).toBe(true);
@@ -171,7 +171,7 @@ describe('atom_style tri particles (dump_image.cpp triflag branch)', () => {
 
   it('draws the face of an unrotated particle with the tri face lights', () => {
     const f = frameAlongZ();
-    drawTriAtoms(f, [{ center: [5, 5, 0], quat, corners, color: [255, 0, 0], opacity: 1 }], 1, 0.2);
+    drawTriAtoms(f, [{ center: [5, 5, 0], quat, corners, color: [1, 0, 0], opacity: 1 }], 1, 0.2);
     // the face normal is +z (towards the viewer) and the tri face lights give (255, 36, 36) at the centroid
     expect(at(f, 16, 15)).toEqual([255, 36, 36]);
   });
@@ -181,7 +181,7 @@ describe('dump image region cylinders and cones (dump_image.cpp cylinder and con
   // a cylinder of radius 3 on the axis z through (5, 5), from z = 2 to 8 in the box 0 .. 10; gray = 128 / 255
   const spec = (drawstyle: RegionConeSpec['drawstyle']): RegionConeSpec => ({
     style: 'cylinder', axis: 2, c1: 5, c2: 5, radlo: 3, radhi: 3, lo: 2, hi: 8,
-    color: [128, 128, 128], drawstyle, framediam: 0.5, opacity: 1,
+    color: [128 / 255, 128 / 255, 128 / 255], drawstyle, framediam: 0.5, opacity: 1,
   });
 
   it('shades the top cap of a filled cylinder facing the viewer (normal (0, 0, 1), default lights)', () => {
@@ -246,7 +246,7 @@ describe('dump image ellipsoid meshes (image_objects.cpp EllipsoidObj)', () => {
 describe('dump image body particles (BodyRoundedPolyhedron::image)', () => {
   const identity = [1, 0, 0, 0];
   const body = (nsub: number, vertices: number[], edges: number[], faces: number[], nedge: number, nface: number, radius = 0.25): BodyAtom => ({
-    style: 'rounded/polyhedron', center: [5, 5, 5] as [number, number, number], quat: identity, nsub, nedge, nface, vertices, edges, faces, radius, color: [255, 0, 0] as [number, number, number], opacity: 1,
+    style: 'rounded/polyhedron', center: [5, 5, 5] as [number, number, number], quat: identity, nsub, nedge, nface, vertices, edges, faces, radius, color: [1, 0, 0] as [number, number, number], opacity: 1,
   });
 
   it('draws a one-vertex body as a sphere of the flag1 diameter at its vertex', () => {

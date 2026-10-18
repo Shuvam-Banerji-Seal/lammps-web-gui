@@ -340,10 +340,20 @@ export class FixGraphicsChunkFix extends Fix {
     const s = sys.state;
     const chunk = chunkCompute(sys, this.chunkId, `fix ${this.id} graphics/chunk`);
     chunk.ensure();
-    // without a radius keyword the C++ takes the per-atom radius, else the pair style sigma (extract("sigma")); the
-    // sigma is not reachable from the browser engine, so that case is refused by name instead of guessed
+    // without a radius keyword the C++ takes the per-atom radius, else half the pair style's sigma[type][type]
+    // ("sigma = (double **) force->pair->extract("sigma", dim); if (dim != 2) sigma = nullptr;"), else the default radius
+    // (no pair style). A pair style whose sigma the engine does not expose is refused by name instead of guessed.
+    this.hull.options.sigmaOfType = null;
     if (this.hull.options.radius === null && !s.radius) {
-      throw new StyleError(`fix ${this.id} graphics/chunk: without a radius keyword the radius comes from the pair style sigma, which the browser engine does not expose; give radius`);
+      const pair = sys.ff.pair;
+      if (pair) {
+        const sig = pair.extract('sigma');
+        const nt = s.ntypes + 1;
+        if (!(sig instanceof Float64Array) || sig.length !== nt * nt) {
+          throw new StyleError(`fix ${this.id} graphics/chunk: without a radius keyword the radius comes from the pair style sigma, which pair style ${pair.name} does not expose in the browser engine; give radius`);
+        }
+        this.hull.options.sigmaOfType = (t) => sig[t * nt + t];
+      }
     }
     const atoms: ChunkAtom[] = [];
     for (let i = 0; i < s.n; i++) {

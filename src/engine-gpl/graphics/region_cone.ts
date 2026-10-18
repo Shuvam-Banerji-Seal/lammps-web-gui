@@ -12,7 +12,7 @@
  * cylinder that native draws for filled cylinders has diameter 2 * radius, and radius stays 0 in that branch, so it
  * draws nothing and is not ported.
  */
-import type { RasterFrame, Rgb255, RegionConeSpec } from '../../engine/output/image_objects';
+import type { RasterFrame, RegionConeSpec } from '../../engine/output/image_objects';
 import { drawCylinder, drawTrinorm } from './draw';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 
@@ -147,7 +147,6 @@ export function drawConeMesh(f: RasterFrame, mesh: ConeMesh, flag: number, dir: 
   }
 }
 
-const unit = (c: Rgb255): V => [c[0] / 255, c[1] / 255, c[2] / 255];
 
 /**
  * The cylinder and cone branch of DumpImage::create_image: the axis unit vector, the box-clipped lo and hi centres
@@ -170,5 +169,5 @@ export function drawConeRegion(f: RasterFrame, spec: RegionConeSpec, boxlo: V, b
   const drawflag = frame ? 2 : 1;
   const opacity = spec.drawstyle === 'transparent' ? spec.opacity : 1;
   const mesh = coneMesh(length, spec.radhi, spec.radlo, faceflag, frame ? RESOLUTION : 2 * RESOLUTION);
-  drawConeMesh(f, mesh, drawflag, dir, mid, unit(spec.color), spec.framediam, opacity);
+  drawConeMesh(f, mesh, drawflag, dir, mid, spec.color, spec.framediam, opacity);
 }

@@ -87,6 +87,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'kspace_dipole44', names: { KSPACES: ['ewald/dipole'] }, load: () => import('./registry/kspace_dipole44') as Promise<StyleModule> },
   { id: 'gpl_dipole', names: { PAIRS: ['lj/cut/dipole/long'], KSPACES: ['pppm/dipole'] }, load: () => import('../engine-gpl/registry/dipole') as Promise<StyleModule> },
   { id: 'gpl_pppm_disp', names: { KSPACES: ['pppm/disp', 'pppm/disp/tip4p'] }, load: () => import('../engine-gpl/registry/pppm_disp') as Promise<StyleModule> },
+  { id: 'gpl_esp', names: { KSPACES: ['esp'], PAIRS: ['coul/esp', 'lj/cut/coul/esp'] }, load: () => import('../engine-gpl/registry/esp') as Promise<StyleModule> },
   { id: 'pair_dipole18', names: { PAIRS: ['lj/cut/dipole/cut', 'lj/sf/dipole/sf'] }, load: () => import('./registry/pair_dipole18') as Promise<StyleModule> },
   { id: 'fix_ttm', names: { FIXES: ['ttm', 'ttm/grid', 'ttm/mod', 'ttm/thermal', 'ttm/cascade'] }, load: () => import('./registry/fix_ttm') as Promise<StyleModule> },
   { id: 'compute_tally47', names: { COMPUTES: ['force/tally', 'group/group', 'pe/tally', 'stress/tally'] }, load: () => import('./registry/compute_tally47') as Promise<StyleModule> },

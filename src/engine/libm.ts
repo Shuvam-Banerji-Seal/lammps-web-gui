@@ -10,6 +10,12 @@
  */
 export const libm: {
   exp: (x: number) => number; log: (x: number) => number; sin: (x: number) => number; cos: (x: number) => number;
+  /**
+   * glibc sin() and cos() as the native binary calls them when only one of the two is needed at that point. Its libm
+   * dispatches sin(x) and cos(x) to the FMA builds, which round differently from sincos() (which the native binary
+   * calls where it needs both sin(x) and cos(x) of the same x). libm.sin and libm.cos are the values of sincos().
+   */
+  sinAlone: (x: number) => number; cosAlone: (x: number) => number;
   erf: (x: number) => number; erfc: (x: number) => number; acos: (x: number) => number;
   pow: (x: number, y: number) => number;
 } = {
@@ -17,6 +23,8 @@ export const libm: {
   log: Math.log,
   sin: Math.sin,
   cos: Math.cos,
+  sinAlone: Math.sin,
+  cosAlone: Math.cos,
   // JavaScript has no erf or erfc: the engine's own series below until the session installs the C library's
   erf: (x: number) => erfSeries(x),
   erfc: (x: number) => erfcExact(x),

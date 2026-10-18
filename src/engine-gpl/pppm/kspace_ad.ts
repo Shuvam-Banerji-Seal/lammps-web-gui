@@ -21,7 +21,7 @@ import { fft3d } from '../../engine/force/fft';
 import type { SimState } from '../../engine/types';
 import type { Geometry } from '../../engine/domain';
 import { gfDenomCoefficients, nativePppmGrid } from './grid';
-import { sin as libmSin } from '../libm/sincos';
+import { sinFma as libmSin } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 
 const MY_2PI = 6.28318530717958647692;

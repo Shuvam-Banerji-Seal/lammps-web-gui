@@ -371,7 +371,7 @@ export class KSpacePPPM extends KSpaceBase {
       out[1] = 2 * Math.PI * (a * inv[0][1] + b * inv[1][1] + c * inv[2][1]);
       out[2] = 2 * Math.PI * (a * inv[0][2] + b * inv[1][2] + c * inv[2][2]);
     };
-    const sinc = (x: number) => (x === 0 ? 1 : libm.sin(x) / x);
+    const sinc = (x: number) => (x === 0 ? 1 : libm.sinAlone(x) / x);
     const u2 = (n: number, nn: number) => Math.pow(sinc((Math.PI * n) / nn), 2 * P);
     // the numerator's alias images per dimension (measured, see ALIAS_C)
     const edge = [Math.abs(geom.lx), Math.abs(geom.xy) + Math.abs(geom.ly), Math.abs(geom.xz) + Math.abs(geom.yz) + Math.abs(lz)];

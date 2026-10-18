@@ -32,7 +32,7 @@ import { nativeOrder } from '../../engine/atoms';
 import { fft3d, isFFTSize } from '../../engine/force/fft';
 import { computeQopt } from '../pppm/grid';
 import { log as libmLog } from '../libm/log';
-import { sin as libmSin } from '../libm/sincos';
+import { sinFma as libmSin } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
 

@@ -1,11 +1,13 @@
 /*
  * Support code for the styles ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0: the C
- * library sin() and cos() that the native binary calls (Ubuntu glibc 2.35 on x86_64). This file reproduces them bit
- * for bit: sysdeps/ieee754/dbl-64/s_sin.c, sincostab.c, branred.c and branred.h, usncs.h (the IBM Accurate
+ * library sincos() that the native binary calls where it needs both sin(x) and cos(x) of the same x (gcc merges the
+ * two calls), on Ubuntu glibc 2.35, x86_64. Where the native binary calls sin() or cos() alone, its libm takes the FMA
+ * builds, which round differently at about 1 argument in 1300: ./sincos_fma.ts (libm.sinAlone, libm.cosAlone). This
+ * file reproduces sincos() bit for bit: sysdeps/ieee754/dbl-64/s_sin.c, sincostab.c, branred.c and branred.h, usncs.h (the IBM Accurate
  * Mathematical Library, contributed by International Business Machines Corp., Copyright (C) 2001-2022 Free Software
  * Foundation, Inc.). glibc builds these routines without contracting multiply-adds into FMAs, so plain binary64
  * arithmetic in the source's evaluation order is exact: a build of s_sin.c with -ffp-contract=off gives the installed
- * libm.so.6 result for every one of 600,000 test arguments (with contraction it differs), and this port gives the same
+ * libm.so.6 sincos() result for every one of 600,000 test arguments (with contraction it differs), and this port gives the same
  * results (tests/engineLibmSinCos.test.ts). The table values were printed from that build.
  *
  * glibc is distributed under the GNU Lesser General Public License, version 2.1 or later; this file is used under its

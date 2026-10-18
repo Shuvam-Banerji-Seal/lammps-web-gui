@@ -1,0 +1,34 @@
+# oracle: per-atom k-space energy and virial with pppm/tip4p: compute pe/atom and stress/atom (all and kspace) on 27 flexible TIP4P/2005 waters; the M-site terms go (1 - alpha) to O and alpha/2 to each H as pppm_tip4p.cpp fieldforce_peratom does
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 6.0e-13, atoms 1.7e-13; the per-atom energy and stress dump agrees within 1e-10.
+# oracle-inputs: w117cf_tip4p_pppm_water.data
+# oracle-files: w245ka_tip4p.dump
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-10 filerel=1e-10
+units           real
+atom_style      full
+boundary        p p p
+read_data       w117cf_tip4p_pppm_water.data
+pair_style      lj/cut/tip4p/long 1 2 1 1 0.1546 8.5
+pair_coeff      1 1 0.1852 3.1589
+pair_coeff      1 2 0.0 1.0
+pair_coeff      2 2 0.0 1.0
+bond_style      harmonic
+bond_coeff      1 450.0 0.9572
+angle_style     harmonic
+angle_coeff     1 55.0 104.52
+kspace_style    pppm/tip4p 1.0e-5
+kspace_modify   gewald 0.37833912 mesh 12 12 12 order 5
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+compute         pe all pe/atom
+compute         pek all pe/atom kspace
+compute         st all stress/atom NULL
+compute         stk all stress/atom NULL kspace
+compute         spe all reduce sum c_pe c_pek c_stk[1] c_stk[2] c_stk[3] c_stk[4] c_stk[5] c_stk[6]
+timestep        0.5
+fix             2 all nve
+thermo_style    custom step pe elong c_spe[1] c_spe[2] c_spe[3] c_spe[4] c_spe[5] c_spe[6] c_spe[7] c_spe[8] press
+thermo_modify   format float %.15g norm no
+thermo          5
+dump            d all custom 10 w245ka_tip4p.dump id type c_pe c_pek c_st[1] c_st[2] c_st[3] c_st[4] c_st[5] c_st[6] c_stk[1] c_stk[2] c_stk[3] c_stk[4] c_stk[5] c_stk[6]
+dump_modify     d sort id format float %.15g
+run             10

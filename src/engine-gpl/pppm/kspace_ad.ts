@@ -132,8 +132,6 @@ export class KSpacePPPMAd extends KSpacePPPM {
 
   /** Charges enter the mesh as in the core (pppm: every charge). */
   override compute(kc: KSpaceCompute): void {
-    // the per-atom energy and virial of this style are not computed by the engine: refused rather than left out
-    if (kc.eatom || kc.vatom) throw new StyleError(`compute pe/atom and stress/atom with kspace_style ${this.name} are not supported by the browser engine (its per-atom energy and virial are not computed)`);
     const s = kc.s;
     const geom = kc.geom;
     const n = s.n;
@@ -191,6 +189,9 @@ export class KSpacePPPMAd extends KSpacePPPM {
     // energy and virial from |rho(k)|^2 with the ad Green's function; the potential is G rho(k) back-transformed
     const G = this.adGreen;
     const pot = new Float64Array(2 * ng);
+    // per-atom virial (stress/atom): as poisson_peratom does in the ad case, the six bricks G rho vg_j; the per-atom
+    // energy uses the potential brick of the forces (poisson_ad builds u_brick, poisson_peratom skips it for ad)
+    const vb = kc.vatom ? Array.from({ length: 6 }, () => new Float64Array(2 * ng)) : null;
     let e = 0;
     const w = [0, 0, 0, 0, 0, 0];
     for (let iz = 0; iz < nz; iz++) {
@@ -213,10 +214,15 @@ export class KSpacePPPMAd extends KSpacePPPM {
           w[3] += t * (-b * kx * ky); w[4] += t * (-b * kx * kz); w[5] += t * (-b * ky * kz);
           pot[2 * idx] = Gk * re;
           pot[2 * idx + 1] = Gk * im;
+          if (vb) {
+            const vg = [1 - b * kx * kx, 1 - b * ky * ky, 1 - b * kz * kz, -b * kx * ky, -b * kx * kz, -b * ky * kz];
+            for (let c = 0; c < 6; c++) { vb[c][2 * idx] = Gk * re * vg[c]; vb[c][2 * idx + 1] = Gk * im * vg[c]; }
+          }
         }
       }
     }
     fft3d(pot, nx, ny, nz, 1);
+    if (vb) for (const v of vb) fft3d(v, nx, ny, nz, 1);
     // field: E = -grad phi with phi = (1/V) (unnormalised inverse transform); the grid derivative of the weights gives
     // the gradient. The z field uses nz / zprd (not zprd times the slab volfactor), as in the native fieldforce_ad.
     const hx = nx / geom.lx, hy = ny / geom.ly, hz = nz / geom.lz;
@@ -255,6 +261,7 @@ export class KSpacePPPMAd extends KSpacePPPM {
       kc.f[3 * i + 2] += qfactor * (Ez * q - sz);
     }
     const pref = C / (2 * V);
+    if (kc.eatom || kc.vatom) this.peratomMesh(kc, qg, first, wts, kc.eatom ? pot : null, vb, pref);
     kc.acc.elong += pref * e + this.constantEnergy(C);
     for (let c = 0; c < 6; c++) kc.acc.vlong[c] += pref * w[c];
     this.slabCorrection(kc);

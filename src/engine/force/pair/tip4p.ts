@@ -157,7 +157,6 @@ export class PairTIP4PBase extends PairLJCut {
   }
 
   compute(pc: PairCompute): void {
-    if (pc.eatom || pc.vatom) throw new StyleError(`per-atom energy and virial are not supported by pair style ${this.name}`);
     const model = this.siteModel();
     if (!model) throw new StyleError(`pair style ${this.name} is not initialized`);
     const list = pc.half!;
@@ -212,6 +211,24 @@ export class PairTIP4PBase extends PairLJCut {
     const halfL = [geom.lx / 2, geom.ly / 2, geom.lz / 2];
     const imageSep = (dx: number, dy: number, dz: number) =>
       (per[0] && Math.abs(dx) > halfL[0]) || (per[1] && Math.abs(dy) > halfL[1]) || (per[2] && Math.abs(dz) > halfL[2]);
+    // per-atom energy and virial, as native LAMMPS does (src/pair.cpp at b332f28): the LJ term through ev_tally, half to
+    // each atom; the Coulomb term through ev_tally_tip4p, half to each side, an M side's half split (1 - alpha) to the O
+    // and alpha / 2 to each H. Ghost entries are folded onto their owners here, as native's reverse communication does.
+    const { eatom, vatom } = pc;
+    const tallyAtom = (k: number, w: number, e: number, w6: number[]) => {
+      if (eatom) eatom[k] += w * e;
+      if (vatom) for (let c = 0; c < 6; c++) vatom[6 * k + c] += w * w6[c];
+    };
+    const tallySide = (k: number, e: number, w6: number[]) => {
+      if (isO(k)) {
+        const o = own(k);
+        tallyAtom(o, 0.5 * (1 - alpha), e, w6);
+        tallyAtom(h1[o], 0.25 * alpha, e, w6);
+        tallyAtom(h2[o], 0.25 * alpha, e, w6);
+      } else tallyAtom(own(k), 0.5, e, w6);
+    };
+    const peratom = eatom !== null || vatom !== null;
+    const w6 = [0, 0, 0, 0, 0, 0];
     const si = [0, 0, 0], sj = [0, 0, 0];
     let evdwl = 0, ecoul = 0;
     const nb0 = list.neighbors;
@@ -235,9 +252,16 @@ export class PairTIP4PBase extends PairLJCut {
             const fpair = factor * r6inv * (this.lj1[t] * r6inv - this.lj2[t]) * r2inv;
             fxi += dx * fpair; fyi += dy * fpair; fzi += dz * fpair;
             f[3 * j] -= dx * fpair; f[3 * j + 1] -= dy * fpair; f[3 * j + 2] -= dz * fpair;
-            evdwl += factor * (r6inv * (this.lj3[t] * r6inv - this.lj4[t]) - this.offset[t]);
+            const elj = factor * (r6inv * (this.lj3[t] * r6inv - this.lj4[t]) - this.offset[t]);
+            evdwl += elj;
             v[0] += dx * dx * fpair; v[1] += dy * dy * fpair; v[2] += dz * dz * fpair;
             v[3] += dx * dy * fpair; v[4] += dx * dz * fpair; v[5] += dy * dz * fpair;
+            if (peratom) {
+              w6[0] = dx * dx * fpair; w6[1] = dy * dy * fpair; w6[2] = dz * dz * fpair;
+              w6[3] = dx * dy * fpair; w6[4] = dx * dz * fpair; w6[5] = dy * dz * fpair;
+              tallyAtom(i, 0.5, elj, w6);
+              tallyAtom(own(j), 0.5, elj, w6);
+            }
           }
         }
         const qj = q[j];
@@ -260,6 +284,11 @@ export class PairTIP4PBase extends PairLJCut {
         apply(j, -Fx, -Fy, -Fz);
         v[0] += ex * Fx; v[1] += ey * Fy; v[2] += ez * Fz;
         v[3] += ex * Fy; v[4] += ex * Fz; v[5] += ey * Fz;
+        if (peratom) {
+          w6[0] = ex * Fx; w6[1] = ey * Fy; w6[2] = ez * Fz; w6[3] = ex * Fy; w6[4] = ex * Fz; w6[5] = ey * Fz;
+          tallySide(i, r.e, w6);
+          tallySide(j, r.e, w6);
+        }
       }
       f[3 * i] += fxi; f[3 * i + 1] += fyi; f[3 * i + 2] += fzi;
     }

@@ -63,8 +63,6 @@ export class KSpacePPPMTIP4P extends KSpace {
   }
 
   compute(kc: KSpaceCompute): void {
-    // the per-atom energy and virial of this style are not computed by the engine: refused rather than left out
-    if (kc.eatom || kc.vatom) throw new StyleError(`compute pe/atom and stress/atom with kspace_style ${this.name} are not supported by the browser engine (its per-atom energy and virial are not computed)`);
     const s = kc.s;
     const n = s.n;
     const m = this.model();
@@ -73,6 +71,17 @@ export class KSpacePPPMTIP4P extends KSpace {
     for (let i = 0; i < n; i++) {
       if (s.type[i] === m.otype) for (let c = 0; c < 3; c++) x[3 * i + c] = sites.M[3 * i + c];
     }
+    // As native LAMMPS does (src/KSPACE/pppm_tip4p.cpp at b332f28, fieldforce_peratom): the per-atom energy and virial
+    // of an O's M site go (1 - alpha) to the O and alpha / 2 to each H (owned here: native folds ghost H entries back),
+    // before PPPM::compute subtracts each atom's own self terms
+    const { eatom, vatom } = kc;
+    this.solver.peratomProject = eatom || vatom ? (i, e, v) => {
+      const own = s.type[i] === m.otype ? [[i, 1 - m.alpha], [sites.h1[i], 0.5 * m.alpha], [sites.h2[i], 0.5 * m.alpha]] : [[i, 1]];
+      for (const [j, w] of own) {
+        if (eatom) eatom[j] += e * w;
+        if (vatom && v) for (let k = 0; k < 6; k++) vatom[6 * j + k] += v[k] * w;
+      }
+    } : null;
     const fs = new Float64Array(3 * n);
     this.solver.compute({ ...kc, s: { ...s, x }, f: fs });
     for (let i = 0; i < n; i++) {

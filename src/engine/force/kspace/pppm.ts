@@ -569,8 +569,9 @@ export class KSpacePPPM extends KSpaceBase {
    * qscale (0.5 q_i u_i - g q_i^2 / sqrt(pi) - pi q_i qsum / (2 g^2 V)), vatom_i,j = 0.5 qscale q_i v_j(x_i). In the
    * engine's mesh normalization 0.5 qscale u_native = C / (2 V) u (pref here). They sum to the global energy and virial.
    */
-  private peratomMesh(kc: KSpaceCompute, qg: ArrayLike<number>, first: Int32Array, wts: Float64Array,
+  protected peratomMesh(kc: KSpaceCompute, qg: ArrayLike<number>, first: Int32Array, wts: Float64Array,
     ub: Float64Array | null, vb: Float64Array[] | null, pref: number): void {
+    const project = this.peratomProject;
     const s = kc.s;
     const [nx, ny, nz] = this.mesh;
     const P = this.order;
@@ -597,11 +598,22 @@ export class KSpacePPPM extends KSpaceBase {
           }
         }
       }
+      if (project) {
+        for (let k = 0; k < 6; k++) vsum[k] *= pref * q;
+        project(i, kc.eatom && ub ? pref * q * u : 0, kc.vatom && vb ? vsum : null);
+        continue;
+      }
       if (kc.eatom && ub) kc.eatom[i] += pref * q * u;
       if (kc.vatom && vb) for (let k = 0; k < 6; k++) kc.vatom[6 * i + k] += pref * q * vsum[k];
     }
     if (kc.eatom) this.constantEnergyPeratom(kc, qg);
   }
+
+  /**
+   * Where the mesh part of a charge site's per-atom energy and virial goes (pppm/tip4p: an O's M site to O and its
+   * two H). Null: to the atom itself. The self terms are applied afterwards to every atom's own entry.
+   */
+  peratomProject: ((i: number, e: number, v: number[] | null) => void) | null = null;
 }
 
 /*

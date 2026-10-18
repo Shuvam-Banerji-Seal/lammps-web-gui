@@ -16,7 +16,7 @@
  * (tip4p_sites.ts). Source notes kept: the H atoms have zero LJ epsilon and no LJ term ("Water H epsilon must be
  * 0.0"); the H-containing pairs have no LJ cutoff; the Coulomb neighbor cutoff is cut_coul + 2 qdist.
  *
- * Not supported (StyleError): per-atom energy and virial (as the core TIP4P styles).
+ * Per-atom energy and virial follow native ev_tally and ev_tally_tip4p (the Coulomb x (x) f virial split by side and site).
  */
 import { PairParams, StyleError, mixDistance, mixEpsilon, type BondedEquilibria, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
@@ -164,7 +164,6 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
   }
 
   compute(pc: PairCompute): void {
-    if (pc.eatom || pc.vatom) throw new StyleError(`per-atom energy and virial are not supported by pair style ${this.name}`);
     const model = this.siteModel();
     if (!model) throw new StyleError(`pair style ${this.name} is not initialized`);
     const list = pc.half!;
@@ -178,7 +177,8 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
     const sLJ = pc.specialLJ, sC = pc.specialCoul;
     const qqrd2e = pc.qqrd2e;
     const g = this.gEwald;
-    const v = pc.acc.virial;
+    const gv = pc.acc.virial;
+    let v = gv;
     const isO = (k: number) => type[k] === otype;
     const own = (k: number) => (k < nlocal ? k : owner[k]);
     // Coulomb site of atom k: M for O, the atom otherwise; ghosts shift their owner's site
@@ -238,6 +238,24 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
     const halfL = [geom.lx / 2, geom.ly / 2, geom.lz / 2];
     const imageSep = (dx: number, dy: number, dz: number) =>
       (per[0] && Math.abs(dx) > halfL[0]) || (per[1] && Math.abs(dy) > halfL[1]) || (per[2] && Math.abs(dz) > halfL[2]);
+    // per-atom energy and virial (pair.cpp ev_tally and ev_tally_tip4p at b332f28): the LJ term half to each atom, the
+    // Coulomb term and its x (x) f virial half to each side, an M side's half split (1 - alpha) to the O and alpha / 2
+    // to each H; ghost entries fold onto their owners
+    const { eatom, vatom } = pc;
+    const peratom = eatom !== null || vatom !== null;
+    const tallyAtom = (k: number, w: number, e: number, w6: ArrayLike<number>) => {
+      if (eatom) eatom[k] += w * e;
+      if (vatom) for (let c = 0; c < 6; c++) vatom[6 * k + c] += w * w6[c];
+    };
+    const tallySide = (k: number, e: number, w6: ArrayLike<number>) => {
+      if (isO(k)) {
+        const o = own(k);
+        tallyAtom(o, 0.5 * (1 - alpha), e, w6);
+        tallyAtom(h1[o], 0.25 * alpha, e, w6);
+        tallyAtom(h2[o], 0.25 * alpha, e, w6);
+      } else tallyAtom(own(k), 0.5, e, w6);
+    };
+    const w6 = new Float64Array(6);
     const si = [0, 0, 0], sj = [0, 0, 0];
     let evdwl = 0, ecoul = 0;
     const nb0 = list.neighbors;
@@ -267,6 +285,11 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
           f[3 * j] -= dx * fpair; f[3 * j + 1] -= dy * fpair; f[3 * j + 2] -= dz * fpair;
           v[0] += dx * dx * fpair; v[1] += dy * dy * fpair; v[2] += dz * dz * fpair;
           v[3] += dx * dy * fpair; v[4] += dx * dz * fpair; v[5] += dy * dz * fpair;
+          if (peratom) {
+            const l6 = [dx * dx * fpair, dy * dy * fpair, dz * dz * fpair, dx * dy * fpair, dx * dz * fpair, dy * dz * fpair];
+            tallyAtom(i, 0.5, e, l6);
+            tallyAtom(own(j), 0.5, e, l6);
+          }
         }
         const qj = q[j];
         if (qi === 0 || qj === 0) continue;
@@ -288,8 +311,20 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
         const Fx = ex * fr, Fy = ey * fr, Fz = ez * fr;
         apply(i, Fx, Fy, Fz);
         apply(j, -Fx, -Fy, -Fz);
-        addVirial(i, Fx, Fy, Fz);
-        addVirial(j, -Fx, -Fy, -Fz);
+        if (peratom) {
+          // the pair's virial alone, then added to the global one
+          w6.fill(0);
+          v = w6;
+          addVirial(i, Fx, Fy, Fz);
+          addVirial(j, -Fx, -Fy, -Fz);
+          v = gv;
+          for (let c = 0; c < 6; c++) gv[c] += w6[c];
+          tallySide(i, e, w6);
+          tallySide(j, e, w6);
+        } else {
+          addVirial(i, Fx, Fy, Fz);
+          addVirial(j, -Fx, -Fy, -Fz);
+        }
       }
       f[3 * i] += fxi; f[3 * i + 1] += fyi; f[3 * i + 2] += fzi;
     }

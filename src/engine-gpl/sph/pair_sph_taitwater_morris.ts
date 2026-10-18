@@ -11,7 +11,7 @@
 import { type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { PairSPHTaitwater } from './pair_sph_taitwater';
-import { sphArrays } from './common';
+import { sphArrays, sphGhostVest } from './common';
 
 export class PairSPHTaitwaterMorris extends PairSPHTaitwater {
   override readonly name: string = 'sph/taitwater/morris';
@@ -20,6 +20,8 @@ export class PairSPHTaitwaterMorris extends PairSPHTaitwater {
     const s = pc.s;
     const a = sphArrays(s, 'Pair sph/taitwater/morris');
     const { rho, drho, desph, vest: v } = a;
+    // the ghosts' vest of a setup, when it is not their owners' (sph/common.ts sphGhostVest)
+    const gv = sphGhostVest(s);
     const { x, f, type } = pc;
     const owner = pc.nb.owner;
     const mass = s.massByType;
@@ -50,10 +52,11 @@ export class PairSPHTaitwaterMorris extends PairSPHTaitwater {
         // the derivative of the Lucy weight lacks a factor of r; delV . delX and delX (not its unit vector) recover it
         const wfd = this.derivative(dim3, hh, rsq, ih, ihsq);
         const oj = owner[j];
+        const vj = gv && j >= pc.nlocal ? gv : v;
         tmp = rho[oj] / this.rho0[jt];
         let fj = tmp * tmp * tmp;
         fj = this.bulk[jt] * (fj * fj * tmp - 1.0) / (rho[oj] * rho[oj]);
-        const velx = vxi - v[3 * oj], vely = vyi - v[3 * oj + 1], velz = vzi - v[3 * oj + 2];
+        const velx = vxi - vj[3 * oj], vely = vyi - vj[3 * oj + 1], velz = vzi - vj[3 * oj + 2];
         const delVdotDelR = delx * velx + dely * vely + delz * velz;
         // Morris viscosity (Morris, 1996)
         let fvisc = 2 * visc[t] / (rho[i] * rho[oj]);

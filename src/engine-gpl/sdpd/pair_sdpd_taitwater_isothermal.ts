@@ -22,7 +22,7 @@ import { StyleError, type PairCompute, type StyleContext } from '../../engine/fo
 import { NEIGHMASK } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { PairSPHBase } from '../sph/pair_sph_base';
-import { LUCY_DERIV_2D, LUCY_DERIV_3D, sphArrays } from '../sph/common';
+import { LUCY_DERIV_2D, LUCY_DERIV_3D, sphArrays, sphGhostVest } from '../sph/common';
 import { RanMars } from '../random_mars';
 import { NativePairOrder } from '../neighbor/nativeOrder';
 import { tallyXYZ } from '../dpd/pair_dpd';
@@ -95,6 +95,8 @@ export class PairSDPDTaitwaterIsothermal extends PairSPHBase {
     if (!rng) throw new StyleError('pair sdpd/taitwater/isothermal used before pair_style');
     const a = sphArrays(s, 'Pair sdpd/taitwater/isothermal');
     const { rho, drho, vest: v } = a;
+    // the ghosts' vest of a setup, when it is not their owners' (sph/common.ts sphGhostVest)
+    const gv = sphGhostVest(s);
     const { x, f, type } = pc;
     const owner = pc.nb.owner;
     const mass = s.massByType;
@@ -114,6 +116,7 @@ export class PairSDPDTaitwaterIsothermal extends PairSPHBase {
       const t = it * nt + jt;
       if (!(rsq < cutsq[t])) continue;
       const oj = owner[j];
+      const vj = gv && j >= pc.nlocal ? gv : v;
       const imass = mass[it], jmass = mass[jt];
       const hh = h[t];
       const ih = 1.0 / hh;
@@ -129,7 +132,7 @@ export class PairSDPDTaitwaterIsothermal extends PairSPHBase {
       tmp = rho[oj] / this.rho0[jt];
       let fj = tmp * tmp * tmp;
       fj = this.bulk[jt] * (fj * fj * tmp - 1.0) / (rho[oj] * rho[oj]);
-      const velx = v[3 * i] - v[3 * oj], vely = v[3 * i + 1] - v[3 * oj + 1], velz = v[3 * i + 2] - v[3 * oj + 2];
+      const velx = v[3 * i] - vj[3 * oj], vely = v[3 * i + 1] - vj[3 * oj + 1], velz = v[3 * i + 2] - vj[3 * oj + 2];
       const delVdotDelR = delx * velx + dely * vely + delz * velz;
       // Espanol viscosity (Espanol, 2003)
       const fvisc = (5.0 / 3.0) * mu * imass * jmass * wfd / (rho[i] * rho[oj]);

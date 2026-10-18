@@ -5,15 +5,15 @@
  * This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  *
  * Runs the actions of the set command every Nevery steps (docs.lammps.org/fix_set.html). The actions are the set
- * command's own (src/engine/commands/setup.ts, the set handler, reused unchanged), and every keyword must use a
- * per-atom variable (v_name), as native Set::process_args does for the FIXSET caller: "Fix set command keyword K does
- * not invoke a per-atom variable". The reneighbor keyword forces a neighbor rebuild on the next step.
+ * command's own (src/engine/commands/setup.ts, the set handler, reused unchanged through System.commands), and every
+ * keyword must use a per-atom variable (v_name), as native Set::process_args does for the FIXSET caller: "Fix set
+ * command keyword K does not invoke a per-atom variable". The rnflag word is read, but as natively it rebuilds nothing
+ * (see reneighborDue).
  */
 import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import type { Ctx } from '../../engine/commands/args';
-import { SETUP_COMMANDS } from '../../engine/commands/setup';
 
 /** The selection styles of the set command (set.cpp Set::process_args): the first two words are the style and the ID. */
 const STYLE_WORDS = ['atom', 'mol', 'type', 'group', 'region'];
@@ -21,8 +21,6 @@ const STYLE_WORDS = ['atom', 'mol', 'type', 'group', 'region'];
 export class FixSet extends Fix {
   readonly style = 'set';
   private readonly actions: string[];
-  private readonly reneighbor: boolean;
-  private nextReneighbor = -1;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -30,8 +28,8 @@ export class FixSet extends Fix {
     if (args.length < 5) throw new StyleError('Illegal fix set command: missing arguments');
     this.nevery = Number(args[0]);
     if (!/^[+-]?\d+$/.test(args[0]) || this.nevery <= 0) throw new StyleError('Fix set Nevery must be > 0');
-    if (!/^[+-]?\d+$/.test(args[1]) || (args[1] !== '0' && args[1] !== '1')) throw new StyleError('Fix set rnflag must be 0/1');
-    this.reneighbor = args[1] === '1';
+    // rnflag is checked and kept natively, but it has no effect (see reneighborDue)
+    if (!/^[+-]?\d+$/.test(args[1]) || Number(args[1]) < 0 || Number(args[1]) > 1) throw new StyleError('Fix set rnflag must be 0/1');
     const rest = args.slice(2);
     if (rest.length < 2 || !STYLE_WORDS.includes(rest[0])) {
       throw new StyleError(`Unrecognized set or fix set command keyword ${rest[0] ?? ''}`);
@@ -62,7 +60,8 @@ export class FixSet extends Fix {
    * handler reads the type word as a type label, so a variable is set here with the handler's own range check.
    */
   private runActions(): void {
-    const handler = SETUP_COMMANDS.set;
+    // the handler comes from the session's command table: importing commands/setup.ts here would pull it into this chunk
+    const handler = this.sys.commands.set;
     if (!handler) throw new StyleError('set: the set command is not available');
     const sys = this.sys;
     const ctx = {
@@ -120,10 +119,9 @@ export class FixSet extends Fix {
     this.sys.forces();
     this.runActions();
     this.sys.forcesCurrent();
-    if (this.reneighbor) this.nextReneighbor = this.sys.state.step + 1;
   }
 
-  /** The neighbor rebuild requested for the next step (reneighbor yes). */
+  /** No neighbor rebuild is requested, whatever rnflag says. */
   reneighborDue(_step: number): boolean {
     // As native LAMMPS does (src/fix_set.cpp at b332f28): end_of_step sets next_reneighbor, but the constructor never
     // sets force_reneighbor, so Neighbor::decide never consults it and rnflag 1 rebuilds nothing (measured: rnflag 0 and

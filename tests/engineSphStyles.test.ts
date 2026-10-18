@@ -76,7 +76,7 @@ describe('SPH pair, fix and compute styles', () => {
 
   it('pair sph/* with a newton off setting, an unknown sph style, and fix sph on another atom style are errors', async () => {
     const a = newSession();
-    expect(await errorOf(a.session, a.events, `${TWO_ATOMS('12')}pair_style sph/lj\n`)).toMatch(/sph\/lj/);
+    expect(await errorOf(a.session, a.events, `${TWO_ATOMS('12')}pair_style sph/unknown\n`)).toMatch(/sph\/unknown/);
     const b = newSession();
     const head = 'units lj\natom_style atomic\ndimension 2\nregion box block -5 5 -5 5 -0.5 0.5\ncreate_box 1 box\nlattice sq 1.0\ncreate_atoms 1 box\nmass 1 1\n';
     expect(await errorOf(b.session, b.events, `${head}fix 1 all sph\n`)).toMatch(/Fix sph requires atom style sph/);

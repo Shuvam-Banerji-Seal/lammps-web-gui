@@ -134,6 +134,7 @@ export class Session {
   private newSystem(k = 0): System {
     const sys = new System(k === 0 ? this.io : this.replicaIo(k));
     sys.registries = { ...styleNames(), command: SUPPORTED_COMMANDS.slice() };
+    sys.commands = COMMANDS;
     sys.ff.pairThreads = pairThreadsOf(this.backend);
     sys.vars.partition = k;
     sys.replicaPeers = () => this.replicas;

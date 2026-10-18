@@ -1,7 +1,8 @@
 /**
- * src/engine-gpl/libm/sincos.ts reproduces the sin() and cos() of the native binary's C library (glibc 2.35, the IBM
- * accurate routines of s_sin.c, built without FMA contraction) bit for bit. The fixture holds native values written
- * with %.17g by a C program linked against that libm: 3000 arguments over angles of a few turns, 2 pi u, small
+ * src/engine-gpl/libm/sincos.ts reproduces the sincos() of the native binary's C library (glibc 2.35, the IBM accurate
+ * routines of s_sin.c, built without FMA contraction) bit for bit. The fixture holds native values written with %.17g
+ * by a C program linked against that libm, which computed sin(x) and cos(x) together (gcc merges them into sincos());
+ * sin() and cos() alone are the FMA builds, tests/engineLibmSinCosFma.test.ts: 3000 arguments over angles of a few turns, 2 pi u, small
  * values, the reduce_sincos range, the __branred range (up to 1e22), random doubles of either sign over the whole
  * exponent range and values in (-3, 3).
  */

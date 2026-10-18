@@ -26,6 +26,7 @@ import { exp as libmExp } from '../libm/exp';
 import { log as libmLog } from '../libm/log';
 import { pow as libmPow } from '../libm/pow';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sinFma } from '../libm/sincos_fma';
 
 /** pppm.cpp SMALL and LARGE (adjust_gewald). */
 const SMALL = 0.00001;
@@ -55,7 +56,7 @@ const GF_B2: number[][] = [
 /** math_special.cpp powsinxx: (sin x / x)^n by binary powering, 1 at x = 0. */
 const powsinxx = (x: number, n: number): number => {
   if (x === 0.0) return 1.0;
-  let yy = libmSin(x) / x;
+  let yy = sinFma(x) / x;
   let ww = 1.0;
   for (; n !== 0; n >>= 1, yy *= yy) if (n & 1) ww *= yy;
   return ww;

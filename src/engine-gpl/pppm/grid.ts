@@ -20,7 +20,7 @@ import { StyleError } from '../../engine/force/types';
 import { pppmKspaceError, type PppmGridRequest, type PppmGridResult } from '../../engine/force/kspace/pppm';
 import { isFFTSize } from '../../engine/force/fft';
 import { log as libmLog } from '../libm/log';
-import { sin as libmSin } from '../libm/sincos';
+import { sinFma } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 
 const LARGE = 10000;
@@ -31,7 +31,7 @@ const MY_4PI = 12.56637061435917295384;
 /** math_special.h powsinxx: (sin x / x)^n by binary powering, 1 at x = 0. */
 const powsinxx = (x: number, n: number): number => {
   if (x === 0) return 1;
-  let ww = libmSin(x) / x;
+  let ww = sinFma(x) / x;
   let yy = 1;
   for (; n !== 0; n >>= 1, ww *= ww) if (n & 1) yy *= ww;
   return yy;

@@ -292,9 +292,12 @@ describe(`oracle parity with native LAMMPS (shard ${shard + 1}/${ORACLE_SHARDS})
           const a = mine[i], b = fx.atoms[i];
           expect(a.id).toBe(b.id);
           expect(a.type).toBe(b.type);
+          // a force component is judged against the atom's force (its largest native component): a component that
+          // cancels to nearly zero in a large force (by symmetry) carries the rounding of the large ones
+          const fscale = Math.max(1, Math.abs(b.fx ?? 0), Math.abs(b.fy ?? 0), Math.abs(b.fz ?? 0));
           for (const c of ['xu', 'yu', 'zu', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz']) {
             if (o.atomskip.has(c)) continue;
-            const scale = Math.max(1, Math.abs(b[c]));
+            const scale = c[0] === 'f' ? fscale : Math.max(1, Math.abs(b[c]));
             const d = Math.abs(a[c] - b[c]) / scale;
             if (d > worst) { worst = d; where = `atom ${b.id} ${c}: engine ${a[c]} vs LAMMPS ${b[c]}`; }
           }

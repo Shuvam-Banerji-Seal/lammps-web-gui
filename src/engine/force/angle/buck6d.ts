@@ -2,7 +2,7 @@ import { SimpleBonded, atomIndex, termDelta } from '../bonded_util';
 import { angleTerm } from './harmonic';
 import { PairBuck6dCoulGauss } from '../pair/buck6d_gauss';
 import { fmtCoeff, parseInt_, parseNum } from '../util';
-import { StyleError, type BondedCompute, type StyleContext } from '../types';
+import { StyleError, addPairCentroid, type BondedCompute, type StyleContext } from '../types';
 import type { CharmmLink } from '../dihedral/charmm';
 import { libm } from '../../libm';
 
@@ -104,8 +104,12 @@ export class AngleCosineBuck6d extends SimpleBonded {
       }
       const w = [dk[0] * fk[0], dk[1] * fk[1], dk[2] * fk[2], dk[0] * fk[1], dk[0] * fk[2], dk[1] * fk[2]];
       for (let q = 0; q < 6; q++) bc.virial[q] += w[q];
-      if (bc.eatom) { bc.eatom[i] += v.e / 2; bc.eatom[k] += v.e / 2; }
-      if (bc.vatom) for (const at of [i, k]) for (let q = 0; q < 6; q++) bc.vatom[6 * at + q] += w[q] / 2;
+      // native tallies this 1-3 pair through force->pair->ev_tally (angle_cosine_buck6d.cpp): the pair term's per-atom
+      // energy and virial, half to each atom
+      const ea = bc.pairEatom ?? bc.eatom, va = bc.pairVatom ?? bc.vatom;
+      if (ea) { ea[i] += v.e / 2; ea[k] += v.e / 2; }
+      if (va) for (const at of [i, k]) for (let q = 0; q < 6; q++) va[6 * at + q] += w[q] / 2;
+      if (bc.cvatom && !bc.pairVatom) addPairCentroid(bc.cvatom, i, k, w);
     }
     bc.acc.eangle += e;
     bc.acc.evdwl += evdw;

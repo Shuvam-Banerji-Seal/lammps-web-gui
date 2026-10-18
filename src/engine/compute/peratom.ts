@@ -235,6 +235,161 @@ export class ComputeStressAtom extends Compute {
   }
 }
 
+/**
+ * Pair styles that do not support compute centroid/stress/atom: native sets centroidstressflag = CENTROID_NOTAVAIL in
+ * their constructors (or a base class does), at b332f28 (many-body potentials, granular, reaxff, ...).
+ */
+const CENTROID_NOTAVAIL_PAIRS = new Set([
+  'adp', 'aip/water/2dm', 'airebo', 'airebo/bc', 'airebo/morse', 'atm', 'comb', 'comb3', 'drip', 'edip', 'edip/multi',
+  'eim', 'extep', 'gran/hertz/history', 'gran/hooke', 'gran/hooke/history', 'granular', 'granular/superellipsoid', 'gw',
+  'gw/zbl', 'ilp/graphene/hbn', 'ilp/tmd', 'kolmogorov/crespi/full', 'kolmogorov/crespi/z', 'lcbop', 'lebedeva/z',
+  'meam', 'meam/ms', 'meam/spline', 'meam/sw/spline', 'mesocnt', 'mesocnt/viscous', 'mliap', 'nb3b/harmonic',
+  'nb3b/screened', 'pod', 'polymorphic', 'quip', 'reaxff', 'rebo', 'rebomos', 'saip/metal', 'saip/metal/tmd', 'snap',
+  'surf/granular', 'sw', 'sw/angle/table', 'sw/mod', 'tersoff', 'tersoff/mod', 'tersoff/mod/c', 'tersoff/table',
+  'tersoff/zbl', 'threebody/table', 'vashishta', 'vashishta/table',
+]);
+/** Fixes with a per-atom virial that native marks CENTROID_NOTAVAIL (fix_rigid.cpp and its NH variants, fix_cmap.cpp, ...). */
+const CENTROID_NOTAVAIL_FIXES = new Set([
+  'rigid', 'rigid/nve', 'rigid/nvt', 'rigid/npt', 'rigid/nph', 'cmap', 'amoeba/bitorsion', 'amoeba/pitorsion', 'qmmm/xtb',
+]);
+
+/*
+ * compute ID group-ID centroid/stress/atom temp-ID keyword ... — docs.lammps.org/compute_stress_atom.html:
+ * "Define a computation that computes per-atom stress tensor for each atom in a group. In case of compute
+ * stress/atom, the tensor for each atom is symmetric with 6 components and is stored as a 6-element vector [...] In
+ * case of compute centroid/stress/atom, the tensor for each atom is asymmetric with 9 components and is stored as a
+ * 9-element vector in the following order: xx, yy, zz, xy, xz, yz, yx, zx, zy." "For the centroid/stress/atom
+ * compute, the 2-body contribution to the stress tensor is the same as with the stress/atom compute [...] The
+ * contributions of the many-body interactions [...] to atom I are computed as the centroid of the interaction."
+ * The keywords and units are those of stress/atom.
+ *
+ * As native LAMMPS does (src/compute_centroid_stress_atom.cpp at b332f28): pair, bond, kspace and fix terms that are
+ * CENTROID_SAME use the per-atom virial with yx zx zy copied from xy xz yz; angles, dihedrals and impropers tally
+ * (r_a - r_0) (x) f_a about each term's centroid (ForceField.cvatomTerm). The native refusals: "Pair style does not
+ * support compute centroid/stress/atom", the same for KSpace (every kspace style) and "Fix X does not support ...".
+ * A bonded style of the engine that does not tally the centroid virial is refused by name (its centroid sum would
+ * not match its virial), never left out.
+ */
+export class ComputeCentroidStressAtom extends Compute {
+  readonly style = 'centroid/stress/atom';
+  tempId: string | null;
+  private readonly terms: Set<string>;
+
+  constructor(sys: System, id: string, group: string, args: string[]) {
+    super(sys, id, group, args);
+    if (args.length < 1) throw new StyleError('Illegal compute centroid/stress/atom command');
+    this.tempId = args[0] === 'NULL' ? null : args[0];
+    if (this.tempId) {
+      const c = sys.computes.find((x) => x.id === this.tempId);
+      if (!c) throw new StyleError(`Could not find compute centroid/stress/atom temperature ID ${this.tempId}`);
+      if (!c.tempFlag) throw new StyleError('Compute centroid/stress/atom temperature ID does not compute temperature');
+    }
+    const rest = args.slice(1);
+    for (const a of rest) {
+      if (!(STRESS_KEYWORDS as readonly string[]).includes(a)) throw new StyleError('Illegal compute centroid/stress/atom command');
+    }
+    const expanded = rest.includes('virial') ? [...rest.filter((k) => k !== 'virial'), ...VIRIAL_TERMS] : rest;
+    this.terms = new Set(expanded.length ? expanded : ['ke', ...VIRIAL_TERMS]);
+    this.peratomFlag = true;
+    this.sizePeratomCols = 9;
+    this.needsVatom = true;
+    this.needsCvatom = true;
+  }
+
+  init(): void {
+    const sys = this.sys;
+    if (this.tempId && !sys.computes.some((c) => c.id === this.tempId)) {
+      throw new StyleError(`Could not find compute centroid/stress/atom temperature ID ${this.tempId}`);
+    }
+    const ff = sys.ff;
+    if (this.terms.has('pair') && ff.pair) {
+      const hybridSubs = (ff.pair as { subs?: { style: { name: string } }[] }).subs;
+      const subs = hybridSubs ? hybridSubs.map((x) => x.style.name) : [ff.pair.name];
+      if (subs.some((n) => CENTROID_NOTAVAIL_PAIRS.has(n))) throw new StyleError('Pair style does not support compute centroid/stress/atom');
+    }
+    if (this.terms.has('kspace') && ff.kspace) throw new StyleError('KSpace style does not support compute centroid/stress/atom');
+    if (this.terms.has('fix')) {
+      for (const f of sys.fixes) {
+        if (f.thermoVirial && CENTROID_NOTAVAIL_FIXES.has(f.style)) throw new StyleError(`Fix ${f.style} does not support compute centroid/stress/atom`);
+      }
+    }
+  }
+
+  protected computePeratom(): void {
+    const sys = this.sys;
+    const s = sys.state;
+    const n = s.n;
+    const v = s.v;
+    sys.peratomEnergy();
+    const ff = sys.ff;
+    const out = new Float64Array(9 * n);
+    // CENTROID_SAME terms: the per-atom virial, yx zx zy = xy xz yz
+    const same = new Float64Array(6 * n);
+    for (const t of ['pair', 'bond'] as const) {
+      if (!this.terms.has(t)) continue;
+      const arr = ff.vatomTerm[t];
+      if (arr) for (let k = 0; k < 6 * n; k++) same[k] += arr[k];
+    }
+    if (this.terms.has('fix')) {
+      for (const f of sys.fixes) {
+        if (!f.thermoVirial) continue;
+        if (f.virialAtom) { f.virialAtom(same); continue; }
+        for (let c = 0; c < 6; c++) {
+          if (f.virial[c] !== 0) throw new StyleError(`compute ${this.id} (centroid/stress/atom): fix ${f.id} (${f.style}) has a virial but no per-atom virial in this engine`);
+        }
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      for (let c = 0; c < 6; c++) out[9 * i + c] += same[6 * i + c];
+      out[9 * i + 6] += same[6 * i + 3]; out[9 * i + 7] += same[6 * i + 4]; out[9 * i + 8] += same[6 * i + 5];
+    }
+    // centroid terms
+    const styleOf = { angle: ff.angle, dihedral: ff.dihedral, improper: ff.improper } as const;
+    for (const t of ['angle', 'dihedral', 'improper'] as const) {
+      if (!this.terms.has(t) || !styleOf[t]) continue;
+      const vat = ff.vatomTerm[t], cv = ff.cvatomTerm[t];
+      if (!vat) continue;
+      // the centroid virial of a term sums to its virial: a style that does not tally it shows a mismatch
+      const sv = [0, 0, 0, 0, 0, 0], sc = [0, 0, 0, 0, 0, 0];
+      let scale = 0;
+      for (let i = 0; i < n; i++) {
+        for (let c = 0; c < 6; c++) { sv[c] += vat[6 * i + c]; scale += Math.abs(vat[6 * i + c]); }
+        if (cv) {
+          for (let c = 0; c < 3; c++) sc[c] += cv[9 * i + c];
+          for (let c = 3; c < 6; c++) sc[c] += 0.5 * (cv[9 * i + c] + cv[9 * i + c + 3]);
+        }
+      }
+      let csum = 0;
+      if (cv) for (let k = 0; k < 9 * n; k++) csum += Math.abs(cv[k]);
+      const off = sv.some((x, c) => Math.abs(x - sc[c]) > 1e-8 * (scale + 1e-300));
+      if (scale > 0 && (!cv || csum === 0 || off)) {
+        throw new StyleError(`compute ${this.id} (centroid/stress/atom): ${t}_style ${styleOf[t]!.name} does not tally the per-atom centroid virial in the browser engine`);
+      }
+      if (cv) for (let k = 0; k < 9 * n; k++) out[k] += cv[k];
+    }
+    // atoms outside the group: zero (after all contributions, as native does after the reverse communication)
+    for (let i = 0; i < n; i++) if (!(s.mask[i] & this.groupBit)) out.fill(0, 9 * i, 9 * i + 9);
+    if (this.terms.has('ke')) {
+      const temp = this.tempId ? sys.compute(this.tempId) : null;
+      if (temp && temp.hasBias()) { temp.computeBias(); temp.removeBiasAll(); }
+      for (let i = 0; i < n; i++) {
+        if (!(s.mask[i] & this.groupBit)) continue;
+        const m = s.units.mvv2e * massOf(s, i);
+        const vx = v[3 * i], vy = v[3 * i + 1], vz = v[3 * i + 2];
+        const o = 9 * i;
+        out[o] += m * vx * vx; out[o + 1] += m * vy * vy; out[o + 2] += m * vz * vz;
+        out[o + 3] += m * vx * vy; out[o + 4] += m * vx * vz; out[o + 5] += m * vy * vz;
+        out[o + 6] += m * vy * vx; out[o + 7] += m * vz * vx; out[o + 8] += m * vz * vy;
+      }
+      if (temp && temp.hasBias()) temp.restoreBiasAll();
+    }
+    // "convert to stress*volume units = -pressure*volume" (native: nktv2p = -force->nktv2p)
+    const nktv2p = -s.units.nktv2p;
+    for (let k = 0; k < out.length; k++) out[k] *= nktv2p;
+    this.arrayAtom = out;
+  }
+}
+
 /*
  * compute ID group-ID property/atom input1 input2 ... —
  * docs.lammps.org/compute_property_atom.html:

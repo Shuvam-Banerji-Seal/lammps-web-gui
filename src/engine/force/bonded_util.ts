@@ -1,4 +1,4 @@
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from './types';
+import { Bonded, StyleError, termCentroid, typeBounds, type BondedCompute, type StyleContext } from './types';
 import { fmtCoeff, parseNum } from './util';
 
 /*
@@ -215,4 +215,5 @@ export const applyDihedral = (bc: BondedCompute, atoms: number[], dEdphi: number
   for (let c = 0; c < 6; c++) v[c] += w[c];
   if (bc.eatom) for (const i of atoms) bc.eatom[i] += e / 4;
   if (bc.vatom) for (const i of atoms) for (let c = 0; c < 6; c++) bc.vatom[6 * i + c] += w[c] / 4;
+  if (bc.cvatom) termCentroid(bc.cvatom, atoms, rel, fk);
 };

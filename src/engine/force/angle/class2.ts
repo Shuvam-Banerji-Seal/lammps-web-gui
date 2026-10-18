@@ -1,5 +1,6 @@
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../types';
 import { atomIndex, delta } from '../bonded_util';
+import { tallyAngle } from './harmonic';
 import { fmtCoeff, parseNum } from '../util';
 import { libm } from '../../libm';
 
@@ -172,19 +173,7 @@ export class AngleClass2 extends Bonded {
         f1[d] = D * (d2[d] / (r1n * r2n) - (c * d1[d]) / (r1n * r1n)) - (dEdr1 * d1[d]) / r1n;
         f3[d] = D * (d1[d] / (r1n * r2n) - (c * d2[d]) / (r2n * r2n)) - (dEdr2 * d2[d]) / r2n;
       }
-      const f = bc.f;
-      for (let d = 0; d < 3; d++) {
-        f[3 * i + d] += f1[d];
-        f[3 * j + d] -= f1[d] + f3[d];
-        f[3 * k + d] += f3[d];
-      }
-      const w = [
-        d1[0] * f1[0] + d2[0] * f3[0], d1[1] * f1[1] + d2[1] * f3[1], d1[2] * f1[2] + d2[2] * f3[2],
-        d1[0] * f1[1] + d2[0] * f3[1], d1[0] * f1[2] + d2[0] * f3[2], d1[1] * f1[2] + d2[1] * f3[2],
-      ];
-      for (let q = 0; q < 6; q++) bc.virial[q] += w[q];
-      if (bc.eatom) { const third = e1 / 3; bc.eatom[i] += third; bc.eatom[j] += third; bc.eatom[k] += third; }
-      if (bc.vatom) for (const at of [i, j, k]) for (let q = 0; q < 6; q++) bc.vatom[6 * at + q] += w[q] / 3;
+      tallyAngle(bc, i, j, k, e1, f1, f3, d1, d2);
     }
     bc.acc.eangle += e;
   }

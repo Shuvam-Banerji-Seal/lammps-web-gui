@@ -511,6 +511,19 @@ export interface BondedCompute {
   eatom: Float64Array | null;
   vatom: Float64Array | null;
   /**
+   * The per-atom centroid virial of this term (compute centroid/stress/atom), 9 values per atom (xx yy zz xy xz yz
+   * yx zx zy), or null. A term over m atoms gives each atom (r_a - r_0) (x) f_a with r_0 the term's centroid, as
+   * native Angle/Dihedral/Improper::ev_tally do with cvflag_atom; a pairwise part gives the per-atom virial halves.
+   */
+  cvatom?: Float64Array | null;
+  /**
+   * Per-atom energy and virial of the pairwise parts a bonded style tallies through the pair style (the CHARMM 1-4
+   * pair, the 1-3 pair of angle cosine/buck6d), as native does with force->pair->ev_tally: they belong to the pair
+   * term of pe/atom and stress/atom (and to its centroid virial). Null or absent: the style's own arrays.
+   */
+  pairEatom?: Float64Array | null;
+  pairVatom?: Float64Array | null;
+  /**
    * The periodic copies of the owned atoms within the ghost cutoff (from the
    * neighbor build). Bonded terms take the copy nearest to their owning atom
    * (bonded_util.ts `delta`); without this table the minimum image is used.
@@ -528,6 +541,37 @@ export interface BondedCompute {
  * relative to the first atom (r_k - r_0) . f_k, which equals the
  * pairwise-sum form for internal forces that sum to zero.
  */
+/** Adds a (x) f to atom a's centroid virial (9 values: xx yy zz xy xz yz yx zx zy). */
+export const addCentroid = (cv: Float64Array, a: number, ax: number, ay: number, az: number, fx: number, fy: number, fz: number): void => {
+  const o = 9 * a;
+  cv[o] += ax * fx; cv[o + 1] += ay * fy; cv[o + 2] += az * fz;
+  cv[o + 3] += ax * fy; cv[o + 4] += ax * fz; cv[o + 5] += ay * fz;
+  cv[o + 6] += ay * fx; cv[o + 7] += az * fx; cv[o + 8] += az * fy;
+};
+
+/**
+ * A pairwise part of a bonded term (CHARMM 1-4, an angle's 1-3 pair): half of its 6-value virial w to each of i and j,
+ * as a pair style's per-atom virial (native CENTROID_SAME: yx zx zy copy xy xz yz).
+ */
+export const addPairCentroid = (cv: Float64Array, i: number, j: number, w: readonly number[]): void => {
+  for (const a of [i, j]) {
+    const o = 9 * a;
+    for (let c = 0; c < 6; c++) cv[o + c] += 0.5 * w[c];
+    cv[o + 6] += 0.5 * w[3]; cv[o + 7] += 0.5 * w[4]; cv[o + 8] += 0.5 * w[5];
+  }
+};
+
+/** The centroid virial of an m-body term: rel (3 per atom, any common origin) and the forces fk on the atoms. */
+export const termCentroid = (cv: Float64Array, atoms: readonly number[], rel: readonly number[], fk: readonly number[]): void => {
+  const m = atoms.length;
+  let cx = 0, cy = 0, cz = 0;
+  for (let k = 0; k < m; k++) { cx += rel[3 * k]; cy += rel[3 * k + 1]; cz += rel[3 * k + 2]; }
+  cx /= m; cy /= m; cz /= m;
+  for (let k = 0; k < m; k++) {
+    addCentroid(cv, atoms[k], rel[3 * k] - cx, rel[3 * k + 1] - cy, rel[3 * k + 2] - cz, fk[3 * k], fk[3 * k + 1], fk[3 * k + 2]);
+  }
+};
+
 export const bondedVirial = (
   bc: BondedCompute, atoms: readonly number[], rel: readonly number[], fk: readonly number[], e: number,
 ): void => {
@@ -544,6 +588,7 @@ export const bondedVirial = (
   const m = atoms.length;
   if (bc.eatom) for (const i of atoms) bc.eatom[i] += e / m;
   if (bc.vatom) for (const i of atoms) for (let c = 0; c < 6; c++) bc.vatom[6 * i + c] += w[c] / m;
+  if (bc.cvatom) termCentroid(bc.cvatom, atoms, rel, fk);
 };
 
 /** Base for bond, angle, dihedral and improper styles. */

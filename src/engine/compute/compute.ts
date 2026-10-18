@@ -58,6 +58,8 @@ export abstract class Compute {
   /** Needs per-atom energy / virial from the force field on the steps it is invoked. */
   needsEatom = false;
   needsVatom = false;
+  /** Needs the per-atom centroid virial of the bonded terms (compute centroid/stress/atom). */
+  needsCvatom = false;
 
   scalar = 0;
   vector = new Float64Array(0);

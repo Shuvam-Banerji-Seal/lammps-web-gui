@@ -1,0 +1,36 @@
+# oracle: centroid/stress/atom, stress/atom and pe/atom with dihedral_style charmmfsw: the 1-4 pair goes through force->pair->ev_tally (half to each atom, CENTROID_SAME), the torsion about the four-atom centroid
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 6.5e-14, atoms 1.5e-14; the per-atom pe, stress and centroid dump agrees within 1e-10.
+# oracle-inputs: w13dihcharmm_chains.data
+# oracle-files: w247cs_dihcharmm.dump
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-10 filerel=1e-10
+units           real
+atom_style      full
+read_data       w13dihcharmm_chains.data
+special_bonds   charmm
+bond_style      harmonic
+bond_coeff      1 300.0 1.5
+angle_style     harmonic
+angle_coeff     1 50.0 110.0
+dihedral_style  charmmfsw
+dihedral_coeff  1 0.2 1 180 1.0
+dihedral_coeff  2 1.8 1 0 1.0
+dihedral_coeff  3 3.1 2 180 0.5
+pair_style      lj/charmmfsw/coul/charmmfsh 8.0 10.0 9.0
+pair_coeff      1 1 0.1 3.0 0.05 3.5
+pair_coeff      2 2 0.15 3.2 0.1 3.1
+pair_coeff      3 3 0.12 3.1 0.08 3.3
+timestep        0.5
+velocity        all create 300.0 4928459 units box
+fix             1 all nve
+compute         pe all pe/atom
+compute         st all stress/atom NULL
+compute         cs all centroid/stress/atom NULL
+compute         csv all centroid/stress/atom NULL virial
+compute         csa all centroid/stress/atom NULL angle dihedral improper
+compute         sum all reduce sum c_cs[1] c_cs[2] c_cs[3] c_cs[4] c_cs[5] c_cs[6] c_cs[7] c_cs[8] c_cs[9] c_st[4] c_pe
+thermo_style    custom step pe press c_sum[1] c_sum[2] c_sum[3] c_sum[4] c_sum[5] c_sum[6] c_sum[7] c_sum[8] c_sum[9] c_sum[10] c_sum[11]
+thermo_modify   format float %.15g norm no
+thermo          10
+dump            d all custom 10 w247cs_dihcharmm.dump id c_pe c_st[1] c_st[4] c_st[6] c_cs[1] c_cs[2] c_cs[3] c_cs[4] c_cs[5] c_cs[6] c_cs[7] c_cs[8] c_cs[9] c_csv[4] c_csv[7] c_csa[1] c_csa[5] c_csa[9]
+dump_modify     d sort id format float %.15g
+run             20

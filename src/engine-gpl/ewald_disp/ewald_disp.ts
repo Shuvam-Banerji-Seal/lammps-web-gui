@@ -366,7 +366,7 @@ export class KSpaceEwaldDisp extends KSpaceBase {
     const g2_6 = this.gEwald6 * this.gEwald6;
     const g6 = g2_6 * g2_6 * g2_6;
     value += ((this.b2 * g6) / Math.sqrt(natoms * this.volume)) * Math.sqrt(prd / (2.0 * MY_PI * km)) * exp((-MY_PI * MY_PI * km * km) / (g2_6 * prd * prd));
-    value += ((8.0 * MY_PI * this.M2) / this.volume) * g * Math.sqrt((2.0 * MY_PI * km * km * km) / (15.0 * natoms)) * exp(-pow((MY_PI * km) / (g * prd), 2.0));
+    value += ((8.0 * MY_PI * this.M2) / this.volume) * g * Math.sqrt((2.0 * MY_PI * km * km * km) / (15.0 * natoms)) * exp(-(((MY_PI * km) / (g * prd)) * ((MY_PI * km) / (g * prd)))); // ewald_disp.cpp: pow(..., 2.0) is a product in the native binary (gcc folds a literal 2.0)
     return value;
   }
 

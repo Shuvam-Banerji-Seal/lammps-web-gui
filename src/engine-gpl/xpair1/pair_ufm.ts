@@ -11,7 +11,6 @@ import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
-import { pow } from '../libm/pow';
 import { exp } from '../libm/exp';
 import { log } from '../libm/log';
 import { setPairRange, resetSetCutoffs, table, mirror, mixDistance, mixEnergy } from './common';
@@ -62,11 +61,13 @@ export class PairUFM extends Pair {
     const nt = this.ntypes + 1;
     const eps = p.get('epsilon', i, j), sig = p.get('sigma', i, j), cut = p.get('cut', i, j);
     const k = i * nt + j;
-    this.uf1[k] = 2.0 * eps / pow(sig, 2.0);
-    this.uf2[k] = 1.0 / pow(sig, 2.0);
+    // pair_ufm.cpp init_one: pow(sigma,2.0) is sigma*sigma in the native binary (gcc folds a literal 2.0)
+    this.uf1[k] = 2.0 * eps / (sig * sig);
+    this.uf2[k] = 1.0 / (sig * sig);
     this.uf3[k] = eps;
     if (this.shift) {
-      const ratio = pow(cut / sig, 2.0);
+      const cs = cut / sig;
+      const ratio = cs * cs;
       this.offset[k] = -eps * log(1.0 - exp(-ratio));
     } else this.offset[k] = 0.0;
     for (const t of [this.uf1, this.uf2, this.uf3, this.offset]) mirror(t, nt, i, j);

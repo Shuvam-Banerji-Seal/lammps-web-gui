@@ -246,7 +246,8 @@ export class PairGW extends Pair {
     else if (tmp < -EXP_LIMIT) exDelr = 0.0;
     else exDelr = libmExp(tmp);
     let exDelrD: number;
-    if (p.powermint === 3) exDelrD = 3.0 * libmPow(p.lam3, 3.0) * libmPow(rij - rik, 2.0) * exDelr;
+    // pair_gw.cpp: pow(rij-rik,2.0) is (rij-rik)*(rij-rik) in the native binary (gcc folds a literal 2.0); pow(lam3,3.0) is a call
+    if (p.powermint === 3) exDelrD = 3.0 * libmPow(p.lam3, 3.0) * ((rij - rik) * (rij - rik)) * exDelr;
     else exDelrD = p.lam3 * exDelr;
     const cosTheta = rijHat[0] * rikHat[0] + rijHat[1] * rikHat[1] + rijHat[2] * rikHat[2];
     const gijk = this.gwGijk(cosTheta, p);
@@ -519,7 +520,8 @@ export class PairGWZBL extends PairGW {
     const expo = libmExp(-p.lam1 * r);
     const fforceGw = p.biga * expo * (fcd - fc * p.lam1);
     const engGw = fc * p.biga * expo;
-    const esq = libmPow(this.globalE, 2.0);
+    // pair_gw_zbl.cpp: pow(global_e,2.0) is global_e*global_e in the native binary (gcc folds a literal 2.0)
+    const esq = this.globalE * this.globalE;
     const aIJ = (0.8854 * this.globalA0) / (libmPow(p.Z_i, 0.23) + libmPow(p.Z_j, 0.23));
     const premult = (p.Z_i * p.Z_j * esq) / (4.0 * MY_PI * this.globalEpsilon0);
     const rOvA = r / aIJ;

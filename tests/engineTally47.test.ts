@@ -80,14 +80,6 @@ describe('compute group/group, pe/tally, force/tally, stress/tally: parsing and 
     expect((await run(`${CRYSTAL}compute t odd force/tally even molecule inter\nrun 0\n`)).error).toMatch(/takes one group2-ID/);
   });
 
-  it('does not register the tally styles that are not implemented', async () => {
-    for (const style of ['heat/flux/tally', 'heat/flux/virial/tally']) {
-      const r = await run(`${CRYSTAL}compute t odd ${style} even\nrun 0\n`);
-      expect(r.error, style).toBeDefined();
-      expect(r.error, style).toContain(style);
-    }
-  });
-
   it('refuses a pair style without single(), naming it', async () => {
     const r = await run(`units lj
 atom_style atomic

@@ -11,7 +11,6 @@ export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[
   ],
   FIXES: [
     'filter/corotate', // engine-gpl/registry/filtercorotate.ts (refused: respa fix hooks missing)
-    'graphics/isosurface', // engine-gpl/registry/graphics.ts (refused: the reason is in the error)
   ],
   COMPUTES: [
   ],

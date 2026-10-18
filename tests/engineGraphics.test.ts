@@ -223,8 +223,8 @@ describe('dump image axes (dump_image.cpp axes block)', () => {
 });
 
 describe('graphics fixes and dump image keywords that are refused by name', () => {
-  it('graphics/isosurface is refused by name', async () => {
-    await expect(run(scene('create_atoms 1 single 5 5 5', 'fix x all graphics/isosurface 1', ''))).rejects.toThrow('fix graphics/isosurface is not supported');
+  it('graphics/isosurface checks its arguments (ported; see engineGraphicsIsosurface.test.ts)', async () => {
+    await expect(run(scene('create_atoms 1 single 5 5 5', 'fix x all graphics/isosurface 1', ''))).rejects.toThrow(/graphics\/isosurface command: missing argument/);
   });
 
   it('graphics/objects refuses polygonal cones (progbar is drawn, see engineGraphics2Render.test.ts)', async () => {

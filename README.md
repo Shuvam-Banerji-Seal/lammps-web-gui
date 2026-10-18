@@ -47,7 +47,7 @@ The notebook's engine is written in TypeScript for the browser. Its results are 
 - ***Tour*** *— the Script Builder, the CMake compiler helper, the Structure Viewer and the MD Notebook.*
 - ***End card*** *— a QR code that opens the app, and the links to the app, the source and the LAMMPS manual.*
 
-*Cut with [Remotion](https://www.remotion.dev/) and three.js, scored with original synthesized music. The app footage is the production build captured in headless Chromium. The earlier 84-second film is still at [`public/videos/app-demo.mp4`](public/videos/app-demo.mp4).*
+*Cut with [Remotion](https://www.remotion.dev/) and three.js, scored with original synthesized music. The app footage is the production build captured in headless Chromium.*
 
 ## 📸 Screenshots
 
@@ -87,13 +87,7 @@ The notebook's engine is written in TypeScript for the browser. Its results are 
 
 ## 🎞️ Simulation videos — rendered in the browser
 
-The viewer plays **LAMMPS dump** (`.lammpstrj`/`.dump`) natively and exports **MP4/WebM at 60 fps** — no Python needed. The 15 s clip below was recorded **directly from this website** (canvas capture) at 896×752, stitched from the three GPU trajectories in [`introduction-to-molecular-simulation/simulations`](https://github.com/Shuvam-Banerji-Seal/introduction-to-molecular-simulation/tree/main/simulations):
-
-<video src="https://raw.githubusercontent.com/Shuvam-Banerji-Seal/lammps-web-gui/main/docs/videos/simulations_demo.mp4" controls muted loop playsinline width="100%" poster="docs/screenshots/viewer-dump-playback.png"></video>
-
-*Left to right: **01 Ideal Gas** (194 atoms × 200 frames, dilute LJ NVE 30×30) → **02 LJ Freezing** (431×200, NVT 3.0→0.3, FCC) → **03 Water-Ice** (431×250, NVT 2.0→0.01, deep quench). Load any `.lammpstrj` via drag-drop or **Paste data → DUMP → Visualize** → scrub with the playback bar (`P` / `,` / `.`, 2–30 fps) → **● Rec** to save MP4.*
-
-*Raw file: [`docs/videos/simulations_demo.mp4`](docs/videos/simulations_demo.mp4) (188 KB, H.264, 30 fps) — also at `/videos/simulations_demo.mp4` on the [live site](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/simulations_demo.mp4).*
+The viewer plays **LAMMPS dump** (`.lammpstrj`/`.dump`) natively and exports **MP4/WebM at 60 fps** — no Python needed. Load any `.lammpstrj` via drag-drop or **Paste data → DUMP → Visualize** → scrub with the playback bar (`P` / `,` / `.`, 2–30 fps) → **● Rec** to save MP4.
 
 ## ✨ Features
 

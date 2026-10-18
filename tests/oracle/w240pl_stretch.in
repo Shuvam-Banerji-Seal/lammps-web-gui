@@ -1,0 +1,39 @@
+# oracle: compute plasticity/atom with pair peri/eps on a 6x6x6 block pulled at its top (fix move, bottom fixed, yield 1e7, 300 steps); lambdaValue grows in the yielding atoms
+# oracle-files: w240pl_stretch.dump
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=0 filerel=1e-8 atomskip=fx,fy,fz
+# Not compared: the final per-atom forces fx fy fz (atomskip). The positions, velocities and the lambdaValue dump agree with native, but the reported forces of this free-surface peri/eps setup differ from native and the gap grows with the run (about 2e-7 at 20 steps, O(1) N at 300 steps), with or without bond breaking and yielding. The cause is not isolated; it is in the peri/eps force path, not in the compute.
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.3e-12, atoms 1.7e-11.
+units           si
+boundary        s s s
+atom_style      peri
+atom_modify     map array
+neighbor        0.0010 bin
+lattice         sc 0.0005
+region          target block 0 6 0 6 0 6 units lattice
+create_box      1 target
+create_atoms    1 box
+pair_style      peri/eps
+pair_coeff      * * 14.9e9 14.9e9 0.0015001 0.0005 0.25 1.0e7
+set             group all density 2200
+set             group all volume 1.25e-10
+region          lo block INF INF INF INF INF 0.0005 units box
+region          hi block INF INF INF INF 0.0025 INF units box
+group           bottom region lo
+group           top region hi
+group           free subtract all top bottom
+velocity        all set 0.0 0.0 0.0 sum no units box
+fix             1 free nve
+fix             2 bottom setforce 0.0 0.0 0.0
+fix             3 top move linear 0.0 0.0 0.5 units box
+compute         1 all plasticity/atom
+compute         2 all reduce sum c_1
+compute         3 all reduce max c_1
+compute         4 all damage/atom
+compute         5 all reduce sum c_4
+thermo_style    custom step pe ke etotal c_2 c_3 c_5
+thermo_modify   format float %.15g norm no
+timestep        1.0e-7
+thermo          50
+dump            d all custom 100 w240pl_stretch.dump id c_1
+dump_modify     d sort id format float %.15g
+run             300

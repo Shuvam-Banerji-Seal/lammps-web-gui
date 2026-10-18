@@ -1,5 +1,5 @@
 # oracle: pppm/dielectric with fix polarize/bem/icc (confined: two ions between two dielectric interfaces, PPPM/dielectric; examples/PACKAGES/dielectric in.confined.icc)
-# Measured with native LAMMPS (black box): G 0.24260797 and grid 12 12 36 match; the engine agrees to 3e-9 relative (elong, forces) under Node 24 and Node 20; the BEM/ICC sweeps are iterative (tol 1e-4).
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.3e-9, atoms 7.2e-13. G 0.24260797 and grid 12 12 36 match native. The thermo figure is cancellation, not a gap: only the two ions are charged, so elong (about -3.4e-6) is the k-space sum minus a self term of about 0.046 (2 g / sqrt(pi) over the mean epsilon 6.0), and it agrees with native to about 1e-14 absolute, 2e-13 of the self term (the same input without the polarize fix gives the same 2.7e-9 relative); the BEM/ICC sweeps are iterative (tol 1e-4).
 # The pressure columns check the pppm/dielectric virial: native sums the virial of both poisson() passes (scaled and unscaled charges) when the energy is computed (pppm_dielectric.cpp compute).
 # oracle-inputs: w71diel_confined.data
 # oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12

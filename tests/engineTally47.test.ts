@@ -75,9 +75,12 @@ describe('compute group/group, pe/tally, force/tally, stress/tally: parsing and 
     expect((await run(`${CRYSTAL}compute g odd group/group nosuch\nrun 0\n`)).error).toBeDefined();
   });
 
-  it('the tally computes take exactly one group2-ID and no keywords', async () => {
-    expect((await run(`${CRYSTAL}compute t odd pe/tally\nrun 0\n`)).error).toMatch(/takes one group2-ID/);
-    expect((await run(`${CRYSTAL}compute t odd force/tally even molecule inter\nrun 0\n`)).error).toMatch(/takes one group2-ID/);
+  it('the tally computes need the group2-ID and ignore words after it, as native', async () => {
+    // Measured with native LAMMPS: compute t odd pe/tally stops with Illegal compute pe/tally command: missing
+    // argument(s); compute t odd force/tally even molecule inter and pe/tally even foo run
+    expect((await run(`${CRYSTAL}compute t odd pe/tally\nrun 0\n`)).error).toMatch(/Illegal compute pe\/tally command: missing argument\(s\)/);
+    expect((await run(`${CRYSTAL}compute t odd pe/tally nosuch\nrun 0\n`)).error).toMatch(/Could not find compute pe\/tally second group ID nosuch/);
+    expect((await run(`${CRYSTAL}compute t odd force/tally even molecule inter\nrun 0\n`)).error).toBeUndefined();
   });
 
   it('refuses a pair style without single(), naming it', async () => {

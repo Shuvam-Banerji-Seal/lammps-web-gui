@@ -1,0 +1,24 @@
+# oracle: pair lj/pirani 2.5 (alpha 1, beta 2, gamma 1, rm 1, epsilon 1; explicit pairs, pair_modify shift yes), 216 atoms NVE 200 steps
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-13
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.7e-13, atoms 1.5e-14.
+units        lj
+boundary     p p p
+atom_style   atomic
+lattice      sc 0.5
+region       box block 0 6 0 6 0 6
+create_box   2 box
+create_atoms 1 box
+set          group all type/fraction 2 0.5 4321
+mass         * 1.0
+velocity     all create 1.0 4242
+timestep     0.002
+fix          1 all nve
+pair_style   lj/pirani 2.5
+pair_coeff   1 1 1.0 2.0 1.0 1.0 1.0
+pair_coeff   1 2 1.2 2.5 1.5 1.1 0.8
+pair_coeff   2 2 0.8 2.0 1.0 1.05 0.9 2.4
+pair_modify  shift yes
+thermo_style custom step pe evdwl ecoul elong ke press pxx pyy pzz pxy pxz pyz
+thermo_modify format float %.15g
+thermo       20
+run          200

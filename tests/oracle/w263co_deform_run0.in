@@ -1,0 +1,28 @@
+# oracle: run 0 after a run with fix deform x erate (w231co_lubricate_shear, then run 0 and run 3): with no steps native's fix deform has no box rate (fix_deform.cpp init: dhi_dt = dlo_dt = 0 when delt is 0), so the run 0 setup has no lubricate strain rate and compute temp/deform removes no streaming profile; the run 3 setup has both
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 9.1e-14, atoms 1.0e-14. Before the fix the run 0 row had press 9.1934 (native 9.1842) and c_td 25.3788 (native 25.3641, the plain temperature).
+# native: installed lmp (b332f28)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      sphere
+boundary        p p p
+lattice         sc 0.3
+region          box block 0 5 0 5 0 5
+create_box      1 box
+create_atoms    1 box
+set             type 1 diameter 0.6
+velocity        all create 1.0 4928 loop geom
+neighbor        1.0 bin
+neigh_modify    delay 0 every 1 check yes
+comm_modify     vel yes
+timestep        0.001
+fix             1 all nve/sphere
+fix             2 all deform 1 x erate 0.01 remap v
+pair_style      lubricate 1.5 1 0 0.61 2.5
+pair_coeff      * *
+compute         td all temp/deform
+thermo_style    custom step temp c_td press pxx pyy pzz pxy pxz pyz vol
+thermo_modify   format float %.15g
+thermo          5
+run             20
+run             0
+run             3

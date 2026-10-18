@@ -1,6 +1,7 @@
 # oracle: SPC/E water box (4500 atoms): fix shake tol 1e-4 iter 20, nve for 20 steps of 1 fs: thermo rows and the final per-atom state
 # oracle-inputs: w48sh_spce.data
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.8e-13, atoms 1.0e-10.
 # oracle-tolerance: measured with native LAMMPS (black box) against the engine: thermo rows agree to 3e-8 relative and the per-atom x, v, f at step 20 to 1.4e-6 relative (scale max(1,|value|)); the per-atom check of the harness is 100 times rel, so this passes at rel 1e-7; the per-step solve (each cluster iterates until its largest multiplier update times dt^2 ftm2v is within tol) is the source of the match, and the step-0 setup agrees to 1e-12
 units		real
 atom_style	full

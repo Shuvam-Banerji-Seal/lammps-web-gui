@@ -1,5 +1,6 @@
 # oracle: compute stress/tally and stress/atom sums on the cut-down SPC/E water of the TALLY example (lj/cut/coul/long + pppm)
-# oracle-compare: thermo=all rel=1e-7 abs=1e-10
+# oracle-compare: thermo=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.4e-14, atoms 8.7e-14.
 # oracle-inputs: w47ta_spce_cut.data
 units           real
 atom_style      full

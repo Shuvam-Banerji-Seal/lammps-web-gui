@@ -2,7 +2,8 @@
 # oracle: the hcp 2NN shell enters the pair term through the reference structure; the dimer energies are native values (black box): -1.84730458099145, -2.39157544625346, -2.45472709420057, -2.38541715171305, -2.17757451094947, -1.86490900513837, -1.51903398500094, -1.10709245104215, -0.863837835051403 eV
 # oracle-potentials: FeTiClibrary.meam
 # oracle-inputs: w47mn_ti.meam
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.8e-15, atoms 5.8e-15.
 clear
 units           metal
 atom_style      atomic

@@ -1,7 +1,7 @@
 # oracle: fix gle with the equilibrium C matrix (GPL port of EXTRA-FIX/fix_gle.cpp), 64-water tip4p box, cut down to 40 steps.
-# oracle-measured: thermo max rel 2.3e-9 (pe abs 1.2e-6); atoms max abs 8.1e-7 (fz), velocities abs 2.8e-10. The error is the pppm/tip4p base noise. Re-measured under Node 20 with a rolldown bundle: thermo rel 2.3e-9, atoms rel 4.5e-7 (same as Node 24).
+# oracle-measured: thermo max rel 2.3e-9 (pe abs 1.2e-6); atoms max abs 8.1e-7 (fz), velocities abs 2.8e-10. The error is the pppm/tip4p base noise. Re-measured under Node 20 with a rolldown bundle: thermo rel 2.3e-9, atoms rel 4.5e-7 (same as Node 24). (Earlier run, before tightening; the current measurement is in the Measured line below.)
 # oracle-inputs: data.h2o-smart smart.A
-# oracle-compare: rel=1e-6 abs=1e-5
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.3e-13, atoms 3.5e-12.
 units           real
 atom_style      full
 pair_style      lj/cut/tip4p/long 1 2 1 1 0.14714951 8

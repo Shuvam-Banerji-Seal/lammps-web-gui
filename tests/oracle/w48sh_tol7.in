@@ -1,6 +1,7 @@
 # oracle: SPC/E water box (4500 atoms, tally example data): fix shake tol 1e-7 iter 50 on the O-H bonds and H-O-H angle, run 0 (setup only): step-0 temp, pe, ecoul, evdwl, elong and press, and every per-atom position, velocity and force after setup
 # oracle-inputs: w48sh_spce.data
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.5e-13, atoms 8.1e-11.
 # oracle-tolerance: the setup solves (per-cluster update-size stop, see the fix shake header) match native to 1e-7 relative at tol 1e-7, where the earlier global setup sweeps were off by up to 3e-3 in the forces
 units		real
 atom_style	full

@@ -1,6 +1,7 @@
 # oracle: fix ilves on the four-atom chain of w50il_chain (run 0 only): the setup velocity projection, the setup constraint force and the virial, every per-atom position, velocity and force after setup
 # oracle-inputs: w50il_chain.data
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.2e-15, atoms 9.4e-14.
 units           real
 atom_style      bond
 read_data       w50il_chain.data

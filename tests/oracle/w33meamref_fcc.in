@@ -1,6 +1,7 @@
 # oracle: pair_style meam, one element with Cmin(1,1,1) = 0.70 (w33meamtrip_b1_lib.meam element A + w33meamref.meam, nn2 0): 3x3x3 fcc cells at re = 2.5 A with the second shell partly screened in the crystal, 0.05 A sinusoidal displacements, velocities from atom-style variables, fix nve, 40 steps of 0.001 ps
 # oracle-inputs: w33meamtrip_b1_lib.meam w33meamref.meam
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.9e-12, atoms 5.0e-13.
 units           metal
 atom_style      atomic
 boundary        p p p

@@ -1,5 +1,6 @@
 # oracle: cut-down examples/bpm/impact (spring): fcc plate and projectile, bonds by create_bonds many, bonds break under impact
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.0e-14, atoms 8.2e-15.
 units           lj
 dimension       3
 boundary        f f f

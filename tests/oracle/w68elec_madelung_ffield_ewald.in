@@ -1,6 +1,7 @@
 # oracle: ELECTRODE madelung in.madelung-ewald-ffield: fully periodic ewald/electrode, fix electrode/conp with ffield yes (finite-field efield along z from the potential difference), symm on
 # oracle-inputs: w68elec_au_elyt.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.5e-15, atoms 1.6e-13.
 # Measured with native LAMMPS (black box): step 0: pe=138.29901167 c_qbot=-0.287160231879 c_qtop=0.287160231879 f_conp[1]=0 f_conp[2]=1
 boundary        p p p
 kspace_style    ewald/electrode 1.0e-8

@@ -1,6 +1,7 @@
 # oracle: hybrid/overlay where type pair (1,3) has no lj/sdk coefficients (only coul/long)
 # oracle-inputs: w104cf_sds_small.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.4e-13, atoms 2.9e-15.
 units real
 atom_style full
 boundary p p p

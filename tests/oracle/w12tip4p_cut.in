@@ -1,5 +1,6 @@
 # oracle-inputs: w12tip4p_long_water.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-8
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.9e-14, atoms 7.7e-12.
 # oracle: 27 rigid TIP4P/2005 waters, lj/cut/tip4p/cut (no kspace); cutoff 4.5 A keeps every Coulomb pair below half the box (no periodic images); shake tolerance 1e-10
 units           real
 atom_style      full

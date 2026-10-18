@@ -1,7 +1,8 @@
 # oracle: eFF adamantane (ionized) minimization (examples/PACKAGES/eff/Auger-Adamantane in.adamantane_ionized.nve, minimize step cut down to 30 iterations, line quadratic)
 # oracle-inputs: w63eff_adamantane_ion.data
 # oracle-files: w63eff_adamantane_min_er.dump
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.2e-13, atoms 9.6e-11.
 units           electron
 newton          on
 boundary        f f f

@@ -1,7 +1,8 @@
 # oracle-inputs: w12tip4p_long_water.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-10
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.1e-13, atoms 5.3e-12.
 # oracle: pair_style hybrid/overlay of lj/cut/tip4p/long (O-O, O-H LJ and M-site Coulomb) and lj/cut (H-H LJ with eps 0.1 sigma 2.0, which is large enough to load the virial of the fdotr sub-style), 27 rigid TIP4P/2005 waters, pppm/tip4p, shake 1e-10, 50 steps; the fdotr lj/cut sub-style and the explicit TIP4P virial are summed by the hybrid
-# Measured max relative error, engine vs native (thermo rows of steps 0-50, final atoms; the atom v and f errors use a floor of 1e-3): pe 6.3e-8, evdwl 2.5e-8, ecoul 2.5e-9, press 1.3e-7; x 1.5e-8, v 2.5e-6, f 7.9e-6. The pure lj/cut/tip4p/long case w12tip4p_long gives pe 1.6e-8 and press 1.3e-7 on the same water, so the 1e-8 level is not reached by any TIP4P case here (SHAKE trajectory and PPPM sums). Sources: src/pair_hybrid.cpp at b332f28 (PairHybrid::compute), src/KSPACE/pair_lj_cut_tip4p_long.cpp.
+# Earlier measured max relative error (before tightening), engine vs native (thermo rows of steps 0-50, final atoms; the atom v and f errors use a floor of 1e-3): pe 6.3e-8, evdwl 2.5e-8, ecoul 2.5e-9, press 1.3e-7; x 1.5e-8, v 2.5e-6, f 7.9e-6. The pure lj/cut/tip4p/long case w12tip4p_long gives pe 1.6e-8 and press 1.3e-7 on the same water, so the 1e-8 level is not reached by any TIP4P case here (SHAKE trajectory and PPPM sums). Sources: src/pair_hybrid.cpp at b332f28 (PairHybrid::compute), src/KSPACE/pair_lj_cut_tip4p_long.cpp.
 units           real
 atom_style      full
 boundary        p p p

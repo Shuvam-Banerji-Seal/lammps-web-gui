@@ -1,6 +1,7 @@
 # oracle: pair_style meam, two-element B1 (rock salt) alloy with nn2 = 1 for all pairs (w38m2nn_lib.meam + w38m2nn_b1.meam, zbl 0, Cmin(1,1,1) = Cmin(2,2,2) = 0.7), 2x2x2 cells of 8 atoms (64 atoms), lattice constant 5.2 A = 2 re(1,2), 0.04 A sinusoidal displacement, fix nve, 50 steps of 0.001 ps
 # oracle-inputs: w38m2nn_lib.meam w38m2nn_b1.meam
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.9e-12, atoms 1.4e-13.
 units           metal
 atom_style      atomic
 variable        a equal 5.2

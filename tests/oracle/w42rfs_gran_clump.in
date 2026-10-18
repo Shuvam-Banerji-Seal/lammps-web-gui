@@ -1,4 +1,5 @@
-# oracle-compare: thermo=all atoms=all rel=1e-5 abs=1e-7
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 6.7e-14, atoms 5.8e-14.
 # oracle: two rigid clumps of three finite-size spheres collide through pair gran/hooke/history (contact mass is the body mass; per-atom contact torques enter the body torque), gravity, 6 free spheres; no contact at the run setup. rel 1e-5: the first contact step (281) differs from native by about 6e-9 in temp (also without friction, xmu 0), not yet explained; the difference grows to about 4e-8 in temp and 2e-6 in torque by step 300
 units           lj
 

@@ -1,5 +1,6 @@
 # oracle: fix rhok in metal units (force conversion to internal units), eight atoms, energy yes
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.1e-15, atoms 1.5e-16.
 units           metal
 atom_style      atomic
 atom_modify     map array

@@ -1,5 +1,6 @@
 # oracle: LJ fluid (fcc 0.8442, 864 atoms) with fix wall/flow along y, three walls in lattice units, 300 steps; thermo temp ke and reduce ave vy
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 8.1e-15, atoms 5.7e-12.
 units           lj
 atom_style      atomic
 lattice         fcc 0.8442

@@ -1,6 +1,7 @@
 # oracle: cut-down peptide (84 protein atoms of examples/PACKAGES/ilves/data.peptide, renumbered, no water) with fix ilves on the bonds of types 4 6 8 10 12 14 18 and the angles of type 31 (as in in.peptide-ilves), fix nve for 50 steps: thermo and every per-atom position, velocity and force (fix nvt is not used here: its first thermostat update differs from native, see the fix ilves header)
 # oracle-inputs: w50il_peptide.data
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.8e-12, atoms 4.7e-11.
 units           real
 atom_style      full
 pair_style      lj/charmm/coul/long 8.0 10.0 10.0

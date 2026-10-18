@@ -1,5 +1,6 @@
 # oracle: Widom atom insertion with kspace (full_energy auto-enabled) and a point charge
-# oracle-compare: rel=1e-5 (PPPM roundoff in the energy difference is amplified by the Boltzmann exponential)
+# oracle-compare: (was a 1e-5 relative bound: PPPM roundoff in the energy difference is amplified by the Boltzmann exponential; now measured thermo 4.0e-12, see below)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.0e-12, atoms 1.7e-15.
 units real
 atom_style charge
 boundary p p p

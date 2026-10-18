@@ -1,5 +1,6 @@
 # oracle-inputs: w12tip4p_long_water.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-8
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.3e-13, atoms 5.5e-12.
 # oracle: 27 rigid TIP4P/2005 waters, lj/cut/tip4p/long + pppm/tip4p, shake tolerance 1e-10 (the 1e-4 default differs from native at the 0.1 force level), gewald and mesh pinned to the native log
 units           real
 atom_style      full

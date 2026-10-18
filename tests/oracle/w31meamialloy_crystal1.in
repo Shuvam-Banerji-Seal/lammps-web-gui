@@ -1,7 +1,8 @@
 # oracle: pair_style meam, two-element disordered fcc alloy (w31meamialloy_lib.meam + w31meamialloy_1.meam, zbl 0, ialloy = 1), 2x2x2 cells of 4 atoms (32 atoms, A/B types interleaved), lattice constant 3.9 A, 0.04 A sinusoidal displacement, velocities from atom-style variables, fix nve, 40 steps of 0.001 ps
 # oracle: ialloy = 1 (docs.lammps.org/pair_meam.html: "0 = standard averaging", "1 = alternative averaging", "2 = no averaging of t (use single-element values)"); unlike the B1 reference the like neighbours of this disordered fcc alloy are not all screened, so every central atom mixes A and B partial densities
 # oracle-inputs: w31meamialloy_lib.meam w31meamialloy_1.meam
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 7.6e-14, atoms 4.4e-13.
 # oracle-tolerance: rel=1e-6 is needed for press only (the same offset as w12meam_fcc and w15meam_bcc).
 units           metal
 atom_style      atomic

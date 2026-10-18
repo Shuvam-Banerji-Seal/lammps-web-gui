@@ -1,7 +1,8 @@
 # oracle: pair_style meam, two-element CsCl (lattce(1,2) = b2) alloy (w37meam_lib.meam + w37meam_b2.meam, zbl 0, nn2 = 0), non-periodic clusters: A-B dimers at 2.6 A, at 2.2 A (B-A order) and at 2.4 A, and a B-A-B chain with bonds 3.0 and 3.3 A
 # oracle: the B2 pair term phi_AB = (2/8)(erose_AB - (F_A + F_B)/2) with the eight unlike neighbours of the CsCl reference (see meam_alloy.ts); the cluster energies are native values (black box)
 # oracle-inputs: w37meam_lib.meam w37meam_b2.meam
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.5e-15, atoms 3.5e-14.
 units           metal
 atom_style      atomic
 boundary        f f f

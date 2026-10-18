@@ -1,6 +1,7 @@
 # oracle: DRUDE ethylene glycol at step 0 (coul/tt with thole and kspace, no dynamics) (examples/PACKAGES/drude/ethylene_glycol/in.ethylene_glycol) cut down to 10 molecules, 40 steps; coul/tt and thole forces and energies at setup
 # oracle-inputs: w72drude_data.ethylene_glycol_10
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-10
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.8e-12, atoms 5.0e-10.
 # Measured with native LAMMPS (black box): setup energies and pressure agree to 1e-9 relative; per-atom forces to 1.6e-5 relative (pppm), so the atom tolerance is 1e-4. No dynamics, so this isolates the pair terms.
 
 units real

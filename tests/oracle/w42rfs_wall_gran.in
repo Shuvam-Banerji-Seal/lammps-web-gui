@@ -1,4 +1,5 @@
-# oracle-compare: thermo=all atoms=all rel=1e-3 abs=1e-4
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.1e-12, atoms 2.6e-14.
 # oracle: a rigid body of three finite-size spheres with spin falls onto a fix wall/gran zplane (the body mass replaces the particle mass in the wall contact), 4 free spheres. rel 1e-3: the friction torque on the body differs from native by about 1e-4 relative from the first contact (step 139); the same wall impact on free spheres matches to 1e-14, and the frictionless one to 1e-7, so the rigid-body contact detail is not yet explained
 units           lj
 comm_modify     vel yes

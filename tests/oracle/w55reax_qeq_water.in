@@ -1,7 +1,8 @@
 # oracle: ReaxFF water molecule with fix qeq/reaxff (charges from the pair extract, keyword reaxff; as the LAMMPS water example), 10 NVE steps
 # oracle-inputs: w55reax_water.data
 # oracle-potentials: ffield.reax.rdx
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-8
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.7e-15, atoms 8.7e-19.
 units           real
 atom_style      charge
 boundary        p p p

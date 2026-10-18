@@ -1,5 +1,6 @@
 # oracle: same physics as w38wflow_units_lattice but the walls in box units (units box, spacing 1.6796 times the lattice numbers), 150 steps
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 9.9e-15, atoms 2.1e-12.
 units           lj
 atom_style      atomic
 lattice         fcc 0.8442

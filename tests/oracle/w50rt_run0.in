@@ -1,6 +1,7 @@
 # oracle: SPC/E water box (4500 atoms): fix rattle tol 1e-4 iter 20, run 0 setup: thermo row and the setup per-atom state
 # oracle-inputs: w48sh_spce.data
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.4e-13, atoms 9.2e-11.
 units		real
 atom_style	full
 read_data	w48sh_spce.data

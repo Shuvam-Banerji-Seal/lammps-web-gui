@@ -1,5 +1,6 @@
 # oracle: pair_style momb 12.0 0.75 20.0 with three type pairs on a periodic 12-atom cell (metal units), mixed-type dimers in the cell, 50 steps of nve, pair_modify shift no
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.5e-15, atoms 1.9e-15.
 units           metal
 atom_style      atomic
 boundary        p p p

@@ -1,5 +1,6 @@
 # oracle: fix ti/spring (function 2) defined after a short run, with energy yes, forces vs native
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 8.0e-13, atoms 1.1e-14.
 units           lj
 atom_style      atomic
 lattice         fcc 0.9

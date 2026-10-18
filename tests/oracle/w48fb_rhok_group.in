@@ -1,5 +1,6 @@
 # oracle: fix rhok on a four-atom group of eight (N of rho_k is the group count), energy yes, a (1,1,0) vector
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.5e-15, atoms 4.3e-16.
 units           lj
 atom_style      atomic
 atom_modify     map array

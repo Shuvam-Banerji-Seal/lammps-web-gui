@@ -1,7 +1,8 @@
 # oracle-inputs: w109tip_ch4hyd.data
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-10
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 8.9e-12, atoms 3.3e-11.
 # oracle: examples/PACKAGES/fep/CH4hyd/fep01 cut down: methane in TIP4P water (1085 atoms), pair_style hybrid of lj/cut/coul/long and lj/cut/tip4p/long/soft (lambda 1), pppm/tip4p 1e-4, shake, NVE 40 steps; the fix adapt and compute fep parts are left out
-# Measured max relative error, engine vs native (5 thermo rows, final atoms; v and f floor 1e-3): etotal 7.2e-10, pe 2.4e-9, evdwl 2.1e-12, ecoul 1.7e-12, elong 8.1e-12, temp 1.7e-10, press 4.5e-8; x 4.9e-10, v 3.6e-8, f 8.7e-7. Sources: src/pair_hybrid.cpp at b332f28, src/FEP/pair_lj_cut_tip4p_long_soft.cpp.
+# Earlier measured max relative error (before tightening), engine vs native (5 thermo rows, final atoms; v and f floor 1e-3): etotal 7.2e-10, pe 2.4e-9, evdwl 2.1e-12, ecoul 1.7e-12, elong 8.1e-12, temp 1.7e-10, press 4.5e-8; x 4.9e-10, v 3.6e-8, f 8.7e-7. Sources: src/pair_hybrid.cpp at b332f28, src/FEP/pair_lj_cut_tip4p_long_soft.cpp.
 units           real
 boundary        p p p
 atom_style      full

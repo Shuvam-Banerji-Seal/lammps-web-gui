@@ -1,6 +1,7 @@
 # oracle: fix tmd on eight atoms with pair forces (positions, velocities and thermo after a targeted run)
 # oracle-inputs: w48fb_tmd_target.txt
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.2e-13, atoms 1.9e-13.
 units           lj
 atom_style      atomic
 atom_modify     map array

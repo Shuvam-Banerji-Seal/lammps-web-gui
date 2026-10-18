@@ -1,7 +1,8 @@
 # oracle: pair_style meam, two-element alloy with a bcc element A (library z = 8, re(1,1) = 2.5 A) and an fcc element B, nn2 = 0, lattce(1,2) = b1, ibar = 3 for both elements (w42mb_ibar3_lib.meam + w42mb_ibar3.meam, zbl 0): a 3x3x3 periodic bcc crystal of A (54 atoms, lattice constant 2 re(1,1)/sqrt(3)), a sinusoidal 0.04 A displacement, velocities from atom-style variables, fix nve, 30 steps of 0.001 ps
 # oracle: the eight first-shell neighbours at re(1,1) = 2.5 A (bcc) and the six second-shell neighbours at the lattice constant 2.887 A, which are inside the cutoff and enter the pair sum; pair distances stay away from the cutoff window [3.9, 4.0]
 # oracle-inputs: w42mb_ibar3_lib.meam w42mb_ibar3.meam
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.1e-12, atoms 4.9e-13.
 units           metal
 atom_style      atomic
 variable        a equal 2.8867513

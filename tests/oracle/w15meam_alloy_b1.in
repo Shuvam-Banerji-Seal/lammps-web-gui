@@ -1,7 +1,8 @@
 # oracle: pair_style meam, two-element B1 (rock salt) alloy (w15meam_alloy_lib.meam + w15meam_alloy_b1.meam, zbl 0), 2x2x2 cells of 8 atoms (64 atoms, A on fcc sites, B on octahedral sites), lattice constant 5.2 A = 2 re(1,2), 0.04 A sinusoidal displacement, velocities from atom-style variables, fix nve, 50 steps of 0.001 ps
 # oracle: shells of the B1 reference at re(1,2) = 2.6 A: 6 unlike neighbours at 2.6 A and 12 like neighbours at 3.68 A (the like pairs are screened to zero); the 0.04 A displacements keep every pair distance in [2.4, 3.85] A, away from the cutoff window [3.9, 4.0]
 # oracle-inputs: w15meam_alloy_lib.meam w15meam_alloy_b1.meam
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.0e-12, atoms 3.6e-13.
 # oracle-tolerance: rel=1e-6 is needed for press only (the same offset as w12meam_fcc and w15meam_bcc). Measured with native LAMMPS (black box): pe agrees to better than 1e-9 relative at step 0 for the B1 crystal (8 atoms, pe -30.400000000089 eV) and on A-B dimers and clusters to 4e-12 eV.
 units           metal
 atom_style      atomic

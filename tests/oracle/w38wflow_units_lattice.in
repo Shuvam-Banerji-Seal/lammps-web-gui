@@ -1,5 +1,6 @@
 # oracle: same as w38wflow_lj_y3walls but walls given in lattice units explicitly (units lattice) on the x axis, 150 steps
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.5e-15, atoms 1.5e-12.
 units           lj
 atom_style      atomic
 lattice         fcc 0.8442

@@ -1,5 +1,6 @@
 # oracle-potentials: MoS.rebomos
-# oracle-compare: thermo=all atoms=none rel=1e-5 abs=1e-8
+# oracle-compare: thermo=all atoms=none
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.0e-15, atoms 0.
 # oracle: pair rebomos on the bulk 2H-MoS2 prism cell of examples/threebody/in.mos2-bulk, 20 steps as in the example; tolerance 1e-5 (see the report: pressure 1e-7 and step-10 temperature 5e-6 off, per-atom compare impossible: create_atoms ID order differs)
 units metal
 

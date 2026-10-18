@@ -2,7 +2,8 @@
 # hybrid/overlay with lj/cut. Same system as w14hbond_lj. n = 2 global; the (1,5) pair overrides n = 4.
 # Morse D0 = 1.5, alpha = 1.2, r0 = 2.5 (acceptor 3) and D0 = 1.0, alpha = 1.5, r0 = 2.2 (acceptor 5).
 # oracle-inputs: w14hbond_system.data
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 9.3e-14, atoms 1.3e-12.
 units           real
 atom_style      full
 boundary        p p p

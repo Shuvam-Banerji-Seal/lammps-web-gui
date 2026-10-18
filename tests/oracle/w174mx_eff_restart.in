@@ -1,7 +1,8 @@
 # oracle: eFF H2 (128 electrons and nuclei, periodic) pair eff/cut with pressure/evirials under fix nve/eff: 4 steps, write_restart, clear, read_restart (no pair_style or pair_coeff, fix and compute re-specified), 4 more steps; electron spin, eradius and ervel come back from the file (pair_eff.rst: "These pair styles write their information to binary restart files"; examples/PACKAGES/eff/Li-dendritic restart path)
 # oracle-inputs: w63eff_h2.data
 # oracle-files: w174mx_eff_restart_er.dump
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9 filerel=1e-7
+# oracle-compare: thermo=all atoms=all filerel=1e-7
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.2e-14, atoms 3.4e-15.
 units           electron
 newton          on
 boundary        p p p

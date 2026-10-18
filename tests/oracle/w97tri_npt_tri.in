@@ -1,6 +1,6 @@
 # oracle: restricted triclinic LJ fcc 3x3x3 (change_box triclinic with tilts 0.25 0.1 -0.15 in lattice units), fix npt with tri (all six components); per-atom state and thermo every step
-# oracle-compare: thermo=all atoms=all rel=2e-7 abs=1e-10
-# (10 steps and rel 2e-7, not 20 steps and 1e-8: the all-tilt xz residual reaches 1.3e-7 at step 10 and 3e-6 at step 20; see the nh.ts tiltFlow comment)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.6e-13, atoms 1.6e-13.
 units           lj
 atom_style      atomic
 lattice         fcc 0.8442
@@ -18,4 +18,4 @@ fix             1 all npt temp 1.2 1.2 0.5 tri 1.0 1.0 2.0
 thermo_style    custom step temp pe etotal press pxx pyy pzz pxy pxz pyz vol lx ly lz xy xz yz f_1
 thermo_modify   format float %.15g
 thermo          1
-run             10
+run             20

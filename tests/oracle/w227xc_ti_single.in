@@ -1,0 +1,27 @@
+# oracle: compute ti with one term (pair lj/cut, all types, lambda-scaled energy f = 0.5 + 0.5 lambda) on a displaced fcc lj crystal, 5 steps of nve; dU/dlambda is in thermo
+# oracle: native: b332f28 (installed lmp; compute ti is in the EXTRA-COMPUTE package of that binary)
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.2e-15, atoms n/a (atoms=none; no per-atom output).
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        dx atom 0.08*sin(2.3*x+1.1*y+0.4*z)
+variable        dy atom 0.08*cos(1.9*y-0.7*x+0.3*z)
+variable        dz atom 0.08*sin(1.3*z+0.8*x-0.5*y)
+displace_atoms  all move v_dx v_dy v_dz units box
+velocity        all create 1.0 87287 loop geom
+variable        lam equal 0.3
+variable        f equal 0.5+0.5*v_lam
+variable        df equal 0.5
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+compute         ti all ti lj/cut 1 v_f v_df
+fix             1 all nve
+thermo_style    custom step pe c_ti
+thermo_modify   format float %.15g
+thermo          5
+run             5

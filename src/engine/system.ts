@@ -19,6 +19,7 @@ import type { Lattice } from './lattice';
 import { Rng } from './rng';
 import { Thermo } from './output/thermo';
 import type { Dump } from './output/dump';
+import type { Handler } from './commands/args';
 import { buildAtomMap, deleteAtoms as deleteAtomsImpl, massOf, customAttr, nativeOrder, hasMolecule } from './atoms';
 import { groupFunction } from './groupfn';
 import { LabelMap } from './labelmap';
@@ -108,6 +109,8 @@ export class System {
   minSettings: MinSettings = defaultMinSettings();
   /** Style names per category for is_available(): command, compute, fix, pair_style, ... */
   registries: Record<string, string[]> = {};
+  /** The input command handlers (commands/index.ts), set by the session; fix set runs the set command's handler. */
+  commands: Readonly<Record<string, Handler>> = {};
   /** Files the session can read: uploads plus everything it wrote. */
   readonly files = new Map<string, string>();
   /** shell cd: the working directory, relative to the notebook root (''); see shellFs.ts. */

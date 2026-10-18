@@ -1,0 +1,23 @@
+# oracle: compute rattlers/atom type (contacts within the lj cutoff 1.5, a rattler has fewer than 3 contacts, up to 10 tries) on a fluid of 108 lj atoms (fcc 0.8442, velocity create 0.3), 10 steps of nve; the rattler flags are dumped at step 10 and their count is in thermo
+# oracle: native: b332f28 (installed lmp; compute rattlers/atom is in the EXTRA-COMPUTE package of that binary)
+# oracle-files: w227xc_rattlers.dump
+# oracle-compare: thermo=all atoms=none filerel=1e-12
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.2e-16, atoms n/a (atoms=none; the rattler flags are the dump file, worst token 0).
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 0.3 4242 loop geom
+pair_style      lj/cut 1.5
+pair_coeff      1 1 1.0 1.0 1.5
+compute         rat all rattlers/atom type 3 10
+dump            d1 all custom 10 w227xc_rattlers.dump id c_rat
+dump_modify     d1 sort id format float %.15g
+fix             1 all nve
+thermo_style    custom step pe c_rat
+thermo_modify   format float %.15g
+thermo          10
+run             10

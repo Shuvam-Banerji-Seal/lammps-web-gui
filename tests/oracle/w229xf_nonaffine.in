@@ -1,0 +1,23 @@
+# oracle: LJ fluid, fix nonaffine/displacement integrated (reference fixed at step 20, every 5 steps): the per-atom displacement written by dump custom
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.3e-15, atoms 1.0e-13.
+# oracle-files: nonaffine.dump
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.0 87287 loop all
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+timestep        0.002
+fix             1 all nve
+fix             2 all nonaffine/displacement 5 integrated fixed 20 z/min 0
+thermo_style    custom step temp pe etotal press
+thermo_modify   format float %.15g
+thermo          10
+dump            3 all custom 20 nonaffine.dump id f_2[1] f_2[2] f_2[3]
+dump_modify     3 sort id format float %.15g
+run             100

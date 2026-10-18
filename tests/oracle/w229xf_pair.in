@@ -1,0 +1,23 @@
+# oracle: fix pair (EAM rho and fp per atom, read as f_ID per-atom in a dump): copper fcc 3x3x3 cells (108 atoms) with a random displacement, eam/alloy Cu_mishin1, velocity create, 100 steps of 0.001 ps, nevery 1
+# oracle-files: w229xf_pair.dump
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.2e-15, atoms 1.0e-13.
+# oracle-potentials: Cu_mishin1.eam.alloy
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      atomic
+lattice         fcc 3.615
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 63.55
+displace_atoms  all random 0.05 0.05 0.05 4928459 units box
+velocity        all create 300 4928459 dist gaussian
+pair_style      eam/alloy
+pair_coeff      * * Cu_mishin1.eam.alloy Cu
+fix             pr all pair 1 eam/alloy rho 0 fp 0
+fix             1 all nve
+thermo_style    custom step pe ke etotal
+thermo_modify   format float %.15g
+thermo          10
+run             100
+write_dump      all custom w229xf_pair.dump id f_pr[1] f_pr[2] modify format float %.15g sort id

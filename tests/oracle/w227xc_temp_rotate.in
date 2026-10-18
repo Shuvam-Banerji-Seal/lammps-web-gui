@@ -1,0 +1,26 @@
+# oracle: compute temp/rotate on a free (non-periodic) lj cluster of 256 atoms with a rigid rotation plus a thermal part, thermostatted by fix temp/rescale through fix_modify temp (the rotation is removed from the temperature); 10 steps of nve; the temperature and the six tensor components are in thermo
+# oracle: native: b332f28 (installed lmp; compute temp/rotate is in the EXTRA-COMPUTE package of that binary)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.1e-14, atoms 7.0e-14.
+units           lj
+atom_style      atomic
+boundary        f f f
+lattice         fcc 0.8442
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+variable        vx atom -0.15*(y-1.5)+0.2*sin(1.3*z+0.4*x)
+variable        vy atom 0.15*(x-1.5)+0.2*cos(1.1*y-0.6*z)
+variable        vz atom 0.25*sin(1.7*x+2.1*y+0.9*z)
+velocity        all set v_vx v_vy v_vz units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+compute         rot all temp/rotate
+fix             1 all nve
+fix             2 all temp/rescale 2 0.8 0.8 0.05 1.0
+fix_modify      2 temp rot
+thermo_style    custom step temp pe c_rot c_rot[1] c_rot[2] c_rot[3] c_rot[4] c_rot[5] c_rot[6]
+thermo_modify   format float %.15g
+thermo          5
+run             10

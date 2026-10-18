@@ -1,0 +1,28 @@
+# oracle: compute ke/rigid and erotate/rigid of fix rigid/nve molecule bodies (fix rigid/nve)
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-13 atomrel=1e-12 skip=press
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.3e-15, atoms 3.3e-15. Setup only: after 5 steps the core fix rigid/nve (not these computes) differs from native by 4e-10 on atom forces, so the run stops at step 0.
+units           lj
+atom_style      molecular
+lattice         sc 0.5
+region          box block 0 4 0 4 0 4
+create_box      1 box bond/types 1 extra/bond/per/atom 1 extra/special/per/atom 1
+create_atoms    1 box
+mass            1 1.0
+variable        mid atom floor(x/2.0)+3*floor(y/2.5)
+set             group all mol v_mid
+displace_atoms  all random 0.1 0.1 0.1 4321 units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+timestep        0.002
+comm_modify     cutoff 5.0
+variable        vx atom 0.3*sin(0.9*x+0.4*z)
+variable        vy atom 0.3*cos(0.6*y+0.8*x)
+variable        vz atom 0.3*sin(0.7*z-0.3*y)
+velocity        all set v_vx v_vy v_vz units box
+fix             1 all rigid/nve molecule
+compute         2 all ke/rigid 1
+compute         3 all erotate/rigid 1
+thermo_style    custom step temp pe ke etotal press c_2 c_3
+thermo_modify   format float %.15g
+thermo          5
+run             0

@@ -1,0 +1,20 @@
+# oracle: LJ fluid under generalized Langevin dynamics, fix gld (2-term positive Prony series), random-force mean removed (zero yes), temperature ramp 1.2 -> 0.6
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.6e-14, atoms 2.9e-13.
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.0 87287 loop all
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+timestep        0.002
+fix             1 all nve
+fix             2 all gld 1.2 0.6 2 4321 pprony 0.5 0.3 0.8 1.5 zero yes
+thermo_style    custom step temp pe etotal press pxy
+thermo_modify   format float %.15g
+thermo          10
+run             100

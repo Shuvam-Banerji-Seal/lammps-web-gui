@@ -81,7 +81,7 @@ describe('compute group/group, pe/tally, force/tally, stress/tally: parsing and 
   });
 
   it('does not register the tally styles that are not implemented', async () => {
-    for (const style of ['pe/mol/tally', 'heat/flux/tally', 'heat/flux/virial/tally']) {
+    for (const style of ['heat/flux/tally', 'heat/flux/virial/tally']) {
       const r = await run(`${CRYSTAL}compute t odd ${style} even\nrun 0\n`);
       expect(r.error, style).toBeDefined();
       expect(r.error, style).toContain(style);

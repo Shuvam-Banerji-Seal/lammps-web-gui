@@ -1,0 +1,32 @@
+# oracle: compute ke/rigid, erotate/rigid and rigid/local of fix rigid/small molecule bodies in a deforming box
+# oracle-files: rigid_local.dump
+# oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-13 atomrel=1e-12 filerel=1e-12
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.6e-14, atoms 7.9e-14.
+units           lj
+atom_style      molecular
+lattice         sc 0.5
+region          box block 0 4 0 4 0 4
+create_box      1 box bond/types 1 extra/bond/per/atom 1 extra/special/per/atom 1
+create_atoms    1 box
+mass            1 1.0
+variable        mid atom floor(x/2.0)+3*floor(y/2.5)
+set             group all mol v_mid
+displace_atoms  all random 0.1 0.1 0.1 4321 units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+timestep        0.002
+comm_modify     cutoff 5.0
+fix             1 all rigid/small molecule
+variable        vx atom 0.3*sin(0.9*x+0.4*z)
+variable        vy atom 0.3*cos(0.6*y+0.8*x)
+variable        vz atom 0.3*sin(0.7*z-0.3*y)
+velocity        all set v_vx v_vy v_vz units box
+fix             2 all deform 1 x erate 0.05 y erate 0.05 remap x
+compute         3 all ke/rigid 1
+compute         4 all erotate/rigid 1
+compute         5 all rigid/local 1 id mol mass x y z xu yu zu vx vy vz fx fy fz angmomx angmomy angmomz quatw quati quatj quatk inertiax inertiay inertiaz
+dump            6 all local 10 rigid_local.dump c_5[1] c_5[2] c_5[3] c_5[4] c_5[5] c_5[6] c_5[7] c_5[8] c_5[9] c_5[10] c_5[11] c_5[12] c_5[13] c_5[14] c_5[15] c_5[16] c_5[17] c_5[18] c_5[19] c_5[20] c_5[21] c_5[22] c_5[23] c_5[24] c_5[25]
+thermo_style    custom step temp pe ke etotal press pxx pyy pzz lx ly lz vol c_3 c_4
+thermo_modify   format float %.15g
+thermo          5
+run             40

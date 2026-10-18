@@ -1,0 +1,21 @@
+# oracle: fix nvt/sllod/eff (reversible integrator, temp/deform/eff thermostat temperature) with fix deform remap v on the eFF SiH4 system, 20 steps
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.5e-13, atoms 2.3e-15.
+# oracle-inputs: w110effecp_sih4.data
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12 atomrel=1e-10
+units           electron
+newton          on
+boundary        f f f
+atom_style      electron
+read_data       w110effecp_sih4.data
+pair_style      eff/cut 1000.0 ecp 1 Si
+pair_coeff      * *
+comm_modify     vel yes
+velocity        all set 0.001 0.002 -0.001 units box
+timestep        0.001
+fix             1 all deform 1 x erate 0.001 remap v
+fix             2 all nvt/sllod/eff temp 300.0 300.0 10.0
+compute         effTemp all temp/eff
+thermo_style    custom step temp pe ke etotal c_effTemp
+thermo_modify   temp effTemp format float %.15g
+thermo          5
+run             20

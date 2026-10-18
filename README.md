@@ -45,7 +45,7 @@ The notebook's engine is written in TypeScript for the browser. Its results are 
 - ***Your hardware*** *— worker threads sharing one copy of the atoms (`SharedArrayBuffer`), and WebGPU compute shaders where the browser has them.*
 - ***Themes*** *— the five themes side by side.*
 - ***Tour*** *— the Script Builder, the CMake compiler helper, the Structure Viewer and the MD Notebook.*
-- ***End card*** *— a QR code that opens this film, and the links to the app, the source and the LAMMPS manual.*
+- ***End card*** *— a QR code that opens the app, and the links to the app, the source and the LAMMPS manual.*
 
 *Cut with [Remotion](https://www.remotion.dev/) and three.js, scored with original synthesized music. The app footage is the production build captured in headless Chromium. The earlier 84-second film is still at [`public/videos/app-demo.mp4`](public/videos/app-demo.mp4).*
 

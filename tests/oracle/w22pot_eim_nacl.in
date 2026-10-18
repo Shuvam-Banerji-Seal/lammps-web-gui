@@ -1,7 +1,7 @@
 # oracle: pair_style eim with ffield.eim (Na Cl, examples/eim), displaced lattice, velocities from atom-style variables, 50 steps of nve
 # oracle-potentials: ffield.eim
-# oracle-tolerance: thermo=first atoms=none rel=1e-7 abs=1e-3; measured with native LAMMPS (black box) at this geometry: at step 0 the pe agrees to 5e-11 relative and the off-diagonal pyz differs by about 1.2e-4 (8e-8 relative); the native forces agree with finite differences of the native energy and with this engine to about 2e-9 relative; the pressure difference grows along the trajectory (pyz about 7e-5 relative at step 10), and the cause is not isolated, so only step 0 is compared
-# oracle-compare: thermo=first atoms=none rel=1e-7 abs=1e-3
+# Measured max relative error, engine vs native (thermo row 0): thermo 5.4e-13. The later rows are not compared: only step 0 is checked.
+# oracle-compare: thermo=first atoms=none
 units           metal
 atom_style      atomic
 lattice         diamond 5.53

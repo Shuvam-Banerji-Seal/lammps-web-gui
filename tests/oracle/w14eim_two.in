@@ -1,9 +1,7 @@
 # oracle: pair_style eim, two elements (Qa, Qb; p = 1 and p = 2 pair terms, charge transfer), fcc crystal with displaced atoms, NVE
 # oracle-inputs: w14eim_two.eim
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
-# rel=1e-7: measured in trial runs, native and the engine agree to about 3e-8 relative in the virial and
-# 1e-9 absolute in forces. A pair within about 0.01 A of a cutoff made native and engine forces disagree
-# (see src/engine/force/pair/eim.ts), so the displacements and velocities keep the runs clear of cutoffs.
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.6e-14, atoms 5.4e-15.
 units           metal
 atom_style      atomic
 lattice         fcc 4.1

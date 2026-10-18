@@ -322,21 +322,23 @@ describe('pair_style edip (batch 48)', () => {
     }
   });
 
-  it('forces agree with finite differences (dimer in the coordination zone, a 6-atom cluster)', async () => {
-    await expectForcesMatch(EDIP, [{ type: 1, x: [0, 0, 0] }, { type: 1, x: [2.8, 0, 0] }], 1e-6, SIEDIP);
+  it('forces agree with finite differences to the grid accuracy (dimer in the coordination zone, a 6-atom cluster)', async () => {
+    // native pair_edip.cpp tabulates the functions and their derivatives separately on a grid (initGrids, linear
+    // interpolation), so its forces match the energy's finite difference only to about 2e-4; the port keeps the grids
+    await expectForcesMatch(EDIP, [{ type: 1, x: [0, 0, 0] }, { type: 1, x: [2.8, 0, 0] }], 1e-3, SIEDIP);
     await expectForcesMatch(EDIP, [
       { type: 1, x: [0, 0, 0] }, { type: 1, x: [2.4, 0.3, 0.1] }, { type: 1, x: [-0.5, 2.6, 0.4] },
       { type: 1, x: [0.2, -0.4, 2.7] }, { type: 1, x: [2.9, 2.5, 2.3] }, { type: 1, x: [-2.2, -1.9, -1.6] },
-    ], 1e-6, SIEDIP);
+    ], 1e-3, SIEDIP);
   });
 
-  it('refuses several element names, a missing entry, and pair_modify shift', async () => {
+  it('refuses several element names and a missing entry; accepts pair_modify shift as native does', async () => {
     const multi = await evaluate(['pair_style edip', 'pair_coeff * * Si.edip Si C'], [{ type: 1, x: [0, 0, 0] }, { type: 2, x: [2.4, 0, 0] }], { files: SIEDIP });
     expect(multi.error).toMatch(/single element/);
     const none = await evaluate(['pair_style edip', 'pair_coeff * * Si.edip C'], [{ type: 1, x: [0, 0, 0] }, { type: 1, x: [2.4, 0, 0] }], { files: SIEDIP });
-    expect(none.error).toMatch(/no entry for C C C/);
+    expect(none.error).toMatch(/Potential file is missing an entry for: C C C/);
     const shift = await evaluate([...EDIP, 'pair_modify shift yes'], [{ type: 1, x: [0, 0, 0] }, { type: 1, x: [2.4, 0, 0] }], { files: SIEDIP });
-    expect(shift.error).toMatch(/shift/);
+    expect(shift.error).toBeUndefined();
   });
 });
 
@@ -387,6 +389,6 @@ describe('pair_style edip/multi (batch 48)', () => {
 
   it('refuses a missing entry (e.g. C C C is in the file but Ge is not)', async () => {
     const run = await evaluate(['pair_style edip/multi', 'pair_coeff * * SiC.edip Si Ge'], [{ type: 1, x: [0, 0, 0] }, { type: 2, x: [2.2, 0, 0] }], { files: SIC });
-    expect(run.error).toMatch(/has no entry for/);
+    expect(run.error).toMatch(/Potential file is missing an entry for/);
   });
 });

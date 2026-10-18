@@ -1,7 +1,7 @@
 # oracle: pair_style edip (Si.edip) on a displaced diamond Si 2x2x2 cell with a vacancy (delete_atoms), 100 steps of nve from variable velocities
 # oracle-potentials: Si.edip
-# oracle-compare: thermo=all atoms=all rel=2e-6 abs=1e-6
-# Measured with native LAMMPS (black box): on this case native edip/multi reading the same Si.edip gives press -644.369072008205 at step 0, equal to the engine (-644.3690720082104), while native edip gives -644.368549221789; native's single-element style departs from the analytic EDIP form by about 1e-6 in pressure and 3e-9 in energy, so the single-element cases use rel 2e-6
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.1e-14, atoms 1.3e-13.
 units           metal
 atom_style      atomic
 atom_modify     map array

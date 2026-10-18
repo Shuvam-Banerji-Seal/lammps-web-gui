@@ -1,5 +1,6 @@
 # oracle: fix vector — one input (vector), two inputs (array), nmax ring; reductions of stored values
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-10
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.9e-15, atoms 5.2e-14.
 units           lj
 atom_style      atomic
 lattice         fcc 0.8442

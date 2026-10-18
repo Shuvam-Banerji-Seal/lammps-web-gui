@@ -1,5 +1,6 @@
 # oracle: compute hma (u p) on a displaced fcc crystal (32 atoms, pair lj/smooth/linear 3) defined before the displacement, then 20 steps of fix nvt
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.0e-15, atoms 2.6e-14.
 units           lj
 atom_style      atomic
 lattice         fcc 1.0

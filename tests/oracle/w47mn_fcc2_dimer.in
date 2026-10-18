@@ -1,6 +1,7 @@
 # oracle: pair_style meam, single-element fcc (element A of w38m2nn_lib.meam, nn2(1,1) = 1, ibar 0), Cmin(1,1,1) = 0.36 so the 2NN shell is partly screened (S = 0.06 per second neighbour); dimers at 2.2 to 4.5 A
 # oracle-inputs: w38m2nn_lib.meam w47mn_fcc2.meam
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.3e-15, atoms 8.9e-15.
 clear
 units           metal
 atom_style      atomic

@@ -1,6 +1,7 @@
 # oracle: fix ilves on the branched molecule of w50il_branched (run 0 only): setup velocity projection, setup constraint force and virial, every per-atom position, velocity and force after setup
 # oracle-inputs: w50il_branched.data
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.5e-15, atoms 2.5e-14.
 units           real
 atom_style      angle
 read_data       w50il_branched.data

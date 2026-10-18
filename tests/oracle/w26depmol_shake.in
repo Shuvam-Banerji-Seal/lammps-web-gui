@@ -1,6 +1,7 @@
 # oracle: fix shake mol + fix deposit shake — the deposited molecule is added to the SHAKE clusters
 # oracle-inputs: w26depmol_dimer_shake.mol
-# oracle-compare: thermo=all atoms=none rel=1e-4 abs=1e-10
+# oracle-compare: thermo=all atoms=none
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 6.6e-15, atoms 0.
 # (the constraint virial is omitted: the browser SHAKE solver's convergence criterion differs from
 #  native at the 1e-7 level for a molecule added mid-run)
 units           lj

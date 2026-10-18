@@ -2,7 +2,8 @@
 # hybrid/overlay with lj/cut. Four waters (O type 1, two H type 2) donate to acceptors of type 3
 # (lone N) and type 5 (O bonded to C type 4). n = 4, inner 3.0, outer 4.5, angle cutoff 90 degrees.
 # oracle-inputs: w14hbond_system.data
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.3e-13, atoms 9.3e-13.
 units           real
 atom_style      full
 boundary        p p p

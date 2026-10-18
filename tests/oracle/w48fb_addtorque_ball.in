@@ -1,5 +1,6 @@
 # oracle: fix addtorque/group on a dynamic group of a cut-down ball (examples/PACKAGES/addtorque_group)
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.9e-15, atoms 4.5e-14.
 units           lj
 lattice         fcc 0.8442
 boundary        f f f

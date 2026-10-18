@@ -1,7 +1,8 @@
 # oracle: pair_style meam, two-element Cu3Au (lattce(1,2) = l12) alloy (w37meam_lib.meam + w37meam_l12.meam, zbl 0, nn2 = 0), non-periodic clusters: A-B dimers at 2.6 A, at 2.2 A (B-A order) and at 2.4 A, and a B-A-B chain with bonds 3.0 and 3.3 A
 # oracle: the L12 pair term phi_KF = (4 erose - F_K - 3 F_F - 12 phi_FF)/12 with element 2 (B) on the corner sites (cornerEl = J of lattce(I,J)); the cluster energies are native values (black box)
 # oracle-inputs: w37meam_lib.meam w37meam_l12.meam
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.9e-14, atoms 9.3e-14.
 units           metal
 atom_style      atomic
 boundary        f f f

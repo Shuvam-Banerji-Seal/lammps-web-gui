@@ -1,5 +1,6 @@
 # oracle: fix adapt atom charge with reset yes across two runs (kspace ewald): the second run starts from the restored charges
-# oracle-compare: thermo=all atoms=all rel=1e-5 abs=1e-8
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 6.3e-15, atoms 6.2e-14.
 units           lj
 atom_style      charge
 lattice         sc 0.8

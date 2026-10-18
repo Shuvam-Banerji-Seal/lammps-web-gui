@@ -2,7 +2,8 @@
 # oracle: the tolerance is 1e-6: the smallest H-bond angles (the c_rn[3] column) are sensitive to the last digits of the trajectory (the 50-step, 4500-atom run measured 1.5e-7 relative at step 50; this cut run measures 2.8e-12 at step 25)
 # oracle-inputs: w41hb_spce_cut.data
 # oracle-files: w41hb_spce_dist.histo w41hb_spce_angle.histo
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.8e-12, atoms 1.1e-11.
 units           real
 atom_style      full
 pair_style      lj/cut/coul/long 12.0 12.0

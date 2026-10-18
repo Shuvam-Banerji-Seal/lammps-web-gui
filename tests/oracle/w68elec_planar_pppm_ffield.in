@@ -1,6 +1,7 @@
 # oracle: ELECTRODE planar in.planar-pppm-ffield (10 steps): ramping potential v_v with ffield yes, pppm/electrode in a fully periodic box (no slab)
 # oracle-inputs: w68elec_au_vac.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.7e-14, atoms 1.1e-16.
 # Measured with native LAMMPS (black box): thermo max relative error 5.6e-8 over the 11 rows, per-atom 3.1e-12; the engine grid choice (no slab) matches native here
 boundary        p p p
 # Measured with native LAMMPS (black box): G vector 0.17138393, grid 8 8 12, order 5 (no slab: the engine picks them automatically); step 1: v_v=0.2 c_qbot=-0.0309019998073868 c_qtop=0.0309019998073869; step 10: c_qbot=-0.309019998073868 v_percdev=-1.51330278709513

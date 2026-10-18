@@ -1,6 +1,7 @@
 # oracle: compute dipole/tip4p and compute dipole/tip4p/chunk (compute_dipole.html, compute_dipole_chunk.html: "includes adjustments for the charge carrying point M in molecules with TIP4P water geometry"), on the w12tip4p_long water box (lj/cut/tip4p/long, pppm/tip4p, SHAKE), with the plain dipole for comparison: the whole system (mass and geometry centres), the waters of molecules 1-3 as chunks, 30 steps.
 # oracle-inputs: w12tip4p_long_water.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-8
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 9.3e-14, atoms 9.2e-12.
 units           real
 atom_style      full
 boundary        p p p

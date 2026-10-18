@@ -1,5 +1,6 @@
 # oracle: fix adapt/fep pair lambda with after yes and reset yes, then a second run from the restored hot start (quicktests style, cut down)
-# oracle-compare: thermo=all rel=1e-6 (run 2 starts from overlapping pairs: evdwl is a cancellation of ~1e10 terms, so its last digits differ at 1e-10 and grow to 3e-8 by step 130)
+# oracle-compare: thermo=all (was a 1e-6 relative bound: run 2 starts from overlapping pairs: evdwl is a cancellation of ~1e10 terms, so its last digits differed at 1e-10 and grew to 3e-8 by step 130; now measured thermo 3.5e-12, see below)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.5e-12, atoms 1.2e-13.
 units           real
 boundary        p p p
 atom_style      charge

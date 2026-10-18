@@ -1,7 +1,8 @@
 # oracle: pair_style meam, two-element B1 alloy with per-triplet Cmin/Cmax (w33meamtrip_b1_lib.meam + w33meamtrip_b1.meam, zbl 0), 2x2x2 cells of 8 atoms (64 atoms, A on fcc sites, B on octahedral sites), lattice constant 5.2 A = 2 re(1,2), 0.04 A sinusoidal displacement, velocities from atom-style variables, fix nve, 50 steps of 0.001 ps
 # oracle: the six non-default triplet entries change the screening of the like and unlike bonds in the B1 reference and in the crystal; every pair distance stays in [2.4, 3.85] A, away from the cutoff window [3.9, 4.0]
 # oracle-inputs: w33meamtrip_b1_lib.meam w33meamtrip_b1.meam
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.5e-12, atoms 3.3e-13.
 units           metal
 atom_style      atomic
 variable        a equal 5.2

@@ -3,7 +3,8 @@
 # w14 water/acceptor system; the hbond sub-style sits in hybrid/overlay with lj/cut. thermo_modify norm yes:
 # the scalar and the vector are extensive, so thermo divides them by the atom count.
 # oracle-inputs: w14hbond_system.data
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 6.6e-14, atoms 9.3e-13.
 units           real
 atom_style      full
 boundary        p p p

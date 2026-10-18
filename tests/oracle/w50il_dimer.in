@@ -1,6 +1,7 @@
 # oracle: fix ilves on a lattice of 64 rigid dimers (128 atoms, the in.dimer pattern without the random create): tol 1e-4 iter 25, bonds of type 1, thermo temp (dof with the constraints), pe, press and every per-atom position, velocity and force after 50 steps
 # oracle-inputs: w50il_dimer.data
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.4e-12, atoms 1.0e-10.
 units           real
 atom_style      bond
 read_data       w50il_dimer.data

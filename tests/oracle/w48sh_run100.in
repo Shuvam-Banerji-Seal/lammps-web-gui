@@ -1,6 +1,7 @@
 # oracle: SPC/E water box (the first 333 of the 4500-atom box's molecules, w41hb_spce_cut.data: 999 atoms in the same box, 4 s instead of 50 s): fix shake tol 1e-4 iter 20, nve for 100 steps of 1 fs: thermo rows and the final per-atom state
 # oracle-inputs: w41hb_spce_cut.data
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.3e-12, atoms 8.5e-11.
 # oracle-tolerance: the per-step solve of fix shake (each cluster iterates until its largest multiplier update times dt^2 ftm2v is within tol) keeps the 100-step trajectory within 1e-7 relative in thermo (the per-atom error grows with the step count, see the run20 case); the cut box measures 2.3e-12 in thermo and 7.2e-11 per atom at step 100
 units		real
 atom_style	full

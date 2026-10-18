@@ -1,5 +1,6 @@
 # oracle-inputs: w12tip4p_long_water.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-10
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 7.4e-13, atoms 6.4e-12.
 # oracle: pair_style hybrid (type pairs split): lj/cut/coul/long for O-O (atom-site Coulomb) and lj/cut/tip4p/long for O-H and H-H (M-site Coulomb; native refuses H-H outside the TIP4P sub-style), 27 rigid TIP4P/2005 waters, pppm/tip4p, shake 1e-10, 50 steps
 # Measured with native LAMMPS: pair_style hybrid with the H-H pair outside the TIP4P sub-style stops with "ERROR: Water H epsilon must be 0.0 for pair style lj/cut/tip4p/long (src/KSPACE/pair_lj_cut_tip4p_long.cpp:519)", so the H-H pair stays with the TIP4P sub-style here. Measured max relative error, engine vs native: pe 3.7e-8, evdwl 1.9e-8, ecoul 1.9e-9, press 2.0e-7; x 2.4e-8, v 1.6e-6, f 2.3e-5.
 units           real

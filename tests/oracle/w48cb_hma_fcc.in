@@ -1,5 +1,6 @@
 # oracle: compute hma (u p) on a cut-down example (examples/PACKAGES/hma: fcc lj/smooth/linear 3, nvt at 1.0), 108 atoms, 200 steps, sites at the start
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.7e-15, atoms 4.8e-13.
 units           lj
 atom_style      atomic
 lattice         fcc 1.0

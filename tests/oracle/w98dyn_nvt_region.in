@@ -1,5 +1,6 @@
 # oracle: fix nvt on a dynamic group by region (every 5), membership changes at the reassignment steps (atoms wrap out of the region), two runs
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.6e-15, atoms 3.9e-14.
 # f_1[1..2] (eta, eta_dot of the chain) are compared too (fixed: the chain after the reassignment; see the nh.ts comment and w114cf_nvt_dyn_region)
 units           lj
 atom_style      atomic

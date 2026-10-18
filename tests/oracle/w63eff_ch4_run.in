@@ -1,7 +1,8 @@
 # oracle: eFF CH4 (fixed boundaries, the default velocity create): eff/cut, temp/eff and nve/eff for 20 steps (examples/PACKAGES/eff/CH4 cut down)
 # oracle-inputs: w63eff_ch4.data
 # oracle-files: w63eff_ch4_er.dump
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.3e-15, atoms 0.
 units           electron
 newton          on
 boundary        f f f

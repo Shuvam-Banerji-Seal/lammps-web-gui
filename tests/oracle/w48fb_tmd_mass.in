@@ -1,6 +1,7 @@
 # oracle: fix tmd with unequal masses (types of mass 1 and 12, lj units): the constraint and its correction after 5 steps
 # oracle-inputs: w48fb_tmd_mass_target.txt
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.9e-14, atoms 6.5e-14.
 units lj
 atom_style atomic
 atom_modify map array

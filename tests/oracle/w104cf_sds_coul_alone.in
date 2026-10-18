@@ -1,6 +1,7 @@
 # oracle: coul/long alone on the small sds system (precision reference for the overlay case)
 # oracle-inputs: w104cf_sds_small.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.6e-15, atoms 1.4e-15.
 units real
 atom_style full
 boundary p p p

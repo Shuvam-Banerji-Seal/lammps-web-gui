@@ -1,5 +1,6 @@
 # oracle: fix ti/spring in metal units (the harmonic force is converted to internal units), switching and holds
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.2e-15, atoms 2.3e-16.
 units           metal
 atom_style      atomic
 lattice         fcc 3.621

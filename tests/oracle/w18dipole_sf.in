@@ -1,6 +1,7 @@
 # oracle: lj/sf/dipole/sf with fix nve/sphere update dipole: charged and dipolar spheres on a 4x4x4 sc lattice, 100 steps
 # oracle-files: w18dipole_sf_mu.dump
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.5e-15, atoms 4.1e-14.
 units           lj
 atom_style      hybrid sphere dipole
 lattice         sc 0.4

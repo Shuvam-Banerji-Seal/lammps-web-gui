@@ -1,6 +1,7 @@
 # oracle: fix shake with a loose tolerance (tol 1e-3, iter 5) on the SPC/E box (run 0): native gives the same step-0 values as with tol 1e-4 (two setup force sweeps, one coordinate sweep)
 # oracle-inputs: w48sh_spce.data
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.4e-13, atoms 9.2e-11.
 # oracle-tolerance: same as w48sh_run0 (rel 1e-7)
 units		real
 atom_style	full

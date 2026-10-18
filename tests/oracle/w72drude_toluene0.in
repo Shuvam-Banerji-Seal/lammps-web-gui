@@ -1,6 +1,7 @@
 # oracle: DRUDE toluene at step 0 (the drude polarizability toluene example, setup only) cut down to 10 molecules: pair lj/cut/thole/long (LJ, Ewald real space, Thole damping with special bonds), pppm 1e-4, fix shake, fix drude; no dynamics
 # oracle-inputs: w72drude_data.toluene_10
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=2e-6
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 6.3e-13, atoms 8.3e-10.
 # Measured with native LAMMPS (black box): setup energies agree to 1e-7 relative (pressure 7e-8; the dihedral energy, 3e-8 kcal/mol, to 1e-14 absolute). Per-atom forces (fix shake setup included) differ by at most 1.4e-6 absolute, 3.7e-7 relative on forces above 1. The residual is the pair_modify table 12 emulation of erfc (erfc.ts: the force table differs from native's by ~3e-6 absolute, documented there): with pair_modify table 0 the pair-only forces (kspace off) agree to 2e-9 absolute. Before the kernel fix (8-digit EWALD_F in the erf branch) the difference was 9.3e-5 absolute, all on the bonded core-Drude pairs.
 
 units real

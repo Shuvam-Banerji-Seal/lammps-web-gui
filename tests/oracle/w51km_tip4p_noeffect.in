@@ -1,5 +1,6 @@
 # oracle-inputs: w12tip4p_long_water.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-8
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.3e-13, atoms 5.5e-12.
 # oracle: pppm/tip4p (27 rigid TIP4P/2005 waters, as w12tip4p_long) with the collective, fftbench, overlap, minorder and cutoff/adjust keywords (accepted, no effect with one process)
 units           real
 atom_style      full

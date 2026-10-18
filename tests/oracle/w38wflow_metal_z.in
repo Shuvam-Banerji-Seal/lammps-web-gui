@@ -1,5 +1,6 @@
 # oracle: metal units (63.55 amu, 300 K, Angstrom/ps) with fix wall/flow along z, three walls at mid-cell lattice planes (lattice fcc 3.61, units lattice), 100 steps
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.8e-15, atoms 1.4e-12.
 units           metal
 atom_style      atomic
 lattice         fcc 3.61

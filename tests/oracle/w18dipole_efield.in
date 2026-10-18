@@ -1,6 +1,7 @@
 # oracle: lj/cut/dipole/cut with fix nve/sphere update dipole and fix efield on charges and dipoles (energy yes): 100 steps
 # oracle-files: w18dipole_efield_mu.dump
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.4e-15, atoms 1.3e-14.
 units           lj
 atom_style      hybrid sphere dipole
 lattice         sc 0.4

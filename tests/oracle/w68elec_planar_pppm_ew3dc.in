@@ -1,6 +1,7 @@
 # oracle: ELECTRODE planar in.planar-pppm-ew3dc: ramping potential with v_v, pppm/electrode EW3DC, fix electrode/conp symm on, 10 steps
 # oracle-inputs: w68elec_au_vac.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.6e-14, atoms 1.8e-16.
 # Measured with native LAMMPS (black box): thermo max relative error 5.2e-8 over the 11 rows, per-atom 3.1e-12
 # Measured with native LAMMPS (black box): G vector 0.16696028, grid 8 8 25, order 5 (pppm/electrode 1.0e-7, slab 3.0); the engine chooses the same G and grid itself (no kspace_modify gewald/mesh)
 # Measured with native LAMMPS (black box): step 1: v_v=0.2 c_qbot=-0.0309127689794015 c_qtop=0.0309127689794015 v_qtheory=0.031376826194199 v_percdev=-1.47898068828092; step 10: c_qbot=-0.309127689794015 v_percdev=-1.4789807307034

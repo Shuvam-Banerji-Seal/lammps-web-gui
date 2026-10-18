@@ -1,7 +1,8 @@
 # oracle: pair_style meam, single element bcc reference (w15meam_bcc_lib.meam + w15meam_bcc.meam, zbl 0), 2x2x2 bcc cell (16 atoms), 0.05 A sinusoidal displacement, velocities from atom-style variables, fix nve, 50 steps of 0.001 ps
 # oracle: shells of the bcc reference at re = 2.73664 A: 8 nearest neighbours at 2.737 A, 6 second neighbours at 3.16 A (screened to zero by the 1NN), 12 third neighbours at 4.47 A (outside rc = 4.0); the 0.05 A displacements keep every pair distance in [2.5, 3.4] A, away from the cutoff window [3.9, 4.0]
 # oracle-inputs: w15meam_bcc_lib.meam w15meam_bcc.meam
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.9e-12, atoms 6.2e-13.
 # oracle-tolerance: rel=1e-6 is needed for press only (the same offset as w12meam_fcc). Measured with native LAMMPS (black box): the native press at step 0 is 9249.30804 bar and the engine's is 9249.31015 bar (2.3e-7 relative); pe agrees to better than 1e-9 relative.
 units           metal
 atom_style      atomic

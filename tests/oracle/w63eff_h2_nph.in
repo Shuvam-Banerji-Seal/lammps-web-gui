@@ -1,6 +1,7 @@
 # oracle: eFF H2 (128 electrons and nuclei, periodic) under fix nph/eff with an isotropic barostat (target pressure 0, period 1): barostat velocities, box remap and chains, 10 steps from velocity create 300 K (examples/PACKAGES/eff/H2 box, cut down)
 # oracle-inputs: w63eff_h2.data
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.5e-14, atoms 2.3e-15.
 units           electron
 newton          on
 boundary        p p p

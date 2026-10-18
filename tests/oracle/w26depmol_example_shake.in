@@ -1,6 +1,7 @@
 # oracle: fix deposit mol + fix shake mol — the examples/deposit/in.deposit.molecule.shake pipeline (shortened)
 # oracle-inputs: w26depmol_dimer_shake.mol
-# oracle-compare: thermo=all atoms=none rel=1e-4 abs=1e-10
+# oracle-compare: thermo=all atoms=none
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.0e-14, atoms 0.
 # (thermo only: the browser SHAKE solver's convergence criterion differs from native at the 1e-7 level
 #  for a molecule added mid-run; the deposit mol stream itself is pinned by the other w26depmol_* cases)
 units           lj

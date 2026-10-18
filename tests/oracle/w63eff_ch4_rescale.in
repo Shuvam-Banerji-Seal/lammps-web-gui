@@ -1,7 +1,8 @@
 # oracle: eFF CH4 (fixed boundaries) with fix temp/rescale/eff (velocities created at 1000 K, rescaled toward 300 K every 2 steps) and compute ke/atom/eff per atom (examples/PACKAGES/eff/CH4 cut down)
 # oracle-inputs: w63eff_ch4.data
 # oracle-files: w63eff_ch4_rescale_ke.dump
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.8e-15, atoms 0.
 units           electron
 newton          on
 boundary        f f f

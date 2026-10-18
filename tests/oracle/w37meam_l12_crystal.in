@@ -1,7 +1,8 @@
 # oracle: pair_style meam, two-element Cu3Au (lattce(1,2) = l12) alloy (w37meam_lib.meam + w37meam_l12.meam, zbl 0, nn2 = 0), 3x3x3 cells of 4 atoms (108 atoms; A at the corners, B on the three face centres), lattice constant sqrt(2) re(1,2) = 3.676955 A (nearest-neighbour distance re(1,2) = 2.6 A), 0.04 A sinusoidal displacement, velocities from atom-style variables, fix nve, 30 steps of 0.001 ps
 # oracle: the pair term uses cornerEl = J (element 2) as the corner species of the reference, while this crystal puts type 1 (A) on the corners and type 2 (B) on the faces: the energies depend only on the pair term and the actual neighbours, so the native values test the formula for this species order; pair distances stay in [2.4, 3.8] A, away from the cutoff window [3.9, 4.0]
 # oracle-inputs: w37meam_lib.meam w37meam_l12.meam
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.3e-14, atoms 1.3e-12.
 units           metal
 atom_style      atomic
 variable        a equal 3.676955

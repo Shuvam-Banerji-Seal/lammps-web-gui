@@ -1,7 +1,8 @@
 # oracle: eFF CH4 minimization (examples/PACKAGES/eff/CH4 in.ch4.min, cut down to 30 iterations): cg, electron radii as minimizer DOF
 # oracle-inputs: w63eff_ch4.data
 # oracle-files: w63eff_ch4_min_er.dump
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.4e-15, atoms 0.
 units           electron
 newton          on
 boundary        f f f

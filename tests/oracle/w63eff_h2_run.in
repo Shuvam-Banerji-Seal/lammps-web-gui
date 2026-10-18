@@ -1,7 +1,8 @@
 # oracle: eFF H2 (128 electrons and nuclei): eff/cut with pressure/evirials, pressure and per-atom stress, nve/eff for 10 steps from rest
 # oracle-inputs: w63eff_h2.data
 # oracle-files: w63eff_h2_er.dump
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.1e-13, atoms 7.4e-16.
 units           electron
 newton          on
 boundary        p p p

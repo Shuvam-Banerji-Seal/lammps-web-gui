@@ -1,6 +1,7 @@
 # oracle: fix charge/regulation in real units with pppm and dielectric 78 (examples/PACKAGES/charge_regulation/in.chreg-acid-real cut down: 200 steps, nevery 100, nmc 100)
 # oracle-inputs: data.chreg-acid-real
-# oracle-compare: thermo=all atoms=all rel=5e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 7.3e-15, atoms 4.4e-15.
 # measured with native LAMMPS (black box), engine vs native fixture: thermo max relative error 4.7e-7; the static pe at step 0 already differs by 2.2e-7 with dielectric 1 (pppm 8x8x8 real units energy, a core pppm difference that the charge regulation moves do not add to; see the report); the moves themselves (counts) match exactly
 
 units           real

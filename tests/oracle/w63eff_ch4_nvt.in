@@ -1,7 +1,8 @@
 # oracle: eFF CH4 (fixed boundaries) under fix nvt/eff: the Nose-Hoover chain on the nuclei and on the electron radial velocities, 20 steps from velocity create 300 K (examples/PACKAGES/eff/CH4 cut down)
 # oracle-inputs: w63eff_ch4.data
 # oracle-files: w63eff_ch4_nvt_er.dump
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.3e-15, atoms 0.
 units           electron
 newton          on
 boundary        f f f

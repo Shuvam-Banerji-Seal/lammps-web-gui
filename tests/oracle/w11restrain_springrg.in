@@ -1,4 +1,5 @@
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.6e-12, atoms 1.0e-15.
 # oracle-inputs: w11restrain_chain.data
 # Polymer chain: fix spring/rg with NULL (RG0 taken at definition) on all atoms, and a numeric RG0 on atoms 1-4.
 units           lj

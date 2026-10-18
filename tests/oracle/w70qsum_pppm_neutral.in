@@ -1,5 +1,6 @@
 # oracle: fix adapt atom charge (scale yes, ramp 0.5 to 1.5; net charge stays 0) with kspace pppm: the charge sums follow the charges at each step; G-ewald and the mesh come from the init charges
-# oracle-compare: thermo=all atoms=all rel=1e-5 abs=1e-8
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.9e-13, atoms 4.4e-14.
 units           lj
 atom_style      charge
 lattice         sc 0.8

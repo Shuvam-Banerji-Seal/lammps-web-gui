@@ -1,5 +1,6 @@
 # oracle: fix addtorque/group in metal units (torque, vector and energy conversions), five atoms, energy yes
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.8e-14, atoms 1.4e-17.
 units           metal
 atom_style      atomic
 atom_modify     map array

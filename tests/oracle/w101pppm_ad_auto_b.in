@@ -1,5 +1,6 @@
 # oracle: PPPM kspace_modify diff ad, orthogonal box 10x11x13, automatic G and grid at 1e-5 (rel 1e-7: the G-ewald stop is ill-conditioned, a 2e-15 change in q2 moves G by 2e-8; measured G 8e-8 rel, ecoul 4.5e-8 rel, all else under 1e-8)
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-10
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.6e-12, atoms 2.1e-14.
 units           real
 atom_style      charge
 lattice         sc 3.2

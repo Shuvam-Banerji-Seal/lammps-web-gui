@@ -1,7 +1,8 @@
 # oracle: eFF H2 minimization (examples/PACKAGES/eff/H2 in.h2, minimize step cut down to 30 iterations, line quadratic): electron radii as minimizer DOF
 # oracle-inputs: w63eff_h2.data
 # oracle-files: w63eff_h2_min_er.dump
-# oracle-compare: thermo=all atoms=all rel=1e-7 abs=1e-9
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 7.9e-14, atoms 1.8e-11.
 units           electron
 newton          on
 boundary        p p p

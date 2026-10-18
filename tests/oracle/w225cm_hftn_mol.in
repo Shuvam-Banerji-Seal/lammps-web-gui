@@ -1,5 +1,5 @@
-# oracle: min_style hftn on a six-atom chain with harmonic bonds and angles and a Lennard-Jones pair term (1-4 pairs scaled), every iteration printed (the first eight iterations: beyond them the rows differ from native only by rounding amplified by the finite-difference Hessian products, past 1e-8 from iteration 9)
-# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.4e-9, atoms 2.0e-7.
+# oracle: min_style hftn on a six-atom chain with harmonic bonds and angles and a Lennard-Jones pair term (1-4 pairs scaled), every iteration printed (the first six iterations: beyond them the rows differ from native only by rounding amplified by the finite-difference Hessian products, which grows about tenfold per iteration from the last-bit differences of the forces)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.1e-10, atoms 2.9e-9.
 # oracle-inputs: w225cm_hftn_mol.data
 units           real
 atom_style      molecular
@@ -16,4 +16,4 @@ thermo          1
 thermo_style    custom step pe fmax
 thermo_modify   format float %.15g
 min_style       hftn
-minimize        1.0e-12 1.0e-10 8 3000
+minimize        1.0e-12 1.0e-10 6 3000

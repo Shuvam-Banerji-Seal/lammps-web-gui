@@ -1,0 +1,23 @@
+# oracle: min_style hftn (Hessian-free truncated Newton) on a free Lennard-Jones cluster of about 30 atoms, perturbed, every iteration printed (the first five iterations: later rows differ from native only by floating-point rounding amplified by the finite-difference Hessian products, beyond 1e-8 at iteration 6)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.1e-9, atoms 1.1e-8.
+units           lj
+atom_style      atomic
+boundary        f f f
+lattice         fcc 0.9
+region          box block -4 4 -4 4 -4 4
+create_box      1 box
+region          sph sphere 0 0 0 1.6
+create_atoms    1 region sph
+mass            1 1.0
+variable        dx atom 0.06*sin(3.1*x+1.7*y)
+variable        dy atom 0.06*cos(2.3*y+0.9*z)
+variable        dz atom 0.06*sin(1.9*z+2.5*x)
+displace_atoms  all move v_dx v_dy v_dz units box
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+pair_modify     shift yes
+thermo          1
+thermo_style    custom step pe fmax
+thermo_modify   format float %.15g
+min_style       hftn
+minimize        1.0e-12 1.0e-10 5 3000

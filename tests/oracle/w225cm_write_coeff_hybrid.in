@@ -1,0 +1,18 @@
+# oracle: write_coeff of a hybrid pair style (lj/cut and coul/cut sub-styles) with a bond style
+# oracle-files: w225cm_coeff_hybrid.txt
+# oracle-compare: thermo=all atoms=none
+units           real
+atom_style      full
+region          box block -5 5 -5 5 -5 5
+create_box      2 box bond/types 1 extra/bond/per/atom 2 extra/special/per/atom 3
+create_atoms    1 single 0.0 0.0 0.0
+create_atoms    2 single 1.0 0.0 0.0
+mass            * 12.0
+pair_style      hybrid lj/cut 8.0 coul/cut 10.0
+pair_coeff      1 1 lj/cut 0.10 3.40
+pair_coeff      1 2 lj/cut 0.20 3.10 9.0
+pair_coeff      2 2 coul/cut 9.5
+pair_coeff      1 2 coul/cut 9.5
+bond_style      harmonic
+bond_coeff      1 300.0 1.09
+write_coeff     w225cm_coeff_hybrid.txt

@@ -46,6 +46,8 @@ import { libm } from './libm';
 
 export interface MoleculeTemplate {
   id: string;
+  /** the title line of the file (native Molecule::title: trimmed first line, "(no title)" when empty) */
+  title?: string;
   natoms: number;
   /** 3N coordinates as read (scaled). */
   x: Float64Array;
@@ -152,6 +154,7 @@ const parseMoleculeText = (id: string, name: string, text: string, o: MoleculeOp
     bonds: [], angles: [], dihedrals: [], impropers: [], special: null, shake: null, diam: null, mass: null, mu: null,
     fragments: [],
     lines: null, tris: null,
+    title: (lines[0] ?? '').trim() || '(no title)',
   };
   const seen = new Set<string>();
   let specialCounts: number[][] | null = null;

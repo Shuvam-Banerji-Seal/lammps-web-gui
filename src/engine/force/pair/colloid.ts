@@ -365,6 +365,13 @@ export class PairColloid extends Pair {
     pc.acc.evdwl += evdwl;
   }
 
+  /** As native LAMMPS does (src/COLLOID/pair_colloid.cpp extract at b332f28): "a12", "sigma", "d1", "d2" (dim 2). */
+  extract(name: string): unknown {
+    if (name === 'a12') return this.p.p('a');
+    if (name === 'sigma' || name === 'd1' || name === 'd2') return this.p.p(name);
+    return undefined;
+  }
+
   single(_i: number, _j: number, itype: number, jtype: number, rsq: number): { eng: number; fforce: number } {
     const nt = this.ntypes + 1;
     const t = itype * nt + jtype;

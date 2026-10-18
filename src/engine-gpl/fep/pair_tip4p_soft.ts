@@ -95,6 +95,8 @@ export class PairTIP4PSoftBase extends PairTIP4PBase {
 
   /** The cut_coul the kspace style reads (pair extract). */
   extract(name: string): unknown {
+    // pair_lj_cut_tip4p_long_soft.cpp extract: "epsilon", "sigma", "lambda" (dim 2) besides "cut_coul"
+    if (name === 'epsilon' || name === 'sigma' || name === 'lambda') return this.p.p(name);
     return name === 'cut_coul' ? this.cutCoul : undefined;
   }
 

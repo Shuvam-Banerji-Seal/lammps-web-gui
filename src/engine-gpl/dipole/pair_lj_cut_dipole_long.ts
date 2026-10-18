@@ -89,6 +89,8 @@ export class PairLJCutDipoleLong extends PairDipoleBase {
   }
 
   extract(name: string): unknown {
+    // pair_lj_cut_dipole_long.cpp extract: "epsilon", "sigma" (dim 2) besides "cut_coul"
+    if (name === 'epsilon' || name === 'sigma') return this.p.p(name);
     return name === 'cut_coul' ? this.cutCGlobal : undefined;
   }
 

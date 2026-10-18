@@ -26,6 +26,26 @@ import { parseInteger } from './common';
 import { drawGraphicsObject } from './draw';
 import { chunkCompute } from '../../engine/compute/chunk';
 
+/**
+ * The pair styles whose extract("sigma") returns a per-type-pair array at b332f28: those whose class, or the nearest base
+ * class that defines extract(), has 'strcmp(str, "sigma") == 0' there (accelerator variants left out). PairHybrid::extract
+ * returns the first sub-style's array. Any other style gives nullptr, and fix graphics/chunk then uses the default radius.
+ */
+const NATIVE_SIGMA_STYLES = new Set([
+  'colloid', 'lj/charmm/coul/charmm', 'lj/charmm/coul/charmm/implicit', 'lj/charmm/coul/long',
+  'lj/charmm/coul/long/soft', 'lj/charmm/coul/msm', 'lj/charmmfsw/coul/long', 'lj/class2', 'lj/class2/coul/cut',
+  'lj/class2/coul/cut/soft', 'lj/class2/coul/long', 'lj/class2/coul/long/cs', 'lj/class2/coul/long/soft',
+  'lj/class2/soft', 'lj/cubic', 'lj/cut', 'lj/cut/coul/cut', 'lj/cut/coul/cut/dielectric', 'lj/cut/coul/cut/soft',
+  'lj/cut/coul/debye', 'lj/cut/coul/debye/dielectric', 'lj/cut/coul/esp', 'lj/cut/coul/long', 'lj/cut/coul/long/cs',
+  'lj/cut/coul/long/dielectric', 'lj/cut/coul/long/soft', 'lj/cut/coul/msm', 'lj/cut/coul/msm/dielectric',
+  'lj/cut/dipole/cut', 'lj/cut/dipole/long', 'lj/cut/soft', 'lj/cut/soft/gapsys', 'lj/cut/thole/long',
+  'lj/cut/tip4p/cut', 'lj/cut/tip4p/long', 'lj/cut/tip4p/long/soft', 'lj/expand', 'lj/expand/coul/long',
+  'lj/expand/sphere', 'lj/gromacs', 'lj/gromacs/coul/gromacs', 'lj/long/coul/long', 'lj/long/coul/long/dielectric',
+  'lj/long/dipole/long', 'lj/long/tip4p/long', 'lj/mdf', 'lj/sdk', 'lj/sdk/coul/long', 'lj/sdk/coul/msm', 'lj/sf',
+  'lj/sf/dipole/sf', 'lj/smooth', 'lj/smooth/linear', 'lj/spica', 'lj/spica/coul/long', 'lj/spica/coul/msm',
+  'lj/switch3/coulgauss/long', 'lj96/cut', 'mie/cut', 'mm3/switch3/coulgauss/long', 'ufm', 'wf/cut',
+]);
+
 /** Options of fix graphics/chunk after parsing. */
 export interface ChunkOptions {
   /** Global radius, or null when radius was not given (per-atom or per-type radius then, else the default). */
@@ -342,17 +362,22 @@ export class FixGraphicsChunkFix extends Fix {
     chunk.ensure();
     // without a radius keyword the C++ takes the per-atom radius, else half the pair style's sigma[type][type]
     // ("sigma = (double **) force->pair->extract("sigma", dim); if (dim != 2) sigma = nullptr;"), else the default radius
-    // (no pair style). A pair style whose sigma the engine does not expose is refused by name instead of guessed.
+    // (no pair style, or a pair style without a "sigma" array). A pair style whose native extract() has "sigma" but whose
+    // engine version does not expose it is refused by name instead of drawn with the default radius.
     this.hull.options.sigmaOfType = null;
     if (this.hull.options.radius === null && !s.radius) {
       const pair = sys.ff.pair;
       if (pair) {
         const sig = pair.extract('sigma');
         const nt = s.ntypes + 1;
-        if (!(sig instanceof Float64Array) || sig.length !== nt * nt) {
-          throw new StyleError(`fix ${this.id} graphics/chunk: without a radius keyword the radius comes from the pair style sigma, which pair style ${pair.name} does not expose in the browser engine; give radius`);
+        if (sig instanceof Float64Array && sig.length === nt * nt) {
+          this.hull.options.sigmaOfType = (t) => sig[t * nt + t];
+        } else {
+          const subs = (pair as unknown as { subs?: { name: string }[] }).subs;
+          const names = subs ? subs.map((x) => x.name) : [pair.name];
+          const missing = names.find((n) => NATIVE_SIGMA_STYLES.has(n));
+          if (missing) throw new StyleError(`fix ${this.id} graphics/chunk: without a radius keyword the radius comes from the pair style sigma, which pair style ${missing} does not expose in the browser engine; give radius`);
         }
-        this.hull.options.sigmaOfType = (t) => sig[t * nt + t];
       }
     }
     const atoms: ChunkAtom[] = [];

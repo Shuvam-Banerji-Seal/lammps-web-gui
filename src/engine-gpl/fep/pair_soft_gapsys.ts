@@ -104,6 +104,12 @@ export class PairLJCutSoftGapsys extends Pair {
     return cut;
   }
 
+  /** pair_lj_cut_soft_gapsys.cpp extract: "epsilon", "sigma", "lambda" (dim 2). */
+  extract(name: string): unknown {
+    if (name === 'epsilon' || name === 'sigma' || name === 'lambda') return this.p.p(name);
+    return undefined;
+  }
+
   compute(pc: PairCompute): void {
     const list = pc.half!;
     const { x, f, type } = pc;

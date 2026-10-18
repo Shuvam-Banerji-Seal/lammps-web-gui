@@ -131,6 +131,8 @@ export class PairMM3Switch3CoulGaussLong extends Pair {
 
   /** The Coulomb cutoff the kspace style reads (pair_mm3_switch3_coulgauss_long.cpp extract "cut_coul"). */
   override extract(name: string): unknown {
+    // pair_mm3_switch3_coulgauss_long.cpp extract: "epsilon", "sigma", "gamma" (dim 2) besides "cut_coul"
+    if (name === 'epsilon' || name === 'sigma' || name === 'gamma') return this.p.p(name);
     return name === 'cut_coul' ? this.cutCoul : undefined;
   }
 

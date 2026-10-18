@@ -91,6 +91,16 @@ export abstract class PairDipoleBase extends Pair {
     return Math.max(cl, cc);
   }
 
+  /**
+   * As native LAMMPS does (src/DIPOLE/pair_lj_cut_dipole_cut.cpp and pair_lj_sf_dipole_sf.cpp extract at b332f28):
+   * "epsilon" and "sigma" (dim 2); lj/sf/dipole/sf also "scale".
+   */
+  extract(name: string): unknown {
+    if (name === 'epsilon' || name === 'sigma') return this.p.p(name);
+    if (name === 'scale' && this.name === 'lj/sf/dipole/sf') return this.p.p('scale');
+    return undefined;
+  }
+
   init(ctx: StyleContext): void {
     this.cutLJsq = new Float64Array(0);
     this.cutCsq = new Float64Array(0);

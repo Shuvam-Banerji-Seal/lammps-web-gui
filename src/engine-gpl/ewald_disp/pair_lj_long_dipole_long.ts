@@ -160,6 +160,10 @@ export class PairLJLongDipoleLong extends Pair {
   }
 
   extract(name: string): unknown {
+    // pair_lj_long_dipole_long.cpp extract: "sigma" and "epsilon" (dim 2: the mixed arrays after init_one)
+    const nt = this.ntypes + 1;
+    if (name === 'sigma') return this.sig.length === nt * nt ? this.sig : this.p.p('sigma');
+    if (name === 'epsilon') return this.eps.length === nt * nt ? this.eps : this.p.p('epsilon');
     return name === 'cut_coul' ? this.cutCoul : undefined;
   }
 

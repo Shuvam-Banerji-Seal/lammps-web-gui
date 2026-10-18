@@ -51,9 +51,10 @@ describe('compute heat/flux/tally and heat/flux/virial/tally: refusals and group
     expect(v.error).toMatch(/Could not find compute heat\/flux\/virial\/tally second group ID nosuch/);
   });
 
-  it('refuses extra arguments by name (native ignores them)', async () => {
+  it('ignores words after the group2-ID, as native', async () => {
+    // Measured with native LAMMPS: compute t odd heat/flux/tally even baz runs (compute_heat_flux_tally.cpp reads arg[3] only)
     const r = await run(`${PAIR(1.5, 'lj/cut 2.5')}compute h g1 heat/flux/tally g2 pair yes\nrun 0\n`);
-    expect(r.error).toMatch(/heat\/flux\/tally takes one group2-ID \(no keywords\)/);
+    expect(r.error).toBeUndefined();
   });
 
   it('the virial version errors when an atom is in both groups (native text, at run start)', async () => {

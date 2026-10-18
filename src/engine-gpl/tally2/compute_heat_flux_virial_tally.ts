@@ -30,7 +30,7 @@ export class ComputeHeatFluxVirialTally extends Compute {
     super(sys, id, group, args);
     if (args.length === 0) throw new StyleError('Illegal compute heat/flux/virial/tally command: missing argument(s)');
     if (sys.groups.find(args[0]) < 0) throw new StyleError(`Could not find compute heat/flux/virial/tally second group ID ${args[0]}`);
-    if (args.length !== 1) throw new StyleError(`compute ${id} heat/flux/virial/tally takes one group2-ID (no keywords)`);
+    // compute_heat_flux_virial_tally.cpp constructor: only arg[3] (group2-ID) is read; words after it are ignored
     this.group2Bit = sys.groups.bit(args[0]);
     this.scalarFlag = true;
     this.extscalar = 1;

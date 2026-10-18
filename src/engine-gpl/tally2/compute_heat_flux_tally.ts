@@ -36,7 +36,7 @@ export class ComputeHeatFluxTally extends Compute {
     super(sys, id, group, args);
     if (args.length === 0) throw new StyleError('Illegal compute heat/flux/tally command: missing argument(s)');
     if (sys.groups.find(args[0]) < 0) throw new StyleError(`Could not find compute heat/flux/tally second group ID ${args[0]}`);
-    if (args.length !== 1) throw new StyleError(`compute ${id} heat/flux/tally takes one group2-ID (no keywords)`);
+    // compute_heat_flux_tally.cpp constructor: only arg[3] (group2-ID) is read; words after it are ignored
     this.group2Bit = sys.groups.bit(args[0]);
     this.vectorFlag = true;
     this.sizeVector = 6;

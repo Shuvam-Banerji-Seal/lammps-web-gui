@@ -211,7 +211,10 @@ export class ComputePairTally extends Compute {
   constructor(sys: System, id: string, group: string, args: string[], style: 'pe/tally' | 'force/tally' | 'stress/tally') {
     super(sys, id, group, args);
     this.style = style;
-    if (args.length !== 1) throw new StyleError(`compute ${id} ${style} takes one group2-ID (no keywords)`);
+    // As native LAMMPS does (src/TALLY/compute_pe_tally.cpp, compute_force_tally.cpp, compute_stress_tally.cpp at b332f28):
+    // only the group2-ID is read; measured with native LAMMPS, words after it are ignored (force/tally even molecule inter runs)
+    if (args.length === 0) throw new StyleError(`Illegal compute ${style} command: missing argument(s)`);
+    if (sys.groups.find(args[0]) < 0) throw new StyleError(`Could not find compute ${style} second group ID ${args[0]}`);
     this.group2Bit = sys.groups.bit(args[0]);
     this.cols = style === 'pe/tally' ? 2 : style === 'force/tally' ? 3 : 6;
     this.scalarFlag = true;

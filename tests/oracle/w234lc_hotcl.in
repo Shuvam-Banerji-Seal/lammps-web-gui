@@ -1,0 +1,22 @@
+# oracle: pair_style lcbop - hot disordered carbon cluster (diamond 2x2x2 cell, 64 atoms, random displacement 0.3 A, 3000 K), shrink-wrapped boundaries, 30 NVE steps
+# oracle-potentials: C.lcbop
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 9.8e-14, atoms 2.6e-14.
+units           metal
+atom_style      atomic
+boundary        s s s
+lattice         diamond 3.567
+region          box block 0 2 0 2 0 2
+create_box      1 box
+create_atoms    1 box
+displace_atoms  all random 0.3 0.3 0.3 1234567 units box
+mass            1 12.011
+pair_style      lcbop
+pair_coeff      * * C.lcbop C
+thermo_style    custom step pe ke press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+timestep        0.0005
+velocity        all create 3000.0 9876543 loop all
+fix             1 all nve
+thermo          10
+run             30

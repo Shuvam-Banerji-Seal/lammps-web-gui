@@ -1,0 +1,22 @@
+# oracle: pair_style lcbop - random isolated carbon cluster 3 (7 atoms, free boundaries), forces at step 0
+# oracle-potentials: C.lcbop
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.0e-15, atoms 0.
+units metal
+atom_style atomic
+boundary f f f
+region box block -20 20 -20 20 -20 20
+create_box 1 box
+mass 1 12.011
+pair_style lcbop
+pair_coeff * * C.lcbop C
+thermo_style custom step pe ke press pxx pyy pzz pxy pxz pyz
+thermo_modify format float %.15g
+create_atoms 1 single 0.0000000000 0.0000000000 0.0000000000 units box
+create_atoms 1 single 0.0604104487 -1.3455067419 -0.2235725275 units box
+create_atoms 1 single 1.3697925229 0.3444395128 -0.0311853854 units box
+create_atoms 1 single -1.6246231775 -0.8025626706 1.1299833333 units box
+create_atoms 1 single -0.7585989032 -2.1194225585 -0.9035737449 units box
+create_atoms 1 single -1.9305391116 0.5450533120 0.3247129380 units box
+create_atoms 1 single -1.0719404842 0.1760095717 2.1130844472 units box
+run 0

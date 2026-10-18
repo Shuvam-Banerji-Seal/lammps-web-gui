@@ -1,0 +1,34 @@
+# oracle: dihedral_style spherical (type 1 two terms, type 2 one term; the doc example coefficients scaled by 1/100 so the run conserves energy), 150 steps, nve; write_data at the end (Dihedral Coeffs section)
+# native: b332f28 (installed /home/roy/.local/bin/lmp)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 8.5e-12, atoms 2.5e-13.
+# oracle-inputs: w217xb_mol.data
+# oracle-files: w217xb_dihedral_spherical.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      molecular
+bond_style      harmonic
+angle_style     harmonic
+dihedral_style  spherical
+improper_style  harmonic
+pair_style      zero 2.5
+read_data       w217xb_mol.data
+pair_coeff      * *
+bond_coeff      1 50.0 1.1
+bond_coeff      2 40.0 1.2
+angle_coeff     1 20.0 110.0
+angle_coeff     2 15.0 105.0
+dihedral_coeff  1 2 2.861 1 124 1 1 90.0 0 1 90.0 0 -0.5 2 60 0.5 2 45 1 1 30 0.2
+dihedral_coeff  2 1 0.693 1 93.9 1 1 90 0 1 90 0
+improper_coeff  1 12.0 20.0
+variable        vx atom 0.02*sin(1.3*x+0.7*y)
+variable        vy atom 0.02*cos(0.9*y-0.4*z)
+variable        vz atom 0.02*sin(1.1*z+0.5*x)
+velocity        all set v_vx v_vy v_vz
+velocity        all zero linear
+timestep        0.0005
+fix             1 all nve
+thermo_style    custom step pe ebond eangle edihed eimp ke press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g norm no
+thermo          25
+run             150
+write_data      w217xb_dihedral_spherical.data

@@ -1,5 +1,6 @@
 # oracle: pppm/dielectric with fix polarize/functional (confined: two ions between two dielectric interfaces, PPPM/dielectric; examples/PACKAGES/dielectric in.confined.dof; cut-down: the interface atoms with x >= 20 are removed from both walls (w71diel_confined_half.data: 2002 atoms instead of 4002), because the functional's Rww matrix is built over all interface atoms (N^2 memory and work: 16 s for 4000 atoms))
 # Measured with native LAMMPS (black box): G 0.24260797 and grid 12 12 36 match; the engine agrees to 3.2e-9 relative (elong, row 0) and 4.8e-13 per atom (fz) for the half-wall data; the functional CG solve is iterative (tol 1e-4).
+# The pressure columns check the pppm/dielectric virial: native sums the virial of both poisson() passes (scaled and unscaled charges) when the energy is computed (pppm_dielectric.cpp compute).
 # oracle-inputs: w71diel_confined_half.data
 # oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-12
 units           lj
@@ -24,6 +25,6 @@ fix             1 ions nve
 fix             3 interface polarize/functional 1 0.0001
 fix_modify      3 dielectrics -10 15 1.0 0.866 NULL
 thermo          1000
-thermo_style    custom step evdwl ecoul elong epair
+thermo_style    custom step evdwl ecoul elong epair press pxx pyy pzz pxz
 thermo_modify   flush yes format float %.15g
 run             0

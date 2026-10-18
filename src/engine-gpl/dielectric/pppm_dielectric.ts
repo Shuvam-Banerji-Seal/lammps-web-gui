@@ -192,6 +192,7 @@ export class KSpacePPPMDielectric extends KSpacePPPM {
     ];
     // forces and field from the scaled charges (ik differentiation)
     const rhoS = grid(qs);
+    const ws = [0, 0, 0, 0, 0, 0];
     const ex = new Float64Array(2 * ng), ey = new Float64Array(2 * ng), ez = new Float64Array(2 * ng);
     for (let iz = 0; iz < nz; iz++) {
       const mz = iz < nz / 2 ? iz : iz - nz;
@@ -204,6 +205,11 @@ export class KSpacePPPMDielectric extends KSpacePPPM {
           if (G === 0) continue;
           const re = rhoS[2 * idx], im = rhoS[2 * idx + 1];
           const [kx, ky, kz] = kvec(mx, my, mz);
+          // the virial of this first poisson() pass (scaled charges), as poisson_ik accumulates it (see below)
+          const ts = G * (re * re + im * im);
+          const bs = 2 * (1 / (kx * kx + ky * ky + kz * kz) + 1 / (4 * g * g));
+          ws[0] += ts * (1 - bs * kx * kx); ws[1] += ts * (1 - bs * ky * ky); ws[2] += ts * (1 - bs * kz * kz);
+          ws[3] += ts * (-bs * kx * ky); ws[4] += ts * (-bs * kx * kz); ws[5] += ts * (-bs * ky * kz);
           ex[2 * idx] = kx * G * im; ex[2 * idx + 1] = -kx * G * re;
           ey[2 * idx] = ky * G * im; ey[2 * idx + 1] = -ky * G * re;
           ez[2 * idx] = kz * G * im; ez[2 * idx + 1] = -kz * G * re;
@@ -267,7 +273,13 @@ export class KSpacePPPMDielectric extends KSpacePPPM {
     }
     const pref = Cn / (2 * V);
     kc.acc.elong += pref * e + this.constantEnergy(Cn);
-    for (let c = 0; c < 6; c++) kc.acc.vlong[c] += pref * w[c];
+    // As native LAMMPS does (src/DIELECTRIC/pppm_dielectric.cpp compute at b332f28): with the global energy requested,
+    // poisson() runs twice, first on the scaled charges and then ("redo the charge density") on the unscaled ones, and
+    // both passes add to virial[], which is not reset in between; the sum is scaled by 0.5*qscale*volume, without the
+    // 1/epsilon_ave of the energy. The engine evaluates the energy at every step, so this is native's virial on every
+    // step that computes the energy (a step with the virial only has the first pass alone).
+    const vpref = C / (2 * V);
+    for (let c = 0; c < 6; c++) kc.acc.vlong[c] += vpref * (ws[c] + w[c]);
     this.dielectricSlabCorrection(kc, eps, qs, C, V);
   }
 

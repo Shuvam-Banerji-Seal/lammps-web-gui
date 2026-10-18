@@ -17,14 +17,15 @@ import { forEachTypePair } from './common';
 import { log } from '../libm/log';
 
 /** The Pirani force-over-r and energy of one pair (compute() and single() of pair_lj_pirani.cpp). */
-const piraniPair = (r: number, rm: number, alpha: number, beta: number, gamma: number, eps: number, viaPow: boolean): { forceilj: number; ilj: number } => {
+const piraniPair = (r: number, rm: number, alpha: number, beta: number, gamma: number, eps: number): { forceilj: number; ilj: number } => {
   const rx = r / rm;
   const nX = alpha * rx * rx + beta;
   const powRxNX = pow(1.0 / rx, nX);
   const powRxGamma = pow(1.0 / rx, gamma);
   const dn = nX - gamma;
-  // compute() squares with square() (x * x); single() calls pow(x, 2.0), as the two native functions do
-  const dn2 = viaPow ? pow(dn, 2.0) : dn * dn;
+  // compute() squares with square() and single() writes pow(x, 2.0), which the native binary computes as x * x too (gcc
+  // folds a literal 2.0), so both are dn * dn
+  const dn2 = dn * dn;
   const filj1 = -2.0 * alpha * gamma * rx * powRxNX / (dn2 * rm);
   const filj2 = +2.0 * alpha * rx * nX * powRxGamma / (dn2 * rm);
   const filj3 = -2.0 * alpha * rx * powRxGamma / (rm * dn);
@@ -118,7 +119,7 @@ export class PairLJPirani extends Pair {
         const t = itype * nt + type[j];
         if (rsq < cutsq[t]) {
           const r = Math.sqrt(rsq);
-          const { forceilj, ilj } = piraniPair(r, rmA[t], alpha[t], beta[t], gamma[t], epsA[t], false);
+          const { forceilj, ilj } = piraniPair(r, rmA[t], alpha[t], beta[t], gamma[t], epsA[t]);
           const fpair = factorLJ * forceilj / r;
           fxtmp += delx * fpair;
           fytmp += dely * fpair;
@@ -142,7 +143,7 @@ export class PairLJPirani extends Pair {
     const t = itype * (this.ntypes + 1) + jtype;
     const r = Math.sqrt(rsq);
     const { forceilj, ilj } = piraniPair(r, this.p.get('rm', itype, jtype), this.p.get('alpha', itype, jtype),
-      this.p.get('beta', itype, jtype), this.p.get('gamma', itype, jtype), this.p.get('epsilon', itype, jtype), true);
+      this.p.get('beta', itype, jtype), this.p.get('gamma', itype, jtype), this.p.get('epsilon', itype, jtype));
     return { eng: factorLJ * (ilj - this.offset[t]), fforce: factorLJ * forceilj / r };
   }
 

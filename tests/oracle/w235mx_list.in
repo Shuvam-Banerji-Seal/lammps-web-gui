@@ -1,0 +1,26 @@
+# oracle: pair_style list (docs.lammps.org/pair_list.html) read from a list file (harmonic, morse, lj126 and quartic
+# lines, one per pair, one line with an unknown style that is skipped), overlaid on lj/cut through pair_style
+# hybrid/overlay as the docs' example does. The list pairs use raw coordinate differences (no neighbor list), so the
+# atoms are kept in a 3x3x3 simple cubic cell and the list lines are the pairs that are in range. Native: installed lmp.
+# oracle-inputs: w235mx_list_pairs.txt
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 6.4e-13, atoms 4.6e-14.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+atom_modify     map array
+lattice         sc 0.9
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 0.6 3871 loop geom
+pair_style      hybrid/overlay lj/cut 1.5 list w235mx_list_pairs.txt 2.0
+pair_coeff      1 1 lj/cut 0.2 0.9
+pair_coeff      * * list
+pair_modify     shift yes
+fix             1 all nve
+timestep        0.002
+thermo_style    custom step pe evdwl ke press
+thermo_modify   format float %.15g
+thermo          25
+run             150

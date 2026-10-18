@@ -1,7 +1,8 @@
 # oracle: pair_style sw with the multi-element CdTeZnSeHgS0.sw file (Cd Te Zn, three types), displaced lattice, velocities from atom-style variables, 50 steps of nve
 # oracle-potentials: CdTeZnSeHgS0.sw
-# oracle-tolerance: rel=1e-6 abs=1e-9; measured with native LAMMPS (black box): with pair_style sw threebody off the energies agree to 1e-15; the three-body term differs by about 1e-9 relative in energy (2e-7 in pyz at step 0). This file gives different three-body parameters to the CSiC-type and CCSi-type orders (for example Te Te Zn and Te Zn Te), which the documentation says must agree because the neighbour order is arbitrary; isolating single triplets shows that native and this engine attribute the same pair energies to different triplets, so the total differs in the last digits
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.9e-13, atoms 6.5e-14.
+# The three-body term takes the parameters of the (center, j, k) entry with j before k in native's full-list neighbour order (npair_bin.cpp: the stencil, then each bin chain); this file gives different parameters to orders such as Te Te Zn and Te Zn Te.
+# oracle-compare: thermo=all atoms=all
 units           metal
 atom_style      atomic
 lattice         diamond 5.6

@@ -630,6 +630,74 @@ export const nativeFullLast = (s: SimState, nb: Neighbor, g: Geometry, full: Nei
 };
 
 /**
+ * npair_bin.cpp build() for a FULL list (HALF = 0, orthogonal box, one processor): the entries of the engine's full list
+ * with each owned atom's row in native's order. The full stencil of nstencil_bin.cpp create (HALF = 0) is visited k, j,
+ * i ascending over the bins with bin_distance < cutneighmax^2, and each bin chain in order. Rows keep the engine's
+ * firstneigh and numneigh; an entry the native layout does not reach keeps its engine order after the native ones.
+ */
+export const nativeFullOrder = (s: SimState, nb: Neighbor, g: Geometry, full: NeighList): Int32Array => {
+  const L = nativeLayout(s, nb, g);
+  const { order, n, binOf, bins, chainStart, members, sx, sy, sz, cutmaxsq, binDist, gEng, NA } = L;
+  const out = full.neighbors.slice();
+  const stencil: number[] = [];
+  for (let k = -sz; k <= sz; k++) {
+    for (let j = -sy; j <= sy; j++) {
+      for (let i = -sx; i <= sx; i++) {
+        if (binDist(i, j, k) < cutmaxsq) stencil.push(i, j, k);
+      }
+    }
+  }
+  // slot[ek]: the list slot of engine atom ek in the current row, -1 when it is not (or no longer) in the row
+  const slot = new Int32Array(NA).fill(-1);
+  for (let i = 0; i < n; i++) {
+    const ei = order[i];
+    const k0 = full.firstneigh[ei], k1 = k0 + full.numneigh[ei];
+    for (let q = k0; q < k1; q++) slot[full.neighbors[q] & NEIGHMASK] = q;
+    let w = k0;
+    const bx = binOf[3 * i], by = binOf[3 * i + 1], bz = binOf[3 * i + 2];
+    for (let st = 0; st < stencil.length; st += 3) {
+      const b = bins.get(binKey(bx + stencil[st], by + stencil[st + 1], bz + stencil[st + 2]));
+      if (b < 0) continue;
+      for (let q = chainStart[b]; q < chainStart[b + 1]; q++) {
+        const j = members[q];
+        if (j === i) continue;
+        const ek = gEng[j];
+        if (ek < 0 || slot[ek] < 0) continue;
+        out[w++] = full.neighbors[slot[ek]];
+        slot[ek] = -1;
+      }
+    }
+    for (let q = k0; q < k1; q++) {
+      const ek = full.neighbors[q] & NEIGHMASK;
+      if (slot[ek] >= 0) { out[w++] = full.neighbors[q]; slot[ek] = -1; }
+    }
+  }
+  return out;
+};
+
+/**
+ * The native full-list order (nativeFullOrder) of one step: rebuilt when the engine rebuilds its lists or the native
+ * order changes, kept between rebuilds. Triclinic boxes keep the engine's order.
+ */
+export class NativeFullOrder {
+  private nbuild = -1;
+  private order: Int32Array | null = null;
+  private full: NeighList | null = null;
+  private cache: Int32Array = new Int32Array(0);
+
+  /** The full list's entries with each owned atom's row in native order (indexed by the list's firstneigh/numneigh). */
+  neighbors(s: SimState, nb: Neighbor, g: Geometry, full: NeighList): Int32Array {
+    if (g.triclinic) return full.neighbors;
+    if (this.nbuild === nb.nbuild && this.order === s.order && this.full === full) return this.cache;
+    this.cache = nativeFullOrder(s, nb, g, full);
+    this.nbuild = nb.nbuild;
+    this.order = s.order;
+    this.full = full;
+    return this.cache;
+  }
+}
+
+/**
  * The pair order of one step: rebuilt when the engine rebuilds its lists or the native order changes (sorting),
  * kept between rebuilds (native keeps its pair lists and only tests the cutoff each step).
  */

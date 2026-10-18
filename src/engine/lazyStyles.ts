@@ -185,6 +185,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_graphics', names: { FIXES: ['graphics/arrows', 'graphics/chunk', 'graphics/labels', 'graphics/lines', 'graphics/objects', 'graphics/periodic', 'graphics/replica'], HOOKS: ['image', 'atoms', 'region'] }, load: () => import('../engine-gpl/registry/graphics') as Promise<StyleModule> },
   { id: 'gpl_graphics_isosurface', names: { FIXES: ['graphics/isosurface'] }, load: () => import('../engine-gpl/registry/graphics_isosurface') as Promise<StyleModule> },
   { id: 'gpl_shock', names: { FIXES: ['msst', 'nphug', 'wall/piston', 'append/atoms'] }, load: () => import('../engine-gpl/registry/shock') as Promise<StyleModule> },
+  { id: 'gpl_table_bonded', names: { BONDS: ['table'], ANGLES: ['table'], DIHEDRALS: ['table', 'table/cut'] }, load: () => import('../engine-gpl/registry/table_bonded') as Promise<StyleModule> },
   { id: 'gpl_slater', names: { PAIRS: ['coul/slater/long', 'dpd/coul/slater/long'] }, load: () => import('../engine-gpl/registry/slater') as Promise<StyleModule> },
   { id: 'gpl_e3b', names: { PAIRS: ['e3b'] }, load: () => import('../engine-gpl/registry/e3b') as Promise<StyleModule> },
   { id: 'gpl_srp', names: { PAIRS: ['srp', 'srp/react'], FIXES: ['SRP', 'SRPREACT'] }, load: () => import('../engine-gpl/registry/srp') as Promise<StyleModule> },

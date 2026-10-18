@@ -1,0 +1,18 @@
+# oracle: dihedral_style table/cut linear 360: an angle-angle-torsion cutoff with k, theta1, theta2 per type
+# oracle-inputs: w216tb_chains.data w216tb_dihedral.table
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 7.4e-13, atoms 6.4e-13.
+# timestep 0.0005 (not 0.002): the cut term amplifies rounding (Math.acos differs from glibc in the last bit for about 7% of arguments), so the shorter run stays at rounding level.
+units           lj
+atom_style      molecular
+read_data      w216tb_chains.data
+pair_style      lj/cut 1.0
+pair_coeff      * * 0.0 1.0
+timestep       0.0005
+dihedral_style  table/cut linear 360
+dihedral_coeff 1 aat 2.0 100.0 120.0 w216tb_dihedral.table DLIN
+dihedral_coeff 2 aat 3.0 105.0 130.0 w216tb_dihedral.table DLIN
+fix             1 all nve
+thermo          10
+thermo_style    custom step pe ebond eangle edihed ke press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+run             100

@@ -1,0 +1,20 @@
+# oracle: fix orient/fcc (dir 1, nstats 0: the per-step statistics lines would break the thermo table the oracle script parses): a 569-atom fcc bicrystal (w236or_fcc.data: grain 1 at x<0 with the identity orientation, grain 2 rotated 20 deg about z and 10 deg about x, free boundaries), pair lj/cut 5.0 with epsilon 0.002 eV and sigma 2.3 A, nve, 100 steps. Per-atom compare of x, v and f, thermo with f_or (the added energy) and pe (fix_modify energy yes).
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.4e-13, atoms 3.1e-15.
+# oracle-inputs: w236or_fcc.data w236or_fcc_grain1.ori w236or_fcc_grain2.ori
+# native: b332f28 built with the installed lmp (ORIENT)
+units metal
+atom_style atomic
+boundary f f f
+read_data w236or_fcc.data
+pair_style lj/cut 5.0
+pair_coeff * * 0.002 2.3
+timestep 0.001
+velocity all create 300 4928459
+fix integrator all nve
+fix or all orient/fcc 0 1 3.6 0.01 0.25 0.75 w236or_fcc_grain1.ori w236or_fcc_grain2.ori
+fix_modify or energy yes
+thermo 10
+thermo_style custom step temp pe etotal f_or
+thermo_modify format float %.15g
+run 100

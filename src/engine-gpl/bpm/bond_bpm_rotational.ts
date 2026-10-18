@@ -21,13 +21,14 @@ import { bondKey, BondBPMBase, yesno } from './bond_bpm';
 import { add3, cross3, dot3, len3, normalize3, quatquat, qconjugate, qnormalize, quatrotvec, scale3, sub3, type Quat, type Vec3 } from './quat';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { pow as libmPow } from '../libm/pow';
+import { acos as libmAcos } from '../libm/acos';
 
 // LAMMPS: static constexpr double EPSILON = 1e-10 (bond_bpm_rotational.cpp)
 const EPSILON = 1e-10;
 const SQRT2 = Math.SQRT2;
 const PI = Math.PI;
 
-const acosLimit = (c: number): number => Math.acos(Math.min(1, Math.max(-1, c)));
+const acosLimit = (c: number): number => libmAcos(Math.min(1, Math.max(-1, c)));
 
 /** Wraps an angle difference into (-pi, pi] as the LAMMPS wrap_2pi. */
 const wrap2pi = (t: number): number => {

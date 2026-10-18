@@ -17,6 +17,7 @@ import { DF1, DF4, DF5, F1, F4, F5, lrfOf, oxdnaConstants, stackingSiteOxdna1, b
 import { sin as libmSin } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
+import { acos as libmAcos } from '../libm/acos';
 
 /** pair_oxdna_stk.cpp constructor: the sequence-dependence factors eta_st[i][j] (indexed by 1-based base types mod 4). */
 export const ETA_ST: number[][] = [
@@ -268,15 +269,15 @@ export class PairOxdnaStk extends Pair {
       if (f1 !== 0.0) {
         // dot products for the angles (the local z axes of a and b)
         const cost4 = clamp(dot(bz, az));
-        const theta4 = Math.acos(cost4);
+        const theta4 = libmAcos(cost4);
         const f4t4 = F4(theta4, this.a4[q4], this.th4[qe], this.dth4ast[q4], this.b4[q4], this.dth4c[q4]);
         if (f4t4 !== 0.0) {
           const cost5p = clamp(dot(dStkN, bz));
-          const theta5p = Math.acos(cost5p);
+          const theta5p = libmAcos(cost5p);
           const f4t5 = F4(theta5p, this.a5[qe], this.th5[qe], this.dth5ast[qe], this.b5[qe], this.dth5c[qe]);
           if (f4t5 !== 0.0) {
             const cost6p = clamp(dot(dStkN, az));
-            const theta6p = Math.acos(cost6p);
+            const theta6p = libmAcos(cost6p);
             const cosphi1 = clamp(dot(dBkN, by));
             const cosphi2 = clamp(dot(dBkN, ay));
             const f4t6 = F4(theta6p, this.a6[qe], this.th6[qe], this.dth6ast[qe], this.b6[qe], this.dth6c[qe]);

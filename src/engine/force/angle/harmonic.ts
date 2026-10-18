@@ -1,6 +1,7 @@
 import { SimpleBonded, atomIndex, delta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
 import { StyleError, type BondedCompute } from '../types';
+import { libm } from '../../libm';
 
 /*
  * angle_style harmonic — docs.lammps.org/angle_harmonic.html:
@@ -70,7 +71,7 @@ export const angleTerm = (
   let c = (d1[0] * d2[0] + d1[1] * d2[1] + d1[2] * d2[2]) / (r1 * r2);
   if (c > 1) c = 1;
   if (c < -1) c = -1;
-  const theta = Math.acos(c);
+  const theta = libm.acos(c);
   const r = pot(theta, c);
   // dE/dc either directly or from dE/dtheta: dtheta/dc = -1/sin(theta)
   let dEdc: number;

@@ -12,13 +12,14 @@
  * dihedral_coeff N nterms, then per term 10 values: "C phi_mult phi_shift(deg) phi_offset theta1_mult
  * theta1_shift(deg) theta1_offset theta2_mult theta2_shift(deg) theta2_offset" (the doc's Coeffs). The shifts are
  * stored in radians. The phi, theta1 and theta2 expressions, the vectors and the derivatives are native's, in native's
- * order; the acos calls are Math.acos (no port in src/engine-gpl/libm), the cos and sin calls use the libm ports.
+ * order; the acos, cos and sin calls use the glibc ports of src/engine-gpl/libm.
  */
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { atomIndex } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { cos, sin } from '../libm/sincos';
 import { evTallyFour } from './ev';
+import { acos as libmAcos } from '../libm/acos';
 
 // MathConst (math_const.h)
 const MY_PI = 3.14159265358979323846;
@@ -232,11 +233,11 @@ export class DihedralSpherical extends Bonded {
       let ct1 = -dot123 * inv_L12 * inv_L23;
       if (ct1 < -1.0) ct1 = -1.0;
       else if (ct1 > 1.0) ct1 = 1.0;
-      const theta1 = Math.acos(ct1);
+      const theta1 = libmAcos(ct1);
       let ct2 = -dot234 * inv_L23 * inv_L34;
       if (ct2 < -1.0) ct2 = -1.0;
       else if (ct2 > 1.0) ct2 = 1.0;
-      const theta2 = Math.acos(ct2);
+      const theta2 = libmAcos(ct2);
       const g = this.generalized(type, phi, theta1, theta2);
       const edihedral = g.energy;
       for (let d = 0; d < 3; d++) {
@@ -279,7 +280,7 @@ export class DihedralSpherical extends Bonded {
     let cos_phi = -dot3(n123, n234);
     if (cos_phi > 1.0) cos_phi = 1.0;
     else if (cos_phi < -1.0) cos_phi = -1.0;
-    let phi = Math.acos(cos_phi);
+    let phi = libmAcos(cos_phi);
     if (dot3(n123, vb34) > 0.0) {
       phi = -phi;
       phi += MY_2PI;

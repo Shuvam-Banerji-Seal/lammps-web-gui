@@ -372,7 +372,7 @@ export class PairNB3BHarmonic extends Pair {
           }
           const dot = ux * vx + uy * vy + uz * vz;
           const c = Math.min(1, Math.max(-1, dot / (ru * rv)));
-          const theta = Math.acos(c);
+          const theta = libm.acos(c);
           const s = Math.max(Math.sqrt(1 - c * c), 1e-8);
           const dth = theta - th0;
           const e = K * dth * dth * F;

@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { parseInt_, parseNum } from '../force/util';
 import { isNumericTypeWord, typeWord } from '../labelmap';
+import { libm } from '../libm';
 
 /*
  * compute ID group-ID adf Nbin itype1 jtype1 ktype1 Rjinner1 Rjouter1 Rkinner1 Rkouter1 ...
@@ -218,7 +219,7 @@ export class ComputeADF extends Compute {
             const cos = (dxa * dxb + dya * dyb + dza * dzb) / Math.sqrt(r2a * r2b);
             const val = this.ordinate === 'cosine'
               ? cos
-              : (this.ordinate === 'degree' ? Math.acos(clamp(cos)) * (180 / Math.PI) : Math.acos(clamp(cos)));
+              : (this.ordinate === 'degree' ? libm.acos(clamp(cos)) * (180 / Math.PI) : libm.acos(clamp(cos)));
             const bin = Math.floor((val - lo) / width);
             if (bin < 0 || bin >= this.nbin) continue;
             hist[m * this.nbin + bin]++;

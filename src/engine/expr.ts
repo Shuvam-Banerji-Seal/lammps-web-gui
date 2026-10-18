@@ -64,7 +64,7 @@ const FUNCS: Record<string, { n: number; f?: (...a: number[]) => number }> = {
   log: { n: 1, f: Math.log10 }, abs: { n: 1, f: Math.abs },
   sign: { n: 1, f: (x) => (x >= 0 ? 1 : -1) },
   sin: { n: 1, f: (x) => libm.sin(x) }, cos: { n: 1, f: (x) => libm.cos(x) }, tan: { n: 1, f: Math.tan },
-  asin: { n: 1, f: Math.asin }, acos: { n: 1, f: Math.acos }, atan: { n: 1, f: Math.atan },
+  asin: { n: 1, f: Math.asin }, acos: { n: 1, f: (x: number) => libm.acos(x) }, atan: { n: 1, f: Math.atan },
   atan2: { n: 2, f: Math.atan2 },
   ceil: { n: 1, f: Math.ceil }, floor: { n: 1, f: Math.floor },
   // round(): halves go toward +infinity, as the variable round() does (formula.ts cround; measured with native LAMMPS)

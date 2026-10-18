@@ -18,6 +18,7 @@ import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, DF5, F1, F4, F5, lrfOf, oxdnaConstants } from './common';
 import { stackingDerived, stackingStrength } from './pair_stk';
 import { sin as libmSin } from '../libm/sincos';
+import { acos as libmAcos } from '../libm/acos';
 
 /** pair_oxrna2_stk.cpp constructor: the sequence-dependence factors eta_st[i-1][j-1] (1-based types). */
 const ETA_OXRNA2: number[][] = [
@@ -209,19 +210,19 @@ export class PairOxrna2Stk extends Pair {
       const f1 = F1(rS, TT.eps[ij], TT.a[ij], TT.cut0[ij], TT.cutlc[ij], TT.cuthc[ij], TT.cutlo[ij], TT.cuthi[ij], TT.blo[ij], TT.bhi[ij], TT.shift[ij]);
       if (f1 === 0.0) continue;
       const cost5p = clamp(dot(drsn, bz));
-      const theta5p = Math.acos(cost5p);
+      const theta5p = libmAcos(cost5p);
       const f4t5 = F4(theta5p, TT.a5[ij], TT.th5[ij], TT.dth5ast[ij], TT.b5[ij], TT.dth5c[ij]);
       if (f4t5 === 0.0) continue;
       const cost6p = clamp(dot(drsn, az));
-      const theta6p = Math.acos(cost6p);
+      const theta6p = libmAcos(cost6p);
       for (let c = 0; c < 3; c++) {
         aux5[c] = D5P[0] * ax[c] + D5P[1] * ay[c] + D5P[2] * az[c];
         aux3[c] = D3P[0] * bx[c] + D3P[1] * by[c] + D3P[2] * bz[c];
       }
       const cost9 = clamp(dot(drbn, aux3));
-      const theta9 = Math.acos(cost9);
+      const theta9 = libmAcos(cost9);
       const cost10 = clamp(dot(drbn, aux5));
-      const theta10 = Math.acos(cost10);
+      const theta10 = libmAcos(cost10);
       const cosphi1 = clamp(dot(drbn, by));
       const cosphi2 = clamp(dot(drbn, ay));
       const f4t6 = F4(theta6p, TT.a6[ij], TT.th6[ij], TT.dth6ast[ij], TT.b6[ij], TT.dth6c[ij]);

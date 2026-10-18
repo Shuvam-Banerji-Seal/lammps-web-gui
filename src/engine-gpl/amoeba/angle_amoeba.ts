@@ -14,6 +14,7 @@
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { parseNum } from '../../engine/force/util';
+import { acos as libmAcos } from '../libm/acos';
 
 /** SMALL in angle_amoeba.cpp: the lower bound on sin(theta). */
 const SMALL = 0.001;
@@ -155,7 +156,7 @@ export class AngleAmoeba extends Bonded {
     let s = Math.sqrt(1.0 - c * c);
     if (s < SMALL) s = SMALL;
     s = 1.0 / s;
-    const dtheta = Math.acos(c) - this.theta0[t];
+    const dtheta = libmAcos(c) - this.theta0[t];
     // Tinker angle (sextic)
     const dt2 = dtheta * dtheta, dt3 = dt2 * dtheta, dt4 = dt3 * dtheta, dt5 = dt4 * dtheta, dt6 = dt5 * dtheta;
     const deAngle = 2.0 * this.k2[t] * dtheta + 3.0 * this.k3[t] * dt2 + 4.0 * this.k4[t] * dt3
@@ -211,7 +212,7 @@ export class AngleAmoeba extends Bonded {
     const dot = xap * xcp + yap * ycp + zap * zcp;
     let cosine = dot / Math.sqrt(rap2 * rcp2);
     cosine = Math.min(1.0, Math.max(-1.0, cosine));
-    const dtheta = Math.acos(cosine) - this.theta0[t];
+    const dtheta = libmAcos(cosine) - this.theta0[t];
     const dtheta2 = dtheta * dtheta, dtheta3 = dtheta2 * dtheta, dtheta4 = dtheta3 * dtheta;
     const dtheta5 = dtheta4 * dtheta, dtheta6 = dtheta5 * dtheta;
     const deddt = 2.0 * this.k2[t] * dtheta + 3.0 * this.k3[t] * dtheta2 + 4.0 * this.k4[t] * dtheta3 +
@@ -274,7 +275,7 @@ export class AngleAmoeba extends Bonded {
     let s = Math.sqrt(1.0 - c * c);
     if (s < SMALL) s = SMALL;
     s = 1.0 / s;
-    const dtheta = Math.acos(c) - this.theta0[t];
+    const dtheta = libmAcos(c) - this.theta0[t];
     const dr1 = r1 - this.baR1[t], dr2 = r2 - this.baR2[t];
     const aa1 = s * dr1 * this.baK1[t];
     const aa2 = s * dr2 * this.baK2[t];

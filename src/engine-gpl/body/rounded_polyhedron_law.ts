@@ -20,6 +20,7 @@
 import { normalForce } from './rounded_polygon_law';
 import { accumulateContact, historyFriction, newContactHistory, type ContactHistory } from './contact_history';
 import { cos as libmCos } from '../libm/sincos';
+import { acos as libmAcos } from '../libm/acos';
 
 export type V3 = [number, number, number];
 
@@ -165,7 +166,7 @@ const patchFactor = (n1: V3, n2: V3): number => {
   const c = -dot(n1, n2);
   if (c <= COS_PATCH_ANGLE) return 0.0;
   if (c >= COS_HALF_PATCH_ANGLE) return 1.0;
-  const phi = Math.acos(Math.min(1.0, c));
+  const phi = libmAcos(Math.min(1.0, c));
   return 1.0 - smoothstep(2.0 * phi / PATCH_ANGLE - 1.0);
 };
 
@@ -675,7 +676,7 @@ export class PolyhedronPairLaw {
     const ui = sub(b.disc[b.edges[ei][1]], b.disc[b.edges[ei][0]]);
     const uj = sub(o.disc[o.edges[ej][1]], o.disc[o.edges[ej][0]]);
     const c = Math.abs(dot(ui, uj)) / (len(ui) * len(uj));
-    const wline = c <= COS_LINE_ANGLE ? 1.0 : smoothstep(Math.acos(Math.min(1.0, c)) / LINE_ANGLE);
+    const wline = c <= COS_LINE_ANGLE ? 1.0 : smoothstep(libmAcos(Math.min(1.0, c)) / LINE_ANGLE);
     return (1.0 - this.featurePatchFactor(b, -1, ei, o, -1, ej, -1)) * wline;
   }
 
@@ -771,14 +772,14 @@ export class PolyhedronPairLaw {
       let u = sub(xi1, q1), v = sub(xi2, q1);
       let magu = len(u), magv = len(v);
       if (magu * magv < EPSILON * rradsq) atvertex1 = true;
-      else anglesum1 += Math.acos(Math.max(-1.0, Math.min(1.0, dot(u, v) / (magu * magv))));
+      else anglesum1 += libmAcos(Math.max(-1.0, Math.min(1.0, dot(u, v) / (magu * magv))));
       if (q2 !== null) {
         u = sub(xi1, q2);
         v = sub(xi2, q2);
         magu = len(u);
         magv = len(v);
         if (magu * magv < EPSILON * rradsq) atvertex2 = true;
-        else anglesum2 += Math.acos(Math.max(-1.0, Math.min(1.0, dot(u, v) / (magu * magv))));
+        else anglesum2 += libmAcos(Math.max(-1.0, Math.min(1.0, dot(u, v) / (magu * magv))));
       }
     }
     const in1 = atvertex1 || Math.abs(anglesum1 - MY_2PI) < EPSILON;

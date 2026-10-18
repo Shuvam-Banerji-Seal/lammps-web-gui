@@ -204,7 +204,7 @@ export class FixRestrain extends Fix {
         let cth = (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / (ru * rv);
         if (cth > 1) cth = 1;
         if (cth < -1) cth = -1;
-        const theta = Math.acos(cth);
+        const theta = libm.acos(cth);
         const dth = theta - r0;
         etot += k * dth * dth;
         let sn = Math.sqrt(1 - cth * cth);

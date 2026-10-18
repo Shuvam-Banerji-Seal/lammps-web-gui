@@ -16,6 +16,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import type { System } from '../../engine/system';
 import { NativePairOrder } from '../neighbor/nativeOrder';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { acos as libmAcos } from '../libm/acos';
 
 /** One pair of the half list that passes the group test and the cutoff: positions of i and j (image), fpair. */
 interface PairRow { xi: number; yi: number; zi: number; xj: number; yj: number; zj: number; fpair: number }
@@ -372,7 +373,7 @@ export class ComputeStressSpherical extends Compute {
       if (r >= Rmax) continue;
       const bin = Math.trunc(r / w);
       if (r !== 0.0 && ri[0] !== 0.0) {
-        const theta = Math.acos(ri[2] / r);
+        const theta = libmAcos(ri[2] / r);
         tdens[bin] += 1.0;
         const vr = (ri[0] * v[3 * i] + ri[1] * v[3 * i + 1] + ri[2] * v[3 * i + 2]) / r;
         const q = ri[1] / ri[0];

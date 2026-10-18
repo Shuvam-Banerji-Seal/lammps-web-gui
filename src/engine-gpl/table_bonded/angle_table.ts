@@ -13,6 +13,7 @@ import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext }
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { spline, splint } from './splines';
 import { TableFileReader, TokenError, WordStream, readTableText, splitWords } from './tablefile';
+import { acos as libmAcos } from '../libm/acos';
 
 const MY_PI = 3.14159265358979323846;
 const DEG2RAD = MY_PI / 180.0;
@@ -286,7 +287,7 @@ export class AngleTable extends Bonded {
       if (s < SMALL) s = SMALL;
       s = 1.0 / s;
       // tabulated force & energy
-      const theta = Math.acos(c);
+      const theta = libmAcos(c);
       const { u, f: mdu } = this.ufLookup(type, theta);
       const eangle = u;
       const a = mdu * s;

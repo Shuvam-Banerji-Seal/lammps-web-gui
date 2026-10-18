@@ -22,6 +22,7 @@ import { RanMars } from '../random_mars';
 import {
   intArg, numArg, oneTwoAppend, oneTwoOf, oneTwoOrder, pairKey, refreshTopology, topoEntries, writeTopo, type TopoEntry,
 } from '../mc/bond_topo';
+import { acos as libmAcos } from '../libm/acos';
 
 const BIG = 1.0e20;
 
@@ -153,7 +154,7 @@ export class FixBondCreateAngle extends Fix {
     const angleAt = (c: number[], o: number[], p: number[]): number => {
       const v1x = c[0] - o[0], v1y = c[1] - o[1], v1z = c[2] - o[2];
       const v2x = c[0] - p[0], v2y = c[1] - p[1], v2z = c[2] - p[2];
-      return Math.acos((v1x * v2x + v1y * v2y + v1z * v2z) /
+      return libmAcos((v1x * v2x + v1y * v2y + v1z * v2z) /
         (Math.sqrt(v1x * v1x + v1y * v1y + v1z * v1z) * Math.sqrt(v2x * v2x + v2y * v2y + v2z * v2z)));
     };
     const inRange = (a: number): boolean => this.amin <= a && a <= this.amax;

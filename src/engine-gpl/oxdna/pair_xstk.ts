@@ -14,6 +14,7 @@ import { OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF2, DF4, F2, F4, baseSite, lrfOf, oxdnaConstants, potentialLines } from './common';
 import { sin as libmSin } from '../libm/sincos';
+import { acos as libmAcos } from '../libm/acos';
 
 /** The 23 numbers after "I J" (pair_coeff) or after the potential-file name, in order. */
 const XST_NAMES = ['k_xst', 'cut_xst_0', 'cut_xst_c', 'cut_xst_lo', 'cut_xst_hi',
@@ -176,35 +177,35 @@ export class PairOxdnaXstk extends Pair {
         const f2 = F2(r, T.k[ij], T.cut0[ij], T.cutlc[ij], T.cuthc[ij], T.cutlo[ij], T.cuthi[ij], T.blo[ij], T.bhi[ij], T.cutc[ij]);
         if (f2 === 0.0) continue;
         let cost1 = -dot(ax, bx); cost1 = clamp(cost1);
-        const theta1 = Math.acos(cost1);
+        const theta1 = libmAcos(cost1);
         const f4t1 = F4(theta1, T.a1[ij], T.th1[ij], T.dth1ast[ij], T.b1[ij], T.dth1c[ij]);
         if (f4t1 === 0.0) continue;
         let cost2 = -dot(ax, drn); cost2 = clamp(cost2);
-        const theta2 = Math.acos(cost2);
+        const theta2 = libmAcos(cost2);
         const f4t2 = F4(theta2, T.a2[ij], T.th2[ij], T.dth2ast[ij], T.b2[ij], T.dth2c[ij]);
         if (f4t2 === 0.0) continue;
         let cost3 = dot(bx, drn); cost3 = clamp(cost3);
-        const theta3 = Math.acos(cost3);
+        const theta3 = libmAcos(cost3);
         const f4t3 = F4(theta3, T.a3[ij], T.th3[ij], T.dth3ast[ij], T.b3[ij], T.dth3c[ij]);
         if (f4t3 === 0.0) continue;
         // the theta4 factor (oxDNA only): f4t4 = 1 otherwise, and the product with 1 leaves every bit unchanged
         let f4t4 = 1.0, theta4 = 0.0, theta4p = 0.0;
         if (this.withTheta4) {
           const cost4 = clamp(dot(az, bz));
-          theta4 = Math.acos(cost4);
+          theta4 = libmAcos(cost4);
           theta4p = PI - theta4;
           f4t4 = F4(theta4, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])
             + F4(theta4p, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij]);
           if (f4t4 === 0.0) continue;
         }
         let cost7 = -dot(az, drn); cost7 = clamp(cost7);
-        const theta7 = Math.acos(cost7);
+        const theta7 = libmAcos(cost7);
         const theta7p = PI - theta7;
         const f4t7 = F4(theta7, T.a7[ij], T.th7[ij], T.dth7ast[ij], T.b7[ij], T.dth7c[ij])
           + F4(theta7p, T.a7[ij], T.th7[ij], T.dth7ast[ij], T.b7[ij], T.dth7c[ij]);
         if (f4t7 === 0.0) continue;
         let cost8 = dot(bz, drn); cost8 = clamp(cost8);
-        const theta8 = Math.acos(cost8);
+        const theta8 = libmAcos(cost8);
         const theta8p = PI - theta8;
         const f4t8 = F4(theta8, T.a8[ij], T.th8[ij], T.dth8ast[ij], T.b8[ij], T.dth8c[ij])
           + F4(theta8p, T.a8[ij], T.th8[ij], T.dth8ast[ij], T.b8[ij], T.dth8c[ij]);

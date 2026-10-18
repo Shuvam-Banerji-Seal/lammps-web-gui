@@ -13,6 +13,7 @@
  * a rigid-flat contact (see model.ts); a wall contact has one side.
  */
 import { exp as libmExp } from '../../libm/exp';
+import { acos as libmAcos } from '../../libm/acos';
 
 /** Indices into a contact history (27 values per contact; fix_granular_mdr.h Granular_MDR_NS::HistoryIndex). */
 export const DELTA_0 = 0;
@@ -110,7 +111,7 @@ export interface MdrAtomArrays {
 
 /** Newton-Raphson-free non-adhesive MDR force of a transformed displacement (calculate_nonadhesive_mdr_force). */
 export function mdrNonadhesiveForce(delta: number, Ainv: number, Eeff: number, A: number, B: number): number {
-  let F = Math.acos(1 - 2 * delta * Ainv);
+  let F = libmAcos(1 - 2 * delta * Ainv);
   F -= (2 - 4 * delta * Ainv) * Math.sqrt(delta * Ainv - (delta * Ainv) * (delta * Ainv));
   F *= 0.25 * Eeff * A * B;
   return F;
@@ -215,7 +216,7 @@ export function mdrSide(c: MdrSideIn): MdrSideOut {
     // maximum transformed elastic displacement
     const deltae1Dmax = A * 0.5;
     // force caused by full submersion of the elliptical indenter to depth A/2
-    let Fmax = Eeff * (A * B * 0.25) * Math.acos(1 - 2 * deltae1Dmax * Ainv);
+    let Fmax = Eeff * (A * B * 0.25) * libmAcos(1 - 2 * deltae1Dmax * Ainv);
     Fmax -= (2 - 4 * deltae1Dmax * Ainv) * Math.sqrt(deltae1Dmax * Ainv - (deltae1Dmax * Ainv) * (deltae1Dmax * Ainv));
     // depth of the particle centre
     const zR = R - (deltamaxMDR - deltae1Dmax);

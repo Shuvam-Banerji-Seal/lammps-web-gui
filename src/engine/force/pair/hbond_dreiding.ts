@@ -295,7 +295,7 @@ export class PairHbondDreiding extends Pair {
     if (!(uL > 0) || !(wL > 0)) throw new StyleError(`pair style ${this.name}: degenerate donor-hydrogen-acceptor geometry`);
     let c = (u[0] * w[0] + u[1] * w[1] + u[2] * w[2]) / (uL * wL);
     c = Math.max(-1, Math.min(1, c));
-    const theta = Math.acos(c);
+    const theta = libm.acos(c);
     // phi = theta - theta_eq + 180 degrees; the factor is cos(phi)^n and the cutoff applies to phi
     const phi = theta - e.teq * DEG + Math.PI;
     const phiDeg = phi / DEG;

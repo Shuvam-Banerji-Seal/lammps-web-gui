@@ -35,6 +35,7 @@ import { exp as libmExp } from '../libm/exp';
 import { log as libmLog } from '../libm/log';
 import { nativePairs } from '../neighbor/nativeOrder';
 import { oneTwoOrder, refreshTopology } from '../mc/bond_topo';
+import { acos as libmAcos } from '../libm/acos';
 
 /** utils::numeric (utils.cpp). */
 const numeric = (w: string | undefined): number => {
@@ -204,7 +205,7 @@ export class FixBondSwap extends Fix {
     c /= r1 * r2;
     if (c > 1.0) c = 1.0;
     if (c < -1.0) c = -1.0;
-    const dtheta = Math.acos(c) - theta0;
+    const dtheta = libmAcos(c) - theta0;
     const tk = K * dtheta;
     return tk * dtheta;
   }

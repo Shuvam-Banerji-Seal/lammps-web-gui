@@ -100,7 +100,7 @@ export class ImproperInversionHarmonic extends SimpleBonded {
         const s = pm > 0 ? D / pm : 0;
         const sa = Math.min(1, Math.abs(s));
         // energy and 1/sin(omega) factor from native's omega (cosInversion); the derivative of asin(s) is exact
-        const omegaN = Math.acos(cosInversion(q, r, p));
+        const omegaN = libm.acos(cosInversion(q, r, p));
         const dw = omegaN - w0[t];
         const ec = k3 * dw * dw;
         eq += ec;

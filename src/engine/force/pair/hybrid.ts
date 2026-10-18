@@ -336,7 +336,10 @@ export class PairHybrid extends Pair {
     // The virial mode, once every sub-style is initialized (pair rheo decides explicitVirial in its init): with no
     // explicit sub-style the force field takes one x.f sum; with only explicit ones each tallies its own; a mix tallies
     // the fdotr sub-styles from their own force arrays (compute).
+    for (const q of this.subs) if (q.style.explicitInHybrid) q.style.explicitVirial = false;
     const anyExplicit = this.subs.some((q) => explicitSub(q.style));
+    // a style whose pair-by-pair virial is not x.f over its forces tallies pair by pair as native does there
+    if (anyExplicit) for (const q of this.subs) if (q.style.explicitInHybrid) q.style.explicitVirial = true;
     this.mixedVirial = anyExplicit && this.subs.some((q) => !explicitSub(q.style));
     this.virialFdotr = !anyExplicit;
     // one list serves every sub-style, so it is a size list only when each sub-style asks for one (after their initStyle)

@@ -1,4 +1,4 @@
-import { Pair, StyleError, typeBounds, type PairCompute, type PairSep, type StyleContext } from '../types';
+import { Pair, StyleError, tallyAtomXyz, typeBounds, type PairCompute, type PairSep, type StyleContext } from '../types';
 import type { SimState } from '../../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { contactMassArray } from '../../atoms';
@@ -334,6 +334,9 @@ export class PairGran extends Pair {
         const fx = ccel * dx + fsx, fy = ccel * dy + fsy, fz = ccel * dz + fsz;
         f[3 * i] += fx; f[3 * i + 1] += fy; f[3 * i + 2] += fz;
         f[3 * j] -= fx; f[3 * j + 1] -= fy; f[3 * j + 2] -= fz;
+        // per-atom virial of the contact, as native LAMMPS does (src/GRANULAR/pair_gran_hooke_history.cpp compute at
+        // b332f28: ev_tally_xyz with no energy)
+        if (pc.vatom) tallyAtomXyz(pc, i, j, 0, fx, fy, fz, dx, dy, dz);
         // torques: -R n x F_t on both particles
         const tx = (dy * fsz - dz * fsy) * rinv, ty = (dz * fsx - dx * fsz) * rinv, tz = (dx * fsy - dy * fsx) * rinv;
         tq[3 * i] -= ri * tx; tq[3 * i + 1] -= ri * ty; tq[3 * i + 2] -= ri * tz;

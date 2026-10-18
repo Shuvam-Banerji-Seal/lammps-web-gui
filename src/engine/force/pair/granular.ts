@@ -1,4 +1,4 @@
-import { Pair, StyleError, typeBounds, type PairCompute, type PairSep, type StyleContext } from '../types';
+import { Pair, StyleError, tallyAtomXyz, typeBounds, type PairCompute, type PairSep, type StyleContext } from '../types';
 import type { SimState } from '../../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum } from '../util';
@@ -757,7 +757,9 @@ export function granularContact(c: ContactIn, sh: Float64Array, out: ContactOut,
 
 export class PairGranular extends Pair {
   readonly name = 'granular';
-  virialFdotr = true;
+  /** As native LAMMPS does (src/GRANULAR/pair_granular.cpp at b332f28: no_virial_fdotr_compute = 1): the virial is
+   * tallied contact by contact (ev_tally_xyz with dx = x_i - x_j). */
+  virialFdotr = false;
   /** Global cutoff (pair_style granular cutoff), or null. */
   private globalCut: number | null = null;
   /** Explicit pair_coeff specs per type pair (i*nt+j, i <= j) and the resolved parameters (both orders). */
@@ -1022,6 +1024,12 @@ export class PairGranular extends Pair {
         }
         f[3 * i] += out.fx; f[3 * i + 1] += out.fy; f[3 * i + 2] += out.fz;
         f[3 * j] -= out.fx; f[3 * j + 1] -= out.fy; f[3 * j + 2] -= out.fz;
+        // per-atom virial of the contact, as native LAMMPS does (src/GRANULAR/pair_granular.cpp compute at b332f28:
+        // ev_tally_xyz with no energy and dx = x_i - x_j)
+        const vir = pc.acc.virial;
+        vir[0] += dx * out.fx; vir[1] += dy * out.fy; vir[2] += dz * out.fz;
+        vir[3] += dx * out.fy; vir[4] += dx * out.fz; vir[5] += dy * out.fz;
+        if (pc.vatom) tallyAtomXyz(pc, i, j, 0, out.fx, out.fy, out.fz, dx, dy, dz);
         tq[3 * i] += out.tix; tq[3 * i + 1] += out.tiy; tq[3 * i + 2] += out.tiz;
         tq[3 * j] += out.tjx; tq[3 * j + 1] += out.tjy; tq[3 * j + 2] += out.tjz;
       }

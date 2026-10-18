@@ -124,6 +124,23 @@ export const evTally = (
   }
 };
 
+/**
+ * The per-atom part of one pair's tally with a force that need not lie along the pair vector (a granular contact):
+ * d = x_i - x_j, (fx, fy, fz) the force on i and its opposite on j; half of the energy and of d (x) f go to each atom
+ * (only when requested). As native LAMMPS does in Pair::ev_tally_xyz with newton on (src/pair.cpp at b332f28).
+ */
+export const tallyAtomXyz = (
+  pc: PairCompute, i: number, j: number, e: number, fx: number, fy: number, fz: number, dx: number, dy: number, dz: number,
+): void => {
+  if (pc.eatom) { pc.eatom[i] += 0.5 * e; pc.eatom[j] += 0.5 * e; }
+  if (pc.vatom) {
+    const va = pc.vatom;
+    const v0 = 0.5 * dx * fx, v1 = 0.5 * dy * fy, v2 = 0.5 * dz * fz, v3 = 0.5 * dx * fy, v4 = 0.5 * dx * fz, v5 = 0.5 * dy * fz;
+    va[6 * i] += v0; va[6 * i + 1] += v1; va[6 * i + 2] += v2; va[6 * i + 3] += v3; va[6 * i + 4] += v4; va[6 * i + 5] += v5;
+    va[6 * j] += v0; va[6 * j + 1] += v1; va[6 * j + 2] += v2; va[6 * j + 3] += v3; va[6 * j + 4] += v4; va[6 * j + 5] += v5;
+  }
+};
+
 /** Parses a type argument: "n", "*", "*n", "n*", "m*n" (docs.lammps.org/pair_coeff.html). */
 export const typeBounds = (word: string, n: number): [number, number] => {
   const bad = () => new StyleError(`invalid type '${word}' (expected 1..${n}, or a wildcard *, *n, n*, m*n)`);
@@ -371,6 +388,13 @@ export abstract class Pair {
    * by the fdotr sum; a hybrid pair then skips its own fdotr sum (hybrid.ts).
    */
   explicitVirial = false;
+  /**
+   * The style's pair-by-pair virial differs from x.f over its own forces (a force applied away from the atom pair,
+   * such as a sphere-surface contact counted from the contact point). In a hybrid with an explicit sub-style, native
+   * LAMMPS tallies every sub-style pair by pair (src/pair_hybrid.cpp compute at b332f28: "no_virial_fdotr_compute"),
+   * so the hybrid sets explicitVirial on such a style (hybrid.ts).
+   */
+  explicitInHybrid = false;
   /** G-ewald splitting parameter, set from the kspace style at init (coul/long styles). */
   gEwald = 0;
   /** Cutoff per type pair after init: (ntypes+1)^2. */

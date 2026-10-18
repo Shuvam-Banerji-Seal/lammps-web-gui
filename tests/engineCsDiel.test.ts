@@ -106,6 +106,7 @@ describe('pair styles of src/engine-gpl/csdiel', () => {
     expect(Object.keys(PAIRS).sort()).toEqual([
       'buck/long/coul/long', 'coul/cut/dielectric', 'coul/long/dielectric', 'coul/wolf/cs',
       'lj/class2/coul/long/cs', 'lj/cut/coul/debye/dielectric', 'lj/cut/coul/long/cs', 'lj/long/coul/long/dielectric',
+      'born/coul/dsf/cs', 'born/coul/wolf/cs', 'born/coul/long/cs', 'buck/coul/long/cs',
     ].sort());
   });
 

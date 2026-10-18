@@ -1,6 +1,6 @@
 # oracle: fix rigid/nve (Miller) with molecule bodies
 # oracle-inputs: rigid_tetra.txt rigid_dimer.txt rigid_tri.txt
-# oracle-compare: abs=1e-8
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 6.6e-9, atoms 1.9e-10. The thermo worst is the pressure components at about 2e-12 absolute; energies and temperature agree to 1e-14. Default tolerances (no loosened abs).
 units           lj
 atom_style      molecular
 region          box block 0 9 0 9 0 9 units box

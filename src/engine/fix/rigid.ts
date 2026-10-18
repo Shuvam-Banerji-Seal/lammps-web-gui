@@ -36,9 +36,11 @@ import { libm } from '../libm';
  * half kicks of v_cm by F/M and of the space-frame angular momentum L by the
  * torque; the orientation quaternion is advanced over dt with Richardson
  * extrapolation (one full step against two half steps of dq/dt = 1/2 w q,
- * with w recomputed from L at the midpoint). rigid/nve names the method of
- * Miller et al.; on the oracle cases native rigid and rigid/nve agree to
- * 1e-12, and this integrator matches both.
+ * with w recomputed from L at the midpoint); rigid uses this. rigid/nve and
+ * rigid/nve/small use the no-squish rotation of Miller et al. on the
+ * quaternion momentum conjqm (native FixRigidNVE, src/RIGID/fix_rigid_nh.cpp);
+ * the Richardson path differed from it by 2e-5 in the thermo rows of
+ * oracle rigid_nve_molecule.
  */
 
 interface Body {
@@ -74,6 +76,11 @@ interface Body {
    * (fix_rigid_small.cpp setup_bodies_static: dorient = R^T mu scaled to |mu|); 0 for other atoms.
    */
   dorient: number[];
+  /**
+   * rigid/nve (fix rigid/nve, rigid/nve/small): the no-squish quaternion momentum conjqm = 2 q (0, R^T L), kept
+   * instead of the angular momentum that Richardson advances. Set at setup; created on demand otherwise.
+   */
+  conjqm?: number[];
 }
 
 /** One line of an infile (fix rigid infile): attributes that override the computed ones. */
@@ -93,6 +100,7 @@ const cloneBody = (b: Body): Body => ({
   inertia: b.inertia.slice(), q: b.q.slice(), angmom: b.angmom.slice(), omega: b.omega.slice(),
   displace: b.displace.map((r) => r.slice()), fcm: b.fcm.slice(), torque: b.torque.slice(),
   fflag: b.fflag.slice(), tflag: b.tflag.slice(), orient: b.orient.slice(), orientQ: b.orientQ.slice(), dorient: b.dorient.slice(),
+  conjqm: b.conjqm?.slice(),
 });
 
 /** Quaternion product c = a b (math_extra.h quatquat). */
@@ -137,6 +145,43 @@ const qmat = (q: number[]): number[][] => {
     [2 * (x * z - w * y), 2 * (y * z + w * x), w * w - x * x - y * y + z * z],
   ];
 };
+/*
+ * Helpers of the rigid/nve integrator (Miller et al., J. Chem. Phys. 116, 8649 (2002)). As native LAMMPS does
+ * (src/RIGID/fix_rigid_nh.cpp FixRigidNH::initial_integrate and final_integrate, steps 1.3 to 1.13, at b332f28):
+ * the torque enters the quaternion momentum, the orientation is advanced by the no-squish splitting
+ * (rotations about body axes 3, 2, 1, 2, 3 with dt/2, dt/2, dt, dt/2, dt/2), and the angular momentum is read
+ * back from the quaternion momentum.
+ */
+/** Vector part of conj(q) p for a quaternion momentum p (w, x, y, z): the body-frame momentum (invquatvec). */
+const invQuatVec = (q: number[], p: number[]): number[] => [
+  -q[1] * p[0] + q[0] * p[1] + q[3] * p[2] - q[2] * p[3],
+  -q[2] * p[0] - q[3] * p[1] + q[0] * p[2] + q[1] * p[3],
+  -q[3] * p[0] + q[2] * p[1] - q[1] * p[2] + q[0] * p[3],
+];
+/** The quaternion q (0, m) (quatvec): the quaternion momentum of a body-frame vector m. */
+const quatVec = (q: number[], m: number[]): number[] => [
+  -q[1] * m[0] - q[2] * m[1] - q[3] * m[2],
+  q[0] * m[0] + q[2] * m[2] - q[3] * m[1],
+  q[0] * m[1] + q[3] * m[0] - q[1] * m[2],
+  q[0] * m[2] + q[1] * m[1] - q[2] * m[0],
+];
+/**
+ * One no-squish rotation about body axis k (1..3) by dt: p and q move together along the flow of the
+ * Hamiltonian term proportional to the axis's inertia. As native LAMMPS does (src/math_extra.cpp no_squish_rotate at
+ * b332f28): kq = q u_k and kp = p u_k with u_k the unit quaternion of the axis, phi = (p . kq) / (4 I_k), then
+ * p <- cos(dt phi) p + sin(dt phi) kp and q <- cos(dt phi) q + sin(dt phi) kq (phi = 0 for a zero moment).
+ */
+const noSquishRotate = (k: 1 | 2 | 3, p: number[], q: number[], inertia: number[], dt: number): void => {
+  const u = k === 1 ? [0, 1, 0, 0] : k === 2 ? [0, 0, 1, 0] : [0, 0, 0, 1];
+  const kq = quatMul(q, u), kp = quatMul(p, u);
+  let phi = p[0] * kq[0] + p[1] * kq[1] + p[2] * kq[2] + p[3] * kq[3];
+  if (inertia[k - 1] === 0) phi = 0;
+  else phi /= 4.0 * inertia[k - 1];
+  const c = libm.cos(dt * phi), sn = libm.sin(dt * phi);
+  for (let m = 0; m < 4; m++) p[m] = c * p[m] + sn * kp[m];
+  for (let m = 0; m < 4; m++) q[m] = c * q[m] + sn * kq[m];
+};
+
 /** Quaternion from a proper rotation matrix (columns = axes). */
 const matq = (R: number[][]): number[] => {
   const tr = R[0][0] + R[1][1] + R[2][2];
@@ -912,10 +957,44 @@ export class FixRigid extends Fix {
       throw new StyleError(`Rigid body extent ${this.maxExtent} > ghost atom cutoff - use comm_modify cutoff`);
     }
     this.sumForces();
-    for (const b of this.bodies) this.omegaFromAngmom(b);
+    for (const b of this.bodies) {
+      this.omegaFromAngmom(b);
+      if (this.noSquish) b.conjqm = this.conjqmFromAngmom(b);
+    }
     // atom velocities become those of the rigid motion
     this.virial.fill(0);
     this.setXV(false, 1);
+  }
+
+  /** The rigid/nve styles integrate with the no-squish splitting (native FixRigidNVE); the others with Richardson. */
+  private get noSquish(): boolean {
+    return this.style === 'rigid/nve' || this.style === 'rigid/nve/small';
+  }
+
+  /** conjqm = 2 quatvec(q, R^T L) from the space-frame angular momentum (native FixRigidNH::setup). */
+  private conjqmFromAngmom(b: Body): number[] {
+    const R = qmat(b.q);
+    const m = [0, 1, 2].map((k) => R[0][k] * b.angmom[0] + R[1][k] * b.angmom[1] + R[2][k] * b.angmom[2]);
+    return quatVec(b.q, m).map((v) => 2.0 * v);
+  }
+
+  /** Body-frame torque (flags applied) kick of the quaternion momentum by dtf2 = 2 dtf (native conjqm += dtf2 fquat). */
+  private conjqmTorqueKick(b: Body, dtf: number): void {
+    const R = qmat(b.q);
+    const t = [0, 1, 2].map((d) => (b.tflag[d] ? b.torque[d] : 0));
+    const tb = [0, 1, 2].map((k) => R[0][k] * t[0] + R[1][k] * t[1] + R[2][k] * t[2]);
+    const fq = quatVec(b.q, tb);
+    const dtf2 = dtf * 2.0;
+    if (!b.conjqm) b.conjqm = this.conjqmFromAngmom(b);
+    for (let k = 0; k < 4; k++) b.conjqm[k] += dtf2 * fq[k];
+  }
+
+  /** Angular momentum and omega from the quaternion momentum (native FixRigidNH: invquatvec, matvec, 0.5, angmom_to_omega). */
+  private angmomFromConjqm(b: Body): void {
+    const R = qmat(b.q);
+    const m = invQuatVec(b.q, b.conjqm!);
+    b.angmom = [0, 1, 2].map((d) => (R[d][0] * m[0] + R[d][1] * m[1] + R[d][2] * m[2]) * 0.5);
+    this.omegaFromAngmom(b);
   }
 
   initialIntegrate(): void {
@@ -926,9 +1005,22 @@ export class FixRigid extends Fix {
       for (let d = 0; d < 3; d++) {
         if (b.fflag[d]) b.vcm[d] += (dtf * b.fcm[d]) / b.mass;
         b.xcm[d] += dtv * b.vcm[d];
-        if (b.tflag[d]) b.angmom[d] += dtf * b.torque[d];
+        if (!this.noSquish && b.tflag[d]) b.angmom[d] += dtf * b.torque[d];
       }
-      this.richardson(b, dtv);
+      if (this.noSquish) {
+        // native FixRigidNH::initial_integrate: torque kick, then the no-squish rotations 3, 2, 1(dt), 2, 3
+        this.conjqmTorqueKick(b, dtf);
+        const dtq = 0.5 * dtv;
+        const I = b.inertia;
+        noSquishRotate(3, b.conjqm!, b.q, I, dtq);
+        noSquishRotate(2, b.conjqm!, b.q, I, dtq);
+        noSquishRotate(1, b.conjqm!, b.q, I, dtv);
+        noSquishRotate(2, b.conjqm!, b.q, I, dtq);
+        noSquishRotate(3, b.conjqm!, b.q, I, dtq);
+        this.angmomFromConjqm(b);
+      } else {
+        this.richardson(b, dtv);
+      }
       this.wrapCom(b);
     }
     this.virial.fill(0);
@@ -1034,9 +1126,15 @@ export class FixRigid extends Fix {
     for (const b of this.bodies) {
       for (let d = 0; d < 3; d++) {
         if (b.fflag[d]) b.vcm[d] += (dtf * b.fcm[d]) / b.mass;
-        if (b.tflag[d]) b.angmom[d] += dtf * b.torque[d];
+        if (!this.noSquish && b.tflag[d]) b.angmom[d] += dtf * b.torque[d];
       }
-      this.omegaFromAngmom(b);
+      if (this.noSquish) {
+        // native FixRigidNH::final_integrate: the torque kick of the quaternion momentum, then angmom from it
+        this.conjqmTorqueKick(b, dtf);
+        this.angmomFromConjqm(b);
+      } else {
+        this.omegaFromAngmom(b);
+      }
     }
     this.setXV(false, 0.5);
   }

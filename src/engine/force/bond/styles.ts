@@ -308,9 +308,11 @@ export class BondZero extends Bonded {
 
   coeff(args: string[], _ctx?: StyleContext): void {
     const [lo, hi] = typeBounds(args[0] ?? '', this.ntypes);
-    // "If specified, there can be only one value" (bond_zero.html)
-    if (args.length > 2) throw new StyleError('bond_coeff zero: incorrect args (only one value allowed)');
-    if (args.length === 2) {
+    // "If specified, there can be only one value" (bond_zero.html); with nocoeff the values are not checked and
+    // not read, as native bond_zero.cpp does ("if ((narg < 1) || (coeffflag && narg > 2))"), so read_data can pass
+    // another style's coefficients
+    if (args.length > 2 && !this.nocoeff) throw new StyleError('bond_coeff zero: incorrect args (only one value allowed)');
+    if (args.length === 2 && !this.nocoeff) {
       const v = parseNum(args[1], 'r0');
       for (let t = lo; t <= hi; t++) this.eq[t] = v;
     }

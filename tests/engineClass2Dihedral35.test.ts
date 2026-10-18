@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DihedralClass2 } from '../src/engine/force/dihedral/class2';
+import { DihedralClass2 } from '../src/engine-gpl/class2/dihedral_class2';
 import { newAccum, StyleError, type BondedCompute } from '../src/engine/force/types';
 
 /*
@@ -85,11 +85,12 @@ describe('dihedral_style class2', () => {
     expect(() => d.init()).toThrow(/not set/);
   });
 
-  it('rejects an unknown cross-term keyword and a wrong coefficient count', () => {
+  it('rejects an unknown cross-term keyword and a wrong coefficient count with native\'s message', () => {
+    // dihedral_class2.cpp coeff at b332f28: any wrong argument count is "Incorrect args for dihedral coefficients"
     const d = style('0 0 0 0 0 0', ZERO);
-    expect(() => d.coeff(['1', 'foo', '1', '2', '3'])).toThrow(/unknown dihedral_coeff class2 keyword 'foo'/);
-    expect(() => d.coeff(['1', 'mbt', '1', '2'])).toThrow(/mbt needs 4 coefficients/);
-    expect(() => d.coeff(['1', '1', '2'])).toThrow(/K1 phi1 K2 phi2 K3 phi3/);
+    expect(() => d.coeff(['1', 'foo', '1', '2', '3'])).toThrow(/Incorrect args for dihedral coefficients/);
+    expect(() => d.coeff(['1', 'mbt', '1', '2'])).toThrow(/Incorrect args for dihedral coefficients/);
+    expect(() => d.coeff(['1', '1', '2'])).toThrow(/Incorrect args for dihedral coefficients/);
   });
 
   it('write_data prints the main line with phi in degrees', () => {

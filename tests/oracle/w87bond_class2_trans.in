@@ -1,7 +1,7 @@
 # oracle: dihedral_style class2 at exactly trans (phi = 180): native force zero on the phi terms (B-05)
 # oracle-inputs: w87bond_dtrans0.data
 # oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
-# Measured with native LAMMPS (black box): engine thermo agrees to a max relative error of 7.3e-16 (forces to the 1e-8 test tolerance)
+# Measured with native LAMMPS (black box): engine thermo agrees to a max relative error of 9.1e-16 with the GPL class2 dihedral port (ORACLE_MEASURE; 7.3e-16 with the analytic one) (forces to the 1e-8 test tolerance)
 units real
 atom_style full
 boundary f f f

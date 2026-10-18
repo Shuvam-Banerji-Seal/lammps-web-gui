@@ -87,6 +87,20 @@ const sameSpecial = (a: SpecialList | null, b: SpecialList | null): boolean => {
   return true;
 };
 
+/**
+ * The 8 corners of the box [lo0, lo1, lo2, hi0, hi1, hi2, xy, xz, yz], corner c at fractional coordinates (c & 1,
+ * (c >> 1) & 1, (c >> 2) & 1), each x = h lambda + lo summed in the order of native Domain::lamda2x.
+ */
+const boxCorners = (b: number[]): number[] => {
+  const lx = b[3] - b[0], ly = b[4] - b[1], lz = b[5] - b[2];
+  const out: number[] = [];
+  for (let c = 0; c < 8; c++) {
+    const l0 = c & 1, l1 = (c >> 1) & 1, l2 = (c >> 2) & 1;
+    out.push(lx * l0 + b[6] * l1 + b[7] * l2 + b[0], ly * l1 + b[8] * l2 + b[1], lz * l2 + b[2]);
+  }
+  return out;
+};
+
 export class Neighbor {
   skin: number;
   every = 1;
@@ -194,19 +208,40 @@ export class Neighbor {
     return moved;
   }
 
-  private movedTooFar(s: SimState, g: Geometry): boolean {
+  /** The distance check of neigh_modify check yes since the last build (fix deform remap v asks it too). */
+  movedTooFar(s: SimState, g: Geometry): boolean {
     if (this.xhold.length !== 3 * s.n) return true;
-    // a box change moves atoms relative to the ghosts. neigh_modify.html: check yes means "only
-    // build if at least one atom has moved half the skin distance or more"; with a changing box,
-    // measured with native LAMMPS (black box, fix deform runs; see fix/deform.ts remap v): the
-    // threshold is skin/2 less the largest change of a box parameter (lo, hi, tilt) since the last
-    // build, never below 0, so a deforming box whose atoms do not move is never rebuilt.
-    let boxDelta = 0;
+    // As native LAMMPS does (src/neighbor.cpp at b332f28, check_distance): with a periodic dimension the threshold
+    // shrinks by the motion of the box since the last build, 0.5 (skin - (delta1 + delta2)) clamped at 0, where
+    // delta1 and delta2 are the displacements of the lower and upper box corners (orthogonal box), or the two values
+    // the corner loop keeps for a triclinic box (the largest so far, and a larger one than delta2 that was not a new
+    // largest: "if (delta > delta1) delta1 = delta; else if (delta > delta2) delta2 = delta"). Without a periodic
+    // dimension (boxcheck 0) it is triggersq = 0.25 skin^2. The corners are Domain::lamda_box_corners's, in its order.
     const bh = this.boxhold;
-    const cur = [g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2], g.xy, g.xz, g.yz];
-    for (let k = 0; k < cur.length; k++) boxDelta = Math.max(boxDelta, Math.abs(cur[k] - bh[k]));
-    const lim = Math.max(0, 0.5 * this.skin - boxDelta);
-    const lim2 = lim * lim;
+    let lim2: number;
+    if (!(g.periodic[0] || g.periodic[1] || (s.dimension === 3 && g.periodic[2]))) {
+      lim2 = 0.25 * this.skin * this.skin;
+    } else {
+      let delta1 = 0, delta2 = 0;
+      if (!g.triclinic) {
+        let dx = g.lo[0] - bh[0], dy = g.lo[1] - bh[1], dz = g.lo[2] - bh[2];
+        delta1 = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        dx = g.hi[0] - bh[3]; dy = g.hi[1] - bh[4]; dz = g.hi[2] - bh[5];
+        delta2 = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      } else {
+        const now = boxCorners([g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2], g.xy, g.xz, g.yz]);
+        const hold = boxCorners(bh);
+        for (let c = 0; c < 24; c += 3) {
+          const dx = now[c] - hold[c], dy = now[c + 1] - hold[c + 1], dz = now[c + 2] - hold[c + 2];
+          const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          if (d > delta1) delta1 = d;
+          else if (d > delta2) delta2 = d;
+        }
+      }
+      let delta = 0.5 * (this.skin - (delta1 + delta2));
+      if (delta < 0) delta = 0;
+      lim2 = delta * delta;
+    }
     const x = s.x, h = this.xhold;
     // neigh_modify.html: "The include option limits the building of pairwise neighbor lists to atoms in the
     // specified group." Measured with native LAMMPS (black box): only the atoms of that group take part in the

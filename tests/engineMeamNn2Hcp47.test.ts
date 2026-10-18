@@ -1,21 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Session } from '../src/engine/interpreter';
-import type { EngineEvent, ThermoRow } from '../src/engine/types';
-import { DEFAULT_MEAM_OPTIONS, nn2RefData } from '../src/engine/force/pair/meam';
-import { referenceVectors, PAIR_SHELL_RATIO } from '../src/engine/force/pair/meam_lattice';
+import { meamPe, relErr, worstForceError, type MeamSetup } from './meamHarness';
 
 /*
- * 2NN (nn2 = 1) MEAM for an hcp reference (meam47 scope). Reference geometry: the ideal hcp site has 12 first
- * neighbours at a and 6 second neighbours at sqrt2 a (the 2NN shell used by the recurrence; c/a ideal).
- * docs.lammps.org/pair_meam.html: "nn2(I,J)    = turn on second-nearest neighbor MEAM formulation for". Native
- * values (black box) are in tests/oracle/w47mn_*.in (engineOracle.test.ts): fully screened Ti hcp (Cmin = 1, z2 = 0)
- * dimers and a 108-atom crystal. The partly screened hcp second shell (z2 > 0) is not modelled by the core: the core
- * hands it to the native port (w136meam_hcp2nn, oracle parity).
+ * pair_style meam, nn2 = 1 with an hcp reference (meam47 scope), through the engine. The library is the Fe-Ti library
+ * of third_party/lammps/potentials; the parameters are the Ti set of tests/oracle/w47mn_ti.meam with the Cmin of the
+ * second-shell screening varied. docs.lammps.org/pair_meam.html: "nn2(I,J) = turn on second-nearest neighbor MEAM
+ * formulation for". Native values (black box, dimer at 2.92 A, measured with the same input) are checked here;
+ * the crystal parity is in tests/oracle/w47mn_ti_crystal.in (engineOracle*.test.ts).
  */
 
 const LIB = readFileSync(join(__dirname, '..', 'third_party', 'lammps', 'potentials', 'FeTiClibrary.meam'), 'utf8');
+
+/** Ti hcp parameter set with nn2 = 1 and the given Cmin of the second-shell screening. */
 const TI_PARAMS = (cmin: number) => `rc = 4.8
 delr = 0.1
 augt1 = 0
@@ -31,66 +29,26 @@ Ec(1,1) = 4.87
 re(1,1) = 2.92
 `;
 
-/** Runs a one-dimer input with the Ti params of the given Cmin; resolves to the thermo rows or rejects. */
-const runTi = async (cmin: number, r: number): Promise<ThermoRow[]> => {
-  const events: EngineEvent[] = [];
-  const session = new Session({ emit: (e) => events.push(e), writeFile: () => {} });
-  session.addFile('FeTiClibrary.meam', LIB);
-  session.addFile('ti.meam', TI_PARAMS(cmin));
-  await session.execute(`units metal
-atom_style atomic
-boundary f f f
-region box block -40 40 -40 40 -40 40
-create_box 1 box
-create_atoms 1 single 0 0 0 units box
-create_atoms 1 single ${r} 0 0 units box
-mass 1 47.88
-pair_style meam
-pair_coeff * * FeTiClibrary.meam Ti ti.meam Ti
-thermo_style custom step pe
-thermo_modify format float %.15g
-run 0
-`);
-  return events.filter((e): e is Extract<EngineEvent, { kind: 'thermo' }> => e.kind === 'thermo').map((e) => e.row);
-};
+/** A Ti dimer at 2.92 A (the first-neighbour distance of the parameters) with the given Cmin. */
+const dimer = (cmin: number): MeamSetup => ({
+  files: { 'FeTiClibrary.meam': LIB, 'ti.meam': TI_PARAMS(cmin) },
+  coeff: 'FeTiClibrary.meam Ti ti.meam Ti',
+  types: [1, 1],
+  x: [0, 0, 0, 2.92, 0, 0],
+  box: 80,
+});
 
-/** Fraction of a second-shell screening atom pair: fs(x) = [1-(1-x)^4]^2 with x = (C - Cmin)/(Cmax - Cmin). */
-const fs = (x: number) => (1 - (1 - x) ** 4) ** 2;
-
-describe('MEAM nn2 = 1 with the hcp reference', () => {
-  it('ideal hcp shells: 12 first neighbours at a and 6 second neighbours at sqrt2 a', () => {
-    const v = referenceVectors('hcp', 2.5, 2.5 * PAIR_SHELL_RATIO.hcp * (1 + 1e-6));
-    expect(v.length).toBe(18);
-    const first = v.filter((p) => Math.abs(p.r - 2.5) < 1e-9);
-    const second = v.filter((p) => Math.abs(p.r - 2.5 * Math.SQRT2) < 1e-9);
-    expect(first.length).toBe(12);
-    expect(second.length).toBe(6);
-    expect(PAIR_SHELL_RATIO.hcp).toBeCloseTo(Math.SQRT2, 12);
+describe('pair_style meam: nn2 = 1 with the hcp reference (meam47)', () => {
+  it('a fully screened Ti hcp dimer matches native pe to 1e-9 relative (-2.38541715171305 eV, tests/oracle/w47mn_ti_dimer)', async () => {
+    expect(relErr(await meamPe(dimer(1)), -2.38541715171305)).toBeLessThan(1e-9);
   });
 
-  it('z1 = 12, a = sqrt2 and z2 = 6 S with S = fs(C)^4 for the four screeners at C = 1 (fully screened: z2 = 0)', () => {
-    const o = { ...DEFAULT_MEAM_OPTIONS, rc: 4.8, delr: 0.1, Cmax: 1.44, Cmin: 1 };
-    const full = nn2RefData('hcp', o);
-    expect(full.a).toBeCloseTo(Math.SQRT2, 12);
-    expect(full.z1).toBeCloseTo(12, 12);
-    expect(full.z2).toBeLessThan(1e-12);
-    const oPart = { ...DEFAULT_MEAM_OPTIONS, rc: 4.8, delr: 0.1, Cmax: 2.8, Cmin: 0.36 };
-    const part = nn2RefData('hcp', oPart);
-    const S = fs((1 - 0.36) / (2.8 - 0.36)) ** 4;
-    expect(part.z2).toBeCloseTo(6 * S, 9);
-    expect(part.z2).toBeCloseTo(0.361350189, 6);
+  it('a partly screened hcp second shell (Cmin = 0.36) matches native pe to 1e-9 relative (-2.22034693937246 eV)', async () => {
+    // Measured with native LAMMPS (black box, the same dimer and parameters with Cmin = 0.36): -2.22034693937246 eV.
+    expect(relErr(await meamPe(dimer(0.36)), -2.22034693937246)).toBeLessThan(1e-9);
   });
 
-  it('a fully screened Ti hcp dimer runs (native value -2.38541715171305 eV at 2.92 A, tests/oracle/w47mn_ti_dimer)', async () => {
-    const rows = await runTi(1, 2.92);
-    expect(rows.length).toBe(1);
-    expect(rows[0].pe).toBeCloseTo(-2.38541715171305, 8);
-  });
-
-  it('a partly screened hcp second shell (Cmin = 0.36) is handed to the standard MEAM port (parity: w136meam_hcp2nn)', async () => {
-    // the core model refuses this set; the pair runs through the native port of src/engine-gpl/meam (pair_meam.cpp, msmeamflag 0)
-    const rows = await runTi(0.36, 2.92);
-    expect(rows.length).toBe(1);
-    expect(Number.isFinite(rows[0].pe)).toBe(true);
+  it('the partly screened hcp dimer: forces equal -grad E to 1e-6 relative', async () => {
+    expect(await worstForceError(dimer(0.36), 1e-6, 1)).toBeLessThan(1e-6);
   });
 });

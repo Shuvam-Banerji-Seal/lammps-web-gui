@@ -1,77 +1,67 @@
 import { describe, expect, it } from 'vitest';
-import { parseMeamParams } from '../src/engine/force/pair/meam';
-import { alloyAtomEnergyGrad, makeAlloyModel, type AlloyElement, type AlloyModel, type AlloyNeighbor, type AlloyPair } from '../src/engine/force/pair/meam_alloy';
+import { meamPe, oracleFiles, perturbed, relErr, runMeam, cellAtoms, type MeamSetup } from './meamHarness';
 
 /*
- * Multi-element MEAM with nn2 = 1 (meam38 scope): the B1, B2 reference pairs with the second shell (like neighbours)
- * included through the pair terms of the elements. Documented: docs.lammps.org/pair_meam.html, "nn2(I,J)    = turn on
- * second-nearest neighbor MEAM formulation for". The reference-crystal energy of an I-J lattice must equal -Ec(I,J)
- * at its equilibrium distance re(I,J) (the Rose curve minimum). Native values for the w38m2nn entries are in
- * tests/oracle/w38m2nn_*.in (engineOracle.test.ts).
+ * pair_style meam with nn2 = 1 in a two-element alloy (meam38 scope), through the engine. The entries are the
+ * synthetic w38m2nn files of tests/oracle (library w38m2nn_lib.meam; parameter files w38m2nn_b2.meam and
+ * w38m2nn_b1.meam with nn2 = 1 on every pair, Cmin(1,1,1) = Cmin(2,2,2) = 0.7). docs.lammps.org/pair_meam.html:
+ * "nn2(I,J) = turn on second-nearest neighbor MEAM formulation for". For a B2 (CsCl) reference crystal the energy per
+ * atom must equal -Ec(1,2) at its nearest-neighbour distance re(1,2) (the Rose minimum of the I-J pair). The
+ * crystal parity with native LAMMPS is in tests/oracle/w38m2nn_*.in (engineOracle*.test.ts).
  */
 
-const A_EL: AlloyElement = { z: 12, lat: 'fcc', re: 2.5, alpha: 5.0, Ec: 3.5, A: 1, beta: [2.0, 1.5, 2.5, 4.0], t: [1, 2.0, 1.0, 1.0] };
-const B_EL: AlloyElement = { z: 12, lat: 'fcc', re: 2.7, alpha: 4.0, Ec: 4.0, A: 1, beta: [3.0, 1.0, 2.0, 3.0], t: [1, 1.5, 0.5, 2.0] };
-const CMIN_ONLY_SAME = (c: number, j: number, k: number) => (c === j && j === k ? 0.7 : 2.0);
+const LIB = oracleFiles('w38m2nn_lib.meam');
+const B2_PAR = oracleFiles('w38m2nn_b2.meam')['w38m2nn_b2.meam'];
 
-/** Two-element model with nn2 = 1 on every pair and the I-J lattice lat (B1, B2 or dia). */
-const model2nn = (lat: AlloyPair['lat']): AlloyModel => {
-  const ij: AlloyPair = { Ec: 3.8, re: 2.6, alpha: 4.5, lat, nn2: true };
-  return makeAlloyModel(
-    [A_EL, B_EL],
-    [
-      [{ Ec: 3.5, re: 2.5, alpha: 5.0, lat: 'self', nn2: true }, ij],
-      [ij, { Ec: 4.0, re: 2.7, alpha: 4.0, lat: 'self', nn2: true }],
-    ],
-    { rc: 4.0, delr: 0.1, Cmin: 2.0, Cmax: 2.8, eroseForm: 0, CminOf: CMIN_ONLY_SAME },
-    true,
-  );
+/** B2 (CsCl) crystal: n x n x n simple-cubic cells of side a, A on the corners and B at the body centres. */
+const b2Crystal = (re: number, n: number, par = B2_PAR): MeamSetup => {
+  const a = (2 * re) / Math.sqrt(3);
+  const x = cellAtoms([[0, 0, 0], [0.5, 0.5, 0.5]], a, n);
+  return {
+    files: { 'lib.meam': LIB['w38m2nn_lib.meam'], 'par.meam': par },
+    coeff: 'lib.meam A B par.meam A B',
+    types: Array.from({ length: x.length / 3 }, (_, i) => (i % 2 === 0 ? 1 : 2)),
+    x,
+    box: n * a,
+    offset: 0,
+    ntypes: 2,
+  };
 };
 
-/** Energy per atom of an ideal B2 crystal (central atom of element c, six like and eight unlike neighbours at r, a). */
-const b2AtomEnergy = (model: AlloyModel, c: number, r: number): number => {
-  const p = 1 - c;
-  const h = r / Math.sqrt(3), a = 2 * h;
-  const nb: AlloyNeighbor[] = [];
-  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
-    const dx = sx * h, dy = sy * h, dz = sz * h;
-    nb.push({ e: p, j: -1, dx, dy, dz, r: Math.hypot(dx, dy, dz) });
-  }
-  for (const [dx, dy, dz] of [[a, 0, 0], [-a, 0, 0], [0, a, 0], [0, -a, 0], [0, 0, a], [0, 0, -a]]) nb.push({ e: c, j: -1, dx, dy, dz, r: a });
-  return alloyAtomEnergyGrad(model, c, nb, new Float64Array(3 * nb.length));
-};
-
-describe('MEAM alloy nn2 = 1 reference crystals', () => {
-  it('B2 reference crystal: per-atom energy averaged over both sites equals -Ec(1,2) at re(1,2)', () => {
-    const m = model2nn('b2');
-    const r = 2.6;
-    // the crystal energy per atom is the average of the two sites; the reference is the Rose energy by construction
-    const e = 0.5 * (b2AtomEnergy(m, 0, r) + b2AtomEnergy(m, 1, r));
-    expect(Math.abs(e + 3.8) / 3.8).toBeLessThan(1e-9);
+describe('pair_style meam: nn2 = 1 reference crystals (B2)', () => {
+  it('B2 reference crystal: energy per atom equals -Ec(1,2) at re(1,2) = 2.6 A (3x3x3 cells, 54 atoms)', async () => {
+    const { pe } = await runMeam(b2Crystal(2.6, 3));
+    expect(relErr(pe / 54, -3.8)).toBeLessThan(1e-9);
   }, 120000);
 
-  it('nn2 = 1 with a B2 pair changes the pair term relative to nn2 = 0 (the second shell contributes)', () => {
-    const m2 = model2nn('b2');
-    const m0 = makeAlloyModel(
-      [A_EL, B_EL],
-      [
-        [{ Ec: 3.5, re: 2.5, alpha: 5.0, lat: 'self' }, { Ec: 3.8, re: 2.6, alpha: 4.5, lat: 'b2' }],
-        [{ Ec: 3.8, re: 2.6, alpha: 4.5, lat: 'b2' }, { Ec: 4.0, re: 2.7, alpha: 4.0, lat: 'self' }],
-      ],
-      { rc: 4.0, delr: 0.1, Cmin: 2.0, Cmax: 2.8, eroseForm: 0, CminOf: CMIN_ONLY_SAME },
-      true,
-    );
-    const e2 = b2AtomEnergy(m2, 0, 2.2), e0 = b2AtomEnergy(m0, 0, 2.2);
-    expect(Math.abs(e2 - e0)).toBeGreaterThan(1e-6);
+  it('nn2 = 1 changes the energy of a displaced B2 crystal relative to nn2 = 0 (the second shell contributes)', async () => {
+    // Measured with native LAMMPS (black box, the displaced 54-atom crystal of tests/oracle/w38m2nn_b2_crystal.in, run 0):
+    // -204.756630227768 eV with nn2 and -204.756634725853 eV without, so the second shell matters off the symmetric lattice.
+    const noNn2 = B2_PAR.replace(/^nn2\(\d,\d\) = 1\n/gm, '');
+    const displaced = (par: string): MeamSetup => {
+      const s = b2Crystal(2.6, 2, par);
+      return { ...s, x: perturbed(s.x, 0.04, 9) };
+    };
+    const e2 = await meamPe(displaced(B2_PAR));
+    const e0 = await meamPe(displaced(noNn2));
+    expect(Math.abs(e2 - e0)).toBeGreaterThan(1e-7);
   }, 120000);
 
+  it('nn2 = 1 with the l12 reference runs (the native port takes the second shell of the L12 pair)', async () => {
+    const l12 = B2_PAR.replace('lattce(1,2) = b2', 'lattce(1,2) = l12');
+    const dimer: MeamSetup = { files: { 'lib.meam': LIB['w38m2nn_lib.meam'], 'par.meam': l12 }, coeff: 'lib.meam A B par.meam A B', types: [1, 2], x: [0, 0, 0, 2.6, 0, 0], box: 60, offset: 30, ntypes: 2 };
+    expect(Number.isFinite(await meamPe(dimer))).toBe(true);
+  });
 });
 
-describe('MEAM alloy nn2 = 1 refusals', () => {
-  it('the parser refuses nn2 = 1 with the l12 (Cu3Au) reference, naming it', () => {
-    const text = 'rc = 4.0\ndelr = 0.1\nnn2(1,2) = 1\nlattce(1,2) = l12\nEc(1,2) = 3.8\nre(1,2) = 2.6\nalpha(1,2) = 4.5\n';
-    const par = parseMeamParams(text, 'x.meam', 2);
-    expect(par.pair.get('1,2')?.nn2).toBe(1);
-    expect(par.pair.get('1,2')?.lattce).toBe('l12');
+describe('pair_style meam: nn2 = 1 parameter handling', () => {
+  it('a B2 pair with nn2 = 1 is accepted (the dimer runs)', async () => {
+    const dimer: MeamSetup = { files: { 'lib.meam': LIB['w38m2nn_lib.meam'], 'par.meam': B2_PAR }, coeff: 'lib.meam A B par.meam A B', types: [1, 2], x: [0, 0, 0, 2.6, 0, 0], box: 60, offset: 30, ntypes: 2 };
+    expect(Number.isFinite(await meamPe(dimer))).toBe(true);
+  });
+
+  it('an element index outside the potential is an error (nn2(3,3) in a two-element file)', async () => {
+    const dimer: MeamSetup = { files: { 'lib.meam': LIB['w38m2nn_lib.meam'], 'par.meam': B2_PAR + 'nn2(3,3) = 1\n' }, coeff: 'lib.meam A B par.meam A B', types: [1, 2], x: [0, 0, 0, 2.6, 0, 0], box: 60, offset: 30, ntypes: 2 };
+    await expect(runMeam(dimer)).rejects.toThrow(/out of range element index/);
   });
 });

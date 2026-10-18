@@ -7,8 +7,8 @@
  * pair_style meam/ms (docs.lammps.org/pair_meam_ms.html): the multi-state MEAM model of the library and parameter
  * files (the msmeam fields b1m..b3m, t1m..t3m in the library file) with the same pair_coeff form as pair meam
  * ("pair_coeff * * library.msmeam elements... params.msmeam elements..."). The same class with msmeamflag = 0 is
- * pair_style meam (src/MEAM/pair_meam.cpp, meamModel.ts with msmeam false): the core engine's pair meam hands the
- * parameter sets it refuses to it (src/engine/force/pair/meam.ts, through the 'meam' hook of registry/meam_hook.ts).
+ * pair_style meam (src/MEAM/pair_meam.cpp, meamModel.ts with msmeam false): the same class built with msmeam = false,
+ * registered as 'meam' in registry/meam_ms.ts. It is the only pair meam implementation of the engine.
  */
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
@@ -163,7 +163,8 @@ export class PairMeamMs extends Pair {
   }
 
   override settings(args: string[], _ctx: StyleContext): void {
-    if (args.length !== 0) throw new StyleError(`usage: pair_style ${this.name} (no arguments)`);
+    // PairMEAM::settings (pair_meam.cpp at b332f28): "Illegal pair_style {} command" with myname
+    if (args.length !== 0) throw new StyleError(`Illegal pair_style ${this.name} command`);
   }
 
   override coeff(args: string[], ctx: StyleContext): void {
@@ -213,7 +214,9 @@ export class PairMeamMs extends Pair {
     for (let i = 0; i < M.neltypes; i++) {
       const lat = M.lattce[i][i];
       if (!SUPPORTED_LATTICES.includes(lat)) throw new StyleError(`${this.label} reference lattice '${lat}' of ${elements[i]} is not supported by the engine port`);
-      if (!SUPPORTED_IBAR.includes(M.ibar[i])) throw new StyleError(`${this.label} ibar = ${M.ibar[i]} of ${elements[i]} is not supported (only 0, 1, 3, 4 and -5)`);
+      // G_gam has no branch for another ibar (meam_funcs.cpp): native sets errorflag 1 and compute stops with
+      // "MEAM library error 1" (pair_meam.cpp); the port stops at pair_coeff with the same text
+      if (!SUPPORTED_IBAR.includes(M.ibar[i])) throw new StyleError('MEAM library error 1');
     }
     for (let a = 0; a < M.neltypes; a++) {
       for (let b = a; b < M.neltypes; b++) {

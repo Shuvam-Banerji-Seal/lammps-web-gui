@@ -1,65 +1,62 @@
 import { describe, expect, it } from 'vitest';
-import { gOfIbar, gPrimeOfIbar } from '../src/engine/force/pair/meam_alloy';
-import { alloyPair, makeAlloyModel, type AlloyElement, type AlloyModel, type AlloyPair } from '../src/engine/force/pair/meam_alloy';
+import { meamPe, oracleFiles, relErr, runMeam, worstForceError, jittered, type MeamSetup } from './meamHarness';
 
 /*
- * Multi-element MEAM, meam42 scope: bcc and hcp element references, nn2 = 1 on a bcc element, and ibar = 3 in an
- * alloy. The energies are native LAMMPS values (black box) for the synthetic w42mb entries, checked by
- * tests/engineOracle.test.ts (w42mb_bcc1_*, w42mb_bcc2nn_*, w42mb_hcp_*, w42mb_ibar3_*). This file checks the
- * analytic pair derivative against finite differences, and the G(Gamma) forms.
- * Docs (pair_meam.rst): 3 => G = 2/(1+exp(-Gamma)); 2 => not implemented (ibar = 2 is refused).
+ * pair_style meam, meam42 scope: bcc and hcp element references, and the ibar = 3 G(Gamma) form in an alloy,
+ * through the engine. The alloy entries are the synthetic w42mb files of tests/oracle (native-measured cases
+ * w42mb_*.in, checked by tests/engineOracle*.test.ts). Docs (docs.lammps.org/pair_meam.html): "3 => G = 2/(1+exp(-Gamma))",
+ * "2 => not implemented".
  */
 
-const BCC_A: AlloyElement = { z: 8, lat: 'bcc', re: 2.5, alpha: 5.0, Ec: 3.5, A: 1, beta: [2.0, 1.5, 2.5, 4.0], t: [1, 2.0, 1.0, 1.0], ibar: 3 };
-const HCP_A: AlloyElement = { z: 12, lat: 'hcp', re: 2.5, alpha: 4.5, Ec: 3.2, A: 1, beta: [2.0, 1.5, 2.5, 4.0], t: [1, 2.0, 1.0, 1.0] };
-const FCC_B: AlloyElement = { z: 12, lat: 'fcc', re: 2.7, alpha: 4.0, Ec: 4.0, A: 1, beta: [3.0, 1.0, 2.0, 3.0], t: [1, 1.5, 0.5, 2.0] };
+const IBAR3 = oracleFiles('w42mb_ibar3_lib.meam', 'w42mb_ibar3.meam');
+const IBAR3_CMD = 'w42mb_ibar3_lib.meam A B w42mb_ibar3.meam A B';
+const HCP = oracleFiles('w42mb_hcp_lib.meam', 'w42mb_hcp.meam');
+const HCP_CMD = 'w42mb_hcp_lib.meam A B w42mb_hcp.meam A B';
 
-const pairOf = (el: AlloyElement, nn2 = false): AlloyPair => ({ Ec: el.Ec, re: el.re, alpha: el.alpha, lat: 'self', nn2 });
+/** A 4-atom mixed cluster (types A B A B) with a deterministic displacement. */
+const mixed = (files: Record<string, string>, coeff: string): MeamSetup => ({
+  files,
+  coeff,
+  types: [1, 2, 1, 2],
+  x: jittered([[0, 0, 0], [2.4, 0.2, 0], [1.2, 2.2, 0.3], [1.0, 0.9, 2.4]], 0.05, 17),
+});
 
-/** Two-element model (element 0 = el0, element 1 = FCC_B) with an I-J b1 pair and the given nn2 flags. */
-const model2 = (el0: AlloyElement, nn2: boolean): AlloyModel => {
-  const ij: AlloyPair = { Ec: 3.8, re: 2.6, alpha: 4.5, lat: 'b1', nn2 };
-  return makeAlloyModel(
-    [el0, FCC_B],
-    [[pairOf(el0, nn2), ij], [ij, pairOf(FCC_B, nn2)]],
-    { rc: 4.0, delr: 0.1, Cmin: 2.0, Cmax: 2.8, eroseForm: 0 },
-    true,
-  );
-};
+/** Single-element bcc W crystal (w15meam_bcc parameters) with the ibar column set to the given value. */
+const bccW = (ibar: number): Record<string, string> => ({
+  'lib.meam': oracleFiles('w15meam_bcc_lib.meam')['w15meam_bcc_lib.meam'].replace(/ 0\n$/m, ` ${ibar}\n`),
+  'par.meam': oracleFiles('w15meam_bcc.meam')['w15meam_bcc.meam'],
+});
 
-describe('MEAM alloy ibar forms (meam42)', () => {
-  it('ibar = 3 has G = 2/(1+exp(-Gamma)) and its derivative matches a finite difference', () => {
-    for (const g of [-0.7, 0, 0.3, 1.5]) {
-      expect(gOfIbar(3, g)).toBeCloseTo(2 / (1 + Math.exp(-g)), 15);
-      const h = 1e-6;
-      const fd = (gOfIbar(3, g + h) - gOfIbar(3, g - h)) / (2 * h);
-      expect(gPrimeOfIbar(3, g)).toBeCloseTo(fd, 7);
-    }
+describe('pair_style meam, ibar = 3 (meam42)', () => {
+  it('perfect bcc crystal with ibar = 3: energy per atom equals -Ec at re (G = 1 at Gamma = 0)', async () => {
+    // 2x2x2 bcc cells (16 atoms) at the nearest-neighbour distance re = 2.73664 A, Ec = 8.9 eV
+    const a = (2 * 2.73664) / Math.sqrt(3);
+    const basis = [[0, 0, 0], [0.5, 0.5, 0.5]];
+    const x: number[] = [];
+    for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) for (let k = 0; k < 2; k++) for (const b of basis) x.push((i + b[0]) * a, (j + b[1]) * a, (k + b[2]) * a);
+    const { pe } = await runMeam({ files: bccW(3), coeff: 'lib.meam W par.meam W', types: Array.from({ length: 16 }, () => 1), x, box: 2 * a, offset: 0 });
+    expect(relErr(pe / 16, -8.9)).toBeLessThan(1e-9);
   });
 
-  it('ibar = 2 is not implemented (docs: "2 => not implemented") and throws', () => {
-    expect(() => gOfIbar(2, 0.1)).toThrow(/ibar 2/);
+  it('an alloy with ibar = 3 (bcc A, fcc B): forces equal -grad E to 1e-6 relative', async () => {
+    expect(await worstForceError(mixed(IBAR3, IBAR3_CMD), 1e-5, 1e-2)).toBeLessThan(1e-6);
+  });
+
+  it('ibar = 2 stops with native\'s MEAM library error 1 (G_gam has no branch for it)', async () => {
+    const files = { ...IBAR3, 'w42mb_ibar2_lib.meam': IBAR3['w42mb_ibar3_lib.meam'].replace(/ 3\n/g, ' 2\n') };
+    await expect(runMeam(mixed(files, 'w42mb_ibar2_lib.meam A B w42mb_ibar3.meam A B'))).rejects.toThrow(/MEAM library error 1/);
   });
 });
 
-describe('MEAM alloy bcc and hcp elements (meam42)', () => {
-  it('the analytic dphi of the bcc self pair (nn2 = 0 and 1) matches a finite difference', () => {
-    for (const nn2 of [false, true]) {
-      const m = model2(BCC_A, nn2);
-      for (const r of [2.3, 2.5, 2.9, 3.3]) {
-        const h = 1e-6;
-        const fd = (alloyPair(m, 0, 0, r + h).phi - alloyPair(m, 0, 0, r - h).phi) / (2 * h);
-        expect(alloyPair(m, 0, 0, r).dphi).toBeCloseTo(fd, 6);
-      }
-    }
+describe('pair_style meam, bcc and hcp elements in an alloy (meam42)', () => {
+  it('hcp element (A) with a B partner: forces equal -grad E to 1e-6 relative', async () => {
+    expect(await worstForceError(mixed(HCP, HCP_CMD), 1e-5, 1e-2)).toBeLessThan(1e-6);
   });
 
-  it('the analytic dphi of the hcp self pair matches a finite difference', () => {
-    const m = model2(HCP_A, false);
-    for (const r of [2.3, 2.5, 2.9]) {
-      const h = 1e-6;
-      const fd = (alloyPair(m, 0, 0, r + h).phi - alloyPair(m, 0, 0, r - h).phi) / (2 * h);
-      expect(alloyPair(m, 0, 0, r).dphi).toBeCloseTo(fd, 6);
-    }
+  it('the hcp A-B cluster energy is finite and differs from the same cluster with the bcc A element', async () => {
+    const eHcp = await meamPe(mixed(HCP, HCP_CMD));
+    const eIbar = await meamPe(mixed(IBAR3, IBAR3_CMD));
+    expect(Number.isFinite(eHcp)).toBe(true);
+    expect(eHcp).not.toBe(eIbar);
   });
 });

@@ -4,7 +4,7 @@ import { parseNum, joinPotentialEntries } from '../util';
 import { libm } from '../../libm';
 
 /*
- * pair_style sw, sw/mod — docs.lammps.org/pair_sw.html
+ * pair_style sw/mod — docs.lammps.org/pair_sw.html (pair_style sw is the GPL port in src/engine-gpl/manybody3/pair_sw.ts)
  * (source: plans/lammps-docs/pair_sw.rst)
  *
  * Syntax (verbatim):
@@ -711,18 +711,6 @@ export abstract class PairSWBase extends Pair {
     const r = Math.sqrt(rsq);
     const { phi2, fpair } = this.twoBody(t, r, rsq);
     return { eng: phi2, fforce: fpair };
-  }
-}
-
-/**
- * pair_style sw — the Stillinger-Weber potential. "The default value for the
- * *threebody* setting of the "sw" pair style is "on"".
- */
-export class PairSW extends PairSWBase {
-  readonly name = 'sw';
-
-  constructor() {
-    super(false);
   }
 }
 

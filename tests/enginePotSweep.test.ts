@@ -42,10 +42,10 @@ describe('sw potential file reader', () => {
     expect(await runWith('sw', '* * GaN.sw Ga', 'GaN.sw', pot('GaN.sw'))).toBeNull();
   });
 
-  it('refuses a negative sigma', async () => {
+  it('refuses a negative sigma with the native message (src/MANYBODY/pair_sw.cpp read_file)', async () => {
     const bad = pot('Si.sw').replace(/^(Si Si Si\s+\S+\s+)(\S+)/m, '$1-2.0');
     const err = await runWith('sw', '* * bad.sw Si', 'bad.sw', bad);
-    expect(err).toMatch(/sigma and a must be >= 0/);
+    expect(err).toMatch(/Illegal Stillinger-Weber parameter/);
   });
 });
 

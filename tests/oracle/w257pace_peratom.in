@@ -1,0 +1,32 @@
+# oracle: pair_style pace (product evaluator) with per-atom tallies: compute pe/atom and stress/atom reduced into thermo, on a 4x4x4 fcc Cu cell
+# with displaced atoms (cut-down of examples/PACKAGES/pace/in.pace.product: 300 K NVE, 30 steps, thermo every 5 steps).
+# Native reference: LAMMPS b332f28 built from source with PKG_ML-PACE MANYBODY EXTRA-PAIR EXTRA-COMPUTE MOLECULE KSPACE MISC RIGID, because the installed binary has no ML-PACE (cmake -D PKG_<name>=on for each; then LMP=<build>/lmp run-oracle.mjs)
+# oracle-potentials: Cu-PBE-core-rep.ace
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.7e-13, atoms 4.5e-13.
+units       metal
+atom_style  atomic
+neighbor    0.3 bin
+neigh_modify every 2 delay 10 check yes
+variable    a equal 3.597
+lattice     fcc $a
+region      box block 0 4 0 4 0 4
+create_box  1 box
+create_atoms 1 box
+mass        1 63.546
+displace_atoms all random 0.05 0.05 0.05 4421 units box
+pair_style  pace product
+pair_coeff  * * Cu-PBE-core-rep.ace Cu
+velocity    all create 300 8728 loop geom
+timestep    0.0005
+compute     eatom all pe/atom
+compute     energy all reduce sum c_eatom
+variable    delenergy equal c_energy-pe
+compute     satom all stress/atom NULL
+compute     str all reduce sum c_satom[1] c_satom[2] c_satom[3]
+variable    delpress equal -(c_str[1]+c_str[2]+c_str[3])/(3*vol)-press
+fix         1 all nve
+thermo      5
+thermo_style custom step temp epair etotal press v_delenergy v_delpress
+thermo_modify format float %.15g
+run         30

@@ -220,6 +220,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_colloid2', names: { PAIRS: ['lubricate', 'lubricate/poly', 'lubricateU', 'lubricateU/poly', 'brownian', 'brownian/poly'], FIXES: ['wall/colloid', 'wall/srd'] }, load: () => import('../engine-gpl/registry/colloid2') as Promise<StyleModule> },
   { id: 'gpl_pppmx', names: { KSPACES: ['pppm/stagger', 'pppm/rk'] }, load: () => import('../engine-gpl/registry/pppmx') as Promise<StyleModule> },
   { id: 'gpl_miscx', names: { BONDS: ['quartic', 'special'], ANGLES: ['dipole'], PAIRS: ['list', 'dsmc'] }, load: () => import('../engine-gpl/registry/miscx') as Promise<StyleModule> },
+  { id: 'gpl_pace', names: { PAIRS: ['pace', 'pace/extrapolation'], COMPUTES: ['pace'] }, load: () => import('../engine-gpl/registry/pace') as Promise<StyleModule> },
   { id: 'gpl_bop', names: { PAIRS: ['bop'] }, load: () => import('../engine-gpl/registry/bop') as Promise<StyleModule> },
   { id: 'gpl_lcbop', names: { PAIRS: ['lcbop'] }, load: () => import('../engine-gpl/registry/lcbop') as Promise<StyleModule> },
 ];

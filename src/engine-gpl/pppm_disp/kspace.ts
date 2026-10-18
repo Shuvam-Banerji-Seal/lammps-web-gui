@@ -263,6 +263,8 @@ export class KSpacePPPMDisp extends KSpaceBase {
   }
 
   linkPair(pair: Pair | null): void { this.pair = pair; }
+  /** pppm_disp.cpp constructor: dispersionflag = 1 (KSpace::pair_check refuses a pair without dispersion). */
+  override dispersion(): boolean { return true; }
 
   init(s: SimState, geom: Geometry, cutCoul: number, qqrd2e: number, ctx: StyleContext): void {
     const pair = this.pair;

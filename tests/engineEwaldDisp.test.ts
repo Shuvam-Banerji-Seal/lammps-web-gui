@@ -116,8 +116,10 @@ describe('kspace_style ewald/disp and pair lj/long/coul/long flag_lj long', () =
     expect((await run(FCC.replace('table 0 table/disp 0', 'table 0 table/disp 0 shift yes'))).error).toMatch(/shift/);
   });
 
-  it('flag_lj off is still refused by name', async () => {
+  it('refuses flag_lj off with ewald/disp, as native (the pair keeps its dispersion flag, ewald/disp has no dispersion term)', async () => {
+    // Measured with native LAMMPS: lj/long/coul/long off long with kspace_style ewald/disp stops with
+    // KSpace style ewald/disp is incompatible with Pair style lj/long/coul/long (src/kspace.cpp pair_check)
     const r = await run(FCC.replace(' long off 2.5', ' off long 2.5'));
-    expect(r.error).toMatch(/flag_lj 'off'/);
+    expect(r.error).toMatch(/KSpace style ewald\/disp is incompatible with Pair style lj\/long\/coul\/long/);
   });
 });

@@ -69,6 +69,8 @@ export class PairLJLongDipoleLong extends Pair {
     }
     this.cutCoul = args.length === 4 ? numeric(args[3]) : this.cutLJGlobal;
     this.coulLong = (this.ewaldOrder & (EWALD_DIPOLE | EWALD_DISP)) !== 0;
+    // pair_lj_long_dipole_long.cpp settings: dispersionflag = 0 unless the dispersion flag is long or off
+    this.dispersionFlag = ((this.ewaldOrder ^ this.ewaldOff) & EWALD_DISP) !== 0;
   }
 
   allocate(ntypes: number): void {

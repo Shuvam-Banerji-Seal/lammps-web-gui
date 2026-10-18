@@ -181,6 +181,8 @@ export class PairHybrid extends Pair {
     this.needsHalf = subs.some((s) => s.style.needsHalf);
     this.needsFull = subs.some((s) => s.style.needsFull);
     this.coulLong = subs.some((s) => s.style.coulLong);
+    // As native LAMMPS does (src/pair_hybrid.cpp at b332f28): dispersionflag is set if any sub-style sets it
+    this.dispersionFlag = subs.some((s) => s.style.dispersionFlag);
     this.keepExcluded = subs.some((s) => s.style.keepExcluded);
     // special_bonds weights do not apply to many-body sub-styles; pairwise ones need them
     this.manybody = subs.every((s) => s.style.manybody);

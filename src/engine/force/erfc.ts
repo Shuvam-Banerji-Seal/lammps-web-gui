@@ -121,9 +121,14 @@ const u32 = new Uint32Array(f32.buffer);
 /**
  * The table for pair_modify table N (N >= 4) and g_ewald g, covering rsq up to cutsq. Node k of
  * octave e (float32 exponent bits) sits at rsq = 2^(e-127) (1 + k / 2^(N-3)); a value is the
- * linear interpolation between the two nodes around float32(rsq).
+ * linear interpolation between the two nodes around float32(rsq). The node is always found from
+ * float32(rsq); the interpolation fraction is (float32(rsq) - node) / spacing, or with doubleRsq
+ * (rsq - node) / spacing. As native LAMMPS does (src/KSPACE/pair_lj_long_coul_long.cpp and
+ * pair_buck_long_coul_long.cpp compute at b332f28, "double fraction = (rsq-rtable[k])*drtable[k]"),
+ * lj/long/coul/long and buck/long/coul/long take the double rsq; lj/cut/coul/long and the other
+ * styles take the float one ("fraction = ((double) rsq_lookup.f - rtable[itable]) * drtable[itable]").
  */
-export const makeErfcTable = (N: number, g: number, cutsq: number, inner: number = TABLE_INNER_RSQ): ErfcTable => {
+export const makeErfcTable = (N: number, g: number, cutsq: number, inner: number = TABLE_INNER_RSQ, doubleRsq = false): ErfcTable => {
   if (!(N > 3 && N <= 24)) throw new RangeError('pair_modify table N must be 4..24 for the emulation');
   // Mantissa bits per octave: native Pair::init_bitmap (src/pair.cpp at b332f28) takes nexpbits, the
   // exponent bits the table spans, from the outer cutoff: nlowermin is the power of two at or below
@@ -179,7 +184,7 @@ export const makeErfcTable = (N: number, g: number, cutsq: number, inner: number
     if (k + 1 >= n) return direct(rsq, which);
     const sp = 2 ** (e - 127 - M);
     const s0 = 2 ** (e - 127) * (1 + top / perOctave);
-    const t = (f32[0] - s0) / sp;
+    const t = ((doubleRsq ? rsq : f32[0]) - s0) / sp;
     return tab[k] + (tab[k + 1] - tab[k]) * t;
   };
   return {
@@ -197,6 +202,7 @@ export class ErfcTableCache {
   private keyG = 0;
   private keyCut = 0;
   private keyInner = 0;
+  private keyDouble = false;
   private table: ErfcTable | null = null;
 
   /**
@@ -204,12 +210,12 @@ export class ErfcTableCache {
    * in the Coulomb terms, and building a string key per call dominated the real-space loop. Two numbers have the
    * same string form exactly when they are equal (apart from NaN, which then rebuilds the same table).
    */
-  get(N: number, g: number, cutsq: number, inner: number = TABLE_INNER_RSQ): ErfcTable | null {
+  get(N: number, g: number, cutsq: number, inner: number = TABLE_INNER_RSQ, doubleRsq = false): ErfcTable | null {
     if (N <= 0) return null;
-    if (!this.built || N !== this.keyN || g !== this.keyG || cutsq !== this.keyCut || inner !== this.keyInner) {
-      this.table = makeErfcTable(N, g, cutsq, inner);
+    if (!this.built || N !== this.keyN || g !== this.keyG || cutsq !== this.keyCut || inner !== this.keyInner || doubleRsq !== this.keyDouble) {
+      this.table = makeErfcTable(N, g, cutsq, inner, doubleRsq);
       this.built = true;
-      this.keyN = N; this.keyG = g; this.keyCut = cutsq; this.keyInner = inner;
+      this.keyN = N; this.keyG = g; this.keyCut = cutsq; this.keyInner = inner; this.keyDouble = doubleRsq;
     }
     return this.table;
   }

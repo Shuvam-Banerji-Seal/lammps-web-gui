@@ -26,7 +26,6 @@ import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import type { Compute } from '../../engine/compute/compute';
-import { ComputePressure } from '../../engine/compute/pressure';
 import { int, num, yesno } from '../../engine/commands/args';
 import { ownCompute, parseNumOrVar, removeCompute, valueOf, type NumOrVar } from '../../engine/fix/util';
 

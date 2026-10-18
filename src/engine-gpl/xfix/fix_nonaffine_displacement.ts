@@ -26,14 +26,6 @@ function inumeric(w: string | undefined): number {
   return Number(w);
 }
 
-function numeric(w: string | undefined): number {
-  const x = Number(w);
-  if (w === undefined || w.trim() === '' || !Number.isFinite(x)) {
-    throw new StyleError(`Expected floating point parameter instead of '${w ?? ''}' in input script or data file`);
-  }
-  return x;
-}
-
 type RefStyle = 'fixed' | 'update' | 'offset';
 
 export class FixNonaffineDisplacement extends Fix {

@@ -1,0 +1,20 @@
+# oracle: fix bond/swap with FENE bonds and a WCA pair style on 14 four-bead chains (56 atoms in straight 4-bead chains on a lattice, periodic box 12, atom_style bond), special_bonds 0 1 1, every 2 steps with all atoms tried (fraction 1.0) and cutoff 2.0, 30 steps
+# oracle-inputs: w224mc_bondswap_chains.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.4e-15, atoms 1.4e-14.
+units           lj
+atom_style      bond
+read_data       w224mc_bondswap_chains.data
+special_bonds   lj 0.0 1.0 1.0
+pair_style      lj/cut 1.12246
+pair_coeff      1 1 1.0 1.0
+bond_style      fene
+bond_coeff      1 0.3 2.5 1.0 1.0
+timestep        0.001
+velocity        all create 1.0 4928459 loop geom
+fix             integ all nve
+fix             bs all bond/swap 2 1.0 2.0 4321
+thermo_style    custom step pe ke f_bs[1] f_bs[2]
+thermo_modify   format float %.15g
+thermo          1
+run             30

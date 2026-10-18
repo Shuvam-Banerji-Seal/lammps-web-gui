@@ -1,0 +1,20 @@
+# oracle: fix bond/create/angle (aconstrain 100 180) on 14 four-bead chains (56 atoms, periodic box 12, atom_style angle): new bonds within 2.0 whose two atoms pass the angle test, an event every 2 steps with prob 0.8, 30 steps
+# oracle-inputs: w224mc_bondcreateangle_chains.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.3e-15, atoms 3.2e-14.
+units           lj
+atom_style      angle
+read_data       w224mc_bondcreateangle_chains.data extra/bond/per/atom 6 extra/angle/per/atom 6 extra/special/per/atom 8
+pair_style      lj/cut 2.5
+pair_coeff      1 1 0.5 0.8
+bond_style      harmonic
+bond_coeff      1 30.0 1.0
+angle_style     harmonic
+angle_coeff     1 10.0 120.0
+velocity        all create 0.1 4928459 loop geom
+fix             integ all nve
+fix             bc all bond/create/angle 2 1 1 2.0 1 aconstrain 100 180 prob 0.8 12345
+thermo_style    custom step pe ke f_bc[1] f_bc[2]
+thermo_modify   format float %.15g
+thermo          1
+run             30

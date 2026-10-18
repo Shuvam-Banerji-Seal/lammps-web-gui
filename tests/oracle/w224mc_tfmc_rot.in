@@ -1,0 +1,25 @@
+# oracle: fix tfmc with com 1 1 1 and rot on a two-mass LJ fcc crystal (108 atoms): the centre-of-mass and the rigid-rotation parts of the displacements are removed, 30 steps
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.4e-15, atoms 2.8e-14.
+units           lj
+atom_style      atomic
+lattice         fcc 0.9
+region          box block 0 3 0 3 0 3
+create_box      2 box
+create_atoms    1 box
+set             type 1 type/fraction 2 0.5 4242
+mass            1 1.0
+mass            2 2.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+pair_coeff      1 2 0.9 1.05
+pair_coeff      2 2 0.8 0.95
+velocity        all create 0.3 87287 loop geom
+fix             mc all tfmc 0.05 0.6 12345 com 1 1 1 rot
+variable        xcx equal xcm(all,x)
+variable        xcy equal xcm(all,y)
+variable        xcz equal xcm(all,z)
+thermo_style    custom step pe ke temp v_xcx v_xcy v_xcz
+thermo_modify   format float %.15g
+thermo          1
+run             30

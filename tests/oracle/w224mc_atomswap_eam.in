@@ -1,0 +1,26 @@
+# oracle: fix atom/swap (canonical, ke yes) on a Cu/Ni fcc alloy with pair eam/alloy (CuNi.eam.alloy), 108 atoms in 3x3x3 cells, 40 steps, an MC event every 5 steps with 20 cycles each
+# oracle-potentials: CuNi.eam.alloy
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 7.7e-15, atoms 1.8e-14.
+units           metal
+atom_style      atomic
+boundary        p p p
+lattice         fcc 3.6
+region          box block 0 3 0 3 0 3
+create_box      2 box
+create_atoms    1 box
+set             type 1 type/fraction 2 0.5 4242
+mass            1 58.69
+mass            2 63.55
+pair_style      eam/alloy
+pair_coeff      * * CuNi.eam.alloy Ni Cu
+timestep        0.001
+velocity        all create 800.0 87287 loop geom
+fix             integ all nve
+variable        is2 atom type==2
+compute         n2 all reduce sum v_is2
+fix             sw all atom/swap 5 20 12345 800.0 types 1 2 ke yes
+thermo_style    custom step pe ke temp f_sw[1] f_sw[2] c_n2
+thermo_modify   format float %.15g
+thermo          1
+run             40

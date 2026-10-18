@@ -324,10 +324,10 @@ describe('suffix, package and aliased names: errors', () => {
   });
 
   it('names the base style when the base is not supported', async () => {
-    const r = await runScript(`${MELT_HEAD}pair_style lcbop/omp\n`);
+    const r = await runScript(`${MELT_HEAD}pair_style lj/long/tip4p/long/omp\n`);
     expect(r.error).not.toBeNull();
-    expect(r.error!.message).toMatch(/lcbop/);
-    expect(r.error!.message).not.toMatch(/lcbop\/omp/);
+    expect(r.error!.message).toMatch(/lj\/long\/tip4p\/long/);
+    expect(r.error!.message).not.toMatch(/tip4p\/long\/omp/);
   });
 });
 

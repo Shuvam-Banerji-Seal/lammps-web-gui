@@ -1,0 +1,24 @@
+# oracle: pair lubricate flaglog 0 flagfld 1 flagHI 0 flagVF 0 (FLD only: no 1/r terms, no volume fraction correction) on 125 spheres, 20 nve/sphere steps
+# native: installed lmp (b332f28)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.0e-15, atoms 7.8e-16.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      sphere
+boundary        p p p
+lattice         sc 0.3
+region          box block 0 5 0 5 0 5
+create_box      1 box
+create_atoms    1 box
+set             type 1 diameter 0.6
+velocity        all create 1.0 4928 loop geom
+neighbor        1.0 bin
+neigh_modify    delay 0 every 1 check yes
+comm_modify     vel yes
+timestep        0.001
+fix             1 all nve/sphere
+pair_style      lubricate 1.5 0 1 0.61 2.5 0 0
+pair_coeff      * *
+thermo_style    custom step temp press vol
+thermo_modify   format float %.15g
+thermo          5
+run             20

@@ -1,0 +1,23 @@
+# oracle: pair brownian with newton off (native warns and the half list draws each pair as the owned atoms see it) on about 170 radius-1 spheres in a periodic box, flaglog 1 and flagfld 1, 30 steps with fix nve/sphere
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.9e-15, atoms 0.0e+0.
+# native: installed lmp (b332f28)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+newton          off
+atom_style      sphere
+boundary        p p p
+region          box block 0 12 0 12 0 12
+create_box      1 box
+lattice         sc 0.1
+create_atoms    1 box
+set             type 1 diameter 2.0
+set             type 1 density 1.0
+pair_style      brownian 1.5 1 1 2.01 2.5 2.0 5878567
+pair_coeff      * *
+fix             1 all nve/sphere
+compute         rot all erotate/sphere
+thermo_style    custom step pe ke c_rot
+thermo_modify   format float %.15g
+timestep        0.0001
+thermo          10
+run             30

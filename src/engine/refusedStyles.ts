@@ -13,6 +13,9 @@ export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[
   ],
   COMPUTES: [
   ],
+  KSPACES: [
+    'pppm/rk', // engine-gpl/registry/pppmx.ts (lazy): native needs 2 partitions and run_style verlet/split/rk
+  ],
 };
 
 export const isRefusedStyle = (kind: StyleKind, name: string): boolean => (REFUSED_STYLES[kind] ?? []).includes(name);

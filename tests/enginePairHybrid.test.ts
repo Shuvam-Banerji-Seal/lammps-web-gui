@@ -92,8 +92,8 @@ describe('pair_style hybrid: errors', () => {
 
 describe('pair_style hybrid: a sub-style the engine lacks is named', () => {
   it('reports the swallowed word as a possible pair style', async () => {
-    const { error } = await run(box('pair_style hybrid/overlay lj/cut 4.5 lcbop\npair_coeff * * lj/cut 1.0 1.0'));
-    expect(error?.message).toMatch(/sub-style lj\/cut 4.5 lcbop/);
-    expect(error?.message).toMatch(/If 'lcbop' is meant as a pair style, the browser engine does not support it/);
+    const { error } = await run(box('pair_style hybrid/overlay lj/cut 4.5 quip\npair_coeff * * lj/cut 1.0 1.0'));
+    expect(error?.message).toMatch(/sub-style lj\/cut 4.5 quip/);
+    expect(error?.message).toMatch(/If 'quip' is meant as a pair style, the browser engine does not support it/);
   });
 });

@@ -215,4 +215,10 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_mesont', names: { BONDS: ['mesocnt'], ANGLES: ['mesocnt'], PAIRS: ['mesocnt', 'mesocnt/viscous'] }, load: () => import('../engine-gpl/registry/mesont') as Promise<StyleModule> },
   { id: 'gpl_yaff', names: { ANGLES: ['cross'], BONDS: ['mm3'], PAIRS: ['lj/switch3/coulgauss/long'] }, load: () => import('../engine-gpl/registry/yaff') as Promise<StyleModule> },
   { id: 'gpl_bocs', names: { FIXES: ['bocs'], COMPUTES: ['pressure/bocs'] }, load: () => import('../engine-gpl/registry/bocs') as Promise<StyleModule> },
+  { id: 'gpl_orient', names: { FIXES: ['orient/fcc', 'orient/bcc'] }, load: () => import('../engine-gpl/registry/orient') as Promise<StyleModule> },
+  { id: 'gpl_colloid2', names: { PAIRS: ['lubricate', 'lubricate/poly', 'lubricateU', 'lubricateU/poly', 'brownian', 'brownian/poly'], FIXES: ['wall/colloid', 'wall/srd'] }, load: () => import('../engine-gpl/registry/colloid2') as Promise<StyleModule> },
+  { id: 'gpl_pppmx', names: { KSPACES: ['pppm/stagger', 'pppm/rk'] }, load: () => import('../engine-gpl/registry/pppmx') as Promise<StyleModule> },
+  { id: 'gpl_miscx', names: { BONDS: ['quartic', 'special'], ANGLES: ['dipole'], PAIRS: ['list', 'dsmc'] }, load: () => import('../engine-gpl/registry/miscx') as Promise<StyleModule> },
+  { id: 'gpl_bop', names: { PAIRS: ['bop'] }, load: () => import('../engine-gpl/registry/bop') as Promise<StyleModule> },
+  { id: 'gpl_lcbop', names: { PAIRS: ['lcbop'] }, load: () => import('../engine-gpl/registry/lcbop') as Promise<StyleModule> },
 ];

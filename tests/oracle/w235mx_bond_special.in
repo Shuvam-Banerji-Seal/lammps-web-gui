@@ -1,0 +1,43 @@
+# oracle: bond_style special (docs.lammps.org/bond_special.html): every bonded pair takes the pair style's single() with
+# the factors of its bond type (factor_lj 0.5, factor_coul 0.8), so the bonded pairs are rescaled inside the bond term;
+# special_bonds lj/coul 0 1 1 (the 1-2 pair excluded from the pair list, as the style requires). A zigzag chain of 8
+# charged beads, lj/cut/coul/cut, velocities from velocity create. Native: installed lmp (b332f28).
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.4e-14, atoms 1.6e-15.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      full
+boundary        p p p
+region          box block -20 20 -20 20 -20 20
+create_box      1 box bond/types 1 extra/bond/per/atom 2
+create_atoms    1 single 0.0 0.0 0.0
+create_atoms    1 single 1.1 0.5 0.0
+create_atoms    1 single 2.0 -0.3 0.4
+create_atoms    1 single 3.2 0.2 -0.2
+create_atoms    1 single 3.9 1.3 0.5
+create_atoms    1 single 5.0 0.9 -0.4
+create_atoms    1 single 5.6 -0.6 0.3
+create_atoms    1 single 6.9 -0.2 0.8
+mass            1 12.0
+group           plus id 1 3 5 7
+group           minus id 2 4 6 8
+set             group plus charge 0.4
+set             group minus charge -0.4
+create_bonds    single/bond 1 1 2
+create_bonds    single/bond 1 2 3
+create_bonds    single/bond 1 3 4
+create_bonds    single/bond 1 4 5
+create_bonds    single/bond 1 5 6
+create_bonds    single/bond 1 6 7
+create_bonds    single/bond 1 7 8
+velocity        all create 40.0 4928459 mom yes rot no
+pair_style      lj/cut/coul/cut 3.0 3.0
+pair_coeff      * * 0.05 2.2
+special_bonds   lj 0.0 1.0 1.0 coul 0.0 1.0 1.0
+bond_style      special
+bond_coeff      1 0.5 0.8
+timestep        0.5
+fix             1 all nve
+thermo_style    custom step pe ke ebond evdwl ecoul
+thermo_modify   format float %.15g
+thermo          20
+run             200

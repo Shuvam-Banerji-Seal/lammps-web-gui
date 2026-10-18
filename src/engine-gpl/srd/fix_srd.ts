@@ -30,7 +30,14 @@
  *
  * Refused here with a StyleError naming the keyword: tstat yes with a fix deform and no unbiased yes (the biased
  * streaming bins do not match native yet), a fix deform with a time-varying rate (trate, wiggle, variable, volume),
- * tris in a fix rigid body, and fix wall/srd.
+ * tris in a fix rigid body.
+ *
+ * Walls (fix wall/srd, src/engine-gpl/colloid2/fix_wall_srd.ts; native src/SRD/fix_wall_srd.cpp) are supported with
+ * or without big particles: wall_params(1) at each reneighbor and wall_params(0) at each SRD step (the wall positions,
+ * velocities and force sums), the wall search bins (pre_neighbor, the walls that cover each bin up to the walltrigger),
+ * the wall setup_bounds (dist_ghost = dist_srd = 4 onemove), inside_wall, collision_wall_exact and _inexact, the slip and
+ * noslip collisions with a wall (slip_wall and noslip with WALL: the wall velocity in the wall normal direction is added),
+ * force_wall, and the reneighbor trigger when a wall moves more than the walltrigger (half the neighbor skin).
  *
  * Browser-engine difference: native processes SRD atoms in its own local order; the engine keeps that order in
  * SimState.order (nativeOrder), and every loop over SRD particles goes through it, so the random draws happen in
@@ -68,6 +75,24 @@ const KIND_SPHERE = 0;
 const KIND_ELLIPSOID = 1;
 const KIND_LINE = 2;
 const KIND_TRI = 3;
+/** a wall entry of the search bins (native WALL kind); its index in binbig is copies + wall number */
+const KIND_WALL = 4;
+
+/**
+ * The fix wall/srd of the system (native FixWallSRD, read by FixSRD as its wallfix): wall positions xwall, the archived
+ * positions xwallhold, velocities vwall and forces fwall (3 per wall) and the wall_params() that sets them.
+ */
+export interface SrdWallFix extends Fix {
+  readonly nwall: number;
+  readonly varflag: number;
+  readonly overlap: number;
+  readonly wallwhich: readonly number[];
+  readonly xwall: Float64Array;
+  readonly xwallhold: Float64Array;
+  readonly vwall: Float64Array;
+  readonly fwall: Float64Array;
+  wallParams(flag: 0 | 1): void;
+}
 const EMPTY: number[] = [];
 /** fix_srd.cpp: static constexpr double TOLERANCE = 0.00001; static constexpr int MAXITER = 20; */
 const LINE_TOLERANCE = 0.00001;
@@ -96,6 +121,9 @@ export class FixSRD extends Fix {
   private shiftuser = 'no';
 
   private initflag = false;
+  /** the fix wall/srd of the system (native wallfix), or null; walltrigger = half the neighbor skin (native) */
+  private wallFix: SrdWallFix | null = null;
+  private walltrigger = 0;
   private dtBig = 0;
   private dtSrd = 0;
   private massSrd = 0;
@@ -375,6 +403,14 @@ export class FixSRD extends Fix {
     }
     // fix_srd.cpp init(): "Fix srd no-slip requires atom attribute torque"
     if (this.bigExist && this.noslipflag && !s.torque) throw new StyleError('Fix srd no-slip requires atom attribute torque');
+    // fix_srd.cpp init(): wallexist = 1 if an SRD wall is defined (get_fix_by_style("^wall/srd"), one at most)
+    const wallFixes = this.sys.fixes.filter((f) => f.style === 'wall/srd');
+    if (wallFixes.length > 1) throw new StyleError('Cannot use fix wall/srd more than once');
+    this.wallFix = wallFixes.length === 1 ? (wallFixes[0] as SrdWallFix) : null;
+    if (this.wallFix) {
+      this.walltrigger = 0.5 * this.sys.nb.skin;
+      if (this.wallFix.overlap && !this.overlapflag) this.sys.warn('Fix SRD walls overlap but fix srd overlap not set');
+    }
     // fix_srd.cpp init(): "deformflag = 1" for a fix deform, and "change_size" for a fix that changes a box length
     // (the velocity bins then follow the box, see preNeighbor). The streaming correction itself is in resetVelocities.
     this.deformFix = null;
@@ -423,7 +459,7 @@ export class FixSRD extends Fix {
 
   setup(): void {
     this.setupBounds();
-    if (this.bigExist) {
+    if (this.bigExist || this.wallFix) {
       this.setupSearchBins();
       this.setupSearchStencil();
     } else {
@@ -734,6 +770,11 @@ export class FixSRD extends Fix {
       this.distGhost = cut + 0.5 * nb.skin;
       this.distSrd = cut - 0.5 * nb.skin - 0.5 * this.maxbigdiam;
       this.distSrdReneigh = this.distSrd - onemove;
+    } else if (this.wallFix) {
+      // fix_srd.cpp setup_bounds(): walls and no big particles
+      this.distGhost = 4 * onemove;
+      this.distSrd = 4 * onemove;
+      this.distSrdReneigh = 4 * onemove - onemove;
     } else {
       this.distGhost = 0;
       this.distSrd = 0;
@@ -878,6 +919,8 @@ export class FixSRD extends Fix {
     const s = this.sys.state;
     if (this.binsrd.length < s.n) this.binsrd = new Int32Array(s.n);
     if (this.bigExist) this.bigStatic();
+    // fix_srd.cpp pre_neighbor(): wall_params(1) sets the wall positions and archives them for the reneighbor trigger
+    if (this.wallFix) this.wallFix.wallParams(1);
     // fix_srd.cpp pre_neighbor(): "if simulation box size changes, reset velocity bins" (change_size, set by a fix
     // deform that changes a length); the search bins follow the box as well when big particles exist
     // fix_srd.cpp pre_neighbor(): setup_bounds and the velocity bins on change_size, the search bins on change_size
@@ -886,14 +929,17 @@ export class FixSRD extends Fix {
       this.setupBounds();
       this.setupVelocityBins();
     }
-    if ((this.changeSize || this.changeShape) && this.bigExist) {
+    if ((this.changeSize || this.changeShape) && (this.bigExist || this.wallFix)) {
       this.setupSearchBins();
       this.setupSearchStencil();
     }
+    // native: the search bins of big particles and walls are emptied before they are filled
+    if (this.bigExist || this.wallFix) for (const b of this.binbig) b.length = 0;
     if (this.bigExist) {
       this.buildCopies();
       this.registerCopies();
     }
+    if (this.wallFix) this.registerWalls();
     if (this.reneighflag === SRD_ROTATE) this.resetVelocities();
     if (this.reneighflag === SRD_MOVE) this.reneighcount++;
     this.reneighflag = BIG_MOVE;
@@ -984,7 +1030,6 @@ export class FixSRD extends Fix {
 
   /** register each copy in the search bins it overlaps (native pre_neighbor loop, with the stencil) */
   private registerCopies(): void {
-    for (const b of this.binbig) b.length = 0;
     const nc = this.copyOwner.length;
     for (let c = 0; c < nc; c++) {
       const x = this.copyPos.subarray(3 * c, 3 * c + 3);
@@ -1324,7 +1369,7 @@ export class FixSRD extends Fix {
       x[3 * i] += this.dtBig * v[3 * i];
       x[3 * i + 1] += this.dtBig * v[3 * i + 1];
       x[3 * i + 2] += this.dtBig * v[3 * i + 2];
-      if (this.bigExist) {
+      if (this.bigExist || this.wallFix) {
         const ix = Math.trunc((x[3 * i] - this.blo2[0]) * this.bininv2[0]);
         const iy = Math.trunc((x[3 * i + 1] - this.blo2[1]) * this.bininv2[1]);
         const iz = Math.trunc((x[3 * i + 2] - this.blo2[2]) * this.bininv2[2]);
@@ -1340,6 +1385,10 @@ export class FixSRD extends Fix {
     if (this.bigExist) {
       this.bigDynamic();
       this.updateCopyPositions();
+    }
+    // native post_force(): wall_params(0) sets the wall positions for this step and zeroes the wall forces
+    if (this.wallFix) this.wallFix.wallParams(0);
+    if (this.bigExist || this.wallFix) {
       if (this.overlapflag) this.collisionsMulti();
       else this.collisionsSingle();
     }
@@ -1360,6 +1409,12 @@ export class FixSRD extends Fix {
     if (flag) {
       this.nextReneighbor = s.step + 1;
       this.reneighflag = SRD_MOVE;
+    }
+    // a wall that moved more than the walltrigger since the last reneighbor triggers one on the next step (native)
+    if (this.wallFix) {
+      for (let m = 0; m < this.wallFix.nwall; m++) {
+        if (Math.abs(this.wallFix.xwall[m] - this.wallFix.xwallhold[m]) > this.walltrigger) this.nextReneighbor = s.step + 1;
+      }
     }
 
     // if next timestep is SRD timestep, trigger reneighboring and the rotation
@@ -1398,6 +1453,29 @@ export class FixSRD extends Fix {
         collideFlag = false;
         for (let m = 0; m < nbig; m++) {
           const c = cands[m];
+          if (c >= this.copyOwner.length) {
+            // a wall (native collisions_single, type WALL: inside_wall, collision_wall_exact or _inexact)
+            const w = c - this.copyOwner.length;
+            this.loadPair(i, c, xs, vs, xb);
+            if (!this.insideWall(xs, w)) continue;
+            let tw: number;
+            if (this.exactflag) {
+              tw = this.collisionWallExact(xs, vs, w, xscoll, xbcoll, norm);
+            } else {
+              tw = 0.5 * dt;
+              this.collisionWallInexact(xs, w, xscoll, xbcoll, norm);
+            }
+            if (tw > dt) {
+              this.startedInside(i, w, ibounce, true);
+              break;
+            }
+            ibin = this.applyCollisionAt(i, w, c, tw);
+            if (ibounce === 0) this.ncollide++;
+            ibounce++;
+            if (ibounce < this.maxbounceallow || this.maxbounceallow === 0) collideFlag = true;
+            dt = tw;
+            break;
+          }
           const j = this.copyOwner[c];
           this.loadPair(i, c, xs, vs, xb);
           const rad = this.copyRadius[c];
@@ -1473,10 +1551,31 @@ export class FixSRD extends Fix {
         let kfirst = -1;
         for (let m = 0; m < nbig; m++) {
           const c = cands[m];
-          const j = this.copyOwner[c];
-          const kind = this.bigKind[j];
+          const isWall = c >= this.copyOwner.length;
+          const j = isWall ? c - this.copyOwner.length : this.copyOwner[c];
+          const kind = isWall ? KIND_WALL : this.bigKind[j];
           if (j === jlast && kind === typefirst) continue;
           this.loadPair(i, c, xs, vs, xb);
+          if (isWall) {
+            // native collisions_multi, type WALL: inside_wall, then collision_wall_exact (always exact here)
+            if (!this.insideWall(xs, j)) continue;
+            const tw = this.collisionWallExact(xs, vs, j, xscoll, xbcoll, norm);
+            if (tw > dt || tw < 0.0) {
+              this.startedInside(i, j, ibounce, true);
+              tFirst = 0;
+              break;
+            }
+            if (tw > tFirst) {
+              tFirst = tw;
+              jfirst = j;
+              kfirst = c;
+              typefirst = kind;
+              xscF.set(xscoll);
+              xbcF.set(xbcoll);
+              normF.set(norm);
+            }
+            continue;
+          }
           const rad = this.copyRadius[c];
           const ell = kind === KIND_ELLIPSOID;
           const ax = this.bigAxes.subarray(9 * j, 9 * j + 9);
@@ -1749,16 +1848,18 @@ export class FixSRD extends Fix {
     for (let d = 0; d < 3; d++) {
       xs[d] = x[3 * i + d];
       vs[d] = v[3 * i + d];
-      xb[d] = this.copyPos[3 * c + d];
+      if (c < this.copyOwner.length) xb[d] = this.copyPos[3 * c + d];
     }
   }
 
   /** the inside-a-big-particle case (collisions_single and collisions_multi): an error, a warning, or nothing */
-  private startedInside(i: number, j: number, ibounce: number): void {
+  private startedInside(i: number, j: number, ibounce: number, wall = false): void {
     const s = this.sys.state;
     this.ninside++;
     if (this.insideflag === INSIDE_IGNORE) return;
-    const msg = `SRD particle ${s.id[i]} started inside big particle ${s.id[j]} on step ${s.step} bounce ${ibounce + 1}`;
+    const msg = wall
+      ? `SRD particle ${s.id[i]} started inside wall ${j} on step ${s.step} bounce ${ibounce + 1}`
+      : `SRD particle ${s.id[i]} started inside big particle ${s.id[j]} on step ${s.step} bounce ${ibounce + 1}`;
     if (this.insideflag === INSIDE_ERROR) throw new StyleError(msg);
     this.sys.warn(msg);
   }
@@ -1770,6 +1871,7 @@ export class FixSRD extends Fix {
    * point with its new velocity for tRemain and is binned again. Returns the new search bin.
    */
   private applyCollisionAt(i: number, j: number, c: number, tRemain: number): number {
+    if (c >= this.copyOwner.length) return this.applyWallCollisionAt(i, c - this.copyOwner.length, tRemain);
     const s = this.sys.state;
     const { x, v } = s;
     const { vs, xb, xscoll, xbcoll, norm, vsnew } = this;
@@ -1800,6 +1902,145 @@ export class FixSRD extends Fix {
     this.forceTorque(v, i, vsnew, xscoll, xbcoll, j, this.noslipflag || this.bigKind[j] !== KIND_SPHERE);
 
     // update_srd(): SRD velocity, position from the collision point, and its bin
+    for (let d = 0; d < 3; d++) {
+      v[3 * i + d] = vsnew[d];
+      x[3 * i + d] = xscoll[d] + tRemain * vsnew[d];
+    }
+    this.checkSrdDomain(i);
+    const ix = Math.trunc((x[3 * i] - this.blo2[0]) * this.bininv2[0]);
+    const iy = Math.trunc((x[3 * i + 1] - this.blo2[1]) * this.bininv2[1]);
+    const iz = Math.trunc((x[3 * i + 2] - this.blo2[2]) * this.bininv2[2]);
+    const [nx, ny] = this.nbin2;
+    return (this.binsrd[i] = iz * ny * nx + iy * nx + ix);
+  }
+
+  /**
+   * fix_srd.cpp pre_neighbor(), walls: each wall is registered in every search bin it covers, from its position (plus
+   * the walltrigger for a moving wall) up to the non-periodic boundary. The entry of wall m is copies + m.
+   */
+  private registerWalls(): void {
+    const wf = this.wallFix!;
+    const nc = this.copyOwner.length;
+    const delta = wf.varflag ? this.walltrigger : 0;
+    const [nx, ny, nz] = this.nbin2;
+    for (let m = 0; m < wf.nwall; m++) {
+      const dim = wf.wallwhich[m] >> 1;
+      const side = wf.wallwhich[m] & 1;
+      const nd = this.nbin2[dim];
+      const origin = this.blo2[dim];
+      const inv = this.bininv2[dim];
+      let lo: number;
+      let hi: number;
+      if (side === 0) {
+        hi = Math.trunc((wf.xwall[m] + delta - origin) * inv);
+        if (hi < 0) continue;
+        if (hi >= nd) throw new StyleError('Fix SRD: bad search bin assignment');
+        lo = 0;
+      } else {
+        lo = Math.trunc((wf.xwall[m] - delta - origin) * inv);
+        if (lo >= nd) continue;
+        if (lo < 0) throw new StyleError('Fix SRD: bad search bin assignment');
+        hi = nd - 1;
+      }
+      for (let iz = 0; iz < nz; iz++) {
+        for (let iy = 0; iy < ny; iy++) {
+          for (let ix = 0; ix < nx; ix++) {
+            const idx = dim === 0 ? ix : dim === 1 ? iy : iz;
+            if (idx < lo || idx > hi) continue;
+            const ibin = iz * ny * nx + iy * nx + ix;
+            if (this.binbig[ibin].length === ATOMPERBIN) throw new StyleError('Fix SRD: too many walls in bin');
+            this.binbig[ibin].push(nc + m);
+          }
+        }
+      }
+    }
+  }
+
+  /** fix_srd.cpp inside_wall(): is the SRD particle on the far side of wall m (the side it has passed)? */
+  private insideWall(xs: Float64Array, m: number): boolean {
+    const wf = this.wallFix!;
+    const dim = wf.wallwhich[m] >> 1;
+    const side = wf.wallwhich[m] & 1;
+    if (side === 0 && xs[dim] < wf.xwall[m]) return true;
+    if (side !== 0 && xs[dim] > wf.xwall[m]) return true;
+    return false;
+  }
+
+  /**
+   * fix_srd.cpp collision_wall_exact(): the collision time dt before now (xs - xwall) / (vs - vwall) along the wall
+   * normal, the SRD position at that time (xscoll), the wall position (xbcoll) and the unit normal of the wall.
+   */
+  private collisionWallExact(xs: Float64Array, vs: Float64Array, m: number, xscoll: Float64Array, xbcoll: Float64Array, norm: Float64Array): number {
+    const wf = this.wallFix!;
+    const dim = wf.wallwhich[m] >> 1;
+    const side = wf.wallwhich[m] & 1;
+    const dt = (xs[dim] - wf.xwall[m]) / (vs[dim] - wf.vwall[m]);
+    xscoll[0] = xs[0] - dt * vs[0];
+    xscoll[1] = xs[1] - dt * vs[1];
+    xscoll[2] = xs[2] - dt * vs[2];
+    xbcoll[0] = xbcoll[1] = xbcoll[2] = 0.0;
+    xbcoll[dim] = wf.xwall[m] - dt * wf.vwall[m];
+    norm[0] = norm[1] = norm[2] = 0.0;
+    norm[dim] = side === 0 ? 1.0 : -1.0;
+    return dt;
+  }
+
+  /** fix_srd.cpp collision_wall_inexact(): the SRD is pushed to the wall at the end of the step (time = end of step). */
+  private collisionWallInexact(xs: Float64Array, m: number, xscoll: Float64Array, xbcoll: Float64Array, norm: Float64Array): void {
+    const wf = this.wallFix!;
+    const dim = wf.wallwhich[m] >> 1;
+    const side = wf.wallwhich[m] & 1;
+    xscoll[0] = xs[0];
+    xscoll[1] = xs[1];
+    xscoll[2] = xs[2];
+    xscoll[dim] = wf.xwall[m];
+    xbcoll[0] = xbcoll[1] = xbcoll[2] = 0.0;
+    xbcoll[dim] = wf.xwall[m];
+    norm[0] = norm[1] = norm[2] = 0.0;
+    norm[dim] = side === 0 ? 1.0 : -1.0;
+  }
+
+  /**
+   * fix_srd.cpp slip_wall() and noslip() with a WALL: the same draws as noslip (a Gaussian normal and two tangential
+   * velocities, rejected above vmax); the wall's velocity along its normal is added (the wall has no tangential motion).
+   */
+  private noslipWall(vs: Float64Array, m: number, norm: Float64Array, vsnew: Float64Array): void {
+    const wf = this.wallFix!;
+    const zero = new Float64Array(3);
+    this.noslip(vs, zero, zero, zero, zero, norm, vsnew);
+    const dim = wf.wallwhich[m] >> 1;
+    vsnew[dim] += wf.vwall[m];
+  }
+
+  /** fix_srd.cpp force_wall(): the wall gets -dp/dt of the SRD particle (the factor of force_torque). */
+  private forceWall(v: Float64Array, i: number, vsnew: Float64Array, m: number): void {
+    const wf = this.wallFix!;
+    const factor = this.massSrd / this.dtBig / this.sys.state.units.ftm2v;
+    for (let d = 0; d < 3; d++) wf.fwall[3 * m + d] -= factor * (vsnew[d] - v[3 * i + d]);
+  }
+
+  /**
+   * The collision update of applyCollisionAt for a wall: the SRD velocity from noslipWall, the rescale check, the wall
+   * force, and update_srd() (the SRD moves from the collision point for tRemain and is binned again).
+   */
+  private applyWallCollisionAt(i: number, m: number, tRemain: number): number {
+    const s = this.sys.state;
+    const { x, v } = s;
+    const { vs, xscoll, norm, vsnew } = this;
+    for (let d = 0; d < 3; d++) vs[d] = v[3 * i + d];
+    this.noslipWall(vs, m, norm, vsnew);
+    if (s.dimension === 2) vsnew[2] = 0.0;
+    if (this.rescaleCollide) {
+      const vsq = vsnew[0] * vsnew[0] + vsnew[1] * vsnew[1] + vsnew[2] * vsnew[2];
+      if (vsq > this.vmaxsq) {
+        this.nrescale++;
+        const sc = this.vmax / Math.sqrt(vsq);
+        vsnew[0] *= sc;
+        vsnew[1] *= sc;
+        vsnew[2] *= sc;
+      }
+    }
+    this.forceWall(v, i, vsnew, m);
     for (let d = 0; d < 3; d++) {
       v[3 * i + d] = vsnew[d];
       x[3 * i + d] = xscoll[d] + tRemain * vsnew[d];

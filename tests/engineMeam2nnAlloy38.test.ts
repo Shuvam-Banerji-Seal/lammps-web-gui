@@ -12,7 +12,6 @@ import { meamPe, oracleFiles, perturbed, relErr, runMeam, cellAtoms, type MeamSe
 
 const LIB = oracleFiles('w38m2nn_lib.meam');
 const B2_PAR = oracleFiles('w38m2nn_b2.meam')['w38m2nn_b2.meam'];
-const B2_CMD = 'w38m2nn_lib.meam A B w38m2nn_b2.meam A B';
 
 /** B2 (CsCl) crystal: n x n x n simple-cubic cells of side a, A on the corners and B at the body centres. */
 const b2Crystal = (re: number, n: number, par = B2_PAR): MeamSetup => {

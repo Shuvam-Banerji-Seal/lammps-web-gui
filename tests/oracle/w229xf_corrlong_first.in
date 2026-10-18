@@ -1,0 +1,24 @@
+# oracle: LJ fluid, fix ave/correlate/long of pxy and an equal-style variable (type first, start 4, overwrite, title1 and title2)
+# oracle-files: corrl_first.dat
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 7.4e-14, atoms 3.6e-13. (file compared with %g, 6 digits, at the file tolerance)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.44 87287 loop all
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+timestep        0.002
+fix             1 all nve
+compute         T all temp
+compute         p all pressure T
+variable        ev equal 0.5*step+1.0
+fix             JJ all ave/correlate/long 2 40 c_p[4] v_ev type first start 4 overwrite title1 "my correlator" title2 "# custom columns" file corrl_first.dat
+thermo_style    custom step temp pe c_p[4]
+thermo_modify   format float %.15g
+thermo          40
+run             200

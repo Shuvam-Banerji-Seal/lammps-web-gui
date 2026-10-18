@@ -1,0 +1,19 @@
+# oracle: LJ fluid integrated by fix nvk (microcanonical kinetic energy integrator, Minary 2003), K_target from the initial velocities
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 7.7e-15, atoms 1.7e-13.
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.44 87287 loop all
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+timestep        0.002
+fix             1 all nvk
+thermo_style    custom step temp pe etotal press
+thermo_modify   format float %.15g
+thermo          10
+run             100

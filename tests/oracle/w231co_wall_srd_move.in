@@ -1,0 +1,34 @@
+# oracle: fix wall/srd with a moving wall (xhi v_xw, xw = 3.2 - 0.002 step, at the edge of the SRD gas) with fix srd (no big particles, 2d), the same box and SRD as w231co_wall_srd, 20 steps of 0.02 with SRD rotation every step (examples/srd in.srd.pure cut down)
+# native: installed lmp (b332f28)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.6e-15, atoms 0.0e+0.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      atomic
+atom_modify     first empty
+dimension       2
+boundary        f p p
+lattice         sq 0.4
+region          box block 0 10 0 10 -0.5 0.5
+create_box      1 box
+lattice         sq 10.0
+region          plane block 0 10 0 10 -0.001 0.001
+create_atoms    1 region plane
+group           empty type 2
+mass            1 0.01
+velocity        all create 1.0 593849 loop geom
+neighbor        0.3 bin
+neigh_modify    delay 1 every 1 check no
+comm_modify     group empty
+timestep        0.02
+fix             1 all srd 1 NULL 1.0 0.25 49894 collision slip
+fix             2 all enforce2d
+variable        xw equal 3.2-0.002*step
+fix             3 all wall/srd xlo EDGE xhi v_xw
+# the wall force is an extensive global array: native thermo divides it by natoms (thermo.cpp compute_fix,
+# thermo norm yes in lj units); the same value as an equal-style variable is f_3[1][1]/atoms (variables are not normalized)
+variable        fw1 equal f_3[1][1]/atoms
+variable        fw2 equal f_3[2][1]/atoms
+thermo_style    custom step temp f_1[7] etotal press v_fw1 v_fw2
+thermo_modify   format float %.15g
+thermo          5
+run             20

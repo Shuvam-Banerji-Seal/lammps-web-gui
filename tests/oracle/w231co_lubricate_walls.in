@@ -1,0 +1,25 @@
+# oracle: pair lubricate flaglog 1 flagfld 1 with fix wall/lj93 zlo and zhi (fixed walls at z = -1 and z = 8, periodic x and y): the volume fraction uses the walls (flagwall 1)
+# native: installed lmp (b332f28)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.9e-15, atoms 2.6e-14.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      sphere
+boundary        p p f
+lattice         sc 0.3
+region          box block 0 5 0 5 0 5
+create_box      1 box
+create_atoms    1 box
+set             type 1 diameter 0.6
+velocity        all create 1.0 4928 loop geom
+neighbor        1.0 bin
+neigh_modify    delay 0 every 1 check yes
+comm_modify     vel yes
+timestep        0.001
+fix             1 all nve/sphere
+fix             2 all wall/lj93 zlo -1.0 1.0 1.0 1.0 zhi 8.0 1.0 1.0 1.0
+pair_style      lubricate 1.5 1 1 0.61 2.5
+pair_coeff      * *
+thermo_style    custom step temp press vol
+thermo_modify   format float %.15g
+thermo          5
+run             20

@@ -1,0 +1,30 @@
+# oracle: pair brownian/poly (newton off, full list) with flaglog 1 and flagfld 1 on four polydisperse dimers (radii 1 and 1.5, separation 2.8, cutoff 3.0) far apart in a 30 x 30 x 30 periodic box: each atom has one partner, so the full-list order is the native one; 30 steps with fix nve/sphere
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.1e-15, atoms 4.2e-17.
+# native: installed lmp (b332f28)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      sphere
+newton          off
+boundary        p p p
+region          box block 0 30 0 30 0 30
+create_box      2 box
+create_atoms    1 single 5 5 5 units box
+create_atoms    2 single 7.8 5 5 units box
+create_atoms    1 single 15 15 15 units box
+create_atoms    2 single 17.8 15 15 units box
+create_atoms    1 single 5 25 5 units box
+create_atoms    2 single 5 25 7.8 units box
+create_atoms    2 single 25 25 25 units box
+create_atoms    1 single 25 27.8 25 units box
+set             type 1 diameter 2.0
+set             type 2 diameter 3.0
+set             type * density 1.0
+pair_style      brownian/poly 1.0 1 1 2.2 3.0 2.0 5878567
+pair_coeff      * *
+fix             1 all nve/sphere
+compute         rot all erotate/sphere
+thermo_style    custom step pe ke c_rot
+thermo_modify   format float %.15g
+timestep        0.0001
+thermo          10
+run             30

@@ -1,0 +1,22 @@
+# oracle: pair brownian with flaglog 0 and flagfld 0 (no log terms, no FLD) on about 170 monodisperse spheres (radius 1) on a simple cubic lattice (spacing 2.15) in a 12 x 12 x 12 periodic box, 30 steps with fix nve/sphere
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.6e-15, atoms 1.2e-15.
+# native: installed lmp (b332f28)
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           lj
+atom_style      sphere
+boundary        p p p
+region          box block 0 12 0 12 0 12
+create_box      1 box
+lattice         sc 0.1
+create_atoms    1 box
+set             type 1 diameter 2.0
+set             type 1 density 1.0
+pair_style      brownian 1.5 0 0 2.01 2.5 2.0 5878567
+pair_coeff      * *
+fix             1 all nve/sphere
+compute         rot all erotate/sphere
+thermo_style    custom step pe ke c_rot
+thermo_modify   format float %.15g
+timestep        0.0001
+thermo          10
+run             30

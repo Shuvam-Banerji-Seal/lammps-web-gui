@@ -175,6 +175,8 @@ export class KSpaceEwaldDipole extends KSpace {
   }
 
   compute(kc: KSpaceCompute): void {
+    // the per-atom energy and virial of this style are not computed by the engine: refused rather than left out
+    if (kc.eatom || kc.vatom) throw new StyleError(`compute pe/atom and stress/atom with kspace_style ${this.name} are not supported by the browser engine (its per-atom energy and virial are not computed)`);
     const s = kc.s, g = this.gEwald;
     // the box may change under a barostat: refresh the box-dependent data
     const geom = kc.geom;

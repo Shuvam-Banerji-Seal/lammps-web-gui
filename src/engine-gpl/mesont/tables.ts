@@ -11,7 +11,7 @@
  * extrapolate or clamp as the C++ does.
  */
 import { StyleError } from '../../engine/force/types';
-import { cos as libmCos } from '../libm/sincos';
+import { cosFma as libmCos } from '../libm/sincos_fma';
 
 /** Parsed mesocnt potential file with its spline coefficients. */
 export interface MesocntTables {

@@ -21,7 +21,7 @@
  */
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
-import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sinFma as libmSin, cosFma as libmCos } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
 

@@ -20,7 +20,7 @@ import {
   combGijk, combGijkD, cube, powint, readCombEntries, setupCombParams, square,
   type CombParam,
 } from './params';
-import { cos as libmCos } from '../libm/sincos';
+import { cosFma as libmCos } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
 import { erfc as libmErfc } from '../libm/erf';

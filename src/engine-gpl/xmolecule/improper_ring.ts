@@ -13,7 +13,7 @@
 import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { parseNum } from '../../engine/force/util';
-import { cos } from '../libm/sincos';
+import { cosFma as cos } from '../libm/sincos_fma';
 import { evTallyFour } from './ev';
 
 // LAMMPS: static constexpr double SMALL = 0.001 (improper_ring.cpp)

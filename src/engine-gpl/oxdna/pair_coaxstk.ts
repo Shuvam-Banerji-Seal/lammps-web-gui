@@ -16,7 +16,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF2, DF4, DF5, F2, F4, F5, backboneSite, lrfOf, oxdnaConstants, stackingSite } from './common';
-import { sin as libmSin } from '../libm/sincos';
+import { sinFma as libmSin } from '../libm/sincos_fma';
 import { acos as libmAcos } from '../libm/acos';
 
 /** The 21 numbers after "I J" (pair_coeff) or after the potential-file name, in order. */

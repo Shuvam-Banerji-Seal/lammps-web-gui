@@ -19,6 +19,7 @@ import { StyleError } from '../../engine/force/types';
 import { Fix } from '../../engine/fix/fix';
 import type { System } from '../../engine/system';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { cosFma as libmCosFma } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 
 const MY_PI = Math.PI;
@@ -199,7 +200,7 @@ export class FixPIMDNVT extends Fix {
     this.lam[0] = 0.0;
     if (np % 2 === 0) this.lam[np - 1] = 4.0 * np;
     for (let i = 2; i <= Math.floor(np / 2); i++) {
-      this.lam[2 * i - 3] = this.lam[2 * i - 2] = 2.0 * np * (1.0 - 1.0 * libmCos(2.0 * MY_PI * (i - 1) / np));
+      this.lam[2 * i - 3] = this.lam[2 * i - 2] = 2.0 * np * (1.0 - 1.0 * libmCosFma(2.0 * MY_PI * (i - 1) / np));
     }
     for (let i = 0; i < np; i++) {
       this.mx2xp[M(0, i)] = inverseNp;

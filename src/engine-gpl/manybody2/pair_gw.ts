@@ -14,7 +14,7 @@ import { Pair, StyleError, type PairCompute, type StyleContext } from '../../eng
 import { NEIGHMASK } from '../../engine/neighbor';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
-import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sinFma as libmSin, cosFma as libmCos } from '../libm/sincos_fma';
 import {
   checkOneCoeffArgs, mapElementsToTypes, nextDouble, PotentialEntryReader, potentialUnitFactor, tagOf,
   tallyPair, tallyTriplet,

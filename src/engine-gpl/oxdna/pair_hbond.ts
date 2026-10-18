@@ -16,7 +16,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, F1, F4, baseSiteOxdna1, lrfOf, oxdnaConstants, type OxdnaConstants, potentialLines } from './common';
-import { sin as libmSin } from '../libm/sincos';
+import { sinFma as libmSin } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 import { acos as libmAcos } from '../libm/acos';
 

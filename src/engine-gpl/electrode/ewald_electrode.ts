@@ -19,7 +19,7 @@ import type { Geometry } from '../../engine/domain';
 import { MY_PI, MY_PI2, MY_PIS } from './electrode_math';
 import { BoundaryCorrection, NoBoundaryCorrection, SlabDipole, Slab2d, type BoundaryEnv, inGroup } from './boundary_correction';
 import { log as libmLog } from '../libm/log';
-import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sinFma as libmSin, cosFma as libmCos } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
 

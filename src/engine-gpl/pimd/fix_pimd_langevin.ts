@@ -24,6 +24,7 @@ import { RanMars } from '../random_mars';
 import { nativeOrder } from '../../engine/atoms';
 import { log as libmLog } from '../libm/log';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sinFma as libmSinFma, cosFma as libmCosFma } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 
 const MY_2PI = 2.0 * Math.PI;
@@ -327,16 +328,16 @@ export class FixPIMDLangevin extends Fix {
     this.mxp2x = new Float64Array(np * np);
     const M = (i: number, j: number) => i * np + j;
     for (let i = 0; i < np; i++) {
-      const sinTmp = libmSin(i * Math.PI / np);
+      const sinTmp = libmSinFma(i * Math.PI / np);
       this.lam[i] = 4 * sinTmp * sinTmp;
     }
     const sqrtnp = Math.sqrt(np);
     for (let j = 0; j < np; j++) {
       for (let i = 1; i < Math.trunc(np / 2) + 1; i++) {
-        this.mx2xp[M(i, j)] = MY_SQRT2 * libmCos(MY_2PI * i * j / np) / sqrtnp;
+        this.mx2xp[M(i, j)] = MY_SQRT2 * libmCosFma(MY_2PI * i * j / np) / sqrtnp;
       }
       for (let i = Math.trunc(np / 2) + 1; i < np; i++) {
-        this.mx2xp[M(i, j)] = MY_SQRT2 * libmSin(MY_2PI * i * j / np) / sqrtnp;
+        this.mx2xp[M(i, j)] = MY_SQRT2 * libmSinFma(MY_2PI * i * j / np) / sqrtnp;
       }
     }
     for (let i = 0; i < np; i++) {

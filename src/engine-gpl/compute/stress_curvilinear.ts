@@ -16,6 +16,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import type { System } from '../../engine/system';
 import { NativePairOrder } from '../neighbor/nativeOrder';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sinFma as libmSinFma } from '../libm/sincos_fma';
 import { acos as libmAcos } from '../libm/acos';
 
 /** One pair of the half list that passes the group test and the cutoff: positions of i and j (image), fpair. */
@@ -377,7 +378,7 @@ export class ComputeStressSpherical extends Compute {
         tdens[bin] += 1.0;
         const vr = (ri[0] * v[3 * i] + ri[1] * v[3 * i + 1] + ri[2] * v[3 * i + 2]) / r;
         const q = ri[1] / ri[0];
-        const vt = (r * libmSin(theta)) / (q * q + 1.0) * ((ri[0] * v[3 * i + 1] - ri[1] * v[3 * i]) / (ri[0] * ri[0]));
+        const vt = (r * libmSinFma(theta)) / (q * q + 1.0) * ((ri[0] * v[3 * i + 1] - ri[1] * v[3 * i]) / (ri[0] * ri[0]));
         const vp = (ri[2] * vr - r * v[3 * i + 2]) / (r * Math.sqrt(1.0 - (ri[2] / r) * (ri[2] / r)));
         tpkrr[bin] += vr * vr;
         tpktt[bin] += vt * vt;

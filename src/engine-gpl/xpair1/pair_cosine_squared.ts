@@ -13,7 +13,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { tallyAtom } from '../../engine/force/pair/lj_cut';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { pow } from '../libm/pow';
-import { sin, cos } from '../libm/sincos';
+import { sinFma as sin, cosFma as cos } from '../libm/sincos_fma';
 import { setPairRange, resetSetCutoffs, table, mirror } from './common';
 
 /** MY_PI (math_const.h): the double nearest pi. */

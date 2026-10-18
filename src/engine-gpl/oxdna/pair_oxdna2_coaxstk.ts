@@ -17,7 +17,7 @@ import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF2, DF4, DF6, F2, F4, F6, lrfOf, oxdnaConstants, stackingSiteOxdna1, type StackRule, potentialLines } from './common';
-import { sin as libmSin } from '../libm/sincos';
+import { sinFma as libmSin } from '../libm/sincos_fma';
 import { acos as libmAcos } from '../libm/acos';
 
 const CX2_NAMES = ['k_cxst', 'cut_cxst_0', 'cut_cxst_c', 'cut_cxst_lo', 'cut_cxst_hi',

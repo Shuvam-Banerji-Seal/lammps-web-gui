@@ -10,7 +10,7 @@ import { powint } from '../comb/params';
 import type { Comb3Param } from './params';
 import type { Comb3Tables, TriPoint } from './tables';
 import type { Comb3Kernel } from './terms';
-import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sinFma as libmSin, cosFma as libmCos } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
 

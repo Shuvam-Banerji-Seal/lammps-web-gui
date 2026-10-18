@@ -5,6 +5,7 @@
  * This file is GPL-2.0 too (see src/engine-gpl/LICENSE).
  */
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { cosFma as libmCosFma } from '../libm/sincos_fma';
 
 export const MY_PI = 3.141592653589793;   // math_const.h: MY_PI (4 atan(1))
 export const MAX_CHEB_ORDER = 40;
@@ -69,7 +70,7 @@ export const legerts = (itype: number, n: number, ts: Float64Array, whts: Float6
     if (i < (Math.trunc(n / 2) + 1)) continue;
     ii++;
     const t = (2.0 * i - 1.0) * h;
-    ts[ii - 1] = -libmCos(t);
+    ts[ii - 1] = -libmCosFma(t);
   }
   let { pol, der } = legepol(0.0, n);
   let x0 = 0.0;
@@ -201,7 +202,7 @@ export const gaussianQuadrature = (n: number): { nodes: Float64Array; weights: F
 export const chebNodes1d = (order: number, a: number, b: number): number[] => {
   const nodes = new Array<number>(order);
   for (let i = 0; i < order; i++) {
-    nodes[i] = -libmCos((i + 0.5) * MY_PI / order) * 0.5 + 0.5;
+    nodes[i] = -libmCosFma((i + 0.5) * MY_PI / order) * 0.5 + 0.5;
     nodes[i] = nodes[i] * (b - a) + a;
   }
   return nodes;

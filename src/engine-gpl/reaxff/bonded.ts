@@ -14,6 +14,7 @@
  */
 import { DEG2RAD, MIN_SINE, type RxSystem, type ThreeBodyList } from './core';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sinFma as libmSinFma, cosFma as libmCosFma } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
 import { acos as libmAcos } from '../libm/acos';
@@ -336,7 +337,7 @@ export const valenceAngles = (sys: RxSystem): void => {
           thb.thb[q] = k;
           thb.pthb[q] = pk;
           thb.theta[q] = theta;
-          let sinTheta = libmSin(theta);
+          let sinTheta = libmSinFma(theta);
           if (sinTheta < 1.0e-5) sinTheta = 1.0e-5;
           if (j < n && BOA_jk > 0.0 && BOij > ctrl.thbCut && BOjk > ctrl.thbCut && BOij * BOjk > ctrl.thbCutsq) {
             const thbh = param.thbp[(typeI * param.numAtomTypes + typeJ) * param.numAtomTypes + typeK];
@@ -597,9 +598,9 @@ export const torsionAngles = (sys: RxSystem): void => {
             { di: thb.dcos_di, dj: thb.dcos_dj, dk: thb.dcos_dk, q: 3 * pl },
             dcosOmega,
           );
-          const cos_omega = libmCos(omega);
-          const cos2omega = libmCos(2.0 * omega);
-          const cos3omega = libmCos(3.0 * omega);
+          const cos_omega = libmCosFma(omega);
+          const cos2omega = libmCosFma(2.0 * omega);
+          const cos3omega = libmCosFma(3.0 * omega);
           // torsion energy
           const exp_tor1 = libmExp(fbp.p_tor1 * SQR(2.0 - b.BO_pi[pk] - f11_DjDk));
           const exp_tor2_kl = libmExp(-p_tor2 * BOA_kl);
@@ -703,7 +704,7 @@ export const hydrogenBonds = (sys: RxSystem): void => {
         // the derivative of cos(theta): di, dj, dk
         calculateDCosTheta(b.dvec, 3 * pi, b.d[pi], dvecJK, 0, r_jk, tmp, 0, 3, 6);
         // hydrogen bond energy
-        const sin_theta2 = libmSin(theta / 2.0);
+        const sin_theta2 = libmSinFma(theta / 2.0);
         let sin_xhz4 = SQR(sin_theta2);
         sin_xhz4 *= sin_xhz4;
         const cos_xhz1 = 1.0 - cosTheta;

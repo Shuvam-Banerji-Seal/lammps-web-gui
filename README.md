@@ -7,6 +7,7 @@
 *No install, no account, nothing uploaded · free for education and non-commercial research · attribution required · [commercial use needs a licence](COMMERCIAL.md)*
 
 [![Live Demo](https://img.shields.io/badge/▶_Open_the_app-shuvam--banerji--seal.github.io-blue?style=for-the-badge)](https://shuvam-banerji-seal.github.io/lammps-web-gui/)
+[![Watch the film on YouTube](https://img.shields.io/badge/▶_Watch_the_film-YouTube-red?style=for-the-badge&logo=youtube)](https://youtu.be/bqGnbRRuwa8)
 [![CI](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/ci.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/ci.yml)
 [![Deploy](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/deploy.yml/badge.svg)](https://github.com/Shuvam-Banerji-Seal/lammps-web-gui/actions/workflows/deploy.yml)
 [![Native parity cases](https://img.shields.io/badge/native_LAMMPS_parity_cases-2027-brightgreen)](#-checked-against-native-lammps)
@@ -33,9 +34,15 @@ The notebook's engine is written in TypeScript for the browser. Its results are 
 
 ## 🎬 Demo
 
-[![LAMMPS Web GUI film: a granular pour, an oxDNA ring, micelles, a running crack and a solvated peptide simulated by the app's engine, then how the app works, how it is checked against native LAMMPS, how it uses your own CPU and GPU, its themes and its four modules](docs/videos/lammps-web-gui-film-preview.webp)](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/lammps-web-gui-film.mp4)
+[![LAMMPS in your browser: watch the LAMMPS Web GUI film on YouTube](public/videos/lammps-web-gui-thumbnail.jpg)](https://youtu.be/bqGnbRRuwa8)
 
-**▶ [Watch the film with sound (2 min 47 s)](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/lammps-web-gui-film.mp4)** (1920×1080, H.264/AAC; also in the repo at [`public/videos/lammps-web-gui-film.mp4`](public/videos/lammps-web-gui-film.mp4)).
+**▶ [Watch the film on YouTube (2 min 47 s, with chapters)](https://youtu.be/bqGnbRRuwa8)**, or the [MP4 with sound](https://shuvam-banerji-seal.github.io/lammps-web-gui/videos/lammps-web-gui-film.mp4) (1920×1080, H.264/AAC; also in the repo at [`public/videos/lammps-web-gui-film.mp4`](public/videos/lammps-web-gui-film.mp4)).
+
+<details><summary>Animated preview</summary>
+
+[![LAMMPS Web GUI film: a granular pour, an oxDNA ring, micelles, a running crack and a solvated peptide simulated by the app's engine, then how the app works, how it is checked against native LAMMPS, how it uses your own CPU and GPU, its themes and its four modules](docs/videos/lammps-web-gui-film-preview.webp)](https://youtu.be/bqGnbRRuwa8)
+
+</details>
 
 *In seven parts:*
 

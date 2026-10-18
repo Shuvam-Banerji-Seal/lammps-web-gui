@@ -642,6 +642,7 @@ export class PairTersoff extends Pair {
           const dgdc = this.angularDeriv(t3, cth);
           kIdx[nk] = kk; kR[nk] = r2;
           kGx[nk] = e2x; kGy[nk] = e2y; kGz[nk] = e2z;
+          kDx[nk] = gDx[b]; kDy[nk] = gDy[b]; kDz[nk] = gDz[b];
           dHdRik[nk] = drik; dHdRij[nk] = drij; dHdc[nk] = fc2 * efil * dgdc;
           nk++;
         }
@@ -668,6 +669,17 @@ export class PairTersoff extends Pair {
           eatom[i] += 0.25 * v;
           eatom[j] += 0.25 * v;
         }
+        if (vatom) {
+          // the per-atom virial of the radial pair force, r_ij (x) F_j with F_j = -h, half to i and half to j (as native
+          // ev_tally does for the repulsive and the attractive radial terms, src/MANYBODY/pair_tersoff.cpp at b332f28)
+          const dx = gDx[a], dy = gDy[a], dz = gDz[a];
+          const u0 = -0.5 * dx * hx, u1 = -0.5 * dy * hy, u2 = -0.5 * dz * hz;
+          const u3 = -0.5 * dx * hy, u4 = -0.5 * dx * hz, u5 = -0.5 * dy * hz;
+          vatom[6 * i] += u0; vatom[6 * i + 1] += u1; vatom[6 * i + 2] += u2;
+          vatom[6 * i + 3] += u3; vatom[6 * i + 4] += u4; vatom[6 * i + 5] += u5;
+          vatom[6 * j] += u0; vatom[6 * j + 1] += u1; vatom[6 * j + 2] += u2;
+          vatom[6 * j + 3] += u3; vatom[6 * j + 4] += u4; vatom[6 * j + 5] += u5;
+        }
 
         if (dbdz !== 0 && nk > 0) {
           const C = 0.5 * facc * fa * dbdz; // includes the 1/2 energy factor
@@ -690,12 +702,16 @@ export class PairTersoff extends Pair {
             f[3 * j] += fjx; f[3 * j + 1] += fjy; f[3 * j + 2] += fjz;
             f[3 * kk] += fkx; f[3 * kk + 1] += fky; f[3 * kk + 2] += fkz;
             if (vatom) {
-              const w0 = (e1x * fjx + e2x * fkx) / 3;
-              const w1 = (e1y * fjy + e2y * fky) / 3;
-              const w2 = (e1z * fjz + e2z * fkz) / 3;
-              const w3 = (e1x * fjy + e2x * fky) / 3;
-              const w4 = (e1x * fjz + e2x * fkz) / 3;
-              const w5 = (e1y * fjz + e2y * fkz) / 3;
+              // the three-body virial r_ij (x) F_j + r_ik (x) F_k, a third to each atom (native v_tally3 with delr1 = x_j - x_i
+              // and delr2 = x_k - x_i: the bond vectors, not the unit vectors)
+              const d1x = gDx[a], d1y = gDy[a], d1z = gDz[a];
+              const d2x = kDx[b2], d2y = kDy[b2], d2z = kDz[b2];
+              const w0 = (d1x * fjx + d2x * fkx) / 3;
+              const w1 = (d1y * fjy + d2y * fky) / 3;
+              const w2 = (d1z * fjz + d2z * fkz) / 3;
+              const w3 = (d1x * fjy + d2x * fky) / 3;
+              const w4 = (d1x * fjz + d2x * fkz) / 3;
+              const w5 = (d1y * fjz + d2y * fkz) / 3;
               for (const q of [i, j, kk]) {
                 vatom[6 * q] += w0; vatom[6 * q + 1] += w1; vatom[6 * q + 2] += w2;
                 vatom[6 * q + 3] += w3; vatom[6 * q + 4] += w4; vatom[6 * q + 5] += w5;

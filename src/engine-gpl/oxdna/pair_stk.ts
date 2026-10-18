@@ -13,7 +13,7 @@
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { OXDNA_5P, OXDNA_3P, buildAtomMap, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
-import { DF1, DF4, DF5, F1, F4, F5, lrfOf, oxdnaConstants, stackingSiteOxdna1, backboneSite, type StackRule, potentialLines } from './common';
+import { DF1, DF4, DF5, F1, F4, F5, halfVirial, lrfOf, oxdnaConstants, stackingSiteOxdna1, backboneSite, type StackRule, potentialLines } from './common';
 import { sinFma as libmSin } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
@@ -212,7 +212,7 @@ export class PairOxdnaStk extends Pair {
     const nlocal = pc.nlocal;
     const L = new Float64Array(9 * nlocal);
     for (let i = 0; i < nlocal; i++) if (isEllipsoid(s, i)) lrfOf(s.quat, 4 * i, L, 9 * i);
-    const eatom = pc.eatom;
+    const eatom = pc.eatom, vatom = pc.vatom;
     let evdwl = 0;
     const ax = [0, 0, 0], ay = [0, 0, 0], az = [0, 0, 0], bx = [0, 0, 0], by = [0, 0, 0], bz = [0, 0, 0];
     const rac = [0, 0, 0], rbc = [0, 0, 0], rab = [0, 0, 0], rbb = [0, 0, 0];
@@ -317,6 +317,8 @@ export class PairOxdnaStk extends Pair {
               cross(rbc, delf, deltb);
               addT(a, delta, -1);
               addT(b, deltb, 1);
+              // ev_tally_xyz(a, b, ..., delf, x_b - x_a) of this style: the molecular virial, half per atom
+              if (vatom) halfVirial(vatom, a, b, d, delf);
               // the cos phi forces (backbone sites)
               delf[0] = 0.0; delf[1] = 0.0; delf[2] = 0.0;
               delta[0] = 0.0; delta[1] = 0.0; delta[2] = 0.0;
@@ -339,6 +341,8 @@ export class PairOxdnaStk extends Pair {
               cross(rbb, delf, deltb);
               addT(a, delta, -1);
               addT(b, deltb, 1);
+              // the second ev_tally_xyz (virial only) for the forces between backbone sites
+              if (vatom) halfVirial(vatom, a, b, d, delf);
               // torques of the angular terms
               delta[0] = 0.0; delta[1] = 0.0; delta[2] = 0.0;
               deltb[0] = 0.0; deltb[1] = 0.0; deltb[2] = 0.0;

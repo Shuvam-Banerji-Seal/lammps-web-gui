@@ -321,3 +321,14 @@ export const potentialLines = (text: string, keys: readonly string[], name: stri
   }
   return [...exact, ...wild];
 };
+
+/**
+ * Per-atom virial of the CG-DNA styles' ev_tally_xyz with newton on (pair.cpp and bond.cpp ev_tally_xyz, and the
+ * copy in pair_oxdna_stk.cpp): v = d (x) f, half to each of i and j, in the order xx, yy, zz, xy, xz, yz.
+ */
+export const halfVirial = (vatom: Float64Array, i: number, j: number, d: ArrayLike<number>, f: ArrayLike<number>): void => {
+  const v0 = 0.5 * d[0] * f[0], v1 = 0.5 * d[1] * f[1], v2 = 0.5 * d[2] * f[2];
+  const v3 = 0.5 * d[0] * f[1], v4 = 0.5 * d[0] * f[2], v5 = 0.5 * d[1] * f[2];
+  vatom[6 * i] += v0; vatom[6 * i + 1] += v1; vatom[6 * i + 2] += v2; vatom[6 * i + 3] += v3; vatom[6 * i + 4] += v4; vatom[6 * i + 5] += v5;
+  vatom[6 * j] += v0; vatom[6 * j + 1] += v1; vatom[6 * j + 2] += v2; vatom[6 * j + 3] += v3; vatom[6 * j + 4] += v4; vatom[6 * j + 5] += v5;
+};

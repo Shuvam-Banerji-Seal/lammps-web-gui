@@ -13,7 +13,7 @@ import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext }
 import { atomIndex, delta as nearestCopy } from '../../engine/force/bonded_util';
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
-import { type OxdnaConstants, backboneOxdna1, lrfOf, oxdnaConstants, potentialLines } from './common';
+import { type OxdnaConstants, backboneOxdna1, halfVirial, lrfOf, oxdnaConstants, potentialLines } from './common';
 import { log as libmLog } from '../libm/log';
 
 /** bond_oxdna_fene.cpp: "const double rlogarg_min = 0.2;" */
@@ -191,6 +191,7 @@ export class BondOxdnaFene extends Bonded {
       const v = bc.virial;
       v[0] += rel[0] * delf[0]; v[1] += rel[1] * delf[1]; v[2] += rel[2] * delf[2];
       v[3] += rel[0] * delf[1]; v[4] += rel[0] * delf[2]; v[5] += rel[1] * delf[2];
+      if (bc.vatom) halfVirial(bc.vatom, a, b, rel, delf);
     }
     bc.acc.ebond += ebondTotal;
   }

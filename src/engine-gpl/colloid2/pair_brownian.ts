@@ -113,7 +113,10 @@ export class PairBrownian extends Pair {
   readonly name: string = 'brownian';
   needsFull = false;
   needsHalf = true;
-  /** pair brownian: the global virial is the fdotr sum (native no_virial_fdotr_compute stays 0). */
+  /**
+   * pair brownian: the global virial is the fdotr sum with newton on (native no_virial_fdotr_compute stays 0); with newton
+   * off native's Verlet tallies it pair by pair (src/verlet.cpp init: "virial_style = VIRIAL_PAIR"), see initStyle.
+   */
   virialFdotr = true;
   mu = 0;
   flaglog = 0;
@@ -208,6 +211,10 @@ export class PairBrownian extends Pair {
   initStyle(ctx: StyleContext): void {
     this.logFn = ctx.log;
     this.newtonOn = ctx.newtonPair !== false;
+    // newton off: native's ev_tally_xyz adds half of each pair's virial for each owned atom of the pair (pair.cpp), and
+    // the forces of ghost partners are dropped, so the fdotr sum would not be the native virial
+    this.virialFdotr = this.newtonOn;
+    this.explicitVirial = !this.newtonOn;
     this.noTermLog(ctx, 'shift');
     this.noTermLog(ctx, 'tail');
     const s = ctx.s;
@@ -466,6 +473,12 @@ export class PairBrownian extends Pair {
             tq![3 * j + 1] += ty;
             tq![3 * j + 2] += tz;
           }
+        }
+        if (!newton) {
+          // ev_tally_xyz(i, j, nlocal, 0, 0, 0, -fx, -fy, -fz, del): half for the owned i, half for j when owned
+          const h = jOwned ? 1 : 0.5, v = pc.acc.virial;
+          v[0] -= h * delx * fx; v[1] -= h * dely * fy; v[2] -= h * delz * fz;
+          v[3] -= h * delx * fy; v[4] -= h * delx * fz; v[5] -= h * dely * fz;
         }
         if (pc.vatom) tallyVatom(pc, i, j, newton || jOwned, -fx, -fy, -fz, delx, dely, delz);
       }

@@ -1,6 +1,6 @@
 # oracle: compute ke/rigid and erotate/rigid of fix rigid/nve molecule bodies (fix rigid/nve)
 # oracle-compare: thermo=all atoms=all rel=1e-12 abs=1e-13 atomrel=1e-12 skip=press
-# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.3e-15, atoms 3.3e-15. Setup only: after 5 steps the core fix rigid/nve (not these computes) differs from native by 4e-10 on atom forces, so the run stops at step 0.
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.6e-15, atoms 7.9e-14 over 50 steps (it was kept at run 0 while the core fix rigid/nve integrated with Richardson instead of the no-squish rotation of native FixRigidNH).
 units           lj
 atom_style      molecular
 lattice         sc 0.5
@@ -25,4 +25,4 @@ compute         3 all erotate/rigid 1
 thermo_style    custom step temp pe ke etotal press c_2 c_3
 thermo_modify   format float %.15g
 thermo          5
-run             0
+run             50

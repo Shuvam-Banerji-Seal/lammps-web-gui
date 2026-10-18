@@ -2982,7 +2982,7 @@ const deleteBonds: Handler = ({ sys }, a) => {
 export const SETUP_COMMANDS: Record<string, Handler> = {
   units, dimension, boundary, atom_style: atomStyle, atom_modify: atomModify, newton,
   processors: parallelOnly('processors'), comm_style: commStyle, package: parallelOnly('package'),
-  suffix: parallelOnly('suffix'), partition: parallelOnly('partition'), balance: balanceCommand,
+  suffix: parallelOnly('suffix'), balance: balanceCommand,
   comm_modify: commModify, lattice, region, create_box: createBox, create_atoms: createAtoms, mass, molecule,
   read_data: readDataCmd, write_data: writeDataCmd, timestep, reset_timestep: resetTimestep,
   group, set, velocity, delete_atoms: deleteAtomsCmd, displace_atoms: displaceAtoms, replicate,

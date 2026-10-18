@@ -1,0 +1,29 @@
+# oracle: w246gm_lj_cold — fix gemc on two lj boxes (gas 0.2 and liquid 0.5, 1 and 2 cells) at T 0.9, a lower temperature than w246gm_lj_exchange: transfers both ways, 5 translations, 10 exchanges and 5 volume changes per cycle, 150 cycles, seed 31
+# oracle-partitions: 2
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.7e-14, atoms 4.1e-14.
+variable temp index 0.9
+variable ntranslate index 5
+variable nexchange index 10
+variable nvolume index 5
+variable displace index 0.3
+variable max_dlogvolratio index 0.2
+variable nsteps index 150
+units lj
+atom_style atomic
+variable rho world 0.2 0.5
+variable ncell world 1 2
+lattice fcc ${rho}
+region box block 0 ${ncell} 0 ${ncell} 0 ${ncell}
+create_box 1 box
+create_atoms 1 box
+mass 1 1.0
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0 2.5
+neighbor 0.3 bin
+neigh_modify every 1 delay 5 check yes
+fix 2 all gemc 1 ${ntranslate} ${nexchange} ${nvolume} ${temp} ${displace} ${max_dlogvolratio} 31
+thermo 1
+thermo_style custom step pe vol atoms
+thermo_modify format float %.15g
+run ${nsteps}

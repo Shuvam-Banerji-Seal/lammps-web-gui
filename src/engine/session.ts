@@ -110,6 +110,8 @@ export class Session {
   recordPartitionOutput = false;
   private cancelled = false;
   private line = 0;
+  /** The text of the command being run (partition re-runs the rest of its line). */
+  private text = '';
   private command = '';
   echo: 'none' | 'screen' | 'log' | 'both' = 'none';
   /** Accelerator names already reported in this session (each is logged once). */
@@ -289,6 +291,7 @@ export class Session {
 
   private async runOne(text: string, line: number, frame: Frame | null): Promise<void> {
     this.line = line;
+    this.text = text;
     this.command = '';
     try {
       const words = this.parse(text);
@@ -331,6 +334,43 @@ export class Session {
     };
   }
 
+  /**
+   * partition style N command — docs.lammps.org/partition.html: "This command invokes the specified command on a
+   * subset of the partitions of processors you have defined via the -partition command-line switch." "If the style
+   * is yes, the command is invoked on the specified partition(s). If the style is no, the command is invoked on all
+   * partitions except the specified partition(s)." "Partitions are numbered from 1 to Np". As native LAMMPS does
+   * (src/input.cpp Input::partition at b332f28): the style is a utils::logical word, N a utils::bounds range over
+   * 1..Np, the third word may not be partition, and the rest of the line is run as one command on this partition.
+   */
+  private async partitionCommand(a: string[], frame: Frame | null): Promise<void> {
+    if (a.length < 3) throw new StyleError('Illegal partition command: missing argument(s)');
+    const w = a[0];
+    let yes: boolean;
+    if (w === 'yes' || w === 'on' || w === 'true' || w === '1') yes = true;
+    else if (w === 'no' || w === 'off' || w === 'false' || w === '0') yes = false;
+    else throw new StyleError(`Expected boolean parameter instead of '${w}' in input script or data file`);
+    const np = this.replicas.length;
+    const range = a[1];
+    if (/[^*\-0-9]/.test(range)) throw new StyleError(`Invalid range string: ${range}`);
+    const star = range.indexOf('*');
+    const lo = star < 0 ? Number(range) : star === 0 ? 1 : Number(range.slice(0, star));
+    const hi = star < 0 ? lo : star === range.length - 1 ? np : Number(range.slice(star + 1));
+    if (!(lo > 0) || !(hi > 0)) throw new StyleError(`Invalid range string: ${range}`);
+    const url = '\nFor more information see https://docs.lammps.org/err0019';
+    if (lo < 1) throw new StyleError(`Numeric index ${lo} is out of bounds (1-${np})${url}`);
+    if (hi > np) throw new StyleError(`Numeric index ${hi} is out of bounds (1-${np})${url}`);
+    if (lo > hi) throw new StyleError(`Numeric index ${lo} is out of bounds (1-${hi})${url}`);
+    if (a[2] === 'partition') throw new StyleError('Illegal partition command argument');
+    const me = this.sys.vars.partition + 1;
+    const inside = me >= lo && me <= hi;
+    if (yes !== inside) return;
+    // the rest of the line from the third word (native strstr(line, arg[2])), run on this partition only
+    const rest = this.text.replace(/^\s*\S+\s+\S+\s+\S+\s+/, '');
+    const was = this.onReplica;
+    this.onReplica = true;
+    try { await this.runOne(rest, this.line, frame); } finally { this.onReplica = was; }
+  }
+
   private async dispatch(cmd: string, a: string[], frame: Frame | null): Promise<void> {
     // a command LAMMPS renamed (deprecated.ts) runs under its new name after native's warning
     const renamed = renamedCommand(cmd, a);
@@ -368,6 +408,7 @@ export class Session {
         return;
       }
       case 'if': return this.ifCommand(a, frame);
+      case 'partition': return this.partitionCommand(a, frame);
       case 'quit': throw new QuitSignal(a.length ? Number(a[0]) : 0);
       case 'clear':
         if (a.length) throw new StyleError('clear takes no arguments');
@@ -478,7 +519,7 @@ export class Session {
 
 /** Commands the engine runs (recognized-but-unavailable ones such as python or shell excluded). */
 export const SUPPORTED_COMMANDS = [
-  'label', 'jump', 'next', 'include', 'if', 'quit', 'clear', 'echo',
+  'label', 'jump', 'next', 'include', 'if', 'partition', 'quit', 'clear', 'echo',
   // neb/spin runs at session level like neb; its handler is registered by a lazily loaded group (lazyStyles.ts)
   'neb/spin',
   ...Object.keys(COMMANDS).filter((c) => !UNAVAILABLE_COMMANDS.has(c)),

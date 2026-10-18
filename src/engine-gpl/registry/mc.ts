@@ -8,8 +8,10 @@
  */
 import type { FixFactory } from '../../engine/styles';
 import { FixChargeRegulation } from '../mc/fix_charge_regulation';
+import { FixGEMC } from '../mc/fix_gemc';
 
 /** Style name -> factory (the names listed in lazyStyles.ts must match these keys). */
 export const FIXES: Record<string, FixFactory> = {
   'charge/regulation': (sys, id, group, args) => new FixChargeRegulation(sys, id, group, args),
+  gemc: (sys, id, group, args) => new FixGEMC(sys, id, group, args),
 };

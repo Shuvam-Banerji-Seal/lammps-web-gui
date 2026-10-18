@@ -362,7 +362,9 @@ export class ComputeCentroidStressAtom extends Compute {
       let csum = 0;
       if (cv) for (let k = 0; k < 9 * n; k++) csum += Math.abs(cv[k]);
       const off = sv.some((x, c) => Math.abs(x - sc[c]) > 1e-8 * (scale + 1e-300));
-      if (scale > 0 && (!cv || csum === 0 || off)) {
+      // a style whose centroid virial is native's by design (Bonded.centroidNative) keeps only the missing-tally check
+      const native = !!styleOf[t]!.centroidNative;
+      if (scale > 0 && (!cv || (!native && (csum === 0 || off)))) {
         throw new StyleError(`compute ${this.id} (centroid/stress/atom): ${t}_style ${styleOf[t]!.name} does not tally the per-atom centroid virial in the browser engine`);
       }
       if (cv) for (let k = 0; k < 9 * n; k++) out[k] += cv[k];

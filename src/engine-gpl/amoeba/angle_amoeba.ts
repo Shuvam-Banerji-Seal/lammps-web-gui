@@ -11,7 +11,7 @@
  * docs.lammps.org/angle_amoeba.html: "angle_coeff N ba ..." (BondAngle) and "angle_coeff N ub ..." (Urey-Bradley)
  * and the plain line "pflag ubflag theta0 K2 K3 K4 K5 K6".
  */
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { Bonded, StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { parseNum } from '../../engine/force/util';
 import { acos as libmAcos } from '../libm/acos';
@@ -34,9 +34,37 @@ export const partnerMap = (bc: BondedCompute): Map<number, number[]> => {
   return out;
 };
 
+/** Angle::ev_tally for the Tinker angle i1-i2-i3 (d1 = r1 - r2, d2 = r3 - r2, forces f1 and f3): bondedVirial. */
+const tallyAngleEv = (
+  bc: BondedCompute, i1: number, i2: number, i3: number, e: number,
+  d1: number[], d2: number[], f1: number[], f3: number[],
+): void => {
+  bondedVirial(bc, [i1, i2, i3], [d1[0], d1[1], d1[2], 0, 0, 0, d2[0], d2[1], d2[2]],
+    [f1[0], f1[1], f1[2], -(f1[0] + f3[0]), -(f1[1] + f3[1]), -(f1[2] + f3[2]), f3[0], f3[1], f3[2]], e);
+};
+
+/**
+ * Angle::ev_tally4 and Angle::ev_tally2 (angle.cpp at b332f28): the energy and the virial are shared equally by the atoms
+ * (the four of the in-plane term, the two of the 1-3 bond), and the per-atom virial takes the same shares. The centroid
+ * virial is not tallied here (cvatom is left to the Angle::ev_tally terms).
+ */
+const tallyNoCentroid = (bc: BondedCompute, atoms: number[], e: number, vir: number[]): void => {
+  for (let q = 0; q < 6; q++) bc.virial[q] += vir[q];
+  const m = atoms.length;
+  if (bc.eatom) for (const a of atoms) bc.eatom[a] += e / m;
+  if (bc.vatom) for (const a of atoms) for (let q = 0; q < 6; q++) bc.vatom[6 * a + q] += vir[q] / m;
+};
+
 export class AngleAmoeba extends Bonded {
   readonly name: string = 'amoeba';
   readonly kind = 'angle' as const;
+  /**
+   * The per-atom centroid virial is native's, not the virial split: native angle_amoeba.cpp tallies the sextic angle and
+   * the bond-angle terms with Angle::ev_tally (centroid virial included), but the in-plane anglep term with ev_tally4 and
+   * the Urey-Bradley term with ev_tally2, and neither of those touches cvatom (angle.cpp, ev_tally4 and ev_tally2 at
+   * b332f28). So the centroid sum of this style differs from its virial by those terms, as in native.
+   */
+  readonly centroidNative = true;
   private pflag!: Uint8Array;
   private ubflag!: Uint8Array;
   private theta0!: Float64Array;
@@ -172,11 +200,8 @@ export class AngleAmoeba extends Bonded {
     }
     const eAngle = this.k2[t] * dt2 + this.k3[t] * dt3 + this.k4[t] * dt4 + this.k5[t] * dt5 + this.k6[t] * dt6;
     this.applyAngleForces(f, i1, i2, i3, f1, f3);
-    const w0 = [
-      d1[0] * f1[0] + d2[0] * f3[0], d1[1] * f1[1] + d2[1] * f3[1], d1[2] * f1[2] + d2[2] * f3[2],
-      d1[0] * f1[1] + d2[0] * f3[1], d1[0] * f1[2] + d2[0] * f3[2], d1[1] * f1[2] + d2[1] * f3[2],
-    ];
-    for (let q = 0; q < 6; q++) bc.virial[q] += w0[q];
+    // Angle::ev_tally: virial, per-atom shares and the centroid virial (r_a - r_0) (x) f_a of the three atoms
+    tallyAngleEv(bc, i1, i2, i3, eAngle, d1, d2, f1, f3);
     return eAngle;
   }
 
@@ -250,16 +275,18 @@ export class AngleAmoeba extends Bonded {
     }
     const rel: [number[], number[], number[]] = [d1, d2, d4];
     const forces: [number[], number[], number[]] = [f1, f3, f4];
+    const vir = [0, 0, 0, 0, 0, 0];
     for (let q = 0; q < 3; q++) {
       const r = rel[q], g = forces[q];
       // actual force = -native f
-      bc.virial[0] -= r[0] * g[0];
-      bc.virial[1] -= r[1] * g[1];
-      bc.virial[2] -= r[2] * g[2];
-      bc.virial[3] -= 0.5 * (r[0] * g[1] + r[1] * g[0]);
-      bc.virial[4] -= 0.5 * (r[0] * g[2] + r[2] * g[0]);
-      bc.virial[5] -= 0.5 * (r[1] * g[2] + r[2] * g[1]);
+      vir[0] -= r[0] * g[0];
+      vir[1] -= r[1] * g[1];
+      vir[2] -= r[2] * g[2];
+      vir[3] -= 0.5 * (r[0] * g[1] + r[1] * g[0]);
+      vir[4] -= 0.5 * (r[0] * g[2] + r[2] * g[0]);
+      vir[5] -= 0.5 * (r[1] * g[2] + r[2] * g[1]);
     }
+    tallyNoCentroid(bc, [i1, i2, i3, i4], eangle, vir);
     return eangle;
   }
 
@@ -297,11 +324,7 @@ export class AngleAmoeba extends Bonded {
     const g3 = [-(vx21 + b2 * d2[0] + vx22), -(vy21 + b2 * d2[1] + vy22), -(vz21 + b2 * d2[2] + vz22)];
     const eBa = this.baK1[t] * dr1 * dtheta + this.baK2[t] * dr2 * dtheta;
     this.applyAngleForces(f, i1, i2, i3, g1, g3);
-    const wb = [
-      d1[0] * g1[0] + d2[0] * g3[0], d1[1] * g1[1] + d2[1] * g3[1], d1[2] * g1[2] + d2[2] * g3[2],
-      d1[0] * g1[1] + d2[0] * g3[1], d1[0] * g1[2] + d2[0] * g3[2], d1[1] * g1[2] + d2[1] * g3[2],
-    ];
-    for (let q = 0; q < 6; q++) bc.virial[q] += wb[q];
+    tallyAngleEv(bc, i1, i2, i3, eBa, d1, d2, g1, g3);
     return eBa;
   }
 
@@ -315,12 +338,9 @@ export class AngleAmoeba extends Bonded {
     const fbond = r > 0.0 ? -2.0 * rk / r : 0.0;
     f[3 * i1] += dl[0] * fbond; f[3 * i1 + 1] += dl[1] * fbond; f[3 * i1 + 2] += dl[2] * fbond;
     f[3 * i3] -= dl[0] * fbond; f[3 * i3 + 1] -= dl[1] * fbond; f[3 * i3 + 2] -= dl[2] * fbond;
-    bc.virial[0] += dl[0] * dl[0] * fbond;
-    bc.virial[1] += dl[1] * dl[1] * fbond;
-    bc.virial[2] += dl[2] * dl[2] * fbond;
-    bc.virial[3] += dl[0] * dl[1] * fbond;
-    bc.virial[4] += dl[0] * dl[2] * fbond;
-    bc.virial[5] += dl[1] * dl[2] * fbond;
+    // Angle::ev_tally2 (bond-style tally): the virial of the 1-3 bond, shared by its two atoms, no centroid virial
+    const vir = [dl[0] * dl[0] * fbond, dl[1] * dl[1] * fbond, dl[2] * dl[2] * fbond, dl[0] * dl[1] * fbond, dl[0] * dl[2] * fbond, dl[1] * dl[2] * fbond];
+    tallyNoCentroid(bc, [i1, i3], rk * dr, vir);
     return rk * dr;
   }
 

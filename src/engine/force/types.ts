@@ -606,6 +606,13 @@ export const bondedVirial = (
 export abstract class Bonded {
   abstract readonly name: string;
   abstract readonly kind: 'bond' | 'angle' | 'dihedral' | 'improper';
+  /**
+   * True when this style's per-atom centroid virial is native's even though it does not sum to the per-atom virial:
+   * native tallies some of its terms without the centroid virial (angle_amoeba.cpp uses Angle::ev_tally4 and ev_tally2,
+   * which leave cvatom alone, angle.cpp at b332f28). compute centroid/stress/atom skips its sum check for such a style
+   * only; every other style must have a centroid sum equal to its virial.
+   */
+  readonly centroidNative?: boolean;
   ntypes = 0;
   abstract settings(args: string[], ctx: StyleContext): void;
   /** *_coeff arguments including the type. */

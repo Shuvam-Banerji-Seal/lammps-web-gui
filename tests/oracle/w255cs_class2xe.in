@@ -1,0 +1,56 @@
+# oracle: compute centroid/stress/atom (NULL dihedral) with dihedral_style class2xe (mbt, ebt, at, aat, bb13 and the dihedral term) on the three non-planar chains of w147ab, angle_style class2 and harmonic bonds; the dihedral terms tally the centroid virial with Dihedral::ev_tally (dihedral_class2xe.cpp line 586), so the centroid sum matches the virial; static (run 0)
+# oracle-inputs: w147ab_class2xe.data
+# oracle-files: w255cs_class2xe.dump
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-10 filerel=1e-10
+units lj
+atom_style molecular
+bond_style harmonic
+angle_style class2
+dihedral_style class2xe
+pair_style lj/cut 2.5
+read_data w147ab_class2xe.data
+pair_coeff * * 0.5 0.9
+special_bonds lj 0.0 0.5 0.8
+bond_coeff 1 100.0 1.0
+bond_coeff 2 90.0 1.2
+bond_coeff 3 120.0 1.0
+angle_coeff 1 109.5 40.0 -10.0 5.0
+angle_coeff 1 bb 0.5 1.0 1.0
+angle_coeff 1 ba 0.1 0.1 1.0 1.0
+angle_coeff 2 120.0 30.0 -5.0 2.0
+angle_coeff 2 bb 0.4 1.2 1.2
+angle_coeff 2 ba 0.1 0.2 1.2 1.2
+angle_coeff 3 100.0 25.0 3.0 -1.0
+angle_coeff 3 bb 0.3 1.0 1.0
+angle_coeff 3 ba 0.1 0.1 1.0 1.0
+dihedral_coeff 1 100.0 75.0 70.0 100.0 80.0 60.0
+dihedral_coeff 1 mbt 1.5 3.5 0.17 -0.55 1.02
+dihedral_coeff 1 ebt 1.2 0.9 0.34 0.33 -0.90 0.14 0.0 -0.81 0.95 1.03
+dihedral_coeff 1 at 0.0 -0.185 -0.796 -2.02 0.0 -0.399 110.2 105.1
+dihedral_coeff 1 aat -13.5 110.2 105.1
+dihedral_coeff 1 bb13 0.5 1.5 0.95 1.03
+dihedral_coeff 2 -50.0 40.0 40.0 180.0 -30.0 90.0
+dihedral_coeff 2 mbt 1.1 -0.7 0.4 1.5 1.2
+dihedral_coeff 2 ebt 0.8 1.1 0.5 0.2 -0.3 -0.6 0.35 0.25 1.2 0.9
+dihedral_coeff 2 at 0.3 -0.4 0.55 0.6 -0.2 0.45 100.0 120.0
+dihedral_coeff 2 aat 8.0 100.0 120.0
+dihedral_coeff 2 bb13 -0.3 1.2 1.2 0.9
+dihedral_coeff 3 10.0 30.0 -20.0 60.0 15.0 120.0
+dihedral_coeff 3 mbt 0.2 0.3 0.4 1.0 0.9
+dihedral_coeff 3 ebt 1.0 0.7 0.1 0.2 0.3 0.4 0.5 0.6 0.9 1.1
+dihedral_coeff 3 at 0.5 0.4 0.3 0.2 0.1 0.0 95.0 115.0
+dihedral_coeff 3 aat -4.0 95.0 115.0
+dihedral_coeff 3 bb13 0.7 1.0 0.9 1.1
+compute         pe all pe/atom
+compute         st all stress/atom NULL
+compute         cs all centroid/stress/atom NULL
+compute         csv all centroid/stress/atom NULL virial
+compute         csd all centroid/stress/atom NULL dihedral
+compute         sum all reduce sum c_cs[1] c_cs[2] c_cs[3] c_cs[4] c_cs[5] c_cs[6] c_cs[7] c_cs[8] c_cs[9] c_st[4] c_pe
+compute         sumD all reduce sum c_csd[1] c_csd[2] c_csd[3] c_csd[4] c_csd[5] c_csd[6] c_csd[7] c_csd[8] c_csd[9]
+thermo_style    custom step edihed press c_sum[1] c_sum[2] c_sum[3] c_sum[4] c_sum[5] c_sum[6] c_sum[7] c_sum[8] c_sum[9] c_sum[10] c_sum[11] c_sumD[1] c_sumD[5] c_sumD[9]
+thermo_modify   format float %.15g norm no
+thermo          1
+dump            d all custom 1 w255cs_class2xe.dump id c_pe c_st[1] c_st[4] c_st[6] c_cs[1] c_cs[2] c_cs[3] c_cs[4] c_cs[5] c_cs[6] c_cs[7] c_cs[8] c_cs[9] c_csv[4] c_csv[7] c_csd[1] c_csd[5] c_csd[9]
+dump_modify     d sort id format float %.15g
+run             0

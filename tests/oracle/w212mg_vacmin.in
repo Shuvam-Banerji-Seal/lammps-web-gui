@@ -1,0 +1,25 @@
+# oracle: examples/PACKAGES/mgpt/in.vacmin-bcc (relaxed vacancy, 249 atoms, Ta6.8x MGPT potential, min_style cg), cut down to 8 iterations with thermo every iteration
+# native: b332f28 built with -D PKG_MGPT=on -D PKG_MANYBODY=on -D PKG_MOLECULE=on (serial, 1 process, default CMake Release flags, so the MGPT generic linear algebra; the installed lmp lacks MGPT)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.8e-15, atoms 0 (bit for bit).
+# oracle-potentials: Ta6.8x.mgpt.parmin Ta6.8x.mgpt.potin
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           electron
+atom_style      atomic
+variable        atomic_vol equal 121.863
+variable        lat_vol equal ${atomic_vol}*249/250
+variable        lattice_constant equal (${lat_vol}*2.0)^(1.0/3.0)
+lattice         bcc ${lattice_constant}
+region          box block 0 5 0 5 0 5
+create_box      1 box
+create_atoms    1 box
+region vacancy sphere 2.5 2.5 2.5 0.1 units lattice
+delete_atoms region vacancy
+pair_style      mgpt
+pair_coeff      * * Ta6.8x.mgpt.parmin Ta6.8x.mgpt.potin ${atomic_vol}
+neighbor        0.1 bin
+neigh_modify    every 1 delay 0 check yes
+thermo          1
+thermo_style    custom step vol temp pe etotal press fnorm
+thermo_modify   format float %.15g
+min_style cg
+minimize 1.0e-10 1.0e-10 8 100

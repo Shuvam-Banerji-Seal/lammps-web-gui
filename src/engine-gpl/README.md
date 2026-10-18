@@ -24,6 +24,14 @@ Rules (AGENTS.md, rule 7):
 The built app loads these modules as separate engine chunks, on first use of a
 style they provide.
 
+## LAMMPS packages with their own notice: MGPT (LLNL)
+
+`src/engine-gpl/mgpt/` (pair_style mgpt) is ported from the MGPT package of LAMMPS (`src/MGPT`), written by Tomas
+Oppelstrup and John Moriarty at Lawrence Livermore National Laboratory. It is Copyright (2015) Lawrence Livermore
+National Security, LLC (LLNL-CODE-674031) and distributed under the GNU General Public License version 2, like the
+rest of this directory. Its LLNL preamble notice, which the authors state "is required to be provided", is kept in
+`mgpt/NOTICE.llnl`, and each ported file names it.
+
 ## Third-party code: voro++ (BSD-3-Clause)
 
 `src/engine-gpl/voro/` also holds a port of the subset of **voro++ 0.4.6** (<http://math.lbl.gov/voro++/>) that LAMMPS

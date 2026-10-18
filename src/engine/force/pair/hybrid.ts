@@ -144,6 +144,7 @@ export class PairHybrid extends Pair {
       const style = make();
       const subArgs = args.slice(k + 1, e);
       style.hybridOverlay = this.mode === 'hybrid/overlay';
+      style.hybridSub = true;
       try {
         style.settings(subArgs, ctx);
       } catch (err) {

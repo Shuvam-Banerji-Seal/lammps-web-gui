@@ -163,8 +163,10 @@ export const pppmKspaceError = (g: number, h: number, P: number, q2: number, n: 
   if (!coef) throw new StyleError(`kspace_modify order ${P} has no PPPM error estimate`);
   const ha = h * g;
   let s = 0;
-  for (let m = 0; m < P; m++) s += coef[m] * Math.pow(ha, 2 * m);
-  return (q2 / (L * L)) * Math.pow(ha, P) * Math.sqrt(((g * L) / n) * Math.sqrt(2 * Math.PI) * s);
+  // the C library's pow, as native LAMMPS calls it (src/KSPACE/pppm.cpp at b332f28, estimate_ik_error): the automatic
+  // G-ewald is a Newton root of this error, so its last bits follow pow's rounding (Math.pow's differs between Node 22 and 24)
+  for (let m = 0; m < P; m++) s += coef[m] * libm.pow(ha, 2 * m);
+  return (q2 / (L * L)) * libm.pow(ha, P) * Math.sqrt(((g * L) / n) * Math.sqrt(2 * Math.PI) * s);
 };
 
 /** The inputs of the native G-ewald and mesh choice for a triclinic box (or diff ad), see PppmGplHook. */

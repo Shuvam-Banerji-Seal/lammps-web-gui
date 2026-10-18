@@ -1,7 +1,10 @@
 # oracle: per-atom k-space energy and virial (pppm_cg): compute pe/atom (all and kspace) and stress/atom (all and kspace) against native, as pppm.cpp/ewald.cpp tally them
 # oracle-files: w232ka_pppm_cg.dump
 # oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-10 filerel=1e-10
-# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.5e-12, atoms 2.4e-14; the per-atom energy and stress dump agrees within 1e-10.
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.7e-11, atoms 2.8e-14; the per-atom energy and stress dump agrees within 1e-10.
+# The worst is the step-5 press, a small difference of large virial terms. Measured with native LAMMPS: without the pe/atom and
+# stress/atom computes the step-5 press is -5.26406368165803, with them -5.26406368197353 (6e-11 apart); the engine gives
+# -5.264063681671062 either way.
 units           real
 atom_style      charge
 boundary        p p p

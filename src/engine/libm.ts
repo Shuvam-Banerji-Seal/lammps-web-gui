@@ -1,8 +1,9 @@
 /*
- * The C library functions exp, log, sin, cos, erf, erfc and acos as the native binary computes them. The engine calls libm.exp,
+ * The C library functions exp, log, sin, cos, erf, erfc, acos and pow as the native binary computes them. The engine calls libm.exp,
  * libm.log, libm.sin and libm.cos instead of Math.exp, Math.log, Math.sin and Math.cos, which differ from the C library (glibc) in the last bit for
  * a few percent of arguments; a one-ulp difference in a random number or a rotation changes chaotic trajectories and
- * the atoms that land exactly on a cutoff. The exact versions are ports of glibc in the GPL module
+ * the atoms that land exactly on a cutoff. Math.pow also changes between V8 versions (Node 22 and Node 24 round
+ * pow(0.6419427611779982, 4) differently), so a result that hangs on it differs between runtimes. The exact versions are ports of glibc in the GPL module
  * (src/engine-gpl/libm, reached through the lazy group gpl_libm of lazyStyles.ts); Session.execute loads them before
  * its first command, and their module installs them here. Code run outside a session (some unit tests) gets the
  * JavaScript functions, the same mathematics to within one ulp.
@@ -10,6 +11,7 @@
 export const libm: {
   exp: (x: number) => number; log: (x: number) => number; sin: (x: number) => number; cos: (x: number) => number;
   erf: (x: number) => number; erfc: (x: number) => number; acos: (x: number) => number;
+  pow: (x: number, y: number) => number;
 } = {
   exp: Math.exp,
   log: Math.log,
@@ -19,6 +21,7 @@ export const libm: {
   erf: (x: number) => erfSeries(x),
   erfc: (x: number) => erfcExact(x),
   acos: Math.acos,
+  pow: Math.pow,
 };
 
 /**

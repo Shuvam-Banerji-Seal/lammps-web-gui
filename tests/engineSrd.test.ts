@@ -161,7 +161,7 @@ run 1
   it('refuses triangles without overlap yes, by name', async () => {
     expect(await triError(triBath('fix 1 big nve/tri\nfix 2 small srd 20 big 1.0 1.0 49894 search 0.2 collision noslip'))).toMatch(/Cannot use tris with fix srd unless overlap is set/);
   });
-  it('refuses triangles held in a fix rigid body, by name', async () => {
-    expect(await triError(triBath('fix 1 big rigid molecule\nfix 2 small srd 20 big 1.0 1.0 49894 search 0.2 overlap yes collision noslip'))).toMatch(/triangles inside a fix rigid body/);
+  it('runs triangles held in a fix rigid body with overlap yes (matches native: tests/oracle/w254srd_tri_rigid)', async () => {
+    expect(await triError(triBath('fix 1 big rigid molecule\nfix 2 small srd 20 big 1.0 1.0 49894 search 0.2 shift yes 49829 overlap yes collision noslip'))).toBe('');
   });
 });

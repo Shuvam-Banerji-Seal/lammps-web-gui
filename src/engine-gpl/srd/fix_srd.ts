@@ -20,7 +20,8 @@
  * erate): the SRD streaming velocity h_rate / h_ratelo of reset_velocities, the last-bin correction and its undo,
  * the bins that follow the box (change_size), and unbiased yes with tstat yes (the bins keep their average velocity).
  * Triangle big particles (3d, overlap yes; inside_tri, collision_tri_exact, the triangle normal and omega of
- * big_dynamic) are supported for free triangles (fix nve/tri) and refused when a fix rigid body holds them.
+ * big_dynamic) are supported for free triangles (fix nve/tri) and for triangles held in a fix rigid body (the body's
+ * angmom and quaternion of set_xv/set_v; matches native: tests/oracle/w254srd_tri_rigid).
  * Triclinic boxes (domain->triclinic, fix_srd.cpp at b332f28): the velocity bins are in lamda units (binsize1 = 1/nbin1,
  * bininv1 = nbin1; binsize3 = the bin in box units for the cubic and lamda checks), the bounds and the reneighbor check
  * are in lamda units, the search bins are the real-space bounding box of the lamda sub-domain (Domain::bbox), the
@@ -29,8 +30,7 @@
  * "inconsistent fix deform remap option" otherwise). Verified against native: tests/oracle/w177px_srd_triclinic.
  *
  * Refused here with a StyleError naming the keyword: tstat yes with a fix deform and no unbiased yes (the biased
- * streaming bins do not match native yet), a fix deform with a time-varying rate (trate, wiggle, variable, volume),
- * tris in a fix rigid body.
+ * streaming bins do not match native yet), a fix deform with a time-varying rate (trate, wiggle, variable, volume).
  *
  * Walls (fix wall/srd, src/engine-gpl/colloid2/fix_wall_srd.ts; native src/SRD/fix_wall_srd.cpp) are supported with
  * or without big particles: wall_params(1) at each reneighbor and wall_params(0) at each SRD step (the wall positions,
@@ -471,7 +471,7 @@ export class FixSRD extends Fix {
   }
 
   /**
-   * Big particles must be spheres, ellipsoids, lines or free triangles (tris in a fix rigid body are refused). fix_srd.cpp init():
+   * Big particles must be spheres, ellipsoids, lines or triangles (free or in a fix rigid body). fix_srd.cpp init():
    * "Cannot use lines with fix srd unless overlap is set"; lines and tris need the atom torque.
    */
   private checkBig(): void {
@@ -488,12 +488,6 @@ export class FixSRD extends Fix {
     // fix_srd.cpp init(): "Cannot use tris with fix srd unless overlap is set"
     if (anyTris && !this.overlapflag) throw new StyleError('Cannot use tris with fix srd unless overlap is set');
     if (anyTris && !s.torque) throw new StyleError('Fix srd big particles that are tris require atom attribute torque');
-    // tri big particles held in a fix rigid body: the first collisions of the rigid triangles differ from native by about
-    // 1e-7 in the SRD velocities (measured with native LAMMPS, black box: two-body rigid molecule, tri/lj, noslip, step 31),
-    // so this combination is refused until that is matched
-    if (anyTris && this.sys.fixes.some((f) => f.style.startsWith('rigid'))) {
-      throw new StyleError('fix srd big particles that are triangles inside a fix rigid body are not supported by this engine yet (the collision velocities differ from native by about 1e-7)');
-    }
   }
 
   /**

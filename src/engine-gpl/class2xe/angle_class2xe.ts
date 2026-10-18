@@ -17,7 +17,7 @@
  * which is kept as native has it. The angle clamp s >= 0.001 (SMALL) is native's.
  * Geometry: every atom is placed relative to the vertex (delta from the owner), as the other angle styles do.
  */
-import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
+import { Bonded, StyleError, bondedVirial, typeBounds, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { exp as libmExp } from '../libm/exp';
@@ -125,7 +125,6 @@ export class AngleClass2xe extends Bonded {
     const A = bc.s.topo.angles;
     const d1 = [0, 0, 0], d2 = [0, 0, 0];
     const f = bc.f;
-    const v = bc.virial;
     let e = 0;
     for (let a = 0; a < A.n; a++) {
       const i = atomIndex(bc, A.atoms[3 * a], 'angle');
@@ -207,14 +206,9 @@ export class AngleClass2xe extends Bonded {
         f[3 * j + q] -= f1[q] + f3[q];
         f[3 * k + q] += f3[q];
       }
-      // virial from the bond vectors (native ev_tally with delx1, delx2, f1, f3)
-      v[0] += d1[0] * f1[0] + d2[0] * f3[0];
-      v[1] += d1[1] * f1[1] + d2[1] * f3[1];
-      v[2] += d1[2] * f1[2] + d2[2] * f3[2];
-      v[3] += d1[0] * f1[1] + d2[0] * f3[1];
-      v[4] += d1[0] * f1[2] + d2[0] * f3[2];
-      v[5] += d1[1] * f1[2] + d2[1] * f3[2];
-      if (bc.eatom) { const third = eangle / 3; bc.eatom[i] += third; bc.eatom[j] += third; bc.eatom[k] += third; }
+      // native ev_tally (angle_class2xe.cpp, line 261): virial, per-atom shares and the centroid virial from d1, d2, f1, f3
+      bondedVirial(bc, [i, j, k], [d1[0], d1[1], d1[2], 0, 0, 0, d2[0], d2[1], d2[2]],
+        [f1[0], f1[1], f1[2], -(f1[0] + f3[0]), -(f1[1] + f3[1]), -(f1[2] + f3[2]), f3[0], f3[1], f3[2]], eangle);
     }
     bc.acc.eangle += e;
   }

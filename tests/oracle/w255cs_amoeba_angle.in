@@ -1,0 +1,32 @@
+# oracle: compute centroid/stress/atom (NULL angle) with angle_style amoeba on the solvated ubiquitin cut (1517 atoms, in-plane anglep terms, Urey-Bradley and bond-angle terms): the sextic angle and bond-angle terms tally the centroid virial, the anglep (ev_tally4) and Urey-Bradley (ev_tally2) terms add nothing to it (angle_amoeba.cpp), so the centroid sum differs from the virial by those terms; pair zero, static (run 0)
+# oracle-inputs: w255cs_amoeba_ub_cut.data
+# oracle-files: w255cs_amoeba_angle.dump
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 filerel=1e-8
+units           real
+boundary        p p p
+atom_modify     sort 0 0.0
+atom_style      amoeba
+bond_style      class2
+angle_style     amoeba
+dihedral_style  none
+improper_style  none
+fix             amtype all property/atom i_amtype ghost yes
+fix             extra all property/atom i_amgroup d_redID d_pval ghost yes
+fix             extra2 all property/atom i_polaxe d2_xyzaxis 3
+read_data       w255cs_amoeba_ub_cut.data fix amtype NULL "Tinker Types"
+pair_style      zero 7.0
+pair_coeff      * *
+special_bonds   lj/coul 0.5 0.5 0.5 one/five yes
+compute         pe all pe/atom
+compute         st all stress/atom NULL
+compute         cs all centroid/stress/atom NULL
+compute         csv all centroid/stress/atom NULL virial
+compute         csa all centroid/stress/atom NULL angle
+compute         sum all reduce sum c_cs[1] c_cs[2] c_cs[3] c_cs[4] c_cs[5] c_cs[6] c_cs[7] c_cs[8] c_cs[9] c_st[4] c_pe
+compute         sumA all reduce sum c_csa[1] c_csa[2] c_csa[3] c_csa[4] c_csa[5] c_csa[6] c_csa[7] c_csa[8] c_csa[9]
+thermo_style    custom step eangle press c_sum[1] c_sum[2] c_sum[3] c_sum[4] c_sum[5] c_sum[6] c_sum[7] c_sum[8] c_sum[9] c_sum[10] c_sum[11] c_sumA[1] c_sumA[5] c_sumA[9]
+thermo_modify   format float %.15g norm no
+thermo          1
+dump            d all custom 1 w255cs_amoeba_angle.dump id c_pe c_st[1] c_st[4] c_st[6] c_cs[1] c_cs[2] c_cs[3] c_cs[4] c_cs[5] c_cs[6] c_cs[7] c_cs[8] c_cs[9] c_csv[4] c_csv[7] c_csa[1] c_csa[5] c_csa[9]
+dump_modify     d sort id format float %.15g
+run             0

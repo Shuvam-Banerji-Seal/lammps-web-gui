@@ -1,0 +1,28 @@
+# oracle: compute centroid/stress/atom (NULL angle) with angle_style mesocnt (buckling, C 10 10) and bond_style mesocnt (C 10 10, r0 16 A) on the hairpin chain of w157mt, pair zero (pair mesocnt is CENTROID_NOTAVAIL in native): the angle tallies the centroid virial with Angle::ev_tally (angle_mesocnt.cpp line 180), so the centroid sum matches the virial; static (run 0)
+# oracle-inputs: w157mt_chain.data
+# oracle-files: w255cs_mesocnt.dump
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-10 filerel=1e-10
+units metal
+atom_style full
+boundary f f f
+read_data w157mt_chain.data
+bond_style mesocnt
+bond_coeff 1 C 10 10 16
+angle_style mesocnt
+angle_coeff 1 buckling C 10 10 10
+pair_style zero 40
+pair_coeff * *
+special_bonds lj 1 1 1
+compute pe all pe/atom
+compute st all stress/atom NULL
+compute cs all centroid/stress/atom NULL
+compute csv all centroid/stress/atom NULL virial
+compute csa all centroid/stress/atom NULL angle
+compute sum all reduce sum c_cs[1] c_cs[2] c_cs[3] c_cs[4] c_cs[5] c_cs[6] c_cs[7] c_cs[8] c_cs[9] c_st[4] c_pe
+compute sumA all reduce sum c_csa[1] c_csa[2] c_csa[3] c_csa[4] c_csa[5] c_csa[6] c_csa[7] c_csa[8] c_csa[9]
+thermo_style custom step eangle press c_sum[1] c_sum[2] c_sum[3] c_sum[4] c_sum[5] c_sum[6] c_sum[7] c_sum[8] c_sum[9] c_sum[10] c_sum[11] c_sumA[1] c_sumA[5] c_sumA[9]
+thermo_modify format float %.15g norm no
+thermo 1
+dump d all custom 1 w255cs_mesocnt.dump id c_pe c_st[1] c_st[4] c_st[6] c_cs[1] c_cs[2] c_cs[3] c_cs[4] c_cs[5] c_cs[6] c_cs[7] c_cs[8] c_cs[9] c_csv[4] c_csv[7] c_csa[1] c_csa[5] c_csa[9]
+dump_modify d sort id format float %.15g
+run 0

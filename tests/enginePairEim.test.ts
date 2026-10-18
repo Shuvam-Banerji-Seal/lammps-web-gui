@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Session } from '../src/engine/interpreter';
-import { PairEIM, parseEimFile } from '../src/engine/force/pair/eim';
+import { PairEIM, parseEimFile } from '../src/engine-gpl/manybody3/pair_eim';
 import { erfcExact } from '../src/engine/force/erfc';
 import { StyleError } from '../src/engine/force/types';
 import type { EngineEvent, ThermoRow } from '../src/engine/types';
@@ -82,21 +82,25 @@ describe('pair_style eim: file parsing', () => {
       'pair: Qb Qa 6.0 6.0 -0.45 3.8 6.8 3.2 4.5 0.8 2.5 &',
       '   5.5 0.5 0.9 2.5 1.0',
     ].join('\n');
-    const f = parseEimFile(text, 'inline.eim');
-    expect(f.G2).toBe(-1.5);
-    expect(f.G3).toBe(1.7);
-    expect(f.elements.get('Qb')?.chi).toBe(3.1);
-    // the pair line is found in both element orders
-    expect(f.pairs.get('Qa Qb')?.rcEta).toBe(4.5);
-    expect(f.pairs.get('Qb Qa')?.rcPsi).toBe(5.5);
+    const f = parseEimFile(text);
+    // EIMPotentialFileReader::parse (pair_eim.cpp at b332f28): global division rbig rsmall, element negativity,
+    // and the pair stored once under the sorted names (get_pair)
+    expect(f.rbig).toBe(-1.5);
+    expect(f.rsmall).toBe(1.7);
+    expect(f.elements.get('Qb')?.negativity).toBe(3.1);
+    expect(f.pairs.get('Qa Qb')?.rcutq).toBe(4.5);
+    expect(f.pairs.get('Qa Qb')?.rcutsigma).toBe(5.5);
   });
 
-  it('rejects malformed files: missing global line, bad p, unknown keyword, wrong count', () => {
-    expect(() => parseEimFile('element: Qa 11 22.99 0.90 1.30 1.30 -1.10 0.0', 'x.eim')).toThrow(StyleError);
+  it('rejects malformed files with native messages, and ignores what native ignores', () => {
+    expect(() => parseEimFile('element: Qa 11 22.99 0.90 1.30 1.30 -1.10 0.0')).toThrow(/Missing global line in EIM potential file/);
     const base = 'global: 2.0 -1.5 1.7\nelement: Qa 11 22.99 0.90 1.30 1.30 -1.10 0.0\n';
-    expect(() => parseEimFile(`${base}pair: Qa Qa 5.5 5.5 -0.2 3.5 7.0 3.0 0.0 0.0 2.0 5.0 0.3 0.6 2.0 3.0\n`, 'x.eim')).toThrow(StyleError);
-    expect(() => parseEimFile(`${base}pair: Qa Qa 5.5 5.5 -0.2 3.5\n`, 'x.eim')).toThrow(StyleError);
-    expect(() => parseEimFile(`${base}sphere: Qa\n`, 'x.eim')).toThrow(StyleError);
+    // native reports a short pair line as "Invalid element line" (its message for both)
+    expect(() => parseEimFile(`${base}pair: Qa Qa 5.5 5.5 -0.2 3.5\n`)).toThrow(/Invalid element line in EIM potential file/);
+    const pair = 'pair: Qa Qa 5.5 5.5 -0.2 3.5 7.0 3.0 0.0 0.0 2.0 5.0 0.3 0.6 2.0 3.0\n';
+    expect(() => parseEimFile(`${base}${pair}${pair}`)).toThrow(/Duplicate pair line in EIM potential file/);
+    // an unknown keyword line has no branch in the native reader
+    expect(() => parseEimFile(`${base}sphere: Qa\n`)).not.toThrow();
   });
 });
 
@@ -225,8 +229,9 @@ describe('pair_style eim: pair_coeff and settings rules', () => {
     await expect(runEvents(dimer('pair_coeff * * Qa Zz w14eim_two.eim Qa Zz'), { 'w14eim_two.eim': TWO })).rejects.toThrow(/Zz/);
   });
 
-  it('refuses a wrong number of element names before the file', async () => {
-    await expect(runEvents(dimer('pair_coeff * * Qa Qb Qc w14eim_two.eim Qa Qb'), { 'w14eim_two.eim': TWO })).rejects.toThrow(/expected 2 element names/);
+  it('reads the file after the distinct element names, as native does (a wrong count names another word as the file)', async () => {
+    // pair_eim.cpp coeff: nelements = narg - 3 - ntypes, read_file(arg[2 + nelements])
+    await expect(runEvents(dimer('pair_coeff * * Qa Qb Qc w14eim_two.eim Qa Qb'), { 'w14eim_two.eim': TWO })).rejects.toThrow(/cannot open file Qc/);
   });
 
   it('refuses a missing potential file', async () => {
@@ -238,15 +243,17 @@ describe('pair_style eim: pair_coeff and settings rules', () => {
     await expect(runEvents(dimer('pair_coeff * * Qa Qb w14eim_two.eim Qa Qb'), { 'w14eim_two.eim': noPair })).rejects.toThrow(/Qa, Qb/);
   });
 
-  it('refuses a pair_coeff that does not start with * *', async () => {
-    await expect(runEvents(dimer('pair_coeff 1 1 Qa Qb w14eim_two.eim Qa Qb'), { 'w14eim_two.eim': TWO })).rejects.toThrow(/must start with \* \*/);
+  it('refuses a pair_coeff that does not start with * * (native message)', async () => {
+    await expect(runEvents(dimer('pair_coeff 1 1 Qa Qb w14eim_two.eim Qa Qb'), { 'w14eim_two.eim': TWO })).rejects.toThrow(/Incorrect args for pair coefficients/);
   });
 
   it('refuses a NULL mapping for a plain eim pair (the doc uses NULL for hybrid)', async () => {
     await expect(runEvents(dimer('mass 2 1.0\npair_coeff * * Qa w14eim_two.eim Qa NULL'), { 'w14eim_two.eim': TWO })).rejects.toThrow(/pair coeffs are not set/);
   });
 
-  it('refuses pair_modify shift and tail', async () => {
-    await expect(runEvents(`${dimer('pair_coeff * * Qa Qb w14eim_two.eim Qa Qb')}\npair_modify shift yes\nrun 0\n`, { 'w14eim_two.eim': TWO })).rejects.toThrow(/shift/);
+  it('accepts pair_modify shift and tail with no effect, as native does (measured with native LAMMPS)', async () => {
+    for (const pm of ['shift yes', 'tail yes']) {
+      await expect(runEvents(`${dimer('pair_coeff * * Qa Qb w14eim_two.eim Qa Qb')}\npair_modify ${pm}\nrun 0\n`, { 'w14eim_two.eim': TWO }), pm).resolves.toBeDefined();
+    }
   });
 });

@@ -1,6 +1,7 @@
 # oracle: pair_style edip/multi (SiC.edip) in a sheared triclinic (prism) zincblende SiC cell, 100 steps of nve
 # oracle-potentials: SiC.edip
 # oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-8
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.1e-13, atoms 2.6e-11.
 units           metal
 atom_style      atomic
 boundary        p p p

@@ -10,6 +10,8 @@
  */
 import type { FixFactory } from '../../engine/styles';
 import type { KSpace, Pair } from '../../engine/force/types';
+import type { Compute } from '../../engine/compute/compute';
+import type { System } from '../../engine/system';
 import { PairLJCutCoulCutDielectric } from '../dielectric/pair_lj_cut_coul_cut_dielectric';
 import { PairLJCutCoulLongDielectric } from '../dielectric/pair_lj_cut_coul_long_dielectric';
 import { KSpacePPPMDielectric } from '../dielectric/pppm_dielectric';
@@ -18,6 +20,7 @@ import { PairLJCutCoulMSMDielectric } from '../dielectric/pair_lj_cut_coul_msm_d
 import { FixPolarizeBEMGMRES } from '../dielectric/fix_polarize_bem_gmres';
 import { FixPolarizeBEMICC } from '../dielectric/fix_polarize_bem_icc';
 import { FixPolarizeFunctional } from '../dielectric/fix_polarize_functional';
+import { ComputeEfieldAtom } from '../dielectric/compute_efield_atom';
 
 /** pair_style names. */
 export const PAIRS: Record<string, () => Pair> = {
@@ -30,6 +33,11 @@ export const PAIRS: Record<string, () => Pair> = {
 export const KSPACES: Record<string, () => KSpace> = {
   'pppm/dielectric': () => new KSpacePPPMDielectric(),
   'msm/dielectric': () => new KSpaceMSMDielectric(),
+};
+
+/** compute styles. */
+export const COMPUTES: Record<string, (sys: System, id: string, group: string, args: string[]) => Compute> = {
+  'efield/atom': (sys, id, group, args) => new ComputeEfieldAtom(sys, id, group, args),
 };
 
 /** fix styles. */

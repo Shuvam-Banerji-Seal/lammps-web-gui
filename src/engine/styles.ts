@@ -51,7 +51,6 @@ import * as fixNHSphere from './registry/fix_nhsphere';
 import * as computeChunk from './registry/compute_chunk';
 import * as fixAveChunk from './registry/fix_avechunk';
 import * as fixMisc3 from './registry/fix_misc3';
-import * as fixSllod from './registry/fix_sllod';
 import * as fixGjf from './registry/fix_gjf';
 import * as fixAdapt from './registry/fix_adapt';
 import * as computeLocal from './registry/compute_local';
@@ -159,7 +158,7 @@ export const FIX_STYLES: Record<string, FixFactory> = {
   rattle: (s, i, g, a) => new FixShake(s, i, g, a, 'rattle'),
   ...Object.fromEntries(['rigid', 'rigid/nve', 'rigid/small', 'rigid/nve/small'].map((st) => [st, (s: System, i: string, g: string, a: string[]) => new FixRigid(s, i, g, a, st)])),
   ...fixForce.FIXES, ...fixWall.FIXES, ...fixOutput.FIXES, ...fixMotion.FIXES,
-  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES, ...fixDeform.FIXES, ...fixRigid2.FIXES, ...fixNHSphere.FIXES, ...fixAveChunk.FIXES, ...fixMisc3.FIXES, ...fixSllod.FIXES, ...fixGjf.FIXES, ...fixAdapt.FIXES, ...fixWall16.FIXES, ...w17fixmove17.FIXES, ...w17fixmisc17.FIXES, };
+  ...fixExt.FIXES, ...fixMom.FIXES, ...fixWref.FIXES, ...fixAvg.FIXES, ...fixDeform.FIXES, ...fixRigid2.FIXES, ...fixNHSphere.FIXES, ...fixAveChunk.FIXES, ...fixMisc3.FIXES, ...fixGjf.FIXES, ...fixAdapt.FIXES, ...fixWall16.FIXES, ...w17fixmove17.FIXES, ...w17fixmisc17.FIXES, };
 
 export const COMPUTE_STYLES: Record<string, ComputeFactory> = {
   temp: (s, i, g, a) => new ComputeTemp(s, i, g, a),

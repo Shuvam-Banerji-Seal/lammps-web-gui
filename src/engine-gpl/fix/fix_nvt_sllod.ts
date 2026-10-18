@@ -1,10 +1,20 @@
-import { FixNH } from './nh';
-import { StyleError } from '../force/types';
-import type { System } from '../system';
-import { ramp, removeCompute } from './util';
-import type { FixDeform } from './deform';
-import { ComputeTempDeform } from '../compute/temp_deform';
-import { massOf } from '../atoms';
+/*
+ * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0: src/fix_nvt_sllod.cpp (class
+ * FixNVTSllod, fix nvt/sllod), the reversible integrator's nve_x (sllodNveX below). Contributing author (from the
+ * source): Pieter in 't Veld (SNL). LAMMPS is Copyright (2003) Sandia Corporation and distributed under the GNU
+ * General Public License, version 2 (GPL-2.0); this file is GPL-2.0 too (src/engine-gpl/LICENSE).
+ *
+ * The Nose-Hoover chain is the core FixNH (src/engine/fix/nh.ts) and the temperature the core compute temp/deform,
+ * reused by import. Registered for the core through src/engine/lazyStyles.ts (group gpl_sllod).
+ */
+import { FixNH } from '../../engine/fix/nh';
+import { StyleError } from '../../engine/force/types';
+import type { System } from '../../engine/system';
+import { ramp, removeCompute } from '../../engine/fix/util';
+import type { FixDeform } from '../../engine/fix/deform';
+import { ComputeTempDeform } from '../../engine/compute/temp_deform';
+import { massOf } from '../../engine/atoms';
+import { exp as libmExp } from '../libm/exp';
 
 /*
  * fix nvt/sllod — docs.lammps.org/fix_nvt_sllod.html. Sentences quoted below
@@ -34,27 +44,15 @@ import { massOf } from '../atoms';
  * The thermostat chain, the bias removal (fix_modify temp) and drag come from
  * FixNH (fix nvt, docs.lammps.org/fix_nh.html).
  *
- * Measured with native LAMMPS (black box; cases tests/oracle/w7sllod_*.in):
- * - The velocities present when the run starts are thermal: the box streaming
- *   velocity at each atom is added to them at run setup (setup()).
- * - SLLOD term (psllod no): the lab velocity gets +dt G v_s per step, with
- *   G_ij = d v_s,i / d r_j the box velocity gradient and v_s the streaming
- *   velocity. It is zero for pure shear (xy, xz) and not zero for a diagonal
- *   rate (x erate or x trate).
- * - psllod yes: the term uses w_i = v_s,i - G_ii x_i (the diagonal, dilation,
- *   part of the streaming velocity is dropped): +dt G w per step. Zero for pure
- *   shear, so psllod matches psllod no there.
- * - The term is added to the lab velocity just before the thermostat scales the
- *   thermal velocity, in both thermostat calls of a step (half a timestep each).
- * - Native warns for N = 1 (fix deform should update positions every step) and
- *   for x erate (trate recommended). The w7sllod cases use N = 1 with
- *   neigh_modify every 1 delay 0 check no; the w39nemd cases use N = 0 (see
+ * The SLLOD update is native's reversible integrator (src/fix_nvt_sllod.cpp nve_x at b332f28, the default
+ * integrator): the peculiar velocity takes the flow half steps, the positions the box-flow half steps about the box
+ * centre, and the streaming velocity of the new positions is added back (sllodNveX). The psllod yes term is the
+ * diagonal (dilation) part of native's psllod branch. The thermostat scales the peculiar velocity through FixNH's
+ * per-atom bias removal (fix_nh.cpp nh_v_temp), with no SLLOD term of its own. The engine's cases
+ * (tests/oracle/w7sllod_*.in) agree with native to about 1e-12 for shear, dilation and psllod.
+ * - Native warns for N = 1 (fix deform should update positions every step) and for x erate (trate recommended).
+ *   The w7sllod cases use N = 1 with neigh_modify every 1 delay 0 check no; the w39nemd cases use N = 0 (see
  *   fix/deform.ts) with the default neighbor settings.
- *
- * Known residual (not fixed): with a diagonal rate, a ~1e-10 per-step velocity
- * difference is amplified by the thermostat to ~4e-7 relative in temperature
- * after 200 steps. w7sllod_diag and w7sllod_psllod therefore use rel = 1e-5;
- * the pure-shear cases match at the default tolerance.
  */
 
 const findDeform = (sys: System): FixDeform => {
@@ -157,17 +155,12 @@ interface NHInternals {
   tStart: number;
   tStop: number;
   tTarget: number;
-  nhcTemp(): void;
+  nhcTemp(initial?: boolean): void;
   kick(): void;
-  drift(): void;
 }
 
 export class FixNVTSllod extends FixNH {
   readonly psllod: boolean;
-  /** Positions for the SLLOD term while a thermostat call runs (null: the current positions). */
-  private kickPos: Float64Array | null = null;
-  /** Native positions after this step's drift, before the neighbor wrap. */
-  private xSnap: Float64Array | null = null;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     const rest: string[] = [];
@@ -208,13 +201,6 @@ export class FixNVTSllod extends FixNH {
     super(sys, id, group, rest, 'nvt');
     this.psllod = psllod;
     this.kickPending = kick;
-    // FixNH's chain calls this.scaleVelocities(factor): the SLLOD term goes in
-    // just before the thermal velocity is scaled.
-    const base = (FixNH.prototype as unknown as { scaleVelocities: (f: number | number[]) => void }).scaleVelocities;
-    (this as unknown as { scaleVelocities: (f: number | number[]) => void }).scaleVelocities = (factor) => {
-      this.sllodKick(0.5 * sys.state.dt);
-      base.call(this, factor);
-    };
     // the fix's own temperature is compute temp/deform, not the temp FixNH made
     removeCompute(sys, `${id}_temp`);
     sys.computes.push(new SllodTempDeform(sys, `${id}_temp`, group));
@@ -277,82 +263,116 @@ export class FixNVTSllod extends FixNH {
     super.setup();
   }
 
-  /** Velocity gradient G[i][j] = d v_s,i / d r_j of the box (affine; probed at atom 0). */
-  private velocityGradient(): number[] {
-    const df = findDeform(this.sys);
-    const s = this.sys.state;
-    const g = new Array(9).fill(0);
-    if (s.n === 0) return g;
-    const x0 = [s.x[0], s.x[1], s.x[2]];
-    const base = [0, 0, 0], probe = [0, 0, 0];
-    const set = (p: number[]) => { s.x[0] = p[0]; s.x[1] = p[1]; s.x[2] = p[2]; };
-    set([0, 0, 0]);
-    df.vstream(0, base);
-    for (let j = 0; j < 3; j++) {
-      const p = [0, 0, 0];
-      p[j] = 1;
-      set(p);
-      df.vstream(0, probe);
-      for (let i = 0; i < 3; i++) g[3 * i + j] = probe[i] - base[i];
+  /**
+   * Velocity Verlet of native fix nvt/sllod's reversible integrator (fix_nvt_sllod.cpp at b332f28): the thermostat
+   * chain (FixNH::nh_v_temp, the bias removed around each scaling), the half kick (FixNH::nve_v), then nve_x, which
+   * carries the SLLOD update. Native nve_x is the only place the streaming flow enters the positions and velocities.
+   */
+  initialIntegrate(): void {
+    const nh = this as unknown as NHInternals;
+    if (nh.tstat) {
+      nh.tTarget = ramp(this.sys, nh.tStart, nh.tStop);
+      nh.nhcTemp(true);
     }
-    set(x0);
-    return g;
+    nh.kick();
+    this.sllodNveX();
   }
 
   /**
-   * SLLOD term on the lab velocity: v_i += dt sum_j G_ij w_j, with w = v_s for
-   * psllod no, and w_j = v_s,j - G_jj x_j for psllod yes.
+   * As native LAMMPS does (src/fix_nvt_sllod.cpp nve_x at b332f28, reversible integrator, peculiar no): the peculiar
+   * velocity v = v_lab - v_stream (the streaming velocity at the start of the step, from fix deform's h_rate and
+   * h_ratelo, domain.cpp x2lamda) takes the SLLOD half steps, the positions take the box-flow half steps about the
+   * box centre (xfac = exp(grad_u dt/2)), then the drift dt v, the second half steps, and the streaming velocity of
+   * the new positions (apply_deform_bias_all, with the lo boundary propagated by dt) is added back to v.
+   * grad_u = h_rate h_inv (math_extra.h multiply_shape_shape). psllod yes adds the diagonal (dilation) terms of
+   * native's psllod branch. The positions are the native (unwrapped) ones: the engine's wrap shift (accShift, see
+   * streamAtNative) is added before and removed after.
    */
-  private sllodKick(dt: number): void {
+  private sllodNveX(): void {
     const s = this.sys.state;
     const df = findDeform(this.sys);
-    const g = this.velocityGradient();
-    const vs = [0, 0, 0];
-    const pos = [0, 0, 0];
+    const { hRate, hRateLo } = df.nativeRates();
+    const g = this.sys.geom;
+    const lo = [s.box.lo[0], s.box.lo[1], s.box.lo[2]];
+    const hi = [s.box.hi[0], s.box.hi[1], s.box.hi[2]];
+    const { lx, ly, lz, xy, xz, yz } = g;
+    // domain.cpp set_global_box: h_inv of h = [[lx xy xz], [0 ly yz], [0 0 lz]]
+    const hinv = [1 / lx, 1 / ly, 1 / lz, -yz / (ly * lz), (yz * xy - ly * xz) / (lx * ly * lz), -xy / (lx * ly)];
+    // math_extra.h multiply_shape_shape(h_rate, h_inv) = grad_u
+    const gu = [
+      hRate[0] * hinv[0],
+      hRate[1] * hinv[1],
+      hRate[2] * hinv[2],
+      hRate[1] * hinv[3] + hRate[3] * hinv[2],
+      hRate[0] * hinv[4] + hRate[5] * hinv[3] + hRate[4] * hinv[2],
+      hRate[0] * hinv[5] + hRate[5] * hinv[1],
+    ];
+    const dtv = s.dt;
+    const dthalf = 0.5 * dtv;
+    const xfac = [0, 1, 2].map((k) => libmExp(gu[k] * dthalf));
+    const vfac = [0, 1, 2].map((k) => libmExp(-gu[k] * dthalf));
+    // fix_nvt_sllod.cpp: xmid is the box centre; the lo boundary is propagated by dt for the streaming velocity
+    const xmid = [0, 1, 2].map((k) => 0.5 * (hi[k] + lo[k]));
+    const ylo2 = xmid[1] + (lo[1] - xmid[1]) * xfac[1] * xfac[1];
+    const zlo2 = xmid[2] + (lo[2] - xmid[2]) * xfac[2] * xfac[2];
+    const yloNext = xmid[1] + (lo[1] - xmid[1]) * libmExp(gu[1] * dtv);
+    const zloNext = xmid[2] + (lo[2] - xmid[2]) * libmExp(gu[2] * dtv);
+    const sh = (df as unknown as { accShift?: Float64Array }).accShift;
+    const shifted = sh !== undefined && sh.length >= 3 * s.n;
+    const x = [0, 0, 0];
+    const v = s.v, mask = s.mask, pos = s.x;
     for (let i = 0; i < s.n; i++) {
-      if (!(s.mask[i] & this.groupBit)) continue;
-      const snap = this.kickPos;
-      if (snap) {
-        const x0 = [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2]];
-        s.x[3 * i] = snap[3 * i]; s.x[3 * i + 1] = snap[3 * i + 1]; s.x[3 * i + 2] = snap[3 * i + 2];
-        df.vstream(i, vs);
-        s.x[3 * i] = x0[0]; s.x[3 * i + 1] = x0[1]; s.x[3 * i + 2] = x0[2];
-        pos[0] = snap[3 * i]; pos[1] = snap[3 * i + 1]; pos[2] = snap[3 * i + 2];
+      if (!(mask[i] & this.groupBit)) continue;
+      const sx = shifted ? sh![3 * i] : 0, sy = shifted ? sh![3 * i + 1] : 0, sz = shifted ? sh![3 * i + 2] : 0;
+      x[0] = pos[3 * i] + sx; x[1] = pos[3 * i + 1] + sy; x[2] = pos[3 * i + 2] + sz;
+      // remove the streaming velocity at the start of the step (compute temp/deform's remove_deform_bias)
+      const dx = x[0] - lo[0], dy = x[1] - lo[1], dz = x[2] - lo[2];
+      const l0 = hinv[0] * dx + hinv[5] * dy + hinv[4] * dz;
+      const l1 = hinv[1] * dy + hinv[3] * dz;
+      const l2 = hinv[2] * dz;
+      v[3 * i] -= hRate[0] * l0 + hRate[5] * l1 + hRate[4] * l2 + hRateLo[0];
+      v[3 * i + 1] -= hRate[1] * l1 + hRate[3] * l2 + hRateLo[1];
+      v[3 * i + 2] -= hRate[2] * l2 + hRateLo[2];
+      let v0 = v[3 * i], v1 = v[3 * i + 1], v2 = v[3 * i + 2];
+      // first half SLLOD update
+      if (this.psllod) {
+        v2 -= dthalf * gu[2] * gu[2] * x[2];
+        v1 -= dthalf * gu[3] * v2 + dthalf * gu[1] * gu[1] * x[1];
+        v0 -= dthalf * (gu[5] * v1 + gu[4] * v2) + dthalf * gu[0] * gu[0] * x[0];
       } else {
-        streamAtNative(this.sys, i, vs);
-        pos[0] = s.x[3 * i]; pos[1] = s.x[3 * i + 1]; pos[2] = s.x[3 * i + 2];
+        v1 -= dthalf * gu[3] * v2;
+        v0 -= dthalf * (gu[5] * v1 + gu[4] * v2);
       }
-      if (this.psllod) for (let a = 0; a < 3; a++) vs[a] -= g[4 * a] * pos[a];
-      for (let a = 0; a < 3; a++) {
-        s.v[3 * i + a] += dt * (g[3 * a] * vs[0] + g[3 * a + 1] * vs[1] + g[3 * a + 2] * vs[2]);
+      v0 *= vfac[0]; v1 *= vfac[1]; v2 *= vfac[2];
+      // position half steps about the box centre, then the drift
+      x[1] += dthalf * gu[3] * (x[2] - lo[2]);
+      x[0] += dthalf * (gu[5] * (x[1] - lo[1]) + gu[4] * (x[2] - lo[2]));
+      x[0] = xmid[0] + (x[0] - xmid[0]) * xfac[0];
+      x[1] = xmid[1] + (x[1] - xmid[1]) * xfac[1];
+      x[2] = xmid[2] + (x[2] - xmid[2]) * xfac[2];
+      x[0] += dtv * v0; x[1] += dtv * v1; x[2] += dtv * v2;
+      // second half of the position update
+      x[0] = xmid[0] + (x[0] - xmid[0]) * xfac[0];
+      x[1] = xmid[1] + (x[1] - xmid[1]) * xfac[1];
+      x[2] = xmid[2] + (x[2] - xmid[2]) * xfac[2];
+      x[0] += dthalf * (gu[5] * (x[1] - ylo2) + gu[4] * (x[2] - zlo2));
+      x[1] += dthalf * gu[3] * (x[2] - zlo2);
+      // second half SLLOD velocity step
+      v0 *= vfac[0]; v1 *= vfac[1]; v2 *= vfac[2];
+      if (this.psllod) {
+        v0 -= dthalf * (gu[5] * v1 + gu[4] * v2) + dthalf * gu[0] * gu[0] * x[0];
+        v1 -= dthalf * gu[3] * v2 + dthalf * gu[1] * gu[1] * x[1];
+        v2 -= dthalf * gu[2] * gu[2] * x[2];
+      } else {
+        v0 -= dthalf * (gu[5] * v1 + gu[4] * v2);
+        v1 -= dthalf * gu[3] * v2;
       }
+      // the streaming velocity at the new positions (apply_deform_bias)
+      v0 += (x[0] - xmid[0]) * gu[0] + (x[1] - yloNext) * gu[5] + (x[2] - zloNext) * gu[4];
+      v1 += (x[1] - xmid[1]) * gu[1] + (x[2] - zloNext) * gu[3];
+      v2 += (x[2] - xmid[2]) * gu[2];
+      v[3 * i] = v0; v[3 * i + 1] = v1; v[3 * i + 2] = v2;
+      pos[3 * i] = x[0] - sx; pos[3 * i + 1] = x[1] - sy; pos[3 * i + 2] = x[2] - sz;
     }
-  }
-
-  /** Velocity Verlet: thermostat chain, half kick, drift; the SLLOD term rides on the chain's scaling. */
-  initialIntegrate(): void {
-    const nh = this as unknown as NHInternals;
-    const s = this.sys.state;
-    if (nh.tstat) {
-      nh.tTarget = ramp(this.sys, nh.tStart, nh.tStop);
-      this.kickPos = null;
-      nh.nhcTemp();
-    }
-    nh.kick();
-    nh.drift();
-    // native positions after this step's drift, before its neighbor wrap
-    const sh = (findDeform(this.sys) as unknown as { accShift?: Float64Array }).accShift;
-    this.xSnap = new Float64Array(3 * s.n);
-    for (let i = 0; i < 3 * s.n; i++) this.xSnap[i] = s.x[i] + (sh && sh.length >= 3 * s.n ? sh[i] : 0);
-  }
-
-  finalIntegrate(): void {
-    const nh = this as unknown as NHInternals;
-    nh.kick();
-    if (nh.tstat) {
-      this.kickPos = this.xSnap;
-      nh.nhcTemp();
-    }
-    this.kickPos = null;
   }
 }

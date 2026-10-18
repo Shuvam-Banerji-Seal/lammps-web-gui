@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PairBornCoulWolf, PairBornCoulDsf } from '../src/engine/force/pair/born_coul18';
 import { PairBornCoulWolfCS, PairBornCoulDsfCS } from '../src/engine-gpl/csdiel/born_dsf_wolf_cs';
 import { PAIRS as CSDIEL_PAIRS } from '../src/engine-gpl/registry/csdiel';
 import { Session } from '../src/engine/interpreter';

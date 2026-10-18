@@ -217,4 +217,5 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_bocs', names: { FIXES: ['bocs'], COMPUTES: ['pressure/bocs'] }, load: () => import('../engine-gpl/registry/bocs') as Promise<StyleModule> },
   { id: 'gpl_orient', names: { FIXES: ['orient/fcc', 'orient/bcc'] }, load: () => import('../engine-gpl/registry/orient') as Promise<StyleModule> },
   { id: 'gpl_colloid2', names: { PAIRS: ['lubricate', 'lubricate/poly', 'lubricateU', 'lubricateU/poly', 'brownian', 'brownian/poly'], FIXES: ['wall/colloid', 'wall/srd'] }, load: () => import('../engine-gpl/registry/colloid2') as Promise<StyleModule> },
+  { id: 'gpl_pppmx', names: { KSPACES: ['pppm/stagger', 'pppm/rk'] }, load: () => import('../engine-gpl/registry/pppmx') as Promise<StyleModule> },
 ];

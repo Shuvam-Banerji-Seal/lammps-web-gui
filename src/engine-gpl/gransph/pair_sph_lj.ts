@@ -15,6 +15,7 @@ import { NEIGHMASK } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { PairSPHBase } from '../sph/pair_sph_base';
 import { sphArrays, sphGhostVest } from '../sph/common';
+import { tallyAtom } from '../../engine/force/pair/lj_cut';
 
 /**
  * LJEOS2 of pair_sph_lj.cpp: the pressure p and the sound speed c of the Lennard-Jones fluid at density rho, internal
@@ -136,6 +137,8 @@ export class PairSPHLJ extends PairSPHBase {
         f[3 * j] -= delx * fpair;
         f[3 * j + 1] -= dely * fpair;
         f[3 * j + 2] -= delz * fpair;
+        // ev_tally(i, j, nlocal, newton_pair, 0, 0, fpair, del) of pair_sph_lj.cpp: no energy
+        if (pc.vatom) tallyAtom(pc, i, j, 0, fpair, delx, dely, delz);
         desph[oj] += deltaE;
         drho[oj] += imass * delVdotDelR * wfd;
       }

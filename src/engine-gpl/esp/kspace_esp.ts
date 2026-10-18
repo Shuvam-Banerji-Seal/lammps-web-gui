@@ -174,8 +174,8 @@ export class KSpaceESP extends KSpaceBase {
     const xprd = geom.lx, yprd = geom.ly, zprd = geom.lz;
     const zprdSlab = zprd * 1.0;
     const cutoff = this.cutoff;
-    let hx = MY_PI * cutoff / this.selectC;
-    let hy = hx, hz = hx;
+    const hx = MY_PI * cutoff / this.selectC;
+    const hy = hx, hz = hx;
     let nx = Math.trunc(Math.ceil(xprd / hx));
     let ny = Math.trunc(Math.ceil(yprd / hy));
     let nz = Math.trunc(Math.ceil(zprdSlab / hz));
@@ -185,8 +185,6 @@ export class KSpaceESP extends KSpaceBase {
     while (!factorable(nx)) nx++;
     while (!factorable(ny)) ny++;
     while (!factorable(nz)) nz++;
-    hx = xprd / nx; hy = yprd / ny; hz = zprdSlab / nz;
-    void hy; void hz;
     if (nx >= OFFSET || ny >= OFFSET || nz >= OFFSET) throw new StyleError('ESP grid is too large');
     this.nx = nx; this.ny = ny; this.nz = nz;
   }

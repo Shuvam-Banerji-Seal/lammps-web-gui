@@ -11,13 +11,11 @@ export const MAX_CHEB_ORDER = 40;
 
 /** legepol: P_n(x) and P_n'(x) by the three-term recurrence (math_pswf.cpp legepol). */
 export const legepol = (x: number, n: number): { pol: number; der: number } => {
-  let pkm1 = 1.0;
-  let pk = x;
-  let pkp1 = 0;
   if (n === 0) return { pol: 1.0, der: 0.0 };
   if (n === 1) return { pol: x, der: 1.0 };
-  pk = 1.0;
-  pkp1 = x;
+  let pkm1: number;
+  let pk = 1.0;
+  let pkp1 = x;
   for (let k = 1; k < n; ++k) {
     pkm1 = pk;
     pk = pkp1;

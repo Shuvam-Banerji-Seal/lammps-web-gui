@@ -32,6 +32,7 @@ export class AngleHarmonic extends SimpleBonded {
 
   // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
   equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
+  equilibriumRadians(type: number): number { return this.params.p('theta0')[type]; }
 
   compute(bc: BondedCompute): void {
     const A = bc.s.topo.angles;

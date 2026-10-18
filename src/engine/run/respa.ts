@@ -1,4 +1,5 @@
 import type { System } from '../system';
+import type { NeighList } from '../neighbor';
 import type { Fix } from '../fix/fix';
 import type { LevelSelect, PerAtomTerm } from '../force/forcefield';
 import { PairHybrid } from '../force/pair/hybrid';
@@ -118,6 +119,27 @@ interface RespaFix {
 
 const isRespaFix = (f: Fix): f is Fix & RespaFix => typeof (f as Partial<RespaFix>).respaKick === 'function';
 
+/**
+ * A fix that filters the evaluation of the outermost level (fix filter/corotate, docs.lammps.org/fix_filter_corotate.html:
+ * "the corotational filter ... is applied to the outermost level"): respaFilterPositions gives the positions of the owned
+ * atoms that level is evaluated at, respaFilterForces filters that level's forces in place, respaPreNeighbor runs at
+ * setup and after every reneighboring.
+ */
+export interface RespaOuterFilter {
+  readonly respaOuterFilter: true;
+  respaPreNeighbor(): void;
+  respaFilterPositions(): Float64Array;
+  respaFilterForces(f: Float64Array): void;
+  /**
+   * The half list the filtered level is evaluated with, or null for the engine's own. With filtered owned atoms and real
+   * ghosts, the energy of a pair that crosses a periodic boundary depends on which of its two atoms is the owned one,
+   * so the fix hands the pairs from the side native LAMMPS's half list stores them.
+   */
+  respaHalfList?(): NeighList | null;
+}
+
+const isOuterFilter = (f: Fix): f is Fix & RespaOuterFilter => (f as Partial<RespaOuterFilter>).respaOuterFilter === true;
+
 const copyAccum = (dst: Accum, src: Accum): void => {
   dst.evdwl = src.evdwl; dst.ecoul = src.ecoul; dst.elong = src.elong; dst.ebond = src.ebond;
   dst.eangle = src.eangle; dst.edihed = src.edihed; dst.eimp = src.eimp;
@@ -139,6 +161,7 @@ const checkFixes = (sys: System): RespaFix[] => {
   const movers: RespaFix[] = [];
   for (const f of sys.fixes) {
     if (f.style === 'temp/rescale') continue; // velocity rescaling at the end of each outer step
+    if (isOuterFilter(f)) continue; // the outermost-level filter (evalLevel)
     if (isRespaFix(f) && f.respaOK) { movers.push(f); continue; }
     throw new StyleError(`fix ${f.style} (${f.id}) is not supported with run_style respa (the browser engine supports fix nve, fix nvt without a barostat, and fix temp/rescale)`);
   }
@@ -168,6 +191,14 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
     }
   }
 
+  // As native LAMMPS does (src/MOLECULE/dihedral_charmm.cpp and dihedral_charmmfsw.cpp init_style at b332f28): the
+  // dihedral computes the 1-4 pair terms, so "if (r->level_pair >= 0 && (r->level_pair != r->level_dihedral))
+  // error->all(FLERR, "Dihedral style charmm must be set to same r-RESPA level as 'pair'")"
+  const dihedralName = ff.dihedral?.name;
+  if (ff.pair && (dihedralName === 'charmm' || dihedralName === 'charmmfsw') && cfg.dihedral !== cfg.pair) {
+    throw new StyleError(`Dihedral style ${dihedralName} must be set to same r-RESPA level as 'pair'`);
+  }
+
   // hybrid: one level per sub-style; otherwise whole terms
   const pairHybrid = ff.pair instanceof PairHybrid ? ff.pair : null;
   let hyb: readonly number[] | null = null;
@@ -190,6 +221,9 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
     });
   }
 
+  const filter = sys.fixes.find(isOuterFilter) ?? null;
+  // native setup sums the level forces (sum_flevel_f) before the fix's setup filters the outermost one
+  let deferFilter = false;
   const n3 = 3 * s.n;
   const F: Float64Array[] = [];
   const A: Accum[] = [];
@@ -200,6 +234,30 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
   /** Force evaluation of level l at the current positions (ghosts refreshed first). */
   const evalLevel = (l: number): void => {
     nb.forwardComm(s, geom);
+    if (filter && l === N - 1) {
+      // the outermost level at the filtered positions of the owned atoms; the ghosts keep the real positions of the last
+      // forward communication (native pre_force_respa points atom->x at the filtered copy without communicating it)
+      const xf = filter.respaFilterPositions();
+      const half = filter.respaHalfList?.() ?? null;
+      const keep = Float64Array.from(s.x.subarray(0, n3));
+      const keepHalf = nb.half;
+      s.x.set(xf.subarray(0, n3));
+      nb.xall.set(xf.subarray(0, n3));
+      if (half) nb.half = half;
+      let acc: Accum;
+      try {
+        acc = ff.compute(s, nb, geom, { step: true }, sels[l]);
+      } finally {
+        s.x.set(keep);
+        nb.xall.set(keep);
+        nb.half = keepHalf;
+      }
+      F[l].set(s.f.subarray(0, n3));
+      if (!deferFilter) filter.respaFilterForces(F[l]);
+      copyAccum(A[l], acc);
+      valid[l] = true;
+      return;
+    }
     const acc = ff.compute(s, nb, geom, { step: true }, sels[l]);
     F[l].set(s.f.subarray(0, n3));
     copyAccum(A[l], acc);
@@ -243,10 +301,15 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
   // setup: neighbor lists, all levels, totals (Verlet::setup() with the forces split by level)
   sys.setupNeighbors();
   sys.sortAtoms(true);
+  filter?.respaPreNeighbor();
   for (const f of sys.fixes) f.setupPreForce?.();
   invalidateAll();
+  deferFilter = true;
   for (let l = 0; l < N; l++) ensure(l);
+  deferFilter = false;
   totals();
+  // FixFilterCorotate::setup: the outermost level's setup forces are filtered after the sum
+  if (filter) filter.respaFilterForces(F[N - 1]);
   sys.forcesCurrent();
   sys.assignDynamicGroups(true);
   computeSetup(sys);
@@ -268,6 +331,7 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
     if (nb.decide(s.step, s, geom)) {
       sys.pbc();
       sys.sortAtoms(false);
+      filter?.respaPreNeighbor();
       nb.build(s, geom, s.step);
       invalidateAll();
     }

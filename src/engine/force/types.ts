@@ -585,6 +585,8 @@ export abstract class Bonded {
   dataCrossSections(): { title: string; lines: string[] }[] { return []; }
   /** Equilibrium length (bond) or angle in degrees (angle), for fix shake. */
   equilibrium(_type: number): number { return Number.NaN; }
+  /** The equilibrium angle as the style stores it, in radians (native Angle::equilibrium_angle; fix filter/corotate). */
+  equilibriumRadians?(type: number): number;
 }
 
 /** What a kspace style sees during compute(). */

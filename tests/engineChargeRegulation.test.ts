@@ -3,8 +3,8 @@ import { Session } from '../src/engine/interpreter';
 import type { EngineEvent } from '../src/engine/types';
 
 /*
- * fix charge/regulation (src/engine-gpl/mc, a port of LAMMPS src/MC/fix_charge_regulation.cpp) and the refusal of
- * fix filter/corotate (src/engine-gpl/registry/filtercorotate.ts). The oracle cases w116xf_* check the moves against
+ * fix charge/regulation (src/engine-gpl/mc, a port of LAMMPS src/MC/fix_charge_regulation.cpp) and a check of
+ * fix filter/corotate on this atomic system (src/engine-gpl/filtercorotate). The oracle cases w116xf_* check the moves against
  * native LAMMPS; these tests check the option parsing: accepted keywords run, unsupported ones are refused by name.
  */
 const BOX = `units lj
@@ -54,9 +54,8 @@ describe('fix charge/regulation options', () => {
 });
 
 describe('fix filter/corotate', () => {
-  it('is refused with its reason (respa fix hooks are not in the browser engine)', async () => {
+  it('needs a molecular system, as the native constructor checks (tests/engineFilterCorotate.test.ts has the rest)', async () => {
     const msg = await errorOf('fix cor all filter/corotate m 1.0');
-    expect(msg).toMatch(/filter\/corotate/);
-    expect(msg).toMatch(/respa/);
+    expect(msg).toMatch(/Cannot use fix filter\/corotate with non-molecular system/);
   });
 });

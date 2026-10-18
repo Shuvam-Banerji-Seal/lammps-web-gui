@@ -58,7 +58,7 @@ const DIPOLE_COLS = new Set(['mux', 'muy', 'muz', 'mu']);
  */
 export const fmt = (f: string): ((v: number) => string) => compileCFormat(f, 'float', 'Invalid dump format');
 
-export type DumpStyle = 'atom' | 'custom' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image' | 'vtk';
+export type DumpStyle = 'atom' | 'custom' | 'cfg' | 'xyz' | 'extxyz' | 'yaml' | 'local' | 'image' | 'vtk';
 
 /**
  * The core side of the lazily loaded dump vtk helper (engine-gpl/dump/dump_vtk.ts, HOOKS 'vtk' of group gpl_dump_vtk):
@@ -86,6 +86,35 @@ export interface DumpVtkStyle {
 }
 
 export type DumpVtkFactory = (host: DumpVtkHost, cols: string[]) => DumpVtkStyle;
+
+/**
+ * The core side of the lazily loaded dump cfg helper (engine-gpl/dump/dump_cfg.ts, HOOKS 'cfg' of group gpl_dump_cfg): the
+ * core parses the attributes as for dump custom (dump.html: "Style cfg has the same command syntax as style custom"),
+ * selects, orders and formats the atoms; the helper checks the cfg attributes and writes the snapshot text.
+ */
+export interface DumpCfgSnapshot {
+  /** The atoms to write (indices into the state), in output order. */
+  rows: ArrayLike<number>;
+  /** Column values per atom index, one array per column. */
+  values: Float64Array[];
+  /** The compiled format of each column. */
+  formatters: ((v: number) => string)[];
+  /** dump_modify element: one name per atom type (empty: the default name of every type). */
+  element: string[];
+  /** dump_modify colname, by column index. */
+  colnames: Map<number, string>;
+  /** dump_modify header. */
+  header: boolean;
+}
+
+export interface DumpCfgStyle {
+  text(snap: DumpCfgSnapshot): string;
+}
+
+export type DumpCfgFactory = (sys: System, columns: string[]) => DumpCfgStyle;
+
+/** The image-count offset of the native image field (src/lmptype.h at b332f28, the default smallbig build: IMGMAX 512). */
+const IMGMAX = 512;
 
 /** Columns dump_modify triclinic/general rotates (dump.html: "vx,vy,vz = atom velocities" and the others listed there). */
 const GENERAL_ROTATED = /^(x|y|z|xu|yu|zu|vx|vy|vz|fx|fy|fz)$/;
@@ -131,6 +160,8 @@ export class Dump {
   private imageDump: ImageDump | null = null;
   /** dump vtk: the lazily loaded helper (null for every other style). */
   private vtkStyle: DumpVtkStyle | null = null;
+  /** dump cfg: the lazily loaded helper (null for every other style). */
+  private cfgStyle: DumpCfgStyle | null = null;
 
   /** The atom colour map of a dump image as the previous output left it (fix graphics/labels colorscale); null for other styles. */
   colorScaleMap(which: 'atom' | 'bond' = 'atom'): ColorMap | null {
@@ -150,10 +181,13 @@ export class Dump {
 
   /** Opens the single file (resolves its name from the working directory) if it is not open yet; see singleKey. */
   openFile(): void {
+    // As native LAMMPS does (src/dump_cfg.cpp init_style at b332f28): "Dump cfg requires one snapshot per file" unless
+    // the name has a "*" (write_dump sets multifile_override)
+    if (this.cfgStyle && !this.file.includes('*') && !this.multifileOverride) throw new StyleError('Dump cfg requires one snapshot per file');
     if (!this.file.includes('*') && this.singleKey === null) this.singleKey = this.sys.resolveFile(this.file);
   }
 
-  constructor(private sys: System, readonly id: string, readonly group: string, readonly style: DumpStyle, every: number | string, readonly file: string, cols: string[], multifileOverride = false) {
+  constructor(private sys: System, readonly id: string, readonly group: string, readonly style: DumpStyle, every: number | string, readonly file: string, cols: string[], private readonly multifileOverride = false) {
     // dump.html: "if the filename ends with ".gz" ... the dump file (or files, if "*" or "%" is also used) is written in
     // compressed format". The browser engine writes no compressed dumps yet, so a .gz name is an error, not plain text.
     if (/\.gz$/.test(file)) throw new StyleError(`dump ${id}: a compressed (.gz) dump file is not supported by the browser engine; use a plain file name`);
@@ -188,11 +222,14 @@ export class Dump {
         isIntColumn: (c) => this.isInt(c),
       }, cols);
     } else {
-      if (!cols.length) throw new StyleError('dump custom needs a list of attributes, e.g. id type x y z');
+      // As native LAMMPS does (src/dump_custom.cpp at b332f28): "No dump {} arguments specified"
+      if (!cols.length) throw new StyleError(`No dump ${style} arguments specified`);
       const out: string[] = [];
       for (const c of cols) out.push(...this.expand(c));
       for (const c of out) this.validate(c);
       this.columns = out;
+      // dump cfg: the attribute checks of the lazily loaded helper (lazyStyles.ts group gpl_dump_cfg)
+      if (style === 'cfg') this.cfgStyle = gplHook<DumpCfgFactory>('cfg')(sys, out);
     }
   }
 
@@ -503,6 +540,16 @@ export class Dump {
       const v = values[col];
       keep.sort((a, b) => (desc ? v[b] - v[a] : v[a] - v[b]));
     }
+    const multi = this.file.includes('*');
+    const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
+    if (this.cfgStyle) {
+      // dump cfg: one snapshot per file (the "*" name, or write_dump's single file)
+      const text = this.cfgStyle.text({ rows: keep, values, formatters: this.columnFormatters(), element: this.element, colnames: this.colnames, header: this.header });
+      const name = this.sys.resolveFile(multi ? fillWildcard(this.file, stepText) : this.file);
+      this.writeSnapshot(name, text, false);
+      this.opened = true;
+      return;
+    }
     const lines: string[] = [];
     const time = s.time + (s.step - s.timeStep) * s.dt;
     if (this.style === 'xyz' || this.style === 'extxyz') {
@@ -553,8 +600,6 @@ export class Dump {
         lines.push(this.columns.map((c, k) => (c === 'element' ? elementName(i) : formatters[k](values[k][i]))).join(' '));
       }
     }
-    const multi = this.file.includes('*');
-    const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
     const name = multi ? this.sys.resolveFile(fillWildcard(this.file, stepText)) : (this.singleKey ??= this.sys.resolveFile(this.file));
     const appendNow = multi ? false : this.opened || this.append;
     this.writeSnapshot(name, lines.join('\n') + '\n', appendNow);
@@ -682,10 +727,13 @@ export class Dump {
         return out;
       }
       case 'xsu': case 'ysu': case 'zsu': {
+        // As native LAMMPS does (src/dump_custom.cpp pack_xsu and pack_xsu_triclinic at b332f28): "lamda + (image[j] &
+        // IMGMASK) - IMGMAX" adds the stored image field, the count plus IMGMAX = 512, and subtracts IMGMAX after, so
+        // the sum is rounded at the magnitude of 512 (to about 1e-13)
         const d = 'xyz'.indexOf(c[0]);
         for (let i = 0; i < s.n; i++) {
           g.toLamda(s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], lam);
-          out[i] = lam[d] + s.image[3 * i + d];
+          out[i] = (lam[d] + (s.image[3 * i + d] + IMGMAX)) - IMGMAX;
         }
         return out;
       }

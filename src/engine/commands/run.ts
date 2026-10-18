@@ -177,7 +177,9 @@ const runStyle: Handler = ({ sys }, a) => {
   throw new StyleError(`unknown run_style '${style ?? ''}' (verlet, verlet/split, respa or respa/omp)`);
 };
 
-const DUMP_STYLES: DumpStyle[] = ['atom', 'custom', 'xyz', 'extxyz', 'yaml', 'local', 'image'];
+// cfg is a lazily loaded helper (lazyStyles.ts group gpl_dump_cfg, loaded before the dump command by the session: its
+// name is a word of the command)
+const DUMP_STYLES: DumpStyle[] = ['atom', 'custom', 'cfg', 'xyz', 'extxyz', 'yaml', 'local', 'image'];
 
 /** dump ID group style N file args — dump.html. */
 const dump: Handler = ({ sys }, a) => {
@@ -216,7 +218,8 @@ const writeDump: Handler = ({ sys }, a) => {
   const mi = rest.indexOf('modify');
   const cols = mi >= 0 ? rest.slice(0, mi) : rest;
   if (!(DUMP_STYLES as string[]).includes(style)) throw new StyleError(`write_dump style '${style}' is not supported; supported: ${DUMP_STYLES.join(', ')}`);
-  // write_dump: a dump image file needs no '*' (multifile_override, see dump_image.ts)
+  // write_dump: a dump image or cfg file needs no '*' (multifile_override, see dump_image.ts; As native LAMMPS does
+  // (src/write_dump.cpp at b332f28): "if (strcmp(arg[1], "cfg") == 0) dump->multifile_override = 1")
   const d = new Dump(sys, '__write_dump', group, style as DumpStyle, 1, file, cols, true);
   if (mi >= 0) d.modify(rest.slice(mi + 1));
   d.write();

@@ -19,6 +19,7 @@ import {
   mdrConsts, mdrDampPrefactor, mdrSide, type MdrAtomArrays, type MdrConsts, type MdrMaterial,
 } from './normal';
 import { exp as libmExp } from '../../libm/exp';
+import { acos as libmAcos } from '../../libm/acos';
 
 const EPSILON = 1e-10;
 
@@ -221,19 +222,19 @@ export class MdrModel implements MdrApi {
             // the central particle is k
             const enx_ki = -delx_ik * rinv_ik, eny_ki = -dely_ik * rinv_ik, enz_ki = -delz_ik * rinv_ik;
             const enx_kj = -delx_jk * rinv_jk, eny_kj = -dely_jk * rinv_jk, enz_kj = -delz_jk * rinv_jk;
-            const alpha = Math.acos(enx_ki * enx_kj + eny_ki * eny_kj + enz_ki * enz_kj);
+            const alpha = libmAcos(enx_ki * enx_kj + eny_ki * eny_kj + enz_ki * enz_kj);
             pij[PENALTY] += 1.0 / (1.0 + libmExp(-50.0 * (alpha / Math.PI - 0.5)));
           } else if (r_ik === r_max) {
             // the central particle is j
             const enx_ji = -delx_ij * rinv_ij, eny_ji = -dely_ij * rinv_ij, enz_ji = -delz_ij * rinv_ij;
             const enx_jk = delx_jk * rinv_jk, eny_jk = dely_jk * rinv_jk, enz_jk = delz_jk * rinv_jk;
-            const alpha = Math.acos(enx_ji * enx_jk + eny_ji * eny_jk + enz_ji * enz_jk);
+            const alpha = libmAcos(enx_ji * enx_jk + eny_ji * eny_jk + enz_ji * enz_jk);
             pik[PENALTY] += 1.0 / (1.0 + libmExp(-50.0 * (alpha / Math.PI - 0.5)));
           } else {
             // the central particle is i
             const enx_ij = delx_ij * rinv_ij, eny_ij = dely_ij * rinv_ij, enz_ij = delz_ij * rinv_ij;
             const enx_ik = delx_ik * rinv_ik, eny_ik = dely_ik * rinv_ik, enz_ik = delz_ik * rinv_ik;
-            const alpha = Math.acos(enx_ij * enx_ik + eny_ij * eny_ik + enz_ij * enz_ik);
+            const alpha = libmAcos(enx_ij * enx_ik + eny_ij * eny_ik + enz_ij * enz_ik);
             const pjk = this.entry(this.pairHist, MdrModel.pairKey(id[oj], id[ok]));
             pjk[PENALTY] += 1.0 / (1.0 + libmExp(-50.0 * (alpha / Math.PI - 0.5)));
           }

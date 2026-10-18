@@ -117,7 +117,7 @@ const triInertiaSpace = (q: number[], moments: number[]): number[][] => {
 };
 
 /** Angle of a body's z-rotation quaternion (w, x, y, z), as fix_rigid.cpp: "theta_body = 2.0*acos(quat[ibody][0])", signed by z. */
-const bodyTheta = (q: number[]): number => (q[3] >= 0 ? 2.0 * Math.acos(Math.min(1, q[0])) : -2.0 * Math.acos(Math.min(1, q[0])));
+const bodyTheta = (q: number[]): number => (q[3] >= 0 ? 2.0 * libm.acos(Math.min(1, q[0])) : -2.0 * libm.acos(Math.min(1, q[0])));
 /** Wraps an angle to (-pi, pi] as fix_rigid.cpp does for line orientations. */
 const wrapAngle = (t: number): number => {
   let a = t;

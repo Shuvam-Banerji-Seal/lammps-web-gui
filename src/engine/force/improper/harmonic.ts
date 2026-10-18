@@ -82,7 +82,7 @@ export class ImproperHarmonic extends SimpleBonded {
       delta(bc, atoms[1], atoms[2], vb2);
       termDelta(bc, atoms[1], atoms[2], atoms[3], vb3);
       const cn = nativeCos(vb1, vb2, vb3);
-      const chi = Math.acos(cn);
+      const chi = libm.acos(cn);
       const sNative = Math.max(Math.sqrt(1 - cn * cn), SMALL);
       const sTrue = libm.sin(Math.abs(phi));
       const dchi = chi - c0[t];

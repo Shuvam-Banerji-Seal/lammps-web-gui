@@ -19,6 +19,7 @@ import { parseNum } from '../../engine/force/util';
 import { DF2, DF4, F2, F4, baseSiteOxdna3, lrfOf, oxdnaConstants, tetIndex, tetramerTable, potentialLines } from './common';
 import { sin as libmSin } from '../libm/sincos';
 import { pow as libmPow } from '../libm/pow';
+import { acos as libmAcos } from '../libm/acos';
 
 /** The per-tetramer tables of one neighbour set ("33" or "55"). */
 const SET_KEYS = ['cut0', 'cutc', 'cutlo', 'cuthi', 'cutlc', 'cuthc', 'a4', 'th4', 'dth4ast', 'b4', 'dth4c'] as const;
@@ -239,29 +240,29 @@ export class PairOxdna3Xstk extends Pair {
         const f2_55 = F2(r, kx, T.cut0_55[q55], T.cutlc_55[q55], T.cuthc_55[q55], T.cutlo_55[q55], T.cuthi_55[q55], blo, bhi, T.cutc_55[q55]);
         if (f2_33 === 0.0 && f2_55 === 0.0) continue;
         const cost1 = clamp(-dot(ax, bx));
-        const theta1 = Math.acos(cost1);
+        const theta1 = libmAcos(cost1);
         const f4t1 = F4(theta1, P.a1[ij], P.th1[ij], P.dth1ast[ij], P.b1[ij], P.dth1c[ij]);
         if (f4t1 === 0.0) continue;
         const cost2 = clamp(-dot(ax, drn));
-        const theta2 = Math.acos(cost2);
+        const theta2 = libmAcos(cost2);
         const f4t2 = F4(theta2, P.a2[ij], P.th2[ij], P.dth2ast[ij], P.b2[ij], P.dth2c[ij]);
         if (f4t2 === 0.0) continue;
         const cost3 = clamp(dot(bx, drn));
-        const theta3 = Math.acos(cost3);
+        const theta3 = libmAcos(cost3);
         const f4t3 = F4(theta3, P.a3[ij], P.th3[ij], P.dth3ast[ij], P.b3[ij], P.dth3c[ij]);
         if (f4t3 === 0.0) continue;
         const cost4 = clamp(dot(az, bz));
-        const theta4 = Math.acos(cost4);
+        const theta4 = libmAcos(cost4);
         const f4t4_33 = F4(theta4, T.a4_33[q33], T.th4_33[q33], T.dth4ast_33[q33], T.b4_33[q33], T.dth4c_33[q33]);
         const f4t4_55 = F4(theta4, T.a4_55[q55], T.th4_55[q55], T.dth4ast_55[q55], T.b4_55[q55], T.dth4c_55[q55]);
         if (f4t4_33 === 0.0 && f4t4_55 === 0.0) continue;
         const cost7 = clamp(-dot(az, drn));
-        const theta7 = Math.acos(cost7);
+        const theta7 = libmAcos(cost7);
         const f4t7_33 = F4(theta7, P.a7[ij], P.th7_33[ij], P.dth7ast[ij], P.b7[ij], P.dth7c[ij]);
         const f4t7_55 = F4(theta7, P.a7[ij], P.th7_55[ij], P.dth7ast[ij], P.b7[ij], P.dth7c[ij]);
         if (f4t7_33 === 0.0 && f4t7_55 === 0.0) continue;
         const cost8 = clamp(dot(bz, drn));
-        const theta8 = Math.acos(cost8);
+        const theta8 = libmAcos(cost8);
         const f4t8_33 = F4(theta8, P.a8[ij], P.th8_33[ij], P.dth8ast[ij], P.b8[ij], P.dth8c[ij]);
         const f4t8_55 = F4(theta8, P.a8[ij], P.th8_55[ij], P.dth8ast[ij], P.b8[ij], P.dth8c[ij]);
         // energy: f4t1 f4t2 f4t3 (f2_33 f4t4_33 f4t7_33 f4t8_33 + f2_55 f4t4_55 f4t7_55 f4t8_55) factor_lj

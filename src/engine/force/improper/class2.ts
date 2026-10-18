@@ -1,6 +1,7 @@
 import { Bonded, StyleError, typeBounds, bondedVirial, type BondedCompute, type StyleContext } from '../types';
 import { atomIndex, termDelta } from '../bonded_util';
 import { fmtCoeff, parseNum } from '../util';
+import { libm } from '../../libm';
 
 /*
  * improper_style class2 — docs.lammps.org/improper_class2.html:
@@ -176,7 +177,7 @@ export class ImproperClass2 extends Bonded {
     let c = (d1[0] * d2[0] + d1[1] * d2[1] + d1[2] * d2[2]) / (r1 * r2);
     if (c > 1) c = 1;
     if (c < -1) c = -1;
-    return Math.acos(c);
+    return libm.acos(c);
   }
 
   /** Adds f = -coef * d(theta)/dx for the triplet to fk (indexed by the positions pi, ji, qi). */

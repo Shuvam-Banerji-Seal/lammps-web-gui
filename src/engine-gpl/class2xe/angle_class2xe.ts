@@ -21,6 +21,7 @@ import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext }
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { exp as libmExp } from '../libm/exp';
+import { acos as libmAcos } from '../libm/acos';
 
 // LAMMPS: static constexpr double SMALL = 0.001 (angle_class2xe.cpp)
 const SMALL = 0.001;
@@ -144,7 +145,7 @@ export class AngleClass2xe extends Bonded {
       s = 1 / s;
 
       // angle term
-      const dtheta = Math.acos(c) - this.theta0[t];
+      const dtheta = libmAcos(c) - this.theta0[t];
       const dtheta2 = dtheta * dtheta, dtheta3 = dtheta2 * dtheta, dtheta4 = dtheta3 * dtheta;
       const deAngle = 2 * this.k2[t] * dtheta + 3 * this.k3[t] * dtheta2 + 4 * this.k4[t] * dtheta3;
       const aA = -deAngle * s;

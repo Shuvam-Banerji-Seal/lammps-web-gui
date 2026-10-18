@@ -13,6 +13,7 @@ import { StyleError } from '../../engine/force/types';
 import type { Comb3Lib, Comb3Param } from './params';
 import type { Comb3Kernel } from './terms';
 import { pow as libmPow } from '../libm/pow';
+import { acos as libmAcos } from '../libm/acos';
 
 const v3 = (): Float64Array => new Float64Array(3);
 
@@ -240,7 +241,7 @@ export class Comb3RadTor {
     const rmu = (delrj[0] * delrk[0] + delrj[1] * delrk[1] + delrj[2] * delrk[2]) / (rij * rik);
     const rmul = -(delrj[0] * delrl[0] + delrj[1] * delrl[1] + delrj[2] * delrl[2]) / (rij * rjl);
     let srmul = Math.sqrt(1.0 - rmul * rmul);
-    if (Math.acos(rmul) > Math.PI) srmul = -srmul;
+    if (libmAcos(rmul) > Math.PI) srmul = -srmul;
     if (!(srmul > 0.1)) return;
     const fc1k = kern.fc(rik, pk);
     const fcp1k = kern.fcD(rik, pk);

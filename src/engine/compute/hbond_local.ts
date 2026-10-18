@@ -5,6 +5,7 @@ import { buildAtomMap, buildSpecial, type SpecialList } from '../atoms';
 import { NEIGHMASK } from '../neighbor';
 import type { System } from '../system';
 import type { ImageObject } from '../output/image_objects';
+import { libm } from '../libm';
 
 /*
  * compute hbond/local (docs.lammps.org/compute_hbond_local.html). Syntax, from the page:
@@ -227,7 +228,7 @@ export class ComputeHbondLocal extends Compute {
           }
           if (excluded) continue;
           const cosA = (dh[0] * d2[0] + dh[1] * d2[1] + dh[2] * d2[2]) / (rH * rDA);
-          const theta = Math.acos(Math.max(-1, Math.min(1, cosA))) * RAD2DEG;
+          const theta = libm.acos(Math.max(-1, Math.min(1, cosA))) * RAD2DEG;
           if (!(theta <= this.acut)) continue;
           const hv = [xa[3 * j] - xh[0], xa[3 * j + 1] - xh[1], xa[3 * j + 2] - xh[2]];
           const hdist = norm(hv);

@@ -26,6 +26,7 @@ import type { System } from '../../engine/system';
 import { FixNEBSpin, type NebSpinRound } from './fix_neb_spin';
 import { advanceSpins, minSpinTorqueNorm, spinMinSettings } from './min_spin';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { acos as libmAcos } from '../libm/acos';
 
 /** min_spin.cpp: DELAYSTEP (the energy test starts after it) and EPS_ENERGY (the energy test's normalization floor) */
 const DELAYSTEP = 5;
@@ -92,7 +93,7 @@ export const initialRotation = (spi: readonly number[], spf: readonly number[], 
   const kcrossy = kz * spix - kx * spiz;
   const kcrossz = kx * spiy - ky * spix;
   const kdots = kx * spix + ky * spiy + kz * spiz;
-  const omega = Math.acos(sidotsf) * fraction;
+  const omega = libmAcos(sidotsf) * fraction;
   const c = libmCos(omega), s = libmSin(omega);
   let spkx = spix * c + kcrossx * s + kx * kdots * (1 - c);
   let spky = spiy * c + kcrossy * s + ky * kdots * (1 - c);

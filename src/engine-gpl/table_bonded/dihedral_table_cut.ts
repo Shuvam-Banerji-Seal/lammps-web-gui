@@ -16,6 +16,7 @@ import { StyleError, typeBounds, type BondedCompute, type StyleContext } from '.
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { DihedralTable, numArg, tallyDihedral } from './dihedral_table';
 import { fmtG } from './tablefile';
+import { acos as libmAcos } from '../libm/acos';
 
 const MY_PI = 3.14159265358979323846;
 const MY_2PI = 6.28318530717958647692;
@@ -110,7 +111,7 @@ export class DihedralTableCut extends DihedralTable {
       if (c > 1.0 + TOLERANCE || c < -1.0 - TOLERANCE) this.problem(bc, [D.atoms[4 * n], D.atoms[4 * n + 1], D.atoms[4 * n + 2], D.atoms[4 * n + 3]], [i1, i2, i3, i4]);
       if (c > 1.0) c = 1.0;
       if (c < -1.0) c = -1.0;
-      let phil = Math.acos(c);
+      let phil = libmAcos(c);
       let sinphi = Math.sqrt(1.0 - c * c);
       sinphi = sinphi > SMALL ? sinphi : SMALL;
       // n123 = vb1 x vb2
@@ -170,8 +171,8 @@ export class DihedralTableCut extends DihedralTable {
       // angle/angle/torsion cutoff
       const k0 = this.aatK[type];
       const theta1 = this.aatTheta1[type];
-      const da1 = Math.acos(costh12) - theta1;
-      const da2 = Math.acos(costh23) - theta1;
+      const da1 = libmAcos(costh12) - theta1;
+      const da2 = libmAcos(costh23) - theta1;
       const dtheta = this.aatTheta2[type] - theta1;
       if (phil < 0) phil += MY_2PI;
       const { u: fphi, f: fpphi } = this.ufLookup(type, phil);
@@ -179,11 +180,11 @@ export class DihedralTableCut extends DihedralTable {
       let gtt = k0;
       let gpt = 0;
       let gptt = 0;
-      if (Math.acos(costh12) > theta1) {
+      if (libmAcos(costh12) > theta1) {
         gt *= 1 - da1 * da1 / dtheta / dtheta;
         gpt = -k0 * 2 * da1 / dtheta / dtheta;
       }
-      if (Math.acos(costh23) > theta1) {
+      if (libmAcos(costh23) > theta1) {
         gtt *= 1 - da2 * da2 / dtheta / dtheta;
         gptt = -k0 * 2 * da2 / dtheta / dtheta;
       }

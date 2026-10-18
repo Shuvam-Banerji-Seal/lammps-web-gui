@@ -20,6 +20,7 @@ import { ANGSTROM } from '../../engine/force/kspace/ewald';
 import type { CustomProp } from '../../engine/types';
 import { chiralRadius, eunitOf } from './units';
 import { pow as libmPow } from '../libm/pow';
+import { acos as libmAcos } from '../libm/acos';
 
 /** LAMMPS: static constexpr double SMALL = 0.001 (angle_mesocnt.cpp). */
 const SMALL = 0.001;
@@ -141,7 +142,7 @@ export class AngleMesoCNT extends Bonded {
       let s = Math.sqrt(1.0 - c * c);
       if (s < SMALL) s = SMALL;
       s = 1.0 / s;
-      const dtheta = Math.acos(c) - this.theta0[type];
+      const dtheta = libmAcos(c) - this.theta0[type];
       let a: number, eangle: number;
       if (!this.buckling[type] || Math.abs(dtheta) < this.thetab[type]) {
         const tk = this.kh[type] * dtheta;

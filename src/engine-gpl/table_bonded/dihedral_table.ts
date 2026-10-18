@@ -19,6 +19,7 @@ import { Bonded, StyleError, typeBounds, type BondedCompute, type StyleContext }
 import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { cycLin, cycSpline, cycSplint } from './splines';
 import { TableFileReader, TokenError, WordStream, readTableText, splitWords } from './tablefile';
+import { acos as libmAcos } from '../libm/acos';
 
 const MY_PI = 3.14159265358979323846;
 const MY_2PI = 6.28318530717958647692;
@@ -420,7 +421,7 @@ export class DihedralTable extends Bonded {
       let cosPhi = -dot3(n123, n234);
       if (cosPhi > 1.0) cosPhi = 1.0;
       else if (cosPhi < -1.0) cosPhi = -1.0;
-      let phi = Math.acos(cosPhi);
+      let phi = libmAcos(cosPhi);
       if (dot3(n123, vb34) > 0.0) {
         phi = -phi; // negative dihedral angles are possible only in 3-D
         phi += MY_2PI; // ensure phi is always in the range 0 to 2*PI

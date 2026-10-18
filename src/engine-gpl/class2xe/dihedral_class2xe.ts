@@ -16,6 +16,7 @@ import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { bondedVirial, StyleError, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
+import { acos as libmAcos } from '../libm/acos';
 
 /** docs.lammps.org/dihedral_class2.html (class2xe section): "The class2xe dihedral style uses the potential". */
 const SMALL = 0.0000001;
@@ -215,7 +216,7 @@ export class DihedralClass2xe extends SimpleBonded {
       if (c > 1.0) c = 1.0;
       if (c < -1.0) c = -1.0;
       const cosphi = c;
-      let phi = Math.acos(c);
+      let phi = libmAcos(c);
 
       let sinphi = Math.sqrt(1.0 - c * c);
       sinphi = Math.max(sinphi, SMALL);
@@ -349,7 +350,7 @@ export class DihedralClass2xe extends SimpleBonded {
       let at2 = a1f2[type] * cos2phi;
       let at3 = a1f3[type] * cos3phi;
       sumbte = at1 + at2 + at3;
-      let da = Math.acos(costh12) - a1Theta[type];
+      let da = libmAcos(costh12) - a1Theta[type];
       edihedral += da * (at1 + at2 + at3);
       bt1 = a1f1[type] * sinphi;
       bt2 = 2.0 * a1f2[type] * libmSin(2.0 * phi);
@@ -364,7 +365,7 @@ export class DihedralClass2xe extends SimpleBonded {
       at2 = a2f2[type] * cos2phi;
       at3 = a2f3[type] * cos3phi;
       sumbte = at1 + at2 + at3;
-      da = Math.acos(costh23) - a2Theta[type];
+      da = libmAcos(costh23) - a2Theta[type];
       edihedral += da * (at1 + at2 + at3);
       bt1 = -a2f1[type] * sinphi;
       bt2 = -2.0 * a2f2[type] * libmSin(2.0 * phi);
@@ -375,8 +376,8 @@ export class DihedralClass2xe extends SimpleBonded {
       }
 
       // angle / angle / torsion coupling
-      const da1 = Math.acos(costh12) - aatT1[type];
-      const da2 = Math.acos(costh23) - aatT2[type];
+      const da1 = libmAcos(costh12) - aatT1[type];
+      const da2 = libmAcos(costh23) - aatT2[type];
       edihedral += aatK[type] * da1 * da2 * cosphi;
       for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
         fabcd[i][j] -= aatK[type] * (cosphi * (da2 * dthetadr[0][i][j] - da1 * dthetadr[1][i][j]) + sinphi * da1 * da2 * dphidr[i][j]);

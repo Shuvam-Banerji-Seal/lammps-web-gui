@@ -21,6 +21,7 @@ import type { SimState } from '../../engine/types';
 import { buildAtomMap } from '../../engine/atoms';
 import { delta } from '../../engine/force/bonded_util';
 import { partnerMap } from './angle_amoeba';
+import { acos as libmAcos } from '../libm/acos';
 
 const RAD2DEG = 180.0 / Math.PI;
 
@@ -506,13 +507,13 @@ export class FixAmoebaBiTorsion extends Fix {
     const rcb = Math.sqrt(xcb * xcb + ycb * ycb + zcb * zcb);
     let cosine1 = (xt * xu + yt * yu + zt * zu) / rtru;
     cosine1 = Math.min(1.0, Math.max(-1.0, cosine1));
-    let angle1 = RAD2DEG * Math.acos(cosine1);
+    let angle1 = RAD2DEG * libmAcos(cosine1);
     let dot = xba * xu + yba * yu + zba * zu;
     if (dot < 0.0) angle1 = -angle1;
     const rdc = Math.sqrt(xdc * xdc + ydc * ydc + zdc * zdc);
     let cosine2 = (xu * xv + yu * yv + zu * zv) / rurv;
     cosine2 = Math.min(1.0, Math.max(-1.0, cosine2));
-    let angle2 = RAD2DEG * Math.acos(cosine2);
+    let angle2 = RAD2DEG * libmAcos(cosine2);
     dot = xcb * xv + ycb * yv + zcb * zv;
     if (dot < 0.0) angle2 = -angle2;
     const grid = this.grids[btype - 1];

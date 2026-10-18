@@ -9,6 +9,7 @@ import type { Geometry } from '../domain';
 import type { Neighbor, NeighList } from '../neighbor';
 import { NEIGHMASK, SBBITS } from '../neighbor';
 import { gplHook } from '../gplHooks';
+import { libm } from '../libm';
 
 /*
  * Local computes (docs.lammps.org/compute_bond_local.html and the angle,
@@ -253,7 +254,7 @@ export class ComputeTermLocal extends Compute {
         const d1 = fromOwner(bc, j, i), d3 = fromOwner(bc, j, kk);
         const r1 = norm(d1), r3 = norm(d3);
         const c = r1 > 0 && r3 > 0 ? Math.max(-1, Math.min(1, (d1[0] * d3[0] + d1[1] * d3[1] + d1[2] * d3[2]) / (r1 * r3))) : 1;
-        vals.theta = Math.acos(c) * RAD2DEG;
+        vals.theta = libm.acos(c) * RAD2DEG;
         if (need('eng')) {
           vals.eng = list.type[k] > 0 ? termEnergy(s, geom, nb.bondedCopies(), kind, style!, list, k, map, scratch) : 0;
           for (const a of idx) for (let q = 0; q < 3; q++) scratch[3 * a + q] = 0;

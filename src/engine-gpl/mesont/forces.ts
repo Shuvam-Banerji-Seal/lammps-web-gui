@@ -12,6 +12,7 @@
 import type { MesocntTables } from './tables';
 import { dspline1, dxspline2, dyspline2, ds5, dsCubic, glNodes, glWeights, s5, sCubic, spline1, spline2 } from './tables';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { acos as libmAcos } from '../libm/acos';
 
 /** LAMMPS: static constexpr double SWITCH = 1.0e-4, SMALL = 1.0e-6, RHOMIN = 10.0 (pair_mesocnt.cpp). */
 const SWITCH = 1.0e-4;
@@ -143,7 +144,7 @@ export const geometry = (
   const ez = l;
   // ey = ez x ex
   const ey = [ez[1] * ex[2] - ez[2] * ex[1], ez[2] * ex[0] - ez[0] * ex[2], ez[0] * ex[1] - ez[1] * ex[0]];
-  const alpha = dot3(m, ey) < 0 ? Math.acos(psi) : 2 * Math.PI - Math.acos(psi);
+  const alpha = dot3(m, ey) < 0 ? libmAcos(psi) : 2 * Math.PI - libmAcos(psi);
   const delr1 = [r1[0] - rbar[0], r1[1] - rbar[1], r1[2] - rbar[2]];
   const delr2 = [r2[0] - rbar[0], r2[1] - rbar[1], r2[2] - rbar[2]];
   const delp1 = [p1[0] - pbar[0], p1[1] - pbar[1], p1[2] - pbar[2]];

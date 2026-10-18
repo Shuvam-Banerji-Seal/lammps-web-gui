@@ -99,7 +99,7 @@ const callFn = (fn: string, f: Fn[], args: RNode[], zbl: ZblConst | null): Fn =>
     case 'tan': return (e) => Math.tan(a(e));
     case 'cot': return (e) => 1 / Math.tan(a(e));
     case 'asin': return (e) => Math.asin(a(e));
-    case 'acos': return (e) => Math.acos(a(e));
+    case 'acos': return (e) => libm.acos(a(e));
     case 'atan': return (e) => Math.atan(a(e));
     case 'sinh': return (e) => Math.sinh(a(e));
     case 'cosh': return (e) => Math.cosh(a(e));

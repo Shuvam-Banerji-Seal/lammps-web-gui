@@ -1,6 +1,7 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28): the PTM library (Polyhedral Template Matching, PM Larsen, MIT licence), src/PTM/ptm_quat.cpp at LAMMPS commit b332f28 (https://github.com/lammps/lammps). Copyright (c) 2016 PM Larsen (MIT, see LICENSE.ptm). The LAMMPS compute that uses it (src/PTM/compute_ptm_atom.cpp) is GPL-2.0; this file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
+import { acos as libmAcos } from '../libm/acos';
 
 // Generator tables (ptm_quat.cpp), one row per symmetry operation, [w, x, y, z].
 const generator_cubic: number[][] = [
@@ -313,5 +314,5 @@ export function quat_quick_misorientation(q1: number[], q2: number[]): number {
 }
 
 export function quat_misorientation(q1: number[], q2: number[]): number {
-        return Math.acos(quat_quick_misorientation(q1, q2));
+        return libmAcos(quat_quick_misorientation(q1, q2));
 }

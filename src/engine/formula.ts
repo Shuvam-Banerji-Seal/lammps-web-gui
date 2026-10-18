@@ -393,7 +393,7 @@ const callMath = (n: Extract<Node, { t: 'call' }>, env: FormulaEnv, mode: Mode, 
     });
     case 'acos': return map1(arg(0), (x) => {
       if (x < -1 || x > 1) throw new StyleError(`arccos of invalid value in variable formula "${src}"`);
-      return Math.acos(x);
+      return libm.acos(x);
     });
     case 'atan': return map1(arg(0), Math.atan);
     case 'atan2': return map2(arg(0), arg(1), Math.atan2);

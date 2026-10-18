@@ -19,6 +19,7 @@
 import { SimpleBonded, atomIndex, delta } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { StyleError, type BondedCompute } from '../../engine/force/types';
+import { acos as libmAcos } from '../libm/acos';
 
 // LAMMPS: static constexpr double SMALL = 0.001 (angle_cross.cpp)
 const SMALL = 0.001;
@@ -80,7 +81,7 @@ export class AngleCross extends SimpleBonded {
       }
       let eang = kss[t] * dr1 * dr2;
       // bond-angle term
-      const dtheta = Math.acos(c) - th0[t];
+      const dtheta = libmAcos(c) - th0[t];
       const aa1 = s * dr1 * kbs0[t];
       const aa2 = s * dr2 * kbs1[t];
       let aa11 = (aa1 * c) / rsq1;

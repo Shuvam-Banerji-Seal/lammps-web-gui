@@ -1,6 +1,7 @@
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK } from '../../neighbor';
 import { parseNum, joinPotentialEntries } from '../util';
+import { libm } from '../../libm';
 
 /*
  * pair_style threebody/table — docs.lammps.org/pair_threebody_table.html
@@ -383,7 +384,7 @@ export class PairThreebodyTable extends Pair {
           const dJx = nDx[J], dJy = nDy[J], dJz = nDz[J];
           const dKx = nDx[K], dKy = nDy[K], dKz = nDz[K];
           const cosT = (dJx * dKx + dJy * dKy + dJz * dKz) / (rJ * rK);
-          const theta = (Math.acos(cosT > 1 ? 1 : cosT < -1 ? -1 : cosT) * 180) / Math.PI;
+          const theta = (libm.acos(cosT > 1 ? 1 : cosT < -1 ? -1 : cosT) * 180) / Math.PI;
           const mm = gridIndexIn(theta, tab.gt, tab.dth);
           if (mm < 0) continue;
           const row = tab.sym ? tab.off[a] + (b - a) * 2 * n + mm : (a * n + b) * 2 * n + mm;

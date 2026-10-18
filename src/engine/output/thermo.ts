@@ -6,6 +6,7 @@ import { totalVirial } from '../force/types';
 import { massOf } from '../atoms';
 import { generalBoxFromRestricted, rotateTensorToGeneral, type GeneralBox } from '../triclinic_general';
 import { checkCFormat, compileCFormat, type ValueKind } from '../cformat';
+import { libm } from '../libm';
 
 /*
  * Thermodynamic output — docs.lammps.org/thermo_style.html and
@@ -375,15 +376,15 @@ export class Thermo {
       case 'cellc': return Math.sqrt(g.lz * g.lz + g.xz * g.xz + g.yz * g.yz);
       case 'cellalpha': {
         const b = Math.sqrt(g.ly * g.ly + g.xy * g.xy), c = Math.sqrt(g.lz * g.lz + g.xz * g.xz + g.yz * g.yz);
-        return (Math.acos((g.xy * g.xz + g.ly * g.yz) / (b * c)) * 180) / Math.PI;
+        return (libm.acos((g.xy * g.xz + g.ly * g.yz) / (b * c)) * 180) / Math.PI;
       }
       case 'cellbeta': {
         const c = Math.sqrt(g.lz * g.lz + g.xz * g.xz + g.yz * g.yz);
-        return (Math.acos(g.xz / c) * 180) / Math.PI;
+        return (libm.acos(g.xz / c) * 180) / Math.PI;
       }
       case 'cellgamma': {
         const b = Math.sqrt(g.ly * g.ly + g.xy * g.xy);
-        return (Math.acos(g.xy / b) * 180) / Math.PI;
+        return (libm.acos(g.xy / b) * 180) / Math.PI;
       }
       case 'pxx': case 'pyy': case 'pzz': case 'pxy': case 'pxz': case 'pyz':
         if (this.triclinicGeneral) {

@@ -1,5 +1,5 @@
 /*
- * The C library functions exp, log, sin, cos, erf and erfc as the native binary computes them. The engine calls libm.exp,
+ * The C library functions exp, log, sin, cos, erf, erfc and acos as the native binary computes them. The engine calls libm.exp,
  * libm.log, libm.sin and libm.cos instead of Math.exp, Math.log, Math.sin and Math.cos, which differ from the C library (glibc) in the last bit for
  * a few percent of arguments; a one-ulp difference in a random number or a rotation changes chaotic trajectories and
  * the atoms that land exactly on a cutoff. The exact versions are ports of glibc in the GPL module
@@ -9,7 +9,7 @@
  */
 export const libm: {
   exp: (x: number) => number; log: (x: number) => number; sin: (x: number) => number; cos: (x: number) => number;
-  erf: (x: number) => number; erfc: (x: number) => number;
+  erf: (x: number) => number; erfc: (x: number) => number; acos: (x: number) => number;
 } = {
   exp: Math.exp,
   log: Math.log,
@@ -18,6 +18,7 @@ export const libm: {
   // JavaScript has no erf or erfc: the engine's own series below until the session installs the C library's
   erf: (x: number) => erfSeries(x),
   erfc: (x: number) => erfcExact(x),
+  acos: Math.acos,
 };
 
 /**

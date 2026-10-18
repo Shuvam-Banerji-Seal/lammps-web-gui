@@ -18,6 +18,7 @@ import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF2, DF4, DF6, F2, F4, F6, lrfOf, oxdnaConstants, stackingSiteOxdna1, type StackRule, potentialLines } from './common';
 import { sin as libmSin } from '../libm/sincos';
+import { acos as libmAcos } from '../libm/acos';
 
 const CX2_NAMES = ['k_cxst', 'cut_cxst_0', 'cut_cxst_c', 'cut_cxst_lo', 'cut_cxst_hi',
   'a_cxst1', 'theta_cxst1_0', 'dtheta_cxst1_ast', 'a_cxst4', 'theta_cxst4_0', 'dtheta_cxst4_ast',
@@ -179,23 +180,23 @@ export class PairOxdna2Coaxstk extends Pair {
         for (let c = 0; c < 3; c++) drn[c] = delr[c] * rinv;
         const ij = atype * nt + btype;
         const cost1 = clamp(-dot(ax, bx));
-        const theta1 = Math.acos(cost1);
+        const theta1 = libmAcos(cost1);
         const theta1p = 2 * PI - theta1;
         const f4f6t1 = F4(theta1, T.a1[ij], T.th1[ij], T.dth1ast[ij], T.b1[ij], T.dth1c[ij]) + F6(theta1, T.AA[ij], T.BB[ij]);
         if (f4f6t1 === 0.0) continue;
         const cost4 = clamp(dot(az, bz));
-        const theta4 = Math.acos(cost4);
+        const theta4 = libmAcos(cost4);
         const f4t4 = F4(theta4, T.a4[ij], T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij])
           + F4(theta4, T.a4[ij], PI - T.th4[ij], T.dth4ast[ij], T.b4[ij], T.dth4c[ij]);
         if (f4t4 === 0.0) continue;
         const cost5 = clamp(dot(drn, az));
-        const theta5 = Math.acos(cost5);
+        const theta5 = libmAcos(cost5);
         const theta5p = PI - theta5;
         const f4t5 = F4(theta5, T.a5[ij], T.th5[ij], T.dth5ast[ij], T.b5[ij], T.dth5c[ij])
           + F4(theta5p, T.a5[ij], T.th5[ij], T.dth5ast[ij], T.b5[ij], T.dth5c[ij]);
         if (f4t5 === 0.0) continue;
         const cost6 = clamp(dot(drn, bz));
-        const theta6 = Math.acos(cost6);
+        const theta6 = libmAcos(cost6);
         const theta6p = PI - theta6;
         const f4t6 = F4(theta6, T.a6[ij], T.th6[ij], T.dth6ast[ij], T.b6[ij], T.dth6c[ij])
           + F4(theta6p, T.a6[ij], T.th6[ij], T.dth6ast[ij], T.b6[ij], T.dth6c[ij]);

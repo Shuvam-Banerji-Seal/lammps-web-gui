@@ -260,7 +260,7 @@ const angleOf = (a: number[], b: number[]): number => {
   let c = (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (Math.hypot(a[0], a[1], a[2]) * Math.hypot(b[0], b[1], b[2]));
   if (c > 1) c = 1;
   if (c < -1) c = -1;
-  return Math.acos(c);
+  return libm.acos(c);
 };
 
 /**

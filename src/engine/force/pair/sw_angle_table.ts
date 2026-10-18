@@ -1,6 +1,7 @@
 import { StyleError, type StyleContext } from '../types';
 import { PairSWBase } from './sw';
 import { AngleTable, readAngleSection } from '../angleTable49';
+import { libm } from '../../libm';
 
 /*
  * pair_style sw/angle/table — docs.lammps.org/pair_sw_angle_table.html
@@ -88,7 +89,7 @@ export class PairSWAngleTable extends PairSWBase {
     const tab = this.tabOf[t3];
     if (!tab) return false;
     const cc = c > 1 ? 1 : c < -1 ? -1 : c;
-    const theta = (Math.acos(cc) * 180) / Math.PI;
+    const theta = (libm.acos(cc) * 180) / Math.PI;
     this.aE = tab.energy(theta);
     const s = Math.sqrt(1 - cc * cc);
     // dE/dcos = dE/dtheta_deg * dtheta_deg/dcos = (-D) * (-(180/pi)/sin) = D * (180/pi) / sin

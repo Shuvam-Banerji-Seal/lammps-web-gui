@@ -16,6 +16,7 @@ import { DEG2RAD, MIN_SINE, type RxSystem, type ThreeBodyList } from './core';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
+import { acos as libmAcos } from '../libm/acos';
 
 const SQR = (x: number) => x * x;
 const CUBE = (x: number) => x * x * x;
@@ -40,7 +41,7 @@ export const calculateTheta = (dji: Float64Array, oji: number, dji_len: number, 
   let cos = dot3(dji, oji, djk, ojk) / (dji_len * djk_len);
   if (cos > 1.0) cos = 1.0;
   if (cos < -1.0) cos = -1.0;
-  return { theta: Math.acos(cos), cos };
+  return { theta: libmAcos(cos), cos };
 };
 
 /**

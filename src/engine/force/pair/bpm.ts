@@ -1,6 +1,7 @@
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../types';
 import { NEIGHMASK, SBBITS } from '../../neighbor';
 import { parseNum, fmtCoeff } from '../util';
+import { tallyAtom } from './lj_cut';
 
 /*
  * pair_style bpm/spring — docs.lammps.org/pair_bpm_spring.html (texts: plans/lammps-docs-live/pair_bpm_spring.rst).
@@ -114,7 +115,10 @@ export class PairBpmSpring extends Pair {
         const fx = dx * fpair, fy = dy * fpair, fz = dz * fpair;
         fxi += fx; fyi += fy; fzi += fz;
         f[3 * j] -= fx; f[3 * j + 1] -= fy; f[3 * j + 2] -= fz;
-        evdwl += factor * (0.5 * kk[t] * dr * dr + 0.25 * (anh ? ka[t] * dr ** 4 : 0));
+        const e = factor * (0.5 * kk[t] * dr * dr + 0.25 * (anh ? ka[t] * dr ** 4 : 0));
+        evdwl += e;
+        // per-atom energy and virial, as native LAMMPS does (src/BPM/pair_bpm_spring.cpp compute at b332f28: ev_tally)
+        if (pc.eatom || pc.vatom) tallyAtom(pc, i, j, e, fpair, dx, dy, dz);
       }
       f[3 * i] += fxi; f[3 * i + 1] += fyi; f[3 * i + 2] += fzi;
     }

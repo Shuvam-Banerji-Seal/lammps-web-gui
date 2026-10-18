@@ -14,6 +14,7 @@
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum, fmtCoeff } from '../../engine/force/util';
+import { tallyAtom } from '../../engine/force/pair/lj_cut';
 
 export class PairBpmPeri extends Pair {
   readonly name = 'bpm/peri';
@@ -96,6 +97,9 @@ export class PairBpmPeri extends Pair {
         fxi += fx; fyi += fy; fzi += fz;
         f[3 * j] -= fx; f[3 * j + 1] -= fy; f[3 * j + 2] -= fz;
         evdwl += 0.5 * rk * dr;
+        // ev_tally(i, j, ..., evdwl, 0, fpair * vfrac_eff, del): the per-atom virial carries the extra vfrac factor (the
+        // global virial is the fdotr sum of the force densities, as in pair_bpm_peri.cpp)
+        if (pc.eatom || pc.vatom) tallyAtom(pc, i, j, 0.5 * rk * dr, fpair * vEff, dx, dy, dz);
       }
       f[3 * i] += fxi; f[3 * i + 1] += fyi; f[3 * i + 2] += fzi;
     }

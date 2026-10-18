@@ -223,6 +223,8 @@ export class BondBpmRotational extends BondBPMBase {
       v[0] += rf[0] * fi1[0]; v[1] += rf[1] * fi1[1]; v[2] += rf[2] * fi1[2];
       v[3] += rf[0] * fi1[1]; v[4] += rf[0] * fi1[2]; v[5] += rf[1] * fi1[2];
       if (bc.eatom) { bc.eatom[i1] += 0.5 * L.ebond; bc.eatom[i2] += 0.5 * L.ebond; }
+      // per-atom: half of v to each atom (Bond::ev_tally_xyz, newton_bond on)
+      if (bc.vatom) { const va = bc.vatom; const w = [rf[0] * fi1[0], rf[1] * fi1[1], rf[2] * fi1[2], rf[0] * fi1[1], rf[0] * fi1[2], rf[1] * fi1[2]]; for (let c = 0; c < 6; c++) { va[6 * i1 + c] += 0.5 * w[c]; va[6 * i2 + c] += 0.5 * w[c]; } }
     }
   }
 

@@ -456,6 +456,8 @@ export class BondBpmPeri extends BondBPMBase {
       v[0] += dx * dx * fv; v[1] += dy * dy * fv; v[2] += dz * dz * fv;
       v[3] += dx * dy * fv; v[4] += dx * dz * fv; v[5] += dy * dz * fv;
       if (bc.eatom) { bc.eatom[i1] += 0.5 * eb; bc.eatom[i2] += 0.5 * eb; }
+      // per-atom: half of v to each atom (Bond::ev_tally, newton_bond on)
+      if (bc.vatom) { const va = bc.vatom; const w = [dx * dx * fv, dy * dy * fv, dz * dz * fv, dx * dy * fv, dx * dz * fv, dy * dz * fv]; for (let c = 0; c < 6; c++) { va[6 * i1 + c] += 0.5 * w[c]; va[6 * i2 + c] += 0.5 * w[c]; } }
       const crit = this.s00[t] - this.alpha[t] * stretch;
       if (stretch < sminNew[i1]) sminNew[i1] = stretch;
       if (stretch < sminNew[i2]) sminNew[i2] = stretch;

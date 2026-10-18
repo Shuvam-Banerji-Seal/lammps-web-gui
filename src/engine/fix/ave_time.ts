@@ -351,13 +351,14 @@ export class FixAveTime extends Fix {
         throw new StyleError(`fix ${this.id} (ave/time): off value ${m + 1} is out of range 1..${this.inputs.length}`);
       }
     }
-    const exts = this.inputs.map((r) => this.extOf(r));
-    const allExt = exts.length > 0 && exts.every((e) => e === 1);
     this.scalarFlag = false;
     this.vectorFlag = false;
     this.arrayFlag = false;
     this.extlist = null;
+    this.extarray = 0;
     if (this.mode === 'scalar') {
+      const exts = this.inputs.map((r) => this.extOf(r));
+      const allExt = exts.length > 0 && exts.every((e) => e === 1);
       this.len = 1;
       this.lenSet = true;
       if (this.inputs.length === 1) {
@@ -371,28 +372,42 @@ export class FixAveTime extends Fix {
         this.extlist = exts;
       }
     } else if (this.inputs.length === 1) {
+      // As native LAMMPS does (src/fix_ave_time.cpp at b332f28, init): a whole vector keeps its flag (or its
+      // per-element list), a column of an array takes the array's flag
       this.vectorFlag = true;
-      this.extvector = exts[0];
+      const r = this.inputs[0];
+      const src = r.kind === 'c' ? this.sys.compute(r.id) : r.kind === 'f' ? this.sys.fix(r.id) : null;
+      if (!src) this.extvector = 0;
+      else if (r.index !== null) this.extvector = src.extarray;
+      else {
+        this.extvector = src.extvector;
+        this.extlist = src.extlist ? src.extlist.slice() : null;
+      }
     } else {
+      // an array: every input must have the same flag, and a vector with a per-element list has none
       this.arrayFlag = true;
       this.sizeArrayCols = this.inputs.length;
-      this.extvector = allExt ? 1 : 0;
+      this.extvector = 0;
+      let ext = -2;
+      for (const r of this.inputs) {
+        const src = r.kind === 'c' ? this.sys.compute(r.id) : r.kind === 'f' ? this.sys.fix(r.id) : null;
+        const e = !src ? 0 : r.index !== null ? src.extarray : src.extlist ? -1 : src.extvector;
+        if (e === -1 || (ext > -2 && e !== ext)) {
+          throw new StyleError(`fix ${this.id} (ave/time): Fix ave/time cannot set output array intensive/extensive from these inputs`);
+        }
+        ext = e;
+      }
+      this.extarray = ext;
     }
     this.ensureAlloc();
   }
 
-  /** Intensive (0) or extensive (1) of one input value. */
+  /** Intensive (0) or extensive (1) of one scalar input value (mode scalar). */
   private extOf(r: Ref): number {
     if (r.kind === 'v') return 0; // "Values produced by a variable are treated as intensive"
-    if (r.kind === 'c') {
-      const c = this.sys.compute(r.id);
-      if (r.index === null) return this.mode === 'vector' ? c.extvector : c.extscalar;
-      if (this.mode === 'vector') return 0; // array columns carry no per-column flag
-      return c.extlist ? c.extlist[r.index - 1] ?? 0 : c.extvector;
-    }
-    const f = this.sys.fix(r.id);
-    if (r.index === null) return this.mode === 'vector' ? f.extvector : f.extscalar;
-    return this.mode === 'vector' ? 0 : f.extvector;
+    const src = r.kind === 'c' ? this.sys.compute(r.id) : this.sys.fix(r.id);
+    if (r.index === null) return src.extscalar;
+    return src.extlist ? src.extlist[r.index - 1] ?? 0 : src.extvector;
   }
 
   private ensureAlloc(): void {

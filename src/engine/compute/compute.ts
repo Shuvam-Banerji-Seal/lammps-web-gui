@@ -50,6 +50,8 @@ export abstract class Compute {
   extvector = 0;
   /** Per-component extensivity for vectors that mix both, or null. */
   extlist: number[] | null = null;
+  /** 1 = every element of the global array is extensive (thermo c_ID[I][J] is normalized), 0 = intensive. */
+  extarray = 0;
   /** Is a temperature compute (has dof, may remove a velocity bias). */
   tempFlag = false;
   pressFlag = false;

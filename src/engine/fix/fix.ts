@@ -48,6 +48,8 @@ export abstract class Fix {
   extvector = 0;
   /** Per-element extensive (1) or intensive (0) flags of a global vector, when they differ (fix ave/time). */
   extlist: number[] | null = null;
+  /** 1 = every element of the global array is extensive (thermo f_ID[I][J] is normalized), 0 = intensive. */
+  extarray = 0;
   /** Per-atom outputs. */
   peratomFlag = false;
   sizePeratomCols = 0;

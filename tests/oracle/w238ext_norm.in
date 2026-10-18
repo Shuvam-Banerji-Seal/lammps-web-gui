@@ -1,0 +1,38 @@
+# oracle: thermo_modify norm yes divides extensive array elements by the atom count (fix vector, fix ave/time array and column inputs, fix ave/moments), as src/thermo.cpp does with extarray
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.4e-13, atoms 6.0e-14.
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.0 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+fix             1 all nve
+compute         ke all ke
+compute         t all temp
+compute         red all reduce sum vx vy vz vx vy vz
+variable        tt equal c_t
+# fix vector of two extensive scalars: an extensive array
+fix             fv all vector 5 c_ke c_thermo_pe
+# mode scalar: a vector whose elements keep their own flags (extensive, intensive)
+fix             as all ave/time 2 5 10 c_ke v_tt
+# mode vector, one whole extensive vector: extensive vector
+fix             a1 all ave/time 2 5 10 c_t mode vector
+# mode vector, two extensive vectors: an extensive array
+fix             a2 all ave/time 2 5 10 c_t c_red mode vector
+# mode vector, the columns of an extensive array: an extensive array again
+fix             a3 all ave/time 10 1 10 f_a2[1] f_a2[2] mode vector
+# moments of two extensive scalars: an extensive vector and array
+fix             am all ave/moments 2 5 10 c_ke c_thermo_pe mean variance
+# fix vector has no rows before its first sample: the first run fills it
+thermo_style    custom step pe
+thermo          10
+run             10
+thermo_style    custom step pe c_ke f_fv[1][1] f_fv[1][2] f_as[1] f_as[2] f_a1[1] f_a2[1][1] f_a2[4][2] f_a3[2][1] f_a3[5][2] f_am[1] f_am[3] f_am[1][1] f_am[4][1]
+thermo_modify   format float %.15g
+thermo          10
+run             30

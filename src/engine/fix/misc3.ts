@@ -100,7 +100,7 @@ export class FixVector extends Fix {
       }
       this.arrayFlag = true;
       this.sizeArrayCols = this.inputs.length;
-      this.extvector = exts[0];
+      this.extarray = exts[0];
     }
   }
 
@@ -118,15 +118,15 @@ export class FixVector extends Fix {
     return r;
   }
 
-  /** Intensive (0) or extensive (1) of one input value (refs.ts scalar rules). */
+  /**
+   * Intensive (0) or extensive (1) of one input value: an element of a vector takes its own flag when the vector
+   * has a per-element list (as native LAMMPS does, src/fix_vector.cpp at b332f28: "else value = extlist[argindex-1]").
+   */
   private extOf(r: Ref): number {
     if (r.kind === 'v') return 0; // "Values produced by a variable are treated as intensive."
-    if (r.kind === 'c') {
-      const c = this.sys.compute(r.id);
-      return r.index === null ? c.extscalar : c.extvector;
-    }
-    const f = this.sys.fix(r.id);
-    return r.index === null ? f.extscalar : f.extvector;
+    const src = r.kind === 'c' ? this.sys.compute(r.id) : this.sys.fix(r.id);
+    if (r.index === null) return src.extscalar;
+    return src.extlist ? src.extlist[r.index - 1] ?? 0 : src.extvector;
   }
 
   /** Stores the inputs for the current step; nmax discards the oldest row. */

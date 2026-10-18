@@ -151,17 +151,17 @@ describe('Session: examples/melt (LAMMPS log.8Apr21.melt.g++.1)', () => {
 
 describe('Session: errors are explicit and carry the line', () => {
   it('rejects an unsupported command with its line number and the supported list', async () => {
-    const { error, events } = await runScript('units lj\n\nfenix 1 2 3\n');
+    const { error, events } = await runScript('units lj\n\nfrobnicate 1 2 3\n');
     expect(error).toBeInstanceOf(EngineError);
     expect(error!.line).toBe(3);
-    expect(error!.command).toBe('fenix');
+    expect(error!.command).toBe('frobnicate');
     expect(error!.message).toMatch(/not supported/);
     expect(error!.message).toContain(SUPPORTED_COMMANDS.join(', '));
     expect(events.some((e) => e.kind === 'error' && e.line === 3)).toBe(true);
   });
 
   it('explains commands a browser cannot run, and does not list them as supported', async () => {
-    for (const [cmd, why] of [['python', /no Python interpreter/]] as const) {
+    for (const [cmd, why] of [['python', /no Python interpreter/], ['fenix', /runs no MPI ranks/]] as const) {
       expect(SUPPORTED_COMMANDS).not.toContain(cmd);
       const { error } = await runScript(`units lj\n${cmd} gpu 1\n`);
       expect(error?.command).toBe(cmd);

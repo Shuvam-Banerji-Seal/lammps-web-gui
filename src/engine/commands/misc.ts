@@ -221,5 +221,8 @@ export const MISC_COMMANDS: Record<string, Handler> = {
   plugin: browserOnly('plugin', 'is not available: plugins are native shared libraries'),
   mdi: browserOnly('mdi', 'is not available in the browser engine'),
   kim: browserOnly('kim', 'is not available: OpenKIM models are native libraries'),
+  // fenix.rst: "This command initializes `Fenix <https://github.com/sandialabs/fenix>`_ for online process recovery.
+  // From this point on, Fenix claims a number of ranks to be used as spares." The browser engine runs no MPI ranks.
+  fenix: browserOnly('fenix', 'is not available: Fenix recovers failed MPI processes, and the browser engine runs no MPI ranks'),
   geturl: browserOnly('geturl', 'is not available: the notebook only reads files you add to it'),
 };

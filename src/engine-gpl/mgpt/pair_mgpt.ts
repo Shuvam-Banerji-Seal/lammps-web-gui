@@ -620,7 +620,8 @@ export class PairMGPT extends Pair {
             const k = nlistShort[kx];
 
             // Search lists of j and k, and see if 1) j is in k-list (closed triplet) 2) j and k have a common neighbor
-            const cij = 1, cki = 1;
+            // native c_ij = c_ki = 1: every short-list partner of i is bonded to it, so only c_jk (closed or open
+            // triplet) decides which of T12, T23 and T31 exist
             const sij = i < j ? 1 : -1;
             const sjk = j < k ? 1 : -1;
             const ski = k < i ? 1 : -1;
@@ -646,9 +647,9 @@ export class PairMGPT extends Pair {
               tripletDefer = 0;
 
               dv[DIJ] = dv[DJK] = dv[DKI] = 0.0;
-              if (cij && cjk) t12 = this.getTriplet(xx, j, i, k, T12, dv, DIJ, DJK);
-              if (cki && cjk) t23 = this.getTriplet(xx, k, i, j, T23, dv, DKI, DJK);
-              if (cij && cki) t31 = this.getTriplet(xx, i, j, k, T31, dv, DIJ, DKI);
+              if (cjk) t12 = this.getTriplet(xx, j, i, k, T12, dv, DIJ, DJK);
+              if (cjk) t23 = this.getTriplet(xx, k, i, j, T23, dv, DKI, DJK);
+              t31 = this.getTriplet(xx, i, j, k, T31, dv, DIJ, DKI);
 
               fsave[0] = fix; fsave[1] = fiy; fsave[2] = fiz;
               fsave[3] = fjx; fsave[4] = fjy; fsave[5] = fjz;
@@ -845,7 +846,7 @@ export class PairMGPT extends Pair {
                   if (nlistShort[mj2] === nlistShort[mk]) {
                     // Closed quadruplet
                     const m = nlistShort[mj2];
-                    const cjm = 1, ckm = 1;
+                    // native c_jm = c_km = 1: m is in the short lists of both j and k
 
                     const sim = i < m ? 1 : -1;
                     const sjm = j < m ? 1 : -1;
@@ -859,12 +860,13 @@ export class PairMGPT extends Pair {
                       while (mi < first[i + 1] && nlistShort[mi] < m) mi = mi + 1;
                       const cim = mi < first[i + 1] && nlistShort[mi] === m ? 1 : 0;
 
-                      if (cim === 0 || cjk === 0 || (cjk && cim && m < k)) {
+                      // native: c_im == 0 || c_jk == 0 || (c_jk && c_im && m < k)
+                      if (cim === 0 || cjk === 0 || m < k) {
                         if (tripletDefer) {
                           dv[DIJ] = dv[DJK] = dv[DKI] = 0.0;
-                          if (cij && cjk) t12 = this.getTriplet(xx, j, i, k, T12, dv, DIJ, DJK);
-                          if (cki && cjk) t23 = this.getTriplet(xx, k, i, j, T23, dv, DKI, DJK);
-                          if (cij && cki) t31 = this.getTriplet(xx, i, j, k, T31, dv, DIJ, DKI);
+                          if (cjk) t12 = this.getTriplet(xx, j, i, k, T12, dv, DIJ, DJK);
+                          if (cjk) t23 = this.getTriplet(xx, k, i, j, T23, dv, DKI, DJK);
+                          t31 = this.getTriplet(xx, i, j, k, T31, dv, DIJ, DKI);
                           tripletDefer = 0;
                         }
 
@@ -884,9 +886,9 @@ export class PairMGPT extends Pair {
 
                         dv[DIM] = dv[DJM] = dv[DKM] = 0.0;
                         let t45 = -1, t56 = -1, t64 = -1;
-                        if (t12 >= 0 && ckm && cim) t45 = this.getTriplet(xx, m, i, k, T45, dv, DIM, DKM);
-                        if (t23 >= 0 && cim && cjm) t56 = this.getTriplet(xx, m, i, j, T56, dv, DIM, DJM);
-                        if (t31 >= 0 && cjm && ckm) t64 = this.getTriplet(xx, m, j, k, T64, dv, DJM, DKM);
+                        if (t12 >= 0 && cim) t45 = this.getTriplet(xx, m, i, k, T45, dv, DIM, DKM);
+                        if (t23 >= 0 && cim) t56 = this.getTriplet(xx, m, i, j, T56, dv, DIM, DJM);
+                        if (t31 >= 0) t64 = this.getTriplet(xx, m, j, k, T64, dv, DJM, DKM);
 
                         const quad = (ta: number, tb: number): void => {
                           // trd_update_4(ta, tb)

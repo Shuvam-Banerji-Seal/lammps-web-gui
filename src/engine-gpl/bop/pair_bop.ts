@@ -598,7 +598,6 @@ export class PairBOP extends Pair {
       if (ktmp === jtmp) continue;
       const tIK = bopIndex[i] + ktmp;
       const k = nbr1[tIK];
-      const ktype = map[type[k]];
       const nlistk = bopTotal[k];
       const disIK0 = d1[3 * tIK], disIK1 = d1[3 * tIK + 1], disIK2 = d1[3 * tIK + 2];
       const rIK = r1[tIK];

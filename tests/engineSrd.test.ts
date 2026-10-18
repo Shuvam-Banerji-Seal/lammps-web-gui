@@ -51,9 +51,9 @@ describe('fix srd refusals name the keyword', () => {
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip shift possible 54979'))).toBe('');
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip shift yes 0'))).toMatch(/Invalid seed for Park/);
   });
-  it('accepts tstat yes without box deformation, and refuses it with fix deform', async () => {
+  it('accepts tstat yes with and without box deformation (native parity: tests/oracle/w256srd_*)', async () => {
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes'))).toBe('');
-    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes\nfix 3 all deform 1 x scale 1.0'))).toMatch(/tstat yes with fix deform/);
+    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes\nfix 3 all deform 1 x scale 1.0'))).toBe('');
   });
   it('runs fix deform without the thermostat (constant length rates), and refuses a time-varying rate by name', async () => {
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip\nfix 3 all deform 1 x scale 1.0'))).toBe('');
@@ -84,11 +84,10 @@ run 1
 `;
     expect(await errorOf(script)).toBe('');
   });
-  it('accepts overlap yes, and unbiased yes with tstat yes (refused only as tstat yes with fix deform, unless unbiased)', async () => {
+  it('accepts overlap yes, and unbiased yes with tstat yes, with and without fix deform', async () => {
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip overlap yes'))).toBe('');
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes unbiased yes'))).toBe('');
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes unbiased yes\nfix 3 all deform 1 x scale 1.0'))).toBe('');
-    expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes\nfix 3 all deform 1 x scale 1.0'))).toMatch(/tstat yes with fix deform/);
   });
   it('names an unknown keyword', async () => {
     expect(await errorOf(bath('fix 1 all srd 1 NULL 1.0 0.25 49894 bogus 3'))).toMatch(/Unknown fix srd keyword bogus/);

@@ -3,7 +3,7 @@ import { Session } from '../src/engine/interpreter';
 import type { EngineEvent, ThermoRow } from '../src/engine/types';
 
 /*
- * fix hmc (src/engine/fix/hmc.ts): hybrid Monte Carlo. The velocity stream,
+ * fix hmc (GPL port of src/MC/fix_hmc.cpp, src/engine-gpl/mc/fix_hmc.ts): hybrid Monte Carlo. The velocity stream,
  * per-cycle NVE trajectory and the force kept across a rejected move are pinned
  * by the w32hmc_accept / w32hmc_reject oracle cases (tests/oracle/). This file
  * checks the deterministic accept/reject limit, the argument errors and the
@@ -157,15 +157,17 @@ write_dump all custom mom_no.dump id vx vy vz
   });
 
   it('rejects unsupported and inconsistent arguments with a StyleError', async () => {
+    // Measured with native LAMMPS: each line stops with the message below (src/MC/fix_hmc.cpp at b332f28)
     const cases: [string, RegExp][] = [
-      [`fix h all hmc 1 12345 1.0 bogus\n`, /unknown keyword 'bogus'/],
-      [`fix h all hmc 1 12345\n`, /usage: fix ID group-ID hmc N seed T/],
+      [`fix h all hmc 1 12345 1.0 bogus\n`, /Unknown fix hmc keyword bogus/],
+      [`fix h all hmc 1 12345\n`, /Expected floating point parameter instead of NULL or empty string/],
       [`fix h all hmc 0 12345 1.0\n`, /N must be a positive integer/],
-      [`fix h all hmc 1 0 1.0\n`, /seed must be a positive integer/],
-      [`fix h all hmc 1 12345 -1.0\n`, /T must be > 0/],
-      [`fix h all hmc 1 12345 1.0 resample maybe\n`, /resample must be yes or no/],
-      [`fix h all hmc 1 12345 1.0 mom maybe\n`, /mom must be yes or no/],
-      [`fix h all hmc 1 12345 1.0 rigid 1\n`, /rigid 1: .*rigid HMC is not supported/],
+      [`fix h all hmc 1 0 1.0\n`, /Fix hmc seed must be > 0/],
+      [`fix h all hmc 1 12345 -1.0\n`, /Fix hmc temperature must be > 0.0/],
+      [`fix h all hmc 1 12345 1.0 resample maybe\n`, /Expected boolean parameter instead of 'maybe'/],
+      [`fix h all hmc 1 12345 1.0 mom maybe\n`, /Expected boolean parameter instead of 'maybe'/],
+      [`fix h all hmc 1 12345 1.0 rigid 1\n`, /Fix ID 1 for fix hmc does not point to fix rigid\/small or rigid\/nve\/small/],
+      [`fix h all hmc 1 12345 1.0 rigid 9\n`, /Unknown rigid fix id 9 for fix hmc/],
     ];
     for (const [fix, re] of cases) {
       const script = `${LJ}${fix}thermo_style custom step

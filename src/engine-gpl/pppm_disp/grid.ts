@@ -9,7 +9,9 @@
  * Copyright (2003) Sandia Corporation, distributed under the GNU General Public License, version 2 (GPL-2.0).
  * This file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
-import { sin as libmSin } from '../libm/sincos';
+// pppm_disp.cpp compute_gf, compute_gf_6, compute_qopt_ik and compute_qopt_6_ik call sin() alone (no cos of the same
+// argument), which the native binary's libm computes with its FMA build: sinFma, not the sincos() values of ./sincos
+import { sinFma as libmSin } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
 import { erfc as libmErfc } from '../libm/erf';
@@ -327,41 +329,48 @@ export const qoptDispersionIk = (N: [number, number, number], prd: [number, numb
   const inv2ew = 1.0 / (2 * g);
   const rtpi = Math.sqrt(Math.PI);
   const nb = 2;
+  // per axis and image the factors of the native loop, computed once (the same values as in the triple loop)
+  const axis = (n: number, unitk: number, len: number) => {
+    const per = new Float64Array(n), q = new Float64Array(5 * n), s = new Float64Array(5 * n), w = new Float64Array(5 * n);
+    for (let k = 0; k < n; k++) {
+      const kper = k - n * Math.floor((2 * k) / n);
+      per[k] = kper;
+      for (let a = -nb; a <= nb; a++) {
+        const qv = unitk * (kper + n * a);
+        const arg = 0.5 * qv * len / n;
+        q[5 * k + a + nb] = qv;
+        s[5 * k + a + nb] = libmExp(-qv * qv * inv2ew * inv2ew);
+        w[5 * k + a + nb] = arg !== 0.0 ? libmPow(libmSin(arg) / arg, ord) : 1.0;
+      }
+    }
+    return { per, q, s, w };
+  };
+  const X = axis(nx, unitkx, xprd), Y = axis(ny, unitky, yprd), Z = axis(nz, unitkz, zprd);
   let qopt = 0.0;
   for (let m = 0; m < nz; m++) {
-    const mper = m - nz * Math.floor((2 * m) / nz);
+    const mper = Z.per[m];
     for (let l = 0; l < ny; l++) {
-      const lper = l - ny * Math.floor((2 * l) / ny);
+      const lper = Y.per[l];
       for (let k = 0; k < nx; k++) {
-        const kper = k - nx * Math.floor((2 * k) / nx);
-        const sqk = Math.pow(unitkx * kper, 2.0) + Math.pow(unitky * lper, 2.0) + Math.pow(unitkz * mper, 2.0);
+        const kper = X.per[k];
+        const a1 = unitkx * kper, a2 = unitky * lper, a3 = unitkz * mper;
+        const sqk = a1 * a1 + a2 * a2 + a3 * a3;
         if (sqk === 0.0) continue;
         let sum1 = 0.0, sum2 = 0.0, sum3 = 0.0;
-        for (let ax = -nb; ax <= nb; ax++) {
-          const qx = unitkx * (kper + nx * ax);
-          const sx = libmExp(-qx * qx * inv2ew * inv2ew);
-          let wx = 1.0;
-          const argx = 0.5 * qx * xprd / nx;
-          if (argx !== 0.0) wx = libmPow(libmSin(argx) / argx, ord);
-          for (let ay = -nb; ay <= nb; ay++) {
-            const qy = unitky * (lper + ny * ay);
-            const sy = libmExp(-qy * qy * inv2ew * inv2ew);
-            let wy = 1.0;
-            const argy = 0.5 * qy * yprd / ny;
-            if (argy !== 0.0) wy = libmPow(libmSin(argy) / argy, ord);
-            for (let az = -nb; az <= nb; az++) {
-              const qz = unitkz * (mper + nz * az);
-              const sz = libmExp(-qz * qz * inv2ew * inv2ew);
-              let wz = 1.0;
-              const argz = 0.5 * qz * zprd / nz;
-              if (argz !== 0.0) wz = libmPow(libmSin(argz) / argz, ord);
+        for (let ax = 0; ax < 5; ax++) {
+          const qx = X.q[5 * k + ax], sx = X.s[5 * k + ax], wx = X.w[5 * k + ax];
+          for (let ay = 0; ay < 5; ay++) {
+            const qy = Y.q[5 * l + ay], sy = Y.s[5 * l + ay], wy = Y.w[5 * l + ay];
+            for (let az = 0; az < 5; az++) {
+              const qz = Z.q[5 * m + az], sz = Z.s[5 * m + az], wz = Z.w[5 * m + az];
               const dot1 = unitkx * kper * qx + unitky * lper * qy + unitkz * mper * qz;
               const dot2 = qx * qx + qy * qy + qz * qz;
               const rtdot2 = Math.sqrt(dot2);
               let term = (1 - 2 * dot2 * inv2ew * inv2ew) * sx * sy * sz
                 + 2 * dot2 * rtdot2 * inv2ew * inv2ew * inv2ew * rtpi * libmErfc(rtdot2 * inv2ew);
               term *= g * g * g;
-              const u2 = Math.pow(wx * wy * wz, 2.0);
+              const ww = wx * wy * wz;
+              const u2 = ww * ww;
               sum1 += term * term * Math.PI * Math.PI * Math.PI / 9.0 * dot2;
               sum2 += -u2 * term * Math.PI * rtpi / 3.0 * dot1;
               sum3 += u2;
@@ -411,4 +420,74 @@ export const symEigenvalues = (M: Float64Array, n: number): number[] => {
   const ev: number[] = [];
   for (let i = 0; i < n; i++) ev.push(a[i * n + i]);
   return ev.sort((x, y) => Math.abs(y) - Math.abs(x));
+};
+
+/** math_const.h MY_PI (the same double as Math.PI). */
+const MY_PI = 3.14159265358979323846;
+
+/**
+ * compute_qopt_ik (pppm_disp.cpp, Coulomb, ik differentiation): the optimal-influence-function error sum on mesh N with
+ * G g, over every grid point in FFT order and the alias images -2..2 per dimension (nbx = nby = nbz = 2). The C library
+ * exp, sin and pow are the libm ports, and the operations keep the C left-to-right order so the sums round alike.
+ */
+export const qoptCoulombIk = (N: [number, number, number], prd: [number, number, number], g: number, ord: number): number => {
+  const [nx, ny, nz] = N;
+  const [xprd, yprd, zprd] = prd;
+  const unitkx = 2.0 * MY_PI / xprd;
+  const unitky = 2.0 * MY_PI / yprd;
+  const unitkz = 2.0 * MY_PI / zprd;
+  const nb = 2;
+  // per axis and image the factors of the native loop (pow(v, 2.0) is v * v, as the native binary computes it); the
+  // values are those of the triple loop, computed once instead of for every grid point
+  const axis = (n: number, unitk: number, len: number) => {
+    const per = new Float64Array(n), q = new Float64Array(5 * n), s = new Float64Array(5 * n), w = new Float64Array(5 * n);
+    for (let k = 0; k < n; k++) {
+      const kper = k - n * Math.trunc((2 * k) / n);
+      per[k] = kper;
+      for (let a = -nb; a <= nb; a++) {
+        const qv = unitk * (kper + n * a);
+        const r = qv / g;
+        const arg = 0.5 * qv * len / n;
+        q[5 * k + a + nb] = qv;
+        s[5 * k + a + nb] = libmExp(-0.25 * (r * r));
+        w[5 * k + a + nb] = arg !== 0.0 ? libmPow(libmSin(arg) / arg, ord) : 1.0;
+      }
+    }
+    return { per, q, s, w };
+  };
+  const X = axis(nx, unitkx, xprd), Y = axis(ny, unitky, yprd), Z = axis(nz, unitkz, zprd);
+  let qopt = 0.0;
+  for (let m = 0; m < nz; m++) {
+    const mper = Z.per[m];
+    for (let l = 0; l < ny; l++) {
+      const lper = Y.per[l];
+      for (let k = 0; k < nx; k++) {
+        const kper = X.per[k];
+        const a1 = unitkx * kper, a2 = unitky * lper, a3 = unitkz * mper;
+        const sqk = a1 * a1 + a2 * a2 + a3 * a3;
+        if (sqk === 0.0) continue;
+        let sum1 = 0.0, sum2 = 0.0, sum3 = 0.0;
+        for (let ax = 0; ax < 5; ax++) {
+          const qx = X.q[5 * k + ax], sx = X.s[5 * k + ax], wx = X.w[5 * k + ax];
+          for (let ay = 0; ay < 5; ay++) {
+            const qy = Y.q[5 * l + ay], sy = Y.s[5 * l + ay], wy = Y.w[5 * l + ay];
+            for (let az = 0; az < 5; az++) {
+              const qz = Z.q[5 * m + az], sz = Z.s[5 * m + az], wz = Z.w[5 * m + az];
+              const dot1 = unitkx * kper * qx + unitky * lper * qy + unitkz * mper * qz;
+              const dot2 = qx * qx + qy * qy + qz * qz;
+              const ww = wx * wy * wz;
+              const u2 = ww * ww;
+              sum1 += sx * sy * sz * sx * sy * sz / dot2 * 4.0 * 4.0 * MY_PI * MY_PI;
+              sum2 += u2 * sx * sy * sz * 4.0 * MY_PI / dot2 * dot1;
+              sum3 += u2;
+            }
+          }
+        }
+        sum2 *= sum2;
+        sum3 *= sum3 * sqk;
+        qopt += sum1 - sum2 / sum3;
+      }
+    }
+  }
+  return qopt;
 };

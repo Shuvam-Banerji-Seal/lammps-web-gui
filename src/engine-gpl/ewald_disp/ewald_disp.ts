@@ -187,6 +187,15 @@ export class KSpaceEwaldDisp extends KSpaceBase {
     return view !== null && (view.ewaldOrder() & EWALD_DISP) !== 0;
   }
 
+  /**
+   * ewald_disp.cpp: dipoleflag = 1 in the constructor, cleared in init when the pair gives no dipole term
+   * ("if (!termflag[TERM_DIPOLE]) dipoleflag = 0;"), before pair_check.
+   */
+  override dipole(): boolean {
+    const { view } = this.viewOf(this.pair);
+    return view !== null && (view.ewaldOrder() & EWALD_DIPOLE) !== 0;
+  }
+
   /** EwaldDisp::init (and the first setup()). */
   init(s: SimState, geom: Geometry, _cutCoul: number, qqrd2e: number, ctx: StyleContext): void {
     ctx.log('EwaldDisp initialization ...');

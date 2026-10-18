@@ -321,6 +321,11 @@ export abstract class Pair {
    */
   dispersionFlag = false;
   /**
+   * Long-range solver flags that the style's own settings keywords set (native pair_style keywords "ewald", "pppm",
+   * "msm", e.g. pair_lepton_coul.cpp settings). Read by kspaceCheck.ts; a style without such keywords leaves it empty.
+   */
+  solverKeywords: readonly string[] = [];
+  /**
    * Keep pairs whose special_bonds weights are both 0.0 in the neighbor list
    * (special_bonds.html: "a value of 0.0 means exclude the pair completely
    * from the neighbor list, except for pair styles that require a kspace
@@ -690,6 +695,11 @@ export abstract class KSpace {
    * Called after linkPair: a solver whose dispersion terms follow the pair (ewald/disp) reads them from it.
    */
   dispersion(): boolean { return false; }
+  /**
+   * The solver has a dipole part (native KSpace::dipoleflag), checked against Pair dipole support by kspaceCheck.ts.
+   * As for dispersion(), a solver whose dipole terms follow the pair (ewald/disp) reads them from the linked pair.
+   */
+  dipole(): boolean { return false; }
   /**
    * kspace_modify pressure/scalar (MSM). kspace_modify.html: "If this option is turned on, only the scalar pressure
    * (i.e. (Pxx + Pyy + Pzz)/3.0) will be computed" and "This option cannot be used to access individual components of

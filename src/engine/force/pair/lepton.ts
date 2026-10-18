@@ -78,8 +78,13 @@ export class PairLepton extends Pair {
       if (args.length !== 1) throw new StyleError(`usage: pair_style ${this.name} cutoff`);
     } else {
       if (args.length < 1) throw new StyleError('usage: pair_style lepton/coul cutoff [ewald|pppm|msm]');
+      this.solverKeywords = [];
       for (const kw of args.slice(1)) {
-        if (kw === 'ewald' || kw === 'pppm' || kw === 'msm') this.coulKeyword = true;
+        if (kw === 'ewald' || kw === 'pppm' || kw === 'msm') {
+          this.coulKeyword = true;
+          // pair_lepton_coul.cpp settings: the keyword sets the flag of that solver (kspaceCheck.ts reads it)
+          this.solverKeywords = [...this.solverKeywords, kw];
+        }
         else if (kw === 'dispersion' || kw === 'tip4p') {
           throw new StyleError(`pair_style lepton/coul keyword '${kw}' is not supported by this engine (ewald, pppm and msm are)`);
         } else throw new StyleError(`pair_style lepton/coul: unknown keyword '${kw}' (expected ewald, pppm or msm)`);

@@ -53,7 +53,10 @@ export class FixElectrodeConp extends Fix {
   virialGlobal = true;
   energyGlobal = true;
   thermoVirial = true;
-  thermoEnergy = true;
+  // The Gaussian correction and the self energy are tallied into the pair Coulomb energy (preReverseTerms), as
+  // native LAMMPS does (ELECTRODE/fix_electrode_conp.cpp gausscorr and self_energy call force->pair->ev_tally):
+  // thermo epair includes them, and the fix is not summed a second time into pe.
+  thermoEnergy = false;
 
   /** Electrode group bits: the fix group first, then the couple groups; elecBit = their union. */
   protected readonly groupBits: number[] = [];
@@ -542,6 +545,7 @@ export class FixElectrodeConp extends Fix {
     const eSr = this.gausscorr();
     const eSelf = this.selfEnergy();
     this.eCorr = eSr + eSelf;
+    this.sys.ff.acc.ecoul += this.eCorr;
     this.virial.set(this.virialSum);
   }
 

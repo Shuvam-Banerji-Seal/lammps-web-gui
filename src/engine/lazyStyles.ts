@@ -190,6 +190,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_chunk_more', names: { COMPUTES: ['vcm/chunk', 'torque/chunk', 'vacf/chunk', 'inertia', 'slice', 'global/atom'], FIXES: ['momentum/chunk', 'spring/chunk', 'store/force'] }, load: () => import('../engine-gpl/registry/chunk_more') as Promise<StyleModule> },
   { id: 'gpl_xpair1', names: { PAIRS: ['beck', 'born/gauss', 'buck/mdf', 'lennard/mdf', 'lj/mdf', 'cosine/squared', 'coul/cut/global', 'coul/exclude', 'coul/slater/cut', 'ufm', 'wf/cut'] }, load: () => import('../engine-gpl/registry/xpair1') as Promise<StyleModule> },
   { id: 'gpl_xpair2', names: { PAIRS: ['lj/cut/sphere', 'lj/expand/sphere', 'lj/expand/coul/long', 'lj/gromacs/coul/gromacs', 'lj/pirani', 'morse/smooth/linear', 'nm/cut', 'nm/cut/split', 'nm/cut/coul/cut', 'nm/cut/coul/long'] }, load: () => import('../engine-gpl/registry/xpair2') as Promise<StyleModule> },
+  { id: 'gpl_manyeam', names: { PAIRS: ['adp', 'eam/cd', 'eam/cd/old', 'eam/he'] }, load: () => import('../engine-gpl/registry/manyeam') as Promise<StyleModule> },
   { id: 'gpl_slater', names: { PAIRS: ['coul/slater/long', 'dpd/coul/slater/long'] }, load: () => import('../engine-gpl/registry/slater') as Promise<StyleModule> },
   { id: 'gpl_e3b', names: { PAIRS: ['e3b'] }, load: () => import('../engine-gpl/registry/e3b') as Promise<StyleModule> },
   { id: 'gpl_srp', names: { PAIRS: ['srp', 'srp/react'], FIXES: ['SRP', 'SRPREACT'] }, load: () => import('../engine-gpl/registry/srp') as Promise<StyleModule> },

@@ -18,7 +18,7 @@ import { dummySession, finite, intArg, startTableFile, tableRow } from './table_
 const DEG2RAD = Math.PI / 180;
 const EPSILON = 6.5e-6;
 
-const dihedralWrite: Handler = async ({ sys }, a) => {
+const dihedralWrite: Handler = async ({ sys, session }, a) => {
   if (!sys.hasBox) throw new StyleError(`Dihedral_write command before simulation box is defined${errorUrl(33)}`);
   const dihedral = sys.ff.dihedral;
   if (!dihedral) throw new StyleError(`Dihedral_write command before an dihedral_style is defined${errorUrl(33)}`);
@@ -55,7 +55,7 @@ const dihedralWrite: Handler = async ({ sys }, a) => {
     ...coeffLines.slice(0, ndt).map((l) => `dihedral_coeff ${l}`),
     'run 0 post no',
   ];
-  const w = await dummySession(lines);
+  const w = await dummySession(session, lines);
   // energy at the dihedral angle theta (native GET_ENERGY: the x and y of atom 4, its z kept)
   const energyAt = (theta: number): number => {
     const k4 = w.indexOfId(4);

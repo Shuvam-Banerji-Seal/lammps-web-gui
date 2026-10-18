@@ -4,7 +4,7 @@
  * checks, the dummy system of the evaluation, and the printed rows). LAMMPS development team, Sandia National
  * Laboratories. This file is GPL-2.0 too (src/engine-gpl/LICENSE).
  */
-import { Session } from '../../engine/session';
+import type { Session } from '../../engine/session';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { formatInteger, formatNumber } from '../../engine/cformat';
@@ -45,8 +45,11 @@ export const finite = (v: number): boolean => Number.isFinite(v);
  * style's coefficient lines (the dataCoeffs lines, one per type), then the setup run. The energy of a geometry is
  * the total energy of that session's system after its position is moved (minEnergyForce, pair zero).
  */
-export const dummySession = async (lines: string[]): Promise<System> => {
-  const w = new Session({ emit: () => { /* the dummy system's log and thermo are dropped, as native's -screen none */ } });
+export const dummySession = async (session: Session, lines: string[]): Promise<System> => {
+  // a new session of the same class as the running one (no static import of the session module, which would pull the
+  // engine into this lazily loaded chunk's graph)
+  const Ctor = session.constructor as new (io: { emit: () => void }) => Session;
+  const w = new Ctor({ emit: () => { /* the dummy system's log and thermo are dropped, as native's -screen none */ } });
   await w.execute(lines.join('\n'));
   return w.sys;
 };

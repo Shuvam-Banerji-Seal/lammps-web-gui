@@ -21,7 +21,7 @@ const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
 const EPSILON = 6.5e-6;
 
-const angleWrite: Handler = async ({ sys }, a) => {
+const angleWrite: Handler = async ({ sys, session }, a) => {
   if (!sys.hasBox) throw new StyleError(`Angle_write command before simulation box is defined${errorUrl(33)}`);
   const angle = sys.ff.angle;
   if (!angle) throw new StyleError(`Angle_write command before an angle_style is defined${errorUrl(33)}`);
@@ -60,7 +60,7 @@ const angleWrite: Handler = async ({ sys }, a) => {
     ...coeffLines.slice(0, nat).map((l) => `angle_coeff ${l}`),
     'run 0 post no',
   ];
-  const w = await dummySession(lines);
+  const w = await dummySession(session, lines);
   const ws = w.state;
   // energy of the angle 2-1-3 with atom 3 at the angle theta (native GET_ENERGY: x and y of atom 3, z kept)
   const energyAt = (theta: number): number => {

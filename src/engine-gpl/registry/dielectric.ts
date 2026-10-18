@@ -15,6 +15,7 @@ import type { System } from '../../engine/system';
 import { PairLJCutCoulCutDielectric } from '../dielectric/pair_lj_cut_coul_cut_dielectric';
 import { PairLJCutCoulLongDielectric } from '../dielectric/pair_lj_cut_coul_long_dielectric';
 import { KSpacePPPMDielectric } from '../dielectric/pppm_dielectric';
+import { KSpacePPPMDispDielectric } from '../dielectric/pppm_disp_dielectric';
 import { KSpaceMSMDielectric } from '../dielectric/msm_dielectric';
 import { PairLJCutCoulMSMDielectric } from '../dielectric/pair_lj_cut_coul_msm_dielectric';
 import { FixPolarizeBEMGMRES } from '../dielectric/fix_polarize_bem_gmres';
@@ -33,6 +34,7 @@ export const PAIRS: Record<string, () => Pair> = {
 export const KSPACES: Record<string, () => KSpace> = {
   'pppm/dielectric': () => new KSpacePPPMDielectric(),
   'msm/dielectric': () => new KSpaceMSMDielectric(),
+  'pppm/disp/dielectric': () => new KSpacePPPMDispDielectric(),
 };
 
 /** compute styles. */

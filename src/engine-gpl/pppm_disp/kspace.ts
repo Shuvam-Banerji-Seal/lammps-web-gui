@@ -483,6 +483,30 @@ export class KSpacePPPMDisp extends KSpaceBase {
     return s.x;
   }
 
+  /** Charges of the Coulomb density of the force pass (make_rho_c); pppm/disp uses q. */
+  protected coulombDensityCharges(s: SimState): Float64Array {
+    return s.q;
+  }
+
+  /** Charges that multiply the interpolated Coulomb field in the force of atom i (fieldforce_c_ik); pppm/disp uses q. */
+  protected coulombForceCharges(s: SimState): Float64Array {
+    return s.q;
+  }
+
+  /** Charges of a second Coulomb density whose energy and virial add to the Coulomb sums, or null (pppm/disp: none). */
+  protected coulombEnergyCharges(s: SimState): Float64Array | null {
+    void s;
+    return null;
+  }
+
+  /** Receives the raw interpolated Coulomb field (before qqrd2e) of atom i; no-op for pppm/disp. */
+  protected coulombFieldAt(i: number, ex: number, ey: number, ez: number): void {
+    void i;
+    void ex;
+    void ey;
+    void ez;
+  }
+
   /** Adds the Coulomb force of atom i (the atom itself here; the TIP4P subclass projects an M-site force on O and H). */
   protected addCoulombForce(kc: KSpaceCompute, i: number, fx: number, fy: number, fz: number): void {
     kc.f[3 * i] += fx;
@@ -512,22 +536,35 @@ export class KSpacePPPMDisp extends KSpaceBase {
       let qsum = 0, qsqsum = 0;
       for (let i = 0; i < n; i++) { qsum += q[i]; qsqsum += q[i] * q[i]; }
       const delvolinv = (mg.N[0] / mg.prd[0]) * (mg.N[1] / mg.prd[1]) * (mg.N[2] / mg.prd[2]);
-      const w = new Float64Array(n);
-      for (let i = 0; i < n; i++) w[i] = delvolinv * q[i];
       const base = mapAtoms(xc, n, lo, mg, st);
-      const F = spread(xc, n, lo, mg, st, base, w);
-      fft3d(F, mg.N[0], mg.N[1], mg.N[2], -1);
+      const s2 = (1 / (mg.N[0] * mg.N[1] * mg.N[2])) ** 2;
       const egy = { v: 0 };
       const vir = new Float64Array(6);
-      const s2 = (1 / (mg.N[0] * mg.N[1] * mg.N[2])) ** 2;
+      // the density of the force pass (make_rho_c) and, when the style has one, the second density whose energy and
+      // virial add to the same sums (pppm_disp_dielectric.cpp: the unscaled charges after the scaled pass)
+      const qd = this.coulombDensityCharges(s);
+      const w = new Float64Array(n);
+      for (let i = 0; i < n; i++) w[i] = delvolinv * qd[i];
+      const F = spread(xc, n, lo, mg, st, base, w);
+      fft3d(F, mg.N[0], mg.N[1], mg.N[2], -1);
       pairSum(F, F, info.G, info.vg, s2, 1, egy, vir);
+      const qe = this.coulombEnergyCharges(s);
+      if (qe) {
+        const we = new Float64Array(n);
+        for (let i = 0; i < n; i++) we[i] = delvolinv * qe[i];
+        const Fe = spread(xc, n, lo, mg, st, base, we);
+        fft3d(Fe, mg.N[0], mg.N[1], mg.N[2], -1);
+        pairSum(Fe, Fe, info.G, info.vg, s2, 1, egy, vir);
+      }
       let e1 = 0.5 * V * egy.v;
       e1 -= this.gEwald * qsqsum / MY_PIS + (Math.PI / 2) * qsum * qsum / (this.gEwald * this.gEwald * V);
       e1 *= qqrd2e;
       const grids = fieldsIk(F, mg, info.G);
+      const fq = this.coulombForceCharges(s);
       for (let i = 0; i < n; i++) {
         const [ex, ey, ez] = interpField(xc, i, lo, mg, st, base, grids);
-        const qf = qqrd2e * q[i];
+        this.coulombFieldAt(i, ex, ey, ez);
+        const qf = qqrd2e * fq[i];
         this.addCoulombForce(kc, i, qf * ex, qf * ey, qf * ez);
       }
       for (let c = 0; c < 6; c++) virial[c] += 0.5 * qqrd2e * V * vir[c];

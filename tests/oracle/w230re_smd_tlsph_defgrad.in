@@ -1,0 +1,95 @@
+# oracle: compute smd/tlsph/defgrad and smd/hourglass/error (reduced over the tlsph group) on the rubber strip of examples/PACKAGES/machdyn/rubber_strip_pull, 200 steps instead of 2500
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.3e-12, atoms 4.8e-15.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+####################################################################################################
+#
+#
+#
+####################################################################################################
+
+####################################################################################################
+####################################################################################################
+variable        E equal 1.0 # Young's modulus
+variable        nu equal 0.3 # Poisson ratio
+variable        rho equal 1 # initial mass density
+variable        q1 equal 0.06 # standard artificial viscosity linear coefficient
+variable        q2 equal 0.0  # standard artificial viscosity quadratic coefficient
+variable        hg equal 10.0 # hourglass control coefficient
+variable        cp equal 1.0 # heat capacity of material -- not used here
+
+####################################################################################################
+####################################################################################################
+dimension       2
+units           si
+boundary        sm sm p # simulation box boundaries
+atom_style      smd
+atom_modify     map array
+comm_modify     vel yes
+neigh_modify    every 10 delay 0 check yes # re-build neighbor list every 10 steps
+newton          off
+
+####################################################################################################
+####################################################################################################
+variable        l0 equal 1.0 # lattice spacing for creating particles
+lattice         sq ${l0}
+region          box block -10 10 -10 10 -0.1 0.1 units box
+create_box      1 box
+create_atoms    1 box
+group           tlsph type 1
+
+
+####################################################################################################
+####################################################################################################
+variable        h equal 2.01*${l0} # SPH smoothing kernel radius
+variable        vol_one equal ${l0}^2 # volume of one particle -- assuming unit thickness
+variable        skin equal ${h} # Verlet list range
+neighbor        ${skin} bin
+set             group all volume ${vol_one}
+set             group all smd/mass/density ${rho}
+set             group all diameter ${h} # set SPH kernel radius
+
+####################################################################################################
+####################################################################################################
+variable        vel0 equal 0.005 # pull velocity
+region          top block EDGE EDGE 9.0 EDGE EDGE EDGE units box
+region          bot block EDGE EDGE EDGE -9.1 EDGE EDGE units box
+group           top region top
+group           bot region bot
+variable        vel_up equal ${vel0}*(1.0-exp(-0.01*time))
+variable        vel_down equal -v_vel_up
+fix             veltop_fix top smd/setvel 0 v_vel_up 0
+fix             velbot_fix bot smd/setvel 0 v_vel_down 0
+
+####################################################################################################
+####################################################################################################
+pair_style      smd/tlsph
+pair_coeff      1 1 *COMMON ${rho} ${E} ${nu} ${q1} ${q2} ${hg} ${cp} &
+                *STRENGTH_LINEAR &
+                *EOS_LINEAR &
+                *END
+
+####################################################################################################
+####################################################################################################
+fix             dtfix tlsph smd/adjust_dt 0.1 # dynamically adjust time increment every step
+fix             integration_fix tlsph smd/integrate_tlsph
+
+####################################################################################################
+####################################################################################################
+
+####################################################################################################
+####################################################################################################
+variable        stress equal 0.5*(f_velbot_fix[2]-f_veltop_fix[2])/20 # stress = force / initial width
+variable        length equal xcm(top,y)-xcm(bot,y)
+variable        strain equal (v_length-${length})/${length} # engineering strain
+
+compute         dg tlsph smd/tlsph/defgrad
+compute         hg tlsph smd/hourglass/error
+compute         dsum tlsph reduce sum c_dg[1] c_dg[5] c_dg[9] c_dg[10]
+compute         hsum tlsph reduce sum c_hg
+thermo          50
+thermo_style    custom step dt f_dtfix v_strain c_dsum[1] c_dsum[2] c_dsum[3] c_dsum[4] c_hsum
+thermo_modify format float %.15g
+
+####################################################################################################
+####################################################################################################
+run             200

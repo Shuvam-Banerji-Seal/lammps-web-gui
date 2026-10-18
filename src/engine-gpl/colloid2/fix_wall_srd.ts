@@ -104,6 +104,8 @@ export class FixWallSRD extends Fix implements SrdWallFix {
     this.arrayFlag = true;
     this.sizeArrayRows = this.nwall;
     this.sizeArrayCols = 3;
+    // extarray = 1 (fix_wall_srd.cpp): thermo norm yes divides an element by the atom count
+    this.extarray = 1;
     this.fwall = new Float64Array(3 * this.nwall);
 
     // scale coord for CONSTANT walls (lattice spacing of the wall's dimension, or 1 for units box)

@@ -23,11 +23,11 @@ timestep        0.02
 fix             1 all srd 1 NULL 1.0 0.25 49894 collision slip
 fix             2 all enforce2d
 fix             3 all wall/srd xlo EDGE xhi EDGE
-# the wall force is an extensive global array: native thermo divides it by natoms (thermo.cpp compute_fix,
-# thermo norm yes in lj units); the same value as an equal-style variable is f_3[1][1]/atoms (variables are not normalized)
+# the wall force is an extensive global array (extarray 1): native thermo divides f_3[I][J] by natoms (thermo.cpp
+# compute_fix, thermo norm yes in lj units); the equal-style variables print the same value (variables are not normalized)
 variable        fw1 equal f_3[1][1]/atoms
 variable        fw2 equal f_3[2][1]/atoms
-thermo_style    custom step temp f_1[7] etotal press v_fw1 v_fw2
+thermo_style    custom step temp f_1[7] etotal press v_fw1 v_fw2 f_3[1][1] f_3[2][1]
 thermo_modify   format float %.15g
 thermo          5
 run             20

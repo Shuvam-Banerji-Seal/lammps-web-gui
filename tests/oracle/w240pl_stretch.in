@@ -1,8 +1,7 @@
 # oracle: compute plasticity/atom with pair peri/eps on a 6x6x6 block pulled at its top (fix move, bottom fixed, yield 1e7, 300 steps); lambdaValue grows in the yielding atoms
 # oracle-files: w240pl_stretch.dump
-# oracle-compare: thermo=all atoms=all rel=1e-8 abs=0 filerel=1e-8 atomskip=fx,fy,fz
-# Not compared: the final per-atom forces fx fy fz (atomskip). The positions, velocities and the lambdaValue dump agree with native, but the reported forces of this free-surface peri/eps setup differ from native and the gap grows with the run (about 2e-7 at 20 steps, O(1) N at 300 steps), with or without bond breaking and yielding. The cause is not isolated; it is in the peri/eps force path, not in the compute.
-# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.3e-12, atoms 1.7e-11.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=0 filerel=1e-8
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.3e-12, atoms 1.9e-9 (forces now compared, scaled by each atom's force).
 units           si
 boundary        s s s
 atom_style      peri

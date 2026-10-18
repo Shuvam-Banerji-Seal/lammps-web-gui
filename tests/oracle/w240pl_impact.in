@@ -1,8 +1,7 @@
 # oracle: compute plasticity/atom with pair peri/eps on a shrunk cylinder hit by an indenter (yield 1e7, 300 steps); the per-atom lambdaValue is summed and maxed in thermo and dumped per atom
 # oracle-files: w240pl_impact.dump
-# oracle-compare: thermo=all atoms=all rel=1e-8 abs=0 filerel=1e-8 atomskip=fx,fy,fz
-# Not compared: the final per-atom forces fx fy fz (atomskip). The positions, velocities and the lambdaValue dump agree with native, but the reported forces of this free-surface peri/eps setup differ from native and the gap grows with the run (about 2e-7 at 20 steps, O(1) N at 300 steps), with or without bond breaking and yielding. The cause is not isolated; it is in the peri/eps force path, not in the compute.
-# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.0e-13, atoms 1.3e-9.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=0 filerel=1e-8
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.0e-13, atoms 1.3e-9 (forces now compared, scaled by each atom's force).
 units           si
 boundary        s s s
 atom_style      peri

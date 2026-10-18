@@ -22,7 +22,7 @@ import type { Geometry } from '../../engine/domain';
 import { parseNum } from '../../engine/force/util';
 import { KSpaceBase, modifyNoEffect } from '../../engine/force/kspace/ewald';
 import { fft3d } from '../../engine/force/fft';
-import { sin as libmSin } from '../libm/sincos';
+import { sinFma as libmSin } from '../libm/sincos_fma';
 import { prolc180, forcePoly, energyPoly, fourierPoly, spreadFourierPoly, spreadRealPoly } from './pswf_poly';
 import { PairCoulEsp } from './pair_coul_esp';
 import { PairLJCutCoulEsp } from './pair_lj_cut_coul_esp';

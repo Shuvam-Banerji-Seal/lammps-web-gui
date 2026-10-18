@@ -17,7 +17,7 @@ import { OXDNA_5P, buildAtomMap, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
 import { DF1, DF4, DF5, F1, F4, F5, lrfOf, oxdnaConstants } from './common';
 import { stackingDerived, stackingStrength } from './pair_stk';
-import { sin as libmSin } from '../libm/sincos';
+import { sinFma as libmSin } from '../libm/sincos_fma';
 import { acos as libmAcos } from '../libm/acos';
 
 /** pair_oxrna2_stk.cpp constructor: the sequence-dependence factors eta_st[i-1][j-1] (1-based types). */

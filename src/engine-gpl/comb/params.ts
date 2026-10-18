@@ -10,7 +10,7 @@
 import { StyleError } from '../../engine/force/types';
 import { joinPotentialEntries } from '../../engine/force/util';
 import { log as libmLog } from '../libm/log';
-import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sinFma as libmSin, cosFma as libmCos } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
 

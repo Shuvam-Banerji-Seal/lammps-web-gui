@@ -14,6 +14,7 @@
 import { StyleError } from '../../engine/force/types';
 import { POLY3, POLY4, NS4 } from './tables';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sinFma as libmSinFma } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 
 /** npa of eapod.cpp: number of monomials of each degree. */
@@ -401,7 +402,7 @@ export class PODModel {
         for (let i = 0; i < this.besseldegree; i++) {
           const a = (i + 1) * Math.PI;
           const b = Math.sqrt(2.0 / rmax) / (i + 1);
-          rbf[n + N * i + N * this.besseldegree * j] = b * fcut * libmSin(a * x) / r;
+          rbf[n + N * i + N * this.besseldegree * j] = b * fcut * libmSinFma(a * x) / r;
         }
       }
       for (let i = 0; i < this.inversedegree; i++) {

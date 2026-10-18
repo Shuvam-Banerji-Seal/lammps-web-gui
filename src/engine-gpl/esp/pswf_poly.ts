@@ -6,7 +6,7 @@
  */
 import { MAX_CHEB_ORDER, chebNodes1d, chebInterp1d, monomialInterp1d, gaussianQuadrature } from './pswf_base';
 import { prolate0Eval, prolate0IntEval } from './pswf_prolate';
-import { cos as libmCos } from '../libm/sincos';
+import { cosFma as libmCos } from '../libm/sincos_fma';
 import { log as libmLog } from '../libm/log';
 
 /** The 180 table values of math_pswf.cpp prolc180 (c for accuracy 10^-(i/10)). */

@@ -31,7 +31,7 @@ import type { SurfaceEntry } from '../../engine/molecule';
 import { TRI_BODY_HOOK } from '../tri/tri_bonus';
 import { parseStl } from '../../engine/stl';
 import { stlFirstSolid } from './stl_solid';
-import { cos as libmCos } from '../libm/sincos';
+import { cosFma as libmCos } from '../libm/sincos_fma';
 
 type V3 = [number, number, number];
 

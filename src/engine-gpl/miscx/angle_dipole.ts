@@ -13,7 +13,7 @@
 import { SimpleBonded, atomIndex, delta } from '../../engine/force/bonded_util';
 import { StyleError, type BondedCompute, type StyleContext } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
-import { cos } from '../libm/sincos';
+import { cosFma as cos } from '../libm/sincos_fma';
 import { evTallyAngle } from '../xmolecule/ev';
 
 /** angle_dipole.cpp: SMALL = 1.0e-100. */

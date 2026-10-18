@@ -19,6 +19,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { ASF_XRD, XRD_TYPE_LIST } from './asf_xrd';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sinFma as libmSinFma, cosFma as libmCosFma } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 
 const PI = Math.PI;
@@ -121,7 +122,7 @@ export class ComputeXRD extends Compute {
     this.min2Theta = min2;
     this.max2Theta = max2;
     this.convf = this.radflag ? 2 : (360 / PI);
-    const kmax = (2 * libmSin(max2)) / this.lambda;
+    const kmax = (2 * libmSinFma(max2)) / this.lambda;
     const prdInv = reciprocalSpacing(sys, manual, 'Compute XRD');
     this.dK = [prdInv[0] * c[0], prdInv[1] * c[1], prdInv[2] * c[2]];
     this.knmax = [0, 0, 0];
@@ -184,8 +185,8 @@ export class ComputeXRD extends Compute {
       const SinTheta_lambda = 0.5 * dinv;
       const SinTheta = SinTheta_lambda * lambda;
       const ang = Math.asin(SinTheta);
-      const Cos2Theta = libmCos(2 * ang);
-      const CosTheta = libmCos(ang);
+      const Cos2Theta = libmCosFma(2 * ang);
+      const CosTheta = libmCosFma(ang);
       for (let t = 0; t < nt; t++) {
         const row = ASF_XRD[this.ztype[t]];
         let ft = 0;

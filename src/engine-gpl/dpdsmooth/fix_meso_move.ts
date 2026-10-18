@@ -17,6 +17,7 @@ import type { System } from '../../engine/system';
 import { massOf } from '../../engine/atoms';
 import { sphArrays } from '../sph/common';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { cosFma as libmCosFma } from '../libm/sincos_fma';
 
 type Style = 'linear' | 'wiggle' | 'rotate';
 
@@ -203,7 +204,7 @@ export class FixMesoMove extends Fix {
         }
       } else if (this.mstyle === 'wiggle') {
         const arg = this.omega * delta, argNext = this.omega * deltaNext;
-        const sine = libmSin(arg), cosine = libmCos(arg), cosineNext = libmCos(argNext);
+        const sine = libmSin(arg), cosine = libmCos(arg), cosineNext = libmCosFma(argNext);
         for (let d = 0; d < 3; d++) {
           const val = this.comp[d];
           if (val === null) { updNve(i, d); continue; }

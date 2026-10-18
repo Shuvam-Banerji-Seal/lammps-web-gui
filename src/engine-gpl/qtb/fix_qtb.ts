@@ -16,7 +16,7 @@ import { parseInt_, parseNum } from '../../engine/force/util';
 import { nativeOrder } from '../../engine/atoms';
 import type { System } from '../../engine/system';
 import { RanMars } from '../random_mars';
-import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sinFma as libmSin, cosFma as libmCos } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 
 /** fix_qtb.cpp: "MY_PI" from math_const.h. */

@@ -28,7 +28,7 @@ import { dipoleKSpaceForceError, dipoleRealForceError } from '../../engine/force
 import { fmLongOf } from './dipole_long_field';
 import { HBAR, MUB2MU0 } from './pair_spin_dipole_cut';
 import { log as libmLog } from '../libm/log';
-import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sinFma as libmSin, cosFma as libmCos } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 
 const TWO_OVER_SQRTPI = 2 / Math.sqrt(Math.PI);

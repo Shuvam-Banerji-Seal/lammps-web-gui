@@ -20,6 +20,7 @@ import { drawAutoBonds } from './autobond';
 import { color2rgb, defaultTypeColor, element2color, element2diam } from './colors';
 import type { ImageSpecular } from '../../engine/output/image_objects';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
+import { sinFma as libmSinFma } from '../libm/sincos_fma';
 import { pow as libmPow } from '../libm/pow';
 
 type V = [number, number, number];
@@ -191,7 +192,7 @@ export function applySsao(f: RasterFrame, radius: number, samples: number, seed:
 
       if (peakLen > 0) {
         const hh = Math.atan((cdepth - minPeak) / peakLen);
-        ao += sat(libmSin(hh) - scaledSinT);
+        ao += sat(libmSinFma(hh) - scaledSinT);
       } else {
         ao += sat(-scaledSinT);
       }

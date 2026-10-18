@@ -1,0 +1,20 @@
+# oracle: coul/wolf/cs (core-shell dimers, 1-2 Coulomb excluded), no kspace
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.6e-13, atoms 8.9e-15.
+# oracle-inputs: w226cs_coreshell.data
+units           real
+atom_style      full
+read_data       w226cs_coreshell.data
+pair_style      coul/wolf/cs 0.2 8.0
+pair_coeff      * *
+bond_style      harmonic
+bond_coeff      1 60.0 0.0
+bond_coeff      2 25.0 0.0
+special_bonds   lj/coul 0.0 0.0 1.0
+
+timestep        0.1
+velocity        all create 300.0 4928 mom yes rot no
+fix             1 all nve
+thermo_style    custom step pe ecoul elong evdwl ke press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          20
+run             100

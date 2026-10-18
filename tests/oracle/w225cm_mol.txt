@@ -1,0 +1,32 @@
+Water molecule for write_molecule
+
+3 atoms
+2 bonds
+1 angles
+
+Coords
+
+1 0.0 0.0 0.0
+2 0.9572 0.0 0.0
+3 -0.2399 0.9266 0.0
+
+Types
+
+1 2
+2 1
+3 1
+
+Charges
+
+1 -0.8340
+2 0.4170
+3 0.4170
+
+Bonds
+
+1 1 1 2
+2 1 1 3
+
+Angles
+
+1 1 2 1 3

@@ -1,0 +1,18 @@
+# oracle: coul/cut/dielectric (dielectric charges q/eps, full list, efield tallies), 1-2/1-3 special weights
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.2e-15, atoms 5.4e-16.
+# oracle-inputs: w226cs_diel.data
+units           real
+atom_style      dielectric
+read_data       w226cs_diel.data
+pair_style      coul/cut/dielectric 8.0
+pair_coeff      * *
+bond_style      harmonic
+bond_coeff      1 100.0 1.5
+special_bonds   lj/coul 0.0 0.5 1.0
+
+timestep        0.1
+fix             1 all nve
+thermo_style    custom step pe ecoul elong evdwl ke press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             50

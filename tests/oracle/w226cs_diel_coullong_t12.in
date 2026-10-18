@@ -1,0 +1,20 @@
+# oracle: coul/long/dielectric with the default table 12, ewald
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.6e-12, atoms 8.5e-14.
+# Measured with native LAMMPS: the thermo maximum sits in the pressure near zero (press -22.8 at step 50 with components of order 5e3); the energies agree to 1e-14.
+# oracle-inputs: w226cs_diel.data
+units           real
+atom_style      dielectric
+read_data       w226cs_diel.data
+pair_style      coul/long/dielectric 8.0
+pair_coeff      * *
+kspace_style    ewald 1.0e-6
+bond_style      harmonic
+bond_coeff      1 100.0 1.5
+special_bonds   lj/coul 0.0 0.5 1.0
+
+timestep        0.1
+fix             1 all nve
+thermo_style    custom step pe ecoul elong evdwl ke press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             50

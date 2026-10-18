@@ -1,0 +1,25 @@
+# oracle: pair_style eam/he on PdHHe.eam.he (Zhou et al., Pd-H-He Finnis-Sinclair with rhomin range), fcc 3x3x3 cells (108 atoms) of Pd at a = 3.89 A, 1% H and 1% He on the sites (set type/fraction), 0.05 A random displacements, velocities create 800 K, fix nve, 100 steps; thermo every 20 steps
+# oracle-potentials: PdHHe.eam.he
+# oracle-compare: thermo=all atoms=all rel=1e-9 abs=1e-12
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.6e-13, atoms 6.2e-14.
+units           metal
+atom_style      atomic
+lattice         fcc 3.89
+region          box block 0 3 0 3 0 3
+create_box      3 box
+create_atoms    1 box
+set             group all type/fraction 2 0.01 1111
+set             group all type/fraction 3 0.01 2222
+mass            1 106.42
+mass            2 1.008
+mass            3 4.0026
+displace_atoms  all random 0.05 0.05 0.05 4711 units box
+pair_style      eam/he
+pair_coeff      * * PdHHe.eam.he Pd H He
+timestep        0.002
+fix             1 all nve
+thermo_style    custom step pe ke press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          20
+velocity        all create 800 4928459 rot yes dist gaussian loop geom
+run             100

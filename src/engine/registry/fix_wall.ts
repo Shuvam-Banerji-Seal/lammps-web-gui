@@ -8,5 +8,8 @@ export const FIXES: Record<string, FixFactory> = {
   'wall/lj1043': (sys, id, group, args) => new FixWallLJ1043(sys, id, group, args),
   'wall/harmonic': (sys, id, group, args) => new FixWallHarmonic(sys, id, group, args),
   'wall/harmonic/outside': (sys, id, group, args) => new FixWallHarmonicOutside(sys, id, group, args),
+  // a second name of the same style: native src/fix_wall_harmonic_outside.h at b332f28 registers
+  // "FixStyle(wall/harmonic/outside,FixWallHarmonicOutside);" and "FixStyle(wall/harmonic/returned,FixWallHarmonicOutside);"
+  'wall/harmonic/returned': (sys, id, group, args) => new FixWallHarmonicOutside(sys, id, group, args),
   'wall/morse': (sys, id, group, args) => new FixWallMorse(sys, id, group, args),
 };

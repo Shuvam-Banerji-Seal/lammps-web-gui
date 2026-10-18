@@ -1,0 +1,18 @@
+# oracle: lj/long/coul/long/dielectric long long (dispersion ewald/disp with the default table/disp 12, Coulomb table 12), special LJ and Coulomb weights 0.0 0.5 1.0
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.5e-15, atoms 2.3e-14.
+# oracle-inputs: w226cs_diel.data
+units           real
+atom_style      dielectric
+read_data       w226cs_diel.data
+pair_style      lj/long/coul/long/dielectric long long 8.0
+pair_coeff      * * 0.02 2.0
+bond_style      harmonic
+bond_coeff      1 100.0 1.5
+special_bonds   lj/coul 0.0 0.5 1.0
+kspace_style    ewald/disp 1.0e-6
+timestep        0.1
+fix             1 all nve
+thermo_style    custom step pe ecoul elong evdwl ke press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             50

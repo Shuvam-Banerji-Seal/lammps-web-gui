@@ -1,0 +1,30 @@
+# oracle: fix filter/corotate b 3 (only the O-H bonds: the water angle clusters and the O-H pair; methane and ethane unfiltered) in a periodic 20 A box where the methane, the ethane and one water cross the x, y and z faces; lj/cut/coul/cut on the filtered outer level of run_style respa 2 4 (bonds and angles on level 1), fix nve, 6 outer steps of 2 fs
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.7e-14, atoms 6.4e-14.
+# oracle-inputs: w214fc_clusters.data
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           real
+atom_style      full
+bond_style      harmonic
+angle_style     harmonic
+pair_style      lj/cut/coul/cut 8.0
+read_data       w214fc_clusters.data
+pair_coeff      1 1 0.066 3.5
+pair_coeff      2 2 0.03 2.5
+pair_coeff      3 3 0.1553 3.166
+bond_coeff      1 340.0 1.09
+bond_coeff      2 268.0 1.53
+bond_coeff      3 450.0 0.9572
+angle_coeff     1 33.0 109.5
+angle_coeff     2 37.5 110.7
+angle_coeff     3 55.0 104.52
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+velocity        all create 300.0 4928 loop geom
+thermo          1
+thermo_style    custom step temp pe etotal ebond eangle evdwl ecoul press
+thermo_modify   format float %.15g
+timestep        2
+run_style respa 2 4 bond 1 angle 1 pair 2
+fix             1 all nve
+fix             cor all filter/corotate b 3
+run             6

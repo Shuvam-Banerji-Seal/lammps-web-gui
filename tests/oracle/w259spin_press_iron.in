@@ -1,0 +1,29 @@
+# oracle: the pressure of hybrid/overlay eam/alloy + spin/exchange with nve/spin lattice moving (cut-down SPIN/iron, 54 bcc atoms, 20 steps): spin/exchange applies each directed pair's force to i and j, so the f dot r virial is the pair virial
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.6e-4, atoms 9.4e-13. The thermo figure is pxz, about 4e-7 bar beside 1264 bar on the diagonal (6e-11 bar apart); press and the diagonal agree to 5e-13. Before the fix the engine printed press -926.8 where native prints 1234.0.
+# oracle-compare: thermo=all rel=1e-8 abs=1e-9 atoms=all
+# oracle-potentials: Fe_Mishin2006.eam.alloy
+units           metal
+atom_style      spin
+dimension       3
+boundary        p p p
+atom_modify     map array
+lattice         bcc 2.8665
+region          box block 0.0 3.0 0.0 3.0 0.0 3.0
+create_box      1 box
+create_atoms    1 box
+mass            1 55.845
+set             group all spin/atom 2.2 0.3 0.5 0.8
+set             atom 1 spin/atom 2.2 -0.6 0.2 0.5
+set             atom 7 spin/atom 2.2 0.1 -0.9 0.4
+set             atom 20 spin/atom 2.2 0.0 0.0 1.0
+pair_style      hybrid/overlay eam/alloy spin/exchange 3.5
+pair_coeff      * * eam/alloy Fe_Mishin2006.eam.alloy Fe
+pair_coeff      * * spin/exchange exchange 3.4 0.02726 0.2171 1.841 offset yes
+neighbor        0.1 bin
+neigh_modify    every 10 check yes delay 20
+fix             1 all nve/spin lattice moving
+timestep        0.0001
+thermo_style    custom step pe press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          5
+run             20

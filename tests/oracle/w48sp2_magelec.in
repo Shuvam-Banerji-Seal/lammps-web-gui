@@ -1,4 +1,4 @@
-# oracle: spin/magelec energy and precession (frozen lattice; the mechanical force is refused) for two electric vectors
+# oracle: spin/magelec energy and precession (frozen lattice) for two electric vectors; the mechanical force is in w259spin_magelec_lattice
 # oracle-files: w48sp2_magelec.dump
 units           metal
 atom_style      spin

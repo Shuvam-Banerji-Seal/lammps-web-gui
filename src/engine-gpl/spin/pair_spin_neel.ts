@@ -19,7 +19,7 @@
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, type Neighbor } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
-import { spinContribute, type SpinPairStyle } from '../../engine/force/spin_book';
+import { spinContribute, tallyPairEnergy, tallyPairVirial, type SpinPairStyle } from '../../engine/force/spin_book';
 import { HBAR } from './pair_spin_dipole_cut';
 import { exp as libmExp } from '../libm/exp';
 
@@ -242,7 +242,12 @@ export class PairSpinNeel extends Pair implements SpinPairStyle {
         f[3 * i] += fi[0]; f[3 * i + 1] += fi[1]; f[3 * i + 2] += fi[2];
         f[3 * j] -= fi[0]; f[3 * j + 1] -= fi[1]; f[3 * j + 2] -= fi[2];
         fmv[3 * i] += fmi[0]; fmv[3 * i + 1] += fmi[1]; fmv[3 * i + 2] += fmi[2];
-        evdwl -= neelEnergy(c, rsq, e, sp, 4 * i, sp, sj);
+        // the directed energy of the source (evdwl -= compute_energy), tallied per atom as ev_tally_xyz does
+        const ev = -neelEnergy(c, rsq, e, sp, 4 * i, sp, sj);
+        evdwl += ev;
+        if (pc.eatom) tallyPairEnergy(pc.eatom, i, j, ev);
+        // the source's delx is x_i - x_j, the negative of dx here (src/SPIN/pair_spin_neel.cpp compute at b332f28)
+        if (lattice && pc.vatom) tallyPairVirial(pc.vatom, i, j, -dx, -dy, -dz, fi[0], fi[1], fi[2]);
       }
     }
     pc.acc.evdwl += evdwl;

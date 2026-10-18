@@ -1,0 +1,31 @@
+# oracle: hybrid/overlay spin/exchange + spin/magelec + spin/dmi with nve/spin lattice moving (bcc iron 3x3x3 cells, 54 random spins, 20 steps): the mechanical spin/magelec force and the pressure of the three styles
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 6.8e-10, atoms 1.4e-11.
+# oracle-files: w259spin_magelec_lattice.dump
+# oracle-compare: thermo=all rel=1e-8 abs=1e-9 atoms=all
+units           metal
+atom_style      spin
+boundary        p p p
+atom_modify     map array
+lattice         bcc 2.8665
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 55.845
+set             group all spin/atom/random 31 2.2
+displace_atoms  all random 0.02 0.02 0.02 4928459 units box
+velocity        all create 100 4928459 rot yes dist gaussian
+pair_style      hybrid/overlay spin/exchange 4.0 spin/magelec 4.5 spin/dmi 4.5
+pair_coeff      * * spin/exchange exchange 4.0 0.02726 0.2171 1.841
+pair_coeff      * * spin/magelec magelec 4.5 0.02 1.0 0.5 0.2
+pair_coeff      * * spin/dmi dmi 4.5 0.01 0.3 1.0 0.5
+neighbor        0.1 bin
+neigh_modify    every 10 check yes delay 20
+fix             2 all nve/spin lattice moving
+timestep        0.0001
+compute         s all spin
+compute         p all property/atom spx spy spz fmx fmy fmz fx fy fz
+thermo_style    custom step pe press pxx pyy pzz pxy pxz pyz c_s[1] c_s[2] c_s[3] c_s[4] c_s[5] c_s[6]
+thermo_modify   format float %.15g
+thermo          5
+run             20
+write_dump      all custom w259spin_magelec_lattice.dump id c_p[1] c_p[2] c_p[3] c_p[4] c_p[5] c_p[6] c_p[7] c_p[8] c_p[9] modify format float %.15g sort id

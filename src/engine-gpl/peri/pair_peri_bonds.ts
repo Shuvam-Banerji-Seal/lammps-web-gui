@@ -274,6 +274,15 @@ export abstract class PeriBondPair extends Pair {
         const fv = fpair * V[i];
         vir[0] += delx * delx * fv; vir[1] += dely * dely * fv; vir[2] += delz * delz * fv;
         vir[3] += delx * dely * fv; vir[4] += delx * delz * fv; vir[5] += dely * delz * fv;
+        // ev_tally(i, j, nlocal, newton_pair, evdwl, 0, fpair * V_i, del) with newton on: half to each of i and j
+        if (pc.eatom) { pc.eatom[i] += 0.25 * rk * dr; pc.eatom[j] += 0.25 * rk * dr; }
+        if (pc.vatom) {
+          const h = 0.5 * fv, va = pc.vatom;
+          va[6 * i] += delx * delx * h; va[6 * i + 1] += dely * dely * h; va[6 * i + 2] += delz * delz * h;
+          va[6 * i + 3] += delx * dely * h; va[6 * i + 4] += delx * delz * h; va[6 * i + 5] += dely * delz * h;
+          va[6 * j] += delx * delx * h; va[6 * j + 1] += dely * dely * h; va[6 * j + 2] += delz * delz * h;
+          va[6 * j + 3] += delx * dely * h; va[6 * j + 4] += delx * delz * h; va[6 * j + 5] += dely * delz * h;
+        }
       }
     }
   }
@@ -283,7 +292,9 @@ export abstract class PeriBondPair extends Pair {
     let e = 0;
     for (let i = 0; i < st.nl; i++) {
       const K = this.c('K', st.type[i], st.type[i]);
-      e += 0.5 * K * this.theta[i] * this.theta[i];
+      const ev = 0.5 * K * this.theta[i] * this.theta[i];
+      e += ev;
+      if (st.pc.eatom) st.pc.eatom[i] += ev;
     }
     st.pc.acc.evdwl += e;
   }
@@ -296,6 +307,13 @@ export abstract class PeriBondPair extends Pair {
     const dx = g[G_DX], dy = g[G_DY], dz = g[G_DZ];
     vir[0] += dx * dx * fp; vir[1] += dy * dy * fp; vir[2] += dz * dz * fp;
     vir[3] += dx * dy * fp; vir[4] += dx * dz * fp; vir[5] += dy * dz * fp;
+    // with i = j and newton off, both halves of ev_tally go to atom i
+    if (st.pc.eatom) st.pc.eatom[i] += 0.5 * evdwl;
+    const va = st.pc.vatom;
+    if (va) {
+      va[6 * i] += dx * dx * fp; va[6 * i + 1] += dy * dy * fp; va[6 * i + 2] += dz * dz * fp;
+      va[6 * i + 3] += dx * dy * fp; va[6 * i + 4] += dx * dz * fp; va[6 * i + 5] += dy * dz * fp;
+    }
   }
 
   /** Bond breaking test and the minimum-stretch bookkeeping of one directed entry (the shared end of the loops). */

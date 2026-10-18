@@ -6,9 +6,9 @@ import { parseNum } from '../util';
  * Peridynamic pair styles peri/pmb (bond-based) and peri/lps (state-based linear
  * peridynamic solid), in the discretisation of Howto_peri.rst (Parks et al.
  * 2008; Silling 2000, 2005, 2007). The bond family is built from the reference
- * positions x0 at the first evaluation; a bond is stored once per unordered
- * pair and carries the image offset of its partner, so forces only touch owned
- * atoms and periodic images need no ghost bookkeeping.
+ * positions at the first evaluation; a bond is stored once per unordered
+ * pair and carries the image offset of its partner, so bond forces only touch
+ * owned atoms. Contacts use the half neighbor list and the reference x0.
  *
  * docs.lammps.org/pair_peri.html: "Style *peri/pmb* implements the Peridynamic bond-based prototype"
  * and "Style *peri/lps* implements the Peridynamic state-based linear" (PMB, LPS).
@@ -16,9 +16,22 @@ import { parseNum } from '../util';
  * Measured with native LAMMPS (black box): a stretched bond adds no energy (two atoms pulled apart
  * give PotEng 0), while a contact below the short-range distance does: two atoms 0.0003 apart in
  * the reference lattice of 0.0005 with volume 1.25e-10 and c = 1.6863e22 give E_vdwl 237120129.49,
- * which is 0.5 (c_S/delta) V (r - d_pi)^2 with d_pi = 0.9 * 0.0005. The energy here is the contact
- * energy with V the mean volume of the pair (the two agree for equal volumes).
+ * which is 0.5 (c_S/delta) V (r - d_pi)^2 with d_pi = 0.9 * 0.0005. V is the volume of the neighbor j of the
+ * half-list pair (i, j), as in the native source (see the contact loop).
+ *
+ * Virial and per-atom tallies, as native LAMMPS does (src/PERI/pair_peri_pmb.cpp and pair_peri_lps.cpp compute at
+ * b332f28): the forces are force densities, and each end i of a bond tallies its force density times its own volume
+ * V_i, so the virial of a bond end is -(1/2) c_i V_i d (x) d (c_i d the force density on i) and goes to atom i; a
+ * contact tallies -c_a V_a d (x) d, half to each atom. Each end also takes its own share of the bond energy (the PMB
+ * stretch energy with V of the partner, the LPS deviatoric term of that end), the LPS volumetric energy (K/2) theta_i^2
+ * goes to atom i, and a contact energy is split in half.
  */
+
+/** Adds w d (x) d to the six virial components at offset k of v. */
+const addDD = (v: Float64Array, k: number, d: Float64Array, w: number): void => {
+  v[k] += w * d[0] * d[0]; v[k + 1] += w * d[1] * d[1]; v[k + 2] += w * d[2] * d[2];
+  v[k + 3] += w * d[0] * d[1]; v[k + 4] += w * d[0] * d[2]; v[k + 5] += w * d[1] * d[2];
+};
 
 /** Roundoff guard on the bond stretch numerator (Howto_peri.rst, the note after Algorithm 5). */
 export const PERI_ROUNDOFF = 2.220446049250313e-16;
@@ -63,7 +76,7 @@ export class PairPeri extends Pair {
   readonly name: string;
   needsHalf = true;
   needsFull = false;
-  /** The virial is tallied bond by bond (the forces only touch owned atoms). */
+  /** The virial is tallied bond by bond and contact by contact, as native peri does (no f dot r). */
   virialFdotr = false;
   /** Skips the roundoff guard on dr (the note on roundoff after Algorithm 5 in Howto_peri.rst). */
   roundoffGuard = true;
@@ -81,7 +94,6 @@ export class PairPeri extends Pair {
   private bB = new Int32Array(0);
   private bShift = new Float64Array(0);
   private bL0 = new Float64Array(0);
-  private bDp = new Float64Array(0);
   private bNu = new Float64Array(0);
   private bBroken = new Uint8Array(0);
   private rnode = 0;
@@ -156,15 +168,15 @@ export class PairPeri extends Pair {
     return this.par;
   }
 
-  /** Bond family from the positions at the first force evaluation and the neighbor list (each physical pair once); contacts use the creation positions x0. */
+  /** Bond family from the positions at the first force evaluation and the neighbor list (each physical pair once). */
   private buildFamily(pc: PairCompute): void {
     const s = pc.s;
     const list = pc.half;
     if (!list) throw new StyleError(`${this.name} needs a half neighbor list`);
     const P = this.params();
     const nl = pc.nlocal;
-    const x = pc.x, x0 = s.x0!, owner = pc.nb.owner, nbr = list.neighbors;
-    const A: number[] = [], B: number[] = [], SH: number[] = [], L0: number[] = [], LREF: number[] = [];
+    const x = pc.x, owner = pc.nb.owner, nbr = list.neighbors;
+    const A: number[] = [], B: number[] = [], SH: number[] = [], L0: number[] = [];
     for (let i = 0; i < list.inum; i++) {
       const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
       for (let k = k0; k < k1; k++) {
@@ -182,8 +194,7 @@ export class PairPeri extends Pair {
         const l0 = Math.sqrt(dx * dx + dy * dy + dz * dz);
         // Howto_peri.rst eq. 11: "\mathcal{F}_i = \{ p ~ | ~ \left\Vert {\textbf{x}_p - \textbf{x}_i} \right\Vert \leq \delta \}"
         if (!(l0 > 0 && l0 <= P.delta)) continue;
-        const rx = x0[3 * o] - x0[3 * i] + sx, ry = x0[3 * o + 1] - x0[3 * i + 1] + sy, rz = x0[3 * o + 2] - x0[3 * i + 2] + sz;
-        A.push(i); B.push(o); SH.push(sx, sy, sz); L0.push(l0); LREF.push(Math.sqrt(rx * rx + ry * ry + rz * rz));
+        A.push(i); B.push(o); SH.push(sx, sy, sz); L0.push(l0);
       }
     }
     const nb = A.length;
@@ -195,11 +206,8 @@ export class PairPeri extends Pair {
     // node radius r_i: half the lattice constant, as Howto_peri.rst chooses it; measured with native
     // LAMMPS (black box): without a lattice command the spacing is 1
     this.rnode = 0.5 * this.xlattice;
-    this.bDp = new Float64Array(nb);
     this.bNu = new Float64Array(nb);
     for (let e = 0; e < nb; e++) {
-      // Howto_peri.rst eq. 15 uses the reference distance |x_p - x_i| of the initial configuration
-      this.bDp[e] = periShortRangeDistance(LREF[e], this.rnode);
       this.bNu[e] = periNodalScale(L0[e], P.delta, this.rnode);
     }
     this.bBroken = new Uint8Array(nb);
@@ -230,7 +238,8 @@ export class PairPeri extends Pair {
     }
     const P = this.params();
     const x = pc.x, f = pc.f, V = s.vfrac, vir = pc.acc.virial;
-    const nb = this.nBonds, A = this.bA, B = this.bB, SH = this.bShift, L0 = this.bL0, DP = this.bDp, NU = this.bNu, BR = this.bBroken;
+    const eatom = pc.eatom, vatom = pc.vatom;
+    const nb = this.nBonds, A = this.bA, B = this.bB, SH = this.bShift, L0 = this.bL0, NU = this.bNu, BR = this.bBroken;
     const isLPS = this.model === 'lps';
     const wvol = this.wvol, theta = this.theta;
     const delta = P.delta;
@@ -260,7 +269,11 @@ export class PairPeri extends Pair {
       // (15G/4) sum_j nu V_j (e_ij - theta_i |xi|/3)^2 / (m_i |xi|) over ordered pairs. Measured with native
       // LAMMPS (black box, random 5-atom configurations, uniform volumes): the fit is exact to 1e-15.
       let ek = 0;
-      for (let i = 0; i < nl; i++) ek += 0.5 * P.K * theta[i] * theta[i];
+      for (let i = 0; i < nl; i++) {
+        const ev = 0.5 * P.K * theta[i] * theta[i];
+        ek += ev;
+        if (eatom) eatom[i] += ev;
+      }
       for (let e = 0; e < nb; e++) {
         if (BR[e]) continue;
         dxOf(e, d);
@@ -268,33 +281,49 @@ export class PairPeri extends Pair {
         const ext = r - L0[e];
         const a = A[e], b = B[e];
         const eda = ext - theta[a] * L0[e] / 3, edb = ext - theta[b] * L0[e] / 3;
-        ek += (15 / 4) * P.G * (NU[e] * V[b] * eda * eda / (wvol[a] * L0[e]) + NU[e] * V[a] * edb * edb / (wvol[b] * L0[e]));
+        const ea = (15 / 4) * P.G * (NU[e] * V[b] * eda * eda / (wvol[a] * L0[e]));
+        const eb = (15 / 4) * P.G * (NU[e] * V[a] * edb * edb / (wvol[b] * L0[e]));
+        ek += ea + eb;
+        if (eatom) { eatom[a] += ea; eatom[b] += eb; }
       }
       pc.acc.evdwl += ek;
     }
 
-    // short-range contact forces (Howto_peri.rst eq. 13), over every reference bond
+    // short-range contact forces (Howto_peri.rst eq. 13) between every pair of the half neighbor list, bonded or
+    // not (two bodies that touch push each other apart). As native LAMMPS does (src/PERI/pair_peri_pmb.cpp and
+    // pair_peri_lps.cpp compute at b332f28): d_ij comes from the reference separation (minimum image), the stiffness
+    // takes the volume V_j of the neighbor, the force goes to i and its opposite to j, the energy (1/2) rk dr and the
+    // virial del (x) del fpair V_i are split in half between i and j.
+    const list = pc.half;
+    if (!list) throw new StyleError(`${this.name} needs a half neighbor list`);
+    const x0 = s.x0, owner = pc.nb.owner, nbr = list.neighbors;
     const cSd = P.cS / delta;
+    const d0 = new Float64Array(3);
     let evdw = 0;
-    for (let e = 0; e < nb; e++) {
-      dxOf(e, d);
-      const r = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-      if (!(r > 0)) continue;
-      const gap = r - DP[e];
-      if (gap >= 0) continue;
-      const k = cSd * gap;
-      const a = A[e], b = B[e];
-      evdw += 0.5 * cSd * gap * gap * (0.5 * (V[a] + V[b]));
-      const ca = (k * V[b]) / r, cb = (k * V[a]) / r;
-      for (let q = 0; q < 3; q++) {
-        const fa = ca * d[q];
-        f[3 * a + q] += fa;
-        f[3 * b + q] -= cb * d[q];
-        vir[q] += -d[q] * fa;
+    for (let i = 0; i < list.inum; i++) {
+      const k0 = list.firstneigh[i], k1 = k0 + list.numneigh[i];
+      for (let k = k0; k < k1; k++) {
+        const j = nbr[k] & NEIGHMASK;
+        const o = j < nl ? j : owner[j];
+        d[0] = x[3 * i] - x[3 * j]; d[1] = x[3 * i + 1] - x[3 * j + 1]; d[2] = x[3 * i + 2] - x[3 * j + 2];
+        const r = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+        d0[0] = x0[3 * i] - x0[3 * o]; d0[1] = x0[3 * i + 1] - x0[3 * o + 1]; d0[2] = x0[3 * i + 2] - x0[3 * o + 2];
+        pc.geom.minimumImage(d0);
+        // Howto_peri.rst eq. 15 uses the reference distance |x_p - x_i| of the initial configuration
+        const dij = periShortRangeDistance(Math.sqrt(d0[0] * d0[0] + d0[1] * d0[1] + d0[2] * d0[2]), this.rnode);
+        if (!(r < dij)) continue;
+        const dr = r - dij;
+        const rk = cSd * V[o] * dr;
+        const fpair = r > 0 ? -(rk / r) : 0;
+        f[3 * i] += d[0] * fpair; f[3 * i + 1] += d[1] * fpair; f[3 * i + 2] += d[2] * fpair;
+        f[3 * j] -= d[0] * fpair; f[3 * j + 1] -= d[1] * fpair; f[3 * j + 2] -= d[2] * fpair;
+        const ec = 0.5 * rk * dr;
+        evdw += ec;
+        if (eatom) { eatom[i] += 0.5 * ec; eatom[j] += 0.5 * ec; }
+        const w = fpair * V[i];
+        addDD(vir, 0, d, w);
+        if (vatom) { addDD(vatom, 6 * i, d, 0.5 * w); addDD(vatom, 6 * j, d, 0.5 * w); }
       }
-      vir[3] += -d[0] * ca * d[1];
-      vir[4] += -d[0] * ca * d[2];
-      vir[5] += -d[1] * ca * d[2];
     }
 
     pc.acc.evdwl += evdw;
@@ -325,20 +354,22 @@ export class PairPeri extends Pair {
       }
       const ca = ga / r, cb = gb / r;
       for (let q = 0; q < 3; q++) {
-        const fa = ca * d[q];
-        f[3 * a + q] += fa;
+        f[3 * a + q] += ca * d[q];
         f[3 * b + q] -= cb * d[q];
-        vir[q] += -d[q] * fa;
       }
-      vir[3] += -d[0] * ca * d[1];
-      vir[4] += -d[0] * ca * d[2];
-      vir[5] += -d[1] * ca * d[2];
+      const wa = -0.5 * ca * V[a], wb = -0.5 * cb * V[b];
+      addDD(vir, 0, d, wa + wb);
+      if (vatom) { addDD(vatom, 6 * a, d, wa); addDD(vatom, 6 * b, d, wb); }
       // Howto_peri.rst: "Further, new bonds are never created during the course" and a bond
       // breaks when its stretch exceeds the smaller critical stretch of the previous step
       if (stretch > Math.min(s0[a], s0[b])) BR[e] = 1;
       if (stretch < smin[a]) smin[a] = stretch;
       if (stretch < smin[b]) smin[b] = stretch;
-      if (!isLPS) evb += 0.5 * (P.c / L0[e]) * dr * dr * NU[e] * (0.5 * (V[a] + V[b]));
+      if (!isLPS) {
+        const ea = 0.25 * (P.c / L0[e]) * dr * dr * NU[e] * V[b], eb = 0.25 * (P.c / L0[e]) * dr * dr * NU[e] * V[a];
+        evb += ea + eb;
+        if (eatom) { eatom[a] += ea; eatom[b] += eb; }
+      }
     }
     // no critical stretch is recorded at the run setup (historyUpdate false): bonds break from the second timestep
     // Howto_peri.rst eq. 9: s0 = s00 - alpha s_min, the minimum bond stretch of the particle this step

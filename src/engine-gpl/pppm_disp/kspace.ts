@@ -477,6 +477,19 @@ export class KSpacePPPMDisp extends KSpaceBase {
     throw new StyleError('Could not adjust g_ewald_6');
   }
 
+  /** The positions the Coulomb mesh sees: the atoms here (kspace_style pppm/disp/tip4p puts the O charges on M sites). */
+  protected coulombPositions(s: SimState, geom: Geometry): Float64Array {
+    void geom;
+    return s.x;
+  }
+
+  /** Adds the Coulomb force of atom i (the atom itself here; the TIP4P subclass projects an M-site force on O and H). */
+  protected addCoulombForce(kc: KSpaceCompute, i: number, fx: number, fy: number, fz: number): void {
+    kc.f[3 * i] += fx;
+    kc.f[3 * i + 1] += fy;
+    kc.f[3 * i + 2] += fz;
+  }
+
   compute(kc: KSpaceCompute): void {
     if (kc.eatom || kc.vatom) throw new StyleError('compute pe/atom or stress/atom with kspace_style pppm/disp is not ported (per-atom energies and virials)');
     const s = kc.s;
@@ -495,13 +508,14 @@ export class KSpacePPPMDisp extends KSpaceBase {
       const st = makeStencil(this.orderCoul);
       const mg = info.mg;
       const q = s.q;
+      const xc = this.coulombPositions(s, kc.geom);
       let qsum = 0, qsqsum = 0;
       for (let i = 0; i < n; i++) { qsum += q[i]; qsqsum += q[i] * q[i]; }
       const delvolinv = (mg.N[0] / mg.prd[0]) * (mg.N[1] / mg.prd[1]) * (mg.N[2] / mg.prd[2]);
       const w = new Float64Array(n);
       for (let i = 0; i < n; i++) w[i] = delvolinv * q[i];
-      const base = mapAtoms(x, n, lo, mg, st);
-      const F = spread(x, n, lo, mg, st, base, w);
+      const base = mapAtoms(xc, n, lo, mg, st);
+      const F = spread(xc, n, lo, mg, st, base, w);
       fft3d(F, mg.N[0], mg.N[1], mg.N[2], -1);
       const egy = { v: 0 };
       const vir = new Float64Array(6);
@@ -512,11 +526,9 @@ export class KSpacePPPMDisp extends KSpaceBase {
       e1 *= qqrd2e;
       const grids = fieldsIk(F, mg, info.G);
       for (let i = 0; i < n; i++) {
-        const [ex, ey, ez] = interpField(x, i, lo, mg, st, base, grids);
+        const [ex, ey, ez] = interpField(xc, i, lo, mg, st, base, grids);
         const qf = qqrd2e * q[i];
-        kc.f[3 * i] += qf * ex;
-        kc.f[3 * i + 1] += qf * ey;
-        kc.f[3 * i + 2] += qf * ez;
+        this.addCoulombForce(kc, i, qf * ex, qf * ey, qf * ez);
       }
       for (let c = 0; c < 6; c++) virial[c] += 0.5 * qqrd2e * V * vir[c];
       kc.acc.elong += e1;

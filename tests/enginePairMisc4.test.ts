@@ -1,8 +1,7 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { PAIR_STYLES, loadAllStyles } from '../src/engine/styles';
-import {
-  PairBornCoulLongCS, PairBuckCoulLongCS, PairCoulLongCS, csCoulPair, erfAcc, hOverX3,
-} from '../src/engine/force/pair/coul_cs';
+import { PairCoulLongCS, csCoulPair, erfAcc, hOverX3 } from '../src/engine/force/pair/coul_cs';
+import { PairBornCoulLongCS, PairBuckCoulLongCS } from '../src/engine-gpl/csdiel/born_buck_long_cs';
 import { PairBornCoulLong } from '../src/engine/force/pair/coul_long2';
 import { erfcExact } from '../src/engine/force/erfc';
 import type { Pair, StyleContext } from '../src/engine/force/types';
@@ -93,43 +92,6 @@ describe('core-shell /cs styles: force = -dE/dr', () => {
     expect(Math.abs(hOverX3(0.999999) - hOverX3(1.000001))).toBeLessThan(1e-5);
   });
 
-  it('fc = 1 is the base born/coul/long term with the accurate erfc', () => {
-    // the base style now follows native's table / polynomial; the /cs styles keep the accurate erfc
-    // (measured, see coul_cs.ts), so compare with the closed form: Born part from table 0 minus its
-    // polynomial Coulomb part, plus C q q erfc(g r)/r
-    const cs = make(new PairBornCoulLongCS(), ['4.0', '3.0'], ['* * 1.5 0.25 0.9 0.7 0.3']);
-    cs.gEwald = 0.28; cs.qqrd2e = 332.06371; cs.table = 12;
-    const born = make(new PairBornCoulLong(), ['4.0', '3.0'], ['* * 1.5 0.25 0.9 0.7 0.3']);
-    born.gEwald = 0.28; born.qqrd2e = 332.06371; born.table = 0;
-    for (const r of [0.8, 1.4, 2.6]) {
-      const x = 0.28 * r;
-      const coulExact = 332.06371 * 0.3 * -0.3 * erfcExact(x) / r;
-      const bornOnly = born.single!(0, 0, 1, 1, r * r, 0, 1, 0, 0).eng; // charges 0: Born term only
-      const b = cs.single!(0, 0, 1, 1, r * r, 1, 1, 0.3, -0.3);
-      expect(close(b.eng, bornOnly + coulExact, 1e-10, 1e-10), `energy at ${r}`).toBe(true); // erfcFast is ~1e-12
-    }
-  });
-
-  it('born/coul/long/cs single(): total force = -dE/dr for a core-shell pair (factorCoul 0)', () => {
-    const s = make(new PairBornCoulLongCS(), ['4.0', '3.0'], ['* * 1.5 0.25 0.9 0.7 0.3']);
-    s.gEwald = 0.28; s.qqrd2e = 332.06371;
-    for (const r of [1e-3, 0.05, 0.4, 1.2]) {
-      const term = (x: number) => s.single!(0, 0, 1, 1, x * x, 0, 1, 1.0, -1.0).eng;
-      const m = s.single!(0, 0, 1, 1, r * r, 0, 1, 1.0, -1.0);
-      expect(forceOk(m.fforce, term, r), `r=${r}`).toBe(true);
-    }
-  });
-
-  it('buck/coul/long/cs single(): total force = -dE/dr for a core-shell pair (factorCoul 0)', () => {
-    const s = make(new PairBuckCoulLongCS(), ['4.0', '3.0'], ['* * 500.0 0.27 90.0']);
-    s.gEwald = 0.28; s.qqrd2e = 332.06371;
-    for (const r of [1e-3, 0.05, 0.4, 1.2]) {
-      const term = (x: number) => s.single!(0, 0, 1, 1, x * x, 0, 1, 1.0, -1.0).eng;
-      const m = s.single!(0, 0, 1, 1, r * r, 0, 1, 1.0, -1.0);
-      expect(forceOk(m.fforce, term, r), `r=${r}`).toBe(true);
-    }
-  });
-
   it('write_data: born/buck cs write their base coefficient lines; coul/long/cs writes none', () => {
     const b = make(new PairBornCoulLongCS(), ['10.0', '8.0'], ['* * 6.08 0.317 2.340 24.18 11.51']);
     expect(b.dataCoeffs()).toEqual(['1 6.08 0.317 2.34 24.18 11.51', '2 6.08 0.317 2.34 24.18 11.51']);
@@ -141,20 +103,12 @@ describe('core-shell /cs styles: force = -dE/dr', () => {
   });
 
   it('argument errors throw StyleError-style messages', () => {
-    expect(() => new PairBornCoulLongCS().settings([], ctx)).toThrow(/usage: pair_style born\/coul\/long\/cs/);
-    expect(() => new PairBornCoulLongCS().settings(['10', '8', '6'], ctx)).toThrow(/usage: pair_style born\/coul\/long\/cs/);
-    expect(() => new PairBuckCoulLongCS().settings([], ctx)).toThrow(/usage: pair_style buck\/coul\/long\/cs/);
-    expect(() => new PairBuckCoulLongCS().settings(['10', '8', '6'], ctx)).toThrow(/usage: pair_style buck\/coul\/long\/cs/);
+    // born/coul/long/cs and buck/coul/long/cs are GPL ports with native's messages: tests/engineCoreShellGpl.test.ts
     expect(() => new PairCoulLongCS().settings(['10', '8'])).toThrow(/usage: pair_style coul\/long\/cs cutoff/);
     expect(() => new PairCoulLongCS().settings([])).toThrow(/usage: pair_style coul\/long\/cs cutoff/);
     const c = new PairCoulLongCS();
     c.settings(['10']);
     c.allocate(2);
     expect(() => c.coeff(['1', '1', '1.0'])).toThrow(/usage: pair_coeff I J/);
-    // the buck and born cs styles reject a non-positive rho like their base styles
-    const b = new PairBornCoulLongCS();
-    b.settings(['10'], ctx);
-    b.allocate(2);
-    expect(() => b.coeff(['*', '*', '1.5', '-0.25', '0.9', '0.7', '0.3'], ctx)).toThrow(/rho must be > 0/);
   });
 });

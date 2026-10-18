@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  PairBornCoulWolf, PairBornCoulDsf, PairBornCoulWolfCS, PairBornCoulDsfCS,
-} from '../src/engine/force/pair/born_coul18';
-import { PAIRS as W18_MISC_PAIRS } from '../src/engine/registry/pair_misc18';
+import { PairBornCoulWolf, PairBornCoulDsf } from '../src/engine/force/pair/born_coul18';
+import { PairBornCoulWolfCS, PairBornCoulDsfCS } from '../src/engine-gpl/csdiel/born_dsf_wolf_cs';
+import { PAIRS as CSDIEL_PAIRS } from '../src/engine-gpl/registry/csdiel';
 import { Session } from '../src/engine/interpreter';
 import type { EngineEvent } from '../src/engine/types';
 import type { Pair, StyleContext } from '../src/engine/force/types';
@@ -59,86 +58,15 @@ const wolfShift = (s: Pair, itype: number, jtype: number, radii: number[], qi: n
   for (const d of deltas) if (!close(d, deltas[0], 1e-6, 1e-7)) throw new Error(`${s.name}: Wolf force shift varies with r`);
 };
 
-describe('born/coul/{wolf,dsf}/cs: weight-0 core/shell pair at r = 0', () => {
-  it('born/coul/wolf/cs returns a finite r -> 0 limit, the base style is NaN', () => {
-    const s = make(new PairBornCoulWolfCS(), ['0.6', '3.0'], COEFFS);
-    const zero = s.single!(0, 0, 1, 2, 0, 0, 0, 1.0, -1.0);
-    expect(Number.isFinite(zero.eng)).toBe(true);
-    expect(zero.fforce).toBe(0);
-    const base = make(new PairBornCoulWolf(), ['0.6', '3.0'], COEFFS);
-    expect(Number.isNaN(base.single!(0, 0, 1, 2, 0, 0, 0, 1.0, -1.0).eng)).toBe(true);
-  });
-
-  it('born/coul/dsf/cs returns a finite r -> 0 limit, the base style is NaN', () => {
-    const s = make(new PairBornCoulDsfCS(), ['0.6', '3.0'], COEFFS);
-    const zero = s.single!(0, 0, 1, 2, 0, 0, 0, 1.0, -1.0);
-    expect(Number.isFinite(zero.eng)).toBe(true);
-    expect(zero.fforce).toBe(0);
-    const base = make(new PairBornCoulDsf(), ['0.6', '3.0'], COEFFS);
-    expect(Number.isNaN(base.single!(0, 0, 1, 2, 0, 0, 0, 1.0, -1.0).eng)).toBe(true);
-  });
-
-  it('the r = 0 value is the limit approached from r > 0', () => {
-    for (const cs of [new PairBornCoulWolfCS(), new PairBornCoulDsfCS()] as Pair[]) {
-      make(cs, ['0.6', '3.0'], COEFFS);
-      const zero = cs.single!(0, 0, 1, 2, 0, 0, 0, 1.0, -1.0).eng;
-      const tiny = cs.single!(0, 0, 1, 2, 1e-10 * 1e-10, 0, 0, 1.0, -1.0).eng;
-      expect(close(zero, tiny, 1e-6, 1e-9), `${cs.name}`).toBe(true);
-    }
-  });
-
-  it('agrees with the base style for a weight-0 pair away from r = 0', () => {
-    for (const [cs, base] of [[new PairBornCoulWolfCS(), new PairBornCoulWolf()], [new PairBornCoulDsfCS(), new PairBornCoulDsf()]] as [Pair, Pair][]) {
-      make(cs, ['0.6', '3.0'], COEFFS);
-      make(base, ['0.6', '3.0'], COEFFS);
-      for (const r of [0.5, 1.4, 2.5]) {
-        const a = cs.single!(0, 0, 1, 2, r * r, 0, 1, 1.0, -1.0);
-        const b = base.single!(0, 0, 1, 2, r * r, 0, 1, 1.0, -1.0);
-        expect(close(a.eng, b.eng, 1e-12, 1e-12), `${cs.name} e r=${r}`).toBe(true);
-        expect(close(a.fforce, b.fforce, 1e-12, 1e-12), `${cs.name} f r=${r}`).toBe(true);
-      }
-    }
-  });
-
-  it('the weight-0 /cs force obeys the base Wolf/dsf conventions', () => {
-    wolfShift(make(new PairBornCoulWolfCS(), ['0.6', '3.0'], COEFFS), 1, 2, [0.4, 0.9, 2.2], 1.0, -1.0);
-    finiteDiff(make(new PairBornCoulDsfCS(), ['0.6', '3.0'], COEFFS), 1, 2, [0.4, 0.9, 2.2], 1.0, -1.0, 0);
-  });
-
-  it('a weight-1 pair keeps the base damped Coulomb and the Born term', () => {
-    const cs = make(new PairBornCoulWolfCS(), ['0.6', '3.0'], COEFFS);
-    const base = make(new PairBornCoulWolf(), ['0.6', '3.0'], COEFFS);
-    const r = 1.1;
-    const a = cs.single!(0, 0, 1, 2, r * r, 1, 1, 0.5, -0.5);
-    const b = base.single!(0, 0, 1, 2, r * r, 1, 1, 0.5, -0.5);
-    expect(close(a.eng, b.eng, 1e-12, 1e-12)).toBe(true);
-  });
-});
-
 describe('born/coul/{wolf,dsf}/cs: errors and registration', () => {
-  it('bad pair_style arguments throw a StyleError naming the /cs style', () => {
-    expect(() => new PairBornCoulWolfCS().settings([], ctx)).toThrow(/usage: pair_style born\/coul\/wolf\/cs/);
-    expect(() => new PairBornCoulWolfCS().settings(['0.6'], ctx)).toThrow(/usage: pair_style born\/coul\/wolf\/cs/);
-    expect(() => new PairBornCoulWolfCS().settings(['0.6', '3.0', '4.0', '5.0'], ctx)).toThrow(/usage: pair_style born\/coul\/wolf\/cs/);
-    expect(() => new PairBornCoulDsfCS().settings([], ctx)).toThrow(/usage: pair_style born\/coul\/dsf\/cs/);
-    expect(() => new PairBornCoulDsfCS().settings(['0.6', '3.0', '4.0', '5.0'], ctx)).toThrow(/usage: pair_style born\/coul\/dsf\/cs/);
-  });
-
-  it('no per-pair Coulomb cutoff is accepted, so a 9th coeff throws', () => {
-    const s = new PairBornCoulWolfCS();
-    s.settings(['0.6', '3.0'], ctx);
-    s.allocate(2);
-    expect(() => s.coeff(['1', '1', '1.0', '0.1', '1.0', '1.0', '0.5', '2.4', '2.8'], ctx)).toThrow(/usage: pair_coeff/);
-  });
-
   it('extract cut_coul follows the pair_style Coulomb cutoff', () => {
     expect(make(new PairBornCoulWolfCS(), ['0.6', '2.5', '3.0'], COEFFS).extract('cut_coul')).toBe(3.0);
     expect(make(new PairBornCoulDsfCS(), ['0.6', '3.0'], COEFFS).extract('cut_coul')).toBe(3.0);
   });
 
   it('the wave-18 registry exposes the /cs factories', () => {
-    expect(W18_MISC_PAIRS['born/coul/wolf/cs']!().name).toBe('born/coul/wolf/cs');
-    expect(W18_MISC_PAIRS['born/coul/dsf/cs']!().name).toBe('born/coul/dsf/cs');
+    expect(CSDIEL_PAIRS['born/coul/wolf/cs']!().name).toBe('born/coul/wolf/cs');
+    expect(CSDIEL_PAIRS['born/coul/dsf/cs']!().name).toBe('born/coul/dsf/cs');
   });
 });
 

@@ -1,0 +1,24 @@
+# oracle: third_order regular on an 8-atom perturbed LJ cell (box 4, atoms near the corners of a 2x2x2 grid), delta 1e-2, all atoms in the group, text file
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo none, atoms 7.1e-16 (absolute, positions and forces).
+# The file agrees with the native text byte for byte (720 entries). Delta 1e-2: the finite difference of a force divided by 4 delta^2 amplifies force rounding, so the smaller deltas of this case gave last-digit flips.
+# oracle-files: w241to_lj_regular.dat
+# oracle-compare: thermo=none atoms=all filerel=1e-6
+units           lj
+atom_style      atomic
+atom_modify    map array
+lattice         none 1.0
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 single 0.10 0.05 0.02 units box
+create_atoms    1 single 2.05 0.12 0.08 units box
+create_atoms    1 single 0.07 2.11 0.15 units box
+create_atoms    1 single 2.02 2.06 0.11 units box
+create_atoms    1 single 0.13 0.09 2.07 units box
+create_atoms    1 single 2.09 0.04 2.13 units box
+create_atoms    1 single 0.06 2.14 2.04 units box
+create_atoms    1 single 2.11 2.09 2.10 units box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0
+neighbor        0.3 bin
+third_order     all regular 0.01 file w241to_lj_regular.dat

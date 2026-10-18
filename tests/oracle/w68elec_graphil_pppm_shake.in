@@ -1,8 +1,8 @@
 # oracle: ELECTRODE graph-il in.graph-il-conp cut to run 0 (settings.mod inlined, with the example's fix shake on the BMI bonds and angle; on the smaller system w68elec_graphil_patch.data, see w68elec_graphil_pppm_inv): pppm/electrode slab 3.0, fix electrode/conp mat_inv, symm on
-# Compared at the tolerance of w68elec_graphil_pppm_inv (rel 1e-6); fix shake setup forces match since #166
+# Compared at the tolerance of w68elec_graphil_pppm_inv (default rel 1e-8); fix shake setup forces match since #166
 # Measured with native LAMMPS (black box): G vector 0.21319669, grid 36 36 216, order 5 (pppm/electrode 1e-7, slab 3.0); the engine chooses the same G and grid itself (no kspace_modify gewald/mesh); per-atom error 1.7e-9 (fz)
 # oracle-inputs: w68elec_graphil_patch.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
 units           real
 atom_style      full
 boundary        p p f

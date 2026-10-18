@@ -2,8 +2,8 @@
 # Measured with native LAMMPS (black box): G vector 0.21319669, grid 36 36 216, order 5 (pppm/electrode 1e-7, slab 3.0); the engine chooses the same G and grid itself (no kspace_modify gewald/mesh)
 # Measured with native LAMMPS (black box): step 0: Temp=0 c_ctemp=0 E_pair=2005564.72573217 TotEng=2005943.7282932 c_qbot=0.0150526045295551 c_qtop=-0.0150526045295552 f_conp=0.694242648662859
 # oracle-inputs: w68elec_graphil_patch.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
-# Measured with native LAMMPS (black box): thermo max relative error 4.4e-7 (E_pair, step 0), per-atom 5.1e-11
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+# Measured with native LAMMPS (black box): thermo max relative error 3.3e-14 (E_pair, step 0; the electrode Gaussian correction and self energy are tallied into the pair ecoul, as ELECTRODE/fix_electrode_conp.cpp gausscorr and self_energy call ev_tally), per-atom 2.7e-11
 units           real
 atom_style      full
 boundary        p p f

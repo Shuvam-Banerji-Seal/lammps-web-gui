@@ -1,0 +1,18 @@
+# oracle: lj/cut/coul/debye/dielectric kappa 0.2, lj/cut with eps 0.1 sigma 2.5
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.9e-15, atoms 1.8e-14.
+# oracle-inputs: w226cs_diel.data
+units           real
+atom_style      dielectric
+read_data       w226cs_diel.data
+pair_style      lj/cut/coul/debye/dielectric 0.2 8.0
+pair_coeff      * * 0.02 2.0
+bond_style      harmonic
+bond_coeff      1 100.0 1.5
+special_bonds   lj/coul 0.0 0.5 1.0
+
+timestep        0.1
+fix             1 all nve
+thermo_style    custom step pe ecoul elong evdwl ke press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             50

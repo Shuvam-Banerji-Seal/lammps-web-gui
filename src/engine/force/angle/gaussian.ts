@@ -110,7 +110,8 @@ export class AngleGaussian extends Bonded {
     const out: string[] = [];
     for (let t = 1; t <= this.ntypes; t++) {
       const w = [String(t), fmtCoeff(this.T[t]), String(this.terms[t].length)];
-      for (const g of this.terms[t]) w.push(fmtCoeff(g.a), fmtCoeff(g.w), fmtCoeff((g.th * 180) / Math.PI));
+      // As native LAMMPS does (src/EXTRA-MOLECULE/angle_gaussian.cpp at b332f28): write_data: (theta0[i][j] / MY_PI) * 180.0
+      for (const g of this.terms[t]) w.push(fmtCoeff(g.a), fmtCoeff(g.w), fmtCoeff((g.th / Math.PI) * 180));
       out.push(w.join(' '));
     }
     return out;

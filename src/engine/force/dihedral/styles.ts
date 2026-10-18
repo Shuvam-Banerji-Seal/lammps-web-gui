@@ -11,7 +11,6 @@ import { libm } from '../../libm';
  * by the quadruplet of atoms", trans = 180 degrees).
  */
 
-const DEG2RAD = Math.PI / 180;
 
 /*
  * Near-planar regularisation of the force (measured with native LAMMPS, black
@@ -206,7 +205,8 @@ export class DihedralFourier extends DihedralVarLen {
       const K = parseNum(vals[3 * i], `K${i + 1}`);
       const n = parseInt_(vals[3 * i + 1], `n${i + 1}`);
       if (n < 0) throw new StyleError(`dihedral fourier n${i + 1} must be an integer >= 0`);
-      const d = parseNum(vals[3 * i + 2], `d${i + 1}`) * DEG2RAD;
+      // As native LAMMPS does (src/EXTRA-MOLECULE/dihedral_fourier.cpp at b332f28): cos_shift[i][j] = cos(MY_PI*shift_one/180.0)
+      const d = (parseNum(vals[3 * i + 2], `d${i + 1}`) * Math.PI) / 180;
       packed.push(K, n, d);
     }
     this.setCoeffs(args[0], packed);
@@ -215,7 +215,8 @@ export class DihedralFourier extends DihedralVarLen {
   // write_data, measured with native LAMMPS: "1 2 1 1 0 0.6 3 180" — m first, d in degrees
   protected dataValues(v: Float64Array): number[] {
     const out = [v.length / 3];
-    for (let i = 0; i < v.length; i += 3) out.push(v[i], v[i + 1], v[i + 2] / DEG2RAD);
+    // Native write_data prints the degree value it read (src/EXTRA-MOLECULE/dihedral_fourier.cpp at b332f28); the radians are returned to degrees with the inverse of the coeff form above
+    for (let i = 0; i < v.length; i += 3) out.push(v[i], v[i + 1], (v[i + 2] * 180) / Math.PI);
     return out;
   }
 
@@ -252,13 +253,15 @@ export class DihedralQuadratic extends SimpleBonded {
 
   protected parse(args: string[]): number[] {
     if (args.length !== 2) throw new StyleError('dihedral_coeff quadratic needs K phi0');
-    return [parseNum(args[0], 'K'), parseNum(args[1], 'phi0') * DEG2RAD];
+    // As native LAMMPS does (src/EXTRA-MOLECULE/dihedral_quadratic.cpp at b332f28): phi0[i] = phi0_one*MY_PI/180.0
+    return [parseNum(args[0], 'K'), (parseNum(args[1], 'phi0') * Math.PI) / 180];
   }
 
   // write_data, measured with native LAMMPS: phi0 back in degrees ("1 2 120")
   dataCoeffs(): string[] {
     const K = this.params.p('K'), phi0 = this.params.p('phi0');
-    return Array.from({ length: this.ntypes }, (_, k) => `${k + 1} ${fmtCoeff(K[k + 1])} ${fmtCoeff(phi0[k + 1] / DEG2RAD)}`);
+    // As native LAMMPS does (src/EXTRA-MOLECULE/dihedral_quadratic.cpp at b332f28): write_data: phi0[i]*180.0/MY_PI
+    return Array.from({ length: this.ntypes }, (_, k) => `${k + 1} ${fmtCoeff(K[k + 1])} ${fmtCoeff((phi0[k + 1] * 180) / Math.PI)}`);
   }
 
   compute(bc: BondedCompute): void {
@@ -341,13 +344,15 @@ export class DihedralCosineShiftExp extends SimpleBonded {
 
   protected parse(args: string[]): number[] {
     if (args.length !== 3) throw new StyleError('dihedral_coeff cosine/shift/exp needs Umin theta0 a');
-    return [parseNum(args[0], 'Umin'), parseNum(args[1], 'theta0') * DEG2RAD, parseNum(args[2], 'a')];
+    // As native LAMMPS does (src/EXTRA-MOLECULE/dihedral_cosine_shift_exp.cpp at b332f28): theta0[i]=theta0_*MY_PI/180.0
+    return [parseNum(args[0], 'Umin'), (parseNum(args[1], 'theta0') * Math.PI) / 180, parseNum(args[2], 'a')];
   }
 
   // write_data, measured with native LAMMPS: theta0 back in degrees ("1 1.5 45 2")
   dataCoeffs(): string[] {
     const U = this.params.p('Umin'), th = this.params.p('theta0'), a = this.params.p('a');
-    return Array.from({ length: this.ntypes }, (_, k) => `${k + 1} ${fmtCoeff(U[k + 1])} ${fmtCoeff(th[k + 1] / DEG2RAD)} ${fmtCoeff(a[k + 1])}`);
+    // As native LAMMPS does (src/EXTRA-MOLECULE/dihedral_cosine_shift_exp.cpp at b332f28): write_data: theta[i]*180.0/MY_PI
+    return Array.from({ length: this.ntypes }, (_, k) => `${k + 1} ${fmtCoeff(U[k + 1])} ${fmtCoeff((th[k + 1] * 180) / Math.PI)} ${fmtCoeff(a[k + 1])}`);
   }
 
   compute(bc: BondedCompute): void {

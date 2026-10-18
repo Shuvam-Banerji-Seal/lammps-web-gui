@@ -51,7 +51,8 @@ export class AngleLepton extends Bonded {
     if (ctx) this.ctx = ctx;
     if (args.length !== 3) throw new StyleError('usage: angle_coeff N theta0 "expression"');
     const [lo, hi] = typeBounds(args[0], this.ntypes);
-    const th0 = (parseNum(args[1], 'theta0') * Math.PI) / 180;
+    // As native LAMMPS does (src/LEPTON/angle_lepton.cpp at b332f28): theta0[i] = DEG2RAD * theta0_one
+    const th0 = (Math.PI / 180) * parseNum(args[1], 'theta0');
     const prog = compileLepton(args[2], { builtins: ['theta'], wrt: ['theta'] });
     for (let t = lo; t <= hi; t++) {
       this.th0[t] = th0;

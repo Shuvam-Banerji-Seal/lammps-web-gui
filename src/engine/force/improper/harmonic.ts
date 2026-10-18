@@ -53,13 +53,15 @@ export class ImproperHarmonic extends SimpleBonded {
 
   protected parse(args: string[]): number[] {
     if (args.length !== 2) throw new StyleError('improper_coeff harmonic needs K chi0');
-    return [parseNum(args[0], 'K'), (parseNum(args[1], 'chi0') * Math.PI) / 180];
+    // As native LAMMPS does (src/MOLECULE/improper_harmonic.cpp at b332f28): chi[i] = DEG2RAD * chi_one
+    return [parseNum(args[0], 'K'), (Math.PI / 180) * parseNum(args[1], 'chi0')];
   }
 
   dataCoeffs(): string[] {
     const K = this.params.p('K'), c0 = this.params.p('chi0');
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((c0[t] * 180) / Math.PI)}`);
+    // As native LAMMPS does (src/MOLECULE/improper_harmonic.cpp at b332f28): write_data: RAD2DEG * chi[i]
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((180 / Math.PI) * c0[t])}`);
     return out;
   }
 

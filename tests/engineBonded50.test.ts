@@ -84,7 +84,8 @@ describe('angle_style cosine/buck6d', () => {
     const a = new AngleCosineBuck6d();
     a.allocate(1);
     a.coeff(['1', '1.978350', '4', '180.0']);
-    expect(a.dataCoeffs()).toEqual(['1 1.97835 4 180']);
+    // native write_data prints th0 in radians (angle_cosine_buck6d.cpp write_data: "%d %g %d %g" with th0[i])
+    expect(a.dataCoeffs()).toEqual(['1 1.97835 4 3.14159']);
     expect(() => a.coeff(['1', '1.9', '4.5', '180.0'])).toThrow(StyleError);
   });
 

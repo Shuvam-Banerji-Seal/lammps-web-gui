@@ -40,7 +40,6 @@ import { libm } from '../../libm';
  *    dataCrossSections); read_data reads the cross terms back from those sections.
  */
 
-const DEG2RAD = Math.PI / 180;
 
 /** The five cross-term keywords, their coefficient names in order, and which need a degree conversion. */
 const CROSS: Record<string, { names: readonly string[]; deg: readonly number[] }> = {
@@ -90,7 +89,8 @@ export class DihedralClass2 extends SimpleBonded {
         throw new StyleError(`dihedral_coeff class2 ${kw} needs ${g.names.length} coefficients: ${g.names.join(' ')}`);
       }
       const nums = vals.map((w, k) => parseNum(w, g.names[k]));
-      for (const k of CROSS[kw].deg) nums[k] *= DEG2RAD;
+      // As native LAMMPS does (src/CLASS2/dihedral_class2.cpp at b332f28): at_theta0_1[i] = theta0_1_one/180.0 * MY_PI (aat_theta0_1 likewise)
+      for (const k of CROSS[kw].deg) nums[k] = (nums[k] / 180) * Math.PI;
       g.setRange(word, nums);
       return;
     }
@@ -99,7 +99,8 @@ export class DihedralClass2 extends SimpleBonded {
     }
     if (rest.length !== 6) throw new StyleError('dihedral_coeff class2 needs K1 phi1 K2 phi2 K3 phi3');
     const nums = rest.map((w, k) => parseNum(w, this.paramNames[k]));
-    nums[1] *= DEG2RAD; nums[3] *= DEG2RAD; nums[5] *= DEG2RAD;
+    // As native LAMMPS does (src/CLASS2/dihedral_class2.cpp at b332f28): phi1[i] = phi1_one/180.0 * MY_PI
+    nums[1] = (nums[1] / 180) * Math.PI; nums[3] = (nums[3] / 180) * Math.PI; nums[5] = (nums[5] / 180) * Math.PI;
     this.main.setRange(word, nums);
   }
 
@@ -117,7 +118,8 @@ export class DihedralClass2 extends SimpleBonded {
     const K3 = this.main.p('K3'), P3 = this.main.p('phi3');
     const out: string[] = [];
     for (let t = 1; t <= this.ntypes; t++) {
-      out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff(P1[t] / DEG2RAD)} ${fmtCoeff(K2[t])} ${fmtCoeff(P2[t] / DEG2RAD)} ${fmtCoeff(K3[t])} ${fmtCoeff(P3[t] / DEG2RAD)}`);
+      // As native LAMMPS does (src/CLASS2/dihedral_class2.cpp at b332f28): write_data: phi1[i]*180.0/MY_PI
+      out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((P1[t] * 180) / Math.PI)} ${fmtCoeff(K2[t])} ${fmtCoeff((P2[t] * 180) / Math.PI)} ${fmtCoeff(K3[t])} ${fmtCoeff((P3[t] * 180) / Math.PI)}`);
     }
     return out;
   }
@@ -128,7 +130,8 @@ export class DihedralClass2 extends SimpleBonded {
       const g = this.group(kw);
       const lines: string[] = [];
       for (let t = 1; t <= this.ntypes; t++) {
-        lines.push(`${t} ${CROSS[kw].names.map((nm, k) => fmtCoeff(CROSS[kw].deg.includes(k) ? g.p(nm)[t] / DEG2RAD : g.p(nm)[t])).join(' ')}`);
+        // As native LAMMPS does (src/CLASS2/dihedral_class2.cpp at b332f28): write_data: aat_theta0_1[i]*180.0/MY_PI
+        lines.push(`${t} ${CROSS[kw].names.map((nm, k) => fmtCoeff(CROSS[kw].deg.includes(k) ? (g.p(nm)[t] * 180) / Math.PI : g.p(nm)[t])).join(' ')}`);
       }
       return { title, lines };
     };

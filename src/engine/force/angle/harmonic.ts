@@ -18,17 +18,20 @@ export class AngleHarmonic extends SimpleBonded {
 
   protected parse(args: string[]): number[] {
     if (args.length !== 2) throw new StyleError('angle_coeff harmonic needs K theta0');
-    return [parseNum(args[0], 'K'), (parseNum(args[1], 'theta0') * Math.PI) / 180];
+    // As native LAMMPS does (src/MOLECULE/angle_harmonic.cpp at b332f28): theta0[i] = DEG2RAD * theta0_one
+    return [parseNum(args[0], 'K'), (Math.PI / 180) * parseNum(args[1], 'theta0')];
   }
 
   dataCoeffs(): string[] {
     const K = this.params.p('K'), th = this.params.p('theta0');
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((th[t] * 180) / Math.PI)}`);
+    // As native LAMMPS does (src/MOLECULE/angle_harmonic.cpp at b332f28): write_data: RAD2DEG * theta0[i]
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((180 / Math.PI) * th[t])}`);
     return out;
   }
 
-  equilibrium(type: number): number { return (this.params.p('theta0')[type] * 180) / Math.PI; }
+  // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
+  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
 
   compute(bc: BondedCompute): void {
     const A = bc.s.topo.angles;

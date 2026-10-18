@@ -45,13 +45,16 @@ export class AngleCosineBuck6d extends SimpleBonded {
     const K = parseNum(args[0], 'K');
     const n = parseInt_(args[1], 'n');
     if (n < 0) throw new StyleError('angle cosine/buck6d n must be an integer >= 0');
-    return [K, n, (parseNum(args[2], 'theta0') * Math.PI) / 180];
+    // As native LAMMPS does (src/MOFFF/angle_cosine_buck6d.cpp at b332f28): th0[i] = th0_one/180.0 * MY_PI
+    return [K, n, (parseNum(args[2], 'theta0') / 180) * Math.PI];
   }
 
   dataCoeffs(): string[] {
     const K = this.params.p('K'), n = this.params.p('n'), th = this.params.p('theta0');
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff(n[t])} ${fmtCoeff((th[t] * 180) / Math.PI)}`);
+    // As native LAMMPS does (src/MOFFF/angle_cosine_buck6d.cpp at b332f28): write_data prints the stored radians,
+    // fprintf(fp,"%d %g %d %g\n",i,k[i],multiplicity[i],th0[i]) (read back, the value is taken as degrees)
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff(n[t])} ${fmtCoeff(th[t])}`);
     return out;
   }
 

@@ -10,12 +10,20 @@ import { libm } from '../../libm';
  * angle at the middle atom j of the triplet i-j-k, computed by angleTerm.
  */
 
-/** Parses angle_coeff values, converting the named angle coefficients from degrees to radians. */
-const parseDeg = (names: readonly string[], degIdx: readonly number[]) => (args: string[]): number[] => {
+/**
+ * Degree-to-radian forms, each the expression native LAMMPS uses in that style's coeff():
+ * 'DEG2RAD' is DEG2RAD * v, 'div180-pi' is v / 180.0 * MY_PI, 'pi-div180' is v * MY_PI / 180.0.
+ */
+type DegForm = 'DEG2RAD' | 'div180-pi' | 'pi-div180';
+const degToRad = (form: DegForm, v: number): number =>
+  form === 'DEG2RAD' ? (Math.PI / 180) * v : form === 'div180-pi' ? (v / 180) * Math.PI : (v * Math.PI) / 180;
+
+/** Parses angle_coeff values, converting the named angle coefficients from degrees to radians with the given native form. */
+const parseDeg = (names: readonly string[], degIdx: readonly number[], form: DegForm) => (args: string[]): number[] => {
   if (args.length !== names.length) throw new StyleError(`angle_coeff: expected ${names.length} coefficients: ${names.join(' ')}`);
   return args.map((w, k) => {
     const v = parseNum(w, names[k]);
-    return degIdx.includes(k) ? (v * Math.PI) / 180 : v;
+    return degIdx.includes(k) ? degToRad(form, v) : v;
   });
 };
 
@@ -63,16 +71,19 @@ export class AngleCosineSquared extends SimpleBonded {
   readonly kind = 'angle' as const;
   readonly paramNames = ['K', 'theta0'];
 
-  protected parse = parseDeg(this.paramNames, [1]);
+  // As native LAMMPS does (src/MOLECULE/angle_cosine_squared.cpp at b332f28): theta0[i] = DEG2RAD * theta0_one
+  protected parse = parseDeg(this.paramNames, [1], 'DEG2RAD');
 
   dataCoeffs(): string[] {
     const K = this.params.p('K'), th = this.params.p('theta0');
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((th[t] * 180) / Math.PI)}`);
+    // As native LAMMPS does (src/MOLECULE/angle_cosine_squared.cpp at b332f28): write_data: RAD2DEG * theta0[i]
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((180 / Math.PI) * th[t])}`);
     return out;
   }
 
-  equilibrium(type: number): number { return (this.params.p('theta0')[type] * 180) / Math.PI; }
+  // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
+  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
 
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), th0 = this.params.p('theta0');
@@ -163,16 +174,19 @@ export class AngleCosineShift extends SimpleBonded {
   readonly kind = 'angle' as const;
   readonly paramNames = ['Umin', 'theta0'];
 
-  protected parse = parseDeg(this.paramNames, [1]);
+  // As native LAMMPS does (src/EXTRA-MOLECULE/angle_cosine_shift.cpp at b332f28): theta[i] = theta0*MY_PI / 180.0
+  protected parse = parseDeg(this.paramNames, [1], 'pi-div180');
 
   dataCoeffs(): string[] {
     const U = this.params.p('Umin'), th = this.params.p('theta0');
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(U[t])} ${fmtCoeff((th[t] * 180) / Math.PI)}`);
+    // As native LAMMPS does (src/EXTRA-MOLECULE/angle_cosine_shift.cpp at b332f28): write_data: theta[i]/MY_PI*180.0
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(U[t])} ${fmtCoeff((th[t] / Math.PI) * 180)}`);
     return out;
   }
 
-  equilibrium(type: number): number { return (this.params.p('theta0')[type] * 180) / Math.PI; }
+  // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
+  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
 
   compute(bc: BondedCompute): void {
     const U = this.params.p('Umin'), th0 = this.params.p('theta0');
@@ -207,16 +221,19 @@ export class AngleCosineDelta extends SimpleBonded {
   readonly kind = 'angle' as const;
   readonly paramNames = ['K', 'theta0'];
 
-  protected parse = parseDeg(this.paramNames, [1]);
+  // As native LAMMPS does (src/EXTRA-MOLECULE/angle_cosine_delta.cpp at b332f28, coeff inherited from src/MOLECULE/angle_cosine_squared.cpp at b332f28): theta0[i] = DEG2RAD * theta0_one
+  protected parse = parseDeg(this.paramNames, [1], 'DEG2RAD');
 
   dataCoeffs(): string[] {
     const K = this.params.p('K'), th = this.params.p('theta0');
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((th[t] * 180) / Math.PI)}`);
+    // As native LAMMPS does (src/EXTRA-MOLECULE/angle_cosine_delta.cpp at b332f28, write_data inherited from src/MOLECULE/angle_cosine_squared.cpp at b332f28): RAD2DEG * theta0[i]
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((180 / Math.PI) * th[t])}`);
     return out;
   }
 
-  equilibrium(type: number): number { return (this.params.p('theta0')[type] * 180) / Math.PI; }
+  // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
+  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
 
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), th0 = this.params.p('theta0');
@@ -253,17 +270,20 @@ export class AngleCharmm extends SimpleBonded {
   readonly kind = 'angle' as const;
   readonly paramNames = ['K', 'theta0', 'Kub', 'rub'];
 
-  protected parse = parseDeg(this.paramNames, [1]);
+  // As native LAMMPS does (src/MOLECULE/angle_charmm.cpp at b332f28): theta0[i] = DEG2RAD * theta0_one
+  protected parse = parseDeg(this.paramNames, [1], 'DEG2RAD');
 
   dataCoeffs(): string[] {
     const K = this.params.p('K'), th = this.params.p('theta0');
     const Kub = this.params.p('Kub'), rub = this.params.p('rub');
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((th[t] * 180) / Math.PI)} ${fmtCoeff(Kub[t])} ${fmtCoeff(rub[t])}`);
+    // As native LAMMPS does (src/MOLECULE/angle_charmm.cpp at b332f28): write_data: RAD2DEG * theta0[i]
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((180 / Math.PI) * th[t])} ${fmtCoeff(Kub[t])} ${fmtCoeff(rub[t])}`);
     return out;
   }
 
-  equilibrium(type: number): number { return (this.params.p('theta0')[type] * 180) / Math.PI; }
+  // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
+  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
 
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), th0 = this.params.p('theta0');
@@ -321,16 +341,19 @@ export class AngleQuartic extends SimpleBonded {
   readonly kind = 'angle' as const;
   readonly paramNames = ['theta0', 'K2', 'K3', 'K4'];
 
-  protected parse = parseDeg(this.paramNames, [0]);
+  // As native LAMMPS does (src/EXTRA-MOLECULE/angle_quartic.cpp at b332f28): theta0[i] = theta0_one/180.0 * MY_PI
+  protected parse = parseDeg(this.paramNames, [0], 'div180-pi');
 
   dataCoeffs(): string[] {
     const th = this.params.p('theta0'), K2 = this.params.p('K2'), K3 = this.params.p('K3'), K4 = this.params.p('K4');
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff((th[t] * 180) / Math.PI)} ${fmtCoeff(K2[t])} ${fmtCoeff(K3[t])} ${fmtCoeff(K4[t])}`);
+    // As native LAMMPS does (src/EXTRA-MOLECULE/angle_quartic.cpp at b332f28): write_data: theta0[i]/MY_PI*180.0
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff((th[t] / Math.PI) * 180)} ${fmtCoeff(K2[t])} ${fmtCoeff(K3[t])} ${fmtCoeff(K4[t])}`);
     return out;
   }
 
-  equilibrium(type: number): number { return (this.params.p('theta0')[type] * 180) / Math.PI; }
+  // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
+  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
 
   compute(bc: BondedCompute): void {
     const th0 = this.params.p('theta0'), K2 = this.params.p('K2'), K3 = this.params.p('K3'), K4 = this.params.p('K4');

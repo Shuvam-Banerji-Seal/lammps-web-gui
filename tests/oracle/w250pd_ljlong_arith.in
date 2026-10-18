@@ -1,0 +1,23 @@
+# oracle: lj/long/coul/long/dielectric long long with kspace pppm/disp/dielectric, arithmetic dispersion mixing (pair_modify mix arithmetic, two types with different epsilon and sigma: 7 structure factors), orders 4 and 6, meshes 12, run 0 then 20 NVE steps
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.2e-15, atoms 4.1e-15. Timestep 0.01 (0.1 blows up the two-type system at step 1 natively).
+# oracle-inputs: w226cs_diel.data
+# oracle-compare: thermo=all atoms=all
+units           real
+atom_style      dielectric
+read_data       w226cs_diel.data
+bond_style      harmonic
+bond_coeff      1 100.0 1.5
+special_bonds   lj/coul 0.0 0.5 1.0
+timestep        0.01
+fix             1 all nve
+thermo_style    custom step pe ecoul elong evdwl press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+pair_style      lj/long/coul/long/dielectric long long 8.0
+pair_modify     mix arithmetic
+pair_coeff      1 1 0.02 2.0
+pair_coeff      2 2 0.05 2.5
+kspace_style    pppm/disp/dielectric 1.0e-4
+kspace_modify   gewald 0.25 mesh 12 12 12 gewald/disp 0.35 mesh/disp 12 12 12 order 4 order/disp 6
+thermo          10
+run             0
+run             20

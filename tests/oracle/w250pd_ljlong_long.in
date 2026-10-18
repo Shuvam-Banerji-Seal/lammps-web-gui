@@ -1,0 +1,21 @@
+# oracle: lj/long/coul/long/dielectric long long with kspace pppm/disp/dielectric (Coulomb gewald and mesh, dispersion gewald/disp and mesh/disp set), run 0 then 20 NVE steps, 16 dielectric atoms
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.5e-15, atoms 5.3e-15. Measured with native LAMMPS: pppm/disp/dielectric is accepted only with lj/long/coul/long/dielectric (the lj/long/coul/long and lj/cut/coul/long/dielectric pairs are refused as incompatible); "long cut" (dispersion only) is refused by the pair.
+# oracle-inputs: w226cs_diel.data
+# oracle-compare: thermo=all atoms=all
+units           real
+atom_style      dielectric
+read_data       w226cs_diel.data
+bond_style      harmonic
+bond_coeff      1 100.0 1.5
+special_bonds   lj/coul 0.0 0.5 1.0
+timestep        0.1
+fix             1 all nve
+thermo_style    custom step pe ecoul elong evdwl press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+pair_style      lj/long/coul/long/dielectric long long 8.0
+pair_coeff      * * 0.02 2.0
+kspace_style    pppm/disp/dielectric 1.0e-4
+kspace_modify   gewald 0.3 mesh 16 16 16 gewald/disp 0.3 mesh/disp 16 16 16
+thermo          10
+run             0
+run             20

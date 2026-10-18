@@ -197,6 +197,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_min_hftn', names: { MINIMIZERS: ['hftn'] }, load: () => import('../engine-gpl/registry/min_hftn') as Promise<StyleModule> },
   { id: 'gpl_csdiel', names: { PAIRS: ['coul/wolf/cs', 'lj/cut/coul/long/cs', 'lj/class2/coul/long/cs', 'coul/cut/dielectric', 'coul/long/dielectric', 'lj/cut/coul/debye/dielectric', 'lj/long/coul/long/dielectric', 'buck/long/coul/long'] }, load: () => import('../engine-gpl/registry/csdiel') as Promise<StyleModule> },
   { id: 'gpl_xcompute', names: { COMPUTES: ['ackland/atom', 'ave/sphere/atom', 'composition/atom', 'efield/wolf/atom', 'pressure/cylinder', 'rattlers/atom', 'temp/rotate', 'ti'] }, load: () => import('../engine-gpl/registry/xcompute') as Promise<StyleModule> },
+  { id: 'gpl_gransph', names: { PAIRS: ['sph/lj'], FIXES: ['addtorque/atom', 'damping/cundall', 'viscous/nonlinear'], COMPUTES: ['contact/atom', 'fabric', 'pe/mol/tally', 'sph/t/atom'] }, load: () => import('../engine-gpl/registry/gransph') as Promise<StyleModule> },
   { id: 'gpl_slater', names: { PAIRS: ['coul/slater/long', 'dpd/coul/slater/long'] }, load: () => import('../engine-gpl/registry/slater') as Promise<StyleModule> },
   { id: 'gpl_e3b', names: { PAIRS: ['e3b'] }, load: () => import('../engine-gpl/registry/e3b') as Promise<StyleModule> },
   { id: 'gpl_srp', names: { PAIRS: ['srp', 'srp/react'], FIXES: ['SRP', 'SRPREACT'] }, load: () => import('../engine-gpl/registry/srp') as Promise<StyleModule> },

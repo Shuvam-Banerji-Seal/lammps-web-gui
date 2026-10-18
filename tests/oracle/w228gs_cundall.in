@@ -1,0 +1,31 @@
+# oracle: fix damping/cundall with per-type scaling (scale 1 and scale 2) on finite-size spheres in contact, both linear and angular damping
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 filerel=1e-8
+# oracle-files: w228gs_cundall.dump
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.4e-16, atoms 1.2e-15.
+units           lj
+atom_style      sphere
+comm_modify     vel yes
+boundary        p p p
+lattice         sc 0.8
+region          box block 0 4 0 4 0 4
+create_box      2 box
+create_atoms    1 box
+group           half id 1:32
+set             group half type 2
+set             type 1 diameter 1.0
+set             type 2 diameter 0.9
+set             group all density 1.0
+displace_atoms  all random 0.1 0.1 0.1 4321 units box
+velocity        all create 0.3 4242 loop geom
+set             group all omega 0.2 -0.1 0.3
+pair_style      gran/hooke/history 2000.0 NULL 50.0 NULL 0.5 0
+pair_coeff      * *
+timestep        0.002
+fix             1 all nve/sphere
+fix             2 all damping/cundall 0.2 0.1 scale 1 0.5 scale 2 2.0
+thermo_style    custom step pe ke
+thermo_modify   format float %.15g
+thermo          5
+dump            1 all custom 20 w228gs_cundall.dump id x y z vx vy vz tqx tqy tqz
+dump_modify     1 sort id format float %.15g
+run             20

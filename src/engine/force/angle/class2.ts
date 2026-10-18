@@ -87,14 +87,16 @@ export class AngleClass2 extends Bonded {
     } else if (this.p6) {
       // class2/p6: "theta0 K2 K3 K4 K5 K6" (docs.lammps.org/angle_class2.html, class2/p6 coefficients)
       if (args.length !== 7) throw new StyleError('angle_coeff class2/p6 needs theta0 K2 K3 K4 K5 K6');
-      const th = (parseNum(args[1], 'theta0') * Math.PI) / 180;
+      // As native LAMMPS does (src/MOFFF/angle_class2_p6.cpp at b332f28): theta0[i] = theta0_one/180.0 * MY_PI
+      const th = (parseNum(args[1], 'theta0') / 180) * Math.PI;
       const K = args.slice(2).map((v, k) => parseNum(v, `K${k + 2}`));
       for (let t = lo; t <= hi; t++) {
         this.th0[t] = th; this.K2[t] = K[0]; this.K3[t] = K[1]; this.K4[t] = K[2]; this.K5[t] = K[3]; this.K6[t] = K[4]; this.setA[t] = 1;
       }
     } else {
       if (args.length !== 5) throw new StyleError('angle_coeff class2 needs theta0 K2 K3 K4');
-      const th = (parseNum(args[1], 'theta0') * Math.PI) / 180;
+      // As native LAMMPS does (src/CLASS2/angle_class2.cpp at b332f28): theta0[i] = theta0_one/180.0 * MY_PI
+      const th = (parseNum(args[1], 'theta0') / 180) * Math.PI;
       const K2 = parseNum(args[2], 'K2'), K3 = parseNum(args[3], 'K3'), K4 = parseNum(args[4], 'K4');
       for (let t = lo; t <= hi; t++) { this.th0[t] = th; this.K2[t] = K2; this.K3[t] = K3; this.K4[t] = K4; this.setA[t] = 1; }
     }
@@ -112,7 +114,8 @@ export class AngleClass2 extends Bonded {
     const out: string[] = [];
     for (let t = 1; t <= this.ntypes; t++) {
       const ks = this.p6 ? [this.K2[t], this.K3[t], this.K4[t], this.K5[t], this.K6[t]] : [this.K2[t], this.K3[t], this.K4[t]];
-      out.push(`${t} ${[fmtCoeff((this.th0[t] * 180) / Math.PI), ...ks.map((v) => fmtCoeff(v))].join(' ')}`);
+      // As native LAMMPS does (src/CLASS2/angle_class2.cpp at b332f28): write_data: theta0[i]/MY_PI*180.0
+      out.push(`${t} ${[fmtCoeff((this.th0[t] / Math.PI) * 180), ...ks.map((v) => fmtCoeff(v))].join(' ')}`);
     }
     return out;
   }
@@ -127,7 +130,8 @@ export class AngleClass2 extends Bonded {
     return [{ title: 'BondBond Coeffs', lines: bb }, { title: 'BondAngle Coeffs', lines: ba }];
   }
 
-  equilibrium(type: number): number { return (this.th0[type] * 180) / Math.PI; }
+  // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
+  equilibrium(type: number): number { return (180 / Math.PI) * this.th0[type]; }
 
   compute(bc: BondedCompute): void {
     const A = bc.s.topo.angles;

@@ -266,7 +266,8 @@ export class ImproperUmbrella extends SimpleBonded {
   override dataCoeffs(): string[] {
     const K = this.params.p('K'), w0 = this.params.p('omega0');
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${K[t]} ${(w0[t] * 180) / Math.PI}`);
+    // As native LAMMPS does (src/MOLECULE/improper_umbrella.cpp at b332f28): write_data: RAD2DEG * w0[i]
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${K[t]} ${(180 / Math.PI) * w0[t]}`);
     return out;
   }
 
@@ -343,13 +344,15 @@ export class ImproperCossq extends SimpleBonded {
 
   protected override parse(args: string[]): number[] {
     if (args.length !== 2) throw new StyleError('improper_coeff cossq needs K chi0');
-    return [parseNum(args[0], 'K'), parseNum(args[1], 'chi0') * DEG2RAD];
+    // As native LAMMPS does (src/EXTRA-MOLECULE/improper_cossq.cpp at b332f28): chi[i] = ((chi_one * MY_PI)/180.0)
+    return [parseNum(args[0], 'K'), (parseNum(args[1], 'chi0') * Math.PI) / 180];
   }
 
   override dataCoeffs(): string[] {
     const K = this.params.p('K'), c0 = this.params.p('chi0');
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((c0[t] * 180) / Math.PI)}`);
+    // As native LAMMPS does (src/EXTRA-MOLECULE/improper_cossq.cpp at b332f28): write_data: chi[i]/MY_PI*180.0
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((c0[t] / Math.PI) * 180)}`);
     return out;
   }
 

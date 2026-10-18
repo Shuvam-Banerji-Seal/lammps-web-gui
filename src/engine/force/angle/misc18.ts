@@ -41,17 +41,20 @@ export class AngleCosineSquaredRestricted extends SimpleBonded {
 
   protected parse(args: string[]): number[] {
     if (args.length !== 2) throw new StyleError('angle_coeff cosine/squared/restricted needs K theta0');
-    return [parseNum(args[0], 'K'), (parseNum(args[1], 'theta0') * Math.PI) / 180];
+    // As native LAMMPS does (src/EXTRA-MOLECULE/angle_cosine_squared_restricted.cpp at b332f28): theta0[i] = DEG2RAD * theta0_one
+    return [parseNum(args[0], 'K'), (Math.PI / 180) * parseNum(args[1], 'theta0')];
   }
 
   dataCoeffs(): string[] {
     const K = this.params.p('K'), th = this.params.p('theta0');
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((th[t] * 180) / Math.PI)}`);
+    // As native LAMMPS does (src/EXTRA-MOLECULE/angle_cosine_squared_restricted.cpp at b332f28): write_data: RAD2DEG * theta0[i]
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((180 / Math.PI) * th[t])}`);
     return out;
   }
 
-  equilibrium(type: number): number { return (this.params.p('theta0')[type] * 180) / Math.PI; }
+  // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
+  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
 
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), th0 = this.params.p('theta0');
@@ -112,17 +115,20 @@ export class AngleMm3 extends SimpleBonded {
 
   protected parse(args: string[]): number[] {
     if (args.length !== 2) throw new StyleError('angle_coeff mm3 needs K theta0');
-    return [parseNum(args[0], 'K'), (parseNum(args[1], 'theta0') * Math.PI) / 180];
+    // As native LAMMPS does (src/YAFF/angle_mm3.cpp at b332f28): theta0[i] = theta0_one/180.0 * MY_PI
+    return [parseNum(args[0], 'K'), (parseNum(args[1], 'theta0') / 180) * Math.PI];
   }
 
   dataCoeffs(): string[] {
     const K = this.params.p('K'), th = this.params.p('theta0');
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((th[t] * 180) / Math.PI)}`);
+    // As native LAMMPS does (src/YAFF/angle_mm3.cpp at b332f28): write_data: theta0[i]/MY_PI*180.0
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((th[t] / Math.PI) * 180)}`);
     return out;
   }
 
-  equilibrium(type: number): number { return (this.params.p('theta0')[type] * 180) / Math.PI; }
+  // As native LAMMPS does (src/angle_write.cpp at b332f28, double theta0 = equilibrium_angle(atype) * RAD2DEG
+  equilibrium(type: number): number { return (180 / Math.PI) * this.params.p('theta0')[type]; }
 
   compute(bc: BondedCompute): void {
     const K = this.params.p('K'), th0 = this.params.p('theta0');

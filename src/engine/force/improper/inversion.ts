@@ -64,13 +64,15 @@ export class ImproperInversionHarmonic extends SimpleBonded {
 
   protected parse(args: string[]): number[] {
     if (args.length !== 2) throw new StyleError('improper_coeff inversion/harmonic needs K omega0');
-    return [parseNum(args[0], 'K'), (parseNum(args[1], 'omega0') * Math.PI) / 180];
+    // As native LAMMPS does (src/MOFFF/improper_inversion_harmonic.cpp at b332f28): w0[i] = w_one/180.0 * MY_PI
+    return [parseNum(args[0], 'K'), (parseNum(args[1], 'omega0') / 180) * Math.PI];
   }
 
   dataCoeffs(): string[] {
     const K = this.params.p('K'), w0 = this.params.p('omega0');
     const out: string[] = [];
-    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((w0[t] * 180) / Math.PI)}`);
+    // As native LAMMPS does (src/MOFFF/improper_inversion_harmonic.cpp at b332f28): write_data: w0[i]/MY_PI*180.0
+    for (let t = 1; t <= this.ntypes; t++) out.push(`${t} ${fmtCoeff(K[t])} ${fmtCoeff((w0[t] / Math.PI) * 180)}`);
     return out;
   }
 

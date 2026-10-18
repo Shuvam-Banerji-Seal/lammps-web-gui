@@ -50,7 +50,8 @@ export class DihedralCosineSquaredRestricted extends SimpleBonded {
   // write_data, measured with native LAMMPS: phi0 written back in degrees, e.g. the line 1 10 120
   dataCoeffs(): string[] {
     const K = this.params.p('K'), phi0 = this.params.p('phi0');
-    return Array.from({ length: this.ntypes }, (_, k) => `${k + 1} ${fmtCoeff(K[k + 1])} ${fmtCoeff(phi0[k + 1] / DEG2RAD)}`);
+    // As native LAMMPS does (src/EXTRA-MOLECULE/dihedral_cosine_squared_restricted.cpp at b332f28): write_data: RAD2DEG * phi0[i]
+    return Array.from({ length: this.ntypes }, (_, k) => `${k + 1} ${fmtCoeff(K[k + 1])} ${fmtCoeff((180 / Math.PI) * phi0[k + 1])}`);
   }
 
   compute(bc: BondedCompute): void {

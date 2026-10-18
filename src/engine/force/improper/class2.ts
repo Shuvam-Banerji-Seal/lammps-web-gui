@@ -69,9 +69,12 @@ export class ImproperClass2 extends Bonded {
     if (args[1] === 'aa') {
       if (args.length !== 8) throw new StyleError('improper_coeff class2 aa needs M1 M2 M3 theta1 theta2 theta3');
       const M1 = parseNum(args[2], 'M1'), M2 = parseNum(args[3], 'M2'), M3 = parseNum(args[4], 'M3');
-      const t1 = (parseNum(args[5], 'theta1') * Math.PI) / 180;
-      const t2 = (parseNum(args[6], 'theta2') * Math.PI) / 180;
-      const t3 = (parseNum(args[7], 'theta3') * Math.PI) / 180;
+      // As native LAMMPS does (src/CLASS2/improper_class2.cpp at b332f28): aa_theta0_1[i] = theta0_1_one/180.0 * MY_PI
+      const t1 = (parseNum(args[5], 'theta1') / 180) * Math.PI;
+      // As native LAMMPS does (src/CLASS2/improper_class2.cpp at b332f28): aa_theta0_2[i] = theta0_2_one/180.0 * MY_PI
+      const t2 = (parseNum(args[6], 'theta2') / 180) * Math.PI;
+      // As native LAMMPS does (src/CLASS2/improper_class2.cpp at b332f28): aa_theta0_3[i] = theta0_3_one/180.0 * MY_PI
+      const t3 = (parseNum(args[7], 'theta3') / 180) * Math.PI;
       for (let t = lo; t <= hi; t++) {
         this.M1[t] = M1; this.M2[t] = M2; this.M3[t] = M3;
         this.t1[t] = t1; this.t2[t] = t2; this.t3[t] = t3;
@@ -80,7 +83,8 @@ export class ImproperClass2 extends Bonded {
     } else {
       if (args.length !== 3) throw new StyleError('improper_coeff class2 needs K chi0');
       const K = parseNum(args[1], 'K');
-      const c0 = (parseNum(args[2], 'chi0') * Math.PI) / 180;
+      // As native LAMMPS does (src/CLASS2/improper_class2.cpp at b332f28): chi0[i] = chi0_one/180.0 * MY_PI
+      const c0 = (parseNum(args[2], 'chi0') / 180) * Math.PI;
       for (let t = lo; t <= hi; t++) { this.K[t] = K; this.chi0[t] = c0; this.setPlain[t] = 1; }
     }
   }

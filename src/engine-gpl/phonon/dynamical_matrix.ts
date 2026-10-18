@@ -133,7 +133,9 @@ export const dynamicalMatrixCmd: Handler = ({ sys }, a) => {
       lines.push(line);
     }
   }
-  // the displaced positions were returned to their place: the stored forces belong to a state that changed
+  // As native LAMMPS does (dynamical_matrix.cpp): the positions are back in place, but the stored forces stay those of
+  // the last update_force (the last atom displaced by -del); a write_dump right after the command prints them
   sys.bump();
+  sys.forcesCurrent();
   sys.writeFile(file, lines.join(''), false);
 };

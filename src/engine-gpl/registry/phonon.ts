@@ -10,10 +10,12 @@ import type { FixFactory } from '../../engine/styles';
 import type { Handler } from '../../engine/commands/args';
 import { FixPhonon } from '../phonon/fix_phonon';
 import { dynamicalMatrixCmd } from '../phonon/dynamical_matrix';
+import { thirdOrderCmd } from '../phonon/third_order';
 
 /** Command word -> handler (listed as COMMANDS in lazyStyles.ts). */
 export const COMMANDS: Record<string, Handler> = {
   dynamical_matrix: dynamicalMatrixCmd,
+  third_order: thirdOrderCmd,
 };
 
 /** Style name -> factory (the names listed in lazyStyles.ts must match these keys). */

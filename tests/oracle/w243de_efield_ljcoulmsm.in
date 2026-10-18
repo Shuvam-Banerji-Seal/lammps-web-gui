@@ -1,0 +1,20 @@
+# oracle: compute efield/atom with lj/cut/coul/msm/dielectric and kspace msm/dielectric (MSM field per atom, curvature self term included in the pair field)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.4e-15, atoms 2.0e-15.
+# oracle-inputs: w226cs_diel.data
+# oracle-files: w243de_efield_ljcoulmsm.dump
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12 filerel=1e-10
+units           real
+atom_style      dielectric
+read_data       w226cs_diel.data
+pair_style      lj/cut/coul/msm/dielectric 8.0
+pair_coeff      * * 0.02 2.0
+kspace_style    msm/dielectric 1.0e-4
+bond_style      harmonic
+bond_coeff      1 100.0 1.5
+special_bonds   lj/coul 0.0 0.5 1.0
+compute         ef all efield/atom
+thermo_style    custom step pe ecoul elong evdwl
+thermo_modify   format float %.15g
+dump            d all custom 1 w243de_efield_ljcoulmsm.dump id c_ef[1] c_ef[2] c_ef[3]
+dump_modify     d sort id format float %.15g
+run             0

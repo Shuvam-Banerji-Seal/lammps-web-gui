@@ -9,16 +9,35 @@
  * I J K G cut s00 alpha yieldstress. The deviatoric force state of an atom is projected back onto the yield surface
  * when its norm exceeds the yield value; the plastic extension of a bond is kept only for atoms that yield in the step
  * (the temporary array of pair_peri_eps.cpp is zeroed each step, so an elastic atom's plastic extension is reset).
- * The per-atom plastic multiplier lambdaValue of the source is not needed for the forces and is not kept.
+ *
+ * The cumulative plastic multiplier lambdaValue (fix PERI_NEIGH, src/PERI/fix_peri_neigh.cpp at b332f28) is kept per
+ * owned atom, as the source does: zeroed at the first evaluation of the atoms, then increased by
+ * deltalambda in every evaluation in which the atom yields, including the run setup and every minimizer evaluation
+ * (the source has no setup gate for it). compute plasticity/atom reads it through lambdaValue().
  */
 import { PERI_GEOM_LEN, G_DR, G_DX, G_DY, G_DZ, G_J, G_OM, G_R, G_R0, G_VS, PeriBondPair, type PeriStep } from './pair_peri_bonds';
-import { pow as libmPow } from '../libm/pow';
 
 const PERI_EPS_NAMES = ['K', 'G', 'cut', 's00', 'alpha', 'yield'] as const;
+
+/** math_special.h powint(x, 5): the loop multiplies the squares as it runs, giving x * ((x * x) * (x * x)). */
+const powint5 = (x: number): number => {
+  if (x === 0.0) return 0.0;
+  const w = x * x;
+  return x * (w * w);
+};
 
 export class PairPeriEPS extends PeriBondPair {
   readonly name = 'peri/eps';
   protected readonly names = PERI_EPS_NAMES;
+  /** The cumulative plastic multiplier per owned atom (lambdaValue of fix PERI_NEIGH). */
+  private lambda = new Float64Array(0);
+
+  /** lambdaValue of the owned atoms (zeros before the first evaluation); a copy, like damage(). */
+  lambdaValue(nlocal: number): Float64Array {
+    const out = new Float64Array(nlocal);
+    out.set(this.lambda.subarray(0, Math.min(nlocal, this.lambda.length)));
+    return out;
+  }
 
   /** compute_DeviatoricForceStateNorm of pair_peri_eps.cpp for owned atom i (the state before this step). */
   private deviatoricNorm(st: PeriStep, i: number, g: Float64Array): number {
@@ -41,6 +60,8 @@ export class PairPeriEPS extends PeriBondPair {
   protected bondForces(st: PeriStep, smin_new: Float64Array, s0_new: Float64Array): void {
     const { nl, f, V, type } = st;
     const g = new Float64Array(PERI_GEOM_LEN);
+    // lambdaValue is kept across rebuilds of the same atoms (fix PERI_NEIGH keeps it), and is new for a new pair style
+    if (this.lambda.length !== nl) this.lambda = new Float64Array(nl);
     // the plastic extension of this step (zero for atoms that stay elastic)
     const plastic = new Float64Array(this.devA.length);
     for (let i = 0; i < nl; i++) {
@@ -49,11 +70,12 @@ export class PairPeriEPS extends PeriBondPair {
       const yieldStress = this.c('yield', ti, ti);
       const horizon = this.c('cut', ti, ti);
       const tdnorm = this.deviatoricNorm(st, i, g);
-      const pointwiseYield = (25.0 / 8.0 / Math.PI / libmPow(horizon, 5)) * yieldStress * yieldStress;
+      const pointwiseYield = (25.0 / 8.0 / Math.PI / powint5(horizon)) * yieldStress * yieldStress;
       const fsurf = (tdnorm * tdnorm) / 2.0 - pointwiseYield;
       const elastic = !(fsurf > 0.0);
-      // the plastic multiplier of this step (pair_peri_eps.cpp: deltalambda); the cumulative lambdaValue is not kept
+      // the plastic multiplier of this step (pair_peri_eps.cpp: deltalambda) and its accumulation into lambdaValue
       const deltalambda = elastic ? 0 : ((tdnorm / Math.sqrt(2.0 * pointwiseYield)) - 1.0) * this.wvol[i] / (15.0 * G);
+      if (!elastic) this.lambda[i] = this.lambda[i] + deltalambda;
       let first = true;
       for (let k = this.pStart[i]; k < this.pStart[i + 1]; k++) {
         if (this.pBr[k]) continue;

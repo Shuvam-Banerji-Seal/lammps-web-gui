@@ -1,0 +1,20 @@
+# oracle: compute efield/atom pair with coul/long/dielectric 8.0 and pppm/dielectric (kspace efield), per-atom field dumped
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 8.3e-11, atoms 6.6e-9 (the kspace field per atom, the pppm/dielectric FFT summation order).
+# oracle-inputs: w226cs_diel.data
+# oracle-files: w243de_efield_pair_kw_pppm.dump
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12 filerel=1e-8
+units           real
+atom_style      dielectric
+read_data       w226cs_diel.data
+pair_style      coul/long/dielectric 8.0
+pair_coeff      * *
+bond_style      harmonic
+bond_coeff      1 100.0 1.5
+special_bonds   lj/coul 0.0 0.5 1.0
+kspace_style    pppm/dielectric 1.0e-5
+compute         ef all efield/atom pair
+thermo_style    custom step pe ecoul elong evdwl
+thermo_modify   format float %.15g
+dump            d all custom 1 w243de_efield_pair_kw_pppm.dump id c_ef[1] c_ef[2] c_ef[3]
+dump_modify     d sort id format float %.15g
+run             0

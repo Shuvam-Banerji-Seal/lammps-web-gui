@@ -92,6 +92,8 @@ export interface ComputeInput {
   /** NEIGHMASK of the engine neighbour encoding */
   mask: number;
   eatom: Float64Array | null;
+  /** per-atom virial (6 per atom, native vatom order xx yy zz xy xz yz), or null */
+  vatom: Float64Array | null;
 }
 
 const sq = (v: number): number => v * v;

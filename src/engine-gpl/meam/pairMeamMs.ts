@@ -256,7 +256,7 @@ export class PairMeamMs extends Pair {
     const w = newWork(nall, half.neighbors.length);
     const c: ComputeInput = {
       model: M, nlocal: pc.nlocal, nall, x: pc.x, f: pc.f, type: pc.type, typeElem: this.typeElem,
-      owner: pc.nb.owner, half, full, mask: NEIGHMASK, eatom: pc.eatom,
+      owner: pc.nb.owner, half, full, mask: NEIGHMASK, eatom: pc.eatom, vatom: pc.vatom,
     };
     densInit(c, w);
     foldGhosts(c, w);

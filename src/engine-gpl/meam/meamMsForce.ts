@@ -13,6 +13,29 @@ import { MeamWork, ComputeInput, V2D, V3D, VIND2D, VIND3D } from './meamMsComput
 
 
 /**
+ * Per-atom virial of the pair term of one half pair (i, j), as native meam_force does (src/MEAM/meam_force.cpp at
+ * b332f28, "Tabulate per-atom virial as symmetrized stress tensor"): fi is the force on i, v = -0.5 * delij (x) fi
+ * symmetrised, and each of i and j takes v (the pair's global virial is 2 v).
+ */
+export const tallyPairVatom = (c: ComputeInput, i: number, j: number, delij: number[], force: number, dUdrijm: number[]): void => {
+  const va = c.vatom;
+  if (!va) return;
+  const fi0 = delij[0] * force + dUdrijm[0];
+  const fi1 = delij[1] * force + dUdrijm[1];
+  const fi2 = delij[2] * force + dUdrijm[2];
+  const v0 = -0.5 * (delij[0] * fi0);
+  const v1 = -0.5 * (delij[1] * fi1);
+  const v2 = -0.5 * (delij[2] * fi2);
+  const v3 = -0.25 * (delij[0] * fi1 + delij[1] * fi0);
+  const v4 = -0.25 * (delij[0] * fi2 + delij[2] * fi0);
+  const v5 = -0.25 * (delij[1] * fi2 + delij[2] * fi1);
+  for (const a of [i, j]) {
+    va[6 * a] += v0; va[6 * a + 1] += v1; va[6 * a + 2] += v2;
+    va[6 * a + 3] += v3; va[6 * a + 4] += v4; va[6 * a + 5] += v5;
+  }
+};
+
+/**
  * The three-body screening forces of one half pair (i, j) on the full-list neighbours k of i (meam_force.cpp, the k loop
  * after the pair term, shared by the MS-MEAM and the standard MEAM force). dUdsij is the derivative with respect to the
  * screening of the pair.
@@ -72,6 +95,22 @@ export const addScreeningForces = (c: ComputeInput, w: MeamWork, f: Float64Array
       f[3 * k] -= force1 * dxik + force2 * dxjk;
       f[3 * k + 1] -= force1 * dyik + force2 * dyjk;
       f[3 * k + 2] -= force1 * dzik + force2 * dzjk;
+      const va = c.vatom;
+      if (va) {
+        // per-atom virial of the three-body term (meam_force.cpp, "Tabulate per-atom virial"): v over i, j and k
+        const fi0 = force1 * dxik, fi1 = force1 * dyik, fi2 = force1 * dzik;
+        const fj0 = force2 * dxjk, fj1 = force2 * dyjk, fj2 = force2 * dzjk;
+        const v0 = -(1 / 3) * (dxik * fi0 + dxjk * fj0);
+        const v1 = -(1 / 3) * (dyik * fi1 + dyjk * fj1);
+        const v2 = -(1 / 3) * (dzik * fi2 + dzjk * fj2);
+        const v3 = -(1 / 6) * (dxik * fi1 + dxjk * fj1 + dyik * fi0 + dyjk * fj0);
+        const v4 = -(1 / 6) * (dxik * fi2 + dxjk * fj2 + dzik * fi0 + dzjk * fj0);
+        const v5 = -(1 / 6) * (dyik * fi2 + dyjk * fj2 + dzik * fi1 + dzjk * fj1);
+        for (const a of [i, j, k]) {
+          va[6 * a] += v0; va[6 * a + 1] += v1; va[6 * a + 2] += v2;
+          va[6 * a + 3] += v3; va[6 * a + 4] += v4; va[6 * a + 5] += v5;
+        }
+      }
     }
   }};
 
@@ -355,6 +394,7 @@ export const forceAll = (c: ComputeInput, w: MeamWork, rdrar: number): number =>
         f[3 * i + m] += forcem;
         f[3 * j + m] -= forcem;
       }
+      tallyPairVatom(c, i, j, delij, force, dUdrijm);
       if (iszero(sij) || isone(sij)) continue;
       addScreeningForces(c, w, f, jn, i, j, elti, eltj, f0, f1, rij2, dUdsij);
     }

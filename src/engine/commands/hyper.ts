@@ -310,11 +310,12 @@ const hyperLoop = async (sys: System, session: Ctx['session'], hf: HyperBiasFix,
       ec.storeReference();
     }
     if (reset) hf.buildBonds(ev.count);
-    // the last quench keeps its state; otherwise the pre-quench state is restored for the next segment
-    if (done + nevent < nsteps) {
-      restoreState(sys, saved);
-      setupForces(sys);
-    }
+    // As native LAMMPS does (src/REPLICA/hyper.cpp command at b332f28): every quench, the last one too, is followed by
+    // fix_event->restore_state_quench(), which restores x, v and image of the pre-quench state (the forces stay those of
+    // the quench); the next segment's dynamics starts with a setup
+    restoreState(sys, saved);
+    if (done + nevent < nsteps) setupForces(sys);
+    else sys.forcesCurrent();
   }
   if (cancelled()) throw new RunCancelled();
   sys.run.inRun = false;

@@ -259,6 +259,24 @@ export abstract class KSpaceBase extends KSpace {
     this.qsqsum = q2;
   }
 
+  /**
+   * The self and background energies per atom. As native LAMMPS does (src/KSPACE/ewald.cpp and pppm.cpp compute at
+   * b332f28): "eatom[i] -= g_ewald*q[i]*q[i]/MY_PIS + MY_PI2*q[i]*qsum / (g_ewald*g_ewald*volume)", times qscale.
+   * With mesh charges given (pppm/cg), only the atoms on the mesh get it, as pppm_cg.cpp loops over is_charged.
+   */
+  protected constantEnergyPeratom(kc: KSpaceCompute, mesh: ArrayLike<number> | null = null): void {
+    const eatom = kc.eatom;
+    if (!eatom) return;
+    const s = kc.s;
+    const g = this.gEwald;
+    const C = kc.qqrd2e;
+    for (let i = 0; i < s.n; i++) {
+      if (mesh && mesh[i] === 0) continue;
+      const q = s.q[i];
+      eatom[i] -= C * ((g / SQRT_PI) * q * q + (Math.PI * q * this.qsum) / (2 * this.volume * g * g));
+    }
+  }
+
   /** Self and background energies (added to elong). */
   protected constantEnergy(qqrd2e: number): number {
     const g = this.gEwald;
@@ -281,6 +299,15 @@ export abstract class KSpaceBase extends KSpace {
     const C = kc.qqrd2e;
     const e = (2 * Math.PI / V) * (mz * mz - this.qsum * qz2 - (this.qsum * this.qsum * zprd * zprd) / 12);
     kc.acc.elong += C * e;
+    // per-atom energy, as native slabcorr: "eatom[i] += efact * q[i]*(x[i][2]*dipole_all - 0.5*(dipole_r2 +
+    // qsum*x[i][2]*x[i][2]) - qsum*zprd_slab*zprd_slab/12.0)" with efact = qscale MY_2PI / volume (no per-atom virial)
+    if (kc.eatom) {
+      const efact = C * (2 * Math.PI / V);
+      for (let i = 0; i < s.n; i++) {
+        const z = s.x[3 * i + 2];
+        kc.eatom[i] += efact * s.q[i] * (z * mz - 0.5 * (qz2 + this.qsum * z * z) - (this.qsum * zprd * zprd) / 12);
+      }
+    }
     for (let i = 0; i < s.n; i++) {
       const fz = -C * (4 * Math.PI / V) * s.q[i] * (mz - this.qsum * s.x[3 * i + 2]);
       kc.f[3 * i + 2] += fz;
@@ -408,6 +435,10 @@ export class KSpaceEwald extends KSpaceBase {
     }
     const nk = this.nvec.length / 3;
     const cosk = new Float64Array(n), sink = new Float64Array(n);
+    // per-atom energy and virial (native ewald.cpp compute: partial_peratom = exprl*sfacrl_all[k] + expim*sfacim_all[k];
+    // eatom[i] += q[i]*ug[k]*partial_peratom; vatom[i][j] += ug[k]*vg[k][j]*partial_peratom; then the self terms and
+    // eatom *= qscale, vatom *= q[i]*qscale)
+    const eatom = kc.eatom, vatom = kc.vatom;
     let e = 0;
     const w = [0, 0, 0, 0, 0, 0];
     const q = s.q;
@@ -440,7 +471,19 @@ export class KSpaceEwald extends KSpaceBase {
         const t = pre * q[i] * (sre * sink[i] - sim * cosk[i]);
         kc.f[3 * i] += t * kxv; kc.f[3 * i + 1] += t * kyv; kc.f[3 * i + 2] += t * kzv;
       }
+      if (eatom || vatom) {
+        // the energy of this vector pair is (2 pi C / V) 2 A |S|^2; atom i's share is q_i (cos_i S_re + sin_i S_im)
+        const ua = (C * 2 * Math.PI / V) * 2 * A;
+        const vg = [1 - b * kxv * kxv, 1 - b * kyv * kyv, 1 - b * kzv * kzv, -b * kxv * kyv, -b * kxv * kzv, -b * kyv * kzv];
+        for (let i = 0; i < n; i++) {
+          if (q[i] === 0) continue;
+          const part = ua * q[i] * (cosk[i] * sre + sink[i] * sim);
+          if (eatom) eatom[i] += part;
+          if (vatom) for (let c = 0; c < 6; c++) vatom[6 * i + c] += part * vg[c];
+        }
+      }
     }
+    if (eatom) this.constantEnergyPeratom(kc);
     const pref = C * 2 * Math.PI / V;
     kc.acc.elong += pref * e + this.constantEnergy(C);
     for (let c = 0; c < 6; c++) kc.acc.vlong[c] += pref * w[c];

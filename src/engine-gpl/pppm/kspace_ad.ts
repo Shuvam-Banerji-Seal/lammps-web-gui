@@ -132,6 +132,8 @@ export class KSpacePPPMAd extends KSpacePPPM {
 
   /** Charges enter the mesh as in the core (pppm: every charge). */
   override compute(kc: KSpaceCompute): void {
+    // the per-atom energy and virial of this style are not computed by the engine: refused rather than left out
+    if (kc.eatom || kc.vatom) throw new StyleError(`compute pe/atom and stress/atom with kspace_style ${this.name} are not supported by the browser engine (its per-atom energy and virial are not computed)`);
     const s = kc.s;
     const geom = kc.geom;
     const n = s.n;

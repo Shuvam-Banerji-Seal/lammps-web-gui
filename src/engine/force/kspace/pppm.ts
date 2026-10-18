@@ -487,6 +487,11 @@ export class KSpacePPPM extends KSpaceBase {
     // energy, virial and the three field components in k-space
     const inv = invertUpper(geom.lx, geom.xy, geom.xz, geom.ly, geom.yz, geom.lz * this.slab);
     const ex = new Float64Array(2 * ng), ey = new Float64Array(2 * ng), ez = new Float64Array(2 * ng);
+    // per-atom energy and virial (compute pe/atom, stress/atom): the potential G rho and the six G rho vg_j on the mesh,
+    // as native PPPM::poisson_peratom builds u_brick and v0_brick .. v5_brick
+    const peratom = kc.eatom !== null || kc.vatom !== null;
+    const ub = kc.eatom ? new Float64Array(2 * ng) : null;
+    const vb = kc.vatom ? Array.from({ length: 6 }, () => new Float64Array(2 * ng)) : null;
     let e = 0;
     const w = [0, 0, 0, 0, 0, 0];
     for (let iz = 0; iz < nz; iz++) {
@@ -513,12 +518,19 @@ export class KSpacePPPM extends KSpaceBase {
           ex[2 * idx] = kx * G * im; ex[2 * idx + 1] = -kx * G * re;
           ey[2 * idx] = ky * G * im; ey[2 * idx + 1] = -ky * G * re;
           ez[2 * idx] = kz * G * im; ez[2 * idx + 1] = -kz * G * re;
+          if (ub) { ub[2 * idx] = G * re; ub[2 * idx + 1] = G * im; }
+          if (vb) {
+            const vg = [1 - b * kx * kx, 1 - b * ky * ky, 1 - b * kz * kz, -b * kx * ky, -b * kx * kz, -b * ky * kz];
+            for (let c = 0; c < 6; c++) { vb[c][2 * idx] = G * re * vg[c]; vb[c][2 * idx + 1] = G * im * vg[c]; }
+          }
         }
       }
     }
     fft3d(ex, nx, ny, nz, 1);
     fft3d(ey, nx, ny, nz, 1);
     fft3d(ez, nx, ny, nz, 1);
+    if (ub) fft3d(ub, nx, ny, nz, 1);
+    if (vb) for (const v of vb) fft3d(v, nx, ny, nz, 1);
     // interpolate the field back and apply F = C q E / V
     for (let i = 0; i < n; i++) {
       const q = qg[i];
@@ -543,9 +555,50 @@ export class KSpacePPPM extends KSpaceBase {
       kc.f[3 * i] += pre * Ex; kc.f[3 * i + 1] += pre * Ey; kc.f[3 * i + 2] += pre * Ez;
     }
     const pref = C / (2 * V);
+    if (peratom) this.peratomMesh(kc, qg, first, wts, ub, vb, pref);
     kc.acc.elong += pref * e + this.constantEnergy(C);
     for (let c = 0; c < 6; c++) kc.acc.vlong[c] += pref * w[c];
     this.slabCorrection(kc);
+  }
+
+  /**
+   * Per-atom energy and virial of the mesh part. As native LAMMPS does (src/KSPACE/pppm.cpp fieldforce_peratom and
+   * compute at b332f28): u and v_j interpolated at each charged atom with the assignment weights, eatom_i =
+   * qscale (0.5 q_i u_i - g q_i^2 / sqrt(pi) - pi q_i qsum / (2 g^2 V)), vatom_i,j = 0.5 qscale q_i v_j(x_i). In the
+   * engine's mesh normalization 0.5 qscale u_native = C / (2 V) u (pref here). They sum to the global energy and virial.
+   */
+  private peratomMesh(kc: KSpaceCompute, qg: ArrayLike<number>, first: Int32Array, wts: Float64Array,
+    ub: Float64Array | null, vb: Float64Array[] | null, pref: number): void {
+    const s = kc.s;
+    const [nx, ny, nz] = this.mesh;
+    const P = this.order;
+    const mod = (a: number, m: number) => ((a % m) + m) % m;
+    const vsum = [0, 0, 0, 0, 0, 0];
+    for (let i = 0; i < s.n; i++) {
+      const q = qg[i];
+      if (q === 0) continue;
+      const fx0 = first[3 * i], fy0 = first[3 * i + 1], fz0 = first[3 * i + 2];
+      let u = 0;
+      vsum.fill(0);
+      for (let c = 0; c < P; c++) {
+        const iz = mod(fz0 + c, nz);
+        const wz = wts[(3 * i + 2) * P + c];
+        for (let b = 0; b < P; b++) {
+          const iy = mod(fy0 + b, ny);
+          const wyz = wz * wts[(3 * i + 1) * P + b];
+          for (let a = 0; a < P; a++) {
+            const ix = mod(fx0 + a, nx);
+            const ww = wyz * wts[(3 * i) * P + a];
+            const idx = 2 * ((iz * ny + iy) * nx + ix);
+            if (ub) u += ww * ub[idx];
+            if (vb) for (let k = 0; k < 6; k++) vsum[k] += ww * vb[k][idx];
+          }
+        }
+      }
+      if (kc.eatom && ub) kc.eatom[i] += pref * q * u;
+      if (kc.vatom && vb) for (let k = 0; k < 6; k++) kc.vatom[6 * i + k] += pref * q * vsum[k];
+    }
+    if (kc.eatom) this.constantEnergyPeratom(kc, qg);
   }
 }
 

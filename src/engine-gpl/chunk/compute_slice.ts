@@ -102,24 +102,20 @@ export class ComputeSlice extends Compute {
     this.vectorFlag = true;
     this.sizeVector = size;
     this.vector = new Float64Array(size);
-    if (kind === 'c' && argindex === 0) {
-      const c = sys.computes.find((x) => x.id === m[2])!;
-      this.extvector = c.extvector;
-      if (c.extvector === -1) {
+    // (the engine marks a vector whose elements differ, native's extvector -1, by its extlist; a column of an array
+    // takes the array's flag, native "extvector = val.val.c->extarray")
+    const src = kind === 'c' ? sys.computes.find((x) => x.id === m[2]) : kind === 'f' ? sys.fixes.find((x) => x.id === m[2]) : undefined;
+    if (!src) {
+      this.extvector = 0;
+    } else if (argindex === 0) {
+      this.extvector = src.extvector;
+      if (src.extlist) {
         const list: number[] = [];
-        for (let i = this.nstart; i < nstop; i += nskip) list.push((c.extlist ?? [])[i - 1] ?? 0);
-        this.extlist = list;
-      }
-    } else if (kind === 'f' && argindex === 0) {
-      const f = sys.fixes.find((x) => x.id === m[2])!;
-      this.extvector = f.extvector;
-      if (f.extvector === -1) {
-        const list: number[] = [];
-        for (let i = this.nstart; i < nstop; i += nskip) list.push((f.extlist ?? [])[i - 1] ?? 0);
+        for (let i = this.nstart; i < nstop; i += nskip) list.push(src.extlist[i - 1] ?? 0);
         this.extlist = list;
       }
     } else {
-      this.extvector = 0;
+      this.extvector = src.extarray;
     }
   }
 

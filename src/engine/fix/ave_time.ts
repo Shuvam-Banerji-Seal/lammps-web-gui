@@ -399,6 +399,19 @@ export class FixAveTime extends Fix {
       }
       this.extarray = ext;
     }
+    if (this.mode === 'vector' && !this.lenSet) {
+      // As native LAMMPS does (src/fix_ave_time.cpp at b332f28, column_length): the rows of the output are the
+      // static length of the inputs (size_vector, or size_array_rows for a column), known when the fix is defined, so
+      // compute slice and thermo can check against them before the first sample sets the length
+      let L = 0;
+      for (const r of this.inputs) {
+        const src = r.kind === 'c' ? this.sys.compute(r.id) : r.kind === 'f' ? this.sys.fix(r.id) : null;
+        const n = !src ? 0 : r.index === null ? src.sizeVector : src.sizeArrayRows;
+        if (n > 0 && L === 0) L = n;
+      }
+      if (this.inputs.length === 1) this.sizeVector = L;
+      else this.sizeArrayRows = L;
+    }
     this.ensureAlloc();
   }
 

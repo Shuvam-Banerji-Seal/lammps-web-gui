@@ -324,10 +324,11 @@ describe('suffix, package and aliased names: errors', () => {
   });
 
   it('names the base style when the base is not supported', async () => {
-    const r = await runScript(`${MELT_HEAD}pair_style lj/long/tip4p/long/omp\n`);
+    // pace (ML-PACE) needs the external PACE library, so its KOKKOS alias stays an example of an unsupported base
+    const r = await runScript(`${MELT_HEAD}pair_style pace/kk\n`);
     expect(r.error).not.toBeNull();
-    expect(r.error!.message).toMatch(/lj\/long\/tip4p\/long/);
-    expect(r.error!.message).not.toMatch(/tip4p\/long\/omp/);
+    expect(r.error!.message).toMatch(/pace/);
+    expect(r.error!.message).not.toMatch(/pace\/kk/);
   });
 });
 

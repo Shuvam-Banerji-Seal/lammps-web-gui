@@ -3,7 +3,6 @@ import type { SimState } from '../../types';
 import type { Geometry } from '../../domain';
 import { KSpacePPPM } from './pppm';
 import { buildOwnedSites, type Tip4pModel } from '../pair/tip4p_sites';
-import { PairTIP4PBase } from '../pair/tip4p';
 import { PairHybrid } from '../pair/hybrid';
 
 /*
@@ -22,24 +21,28 @@ import { PairHybrid } from '../pair/hybrid';
  * array and projected onto the atoms here.
  */
 
+/** A pair style that defines TIP4P M sites: the core TIP4P styles, and the GPL lj/long/tip4p/long. */
+interface Tip4pSiteSource { siteModel(): Tip4pModel | null }
+const hasSites = (p: unknown): p is Tip4pSiteSource => typeof (p as { siteModel?: unknown } | null)?.siteModel === 'function';
+
 /**
  * The TIP4P style that defines the M sites: the pair style itself, or inside pair_style hybrid the first
  * TIP4P sub-style. As native (src/kspace/pppm_tip4p.cpp at b332f28, PPPMTIP4P::init), the qdist, otype and
- * htype come from pair->extract, which a hybrid answers from its sub-styles in order.
+ * htype come from pair->extract, which any style with M sites answers (a hybrid from its sub-styles in order).
  */
-const tip4pStyleOf = (pair: Pair | null): PairTIP4PBase | null => {
-  if (pair instanceof PairTIP4PBase) return pair;
+const tip4pStyleOf = (pair: Pair | null): Tip4pSiteSource | null => {
   if (pair instanceof PairHybrid) {
-    for (const sub of pair.subs) if (sub.style instanceof PairTIP4PBase) return sub.style;
+    for (const sub of pair.subs) if (hasSites(sub.style)) return sub.style;
+    return null;
   }
-  return null;
+  return hasSites(pair) ? pair : null;
 };
 
 export class KSpacePPPMTIP4P extends KSpace {
   readonly name: string = 'pppm/tip4p';
   /** The pppm solver of pppm.ts; this style only changes where the charges and forces sit. */
   private readonly solver = new KSpacePPPM();
-  private pair: PairTIP4PBase | null = null;
+  private pair: Tip4pSiteSource | null = null;
 
   settings(args: string[]): void {
     this.solver.settings(args);

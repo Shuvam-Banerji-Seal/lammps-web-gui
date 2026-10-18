@@ -1,0 +1,27 @@
+# oracle: 27 TIP4P/2005 waters, lj/long/tip4p/long long long with pppm/disp/tip4p, default pair_modify tables (table 12, table/disp 12), fix shake on the waters, NVE 50 steps
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.2e-12, atoms 6.1e-12. The O charge sits on its M site (pppm/disp/tip4p); the dispersion and erfc tables match the native default tables where the case uses them.
+# oracle-inputs: w117cf_tip4p_pppm_water.data
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-10
+units           real
+atom_style      full
+boundary        p p p
+read_data       w117cf_tip4p_pppm_water.data
+pair_style      lj/long/tip4p/long long long 1 2 1 1 0.1546 8.5
+pair_coeff      1 1 0.1852 3.1589
+pair_coeff      1 2 0.0 1.0
+pair_coeff      2 2 0.0 1.0
+bond_style      harmonic
+bond_coeff      1 450.0 0.9572
+angle_style     harmonic
+angle_coeff     1 55.0 104.52
+kspace_style    pppm/disp/tip4p 1.0e-5
+kspace_modify   gewald 0.37833912 mesh 12 12 12 order 5 gewald/disp 0.3 mesh/disp 12 12 12 order/disp 5
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+fix             1 all shake 1.0e-10 200 0 b 1 a 1
+timestep        1.0
+fix             2 all nve
+thermo_style    custom step pe evdwl ecoul elong press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             50

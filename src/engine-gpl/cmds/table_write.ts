@@ -8,7 +8,6 @@ import type { Session } from '../../engine/session';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { formatInteger, formatNumber } from '../../engine/cformat';
-import { minEnergyForce } from '../../engine/run/minimizers';
 import { currentDate, fileExists, firstLineTag } from './common';
 
 /** The table file and the header that native angle_write / dihedral_write print before the table rows. */

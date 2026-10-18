@@ -33,7 +33,6 @@ const coeff = (p: Pair, ntypes: number, args: string[], ctx: StyleContext): void
 };
 
 const GW_ENTRY = 'Si Si Si 1 0.013318 0 14 2.1 -1 0.78000 1 1.80821400248640 632.658058300867 2.35 0.15 2.38684248328205 1708.79738703139';
-const GW_ZBL_ENTRY = `${GW_ENTRY} 14 14 .95 14`;
 const TERSOFF_SI = 'Si Si Si 3.0 1.0 0.0 100390 16.217 -0.59825 0.78734 0.0000011 1.73222 471.18 2.85 0.15 2.4799 1830.8';
 
 describe('gw and gw/zbl input', () => {

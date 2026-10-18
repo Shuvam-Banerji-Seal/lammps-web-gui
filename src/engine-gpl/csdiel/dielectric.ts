@@ -135,7 +135,7 @@ export class PairCoulLongDielectric extends PairCoulLong {
     const nl = pc.nlocal;
     if (this.efield.length < 3 * nl) this.efield = new Float64Array(3 * nl);
     const E = this.efield;
-    const { x, f, type } = pc;
+    const { x, f } = pc;
     const owner = pc.nb.owner;
     const qqrd2e = pc.qqrd2e;
     const g = this.gEwald;

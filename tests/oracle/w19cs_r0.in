@@ -1,6 +1,6 @@
 # oracle: born/coul/long/cs and buck/coul/long/cs with a bonded core-shell pair at the same position (r = 0, as in the coreshell example data) and special_bonds weight 0: the r -> 0 limit of the excluded Coulomb term and no Born/Buckingham term; a short nve run lets the pair separate
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-9
-# oracle-tolerance: the /cs styles' real-space erfc differs from the accurate erfc by about 1e-7 relative (coul_cs.ts header), as in the other /cs cases
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.4e-15, atoms 2.7e-15.
+# oracle-compare: thermo=all atoms=all
 units           metal
 atom_style      full
 boundary        p p p

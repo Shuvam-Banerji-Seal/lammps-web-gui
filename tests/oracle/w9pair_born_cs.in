@@ -1,6 +1,7 @@
 # oracle-inputs: w9pair_cs.data
-# oracle-compare: thermo=all atoms=all rel=1e-6 abs=1e-4
+# oracle-compare: thermo=all atoms=all
 # oracle: born/coul/long/cs core-shell dimers: 1-2 (core-shell) special weight 0, ewald
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.1e-12 (row 0 ecoul agrees to 4e-16 relative; the rest is cancellation of ~840-size terms against elong, unchanged kspace code), atoms 2.2e-14.
 units           real
 atom_style      full
 bond_style      harmonic

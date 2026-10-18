@@ -1,7 +1,7 @@
 # oracle: born/coul/dsf/cs core-shell dimers — some core-shell pairs start at r = 0 (weight-0 1-2 special bond), the rest are separated; short nve run
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.0e-15, atoms 0.
 # oracle-inputs: w21borncs_cs.data
-# oracle-compare: thermo=all atoms=all rel=1e-5 abs=1e-9
-# oracle-tolerance: for a weight-0 core/shell pair at r = 0 the native Coulomb term is c.e - bare with no removal of the cancellation, so its value is not the analytic r -> 0 limit. Measured with native LAMMPS (black box): the native r = 0 special-pair value shifts sign with alpha and rc (delta/|pref| from -8.5e-7 to +1.2e-6, floating-point noise), so the engine returns the analytic limit (as for born/coul/long/cs in coul_cs.ts). Measured with native LAMMPS (black box): the worst column deviation of this case is 3.5e-6 relative; the two r = 0 core/shell dimers carry the small charge 0.1 so that this native noise stays a minor part of ecoul.
+# oracle-compare: thermo=all atoms=all
 units           real
 atom_style      full
 bond_style      harmonic

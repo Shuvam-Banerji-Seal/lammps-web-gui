@@ -329,11 +329,17 @@ export class Neighbor {
     this.forwardComm(s, g);
   }
 
-  /** Copies owned positions into xall and places every ghost at its owner's image. */
+  /**
+   * Copies owned positions into xall and places every ghost at its owner's image. The owned atoms' types and charges
+   * are refreshed too: as native LAMMPS does (src/comm_brick.cpp forward_comm and borders at b332f28), a pair style reads
+   * the live type and q of an owned atom, while a ghost keeps the values its owner had at the last borders()
+   * (the neighbor build) until the next one.
+   */
   forwardComm(s: SimState, g: Geometry): void {
     const n = this.nlocal;
     const xa = this.xall;
     xa.set(s.x.subarray(0, 3 * n));
+    if (this.typeall.length >= n) { this.typeall.set(s.type.subarray(0, n)); this.qall.set(s.q.subarray(0, n)); }
     const nall = this.nall;
     const o = this.owner, im = this.gimage;
     const { lx, ly, lz, xy, xz, yz } = g;

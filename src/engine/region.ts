@@ -10,7 +10,9 @@ import { libm } from './libm';
  * with the side in keyword, but would not be part of the region if it were
  * defined using the side out keyword."
  * "INF means a large negative or positive number (1.0e20)"; "EDGE means they
- * extend all the way to the global simulation box boundary".
+ * extend all the way to the global simulation box boundary". The doc's 1.0e20 is not what the source uses: as native
+ * LAMMPS does (src/region_block.cpp, region_cylinder.cpp, region_cone.cpp, region_prism.cpp and region_ellipsoid.cpp at
+ * b332f28: "static constexpr double BIG = 1.0e200;"), an INF bound is +-1.0e200.
  * "Regions in LAMMPS do not get wrapped across periodic boundaries".
  * Styles: block, sphere, cylinder, cone, ellipsoid, plane, prism, union,
  * intersect. Parameters may be equal-style variables (v_name), evaluated each
@@ -22,7 +24,7 @@ import { libm } from './libm';
  * move keyword is applied to the P point of the rotate keyword".
  */
 
-export const BIG = 1.0e20;
+export const BIG = 1.0e200;
 
 /** A parameter: a constant or an equal-style variable (with a scale factor). */
 export type Param = number | { variable: string; scale: number };

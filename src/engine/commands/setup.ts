@@ -331,7 +331,8 @@ const lattice: Handler = ({ sys }, a) => {
 const bound = (sys: System, w: string | undefined, scale: number, d: number, side: 'lo' | 'hi'): Param => {
   if (w === undefined) throw new StyleError('region: missing bound');
   if (w === 'INF' || w === 'EDGE') {
-    if (!sys.hasBox) throw new StyleError('region: INF and EDGE need an existing simulation box');
+    // As native LAMMPS does (src/region_block.cpp, region_cylinder.cpp, region_prism.cpp at b332f28)
+    if (!sys.hasBox) throw new StyleError('Cannot use region INF or EDGE when box does not exist');
     if (w === 'INF') return side === 'lo' ? -BIG : BIG;
     return side === 'lo' ? sys.state.box.lo[d] : sys.state.box.hi[d];
   }

@@ -17,7 +17,7 @@ import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { BODY_RECORD, bodyRecordOffset } from '../../engine/bodies';
-import type { V3 } from './contact_history';
+import { tallyBodyPair, type V3 } from './contact_history';
 import { quatToMatrix } from '../../engine/compute/asphere';
 import {
   atomRadius, bodyGeom, roundedPolygonPair, type BodyGeom, type RPParams,
@@ -185,6 +185,8 @@ export class PairBodyRoundedPolygon extends Pair {
           tq[3 * j + d] += res.t[1][d];
         }
         evdwl += res.energy;
+        // ev_tally_xyz(i, j, nlocal, newton_pair, evdwl, 0, facc, delx, dely, delz): facc the force of the pair on i
+        if (pc.eatom || pc.vatom) tallyBodyPair(pc, i, j, res.energy, res.f[0], xi[0] - xj[0], xi[1] - xj[1], xi[2] - xj[2]);
       }
     }
     // a pair without a tangential spring this step loses its shear (native: touch = 0 zeroes the displacement)

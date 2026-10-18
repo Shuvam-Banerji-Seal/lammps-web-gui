@@ -19,6 +19,7 @@ import { parseNum } from '../../engine/force/util';
 import { BODY_RECORD, POLY_OFF } from '../../engine/bodies';
 import { quatToMatrix } from '../../engine/compute/asphere';
 import { PolyhedronPairLaw, makePBody, polyAtomRadius, type PBody, type V3 } from './rounded_polyhedron_law';
+import { tallyBodyPair } from './contact_history';
 
 export class PairBodyRoundedPolyhedron extends Pair {
   readonly name = 'body/rounded/polyhedron';
@@ -215,6 +216,9 @@ export class PairBodyRoundedPolyhedron extends Pair {
           cn: this.cn, ct: this.ct, mu: this.mu, Aua: this.Aua, cut: this.cutGlobal,
           history: hist, kt: this.p.get('kt', tii, tjj), dt, update, shear,
         };
+        // the pair's energy and its force on ii (facc of the native ev_tally_xyz), from the law's accumulators
+        const tallyAtoms = pc.eatom !== null || pc.vatom !== null;
+        const e0 = law.energy, f0x = f[3 * ii], f0y = f[3 * ii + 1], f0z = f[3 * ii + 2];
         law.interact(bi, bj);
         if (hist) {
           const sh = law.applyHistory();
@@ -222,6 +226,10 @@ export class PairBodyRoundedPolyhedron extends Pair {
             this.shear.set(key, lowerIsI ? sh : [-sh[0], -sh[1], -sh[2]]);
             touched.add(key);
           }
+        }
+        if (tallyAtoms) {
+          const facc: [number, number, number] = [f[3 * ii] - f0x, f[3 * ii + 1] - f0y, f[3 * ii + 2] - f0z];
+          tallyBodyPair(pc, ii, jn, law.energy - e0, facc, x[3 * ii] - x[3 * jn], x[3 * ii + 1] - x[3 * jn + 1], x[3 * ii + 2] - x[3 * jn + 2]);
         }
       }
     }

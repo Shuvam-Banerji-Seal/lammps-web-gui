@@ -1,0 +1,24 @@
+# oracle: compute ave/sphere/atom cutoff 1.6 on a fluid of 108 lj atoms (fcc 0.8442, velocity create 1.2), 20 steps of nve; the density and temperature of the sphere around each atom are dumped at step 20 and summed in thermo
+# oracle: native: b332f28 (installed lmp; compute ave/sphere/atom is in the EXTRA-COMPUTE package of that binary)
+# oracle-files: w227xc_ave_sphere.dump
+# oracle-compare: thermo=all atoms=none filerel=1e-12
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.8e-15, atoms n/a (atoms=none; the per-atom density and temperature are the dump file, worst token 3e-15).
+units           lj
+atom_style      atomic
+lattice         fcc 0.8442
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.2 87287 loop geom
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+compute         av all ave/sphere/atom cutoff 1.6
+compute         avS all reduce sum c_av[1] c_av[2]
+dump            d1 all custom 20 w227xc_ave_sphere.dump id c_av[1] c_av[2]
+dump_modify     d1 sort id format float %.15g
+fix             1 all nve
+thermo_style    custom step pe ke c_avS[1] c_avS[2]
+thermo_modify   format float %.15g
+thermo          10
+run             20

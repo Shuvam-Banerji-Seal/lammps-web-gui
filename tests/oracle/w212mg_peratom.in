@@ -1,0 +1,30 @@
+# oracle: pair_style mgpt with the Mo5.2 potential (3x3x3 bcc Mo, 54 atoms, displaced at random by up to 0.25 bohr), compute pe/atom and stress/atom (the volume terms of the per-atom virial included) as sums, maxima and minima, 3 NVE steps with thermo every step
+# native: b332f28 built with -D PKG_MGPT=on -D PKG_MANYBODY=on -D PKG_MOLECULE=on (serial, 1 process, default CMake Release flags, so the MGPT generic linear algebra; the installed lmp lacks MGPT)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.8e-15, atoms 0 (bit for bit).
+# oracle-potentials: Mo5.2.mgpt.parmin Mo5.2.mgpt.potin
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           electron
+atom_style      atomic
+variable        atomic_vol equal 105.1
+variable        lattice_constant equal (${atomic_vol}*2.0)^(1.0/3.0)
+lattice         bcc ${lattice_constant}
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+displace_atoms  all random 0.25 0.25 0.25 4711 units box
+pair_style      mgpt
+pair_coeff      * * Mo5.2.mgpt.parmin Mo5.2.mgpt.potin ${atomic_vol}
+compute         pa all pe/atom
+compute         sa all stress/atom NULL virial
+compute         spe all reduce sum c_pa
+compute         ssa all reduce sum c_sa[1] c_sa[2] c_sa[3] c_sa[4] c_sa[5] c_sa[6]
+compute         mxa all reduce max c_pa c_sa[1] c_sa[4] c_sa[6]
+compute         mna all reduce min c_pa c_sa[2] c_sa[5]
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+fix             1 all nve
+timestep        1.0
+thermo          1
+thermo_style    custom step pe press pxy pxz pyz c_spe c_ssa[1] c_ssa[2] c_ssa[3] c_ssa[4] c_ssa[5] c_ssa[6] c_mxa[1] c_mxa[2] c_mxa[3] c_mxa[4] c_mna[1] c_mna[2] c_mna[3]
+thermo_modify   format float %.15g
+run             3

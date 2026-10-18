@@ -1,0 +1,26 @@
+# oracle: pair_style mgpt with the Ta4 potential (its potin records have three header fields) in a box with one fixed (f) and one shrink-wrapped (s) dimension: 4x4x3 bcc Ta displaced at random by up to 0.25 bohr, so the subdomain weights of clusters near the open faces apply; 3 NVE steps with thermo every step
+# native: b332f28 built with -D PKG_MGPT=on -D PKG_MANYBODY=on -D PKG_MOLECULE=on (serial, 1 process, default CMake Release flags, so the MGPT generic linear algebra; the installed lmp lacks MGPT)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.9e-15, atoms 0 (bit for bit).
+# oracle-potentials: Ta4.mgpt.parmin Ta4.mgpt.potin
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           electron
+atom_style      atomic
+boundary        p f s
+variable        atomic_vol equal 121.6
+variable        lattice_constant equal (${atomic_vol}*2.0)^(1.0/3.0)
+lattice         bcc ${lattice_constant}
+region          box block 0 4 -0.5 4.5 0 3
+create_box      1 box
+region          atoms block 0 4 0 4 0 3
+create_atoms    1 region atoms
+displace_atoms  all random 0.25 0.25 0.25 55 units box
+pair_style      mgpt
+pair_coeff      * * Ta4.mgpt.parmin Ta4.mgpt.potin ${atomic_vol}
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+fix             1 all nve
+timestep        1.0
+thermo          1
+thermo_style    custom step pe ke press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+run             3

@@ -187,6 +187,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_e3b', names: { PAIRS: ['e3b'] }, load: () => import('../engine-gpl/registry/e3b') as Promise<StyleModule> },
   { id: 'gpl_srp', names: { PAIRS: ['srp', 'srp/react'], FIXES: ['SRP', 'SRPREACT'] }, load: () => import('../engine-gpl/registry/srp') as Promise<StyleModule> },
   { id: 'gpl_ewald_disp', names: { KSPACES: ['ewald/disp', 'ewald/disp/dipole'], PAIRS: ['lj/long/dipole/long'] }, load: () => import('../engine-gpl/registry/ewald_disp') as Promise<StyleModule> },
+  { id: 'gpl_mgpt', names: { PAIRS: ['mgpt'] }, load: () => import('../engine-gpl/registry/mgpt') as Promise<StyleModule> },
   { id: 'gpl_msm', names: { KSPACES: ['msm', 'msm/cg'], PAIRS: ['coul/msm', 'lj/cut/coul/msm', 'born/coul/msm', 'buck/coul/msm', 'lj/charmm/coul/msm', 'lj/spica/coul/msm', 'lj/sdk/coul/msm'] }, load: () => import('../engine-gpl/registry/msm') as Promise<StyleModule> },
   { id: 'gpl_filtercorotate', names: { FIXES: ['filter/corotate'] }, load: () => import('../engine-gpl/registry/filtercorotate') as Promise<StyleModule> },
   { id: 'gpl_extrafix_misc', names: { FIXES: ['viscous/sphere', 'flow/gauss', 'wall/ees', 'wall/region/ees', 'baoab', 'orient/eco'] }, load: () => import('../engine-gpl/registry/extrafix_misc') as Promise<StyleModule> },

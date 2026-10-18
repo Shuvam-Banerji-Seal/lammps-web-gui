@@ -1,0 +1,25 @@
+# oracle: the f-state bond matrices of pair_style mgpt (lmax 7, PairMGPT::hamltn_7_raw), which none of the distributed potentials uses: w212mg_fstate.parmin is Ta6.8x.mgpt.parmin with L = 3 (and an f coupling 0.50) on its second line, read with the unchanged Ta6.8x.mgpt.potin; 3x3x3 bcc displaced at random by up to 0.25 bohr, 3 NVE steps with thermo every step
+# native: b332f28 built with -D PKG_MGPT=on -D PKG_MANYBODY=on -D PKG_MOLECULE=on (serial, 1 process, default CMake Release flags, so the MGPT generic linear algebra; the installed lmp lacks MGPT)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.7e-15, atoms 0 (bit for bit).
+# oracle-inputs: w212mg_fstate.parmin
+# oracle-potentials: Ta6.8x.mgpt.potin
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           electron
+atom_style      atomic
+variable        atomic_vol equal 121.6
+variable        lattice_constant equal (${atomic_vol}*2.0)^(1.0/3.0)
+lattice         bcc ${lattice_constant}
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+displace_atoms  all random 0.25 0.25 0.25 2024 units box
+pair_style      mgpt
+pair_coeff      * * w212mg_fstate.parmin Ta6.8x.mgpt.potin ${atomic_vol}
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+fix             1 all nve
+timestep        1.0
+thermo          1
+thermo_style    custom step pe ke press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+run             3

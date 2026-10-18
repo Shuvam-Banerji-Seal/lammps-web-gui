@@ -296,6 +296,12 @@ export abstract class Pair {
   manybody = false;
   /** Set by pair_style hybrid/overlay on its sub-styles (native "^hybrid/overlay" checks; false when the style is alone). */
   hybridOverlay = false;
+  /**
+   * Set by pair_style hybrid, hybrid/overlay and hybrid/scaled on their sub-styles. A style that folds its ghost forces
+   * and sums its own fdotr virial (PairCompute.fdotrDone) does so only when it is the whole pair style, since a
+   * sub-style shares the forces and the virial sum with the others.
+   */
+  hybridSub = false;
   needsFull = false;
   needsHalf = true;
   /**

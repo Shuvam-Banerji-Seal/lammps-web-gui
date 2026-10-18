@@ -187,6 +187,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_shock', names: { FIXES: ['msst', 'nphug', 'wall/piston', 'append/atoms'] }, load: () => import('../engine-gpl/registry/shock') as Promise<StyleModule> },
   { id: 'gpl_table_bonded', names: { BONDS: ['table'], ANGLES: ['table'], DIHEDRALS: ['table', 'table/cut'] }, load: () => import('../engine-gpl/registry/table_bonded') as Promise<StyleModule> },
   { id: 'gpl_xmolecule', names: { BONDS: ['fene/nm', 'harmonic/restrain', 'quartic/exp'], ANGLES: ['cosine/shift/exp', 'mwlc'], DIHEDRALS: ['spherical'], IMPROPERS: ['ring'] }, load: () => import('../engine-gpl/registry/xmolecule') as Promise<StyleModule> },
+  { id: 'gpl_chunk_more', names: { COMPUTES: ['vcm/chunk', 'torque/chunk', 'vacf/chunk', 'inertia', 'slice', 'global/atom'], FIXES: ['momentum/chunk', 'spring/chunk', 'store/force'] }, load: () => import('../engine-gpl/registry/chunk_more') as Promise<StyleModule> },
   { id: 'gpl_slater', names: { PAIRS: ['coul/slater/long', 'dpd/coul/slater/long'] }, load: () => import('../engine-gpl/registry/slater') as Promise<StyleModule> },
   { id: 'gpl_e3b', names: { PAIRS: ['e3b'] }, load: () => import('../engine-gpl/registry/e3b') as Promise<StyleModule> },
   { id: 'gpl_srp', names: { PAIRS: ['srp', 'srp/react'], FIXES: ['SRP', 'SRPREACT'] }, load: () => import('../engine-gpl/registry/srp') as Promise<StyleModule> },

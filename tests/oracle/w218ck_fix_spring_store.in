@@ -1,0 +1,34 @@
+# oracle: fix spring/chunk (one spring per molecule, energy in pe through fix_modify energy yes; compress no, since native errors with compress yes) and fix store/force (per-atom forces after the spring) on 18 branched molecules of mol_chains.data, after a short NVE run
+# oracle-inputs: mol_chains.data
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.2e-13, atoms 4.7e-14.
+units           lj
+atom_style      molecular
+bond_style      class2
+angle_style     harmonic
+dihedral_style  harmonic
+improper_style  harmonic
+pair_style      lj/cut 2.5
+read_data       mol_chains.data
+pair_coeff      * * 0.5 0.9
+pair_coeff      1 3 0.8 1.0
+bond_coeff      1 1.05 100.0 -50.0 20.0
+bond_coeff      2 1.1 90.0 -40.0 15.0
+angle_coeff     1 40.0 109.5
+angle_coeff     2 25.0 120.0
+dihedral_coeff  1 1.5 -1 3
+improper_coeff  1 12.0 20.0
+special_bonds   lj 0.0 0.5 0.8
+timestep        0.002
+velocity        all create 1.0 4928459 mom no rot no
+fix             1 all nve
+compute cm all chunk/atom molecule
+compute com all com/chunk cm
+fix             2 all spring/chunk 2.0 cm com
+fix             3 all store/force
+fix_modify      2 energy yes
+compute fs all reduce sum f_3[1] f_3[2] f_3[3]
+thermo_style    custom step pe f_2 c_com[1][1] c_com[18][3] c_fs[1] c_fs[2] c_fs[3]
+thermo_modify   format float %.15g norm no
+thermo          5
+run             20

@@ -1,0 +1,31 @@
+# oracle: global inertia tensor (6-vector) and compute slice of it, with a molecule-chunk vcm/chunk for reference on 18 branched molecules of mol_chains.data, after a short NVE run
+# oracle-inputs: mol_chains.data
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.5e-15, atoms 1.1e-13.
+units           lj
+atom_style      molecular
+bond_style      class2
+angle_style     harmonic
+dihedral_style  harmonic
+improper_style  harmonic
+pair_style      lj/cut 2.5
+read_data       mol_chains.data
+pair_coeff      * * 0.5 0.9
+pair_coeff      1 3 0.8 1.0
+bond_coeff      1 1.05 100.0 -50.0 20.0
+bond_coeff      2 1.1 90.0 -40.0 15.0
+angle_coeff     1 40.0 109.5
+angle_coeff     2 25.0 120.0
+dihedral_coeff  1 1.5 -1 3
+improper_coeff  1 12.0 20.0
+special_bonds   lj 0.0 0.5 0.8
+velocity        all create 1.0 4928459 mom no rot no
+fix             1 all nve
+compute ine all inertia
+compute sl all slice 1 6 1 c_ine
+compute cm all chunk/atom molecule
+compute vcm all vcm/chunk cm
+thermo_style    custom step c_ine[1] c_ine[2] c_ine[3] c_ine[4] c_ine[5] c_ine[6] c_sl[1] c_sl[2] c_sl[5] c_vcm[1][1] c_vcm[9][3]
+thermo_modify   format float %.15g norm no
+thermo          10
+run             20

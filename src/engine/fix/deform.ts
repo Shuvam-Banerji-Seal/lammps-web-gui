@@ -149,11 +149,8 @@ export class FixDeform extends Fix {
   private lenDot: number[] = [0, 0, 0];
   private tiltDot: number[] = [0, 0, 0];
   private loDot: number[] = [0, 0, 0];
-  /** remap v state: last remap step, the positions / box at it, and the
-   *  repair bookkeeping for the engine's earlier no-kick pbc wraps. */
+  /** remap v state: the last remap step, and the repair bookkeeping for the engine's earlier no-kick pbc wraps. */
   private remapLastStep = -1;
-  private remapHold = new Float64Array(0);
-  private remapBoxHold: number[] = [];
   private imgPre: Int32Array | null = null;
   private accShift = new Float64Array(0);
   private accImg = new Int32Array(0);
@@ -341,13 +338,9 @@ export class FixDeform extends Fix {
     // LAMMPS calls end_of_step() from the fix's setup() as well (also for N = 0)
     if (this.nevery === 0) this.deform(true);
     else this.endOfStep();
-    // remap v: the first remap window starts at the run setup (the positions
-    // and box the setup pbc and this deformation left behind)
+    // remap v: the first remap window starts at the run setup
     const s = this.sys.state;
-    const g = this.sys.geom;
     this.remapLastStep = s.step;
-    this.remapHold = Float64Array.from(s.x.subarray(0, 3 * s.n));
-    this.remapBoxHold = [g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2], g.xy, g.xz, g.yz];
     this.ensureRemapArrays(s.n);
   }
 
@@ -653,20 +646,9 @@ export class FixDeform extends Fix {
     const ago = step - this.remapLastStep;
     if (ago < nb.delay) return;
     if (nb.every > 1 && step % nb.every !== 0) return;
-    if (nb.check && this.remapHold.length === 3 * s.n) {
-      const cur = [g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2], g.xy, g.xz, g.yz];
-      let boxDelta = 0;
-      for (let k = 0; k < 9; k++) boxDelta = Math.max(boxDelta, Math.abs(cur[k] - this.remapBoxHold[k]));
-      const lim = 0.5 * nb.skin - boxDelta;
-      const lim2 = lim * lim;
-      let moved = false;
-      const x = s.x, hold = this.remapHold;
-      for (let k = 0; k < 3 * s.n; k += 3) {
-        const dx = x[k] - hold[k], dy = x[k + 1] - hold[k + 1], dz = x[k + 2] - hold[k + 2];
-        if (dx * dx + dy * dy + dz * dz > lim2) { moved = true; break; }
-      }
-      if (!moved) return;
-    }
+    // native kicks in Domain::pbc on the steps the neighbor list is rebuilt: ask the neighbor's own distance check
+    // (its positions and box of the last build), so the remap step is the rebuild step
+    if (nb.check && !nb.movedTooFar(s, g)) return;
     // remap step: undo the engine's earlier no-kick wraps of the group, then
     // wrap whoever is outside the box now and add the boundary velocity deltas
     this.ensureRemapArrays(s.n);
@@ -694,8 +676,6 @@ export class FixDeform extends Fix {
       v[3 * i + 2] -= kz * dlz;
     }
     this.remapLastStep = step;
-    this.remapHold = Float64Array.from(s.x.subarray(0, 3 * s.n));
-    this.remapBoxHold = [g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2], g.xy, g.xz, g.yz];
   }
 
   /** (Re)allocates the per-atom remap bookkeeping. */

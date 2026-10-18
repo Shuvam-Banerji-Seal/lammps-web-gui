@@ -373,7 +373,11 @@ export class PairFepSoft extends Pair {
     return { etail: 2 * Math.PI * e, ptail: (-2 * Math.PI / 3) * pr };
   }
 
+  /** As native LAMMPS does (src/FEP/pair_lj_cut_soft.cpp and the other soft styles' extract at b332f28): epsilon, sigma, lambda (dim 2). */
   extract(name: string): unknown {
+    // the Coulomb-only soft styles (coul/cut/soft, coul/long/soft) return only "lambda" (and "cut_coul")
+    if ((name === 'epsilon' || name === 'sigma') && this.lj !== 'none') return this.p.p(name);
+    if (name === 'lambda') return this.p.p(name);
     if (name === 'cut_coul') return this.cutCGlobal;
     return undefined;
   }

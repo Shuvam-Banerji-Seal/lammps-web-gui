@@ -338,7 +338,12 @@ export class PairLJCharmmCoulCharmm extends Pair {
     return out;
   }
 
+  /**
+   * As native LAMMPS does (src/MOLECULE/pair_lj_charmm_coul_charmm.cpp and src/KSPACE/pair_lj_charmm_coul_long.cpp extract
+   * at b332f28): "sigma" and "epsilon" are the per-type-pair arrays (dim 2), "cut_coul" the Coulomb cutoff.
+   */
   extract(name: string): unknown {
+    if (name === 'sigma' || name === 'epsilon') return this.p.p(name);
     return name === 'cut_coul' ? this.cutCoul : undefined;
   }
 }

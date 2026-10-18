@@ -22,6 +22,24 @@ import { fma } from './log';
 import {
   InvLn2N, Shift, NegLn2hiN, NegLn2loN, C2, C3, C4, C5, SLO, SC2, SC4, TAB, TAILD, SCALE2, POW2, POW2_OFF,
 } from './exp';
+// Module-level copies of the imported tables and constants: a live import binding is a property load at every use
+// in the bundles this runs under, which blocks the constant folding of the hot path.
+const L_InvLn2N = InvLn2N;
+const L_Shift = Shift;
+const L_NegLn2hiN = NegLn2hiN;
+const L_NegLn2loN = NegLn2loN;
+const L_C2 = C2;
+const L_C3 = C3;
+const L_C4 = C4;
+const L_C5 = C5;
+const L_SLO = SLO;
+const L_SC2 = SC2;
+const L_SC4 = SC4;
+const L_TAB = TAB;
+const L_TAILD = TAILD;
+const L_SCALE2 = SCALE2;
+const L_POW2 = POW2;
+const L_POW2_OFF = POW2_OFF;
 
 const F = new Float64Array(1);
 const U = new Uint32Array(F.buffer); // little-endian: U[0] low word, U[1] high word
@@ -166,7 +184,7 @@ const TABL = new Float64Array([
 /** SIGN_BIAS = 0x800 << EXP_TABLE_BITS: added to k for a negative result (the sign bit of scale). */
 const SIGN_BIAS = 0x40000;
 /** The low parts of the split constants (the high parts come from exp.ts). */
-const SLO_L = NegLn2loN - SLO, SC2_L = C3 - SC2, SC4_L = C5 - SC4;
+const SLO_L = L_NegLn2loN - L_SLO, SC2_L = L_C3 - L_SC2, SC4_L = L_C5 - L_SC4;
 
 /** e_pow.c checkint for a finite non-zero y: 0 not an integer, 1 odd, 2 even. */
 const checkint = (y: number): number => {
@@ -174,6 +192,16 @@ const checkint = (y: number): number => {
   if (Math.abs(y) >= 9007199254740992) return 2;
   return y % 2 === 0 ? 2 : 1;
 };
+
+/** 2^-k at index k + 1024 for k in [-1024, 1024] (exact: halving and doubling 1 stay exact in range; the k = -1024 entry
+ * is never read, since the exponent of a normal x gives k >= -1022). */
+const POW2_NEG = new Float64Array(2049);
+{
+  let v = 1;
+  for (let k = 0; k <= 1024; k++) { POW2_NEG[1024 + k] = v; v *= 0.5; }
+  v = 1;
+  for (let k = -1; k >= -1023; k--) { v *= 2; POW2_NEG[1024 + k] = v; }
+}
 
 /** log_inline results: hi, its tail, and (fast path) a bound on how far lo may be from libm's lo (-1: not stable). A
  * typed array, so the doubles are not boxed on every call as module variables would be. */
@@ -225,18 +253,18 @@ const expExact = (x: number, xtail: number, signBias: number): number => {
     if (abstop >= 0x409) return (U[1] >>> 31) ? uflow(signBias) : oflow(signBias);
     abstop = 0; // large x: the special cases below
   }
-  const ks = fma(InvLn2N, x, Shift);
+  const ks = fma(L_InvLn2N, x, L_Shift);
   F[0] = ks;
   const kiLo = U[0];
-  const kd = ks - Shift;
-  let r = fma(kd, NegLn2loN, fma(kd, NegLn2hiN, x));
+  const kd = ks - L_Shift;
+  let r = fma(kd, L_NegLn2loN, fma(kd, L_NegLn2hiN, x));
   r = xtail + r;
   const idx = 2 * (kiLo & 127);
-  const tail = asDouble(TAB[2 * idx], TAB[2 * idx + 1]);
-  const sHi = (TAB[2 * idx + 2] + ((kiLo + signBias) << 13)) >>> 0, sLo = TAB[2 * idx + 3];
+  const tail = asDouble(L_TAB[2 * idx], L_TAB[2 * idx + 1]);
+  const sHi = (L_TAB[2 * idx + 2] + ((kiLo + signBias) << 13)) >>> 0, sLo = L_TAB[2 * idx + 3];
   const r2 = r * r;
-  const p = fma(fma(r, C3, C2), r2, tail + r);
-  const tmp = fma(fma(r, C5, C4), r2 * r2, p);
+  const p = fma(fma(r, L_C3, L_C2), r2, tail + r);
+  const tmp = fma(fma(r, L_C5, L_C4), r2 * r2, p);
   if (abstop === 0) {
     if ((kiLo & 0x80000000) === 0) {
       // k > 0: the exponent of scale might have overflowed by <= 460
@@ -275,21 +303,19 @@ const powExact = (ixHi: number, ixLo: number, y: number, signBias: number): numb
  * The fast path of pow for x > 0 normal (ix with the sign cleared) and y in the main range, in one function so nothing
  * is boxed between steps (see the header for the reasoning; the fused steps are inlined copies of fmaF).
  */
-const powFast = (ixHi: number, ixLo: number, y: number, signBias: number): number => {
-  // log_inline: x = 2^k z, z in [OFF, 2 OFF)
+const powFast = (ax: number, ixHi: number, ixLo: number, y: number, signBias: number): number => {
+  // log_inline: x = 2^k z, z in [OFF, 2 OFF); ax = |x| is normal, so z = ax 2^-k exactly (the same bits as the word edit)
   const tmpHi = (ixHi - 0x3fe69555) | 0;
   const li = (tmpHi >>> 13) & 127;
   const k = tmpHi >> 20;
-  U[1] = (ixHi - (tmpHi & 0xfff00000)) >>> 0;
-  U[0] = ixLo;
-  const z = F[0];
+  const z = ax * POW2_NEG[k + 1024];
   const invc = TABL[3 * li], logc = TABL[3 * li + 1], logctail = TABL[3 * li + 2];
   // z invc - 1 is exactly representable: (pz - 1) is exact (Sterbenz) and adding the product error rounds to it
   const pz = z * invc;
   let q1 = SPLIT * z;
   const qah1 = q1 - (q1 - z), qal1 = z - qah1;
-  q1 = SPLIT * invc;
-  const qbh1 = q1 - (q1 - invc), qbl1 = invc - qbh1;
+  // the Veltkamp split of every TABL invc is exact (hi = invc, lo = +0: 26 significant bits or fewer, checked for all 128)
+  const qbh1 = invc, qbl1 = 0;
   const ez = ((qah1 * qbh1 - pz) + qah1 * qbl1 + qal1 * qbh1) + qal1 * qbl1;
   const r = (pz - 1.0) + ez;
   const t1 = k * Ln2hi + logc; // exact product (Ln2hi has 11 trailing zero bits): the same rounding as fused
@@ -337,16 +363,16 @@ const powFast = (ixHi: number, ixLo: number, y: number, signBias: number): numbe
     return powExact(ixHi, ixLo, y, signBias); // 512 <= |ehi| < 1024: the special cases
   }
   // exp_inline: kd is libm's unless ehi InvLn2N lies within 2^-30 of a half-integer
-  const zz = ehi * InvLn2N;
-  const ks = zz + Shift;
-  const kd = ks - Shift;
+  const zz = ehi * L_InvLn2N;
+  const ks = zz + L_Shift;
+  const kd = ks - L_Shift;
   if (0.5 - Math.abs(zz - kd) < 9.313225746154785e-10) return powExact(ixHi, ixLo, y, signBias);
   // fma(kd, NegLn2loN, ehi + kd NegLn2hiN): the inner sum is exact (kd NegLn2hiN is exact, within a factor 2 of ehi)
-  const a4 = kd, b4 = NegLn2loN, c4 = ehi + kd * NegLn2hiN;
+  const a4 = kd, b4 = L_NegLn2loN, c4 = ehi + kd * L_NegLn2hiN;
   const p4 = a4 * b4;
   let s4 = SPLIT * a4;
   const ah4 = s4 - (s4 - a4), al4 = a4 - ah4;
-  const bh4 = SLO, bl4 = SLO_L;
+  const bh4 = L_SLO, bl4 = SLO_L;
   const ul4 = ((ah4 * bh4 - p4) + ah4 * bl4 + al4 * bh4) + al4 * bl4;
   const th4 = c4 + p4;
   const bb4 = th4 - c4;
@@ -368,11 +394,11 @@ const powFast = (ixHi: number, ixLo: number, y: number, signBias: number): numbe
   // the rest exactly as libm (the same r): polynomial steps and scale + scale tmp fused
   const i = kd & 127;
   const r2 = er * er;
-  const a5 = er, b5 = C3, c5 = C2;
+  const a5 = er, b5 = L_C3, c5 = L_C2;
   const p5 = a5 * b5;
   let s5 = SPLIT * a5;
   const ah5 = s5 - (s5 - a5), al5 = a5 - ah5;
-  const bh5 = SC2, bl5 = SC2_L;
+  const bh5 = L_SC2, bl5 = SC2_L;
   const ul5 = ((ah5 * bh5 - p5) + ah5 * bl5 + al5 * bh5) + al5 * bl5;
   const th5 = c5 + p5;
   const bb5 = th5 - c5;
@@ -386,7 +412,7 @@ const powFast = (ixHi: number, ixLo: number, y: number, signBias: number): numbe
     const d5 = (th5 - (c32 - rb5)) + (v5 - rb5);
     if (d5 !== 0 && (c32 + 2 * d5) - c32 === 2 * d5) c32 = fma(a5, b5, c5);
   }
-  const a6 = c32, b6 = r2, c6 = TAILD[i] + er;
+  const a6 = c32, b6 = r2, c6 = L_TAILD[i] + er;
   const p6 = a6 * b6;
   let s6 = SPLIT * a6;
   const ah6 = s6 - (s6 - a6), al6 = a6 - ah6;
@@ -405,11 +431,11 @@ const powFast = (ixHi: number, ixLo: number, y: number, signBias: number): numbe
     const d6 = (th6 - (pp - rb6)) + (v6 - rb6);
     if (d6 !== 0 && (pp + 2 * d6) - pp === 2 * d6) pp = fma(a6, b6, c6);
   }
-  const a7 = er, b7 = C5, c7 = C4;
+  const a7 = er, b7 = L_C5, c7 = L_C4;
   const p7 = a7 * b7;
   let s7 = SPLIT * a7;
   const ah7 = s7 - (s7 - a7), al7 = a7 - ah7;
-  const bh7 = SC4, bl7 = SC4_L;
+  const bh7 = L_SC4, bl7 = SC4_L;
   const ul7 = ((ah7 * bh7 - p7) + ah7 * bl7 + al7 * bh7) + al7 * bl7;
   const th7 = c7 + p7;
   const bb7 = th7 - c7;
@@ -442,7 +468,7 @@ const powFast = (ixHi: number, ixLo: number, y: number, signBias: number): numbe
     const d8 = (th8 - (tmp - rb8)) + (v8 - rb8);
     if (d8 !== 0 && (tmp + 2 * d8) - tmp === 2 * d8) tmp = fma(a8, b8, c8);
   }
-  let scale = SCALE2[i] * POW2[(kd - i) / 128 + POW2_OFF];
+  let scale = L_SCALE2[i] * L_POW2[(kd - i) / 128 + L_POW2_OFF];
   if (signBias) scale = -scale;
   const a9 = tmp, b9 = scale, c9 = scale;
   const p9 = a9 * b9;
@@ -516,5 +542,5 @@ export const pow = (x: number, y: number): number => {
       return powExact(ixHi, U[0], y, signBias);
     }
   }
-  return powFast(ixHi, ixLo, y, signBias);
+  return powFast(Math.abs(x), ixHi, ixLo, y, signBias);
 };

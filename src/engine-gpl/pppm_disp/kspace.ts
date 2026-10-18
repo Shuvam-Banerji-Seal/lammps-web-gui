@@ -449,7 +449,7 @@ export class KSpacePPPMDisp extends KSpaceBase {
     } else {
       let h = 4.0 / g;
       let count = 0;
-      let Nn: [number, number, number] = [2, 2, 2];
+      let Nn: [number, number, number];
       for (;;) {
         Nn = [Math.trunc(xprd / h), Math.trunc(yprd / h), Math.trunc(zprd / h)];
         for (let d = 0; d < 3; d++) if (Nn[d] <= 1) Nn[d] = 2;

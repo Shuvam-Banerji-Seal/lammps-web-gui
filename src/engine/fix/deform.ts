@@ -554,6 +554,18 @@ export class FixDeform extends Fix {
     };
   }
 
+  /**
+   * The box rates the current step sees, in native domain->h_rate order (length rates, yz, xz, xy) and
+   * domain->h_ratelo (the lo-boundary rates). As fix_deform.cpp sets them (init, then end_of_step): the rates of
+   * the box after the last deform update, which the next step's integrator and compute temp/deform use.
+   */
+  nativeRates(): { hRate: number[]; hRateLo: number[] } {
+    return {
+      hRate: [this.lenDot[0], this.lenDot[1], this.lenDot[2], this.tiltDot[2], this.tiltDot[1], this.tiltDot[0]],
+      hRateLo: [this.loDot[0], this.loDot[1], this.loDot[2]],
+    };
+  }
+
   /** Does the fix change a box tilt (BOX_CHANGE_SHAPE in native LAMMPS)? */
   hasTilt(): boolean {
     return this.specs.some((sp) => sp.tilt);

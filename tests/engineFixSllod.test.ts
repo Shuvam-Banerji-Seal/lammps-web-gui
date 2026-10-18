@@ -6,7 +6,7 @@ import type { Fix } from '../src/engine/fix/fix';
 /*
  * fix nvt/sllod (docs.lammps.org/fix_nvt_sllod.html): argument and requirement
  * errors, and the psllod keyword. The documented requirements are quoted in
- * src/engine/fix/nvt_sllod.ts (the fix deform remap rule, psllod yes/no).
+ * src/engine-gpl/fix/fix_nvt_sllod.ts (the fix deform remap rule, psllod yes/no).
  */
 
 /** A 4x4x4 fcc prism (a small triclinic box, as the oracle cases use). */

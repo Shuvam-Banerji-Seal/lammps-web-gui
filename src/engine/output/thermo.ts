@@ -433,12 +433,14 @@ export class Thermo {
         return this.normalize(v[i - 1], ext);
       }
       const a = c.arrayValues();
-      return a[(i - 1) * c.sizeArrayCols + j - 1];
+      // As native LAMMPS does (src/thermo.cpp at b332f28, compute_compute and compute_fix): an array element is
+      // divided by the atom count when the array is extensive ("if (normflag && compute->extarray) dvalue /= natoms")
+      return this.normalize(a[(i - 1) * c.sizeArrayCols + j - 1], c.extarray === 1);
     }
     const f = sys.fix(id);
     if (i === null) return this.normalize(f.computeScalar(), f.extscalar === 1);
     if (j === null) return this.normalize(f.computeVector(i - 1), f.extlist ? f.extlist[i - 1] === 1 : f.extvector === 1);
-    return f.computeArray(i - 1, j - 1);
+    return this.normalize(f.computeArray(i - 1, j - 1), f.extarray === 1);
   }
 
   /** thermo_modify keyword list. */

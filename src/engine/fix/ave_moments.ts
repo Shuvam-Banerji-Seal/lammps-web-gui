@@ -130,7 +130,6 @@ export class FixAveMoments extends Fix {
     this.nrecent = nrecent;
     this.vectorFlag = true;
     this.arrayFlag = true;
-    this.extvector = 0;
     // thermo f_ID[*] expands before init(): without wildcards the sizes are known now
     if (!values.some((w) => w.includes('*'))) {
       this.sizeVector = values.length * moments.length;
@@ -146,12 +145,35 @@ export class FixAveMoments extends Fix {
   init(): void {
     this.inputs = expandWildcards(this.sys, this.valueWords, 'scalar').map((w) => parseRef(w));
     const size = this.inputs.length * this.momentWords.length;
+    // As native LAMMPS does (src/EXTRA-FIX/fix_ave_moments.cpp at b332f28): every moment of a value takes that value's
+    // flag (the vector's per-element list), and the array takes the one flag all values share, else it is an error
+    let ext = -2;
+    const list: number[] = [];
+    for (const r of this.inputs) {
+      let e = 0;
+      if (r.kind !== 'v') {
+        const src = r.kind === 'c' ? this.sys.compute(r.id) : this.sys.fix(r.id);
+        e = r.index === null ? src.extscalar : src.extlist ? src.extlist[r.index - 1] ?? 0 : src.extvector;
+      }
+      if (ext > -2 && e !== ext) {
+        throw new StyleError(`fix ${this.id} (ave/moments): Fix ave/moments cannot set output array intensive/extensive from these inputs`);
+      }
+      ext = e;
+      for (let m = 0; m < this.momentWords.length; m++) list.push(e);
+    }
+    this.extvector = 0;
+    this.extlist = list;
+    this.extarray = ext < 0 ? 0 : ext;
     this.sizeVector = size;
     this.sizeArrayRows = size;
     this.sizeArrayCols = this.nrecent;
-    this.out = new Float64Array(size);
-    this.hist = [];
-    this.window = [];
+    // As native LAMMPS does (src/EXTRA-FIX/fix_ave_moments.cpp at b332f28): the window and the results are allocated
+    // once (the constructor) and init() keeps them, so a later run starts with the samples and outputs of the last one
+    if (this.out.length !== size) {
+      this.out = new Float64Array(size);
+      this.hist = [];
+      this.window = [];
+    }
   }
 
   /** Samples are taken in end_of_step; the moments are evaluated on multiples of Nfreq after the start step. */

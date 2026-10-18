@@ -18,10 +18,9 @@
  * any group atom whose charge crosses qmin or qmax moved by more than the tolerance. Passes that all repeat are an error.
  */
 import { Fix } from '../../engine/fix/fix';
-import type { QeqLinearSystem, QeqSolveResult } from '../../engine/fix/qeq';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
-import { NativeQeqSolver } from './native_solver';
+import { NativeQeqSolver, type QeqLinearSystem, type QeqSolveResult } from './native_solver';
 import { A1, A2, A3, A4, A5, EWALD_P, MY_PIS, PairCoulCtip, type CtipParams } from '../ctip/pair_coul_ctip';
 import { exp as libmExp } from '../libm/exp';
 
@@ -112,7 +111,8 @@ export class FixQeqCtip extends Fix {
     // extract_ctip: the pair style must exist when the fix is created
     this.pair();
     this.solver = new NativeQeqSolver({
-      kind: 'point', style: this.style, maxiter: this.maxiter, tol: this.tol, warn: this.warn, warnFn: (m) => this.sys.warn(m),
+      kind: 'point', maxiter: this.maxiter, tol: this.tol, warn: this.warn,
+      warnCg: (ratio, loop) => this.sys.warn(`Fix qeq CG convergence failed (${ratio}) after ${loop} iterations at step ${this.sys.state.step}`),
     });
     // FixQEq constructor: every atom's history starts at its charge
     this.solver.seed(sys.state.id, sys.state.q, sys.state.n);

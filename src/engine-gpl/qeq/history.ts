@@ -7,9 +7,8 @@
  *
  * The five-entry charge histories of the qeq conjugate-gradient solves. Two keyings exist: qeq/slater keeps one per
  * local index (QeqChargeHistory, created at the first solve), qeq/point and qeq/shielded keep one per atom id
- * (QeqIdChargeHistory, seeded by the fix constructor). The solves that use them are in native_solver.ts; the core
- * FixQeq (src/engine/fix/qeq.ts) reaches them through the lazy HOOKS entries 'qeq/point', 'qeq/shielded' and
- * 'qeq/slater' (lazyStyles.ts group gpl_qeq).
+ * (QeqIdChargeHistory, seeded by the fix constructor). The solves that use them are in native_solver.ts, called by the
+ * fix class in fix_qeq.ts.
  */
 
 /** Entries kept per atom: the solutions of the last five solves (nprev = 5 in fix_qeq.cpp). */

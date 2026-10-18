@@ -1,6 +1,7 @@
 # oracle: fix qeq/fire, small coul/long system with example param.qeq2, run 0 + 10 nve
 # oracle-inputs: w36qeq_param.qeq2
-# oracle-compare: thermo=all atoms=all rel=1e-6
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): pe 1.5e-15; atoms 7.2e-16. Source: src/QEQ/fix_qeq.cpp (setup_pre_force), fix_qeq_point.cpp, fix_qeq_dynamic.cpp, fix_qeq_fire.cpp at b332f28; the step-0 gap of 7e-8 was the kspace G-ewald re-chosen after the solve.
 units metal
 atom_style charge
 boundary p p p

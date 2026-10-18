@@ -1,9 +1,24 @@
-import { Fix } from './fix';
-import { StyleError, typeBounds } from '../force/types';
-import { PairCoulStreitz, mdfTaper, pointUval, slaterS } from '../force/pair/coul_streitz';
-import type { System } from '../system';
-import { gplHook } from '../gplHooks';
-import { libm, SQRT_PI } from '../libm';
+/*
+ * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
+ * Source: src/QEQ/fix_qeq.cpp (base: init, setup_pre_force, init_storage, CG, sparse_matvec, calculate_Q, the charge
+ * histories), src/QEQ/fix_qeq_point.cpp (init_matvec, compute_H, pre_force), src/QEQ/fix_qeq_shielded.cpp,
+ * src/QEQ/fix_qeq_dynamic.cpp (pre_force, compute_eneg), src/QEQ/fix_qeq_fire.cpp (pre_force) and
+ * src/QEQ/fix_qeq_slater.cpp (the two solves and the charge sums), at commit b332f28. Copyright Sandia Corporation
+ * (LAMMPS development team, GNU General Public License). This file is GPL-2.0 (see src/engine-gpl/LICENSE).
+ *
+ * One class, FixQeq, for the fix qeq family of the browser engine: qeq/point, qeq/shielded, qeq/dynamic, qeq/fire and
+ * qeq/slater. The conjugate-gradient solver and the charge histories of the matrix styles are in ./native_solver.ts and
+ * ./history.ts; the registry is ../registry/fix_qeq.ts (lazy group 'fix_qeq' of src/engine/lazyStyles.ts).
+ */
+import { Fix } from '../../engine/fix/fix';
+import { StyleError, typeBounds } from '../../engine/force/types';
+import { PairCoulStreitz, mdfTaper, pointUval, slaterS } from '../../engine/force/pair/coul_streitz';
+import type { System } from '../../engine/system';
+import { SQRT_PI } from '../../engine/libm';
+import { exp as libmExp } from '../libm/exp';
+import { pow as libmPow } from '../libm/pow';
+import { erfc as libmErfc } from '../libm/erf';
+import { NativeQeqSolver, type QeqLinearSystem, type QeqSolver } from './native_solver';
 
 /*
  * fix qeq/point, qeq/shielded, qeq/dynamic and qeq/fire — docs.lammps.org/fix_qeq.html
@@ -132,53 +147,6 @@ const isReaxQeqSource = (o: unknown): o is ReaxQeqSource => typeof (o as ReaxQeq
 
 type QeqKind = 'point' | 'shielded' | 'dynamic' | 'fire' | 'slater';
 
-/**
- * The charge matrix of one qeq/point, qeq/shielded or qeq/slater solve, built here from the matrix elements: H_aa = diag[a]
- * (the eta plus the self terms), H_ab = pairH over pairA/pairB (each pair once; the solver applies it both ways), the
- * Jacobi preconditioner precond = 1/eta, the right-hand side bS = -chi (qeq/slater: -chi_eff with the fixed atoms), and
- * fixed, a constant added to H s of the first residual only (qeq/point, qeq/shielded; null for qeq/slater).
- */
-export interface QeqLinearSystem {
-  readonly ng: number;
-  readonly diag: Float64Array;
-  readonly precond: Float64Array;
-  readonly pairA: Int32Array;
-  readonly pairB: Int32Array;
-  readonly pairH: Float64Array;
-  readonly bS: Float64Array;
-  readonly fixed: Float64Array | null;
-}
-/** One solve: the group's local indices and atom ids (group order), the atom count and the current charges. */
-export interface QeqSolveInput {
-  readonly sys: QeqLinearSystem;
-  readonly idx: number[];
-  readonly ids: number[];
-  readonly n: number;
-  readonly q: Float64Array;
-}
-export interface QeqSolveResult {
-  readonly q: Float64Array;
-  readonly iterations: number;
-}
-/** The solver of one fix (src/engine-gpl/qeq/native_solver.ts): it owns the charge history of the fix. */
-export interface QeqSolver {
-  /** qeq/point and qeq/shielded: every atom's history starts at its charge (the fix constructor). */
-  seed(ids: ArrayLike<number>, q: Float64Array, n: number): void;
-  solve(input: QeqSolveInput): QeqSolveResult;
-}
-export interface QeqSolverOptions {
-  readonly kind: 'point' | 'shielded' | 'slater';
-  readonly style: string;
-  readonly maxiter: number;
-  readonly tol: number;
-  readonly warn: boolean;
-  readonly warnFn: (message: string) => void;
-}
-/** The lazy HOOKS entries 'qeq/point', 'qeq/shielded' and 'qeq/slater' (lazyStyles.ts group gpl_qeq). */
-export interface QeqSolverHook {
-  create(o: QeqSolverOptions): QeqSolver;
-}
-
 interface Params {
   chi: Float64Array;
   eta: Float64Array;
@@ -200,14 +168,14 @@ const COUL = 14.4; // hard-coded Coulomb constant of fix qeq (measured with nati
 /** 7th-order taper used by the shielded interaction (measured with native LAMMPS, black box). */
 const taper = (x: number): number => {
   if (x >= 1) return 0;
-  return 1 - 35 * x * x * x * x + 84 * x ** 5 - 70 * x ** 6 + 20 * x ** 7;
+  return 1 - 35 * x * x * x * x + 84 * libmPow(x, 5) - 70 * libmPow(x, 6) + 20 * libmPow(x, 7);
 };
 
 /** Constant of the qeq/dynamic charge dynamics (measured with native LAMMPS, black box). */
 const DYNAMIC_SCALE = 31.25;
 
-/** erfc for the qeq/slater matrix: the C library's, as native fix_qeq_slater.cpp calls erfc() (libm.ts). */
-const erfcSlater = (x: number): number => libm.erfc(x);
+/** erfc for the qeq/slater matrix: the C library's, as native fix_qeq_slater.cpp calls erfc() (libm/erf.ts). */
+const erfcSlater = (x: number): number => libmErfc(x);
 
 export class FixQeq extends Fix {
   readonly style: string;
@@ -224,6 +192,8 @@ export class FixQeq extends Fix {
   private iterations = 0;
   /** The CG solver (qeq/point, qeq/shielded, qeq/slater: src/engine-gpl/qeq/native_solver.ts), set by the constructor. */
   private solver: QeqSolver | null = null;
+  /** The kspace paramsFrozen flag this fix found before its first run setup (restored in postRun). */
+  private kspaceFrozenBefore: boolean | null = null;
   /** qeq/slater: wolf-type damping alpha (keyword alpha, default 0.2), dsf 0.0 form, qfile coul/streitz. */
   private alpha = 0.2;
   private dsf = false;
@@ -254,7 +224,7 @@ export class FixQeq extends Fix {
     if (!(this.maxiter > 0)) throw new StyleError(`fix ${this.style}: maxiter must be > 0`);
     // qdamp/qstep are documented for qeq/dynamic and qeq/fire only; their
     // measured defaults are qdamp 0.1 and qstep 0.02 (dynamic) / 0.2 (fire).
-    this.qdamp = 0.1;
+    this.qdamp = kind === 'fire' ? 0.2 : 0.1;
     this.qstep = kind === 'fire' ? 0.2 : 0.02;
     this.warn = true;
     const damped = kind === 'dynamic' || kind === 'fire';
@@ -319,8 +289,9 @@ export class FixQeq extends Fix {
       }
     }
     if (kind === 'point' || kind === 'shielded' || kind === 'slater') {
-      this.solver = gplHook<QeqSolverHook>(this.style).create({
-        kind, style: this.style, maxiter: this.maxiter, tol: this.tol, warn: this.warn, warnFn: (m) => this.sys.warn(m),
+      this.solver = new NativeQeqSolver({
+        kind, maxiter: this.maxiter, tol: this.tol, warn: this.warn,
+        warnCg: (ratio, loop) => this.warnCg(ratio, loop),
       });
       // native constructor: every atom's history starts at its charge
       if (kind !== 'slater') this.solver.seed(sys.state.id, sys.state.q, sys.state.n);
@@ -419,19 +390,35 @@ export class FixQeq extends Fix {
    * their solve after it.
    */
   setupPreForce(): void {
-    if ((this.kind === 'point' || this.kind === 'shielded') && this.sys.state.step % this.nEvery === 0) this.solve();
+    // native FixQEq::setup_pre_force (inherited by every style of this file, src/QEQ/fix_qeq.cpp at b332f28) runs
+    // pre_force before the setup force evaluation. The kspace G-ewald is the one of this run's init, as native keeps
+    // it (KSpace::qsum_qsq refreshes only the charge sums): paramsFrozen stays set until postRun.
+    const kspace = this.sys.ff.kspace;
+    if (kspace) {
+      if (this.kspaceFrozenBefore === null) this.kspaceFrozenBefore = kspace.paramsFrozen;
+      kspace.paramsFrozen = true;
+    }
+    this.preForce();
   }
 
-  setup(): void {
-    if (this.kind !== 'point' && this.kind !== 'shielded') this.solve();
+  postRun(): void {
+    const kspace = this.sys.ff.kspace;
+    if (kspace && this.kspaceFrozenBefore !== null) kspace.paramsFrozen = this.kspaceFrozenBefore;
+    this.kspaceFrozenBefore = null;
   }
 
-  /** fix_qeq.html: Nevery = "perform charge equilibration every this many steps". */
+  /** fix_qeq.html: Nevery = "perform charge equilibration every this many steps" (pre_force's ntimestep % nevery). */
   preForce(): void {
     if (this.sys.state.step % this.nEvery === 0) this.solve();
   }
 
   computeScalar(): number { return this.iterations; }
+
+  /** Native's CG warning (fix_qeq.cpp CG): "Fix qeq CG convergence failed (ratio) after loop iterations at step N". */
+  private warnCg(ratio: number, loop: number): void {
+    if (!this.warn) return;
+    this.sys.warn(`Fix qeq CG convergence failed (${ratio}) after ${loop} iterations at step ${this.sys.state.step}`);
+  }
 
   private solve(): void {
     const s = this.sys.state;
@@ -549,7 +536,7 @@ export class FixQeq extends Fix {
     const a = this.alpha, rc = this.cutoff;
     const erc = erfcSlater(a * rc);
     const selfW = -(erc / (2 * rc) + a / SQRT_PI);
-    const kd = this.dsf ? erc / (rc * rc) + (2 * a / SQRT_PI) * libm.exp(-a * a * rc * rc) / rc : 0;
+    const kd = this.dsf ? erc / (rc * rc) + (2 * a / SQRT_PI) * libmExp(-a * a * rc * rc) / rc : 0;
     const cc = (r: number): number => {
       const e = erfcSlater(a * r) / r;
       return this.dsf ? e - erc / rc + (r - rc) * kd : e;
@@ -687,7 +674,7 @@ export class FixQeq extends Fix {
   private interaction(s: System['state'], p: Params, i: number, j: number, r: number, shielded: boolean): number {
     if (!shielded) return 1 / r;
     const g = Math.sqrt(p.gamma[s.type[i]] * p.gamma[s.type[j]]);
-    return g > 0 ? COUL * (r * r * r + 1 / (g * g * g)) ** (-1 / 3) * taper(r / this.cutoff) : 0;
+    return g > 0 ? COUL * libmPow(r * r * r + 1 / (g * g * g), -1 / 3) * taper(r / this.cutoff) : 0;
   }
 
   /**
@@ -801,9 +788,11 @@ export class FixQeq extends Fix {
     const f = new Float64Array(ng);
     gradient(q, f);
     let fm = meanAbs(f);
+    let fmax = maxAbs(f);
     let iters = 0;
-    // native performs at most maxiter - 1 updates (maxiter 1 leaves the charges unchanged; measured)
-    for (; iters < this.maxiter - 1 && fm >= this.tol; iters++) {
+    // native performs at most maxiter - 1 updates (maxiter 1 leaves the charges unchanged; measured). Native's stop
+    // test (fix_qeq_dynamic.cpp pre_force): enegchk <= tolerance and enegmax <= 100 tolerance.
+    for (; iters < this.maxiter - 1 && !(fm <= this.tol && fmax <= 100 * this.tol); iters++) {
       if (iters === 0) {
         for (let a = 0; a < ng; a++) dq[a] = B * f[a];
       } else {
@@ -812,61 +801,69 @@ export class FixQeq extends Fix {
       for (let a = 0; a < ng; a++) q[a] += dq[a];
       gradient(q, f);
       fm = meanAbs(f);
+      fmax = maxAbs(f);
     }
     this.iterations = iters;
-    if (fm >= this.tol && this.warn) {
-      this.sys.warn(`Fix ${this.style} charge equilibration did not converge (iteration ${this.maxiter}, maxiter reached)`);
-    }
+    if (!(fm <= this.tol && fmax <= 100 * this.tol) && this.warn) this.sys.warn(`Charges did not converge at step ${this.sys.state.step}: ${fm}`);
     return q;
   }
 
   /**
-   * qeq/fire, measured with native LAMMPS (black box): with maxiter capped at 1..80 the native charges of
-   * an irregular 5-atom cluster after every iteration are reproduced to 1e-16 by this damped dynamics on
-   * the same charge force f (FIRE-like, Bitzek et al., PRL 97, 170201 (2006), with fixed constants):
-   *   v' = v + dt_prev f_prev           (f_prev = the force of the previous iteration; f at the first)
-   *   if f . v' <= 0: v' = 0, dt_base = dt_base / 2
-   *   v  = 0.2 v' + 0.8 |v'| f / |f|
-   *   dt = dt_base, reduced so that max |dt v| <= 0.1;  q += dt v;  dt_prev = dt
-   * with dt_base = qstep / 2 at the start (qdamp has no effect).  It stops when mean |f| < tolerance;
-   * the fix scalar is then the number of updates plus one (native counts 21, 24, 45, 47, 18, 19, 30, 54
-   * and 98 iterations at tolerances 1e-1 ... 1e-5 for qstep 0.2 and 0.4 are reproduced).
+   * qeq/fire: native FixQEqFire::pre_force (src/QEQ/fix_qeq_fire.cpp at b332f28), statement order kept. Per iteration:
+   * the charge force f at the current charges; if v.f > 0 the velocity mixes toward f (alpha, then alpha shrinks and dt
+   * grows when the last negative step is older than the current MD step), else dt halves, alpha resets to ALPHA0 and v
+   * is zero; the step is limited so that dt |v| <= 0.1 per atom; then q moves by dt v and v by dt f (the position
+   * moves before v is updated, and the convergence test uses the force of the step just taken). The sign of v is the
+   * negative of native's qv (native's force is -f), which leaves every product of the update unchanged. The fix scalar is
+   * the number of iterations at exit (native matvecs = loop).
    */
   private solveFire(q0: Float64Array, gradient: (q: Float64Array, out: Float64Array) => void, ng: number): Float64Array {
     const q = Float64Array.from(q0);
     const v = new Float64Array(ng);
-    const vp = new Float64Array(ng);
     const f = new Float64Array(ng);
-    const fPrev = new Float64Array(ng);
-    let dtBase = this.qstep / 2;
-    let dtPrev = dtBase;
-    gradient(q, f);
-    fPrev.set(f);
-    let fm = meanAbs(f);
-    let updates = 0;
-    for (; updates < this.maxiter - 1 && fm >= this.tol; updates++) {
-      let P = 0;
-      for (let a = 0; a < ng; a++) { vp[a] = v[a] + dtPrev * fPrev[a]; P += f[a] * vp[a]; }
-      if (P <= 0) { vp.fill(0); dtBase *= 0.5; }
-      let nv = 0, nf = 0;
-      for (let a = 0; a < ng; a++) { nv += vp[a] * vp[a]; nf += f[a] * f[a]; }
-      nv = Math.sqrt(nv); nf = Math.sqrt(nf);
-      let vmax = 0;
-      for (let a = 0; a < ng; a++) {
-        v[a] = nv > 0 && nf > 0 ? 0.2 * vp[a] + (0.8 * nv * f[a]) / nf : vp[a];
-        if (Math.abs(v[a]) > vmax) vmax = Math.abs(v[a]);
-      }
-      const dt = dtBase * vmax > FIRE_DQMAX ? FIRE_DQMAX / vmax : dtBase;
-      for (let a = 0; a < ng; a++) q[a] += dt * v[a];
-      fPrev.set(f);
-      dtPrev = dt;
+    const step = this.sys.state.step;
+    let alpha = this.qdamp;
+    let dt = this.qstep;
+    const dtmax = FIRE_TMAX * dt;
+    let lastNegative = 0;
+    let fm = 0;
+    let iloop = 0;
+    for (; iloop < this.maxiter; iloop++) {
       gradient(q, f);
-      fm = meanAbs(f);
+      let vdotf = 0;
+      for (let a = 0; a < ng; a++) vdotf += v[a] * f[a];
+      if (vdotf > 0) {
+        let vdotv = 0, fdotf = 0;
+        for (let a = 0; a < ng; a++) { vdotv += v[a] * v[a]; fdotf += f[a] * f[a]; }
+        const scale1 = 1 - alpha;
+        const scale2 = fdotf === 0 ? 0 : alpha * Math.sqrt(vdotv / fdotf);
+        for (let a = 0; a < ng; a++) v[a] = scale1 * v[a] + scale2 * f[a];
+        if (step - lastNegative > FIRE_DELAYSTEP) {
+          dt = Math.min(dt * FIRE_DT_GROW, dtmax);
+          alpha *= FIRE_ALPHA_SHRINK;
+        }
+      } else {
+        lastNegative = step;
+        dt *= FIRE_DT_SHRINK;
+        alpha = FIRE_ALPHA0;
+        v.fill(0);
+      }
+      let dtv = dt;
+      for (let a = 0; a < ng; a++) {
+        const vmax = Math.abs(v[a]);
+        if (dtv * vmax > FIRE_DQMAX) dtv = FIRE_DQMAX / vmax;
+      }
+      let enegchk = 0;
+      for (let a = 0; a < ng; a++) {
+        q[a] += dtv * v[a];
+        v[a] += dtv * f[a];
+        enegchk += Math.abs(f[a]);
+      }
+      fm = ng ? enegchk / ng : 0;
+      if (fm < this.tol) break;
     }
-    this.iterations = fm < this.tol ? updates + 1 : updates;
-    if (fm >= this.tol && this.warn) {
-      this.sys.warn(`Fix ${this.style} charge equilibration did not converge (iteration ${this.maxiter}, maxiter reached)`);
-    }
+    this.iterations = iloop;
+    if (fm >= this.tol && this.warn) this.sys.warn(`Charges did not converge at step ${step}: ${fm}`);
     return q;
   }
 }
@@ -877,8 +874,20 @@ export class FixQeq extends Fix {
  * (28, 40, 46, 65, 71, 77, 95, 108, 114) are reproduced only by mean |f| < tolerance (not max |f|, the RMS,
  * the norm or the sum).
  */
-/** Largest charge change of one qeq/fire update (measured, see solveFire; independent of qstep). */
+/** Constants of native FixQEqFire::pre_force (fix_qeq_fire.cpp at b332f28). */
 const FIRE_DQMAX = 0.1;
+const FIRE_DELAYSTEP = 0;
+const FIRE_DT_GROW = 1.1;
+const FIRE_DT_SHRINK = 0.5;
+const FIRE_ALPHA0 = 0.8;
+const FIRE_ALPHA_SHRINK = 0.1;
+const FIRE_TMAX = 10;
+
+const maxAbs = (f: Float64Array): number => {
+  let m = 0;
+  for (let k = 0; k < f.length; k++) m = Math.max(m, Math.abs(f[k]));
+  return m;
+};
 
 const meanAbs = (f: Float64Array): number => {
   let s = 0;

@@ -5,14 +5,54 @@
  * b332f28. Copyright Sandia Corporation (LAMMPS development team, GNU General Public License). This file is GPL-2.0
  * (see src/engine-gpl/LICENSE).
  *
- * The conjugate-gradient charge solver of qeq/point, qeq/shielded and qeq/slater. The core FixQeq
- * (src/engine/fix/qeq.ts) builds the matrix elements (diagonal, off-diagonal pairs, preconditioner, right-hand side,
- * the fixed-atom term) in the engine's own terms and calls this solver through the lazy HOOKS entries (lazyStyles.ts
- * group gpl_qeq, registry/qeq_native.ts). The solver owns the charge history of its fix and returns the new charges and
- * the iteration count.
+ * The conjugate-gradient charge solver of qeq/point, qeq/shielded and qeq/slater. The fix class (fix_qeq.ts) builds the
+ * matrix elements (diagonal, off-diagonal pairs, preconditioner, right-hand side, the fixed-atom term) and calls this
+ * solver. The solver owns the charge history of its fix and returns the new charges and the iteration count.
  */
-import type { QeqLinearSystem, QeqSolveInput, QeqSolveResult, QeqSolver, QeqSolverOptions } from '../../engine/fix/qeq';
 import { QeqChargeHistory, QeqIdChargeHistory, initialGuessS, initialGuessT, pushAtomHistory } from './history';
+
+/**
+ * The charge matrix of one qeq/point, qeq/shielded or qeq/slater solve, built by the fix (fix_qeq.ts): H_aa = diag[a]
+ * (the eta plus the self terms), H_ab = pairH over pairA/pairB (each pair once; the solver applies it both ways), the
+ * Jacobi preconditioner precond = 1/eta, the right-hand side bS = -chi (qeq/slater: -chi_eff with the fixed atoms), and
+ * fixed, a constant added to H s of the first residual only (qeq/point, qeq/shielded; null for qeq/slater).
+ */
+export interface QeqLinearSystem {
+  readonly ng: number;
+  readonly diag: Float64Array;
+  readonly precond: Float64Array;
+  readonly pairA: Int32Array;
+  readonly pairB: Int32Array;
+  readonly pairH: Float64Array;
+  readonly bS: Float64Array;
+  readonly fixed: Float64Array | null;
+}
+/** One solve: the group's local indices and atom ids (group order), the atom count and the current charges. */
+export interface QeqSolveInput {
+  readonly sys: QeqLinearSystem;
+  readonly idx: number[];
+  readonly ids: number[];
+  readonly n: number;
+  readonly q: Float64Array;
+}
+export interface QeqSolveResult {
+  readonly q: Float64Array;
+  readonly iterations: number;
+}
+/** The CG solver of one fix: it owns the charge history of the fix. */
+export interface QeqSolver {
+  /** qeq/point and qeq/shielded: every atom's history starts at its charge (the fix constructor). */
+  seed(ids: ArrayLike<number>, q: Float64Array, n: number): void;
+  solve(input: QeqSolveInput): QeqSolveResult;
+}
+export interface QeqSolverOptions {
+  readonly kind: 'point' | 'shielded' | 'slater';
+  readonly maxiter: number;
+  readonly tol: number;
+  readonly warn: boolean;
+  /** native CG warning (fix_qeq.cpp CG): called with sqrt(r.p)/|b| and the loop counter at exit */
+  readonly warnCg: (ratio: number, loop: number) => void;
+}
 
 /** y = H x for the sparse system: diagonal, then each off-diagonal pair (both directions), then the constant term. */
 const matvec = (sys: QeqLinearSystem, x: Float64Array, out: Float64Array, fixed: Float64Array | null): void => {
@@ -104,13 +144,9 @@ export class NativeQeqSolver implements QeqSolver {
       x0S[a] = initialGuessS(h);
     }
     const sRes = cg(sys, sys.bS, x0S, sys.fixed, this.o.maxiter, this.o.tol);
-    if (sRes.loop >= this.o.maxiter && this.o.warn) {
-      this.o.warnFn(`Fix ${this.o.style} CG convergence failed (${sRes.ratio}) after ${sRes.loop} iterations`);
-    }
+    if (sRes.loop >= this.o.maxiter && this.o.warn) this.o.warnCg(sRes.ratio, sRes.loop);
     const tRes = cg(sys, bT, x0T, null, this.o.maxiter, this.o.tol);
-    if (tRes.loop >= this.o.maxiter && this.o.warn) {
-      this.o.warnFn(`Fix ${this.o.style} CG convergence failed (${tRes.ratio}) after ${tRes.loop} iterations`);
-    }
+    if (tRes.loop >= this.o.maxiter && this.o.warn) this.o.warnCg(tRes.ratio, tRes.loop);
     let sumS = 0, sumT = 0;
     for (let a = 0; a < ng; a++) { sumS += sRes.x[a]; sumT += tRes.x[a]; }
     const u = sumS / sumT;
@@ -134,11 +170,9 @@ export class NativeQeqSolver implements QeqSolver {
     const bT = new Float64Array(ng).fill(-1);
     const sRes = cg(sys, sys.bS, guess.s, null, this.o.maxiter, this.o.tol);
     const tRes = cg(sys, bT, guess.t, null, this.o.maxiter, this.o.tol);
-    const ok = (r: CgResult): boolean => r.ratio <= this.o.tol;
     const iterations = this.indexHistory.matvecCount(sRes.loop, tRes.loop);
-    if (this.o.warn && (!ok(sRes) || !ok(tRes))) {
-      this.o.warnFn(`Fix ${this.o.style} CG convergence failed after ${this.o.maxiter} iterations (maxiter reached)`);
-    }
+    if (this.o.warn && sRes.loop >= this.o.maxiter) this.o.warnCg(sRes.ratio, sRes.loop);
+    if (this.o.warn && tRes.loop >= this.o.maxiter) this.o.warnCg(tRes.ratio, tRes.loop);
     let sumS = 0, sumT = 0;
     for (let k = 0; k < ng; k++) { sumS += sRes.x[k]; sumT += tRes.x[k]; }
     const out = new Float64Array(ng);

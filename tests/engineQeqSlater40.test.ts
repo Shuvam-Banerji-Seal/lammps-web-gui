@@ -6,7 +6,7 @@ import type { EngineEvent } from '../src/engine/types';
 
 /*
  * fix qeq/slater with pair coul/streitz (fix_qeq.html, qeq/slater section; the model and the solver are
- * measured with native LAMMPS, see the header comment of src/engine/fix/qeq.ts). Parsing and refusals,
+ * measured with native LAMMPS, see the header comment of src/engine-gpl/qeq/fix_qeq.ts). Parsing and refusals,
  * the stationarity of the coul/streitz energy at the solved charges (dE/dq_i equal for all atoms, by
  * central differences of the energy at fixed charges), and charge conservation.
  */

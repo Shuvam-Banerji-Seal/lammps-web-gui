@@ -1,0 +1,18 @@
+# oracle: dihedral_style class2 alone on the tiny epoxy system (the w114cf_epoxy_long data file): pair, bond, angle and improper are zero styles, static run 0
+# oracle-inputs: w94react_epoxy_tiny_epoxy.data w94react_epoxy_rxn1_stp1.map w94react_epoxy_rxn1_stp1_post.molecule_template w94react_epoxy_rxn1_stp1_pre.molecule_template w94react_epoxy_rxn1_stp2.map w94react_epoxy_rxn1_stp2_post.molecule_template w94react_epoxy_rxn2_stp1.map w94react_epoxy_rxn2_stp1_post.molecule_template w94react_epoxy_rxn2_stp1_pre.molecule_template w94react_epoxy_rxn2_stp2.map w94react_epoxy_rxn2_stp2_post.molecule_template
+# oracle-compare: thermo=all atoms=all
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 3.0e-15, atoms 4.7e-15 with the GPL port of dihedral_class2.cpp (the engine's earlier analytic class2 dihedral: atoms 1.5e-7). bond_style and angle_style zero nocoeff ignore the class2 coefficients of the data file, as native does.
+units real
+boundary p p p
+atom_style full
+pair_style zero 8 nocoeff
+bond_style zero nocoeff
+angle_style zero nocoeff
+dihedral_style class2
+improper_style zero nocoeff
+special_bonds lj/coul 0 0 1
+read_data w94react_epoxy_tiny_epoxy.data &
+  extra/special/per/atom 25
+thermo_style custom step pe edihed press pxx pyy pzz pxy pxz pyz
+thermo_modify format float %.15g
+run 0

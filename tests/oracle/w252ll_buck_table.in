@@ -1,0 +1,19 @@
+# oracle: buck/long/coul/long long long with the default Coulomb table (pair_modify table/disp 0 only: the table real space of the Coulomb term, with the special-bond correction), ewald/disp
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.5e-14, atoms 2.9e-15 (the Coulomb table at the float rsq, before: 5.9e-8).
+# oracle-inputs: w226cs_full.data
+units           real
+atom_style      full
+read_data       w226cs_full.data
+pair_style      buck/long/coul/long long long 8.0
+pair_coeff      * * 2000.0 0.3 0.5
+pair_modify     table/disp 0
+bond_style      harmonic
+bond_coeff      1 100.0 1.5
+special_bonds   lj/coul 0.0 0.5 1.0
+kspace_style    ewald/disp 1.0e-6
+timestep        0.1
+fix             1 all nve
+thermo_style    custom step pe ecoul elong evdwl ke press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+thermo          10
+run             30

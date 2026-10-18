@@ -178,6 +178,14 @@ export class KSpaceEwaldDisp extends KSpaceBase {
   }
 
   linkPair(pair: Pair | null): void { this.pair = pair; }
+  /**
+   * ewald_disp.cpp: dispersionflag = 1 in the constructor, cleared in init when the pair gives no dispersion term
+   * ("if (!termflag[TERM_DISP_GEOM] && !termflag[TERM_DISP_ARITH]) dispersionflag = 0;"), before pair_check.
+   */
+  override dispersion(): boolean {
+    const { view } = this.viewOf(this.pair);
+    return view !== null && (view.ewaldOrder() & EWALD_DISP) !== 0;
+  }
 
   /** EwaldDisp::init (and the first setup()). */
   init(s: SimState, geom: Geometry, _cutCoul: number, qqrd2e: number, ctx: StyleContext): void {

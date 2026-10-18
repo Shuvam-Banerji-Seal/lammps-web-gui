@@ -214,6 +214,11 @@ export class ForceField {
         throw new StyleError(`KSpace style ${this.kspace.name} is incompatible with Pair style zero/coul`);
       }
       this.kspace.linkPair?.(this.pair);
+      // As native LAMMPS does (src/kspace.cpp KSpace::pair_check at b332f28): the dispersion flags of the pair and the
+      // kspace style must agree (pppm/disp needs a pair with dispersion; ewald, pppm and msm refuse one)
+      if (this.kspace.dispersion() !== this.pair.dispersionFlag) {
+        throw new StyleError(`KSpace style ${this.kspace.name} is incompatible with Pair style ${this.pair.name}`);
+      }
       // paramsFrozen: a charge-changing fix (fix charge/regulation) keeps the init-time G-ewald, kmax and mesh
       if (this.kspace.paramsFrozen && this.kspace.gEwald > 0) this.kspace.updateChargeSums(s);
       else this.kspace.init(s, geom, cutCoul, s.units.qqr2e * this.pair.coulConstScale / this.dielectric, ctx);

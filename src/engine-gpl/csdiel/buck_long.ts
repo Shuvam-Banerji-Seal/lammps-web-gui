@@ -77,6 +77,8 @@ export class PairBuckLongCoulLong extends Pair {
     if (flagCoul === 'cut') throw new StyleError('Coulomb cut not supported in pair_style buck/long/coul/coul');
     if (flagCoul !== 'long' && flagCoul !== 'off') throw new StyleError('Illegal pair_style buck/long/coul/long command');
     this.dispFlag = flagBuck === 'long';
+    // pair_buck_long_coul_long.cpp settings: dispersionflag is cleared for a cut dispersion term (KSpace::pair_check)
+    this.dispersionFlag = this.dispFlag;
     this.coulLongFlag = flagCoul === 'long';
     this.coulLong = this.coulLongFlag;
     if (this.dispFlag && this.coulLongFlag && args.length === 4) throw new StyleError('Only one cutoff allowed when requesting all long');
@@ -144,7 +146,7 @@ export class PairBuckLongCoulLong extends Pair {
     const g = this.gEwald, gd = this.gEwaldDisp;
     const g2 = gd * gd, g6 = g2 * g2 * g2, g8 = g6 * g2;
     const cutCoulsq = this.cutCoul * this.cutCoul;
-    const coulTab: ErfcTable | null = order1 ? this.coulTables.get(this.table, g, cutCoulsq, this.tabinnerRsq) : null;
+    const coulTab: ErfcTable | null = order1 ? this.coulTables.get(this.table, g, cutCoulsq, this.tabinnerRsq, true) : null;
     const dispTab = order6 ? this.dispTable(gd) : null;
     const sLJ = pc.specialLJ, sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;

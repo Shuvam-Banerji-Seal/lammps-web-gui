@@ -66,8 +66,10 @@ import { libm } from '../../libm';
  *    includes excluded pairs, so the correction is not implemented).
  * flag_lj = cut and flag_coul = long/off: unchanged (the class below as before).
  *
- * flag_lj = off is not supported (native LAMMPS rejects kspace ewald and pppm
- * with it, measured in an earlier wave).
+ * flag_lj = off (pair_lj_long.rst: "*off* = omit disperion 1/r\^6 term entirely"): measured with native LAMMPS, the
+ * LJ terms are computed as with flag_lj cut (the same step-0 evdwl); off differs from cut only in the dispersion flag
+ * that the kspace check reads (Pair.dispersionFlag): pppm/disp is accepted, and ewald, pppm, msm and ewald/disp are
+ * refused with "KSpace style X is incompatible with Pair style lj/long/coul/long".
  */
 const g6kernel = (x2: number): number => libm.exp(-x2) * (1 + x2 + x2 * x2 / 2);
 
@@ -90,15 +92,18 @@ const coulShort = (
   rsq: number, qi: number, qj: number, g: number, qqrd2e: number, fc: number, poly: boolean, table: ErfcTable | null,
 ): { e: number; f: number } => {
   if (table && rsq > table.inner) {
-    const qq = qqrd2e * qi * qj;
-    let forcecoul = qq * table.force(rsq);
-    let e = qq * table.energy(rsq);
+    // As native LAMMPS does (src/KSPACE/pair_lj_long_coul_long.cpp compute at b332f28): the table is interpolated at
+    // the double rsq (a doubleRsq table), and the special-bond correction (1 - f) (ctable + fraction dctable) is
+    // stored in a float before it is subtracted from qiqj (ftable + fraction dftable)
+    const qiqj = qi * qj;
+    let F = qqrd2e * table.force(rsq);
+    let E = qqrd2e * table.energy(rsq);
     if (fc < 1) {
-      const bare = qq * table.coul(rsq);
-      forcecoul -= (1 - fc) * bare;
-      e -= (1 - fc) * bare;
+      const corr = Math.fround((1 - fc) * (qqrd2e * table.coul(rsq)));
+      F -= corr;
+      E -= corr;
     }
-    return { e, f: forcecoul / rsq };
+    return { e: qiqj * E, f: qiqj * F / rsq };
   }
   const r = Math.sqrt(rsq);
   const grij = g * r;
@@ -152,16 +157,18 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
       throw new StyleError('usage: pair_style lj/long/coul/long flag_lj flag_coul cutoff (cutoff2)');
     }
     const [flagLJ, flagCoul] = args;
-    if (flagLJ === 'off') {
-      throw new StyleError("pair_style lj/long/coul/long flag_lj 'off' is not supported (native LAMMPS rejects kspace ewald and pppm with it)");
-    }
-    if (flagLJ !== 'cut' && flagLJ !== 'long') throw new StyleError(`pair_style lj/long/coul/long: invalid flag_lj '${flagLJ}' (long, cut or off)`);
+    if (flagLJ !== 'cut' && flagLJ !== 'long' && flagLJ !== 'off') throw new StyleError(`pair_style lj/long/coul/long: invalid flag_lj '${flagLJ}' (long, cut or off)`);
     if (flagCoul !== 'long' && flagCoul !== 'off') throw new StyleError(`pair_style lj/long/coul/long: invalid flag_coul '${flagCoul}' (long or off)`);
     this.cutGlobal = parseNum(args[2], 'cutoff');
     if (!(this.cutGlobal > 0)) throw new StyleError('pair_style lj/long/coul/long: cutoff must be > 0');
     this.cutCoul = args.length === 4 ? parseNum(args[3], 'Coulomb cutoff') : this.cutGlobal;
     if (!(this.cutCoul > 0)) throw new StyleError('pair_style lj/long/coul/long: Coulomb cutoff must be > 0');
     this.ljLong = flagLJ === 'long';
+    // flag_lj off: measured with native LAMMPS, the LJ terms are those of flag_lj cut (step-0 evdwl 5.00207487626398
+    // for both on the same charged lattice); only the dispersion flag differs, so pppm/disp is accepted and ewald,
+    // pppm and ewald/disp are refused (src/KSPACE/pair_lj_long_coul_long.cpp settings at b332f28 clears
+    // dispersionflag only for cut)
+    this.dispersionFlag = flagLJ !== 'cut';
     this.coulLongFlag = flagCoul === 'long';
     this.cutCoulNative = this.cutCoul;
     if (flagCoul === 'long') {
@@ -193,8 +200,8 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
     return Math.max(this.cutGlobal, this.cutCoul);
   }
 
+  /** flag_lj long, cut or off: the lj/long/coul/long loop (its Coulomb table and special-bond rounding differ from lj/cut/coul/long's). */
   compute(pc: PairCompute): void {
-    if (!this.ljLong) { super.compute(pc); return; }
     this.computeLongLJ(pc);
   }
 
@@ -203,7 +210,8 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
     const list = pc.half!;
     const { x, f, type, q } = pc;
     const nt = this.ntypes + 1;
-    const { lj3, lj4 } = this;
+    const { lj1, lj2, lj3, lj4, offset } = this;
+    const ljLong = this.ljLong;
     // Per type pair LJ cutoff (pair_coeff cutoff1; the global one where not set), squared.
     const cutljsqT = new Float64Array(nt * nt);
     for (let a = 1; a <= this.ntypes; a++) {
@@ -217,7 +225,7 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
     const g = this.gEwald;
     const gd = this.gEwaldDisp;
     const gd6 = gd ** 6;
-    const tab = coul ? this.ljErfcTables.get(this.table, g, cutcsq, this.tabinnerRsq) : null;
+    const tab = coul ? this.ljErfcTables.get(this.table, g, cutcsq, this.tabinnerRsq, true) : null;
     const dtab = this.ljDispTable(gd);
     const sLJ = pc.specialLJ, sC = pc.specialCoul;
     const tally = pc.eatom !== null || pc.vatom !== null;
@@ -242,7 +250,15 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
           ecoul += r.e;
           e += r.e;
         }
-        if (rsq < cutljsqT[t]) {
+        if (rsq < cutljsqT[t] && !ljLong) {
+          // flag_lj cut or off: the 12-6 term with its special-bond weight and the pair_modify shift offset
+          const r2inv = 1 / rsq, r6inv = r2inv * r2inv * r2inv;
+          const fs = sb === 0 ? 1 : sLJ[sb];
+          fpair += fs * r6inv * (r6inv * lj1[t] - lj2[t]) * r2inv;
+          const ev = fs * (r6inv * (r6inv * lj3[t] - lj4[t]) - offset[t]);
+          evdwl += ev;
+          e += ev;
+        } else if (rsq < cutljsqT[t]) {
           if (sb !== 0 && sLJ[sb] !== 1) {
             throw new StyleError('special_bonds lj weight other than 1 is not implemented with pair style lj/long/coul/long flag_lj long');
           }

@@ -315,6 +315,12 @@ export abstract class Pair {
   /** Styles with a long-range Coulomb part (need a kspace style). */
   coulLong = false;
   /**
+   * The style asks for a k-space solver with a dispersion part (native Pair::dispersionflag). As native LAMMPS does
+   * (src/kspace.cpp KSpace::pair_check at b332f28): a kspace style whose own dispersion flag (KSpace.dispersion)
+   * differs from the pair's is refused, "KSpace style X is incompatible with Pair style Y".
+   */
+  dispersionFlag = false;
+  /**
    * Keep pairs whose special_bonds weights are both 0.0 in the neighbor list
    * (special_bonds.html: "a value of 0.0 means exclude the pair completely
    * from the neighbor list, except for pair styles that require a kspace
@@ -679,6 +685,11 @@ export abstract class KSpace {
   abstract compute(kc: KSpaceCompute): void;
   /** Force-field hook, called before init(): the pair style (pppm/tip4p reads its charge sites). */
   linkPair?(pair: Pair | null): void;
+  /**
+   * The solver has a dispersion part (native KSpace::dispersionflag), checked against Pair.dispersionFlag before init.
+   * Called after linkPair: a solver whose dispersion terms follow the pair (ewald/disp) reads them from it.
+   */
+  dispersion(): boolean { return false; }
   /**
    * kspace_modify pressure/scalar (MSM). kspace_modify.html: "If this option is turned on, only the scalar pressure
    * (i.e. (Pxx + Pyy + Pzz)/3.0) will be computed" and "This option cannot be used to access individual components of

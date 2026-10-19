@@ -191,6 +191,13 @@ export class PairYLZ extends Pair {
           pc.eatom[i] += 0.5 * e;
           pc.eatom[j] += 0.5 * e;
         }
+        // ev_tally_xyz(i, j, nlocal, newton_pair, evdwl, 0, fforce, -r12): half of (-r12) (x) fforce to each atom
+        if (pc.vatom) {
+          const va = pc.vatom;
+          const dx = -r12[0], dy = -r12[1], dz = -r12[2];
+          const w = [dx * fforce[0], dy * fforce[1], dz * fforce[2], dx * fforce[1], dx * fforce[2], dy * fforce[2]];
+          for (let c = 0; c < 6; c++) { va[6 * i + c] += 0.5 * w[c]; va[6 * j + c] += 0.5 * w[c]; }
+        }
       }
     }
     pc.nb.reverseSum(tq, 3, s.torque);

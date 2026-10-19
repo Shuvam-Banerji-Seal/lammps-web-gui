@@ -421,7 +421,12 @@ export class PairExTeP extends Pair {
     const owner = pc.nb.owner;
     const ids = pc.s.id;
     const acc = pc.acc;
-    const eatom = pc.eatom;
+    const eatom = pc.eatom, vatom = pc.vatom;
+    // Pair::ev_tally / v_tally2 (pair.cpp): half of d (x) d fpair to each of the two atoms
+    const half2 = (a: number, b: number, d: ArrayLike<number>, fp: number): void => {
+      const w = [d[0] * d[0] * fp, d[1] * d[1] * fp, d[2] * d[2] * fp, d[0] * d[1] * fp, d[0] * d[2] * fp, d[1] * d[2] * fp];
+      for (let c = 0; c < 6; c++) { vatom![6 * a + c] += 0.5 * w[c]; vatom![6 * b + c] += 0.5 * w[c]; }
+    };
     const map = this.map;
     const tagOf = (j: number): number => ids[owner[j]];
     const ownerOf = (j: number): number => (j < nlocal ? j : owner[j]);
@@ -484,6 +489,7 @@ export class PairExTeP extends Pair {
         f[3 * j] -= delx * fpair; f[3 * j + 1] -= dely * fpair; f[3 * j + 2] -= delz * fpair;
         acc.evdwl += eng;
         if (eatom) { eatom[i] += 0.5 * eng; eatom[j] += 0.5 * eng; }
+        if (vatom) half2(i, j, [delx, dely, delz], fpair);
       }
 
       // bond-order terms: every ordered neighbour pair (native second loop over jlist)
@@ -523,6 +529,8 @@ export class PairExTeP extends Pair {
         f[3 * j] -= delr1[0] * fpair; f[3 * j + 1] -= delr1[1] * fpair; f[3 * j + 2] -= delr1[2] * fpair;
         acc.evdwl += deng;
         if (eatom) { eatom[i] += 0.5 * deng; eatom[j] += 0.5 * deng; }
+        // ev_tally(i, j, ..., deng, 0, -fpair, -delr1)
+        if (vatom) half2(i, j, delr1, -fpair);
 
         for (let kk = k0; kk < k1; kk++) {
           if (kk - k0 === jj) continue;
@@ -541,10 +549,13 @@ export class PairExTeP extends Pair {
           let pref = dFcdNtij * pref0;
           f[3 * i] += pref * delr2[0]; f[3 * i + 1] += pref * delr2[1]; f[3 * i + 2] += pref * delr2[2];
           f[3 * k] -= pref * delr2[0]; f[3 * k + 1] -= pref * delr2[1]; f[3 * k + 2] -= pref * delr2[2];
+          // v_tally2(i, k, -fc_prefac_ik, delr2)
+          if (vatom) half2(i, k, delr2, -pref);
           if (itype !== ktype) {
             pref = dFcdNdij * pref0;
             f[3 * i] += pref * delr2[0]; f[3 * i + 1] += pref * delr2[1]; f[3 * i + 2] += pref * delr2[2];
             f[3 * k] -= pref * delr2[0]; f[3 * k + 1] -= pref * delr2[1]; f[3 * k + 2] -= pref * delr2[2];
+            if (vatom) half2(i, k, delr2, -pref);
           }
         }
 
@@ -554,6 +565,8 @@ export class PairExTeP extends Pair {
         f[3 * j] -= delr1[0] * fz.fpair; f[3 * j + 1] -= delr1[1] * fz.fpair; f[3 * j + 2] -= delr1[2] * fz.fpair;
         acc.evdwl += fz.eng;
         if (eatom) { eatom[i] += 0.5 * fz.eng; eatom[j] += 0.5 * fz.eng; }
+        // ev_tally(i, j, ..., evdwl, 0, -fpair, -delr1)
+        if (vatom) half2(i, j, delr1, -fz.fpair);
 
         // three-body forces (native attractive) on i, j, k
         for (let kk = k0; kk < k1; kk++) {
@@ -574,6 +587,17 @@ export class PairExTeP extends Pair {
             f[3 * i + q] += fi[q];
             f[3 * j + q] += fj[q];
             f[3 * k + q] += fk[q];
+          }
+          // v_tally3(i, j, k, fj, fk, delr1, delr2): a third of delr1 (x) fj + delr2 (x) fk to each atom
+          if (vatom) {
+            const w = [
+              delr1[0] * fj[0] + delr2[0] * fk[0], delr1[1] * fj[1] + delr2[1] * fk[1], delr1[2] * fj[2] + delr2[2] * fk[2],
+              delr1[0] * fj[1] + delr2[0] * fk[1], delr1[0] * fj[2] + delr2[0] * fk[2], delr1[1] * fj[2] + delr2[1] * fk[2],
+            ];
+            for (let c = 0; c < 6; c++) {
+              const t = w[c] / 3;
+              vatom[6 * i + c] += t; vatom[6 * j + c] += t; vatom[6 * k + c] += t;
+            }
           }
         }
       }

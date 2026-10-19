@@ -15,6 +15,7 @@ import { parseNum } from '../../engine/force/util';
 import { DRUDE_TYPE, NOPOL_TYPE, drudeModelOf, type DrudeModel } from './drude_model';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
+import { tallyAtom } from '../../engine/force/pair/lj_cut';
 
 export class PairThole extends Pair {
   readonly name = 'thole';
@@ -161,7 +162,8 @@ export class PairThole extends Pair {
         f[3 * j] -= dx * fpair; f[3 * j + 1] -= dy * fpair; f[3 * j + 2] -= dz * fpair;
         const e = factorE * dcoul;
         ecoul += e;
-        if (pc.eatom) { pc.eatom[i] += 0.5 * e; pc.eatom[j] += 0.5 * e; }
+        // ev_tally(i, j, nlocal, newton_pair, 0, ecoul, fpair, del): half of the energy and of the virial to each atom
+        if (pc.eatom || pc.vatom) tallyAtom(pc, i, j, e, fpair, dx, dy, dz);
       }
     }
     pc.acc.ecoul += ecoul;

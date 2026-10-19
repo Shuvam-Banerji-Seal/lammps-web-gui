@@ -103,7 +103,7 @@ export class FixRigidMeso extends FixRigidBase {
       for (let d = 0; d < 3; d++) b.angmom[d] *= 0.5;
       angmomToOmega(b.angmom, b.ex, b.ey, b.ez, b.inertia, b.omega);
     }
-    this.virial.fill(0);
+    this.clearVirial();
     this.setXV(true, 0.5);
   }
 

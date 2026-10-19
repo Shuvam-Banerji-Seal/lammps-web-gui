@@ -378,7 +378,7 @@ export class FixRigidNH extends FixRigidBase {
       this.nhcTempIntegrate();
     }
     if (pstat) this.nhcPressIntegrate();
-    this.virial.fill(0);
+    this.clearVirial();
     if (pstat) this.remap();
     this.setXV(true, 0.5);
     if (pstat) this.remap();

@@ -175,6 +175,37 @@ export class FixShake extends Fix {
   private kbond: number | null = null;
   /** Energy of the minimization restraints of the last minimizer evaluation (fix_shake.cpp ebond, compute_scalar). */
   private restraintEnergy = 0;
+  /**
+   * Per-atom virial (6 per local atom, xx yy zz xy xz yz) of the constraint forces of the last post-force solve, for
+   * compute stress/atom. As native LAMMPS does (src/RIGID/fix_shake.cpp shake() at b332f28, Fix::v_tally): each atom of
+   * a cluster takes 1/n of the cluster's virial, n the number of atoms in the cluster (2, 3 or 4).
+   */
+  private vAtom = new Float64Array(0);
+
+  /** Per-atom virial of the constraint forces of the last solve (fix_shake.cpp v_tally: each atom takes v / n). */
+  virialAtom(out: Float64Array): void {
+    for (let k = 0; k < this.vAtom.length && k < out.length; k++) out[k] += this.vAtom[k];
+  }
+
+  /** Clears the global virial and the per-atom virial (re-sized when the atom count changed). */
+  private resetVirial(): void {
+    this.virial.fill(0);
+    const n6 = 6 * this.sys.state.n;
+    if (this.vAtom.length !== n6) this.vAtom = new Float64Array(n6);
+    else this.vAtom.fill(0);
+  }
+
+  /** Adds w * r (x) r (the six components xx yy zz xy xz yz) to out. */
+  private static addOuter(out: Float64Array | number[], w: number, rr: number[]): void {
+    out[0] += w * rr[0] * rr[0]; out[1] += w * rr[1] * rr[1]; out[2] += w * rr[2] * rr[2];
+    out[3] += w * rr[0] * rr[1]; out[4] += w * rr[0] * rr[2]; out[5] += w * rr[1] * rr[2];
+  }
+
+  /** Adds a cluster's six virial components to its atoms, 1/n each (sum over the atoms = the cluster's virial). */
+  private tallyCluster(at: number[], cv: number[]): void {
+    const inv = 1 / at.length;
+    for (const i of at) for (let c = 0; c < 6; c++) this.vAtom[6 * i + c] += cv[c] * inv;
+  }
 
   constructor(sys: System, id: string, group: string, args: string[], style: 'shake' | 'rattle') {
     super(sys, id, group, args);
@@ -498,8 +529,10 @@ export class FixShake extends Fix {
     // must not replace it (measured with native LAMMPS (black box): the pressure
     // on the step the ehex fix acts equals the one without constrain).
     const saved = this.virial.slice();
+    const savedAtom = this.vAtom.slice();
     this.shake(0.5);
     this.virial.set(saved);
+    this.vAtom.set(savedAtom);
   }
 
   private current: Cluster | null = null;
@@ -599,11 +632,12 @@ export class FixShake extends Fix {
     const dt = s.dt;
     const dtfsq = dtfFactor * dt * dt * s.units.ftm2v;
     const vir = this.virial;
-    vir.fill(0);
+    this.resetVirial();
     this.solveClusters((at, m, r, cons) => {
       const p = at.map((i, n) => [0, 1, 2].map((q) => dt * s.v[3 * i + q] + (dtfsq * s.f[3 * i + q]) / m[n]));
       return { s0: cons.map((k, j) => [0, 1, 2].map((q) => r[j][q] + p[k.a][q] - p[k.b][q])), factor: dtfsq };
     }, (at, _m, r, lam) => {
+      const cv = [0, 0, 0, 0, 0, 0];
       for (let j = 0; j < lam.length; j++) {
         const k = this.current!.cons[j];
         for (let q = 0; q < 3; q++) {
@@ -611,10 +645,10 @@ export class FixShake extends Fix {
           s.f[3 * at[k.a] + q] += fq;
           s.f[3 * at[k.b] + q] -= fq;
         }
-        const rr = r[j];
-        vir[0] += lam[j] * rr[0] * rr[0]; vir[1] += lam[j] * rr[1] * rr[1]; vir[2] += lam[j] * rr[2] * rr[2];
-        vir[3] += lam[j] * rr[0] * rr[1]; vir[4] += lam[j] * rr[0] * rr[2]; vir[5] += lam[j] * rr[1] * rr[2];
+        FixShake.addOuter(vir, lam[j], r[j]);
+        FixShake.addOuter(cv, lam[j], r[j]);
       }
+      this.tallyCluster(at, cv);
     }, dtfsq);
   }
 
@@ -631,7 +665,7 @@ export class FixShake extends Fix {
     const ftm2v = s.units.ftm2v;
     const half = 0.5 * dt * dt * ftm2v;
     const vir = this.virial;
-    vir.fill(0);
+    this.resetVirial();
     this.velStore = [];
     const pending: { at: number[]; acc: number[][]; nCross: number; dmu: number[]; r: number[][]; cons: Cluster['cons'] }[] = [];
     this.solveClusters((at, m, r, cons) => {
@@ -664,6 +698,7 @@ export class FixShake extends Fix {
       }));
       return { s0: cons.map((k, j) => [0, 1, 2].map((q) => r[j][q] + p[k.a][q] - p[k.b][q])), factor: half };
     }, (at, _m, r, lam) => {
+      const cv = [0, 0, 0, 0, 0, 0];
       for (let j = 0; j < lam.length; j++) {
         const k = this.current!.cons[j];
         for (let q = 0; q < 3; q++) {
@@ -671,10 +706,10 @@ export class FixShake extends Fix {
           s.f[3 * at[k.a] + q] += fq;
           s.f[3 * at[k.b] + q] -= fq;
         }
-        const rr = r[j];
-        vir[0] += lam[j] * rr[0] * rr[0]; vir[1] += lam[j] * rr[1] * rr[1]; vir[2] += lam[j] * rr[2] * rr[2];
-        vir[3] += lam[j] * rr[0] * rr[1]; vir[4] += lam[j] * rr[0] * rr[2]; vir[5] += lam[j] * rr[1] * rr[2];
+        FixShake.addOuter(vir, lam[j], r[j]);
+        FixShake.addOuter(cv, lam[j], r[j]);
       }
+      this.tallyCluster(at, cv);
     }, half);
     const kickLater = this.integratorAfter();
     for (const e of pending) {
@@ -688,8 +723,10 @@ export class FixShake extends Fix {
           s.f[3 * e.at[ck.a] + q] += lam * rr[q];
           s.f[3 * e.at[ck.b] + q] -= lam * rr[q];
         }
-        vir[0] += lam * rr[0] * rr[0]; vir[1] += lam * rr[1] * rr[1]; vir[2] += lam * rr[2] * rr[2];
-        vir[3] += lam * rr[0] * rr[1]; vir[4] += lam * rr[0] * rr[2]; vir[5] += lam * rr[1] * rr[2];
+        FixShake.addOuter(vir, lam, rr);
+        const cv = [0, 0, 0, 0, 0, 0];
+        FixShake.addOuter(cv, lam, rr);
+        this.tallyCluster(e.at, cv);
       }
     }
   }
@@ -768,8 +805,10 @@ export class FixShake extends Fix {
         const w = 1 / (0.5 * s.dt * s.units.ftm2v);
         for (let j = 0; j < nc; j++) {
           const rr = r[j], f = mu[j] * w;
-          this.virial[0] += f * rr[0] * rr[0]; this.virial[1] += f * rr[1] * rr[1]; this.virial[2] += f * rr[2] * rr[2];
-          this.virial[3] += f * rr[0] * rr[1]; this.virial[4] += f * rr[0] * rr[2]; this.virial[5] += f * rr[1] * rr[2];
+          FixShake.addOuter(this.virial, f, rr);
+          const cv = [0, 0, 0, 0, 0, 0];
+          FixShake.addOuter(cv, f, rr);
+          this.tallyCluster(at, cv);
         }
       }
       for (let j = 0; j < nc; j++) {

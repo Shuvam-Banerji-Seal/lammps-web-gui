@@ -519,6 +519,8 @@ export abstract class FixRigidBase extends Fix {
     const idx = this.indexById();
     const dtf = this.dtf;
     const vir = this.virial;
+    if (this.vAtom.length !== 6 * s.n) this.vAtom = new Float64Array(6 * s.n);
+    const va = this.vAtom;
     const L = [this.edge(0), this.edge(1), this.edge(2)];
     const xbox: V3 = [0, 0, 0];
     const delta: V3 = [0, 0, 0];
@@ -546,6 +548,11 @@ export abstract class FixRigidBase extends Fix {
           vir[3] += virialFactor * x0[0] * fc[1];
           vir[4] += virialFactor * x0[0] * fc[2];
           vir[5] += virialFactor * x0[1] * fc[2];
+          // fix_rigid.cpp set_xv()/set_v(): each atom takes its own vr, v_tally(1, &i, 1.0, vr)
+          va[6 * i] += virialFactor * x0[0] * fc[0]; va[6 * i + 1] += virialFactor * x0[1] * fc[1];
+          va[6 * i + 2] += virialFactor * x0[2] * fc[2];
+          va[6 * i + 3] += virialFactor * x0[0] * fc[1]; va[6 * i + 4] += virialFactor * x0[0] * fc[2];
+          va[6 * i + 5] += virialFactor * x0[1] * fc[2];
         }
       });
     }
@@ -555,9 +562,23 @@ export abstract class FixRigidBase extends Fix {
   setup(): void {
     this.computeForcesAndTorques();
     for (const b of this.bodies) angmomToOmega(b.angmom, b.ex, b.ey, b.ez, b.inertia, b.omega);
-    this.virial.fill(0);
+    this.clearVirial();
     this.setXV(false, 0.5);
     for (let n = 0; n < 6; n++) this.virial[n] *= 2.0;
+    // FixRigid::setup doubles the per-atom virial too (fix_rigid.cpp setup, vflag_atom branch)
+    for (let k = 0; k < this.vAtom.length; k++) this.vAtom[k] *= 2.0;
+  }
+
+  /** Per-atom virial (6 per atom), accumulated by setXV with the global virial terms (fix_rigid.cpp set_xv/set_v). */
+  protected vAtom = new Float64Array(0);
+  /** Clears the global and per-atom virial (both accumulate in set_xv/set_v). */
+  protected clearVirial(): void {
+    this.virial.fill(0);
+    this.vAtom.fill(0);
+  }
+  /** Adds this fix's per-atom virial to out (compute stress/atom fix). */
+  virialAtom(out: Float64Array): void {
+    for (let k = 0; k < this.vAtom.length && k < out.length; k++) out[k] += this.vAtom[k];
   }
 
   /** pre_neighbor: remap each body's centre of mass into the periodic box (domain->remap with imagebody). */

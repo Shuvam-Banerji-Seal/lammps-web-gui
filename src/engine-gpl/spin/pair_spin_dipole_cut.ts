@@ -19,7 +19,7 @@
 import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK, type Neighbor } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
-import { spinContribute, type SpinPairStyle } from '../../engine/force/spin_book';
+import { spinContribute, tallyPairEnergy, tallyPairVirial, type SpinPairStyle } from '../../engine/force/spin_book';
 
 /** Bohr magneton (eV/T) and vacuum permeability in the source's units (eV/Ang/A^2). */
 const MUB = 9.274e-4;
@@ -147,7 +147,11 @@ export class PairSpinDipoleCut extends Pair implements SpinPairStyle {
         const fi: Vec = [0, 0, 0];
         if (lattice) this.dipolarMech(eij, fi, sp, si, sp, sj, r2inv, MUB2MU0);
         // energy of the directed pair: evdwl = -(s_i . fmi) (hbar / 2), tallied in full (newton pair on)
-        evdwl += -(sp[si] * fmi[0] + sp[si + 1] * fmi[1] + sp[si + 2] * fmi[2]) * 0.5 * HBAR;
+        const ev = -(sp[si] * fmi[0] + sp[si + 1] * fmi[1] + sp[si + 2] * fmi[2]) * 0.5 * HBAR;
+        evdwl += ev;
+        if (pc.eatom) tallyPairEnergy(pc.eatom, i, j, ev);
+        // the source's ev_tally_xyz gets -rij = x_i - x_j, the negative of dx here (src/SPIN/pair_spin_dipole_cut.cpp at b332f28)
+        if (lattice && pc.vatom) tallyPairVirial(pc.vatom, i, j, -dx, -dy, -dz, fi[0], fi[1], fi[2]);
         f[3 * i] += fi[0]; f[3 * i + 1] += fi[1]; f[3 * i + 2] += fi[2];
         f[3 * j] -= fi[0]; f[3 * j + 1] -= fi[1]; f[3 * j + 2] -= fi[2];
         fmv[3 * i] += fmi[0]; fmv[3 * i + 1] += fmi[1]; fmv[3 * i + 2] += fmi[2];

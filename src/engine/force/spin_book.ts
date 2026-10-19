@@ -68,6 +68,29 @@ export const spinOwnerValue = (s: SimState, owner: object, i: number, k: number)
   return t < rec.buf.length ? rec.buf[t] : 0;
 };
 
+/**
+ * Per-atom energy of one directed pair term of a full neighbor list: ev is the energy the term adds to the global
+ * energy (native evdwl of the directed call), half of it to each of i and j, as native Pair::ev_tally_xyz does with
+ * newton on (src/SPIN/pair_spin_exchange.cpp compute at b332f28; the same in pair_spin_dmi, _magelec, _neel,
+ * _dipole_cut).
+ */
+export const tallyPairEnergy = (eatom: Float64Array, i: number, j: number, ev: number): void => {
+  eatom[i] += 0.5 * ev;
+  eatom[j] += 0.5 * ev;
+};
+
+/**
+ * Per-atom virial of one directed pair term: d = x_i - x_j, and f is the native fi of the directed call (the force it
+ * adds to f[i] and removes from f[j]). Native Pair::ev_tally_xyz with newton on adds v = d (x) f to the virial; each
+ * of i and j takes half of it, v = (dx fx, dy fy, dz fz, dx fy, dx fz, dy fz). Summed over all directed pairs this is
+ * the force-times-position virial of the same forces (the native (i,j) and (j,i) calls telescope to it).
+ */
+export const tallyPairVirial = (vatom: Float64Array, i: number, j: number, dx: number, dy: number, dz: number, fx: number, fy: number, fz: number): void => {
+  const v0 = 0.5 * dx * fx, v1 = 0.5 * dy * fy, v2 = 0.5 * dz * fz, v3 = 0.5 * dx * fy, v4 = 0.5 * dx * fz, v5 = 0.5 * dy * fz;
+  vatom[6 * i] += v0; vatom[6 * i + 1] += v1; vatom[6 * i + 2] += v2; vatom[6 * i + 3] += v3; vatom[6 * i + 4] += v4; vatom[6 * i + 5] += v5;
+  vatom[6 * j] += v0; vatom[6 * j + 1] += v1; vatom[6 * j + 2] += v2; vatom[6 * j + 3] += v3; vatom[6 * j + 4] += v4; vatom[6 * j + 5] += v5;
+};
+
 /** Spin pair style that contributes precession vectors and reports its atom-level magnetic terms (fix nve/spin). */
 export interface SpinPairStyle {
   readonly name: string;

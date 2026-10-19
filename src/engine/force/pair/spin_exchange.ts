@@ -2,7 +2,7 @@ import { Pair, PairParams, StyleError, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, type Neighbor } from '../../neighbor';
 import { parseNum } from '../util';
 import { PairHybrid } from './hybrid';
-import { spinContribute, type SpinPairStyle } from '../spin_book';
+import { spinContribute, tallyPairEnergy, tallyPairVirial, type SpinPairStyle } from '../spin_book';
 import { libm } from '../../libm';
 
 /*
@@ -221,13 +221,19 @@ export class PairSpinExchange extends Pair implements SpinPairStyle {
           fpair += kk.dj * (sij * sij - off);
         }
         evdwl += 0.5 * pe;
+        if (pc.eatom) tallyPairEnergy(pc.eatom, i, j, 0.5 * pe);
         // precession vector of i: (J / hbar) s_j (biquadratic: plus 2 K (s_i.s_j) s_j / hbar)
         const cw = c / SPIN_HBAR;
         fmv[3 * i] += cw * sj0; fmv[3 * i + 1] += cw * sj1; fmv[3 * i + 2] += cw * sj2;
-        // mechanical force on i: F_i = dH-term/dr e_ij, e_ij = (r_i - r_j)/r
+        // mechanical force of the directed pair: half of dH-term/dr e_ij, e_ij = (r_i - r_j)/r, on i and its opposite on
+        // j (the (j, i) call adds the other half). As native LAMMPS does (src/SPIN/pair_spin_exchange.cpp compute at
+        // b332f28): f[i] += fi and f[j] -= fi, so the f dot r virial over owned and ghost atoms is the pair virial.
         if (lattice) {
-          const fp = fpair / r;
-          f[3 * i] += fp * dx; f[3 * i + 1] += fp * dy; f[3 * i + 2] += fp * dz;
+          const fp = 0.5 * fpair / r;
+          const fx = fp * dx, fy = fp * dy, fz = fp * dz;
+          f[3 * i] += fx; f[3 * i + 1] += fy; f[3 * i + 2] += fz;
+          f[3 * j] -= fx; f[3 * j + 1] -= fy; f[3 * j + 2] -= fz;
+          if (pc.vatom) tallyPairVirial(pc.vatom, i, j, dx, dy, dz, fx, fy, fz);
         }
       }
     }

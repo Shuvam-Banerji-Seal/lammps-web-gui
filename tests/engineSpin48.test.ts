@@ -58,12 +58,12 @@ describe('SPIN styles, batch 2', () => {
     expect(kl.error).toContain('the dmi keyword is required');
   });
 
-  it('refuses spin/magelec with a moving lattice and unknown spin styles', async () => {
+  it('runs spin/magelec with a moving lattice and refuses unknown spin styles', async () => {
     const n = await run(`${header}pair_style spin/bogus2 4.0\n`);
     expect(n.error).toMatch(/spin\/bogus2/);
+    // the mechanical force of spin/magelec is checked against native LAMMPS in tests/oracle/w259spin_magelec_lattice.in
     const mv = await run(`${header}pair_style spin/magelec 4.5\npair_coeff * * magelec 4.5 0.00109 1.0 1.0 1.0\nfix 1 all nve/spin lattice moving\nrun 0\n`);
-    expect(mv.error).toContain('spin/magelec');
-    expect(mv.error).toContain('not implemented');
+    expect(mv.error).toBeNull();
     const b = await run(`${header}pair_style spin/bogus 4.0\n`);
     expect(b.error).toMatch(/spin\/bogus/);
   });

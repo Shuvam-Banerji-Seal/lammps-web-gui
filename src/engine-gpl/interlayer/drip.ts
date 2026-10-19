@@ -1,6 +1,7 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
- * Source: src/INTERLAYER/pair_drip.cpp and src/INTERLAYER/pair_drip.h, at commit b332f28 (the DRIP registry-dependent
+ * Source: src/INTERLAYER/pair_drip.cpp and src/INTERLAYER/pair_drip.h (and Pair::v_tally2_newton of src/pair.cpp for
+ * the per-atom virial), at commit b332f28 (the DRIP registry-dependent
  * interlayer potential with the dihedral-angle correction). Contributing author: Mingjian Wen (University of
  * Minnesota). Copyright (2003) Sandia Corporation (GNU General Public License). This file is GPL-2.0 (see
  * src/engine-gpl/LICENSE).
@@ -27,6 +28,12 @@ const HALF = 0.5;
 const NO_NEIGHBOR = 1.0e10;
 const zero3 = (): M3 => [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
 const dot = (a: readonly number[], b: readonly number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+/** Pair::v_tally2_newton (src/pair.cpp): x_a (x) f_a, the whole term to atom a (owned or ghost). */
+const vTally2Newton = (va: Float64Array, a: number, fa: readonly number[], x: Float64Array): void => {
+  const o = 6 * a, xa = x[3 * a], ya = x[3 * a + 1], za = x[3 * a + 2];
+  va[o] += xa * fa[0]; va[o + 1] += ya * fa[1]; va[o + 2] += za * fa[2];
+  va[o + 3] += xa * fa[1]; va[o + 4] += xa * fa[2]; va[o + 5] += ya * fa[2];
+};
 const matDotVec = (X: M3, y: readonly number[]): number[] => [0, 1, 2].map((k) => X[k][0] * y[0] + X[k][1] * y[1] + X[k][2] * y[2]);
 
 /** Normalized cross product of (rl - rk) and (rm - rk) with its derivatives (deriv_cross): [normal, d/drk, d/drl, d/drm]. */
@@ -239,11 +246,13 @@ export class PairDRIP extends Pair {
           f[3 * j] += fj[0];
           f[3 * j + 1] += fj[1];
           f[3 * j + 2] += fj[2];
+          if (pc.vatom) vTally2Newton(pc.vatom, j, fj, x);
         }
       }
       f[3 * i] += fi[0];
       f[3 * i + 1] += fi[1];
       f[3 * i + 2] += fi[2];
+      if (pc.vatom) vTally2Newton(pc.vatom, i, fi, x);
     }
   }
 
@@ -365,6 +374,10 @@ export class PairDRIP extends Pair {
         f[3 * nbi[m] + k] += fnbi[m][k];
         f[3 * nbj[m] + k] += fnbj[m][k];
       }
+    }
+    if (pc.vatom) {
+      for (let m = 0; m < 3; m++) vTally2Newton(pc.vatom, nbi[m], fnbi[m], pc.x);
+      for (let m = 0; m < 3; m++) vTally2Newton(pc.vatom, nbj[m], fnbj[m], pc.x);
     }
     return phi;
   }

@@ -126,7 +126,7 @@ export class CartSphericalHarmonics {
       ylmRe[k] = phaseRe0 * p;
       ylmIm[k] = phaseIm0 * p;
       const dyxRe = p, dyxIm = 0.0;
-      const dyyRe = 0.0, dyyIm = p;
+      const dyyIm = p;
       const dpz = dplm[k];
       const dyzRe = phaseRe0 * dpz, dyzIm = phaseIm0 * dpz;
       const rdyRe = rx * dyxRe + rz * dyzRe;

@@ -147,7 +147,7 @@ export class ACEPaceEvaluator {
   computeAtom(i: number, x: Float64Array, type: Int32Array, jnum: number, jlist: Int32Array, jlistOff: number): void {
     this.ensureCache(jnum);
     const basis = this.basis, rad = basis.radial, sph = basis.sph;
-    const L1 = this.lmax + 1, nm = this.nm;
+    const L1 = this.lmax + 1;
     const nradb = this.nradb, nradi = this.nradi;
     const xtmp = x[3 * i], ytmp = x[3 * i + 1], ztmp = x[3 * i + 2];
     const muI = this.typeMap[type[i]];

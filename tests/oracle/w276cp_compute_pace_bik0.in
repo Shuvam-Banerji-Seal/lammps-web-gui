@@ -1,0 +1,23 @@
+# oracle: compute pace with bikflag 0 on a group (types 1 and 3 of the 161-atom H/N/O cell of PACKAGES/pace/compute) under pair_style pace with the same coupling_coefficients.yace: the summed descriptor row, the 3N gradient rows with the forces and the six virial rows with the pressure in the reference column, eight columns written by fix ave/time mode vector
+# Native reference: LAMMPS b332f28 built with PKG_ML-PACE (the installed binary has no ML-PACE; see w257pace_recursive)
+# Measured max relative error, engine vs native: thermo 1.3e-14, written array file 2.2e-13.
+# oracle-examples: PACKAGES/pace/compute/latte_cell_0.data PACKAGES/pace/compute/coupling_coefficients.yace
+# oracle-files: w276cp_compute_pace_bik0.dat
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10 filerel=1e-8
+units           metal
+atom_style      atomic
+boundary        p p p
+atom_modify     map hash
+read_data       latte_cell_0.data
+mass            1 1.00
+mass            2 14.00
+mass            3 15.999
+pair_style      pace
+pair_coeff      * * coupling_coefficients.yace H N O
+group           HO type 1 3
+compute         pace HO pace coupling_coefficients.yace 0 0
+fix             cols all ave/time 1 1 1 c_pace[1] c_pace[17] c_pace[91] c_pace[92] c_pace[150] c_pace[183] c_pace[260] c_pace[274] mode vector file w276cp_compute_pace_bik0.dat format " %.15g"
+thermo          1
+thermo_style    custom step pe press c_pace[1][183] c_pace[1][274] c_pace[2][5] c_pace[485][274] c_pace[490][100]
+thermo_modify   format float %.15g
+run             0

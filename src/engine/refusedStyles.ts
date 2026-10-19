@@ -13,7 +13,6 @@ export const REFUSED_STYLES: Readonly<Partial<Record<StyleKind, readonly string[
   FIXES: [
   ],
   COMPUTES: [
-    'pace', // engine-gpl/registry/pace.ts: compute pace (ACE descriptors) is not ported yet
   ],
   KSPACES: [
     'pppm/rk', // engine-gpl/registry/pppmx.ts (lazy): native needs 2 partitions and run_style verlet/split/rk

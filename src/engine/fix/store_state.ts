@@ -24,7 +24,20 @@ import { fillPeratomAttr, peratomAttrProblem } from '../compute/peratom';
  * keyword is used, data is only stored on steps where also the threshold condition following the keyword is met.
  * The first argument must be a variable reference to an equal-style or compatible variable"; "The thresh keyword may
  * be used exactly once"; operators "<", "<=", ">", ">=", "==", "!=" and "|^", the last meaning exclusive or of the
- * zero tests). "history" is refused by name (a StyleError) since it needs the per-step history store.
+ * zero tests); "history" (docs: "history values = Nevery Nrepeat Nfreq"; "If the optional keyword history is used,
+ * then the N keyword must be specified as 0, and attributes are stored for multiple timesteps"; "In both cases,
+ * attributes are stored Nrepeat times, once every Nevery steps"; "If Nfreq = 0, then the Nrepeat attributes are updated
+ * continuously and the attributes are accessible on any timestep which is a multiple of Nevery"; "If Nfreq is
+ * non-zero, it must be a multiple of Nevery, and the attributes are accessible only on timesteps which are a multiple
+ * of Nfreq"; "If the history keyword is used, no per-atom vector or array is produced. Instead, the fix provides access
+ * to its multiple timesteps of stored per-atom history", read by compute property/atom history[I][J]).
+ *
+ * History store, as native LAMMPS does (src/fix_store_state.cpp at b332f28): the argument checks are N = 0, Nevery > 0,
+ * Nrepeat > 0, Nfreq >= 0 and a multiple of Nevery; nothing is stored at the definition; a run setup on a multiple of
+ * Nevery and every later multiple of Nevery store all inputs as one frame, in a ring of Nrepeat frames, except that
+ * with Nfreq > Nevery Nrepeat a step whose next multiple of Nfreq is Nrepeat or more Nevery-intervals away is skipped;
+ * a frame more than Nevery steps after the previous one restarts the count of available frames. The frames are per
+ * atom in the engine's atom order; a change of the atom count clears them.
  *
  * Native timing (src/fix_store_state.cpp end_of_step, setup): the constructor stores the keyword attributes only; the
  * first run's setup stores the compute, fix, variable and custom-property inputs only; each step that is a multiple
@@ -65,6 +78,13 @@ export class FixStoreState extends Fix {
   private readonly comflag: boolean;
   private thresh: { name: string; op: string; value: number } | null = null;
   private firstSetup = true;
+  /** The history keyword: Nevery, Nrepeat, Nfreq; null without it. */
+  history: { nevery: number; nrepeat: number; nfreq: number } | null = null;
+  /** Ring of stored frames (nvals values per atom each), the newest at mostRecentIndex; countHistory are valid. */
+  private frames: (Float64Array | null)[] = [];
+  countHistory = 0;
+  mostRecentIndex = -1;
+  private mostRecentStep = -1;
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -89,7 +109,13 @@ export class FixStoreState extends Fix {
         comflag = TRUE_WORDS.has(v);
         k += 2;
       } else if (kw === 'history') {
-        throw new StyleError(`${what}: keyword 'history' is not supported by the browser engine`);
+        if (k + 4 > args.length) throw new StyleError('Illegal fix store/state history command: missing argument(s)');
+        const v = args.slice(k + 1, k + 4).map((w) => {
+          if (!/^[-+]?\d+$/.test(w)) throw new StyleError(`Expected integer parameter instead of '${w}' in input script or data file`);
+          return Number(w);
+        });
+        this.history = { nevery: v[0], nrepeat: v[1], nfreq: v[2] };
+        k += 4;
       } else if (kw === 'thresh') {
         if (k + 4 > args.length) throw new StyleError(`${what}: keyword thresh needs three values`);
         if (this.thresh) throw new StyleError(`${what}: the thresh keyword may be used only once`);
@@ -108,9 +134,42 @@ export class FixStoreState extends Fix {
     }
     this.comflag = comflag;
     this.nevery = 1;
+    const h = this.history;
+    if (h) {
+      if (this.nStore) throw new StyleError('Fix store/state N = 0 required with history keyword');
+      if (h.nevery <= 0) throw new StyleError(`Invalid fix store/state history Nevery ${h.nevery}`);
+      if (h.nrepeat <= 0) throw new StyleError(`Invalid fix store/state history Nrepeat ${h.nrepeat}`);
+      if (h.nfreq < 0 || h.nfreq % h.nevery) throw new StyleError(`Invalid fix store/state history Nfreq ${h.nfreq}`);
+      this.nevery = h.nevery;
+      // no per-atom vector or array: the frames are read through compute property/atom history[I][J]
+      this.peratomFlag = false;
+      this.sizePeratomCols = 0;
+      this.frames = new Array(h.nrepeat).fill(null);
+    }
     this.alloc();
-    // native constructor: end_of_step with kflag = 1 and cfv_flag = 0 (keyword attributes only)
-    this.stepStore(true, false);
+    // native constructor: end_of_step with kflag = 1 and cfv_flag = 0 (keyword attributes only), not with history
+    if (!h) this.stepStore(true, false);
+  }
+
+  /** Number of stored attributes per atom (the J range of compute property/atom history[I][J]). */
+  get nattribute(): number {
+    return this.nvals;
+  }
+
+  /**
+   * Frame I (1 = most recent) of attribute J (1-based) for each atom: the stored value for the atoms of groupBit, zero
+   * for the others, and zero for all when fewer than I frames are stored (native pack_history).
+   */
+  historyColumn(frame: number, col: number, groupBit: number, out: Float64Array, stride: number, k: number): void {
+    const h = this.history!;
+    const s = this.sys.state;
+    let idx = this.mostRecentIndex - (frame - 1);
+    if (idx < 0) idx += h.nrepeat;
+    const data = this.frames[idx];
+    const avail = frame <= this.countHistory && data && data.length === this.nvals * s.n;
+    for (let i = 0; i < s.n; i++) {
+      out[stride * i + k] = avail && (s.mask[i] & groupBit) ? data![this.nvals * i + col - 1] : 0;
+    }
   }
 
   private parseInput(w: string): Input {
@@ -144,6 +203,14 @@ export class FixStoreState extends Fix {
   /** The per-atom storage follows the atom count (zeros for the atoms not yet stored). */
   private alloc(): void {
     const need = this.nvals * this.sys.state.n;
+    if (this.history) {
+      if (this.arrayAtom.length !== need) {
+        this.arrayAtom = new Float64Array(need);
+        this.frames.fill(null);
+        this.countHistory = 0;
+      }
+      return;
+    }
     if (this.nvals === 1) {
       if (this.vectorAtom.length !== this.sys.state.n) this.vectorAtom = new Float64Array(this.sys.state.n);
     } else if (this.arrayAtom.length !== need) this.arrayAtom = new Float64Array(need);
@@ -182,14 +249,18 @@ export class FixStoreState extends Fix {
     return mt > 0 ? c.map((x) => x / mt) : c;
   }
 
-  /** Stores the keyword inputs and/or the compute, fix, variable and custom inputs, when the threshold is met. */
-  private stepStore(keywords: boolean, cfv: boolean): void {
-    if (!this.threshMet()) return;
+  /**
+   * Stores the keyword inputs and/or the compute, fix, variable and custom inputs, when the threshold is met; false
+   * when it is not.
+   */
+  private stepStore(keywords: boolean, cfv: boolean): boolean {
+    if (!this.threshMet()) return false;
     this.alloc();
     const s = this.sys.state;
     const n = s.n;
-    const dest = this.nvals === 1 ? this.vectorAtom : this.arrayAtom;
-    const stride = this.nvals === 1 ? 1 : this.nvals;
+    const single = this.nvals === 1 && !this.history;
+    const dest = single ? this.vectorAtom : this.arrayAtom;
+    const stride = single ? 1 : this.nvals;
     const cm = this.comflag ? this.groupCentre() : null;
     for (let k = 0; k < this.nvals; k++) {
       const r = this.inputs[k];
@@ -207,13 +278,33 @@ export class FixStoreState extends Fix {
         for (let i = 0; i < n; i++) if (s.mask[i] & this.groupBit) dest[stride * i + k] = vals[i];
       }
     }
+    return true;
+  }
+
+  /** One history frame (native end_of_step with historyflag): the Nfreq window test, then the store and the ring. */
+  private historyStep(): void {
+    const h = this.history!;
+    const step = this.sys.state.step;
+    if (h.nfreq > h.nevery * h.nrepeat && step % h.nfreq) {
+      const nfreqNext = Math.floor(step / h.nfreq) * h.nfreq + h.nfreq;
+      const nprevious = Math.floor((nfreqNext - step) / h.nevery);
+      if (nprevious >= h.nrepeat) return;
+    }
+    if (!this.stepStore(true, true)) return;
+    if (step - this.mostRecentStep > h.nevery) this.countHistory = 0;
+    this.mostRecentStep = step;
+    if (this.countHistory < h.nrepeat) this.countHistory++;
+    this.mostRecentIndex++;
+    if (this.mostRecentIndex === h.nrepeat) this.mostRecentIndex = 0;
+    this.frames[this.mostRecentIndex] = Float64Array.from(this.arrayAtom);
   }
 
   /** The first run stores the inputs that could not be read at the definition (native setup with cfv_flag). */
   setup(): void {
     if (!this.firstSetup) return;
     this.firstSetup = false;
-    this.stepStore(false, true);
+    if (!this.history) this.stepStore(false, true);
+    else if (this.sys.state.step % this.history.nevery === 0) this.historyStep();
   }
 
   init(): void {
@@ -221,6 +312,10 @@ export class FixStoreState extends Fix {
   }
 
   endOfStep(): void {
+    if (this.history) {
+      if (this.sys.state.step % this.history.nevery === 0) this.historyStep();
+      return;
+    }
     if (this.nStore > 0 && this.sys.state.step % this.nStore === 0) this.stepStore(true, true);
   }
 }

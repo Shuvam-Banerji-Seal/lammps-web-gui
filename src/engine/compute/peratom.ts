@@ -571,14 +571,52 @@ export const fillPeratomAttr = (sys: System, attr: string, groupBit: number, out
   }
 };
 
+/** What compute property/atom reads from a fix store/state with the history keyword (fix/store_state.ts). */
+interface HistoryStore {
+  readonly style: string;
+  history: { nevery: number; nrepeat: number; nfreq: number } | null;
+  readonly nattribute: number;
+  historyColumn(frame: number, col: number, groupBit: number, out: Float64Array, stride: number, k: number): void;
+}
+
 export class ComputePropertyAtom extends Compute {
   readonly style = 'property/atom';
-  private readonly attrs: string[];
+  /** The attributes, with history[I][J] as { frame: I (0 until a wildcard is expanded), col: J }. */
+  private attrs: (string | { frame: number; col: number })[];
+  /** The fix store/state of the history option (compute_property_atom.html "history arg = fixID"). */
+  private readonly historyFix: string | null = null;
 
+  /*
+   * history[I][J] and the history option — docs.lammps.org/compute_property_atom.html: "history[I][J] = Ith most recent
+   * history frame (1 to Nrepeat) for Jth attribute (1 to Nattribute), I can be a wildcard"; "history arg = fixID";
+   * "If this attribute is used, the optional history keyword must also be used to specify the fixID of the fix
+   * store/state command"; "Nfreq determines which timesteps the history can be accessed, which must be compatible with
+   * each timestep this compute is invoked"; "An asterisk can be used for this first index, which adds Nrepeat inputs
+   * to this fix, as if an attribute history[I][J] had been listed for all I from 1 to Nrepeat"; "If this compute is
+   * invoked before all Nrepeat history values have been stored (e.g. early in a run), then zeroes will be stored by
+   * this compute for not-yet-available history." The checks and their messages are native's
+   * (src/compute_property_atom.cpp at b332f28): the attributes end at the first word that is not one, history is the
+   * only option, and the first history[*][J] is expanded in place when the fix is resolved (at the definition and at
+   * each init).
+   */
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
     if (!args.length) throw new StyleError('usage: compute ID group-ID property/atom input1 input2 ...');
-    for (const a of args) {
+    const attrs: (string | { frame: number; col: number })[] = [];
+    let k = 0;
+    let historyAttr = false;
+    for (; k < args.length; k++) {
+      const a = args[k];
+      if (a === 'history') break;
+      if (a.startsWith('history[')) {
+        const m = /^history\[(\d+|\*)\]\[(\d+)\]$/.exec(a);
+        if (!m) throw new StyleError('Inconsistent request for history keyword');
+        const frame = m[1] === '*' ? 0 : Number(m[1]);
+        if (m[1] !== '*' && frame < 1) throw new StyleError(`Compute property/atom history references invalid history frame ${frame} from fix store/state`);
+        attrs.push({ frame, col: Number(m[2]) });
+        historyAttr = true;
+        continue;
+      }
       // compute_property_atom.html also lists "i_name, d_name, i2_name[I], d2_name[I]" (fix
       // property/atom) and the finite-size sphere attributes radius, diameter, omega*, tq*
       if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !SUPER_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !SPIN_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a] && !ELECTRON_ATTRS.has(a) && !LINE_END.test(a) && !TRI_CORNER.test(a)) {
@@ -586,17 +624,71 @@ export class ComputePropertyAtom extends Compute {
       }
       const problem = peratomAttrProblem(sys, a);
       if (problem) throw new StyleError(`compute property/atom ${a} ${problem}`);
+      attrs.push(a);
     }
-    this.attrs = [...args];
+    let historyFix: string | null = null;
+    while (k < args.length) {
+      if (args[k] !== 'history') throw new StyleError(`Invalid keyword ${args[k]} for atom style ${sys.atomStyle} in compute property/atom command`);
+      if (k + 2 > args.length) throw new StyleError('Illegal compute property/atom command: missing argument(s)');
+      if (!historyAttr) throw new StyleError('Compute property/atom history option cannot be used without history attribute');
+      if (historyFix !== null) throw new StyleError('Compute property/atom history option can only be used once');
+      historyFix = args[k + 1];
+      if (!sys.fixes.some((f) => f.id === historyFix)) throw new StyleError(`Could not find compute property/atom history fix ID: ${historyFix}`);
+      k += 2;
+    }
+    if (historyAttr && historyFix === null) throw new StyleError('Compute property/atom history attribute requires history option');
+    if (!attrs.length) throw new StyleError('usage: compute ID group-ID property/atom input1 input2 ...');
+    this.attrs = attrs;
+    this.historyFix = historyFix;
+    if (historyFix !== null) this.setupHistory();
     this.peratomFlag = true;
-    this.sizePeratomCols = args.length > 1 ? args.length : 0;
+    this.sizePeratomCols = this.attrs.length > 1 ? this.attrs.length : 0;
+  }
+
+  /** The history fix, checked; expands the first history[*][J] into Nrepeat attributes (native setup_history). */
+  private setupHistory(): HistoryStore {
+    const fx = this.sys.fixes.find((x) => x.id === this.historyFix);
+    if (!fx) throw new StyleError(`Compute property/atom history fix ${this.historyFix} does not exist`);
+    if (fx.style !== 'store/state') throw new StyleError('Compute property/atom history fix style is not store/state');
+    const f = fx as unknown as HistoryStore;
+    const h = f.history;
+    if (!h) throw new StyleError('Compute property/atom history fix does not store history');
+    for (const a of this.attrs) {
+      if (typeof a === 'string') continue;
+      if (a.frame > h.nrepeat) throw new StyleError(`Compute property/atom history references invalid history frame ${a.frame} from fix store/state`);
+      if (a.col < 1 || a.col > f.nattribute) throw new StyleError(`Compute property/atom history references invalid attribute ${a.col} from fix store/state`);
+    }
+    const w = this.attrs.findIndex((a) => typeof a !== 'string' && a.frame === 0);
+    if (w >= 0) {
+      const col = (this.attrs[w] as { col: number }).col;
+      const expanded = Array.from({ length: h.nrepeat }, (_, j) => ({ frame: j + 1, col }));
+      this.attrs = [...this.attrs.slice(0, w), ...expanded, ...this.attrs.slice(w + 1)];
+      this.sizePeratomCols = this.attrs.length > 1 ? this.attrs.length : 0;
+    }
+    return f;
+  }
+
+  init(): void {
+    if (this.historyFix !== null) this.setupHistory();
   }
 
   protected computePeratom(): void {
     const s = this.sys.state;
     const m = this.attrs.length;
     const out = new Float64Array(m > 1 ? m * s.n : s.n);
-    for (let k = 0; k < m; k++) fillPeratomAttr(this.sys, this.attrs[k], this.groupBit, out, m > 1 ? m : 1, m > 1 ? k : 0);
+    const fix = this.historyFix !== null ? this.setupHistory() : null;
+    if (fix) {
+      const h = fix.history!;
+      const step = s.step;
+      if ((h.nfreq === 0 && step % h.nevery) || (h.nfreq && step % h.nfreq)) {
+        throw new StyleError('Compute property/atom is accessing stored history on an incompatible timestep\nFor more information see https://docs.lammps.org/err0007');
+      }
+    }
+    for (let k = 0; k < m; k++) {
+      const a = this.attrs[k];
+      if (typeof a === 'string') fillPeratomAttr(this.sys, a, this.groupBit, out, m > 1 ? m : 1, m > 1 ? k : 0);
+      else fix!.historyColumn(a.frame, a.col, this.groupBit, out, m > 1 ? m : 1, m > 1 ? k : 0);
+    }
     if (m > 1) this.arrayAtom = out; else this.vectorAtom = out;
   }
 }

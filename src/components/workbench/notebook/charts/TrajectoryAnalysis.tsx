@@ -1,20 +1,27 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getThemeTokens, isDarkTheme, Theme } from '../../../../theme';
 import { thermoUnit } from '../../../../lammps/thermoUnits';
-import { analyzeTrajectory, type AnalysisResult } from '../../../../services/analysisClient';
-import type { RDFPoint } from '../../../../services/trajectoryAnalysis';
+import { analyzeNeighbours, analyzeTrajectory, type AnalysisResult } from '../../../../services/analysisClient';
+import {
+  computeStructureFactor, defaultCutoff, type NeighbourResult, type RDFPoint,
+} from '../../../../services/trajectoryAnalysis';
 import { Histogram, MultiLineChart, type ChartSeries } from '../../../charts/SimpleChart';
 import { fitDiffusion, timeUnitName, toCsv, type XY } from '../chartData';
 import { kineticTemperature, maxwellBoltzmannDensity, recordSpeeds, speedHistogram, type TrajectoryRecord } from '../trajectory';
 import { boltzmannConstant } from '../chartData';
 import { boxAndCountSeries, emptyPrepared, prepareTrajectory, type PreparedTrajectory } from './trajectoryData';
-import { ChartActions } from './ChartActions';
+import { ChartActions, saveBlob } from './ChartActions';
 
 /** Work caps: frames and atoms beyond these are sampled uniformly, and the panel says so. */
 const MAX_FRAMES = 120;
 const MAX_ATOMS = 1500;
 /** Bins of the speed histogram. */
 const SPEED_BINS = 30;
+/** Bins of the bond-angle histogram over [0, 180] degrees. */
+const ANGLE_BINS = 90;
+/** Wave-vector points of S(q). */
+const SQ_POINTS = 200;
+const NO_RDF: RDFPoint[] = [];
 
 interface TrajectoryAnalysisProps {
   records: TrajectoryRecord[];
@@ -44,10 +51,18 @@ export const TrajectoryAnalysis: React.FC<TrajectoryAnalysisProps> = ({ records,
   const [output, setOutput] = useState<Output | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  /** The neighbour cutoff typed by the person; null follows the first minimum of g(r). */
+  const [cutoffOverride, setCutoffOverride] = useState<number | null>(null);
+  /** The cutoff field while it is being edited (null shows the cutoff in use). */
+  const [cutoffText, setCutoffText] = useState<string | null>(null);
+  const [neigh, setNeigh] = useState<{ source: PreparedTrajectory; cutoff: number; result: NeighbourResult } | null>(null);
   const msdRef = useRef<SVGSVGElement>(null);
   const rdfRef = useRef<SVGSVGElement>(null);
   const volRef = useRef<HTMLDivElement>(null);
   const speedRef = useRef<SVGSVGElement>(null);
+  const coordRef = useRef<HTMLDivElement>(null);
+  const angleRef = useRef<SVGSVGElement>(null);
+  const sqRef = useRef<SVGSVGElement>(null);
 
   /**
    * Speed distribution of the last recorded frame, from its velocities (null when the frame has none). The
@@ -133,13 +148,68 @@ export const TrajectoryAnalysis: React.FC<TrajectoryAnalysisProps> = ({ records,
     return boxAndCountSeries(records).map((p) => ({ x: useTime ? p.step * (dt as number) : p.step, volume: p.volume, atoms: p.atoms }));
   }, [prepared, records, dt, useTime]);
 
+  // Neighbour analyses: the cutoff defaults to the first g(r) minimum after the first peak.
+  const rdfNow = current ? current.result.rdf : NO_RDF;
+  const cutoffAuto = useMemo(() => defaultCutoff(rdfNow), [rdfNow]);
+  // capped at the g(r) range (at most 0.95 of half the smallest box side), so a typo cannot ask for all pairs
+  const cutoffCap = rdfNow.length ? rdfNow[rdfNow.length - 1].r : Infinity;
+  const cutoff = Math.min(cutoffOverride ?? cutoffAuto, cutoffCap);
+  useEffect(() => {
+    if (!prepared || prepared.frames.length === 0 || !(cutoff > 0)) return;
+    let cancelled = false;
+    analyzeNeighbours(prepared.frames[prepared.frames.length - 1], cutoff, ANGLE_BINS)
+      .then((result) => { if (!cancelled) setNeigh({ source: prepared, cutoff, result }); })
+      .catch(() => { if (!cancelled) setNeigh(null); });
+    return () => { cancelled = true; };
+  }, [prepared, cutoff]);
+  const neighNow = neigh && prepared && neigh.source === prepared && neigh.cutoff === cutoff ? neigh.result : null;
+  const coordBins = neighNow
+    ? neighNow.coordination.atomsWith.map((count, k) => ({
+      x0: k - 0.5, x1: k + 0.5, count, density: count / Math.max(1, neighNow.coordination.perAtom.length),
+    }))
+    : [];
+
+  // S(q) from the g(r) above and the number density of the last sampled frame (3D boxes), with the Lorch window.
+  // q runs to five times 2 pi / r_peak (r_peak the g(r) maximum), at most the Nyquist value pi / dr of the g(r) grid.
+  const sq = useMemo(() => {
+    const last = prepared?.frames[prepared.frames.length - 1];
+    const box = last?.box;
+    if (!last || !box || dim !== 3 || rdfNow.length < 2) return [];
+    const V = (box.xhi - box.xlo) * (box.yhi - box.ylo) * (box.zhi - box.zlo);
+    if (!(V > 0)) return [];
+    const dr = rdfNow[1].r - rdfNow[0].r;
+    let peak = rdfNow[0];
+    for (const p of rdfNow) if (p.g > peak.g) peak = p;
+    const qMax = Math.min(Math.PI / dr, peak.r > 0 ? 10 * Math.PI / peak.r : Infinity);
+    return computeStructureFactor(
+      { r: rdfNow.map((p) => p.r), g: rdfNow.map((p) => p.g) }, last.atoms.length / V, qMax, SQ_POINTS, true,
+    );
+  }, [prepared, rdfNow, dim]);
+
+  /** Every computed series as one JSON object (the "Export all analysis data" button). */
+  const exportAll = () => {
+    const dens = current?.result.density ?? null;
+    const payload = {
+      msd: msdPts.map((p) => ({ time: p.x, msd: p.y })),
+      diffusion: fit ? { D: fit.D, slope: fit.slope, intercept: fit.intercept, r2: fit.r2, dim: fit.dim, from: fit.tFrom, to: fit.tTo } : null,
+      rdf: rdfNow.map((p) => ({ r: p.r, g: p.g, count: p.count })),
+      densityProfile: dens ? { axis: dens.axis, bins: dens.bins } : null,
+      speedHistogram: speedInfo?.bins ?? null,
+      neighbourCutoff: neighNow ? neighNow.coordination.cutoff : null,
+      coordination: neighNow ? { mean: neighNow.coordination.mean, atomsWith: neighNow.coordination.atomsWith } : null,
+      bondAngles: neighNow ? neighNow.angles : null,
+      structureFactor: sq,
+    };
+    saveBlob('trajectory_analysis.json', new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+  };
+
   if (!open) {
     return (
       <div>
         <button type="button" className={`rounded px-2 py-1 text-xs font-medium ${ct.button}`} onClick={() => setOpen(true)}>
           Trajectory analysis
         </button>
-        <p className={`mt-1 text-[10px] ${ct.muted}`}>MSD and diffusion, g(r), density profile, box volume, from the recorded frames.</p>
+        <p className={`mt-1 text-[10px] ${ct.muted}`}>MSD and diffusion, g(r), coordination, bond angles, S(q), density profile, box volume, from the recorded frames.</p>
       </div>
     );
   }
@@ -163,7 +233,11 @@ export const TrajectoryAnalysis: React.FC<TrajectoryAnalysisProps> = ({ records,
     <div className="space-y-3 text-xs">
       <div className="flex items-center justify-between gap-2">
         <p className={`font-semibold ${ct.headerText}`}>Trajectory analysis</p>
-        <button type="button" className={`rounded px-2 py-0.5 text-[11px] ${ct.hoverSurface}`} onClick={() => setOpen(false)}>Hide</button>
+        <div className="flex items-center gap-1">
+          <button type="button" className={`rounded px-2 py-0.5 text-[11px] ${ct.button}`} onClick={exportAll}
+            disabled={!prepared || prepared.recorded < 2}>Export all analysis data (JSON)</button>
+          <button type="button" className={`rounded px-2 py-0.5 text-[11px] ${ct.hoverSurface}`} onClick={() => setOpen(false)}>Hide</button>
+        </div>
       </div>
       {!prepared && <p className={ct.muted}>No recorded frames yet. Run a MD cell with a dump or with recording on.</p>}
       {prepared && prepared.recorded < 2 && <p className={ct.muted}>Need at least two recorded frames.</p>}
@@ -220,6 +294,60 @@ export const TrajectoryAnalysis: React.FC<TrajectoryAnalysisProps> = ({ records,
         <MultiLineChart series={rdfSeries} xLabel={rLabel} yLabel="g(r)" theme={theme} height={130} svgRef={rdfRef}
           emptyText={current ? 'No pairs' : 'Computing...'} />
         <p className={`mt-1 text-[10px] ${ct.muted}`}>Total g(r) over all atoms, normalised by the ideal-gas shell count; per type pair is not computed.</p>
+      </section>
+
+      <section aria-label="Coordination number" className={`rounded border p-2 ${ct.divider}`}>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-1">
+          <p className={`font-semibold ${ct.headerText}`}>Coordination number</p>
+          <ChartActions name="coordination" theme={theme} svgRef={coordRef}
+            csv={() => toCsv(['coordination', 'atoms'], coordBins.map((b) => [b.x0 + 0.5, b.count]))} />
+        </div>
+        <div className={`mb-1 flex flex-wrap items-center gap-2 ${ct.muted}`}>
+          neighbour cutoff
+          <input aria-label="Neighbour cutoff" type="number" min={0.1} step={0.05} className={inputCls}
+            value={cutoffText ?? String(Number(cutoff.toPrecision(4)))}
+            onChange={(e) => {
+              setCutoffText(e.target.value);
+              const v = Number(e.target.value);
+              if (e.target.value.trim() !== '' && Number.isFinite(v) && v > 0) setCutoffOverride(v);
+            }}
+            onBlur={() => setCutoffText(null)} />
+          {cutoffOverride === null ? '(first minimum of g(r))' : <button type="button" className={`rounded px-1 ${ct.hoverSurface}`} onClick={() => { setCutoffOverride(null); setCutoffText(null); }}>use g(r)</button>}
+          {cutoffOverride !== null && cutoffOverride > cutoffCap && <span>(capped at the g(r) range)</span>}
+        </div>
+        <div ref={coordRef}>
+          {coordBins.length > 0
+            ? <Histogram bins={coordBins} xLabel="neighbours within the cutoff" yLabel="atoms" theme={theme} height={120} />
+            : <p className={ct.muted}>{prepared && prepared.recorded >= 2 ? 'Computing...' : 'No recorded frames'}</p>}
+        </div>
+        <p className={`mt-1 text-[10px] ${ct.muted}`}>
+          {neighNow ? `Mean coordination ${neighNow.coordination.mean.toFixed(2)} within ${Number(cutoff.toPrecision(4))}, last sampled frame.` : ''}
+        </p>
+      </section>
+
+      <section aria-label="Bond-angle distribution" className={`rounded border p-2 ${ct.divider}`}>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-1">
+          <p className={`font-semibold ${ct.headerText}`}>Bond-angle distribution</p>
+          <ChartActions name="bond_angles" theme={theme} svgRef={angleRef}
+            csv={() => toCsv(['angle_low_deg', 'angle_high_deg', 'count', 'density'],
+              (neighNow?.angles ?? []).map((b) => [b.x0, b.x1, b.count, b.density]))} />
+        </div>
+        <MultiLineChart series={[{ name: 'density per degree', points: (neighNow?.angles ?? []).map((b) => ({ x: (b.x0 + b.x1) / 2, y: b.density })) }]}
+          xLabel="angle i-j-k [deg]" yLabel="density" theme={theme} height={120} svgRef={angleRef}
+          emptyText={neighNow ? 'Fewer than two neighbours per atom' : 'Computing...'} />
+        <p className={`mt-1 text-[10px] ${ct.muted}`}>Angles between pairs of neighbours of each atom within the cutoff above (last sampled frame).</p>
+      </section>
+
+      <section aria-label="Structure factor S(q)" className={`rounded border p-2 ${ct.divider}`}>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-1">
+          <p className={`font-semibold ${ct.headerText}`}>Structure factor S(q)</p>
+          <ChartActions name="structure_factor" theme={theme} svgRef={sqRef}
+            csv={() => toCsv(['q', 'S'], sq.map((p) => [p.q, p.s]))} />
+        </div>
+        <MultiLineChart series={[{ name: 'S(q)', points: sq.map((p) => ({ x: p.q, y: p.s })) }]}
+          xLabel="q [1/distance]" yLabel="S(q)" theme={theme} height={120} svgRef={sqRef}
+          emptyText={current ? 'Needs a 3D box and g(r)' : 'Computing...'} />
+        <p className={`mt-1 text-[10px] ${ct.muted}`}>S(q) = 1 + 4 pi rho sum r^2 (g - 1) sin(qr)/(qr) M(r) dr from g(r), rho = N/V of the last sampled frame; M is the Lorch window for the cut at the g(r) range.</p>
       </section>
 
       <section aria-label="Density profile" className={`rounded border p-2 ${ct.divider}`}>

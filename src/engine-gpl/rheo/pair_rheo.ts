@@ -232,7 +232,10 @@ export class PairRHEO extends Pair {
         f[3 * i + 1] += ft[1];
         f[3 * i + 2] += ft[2];
         if (!this.newtonPair) this.tallyVirialOff(pc, dx, ft, j < nlocal, role);
-        if (tally) tallyXYZ(pc, i, j, 0, ft[0], ft[1], ft[2], dx[0], dx[1], dx[2]);
+        if (tally) {
+          if (this.newtonPair) tallyXYZ(pc, i, j, 0, ft[0], ft[1], ft[2], dx[0], dx[1], dx[2]);
+          else this.tallyAtomOff(pc, i, j, dx, ft, j < nlocal, role);
+        }
         // the other end (j, or its owner through the ghost image); with newton off a ghost j gets no force (its image
         // pair acts on its owner, as native's "newton_pair || j < nlocal" guard)
         if (this.newtonPair || j < nlocal) {
@@ -248,7 +251,10 @@ export class PairRHEO extends Pair {
         f[3 * j] -= ft[0];
         f[3 * j + 1] -= ft[1];
         f[3 * j + 2] -= ft[2];
-        if (tally) tallyXYZ(pc, i, j, 0, ft[0], ft[1], ft[2], -dx[0], -dx[1], -dx[2]);
+        if (tally) {
+          if (this.newtonPair) tallyXYZ(pc, i, j, 0, ft[0], ft[1], ft[2], -dx[0], -dx[1], -dx[2]);
+          else this.tallyAtomOff(pc, i, j, [-dx[0], -dx[1], -dx[2]], ft, true, role);
+        }
         if (!this.newtonPair) this.tallyVirialOff(pc, [-dx[0], -dx[1], -dx[2]], ft, true, role);
         }
       }
@@ -283,6 +289,19 @@ export class PairRHEO extends Pair {
    * so an owned other end (jOwned) gives the full product and a ghost other end gives half. f is the force added to the
    * owned atom of this end and del its separation from the other end.
    */
+  /**
+   * Per-atom virial of one force end with newton off (native ev_tally_xyz: "if (newton_pair || j < nlocal)"): half of
+   * del (x) f (in the native orientation, role) to the owned i, and to j only when j is owned.
+   */
+  private tallyAtomOff(pc: PairCompute, i: number, j: number, del: number[], f: number[], jOwned: boolean, role: number): void {
+    const va = pc.vatom;
+    if (!va) return;
+    const h = 0.5 * role;
+    const w = [del[0] * f[0], del[1] * f[1], del[2] * f[2], del[0] * f[1], del[0] * f[2], del[1] * f[2]];
+    for (let c = 0; c < 6; c++) va[6 * i + c] += h * w[c];
+    if (jOwned) for (let c = 0; c < 6; c++) va[6 * j + c] += h * w[c];
+  }
+
   private tallyVirialOff(pc: PairCompute, del: number[], f: number[], jOwned: boolean, role: number): void {
     const vir = pc.acc.virial;
     const w = (jOwned ? 1.0 : 0.5) * role;

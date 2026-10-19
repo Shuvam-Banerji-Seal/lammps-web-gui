@@ -14,7 +14,7 @@
 import { fmExp, iszero, isone, getZij, getShpfcn } from './meamMath';
 import type { MeamModel } from './meamModel';
 import { ComputeInput, MeamWork, V2D, V3D, VIND2D, VIND3D, forwardGhosts } from './meamMsCompute';
-import { addScreeningForces } from './meamMsForce';
+import { addScreeningForces, tallyPairVatom } from './meamMsForce';
 
 const sq = (v: number): number => v * v;
 
@@ -313,6 +313,7 @@ export const forceNonMs = (c: ComputeInput, w: MeamWork, rdrar: number): number 
         f[3 * i + m] += forcem;
         f[3 * j + m] -= forcem;
       }
+      tallyPairVatom(c, i, j, delij, force, dUdrijm);
       if (iszero(sij) || isone(sij)) continue;
       addScreeningForces(c, w, f, jn, i, j, elti, eltj, f0, f1, rij2, dUdsij);
     }

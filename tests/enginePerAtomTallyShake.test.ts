@@ -6,14 +6,11 @@ import { perAtomTally } from './perAtomTally';
  * (src/RIGID/fix_shake.cpp shake() at b332f28, Fix::v_tally), each atom of a cluster takes 1/n of the cluster's virial.
  * Native LAMMPS passes the per-atom tally check (tests/perAtomTally.ts checks A and B) on these cases; before the fix,
  * compute stress/atom threw for fix shake and fix rattle.
- *
- * Left out: the four Drude ethanol cases (w72drude_ethanol_lang, _nh, _tgnpt, w81nhpress_drude_ethanol). Their pe/atom
- * matches native, but stress/atom does not: with pair thole removed (shake kept) the same run-0 comparison agrees to
- * 1e-13, so the gap is the per-atom virial of pair thole, not of shake. Those cases are to be re-added when thole's
- * per-atom virial is fixed.
+
  */
 
 const CASES = [
+  'w72drude_ethanol_lang', 'w72drude_ethanol_nh', 'w72drude_ethanol_tgnpt', 'w81nhpress_drude_ethanol',
   'rattle_clusters',
   'shake_clusters',
   'w102il_aip_water',

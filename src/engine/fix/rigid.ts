@@ -1,7 +1,7 @@
 import { Fix } from './fix';
 import { StyleError, typeBounds } from '../force/types';
 import type { System } from '../system';
-import { isEllipsoid, isLineAtom, isSuperEllipsoidStyle, isTriAtom, LINE_BONUS, massOf, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { isEllipsoid, isLineAtom, isSuperEllipsoidStyle, isTriAtom, LINE_BONUS, massOf, nativeOrder, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
 import { ellipsoidInertia, quatToMatrix } from '../compute/asphere';
 import { RanMars } from '../rng';
 import { parseNumOrVar, ramp, valueOf, type NumOrVar } from './util';
@@ -81,6 +81,8 @@ interface Body {
    * instead of the angular momentum that Richardson advances. Set at setup; created on demand otherwise.
    */
   conjqm?: number[];
+  /** The atom ID of the body's owner: the atom nearest the centre of its bounding box (see constructBody). */
+  owner: number;
 }
 
 /** One line of an infile (fix rigid infile): attributes that override the computed ones. */
@@ -516,7 +518,14 @@ export class FixRigid extends Fix {
     // smallest body value plus 1. Measured with native LAMMPS (black box): custom values 0,1,3,4 take
     // infile IDs 1,2,4,5, and infile ID 3 (no body with value 2) is an error.
     const infileId = (key: string) => (this.customVar || this.customProp ? String(Number(key) - Number(keys[0]) + 1) : key);
-    for (const key of keys) bodies.push(this.constructBody(key, members.get(key)!, infileId(key)));
+    for (const key of keys) {
+      const b = this.constructBody(key, members.get(key)!, infileId(key));
+      // native keeps the owner chosen when the fix was created (bodytag); a rebuilt body keeps it too
+      const first = this.ownerByKey.get(key);
+      if (first !== undefined && b.atoms.includes(first)) b.owner = first;
+      else this.ownerByKey.set(key, b.owner);
+      bodies.push(b);
+    }
     if (this.infile) {
       const valid = new Set(keys.map(infileId));
       for (const key of this.infile.keys()) {
@@ -527,6 +536,7 @@ export class FixRigid extends Fix {
     for (const [spec, flags] of this.forceSpecs) { const [lo, hi] = typeBounds(spec, nb); for (let k = lo; k <= hi; k++) bodies[k - 1].fflag = flags.slice(); }
     for (const [spec, flags] of this.torqueSpecs) { const [lo, hi] = typeBounds(spec, nb); for (let k = lo; k <= hi; k++) bodies[k - 1].tflag = flags.slice(); }
     this.bodies = bodies;
+    this.rankOwners();
     this.publishBodyMass();
     this.sizeArrayRows = nb;
     for (const b of bodies) this.omegaFromAngmom(b);
@@ -688,6 +698,7 @@ export class FixRigid extends Fix {
       orient,
       orientQ,
       dorient,
+      owner: s.id[idx[ref]],
     };
     this.wrapCom(b);
     return b;
@@ -738,6 +749,50 @@ export class FixRigid extends Fix {
     const s = this.sys.state;
     if (!s.rigidBodyMass) s.rigidBodyMass = new Map();
     for (const b of this.bodies) for (const id of b.atoms) s.rigidBodyMass.set(id, b.mass);
+  }
+
+  /**
+   * The storage order of the bodies of native rigid/small, by owner atom ID. As native LAMMPS does
+   * (src/RIGID/fix_rigid_small.cpp at b332f28, the constructor and unpack_exchange): the bodies are stored in the
+   * local order of their owner atoms when the fix is created, and a body added later (or brought back by an
+   * exchange) goes to the end. A sort of the atoms does not move the bodies. The engine builds the bodies at the
+   * first run; the order of the atoms then is the order they had when the fix was defined, since only runs reorder
+   * them. Used by the HMC resampling of rigid-body momenta, which draws per body in this order.
+   */
+  private readonly ownerRank = new Map<number, number>();
+  private readonly ownerByKey = new Map<string, number>();
+
+  private rankOwners(): void {
+    const s = this.sys.state;
+    const pos = new Map<number, number>();
+    nativeOrder(s).forEach((i, r) => pos.set(s.id[i], r));
+    let next = 0;
+    for (const r of this.ownerRank.values()) if (r >= next) next = r + 1;
+    const fresh = this.bodies.filter((b) => !this.ownerRank.has(b.owner)).sort((a, b) => (pos.get(a.owner) ?? 0) - (pos.get(b.owner) ?? 0));
+    for (const b of fresh) this.ownerRank.set(b.owner, next++);
+  }
+
+  /** The live bodies in the native storage order (see ownerRank). */
+  bodiesInNativeOrder(): Body[] {
+    this.rankOwners();
+    return this.bodies.slice().sort((a, b) => this.ownerRank.get(a.owner)! - this.ownerRank.get(b.owner)!);
+  }
+
+  /** Sets the native storage order to that of these owner atom IDs (bodies brought back in this atom order). */
+  setBodyNativeOrder(ownerIds: readonly number[]): void {
+    this.ownerRank.clear();
+    ownerIds.forEach((id, r) => this.ownerRank.set(id, r));
+  }
+
+  /**
+   * The atom velocities from the bodies' centre-of-mass velocities and angular velocities (set_v), after a change of
+   * the bodies' momenta (vcm, omega and angmom set together); the no-squish styles take the quaternion momentum from
+   * the angular momentum. The constraint-force virial of the velocity change is added with virialFactor (native
+   * set_v tallies one half of x . f_c while the virial of the step is accumulated; it is reset at the next step).
+   */
+  velocitiesFromBodies(virialFactor: number): void {
+    if (this.noSquish) for (const b of this.bodies) b.conjqm = this.conjqmFromAngmom(b);
+    this.setXV(false, virialFactor);
   }
 
   /** Copies of the body list, to undo a rejected deletion (see removeMolecule). */

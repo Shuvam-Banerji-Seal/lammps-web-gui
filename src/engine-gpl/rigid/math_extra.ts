@@ -1,6 +1,6 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28): src/math_extra.cpp and src/math_extra.h
- * (quatvec, invquatvec, matvec, transpose_matvec, angmom_to_omega, exyz_to_q, q_to_exyz, quat_to_mat,
+ * (quatvec, invquatvec, matvec, transpose_matvec, angmom_to_omega, omega_to_angmom, exyz_to_q, q_to_exyz, quat_to_mat,
  * no_squish_rotate) and src/math_eigen.cpp / src/math_eigen_impl.h (MathEigen::jacobi3, the cyclic Jacobi
  * rotations of Andrew Jewett, Scripps Research, with SORT_INCREASING_EVALS).
  * Contributing author of src/math_extra.cpp: Mike Brown (SNL). Contributing author of src/math_eigen.cpp (the Jacobi
@@ -52,6 +52,17 @@ export const angmomToOmega = (m: V3, ex: V3, ey: V3, ez: V3, idiag: V3, w: V3): 
   w[0] = wb[0] * ex[0] + wb[1] * ey[0] + wb[2] * ez[0];
   w[1] = wb[0] * ex[1] + wb[1] * ey[1] + wb[2] * ez[1];
   w[2] = wb[0] * ex[2] + wb[1] * ey[2] + wb[2] * ez[2];
+};
+
+/** m = angular momentum (space frame) from w = omega (space frame), axes ex ey ez and principal moments idiag. */
+export const omegaToAngmom = (w: V3, ex: V3, ey: V3, ez: V3, idiag: V3, m: V3): void => {
+  const mb = [0, 0, 0];
+  mb[0] = (w[0] * ex[0] + w[1] * ex[1] + w[2] * ex[2]) * idiag[0];
+  mb[1] = (w[0] * ey[0] + w[1] * ey[1] + w[2] * ey[2]) * idiag[1];
+  mb[2] = (w[0] * ez[0] + w[1] * ez[1] + w[2] * ez[2]) * idiag[2];
+  m[0] = mb[0] * ex[0] + mb[1] * ey[0] + mb[2] * ez[0];
+  m[1] = mb[0] * ex[1] + mb[1] * ey[1] + mb[2] * ez[1];
+  m[2] = mb[0] * ex[2] + mb[1] * ey[2] + mb[2] * ez[2];
 };
 
 const qnormalize = (q: Q4): void => {

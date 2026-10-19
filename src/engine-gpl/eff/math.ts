@@ -105,11 +105,25 @@ const ipoly01 = (x0: number): number => {
 };
 
 /** pair_eff_inline.h ierfoverx1: Erf(x)/x and its first derivative. */
+/*
+ * The pair helpers below return one result object each, reused from call to call (they run for every neighbour pair,
+ * and an object per call was a large part of the pair time). A caller reads a result before it calls the same helper
+ * again.
+ */
+const IERF = { f: 0, df: 0 };
+const R_KIN = { e: 0, f: 0 };
+const R_NUCNUC = { e: 0, f: 0 };
+const R_NUCELEC = { e: 0, f: 0, f1: 0 };
+const R_ELECELEC = { e: 0, f: 0, f1: 0, f2: 0 };
+const R_PAULI = { ep: 0, f: 0, f1: 0, f2: 0 };
+
 export const ierfoverx1 = (x: number): { f: number; df: number } => {
   if (x < 2.0) {
     /* erf(x) = x * y(t), t = 2 * (x/2)^2 - 1 */
     const t = 0.5 * x * x - 1;
-    return { f: ipoly01(t), df: ipoly1(t) * x };
+    IERF.f = ipoly01(t);
+    IERF.df = ipoly1(t) * x;
+    return IERF;
   }
   /* erf(x) = 1 - exp(-x^2)/x * y(t), t = (10.5 - x^2) / (2.5 + x^2) */
   const x2 = x * x;
@@ -118,20 +132,24 @@ export const ierfoverx1 = (x: number): { f: number; df: number } => {
   const recipX = 1.0 / x;
   const f = 1.0 / x - (expTerm / x2) * ipoly02(t);
   const df = (1.12837916709551257389615890312 * expTerm - f) * recipX;
-  return { f, df };
+  IERF.f = f;
+  IERF.df = df;
+  return IERF;
 };
 
 /** pair_eff_inline.h KinElec: the kinetic-energy term of an electron of radius r (eke, and its radial force). */
-export const kinElec = (radius: number): { e: number; f: number } => ({
-  e: 1.5 / (radius * radius),
-  f: 3.0 / (radius * radius * radius),
-});
+export const kinElec = (radius: number): { e: number; f: number } => {
+  R_KIN.e = 1.5 / (radius * radius);
+  R_KIN.f = 3.0 / (radius * radius * radius);
+  return R_KIN;
+};
 
 /** pair_eff_inline.h ElecNucNuc: nucleus-nucleus Coulomb term (q = qi qj). */
-export const elecNucNuc = (q: number, rc: number): { e: number; f: number } => ({
-  e: q / rc,
-  f: q / (rc * rc),
-});
+export const elecNucNuc = (q: number, rc: number): { e: number; f: number } => {
+  R_NUCNUC.e = q / rc;
+  R_NUCNUC.f = q / (rc * rc);
+  return R_NUCNUC;
+};
 
 /** pair_eff_inline.h ElecNucElec: nucleus-electron term with the Gaussian electron of radius re1. */
 export const elecNucElec = (q: number, rc: number, re1: number): { e: number; f: number; f1: number } => {
@@ -141,7 +159,8 @@ export const elecNucElec = (q: number, rc: number, re1: number): { e: number; f:
   const dEdr = q * a * a * df;
   const dEdr1 = -q * (a / re1) * (f + arc * df);
   const E = -q * a * f;
-  return { e: E, f: dEdr, f1: dEdr1 };
+  R_NUCELEC.e = E; R_NUCELEC.f = dEdr; R_NUCELEC.f1 = dEdr1;
+  return R_NUCELEC;
 };
 
 /** pair_eff_inline.h ElecElecElec: electron-electron term of two Gaussian electrons (re1, re2). */
@@ -155,7 +174,8 @@ export const elecElecElec = (rc: number, re1: number, re2: number): { e: number;
   const dEdr1 = fre * re1;
   const dEdr2 = fre * re2;
   const E = a * f;
-  return { e: E, f: dEdr, f1: dEdr1, f2: dEdr2 };
+  R_ELECELEC.e = E; R_ELECELEC.f = dEdr; R_ELECELEC.f1 = dEdr1; R_ELECELEC.f2 = dEdr2;
+  return R_ELECELEC;
 };
 
 /**
@@ -190,12 +210,11 @@ export const pauliElecElec = (samespin: number, rc0: number, re10: number, re20:
     dOdS = -PAULI_RHO * 2 * S / ((1.0 + S * S) * (1.0 + S * S));
   }
   const ratio = tt * dOdS * S;
-  return {
-    ep: tt * O,
-    f: PAULI_RC * (dTdr * O + ratio * dSdr),
-    f1: PAULI_RE * (dTdr1 * O + ratio * dSdr1),
-    f2: PAULI_RE * (dTdr2 * O + ratio * dSdr2),
-  };
+  R_PAULI.ep = tt * O;
+  R_PAULI.f = PAULI_RC * (dTdr * O + ratio * dSdr);
+  R_PAULI.f1 = PAULI_RE * (dTdr1 * O + ratio * dSdr1);
+  R_PAULI.f2 = PAULI_RE * (dTdr2 * O + ratio * dSdr2);
+  return R_PAULI;
 };
 
 /**

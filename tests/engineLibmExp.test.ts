@@ -13,6 +13,14 @@ const fx = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'libm', 'glibc_ex
 const want = (y: number | string): number => (y === 'Infinity' ? Infinity : (y as number));
 
 describe('glibc exp port', () => {
+  it('-707 < x <= -512 (the k < 0 special case with a normal result) matches the native libm', () => {
+    // glibc_exp_neglarge.json: arguments in (-707, -512] with their native values, from the C program's 6,000,000-argument
+    // run over that range, its two ends and the rest of the line (no difference)
+    const neg = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'libm', 'glibc_exp_neglarge.json'), 'utf8')) as { exp: [number, number][] };
+    const bad = neg.exp.filter(([x, z]) => !Object.is(exp(x), z));
+    expect(bad.slice(0, 5)).toEqual([]);
+    expect(neg.exp.length).toBeGreaterThan(1000);
+  });
   it('matches the native libm for every fixture argument', () => {
     expect(fx.exp.filter(([x, y]) => !Object.is(exp(x), want(y))).slice(0, 5)).toEqual([]);
     expect(fx.exp.length).toBe(3500);

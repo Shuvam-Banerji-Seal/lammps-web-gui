@@ -493,7 +493,60 @@ const powFast = (ax: number, ixHi: number, ixLo: number, y: number, signBias: nu
 };
 
 /** pow(x, y) exactly as the native binary's glibc computes it (see the header). */
+/**
+ * pow(x, 1.5) when its value is certain without the libm computation, else NaN. e_pow.c bounds libm's error:
+ * "Worst-case error: 0.54 ULP (~= ulperr_exp + 1024*Ln2*relerr_log*2^53)" with "relerr_log: 1.3 * 2^-68" and
+ * "ulperr_exp: 0.509 ULP". The log term grows with |y log x| (1024 Ln2 is its largest value), so here the bound is
+ * 0.509 + |1.5 ln x| 1.3 2^-15 ulp (|1.5 ln x| = |ln x^1.5|). x^1.5 = x sqrt(x) is formed in double-double (the correctly rounded sqrt, its exact
+ * residual and exact products), within about 2^-100 relative. When it lies within 1 - bound - 0.005 ulp of the nearest
+ * double D, every other double is farther from x^1.5 than libm's error allows, so libm returns D. D a power of two
+ * (where the spacing below halves) and anything closer to a midpoint are left to the libm computation.
+ */
+const pow15 = (x: number): number => {
+  const s = Math.sqrt(x);
+  // s s = p + e exactly (Dekker), so x - s^2 = (x - p) - e, with x - p exact (p is within a factor 2 of x)
+  const p = s * s;
+  let t = SPLIT * s;
+  const sh = t - (t - s), sl = s - sh;
+  const e = ((sh * sh - p) + 2 * sh * sl) + sl * sl;
+  const es = ((x - p) - e) / (2 * s); // sqrt(x) = s + es + O(es^2 / s)
+  // x (s + es) = hi + lo: hi = RN(x s) with its exact error, plus x es
+  const hi = x * s;
+  t = SPLIT * x;
+  const xh = t - (t - x), xl = x - xh;
+  const lo = (((xh * sh - hi) + xh * sl + xl * sh) + xl * sl) + x * es;
+  const d = hi + lo;
+  F[0] = d;
+  const top = U[1] & 0x7ff00000;
+  if ((U[1] & 0x000fffff) === 0 && U[0] === 0) return NaN;
+  const ulp = asDouble((top - 0x03400000) >>> 0, 0); // 2^(e - 52)
+  // |y ln x| = |ln x^1.5| <= (|E| + 1) ln 2 for x^1.5 in [2^E, 2^(E+1)); 1.3 2^-68 2^53 = 3.96728515625e-5
+  const lnd = (Math.abs((top >>> 20) - 1023) + 1) * 0.6931471805599453;
+  const margin = 1 - (0.509 + lnd * 3.96728515625e-5) - 0.005;
+  return Math.abs((hi - d) + lo) <= margin * ulp ? d : NaN;
+};
+
+/** The last argument pair and its result (powCached); x = 0 is never kept (pow(+0, y) and pow(-0, y) can differ). */
+let lastX = NaN, lastY = NaN, lastR = NaN;
+
+/**
+ * pow with the last argument pair remembered: the same (x, y) gives the same bits, so a repeated call returns the kept
+ * result. MD styles call pow with repeated arguments (equal electron radii in eFF give x = 2 for every pair), and
+ * exact powers of two are among the inputs the fast path hands to powExact.
+ */
 export const pow = (x: number, y: number): number => {
+  if (x === lastX && y === lastY) return lastR;
+  // y = 1.5 (eFF's Pauli overlap per electron pair): the double-double value when it decides libm's rounding
+  if (y === 1.5 && x > 1e-150 && x < 1e150) {
+    const v = pow15(x);
+    if (v === v) return v;
+  }
+  const r = powUncached(x, y);
+  if (x !== 0) { lastX = x; lastY = y; lastR = r; }
+  return r;
+};
+
+const powUncached = (x: number, y: number): number => {
   F[0] = x;
   let ixHi = U[1];
   const ixLo = U[0];

@@ -116,8 +116,12 @@ export const customAttr = (s: SimState, attr: string): ((i: number) => number) |
   return (i) => cp.data[i];
 };
 
-/** Molecule IDs exist: from the atom style or from fix property/atom mol. */
-export const hasMolecule = (s: SimState): boolean => isMolecularStyle(s.atomStyle) || isLineStyle(s.atomStyle) || isTriStyle(s.atomStyle) || s.propMol;
+/**
+ * Molecule IDs exist: from the atom style or from fix property/atom mol. atom_style smd has them too (atom_style.html,
+ * row smd: "atomic + molecule, radius, rmass + "smd data""), so dump custom mol and compute property/atom mol accept it.
+ */
+export const hasMolecule = (s: SimState): boolean => isMolecularStyle(s.atomStyle) || isLineStyle(s.atomStyle) || isTriStyle(s.atomStyle)
+  || atomSubStyles(s.atomStyle).includes('smd') || s.propMol;
 
 /**
  * Mass of a sphere of the given radius and density: "If the atom has a

@@ -125,9 +125,12 @@ export const substituteVariables = (
   lookup: (name: string) => string,
   immediate: (formula: string, format?: string) => string,
 ): string => {
-  // Measured with native LAMMPS (black box): the text a variable substitutes is scanned again, so a
-  // string variable defined in quotes as "${a}0" (quotes keep the $ at definition) gives 20 when
-  // used after variable a equal 2. Immediate $(...) results are numbers and are not rescanned.
+  // As native LAMMPS does (src/input.cpp Input::substitute at b332f28): the text a variable substitutes is copied and
+  // scanning continues after it (it is not scanned again), and a $ right after a backslash is kept as a $ (the backslash
+  // is dropped) instead of starting a reference. A string variable is substituted when it is defined (variable.html:
+  // "string performs variable substitution even if the string parameter is quoted"; commands/misc.ts), so a string
+  // defined as "${a}0" after variable a equal 2 gives 20. Measured with native LAMMPS: an index variable holding ${a}0
+  // prints ${a}0.
   let s = text;
   let substitutions = 0;
   const splice = (i: number, end: number, value: string): void => {
@@ -137,6 +140,10 @@ export const substituteVariables = (
   let i = 0;
   while (i < s.length) {
     if (s[i] !== '$') { i++; continue; }
+    if (i > 0 && s[i - 1] === '\\') {
+      s = s.slice(0, i - 1) + s.slice(i);
+      continue;
+    }
     const next = s[i + 1];
     if (next === undefined) throw new Error("a '$' at the end of the line has no variable name");
     if (next === '{') {
@@ -144,7 +151,9 @@ export const substituteVariables = (
       if (end < 0) throw new Error("unterminated '${' variable reference");
       const name = s.slice(i + 2, end);
       if (name.includes('$')) throw new Error('variable references cannot be nested');
-      splice(i, end, lookup(name));
+      const value = lookup(name);
+      splice(i, end, value);
+      i += value.length;
     } else if (next === '(') {
       let depth = 0;
       let end = -1;
@@ -163,7 +172,9 @@ export const substituteVariables = (
       splice(i, end, value);
       i += value.length;
     } else {
-      splice(i, i + 1, lookup(next));
+      const value = lookup(next);
+      splice(i, i + 1, value);
+      i += value.length;
     }
   }
   return s;

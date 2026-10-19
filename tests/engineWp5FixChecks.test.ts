@@ -128,9 +128,9 @@ run 10
     expect(q.error?.message).toContain('Cannot use fix store/state q for atom style atomic');
   });
 
-  it('fix store/state refuses the history keyword by name and a second thresh keyword', async () => {
+  it('fix store/state accepts the history keyword and refuses a second thresh keyword', async () => {
     const h = await runScript(`${SYS}\nfix s all store/state 0 x history 5 10 0\n`);
-    expect(h.error?.message).toContain("keyword 'history' is not supported");
+    expect(h.error).toBeNull();
     const t = await runScript(`${SYS}\nvariable g equal 1\nfix s all store/state 0 x thresh v_g > 0 thresh v_g > 0\n`);
     expect(t.error?.message).toContain('the thresh keyword may be used only once');
   });

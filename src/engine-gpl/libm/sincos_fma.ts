@@ -21,7 +21,8 @@
  *   do_cos: P and Q as above; s = fma(x xx, P, x) (dx is already in x); c = xx Q;
  *     cor = fma(-s, sn, fma(-c, cs, fma(-s, ssn, ccs))); result cs + cor.
  * The argument reduction for |x| below 105414350 and __branred above it follow sincos.ts (branred.c is not compiled
- * with FMA in glibc, so it stays unfused). fma() is the correctly rounded helper of ./log.ts, as the hardware FMA is.
+ * with FMA in glibc, so it stays unfused). fmaF() is the correctly rounded helper of ./log.ts, as the hardware FMA is
+ * (the same value as its round-to-odd fma(), which it falls back to only near a rounding midpoint).
  * The results were checked against the native libm: see tests/engineLibmSinCosFma.test.ts and
  * tests/fixtures/libm/glibc_sin_fma.json.
  *
@@ -30,7 +31,7 @@
  * like the rest of src/engine-gpl (LICENSE). The owner decided on 2026-10-16 that third-party code may come here when
  * native parity needs it.
  */
-import { fma } from './log';
+import { fmaF } from './log';
 
 const F = new Float64Array(1);
 const U = new Uint32Array(F.buffer); // little-endian: U[0] = LOW_HALF, U[1] = HIGH_HALF
@@ -250,8 +251,8 @@ const doSinFma = (x: number, dx: number): number => {
   if (Math.abs(x) < 0.126) {
     // TAYLOR_SIN (x * x, x, dx)
     const xx = x * x;
-    const poly = fma(xx, fma(xx, fma(xx, fma(xx, s5, s4), s3), s2), s1);
-    const t = fma(fma(poly, x, -(0.5 * dx)), xx, dx);
+    const poly = fmaF(xx, fmaF(xx, fmaF(xx, fmaF(xx, s5, s4), s3), s2), s1);
+    const t = fmaF(fmaF(poly, x, -(0.5 * dx)), xx, dx);
     return x + t;
   }
   if (x <= 0) dx = -dx;
@@ -260,10 +261,10 @@ const doSinFma = (x: number, dx: number): number => {
   F[0] = ux;
   const k = U[0] << 2;
   const xx = x * x;
-  const s = x + fma(x * xx, fma(xx, sn5, sn3), dx);
-  const c = fma(x, dx, xx * fma(xx, fma(xx, cs6, cs4), cs2));
+  const s = x + fmaF(x * xx, fmaF(xx, sn5, sn3), dx);
+  const c = fmaF(x, dx, xx * fmaF(xx, fmaF(xx, cs6, cs4), cs2));
   const sn = TAB[k], ssn = TAB[k + 1], cs = TAB[k + 2], ccs = TAB[k + 3];
-  const cor = fma(s, cs, fma(-c, sn, fma(s, ccs, ssn)));
+  const cor = fmaF(s, cs, fmaF(-c, sn, fmaF(s, ccs, ssn)));
   return copysign(sn + cor, xold);
 };
 
@@ -275,24 +276,24 @@ const doCosFma = (x: number, dx: number): number => {
   F[0] = ux;
   const k = U[0] << 2;
   const xx = x * x;
-  const s = fma(x * xx, fma(xx, sn5, sn3), x);
-  const c = xx * fma(xx, fma(xx, cs6, cs4), cs2);
+  const s = fmaF(x * xx, fmaF(xx, sn5, sn3), x);
+  const c = xx * fmaF(xx, fmaF(xx, cs6, cs4), cs2);
   const sn = TAB[k], ssn = TAB[k + 1], cs = TAB[k + 2], ccs = TAB[k + 3];
-  const cor = fma(-s, sn, fma(-c, cs, fma(-s, ssn, ccs)));
+  const cor = fmaF(-s, sn, fmaF(-c, cs, fmaF(-s, ssn, ccs)));
   return cs + cor;
 };
 
 /** reduce_sincos of s_sin.c (|x| < 105414350) with its fused multiply-adds: writes redA + redDa, returns the quadrant. */
 const reduceSincosFma = (x: number): number => {
-  const t = fma(x, hpinv, toint);
+  const t = fmaF(x, hpinv, toint);
   const xn = t - toint;
   F[0] = t;
   const n = U[0] & 3;
-  const y = fma(-xn, mp2, fma(-xn, mp1, x));
-  const t2 = fma(-xn, pp3, y);
-  let db = fma(-pp3, xn, y - t2);
-  const b = fma(-xn, pp4, t2);
-  db += fma(-xn, pp4, t2 - b);
+  const y = fmaF(-xn, mp2, fmaF(-xn, mp1, x));
+  const t2 = fmaF(-xn, pp3, y);
+  let db = fmaF(-pp3, xn, y - t2);
+  const b = fmaF(-xn, pp4, t2);
+  db += fmaF(-xn, pp4, t2 - b);
   redA = b;
   redDa = db;
   return n;

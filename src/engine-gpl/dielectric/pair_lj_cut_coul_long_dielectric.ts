@@ -12,7 +12,7 @@
  * LAMMPS (pair_modify table 0), or its interpolation table (default table 12) for r^2 >= 2, as the core coul/long pair.
  */
 import { PairLJCutCoulLong } from '../../engine/force/pair/coul_long';
-import { evTally, StyleError, type PairCompute } from '../../engine/force/types';
+import { evTallyFull, StyleError, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { ErfcTableCache, EWALD_F, erfcPoly, TABLE_INNER_RSQ, type ErfcTable } from '../../engine/force/erfc';
 import { dielArrays } from './common';
@@ -38,6 +38,8 @@ const kernels = (rsq: number, g: number, table: ErfcTable | null): { fo: number;
 
 export class PairLJCutCoulLongDielectric extends PairLJCutCoulLong {
   readonly name: string = 'lj/cut/coul/long/dielectric';
+  /** native sets no_virial_fdotr_compute: the virial is the sum of the ev_tally_full tallies (forces on i only) */
+  override virialFdotr = false;
   needsFull = true;
   needsHalf = false;
   /** Electric field and potential at each owned atom from this pair (set by compute()). */
@@ -119,8 +121,8 @@ export class PairLJCutCoulLongDielectric extends PairLJCutCoulLong {
         const ef = efieldI * ei * r2inv;
         E[3 * i] += dx * ef; E[3 * i + 1] += dy * ef; E[3 * i + 2] += dz * ef;
         P[i] += epotI;
-        // ev_tally_full: each ordered pair carries half of the energy and of the virial
-        evTally(pc, i, j, 0.5 * evdwl, 0.5 * ecoul, 0.5 * fpairI, dx, dy, dz);
+        // Pair::ev_tally_full: half of the energy and of the virial of each ordered pair, to atom i
+        evTallyFull(pc, i, evdwl, ecoul, fpairI, dx, dy, dz);
       }
       f[3 * i] += fxi; f[3 * i + 1] += fyi; f[3 * i + 2] += fzi;
     }

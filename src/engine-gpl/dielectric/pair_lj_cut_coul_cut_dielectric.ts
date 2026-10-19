@@ -10,7 +10,7 @@
  * which the polarization fixes read. Documented on docs.lammps.org/pair_lj_cut_coul.html and dielectric.html.
  */
 import { PairLJCutCoulCut } from '../../engine/force/pair/lj_coul';
-import { evTally, StyleError, type PairCompute } from '../../engine/force/types';
+import { evTallyFull, StyleError, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { dielArrays } from './common';
 
@@ -21,6 +21,8 @@ const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; M
 
 export class PairLJCutCoulCutDielectric extends PairLJCutCoulCut {
   readonly name: string = 'lj/cut/coul/cut/dielectric';
+  /** native sets no_virial_fdotr_compute: the virial is the sum of the ev_tally_full tallies (forces on i only) */
+  override virialFdotr = false;
   needsFull = true;
   needsHalf = false;
   /** Electric field at each owned atom from this pair (3 per atom), set by compute(). */
@@ -103,8 +105,8 @@ export class PairLJCutCoulCutDielectric extends PairLJCutCoulCut {
         let ecoul = 0, evdwl = 0;
         if (rsq < cutcoulsq[t]) ecoul = factorCoul * qqrd2e * qi * qj * 0.5 * (ei + ej) * rinv;
         if (rsq < cutljsq[t]) evdwl = factorLJ * (r6inv * (lj3[t] * r6inv - lj4[t]) - offset[t]);
-        // ev_tally_full: each ordered pair carries half of the energy and of the virial
-        evTally(pc, i, j, 0.5 * evdwl, 0.5 * ecoul, 0.5 * fpairI, dx, dy, dz);
+        // Pair::ev_tally_full: half of the energy and of the virial of each ordered pair, to atom i
+        evTallyFull(pc, i, evdwl, ecoul, fpairI, dx, dy, dz);
       }
       f[3 * i] += fxi; f[3 * i + 1] += fyi; f[3 * i + 2] += fzi;
     }

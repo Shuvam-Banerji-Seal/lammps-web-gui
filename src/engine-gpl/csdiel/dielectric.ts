@@ -15,7 +15,7 @@
 import { PairCoulCut } from '../../engine/force/pair/coul';
 import { PairCoulLong } from '../../engine/force/pair/coul_long';
 import { PairLJCutCoulDebye } from '../../engine/force/pair/lj_coul';
-import { evTally, StyleError, type PairCompute } from '../../engine/force/types';
+import { evTallyFull, StyleError, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { ErfcTableCache, erfcPoly, EWALD_F } from '../../engine/force/erfc';
 import { dielArrays } from '../dielectric/common';
@@ -96,7 +96,7 @@ export class PairCoulCutDielectric extends PairCoulCut {
         efieldI *= factorCoul * ei * r2inv;
         E[3 * i] += dx * efieldI; E[3 * i + 1] += dy * efieldI; E[3 * i + 2] += dz * efieldI;
         const ecoul = factorCoul * qqrd2e * this.scaleOf() * qi * qj * 0.5 * (ei + ej) * rinv;
-        evTally(pc, i, j, 0, 0.5 * ecoul, 0.5 * fpairI, dx, dy, dz);
+        evTallyFull(pc, i, 0, ecoul, fpairI, dx, dy, dz);
       }
     }
   }
@@ -189,7 +189,7 @@ export class PairCoulLongDielectric extends PairCoulLong {
         f[3 * i] += dx * fpairI; f[3 * i + 1] += dy * fpairI; f[3 * i + 2] += dz * fpairI;
         efieldI *= ei * r2inv;
         E[3 * i] += dx * efieldI; E[3 * i + 1] += dy * efieldI; E[3 * i + 2] += dz * efieldI;
-        evTally(pc, i, j, 0, 0.5 * ecoul, 0.5 * fpairI, dx, dy, dz);
+        evTallyFull(pc, i, 0, ecoul, fpairI, dx, dy, dz);
       }
     }
   }
@@ -281,7 +281,7 @@ export class PairLJCutCoulDebyeDielectric extends PairLJCutCoulDebye {
         efieldI *= factorCoul * ei * r2inv;
         E[3 * i] += dx * efieldI; E[3 * i + 1] += dy * efieldI; E[3 * i + 2] += dz * efieldI;
         P[i] += epotI;
-        evTally(pc, i, j, 0.5 * evdwl, 0.5 * ecoul, 0.5 * fpairI, dx, dy, dz);
+        evTallyFull(pc, i, evdwl, ecoul, fpairI, dx, dy, dz);
       }
     }
   }

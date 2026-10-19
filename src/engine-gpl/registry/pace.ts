@@ -4,12 +4,13 @@
  * This file is GPL-2.0 too (src/engine-gpl/LICENSE).
  *
  * Registered for the core through src/engine/lazyStyles.ts (group gpl_pace; the names listed there must match these keys).
- * pace/extrapolation and compute pace are refused by name (their factories throw; listed in src/engine/refusedStyles.ts).
+ * pace/extrapolation is refused by name (its factory throws; listed in src/engine/refusedStyles.ts).
  */
 import type { Pair } from '../../engine/force/types';
 import { StyleError } from '../../engine/force/types';
 import type { ComputeFactory } from '../../engine/styles';
 import { PairPace } from '../pace/pair_pace';
+import { ComputePACE } from '../pace/compute_pace';
 
 /** pair_style names. */
 export const PAIRS: Record<string, () => Pair> = {
@@ -19,10 +20,8 @@ export const PAIRS: Record<string, () => Pair> = {
   },
 };
 
-/** compute names: compute pace (per-atom ACE descriptors) is not supported yet. */
+/** compute names. */
 export const COMPUTES: Record<string, ComputeFactory> = {
-  pace: () => {
-    throw new StyleError('compute pace (ACE descriptors) is not supported yet');
-  },
+  pace: (sys, id, group, args) => new ComputePACE(sys, id, group, args),
 };
 

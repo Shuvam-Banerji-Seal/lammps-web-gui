@@ -1,0 +1,25 @@
+# oracle: compute pace with bikflag 1 and dgradflag 1 on the atoms of the PACKAGES/pace/compute H/N/O cell inside a 5 A corner block (the others deleted, IDs reset): per-atom rows with the forces, the 3N^2 (i, j, d, dB_i/dr_j) rows and the energy row, eight columns written by fix ave/time mode vector
+# Native reference: LAMMPS b332f28 built with PKG_ML-PACE (the installed binary has no ML-PACE; see w257pace_recursive)
+# Measured max relative error, engine vs native: thermo 1.9e-15, written array file 4.8e-15.
+# oracle-examples: PACKAGES/pace/compute/latte_cell_0.data PACKAGES/pace/compute/coupling_coefficients.yace
+# oracle-files: w276cp_compute_pace_dgrad.dat
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10 filerel=1e-8
+units           metal
+atom_style      atomic
+boundary        p p p
+atom_modify     map hash
+read_data       latte_cell_0.data
+mass            1 1.00
+mass            2 14.00
+mass            3 15.999
+region          keep block 0 5 0 5 0 5 side out
+delete_atoms    region keep
+reset_atoms     id
+pair_style      pace
+pair_coeff      * * coupling_coefficients.yace H N O
+compute         pace all pace coupling_coefficients.yace 1 1
+fix             cols all ave/time 1 1 1 c_pace[1] c_pace[2] c_pace[3] c_pace[4] c_pace[5] c_pace[40] c_pace[93] c_pace[94] mode vector file w276cp_compute_pace_dgrad.dat format " %.15g"
+thermo          1
+thermo_style    custom step pe atoms c_pace[1][1] c_pace[1][4] c_pace[20][94]
+thermo_modify   format float %.15g
+run             0

@@ -1,0 +1,22 @@
+# oracle: compute pace on the LAMMPS example PACKAGES/pace/compute (in.compute: 161-atom H/N/O cell latte_cell_0.data, pair_style zero 5.7, coupling_coefficients.yace with bikflag 1 dgradflag 0): the example's c_pace[1][183] in thermo, and eight columns of the whole array (descriptors of the three type blocks and the reference column) written by fix ave/time mode vector
+# Native reference: LAMMPS b332f28 built with PKG_ML-PACE (the installed binary has no ML-PACE; see w257pace_recursive)
+# Measured max relative error, engine vs native: thermo 1.2e-15, written array file 3.9e-13.
+# oracle-examples: PACKAGES/pace/compute/latte_cell_0.data PACKAGES/pace/compute/coupling_coefficients.yace
+# oracle-files: w276cp_compute_pace.dat
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10 filerel=1e-8
+units           metal
+atom_style      atomic
+boundary        p p p
+atom_modify     map hash
+read_data       latte_cell_0.data
+mass            1 1.00
+mass            2 14.00
+mass            3 15.999
+pair_style      zero 5.7
+pair_coeff      * *
+compute         pace all pace coupling_coefficients.yace 1 0
+fix             cols all ave/time 1 1 1 c_pace[1] c_pace[40] c_pace[91] c_pace[92] c_pace[150] c_pace[183] c_pace[273] c_pace[274] mode vector file w276cp_compute_pace.dat format " %.15g"
+thermo          1
+thermo_style    custom step temp c_pace[1][183] c_pace[1][1] c_pace[2][5] c_pace[200][274] c_pace[650][100]
+thermo_modify   format float %.15g
+run             0

@@ -1,0 +1,23 @@
+# oracle: compute pace with a .ace basis (Cu-PBE-core-rep.ace: one element, two densities, ranks up to 6) on a displaced 2x2x1 fcc Cu cell (16 atoms) under pair_style pace, bikflag 0 dgradflag 0: eight columns of the array (rank-1 and higher-rank descriptors and the reference column) written by fix ave/time mode vector
+# Native reference: LAMMPS b332f28 built with PKG_ML-PACE (the installed binary has no ML-PACE; see w257pace_recursive)
+# Measured max relative error, engine vs native: thermo 2.4e-14, written array file 9.3e-13.
+# oracle-potentials: Cu-PBE-core-rep.ace
+# oracle-files: w276cp_compute_pace_ace.dat
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10 filerel=1e-8
+units           metal
+atom_style      atomic
+atom_modify     map hash
+lattice         fcc 3.597
+region          box block 0 2 0 2 0 1
+create_box      1 box
+create_atoms    1 box
+mass            1 63.546
+displace_atoms  all random 0.1 0.1 0.1 4928459
+pair_style      pace product
+pair_coeff      * * Cu-PBE-core-rep.ace Cu
+compute         pace all pace Cu-PBE-core-rep.ace 0 0
+fix             cols all ave/time 1 1 1 c_pace[1] c_pace[9] c_pace[16] c_pace[17] c_pace[100] c_pace[400] c_pace[742] c_pace[743] mode vector file w276cp_compute_pace_ace.dat format " %.15g"
+thermo          1
+thermo_style    custom step pe press c_pace[1][1] c_pace[1][743] c_pace[2][17] c_pace[55][743]
+thermo_modify   format float %.15g
+run             0

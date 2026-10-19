@@ -1,0 +1,22 @@
+# oracle: pair_style pace with a three-element .yace basis (the coupling_coefficients.yace of the LAMMPS example PACKAGES/pace/compute: H, N, O, FinnisSinclair, ChebExpCos per element pair) on that example's 161-atom cell (latte_cell_0.data), run 0 then 10 NVE steps
+# Native reference: LAMMPS b332f28 built with PKG_ML-PACE (the installed binary has no ML-PACE; see w257pace_recursive)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.7e-14, atoms 4.2e-14.
+# oracle-examples: PACKAGES/pace/compute/latte_cell_0.data PACKAGES/pace/compute/coupling_coefficients.yace
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      atomic
+boundary        p p p
+atom_modify     map hash
+read_data       latte_cell_0.data
+mass            1 1.00
+mass            2 14.00
+mass            3 15.999
+pair_style      pace
+pair_coeff      * * coupling_coefficients.yace H N O
+thermo_style    custom step pe press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+velocity        all create 300 4928459 loop geom
+fix             1 all nve
+timestep        0.0002
+thermo          5
+run             10

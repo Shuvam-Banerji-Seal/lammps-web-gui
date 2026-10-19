@@ -86,21 +86,26 @@ describe('styles refused by name', () => {
   it('refuses pair_style pace/extrapolation', async () => {
     expect(await errorOf('pace/extrapolation', 'pair_coeff * * Cu-PBE-core-rep.ace Cu')).toMatch(/pace\/extrapolation/);
   });
+});
 
-  it('refuses compute pace', async () => {
-    const msg = await errorOf('pace', 'pair_coeff * * Cu-PBE-core-rep.ace Cu', { extra: [] });
-    expect(msg).toBe('');
-    const events: EngineEvent[] = [];
-    const session = new Session({ emit: (e: EngineEvent) => events.push(e), writeFile: () => {} } as never);
-    session.addFile('Cu-PBE-core-rep.ace', readFileSync(join(POT, 'Cu-PBE-core-rep.ace'), 'utf8'));
-    let thrown = '';
-    try {
-      await session.execute('units metal\natom_style atomic\nlattice fcc 3.597\nregion box block 0 2 0 2 0 2\ncreate_box 1 box\ncreate_atoms 1 box\nmass 1 63.546\npair_style pace\npair_coeff * * Cu-PBE-core-rep.ace Cu\ncompute d all pace\nrun 0');
-    } catch (e) {
-      thrown = String(e);
-    }
-    const err = events.find((ev) => ev.kind === 'error');
-    expect(`${thrown} ${err && 'message' in err ? err.message : ''}`).toMatch(/compute pace/);
+describe('compute pace arguments (native compute_pace.cpp messages)', () => {
+  const computeError = async (line: string): Promise<string> => errorOf('pace', 'pair_coeff * * Cu-PBE-core-rep.ace Cu', { extra: [line] });
+
+  it('accepts bikflag and dgradflag', async () => {
+    expect(await computeError('compute d all pace Cu-PBE-core-rep.ace 0 0')).toBe('');
+  });
+
+  it('needs the two flags as integers', async () => {
+    expect(await computeError('compute d all pace Cu-PBE-core-rep.ace')).toMatch(/Expected integer parameter instead of NULL or empty string/);
+    expect(await computeError('compute d all pace Cu-PBE-core-rep.ace 1 x')).toMatch(/Expected integer parameter instead of 'x'/);
+  });
+
+  it('refuses dgradflag without bikflag', async () => {
+    expect(await computeError('compute d all pace Cu-PBE-core-rep.ace 0 1')).toMatch(/Illegal compute pace command: dgradflag=1 requires bikflag=1/);
+  });
+
+  it('refuses a file that is not .ace or .yace', async () => {
+    expect(await computeError('compute d all pace Cu.txt 0 0')).toMatch(/Unrecognized file type of 'Cu.txt'. Accept only .ace or .yace/);
   });
 });
 
@@ -118,7 +123,7 @@ describe('.ace loader (Cu-PBE-core-rep.ace)', () => {
     expect(b.totalBasisSizeRank1).toEqual([16]);
     expect(b.totalBasisSize).toEqual([726]);
     expect(b.radial.cut[0]).toBeCloseTo(7.4, 12);
-    expect(b.radial.radbasename).toBe('ChebPow');
+    expect(b.radial.radbasename).toEqual(['ChebPow']);
     expect(b.embedding[0].npoti).toBe('FinnisSinclairShiftedScaled');
   });
 });

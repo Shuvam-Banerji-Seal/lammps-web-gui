@@ -4,9 +4,9 @@ import { ChevronDown, Copy, Download, FilePlus, FolderOpen, Pencil, Power, Save,
 import { getThemeTokens } from '../../../theme';
 import { getFileStore } from '../../../services/fileStore';
 import type { NotebookSession } from './useNotebookSession';
-import type { InputFiles } from './useInputFiles';
+import type { ImportSource, InputFiles } from './useInputFiles';
 import {
-  exportFileName, exportLammps, exportMarkdown, importNotebookFile, outputsOf, serializeNotebookFile, UNTITLED,
+  classifyDropped, exportFileName, exportLammps, exportMarkdown, importNotebookFile, outputsOf, serializeNotebookFile, UNTITLED,
   type ImportResult, type OutputTable,
 } from './notebookFile';
 import type { Cell } from './cells';
@@ -41,6 +41,8 @@ interface NotebookMenuProps {
   onStop: () => void;
   /** Cell output on screen, saved with the notebook when the export asks for it. */
   runs: Record<string, RunOutput>;
+  /** A dropped structure or data file the import dialog should convert (the same dialog as Add files). */
+  onStructure?: (source: ImportSource) => void;
 }
 
 const fmtBytes = (n: number): string => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
@@ -64,7 +66,11 @@ const downloadText = (fileName: string, text: string, type: string): void => {
 
 const isBlank = (cells: readonly Cell[]): boolean => cells.every((c) => c.text.trim() === '');
 
-const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputFiles, busy, onStop, runs }) => {
+/** The status line for input files added by a drop or an import. */
+const inputsMessage = (names: readonly string[]): string =>
+  `Added ${names.length} input file${names.length === 1 ? '' : 's'}: ${names.join(', ')}.`;
+
+const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputFiles, busy, onStop, runs, onStructure }) => {
   const ct = getThemeTokens(theme);
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -216,9 +222,7 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
       setDragging(false);
       if (!inside(e.target) || !e.dataTransfer?.files.length) return;
       e.preventDefault();
-      const files = Array.from(e.dataTransfer.files);
-      if (files.length > 1) say('Only the first file was imported. Drop one notebook or script at a time.');
-      void importFile(files[0]);
+      void dropFiles(Array.from(e.dataTransfer.files));
     };
     window.addEventListener('dragenter', onEnter);
     window.addEventListener('dragover', onOver);
@@ -234,7 +238,7 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, busy, inputFiles]);
 
-  /** Imports a file: parse first (a bad file never touches the notebook), then replace it as a new library notebook. */
+  /** Imports a file picked with the Import button: parse first (a bad file never touches the notebook), then replace it as a new library notebook. */
   const importFile = async (file: File) => {
     let imp: ImportResult;
     try {
@@ -246,7 +250,43 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
     act(() => void doImport(imp));
   };
 
-  const doImport = async (imp: ImportResult) => {
+  /**
+   * Dropped files: the first notebook or LAMMPS script imports as a new notebook (a bad file never touches the
+   * notebook); every other file is added as an input file, as Add files does. A structure or data file also opens
+   * the import dialog, as it does when picked with Add files.
+   */
+  const dropFiles = async (files: File[]) => {
+    if (files.length === 0) return;
+    const kinds = classifyDropped(files.map((f) => f.name));
+    const notebooks = files.filter((_, i) => kinds[i] === 'notebook');
+    const others = files.filter((_, i) => kinds[i] === 'input');
+    if (notebooks.length === 0) {
+      const src = await inputFiles.addPicked(others);
+      say(inputsMessage(others.map((f) => f.name)));
+      if (src) onStructure?.(src);
+      return;
+    }
+    const first = notebooks[0];
+    const note = notebooks.length > 1
+      ? ` Only ${first.name} was imported; ${notebooks.slice(1).map((f) => f.name).join(', ')} not imported (drop one notebook or script at a time).`
+      : '';
+    let imp: ImportResult;
+    try {
+      imp = importNotebookFile(first.name, await first.text());
+    } catch (e) {
+      setDialog({ kind: 'message', title: `Could not import ${first.name}`, lines: [e instanceof Error ? e.message : String(e)], error: true });
+      if (others.length) {
+        const src = await inputFiles.addPicked(others);
+        say(inputsMessage(others.map((f) => f.name)));
+        if (src) onStructure?.(src);
+      }
+      return;
+    }
+    act(() => void doImport(imp, others, note));
+  };
+
+  /** Replaces the notebook with `imp` (as a library notebook), then adds the dropped input files (`others`). */
+  const doImport = async (imp: ImportResult, others: File[] = [], note = '') => {
     await session.importNotebook(imp);
     const added = Object.entries(imp.inputFiles ?? {});
     for (const [name, text] of added) {
@@ -258,7 +298,13 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
     }
     const what = imp.kind === 'lmpnb' ? 'notebook' : imp.kind === 'ipynb' ? 'Jupyter notebook' : 'LAMMPS script';
     const extra = added.length ? ` ${added.length} input file${added.length === 1 ? '' : 's'} added.` : '';
-    say(`Imported the ${what} "${imp.name}" (${imp.cells.length} cells) into the library.${extra}`);
+    let dropped = '';
+    if (others.length) {
+      const src = await inputFiles.addPicked(others);
+      dropped = ` ${inputsMessage(others.map((f) => f.name))}`;
+      if (src) onStructure?.(src);
+    }
+    say(`Imported the ${what} "${imp.name}" (${imp.cells.length} cells) into the library.${extra}${dropped}${note}`);
     if (imp.notes.length) setDialog({ kind: 'message', title: 'Imported with notes', lines: imp.notes, error: false });
   };
 
@@ -557,7 +603,7 @@ const NotebookMenu: React.FC<NotebookMenuProps> = ({ theme, btn, session, inputF
 
   const dragNode = dragging && typeof document !== 'undefined' ? createPortal(
     <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-black/30">
-      <p className={`rounded-lg border-2 border-dashed px-6 py-4 text-sm ${ct.card}`}>Drop a notebook (.lmpnb, .ipynb) or a LAMMPS script to import it</p>
+      <p className={`rounded-lg border-2 border-dashed px-6 py-4 text-sm ${ct.card}`}>Drop a notebook (.lmpnb, .ipynb), a LAMMPS script, or input files (data, potentials, structures)</p>
     </div>,
     document.body,
   ) : null;

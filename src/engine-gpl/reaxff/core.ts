@@ -13,14 +13,15 @@
  * struct-of-arrays; a "list" is a per-atom region [start, end) of one shared array, as in
  * reaxff_list.cpp. The far neighbor list is built per evaluation with a binned search over the
  * owned and ghost positions, with the LAMMPS half newton-off rule (npair_bin_ghost.cpp: a pair
- * is stored by i when j > i, for owned and ghost i alike). Virial tallies are not made: the
- * pair style takes the global virial from x . f (virialFdotr).
+ * is stored by i when j > i, for owned and ghost i alike). The global virial is taken from x . f
+ * (virialFdotr); the per-atom virial and energy are tallied at the native tally calls (tally.ts).
  */
 import { StyleError } from '../../engine/force/types';
 import type { ControlParams, ReaxParam, SingleBody, TwoBody } from './ffield';
 import { log as libmLog } from '../libm/log';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
+import { type PerAtomTally, relPos, tallyVirial2 } from './tally';
 
 export const MIN_SINE = 1e-10;
 export const DANGER_ZONE = 0.9;
@@ -113,6 +114,8 @@ export interface RxSystem {
   thb: ThreeBodyList;
   /** Hydrogen bond list: per H index [start, end). */
   hb: HBondList;
+  /** Per-atom energy and virial of compute pe/atom and stress/atom (pc.eatom, pc.vatom), or null when not requested. */
+  pa: PerAtomTally | null;
 }
 
 export interface ThreeBodyList {
@@ -599,6 +602,9 @@ export const addDBondToForces = (sys: RxSystem, i: number, pj: number): void => 
   for (let k = 0; k < 3; k++) temp[k] += C1dbopi * b.dln_BOp_pi[3 * pj + k];
   for (let k = 0; k < 3; k++) temp[k] += C1dbopi2 * b.dln_BOp_pi2[3 * pj + k];
   for (let k = 0; k < 3; k++) f[3 * i + k] += temp[k];
+  const pa = sys.pa;
+  // native reaxff_bond_orders.cpp:86-89: v_tally2_newton(i, -0.5 temp, x_i - x_j) for the force on i
+  if (pa) tallyVirial2(pa, i, temp.map((t) => -0.5 * t), relPos(sys.x, i, j));
   // forces on j
   cc = -(C1dbo + C1dDelta + C2dbopi + C2dbopi2);
   for (let k = 0; k < 3; k++) temp[k] = cc * b.dBOp[3 * pj + k];
@@ -607,17 +613,31 @@ export const addDBondToForces = (sys: RxSystem, i: number, pj: number): void => 
   for (let k = 0; k < 3; k++) temp[k] += -C1dbopi * b.dln_BOp_pi[3 * pj + k];
   for (let k = 0; k < 3; k++) temp[k] += -C1dbopi2 * b.dln_BOp_pi2[3 * pj + k];
   for (let k = 0; k < 3; k++) f[3 * j + k] += temp[k];
+  // native reaxff_bond_orders.cpp:103-106: v_tally2_newton(j, -0.5 temp, x_j - x_i) for the force on j
+  if (pa) tallyVirial2(pa, j, temp.map((t) => -0.5 * t), relPos(sys.x, j, i));
   // forces on k: i neighbor
   for (let pk = b.start[i]; pk < b.end[i]; pk++) {
     const k = b.nbr[pk];
     const ck = -(C2dbo + C2dDelta + C3dbopi + C3dbopi2);
     for (let q = 0; q < 3; q++) f[3 * k + q] += ck * b.dBOp[3 * pk + q];
+    // native reaxff_bond_orders.cpp:119-124: the same -0.5 force on k, tallied with x_k - x_i and x_k - x_j
+    if (pa) {
+      const fk = [0, 1, 2].map((q) => -0.5 * ck * b.dBOp[3 * pk + q]);
+      tallyVirial2(pa, k, fk, relPos(sys.x, k, i));
+      tallyVirial2(pa, k, fk, relPos(sys.x, k, j));
+    }
   }
   // forces on k: j neighbor
   for (let pk = b.start[j]; pk < b.end[j]; pk++) {
     const k = b.nbr[pk];
     const ck = -(C3dbo + C3dDelta + C4dbopi + C4dbopi2);
     for (let q = 0; q < 3; q++) f[3 * k + q] += ck * b.dBOp[3 * pk + q];
+    // native reaxff_bond_orders.cpp:138-143: the same tallies for the k of the j neighbor
+    if (pa) {
+      const fk = [0, 1, 2].map((q) => -0.5 * ck * b.dBOp[3 * pk + q]);
+      tallyVirial2(pa, k, fk, relPos(sys.x, k, i));
+      tallyVirial2(pa, k, fk, relPos(sys.x, k, j));
+    }
   }
 };
 

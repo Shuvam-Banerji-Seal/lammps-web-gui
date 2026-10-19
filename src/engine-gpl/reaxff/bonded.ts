@@ -9,8 +9,8 @@
  * Sandia Corporation (GNU General Public License). This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  *
  * Energies are accumulated into sys.en; forces into sys.ws.f (the LAMMPS sign: the pair style
- * applies -f). Per-atom energy and virial tallies are not made (compute pe/atom and stress/atom
- * are refused by the pair style).
+ * applies -f). The per-atom energy and virial (sys.pa, when compute pe/atom or stress/atom asks)
+ * are tallied at each native tally call, as tally.ts ports Pair::ev_tally and its variants.
  */
 import { DEG2RAD, MIN_SINE, type RxSystem, type ThreeBodyList } from './core';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
@@ -18,6 +18,7 @@ import { sinFma as libmSinFma, cosFma as libmCosFma } from '../libm/sincos_fma';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
 import { acos as libmAcos } from '../libm/acos';
+import { relPos, tallyEnergy, tallyEnergy3, tallyVirial3, tallyVirial4 } from './tally';
 
 const SQR = (x: number) => x * x;
 const CUBE = (x: number) => x * x * x;
@@ -71,6 +72,7 @@ export const calculateDCosTheta = (
 /** Bonds: the bond energy and its bond order derivatives, plus the stabilisation of triple bonds. */
 export const bonds = (sys: RxSystem): void => {
   const { param, n: natoms, bonds: b, ws, en } = sys;
+  const pa = sys.pa;
   const gp = param.gpL;
   const gp3 = gp[3], gp4 = gp[4], gp7 = gp[7], gp10 = gp[10];
   const gp37 = Math.trunc(gp[37]);
@@ -98,6 +100,8 @@ export const bonds = (sys: RxSystem): void => {
       // the bond energy
       const ebond = -twbp.De_s * b.BO_s[pj] * exp_be12 - twbp.De_p * b.BO_pi[pj] - twbp.De_pp * b.BO_pi2[pj];
       en.e_bond += ebond;
+      // native reaxff_bonds.cpp:99: ev_tally(i,j,natoms,1,ebond,...)
+      if (pa) tallyEnergy(pa, i, j, ebond);
       // derivatives of the bond orders
       b.Cdbo[pj] += CEbo;
       b.Cdbopi[pj] -= CEbo + twbp.De_p;
@@ -112,6 +116,8 @@ export const bonds = (sys: RxSystem): void => {
           const hulpov = 1.0 / (1.0 + 25.0 * exphuov);
           const estriph = gp10 * exphu * hulpov * (exphua1 + exphub1);
           en.e_bond += estriph;
+          // native reaxff_bonds.cpp:129: ev_tally(i,j,natoms,1,estriph,...)
+          if (pa) tallyEnergy(pa, i, j, estriph);
           const decobdbo = gp10 * exphu * hulpov * (exphua1 + exphub1) * (gp3 - 2.0 * gp7 * (b.BO[pj] - 2.5));
           const decobdboua = -gp10 * exphu * hulpov * (gp3 * exphua1 + 25.0 * gp4 * exphuov * hulpov * (exphua1 + exphub1));
           const decobdboub = -gp10 * exphu * hulpov * (gp3 * exphub1 + 25.0 * gp4 * exphuov * hulpov * (exphua1 + exphub1));
@@ -127,6 +133,7 @@ export const bonds = (sys: RxSystem): void => {
 /** Atom_Energy: lone pair, C2 correction, over- and under-coordination energies and their derivatives. */
 export const atomEnergy = (sys: RxSystem): void => {
   const { param, ws, bonds: b, en, ctrl, n } = sys;
+  const pa = sys.pa;
   const gp = param.gpL;
   const p_lp3 = gp[5];
   const p_ovun3 = gp[32];
@@ -150,6 +157,8 @@ export const atomEnergy = (sys: RxSystem): void => {
       e_lp = p_lp2 * ws.Delta_lp[i] * inv_expvd2;
       en.e_lp += e_lp;
     }
+    // native reaxff_multi_body.cpp:97-98: ev_tally(i,i,n,1,e_lp,...) (e_lp is zero when not counted)
+    if (pa) tallyEnergy(pa, i, i, e_lp);
     const dElp = p_lp2 * inv_expvd2 + 75 * p_lp2 * ws.Delta_lp[i] * expvd2 * SQR(inv_expvd2);
     const CElp = dElp * ws.dDelta_lp[i];
     if (numbonds > 0 || ctrl.enobondsflag) ws.CdDelta[i] += CElp;
@@ -165,6 +174,8 @@ export const atomEnergy = (sys: RxSystem): void => {
           if (vov3 > 3.0) {
             const e_lph = p_lp3 * SQR(vov3 - 3.0);
             en.e_lp += e_lph;
+            // native reaxff_multi_body.cpp:123-124: ev_tally(i,j,n,1,e_lph,...)
+            if (pa) tallyEnergy(pa, i, j, e_lph);
             const deahu2dbo = 2.0 * p_lp3 * (vov3 - 3.0);
             const deahu2dsbo = 2.0 * p_lp3 * (vov3 - 3.0) * (-1.0 - 0.16 * libmPow(Di, 3.0));
             b.Cdbo[pj] += deahu2dbo;
@@ -216,6 +227,8 @@ export const atomEnergy = (sys: RxSystem): void => {
       e_un = -p_ovun5 * (1.0 - exp_ovun6) * inv_exp_ovun2n * inv_exp_ovun8;
       en.e_un += e_un;
     }
+    // native reaxff_multi_body.cpp:205-210: ev_tally(i,i,n,1,e_ov + e_un,...) (e_un is zero when not counted)
+    if (pa) tallyEnergy(pa, i, i, e_ov + e_un);
     const CEunder1 = inv_exp_ovun2n * (p_ovun5 * p_ovun6 * exp_ovun6 * inv_exp_ovun8 + p_ovun2 * e_un * exp_ovun2n);
     const CEunder2 = -e_un * p_ovun8 * exp_ovun8 * inv_exp_ovun8;
     const CEunder3 = CEunder1 * (1.0 - dfvl * ws.dDelta_lp[i] * inv_exp_ovun1);
@@ -242,6 +255,7 @@ export const atomEnergy = (sys: RxSystem): void => {
 /** Valence_Angles: the 3-body list and the valence, penalty and coalition energies. */
 export const valenceAngles = (sys: RxSystem): void => {
   const { param, ws, bonds: b, en, ctrl, N, n } = sys;
+  const pa = sys.pa;
   const gp = param.gpL;
   const p_val6 = gp[14];
   const p_val8 = gp[33];
@@ -425,6 +439,14 @@ export const valenceAngles = (sys: RxSystem): void => {
                   b.Cdbopi[t] += CEval5;
                   b.Cdbopi2[t] += CEval5;
                 }
+                if (pa) {
+                  // native reaxff_valence_angles.cpp:351-354: ev_tally(j,j,N,1,e_ang+e_pen+e_coa,...)
+                  tallyEnergy(pa, j, j, e_ang + e_pen + e_coa);
+                  // native reaxff_valence_angles.cpp:358-366: v_tally3(i,j,k, -CEval8 dcos_di, -CEval8 dcos_dk, x_i-x_j, x_k-x_j)
+                  const fi = [0, 1, 2].map((c) => -CEval8 * thb.dcos_di[3 * q + c]);
+                  const fk = [0, 1, 2].map((c) => -CEval8 * thb.dcos_dk[3 * q + c]);
+                  tallyVirial3(pa, i, j, k, fi, fk, relPos(sys.x, i, j), relPos(sys.x, k, j));
+                }
                 for (let c = 0; c < 3; c++) {
                   ws.f[3 * i + c] += CEval8 * thb.dcos_di[3 * q + c];
                   ws.f[3 * j + c] += CEval8 * thb.dcos_dj[3 * q + c];
@@ -514,6 +536,7 @@ const calculateOmega = (
 /** Torsion_Angles: the torsion energy (V1, V2, V3 terms) and the 4-body conjugation energy. */
 export const torsionAngles = (sys: RxSystem): void => {
   const { param, ws, bonds: b, en, ctrl, n } = sys;
+  const pa = sys.pa;
   const gp = param.gpL;
   const p_tor2 = gp[23];
   const p_tor3 = gp[24];
@@ -643,6 +666,16 @@ export const torsionAngles = (sys: RxSystem): void => {
           b.Cdbo[plk] += CEtors6 + CEconj3;
           const dI = 3 * pi, dJ = 3 * pl;
           const c7 = CEtors7 + CEconj4, c8 = CEtors8 + CEconj5, c9 = CEtors9 + CEconj6;
+          if (pa) {
+            // native reaxff_torsion_angles.cpp:386-387: ev_tally(j,k,natoms,1,e_tor+e_con,...)
+            tallyEnergy(pa, j, k, e_tor + e_con);
+            // native reaxff_torsion_angles.cpp:364-389: the force sums fi_tmp, fj_tmp, fk_tmp of i, j, k (the l part is not in them)
+            const fi = [0, 1, 2].map((c) => c7 * thb.dcos_dk[dI + c] + c9 * dcosOmega[c]);
+            const fj = [0, 1, 2].map((c) => c7 * thb.dcos_dj[dI + c] + c8 * thb.dcos_di[dJ + c] + c9 * dcosOmega[3 + c]);
+            const fk = [0, 1, 2].map((c) => c7 * thb.dcos_di[dI + c] + c8 * thb.dcos_dj[dJ + c] + c9 * dcosOmega[6 + c]);
+            // native reaxff_torsion_angles.cpp:389: v_tally4(i,j,k,l,fi,fj,fk,x_l-x_i,x_l-x_j,x_l-x_k)
+            tallyVirial4(pa, i, j, k, l, fi, fj, fk, relPos(sys.x, l, i), relPos(sys.x, l, j), relPos(sys.x, l, k));
+          }
           for (let c = 0; c < 3; c++) {
             // dcos_theta_ijk
             ws.f[3 * i + c] += c7 * thb.dcos_dk[dI + c];
@@ -667,6 +700,7 @@ export const torsionAngles = (sys: RxSystem): void => {
 /** Hydrogen_Bonds: the donor-H ... acceptor energy over the hydrogen bond list. */
 export const hydrogenBonds = (sys: RxSystem): void => {
   const { param, ws, bonds: b, en, n, hb, far } = sys;
+  const pa = sys.pa;
   const type = sys.type;
   const orig = sys.orig;
   const hblist: number[] = [];
@@ -715,6 +749,12 @@ export const hydrogenBonds = (sys: RxSystem): void => {
         const CEhb1 = hbp.p_hb1 * hbp.p_hb2 * exp_hb2 * exp_hb3 * sin_xhz4;
         const CEhb2 = -hbp.p_hb1 / 2.0 * (1.0 - exp_hb2) * exp_hb3 * cos_xhz1;
         const CEhb3 = -hbp.p_hb3 * (-hbp.r0_hb / SQR(r_jk) + 1.0 / hbp.r0_hb) * e_hb;
+        if (pa) {
+          // native reaxff_hydrogen_bonds.cpp:140-151: ev_tally3(i,j,k,e_hb,0,fi_tmp,fk_tmp,x_j-x_i,x_j-x_k)
+          const fi = [0, 1, 2].map((c) => CEhb2 * tmp[c]);
+          const fk = [0, 1, 2].map((c) => CEhb2 * tmp[6 + c] + (CEhb3 / r_jk) * dvecJK[c]);
+          tallyEnergy3(pa, i, j, k, e_hb, 0, fi, fk, relPos(sys.x, j, i), relPos(sys.x, j, k));
+        }
         // hydrogen bond forces
         b.Cdbo[pi] += CEhb1;
         for (let c = 0; c < 3; c++) {

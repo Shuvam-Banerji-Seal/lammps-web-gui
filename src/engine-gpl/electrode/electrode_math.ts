@@ -87,5 +87,67 @@ export const invertDense = (a: Float64Array, n: number): boolean => {
   return true;
 };
 
+/**
+ * In-place inverse of a symmetric positive-definite n x n row-major matrix through its Cholesky factor (A = L L^T,
+ * W = L^-1 by forward substitution on rows, A^-1 = W^T W by rank-1 row updates): about n^3 / 2 multiply-adds with
+ * contiguous inner loops, against 2 n^3 for the Gauss-Jordan elimination. Only the lower triangle of a is read.
+ * Returns false (leaving a unchanged) when a pivot is not positive, so the caller can fall back to invertDense. The
+ * result equals the LU inverse of dgetrf + dgetri up to rounding.
+ */
+export const invertSPD = (a: Float64Array, n: number): boolean => {
+  const L = new Float64Array(n * n);
+  for (let i = 0; i < n; i++) {
+    const ri = i * n;
+    for (let j = 0; j <= i; j++) {
+      const rj = j * n;
+      // the dot product of rows i and j with four partial sums (independent chains of multiply-adds)
+      let s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+      let k = 0;
+      for (; k + 3 < j; k += 4) {
+        s0 += L[ri + k] * L[rj + k];
+        s1 += L[ri + k + 1] * L[rj + k + 1];
+        s2 += L[ri + k + 2] * L[rj + k + 2];
+        s3 += L[ri + k + 3] * L[rj + k + 3];
+      }
+      for (; k < j; k++) s0 += L[ri + k] * L[rj + k];
+      const sum = a[ri + j] - ((s0 + s1) + (s2 + s3));
+      if (i === j) {
+        if (!(sum > 0)) return false;
+        L[ri + i] = Math.sqrt(sum);
+      } else {
+        L[ri + j] = sum / L[rj + j];
+      }
+    }
+  }
+  // W = L^-1 (lower triangular), row i = (e_i - sum_{k<i} L[i][k] W[k]) / L[i][i]
+  const W = new Float64Array(n * n);
+  for (let i = 0; i < n; i++) {
+    const ri = i * n;
+    W[ri + i] = 1;
+    for (let k = 0; k < i; k++) {
+      const f = L[ri + k];
+      if (f === 0) continue;
+      const rk = k * n;
+      for (let c = 0; c <= k; c++) W[ri + c] -= f * W[rk + c];
+    }
+    const d = 1 / L[ri + i];
+    for (let c = 0; c <= i; c++) W[ri + c] *= d;
+  }
+  // A^-1 = W^T W: the lower triangle from the rank-1 updates of row k (columns <= k), then mirrored
+  const C = new Float64Array(n * n);
+  for (let k = 0; k < n; k++) {
+    const rk = k * n;
+    for (let i = 0; i <= k; i++) {
+      const f = W[rk + i];
+      if (f === 0) continue;
+      const ri = i * n;
+      for (let j = 0; j <= i; j++) C[ri + j] += f * W[rk + j];
+    }
+  }
+  for (let i = 0; i < n; i++) for (let j = 0; j < i; j++) C[j * n + i] = C[i * n + j];
+  a.set(C);
+  return true;
+};
+
 /** erf(x) for the Slab2d correction: the C library's, as native slab_2d.cpp calls erf() (../libm/erf.ts). */
 export const erfAccurate = (x: number): number => libmErf(x);

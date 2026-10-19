@@ -23,6 +23,9 @@ import type {
  * Protocol: AnalysisRequest (or NeighbourRequest, for coordination and bond angles) -> AnalysisResponse, routed by `id`.
  */
 self.onmessage = (e: MessageEvent<AnalysisRequest | NeighbourRequest>) => {
+  // A dedicated worker hears only the page that created it, and its message events carry an empty origin; anything
+  // else (a foreign origin) is not a request of this app.
+  if (e.origin !== '' && e.origin !== self.location.origin) return;
   const post = (r: AnalysisResponse) => (self as unknown as Worker).postMessage(r);
   const started = Date.now();
   const req = e.data;

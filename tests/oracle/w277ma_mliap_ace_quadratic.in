@@ -1,0 +1,23 @@
+# oracle: pair_style mliap model quadratic with descriptor ace: the ccs_single_element.yace descriptors of the LAMMPS example examples/mliap (Ta, 37 ACE projections) with constructed quadratic coefficients, on a displaced 3x3x3 bcc Ta cell, 10 NVE steps
+# Native reference: LAMMPS b332f28 built with PKG_ML-IAP, PKG_ML-SNAP and PKG_ML-PACE (the installed binary has no ML-PACE)
+# Measured max relative error, engine vs native: thermo 3.0e-14, atoms 3.5e-16.
+# oracle-inputs: w277ma_Ta_quadratic.mliap.model
+# oracle-examples: mliap/ccs_single_element.yace
+# oracle-compare: thermo=all atoms=all
+units           metal
+boundary        p p p
+lattice         bcc 3.316
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 180.88
+displace_atoms  all random 0.1 0.1 0.1 4928459
+pair_style      mliap model quadratic w277ma_Ta_quadratic.mliap.model descriptor ace ccs_single_element.yace
+pair_coeff      * * Ta
+thermo_style    custom step pe press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+velocity        all create 300 4928459 loop geom
+fix             1 all nve
+timestep        0.0005
+thermo          5
+run             10

@@ -172,7 +172,7 @@ describe('unsupported mliap forms are StyleErrors that name the option', () => {
   const cases: [string, string, RegExp][] = [
     ['model mliappy', 'pair_style mliap model mliappy x.pt descriptor sna w16mliap_linear.mliap.descriptor\npair_coeff * * A B', /mliappy/],
     ['descriptor so3', 'pair_style mliap model linear w16mliap_linear.mliap.model descriptor so3 w16mliap_linear.mliap.descriptor\npair_coeff * * A B', /so3/],
-    ['descriptor ace', 'pair_style mliap model linear w16mliap_linear.mliap.model descriptor ace w16mliap_linear.mliap.descriptor\npair_coeff * * A B', /ace/],
+    ['descriptor ace with a file that is not .ace or .yace', 'pair_style mliap model linear w16mliap_linear.mliap.model descriptor ace w16mliap_linear.mliap.descriptor\npair_coeff * * A B', /Unrecognized file type of 'w16mliap_linear.mliap.descriptor'. Accept only .ace or .yace/],
     ['unified', 'pair_style mliap unified x.pkl 0\npair_coeff * * A B', /unified/],
     ['NULL mapping', 'pair_style mliap model linear w16mliap_linear.mliap.model descriptor sna w16mliap_linear.mliap.descriptor\npair_coeff * * A NULL', /NULL/],
     ['descriptor quadraticflag', 'pair_style mliap model linear w16mliap_linear.mliap.model descriptor sna bad.desc\npair_coeff * * A B', /quadraticflag/],
@@ -187,7 +187,7 @@ describe('unsupported mliap forms are StyleErrors that name the option', () => {
   it('compute mliap model nn is refused (the compute doc lists linear, quadratic and mliappy)', async () => {
     await expect(run(`${base}compute g all mliap model nn descriptor sna w16mliap_linear.mliap.descriptor\nrun 0\n`, inputs)).rejects.toThrow(/nn/);
   });
-  it('compute mliap descriptor ace is refused', async () => {
-    await expect(run(`${base}compute g all mliap model linear descriptor ace w16mliap_linear.mliap.descriptor\nrun 0\n`, inputs)).rejects.toThrow(/ace/);
+  it('compute mliap descriptor ace needs a .ace or .yace file (native parity: w277ma_compute_mliap_ace)', async () => {
+    await expect(run(`${base}compute g all mliap model linear descriptor ace w16mliap_linear.mliap.descriptor\nrun 0\n`, inputs)).rejects.toThrow(/Unrecognized file type of 'w16mliap_linear.mliap.descriptor'. Accept only .ace or .yace/);
   });
 });

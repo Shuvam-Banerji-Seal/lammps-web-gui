@@ -1,0 +1,25 @@
+# oracle: compute mliap with descriptor ace and model quadratic, gradgradflag 1 and 0 (two computes), on a displaced 3x3x3 bcc Ta cell with the ccs_single_element.yace descriptors of the LAMMPS example examples/mliap (37 per atom, 741 parameters) under pair_style mliap model quadratic with the same descriptor: eight columns of each array written by fix ave/time mode vector
+# Native reference: LAMMPS b332f28 built with PKG_ML-IAP, PKG_ML-SNAP and PKG_ML-PACE (the installed binary has no ML-PACE)
+# Measured max relative error, engine vs native: thermo 4.0e-14, written array files 2.6e-13.
+# oracle-inputs: w277ma_Ta_quadratic.mliap.model
+# oracle-examples: mliap/ccs_single_element.yace
+# oracle-files: w277ma_compute_mliap_ace_quad1.dat w277ma_compute_mliap_ace_quad0.dat
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10 filerel=1e-8
+units           metal
+boundary        p p p
+lattice         bcc 3.316
+region          box block 0 3 0 3 0 3
+create_box      1 box
+create_atoms    1 box
+mass            1 180.88
+displace_atoms  all random 0.1 0.1 0.1 4928459
+pair_style      mliap model quadratic w277ma_Ta_quadratic.mliap.model descriptor ace ccs_single_element.yace
+pair_coeff      * * Ta
+compute         q1 all mliap descriptor ace ccs_single_element.yace model quadratic gradgradflag 1
+compute         q0 all mliap model quadratic descriptor ace ccs_single_element.yace gradgradflag 0
+fix             c1 all ave/time 1 1 1 c_q1[1] c_q1[5] c_q1[38] c_q1[39] c_q1[40] c_q1[300] c_q1[741] c_q1[742] mode vector file w277ma_compute_mliap_ace_quad1.dat format " %.15g"
+fix             c0 all ave/time 1 1 1 c_q0[1] c_q0[5] c_q0[38] c_q0[39] c_q0[40] c_q0[300] c_q0[741] c_q0[742] mode vector file w277ma_compute_mliap_ace_quad0.dat format " %.15g"
+thermo          1
+thermo_style    custom step pe press c_q1[1][2] c_q1[3][40] c_q0[3][40] c_q1[169][742]
+thermo_modify   format float %.15g
+run             0

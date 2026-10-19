@@ -1,0 +1,22 @@
+# oracle: compute mliap with descriptor ace and model linear (gradgradflag 1), the LAMMPS example examples/mliap in.mliap.ace.compute (161-atom H/N/O cell ace_compute_struct.data, H_N_O_ccs.yace, pair_style zero 5.7): the example's thermo entries and nine columns of the whole array (beta_0 and descriptor columns of the three element blocks and the reference column) written by fix ave/time mode vector
+# Native reference: LAMMPS b332f28 built with PKG_ML-IAP, PKG_ML-SNAP and PKG_ML-PACE (the installed binary has no ML-PACE)
+# Measured max relative error, engine vs native: thermo 5.4e-16, written array file 3.9e-13.
+# oracle-examples: mliap/H_N_O_ccs.yace mliap/ace_compute_struct.data
+# oracle-files: w277ma_compute_mliap_ace.dat
+# oracle-compare: thermo=all atoms=none rel=1e-8 abs=1e-10 filerel=1e-8
+units           metal
+atom_style      atomic
+boundary        p p p
+atom_modify     map hash
+read_data       ace_compute_struct.data
+mass            1 1.00
+mass            2 14.00
+mass            3 15.999
+pair_style      zero 5.7
+pair_coeff      * *
+compute         ace all mliap descriptor ace H_N_O_ccs.yace model linear gradgradflag 1
+fix             cols all ave/time 1 1 1 c_ace[1] c_ace[2] c_ace[50] c_ace[93] c_ace[94] c_ace[185] c_ace[186] c_ace[276] c_ace[277] mode vector file w277ma_compute_mliap_ace.dat format " %.15g"
+thermo          1
+thermo_style    custom step pe pxy c_ace[1][1] c_ace[1][2] c_ace[2][2] c_ace[490][277]
+thermo_modify   format float %.15g norm no
+run             0

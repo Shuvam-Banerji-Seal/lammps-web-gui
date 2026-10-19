@@ -115,8 +115,8 @@ export class ACERadialFunctions {
   lmax: number;
   nradial: number;
   deltaSplineBins: number;
-  /** radbasename of each pair (one name in the .ace file, applied to every pair) */
-  radbasename: string;
+  /** radbasename of each pair (mu_i, mu_j) at mu_i * nelements + mu_j (radbasename_ij; one name in a .ace file) */
+  radbasename: string[];
   /**
    * "density" (the .ace loader, and a .yace bond without inner_cutoff_type) or "distance" (the .yace default written by
    * pacemaker: g_k and the core repulsion are switched at cut_in, see radbase and radcore)
@@ -151,13 +151,13 @@ export class ACERadialFunctions {
   splinesRnl: SplineInterpolator[] = [];
   splinesHc: SplineInterpolator[] = [];
 
-  constructor(nradb: number, lmax: number, nradial: number, deltaSplineBins: number, nelements: number, radbasename: string) {
+  constructor(nradb: number, lmax: number, nradial: number, deltaSplineBins: number, nelements: number, radbasename: string | string[]) {
     this.nelements = nelements;
     this.nradbase = nradb;
     this.lmax = lmax;
     this.nradial = nradial;
     this.deltaSplineBins = deltaSplineBins;
-    this.radbasename = radbasename;
+    this.radbasename = typeof radbasename === 'string' ? new Array<string>(nelements * nelements).fill(radbasename) : radbasename.slice();
     const np = nelements * nelements;
     this.gr = new Float64Array(nradb);
     this.dgr = new Float64Array(nradb);
@@ -305,7 +305,7 @@ export class ACERadialFunctions {
   }
 
   private allRadfunc(pair: number, mui: number, muj: number, r: number): void {
-    this.radbase(this.lambda[pair], this.cut[pair], this.dcut[pair], this.radbasename, r,
+    this.radbase(this.lambda[pair], this.cut[pair], this.dcut[pair], this.radbasename[pair], r,
       this.cutIn[pair], this.dcutIn[pair]);
     this.radfunc(pair);
     void mui; void muj;
@@ -358,7 +358,7 @@ export class ACERadialFunctions {
         const rIn = this.cutIn[pair];
         const deltaIn = this.dcutIn[pair];
         const gk = new SplineInterpolator();
-        gk.setup(this.nradbase, (r) => this.radbase(lam, rCut, drCut, this.radbasename, r, rIn, deltaIn),
+        gk.setup(this.nradbase, (r) => this.radbase(lam, rCut, drCut, this.radbasename[pair], r, rIn, deltaIn),
           this.gr, this.dgr, this.deltaSplineBins, rCut);
         const rnl = new SplineInterpolator();
         rnl.setup(this.nradial * (this.lmax + 1), (r) => this.allRadfunc(pair, ei, ej, r),

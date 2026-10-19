@@ -292,9 +292,6 @@ export const loadYace = (text: string, filename: string): CTildeBasis => {
   const b = new CTildeBasis();
   b.elementsName = asSeq(need(root, 'elements', filename), 'elements').map((e) => asStr(e, 'elements'));
   b.nelements = b.elementsName.length;
-  if (b.nelements !== 1) {
-    throw new StyleError(`pair_style pace: only single-element ACE potentials are supported (file ${filename} has ${b.nelements} elements)`);
-  }
   const nel = b.nelements;
   b.E0vals = new Float64Array(nel);
   nums(need(root, 'E0', filename), 'E0').forEach((x, i) => { if (i < nel) b.E0vals[i] = x; });
@@ -332,9 +329,10 @@ export const loadYace = (text: string, filename: string): CTildeBasis => {
   if (jl && paceRad) throw new StyleError("Only ACE.jl.* or PACE's radial basis are possible, but both types are used simultaneously.");
   if (jl) throw new StyleError(`pair_style pace: the ACE.jl radial basis (SHIPs) in ${filename} is not supported yet`);
   b.lmax = 0; b.nradmax = 0; b.nradbase = 0; b.cutoffmax = 0;
-  let radbasename = '';
+  // radbasename_ij of load_yaml: a pair without a bond specification keeps an empty name (and zero cutoffs)
+  const radbasename = new Array<string>(nel * nel).fill('');
   let innerType = '';
-  for (const spec of bonds.values()) {
+  for (const [key, spec] of bonds) {
     if (spec.nradmax > b.nradmax) b.nradmax = spec.nradmax;
     if (spec.lmax > b.lmax) b.lmax = spec.lmax;
     if (spec.nradbasemax > b.nradbase) b.nradbase = spec.nradbasemax;
@@ -342,7 +340,8 @@ export const loadYace = (text: string, filename: string): CTildeBasis => {
     if (spec.radbasename !== 'ChebExpCos' && spec.radbasename !== 'ChebPow' && spec.radbasename !== 'ChebLinear') {
       throw new StyleError(`pair_style pace: radial basis ${spec.radbasename} in ${filename} is not supported`);
     }
-    radbasename = spec.radbasename;
+    const [bi, bj] = key.split(',').map(Number);
+    radbasename[bi * nel + bj] = spec.radbasename;
     innerType = spec.innerCutoffType;
   }
   if (innerType !== 'density' && innerType !== 'distance') {
@@ -354,8 +353,9 @@ export const loadYace = (text: string, filename: string): CTildeBasis => {
   for (let mi = 0; mi < nel; mi++) {
     for (let mj = 0; mj < nel; mj++) {
       const spec = bonds.get(`${mi},${mj}`);
-      if (!spec) throw new StyleError(`${filename}: no bond specification for [${mi}, ${mj}]`);
       const pair = mi * nel + mj;
+      // a pair without a specification: the default ACEBondSpecification of the C++ map (zero cutoffs, no coefficients)
+      if (!spec) { rf.cut[pair] = 0; rf.dcut[pair] = 0; rf.prehc[pair] = 0; rf.lambdahc[pair] = 0; rf.lambda[pair] = 0; continue; }
       rf.cut[pair] = spec.rcut;
       rf.dcut[pair] = spec.dcut;
       rf.prehc[pair] = spec.prehc;

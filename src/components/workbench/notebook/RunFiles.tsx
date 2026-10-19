@@ -4,7 +4,7 @@ import type { getThemeTokens } from '../../../theme';
 import { downloadFile, downloadTextFile } from '../../../lammps/exporter';
 import { buildZip } from '../../../lammps/zip';
 import {
-  canOpenInViewer, classifyFile, countFrames, fileBytes, fileBytesSize, runLogText, thermoCsv,
+  canOpenInViewer, classifyFile, countFrames, fileBytes, fileBytesSize, isGzipText, runLogText, thermoCsv,
   type FileKind, type RunOutput,
 } from './runFiles';
 
@@ -128,7 +128,7 @@ const RunFiles: React.FC<RunFilesProps> = ({ ct, files, cells, runs, onOpenInVie
           <ul className="mt-1 space-y-1" aria-label="Files written">
             {entries.map((e) => {
               const isOpen = preview?.name === e.name;
-              const textual = e.kind !== 'image';
+              const textual = e.kind !== 'image' && !isGzipText(e.text);
               return (
                 <li key={e.name} className={`rounded border p-1.5 ${ct.divider}`}>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">

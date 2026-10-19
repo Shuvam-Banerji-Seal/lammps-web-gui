@@ -27,8 +27,22 @@ const DATA_EXT = new Set(['data', 'lmp', 'dat', 'pdb', 'cif']);
 const TABLE_EXT = new Set(['csv', 'tsv', 'avg']);
 
 /** Kind of a file the engine wrote, from its name and content (images are data URLs). */
+/**
+ * A gzip file the engine stored one character per byte (write_data or a dump with a .gz name): the gzip magic 1f 8b,
+ * which no text file starts with.
+ */
+export const isGzipText = (text: string): boolean => text.charCodeAt(0) === 0x1f && text.charCodeAt(1) === 0x8b;
+
 export const classifyFile = (name: string, text: string): FileKind => {
   if (isImageDataUrl(text)) return 'image';
+  if (isGzipText(text)) {
+    // classified by the name without .gz (the viewer decompresses it); its bytes are not text to preview
+    const inner = name.replace(/\.gz$/i, '');
+    const ext = extOf(inner);
+    if (TRAJECTORY_EXT.has(ext)) return 'trajectory';
+    if (DATA_EXT.has(ext) || /(^|\/)data\./i.test(inner)) return 'data';
+    return 'text';
+  }
   const ext = extOf(name);
   if (TRAJECTORY_EXT.has(ext) || /^ITEM: TIMESTEP/m.test(text.slice(0, 200))) return 'trajectory';
   if (/restart/i.test(name) || ext === 'rst') return 'restart';
@@ -43,7 +57,7 @@ export const classifyFile = (name: string, text: string): FileKind => {
 
 /** Frames in a dump (ITEM: TIMESTEP blocks) or an XYZ file (count line, comment line, count atom lines). */
 export const countFrames = (name: string, text: string): number | null => {
-  if (isImageDataUrl(text)) return null;
+  if (isImageDataUrl(text) || isGzipText(text)) return null;
   if (/^ITEM: TIMESTEP/m.test(text)) {
     let n = 0;
     const re = /^ITEM: TIMESTEP[ \t]*\r?$/gm;
@@ -67,6 +81,7 @@ export const countFrames = (name: string, text: string): number | null => {
 
 /** Size in bytes: decoded size for an image data URL, UTF-8 length for text. */
 export const fileBytesSize = (text: string): number => {
+  if (isGzipText(text)) return text.length;
   if (isImageDataUrl(text)) {
     const comma = text.indexOf(',');
     const b64 = text.slice(comma + 1);
@@ -87,7 +102,14 @@ export const fileBytesSize = (text: string): number => {
 /** Bytes to store in a zip: the decoded binary for an image data URL, UTF-8 for text. */
 export const fileBytes = (text: string): Uint8Array<ArrayBuffer> => {
   const bin = dataUrlBytes(text);
-  return bin ? bin.bytes : new TextEncoder().encode(text);
+  if (bin) return bin.bytes;
+  // a gzip file is one character per byte: its bytes, not the UTF-8 encoding of those characters
+  if (isGzipText(text)) {
+    const out = new Uint8Array(new ArrayBuffer(text.length));
+    for (let i = 0; i < text.length; i++) out[i] = text.charCodeAt(i) & 0xff;
+    return out;
+  }
+  return new TextEncoder().encode(text);
 };
 
 /** Whether the viewer can open a file (structures and trajectories). */

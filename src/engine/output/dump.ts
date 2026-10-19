@@ -9,6 +9,16 @@ import { hasChargeStyle, hasDipoleStyle, isMolecularStyle, isSphereStyle, hasRma
 import { ImageDump } from './dump_image';
 import type { ColorMap } from './image_colormap';
 import { gplHook } from '../gplHooks';
+import { gzipText } from '../gzip';
+
+/**
+ * The compression extension of a dump file name (the extensions of native platform::find_compress_type,
+ * src/platform.cpp at b332f28: gz, bz2, zst, xz, lzma, lz4, br, 7z), or '' for a plain file.
+ */
+export const compressExtension = (file: string): string => {
+  const m = /\.([^.]+)$/.exec(file);
+  return m && ['gz', 'bz2', 'zst', 'xz', 'lzma', 'lz4', 'br', '7z'].includes(m[1]) ? m[1] : '';
+};
 
 /*
  * Per-atom snapshots — docs.lammps.org/dump.html and dump_modify.html.
@@ -155,6 +165,8 @@ export class Dump {
   maxfiles = 0;
   private written: string[] = [];
   private opened = false;
+  /** The file is written gzipped (a .gz name, or a COMPRESS /gz style). */
+  private gz = false;
   private nextStep = -1;
   /** dump image: the image renderer (dump_image.ts); null for every other style. */
   private imageDump: ImageDump | null = null;
@@ -187,10 +199,24 @@ export class Dump {
     if (!this.file.includes('*') && this.singleKey === null) this.singleKey = this.sys.resolveFile(this.file);
   }
 
-  constructor(private sys: System, readonly id: string, readonly group: string, readonly style: DumpStyle, every: number | string, readonly file: string, cols: string[], private readonly multifileOverride = false) {
-    // dump.html: "if the filename ends with ".gz" ... the dump file (or files, if "*" or "%" is also used) is written in
-    // compressed format". The browser engine writes no compressed dumps yet, so a .gz name is an error, not plain text.
-    if (/\.gz$/.test(file)) throw new StyleError(`dump ${id}: a compressed (.gz) dump file is not supported by the browser engine; use a plain file name`);
+  constructor(private sys: System, readonly id: string, readonly group: string, readonly style: DumpStyle, every: number | string, readonly file: string, cols: string[], private readonly multifileOverride = false,
+    /** A COMPRESS style (atom/gz, custom/gz, ...): its name, for dump_modify compression_level and the messages. */
+    private readonly gzStyle: string | null = null) {
+    // dump.html: "If the filename ends with ".gz", the dump file (or files, if "*" or "%" is also used) is written in
+    // gzipped format." As native LAMMPS does (src/dump.cpp at b332f28, Dump::openfile): a name with a compression
+    // extension is written through the compressor, and dump_modify append is then ignored (the file is rewritten).
+    // The browser engine writes gzip only: each snapshot is one gzip member (stored blocks), and the members of a
+    // file decompress to the whole dump. A COMPRESS /gz style always writes gzip and needs a compressed name.
+    const ext = compressExtension(file);
+    if (gzStyle) {
+      if (!ext) throw new StyleError(`Dump ${gzStyle} only writes compressed files`);
+      this.gz = true;
+    } else if (ext) {
+      if (style === 'image' || style === 'vtk' || ext !== 'gz') {
+        throw new StyleError(`dump ${id}: a compressed (.${ext}) ${style} dump file is not supported by the browser engine; ${style === 'image' || style === 'vtk' ? 'use a plain file name' : 'use .gz or a plain file name'}`);
+      }
+      this.gz = true;
+    }
     this.groupBit = sys.groupBit(group);
     if (typeof every === 'string') this.everyVar = every;
     this.every = typeof every === 'number' ? every : 0;
@@ -314,6 +340,18 @@ export class Dump {
         case 'header': this.header = yesno(v, key); k += 2; break;
         case 'flush': case 'buffer': case 'balance': case 'thermo': yesno(v, key); k += 2; break;
         case 'delay': this.delay = intArg(v, key); k += 2; break;
+        case 'compression_level': {
+          // As native LAMMPS does (src/COMPRESS/dump_custom_gz.cpp and gz_file_writer.cpp at b332f28): a /gz style takes a
+          // level in [Z_DEFAULT_COMPRESSION, Z_BEST_COMPRESSION] = [-1, 9] while its file is not open. The level changes
+          // the bytes, not the decompressed dump; the engine writes stored blocks at every level.
+          if (!this.gzStyle) throw new StyleError(`unsupported dump_modify keyword '${key}'`);
+          if (v === undefined) throw new StyleError('Illegal dump_modify command');
+          const level = intArg(v, key);
+          if (this.opened) throw new StyleError('Illegal dump_modify command: Compression level can not be changed while file is open');
+          if (level < -1 || level > 9) throw new StyleError('Illegal dump_modify command: Compression level must in the range of [-1, 9]');
+          k += 2;
+          break;
+        }
         case 'pad': this.pad = intArg(v, key); k += 2; break;
         case 'every': {
           if (v?.startsWith('v_')) { this.everyVar = v.slice(2); this.every = 0; } else {
@@ -454,7 +492,7 @@ export class Dump {
    * are removed from the file store once a newer one is written (dump_modify.html).
    */
   private writeSnapshot(name: string, text: string, append: boolean): void {
-    this.sys.writeFileAt(name, text, append);
+    this.sys.writeFileAt(name, this.gz ? gzipText(text) : text, append);
     if (this.maxfiles <= 0) return;
     if (!this.written.includes(name)) this.written.push(name);
     while (this.written.length > this.maxfiles) {
@@ -601,7 +639,7 @@ export class Dump {
       }
     }
     const name = multi ? this.sys.resolveFile(fillWildcard(this.file, stepText)) : (this.singleKey ??= this.sys.resolveFile(this.file));
-    const appendNow = multi ? false : this.opened || this.append;
+    const appendNow = multi ? false : this.opened || (this.append && !this.gz);
     this.writeSnapshot(name, lines.join('\n') + '\n', appendNow);
     this.opened = true;
   }
@@ -655,7 +693,7 @@ export class Dump {
     const multi = this.file.includes('*');
     const stepText = this.pad > 0 ? String(step).padStart(this.pad, '0') : String(step);
     const name = multi ? this.sys.resolveFile(fillWildcard(this.file, stepText)) : (this.singleKey ??= this.sys.resolveFile(this.file));
-    const appendNow = multi ? false : this.opened || this.append;
+    const appendNow = multi ? false : this.opened || (this.append && !this.gz);
     this.writeSnapshot(name, lines.join('\n') + '\n', appendNow);
     this.opened = true;
   }

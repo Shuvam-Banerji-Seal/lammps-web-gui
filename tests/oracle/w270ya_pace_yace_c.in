@@ -1,0 +1,28 @@
+# oracle: pair_style pace with the .yace potential of the LAMMPS example PACKAGES/dispersion (c_ace.yace: ChebExpCos, 2 densities, the distance inner cutoff rcut_in 0.7 dcut_in 0.1 that switches the radial basis and the core repulsion) on a 2x2x2 diamond cell with displaced atoms: run 0 with one pair at 0.65 Angstrom (inside the switching range; forces dumped), then that atom moved away and 20 NVE steps
+# Native reference: LAMMPS b332f28 built with PKG_ML-PACE (the installed binary has no ML-PACE; see w257pace_recursive)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.3e-14, atoms 3.1e-14 (the run 0 forces at 0.65 Angstrom included).
+# oracle-examples: PACKAGES/dispersion/potential_files/c_ace.yace
+# oracle-files: w270ya_pace_yace_c.dump
+# oracle-compare: thermo=all atoms=all filerel=1e-10
+units       metal
+atom_style  atomic
+lattice     diamond 3.567
+region      box block 0 2 0 2 0 2
+create_box  1 box
+create_atoms 1 box
+mass        1 12.011
+displace_atoms all random 0.05 0.05 0.05 7741 units box
+set         atom 2 x 0.65 y 0.0 z 0.0
+set         atom 1 x 0.0 y 0.0 z 0.0
+pair_style  pace
+pair_coeff  * * c_ace.yace C
+thermo_style custom step temp pe ke etotal press pxy
+thermo_modify format float %.15g
+run         0
+write_dump  all custom w270ya_pace_yace_c.dump id fx fy fz modify format float %.15g sort id
+set         atom 2 x 0.9 y 0.9 z 0.0
+velocity    all create 300 4928459 rot yes dist gaussian
+fix         1 all nve
+timestep    0.0002
+thermo      5
+run         20

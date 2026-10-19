@@ -18,6 +18,7 @@ import { Pair, StyleError, type PairCompute, type StyleContext } from '../../eng
 import { NEIGHMASK } from '../../engine/neighbor';
 import { NativeFullOrder } from '../neighbor/nativeOrder';
 import { CTildeBasis } from './cbasis';
+import { loadYace } from './yace';
 import { ACEPaceEvaluator } from './evaluator';
 
 /** The elements of ML-PACE's elements_pace list (pair_pace.cpp), index = atomic number. */
@@ -97,12 +98,14 @@ export class PairPace extends Pair {
     if (args.length !== 3 + nt) throw new StyleError('Number of element to type mappings does not match number of atom types');
     if (args[0] !== '*' || args[1] !== '*') throw new StyleError('Incorrect args for pair coefficients');
     const fileName = args[2];
-    if (/\.yaml$/.test(fileName) || /\.yace$/.test(fileName)) {
-      throw new StyleError(`pair_style pace: the YAML .yace potential format (${fileName}) is not supported yet; use a .ace file`);
+    // pair_pace.cpp coeff: a .yaml file is a B-basis (ACEBBasisSet) converted to the C-tilde basis; ACECTildeBasisSet's
+    // constructor reads .ace with load and .yace with load_yaml, and refuses other names
+    if (/\.yaml$/.test(fileName)) {
+      throw new StyleError(`pair_style pace: the B-basis .yaml potential format (${fileName}) is not supported yet; use its .yace or .ace export`);
     }
-    if (!fileName.endsWith('.ace')) throw new StyleError(`Unrecognized file type of '${fileName}'. Accept only .ace or .yace`);
+    if (!fileName.endsWith('.ace') && !fileName.endsWith('.yace')) throw new StyleError(`Unrecognized file type of '${fileName}'. Accept only .ace or .yace`);
     const text = ctx.readFile(fileName);
-    const basis = CTildeBasis.fromText(text, fileName);
+    const basis = fileName.endsWith('.yace') ? loadYace(text, fileName) : CTildeBasis.fromText(text, fileName);
     this.basis = basis;
     // element map: LAMMPS type i -> species index (NULL skips the type)
     const map = new Int32Array(nt + 1).fill(-1);

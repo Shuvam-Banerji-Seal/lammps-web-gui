@@ -117,8 +117,11 @@ export class ACERadialFunctions {
   deltaSplineBins: number;
   /** radbasename of each pair (one name in the .ace file, applied to every pair) */
   radbasename: string;
-  /** "density" (the default of the .ace loader; no inner cutoff) */
-  readonly innerCutoffType = 'density';
+  /**
+   * "density" (the .ace loader, and a .yace bond without inner_cutoff_type) or "distance" (the .yace default written by
+   * pacemaker: g_k and the core repulsion are switched at cut_in, see radbase and radcore)
+   */
+  innerCutoffType: 'density' | 'distance' = 'density';
   elements: string[] = [];
 
   gr: Float64Array;
@@ -195,7 +198,10 @@ export class ACERadialFunctions {
     for (let m = 1; m <= n; m++) dcheb[m] = m * cheb2[m - 1];
   }
 
-  /** radbase (ace_radial.cpp), inner cutoff of the "density" type (no multiplication). */
+  /**
+   * radbase (ace_radial.cpp): the basis g_k; with the "distance" inner cutoff they are multiplied by 1 - fc of the
+   * ascending polynomial cutoff between cut_in - dcut_in and cut_in (cutoff_func_poly).
+   */
   private radbase(lam: number, cut: number, dcut: number, name: string, r: number, cutIn: number, dcutIn: number): void {
     const gr = this.gr, dgr = this.dgr;
     if (r <= cutIn - dcutIn || r >= cut) {
@@ -207,6 +213,17 @@ export class ACERadialFunctions {
     else if (name === 'ChebExpCos') this.chebExpCos(lam, cut, dcut, r);
     else if (name === 'ChebLinear') this.chebLinear(lam, cut, dcut, r);
     else throw new Error('Unknown radial basis function name: ' + name);
+    if (this.innerCutoffType === 'distance') {
+      let [fc, dfc] = cutoffFuncPoly(r, cutIn, dcutIn);
+      fc = 1 - fc;
+      dfc = -dfc;
+      for (let i = 0; i < gr.length; i++) {
+        const newGr = gr[i] * fc;
+        const newDgr = dgr[i] * fc + gr[i] * dfc;
+        gr[i] = newGr;
+        dgr[i] = newDgr;
+      }
+    }
   }
 
   /** ChebExpCos: the exponential-scaled Chebyshev basis with a cosine envelope (ace_radial.cpp chebExpCos). */
@@ -294,8 +311,11 @@ export class ACERadialFunctions {
     void mui; void muj;
   }
 
-  /** radcore (density type): the hard-core repulsion pre exp(-lambda r^2) / r with a cosine envelope. */
-  private radcore(r: number, pre: number, lambda: number, cutoff: number, out: Float64Array): void {
+  /**
+   * radcore: the hard-core repulsion pre exp(-lambda r^2) / r with a cosine envelope; with the "distance" inner cutoff
+   * it is multiplied by the polynomial cutoff that makes it non-zero only below cut_in.
+   */
+  private radcore(r: number, pre: number, lambda: number, cutoff: number, out: Float64Array, rIn = 0, deltaIn = 0): void {
     pre = Math.abs(pre);
     lambda = Math.abs(lambda);
     const r2 = r * r;
@@ -314,6 +334,12 @@ export class ACERadialFunctions {
     } else {
       out[0] = 0.0;
       out[1] = 0.0;
+    }
+    if (this.innerCutoffType === 'distance') {
+      const [fc, dfc] = cutoffFuncPoly(r, rIn, deltaIn);
+      const cr = out[0], dcr = out[1];
+      out[0] = cr * fc;
+      out[1] = dcr * fc + cr * dfc;
     }
   }
 
@@ -343,7 +369,7 @@ export class ACERadialFunctions {
         const crc = new Float64Array(1), dcrc = new Float64Array(1);
         const tmp = new Float64Array(2);
         hc.setup(1, (r) => {
-          this.radcore(r, pre, lamhc, rCut, tmp);
+          this.radcore(r, pre, lamhc, rCut, tmp, rIn, deltaIn);
           crc[0] = tmp[0];
           dcrc[0] = tmp[1];
         }, crc, dcrc, this.deltaSplineBins, rCut);

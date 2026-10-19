@@ -1,0 +1,22 @@
+# oracle: fix manifoldforce (the force component normal to a sphere of radius 10 removed) with min_style quickmin, then hftn, on the 500 LJ particles of examples/PACKAGES/manifold/energy/sphere.data
+# Native reference: LAMMPS b332f28 built with PKG_MANIFOLD (/store/shuvam/software/lammps-build-manifold/lmp; the installed binary has no MANIFOLD)
+# The hftn stage is 5 iterations: later hftn rows differ from native by rounding amplified by its finite-difference
+# Hessian products, as in w225cm_hftn_lj (40 iterations gave 4.5e-8 in fnorm at iteration 20); quickmin agrees to 1e-13.
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.2e-15, atoms 1.4e-13.
+# oracle-examples: PACKAGES/manifold/energy/sphere.data
+# oracle-compare: thermo=all atoms=all
+units           lj
+boundary        f f f
+read_data       sphere.data
+pair_style      lj/smooth/linear 2.5
+pair_coeff      * * 1.0 1.0
+pair_modify     shift yes
+fix             mf all manifoldforce sphere 10.0
+timestep        0.005
+min_style       quickmin
+thermo_style    custom step pe fnorm fmax
+thermo_modify   format float %.15g
+thermo          1
+minimize        0 1e-10 30 1000
+min_style       hftn
+minimize        0 1e-10 5 1000

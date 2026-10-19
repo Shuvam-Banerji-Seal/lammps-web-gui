@@ -1,0 +1,109 @@
+# oracle: fix nve/manifold/rattle on nine manifolds at once, one group each (plane, plane/wiggle, ellipsoid, cylinder/dent, dumbbell, spine, spine/two, supersphere, gaussian_bump with points in its Gaussian, taper and flat parts), 75 free particles started on or near the surfaces, 200 steps
+# Native reference: LAMMPS b332f28 built with PKG_MANIFOLD (/store/shuvam/software/lammps-build-manifold/lmp; the installed binary has no MANIFOLD)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.1e-15, atoms 0.
+# oracle-compare: thermo=all atoms=all
+units           lj
+boundary        f f f
+region          box block -20 20 -20 20 -20 20
+create_box      9 box
+create_atoms    1 single -5.285017055005 -10.474524782265 0.000000000000 units box
+create_atoms    1 single 4.528034191196 -12.826911399974 0.000000000000 units box
+create_atoms    1 single 1.076460129201 -4.029332492622 0.000000000000 units box
+create_atoms    1 single -13.260032256759 0.223071995683 0.000000000000 units box
+create_atoms    1 single -13.875130246740 -1.990629490128 0.000000000000 units box
+create_atoms    1 single -12.904337292761 -12.278609599684 0.000000000000 units box
+create_atoms    1 single -2.264424325725 9.805563740161 0.000000000000 units box
+create_atoms    1 single -11.285941165511 -8.302831061790 0.000000000000 units box
+create_atoms    2 single 3.822996672168 13.431268273710 -0.314942065221 units box
+create_atoms    2 single 2.313088458525 -3.099585760477 0.368460531729 units box
+create_atoms    2 single 14.287653167788 -13.602519581467 0.494349150129 units box
+create_atoms    2 single 10.754053771460 -6.311721410050 -0.485487710734 units box
+create_atoms    2 single -10.672347499277 -11.466232857649 0.474107719179 units box
+create_atoms    2 single -5.745545276942 9.483790773601 0.256055197625 units box
+create_atoms    2 single -9.578208602282 2.448004909874 0.076414682768 units box
+create_atoms    2 single 4.167404067786 -3.828073718228 -0.427567556132 units box
+create_atoms    3 single 3.665578146619 1.907669371088 -0.726296369600 units box
+create_atoms    3 single 0.476790613007 2.098506060821 5.398809241937 units box
+create_atoms    3 single -3.222017348394 1.970166882086 -2.655638643086 units box
+create_atoms    3 single -3.059529118765 -2.280012193399 2.729946422325 units box
+create_atoms    3 single -1.221797010801 4.723901235335 0.712234087903 units box
+create_atoms    3 single -0.923536463396 -3.478015368232 -4.081891718721 units box
+create_atoms    3 single -2.841609631918 -1.793669608747 3.633040340601 units box
+create_atoms    3 single 2.825066825383 -3.525237286939 -0.383972921159 units box
+create_atoms    4 single -1.176678691465 4.842502750538 3.671124631027 units box
+create_atoms    4 single 3.686169706886 3.378187811836 7.682797559881 units box
+create_atoms    4 single 0.190270613247 -4.237849549508 -1.310034851436 units box
+create_atoms    4 single -4.987982341103 0.346456584362 -5.568247445432 units box
+create_atoms    4 single -2.457733437836 -4.354256118850 -7.372683887241 units box
+create_atoms    4 single -4.482844303939 -2.214521832504 4.233133859405 units box
+create_atoms    4 single -1.949566487353 4.604257867604 6.007644989294 units box
+create_atoms    4 single -4.052319573691 -2.730562555655 3.124725860379 units box
+create_atoms    5 single -3.830427837315 1.081453033846 0.798952042825 units box
+create_atoms    5 single 3.405438378035 -1.233746888505 3.399677805125 units box
+create_atoms    5 single -2.053399762534 -3.430273629901 -0.259016625804 units box
+create_atoms    5 single -1.004721094852 -3.193783105466 -4.393305724028 units box
+create_atoms    5 single 3.944453207233 -0.171215785483 1.471288545277 units box
+create_atoms    5 single -0.789722355213 3.575674808078 3.219247866097 units box
+create_atoms    5 single -1.937856818579 -3.455336405400 -1.142085575533 units box
+create_atoms    5 single -3.124572859253 0.766872964264 -4.774370719444 units box
+create_atoms    6 single 2.025491830332 1.833674074584 -1.239637158201 units box
+create_atoms    6 single 0.250988213142 -2.181272013264 -2.057841855015 units box
+create_atoms    6 single 0.038694787324 2.581792979919 -1.529948334860 units box
+create_atoms    6 single 2.067714806704 -2.162839617561 0.432122773499 units box
+create_atoms    6 single -2.214601615494 0.732089404224 -1.895640240999 units box
+create_atoms    6 single 2.156696986062 -1.940660091185 1.620799318580 units box
+create_atoms    6 single 1.772749262422 -2.036842951983 3.644598783768 units box
+create_atoms    6 single -2.560591860779 1.507897800101 -0.411842016146 units box
+create_atoms    7 single 2.239131104781 -1.994332923935 0.190783739987 units box
+create_atoms    7 single 1.101158989469 1.534205573630 4.682984029730 units box
+create_atoms    7 single 0.314008223311 2.757928645165 -1.178367036322 units box
+create_atoms    7 single -2.894710440614 0.274314632656 -0.749979372394 units box
+create_atoms    7 single -0.246616131876 3.072675092132 1.918426277992 units box
+create_atoms    7 single -1.636158779573 0.913641126421 -2.469297974612 units box
+create_atoms    7 single -2.740463157012 -1.213424333767 0.269401796710 units box
+create_atoms    7 single -0.695022070049 -1.771458980644 4.648234441438 units box
+create_atoms    8 single -4.999716442153 -0.488192844591 -0.539895247080 units box
+create_atoms    8 single -0.995711147713 4.693782200642 -3.431319789563 units box
+create_atoms    8 single 4.116416933961 -4.141676491458 -2.570059427230 units box
+create_atoms    8 single 2.556725799218 4.569523973222 3.477687203690 units box
+create_atoms    8 single 4.919620969279 2.028647230615 2.172939866099 units box
+create_atoms    8 single 4.924336478164 -1.508231052894 2.374821924017 units box
+create_atoms    8 single 3.499724583633 0.005129736934 4.668419899578 units box
+create_atoms    8 single 1.404777725751 4.991342090607 0.806661637513 units box
+create_atoms    9 single -0.376983352108 -0.328456317085 1.891918937814 units box
+create_atoms    9 single 0.714154741398 0.964356264738 1.452298074147 units box
+create_atoms    9 single -0.028370854073 1.999798763536 0.822224581014 units box
+create_atoms    9 single -1.608424483610 2.291936011438 0.350261576690 units box
+create_atoms    9 single -3.944159795242 4.521460329318 0.000000000000 units box
+create_atoms    9 single 5.374711634163 5.230915297497 0.000000000000 units box
+create_atoms    9 single 5.241315250091 -7.316325201162 0.000000000000 units box
+create_atoms    9 single 10.989672149232 -0.476556452480 0.000000000000 units box
+create_atoms    9 single -3.248938731129 1.002196149149 0.216536453179 units box
+create_atoms    9 single -3.721208018720 -1.467177862910 0.135335283237 units box
+create_atoms    9 single 4.088221291352 -2.108659923490 0.054134113295 units box
+mass            * 1.0
+pair_style      none
+velocity        all create 0.5 4928459 dist gaussian
+group           g1 type 1
+group           g2 type 2
+group           g3 type 3
+group           g4 type 4
+group           g5 type 5
+group           g6 type 6
+group           g7 type 7
+group           g8 type 8
+group           g9 type 9
+fix             f1 g1 nve/manifold/rattle 1e-10 30 plane 0 0 1 0 0 0
+fix             f2 g2 nve/manifold/rattle 1e-10 30 plane/wiggle 0.5 1.0
+fix             f3 g3 nve/manifold/rattle 1e-10 30 ellipsoid 4 5 6
+fix             f4 g4 nve/manifold/rattle 1e-10 30 cylinder/dent 5 8 1
+fix             f5 g5 nve/manifold/rattle 1e-10 30 dumbbell 4 0.5 0.3 2
+fix             f6 g6 nve/manifold/rattle 1e-10 30 spine 3 0.8 0.15 0.1 2
+fix             f7 g7 nve/manifold/rattle 1e-10 30 spine/two 3 0.8 0.15 0.1 2
+fix             f8 g8 nve/manifold/rattle 1e-10 30 supersphere 5 4
+fix             f9 g9 nve/manifold/rattle 1e-10 30 gaussian_bump 2 1.5 3 5
+timestep        0.002
+thermo_style    custom step temp ke etotal
+thermo_modify   format float %.15g
+thermo          20
+run             200

@@ -225,4 +225,5 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_apip', names: { PAIRS: ['eam/apip', 'eam/fs/apip', 'pace/apip', 'pace/precise/apip', 'pace/fast/apip', 'lambda/input/apip', 'lambda/input/csp/apip', 'lambda/zone/apip'], FIXES: ['atom_weight/apip', 'lambda/apip', 'lambda_thermostat/apip', 'lambda/la/csp/apip'] }, load: () => import('../engine-gpl/registry/apip') as Promise<StyleModule> },
   { id: 'gpl_bop', names: { PAIRS: ['bop'] }, load: () => import('../engine-gpl/registry/bop') as Promise<StyleModule> },
   { id: 'gpl_lcbop', names: { PAIRS: ['lcbop'] }, load: () => import('../engine-gpl/registry/lcbop') as Promise<StyleModule> },
+  { id: 'gpl_manifold', names: { FIXES: ['nve/manifold/rattle', 'nvt/manifold/rattle', 'manifoldforce'] }, load: () => import('../engine-gpl/registry/manifold') as Promise<StyleModule> },
 ];

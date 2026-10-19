@@ -1,0 +1,18 @@
+# oracle: fix nve/manifold/rattle on a torus R = 10, r = 4 (examples/PACKAGES/manifold/energy: torus.setup and energy.in, 500 LJ particles, pair lj/smooth/linear), 400 steps at dt 0.0005; temp counts one removed dof per constrained atom
+# Native reference: LAMMPS b332f28 built with PKG_MANIFOLD (/store/shuvam/software/lammps-build-manifold/lmp; the installed binary has no MANIFOLD)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.4e-15, atoms 2.6e-13.
+# oracle-examples: PACKAGES/manifold/energy/torus.data
+# oracle-compare: thermo=all atoms=all
+units           lj
+dimension       3
+boundary        f f f
+read_data       torus.data
+fix             step all nve/manifold/rattle 1e-6 10 torus 10.0 4.0
+pair_style      lj/smooth/linear 2.5
+pair_coeff      * * 1.0 1.0
+pair_modify     shift yes
+timestep        0.0005
+thermo_style    custom step temp pe ke etotal
+thermo_modify   format float %.15g
+thermo          40
+run             400

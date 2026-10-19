@@ -1,0 +1,21 @@
+# oracle: fix nve/manifold/rattle on a sphere of radius 8 with fix langevin (the gjf formulation of the example has been removed from LAMMPS; examples/PACKAGES/manifold/diffusion/msd.sphere.in: 2000 free particles, pair_style none), 300 steps, with compute msd
+# Native reference: LAMMPS b332f28 built with PKG_MANIFOLD (/store/shuvam/software/lammps-build-manifold/lmp; the installed binary has no MANIFOLD)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.4e-15, atoms 0.
+# oracle-examples: PACKAGES/manifold/diffusion/msd.sphere.data
+# oracle-compare: thermo=all atoms=all
+dimension       3
+units           lj
+boundary        f f f
+read_data       msd.sphere.data
+mass            1 1.0
+pair_style      none
+atom_modify     sort 0 1.0
+variable        R equal 8
+fix             step all nve/manifold/rattle 1e-4 4 sphere $R
+fix             temp all langevin 1.0 1.0 1.0 12321
+velocity        all create 1.0 1283
+compute         dx2 all msd
+thermo_style    custom time step pe ke etotal temp c_dx2[4]
+thermo_modify   format float %.15g
+thermo          30
+run             300

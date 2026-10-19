@@ -1,0 +1,19 @@
+# oracle: fix nvt/manifold/rattle on a sphere whose radius is an equal-style variable ramped from 10 to 9.9 (v_R, read before every step), Nose-Hoover chain of 4 (tchain), temp 1.0 to 1.2, 500 LJ particles of examples/PACKAGES/manifold/energy/sphere.data; the timestep is set before the fix (the fix keeps its constructor timestep, as native)
+# Native reference: LAMMPS b332f28 built with PKG_MANIFOLD (/store/shuvam/software/lammps-build-manifold/lmp; the installed binary has no MANIFOLD)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.8e-14, atoms 3.8e-13.
+# oracle-examples: PACKAGES/manifold/energy/sphere.data
+# oracle-compare: thermo=all atoms=all
+units           lj
+boundary        f f f
+read_data       sphere.data
+pair_style      lj/smooth/linear 2.5
+pair_coeff      * * 1.0 1.0
+pair_modify     shift yes
+timestep        0.001
+variable        R equal ramp(10.0,9.9)
+velocity        all create 0.8 87287 dist gaussian
+fix             step all nvt/manifold/rattle 1e-8 20 sphere v_R temp 1.0 1.2 0.1 tchain 4
+thermo_style    custom step temp pe ke etotal v_R
+thermo_modify   format float %.15g
+thermo          25
+run             300

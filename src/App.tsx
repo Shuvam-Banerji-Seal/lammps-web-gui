@@ -2,7 +2,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 
 import ViewerModule from './components/workbench/ViewerModule';
 import ScriptBuilder from './components/workbench/ScriptBuilder';
 import CompilerHelper from './components/workbench/CompilerHelper';
-import { FlaskConical, FileCode2, Hammer, Atom as AtomIcon, NotebookPen, Info, X, ExternalLink } from 'lucide-react';
+import { FlaskConical, FileCode2, Hammer, Atom as AtomIcon, NotebookPen, Info, X, ExternalLink, HardDrive } from 'lucide-react';
 import { getThemeTokens, initialTheme, isDarkTheme, nextTheme, THEMES, THEME_STORAGE_KEY, themeColor, Theme } from './theme';
 import { browserStore } from './services/persistence';
 import type { BuilderIncoming } from './lammps/notebookBridge';
@@ -10,6 +10,8 @@ import type { ViewerIncomingFile } from './components/workbench/ViewerModule';
 
 // The notebook carries the MD engine; load it only when it is opened.
 const Notebook = lazy(() => import('./components/workbench/Notebook'));
+// The browser-storage drawer, loaded when it is first opened.
+const StoragePanel = lazy(() => import('./components/workbench/StoragePanel'));
 
 type Module = 'builder' | 'compiler' | 'viewer' | 'notebook';
 
@@ -51,6 +53,10 @@ const App: React.FC = () => {
   const [viewerInbox, setViewerInbox] = useState<ViewerIncomingFile | null>(null);
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [aboutOpen, setAboutOpen] = useState(false);
+  /** The browser-storage drawer; `storageUsed` keeps it mounted (lazy chunk loaded) after the first open. */
+  const [storageOpen, setStorageOpen] = useState(false);
+  const [storageUsed, setStorageUsed] = useState(false);
+  const storageButtonRef = useRef<HTMLButtonElement>(null);
   const aboutDialogRef = useRef<HTMLDivElement>(null);
   const aboutCloseRef = useRef<HTMLButtonElement>(null);
   /** Element that had focus when the dialog opened — focus returns there. */
@@ -113,7 +119,7 @@ const App: React.FC = () => {
   return (
     <div className={`flex h-dvh w-full flex-col overflow-hidden font-sans ${ct.bg} ${ct.text}`}>
       {/* Top-level module switcher */}
-      <header className={`flex h-12 shrink-0 items-center justify-between border-b px-4 ${ct.panel}`}>
+      <header className={`flex h-12 shrink-0 items-center justify-between border-b px-2 sm:px-4 ${ct.panel}`}>
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
             <FlaskConical size={18} aria-hidden="true" className={`shrink-0 ${ct.accentText}`} />
@@ -134,7 +140,7 @@ const App: React.FC = () => {
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <nav className="flex items-center gap-1" aria-label="Modules">
             {MODULES.map(m => (
               <button
@@ -143,7 +149,7 @@ const App: React.FC = () => {
                 title={m.hint}
                 aria-label={m.label}
                 aria-current={module === m.id ? 'page' : undefined}
-                className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors sm:gap-1.5 sm:px-3 ${
+                className={`flex items-center gap-1 rounded-lg px-1.5 py-1.5 text-xs font-medium transition-colors sm:gap-1.5 sm:px-3 ${
                   module === m.id
                     ? ct.active
                     : `${ct.muted} ${ct.hoverSurface} border border-transparent`
@@ -154,12 +160,24 @@ const App: React.FC = () => {
               </button>
             ))}
           </nav>
+          <button
+            ref={storageButtonRef}
+            type="button"
+            onClick={() => { setStorageUsed(true); setStorageOpen(true); }}
+            title="Browser storage: files kept in this browser for the notebook, scripts and viewer"
+            aria-label="Browser storage"
+            aria-haspopup="dialog"
+            aria-expanded={storageOpen}
+            className={`flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded-lg px-1.5 py-1.5 text-xs transition-colors sm:px-2 ${ct.muted} ${ct.hoverSurface}`}
+          >
+            <HardDrive size={15} aria-hidden="true" />
+          </button>
           <select
             aria-label="Color theme"
             title="Color theme"
             value={theme}
             onChange={e => chooseTheme(e.target.value as Theme)}
-            className={`max-w-[8.5rem] cursor-pointer rounded-lg px-2 py-1.5 text-xs transition-colors sm:max-w-none ${ct.button} ${ct.text}`}
+            className={`max-w-[4.75rem] cursor-pointer rounded-lg px-1 py-1.5 text-xs transition-colors sm:max-w-none sm:px-2 ${ct.button} ${ct.text}`}
           >
             {THEMES.map(t => (
               <option key={t.id} value={t.id}>{t.label}</option>
@@ -185,6 +203,16 @@ const App: React.FC = () => {
           </Suspense>
         )}
       </main>
+
+      {storageUsed && (
+        <Suspense fallback={null}>
+          <StoragePanel theme={theme} open={storageOpen}
+            onClose={() => { setStorageOpen(false); storageButtonRef.current?.focus(); }}
+            onOpenInNotebook={(script) => { setNotebookInbox(script); switchModule('notebook'); }}
+            onOpenInBuilder={(file) => { setBuilderInbox(file); switchModule('builder'); }}
+            onOpenInViewer={(file) => { setViewerInbox(file); switchModule('viewer'); }} />
+        </Suspense>
+      )}
 
       {aboutOpen && (
         <div

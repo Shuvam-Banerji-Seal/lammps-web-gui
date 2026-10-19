@@ -50,6 +50,13 @@ export const kindOf = (name: string): StoredKind => {
   return 'text';
 };
 
+/** Window event dispatched after every successful put, remove or clear (both backends), so open views re-list. */
+export const FILESTORE_EVENT = 'lammps-filestore-change';
+
+const notifyChange = (): void => {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(FILESTORE_EVENT));
+};
+
 const DB_NAME = 'lammps-notebook-files';
 const STORE = 'files';
 
@@ -87,6 +94,7 @@ export const createMemoryFileStore = (limitBytes?: number): FileStore => {
         throw new FileStoreError('quota', `${rec.name} does not fit: the store is limited to ${limitBytes} bytes.`);
       }
       files.set(rec.name, rec);
+      notifyChange();
     },
     async get(name) {
       return files.get(name);
@@ -96,9 +104,11 @@ export const createMemoryFileStore = (limitBytes?: number): FileStore => {
     },
     async remove(name) {
       files.delete(name);
+      notifyChange();
     },
     async clear() {
       files.clear();
+      notifyChange();
     },
   };
 };
@@ -164,6 +174,7 @@ export const createIndexedDbFileStore = (factory: IDBFactory | null | undefined)
         return true;
       });
       if (done === undefined) await memory.put(rec);
+      notifyChange();
     },
     async get(name) {
       const found = await withStore('readonly', (s) => request(s.get(name)) as Promise<StoredFile | undefined>);
@@ -177,10 +188,12 @@ export const createIndexedDbFileStore = (factory: IDBFactory | null | undefined)
     async remove(name) {
       const done = await withStore('readwrite', (s) => request(s.delete(name)).then(() => true));
       if (done === undefined) await memory.remove(name);
+      notifyChange();
     },
     async clear() {
       const done = await withStore('readwrite', (s) => request(s.clear()).then(() => true));
       if (done === undefined) await memory.clear();
+      notifyChange();
     },
   };
   return store;

@@ -7,8 +7,9 @@
  * Budgets (gzipped):
  *   initial JS <= 420 KB  (what index.html loads: entry + modulepreloads;
  *                          three.js dominates)
- *   lazy JS    <= 120 KB  (code-split modules and small workers, e.g. the
- *                          MD notebook UI, fetched on use)
+ *   lazy JS    <= 125 KB  (code-split modules and small workers, e.g. the
+ *                          MD notebook UI and the browser-storage panel,
+ *                          fetched on use)
  *   engine     <= 400 KB  (the notebook's MD engine: its Web Worker with the
  *                          engine-* chunks it imports statically, and the
  *                          same code split out as the main-thread fallback,
@@ -29,7 +30,7 @@ const DIST = new URL('../dist', import.meta.url).pathname;
 const ASSETS = join(DIST, 'assets');
 
 const INITIAL_BUDGET = 420 * 1024;
-const LAZY_BUDGET = 120 * 1024;
+const LAZY_BUDGET = 125 * 1024;
 const CHUNK_BUDGET = 300 * 1024;
 const ENGINE_BUDGET = 400 * 1024;
 const ENGINE_LAZY_CHUNK_BUDGET = 60 * 1024;

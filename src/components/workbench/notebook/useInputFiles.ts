@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EngineClient } from '../../../engine/client';
-import { getFileStore, readInputText, FileStoreError, type FileStore, type StoredFile } from '../../../services/fileStore';
+import { getFileStore, readInputText, FileStoreError, FILESTORE_EVENT, type FileStore, type StoredFile } from '../../../services/fileStore';
 import { loadPotentialText, resolveMissing, type PotentialEntry } from './potentialLibrary';
 
 /** A file the user may convert with the structure import dialog. */
@@ -113,6 +113,25 @@ export const useInputFiles = (getClient: () => EngineClient, store: FileStore = 
       alive = false;
     };
   }, [reload, sendAll]);
+
+  // Another view (the browser-storage panel) changed the store: follow it, and keep the engine's files in step.
+  useEffect(() => {
+    const onChange = () => {
+      void (async () => {
+        try {
+          const before = texts.current;
+          await reload();
+          const client = getClient();
+          for (const name of before.keys()) if (!texts.current.has(name)) client.removeFile(name);
+          for (const [name, text] of texts.current) if (before.get(name) !== text) client.addFile(name, text);
+        } catch (e) {
+          setError(describeError(e));
+        }
+      })();
+    };
+    window.addEventListener(FILESTORE_EVENT, onChange);
+    return () => window.removeEventListener(FILESTORE_EVENT, onChange);
+  }, [reload, getClient]);
 
   const storeFile = useCallback(async (name: string, text: string, size: number, fromLibrary = false) => {
     try {

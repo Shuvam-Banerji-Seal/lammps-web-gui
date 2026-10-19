@@ -95,31 +95,24 @@ export const gfDenomCoefficients = (order: number): number[] => {
 export const computeQopt = (nx: number, ny: number, nz: number, g: number, lx: number, ly: number, lzs: number, order: number): number => {
   const unitkx = MY_2PI / lx, unitky = MY_2PI / ly, unitkz = MY_2PI / lzs;
   const twoorder = 2 * order;
+  // the factors of one (mesh index, image) pair depend on one axis only: per-axis tables (qoptAxis), same expressions
+  const X = qoptAxis(nx, unitkx, lx, g, twoorder), Y = qoptAxis(ny, unitky, ly, g, twoorder), Z = qoptAxis(nz, unitkz, lzs, g, twoorder);
   let qopt = 0;
   for (let m = 0; m < nz; m++) {
-    const mper = m - nz * Math.trunc((2 * m) / nz);
+    const mper = Z.per[m];
     for (let l = 0; l < ny; l++) {
-      const lper = l - ny * Math.trunc((2 * l) / ny);
+      const lper = Y.per[l];
       for (let k = 0; k < nx; k++) {
-        const kper = k - nx * Math.trunc((2 * k) / nx);
+        const kper = X.per[k];
         const sqk = (unitkx * kper) * (unitkx * kper) + (unitky * lper) * (unitky * lper) + (unitkz * mper) * (unitkz * mper);
         if (sqk === 0) continue;
         let sum1 = 0, sum2 = 0, sum3 = 0, sum4 = 0;
-        for (let ix = -2; ix <= 2; ix++) {
-          let qx = unitkx * (kper + nx * ix);
-          const sx = libmExp(-0.25 * ((qx / g) * (qx / g)));
-          const wx = powsinxx((0.5 * qx * lx) / nx, twoorder);
-          qx *= qx;
-          for (let iy = -2; iy <= 2; iy++) {
-            let qy = unitky * (lper + ny * iy);
-            const sy = libmExp(-0.25 * ((qy / g) * (qy / g)));
-            const wy = powsinxx((0.5 * qy * ly) / ny, twoorder);
-            qy *= qy;
-            for (let iz = -2; iz <= 2; iz++) {
-              let qz = unitkz * (mper + nz * iz);
-              const sz = libmExp(-0.25 * ((qz / g) * (qz / g)));
-              const wz = powsinxx((0.5 * qz * lzs) / nz, twoorder);
-              qz *= qz;
+        for (let ix = 0; ix < 5; ix++) {
+          const qx = X.q2[5 * k + ix], sx = X.s[5 * k + ix], wx = X.w[5 * k + ix];
+          for (let iy = 0; iy < 5; iy++) {
+            const qy = Y.q2[5 * l + iy], sy = Y.s[5 * l + iy], wy = Y.w[5 * l + iy];
+            for (let iz = 0; iz < 5; iz++) {
+              const qz = Z.q2[5 * m + iz], sz = Z.s[5 * m + iz], wz = Z.w[5 * m + iz];
               const dot2 = qx + qy + qz;
               const u1 = sx * sy * sz;
               const u2 = wx * wy * wz;
@@ -136,6 +129,27 @@ export const computeQopt = (nx: number, ny: number, nz: number, g: number, lx: n
     }
   }
   return qopt;
+};
+
+/**
+ * The per-axis factors of compute_qopt for an axis of n mesh points (length len, unit wave number unitk): the signed
+ * index per[i] and, for the images a = -2..2 (entry 5 i + a + 2) with q = unitk (per + n a), q^2, exp(-q^2 / 4 g^2)
+ * and powsinxx(q len / 2n, twoorder), each with the expression of the native loop.
+ */
+const qoptAxis = (n: number, unitk: number, len: number, g: number, twoorder: number) => {
+  const per = new Float64Array(n);
+  const q2 = new Float64Array(5 * n), s = new Float64Array(5 * n), w = new Float64Array(5 * n);
+  for (let i = 0; i < n; i++) {
+    const p = i - n * Math.trunc((2 * i) / n);
+    per[i] = p;
+    for (let a = -2; a <= 2; a++) {
+      const qa = unitk * (p + n * a);
+      s[5 * i + a + 2] = libmExp(-0.25 * ((qa / g) * (qa / g)));
+      w[5 * i + a + 2] = powsinxx((0.5 * qa * len) / n, twoorder);
+      q2[5 * i + a + 2] = qa * qa;
+    }
+  }
+  return { per, q2, s, w };
 };
 
 /** Newton solver for the G-ewald root (adjust_gewald), with the native derivative step and stop. */

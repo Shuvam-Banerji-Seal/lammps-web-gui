@@ -149,6 +149,33 @@ const expExact = (x: number, special: boolean): number => {
   return fma(scale, tmp, scale);
 };
 
+/**
+ * exp(x) for -707 < x <= -512, where e_exp.c takes its k < 0 special case (specialNeg): with scale' = 2^1022 scale, the
+ * unfused y = RN(scale' + RN(scale' tmp)), here at least 1 (x > -707 keeps e^x above 2^-1022), so specialNeg's y < 1
+ * branch is not taken and y 2^-1022 is exact. The fast path's reduction and tmp are used, with the same stability test
+ * as the fast path: RN(scale' tmp) differs from libm's by at most |scale'| 2^-60 (the tmp of the fused steps) plus an ulp
+ * of the product, so y is libm's when y + es +- M round to y with M = |scale'| 2^-59 + |p| 2^-51. Otherwise expExact.
+ */
+const expNegLarge = (x: number): number => {
+  const z = x * InvLn2N;
+  const ks = z + Shift;
+  const kd = ks - Shift;
+  if (0.5 - Math.abs(z - kd) < 9.313225746154785e-10) return expExact(x, true);
+  const i = kd & 127;
+  const r = (x + kd * NegLn2hiN) + kd * NegLn2loN;
+  const r2 = r * r;
+  const tmp = (TAILD[i] + r) + r2 * (C2 + r * C3) + r2 * r2 * (C4 + r * C5);
+  // scale' = 2^(i/N) 2^(m + 1022), m = (k - i) / N (exact: m + 1022 is well inside the POW2 table here)
+  const scale = SCALE2[i] * POW2[(kd - i) / 128 + 1022 + POW2_OFF];
+  const p = scale * tmp;
+  const y = scale + p;
+  const bb = y - scale;
+  const es = (scale - (y - bb)) + (p - bb);
+  const M = Math.abs(scale) * 1.734723475976807e-18 + Math.abs(p) * 4.440892098500626e-16;
+  if (y + (es + M) === y && y + (es - M) === y) return y * 2.2250738585072014e-308; // 0x1p-1022
+  return expExact(x, true);
+};
+
 /** exp(x) exactly as the native binary's glibc computes it (see the header). */
 export const exp = (x: number): number => {
   F[0] = x;
@@ -161,7 +188,8 @@ export const exp = (x: number): number => {
       if (abstop === 0x7ff) return 1.0 + x;
       return (hi >>> 31) ? 0 : Infinity;
     }
-    return expExact(x, true); // 512 <= |x| < 1024: the special cases
+    // 512 <= |x| < 1024: the special cases; -707 < x <= -512 (a normal result) has a fast path of its own
+    return x < 0 && x > -707 ? expNegLarge(x) : expExact(x, true);
   }
   // fast path (see the header)
   const z = x * InvLn2N;

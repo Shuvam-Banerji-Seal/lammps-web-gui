@@ -20,6 +20,22 @@ const num = (v: V): number => (v === 'NaN' ? NaN : v === 'Infinity' ? Infinity :
 const same = (a: number, b: number): boolean => Object.is(a, b) || (Number.isNaN(a) && Number.isNaN(b));
 
 describe('glibc pow port', () => {
+  it('y = 1.5 (the shortcut that takes the double-double x sqrt(x) when it decides the rounding) matches the native libm', () => {
+    // glibc_pow15.json: 3000 (x, pow(x, 1.5)) from the same C program on the native libm: x in [2, 100] (eFF's Pauli
+    // ratio), log-uniform over e^(+-320), near 1, perfect squares, random bit patterns and next to powers of two (the
+    // shortcut leaves powers of two and near-midpoint values to the full computation). A 20,000,000-pair run of the
+    // same classes had no difference.
+    const p15 = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'libm', 'glibc_pow15.json'), 'utf8')) as { pow15: [number, number][] };
+    const bad = p15.pow15.filter(([x, z]) => { pow(3, 0.25); return !Object.is(pow(x, 1.5), z); });
+    expect(bad.slice(0, 5)).toEqual([]);
+    expect(p15.pow15.length).toBe(3000);
+  });
+  it('a repeated argument pair gives the same bits (the kept last result)', () => {
+    for (const [x, y] of [[2, 1.5], [2, -4], [5.2, 1.5], [0.7, 3.3]]) expect(Object.is(pow(x, y), pow(x, y))).toBe(true);
+    expect(pow(-0, -3)).toBe(-Infinity);
+    expect(pow(0, -3)).toBe(Infinity);
+    expect(pow(-0, -3)).toBe(-Infinity);
+  });
   it('matches the native libm for every fixture pair', () => {
     const bad = fx.pow.filter(([x, y, z]) => !same(pow(num(x), num(y)), num(z)));
     expect(bad.slice(0, 5)).toEqual([]);

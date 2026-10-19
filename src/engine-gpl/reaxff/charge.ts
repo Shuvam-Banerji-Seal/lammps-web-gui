@@ -79,6 +79,10 @@ export const halfFlag = (dx: number, dy: number, dz: number, rsq: number, cut2: 
  * Builds the rows of a half-list matrix over the owned atoms of the group (the loop of compute_H).
  * `value(i, j, r, rsq)` returns the matrix element of the pair (called only for pairs that pass the flag);
  * a NaN return leaves the pair out. Ghost rows are empty.
+ *
+ * The partners j > i within the cutoff come from a cell list over all N atoms (cell edges at least 1.0001 cut, so a
+ * pair within the cutoff is never more than one cell apart after rounding) and are visited in ascending j, so the rows
+ * and the sequence of value() calls are those of a scan over every j > i, without its N^2 / 2 distances.
  */
 export const buildRows = (
   x: Float64Array, n: number, N: number, orig: Int32Array, inGroup: Uint8Array, cut: number,
@@ -87,10 +91,58 @@ export const buildRows = (
   const start = new Int32Array(N + 1);
   const jl: number[] = [], vl: number[] = [];
   const cut2 = cut * cut;
+  let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+  for (let a = 0; a < N; a++) {
+    const ax = x[3 * a], ay = x[3 * a + 1], az = x[3 * a + 2];
+    if (ax < x0) x0 = ax; if (ax > x1) x1 = ax;
+    if (ay < y0) y0 = ay; if (ay > y1) y1 = ay;
+    if (az < z0) z0 = az; if (az > z1) z1 = az;
+  }
+  const edge = cut * 1.0001;
+  const ncx = Math.max(1, Math.floor((x1 - x0) / edge)), ncy = Math.max(1, Math.floor((y1 - y0) / edge));
+  const ncz = Math.max(1, Math.floor((z1 - z0) / edge));
+  const ncell = ncx * ncy * ncz;
+  const hx = ncx > 1 ? (x1 - x0) / ncx : Infinity, hy = ncy > 1 ? (y1 - y0) / ncy : Infinity;
+  const hz = ncz > 1 ? (z1 - z0) / ncz : Infinity;
+  const cellOf = new Int32Array(N);
+  const cellStart = new Int32Array(ncell + 1);
+  for (let a = 0; a < N; a++) {
+    const cx = Math.min(ncx - 1, Math.floor((x[3 * a] - x0) / hx) | 0);
+    const cy = Math.min(ncy - 1, Math.floor((x[3 * a + 1] - y0) / hy) | 0);
+    const cz = Math.min(ncz - 1, Math.floor((x[3 * a + 2] - z0) / hz) | 0);
+    const c = (cz * ncy + cy) * ncx + cx;
+    cellOf[a] = c;
+    cellStart[c + 1]++;
+  }
+  for (let c = 0; c < ncell; c++) cellStart[c + 1] += cellStart[c];
+  // atoms of each cell in ascending index (filled in index order)
+  const cellAtoms = new Int32Array(N);
+  const fill = cellStart.slice(0, ncell);
+  for (let a = 0; a < N; a++) cellAtoms[fill[cellOf[a]]++] = a;
+  const cand = new Int32Array(N);
   for (let i = 0; i < n; i++) {
     start[i] = jl.length;
     if (!inGroup[i]) continue;
-    for (let j = i + 1; j < N; j++) {
+    const xi = x[3 * i], yi = x[3 * i + 1], zi = x[3 * i + 2];
+    const c = cellOf[i];
+    const cx = c % ncx, cy = ((c - cx) / ncx) % ncy, cz = (c - cx - cy * ncx) / (ncx * ncy);
+    let m = 0;
+    for (let kz = Math.max(0, cz - 1); kz <= Math.min(ncz - 1, cz + 1); kz++) {
+      for (let ky = Math.max(0, cy - 1); ky <= Math.min(ncy - 1, cy + 1); ky++) {
+        for (let kx = Math.max(0, cx - 1); kx <= Math.min(ncx - 1, cx + 1); kx++) {
+          const cc = (kz * ncy + ky) * ncx + kx;
+          for (let q = cellStart[cc]; q < cellStart[cc + 1]; q++) {
+            const j = cellAtoms[q];
+            if (j <= i) continue;
+            const dx = x[3 * j] - xi, dy = x[3 * j + 1] - yi, dz = x[3 * j + 2] - zi;
+            if (dx * dx + dy * dy + dz * dz <= cut2) cand[m++] = j;
+          }
+        }
+      }
+    }
+    const js = cand.subarray(0, m).sort();
+    for (let k = 0; k < m; k++) {
+      const j = js[k];
       const dx = x[3 * j] - x[3 * i], dy = x[3 * j + 1] - x[3 * i + 1], dz = x[3 * j + 2] - x[3 * i + 2];
       const rsq = dx * dx + dy * dy + dz * dz;
       if (!halfFlag(dx, dy, dz, rsq, cut2, i, j, n, orig)) continue;

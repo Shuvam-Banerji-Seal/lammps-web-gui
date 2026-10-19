@@ -73,6 +73,28 @@ const powsinxx = (x: number, n: number): number => {
   return yy;
 };
 
+/**
+ * The per-axis factors of compute_qopt_dipole for an axis of n mesh points, length len and unit wave number unitk: the
+ * signed index per[i], sn[i] = sin^2(unitk per len / 2n), and for the images a = -2..2 (entry 5 i + a + 2) q = unitk
+ * (per + n a), exp(-q^2 / 4 g^2) and powsinxx(q len / 2n, twoorder), each with the expression of the native loop.
+ */
+const qoptAxis = (n: number, unitk: number, len: number, g: number, twoorder: number) => {
+  const per = new Float64Array(n), sn = new Float64Array(n);
+  const q = new Float64Array(5 * n), s = new Float64Array(5 * n), w = new Float64Array(5 * n);
+  for (let i = 0; i < n; i++) {
+    const p = perOf(i, n);
+    per[i] = p;
+    sn[i] = square(libmSin(0.5 * unitk * p * len / n));
+    for (let a = -2; a <= 2; a++) {
+      const qa = unitk * (p + n * a);
+      q[5 * i + a + 2] = qa;
+      s[5 * i + a + 2] = libmExp(-0.25 * square(qa / g));
+      w[5 * i + a + 2] = powsinxx(0.5 * qa * len / n, twoorder);
+    }
+  }
+  return { per, sn, q, s, w };
+};
+
 /** The periodic image of a mesh index (native: the ghost cells of the brick are summed onto the owned mesh). */
 const wrap = (a: number, n: number): number => ((a % n) + n) % n;
 
@@ -323,37 +345,37 @@ export class KSpacePPPMDipole extends KSpaceBase {
     return Math.sqrt(dd * dd + dq * dq);
   }
 
-  /** PPPMDipole::compute_qopt_dipole (ik differentiation, images |n| <= 2). */
+  /**
+   * PPPMDipole::compute_qopt_dipole (ik differentiation, images |n| <= 2). The sin^2 of each mesh index and the q,
+   * exp(-q^2 / 4 g^2) and powsinxx factors of each (mesh index, image) pair depend on one axis only, so they are taken
+   * from per-axis tables (qoptAxis) instead of being formed again for every mesh point; the same expressions give the
+   * same values, and the sums run in the native order.
+   */
   private qoptDipole(g: number, lx: number, ly: number, lz: number): number {
     const [nx, ny, nz] = this.nxyz;
     const unitkx = (2 * Math.PI) / lx, unitky = (2 * Math.PI) / ly, unitkz = (2 * Math.PI) / lz;
     const twoorder = 2 * this.order;
+    const X = qoptAxis(nx, unitkx, lx, g, twoorder), Y = qoptAxis(ny, unitky, ly, g, twoorder), Z = qoptAxis(nz, unitkz, lz, g, twoorder);
     let qopt = 0;
     for (let m = 0; m < nz; m++) {
-      const mper = perOf(m, nz);
-      const snz = square(libmSin(0.5 * unitkz * mper * lz / nz));
+      const mper = Z.per[m];
+      const snz = Z.sn[m];
       for (let l = 0; l < ny; l++) {
-        const lper = perOf(l, ny);
-        const sny = square(libmSin(0.5 * unitky * lper * ly / ny));
+        const lper = Y.per[l];
+        const sny = Y.sn[l];
         for (let k = 0; k < nx; k++) {
-          const kper = perOf(k, nx);
-          const snx = square(libmSin(0.5 * unitkx * kper * lx / nx));
+          const kper = X.per[k];
+          const snx = X.sn[k];
           const sqk = square(unitkx * kper) + square(unitky * lper) + square(unitkz * mper);
           if (sqk === 0) continue;
           const denominator = gfDenom(this.gfB, this.order, snx, sny, snz);
           let sum1 = 0, sum2 = 0;
-          for (let ix = -2; ix <= 2; ix++) {
-            const qx = unitkx * (kper + nx * ix);
-            const sx = libmExp(-0.25 * square(qx / g));
-            const wx = powsinxx(0.5 * qx * lx / nx, twoorder);
-            for (let iy = -2; iy <= 2; iy++) {
-              const qy = unitky * (lper + ny * iy);
-              const sy = libmExp(-0.25 * square(qy / g));
-              const wy = powsinxx(0.5 * qy * ly / ny, twoorder);
-              for (let iz = -2; iz <= 2; iz++) {
-                const qz = unitkz * (mper + nz * iz);
-                const sz = libmExp(-0.25 * square(qz / g));
-                const wz = powsinxx(0.5 * qz * lz / nz, twoorder);
+          for (let ix = 0; ix < 5; ix++) {
+            const qx = X.q[5 * k + ix], sx = X.s[5 * k + ix], wx = X.w[5 * k + ix];
+            for (let iy = 0; iy < 5; iy++) {
+              const qy = Y.q[5 * l + iy], sy = Y.s[5 * l + iy], wy = Y.w[5 * l + iy];
+              for (let iz = 0; iz < 5; iz++) {
+                const qz = Z.q[5 * m + iz], sz = Z.s[5 * m + iz], wz = Z.w[5 * m + iz];
                 const dot1 = unitkx * kper * qx + unitky * lper * qy + unitkz * mper * qz;
                 const dot2 = qx * qx + qy * qy + qz * qz;
                 const u1 = sx * sy * sz;

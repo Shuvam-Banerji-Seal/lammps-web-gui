@@ -72,6 +72,25 @@ describe('Script Builder drop', () => {
   });
 });
 
+describe('stored files in the step editor', () => {
+  it('a read_data step suggests the files in browser storage, and follows the store', async () => {
+    await act(async () => {
+      window.dispatchEvent(dropEvent([new File([SCRIPT], 'in.melt'), new File([DATA], 'data.melt')]));
+    });
+    await flush();
+    const step = [...container.querySelectorAll<HTMLElement>('[role="button"][aria-label$=" step"]')]
+      .find(s => (s.getAttribute('aria-label') ?? '').startsWith('read_data'));
+    expect(step).toBeDefined();
+    await act(async () => { step!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); });
+    await flush();
+    const options = () => [...document.querySelectorAll('datalist option')].map(o => (o as HTMLOptionElement).value).sort();
+    expect(options()).toEqual(['data.melt', 'in.melt']);
+    await act(async () => { await getFileStore().put({ name: 'more.data', text: DATA, size: DATA.length }); });
+    await flush();
+    expect(options()).toEqual(['data.melt', 'in.melt', 'more.data']);
+  });
+});
+
 describe('script helpers', () => {
   it('scriptTitle names in.* after what follows in. and other scripts after the base name', () => {
     expect(scriptTitle('in.melt')).toBe('melt');

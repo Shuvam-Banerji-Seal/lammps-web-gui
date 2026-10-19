@@ -19,7 +19,7 @@ import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { parseNum } from '../../engine/force/util';
 import { FixEfield } from '../../engine/fix/force_ext';
-import { invertDense } from './electrode_math';
+import { invertDense, invertSPD } from './electrode_math';
 import { MY_2PI, safeDerfcr } from './electrode_math';
 
 /** MY_4PI of LAMMPS math_const.h (4 pi): the fix_modify tf length is scaled by it (fix_electrode_conp.cpp modify_param). */
@@ -483,7 +483,9 @@ export class FixElectrodeConp extends Fix {
       if (this.writeMat !== null) this.writeTable(this.writeMat, this.orderMatrix(this.elastance));
       if (this.algo === 'mat_inv') {
         this.capacitance = Float64Array.from(this.elastance);
-        if (!invertDense(this.capacitance, this.ngroup)) throw new StyleError('CONP matrix inversion failed!');
+        // the elastance matrix is symmetric positive definite; the Cholesky inverse is the fast path, the
+        // Gauss-Jordan elimination (the role of dgetrf + dgetri) the fallback
+        if (!invertSPD(this.capacitance, this.ngroup) && !invertDense(this.capacitance, this.ngroup)) throw new StyleError('CONP matrix inversion failed!');
         if (this.symm) this.symmetrize();
         if (this.ffield) this.computeSdVectorsFfield();
         else this.computeSdVectors();
@@ -749,6 +751,8 @@ export class FixElectrodeConp extends Fix {
     const out = { erfc: 0 };
     let energy = 0;
     const vir = this.virialSum;
+    const ele = new Uint8Array(s.n);
+    for (let i = 0; i < s.n; i++) ele[i] = (mask[i] & this.elecBit) ? 1 : 0;
     eachImagePair(s, this.sys.geom, cutsq, nt, (i, j, rsq, dx, dy, dz) => {
       const iEle = (mask[i] & this.elecBit) !== 0, jEle = (mask[j] & this.elecBit) !== 0;
       if (!(iEle || jEle)) return;
@@ -779,7 +783,7 @@ export class FixElectrodeConp extends Fix {
       vir[3] += half * dx * dy * fpair;
       vir[4] += half * dx * dz * fpair;
       vir[5] += half * dy * dz * fpair;
-    });
+    }, { either: ele });
     return energy;
   }
 

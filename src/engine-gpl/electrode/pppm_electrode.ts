@@ -152,7 +152,8 @@ export class KSpacePPPMElectrode extends KSpacePPPM implements ElectrodeKSpace {
    * compute_matrix(): the k-space part of the electrode-electrode matrix, M_ij = (1/V) sum_{g,g'} W_i(g) Gr(g - g') W_j(g'),
    * with Gr the forward transform of the influence function (pppm_electrode.cpp compute_matrix and
    * one_step_multiplication: greens_real and matrix[ipos][jpos] += aij / volume, mirrored for ipos != jpos). The C++
-   * sums the same products through a stencil map (amesh); this sums them directly, which differs only in rounding.
+   * sums the same products through a stencil map (amesh); this sums them through the separable per-axis convolutions
+   * of the two stencils (see the loop below), which differs only in rounding.
    * Matrix entries are added (the fix adds the real-space and boundary terms), as in ewald/electrode.
    */
   computeMatrix(s: SimState, imat: Int32Array, matrix: Float64Array, ngroup: number): void {
@@ -162,76 +163,61 @@ export class KSpacePPPMElectrode extends KSpacePPPM implements ElectrodeKSpace {
     const gr = this.getGreensReal();
     const [nx, ny, nz] = this.mesh;
     const P = this.order;
-    const P3 = P * P * P;
     const { first, wts } = this.assignWeights(s, geom);
     const mod = (a: number, m: number) => ((a % m) + m) % m;
     const group: number[] = [];
     for (let i = 0; i < s.n; i++) if (imat[i] >= 0) group.push(i);
     const G = group.length;
-    // per electrode atom: the stencil weights, p = (c * P + b) * P + a (the order of the loops below), and the wrapped
-    // grid index of each stencil point along each axis (these depend on one axis index each)
-    const sw = new Float64Array(G * P3);
-    const xs = new Int32Array(G * P), ys = new Int32Array(G * P), zs = new Int32Array(G * P);
-    group.forEach((i, gi) => {
-      for (let a = 0; a < P; a++) {
-        xs[gi * P + a] = mod(first[3 * i] + a, nx);
-        ys[gi * P + a] = mod(first[3 * i + 1] + a, ny);
-        zs[gi * P + a] = mod(first[3 * i + 2] + a, nz);
-      }
-      let p = 0;
-      for (let c = 0; c < P; c++) {
-        for (let b = 0; b < P; b++) {
-          for (let a = 0; a < P; a++, p++) {
-            sw[gi * P3 + p] = wts[3 * i * P + a] * wts[(3 * i + 1) * P + b] * wts[(3 * i + 2) * P + c];
-          }
-        }
-      }
-    });
-    // per pair of atoms: the flat grid offset of every (stencil point of i, stencil point of j) axis pair, with the
-    // minimum-image wrap of the C++ (dx < 0 gets +nx); the flat index is (dz * ny + dy) * nx + dx
-    const TX = new Int32Array(P * P), TY = new Int32Array(P * P), TZ = new Int32Array(P * P);
+    // The stencil weights are separable, w_i(a, b, c) = wx_i(a) wy_i(b) wz_i(c), and the grid offset of a stencil pair
+    // along x depends only on (first_i - first_j + a - a2) mod nx (the minimum-image wrap of the C++ gives that value
+    // in [0, nx)). So each matrix element is the triple sum over the offsets k = a - a2 in [-(P-1), P-1] of the
+    // per-axis convolutions cx(k) = sum_{a - a2 = k} wx_i(a) wx_j(a2) (and cy, cz) times greens_real at the offset:
+    // (2P - 1)^3 terms instead of P^6. It differs from the C++ stencil sums only in rounding.
+    const K = 2 * P - 1;
+    const cx = new Float64Array(K), cy = new Float64Array(K), cz = new Float64Array(K);
+    const ox = new Int32Array(K), oy = new Int32Array(K), oz = new Int32Array(K);
     const V = this.volume;
+    const nxy = nx * ny;
     for (let gi = 0; gi < G; gi++) {
-      const ri = imat[group[gi]];
+      const i = group[gi];
+      const ri = imat[i];
+      const wxi = 3 * i * P, wyi = (3 * i + 1) * P, wzi = (3 * i + 2) * P;
       for (let gj = 0; gj < G; gj++) {
-        const rj = imat[group[gj]];
+        const j = group[gj];
+        const rj = imat[j];
         if (rj > ri) continue;   // the matrix is symmetric: the lower triangle is summed, then mirrored
+        const wxj = 3 * j * P, wyj = (3 * j + 1) * P, wzj = (3 * j + 2) * P;
+        cx.fill(0); cy.fill(0); cz.fill(0);
         for (let a = 0; a < P; a++) {
+          const ux = wts[wxi + a], uy = wts[wyi + a], uz = wts[wzi + a];
           for (let a2 = 0; a2 < P; a2++) {
-            const dx = xs[gi * P + a] - xs[gj * P + a2];
-            TX[a * P + a2] = dx < 0 ? dx + nx : dx;
+            const k = a - a2 + P - 1;
+            cx[k] += ux * wts[wxj + a2];
+            cy[k] += uy * wts[wyj + a2];
+            cz[k] += uz * wts[wzj + a2];
           }
         }
-        for (let b = 0; b < P; b++) {
-          for (let b2 = 0; b2 < P; b2++) {
-            const dy = ys[gi * P + b] - ys[gj * P + b2];
-            TY[b * P + b2] = (dy < 0 ? dy + ny : dy) * nx;
-          }
+        const fx = first[3 * i] - first[3 * j], fy = first[3 * i + 1] - first[3 * j + 1], fz = first[3 * i + 2] - first[3 * j + 2];
+        for (let k = 0; k < K; k++) {
+          ox[k] = mod(fx + k - (P - 1), nx);
+          oy[k] = mod(fy + k - (P - 1), ny) * nx;
+          oz[k] = mod(fz + k - (P - 1), nz) * nxy;
         }
-        for (let c = 0; c < P; c++) {
-          for (let c2 = 0; c2 < P; c2++) {
-            const dz = zs[gi * P + c] - zs[gj * P + c2];
-            TZ[c * P + c2] = (dz < 0 ? dz + nz : dz) * ny * nx;
-          }
-        }
-        const wj = gj * P3;
         let aij = 0;
-        for (let c = 0; c < P; c++) {
-          for (let b = 0; b < P; b++) {
-            for (let a = 0; a < P; a++) {
-              const pw = sw[gi * P3 + (c * P + b) * P + a];
-              for (let c2 = 0; c2 < P; c2++) {
-                const tz = TZ[c * P + c2];
-                for (let b2 = 0; b2 < P; b2++) {
-                  const tzy = tz + TY[b * P + b2];
-                  const rb = (c2 * P + b2) * P;
-                  for (let a2 = 0; a2 < P; a2++) {
-                    aij += pw * sw[wj + rb + a2] * gr[tzy + TX[a * P + a2]];
-                  }
-                }
-              }
-            }
+        for (let kz = 0; kz < K; kz++) {
+          const wz = cz[kz];
+          if (wz === 0) continue;
+          const bz = oz[kz];
+          let sy = 0;
+          for (let ky = 0; ky < K; ky++) {
+            const wy = cy[ky];
+            if (wy === 0) continue;
+            const row = bz + oy[ky];
+            let sx = 0;
+            for (let kx = 0; kx < K; kx++) sx += cx[kx] * gr[row + ox[kx]];
+            sy += wy * sx;
           }
+          aij += wz * sy;
         }
         matrix[ri * ngroup + rj] += aij / V;
         if (ri !== rj) matrix[rj * ngroup + ri] += aij / V;

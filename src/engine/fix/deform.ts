@@ -3,6 +3,7 @@ import { StyleError } from '../force/types';
 import type { System } from '../system';
 import { int, latticeScale, num, yesno } from '../commands/args';
 import { libm } from '../libm';
+import { restartDue } from '../commands/restart';
 
 /*
  * fix ID group-ID deform N parameter style args ... keyword value ...
@@ -656,11 +657,16 @@ export class FixDeform extends Fix {
     const nb = this.sys.nb;
     const step = s.step;
     const ago = step - this.remapLastStep;
-    if (ago < nb.delay) return;
-    if (nb.every > 1 && step % nb.every !== 0) return;
-    // native kicks in Domain::pbc on the steps the neighbor list is rebuilt: ask the neighbor's own distance check
-    // (its positions and box of the last build), so the remap step is the rebuild step
-    if (nb.check && !nb.movedTooFar(s, g)) return;
+    // native kicks in Domain::pbc on the steps the neighbor list is rebuilt. As native LAMMPS does (src/neighbor.cpp
+    // Neighbor::decide at b332f28): a rebuild that a restart write or a fix (fix srd's next_reneighbor) forces at this
+    // step comes before the delay, every and distance tests; otherwise ask the neighbor's own distance check (its
+    // positions and box of the last build), so the remap step is the rebuild step
+    const forced = restartDue(this.sys, step) || this.sys.fixes.some((f) => f.reneighborDue?.(step) === true);
+    if (!forced) {
+      if (ago < nb.delay) return;
+      if (nb.every > 1 && step % nb.every !== 0) return;
+      if (nb.check && !nb.movedTooFar(s, g)) return;
+    }
     // remap step: undo the engine's earlier no-kick wraps of the group, then
     // wrap whoever is outside the box now and add the boundary velocity deltas
     this.ensureRemapArrays(s.n);

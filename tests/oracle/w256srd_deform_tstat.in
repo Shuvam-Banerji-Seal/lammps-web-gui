@@ -1,0 +1,39 @@
+# oracle: fix srd with a fix deform that scales the box (x and y scale 1.25, constant rate) and the SRD thermostat (tstat yes, biased streaming bins), 2d (w79srd_deform with tstat yes, 150 steps: the per-atom state is chaotic beyond about 160 steps, see the header measurement)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 8.3e-14, atoms 1.2e-9 (chaotic: a native run with the timestep changed by 5e-16 relative drifts the same way, 7.7e-7 at step 200, so the case stops at step 150).
+# oracle-compare: thermo=all atoms=all
+# Measured with native LAMMPS (black box, per-step dumps of the 200-step input): changing the timestep by 5e-16 relative (0.0200000000000001) moves the per-atom state of the run by the same amount of growth as the engine differs from native (7.5e-14 relative at step 20, 7.7e-7 at step 200), so the per-atom state of the SRD thermostat with a deforming box is chaotic: the case stops at step 150, where the per-atom error stays below 1e-8.
+units		lj
+atom_style	atomic
+atom_modify	first empty
+dimension	2
+
+lattice		sq 0.4
+region		box block 0 3 0 3 -0.5 0.5
+create_box	1 box
+
+lattice		sq 0.4
+region		plane block 0 3 0 3 -0.001 0.001
+lattice		sq 85.0
+create_atoms	1 region plane
+
+group		empty type 2
+
+mass		1 0.01
+velocity	all create 1.0 593849 loop geom
+
+neighbor	0.3 bin
+neigh_modify	delay 1 every 1 check no
+
+comm_modify	group empty
+
+timestep	0.02
+
+fix		1 all srd 1 NULL 1.0 0.25 49894 collision slip tstat yes
+fix		2 all enforce2d
+fix		3 all deform 1 x scale 1.25 y scale 1.25
+
+thermo_style	custom step temp f_1[7] etotal press f_1[3] f_1[4] f_1[6]
+thermo_modify	format float %.15g
+thermo		20
+
+run		150

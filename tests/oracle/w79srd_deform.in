@@ -1,6 +1,6 @@
 # oracle: fix srd with a fix deform that scales the box (x and y scale 1.25, constant rate), no thermostat: the SRD streaming velocity h_rate and the bins that follow the box, 2d (cut-down of examples/ASPHERE/line/in.line.srd: the deform phase on point SRD particles, 3x3 box, 200 steps)
 # oracle-compare: thermo=all atoms=all rel=1e-13 abs=1e-14
-# Measured with native LAMMPS (black box): the engine agrees with every thermo column to a relative error of 1e-13 (also at abs 1e-14) and with the positions and velocities of every atom to an absolute error of 1e-14 (the largest is 1.0e-14, a velocity of about 16). The SRD thermostat with the same deformation (tstat yes) is refused: its per-atom state drifts from native to 3e-6 relative at step 200 (thermo agrees to 1e-12 up to step 150); see the refusal in fix_srd.ts; with unbiased yes it matches (w79srd_deform_unbias).
+# Measured with native LAMMPS (black box): the engine agrees with every thermo column to a relative error of 1e-13 (also at abs 1e-14) and with the positions and velocities of every atom to an absolute error of 1e-14 (the largest is 1.0e-14, a velocity of about 16). The SRD thermostat with the same deformation (tstat yes) is tests/oracle/w256srd_deform_tstat (its per-atom state is chaotic: round-off at step 0 grows about 1.3x per step, as a native self-perturbation shows, so that case runs 150 steps); unbiased yes is w79srd_deform_unbias.
 units		lj
 atom_style	atomic
 atom_modify	first empty

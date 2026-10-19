@@ -426,12 +426,6 @@ export class FixSRD extends Fix {
       if (f.hasLengthChange()) this.changeSize = true;
       if (tilted) this.changeShape = true;
     }
-    // the thermostatted streaming bins (tstat yes with a deforming box) are not matched to native yet: with the
-    // same input, the per-atom state drifts to about 3e-6 relative at step 200 while the thermo rows agree to 1e-12
-    // up to step 150 (measured with native LAMMPS, black box)
-    if (this.deformFix && this.tstat && !this.unbiasflag) {
-      throw new StyleError('fix srd tstat yes with fix deform is not supported by this engine yet (the thermostatted streaming bins drift from native)');
-    }
     if (this.deformFix) this.deformFix.streamingRates();
     this.parameterize();
 
@@ -1255,8 +1249,10 @@ export class FixSRD extends Fix {
           const xc0 = corner[0] + (bx + 0.5) / this.nbin1[0];
           const xc1 = corner[1] + (by + 0.5) / this.nbin1[1];
           const xc2 = corner[2] + (bz + 0.5) / this.nbin1[2];
-          sx = hRate[0] * xc0 + hRateLo[0];
-          sy = hRate[1] * xc1 + hRateLo[1];
+          // As native LAMMPS does (src/SRD/fix_srd.cpp reset_velocities at b332f28): vstream[0] = h_rate[0]*x0 + h_rate[5]*x1
+          // + h_rate[4]*x2 + h_ratelo[0], vstream[1] = h_rate[1]*x1 + h_rate[3]*x2 + h_ratelo[1], vstream[2] = h_rate[2]*x2 + h_ratelo[2]
+          sx = hRate[0] * xc0 + hRate[5] * xc1 + hRate[4] * xc2 + hRateLo[0];
+          sy = hRate[1] * xc1 + hRate[3] * xc2 + hRateLo[1];
           sz = hRate[2] * xc2 + hRateLo[2];
         }
         const tbin = (value[b] / (n - dofTstat)) * tfactor;

@@ -1,7 +1,7 @@
 import type { Handler } from './args';
 import { yesno } from './args';
 import { StyleError } from '../force/types';
-import { formatNumber, substituteVariables } from '../script';
+import { formatNumber, mapUnquoted, substituteVariables } from '../script';
 import { evaluateScalar } from '../formula';
 import { clearSoftHalt } from '../run/halt';
 import { isDirectory, makeDirectories, removeDirectory, shellKey } from '../shellFs';
@@ -10,9 +10,19 @@ import { isDirectory, makeDirectories, removeDirectory, shellKey } from '../shel
  * General-purpose input commands.
  */
 
-/** variable name style args — variable.html (see variables.ts). */
+/**
+ * variable name style args — variable.html (see variables.ts). A string variable's text is substituted here, when it
+ * is defined: variable.html "string performs variable substitution even if the string parameter is quoted"; as native
+ * LAMMPS does (src/variable.cpp Variable::set at b332f28), with Input::substitute's rules (quoted parts kept).
+ */
 const variable: Handler = ({ sys }, a) => {
   if (a.length < 2) throw new StyleError('usage: variable name style args');
+  if (a[1] === 'string' && a.length === 3) {
+    const env = sys.formulaEnv;
+    const text = mapUnquoted(a[2], (part) => substituteVariables(part, (n) => sys.vars.text(n, env), (f, fmt) => formatNumber(evaluateScalar(f, env), fmt ?? '%.20g')));
+    sys.vars.define(a[0], a[1], [text]);
+    return;
+  }
   sys.vars.define(a[0], a[1], a.slice(2));
 };
 

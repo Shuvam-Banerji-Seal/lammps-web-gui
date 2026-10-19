@@ -259,23 +259,27 @@ export class PairLJLongCoulLong extends PairLJCutCoulLong {
           evdwl += ev;
           e += ev;
         } else if (rsq < cutljsqT[t]) {
-          if (sb !== 0 && sLJ[sb] !== 1) {
-            throw new StyleError('special_bonds lj weight other than 1 is not implemented with pair style lj/long/coul/long flag_lj long');
-          }
           const r2inv = 1 / rsq, r6inv = r2inv * r2inv * r2inv;
           const A = lj3[t], C6 = lj4[t];
+          // A special pair of weight w scales the repulsion by w and keeps the whole damped dispersion, and the part
+          // (1 - w) C6 / r^6 of the dispersion that the k-space sum includes for every pair is taken back here. As
+          // native LAMMPS does (src/KSPACE/pair_lj_long_coul_long.cpp compute at b332f28, its special case:
+          // force_lj gains t lj2 and evdwl t lj4, with t = (1 - factor) / r^6).
+          const w = sb === 0 ? 1 : sLJ[sb];
+          const back = (1 - w) * r6inv;
           let ev: number;
           if (dtab !== null && rsq > dtab.inner) {
             // the native table branch (src/KSPACE/pair_lj_long_coul_long.cpp compute): force_lj = 12 A r^-12 - C6 ftable,
             // fpair = force_lj / r^2, and the energy is A r^-12 - C6 etable
-            fpair += (12 * A * r6inv * r6inv - C6 * dtab.force(rsq)) * r2inv;
-            ev = A * r6inv * r6inv - C6 * dtab.energy(rsq);
+            fpair += (12 * w * A * r6inv * r6inv - C6 * dtab.force(rsq) + 6 * C6 * back) * r2inv;
+            ev = w * A * r6inv * r6inv - C6 * dtab.energy(rsq) + C6 * back;
           } else {
             // E = A/r^12 - C6 g6/r^6 ;  fpair = -(dE/dr)/r with d/dr [g6/r^6] giving g^6 exp(-x^2)/r^2 extra
             const x2 = gd * gd * rsq;
             const g6 = g6kernel(x2);
-            fpair += 12 * A * r6inv * r6inv * r2inv - C6 * (6 * g6 * r6inv * r2inv + gd6 * libm.exp(-x2) * r2inv);
-            ev = A * r6inv * r6inv - C6 * g6 * r6inv;
+            fpair += 12 * w * A * r6inv * r6inv * r2inv - C6 * (6 * g6 * r6inv * r2inv + gd6 * libm.exp(-x2) * r2inv)
+              + 6 * C6 * back * r2inv;
+            ev = w * A * r6inv * r6inv - C6 * g6 * r6inv + C6 * back;
           }
           evdwl += ev;
           e += ev;

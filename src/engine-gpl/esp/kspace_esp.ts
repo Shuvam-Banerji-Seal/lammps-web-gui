@@ -11,7 +11,9 @@
  *  - orthogonal, fully periodic boxes, one process; no slab correction, no triclinic box;
  *  - kspace_modify diff ad only (the default, "analytic differentiation": two FFTs per step); diff ik is refused;
  *  - no kspace_modify mesh, order, gewald, force, slab (the grid and order follow from the accuracies);
- *  - no per-atom energy or virial (compute pe/atom, stress/atom); no group-group (compute group/group) and no TIP4P;
+ *  - the per-atom energy and virial (compute pe/atom, stress/atom) of poisson_peratom and fieldforce_peratom: as native,
+ *    the per-atom virial meshes carry the vg term only (not the greensfn2 vg2 term of the global virial);
+ *  - no group-group (compute group/group) and no TIP4P;
  *  - the pair styles coul/esp and lj/cut/coul/esp read the polynomials of this object (linkPair).
  *
  * Operation order follows esp.cpp; the transcendental calls go through the glibc ports of src/engine-gpl/libm.
@@ -486,7 +488,6 @@ export class KSpaceESP extends KSpaceBase {
   }
 
   compute(kc: KSpaceCompute): void {
-    if (kc.eatom || kc.vatom) throw new StyleError('compute pe/atom or stress/atom with kspace_style esp is not ported (per-atom energies and virials)');
     const s = kc.s;
     const geom = kc.geom;
     this.refreshChargeSums(s);
@@ -562,6 +563,21 @@ export class KSpaceESP extends KSpaceBase {
       w1[2 * i] *= scaleinv * this.greensfn[i];
       w1[2 * i + 1] *= scaleinv * this.greensfn[i];
     }
+    // poisson_peratom: the six virial meshes (vg only); the potential mesh u below serves the energy (diff ad)
+    const vmesh: Float64Array[] = [];
+    if (kc.vatom) {
+      for (let j = 0; j < 6; j++) {
+        const wv = new Float64Array(2 * N);
+        for (let i = 0; i < N; i++) {
+          wv[2 * i] = w1[2 * i] * this.vg[6 * i + j];
+          wv[2 * i + 1] = w1[2 * i + 1] * this.vg[6 * i + j];
+        }
+        fft3d(wv, this.nx, this.ny, this.nz, 1);
+        const v = new Float64Array(N);
+        for (let i = 0; i < N; i++) v[i] = wv[2 * i];
+        vmesh.push(v);
+      }
+    }
     const w2 = this.work2;
     w2.set(w1.subarray(0, 2 * N));
     fft3d(w2, this.nx, this.ny, this.nz, 1);
@@ -621,6 +637,38 @@ export class KSpaceESP extends KSpaceBase {
     let selfCoeff = 0.00;
     for (let i = 1; i < this.energyPolyCoeff.length; i++) {
       selfCoeff += 2 * (i + 0.00) * this.energyPolyCoeff[i] * (i % 2 === 1 ? 1.0 : -1.0);
+    }
+    if (kc.eatom || kc.vatom) {
+      // fieldforce_peratom: u and v0..v5 at each charge, times q_i; then the halving, the self term and qscale
+      const eatom = kc.eatom, vatom = kc.vatom;
+      const vv = [0, 0, 0, 0, 0, 0];
+      for (let i = 0; i < n; i++) {
+        const nx0 = this.part2grid[3 * i], ny0 = this.part2grid[3 * i + 1], nz0 = this.part2grid[3 * i + 2];
+        for (let d = 0; d < 3; d++) {
+          const idx = [nx0, ny0, nz0][d];
+          d1[d] = idx + this.shiftone - (s.x[3 * i + d] - bl[d]) * delinv[d];
+        }
+        this.rho1dAll(d1[0], d1[1], d1[2], rho1d);
+        let u = 0.0;
+        vv.fill(0);
+        for (let nn = nlow; nn <= nup; nn++) {
+          const mz = wrap(nn + nz0, this.nz);
+          const z0 = rho1d[2][nn - nlow];
+          for (let m = nlow; m <= nup; m++) {
+            const my = wrap(m + ny0, this.ny);
+            const y0 = z0 * rho1d[1][m - nlow];
+            for (let l = nlow; l <= nup; l++) {
+              const mx = wrap(l + nx0, this.nx);
+              const x0 = y0 * rho1d[0][l - nlow];
+              const g = (mz * this.ny + my) * this.nx + mx;
+              if (eatom) u += x0 * this.u[g];
+              if (vatom) for (let j = 0; j < 6; j++) vv[j] += x0 * vmesh[j][g];
+            }
+          }
+        }
+        if (eatom) eatom[i] += qscale * (0.5 * q[i] * u - (-selfCoeff / this.cutoff) * q[i] * q[i] / 2.0);
+        if (vatom) for (let j = 0; j < 6; j++) vatom[6 * i + j] += 0.5 * qscale * q[i] * vv[j];
+      }
     }
     energy *= 0.5 * this.volume2;
     energy -= (-selfCoeff / this.cutoff) * this.qsqsum / 2.0;

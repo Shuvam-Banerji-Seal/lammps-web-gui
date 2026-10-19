@@ -206,7 +206,6 @@ export class PairHbondDreiding extends Pair {
   }
 
   compute(pc: PairCompute): void {
-    if (pc.eatom || pc.vatom) throw new StyleError(`per-atom energy and virial are not supported by pair style ${this.name}`);
     this.hbCount = 0;
     this.hbEnergy = 0;
     const list = pc.half!;
@@ -328,7 +327,8 @@ export class PairHbondDreiding extends Pair {
       R = D0 * (e2 - 2 * ex);
       dR = D0 * (-2 * alpha * e2 + 2 * alpha * ex);
     }
-    this.hbEnergy += factor * S * R * G;
+    const eterm = factor * S * R * G;
+    this.hbEnergy += eterm;
     const dEdr = factor * G * (dS * R + S * dR);
     const gth = factor * S * R * dG;
     // angular derivatives dtheta/du, dtheta/dw (zero when the angle is 0 or 180 degrees, where the gradient is undefined)
@@ -353,6 +353,27 @@ export class PairHbondDreiding extends Pair {
       f[3 * d + k] -= gD;
       f[3 * h + k] -= gH;
       fh[k] = -gH;
+    }
+    // Per-atom energy and virial (compute pe/atom, stress/atom): a third of the term's energy and of its virial
+    // u (x) f_D + w (x) f_A (the positions relative to the hydrogen) to each of H, D and A. As native LAMMPS does
+    // (src/MOLECULE/pair_hbond_dreiding_lj.cpp and pair_hbond_dreiding_morse.cpp compute at b332f28:
+    // ev_tally3(k, i, j, evdwl, 0, fi, fj, delr1, delr2) with k the hydrogen).
+    if (pc.eatom) {
+      const third = eterm / 3;
+      pc.eatom[h] += third; pc.eatom[d] += third; pc.eatom[a] += third;
+    }
+    if (pc.vatom) {
+      const gD = [0, 0, 0], gA = [0, 0, 0];
+      for (let k = 0; k < 3; k++) {
+        const rhat = rv[k] * rinv;
+        gA[k] = -(dEdr * rhat + gth * dthw[k]);
+        gD[k] = -(-dEdr * rhat + gth * dthu[k]);
+      }
+      const vt = [
+        u[0] * gD[0] + w[0] * gA[0], u[1] * gD[1] + w[1] * gA[1], u[2] * gD[2] + w[2] * gA[2],
+        u[0] * gD[1] + w[0] * gA[1], u[0] * gD[2] + w[0] * gA[2], u[1] * gD[2] + w[1] * gA[2],
+      ];
+      for (const q of [h, d, a]) for (let c6 = 0; c6 < 6; c6++) pc.vatom[6 * q + c6] += vt[c6] / 3;
     }
     // The engine's virial is sum x_k . f_k over owned and ghost atoms, with the owned hydrogen position.
     // The hydrogen term must use the image bonded to the donor (x_D + hv), so add the difference.

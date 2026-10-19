@@ -33,8 +33,9 @@ import { libm } from '../libm';
  *              diameter whose cumulative percentage first exceeds u); none for one;
  *              atoms only (no draw for molecules);
  *   3. x [, y]: x = xlo + u (xhi - xlo) and, in 3d only, y = ylo + u (yhi - ylo);
- *              repeated on every attempt (a cylinder rejects points outside the
- *              circle, and an overlapping candidate is rejected; both use one attempt);
+ *              repeated on every attempt (an overlapping candidate uses one attempt);
+ *              a cylinder redraws r1, r2 = u - 0.5 until inside the circle, which
+ *              uses no attempt (fix_pour.cpp xyz_random);
  *   4. mol:    molecules only, per attempt after the position: one draw samples
  *              the molecule (molfrac), then the random rotation (5 below);
  *   5. vx[, vy]: vxlo + u (vxhi - vxlo) and, in 3d only, vy = vylo + u (vyhi - vylo),
@@ -547,10 +548,25 @@ export class FixPour extends Fix {
     return R;
   }
 
-  /** Sphere (3d) / disc (2d) volume of the largest molecule radius (fix_pour.cpp: molradius_max, volume_one). */
-  private moleculeVolume(): number {
+  /** The largest inserted atom radius (fix_pour.cpp: radius_max). */
+  private radiusMax(): number {
+    if (this.diam.style === 'one') return this.diam.d / 2;
+    if (this.diam.style === 'range') return this.diam.hi / 2;
+    let m = 0;
+    for (const d of this.diam.d) if (d / 2 > m) m = d / 2;
+    return m;
+  }
+
+  /** The largest molecule radius of the templates (fix_pour.cpp: molradius_max). */
+  private molRadiusMax(): number {
     let R = 0;
     for (const t of this.molTemplates) R = Math.max(R, FixPour.moleculeRadius(t));
+    return R;
+  }
+
+  /** Sphere (3d) / disc (2d) volume of the largest molecule radius (fix_pour.cpp: molradius_max, volume_one). */
+  private moleculeVolume(): number {
+    const R = this.molRadiusMax();
     return this.twoD ? Math.PI * R * R : (4 / 3) * Math.PI * R * R * R;
   }
 
@@ -615,18 +631,45 @@ export class FixPour extends Fix {
     const templates = this.molTemplates;
     const centers = templates.map((t) => geometricCenter(t));
     const mols: { t: MoleculeTemplate; pos: Float64Array; v: [number, number, number]; rot: number[][]; quat: number[] }[] = [];
-    // candidate atoms appended during this event (molecules register all their atoms)
+    // As native LAMMPS does (src/GRANULAR/fix_pour.cpp at b332f28, pre_exchange and overlap): the candidates are tested
+    // only against the existing atoms near the insertion volume of this event (each atom within its radius plus the
+    // largest inserted radius of the block or cylinder and of the current fall range, periodic dimensions wrapped;
+    // ignored line and tri particles left out), followed by the atoms inserted earlier in the event (molecules
+    // register all their atoms). A candidate overlaps when the distance is at most the sum of the radii.
     const cx: number[] = [], cy: number[] = [], cz: number[] = [], cr: number[] = [];
-    const at = (i: number): [number, number, number, number] => (i < nOld
-      ? [s.x[3 * i], s.x[3 * i + 1], s.x[3 * i + 2], s.radius ? s.radius[i] : bodyAtomRadius(s, i)]
-      : [cx[i - nOld], cy[i - nOld], cz[i - nOld], cr[i - nOld]]);
-    const overlaps = (x: number, y: number, z: number, rad: number, n: number): boolean => {
-      for (let j = 0; j < n; j++) {
-        if (j < nOld && ((this.ignoreLine && isLineAtom(s, j)) || (this.ignoreTri && isTriAtom(s, j)))) continue;
-        const [px, py, pz, pr] = at(j);
-        const [dx, dy, dz] = separation(sys, x - px, y - py, z - pz);
-        const rs = rad + pr;
-        if (dx * dx + dy * dy + dz * dz < rs * rs) return true;
+    const radMax = templates.length ? this.molRadiusMax() : this.radiusMax();
+    const box = s.box;
+    const outside = (k: number, v: number, lo: number, hi: number): boolean => {
+      const out = v < lo || v > hi;
+      if (!out || !box.periodic[k]) return out;
+      const blo = box.lo[k], bhi = box.hi[k], prd = bhi - blo;
+      if ((lo < blo && hi > bhi) || hi - lo > prd) return false;
+      if (lo < blo) return v > hi && v < lo + prd;
+      if (hi > bhi) return v < lo && v > hi - prd;
+      return true;
+    };
+    for (let i = 0; i < nOld; i++) {
+      if ((this.ignoreLine && isLineAtom(s, i)) || (this.ignoreTri && isTriAtom(s, i))) continue;
+      const ri = s.radius ? s.radius[i] : bodyAtomRadius(s, i);
+      const delta = ri + radMax;
+      const x = s.x[3 * i], y = s.x[3 * i + 1], z = s.x[3 * i + 2];
+      if (!twoD) {
+        if (reg.kind === 'block') {
+          if (outside(0, x, reg.xlo - delta, reg.xhi + delta) || outside(1, y, reg.ylo - delta, reg.yhi + delta)) continue;
+        } else {
+          const [dx, dy] = separation(sys, x - reg.xc, y - reg.yc, 0);
+          const r = reg.radius + delta;
+          if (dx * dx + dy * dy > r * r) continue;
+        }
+        if (outside(2, z, fLo - delta, fHi + delta)) continue;
+      } else if (outside(0, x, reg.xlo - delta, reg.xhi + delta) || outside(1, y, fLo - delta, fHi + delta)) continue;
+      cx.push(x); cy.push(y); cz.push(z); cr.push(ri);
+    }
+    const overlaps = (x: number, y: number, z: number, rad: number): boolean => {
+      for (let j = 0; j < cx.length; j++) {
+        const [dx, dy, dz] = separation(sys, x - cx[j], y - cy[j], z - cz[j]);
+        const rs = rad + cr[j];
+        if (dx * dx + dy * dy + dz * dz <= rs * rs) return true;
       }
       return false;
     };
@@ -643,11 +686,7 @@ export class FixPour extends Fix {
         let t = templates[0];
         while (tries < budget) {
           tries++;
-          const x = reg.xlo + this.rng.uniform() * (reg.xhi - reg.xlo);
-          let y = 0, z = 0;
-          if (twoD) y = f;
-          else { y = reg.ylo + this.rng.uniform() * (reg.yhi - reg.ylo); z = f; }
-          if (reg.kind === 'cylinder' && (x - reg.xc) ** 2 + (y - reg.yc) ** 2 > reg.radius * reg.radius) continue;
+          const [x, y, z] = this.xyzRandom(reg, f);
           // fix_pour.cpp: one draw samples the molecule list ("while (rng > molfrac[imol]) imol++"), then the rotation
           const sel = this.rng.uniform();
           imol = 0;
@@ -667,7 +706,7 @@ export class FixPour extends Fix {
           let hit = false;
           for (let a = 0; a < t.natoms && !hit; a++) {
             const rad = t.diam ? t.diam[a] / 2 : SPHERE_DEFAULT_RADIUS;
-            hit = overlaps(cand[3 * a], cand[3 * a + 1], cand[3 * a + 2], rad, nOld + cx.length);
+            hit = overlaps(cand[3 * a], cand[3 * a + 1], cand[3 * a + 2], rad);
           }
           if (hit) continue;
           placed = true; pos = cand; placedRot = R; placedQuat = quat; break;
@@ -687,11 +726,8 @@ export class FixPour extends Fix {
         let x = 0, y = 0, z = 0, found = false;
         while (tries < budget) {
           tries++;
-          x = reg.xlo + this.rng.uniform() * (reg.xhi - reg.xlo);
-          if (twoD) y = f;
-          else { y = reg.ylo + this.rng.uniform() * (reg.yhi - reg.ylo); z = f; }
-          if (reg.kind === 'cylinder' && (x - reg.xc) ** 2 + (y - reg.yc) ** 2 > reg.radius * reg.radius) continue;
-          if (overlaps(x, y, z, rad, nOld + cx.length)) continue;
+          [x, y, z] = this.xyzRandom(reg, f);
+          if (overlaps(x, y, z, rad)) continue;
           found = true;
           break;
         }
@@ -743,6 +779,26 @@ export class FixPour extends Fix {
     const w = this.rateV - this.vel[4];
     const tFall = (-w + Math.sqrt(w * w + 2 * g * H)) / g;
     this.nextStep = step + Math.max(1, Math.round(tFall / dt));
+  }
+
+  /**
+   * A random insertion point at fall coordinate f. As native LAMMPS does (src/GRANULAR/fix_pour.cpp at b332f28,
+   * xyz_random): a block draws x then y (3d); a cylinder draws r1 = u - 0.5 and r2 = u - 0.5 until
+   * r1^2 + r2^2 < 0.25 (the redraws are not insertion attempts) and places x = xc + 2 r1 rc, y = yc + 2 r2 rc.
+   */
+  private xyzRandom(reg: InsertionRegion, f: number): [number, number, number] {
+    if (this.twoD) return [reg.xlo + this.rng.uniform() * (reg.xhi - reg.xlo), f, 0];
+    if (reg.kind === 'block') {
+      const x = reg.xlo + this.rng.uniform() * (reg.xhi - reg.xlo);
+      return [x, reg.ylo + this.rng.uniform() * (reg.yhi - reg.ylo), f];
+    }
+    let r1 = 0, r2 = 0;
+    for (;;) {
+      r1 = this.rng.uniform() - 0.5;
+      r2 = this.rng.uniform() - 0.5;
+      if (r1 * r1 + r2 * r2 < 0.25) break;
+    }
+    return [reg.xc + 2.0 * r1 * reg.radius, reg.yc + 2.0 * r2 * reg.radius, f];
   }
 
   /** Diameter for this particle (one draw for range and poly, none for one). */

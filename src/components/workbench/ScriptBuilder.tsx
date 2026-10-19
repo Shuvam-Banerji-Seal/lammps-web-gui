@@ -30,6 +30,7 @@ import { loadPotentialIndex, pairStyleWords, type PotentialIndex } from '../../l
 import { PotentialPicker } from './builder/PotentialPicker';
 import { parseScript, ImportResult } from '../../lammps/scriptParser';
 import { isLammpsScript, scriptTitle } from '../../lammps/scriptDetect';
+import { FILESTORE_EVENT } from '../../services/fileStoreEvent';
 import type { BuilderIncoming } from '../../lammps/notebookBridge';
 import { downloadTextFile } from '../../lammps/exporter';
 import { SCRIPT_TEMPLATES, buildTemplate } from '../../lammps/templates';
@@ -2226,10 +2227,36 @@ const pairWordsAbove = (steps: ScriptStep[], uid: string): string[] => {
   return words;
 };
 
+/**
+ * Commands whose `file` parameter names a file to read: the step editor suggests the files kept in browser storage
+ * (the storage panel's list), which the MD Notebook reads by name.
+ */
+const READS_FILE = new Set(['read_data', 'read_restart', 'molecule_cmd', 'read_dump', 'rerun']);
+
+/** Names of the files in browser storage, followed live (the store is loaded on first use). */
+const useStoredFileNames = (enabled: boolean): string[] => {
+  const [names, setNames] = useState<string[]>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    const load = () => {
+      void import('../../services/fileStore')
+        .then(({ getFileStore }) => getFileStore().list())
+        .then(list => { if (alive) setNames(list.map(f => f.name)); })
+        .catch(() => { /* no storage: no suggestions */ });
+    };
+    load();
+    window.addEventListener(FILESTORE_EVENT, load);
+    return () => { alive = false; window.removeEventListener(FILESTORE_EVENT, load); };
+  }, [enabled]);
+  return names;
+};
+
 const StepEditor: React.FC<StepEditorProps> = ({
   ct, step, def, pairWords, onUpdateParam, onUpdateNote, onToggle, onDuplicate, onRemove, onMoveUp, onMoveDown,
 }) => {
   const missing = useMemo(() => new Set(missingParams(def, step.params).map(p => p.key)), [def, step.params]);
+  const storedNames = useStoredFileNames(READS_FILE.has(def.id));
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
@@ -2270,7 +2297,8 @@ const StepEditor: React.FC<StepEditorProps> = ({
       <div className="space-y-4">
         {def.params.map(pd => (
           <ParamControl key={pd.key} ct={ct} def={pd} id={`${step.uid}-${pd.key}`} missing={missing.has(pd.key)}
-            value={step.params[pd.key] ?? ''} onChange={v => onUpdateParam(pd.key, v)} />
+            value={step.params[pd.key] ?? ''} onChange={v => onUpdateParam(pd.key, v)}
+            suggestions={pd.key === 'file' && READS_FILE.has(def.id) ? storedNames : undefined} />
         ))}
         {def.id === 'pair_coeff' && (
           <PotentialPicker
@@ -2314,8 +2342,10 @@ const ParamControl: React.FC<{
   ct: ThemeTokens; def: ParamDef; id: string; value: string; onChange: (v: string) => void;
   /** Blank, but LAMMPS needs a value here (generator missingParams): the step is skipped until it is filled. */
   missing?: boolean;
+  /** Values offered while typing (the files in browser storage, for a file to read). */
+  suggestions?: string[];
 }> = ({
-  ct, def, id, value, onChange, missing = false,
+  ct, def, id, value, onChange, missing = false, suggestions,
 }) => {
   const label = (
     <label id={`${id}-label`} htmlFor={id} className={`text-[11px] font-semibold ${ct.muted}`}>
@@ -2373,10 +2403,21 @@ const ParamControl: React.FC<{
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={def.placeholder}
+        list={suggestions?.length ? `${id}-stored` : undefined}
         aria-invalid={missing || undefined}
         aria-describedby={missing ? `${id}-note` : undefined}
         className={`w-full rounded border px-2.5 py-2 text-[13px] focus:border-[#7fa66b] focus:outline-none ${ct.input} ${missing ? ct.invalidField : ''}`}
       />
+      {suggestions && suggestions.length > 0 && (
+        <>
+          <datalist id={`${id}-stored`}>
+            {suggestions.map(n => <option key={n} value={n} />)}
+          </datalist>
+          <p className={`text-[10px] ${ct.muted}`}>
+            Suggests the {suggestions.length} {suggestions.length === 1 ? 'file' : 'files'} in browser storage (the notebook reads them by name).
+          </p>
+        </>
+      )}
       {note}
     </div>
   );

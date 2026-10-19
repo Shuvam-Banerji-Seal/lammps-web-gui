@@ -7,6 +7,7 @@
  * Text is stored as the engine receives it: binary input (gzip) as one character per byte
  * (latin1), the same encoding the notebook sends to the engine.
  */
+import { FILESTORE_EVENT } from './fileStoreEvent';
 
 export type StoredKind = 'text' | 'gzip' | 'structure';
 
@@ -51,7 +52,7 @@ export const kindOf = (name: string): StoredKind => {
 };
 
 /** Window event dispatched after every successful put, remove or clear (both backends), so open views re-list. */
-export const FILESTORE_EVENT = 'lammps-filestore-change';
+export { FILESTORE_EVENT };
 
 const notifyChange = (): void => {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(FILESTORE_EVENT));

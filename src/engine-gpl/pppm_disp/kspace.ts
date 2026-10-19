@@ -244,10 +244,12 @@ const peratomBricks = (F: Float64Array, mg: MeshGeom, G: Float64Array, vg: Float
 /**
  * poisson_2s_ik's per-atom part and poisson_2s_peratom (orthogonal) for two densities F1 and F2: the packed
  * W = (F1 - i F2) G / N; u1, u2 from IFFT(W) and v_c1, v_c2 from IFFT(W vg_c), the real part to the first density
- * and minus the imaginary part to the second, as the C++ packs them.
+ * and minus the imaginary part to the second, as the C++ packs them. As poisson_2s_peratom does, the diagonal terms
+ * v0..v2 take vg_6[0..2] and the off-diagonal v3..v5 take vg2_6[0..2] (which differ from vg_6[3..5] on the Nyquist
+ * planes of an even mesh).
  */
 const peratomBricks2s = (F1: Float64Array, F2: Float64Array, mg: MeshGeom, G: Float64Array, vg: Float64Array,
-  wantE: boolean, wantV: boolean): [PaBricks, PaBricks] => {
+  vg2: Float64Array, wantE: boolean, wantV: boolean): [PaBricks, PaBricks] => {
   const ng = mg.N[0] * mg.N[1] * mg.N[2];
   const scaleinv = 1.0 / ng;
   const W = new Float64Array(2 * ng);
@@ -270,8 +272,9 @@ const peratomBricks2s = (F1: Float64Array, F2: Float64Array, mg: MeshGeom, G: Fl
     b2.v = [0, 1, 2, 3, 4, 5].map(() => new Float64Array(ng));
     for (let c = 0; c < 6; c++) {
       for (let n = 0; n < ng; n++) {
-        w2[2 * n] = W[2 * n] * vg[6 * n + c];
-        w2[2 * n + 1] = W[2 * n + 1] * vg[6 * n + c];
+        const k = c < 3 ? vg[6 * n + c] : vg2[3 * n + c - 3];
+        w2[2 * n] = W[2 * n] * k;
+        w2[2 * n + 1] = W[2 * n + 1] * k;
       }
       ifftPair(w2, mg, b1.v[c], b2.v[c]);
     }
@@ -766,6 +769,12 @@ export class KSpacePPPMDisp extends KSpaceBase {
   /** Whether this style's per-atom energy and virial are ported (the TIP4P and dielectric variants: not yet). */
   protected peratomPorted(): boolean { return true; }
 
+  /** fieldforce_c_peratom: the interpolated potential o[0] and virial o[1..6] of atom i times qfactor, on atom i. */
+  protected addCoulombPeratom(kc: KSpaceCompute, i: number, o: Float64Array, qfactor: number): void {
+    if (kc.eatom) kc.eatom[i] += o[0] * qfactor;
+    if (kc.vatom) for (let c = 0; c < 6; c++) kc.vatom[6 * i + c] += o[1 + c] * qfactor;
+  }
+
   compute(kc: KSpaceCompute): void {
     const pa = kc.eatom !== null || kc.vatom !== null;
     if (pa && !this.peratomPorted()) throw new StyleError(`compute pe/atom or stress/atom with kspace_style ${this.name} is not ported (per-atom energies and virials)`);
@@ -836,9 +845,7 @@ export class KSpacePPPMDisp extends KSpaceBase {
         const o = new Float64Array(7);
         for (let i = 0; i < n; i++) {
           interpPeratom(xc, i, lo, mg, st, base, b, o);
-          const qf = 0.5 * qqrd2e * q[i];
-          if (kc.eatom) kc.eatom[i] += o[0] * qf;
-          if (kc.vatom) for (let c = 0; c < 6; c++) kc.vatom[6 * i + c] += o[1 + c] * qf;
+          this.addCoulombPeratom(kc, i, o, 0.5 * qqrd2e * q[i]);
         }
         coulSelf = { qsum, qqrd2e };
       }
@@ -903,7 +910,7 @@ export class KSpacePPPMDisp extends KSpaceBase {
         if (!this.dispArith) bricks[0] = peratomBricks(Fs[0], mg, info.G, info.vg, info.vg2, wantE, wantV);
         else {
           bricks[3] = peratomBricks(Fs[3], mg, info.G, info.vg, info.vg2, wantE, wantV);
-          for (let m = 0; m < 3; m++) [bricks[m], bricks[6 - m]] = peratomBricks2s(Fs[m], Fs[6 - m], mg, info.G, info.vg, wantE, wantV);
+          for (let m = 0; m < 3; m++) [bricks[m], bricks[6 - m]] = peratomBricks2s(Fs[m], Fs[6 - m], mg, info.G, info.vg, info.vg2, wantE, wantV);
         }
         const o = new Float64Array(7);
         const sum = new Float64Array(7);

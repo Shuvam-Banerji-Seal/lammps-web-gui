@@ -1,6 +1,7 @@
 /*
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
- * Source: src/MANYBODY/pair_rebomos.cpp and src/MANYBODY/pair_rebomos.h at commit b332f28.
+ * Source: src/MANYBODY/pair_rebomos.cpp and src/MANYBODY/pair_rebomos.h at commit b332f28 (the per-atom virial through
+ * the Pair::v_tally2 / v_tally3 ports of ../airebo/tally.ts).
  * Copyright (2003) Sandia Corporation (GNU General Public License). Reference in the C++ header:
  * Stewart J A and Spearot D E (2013) Atomistic simulations of nanoindentation on the basal plane of
  * crystalline molybdenum disulfide, Modelling Simul. Mater. Sci. Eng. 21.
@@ -11,6 +12,7 @@ import { rowNeighbors } from '../airebo/neigh';
 import { powint } from '../airebo/splines';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { exp as libmExp } from '../libm/exp';
+import { vTally2, vTally3 } from '../airebo/tally';
 
 const TOL = 1.0e-9;
 const MY_PI = 3.14159265358979323846;
@@ -208,7 +210,6 @@ export class PairREBOMoS extends Pair {
 
   override compute(pc: PairCompute): void {
     if (!this.fileRead) throw new StyleError('pair_style rebomos has no potential file');
-    if (pc.vatom) throw new StyleError('compute stress/atom is not supported by pair style rebomos');
     const nall = pc.nall, nlocal = pc.nlocal;
     const mt = new Int32Array(nall);
     for (let a = 0; a < nall; a++) {
@@ -285,6 +286,7 @@ export class PairREBOMoS extends Pair {
           pc.eatom[i] += 0.5 * evdwl;
           pc.eatom[j] += 0.5 * evdwl;
         }
+        if (pc.vatom) vTally2(pc.vatom, i, j, fpair, delx, dely, delz);
       }
     }
   }
@@ -292,6 +294,7 @@ export class PairREBOMoS extends Pair {
   /** PairREBOMoS::bondorder: returns bij = (pij + pji) / 2 and adds the bond-order forces (C++ order kept). */
   private bondorder(c: Ctx, i: number, j: number, rij: number[], rijmag: number, VA: number, dwik: Ref): number {
     const { x, f, mt, rstart, rlist, nM, nS } = c;
+    const vatom = c.pc.vatom;
     const itype = mt[i], jtype = mt[j];
     const dwij = { v: 0 };
     sp(rijmag, this.rcmin[itype * 2 + jtype], this.rcmax[itype * 2 + jtype], dwij);
@@ -362,6 +365,7 @@ export class PairREBOMoS extends Pair {
         f[3 * j + d] += fj[d];
         f[3 * k + d] += fk[d];
       }
+      if (vatom) vTally3(vatom, i, j, k, fj, fk, [-rijv[0], -rijv[1], -rijv[2]], [-rik[0], -rik[1], -rik[2]]);
     }
     // PIJ force contribution additional term (i side)
     tmp2 = -VA * 0.5 * (tmp * dp.v * dwij.v) / rijmag;
@@ -369,6 +373,7 @@ export class PairREBOMoS extends Pair {
       f[3 * i + d] += rijv[d] * tmp2;
       f[3 * j + d] -= rijv[d] * tmp2;
     }
+    if (vatom) vTally2(vatom, i, j, tmp2, rijv[0], rijv[1], rijv[2]);
 
     // j side
     tmp = 0.0;
@@ -433,6 +438,7 @@ export class PairREBOMoS extends Pair {
         f[3 * j + d] += fj[d];
         f[3 * l + d] += fk[d];
       }
+      if (vatom) vTally3(vatom, i, j, l, fi, fk, rijv, [-rjl[0], -rjl[1], -rjl[2]]);
     }
     // PIJ force contribution additional term (j side, with dp of j)
     tmp2 = -VA * 0.5 * (tmp * dp.v * dwij.v) / rijmag;
@@ -440,6 +446,7 @@ export class PairREBOMoS extends Pair {
       f[3 * i + d] += rijv[d] * tmp2;
       f[3 * j + d] -= rijv[d] * tmp2;
     }
+    if (vatom) vTally2(vatom, i, j, tmp2, rijv[0], rijv[1], rijv[2]);
     return 0.5 * (pij + pji);
   }
 
@@ -512,6 +519,7 @@ export class PairREBOMoS extends Pair {
           pc.eatom[i] += 0.5 * VLJ;
           pc.eatom[j] += 0.5 * VLJ;
         }
+        if (pc.vatom) vTally2(pc.vatom, i, j, fpair, delij[0], delij[1], delij[2]);
       }
     }
   }

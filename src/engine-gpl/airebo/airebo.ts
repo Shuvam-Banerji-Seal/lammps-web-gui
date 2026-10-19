@@ -22,6 +22,7 @@ import { readAireboFile, newParams, SplineTables, type AireboParams, type Airebo
 import { newKnots, splineInit, splineInitRebo, type Knots } from './splineInit';
 import { flj, type LJCore, type LJParams } from './flj';
 import { torsion } from './torsion';
+import { vTally2 } from './tally';
 import { rowNeighbors } from './neigh';
 import { splineInitBc } from './bc';
 import { powint } from './splines';
@@ -276,7 +277,6 @@ export class PairAIREBO extends Pair {
 
   override compute(pc: PairCompute): void {
     if (!this.fileRead) throw new StyleError(`pair_style ${this.name} has no potential file`);
-    if (pc.vatom) throw new StyleError(`compute stress/atom is not supported by pair style ${this.name}`);
     const nall = pc.nall;
     const nlocal = pc.nlocal;
     const mt = new Int32Array(nall);
@@ -291,7 +291,7 @@ export class PairAIREBO extends Pair {
     const rcmaxMax = Math.max(P.rcmax[0], P.rcmax[1], P.rcmax[3]);
     const core: ReboCore = {
       P, T: this.T, K: this.K, mt, tag, x: pc.x, f: pc.f, rstart: new Int32Array(0), rlist: new Int32Array(0),
-      nC, nH, bcflag: this.variant === 'airebo/bc', acc: pc.acc, eatom: pc.eatom, dwij: this.dwij, dS: this.dS,
+      nC, nH, bcflag: this.variant === 'airebo/bc', acc: pc.acc, eatom: pc.eatom, vatom: pc.vatom, dwij: this.dwij, dS: this.dS,
     };
     // REBO neighbor lists of owned and ghost atoms, and the coordination sums nC, nH
     const built = buildRebo(core, nall, P.rcmaxsq, rcmaxMax, P.rcmin, P.rcmax, pc.x);
@@ -321,7 +321,7 @@ export class PairAIREBO extends Pair {
   /** PairAIREBO::FREBO: the REBO two-body and bond-order energy and forces of owned atoms. */
   protected frebo(core: ReboCore, nlocal: number): void {
     const { P, mt, tag, x, f, rstart, rlist } = core;
-    const eatom = core.eatom;
+    const eatom = core.eatom, vatom = core.vatom;
     for (let i = 0; i < nlocal; i++) {
       const itag = tag[i];
       const itype = mt[i];
@@ -383,6 +383,7 @@ export class PairAIREBO extends Pair {
           eatom[i] += half;
           eatom[j] += half;
         }
+        if (vatom) vTally2(vatom, i, j, fpair, delx, dely, delz);
       }
     }
   }

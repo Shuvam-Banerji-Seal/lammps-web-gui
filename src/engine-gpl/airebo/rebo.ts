@@ -48,9 +48,10 @@ export interface ReboCore {
   nH: Float64Array;
   /** AIREBO-BC (bcflag): the C-C P term is bond-averaged (src/MANYBODY/pair_airebo.cpp bcflag). */
   bcflag: boolean;
-  /** Energy accumulator (pc.acc) and per-atom energy (null when not requested). */
+  /** Energy accumulator (pc.acc), per-atom energy and per-atom virial (6 per atom; null when not requested). */
   acc: { evdwl: number };
   eatom: Float64Array | null;
+  vatom: Float64Array | null;
   /** Scratch derivative of the pair cutoff Sp(r_ij). */
   dwij: Ref;
   /** Scratch derivative of the cutoff S(t) of gSpline. */

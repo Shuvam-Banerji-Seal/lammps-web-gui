@@ -15,6 +15,7 @@ import { StyleError } from '../../engine/force/types';
 import { PijSpline, newRef, type ReboCore } from './rebo';
 import { sp, spbicubicPatchCoeffs, type Ref } from './splines';
 import type { SplineTables } from './tables';
+import { vTally2 } from './tally';
 
 /** Number of knots of the bond-centric P_CC grid (PCCf_bc[7][7], doubled coordinate 0..6). */
 export const BC_KNOTS = 49;
@@ -94,6 +95,7 @@ export const bondorderPijCross = (
 ): void => {
   if (!(core.bcflag && itype === 0 && jtype === 0)) return;
   const { P, x, f, mt, rstart, rlist } = core;
+  const vatom = core.vatom;
   const rcmin = P.rcmin, rcmax = P.rcmax;
   // pji term: P-force on i's neighbors k
   for (let kk = rstart[i]; kk < rstart[i + 1]; kk++) {
@@ -113,6 +115,7 @@ export const bondorderPijCross = (
     f[3 * atomk] += tmp2 * rik[0];
     f[3 * atomk + 1] += tmp2 * rik[1];
     f[3 * atomk + 2] += tmp2 * rik[2];
+    if (vatom) vTally2(vatom, i, atomk, -tmp2, rik[0], rik[1], rik[2]);
   }
   // pij term: P-force on j's neighbors l
   for (let ll = rstart[j]; ll < rstart[j + 1]; ll++) {
@@ -132,5 +135,6 @@ export const bondorderPijCross = (
     f[3 * atoml] += tmp2 * rjl[0];
     f[3 * atoml + 1] += tmp2 * rjl[1];
     f[3 * atoml + 2] += tmp2 * rjl[2];
+    if (vatom) vTally2(vatom, j, atoml, -tmp2, rjl[0], rjl[1], rjl[2]);
   }
 };

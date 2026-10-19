@@ -13,6 +13,7 @@ import { sp, sp2 } from './splines';
 import { powint } from './splines';
 import { TOL, type ReboCore } from './rebo';
 import { type LJCore } from './flj';
+import { vTally4 } from './tally';
 
 const v3 = (): Float64Array => new Float64Array(3);
 
@@ -20,7 +21,7 @@ const v3 = (): Float64Array => new Float64Array(3);
 export const torsion = (core: LJCore & ReboCore, nlocal: number): void => {
   const { P, mt, tag, x, f, rstart, rlist, epsilonT } = core;
   const pidx = (a: number, b: number) => a * 2 + b;
-  const eatom = core.eatom;
+  const eatom = core.eatom, vatom = core.vatom;
   const del32 = v3(), del23 = v3(), del21 = v3(), del34 = v3(), deljk = v3(), delil = v3(), delkl = v3();
   const cross321 = v3(), cross234 = v3(), dndij = v3(), tmpvec = v3(), dndik = v3(), dndjl = v3();
   const Ftmp = v3(), fi = v3(), fj = v3(), fk = v3(), fl = v3();
@@ -292,7 +293,12 @@ export const torsion = (core: LJCore & ReboCore, nlocal: number): void => {
             eatom[k] += q;
             eatom[l] += q;
           }
-          void delkl;
+          if (vatom) {
+            delkl[0] = delil[0] - del21[0];
+            delkl[1] = delil[1] - del21[1];
+            delkl[2] = delil[2] - del21[2];
+            vTally4(vatom, i, j, k, l, fi, fj, fk, delil, del34, delkl);
+          }
         }
       }
     }

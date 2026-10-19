@@ -14,6 +14,7 @@ import { sp, sp2, type Ref } from './splines';
 import { TOL, kron, gSpline, piRCSpline, TijSpline, newRef, type ReboCore } from './rebo';
 import { bondorderPijCross, pijEval } from './bc';
 import { exp as libmExp } from '../libm/exp';
+import { vTally2, vTally3, vTally4 } from './tally';
 
 /** Parameters of the LJ / Morse term, precomputed in init_one (AIREBO side). */
 export interface LJParams {
@@ -50,6 +51,7 @@ const rdwkn = newRef(), rdwln = newRef(), rdStb = newRef(), rdStr = newRef(), rd
 const rik = v3(), rjl = v3(), rkn = v3(), rln = v3(), r32 = v3(), r23 = v3(), r21 = v3(), r34 = v3(), rjk = v3(), ril = v3();
 const dcosjikdri = v3(), dcosijldri = v3(), dcosjikdrk = v3(), dcosjikdrj = v3(), dcosijldrj = v3(), dcosijldrl = v3();
 const fi = v3(), fj = v3(), fk = v3(), fl = v3();
+const rji = v3(), rki = v3(), rlj = v3(), r13 = v3(), r43 = v3();
 const cross321 = v3(), cross234 = v3(), dt2dik = v3(), dt2djl = v3(), dt2dij = v3();
 const F23 = v3(), F12 = v3(), F34 = v3(), F31 = v3(), F24 = v3(), f1 = v3(), f2 = v3(), f3 = v3(), f4 = v3();
 
@@ -70,6 +72,7 @@ export const bondorderLJ = (
   core: LJCore, i: number, j: number, rijmagMod: number, VA0: number, rij: Float64Array, rijmag0: number,
 ): number => {
   const { P, nC, nH, x, f, mt, rstart, rlist } = core;
+  const vatom = core.vatom;
   let VA = VA0;
   let rijmag = rijmag0;
   const atomi = i, atomj = j;
@@ -286,6 +289,11 @@ export const bondorderLJ = (
       addF(f, atomi, fi[0], fi[1], fi[2]);
       addF(f, atomj, fj[0], fj[1], fj[2]);
       addF(f, atomk, fk[0], fk[1], fk[2]);
+      if (vatom) {
+        rji[0] = -rij[0]; rji[1] = -rij[1]; rji[2] = -rij[2];
+        rki[0] = -rik[0]; rki[1] = -rik[1]; rki[2] = -rik[2];
+        vTally3(vatom, atomi, atomj, atomk, fj, fk, rji, rki);
+      }
     }
     // --- j side of P_ji
     tmp = tmppji;
@@ -358,6 +366,10 @@ export const bondorderLJ = (
       addF(f, atomi, fi[0], fi[1], fi[2]);
       addF(f, atomj, fj[0], fj[1], fj[2]);
       addF(f, atoml, fl[0], fl[1], fl[2]);
+      if (vatom) {
+        rlj[0] = -rjl[0]; rlj[1] = -rjl[1]; rlj[2] = -rjl[2];
+        vTally3(vatom, atomi, atomj, atoml, fi, fl, rij, rlj);
+      }
     }
     // bond-centric P cross forces (no-op for atom-centric P)
     bondorderPijCross(core, atomi, atomj, itype, jtype, VA, tmppij, tmppji, dN2PIJ, dN2PJI);
@@ -385,6 +397,7 @@ export const bondorderLJ = (
       f[3 * atomk] += tmp2 * rik[0];
       f[3 * atomk + 1] += tmp2 * rik[1];
       f[3 * atomk + 2] += tmp2 * rik[2];
+      if (vatom) vTally2(vatom, atomi, atomk, -tmp2, rik[0], rik[1], rik[2]);
       if (ktype !== 0) continue;
       tmp2 = VA * dN3[2] * (2.0 * NconjtmpI * dwik * SpN) / rikmag;
       f[3 * atomi] -= tmp2 * rik[0];
@@ -393,6 +406,7 @@ export const bondorderLJ = (
       f[3 * atomk] += tmp2 * rik[0];
       f[3 * atomk + 1] += tmp2 * rik[1];
       f[3 * atomk + 2] += tmp2 * rik[2];
+      if (vatom) vTally2(vatom, atomi, atomk, -tmp2, rik[0], rik[1], rik[2]);
       if (Math.abs(dNki) > TOL) {
         for (let nn = rstart[atomk]; nn < rstart[atomk + 1]; nn++) {
           const atomn = rlist[nn];
@@ -411,6 +425,7 @@ export const bondorderLJ = (
           f[3 * atomn] += tmp2 * rkn[0];
           f[3 * atomn + 1] += tmp2 * rkn[1];
           f[3 * atomn + 2] += tmp2 * rkn[2];
+          if (vatom) vTally2(vatom, atomk, atomn, -tmp2, rkn[0], rkn[1], rkn[2]);
         }
       }
     }
@@ -435,6 +450,7 @@ export const bondorderLJ = (
       f[3 * atoml] += tmp2 * rjl[0];
       f[3 * atoml + 1] += tmp2 * rjl[1];
       f[3 * atoml + 2] += tmp2 * rjl[2];
+      if (vatom) vTally2(vatom, atomj, atoml, -tmp2, rjl[0], rjl[1], rjl[2]);
       if (ltype !== 0) continue;
       tmp2 = VA * dN3[2] * (2.0 * NconjtmpJ * dwjl * SpN) / rjlmag;
       f[3 * atomj] -= tmp2 * rjl[0];
@@ -443,6 +459,7 @@ export const bondorderLJ = (
       f[3 * atoml] += tmp2 * rjl[0];
       f[3 * atoml + 1] += tmp2 * rjl[1];
       f[3 * atoml + 2] += tmp2 * rjl[2];
+      if (vatom) vTally2(vatom, atomj, atoml, -tmp2, rjl[0], rjl[1], rjl[2]);
       if (Math.abs(dNlj) > TOL) {
         for (let nn = rstart[atoml]; nn < rstart[atoml + 1]; nn++) {
           const atomn = rlist[nn];
@@ -461,6 +478,7 @@ export const bondorderLJ = (
           f[3 * atomn] += tmp2 * rln[0];
           f[3 * atomn + 1] += tmp2 * rln[1];
           f[3 * atomn + 2] += tmp2 * rln[2];
+          if (vatom) vTally2(vatom, atoml, atomn, -tmp2, rln[0], rln[1], rln[2]);
         }
       }
     }
@@ -607,6 +625,11 @@ export const bondorderLJ = (
               addF(f, atom2, f2[0], f2[1], f2[2]);
               addF(f, atom3, f3[0], f3[1], f3[2]);
               addF(f, atom4, f4[0], f4[1], f4[2]);
+              if (vatom) {
+                r13[0] = -rjk[0]; r13[1] = -rjk[1]; r13[2] = -rjk[2];
+                r43[0] = -r34[0]; r43[1] = -r34[1]; r43[2] = -r34[2];
+                vTally4(vatom, atom1, atom2, atom3, atom4, f1, f2, f4, r13, r23, r43);
+              }
             }
           }
         }
@@ -633,6 +656,7 @@ export const bondorderLJ = (
       f[3 * atomk] += tmp2 * rik[0];
       f[3 * atomk + 1] += tmp2 * rik[1];
       f[3 * atomk + 2] += tmp2 * rik[2];
+      if (vatom) vTally2(vatom, atomi, atomk, -tmp2, rik[0], rik[1], rik[2]);
       if (ktype !== 0) continue;
       tmp2 = VA * dN3[2] * (2.0 * NconjtmpI * dwik * SpN) * Etmp / rikmag;
       f[3 * atomi] -= tmp2 * rik[0];
@@ -641,6 +665,7 @@ export const bondorderLJ = (
       f[3 * atomk] += tmp2 * rik[0];
       f[3 * atomk + 1] += tmp2 * rik[1];
       f[3 * atomk + 2] += tmp2 * rik[2];
+      if (vatom) vTally2(vatom, atomi, atomk, -tmp2, rik[0], rik[1], rik[2]);
       if (Math.abs(dNki) > TOL) {
         for (let nn = rstart[atomk]; nn < rstart[atomk + 1]; nn++) {
           const atomn = rlist[nn];
@@ -659,6 +684,7 @@ export const bondorderLJ = (
           f[3 * atomn] += tmp2 * rkn[0];
           f[3 * atomn + 1] += tmp2 * rkn[1];
           f[3 * atomn + 2] += tmp2 * rkn[2];
+          if (vatom) vTally2(vatom, atomk, atomn, -tmp2, rkn[0], rkn[1], rkn[2]);
         }
       }
     }
@@ -682,6 +708,7 @@ export const bondorderLJ = (
       f[3 * atoml] += tmp2 * rjl[0];
       f[3 * atoml + 1] += tmp2 * rjl[1];
       f[3 * atoml + 2] += tmp2 * rjl[2];
+      if (vatom) vTally2(vatom, atomj, atoml, -tmp2, rjl[0], rjl[1], rjl[2]);
       if (ltype !== 0) continue;
       tmp2 = VA * dN3[2] * (2.0 * NconjtmpJ * dwjl * SpN) * Etmp / rjlmag;
       f[3 * atomj] -= tmp2 * rjl[0];
@@ -690,6 +717,7 @@ export const bondorderLJ = (
       f[3 * atoml] += tmp2 * rjl[0];
       f[3 * atoml + 1] += tmp2 * rjl[1];
       f[3 * atoml + 2] += tmp2 * rjl[2];
+      if (vatom) vTally2(vatom, atomj, atoml, -tmp2, rjl[0], rjl[1], rjl[2]);
       if (Math.abs(dNlj) > TOL) {
         for (let nn = rstart[atoml]; nn < rstart[atoml + 1]; nn++) {
           const atomn = rlist[nn];
@@ -708,6 +736,7 @@ export const bondorderLJ = (
           f[3 * atomn] += tmp2 * rln[0];
           f[3 * atomn + 1] += tmp2 * rln[1];
           f[3 * atomn + 2] += tmp2 * rln[2];
+          if (vatom) vTally2(vatom, atoml, atomn, -tmp2, rln[0], rln[1], rln[2]);
         }
       }
     }
@@ -723,10 +752,10 @@ export const bondorderLJ = (
 export const flj = (core: LJCore, nlocal: number): void => {
   const { P, mt, tag, x, f, rstart, rlist, ljStart, ljList, ljp } = core;
   const pidx = (a: number, b: number) => a * 2 + b;
-  const eatom = core.eatom;
+  const eatom = core.eatom, vatom = core.vatom;
   const dwij = newRef(), dwik = newRef(), dwkj = newRef(), dwkm = newRef(), dwmj = newRef();
   const delij = v3(), delik = v3(), deljk = v3(), delkm = v3(), deljm = v3();
-  const delikS = v3(), deljkS = v3(), delkmS = v3(), deljmS = v3();
+  const delikS = v3(), deljkS = v3(), delkmS = v3(), deljmS = v3(), delimS = v3();
   const fa = v3(), fb = v3(), fc = v3(), fd = v3();
   const cutljsq = ljp.cutljsq;
   for (let i = 0; i < nlocal; i++) {
@@ -923,6 +952,7 @@ export const flj = (core: LJCore, nlocal: number): void => {
         eatom[i] += half;
         eatom[j] += half;
       }
+      if (vatom) vTally2(vatom, i, j, fpair, delij[0], delij[1], delij[2]);
       if (cij < 1.0) {
         const dC = Str * Stb * VLJ + (1.0 - Str) * VLJ;
         if (npath === 2) {
@@ -933,6 +963,7 @@ export const flj = (core: LJCore, nlocal: number): void => {
           f[3 * atomj] -= delij[0] * fpair;
           f[3 * atomj + 1] -= delij[1] * fpair;
           f[3 * atomj + 2] -= delij[2] * fpair;
+          if (vatom) vTally2(vatom, atomi, atomj, fpair, delij[0], delij[1], delij[2]);
         } else if (npath === 3) {
           const fpair1 = dC * dwikS * wkjS / rikS;
           fa[0] = delikS[0] * fpair1;
@@ -945,6 +976,7 @@ export const flj = (core: LJCore, nlocal: number): void => {
           addF(f, atomi, fa[0], fa[1], fa[2]);
           addF(f, atomj, fb[0], fb[1], fb[2]);
           addF(f, atomk, -(fa[0] + fb[0]), -(fa[1] + fb[1]), -(fa[2] + fb[2]));
+          if (vatom) vTally3(vatom, atomi, atomj, atomk, fa, fb, delikS, deljkS);
         } else if (npath === 4) {
           const fpair1 = dC * dwikS * wkmS * wmjS / rikS;
           fa[0] = delikS[0] * fpair1;
@@ -965,6 +997,12 @@ export const flj = (core: LJCore, nlocal: number): void => {
           addF(f, atomj, fb[0], fb[1], fb[2]);
           addF(f, atomk, fc[0], fc[1], fc[2]);
           addF(f, atomm, fd[0], fd[1], fd[2]);
+          if (vatom) {
+            delimS[0] = delikS[0] + delkmS[0];
+            delimS[1] = delikS[1] + delkmS[1];
+            delimS[2] = delikS[2] + delkmS[2];
+            vTally4(vatom, atomi, atomj, atomk, atomm, fa, fb, fc, delimS, deljmS, delkmS);
+          }
         }
       }
     }

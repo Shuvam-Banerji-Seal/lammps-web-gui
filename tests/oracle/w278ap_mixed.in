@@ -1,0 +1,30 @@
+# oracle: hybrid/overlay eam/fs/apip + pace/apip (Cu_300K_Immel_2023.eam.fs, Cu-1.yace of examples/PACKAGES/apip) on the 31-atom Cu cell of in.validate with mixed switching parameters (an atom-style variable between 0 and 1, then lambda 0 and 1 for two groups), 10 NVE steps, with the per-atom energy and virial sums and compute property/atom apip_lambda
+# Native reference: LAMMPS b332f28 built with PKG_APIP and PKG_ML-PACE (/store/shuvam/software/lammps-build-apip/lmp)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 4.1e-15, atoms 4.3e-16.
+# oracle-examples: PACKAGES/apip/data.validate PACKAGES/apip/Cu-1.yace PACKAGES/apip/Cu_300K_Immel_2023.eam.fs
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      apip
+timestep        0.001
+read_data       data.validate
+variable        lam atom 0.5+0.45*sin(1.3*x+0.7*y-0.4*z)
+set             group all apip/lambda v_lam
+group           pre id 1:5
+group           fst id 20:24
+set             group pre apip/lambda precise
+set             group fst apip/lambda fast
+pair_style      hybrid/overlay eam/fs/apip pace/apip
+pair_coeff      * * eam/fs/apip Cu_300K_Immel_2023.eam.fs Cu
+pair_coeff      * * pace/apip Cu-1.yace Cu
+compute         lam all property/atom apip_lambda
+compute         lsum all reduce sum c_lam
+compute         eatom all pe/atom
+compute         esum all reduce sum c_eatom
+compute         satom all stress/atom NULL
+compute         ssum all reduce sum c_satom[1] c_satom[2] c_satom[3] c_satom[4] c_satom[5] c_satom[6]
+thermo_style    custom step pe press pxx pyy pzz pxy pxz pyz c_lsum c_esum c_ssum[1] c_ssum[2] c_ssum[3] c_ssum[4] c_ssum[5] c_ssum[6]
+thermo_modify   format float %.15g
+velocity        all create 300 4928459 loop geom
+fix             1 all nve
+thermo          5
+run             10

@@ -1,7 +1,7 @@
 import type { SimState, TopoList } from '../types';
 import type { Geometry } from '../domain';
 import type { Neighbor, SpecialSettings } from '../neighbor';
-import { buildAtomMap, buildSpecial, filterTopo, type SpecialList } from '../atoms';
+import { buildAtomMap, buildSpecial, filterTopo, type SpecialList, APIP_F_CONST_LAMBDA, APIP_F_DYN_LAMBDA, APIP_LAMBDA_REQUIRED } from '../atoms';
 import { BOND_REMOVED, clearAccum, newAccum, StyleError, type Accum, type Bonded, type KSpace, type Pair, type PairCompute, type StyleContext } from './types';
 import { PairHybrid } from './pair/hybrid';
 import { checkKspacePair } from './kspaceCheck';
@@ -282,6 +282,11 @@ export class ForceField {
     // atom_vec_smd force_clear (native AtomVecSMD::force_clear): the energy rate desph of the SMD styles starts at zero
     // for every evaluation, before the sub-styles of a hybrid add to it (the styles do not clear it themselves)
     s.custom.get(SMD_DESPH)?.data.fill(0);
+    // atom_style apip: as native LAMMPS does (src/APIP/atom_vec_apip.cpp at b332f28, AtomVecApip::force_clear), the
+    // record of which potentials an atom needs and the two lambda force vectors start at zero for every evaluation
+    s.custom.get(APIP_LAMBDA_REQUIRED)?.data.fill(0);
+    s.custom.get(APIP_F_CONST_LAMBDA)?.data.fill(0);
+    s.custom.get(APIP_F_DYN_LAMBDA)?.data.fill(0);
     nb.clearForces();
     const nall = nb.nall;
     const eatomAll = flags.eatom ? new Float64Array(nall) : null;

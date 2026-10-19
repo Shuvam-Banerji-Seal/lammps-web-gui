@@ -1,0 +1,25 @@
+# oracle: the APIP validation example examples/PACKAGES/apip/in.validate (31-atom Cu cell, atom_style apip): pair_style pace with Cu-1.yace, then hybrid/overlay eam/fs/apip + pace/apip with every lambda precise (equal to pace) and fast (equal to eam/fs), then eam/fs; energy, fnorm and fmax of each run 0
+# Native reference: LAMMPS b332f28 built with PKG_APIP and PKG_ML-PACE (/store/shuvam/software/lammps-build-apip/lmp)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 2.7e-15, atoms 2.1e-15.
+# oracle-examples: PACKAGES/apip/data.validate PACKAGES/apip/Cu-1.yace PACKAGES/apip/Cu_300K_Immel_2023.eam.fs
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      apip
+timestep        0.001
+read_data       data.validate
+fix             1 all nve
+thermo_style    custom step pe fnorm fmax press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+pair_style      pace
+pair_coeff      * * Cu-1.yace Cu
+run             0
+pair_style      hybrid/overlay eam/fs/apip pace/apip
+pair_coeff      * * eam/fs/apip Cu_300K_Immel_2023.eam.fs Cu
+pair_coeff      * * pace/apip Cu-1.yace Cu
+set             group all apip/lambda precise
+run             0
+set             group all apip/lambda fast
+run             0
+pair_style      eam/fs
+pair_coeff      * * Cu_300K_Immel_2023.eam.fs Cu
+run             0

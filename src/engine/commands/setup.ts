@@ -4,7 +4,7 @@ import { StyleError, typeBounds } from '../force/types';
 import { typeRange } from '../pairs';
 import { UNIT_SYSTEMS, isUnitStyle } from '../units';
 import { makeBox, parseBoundary, Geometry, cloneBox } from '../domain';
-import { DPD_THETA, isDpdStyle, EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, isBpmSphereStyle, isTriAtom, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH } from '../atoms';
+import { APIP_LAMBDA, isApipStyle, DPD_THETA, isDpdStyle, EDPD_CV, EDPD_TEMP, TDPD_CC, isEdpdStyle, tdpdSpecies, isSphStyle, SPH_CV, SPH_ESPH, SPH_RHO, DIEL_EPSILON, DIEL_QSCALED, isDielectricStyle, ELECTRON_RADIUS, ELECTRON_SPIN, electronProp, HEAT_TEMPERATURE, emptyState, appendAtoms, maxAtomId, pushTopo, ALL_GROUP_BIT, hasChargeStyle, hasDipoleStyle, setSpinVector, isMolecularStyle, sphereMass, SPHERE_DEFAULT_RADIUS, massOf, isEllipsoid, isBpmSphereStyle, isTriAtom, ellipsoidVolume, gatherAtoms, hasCharge, hasMolecule, nativeOrder, isTemplateStyle, templateStyleId, isBodyStyle, isSuperEllipsoidStyle, RHEO_RHO, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_ESPH } from '../atoms';
 import { SUPER_BLOCK, storeSuperInertia } from '../superellipsoid';
 import { isSmdStyle, SMD_CONTACT } from '../smd';
 import { parseStl } from '../stl';
@@ -76,7 +76,7 @@ const boundary: Handler = ({ sys }, a) => {
   sys.boundary = b;
 };
 
-const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph', 'edpd', 'mdpd', 'tdpd', 'rheo', 'rheo/thermal', 'dpd', 'smd', 'amoeba'];
+const ATOM_STYLES: string[] = ['atomic', 'charge', 'bond', 'angle', 'molecular', 'full', 'sphere', 'bpm/sphere', 'dipole', 'spin', 'ellipsoid', 'peri', 'template', 'body', 'oxdna', 'line', 'tri', 'electron', 'dielectric', 'sph', 'edpd', 'mdpd', 'tdpd', 'rheo', 'rheo/thermal', 'dpd', 'smd', 'amoeba', 'apip'];
 
 /**
  * atom_style — atom_style.html: "The default atom style is atomic." and "*hybrid* args = list of one
@@ -128,6 +128,14 @@ const atomStyle: Handler = ({ sys }, a) => {
         k++;
         continue;
       }
+      // atom_style hybrid with apip: the default (lambda thermostat) mode; the conservative mode is not supported here
+      if (w === 'apip' && a[k + 1] === 'conservative') throw new StyleError('atom_style hybrid with apip conservative is not supported by the browser engine');
+      if (w === 'apip' && a[k + 1] === 'thermostat') {
+        if (subs.includes('apip')) throw new StyleError('atom_style hybrid lists apip twice');
+        subs.push('apip');
+        k++;
+        continue;
+      }
       known(w);
       if (subs.includes(w)) throw new StyleError(`atom_style hybrid lists ${w} twice`);
       subs.push(w);
@@ -164,6 +172,15 @@ const atomStyle: Handler = ({ sys }, a) => {
       throw new StyleError('usage: atom_style body nparticle Nmin Nmax (non-negative integers)');
     }
     sys.atomStyle = `body ${a[1]} ${nmin} ${nmax}`;
+    return;
+  }
+  // atom_style.html: "*apip* arg = *conservative*/*thermostat* (optional) for conservative APIP/lambda thermostat APIP"
+  // and "If atom_style *apip* is used, its default argument is 'thermostat'." The messages are native
+  // AtomVecApip::process_args (src/APIP/atom_vec_apip.cpp at b332f28).
+  if (a[0] === 'apip') {
+    if (a.length > 2) throw new StyleError('Invalid atom_style apip command');
+    if (a.length === 2 && a[1] !== 'thermostat' && a[1] !== 'conservative') throw new StyleError(`unknown argument ${a[1]}`);
+    sys.atomStyle = a[1] === 'conservative' ? 'apip conservative' : 'apip';
     return;
   }
   // atom_style.html: "*ellipsoid* arg = superellipsoid (optional) for superellipsoids instead of ellipsoids"
@@ -1667,6 +1684,25 @@ const set: Handler = ({ sys }, a) => {
       // invoke_dpd_theta at b332f28): NULL gives tfactor m v^2 with tfactor = mvv2e / (dimension kB), and a negative value
       // stops with "Invalid dpd/theta value in set command" also for an atom-style variable (the doc says a negative
       // variable value selects Tkin; native's code refuses it, and the engine follows the code).
+      // set.html: "*apip/lambda* value = fast or precise or float" and "The precise potential is used for an atom when
+      // its switching parameter lambda is 0. The fast potential is used for an atom when its switching parameter
+      // lambda is 1." As native LAMMPS does (src/set.cpp process_apip_lambda and invoke_apip_lambda at b332f28): fast
+      // is 1, precise is 0, and a value outside [0,1] (a number, or an atom-style variable per atom) stops the run.
+      case 'apip/lambda': {
+        if (!isApipStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute ${key} for atom style ${s.atomStyle.split(' ')[0]}`);
+        if (a[k + 1] === undefined) throw new StyleError('Illegal set apip/lambda command: missing argument(s)');
+        const lam = s.custom.get(APIP_LAMBDA)!.data;
+        const w = a[k + 1];
+        const v = w === 'fast' ? () => 1 : w === 'precise' ? () => 0 : value(w, key);
+        for (const i of atoms) {
+          const x = v(i);
+          if (x < 0 || x > 1) throw new StyleError(`apip/lambda ${x} not in [0,1]`);
+          lam[i] = x;
+        }
+        changed = atoms.length;
+        k += 2;
+        break;
+      }
       case 'dpd/theta': {
         if (!isDpdStyle(s.atomStyle)) throw new StyleError(`Cannot set attribute ${key} for atom style ${s.atomStyle}`);
         const th = s.custom.get(DPD_THETA)!.data;

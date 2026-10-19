@@ -34,7 +34,7 @@ const FIX_STATE_NOT_STORED = new Set([
   'gle', 'move',
 ]);
 import { SMD_COLS, isSmdStyle } from '../smd';
-import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, isElectronStyle, ELECTRON_DEFAULTS, ELECTRON_SPIN, isDielectricStyle, DIELECTRIC_DEFAULTS, isSphStyle, SPH_DEFAULTS, SPH_WIDTH, isDpdMesoKey, isDpdMesoStyle, dpdMesoProps, RHEO_DEFAULTS, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_THERMAL_DEFAULTS, DPD_DEFAULTS, isDpdStyle } from '../atoms';
+import { HEAT_FLOW, HEAT_TEMPERATURE, hasChargeStyle, isMolecularStyle, hasRmassStyle, hasDipoleStyle, isEllipsoidStyle, isBpmSphereStyle, isTemplateStyle, templateStyleId, isOxdnaStyle, OXDNA_5P, OXDNA_3P, setOxdnaPartners, isTriStyle, LINE_FLAG, LINE_BONUS, TRI_FLAG, TRI_BONUS, isElectronStyle, ELECTRON_DEFAULTS, ELECTRON_SPIN, isDielectricStyle, DIELECTRIC_DEFAULTS, isSphStyle, SPH_DEFAULTS, SPH_WIDTH, isDpdMesoKey, isDpdMesoStyle, dpdMesoProps, RHEO_DEFAULTS, RHEO_STATUS, isRheoStyle, isRheoThermalStyle, RHEO_THERMAL_DEFAULTS, DPD_DEFAULTS, isDpdStyle, isApipStyle, apipProps, APIP_E_FAST, APIP_E_PRECISE, APIP_F_CONST_LAMBDA, APIP_F_DYN_LAMBDA, APIP_LAMBDA_REQUIRED } from '../atoms';
 import { ErfcTableCache } from '../force/erfc';
 
 /*
@@ -395,6 +395,13 @@ export const writeRestartText = (sys: System): string => {
   const dpd = isDpdStyle(s.atomStyle)
     ? encodeValue(Object.fromEntries(Object.keys(DPD_DEFAULTS).map((k) => [k, s.custom.get(k)!.data])), 'dpd', [])
     : null;
+  // atom_style apip: as native LAMMPS does (src/APIP/atom_vec_apip.cpp at b332f28, fields_restart), the switching
+  // parameter and lambda_required (plus lambda_input, lambda_input_ta and lambda_const in the thermostat mode) are stored;
+  // the energies and force vectors start at zero after read_restart
+  const apipStored = (st: AtomStyle): string[] => apipProps(st).filter((k) => k !== APIP_E_FAST && k !== APIP_E_PRECISE && k !== APIP_F_CONST_LAMBDA && k !== APIP_F_DYN_LAMBDA);
+  const apip = isApipStyle(s.atomStyle)
+    ? encodeValue(Object.fromEntries(apipStored(s.atomStyle).map((k) => [k, s.custom.get(k)!.data])), 'apip', [])
+    : null;
   // atom_style smd: the SMD data (deformation gradient, stress, estimated velocity, energy, plastic strain, damage, contact radius)
   const smd = isSmdStyle(s.atomStyle)
     ? encodeValue(Object.fromEntries(Object.keys(SMD_COLS).map((k) => [k, s.custom.get(k)!.data])), 'smd', [])
@@ -411,6 +418,7 @@ export const writeRestartText = (sys: System): string => {
     dpdMeso,
     rheo,
     dpd,
+    apip,
     smd,
     comm: { style: sys.commStyle, vel: sys.ghostVelocity, cutoff: sys.nb.commCutoff },
     groups: encodeValue({ names: sys.groups.names, dynamic: sys.groups.dynamic }, 'groups', []),
@@ -462,7 +470,7 @@ export const readRestartText = (sys: System, text: string, name: string): void =
     if (header.startsWith('LAMMPS-WEB-RESTART')) throw new StyleError(`${name}: restart format '${header}' is not supported (this engine reads '${RESTART_MAGIC}')`);
     throw new StyleError(`${name} is not a restart file written by this browser engine or by native LAMMPS (a native binary restart file starts with 'LammpS RestartT'). Use write_restart or write_data here; a native file of another kind can be converted with the lmp -restart2data command-line flag and read with read_data`);
   }
-  let doc: { format: string; version: number; step: number; state: Json; electron?: Json | null; dielectric?: Json | null; sph?: Json | null; dpdMeso?: Json | null; rheo?: Json | null; dpd?: Json | null; smd?: Json | null; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: FixRestart[]; lineTri?: Json };
+  let doc: { format: string; version: number; step: number; state: Json; electron?: Json | null; dielectric?: Json | null; sph?: Json | null; dpdMeso?: Json | null; rheo?: Json | null; dpd?: Json | null; apip?: Json | null; smd?: Json | null; comm: { style: 'brick' | 'tiled'; vel: boolean; cutoff: number }; groups: Json; special: Json; styles: Record<string, { name: string; data: Json } | null> & { pairNotStored?: string }; fixes?: FixRestart[]; lineTri?: Json };
   try {
     doc = JSON.parse(text.slice(nl + 1));
   } catch {
@@ -538,6 +546,16 @@ export const readRestartText = (sys: System, text: string, name: string): void =
       const data = dp[name] ?? new Float64Array(n).fill(def);
       need(data.length === n, `dpd ${name} has the wrong length for ${n} atoms`);
       state.custom.set(name, { int: false, cols: 0, data: Float64Array.from(data) });
+    }
+  }
+  // atom_style apip: the stored fields come back; the energies and force vectors start at zero
+  if (isApipStyle(state.atomStyle)) {
+    const ap = doc.apip ? decodeValue(doc.apip, 'apip') as Record<string, Float64Array> : {};
+    for (const name of apipProps(state.atomStyle)) {
+      const w = name === APIP_F_CONST_LAMBDA || name === APIP_F_DYN_LAMBDA ? 3 : 0;
+      const data = ap[name] ?? new Float64Array(n * Math.max(w, 1));
+      need(data.length === n * Math.max(w, 1), `apip ${name} has the wrong length for ${n} atoms`);
+      state.custom.set(name, { int: name === APIP_LAMBDA_REQUIRED, cols: w, data: Float64Array.from(data) });
     }
   }
   // atom_style smd: the stored SMD data come back as they were written

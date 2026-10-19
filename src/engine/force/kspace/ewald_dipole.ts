@@ -34,9 +34,17 @@ import { libm } from '../../libm';
  * Forces and torques (derived from the energy; checked by finite differences in the unit test):
  *   F_i   = C (8 pi / V) sum_half G(K) K (mu_i . K) Im(M* exp(i K . r_i))
  *   E_i   = -C (8 pi / V) sum_half G(K) K Re(M* exp(i K . r_i)),  tau_i = mu_i x E_i
- * Virial (mu held fixed under a box deformation; the box-scaling finite difference agrees):
- *   W_ab  = C (4 pi / V) sum_half G(K) [ |M|^2 (delta_ab - b K_a K_b) + Re((K_b P_a + K_a P_b) M*) ]
- *   with b = 2 (1/K^2 + 1/(4 g^2)) and P_a = sum_j mu_ja exp(i K . r_j).
+ * Virial (mu held fixed under a box deformation; the box-scaling finite difference agrees on the diagonal):
+ *   W_ab  = C (4 pi / V) sum_half G(K) [ |M|^2 (delta_ab - b K_a K_b) + 2 K_b Re(P_a M*) ]
+ *   with b = 2 (1/K^2 + 1/(4 g^2)) and P_a = sum_j mu_ja exp(i K . r_j), for ab = xx yy zz xy xz yz. As native LAMMPS
+ *   does (src/KSPACE/ewald_dipole.cpp at b332f28): the dipole term of an off-diagonal component pairs the moment's
+ *   first index with the wave vector's second (mu_x with K_y for xy, mu_x with K_z for xz, mu_y with K_z for yz), not
+ *   the symmetric (K_b P_a + K_a P_b) / 2; the two differ by the net k-space torque on the dipoles. Measured with
+ *   native LAMMPS: the k-space pxy, pxz, pyz of oracle case w267ed_dipole_ptensor are those of this form.
+ * Per-atom energy and virial (compute pe/atom and stress/atom), as native's compute does: atom i takes
+ *   e_i = C (4 pi / V) sum_half G(K) (mu_i . K) Re(M* exp(i K . r_i)) - C (2 g^3 / (3 sqrt(pi))) mu_i^2 and
+ *   w_i,ab = C (4 pi / V) sum_half G(K) Re(M* exp(i K . r_i)) [ (mu_i . K) (delta_ab - b K_a K_b) + 2 K_b mu_ia ],
+ *   which sum to the energy and the virial above.
  * The k-vectors are |n_d| <= kmax_d and K^2 <= max_d (2 pi kmax_d / L_d)^2, the sphere used by
  * the ewald style; the boundary vectors are included (measured: excluding them changes elong by 3e-4).
  *
@@ -175,8 +183,6 @@ export class KSpaceEwaldDipole extends KSpace {
   }
 
   compute(kc: KSpaceCompute): void {
-    // the per-atom energy and virial of this style are not computed by the engine: refused rather than left out
-    if (kc.eatom || kc.vatom) throw new StyleError(`compute pe/atom and stress/atom with kspace_style ${this.name} are not supported by the browser engine (its per-atom energy and virial are not computed)`);
     const s = kc.s, g = this.gEwald;
     // the box may change under a barostat: refresh the box-dependent data
     const geom = kc.geom;
@@ -184,6 +190,8 @@ export class KSpaceEwaldDipole extends KSpace {
     this.buildVectors([geom.lx, geom.ly, geom.lz]);
     const n = s.n, mu = s.mu!, x = s.x, f = kc.f, C = kc.qqrd2e, V = this.volume;
     const torque = kc.torque ?? null;
+    const eatom = kc.eatom, vatom = kc.vatom;
+    const pref = C * 4 * Math.PI / V;
     const nk = this.nvec.length / 3;
     const cosv = new Float64Array(n), sinv = new Float64Array(n);
     const Ef = new Float64Array(3 * n);
@@ -213,10 +221,22 @@ export class KSpaceEwaldDipole extends KSpace {
       for (const [a, c, idx] of pairs) {
         const dl = a === c ? 1 : 0;
         // Pc_a = P_a + i Pi_a; Re((K_c Pc_a + K_a Pc_c) conj(M))  with conj(M) = Mr - i Mi
-        const reA = Kv[c] * P[a] + Kv[a] * P[c];
-        const imA = Kv[c] * Pi[a] + Kv[a] * Pi[c];
-        const reProd = reA * Mr + imA * Mi;
+        // Re(P_a conj(M)) with P_a = P[a] + i Pi[a], conj(M) = Mr - i Mi
+        const reProd = 2 * Kv[c] * (P[a] * Mr + Pi[a] * Mi);
         W[idx] += Gk * (M2 * (dl - b * Kv[a] * Kv[c]) + reProd);
+      }
+      if (eatom || vatom) {
+        for (let i = 0; i < n; i++) {
+          const mk = mu[4 * i] * Kx + mu[4 * i + 1] * Ky + mu[4 * i + 2] * Kz;
+          const re = Mr * cosv[i] + Mi * sinv[i];
+          if (eatom) eatom[i] += pref * Gk * mk * re;
+          if (vatom) {
+            for (const [a, c, idx] of pairs) {
+              const dl = a === c ? 1 : 0;
+              vatom[6 * i + idx] += pref * Gk * re * (mk * (dl - b * Kv[a] * Kv[c]) + 2 * Kv[c] * mu[4 * i + a]);
+            }
+          }
+        }
       }
       // forces and the field on each atom
       const cf = C * (8 * Math.PI / V) * Gk;
@@ -243,8 +263,12 @@ export class KSpaceEwaldDipole extends KSpace {
     let musq = 0;
     for (let i = 0; i < n; i++) musq += mu[4 * i] ** 2 + mu[4 * i + 1] ** 2 + mu[4 * i + 2] ** 2;
     this.musq = musq;
-    const pref = C * 4 * Math.PI / V;
     const self = -C * (TWO_OVER_SQRTPI * g * g * g / 3) * musq;
+    if (eatom) {
+      for (let i = 0; i < n; i++) {
+        eatom[i] -= C * (TWO_OVER_SQRTPI * g * g * g / 3) * (mu[4 * i] ** 2 + mu[4 * i + 1] ** 2 + mu[4 * i + 2] ** 2);
+      }
+    }
     kc.acc.elong += pref * esum + self;
     for (let c = 0; c < 6; c++) kc.acc.vlong[c] += pref * W[c];
   }

@@ -1,0 +1,28 @@
+# oracle: kspace_style ewald/dipole/spin pressure tensor: pair spin/dipole/long 4.0 + ewald/dipole/spin with fixed G-ewald 0.6 and kmax 5, bcc iron 3x3x3 cells (54 random spins, displaced), nve/spin lattice moving, 10 steps with pxx..pyz; the k-space pxy, pxz, pyz follow native's unsymmetrized dipole virial term
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 8.2e-14, atoms 8.8e-20.
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
+units           metal
+atom_style      spin
+dimension       3
+boundary        p p p
+atom_modify     map array
+lattice         bcc 2.8665
+region          box block 0.0 3.0 0.0 3.0 0.0 3.0
+create_box      1 box
+create_atoms    1 box
+mass            1 55.845
+set             group all spin/random 11 2.2
+displace_atoms  all random 0.1 0.1 0.1 4567
+velocity        all create 200 4928459 rot yes dist gaussian
+pair_style      spin/dipole/long 4.0
+pair_coeff      * * 4.0
+neighbor        0.5 bin
+kspace_style    ewald/dipole/spin 1.0e-4
+kspace_modify   gewald 0.6 kmax/ewald 5 5 5
+fix             1 all nve/spin lattice moving
+timestep        0.0001
+compute         pk all pressure NULL kspace
+thermo_style    custom step pe elong press pxx pyy pzz pxy pxz pyz c_pk[4] c_pk[5] c_pk[6]
+thermo_modify   format float %.15g norm no
+thermo          5
+run             10

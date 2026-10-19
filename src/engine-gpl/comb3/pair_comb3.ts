@@ -22,6 +22,7 @@ import { Comb3Kernel } from './terms';
 import { Comb3RadTor } from './radtor';
 import { Comb3Charge } from './coulomb';
 import { potalFactors } from './tables';
+import { vTally2, vTally3 } from '../airebo/tally';
 
 const v3 = (): Float64Array => new Float64Array(3);
 
@@ -219,7 +220,6 @@ export class PairComb3 extends Pair {
     if (!list) throw new Error('pair style comb3 needs a full neighbor list');
     this.lastPc = pc;
     if (!this.tables) throw new StyleError('pair_style comb3 needs a pair_coeff command first');
-    if (pc.vatom) throw new StyleError('compute stress/atom with pair_style comb3 is not supported by the browser engine yet');
     const nall = pc.nall, nlocal = pc.nlocal;
     const x = pc.x, f = pc.f, q = pc.q, type = pc.type;
     const owner = pc.nb.owner, gimage = pc.nb.gimage;
@@ -253,7 +253,7 @@ export class PairComb3 extends Pair {
     for (let j = 0; j < nall; j++) keyOf.set(atomKey(owner[j], gimage[3 * j], gimage[3 * j + 1], gimage[3 * j + 2]), j);
     const nco = this.nco;
     const acc = pc.acc;
-    const eatom = pc.eatom;
+    const eatom = pc.eatom, vatom = pc.vatom;
     const tally = (i: number, j: number, e: number): void => {
       acc.evdwl += e;
       if (eatom) { eatom[i] += 0.5 * e; eatom[j] += 0.5 * e; }
@@ -310,6 +310,7 @@ export class PairComb3 extends Pair {
         f[3 * i] += delx * fpairV; f[3 * i + 1] += dely * fpairV; f[3 * i + 2] += delz * fpairV;
         f[3 * j] -= delx * fpairV; f[3 * j + 1] -= dely * fpairV; f[3 * j + 2] -= delz * fpairV;
         tally(i, j, vdw.eng);
+        if (vatom) vTally2(vatom, i, j, fpairV, delx, dely, delz);
         // Coulomb: direct 1/r term and the field correction (polarization is off)
         const dq = coul.direct(this.params[iparamIJ], this.params[iparamJI], tp, rsq, iq, q[j], fac11, fac11e,
           kernel.xco[i], kernel.xco[j]);
@@ -318,12 +319,14 @@ export class PairComb3 extends Pair {
         f[3 * i] += delx * fvionij; f[3 * i + 1] += dely * fvionij; f[3 * i + 2] += delz * fvionij;
         f[3 * j] -= delx * fvionij; f[3 * j + 1] -= dely * fvionij; f[3 * j + 2] -= delz * fvionij;
         tallyQ(i, j, dq.pot + fld.eng);
+        if (vatom) vTally2(vatom, i, j, fvionij, delx, dely, delz);
         if (rsq > this.params[iparamIJ].cutsq) continue;
         kernel.repulsive(this.params[iparamIJ], this.params[iparamJI], rsq, iq, q[j], this.repOut);
         const fpair = this.repOut.fforce, evdwl = this.repOut.eng;
         f[3 * i] += delx * fpair; f[3 * i + 1] += dely * fpair; f[3 * i + 2] += delz * fpair;
         f[3 * j] -= delx * fpair; f[3 * j + 1] -= dely * fpair; f[3 * j + 2] -= delz * fpair;
         tally(i, j, evdwl);
+        if (vatom) vTally2(vatom, i, j, fpair, delx, dely, delz);
       }
 
       // many-body interactions over the short neighbor list of i
@@ -453,6 +456,7 @@ export class PairComb3 extends Pair {
         f[3 * i] += delrj[0] * fpair; f[3 * i + 1] += delrj[1] * fpair; f[3 * i + 2] += delrj[2] * fpair;
         f[3 * j] -= delrj[0] * fpair; f[3 * j + 1] -= delrj[1] * fpair; f[3 * j + 2] -= delrj[2] * fpair;
         tally(i, j, evdwl);
+        if (vatom) vTally2(vatom, i, j, -fpair, -delrj[0], -delrj[1], -delrj[2]);
 
         // attractive term via the loop over k (three-body forces i-j-k)
         for (let kk = 0; kk < sj.length; kk++) {
@@ -534,6 +538,8 @@ export class PairComb3 extends Pair {
               }
             }
           }
+          // as native: the i-j-k three-body virial only (the torsion and radical forces have no per-atom tally)
+          if (vatom) vTally3(vatom, i, j, k, fj, fk, delrj, delrk);
         }
 
         // attractive term via the loop over l (three-body forces j-i-l)
@@ -593,6 +599,7 @@ export class PairComb3 extends Pair {
               }
             }
           }
+          if (vatom) vTally3(vatom, j, i, l, fi, fl, vecJI, delrk);
         }
       }
     }

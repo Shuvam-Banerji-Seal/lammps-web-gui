@@ -14,7 +14,7 @@ import { StyleError, typeBounds, type PairCompute } from '../../engine/force/typ
 import { NEIGHMASK } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { PairSPHBase } from '../sph/pair_sph_base';
-import { sphArrays } from '../sph/common';
+import { sphArrays, sphGhostVest } from '../sph/common';
 
 /**
  * LJEOS2 of pair_sph_lj.cpp: the pressure p and the sound speed c of the Lennard-Jones fluid at density rho, internal
@@ -78,6 +78,8 @@ export class PairSPHLJ extends PairSPHBase {
     const s = pc.s;
     const a = sphArrays(s, 'Pair sph/lj');
     const { rho, drho, desph, esph, cv, vest: v } = a;
+    // the ghosts' vest of a setup, when it is not their owners' (sph/common.ts sphGhostVest)
+    const gv = sphGhostVest(s);
     const { x, f, type } = pc;
     const owner = pc.nb.owner;
     const mass = s.massByType;
@@ -111,13 +113,14 @@ export class PairSPHLJ extends PairSPHBase {
         if (dim3) wfd = -25.066903536973515383 * wfd * wfd * ihsq * ihsq * ihsq * ih;
         else wfd = -19.098593171027440292 * wfd * wfd * ihsq * ihsq * ihsq;
         const oj = owner[j];
+        const vj = gv && j >= pc.nlocal ? gv : v;
         const eos_j = ljEOS2(rho[oj], esph[oj], cv[oj]);
         let fj = eos_j.p;
         const cj = eos_j.c;
         fj /= (rho[oj] * rho[oj]);
         const lrc = -11.1701 * (ihcub * ihcub * ihcub - 1.5 * ihcub);
         fj += 2.0 * lrc;
-        const delVdotDelR = delx * (vxi - v[3 * oj]) + dely * (vyi - v[3 * oj + 1]) + delz * (vzi - v[3 * oj + 2]);
+        const delVdotDelR = delx * (vxi - vj[3 * oj]) + dely * (vyi - vj[3 * oj + 1]) + delz * (vzi - vj[3 * oj + 2]);
         let fvisc = 0;
         if (delVdotDelR < 0.) {
           const mu = hh * delVdotDelR / (rsq + 0.01 * hh * hh);

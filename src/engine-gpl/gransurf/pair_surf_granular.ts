@@ -22,7 +22,7 @@
  *   - velocities and angular velocities of ghost atoms are those of their owners (the same as the core granular
  *     pair), and forces on ghosts are folded back by the engine.
  */
-import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, tallyAtomXyz, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { isLineStyle, isTriStyle, LINE_BONUS, LINE_FLAG, TRI_BONUS, TRI_BONUS_COLS, TRI_FLAG } from '../../engine/atoms';
 import { buildConnect2d, lineEnds, type Connect2d } from './connect2d';
@@ -111,8 +111,9 @@ export function parseSurfCoeff(args: string[]): Coeffs {
 
 export class PairSurfGranular extends Pair {
   readonly name = 'surf/granular';
-  /** The virial is the fdotr sum (pair_surf_granular.cpp: virial_fdotr_compute). */
+  /** The virial is the fdotr sum (pair_surf_granular.cpp: virial_fdotr_compute) unless a hybrid makes it tally each contact. */
   virialFdotr = true;
+  explicitInHybrid = true;
   /** Per type pair (i*nt+j, both orders): the coefficients. */
   private pm: (Coeffs | null)[] = [];
   private maxRad = new Float64Array(0);
@@ -338,6 +339,13 @@ export class PairSurfGranular extends Pair {
           f[3 * lin + a] -= forces[a];
           tq[3 * sph + a] += torque[a];
         }
+        // ev_tally_xyz(i, j, ..., forces, model->dx) with dx from the contact point (pair_surf_granular.cpp)
+        if (this.explicitVirial) {
+          const vir = pc.acc.virial;
+          vir[0] += dx[0] * forces[0]; vir[1] += dx[1] * forces[1]; vir[2] += dx[2] * forces[2];
+          vir[3] += dx[0] * forces[1]; vir[4] += dx[0] * forces[2]; vir[5] += dx[1] * forces[2];
+        }
+        if (pc.vatom) tallyAtomXyz(pc, sph, lin, 0, forces[0], forces[1], forces[2], dx[0], dx[1], dx[2]);
       }
     }
     nb.reverseSum(tq, 3, s.torque);

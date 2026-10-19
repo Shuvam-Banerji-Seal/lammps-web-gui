@@ -1,5 +1,5 @@
-# oracle: fix hyper/local keywords bound 0.3 (bias coefficients clamped to 1 +- 0.3) and reset 40 (vmax rescaled to the mean coefficient every 40 steps), 2d square lattice of w153hy_local (cut down, 120 steps); native: b332f28 installed lmp (REPLICA package). Measured with native LAMMPS: thermo max relative error 7.6e-15, per-atom velocities and forces max absolute error 1.1e-13
-# oracle-compare: thermo=all atoms=all atomskip=xu,yu,zu rel=1e-8 abs=1e-10
+# oracle: fix hyper/local keywords bound 0.3 (bias coefficients clamped to 1 +- 0.3) and reset 40 (vmax rescaled to the mean coefficient every 40 steps), 2d square lattice of w153hy_local (cut down, 120 steps); native: b332f28 installed lmp (REPLICA package). Measured with native LAMMPS: thermo max relative error 7.6e-15, per-atom velocities and forces max absolute error 1.1e-13, positions 8.6e-14 relative
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10
 units           lj
 dimension       2
 atom_style      atomic

@@ -105,11 +105,12 @@ const rerun: Handler = async (ctx: Ctx, a) => {
     }
     readDumpSnapshot(sys, file, snap, args.spec);
     ensureThermoComputes(sys);
-    initRun(sys);
+    // the run's steps before init, as in a run (src/rerun.cpp at b332f28 sets update->beginstep and endstep first)
     sys.run = {
       inRun: true, firstStep: first, lastStep: last, beginStep: args.start ?? first, endStep: args.stop ?? last,
       t0, ranOnce: true,
     };
+    initRun(sys);
     setupRun(sys);
     if (th.due(s.step, first, last)) sys.io.emit({ kind: 'thermo', row: th.row() });
     let dumped = false;

@@ -14,6 +14,33 @@ import { StyleError } from '../../engine/force/types';
 import type { SimState } from '../../engine/types';
 import { isSphStyle, nativeOrder, SPH_CV, SPH_DESPH, SPH_DRHO, SPH_ESPH, SPH_RHO, SPH_VEST } from '../../engine/atoms';
 
+/**
+ * The velocity estimate the ghost atoms carry during a run's setup, when it is not their owners' (owner-indexed). In
+ * the native setup (src/verlet.cpp setup at b332f28) the border exchange sends vest to the ghosts, then each fix sph
+ * setup_pre_force sends every atom's vest again (src/SPH/fix_sph.cpp: forward_comm), but fix meso/move's
+ * setup_pre_force sets vest = v on its owned atoms only (src/DPD-SMOOTH/fix_meso_move.cpp), so their ghosts keep the
+ * vest from before the setup until the first step's forward communication. token: the run (System.run) of the setup.
+ */
+const setupGhostVest = new WeakMap<SimState, { token: object; vest: Float64Array }>();
+
+/** The ghosts' vest of the current setup, or null when the ghosts see their owners' vest. */
+export const sphGhostVest = (s: SimState): Float64Array | null => setupGhostVest.get(s)?.vest ?? null;
+
+/** Fix meso/move setup_pre_force: before the first such fix of this setup writes vest, the ghosts keep the old one. */
+export const keepSphGhostVest = (s: SimState, token: object, vest: Float64Array): void => {
+  const cur = setupGhostVest.get(s);
+  if (!cur || cur.token !== token) setupGhostVest.set(s, { token, vest: Float64Array.from(vest) });
+};
+
+/** Fix sph setup_pre_force: its forward communication gives every ghost its owner's vest. */
+export const refreshSphGhostVest = (s: SimState, vest: Float64Array): void => {
+  const cur = setupGhostVest.get(s);
+  if (cur) cur.vest.set(vest.subarray(0, cur.vest.length));
+};
+
+/** The first step's forward communication after the setup (initial_integrate): the ghosts see their owners' vest again. */
+export const dropSphGhostVest = (s: SimState): void => { setupGhostVest.delete(s); };
+
 /** Per-atom SPH arrays of a state (sph props of atom_style sph). */
 export interface SphArrays {
   rho: Float64Array;

@@ -13,7 +13,7 @@ import { StyleError, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { PairSPHBase } from './pair_sph_base';
-import { LUCY_DERIV_2D, LUCY_DERIV_3D, sphArrays } from './common';
+import { LUCY_DERIV_2D, LUCY_DERIV_3D, sphArrays, sphGhostVest } from './common';
 
 export class PairSPHTaitwater extends PairSPHBase {
   readonly name: string = 'sph/taitwater';
@@ -65,6 +65,8 @@ export class PairSPHTaitwater extends PairSPHBase {
     const s = pc.s;
     const a = sphArrays(s, 'Pair sph/taitwater');
     const { rho, drho, desph, vest: v } = a;
+    // the ghosts' vest of a setup, when it is not their owners' (sph/common.ts sphGhostVest)
+    const gv = sphGhostVest(s);
     const { x, f, type } = pc;
     const owner = pc.nb.owner;
     const mass = s.massByType;
@@ -94,10 +96,11 @@ export class PairSPHTaitwater extends PairSPHBase {
         const ihsq = ih * ih;
         const wfd = this.derivative(dim3, hh, rsq, ih, ihsq);
         const oj = owner[j];
+        const vj = gv && j >= pc.nlocal ? gv : v;
         tmp = rho[oj] / this.rho0[jt];
         let fj = tmp * tmp * tmp;
         fj = this.bulk[jt] * (fj * fj * tmp - 1.0) / (rho[oj] * rho[oj]);
-        const delVdotDelR = delx * (vxi - v[3 * oj]) + dely * (vyi - v[3 * oj + 1]) + delz * (vzi - v[3 * oj + 2]);
+        const delVdotDelR = delx * (vxi - vj[3 * oj]) + dely * (vyi - vj[3 * oj + 1]) + delz * (vzi - vj[3 * oj + 2]);
         let fvisc = 0;
         if (delVdotDelR < 0.) {
           const mu = hh * delVdotDelR / (rsq + 0.01 * hh * hh);

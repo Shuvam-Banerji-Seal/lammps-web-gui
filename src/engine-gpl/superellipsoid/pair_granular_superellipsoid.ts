@@ -15,7 +15,7 @@
  * - the radius used for the neighbour cutoff and the bounding sphere test is sqrt(a^2 + b^2 + c^2) for every particle (a
  * bound on the surface, not the C++ radius); the contact set does not depend on the bound, only the neighbour list does.
  */
-import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, tallyAtomXyz, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { SUPER_BLOCK, SUPER_INERTIA } from '../../engine/superellipsoid';
@@ -462,6 +462,7 @@ export class PairGranularSuperellipsoid extends Pair {
         const vv = acc.virial;
         vv[0] += dx[0] * forces[0]; vv[1] += dx[1] * forces[1]; vv[2] += dx[2] * forces[2];
         vv[3] += dx[0] * forces[1]; vv[4] += dx[0] * forces[2]; vv[5] += dx[1] * forces[2];
+        if (pc.vatom) tallyAtomXyz(pc, a, b, 0, forces[0], forces[1], forces[2], dx[0], dx[1], dx[2]);
       }
     }
     this.hist = next;

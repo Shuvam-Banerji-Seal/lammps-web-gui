@@ -362,8 +362,9 @@ export class FixDeform extends Fix {
     const sys = this.sys;
     const s = sys.state;
     const dt = s.dt;
-    const elapsed = (s.step - sys.run.firstStep) * dt;
-    const span = (sys.run.lastStep - sys.run.firstStep) * dt;
+    // native fix_deform.cpp measures the run with update->beginstep and endstep (the start and stop of run.html)
+    const elapsed = (s.step - sys.run.beginStep) * dt;
+    const span = (sys.run.endStep - sys.run.beginStep) * dt;
     const frac = span > 0 ? elapsed / span : 0;
     const dim = s.dimension;
     const ndims = dim === 2 ? 2 : 3;
@@ -397,13 +398,16 @@ export class FixDeform extends Fix {
           LD = span > 0 ? (sp.factor! * L0 - L0) / span : 0;
           break;
         }
+        // As native LAMMPS does (src/fix_deform.cpp init at b332f28): the rate of the final, delta, scale, vel and erate
+        // styles is (stop - start) / delt over the run, and 0 when the run has no steps ("if (delt != 0.0) ... else
+        // dlo_dt = dhi_dt = 0.0"), so a run 0 sees no box rate (pair lubricate's strain rate, compute temp/deform)
         case 'vel':
           L = L0 + sp.v! * elapsed;
-          LD = sp.v!;
+          LD = span > 0 ? sp.v! : 0;
           break;
         case 'erate':
           L = L0 * (1 + sp.rate! * elapsed);
-          LD = L0 * sp.rate!;
+          LD = span > 0 ? L0 * sp.rate! : 0;
           break;
         case 'trate':
           L = L0 * libm.exp(sp.rate! * elapsed);
@@ -472,9 +476,11 @@ export class FixDeform extends Fix {
           T = T0 + sp.dlo! * frac;
           TD = span > 0 ? sp.dlo! / span : 0;
           break;
+        // tilts as native init: final, delta and vel have no rate in a run with no steps; erate keeps its rate ("ERATE
+        // and ERATERS not set to 0 even if delt is 0 since needed for velocity kick in fix nvt/sllod")
         case 'vel':
           T = T0 + sp.v! * elapsed;
-          TD = sp.v!;
+          TD = span > 0 ? sp.v! : 0;
           break;
         case 'erate':
           T = T0 + this.perp0[t] * sp.rate! * elapsed;

@@ -12,7 +12,7 @@ import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { massOf } from '../../engine/atoms';
-import { clearSphRates, sphArrays } from './common';
+import { clearSphRates, dropSphGhostVest, refreshSphGhostVest, sphArrays } from './common';
 
 export class FixSPH extends Fix {
   readonly style: string = 'sph';
@@ -44,6 +44,8 @@ export class FixSPH extends Fix {
       vest[3 * i + 1] = s.v[3 * i + 1];
       vest[3 * i + 2] = s.v[3 * i + 2];
     }
+    // fix_sph.cpp setup_pre_force: forward_comm of every atom's vest
+    refreshSphGhostVest(s, vest);
     clearSphRates(s);
   }
 
@@ -53,6 +55,7 @@ export class FixSPH extends Fix {
   /** fix_sph.cpp initial_integrate: half steps of esph and rho, the velocity estimate, then v and x. */
   initialIntegrate(): void {
     const s = this.sys.state;
+    dropSphGhostVest(s);
     const a = sphArrays(s, 'Fix sph');
     const { x, v, f, mask } = s;
     const bit = this.groupBit;

@@ -1,0 +1,30 @@
+# oracle: the pressure of pair hybrid granular surf/granular: w154gs_screw_hertz (in.screwfeeder.local cut down to the helix STL, 7 poured spheres, hertz, 85 steps, first contact at step ~55) with press and its components. As in native, pair granular tallies its virial contact by contact, so surf/granular in the hybrid does too, from the contact point
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 7.9e-8, atoms 2.9e-9. The thermo figure is pyy at step 60 (2.4e-5 beside pzz 1.1e-3), trajectory round-off as ke's 1.4e-9; before the fix press differed by 2.2e-5 at step 60.
+# oracle-inputs: w151gs_surf.helix.stl
+# oracle-compare: thermo=all atoms=all rel=1e-8 abs=1e-10 atomrel=1e-8
+units           lj
+atom_style      hybrid tri sphere 1
+atom_modify     map array
+boundary        f f f
+dimension       3
+comm_modify     vel yes cutoff 1.0
+region          box block -2 2 -2 16 -2 7 units box
+create_box      3 box
+fix             1 all surface/local input stl 3 2 w151gs_surf.helix.stl flat 10.0
+pair_style      hybrid granular surf/granular
+pair_coeff      1 * surf/granular hertz 1.0 1.0 tangential linear_history 0.0 0.0 0.0
+pair_coeff      1 1 granular hertz 1.0 1.0 tangential linear_history 0.0 0.0 0.0
+pair_coeff      2*3 2*3 none
+region          insert_region cylinder z 0 12 1.6 3 5 side in units box
+group           sphere type 1
+group           corkscrew molecule 2
+fix             2 sphere nve/sphere
+fix             3 sphere gravity 0.1 vector 0 0 -1
+fix             4 sphere pour 7 1 7892374 region insert_region diam range 0.5 1.0
+compute         1 all ke
+timestep        0.05
+thermo          5
+thermo_style    custom step ke atoms c_1 press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g lost ignore
+fix             5 corkscrew move rotate 0 0 0 0 1 0 1000 units box
+run             85

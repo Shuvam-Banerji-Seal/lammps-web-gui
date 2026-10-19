@@ -317,11 +317,12 @@ const runCoupledSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<numb
   const lastThermo = new Map<System, number>();
   for (const r of group) {
     ensureThermoComputes(r);
-    initRun(r);
+    // the run's steps before init, as in a single run
     r.run = {
       inRun: true, firstStep: first, lastStep: first + n,
       beginStep: opts.start ?? first, endStep: opts.stop ?? first + n, t0: performance.now(), ranOnce: true,
     };
+    initRun(r);
     r.io.emit({ kind: 'thermo-header', keywords: [...r.thermo.keywords], labels: r.thermo.labels(), units: r.units.style });
     r.io.emit({ kind: 'run', from: first, to: first + n, dt: r.state.dt, units: r.units.style });
     startRestarts(r);
@@ -385,12 +386,14 @@ const runSteps = async (ctx: Ctx, n: number, opts: RunOpts): Promise<number> => 
     throw new StyleError('run pre no after a change of the atoms, box, fixes, computes or pair style: use pre yes (run.html: it is an error to use pre no after such a change)');
   }
   ensureThermoComputes(sys);
-  if (!reuse) initRun(sys);
-  if (reuse) sys.forcesCurrent();
+  // As native LAMMPS does (src/run.cpp command at b332f28): the run's first, last, start and stop steps are set before
+  // init, which fixes read (fix deform: the box rate over the run, 0 for a run of no steps).
   sys.run = {
     inRun: true, firstStep: first, lastStep: first + n,
     beginStep: opts.start ?? first, endStep: opts.stop ?? first + n, t0: performance.now(), ranOnce: true,
   };
+  if (!reuse) initRun(sys);
+  if (reuse) sys.forcesCurrent();
   const th = sys.thermo;
   sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels(), units: sys.units.style });
   if (sys.logOpen) sys.logTable(th.logHeader());
@@ -539,10 +542,11 @@ const minimizeCmd: Handler = async (ctx, a) => {
   if (softHalted(sys)) return;
   clearHaltRequest(sys);
   ensureThermoComputes(sys);
-  initRun(sys);
   const s = sys.state;
   const th = sys.thermo;
+  // the minimization's steps before init, as native Minimize::command (src/minimize.cpp at b332f28) sets them
   sys.run = { inRun: true, firstStep: s.step, lastStep: s.step + maxiter, beginStep: s.step, endStep: s.step + maxiter, t0: performance.now(), ranOnce: true };
+  initRun(sys);
   sys.io.emit({ kind: 'thermo-header', keywords: [...th.keywords], labels: th.labels(), units: sys.units.style });
   if (sys.logOpen) sys.logTable(th.logHeader());
   const first = s.step;

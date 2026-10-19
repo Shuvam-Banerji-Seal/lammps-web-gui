@@ -15,7 +15,7 @@ import { Fix } from '../../engine/fix/fix';
 import { StyleError } from '../../engine/force/types';
 import type { System } from '../../engine/system';
 import { massOf } from '../../engine/atoms';
-import { sphArrays } from '../sph/common';
+import { dropSphGhostVest, keepSphGhostVest, sphArrays } from '../sph/common';
 import { sin as libmSin, cos as libmCos } from '../libm/sincos';
 import { cosFma as libmCosFma } from '../libm/sincos_fma';
 
@@ -153,6 +153,8 @@ export class FixMesoMove extends Fix {
     // fix_meso_move.cpp setup_pre_force: "set vest equal to v"
     const s = this.sys.state;
     const { vest } = sphArrays(s, 'Fix meso/move');
+    // the owned atoms only: their ghosts keep the vest of before the setup (sph/common.ts sphGhostVest)
+    keepSphGhostVest(s, this.sys.run, vest);
     for (let i = 0; i < s.n; i++) {
       if (!this.captured[i] || !(s.mask[i] & this.groupBit)) continue;
       for (let d = 0; d < 3; d++) vest[3 * i + d] = s.v[3 * i + d];
@@ -172,6 +174,7 @@ export class FixMesoMove extends Fix {
 
   initialIntegrate(): void {
     const s = this.sys.state;
+    dropSphGhostVest(s);
     if (s.n !== this.captured.length) {
       throw new StyleError('fix meso/move: the number of atoms changed after the fix was specified (not supported by the browser engine)');
     }

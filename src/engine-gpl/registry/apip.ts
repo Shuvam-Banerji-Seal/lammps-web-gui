@@ -9,6 +9,7 @@ import type { Pair } from '../../engine/force/types';
 import type { FixFactory } from '../../engine/styles';
 import { FixAtomWeightAPIP } from '../apip/fix_atom_weight_apip';
 import { FixLambdaAPIP } from '../apip/fix_lambda_apip';
+import { FixLambdaLACSPAPIP } from '../apip/fix_lambda_la_csp_apip';
 import { FixLambdaThermostatAPIP } from '../apip/fix_lambda_thermostat_apip';
 import { PairLambdaInputAPIP, PairLambdaInputCSPAPIP } from '../apip/pair_lambda_input_apip';
 import { PairLambdaZoneAPIP } from '../apip/pair_lambda_zone_apip';
@@ -32,4 +33,5 @@ export const FIXES: Record<string, FixFactory> = {
   'atom_weight/apip': (sys, id, group, args) => new FixAtomWeightAPIP(sys, id, group, args),
   'lambda/apip': (sys, id, group, args) => new FixLambdaAPIP(sys, id, group, args),
   'lambda_thermostat/apip': (sys, id, group, args) => new FixLambdaThermostatAPIP(sys, id, group, args),
+  'lambda/la/csp/apip': (sys, id, group, args) => new FixLambdaLACSPAPIP(sys, id, group, args),
 };

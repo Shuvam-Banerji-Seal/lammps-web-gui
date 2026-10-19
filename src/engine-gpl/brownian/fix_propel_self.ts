@@ -27,6 +27,8 @@ export class FixPropelSelf extends Fix {
   private sx = 1.0;
   private sy = 0.0;
   private sz = 0.0;
+  /** Per-atom virial (6 per atom, xx yy zz xy xz yz), cleared with this.virial each step. */
+  private vAtom = new Float64Array(0);
 
   constructor(sys: System, id: string, group: string, args: string[]) {
     super(sys, id, group, args);
@@ -72,6 +74,11 @@ export class FixPropelSelf extends Fix {
   /** FixPropelSelf::post_force: the self-propulsion force is added to the forces of the group. */
   override postForce(): void {
     this.virial.fill(0);
+    if (this.thermoVirial) {
+      // fix_propel_self.cpp (b332f28): each atom's v_tally(i, vi) adds to vatom[i] as well as to the global virial
+      if (this.vAtom.length !== 6 * this.sys.state.n) this.vAtom = new Float64Array(6 * this.sys.state.n);
+      else this.vAtom.fill(0);
+    }
     if (this.mode === 'dipole') this.postForceDipole();
     else if (this.mode === 'velocity') this.postForceVelocity();
     else this.postForceQuat();
@@ -80,6 +87,10 @@ export class FixPropelSelf extends Fix {
   /** The virial of a force (fx, fy, fz) at the unwrapped position of atom i (v_tally of the source). */
   private readonly unwrapped = [0, 0, 0];
 
+  /**
+   * fix_propel_self.cpp (b332f28): v_tally(i, vi) with vi = (fx ux, fy uy, fz uz, fx uy, fx uz, fy uz), u = domain->unmap
+   * of x[i]. The global virial and the per-atom virial of atom i both take vi (Fix::v_tally(int i, double *v)).
+   */
   private tally(i: number, fx: number, fy: number, fz: number): void {
     if (!this.thermoVirial) return;
     const s = this.sys.state;
@@ -87,12 +98,25 @@ export class FixPropelSelf extends Fix {
     const u = this.unwrapped;
     this.sys.geom.unwrap(s.x, s.image, i, u);
     const u0 = u[0], u1 = u[1], u2 = u[2];
-    this.virial[0] += fx * u0;
-    this.virial[1] += fy * u1;
-    this.virial[2] += fz * u2;
-    this.virial[3] += fx * u1;
-    this.virial[4] += fx * u2;
-    this.virial[5] += fy * u2;
+    const v0 = fx * u0, v1 = fy * u1, v2 = fz * u2, v3 = fx * u1, v4 = fx * u2, v5 = fy * u2;
+    this.virial[0] += v0;
+    this.virial[1] += v1;
+    this.virial[2] += v2;
+    this.virial[3] += v3;
+    this.virial[4] += v4;
+    this.virial[5] += v5;
+    const a = 6 * i;
+    this.vAtom[a] += v0;
+    this.vAtom[a + 1] += v1;
+    this.vAtom[a + 2] += v2;
+    this.vAtom[a + 3] += v3;
+    this.vAtom[a + 4] += v4;
+    this.vAtom[a + 5] += v5;
+  }
+
+  /** Per-atom virial of the last post_force, added to out for compute stress/atom (fix_modify virial yes). */
+  virialAtom(out: Float64Array): void {
+    for (let k = 0; k < this.vAtom.length && k < out.length; k++) out[k] += this.vAtom[k];
   }
 
   private postForceDipole(): void {

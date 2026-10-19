@@ -17,11 +17,14 @@ import {
 
 export { isLammpsScript };
 
-/** True for a structure, data, dump or trajectory file the Structure Viewer reads. Gzip files are not viewable. */
+/**
+ * True for a structure, data, dump or trajectory file the Structure Viewer reads; a gzipped one (the viewer
+ * decompresses it) when the name without .gz is one.
+ */
 export const isViewable = (file: { name: string; kind: StoredKind }): boolean => {
-  if (file.kind === 'gzip') return false;
   if (file.kind === 'structure') return true;
-  return /^data\./i.test(file.name) || /\.(data|dump|lammpstrj|xyz|pdb|cif)$/i.test(file.name);
+  const name = file.kind === 'gzip' ? file.name.replace(/\.gz$/i, '') : file.name;
+  return /^data\./i.test(name) || /\.(data|dump|lammpstrj|xyz|pdb|cif)$/i.test(name);
 };
 
 const formatSize = (n: number): string =>

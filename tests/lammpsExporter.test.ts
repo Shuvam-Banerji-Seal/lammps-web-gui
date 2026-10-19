@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toLammpsDataFile } from '../src/lammps/exporter';
+import { toLammpsDataFile } from '../src/lammps/structureExport';
 import { MoleculeData, Atom, Bond, AtomTypeInfo } from '../src/types';
 
 const atom = (id: number, type: number, x: number, y: number, z: number, charge = 0): Atom =>

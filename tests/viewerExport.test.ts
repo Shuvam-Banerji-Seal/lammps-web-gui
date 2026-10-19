@@ -1,9 +1,9 @@
 /**
- * Structure export of the Structure Viewer (src/lammps/exporter.ts): LAMMPS data with the tilt line of a triclinic
+ * Structure export of the Structure Viewer (src/lammps/structureExport.ts): LAMMPS data with the tilt line of a triclinic
  * cell, extended XYZ (one frame and every frame) and PDB (CRYST1, fixed columns, element or T<type>).
  */
 import { describe, it, expect } from 'vitest';
-import { framesToExtXyz, toExtXyz, toLammpsDataFile, toPdb } from '../src/lammps/exporter';
+import { framesToExtXyz, toExtXyz, toLammpsDataFile, toPdb } from '../src/lammps/structureExport';
 import type { Atom, MoleculeData } from '../src/types';
 
 const atom = (id: number, type: number, x: number, y: number, z: number): Atom => ({ id, molId: 1, type, charge: 0, x, y, z });

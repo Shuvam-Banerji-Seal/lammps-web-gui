@@ -64,8 +64,9 @@ describe('pair_style pace keywords (native messages)', () => {
 });
 
 describe('pair_style pace coeff rules', () => {
-  it('refuses the YAML .yace format by name', async () => {
-    expect(await errorOf('pace', 'pair_coeff * * Cu.yace Cu')).toMatch(/\.yace.*not supported yet/);
+  it('reads the .yace format (oracle cases w270ya_*) and refuses the B-basis .yaml format by name', async () => {
+    expect(await errorOf('pace', 'pair_coeff * * Cu.yaml Cu')).toMatch(/B-basis \.yaml.*not supported yet/);
+    expect(await errorOf('pace', 'pair_coeff * * Cu.txt Cu')).toMatch(/Unrecognized file type of 'Cu.txt'. Accept only .ace or .yace/);
   });
 
   it('refuses an element the potential does not contain', async () => {

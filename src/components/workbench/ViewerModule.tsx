@@ -423,8 +423,10 @@ const ViewerModule: React.FC<{
       if (e.relatedTarget === null) setDragActive(false);
     };
     const onDrop = (e: DragEvent) => {
-      e.preventDefault();
       setDragActive(false);
+      // a drop the browser-storage drawer already took (it stores the files) is not also loaded here
+      if (e.defaultPrevented) return;
+      e.preventDefault();
       const file = e.dataTransfer?.files?.[0];
       if (file) handleFileUpload(file);
     };

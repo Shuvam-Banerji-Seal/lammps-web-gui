@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Download, Search, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
 import { getThemeTokens, type Theme } from '../../theme';
+import { isLammpsScript } from '../../lammps/scriptDetect';
 import {
   FILESTORE_EVENT,
   FileStoreError,
@@ -14,20 +15,7 @@ import {
 
 /** The browser-storage side panel: the files kept in IndexedDB, and how the workbench modules can use them. */
 
-/** A LAMMPS command at the start of a line (first meaningful line of a script). */
-const COMMAND_START =
-  /^(units|atom_style|atom_modify|boundary|dimension|lattice|region|create_box|create_atoms|read_data|read_restart|pair_style|pair_coeff|pair_modify|bond_style|angle_style|dihedral_style|improper_style|kspace_style|mass|fix|compute|variable|timestep|thermo_style|thermo_modify|run|minimize|min_style|neighbor|neigh_modify|newton|velocity|dump|comm_modify)(\s|$)/;
-
-/** True for a LAMMPS input script: an in.* / *.in / *.lmp / *.lammps name, or text that starts with a LAMMPS command. */
-export const isLammpsScript = (name: string, text: string): boolean => {
-  if (/^in\./i.test(name) || /\.(in|lmp|lammps)$/i.test(name)) return true;
-  const first = text
-    .slice(0, 4096)
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .find((l) => l !== '' && !l.startsWith('#'));
-  return first !== undefined && COMMAND_START.test(first);
-};
+export { isLammpsScript };
 
 /** True for a structure, data, dump or trajectory file the Structure Viewer reads. Gzip files are not viewable. */
 export const isViewable = (file: { name: string; kind: StoredKind }): boolean => {

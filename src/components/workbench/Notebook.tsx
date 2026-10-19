@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Square, RotateCcw, Cpu, Gpu, Gauge, HelpCircle, FileUp, X, Workflow, Atom } from 'lucide-react';
+import { Play, Square, RotateCcw, Cpu, Gpu, Gauge, HelpCircle, FileUp, X, Workflow, Atom, Maximize2, Minimize2 } from 'lucide-react';
 import ResourceMonitor from './ResourceMonitor';
 import { cellsToScript } from '../../lammps/notebookBridge';
 import { Cell, duplicateCell, insertAfter, isMarkdownCell, moveCell, runnableCells, withKind } from './notebook/cells';
@@ -21,6 +21,7 @@ import type { EngineEvent, ThermoKeyword, ThermoRow } from '../../engine/types';
 import { frameToMoleculeData, typeColors, type FrameEvent } from '../../engine/view';
 import { filesReadBy, formatNumber } from '../../engine/script';
 import { useInputFiles, type ImportSource } from './notebook/useInputFiles';
+import { useFullscreen } from './notebook/useFullscreen';
 import { InputFilesPanel } from './notebook/InputFilesPanel';
 import { ImportStructureDialog } from './notebook/ImportStructureDialog';
 import { TrajectoryBuffer, dumpToRecords, type TrajectoryRecord } from './notebook/trajectory';
@@ -161,6 +162,9 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
   const [atomRadius, setAtomRadius] = usePersistentState<number>(RADIUS_KEY, 1, reviveRadius);
   const [showBox, setShowBox] = usePersistentState<boolean>(BOX_KEY, true, reviveBool);
   const canvasHost = useRef<HTMLDivElement>(null);
+  /** The whole view column (canvas, controls, player, render panel): this is what goes full screen. */
+  const viewColumn = useRef<HTMLDivElement>(null);
+  const viewFull = useFullscreen(viewColumn);
   /** The MD run in progress (engine 'run' event): its cell and its first and last step, for the progress bar. */
   const [runSpan, setRunSpan] = useState<{ cell: string; from: number; to: number } | null>(null);
   const [files, setFiles] = useState<Record<string, string>>({});
@@ -494,7 +498,8 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
       {/* toolbar */}
       <div className={`flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 ${ct.divider}`}>
         <h2 className={`mr-1 text-sm font-semibold ${ct.headerText}`}>MD Notebook</h2>
-        <NotebookMenu theme={theme} btn={btn} session={session} inputFiles={inputFiles} busy={busy} onStop={stop} runs={runs} />
+        <NotebookMenu theme={theme} btn={btn} session={session} inputFiles={inputFiles} busy={busy} onStop={stop} runs={runs}
+          onStructure={setImportFrom} />
         <button className={`${btn} ${ct.accent}`} onClick={() => void runAll()} disabled={busy}
           title="Restart the session and run every cell in order">
           <Play size={13} aria-hidden="true" />Run all
@@ -642,8 +647,10 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
 
       {/* phone: one scrolling column (view, cells, charts); desktop: cells left, view + charts right */}
       <div className="min-h-0 flex-1 overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_42%] lg:grid-rows-[minmax(0,55%)_minmax(0,1fr)] lg:overflow-hidden">
-        <div className={`flex flex-col border-b lg:col-start-2 lg:row-start-1 lg:min-h-0 lg:border-b-0 lg:border-l ${ct.divider}`}>
-          <div ref={canvasHost} className="relative h-56 lg:h-auto lg:min-h-0 lg:flex-1">
+        <div ref={viewColumn} className={viewFull.mode === 'overlay'
+          ? `fixed inset-0 z-[60] flex flex-col ${ct.bg} ${ct.text}`
+          : `flex flex-col border-b lg:col-start-2 lg:row-start-1 lg:min-h-0 lg:border-b-0 lg:border-l ${ct.divider}${viewFull.mode === 'native' ? ` ${ct.bg} ${ct.text}` : ''}`}>
+          <div ref={canvasHost} className={viewFull.active ? 'relative min-h-0 flex-1' : 'relative h-56 lg:h-auto lg:min-h-0 lg:flex-1'}>
             {data ? (
               <MoleculeCanvas data={data} autoRotate={false} config={config} forceContinuousRender={videoActive} />
             ) : (
@@ -656,6 +663,12 @@ const Notebook: React.FC<NotebookProps> = ({ theme, incoming = null, onIncomingT
                 {shownFrame.id.length} atoms · step {shownFrame.step}
               </span>
             )}
+            <button type="button" onClick={viewFull.toggle} aria-pressed={viewFull.active}
+              aria-label={viewFull.active ? 'Exit full screen' : 'Full screen view'}
+              title={viewFull.active ? 'Exit full screen' : 'Full screen view'}
+              className={`absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded ${ct.chip} ${ct.button}`}>
+              {viewFull.active ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />}
+            </button>
           </div>
           <div className="shrink-0 px-2 pt-2">
             <ViewControls ct={ct} recordEvery={recordEvery} onRecordEvery={setRecordEvery} radius={atomRadius} onRadius={setAtomRadius}

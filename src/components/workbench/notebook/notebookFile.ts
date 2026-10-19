@@ -285,6 +285,24 @@ export const importNotebookFile = (name: string, text: string, newId: (k: number
   fail(`${name}: the notebook cannot open this type of file. Use a ${NOTEBOOK_EXTENSION} notebook, a Jupyter .ipynb, or a LAMMPS input script (in.* or .in / .lmp).`);
 };
 
+/**
+ * True for a name importNotebookFile opens as a notebook or script by its name alone: `.lmpnb`, `.ipynb`,
+ * and LAMMPS input (`.in`, `.lmp`, `.lammps`, or a file named `in.*`). A `.json` notebook is recognised by its
+ * content only, so it is not decided here.
+ */
+export const isNotebookName = (name: string): boolean => {
+  const lower = name.toLowerCase();
+  return lower.endsWith('.lmpnb') || lower.endsWith('.ipynb') || /\.(in|lmp|lammps)$/.test(lower)
+    || /^in\./i.test(name.split(/[\\/]/).pop() ?? name);
+};
+
+/**
+ * Classifies dropped files by name, in the order given: 'notebook' for a notebook or LAMMPS script
+ * (see isNotebookName), 'input' for everything else (data, potentials, structures, gzip files, ...).
+ */
+export const classifyDropped = (names: readonly string[]): ('notebook' | 'input')[] =>
+  names.map((n) => (isNotebookName(n) ? 'notebook' : 'input'));
+
 /* ------------------------------------------------------------------ exporters */
 
 /** The notebook as one LAMMPS input script: code cells in order, each followed by `# ---`; markdown as `#` comment lines. */

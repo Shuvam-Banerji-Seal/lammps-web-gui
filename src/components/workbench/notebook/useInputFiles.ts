@@ -16,8 +16,11 @@ export interface InputFiles {
   totalBytes: number;
   /** The last failure (quota, storage), for the panel; null when none. */
   error: string | null;
-  /** Adds picked files (stored and sent to the engine). Returns the first structure or data file, for the import dialog. */
-  addPicked: (list: FileList | null) => Promise<ImportSource | null>;
+  /**
+   * Adds picked or dropped files (a FileList, or a File[] from a drop) (stored and sent to the engine).
+   * Returns the first structure or data file, for the import dialog.
+   */
+  addPicked: (list: FileList | readonly File[] | null) => Promise<ImportSource | null>;
   /** Adds one file given as text (used by the import dialog for its converted output). */
   addText: (name: string, text: string) => Promise<void>;
   /** Reads a picked file for the import dialog without storing it. */
@@ -157,7 +160,7 @@ export const useInputFiles = (getClient: () => EngineClient, store: FileStore = 
     await storeFile(name, text, text.length);
   }, [storeFile]);
 
-  const addPicked = useCallback(async (list: FileList | null): Promise<ImportSource | null> => {
+  const addPicked = useCallback(async (list: FileList | readonly File[] | null): Promise<ImportSource | null> => {
     if (!list) return null;
     let candidate: ImportSource | null = null;
     for (const file of Array.from(list)) {

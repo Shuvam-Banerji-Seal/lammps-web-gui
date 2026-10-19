@@ -1,0 +1,32 @@
+# oracle: dynamic APIP switching parameters from pair_style lambda/input/apip (lambda_input = 0) with fix lambda/apip group_precise and group_ignore_lambda_input (the vacancy shell), lambda_non_group fast for atoms outside the fix group, dump_atomic_history, fix_modify of the zone cutoffs after a run 0 (native refuses it before the pair style is initialised), fix atom_weight/apip with constant times including the lambda/zone time (read from the lambda_input history of fix lambda/apip), and fix lambda_thermostat/apip N_rescaling 5 seed 99, on the 2047-atom vacancy cell of examples/PACKAGES/apip, 12 NVE steps
+# Native reference: LAMMPS b332f28 built with PKG_APIP and PKG_ML-PACE (/store/shuvam/software/lammps-build-apip/lmp)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.6e-12, atoms 2.6e-14.
+# oracle-examples: PACKAGES/apip/data.vacancy PACKAGES/apip/Cu_300K_Immel_2023.eam.fs PACKAGES/apip/Cu-1.yace
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      apip
+timestep        0.001
+read_data       data.vacancy
+group           vacancy id 145 147 148 149 150 994 997 995 1024 1026 1028 1922
+group           inner id < 1500
+velocity        all create 500 87287 loop geom
+fix             nve all nve
+pair_style      hybrid/overlay eam/fs/apip pace/apip lambda/input/apip 6.0 lambda/zone/apip 4.0
+pair_coeff      * * eam/fs/apip Cu_300K_Immel_2023.eam.fs Cu
+pair_coeff      * * pace/apip Cu-1.yace Cu
+pair_coeff      * * lambda/input/apip
+pair_coeff      * * lambda/zone/apip
+fix             lambda inner lambda/apip 0.5 1.5 time_averaged_zone 2.0 3.0 4 4 group_precise vacancy group_ignore_lambda_input vacancy lambda_non_group fast dump_atomic_history
+fix             weight all atom_weight/apip 3 1e-05 0.0004 2e-06 3e-06 all no_rescale
+fix             lambda_thermostat inner lambda_thermostat/apip N_rescaling 5 seed 99
+compute         lambda all property/atom apip_lambda
+compute         lsum all reduce sum c_lambda f_lambda[1] f_lambda[3] f_lambda[5] f_lambda[6] f_lambda[10] f_lambda[15] f_weight
+variable        flag_switch atom c_lambda<1&&c_lambda>0
+variable        flag_complex atom c_lambda==0
+compute         lambda_types all reduce sum v_flag_switch v_flag_complex
+thermo_style    custom step etotal pe ke press c_lambda_types[*] c_lsum[*] f_lambda_thermostat[*] f_weight[*]
+thermo_modify   format float %.15g
+thermo          3
+run             0
+fix_modify      lambda 2.5 3.5
+run             12

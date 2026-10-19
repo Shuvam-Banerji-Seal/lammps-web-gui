@@ -222,7 +222,7 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_miscx', names: { BONDS: ['quartic', 'special'], ANGLES: ['dipole'], PAIRS: ['list', 'dsmc'] }, load: () => import('../engine-gpl/registry/miscx') as Promise<StyleModule> },
   { id: 'gpl_pace', names: { PAIRS: ['pace', 'pace/extrapolation'], COMPUTES: ['pace'] }, load: () => import('../engine-gpl/registry/pace') as Promise<StyleModule> },
   { id: 'gpl_mliap_ace', names: { HOOKS: ['ace'] }, load: () => import('../engine-gpl/registry/mliap_ace') as Promise<StyleModule> },
-  { id: 'gpl_apip', names: { PAIRS: ['eam/apip', 'eam/fs/apip', 'pace/apip', 'pace/precise/apip', 'pace/fast/apip'], FIXES: ['atom_weight/apip'] }, load: () => import('../engine-gpl/registry/apip') as Promise<StyleModule> },
+  { id: 'gpl_apip', names: { PAIRS: ['eam/apip', 'eam/fs/apip', 'pace/apip', 'pace/precise/apip', 'pace/fast/apip', 'lambda/input/apip', 'lambda/input/csp/apip', 'lambda/zone/apip'], FIXES: ['atom_weight/apip', 'lambda/apip', 'lambda_thermostat/apip'] }, load: () => import('../engine-gpl/registry/apip') as Promise<StyleModule> },
   { id: 'gpl_bop', names: { PAIRS: ['bop'] }, load: () => import('../engine-gpl/registry/bop') as Promise<StyleModule> },
   { id: 'gpl_lcbop', names: { PAIRS: ['lcbop'] }, load: () => import('../engine-gpl/registry/lcbop') as Promise<StyleModule> },
 ];

@@ -178,6 +178,8 @@ export class BondBpmSpring extends BondBPMBase {
       v[0] += dx * dx * fbond; v[1] += dy * dy * fbond; v[2] += dz * dz * fbond;
       v[3] += dx * dy * fbond; v[4] += dx * dz * fbond; v[5] += dy * dz * fbond;
       if (bc.eatom) { bc.eatom[i1] += 0.5 * ebond; bc.eatom[i2] += 0.5 * ebond; }
+      // per-atom: half of v to each atom (Bond::ev_tally, newton_bond on)
+      if (bc.vatom) { const va = bc.vatom; const w = [dx * dx * fbond, dy * dy * fbond, dz * dz * fbond, dx * dy * fbond, dx * dz * fbond, dy * dz * fbond]; for (let c = 0; c < 6; c++) { va[6 * i1 + c] += 0.5 * w[c]; va[6 * i2 + c] += 0.5 * w[c]; } }
     }
     // update_vol0 when a bond broke in this compute (bond_bpm_spring.cpp: bond_change_flag)
     if (this.volume && changed) this.updateVol0();

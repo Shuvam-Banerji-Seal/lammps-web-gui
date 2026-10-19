@@ -92,6 +92,8 @@ export class BondBpmSpringPlastic extends BondBPMBase {
       const w0 = dx * dx * fbond, w1 = dy * dy * fbond, w2 = dz * dz * fbond;
       const w3 = dx * dy * fbond, w4 = dx * dz * fbond, w5 = dy * dz * fbond;
       v[0] += w0; v[1] += w1; v[2] += w2; v[3] += w3; v[4] += w4; v[5] += w5;
+      // per-atom: half of v to each atom (Bond::ev_tally, newton_bond on; no energy)
+      if (bc.vatom) { const va = bc.vatom; const w = [w0, w1, w2, w3, w4, w5]; for (let c = 0; c < 6; c++) { va[6 * i1 + c] += 0.5 * w[c]; va[6 * i2 + c] += 0.5 * w[c]; } }
     }
   }
 }

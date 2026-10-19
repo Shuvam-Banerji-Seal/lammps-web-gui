@@ -204,6 +204,8 @@ export const LAZY_GROUPS: readonly LazyGroup[] = [
   { id: 'gpl_rigeff', names: { COMPUTES: ['erotate/rigid', 'ke/rigid', 'rigid/local', 'temp/deform/eff', 'smd/triangle/vertices', 'smd/tlsph/defgrad', 'smd/hourglass/error'], FIXES: ['langevin/eff', 'nvt/sllod/eff', 'eos/table', 'smd/move_tri_surf'] }, load: () => import('../engine-gpl/registry/rigeff') as Promise<StyleModule> },
   { id: 'gpl_slater', names: { PAIRS: ['coul/slater/long', 'dpd/coul/slater/long'] }, load: () => import('../engine-gpl/registry/slater') as Promise<StyleModule> },
   { id: 'gpl_e3b', names: { PAIRS: ['e3b'] }, load: () => import('../engine-gpl/registry/e3b') as Promise<StyleModule> },
+  // dispersion/d3: its parameter tables are split over several data chunks, which loadD3 imports before the style is made
+  { id: 'gpl_d3', names: { PAIRS: ['dispersion/d3'] }, load: () => import('../engine-gpl/registry/d3').then((m) => m.loadD3()) as Promise<StyleModule> },
   { id: 'gpl_srp', names: { PAIRS: ['srp', 'srp/react'], FIXES: ['SRP', 'SRPREACT'] }, load: () => import('../engine-gpl/registry/srp') as Promise<StyleModule> },
   { id: 'gpl_ewald_disp', names: { KSPACES: ['ewald/disp', 'ewald/disp/dipole'], PAIRS: ['lj/long/dipole/long'] }, load: () => import('../engine-gpl/registry/ewald_disp') as Promise<StyleModule> },
   { id: 'gpl_mgpt', names: { PAIRS: ['mgpt'] }, load: () => import('../engine-gpl/registry/mgpt') as Promise<StyleModule> },

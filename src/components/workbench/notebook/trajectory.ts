@@ -2,7 +2,8 @@
  * Trajectory buffer for the MD notebook: every frame the engine streams during runs is kept
  * (positions as Float32Array; ids and types shared between frames with the same atoms), under a memory cap.
  * Over the cap the buffer drops every other frame and doubles the recording stride, and says so.
- * Also the writers for extended XYZ and LAMMPS dump text. Pure: no React, no DOM.
+ * Also the writers for extended XYZ, LAMMPS dump, multi-model PDB, LAMMPS data (one frame) and CSV text.
+ * Pure: no React, no DOM.
  */
 import type { SimBox } from '../../../engine/types';
 import type { FrameEvent } from '../../../engine/view';
@@ -349,6 +350,104 @@ export const framesToDump = (frames: readonly TrajectoryRecord[]): string => {
     }
   }
   return out.join('\n') + '\n';
+};
+
+/** Fixed-width number for a PDB column: %w.df as the format spells it, right-justified. */
+const pdbNum = (v: number, width: number, decimals: number): string => v.toFixed(decimals).padStart(width);
+
+/**
+ * Multi-model PDB, one MODEL / ENDMDL block per frame. A CRYST1 record (box lengths, 90-degree angles, P 1) is
+ * written from the first frame when its box is orthogonal; a tilted cell has none. Each atom is a HETATM named
+ * T<type> as in the extended XYZ writer (an engine type is not an element, so the element columns are blank),
+ * coordinates in the %8.3f columns 31-54, residue MOL, chain A. Serials wrap after 99999, the PDB limit.
+ * Columns follow the wwPDB format guide (CRYST1 1-70, ATOM/HETATM 1-78).
+ */
+export const framesToPdb = (frames: readonly TrajectoryRecord[]): string => {
+  const out: string[] = [];
+  const first = frames[0];
+  if (first && first.box.tilt.every((t) => t === 0)) {
+    const { lo, hi } = first.box;
+    out.push(
+      'CRYST1' + pdbNum(hi[0] - lo[0], 9, 3) + pdbNum(hi[1] - lo[1], 9, 3) + pdbNum(hi[2] - lo[2], 9, 3) +
+        pdbNum(90, 7, 2) + pdbNum(90, 7, 2) + pdbNum(90, 7, 2) + ' ' + 'P 1'.padEnd(11) + '1'.padStart(4),
+    );
+  }
+  frames.forEach((f, k) => {
+    out.push('MODEL'.padEnd(10) + String(k + 1).padStart(4));
+    for (let i = 0; i < f.topo.id.length; i++) {
+      const name = `T${f.topo.type[i]}`.slice(0, 4).padEnd(4);
+      const serial = String((i % 99999) + 1).padStart(5);
+      out.push(
+        'HETATM' + serial + ' ' + name + ' MOL A' + '1'.padStart(4) + '    ' +
+          pdbNum(f.x[3 * i], 8, 3) + pdbNum(f.x[3 * i + 1], 8, 3) + pdbNum(f.x[3 * i + 2], 8, 3) +
+          '  1.00' + '  0.00' + ' '.repeat(12),
+      );
+    }
+    out.push('ENDMDL');
+  });
+  out.push('END');
+  return out.join('\n') + '\n';
+};
+
+/**
+ * LAMMPS data file of ONE frame (read_data, atom_style atomic): the header counts (atoms, and atom types as the
+ * largest type id), the box bounds with the xy xz yz tilt line when triclinic, a Masses section when the record
+ * carries masses (the first atom's mass of each type), then Atoms # atomic (id type x y z) and Velocities (id vx vy
+ * vz) when the frame has velocities. Positions are the wrapped ones the frame holds.
+ */
+export const frameToLammpsData = (f: TrajectoryRecord): string => {
+  const n = f.topo.id.length;
+  const { lo, hi, tilt } = f.box;
+  let ntypes = 0;
+  for (let i = 0; i < n; i++) if (f.topo.type[i] > ntypes) ntypes = f.topo.type[i];
+  const lines: string[] = [
+    `LAMMPS data file written by the MD Notebook, step ${f.step}`,
+    '',
+    `${n} atoms`,
+    `${ntypes} atom types`,
+    '',
+    `${num(lo[0])} ${num(hi[0])} xlo xhi`,
+    `${num(lo[1])} ${num(hi[1])} ylo yhi`,
+    `${num(lo[2])} ${num(hi[2])} zlo zhi`,
+  ];
+  if (tilt.some((t) => t !== 0)) lines.push(`${num(tilt[0])} ${num(tilt[1])} ${num(tilt[2])} xy xz yz`);
+  if (f.mass) {
+    const massOf = new Array<number | undefined>(ntypes + 1);
+    for (let i = 0; i < n; i++) {
+      const t = f.topo.type[i];
+      if (massOf[t] === undefined) massOf[t] = f.mass[i];
+    }
+    lines.push('', 'Masses', '');
+    for (let t = 1; t <= ntypes; t++) lines.push(`${t} ${num(massOf[t] ?? 1)}`);
+  }
+  lines.push('', 'Atoms # atomic', '');
+  for (let i = 0; i < n; i++) {
+    lines.push(`${f.topo.id[i]} ${f.topo.type[i]} ${num(f.x[3 * i])} ${num(f.x[3 * i + 1])} ${num(f.x[3 * i + 2])}`);
+  }
+  if (f.v) {
+    lines.push('', 'Velocities', '');
+    for (let i = 0; i < n; i++) {
+      lines.push(`${f.topo.id[i]} ${num(f.v[3 * i])} ${num(f.v[3 * i + 1])} ${num(f.v[3 * i + 2])}`);
+    }
+  }
+  return lines.join('\n') + '\n';
+};
+
+/**
+ * CSV of every atom of every frame: header frame,step,id,type,x,y,z (plus vx,vy,vz when any frame carries
+ * velocities; frames without them leave those cells empty). frame is the 0-based index in the list.
+ */
+export const framesToCsv = (frames: readonly TrajectoryRecord[]): string => {
+  const withV = frames.some((f) => f.v !== undefined);
+  const lines: string[] = [withV ? 'frame,step,id,type,x,y,z,vx,vy,vz' : 'frame,step,id,type,x,y,z'];
+  frames.forEach((f, k) => {
+    for (let i = 0; i < f.topo.id.length; i++) {
+      let row = `${k},${f.step},${f.topo.id[i]},${f.topo.type[i]},${num(f.x[3 * i])},${num(f.x[3 * i + 1])},${num(f.x[3 * i + 2])}`;
+      if (withV) row += f.v ? `,${num(f.v[3 * i])},${num(f.v[3 * i + 1])},${num(f.v[3 * i + 2])}` : ',,,';
+      lines.push(row);
+    }
+  });
+  return lines.join('\n') + '\n';
 };
 
 /** Speeds and masses of the atoms of one record (null when the record has no velocities). */

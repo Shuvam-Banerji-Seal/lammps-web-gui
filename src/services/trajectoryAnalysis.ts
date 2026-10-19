@@ -192,15 +192,14 @@ const buildCellList = (
 };
 
 /**
- * Histogram every pair closer than `rMax` into `hist`, adding 2 per unordered
- * pair so the caller's per-atom normalisation sees ordered-pair counts.
+ * Visits every unordered pair (i, j) closer than `rMax` exactly once, through the periodic cell list. `dx, dy, dz`
+ * is the minimum-image separation r_i - r_j and `d2` its squared length (the convention of distancePBC: a thin z
+ * slab is not wrapped in z).
  */
-const accumulatePairs = (
+const forEachPair = (
   cl: CellList,
   rMax: number,
-  dr: number,
-  bins: number,
-  hist: number[],
+  visit: (i: number, j: number, dx: number, dy: number, dz: number, d2: number) => void,
 ): void => {
   const r2max = rMax * rMax;
   const { nx, ny, nz, lx, ly, lz, x, y, z, start, items, ox, oy, oz } = cl;
@@ -246,8 +245,7 @@ const accumulatePairs = (
                   if (cl.pz) { if (dz > halfZ) dz -= lz; else if (dz < -halfZ) dz += lz; }
                   const d2 = dx * dx + dy * dy + dz * dz;
                   if (d2 >= r2max) continue;
-                  const bin = Math.floor(Math.sqrt(d2) / dr);
-                  if (bin >= 0 && bin < bins) hist[bin] += 2;
+                  visit(i, j, dx, dy, dz, d2);
                 }
               }
             }
@@ -257,6 +255,174 @@ const accumulatePairs = (
     }
   }
 };
+
+/**
+ * Histogram every pair closer than `rMax` into `hist`, adding 2 per unordered
+ * pair so the caller's per-atom normalisation sees ordered-pair counts.
+ */
+const accumulatePairs = (
+  cl: CellList,
+  rMax: number,
+  dr: number,
+  bins: number,
+  hist: number[],
+): void => {
+  forEachPair(cl, rMax, (_i, _j, _dx, _dy, _dz, d2) => {
+    const bin = Math.floor(Math.sqrt(d2) / dr);
+    if (bin >= 0 && bin < bins) hist[bin] += 2;
+  });
+};
+
+/**
+ * Minimum-image neighbour vectors of a frame within `cutoff`: for every atom, the flat list
+ * [x, y, z, ...] of r_j - r_i over its neighbours j (each pair found once through the cell list).
+ */
+const neighbourVectors = (frame: TrajectoryFrame, cutoff: number): number[][] => {
+  const vec: number[][] = Array.from({ length: frame.atoms.length }, () => []);
+  forEachPair(buildCellList(frame.atoms, frame.box, cutoff), cutoff, (i, j, dx, dy, dz) => {
+    // d = r_i - r_j, so r_j - r_i = -d and r_i - r_j = d
+    vec[i].push(-dx, -dy, -dz);
+    vec[j].push(dx, dy, dz);
+  });
+  return vec;
+};
+
+export interface CoordinationResult {
+  /** Coordination number of each atom (neighbours closer than the cutoff). */
+  perAtom: number[];
+  /** atomsWith[k] = number of atoms whose coordination number is k, for k = 0 .. the largest. */
+  atomsWith: number[];
+  /** Mean coordination number, (1/N) sum_i CN_i. */
+  mean: number;
+  cutoff: number;
+}
+
+/**
+ * Coordination number: CN_i = #{ j != i : |r_ij| < cutoff }, with the minimum-image distance on the frame's own box
+ * (periodic dimensions only, as in computeRDF). Each unordered pair adds one neighbour to both atoms.
+ */
+export const computeCoordination = (frame: TrajectoryFrame, cutoff: number): CoordinationResult => {
+  const n = frame.atoms.length;
+  const perAtom = new Array<number>(n).fill(0);
+  if (n > 0 && cutoff > 0) {
+    forEachPair(buildCellList(frame.atoms, frame.box, cutoff), cutoff, (i, j) => { perAtom[i]++; perAtom[j]++; });
+  }
+  let max = 0;
+  let sum = 0;
+  for (const c of perAtom) { if (c > max) max = c; sum += c; }
+  const atomsWith = new Array<number>(max + 1).fill(0);
+  for (const c of perAtom) atomsWith[c]++;
+  return { perAtom, atomsWith, mean: n > 0 ? sum / n : 0, cutoff };
+};
+
+/**
+ * Bond-angle distribution. For every atom j and every pair of its neighbours i, k within `cutoff` (minimum image),
+ * the angle theta_ijk = arccos( (r_i - r_j) . (r_k - r_j) / (|r_i - r_j| |r_k - r_j|) ) in degrees, binned over
+ * [0, 180]. The density of bin b is count_b / (total * width), width = 180 / nbins, so sum(density * width) = 1: a
+ * probability density per degree. Empty when no angle exists.
+ */
+export const computeBondAngleDistribution = (frame: TrajectoryFrame, cutoff: number, nbins = 90): HistogramBin[] => {
+  if (!(cutoff > 0) || nbins < 1 || frame.atoms.length < 3) return [];
+  const width = 180 / nbins;
+  const counts = new Array<number>(nbins).fill(0);
+  let total = 0;
+  for (const v of neighbourVectors(frame, cutoff)) {
+    const m = v.length / 3;
+    for (let a = 0; a < m; a++) {
+      const ax = v[3 * a], ay = v[3 * a + 1], az = v[3 * a + 2];
+      const la = Math.sqrt(ax * ax + ay * ay + az * az);
+      for (let b = a + 1; b < m; b++) {
+        const bx = v[3 * b], by = v[3 * b + 1], bz = v[3 * b + 2];
+        const lb = Math.sqrt(bx * bx + by * by + bz * bz);
+        if (la === 0 || lb === 0) continue;
+        const cos = (ax * bx + ay * by + az * bz) / (la * lb);
+        const deg = Math.acos(Math.max(-1, Math.min(1, cos))) * 180 / Math.PI;
+        counts[Math.min(nbins - 1, Math.floor(deg / width))]++;
+        total++;
+      }
+    }
+  }
+  if (total === 0) return [];
+  return counts.map((count, b) => ({
+    x0: b * width, x1: (b + 1) * width, count, density: count / (total * width),
+  }));
+};
+
+export interface StructurePoint { q: number; s: number }
+
+/**
+ * Static structure factor from g(r), for an isotropic system of number density rho = N/V:
+ *   S(q) = 1 + 4 pi rho * integral_0^rMax r^2 (g(r) - 1) sin(qr) / (qr) dr
+ * The integral is trapezoidal on the g(r) grid, and sin(x)/x = 1 at x = 0. q runs from 0 to qMax in nq equal steps
+ * (nq values including both ends). An ideal gas, g = 1, gives S = 1 for every q. With `lorch`, the integrand is
+ * multiplied by the Lorch window M(r) = sin(pi r / R) / (pi r / R), R the last r of the grid, which damps the
+ * ripples (and the unphysical S < 0 at small q) that cutting g(r) at R puts into the transform.
+ */
+export const computeStructureFactor = (
+  rdf: { r: readonly number[]; g: readonly number[] },
+  rho: number,
+  qMax: number,
+  nq = 200,
+  lorch = false,
+): StructurePoint[] => {
+  const R0 = Math.min(rdf.r.length, rdf.g.length);
+  if (nq < 2 || R0 < 2 || !(rho > 0) || !(qMax > 0)) return [];
+  const sinc = (x: number): number => (Math.abs(x) < 1e-12 ? 1 : Math.sin(x) / x);
+  const R = rdf.r[R0 - 1];
+  const out: StructurePoint[] = [];
+  for (let k = 0; k < nq; k++) {
+    const q = qMax * k / (nq - 1);
+    let integral = 0;
+    let prev = 0;
+    for (let i = 0; i < R0; i++) {
+      const r = rdf.r[i];
+      const f = r * r * (rdf.g[i] - 1) * sinc(q * r) * (lorch ? sinc(Math.PI * r / R) : 1);
+      if (i > 0) integral += 0.5 * (prev + f) * (r - rdf.r[i - 1]);
+      prev = f;
+    }
+    out.push({ q, s: 1 + 4 * Math.PI * rho * integral });
+  }
+  return out;
+};
+
+/**
+ * Default neighbour cutoff from g(r): the position of the first minimum after the first peak. g(r) is first smoothed
+ * with a 5-point moving average; the first peak is the first local maximum above 1, and the minimum is the lowest
+ * smoothed value between the peak and twice its distance (so sampling noise is not taken for a shell). When g(r) is
+ * still falling at twice the peak distance, 1.25 times the peak position; with no peak, 3.0.
+ */
+export const defaultCutoff = (rdf: readonly RDFPoint[]): number => {
+  const n = rdf.length;
+  const g = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    let sum = 0, cnt = 0;
+    for (let k = Math.max(0, i - 2); k <= Math.min(n - 1, i + 2); k++) { sum += rdf[k].g; cnt++; }
+    g[i] = sum / cnt;
+  }
+  let p = -1;
+  for (let i = 1; i + 1 < n; i++) {
+    if (g[i] > 1 && g[i] > g[i - 1] && g[i] >= g[i + 1]) { p = i; break; }
+  }
+  if (p < 0) return 3.0;
+  let m = -1, last = -1, gm = Infinity;
+  for (let i = p + 1; i < n && rdf[i].r <= 2 * rdf[p].r; i++) {
+    last = i;
+    if (g[i] < gm) { gm = g[i]; m = i; }
+  }
+  return m < 0 || m === last ? 1.25 * rdf[p].r : rdf[m].r;
+};
+
+/** Coordination, bond angles for one frame (the worker's neighbour analysis). */
+export interface NeighbourResult {
+  coordination: CoordinationResult;
+  angles: HistogramBin[];
+}
+
+/** Coordination and bond-angle distribution of one frame at a cutoff. */
+export const computeNeighbourAnalysis = (frame: TrajectoryFrame, cutoff: number, nbins = 90): NeighbourResult => ({
+  coordination: computeCoordination(frame, cutoff),
+  angles: computeBondAngleDistribution(frame, cutoff, nbins),
+});
 
 /**
  * Radial Distribution Function g(r)

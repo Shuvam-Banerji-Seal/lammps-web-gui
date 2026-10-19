@@ -1,11 +1,12 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { getThemeTokens, Theme } from '../../../../theme';
-import { MultiLineChart, type ChartSeries } from '../../../charts/SimpleChart';
+import { Histogram, MultiLineChart, type ChartSeries } from '../../../charts/SimpleChart';
 import { unitsCaption } from '../../../../lammps/thermoUnits';
 import {
   columnLabel, numericColumns, runningMean, segmentDt, seriesPoints, summarize, timeUnitLabel, toCsv,
   type ThermoSegment, type XMode,
 } from '../chartData';
+import { autocorrelation, blockAverage, histogram } from '../../../../services/thermoAnalysis';
 import { ChartActions } from './ChartActions';
 
 /** A chart panel: the columns drawn on it. */
@@ -137,7 +138,75 @@ export const ThermoCharts: React.FC<ThermoChartsProps> = ({ segments, theme }) =
             csv={() => csvFor(p.keys)} />
         );
       })}
+      {columns.length > 0 && <ColumnStatistics segments={active} columns={columns} theme={theme} />}
     </div>
+  );
+};
+
+/** Block-average error, autocorrelation and histogram of one thermo column over the runs shown. */
+const ColumnStatistics: React.FC<{ segments: ThermoSegment[]; columns: string[]; theme: Theme }> = ({ segments, columns, theme }) => {
+  const ct = getThemeTokens(theme);
+  const [choice, setChoice] = useState('');
+  const key = columns.includes(choice) ? choice : columns[0];
+  const values = useMemo(() => {
+    const out: number[] = [];
+    for (const s of segments) for (const r of s.rows) if (Number.isFinite(r[key])) out.push(r[key]);
+    return out;
+  }, [segments, key]);
+  const blocks = useMemo(() => blockAverage(values, 4), [values]);
+  const maxLag = Math.min(200, Math.floor(values.length / 2));
+  const acf = useMemo(() => autocorrelation(values, maxLag), [values, maxLag]);
+  const hist = useMemo(() => histogram(values, 30), [values]);
+  const blockRef = useRef<SVGSVGElement>(null);
+  const acfRef = useRef<SVGSVGElement>(null);
+  const histRef = useRef<HTMLDivElement>(null);
+  const histBins = hist.centers.map((c, b) => ({
+    x0: c - hist.width / 2, x1: c + hist.width / 2, count: hist.counts[b], density: hist.density[b],
+  }));
+  const inputCls = `rounded border px-1 py-0.5 text-[11px] ${ct.input}`;
+  const line = (name: string, points: { x: number; y: number }[], xLabel: string, yLabel: string, ref: React.RefObject<SVGSVGElement | null>, empty: string) => (
+    <MultiLineChart series={[{ name, points }]} xLabel={xLabel} yLabel={yLabel} theme={theme} height={110} svgRef={ref} emptyText={empty} />
+  );
+  const charts: { name: string; title: string; ref: React.RefObject<Element | null>; csv: () => string; chart: React.ReactNode }[] = [
+    {
+      name: 'block_se', title: 'Block averages: standard error vs block size', ref: blockRef,
+      csv: () => toCsv(['block_size', 'mean', 'std_error'], blocks.map((b) => [b.blockSize, b.mean, b.stdError])),
+      chart: line('std. error', blocks.map((b) => ({ x: b.blockSize, y: b.stdError })), 'block size (rows)', 'std. error', blockRef, 'Not enough rows for four blocks'),
+    },
+    {
+      name: 'autocorrelation', title: 'Autocorrelation vs lag', ref: acfRef,
+      csv: () => toCsv(['lag', 'acf'], acf.map((v, k) => [k, v])),
+      chart: line('C(lag) / C(0)', acf.map((v, k) => ({ x: k, y: v })), 'lag (rows)', 'C / C0', acfRef, 'Not enough rows for an autocorrelation'),
+    },
+    {
+      name: 'histogram', title: 'Histogram (30 bins)', ref: histRef,
+      csv: () => toCsv(['x0', 'x1', 'count', 'density'], histBins.map((b) => [b.x0, b.x1, b.count, b.density])),
+      chart: <div ref={histRef}><Histogram bins={histBins} xLabel={key} yLabel="count" theme={theme} height={110} /></div>,
+    },
+  ];
+  return (
+    <section aria-label="Column statistics" className={`space-y-2 rounded border p-2 ${ct.divider}`}>
+      <div className={`flex flex-wrap items-center gap-2 text-[11px] ${ct.muted}`}>
+        <p className={`text-xs font-semibold ${ct.headerText}`}>Column statistics</p>
+        <label className="inline-flex items-center gap-1">column
+          <select aria-label="Thermo column statistics" className={inputCls} value={key} onChange={(e) => setChoice(e.target.value)}>
+            {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+        <span>{values.length} values</span>
+      </div>
+      {values.length < 2 ? (
+        <p className={`text-xs ${ct.muted}`}>Not enough data: this column needs at least two thermo rows in the runs shown.</p>
+      ) : charts.map((c) => (
+        <div key={c.name} className="space-y-1">
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-1">
+            <p className={`text-[11px] font-semibold ${ct.headerText}`}>{c.title}</p>
+            <ChartActions name={`${c.name}_${key}`} theme={theme} svgRef={c.ref} csv={c.csv} />
+          </div>
+          {c.chart}
+        </div>
+      ))}
+    </section>
   );
 };
 

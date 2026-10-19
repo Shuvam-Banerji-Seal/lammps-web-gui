@@ -3,7 +3,9 @@ import { Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight, Video, D
 import type { getThemeTokens } from '../../../theme';
 import { downloadFile } from '../../../lammps/exporter';
 import { startCanvasRecording, type RecordingHandle } from '../../../services/recorder';
-import { framesToDump, framesToExtXYZ, type TrajectoryBuffer } from './trajectory';
+import {
+  framesToCsv, framesToDump, framesToExtXYZ, framesToPdb, frameToLammpsData, type TrajectoryBuffer,
+} from './trajectory';
 
 type Tokens = ReturnType<typeof getThemeTokens>;
 
@@ -11,6 +13,9 @@ const SPEEDS = [1, 2, 5, 10, 20, 30] as const;
 const VIDEO_FPS = [10, 15, 25, 30] as const;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+
+/** Formats of the trajectory download: every frame, except 'data' which writes the frame on screen. */
+type ExportFormat = 'xyz' | 'dump' | 'pdb' | 'csv' | 'data';
 
 export interface TrajectoryPlayerProps {
   ct: Tokens;
@@ -49,7 +54,7 @@ const TrajectoryPlayer: React.FC<TrajectoryPlayerProps> = ({
   const [videoFps, setVideoFps] = useState<number>(25);
   const [video, setVideo] = useState<{ done: number; total: number } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [exportFormat, setExportFormat] = useState<'xyz' | 'dump'>('xyz');
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('xyz');
   const cancelVideo = useRef(false);
   // the timers read the current index without re-subscribing on every frame
   const shownRef = useRef(shown);
@@ -94,9 +99,17 @@ const TrajectoryPlayer: React.FC<TrajectoryPlayerProps> = ({
 
   const download = (name: string, text: string) => downloadFile(name, text);
   const exportTrajectory = () => {
+    if (exportFormat === 'data') {
+      // one frame: the one on screen
+      const frame = buffer.get(shown);
+      if (frame) download(`frame_step${frame.step}.data`, frameToLammpsData(frame));
+      return;
+    }
     const frames = buffer.list();
     if (!frames.length) return;
     if (exportFormat === 'xyz') download('trajectory.xyz', framesToExtXYZ(frames));
+    else if (exportFormat === 'pdb') download('trajectory.pdb', framesToPdb(frames));
+    else if (exportFormat === 'csv') download('trajectory.csv', framesToCsv(frames));
     else download('trajectory.dump', framesToDump(frames));
   };
   const openInViewer = () => {
@@ -239,14 +252,17 @@ const TrajectoryPlayer: React.FC<TrajectoryPlayerProps> = ({
         <label className={`flex items-center gap-1 text-xs ${ct.muted}`}>
           <span>Format</span>
           <select aria-label="Trajectory export format" value={exportFormat}
-            onChange={(e) => setExportFormat(e.target.value as 'xyz' | 'dump')}
+            onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
             className={`min-h-6 rounded border px-1 py-0.5 text-xs ${ct.input}`}>
             <option value="xyz">Extended XYZ</option>
             <option value="dump">LAMMPS dump</option>
+            <option value="pdb">PDB (multi-model)</option>
+            <option value="csv">CSV (all frames)</option>
+            <option value="data">LAMMPS data (shown frame)</option>
           </select>
         </label>
         <button className={`${btn} ${ct.button}`} disabled={count === 0 || live || busy} onClick={exportTrajectory}
-          title="Download every recorded frame">
+          title={exportFormat === 'data' ? 'Download the frame on screen as a LAMMPS data file' : 'Download every recorded frame'}>
           <Download size={13} aria-hidden="true" />Download trajectory
         </button>
         {onRender && (

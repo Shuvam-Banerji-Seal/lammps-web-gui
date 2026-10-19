@@ -1,7 +1,8 @@
 import type { BoxBounds, TrajectoryFrame } from '../types';
-import type { DensityProfile, MSDPoint, RDFPoint } from './trajectoryAnalysis';
+import type { DensityProfile, MSDPoint, NeighbourResult, RDFPoint } from './trajectoryAnalysis';
 import {
   computeDensityProfile,
+  computeNeighbourAnalysis,
   computeRDF,
   msdIsExact,
   msdInRealFrames,
@@ -39,12 +40,22 @@ export interface AnalysisRequest {
 
 export type { MsdSample } from './trajectoryAnalysis';
 
+/** Coordination and bond angles of one frame at a cutoff (a second request kind, see NeighbourRequest). */
+export interface NeighbourRequest {
+  id: number;
+  kind: 'neighbours';
+  frame: TrajectoryFrame;
+  cutoff: number;
+  nbins: number;
+}
+
 export interface AnalysisResponse {
   id: number;
   ok: boolean;
   rdf?: RDFPoint[];
   msd?: MSDPoint[];
   density?: DensityProfile;
+  neighbours?: NeighbourResult;
   /** True when MSD used image flags (exact) rather than minimum image. */
   msdUnwrapped?: boolean;
   /** Wall-clock milliseconds spent in the worker. */
@@ -72,7 +83,7 @@ let workerUnavailable = false;
 let nextId = 1;
 const pending = new Map<
   number,
-  { resolve: (r: AnalysisResult) => void; reject: (e: Error) => void }
+  { resolve: (r: AnalysisResponse) => void; reject: (e: Error) => void }
 >();
 
 const failAll = (message: string) => {
@@ -91,18 +102,8 @@ const ensureWorker = (): Worker | null => {
       const entry = pending.get(ev.data.id);
       if (!entry) return; // superseded request — the caller moved on
       pending.delete(ev.data.id);
-      if (ev.data.ok && ev.data.rdf && ev.data.msd && ev.data.density) {
-        entry.resolve({
-          rdf: ev.data.rdf,
-          msd: ev.data.msd,
-          density: ev.data.density,
-          msdUnwrapped: ev.data.msdUnwrapped === true,
-          ms: ev.data.ms ?? 0,
-          onMainThread: false,
-        });
-      } else {
-        entry.reject(new Error(ev.data.error ?? 'Analysis failed'));
-      }
+      if (ev.data.ok) entry.resolve(ev.data);
+      else entry.reject(new Error(ev.data.error ?? 'Analysis failed'));
     };
     worker.onerror = () => {
       // Don't try to respawn: fall back to the main thread from here on.
@@ -147,7 +148,16 @@ export const analyzeTrajectory = (
   if (!w) return Promise.resolve(analyzeSync(frames, box, opts, msd));
   return new Promise<AnalysisResult>((resolve, reject) => {
     const id = nextId++;
-    pending.set(id, { resolve, reject });
+    pending.set(id, {
+      resolve: (r) => {
+        if (!r.rdf || !r.msd || !r.density) { reject(new Error('Analysis failed')); return; }
+        resolve({
+          rdf: r.rdf, msd: r.msd, density: r.density, msdUnwrapped: r.msdUnwrapped === true,
+          ms: r.ms ?? 0, onMainThread: false,
+        });
+      },
+      reject,
+    });
     try {
       w.postMessage({
         id, frames, box, opts, msdFrames: msd.frames, msdFrameStride: msd.stride,
@@ -167,3 +177,32 @@ export const analyzeTrajectory = (
  * (see `useTrajectoryAnalysis`).
  */
 export const inFlightAnalyses = (): number => pending.size;
+
+/**
+ * Coordination numbers and the bond-angle distribution of one frame at `cutoff`, computed in the analysis worker
+ * (O(N * neighbours)). Falls back to the calling thread when Workers are unavailable.
+ */
+export const analyzeNeighbours = (
+  frame: TrajectoryFrame,
+  cutoff: number,
+  nbins = 90,
+): Promise<NeighbourResult> => {
+  const w = ensureWorker();
+  if (!w) return Promise.resolve(computeNeighbourAnalysis(frame, cutoff, nbins));
+  return new Promise<NeighbourResult>((resolve, reject) => {
+    const id = nextId++;
+    pending.set(id, {
+      resolve: (r) => {
+        if (!r.neighbours) { reject(new Error('Neighbour analysis failed')); return; }
+        resolve(r.neighbours);
+      },
+      reject,
+    });
+    try {
+      w.postMessage({ id, kind: 'neighbours', frame, cutoff, nbins } satisfies NeighbourRequest);
+    } catch (err) {
+      pending.delete(id);
+      reject(err instanceof Error ? err : new Error('postMessage failed'));
+    }
+  });
+};

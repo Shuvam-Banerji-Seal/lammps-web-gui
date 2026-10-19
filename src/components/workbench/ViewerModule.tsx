@@ -137,6 +137,9 @@ const initialConfig = (): VisualizationConfig => ({
 });
 
 /** A file handed over from another module (the MD Notebook's run output), loaded like an upload. */
+/** A gzipped file: a .gz name whose first two bytes are the gzip magic 1f 8b. */
+const isGzipped = (name: string, b0: number, b1: number): boolean => /\.gz$/i.test(name) && b0 === 0x1f && b1 === 0x8b;
+
 export interface ViewerIncomingFile {
   name: string;
   text: string;
@@ -402,19 +405,44 @@ const ViewerModule: React.FC<{
     handleVisualize(content, detectedFormat);
   }, [handleVisualize]);
 
+  /**
+   * A gzipped file (a .gz name with the gzip magic bytes 1f 8b): decompressed, every member, by the engine's gunzip
+   * (loaded on first use), and shown under its name without .gz. A dump.gz of a LAMMPS run (or of the notebook) opens
+   * like its plain dump.
+   */
+  const openGzipped = useCallback(async (name: string, bytes: Uint8Array) => {
+    try {
+      const { gunzip } = await import('../../engine/gunzip');
+      handleFileText(name.replace(/\.gz$/i, ''), new TextDecoder().decode(gunzip(bytes)));
+    } catch (e) {
+      setError(`Could not decompress ${name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [handleFileText]);
+
   const handleFileUpload = useCallback((file: File) => {
+    if (/\.gz$/i.test(file.name)) {
+      void file.arrayBuffer().then((buf) => {
+        const bytes = new Uint8Array(buf);
+        if (isGzipped(file.name, bytes[0], bytes[1])) void openGzipped(file.name, bytes);
+        else handleFileText(file.name, new TextDecoder().decode(bytes));
+      });
+      return;
+    }
     const reader = new FileReader();
     reader.onload = e => handleFileText(file.name, (e.target?.result as string) ?? '');
     reader.readAsText(file);
-  }, [handleFileText]);
+  }, [handleFileText, openGzipped]);
 
   // A file another module sent over (once per object; the callback clears the inbox)
   useEffect(() => {
     if (!incomingFile || takenFile.current === incomingFile) return;
     takenFile.current = incomingFile;
-    handleFileText(incomingFile.name, incomingFile.text);
+    const { name, text } = incomingFile;
+    // a gzipped file from browser storage or a run arrives one character per byte
+    if (isGzipped(name, text.charCodeAt(0), text.charCodeAt(1))) void openGzipped(name, Uint8Array.from(text, (c) => c.charCodeAt(0) & 0xff));
+    else handleFileText(name, text);
     onIncomingFileTaken?.();
-  }, [incomingFile, handleFileText, onIncomingFileTaken]);
+  }, [incomingFile, handleFileText, openGzipped, onIncomingFileTaken]);
 
   // Drag & drop anywhere on the window
   useEffect(() => {
@@ -423,8 +451,10 @@ const ViewerModule: React.FC<{
       if (e.relatedTarget === null) setDragActive(false);
     };
     const onDrop = (e: DragEvent) => {
-      e.preventDefault();
       setDragActive(false);
+      // a drop the browser-storage drawer already took (it stores the files) is not also loaded here
+      if (e.defaultPrevented) return;
+      e.preventDefault();
       const file = e.dataTransfer?.files?.[0];
       if (file) handleFileUpload(file);
     };
@@ -644,6 +674,20 @@ const ViewerModule: React.FC<{
     () => moleculeData?.frames?.[Math.min(frameIdx, frameCount - 1)]?.box,
     [moleculeData, frameIdx, frameCount],
   );
+
+  /** The structure export menu (the shown frame as LAMMPS data, extended XYZ or PDB; every frame as XYZ). */
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportStructure = useCallback(async (format: 'data' | 'xyz' | 'pdb' | 'xyz-all') => {
+    if (!activeData) return;
+    const { framesToExtXyz, toExtXyz, toLammpsDataFile, toPdb } = await import('../../lammps/structureExport');
+    const box = displayBox ?? activeData.box;
+    const stem = frameCount > 1 ? `frame_${Math.min(frameIdx, frameCount - 1) + 1}` : 'structure';
+    if (format === 'data') downloadTextFile(`${stem}.data`, toLammpsDataFile(activeData, { box }));
+    else if (format === 'xyz') downloadTextFile(`${stem}.xyz`, toExtXyz(activeData, box));
+    else if (format === 'pdb') downloadTextFile(`${stem}.pdb`, toPdb(activeData, box));
+    else if (moleculeData) downloadTextFile('trajectory.xyz', framesToExtXyz(moleculeData));
+    setExportOpen(false);
+  }, [activeData, displayBox, frameCount, frameIdx, moleculeData]);
 
   /**
    * Cell for minimum-image measurements — only for formats whose coordinates
@@ -1573,6 +1617,23 @@ const ViewerModule: React.FC<{
             </div>
           )}
 
+          {exportOpen && activeData && (
+            <div role="group" aria-label="Export structure" className={`pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-1 rounded-xl border px-2 py-1.5 text-xs shadow-xl backdrop-blur ${
+              isDarkTheme(theme) ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
+            }`}>
+              <span className={`px-1 ${ct.muted}`}>{frameCount > 1 ? 'This frame as' : 'Export as'}</span>
+              <button onClick={() => void exportStructure('data')} className={`rounded px-2 py-1 ${ct.button}`} title="LAMMPS data file (atom_style full) for read_data">LAMMPS data</button>
+              <button onClick={() => void exportStructure('xyz')} className={`rounded px-2 py-1 ${ct.button}`} title="Extended XYZ with the cell">XYZ</button>
+              <button onClick={() => void exportStructure('pdb')} className={`rounded px-2 py-1 ${ct.button}`} title="PDB with CRYST1 for an orthogonal cell">PDB</button>
+              {frameCount > 1 && (
+                <button onClick={() => void exportStructure('xyz-all')} className={`rounded px-2 py-1 ${ct.button}`} title="Every frame as extended XYZ">All {frameCount} frames (XYZ)</button>
+              )}
+              <button onClick={() => setExportOpen(false)} className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded ${ct.muted}`} aria-label="Close export menu">
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
           {/* Tool dock */}
           <div className={`pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border px-1 py-1 shadow-2xl backdrop-blur @xl:gap-1 @xl:px-2 @xl:py-1.5 ${
             isDarkTheme(theme) ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
@@ -1657,6 +1718,17 @@ const ViewerModule: React.FC<{
             >
               <Camera size={16} />
               <span className="hidden @2xl:inline">Shot</span>
+            </button>
+            <button
+              onClick={() => setExportOpen(v => !v)}
+              disabled={!activeData}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium disabled:opacity-40 @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${exportOpen ? ct.accentText : ct.muted}`}
+              title="Export the structure (LAMMPS data, XYZ, PDB)"
+              aria-label="Export structure"
+              aria-expanded={exportOpen}
+            >
+              <Download size={16} />
+              <span className="hidden @2xl:inline">Export</span>
             </button>
           </div>
         </div>

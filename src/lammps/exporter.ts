@@ -1,4 +1,4 @@
-import { MoleculeData } from '../types';
+import { BoxBounds, MoleculeData } from '../types';
 
 /**
  * Convert parsed molecular data into a LAMMPS data file
@@ -6,13 +6,19 @@ import { MoleculeData } from '../types';
  *
  * The bounding box of the atoms becomes the simulation box (with a small
  * margin), unless the structure already carries a box.
+ *
+ * Atom and bond types are renumbered 1..N in increasing order of the
+ * structure's own type ids (a PDB or CIF import numbers types by atomic
+ * number). docs.lammps.org/read_data.html: "atom types = # of atom types in
+ * system". Measured with native LAMMPS: "2 atom types" with a Masses line for
+ * type 8 is ERROR: Invalid atom type 8 in Masses section of data file.
  */
 export const toLammpsDataFile = (
   data: MoleculeData,
-  opts: { title?: string; margin?: number } = {}
+  opts: { title?: string; margin?: number; box?: BoxBounds } = {}
 ): string => {
   const margin = opts.margin ?? 1.0;
-  const box = data.box ?? {
+  const box: BoxBounds = opts.box ?? data.box ?? {
     xlo: data.min.x - margin,
     xhi: data.max.x + margin,
     ylo: data.min.y - margin,
@@ -22,7 +28,9 @@ export const toLammpsDataFile = (
   };
 
   const types = Object.values(data.atomTypes).sort((a, b) => a.id - b.id);
+  const typeOf = new Map(types.map((t, k) => [t.id, k + 1]));
   const hasBonds = data.bonds.length > 0;
+  const bondTypeOf = new Map([...new Set(data.bonds.map(b => b.type))].sort((a, b) => a - b).map((t, k) => [t, k + 1]));
 
   const lines: string[] = [];
   const signature = 'written by LAMMPS Web GUI — Shuvam Banerji Seal';
@@ -32,24 +40,27 @@ export const toLammpsDataFile = (
   if (hasBonds) lines.push(`${data.bonds.length} bonds`);
   lines.push('');
   lines.push(`${types.length} atom types`);
-  if (hasBonds) lines.push(`${new Set(data.bonds.map(b => b.type)).size} bond types`);
+  if (hasBonds) lines.push(`${bondTypeOf.size} bond types`);
   lines.push('');
   lines.push(`${box.xlo.toFixed(6)} ${box.xhi.toFixed(6)} xlo xhi`);
   lines.push(`${box.ylo.toFixed(6)} ${box.yhi.toFixed(6)} ylo yhi`);
   lines.push(`${box.zlo.toFixed(6)} ${box.zhi.toFixed(6)} zlo zhi`);
+  // docs.lammps.org/read_data.html: "xy xz yz = simulation box tilt factors for triclinic system (3 values)",
+  // in "a line like \"0.0 5.0 6.0 xy xz yz\""
+  if (box.xy || box.xz || box.yz) lines.push(`${(box.xy ?? 0).toFixed(6)} ${(box.xz ?? 0).toFixed(6)} ${(box.yz ?? 0).toFixed(6)} xy xz yz`);
   lines.push('');
   lines.push('Masses');
   lines.push('');
   for (const t of types) {
     const mass = t.mass > 0 ? t.mass : 12.011;
-    lines.push(`${t.id} ${mass.toFixed(4)} # ${t.element}`);
+    lines.push(`${typeOf.get(t.id)} ${mass.toFixed(4)} # ${t.element}`);
   }
   lines.push('');
   lines.push('Atoms # full');
   lines.push('');
   for (const a of data.atoms) {
     lines.push(
-      `${a.id} ${a.molId || 1} ${a.type} ${a.charge ?? 0} ` +
+      `${a.id} ${a.molId || 1} ${typeOf.get(a.type) ?? a.type} ${a.charge ?? 0} ` +
       `${a.x.toFixed(6)} ${a.y.toFixed(6)} ${a.z.toFixed(6)}`
     );
   }
@@ -58,12 +69,13 @@ export const toLammpsDataFile = (
     lines.push('Bonds');
     lines.push('');
     for (const b of data.bonds) {
-      lines.push(`${b.id} ${b.type} ${b.atom1Id} ${b.atom2Id}`);
+      lines.push(`${b.id} ${bondTypeOf.get(b.type)} ${b.atom1Id} ${b.atom2Id}`);
     }
   }
   lines.push('');
   return lines.join('\n');
 };
+
 
 /** Download helper shared by script/data exporters. */
 /**

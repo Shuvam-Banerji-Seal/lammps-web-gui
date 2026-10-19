@@ -53,7 +53,10 @@ describe('pure helpers', () => {
     expect(isViewable({ name: 'run.dump', kind: 'text' })).toBe(true);
     expect(isViewable({ name: 'traj.lammpstrj', kind: 'text' })).toBe(true);
     expect(isViewable({ name: 'x.cif', kind: 'text' })).toBe(true);
-    expect(isViewable({ name: 'data.lj.gz', kind: 'gzip' })).toBe(false);
+    // gzipped: viewable when the name without .gz is (the viewer decompresses it)
+    expect(isViewable({ name: 'data.lj.gz', kind: 'gzip' })).toBe(true);
+    expect(isViewable({ name: 'run.dump.gz', kind: 'gzip' })).toBe(true);
+    expect(isViewable({ name: 'Cu.eam.gz', kind: 'gzip' })).toBe(false);
     expect(isViewable({ name: 'in.melt', kind: 'text' })).toBe(false);
   });
 });

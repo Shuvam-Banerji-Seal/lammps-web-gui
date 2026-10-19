@@ -29,6 +29,7 @@ import { validateScript, Diagnostic, diagnosticCounts } from '../../lammps/valid
 import { loadPotentialIndex, pairStyleWords, type PotentialIndex } from '../../lammps/potentialIndex';
 import { PotentialPicker } from './builder/PotentialPicker';
 import { parseScript, ImportResult } from '../../lammps/scriptParser';
+import { isLammpsScript, scriptTitle } from '../../lammps/scriptDetect';
 import type { BuilderIncoming } from '../../lammps/notebookBridge';
 import { downloadTextFile } from '../../lammps/exporter';
 import { SCRIPT_TEMPLATES, buildTemplate } from '../../lammps/templates';
@@ -582,7 +583,7 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
     const reader = new FileReader();
     reader.onload = e => {
       const text = (e.target?.result as string) ?? '';
-      const result = parseScript(text, file.name.replace(/\.[^.]+$/, ''));
+      const result = parseScript(text, scriptTitle(file.name));
       setModel(result.model);
       setImportStats(result.stats);
       setSelectedUid(null);
@@ -590,6 +591,70 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
     };
     reader.readAsText(file);
   }, [setModel]);
+
+  // ---- drag and drop: every dropped file is kept in browser storage (the MD Notebook reads it by name in read_data,
+  // include, pair_coeff), and each LAMMPS script also opens as a NEW tab (the open tabs are kept) ----
+  const [dropActive, setDropActive] = useState(false);
+  const [dropNote, setDropNote] = useState<string | null>(null);
+  const importDropped = useCallback(async (files: File[]) => {
+    const { getFileStore, readInputText } = await import('../../services/fileStore');
+    const opened: string[] = [], stored: string[] = [], failed: string[] = [];
+    const tabs: ScriptTab[] = [];
+    let stats: ImportResult['stats'] | null = null;
+    for (const file of files) {
+      const text = await readInputText(file);
+      if (!/\.gz$/i.test(file.name) && isLammpsScript(file.name, text)) {
+        const result = parseScript(text, scriptTitle(file.name));
+        tabs.push({ id: newTabId(), model: result.model });
+        stats = result.stats;
+        opened.push(file.name);
+      }
+      try {
+        await getFileStore().put({ name: file.name, text, size: file.size });
+        stored.push(file.name);
+      } catch {
+        failed.push(file.name);
+      }
+    }
+    if (tabs.length) {
+      setWorkspace(ws => ({ ...ws, tabs: [...ws.tabs, ...tabs], activeId: tabs[tabs.length - 1].id }));
+      setImportStats(stats);
+      setSelectedUid(null);
+      setView('flow');
+    }
+    const note: string[] = [];
+    if (opened.length) note.push(`Opened ${opened.join(', ')} as ${opened.length === 1 ? 'a new tab' : 'new tabs'}.`);
+    if (stored.length) note.push(`Kept ${stored.join(', ')} in browser storage, where the MD Notebook reads files by name (read_data, include, pair_coeff).`);
+    if (failed.length) note.push(`Could not store ${failed.join(', ')}: browser storage is full or unavailable.`);
+    setDropNote(note.join(' '));
+  }, [setWorkspace]);
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    const onEnter = (e: DragEvent) => { if (hasFiles(e)) { depth++; setDropActive(true); } };
+    const onOver = (e: DragEvent) => { if (hasFiles(e)) e.preventDefault(); };
+    const onLeave = (e: DragEvent) => { if (hasFiles(e) && --depth <= 0) { depth = 0; setDropActive(false); } };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth = 0;
+      setDropActive(false);
+      // a drop the browser-storage drawer already took (it stores the files) is not handled twice
+      if (e.defaultPrevented) return;
+      e.preventDefault();
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (files.length) void importDropped(files);
+    };
+    window.addEventListener('dragenter', onEnter);
+    window.addEventListener('dragover', onOver);
+    window.addEventListener('dragleave', onLeave);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragenter', onEnter);
+      window.removeEventListener('dragover', onOver);
+      window.removeEventListener('dragleave', onLeave);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, [importDropped]);
 
   // ---- script from the MD Notebook: imported once, as a NEW tab (the open tabs are kept) ----
   const takenIncoming = useRef<BuilderIncoming | null>(null);
@@ -1444,6 +1509,21 @@ const ScriptBuilder: React.FC<ScriptBuilderProps> = ({ theme, onOpenViewer, onRu
         )}
 
         {/* Import / manual notices */}
+        {dropActive && (
+          <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
+            <p className={`max-w-md rounded-lg border-2 border-dashed px-6 py-4 text-center text-sm ${ct.card}`}>
+              Drop LAMMPS scripts to open them as new tabs. Every dropped file (data, potentials, molecules) is also kept in browser storage for the MD Notebook.
+            </p>
+          </div>
+        )}
+        {dropNote && (
+          <div role="status" className={`flex shrink-0 items-center justify-between gap-2 border-b px-3 py-1.5 text-[11px] ${ct.card}`}>
+            <span className={`min-w-0 break-words ${ct.text}`}>{dropNote}</span>
+            <button onClick={() => setDropNote(null)} className={`inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded p-0.5 ${ct.muted}`} title="Dismiss" aria-label="Dismiss drop message">
+              <X size={12} />
+            </button>
+          </div>
+        )}
         {importStats && (
           <div className={`flex shrink-0 items-center justify-between border-b px-3 py-1.5 text-[11px] ${ct.card}`}>
             <span className={ct.text}>

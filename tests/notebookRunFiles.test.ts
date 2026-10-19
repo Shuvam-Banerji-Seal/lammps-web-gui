@@ -133,3 +133,20 @@ describe('run log and thermo CSV export', () => {
     expect(thermoCsv(cells, { a: { logs: ['x'], tables: [] } })).toBeNull();
   });
 });
+
+describe('gzipped run files (write_data or a dump with a .gz name)', () => {
+  it('are classified by the name without .gz, keep their bytes in the zip, and are not counted as text frames', async () => {
+    const { gzipText } = await import('../src/engine/gzip');
+    const { gunzip } = await import('../src/engine/gunzip');
+    const { classifyFile: classify, fileBytes: bytesOf, fileBytesSize: sizeOf, countFrames: frames, isGzipText } = await import('../src/components/workbench/notebook/runFiles');
+    const dump = 'ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\nITEM: BOX BOUNDS pp pp pp\n0 1\n0 1\n0 1\nITEM: ATOMS id x y z\n1 0 0 0\n';
+    const gz = gzipText(dump);
+    expect(isGzipText(gz)).toBe(true);
+    expect(classify('run.dump.gz', gz)).toBe('trajectory');
+    expect(classify('data.out.gz', gzipText('LAMMPS data\n\n1 atoms\n'))).toBe('data');
+    expect(classify('notes.txt.gz', gzipText('hello\n'))).toBe('text');
+    expect(frames('run.dump.gz', gz)).toBeNull();
+    expect(sizeOf(gz)).toBe(gz.length);
+    expect(new TextDecoder().decode(gunzip(bytesOf(gz)))).toBe(dump);
+  });
+});

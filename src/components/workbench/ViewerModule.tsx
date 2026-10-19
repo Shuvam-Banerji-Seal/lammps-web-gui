@@ -23,7 +23,7 @@ import {
 import { LineChart, Histogram } from '../charts/SimpleChart';
 import { trajStats } from '../../services/trajectoryAnalysis';
 import { useTrajectoryAnalysis } from '../../hooks/useTrajectoryAnalysis';
-import { downloadTextFile } from '../../lammps/exporter';
+import { downloadTextFile, framesToExtXyz, toExtXyz, toLammpsDataFile, toPdb } from '../../lammps/exporter';
 
 /** GitHub mark as inline SVG — lucide 1.x removed brand icons. */
 const GithubIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
@@ -646,6 +646,19 @@ const ViewerModule: React.FC<{
     () => moleculeData?.frames?.[Math.min(frameIdx, frameCount - 1)]?.box,
     [moleculeData, frameIdx, frameCount],
   );
+
+  /** The structure export menu (the shown frame as LAMMPS data, extended XYZ or PDB; every frame as XYZ). */
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportStructure = useCallback((format: 'data' | 'xyz' | 'pdb' | 'xyz-all') => {
+    if (!activeData) return;
+    const box = displayBox ?? activeData.box;
+    const stem = frameCount > 1 ? `frame_${Math.min(frameIdx, frameCount - 1) + 1}` : 'structure';
+    if (format === 'data') downloadTextFile(`${stem}.data`, toLammpsDataFile(activeData, { box }));
+    else if (format === 'xyz') downloadTextFile(`${stem}.xyz`, toExtXyz(activeData, box));
+    else if (format === 'pdb') downloadTextFile(`${stem}.pdb`, toPdb(activeData, box));
+    else if (moleculeData) downloadTextFile('trajectory.xyz', framesToExtXyz(moleculeData));
+    setExportOpen(false);
+  }, [activeData, displayBox, frameCount, frameIdx, moleculeData]);
 
   /**
    * Cell for minimum-image measurements — only for formats whose coordinates
@@ -1575,6 +1588,23 @@ const ViewerModule: React.FC<{
             </div>
           )}
 
+          {exportOpen && activeData && (
+            <div role="group" aria-label="Export structure" className={`pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-1 rounded-xl border px-2 py-1.5 text-xs shadow-xl backdrop-blur ${
+              isDarkTheme(theme) ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
+            }`}>
+              <span className={`px-1 ${ct.muted}`}>{frameCount > 1 ? 'This frame as' : 'Export as'}</span>
+              <button onClick={() => exportStructure('data')} className={`rounded px-2 py-1 ${ct.button}`} title="LAMMPS data file (atom_style full) for read_data">LAMMPS data</button>
+              <button onClick={() => exportStructure('xyz')} className={`rounded px-2 py-1 ${ct.button}`} title="Extended XYZ with the cell">XYZ</button>
+              <button onClick={() => exportStructure('pdb')} className={`rounded px-2 py-1 ${ct.button}`} title="PDB with CRYST1 for an orthogonal cell">PDB</button>
+              {frameCount > 1 && (
+                <button onClick={() => exportStructure('xyz-all')} className={`rounded px-2 py-1 ${ct.button}`} title="Every frame as extended XYZ">All {frameCount} frames (XYZ)</button>
+              )}
+              <button onClick={() => setExportOpen(false)} className={`inline-flex min-h-6 min-w-6 items-center justify-center rounded ${ct.muted}`} aria-label="Close export menu">
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
           {/* Tool dock */}
           <div className={`pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border px-1 py-1 shadow-2xl backdrop-blur @xl:gap-1 @xl:px-2 @xl:py-1.5 ${
             isDarkTheme(theme) ? 'bg-[#1e1913]/95 border-[#3f3526]' : 'bg-white/95 border-[#ddd2bd]'
@@ -1659,6 +1689,17 @@ const ViewerModule: React.FC<{
             >
               <Camera size={16} />
               <span className="hidden @2xl:inline">Shot</span>
+            </button>
+            <button
+              onClick={() => setExportOpen(v => !v)}
+              disabled={!activeData}
+              className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium disabled:opacity-40 @2xl:gap-1.5 @2xl:px-3 @2xl:py-2 ${exportOpen ? ct.accentText : ct.muted}`}
+              title="Export the structure (LAMMPS data, XYZ, PDB)"
+              aria-label="Export structure"
+              aria-expanded={exportOpen}
+            >
+              <Download size={16} />
+              <span className="hidden @2xl:inline">Export</span>
             </button>
           </div>
         </div>

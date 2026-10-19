@@ -2,9 +2,13 @@
  * Ported from LAMMPS (https://github.com/lammps/lammps, commit b332f28), GPL-2.0.
  * Source: src/KSPACE/pppm_disp.cpp and pppm_disp.h at b332f28 (PPPMDisp::settings, modify (kspace.cpp
  * modify_params keywords mesh/disp, order/disp, gewald/disp, mix/disp, force/disp/real, force/disp/kspace, splittol,
- * disp/auto), init, setup, compute, the energy and virial sums, poisson_ik and poisson_2s_ik (orthogonal branches),
- * make_rho_g, make_rho_a, fieldforce_g_ik, fieldforce_a_ik, calc_csum, init_coeffs (geometric and arithmetic B), and
- * the G-ewald and mesh choice for dispersion: set_grid_global_6, set_init_g6, set_n_pppm_6, adjust_gewald_6, f_6).
+ * disp/auto), init, setup (the box-dependent part, rebuilt when the box changes), compute, the energy and virial sums,
+ * poisson_ik and poisson_2s_ik (orthogonal branches), make_rho_g, make_rho_a, fieldforce_g_ik, fieldforce_a_ik,
+ * calc_csum, init_coeffs (geometric and arithmetic B), KSpace::two_charge (src/kspace.cpp), the Coulomb G-ewald and
+ * mesh choice: set_grid_global, set_grid_local (factorable), f, derivf, adjust_gewald, final_accuracy (compute_qopt_ik
+ * is in grid.ts), and the G-ewald and mesh choice for dispersion: set_grid_global_6, set_init_g6, set_n_pppm_6,
+ * adjust_gewald_6, f_6). The pair side also takes buck/long/coul/long (pair_buck_long_coul_long.cpp: extract("B") is
+ * buck_c, so the geometric 1/r^6 coefficients are sqrt(|C_ii|) as native).
  * Contributing authors of pppm_disp.cpp: Rolf Isele-Holder (Aachen University), Paul Crozier (SNL). Copyright (2003)
  * Sandia Corporation, distributed under the GNU General Public License, version 2 (GPL-2.0). This file is GPL-2.0 too.
  *
@@ -13,9 +17,14 @@
  *  - dispersion with geometric mixing (one grid: B_i = sqrt(|4 eps_ii sigma_ii^6|)) and with arithmetic mixing
  *    (seven grids, B_ik = sqrt(eps_i) sigma_i^k sqrt(C(6,k)) / 4, the pair energies of the pairs (k, 6-k)); the
  *    arithmetic path needs at least two distinct eigen-directions of the C6 matrix (nsplit > 1), else geometric as in
- *    native init_coeffs; mix/disp none (function[3]) is refused;
- *  - Coulomb (pair long on the coulomb side) only with user kspace_modify gewald and mesh; the native automatic
- *    Coulomb G-ewald and grid estimate is not ported here;
+ *    native init_coeffs; buck/long with arithmetic mixing is refused as native does (no epsilon/sigma); mix/disp none
+ *    (function[3]) is refused;
+ *  - Coulomb: user or automatic G-ewald and mesh (kspace_modify gewald and mesh are each optional; the native estimate,
+ *    Newton adjustment and factorable boost); the automatic choice is refused for pppm/disp/dielectric (its q2 needs the
+ *    dielectric scale, not ported here);
+ *  - the box may change after init (fix npt, fix deform): the Green's functions and virial coefficients are rebuilt for
+ *    the current box at each force evaluation (native setup() is called at the same points); the grids and G-ewald
+ *    stay as chosen at init, as native;
  *  - dispersion G-ewald and mesh: user values (kspace_modify gewald/disp, mesh/disp) or the native automatic estimate
  *    (native refuses it unless kspace_modify disp/auto yes or a dispersion parameter is set; so do we).
  * Energies: elong = native energy (energy_1 * qqrd2e + energy_6); the virial is the native virial array.
@@ -28,12 +37,18 @@ import type { Geometry } from '../../engine/domain';
 import { parseNum } from '../../engine/force/util';
 import { KSpaceBase } from '../../engine/force/kspace/ewald';
 import { PairLJLongCoulLong } from '../../engine/force/pair/lj_long';
+import { PairBuckLongCoulLong } from '../csdiel/buck_long';
+import { ANGSTROM, QELECTRON } from '../../engine/force/kspace/ewald';
+import { hasChargeStyle } from '../../engine/atoms';
 import { fft3d } from '../../engine/force/fft';
 import {
   OFFSET, MAXORDER, SMALL, LARGE, factorable, makeStencil, rho1d, meshGeom, greenCoulomb, greenDispersion,
-  virialCoulomb, virialDispersion, ljRspaceError, qoptDispersionIk, symEigenvalues, type MeshGeom, type Stencil,
+  virialCoulomb, virialDispersion, ljRspaceError, qoptDispersionIk, qoptCoulombIk, symEigenvalues, type MeshGeom,
+  type Stencil,
 } from './grid';
 import { pow as libmPow } from '../libm/pow';
+import { exp as libmExp } from '../libm/exp';
+import { log as libmLog } from '../libm/log';
 const MY_PIS = 1.77245385090551602729; // math_const.h (sqrt(pi) rounded once; Math.sqrt(Math.PI) is one ulp below)
 
 /** Grid index of each atom (particle_map): base[3i + d] = floor((x_d - lo_d) N_d / L_d + shift) - OFFSET. */
@@ -61,6 +76,8 @@ const atomWeights = (x: Float64Array, i: number, lo: [number, number, number], m
 };
 
 const wrap = (a: number, m: number): number => ((a % m) + m) % m;
+
+const prdOf = (geom: Geometry): [number, number, number] => [geom.lx, geom.ly, geom.lz];
 
 /** make_rho_c / make_rho_g / make_rho_a: the mesh density from per-atom weights w_i (already times delvolinv). */
 const spread = (x: Float64Array, n: number, lo: [number, number, number], mg: MeshGeom, st: Stencil,
@@ -193,8 +210,10 @@ export class KSpacePPPMDisp extends KSpaceBase {
   private B7 = new Float64Array(0);
   private csum = 0;
   private csumij = 0;
-  /** Box lengths at init; the influence functions and the grids are built for this box. */
-  private prdInit: [number, number, number] = [0, 0, 0];
+  /** Box lengths the influence functions are built for (set at init, rebuilt when the box changes: native setup()). */
+  private prdCur: [number, number, number] = [0, 0, 0];
+  /** The Coulomb accuracy estimate of final_accuracy (for the log). */
+  private coulAcc = 0;
   private infoC: Influence | null = null;
   private info6: Influence | null = null;
 
@@ -266,13 +285,23 @@ export class KSpacePPPMDisp extends KSpaceBase {
   /** pppm_disp.cpp constructor: dispersionflag = 1 (KSpace::pair_check refuses a pair without dispersion). */
   override dispersion(): boolean { return true; }
 
+  /** two_charge_force (KSpace::two_charge) and the accuracy: kspace_modify force, else accuracy_relative times it. */
+  private accuracyOf(s: SimState): number {
+    if (this.forceAbs >= 0) return this.forceAbs;
+    const st = s.units.style;
+    const twoChargeForce = s.units.qqr2e * (QELECTRON[st] * QELECTRON[st]) / (ANGSTROM[st] * ANGSTROM[st]);
+    return this.accuracyRel * twoChargeForce;
+  }
+
   init(s: SimState, geom: Geometry, cutCoul: number, qqrd2e: number, ctx: StyleContext): void {
     const pair = this.pair;
-    if (!(pair instanceof PairLJLongCoulLong)) {
-      throw new StyleError('kspace_style pppm/disp needs pair style lj/long/coul/long (flag_lj long or flag_coul long)');
+    const lj = pair instanceof PairLJLongCoulLong ? pair : null;
+    const buck = pair instanceof PairBuckLongCoulLong ? pair : null;
+    if (!pair || (!lj && !buck)) {
+      throw new StyleError('kspace_style pppm/disp needs pair style lj/long/coul/long or buck/long/coul/long (flag_lj or flag_buck long, flag_coul long)');
     }
-    this.dispOn = pair.ljLong;
-    this.coulOn = !!pair.coulLong && cutCoul > 0;
+    this.dispOn = lj ? lj.ljLong : !!buck && buck.dispFlag;
+    this.coulOn = lj ? !!lj.coulLong && cutCoul > 0 : !!buck && buck.coulLongFlag && cutCoul > 0;
     if (!this.coulOn && !this.dispOn) {
       throw new StyleError('kspace_style pppm/disp needs a pair style with a long-range term (lj/long/coul/long with flag_lj long or flag_coul long)');
     }
@@ -282,19 +311,23 @@ export class KSpacePPPMDisp extends KSpaceBase {
     const per = s.box.periodic;
     if (!per[0] || !per[1] || !per[2]) throw new StyleError('kspace_style pppm/disp needs a fully periodic box (kspace_modify slab is not ported)');
     if (this.orderCoul < 2 || this.order6 < 2) throw new StyleError('kspace_modify minorder: the PPPMDisp order must be at least 2');
-    this.prdInit = [geom.lx, geom.ly, geom.lz];
+    this.prdCur = [geom.lx, geom.ly, geom.lz];
     this.natoms = s.n;
     this.cutCoul = cutCoul;
-    const acc = this.absAccuracy(s, qqrd2e);
+    const acc = this.accuracyOf(s);
+    // native "Charges are set, but coulombic solver is not used" (PPPMDisp::init, when the Coulomb term is off)
+    if (!this.coulOn && hasChargeStyle(s.atomStyle)) ctx.log('WARNING: Charges are set, but coulombic solver is not used');
 
     if (this.coulOn) {
-      // the automatic Coulomb G-ewald and grid (set_grid_global, adjust_gewald, final_accuracy) are not ported here
-      if (!(this.gewaldUser > 0) || !this.meshUser) {
-        throw new StyleError('kspace_style pppm/disp with Coulomb charges needs kspace_modify gewald and mesh (the automatic Coulomb G-ewald and grid are not ported)');
-      }
-      this.gEwald = this.gewaldUser;
-      this.meshC = this.meshUser;
       this.setupCharges(s, geom, ctx);
+      // the automatic Coulomb G-ewald and mesh; the dielectric subclass keeps its refusal (its q2 needs the dielectric)
+      if (this.name === 'pppm/disp/dielectric' && !(this.gewaldUser > 0 && this.meshUser)) {
+        throw new StyleError('kspace_style pppm/disp/dielectric with Coulomb charges needs kspace_modify gewald and mesh (the automatic Coulomb G-ewald and grid are not ported for it)');
+      }
+      const c = this.chooseCoulomb(prdOf(geom), cutCoul, qqrd2e, acc);
+      this.gEwald = c.g;
+      this.meshC = c.N;
+      this.coulAcc = c.acc;
     } else {
       this.gEwald = 0;
     }
@@ -304,8 +337,9 @@ export class KSpacePPPMDisp extends KSpaceBase {
         throw new StyleError('kspace_modify mix/disp none (native function[3], the split of the dispersion matrix) is not ported for pppm/disp');
       }
       const nt = pair.ntypes + 1;
-      const C = new Float64Array(nt * nt);
-      for (let i = 1; i < nt; i++) for (let j = 1; j < nt; j++) C[i * nt + j] = pair.lj4[i * nt + j];
+      // init_coeffs: the C matrix is lj4 (lj/long) or buck_c (buck/long, extract "B")
+      const C = buck ? buck.dispCMatrix() : new Float64Array(nt * nt);
+      if (lj) for (let i = 1; i < nt; i++) for (let j = 1; j < nt; j++) C[i * nt + j] = lj.lj4[i * nt + j];
       // init_coeffs: the arithmetic path needs nsplit > 1 (the number of eigenvalues of C above splittol * max)
       let arith = this.mixflag === 0 && pair.mix === 'arithmetic';
       if (arith && pair.ntypes > 1) {
@@ -325,18 +359,22 @@ export class KSpacePPPMDisp extends KSpaceBase {
         arith = false;
       }
       this.dispArith = arith;
+      if (this.dispArith && !lj) {
+        // native init_coeffs: the arithmetic B reads epsilon and sigma, which buck/long does not provide
+        throw new StyleError('Epsilon or sigma reference not set by pair style for PPPMDisp');
+      }
       if (!this.mesh6User && !(this.gDispUser > 0) && this.accuracyReal6 < 0 && this.accuracyKspace6 < 0 && !this.autoDisp) {
         throw new StyleError('PPPMDisp used but no parameters set, for further information please see the pppm/disp documentation');
       }
       // init_coeffs (geometric: sqrt(|C_ii|); arithmetic: the seven-term B of the (sigma, epsilon) expansion)
       this.B = new Float64Array(nt);
       for (let i = 1; i < nt; i++) this.B[i] = Math.sqrt(Math.abs(C[i * nt + i]));
-      if (this.dispArith) {
+      if (this.dispArith && lj) {
         const c = [1.0, Math.sqrt(6.0), Math.sqrt(15.0), Math.sqrt(20.0), Math.sqrt(15.0), Math.sqrt(6.0), 1.0];
         this.B7 = new Float64Array(7 * nt + 7);
         for (let i = 1; i <= pair.ntypes; i++) {
-          const epsI = Math.sqrt(pair.p.get('epsilon', i, i));
-          const sigI = pair.p.get('sigma', i, i);
+          const epsI = Math.sqrt(lj.p.get('epsilon', i, i));
+          const sigI = lj.p.get('sigma', i, i);
           let sigN = 1.0;
           for (let j = 0; j < 7; j++) {
             this.B7[7 * i + j] = sigN * epsI * c[j] * 0.25;
@@ -362,8 +400,9 @@ export class KSpacePPPMDisp extends KSpaceBase {
         this.csumij = sb * sb;
       }
       this.csum = csum;
-      const prd = this.prdInit;
-      const cutoffLj = pair.cutGlobal;
+      const prd = prdOf(geom);
+      // cut_vdwl: the global LJ cutoff (lj/long) or the global buck cutoff (buck/long, cut_buck_global)
+      const cutoffLj = lj ? lj.cutGlobal : buck!.cutBuckGlobal;
       // set_grid_global_6 (native order: set_init_g6, set_n_pppm_6, factorable), then adjust_gewald_6
       let g6 = this.gDispUser;
       if (!(g6 > 0)) g6 = this.initG6(cutoffLj, acc, prd);
@@ -376,19 +415,88 @@ export class KSpacePPPMDisp extends KSpaceBase {
       }
       this.gDisp = g6;
       this.mesh6 = N6;
-      pair.gEwaldDisp = g6;
+      if (lj) lj.gEwaldDisp = g6;
+      if (buck) buck.gEwaldDisp = g6;
       ctx.log(`  Dispersion G vector (1/distance) = ${g6}\n  Dispersion grid = ${N6.join(' ')}\n  Dispersion stencil order = ${this.order6}`);
     }
-    if (this.coulOn) ctx.log(`  Coulomb G vector (1/distance) = ${this.gEwald}\n  Coulomb grid = ${this.meshC.join(' ')}\n  Coulomb stencil order = ${this.orderCoul}`);
+    if (this.coulOn) ctx.log(`  Coulomb G vector (1/distance) = ${this.gEwald}\n  Coulomb grid = ${this.meshC.join(' ')}\n  Coulomb stencil order = ${this.orderCoul}\n  Coulomb estimated absolute RMS force accuracy = ${this.coulAcc}`);
     this.infoC = null;
     this.info6 = null;
-    if (this.coulOn) this.infoC = this.buildInfluence('coul', this.meshC, this.gEwald, this.orderCoul);
-    if (this.dispOn) this.info6 = this.buildInfluence('disp', this.mesh6, this.gDisp, this.order6);
+    if (this.coulOn) this.infoC = this.buildInfluence('coul', this.meshC, this.gEwald, this.orderCoul, this.prdCur);
+    if (this.dispOn) this.info6 = this.buildInfluence('disp', this.mesh6, this.gDisp, this.order6, this.prdCur);
   }
 
-  /** Green's function and virial coefficients (setup()) for the box at init. */
-  private buildInfluence(kind: 'coul' | 'disp', N: [number, number, number], g: number, P: number): Influence {
-    const prd: [number, number, number] = [this.prdInit[0], this.prdInit[1], this.prdInit[2]];
+  /**
+   * set_grid_global (Coulomb): the G-ewald estimate (unless the user gave one) and the mesh from the k-space error
+   * estimate (unless the user gave one), then the factorable boost; adjust_gewald then runs for an automatic G-ewald.
+   * Returns the G-ewald, the mesh and the final Coulomb accuracy (final_accuracy).
+   */
+  private chooseCoulomb(prd: [number, number, number], cutoff: number, qqrd2e: number, acc: number):
+    { g: number; N: [number, number, number]; acc: number } {
+    const [xprd, yprd, zprd] = prd;
+    const natoms = this.natoms;
+    const q2 = this.qsqsum * qqrd2e;
+    const order = this.orderCoul;
+    let g = this.gewaldUser;
+    if (!(g > 0)) {
+      g = acc * Math.sqrt(natoms * cutoff * xprd * yprd * zprd) / (2.0 * q2);
+      if (g >= 1.0) throw new StyleError('KSpace accuracy too large to estimate G vector');
+      g = Math.sqrt(-libmLog(g)) / cutoff;
+    }
+    let N: [number, number, number];
+    if (this.meshUser) {
+      N = [this.meshUser[0], this.meshUser[1], this.meshUser[2]];
+    } else {
+      let h = 4.0 / g;
+      let count = 0;
+      let Nn: [number, number, number];
+      for (;;) {
+        Nn = [Math.trunc(xprd / h), Math.trunc(yprd / h), Math.trunc(zprd / h)];
+        for (let d = 0; d < 3; d++) if (Nn[d] <= 1) Nn[d] = 2;
+        const qopt = qoptCoulombIk(Nn, prd, g, order);
+        const dfkspace = Math.sqrt(qopt / natoms) * q2 / (xprd * yprd * zprd);
+        count++;
+        if (dfkspace <= acc) break;
+        if (count > 500) throw new StyleError('Could not compute grid size');
+        h *= 0.95;
+      }
+      N = Nn;
+    }
+    for (let d = 0; d < 3; d++) while (!factorable(N[d])) N[d]++;
+    for (let d = 0; d < 3; d++) {
+      if (N[d] >= OFFSET) throw new StyleError('PPPMDisp Coulomb grid is too large');
+    }
+    // f, derivf and adjust_gewald (Newton on the real-space against k-space error balance) for the mesh N
+    const fCoul = (gg: number): number => {
+      const dfR = 2.0 * q2 * libmExp(-gg * gg * cutoff * cutoff) / Math.sqrt(natoms * cutoff * xprd * yprd * zprd);
+      const qopt = qoptCoulombIk(N, prd, gg, order);
+      const dfK = Math.sqrt(qopt / natoms) * q2 / (xprd * yprd * zprd);
+      return dfR - dfK;
+    };
+    if (!(this.gewaldUser > 0)) {
+      let converged = false;
+      for (let i = 0; i < LARGE; i++) {
+        const h = 0.000001;
+        const f1 = fCoul(g);
+        const f2 = fCoul(g + h);
+        const dfx = (f2 - f1) / h;
+        const dx = f1 / dfx;
+        g -= dx;
+        if (Math.abs(fCoul(g)) < SMALL) { converged = true; break; }
+      }
+      if (!converged) throw new StyleError('Could not compute g_ewald');
+    }
+    // final_accuracy: the real-space and k-space estimates combined in quadrature
+    const dfRFinal = 2.0 * q2 * libmExp(-g * g * cutoff * cutoff) / Math.sqrt(natoms * cutoff * xprd * yprd * zprd);
+    const qoptFinal = qoptCoulombIk(N, prd, g, order);
+    const dfKFinal = Math.sqrt(qoptFinal / natoms) * q2 / (xprd * yprd * zprd);
+    const accFinal = Math.sqrt(dfRFinal * dfRFinal + dfKFinal * dfKFinal);
+    return { g, N, acc: accFinal };
+  }
+
+  /** Green's function and virial coefficients (setup()) for the box prd. */
+  private buildInfluence(kind: 'coul' | 'disp', N: [number, number, number], g: number, P: number,
+    prd: [number, number, number]): Influence {
     const mg = meshGeom(N, prd);
     return {
       mg,
@@ -523,10 +631,15 @@ export class KSpacePPPMDisp extends KSpaceBase {
     const qqrd2e = kc.qqrd2e;
     const lo: [number, number, number] = [kc.geom.lo[0], kc.geom.lo[1], kc.geom.lo[2]];
     const x = s.x;
-    if (kc.geom.lx !== this.prdInit[0] || kc.geom.ly !== this.prdInit[1] || kc.geom.lz !== this.prdInit[2]) {
-      throw new StyleError('kspace_style pppm/disp: the box changed after init (rerun the kspace init; box-dependent setup is not ported)');
+    // native PPPMDisp::setup() (called by the integrator when the box changes): the box-dependent Green's functions and
+    // virial coefficients are rebuilt for the current box; the grids and G-ewald are the init ones
+    const prdNow: [number, number, number] = [kc.geom.lx, kc.geom.ly, kc.geom.lz];
+    if (prdNow[0] !== this.prdCur[0] || prdNow[1] !== this.prdCur[1] || prdNow[2] !== this.prdCur[2]) {
+      this.prdCur = prdNow;
+      if (this.coulOn) this.infoC = this.buildInfluence('coul', this.meshC, this.gEwald, this.orderCoul, prdNow);
+      if (this.dispOn) this.info6 = this.buildInfluence('disp', this.mesh6, this.gDisp, this.order6, prdNow);
     }
-    const V = this.prdInit[0] * this.prdInit[1] * this.prdInit[2];
+    const V = prdNow[0] * prdNow[1] * prdNow[2];
     const virial = new Float64Array(6);
 
     if (this.coulOn && this.infoC) {

@@ -267,6 +267,14 @@ export class PairBuckLongCoulLong extends Pair {
     return undefined;
   }
 
+  /** The -C/r^6 coefficients of the set pairs, (ntypes+1)^2 row-major: native extract("B") returns buck_c (pppm_disp init_coeffs). */
+  dispCMatrix(): Float64Array {
+    const nt = this.ntypes + 1;
+    const C = new Float64Array(nt * nt);
+    for (let i = 1; i < nt; i++) for (let j = 1; j < nt; j++) C[i * nt + j] = this.p.isSet(i, j) ? this.p.get('c', i, j) : 0;
+    return C;
+  }
+
   /** The ewald/disp view (native extract "ewald_order", "ewald_mix", "B"): B = sqrt(C_ii) for the geometric 1/r^6 sum. */
   ewaldDisp(): EwaldDispPair {
     return {

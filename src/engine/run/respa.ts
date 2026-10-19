@@ -28,8 +28,13 @@ import { haltRequested } from './halt';
  * Measured with native LAMMPS (black box): a 3-atom probe (bond on level 1, lj/cut on level 2, lj units)
  * reproduces the potential energy, kinetic energy and positions of this nesting to about 1e-12 relative.
  *
- * Not implemented (throw StyleError): the inner/middle/outer pair splitting, compute pe/atom and
- * stress/atom under respa, and fixes other than nve, nvt (without a barostat) and temp/rescale.
+ * Per-atom energy and virial (compute pe/atom, stress/atom, centroid/stress/atom): each level's evaluation tallies its
+ * own terms, and a per-atom compute sees the sum over the levels of their last evaluation. As native LAMMPS does
+ * (src/respa.cpp at b332f28): every level's forces are computed with the outer step's energy and virial flags, the
+ * last time at the positions that end the outer step, and each style keeps the per-atom values of its last call.
+ *
+ * Not implemented (throw StyleError): the inner/middle/outer pair splitting, and fixes other than nve, nvt (without a
+ * barostat) and temp/rescale.
  */
 
 export const RESPA_MAX_LEVELS = 4;
@@ -178,7 +183,7 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
   const cfg = sys.respa;
   if (!cfg) throw new StyleError('run_style respa is not set');
   const flags = sys.computeFlags();
-  if (flags.eatom || flags.vatom) throw new StyleError('compute pe/atom and stress/atom are not supported with run_style respa');
+  const evalFlags = { ...flags, step: true };
   const movers = checkFixes(sys);
   const s = sys.state, nb = sys.nb, geom = sys.geom, ff = sys.ff;
   const N = cfg.levels;
@@ -228,7 +233,11 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
   const F: Float64Array[] = [];
   const A: Accum[] = [];
   const valid: boolean[] = [];
-  for (let l = 0; l < N; l++) { F.push(new Float64Array(n3)); A.push(newAccum()); valid.push(false); }
+  // per-atom terms of each level's last evaluation (empty without a per-atom compute)
+  type Terms = Partial<Record<PerAtomTerm, Float64Array>>;
+  const ET: Terms[] = [], VT: Terms[] = [], CT: Terms[] = [];
+  for (let l = 0; l < N; l++) { F.push(new Float64Array(n3)); A.push(newAccum()); valid.push(false); ET.push({}); VT.push({}); CT.push({}); }
+  const keepTerms = (l: number): void => { ET[l] = ff.eatomTerm; VT[l] = ff.vatomTerm; CT[l] = ff.cvatomTerm; };
   const invalidateAll = (): void => { valid.fill(false); };
 
   /** Force evaluation of level l at the current positions (ghosts refreshed first). */
@@ -246,7 +255,7 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
       if (half) nb.half = half;
       let acc: Accum;
       try {
-        acc = ff.compute(s, nb, geom, { step: true }, sels[l]);
+        acc = ff.compute(s, nb, geom, evalFlags, sels[l]);
       } finally {
         s.x.set(keep);
         nb.xall.set(keep);
@@ -255,12 +264,14 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
       F[l].set(s.f.subarray(0, n3));
       if (!deferFilter) filter.respaFilterForces(F[l]);
       copyAccum(A[l], acc);
+      keepTerms(l);
       valid[l] = true;
       return;
     }
-    const acc = ff.compute(s, nb, geom, { step: true }, sels[l]);
+    const acc = ff.compute(s, nb, geom, evalFlags, sels[l]);
     F[l].set(s.f.subarray(0, n3));
     copyAccum(A[l], acc);
+    keepTerms(l);
     valid[l] = true;
   };
   const ensure = (l: number): void => { if (!valid[l]) evalLevel(l); };
@@ -274,6 +285,30 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
     for (let l = 0; l < N; l++) addAccum(acc, A[l]);
     // the tail correction is added once, not per level (ForceField.compute skips it under a selector)
     if (ff.etailV !== 0) acc.evdwl += ff.etailV / geom.volume(s.dimension);
+    if (flags.eatom || flags.vatom || flags.cvatom) {
+      // per-atom terms: a term belongs to one level (a hybrid pair's sub-styles may be on several, then they add)
+      const merge = (levels: Terms[]): Terms => {
+        const out: Terms = {};
+        for (const t of levels) {
+          for (const [k, arr] of Object.entries(t) as [PerAtomTerm, Float64Array][]) {
+            const have = out[k];
+            if (!have) { out[k] = Float64Array.from(arr); continue; }
+            for (let q = 0; q < arr.length; q++) have[q] += arr[q];
+          }
+        }
+        return out;
+      };
+      const total = (t: Terms, len: number): Float64Array => {
+        const out = new Float64Array(len);
+        for (const arr of Object.values(t)) for (let q = 0; q < len; q++) out[q] += arr![q];
+        return out;
+      };
+      ff.eatomTerm = merge(ET);
+      ff.vatomTerm = merge(VT);
+      ff.cvatomTerm = merge(CT);
+      ff.eatom = flags.eatom ? total(ff.eatomTerm, s.n) : null;
+      ff.vatom = flags.vatom ? total(ff.vatomTerm, 6 * s.n) : null;
+    }
   };
 
   const kick = (l: number, h: number): void => {
@@ -310,7 +345,7 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
   totals();
   // FixFilterCorotate::setup: the outermost level's setup forces are filtered after the sum
   if (filter) filter.respaFilterForces(F[N - 1]);
-  sys.forcesCurrent();
+  sys.forcesCurrent(flags);
   sys.assignDynamicGroups(true);
   computeSetup(sys);
   for (const f of sys.fixes) f.setup();
@@ -338,7 +373,7 @@ export const runRespa = async (sys: System, nsteps: number, hooks: RunHooks): Pr
     level(N - 1, s.dt);
     for (const m of movers) m.respaEnd?.();
     totals();
-    sys.forcesCurrent();
+    sys.forcesCurrent(flags);
     sys.assignDynamicGroups(false);
     for (const f of sys.fixes) if (f.endOfStep && s.step % f.nevery === 0) f.endOfStep();
     sys.refreshComputes();

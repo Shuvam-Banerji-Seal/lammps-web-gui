@@ -50,9 +50,9 @@ describe('kspace_style esp: refusals name the unported option', () => {
     expect(await runScript(`${BASE}kspace_style esp 1e-4\nkspace_modify diff ik\nrun 0\n`)).toMatch(/diff ik/);
   });
 
-  it('per-atom energy and virial', async () => {
-    const msg = await runScript(`${BASE}kspace_style esp 1e-4\ncompute pe all pe/atom kspace\nthermo_style custom step c_pe[1]\nrun 0\n`);
-    expect(msg).toMatch(/pe\/atom|stress\/atom/);
+  it('computes the per-atom energy and virial (no refusal; parity with native in oracle case w268es_peratom)', async () => {
+    const msg = await runScript(`${BASE}kspace_style esp 1e-4\ncompute pe all pe/atom kspace\ncompute sa all stress/atom NULL kspace\ncompute r all reduce sum c_pe c_sa[1]\nthermo_style custom step elong c_r[1] c_r[2]\nrun 0\n`);
+    expect(msg).toBeNull();
   });
 });
 

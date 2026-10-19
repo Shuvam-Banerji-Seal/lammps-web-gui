@@ -176,8 +176,6 @@ export class KSpaceEwaldDipoleSpin extends KSpace {
   }
 
   compute(kc: KSpaceCompute): void {
-    // the per-atom energy and virial of this style are not computed by the engine: refused rather than left out
-    if (kc.eatom || kc.vatom) throw new StyleError(`compute pe/atom and stress/atom with kspace_style ${this.name} are not supported by the browser engine (its per-atom energy and virial are not computed)`);
     const s = kc.s, g = this.gEwald, geom = kc.geom;
     const sp = s.sp!;
     const V = geom.volume(3);
@@ -191,6 +189,8 @@ export class KSpaceEwaldDipoleSpin extends KSpace {
       for (let a = 0; a < 3; a++) mu[3 * i + a] = sp[4 * i + a] * spn[i];
     }
     const fl = fmLongOf(s, true);
+    const eatom = kc.eatom, vatom = kc.vatom;
+    const pref = C * 4 * Math.PI / V;
     const tk = new Float64Array(3 * n);
     const cosv = new Float64Array(n), sinv = new Float64Array(n);
     const nk = this.kvec.length / 3;
@@ -212,16 +212,30 @@ export class KSpaceEwaldDipoleSpin extends KSpace {
         for (let a = 0; a < 3; a++) { P[a] += mu[3 * i + a] * c; Pi[a] += mu[3 * i + a] * sn; }
       }
       esum += Gk * (Mr * Mr + Mi * Mi);
-      // virial of the moments held fixed (the same derivation as EwaldDipole.compute)
+      // the virial as native's uk*vg[k][j] - vc[k][j], with vc[k][j] = -sum_i partial_peratom_i * sp_ia * eg[k][b]:
+      // sp_x with K_y for xy, sp_x with K_z for xz, sp_y with K_z for yz
       const M2 = Mr * Mr + Mi * Mi;
       const b = 2 * (1 / K2 + 1 / (4 * g * g));
       const Kv = [Kx, Ky, Kz];
       const pairs: [number, number, number][] = [[0, 0, 0], [1, 1, 1], [2, 2, 2], [0, 1, 3], [0, 2, 4], [1, 2, 5]];
       for (const [a, c, idx] of pairs) {
         const dl = a === c ? 1 : 0;
-        const reA = Kv[c] * P[a] + Kv[a] * P[c];
-        const imA = Kv[c] * Pi[a] + Kv[a] * Pi[c];
-        W[idx] += Gk * (M2 * (dl - b * Kv[a] * Kv[c]) + (reA * Mr + imA * Mi));
+        W[idx] += Gk * (M2 * (dl - b * Kv[a] * Kv[c]) + 2 * Kv[c] * (P[a] * Mr + Pi[a] * Mi));
+      }
+      // per-atom energy and virial (native: eatom[i] += mudotk*ug[k]*partial_peratom;
+      // vatom[i][j] += ug[k]*mudotk*vg[k][j]*partial_peratom - vcik[j])
+      if (eatom || vatom) {
+        for (let i = 0; i < n; i++) {
+          const mk = mu[3 * i] * Kx + mu[3 * i + 1] * Ky + mu[3 * i + 2] * Kz;
+          const re = Mr * cosv[i] + Mi * sinv[i];
+          if (eatom) eatom[i] += pref * Gk * mk * re;
+          if (vatom) {
+            for (const [a, c, idx] of pairs) {
+              const dl = a === c ? 1 : 0;
+              vatom[6 * i + idx] += pref * Gk * re * (mk * (dl - b * Kv[a] * Kv[c]) + 2 * Kv[c] * mu[3 * i + a]);
+            }
+          }
+        }
       }
       const cf = C * (8 * Math.PI / V) * Gk;
       const tf = 2 * (4 * Math.PI / V) * Gk;
@@ -242,8 +256,12 @@ export class KSpaceEwaldDipoleSpin extends KSpace {
       const id = 3 * s.id[i];
       for (let a = 0; a < 3; a++) fl[id + a] = -spn[i] * spscale2 * tk[3 * i + a];
     }
-    const pref = C * 4 * Math.PI / V;
     const self = -C * (TWO_OVER_SQRTPI * g * g * g / 3) * this.musq;
+    if (eatom) {
+      for (let i = 0; i < n; i++) {
+        eatom[i] -= C * (TWO_OVER_SQRTPI * g * g * g / 3) * (mu[3 * i] ** 2 + mu[3 * i + 1] ** 2 + mu[3 * i + 2] ** 2);
+      }
+    }
     kc.acc.elong += pref * esum + self;
     for (let c = 0; c < 6; c++) kc.acc.vlong[c] += pref * W[c];
   }

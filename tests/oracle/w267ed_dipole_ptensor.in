@@ -1,0 +1,27 @@
+# oracle: kspace_style ewald/dipole pressure tensor: lj/cut/dipole/long + ewald/dipole with fixed G-ewald and kmax (as w44dl_static_fixed), four dipoles in a 12 box, run 0 with pxx..pyz; the k-space pxy, pxz, pyz follow native's unsymmetrized dipole virial term
+# Measured max relative error, engine vs native (thermo rows): thermo 9.1e-15. Before the fix the engine printed pxy -1027.90 where native prints -848.38.
+# oracle-compare: thermo=all atoms=none rel=1e-9 abs=1e-9
+units           real
+atom_style      hybrid charge sphere dipole
+boundary        p p p
+region          box block -6 6 -6 6 -6 6
+create_box      1 box
+create_atoms    1 single 0.0 0.0 0.0
+create_atoms    1 single 2.5 0.3 -0.4
+create_atoms    1 single -1.2 2.2 1.1
+create_atoms    1 single 3.1 -2.0 0.7
+mass            1 1.0
+set             group all charge 0.0
+set             group all diameter 1.0
+set             atom 1 dipole 0.3 0.5 0.7
+set             atom 2 dipole -0.2 0.9 0.4
+set             atom 3 dipole 0.6 -0.4 0.1
+set             atom 4 dipole -0.5 0.2 0.8
+pair_style      lj/cut/dipole/long 5.0
+pair_coeff      * * 0.0 1.0
+kspace_style    ewald/dipole 1.0e-4
+kspace_modify   gewald 0.45 kmax/ewald 5 5 5
+compute         pk all pressure NULL kspace
+thermo_style    custom step pe elong press pxx pyy pzz pxy pxz pyz c_pk[1] c_pk[2] c_pk[3] c_pk[4] c_pk[5] c_pk[6]
+thermo_modify   format float %.15g norm no
+run             0

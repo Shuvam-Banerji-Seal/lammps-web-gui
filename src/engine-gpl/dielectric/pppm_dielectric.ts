@@ -15,8 +15,11 @@
  * The mesh solve is the engine's spectral PPPM (Hockney and Eastwood assignment, optimal influence function for ik
  * differentiation, the same formulas as core kspace pppm), written here so that the grid, the charges and the field
  * can be taken from the scaled and unscaled charges separately. The per-atom field (efield) is written as LAMMPS does
- * (scale * epsilon_i * E / V) and read by the polarization fixes. Not ported: pppm/dielectric's per-atom energy and
- * virial (compute pe/atom, stress/atom with this kspace style are refused), triclinic boxes, and kspace_modify diff ad.
+ * (scale * epsilon_i * E / V) and read by the polarization fixes. The per-atom energy and virial (compute pe/atom,
+ * stress/atom) follow PPPM::poisson_peratom and fieldforce_peratom of src/KSPACE/pppm.cpp as pppm_dielectric.cpp calls
+ * them: the potential and virial meshes of the first (scaled-charge) pass, interpolated with the unscaled charges q_i,
+ * halved, less the self terms of q_i, times qscale (without 1/epsilon_ave), and the per-atom slab term of slabcorr.
+ * Not ported: triclinic boxes and kspace_modify diff ad.
  */
 import { KSpacePPPM } from '../../engine/force/kspace/pppm';
 import { pppmKspaceError, pppmRealError } from '../../engine/force/kspace/pppm';
@@ -128,8 +131,6 @@ export class KSpacePPPMDielectric extends KSpacePPPM {
 
   /** Charges, and the sums of the unscaled charges (qsum, qsqsum are those of q, as in LAMMPS qsum_qsq). */
   compute(kc: KSpaceCompute): void {
-    // the per-atom energy and virial of this style are not tallied (LAMMPS PPPMDielectric::fieldforce_peratom is not ported)
-    if (kc.eatom || kc.vatom) throw new StyleError('compute pe/atom and stress/atom with kspace_style pppm/dielectric are not supported by the browser engine');
     const s = kc.s, geom = kc.geom, n = s.n;
     const d = dielArrays(s, 'kspace pppm/dielectric');
     const eps = d.epsilon, qs = d.qs, q = s.q;
@@ -245,6 +246,7 @@ export class KSpacePPPMDielectric extends KSpacePPPM {
         kc.f[3 * i] += qfac * Ex; kc.f[3 * i + 1] += qfac * Ey; kc.f[3 * i + 2] += qfac * Ez;
       }
     }
+    if (kc.eatom || kc.vatom) this.peratom(kc, rhoS, kvec, first, wts, q, C, V);
     // energy: the unscaled charges, times C / <epsilon> (LAMMPS: energy *= qscale / epsilon_ave)
     const rhoQ = grid(q);
     const Cn = C / epsAve;
@@ -297,10 +299,83 @@ export class KSpacePPPMDielectric extends KSpacePPPM {
     const qsum = this.qsum;
     const eSlab = (2 * Math.PI) * (dipole * dipole - qsum * dipoleR2 - qsum * qsum * zprdSlab * zprdSlab / 12.0) / V;
     kc.acc.elong += C * eSlab;
+    if (kc.eatom) {
+      // slabcorr's per-atom energy (q_scaled weighted by epsilon_i)
+      const efact = C * (2 * Math.PI) / V;
+      for (let i = 0; i < n; i++) {
+        const z = s.x[3 * i + 2];
+        kc.eatom[i] += efact * eps[i] * qs[i] * (z * dipole - 0.5 * (dipoleR2 + qsum * z * z) - qsum * zprdSlab * zprdSlab / 12.0);
+      }
+    }
     const ffact = C * (-4.0 * Math.PI / V);
     for (let i = 0; i < n; i++) {
       kc.f[3 * i + 2] += ffact * eps[i] * qs[i] * (dipole - qsum * s.x[3 * i + 2]);
       this.efield[3 * i + 2] += ffact * (dipole - qsum * s.x[3 * i + 2]);
+    }
+  }
+
+  /**
+   * Per-atom energy and virial (PPPM::poisson_peratom and fieldforce_peratom as PPPMDielectric::compute calls them):
+   * the potential mesh G rho^ and the virial meshes G rho^ vg_ab (vg_ab = delta_ab - 2 (1/k^2 + 1/(4 g^2)) k_a k_b) of
+   * the scaled-charge density rhoS, interpolated at each atom and multiplied by its unscaled charge q_i; then
+   * eatom_i = qscale (u_i / 2 - g q_i^2 / sqrt(pi) - pi q_i qsum / (2 g^2 V)) and vatom_i = qscale v_i / 2.
+   */
+  private peratom(
+    kc: KSpaceCompute, rhoS: Float64Array, kvec: (mx: number, my: number, mz: number) => [number, number, number],
+    first: Int32Array, wts: Float64Array, q: Float64Array, C: number, V: number,
+  ): void {
+    const n = kc.s.n, P = this.order, g = this.gEwald;
+    const [nx, ny, nz] = this.dieMesh;
+    const ng = nx * ny * nz;
+    const eatom = kc.eatom, vatom = kc.vatom;
+    const meshes: Float64Array[] = [];
+    const nm = vatom ? 7 : 1;
+    for (let c = 0; c < nm; c++) meshes.push(new Float64Array(2 * ng));
+    for (let iz = 0; iz < nz; iz++) {
+      const mz = iz < nz / 2 ? iz : iz - nz;
+      for (let iy = 0; iy < ny; iy++) {
+        const my = iy < ny / 2 ? iy : iy - ny;
+        for (let ix = 0; ix < nx; ix++) {
+          const mx = ix < nx / 2 ? ix : ix - nx;
+          const idx = (iz * ny + iy) * nx + ix;
+          const G = this.dieGreen[idx];
+          if (G === 0) continue;
+          const re = G * rhoS[2 * idx], im = G * rhoS[2 * idx + 1];
+          meshes[0][2 * idx] = re; meshes[0][2 * idx + 1] = im;
+          if (!vatom) continue;
+          const [kx, ky, kz] = kvec(mx, my, mz);
+          const b = 2 * (1 / (kx * kx + ky * ky + kz * kz) + 1 / (4 * g * g));
+          const vg = [1 - b * kx * kx, 1 - b * ky * ky, 1 - b * kz * kz, -b * kx * ky, -b * kx * kz, -b * ky * kz];
+          for (let c = 0; c < 6; c++) { meshes[1 + c][2 * idx] = re * vg[c]; meshes[1 + c][2 * idx + 1] = im * vg[c]; }
+        }
+      }
+    }
+    for (const m of meshes) fft3d(m, nx, ny, nz, 1);
+    const mod = (a: number, m: number) => ((a % m) + m) % m;
+    const val = new Float64Array(nm);
+    const qsum = this.qsum;
+    for (let i = 0; i < n; i++) {
+      val.fill(0);
+      const fx0 = first[3 * i], fy0 = first[3 * i + 1], fz0 = first[3 * i + 2];
+      for (let c = 0; c < P; c++) {
+        const iz = mod(fz0 + c, nz);
+        const wz = wts[(3 * i + 2) * P + c];
+        for (let bb = 0; bb < P; bb++) {
+          const iy = mod(fy0 + bb, ny);
+          const wyz = wz * wts[(3 * i + 1) * P + bb];
+          for (let a = 0; a < P; a++) {
+            const ix = mod(fx0 + a, nx);
+            const ww = wyz * wts[(3 * i) * P + a];
+            const idx = 2 * ((iz * ny + iy) * nx + ix);
+            for (let m = 0; m < nm; m++) val[m] += ww * meshes[m][idx];
+          }
+        }
+      }
+      const qi = q[i];
+      if (eatom) {
+        eatom[i] += C * (0.5 * qi * val[0] / V - (g * qi * qi / Math.sqrt(Math.PI) + (Math.PI / 2) * qi * qsum / (g * g * V)));
+      }
+      if (vatom) for (let c = 0; c < 6; c++) vatom[6 * i + c] += 0.5 * C * qi * val[1 + c] / V;
     }
   }
 

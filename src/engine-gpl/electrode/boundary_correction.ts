@@ -9,6 +9,9 @@ import type { SimState } from '../../engine/types';
 import { MY_2PI, MY_4PI, MY_PIS, erfAccurate } from './electrode_math';
 import { exp as libmExp } from '../libm/exp';
 
+/** slab_dipole.cpp SMALL: below this |qsum| the non-neutral term is left out (unless per-atom energy is requested). */
+const SMALL = 0.00001;
+
 /** Quantities the corrections need from the k-space style (single process: all atoms are local). */
 export interface BoundaryEnv {
   /** Volume with the slab extension (get_volume() of boundary_correction.cpp). */
@@ -27,8 +30,11 @@ export const inGroup = (mask: number, bit: number, invert: boolean): boolean => 
 
 /** boundary_correction.h: the base class; a dummy correction for systems without a slab or wire correction. */
 export abstract class BoundaryCorrection {
-  /** Energy and force of the correction; adds forces to f and returns the energy (qqrd2e units). */
-  abstract computeCorr(s: SimState, f: Float64Array, qsum: number, env: BoundaryEnv): number;
+  /**
+   * Energy and force of the correction; adds forces to f, the per-atom energy to eatom (compute pe/atom; null when not
+   * requested) and returns the energy (qqrd2e units).
+   */
+  abstract computeCorr(s: SimState, f: Float64Array, qsum: number, env: BoundaryEnv, eatom?: Float64Array | null): number;
   vectorCorr(_s: SimState, _vec: Float64Array, _sensorBit: number, _sourceBit: number, _invert: boolean, _env: BoundaryEnv): void {}
   matrixCorr(_s: SimState, _imat: Int32Array, _matrix: Float64Array, _ngroup: number, _env: BoundaryEnv): void {}
 }
@@ -47,19 +53,29 @@ const groupList = (imat: Int32Array): number[] => {
 
 /** slab_dipole.cpp: EW3DC dipole correction (Ballenegger et al.), boundary p p f. */
 export class SlabDipole extends BoundaryCorrection {
-  computeCorr(s: SimState, f: Float64Array, qsum: number, env: BoundaryEnv): number {
+  computeCorr(s: SimState, f: Float64Array, qsum: number, env: BoundaryEnv, eatom?: Float64Array | null): number {
     const V = env.volume;
     const q = s.q, x = s.x, n = s.n;
     const zprdSlab = env.zprdSlab;
     let dipoleAll = 0;
     for (let i = 0; i < n; i++) dipoleAll += q[i] * x[3 * i + 2];
+    // need to make non-neutral systems and/or per-atom energy translationally invariant (slab_dipole.cpp)
     let dipoleR2 = 0;
-    for (let i = 0; i < n; i++) dipoleR2 += q[i] * x[3 * i + 2] * x[3 * i + 2];
-    // need to make non-neutral systems translationally invariant (slab_dipole.cpp)
+    if (eatom || Math.abs(qsum) > SMALL) {
+      for (let i = 0; i < n; i++) dipoleR2 += q[i] * x[3 * i + 2] * x[3 * i + 2];
+    }
     const eSlabcorr = MY_2PI * (dipoleAll * dipoleAll - qsum * dipoleR2 - qsum * qsum * zprdSlab * zprdSlab / 12.0) / V;
     const scale = 1.0;
     const qscale = env.qqrd2e * scale;
     const energy = qscale * eSlabcorr;
+    // per-atom energy
+    if (eatom) {
+      const efact = qscale * MY_2PI / V;
+      for (let i = 0; i < n; i++) {
+        const z = x[3 * i + 2];
+        eatom[i] += efact * q[i] * (z * dipoleAll - 0.5 * (dipoleR2 + qsum * z * z) - qsum * zprdSlab * zprdSlab / 12.0);
+      }
+    }
     // force corrections
     const ffact = qscale * (-4.0 * Math.PI / V);
     for (let i = 0; i < n; i++) f[3 * i + 2] += ffact * q[i] * (dipoleAll - qsum * x[3 * i + 2]);
@@ -92,7 +108,7 @@ export class SlabDipole extends BoundaryCorrection {
 
 /** slab_2d.cpp: EW2D correction (Yeh and Berkowitz style 2d Ewald with the Metalwalls form), boundary p p f. */
 export class Slab2d extends BoundaryCorrection {
-  computeCorr(s: SimState, f: Float64Array, _qsum: number, env: BoundaryEnv): number {
+  computeCorr(s: SimState, f: Float64Array, _qsum: number, env: BoundaryEnv, eatom?: Float64Array | null): number {
     const q = s.q, x = s.x, n = s.n;
     const gEwald = env.gEwald;
     const gInv = 1.0 / gEwald;
@@ -112,6 +128,7 @@ export class Slab2d extends BoundaryCorrection {
         f[3 * i + 2] -= ffact * q[i] * q[j] * erfAccurate(gzij);
       }
       // per-atom energy; see eq. (20) in metalwalls ewald doc
+      if (eatom) eatom[i] -= efact * q[i] * potIJ;
       eKeq0 -= q[i] * potIJ;
     }
     return efact * eKeq0;

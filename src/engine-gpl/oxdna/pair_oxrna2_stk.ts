@@ -15,7 +15,7 @@
 import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { OXDNA_5P, buildAtomMap, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
-import { DF1, DF4, DF5, F1, F4, F5, lrfOf, oxdnaConstants } from './common';
+import { DF1, DF4, DF5, F1, F4, F5, halfVirial, lrfOf, oxdnaConstants } from './common';
 import { stackingDerived, stackingStrength } from './pair_stk';
 import { sinFma as libmSin } from '../libm/sincos_fma';
 import { acos as libmAcos } from '../libm/acos';
@@ -161,6 +161,7 @@ export class PairOxrna2Stk extends Pair {
     const L = new Float64Array(9 * nlocal);
     for (let i = 0; i < nlocal; i++) if (isEllipsoid(s, i)) lrfOf(s.quat, 4 * i, L, 9 * i);
     const torque = s.torque;
+    const eatom = pc.eatom, vatom = pc.vatom;
     let evdwl = 0;
     const id5 = id5p.data;
     const ax = [0, 0, 0], ay = [0, 0, 0], az = [0, 0, 0], bx = [0, 0, 0], by = [0, 0, 0], bz = [0, 0, 0];
@@ -261,6 +262,9 @@ export class PairOxrna2Stk extends Pair {
       cross(rb3, delf, deltb);
       for (let c = 0; c < 3; c++) torque[3 * b + c] += deltb[c];
       evdwl += e;
+      // ev_tally_xyz(b, a, ..., evdwl, delf, x_b - x_a): half of the energy and of the molecular virial per atom
+      if (eatom) { eatom[a] += 0.5 * e; eatom[b] += 0.5 * e; }
+      if (vatom) halfVirial(vatom, a, b, d, delf);
       // forces between the backbone sites (angles 9 and 10, cosphi1 and cosphi2)
       delf[0] = 0.0; delf[1] = 0.0; delf[2] = 0.0;
       delta[0] = 0.0; delta[1] = 0.0; delta[2] = 0.0;
@@ -286,6 +290,8 @@ export class PairOxrna2Stk extends Pair {
       for (let c = 0; c < 3; c++) f[3 * b + c] += delf[c];
       cross(rbc, delf, deltb);
       for (let c = 0; c < 3; c++) { torque[3 * a + c] -= delta[c]; torque[3 * b + c] += deltb[c]; }
+      // the second ev_tally_xyz (virial only) for the forces between backbone sites
+      if (vatom) halfVirial(vatom, a, b, d, delf);
       // pure torques of the same angles
       delta[0] = 0.0; delta[1] = 0.0; delta[2] = 0.0;
       deltb[0] = 0.0; deltb[1] = 0.0; deltb[2] = 0.0;

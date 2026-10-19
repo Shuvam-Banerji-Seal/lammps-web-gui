@@ -16,7 +16,7 @@ import { Pair, StyleError, typeBounds, type PairCompute, type StyleContext } fro
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
 import { OXDNA_3P, OXDNA_5P, isEllipsoid } from '../../engine/atoms';
 import { parseNum } from '../../engine/force/util';
-import { DF2, DF4, DF6, F2, F4, F6, lrfOf, oxdnaConstants, stackingSiteOxdna1, type StackRule, potentialLines } from './common';
+import { DF2, DF4, DF6, F2, F4, F6, halfVirial, lrfOf, oxdnaConstants, stackingSiteOxdna1, type StackRule, potentialLines } from './common';
 import { sinFma as libmSin } from '../libm/sincos_fma';
 import { acos as libmAcos } from '../libm/acos';
 
@@ -152,6 +152,8 @@ export class PairOxdna2Coaxstk extends Pair {
       rst[3 * k] = tmp[0]; rst[3 * k + 1] = tmp[1]; rst[3 * k + 2] = tmp[2];
     }
     const interior = (o: number) => id3p.data[o] !== 0 && id5p.data[o] !== 0;
+    const eatom = pc.eatom, vatom = pc.vatom;
+    const rab = [0, 0, 0];
     let evdwl = 0;
     const delr = [0, 0, 0], drn = [0, 0, 0], delf = [0, 0, 0], delta = [0, 0, 0], deltb = [0, 0, 0], dir = [0, 0, 0];
     const ax = [0, 0, 0], az = [0, 0, 0], bx = [0, 0, 0], bz = [0, 0, 0];
@@ -238,6 +240,12 @@ export class PairOxdna2Coaxstk extends Pair {
         cross([rst[3 * b], rst[3 * b + 1], rst[3 * b + 2]], delf, deltb);
         for (let c = 0; c < 3; c++) tq[3 * b + c] -= deltb[c];
         evdwl += e;
+        // ev_tally_xyz(a, b, ..., evdwl, delf, x_a - x_b): half of the energy and of the molecular virial per atom
+        if (eatom) { eatom[a] += 0.5 * e; eatom[b] += 0.5 * e; }
+        if (vatom) {
+          rab[0] = x[3 * a] - x[3 * b]; rab[1] = x[3 * a + 1] - x[3 * b + 1]; rab[2] = x[3 * a + 2] - x[3 * b + 2];
+          halfVirial(vatom, a, b, rab, delf);
+        }
         delta[0] = 0.0; delta[1] = 0.0; delta[2] = 0.0;
         deltb[0] = 0.0; deltb[1] = 0.0; deltb[2] = 0.0;
         if (theta1 !== 0.0 && theta1p !== 0.0) {

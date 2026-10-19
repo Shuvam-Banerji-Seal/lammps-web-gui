@@ -8,7 +8,7 @@
  * This file is GPL-2.0 (see src/engine-gpl/LICENSE).
  *
  * Refused in this port (StyleError): lgvdw yes, list/blocking, checkqeq yes until the QEq fix is
- * ported, compute stress/atom and compute pe/atom. The memory keywords safezone, mincap and
+ * ported. Compute pe/atom and stress/atom are tallied per atom at the native tally calls (tally.ts). The memory keywords safezone, mincap and
  * minhbonds only size LAMMPS's buffers and do not change results, so they are accepted.
  */
 import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
@@ -190,7 +190,6 @@ export class PairReaxFF extends Pair {
 
   override compute(pc: PairCompute): void {
     if (!this.fileRead || !this.param) throw new StyleError('pair_style reaxff has no force field');
-    if (pc.vatom || pc.eatom) throw new StyleError('compute pe/atom and stress/atom are not supported by pair style reaxff');
     // checkqeq yes: the charges come from fix qeq/reaxff (pair_reaxff.cpp init_style requires one)
     if (this.qeqflag && !this.qeqAttached) {
       throw new StyleError('pair_style reaxff requires use of exactly one of the fix qeq/reaxff or fix qeq/shielded or fix acks2/reaxff or fix qtpie/reaxff or fix qeq/rel/reaxff commands (or use checkqeq no)');
@@ -217,6 +216,8 @@ export class PairReaxFF extends Pair {
       en: newEnergies(),
       thb: { start: new Int32Array(0), end: new Int32Array(0), thb: new Int32Array(0), pthb: new Int32Array(0), theta: new Float64Array(0), dcos_di: new Float64Array(0), dcos_dj: new Float64Array(0), dcos_dk: new Float64Array(0), count: 0 },
       hb: ensureHBondList(counts.hbCount, numH),
+      // compute pe/atom and stress/atom: the per-atom tallies of the native tally calls (tally.ts), or null
+      pa: pc.eatom || pc.vatom ? { eatom: pc.eatom, vatom: pc.vatom } : null,
     };
     resetWorkspace(sys.ws);
     initForces(sys);

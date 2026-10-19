@@ -17,6 +17,7 @@ import type { ControlParams, ReaxParam, TwoBody } from './ffield';
 import type { LookupTables } from './lookup';
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
+import { relPos, tallyPair } from './tally';
 
 const SMALL = 0.0001;
 
@@ -46,6 +47,11 @@ const acks2Pairs = (sys: RxSystem): void => {
       let d_bond_softness = gp34 * (3.0 / xcut) * Math.pow(d, 2.0) * libmPow(1.0 - d, 5.0) * (1.0 - 3.0 * d);
       d_bond_softness = -0.5 * d_bond_softness * effpot_diff * effpot_diff;
       d_bond_softness = (KCALpMOL_to_EV * d_bond_softness) / far.d[pj];
+      // native reaxff_nonbonded.cpp:278-282 (and 454-458): ev_tally(i,j,n,1,0,e_ele,-d_bond_softness,x_i-x_j)
+      if (sys.pa) {
+        const del = relPos(sys.x, i, j);
+        tallyPair(sys.pa, i, j, 0, e_ele, -d_bond_softness, del[0], del[1], del[2]);
+      }
       for (let k = 0; k < 3; k++) {
         ws.f[3 * i + k] += -d_bond_softness * far.dvec[3 * pj + k];
         ws.f[3 * j + k] += d_bond_softness * far.dvec[3 * pj + k];
@@ -68,6 +74,8 @@ export const polarizationEnergy = (sys: RxSystem): void => {
       en_tmp += KCALpMOL_to_EV * q * sys.acks2s[sys.N + i];
     }
     sys.en.e_pol += en_tmp;
+    // native reaxff_nonbonded.cpp:57-58: ev_tally(i,i,n,1,0,en_tmp,...)
+    if (sys.pa) tallyPair(sys.pa, i, i, 0, en_tmp, 0, 0, 0, 0);
   }
 };
 
@@ -178,6 +186,11 @@ export const vdwCoulombEnergy = (sys: RxSystem): void => {
       const e_ele = qq * r.e_ele0;
       en.e_ele += e_ele;
       const coef = r.CEvd + qq * r.CEclmb;
+      // native reaxff_nonbonded.cpp:202-207: ev_tally(i,j,n,1,pe_vdw,e_ele,-(CEvd+CEclmb),x_i-x_j)
+      if (sys.pa) {
+        const del = relPos(sys.x, i, j);
+        tallyPair(sys.pa, i, j, e_vdW_tot, e_ele, -coef, del[0], del[1], del[2]);
+      }
       ws.f[3 * i] += -coef * far.dvec[3 * pj];
       ws.f[3 * i + 1] += -coef * far.dvec[3 * pj + 1];
       ws.f[3 * i + 2] += -coef * far.dvec[3 * pj + 2];
@@ -227,6 +240,11 @@ export const tabulatedVdwCoulombEnergy = (sys: RxSystem, LR: LookupTables): void
       let CEclmb = cub(t.CEclmb);
       CEclmb *= sys.q[i] * sys.q[j];
       const coef = CEvd + CEclmb;
+      // native reaxff_nonbonded.cpp:379-383: ev_tally(i,j,n,1,e_vdW,e_ele,-(CEvd+CEclmb),x_i-x_j)
+      if (sys.pa) {
+        const del = relPos(sys.x, i, j);
+        tallyPair(sys.pa, i, j, e_vdW, e_ele, -coef, del[0], del[1], del[2]);
+      }
       for (let c = 0; c < 3; c++) {
         sys.ws.f[3 * i + c] += -coef * far.dvec[3 * pj + c];
         sys.ws.f[3 * j + c] += coef * far.dvec[3 * pj + c];

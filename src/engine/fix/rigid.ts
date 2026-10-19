@@ -340,6 +340,15 @@ export class FixRigid extends Fix {
   private langRng: RanMars | null = null;
   /** fix_modify dynamic/dof (stored; see modify). */
   dynamicDofSet = false;
+  /**
+   * Per-atom virial (6 per atom, indexed by atom index). As native LAMMPS does (src/RIGID/fix_rigid_small.cpp set_xv/set_v
+   * at b332f28, v_tally(1, &i, 1.0, vr)): each atom takes its own vr, the same term that goes into the global virial.
+   */
+  private vAtom = new Float64Array(0);
+  /** Adds this fix's per-atom virial to out (compute stress/atom fix). */
+  virialAtom(out: Float64Array): void {
+    for (let k = 0; k < this.vAtom.length && k < out.length; k++) out[k] += this.vAtom[k];
+  }
   constructor(sys: System, id: string, group: string, args: string[], style: string) {
     super(sys, id, group, args);
     this.style = style;
@@ -868,6 +877,8 @@ export class FixRigid extends Fix {
     const idx = this.index();
     const dtf = 0.5 * s.dt * s.units.ftm2v;
     const vir = this.virial;
+    if (this.vAtom.length !== 6 * s.n) this.vAtom = new Float64Array(6 * s.n);
+    const va = this.vAtom;
     const u = [0, 0, 0];
     for (const b of this.bodies) {
       const R = qmat(b.q);
@@ -946,6 +957,9 @@ export class FixRigid extends Fix {
           const fc = [0, 1, 2].map((d) => (m * (s.v[3 * i + d] - vold[d])) / dtf - s.f[3 * i + d]);
           vir[0] += virialFactor * u[0] * fc[0]; vir[1] += virialFactor * u[1] * fc[1]; vir[2] += virialFactor * u[2] * fc[2];
           vir[3] += virialFactor * u[0] * fc[1]; vir[4] += virialFactor * u[0] * fc[2]; vir[5] += virialFactor * u[1] * fc[2];
+          // fix_rigid_small.cpp set_xv()/set_v(): vr = 0.5 * x fc terms of this atom, v_tally(1, &i, 1.0, vr)
+          va[6 * i] += virialFactor * u[0] * fc[0]; va[6 * i + 1] += virialFactor * u[1] * fc[1]; va[6 * i + 2] += virialFactor * u[2] * fc[2];
+          va[6 * i + 3] += virialFactor * u[0] * fc[1]; va[6 * i + 4] += virialFactor * u[0] * fc[2]; va[6 * i + 5] += virialFactor * u[1] * fc[2];
         }
       });
     }
@@ -963,6 +977,7 @@ export class FixRigid extends Fix {
     }
     // atom velocities become those of the rigid motion
     this.virial.fill(0);
+    this.vAtom.fill(0);
     this.setXV(false, 1);
   }
 
@@ -1024,6 +1039,7 @@ export class FixRigid extends Fix {
       this.wrapCom(b);
     }
     this.virial.fill(0);
+    this.vAtom.fill(0);
     this.setXV(true, 0.5);
   }
 

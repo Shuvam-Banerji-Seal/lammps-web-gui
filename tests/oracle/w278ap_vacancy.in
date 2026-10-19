@@ -1,0 +1,30 @@
+# oracle: the APIP example examples/PACKAGES/apip/in.vacancy.const.lambda (2047-atom Cu cell with a vacancy, constant switching parameters set by group: precise around the vacancy, 0.5 in the transition shell, fast elsewhere; hybrid/overlay eam/fs/apip + pace/apip with Cu-PBE-core-rep.ace; fix atom_weight/apip with measured times), 20 of the example's 100 NVE steps
+# Native reference: LAMMPS b332f28 built with PKG_APIP and PKG_ML-PACE (/store/shuvam/software/lammps-build-apip/lmp)
+# oracle-examples: PACKAGES/apip/data.vacancy PACKAGES/apip/Cu_300K_Immel_2023.eam.fs
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 9.3e-13, atoms 3.7e-13.
+# oracle-potentials: Cu-PBE-core-rep.ace
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      apip
+timestep        0.001
+read_data       data.vacancy
+group           vacancy id 145 147 148 149 150 994 997 995 1024 1026 1028 1922
+group           transition id 77 79 81 84 88 151 152 153 154 155 158 1089 188 189 192 1033 1039 1964 1022 1021 999 998 996 948 950 952 992 993 139 1025 1027 1029 1034 1035 1038 1088 1920 1921 1923 1924 1925 1930
+group           bulk subtract all vacancy transition
+set             group vacancy apip/lambda precise
+set             group transition apip/lambda 0.5
+set             group bulk apip/lambda fast
+fix             nve all nve
+pair_style      hybrid/overlay eam/fs/apip pace/apip
+pair_coeff      * * eam/fs/apip Cu_300K_Immel_2023.eam.fs Cu
+pair_coeff      * * pace/apip Cu-PBE-core-rep.ace Cu
+fix             weight_atom all atom_weight/apip 50 eam ace 0.5 0 all
+compute         lambda all property/atom apip_lambda
+variable        flag_simple atom c_lambda==1
+variable        flag_switch atom c_lambda<1&&c_lambda>0
+variable        flag_complex atom c_lambda==0
+compute         lambda_types all reduce sum v_flag_simple v_flag_switch v_flag_complex
+thermo_style    custom step etotal pe press pxx pyy pzz pxy pxz pyz c_lambda_types[*]
+thermo_modify   format float %.15g
+thermo          10
+run             20

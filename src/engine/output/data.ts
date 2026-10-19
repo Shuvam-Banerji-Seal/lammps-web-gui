@@ -95,6 +95,9 @@ const BASE_COLS: Record<string, string[]> = {
   // read_data.html, Atoms section for atom_style dpd (the data files of examples/PACKAGES/dpd-react): "atom-ID atom-type
   // dpdTheta x y z"; atom_style.html: "dpd" is "atomic + rho + reactive DPD data", so the energies are not in the data line.
   dpd: ['id', 'type', 'dpdTheta', 'x', 'y', 'z'],
+  // atom_style.html: apip is "*atomic* +" the APIP fields; as native LAMMPS does (src/APIP/atom_vec_apip.cpp at
+  // b332f28, fields_data_atom = id, type, x), the Atoms line is that of atomic and the fields start at zero
+  apip: ['id', 'type', 'x', 'y', 'z'],
   // read_data.html, the Atoms-section table, row smd: "atom-ID atom-type molecule volume mass kradius cradius x0 y0 z0 x y z"
   // (kradius = kernel radius, cradius = contact radius). The x0 columns are read and then replaced by x, as native
   // AtomVecSMD::data_atom_post does ("reset x0 b/c x may have been modified in Atom::data_atoms()").

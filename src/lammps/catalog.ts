@@ -278,13 +278,15 @@ export const SETUP_COMMANDS: CommandDef[] = [
     section: 'setup',
     category: 'Fundamentals',
     doc: 'https://docs.lammps.org/atom_style.html',
+    // atom_style.html: "style = *amoeba* or *angle* or *apip* or *atomic* or ..." and "*apip* arg =
+    // *conservative*/*thermostat* (optional) for conservative APIP/lambda thermostat APIP"
     params: [
       en('style', 'Style',
         ['atomic', 'charge', 'molecular', 'full', 'angle', 'bond', 'sphere', 'ellipsoid',
          'line', 'tri', 'body', 'dipole', 'spin', 'peri', 'sph', 'smd', 'dpd', 'edpd',
-         'mdpd', 'tdpd', 'oxdna', 'electron', 'dielectric', 'template', 'hybrid'],
+         'mdpd', 'tdpd', 'oxdna', 'electron', 'dielectric', 'apip', 'template', 'hybrid'],
         'full'),
-      str('args', 'Extra args (hybrid substyles / tdpd Nspecies / template ID)', '', 'e.g. hybrid charge bond'),
+      str('args', 'Extra args (hybrid substyles / tdpd Nspecies / template ID / apip thermostat|conservative)', '', 'e.g. hybrid charge bond'),
     ],
     build: v => [line('atom_style', v.style, v.args)],
   },

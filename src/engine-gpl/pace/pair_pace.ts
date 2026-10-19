@@ -40,13 +40,13 @@ export class PairPace extends Pair {
   needsHalf = false;
 
   /** recursive evaluator (default) or product */
-  private recursive = true;
-  private chunksize = 4096;
+  protected recursive = true;
+  protected chunksize = 4096;
   /** LAMMPS type -> ACE species (-1 for NULL), index 1..ntypes */
-  private map = new Int32Array(0);
-  private basis: CTildeBasis | null = null;
-  private ace: ACEPaceEvaluator | null = null;
-  private readonly natOrder = new NativeFullOrder();
+  protected map = new Int32Array(0);
+  protected basis: CTildeBasis | null = null;
+  protected ace: ACEPaceEvaluator | null = null;
+  protected readonly natOrder = new NativeFullOrder();
   private setflagAll = false;
 
   override allocate(ntypes: number): void {

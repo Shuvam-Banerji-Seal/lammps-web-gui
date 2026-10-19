@@ -2,7 +2,7 @@ import { Compute } from './compute';
 import { StyleError } from '../force/types';
 import { parseBodyStyle } from '../bodies';
 import type { System } from '../system';
-import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid, isBpmSphereStyle, HEAT_FLOW, HEAT_TEMPERATURE, ELECTRON_SPIN, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_RFORCE, isSuperEllipsoidStyle, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
+import { massOf, CUSTOM_ATTR, customAttr, isEllipsoid, isBpmSphereStyle, HEAT_FLOW, HEAT_TEMPERATURE, ELECTRON_SPIN, ELECTRON_RADIUS, ELECTRON_RVEL, ELECTRON_RFORCE, APIP_LAMBDA, APIP_LAMBDA_INPUT, APIP_E_FAST, APIP_E_PRECISE, isSuperEllipsoidStyle, isLineStyle, isTriStyle, isLineAtom, isTriAtom, LINE_BONUS, TRI_BONUS, TRI_BONUS_COLS } from '../atoms';
 import { lineEnds, triangleCorner } from '../lineTri';
 import { SUPER_INERTIA, superBlock } from '../superellipsoid';
 
@@ -32,6 +32,10 @@ const STRESS_KEYWORDS = ['ke', ...VIRIAL_TERMS, 'virial'] as const;
  * native LAMMPS (black box): spin is accepted as well and gives the electron spin.
  */
 const ELECTRON_ATTRS = new Map<string, string>([['spin', ELECTRON_SPIN], ['espin', ELECTRON_SPIN], ['eradius', ELECTRON_RADIUS], ['ervel', ELECTRON_RVEL], ['erforce', ELECTRON_RFORCE]]);
+// compute_property_atom.html: "*apip_lambda* = switching parameter", "*apip_lambda_input* = input used to calculate the
+// switching parameter", "*apip_e_fast,apip_e_precise* = potential energies mixed by the adaptive-precision potential"
+// (atom_style apip; apip_lambda_input exists in the thermostat mode only, atoms.ts apipProps)
+const APIP_ATTRS = new Map<string, string>([['apip_lambda', APIP_LAMBDA], ['apip_lambda_input', APIP_LAMBDA_INPUT], ['apip_e_fast', APIP_E_FAST], ['apip_e_precise', APIP_E_PRECISE]]);
 
 export class ComputeKEAtom extends Compute {
   readonly style = 'ke/atom';
@@ -469,6 +473,8 @@ export const peratomAttrProblem = (sys: System, a: string): string | null => {
   // compute_property_atom.html: "espin, eradius, ervel, erforce" (atom_style electron; "spin" is the older name of espin)
   const ek = ELECTRON_ATTRS.get(a);
   if (ek && !sys.state.custom.has(ek)) return 'needs atom_style electron';
+  const ak = APIP_ATTRS.get(a);
+  if (ak && !sys.state.custom.has(ak)) return a === 'apip_lambda_input' ? 'needs atom_style apip thermostat' : 'needs atom_style apip';
   if (LINE_END.test(a) && !isLineStyle(sys.atomStyle)) return 'requires atom style line';
   if (TRI_CORNER.test(a) && !isTriStyle(sys.atomStyle)) return 'requires atom style tri';
   if (SPHERE_ATTRS.has(a) && !sys.state.radius) return 'needs atom_style sphere';
@@ -498,7 +504,7 @@ export const fillPeratomAttr = (sys: System, attr: string, groupBit: number, out
   if (d < 0) d = 'xyz'.indexOf(attr[0]);
   const custom = customAttr(s, attr);
   const heat = HEAT_ATTRS[attr] ? s.custom.get(HEAT_ATTRS[attr])!.data : null;
-  const ek = ELECTRON_ATTRS.get(attr);
+  const ek = ELECTRON_ATTRS.get(attr) ?? APIP_ATTRS.get(attr);
   const electron = ek ? s.custom.get(ek)!.data : null;
   const le = LINE_END.exec(attr), tc = TRI_CORNER.exec(attr);
   const lineBonus = le ? s.custom.get(LINE_BONUS)!.data : null;
@@ -619,8 +625,13 @@ export class ComputePropertyAtom extends Compute {
       }
       // compute_property_atom.html also lists "i_name, d_name, i2_name[I], d2_name[I]" (fix
       // property/atom) and the finite-size sphere attributes radius, diameter, omega*, tq*
-      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !SUPER_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !SPIN_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a] && !ELECTRON_ATTRS.has(a) && !LINE_END.test(a) && !TRI_CORNER.test(a)) {
+      if (!(PROPERTY_ATTRS as readonly string[]).includes(a) && !SPHERE_ATTRS.has(a) && !TORQUE_ATTRS.has(a) && !ELLIPSOID_ATTRS.has(a) && !SUPER_ATTRS.has(a) && !DIPOLE_ATTRS.has(a) && !SPIN_ATTRS.has(a) && !CUSTOM_ATTR.test(a) && !HEAT_ATTRS[a] && !ELECTRON_ATTRS.has(a) && !APIP_ATTRS.has(a) && !LINE_END.test(a) && !TRI_CORNER.test(a)) {
         throw new StyleError(`compute property/atom: attribute '${a}' is not supported by the browser engine`);
+      }
+      // as native LAMMPS does (src/compute_property_atom.cpp at b332f28): an APIP field the atom style does not have is
+      // an invalid keyword for that style
+      if (APIP_ATTRS.has(a) && !sys.state.custom.has(APIP_ATTRS.get(a)!)) {
+        throw new StyleError(`Invalid keyword ${a} for atom style ${sys.atomStyle.split(' ')[0]} in compute property/atom command`);
       }
       const problem = peratomAttrProblem(sys, a);
       if (problem) throw new StyleError(`compute property/atom ${a} ${problem}`);

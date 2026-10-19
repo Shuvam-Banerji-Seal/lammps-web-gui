@@ -23,7 +23,7 @@ import { fillSmdDefaults, isSmdStyle, smdCustom, SMD_DEFAULT_MOLECULE } from './
  * hybrid style is used, atoms store and communicate the union of all quantities implied by the
  * individual styles."
  */
-export const atomSubStyles = (st: AtomStyle): string[] => (st.startsWith('body ') ? ['body'] : st === 'ellipsoid superellipsoid' ? ['ellipsoid', 'superellipsoid'] : st.startsWith('hybrid ') ? st.slice(7).trim().split(/\s+/) : [st])
+export const atomSubStyles = (st: AtomStyle): string[] => (st.startsWith('body ') ? ['body'] : st === 'ellipsoid superellipsoid' ? ['ellipsoid', 'superellipsoid'] : st === 'apip conservative' ? ['apip'] : st.startsWith('hybrid ') ? st.slice(7).trim().split(/\s+/) : [st])
   .map((x) => (x.startsWith('template:') ? 'template' : x.startsWith('tdpd:') ? 'tdpd' : x));
 /** atom_style template ID of a style (the ID after the template keyword), or null when there is no template sub-style. */
 export const templateStyleId = (st: AtomStyle): string | null => {
@@ -195,6 +195,8 @@ const bodyCustom = (st: AtomStyle): Map<string, CustomProp> => {
   if (isDpdStyle(st)) {
     for (const name of Object.keys(DPD_DEFAULTS)) m.set(name, { int: false, cols: 0, data: new Float64Array(0) });
   }
+  // atom_style apip (see APIP_DEFAULTS)
+  for (const name of apipProps(st)) m.set(name, { int: name === APIP_LAMBDA_REQUIRED, cols: APIP_WIDTH[name] ?? 0, data: new Float64Array(0) });
   // atom_style.html, superellipsoid: the blockiness exponents and the principal moments of inertia (superellipsoid.ts)
   // atom_style smd: the SMD data (smd.ts)
   for (const [name, c] of smdCustom(st)) m.set(name, c);
@@ -377,6 +379,38 @@ export const DPD_RHO = '#rho';
 export const DPD_DEFAULTS: Record<string, number> = { [DPD_RHO]: 0, [DPD_UCOND]: 0, [DPD_UMECH]: 0, [DPD_UCHEM]: 0, [DPD_UCG]: 0, [DPD_UCGNEW]: 0, [DPD_DUCHEM]: 0, [DPD_THETA]: 0 };
 /** Styles with the DPD properties (atom_style dpd). */
 export const isDpdStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('dpd');
+
+// atom_style apip (atom_style.html): "*apip* arg = *conservative*/*thermostat* (optional) for conservative APIP/lambda
+// thermostat APIP"; the per-atom data of "apip thermostat" is "*atomic* + apip_lambda, apip_lambda_required,
+// apip_lambda_input, apip_lambda_const, apip_lambda_input_ta, apip_e_fast, apip_e_precise, apip_f_const_lambda,
+// apip_f_dyn_lambda" and that of "apip conservative" is "*atomic* + apip_lambda, apip_lambda_required, apip_e_fast,
+// apip_e_precise". "If atom_style *apip* is used, its default argument is" thermostat (the style string 'apip';
+// 'apip conservative' is the other mode). Internal keys ('#' cannot start an i_name or d_name); every value starts at
+// zero, and the two force vectors have three columns.
+export const APIP_LAMBDA = '#apip_lambda';
+export const APIP_LAMBDA_REQUIRED = '#apip_lambda_required';
+export const APIP_E_FAST = '#apip_e_fast';
+export const APIP_E_PRECISE = '#apip_e_precise';
+export const APIP_LAMBDA_INPUT = '#apip_lambda_input';
+export const APIP_LAMBDA_INPUT_TA = '#apip_lambda_input_ta';
+export const APIP_LAMBDA_CONST = '#apip_lambda_const';
+export const APIP_F_CONST_LAMBDA = '#apip_f_const_lambda';
+export const APIP_F_DYN_LAMBDA = '#apip_f_dyn_lambda';
+export const APIP_DEFAULTS: Record<string, number> = {
+  [APIP_LAMBDA]: 0, [APIP_LAMBDA_REQUIRED]: 0, [APIP_E_FAST]: 0, [APIP_E_PRECISE]: 0, [APIP_LAMBDA_INPUT]: 0,
+  [APIP_LAMBDA_INPUT_TA]: 0, [APIP_LAMBDA_CONST]: 0, [APIP_F_CONST_LAMBDA]: 0, [APIP_F_DYN_LAMBDA]: 0,
+};
+const APIP_WIDTH: Record<string, number> = { [APIP_F_CONST_LAMBDA]: 3, [APIP_F_DYN_LAMBDA]: 3 };
+/** Styles with the APIP switching parameter (atom_style apip, either mode). */
+export const isApipStyle = (st: AtomStyle): boolean => atomSubStyles(st).includes('apip');
+/** atom_style apip in its default (lambda thermostat) mode, with the thermostat fields. */
+export const isApipThermostatStyle = (st: AtomStyle): boolean => isApipStyle(st) && st !== 'apip conservative';
+/** The per-atom keys of an apip style (empty for other styles). */
+export const apipProps = (st: AtomStyle): string[] => {
+  if (!isApipStyle(st)) return [];
+  const base = [APIP_LAMBDA, APIP_LAMBDA_REQUIRED, APIP_E_FAST, APIP_E_PRECISE];
+  return isApipThermostatStyle(st) ? [...base, APIP_LAMBDA_INPUT, APIP_LAMBDA_INPUT_TA, APIP_LAMBDA_CONST, APIP_F_CONST_LAMBDA, APIP_F_DYN_LAMBDA] : base;
+};
 
 /** atom_style oxdna: the 5' and 3' partner atom IDs of each atom, internal per-atom props (0 = none). */
 export const OXDNA_5P = '#id5p';
@@ -617,6 +651,7 @@ export const appendAtoms = (s: SimState, a: NewAtoms): number => {
     else if (name in ELECTRON_DEFAULTS) c.data.fill(ELECTRON_DEFAULTS[name], w * n0, w * n);
     else if (name in DIELECTRIC_DEFAULTS) c.data.fill(DIELECTRIC_DEFAULTS[name], w * n0, w * n);
     else if (name in DPD_DEFAULTS) c.data.fill(DPD_DEFAULTS[name], w * n0, w * n);
+    else if (name in APIP_DEFAULTS) c.data.fill(APIP_DEFAULTS[name], w * n0, w * n);
     else if (name in SUPER_DEFAULTS) c.data.fill(SUPER_DEFAULTS[name], w * n0, w * n);
     else if (name in SPH_DEFAULTS) c.data.fill(SPH_DEFAULTS[name], w * n0, w * n);
     else if (name in DPD_MESO_DEFAULTS) c.data.fill(DPD_MESO_DEFAULTS[name], w * n0, w * n);

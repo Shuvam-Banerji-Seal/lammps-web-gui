@@ -14,6 +14,7 @@ import { NEIGHMASK } from '../../engine/neighbor';
 import { parseNum } from '../../engine/force/util';
 import { PairSPHBase } from './pair_sph_base';
 import { LUCY_DERIV_2D, LUCY_DERIV_3D, sphArrays, sphGhostVest } from './common';
+import { tallyAtom } from '../../engine/force/pair/lj_cut';
 
 export class PairSPHTaitwater extends PairSPHBase {
   readonly name: string = 'sph/taitwater';
@@ -116,6 +117,8 @@ export class PairSPHTaitwater extends PairSPHBase {
         f[3 * j] -= delx * fpair;
         f[3 * j + 1] -= dely * fpair;
         f[3 * j + 2] -= delz * fpair;
+        // ev_tally(i, j, nlocal, newton_pair, 0, 0, fpair, del) of pair_sph_taitwater.cpp: no energy
+        if (pc.vatom) tallyAtom(pc, i, j, 0, fpair, delx, dely, delz);
         desph[oj] += deltaE;
         drho[oj] += imass * delVdotDelR * wfd;
       }

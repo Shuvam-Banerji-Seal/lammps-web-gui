@@ -15,6 +15,7 @@
  * its tangential displacement (the shear) is kept for the next step by the caller, keyed by the pair of atom IDs.
  * The shear is a vector in space, stored as seen from the atom with the lower ID (the caller flips the sign).
  */
+import type { PairCompute } from '../../engine/force/types';
 
 export type V3 = [number, number, number];
 
@@ -90,4 +91,21 @@ export const historyFriction = (h: ContactHistory, S: V3, kt: number, mu: number
     xi = [s * xi[0], s * xi[1], s * xi[2]];
   }
   return { ft, pc, shear: xi };
+};
+
+/**
+ * The per-atom part of the body pair styles' ev_tally_xyz(i, j, nlocal, newton_pair, evdwl, 0, facc, del) with newton on
+ * (pair_body_rounded_polygon.cpp and pair_body_rounded_polyhedron.cpp compute at b332f28): facc is the force of the pair
+ * on body i and del = x_i - x_j; half of the energy and of del (x) facc go to each body.
+ */
+export const tallyBodyPair = (
+  pc: PairCompute, i: number, j: number, e: number, facc: ArrayLike<number>, dx: number, dy: number, dz: number,
+): void => {
+  if (pc.eatom) { pc.eatom[i] += 0.5 * e; pc.eatom[j] += 0.5 * e; }
+  const va = pc.vatom;
+  if (!va) return;
+  const v0 = 0.5 * dx * facc[0], v1 = 0.5 * dy * facc[1], v2 = 0.5 * dz * facc[2];
+  const v3 = 0.5 * dx * facc[1], v4 = 0.5 * dx * facc[2], v5 = 0.5 * dy * facc[2];
+  va[6 * i] += v0; va[6 * i + 1] += v1; va[6 * i + 2] += v2; va[6 * i + 3] += v3; va[6 * i + 4] += v4; va[6 * i + 5] += v5;
+  va[6 * j] += v0; va[6 * j + 1] += v1; va[6 * j + 2] += v2; va[6 * j + 3] += v3; va[6 * j + 4] += v4; va[6 * j + 5] += v5;
 };

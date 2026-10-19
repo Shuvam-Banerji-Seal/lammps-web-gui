@@ -14,6 +14,7 @@ import { atomIndex, delta } from '../../engine/force/bonded_util';
 import { spline, splint } from './splines';
 import { TableFileReader, TokenError, WordStream, readTableText, splitWords } from './tablefile';
 import { acos as libmAcos } from '../libm/acos';
+import { tallyAngle } from '../../engine/force/angle/harmonic';
 
 const MY_PI = 3.14159265358979323846;
 const DEG2RAD = MY_PI / 180.0;
@@ -262,7 +263,6 @@ export class AngleTable extends Bonded {
   /** AngleTable::compute: the angle at the middle atom, the tabulated force along each bond, tallies in list order. */
   compute(bc: BondedCompute): void {
     const A = bc.s.topo.angles;
-    const f = bc.f;
     const d1 = [0, 0, 0], d2 = [0, 0, 0];
     for (let n = 0; n < A.n; n++) {
       const i1 = atomIndex(bc, A.atoms[3 * n], 'angle');
@@ -296,22 +296,10 @@ export class AngleTable extends Bonded {
       const a22 = a * c / rsq2;
       const f1x = a11 * delx1 + a12 * delx2, f1y = a11 * dely1 + a12 * dely2, f1z = a11 * delz1 + a12 * delz2;
       const f3x = a22 * delx2 + a12 * delx1, f3y = a22 * dely2 + a12 * dely1, f3z = a22 * delz2 + a12 * delz1;
-      // apply force to each of 3 atoms
-      f[3 * i1] += f1x; f[3 * i1 + 1] += f1y; f[3 * i1 + 2] += f1z;
-      f[3 * i2] -= f1x + f3x; f[3 * i2 + 1] -= f1y + f3y; f[3 * i2 + 2] -= f1z + f3z;
-      f[3 * i3] += f3x; f[3 * i3 + 1] += f3y; f[3 * i3 + 2] += f3z;
+      // apply force to each of 3 atoms, and Angle::ev_tally (the virial, a third of the energy and of the virial to each
+      // atom, the centroid virial)
       bc.acc.eangle += eangle;
-      const v = bc.virial;
-      v[0] += delx1 * f1x + delx2 * f3x;
-      v[1] += dely1 * f1y + dely2 * f3y;
-      v[2] += delz1 * f1z + delz2 * f3z;
-      v[3] += delx1 * f1y + delx2 * f3y;
-      v[4] += delx1 * f1z + delx2 * f3z;
-      v[5] += dely1 * f1z + dely2 * f3z;
-      if (bc.eatom) {
-        const third = (1.0 / 3.0) * eangle;
-        bc.eatom[i1] += third; bc.eatom[i2] += third; bc.eatom[i3] += third;
-      }
+      tallyAngle(bc, i1, i2, i3, eangle, [f1x, f1y, f1z], [f3x, f3y, f3z], [delx1, dely1, delz1], [delx2, dely2, delz2]);
     }
   }
 }

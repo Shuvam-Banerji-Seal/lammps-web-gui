@@ -11,6 +11,7 @@ import { erfcPoly, EWALD_F, ErfcTableCache, type ErfcTable } from '../../engine/
 import { exp as libmExp } from '../libm/exp';
 import { pow as libmPow } from '../libm/pow';
 import { erfc as libmErfc } from '../libm/erf';
+import { tallyAtom } from '../../engine/force/pair/lj_cut';
 
 /**
  * Pair style mm3/switch3/coulgauss/long (pair_mm3_switch3_coulgauss_long.cpp): the MM3 van der Waals term with a
@@ -148,7 +149,7 @@ export class PairMM3Switch3CoulGaussLong extends Pair {
     const cutsq = this.cutsq;
     const cutCoulsq = this.cutCoulsq;
     const truncw = this.truncw, truncwi = this.truncwi;
-    const tally = pc.eatom !== null;
+    const tally = pc.eatom !== null || pc.vatom !== null;
     let evdwlSum = 0, ecoulSum = 0;
     for (let ii = 0; ii < list.inum; ii++) {
       const i = ii;
@@ -234,11 +235,8 @@ export class PairMM3Switch3CoulGaussLong extends Pair {
         f[3 * j + 2] -= delz * fpair;
         evdwlSum += evdwl;
         ecoulSum += ecoul;
-        if (tally) {
-          const eh = 0.5 * (evdwl + ecoul);
-          pc.eatom![i] += eh;
-          pc.eatom![j] += eh;
-        }
+        // ev_tally(i, j, nlocal, newton_pair, evdwl, ecoul, fpair, del): half of the energy and of the virial per atom
+        if (tally) tallyAtom(pc, i, j, evdwl + ecoul, fpair, delx, dely, delz);
       }
     }
     pc.acc.evdwl += evdwlSum;

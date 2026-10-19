@@ -7,11 +7,11 @@ import { perAtomTally } from './perAtomTally';
  * Native LAMMPS passes both on CASES; before the fix stress/atom left out the BPM bonds and pairs. In PERI native fails B
  * itself (pair bpm/peri tallies the per-atom virial with one more vfrac factor than its fdotr global virial,
  * pair_bpm_peri.cpp), so only A is checked there; the engine's pe/atom and stress/atom agree with native per atom to
- * 1e-12 on those cases. The cases with pair gran/hooke/history and bpm/rotational bonds also need the granular contact
- * tallies of tests/enginePerAtomTallyGranular.test.ts.
+ * 1e-12 on those cases.
  */
 
 const CASES = [
+  'w144bpm_rot_store', 'w53bpm_impact_cut', 'w59bpm_impact_rot',
   'w105cf_bpm_rot_negative', 'w105cf_bpm_rot_zero', 'w131cf_bpm_bond_extra', 'w131cf_efield_dipole',
   'w144bpm_rot_chain', 'w144bpm_spring_store', 'w144bpm_spring_volume', 'w166px_settorque_wire',
   'w175cf_efield_dipole_40', 'w51bpm_impact_cut', 'w51bpm_pair_anh', 'w51bpm_spring_compress',

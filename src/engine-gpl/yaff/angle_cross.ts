@@ -20,6 +20,7 @@ import { SimpleBonded, atomIndex, delta } from '../../engine/force/bonded_util';
 import { fmtCoeff, parseNum } from '../../engine/force/util';
 import { StyleError, type BondedCompute } from '../../engine/force/types';
 import { acos as libmAcos } from '../libm/acos';
+import { tallyAngle } from '../../engine/force/angle/harmonic';
 
 // LAMMPS: static constexpr double SMALL = 0.001 (angle_cross.cpp)
 const SMALL = 0.001;
@@ -52,8 +53,6 @@ export class AngleCross extends SimpleBonded {
     const kss = P('Kss'), kbs0 = P('Kbs0'), kbs1 = P('Kbs1'), r00 = P('r00'), r01 = P('r01'), th0 = P('theta0');
     const A = bc.s.topo.angles;
     const d1 = [0, 0, 0], d2 = [0, 0, 0];
-    const f = bc.f;
-    const v = bc.virial;
     let e = 0;
     for (let a = 0; a < A.n; a++) {
       const i = atomIndex(bc, A.atoms[3 * a], 'angle');
@@ -108,19 +107,9 @@ export class AngleCross extends SimpleBonded {
       }
       eang += kbs0[t] * dr1 * dtheta + kbs1[t] * dr2 * dtheta;
       e += eang;
-      for (let q = 0; q < 3; q++) {
-        f[3 * i + q] += f1[q];
-        f[3 * j + q] -= f1[q] + f3[q];
-        f[3 * k + q] += f3[q];
-      }
-      // virial: sum over the bond vectors (native ev_tally with delx1, delx2, f1, f3)
-      v[0] += d1[0] * f1[0] + d2[0] * f3[0];
-      v[1] += d1[1] * f1[1] + d2[1] * f3[1];
-      v[2] += d1[2] * f1[2] + d2[2] * f3[2];
-      v[3] += d1[0] * f1[1] + d2[0] * f3[1];
-      v[4] += d1[0] * f1[2] + d2[0] * f3[2];
-      v[5] += d1[1] * f1[2] + d2[1] * f3[2];
-      if (bc.eatom) { const third = eang / 3; bc.eatom[i] += third; bc.eatom[j] += third; bc.eatom[k] += third; }
+      // the forces and native ev_tally with delx1, delx2, f1, f3: the virial, a third of the energy and of the virial to
+      // each atom, the centroid virial (angle.cpp)
+      tallyAngle(bc, i, j, k, eang, f1, f3, d1, d2);
     }
     bc.acc.eangle += e;
   }

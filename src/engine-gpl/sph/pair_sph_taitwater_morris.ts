@@ -12,6 +12,7 @@ import { type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { PairSPHTaitwater } from './pair_sph_taitwater';
 import { sphArrays, sphGhostVest } from './common';
+import { tallyAtom } from '../../engine/force/pair/lj_cut';
 
 export class PairSPHTaitwaterMorris extends PairSPHTaitwater {
   override readonly name: string = 'sph/taitwater/morris';
@@ -71,6 +72,8 @@ export class PairSPHTaitwaterMorris extends PairSPHTaitwater {
         f[3 * j] -= delx * fpair + velx * fvisc;
         f[3 * j + 1] -= dely * fpair + vely * fvisc;
         f[3 * j + 2] -= delz * fpair + velz * fvisc;
+        // ev_tally(i, j, nlocal, newton_pair, 0, 0, fpair, del) of pair_sph_taitwater_morris.cpp: the central fpair only, as native (the viscous force stays out of the per-atom virial)
+        if (pc.vatom) tallyAtom(pc, i, j, 0, fpair, delx, dely, delz);
         desph[oj] += deltaE;
         drho[oj] += imass * delVdotDelR * wfd;
       }

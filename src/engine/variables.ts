@@ -16,8 +16,10 @@ import { formatNumber } from './script';
  * a next command is used with the variable name, the next string is
  * assigned." loop: "the strings are the integers from 1 to N inclusive ...
  * can also be specified with two arguments N1 and N2"; "pad = all values
- * will be same length, e.g. 001, 002, ..., 100". world/universe/uloop with
- * one partition behave like index/loop on the single world. string:
+ * will be same length, e.g. 001, 002, ..., 100". world/universe/uloop take the value of the partition (the
+ * first one on a single partition). As native LAMMPS does (src/variable.cpp at b332f28): a world variable has one
+ * value per partition ("World variable count {} doesn't match # of partitions {}"), and a universe or uloop
+ * variable at least as many ("{} style variable count {} < # of partitions {}"). string:
  * "performs variable substitution even if the string parameter is quoted".
  * format: "vname fstr" formats an equal-style variable. "Vector-style variables
  * only can be initialized with a special syntax, instead of using a formula.
@@ -66,6 +68,8 @@ export class Variables {
    * run uses partition 0, which is the first value (as before).
    */
   partition = 0;
+  /** Partitions of the session (lammps -partition N); the world-style count check reads it. */
+  nworlds = 1;
 
   /** warn: prints a WARNING line (the session's log). */
   constructor(private readFile: (name: string) => string, private warn: (text: string) => void = () => undefined) {}
@@ -94,6 +98,12 @@ export class Variables {
     switch (style) {
       case 'index': case 'world': case 'universe':
         if (args.length < 1) throw new StyleError(`variable ${style} needs at least one value`);
+        if (style === 'world' && args.length !== this.nworlds) {
+          throw new StyleError(`World variable count ${args.length} doesn't match # of partitions ${this.nworlds}`);
+        }
+        if (style === 'universe' && args.length < this.nworlds) {
+          throw new StyleError(`universe style variable count ${args.length} < # of partitions ${this.nworlds}`);
+        }
         // world/universe: partition k takes value k (the first partition takes the first value)
         v = { style, values: [...args], which: style === 'index' ? 0 : Math.min(this.partition, args.length - 1) };
         break;
@@ -114,6 +124,9 @@ export class Variables {
         const values: string[] = [];
         for (let k = n1; k <= n2; k++) values.push(pad ? String(k).padStart(width, '0') : String(k));
         if (values.length === 0) throw new StyleError(`variable ${style} has no values`);
+        if (style === 'uloop' && values.length < this.nworlds) {
+          throw new StyleError(`uloop style variable count ${values.length} < # of partitions ${this.nworlds}`);
+        }
         v = { style, values, which: style === 'uloop' ? Math.min(this.partition, values.length - 1) : 0 };
         break;
       }

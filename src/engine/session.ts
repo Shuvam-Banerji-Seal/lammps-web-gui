@@ -139,6 +139,7 @@ export class Session {
     sys.commands = COMMANDS;
     sys.ff.pairThreads = pairThreadsOf(this.backend);
     sys.vars.partition = k;
+    sys.vars.nworlds = this.partitions;
     sys.replicaPeers = () => this.replicas;
     return sys;
   }

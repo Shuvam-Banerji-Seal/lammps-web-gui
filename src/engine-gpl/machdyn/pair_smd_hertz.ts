@@ -14,7 +14,7 @@
  * kernel radii) interact through their contact radii only when they are within half the sum of the contact radii.
  * The energy is fpair * 0.4 * overlap (the expression native uses, which conserves the total energy).
  */
-import { Pair, StyleError, evTally, type PairCompute, type StyleContext } from '../../engine/force/types';
+import { Pair, StyleError, type PairCompute, type StyleContext } from '../../engine/force/types';
 import { parseNum } from '../../engine/force/util';
 import { NEIGHMASK } from '../../engine/neighbor';
 import { NativePairOrder } from '../neighbor/nativeOrder';
@@ -146,7 +146,18 @@ export class PairSMDHertz extends Pair {
       else fpair = 0.0;
       // a ghost partner carries half of the pair (newton off): the energy and virial tallies take half
       const w = j < nlocal ? 1 : 0.5;
-      evTally(pc, i, j, w * evdwl, 0, w * fpair, delx, dely, delz);
+      // ev_tally with newton off: the totals take half per owned end; per atom, half to i and half to j when owned
+      pc.acc.evdwl += w * evdwl;
+      const v0 = delx * delx * fpair, v1 = dely * dely * fpair, v2 = delz * delz * fpair;
+      const v3 = delx * dely * fpair, v4 = delx * delz * fpair, v5 = dely * delz * fpair;
+      const vir = pc.acc.virial;
+      vir[0] += w * v0; vir[1] += w * v1; vir[2] += w * v2; vir[3] += w * v3; vir[4] += w * v4; vir[5] += w * v5;
+      if (pc.eatom) { pc.eatom[i] += 0.5 * evdwl; if (j < nlocal) pc.eatom[j] += 0.5 * evdwl; }
+      if (pc.vatom) {
+        const va = pc.vatom, w6 = [0.5 * v0, 0.5 * v1, 0.5 * v2, 0.5 * v3, 0.5 * v4, 0.5 * v5];
+        for (let c = 0; c < 6; c++) va[6 * i + c] += w6[c];
+        if (j < nlocal) for (let c = 0; c < 6; c++) va[6 * j + c] += w6[c];
+      }
       f[3 * i] += delx * fpair;
       f[3 * i + 1] += dely * fpair;
       f[3 * i + 2] += delz * fpair;

@@ -658,6 +658,12 @@ export class PairSMDTlsph extends Pair {
         // ev_tally_xyz with j owned (newton off): the pair virial is dx (x) sum
         v[0] += dx[0] * sum0; v[1] += dx[1] * sum1; v[2] += dx[2] * sum2;
         v[3] += dx[0] * sum1; v[4] += dx[0] * sum2; v[5] += dx[1] * sum2;
+        // per-atom: half of dx (x) sum to each of i and the (owned) j (ev_tally_xyz, newton off)
+        if (pc.vatom) {
+          const va = pc.vatom;
+          const w6 = [0.5 * dx[0] * sum0, 0.5 * dx[1] * sum1, 0.5 * dx[2] * sum2, 0.5 * dx[0] * sum1, 0.5 * dx[0] * sum2, 0.5 * dx[1] * sum2];
+          for (let c = 0; c < 6; c++) { va[6 * i + c] += w6[c]; va[6 * j + c] += w6[c]; }
+        }
         shepard += wf * volj;
         // failure model integration-point-wise (maximum plastic strain): the bond softens once both atoms are damaged
         if (P.failMaxPlastic !== null) {

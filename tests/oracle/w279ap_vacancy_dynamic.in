@@ -1,0 +1,30 @@
+# oracle: the APIP example examples/PACKAGES/apip/in.vacancy.dynamic.lambda (2047-atom Cu cell with a vacancy; hybrid/overlay eam/fs/apip + pace/apip with Cu-PBE-core-rep.ace + lambda/input/csp/apip fcc cutoff 6 + lambda/zone/apip 3; fix lambda/apip with time-averaged zone and min_delta_lambda; fix atom_weight/apip; fix lambda_thermostat/apip N_rescaling 600), 20 of the example's 100 NVE steps, with the switching-parameter sums and the thermostat vector
+# Native reference: LAMMPS b332f28 built with PKG_APIP and PKG_ML-PACE (/store/shuvam/software/lammps-build-apip/lmp)
+# oracle-examples: PACKAGES/apip/data.vacancy PACKAGES/apip/Cu_300K_Immel_2023.eam.fs
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.9e-11, atoms 2.3e-13.
+# oracle-potentials: Cu-PBE-core-rep.ace
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      apip
+timestep        0.001
+read_data       data.vacancy
+fix             nve all nve
+pair_style      hybrid/overlay eam/fs/apip pace/apip lambda/input/csp/apip fcc cutoff 6.0 lambda/zone/apip 3.0
+pair_coeff      * * eam/fs/apip Cu_300K_Immel_2023.eam.fs Cu
+pair_coeff      * * pace/apip Cu-PBE-core-rep.ace Cu
+pair_coeff      * * lambda/input/csp/apip
+pair_coeff      * * lambda/zone/apip
+fix             lambda all lambda/apip 2.5 3.0 time_averaged_zone 2.0 3.0 110 110 min_delta_lambda 0.00909090909090909
+fix             weight_atom all atom_weight/apip 100 eam ace lambda/input lambda/zone all
+fix             lambda_thermostat all lambda_thermostat/apip N_rescaling 600 store_atomic_forces 100
+compute         lambda all property/atom apip_lambda
+compute         lambda_input all property/atom apip_lambda_input
+compute         lsum all reduce sum c_lambda c_lambda_input
+variable        flag_simple atom c_lambda==1
+variable        flag_switch atom c_lambda<1&&c_lambda>0
+variable        flag_complex atom c_lambda==0
+compute         lambda_types all reduce sum v_flag_simple v_flag_switch v_flag_complex
+thermo_style    custom step etotal pe press c_lambda_types[*] c_lsum[1] c_lsum[2] f_lambda_thermostat[1] f_lambda_thermostat[2] f_lambda_thermostat[3] f_lambda_thermostat[4]
+thermo_modify   format float %.15g
+thermo          5
+run             20

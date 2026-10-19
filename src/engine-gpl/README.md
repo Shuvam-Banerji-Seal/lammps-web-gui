@@ -75,3 +75,6 @@ source and licence in its header:
   `sincostab.c`, `branred.c`, built without FMA contraction), bit for bit; LGPL-2.1-or-later, used the same way.
 - `dpdrx/unordered_order.ts`: the iteration order of libstdc++'s `std::unordered_set<std::string>` (GCC 11),
   GPL-3.0-or-later with the GCC Runtime Library Exception (decided 2026-10-15).
+- `apip/stdrandom.ts`: libstdc++'s `std::mt19937`, `std::shuffle` and `std::uniform_int_distribution` (GCC 11, the
+  random stream of fix lambda_thermostat/apip), GPL-3.0-or-later with the GCC Runtime Library Exception, used the same
+  way (written from the algorithms; checked against a GCC 11 build).

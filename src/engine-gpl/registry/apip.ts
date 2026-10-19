@@ -8,6 +8,10 @@
 import type { Pair } from '../../engine/force/types';
 import type { FixFactory } from '../../engine/styles';
 import { FixAtomWeightAPIP } from '../apip/fix_atom_weight_apip';
+import { FixLambdaAPIP } from '../apip/fix_lambda_apip';
+import { FixLambdaThermostatAPIP } from '../apip/fix_lambda_thermostat_apip';
+import { PairLambdaInputAPIP, PairLambdaInputCSPAPIP } from '../apip/pair_lambda_input_apip';
+import { PairLambdaZoneAPIP } from '../apip/pair_lambda_zone_apip';
 import { PairEAMAPIP, PairEAMFSAPIP } from '../apip/pair_eam_apip';
 import { PairPaceAPIP, PairPaceFastAPIP, PairPacePreciseAPIP } from '../apip/pair_pace_apip';
 
@@ -18,9 +22,14 @@ export const PAIRS: Record<string, () => Pair> = {
   'pace/apip': () => new PairPaceAPIP(),
   'pace/precise/apip': () => new PairPacePreciseAPIP(),
   'pace/fast/apip': () => new PairPaceFastAPIP(),
+  'lambda/input/apip': () => new PairLambdaInputAPIP(),
+  'lambda/input/csp/apip': () => new PairLambdaInputCSPAPIP(),
+  'lambda/zone/apip': () => new PairLambdaZoneAPIP(),
 };
 
 /** fix names. */
 export const FIXES: Record<string, FixFactory> = {
   'atom_weight/apip': (sys, id, group, args) => new FixAtomWeightAPIP(sys, id, group, args),
+  'lambda/apip': (sys, id, group, args) => new FixLambdaAPIP(sys, id, group, args),
+  'lambda_thermostat/apip': (sys, id, group, args) => new FixLambdaThermostatAPIP(sys, id, group, args),
 };

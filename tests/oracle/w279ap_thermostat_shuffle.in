@@ -1,0 +1,27 @@
+# oracle: dynamic APIP switching parameters with short histories and a three-neighbour thermostat (fix lambda_thermostat/apip N_rescaling 3 seed 1234: the libstdc++ std::shuffle of std::mt19937 picks the rescaled neighbours) on the 2047-atom vacancy cell of examples/PACKAGES/apip: hybrid/overlay eam/fs/apip + pace/apip (Cu-1.yace) + lambda/input/csp/apip + lambda/zone/apip, fix lambda/apip 0.5 1.5 with 3-step histories and store_atomic_stats, 20 NVE steps, with the per-atom stats and thermostat vector sums
+# Native reference: LAMMPS b332f28 built with PKG_APIP and PKG_ML-PACE (/store/shuvam/software/lammps-build-apip/lmp)
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.8e-14, atoms 5.9e-14.
+# oracle-examples: PACKAGES/apip/data.vacancy PACKAGES/apip/Cu_300K_Immel_2023.eam.fs PACKAGES/apip/Cu-1.yace
+# oracle-compare: thermo=all atoms=all
+units           metal
+atom_style      apip
+timestep        0.001
+read_data       data.vacancy
+velocity        all create 600 4928459 loop geom
+fix             nve all nve
+pair_style      hybrid/overlay eam/fs/apip pace/apip lambda/input/csp/apip fcc cutoff 6.0 lambda/zone/apip 3.0
+pair_coeff      * * eam/fs/apip Cu_300K_Immel_2023.eam.fs Cu
+pair_coeff      * * pace/apip Cu-1.yace Cu
+pair_coeff      * * lambda/input/csp/apip
+pair_coeff      * * lambda/zone/apip
+fix             lambda all lambda/apip 0.5 1.5 time_averaged_zone 2.0 3.0 3 3 store_atomic_stats
+fix             lambda_thermostat all lambda_thermostat/apip N_rescaling 3 seed 1234
+compute         lambda all property/atom apip_lambda
+compute         lsum all reduce sum c_lambda f_lambda[1] f_lambda[2] f_lambda[3] f_lambda[4] f_lambda[5]
+variable        flag_switch atom c_lambda<1&&c_lambda>0
+variable        flag_complex atom c_lambda==0
+compute         lambda_types all reduce sum v_flag_switch v_flag_complex
+thermo_style    custom step etotal pe ke press c_lambda_types[*] c_lsum[*] f_lambda_thermostat[*]
+thermo_modify   format float %.15g
+thermo          5
+run             20

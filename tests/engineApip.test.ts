@@ -6,11 +6,15 @@
  * atom style apip in compute property/atom command" (and "... apip_lambda for atom style atomic ..." for an atomic
  * style); atom_style hybrid apip atomic runs; write_restart/read_restart keeps
  * the switching parameters (sum 1 for four atoms at 0.25) and read_data starts them at 0 ("Atoms # apip" lines). The
- * native parity of the pair styles and fix atom_weight/apip is the oracle cases w278ap_*.
+ * stage-2 messages (fix lambda/apip, fix lambda_thermostat/apip, pair lambda/input/csp/apip and lambda/zone/apip) are
+ * also the native ones of these inputs. The native parity of the pair styles and fixes is the oracle cases w278ap_* and
+ * w279ap_*.
  */
 import { describe, expect, it } from 'vitest';
 import { Session } from '../src/engine/interpreter';
 import type { EngineEvent } from '../src/engine/types';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const base = ['units metal', 'lattice fcc 3.6', 'region b block 0 1 0 1 0 1', 'create_box 1 b', 'create_atoms 1 box', 'mass 1 63.5'];
 
@@ -94,4 +98,43 @@ describe('data and restart files', () => {
     expect(r.error).toBe('');
     expect(r.rows[0].c_s).toBe(1);
   });
+});
+
+describe('dynamic switching parameters (stage 2): native messages', () => {
+  const ex = join(__dirname, '..', 'third_party', 'lammps', 'examples', 'PACKAGES', 'apip');
+  const box = ['units metal', 'atom_style apip', 'lattice fcc 3.615', 'region b block 0 3 0 3 0 3', 'create_box 1 b', 'create_atoms 1 box', 'mass 1 63.5'];
+  const pairs = ['pair_style hybrid/overlay eam/fs/apip lambda/input/csp/apip fcc cutoff 6.0 lambda/zone/apip 3.0',
+    'pair_coeff * * eam/fs/apip Cu_300K_Immel_2023.eam.fs Cu', 'pair_coeff * * lambda/input/csp/apip', 'pair_coeff * * lambda/zone/apip'];
+  const errorOf = async (lines: string[]): Promise<string> => {
+    const events: EngineEvent[] = [];
+    const session = new Session({ emit: (e: EngineEvent) => events.push(e), writeFile: () => {} } as never);
+    session.addFile('Cu_300K_Immel_2023.eam.fs', readFileSync(join(ex, 'Cu_300K_Immel_2023.eam.fs'), 'latin1'));
+    try {
+      await session.execute([...box, ...lines].join('\n'));
+    } catch {
+      // the error event carries the message
+    }
+    const err = events.find((e) => e.kind === 'error');
+    return err && 'message' in err ? String(err.message) : '';
+  };
+  const cases: [string, string[], RegExp][] = [
+    ['thresholds', ['fix l all lambda/apip 2.0 1.0'], /fix lambda: Illegal or missing threshold values/],
+    ['history length', ['fix l all lambda/apip 1.0 2.0 time_averaged_zone 2 3 1 5'], /fix lambda: history_length > 1 required/],
+    ['unknown fix lambda argument', ['fix l all lambda/apip 1.0 2.0 bogus'], /fix lambda\/apip: unknown argument bogus/],
+    ['lambda_non_group', ['fix l all lambda/apip 1.0 2.0 lambda_non_group 2'], /fix lambda\/apip: Illegal value of lambda_non_group/],
+    ['thermostat seed', ['fix t all lambda_thermostat/apip seed 0'], /fix lambda_thermostat\/apip seed <= 0/],
+    ['unknown thermostat argument', ['fix t all lambda_thermostat/apip foo'], /fix lambda_thermostat\/apip: unknown argument foo/],
+    ['N_rescaling', ['fix t all lambda_thermostat/apip N_rescaling 1'], /fix lambda_thermostat\/apip: rescaling_N_neighbours <= 1/],
+    ['odd csp neighbour count', ['pair_style lambda/input/csp/apip 7'], /pair_lambda_input_csp: even number of neighbours > 1 for csp calculation required/],
+    ['unknown csp argument', ['pair_style lambda/input/csp/apip fcc foo 1'], /pair_lambda_input_csp: unknown argument foo/],
+    ['zone argument count', ['pair_style lambda/zone/apip 1 2'], /pair_lambda_zone: expected 1 instead of 2 arguments/],
+    ['zone cutoff', ['pair_style lambda/zone/apip 0'], /pair_lambda_zone: cut_global = 0 <= 0/],
+    ['fix_modify before a run', [...pairs, 'fix l all lambda/apip 1.0 2.0', 'fix_modify l 2.0 3.0'], /fix lambda\/apip: cutoff of potential smaller than cutoff of switching region/],
+    ['lambda/input without fix lambda/apip', [...pairs, 'run 0'], /Exact one fix lambda\/apip required/],
+  ];
+  for (const [label, lines, re] of cases) {
+    it(label, async () => {
+      expect(await errorOf(lines)).toMatch(re);
+    });
+  }
 });

@@ -96,9 +96,11 @@ export class FixAtomWeightAPIP extends Fix {
     for (const st of styles) {
       if (!isTimed(st)) continue;
       const n = (st as { name?: string }).name ?? '';
-      // native extract names: eam/apip (also eam/fs/apip), pace/apip (also pace/precise/apip), pace/fast/apip
+      // native extract names: eam/apip (also eam/fs/apip), pace/apip (also pace/precise/apip), pace/fast/apip,
+      // lambda/input/apip (also lambda/input/csp/apip), lambda/zone/apip
       const answers = prefix === 'eam/apip' ? n === 'eam/apip' || n === 'eam/fs/apip'
         : prefix === 'pace/apip' ? n === 'pace/apip' || n === 'pace/precise/apip'
+        : prefix === 'lambda/input/apip' ? n.startsWith('lambda/input/')
         : n === prefix;
       if (answers) return st;
     }
@@ -169,7 +171,12 @@ export class FixAtomWeightAPIP extends Fix {
       const gb = this.sys.groups.bit(this.groupName);
       for (let i = 0; i < n; i++) if (s.mask[i] & gb) weight[i] += this.timeAtom[2];
     }
-    if (this.timeAtom[3] > 0) throw new StyleError('fix lambda/apip required to approximate weight of pair style lambda/zone/apip');
+    if (this.timeAtom[3] > 0) {
+      // the atoms whose time-averaged switching value (column history_length + 1 of fix lambda/apip) is not 1
+      const fl = this.sys.fixes.find((f) => f.style === 'lambda/apip') as unknown as { lambdaOfInputHistory(i: number): number } | undefined;
+      if (!fl) throw new StyleError('atom_weight/apip: extracting fix_lambda:lambda_input_history failed');
+      for (let i = 0; i < n; i++) if (fl.lambdaOfInputHistory(i) !== 1) weight[i] += this.timeAtom[3];
+    }
     if (this.rescaleWork) {
       let workAtoms = 0;
       for (let i = 0; i < n; i++) workAtoms += weight[i];

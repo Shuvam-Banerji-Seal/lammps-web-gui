@@ -195,6 +195,12 @@ export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
       [this.kxmax, this.kymax, this.kzmax] = this.kEwald;
     }
     this.kmax = Math.max(this.kxmax, this.kymax, this.kzmax);
+    // The cos/sin tables are laid out for kmax: when it changes (a later run's init picks a new G-ewald from the solved
+    // charges), they are recomputed at the next use. Measured with native LAMMPS: ewald_electrode.cpp setup() reallocates
+    // cs and sn when kmax grows without refilling them, and update_eikr(false) keeps them on the same step, so a second
+    // run 0 of fix electrode/conp reads stale tables (w68elec_conp_qtotal: pe 118.814 where a fixed kmax/ewald gives
+    // 117.004); the engine uses current tables.
+    if (this.kmax !== this.csK) this.eikrStep = -1;
     const gsqxmx = this.unitk[0] * this.unitk[0] * this.kxmax * this.kxmax;
     const gsqymx = this.unitk[1] * this.unitk[1] * this.kymax * this.kymax;
     const gsqzmx = this.unitk[2] * this.unitk[2] * this.kzmax * this.kzmax;
@@ -459,7 +465,6 @@ export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
   /** The k-space energy and forces, the virial, and the boundary correction (EwaldElectrode::compute). */
   compute(kc: KSpaceCompute): void {
     if (!this.initDone) throw new StyleError('kspace_style ewald/electrode used before init');
-    if (kc.eatom || kc.vatom) throw new StyleError('compute pe/atom and stress/atom with kspace_style ewald/electrode are not supported by the browser engine');
     const s = kc.s, f = kc.f, q = s.q, n = s.n;
     const qscale = kc.qqrd2e;
     this.qsumQsq(s);
@@ -470,6 +475,7 @@ export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
     const sv = (d: number, k: number, i: number): number => sn[d][(K + k) * n + i];
     const ek = new Float64Array(3 * n);
     const sfacrl = this.sfacrl, sfacim = this.sfacim;
+    const eatom = kc.eatom, vatom = kc.vatom;
     for (let k = 0; k < this.kcount; k++) {
       const kx = this.kxvecs[k], ky = this.kyvecs[k], kz = this.kzvecs[k];
       for (let i = 0; i < n; i++) {
@@ -481,6 +487,11 @@ export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
         ek[3 * i] += partial * this.eg[3 * k];
         ek[3 * i + 1] += partial * this.eg[3 * k + 1];
         ek[3 * i + 2] += partial * this.eg[3 * k + 2];
+        if (eatom || vatom) {
+          const partialPeratom = exprl * sfacrl[k] + expim * sfacim[k];
+          if (eatom) eatom[i] += q[i] * this.ug[k] * partialPeratom;
+          if (vatom) for (let j = 0; j < 6; j++) vatom[6 * i + j] += this.ug[k] * this.vg[6 * k + j] * partialPeratom;
+        }
       }
     }
     // convert E-field to force (wire is not supported, so x and y always; slabflag != 2 always here)
@@ -501,9 +512,17 @@ export class KSpaceEwaldElectrode extends KSpace implements ElectrodeKSpace {
     energy *= qscale;
     for (let j = 0; j < 6; j++) kc.acc.vlong[j] += virial[j] * qscale;
     kc.acc.elong += energy;
+    // per-atom energy (with the self-energy correction) and virial
+    if (eatom) {
+      for (let i = 0; i < n; i++) {
+        eatom[i] -= this.gEwald * q[i] * q[i] / MY_PIS + MY_PI2 * q[i] * this.qsum / (this.gEwald * this.gEwald * this.volume);
+        eatom[i] *= qscale;
+      }
+    }
+    if (vatom) for (let i = 0; i < n; i++) for (let j = 0; j < 6; j++) vatom[6 * i + j] *= q[i] * qscale;
     // boundary correction (energy and forces)
     const env = { ...this.env, qqrd2e: qscale };
-    kc.acc.elong += this.boundcorr.computeCorr(s, f, this.qsum, env);
+    kc.acc.elong += this.boundcorr.computeCorr(s, f, this.qsum, env, eatom);
   }
 
   // ------------------------------------------------------------ electrode interface

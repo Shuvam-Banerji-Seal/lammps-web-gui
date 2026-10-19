@@ -1,0 +1,21 @@
+# oracle: fix electrode/conp qtotal 0.1 with ewald/electrode slab 8.0 and a fixed kmax/ewald 1 1 50, two run 0 (the second init chooses a new G-ewald from the solved charges); the second run's elastance uses tables of the current kmax
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 1.1e-14, atoms 1.3e-14. Before the fix the engine printed NaN on the second run (the cos/sin tables of the old kmax).
+# oracle-inputs: w68elec_au_elyt.data
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-12
+boundary        p p f
+kspace_style    ewald/electrode 1.0e-8
+kspace_modify   slab 8.0 kmax/ewald 1 1 50
+units           real
+atom_style      full
+pair_style      lj/cut/coul/long 12
+read_data       w68elec_au_elyt.data
+group           bot type 1
+group           top type 2
+variable        q atom q
+compute         qbot bot reduce sum v_q
+compute         qtop top reduce sum v_q
+thermo_style    custom step pe elong c_qbot c_qtop
+thermo_modify   format float %.15g
+fix             conp bot electrode/conp 0 2 couple top 1 qtotal 0.1
+run             0
+run             0

@@ -67,7 +67,6 @@ export class KSpacePPPMElectrode extends KSpacePPPM implements ElectrodeKSpace {
   }
 
   compute(kc: KSpaceCompute): void {
-    if (kc.eatom || kc.vatom) throw new StyleError('compute pe/atom and stress/atom with kspace_style pppm/electrode are not supported by the browser engine');
     const s = kc.s;
     this.qsum = 0;
     this.qsqsum = 0;
@@ -76,7 +75,7 @@ export class KSpacePPPMElectrode extends KSpacePPPM implements ElectrodeKSpace {
     this.area = kc.geom.lx * kc.geom.ly;
     this.zprdSlab = kc.geom.lz * this.slab;
     super.compute(kc);
-    kc.acc.elong += this.boundcorr.computeCorr(s, kc.f, this.qsum, this.env(kc.qqrd2e));
+    kc.acc.elong += this.boundcorr.computeCorr(s, kc.f, this.qsum, this.env(kc.qqrd2e), kc.eatom);
   }
 
   private env(qqrd2e: number): BoundaryEnv {

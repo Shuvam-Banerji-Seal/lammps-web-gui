@@ -14,7 +14,7 @@
  * The core (dump_image.ts) hands over the atoms of the dump group, their positions, masses (metal and real units only),
  * their atom colours and the minimum-image rule. Native walks the neighbor list; with a full pair search every pair
  * within the cutoff is seen once, which is the same set for a current list. Each bond is two cylinders, from each end
- * to the middle of the bond (draw_cylinder with sflag 3), in the colour of its own atom.
+ * to the middle of the bond (draw_cylinder with sflag 3), in the colour and the opacity (aopacity) of its own atom.
  */
 import type { AutoBondSpec, RasterFrame, Vec3 } from '../../engine/output/image_objects';
 import { drawCylinder } from './draw';
@@ -43,8 +43,8 @@ export function drawAutoBonds(f: RasterFrame, b: AutoBondSpec): void {
       const x2: Vec3 = [x[3 * j], x[3 * j + 1], x[3 * j + 2]];
       const mid1: Vec3 = [x1[0] + 0.5 * del[0], x1[1] + 0.5 * del[1], x1[2] + 0.5 * del[2]];
       const mid2: Vec3 = [x2[0] - 0.5 * del[0], x2[1] - 0.5 * del[1], x2[2] - 0.5 * del[2]];
-      drawCylinder(f, x1, mid1, b.colorOf(i), b.width, 3, 1);
-      drawCylinder(f, mid2, x2, b.colorOf(j), b.width, 3, 1);
+      drawCylinder(f, x1, mid1, b.colorOf(i), b.width, 3, b.opacityOf(i));
+      drawCylinder(f, mid2, x2, b.colorOf(j), b.width, 3, b.opacityOf(j));
     }
   }
 }

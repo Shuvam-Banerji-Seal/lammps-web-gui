@@ -17,7 +17,8 @@
  * F-dot-r shortcut: native sets no_virial_fdotr_compute), so the virial is tallied here pair by pair from those
  * forces, as the native code does. Ghost atoms: the M site of a ghost O is its owner's M site shifted by the image
  * (native compute_newsite of the ghost's own H images gives the same), and the force on a ghost is applied to its owner.
- * Per-atom energy and virial are refused by name.
+ * Per-atom energy and virial: the LJ term as Pair::ev_tally (half to each atom) and the Coulomb term as
+ * Pair::ev_tally_tip4p (src/pair.cpp at b332f28): an O's half goes 1 - alpha to O and alpha / 2 to each of its H atoms.
  */
 import { StyleError, type BondedEquilibria, type PairCompute } from '../../engine/force/types';
 import { NEIGHMASK, SBBITS } from '../../engine/neighbor';
@@ -151,7 +152,6 @@ export class PairLJLongTIP4PLong extends PairLJLongCoulLong {
   }
 
   compute(pc: PairCompute): void {
-    if (pc.eatom || pc.vatom) throw new StyleError(`per-atom energy and virial are not supported by pair style ${this.name}`);
     const model = this.siteModel();
     if (!model) throw new StyleError(`pair style ${this.name} is not initialized`);
     const list = pc.half!;
@@ -196,6 +196,12 @@ export class PairLJLongTIP4PLong extends PairLJLongCoulLong {
     }
     const lj1 = this.lj1, lj2 = this.lj2, lj3 = this.lj3, lj4 = this.lj4, offset = this.offset;
     const v = pc.acc.virial;
+    const eatom = pc.eatom, vatom = pc.vatom;
+    /** ev_tally_tip4p: weight w of the pair's ecoul and virial to atom k. */
+    const tallyAt = (k: number, w: number, e: number, vl: number[]): void => {
+      if (eatom) eatom[k] += w * e;
+      if (vatom) for (let c = 0; c < 6; c++) vatom[6 * k + c] += w * vl[c];
+    };
     const isO = (k: number) => type[k] === otype;
     const own = (k: number) => (k < nlocal ? k : owner[k]);
     // the Coulomb site of atom k (M for O, the atom otherwise); a ghost O is its owner's M shifted by the image
@@ -289,6 +295,11 @@ export class PairLJLongTIP4PLong extends PairLJLongCoulLong {
           evdwl += ev;
           v[0] += dx * dx * forcelj; v[1] += dy * dy * forcelj; v[2] += dz * dz * forcelj;
           v[3] += dx * dy * forcelj; v[4] += dx * dz * forcelj; v[5] += dy * dz * forcelj;
+          if (eatom) { eatom[i] += 0.5 * ev; eatom[j] += 0.5 * ev; }
+          if (vatom) {
+            const vl = [dx * dx * forcelj, dy * dy * forcelj, dz * dz * forcelj, dx * dy * forcelj, dx * dz * forcelj, dy * dz * forcelj];
+            for (let c = 0; c < 6; c++) { vatom[6 * i + c] += 0.5 * vl[c]; vatom[6 * j + c] += 0.5 * vl[c]; }
+          }
         }
         // the Coulomb term on the sites (the atom distance gates it, as native: rsq < cut_coulsqplus)
         if (rsq >= cutCoulsqplus) continue;
@@ -356,6 +367,19 @@ export class PairLJLongTIP4PLong extends PairLJLongCoulLong {
           for (let c = 0; c < 6; c++) vloc[c] += vj[c];
         }
         for (let c = 0; c < 6; c++) v[c] += vloc[c];
+        if (eatom || vatom) {
+          if (iO) {
+            tallyAt(i, 0.5 * (1 - alpha), r.e, vloc);
+            tallyAt(h1[i], 0.25 * alpha, r.e, vloc);
+            tallyAt(h2[i], 0.25 * alpha, r.e, vloc);
+          } else tallyAt(i, 0.5, r.e, vloc);
+          if (jO) {
+            const oj = own(j);
+            tallyAt(j, 0.5 * (1 - alpha), r.e, vloc);
+            tallyAt(h1[oj], 0.25 * alpha, r.e, vloc);
+            tallyAt(h2[oj], 0.25 * alpha, r.e, vloc);
+          } else tallyAt(j, 0.5, r.e, vloc);
+        }
       }
       f[3 * i] += fxi; f[3 * i + 1] += fyi; f[3 * i + 2] += fzi;
     }

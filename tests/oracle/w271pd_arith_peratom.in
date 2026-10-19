@@ -1,0 +1,30 @@
+# oracle: compute pe/atom and stress/atom (all terms and the kspace terms) with pair lj/long/coul/long long long, pair_modify mix arithmetic and kspace pppm/disp (7 dispersion structure factors) on an even mesh (12, orders 4 and 6): the off-diagonal per-atom virial of poisson_2s_peratom takes vg2; the w250pd_ljlong_arith system as atom_style full, dumps at steps 0 and 20
+# Measured max relative error, engine vs native (thermo rows, final atoms): thermo 5.1e-15, atoms 8.7e-15 (the dumped per-atom values included). Before the fix the off-diagonal kspace stress/atom differed from native by 2e-6 of its largest value.
+# oracle-inputs: w271pd_full16.data
+# oracle-files: w271pd_arith_peratom.dump
+# oracle-compare: thermo=all atoms=all rel=1e-10 abs=1e-10 filerel=1e-9
+units           real
+atom_style      full
+read_data       w271pd_full16.data
+bond_style      harmonic
+bond_coeff      1 100.0 1.5
+special_bonds   lj 1.0 1.0 1.0 coul 0.0 0.5 1.0
+timestep        0.01
+fix             1 all nve
+thermo_style    custom step pe ecoul elong evdwl press pxx pyy pzz pxy pxz pyz
+thermo_modify   format float %.15g
+pair_style      lj/long/coul/long long long 8.0
+pair_modify     mix arithmetic
+pair_coeff      1 1 0.02 2.0
+pair_coeff      2 2 0.05 2.5
+kspace_style    pppm/disp 1.0e-4
+kspace_modify   gewald 0.25 mesh 12 12 12 gewald/disp 0.35 mesh/disp 12 12 12 order 4 order/disp 6
+thermo          10
+compute         pa all pe/atom
+compute         sa all stress/atom NULL virial
+compute         pk all pe/atom kspace
+compute         sk all stress/atom NULL kspace
+dump            d all custom 20 w271pd_arith_peratom.dump id c_pa c_sa[1] c_sa[2] c_sa[3] c_sa[4] c_sa[5] c_sa[6] c_pk c_sk[1] c_sk[2] c_sk[3] c_sk[4] c_sk[5] c_sk[6]
+dump_modify     d sort id format float %.15g
+run             0
+run             20
